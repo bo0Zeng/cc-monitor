@@ -23,9 +23,44 @@ const DEFAULT_UPSTREAM: &str = "https://api.anthropic.com";
 
 /// 请求头部字节上限。
 const HEAD_CAP: usize = 64 * 1024;
+/// **请求体**字节上限〔回修轮之五 08-25，D3 `阻-1(D3)`〕。
+///
+/// 它管的是**一条下游请求的请求体**，超了**拒收+回错**：回 `413 Payload Too Large`，
+/// 且**一个字节都不读、一个字节都不分配**（见 `http1::read_exact_body` 的头注）。
+///
+/// ⚠ `HEAD_CAP` **管不到这个量** —— 它只管头**字节数**。先前这一格没有任何上限，
+/// 一条 `Content-Length: 1000000000000` 就能把**整个中转进程** abort 掉
+/// （`handle_alloc_error` ⇒ SIGABRT，不走 unwind），而本件是「一个进程服务 N 个会话」
+/// ⇒ 打掉的是当时**所有会话**的在途流。
+///
+/// 值怎么定的：claude 搬的是 `POST /v1/messages` 的载荷 —— 一次会话的全部上下文 + 附件。
+/// 64 MiB 比本仓见过的任何一次请求都宽两个量级以上，同时把「一个数就能耗尽内存」这条路堵死。
+/// **登记住址** `src-tauri/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
+const BODY_CAP: usize = 64 * 1024 * 1024;
+/// **tee 侧解码缓冲**的字节上限（`SseSplitter` 的半行 · `ChunkedView` 攒着的那截）。
+///
+/// 它与 `BODY_CAP` **不同族**：那一条防的是「拿外部给的**一个数**去分配」（攻击方一个字节
+/// 不用发），这一条防的是「按**真实收到的字节**无界增长」（上游发一条永不换行的 `data:` 行 /
+/// 永不结束的块长度行）。超了**丢弃+带身份报告**：丢掉那一截并计数，
+/// 由 tee 流里的 `__dropped__` 行报出去 —— **tee 少一段，下游的字节一个不少**。
+const TEE_DECODE_CAP: usize = 8 * 1024 * 1024;
 /// 每次从上游读多少 —— **上限**，不是「要凑满这么多」。
 /// `std::io::Read::read` 本来就是「有多少给多少」，不循环凑满。
 const READ_CHUNK: usize = 64 * 1024;
+
+/// 同时在途的下游连接数上限〔回修轮之五 08-25，D3 `阻-3(D3)` 的**做得到的那一半**〕。
+///
+/// ⚠ **是条数不是体量**，所以名字里刻意不带 `MAX`/`CAP`/`LIMIT`/`BYTES`
+/// —— 那几个词是 `byte_cap_registry` 的钩子，带了会让它把一个**连接数**当成字节上限收进人群。
+///
+/// 超了怎么办：**回 `503 Service Unavailable` 并关连接**，不是静默 FIN。
+/// 先前 `serve()` 是每连接无条件 spawn、且 `let _ = …spawn(…)` 把失败**整个吞掉**
+/// ⇒ 线程顶满之后下游拿到的是一个**没有任何 HTTP 响应**的 FIN，而 `serve` 一个字都不印。
+const INFLIGHT_CONNECTIONS: usize = 256;
+
+/// 上游**中间响应**（1xx）最多容忍几条〔回修轮之五 08-25，D3 `重要-1(D3)`〕。
+/// 超了回 502：那已经不是一个正常的上游。
+const INTERIM_RESPONSES_ALLOWED: usize = 8;
 
 /// 中转的运行期状态。**一个进程一份**，跨连接共享。
 pub(crate) struct Relay {
@@ -35,6 +70,8 @@ pub(crate) struct Relay {
     served: AtomicU64,
     /// 每条连接透传收尾时落一笔 —— `DoD-2` acceptor ㈡「下游读到的块数 ≈ 上游发出的块数」量的就是它。
     ///
+    /// 同时在途的连接数〔回修轮之五 08-25，`阻-3(D3)`〕。`serve()` 进出各动一次。
+    inflight: Arc<std::sync::atomic::AtomicUsize>,
     /// `Some(n)` = 干净 EOF 收尾，`n` 是**写给下游并 flush 成功的次数**；
     /// `None` = `pump` 以错误收尾（上游 RST 那一路）。
     ///
@@ -51,6 +88,7 @@ impl Relay {
             base,
             tee,
             served: AtomicU64::new(0),
+            inflight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             pumps: std::sync::Mutex::new(Vec::new()),
         }
     }
@@ -83,21 +121,60 @@ pub(crate) fn listen(port: u16) -> std::io::Result<TcpListener> {
 }
 
 /// 接受循环。**阻塞在 `accept()` 上** —— 那是内核事件，不是定时器。
+///
+/// # ★ 在途连接数有上界，且拒绝是**出声**的〔回修轮之五 08-25，D3 `阻-3(D3)`〕
+///
+/// 先前这里是「每连接无条件 spawn」+ `let _ = …spawn(…)`：
+/// - **无上界** —— 64 条半开连接（只发半个请求头、永不发结尾空行、不关连接）
+///   就钉住 64 条线程（D3 实测 `半开 64 条之前线程 4 · 1.5s 之后线程 68`）；
+/// - **spawn 失败被整个吞掉** —— 线程顶满之后 `stream` 当场 drop，下游拿到一个
+///   **没有任何 HTTP 响应**的 FIN，而 `serve` 一个字都不印 ⇒ **静默拒绝**，不是 503。
+///
+/// 今天：超过 `INFLIGHT_CONNECTIONS` 就回 **503** 并关连接；spawn 失败同样回 503 并**出声**。
+///
+/// ⚠⚠ **这只是那条阻塞的一半，另一半我做不到，别把它读成做完了**：
+/// 真正能让半开连接**自己散掉**的是读/写期限（`set_read_timeout` / `set_write_timeout`），
+/// 而那要在生产段写 `Duration::from_*`，`no_timer_guard` 要求生产段 `Duration::from_` 的**总处数
+/// 恰好等于** `REGISTERED_DURATION_USES` 的条数 ⇒ 必须往那张表里加一行，
+/// 而那张表住 `remote-daemon-proto/src/no_timer_guard.rs` —— **不在本轮写区**。
+/// 登记与交回理由见件文件 §8.20.4。今天的形状是：**顶不满、拒绝有声，但顶住的那些不会自己散**。
 pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
+    use std::sync::atomic::Ordering::SeqCst;
     for stream in listener.incoming() {
-        let Ok(stream) = stream else {
+        let Ok(mut stream) = stream else {
             continue;
         };
+        if relay.inflight.load(SeqCst) >= INFLIGHT_CONNECTIONS {
+            // ⚠ 只印数字与上限，**永不印请求头**（`K9` 裁定四第 1 条）——
+            // 这一支根本还没读过一个字节，连请求头都还不存在。
+            eprintln!("[relay] refusing: {INFLIGHT_CONNECTIONS} connections already in flight");
+            let _ = respond_and_drain(&mut stream, "503 Service Unavailable");
+            continue;
+        }
+        // ★ 先留一份 fd 副本：`spawn` 失败时 `stream` 已经被 move 进那个闭包、拿不回来，
+        //   没有副本就只能眼看着它 drop 成一个**没有任何 HTTP 响应**的 FIN。
+        //   `try_clone` 是一次 `dup`，成功那条路上它立刻 drop（dup 出来的 fd 关掉不关 socket）。
+        let spare = stream.try_clone().ok();
         let relay = Arc::clone(&relay);
+        let inflight = Arc::clone(&relay.inflight);
+        inflight.fetch_add(1, SeqCst);
         // 每连接一个线程。与参考实现同形（它用 ThreadingHTTPServer）。
-        let _ = std::thread::Builder::new()
+        let spawned = std::thread::Builder::new()
             .name("ccm-relay-conn".to_string())
             .spawn(move || {
                 if let Err(e) = handle(stream, &relay) {
                     // ⚠ 只印错误本身，**永不印请求头**（`K9` 裁定四第 1 条）。
                     eprintln!("[relay] connection ended: {e}");
                 }
+                relay.inflight.fetch_sub(1, SeqCst);
             });
+        if let Err(e) = spawned {
+            inflight.fetch_sub(1, SeqCst);
+            eprintln!("[relay] cannot spawn connection thread: {e}");
+            if let Some(mut s) = spare {
+                let _ = respond_and_drain(&mut s, "503 Service Unavailable");
+            }
+        }
     }
 }
 
@@ -112,6 +189,42 @@ fn respond_status(down: &mut TcpStream, status: &str) -> std::io::Result<()> {
     down.flush()
 }
 
+/// 回一句状态行**并把已经到达、还没被读走的请求字节排掉**，然后就可以关了。
+///
+/// # ⚠ 排掉那一步不是装饰，它决定下游看不看得见这句话
+///
+/// TCP 上，`close` 的时候**接收队列里还压着没读的数据**，内核发的是 **RST 不是 FIN**
+/// ⇒ 下游那边 `read` 拿到的是 `ConnectionReset`，而**不是**我们刚写的那句 503/413
+/// —— 「拒绝」就又变回**静默**的了，而那正是 `阻-3(D3)` 点名的病。
+/// 〔本轮第一版就是这么红的，逐字 `Os { code: 104, kind: ConnectionReset }`；
+///  同一条 TCP 事实在 `spawn_fake_upstream` 的头注里也记着（那边是「不读请求体 ⇒ RST 不是 FIN」）。〕
+///
+/// # 为什么是**非阻塞**的排
+///
+/// 这一支面对的可能正是一条**半开**连接（`阻-3` 那一形）：它承诺过的字节可能永远不来。
+/// 阻塞地排就等于给中转开一个新的挂死点。⇒ 只排「**已经到了的**」，`WouldBlock` 就收工。
+/// 上限 `HEAD_CAP`：排也要有个头，不许被一条无限流住。
+///
+/// **诚实边界**：下游的字节要是**在我们排完之后**才到，`close` 照样发 RST。
+/// 这一支不追求「一定送达」，只把常见那一形（请求已经整条发出来了）从静默变成有声。
+fn respond_and_drain(down: &mut TcpStream, status: &str) -> std::io::Result<()> {
+    let r = respond_status(down, status);
+    let _ = down.set_nonblocking(true);
+    let mut sink = [0u8; 4096];
+    let mut left = HEAD_CAP;
+    while left > 0 {
+        match down.read(&mut sink) {
+            Ok(0) => break,
+            Ok(n) => left = left.saturating_sub(n),
+            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            // `WouldBlock` 也走这里：已经到的都排完了。
+            Err(_) => break,
+        }
+    }
+    let _ = down.set_nonblocking(false);
+    r
+}
+
 /// 处理一条下游连接：解析 → 分流 → 连上游 → 逐块透传 + tee。
 fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     down.set_nodelay(true)?;
@@ -119,20 +232,30 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let mut down_r = BufReader::new(down);
 
     let Some(raw_head) = http1::read_head(&mut down_r, HEAD_CAP)? else {
-        return respond_status(&mut down_w, "400 Bad Request");
+        return respond_and_drain(&mut down_w, "400 Bad Request");
     };
     let Some(head) = http1::parse_request(&raw_head) else {
-        return respond_status(&mut down_w, "400 Bad Request");
+        return respond_and_drain(&mut down_w, "400 Bad Request");
     };
     if head.is_chunked_body() {
-        return respond_status(&mut down_w, "411 Length Required");
+        return respond_and_drain(&mut down_w, "411 Length Required");
     }
     let Some(r) = route::parse(&head.target) else {
-        return respond_status(&mut down_w, "404 Not Found");
+        return respond_and_drain(&mut down_w, "404 Not Found");
     };
+    // ★ `阻-1(D3)` + `重要-2(D3)`：请求体这一格先前有**两个**洞，两个都在这几行上。
+    //   ① 长度**无上界** ⇒ `Content-Length: 1e12` 把整个进程 abort 掉（SIGABRT，不走 unwind）；
+    //   ② 长度**读不懂**（`7abc`）与「没有这个头」挤在同一个 `None` 里 ⇒ 请求体被静默丢掉、
+    //      上游收到空体、下游拿到一条正常的 200。中转搬的正是 `POST /v1/messages` 的载荷。
     let body = match head.content_length() {
-        Some(n) => http1::read_exact_body(&mut down_r, n)?,
-        None => Vec::new(),
+        http1::BodyLen::Exact(n) => match http1::read_exact_body(&mut down_r, n, BODY_CAP)? {
+            Some(b) => b,
+            // 超 `BODY_CAP`：一个字节都没读过（连接上还压着那 n 字节）⇒ 说清楚再关。
+            None => return respond_and_drain(&mut down_w, "413 Payload Too Large"),
+        },
+        http1::BodyLen::Absent => Vec::new(),
+        // **有这个头但读不懂** ⇒ 400，**不许**当成「没有请求体」往上游发一条空体。
+        http1::BodyLen::Unparsable => return respond_and_drain(&mut down_w, "400 Bad Request"),
     };
 
     relay.served.fetch_add(1, Ordering::SeqCst);
@@ -155,11 +278,41 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     }
     up.flush()?;
 
-    let Some(raw_resp) = http1::read_response_head(&mut up, HEAD_CAP)? else {
-        return respond_status(&mut down_w, "502 Bad Gateway");
-    };
-    let Some((_status, headers)) = http1::parse_response(&raw_resp) else {
-        return respond_status(&mut down_w, "502 Bad Gateway");
+    // ★★ `重要-1(D3)`：**1xx 是中间响应，不是最终响应**。
+    //
+    // 先前这里读到第一个 `\r\n\r\n` 就收工，而 `parse_response` 只校验 `HTTP/1.`
+    // ⇒ 上游先发一条 `HTTP/1.1 100 Continue\r\n\r\n` 的话，那条被当成**最终响应头**写给下游，
+    //   紧随其后的**真** `HTTP/1.1 200 OK` 连同全部响应头被 `pump` 当**响应体**透传。
+    //   D3 实测下游逐字拿到
+    //   `"HTTP/1.1 100 Continue\r\nConnection: close\r\n\r\nHTTP/1.1 200 OK\r\n…"`，
+    //   ⚠ 而同一趟的 **tee 完全正常** ⇒ 这一形靠看日志/tee 发现不了。
+    //   配套的另一半：下游发的 `Expect: 100-continue` 会被 `render_upstream_request`
+    //   **原样转给上游**（它不在逐跳表里）⇒ 合规的上游正好回 100，正中这一形。
+    //
+    // 今天：1xx 一律**读掉丢弃**再读下一条，直到拿到非 1xx 的那条；
+    // 超过 `INTERIM_RESPONSES_ALLOWED` 条就回 502（那已经不是一个正常的上游）。
+    // ⚠ `101 Switching Protocols` 也是 1xx：本中转**不支持**协议升级
+    //   （`Upgrade` / `Connection` 都在逐跳表里、根本转不到上游），真收到 101 就会
+    //   继续往下读，而其后是隧道字节不是 HTTP 头 ⇒ `parse_response` 失败 ⇒ **502**。
+    //   那是个**定义好的**结局，不是「当成最终响应发下去」。
+    let (headers, raw_resp) = {
+        let mut interim = 0usize;
+        loop {
+            let Some(raw) = http1::read_response_head(&mut up, HEAD_CAP)? else {
+                return respond_status(&mut down_w, "502 Bad Gateway");
+            };
+            let Some((status, headers)) = http1::parse_response(&raw) else {
+                return respond_status(&mut down_w, "502 Bad Gateway");
+            };
+            if http1::is_interim_status(&status) {
+                interim += 1;
+                if interim > INTERIM_RESPONSES_ALLOWED {
+                    return respond_status(&mut down_w, "502 Bad Gateway");
+                }
+                continue;
+            }
+            break (headers, raw);
+        }
     };
     down_w.write_all(&rewrite_response_head(&raw_resp))?;
     down_w.flush()?;
@@ -170,9 +323,14 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // ★ 返回值**必须落地**：它是 `DoD-2㈡`「块数对账」的唯一量点。
     // 写成 `pump(...)?;` 就等于把它丢掉 —— 那正是审计 `K4` 能全绿的原因。
     let outcome = pump(&mut up, &mut down_w, &mut |raw| {
-        for payload in splitter.feed(&view.feed(raw)) {
+        let decoded = view.feed(raw, TEE_DECODE_CAP);
+        for payload in splitter.feed(&decoded, TEE_DECODE_CAP) {
             relay.tee.event(&r.agent, &r.key, &payload);
         }
+        // 解码那一路超上限丢掉的字节要**报出去**，不许静默（见 `TEE_DECODE_CAP` 头注）。
+        relay
+            .tee
+            .note_dropped_bytes(view.take_dropped() + splitter.take_dropped());
     });
     relay.note_pump(&outcome);
     outcome?;
@@ -221,7 +379,28 @@ fn pump<R: Read, W: Write>(
 /// - 路由前缀已被剥掉，`target` 是下游原样的**真路径 + 查询串**。
 /// - 逐跳头不转发；`Host` 换成上游的。
 /// - `Accept-Encoding` 收窄成 `identity`（见 `super` 头注㈢）。
-/// - ⚠ **其余头一律原样转发，包括 auth 头** —— 转发但**不记录**（`K11` 裁定一）。
+/// - ⚠ **其余头一律原样转发，包括 auth 头** —— 转发但**不记录**。
+///
+/// # ⚠⚠ 订正〔回修轮之五 08-25，D3 `重要-3(D3)`〕：上一行先前引 `K11 裁定一` 当依据，**那半句今天是假的**
+///
+/// `K11 裁定一` 在 **08-25 被改判**，现行正文逐字是：「**端点与 key 都归中转的路由表；
+/// 中转在转发时替换 `Authorization` 头；客户端一个凭据都不配。**」
+/// ⇒ 那条裁定只支持上面的**后半句（不记录）**，**前半句（原样转发 auth 头）已被它的现行版推翻**。
+/// 08-24 那半（「key 归 `--settings` 覆盖层」）在 `MASTERPLAN` 里是**带删除线的来历段**，不是现行。
+///
+/// **今天盘上的真话，逐条**：
+/// 1. 本函数**原样转发**下游那份 `Authorization`，**不替换** —— 这是本件（`K-H1` 甲半·搬字节）
+///    的形状，**不是** `K11` 裁定一要的形状。
+/// 2. 「换头」**本件不做**，落点是下一件；`K11 裁定一` 自己写着硬前置，逐字：
+///    「**没有那条新判据之前，不许把 key 接进中转。**」而它要的那条判据（「key 不许出现在
+///    任何日志、任何回给前端的帧里」）**今天只有一半有牙** —— 见下。
+/// 3. 「不记录」这一半今天是**两条判据**在钉：
+///    `the_auth_header_is_forwarded_but_never_teed`（tee 那一半）与
+///    `a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_stdout`（**日志/stderr 那一半，
+///    本轮才补上的**；先前那一格 D3 实测 0 红 / 392）。
+/// 4. ⚠ 换头那天这里要连**判据**一起改：`the_auth_header_is_forwarded_but_never_teed`
+///    查的是**进来的**哨兵串，而换头之后进来的那个会被换掉、真正该查的是**换上去的那个 key**
+///    ⇒ 它会**在无声中换靶**（D3 `MU4` 实测：换头形状下红的是另外 2 条，这一条仍绿）。
 fn render_upstream_request(
     head: &RequestHead,
     target: &str,
@@ -366,11 +545,21 @@ mod tests {
         /// 上游**真的发出**的响应体块数（每块一次 `write_all` + `flush`）。
         /// 「上游发出的块数」是这个数，**不是**判据里写死的常量。
         sent: Arc<AtomicU64>,
+        /// 上游**真的发出**的 SSE **事件**数（终止块不算）〔回修轮之五 08-25，`阻-4(D3)`〕。
+        ///
+        /// ⚠ 它与 `sent` **不是同一个量**，别拿一个当另一个用：
+        /// `sent` 数的是**网线上的块**（含终止块），`events` 数的是**上游发出的 `data:` 事件**。
+        /// `DoD-2㈡` 的「块数对账」用前者，`DoD-3㈠` 的「`event` 数对账」用后者。
+        events: Arc<AtomicU64>,
     }
 
     impl FakeUpstream {
         fn sent(&self) -> u64 {
             self.sent.load(Ordering::SeqCst)
+        }
+
+        fn events(&self) -> u64 {
+            self.events.load(Ordering::SeqCst)
         }
     }
 
@@ -393,9 +582,11 @@ mod tests {
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
         let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
         let sent = Arc::new(AtomicU64::new(0));
+        let events = Arc::new(AtomicU64::new(0));
         let seen_c = Arc::clone(&seen);
         let bodies_c = Arc::clone(&bodies);
         let sent_c = Arc::clone(&sent);
+        let events_c = Arc::clone(&events);
         std::thread::spawn(move || {
             let gate = gate;
             for s in listener.incoming() {
@@ -459,6 +650,9 @@ mod tests {
                         &sent_c,
                         format!("data: {{\"i\":{i}}}\n\n").as_bytes(),
                     );
+                    // ★ 事件数**由夹具自己数**（`阻-4(D3)`）：判据拿它当分母，
+                    //   而不是拿 `UPSTREAM_EVENTS` 这个常量 —— 夹具少发了也要看得见。
+                    events_c.fetch_add(1, Ordering::SeqCst);
                 }
                 if let Some(g) = gate.as_ref() {
                     let _ = g.recv();
@@ -492,32 +686,76 @@ mod tests {
             seen,
             bodies,
             sent,
+            events,
+        }
+    }
+
+    /// ★★ **tee 的收集面必须「能等」**〔回修轮之五 08-25，`阻-2(D3)` 的连带〕：
+    /// 今天 tee 的写落在**另一条线程**上（那正是 `阻-2` 的修法）⇒ 下游的响应读完了，
+    /// tee 那几行**未必**已经落进这个 `Vec`。判据读完就断言 = 在读一个还没写完的缓冲区，
+    /// 而「tee 是空的」与「还没写完」在断言里**长得一模一样** ⇒ 那是一条会随机说谎的判据。
+    /// ⇒ 每写一行往通道投一条；判据用 `TeeTap::wait_lines` 等够行数，**等不到当红**。
+    struct TeeTap {
+        buf: Arc<std::sync::Mutex<Vec<u8>>>,
+        rx: mpsc::Receiver<()>,
+    }
+
+    impl TeeTap {
+        /// 等写线程写够 `n` 行；等不到就 panic（不许把「还没写完」读成「tee 是空的」）。
+        fn wait_lines(&self, n: usize) {
+            for i in 0..n {
+                self.rx
+                    .recv_timeout(std::time::Duration::from_secs(4))
+                    .unwrap_or_else(|e| panic!("等 tee 的第 {} 行没等到：{e}", i + 1));
+            }
+        }
+
+        fn text(&self) -> String {
+            String::from_utf8(self.buf.lock().expect("lock").clone()).expect("utf8")
+        }
+
+        /// tee 里的**事件行**（不含 meta 行、不含 `__dropped__` 行）。
+        fn event_lines(&self) -> Vec<String> {
+            self.text()
+                .lines()
+                .filter(|l| l.contains("\"event\""))
+                .map(str::to_string)
+                .collect()
         }
     }
 
     /// 起一个中转，返回 `(地址, Relay 句柄, tee 收集器)`。
-    fn spawn_relay(up: SocketAddr) -> (SocketAddr, Arc<Relay>, Arc<std::sync::Mutex<Vec<u8>>>) {
-        let sink = Arc::new(std::sync::Mutex::new(Vec::new()));
-        struct Shared(Arc<std::sync::Mutex<Vec<u8>>>);
+    fn spawn_relay(up: SocketAddr) -> (SocketAddr, Arc<Relay>, TeeTap) {
+        spawn_relay_with_sink(up, None)
+    }
+
+    /// 同上，但可以塞一个**自己造的** tee 落点（`阻-2` 那条判据要一个**会阻塞**的落点）。
+    fn spawn_relay_with_sink(
+        up: SocketAddr,
+        custom: Option<Box<dyn Write + Send>>,
+    ) -> (SocketAddr, Arc<Relay>, TeeTap) {
+        let buf = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let (tick, rx) = mpsc::channel();
+        struct Shared(Arc<std::sync::Mutex<Vec<u8>>>, mpsc::Sender<()>);
         impl Write for Shared {
             fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
                 self.0.lock().expect("lock").extend_from_slice(b);
+                let _ = self.1.send(());
                 Ok(b.len())
             }
             fn flush(&mut self) -> std::io::Result<()> {
                 Ok(())
             }
         }
+        let w: Box<dyn Write + Send> =
+            custom.unwrap_or_else(|| Box::new(Shared(Arc::clone(&buf), tick)));
         let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
-        let relay = Arc::new(Relay::new(
-            base,
-            TeeSink::new(Box::new(Shared(Arc::clone(&sink)))),
-        ));
+        let relay = Arc::new(Relay::new(base, TeeSink::new(w)));
         let listener = listen(0).expect("listen");
         let addr = listener.local_addr().expect("addr");
         let r2 = Arc::clone(&relay);
         std::thread::spawn(move || serve(listener, r2));
-        (addr, relay, sink)
+        (addr, relay, TeeTap { buf, rx })
     }
 
     fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
@@ -572,7 +810,7 @@ mod tests {
     fn routes_two_keys_through_one_process_and_strips_the_prefix() {
         let up = spawn_fake_upstream(None);
         // ★ **一个**中转实例，**一个**监听面 —— 两个键都从这里走（`K9` 裁定二第 1 条）。
-        let (relay_addr, relay, sink) = spawn_relay(up.addr);
+        let (relay_addr, relay, tee) = spawn_relay(up.addr);
         let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages?beta=true", "");
         let mut got = Vec::new();
         c.read_to_end(&mut got).expect("read a");
@@ -589,15 +827,17 @@ mod tests {
         }
 
         assert_eq!(relay.served(), 2, "两个键必须由同一个中转实例服务");
-        let tee = String::from_utf8(sink.lock().expect("lock").clone()).expect("utf8");
+        // 两发响应，每发 1 行 meta + `UPSTREAM_EVENTS` 行事件 ⇒ 等够这么多行再读缓冲区。
+        tee.wait_lines(2 * (1 + UPSTREAM_EVENTS));
+        let text = tee.text();
         // ★ 只认**事件行**，不认 meta 行。
         //
         // 这一条是变异台逼出来的：第一版按「行里出现这个键」认，而每个响应开头那行
         // `__meta__` 本来就带真键 ⇒ 把**事件**的落点写死成一个键，两边照样各自有行、全绿。
         // 那正是「断言从『落在哪个键上』滑成『有没有到达』」那个瞎法，只是滑在 tee 这一侧。
-        let events: Vec<&str> = tee.lines().filter(|l| l.contains("\"event\"")).collect();
-        let a: Vec<&&str> = events.iter().filter(|l| l.contains("sid-AAA")).collect();
-        let b: Vec<&&str> = events.iter().filter(|l| l.contains("sid-BBB")).collect();
+        let events = tee.event_lines();
+        let a: Vec<&String> = events.iter().filter(|l| l.contains("sid-AAA")).collect();
+        let b: Vec<&String> = events.iter().filter(|l| l.contains("sid-BBB")).collect();
         assert!(!a.is_empty(), "A 键必须有自己的**事件**行：{events:?}");
         assert!(!b.is_empty(), "B 键必须有自己的**事件**行：{events:?}");
         assert_eq!(
@@ -608,6 +848,42 @@ mod tests {
         for l in &a {
             assert!(!l.contains("sid-BBB"), "两个键的 tee 行不许交叉：{l}");
         }
+
+        // ★★ `阻-4(D3)`：`DoD-3㈠` acceptor 逐字那半句 ——
+        //    「其后每行可解析且 **`event` 数 == 假上游发出的事件数**」。
+        //
+        // # 这一格先前**零判据**，而它的逃逸射程是实测出来的
+        //
+        // 上面那几条只断「非空 + 不交叉 + 无第三落点」⇒ **每批少抄若干条没有人发现**：
+        // D3 `MU5`（`splitter.feed(...)` 取完 batch 再 `batch.pop()`，下游字节一个不少）
+        // ⇒ **392 全绿**，非空对照里逐字有「这一批 3 条，丢掉 Some("{\"i\":3}")，剩 2」。
+        // 而「**一条都不抄**」会红（PM 重打：390 passed / 2 failed）——
+        // 那两条红是被「tee 非空」顺带接住的，**不是设计出来的**。
+        // ⇒ 今天补的就是中间那一大段：**数对不上就红**。
+        //
+        // 分母：上游**自己数**的事件数（`up.events()`，夹具在每次 `send_chunk` 事件时 +1），
+        // 不是判据里写死的常量 —— 拿常量当期望值，夹具少发了也照样绿。
+        let up_events = up.events();
+        // 非空对照：夹具自己得真发出这么多事件，否则下面那条是空真。
+        assert_eq!(
+            up_events,
+            2 * UPSTREAM_EVENTS as u64,
+            "夹具自检：两发响应共必须发出 {} 个事件",
+            2 * UPSTREAM_EVENTS
+        );
+        assert_eq!(
+            events.len() as u64,
+            up_events,
+            "tee 的事件行数必须等于上游发出的事件数（上游 {up_events} · tee {}）——\
+             少一条就是 tee 漏抄了，而下游的字节可以一个不少：{events:?}",
+            events.len()
+        );
+        // ⚠ 顺带钉住「丢是可见的」：本条这一趟不该有任何 `__dropped__` 行。
+        //    队列 1024 行、这里一共 8 行 ⇒ 出现它就是别的地方坏了。
+        assert!(
+            !text.contains("__dropped__"),
+            "这一趟不该丢任何行：{text:?}"
+        );
         // ★ `阻-2`：请求体必须**逐字节**到得了上游。
         //
         // 这一格先前**零判据**：把 `read_exact_body(&mut down_r, n)?` 换成 `Vec::new()`
@@ -630,6 +906,771 @@ mod tests {
             );
         }
         assert!(!got.is_empty());
+    }
+
+    /// 发一条**自己拼的**请求（`send_request` 那条固定拼 `Content-Length`，这里要能拼坏的）。
+    ///
+    /// 返回 `(拿到的字节, 是不是干净收尾)`。**第二个值不是搭头**〔回修轮之五 08-25〕：
+    /// 拒绝那几支要是没把请求字节排干净，`close` 发的是 **RST**，下游那边的 `read` 拿到
+    /// `ConnectionReset` —— 有些内核/时序下**连已经缓冲的那句 503 都会被丢掉**。
+    /// ⇒ 「拒绝有声」这条性质要的是「拿到 503 **且** 干净收尾」，两个都要断。
+    /// 〔死值验：只断第一个值时，把 `respond_and_drain` 的排整个关掉 ⇒ **0 红 / 405**
+    ///  —— 那条排就成了一处没人守的代码。补上这一格之后它才有牙（`MU13`）。〕
+    fn send_raw(addr: SocketAddr, raw: &str) -> (String, bool) {
+        let mut c = TcpStream::connect(addr).expect("connect relay");
+        c.set_nodelay(true).expect("nodelay");
+        // 风险 `5x`：走得到 `serve()` 的判据一律带读期限，把「挂住」换成「红」。
+        c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .expect("read deadline（风险 5x）");
+        c.write_all(raw.as_bytes()).expect("write req");
+        c.flush().expect("flush");
+        // ★ **读到出错为止，把已经拿到的留着** —— 不用 `read_to_string`（它把错误连同
+        //   已读到的字节一起丢掉）。理由：拒绝那几支要是没把请求字节排干净，`close` 发的是
+        //   **RST**，`read_to_string` 就只剩一个 `ConnectionReset`，而「拿到了 503 然后被 RST」
+        //   与「一个字节都没拿到」在断言里会长得一模一样 —— 那正是本条要分开的两件事。
+        //   〔生产侧的处置见 `respond_and_drain`；这里是判据侧不让读数被吃掉。〕
+        let mut out = Vec::new();
+        let mut buf = [0u8; 4096];
+        let clean = loop {
+            match c.read(&mut buf) {
+                Ok(0) => break true,
+                Ok(n) => out.extend_from_slice(&buf[..n]),
+                Err(_) => break false,
+            }
+        };
+        (String::from_utf8_lossy(&out).to_string(), clean)
+    }
+
+    /// ★★ `阻-1(D3)` 的**行为格**：一条下游请求不许把整个中转进程打掉。
+    ///
+    /// # 为什么这一条与 `http1` 那条**不是同一格**，两条都要
+    ///
+    /// `http1::…::an_oversized_content_length_is_refused_without_allocating_it` 判的是
+    /// **那个函数**的三张脸；本条判的是 **`handle` 有没有把那张脸接对**
+    /// —— 把 `None => return respond_status(…413…)` 改成 `None => Vec::new()`
+    /// （「当成没有请求体」）时，那条单元判据**照样绿**，而下游会拿到一条**正常的 200**。
+    ///
+    /// # 分母与非空对照
+    ///
+    /// - 超上限用的值是 `1_000_000_000_000`（正是 D3 那一发）。它今天走不到分配那一步；
+    ///   **没有上限的版本上这一发会让进程 SIGABRT**（我自己重打过，逐字读数见件文件 §8.20.1）。
+    /// - 非空对照：**同一条路**上一发正常的请求必须拿到 200 且真的打到上游
+    ///   —— 否则「上游没被碰」是空真（夹具坏了 / 中转没起来也会绿）。
+    #[test]
+    fn a_body_larger_than_the_cap_is_refused_with_413_and_never_reaches_upstream() {
+        let up = spawn_fake_upstream(None);
+        let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
+
+        // 非空对照先打一发：这条路是通的，上游的记录面是活的。
+        let mut warm = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut sink0 = Vec::new();
+        warm.read_to_end(&mut sink0).expect("read warmup");
+        assert!(
+            String::from_utf8_lossy(&sink0).starts_with("HTTP/1.1 200"),
+            "非空对照：一发正常请求必须拿到 200"
+        );
+        assert_eq!(up.seen.lock().expect("lock").len(), 1, "非空对照：真打到上游");
+
+        // 正题：一条 `Content-Length: 1e12`，其余**一个字节都不发**。
+        let (got, clean) = send_raw(
+            relay_addr,
+            "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 1000000000000\r\n\r\n",
+        );
+        assert!(
+            got.starts_with("HTTP/1.1 413"),
+            "超 `BODY_CAP` 必须回 413（拿到的是：{got:?}）"
+        );
+        assert!(clean, "413 要**送得到**：连接得干净收尾，不是被 RST 打断（拿到的是：{got:?}）");
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            1,
+            "被拒的那一发不该碰上游（计数必须还是 1）"
+        );
+    }
+
+    /// ★ `重要-2(D3)` 的**行为格**：`Content-Length` 读不懂 ⇒ 400，**不许**静默把请求体丢掉。
+    ///
+    /// 先前这一形下：上游收到**空请求体**、下游拿到一条**完全正常的 200**、全程零日志零 4xx。
+    /// 中转搬的正是 `POST /v1/messages` 的载荷 ⇒ 载荷整个消失而客户端毫不知情。
+    ///
+    /// 非空对照与上一条同族：先打一发正常的，证明这条路与上游的记录面都是活的。
+    #[test]
+    fn an_unparsable_content_length_is_refused_with_400_instead_of_dropping_the_body() {
+        let up = spawn_fake_upstream(None);
+        let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
+
+        let mut warm = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut sink0 = Vec::new();
+        warm.read_to_end(&mut sink0).expect("read warmup");
+        assert_eq!(up.seen.lock().expect("lock").len(), 1, "非空对照：真打到上游");
+        assert_eq!(
+            up.bodies.lock().expect("lock")[0],
+            REQUEST_BODY.as_bytes(),
+            "非空对照：上游那一侧真的看得见请求体（否则下面那条是空真）"
+        );
+
+        let (got, clean) = send_raw(
+            relay_addr,
+            "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7abc\r\n\r\n{\"m\":1}",
+        );
+        assert!(
+            got.starts_with("HTTP/1.1 400"),
+            "读不懂的 Content-Length 必须回 400（拿到的是：{got:?}）"
+        );
+        assert!(clean, "400 要**送得到**：连接得干净收尾，不是被 RST 打断（拿到的是：{got:?}）");
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            1,
+            "读不懂的那一发不该带着一个**空请求体**打到上游（计数必须还是 1）"
+        );
+    }
+
+    /// 一个**按脚本发字节**的假上游：先原样吐 `script`，再吐一条最小 SSE 响应。
+    /// 只给 `重要-1(D3)`（1xx）那条判据用 —— `spawn_fake_upstream` 的形状里塞不进「前缀」。
+    fn spawn_scripted_upstream(script: &'static str) -> SocketAddr {
+        let listener = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        std::thread::spawn(move || {
+            for s in listener.incoming() {
+                let Ok(mut s) = s else { continue };
+                let mut r = BufReader::new(s.try_clone().expect("clone"));
+                let mut clen = 0usize;
+                let mut line = String::new();
+                r.read_line(&mut line).expect("request line");
+                loop {
+                    let mut h = String::new();
+                    let n = r.read_line(&mut h).expect("header");
+                    if n == 0 || h == "\r\n" {
+                        break;
+                    }
+                    if let Some(v) = h.to_ascii_lowercase().strip_prefix("content-length:") {
+                        clen = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                // 把请求体读干净 ⇒ drop 时发 FIN 不是 RST（理由同 `spawn_fake_upstream`）。
+                let mut body = vec![0u8; clen];
+                let _ = r.read_exact(&mut body);
+                s.write_all(script.as_bytes()).expect("script");
+                s.flush().expect("flush");
+                s.write_all(
+                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\ndata: {\"i\":1}\n\n",
+                )
+                .expect("real response");
+                s.flush().expect("flush");
+            }
+        });
+        addr
+    }
+
+    /// ★★ `重要-1(D3)`：上游的 **1xx 中间响应**不许被当成最终响应。
+    ///
+    /// # 先前是什么形状（D3 实测）
+    ///
+    /// 下游**逐字**拿到
+    /// `"HTTP/1.1 100 Continue\r\nConnection: close\r\n\r\nHTTP/1.1 200 OK\r\n…"`
+    /// —— 真正的 200 与它全部响应头**沦为响应体**，客户端拿到一条不可解析的响应。
+    /// ⚠ 而同一趟的 **tee 完全正常** ⇒ 这一形靠看日志/tee 是发现不了的。
+    ///
+    /// # 分母
+    ///
+    /// 我打了 **3** 形：`100 Continue`（最常见，`Expect: 100-continue` 一转发就撞上）·
+    /// `103 Early Hints`（带头的 1xx）· **连续两条** 1xx（跳一条不够）。
+    /// 每一形都断**同一件事**：下游拿到的是 `HTTP/1.1 200`，且**响应体里不许再出现状态行**。
+    #[test]
+    fn an_interim_1xx_response_is_skipped_instead_of_being_sent_as_the_final_one() {
+        // 分母 = 这 3 形。期望值全是手写字面量。
+        let scripts = [
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 103 Early Hints\r\nLink: </s>; rel=preload\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 100 Continue\r\n\r\n",
+        ];
+        for script in scripts {
+            let up = spawn_scripted_upstream(script);
+            let (relay_addr, _relay, _tee) = spawn_relay(up);
+            let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+            let mut got = String::new();
+            c.read_to_string(&mut got).expect("read");
+            assert!(
+                got.starts_with("HTTP/1.1 200"),
+                "1xx 必须被跳过、下游要拿到真正的最终响应；脚本 {script:?} ⇒ 拿到 {got:?}"
+            );
+            // ★ 这一条才是要害：**响应体里不许再出现一条状态行**。
+            //   只断开头是不够的 —— 「把 100 当最终响应」那一形里，真 200 就藏在体里。
+            let body = got.split("\r\n\r\n").nth(1).unwrap_or("");
+            assert!(
+                !body.contains("HTTP/1.1"),
+                "响应**体**里出现了状态行 ⇒ 有一条响应头被当成体透传了：{got:?}"
+            );
+            assert!(
+                got.contains("data: {\"i\":1}"),
+                "真正的那条响应体要完整到得了下游：{got:?}"
+            );
+        }
+    }
+
+    /// ★ `INTERIM_RESPONSES_ALLOWED` 那一格〔铁律 15 自查补的：**我自己写的那条上限先前零判据**〕。
+    ///
+    /// 上一条判据只喂到 **2** 条 1xx，够不到上限 ⇒ 把 `if interim > INTERIM_RESPONSES_ALLOWED`
+    /// 整支拿掉，上一条照样绿，而真机后果是一个坏上游能让中转在那个循环里**一直读下去**。
+    /// ⇒ 这一条喂 **9 条**（上限的手写字面量 8 + 1），断它回 **502**。
+    ///
+    /// ⚠ 期望值 `9` 是**手写字面量**，不是拿 `INTERIM_RESPONSES_ALLOWED` 算的
+    /// —— 拿被测常量算期望值，改了常量本条会跟着漂、永远绿。
+    #[test]
+    fn too_many_interim_responses_are_refused_with_502() {
+        // 9 条 1xx（上限是 8）。分母：`"HTTP/1.1 100 Continue\r\n\r\n"` 重复 9 次。
+        let script = concat!(
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+        );
+        assert_eq!(
+            script.matches("100 Continue").count(),
+            9,
+            "夹具自检：得是 9 条"
+        );
+        let up = spawn_scripted_upstream(script);
+        let (relay_addr, _relay, _tee) = spawn_relay(up);
+        let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut got = String::new();
+        c.read_to_string(&mut got).expect("read");
+        assert!(
+            got.starts_with("HTTP/1.1 502"),
+            "1xx 多到超过上限就该回 502（拿到的是：{got:?}）"
+        );
+    }
+
+    /// ★ `TEE_DECODE_CAP` 那条**接线**〔铁律 15 自查补的：两个上限各自有单元判据，
+    /// 而「`handle` 有没有把丢掉的字节接到 tee 的 `__dropped__` 上」**先前零判据**〕。
+    ///
+    /// 把 `relay.tee.note_dropped_bytes(view.take_dropped() + splitter.take_dropped());`
+    /// 整行换成一个 `let _ = …`，那两条单元判据**照样绿**，而真机后果是 tee 少了一大段
+    /// 却**一个字都不说** —— 正是 `DoD-3㈠` 那笔账对不上的成因。
+    ///
+    /// # 量法与代价
+    ///
+    /// 上游发一条**永不换行**、比 `TEE_DECODE_CAP` 长的 `data:` 行（本条 9 MiB）。
+    /// 这是本轮**最贵**的一条判据（要真搬 9 MiB 过回环，实测把全量从 1.1s 抬到 ~4s），
+    /// 但它是唯一能碰到那条接线的路：上限是生产常量，注不进去。
+    ///
+    /// 非空对照：**下游必须一个字节不少地拿到那 9 MiB** ——
+    /// tee 丢的那一路与转发那一路是两条路，这一格钉的就是「丢的只是 tee」。
+    #[test]
+    fn an_over_cap_sse_line_is_reported_on_the_tee_stream_while_downstream_keeps_every_byte() {
+        const PAYLOAD: usize = 9 * 1024 * 1024; // 手写字面量，比 TEE_DECODE_CAP 大
+        let listener = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind");
+        let up_addr = listener.local_addr().expect("addr");
+        std::thread::spawn(move || {
+            for s in listener.incoming() {
+                let Ok(mut s) = s else { continue };
+                let mut r = BufReader::new(s.try_clone().expect("clone"));
+                let mut clen = 0usize;
+                let mut line = String::new();
+                r.read_line(&mut line).expect("request line");
+                loop {
+                    let mut h = String::new();
+                    let n = r.read_line(&mut h).expect("header");
+                    if n == 0 || h == "\r\n" {
+                        break;
+                    }
+                    if let Some(v) = h.to_ascii_lowercase().strip_prefix("content-length:") {
+                        clen = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                let mut body = vec![0u8; clen];
+                let _ = r.read_exact(&mut body);
+                s.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n")
+                    .expect("head");
+                s.write_all(b"data: ").expect("prefix");
+                // 一条**永不换行**的超长行。
+                let block = vec![b'x'; 64 * 1024];
+                let mut sent = 0usize;
+                while sent < PAYLOAD {
+                    s.write_all(&block).expect("payload");
+                    sent += block.len();
+                }
+                s.flush().expect("flush");
+            }
+        });
+        let (relay_addr, _relay, tee) = spawn_relay(up_addr);
+        let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut got = Vec::new();
+        c.read_to_end(&mut got).expect("read");
+        // 非空对照：转发那一路一个字节都不许少（tee 丢的是**另一条路**）。
+        assert!(
+            got.len() >= PAYLOAD,
+            "下游只拿到 {} 字节，上游至少发了 {PAYLOAD} —— 转发那一路被 tee 的丢连累了",
+            got.len()
+        );
+        // 正题：tee 流上必须有一行 `__dropped__` 把丢掉的字节说出来。
+        assert!(
+            wait_until(|| tee.text().contains("__dropped__")),
+            "超解码上限丢掉的字节必须在 tee 流上报出来，tee 现在是：{:?}",
+            tee.text()
+        );
+        let text = tee.text();
+        let note = text
+            .lines()
+            .find(|l| l.contains("__dropped__"))
+            .expect("那一行");
+        let v: serde_json::Value = serde_json::from_str(note)
+            .unwrap_or_else(|e| panic!("`__dropped__` 行必须可解析（DoD-3㈠）：{note:?} ⇒ {e}"));
+        let bytes = v["__dropped__"]["bytes"].as_u64().expect("bytes 是个数");
+        assert!(
+            bytes > 0,
+            "非空对照：报出来的丢字节数必须 > 0（这一趟丢的是解码缓冲那一路）：{note}"
+        );
+    }
+
+    /// ★★ `阻-2(D3)`：**一个卡住的 tee 消费者不许拖停转发**（同连接 + 跨连接两半都要）。
+    ///
+    /// # 先前是什么形状
+    ///
+    /// `write_line` 在**持锁**状态下做阻塞写，而那把锁跨连接共享、`event()` 又是在 `pump` 的
+    /// `on_chunk` 里**同步**调的 ⇒ 一个慢消费者把**每一条**连接一起拖停。
+    /// D3 实测逐字：`tee 不卡时 B 耗时 1 ms · tee 卡 3000ms 时 B 耗时 2701 ms`
+    /// （住址 `audits/K-H1-D3.md#2.2`；我自己重打的读数见件文件 §8.20.3）。
+    ///
+    /// # 这条判据的量法与阈值是怎么定的
+    ///
+    /// tee 的落点在**第一次写**上睡 3000ms。断言两条连接**各自**在 1500ms 内走完。
+    /// - 3000 / 1500 这个倍数就是这一格的地基：阈值要明显小于卡住的时长，
+    ///   否则「没拖停」与「拖停了但没超阈值」分不开。
+    /// - 失败信息把**实测毫秒数**印出来（本仓纪律：时序类断言必须印出实测值）。
+    /// - ⚠ 它**不**证明 tee 的行最终写出去了 —— 那是别的判据的活（`routes_two_keys…` 在对账）。
+    #[test]
+    fn a_wedged_tee_consumer_stalls_neither_its_own_connection_nor_another() {
+        /// 第一次写睡 3 秒的落点。**只睡第一次**：其后正常写。
+        struct WedgedSink(std::sync::Arc<AtomicU64>);
+        impl Write for WedgedSink {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                if self.0.fetch_add(1, Ordering::SeqCst) == 0 {
+                    std::thread::sleep(std::time::Duration::from_millis(3000));
+                }
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let writes = std::sync::Arc::new(AtomicU64::new(0));
+        let up = spawn_fake_upstream(None);
+        let (relay_addr, _relay, _tee) =
+            spawn_relay_with_sink(up.addr, Some(Box::new(WedgedSink(std::sync::Arc::clone(&writes)))));
+
+        let mut ms = Vec::new();
+        for key in ["sid-AAA", "sid-BBB"] {
+            let t0 = std::time::Instant::now();
+            let mut c = send_request(relay_addr, &format!("/s/agentA/{key}/v1/messages"), "");
+            let mut got = Vec::new();
+            c.read_to_end(&mut got).expect("read");
+            let el = t0.elapsed().as_millis() as u64;
+            assert!(
+                String::from_utf8_lossy(&got).starts_with("HTTP/1.1 200"),
+                "这一趟得真走完一条转发，否则下面量的是半条连接：{:?}",
+                String::from_utf8_lossy(&got)
+            );
+            ms.push(el);
+        }
+        // 非空对照：那个落点**真的被写过**（否则「没卡住」可能只是 tee 整条路没走）。
+        assert!(
+            writes.load(Ordering::SeqCst) >= 1,
+            "非空对照：卡住的那个落点一次都没被写过 ⇒ 本条量的不是 tee 这条路"
+        );
+        println!("[阻-2] tee 卡 3000ms 时：A 耗时 {} ms · B 耗时 {} ms", ms[0], ms[1]);
+        assert!(
+            ms[0] < 1500,
+            "**同一条**连接被自己的 tee 拖停了：A 耗时 {} ms（tee 卡 3000ms）",
+            ms[0]
+        );
+        assert!(
+            ms[1] < 1500,
+            "**另一条**连接被别人的 tee 拖停了（跨连接）：B 耗时 {} ms（tee 卡 3000ms）",
+            ms[1]
+        );
+    }
+
+    /// ★ `阻-3(D3)` 的**做得到的那一半**：在途连接数有上界，且**拒绝是出声的**。
+    ///
+    /// # 四格，逐格说它证什么
+    ///
+    /// ㈠ **半开也算在册** —— 一条只发半个请求头、永不发结尾空行的连接，`inflight` 必须涨。
+    ///    （那正是 D3 那一形：`半开 64 条 ⇒ 线程 4 → 68`。）
+    /// ㈡ **顶到上限 ⇒ 回 503**，不是静默 FIN。先前是 `let _ = …spawn(…)` 把失败整个吞掉。
+    /// ㈢ **非空对照**：`上限 - 1` 的时候同一发请求必须拿到 **200** ——
+    ///    没有它，「拿到 503」可能只是这条路本来就不通。
+    /// ㈣ **计数会还** —— 一条正常连接走完之后 `inflight` 回到原值，否则上限会被慢慢耗光。
+    ///
+    /// ⚠⚠ **它证不了的那一半，写在这里**：真正能让半开连接**自己散掉**的是读/写期限，
+    /// 而那要在生产段写 `Duration::from_*` ⇒ 要动 `no_timer_guard.rs::REGISTERED_DURATION_USES`，
+    /// **那个文件不在本轮写区**。⇒ 今天的性质是「**顶不满、拒绝有声**」，
+    /// **不是**「半开连接会自己散」。交回理由见件文件 §8.20.4。
+    #[test]
+    fn inflight_connections_are_capped_and_the_refusal_is_spoken() {
+        let up = spawn_fake_upstream(None);
+        let (relay_addr, relay, _tee) = spawn_relay(up.addr);
+
+        // ㈠ 半开一条：只发半个请求头，**永不**发结尾空行、不关连接。
+        let mut half = TcpStream::connect(relay_addr).expect("connect");
+        half.write_all(b"POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\n")
+            .expect("half head");
+        half.flush().expect("flush");
+        assert!(
+            wait_until(|| relay.inflight.load(Ordering::SeqCst) >= 1),
+            "半开连接必须算进在途数（今天是 {}）",
+            relay.inflight.load(Ordering::SeqCst)
+        );
+
+        // ㈢ 非空对照先做：`上限 - 1` 时同一发请求必须拿到 200。
+        relay
+            .inflight
+            .store(INFLIGHT_CONNECTIONS - 1, Ordering::SeqCst);
+        let (got, _clean) = send_raw(
+            relay_addr,
+            "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
+        );
+        assert!(
+            got.starts_with("HTTP/1.1 200"),
+            "非空对照：还没到上限时这一发必须走得通：{got:?}"
+        );
+        // ⚠ 先等上一发那条连接线程**真的收工**（它收工时会 `fetch_sub` 一次）。
+        //    不等就 `store` 的话，那一次减会落在我们设的值**之后** ⇒ 计数被减回 255，
+        //    下面那一发就不会被拒 —— 本条第一版正是这么红的（拿到的是一条正常的 200）。
+        assert!(
+            wait_until(|| relay.inflight.load(Ordering::SeqCst) == INFLIGHT_CONNECTIONS - 1),
+            "上一发的连接线程没收工（在途数停在 {}）",
+            relay.inflight.load(Ordering::SeqCst)
+        );
+
+        // ㈡ 顶到上限：新连接必须拿到 **503**，不是一个没有任何响应的 FIN。
+        relay.inflight.store(INFLIGHT_CONNECTIONS, Ordering::SeqCst);
+        let (got, clean) = send_raw(
+            relay_addr,
+            "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
+        );
+        assert!(
+            got.starts_with("HTTP/1.1 503"),
+            "顶到上限必须回 503（**静默 FIN 会让这里拿到空串**）：{got:?}"
+        );
+        // ★ 这一格钉的是 `respond_and_drain` 里那段「非阻塞地把请求字节排掉」：
+        //   不排的话 `close` 发 RST，下游拿到的可能只是一个 `ConnectionReset`
+        //   —— 「拒绝有声」就又退回成「拒绝」。死值验见件文件 §8.20.5 的 `MU13`。
+        assert!(
+            clean,
+            "503 要**送得到**：连接得干净收尾，不是被 RST 打断（拿到的是：{got:?}）"
+        );
+
+        // ㈣ 计数会还：把它放回 0，跑一发正常的，走完之后必须回到 0。
+        relay.inflight.store(0, Ordering::SeqCst);
+        let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut sink = Vec::new();
+        c.read_to_end(&mut sink).expect("read");
+        assert!(
+            wait_until(|| relay.inflight.load(Ordering::SeqCst) == 0),
+            "连接走完之后在途数必须回落（今天是 {}）",
+            relay.inflight.load(Ordering::SeqCst)
+        );
+        drop(half);
+    }
+
+    /// 等一个条件成立，最多 4 秒。**等不到回 `false`**，调用方当红处理。
+    /// （只住测试段：生产段一个 sleep 都不许有，`no_timer_guard` 钉着。）
+    fn wait_until(mut cond: impl FnMut() -> bool) -> bool {
+        for _ in 0..2000 {
+            if cond() {
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        cond()
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ★★ 真子进程的中转 —— `阻-5(D3)` 与 `重要-4(D3)` 的**唯一**可行台子
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// 子进程标记。**平时（没有它）那个入口判据直接返回**，不会有人不小心把测试台变成中转。
+    const CHILD_MARK: &str = "CCM_RELAY_TEST_CHILD";
+    /// `--exact` 要的全名。写错了会**红**而不会静默变绿：子进程一条测试都不跑
+    /// ⇒ 永远等不到那句 `listening on` ⇒ 下面 `spawn_relay_child` 当场 panic。
+    const CHILD_TEST_NAME: &str = "relay::server::tests::relay_child_process_entry_point";
+
+    /// ★ 子进程入口：把**测试二进制自己**当中转进程重新拉起来。
+    ///
+    /// # 它不是判据，是一个入口 —— 所以标了 `#[ignore]`
+    ///
+    /// 标 `#[ignore]` 是刻意的：它在正常那一趟里**一条断言都不跑**，
+    /// 算成 `passed` 就是往门禁里塞一条恒绿的仪式。⇒ 让它算 `ignored`。
+    ///
+    /// # 它走的是**真入口** `run()`
+    ///
+    /// 顺带把两格长期登记为「判不了」的东西变成**量得到**的（登记住址件文件 §8.18.3 / §8.18.9）：
+    /// ①「`run()` 真的去读了那两个环境变量」—— 今天子进程只拿到环境变量，没有别的入口；
+    /// ②「`run_with` 成功那一条路上 `TeeSink::to_stdout()` 那根接线」—— 子进程的 **stdout 就是 tee**，
+    ///   判据在上面读得到真的事件行。
+    #[test]
+    #[ignore = "子进程入口：只在被父判据用 CCM_RELAY_TEST_CHILD 拉起时才当中转跑"]
+    fn relay_child_process_entry_point() {
+        if std::env::var(CHILD_MARK).is_err() {
+            return;
+        }
+        // `run()` 自己去读 `CCM_RELAY_PORT` / `CCM_RELAY_UPSTREAM`。成功那条路永不返回。
+        std::process::exit(run(&[]));
+    }
+
+    /// 一个跑在**真子进程**里的中转，连同它 stdout / stderr 的全量收集面。
+    struct RelayChild {
+        child: std::process::Child,
+        addr: SocketAddr,
+        out: Arc<std::sync::Mutex<String>>,
+        err: Arc<std::sync::Mutex<String>>,
+    }
+
+    impl RelayChild {
+        fn out(&self) -> String {
+            self.out.lock().expect("lock").clone()
+        }
+        fn err(&self) -> String {
+            self.err.lock().expect("lock").clone()
+        }
+    }
+
+    impl Drop for RelayChild {
+        fn drop(&mut self) {
+            // 断言炸了也要把子进程收掉，别在门禁机器上留孤儿。
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    /// 起一个子进程中转，指向 `up`。**端口给 0**（内核选）——
+    /// 判据从子进程 stderr 上那句 `listening on` 里读回真端口，
+    /// 这样就没有「先探一个空闲端口再去绑」的竞态。
+    fn spawn_relay_child(up: SocketAddr) -> RelayChild {
+        let exe = std::env::current_exe().expect("测试二进制自己的路径");
+        let mut child = std::process::Command::new(exe)
+            .args([
+                CHILD_TEST_NAME,
+                "--exact",
+                "--ignored",
+                // ⚠ **`--nocapture` 是这台子的地基**：不给它，子进程里 libtest 会把
+                //   `eprintln!` 收进自己的捕获（**连 spawn 出来的线程也收**，我实测过，
+                //   读数见件文件 §8.20.1㈡）⇒ 管道上一个字节都读不到，
+                //   这条「日志里不许有哨兵串」的判据就成了一条**空真**。
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(CHILD_MARK, "1")
+            .env("CCM_RELAY_PORT", "0")
+            .env("CCM_RELAY_UPSTREAM", format!("http://127.0.0.1:{}", up.port()))
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("起中转子进程");
+
+        let out = Arc::new(std::sync::Mutex::new(String::new()));
+        let err = Arc::new(std::sync::Mutex::new(String::new()));
+        let (tx, rx) = mpsc::channel::<String>();
+
+        let so = child.stdout.take().expect("stdout pipe");
+        let out_c = Arc::clone(&out);
+        std::thread::spawn(move || {
+            for line in BufReader::new(so).lines().map_while(Result::ok) {
+                out_c.lock().expect("lock").push_str(&line);
+                out_c.lock().expect("lock").push('\n');
+            }
+        });
+        let se = child.stderr.take().expect("stderr pipe");
+        let err_c = Arc::clone(&err);
+        std::thread::spawn(move || {
+            for line in BufReader::new(se).lines().map_while(Result::ok) {
+                if line.contains("listening on") {
+                    let _ = tx.send(line.clone());
+                }
+                err_c.lock().expect("lock").push_str(&line);
+                err_c.lock().expect("lock").push('\n');
+            }
+        });
+
+        // 风险 `5x` 的同一条纪律：等不到就**红**，不许挂住。
+        let line = rx
+            .recv_timeout(std::time::Duration::from_secs(20))
+            .expect("子进程没在 20s 内印出 `listening on` —— 它可能根本没跑到中转那一支");
+        let addr: SocketAddr = line
+            .rsplit(' ')
+            .next()
+            .expect("listening 行的末段")
+            .parse()
+            .unwrap_or_else(|e| panic!("`listening on` 那行末段不是地址：{line:?} ⇒ {e}"));
+        RelayChild {
+            child,
+            addr,
+            out,
+            err,
+        }
+    }
+
+    /// ★★ `阻-5(D3)`：`DoD-3㈡` acceptor 逐字那半句 ——
+    /// 「tee 文件 **+ 中转全部日志/stderr** 里**零出现**该哨兵串」。
+    ///
+    /// # 这一格先前**零牙**，而且是被自己那句「怎么让它失败」照出来的
+    ///
+    /// `DoD-3` 逐字写的「怎么让它失败」是「加一行**把 headers 也 dump 一份**」。
+    /// D3 与 PM 各自打了这一刀（`eprintln!("[relay] … headers: {{:?}}", head.headers);`）：
+    /// **392 全绿**，而同一趟 `--nocapture` 的输出里**逐字**印着
+    /// `Authorization: Bearer SECRET-TOKEN-DO-NOT-LEAK`。
+    /// 成因：`the_auth_header_is_forwarded_but_never_teed` 的采集面**只有 tee sink**，
+    /// **一个字都不读 stderr**。
+    ///
+    /// # 为什么必须是**真子进程**（这是量出来的，不是选出来的）
+    ///
+    /// 进程内做不到：libtest 的输出捕获是**跟着 `std::thread::spawn` 传下去**的，
+    /// 而 `serve()` 每连接 spawn 一条线程、`handle` 的 `eprintln!` 就在那条线程上。
+    /// 我用 `libc::dup2` 把 fd 2 接到管道上量过两趟：默认跑法收到 **0** 字节、
+    /// `--nocapture` 收到 **47** 字节（逐字读数见件文件 §8.20.1㈡）。
+    /// ⇒ 进程内的 fd-2 重定向抓不到那一刀，做出来会是一条**看着很像判据的空判据**。
+    ///
+    /// # 采集面 = 子进程的 **stderr 全量 + stdout 全量**
+    ///
+    /// stdout 那一半不是搭头：子进程的 stdout **就是 tee**（`run_with` 里那唯一一处
+    /// `TeeSink::to_stdout()`）⇒ 这一条同时覆盖了 `DoD-3㈡` 的两半，
+    /// 而且是在**真的那根接线**上量的，不是在测试自己造的 `Vec<u8>` sink 上。
+    ///
+    /// # 三条非空对照（缺一条这里就可能是空真）
+    ///
+    /// ① 哨兵串**真的走过这条路** —— 假上游那侧看见 `auth=true`；
+    /// ② stderr 的采集面**是活的** —— 里面有那句 `listening on`；
+    /// ③ stdout 的采集面**是活的** —— 里面有真的 tee 事件行。
+    #[test]
+    fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_stdout() {
+        const SENTINEL: &str = "SECRET-TOKEN-DO-NOT-LEAK";
+        let up = spawn_fake_upstream(None);
+        let relay = spawn_relay_child(up.addr);
+
+        let mut c = send_request(
+            relay.addr,
+            "/s/agentA/sid-AAA/v1/messages",
+            &format!("Authorization: Bearer {SENTINEL}\r\n"),
+        );
+        let mut got = Vec::new();
+        c.read_to_end(&mut got).expect("read");
+        assert!(
+            String::from_utf8_lossy(&got).starts_with("HTTP/1.1 200"),
+            "这一趟得真走完一条转发：{:?}",
+            String::from_utf8_lossy(&got)
+        );
+
+        // 非空对照①：哨兵串真的经过了中转，上游那侧看见了 auth 头。
+        let seen = up.seen.lock().expect("lock").clone();
+        assert_eq!(seen.len(), 1, "上游必须收到那一发：{seen:?}");
+        assert!(seen[0].ends_with("auth=true"), "auth 头必须被转发：{seen:?}");
+        // 非空对照③：stdout（= tee）上真的出现了事件行 —— 等它到，等不到当红。
+        assert!(
+            wait_until(|| relay.out().contains("\"event\"")),
+            "非空对照：子进程 stdout（tee 的真落点）上一条事件行都没有 —— \
+             采集面是死的，下面那条「零出现」就是空真。stdout 现在是：{:?}",
+            relay.out()
+        );
+
+        let err = relay.err();
+        let out = relay.out();
+        // 非空对照②：stderr 的采集面是活的。
+        assert!(
+            err.contains("listening on"),
+            "非空对照：子进程 stderr 一个字都没收到 —— 采集面是死的：{err:?}"
+        );
+        // ★ 正题：两条流上都不许出现哨兵串，也不许出现头名。
+        assert!(!err.contains(SENTINEL), "哨兵串泄漏进了中转的 stderr：{err:?}");
+        assert!(!out.contains(SENTINEL), "哨兵串泄漏进了中转的 stdout：{out:?}");
+        assert!(
+            !err.contains("Authorization"),
+            "中转的 stderr 里出现了请求头名：{err:?}"
+        );
+        assert!(
+            !out.contains("Authorization"),
+            "中转的 stdout 里出现了请求头名：{out:?}"
+        );
+    }
+
+    /// ★ `重要-4(D3)`：`DoD-1㈢` acceptor 逐字那半句「两次请求由**同一个中转进程**服务
+    /// （**进程数 = 1**）」。
+    ///
+    /// # 先前量的是别的东西
+    ///
+    /// `routes_two_keys…` 断的是 `relay.served() == 2` —— 那是「同一个 **`Relay` 实例**」。
+    /// 全量测试跑在**一个**测试进程里 ⇒ 「进程数 = 1」这句话**没有任何判据在量**。
+    ///
+    /// # 今天量的是什么（三格，逐格说它证什么）
+    ///
+    /// ㈠ **只有一个中转进程**：子进程 stderr 里 `listening on` **恰好 1 行**
+    ///    （一个端口只可能有一个监听者，本 crate 不用 `SO_REUSEPORT`）。
+    /// ㈡ **两个键都从这一个进程走**：两发都到了上游，且路径都被剥了前缀。
+    /// ㈢ ★ **两发共享同一份进程内状态**：tee 的两行 `__meta__` 的 `seq` 是 **0 和 1**。
+    ///    `seq` 是 `TeeSink` 的实例字段，而 `TeeSink` 住在 `Relay` 里、由 `serve()` 跨连接
+    ///    `Arc::clone` —— 谁要是改成「每连接一个新 `Relay`」，这里就会看到两个 `0`。
+    ///    ⇒ 这一格才是**有牙**的那一格（死值验见件文件 §8.20.5）。
+    ///
+    /// ⚠ **它证不了**「换成多进程模型会红」—— 那种改动不是一次小改动，我构造不出
+    /// 一刀**只打这一格**的最小面变异。如实写在这里，不写成「进程数=1 已验」。
+    #[test]
+    fn one_relay_process_serves_both_keys_and_shares_its_tee_sequence() {
+        let up = spawn_fake_upstream(None);
+        let relay = spawn_relay_child(up.addr);
+
+        for key in ["sid-AAA", "sid-BBB"] {
+            let mut c = send_request(
+                relay.addr,
+                &format!("/s/agentA/{key}/v1/messages?beta=true"),
+                "",
+            );
+            let mut got = Vec::new();
+            c.read_to_end(&mut got).expect("read");
+            assert!(
+                String::from_utf8_lossy(&got).starts_with("HTTP/1.1 200"),
+                "{key} 那一发得走完：{:?}",
+                String::from_utf8_lossy(&got)
+            );
+        }
+
+        // ㈡ 两发都到了上游，路径都剥了前缀。期望值是**手写字面量**。
+        let seen = up.seen.lock().expect("lock").clone();
+        assert_eq!(seen.len(), 2, "两个键都要打到上游：{seen:?}");
+        for line in &seen {
+            assert_eq!(line, "POST /v1/messages?beta=true HTTP/1.1 auth=false");
+        }
+
+        // ㈢ 等两行 meta 都到 stdout（那是真的 `TeeSink::to_stdout()` 那根接线）。
+        assert!(
+            wait_until(|| relay.out().matches("\"__meta__\"").count() >= 2),
+            "两发响应必须在 tee 上各留一行 meta，stdout 现在是：{:?}",
+            relay.out()
+        );
+        let out = relay.out();
+        let metas: Vec<&str> = out.lines().filter(|l| l.contains("\"__meta__\"")).collect();
+        assert_eq!(metas.len(), 2, "meta 行必须恰好两行：{metas:?}");
+        assert!(
+            metas[0].contains("\"seq\":0") && metas[1].contains("\"seq\":1"),
+            "两发必须共享**同一个进程里的同一份** tee 序号（该是 0 和 1）：{metas:?}"
+        );
+        assert!(
+            metas[0].contains("sid-AAA") && metas[1].contains("sid-BBB"),
+            "两行 meta 要各自带自己的键：{metas:?}"
+        );
+
+        // ㈠ 只有**一个**中转进程在听。
+        let err = relay.err();
+        assert_eq!(
+            err.matches("listening on").count(),
+            1,
+            "起来的中转必须**只有一个**（`listening on` 恰好一行）：{err:?}"
+        );
     }
 
     #[test]
@@ -794,7 +1835,7 @@ mod tests {
     fn the_auth_header_is_forwarded_but_never_teed() {
         const SENTINEL: &str = "SECRET-TOKEN-DO-NOT-LEAK";
         let up = spawn_fake_upstream(None);
-        let (relay_addr, _relay, sink) = spawn_relay(up.addr);
+        let (relay_addr, _relay, tee) = spawn_relay(up.addr);
         let mut c = send_request(
             relay_addr,
             "/s/agentA/sid-AAA/v1/messages",
@@ -809,19 +1850,30 @@ mod tests {
             seen[0].ends_with("auth=true"),
             "auth 头必须被转发：{seen:?}"
         );
-        let tee = String::from_utf8(sink.lock().expect("lock").clone()).expect("utf8");
+        tee.wait_lines(1 + UPSTREAM_EVENTS);
+        let text = tee.text();
         // ★ 活体条件要按**事件行**数，不是按「tee 非空」。
         //
         // 这一条也是变异台逼出来的（与上面路由那条同族）：每个响应开头那行 `__meta__`
         // 本来就会写出去 ⇒ 把 tee 的**事件**那一路整个掏空，「tee 非空」照样成立，
         // 本断言就退化成**空真**（闸死了 `[] == []` 也成立）。7u 那一趟实测到了这个形状。
-        let events = tee.lines().filter(|l| l.contains("\"event\"")).count();
-        assert!(
-            events >= 1,
-            "tee 里必须真有事件行，否则本断言是空真：{tee:?}"
+        //
+        // ⚠ 订正一格〔回修轮之五 08-25，`阻-4(D3)`〕：先前这里是 `events >= 1` ——
+        // 那只挡得住「**一条都不抄**」，挡不住「每批少抄若干条」（D3 `MU5` 实测 392 全绿）。
+        // 今天按**上游自己数的事件数**对账，分母同 `routes_two_keys…` 那条。
+        let events = tee.event_lines();
+        let up_events = up.events();
+        assert_eq!(
+            up_events, UPSTREAM_EVENTS as u64,
+            "夹具自检：上游必须真发出 {UPSTREAM_EVENTS} 个事件"
         );
-        assert!(!tee.contains(SENTINEL), "哨兵串泄漏进了 tee");
-        assert!(!tee.contains("Authorization"), "tee 里不该有任何头名");
+        assert_eq!(
+            events.len() as u64,
+            up_events,
+            "tee 的事件行数必须等于上游发出的事件数：{events:?}"
+        );
+        assert!(!text.contains(SENTINEL), "哨兵串泄漏进了 tee");
+        assert!(!text.contains("Authorization"), "tee 里不该有任何头名");
     }
 
     #[test]
