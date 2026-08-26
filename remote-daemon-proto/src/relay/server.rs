@@ -98,14 +98,24 @@ const DOWNSTREAM_DEADLINE: std::time::Duration = std::time::Duration::from_milli
 
 /// 把 `DOWNSTREAM_DEADLINE` 装到一条下游 socket 的**两个方向**上。
 ///
-/// 抽成函数是因为它有**两个职责不同的调用点**，而它们必须用同一个数：
-/// ㈠ `serve()` 刚 `accept` 出来那一刻 —— 覆盖**拒绝路径**（503），那一支跑在 **accept 线程**上，
-///    也就是**唯一一条它卡住就全盘停摆**的线程；
-/// ㈡ `handle()` 开头 —— D3 §2.3 逐字点名的住址（「`handle()` 只做 `set_nodelay`，
-///    一个 `set_read_timeout` / `set_write_timeout` 都没有」），也是转发路径真正阻塞的地方。
+/// 抽成函数是因为它有**两个调用点**，而它们必须用同一个数。
+/// ⚠ 两个调用点**买的东西不一样，别当成一件事**：
 ///
-/// ⚠ ㈡ 不是 ㈠ 的赘余：`handle()` 有一个**不经过 `serve()`** 的调用者（判据直接调它），
-/// 而「转发路径上有期限」这句承诺必须由 `handle()` 自己兑现，不能挂在调用者身上。
+/// ㈠ `handle()` 开头 —— **有牙的那个**。D3 §2.3 逐字点名的住址（「`handle()` 只做
+///    `set_nodelay`，一个 `set_read_timeout` / `set_write_timeout` 都没有」），
+///    也是转发路径真正阻塞的地方。删掉它，`both_peers_really_carry_…` 当场红（本轮 `MU1`）。
+///    而且 `handle()` 有一个**不经过 `serve()`** 的调用者（判据直接调它）
+///    ⇒ 这句承诺必须由 `handle()` 自己兑现，不能挂在调用者身上。
+///
+/// ㈡ `serve()` 刚 `accept` 出来那一刻 —— **纵深，没有牙，我说不出它失效会怎样**。
+///    ⚙ 照实写：我找过「拒绝路径（503）会阻塞」的形状，**没构造出来** ——
+///    那一支只写 ~90 字节，而一条刚握完手的连接**必然**有这么多接收窗口
+///    （内核对 `SO_RCVBUF` 有下限，且对端已经 ACK 过握手）；随后的排字节那一步
+///    `respond_and_drain` 自己就是**非阻塞**的（它的头注写着为什么）。
+///    ⇒ 它买的**不是**一个实测过的挂死，而是一条更好守的不变式：
+///    **每一条 `accept` 出来的 socket 从第一刻起就带着期限，不管它接下来走哪个分支**
+///    —— 明天有人往拒绝路径上加一次阻塞读写时，这条不变式已经在那儿了。
+///    ⚙ **本轮 `MU6` 实测：把这一块整个删掉，410 条判据零红。** 这个格子没有牙，别报成有。
 fn apply_downstream_deadline(s: &TcpStream) -> std::io::Result<()> {
     s.set_read_timeout(Some(DOWNSTREAM_DEADLINE))?;
     s.set_write_timeout(Some(DOWNSTREAM_DEADLINE))
@@ -203,10 +213,12 @@ pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
         let Ok(mut stream) = stream else {
             continue;
         };
-        // ★★ 期限**先装上，在分流之前**：下面那条 503 支跑在 accept 线程上，
-        //    它卡住的话整个中转不再 accept 任何新连接 —— 那比钉住一条连接线程贵得多。
-        //    装不上就**关掉这条连接并出声**：一条没有期限的连接正是 `阻-3` 那个缺陷本身，
-        //    宁可拒绝，也不放一条永远散不掉的进来。
+        // 期限**先装上，在分流之前** —— 这一处是**纵深**：不变式是「每条 accept 出来的
+        //    socket 从第一刻起就带期限，不管它接下来走哪个分支」。
+        //    ⚙ 别把它读成「治了一个实测过的挂死」：下面那条 503 支只写 ~90 字节、
+        //    排字节那步又是非阻塞的，我**没构造出**它阻塞的形状（理由全文见
+        //    `apply_downstream_deadline` 头注㈡；本轮 `MU6` 实测删掉它**零红**）。
+        //    装不上仍然**关连接并出声**：宁可拒绝，也不放一条来路不明的进来。
         if let Err(e) = apply_downstream_deadline(&stream) {
             eprintln!("[relay] cannot set connection deadline: {e}");
             continue;
