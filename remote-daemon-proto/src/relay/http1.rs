@@ -327,19 +327,32 @@ mod tests {
     #[test]
     fn the_eof_door_refuses_a_head_that_never_terminates() {
         const CAP: usize = 128;
+        // 源：**短于** `CAP` 且没有空行 ⇒ 上限那道门这一趟根本不触发。
+        const SRC: &[u8] = b"GET /x HTTP/1.1\r\nA: b\r\n";
         let mut src = CountingReader {
-            inner: std::io::Cursor::new(b"GET /x HTTP/1.1\r\nA: b\r\n".to_vec()),
+            inner: std::io::Cursor::new(SRC.to_vec()),
             consumed: 0,
         };
         assert!(
             read_head(&mut src, CAP).expect("io").is_none(),
             "没读到空行就断流的头不该被当成一个头返回"
         );
-        // 非空对照：这一趟**真的**是撞 EOF 停的，不是撞上限停的（否则本条测的是另一道门）。
-        assert!(
-            src.consumed < CAP,
-            "源只有 {} 字节，必须短于上限 {CAP}",
-            src.consumed
+        // 非空对照：这一趟**真的**是一路读到源尽头才停的（撞 EOF），不是撞上限停的。
+        //
+        // ⚠ 订正〔回修轮之四 08-25，D2 `建议-1`〕：先前这里写的是 `assert!(src.consumed < CAP)`
+        // —— 源是手写字面量 **23** 字节、`CAP` 是同一个函数里的手写常量 **128**
+        // ⇒ **结构性恒真**，没有任何生产改动能让它红（`relay/` 里同族的第三处；
+        //   前两处是 §8.15.8 自查逮到的 `自-1`/`自-2`）。**动机（做非空对照）是对的，
+        //   写法永远不会失败** —— 一条永远不会红的断言不是对照，是装饰。
+        // 今天改成断**恰好等于源长度**，两个方向都真会红：
+        //   · 上限那道门要是提前拦住（例如 `while buf.len() < cap` 被改小）⇒ 消耗量 < 源长 ⇒ **红**；
+        //   · 夹具哪天被写长过 `CAP` ⇒ 上限先触发、消耗量 = `CAP` ≠ 源长 ⇒ 也**红**
+        //     （夹具漂移正是先前那一条想守的东西，今天它真守得住了）。
+        assert_eq!(
+            src.consumed,
+            SRC.len(),
+            "这一趟必须一路读到源尽头才停（源 {} 字节，上限 {CAP}）",
+            SRC.len()
         );
     }
 
