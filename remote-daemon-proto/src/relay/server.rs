@@ -396,7 +396,7 @@ fn pump<R: Read, W: Write>(
 ///    任何日志、任何回给前端的帧里」）**今天只有一半有牙** —— 见下。
 /// 3. 「不记录」这一半今天是**两条判据**在钉：
 ///    `the_auth_header_is_forwarded_but_never_teed`（tee 那一半）与
-///    `the_request_headers_never_reach_the_relay_processs_stderr_or_stdout`（**日志/stderr 那一半，
+///    `a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_stdout`（**日志/stderr 那一半，
 ///    本轮才补上的**；先前那一格 D3 实测 0 红 / 392）。
 /// 4. ⚠ 换头那天这里要连**判据**一起改：`the_auth_header_is_forwarded_but_never_teed`
 ///    查的是**进来的**哨兵串，而换头之后进来的那个会被换掉、真正该查的是**换上去的那个 key**
@@ -909,7 +909,14 @@ mod tests {
     }
 
     /// 发一条**自己拼的**请求（`send_request` 那条固定拼 `Content-Length`，这里要能拼坏的）。
-    fn send_raw(addr: SocketAddr, raw: &str) -> String {
+    ///
+    /// 返回 `(拿到的字节, 是不是干净收尾)`。**第二个值不是搭头**〔回修轮之五 08-25〕：
+    /// 拒绝那几支要是没把请求字节排干净，`close` 发的是 **RST**，下游那边的 `read` 拿到
+    /// `ConnectionReset` —— 有些内核/时序下**连已经缓冲的那句 503 都会被丢掉**。
+    /// ⇒ 「拒绝有声」这条性质要的是「拿到 503 **且** 干净收尾」，两个都要断。
+    /// 〔死值验：只断第一个值时，把 `respond_and_drain` 的排整个关掉 ⇒ **0 红 / 405**
+    ///  —— 那条排就成了一处没人守的代码。补上这一格之后它才有牙（`MU13`）。〕
+    fn send_raw(addr: SocketAddr, raw: &str) -> (String, bool) {
         let mut c = TcpStream::connect(addr).expect("connect relay");
         c.set_nodelay(true).expect("nodelay");
         // 风险 `5x`：走得到 `serve()` 的判据一律带读期限，把「挂住」换成「红」。
@@ -924,14 +931,14 @@ mod tests {
         //   〔生产侧的处置见 `respond_and_drain`；这里是判据侧不让读数被吃掉。〕
         let mut out = Vec::new();
         let mut buf = [0u8; 4096];
-        loop {
+        let clean = loop {
             match c.read(&mut buf) {
-                Ok(0) => break,
+                Ok(0) => break true,
                 Ok(n) => out.extend_from_slice(&buf[..n]),
-                Err(_) => break,
+                Err(_) => break false,
             }
-        }
-        String::from_utf8_lossy(&out).to_string()
+        };
+        (String::from_utf8_lossy(&out).to_string(), clean)
     }
 
     /// ★★ `阻-1(D3)` 的**行为格**：一条下游请求不许把整个中转进程打掉。
@@ -965,7 +972,7 @@ mod tests {
         assert_eq!(up.seen.lock().expect("lock").len(), 1, "非空对照：真打到上游");
 
         // 正题：一条 `Content-Length: 1e12`，其余**一个字节都不发**。
-        let got = send_raw(
+        let (got, clean) = send_raw(
             relay_addr,
             "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 1000000000000\r\n\r\n",
         );
@@ -973,6 +980,7 @@ mod tests {
             got.starts_with("HTTP/1.1 413"),
             "超 `BODY_CAP` 必须回 413（拿到的是：{got:?}）"
         );
+        assert!(clean, "413 要**送得到**：连接得干净收尾，不是被 RST 打断（拿到的是：{got:?}）");
         assert_eq!(
             up.seen.lock().expect("lock").len(),
             1,
@@ -1001,7 +1009,7 @@ mod tests {
             "非空对照：上游那一侧真的看得见请求体（否则下面那条是空真）"
         );
 
-        let got = send_raw(
+        let (got, clean) = send_raw(
             relay_addr,
             "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7abc\r\n\r\n{\"m\":1}",
         );
@@ -1009,6 +1017,7 @@ mod tests {
             got.starts_with("HTTP/1.1 400"),
             "读不懂的 Content-Length 必须回 400（拿到的是：{got:?}）"
         );
+        assert!(clean, "400 要**送得到**：连接得干净收尾，不是被 RST 打断（拿到的是：{got:?}）");
         assert_eq!(
             up.seen.lock().expect("lock").len(),
             1,
@@ -1099,6 +1108,126 @@ mod tests {
         }
     }
 
+    /// ★ `INTERIM_RESPONSES_ALLOWED` 那一格〔铁律 15 自查补的：**我自己写的那条上限先前零判据**〕。
+    ///
+    /// 上一条判据只喂到 **2** 条 1xx，够不到上限 ⇒ 把 `if interim > INTERIM_RESPONSES_ALLOWED`
+    /// 整支拿掉，上一条照样绿，而真机后果是一个坏上游能让中转在那个循环里**一直读下去**。
+    /// ⇒ 这一条喂 **9 条**（上限的手写字面量 8 + 1），断它回 **502**。
+    ///
+    /// ⚠ 期望值 `9` 是**手写字面量**，不是拿 `INTERIM_RESPONSES_ALLOWED` 算的
+    /// —— 拿被测常量算期望值，改了常量本条会跟着漂、永远绿。
+    #[test]
+    fn too_many_interim_responses_are_refused_with_502() {
+        // 9 条 1xx（上限是 8）。分母：`"HTTP/1.1 100 Continue\r\n\r\n"` 重复 9 次。
+        let script = concat!(
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+            "HTTP/1.1 100 Continue\r\n\r\n",
+        );
+        assert_eq!(
+            script.matches("100 Continue").count(),
+            9,
+            "夹具自检：得是 9 条"
+        );
+        let up = spawn_scripted_upstream(script);
+        let (relay_addr, _relay, _tee) = spawn_relay(up);
+        let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut got = String::new();
+        c.read_to_string(&mut got).expect("read");
+        assert!(
+            got.starts_with("HTTP/1.1 502"),
+            "1xx 多到超过上限就该回 502（拿到的是：{got:?}）"
+        );
+    }
+
+    /// ★ `TEE_DECODE_CAP` 那条**接线**〔铁律 15 自查补的：两个上限各自有单元判据，
+    /// 而「`handle` 有没有把丢掉的字节接到 tee 的 `__dropped__` 上」**先前零判据**〕。
+    ///
+    /// 把 `relay.tee.note_dropped_bytes(view.take_dropped() + splitter.take_dropped());`
+    /// 整行换成一个 `let _ = …`，那两条单元判据**照样绿**，而真机后果是 tee 少了一大段
+    /// 却**一个字都不说** —— 正是 `DoD-3㈠` 那笔账对不上的成因。
+    ///
+    /// # 量法与代价
+    ///
+    /// 上游发一条**永不换行**、比 `TEE_DECODE_CAP` 长的 `data:` 行（本条 9 MiB）。
+    /// 这是本轮**最贵**的一条判据（要真搬 9 MiB 过回环，实测把全量从 1.1s 抬到 ~4s），
+    /// 但它是唯一能碰到那条接线的路：上限是生产常量，注不进去。
+    ///
+    /// 非空对照：**下游必须一个字节不少地拿到那 9 MiB** ——
+    /// tee 丢的那一路与转发那一路是两条路，这一格钉的就是「丢的只是 tee」。
+    #[test]
+    fn an_over_cap_sse_line_is_reported_on_the_tee_stream_while_downstream_keeps_every_byte() {
+        const PAYLOAD: usize = 9 * 1024 * 1024; // 手写字面量，比 TEE_DECODE_CAP 大
+        let listener = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind");
+        let up_addr = listener.local_addr().expect("addr");
+        std::thread::spawn(move || {
+            for s in listener.incoming() {
+                let Ok(mut s) = s else { continue };
+                let mut r = BufReader::new(s.try_clone().expect("clone"));
+                let mut clen = 0usize;
+                let mut line = String::new();
+                r.read_line(&mut line).expect("request line");
+                loop {
+                    let mut h = String::new();
+                    let n = r.read_line(&mut h).expect("header");
+                    if n == 0 || h == "\r\n" {
+                        break;
+                    }
+                    if let Some(v) = h.to_ascii_lowercase().strip_prefix("content-length:") {
+                        clen = v.trim().parse().unwrap_or(0);
+                    }
+                }
+                let mut body = vec![0u8; clen];
+                let _ = r.read_exact(&mut body);
+                s.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n")
+                    .expect("head");
+                s.write_all(b"data: ").expect("prefix");
+                // 一条**永不换行**的超长行。
+                let block = vec![b'x'; 64 * 1024];
+                let mut sent = 0usize;
+                while sent < PAYLOAD {
+                    s.write_all(&block).expect("payload");
+                    sent += block.len();
+                }
+                s.flush().expect("flush");
+            }
+        });
+        let (relay_addr, _relay, tee) = spawn_relay(up_addr);
+        let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut got = Vec::new();
+        c.read_to_end(&mut got).expect("read");
+        // 非空对照：转发那一路一个字节都不许少（tee 丢的是**另一条路**）。
+        assert!(
+            got.len() >= PAYLOAD,
+            "下游只拿到 {} 字节，上游至少发了 {PAYLOAD} —— 转发那一路被 tee 的丢连累了",
+            got.len()
+        );
+        // 正题：tee 流上必须有一行 `__dropped__` 把丢掉的字节说出来。
+        assert!(
+            wait_until(|| tee.text().contains("__dropped__")),
+            "超解码上限丢掉的字节必须在 tee 流上报出来，tee 现在是：{:?}",
+            tee.text()
+        );
+        let text = tee.text();
+        let note = text
+            .lines()
+            .find(|l| l.contains("__dropped__"))
+            .expect("那一行");
+        let v: serde_json::Value = serde_json::from_str(note)
+            .unwrap_or_else(|e| panic!("`__dropped__` 行必须可解析（DoD-3㈠）：{note:?} ⇒ {e}"));
+        let bytes = v["__dropped__"]["bytes"].as_u64().expect("bytes 是个数");
+        assert!(
+            bytes > 0,
+            "非空对照：报出来的丢字节数必须 > 0（这一趟丢的是解码缓冲那一路）：{note}"
+        );
+    }
+
     /// ★★ `阻-2(D3)`：**一个卡住的 tee 消费者不许拖停转发**（同连接 + 跨连接两半都要）。
     ///
     /// # 先前是什么形状
@@ -1116,7 +1245,7 @@ mod tests {
     /// - 失败信息把**实测毫秒数**印出来（本仓纪律：时序类断言必须印出实测值）。
     /// - ⚠ 它**不**证明 tee 的行最终写出去了 —— 那是别的判据的活（`routes_two_keys…` 在对账）。
     #[test]
-    fn a_wedged_tee_consumer_does_not_stall_any_connection() {
+    fn a_wedged_tee_consumer_stalls_neither_its_own_connection_nor_another() {
         /// 第一次写睡 3 秒的落点。**只睡第一次**：其后正常写。
         struct WedgedSink(std::sync::Arc<AtomicU64>);
         impl Write for WedgedSink {
@@ -1202,7 +1331,7 @@ mod tests {
         relay
             .inflight
             .store(INFLIGHT_CONNECTIONS - 1, Ordering::SeqCst);
-        let got = send_raw(
+        let (got, _clean) = send_raw(
             relay_addr,
             "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
         );
@@ -1221,13 +1350,20 @@ mod tests {
 
         // ㈡ 顶到上限：新连接必须拿到 **503**，不是一个没有任何响应的 FIN。
         relay.inflight.store(INFLIGHT_CONNECTIONS, Ordering::SeqCst);
-        let got = send_raw(
+        let (got, clean) = send_raw(
             relay_addr,
             "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
         );
         assert!(
             got.starts_with("HTTP/1.1 503"),
             "顶到上限必须回 503（**静默 FIN 会让这里拿到空串**）：{got:?}"
+        );
+        // ★ 这一格钉的是 `respond_and_drain` 里那段「非阻塞地把请求字节排掉」：
+        //   不排的话 `close` 发 RST，下游拿到的可能只是一个 `ConnectionReset`
+        //   —— 「拒绝有声」就又退回成「拒绝」。死值验见件文件 §8.20.5 的 `MU13`。
+        assert!(
+            clean,
+            "503 要**送得到**：连接得干净收尾，不是被 RST 打断（拿到的是：{got:?}）"
         );
 
         // ㈣ 计数会还：把它放回 0，跑一发正常的，走完之后必须回到 0。
@@ -1413,7 +1549,7 @@ mod tests {
     /// ② stderr 的采集面**是活的** —— 里面有那句 `listening on`；
     /// ③ stdout 的采集面**是活的** —— 里面有真的 tee 事件行。
     #[test]
-    fn the_request_headers_never_reach_the_relay_processs_stderr_or_stdout() {
+    fn a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_stdout() {
         const SENTINEL: &str = "SECRET-TOKEN-DO-NOT-LEAK";
         let up = spawn_fake_upstream(None);
         let relay = spawn_relay_child(up.addr);

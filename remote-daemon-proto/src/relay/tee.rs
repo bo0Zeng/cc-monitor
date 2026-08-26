@@ -131,9 +131,11 @@ impl SseSplitter {
 ///
 /// - **一行不被另一行劈开**：写者只有那一条线程，整行整行地写 —— 比先前的锁更强，不是更弱。
 /// - **顺序**：同一条连接的 `open`/`event` 在同一条线程上 `try_send`，通道保序 ⇒ 顺序不变。
-/// - **队列满了怎么办**：**丢这一行并计数**，其后第一次写得动时先补一行
-///   `{"__dropped__":{"lines":N,"bytes":M}}`（见 `write_line` 与 `note_dropped_bytes`）
+/// - **队列满了怎么办**：投递方**丢这一行并计入账**（`write_line`）；账由**写线程**
+///   在写完下一行之后报成一行 `{"__dropped__":{"lines":N,"bytes":M}}`（见 `TeeSink::new`）
 ///   ⇒ **不许静默丢**（`DoD-3㈠` 的「`event` 数 == 上游事件数」要靠这条才对得上账）。
+///   ⚠ **报账的必须是写线程，不能是投递方** —— 投递方正是因为「投不进去」才在丢，
+///   那行 `__dropped__` 它同样投不进去（第一版就是那么写的，实测那行永远补不出来）。
 /// - **诚实边界**：进程被杀时队列里还没写出去的行会丢。先前的同步写没有这一格
 ///   —— 这是拿「一条卡住的消费者不再拖垮全部会话」换来的，写在这里，不藏。
 pub(crate) struct TeeSink {
@@ -229,11 +231,31 @@ impl TeeSink {
     }
 
     /// 解码那一路（`SseSplitter` / `ChunkedView` 超上限）丢掉的字节，记在同一本账上。
-    /// 由 `server.rs::handle` 每块调一次。
+    /// 由 `server.rs::handle` 每块调一次（`n == 0` 是常态，直接返回）。
+    ///
+    /// ★★ **这一支当场就报，不等写线程**〔本轮实测逼出来的〕：写线程那条报账路是
+    /// 「写完**下一行**之后顺带报」，而解码丢掉的那一形**不保证还有下一行** ——
+    /// 一条超长的 `data:` 行被丢掉之后，这一条响应可能**一个事件行都没有了**，
+    /// 于是那笔账永远等不到落点。
+    /// 〔实测：第一版只累加不报，`an_over_cap_sse_line_is_reported_…` 当场红，
+    ///  tee 流里只有一行 `__meta__`，丢掉的 9 MiB **一个字都没说**。〕
+    ///
+    /// 这一支与队列满那一支**不冲突**：这里是「投得进去」（丢的是解码缓冲，不是队列），
+    /// 投不进去时把账**原样加回**，留给写线程报。
     pub(crate) fn note_dropped_bytes(&self, n: u64) {
-        if n > 0 {
-            self.dropped_bytes
-                .fetch_add(n, std::sync::atomic::Ordering::SeqCst);
+        use std::sync::atomic::Ordering::SeqCst;
+        if n == 0 {
+            return;
+        }
+        self.dropped_bytes.fetch_add(n, SeqCst);
+        let (l, b) = (self.dropped_lines.swap(0, SeqCst), self.dropped_bytes.swap(0, SeqCst));
+        if l == 0 && b == 0 {
+            return;
+        }
+        let note = format!("{{\"__dropped__\":{{\"lines\":{l},\"bytes\":{b}}}}}\n");
+        if self.tx.try_send(note).is_err() {
+            self.dropped_lines.fetch_add(l, SeqCst);
+            self.dropped_bytes.fetch_add(b, SeqCst);
         }
     }
 
