@@ -58,6 +58,59 @@ const READ_CHUNK: usize = 64 * 1024;
 /// ⇒ 线程顶满之后下游拿到的是一个**没有任何 HTTP 响应**的 FIN，而 `serve` 一个字都不印。
 const INFLIGHT_CONNECTIONS: usize = 256;
 
+/// **下游**那条 socket 的读写期限〔回修轮之六 08-25，D3 `阻-3(D3)` 的**后半段**〕。
+///
+/// # 它治的是什么（别读成「限流已经够了」）
+///
+/// `INFLIGHT_CONNECTIONS` 买的是「**顶不满、拒绝有声**」；这一条买的是
+/// 「**顶住的那些会自己散**」。没有它，256 条半开连接能把中转**永久**钉死，
+/// 而它会礼貌地回 503 —— **那一屏读起来像正常限流**。
+/// （D3 实测：64 条半开 ⇒ 线程 4 → 68，全卡在 `read_head` 的 `r.read(&mut one)?` 上永不返回。
+///  **这个数我没重打，住址 `audits/K-H1-D3.md` §2.3**。）
+///
+/// # 它不是定时器 —— 这句话就是 `no_timer_guard::REGISTERED_DURATION_USES` 里登记的那一行
+///
+/// `SO_RCVTIMEO` / `SO_SNDTIMEO` 说的是「**这一次**阻塞的读/写最多等多久」：
+/// 有字节就**立刻**返回，没字节就**报错**返回。它不让任何线程**自己醒来**、不产生任何节拍。
+/// ⭐ 配套硬约束：**期限到了就把这条连接结掉，任何一层都不许重试** ——
+/// 一重试它就从「阻塞有上限」变成「轮询」，而轮询正是零定时器护栏要防的东西。
+/// 今天靠的是：`pump` 与 `http1` 的读循环**只**对 `Interrupted`（EINTR）`continue`，其余一律 `return Err`。
+///
+/// # 值为什么是 30 秒（分母写在这里）
+///
+/// 对端**就在本机** —— `listen()` 绑的是 `LOOPBACK` 常量，`DoD-4㈡` 那条判据钉着它。
+/// 分母是「回环上搬完一条**最大**请求体要多久」：`BODY_CAP` = 64 MiB，回环带宽是 GB/s 量级
+/// ⇒ 零点零几秒。30 秒比它高**两到三个量级**。
+/// ⚙ 那个「零点零几秒」是**按量级推的，我没实测本机回环吞吐** ⇒ 数量级论证，不是读数。
+///
+/// ⚙ **设错会怎样**（两个方向都坏，坏法不同）：
+/// - **设长**（比如照抄上游那 600 秒）：半开连接确实会自己散，但要散 10 分钟
+///   ⇒ 上界从 ∞ 降到 600 秒是真收益，但那个数**读起来仍像挂死**。
+/// - **设短**（比如 1 秒）：一台负载高的机器上，一条**合法**的大请求体会被中转自己掐掉，
+///   客户端看到「网络错误」而中转日志上是一条正常的连接结束 ⇒ **打断正常流量、且不好查**。
+///
+/// # 为什么**不**跟上游用同一个数
+///
+/// 「这个对端合法地可以多久不吭声」是**对端的属性**，不是方向的属性。
+/// 下游是本机、请求在它内存里已经拼好了 ⇒ 慢是**异常**；
+/// 上游是「模型在想」⇒ 慢是**正常**（见 `upstream::UPSTREAM_DEADLINE`）。
+const DOWNSTREAM_DEADLINE: std::time::Duration = std::time::Duration::from_millis(30_000);
+
+/// 把 `DOWNSTREAM_DEADLINE` 装到一条下游 socket 的**两个方向**上。
+///
+/// 抽成函数是因为它有**两个职责不同的调用点**，而它们必须用同一个数：
+/// ㈠ `serve()` 刚 `accept` 出来那一刻 —— 覆盖**拒绝路径**（503），那一支跑在 **accept 线程**上，
+///    也就是**唯一一条它卡住就全盘停摆**的线程；
+/// ㈡ `handle()` 开头 —— D3 §2.3 逐字点名的住址（「`handle()` 只做 `set_nodelay`，
+///    一个 `set_read_timeout` / `set_write_timeout` 都没有」），也是转发路径真正阻塞的地方。
+///
+/// ⚠ ㈡ 不是 ㈠ 的赘余：`handle()` 有一个**不经过 `serve()`** 的调用者（判据直接调它），
+/// 而「转发路径上有期限」这句承诺必须由 `handle()` 自己兑现，不能挂在调用者身上。
+fn apply_downstream_deadline(s: &TcpStream) -> std::io::Result<()> {
+    s.set_read_timeout(Some(DOWNSTREAM_DEADLINE))?;
+    s.set_write_timeout(Some(DOWNSTREAM_DEADLINE))
+}
+
 /// 上游**中间响应**（1xx）最多容忍几条〔回修轮之五 08-25，D3 `重要-1(D3)`〕。
 /// 超了回 502：那已经不是一个正常的上游。
 const INTERIM_RESPONSES_ALLOWED: usize = 8;
@@ -132,18 +185,32 @@ pub(crate) fn listen(port: u16) -> std::io::Result<TcpListener> {
 ///
 /// 今天：超过 `INFLIGHT_CONNECTIONS` 就回 **503** 并关连接；spawn 失败同样回 503 并**出声**。
 ///
-/// ⚠⚠ **这只是那条阻塞的一半，另一半我做不到，别把它读成做完了**：
-/// 真正能让半开连接**自己散掉**的是读/写期限（`set_read_timeout` / `set_write_timeout`），
-/// 而那要在生产段写 `Duration::from_*`，`no_timer_guard` 要求生产段 `Duration::from_` 的**总处数
-/// 恰好等于** `REGISTERED_DURATION_USES` 的条数 ⇒ 必须往那张表里加一行，
-/// 而那张表住 `remote-daemon-proto/src/no_timer_guard.rs` —— **不在本轮写区**。
-/// 登记与交回理由见件文件 §8.20.4。今天的形状是：**顶不满、拒绝有声，但顶住的那些不会自己散**。
+/// # ★★ 另一半也补上了〔回修轮之六 08-26〕：**顶住的那些会自己散**
+///
+/// ⚠ 订正：这里先前逐字写着「**这只是那条阻塞的一半，另一半我做不到**」——
+/// 那句话在回修轮之五是真的（`no_timer_guard.rs` 当时不在写区，交回见件文件 §8.20.4），
+/// **PM 收 R5 时扩了写区一格并派了 R6**（§8.21.3），今天它**已经不成立了**。
+///
+/// 补的是读写期限：`apply_downstream_deadline` 在**两个**调用点装 `DOWNSTREAM_DEADLINE`
+/// —— ㈠ 这里，`accept` 出来那一刻（覆盖 503 那条支，它跑在 **accept 线程**上）；
+/// ㈡ `handle()` 开头（转发路径真正阻塞的地方，也是 D3 §2.3 逐字点名的住址）。
+/// 上游那条 socket 由 `upstream::connect` 装 `upstream::UPSTREAM_DEADLINE`。
+///
+/// ⇒ 三样齐了：**顶不满**（上界）· **拒绝有声**（503 而不是静默 FIN）· **顶住的会自己散**（期限）。
 pub(crate) fn serve(listener: TcpListener, relay: Arc<Relay>) {
     use std::sync::atomic::Ordering::SeqCst;
     for stream in listener.incoming() {
         let Ok(mut stream) = stream else {
             continue;
         };
+        // ★★ 期限**先装上，在分流之前**：下面那条 503 支跑在 accept 线程上，
+        //    它卡住的话整个中转不再 accept 任何新连接 —— 那比钉住一条连接线程贵得多。
+        //    装不上就**关掉这条连接并出声**：一条没有期限的连接正是 `阻-3` 那个缺陷本身，
+        //    宁可拒绝，也不放一条永远散不掉的进来。
+        if let Err(e) = apply_downstream_deadline(&stream) {
+            eprintln!("[relay] cannot set connection deadline: {e}");
+            continue;
+        }
         if relay.inflight.load(SeqCst) >= INFLIGHT_CONNECTIONS {
             // ⚠ 只印数字与上限，**永不印请求头**（`K9` 裁定四第 1 条）——
             // 这一支根本还没读过一个字节，连请求头都还不存在。
@@ -228,6 +295,10 @@ fn respond_and_drain(down: &mut TcpStream, status: &str) -> std::io::Result<()> 
 /// 处理一条下游连接：解析 → 分流 → 连上游 → 逐块透传 + tee。
 fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     down.set_nodelay(true)?;
+    // ★★ `阻-3(D3)` 后半段的正主：没有这一句，一条半开连接（只发半个请求头就不动了）
+    //    会把这条线程**永久**钉在下面 `read_head` 的读上。
+    //    `try_clone` 是 `dup` ⇒ 下面 `down_w` 与 `down_r` 共用同一条 socket、同一份期限。
+    apply_downstream_deadline(&down)?;
     let mut down_w = down.try_clone()?;
     let mut down_r = BufReader::new(down);
 
@@ -1990,6 +2061,216 @@ mod tests {
             }
             upstream::Conn::Tls(_) => panic!("`http://` 该走明文那一支"),
         }
+    }
+
+    /// ★★ `阻-3(D3)` **后半段**的行为格㈠〔回修轮之六 08-25〕：
+    /// 两条 socket 上**真的**装了读写期限 —— `getsockopt` 读回来的，不是数源码。
+    ///
+    /// # 为什么必须是行为格
+    ///
+    /// 同 `both_directions_really_disable_nagle_on_the_socket` 踩过的那个坑：`production_code()`
+    /// 只剥 `#[cfg(test)]` 段与**行首** `//` 的行 ⇒ 一行
+    /// `let _note = "set_read_timeout(Some(DOWNSTREAM_DEADLINE))";` 就能把任何源码扫描喂饱。
+    /// 量法也同它：`try_clone()` 是 `dup` ⇒ 两个 fd 指向**同一条** socket，
+    /// 生产段 `setsockopt` 之后这个探针 `getsockopt` 读得到。**四格，每格各带非空对照。**
+    ///
+    /// # 它的射程（照实写，别让名字承诺它没有的覆盖）
+    ///
+    /// 它买的是「**这个数真的装到了那两条 socket 的两个方向上**」。
+    /// 它**不证明**「期限到点之后那条读真的会返回、且没有任何一层重试」—— 那一半住
+    /// `a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread`。
+    /// ⚠ 两条合起来才推出「顶住的那些会自己散」；**没有任何一条判据端到端等满 30 秒**
+    /// （那要跑 30 秒）⇒ 这个结论是**两格拼出来的**，不是一格量出来的。
+    #[test]
+    fn both_peers_really_carry_their_read_and_write_deadline_on_the_socket() {
+        // ㈠ 下游方向：`handle()` 真的在**这一条** socket 上装了期限。
+        let up = spawn_fake_upstream(None);
+        let listener = listen(0).expect("listen");
+        let addr = listener.local_addr().expect("addr");
+        let client = std::thread::spawn(move || {
+            let mut c = TcpStream::connect(addr).expect("connect relay");
+            // 风险 `5x`：走得到中转的判据一律带读期限，把「挂住」换成「红」。
+            c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+                .expect("read deadline（风险 5x）");
+            let body = REQUEST_BODY;
+            let req = format!(
+                "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            c.write_all(req.as_bytes()).expect("write req");
+            c.flush().expect("flush");
+            let mut got = Vec::new();
+            c.read_to_end(&mut got).expect("read response");
+            got
+        });
+        let (down, _peer) = listener.accept().expect("accept");
+        let probe = down.try_clone().expect("clone");
+        // 非空对照：进 `handle` **之前**两个方向都**没有**期限（内核默认 `SO_*TIMEO` = 0）。
+        // 没有这两格，下面那两句在「内核默认就带期限」的系统上是**空真**。
+        assert_eq!(
+            probe.read_timeout().expect("getsockopt"),
+            None,
+            "非空对照：accept 出来的 socket 默认该是**没有**读期限的"
+        );
+        assert_eq!(
+            probe.write_timeout().expect("getsockopt"),
+            None,
+            "非空对照：accept 出来的 socket 默认该是**没有**写期限的"
+        );
+        let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
+        let relay = Relay::new(base, TeeSink::new(Box::new(std::io::sink())));
+        handle(down, &relay).expect("handle 必须走完一条转发");
+        assert_eq!(
+            probe.read_timeout().expect("getsockopt"),
+            Some(DOWNSTREAM_DEADLINE),
+            "下游方向：`handle()` 必须在下游 socket 上真的装上**读**期限"
+        );
+        assert_eq!(
+            probe.write_timeout().expect("getsockopt"),
+            Some(DOWNSTREAM_DEADLINE),
+            "下游方向：`handle()` 必须在下游 socket 上真的装上**写**期限 ——\
+             写那半钉的是「客户端不读了」那一形（响应体写不出去 ⇒ `write_all` 永久阻塞）"
+        );
+        // ⚠ 先 drop 探针再 join：探针也是这条 socket 的一个 fd，不放手下游读不到 EOF。
+        drop(probe);
+        let got = client.join().expect("client thread");
+        assert!(
+            String::from_utf8_lossy(&got).starts_with("HTTP/1.1 200"),
+            "这一趟得真走完一条转发，否则上面那四句量的是半条连接：{:?}",
+            String::from_utf8_lossy(&got)
+        );
+
+        // ㈡ 上游方向：`upstream::connect()` 真的在**它自己**那条 socket 上装了期限。
+        let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
+        let a = peer.local_addr().expect("addr");
+        let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
+        match upstream::connect(&base2).expect("connect upstream") {
+            upstream::Conn::Plain(s) => {
+                assert_eq!(
+                    s.read_timeout().expect("getsockopt"),
+                    Some(upstream::UPSTREAM_DEADLINE),
+                    "上游方向：`upstream::connect()` 必须装上**读**期限"
+                );
+                assert_eq!(
+                    s.write_timeout().expect("getsockopt"),
+                    Some(upstream::UPSTREAM_DEADLINE),
+                    "上游方向：`upstream::connect()` 必须装上**写**期限 ——\
+                     写那半钉的是 `up.write_all(&body)`（请求体最大 `BODY_CAP` = 64 MiB）"
+                );
+                // 非空对照：同一把尺子量一条**没被生产段碰过**的 socket ⇒ 必须两个方向都没期限。
+                let raw = TcpStream::connect(a).expect("connect 对照");
+                assert_eq!(
+                    raw.read_timeout().expect("getsockopt"),
+                    None,
+                    "非空对照：没经生产段的 socket 默认该是**没有**读期限的"
+                );
+                assert_eq!(
+                    raw.write_timeout().expect("getsockopt"),
+                    None,
+                    "非空对照：没经生产段的 socket 默认该是**没有**写期限的"
+                );
+            }
+            upstream::Conn::Tls(_) => panic!("`http://` 该走明文那一支"),
+        }
+    }
+
+    /// ★★ `阻-3(D3)` **后半段**的行为格㈡〔回修轮之六 08-25〕：**机制那一半**。
+    ///
+    /// 它买两样，都是行为：
+    /// 1. socket 上有读期限时，`read_head` 面对一条**半开**连接（只发半个请求头、
+    ///    **不关**连接）会**报错返回**，而不是永久挂住；
+    /// 2. 那条错误**没有被任何一层当成「再试一次」** —— `read_head` 直接把它交出来。
+    ///    ⭐ 这第 2 条是本轮最要紧的一格：一旦哪层重试，期限就从「阻塞有上限」
+    ///    退化成「轮询」，而轮询正是零定时器护栏要防的东西。
+    ///
+    /// # 为什么这里用**测试自己选的** 200ms，而不是生产那 30 秒
+    ///
+    /// 端到端等满 `DOWNSTREAM_DEADLINE` 要跑 30 秒。⇒ 分工：
+    /// **「那个数装上了没有」**由上一条（`both_peers_really_carry_…`）用 `getsockopt` 买；
+    /// **「装上之后读会不会返回」**由这一条用一条短得多的同类期限买。
+    /// 测试段不受零定时器护栏管（`production_code()` 剥掉 `#[cfg(test)]`），所以这里能自由选值。
+    ///
+    /// # 非空对照
+    ///
+    /// 同一趟里再跑一条**发全了请求头**的连接：它必须 `Ok(Some(..))` 且**明显快过**那条期限
+    /// —— 否则「报错返回」只说明这把尺子把什么都判成超时。
+    #[test]
+    fn a_socket_deadline_makes_a_half_open_read_return_instead_of_wedging_the_thread() {
+        let deadline = std::time::Duration::from_millis(200);
+        let l = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind");
+        let a = l.local_addr().expect("addr");
+
+        // ── ㈠ 半开：只发半个请求头（**没有**结尾空行），且**不关**连接。
+        let mut half = TcpStream::connect(a).expect("connect 半开");
+        half.write_all(b"POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\n")
+            .expect("write 半个头");
+        half.flush().expect("flush");
+        let (mut srv, _p) = l.accept().expect("accept 半开");
+        srv.set_read_timeout(Some(deadline)).expect("装期限");
+        let t0 = std::time::Instant::now();
+        let r = http1::read_head(&mut srv, HEAD_CAP);
+        let waited = t0.elapsed();
+        let e = r.expect_err("半开连接上的 `read_head` 必须**报错返回**；挂住的话本判据根本跑不完");
+        assert!(
+            matches!(
+                e.kind(),
+                std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+            ),
+            "报的该是期限到了那一族（Linux 上是 WouldBlock/EAGAIN，Windows 上是 TimedOut），\
+             实测拿到的是 {:?}：{e}",
+            e.kind()
+        );
+        // 它是**等满了期限**才返回的，不是立刻被别的错误（如 RST）弹回来的。
+        assert!(
+            waited >= deadline,
+            "只等了 {waited:?} 就返回了（期限 {deadline:?}）—— 那不是期限在起作用，是别的错误"
+        );
+        drop(half);
+
+        // ── ㈡ 非空对照：同一把尺子、同样的期限，一条**发全了**的连接必须走通且明显快。
+        let mut whole = TcpStream::connect(a).expect("connect 完整");
+        whole
+            .write_all(b"POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\n\r\n")
+            .expect("write 完整头");
+        whole.flush().expect("flush");
+        let (mut srv2, _p2) = l.accept().expect("accept 完整");
+        srv2.set_read_timeout(Some(deadline)).expect("装期限");
+        let t1 = std::time::Instant::now();
+        let got = http1::read_head(&mut srv2, HEAD_CAP)
+            .expect("完整的请求头不该报错")
+            .expect("完整的请求头该读得出来");
+        let fast = t1.elapsed();
+        assert!(
+            got.ends_with(b"\r\n\r\n"),
+            "读出来的该是一整个请求头：{:?}",
+            String::from_utf8_lossy(&got)
+        );
+        assert!(
+            fast < deadline,
+            "非空对照：数据已经在那儿了，`read_head` 该**立刻**返回而不是等满 {deadline:?}（实测 {fast:?}）\
+             —— 等满了说明这把尺子把正常流量也判成了超时"
+        );
+        drop(whole);
+    }
+
+    /// ★ 两个期限的**方向**：上游那条必须比下游那条**宽**。
+    ///
+    /// 这不是仪式，它钉的是一种真实且省事的写错法：**把两个数写成同一个**。
+    /// - 上游被抄成下游那 30 秒 ⇒ 一条正在正常吐字、只是中间想了 40 秒的 SSE 长流会被
+    ///   **从中间掐断**，客户端拿到半条回答 ⇒ **比不设期限更坏**（不设的话那条流走得完）。
+    /// - 下游被抄成上游那 600 秒 ⇒ 半开连接要 10 分钟才散，`阻-3` 只治好一半。
+    ///
+    /// 判据形状：**只断方向，不断具体的值** —— 断具体的值就变成把常量抄第二遍，
+    /// 改一次数就要改两处，而它一个缺陷都逮不到。
+    #[test]
+    fn the_upstream_deadline_is_the_wider_one_because_a_silently_thinking_model_is_normal() {
+        assert!(
+            upstream::UPSTREAM_DEADLINE > DOWNSTREAM_DEADLINE,
+            "上游期限（{:?}）必须比下游（{:?}）宽：下游对端就在本机、慢是**异常**；\
+             上游等的是模型在想、慢是**正常**。两个数写成一样就会掐断正常的长流。",
+            upstream::UPSTREAM_DEADLINE,
+            DOWNSTREAM_DEADLINE
+        );
     }
 
     /// ★ `DoD-4㈡` 行为那半：从**非回环**地址连不上中转的端口。
