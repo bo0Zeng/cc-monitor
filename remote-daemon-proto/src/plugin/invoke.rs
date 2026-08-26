@@ -22,6 +22,14 @@
 //! 「撞名、该重试」）⇒ **码 → 语义的映射一定是每插件一份**。
 //! 本层只提供：怎么拿到码 · 怎么认出「被信号打断」（`code == None`）·
 //! `timeout(1)` 超时时用的那个码 · 怎么从两条流里摘一行诊断。
+//!
+//! ★ **这一段此前只是散文（删了不会红）**。D1（08-26）的硬读数：把 `control/cc_bus.rs`
+//! 的码表原样抬进本文件、**只擦掉插件的名字** ⇒ `436 passed; 0 failed`，**一条不红**。
+//! ⇒ 现在它由 `plugin::layer_guard` 里形状那一族钉着（两条，见 `plugin` 模块头注那张表）：
+//! 抬一张写整数字面量的表上来 ⇒ `the_generic_port_does_not_translate_exit_codes` 红；
+//! 改用具名 `i32` 常量绕过去 ⇒ `the_only_exit_code_constants_here_are_the_registered_generic_ones` 红。
+//! ⚠ 两条各自**认不出**什么（具名常量来自本层与 control/observe 之外 · 非 `i32` 的码 ·
+//! 运行期从数据里读的表 · `mod.rs` 本身不在扫描面），逐条写在它们自己的头注里 —— 别读成全覆盖。
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
