@@ -2207,9 +2207,21 @@ mod tests {
         half.flush().expect("flush");
         let (mut srv, _p) = l.accept().expect("accept 半开");
         srv.set_read_timeout(Some(deadline)).expect("装期限");
-        let t0 = std::time::Instant::now();
-        let r = http1::read_head(&mut srv, HEAD_CAP);
-        let waited = t0.elapsed();
+        // ★★ 风险 `5x`：这条读**一旦有人重试就会无限自旋**，而自旋的表现是**挂住不是红**
+        //    —— 那一屏与「跑完了、没有新红」几乎分不开（判定行会整条消失）。
+        //    ⇒ 把读搬到一条工作线程上，用 `recv_timeout` 给它一个**远宽于**期限的上界（20 倍），
+        //      超了就 `panic!` ⇒ **把挂住换成红**。这条纪律本文件 `送 5x` 那几处已经在用。
+        //    〔本轮 `MU5` 实测：把 `http1::read_head` 的读循环改成「`WouldBlock` 也 `continue`」
+        //      —— 没有这一层的话它整条判据挂死，有了这一层它**红**。〕
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let t0 = std::time::Instant::now();
+            let r = http1::read_head(&mut srv, HEAD_CAP);
+            let _ = tx.send((r, t0.elapsed()));
+        });
+        let (r, waited) = rx
+            .recv_timeout(deadline * 20)
+            .expect("`read_head` 在 20 倍期限之内一个字都没返回 —— 期限没起作用，或者有哪一层在**重试**（那就成了轮询）");
         let e = r.expect_err("半开连接上的 `read_head` 必须**报错返回**；挂住的话本判据根本跑不完");
         assert!(
             matches!(
