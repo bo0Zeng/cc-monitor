@@ -30,15 +30,41 @@
 //!
 //! 这条由 [`tests::no_cc_bus_data_layout_leaks_into_the_daemon`] 钉住。
 //!
+//! # ④ 找它 / 起它这套壳**搬走了**，本模块只留 cc-bus 自己的语义〔`K-W1A`，08-26〕
+//!
+//! 「按候选顺序找可执行文件」「argv 直传起进程、期限走 `timeout` 前缀」这两段是
+//! **任何插件都一样**的形状，已经搬进 [`crate::plugin`]。本模块从此只提供**它自己**的那几样：
+//! 候选路径（cc-bus 装在哪儿）· 期限从哪个环境变量读 · **退出码 → 语义码的映射表**。
+//!
+//! ⚠ 映射表**刻意不上收**：同一个码在不同插件里语义互斥
+//!（`3` 在 cc-bus 是「路由层拒绝」，在另一个真实插件里是「撞名、该重试」）——
+//! 把它抽进通用层就等于让宿主替所有插件解释退出码，那正是 `E6` 禁的事。
+//!
 //! # 只读铁律
 //!
-//! 本模块有**唯一一处**起进程（[`run`]），两条命令共用，已登记进 `readonly_guard::ALLOWED`。
-//! · `cc-list` 只读；
-//! · `cc-send` 会写收件人的收件箱 —— 那是**被起的那个进程**写的，与用户自己在终端里
-//!   敲 `cc-send` 没有区别（同 `launch` 起 claude 的 D1 正例：daemon 进程自身不写用户既有数据）。
+//! 起进程那一处已经搬去 [`crate::plugin::invoke`]（登记也跟着搬了，`readonly_guard::ALLOWED`
+//! 里那一行的文件名同轮改掉 —— 键是 `(文件, 程序名)`，不改会当场红）。
+//! 本模块经那一处转调的外部命令**今天是三条**，逐条说清写面：
+//! · `cc-list` **只读**；
+//! · `cc-send` 会写收件人的收件箱；
+//! · ★ `cc-kill` 是**破坏性**的 —— 它杀会话，还要清名册、清台账、清那个 id 的状态。
+//!
+//! 三条都是**被起的那个进程**在写，与用户自己在终端里敲同一条命令没有区别
+//!（同 `launch` 起 claude 的 D1 正例：收窄后的铁律管的是 **daemon 进程自身**不写用户既有数据）。
+//!
+//! ⚠⚠ 这段话此前逐字写着「**两条命令**共用」，而 `cc-kill` 是 08-13 当天稍晚进来的
+//!（那个 commit 动了 8 个文件，`readonly_guard.rs` 不在其中）⇒ 那条豁免理由**漏掉了今天真实的写面**，
+//! 而三条判据全绿 —— 起进程登记的键里程序名是 `<非字面量>`，三条命令**共用同一个键**，
+//! 加第三条不会红。这一句与 `ALLOWED` 那一行的理由**同轮一起订正**。
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+
+use crate::plugin::invoke::Done;
+use crate::plugin::invoke::NotRun;
+use crate::plugin::invoke::TIMED_OUT_CODE;
+
+/// 找不到时那句话的**尾巴** —— 这是 cc-bus 自己的话，通用层不该认识它。
+const NOT_INSTALLED_HINT: &str = "cc-bus 装了吗？（装在别处可以用 CC_BUS_BIN_DIR 指过来）";
 
 /// 命令级错误：`(code, message)`。与 [`super::kill`] / [`super::launch`] 同型。
 type CmdErr = (&'static str, String);
@@ -67,43 +93,11 @@ pub(crate) fn fixed_candidates(
     out
 }
 
-/// 找不到时说**查过哪些地方** —— 纯函数。
+/// 找它 —— 候选顺序是 cc-bus 自己的，找法走通用口。
 ///
 /// `P4f-Y4`：`~/.local/bin` 不在非登录 shell 的 PATH 里是**常态**，
-/// 所以"没装/找不到"必须是一个**能自证的**回答，不能report成笼统的失败。
-pub(crate) fn not_installed_message(name: &str, fixed: &[PathBuf], path_dirs: usize) -> String {
-    let places: Vec<String> = fixed.iter().map(|p| p.display().to_string()).collect();
-    format!(
-        "找不到 `{name}`：查过 {}，以及 PATH 上的 {path_dirs} 个目录。cc-bus 装了吗？\
-         （装在别处可以用 CC_BUS_BIN_DIR 指过来）",
-        if places.is_empty() {
-            "<没有可查的固定位置：HOME 也没有>".to_string()
-        } else {
-            places.join(" · ")
-        }
-    )
-}
-
-fn is_executable(p: &Path) -> bool {
-    let Ok(md) = std::fs::metadata(p) else {
-        return false;
-    };
-    if !md.is_file() {
-        return false;
-    }
-    // Windows 上没有执行位这个概念；daemon 的目标平台是 Linux，但它**必须在 Windows 上编得过**
-    //（`C16`：动 daemon 就跑 `npm run verify:committed`，那次 `libc::getuid` 就是这么红的）。
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        md.permissions().mode() & 0o111 != 0
-    }
-    #[cfg(not(unix))]
-    {
-        true
-    }
-}
-
+/// 所以"没装/找不到"必须是一个**能自证的**回答，不能report成笼统的失败 ——
+/// 那句话由通用口拼（它知道查过哪几处），本模块只给它 cc-bus 自己的那句尾巴。
 fn find(name: &str) -> Result<PathBuf, CmdErr> {
     let override_dir = std::env::var_os("CC_BUS_BIN_DIR").filter(|d| !d.is_empty());
     let home = std::env::var_os("HOME").filter(|h| !h.is_empty());
@@ -112,24 +106,8 @@ fn find(name: &str) -> Result<PathBuf, CmdErr> {
         home.as_ref().map(Path::new),
         name,
     );
-    for c in &fixed {
-        if is_executable(c) {
-            return Ok(c.clone());
-        }
-    }
-    let path_dirs: Vec<PathBuf> = std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).collect())
-        .unwrap_or_default();
-    for d in &path_dirs {
-        let c = d.join(name);
-        if is_executable(&c) {
-            return Ok(c);
-        }
-    }
-    Err((
-        "not_installed",
-        not_installed_message(name, &fixed, path_dirs.len()),
-    ))
+    crate::plugin::discover::find(name, &fixed, true, NOT_INSTALLED_HINT)
+        .map_err(|msg| ("not_installed", msg))
 }
 
 /// 给子进程的**期限（秒）**。台架用 `CC_BUS_TIMEOUT_SECS` 调小。
@@ -141,16 +119,7 @@ fn timeout_secs() -> u64 {
         .unwrap_or(10)
 }
 
-/// 在 `PATH` 上找一个可执行文件（`timeout` 只可能在那儿，不在 cc-bus 的固定位置）。
-fn on_path(name: &str) -> Option<PathBuf> {
-    std::env::var_os("PATH").and_then(|p| {
-        std::env::split_paths(&p)
-            .map(|d| d.join(name))
-            .find(|c| is_executable(c))
-    })
-}
-
-/// ★ **本模块唯一一处起进程**（两条命令共用），已登记进 `readonly_guard::ALLOWED`。
+/// 转调一条 cc-bus 命令。起进程那一处住 [`crate::plugin::invoke`]。
 ///
 /// argv 直传、**不过 shell** ⇒ 收件人/正文里的元字符不构成注入面。
 ///
@@ -172,7 +141,7 @@ fn on_path(name: &str) -> Option<PathBuf> {
 ///
 /// ⚠ 找不到 `timeout(1)` 就**如实降级**：裸跑、没有期限。
 /// 那种机器上这条路会退回「可能卡住」，判据与文档都照实写（不假装有保障）。
-fn run(name: &str, args: &[&str]) -> Result<std::process::Output, CmdErr> {
+fn run(name: &str, args: &[&str]) -> Result<Done, CmdErr> {
     run_as(name, args, None)
 }
 
@@ -182,49 +151,32 @@ fn run(name: &str, args: &[&str]) -> Result<std::process::Output, CmdErr> {
 ///
 /// `cc-whoami` 的优先级第一条逐字就是 `$CC_BUS_ID`（可选覆盖）——**这是 cc-bus 现成的契约**。
 /// 用户 08-13 逐字「细节先按原本的就行」⇒ 不动 cc-bus 本体。
-fn run_as(name: &str, args: &[&str], as_id: Option<&str>) -> Result<std::process::Output, CmdErr> {
+fn run_as(name: &str, args: &[&str], as_id: Option<&str>) -> Result<Done, CmdErr> {
     let bin = find(name)?;
     let secs = timeout_secs();
-    // 一处 `Command::new`，两种 argv：有 `timeout(1)` 就 `timeout <secs> <bin> <args…>`。
-    let (prog, mut argv): (PathBuf, Vec<String>) = match on_path("timeout") {
-        Some(t) => (
-            t,
-            vec![secs.to_string(), bin.display().to_string()],
-        ),
-        None => (bin.clone(), Vec::new()),
+    // `CC_BUS_ID` 是 cc-bus 自己的契约 ⇒ 由本模块拼，通用口只负责把 env 传下去。
+    let env: Vec<(&str, &str)> = match as_id {
+        Some(id) => vec![("CC_BUS_ID", id)],
+        None => Vec::new(),
     };
-    argv.extend(args.iter().map(|a| (*a).to_string()));
-    let mut cmd = Command::new(&prog);
-    cmd.args(&argv).stdin(Stdio::null());
-    if let Some(id) = as_id {
-        cmd.env("CC_BUS_ID", id);
-    }
-    cmd.output()
-        .map_err(|e| {
-            // ★ **E2BIG 要单独说**〔08-13 实测〕：`{"code":"failed","message":"起不来 cc-send：
-            //   Argument list too long"}` 有两处不对 —— ① `failed` 是兜底桶，调用方分不出
-            //   「我的消息太长」（自己能修：发短点）和「cc-bus 坏了」（自己修不了）；
-            //   ② 那句话**归错了因**：cc-send 好好的，是这条消息塞不进 argv。
-            //   实测 200KB 正文必炸、120KB 能过 —— 内核的单参数上限 `MAX_ARG_STRLEN` = 128 KiB
-            //  （`P4b §7g-8b` 量过：131000 OK / 131072 E2BIG）。
-            #[cfg(unix)]
-            if e.raw_os_error() == Some(libc::E2BIG) {
-                return (
-                    "too_long",
-                    "这条消息塞不进一次命令调用（内核的单参数上限是 128 KiB）—— 发短一点。\
-                     ⚠ 不是 cc-bus 坏了。"
-                        .to_string(),
-                );
-            }
-            ("failed", format!("起不来 `{}`：{e}", bin.display()))
-        })
+    crate::plugin::invoke::run(&bin, args, secs, &env).map_err(|e| match e {
+        // ★ **E2BIG 要单独说**〔08-13 实测〕：`{"code":"failed","message":"起不来 cc-send：
+        //   Argument list too long"}` 有两处不对 —— ① `failed` 是兜底桶，调用方分不出
+        //   「我的消息太长」（自己能修：发短点）和「cc-bus 坏了」（自己修不了）；
+        //   ② 那句话**归错了因**：cc-send 好好的，是这条消息塞不进 argv。
+        //   实测 200KB 正文必炸、120KB 能过 —— 内核的单参数上限 `MAX_ARG_STRLEN` = 128 KiB
+        //  （`P4b §7g-8b` 量过：131000 OK / 131072 E2BIG）。
+        // ⚠ **那句「不是 cc-bus 坏了」留在本模块**：通用口不知道被调的是谁，
+        //   由它来说这句话只能说成「不是那个程序坏了」，而 e2e 逐字核的是前者。
+        NotRun::ArgListTooLong => (
+            "too_long",
+            "这条消息塞不进一次命令调用（内核的单参数上限是 128 KiB）—— 发短一点。\
+             ⚠ 不是 cc-bus 坏了。"
+                .to_string(),
+        ),
+        NotRun::Failed(msg) => ("failed", msg),
+    })
 }
-
-/// `timeout` 那条命令超时时的退出码（GNU coreutils）。
-///
-/// ⚠ 文案里**别把它写成 `timeout` 加括号的形状** —— `no_timer_guard` 按调用形态扫，
-/// 它剥注释但**不剥字符串**，写在错误消息里会被当成一处定时器调用（我当场撞过）。
-const TIMED_OUT_CODE: i32 = 124;
 
 /// 超时那条的说法 —— 两个命令共用一份文案。
 fn timed_out_err() -> (String, String) {
@@ -317,14 +269,6 @@ fn parse_send(args: &serde_json::Value) -> Result<(String, String, Option<String
     Ok((to.to_string(), text.to_string(), from))
 }
 
-fn first_line(bytes: &[u8]) -> String {
-    String::from_utf8_lossy(bytes)
-        .lines()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or("")
-        .to_string()
-}
-
 /// 从总线地址（`proj_cc:0.0`）里取**会话名**那一段 —— 纯函数。
 ///
 /// 身份空间的键是**会话名**；总线地址是 `名字:窗口.面板`。对账按前者。
@@ -384,17 +328,13 @@ pub(crate) fn join_identity(
 
 pub(crate) fn list_for_inbound() -> Result<serde_json::Value, (String, String)> {
     let out = run("cc-list", &[]).map_err(|(c, m)| (c.to_string(), m))?;
-    if out.status.code() == Some(TIMED_OUT_CODE) {
+    if out.timed_out() {
         return Err(timed_out_err());
     }
-    if !out.status.success() {
+    if out.code != Some(0) {
         return Err((
             "failed".to_string(),
-            format!(
-                "cc-list 退出码 {:?}：{}",
-                out.status.code(),
-                first_line(&out.stderr)
-            ),
+            format!("cc-list 退出码 {:?}：{}", out.code, out.diagnosis()),
         ));
     }
     let text = String::from_utf8_lossy(&out.stdout);
@@ -461,15 +401,8 @@ pub(crate) fn kill_for_inbound(
     //   的 agent（`-` 在它的白名单里，连报错都不会），三种情形全回 `killed:false`
     //   而真 agent 的会话好好活着。★ 抄参数形状之前先看被调方怎么解析。
     let out = run("cc-kill", &[&id]).map_err(|(c, m)| (c.to_string(), m))?;
-    let detail = {
-        let e = first_line(&out.stderr);
-        if e.is_empty() {
-            first_line(&out.stdout)
-        } else {
-            e
-        }
-    };
-    match out.status.code() {
+    let detail = out.diagnosis();
+    match out.code {
         Some(0) => {}
         Some(TIMED_OUT_CODE) => return Err(timed_out_err()),
         // cc-kill 自己的白名单校验（非法 id）
@@ -516,15 +449,8 @@ pub(crate) fn send_for_inbound(
         }
         (c.to_string(), m)
     })?;
-    let detail = {
-        let e = first_line(&out.stderr);
-        if e.is_empty() {
-            first_line(&out.stdout)
-        } else {
-            e
-        }
-    };
-    classify_send(out.status.code(), &detail)?;
+    let detail = out.diagnosis();
+    classify_send(out.code, &detail)?;
     // ★ 投出去之后，把「有没有人会读」也一并回答〔用@08-13 那条架构点的另一半〕。
     //
     // 病：今天两种「没人会读」都只回 `sent:true` —— ① 收件人**压根没登记**
@@ -585,12 +511,17 @@ mod tests {
     }
 
     /// `P4f-Y4`：找不到时要说**查过哪儿**。
+    ///
+    /// ⚠ 拼那句话的活搬去通用口了，**这一格没跟着搬**：它核的是 cc-bus 自己那三样
+    ///（两处固定位置的形状 + [`NOT_INSTALLED_HINT`] 这句尾巴），而 `e2e/daemon-cc-bus.sh` 的
+    /// 第 6 组逐字 `grep` 的正是这三条。搬走它等于把那三条 e2e 的单测对位丢掉。
     #[test]
     fn the_not_installed_message_names_the_places_it_looked() {
         let home = PathBuf::from("/home/u");
         let fixed = fixed_candidates(None, Some(&home), "cc-list");
         assert_eq!(fixed.len(), 2, "固定位置应当是两处：{fixed:?}");
-        let msg = not_installed_message("cc-list", &fixed, 9);
+        let msg =
+            crate::plugin::discover::not_installed_message("cc-list", &fixed, 9, NOT_INSTALLED_HINT);
         assert!(msg.contains("/home/u/.local/bin/cc-list"), "{msg}");
         assert!(
             msg.contains(".claude/skills/cc-bus/scripts/cc-list"),
