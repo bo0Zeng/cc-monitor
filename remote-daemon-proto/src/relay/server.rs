@@ -319,7 +319,7 @@ fn run_with(port_env: Option<&str>, upstream_env: Option<&str>) -> i32 {
 /// **最外面那一层 `run()` 自己仍然零判据**。实测把那两行 `std::env::var(...)` **对调**，
 /// **389 条判据全绿**（D2 `D2RUN`），而真机后果是 `--relay` **整个起不来**：
 /// 端口读不懂 ⇒ 回默认 8788、上游解析失败 ⇒ 退 2。
-/// 判据见 `the_relay_entry_reads_each_env_var_into_its_own_config_slot`。
+/// 判据见 `each_env_var_name_goes_into_its_own_config_slot`。
 fn run_reading(
     get: &dyn Fn(&str) -> Option<String>,
     exec: &dyn Fn(Option<&str>, Option<&str>) -> i32,
@@ -990,8 +990,14 @@ mod tests {
 
     /// ★ `重要-6` 之一：`--relay` 的**配置面**。期望值全是**手写字面量** ——
     /// 拿被测的那两个常量去算期望值，本判据就自证、恒绿。
+    ///
+    /// ⚠ **改名**〔回修轮之四 08-25，承接 D2 §7㈢〕：旧名
+    /// `the_relay_entry_resolves_its_defaults_and_lets_**env**_override_them`
+    /// 里的「**env**」是假的 —— 它调的是**纯函数** `resolve_config` 的**参数**，
+    /// **一个环境变量都没读过**。今天的名字只说它证得了的那一半：默认值 + **入参**盖得住。
+    /// 「哪个环境变量喂给哪个配置位」由 `each_env_var_name_goes_into_its_own_config_slot` 守。
     #[test]
-    fn the_relay_entry_resolves_its_defaults_and_lets_env_override_them() {
+    fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
         let (port, base) = resolve_config(None, None).expect("默认配置应当成立");
         assert_eq!(port, 8788, "默认端口");
         assert_eq!(
@@ -1036,8 +1042,16 @@ mod tests {
     /// 取值器与执行体都注入 ⇒ 本条打得到它，**且不碰进程环境**。
     ///
     /// 期望值全是**手写字面量**，不拿被测的 `ENV_PORT` / `ENV_UPSTREAM` 去算。
+    ///
+    /// ⚠⚠ **名字只说它证得了的那一半**〔铁律 15 自查，本轮我自己写的第一版就犯了同一种病〕：
+    /// 我第一版把它叫 `the_relay_entry_reads_each_env_var_into_its_own_config_slot`
+    /// —— 「**reads env**」是假的，取值器是**注入的**，本条一个真环境变量都没读过。
+    /// 那正是 D2 `重要-3(D2)` 逮 `the_relay_entry_resolves_…_and_lets_env_override_them`
+    /// 的**同一种病**，而它长在了治它的代码里。⇒ 改成今天这个名字：它证的是
+    /// **变量名 → 配置位**这条接线，**不是**「真的去读了环境」。
+    /// 「`run()` 真的读了那两个环境变量」今天**判不了**，登记住址件文件 §8.18.9。
     #[test]
-    fn the_relay_entry_reads_each_env_var_into_its_own_config_slot() {
+    fn each_env_var_name_goes_into_its_own_config_slot() {
         let seen: std::sync::Mutex<Vec<(Option<String>, Option<String>)>> =
             std::sync::Mutex::new(Vec::new());
         let exec: &dyn Fn(Option<&str>, Option<&str>) -> i32 = &|p, u| {
@@ -1049,7 +1063,11 @@ mod tests {
 
         // ㈠ 取值器把**变量名原样**当值返回 ⇒ 接线一旦对调，下面这句当场对不上。
         let echo: &dyn Fn(&str) -> Option<String> = &|k| Some(k.to_string());
-        assert_eq!(run_reading(echo, exec), 7, "入口必须把执行体的退出码原样带回");
+        assert_eq!(
+            run_reading(echo, exec),
+            7,
+            "入口必须把执行体的退出码原样带回"
+        );
         assert_eq!(
             seen.lock().expect("lock").clone(),
             vec![(
