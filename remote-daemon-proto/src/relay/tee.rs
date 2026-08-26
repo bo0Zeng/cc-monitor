@@ -202,8 +202,14 @@ mod tests {
         assert!(!text.contains("t_ns"), "本刀不带 t_ns，见 super 头注㈡");
     }
 
+    /// ⚠ **改名**〔回修轮之四 08-25，承接 D2 `建议-8`〕：旧名 `seq_is_**per_process**_and_monotonic`
+    /// 里的「**per process**」是假的 —— `seq` 是 `TeeSink` 的**实例字段**，本条自己
+    /// `TeeSink::new(...)` 造**一个**再断 0/1/2 ⇒ 它只证了**实例内**单调。
+    /// 「一个进程一份」今天靠的是生产段 `run_with` 里那**唯一一个** `TeeSink::to_stdout()`
+    /// 调用点，而**那一点没有任何判据钉着**（登记住址件文件 §8.18.9 `判不了-单例`）。
+    /// ⇒ 名字只说它证得了的那一半。
     #[test]
-    fn seq_is_per_process_and_monotonic() {
+    fn seq_is_monotonic_within_one_sink() {
         let sink = TeeSink::new(Box::new(MemSink::default()));
         assert_eq!(sink.open("a", "k1"), 0);
         assert_eq!(sink.open("b", "k2"), 1);
