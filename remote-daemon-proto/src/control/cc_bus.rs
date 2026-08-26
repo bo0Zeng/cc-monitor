@@ -216,6 +216,19 @@ pub(crate) fn parse_list(text: &str) -> Vec<serde_json::Value> {
 ///
 /// `P4f-Y5`：如实转达，**不在 daemon 侧再写一份收件人白名单**。
 /// 收件人合法性归 cc-bus 自己（它已有，rc=2）；这边再写一份的话两处规则会漂。
+///
+/// # ★ 这张表**刻意住在这里**，不许上收到 `plugin/`（`E6`）
+///
+/// 理由是读数不是风格：同一个 `3` 在这个插件是「路由层拒绝」、在另一个插件是
+/// 「撞名该重试」—— **语义互斥**。抬进通用调用口就等于让宿主替所有插件解释退出码。
+///
+/// ⚠ 这句话此前**只是散文**：D1（08-26）实测把本函数原样抬进 `plugin/invoke.rs`、
+/// 只擦掉 `cc-send` 这个名字 ⇒ `436 passed; 0 failed`，**一条不红**。
+/// 现在钉着它的是 `plugin::layer_guard` 里形状那一族两条判据
+///（`the_generic_port_does_not_translate_exit_codes` /
+/// `the_only_exit_code_constants_here_are_the_registered_generic_ones`）——
+/// 它们认的是**形状**、不认插件的名字，所以第二个插件的码表抬上去也会红。
+/// 各自认不出什么，写在它们自己的头注里。
 pub(crate) fn classify_send(code: Option<i32>, detail: &str) -> Result<(), (String, String)> {
     match code {
         Some(0) => Ok(()),
