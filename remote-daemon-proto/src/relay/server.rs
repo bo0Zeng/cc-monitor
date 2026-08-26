@@ -310,12 +310,32 @@ fn run_with(port_env: Option<&str>, upstream_env: Option<&str>) -> i32 {
     0
 }
 
+/// `run()` 的**接线面**：哪个环境变量喂给哪个配置位。取值器与执行体都是**注入的**
+/// ⇒ 判据打得到这条接线本身，而**不必去改进程环境**（`std::env::set_var` 与并行跑的
+/// 别的判据是竞态 —— 那不是判据该有的形状）。
+///
+/// ★ 它为什么被抽出来（回修轮之四 08-25，D2 `重要-3(D2)`）：
+/// `重要-6` 那一轮把 `resolve_config`（纯函数）与 `run_with`（退 2 两条）抽了出来，
+/// **最外面那一层 `run()` 自己仍然零判据**。实测把那两行 `std::env::var(...)` **对调**，
+/// **389 条判据全绿**（D2 `D2RUN`），而真机后果是 `--relay` **整个起不来**：
+/// 端口读不懂 ⇒ 回默认 8788、上游解析失败 ⇒ 退 2。
+/// 判据见 `each_env_var_name_goes_into_its_own_config_slot`。
+fn run_reading(
+    get: &dyn Fn(&str) -> Option<String>,
+    exec: &dyn Fn(Option<&str>, Option<&str>) -> i32,
+) -> i32 {
+    let port = get(ENV_PORT);
+    let upstream = get(ENV_UPSTREAM);
+    exec(port.as_deref(), upstream.as_deref())
+}
+
 /// `--relay` 的入口。配置面只有环境变量（daemon 今天没有配置文件面）。
-/// 本函数今天**只剩「读两个环境变量」这一件事**，别往里加逻辑：加进来的就又没判据了。
+///
+/// 本函数今天**只剩一件事**：把「真取值器」与 `run_with` 接上。接线本身（哪个变量
+/// 喂给哪个位）住 `run_reading`，那里有判据钉着。**别往里加逻辑**：加进来的就又没判据了
+/// —— 本函数这一行今天是**判不了**的那一格，登记住址件文件 §8.18.3。
 pub(crate) fn run(_args: &[String]) -> i32 {
-    let port = std::env::var(ENV_PORT).ok();
-    let upstream = std::env::var(ENV_UPSTREAM).ok();
-    run_with(port.as_deref(), upstream.as_deref())
+    run_reading(&|k| std::env::var(k).ok(), &run_with)
 }
 
 #[cfg(test)]
@@ -446,6 +466,24 @@ mod tests {
                 s.write_all(b"0\r\n\r\n").expect("end");
                 s.flush().expect("flush");
                 sent_c.fetch_add(1, Ordering::SeqCst);
+                // ★★ **最后一块也要等下游确认**（回修轮之四 08-25，D2 `重要-1(D2)`）。
+                //
+                // 先前门闩到终止块**之前**就停了。门闩是因果链「攒住第 i 块 ⇒ 下游不发第 i+1
+                // 次确认 ⇒ 上游卡住」，而**最后一块没有「第 i+1 块」** ⇒ 中转把终止块攒到流末
+                // 再吐，下游照样数到 4 块、`pump` 照样返回 4 ⇒ **两个半格同时瞎在同一形上**
+                //（D2 `D2M2` 实测 389 全绿；本轮重打 392 全绿）。而判据头注当时逐字写着
+                // 「射程覆盖到最后一块」—— **那句话是假的**。
+                //
+                // 这里再 `recv` 一次、**带上限**，把那一形接住：
+                //   · 中转正常透传 ⇒ 下游立刻确认 ⇒ 这一次 `recv` 立刻返回，什么都不耽误；
+                //   · 中转攒住终止块 ⇒ 下游读不到、不确认 ⇒ 上游**不 drop、不发 FIN**
+                //     ⇒ 中转的 `Ok(0) => break` 走不到、攒着的吐不出去
+                //     ⇒ 下游那边 **4s 读期限**先到 ⇒ **红**。
+                // ⚠ **6s > 4s 这个大小关系就是这一格的地基**：上限要严格大于下游的读期限，
+                //   否则上游先放手、中转把攒着的吐出去，这一形又逃了。
+                if let Some(g) = gate.as_ref() {
+                    let _ = g.recv_timeout(std::time::Duration::from_millis(6000));
+                }
                 // 请求体已读干净 ⇒ 这里 drop 发的是 **FIN 不是 RST**。
             }
         });
@@ -485,7 +523,7 @@ mod tests {
     fn send_request(addr: SocketAddr, target: &str, extra: &str) -> TcpStream {
         let mut c = TcpStream::connect(addr).expect("connect relay");
         c.set_nodelay(true).expect("nodelay");
-        // ★ 风险 `5x` 的硬规矩：**任何走得到 `serve()` 的判据都必须带读期限。**
+        // ★ 风险 `5x` 的硬规矩：**任何走得到 `serve()` 的判据都必须带期限。**
         //
         // `spawn_relay` 在一条线程里跑 `serve()`，而 `serve()` **永不返回**。中转那边一旦
         // 卡住不回也不关连接，下面的 `read_to_end` / `read_to_string` 就**永远等下去**
@@ -495,6 +533,27 @@ mod tests {
         //
         // 10 秒对回环来说宽得离谱（这几条判据实测都在 10ms 量级收工）⇒ 它只会把
         // **挂住**换成**红**，不会把真失败盖掉。要更紧的期限由各判据自己再设（门闩那条设了 4s）。
+        //
+        // ⚠⚠ **订正分母**〔回修轮之四 08-25，D2 `重要-4(D2)`〕：先前这里（与件文件 §8.17.4、
+        // 与 `28a73df` 的提交正文）逐字写的是「在 `send_request` 里统一加 10s 读期限
+        //（**一处覆盖全部客户端 socket**）」，还写「既有 **3 条**走得到 `serve()`」。**两个数都错。**
+        // 下面这两个分母是**本轮重打的今天的数**（D2 那天的盘面已经不是今天的盘面了）：
+        //
+        //   · **走得到 `serve()` 的判据 = 6 条**（不是 3 条）。量具：`grep -n 'spawn_relay(' relay/`
+        //     去掉定义行与注释行 ⇒ **5** 处，逐条点名 —— `routes_two_keys…` ·
+        //     `an_unroutable_path…` · `every_chunk_…` · `the_auth_header…` ·
+        //     `the_relay_port_is_not_reachable…`；再加经 `run_with` 的
+        //     `the_relay_entry_exits_with_two_when_it_cannot_start`（自带线程 + 5s `recv_timeout`）。
+        //     **本函数覆盖其中 4 条**（前四条都调它），第 5 条不调本函数、自带 `connect_timeout`。
+        //
+        //   · **测试段客户端 socket 的创建点 = 4 处**（量具 `grep -n 'TcpStream::connect' relay/`
+        //     去掉生产段那一处与注释行）：本处 `:506` ✔10s 读期限 ·
+        //     `both_directions_really_disable_nagle_on_the_socket` 的客户端 ✔10s 读期限 ·
+        //     同一条判据里那个**只做 `getsockopt` 不做 read** 的对照 socket（不需要读期限）·
+        //     `the_relay_port_is_not_reachable…` 的直连 ✔10s `connect_timeout` + 读期限。
+        //     ⇒ **本处覆盖 1/4**，另外三处各自带自己的期限（或根本不读）。
+        //
+        // ⇒ 别再写「一处覆盖全部客户端 socket」：那句话没有分母，而它今天是假的。
         c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
             .expect("read deadline（风险 5x：把挂住换成红）");
         let body = REQUEST_BODY;
@@ -611,9 +670,19 @@ mod tests {
     ///
     /// # 今天有两条互相独立的判据，任一条都会红
     ///
-    /// ㈠ **逐块门闩（因果证明）**：假上游发**每一块**之前都要等下游确认收到上一块。
-    ///    ⇒ 中转攒住**任何**一块，下游就再也等不到下一块 ⇒ 读期限到 ⇒ 红。
-    ///    比「比较两个时间戳」更不 flaky，而且射程覆盖到最后一块。
+    /// ㈠ **逐块门闩（因果证明）**：假上游发**每一块**之前都要等下游确认收到上一块，
+    ///    **发完最后一块之后再等一次**（带 6s 上限）。
+    ///    ⇒ 中转攒住其中任何一块，下游就再也等不到下一块 ⇒ 读期限到 ⇒ 红。
+    ///    比「比较两个时间戳」更不 flaky。
+    ///
+    ///    ⚠ **订正射程**〔回修轮之四 08-25，D2 `重要-1(D2)`〕：先前这里逐字写「而且射程
+    ///    覆盖到最后一块」，**那句话是假的，而且没有分母**。分母 = 一条响应的全部
+    ///    **4** 块（夹具自己定义「终止块另算 ⇒ 块数 = `UPSTREAM_EVENTS + 1`」）；
+    ///    实测攒第 2 块红 · 攒第 3 块红 · **攒第 4 块（终止块）⇒ 全绿**（D2 `D2M2`，
+    ///    本轮在 392 条的盘面上重打，读数同）。成因是门闩的因果链在最后一块上断了：
+    ///    最后一块没有「第 i+1 块」可等。⇒ 今天在 `spawn_fake_upstream` 里
+    ///    **发完终止块之后再等一次确认**，射程才真的是 **4/4**；
+    ///    死值验见件文件 §8.18.7（同一刀今天 1/392 红）。
     /// ㈡ **块数对账**（`DoD-2` acceptor ㈡ 逐字「下游读到的块数 ≈ 上游发出的块数」）：
     ///    三个数必须是**同一个** —— 上游真的发出的块数（夹具自己数的）
     ///    · 下游自己数到的读次数 · `pump` 返回的「写给下游并 flush 成功的次数」。
@@ -787,6 +856,90 @@ mod tests {
         assert!(out.ends_with("\r\n\r\n"));
     }
 
+    /// ★★ `重要-5` 的**行为格**（回修轮之四 08-25，承接 D2 `重要-1(D2)`）。
+    ///
+    /// # 为什么源码扫描不够
+    ///
+    /// `nodelay_guard` 数的是**文本**：`production_code()` 只剥掉 `#[cfg(test)]` 段与**行首**
+    /// `//` 的行，字符串字面量 / 行尾注释 / 块注释里的同形文本**照样被数进去**。
+    /// D2 实测（`D2NG1`）：把 `handle` 里真的 `down.set_nodelay(true)?;` **整个删掉**、
+    /// 只留一行 `let _nagle_note = "set_nodelay(true)";` ⇒ **389 条判据全绿** ——
+    /// 「恰好两处」与「落点里要有 server.rs」两格**都被那行字符串喂饱了**。
+    ///
+    /// # 这一条判的是**真的调用**
+    ///
+    /// 量法：`try_clone()` 是 `dup` ⇒ 两个 fd 指向**同一个** socket，
+    /// 生产段在它上面 `setsockopt(TCP_NODELAY)` 之后，这个探针 `getsockopt` 读得到。
+    /// **两个方向各一格**，各自带非空对照。
+    ///
+    /// **它仍然不证明** p95 没塌 —— p95 那条要真流量，本轮禁打真 API（件文件 `判不了-4` 原样留着）。
+    #[test]
+    fn both_directions_really_disable_nagle_on_the_socket() {
+        // ㈠ 下游方向：`handle()` 真的在**这一条** socket 上关掉 Nagle。
+        let up = spawn_fake_upstream(None);
+        let listener = listen(0).expect("listen");
+        let addr = listener.local_addr().expect("addr");
+        let client = std::thread::spawn(move || {
+            let mut c = TcpStream::connect(addr).expect("connect relay");
+            // 风险 `5x`：走得到中转的判据一律带读期限，把「挂住」换成「红」。
+            c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+                .expect("read deadline（风险 5x）");
+            let body = REQUEST_BODY;
+            let req = format!(
+                "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: {}\r\n\r\n{body}",
+                body.len()
+            );
+            c.write_all(req.as_bytes()).expect("write req");
+            c.flush().expect("flush");
+            let mut got = Vec::new();
+            c.read_to_end(&mut got).expect("read response");
+            got
+        });
+        let (down, _peer) = listener.accept().expect("accept");
+        let probe = down.try_clone().expect("clone");
+        // 非空对照：进 `handle` **之前** Nagle 是开着的（内核默认 TCP_NODELAY = 0）。
+        // 没有这一格，下面那句在「内核默认就关着」的系统上是**空真**。
+        assert!(
+            !probe.nodelay().expect("getsockopt"),
+            "非空对照：accept 出来的 socket 默认该是开着 Nagle 的"
+        );
+        let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
+        let relay = Relay::new(base, TeeSink::new(Box::new(std::io::sink())));
+        handle(down, &relay).expect("handle 必须走完一条转发");
+        assert!(
+            probe.nodelay().expect("getsockopt"),
+            "下游方向：`handle()` 必须在下游 socket 上真的关掉 Nagle"
+        );
+        // ⚠ 先 drop 探针再 join：探针也是这条 socket 的一个 fd，不放手下游读不到 EOF。
+        drop(probe);
+        let got = client.join().expect("client thread");
+        assert!(
+            String::from_utf8_lossy(&got).starts_with("HTTP/1.1 200"),
+            "这一趟得真走完一条转发，否则上面那两句量的是半条连接：{:?}",
+            String::from_utf8_lossy(&got)
+        );
+
+        // ㈡ 上游方向：`upstream::connect()` 真的在**它自己**那条 socket 上关掉 Nagle。
+        let peer = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind 假上游端");
+        let a = peer.local_addr().expect("addr");
+        let base2 = Base::parse(&format!("http://127.0.0.1:{}", a.port())).expect("base");
+        match upstream::connect(&base2).expect("connect upstream") {
+            upstream::Conn::Plain(s) => {
+                assert!(
+                    s.nodelay().expect("getsockopt"),
+                    "上游方向：`upstream::connect()` 必须在上游 socket 上真的关掉 Nagle"
+                );
+                // 非空对照：同一把尺子量一条**没被生产段碰过**的 socket ⇒ 必须是开着的。
+                let raw = TcpStream::connect(a).expect("connect 对照");
+                assert!(
+                    !raw.nodelay().expect("getsockopt"),
+                    "非空对照：没经生产段的 socket 默认该是开着 Nagle 的"
+                );
+            }
+            upstream::Conn::Tls(_) => panic!("`http://` 该走明文那一支"),
+        }
+    }
+
     /// ★ `DoD-4㈡` 行为那半：从**非回环**地址连不上中转的端口。
     /// 机器上没有非回环地址时**跳过并出声**，不静默当绿。
     #[test]
@@ -794,12 +947,41 @@ mod tests {
         let up = spawn_fake_upstream(None);
         let (relay_addr, _relay, _sink) = spawn_relay(up.addr);
         let Some(local) = first_non_loopback_v4() else {
-            println!("[DoD-4㈡] SKIP：本机没有非回环 IPv4 地址，这一格今天量不了");
+            // ★★ **直写 handle，不许用 `println!`/`eprintln!`**（回修轮之四 08-25，D2 `重要-5(D2)`）。
+            //
+            // 件计划 `DoD-4` 的 acceptor 逐字要「拿不到非回环地址时必须**跳过并出声**
+            //（skip 要印出来），**不许静默当绿**」。而 libtest 的捕获挂在 `print!`/`eprint!`
+            // 这一族**宏**走的 `OUTPUT_CAPTURE` 上 ⇒ 默认跑法下这两样一个字都印不出来，
+            // 这一格在没有非回环地址的机器（某些 CI 容器）上就是**静默的绿**。
+            //
+            // 我自己在这个 crate 上重打过（默认 `cargo test`，**不给** `--nocapture`，
+            // 测试**通过**，分母 = 那一趟输出全文的 `grep -c`）：
+            //   `println!` 命中 **0** · `eprintln!` 命中 **0** ·
+            //   `std::io::stderr().write_all` 命中 **1** · `std::io::stdout().write_all` 命中 **1**。
+            // 成因：`stderr()` / `stdout()` 返回的 handle **直接写 fd**，不经过 `OUTPUT_CAPTURE`。
+            // ⇒ 直写 stderr，那句 acceptor 才真的被兑现。
+            let _ = std::io::stderr().write_all(
+                b"[DoD-4-2] SKIP: no non-loopback IPv4 on this host; this half is not measured here\n",
+            );
             return;
         };
-        // 从本机的非回环地址出发去连中转 —— 绑到那个地址再 connect。
-        let sock =
-            std::net::TcpStream::connect(SocketAddr::new(IpAddr::V4(local), relay_addr.port()));
+        // 连到**本机的非回环地址**上的中转端口 —— 中转只绑了回环，这一发就该连不上。
+        // ⚠ 订正〔回修轮之四 08-25〕：先前这行注释写的是「**绑**到那个地址再 connect」，
+        //    而代码从来没绑过源地址，它是把那个地址当**目的地**去连。措辞与实现漂开了。
+        //
+        // ★★ 风险 `5x` 的第 2 个落点（D2 `重要-4(D2)`）：**它缺的不是读期限，是 connect 期限。**
+        // 本条也经 `spawn_relay` 起了 `serve()`，而 `serve()` **永不返回** ⇒ 本条一旦挂住，
+        // 整个测试台跟着挂住，`^test result:` 条数掉成 **0** —— 那一屏与「跑完了、没有新红」
+        // 几乎分不开。而它**只 connect、不 read** ⇒ `send_request` 里那条 10s 读期限
+        // 对它是**空的**（它根本不调 `send_request`）。真正会挂住的形状：本机非回环地址上
+        // 到中转端口的 SYN 被**丢弃**（DROP 而不是 RST，例如一条 `iptables -j DROP`）
+        // ⇒ `TcpStream::connect` 会一路等到内核 SYN 重传耗尽。`connect_timeout` 把那一形换成红。
+        let dest = SocketAddr::new(IpAddr::V4(local), relay_addr.port());
+        let sock = std::net::TcpStream::connect_timeout(&dest, std::time::Duration::from_secs(10));
+        // 万一真连上了，后面还要 `peer_addr()`：顺手给它一个读期限，别留第二个挂住口。
+        if let Ok(ref s) = sock {
+            let _ = s.set_read_timeout(Some(std::time::Duration::from_secs(10)));
+        }
         assert!(
             sock.is_err() || sock.expect("checked").peer_addr().is_err(),
             "中转不该在非回环地址上可达（本机地址 {local}）"
@@ -808,8 +990,14 @@ mod tests {
 
     /// ★ `重要-6` 之一：`--relay` 的**配置面**。期望值全是**手写字面量** ——
     /// 拿被测的那两个常量去算期望值，本判据就自证、恒绿。
+    ///
+    /// ⚠ **改名**〔回修轮之四 08-25，承接 D2 §7㈢〕：旧名
+    /// `the_relay_entry_resolves_its_defaults_and_lets_**env**_override_them`
+    /// 里的「**env**」是假的 —— 它调的是**纯函数** `resolve_config` 的**参数**，
+    /// **一个环境变量都没读过**。今天的名字只说它证得了的那一半：默认值 + **入参**盖得住。
+    /// 「哪个环境变量喂给哪个配置位」由 `each_env_var_name_goes_into_its_own_config_slot` 守。
     #[test]
-    fn the_relay_entry_resolves_its_defaults_and_lets_env_override_them() {
+    fn the_config_resolver_has_defaults_and_lets_its_inputs_override_them() {
         let (port, base) = resolve_config(None, None).expect("默认配置应当成立");
         assert_eq!(port, 8788, "默认端口");
         assert_eq!(
@@ -845,6 +1033,59 @@ mod tests {
         }
         // 基址不认识 ⇒ None（调用方据此退 2）。
         assert!(resolve_config(None, Some("ftp://x")).is_none());
+    }
+
+    /// ★★ `重要-3(D2)`：`run()` 那一层的**接线** —— 哪个环境变量喂给哪个配置位。
+    ///
+    /// D2 实测：把 `run()` 里那两行 `std::env::var(...)` **对调** ⇒ **389 条判据全绿**
+    /// （`D2RUN`），而真机后果是 `--relay` 整个起不来。今天那条接线住 `run_reading`，
+    /// 取值器与执行体都注入 ⇒ 本条打得到它，**且不碰进程环境**。
+    ///
+    /// 期望值全是**手写字面量**，不拿被测的 `ENV_PORT` / `ENV_UPSTREAM` 去算。
+    ///
+    /// ⚠⚠ **名字只说它证得了的那一半**〔铁律 15 自查，本轮我自己写的第一版就犯了同一种病〕：
+    /// 我第一版把它叫 `the_relay_entry_reads_each_env_var_into_its_own_config_slot`
+    /// —— 「**reads env**」是假的，取值器是**注入的**，本条一个真环境变量都没读过。
+    /// 那正是 D2 `重要-3(D2)` 逮 `the_relay_entry_resolves_…_and_lets_env_override_them`
+    /// 的**同一种病**，而它长在了治它的代码里。⇒ 改成今天这个名字：它证的是
+    /// **变量名 → 配置位**这条接线，**不是**「真的去读了环境」。
+    /// 「`run()` 真的读了那两个环境变量」今天**判不了**，登记住址件文件 §8.18.9。
+    #[test]
+    fn each_env_var_name_goes_into_its_own_config_slot() {
+        let seen: std::sync::Mutex<Vec<(Option<String>, Option<String>)>> =
+            std::sync::Mutex::new(Vec::new());
+        let exec: &dyn Fn(Option<&str>, Option<&str>) -> i32 = &|p, u| {
+            seen.lock()
+                .expect("lock")
+                .push((p.map(str::to_string), u.map(str::to_string)));
+            7
+        };
+
+        // ㈠ 取值器把**变量名原样**当值返回 ⇒ 接线一旦对调，下面这句当场对不上。
+        let echo: &dyn Fn(&str) -> Option<String> = &|k| Some(k.to_string());
+        assert_eq!(
+            run_reading(echo, exec),
+            7,
+            "入口必须把执行体的退出码原样带回"
+        );
+        assert_eq!(
+            seen.lock().expect("lock").clone(),
+            vec![(
+                Some("CCM_RELAY_PORT".to_string()),
+                Some("CCM_RELAY_UPSTREAM".to_string())
+            )],
+            "第 1 个配置位必须读 CCM_RELAY_PORT，第 2 个必须读 CCM_RELAY_UPSTREAM"
+        );
+
+        // ㈡ 两个变量都没设 ⇒ 两个位都是 None，不是把变量名当默认值塞进去。
+        seen.lock().expect("lock").clear();
+        let none: &dyn Fn(&str) -> Option<String> = &|_| None;
+        assert_eq!(run_reading(none, exec), 7);
+        assert_eq!(
+            seen.lock().expect("lock").clone(),
+            vec![(None, None)],
+            "没设环境变量时两个配置位都该是 None"
+        );
     }
 
     /// 把 `run_with` 扔进一条线程 + 读期限。

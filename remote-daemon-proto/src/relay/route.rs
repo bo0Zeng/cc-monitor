@@ -78,8 +78,14 @@ mod tests {
         }
     }
 
+    /// ⚠ **分母**〔回修轮之四 08-25 复扫补的〕：名字是个**全称**句（「cannot be smuggled」），
+    /// 而它量的是**我列出的这 2 形**，**不是**「所有穿越写法」。真正承重的是白名单本身
+    /// （段里只许出现白名单字符）—— 这两形是那条白名单的**样例**，不是它的证明。
+    /// 〔隔壁 `rejects_everything_that_is_not_the_shape` 逐字写了「分母 = 我列出的这 7 形」，
+    ///  本条先前一个字都没写 —— 同一族的话，同一份纪律。〕
     #[test]
     fn path_traversal_cannot_be_smuggled_through_a_segment() {
+        // 分母 = 我列出的这 2 形。
         assert!(parse("/s/agentA/..%2f..%2fetc/v1").is_none());
         assert!(parse("/s/a.b/sid/v1").is_none(), "点号不在白名单里");
     }
