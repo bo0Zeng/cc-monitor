@@ -45,6 +45,58 @@ mod tests {
         "crate::control::tmux_hook::install_hooks",
     ];
 
+    /// ★★ `KY5`〔`K-W1A` 08-26〕：**谁能碰新立的 `plugin/` 层，逐条登记**（`(哪一层, 符号, 为什么)`）。
+    ///
+    /// # 为什么新层非要立判据不可 —— 它不是「不撞所以安全」
+    ///
+    /// 本护栏的 `layer_sources` 是**按层名拼路径**的，定义域此前只有 `observe/` 与 `control/`。
+    /// ⇒ `src/plugin/` 建出来的那一刻，`control → plugin` · `plugin → control` ·
+    /// `plugin → observe` **三个方向零判据** —— 那不是「撞不着」，那是**覆盖面被绕开**
+    ///（本仓「守卫范围 ≠ 性质范围」那一族的又一形）。新层一天没有方向判据，
+    /// 它就是一条**没人守的层间边**：某天调用口顺手 `use crate::control::gate;` 去问一句 tmux，
+    /// 编译通过、全绿，而「通用调用口」从此变成 control 的私有助手。
+    ///
+    /// # 加一条之前先回答
+    ///
+    /// 这个符号是**调用口的形状**，还是**某个插件的语义**？后者不该跨过来 ——
+    /// 它该住在调用方自己那一侧（`E6`）。今天这 5 条全是前者，而且全部由
+    /// `control/cc_bus.rs` 一个文件发起：② 那一段（协商）今天零生产调用方，所以不在表里。
+    ///
+    /// ⚠ **类型也要登记，不只是函数**：`Done` / `NotRun` 出现在调用方的签名与 `match` 里，
+    /// 它们和函数一样是接口面。漏登记等于「接口只算函数」——那是个会腐的口径。
+    const ALLOWED_INTO_PLUGIN: &[(&str, &str, &str)] = &[
+        (
+            "control",
+            "crate::plugin::discover::find",
+            "① 找它：候选顺序、要不要兜 PATH、找不到那句话的尾巴**全是入参**，\
+             调用口只负责按顺序走一遍并把「查过哪儿」拼成一句能自证的话",
+        ),
+        (
+            "control",
+            "crate::plugin::invoke::run",
+            "③ 传 argv 起它：**全 crate 唯一一处**起进程口（`readonly_guard::ALLOWED` 里登记的那一处），\
+             期限走 `timeout` 前缀交给子进程 —— 零定时器铁律的落点",
+        ),
+        (
+            "control",
+            "crate::plugin::invoke::Done",
+            "④ 骨架的**返回类型**：`code`（`None` = 被信号打断）+ 两条流 + `diagnosis()`。\
+             ⚠ 码→语义的**映射表刻意不在这里** —— 同一个码在不同插件里语义互斥",
+        ),
+        (
+            "control",
+            "crate::plugin::invoke::NotRun",
+            "「根本没跑起来」那一类的类型：调用方要 `match` 它，才分得出\
+             「我给的参数太大」（自己能修）与「那个程序坏了」（自己修不了）",
+        ),
+        (
+            "control",
+            "crate::plugin::invoke::TIMED_OUT_CODE",
+            "期限命令超时时的那个退出码。它是**那条命令的事实**、不是某个插件的语义 ⇒ 住通用层；\
+             而「超时之后跟人怎么说」是插件自己的话，留在调用方",
+        ),
+    ];
+
     /// 收集某一层下所有 `.rs` 的 `(相对路径, 生产段)`。
     fn layer_sources(layer: &str) -> Vec<(String, String)> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -318,6 +370,134 @@ mod tests {
              **多出来的**：加进 `ALLOWED_OBSERVE_TO_CONTROL` 之前先回答「为什么这件事非得由观测侧发起、\
              control 能不能自己做」——那张表的头注写着 `install_hooks` 的答案长什么样。\n\
              **少了的**：说明那条跨层调用没了，清理登记（别留着，登记表腐烂比没有登记更糟）。"
+        );
+    }
+
+    /// ★★ `KY5` 正题之一：**`plugin/` 不许反过来引用 `control/` 或 `observe/`**。
+    ///
+    /// 通用调用口一旦认识控制面或观测面，它就不再是「谁都能用的口」——
+    /// 它变成 control 的一个私有助手，而下一个插件接进来时会发现自己继承了一堆不相干的知识。
+    /// 两个方向都是**零容忍**：本层要的东西一律走**入参**（`E6` 的通则）。
+    #[test]
+    fn plugin_layer_must_not_reference_control_or_observe() {
+        let files = layer_sources("plugin");
+        assert_collection_is_complete("plugin", &files);
+        let mut bad: Vec<String> = Vec::new();
+        for (name, code) in &files {
+            for other in ["control", "observe"] {
+                for sym in refs_to_layer(code, other) {
+                    bad.push(format!("{name} → {sym}"));
+                }
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "plugin/ 反过来引用了 control/ 或 observe/：\n  {}\n\
+             **先别急着加例外** —— 通用调用口需要的每一样东西都该由**调用方传进来**\n\
+             （候选路径、期限秒数、环境变量、必需能力清单，今天全是入参）。\n\
+             先问：跨过来的那个东西，是不是其实是**某一个插件的语义**放错了地方？",
+            bad.join("\n  ")
+        );
+    }
+
+    /// ★★ `KY5` 正题之二：**进 `plugin/` 的边逐条登记、条数钉死**。
+    ///
+    /// 形状照 [`ALLOWED_OBSERVE_TO_CONTROL`]：不是禁绝（调用口本来就是给人用的），
+    /// 是**让每一条边被人看见一次**。
+    ///
+    /// ⚠ 扫的是 **`control/` 与 `observe/` 两层**，不只是 control ——
+    /// 「今天只有 control 在用」是**读数**，不是性质。观测层哪天伸手过来（它一旦这么做，
+    /// 就等于在只读层起进程），这条会红并逼人先把那条边写进表里。
+    #[test]
+    fn the_interface_into_plugin_is_exactly_the_registered_set() {
+        let mut found: Vec<(String, String)> = Vec::new();
+        for layer in ["control", "observe"] {
+            let files = layer_sources(layer);
+            assert_collection_is_complete(layer, &files);
+            for (_, code) in &files {
+                for sym in refs_to_layer(code, "plugin") {
+                    let e = (layer.to_string(), sym);
+                    if !found.contains(&e) {
+                        found.push(e);
+                    }
+                }
+            }
+        }
+        found.sort();
+        let mut want: Vec<(String, String)> = ALLOWED_INTO_PLUGIN
+            .iter()
+            .map(|(l, s, _)| (l.to_string(), s.to_string()))
+            .collect();
+        want.sort();
+        // 同 `S1`（Phase D 审计）那条纪律：**登记项必须钉到符号级**，模块级等于把整层放开。
+        for (_, e, why) in ALLOWED_INTO_PLUGIN {
+            let tail = e
+                .strip_prefix("crate::plugin::")
+                .unwrap_or_else(|| panic!("登记项必须以 `crate::plugin::` 开头：{e}"));
+            assert!(
+                tail.contains("::"),
+                "登记项 `{e}` 只钉到**模块级** —— 那等于把整个模块的接口面都放开，\
+                 而计数看不出区别。必须钉到符号：`crate::plugin::<模块>::<符号>`。"
+            );
+            assert!(
+                why.trim().len() >= 20,
+                "登记项 `{e}` 没写清「为什么这条边是调用口的**形状**而不是某个插件的**语义**」"
+            );
+        }
+        assert_eq!(
+            found, want,
+            "进 plugin/ 的接口面与登记表对不上。\n\
+             **多出来的**：加进 `ALLOWED_INTO_PLUGIN` 之前先回答「这个符号是调用口的形状，\
+             还是某个插件的语义」——后者该留在调用方那一侧（`E6`）。\n\
+             **少了的**：那条边没了就把登记摘掉（登记表腐烂比没有登记更糟 —— \
+             `readonly_guard::ALLOWED` 里那条漏了 `cc-kill` 13 天就是活标本）。\n\
+             ⚠ 若「多出来的」那条来自 `observe`：那等于**只读层开始起进程**，先回定框。"
+        );
+    }
+
+    /// ★ `KY5` 的反向自检：**新方向的扫描真的会抓人**。
+    ///
+    /// 没有这一格，上面两条就是空真 —— 本仓「负向断言没有输入就等于没有」已经踩过五次
+    ///（`readonly_guard:416` 的注释逐字记着「本区第五次」）。
+    /// 三种模块级拼法 + 成组导入**逐个喂**，一种都不许漏：`refs_to_layer` 的头注逐字写着
+    /// 「判据必须同时认三种拼法 —— **少认一种就是安慰剂**」。
+    #[test]
+    fn the_plugin_layer_scan_actually_bites() {
+        assert_eq!(
+            refs_to_layer("let x = crate::plugin::invoke::run(&b, &[], 1, &[]);", "plugin"),
+            vec!["crate::plugin::invoke::run"]
+        );
+        assert_eq!(
+            refs_to_layer("super::super::plugin::discover::find(a);", "plugin"),
+            vec!["crate::plugin::discover::find"],
+            "`super::super::` 那种拼法没认出来"
+        );
+        for form in [
+            "use crate::plugin;",
+            "use crate::plugin as pg;",
+            "use super::super::plugin;",
+        ] {
+            assert!(
+                refs_to_layer(form, "plugin")
+                    .iter()
+                    .any(|h| h.contains("模块级引入")),
+                "`{form}` 没被判成模块级引入 —— 引进来之后用法都是裸 `plugin::…`，扫不到"
+            );
+        }
+        assert!(
+            refs_to_layer("use crate::{plugin, wire};", "plugin")
+                .iter()
+                .any(|h| h.contains("成组导入")),
+            "层名藏在花括号里没被抓到"
+        );
+        // 反向：**只是前缀相同**的名字不许误命中 —— 误伤会训练人绕过判据。
+        assert!(refs_to_layer("use crate::plugins_registry;", "plugin").is_empty());
+        assert!(refs_to_layer("use crate::{common::plugin_helpers};", "plugin").is_empty());
+        assert!(refs_to_layer("crate::control::gate::x();", "plugin").is_empty());
+        // 登记表不许空：空表 + 零引用 = 上面那条恒绿（空真）。
+        assert!(
+            !ALLOWED_INTO_PLUGIN.is_empty(),
+            "登记表空了 —— 那条等号断言会变成「空 == 空」，恒绿"
         );
     }
 

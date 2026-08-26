@@ -35,6 +35,7 @@ mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod observe; // U3：观测面 —— 读，不改变世界
 mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
+mod plugin; // K-W1A：插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
 mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
 mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
 mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
