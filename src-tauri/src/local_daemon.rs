@@ -170,6 +170,25 @@ fn pid_path(dir: &std::path::Path, port: u16) -> std::path::PathBuf {
 /// 每次重写 = 上一个宿主留下的那个 daemon 立刻变成「连得上但认证不过」的孤儿。
 /// ⇒ **只创建一次**，之后一律读回。
 ///
+/// # ★★ 空文件那一格：**两支都要查，否则它们合成一个自己好不了的闭环**
+///
+/// 〔`K-P1-D1` `阻-4`，08-27 回修〕`create_new` 与 `write_all` 之间**不是原子的**
+/// （进程被杀 / 盘满 / `write_all` 报错都会在盘上留下一个**零字节**的 token 文件）。
+/// 回修前：第一支查了空、第二支**没查** ⇒ 第一支读到空 → 落到 `create_new` →
+/// `AlreadyExists` → 第二支读回空 → `Ok("")`。**每次都一样，自己好不了。**
+///
+/// 空 token 之后两条下游路**都是死路**，而且都 fail closed（这一点原来就做对了）：
+/// 起新的 ⇒ daemon 的 `listen::mode_from` 把空串读成「没设」⇒ 退 `EXIT_BAD_LISTEN_CONFIG`；
+/// 接已有的 ⇒ `tokens_match` 的 `a.is_empty()` 直接判不等 ⇒ `WrongToken`。
+/// **问题从来不是它没关上，是它关上之后指错了地方** —— 用户看到的是
+/// 「脱离的 daemon 起来了却连不上它」，`looked_at` 里是**那个二进制**，一个字没提 token 文件。
+/// ⇒ 空文件在这里就地变成 `Err`，`start_detached` 的那一支会把
+/// [`token_path`] 放进 `looked_at`，而下面这句话说得出**下一步删哪个文件**。
+///
+/// ⚠ 这一格有一个**窄窗**，如实记：另一个宿主刚 `create_new` 完、还没 `write_all` 时，
+/// 我们会读到空并**如实报错**（而不是静默等它）。等它要么加定时器、要么加自旋
+/// —— 而「再起一次就好了」这条路的代价明显更小。**不装作那个窗不存在。**
+///
 /// ⚠ 诚实边界：token 文件被人删掉 / 改掉之后，仍在跑的那个 daemon 就再也接不上了。
 /// 那时 [`probe_listen_port`] 会**出声**（不是静默复用，也不是静默再起一个）。
 fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
@@ -200,9 +219,26 @@ fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
             Ok(token)
         }
         // 竞态：别人刚写完 ⇒ 读它那份（**不是**覆盖它）。
+        // ★★ 这一支**必须与第一支查同一个条件**（`阻-4`）：只查得到「读不出来」、
+        //    查不到「读出来是空的」，两支就合成一个自己好不了的闭环。
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => std::fs::read_to_string(&p)
-            .map(|s| s.trim().to_string())
-            .map_err(|e| format!("读 {} 失败: {e}", p.display())),
+            .map_err(|e| format!("读 {} 失败: {e}", p.display()))
+            .and_then(|s| {
+                let t = s.trim().to_string();
+                if t.is_empty() {
+                    // ★ 诊断指到**这一格**：说得出下一步删哪个文件。
+                    Err(format!(
+                        "{} 在盘上，但内容是空的 —— 上一次写它的进程在建文件与写内容之间没了。\
+                         空 token 起不出也接不上任何 daemon（两边都会 fail closed 地拒绝），\
+                         而它自己不会好。**下一步：删掉这个文件再起一次** —— \
+                         `rm {}`（删了之后仍在跑的旧 daemon 也接不上了，一并停掉它）",
+                        p.display(),
+                        p.display()
+                    ))
+                } else {
+                    Ok(t)
+                }
+            }),
         Err(e) => Err(format!("建 {} 失败: {e}", p.display())),
     }
 }
@@ -533,6 +569,40 @@ pub struct DetachedHandle {
 /// ⇒ `LOCAL_BACKEND` 的锁是**两条路共用的那道门**，本表只在门内动。
 pub static DETACHED: std::sync::Mutex<Option<DetachedHandle>> = std::sync::Mutex::new(None);
 
+/// `K-P1-D1` `重-2`：**上一次「那个口上有东西，但接不上它」的下一步该干什么。**
+///
+/// # 为什么要有这么一个格子
+///
+/// 「对不上就**出声**并拒绝」这句话（`§0b-2㈡` / `listen.rs` 诚实边界②）在
+/// **手动点「起」**那条路上是兑现的（`daemon_control::daemon_start` 回 `Err` ⇒ 前端 toast），
+/// 而在**自动起**那条路上（`lib.rs` 的 `setup`，用户每天真正走的那条）
+/// 回修前只进了 `tracing::info!` —— **不是 `warn`，也没有任何东西到用户眼前。**
+///
+/// 它有一个具体的触发场景，不是理论：端口按家目录确定性算（[`listen_port_for`]），
+/// 而 `hello_verdict` 拿 `env!("DAEMON_BUILD_ID")` 逐字比 —— **升级 monitor 之后，
+/// 上一次脱离留下的那个 daemon 还在听同一个口** ⇒ `Stranger` ⇒ `Adopt::Refused`
+/// ⇒ **本机后端起不来，而界面上什么都不说。**
+/// ⚠ 这一格是**常驻带来的新场景**：翻面之前 daemon 153ms 就死了，根本不存在「上一个还在听」。
+///
+/// # 为什么是一条**记录**，而不是从 `reason` 串里反推
+///
+/// 反推要拿字符串去认「这是不是一次拒绝」——那正是 `KPY5` 花一整条 DoD 治的那件事
+/// （假信号不会报错，它只是一直说是）。⇒ 这里与 [`DETACHED`] 同一个形状：
+/// **只在真的走到 `Adopt::Refused` 那一臂时才被写下**。
+///
+/// ⚠ `StartOutcome` 的形状**不能动**（加一个变体或一个字段，`daemon_control.rs`
+/// 那个 `match` 当场编不过，而它在本轮写区之外）⇒ 走这条旁路。
+static LAST_START_REFUSAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// 取走上一次拒绝的「下一步能做什么」。**取走**（不是读）——
+/// 同一次拒绝不许被两条路各说一遍，也不许留到下一次启动还在那儿。
+pub fn take_start_refusal() -> Option<String> {
+    LAST_START_REFUSAL
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .take()
+}
+
 /// `KPY5` 的真相源：**起它的时候走没走脱离那条路**。
 ///
 /// ⚠ **不许拿 `channel` 或 `pid` 反推** —— 那正是 `P2d §0a` 翻掉的 `SSH_CONNECTION` 那一形
@@ -718,6 +788,18 @@ fn start_detached(
         }
         // ⚠ **不静默复用，也不静默再起一个** —— 两条都会让状态更糟。
         Adopt::Refused(why) => {
+            // ★★ `重-2`：**这一臂是「出声并拒绝」里「出声」那一半的真相源。**
+            //    自动起那条路（`lib.rs`）拿它决定要不要把话说到用户眼前 ——
+            //    而不是去 `reason` 串里认字（那是 `KPY5` 治的那种假信号）。
+            *LAST_START_REFUSAL
+                .lock()
+                .unwrap_or_else(|e| e.into_inner()) = Some(format!(
+                "本机后端没起来：{port} 口上那个 daemon 接不上（{why}）。\
+                 **下一步**：把那个进程停掉再重开 monitor —— 它的 pid 记在 {}。\
+                 升级 monitor 之后最常见：口是按家目录算死的，而上一次留下的那个 daemon \
+                 版本对不上，于是新的这个既不会换口、也不会再起第二个。",
+                pid_path(&dir, port).display()
+            ));
             return DetachOutcome::Done(StartOutcome::Failed {
                 reason: format!(
                     "{port} 口上有东西，但接不上它：{why}。\
@@ -1401,6 +1483,45 @@ mod tests {
         body
     }
 
+    /// 按**花括号配平**切一个块：从 `marker` 之后的第一个 `{` 起，到配平的那个 `}` 止。
+    ///
+    /// ⚠ **本文件只许有这一份切法**〔08-27 抽出来〕：`the_exit_path_covers_both_ways_…`
+    /// 原先内联了一份，`重-2` 那条又要一份 —— 而这个文件自己的注释逐字写着
+    /// 「刻意不另造一种 —— 两种切法迟早在同一段代码上给出两个答案」。
+    /// `lo` / `hi` 是这一块的字节数上下限，**逐条给**（反空真：切错了就红，别在空串上绿着）。
+    fn braced_block<'a>(prod: &'a str, marker: &str, lo: usize, hi: usize) -> &'a str {
+        let at = prod
+            .find(marker)
+            .unwrap_or_else(|| panic!("找不到 `{marker}` —— 它搬家或改名了，本条会零命中地绿"));
+        let bytes = prod.as_bytes();
+        // ⚠ 从 `marker` **之后**找块起点，不是从它开头找 —— `marker` 自己可能就带着一对
+        //   花括号（`StartOutcome::Failed { reason, looked_at }` 那种解构），
+        //   从开头找会切到那一对上去（实测：切出 21 字节）。
+        let open = (at + marker.len()..bytes.len())
+            .find(|&i| bytes[i] == b'{')
+            .unwrap_or_else(|| panic!("`{marker}` 之后找不到块起点"));
+        let mut depth = 0i32;
+        let mut end = bytes.len();
+        for i in open..bytes.len() {
+            if bytes[i] == b'{' {
+                depth += 1;
+            } else if bytes[i] == b'}' {
+                depth -= 1;
+                if depth == 0 {
+                    end = i + 1;
+                    break;
+                }
+            }
+        }
+        let body = &prod[open..end];
+        assert!(
+            body.len() > lo && body.len() < hi,
+            "`{marker}` 切出来 {} 字节（该在 {lo}..{hi} 之间）—— 配平切错了，本条会零命中地绿",
+            body.len()
+        );
+        body
+    }
+
     /// ★★ `KPY1`：**脱离的落点不许住 `backend/`，而且那个注入点真的被用上了。**
     ///
     /// # 两半，缺一半都不成立
@@ -1521,35 +1642,9 @@ mod tests {
     #[test]
     fn the_exit_path_covers_both_ways_of_starting_the_local_backend() {
         let prod = guard_core::production_code(include_str!("lib.rs"));
-        let arm_at = prod
-            .find("RunEvent::Exit")
-            .expect("`lib.rs` 里找不到退出臂 —— 整段钩子没了（实测：删掉它，全仓判据一条不红）");
-        let body = {
-            let bytes = prod.as_bytes();
-            let open = (arm_at..bytes.len())
-                .find(|&i| bytes[i] == b'{')
-                .expect("`RunEvent::Exit` 之后找不到块起点");
-            let mut depth = 0i32;
-            let mut end = bytes.len();
-            for i in open..bytes.len() {
-                if bytes[i] == b'{' {
-                    depth += 1;
-                } else if bytes[i] == b'}' {
-                    depth -= 1;
-                    if depth == 0 {
-                        end = i + 1;
-                        break;
-                    }
-                }
-            }
-            &prod[open..end]
-        };
-        // 反空真：切错了就红，别在一个空串上绿着。
-        assert!(
-            body.len() > 200 && body.len() < 6000,
-            "切出来的退出臂 {} 字节 —— 配平切错了，本条会零命中地绿",
-            body.len()
-        );
+        // 反空真在 `braced_block` 里（切错了就红，别在一个空串上绿着）。
+        // ⚠ 找不到 `RunEvent::Exit` 就是整段钩子没了 —— 实测：删掉它，全仓判据一条不红。
+        let body = braced_block(&prod, "RunEvent::Exit", 200, 6000);
         assert_eq!(
             body.matches("kill_on_exit(").count(),
             1,
@@ -1933,6 +2028,318 @@ mod tests {
         assert_ne!(a, b, "两次拿到同一个 token —— 那说明熵源里没有「每次都变」的东西");
         assert_eq!(a.len(), 32, "token 长度变了（32 个十六进制 = 128 位）");
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    /// ★★ `重-2`：**自动起那条路的「拒绝」不许只进日志。**
+    ///
+    /// # 它治的那一格
+    ///
+    /// 「连上去先读 hello 比对，**对不上就出声并拒绝**」（`§0b-2㈡` / `listen.rs` 诚实边界②）——
+    /// 两条起法只有**手动点「起」**那条兑现了「出声」（`daemon_control::daemon_start` 回 `Err`
+    /// ⇒ 前端 toast，A6 那次修就是为这个）；**自动起**那条（`lib.rs` 的 `setup`，
+    /// 用户每天真正走的那条）回修前是 `tracing::info!` —— 连 `warn` 都不是。
+    ///
+    /// 触发场景不是理论：口按家目录算死（[`listen_port_for`]），`hello_verdict` 逐字比
+    /// `DAEMON_BUILD_ID` ⇒ **升级 monitor 之后上一次脱离留下的那个 daemon 还在听同一个口**
+    /// ⇒ `Stranger` ⇒ `Adopt::Refused` ⇒ 本机后端起不来，而界面上什么都不说。
+    /// ⚠ 这是**常驻带来的新场景**，是本件引入的：翻面之前 daemon 153ms 就死了。
+    /// `K14` 那条精神逐字是「不许只做常驻不做那句话」。
+    ///
+    /// # 钉四件（少一件这条就只证明了一半）
+    ///
+    /// ① 分档的依据是那条**只在真的被拒绝时才写下**的记录，不是去 `reason` 串里认字
+    ///    （认字就是 `KPY5` 治的那种假信号：它不会报错，只会一直说是）；
+    /// ② 拒绝那一支里有 `warn!`（不是 `info!`）；
+    /// ③ **把日志行整段拿掉之后，那一支里仍然剩着一个用户看得见的出口** ——
+    ///    这一条才是「不许**只**进日志」的正面表述，只查「有没有 warn」是查不出来的；
+    /// ④ 那句话**说得出下一步能做什么**（不是只报「起不来」）。
+    ///
+    /// # 它挡不住什么
+    ///
+    /// 它认的是 `lib.rs` 那一臂里的字面锚点。有人把通知换成另一条同样可见的通道
+    /// （比如 emit 一个事件给前端）⇒ 本条会红，而那**正是要的**：换出口就该有人回来重判。
+    /// 反过来，它证不了那条通知**在真机上真的弹出来了** —— 那要真跑一次 GUI，
+    /// 本轮没有，**如实登记为未验**。
+    #[test]
+    fn the_auto_start_refusal_is_not_only_a_log_line() {
+        let lib = guard_core::production_code(include_str!("lib.rs"));
+        // 反空真①：自动起那条路本身还在（0 处 = 接线没了，下面切什么都没意义）。
+        assert_eq!(
+            lib.matches("start_local_backend()").count(),
+            1,
+            "`lib.rs` 里 `start_local_backend()` 不是恰好一处 —— \
+             自动起那条路搬家或没了，本条会零命中地绿"
+        );
+        let arm = braced_block(&lib, "StartOutcome::Failed { reason, looked_at }", 300, 4000);
+
+        // ① 分档的依据是那条记录，不是认字符串。
+        assert!(
+            arm.contains("take_start_refusal()"),
+            "自动起那条路不再问「这一次是不是**被拒绝**」——\n\
+             ★ 别改成去 `reason` 串里认字：那是 `KPY5` 花一整条 DoD 治的那种假信号。"
+        );
+        // ② 拒绝那一支要 `warn`，不是 `info`。
+        //
+        // ⚠⚠ **人群必须切到那一支里去**〔08-27 死值验当场逮到的〕：本条第一版查的是
+        //    **整条 `Failed` 臂**含不含 `tracing::warn!` —— 而这条臂里还有另一个 `warn!`
+        //    （「通知发不出去」那条兜底）⇒ 把拒绝那支的 `warn!` 改回 `info!`，
+        //    实测 **1194 passed / 0 failed，一条都不红**。它是个安慰剂，而它读起来完全正常。
+        //    ★ 这就是「守卫范围 ≠ 性质范围」在本轮的第七形：**人群比性质大了一格**。
+        // ⚠ 下限刻意压到 100：拒绝那一支只剩「一句 warn」时它有 189 字节 ——
+        //   下限定在 200 会让这一刀红在「配平切错了」上，而那句诊断是**假的**
+        //   （切法没错，是那一支被掏空了）。假诊断比不红更贵：它把人引到错的地方。
+        let refusal_branch = braced_block(&lib, "Some(next_step) =>", 100, 3000);
+        assert!(
+            refusal_branch.contains("tracing::warn!"),
+            "拒绝那一支里没有 `warn!` —— 「出声」这两个字在这条路上就没兑现"
+        );
+        assert!(
+            !refusal_branch.contains("tracing::info!"),
+            "拒绝那一支里出现了 `info!` —— 「口被别人占着」不是一条 info：\
+             它是一件用户能动手解决、而且不动手就没有本机后端的事"
+        );
+        // ③ ★ 正题：**把日志行整段拿掉之后，仍然剩着一个用户看得见的出口。**
+        let without_logs: String = refusal_branch
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("tracing::"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            without_logs.contains(".notification()") && without_logs.contains(".show()"),
+            "把 `tracing::` 那些行拿掉之后，这一臂里**只剩日志** ——\n\
+             ★ 这正是 `重-2` 那条病：日志不是「说给用户听」，是「说给下一个来查日志的人听」。\n\
+             ⇒ 拒绝这一格必须有一个用户看得见的出口（今天是 `tauri_plugin_notification`）。\n\
+             换出口可以，回来改本条并写明新出口是什么；**别退回只写日志**。"
+        );
+
+        // ④ 那句话说得出**下一步能做什么**，而且它是在**真的被拒绝**那一臂里写下的。
+        let me = guard_core::production_code(include_str!("local_daemon.rs"));
+        let refused = braced_block(&me, "Adopt::Refused(why) =>", 300, 3000);
+        assert!(
+            refused.contains("LAST_START_REFUSAL"),
+            "那条记录不再写在 `Adopt::Refused` 那一臂里 —— \
+             写在别处就等于又回到「从别的信号反推这一次是不是拒绝」"
+        );
+        for (needle, why) in [
+            ("下一步", "只报「起不来」是没用的：用户要的是**现在该干什么**"),
+            (
+                "pid_path(&dir, port)",
+                "「把那个进程停掉」要说得出它是哪个进程 —— pid 记在那个文件里",
+            ),
+        ] {
+            assert!(
+                refused.contains(needle),
+                "拒绝那句话里没有 `{needle}`。\n说法：{why}"
+            );
+        }
+    }
+
+    /// ★★ `重-4`：**登记表的说法必须覆盖那处 `sleep` 的每一个用途。**
+    ///
+    /// 〔`K-P1-D1` `重-4`〕`rust_timer_registry` 那一行原先逐字只写
+    /// 「`probe_and_attach_after_spawn` 等**刚脱离起来的那个 daemon** 把回环口 bind 上」——
+    /// 而那处 `sleep` 住 `adopt_with`，`adopt_with` 有**两个**调用方：
+    /// 另一个 `adopt_existing`（`wait_for_bind = false`）**根本没有 spawn**，
+    /// 它等的是 `stream-busy` 那张牌被还回来。⇒ 说清了两件里的一件。
+    ///
+    /// ★ **登记表的说法就是那条判据的诚实边界** —— 说法与代码不是一回事时，
+    /// 判据在替一个不存在的性质背书。而「说法」是散文，散文不会自己红
+    /// ⇒ 本条把它变成机检：**调用方的名字从生产码里派生**（不写死），
+    /// 逐个要求登记表那一行点得到。多一个调用方而不去改那行说法 ⇒ 当场红。
+    #[test]
+    fn the_timer_registry_names_every_caller_of_the_one_wait_here() {
+        let prod = guard_core::production_code(include_str!("local_daemon.rs"));
+        // 反空真①：本文件生产段里就该恰好一处 `sleep`（登记表登的 `处数` 就是这个 1）。
+        let sleeps = prod.matches("thread::sleep(").count();
+        assert_eq!(
+            sleeps, 1,
+            "生产段里 `thread::sleep(` 有 {sleeps} 处（登记表登的是 1 处）——\
+             多一处就要回答它属哪一类、等什么、上限多少"
+        );
+
+        // 每一行的「外层函数是谁」：按行扫，遇到 `fn 名(` 就换人。
+        let enclosing = |needle: &str, skip_def: bool| -> Vec<String> {
+            let mut cur = String::new();
+            let mut out: Vec<String> = Vec::new();
+            for l in prod.lines() {
+                let t = l.trim_start();
+                if let Some(rest) = t
+                    .strip_prefix("pub async fn ")
+                    .or_else(|| t.strip_prefix("pub fn "))
+                    .or_else(|| t.strip_prefix("async fn "))
+                    .or_else(|| t.strip_prefix("fn "))
+                {
+                    if let Some(name) = rest.split('(').next() {
+                        cur = name.trim().to_string();
+                    }
+                }
+                if l.contains(needle) && !(skip_def && t.starts_with("fn ") ) && cur != needle.trim_end_matches('(')
+                {
+                    out.push(cur.clone());
+                }
+            }
+            out.sort();
+            out.dedup();
+            out
+        };
+
+        // 那一处 `sleep` 住哪个函数。
+        let home_of_sleep = enclosing("thread::sleep(", false);
+        assert_eq!(
+            home_of_sleep,
+            vec!["adopt_with".to_string()],
+            "那处 `sleep` 不住 `adopt_with` 了（现在住 {home_of_sleep:?}）——\
+             它搬家了，本条与登记表那一行都要跟着重判"
+        );
+
+        // 谁在用它 —— **从代码派生，不写死**。
+        let callers = enclosing("adopt_with(", true);
+        // 反空真②：少于两个调用方 ⇒ 抽取坏了（或真的只剩一条路，那也要回来重判说法）。
+        assert!(
+            callers.len() >= 2,
+            "只抽到 {} 个 `adopt_with` 的调用方：{callers:?} —— \
+             `重-4` 那条病的形状正是「两个调用方只写了一个」，抽不出两个本条就在空转",
+            callers.len()
+        );
+
+        // 登记表那一行必须点到每一个。
+        // 按**行**切那一条登记（不按字节偏移切 —— 中文在这份文件里到处都是，
+        // 按字节切会切在字符中间，那是 CRASH 不是读数）。
+        let reg_lines: Vec<&str> = include_str!("rust_timer_registry.rs").lines().collect();
+        let at = reg_lines
+            .iter()
+            .position(|l| l.trim() == "\"src/local_daemon.rs\",")
+            .expect("登记表里没有 `src/local_daemon.rs` 那一条 —— 它被删了？");
+        let entry: String = reg_lines[at..]
+            .iter()
+            .take_while(|l| l.trim() != "),")
+            .copied()
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            entry.len() > 200,
+            "切出来的那条登记只有 {} 字节 —— 切错了，下面整段在空转",
+            entry.len()
+        );
+        for c in &callers {
+            assert!(
+                entry.contains(c.as_str()),
+                "`rust_timer_registry` 那一行没有点到 `{c}` —— 而它是那处 `sleep` 的调用方之一。\n\
+                 ★ 那张表对 `wait-for-condition` 这一类的要求逐字是「**说清等什么**、上限是多少」，\n\
+                 而两个调用方等的**不是同一件事**（一个等 bind、一个等 `stream-busy` 那张牌）。\n\
+                 ⇒ 只写其中一个 = 登记表在替一个不存在的性质背书。\n\
+                 抽到的调用方全体：{callers:?}"
+            );
+        }
+    }
+
+    /// ★★ `阻-4`：**token 文件那三格逐格钉死** —— 新建 · 已存在非空 · **已存在但空**。
+    ///
+    /// # 为什么这三格非钉不可
+    ///
+    /// 回修前这条路**零覆盖**（`K-P1-D1` 现打，分母 = 本文件全文）：
+    /// `ensure_listen_token` 命中 **2 处** —— 一处定义、一处生产调用点，**测试段 0 处**；
+    /// 非空对照：同文件 `parse_listen_owner` 命中 **8 处**（它有测试）。
+    /// ⇒ `0600` 权限位 · `create_new` 竞态支 · 空文件支，**三格一格都没有判据看着**。
+    ///
+    /// - **`0600`**：头注逐字「★ 权限位就是这一格买的东西 —— 少了它，同机别的用户读得到 token」。
+    /// - **竞态支**：`create_new` 输的那一方**读回赢家那份**，绝不覆盖
+    ///   （覆盖 = 上一个宿主留下的那个 daemon 当场变孤儿）。
+    /// - **空文件支**：零字节的 token 会让第一支落到 `create_new`、`AlreadyExists` 再读回空 ——
+    ///   回修前两支合成闭环、返回 `Ok("")`，**每次都一样，自己好不了**。
+    ///
+    /// ⚙ ③ 走的**就是**竞态支：第一支读到空 ⇒ 不 return ⇒ `create_new` ⇒ `AlreadyExists`。
+    /// 这不是巧合，是那条闭环的形状本身 —— 所以这一格同时是「竞态支查不查空」的判据。
+    ///
+    /// ⚠⚠ **射程如实记，别把这条读大一格**：竞态支里「读回来是**非空**」那半个分支
+    /// （`Ok(t)`）在本判据里**走不到** —— 走到它要求「我们读的时候文件还不在，
+    /// 而在我们 `create_new` 之前另一个进程把它建好并写完了」，那是**真的跨进程竞态**，
+    /// 单进程里造不出来。⇒ 那半格由下面 ⑤ 的**源码钉**（`create_new(true)` 恰好一处）兜，
+    /// 而 ⑤ 买的是「不覆盖」，不是「读回的是赢家那份」。**这一格今天没有行为判据。**
+    #[test]
+    fn the_listen_token_file_is_pinned_cell_by_cell() {
+        let dir = std::env::temp_dir().join(format!(
+            "ccm-token-cells-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let p = token_path(&dir);
+
+        // ── ① 新建：目录都还不在 ⇒ 建目录 + 建文件 + 写内容 ────────────
+        let first = ensure_listen_token(&dir).expect("第一次该建得出来");
+        assert_eq!(first.len(), 32, "新建那一支回的不是一个完整 token：{first:?}");
+        assert_eq!(
+            std::fs::read_to_string(&p).expect("读回").trim(),
+            first,
+            "盘上那份与返回的不是同一个串 —— 下一个宿主读回的就接不上这一个"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
+            assert_eq!(
+                mode, 0o600,
+                "token 文件的权限位是 {mode:o}，不是 0600 —— \
+                 回环 TCP 上同机**别的用户**也连得上这个口，token 是那条口上**唯一**的门。\
+                 权限位就是这一格买的东西。"
+            );
+        }
+
+        // ── ② 已存在非空：幂等读回，**不许覆盖** ─────────────────────
+        let bytes_before = std::fs::read(&p).expect("读原始字节");
+        let second = ensure_listen_token(&dir).expect("第二次该读回来");
+        assert_eq!(
+            second, first,
+            "第二次拿到的 token 变了 —— 那说明它把文件重写了，\
+             而重写 = 上一个宿主留下的那个 daemon 立刻变成「连得上但认证不过」的孤儿"
+        );
+        assert_eq!(
+            std::fs::read(&p).expect("再读字节"),
+            bytes_before,
+            "盘上那份被动过了（`create_new` 那条路只许创建一次）"
+        );
+
+        // ── ③ 已存在但**空**：必须 `Err`，而且诊断要指到这个文件 ────────
+        std::fs::write(&p, b"").expect("造一个零字节 token");
+        let e = ensure_listen_token(&dir)
+            .expect_err("零字节 token 必须是 `Err` —— 回它 `Ok(\"\")` 就是那个自己好不了的闭环");
+        assert!(
+            e.contains(&p.display().to_string()),
+            "空 token 的诊断里没有那个文件的路径：{e:?}\n\
+             ★ 行为上 fail closed 是不够的：用户看到的是「脱离的 daemon 起来了却连不上它」，\n\
+             而 `looked_at` 里是那个**二进制** —— 一个字不提 token 文件，他就不知道该删哪个文件。"
+        );
+        assert!(
+            std::fs::metadata(&p).is_ok(),
+            "报错的同时把文件删了 —— 那是替用户做决定（这里只出声，删由人来）"
+        );
+
+        // ── ④ 诊断的另一半：生产调用点真的把 `token_path` 放进 `looked_at` ──
+        let prod = guard_core::production_code(include_str!("local_daemon.rs"));
+        let start = body_of(&prod, "fn start_detached(", 800);
+        assert!(
+            start.contains("looked_at: vec![token_path(&dir)]"),
+            "`start_detached` 里 `ensure_listen_token` 的 `Err` 那一支不再把 token 文件\
+             放进 `looked_at` —— 上面 ③ 那句话就传不到用户眼前了"
+        );
+
+        // ── ⑤ 「只创建一次、绝不覆盖」这一格**只有源码钉认得出** ──────────
+        //
+        // ⚠ 射程如实记：行为上「第二次拿到同一个串」有**两条**独立的路
+        //   （第一支的提前 `return` + 竞态支的读回）⇒ 单改一处杀不掉上面 ② 那一格。
+        //   而「覆盖」这件事本身是**一个方法名**的事，所以这里拿它当锚点。
+        let ensure = body_of(&prod, "fn ensure_listen_token(", 400);
+        assert_eq!(
+            ensure.matches("create_new(true)").count(),
+            1,
+            "`ensure_listen_token` 里 `create_new(true)` 不是恰好一处。\n\
+             换成 `create(true).truncate(true)` 就会**覆盖**盘上已有的那份 token ——\n\
+             而覆盖 = 上一个宿主留下的那个 daemon 立刻变成「连得上但认证不过」的孤儿，\n\
+             且它自己不知道，用户只看到「停不掉也接不上」。"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ══════════════════════════════════════════════════════════════════
