@@ -1489,7 +1489,29 @@ mod tests {
     /// 原先内联了一份，`重-2` 那条又要一份 —— 而这个文件自己的注释逐字写着
     /// 「刻意不另造一种 —— 两种切法迟早在同一段代码上给出两个答案」。
     /// `lo` / `hi` 是这一块的字节数上下限，**逐条给**（反空真：切错了就红，别在空串上绿着）。
+    ///
+    /// # ⚠⚠ `marker` 必须**唯一** —— 它认的是身份，不是位置〔`D2` `重-D2-3`，08-27 补〕
+    ///
+    /// 本函数第一版只写了 `prod.find(marker)`，**取文本上第一处，一个字都没断言它唯一**。
+    /// 而实测 `Adopt::Refused(why) =>` 在 `local_daemon.rs` 的生产段里**命中 2 处**
+    /// （`start_detached` 那一臂 · `probe_and_attach_after_spawn` 里那条 `=> Err(why),`）——
+    /// 今天靠 `start_detached` 排在前面**恰好**切中了对的那一臂。
+    ///
+    /// ★ 病不在「今天切错了」，在**它是靠位置对的，不是靠身份对的**：换个函数顺序就**静默换人**，
+    /// 而换人之后红出来的诊断是「配平切错了」—— **那是一句假诊断**（切法没错，是标记指到了
+    /// 另一个人身上）。本文件下面逐字写着「**假诊断比不红更贵：它把人引到错的地方**」。
+    /// ⇒ 唯一性先断言。同文件的姊妹切法 [`body_of`] 走 `guard_core::find_pinned`（整行相等），
+    /// 本函数是这个文件里唯一一个靠文本位置定人群的切法，所以这一行由它自己补上。
     fn braced_block<'a>(prod: &'a str, marker: &str, lo: usize, hi: usize) -> &'a str {
+        let hits = prod.matches(marker).count();
+        assert_eq!(
+            hits, 1,
+            "`{marker}` 在人群里命中 {hits} 处（该恰好 1 处）——\n\
+             ★ 命中 ≥2 处说明这个标记**不唯一**：本条切的是哪一处**取决于文本顺序**，\n\
+             此刻它很可能正在**切错人**，而切错之后红出来的诊断会是「配平切错了」——那是假诊断。\n\
+             ★ 命中 0 处 = 它搬家或改名了，本条会零命中地绿。\n\
+             ⇒ 把 `marker` 加长到能**认出身份**（比如带上 `=> {{`），**别放宽这条断言**。"
+        );
         let at = prod
             .find(marker)
             .unwrap_or_else(|| panic!("找不到 `{marker}` —— 它搬家或改名了，本条会零命中地绿"));
@@ -1497,7 +1519,17 @@ mod tests {
         // ⚠ 从 `marker` **之后**找块起点，不是从它开头找 —— `marker` 自己可能就带着一对
         //   花括号（`StartOutcome::Failed { reason, looked_at }` 那种解构），
         //   从开头找会切到那一对上去（实测：切出 21 字节）。
-        let open = (at + marker.len()..bytes.len())
+        // ★ **例外：`marker` 自己以 `{` 结尾时，那个 `{` 就是块起点。**
+        //   〔08-27 实测：上面那条唯一性断言逼着把标记加长成 `Adopt::Refused(why) => {`，
+        //   而跳过它之后找到的第一个 `{` 落在块体里 `format!("{port} 口上那个 daemon…")`
+        //   的 `{port}` 上 ⇒ **切出 6 字节**、红在「配平切错了」—— 又是一句假诊断。〕
+        //   加长标记到 `… => {` 是本文件给「同名两臂」消歧的标准手段，所以这一格在这里接住。
+        let scan_from = if marker.ends_with('{') {
+            at + marker.len() - 1
+        } else {
+            at + marker.len()
+        };
+        let open = (scan_from..bytes.len())
             .find(|&i| bytes[i] == b'{')
             .unwrap_or_else(|| panic!("`{marker}` 之后找不到块起点"));
         let mut depth = 0i32;
@@ -2114,7 +2146,10 @@ mod tests {
 
         // ④ 那句话说得出**下一步能做什么**，而且它是在**真的被拒绝**那一臂里写下的。
         let me = guard_core::production_code(include_str!("local_daemon.rs"));
-        let refused = braced_block(&me, "Adopt::Refused(why) =>", 300, 3000);
+        // ⚠ 标记带上 `=> {`：裸的 `Adopt::Refused(why) =>` 在生产段里**命中 2 处**
+        //   （另一处是 `probe_and_attach_after_spawn` 的 `=> Err(why),`），
+        //   而 `braced_block` 今天会断言唯一 ⇒ 不加这两个字符本条当场红。
+        let refused = braced_block(&me, "Adopt::Refused(why) => {", 300, 3000);
         assert!(
             refused.contains("LAST_START_REFUSAL"),
             "那条记录不再写在 `Adopt::Refused` 那一臂里 —— \
