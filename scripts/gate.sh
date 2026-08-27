@@ -42,7 +42,67 @@ run_gate() {
   fi
 }
 
-run_gate cargo   bash -c 'cd src-tauri && cargo test --lib 2>&1'
+# ★★ `K-H2a`（08-27）：**`--workspace` 是补上来的 —— 在此之前，7 个共享 crate 的判据
+#    一条都不在这道门里。**
+#
+# 起因：`K-H2a` 把 key 那件事落在新开的 `crates/creds-core`，写完 18 条判据、`GATE: OK`，
+# 而 `cargo` 那个数**一条没涨**（1195 → 1195）。它正是 `KP3` 那个形状：
+# 「有生成物 / 有判据」**不等于**「本地门禁拦得住」。
+# 现打的分母（08-27，`cargo test -p <名> --lib` 逐个数）：
+#   `guard-core 24 · creds-core 18 · usage-core 11 · acct-core 9 · branch-core 8 ·
+#    gate-core 8 · shell-quote-core 1` ⇒ **79 条**，其中 **61 条是本件之前就有的存量**。
+#
+# ⚠⚠ **`--exclude code-picture-core` 是承重的，不许删成裸 `--workspace`。**
+# PM 08-27 现打三个数：`--lib` **1195** · 裸 `--workspace --lib` **1299** ·
+# 带 exclude **1274** —— 差恰好 **25**，就是 vendor 那 25 条。
+# 而 `C7` 逐字：「vendor `code-picture-core` **不动**」⇒ 裸 `--workspace` 会把 25 条
+# **我们无权修**的判据拉进出货门禁：它们哪天红了我们修不了也不许修，
+# 那是一道**我们满足不了的闸**，比没有闸更坏。
+#
+# ⚠ 另记一条**反直觉**的读数（`己1-f9` 独立跟进，本处不修）：
+# `src-tauri/Cargo.toml:22` **明明写着** `exclude = ["vendor/code-picture-core"]`，
+# **而 cargo 不认** —— `cargo metadata --no-deps` 的权威 member 名单 9 个里就有它。
+# ⇒「配置里写了 exclude」**≠**「cargo 认它被排除了」，所以这里必须再显式排一次。
+#
+# ⚠ **CI 那一侧没跟着改**（`ci.yml` 不在 `K-H2a` 的写区）⇒ 从此**本地门禁比 CI 严**。
+#   别把「本地绿」读成「CI 也会绿」。
+# ★★ **它必须求和，不能沿用 `run_gate`** —— 08-27 实测：只把命令换成 `--workspace`、
+#    读法照旧，那道门印的仍是 **1195**。
+#
+# 原因在 `run_gate` 的读法本身：`sort -rn | head -1` 取的是**所有 `N passed` 里的最大值**。
+# 单包时只有一行，最大值 = 合计；**多包时它恒等于最大那个包**（`monitor` 的 1195），
+# 于是往任何一个共享 crate 加判据，这个数**永远不动**。
+# ⇒ 那正是本轮要治的病换了个位置又长出来一次：**命令的射程扩了，读数的射程没扩。**
+#
+# 本函数改成**逐行求和**，并且**钉死包数**（不是松地板）：
+# 一个 crate 静默掉出 `--workspace`（改名 / members 漏登记）时，合计只会**变小**，
+# 而「变小」和「有测试没跑」在终端上一模一样 —— 只有包数相等断言认得出来。
+# 〔同一条道理 `platform/fallback_guard.rs` 逐字论证过：「第一版是 `checked >= 3`，
+#  而实测 `checked = 7` —— 余量 2.3 倍，4 个块可以静默掉出采集面而地板照绿」。〕
+run_gate_sum() {
+  local name="$1"; local want_pkgs="$2"; shift 2
+  local out
+  out="$("$@" 2>&1)"
+  local rc=$?
+  local lines n pkgs
+  lines="$(printf '%s' "$out" | grep -oE '^test result: ok\. [0-9]+ passed')"
+  pkgs="$(printf '%s' "$lines" | grep -c . || true)"
+  n="$(printf '%s' "$lines" | grep -oE '[0-9]+' | paste -sd+ - | bc 2>/dev/null || echo 0)"
+  if [ "$rc" -ne 0 ]; then
+    fails+=("$name（退出码 $rc）")
+  elif [ "$pkgs" -ne "$want_pkgs" ]; then
+    # ⚠ 这一支是**采集面自检**，不是测试失败：包数对不上 ⇒ 下面那个合计不算数。
+    fails+=("$name（只跑到 $pkgs 个包，应当 $want_pkgs —— 有包静默掉出了 --workspace；\
+合计变小与「有测试没跑」在终端上一模一样，只有这条认得出来。真加/删了 crate 就来改这个数）")
+  elif [ -z "$n" ] || [ "$n" -eq 0 ]; then
+    fails+=("$name（读数是 ${n:-<找不到>} —— 0 passed 不是绿）")
+  else
+    printf '  ok   %-14s %s passed（%s 个包合计）\n' "$name" "$n" "$pkgs"
+  fi
+}
+
+# 8 个包 = `monitor` + 7 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
+run_gate_sum cargo 8 bash -c 'cd src-tauri && cargo test --workspace --exclude code-picture-core --lib 2>&1'
 
 # ★ 生成物漂移（K-A1 第四轮 `R1`）：**改了 Rust 不跑生成，这里红。**
 #

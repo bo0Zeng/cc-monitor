@@ -358,6 +358,10 @@ mod tests {
         ("bind.rs", "process_await_file", None, "monitor 自己的等待文件"),
         ("bind.rs", "cleanup_dead", None, "清理 monitor 自己留下的死文件"),
         ("config.rs", "save_config", None, "monitor 自己的配置文件"),
+        // K-H2a：第三方 API key 那份文件。**monitor 自己的文件**（不是用户的、也不是某个工具的安装动作）。
+        // ⚠ 它与人手编是同一份文件的两个写者 ⇒ 写的那一刻才读盘、未知键一个不吃、
+        //   字段顺序按名字排、原子替换（复用 `config::atomic_replace`）、写完立刻收窄成只给本人。
+        ("creds_store.rs", "write_key_at", None, "monitor 自己的凭据文件（中转那把第三方 API key）"),
         ("config.rs", "atomic_replace", None, "原子替换原语的本地副本（同上，归 `atomic_replace_registry` 判）"),
         ("lib.rs", "open_log_dir", None, "打开日志目录前确保它存在"),
         ("logging.rs", "build_rolling_appender", None, "monitor 自己的滚动日志"),

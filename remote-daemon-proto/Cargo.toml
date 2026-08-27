@@ -42,6 +42,16 @@ serde_json = "1"
 branch-core = { path = "../src-tauri/crates/branch-core" }
 usage-core = { path = "../src-tauri/crates/usage-core" }
 acct-core = { path = "../src-tauri/crates/acct-core" }
+# K-H2a：第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。
+# ★★ **刻意不开 `harden`**：那个 feature 才带「把文件收窄」的平台原语，而
+# `K-H2a` 裁四逐字定死 daemon **只许读那份文件，不许写** ——
+# `readonly_guard.rs` 扫本 crate 生产段（剥掉 `#[cfg(test)]` 之后）断言不含任何
+# 文件系统变更调用，白名单**恰好一个模块** `control/fork_write.rs`。
+# ⇒ 不开 feature ⇒ `creds_core::perm::make_private` 在本 crate 里**根本不存在**，
+#   写不出来比事后检测更强（`scanning_guard_registry` 头注逐字：「让它写不出来，而不是再检测一遍」）。
+# ⚠ 代价如实记：不开 `harden` ⇒ Windows 上 `perm::probe` 读不了 DACL，返回 `Undetermined`。
+#   那**不是**绿灯（`judge` 把它判成要出声），但确实是「查不出来」。daemon 今天的运行目标是 Linux。
+creds-core = { path = "../src-tauri/crates/creds-core" }
 # U8c-2b-0：POSIX 单引号 quote 的唯一实现（账本 S5 收口）。
 # 本 crate 只用它一处（`control/tmux_hook::sq`）；U8c-2c 起载荷渲染也走它。
 shell-quote-core = { path = "../src-tauri/crates/shell-quote-core" }

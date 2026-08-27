@@ -92,6 +92,8 @@
 //!   不许把 key 接进中转**」。逐条订正住 `server.rs::render_upstream_request` 的头注。
 
 mod bind_guard; // `DoD-4㈠`：零命中守卫单住一个文件（理由见它的头注）
+mod creds; // `K-H2a`：中转从哪儿拿 key（**只读**）+ 读之前查一次权限
+mod creds_guard; // `K-H2a` `KS2`/`KS4`：明文出口恰好一处 · 记日志走白名单（整体 #[cfg(test)]）
 mod http1;
 mod nodelay_guard; // `重要-5`：Nagle 零命中守卫，同样单住一个文件
 mod route;

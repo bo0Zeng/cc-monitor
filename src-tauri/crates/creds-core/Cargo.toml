@@ -1,0 +1,64 @@
+[package]
+name = "creds-core"
+version = "0.1.0"
+edition = "2021"
+description = "K-H2a：第三方 API key 的**唯一**住址——装它的类型、它落盘的格式、它权限够不够窄的判断。monitor 与远端 daemon 共用。"
+
+# ★★ **本 crate 存在的理由是「一个安全性质只许有一个实现」**〔`K-H2a` 裁三，PM 08-27〕。
+#
+# 中转住 `cc-monitor-remote`（`remote-daemon-proto/`），它**不依赖 `src-tauri` 整体**，
+# 只经 path 依赖吃 `src-tauri/crates/` 下的共享 crate。所以 key 这件事有三种落点，前两种都是病：
+#   · 只放 `src-tauri` ⇒ 中转拿不到，`KS9②`（不开前端也能配）做不成；
+#   · 两个 crate 各写一份 ⇒ **一个安全性质两个实现**，什么时候漂开没有任何东西会说。
+# ⇒ 落这里，两边都 depend 它。
+#
+# # ⚠ 本 crate 是这一层里**第一个带平台 cfg 的**——那条约束的原文与代价，逐字记这里
+#
+# `acct-core/Cargo.toml` 头注逐字写着这一层的约束：「**零依赖**。同 branch-core / usage-core
+# 的约束：daemon 是 Linux-only 的静态 musl 二进制、且刻意不在 monitor 的 workspace 里；
+# **一旦引入平台相关的东西，共享就破了**。」
+# 现打（08-27）：`crates/` 下 6 个 crate 的 `[dependencies]` 条数 = 0/1/0/0/0/1，
+# 平台 cfg（`cfg(windows)` / `cfg(unix)` / `cfg(target_os`）全树 **0 处**。⇒ 本 crate 是第一个。
+#
+# **化解办法是把平台那半做成可选 feature，默认不开**：
+#   · `src-tauri` 开 `harden`（它是**唯一**会写这份文件的一侧）；
+#   · daemon **不开**（`K-H2a` 裁四：daemon 只许读那份文件，不许写 —— `readonly_guard.rs`
+#     扫 daemon 生产段断言不含任何文件系统变更调用，白名单恰好一个模块 `control/fork_write.rs`）。
+# ⇒ 默认构建下本 crate **零依赖、零平台 cfg**，那条共享约束原样成立；
+#   平台原语只在开了 `harden` 的那一侧存在。
+# ⚠ **这句话是要被判据钉的，不是自述**：见 `perm.rs` 的 `the_default_build_has_no_platform_dependency`。
+#
+# ⚠ **诚实边界**：默认关掉不等于「daemon 的 lock 不受影响」——`Cargo.lock` 记的是解析出来的图，
+# 可选依赖在不在里面要**单独量**。读数与量法见件文件 `§0e`（两份 lock 分开量、分开报）。
+
+[dependencies]
+# 与 `branch-core` / `usage-core` 逐字同形（两者都是 `serde_json = "1"`）。
+# 现打（08-27）：`serde_json` 在**两份** lock 里各已有 1 条
+# （`grep -c '^name = "serde_json"'`：`src-tauri/Cargo.lock` ⇒ 1 · `remote-daemon-proto/Cargo.lock` ⇒ 1）
+# ⇒ 本条**不给任何一份 lock 新增条目**。
+serde_json = "1"
+
+[dev-dependencies]
+# 源码扫描型判据的「只留生产段」剥法，与 monitor / daemon 共用同一份。
+# **必须是 dev-dependency**：判据全在 `#[cfg(test)]` 里，它没有理由进发布二进制。
+guard-core = { path = "../guard-core" }
+
+[target.'cfg(windows)'.dependencies]
+# 只在 `harden` 打开时才真的进来。API 与 feature 的对应关系（08-27 实测，非空对照见件文件 `§0c 一`）：
+#   · `SetNamedSecurityInfoW` / SDDL 转换 / `ConvertSidToStringSidW` ⇒ `Win32_Security_Authorization`
+#   · `PSID` / `ACL` / `TOKEN_USER` / `GetSecurityDescriptorDacl` / `GetTokenInformation` ⇒ `Win32_Security`
+#   · `OpenProcessToken` / `GetCurrentProcess` ⇒ `Win32_System_Threading`
+#   · `LocalFree` / `HLOCAL` / `HANDLE` / `BOOL` ⇒ `Win32_Foundation`
+# 版本钉 `0.56` 是为了与 `src-tauri/Cargo.toml:128` 那条**同版本**——不同版本的
+# `PSID`/`ACL` 类型不互通（同文件 `:143-145` 已经为 `windows-wv2` 记过这一课）。
+windows = { version = "0.56", optional = true, features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_System_Threading",
+] }
+
+[features]
+default = []
+# 「把这份文件收窄到只给本人」的能力。**只给会写这份文件的那一侧开。**
+harden = ["dep:windows"]

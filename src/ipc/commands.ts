@@ -48,6 +48,35 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * 由 Rust 侧的 `the_ts_view_type_matches_this_struct` 钉住：那条判据读本文件的源码，
  * 逐个字段对拍，漏一个就红。
  */
+/**
+ * `K-H2a` `KS6`：中转那把第三方 API key 的**状态**。
+ *
+ * ⚠⚠ **这个类型里没有明文那个字段 —— 那是本件最要紧的一条，不是省略。**
+ * `KS6` 逐字：一旦回显，key 就从「只住在后端」变成「**每次打开那个界面都往前端传一遍**」
+ * ⇒ 泄漏面从一次变成无数次，每一次都新增前端日志 / 崩溃报告 / 截图 / 录屏四个出口。
+ * ⇒ 要改 key 就**重新输**，前端永远拿不到旧值。
+ *
+ * ⚠ **本类型是手写的**（不是 ts-rs 生成）—— 照 `SkillView` 的先例。
+ * 走手写而不是 `#[ts(export)]` 的理由是现打的（08-27）：`ts-rs` 导出会在 `src/generated/`
+ * **新增一个文件**，而那个目录的清单由 `src/generated-boundary-guard.vitest.ts`
+ * 逐项等号对拍，那个文件不在 `K-H2a` 的写区。
+ * ⇒ 字段与 Rust 侧 `creds_store::RelayCredentialsStatus`（serde 默认 snake_case）
+ * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍
+ *（Rust 的字段名从结构体源码派生、TS 的从本接口体派生，**两边条数相等**，多一个少一个都红）。
+ */
+export interface RelayCredentialsStatus {
+  /** 配了没配。 */
+  configured: boolean;
+  /** 掩码形（前后各留几位；短到看不出前后缀的整条遮掉）。没配 = 空串。**永远不是明文。** */
+  masked: string;
+  /** 那份文件在哪 —— 给「我想自己拿编辑器改」的人看。 */
+  path: string;
+  /** 权限过宽 / 查不出来时的提醒（`KS11`：要在界面上显出来）。 */
+  notice: string | null;
+  /** 文件读坏了时的说法（人手编打错一个逗号）。 */
+  problem: string | null;
+}
+
 export interface SkillView {
   id: string;
   label: string;
@@ -299,6 +328,15 @@ export const commands = {
    * + `verified_write` 的读回逐字节比对与回滚。**前端不做安全判断**，也不该做 ——
    * 判定的真相源只有 `skill_host::resolve_editable` 一处。
    */
+  /**
+   * `K-H2a` `KS10`：从界面配一把 key。
+   *
+   * ⚠ 它和**人手编那份文件**是同一份文件的两个写者 —— 后端在**写的那一刻**才读盘，
+   * 未知键一个不吃、字段顺序按名字排、原子替换、写完立刻把文件收窄成只给本人。
+   */
+  write_relay_credentials_key: (args: { key: string }) =>
+    invoke<void>("write_relay_credentials_key", args),
+
   write_skill_file: (args: { cwd: string; skillId: string; path: string; content: string }) =>
     invoke<void>("write_skill_file", args),
 
@@ -534,6 +572,12 @@ export const commands = {
   rebuild_search_index: () => invoke<SearchIndexStatus>("rebuild_search_index"),
 
   /** 读本机 MCP server 清单（user/local/project 三档）。Rust 签名**无 `Result` 包装**。 */
+  /**
+   * `K-H2a` `KS6`：读中转那把 key 的状态。**返回里永远只有掩码。**
+   */
+  read_relay_credentials_status: () =>
+    invoke<RelayCredentialsStatus>("read_relay_credentials_status"),
+
   read_mcp_servers: (args: { projectDir: string | null }) =>
     invoke<McpServerEntry[]>("read_mcp_servers", args),
 
