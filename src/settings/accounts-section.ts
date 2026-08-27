@@ -8,7 +8,7 @@
 // emit(SETTINGS_APPLIED_EVENT) 让主窗状态栏 chip 同步。
 import { getCurrentMachine, subscribeMachine } from "./machine-context";
 import { emit } from "@tauri-apps/api/event";
-import { commands } from "../ipc/commands";
+import { commands, type RelayCredentialsStatus } from "../ipc/commands";
 import {
   fetchAccounts,
   deriveUi,
@@ -39,6 +39,89 @@ import {
   deriveAcctIsoDir,
   type AcctIsoStep,
 } from "./acct-deploy";
+
+/**
+ * `K-H2a` `KS6` 前端那一半：中转那把第三方 API key 的一块。
+ *
+ * # ★★ **永不回显** —— 这一块存在的全部意义
+ *
+ * `KS6` 逐字：「配好之后，后端**永远**不把明文回给前端；界面只显示掩码（前后各留几位）
+ * 或『已配置』。**要改就重新输。**」理由：一旦回显，key 就从「只住在后端」变成
+ * 「**每次打开那个界面都往前端传一遍**」⇒ 泄漏面从一次变成无数次，
+ * 每一次都新增前端日志 / 崩溃报告 / 截图 / 录屏四个出口。
+ *
+ * ⇒ 本函数**结构上做不到回显**，两道：
+ *   ① 入参 [`RelayCredentialsStatus`] 里**没有明文那个字段**（Rust 侧与本仓 TS 侧双向对拍钉着）；
+ *   ② 输入框**从不预填**（`value` 一次都不被赋值），存完就清空。
+ * 由 `accounts-section.vitest.ts` 里 `KS6` 那一族钉住，含一条**源码扫描**：
+ * 本文件里那个输入框的 `.value` 只许被赋成空串。
+ *
+ * # 它顺带承载的两条
+ *
+ * - `KS9`：**把那份文件的路径显出来** —— 一个「能手编但没人知道在哪」的文件等于不能手编。
+ * - `KS11`：权限过宽 / 查不出来时**在界面上出声**（件计划定的是「出声」不是「拒绝」；
+ *   拒绝会把人卡死在一个他不知道怎么修的地方）。
+ */
+export function renderRelayKeyBlock(
+  status: RelayCredentialsStatus,
+  onSave: (key: string) => void | Promise<void>,
+): HTMLElement {
+  const box = document.createElement("div");
+  box.className = "relay-key-block";
+
+  const title = document.createElement("div");
+  title.className = "relay-key-title";
+  title.textContent = "中转 API key";
+  box.appendChild(title);
+
+  const state = document.createElement("div");
+  state.className = "relay-key-state";
+  // ⚠ 显示的是**掩码**，不是明文。没配就说没配 —— 不显示一个空的掩码冒充「配了」。
+  state.textContent = status.configured ? `已配置：${status.masked}` : "未配置";
+  box.appendChild(state);
+
+  // `KS9`：路径要能被找到，人才改得动它。
+  const where = document.createElement("div");
+  where.className = "relay-key-path";
+  where.textContent = `文件：${status.path}`;
+  where.title = "这份文件是明文 JSON，可以直接用编辑器改，改完下次读就生效";
+  box.appendChild(where);
+
+  // `KS11`：过宽 / 查不出来要**在界面上显出来**。
+  if (status.notice) {
+    const warn = document.createElement("div");
+    warn.className = "relay-key-notice";
+    warn.textContent = status.notice;
+    box.appendChild(warn);
+  }
+  // 文件读坏了（人手编打错一个逗号）——**不许静默当成「没配」**。
+  if (status.problem) {
+    const bad = document.createElement("div");
+    bad.className = "relay-key-problem";
+    bad.textContent = status.problem;
+    box.appendChild(bad);
+  }
+
+  const input = document.createElement("input");
+  input.type = "password";
+  input.className = "relay-key-input";
+  // ★★ **这里刻意什么都不做** —— 不预填、不 placeholder 回显掩码。
+  //    `status` 里也没有明文可填（类型上就没有那个字段）。
+  input.placeholder = status.configured ? "输入新的 key 以替换" : "粘贴 key";
+  box.appendChild(input);
+
+  const save = mkBtn("保存");
+  save.className = "relay-key-save";
+  save.addEventListener("click", () => {
+    const v = input.value.trim();
+    if (!v) return;
+    // 先清空再交出去：**明文在 DOM 里停留的时间越短越好**（截图 / 录屏那两个出口）。
+    input.value = "";
+    void onSave(v);
+  });
+  box.appendChild(save);
+  return box;
+}
 
 export class AccountsSection {
   readonly element: HTMLElement;
@@ -494,9 +577,40 @@ export class AccountsSection {
       "提示：批量对齐（曾经的「⚠k」「⇄」和命令面板里的对齐命令）已下线，请在会话右键菜单的「Restart」里逐个切换账号。";
     this.body.appendChild(removedHint);
 
+    // K-H2a：中转那把第三方 API key。**挂在账号这一组里**——它是「用哪个身份打上游」
+    // 这件事的一部分，而不是一个独立的设置面。
+    void this.mountRelayKeyBlock();
+
     // U8：数的是**可选**账号数,不是总数——1 个 isolated + 1 个 in-place 逃生口时总数=2 但
     // 你其实还只有一个能用的号,此刻"加第二个账号"仍是正路。与 accountColorsActive 同源判据。
     this.body.appendChild(this.renderMaintenance(selectableAccounts(state).length));
+  }
+
+  /**
+   * 读一次中转 key 的状态并把那一块挂上去。
+   *
+   * ⚠ **读失败不许静默**：这一格与账号列表不同——账号读不到只是少一块信息，
+   * 而凭据读不到时用户可能正打算配它。失败就把失败显出来。
+   */
+  private async mountRelayKeyBlock(): Promise<void> {
+    try {
+      const status = await commands.read_relay_credentials_status();
+      this.body.appendChild(
+        renderRelayKeyBlock(status, async (key) => {
+          try {
+            await commands.write_relay_credentials_key({ key });
+            void this.reload(true);
+          } catch (e) {
+            showActionFailureToast("保存中转 API key", String(e));
+          }
+        }),
+      );
+    } catch (e) {
+      const box = document.createElement("div");
+      box.className = "relay-key-problem";
+      box.textContent = `读不到中转 API key 的状态：${String(e)}`;
+      this.body.appendChild(box);
+    }
   }
 
   /** A6：已启用态的「维护」区——加账号 / 自检 / 补链，均弹终端。

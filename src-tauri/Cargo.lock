@@ -783,6 +783,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "creds-core"
+version = "0.1.0"
+dependencies = [
+ "guard-core",
+ "serde_json",
+ "windows 0.56.0",
+]
+
+[[package]]
 name = "crossbeam-channel"
 version = "0.5.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2821,6 +2830,7 @@ dependencies = [
  "acct-core",
  "branch-core",
  "code-picture-core",
+ "creds-core",
  "dirs 5.0.1",
  "futures",
  "gate-core",

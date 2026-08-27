@@ -41,6 +41,7 @@ mod panorama;
 mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
 mod parser;
 mod paths;
+mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monitor 独占）+ 读侧只回掩码
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
 mod plugins; // P8a：Claude Code marketplace 面的只读枚举（**不声称安装/启用**，见模块头注）
 mod port_forward;
@@ -1078,6 +1079,10 @@ pub fn run() {
             daemon_control::daemon_stop,
             config::load_config,
             config::save_config,
+            // K-H2a：中转那把 key。**读那条永远只回掩码**（`KS6`）；
+            // 写那条是「界面」这个第二写者，它与人手编是同一份文件的两个写者（`KS10`）。
+            read_relay_credentials_status,
+            write_relay_credentials_key,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
             cc_bus::read_cc_bus_state,
@@ -1513,6 +1518,33 @@ pub(crate) fn batch_to_payloads(
 
 /// 前端关闭 archived Tab 时调用：从 event_replay 历史里抹掉这个 session，
 /// 防止下次 F5 刷新它原地复活。
+/// `K-H2a` `KS6`：读中转那把 key 的**状态**。**永远只回掩码，不回明文。**
+///
+/// ★ 这是本件里最要紧的一条：一旦回显，key 就从「只住在后端」变成
+/// 「**每次打开那个界面都往前端传一遍**」⇒ 泄漏面从一次变成无数次，
+/// 每一次都新增前端日志 / 崩溃报告 / 截图 / 录屏四个出口。
+/// ⇒ 返回类型 [`creds_store::RelayCredentialsStatus`] **在类型上就装不下明文**，
+/// 由 `the_status_type_cannot_carry_the_plaintext` 钉住。
+#[tauri::command]
+fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus, String> {
+    creds_store::read_status()
+}
+
+/// `K-H2a` `KS10`：从界面配一把 key。
+///
+/// ⚠ **它和人手编是同一份文件的两个写者** —— 写的那一刻才去读盘，
+/// 未知键一个不吃、字段顺序按名字排、原子替换、写完立刻收窄成只给本人。
+/// 整段论证见 `creds_store::write_key`。
+///
+/// ⚠ **入参是明文，而它一进来就被包成 `SecretKey`**（在 `write_key` 里）。
+/// 这一层的签名收 `String` 是没办法的事：IPC 边界上只有 JSON。
+/// ⇒ 这一格如实记：**从 webview 到这一行之间，明文经过的是 Tauri 的 IPC**，
+/// 那一段不在本件的判据面里（本件保的是「进了后端之后出不去」）。
+#[tauri::command]
+fn write_relay_credentials_key(key: String) -> Result<(), String> {
+    creds_store::write_key(&key)
+}
+
 #[tauri::command]
 fn forget_session(
     session_id: String,

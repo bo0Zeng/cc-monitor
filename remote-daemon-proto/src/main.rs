@@ -424,7 +424,9 @@ async fn main() {
             // **daemon 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
             Some("--fork-session") => control::fork_write::run(&agent_home, &args),
             // K-H1：HTTP 中转。**常驻**，起来就不返回；配置面只有环境变量。
-            Some("--relay") => relay::run(&args),
+            // K-H2a：多传一个 `agent_home` —— 中转要从 `<home>/claudecode-frontend/` 下
+            // 读那份凭据文件。**不新开子命令、不动 `SUBCOMMANDS`** ⇒ 不逼出 BUILD_ID bump。
+            Some("--relay") => relay::run(&agent_home, &args),
             // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
             // v3.4.0 出过一次事故：`--account-trust-zero` 在 accounts_query 里实现完整，
             // 但这里漏列 ⇒ 落进下面的 `_` 臂走历史查询 ⇒ `unknown argument` + exit 2，

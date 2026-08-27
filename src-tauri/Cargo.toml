@@ -13,6 +13,7 @@ members = [
     ".",
     "crates/acct-core",
     "crates/branch-core",
+    "crates/creds-core",
     "crates/gate-core",
     "crates/guard-core",
     "crates/shell-quote-core",
@@ -62,6 +63,13 @@ code-picture-core = { path = "vendor/code-picture-core" }
 branch-core = { path = "crates/branch-core" }
 usage-core = { path = "crates/usage-core" }
 acct-core = { path = "crates/acct-core" }
+# K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端 daemon 共用。
+# ★ `features = ["harden"]` —— **monitor 是唯一会写这份文件的一侧**，所以只有这里开它。
+# daemon 那侧刻意**不开**（`K-H2a` 裁四：daemon 只许读；`readonly_guard.rs` 扫它的生产段
+# 断言不含任何文件系统变更调用，白名单恰好一个模块 `control/fork_write.rs`）。
+# ⇒ 「daemon 写不了这份文件」是**编译器**兜的，不是一条判据兜的。
+creds-core = { path = "crates/creds-core", features = ["harden"] }
+
 # P4c：**POSIX 单引号 quote 的唯一 Rust 实现**（P4b 之前叫 `launch-core`，那时它还持有
 # 载荷编译器与 ccm 调用行的决策内核 —— 那两样 P4b 已归位 `src/backend/control/`）。
 # ⚠ 原注释说「daemon 侧刻意还没加这条依赖」已经过期两轮：U8c-2b-0 起 daemon 的
@@ -135,6 +143,12 @@ windows = { version = "0.56", features = [
     # "刚有用户输入"，配合 AttachThreadInput 突破 Win10/11 前台抢焦限制。
     "Win32_UI_Input_KeyboardAndMouse",
 ] }
+# K-H2a `KS5`：`Win32_Security` / `Win32_Security_Authorization` 两个 feature **不加在这里**。
+# 用到它们的 Win32 调用（设 / 读凭据文件的 DACL）住 `crates/creds-core`——
+# 那是「一个安全性质只许有一个实现」的落点（`K-H2a` 裁三），monitor 与 daemon 共用同一份。
+# 本 crate 只是它的**调用点之一**（`src/platform_fs.rs`），不直接碰 Win32。
+# ⚠ cargo 对同一版本的 `windows` 做 feature 合并 ⇒ 本 crate 的构建里那两个 feature 事实上是开的，
+# 但**声明住在真正用它的那个 crate**，别在这里重复一份（两处声明 = 下一个漂移源）。
 # issue #9：single-instance lock。第二个 cc-monitor 实例启动时立即退出，
 # 第一个窗口拉到前台。Tauri 官方 plugin，user-scoped mutex，跨 user session 不冲突。
 tauri-plugin-single-instance = "2"
