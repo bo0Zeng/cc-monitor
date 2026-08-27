@@ -1971,6 +1971,105 @@ mod tests {
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
     }
 
+    /// ★★ `重-4`：**登记表的说法必须覆盖那处 `sleep` 的每一个用途。**
+    ///
+    /// 〔`K-P1-D1` `重-4`〕`rust_timer_registry` 那一行原先逐字只写
+    /// 「`probe_and_attach_after_spawn` 等**刚脱离起来的那个 daemon** 把回环口 bind 上」——
+    /// 而那处 `sleep` 住 `adopt_with`，`adopt_with` 有**两个**调用方：
+    /// 另一个 `adopt_existing`（`wait_for_bind = false`）**根本没有 spawn**，
+    /// 它等的是 `stream-busy` 那张牌被还回来。⇒ 说清了两件里的一件。
+    ///
+    /// ★ **登记表的说法就是那条判据的诚实边界** —— 说法与代码不是一回事时，
+    /// 判据在替一个不存在的性质背书。而「说法」是散文，散文不会自己红
+    /// ⇒ 本条把它变成机检：**调用方的名字从生产码里派生**（不写死），
+    /// 逐个要求登记表那一行点得到。多一个调用方而不去改那行说法 ⇒ 当场红。
+    #[test]
+    fn the_timer_registry_names_every_caller_of_the_one_wait_here() {
+        let prod = guard_core::production_code(include_str!("local_daemon.rs"));
+        // 反空真①：本文件生产段里就该恰好一处 `sleep`（登记表登的 `处数` 就是这个 1）。
+        let sleeps = prod.matches("thread::sleep(").count();
+        assert_eq!(
+            sleeps, 1,
+            "生产段里 `thread::sleep(` 有 {sleeps} 处（登记表登的是 1 处）——\
+             多一处就要回答它属哪一类、等什么、上限多少"
+        );
+
+        // 每一行的「外层函数是谁」：按行扫，遇到 `fn 名(` 就换人。
+        let enclosing = |needle: &str, skip_def: bool| -> Vec<String> {
+            let mut cur = String::new();
+            let mut out: Vec<String> = Vec::new();
+            for l in prod.lines() {
+                let t = l.trim_start();
+                if let Some(rest) = t
+                    .strip_prefix("pub async fn ")
+                    .or_else(|| t.strip_prefix("pub fn "))
+                    .or_else(|| t.strip_prefix("async fn "))
+                    .or_else(|| t.strip_prefix("fn "))
+                {
+                    if let Some(name) = rest.split('(').next() {
+                        cur = name.trim().to_string();
+                    }
+                }
+                if l.contains(needle) && !(skip_def && t.starts_with("fn ") ) && cur != needle.trim_end_matches('(')
+                {
+                    out.push(cur.clone());
+                }
+            }
+            out.sort();
+            out.dedup();
+            out
+        };
+
+        // 那一处 `sleep` 住哪个函数。
+        let home_of_sleep = enclosing("thread::sleep(", false);
+        assert_eq!(
+            home_of_sleep,
+            vec!["adopt_with".to_string()],
+            "那处 `sleep` 不住 `adopt_with` 了（现在住 {home_of_sleep:?}）——\
+             它搬家了，本条与登记表那一行都要跟着重判"
+        );
+
+        // 谁在用它 —— **从代码派生，不写死**。
+        let callers = enclosing("adopt_with(", true);
+        // 反空真②：少于两个调用方 ⇒ 抽取坏了（或真的只剩一条路，那也要回来重判说法）。
+        assert!(
+            callers.len() >= 2,
+            "只抽到 {} 个 `adopt_with` 的调用方：{callers:?} —— \
+             `重-4` 那条病的形状正是「两个调用方只写了一个」，抽不出两个本条就在空转",
+            callers.len()
+        );
+
+        // 登记表那一行必须点到每一个。
+        // 按**行**切那一条登记（不按字节偏移切 —— 中文在这份文件里到处都是，
+        // 按字节切会切在字符中间，那是 CRASH 不是读数）。
+        let reg_lines: Vec<&str> = include_str!("rust_timer_registry.rs").lines().collect();
+        let at = reg_lines
+            .iter()
+            .position(|l| l.trim() == "\"src/local_daemon.rs\",")
+            .expect("登记表里没有 `src/local_daemon.rs` 那一条 —— 它被删了？");
+        let entry: String = reg_lines[at..]
+            .iter()
+            .take_while(|l| l.trim() != "),")
+            .copied()
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            entry.len() > 200,
+            "切出来的那条登记只有 {} 字节 —— 切错了，下面整段在空转",
+            entry.len()
+        );
+        for c in &callers {
+            assert!(
+                entry.contains(c.as_str()),
+                "`rust_timer_registry` 那一行没有点到 `{c}` —— 而它是那处 `sleep` 的调用方之一。\n\
+                 ★ 那张表对 `wait-for-condition` 这一类的要求逐字是「**说清等什么**、上限是多少」，\n\
+                 而两个调用方等的**不是同一件事**（一个等 bind、一个等 `stream-busy` 那张牌）。\n\
+                 ⇒ 只写其中一个 = 登记表在替一个不存在的性质背书。\n\
+                 抽到的调用方全体：{callers:?}"
+            );
+        }
+    }
+
     /// ★★ `阻-4`：**token 文件那三格逐格钉死** —— 新建 · 已存在非空 · **已存在但空**。
     ///
     /// # 为什么这三格非钉不可

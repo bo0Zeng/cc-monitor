@@ -98,9 +98,20 @@ mod tests {
             "src/local_daemon.rs",
             "wait-for-condition",
             1,
-            "〔`K-P1` 08-26〕`probe_and_attach_after_spawn` 等**刚脱离起来的那个 daemon**\
-             把回环口 bind 上：上限 `LISTEN_WAIT_TRIES × LISTEN_WAIT_INTERVAL_MS` = 50×20ms ≈ **1 秒**，\
-             等到就走、等不到就如实报错并把那个进程收掉。**一次性条件，不是节拍器。**\
+            "〔`K-P1` 08-26；说法 08-27 补全，见下 ⚠⚠〕那一处 `sleep` 住 `adopt_with`，\
+             而 `adopt_with` 有**两个**调用方，等的是**两件不同的事**，共用同一条上限：\
+             ① `probe_and_attach_after_spawn`（`wait_for_bind = true`）等**刚脱离起来的那个 daemon**\
+             把回环口 bind 上；\
+             ② `adopt_existing`（`wait_for_bind = false`）**根本没有 spawn** —— 它等的是\
+             `stream-busy` 那张牌被还回来（上一个 monitor 刚退、对面还没把那条流放回去）。\
+             不等它，用户会看到「换台电脑重开 monitor 就没有本机后端」。\
+             上限两条路共用：`LISTEN_WAIT_TRIES × LISTEN_WAIT_INTERVAL_MS` = 50×20ms ≈ **1 秒**，\
+             等到就走、等不到就如实报错（①那条还会把那个进程收掉）。**一次性条件，不是节拍器。**\
+             ⚠⚠ 〔`K-P1-D1` `重-4`〕本行原先只写了①，而它盖着的是两件事。\
+             **登记表的说法就是那条判据的诚实边界** —— 说法与代码不是一回事时，\
+             判据在替一个不存在的性质背书。⇒ 同轮补了\
+             `local_daemon::the_timer_registry_names_every_caller_of_the_one_wait_here`\
+             钉住「这一行必须点到**每一个**调用方的名字」。\
              ⚠ 为什么非等不可（这是**实测**出来的，不是推的）：`connect_timeout` 在**没人在听**的口上\
              拿到 `ECONNREFUSED` 时**内核立刻返回**，它压根不等 —— 第一版据此写了「让内核等」，\
              实测 0.00 秒就红了。⇒ 只有 `Probe::Nobody` 那一支重试；\
