@@ -588,11 +588,38 @@ pub static DETACHED: std::sync::Mutex<Option<DetachedHandle>> = std::sync::Mutex
 ///
 /// 反推要拿字符串去认「这是不是一次拒绝」——那正是 `KPY5` 花一整条 DoD 治的那件事
 /// （假信号不会报错，它只是一直说是）。⇒ 这里与 [`DETACHED`] 同一个形状：
-/// **只在真的走到 `Adopt::Refused` 那一臂时才被写下**。
+/// **只在真的走过那条路时才被写下**，写它的唯一入口是 [`note_start_refusal`]。
 ///
 /// ⚠ `StartOutcome` 的形状**不能动**（加一个变体或一个字段，`daemon_control.rs`
 /// 那个 `match` 当场编不过，而它在本轮写区之外）⇒ 走这条旁路。
 static LAST_START_REFUSAL: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// 记下「这一次失败**用户动得了手**，而且下一步是什么」。**写 [`LAST_START_REFUSAL`] 的唯一入口。**
+///
+/// # 为什么要有这个函数〔`D2` `重-D2-1`，08-27 补〕
+///
+/// 上一轮只在 `Adopt::Refused` 那一臂写了记录，而 `StartOutcome::Failed` 的构造点
+/// **现打 6 处**（`the_user_actionable_start_failures_all_reach_the_user` 把这个分母钉住了）。
+/// 其中 `ensure_listen_token` 的 `Err` 那一支 —— **恰恰是同一轮 `阻-4` 刚修好的那一支** ——
+/// 走的是 `None =>` ⇒ `tracing::info!` ⇒ **用户什么都看不到**。
+///
+/// ★ 而这撞的是 `lib.rs` 自己写下的分档标准：「**拒绝**（口上有东西、接不上）=
+/// 一件**用户能动手解决的事** ⇒ 说到眼前；别的失败（安装包里还没有 sidecar…）=
+/// 诚实降级 ⇒ 仍走日志」。「盘上有个零字节的 token 文件，删掉它再起一次」按这条标准
+/// **属于前者**，而上一轮把它落在了后者。⇒ **`阻-4` 只修了一半**：它让诊断指对了地方，
+/// 而「指对了的那句话被谁听见」落在了 `重-2` 的人群外面。
+///
+/// # 用它的口径（新增失败构造点时照这一条分档）
+///
+/// - **用户动得了手**（删一个文件、停一个进程、改一个权限位）⇒ 调本函数，
+///   并且那句话要**说得出下一步**（判据钉着「下一步」这三个字）；
+/// - **诚实降级**（安装包里还没有 sidecar、这台机不走脱离那条路）⇒ **不要**调本函数：
+///   每次启动都弹一次就成了噪音。那一档仍走 `tracing::info!`。
+fn note_start_refusal(next_step: String) {
+    *LAST_START_REFUSAL
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = Some(next_step);
+}
 
 /// 取走上一次拒绝的「下一步能做什么」。**取走**（不是读）——
 /// 同一次拒绝不许被两条路各说一遍，也不许留到下一次启动还在那儿。
@@ -763,6 +790,13 @@ fn start_detached(
     let token = match ensure_listen_token(&dir) {
         Ok(t) => t,
         Err(e) => {
+            // ★★ `重-D2-1`：**这一格也是「用户动得了手」那一档 ⇒ 也要说到眼前。**
+            //    `阻-4` 让这句诊断指对了地方（说得出删哪个文件），但它只走到
+            //    `StartOutcome::Failed` 的 `reason` 里 —— 而自动起那条路对没有记录的失败
+            //    走 `tracing::info!` ⇒ 用户什么都看不到，那句「`rm <路径>`」只说给日志听。
+            //    ⚠ `e` 本身就是那句话（`ensure_listen_token` 的空文件支逐字写着「下一步」）,
+            //    这里**原样**转交，不另写一份 —— 两份措辞迟早对不上。
+            note_start_refusal(e.clone());
             return DetachOutcome::Done(StartOutcome::Failed {
                 reason: format!("拿不到 attach token（{e}）⇒ 拒绝起一个不设防的口"),
                 looked_at: vec![token_path(&dir)],
@@ -791,9 +825,7 @@ fn start_detached(
             // ★★ `重-2`：**这一臂是「出声并拒绝」里「出声」那一半的真相源。**
             //    自动起那条路（`lib.rs`）拿它决定要不要把话说到用户眼前 ——
             //    而不是去 `reason` 串里认字（那是 `KPY5` 治的那种假信号）。
-            *LAST_START_REFUSAL
-                .lock()
-                .unwrap_or_else(|e| e.into_inner()) = Some(format!(
+            note_start_refusal(format!(
                 "本机后端没起来：{port} 口上那个 daemon 接不上（{why}）。\
                  **下一步**：把那个进程停掉再重开 monitor —— 它的 pid 记在 {}。\
                  升级 monitor 之后最常见：口是按家目录算死的，而上一次留下的那个 daemon \
@@ -2151,7 +2183,7 @@ mod tests {
         //   而 `braced_block` 今天会断言唯一 ⇒ 不加这两个字符本条当场红。
         let refused = braced_block(&me, "Adopt::Refused(why) => {", 300, 3000);
         assert!(
-            refused.contains("LAST_START_REFUSAL"),
+            refused.contains("note_start_refusal("),
             "那条记录不再写在 `Adopt::Refused` 那一臂里 —— \
              写在别处就等于又回到「从别的信号反推这一次是不是拒绝」"
         );
@@ -2167,6 +2199,90 @@ mod tests {
                 "拒绝那句话里没有 `{needle}`。\n说法：{why}"
             );
         }
+    }
+
+    /// ★★ `重-D2-1`：**「用户动得了手」那一档的每一条路，都要走到用户眼前。**
+    ///
+    /// # 它治的那一格（分母是 `D2` 实打出来的）
+    ///
+    /// `重-2` 上一轮只治了**一条**路：`Adopt::Refused` 那一臂。而 `StartOutcome::Failed`
+    /// 的构造点**现打 6 处**，写记录的只有 **1** 处 —— 而没写记录的那 5 处里，
+    /// `ensure_listen_token` 的 `Err` 那一支**正是同一轮 `阻-4` 刚改好的那一支**：
+    /// 空 token ⇒ `Err` ⇒ **自动起**那条路对没有记录的失败走 `tracing::info!`
+    /// ⇒ 用户什么都看不到，`阻-4` 花力气写出来的那句「`rm <路径>`」**只说给日志听**。
+    ///
+    /// ★ 这撞的是 `lib.rs` 自己写下的分档标准（逐字）：「**拒绝**（口上有东西、接不上）=
+    /// **一件用户能动手解决的事** ⇒ 说到眼前；别的失败（安装包里还没有 sidecar…）=
+    /// 诚实降级 ⇒ 仍走日志」。「盘上有个零字节的 token 文件，删掉它再起一次」按这条标准
+    /// **属于前者**，而上一轮把它落在了后者。
+    /// ⇒ **`阻-4` 只修了一半**：它让诊断**指对了地方**，而「指对了的那句话**被谁听见**」
+    /// 落在 `重-2` 的人群外面 —— 两处修各治一半，中间那一格谁都没管。
+    ///
+    /// # 钉四件
+    ///
+    /// ① **分母钉死**：`StartOutcome::Failed` 的构造点恰好 6 处 —— 新增或删掉一处本条就红，
+    ///    **回来给它分档**。这正是上一轮缺的那道门：没有它，第 7 处失败照样可以静默走日志。
+    /// ② **拿 token 那一格**真的调了 [`note_start_refusal`]（`阻-4` 那条诊断今天到得了用户眼前）。
+    /// ③ 转交的是 `ensure_listen_token` **那句话本身**，而那句话说得出下一步删哪个文件。
+    /// ④ 写记录的**唯一入口**就是它，今天恰好 3 处（1 定义 + 2 调用点）。
+    ///
+    /// ⚠ **②③ 排在 ④ 前面是有意的**：把那个调用删掉时，先红的该是「拿 token 那一格不再写记录」
+    /// 这句**说得出病在哪**的诊断，而不是「计数从 3 变成 2」这句要人再去查一遍的记账话。
+    ///
+    /// # 它挡不住什么（如实登记，别读大）
+    ///
+    /// 「哪一条失败算**用户动得了手**」是**自然语言判断**，机检不了。本条买的是两样：
+    /// **分母不许在没人回来重判的情况下变**，以及已经分好档的那两条路不许悄悄退回日志。
+    /// 有人新加一处 `Failed` 再把 ① 的数字改大就能过 —— 但那时他**必须动本条**，
+    /// 而动本条要读这段话。**这是触发器，不是证明**（本仓已成型的那一档）。
+    ///
+    /// ⚠ 还有一格如实记：它钉的是**源码形状**，不是「用户真的看到了」——
+    /// 那半在 `the_auto_start_refusal_is_not_only_a_log_line` 的 ③⑤ 两条，
+    /// 而**真机上弹没弹**两条判据都证不了（要真跑一次 GUI）。
+    #[test]
+    fn the_user_actionable_start_failures_all_reach_the_user() {
+        let prod = guard_core::production_code(include_str!("local_daemon.rs"));
+        // 反空真：语料塌了 ⇒ 下面几条全是 `0 == 0` 的空真。
+        assert!(
+            prod.len() > 20_000,
+            "`local_daemon.rs` 的生产段只剩 {} 字节（下限 20_000）—— 剥过头了，本条在空转",
+            prod.len()
+        );
+        // ① 分母：失败的构造点今天恰好 6 处。
+        assert_eq!(
+            prod.matches("StartOutcome::Failed {").count(),
+            6,
+            "`StartOutcome::Failed` 的构造点不是 6 处了 —— \n\
+             ★ **新增一处失败就要给它分档**：用户动得了手（删文件 / 停进程 / 改权限位）\n\
+             ⇒ 调 `note_start_refusal` 把话说到眼前；诚实降级（还没有 sidecar 那种）⇒ 仍走日志。\n\
+             ⇒ 改完把这个数改对，**别只改数**。"
+        );
+        // ②③ 拿 token 那一格：真的写了记录，而且转交的是那句说得出下一步的话。
+        let token_lane = braced_block(&prod, "match ensure_listen_token(&dir)", 150, 1200);
+        assert!(
+            token_lane.contains("note_start_refusal("),
+            "拿 token 失败那一格不再写记录 —— 它会退回 `tracing::info!`：\n\
+             ★ 用户看到的是「本机后端没起来」四个字都没有，而盘上躺着一个他删掉就好了的空文件。"
+        );
+        assert!(
+            token_lane.contains("looked_at: vec![token_path(&dir)]"),
+            "拿 token 失败那一格不再把 token 文件放进 `looked_at`"
+        );
+        let ensure = body_of(&prod, "fn ensure_listen_token(", 400);
+        assert!(
+            ensure.contains("**下一步：删掉这个文件再起一次**"),
+            "`ensure_listen_token` 空文件支那句话不再说「下一步」——\n\
+             ★ 这句话现在是**直接转交给用户**的（不再只进日志），\n\
+             它少了「下一步」这三个字，用户拿到的就只是一句「它坏了」。"
+        );
+        // ④ 写记录只有一个入口，今天恰好两条路在用它。
+        assert_eq!(
+            prod.matches("note_start_refusal(").count(),
+            3,
+            "`note_start_refusal` 在生产段里不是 3 处（1 个定义 + 2 个调用点）——\n\
+             少了 = 某一条「用户动得了手」的路退回了只写日志；\n\
+             多了 = 又有一条路被分进这一档，回来把本条与那段分档说明一起改。"
+        );
     }
 
     /// ★★ `重-4`：**登记表的说法必须覆盖那处 `sleep` 的每一个用途。**
