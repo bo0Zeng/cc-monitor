@@ -170,6 +170,25 @@ fn pid_path(dir: &std::path::Path, port: u16) -> std::path::PathBuf {
 /// 每次重写 = 上一个宿主留下的那个 daemon 立刻变成「连得上但认证不过」的孤儿。
 /// ⇒ **只创建一次**，之后一律读回。
 ///
+/// # ★★ 空文件那一格：**两支都要查，否则它们合成一个自己好不了的闭环**
+///
+/// 〔`K-P1-D1` `阻-4`，08-27 回修〕`create_new` 与 `write_all` 之间**不是原子的**
+/// （进程被杀 / 盘满 / `write_all` 报错都会在盘上留下一个**零字节**的 token 文件）。
+/// 回修前：第一支查了空、第二支**没查** ⇒ 第一支读到空 → 落到 `create_new` →
+/// `AlreadyExists` → 第二支读回空 → `Ok("")`。**每次都一样，自己好不了。**
+///
+/// 空 token 之后两条下游路**都是死路**，而且都 fail closed（这一点原来就做对了）：
+/// 起新的 ⇒ daemon 的 `listen::mode_from` 把空串读成「没设」⇒ 退 `EXIT_BAD_LISTEN_CONFIG`；
+/// 接已有的 ⇒ `tokens_match` 的 `a.is_empty()` 直接判不等 ⇒ `WrongToken`。
+/// **问题从来不是它没关上，是它关上之后指错了地方** —— 用户看到的是
+/// 「脱离的 daemon 起来了却连不上它」，`looked_at` 里是**那个二进制**，一个字没提 token 文件。
+/// ⇒ 空文件在这里就地变成 `Err`，`start_detached` 的那一支会把
+/// [`token_path`] 放进 `looked_at`，而下面这句话说得出**下一步删哪个文件**。
+///
+/// ⚠ 这一格有一个**窄窗**，如实记：另一个宿主刚 `create_new` 完、还没 `write_all` 时，
+/// 我们会读到空并**如实报错**（而不是静默等它）。等它要么加定时器、要么加自旋
+/// —— 而「再起一次就好了」这条路的代价明显更小。**不装作那个窗不存在。**
+///
 /// ⚠ 诚实边界：token 文件被人删掉 / 改掉之后，仍在跑的那个 daemon 就再也接不上了。
 /// 那时 [`probe_listen_port`] 会**出声**（不是静默复用，也不是静默再起一个）。
 fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
@@ -200,9 +219,26 @@ fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
             Ok(token)
         }
         // 竞态：别人刚写完 ⇒ 读它那份（**不是**覆盖它）。
+        // ★★ 这一支**必须与第一支查同一个条件**（`阻-4`）：只查得到「读不出来」、
+        //    查不到「读出来是空的」，两支就合成一个自己好不了的闭环。
         Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => std::fs::read_to_string(&p)
-            .map(|s| s.trim().to_string())
-            .map_err(|e| format!("读 {} 失败: {e}", p.display())),
+            .map_err(|e| format!("读 {} 失败: {e}", p.display()))
+            .and_then(|s| {
+                let t = s.trim().to_string();
+                if t.is_empty() {
+                    // ★ 诊断指到**这一格**：说得出下一步删哪个文件。
+                    Err(format!(
+                        "{} 在盘上，但内容是空的 —— 上一次写它的进程在建文件与写内容之间没了。\
+                         空 token 起不出也接不上任何 daemon（两边都会 fail closed 地拒绝），\
+                         而它自己不会好。**下一步：删掉这个文件再起一次** —— \
+                         `rm {}`（删了之后仍在跑的旧 daemon 也接不上了，一并停掉它）",
+                        p.display(),
+                        p.display()
+                    ))
+                } else {
+                    Ok(t)
+                }
+            }),
         Err(e) => Err(format!("建 {} 失败: {e}", p.display())),
     }
 }
@@ -1933,6 +1969,115 @@ mod tests {
         assert_ne!(a, b, "两次拿到同一个 token —— 那说明熵源里没有「每次都变」的东西");
         assert_eq!(a.len(), 32, "token 长度变了（32 个十六进制 = 128 位）");
         assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    /// ★★ `阻-4`：**token 文件那三格逐格钉死** —— 新建 · 已存在非空 · **已存在但空**。
+    ///
+    /// # 为什么这三格非钉不可
+    ///
+    /// 回修前这条路**零覆盖**（`K-P1-D1` 现打，分母 = 本文件全文）：
+    /// `ensure_listen_token` 命中 **2 处** —— 一处定义、一处生产调用点，**测试段 0 处**；
+    /// 非空对照：同文件 `parse_listen_owner` 命中 **8 处**（它有测试）。
+    /// ⇒ `0600` 权限位 · `create_new` 竞态支 · 空文件支，**三格一格都没有判据看着**。
+    ///
+    /// - **`0600`**：头注逐字「★ 权限位就是这一格买的东西 —— 少了它，同机别的用户读得到 token」。
+    /// - **竞态支**：`create_new` 输的那一方**读回赢家那份**，绝不覆盖
+    ///   （覆盖 = 上一个宿主留下的那个 daemon 当场变孤儿）。
+    /// - **空文件支**：零字节的 token 会让第一支落到 `create_new`、`AlreadyExists` 再读回空 ——
+    ///   回修前两支合成闭环、返回 `Ok("")`，**每次都一样，自己好不了**。
+    ///
+    /// ⚙ ③ 走的**就是**竞态支：第一支读到空 ⇒ 不 return ⇒ `create_new` ⇒ `AlreadyExists`。
+    /// 这不是巧合，是那条闭环的形状本身 —— 所以这一格同时是「竞态支查不查空」的判据。
+    ///
+    /// ⚠⚠ **射程如实记，别把这条读大一格**：竞态支里「读回来是**非空**」那半个分支
+    /// （`Ok(t)`）在本判据里**走不到** —— 走到它要求「我们读的时候文件还不在，
+    /// 而在我们 `create_new` 之前另一个进程把它建好并写完了」，那是**真的跨进程竞态**，
+    /// 单进程里造不出来。⇒ 那半格由下面 ⑤ 的**源码钉**（`create_new(true)` 恰好一处）兜，
+    /// 而 ⑤ 买的是「不覆盖」，不是「读回的是赢家那份」。**这一格今天没有行为判据。**
+    #[test]
+    fn the_listen_token_file_is_pinned_cell_by_cell() {
+        let dir = std::env::temp_dir().join(format!(
+            "ccm-token-cells-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let p = token_path(&dir);
+
+        // ── ① 新建：目录都还不在 ⇒ 建目录 + 建文件 + 写内容 ────────────
+        let first = ensure_listen_token(&dir).expect("第一次该建得出来");
+        assert_eq!(first.len(), 32, "新建那一支回的不是一个完整 token：{first:?}");
+        assert_eq!(
+            std::fs::read_to_string(&p).expect("读回").trim(),
+            first,
+            "盘上那份与返回的不是同一个串 —— 下一个宿主读回的就接不上这一个"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
+            assert_eq!(
+                mode, 0o600,
+                "token 文件的权限位是 {mode:o}，不是 0600 —— \
+                 回环 TCP 上同机**别的用户**也连得上这个口，token 是那条口上**唯一**的门。\
+                 权限位就是这一格买的东西。"
+            );
+        }
+
+        // ── ② 已存在非空：幂等读回，**不许覆盖** ─────────────────────
+        let bytes_before = std::fs::read(&p).expect("读原始字节");
+        let second = ensure_listen_token(&dir).expect("第二次该读回来");
+        assert_eq!(
+            second, first,
+            "第二次拿到的 token 变了 —— 那说明它把文件重写了，\
+             而重写 = 上一个宿主留下的那个 daemon 立刻变成「连得上但认证不过」的孤儿"
+        );
+        assert_eq!(
+            std::fs::read(&p).expect("再读字节"),
+            bytes_before,
+            "盘上那份被动过了（`create_new` 那条路只许创建一次）"
+        );
+
+        // ── ③ 已存在但**空**：必须 `Err`，而且诊断要指到这个文件 ────────
+        std::fs::write(&p, b"").expect("造一个零字节 token");
+        let e = ensure_listen_token(&dir)
+            .expect_err("零字节 token 必须是 `Err` —— 回它 `Ok(\"\")` 就是那个自己好不了的闭环");
+        assert!(
+            e.contains(&p.display().to_string()),
+            "空 token 的诊断里没有那个文件的路径：{e:?}\n\
+             ★ 行为上 fail closed 是不够的：用户看到的是「脱离的 daemon 起来了却连不上它」，\n\
+             而 `looked_at` 里是那个**二进制** —— 一个字不提 token 文件，他就不知道该删哪个文件。"
+        );
+        assert!(
+            std::fs::metadata(&p).is_ok(),
+            "报错的同时把文件删了 —— 那是替用户做决定（这里只出声，删由人来）"
+        );
+
+        // ── ④ 诊断的另一半：生产调用点真的把 `token_path` 放进 `looked_at` ──
+        let prod = guard_core::production_code(include_str!("local_daemon.rs"));
+        let start = body_of(&prod, "fn start_detached(", 800);
+        assert!(
+            start.contains("looked_at: vec![token_path(&dir)]"),
+            "`start_detached` 里 `ensure_listen_token` 的 `Err` 那一支不再把 token 文件\
+             放进 `looked_at` —— 上面 ③ 那句话就传不到用户眼前了"
+        );
+
+        // ── ⑤ 「只创建一次、绝不覆盖」这一格**只有源码钉认得出** ──────────
+        //
+        // ⚠ 射程如实记：行为上「第二次拿到同一个串」有**两条**独立的路
+        //   （第一支的提前 `return` + 竞态支的读回）⇒ 单改一处杀不掉上面 ② 那一格。
+        //   而「覆盖」这件事本身是**一个方法名**的事，所以这里拿它当锚点。
+        let ensure = body_of(&prod, "fn ensure_listen_token(", 400);
+        assert_eq!(
+            ensure.matches("create_new(true)").count(),
+            1,
+            "`ensure_listen_token` 里 `create_new(true)` 不是恰好一处。\n\
+             换成 `create(true).truncate(true)` 就会**覆盖**盘上已有的那份 token ——\n\
+             而覆盖 = 上一个宿主留下的那个 daemon 立刻变成「连得上但认证不过」的孤儿，\n\
+             且它自己不知道，用户只看到「停不掉也接不上」。"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // ══════════════════════════════════════════════════════════════════
