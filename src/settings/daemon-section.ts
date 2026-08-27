@@ -9,14 +9,20 @@
  * 而且**本机也有一份** —— 本机没有 SSH 配置卡片可挂。
  * 挂在一起会逼出「本机那行长得和别人不一样」的特例，正是 `C1` 要避免的形状。
  *
- * # ⚠ 文案纪律（P2s-Y5）：不许承诺做不到的事
+ * # ⚠ 文案纪律（P2s-Y5 → K-P1 KPY4 翻面）：**按状态说实话**，不是「一律不许说」
  *
- * 实测（08-11，P2s §0a）：daemon 是纯 stdio 子进程，monitor 一退读端就断，
- * 它 **153 毫秒**内自己 broken-pipe 退出。
- * ⇒ 关掉这个开关**不等于**「daemon 继续在后台跑」，只等于「monitor 不主动结束它」。
- * 本文件的用户可见文案由 `daemon-section.vitest.ts` 的措辞判据守着：
- * 「后台常驻 / 继续运行 / 一直跑」这类话一个都不许出现。
- * 真要常驻见待决 `U7`（那要先给 daemon 一个监听口）。
+ * 翻面之前：daemon 是纯 stdio 子进程，monitor 一退读端就断，它 **153 毫秒**内自己退出
+ * ⇒ 那时「关掉开关 = 继续在后台跑」是一句做不到的承诺，判据是一张**禁词表**。
+ *
+ * K-P1 之后它在 Linux 上**真脱离**了 ⇒ 那一支上「继续跑」是真的，
+ * 而**没脱离**的那一支上它仍然是假的。⇒ 判据从「禁这几个词」翻成
+ * 「**必须出现「无人监护」这一档，且它只在真脱离那一支出现**」。
+ *
+ * ★★ **本文件不许有自己的那几句文案** —— 它们的唯一一个家是 `../daemon-policy.ts`
+ * 的 `EXIT_*` 四条，本文件只调 `describeExitBehavior`。
+ * 理由是实测过的失效形态：现行那条判据 `readFileSync` 的**只有一个文件**、只剥整行注释
+ * ⇒ 文案搬家 / 拼串 / 进一张 i18n 表就**零命中地绿**（与 `bind_guard` 头注自陈的
+ * 「单独存在时是安慰剂」同族）。
  */
 
 import { commands } from "../ipc/commands";
@@ -27,6 +33,7 @@ const SETTLE_INTERVAL_MS = 100;
 import { showActionFailureToast } from "../error-toast";
 import {
   LOCAL_ORIGIN,
+  describeExitBehavior,
   initDaemonPolicy,
   killOnExit,
   setKillOnExit,
@@ -54,9 +61,12 @@ export class DaemonSection {
     }
     const hint = document.createElement("p");
     hint.className = "settings-hint";
-    // ★ 这句话是**实测结论**，不是免责声明：勾掉它 daemon 也不会常驻。
-    hint.textContent =
-      "每台机各一份。关掉「退出时结束它」只表示 monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出。";
+    // ★ 这一句**刻意不再承诺任何一种退出行为** —— 那句话今天是**按机器分档**的
+    //   （同一台机上勾没勾、脱没脱离，四种组合各说各的），所以它住在每一行里，
+    //   由 `describeExitBehavior` 从唯一的那个家取。
+    //   ⚠ 原来这里那句「它仍会在 monitor 退出后很快自行退出」是**实测结论**，
+    //   而 K-P1 之后它只对**没脱离**的那一支成立 —— 留在这里就成了一句半假的全称。
+    hint.textContent = "每台机各一份。每一行下面写着这台机在 monitor 退出时会发生什么。";
     this.element.appendChild(hint);
     this.list = document.createElement("div");
     this.list.className = "daemon-list";
@@ -147,7 +157,30 @@ export class DaemonSection {
     label.appendChild(document.createTextNode("monitor 退出时结束它"));
     row.appendChild(label);
 
+    // ★★ `K-P1 KPY4`：**这台机退出时到底会发生什么**，按状态分档如实说。
+    // 文案本体不在本文件（见头注）；这里只放它的位置。
+    const exit = document.createElement("div");
+    exit.className = "daemon-row-exit";
+    row.appendChild(exit);
+
     return row;
+  }
+
+  /**
+   * 重画一行的「退出时会发生什么」。
+   *
+   * `detached` 的真相源是后端 `daemon_status` 的那一格，而它记的是
+   * **起它的时候走没走脱离那条路**（不是拿 `channel`/`pid` 反推 —— 那是假信号）。
+   * 远端恒 `null` ⇒ 按「没脱离」算，那对远端是**对的**：断流之后那个进程随管道破裂退出。
+   */
+  private paintExit(origin: string, detached: boolean): void {
+    const el = this.rows.get(origin)?.querySelector<HTMLElement>(".daemon-row-exit");
+    if (!el) return;
+    el.textContent = describeExitBehavior({
+      killOnExit: killOnExit(this.policy, origin),
+      detached,
+    });
+    el.dataset.detached = String(detached);
   }
 
   /**
@@ -196,6 +229,9 @@ export class DaemonSection {
     try {
       await setKillOnExit(origin, want);
       this.policy[origin] = want;
+      // 勾变了 ⇒ 那句「退出时会发生什么」也变了。**同一拍重画**，
+      // 否则屏上那句话描述的是上一次的状态（与 A4 那条「画的是操作前的快照」同族）。
+      void this.paintStatus(origin);
     } catch (e) {
       // 存不下就**把勾回退**——否则屏上写着 A 而实际是 B，比报错更坏。
       box.checked = !want;
@@ -215,6 +251,9 @@ export class DaemonSection {
       const pid = typeof st.pid === "number" ? `（pid ${st.pid}）` : "";
       state.textContent = on ? `已连上${pid}` : "未连上";
       state.dataset.on = String(on);
+      // K-P1：`detached` 只认后端给的那一格。**缺席 / null ⇒ 按「没脱离」算**
+      // （旧后端没有这一格；远端天然没有）—— 保守方向：不脱离那句话是今天一直在说的那句。
+      this.paintExit(origin, st.detached === true);
       return on;
     } catch (e) {
       state.textContent = "状态查不到";

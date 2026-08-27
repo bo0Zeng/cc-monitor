@@ -54,6 +54,14 @@ tokio = { version = "1", features = [
     "io-util",
     # io-std gates tokio::io::stdout(); io-util alone is not enough.
     "io-std",
+    # K-P1：常驻监听口（回环 TCP）。**只加 feature，不加依赖条目** ——
+    # `net` 带进来的 `socket2` 是纯 Rust（`C18`「依赖树零 C」不受影响），
+    # `mio` 本 crate 的 lock 里早就有（`signal`/`io-std` 都在用它）。
+    # ⚠ 为什么不沿用 `relay/` 那份 `std::net::TcpListener`（blocking）：
+    # 常驻这条路要把 socket 的读写两半**原样喂给今天 stdin/stdout 的位置**
+    # （`inbound::spawn<R: AsyncRead>` · `writer_task<W: AsyncWrite>` 本来就是泛型），
+    # 而 `std` 的 socket 变不成 `AsyncRead`/`AsyncWrite`。
+    "net",
     "sync",
     "signal",
     "fs",

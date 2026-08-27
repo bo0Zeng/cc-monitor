@@ -95,6 +95,20 @@ mod tests {
              没上限就等于「点一次恢复永远转圈」。退役归：std 有了 `wait_timeout` 之后（今天没有）。",
         ),
         (
+            "src/local_daemon.rs",
+            "wait-for-condition",
+            1,
+            "〔`K-P1` 08-26〕`probe_and_attach_after_spawn` 等**刚脱离起来的那个 daemon**\
+             把回环口 bind 上：上限 `LISTEN_WAIT_TRIES × LISTEN_WAIT_INTERVAL_MS` = 50×20ms ≈ **1 秒**，\
+             等到就走、等不到就如实报错并把那个进程收掉。**一次性条件，不是节拍器。**\
+             ⚠ 为什么非等不可（这是**实测**出来的，不是推的）：`connect_timeout` 在**没人在听**的口上\
+             拿到 `ECONNREFUSED` 时**内核立刻返回**，它压根不等 —— 第一版据此写了「让内核等」，\
+             实测 0.00 秒就红了。⇒ 只有 `Probe::Nobody` 那一支重试；\
+             「口上是别人」不会自己变好，重试它只是把一个确定的坏消息拖晚。\
+             退役归：哪天改成「宿主自己 bind、把 fd 传给子进程」——那时竞态**根本不存在**\
+             （而它也顺手把 `EADDRINUSE` 挪到宿主手里）。",
+        ),
+        (
             "src/search.rs",
             "startup-delay",
             1,

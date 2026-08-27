@@ -100,16 +100,29 @@ pub fn daemon_machines() -> Result<Vec<String>, String> {
 pub fn daemon_status(origin: String) -> Result<serde_json::Value, String> {
     check_origin(&origin)?;
     let channel = crate::inbound_client::client_for(&origin).is_some();
-    let (pid, attempts) = if is_local(&origin) {
-        crate::local_daemon::local_pid_and_attempts()?
+    // ★★ `K-P1 KPY5`：**`detached` 的真相源只能是「起它的时候走没走那条路」。**
+    //
+    // `is_detached()` 读的是一条**只在真的走过脱离那条路时才会被写下**的记录
+    // （`local_daemon::DETACHED`）。
+    // ⚠ **不许拿 `channel` 或 `pid` 反推** —— 那正是 `P2d §0a` 翻掉的 `SSH_CONNECTION` 那一形：
+    // 假信号不会报错，它只是**一直说是**，而在只有正例的测试里永远绿。
+    // 远端那侧是 `null` 而不是 `false`：那个进程在别人机器上，「它脱没脱离」这句话
+    // 在远端这条路上**没有意义**（同 `pid`/`attempts` 的天然不对称，不是欠账）。
+    //
+    // ⚠ 三格一起算，是因为 `the_three_ports_are_one_command_each_and_all_take_origin`
+    // 逐口只许有**一处** `is_local(&origin)` 分派 —— 那条判据钉的正是「本机那一支只有一个入口」。
+    let (pid, attempts, detached) = if is_local(&origin) {
+        let (p, a) = crate::local_daemon::local_pid_and_attempts()?;
+        (p, a, serde_json::json!(crate::local_daemon::is_detached()))
     } else {
-        (None, None)
+        (None, None, serde_json::Value::Null)
     };
     Ok(serde_json::json!({
         "origin": origin,
         "channel": channel,
         "pid": pid,
         "attempts": attempts,
+        "detached": detached,
         "killOnExit": crate::daemon_policy::kill_on_exit(&origin),
     }))
 }
