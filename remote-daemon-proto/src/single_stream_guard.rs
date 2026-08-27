@@ -126,46 +126,37 @@ mod tests {
         ),
     ];
 
-    /// 本护栏自己**必须**被排除在全 crate 语料之外 —— 它的登记表里逐字带着上面六个锚点。
-    ///
-    /// 单独成表（抄 `no_timer_guard::SKIPPED_BY_NAME` 的做法），是为了让下面那条
-    /// 「真的跳过了」的反向自检算得出跳过了几个。
-    const SKIPPED_BY_NAME: &[&str] = &["single_stream_guard.rs"];
-
     /// 全 crate 语料：`src/` 下**全部**（含子目录）`.rs` 的生产段。
     ///
-    /// ⚠ 必须**递归** —— `no_timer_guard::daemon_sources` 头注记着这条的实测教训：
-    /// 单层 `read_dir` + 按扩展名跳过时，**目录没有扩展名于是被整个跳过**，
-    /// 护栏一行业务代码都没扫还全绿。那正是「守卫范围 ≠ 性质范围」的另一形。
+    /// # ⚠ 为什么走 `scan_tree!` 而不是自己 `read_dir`
+    ///
+    /// 〔08-27，回修当天被本仓自己的判据逮到，如实留档〕本函数第一版是裸递归 `read_dir`
+    /// + 一张 `SKIPPED_BY_NAME` 自摘表，**当场被 monitor 侧的
+    /// `scanning_guard_registry::no_new_guard_walks_the_tree_without_excluding_itself` 打红**
+    /// （它是一条**递减棘轮**：存量清单只许变短）。
+    /// 那条判据的理由逐字：「判据在自己的登记表 / 注释 / 常量里找到自己 ⇒ **恒绿**，
+    /// audit-0805 实测五次，**五次都不是被判据变红发现的**」——
+    /// 而本模块的 `PINS` 里逐字带着那六个锚点，正是那一形。
+    /// ⇒ `scan_tree!` **按构造**摘除调用者自己那份，摘不摘得掉不靠我记得写那张表。
+    ///
+    /// ⚠ 把自己加进那张存量清单是**放宽**（`KPY7` 逐字：本件一行都不许放宽已有判据）——
+    /// 一个字都没往那边加。
+    ///
+    /// 递归这件事由 `scan_tree!` 自己保证；`no_timer_guard::daemon_sources` 头注记着
+    /// 不递归的实测后果：**目录没有扩展名于是被整个跳过**，护栏一行业务代码都没扫还全绿。
     fn crate_sources() -> Vec<(String, String)> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut out = Vec::new();
-        let mut stack = vec![root.clone()];
-        while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).expect("read src dir") {
-                let path = entry.expect("dir entry").path();
-                if path.is_dir() {
-                    stack.push(path);
-                    continue;
-                }
-                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-                    continue;
-                }
-                let base = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if SKIPPED_BY_NAME.contains(&base) {
-                    continue;
-                }
+        guard_core::scan_tree!(&root, &["rs"])
+            .into_iter()
+            .map(|(path, src)| {
                 let rel = path
                     .strip_prefix(&root)
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .replace('\\', "/");
-                let src = std::fs::read_to_string(&path).expect("read rs file");
-                out.push((rel, production_code(&src)));
-            }
-        }
-        out.sort();
-        out
+                (rel, production_code(&src))
+            })
+            .collect()
     }
 
     fn source_of(rel: &str) -> String {
@@ -197,9 +188,13 @@ mod tests {
             bytes >= 150_000,
             "全 crate 语料只有 {bytes} 字节（下限 150_000）—— 剥过头了，本条此刻在空转"
         );
-        // 反空真②：本护栏自己**真的**被跳掉了（否则它的登记表会把每个锚点各喂一口）。
+        // 反空真②：本护栏自己**真的**被摘掉了。
+        // `scan_tree!` 是按构造摘的，本条是**复核那一刀真的落下了** ——
+        // 摘除退化成空集或匹配不上时，`PINS` 里那六个锚点会把自己各喂一口，六条一起假红。
         assert!(
-            !corpus.iter().any(|(rel, _)| rel.ends_with("single_stream_guard.rs")),
+            !corpus
+                .iter()
+                .any(|(rel, _)| rel.ends_with("single_stream_guard.rs")),
             "本护栏自己进了语料 —— 它的 `PINS` 里逐字带着这六个锚点，那样每条都会多数出来"
         );
 
