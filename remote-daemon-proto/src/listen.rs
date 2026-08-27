@@ -486,33 +486,55 @@ mod tests {
         );
     }
 
-    /// ★★ `重-1`：**头注指到的每一个住址今天都真的在。**
+    /// ★★ `重-1`：**本轮新增那三个文件的头注里，每一个住址今天都真的在。**
     ///
-    /// 〔`K-P1-D1` `重-1`〕头注原先写「由 `frozen_single_client_guard.rs` 那条触发器看着」——
-    /// 那个文件**全仓不存在**（命中 1 处，就是那一行自己），真名是 `single_stream_guard.rs`。
+    /// 〔`K-P1-D1` `重-1`〕`listen.rs` 头注原先写「由 `frozen_single_client_guard.rs`
+    /// 那条触发器看着」—— 那个文件**全仓不存在**（命中 1 处，就是那一行自己），
+    /// 真名是 `single_stream_guard.rs`。
     ///
-    /// ⚠ **治的不是那一个词**（`brief` 第 15 条那一问）：本条钉的是**整段头注里的每一个
-    /// 文件式住址**，而不是「那条触发器」这一处。一条承重头注把读者指向一个不存在的住址，
+    /// ⚠ **治的不是那一个词**，也不是「本模块头注」这一处（`brief` 第 15 条那一问：
+    /// 我治的是这一处，还是**所有同职的地方**？）⇒ 人群是**本轮新增的那三个 daemon 文件**
+    /// 的头注，逐个文件、逐个住址。一条承重头注把读者指向一个不存在的住址，
     /// 是「**指了住址，但住址是假的**」——`brief` 第 13 条那一族的反面。
     ///
     /// # 分母（现打 08-27，量具 = 一段正则 + 逐条落盘核在不在）
     ///
-    /// 本轮新增的三个 daemon 文件（`listen.rs` / `single_stream_guard.rs` / `ratchet_guard.rs`）
-    /// 里的**路径式引用共 22 处**（去掉一个正则假阳性 `buf.shrink_to_fit()`），
-    /// **悬空 1 处**，就是这一处。另两份**零悬空**。
+    /// - 本轮新增的三个 daemon 文件（`listen.rs` / `single_stream_guard.rs` / `ratchet_guard.rs`）
+    ///   **全文**的路径式引用共 **22 处**（去掉一个正则假阳性 `buf.shrink_to_fit()`），
+    ///   **悬空 1 处**，就是这一处；另两份**零悬空**。
+    /// - ⚠ **射程之外，如实登记**：同一把尺子扫**全 crate 69 个 `.rs` 的 `//!` 头注**
+    ///   ⇒ 105 处引用、**悬空 1 处**：`platform/pidwatch/linux.rs` 头注的
+    ///   「从 `platform/pidwatch.rs` 逐字搬来」（今天是 `platform/pidwatch/mod.rs`）。
+    ///   那是一句**历史出处**、不是「由谁看着」，而且那个文件**不在本轮写区** ⇒ 交回 PM。
+    ///   ⇒ **本条不是全 crate 的**：它管的是本件自己新增的那三份。
     #[test]
     fn every_file_this_head_note_points_at_really_exists() {
-        let head: String = include_str!("listen.rs")
-            .lines()
-            .take_while(|l| l.starts_with("//!"))
+        let heads = [
+            ("listen.rs", include_str!("listen.rs")),
+            (
+                "single_stream_guard.rs",
+                include_str!("single_stream_guard.rs"),
+            ),
+            ("ratchet_guard.rs", include_str!("ratchet_guard.rs")),
+        ];
+        let head: String = heads
+            .iter()
+            .flat_map(|(_, src)| src.lines().take_while(|l| l.starts_with("//!")))
             .collect::<Vec<_>>()
             .join("\n");
-        // 反空真①：头注切不出来 ⇒ 下面整段空转。
+        // 反空真①：三份头注切不出来 ⇒ 下面整段空转。
         assert!(
-            head.len() > 2000,
-            "头注只切到 {} 字节 —— 切错了，本条此刻在空转",
+            head.len() > 4000,
+            "三份头注只切到 {} 字节 —— 切错了，本条此刻在空转",
             head.len()
         );
+        // 反空真①b：**三份都要有**（少一份 = 人群悄悄缩了一格，而它读起来完全正常）。
+        for (name, src) in &heads {
+            assert!(
+                src.lines().take_while(|l| l.starts_with("//!")).count() >= 10,
+                "`{name}` 的头注只有几行 —— 它被搬空了，本条对这一份在空转"
+            );
+        }
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         // 头注里写住址有四种形态：本 crate 内的裸文件名 · `relay/xxx.rs` 这种 crate 内相对路径 ·
         // `src-tauri/src/xxx.rs` / `e2e/xxx.sh` 这种从仓根写起的 ·
@@ -540,10 +562,10 @@ mod tests {
         // 反空真②：一个住址都没扫到 ⇒ 上面的 `for` 跑零圈（本轮 `refusal_reasons_are_a_closed_set`
         // 第一版正是死在这一格：人群画在了错的文件上，循环跑零圈而读起来完全正常）。
         assert!(
-            checked >= 4,
-            "头注里只扫到 {checked} 个文件式住址（下限 4 = 08-27 实测值：\
-             `relay/server.rs` · `single_stream_guard.rs` · `daemon_policy.rs` · \
-             `src-tauri/src/local_daemon.rs`）—— 抽取坏了或头注被搬空了"
+            checked >= 9,
+            "三份头注里只扫到 {checked} 个文件式住址（下限 9；08-27 实测 **11** = \
+             `listen.rs` 4 + `single_stream_guard.rs` 4 + `ratchet_guard.rs` 3，留两格余量）\
+             —— 抽取坏了或某一份头注被搬空了"
         );
         // ★ 那条触发器**按名字**指得住：`single_stream_guard.rs` 必须被头注点到。
         assert!(
