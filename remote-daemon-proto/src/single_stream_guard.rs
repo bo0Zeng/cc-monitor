@@ -45,56 +45,119 @@
 mod tests {
     use crate::guard_support::production_code;
 
-    /// `(文件, 锚点, 恰好几处, 它一变就意味着什么)`。**次数钉死**（`KP4` 第四轮买牙的两个价钱之一）。
+    /// `(锚点住的那个文件, 锚点, **那个文件里**恰好几处, **全 crate** 恰好几处, 它一变就意味着什么)`。
+    /// **次数钉死**（`KP4` 第四轮买牙的两个价钱之一）。
     ///
-    /// ⚠ 加一行 / 改一个数之前先答：**这是不是在做「多客户端的流」**？
-    /// 是 ⇒ 那件事本件明确不做（`K-P1 §2`），要做请先立件，把 `Overflow.lost`
-    /// 那本账重新定义清楚；不是 ⇒ 把新的数与理由一起写进来。
-    const PINS: &[(&str, &str, usize, &str)] = &[
+    /// # ⚠⚠ 为什么多了「全 crate」这一列〔`K-P1-D1` `重-5`，08-27 回修〕
+    ///
+    /// 回修前本表只有「那个文件里几处」这一个数，而好几条的**说法**写的是「全 crate 只此一处」——
+    /// 审计员点名 `Admit::Stream` 那条：语料是 `source_of("listen.rs")`，**只扫 `listen.rs`**，
+    /// 于是「有人在 `main.rs` 里直接构造一个 `listen::Admit::Stream` 绕过 `admit()`」这条针看不见。
+    /// ⇒ **守卫范围 ≠ 性质范围**，那是本件自己命名的那一族的**第五形**。
+    ///
+    /// ★ 本轮的处置是**扩人群到它自称的那个范围**（不是把说法改窄）——
+    /// 理由：改窄会把真正要挡的东西（「在别处新开一条更松的路」）整个放掉。
+    /// ⚠ 而且**六条一起改**，不是只改被点名的那一条（`brief` 第 15 条那一问：
+    /// 我治的是这一处，还是所有同职的地方？）—— 现打，六条里有 **4 条**的说法都越了它的语料：
+    /// `busy.swap(true` 逐字写着「全 crate 只此一处」、`writer_task(` / `inbound::spawn(` 写「同一个进程里」、
+    /// `mpsc::Receiver<Frame>` 写「只有一个消费者」。
+    ///
+    /// ⚙ 全 crate 那个数**可以大于**文件内那个数，而且大得有名有姓 —— 逐条在说法里写清多出来的是谁。
+    const PINS: &[(&str, &str, usize, usize, &str)] = &[
         (
             "main.rs",
             "writer_task(",
             2,
+            2,
             "出方向的写者**一条载体一个**：stdio 那条 + 常驻那条。\
              第三处意味着同一个进程里同时有两条流在写 —— 那正是 fan-out 的入口，\
-             而两条流各自记各自的 `Overflow.lost` 之后，那本账就不再是「这台机丢了几帧」。",
+             而两条流各自记各自的 `Overflow.lost` 之后，那本账就不再是「这台机丢了几帧」。\
+             ⇒ 全 crate 也是 2：`main.rs` 之外一处都没有，**换个文件写第三条也会红**。",
         ),
         (
             "main.rs",
             "inbound::spawn(",
             2,
+            2,
             "入方向 reader 同样**一条载体一个**。多一处 = 多一个能发 `launch`/`kill` 的对端，\
-             而 `inbound::REGISTRY` 的取消登记表是**一份**（按 id 去重），两个对端会撞 id。",
+             而 `inbound::REGISTRY` 的取消登记表是**一份**（按 id 去重），两个对端会撞 id。\
+             ⇒ 全 crate 也是 2（`wire.rs` 头注里那一处提及是 `///` 行，被 `production_code` 剥掉）。",
         ),
         (
             "main.rs",
             "busy.swap(true",
             1,
-            "「谁拿到那一条流」由**一次原子操作**决出来，全 crate 只此一处。\
+            1,
+            "「谁拿到那一条流」由**一次原子操作**决出来，**全 crate 只此一处**。\
              改成「先查后写」就有窗口（两条连接同时握手都拿到流）；\
-             多一处则意味着有第二个地方在发牌。",
+             多一处则意味着有第二个地方在发牌。\
+             ⚠ 这条的说法从第一版起就写着「全 crate」，而语料到今天才真的是全 crate。",
         ),
         (
             "observe/watcher.rs",
             "mpsc::Receiver<Frame>",
             1,
-            "观测帧**只有一个消费者**。第二个 `Receiver` = fan-out 落地，\
-             而 `Overflow.lost` 的丢帧账是按那**一个**通道记的 ⇒ 语义变更，不是搬运。",
+            3,
+            "观测帧**只有一个消费者**：产出那一处在 `watcher::spawn` 的返回类型上。\
+             第二个**产出** = fan-out 落地，而 `Overflow.lost` 的丢帧账是按那**一个**通道记的\
+             ⇒ 语义变更，不是搬运。\
+             ⇒ 全 crate 3 = 产出 1 + `main.rs::writer_task` 的两个**形参**（`rx` / `reply_rx`，\
+             那是同一条通道的消费端，不是第二条通道）。第 4 处出现时回来重判它是哪一种。",
         ),
         (
             "listen.rs",
             "Admit::Stream",
             1,
-            "「交出流」这一档全 crate 只此一处产出。多一处 = 有第二条路能绕过 `admit` 拿到流。",
+            2,
+            "「交出流」这一档**全 crate 只此一处产出**（`listen::admit` 的那一臂）。\
+             ⇒ 全 crate 2 = 那一处产出 + `main.rs` 里 `match` 的**模式**那一处。\
+             第 3 处 = 有人绕过 `admit()` 自己造了一个 `Admit::Stream`，也就是有第二条路能拿到流。\
+             ★ 这正是 `D1` `重-5` 点名的那一格：回修前语料只有 `listen.rs`，`main.rs` 里\
+             直接构造一个它**看不见**。",
         ),
         (
             "main.rs",
             "REPLY_BURST",
             2,
+            2,
             "让位预算是「两条通道对**一个** writer」（常量 1 处 + 比较 1 处）。\
-             每连接一个 writer 之后这条预算要按连接算 —— 那时本行的数会变，正好逼人回来重判。",
+             每连接一个 writer 之后这条预算要按连接算 —— 那时本行的数会变，正好逼人回来重判。\
+             ⇒ 全 crate 也是 2：这条预算**不许有第二个家**。",
         ),
     ];
+
+    /// 全 crate 语料：`src/` 下**全部**（含子目录）`.rs` 的生产段。
+    ///
+    /// # ⚠ 为什么走 `scan_tree!` 而不是自己 `read_dir`
+    ///
+    /// 〔08-27，回修当天被本仓自己的判据逮到，如实留档〕本函数第一版是裸递归 `read_dir`
+    /// + 一张 `SKIPPED_BY_NAME` 自摘表，**当场被 monitor 侧的
+    /// `scanning_guard_registry::no_new_guard_walks_the_tree_without_excluding_itself` 打红**
+    /// （它是一条**递减棘轮**：存量清单只许变短）。
+    /// 那条判据的理由逐字：「判据在自己的登记表 / 注释 / 常量里找到自己 ⇒ **恒绿**，
+    /// audit-0805 实测五次，**五次都不是被判据变红发现的**」——
+    /// 而本模块的 `PINS` 里逐字带着那六个锚点，正是那一形。
+    /// ⇒ `scan_tree!` **按构造**摘除调用者自己那份，摘不摘得掉不靠我记得写那张表。
+    ///
+    /// ⚠ 把自己加进那张存量清单是**放宽**（`KPY7` 逐字：本件一行都不许放宽已有判据）——
+    /// 一个字都没往那边加。
+    ///
+    /// 递归这件事由 `scan_tree!` 自己保证；`no_timer_guard::daemon_sources` 头注记着
+    /// 不递归的实测后果：**目录没有扩展名于是被整个跳过**，护栏一行业务代码都没扫还全绿。
+    fn crate_sources() -> Vec<(String, String)> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        guard_core::scan_tree!(&root, &["rs"])
+            .into_iter()
+            .map(|(path, src)| {
+                let rel = path
+                    .strip_prefix(&root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                (rel, production_code(&src))
+            })
+            .collect()
+    }
 
     fn source_of(rel: &str) -> String {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -105,10 +168,59 @@ mod tests {
         }))
     }
 
+    /// ★★ `重-5`：**没有一个锚点在别处还有第二个家。**
+    ///
+    /// 上面那条只扫「锚点住的那个文件」；本条把人群扩到**它们自称的那个范围**（全 crate）。
+    /// 少了本条，「全 crate 只此一处」这句话就只是一句散文 ——
+    /// `D1` `重-5` 实测：有人在 `main.rs` 里直接构造一个 `listen::Admit::Stream`
+    /// 绕过 `admit()`，回修前那条针**看不见**。
+    #[test]
+    fn none_of_these_anchors_has_a_second_home_anywhere_in_the_crate() {
+        let corpus = crate_sources();
+        // 反空真①：语料塌了 ⇒ 下面全是 0 == 0 的空真。
+        assert!(
+            corpus.len() >= 30,
+            "全 crate 语料只有 {} 个文件（下限 30）—— 遍历坏了（多半是没递归进子目录）",
+            corpus.len()
+        );
+        let bytes: usize = corpus.iter().map(|(_, c)| c.len()).sum();
+        assert!(
+            bytes >= 150_000,
+            "全 crate 语料只有 {bytes} 字节（下限 150_000）—— 剥过头了，本条此刻在空转"
+        );
+        // 反空真②：本护栏自己**真的**被摘掉了。
+        // `scan_tree!` 是按构造摘的，本条是**复核那一刀真的落下了** ——
+        // 摘除退化成空集或匹配不上时，`PINS` 里那六个锚点会把自己各喂一口，六条一起假红。
+        assert!(
+            !corpus
+                .iter()
+                .any(|(rel, _)| rel.ends_with("single_stream_guard.rs")),
+            "本护栏自己进了语料 —— 它的 `PINS` 里逐字带着这六个锚点，那样每条都会多数出来"
+        );
+
+        for (home, needle, _file_want, crate_want, why) in PINS {
+            let per_file: Vec<(String, usize)> = corpus
+                .iter()
+                .map(|(rel, code)| (rel.clone(), code.matches(needle).count()))
+                .filter(|(_, n)| *n > 0)
+                .collect();
+            let got: usize = per_file.iter().map(|(_, n)| n).sum();
+            assert_eq!(
+                got, *crate_want,
+                "\n全 crate 里 `{needle}` 有 {got} 处，登记的是 {crate_want} 处（主场 `{home}`）。\n\
+                 分布：{per_file:?}\n\
+                 登记说法：{why}\n\
+                 ★ **这多半不是 bug，是提醒**：`K-P1 §2` 明确不做「多客户端的流」。\n\
+                 ⚠ 本条与上面那条的差别就是**人群**：那条只看主场文件，本条看全 crate ——\n\
+                 「在别处新开一条更松的路」只有本条看得见（`D1` `重-5` 的那一格）。"
+            );
+        }
+    }
+
     /// ★ 正题：三处「恰好一个客户端」的锚点**逐个按次数**对上。
     #[test]
     fn the_single_stream_shape_is_still_exactly_one_client() {
-        for (file, needle, want, why) in PINS {
+        for (file, needle, want, _crate_want, why) in PINS {
             let src = source_of(file);
             // 反空真：切出来的必须是真代码，不是一个空串。
             assert!(
@@ -135,10 +247,16 @@ mod tests {
     /// 而 0 处恰恰是「抽取器坏了」与「代码被删了」共同的样子。
     #[test]
     fn every_pin_is_a_live_anchor_not_a_zero() {
-        for (file, needle, want, _) in PINS {
+        for (file, needle, want, crate_want, _) in PINS {
             assert!(
                 *want > 0,
                 "`{file}` / `{needle}` 登记成 0 处 —— 零命中的锚点钉不住任何东西"
+            );
+            // 全 crate 那个数**不许小于**主场那个数 —— 小于就说明这两列有一列是编的。
+            assert!(
+                *crate_want >= *want,
+                "`{file}` / `{needle}`：全 crate 登记 {crate_want} 处 < 主场 {want} 处 —— \
+                 两列里必有一列不是量出来的"
             );
             assert!(
                 source_of(file).contains(needle),

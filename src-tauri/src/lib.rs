@@ -429,7 +429,44 @@ pub fn run() {
                         tracing::info!("本机后端已经在跑（启动路径不重复起）")
                     }
                     StartOutcome::Failed { reason, looked_at } => {
-                        tracing::info!("本机后端未启动: {reason}；找过 {looked_at:?}")
+                        // ★★ `K-P1-D1` `重-2`：**「对不上就出声并拒绝」那句话，
+                        //    在这条路上不许只进日志。**
+                        //
+                        // 两条起法只有手动那条会让用户看见（`daemon_control::daemon_start`
+                        // 回 `Err` ⇒ 前端 toast）。而这一条 —— 用户每天真正走的那条 ——
+                        // 回修前是 `tracing::info!`，连 `warn` 都不是。
+                        //
+                        // 触发场景不是理论：口按家目录算死，`hello_verdict` 逐字比
+                        // `DAEMON_BUILD_ID` ⇒ **升级 monitor 之后上一次脱离留下的那个
+                        // daemon 还在听同一个口** ⇒ `Stranger` ⇒ `Adopt::Refused`
+                        // ⇒ 本机后端起不来，而界面上什么都不说。
+                        // ⚠ 这是**常驻带来的新场景**：翻面之前 daemon 153ms 就死了。
+                        //
+                        // ⚠ 分两档，因为这两件事不是一回事：
+                        //   · **拒绝**（口上有东西、接不上）= 一件用户能动手解决的事 ⇒ 说到眼前；
+                        //   · 别的失败（安装包里还没有 sidecar…）= 今天的**诚实降级**，
+                        //     每次启动都弹一次就成了噪音 ⇒ 仍走日志。
+                        //   分档的依据是 `local_daemon` 里那条**只在真的被拒绝时才写下**的记录，
+                        //   **不是**去 `reason` 串里认字（那是 `KPY5` 治的那种假信号）。
+                        match local_daemon::take_start_refusal() {
+                            Some(next_step) => {
+                                tracing::warn!("本机后端未启动: {reason}；找过 {looked_at:?}");
+                                use tauri_plugin_notification::NotificationExt;
+                                if let Err(e) = app
+                                    .notification()
+                                    .builder()
+                                    .title("本机后端没起来")
+                                    .body(&next_step)
+                                    .show()
+                                {
+                                    // 通知发不出去也要留痕，别让「说出口」这件事静默失败。
+                                    tracing::warn!("本机后端拒绝的通知发不出去（{e}）：{next_step}");
+                                }
+                            }
+                            None => {
+                                tracing::info!("本机后端未启动: {reason}；找过 {looked_at:?}")
+                            }
+                        }
                     }
                 }
             }

@@ -646,8 +646,27 @@ fn spawn_sigusr1_task(slot: PokeSlot) -> tokio::task::JoinHandle<()> {
         let mut sigusr1 = match signal(SignalKind::user_defined1()) {
             Ok(s) => s,
             Err(e) => {
-                // 装不上就退化成「只有 ticker 兜底」，**说出来**而不是静默降级。
-                tracing::warn!("装不上 SIGUSR1 处理器（{e}）⇒ tmux hook 通路不可用，退回定时探测");
+                // ★★ 说出来，而且**说真话**〔用@08-27 现打逮到，`K-P1` 回修第 7 处〕。
+                //
+                // 这句话原先逐字是「⇒ tmux hook 通路不可用，退回定时探测」——
+                // 而**那条退路今天不存在**：`P5` 删掉 8s ticker 之后本进程零定时器
+                //（`observe/watcher.rs` 那条 `P0b-Y2` 头注逐字：「`P5` 删掉 8s ticker 之后
+                // daemon **零定时器**，之后每一拍都靠事件」；`no_timer_guard` 钉着它）。
+                //
+                // ★ 病根不是打错字：**`P5` 删掉了一个构件，而替那个构件说话的散文散在别处，
+                //   没人回去改。**然后它继续以权威口吻骗下一个读者 ——
+                //   「不可用但有兜底」与「不可用而且没兜底」是两件完全不同的事。
+                // ⇒ 说清**什么事会变得发现不了**（`control/tmux_hook.rs` 头注逐字：
+                //   「多个 tmux 会话里杀掉其中一个」是**唯一**没有内核事件源的场景）
+                //   与**下一步能做什么**。
+                tracing::warn!(
+                    "装不上 SIGUSR1 处理器（{e}）⇒ tmux hook 通路整条不可用，而且没有兜底：\
+                     「多个 tmux 会话里杀掉其中一个」是唯一没有内核事件源的场景\
+                     （pidfd 只看 server 进程、socket inotify 只看 server 生死），\
+                     它会一直显示成还在，直到 tmux server 自己起停或别的事件把本进程推醒；\
+                     P5 删掉 8s ticker 之后本进程零定时器，没有任何东西会自己醒过来。\
+                     下一步：把本机后端停掉再起一次（monitor 的「停」「起」），仍装不上就重开 monitor"
+                );
                 return;
             }
         };
