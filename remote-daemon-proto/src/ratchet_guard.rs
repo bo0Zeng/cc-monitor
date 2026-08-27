@@ -2,7 +2,9 @@
 //!
 //! 1. `KPY7`：**本件一行都不许放宽已有判据**（下面 `PINS` 那张表）。
 //! 2. 〔08-27 回修第 7 处〕**已经删掉的构件，散文里不许还替它说话**
-//!    （下面 `STALE_FALLBACK_PHRASES` + 那张**只许变短**的存量清单）。
+//!    （下面 [`stale_fallback_phrases`] 那个**派生集** + 那张**只许变短**的存量清单）。
+//!    ⚠ 射程只到「承诺一条已经不存在的**周期性退路**」这一族的**措辞面**，
+//!    **注释面**与「周期性**推送**」那一族都在它外面 —— 逐条写在那个派生集自己的头注里。
 //!
 //! 两条同住一个模块，是因为它们是同一种东西：**存量只许变短的账**。
 //! 第二条的来历见它自己那段头注。
@@ -158,7 +160,35 @@ mod tests {
     // 棘轮二：**已经删掉的构件，散文里不许还替它说话**〔08-27 回修第 7 处〕
     // ══════════════════════════════════════════════════════════════════
 
-    /// 「承诺一条周期性退路」的**闭集**。
+    /// 「承诺一条周期性退路」的**派生集**（措辞 × 单位 × 手段的笛卡尔积）。
+    ///
+    /// # ⚠⚠ 〔`D2` `重-D2-2`，08-27〕上一版是**三条手写字面量**，而它自称「闭集」
+    ///
+    /// `D2` 实打：把 `main.rs` 里刚改好的那句 warn **改两个字**
+    /// （「退回**定时**探测」→「退回**周期**探测」）⇒ **464 passed / 0 failed，一条都不红**；
+    /// 同一个锚点换回原样那句（`MU39`）⇒ 463/1。**两刀只差两个字，一红一不红。**
+    /// ⇒ 那三条字面量钉住的是**那三个字符串**，不是「承诺一条不存在的周期性退路」这条性质。
+    ///
+    /// ★ 本仓**已经判过这一形而且已经有解**：monitor 侧 [`crate::…frame_cadence_guard`]
+    /// （`src-tauri/src/frame_cadence_guard.rs`）头注逐字记着 —— 手写 4 条字面量的那一版被
+    /// 「同一句话换个单位、换个动词」（`8s` → 中文写法、`推` → `推一帧`）**三条判据全绿**地绕过，
+    /// ⚠ 这里**刻意不逐字抄那句话** —— 它今天是 `frame_cadence_guard` 的禁词，
+    /// 抄进来这份文件当场被它打红（08-27 实测，我就是这样被本仓自己的判据逮住的）。
+    /// 于是改成**单位 × 说法的笛卡尔积派生**（现打 114 条，带 `>= 100` 的反空真）。
+    /// **这里照它走**，不再自造第二种做法。
+    ///
+    /// # 射程：它管**措辞面**，不管**注释面**，也不是全集
+    ///
+    /// - **措辞面**：换个近义词（定时/周期/轮询/ticker/心跳/定期 × 探测/兜底/兜住/刷新/…）
+    ///   连同**连接词**（`回落`/`回落到`/`回落成`）今天落在网里 —— 那正是上一版漏掉的那一格。
+    ///   ⚠ 连接词那一段是**第二刀换来的**：只做三段笛卡尔积的那一版（264 条）被
+    ///   「回落**到**心跳刷新」一刀切过去，**464/0 一条不红**；加上连接词（984 条）之后同一刀 463/1。
+    ///   ⇒ **别把「已经是派生集」读成「关上了」** —— 换一句完全不同措辞的话它仍然看不见。
+    /// - **注释面不管**（见 `STALE_FALLBACK_BACKLOG` 下面那段）。
+    /// - **同族换说法仍不管**：`wire.rs` 那句「daemon …（或哨兵 `NO_TMUX`），**周期性推给** monitor」
+    ///   讲的是「周期性**推送**」而不是「周期性**退路**」，本条的三段式派生够不着它；
+    ///   而它是 `///` 注释 ⇒ 对本条**双重出射程**。**已交 PM 立跟进件，别读成这里管着。**
+    ///   ⇒ **比没有强，别读成证明**（`frame_cadence_guard` 头注那句同样的话）。
     ///
     /// # 病根不是打错字
     ///
@@ -174,11 +204,81 @@ mod tests {
     /// # 人群：**生产段**（`production_code`）——说清它排除了什么
     ///
     /// 本条扫的是**会到日志/用户眼前的那些话**（字符串活下来，`//` 注释被剥掉）。
-    /// ⇒ 它**管不到注释里的同一句谎**（今天已知 3 处，见下面清单的 ⚠ 段）。
-    /// 这是刻意的：注释那一族要连 `//` 一起扫，而那会把本模块自己的说明文字也喂进去
-    /// （`relay/bind_guard.rs` 头注那条：判据在自己的注释里找到自己 ⇒ 恒绿）。
+    /// ⇒ 它**管不到注释里的同一句谎**。**现打 08-27（派生集 × daemon crate 含注释，
+    /// `ratchet_guard.rs` 自摘）：命中 6 处住址，生产段 2 处（下面清单里那两条），
+    /// 注释里 4 处** —— `main.rs:651` · `observe/watcher.rs:1040` ·
+    /// `control/tmux_hook.rs:102` · `control/tmux_hook.rs:6`。
+    ///
+    /// ⚠ **不扩到注释的理由，08-27 订正过一次**（`D2` `重-D2-8`）：
+    /// 原先写的是「得先解决**自摘**」——**那条理由今天不成立**，
+    /// `crate_production_sources()` 走的 `scan_tree!` **按构造**就摘掉调用者自己那份；
+    /// 同仓 `src-tauri/src/frame_cadence_guard.rs` 更是**已经在连注释一起扫**
+    /// `remote-daemon-proto/src`（`:183` 逐字「这里**刻意不剥注释** —— 被禁的正是注释里的说法」）。
+    /// **真正的障碍是另外两条**：
+    /// ① `main.rs:651` 那条**自解释注释逐字引用了被禁短语**（它记的是「这句话原先逐字是…」）——
+    ///    连注释一起扫，写区内那一份就得进存量清单，看起来像给自己开后门；
+    /// ② `tmux_hook.rs:6` / `:102` 那两条是**历史叙述**（「此前只能靠…」「P5 之前 ticker 还在」），
+    ///    而「带没带历史限定词」是自然语言判断 —— `frame_cadence_guard` 头注量过同一格：
+    ///    试跑限定词规则**误红 7 处全是合法文本**，把限定词表调到全绿就是曲线拟合。
+    /// ⇒ **本轮仍不扩到注释，但理由是这两条，不是自摘。**
     /// **如实登记为射程之外，不假装它覆盖了。**
-    const STALE_FALLBACK_PHRASES: &[&str] = &["退回定时探测", "ticker 兜", "轮询兜"];
+    ///
+    /// # 计数口径（`brief` 第 12 条：报数就说清分母怎么数的）
+    ///
+    /// 下面两条判据的 `n` 是**命中次数**逐条累加，**不是句数** ——
+    /// 派生集里有互相包含的短语（`轮询兜` ⊂ `轮询兜住`），一句话同时命中两条会记 2。
+    /// 这个方向是**偏紧**的（清单只许变短，多记只会更早红），如实写在这里，别读成句数。
+    fn stale_fallback_phrases() -> Vec<String> {
+        // 三段式：**退向哪** × **靠什么** × **干什么**。
+        // ⚠ 第一段带**连接词**（`回落`/`回落到`/`回落成`…）——〔08-27 实测：不带连接词的那一版
+        //   被「回落**到**心跳刷新」一刀切过去，**464/0 一条不红**。这一格是那一刀换来的。〕
+        let retreats: Vec<String> = ["退回", "回落", "退化", "回退"]
+            .iter()
+            .flat_map(|r| ["", "到", "成", "为"].iter().map(move |j| format!("{r}{j}")))
+            .collect();
+        let cadences = ["定时", "周期性", "周期", "轮询", "ticker", "心跳", "定期"];
+        let means = ["探测", "轮询", "兜底", "兜住", "刷新", "扫描"];
+        // 中英之间本仓惯例带一个空格（`ticker 兜`），带与不带都收。
+        let join = |a: &str, b: &str| -> Vec<String> {
+            let mut v = vec![format!("{a}{b}")];
+            if a.ends_with(|c: char| c.is_ascii()) || b.starts_with(|c: char| c.is_ascii()) {
+                v.push(format!("{a} {b}"));
+            }
+            v
+        };
+        let mut out: Vec<String> = Vec::new();
+        for r in &retreats {
+            for c in cadences {
+                for mid in join(r, c) {
+                    for m in means {
+                        out.extend(join(&mid, m));
+                    }
+                }
+            }
+        }
+        // 「兜」那一形没有「退回」前缀（`ticker 兜` / `轮询兜` 都是这一形）。
+        for c in cadences {
+            for m in ["兜", "兜底", "兜住"] {
+                out.extend(join(c, m));
+            }
+        }
+        out.sort();
+        out.dedup();
+        // 反向自检①：派生塌了（某张表被掏空）⇒ 本护栏静默变成「什么都不禁」，而它会**照常绿**。
+        assert!(
+            out.len() >= 700,
+            "只派生出 {} 条说法 —— 四张表里有一张被掏了（08-27 实测 984 条）",
+            out.len()
+        );
+        // 反向自检②：**只加不减**（`brief` 第 13 条）—— 上一版那三条手写字面量今天必须仍在集里。
+        for old in ["退回定时探测", "ticker 兜", "轮询兜"] {
+            assert!(
+                out.iter().any(|p| p == old),
+                "派生集里没有 `{old}` —— 换派生法把旧人群丢掉了一格，那是放宽"
+            );
+        }
+        out
+    }
 
     /// **存量清单：只许变短。**`(相对 src 的路径, 还剩几处, 谁来退役它)`
     ///
@@ -215,27 +315,28 @@ mod tests {
             bytes >= 150_000,
             "语料只有 {bytes} 字节（下限 150_000）—— 剥过头了，本条此刻在空转"
         );
-        // 反空真②：那三个短语**今天真的还在某处**（全 0 = 短语表腐烂了，本条恒绿）。
+        // 反空真②：派生集里**今天真的还有命中**（全 0 = 派生塌了或语料坏了，本条恒绿）。
+        let phrases = stale_fallback_phrases();
         let total: usize = corpus
             .iter()
-            .map(|(_, c)| {
-                STALE_FALLBACK_PHRASES
-                    .iter()
-                    .map(|p| c.matches(p).count())
-                    .sum::<usize>()
-            })
+            .map(|(_, c)| phrases.iter().map(|p| c.matches(p).count()).sum::<usize>())
             .sum();
         assert!(
             total > 0,
-            "全 crate 生产段一句都没命中那三个短语 —— 短语表腐烂了（或者真的清干净了：\
-             那就把 `STALE_FALLBACK_BACKLOG` 清空并删掉本条这半个断言）"
+            "全 crate 生产段一句都没命中那 {} 条派生说法 —— 派生塌了（或者真的清干净了：\
+             那就把 `STALE_FALLBACK_BACKLOG` 清空并删掉本条这半个断言）",
+            phrases.len()
         );
 
+        let total_phrases = phrases.len();
         for (rel, code) in &corpus {
-            let n: usize = STALE_FALLBACK_PHRASES
+            // ⚠ 诊断印**命中了哪几条**，不是把近千条派生说法整张倒出来。
+            let hits: Vec<(&str, usize)> = phrases
                 .iter()
-                .map(|p| code.matches(p).count())
-                .sum();
+                .map(|p| (p.as_str(), code.matches(p.as_str()).count()))
+                .filter(|(_, k)| *k > 0)
+                .collect();
+            let n: usize = hits.iter().map(|(_, k)| k).sum();
             let allowed = STALE_FALLBACK_BACKLOG
                 .iter()
                 .find(|(f, _, _)| f == rel)
@@ -243,8 +344,9 @@ mod tests {
                 .unwrap_or(0);
             assert!(
                 n <= allowed,
-                "\n`{rel}` 的生产段里有 {n} 句在承诺一条周期性退路（存量清单登记 {allowed} 句）。\n\
-                 短语闭集：{STALE_FALLBACK_PHRASES:?}\n\
+                "\n`{rel}` 的生产段里命中 {n} 次「承诺一条周期性退路」（存量清单登记 {allowed} 次）。\n\
+                 命中的说法：{hits:?}（派生集共 {total_phrases} 条；计数按短语累加 ——\n\
+                 `轮询兜` ⊂ `轮询兜住`，一句同时命中两条会记 2，这个方向是偏紧的）\n\
                  ★ **`P5` 删掉 8s ticker 之后 daemon 零定时器**（`no_timer_guard` 钉着）——\n\
                  「不可用但有兜底」与「不可用而且没兜底」是两件完全不同的事，\n\
                  而写着前者的那句话会以权威口吻骗下一个读者。\n\
@@ -260,19 +362,17 @@ mod tests {
     #[test]
     fn every_stale_fallback_entry_is_still_real() {
         let corpus = crate_production_sources();
+        let phrases = stale_fallback_phrases();
         for (rel, want, why) in STALE_FALLBACK_BACKLOG {
             let code = corpus
                 .iter()
                 .find(|(f, _)| f == rel)
                 .map(|(_, c)| c.as_str())
                 .unwrap_or_else(|| panic!("存量清单指着 `{rel}`，而语料里没有它 —— 它搬家了"));
-            let n: usize = STALE_FALLBACK_PHRASES
-                .iter()
-                .map(|p| code.matches(p).count())
-                .sum();
+            let n: usize = phrases.iter().map(|p| code.matches(p).count()).sum();
             assert_eq!(
                 n, *want,
-                "`{rel}` 实测 {n} 句、清单登记 {want} 句。\n说法：{why}\n\
+                "`{rel}` 实测命中 {n} 次、清单登记 {want} 次。\n说法：{why}\n\
                  ★ 少了 ⇒ **有人修好了**，把这个数改小（清单只许变短）；\n\
                  多了 ⇒ 上面那条会先红。**别把数改大让今天好过。**"
             );
