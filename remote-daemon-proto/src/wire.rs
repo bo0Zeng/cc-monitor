@@ -513,14 +513,24 @@ mod tests {
     ///
     /// # 人群与豁免
     ///
-    /// 人群 = **流式那条路**（`main.rs` / `inbound.rs` / `wire.rs`）生产段里所有
-    /// `write_all(`。今天恰好两处，各自登记：
+    /// 人群 = **流式那条路**（`main.rs` / `inbound.rs` / `wire.rs` / `listen.rs`）生产段里所有
+    /// `write_all(`。今天恰好三处，各自登记：
     /// · `wire.rs::write_and_flush_hello` —— 握手前那一帧，写完才产出 `HelloFlushed`；
     ///   它按定义发生在 writer_task 起来**之前**，不存在并发。
     /// · `main.rs::write_frame` —— writer_task 的出口本体。
+    /// · `listen.rs::write_line` —— attach 握手的应答行（`K-P1` 补进人群的那一员，见下）。
     ///
     /// ⚠ `observe/*_query.rs` 那些 `stdout()` **不在人群里**：它们是一次性 CLI 子命令
     /// （打完就退，没有 writer_task），与流式路不共享那个 stdout 的生命周期。
+    ///
+    /// # ★★ `K-P1` 08-26：把 `listen.rs` 补进人群，**因为常驻正好落进一条自陈的缝里**
+    ///
+    /// `relay/mod.rs:44` 逐字记着：「**谁在同一个进程里既跑流式又跑中转，今天没有任何判据挡着**
+    /// （那条「只有一个写者」的判据人群只有三个文件，**不含 `relay/`**）」。
+    /// 常驻之后「同一个进程既听口又跑流」正好是那一形 —— 而这一次那个新文件是**流式路自己的**。
+    /// ⇒ 补人群是**收紧**：`listen.rs` 一旦多长出第二处 `write_all(`，本条当场红。
+    /// ⚠ 如实说清它**没有**顺手治的那一格：`relay/` 仍然不在人群里
+    /// （那是另立的一件，本件不碰 `relay/`）。补的是「常驻自己那条路」，不是那条自陈的全部。
     #[test]
     fn the_outbound_stream_has_exactly_one_writer() {
         const STREAMING: &[(&str, &str)] = &[
@@ -529,6 +539,12 @@ mod tests {
                 "write_and_flush_hello：握手帧，发生在 writer_task 起来之前",
             ),
             ("main.rs", "write_frame：writer_task 的出口本体"),
+            (
+                "listen.rs",
+                "write_line：attach 握手的应答行（ok / refused）。\
+                 它写的**不是**出方向帧，而且发生在 writer_task 起来之前 —— \
+                 与 write_and_flush_hello 同一个性质：那一刻这条连接上还没有第二个写者。",
+            ),
         ];
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let verb = format!("write_{}(", "all");
@@ -548,8 +564,11 @@ mod tests {
                 .and_then(|s| s.to_str())
                 .unwrap()
                 .to_string();
-            // 只看流式那条路的三个文件；`observe/*_query.rs` 是一次性子命令，理由见头注。
-            if !matches!(name.as_str(), "wire.rs" | "main.rs" | "inbound.rs") {
+            // 只看流式那条路的四个文件；`observe/*_query.rs` 是一次性子命令，理由见头注。
+            if !matches!(
+                name.as_str(),
+                "wire.rs" | "main.rs" | "inbound.rs" | "listen.rs"
+            ) {
                 continue;
             }
             let n = guard_core::production_code(&src)

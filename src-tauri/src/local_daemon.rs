@@ -68,6 +68,904 @@ pub enum StartOutcome {
     },
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// `K-P1`：常驻那条路 —— **真脱离 · 一个监听口 · 起时认得出已有实例**
+//
+// 这一段全部住在**宿主知识层**，理由是硬的（`K-P1 §0b-5` 现打）：
+// `process_group(0)` 来自 `std::os::unix::process::CommandExt`，而 `std::os::unix`
+// 在 `backend/mod.rs::the_backend_half_stays_platform_agnostic` 的禁针里
+// ⇒ **写进 `backend/` 当场红**；而「加一条平台例外」这条路被**递减棘轮**堵着
+// （`assert!(PLATFORM_EXCEPTIONS.len() <= 1)`，今天正好 1 条）。
+// ⇒ 落点只能是这里，形状照 `platform_fs::make_executable` 那个**注入**先例。
+// ══════════════════════════════════════════════════════════════════════════
+
+/// 握手那一行（hello / attach 应答）的字节上限。
+///
+/// hello 帧本机实测 ~1.1 KB（能力集 + emits + commands 三张表）。8 KiB 给了 7 倍余量，
+/// 同时把「对端一直发字节不发换行」这条路堵死 —— 这条连接的对端是**同机任何进程**，
+/// 不是我们自己的子进程，不能假设它讲道理。
+/// 超限语义：**拒收 + 出声**（不静默截断成一行「看起来对」的 JSON）。
+/// **登记住址** `src-tauri/src/byte_cap_registry.rs`（那张表默认拒绝：不登记就红）。
+pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 8 * 1024;
+
+/// daemon 那侧收「听哪个口」的 env 名。
+///
+/// ⚠ **跨 crate 字面量**：daemon 那边是 `remote-daemon-proto/src/listen.rs::ENV_PORT`。
+/// 两边漂了**不会报错** —— 起出来的 daemon 会当成「没设」而走 stdio 那条路，
+/// 于是宿主等在一个永远不会有人 bind 的口上，日志里只有一句「连不上」。
+/// 由 `the_listen_env_names_are_the_same_string_on_both_sides` 逐字对拍
+/// （形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。
+pub(crate) const LISTEN_PORT_ENV: &str = "CCM_LISTEN_PORT";
+
+/// 同上，token 那一个（daemon 侧 `listen::ENV_TOKEN`）。
+pub(crate) const LISTEN_TOKEN_ENV: &str = "CCM_LISTEN_TOKEN";
+
+/// 关掉「脱离」的逃生口。**存在的理由不是好心，是判据**：
+/// `KPY5` 要一格「起的时候**没走**脱离那条路 ⇒ `detached` 必须为假」的**负例**，
+/// 而没有这个开关，那一支在 Linux 上永远走不到 —— 那正是「只有正例的测试永远绿」那一形。
+pub const NO_DETACH_ENV: &str = "CCM_NO_DETACH";
+
+/// 监听口取值区间：IANA 的动态/私有口段 `49152..=65535`。
+///
+/// 为什么不固定一个口：**同一台机上两个用户各有各的 daemon**，固定口必然撞；
+/// 而撞了之后的处置（见 [`probe_listen_port`]）是**出声并拒绝**，不是换个口再起一个
+/// —— 换口 = 每台机 N 个 daemon 互相盖 tmux hook 的 `[50]` 槽位，比今天更糟。
+const PORT_BASE: u16 = 49152;
+const PORT_SPAN: u32 = 16384;
+
+/// `K-P1`：这台机 + 这个数据目录对应的监听口。**全仓唯一一份实现。**
+///
+/// # 为什么端口由宿主算、而不是两边各算一份
+///
+/// 「按家目录 hash 出一个口」若两边各写一份，两份就会漂 —— 本仓有现成的同族先例：
+/// `shared/ccm` 与 Rust 侧各算一份 origin，实测**分叉四处**（`daemon_control.rs` 头注那张表）。
+/// ⇒ 只留一份实现，daemon 那侧只收一个数（`listen::ENV_PORT`）。
+///
+/// # 算法：FNV-1a，**刻意不用 `DefaultHasher`**
+///
+/// `std::collections::hash_map::DefaultHasher` 的输出**跨 Rust 版本不保证稳定**
+/// （它自己的文档逐字说了）。而这个数必须在**升级 monitor 之后仍然算出同一个口**，
+/// 否则下一次启动会去连一个空口、起第二个 daemon —— 那正是本件要防的那件事。
+/// ⇒ 用一个写死的、永远不会变的 FNV-1a。
+pub fn listen_port_for(home: &str) -> u16 {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in home.as_bytes() {
+        h ^= u64::from(*b);
+        h = h.wrapping_mul(0x1000_0000_01b3);
+    }
+    PORT_BASE + ((h % u64::from(PORT_SPAN)) as u16)
+}
+
+/// monitor 自己的目录 —— token 与「谁在听」都住这里。**与 daemon 的落点同一个目录**
+/// （`~/.cc-monitor`），因为它们本来就是同一件事的两半。
+fn cc_monitor_dir() -> std::path::PathBuf {
+    dirs::home_dir()
+        .map(|h| h.join(".cc-monitor"))
+        .unwrap_or_else(|| std::path::PathBuf::from("/tmp/.cc-monitor"))
+}
+
+/// attach token 的住址。**只此一份**：下一个宿主要接上上一个宿主留下的那个 daemon，
+/// 靠的就是读回同一个串。
+fn token_path(dir: &std::path::Path) -> std::path::PathBuf {
+    dir.join("listen-token")
+}
+
+/// 「谁在听那个口」的住址。**按口分文件**：同一台机上不同数据目录各有各的 daemon。
+fn pid_path(dir: &std::path::Path, port: u16) -> std::path::PathBuf {
+    dir.join(format!("listen-{port}.pid"))
+}
+
+/// 生成（或读回）attach token。
+///
+/// # ★★ 这一格是一条**真裁决**，不是实现细节
+///
+/// 回环 TCP 上**同机任何本地进程都连得上**（含**别的用户**），Unix socket 有文件权限位
+/// 而它没有。而流那一档能发 `launch` / `kill` —— 以本账号的身份执行。
+/// 收窄只能靠一个 token；而 **daemon 只读铁律不许它自己写文件**（`readonly_guard`）
+/// ⇒ **token 只能由宿主生成、当 env 传进去**。
+/// ⇒ 权限位这件事在这里补回来：**文件本身 `0600`**，那才是真正挡住别的用户的东西。
+///
+/// # 为什么是 `create_new` 而不是每次重写
+///
+/// 每次重写 = 上一个宿主留下的那个 daemon 立刻变成「连得上但认证不过」的孤儿。
+/// ⇒ **只创建一次**，之后一律读回。
+///
+/// ⚠ 诚实边界：token 文件被人删掉 / 改掉之后，仍在跑的那个 daemon 就再也接不上了。
+/// 那时 [`probe_listen_port`] 会**出声**（不是静默复用，也不是静默再起一个）。
+fn ensure_listen_token(dir: &std::path::Path) -> Result<String, String> {
+    let p = token_path(dir);
+    if let Ok(s) = std::fs::read_to_string(&p) {
+        let t = s.trim().to_string();
+        if !t.is_empty() {
+            return Ok(t);
+        }
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))?;
+    let token = fresh_token();
+    // `create_new` = O_EXCL：两个 monitor 同时起时只有一个写得成，另一个回头读它写的那份。
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    // ★ 权限位就是这一格买的东西 —— 少了它，同机别的用户读得到 token，
+    //   而 token 是这条回环口上**唯一**的门。
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    match opts.open(&p) {
+        Ok(mut f) => {
+            use std::io::Write;
+            f.write_all(token.as_bytes())
+                .map_err(|e| format!("写 {} 失败: {e}", p.display()))?;
+            Ok(token)
+        }
+        // 竞态：别人刚写完 ⇒ 读它那份（**不是**覆盖它）。
+        Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => std::fs::read_to_string(&p)
+            .map(|s| s.trim().to_string())
+            .map_err(|e| format!("读 {} 失败: {e}", p.display())),
+        Err(e) => Err(format!("建 {} 失败: {e}", p.display())),
+    }
+}
+
+/// 造一个新 token。
+///
+/// ⚠ **没有引入 `rand`**：本仓的依赖面是有代价的（`C18` 依赖树零 C / 二进制量级）。
+/// 取的熵是三样：进程 id · 纳秒时钟 · 一个每次调用都变的进程内计数器。
+/// 这**不是密码学随机数**，如实登记 —— 它挡的是「同机另一个用户想连上这个口」，
+/// 而那需要猜中一个 128 位十六进制串；它挡不住能读到这台机内存或 `/proc` 的人，
+/// 而那种人本来就已经能以你的身份跑东西了。
+fn fresh_token() -> String {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
+    let a = nanos ^ (u64::from(std::process::id()) << 32);
+    let b = nanos
+        .rotate_left(17)
+        .wrapping_mul(0x9e37_79b9_7f4a_7c15)
+        ^ SEQ.fetch_add(1, Ordering::SeqCst).wrapping_mul(0xff51_afd7_ed55_8ccd);
+    format!("{a:016x}{b:016x}")
+}
+
+/// 记下「谁在听那个口」。**只有起它的那个宿主写**。
+///
+/// 它买的是**一件事**：下一个宿主接上这个 daemon 之后，「停」按钮还按得动
+/// （见 [`stop_local_backend`]）。没有它，接管者手里只有一条 socket，
+/// 而 socket 关掉不会让对面停 —— 那时「停」就成了一句骗人的话。
+///
+/// ⚠ 它**不是**真相源：「那个 daemon 还在不在」的真相源永远是**那个口连不连得上**。
+/// 这里记的 pid 只在**杀它**那一步用，且用之前还要过一道 `/proc/<pid>/exe` 的身份核对。
+/// ⚠ **两行，不是一行**：pid **和**它跑的那个二进制。
+/// 只记 pid 的话，接管者杀它之前那道身份核对就没有对照物 ⇒ 只能 fail-open 地杀
+/// —— 而 pid 会被复用，那是不可逆的。**两个值一起记，核对才有意义。**
+fn write_listen_pid(
+    dir: &std::path::Path,
+    port: u16,
+    pid: u32,
+    bin: &std::path::Path,
+) -> Result<(), String> {
+    std::fs::create_dir_all(dir).map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))?;
+    let p = pid_path(dir, port);
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    use std::io::Write;
+    let body = format!("{pid}\n{}\n", bin.display());
+    opts.open(&p)
+        .and_then(|mut f| f.write_all(body.as_bytes()))
+        .map_err(|e| format!("写 {} 失败: {e}", p.display()))
+}
+
+/// 解那两行。**纯函数**，所以「只有一行」「pid 不是数字」这些残缺形都测得到 ——
+/// 这个文件是上一个 monitor 写的，它可能被中途打断、可能是旧版本写的。
+pub(crate) fn parse_listen_owner(body: &str) -> Option<(u32, std::path::PathBuf)> {
+    let mut lines = body.lines();
+    let pid: u32 = lines.next()?.trim().parse().ok()?;
+    if pid == 0 {
+        return None;
+    }
+    let bin = lines.next()?.trim();
+    if bin.is_empty() {
+        return None;
+    }
+    Some((pid, std::path::PathBuf::from(bin)))
+}
+
+fn read_listen_owner(dir: &std::path::Path, port: u16) -> Option<(u32, std::path::PathBuf)> {
+    parse_listen_owner(&std::fs::read_to_string(pid_path(dir, port)).ok()?)
+}
+
+/// 一条 hello 行的裁决。**纯函数**，所以三张脸都测得到。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum HelloVerdict {
+    /// 是我们的 daemon：build_id 与数据目录都对得上。
+    Ours,
+    /// 有人占着这个口，但**不是**我们要找的那个。带上说得清的理由。
+    Stranger(String),
+}
+
+/// 判那一行 hello。
+///
+/// ⚠ **`EADDRINUSE` / 连得上，只说明「有人占着这个口」，不说明占着它的是我们的 daemon。**
+/// ⇒ 连上去**先读 hello 比对**，对不上就出声并拒绝，**不许静默复用**
+/// （`P2t §1` 第 3 问「陈旧端点怎么识别」问的正是这一格）。
+pub(crate) fn hello_verdict(line: &str, want_build: &str, want_home: &str) -> HelloVerdict {
+    let Some(frame) = crate::ssh_source::parse_frame(line) else {
+        return HelloVerdict::Stranger(format!(
+            "这个口上的第一行不是一帧合法的 daemon 帧（{} 字节）",
+            line.len()
+        ));
+    };
+    let crate::ssh_source::InboundFrame::Hello {
+        build_id,
+        claude_dir,
+        ..
+    } = &frame
+    else {
+        return HelloVerdict::Stranger("这个口的首帧不是 hello".into());
+    };
+    if build_id != want_build {
+        return HelloVerdict::Stranger(format!(
+            "这个口上的 daemon 是 build_id={build_id}，而本 monitor 期望 {want_build}"
+        ));
+    }
+    if claude_dir != want_home {
+        return HelloVerdict::Stranger(format!(
+            "这个口上的 daemon 看的是 {claude_dir}，而本 monitor 看的是 {want_home}"
+        ));
+    }
+    HelloVerdict::Ours
+}
+
+/// 探那个口上有没有一个**我们的** daemon。
+pub(crate) enum Probe {
+    /// 没人在听。
+    Nobody,
+    /// 是我们的那个。把连接与它的 hello 行原样交出来（**别再连第二次** ——
+    /// 第二次连的可能已经是另一个进程了）。
+    Ours(std::net::TcpStream, String),
+    /// 有人占着，但不是我们的。**出声**。
+    Stranger(String),
+}
+
+/// 一次握手的读写期限。
+///
+/// 它**不是定时器**：`SO_RCVTIMEO`/`SO_SNDTIMEO` 说的是「**这一次**阻塞的读写最多等多久」，
+/// 有字节就立刻返回、没字节就报错返回，不让任何线程自己醒来、不驱动任何循环。
+/// 形状与理由与 `relay/server.rs::DOWNSTREAM_DEADLINE` 逐字同源。
+/// 值给 3 秒：对端**就在本机**，一行 ~1 KB 的 hello 在回环上是微秒级的事；
+/// 3 秒比它高五六个量级，而它同时保证「起 monitor 时不会被一个哑口卡住」。
+const HANDSHAKE_DEADLINE: std::time::Duration = std::time::Duration::from_millis(3_000);
+
+fn probe_listen_port(port: u16, want_home: &str) -> Probe {
+    let addr = std::net::SocketAddr::new(
+        std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST),
+        port,
+    );
+    let sock = match std::net::TcpStream::connect_timeout(&addr, HANDSHAKE_DEADLINE) {
+        Ok(s) => s,
+        // 连不上 = 没人在听。这是**最常见**的那一格（第一次起 monitor）。
+        Err(_) => return Probe::Nobody,
+    };
+    if let Err(e) = sock
+        .set_read_timeout(Some(HANDSHAKE_DEADLINE))
+        .and_then(|()| sock.set_write_timeout(Some(HANDSHAKE_DEADLINE)))
+    {
+        return Probe::Stranger(format!("装不上握手期限（{e}）⇒ 宁可拒绝，也不挂在这儿"));
+    }
+    let line = match read_handshake_line(&sock) {
+        Ok(l) => l,
+        Err(e) => return Probe::Stranger(format!("{port} 口连得上，但读不到 hello：{e}")),
+    };
+    match hello_verdict(&line, env!("DAEMON_BUILD_ID"), want_home) {
+        HelloVerdict::Ours => Probe::Ours(sock, line),
+        HelloVerdict::Stranger(why) => Probe::Stranger(why),
+    }
+}
+
+/// 从一条 socket 上读**一行**，字节数有上限。
+///
+/// 逐字节读：这条握手只有一两行、每行 ~1 KB，而**带缓冲的读会读过头** ——
+/// 读过头的那些字节留在 `BufReader` 里，而这条 socket 之后要原样交给流那一档，
+/// 那几个字节就凭空丢了（第一版就是这么写的）。
+/// 形状抄 `relay/http1::read_head` 的 `r.read(&mut one)?`。
+fn read_handshake_line(mut sock: &std::net::TcpStream) -> Result<String, String> {
+    use std::io::Read;
+    let mut out: Vec<u8> = Vec::new();
+    let mut one = [0u8; 1];
+    loop {
+        match sock.read(&mut one) {
+            Ok(0) => return Err("对端关了连接（EOF）".into()),
+            Ok(_) => {
+                if one[0] == b'\n' {
+                    return String::from_utf8(out).map_err(|e| format!("这一行不是 UTF-8：{e}"));
+                }
+                out.push(one[0]);
+                if out.len() > LISTEN_HANDSHAKE_LINE_CAP {
+                    // **拒收 + 出声**，不静默截断成一行「看起来对」的 JSON。
+                    return Err(format!(
+                        "握手行超过 {LISTEN_HANDSHAKE_LINE_CAP} 字节还没换行 ⇒ 拒收"
+                    ));
+                }
+            }
+            Err(ref e) if e.kind() == std::io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(format!("读握手行失败：{e}")),
+        }
+    }
+}
+
+/// daemon 那侧「这条流已经有人占着」的拒绝理由。
+///
+/// ⚠ **跨 crate 字面量**（daemon 侧 `listen::REFUSE_BUSY`）。它与另外两个 env 名一起
+/// 由 `the_listen_env_names_are_the_same_string_on_both_sides` 逐字对拍。
+/// 漂了的后果很具体：「上一个 monitor 刚退、对面还没反应过来」会被当成一个
+/// **不可恢复**的拒绝，于是新 monitor 直接报失败 —— 而它本来只要再等 20 毫秒。
+pub(crate) const REFUSE_BUSY_REASON: &str = "stream-busy";
+
+/// attach 被拒的两张脸。**分开是因为处置不同**：
+/// 「占着」会自己好（上一个宿主的那条流正在断），别的不会。
+enum AttachErr {
+    /// 那一条流此刻被占着 —— **可重试**。
+    Busy(String),
+    /// 别的（token 不对 / 协议对不上 / 写不出去）—— **不重试**，重试只是把坏消息拖晚。
+    Fatal(String),
+}
+
+/// 把 token 递过去，换一句「可以」。
+fn send_attach(sock: &std::net::TcpStream, token: &str) -> Result<(), AttachErr> {
+    use std::io::Write;
+    let mut w = sock;
+    let req = format!("{{\"attach\":\"{token}\"}}\n");
+    w.write_all(req.as_bytes())
+        .and_then(|()| w.flush())
+        .map_err(|e| AttachErr::Fatal(format!("发 attach 请求失败：{e}")))?;
+    let line = read_handshake_line(sock).map_err(AttachErr::Fatal)?;
+    let v: serde_json::Value = serde_json::from_str(line.trim())
+        .map_err(|e| AttachErr::Fatal(format!("attach 应答不是 JSON（{e}）：{line}")))?;
+    match v.get("attach").and_then(|x| x.as_str()) {
+        Some("ok") => Ok(()),
+        // 对面**出声地**拒了 —— 把它的理由原样带上来，别翻译成一句更含糊的话。
+        Some("refused") => {
+            let reason = v.get("reason").and_then(|x| x.as_str()).unwrap_or("?");
+            let msg = format!("对面拒绝了 attach（reason={reason}）");
+            if reason == REFUSE_BUSY_REASON {
+                AttachErr::Busy(msg)
+            } else {
+                AttachErr::Fatal(msg)
+            }
+            .into_err()
+        }
+        _ => Err(AttachErr::Fatal(format!("看不懂的 attach 应答：{line}"))),
+    }
+}
+
+impl AttachErr {
+    fn into_err(self) -> Result<(), Self> {
+        Err(self)
+    }
+
+    fn message(&self) -> &str {
+        match self {
+            AttachErr::Busy(m) | AttachErr::Fatal(m) => m,
+        }
+    }
+}
+
+/// 起一个**真脱离**的 daemon。
+///
+/// 三样一起才叫脱离，缺一样都不算：
+/// - **`process_group(0)`** —— 否则终端里 Ctrl-C 的 SIGINT 会打到整个前台进程组，
+///   monitor 和它一起走。
+/// - **stdio 全 null** —— 今天它死掉的**真正原因**就在这儿：`Stdio::piped()` 之后
+///   宿主一退读端就断，它在 **153 毫秒**内 broken-pipe 退出（`daemon_policy.rs` 头注实测）。
+/// - **协议改走监听口** —— 管子没了就得有别的说话方式，那正是 `listen::ENV_PORT`。
+///
+/// ⚠ **`process_group` 不改变父子关系** ⇒ **不 `wait` 就留僵尸**
+/// （`launch.rs:196-198` 头注逐字）。收尸走 [`reap_detached`]，由「流断了」这个**事件**触发，
+/// 不是轮询。monitor 自己退出之后那个进程被 init 接管，由 init 收 —— 那一格不归我们。
+#[cfg(target_os = "linux")]
+fn spawn_detached(
+    bin: &std::path::Path,
+    port: u16,
+    token: &str,
+    extra_env: &[(String, String)],
+) -> Result<std::process::Child, String> {
+    use std::os::unix::process::CommandExt;
+    let mut cmd = std::process::Command::new(bin);
+    for (k, v) in extra_env {
+        cmd.env(k, v);
+    }
+    cmd.arg("--tail-only")
+        // ★★ **`TMUX` 一律不继承**〔08-11 事故订正，与 `supervise_with_stdio` 同一条〕：
+        //   tmux 客户端在 `TMUX` 有值时按它给的 socket 走，`TMUX_TMPDIR` 完全不起作用。
+        //   漏这一条，被起的 daemon 会去改「monitor 恰好从哪个 tmux 里被启动」的那个 server。
+        .env_remove("TMUX")
+        .env(LISTEN_PORT_ENV, port.to_string())
+        .env(LISTEN_TOKEN_ENV, token)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .process_group(0);
+    cmd.spawn()
+        .map_err(|e| format!("起脱离的 daemon 失败（{}）：{e}", bin.display()))
+}
+
+#[cfg(not(target_os = "linux"))]
+fn spawn_detached(
+    bin: &std::path::Path,
+    _port: u16,
+    _token: &str,
+    _extra_env: &[(String, String)],
+) -> Result<std::process::Child, String> {
+    Err(format!(
+        "本平台没有脱离那条路（{}）—— 如实降级，不假装起了一个常驻的",
+        bin.display()
+    ))
+}
+
+/// 脱离之后手里剩下的东西。
+pub struct DetachedHandle {
+    /// 那个 daemon 的 pid。**0 表示不知道**（接管来的、而上一次那个 monitor 没记下来）。
+    pid: u32,
+    /// **我们起的**那个 `Child`；接管别人起的那个时是 `None`。
+    ///
+    /// 它同时是收尸的凭据 —— `process_group` 不改父子关系，不 `wait` 就留僵尸。
+    /// ⚠ **「是不是我们起的」不另存一个 `bool`**：那样同一个事实就有了两份表示，
+    /// 而两份表示会漂（本区最贵的那一族：「一个值装了两件事」的近亲）。
+    /// 要问这句话就问 `child.is_some()`。
+    child: Option<std::process::Child>,
+    /// 那个二进制的路径。杀它之前拿它核对 `/proc/<pid>/exe`（防 pid 复用误伤）。
+    /// 接管来的那个从 pid 文件的第二行读回；读不回就是空的，而空的**不许杀**。
+    bin: std::path::PathBuf,
+}
+
+/// `K-P1`：**常驻那条路的句柄**。
+///
+/// ⚠ **锁序：它只在持有 [`LOCAL_BACKEND`] 的锁时才取。**
+/// 两个静态量各有各的锁，若分别取就会在「查」与「存」之间开一个窗口 ——
+/// 而那个窗口正是 `start_local_backend` 头注花了一整段治的那件事（双起）。
+/// ⇒ `LOCAL_BACKEND` 的锁是**两条路共用的那道门**，本表只在门内动。
+pub static DETACHED: std::sync::Mutex<Option<DetachedHandle>> = std::sync::Mutex::new(None);
+
+/// `KPY5` 的真相源：**起它的时候走没走脱离那条路**。
+///
+/// ⚠ **不许拿 `channel` 或 `pid` 反推** —— 那正是 `P2d §0a` 翻掉的 `SSH_CONNECTION` 那一形
+/// （假信号不会报错，它只是**一直说是**，而在只有正例的测试里永远绿）。
+/// 这里读的是一条**只在真的走过那条路时才会被写下**的记录。
+pub fn is_detached() -> bool {
+    DETACHED
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false)
+}
+
+/// 这台机今天走不走脱离那条路。**纯函数**，两个入参都是外面喂进来的 ——
+/// 否则「关掉了」那一支在 Linux 上永远走不到（`KPY5` 要的负例就没了）。
+pub(crate) fn detach_wanted(is_linux: bool, no_detach_env: Option<&str>) -> bool {
+    // 空串按「没设」算：shell 里 `export CCM_NO_DETACH=` 是常态。
+    is_linux && !no_detach_env.is_some_and(|v| !v.trim().is_empty())
+}
+
+/// 收尸。**由「流断了」这个事件触发，不是轮询。**
+///
+/// `process_group` 不改变父子关系 ⇒ 我们起的那个进程死掉之后会变成 `Z`，
+/// 直到有人 `wait` 它。断言必须落在**进程表**上而不是落在我们自己的事件上
+/// —— `KPY3` 钉的就是这一格。
+/// ⚠⚠ **先把 `Child` 从锁里 `take()` 出来，再在锁外等** —— 这不是讲究，是一次实测死锁。
+///
+/// 〔`K-P1` e2e 08-26 实测〕第一版是「持着 `DETACHED` 的锁调 `c.wait()`」，
+/// 而「流断了」**不等于**「那个进程死了」：daemon 现在也会在**它自己**读到 EOF 时主动收掉
+/// 这一条流（那是上一格修的东西）。于是 `wait()` 会等一个**还活着**的进程，
+/// **一直持着那把锁** ⇒ 下一次 `daemon_status` / `daemon_start` / `daemon_stop` 全部卡死。
+/// 实测形状：测试线程 `futex_do_wait`、一个 tokio worker `do_wait`，200 秒不动。
+/// ⇒ 与 `supervise_with_stdio` 头注记的是**同一条**（那边逐字写过「guard 活在闭包里
+/// ⇒ `wait()` 整段都持着锁，而 `stop()` 第一件事就是取那把锁」）—— 本仓第二次。
+///
+/// 收尸落在一条**专用线程**上（形状抄 `launch.rs:261` 那条），
+/// 它随子进程结束而结束；`Child` 被取走之后句柄里只剩 pid + 二进制路径，
+/// 「停」那一步照样有凭据（走 [`kill_adopted`] 的身份核对）。
+fn reap_detached() {
+    let taken = {
+        let mut g = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
+        g.as_mut().and_then(|h| h.child.take())
+    };
+    let Some(mut c) = taken else { return };
+    std::thread::Builder::new()
+        .name("ccm-detached-reaper".into())
+        .spawn(move || {
+            // `process_group` 不改变父子关系 ⇒ 不 `wait` 就留僵尸（`launch.rs:198` 逐字）。
+            let _ = c.wait();
+        })
+        .map(|_| ())
+        .unwrap_or_else(|e| tracing::warn!("起不来收尸线程（{e}）⇒ 那个 pid 会留成僵尸"));
+}
+
+/// 把一条已经认证过的连接接成入方向通道。
+///
+/// # 它与 `local_backend::local_stdio_consumer` 是同一件事的两种载体
+///
+/// 那一份吃 `ChildStdin`/`ChildStdout`，这一份吃一条 socket 的两半。
+/// **复用的是纯零件**（`parse_frame` · `DaemonHello::from_hello_frame` ·
+/// `park_owned_writer` · `read_capped_line`），没有把一个绑传输的循环硬掰成泛型 ——
+/// 那是 `local_stdio_consumer` 头注自己给的分寸。
+fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), String> {
+    let frame = crate::ssh_source::parse_frame(hello_line)
+        .ok_or_else(|| "hello 行解析不出帧".to_string())?;
+    let witness = crate::inbound_client::DaemonHello::from_hello_frame(&frame)
+        .ok_or_else(|| "首帧不是 hello ⇒ 拿不到见证，按契约不许登记通道".to_string())?;
+    sock.set_nonblocking(true)
+        .map_err(|e| format!("socket 转非阻塞失败：{e}"))?;
+    // 期限只属于**握手**那一段；进了流之后这条连接是长连接，装着期限反而会把它掐断。
+    let _ = sock.set_read_timeout(None);
+    let _ = sock.set_write_timeout(None);
+    let (rd, wr) = tauri::async_runtime::block_on(async move {
+        tokio::net::TcpStream::from_std(sock).map(tokio::net::TcpStream::into_split)
+    })
+    .map_err(|e| format!("socket 转 tokio 失败：{e}"))?;
+    let client = crate::inbound_client::park_owned_writer(wr).into_client(witness);
+    crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
+    tracing::info!(
+        "本机入方向通道已登记（常驻载体）：origin={}",
+        crate::inbound_client::LOCAL_ORIGIN
+    );
+    tauri::async_runtime::spawn(async move {
+        use crate::ssh_source::{CappedLine, DAEMON_FRAME_LINE_CAP};
+        let mut reader = tokio::io::BufReader::new(rd);
+        let mut buf: Vec<u8> = Vec::new();
+        loop {
+            match crate::ssh_source::read_capped_line(&mut reader, &mut buf, DAEMON_FRAME_LINE_CAP)
+                .await
+            {
+                Ok(CappedLine::Eof) => break,
+                Ok(CappedLine::TooLong(bytes)) => {
+                    // 丢弃 + 带身份报告，绝不静默（定框 E4）。
+                    tracing::warn!("本机常驻后端发来一行 {bytes} 字节，超过单行上限；整行丢弃");
+                    continue;
+                }
+                Ok(CappedLine::Line) => {}
+                Err(e) => {
+                    tracing::warn!("本机常驻后端读错误（{e}）；按流结束处理");
+                    break;
+                }
+            }
+            let Ok(line) = std::str::from_utf8(&buf) else {
+                continue;
+            };
+            let Some(f) = crate::ssh_source::parse_frame(line) else {
+                continue;
+            };
+            // 本机的 tmux 帧也要收（`P3` 刀 1）—— 理由与前置条件写在
+            // `local_backend::absorb_local_frame` 的头注上，这里不再抄一份散文。
+            if let crate::ssh_source::InboundFrame::TmuxSessions { raw, .. } = &f {
+                crate::ssh_source::record_tmux_raw(crate::inbound_client::LOCAL_ORIGIN, raw.clone());
+            }
+        }
+        // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client；那份陈旧的 tmux 原文也要清
+        // （留着它 `find_tmux_origin_for_sid` 仍会回 `Some(<local>)` ⇒ 那个永远消不掉的灰点）。
+        crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
+        crate::ssh_source::forget_tmux_raw(crate::inbound_client::LOCAL_ORIGIN);
+        // 收尸：`process_group` 不改父子关系，不 `wait` 就留 `Z`。**事件驱动，不是轮询。**
+        reap_detached();
+        tracing::info!("本机常驻后端的流结束（EOF）");
+    });
+    Ok(())
+}
+
+/// 走常驻那条路的结局。
+enum DetachOutcome {
+    /// 这条路今天不走（平台不支持 / 被 `CCM_NO_DETACH` 关掉）⇒ 回落今天那条。
+    NotTaken,
+    /// 走了，结局在里面（含失败 —— 失败也不回落，见下）。
+    Done(StartOutcome),
+}
+
+/// 常驻那条路的正题：**认得出已有实例 ⇒ 接上它；没有 ⇒ 起一个脱离的。**
+///
+/// 两个入参都是**注入**，理由各不相同：
+/// - `resolve_bin`：生产路径喂 [`resolve_daemon_bin`]（exe 旁 → 内嵌释放）；
+///   而判据喂一个现成的二进制 —— 否则那条真进程判据只能去动用户真实的 `~/.cc-monitor`。
+/// - `extra_env`：生产路径喂**空表**；e2e 用它塞一条**前面挂着 shim 的 PATH**。
+///   ⚠ 这一条不是方便，是 `C7i` 红线：被起的 daemon 一上来就往它连得到的 tmux server
+///   装三条全局 hook、固定槽位 `[50]`、**没有关掉它的开关**。不隔离就是去改用户真实
+///   tmux server 的状态（08-11 那次事故打没了用户 9 个真实会话）。
+fn start_detached(
+    resolve_bin: &dyn Fn() -> Result<std::path::PathBuf, (String, Vec<std::path::PathBuf>)>,
+    extra_env: &[(String, String)],
+) -> DetachOutcome {
+    if !detach_wanted(
+        cfg!(target_os = "linux"),
+        std::env::var(NO_DETACH_ENV).ok().as_deref(),
+    ) {
+        return DetachOutcome::NotTaken;
+    }
+    let Some(home) = crate::paths::resolve_claude_dir() else {
+        return DetachOutcome::NotTaken;
+    };
+    let home = home.to_string_lossy().into_owned();
+    let port = listen_port_for(&home);
+    let dir = cc_monitor_dir();
+    let token = match ensure_listen_token(&dir) {
+        Ok(t) => t,
+        Err(e) => {
+            return DetachOutcome::Done(StartOutcome::Failed {
+                reason: format!("拿不到 attach token（{e}）⇒ 拒绝起一个不设防的口"),
+                looked_at: vec![token_path(&dir)],
+            })
+        }
+    };
+
+    // ── ① 起时先认已有实例 ────────────────────────────────────────────
+    //
+    // ★★ 这一条是硬的：daemon 一起来就**无条件**往它连得到的 tmux server 装三条全局 hook、
+    //    **固定槽位 `[50]`**、**没有关掉它的开关**，载荷里烤着那一个 daemon 的 pid+starttime。
+    //    ⇒ **脱离而不认已有实例 = 每台机 N 个 daemon 互相盖槽位，比今天更糟。**
+    match adopt_existing(port, &home, &token) {
+        Adopt::Attached => {
+            let (pid, bin) = read_listen_owner(&dir, port).unwrap_or((0, std::path::PathBuf::new()));
+            let mut g = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
+            *g = Some(DetachedHandle {
+                pid,
+                child: None,
+                bin,
+            });
+            return DetachOutcome::Done(StartOutcome::AlreadyRunning);
+        }
+        // ⚠ **不静默复用，也不静默再起一个** —— 两条都会让状态更糟。
+        Adopt::Refused(why) => {
+            return DetachOutcome::Done(StartOutcome::Failed {
+                reason: format!(
+                    "{port} 口上有东西，但接不上它：{why}。\
+                     **不会**再起第二个、也**不会**换个口 —— 那正是「每台机 N 个 daemon\
+                     互相盖 tmux hook 的 [50] 槽位」的入口。要重来请先把那个进程停掉"
+                ),
+                looked_at: vec![pid_path(&dir, port), token_path(&dir)],
+            });
+        }
+        Adopt::None => {}
+    }
+
+    // ── ② 没人在听 ⇒ 起一个脱离的 ─────────────────────────────────────
+    let bin = match resolve_bin() {
+        Ok(b) => b,
+        Err((reason, looked_at)) => {
+            return DetachOutcome::Done(StartOutcome::Failed { reason, looked_at })
+        }
+    };
+    let child = match spawn_detached(&bin, port, &token, extra_env) {
+        Ok(c) => c,
+        Err(e) => {
+            return DetachOutcome::Done(StartOutcome::Failed {
+                reason: e,
+                looked_at: vec![bin],
+            })
+        }
+    };
+    let pid = child.id();
+    if let Err(e) = write_listen_pid(&dir, port, pid, &bin) {
+        // 记不下不算失败：那只影响「停」按钮，不影响它跑起来。**说出来**而不是静默。
+        tracing::warn!("记不下「谁在听 {port}」（{e}）⇒ 下一个 monitor 接上它之后停不了它");
+    }
+    {
+        let mut g = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
+        *g = Some(DetachedHandle {
+            pid,
+            child: Some(child),
+            bin: bin.clone(),
+        });
+    }
+    // 起来了之后自己连上去 —— **走与「接管」完全同一条路**，不另写一份。
+    match probe_and_attach_after_spawn(port, &home, &token) {
+        Ok(()) => DetachOutcome::Done(StartOutcome::Started(bin)),
+        Err(e) => {
+            // 起来了但连不上 ⇒ 这不是「起了」。把它收掉，别留一个谁都够不着的进程。
+            stop_detached_locked();
+            DetachOutcome::Done(StartOutcome::Failed {
+                reason: format!("脱离的 daemon 起来了却连不上它（{e}）⇒ 已把它收掉"),
+                looked_at: vec![bin],
+            })
+        }
+    }
+}
+
+/// 等刚起的那个 daemon 把口 bind 上 —— **次数与间隔都有上限**。
+///
+/// # 为什么非等不可（以及为什么 `connect_timeout` 不管用）
+///
+/// `spawn()` 返回时子进程可能还没跑到 `bind`。而 `connect_timeout` 在**没人在听**的口上
+/// 拿到的是 `ECONNREFUSED`，**内核立刻返回**，它压根不等 —— 我第一版把这一格写反了，
+/// 注释里写着「让内核等」，实测 0.00 秒就红了。**读数是这样来的，不是推的。**
+///
+/// # 它是 `wait-for-condition`，不是节拍器
+///
+/// 等的是**一次性条件**（那个口起没起来），有明确上限（`LISTEN_WAIT_TRIES` ×
+/// `LISTEN_WAIT_INTERVAL_MS` ≈ 1 秒），等到就走、等不到就如实报错，**不无限重试**。
+/// **登记住址** `src-tauri/src/rust_timer_registry.rs`（那张表按类别收，`wait-for-condition`
+/// 这一类要求「说清等什么、上限是多少」）。
+///
+/// ⚠ 上限为什么是这个量级：对端**就在本机**，从 `execve` 到 `bind` 是毫秒级；
+/// 1 秒高两个量级。给得再大只会让「那个进程起来就崩了」这一格拖着不报错。
+const LISTEN_WAIT_TRIES: u32 = 50;
+const LISTEN_WAIT_INTERVAL_MS: u64 = 20;
+
+/// 接管已有实例的结果。
+enum Adopt {
+    /// 那个口上没人 —— 该起一个了。
+    None,
+    /// 接上了。
+    Attached,
+    /// 有东西，但接不上。**出声**，绝不静默复用、也绝不换个口再起一个。
+    Refused(String),
+}
+
+/// 认已有实例并接上它。
+///
+/// # 只有两支会重试，而且理由不一样
+///
+/// - **口上还没人**（`Probe::Nobody`）：只在「刚亲手 spawn 完」那条路上会遇到
+///   （`accept_new` = true）。接管路上遇到它就是「真没人」，立刻回 [`Adopt::None`]。
+/// - **那一条流被占着**（`stream-busy`）：**上一个 monitor 刚退、对面还没反应过来**。
+///   这一格是真的：daemon 那侧要等 `writer_task` 拿到写错误、`done` 信号回到 accept 循环，
+///   才会把那张牌放回去。⇒ 有界重试。**不重试它，用户会看到「换台电脑重开 monitor 就没后端了」。**
+///
+/// 别的一律不重试 —— token 不对、口上是别人，重试只是把一个确定的坏消息拖晚。
+fn adopt_existing(port: u16, home: &str, token: &str) -> Adopt {
+    adopt_with(port, home, token, false)
+}
+
+/// 刚起完之后连上去。**与接管走同一条路**，差别只有一句：
+/// 这一次「没人在听」是**还没 bind 完**（我们刚亲手起了一个），要等。
+fn probe_and_attach_after_spawn(port: u16, home: &str, token: &str) -> Result<(), String> {
+    match adopt_with(port, home, token, true) {
+        Adopt::Attached => Ok(()),
+        Adopt::Refused(why) => Err(why),
+        Adopt::None => Err(format!("{port} 口上始终没人在听 —— 多半是它起来就崩了")),
+    }
+}
+
+fn adopt_with(port: u16, home: &str, token: &str, wait_for_bind: bool) -> Adopt {
+    let mut last = String::from("那个口上没人");
+    for _ in 0..LISTEN_WAIT_TRIES {
+        match probe_listen_port(port, home) {
+            Probe::Stranger(why) => return Adopt::Refused(why),
+            Probe::Nobody => {
+                if !wait_for_bind {
+                    return Adopt::None;
+                }
+                last = format!("{port} 口上还没人在听");
+            }
+            Probe::Ours(sock, hello) => match send_attach(&sock, token) {
+                Ok(()) => {
+                    return match attach_stream(sock, &hello) {
+                        Ok(()) => Adopt::Attached,
+                        Err(e) => Adopt::Refused(e),
+                    }
+                }
+                Err(AttachErr::Busy(m)) => last = m,
+                Err(e) => return Adopt::Refused(e.message().to_string()),
+            },
+        }
+        std::thread::sleep(std::time::Duration::from_millis(LISTEN_WAIT_INTERVAL_MS));
+    }
+    Adopt::Refused(format!(
+        "{last}（等了 {LISTEN_WAIT_TRIES}×{LISTEN_WAIT_INTERVAL_MS}ms 还是这样）"
+    ))
+}
+
+/// 找那个二进制：**先找 exe 旁边，再释放内嵌的那份**。
+///
+/// ⚠⚠ **这个顺序与 `local_backend::start_or_extract` 的必须一样**，
+/// 而它们是两份实现（那一份把「找」与「监护」焊在一起，常驻这条路不要监护那半）。
+/// 两份实现就会漂 ⇒ 由 `the_two_resolution_paths_still_agree_on_the_order` 逐字对拍。
+fn resolve_daemon_bin(
+    extract_dir: &std::path::Path,
+    embedded: Option<(&str, &[u8])>,
+) -> Result<std::path::PathBuf, (String, Vec<std::path::PathBuf>)> {
+    let beside = local_backend::resolve_beside_this_exe(env!("CCM_TARGET_TRIPLE"));
+    match beside {
+        Resolved::Found(p) => Ok(p),
+        Resolved::Missing { reason, looked_at } => {
+            let Some((build_id, bytes)) = embedded else {
+                return Err((reason, looked_at));
+            };
+            local_backend::extract_embedded_to(
+                extract_dir,
+                build_id,
+                bytes,
+                // `backend-split` 的 C10：平台知识由宿主注入。
+                &crate::platform_fs::make_executable,
+            )
+            .map_err(|e| (format!("exe 旁无 sidecar，且释放内嵌 daemon 失败: {e}"), looked_at))
+        }
+    }
+}
+
+/// 停掉常驻那个。**调用方必须已经持有 [`LOCAL_BACKEND`] 的锁**（锁序，见 [`DETACHED`]）。
+fn stop_detached_locked() -> Option<String> {
+    let mut g = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
+    let h = g.take()?;
+    let pid = h.pid;
+    if let Some(mut c) = h.child {
+        let _ = c.kill();
+        // 收尸：**不 `wait` 就留 `Z`**（`launch.rs:198` 逐字）。
+        let _ = c.wait();
+        return Some(format!("本机后端已停（常驻，pid={pid}）"));
+    }
+    // 接管来的那个：手里没有 `Child`。**按 pid 杀之前先核身份** ——
+    // pid 会被复用，杀错一个无关进程是不可逆的。
+    match kill_adopted(pid, &h.bin) {
+        Ok(()) => Some(format!("本机后端已停（接管的常驻实例，pid={pid}）")),
+        Err(e) => Some(format!(
+            "已断开与本机常驻后端的连接，但**没能停掉它**（pid={pid}：{e}）。\n\
+             它是上一次 monitor 起的、脱离在跑的那个 —— 本 monitor 手里只有一条流。\
+             要真停掉它，请手动结束那个进程。"
+        )),
+    }
+}
+
+/// 杀一个**不是我们起的**常驻实例。
+///
+/// ⚠ **先核身份再杀。**pid 会被复用，而「杀错一个无关进程」是不可逆的。
+/// 核的是 `/proc/<pid>/exe` 是不是同一个二进制 —— 与 `--tmux-notify` 那条
+/// pid+starttime 双钉同一条道理：**只有身份对得上才动手**。
+#[cfg(target_os = "linux")]
+fn kill_adopted(pid: u32, bin: &std::path::Path) -> Result<(), String> {
+    if pid == 0 {
+        return Err("不知道它的 pid（那次起它的 monitor 没能记下来）".into());
+    }
+    // ★ **fail closed**：没有对照物就不杀。空路径下「核对通过」等于没核对，
+    //   而这一步的代价是不可逆的（杀掉一个恰好复用了那个 pid 的无关进程）。
+    if bin.as_os_str().is_empty() {
+        return Err(format!(
+            "不知道 pid={pid} 该是哪个二进制（那份记录缺了第二行）⇒ **不动它**"
+        ));
+    }
+    let exe = std::fs::read_link(format!("/proc/{pid}/exe"))
+        .map_err(|e| format!("读不到 /proc/{pid}/exe（{e}）—— 它可能已经不在了"))?;
+    let same = exe == bin || std::fs::canonicalize(bin).map(|c| c == exe).unwrap_or(false);
+    if !same {
+        return Err(format!(
+            "pid={pid} 现在跑的是 {}，不是我们的 daemon ⇒ **不动它**（pid 被复用了）",
+            exe.display()
+        ));
+    }
+    // 只发 SIGTERM：daemon 自己有停机路径（`shutdown_signal`），SIGKILL 会跳过它。
+    signal_term(pid)
+}
+
+#[cfg(not(target_os = "linux"))]
+fn kill_adopted(_pid: u32, _bin: &std::path::Path) -> Result<(), String> {
+    Err("本平台没有脱离那条路，也就没有「接管来的常驻实例」".into())
+}
+
+/// 发一次 SIGTERM。
+///
+/// ⚠ **为什么起一个进程而不是调 `libc::kill`**：monitor 今天**没有 `libc` 这条直接依赖**
+/// （它只在依赖树里，靠传递依赖进来），为一次「停」按钮加一条直接依赖是更大的代价。
+/// 这一处**已登记**在 `write_site_registry::spawn_sites::SPAWNS`（那张表默认拒绝）。
+/// 参数是**我们自己算出来的 pid**，不吃任何用户输入。
+#[cfg(target_os = "linux")]
+fn signal_term(pid: u32) -> Result<(), String> {
+    let st = std::process::Command::new("kill")
+        .arg("-TERM")
+        .arg(pid.to_string())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map_err(|e| format!("起不来 kill：{e}"))?;
+    if st.success() {
+        Ok(())
+    } else {
+        Err(format!("kill -TERM {pid} 退出码 {st}"))
+    }
+}
+
 pub fn start_local_backend() -> StartOutcome {
     // ★★ **锁全程持有**〔D 阶段补审 08-11 修，原版是阻塞级缺陷〕。
     //
@@ -92,6 +990,14 @@ pub fn start_local_backend() -> StartOutcome {
     // 起不掉也杀不掉的幽灵进程**；把释放挪出命令线程是另一件事（补审建议 C4）。
     let mut g = LOCAL_BACKEND.lock().expect("LOCAL_BACKEND 锁毒化");
     if g.is_some() {
+        return StartOutcome::AlreadyRunning;
+    }
+    // ★ `K-P1`：常驻那条路也算「在跑」。
+    //
+    // ⚠ **锁序**：`DETACHED` 只在持有上面那把锁时才取（见它的头注）⇒ 这里**没有**第二个窗口。
+    // 上面那一段头注花了一整段讲的就是「检查」与「存句柄」之间那个窗口，
+    // 常驻这条路不许把它重新开出来。
+    if is_detached() {
         return StartOutcome::AlreadyRunning;
     }
     // 两样宿主知识在这里给（backend 层不认识它们）：
@@ -127,6 +1033,16 @@ pub fn start_local_backend() -> StartOutcome {
     } else {
         None
     };
+    // ★★ `K-P1`：**先走常驻那条路** —— 认得出已有实例就接上它，没有就起一个脱离的。
+    //
+    // 这就是「怎么起」那个注入点：`start_detached` 是**这一层**（宿主知识层）的东西，
+    // 它认识 `process_group(0)` / `/proc` / `~/.cc-monitor`，而 `backend/` 那半一样都不许认识
+    // （`the_backend_half_stays_platform_agnostic` 的禁针含 `std::os::unix`）。
+    // 走不了（平台不支持 / `CCM_NO_DETACH` 关掉了）才回落到下面那条今天的路。
+    match start_detached(&|| resolve_daemon_bin(&extract_dir, embedded), &[]) {
+        DetachOutcome::Done(out) => return out,
+        DetachOutcome::NotTaken => {}
+    }
     let (resolved, sup) = local_backend::start_or_extract(
         env!("CCM_TARGET_TRIPLE"),
         &extract_dir,
@@ -147,8 +1063,16 @@ pub fn start_local_backend() -> StartOutcome {
 /// 本机独有的两个读数（远端没有对应物：那个进程在别人机器上）。
 pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
     let g = LOCAL_BACKEND.lock().map_err(|e| format!("锁毒化: {e}"))?;
-    Ok(match g.as_ref() {
-        Some(h) => (h.current_pid(), Some(h.attempts())),
+    if let Some(h) = g.as_ref() {
+        return Ok((h.current_pid(), Some(h.attempts())));
+    }
+    // ★ `K-P1`：常驻那条路。`attempts` 这里**恒 `None`** 而不是 0 ——
+    // 那一格的含义是「监护器起过它几次」，而常驻这条路**没有监护器**（`K14` 裁的第一档）。
+    // 报 0 会让 UI 显示一个看起来正常的数，而它背后没有任何东西在数。**空值 ≠ 0。**
+    let d = DETACHED.lock().map_err(|e| format!("锁毒化: {e}"))?;
+    Ok(match d.as_ref() {
+        Some(h) if h.pid != 0 => (Some(h.pid), None),
+        Some(_) => (None, None),
         None => (None, None),
     })
 }
@@ -158,6 +1082,10 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 /// 误以为还在跑。
 pub fn stop_local_backend() -> Result<String, String> {
     let mut g = LOCAL_BACKEND.lock().map_err(|e| format!("锁毒化: {e}"))?;
+    // ★ `K-P1`：常驻那条路的「停」。**锁序**：仍在 `LOCAL_BACKEND` 的锁里动 `DETACHED`。
+    if let Some(msg) = stop_detached_locked() {
+        return Ok(msg);
+    }
     match g.take() {
         Some(h) => {
             let pid = h.current_pid();
@@ -445,5 +1373,872 @@ mod tests {
             ret < tail.len() && ret < close.max(ret + 1) + 400,
             "幂等那一支里找不到 `return` —— 只打日志不返回等于没有门（补审给的就是这个骗法）"
         );
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // `K-P1`：常驻那条路的判据
+    // ══════════════════════════════════════════════════════════════════
+
+    /// 按**行**切一个函数体：从 `fn <name>(` 那行起，到第一行**恰好是 `}`** 为止。
+    /// （与本文件既有那几条判据同一个切法 —— 别造第二种。）
+    /// `min` = 这个体最少该有多少字节。**逐条给**而不是写死一个数：
+    /// `is_detached` 只有三行，拿一个统一的地板量它必然假红，而假红的判据最后会被人删掉。
+    fn body_of(prod: &str, head: &str, min: usize) -> String {
+        let at = guard_core::find_pinned(prod, head)
+            .unwrap_or_else(|e| panic!("切不出 `{head}`（{e}）—— 改了名就来改本条"));
+        let body: String = prod[at..]
+            .lines()
+            .skip(1)
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n");
+        // ★ 反空真自检：切不出函数体 ⇒ 红（`KP4` 第四轮买牙的两个价钱之一）。
+        assert!(
+            body.len() >= min,
+            "`{head}` 切出来的体只有 {} 字节（下限 {min}）—— 切错了，调用方那条判据在空转",
+            body.len()
+        );
+        body
+    }
+
+    /// ★★ `KPY1`：**脱离的落点不许住 `backend/`，而且那个注入点真的被用上了。**
+    ///
+    /// # 两半，缺一半都不成立
+    ///
+    /// ① **`backend/` 那半干净** —— 那条现成的 `the_backend_half_stays_platform_agnostic`
+    ///    在门① 里管着禁针（含 `std::os::unix`）。本条只**补它够不到的一格**：
+    ///    整棵 `backend/` 里 `process_group(` 零命中。
+    ///    ⚠ 那条判据查的是**禁针字面**，有人把脱离藏进一个跨平台包装 crate（或换个名字）
+    ///    就零命中地绿 —— 所以下面②必须是**位置性**的，不能只查「文件里有这个词」。
+    ///
+    /// ② **位置性**（`P2t-Y1` 逐字栽过这一条：「钉『文件里有 `process::id()`』钉不住它用在哪」）：
+    ///    · `start_local_backend` 体内**恰好一处** `start_detached(`；
+    ///    · 它排在 `start_or_extract(` **之前**（回落是回落，不是主路）；
+    ///    · `spawn_detached` 体内真的有 `process_group(0)` 与 stdio 全 null。
+    #[test]
+    fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
+        // ── ① `backend/` 那半 ──────────────────────────────────────────
+        let backend_mod = guard_core::production_code(include_str!("backend/mod.rs"));
+        guard_core::find_pinned(&backend_mod, "fn the_backend_half_stays_platform_agnostic")
+            .unwrap_or_else(|_| {
+                // 它住在 `#[cfg(test)]` 段里，`production_code` 会把它剥掉 ⇒ 换整份找。
+                let raw = include_str!("backend/mod.rs");
+                assert!(
+                    raw.contains("fn the_backend_half_stays_platform_agnostic"),
+                    "`backend/mod.rs` 里那条平台无关判据不在了 —— \n\
+                     本条①整半就没了依靠，而脱离那几行随时可以搬进 `backend/`。"
+                );
+                0
+            });
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/backend");
+        let files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
+        assert!(
+            files.len() >= 5,
+            "只扫到 {} 个 backend/ 文件 —— 抽取坏了，本条在空转",
+            files.len()
+        );
+        let hits: Vec<String> = files
+            .iter()
+            .filter(|(_, s)| guard_core::production_code(s).contains("process_group("))
+            .map(|(p, _)| p.display().to_string())
+            .collect();
+        assert!(
+            hits.is_empty(),
+            "`backend/` 里出现了 `process_group(`：{hits:?}\n\
+             它来自 `std::os::unix::process::CommandExt`，而 `std::os::unix` 在\n\
+             `the_backend_half_stays_platform_agnostic` 的禁针里 —— 那一层不认识平台。\n\
+             ⇒ 脱离的落点只能是**宿主知识层**（`local_daemon.rs`），\n\
+             照 `platform_fs::make_executable` 那个注入先例把「怎么起」喂进去。\n\
+             ⚠ 「加一条平台例外」这条路走不通：`PLATFORM_EXCEPTIONS.len() <= 1` 是递减棘轮，今天正好 1 条。"
+        );
+
+        // ── ② 位置性 ────────────────────────────────────────────────────
+        let me = guard_core::production_code(include_str!("local_daemon.rs"));
+        let start = body_of(&me, "pub fn start_local_backend(", 400);
+        assert_eq!(
+            start.matches("start_detached(").count(),
+            1,
+            "`start_local_backend` 体内 `start_detached(` 不是恰好一处 —— \
+             零处 = 注入点没被用上（常驻整条路死在那里，而所有判据照样绿）；\
+             多处 = 有第二条起法。"
+        );
+        let a = start.find("start_detached(").expect("上面刚数过");
+        let b = start
+            .find("start_or_extract(")
+            .expect("回落那条路不在了 —— 那非 Linux 平台就没有本机后端了");
+        assert!(
+            a < b,
+            "`start_or_extract(`（今天那条）排在 `start_detached(` 前面 —— \
+             那样常驻那条路永远走不到，而它「写在那里」这件事看起来一切正常。"
+        );
+
+        // ⚠ needle 要**唯一确定那一个事实**：`fn spawn_detached(` 命中 2 处
+        //   （`#[cfg(target_os = "linux")]` 那个 + 非 Linux 的诚实降级壳）。
+        //   `F19` 逐字栽过同一形：「把 needle 扩到能唯一确定那个事实的大小」。
+        //   Linux 那份的参数**不带下划线前缀**（另一份是 `_port`/`_token`）⇒ 用它分辨。
+        let spawn = body_of(&me, "    port: u16,\n    token: &str,", 300);
+        // ⚠ 后两个针是**常量名**不是那两个串：串本身住在常量声明里，
+        //   而它与 daemon 那侧逐字一致由 `the_listen_env_names_are_the_same_string_on_both_sides` 管。
+        //   钉「这里用的是那个常量」而不是「这里出现了那个串」，正好挡住「顺手在这里写死一个串」。
+        for needle in [
+            "process_group(0)",
+            "Stdio::null()",
+            "LISTEN_PORT_ENV",
+            "LISTEN_TOKEN_ENV",
+        ] {
+            assert!(
+                spawn.contains(needle),
+                "`spawn_detached` 体内找不到 `{needle}`。\n\
+                 三样一起才叫脱离：`process_group(0)`（否则 Ctrl-C 的 SIGINT 打到整个前台进程组）\
+                 + stdio 全 null（今天它 153ms 内死掉的**真正原因**就是那对管子）\
+                 + 协议改走监听口（管子没了总得有别的说话方式）。"
+            );
+        }
+        assert!(
+            spawn.contains("env_remove(\"TMUX\")"),
+            "`spawn_detached` 没有清掉 `TMUX` —— tmux 客户端在 `TMUX` 有值时**按它给的 socket 走**，\
+             `TMUX_TMPDIR` 完全不起作用。那正是 08-11 打没用户 9 个真实 tmux 会话的机制。"
+        );
+    }
+
+    /// ★★ **退出路径要收的是「两条起法」，不是「新那条」。**
+    ///
+    /// # 它治的是一个会骗人的开关
+    ///
+    /// 「monitor 退出时结束它」这个勾，在 `K-P1` 之前只对**被监护的那条路**生效
+    /// （退出钩子读的是 `LOCAL_BACKEND` 里的 `SuperviseHandle`，而脱离那条路根本没有它）。
+    /// ⇒ 用户勾了、退出、它没被结束 —— 而界面上一个字都不会说。
+    /// **一个说谎的开关比「做不到但说出来」更坏**，所以这一格不是文案能补的。
+    ///
+    /// # 钉三件（少一件这条就只证明了一半）
+    ///
+    /// ① 策略**只读一次**且读在两条路之前（读两次 = 两条路可能拿到不同的答案）；
+    /// ② 被监护那条还在（`.stop()` 在退出臂体内）；
+    /// ③ 常驻那条也在（`is_detached()` + `stop_local_backend()` 在同一个退出臂体内）。
+    ///
+    /// ⚠ 切法与 `local_backend.rs` 那条同职判据**同一个**（按花括号配平切退出臂的体），
+    /// 刻意不另造一种 —— 两种切法迟早在同一段代码上给出两个答案。
+    #[test]
+    fn the_exit_path_covers_both_ways_of_starting_the_local_backend() {
+        let prod = guard_core::production_code(include_str!("lib.rs"));
+        let arm_at = prod
+            .find("RunEvent::Exit")
+            .expect("`lib.rs` 里找不到退出臂 —— 整段钩子没了（实测：删掉它，全仓判据一条不红）");
+        let body = {
+            let bytes = prod.as_bytes();
+            let open = (arm_at..bytes.len())
+                .find(|&i| bytes[i] == b'{')
+                .expect("`RunEvent::Exit` 之后找不到块起点");
+            let mut depth = 0i32;
+            let mut end = bytes.len();
+            for i in open..bytes.len() {
+                if bytes[i] == b'{' {
+                    depth += 1;
+                } else if bytes[i] == b'}' {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = i + 1;
+                        break;
+                    }
+                }
+            }
+            &prod[open..end]
+        };
+        // 反空真：切错了就红，别在一个空串上绿着。
+        assert!(
+            body.len() > 200 && body.len() < 6000,
+            "切出来的退出臂 {} 字节 —— 配平切错了，本条会零命中地绿",
+            body.len()
+        );
+        assert_eq!(
+            body.matches("kill_on_exit(").count(),
+            1,
+            "退出臂里读了不止一次策略 —— 两条路可能拿到**不同的答案**（中间它是可以被改的）"
+        );
+        for (needle, why) in [
+            (
+                ".stop()",
+                "被监护那条路的收口。没有它，勾了也不会有任何反应（`P2s` 那条判据钉的就是这一处）",
+            ),
+            (
+                "is_detached()",
+                "常驻那条路的判别。没有它，下面那句要么不跑、要么把没脱离的也走一遍",
+            ),
+            (
+                "stop_local_backend()",
+                "常驻那条路的收口。没有它，用户勾了「退出时结束它」而**脱离的那个照样在跑** —— \
+                 一个说谎的开关",
+            ),
+        ] {
+            assert!(
+                body.contains(needle),
+                "退出臂里找不到 `{needle}`。\n说法：{why}\n\
+                 ★ 本条要的是**两条起法都被收**，不是只证明新那条。"
+            );
+        }
+        // ★ 位置性：两条路都必须排在读策略**之后**（读在后面的那份只可能是打日志用的）。
+        let policy_at = body.find("kill_on_exit(").expect("上面刚数过");
+        for needle in [".stop()", "stop_local_backend()"] {
+            assert!(
+                body.find(needle).expect("上面刚断言过") > policy_at,
+                "`{needle}` 排在读策略之前 —— 那不是「按策略决定」，是「先动手再查开关」"
+            );
+        }
+    }
+
+    /// ★★ `KPY5`：**`detached` 的真相源只能是「起它的时候走没走那条路」。**
+    ///
+    /// 拿 `channel` / `pid` 反推是**假信号** —— `P2d §0a` 翻掉的 `SSH_CONNECTION` 就是这一形：
+    /// 「假信号不会报错，它只是**一直说是**」，而在只有正例的测试里永远绿。
+    /// ⇒ 本条既钉**接线**（读的是哪一份记录），也给一格**负例**。
+    #[test]
+    fn detached_reads_the_path_that_was_taken_not_a_guess() {
+        let me = guard_core::production_code(include_str!("local_daemon.rs"));
+        let is_det = body_of(&me, "pub fn is_detached(", 60);
+        assert!(
+            is_det.contains("DETACHED"),
+            "`is_detached` 不再读那条「真的走过脱离路」的记录 —— 它现在读的是什么？"
+        );
+        for forbidden in ["client_for", "current_pid", "LOCAL_BACKEND", "channel"] {
+            assert!(
+                !is_det.contains(forbidden),
+                "`is_detached` 体内出现了 `{forbidden}` —— 那是**反推**。\n\
+                 反推出来的信号不会报错，它只会一直说是（`SSH_CONNECTION` 那一形）。"
+            );
+        }
+        let dc = guard_core::production_code(include_str!("daemon_control.rs"));
+        let status = body_of(&dc, "pub fn daemon_status(origin: String)", 300);
+        assert_eq!(
+            status.matches("local_daemon::is_detached()").count(),
+            1,
+            "`daemon_status` 里 `is_detached()` 不是恰好一处 —— 零处 = 那一格没接上（前端永远读到缺席）"
+        );
+        assert!(
+            status.contains("serde_json::Value::Null"),
+            "远端那一支不再是 `null` —— 「它脱没脱离」这句话在远端这条路上没有意义，\
+             填 `false` 是**编一个读数**，而不是承认不对称。"
+        );
+
+        // ── 负例①：**纯函数**的那张真值表（四格全走到）─────────────────
+        assert!(
+            !detach_wanted(false, None),
+            "非 Linux 平台不许走脱离那条路 —— `process_group` 只在那儿有"
+        );
+        assert!(
+            !detach_wanted(true, Some("1")),
+            "`{NO_DETACH_ENV}=1` 关不掉脱离 —— 那 `KPY5` 要的负例就永远走不到了"
+        );
+        assert!(detach_wanted(true, None), "Linux + 没关 ⇒ 该走那条路");
+        assert!(
+            detach_wanted(true, Some("  ")),
+            "空串按「没设」算 —— shell 里 `export {NO_DETACH_ENV}=` 是常态"
+        );
+
+        // ── 负例②：**没走那条路 ⇒ `daemon_status` 必须回 `detached: false`** ──
+        //    这一格走的是**真命令**，不是读源码。
+        let _guard = crate::inbound_client::local_origin_test_lock();
+        assert!(
+            DETACHED.lock().expect("锁").is_none(),
+            "测试开始时 `DETACHED` 就不是空的 —— 前一条判据留了状态，本条读数不可信"
+        );
+        let st = crate::daemon_control::daemon_status(crate::inbound_client::LOCAL_ORIGIN.into())
+            .expect("查状态");
+        assert_eq!(
+            st.get("detached").and_then(|v| v.as_bool()),
+            Some(false),
+            "没走过脱离那条路，`detached` 却不是 false —— 那一格在猜"
+        );
+        let remote =
+            crate::daemon_control::daemon_status("某台远端".into()).expect("查远端状态");
+        assert!(
+            remote.get("detached").is_some_and(|v| v.is_null()),
+            "远端的 `detached` 不是 null —— 那是在替一台看不见的机器编读数"
+        );
+    }
+
+    /// ★★ `KPY7`（monitor 侧那半）：**本件一行都不许放宽已有判据。**
+    ///
+    /// # 为什么只对**断言那几行**取指纹，而不是整张表
+    ///
+    /// 「加行是收紧、动断言是放宽」这句话**本身不是机检**。
+    /// 若对整张表取 md5 ⇒ **合法加行也会红** ⇒ 下一个人就会把它调松（那是最坏的结局）。
+    /// ⇒ 指纹只覆盖那几行**断言**，表体排除在外。
+    ///
+    /// ⚠ 量法说明（`brief` 第 11 条）：这里**不是**用 `grep` 数加行 ——
+    /// 每条锚点都要求**恰好一处**、且是整行相等（`pin_line`），
+    /// 比 md5 更好的地方是：它红的时候会告诉你**哪一行变了**。
+    #[test]
+    fn this_item_loosened_none_of_the_ratchets_it_touched() {
+        // `(文件, 那一行, 恰好几处, 它在守什么)`
+        //
+        // ⚠ **次数逐条给**（`KP4` 第四轮买牙的两个价钱之一）：`write_site_registry.rs` 里
+        // 那句默认拒绝**真的有两处** —— 一处管写盘落点、一处管起进程落点，两张表各一条。
+        // 写死成 1 会让本条以「多了一处」的形式假红，而假红的判据最后会被人删掉。
+        let pins: &[(&str, &str, usize, &str)] = &[
+            (
+                "backend/mod.rs",
+                "PLATFORM_EXCEPTIONS.len() <= 1,",
+                1,
+                "递减棘轮：平台例外只许少不许多。**本件正是被它堵着**才把脱离放进宿主层的 —— \
+                 松掉它，下一个人就能把 `process_group` 直接写进 `backend/`。",
+            ),
+            (
+                "write_site_registry.rs",
+                "missing.is_empty(),",
+                2,
+                "两张表的**默认拒绝**各一条（写盘落点 / 起进程落点）：人群从源码派生，不申报就红。\
+                 本件往两张表各加了两行 —— **加行是收紧**，而这两行是「不申报会不会红」本身。",
+            ),
+            (
+                "write_site_registry.rs",
+                "found.len() >= 5,",
+                1,
+                "起进程那张表的**反空真地板**：抽取器坏掉时它先红，而不是让默认拒绝空着绿。",
+            ),
+            (
+                "write_site_registry.rs",
+                "found.len() >= 15,",
+                1,
+                "写盘那张表的**反空真地板**（同上）。",
+            ),
+        ];
+        for (file, line, want, why) in pins {
+            let raw: &str = match *file {
+                "backend/mod.rs" => include_str!("backend/mod.rs"),
+                "write_site_registry.rs" => include_str!("write_site_registry.rs"),
+                other => panic!("本表里出现了没接语料的文件：{other}"),
+            };
+            assert!(raw.len() > 1000, "`{file}` 只读到 {} 字节 —— 语料坏了", raw.len());
+            let n = raw.lines().filter(|l| l.trim() == *line).count();
+            assert_eq!(
+                n, *want,
+                "`{file}` 里 `{line}` 出现 {n} 次（应恰好 {want} 次）。\n\
+                 说法：{why}\n\
+                 ★ 变少 = 那条棘轮被改写或删掉了（**放宽**）；变多 = 结构变了，回来重判。"
+            );
+        }
+    }
+
+    /// ★★ **跨 crate 字面量对拍**：两个 env 名两侧必须逐字一样。
+    ///
+    /// 漂了**不会报错**：起出来的 daemon 会把它当成「没设」而走 stdio 那条路，
+    /// 于是宿主等在一个永远不会有人 bind 的口上，日志里只有一句「连不上」。
+    /// 形状抄 `the_local_origin_is_the_same_string_on_both_sides`。
+    ///
+    /// ⚠ 这条 `include_str!` 是一条**跨半边**（monitor→daemon）的语料边，
+    /// 已登记在 `cross_half_edge_registry`（它自己那条判据管着「不许长到生产段」）。
+    #[test]
+    fn the_listen_env_names_are_the_same_string_on_both_sides() {
+        let daemon = include_str!("../../remote-daemon-proto/src/listen.rs");
+        for (rust_name, ours) in [
+            ("ENV_PORT", LISTEN_PORT_ENV),
+            ("ENV_TOKEN", LISTEN_TOKEN_ENV),
+            // ⚠ 第三条不是 env 名，但**同一族**：它是宿主判「这次拒绝会不会自己好」的依据。
+            //   漂了的后果：「上一个 monitor 刚退、对面还没反应过来」会被当成不可恢复，
+            //   于是新 monitor 直接报失败 —— 而它本来只要再等 20 毫秒。
+            ("REFUSE_BUSY", REFUSE_BUSY_REASON),
+        ] {
+            let head = format!("pub const {rust_name}: &str =");
+            let line = daemon
+                .lines()
+                .find(|l| l.trim_start().starts_with(&head))
+                .unwrap_or_else(|| panic!("daemon 那份里找不到 `{head}` —— 名字改了就来改这条"));
+            let lit = line
+                .split('"')
+                .nth(1)
+                .unwrap_or_else(|| panic!("`{rust_name}` 那一行不是 `= \"…\";` 的形状"));
+            assert_eq!(
+                lit, ours,
+                "监听口的 env 名两侧漂了（`{rust_name}`）：daemon {lit:?} / monitor {ours:?}\n\
+                 ⚠ 这种漂**不会报错** —— daemon 会当成「没设」走 stdio 那条路，\n\
+                 而宿主等在一个永远没人 bind 的口上。"
+            );
+        }
+    }
+
+    /// ★★ **两份「找那个二进制」的实现必须同序**。
+    ///
+    /// 常驻这条路不要监护那半，所以它没法直接用 `start_or_extract`
+    /// （那一份把「找」与「监护」焊在一起）⇒ 今天是**两份实现**。
+    /// 两份就会漂，而漂的后果是「同一台机上两条路找到不同的二进制」——
+    /// 那正是「每台机 N 个 daemon」的另一个入口。
+    /// ⇒ 逐字对拍**顺序**这一件事：两边都必须**先 `resolve_beside_this_exe`、再释放内嵌那份**。
+    #[test]
+    fn the_two_resolution_paths_still_agree_on_the_order() {
+        let mine = body_of(
+            &guard_core::production_code(include_str!("local_daemon.rs")),
+            "fn resolve_daemon_bin(",
+            300,
+        );
+        let theirs = body_of(
+            &guard_core::production_code(include_str!("backend/control/local_backend.rs")),
+            "pub fn start_or_extract(",
+            300,
+        );
+        for (who, body) in [("常驻这条", &mine), ("今天那条", &theirs)] {
+            let beside = body
+                .find("resolve_beside_this_exe(")
+                .unwrap_or_else(|| panic!("{who}路里找不到 `resolve_beside_this_exe(`"));
+            let extract = body
+                .find("extract_embedded_to(")
+                .unwrap_or_else(|| panic!("{who}路里找不到 `extract_embedded_to(`"));
+            assert!(
+                beside < extract,
+                "{who}路把「释放内嵌那份」排在「找 exe 旁边」之前 —— 顺序反了。\n\
+                 开发构建里 exe 旁边那个是**更新**的，内嵌那份是打包时的快照；\
+                 顺序一反，两条路就会在同一台机上找到不同的二进制。"
+            );
+        }
+    }
+
+    /// 监听口是**算出来的**：同一个家目录恒等，不同的家目录基本不撞，且落在动态口段里。
+    #[test]
+    fn the_listen_port_is_deterministic_and_inside_the_dynamic_range() {
+        let a = listen_port_for("/home/someone/.claude");
+        assert_eq!(a, listen_port_for("/home/someone/.claude"), "同一个输入两次算出不同的口");
+        assert!(
+            (PORT_BASE..=u16::MAX).contains(&a),
+            "算出来的口 {a} 不在动态/私有口段里 —— 那可能撞上系统服务"
+        );
+        assert_ne!(
+            a,
+            listen_port_for("/home/other/.claude"),
+            "两个不同的家目录算出同一个口 —— 同机两个用户就会互相撞（撞了会出声拒绝，但没必要）"
+        );
+        // ★ 反向锚点：**不许用 `DefaultHasher`**（它跨 Rust 版本不保证稳定）。
+        //   升级一次 monitor 就换一个口 = 下一次启动去连空口、起第二个 daemon，
+        //   而那正是本件要防的那件事。
+        let me = guard_core::production_code(include_str!("local_daemon.rs"));
+        assert!(
+            !me.contains("DefaultHasher"),
+            "端口用上了 `DefaultHasher` —— 它的输出**跨 Rust 版本不保证稳定**（标准库自己写的）。\
+             升一次版就换一个口 ⇒ 认不出已有实例 ⇒ 每台机 N 个 daemon。"
+        );
+    }
+
+    /// hello 的三张脸。**「有人占着」不等于「占着它的是我们的」** ——
+    /// 这一格就是 `EADDRINUSE` 那条诚实边界的落点。
+    #[test]
+    fn a_stranger_on_our_port_is_refused_out_loud_not_silently_reused() {
+        let ours = format!(
+            "{{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b1\",\"host_arch\":\"x86_64\",\
+              \"claude_dir\":\"/h/.claude\",\"capabilities\":[],\"emits\":[],\"commands\":[]}}"
+        );
+        assert_eq!(hello_verdict(&ours, "b1", "/h/.claude"), HelloVerdict::Ours);
+        // ① 版本不对
+        match hello_verdict(&ours, "b2", "/h/.claude") {
+            HelloVerdict::Stranger(w) => assert!(w.contains("b1") && w.contains("b2"), "{w}"),
+            v => panic!("旧版本的 daemon 被当成了我们的：{v:?}"),
+        }
+        // ② 看的目录不对（同机两个用户撞了口就是这一形）
+        match hello_verdict(&ours, "b1", "/other/.claude") {
+            HelloVerdict::Stranger(w) => assert!(w.contains("/other/.claude"), "{w}"),
+            v => panic!("另一个数据目录的 daemon 被当成了我们的：{v:?}"),
+        }
+        // ③ 压根不是我们的协议
+        assert!(matches!(
+            hello_verdict("HTTP/1.1 200 OK", "b1", "/h/.claude"),
+            HelloVerdict::Stranger(_)
+        ));
+        assert!(matches!(
+            hello_verdict("", "b1", "/h/.claude"),
+            HelloVerdict::Stranger(_)
+        ));
+    }
+
+    /// 「谁在听那个口」那份记录**是上一个 monitor 写的** —— 它可能残缺。
+    /// 残缺一律回 `None`，而 `None` 的处置是**不杀**（fail closed）。
+    #[test]
+    fn a_half_written_owner_record_is_refused_rather_than_guessed() {
+        assert_eq!(
+            parse_listen_owner("123\n/opt/ccm/daemon\n"),
+            Some((123, std::path::PathBuf::from("/opt/ccm/daemon")))
+        );
+        assert_eq!(parse_listen_owner("123\n"), None, "只有 pid 没有二进制 ⇒ 核对不了身份 ⇒ 不许杀");
+        assert_eq!(parse_listen_owner("123\n\n"), None, "第二行是空的 ⇒ 同上");
+        assert_eq!(parse_listen_owner("abc\n/x\n"), None);
+        assert_eq!(parse_listen_owner(""), None);
+        assert_eq!(parse_listen_owner("0\n/x\n"), None, "pid 0 不是一个进程");
+    }
+
+    /// ★★ **起真 daemon 的判据必须 fail-closed 地要一个私有 tmux 隔离。**
+    ///
+    /// # 它不是纪律，是一次事故的直接产物
+    ///
+    /// 被起的 daemon 一上来就**无条件**往它连得到的 tmux server 装三条全局 hook、
+    /// 固定槽位 `[50]`、**没有关掉它的开关**，载荷里烤着那一个 daemon 的 pid+starttime。
+    /// 不隔离就是去改用户真实 tmux server 的状态 —— 08-11 那次同族事故打没了用户 **9 个**真实会话。
+    /// ⚠⚠ **08-26 本件实现期间又发生了一次**：我在写这段代码时手工起了一个真 daemon 做冒烟，
+    /// 没走 shim ⇒ 它把用户真实 tmux server 的 `[50]` 槽位**整个盖成了我那个进程的 pid**
+    /// （当时真有一个 monitor 的 daemon 在跑）。当场按原值恢复了，但**那正是本条要防的东西**。
+    ///
+    /// # 形状
+    ///
+    /// `local_backend.rs` 有一条同职的（`the_e2e_that_spawns_a_real_daemon_demands_private_tmux`），
+    /// 而它**只扫它自己那个文件** —— 本件的真进程判据住这里，落在它的扫描面之外。
+    /// 「守卫范围 ≠ 性质范围」那一族，这里是它的又一形。⇒ 本文件自己补一条。
+    #[test]
+    fn every_ignored_test_here_that_spawns_a_real_daemon_demands_private_tmux() {
+        const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_SHIM_BIN";
+        let src = include_str!("local_daemon.rs");
+        // 按行切成「一个 `#[test]` 到下一个 `#[test]`」的块。
+        // ⚠ **不在语料串上做裸 `split`**（`needle_anchor_registry` 把它判为「匹配单位比事实小」那一族）。
+        let mut chunks: Vec<String> = Vec::new();
+        let mut cur: Vec<&str> = Vec::new();
+        for line in src.lines() {
+            if line.trim() == concat!("#[te", "st]") {
+                if !cur.is_empty() {
+                    chunks.push(cur.join("\n"));
+                    cur.clear();
+                }
+                continue;
+            }
+            cur.push(line);
+        }
+        chunks.push(cur.join("\n"));
+        // 抽取器自检：切不出块就下面全空转。
+        assert!(chunks.len() >= 5, "只切出 {} 个测试块 —— 切法坏了", chunks.len());
+        let ignored: Vec<&String> = chunks
+            .iter()
+            .filter(|c| c.lines().any(|l| l.trim() == "#[ignore]"))
+            .collect();
+        // ⚠ **反向锚点**：本文件今天真的有 `#[ignore]` 的真进程判据。
+        //   一条都没有的话，下面那个循环零圈 ⇒ 本条是安慰剂。
+        assert!(
+            !ignored.is_empty(),
+            "本文件里一条 `#[ignore]` 都没有 —— 那本条此刻在空转。\n\
+             真进程判据被删了？那 `KPY2`/`KPY3` 就没有兑现证据了。"
+        );
+        for c in &ignored {
+            let name = c
+                .lines()
+                .find_map(|l| l.trim().strip_prefix("fn "))
+                .unwrap_or("<读不出名字>");
+            assert!(
+                c.contains(PRIVATE_TMUX),
+                "`{name}` 是一条 `#[ignore]` 的真进程判据，却没有要 `{PRIVATE_TMUX}`。\n\
+                 ★ 被起的 daemon 一上来就往它连得到的 tmux server 装三条**全局** hook\n\
+                 （固定槽位 `[50]`，**没有关掉它的开关**）⇒ 不隔离就是去改用户真实 tmux 的状态。\n\
+                 ⚠ 这不是理论：08-11 打没过用户 9 个真实会话；08-26 本件实现期间又盖过一次 `[50]`。\n\
+                 ⇒ 必须 **fail closed**：拿不到 shim 就 `expect` 炸掉，绝不降级裸跑。"
+            );
+        }
+    }
+
+    /// token 每次都不一样、够长，而且**不是空串**（空串会让 attach 那道门形同虚设）。
+    #[test]
+    fn every_token_is_fresh_and_long_enough() {
+        let a = fresh_token();
+        let b = fresh_token();
+        assert_ne!(a, b, "两次拿到同一个 token —— 那说明熵源里没有「每次都变」的东西");
+        assert_eq!(a.len(), 32, "token 长度变了（32 个十六进制 = 128 位）");
+        assert!(a.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // `KPY2` / `KPY3`：**真进程**判据。⛔ 它们**不在 `npm run gate` 里**
+    //
+    // 只在 CI 的 `E2E real-machine` job 里跑（`ci.yml` 的
+    // `assert-pass-floor.sh local-backend <地板>`），入口是
+    // `e2e/local-backend-supervise.sh`。本机 `npm run gate` **看不见它们**
+    // —— 这句话是 `§1` 那张「在哪一步会被执行」表逐字要求写明的。
+    // ══════════════════════════════════════════════════════════════════
+
+    /// 起真 daemon 的沙箱。**三样东西一个都不许缺**（fail closed）。
+    #[cfg(target_os = "linux")]
+    struct E2eSandbox {
+        bin: std::path::PathBuf,
+        /// 前面挂着 tmux shim 的 PATH —— `C7i` 的**唯一**隔离原语。
+        shim_path: (String, String),
+        work: std::path::PathBuf,
+        /// 本轮起过的那些进程。**一交出 `DETACHED` 就立刻塞进这里**，
+        /// 中间不留任何「拿在手里但没人管」的窗口 —— 那个窗口正是 08-26 漏网的机制。
+        kept: std::sync::Mutex<Vec<std::process::Child>>,
+    }
+
+    #[cfg(target_os = "linux")]
+    impl E2eSandbox {
+        fn demand() -> Self {
+            let bin = std::env::var("CCM_E2E_DAEMON").expect("要 CCM_E2E_DAEMON");
+            // ★ **fail closed**：拿不到 shim 就炸，绝不降级裸跑 ——
+            //   裸跑 = 去改用户真实 tmux server 的 `[50]` 槽位（08-11 / 08-26 各出过一次）。
+            let shim = std::env::var("CCM_E2E_TMUX_SHIM_BIN").expect("要 CCM_E2E_TMUX_SHIM_BIN");
+            let work = std::path::PathBuf::from(
+                std::env::var("CCM_E2E_WORK").expect("要 CCM_E2E_WORK"),
+            );
+            Self {
+                bin: std::path::PathBuf::from(bin),
+                shim_path: (
+                    "PATH".to_string(),
+                    format!("{shim}:{}", std::env::var("PATH").unwrap_or_default()),
+                ),
+                work,
+                kept: std::sync::Mutex::new(Vec::new()),
+            }
+        }
+
+        /// 「上一个宿主退了」= 把进程内那点状态清掉，**但不碰那个进程**；
+        /// 它手里那个 `Child` **当场**交给沙箱看着。
+        fn forget_like_a_host_that_exited(&self) {
+            // ★ **真宿主退出时那条 socket 会关掉** —— 只清进程内的句柄是**演砸的模型**：
+            //   那条流还挂着，下一个宿主拿到的是 `stream-busy`。
+            //   〔实测：第一版就是这么写的，`KPY2` 当场红在「第二个宿主没有认出已有实例」。〕
+            if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
+                crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &c);
+                // ⚠ `shutdown()` 只叫醒等着的调用方，**它不关 socket**。
+                //   要让对面知道我们走了，得真的关掉写半边 —— 那才是 daemon 那边的 EOF。
+                c.close_write();
+                c.shutdown();
+                // 关写半边是**入队**的（`WriteJob::CloseWrite`）⇒ 给写任务一拍把它送出去。
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            let taken = DETACHED
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .take()
+                .and_then(|h| h.child);
+            if let Some(c) = taken {
+                self.kept.lock().unwrap_or_else(|e| e.into_inner()).push(c);
+            }
+        }
+
+        /// 造一个**独立的家** —— 端口是家目录算出来的，所以不同的家 = 不同的口。
+        /// 这正是 `KPY2` 那条「非空对照」要用的东西。
+        fn become_host_with_home(&self, tag: &str) -> std::path::PathBuf {
+            let home = self.work.join(format!("host-{tag}"));
+            let claude = home.join(".claude");
+            std::fs::create_dir_all(claude.join("projects")).expect("建沙箱 HOME");
+            std::fs::create_dir_all(claude.join("sessions")).expect("建沙箱 sessions");
+            // ⚠ 进程级环境变量 ⇒ 这几条判据**必须 `--test-threads=1`**
+            //   （e2e 脚本正是这么跑的）。写在这里是因为「宿主是谁」本来就是进程级的事实。
+            std::env::set_var("HOME", &home);
+            std::env::set_var("CLAUDE_CONFIG_DIR", &claude);
+            claude
+        }
+
+        fn envs(&self) -> Vec<(String, String)> {
+            vec![self.shim_path.clone()]
+        }
+    }
+
+    /// ★★ **判据不许在机器上留活进程** —— 而且这一条比它听起来重要得多。
+    ///
+    /// 〔08-26 实测教训，本件实现期间真发生了一次〕漏一个的后果**不是**「多一个进程」：
+    /// e2e 的 trap 会把 shim 目录 `rm -rf` 掉，而那个漏网的 daemon **还活着**；
+    /// 它下一次装 tmux hook（watcher 换人时会重装）沿 PATH 找不到 shim ⇒ **落到真 tmux 上**
+    /// ⇒ 用户真实 server 的 `[50]` 槽位被盖成它的 pid。当时按原值恢复了，但那是靠人。
+    ///
+    /// ⇒ 收尾放进 `Drop`：**测试 panic 时它照样跑**（unwind 会走析构），
+    /// 而写在测试体末尾的收尾在第一条断言红掉时就被跳过了 —— 那正是这次漏网的机制。
+    #[cfg(target_os = "linux")]
+    impl Drop for E2eSandbox {
+        fn drop(&mut self) {
+            // ⚠ **按句柄收，不扫 `/proc`**：扫目录会撞 `scanning_guard_registry`
+            // （「有扫描型判据在测试段里裸遍历目录」），而且按 exe 路径杀是**按模式杀** ——
+            // 这台机器上还跑着用户自己的真 daemon，那种收法迟早会误伤。
+            // ⇒ 只收**我们自己起出来的那几个句柄**，一个不多一个不少。
+            let mut all: Vec<std::process::Child> = std::mem::take(
+                &mut *self.kept.lock().unwrap_or_else(|e| e.into_inner()),
+            );
+            if let Some(h) = DETACHED.lock().unwrap_or_else(|e| e.into_inner()).take() {
+                all.extend(h.child);
+            }
+            for mut c in all {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+        }
+    }
+
+    /// 把结局拆开看。**别写成 `matches!` + 一句「起不出来」** ——
+    /// 那样红的时候只知道「不是 `Started`」，而四种结局的排查方向完全不同
+    /// （没走那条路 / 已经在跑 / 起不出来各有各的下一步）。
+    #[cfg(target_os = "linux")]
+    fn expect_started(out: DetachOutcome, who: &str) -> std::path::PathBuf {
+        match out {
+            DetachOutcome::Done(StartOutcome::Started(p)) => p,
+            DetachOutcome::Done(StartOutcome::AlreadyRunning) => {
+                panic!("{who}：期望起一个新的，实得「已经在跑」—— 上一条判据留了活进程？")
+            }
+            DetachOutcome::Done(StartOutcome::Failed { reason, looked_at }) => {
+                panic!("{who}：起不出脱离的 daemon —— {reason}；找过 {looked_at:?}")
+            }
+            DetachOutcome::NotTaken => panic!(
+                "{who}：**这条路根本没走**（`detach_wanted` 判了 false）。\
+                 不是 Linux？还是 `{NO_DETACH_ENV}` 被设了？"
+            ),
+        }
+    }
+
+    /// 同上，反过来那一面。**「没认出来」的四种来路完全不同**，红的时候要说得出是哪一种。
+    #[cfg(target_os = "linux")]
+    fn expect_adopted(out: DetachOutcome, who: &str) {
+        match out {
+            DetachOutcome::Done(StartOutcome::AlreadyRunning) => {}
+            DetachOutcome::Done(StartOutcome::Started(p)) => panic!(
+                "{who}：**又起了一个**（{}）—— 那正是「每台机 N 个 daemon 互相盖 [50] 槽位」",
+                p.display()
+            ),
+            DetachOutcome::Done(StartOutcome::Failed { reason, .. }) => {
+                panic!("{who}：没认出已有实例 —— {reason}")
+            }
+            DetachOutcome::NotTaken => panic!("{who}：这条路根本没走"),
+        }
+    }
+
+    #[cfg(target_os = "linux")]
+    fn proc_state(pid: u32) -> Option<char> {
+        let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+        let after = &stat[stat.rfind(')')? + 1..];
+        after.split_whitespace().next()?.chars().next()
+    }
+
+    #[cfg(target_os = "linux")]
+    fn alive(pid: u32) -> bool {
+        std::path::Path::new(&format!("/proc/{pid}")).exists()
+    }
+
+    /// ★★ `KPY2`：**同机第二个宿主不许起第二个 daemon —— 它必须接上第一个。**
+    ///
+    /// # 为什么这一格是硬的
+    ///
+    /// daemon 一起来就**无条件**往 tmux server 装三条全局 hook、固定槽位 `[50]`、
+    /// **没有关掉它的开关**，载荷里烤着那一个 daemon 的 pid+starttime
+    /// ⇒ **脱离而不认已有实例 = 每台机 N 个 daemon 互相盖槽位，比今天更糟**。
+    ///
+    /// # 它怎么会失效 —— 以及本条为此付了什么
+    ///
+    /// 「夹具只起一个宿主 ⇒『认已有实例』那一支恒不走，判据是**空真**」。
+    /// ⇒ 本条有**两个宿主**，而且配了一个**非空对照**：换一个家目录（= 换一个口）之后
+    /// 同样两步必须**真的起出第二个进程**。两个读数一起看才说明「不起第二个」是**判据在起作用**，
+    /// 而不是「这条路本来就起不出进程」。
+    #[test]
+    #[ignore]
+    fn e2e_a_second_host_adopts_the_running_daemon_instead_of_starting_a_second_one() {
+        #[cfg(target_os = "linux")]
+        {
+            let _guard = crate::inbound_client::local_origin_test_lock();
+            let sb = E2eSandbox::demand();
+            let claude = sb.become_host_with_home("adopt");
+            *DETACHED.lock().expect("锁") = None;
+
+            // ── 宿主① ────────────────────────────────────────────────
+            let bin = sb.bin.clone();
+            expect_started(start_detached(&|| Ok(bin.clone()), &sb.envs()), "第一个宿主");
+            let pid1 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
+            assert!(alive(pid1), "起出来的 pid={pid1} 不在进程表里");
+            println!("E2E-OK KPY2 第一个宿主起出脱离的 daemon（pid={pid1}）");
+
+            // 「谁在听那个口」那份记录要真的落了盘 —— 没有它，下一个宿主停不了它。
+            let port = listen_port_for(&claude.to_string_lossy());
+            let owner = read_listen_owner(&cc_monitor_dir(), port);
+            assert_eq!(owner.as_ref().map(|(p, _)| *p), Some(pid1), "「谁在听」没记对");
+            println!("E2E-OK KPY2 「谁在听 {port}」落了盘且带二进制路径（停按钮的凭据）");
+
+            // ── 宿主①退出（不碰那个进程 —— 那正是「脱离」）────────────
+            sb.forget_like_a_host_that_exited();
+            assert!(alive(pid1), "上一个宿主一退，那个 daemon 就跟着走了 —— 那不叫脱离");
+            println!("E2E-OK KPY2 宿主退出之后那个 daemon **还活着**（真脱离）");
+
+            // ── 宿主② ────────────────────────────────────────────────
+            let bin2 = sb.bin.clone();
+            expect_adopted(start_detached(&|| Ok(bin2.clone()), &sb.envs()), "第二个宿主");
+            let pid2 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
+            assert_eq!(pid2, pid1, "第二个宿主接上的不是同一个进程");
+            assert!(
+                crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some(),
+                "接上了却没登记入方向通道 —— 那只是「连上了」，不是「接上了」"
+            );
+            println!("E2E-OK KPY2 第二个宿主**接上**了同一个 daemon（pid 不变），没起第二个");
+
+            // ── ★ 非空对照：换一个家 = 换一个口 ⇒ 必须**真的**起出第二个 ──
+            sb.forget_like_a_host_that_exited();
+            let claude_b = sb.become_host_with_home("control");
+            assert_ne!(
+                listen_port_for(&claude_b.to_string_lossy()),
+                port,
+                "两个家目录算出同一个口 —— 那这条对照说明不了任何事"
+            );
+            *DETACHED.lock().expect("锁") = None;
+            let bin3 = sb.bin.clone();
+            expect_started(
+                start_detached(&|| Ok(bin3.clone()), &sb.envs()),
+                "非空对照（换一个数据目录 = 换一个口）",
+            );
+            let pid3 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
+            assert_ne!(pid3, pid1, "对照组拿到了同一个 pid —— 对照不成立");
+            println!("E2E-OK KPY2 非空对照：换一个数据目录（换一个口）**真的**起出了第二个进程");
+
+            // ── 收尾：全交给沙箱的 `Drop`（**panic 时它照样跑**，写在这里的收尾不会）──
+            //    最后那个还在 `DETACHED` 里，`Drop` 会把它一起收掉。
+            let _ = std::env::var("CCM_E2E_TMUX_SHIM_BIN"); // 让本条自己也点名那个隔离
+        }
+    }
+
+    /// ★★ `KPY3`：**脱离之后不留僵尸。**
+    ///
+    /// # 断言必须落在**进程表**上，不是落在我们自己的事件上
+    ///
+    /// `launch.rs:196-198` 头注逐字：「`process_group` **不改变父子关系** ⇒ 不 `wait` 就留僵尸」。
+    /// 若断言落在「消费者收到了 EOF」上，僵尸照样在 —— 那条断言会绿着放过整个缺陷。
+    /// ⇒ 这里读 `/proc/<pid>/stat` 的**状态字**：既不许是 `Z`，最后也不许还在。
+    #[test]
+    #[ignore]
+    fn e2e_a_detached_daemon_that_dies_leaves_no_zombie() {
+        #[cfg(target_os = "linux")]
+        {
+            let _guard = crate::inbound_client::local_origin_test_lock();
+            let sb = E2eSandbox::demand();
+            let _ = sb.become_host_with_home("zombie");
+            *DETACHED.lock().expect("锁") = None;
+
+            let bin = sb.bin.clone();
+            expect_started(start_detached(&|| Ok(bin.clone()), &sb.envs()), "本条");
+            let pid = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
+            assert!(alive(pid), "起出来的 pid={pid} 不在进程表里");
+
+            // **从外面**把它结束掉（不是走我们的 `stop`）—— 那才是「它自己崩了」的形状。
+            signal_term(pid).expect("发不出 SIGTERM");
+
+            // 流断了 ⇒ 读方拿到 EOF ⇒ 收尸。**事件驱动**，这里只是等那个事件走完。
+            let mut gone = false;
+            let mut ever_zombie = None;
+            for _ in 0..200 {
+                match proc_state(pid) {
+                    None => {
+                        gone = true;
+                        break;
+                    }
+                    Some('Z') => ever_zombie = Some('Z'),
+                    Some(_) => {}
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            assert!(
+                gone,
+                "pid={pid} 10 秒后还在进程表里（最后见到的状态：{:?}）。\n\
+                 ★ 若它是 `Z`：那就是这条 DoD 要防的僵尸 —— `process_group` 不改父子关系，\n\
+                 不 `wait` 它就一直挂在进程表上，而我们自己的事件（EOF）**早就到了**。",
+                ever_zombie
+            );
+            println!("E2E-OK KPY3 脱离的 daemon 被结束之后进程表里那个 pid 消失了（不是 Z）");
+            // ★ 收尸走的是**我们自己那条线**：`Child` 被 `reap_detached` 取走交给收尸线程，
+            //   而句柄里 **pid 与二进制路径都还在** —— 「停」那一步照样有凭据。
+            //   ⚠ 这两半要一起断：只断「pid 没了」的话，把整条收尸线删掉、改成
+            //   「进程自己被 init 收走」也会绿（而那要等 monitor 退出）。
+            {
+                let g = DETACHED.lock().expect("锁");
+                let h = g.as_ref().expect("句柄");
+                assert!(
+                    h.child.is_none(),
+                    "`Child` 还留在句柄里 —— `reap_detached` 没把它交出去，那条收尸线没跑"
+                );
+                assert_eq!(h.pid, pid, "收尸之后 pid 记录被抹了 —— 「停」就没凭据了");
+                assert!(!h.bin.as_os_str().is_empty(), "二进制路径被抹了 —— 身份核对没了对照物");
+            }
+            println!("E2E-OK KPY3 收尸走的是我们自己那条线（`Child` 交给了收尸线程，pid+二进制仍在）");
+            *DETACHED.lock().expect("锁") = None;
+            let _ = std::env::var("CCM_E2E_TMUX_SHIM_BIN");
+        }
     }
 }

@@ -465,6 +465,15 @@ jobs:
       #    第三条钉住 `KNF()` 改名后真正在数的那个量。⇒ 不棘的话它们明天能被删掉而 CI 照样绿。
       #    **先跑再棘**：PM 在合并点独立重跑实测 126/0 · 68/0 · 29/0，并各切一刀复核有牙。
       #    牙口现打（**落文件读 `$?`，不走管道**）：`126 ⇒ rc=0` · `127 ⇒ rc=1`。
+      # ★★ **2026-08-26 `K-P1`：`local-backend` 棘 `7` → `14`**（别的都不变）。
+      #    那 7 条不是零碎补丁：它们是**常驻那条路**的真进程判据 ——
+      #    `KPY2`「同机第二个宿主不许起第二个 daemon」5 条（含一条**非空对照**：换一个数据目录
+      #    = 换一个口 ⇒ 必须**真的**起出第二个进程，否则前面那几条读数可能只是「这条路起不出进程」）
+      #    · `KPY3`「脱离之后不留僵尸」2 条（断言落在**进程表**上，不是落在我们自己的事件上）。
+      #    ⚠ **套件数不变（仍 23）**：新判据接进了**已有**的 `local-backend` 套件（第二趟 `--ignored`），
+      #    没有新增套件 ⇒ 上面那个 `-ge 23` 一个字不动。⇒ 本轮「三处」实际动的是**两处**：
+      #    调用行 + 下面那张 `pair` 清单。**先跑再棘**：本机实测 `PASS=14 FAIL=0`。
+      #    牙口现打（**落文件读 `$?`，不走管道** —— 管道会把 `tail` 的码当成它的）：见交回报告。
       # ⚠ **同一拍必须改下面那张 `pair` 清单**（本轮就是这么改的）。审计逮到：清单此前停在
       #    `ccm-cli 53` / `ccm-acceptance 19` / `ccm-contract-parity 61`，与调用行 59/26/62
       #    **三处对不上** ⇒ 按本步骤的逻辑第一条不命中就 `exit 1`。那是一处**先于 K-C1** 的病
@@ -486,7 +495,7 @@ jobs:
                       "ccm-pretrust 15" "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 32" \
-                      "ccm-contract-parity 68" "daemon-gate2 36" "local-backend 7" \
+                      "ccm-contract-parity 68" "daemon-gate2 36" "local-backend 14" \
                       "daemon-sessions-rewatch 5" "daemon-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "daemon-cc-bus 50"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
@@ -664,8 +673,13 @@ jobs:
 
       # F05a：本机后端监护的真进程验收（起-杀-自愈 / 必崩即判死 / 缺 sidecar 诚实降级）。
       # 数字地板**只在这一行**（定框 §4：同一个数不许两侧各写一份）；脚本里只有导出式自检。
-      - name: 本机后端监护真进程验收（F05a）
-        run: bash e2e/assert-pass-floor.sh local-backend 7
+      # ★★ `K-P1` 08-26：**7 → 14**。多出来的 7 条是常驻那条路的真进程判据
+      #    （`KPY2` 认已有实例 5 条含一条**非空对照** · `KPY3` 不留僵尸 2 条），
+      #    它们住 `src-tauri/src/local_daemon.rs`，由本套件**第二趟** `--ignored` 拉起。
+      #    ⚠ 不棘的话那 7 条明天能被整族删掉而 CI 照样绿 —— 那正是
+      #    `assert-pass-floor.sh` 头注写的失效模式：**不是变红，是静默缩水**。
+      - name: 本机后端监护真进程验收（F05a + K-P1 常驻）
+        run: bash e2e/assert-pass-floor.sh local-backend 14
 
       - name: 灰灯 daemon 帧（F-E1）
         run: bash e2e/assert-pass-floor.sh graylight-frames 12

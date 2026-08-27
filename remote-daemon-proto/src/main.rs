@@ -32,13 +32,16 @@ mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
 mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
+mod listen; // K-P1：常驻监听口 —— 脱离宿主之后还能被找到 / 被问到 / 被接上（纯判定住这里，接受循环住 main.rs）
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod observe; // U3：观测面 —— 读，不改变世界
 mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
 mod plugin; // K-W1A：插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
 mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
+mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
 mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
 mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
+mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
 mod wire;
 
 use std::path::PathBuf;
@@ -452,9 +455,67 @@ async fn main() {
     // 「错误 exit2 + stderr 纯 {code,message} JSON」，客户端可整段 JSON-parse stderr）。
     tracing::info!("agent_home = {}", agent_home.display());
 
+    // ★★ `K-P1`：**同一个流模式，两种载体**。
+    //
+    // 「脱离宿主」本身不难（`launch.rs` 里三份现成的范例）；难的是**脱离之后还怎么跟它对话**
+    // —— 今天讲协议走的就是那对 stdio 管道，一脱离管道就没了。
+    // ⇒ 换载体**不换协议**：`wire.rs` 头注那句「exactly one UTF-8 JSON object per line」
+    // 在两条载体上逐字成立；`inbound::spawn<R: AsyncRead>` 与 `writer_task<W: AsyncWrite>`
+    // 本来就是泛型的，喂 socket 的两半与喂 stdin/stdout **在类型上无差别**。
+    //
+    // ⚠ **由环境决定，不由 argv 决定**：`SUBCOMMANDS` 那张表一动就要 bump `BUILD_ID`
+    // 并进 `IPC-PROTOCOL.md` 的对拍面（`build_id_guard` / `protocol_doc_guard` 各钉一半），
+    // 而本件**一条子命令都没加** —— 它换的是同一个流模式的载体。
+    // 判定住 [`listen::mode_from`]（**纯函数**，所以「只写了一半」那两条错误支都测得到）。
+    let mode = match listen::mode_from(&|k| std::env::var(k).ok()) {
+        Ok(m) => m,
+        Err(e) => {
+            // **fail closed**：宁可不起，也不要起一个不设防的口 —— 回环 TCP 没有权限位。
+            tracing::error!("监听口配置不成立 ⇒ 拒绝起：{e}");
+            std::process::exit(listen::EXIT_BAD_LISTEN_CONFIG);
+        }
+    };
+
     // (b) Emit the Hello handshake FIRST, flushed, before anything else.
-    let mut stdout = BufWriter::new(tokio::io::stdout());
-    let hello = Frame::Hello {
+    let hello = build_hello(&agent_home);
+
+    match mode {
+        listen::Mode::Stdio => run_over_stdio(hello, agent_home, with_bg, tail_only).await,
+        listen::Mode::Listen { port, token } => {
+            // 停机信号只挂**一次**（不在 accept 循环里每轮重装一个 SIGTERM 处理器）。
+            tokio::select! {
+                _ = serve_listening(port, token, hello, agent_home, with_bg, tail_only) => {}
+                _ = shutdown_signal() => {
+                    tracing::info!("shutdown signal received; exiting");
+                }
+            }
+        }
+    }
+
+    // ★ **必须显式 exit，不能让 runtime 自然 drop。**
+    //
+    // `tokio::io::stdin()` 走的是**阻塞线程池**。`inbound_task.abort()` 只取消那个 async
+    // task，**阻塞中的 `read(0)` 不受影响**；而 `#[tokio::main]` 展开出来的 runtime 在 drop
+    // 时会等所有 blocking 任务结束 ⇒ 只要对端还开着 stdin，进程就永远停在这一行。
+    //
+    // D 审计实测（U6b-1 引入入方向之后，相对父提交的**回归**）：
+    // stdin 接一条开着但没数据的 FIFO，发 SIGTERM ⇒ 3/3 复现「5s 后仍未退出」，
+    // stderr 末行已经打了 "shutdown signal received; exiting" —— 清理跑完了，就是不退。
+    // 父提交同一脚本 100ms 内退出。
+    //
+    // 爆炸半径正是生产形状：monitor 经 SSH exec 连着时 stdin 一直开着。
+    // 远端手工 kill 一个卡住的 daemon、部署脚本替换在跑的二进制，今天都会失效。
+    //
+    // 为什么 exit 是安全的：**流模式 daemon 没有任何待落盘状态** —— 它只读；
+    // 唯一的写盘入口 `control/fork_write.rs` 在一次性查询模式，那条路早就 exit 了。
+    // stdout 也不欠 flush：`writer_task` 每帧写完即 flush。
+    std::process::exit(0);
+}
+
+/// 造那一帧 hello。**抽出来是因为两条载体都要发它**，而它必须只有一份 ——
+/// 两份 hello 会各自漂，而这一帧是仓外 aterm 按精确字节在读的东西。
+fn build_hello(agent_home: &std::path::Path) -> Frame {
+    Frame::Hello {
         v: PROTO_VERSION,
         build_id: BUILD_ID.to_string(),
         host_arch: std::env::consts::ARCH.to_string(),
@@ -486,7 +547,15 @@ async fn main() {
         capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
         emits: EMITS.iter().map(|s| s.to_string()).collect(),
         commands: inbound::COMMANDS.iter().map(|s| s.to_string()).collect(),
-    };
+    }
+}
+
+/// 今天那条路：**stdin/stdout 一对管道**。宿主一退读端就断，daemon 153ms 内自己走。
+///
+/// ⚠ 本函数体是 `K-P1` 之前 `main()` 的那一段**原样搬过来的**，一行行为都没改 ——
+/// 常驻是**加一条载体**，不是把这条改掉。改这一段之前先问：另一条载体要不要跟着改？
+async fn run_over_stdio(hello: Frame, agent_home: PathBuf, with_bg: bool, tail_only: bool) {
+    let mut stdout = BufWriter::new(tokio::io::stdout());
     // U6b-3：写 + flush 一步到位，**并拿到 `HelloFlushed` 见证**。
     // 那个见证是 `inbound::spawn` 的必填参数 ⇒「reader 抢在 Hello 之前起来」
     // 变成编译期不可表示（此前靠一条比较字节位置的机检，被普通函数抽取绕过）。
@@ -530,27 +599,10 @@ async fn main() {
     // 代价是信号无载荷且会合并 —— 靠「重探 + 与上一份快照差分」天然免疫。
     // P5：留一份给停机用（下面 select 结束后要显式通知 reader）。
     let poke_for_shutdown = poke.clone();
-    #[cfg(unix)]
-    let poke_task = tokio::spawn(async move {
-        use tokio::signal::unix::{signal, SignalKind};
-        let mut sigusr1 = match signal(SignalKind::user_defined1()) {
-            Ok(s) => s,
-            Err(e) => {
-                // 装不上就退化成「只有 ticker 兜底」，**说出来**而不是静默降级。
-                tracing::warn!("装不上 SIGUSR1 处理器（{e}）⇒ tmux hook 通路不可用，退回定时探测");
-                return;
-            }
-        };
-        tracing::info!("SIGUSR1 处理器已就位（tmux hook 通路的 daemon 侧）");
-        while sigusr1.recv().await.is_some() {
-            poke.poke();
-        }
-    });
-    #[cfg(not(unix))]
-    let poke_task = {
-        let _ = poke;
-        tokio::spawn(async {})
-    };
+    // `K-P1`：处理器认的是一个**槽**而不是句柄（另一条载体上 watcher 会换人）。
+    // 这条路上槽里永远只装这一个 —— 形状统一，实现只有一份。
+    let slot: PokeSlot = std::sync::Arc::new(std::sync::Mutex::new(Some(poke)));
+    let poke_task = spawn_sigusr1_task(slot);
 
     // (d) Run the stdout writer until the channel closes or a signal fires.
     tokio::select! {
@@ -568,25 +620,316 @@ async fn main() {
     poke_task.abort();
     inbound_task.abort();
     drop(reply_tx);
+}
 
-    // ★ **必须显式 exit，不能让 runtime 自然 drop。**
-    //
-    // `tokio::io::stdin()` 走的是**阻塞线程池**。`inbound_task.abort()` 只取消那个 async
-    // task，**阻塞中的 `read(0)` 不受影响**；而 `#[tokio::main]` 展开出来的 runtime 在 drop
-    // 时会等所有 blocking 任务结束 ⇒ 只要对端还开着 stdin，进程就永远停在这一行。
-    //
-    // D 审计实测（U6b-1 引入入方向之后，相对父提交的**回归**）：
-    // stdin 接一条开着但没数据的 FIFO，发 SIGTERM ⇒ 3/3 复现「5s 后仍未退出」，
-    // stderr 末行已经打了 "shutdown signal received; exiting" —— 清理跑完了，就是不退。
-    // 父提交同一脚本 100ms 内退出。
-    //
-    // 爆炸半径正是生产形状：monitor 经 SSH exec 连着时 stdin 一直开着。
-    // 远端手工 kill 一个卡住的 daemon、部署脚本替换在跑的二进制，今天都会失效。
-    //
-    // 为什么 exit 是安全的：**流模式 daemon 没有任何待落盘状态** —— 它只读；
-    // 唯一的写盘入口 `control/fork_write.rs` 在一次性查询模式，那条路早就 exit 了。
-    // stdout 也不欠 flush：`writer_task` 每帧写完即 flush。
-    std::process::exit(0);
+/// SIGUSR1 处理器要 poke 的那个 watcher 住的**槽**。
+///
+/// ★ **为什么是槽而不是句柄**〔`K-P1`〕：常驻那条载体上 watcher 会**换人** ——
+/// 每接上一个客户端换一份新的（理由见 [`serve_listening`]），而处理器活得比任何一个 watcher 都长。
+/// 拿句柄的话，第二个客户端连上之后 SIGUSR1 会去 poke 一个**已经退掉的** watcher：
+/// 那不会报错，它只是**再也不响应 tmux hook 了** —— 又一个「假信号不报错，它只是一直说是」。
+type PokeSlot = std::sync::Arc<std::sync::Mutex<Option<observe::watcher::WatcherPoke>>>;
+
+/// **P4：SIGUSR1 = 「tmux 那边有事，赶紧重探一次」。**
+///
+/// ★ **这一步必须先于任何 hook 安装落地** —— `SIGUSR1` 的**默认处置是终止进程**。
+/// 先装 hook 再装处理器，等于给一个会自杀的 daemon 装了自杀触发器。
+///
+/// 为什么是信号而不是别的：原方案让 hook 追加事件日志、daemon inotify 读增量，
+/// **撞红线 I7「daemon 只读」**（`readonly_guard` 当场拦下）。信号通路让 daemon 的
+/// 文件系统写归零，且会话名根本不经 shell ⇒ 那条引号/注入面直接消失。
+/// 代价是信号无载荷且会合并 —— 靠「重探 + 与上一份快照差分」天然免疫。
+#[cfg(unix)]
+fn spawn_sigusr1_task(slot: PokeSlot) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        use tokio::signal::unix::{signal, SignalKind};
+        let mut sigusr1 = match signal(SignalKind::user_defined1()) {
+            Ok(s) => s,
+            Err(e) => {
+                // 装不上就退化成「只有 ticker 兜底」，**说出来**而不是静默降级。
+                tracing::warn!("装不上 SIGUSR1 处理器（{e}）⇒ tmux hook 通路不可用，退回定时探测");
+                return;
+            }
+        };
+        tracing::info!("SIGUSR1 处理器已就位（tmux hook 通路的 daemon 侧）");
+        while sigusr1.recv().await.is_some() {
+            // 锁毒化不该让 tmux 通路整条哑掉 ⇒ `into_inner` 取回内容再用。
+            if let Some(p) = slot.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+                p.poke();
+            }
+        }
+    })
+}
+
+#[cfg(not(unix))]
+fn spawn_sigusr1_task(slot: PokeSlot) -> tokio::task::JoinHandle<()> {
+    let _ = slot;
+    tokio::spawn(async {})
+}
+
+/// 一条**已经认证通过**的连接，等着被接成流。
+///
+/// 三样一起交出去不是为了打包好看：`HelloFlushed` 是**类型级见证**，
+/// 它只能由 `write_and_flush_hello` 产出，而握手那一步就发生在这条连接自己身上
+/// ⇒ 「hello 先于 reader」这条时序在换了载体之后**逐字保留**，仍然编译期不可表示。
+struct Attached {
+    reader: tokio::io::BufReader<tokio::net::tcp::OwnedReadHalf>,
+    writer: BufWriter<tokio::net::tcp::OwnedWriteHalf>,
+    hello_flushed: wire::HelloFlushed,
+}
+
+/// 一条连接的**握手**：先写 hello，再读一行 attach 请求，然后分档。
+///
+/// # 为什么 hello 写在分档**之前**
+///
+/// 否则「这台机上有没有一个长驻 daemon」只能从「`connect()` 成没成」推 ——
+/// 而 TCP 的 backlog 会让**没人 accept 的口照样连得上** ⇒ 那是个「一直说是」的假信号。
+/// 写在前面之后，那一问的答案是**读一行**，协议一个字节都不用加
+/// （`shared/ccm:1182-1185` 自陈「后者今天没有便宜的问法」，说的就是这一格）。
+///
+/// # `candidate` 是什么
+///
+/// accept 那一刻用一次 `swap(true)` 决出来的：**赢的那条**才有资格要流，
+/// 输的那条最多只能读 hello。这样「谁占着流」不靠事后检查，
+/// 而是**一次原子操作**决定的 —— 两条连接同时握手也不会都拿到流。
+/// 赢了却没能接成流（对端只想读 hello / token 不对 / 写不出去）⇒ **必须把牌还回去**。
+async fn handshake_one(
+    sock: tokio::net::TcpStream,
+    hello: Frame,
+    token: String,
+    candidate: bool,
+    busy: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    attached: tokio::sync::mpsc::Sender<Attached>,
+) {
+    use std::sync::atomic::Ordering;
+    let release = || {
+        if candidate {
+            busy.store(false, Ordering::SeqCst);
+        }
+    };
+    let (r, w) = sock.into_split();
+    let mut w = BufWriter::new(w);
+    let hello_flushed = match wire::write_and_flush_hello(&mut w, &hello).await {
+        Ok(x) => x,
+        Err(e) => {
+            tracing::warn!("往一条新连接写 hello 失败（{e}）；关掉它");
+            release();
+            return;
+        }
+    };
+    let mut r = tokio::io::BufReader::new(r);
+    // ⚠ **有上限地读** —— 对端是同机任何进程，它完全可以一直发字节不发换行，
+    // 而无界读就是无界堆分配（daemon 侧为同一形栽过一次实测，见 `inbound.rs` 头注）。
+    let line = match listen::read_capped_line(&mut r, listen::ATTACH_LINE_CAP).await {
+        Ok(listen::HandshakeLine::Line(l)) => l,
+        Ok(listen::HandshakeLine::Eof) => {
+            // 「只读 hello 就走」那一档：对端读完就关，是**正常**结局，不出声。
+            release();
+            return;
+        }
+        Ok(listen::HandshakeLine::TooLong(bytes)) => {
+            tracing::warn!("一条 attach 请求 {bytes} 字节还没换行 ⇒ 整行丢弃并关连接");
+            release();
+            return;
+        }
+        Err(e) => {
+            tracing::warn!("读 attach 请求失败（{e}）；关掉这条连接");
+            release();
+            return;
+        }
+    };
+    match listen::admit(listen::attach_verdict(&line, &token), !candidate) {
+        listen::Admit::Refuse(reason) => {
+            // **出声地拒**（照 `relay::serve` 那条 503 的形状：宁可拒绝，也不静默 FIN）。
+            // 静默 FIN 会让对端只能靠「等了很久没动静」去猜，而那是猜不出原因的。
+            let _ = listen::write_line(&mut w, &listen::refusal_line(reason)).await;
+            tracing::warn!("拒绝一条 attach 请求：{reason}");
+            release();
+        }
+        listen::Admit::Stream => {
+            if listen::write_line(&mut w, listen::ATTACH_OK_LINE)
+                .await
+                .is_err()
+            {
+                release();
+                return;
+            }
+            if attached
+                .send(Attached {
+                    reader: r,
+                    writer: w,
+                    hello_flushed,
+                })
+                .await
+                .is_err()
+            {
+                release();
+            }
+        }
+    }
+}
+
+/// `K-P1`：**常驻形态的接受循环** —— 一条流 + 不限次的「只读 hello 就走」。
+///
+/// # 空转期为什么还留着一个 watcher
+///
+/// 常驻真正买到的是两样东西，第二样就在这里：
+/// ① `ccm` 那一问有答案了（连一次 + 读一行 hello）；
+/// ② **`@ccm_sid` 打标那段时间窗关掉了** —— 写 `@ccm_sid` 的是**正在跑的** daemon
+///   （`observe/watcher.rs` inotify `sessions/` → `identity_tag::tag`），
+///   而 `shared/ccm` 那条每会话每秒的身份 poller 已经被 `U-NP④` **整条删掉、不留轮询退路**。
+///   monitor 没开着的时候若这里不看 `sessions/`，②就一格都没买到。
+/// ⇒ 空转期照样起一个 watcher，帧**读出来就丢**（没人要），打标那一半照常发生。
+///
+/// # 接上客户端时为什么**换一份新的** watcher，而不是把空转那份的帧转给他
+///
+/// `watch_loop` 的 Phase 1 是一次**同步初扫**（`WalkDir` 走一遍 `sessions/` 逐个
+/// `process_session_added`），之后靠 `ReaderState` 去重。⇒ 半路接进来的客户端
+/// **拿不到那次初扫**，屏上就是空的。换一份新的 = 他拿到一次完整快照，
+/// 而这不需要动 `watcher.rs` 一个字节。
+/// ⚠ 代价如实记：换人期间 inotify 有一个**极短的重装窗口**，那段时间的文件事件不会补发；
+/// 而 Phase 1 的初扫恰好覆盖「换人之前已经存在的会话」⇒ 漏的只有「正好落在那一瞬的新会话」。
+///
+/// # 它**不做**什么
+///
+/// **不重起自己**（`K14` 裁定：第一档，自愈单独立成 `K-P3`）。宿主不在时**没有监护**，
+/// 这是**如实登记的降级**，而且那句话要在 UI 上说出来（`KPY4` 钉它），不许只写在这条注释里。
+async fn serve_listening(
+    port: u16,
+    token: String,
+    hello: Frame,
+    agent_home: PathBuf,
+    with_bg: bool,
+    tail_only: bool,
+) {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::Arc;
+
+    let addr = std::net::SocketAddr::new(listen::LOOPBACK, port);
+    let listener = match tokio::net::TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            let in_use = e.kind() == std::io::ErrorKind::AddrInUse;
+            // ★★ **绑不上就退出，绝不自己换端口。**
+            // 换端口 = 每台机 N 个 daemon，各自往 tmux server 装 `[50]` 槽位的全局 hook
+            // 互相盖（`control/tmux_hook.rs::install_hooks`，**没有关掉它的开关**，
+            // 载荷里烤着那一个 daemon 的 pid+starttime）⇒ 比今天更糟。
+            tracing::error!(
+                "绑不上 {addr}（{e}）⇒ 退出。\n\
+                 这个口上已经有东西了：宿主该**连上去读一行 hello 比对**，\n\
+                 对不上就出声并拒绝，**不许静默复用**，更不许换个口再起一个。"
+            );
+            std::process::exit(if in_use {
+                listen::EXIT_ADDR_IN_USE
+            } else {
+                listen::EXIT_BAD_LISTEN_CONFIG
+            });
+        }
+    };
+    tracing::info!("常驻监听口已就位：{addr}（一条流 + 不限次「只读 hello 就走」）");
+
+    let busy = Arc::new(AtomicBool::new(false));
+    let poke_slot: PokeSlot = Arc::new(std::sync::Mutex::new(None));
+    let _poke_task = spawn_sigusr1_task(Arc::clone(&poke_slot));
+    let set_slot = |p: Option<observe::watcher::WatcherPoke>| {
+        *poke_slot.lock().unwrap_or_else(|e| e.into_inner()) = p;
+    };
+
+    let (mut idle_rx, mut idle_poke) = {
+        let (rx, poke) = observe::watcher::spawn(agent_home.clone(), with_bg, tail_only);
+        set_slot(Some(poke.clone()));
+        (Some(rx), Some(poke))
+    };
+
+    // 容量 1：同一时刻最多只有一条连接能通过认证（`busy` 那次 `swap` 保证的）。
+    let (attached_tx, mut attached_rx) = tokio::sync::mpsc::channel::<Attached>(1);
+    let (done_tx, mut done_rx) = tokio::sync::mpsc::channel::<()>(1);
+
+    loop {
+        tokio::select! {
+            // ① 有连接进来。**每条连接一个 task** —— 握手不许挡住 accept，
+            //    否则一条只想读 hello 的连接会把整条监听线堵住。
+            accepted = listener.accept() => {
+                match accepted {
+                    Ok((sock, _peer)) => {
+                        let candidate = !busy.swap(true, Ordering::SeqCst);
+                        tokio::spawn(handshake_one(
+                            sock,
+                            hello.clone(),
+                            token.clone(),
+                            candidate,
+                            Arc::clone(&busy),
+                            attached_tx.clone(),
+                        ));
+                    }
+                    Err(e) => tracing::warn!("accept 失败（{e}）；继续听"),
+                }
+            }
+            // ② 有人认证通过 ⇒ 退掉空转那份 watcher，换一份新的给他，起流。
+            Some(att) = attached_rx.recv() => {
+                if let Some(p) = idle_poke.take() {
+                    p.shutdown();
+                }
+                idle_rx = None;
+                let Attached { reader, writer, hello_flushed } = att;
+                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), with_bg, tail_only);
+                set_slot(Some(poke.clone()));
+                // 应答走**独立通道**：出方向丢一条内容帧可恢复，丢一条应答会让客户端永远等下去。
+                let (reply_tx, reply_rx) =
+                    tokio::sync::mpsc::channel::<Frame>(inbound::REPLY_CHANNEL_CAPACITY);
+                let mut inbound_task = inbound::spawn(reader, reply_tx.clone(), hello_flushed);
+                let done = done_tx.clone();
+                tracing::info!("一条流已接上（认证通过）");
+                tokio::spawn(async move {
+                    // ★★ **两个事件都算「客户端走了」，缺一个就会把那一档永久占住。**
+                    //
+                    // ⚠ 这一格是 `K-P1` 的 e2e **实测**逼出来的，不是设计出来的：
+                    // 只等 `writer_task`（它靠**写**拿到错误才结束）时，
+                    // 一个**空闲**的 daemon 根本没有东西可写 ⇒ 上一个 monitor 退了之后
+                    // 那张牌**永远不还回来** ⇒ 下一个 monitor 拿到 `stream-busy`
+                    // ⇒ 「换个 monitor 重开就没有本机后端了」。实测：等满 50×20ms 仍是 busy。
+                    //
+                    // ⇒ 再认一个事件：**入方向读到 EOF**（客户端关了它的写半边 / 进程没了）。
+                    // 那与 stdio 那条载体上「stdin EOF」是同一个事实，只是这条载体上它**必须**被当真：
+                    // socket 的对端关了就是走了，而 stdio 那边刻意对写端关闭不敏感
+                    //（那是为了不让一次误关掉整个 daemon —— 两条载体的取舍不同，写清楚）。
+                    tokio::select! {
+                        _ = writer_task(writer, rx, reply_rx) => {
+                            tracing::info!("流结束：写不出去了（客户端走了）");
+                        }
+                        _ = &mut inbound_task => {
+                            tracing::info!("流结束：入方向读到 EOF（客户端关了它的写半边）");
+                        }
+                    }
+                    // P5：**显式告诉 reader 停** —— 没有 ticker 之后它只会一直阻塞在 `recv()`。
+                    poke.shutdown();
+                    inbound_task.abort();
+                    drop(reply_tx);
+                    let _ = done.send(()).await;
+                });
+            }
+            // ③ 流结束（客户端走了）⇒ 把牌还回去，回到空转。
+            Some(()) = done_rx.recv() => {
+                tracing::info!("流结束 ⇒ 回到空转：口仍在听，sessions/ 仍在看");
+                busy.store(false, Ordering::SeqCst);
+                let (rx, poke) = observe::watcher::spawn(agent_home.clone(), with_bg, tail_only);
+                set_slot(Some(poke.clone()));
+                idle_rx = Some(rx);
+                idle_poke = Some(poke);
+            }
+            // ④ 空转期把 watcher 的帧读出来丢掉。**没人要它们**，
+            //    但不读的话 10_000 容量的通道会填满并开始记 `Overflow`，
+            //    而那本账是给「有客户端在听」那一档记的 —— 空转期记它没有意义。
+            f = async { idle_rx.as_mut().expect("上面刚判过 is_some").recv().await }, if idle_rx.is_some() => {
+                if f.is_none() {
+                    tracing::warn!("空转期的 watcher 自己结束了 ⇒ 这台机的 @ccm_sid 打标停了");
+                    idle_rx = None;
+                    idle_poke = None;
+                    set_slot(None);
+                }
+            }
+        }
+    }
 }
 
 /// The stdout writer half of the §5.4 split: drain frames and write one wire
