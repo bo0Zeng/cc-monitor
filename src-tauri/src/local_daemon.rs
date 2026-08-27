@@ -2195,16 +2195,24 @@ mod tests {
         //    〔`D2` 实打：`.body(&next_step)` → `.body("")` ⇒ 1194/0，五条判据全绿。〕
         //    ⚠ 认的是「`.body(` 那一行的实参里有 `next_step`」，不是那一行的逐字长相 ——
         //    `.body(next_step.clone())` 这种等价写法照样过，`.body("")` 过不去。
-        let body_line = refusal_branch
+        //    ⚠⚠ **先断言它唯一再取**〔收工前自查逮到的：`重-D2-3` 那一形长在我自己刚写的这一行上〕：
+        //    `.lines().find(…)` 又是一次「**取第一处**」。`.body(` 出现两次时（builder 被调两遍）
+        //    生效的是**后一个**，而这里读的是**前一个** ⇒ 本条会对着一个不生效的参数说「进了」。
+        let body_lines: Vec<&str> = refusal_branch
             .lines()
-            .find(|l| l.contains(".body("))
-            .unwrap_or_else(|| {
-                panic!(
-                    "拒绝那一支里没有 `.body(` 那一行 —— 用户可见出口换了形状。\n\
-                     换出口可以，但**回来把本条改成新出口那一格**：③ 只钉「有出口」，\n\
-                     不钉「那句话进没进出口」，光靠 ③ 会留下一个正文空白的通知。"
-                )
-            });
+            .filter(|l| l.contains(".body("))
+            .collect();
+        assert_eq!(
+            body_lines.len(),
+            1,
+            "拒绝那一支里 `.body(` 有 {} 行（该恰好 1 行）：{body_lines:?}\n\
+             ★ 0 行 = 用户可见出口换了形状 ⇒ **回来把本条改成新出口那一格**：\n\
+               ③ 只钉「有出口」、不钉「那句话进没进出口」，光靠 ③ 会留下一个正文空白的通知。\n\
+             ★ ≥2 行 = 生效的是**后一个**，而下面读的是**前一个** —— 本条会对着一个\n\
+               不生效的参数说「进了」。**别放宽这条断言，把人群切窄。**",
+            body_lines.len()
+        );
+        let body_line = body_lines[0];
         assert!(
             body_line.contains("next_step"),
             "通知正文里没有 `next_step`：{}\n\
