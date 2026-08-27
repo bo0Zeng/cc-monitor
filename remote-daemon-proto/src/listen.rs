@@ -31,7 +31,12 @@
 //! ⇒ 有了 hello 这一档，那一问的答案是**读一行**，协议一个字节都不用加。
 //!
 //! ⚠ **代价如实记**：多客户端的**流**（fan-out + `Overflow.lost` 丢帧账重定义）
-//! **本件明确不做**，由 `frozen_single_client_guard.rs` 那条触发器看着。
+//! **本件明确不做**，由 `single_stream_guard.rs` 那条触发器看着。
+//! 〔`D1` `重-1` 08-27：这里原先指的是一个**不存在的文件**（`frozen_single_client_guard`，
+//! 全仓命中 1 处，就是那一行自己）。**指了住址而住址是假的，比不指更坏** ——
+//! 读者会以为那一格有人守着，去找的时候什么都没有。
+//! ⇒ 同轮补了 `every_file_this_head_note_points_at_really_exists` 钉住整段头注，
+//! 不是只改那一个词。〕
 //!
 //! # 诚实边界（三条，都不是措辞）
 //!
@@ -478,6 +483,77 @@ mod tests {
             caller.contains("listen::Admit::Refuse(reason)"),
             "`main.rs` 里那个 `reason` 不再是从 `Admit::Refuse` 解出来的 —— \
              那它是从哪来的？闭集这件事就断在这里。"
+        );
+    }
+
+    /// ★★ `重-1`：**头注指到的每一个住址今天都真的在。**
+    ///
+    /// 〔`K-P1-D1` `重-1`〕头注原先写「由 `frozen_single_client_guard.rs` 那条触发器看着」——
+    /// 那个文件**全仓不存在**（命中 1 处，就是那一行自己），真名是 `single_stream_guard.rs`。
+    ///
+    /// ⚠ **治的不是那一个词**（`brief` 第 15 条那一问）：本条钉的是**整段头注里的每一个
+    /// 文件式住址**，而不是「那条触发器」这一处。一条承重头注把读者指向一个不存在的住址，
+    /// 是「**指了住址，但住址是假的**」——`brief` 第 13 条那一族的反面。
+    ///
+    /// # 分母（现打 08-27，量具 = 一段正则 + 逐条落盘核在不在）
+    ///
+    /// 本轮新增的三个 daemon 文件（`listen.rs` / `single_stream_guard.rs` / `ratchet_guard.rs`）
+    /// 里的**路径式引用共 22 处**（去掉一个正则假阳性 `buf.shrink_to_fit()`），
+    /// **悬空 1 处**，就是这一处。另两份**零悬空**。
+    #[test]
+    fn every_file_this_head_note_points_at_really_exists() {
+        let head: String = include_str!("listen.rs")
+            .lines()
+            .take_while(|l| l.starts_with("//!"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        // 反空真①：头注切不出来 ⇒ 下面整段空转。
+        assert!(
+            head.len() > 2000,
+            "头注只切到 {} 字节 —— 切错了，本条此刻在空转",
+            head.len()
+        );
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        // 头注里写住址有四种形态：本 crate 内的裸文件名 · `relay/xxx.rs` 这种 crate 内相对路径 ·
+        // `src-tauri/src/xxx.rs` / `e2e/xxx.sh` 这种从仓根写起的 ·
+        // **monitor 侧的裸文件名**（`daemon_policy.rs` —— 跨半个仓引用在本仓是常态）。四个根都试。
+        let roots = [
+            manifest.join("src"),
+            manifest.join(".."),
+            manifest.to_path_buf(),
+            manifest.join("../src-tauri/src"),
+        ];
+        let mut checked = 0usize;
+        for word in head.split(|c: char| !(c.is_ascii_alphanumeric() || "_./-".contains(c))) {
+            let w = word.trim_matches(|c| c == '.' || c == '/');
+            if !(w.ends_with(".rs") || w.ends_with(".sh")) {
+                continue;
+            }
+            checked += 1;
+            assert!(
+                roots.iter().any(|r| r.join(w).exists()),
+                "头注指着 `{w}`，而四个根下都找不到它（daemon `src/` · 仓根 · crate 根 · monitor `src-tauri/src/`）——\n\
+                 ★ 指了住址而住址是假的：读者会以为那一格有人守着，去找的时候什么都没有。\n\
+                 ⇒ 要么改成真名，要么把那句话删掉；**别留一个假住址**。"
+            );
+        }
+        // 反空真②：一个住址都没扫到 ⇒ 上面的 `for` 跑零圈（本轮 `refusal_reasons_are_a_closed_set`
+        // 第一版正是死在这一格：人群画在了错的文件上，循环跑零圈而读起来完全正常）。
+        assert!(
+            checked >= 4,
+            "头注里只扫到 {checked} 个文件式住址（下限 4 = 08-27 实测值：\
+             `relay/server.rs` · `single_stream_guard.rs` · `daemon_policy.rs` · \
+             `src-tauri/src/local_daemon.rs`）—— 抽取坏了或头注被搬空了"
+        );
+        // ★ 那条触发器**按名字**指得住：`single_stream_guard.rs` 必须被头注点到。
+        assert!(
+            head.contains("single_stream_guard.rs"),
+            "头注不再指名那条「多客户端的流」触发器 —— `K-P1 §2` 明确不做的那一半就只剩一句散文"
+        );
+        assert!(
+            include_str!("single_stream_guard.rs")
+                .contains("fn the_single_stream_shape_is_still_exactly_one_client"),
+            "`single_stream_guard.rs` 里那条触发器不见了 —— 头注在替一个不存在的性质背书"
         );
     }
 
