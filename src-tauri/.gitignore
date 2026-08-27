@@ -14,3 +14,6 @@
 # 但用途不同：embedded-daemons 是**远端 SFTP 部署**用的 musl 二进制（build.rs 的
 # `include_bytes!` 内嵌），binaries/ 是 **本机** sidecar（Tauri `externalBin` 打包）。
 /binaries/
+
+# 本机个人构建配置（dev 瘦身），不进 git —— 08-27 从 Cargo.toml 搬来
+.cargo/
