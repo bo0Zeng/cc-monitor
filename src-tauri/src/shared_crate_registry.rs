@@ -515,8 +515,16 @@ mod tests {
                 "`npm run test:daemon-fork` —— 脚本头注逐字「不需要 tmux、不需要 ssh」，实测 PASS=10",
             ),
             (
-                "本机后端监护真进程验收（F05a）",
-                "`npm run test:local-backend` —— 实测 PASS=7，且它**执行了 `local_backend.rs` 的三条                  `#[ignore]`**（真起了一个 daemon 进程）。                 ⚠ **只许带 tmux 桩跑**：脚本会 `export TMUX_TMPDIR`（本区红线括号里点名的动作），                 带桩时没有任何 tmux 进程能起来，裸跑则不然",
+                "本机后端监护真进程验收（F05a + K-P1 常驻）",
+                "`npm run test:local-backend` —— 〔`K-P1` 08-26 重打〕实测 **PASS=14**（原 7），\
+                 它**跑两趟** `--ignored`：`local_backend`（F05a 监护那条路，3 条）+ \
+                 `local_daemon`（`K-P1` 常驻那条路，2 条）—— 都真起 daemon 进程。\
+                 ⚠ **只许带 tmux 隔离跑**：被起的 daemon 一上来就往它连得到的 tmux server 装三条\
+                 **全局** hook（固定槽位 `[50]`，没有关掉它的开关）⇒ 裸跑就是去改用户真实 tmux 的状态。\
+                 隔离走 `e2e/tmux-shim.sh`（`C7i` 的唯一原语：shim 强插 `-L`，\
+                 **不是** `TMUX_TMPDIR` —— `$TMUX` 一有值就压过它，08-11 那次事故正是这个机制）。\
+                 ⚠ 收尾顺序是承重的：**先收进程、再删 shim**；漏网的 daemon 在 shim 没了之后\
+                 重装 hook 会落到真 tmux 上（08-26 实测发生过一次）。",
             ),
         ];
         /// 其余每一步逐条登记：`(步骤名, 本地跑不跑, 说法)`。

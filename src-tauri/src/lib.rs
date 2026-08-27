@@ -1209,25 +1209,45 @@ pub fn run() {
         // 而模块头注里逐字写着「不杀就成了游魂进程」。**注释说了、代码没做，靠一条告警才发现。**
         .run(|_app, event| {
             if let tauri::RunEvent::Exit = event {
+                // P2s（C8②③）：**杀不杀由这台机自己的策略说了算**，缺省不杀。
+                //
+                // ⚠ 原来这里是无条件 `stop()`，理由写着「不杀就成了游魂进程」。
+                // 那个理由**实测不成立**〔08-11，P2s §0a〕：daemon 是纯 stdio 子进程，
+                // monitor 一退读端就断，它 **153 毫秒**内自己 broken-pipe 退出。
+                // ⇒ 不杀不会留游魂；那时这条策略的真实语义是「立刻杀」与「让它自己死」之差。
+                //
+                // ★★ 〔`K-P1` 08-26〕**上面那句话今天只对一半的情况成立** ——
+                // 本机后端在 Linux 上会**真脱离**（`local_daemon::start_detached`），
+                // 那一支上「不杀」就是真的继续跑。⇒ 这个勾必须对**两条起法**都生效，
+                // 否则用户勾了「退出时结束它」、退出、而它没被结束 —— 一个说谎的开关。
+                // 策略**只读一次**，两条路共用同一个答案。
+                let kill = daemon_policy::kill_on_exit(inbound_client::LOCAL_ORIGIN);
+                // ── 今天那条路：被监护的子进程，句柄在 `LOCAL_BACKEND` 里 ──
                 // ⚠ 锁在这里取、句柄不克隆：`SuperviseHandle` 刻意不是 `Clone`
                 // （克隆出去的那份 `stop()` 谁都能调，就没有「一个句柄一条命」这回事了）。
-                let guard = local_daemon::LOCAL_BACKEND.lock();
-                if let Some(h) = guard.as_ref().ok().and_then(|g| g.as_ref()) {
-                    // P2s（C8②③）：**杀不杀由这台机自己的策略说了算**，缺省不杀。
-                    //
-                    // ⚠ 原来这里是无条件 `stop()`，理由写着「不杀就成了游魂进程」。
-                    // 那个理由**实测不成立**〔08-11，P2s §0a〕：daemon 是纯 stdio 子进程，
-                    // monitor 一退读端就断，它 **153 毫秒**内自己 broken-pipe 退出。
-                    // ⇒ 不杀不会留游魂；这条策略的真实语义是「立刻杀」与「让它自己死」之差。
-                    // （真要让它活下去得先给 daemon 一个监听口 —— `P2d` / 待决 `U7`。）
-                    let kill = daemon_policy::kill_on_exit(inbound_client::LOCAL_ORIGIN);
-                    tracing::info!(
-                        "退出：本机后端 pid={:?}（起过 {} 次）kill_on_exit={kill}",
-                        h.current_pid(),
-                        h.attempts()
-                    );
-                    if kill {
-                        h.stop();
+                // ⚠ 这个块**必须收口**：下面那条路要取同一把锁（`stop_local_backend` 的第一件事）。
+                {
+                    let guard = local_daemon::LOCAL_BACKEND.lock();
+                    if let Some(h) = guard.as_ref().ok().and_then(|g| g.as_ref()) {
+                        tracing::info!(
+                            "退出：本机后端 pid={:?}（起过 {} 次）kill_on_exit={kill}",
+                            h.current_pid(),
+                            h.attempts()
+                        );
+                        if kill {
+                            h.stop();
+                        }
+                    }
+                }
+                // ── ★ `K-P1`：常驻那条路 ──
+                // 它没有 `SuperviseHandle`（那条路上**没有监护器** —— `K14` 裁的第一档），
+                // 手里只有 pid + 二进制路径 ⇒ 收它走 `stop_local_backend`
+                //（我们起的那个直接 kill+wait；接管来的那个先核 `/proc/<pid>/exe` 再 SIGTERM）。
+                if kill && local_daemon::is_detached() {
+                    match local_daemon::stop_local_backend() {
+                        Ok(msg) => tracing::info!("退出：{msg}"),
+                        // **说出来**：这一格失败的后果是「用户勾了却没停」，静默就成了骗人。
+                        Err(e) => tracing::warn!("退出：停常驻后端失败（{e}）—— 它还在跑"),
                     }
                 }
             }

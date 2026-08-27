@@ -104,6 +104,21 @@ mod spawn_sites {
          "本机只读查询：`bin` 同上来自候选表，`args` 是本模块构造的固定子命令"),
         ("ssh_source.rs", "resolve_ssh_host", "`ssh -G <host>`",
          "解析 ssh_config 的别名 —— 只读一次配置，不建连接"),
+        // ── `K-P1`：常驻那条路 ──────────────────────────────────────────────
+        ("local_daemon.rs", "spawn_detached", "被脱离起来的 daemon 二进制",
+         "本机后端**脱离宿主**起：`process_group(0)` + stdio 全 null + 协议改走回环监听口。\
+          二进制路径来自 `resolve_daemon_bin`（exe 旁的 sidecar 或释放出来的内嵌那份，\
+          与 `local_backend::start_or_extract` 同一个顺序，由一条对拍判据钉着）。\
+          ⚠ 它必须住在**宿主知识层**而不是 `backend/`：`process_group` 来自 \
+          `std::os::unix::process::CommandExt`，而 `std::os::unix` 在 \
+          `backend/mod.rs::the_backend_half_stays_platform_agnostic` 的禁针里 —— 写进去当场红，\
+          而「加一条平台例外」被那张表的递减棘轮堵着（`PLATFORM_EXCEPTIONS.len() <= 1`，今天正好 1）"),
+        ("local_daemon.rs", "signal_term", "`kill -TERM <pid>`",
+         "停掉一个**不是本 monitor 起的**常驻实例（上一次 monitor 脱离起的那个）。\
+          必须起进程的理由是：monitor 今天**没有 `libc` 这条直接依赖**（它只在依赖树里），\
+          为一次「停」按钮加一条直接依赖是更大的代价。\
+          ⚠ 参数是**我们自己算出来的 pid**、零用户输入；而且杀之前先过 `kill_adopted` 的身份核对\
+          （`/proc/<pid>/exe` 必须是同一个二进制）—— pid 会被复用，杀错一个无关进程是不可逆的"),
     ];
 
     fn src_root() -> PathBuf {
@@ -352,6 +367,18 @@ mod tests {
         ("sftp_pool.rs", "download_inner", None, "把远端文件落到本地缓存；写的不是用户既有环境"),
         ("utils.rs", "atomic_write_json", None, "通用原子写原语，调用方各自申报"),
         ("utils.rs", "atomic_replace_path", None, "同上，原语的本地副本"),
+        // ── `K-P1`：常驻那条路要写两样东西。**都不是安装动作** —— 写的是 monitor 自己的目录。
+        ("local_daemon.rs", "ensure_listen_token", None,
+         "写 `~/.cc-monitor/listen-token`（**`0600`**，`create_new` 只创建一次）。\
+          ★ 它买的是**权限位**：回环 TCP 上同机任何进程（含别的用户）都连得上，\
+          Unix socket 有权限位而它没有，收窄只能靠一个 token；而 **daemon 只读铁律不许它自己写文件**\
+          ⇒ token 只能由宿主生成、当 env 传进去。**这一格是一条真裁决，不是实现细节。**\
+          幂等：已存在就读回（重写会让上一个宿主留下的那个 daemon 当场变成接不上的孤儿）"),
+        ("local_daemon.rs", "write_listen_pid", None,
+         "写 `~/.cc-monitor/listen-<port>.pid` —— 「谁在听那个口」。\
+          它**不是**真相源（真相源永远是「那个口连不连得上」），只在**停**那一步用，\
+          且用之前还要过一道 `/proc/<pid>/exe` 的身份核对。\
+          没有它，接管来的那个实例按不动「停」——那时按钮就成了一句骗人的话"),
         // ── 既不是安装、也不是「monitor 自己的」：**删用户数据**
         ("history.rs", "delete_history_session", None,
          "★ 删的是用户 `~/.claude/projects/**` 下的会话文件（用户主动发起）。\

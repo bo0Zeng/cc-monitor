@@ -150,6 +150,16 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "remote-daemon-proto/src/wire.rs",
         "wire 帧的形状两侧同形",
     ),
+    (
+        "monitor→daemon",
+        "src-tauri/src/local_daemon.rs",
+        "remote-daemon-proto/src/listen.rs",
+        "★〔`K-P1` 08-26〕**跨 crate 字面量对拍**：常驻监听口那两个 env 名\
+         （`CCM_LISTEN_PORT` / `CCM_LISTEN_TOKEN`）宿主与 daemon 各声明一份，\
+         而两边漂了**不会报错** —— daemon 会把它当成「没设」走 stdio 那条路，\
+         宿主则等在一个永远没人 bind 的口上，日志里只有一句「连不上」。\
+         ⇒ 只能同时读两侧的源码才验得了（形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。",
+    ),
     // ── daemon → monitor（2 条）：daemon 的判据去读 monitor ────────────────────
     (
         "daemon→monitor",

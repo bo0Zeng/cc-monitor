@@ -105,6 +105,12 @@ mod tests {
             "**进度上报间隔**（每传够这么多字节报一次进度），量的是节奏不是容量。",
         ),
         (
+            "PORT_SPAN",
+            "**端口个数**不是体量（`K-P1` 的常驻监听口从家目录 hash 出来，落在 \
+             `49152..=65535` 这 16384 个动态口里）。它没有「超了怎么办」这一格 —— \
+             那个 hash 按定义落在区间内。",
+        ),
+        (
             "NET_EPOCH_TO_WIN32_FILETIME_TICKS",
             "**时间纪元差**（.NET 与 Win32 FILETIME 的起点相差多少个 100ns tick）。单位是时间不是字节。",
         ),
@@ -198,6 +204,22 @@ mod tests {
             512 * 1024 * 1024,
             "首连快照单会话体量",
             "截断+说清",
+        ),
+        // ── `K-P1`：常驻监听口的握手（**两侧各一条，方向不同**）───────────
+        (
+            "src-tauri/src/local_daemon.rs",
+            "LISTEN_HANDSHAKE_LINE_CAP",
+            8 * 1024,
+            "宿主读常驻口那一行（hello / attach 应答）—— hello 帧本机实测 ~1.1 KB",
+            "拒收+回错",
+        ),
+        (
+            "remote-daemon-proto/src/listen.rs",
+            "ATTACH_LINE_CAP",
+            8 * 1024,
+            "daemon 读一行 attach 请求 —— `{\"attach\":\"<32 位十六进制>\"}` 本机实测 51 字节。\
+             ⚠ 对端是**同机任何进程**，不是我们自己的子进程",
+            "拒收+回错",
         ),
         (
             "src-tauri/src/ssh_source.rs",
