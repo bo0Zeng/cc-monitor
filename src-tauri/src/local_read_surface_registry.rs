@@ -155,6 +155,17 @@ mod tests {
              切后端之后它**仍然要在** ⇒ **不属**退役范围。",
         ),
         (
+            "src/local_daemon.rs",
+            "non-read",
+            4,
+            "〔`K-P1` 08-26〕**一个字节的用户数据都没读。**四个命中全是「拿这条路径当身份比」：\
+             3 处在 `hello_verdict`（解 hello 帧的**冻结 wire 字段** `claude_dir` + 比 + 那句诊断），\
+             1 处是 `start_detached` 里问一次 `paths::resolve_claude_dir()` —— \
+             它只用来**算那台机的监听口**（`listen_port_for`）并核对「那个口上的 daemon 看的是不是同一个目录」。\
+             ⚠ 这一格恰恰是**反过来**的：它存在的理由是**不许静默复用**别人的 daemon。\
+             ⇒ **不属**退役范围（切后端之后仍要有人回答「我该连哪个口」）。",
+        ),
+        (
             "src/backend/control/payload.rs",
             "payload",
             5,
@@ -415,6 +426,16 @@ mod tests {
             "diagnose_local_cc_bus_hooks",
             "cc-bus 钩子的安装位置",
             "只读诊断；本文件另有 `this_module_never_writes` 守着不写",
+        ),
+        (
+            "local_daemon.rs",
+            "cc_monitor_dir",
+            "`~/.cc-monitor`（`K-P1` 的 attach token 与「谁在听那个口」）",
+            "**不是伸手拿用户的东西**：这是 monitor 自己的目录，只有我们写、只有我们读。\
+             用 `home_dir()` 正是为了「每个用户各一份」—— 而那恰恰是这一格要买的东西：\
+             token 文件 `0600` 是回环 TCP 上**唯一**挡住同机别的用户的门。\
+             写侧两条登记在 `write_site_registry` 的 `local_daemon.rs::ensure_listen_token` 与 \
+             `local_daemon.rs::write_listen_pid`",
         ),
         (
             "local_daemon.rs",
