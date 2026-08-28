@@ -1008,10 +1008,10 @@ mod tests {
         let up = spawn_fake_upstream(None);
         // ★ **一个**中转实例，**一个**监听面 —— 两个键都从这里走（`K9` 裁定二第 1 条）。
         let (relay_addr, relay, tee) = spawn_relay(up.addr);
-        let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages?beta=true", "");
+        let mut c = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages?beta=true", "");
         let mut got = Vec::new();
         c.read_to_end(&mut got).expect("read a");
-        let mut c2 = send_request(relay_addr, "/s/agentB/sid-BBB/v1/messages?beta=true", "");
+        let mut c2 = send_request(relay_addr, "/s/agentB/acctB/sid-BBB/v1/messages?beta=true", "");
         let mut got2 = Vec::new();
         c2.read_to_end(&mut got2).expect("read b");
 
@@ -1159,7 +1159,7 @@ mod tests {
         let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
 
         // 非空对照先打一发：这条路是通的，上游的记录面是活的。
-        let mut warm = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut warm = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
         let mut sink0 = Vec::new();
         warm.read_to_end(&mut sink0).expect("read warmup");
         assert!(
@@ -1171,7 +1171,7 @@ mod tests {
         // 正题：一条 `Content-Length: 1e12`，其余**一个字节都不发**。
         let (got, clean) = send_raw(
             relay_addr,
-            "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 1000000000000\r\n\r\n",
+            "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 1000000000000\r\n\r\n",
         );
         assert!(
             got.starts_with("HTTP/1.1 413"),
@@ -1196,7 +1196,7 @@ mod tests {
         let up = spawn_fake_upstream(None);
         let (relay_addr, _relay, _tee) = spawn_relay(up.addr);
 
-        let mut warm = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut warm = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
         let mut sink0 = Vec::new();
         warm.read_to_end(&mut sink0).expect("read warmup");
         assert_eq!(up.seen.lock().expect("lock").len(), 1, "非空对照：真打到上游");
@@ -1208,7 +1208,7 @@ mod tests {
 
         let (got, clean) = send_raw(
             relay_addr,
-            "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7abc\r\n\r\n{\"m\":1}",
+            "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7abc\r\n\r\n{\"m\":1}",
         );
         assert!(
             got.starts_with("HTTP/1.1 400"),
@@ -1284,7 +1284,7 @@ mod tests {
         for script in scripts {
             let up = spawn_scripted_upstream(script);
             let (relay_addr, _relay, _tee) = spawn_relay(up);
-            let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+            let mut c = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
             let mut got = String::new();
             c.read_to_string(&mut got).expect("read");
             assert!(
@@ -1334,7 +1334,7 @@ mod tests {
         );
         let up = spawn_scripted_upstream(script);
         let (relay_addr, _relay, _tee) = spawn_relay(up);
-        let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut c = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
         let mut got = String::new();
         c.read_to_string(&mut got).expect("read");
         assert!(
@@ -1396,7 +1396,7 @@ mod tests {
             }
         });
         let (relay_addr, _relay, tee) = spawn_relay(up_addr);
-        let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut c = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
         let mut got = Vec::new();
         c.read_to_end(&mut got).expect("read");
         // 非空对照：转发那一路一个字节都不许少（tee 丢的是**另一条路**）。
@@ -1464,7 +1464,7 @@ mod tests {
         let mut ms = Vec::new();
         for key in ["sid-AAA", "sid-BBB"] {
             let t0 = std::time::Instant::now();
-            let mut c = send_request(relay_addr, &format!("/s/agentA/{key}/v1/messages"), "");
+            let mut c = send_request(relay_addr, &format!("/s/agentA/acctA/{key}/v1/messages"), "");
             let mut got = Vec::new();
             c.read_to_end(&mut got).expect("read");
             let el = t0.elapsed().as_millis() as u64;
@@ -1515,7 +1515,7 @@ mod tests {
 
         // ㈠ 半开一条：只发半个请求头，**永不**发结尾空行、不关连接。
         let mut half = TcpStream::connect(relay_addr).expect("connect");
-        half.write_all(b"POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\n")
+        half.write_all(b"POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\n")
             .expect("half head");
         half.flush().expect("flush");
         assert!(
@@ -1530,7 +1530,7 @@ mod tests {
             .store(INFLIGHT_CONNECTIONS - 1, Ordering::SeqCst);
         let (got, _clean) = send_raw(
             relay_addr,
-            "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
+            "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
         );
         assert!(
             got.starts_with("HTTP/1.1 200"),
@@ -1549,7 +1549,7 @@ mod tests {
         relay.inflight.store(INFLIGHT_CONNECTIONS, Ordering::SeqCst);
         let (got, clean) = send_raw(
             relay_addr,
-            "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
+            "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 7\r\n\r\n{\"m\":1}",
         );
         assert!(
             got.starts_with("HTTP/1.1 503"),
@@ -1565,7 +1565,7 @@ mod tests {
 
         // ㈣ 计数会还：把它放回 0，跑一发正常的，走完之后必须回到 0。
         relay.inflight.store(0, Ordering::SeqCst);
-        let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut c = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
         let mut sink = Vec::new();
         c.read_to_end(&mut sink).expect("read");
         assert!(
@@ -1773,7 +1773,7 @@ mod tests {
 
         let mut c = send_request(
             relay.addr,
-            "/s/agentA/sid-AAA/v1/messages",
+            "/s/agentA/acctA/sid-AAA/v1/messages",
             &format!("Authorization: Bearer {SENTINEL}\r\n"),
         );
         let mut got = Vec::new();
@@ -1876,7 +1876,7 @@ mod tests {
         let relay = spawn_relay_child_with_creds(up.addr, &creds_path);
 
         // ── 正常流程：客户端**一个凭据都不配** ──────────────────────────────
-        let mut c = send_request(relay.addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut c = send_request(relay.addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
         let mut got = Vec::new();
         c.read_to_end(&mut got).expect("read");
         let downstream = String::from_utf8_lossy(&got).to_string();
@@ -1893,7 +1893,7 @@ mod tests {
         );
         let (bad_len, _) = send_raw(
             relay.addr,
-            "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: x\r\nContent-Length: 7abc\r\n\r\n",
+            "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: x\r\nContent-Length: 7abc\r\n\r\n",
         );
         assert!(
             bad_len.starts_with("HTTP/1.1 400"),
@@ -1962,7 +1962,7 @@ mod tests {
     fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
         const MINE: &str = "sk-ant-MINE";
         let head = http1::parse_request(
-            b"POST /s/a/k/v1/x HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer THEIRS\r\nContent-Length: 3\r\n\r\n",
+            b"POST /s/a/acct/k/v1/x HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer THEIRS\r\nContent-Length: 3\r\n\r\n",
         )
         .expect("parse");
         let base = Base::parse("https://api.example.com").expect("base");
@@ -2024,7 +2024,7 @@ mod tests {
         for key in ["sid-AAA", "sid-BBB"] {
             let mut c = send_request(
                 relay.addr,
-                &format!("/s/agentA/{key}/v1/messages?beta=true"),
+                &format!("/s/agentA/acctA/{key}/v1/messages?beta=true"),
                 "",
             );
             let mut got = Vec::new();
@@ -2077,7 +2077,7 @@ mod tests {
         // ★ **非空对照先打一发**：不然「上游没被碰」是空真 ——
         // 假上游的记录面坏掉、或中转根本没起来，这条照样绿。
         // （本仓纪律：「差集为空 / 没有变化」要附一个非空对照。）
-        let mut warmup = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut warmup = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
         let mut sink0 = Vec::new();
         warmup.read_to_end(&mut sink0).expect("read warmup");
         assert_eq!(
@@ -2138,7 +2138,7 @@ mod tests {
         let up = spawn_fake_upstream(Some(gate_rx));
         let (relay_addr, relay, _sink) = spawn_relay(up.addr);
         let t0 = std::time::Instant::now();
-        let mut c = send_request(relay_addr, "/s/agentA/sid-AAA/v1/messages", "");
+        let mut c = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
         c.set_read_timeout(Some(std::time::Duration::from_millis(4000)))
             .expect("read deadline");
 
@@ -2235,7 +2235,7 @@ mod tests {
         let (relay_addr, _relay, tee) = spawn_relay(up.addr);
         let mut c = send_request(
             relay_addr,
-            "/s/agentA/sid-AAA/v1/messages",
+            "/s/agentA/acctA/sid-AAA/v1/messages",
             &format!("Authorization: Bearer {SENTINEL}\r\n"),
         );
         let mut got = Vec::new();
@@ -2276,7 +2276,7 @@ mod tests {
     #[test]
     fn upstream_request_drops_hop_by_hop_and_narrows_accept_encoding() {
         let head = http1::parse_request(
-            b"POST /s/a/k/v1/x HTTP/1.1\r\nHost: relay\r\nConnection: keep-alive\r\nAccept-Encoding: gzip, br\r\nAuthorization: Bearer T\r\nContent-Length: 3\r\n\r\n",
+            b"POST /s/a/acct/k/v1/x HTTP/1.1\r\nHost: relay\r\nConnection: keep-alive\r\nAccept-Encoding: gzip, br\r\nAuthorization: Bearer T\r\nContent-Length: 3\r\n\r\n",
         )
         .expect("parse");
         let base = Base::parse("https://api.example.com").expect("base");
@@ -2336,7 +2336,7 @@ mod tests {
                 .expect("read deadline（风险 5x）");
             let body = REQUEST_BODY;
             let req = format!(
-                "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: {}\r\n\r\n{body}",
+                "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: {}\r\n\r\n{body}",
                 body.len()
             );
             c.write_all(req.as_bytes()).expect("write req");
@@ -2421,7 +2421,7 @@ mod tests {
                 .expect("read deadline（风险 5x）");
             let body = REQUEST_BODY;
             let req = format!(
-                "POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: {}\r\n\r\n{body}",
+                "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: {}\r\n\r\n{body}",
                 body.len()
             );
             c.write_all(req.as_bytes()).expect("write req");
@@ -2529,7 +2529,7 @@ mod tests {
 
         // ── ㈠ 半开：只发半个请求头（**没有**结尾空行），且**不关**连接。
         let mut half = TcpStream::connect(a).expect("connect 半开");
-        half.write_all(b"POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\n")
+        half.write_all(b"POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\n")
             .expect("write 半个头");
         half.flush().expect("flush");
         let (mut srv, _p) = l.accept().expect("accept 半开");
@@ -2569,7 +2569,7 @@ mod tests {
         // ── ㈡ 非空对照：同一把尺子、同样的期限，一条**发全了**的连接必须走通且明显快。
         let mut whole = TcpStream::connect(a).expect("connect 完整");
         whole
-            .write_all(b"POST /s/agentA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\n\r\n")
+            .write_all(b"POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: relay\r\n\r\n")
             .expect("write 完整头");
         whole.flush().expect("flush");
         let (mut srv2, _p2) = l.accept().expect("accept 完整");

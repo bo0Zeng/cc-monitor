@@ -791,8 +791,17 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 
 - **只监听 `127.0.0.1`**，不对外暴露；端口默认 `8788`，`CCM_RELAY_PORT` 可盖。
 - 上游默认 `https://api.anthropic.com`，`CCM_RELAY_UPSTREAM` 可盖（`http://` 只给本机夹具用）。
-- 路由：`claude` 把 `ANTHROPIC_BASE_URL` 指到 `http://127.0.0.1:<port>/s/<agent>/<key>`，
-  中转把 `/s/<agent>/<key>` 剥掉、其余路径与查询串**原样**转给上游。
+- 路由：`claude` 把 `ANTHROPIC_BASE_URL` 指到 `http://127.0.0.1:<port>/s/<agent>/<account>/<key>`，
+  中转把 `/s/<agent>/<account>/<key>` 剥掉、其余路径与查询串**原样**转给上游。
+  ⚠ **`<account>` 那一段是 `K-H2` 加的**，它是中转路由表的**索引键**：
+  表里查不到那个账号 ⇒ **404，一个字节都不发上游**（不回落到别的账号的 key，
+  也不回落到默认上游）。三段仍然都是不透明串 —— 中转不解释它们，只拿 `<account>` 查表。
+  ⚠⚠ **老的三段形状 `/s/<agent>/<key>/…` 不会被解析器拒掉**，它会被重读成
+  `account=<key>`；挡住它的是「表里查不到」那一格，不是解析器
+  （判据 `route::tests::the_old_three_segment_shape_is_not_rejected_here_it_is_reread_as_a_different_route`）。
+- ⚠ **今天还没有任何东西设置 `ANTHROPIC_BASE_URL`** —— 现打（08-28，分母 = `git ls-files` 全部跟踪文件）：
+  这个名字全仓 2 处命中，两处都是文档 / 注释，**生产代码 0 处**；`--relay` 没有任何启动方。
+  ⇒ 上面这条路由今天**没有入口**。接上它是另一件（`K-H2b`），不在 `K-H2` 的射程里。
 - 响应**逐块透传绝不缓冲**；同一批字节里的 SSE 事件抄一份到**本进程的 stdout**
   （NDJSON，每行带 `agent` / `key`；首行 `__meta__`）。要落文件由启动方重定向。
 - **请求头原样转发，但一个都不落进 tee、不落进日志。**
