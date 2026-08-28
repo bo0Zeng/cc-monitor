@@ -138,11 +138,28 @@ const INTERIM_RESPONSES_ALLOWED: usize = 8;
 /// 一把 key 时无害；多账号之后，同一条代码路径就是 `KH2` 逐字点名的最坏失效形态：
 /// **拿 A 账号的 key 去发 B 账号的请求，而两边看起来都成功了。**
 ///
-/// 今天它们不在了 ⇒ **进程里没有「默认上游」这个值可以回落**，
-/// 而「A 的端点配 B 的 key」也**在类型上不可表示**（两者是 `table::Row` 的私有字段，
-/// `Base` 一次都不出 `Row` 的边界）。这两条都是**编译器**买的。
-/// 不许有人把那两个字段加回来 —— 棘轮住
-/// `table_guard::the_relay_carries_no_process_wide_upstream_and_no_process_wide_key`。
+/// # ⚠⚠⚠ 订正〔`D1` 阻-1 回修，08-28〕：**上一段先前的结论说大了，两句都是假的**
+///
+/// 先前这里逐字写着：「⇒ **进程里没有「默认上游」这个值可以回落**，而「A 的端点配 B 的 key」
+/// 也**在类型上不可表示**……**这两条都是编译器买的**。」**两句都被 `D1` 实测证伪。**
+///
+/// | 先前那句 | 实测 | 读数 |
+/// |---|---|---|
+/// | 「进程里没有默认上游这个值」 | **假** | `DEFAULT_UPSTREAM` 就是本文件 `:24` 的 crate 常量；`Base` 三个字段**全是 `pub(crate)`**、`Base::parse` 也是 ⇒ 本 crate 里**一行就能造一个 `Base`** |
+/// | 「A 的端点配 B 的 key 在类型上不可表示」 | **假** | 两行同时在作用域里、A 连 B 渲染，**编译通过**（`D1-M2`；我自己复打过，跑得通）。只有一条**行为**断言会红 |
+///
+/// **编译器真正买到的只有很窄的一条**：**从一个 `Row` 里拿不到 `&Base` 这个值**
+/// （字段私有、住 `table::mod sealed`、没有 `base()` 访问器）。
+/// ⇒ 它挡住的是「**顺手**把两行拆开拼」，**挡不住**「有意去重建一个 `Base`」——
+/// `D1-M1` 实测：把签名换成收 `host: &str` + key、用 `row.host_header()` 把 `Base` 重建出来去连，
+/// **488 passed / 0 failed，一条都没红。**
+///
+/// ⇒ 「不许再有进程级的上游 / key」这条性质今天**由一条文本棘轮守**
+/// （`table_guard::the_relay_carries_no_process_wide_upstream_and_no_process_wide_key`，
+/// 它扫的是 `struct Relay` 那个窗口里有没有 `base:` / `key:` 两个**字面**）。
+/// **那是文本判据，不是编译器。**它认不出：换个字段名（`endpoint:` / `fallback:`）·
+/// 把值藏进别的结构体再放进 `Relay` · 干脆用一个 `static`。
+/// ⚠ **这几条我没有逐条实测**（`D1` 实测的是上表那两形）⇒ 它们是**读源码得出的形状，不是读数**。
 pub(crate) struct Relay {
     /// 账号段 → 上游 + key。**决定这条请求发到哪儿、用哪把 key 的唯一住址。**
     ///
@@ -386,8 +403,12 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
 
     relay.served.fetch_add(1, Ordering::SeqCst);
 
-    // ★ 连的是**这一行自己的**上游 —— `Base` 一次都不出 `Row` 的边界，
-    //   所以「拿 A 的端点」这件事在这里根本写不出来。
+    // ★ 连的是**这一行自己的**上游。
+    //   ⚠ 订正〔`D1` 阻-1，08-28〕：先前这里逐字写着「所以『拿 A 的端点』这件事在这里
+    //   **根本写不出来**」——**那句是假的**。`D1-M2` 实测：两行同时在作用域里、
+    //   `a.connect()` 配 `render_upstream_request(…, b, …)`，**编译通过、跑得通**。
+    //   今天这一行之所以对，靠的是**这个作用域里只有一行**这个事实，**不是类型**。
+    //   真正量它的是 `KH2`/`KH4` 那几条走真转发的行为判据。
     let mut up = match row.connect() {
         Ok(c) => c,
         Err(e) => {
@@ -2181,23 +2202,39 @@ mod tests {
         let dead_port = a_port_nobody_listens_on();
         let dir = tmpdir("canary-multi");
         let creds_path = dir.join("relay-credentials.json");
+
+        // ★★★ **两个不同的活上游**〔`D1` 阻-2 回修，08-28〕。
+        //
+        // ⚠⚠ **先前这里只有一个假上游，两条账号都不写 `base_url`** ⇒ 它们**共用同一个端点**
+        //    ⇒「A 的 key 发到了 B 的端点」这一向**恒真、量不到**：不论表怎么错，
+        //    字节都落在同一个进程上，两条断言看不出任何差别。
+        // ★ 而**本件题目就是接第三方 API，每行端点不同才是正常形态** ——
+        //    先前那个夹具用的恰恰是最不正常的那一种。
+        // ⇒ 今天两行各指各的活上游，下面按**哪个上游收到了什么**对账。
+        let up_a = spawn_fake_upstream(None);
+        let up_b = spawn_fake_upstream(None);
+        let (port_a, port_b) = (up_a.addr.port(), up_b.addr.port());
+        // 反空真自检：两个上游**真的不是同一个**（否则下面整族断言恒真）。
+        assert_ne!(port_a, port_b, "两个假上游撞到同一个端口 —— 本条整族在空转");
+
         // ← 人拿编辑器写的一份**多账号** JSON。没有界面、没有 IPC、没有迁移步骤。
         std::fs::write(
             &creds_path,
             format!(
                 "{{\n  \"_note\": \"hand written multi\",\n  \"accounts\": {{\n\
-                 \x20   \"acct-a\": {{ \"api_key\": \"{CANARY_A}\" }},\n\
-                 \x20   \"acct-b\": {{ \"api_key\": \"{CANARY_B}\" }},\n\
+                 \x20   \"acct-a\": {{ \"api_key\": \"{CANARY_A}\", \"base_url\": \"http://127.0.0.1:{port_a}\" }},\n\
+                 \x20   \"acct-b\": {{ \"api_key\": \"{CANARY_B}\", \"base_url\": \"http://127.0.0.1:{port_b}\" }},\n\
                  \x20   \"acct-dead\": {{ \"api_key\": \"{CANARY_DEAD}\", \"base_url\": \"http://127.0.0.1:{dead_port}\" }}\n\
                  \x20 }}\n}}\n"
             ),
         )
         .expect("写凭据夹具");
 
-        let up = spawn_fake_upstream(None);
-        let relay = spawn_relay_child_with_creds(up.addr, &creds_path);
+        // 子进程那个 `CCM_RELAY_UPSTREAM` 只当**默认上游**用；本判据里三行都写了
+        // 自己的 `base_url` ⇒ 默认那一格在这里**一次都用不上**（这正是要的）。
+        let relay = spawn_relay_child_with_creds(up_a.addr, &creds_path);
 
-        // ── ㈠ 两条路各走一趟（顺序固定 ⇒ 下面按下标对账）────────────
+        // ── ㈠ 两条路各走一趟 ──────────────────────────────────────
         let mut downstream = String::new();
         for acct in ["acct-a", "acct-b"] {
             let mut c = send_request(
@@ -2215,33 +2252,61 @@ mod tests {
             downstream.push_str(&text);
         }
 
-        // ── ★★★ ① 每条路由键收到的是**它自己那把** ────────────────
-        let auths = up.auth_values.lock().expect("lock").clone();
-        assert_eq!(auths.len(), 2, "上游应当恰好收到两次鉴权头：{auths:?}");
-        assert!(
-            auths[0].contains(CANARY_A) && !auths[0].contains(CANARY_B),
-            "acct-a 那一发带的不是 A 自己那把 key：{auths:?}"
-        );
-        assert!(
-            auths[1].contains(CANARY_B) && !auths[1].contains(CANARY_A),
-            "acct-b 那一发带的不是 B 自己那把 key：{auths:?}"
-        );
-        // 反空真：两把确实**不一样**（否则上面两条恒真）。
-        assert_ne!(CANARY_A, CANARY_B);
+        // ── ★★★ ① **每一发都到它自己那个端点，带着它自己那把 key** ──────
+        //
+        // ⚠ 这一族有**两个自变量**（端点 · key），先前的夹具只量得到后者。
+        //   今天两行各有各的活上游 ⇒ 「A 的 key 发到了 B 的端点」这一向**量得到了**。
+        //   ⚠⚠ **承重的那条排最前**（本件已经栽过两次「最后那条从没被求值」）：
+        //   先断**落点**，再断**内容**。
+        let auths_a = up_a.auth_values.lock().expect("lock").clone();
+        let auths_b = up_b.auth_values.lock().expect("lock").clone();
 
-        // ── ㈡ 表里没有的账号段 ⇒ 404，且上游那本账**一次都没涨** ──────
+        // ㈠-1 落点：两个上游**各收到恰好一发**。
+        assert_eq!(
+            up_a.seen.lock().expect("lock").len(),
+            1,
+            "A 那个端点应当恰好收到一发；A={auths_a:?} B={auths_b:?}"
+        );
+        assert_eq!(
+            up_b.seen.lock().expect("lock").len(),
+            1,
+            "B 那个端点应当恰好收到一发 —— 两发都落到 A 上就是「端点没跟着行走」；\
+             A={auths_a:?} B={auths_b:?}"
+        );
+
+        // ㈠-2 内容：**落在哪个端点，带的就是那个端点那一行的 key**。
+        assert_eq!(auths_a.len(), 1, "A 端点收到的鉴权头条数不对：{auths_a:?}");
+        assert_eq!(auths_b.len(), 1, "B 端点收到的鉴权头条数不对：{auths_b:?}");
+        assert!(
+            auths_a[0].contains(CANARY_A) && !auths_a[0].contains(CANARY_B),
+            "A 的端点上收到的不是 A 那把 key：{auths_a:?}"
+        );
+        assert!(
+            auths_b[0].contains(CANARY_B) && !auths_b[0].contains(CANARY_A),
+            "B 的端点上收到的不是 B 那把 key —— 这正是「A 的 key 发到 B 的端点」那一形：{auths_b:?}"
+        );
+        // 反空真：两把确实**不一样**、两个端点也确实**不是同一个**（否则上面全恒真）。
+        assert_ne!(CANARY_A, CANARY_B);
+        assert_ne!(port_a, port_b);
+
+        // ── ㈡ 表里没有的账号段 ⇒ **两个上游那本账都一次都没涨**，然后才是 404 ──
         let (not_found, _) = send_raw(
             relay.addr,
             "GET /s/agentA/acct-nope/sid-x/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
         );
+        assert_eq!(
+            up_a.auth_values.lock().expect("lock").len(),
+            1,
+            "404 那一发跑到 A 的端点去了 —— 那就是回落"
+        );
+        assert_eq!(
+            up_b.auth_values.lock().expect("lock").len(),
+            1,
+            "404 那一发跑到 B 的端点去了 —— 那就是回落"
+        );
         assert!(
             not_found.starts_with("HTTP/1.1 404"),
             "表里查不到的账号段该回 404：{not_found:?}"
-        );
-        assert_eq!(
-            up.auth_values.lock().expect("lock").len(),
-            2,
-            "404 那一发跑到上游去了 —— 那就是回落"
         );
 
         // ── ㈢ **502 那一支**（`K-H2a` 留下的那一格，本件补上）──────────

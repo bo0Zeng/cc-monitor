@@ -299,6 +299,18 @@ pub fn merge_key(current: &Map<String, Value>, key: &SecretKey) -> Map<String, V
 ///
 /// ⇒ 把排序抽成一个**收迭代器**的纯函数：判据可以直接喂它一个乱序的序列，
 /// 与 `Map` 今天是哪种实现**无关**。`MU9` 重打后被 `ordering_is_by_name_not_by_arrival` 逮住。
+///
+/// # ⚠⚠ 订正〔`K-H2` `D1` 阻-3 回修，08-28〕：上面那句「那一天今天造不出来」**已被证伪**
+///
+/// 上一段推理**前半对、后半错**。对的是「人群与性质对不上」；
+/// 错的是把「**这台机器今天这份构建**是 `BTreeMap`」滑成「**那个夹具造不出来**」——
+/// 后者是一个**关于分母的全称句**，而它**没有被打过**。
+/// 打它只要一行：给本 crate 的 `[dev-dependencies]` 加 `serde_json`
+/// 并开 `preserve_order` ⇒ **判据构建里 `Map` 就是 `IndexMap`**，夹具当场造得出来。
+/// 实测：删掉 [`ordered_value`] 的递归 ⇒ **30 passed / 2 failed**（两份 `Cargo.lock` 零变化）。
+/// ⇒ 抽出纯函数那一步**仍然是对的**（它不依赖任何 feature），
+/// 但「端到端那条只能是安慰剂」这个结论**当年就下早了**。
+/// ★ 这条经过值一句纪律：**「造不出来」要先被打一次才算数。**
 pub fn ordered_keys<'a>(keys: impl Iterator<Item = &'a String>) -> Vec<&'a String> {
     let mut v: Vec<&'a String> = keys.collect();
     v.sort();
@@ -320,14 +332,27 @@ pub fn ordered_keys<'a>(keys: impl Iterator<Item = &'a String>) -> Vec<&'a Strin
 ///
 /// 数组的顺序是**数据**（换了就是改内容），对象的键序不是。这两件事不许混。
 ///
-/// # ⚠⚠⚠ 这一格今天**测不出牙**，如实登记（分母写在这里）
+/// # ★★★ 它**有牙** —— 而买到这颗牙的过程本身是一课，逐字记下来
 ///
-/// `serde_json::Map` 在今天这份构建里是 `BTreeMap`（插进去就有序）⇒
-/// **造不出一个「嵌套层乱序」的夹具** ⇒ 把本函数的递归整条删掉（`Value::Object` 那一支
-/// 改成 `other.clone()`），任何端到端判据都**看不出差别**。
-/// 这与 `ordered_keys` 头注记的 `MU9` 是**同一课**：判据的人群与它守的性质对不上。
-/// ⇒ **有牙的那一格是 [`ordered_keys`] 自己**（它收迭代器，与 `Map` 的实现无关）；
-/// 本函数买到的是**性质成立**，不是**性质有人守**。`K-H2` `C` 阶段实测过这一刀，读数写在件文件里。
+/// `K-H2` `C` 阶段我在这里写下过一句**错话**，逐字是：
+/// 「`serde_json::Map` 在今天这份构建里是 `BTreeMap`（插进去就有序）⇒
+/// **造不出一个「嵌套层乱序」的夹具**」，并据此把本函数登记成
+/// 「今天没有牙、是给明天用的绊线」。**`D1` 审计实测证伪了它。**
+///
+/// 证伪的办法只有一行：给本 crate 的 `[dev-dependencies]` 加
+/// `serde_json = { features = ["preserve_order"] }` —— **判据构建里 `Map` 就成了 `IndexMap`**，
+/// 那个「造不出来」的夹具当场造得出来。读数（我自己复打，与 `D1` 逐字相同）：
+/// **原码 32 passed / 0 failed；把下面 `Value::Object` 那一支删成 `other.clone()`
+/// ⇒ 30 passed / 2 failed**（本函数那条 + 隔壁 `the_field_order_does_not_depend_on_the_map_implementation`）。
+/// 两份 `Cargo.lock` **零变化**，全量门禁三个数**逐个不变**。
+///
+/// ⚠⚠ **这一课是 `MU9` 那一课的第二次，而且更贵**：`MU9` 的结论是
+/// 「这台机器上造不出反例」，本轮**证明了造得出**。
+/// ⇒ **「造不出来」这个判断本身要先被打一次才算数** —— 它是一个**关于分母的全称句**，
+/// 而全称句不许当前提直接写进头注。写下它的那一刻我没有去打它，这就是那次的病灶。
+///
+/// ⚠ 它仍然**不**保什么：本函数只管**对象的键序**。数组那一格由
+/// `arrays_keep_their_order_because_that_order_is_data` 钉，不由本条钉。
 pub fn ordered_value(v: &Value) -> Value {
     match v {
         Value::Object(m) => {
@@ -449,10 +474,15 @@ mod tests {
 
     /// `KS10②` 的**端到端那一半**（整份进、整份出）。
     ///
-    /// ⚠ **它单独存在时是安慰剂**，如实记：`serde_json::Map` 在今天这份构建里是
-    /// `BTreeMap`（插进去就有序）⇒ 「两份插入顺序相反的文档」这个夹具**造不出来**，
-    /// 把排序整条删掉它照样绿（`MU9` 实测 19/19）。有牙的那一格是
-    /// `ordering_is_by_name_not_by_arrival`。**两条配着用，别只读这一条的名字。**
+    /// ⚠ **订正〔`K-H2` `D1` 阻-3 回修，08-28〕：本段那句「它单独存在时是安慰剂」今天不成立了。**
+    /// 先前逐字写的是：「`serde_json::Map` 在今天这份构建里是 `BTreeMap`（插进去就有序）
+    /// ⇒『两份插入顺序相反的文档』这个夹具**造不出来**，把排序整条删掉它照样绿（`MU9` 实测 19/19）」。
+    /// `K-H2` 给本 crate 的 `[dev-dependencies]` 加了 `serde_json` 的 `preserve_order`
+    /// ⇒ **判据构建里 `Map` 就是 `IndexMap`**，那个夹具造得出来了。
+    /// 实测：删掉 [`ordered_value`] 的递归 ⇒ **本条与 `nested_objects_…` 两条一起红**（30 passed / 2 failed）。
+    /// ⇒ **`MU9` 当年那条「造不出来」是对当时那份构建说的，不是一条永久事实。**
+    /// ⚠ 但**牙的来源变了要说清**：本条今天有牙靠的是那一行 dev-dependency；删了它就退回安慰剂。
+    /// `ordering_is_by_name_not_by_arrival` 仍然是**不依赖任何 feature** 的那一格，两条配着用。
     #[test]
     fn the_field_order_does_not_depend_on_the_map_implementation() {
         // 两份**内容相同、插入顺序相反**的文档。
@@ -642,6 +672,11 @@ mod tests {
     /// 这是刻意的：模板里放一条活的示例行，等于每个刚装好的人都白得一条路。
     #[test]
     fn an_unconfigured_file_yields_no_rows_at_all() {
+        // ★ **非空对照排最前**〔`D1` 一并修，08-28〕：先证明这把尺子读得出行，
+        //   否则下面整个循环可能只是因为 `read_accounts` 恒返回空而全绿。
+        let filled = parse(r#"{"accounts":{"my-account":{"api_key":"K"}}}"#).expect("填上");
+        assert_eq!(read_accounts(&filled).len(), 1, "这把尺子是瞎的");
+
         // 分母 = 我列出的这 4 种「没配」的写法。
         for raw in [
             TEMPLATE,
@@ -655,9 +690,6 @@ mod tests {
                 "这一形凭空多出了行 —— 那就是一条默认行：{raw}"
             );
         }
-        // 非空对照：同一把尺子，真配了就读得到（证明它不是恒空）。
-        let filled = parse(r#"{"accounts":{"my-account":{"api_key":"K"}}}"#).expect("填上");
-        assert_eq!(read_accounts(&filled).len(), 1);
     }
 
     /// ★★ **一条什么都没填的账号是合法的一条**：`base_url` 空 = 用默认上游，
@@ -706,26 +738,29 @@ mod tests {
         let before_b = serde_json::to_string(&hand["accounts"]["B"]).expect("序列化 B");
 
         let merged = merge_account_key(&hand, "A", &SecretKey::new("A-NEW"));
+        let merged_b = merge_account_key(&hand, "B", &SecretKey::new("B-NEW"));
+
+        // ★★ **非空对照排最前**〔`D1` 一并修，08-28〕：同一把尺子，改 **B** 的时候 B **应当**变。
+        //    没有这一格，下面 ㈡ 那条可能只是因为这把尺子看不见任何变化。
+        //    ⚠ 先前它排在整条判据的**最后** —— 与 `D1-M6` 逮到的那一形同族：
+        //    前面任何一条先炸，它就一次都没被求值。
+        let b_after_writing_b =
+            serde_json::to_string(&merged_b["accounts"]["B"]).expect("序列化 B");
+        assert_ne!(
+            b_after_writing_b, before_b,
+            "改 B 的时候 B 没变 —— 这把尺子是瞎的，下面那条「没被动」证不了什么"
+        );
+
+        // ㈡ **别的条逐字节没动**（本条判据的正题，排在对照之后、别的之前）。
+        let after_b = serde_json::to_string(&merged["accounts"]["B"]).expect("序列化 B");
+        assert_eq!(after_b, before_b, "改 A 的时候 B 那一条被动了");
 
         // ㈠ 被改的那一条：key 换了，**它自己的未知键**还在。
         assert_eq!(merged["accounts"]["A"][KEY_FIELD], "A-NEW");
         assert_eq!(merged["accounts"]["A"]["note_a"], "A 自己的注释");
         assert_eq!(merged["accounts"]["A"][BASE_URL_FIELD], "https://a.invalid");
-        // ㈡ **别的条逐字节没动**。
-        let after_b = serde_json::to_string(&merged["accounts"]["B"]).expect("序列化 B");
-        assert_eq!(after_b, before_b, "改 A 的时候 B 那一条被动了");
         // ㈢ 顶层的未知键也还在。
         assert_eq!(merged["_note"], "顶层未知键");
-
-        // ★★ **非空对照承重**：同一把尺子，改 **B** 的时候 B **应当**变。
-        //    没有这一格，上面 ㈡ 那条可能只是因为这把尺子看不见任何变化。
-        let merged_b = merge_account_key(&hand, "B", &SecretKey::new("B-NEW"));
-        let b_after_writing_b =
-            serde_json::to_string(&merged_b["accounts"]["B"]).expect("序列化 B");
-        assert_ne!(
-            b_after_writing_b, before_b,
-            "改 B 的时候 B 没变 —— 这把尺子是瞎的，上面那条「没被动」证不了什么"
-        );
         // 改 B 的时候，B 自己的未知键与嵌套结构也都留着。
         assert_eq!(merged_b["accounts"]["B"]["note_b"], "别动我");
         assert_eq!(merged_b["accounts"]["B"]["nested"]["z"], 1);
@@ -748,18 +783,32 @@ mod tests {
 
     /// **`KH5c`**：落盘文本在**深度 ≥2** 上也按键名排。
     ///
-    /// # ⚠⚠ 如实登记：**这一条今天没有牙**，它是一条给明天用的绊线
+    /// # ★★ 它**有牙**（`D1` 阻-3 回修之后）
     ///
-    /// `serde_json::Map` 在今天这份构建里是 `BTreeMap`（插进去就有序）⇒
-    /// 「嵌套层乱序」这个夹具**造不出来**，把 [`ordered_value`] 的递归整条删掉，本条照样绿。
-    /// 这与 `ordered_keys` 头注记的 `MU9` 是**同一课**，`K-H2` `C` 阶段重新实测过一次，
-    /// 读数在件文件里。
-    /// **有牙的那一格是 `ordering_is_by_name_not_by_arrival`**（它收迭代器，与 `Map` 的实现无关）。
-    /// ⇒ 别读它的名字就以为深度 2 有人守着。
+    /// ⚠⚠ **本段先前写的是「这一条今天没有牙，它是一条给明天用的绊线」，那句话已被实测证伪。**
+    /// 病灶是我把一个**关于分母的全称句**（「`BTreeMap` ⇒ 嵌套层乱序的夹具造不出来」）
+    /// 当成前提直接写进了头注，而**没有去打它**。
+    /// `D1` 只加了一行 dev-dependency（`serde_json` 开 `preserve_order`）就把夹具造了出来。
+    ///
+    /// 今天的读数（我自己复打）：原码 **32 passed / 0 failed**；
+    /// 把 [`ordered_value`] 的 `Value::Object` 那一支删成 `other.clone()`
+    /// ⇒ **30 passed / 2 failed**，红的是本条 + 隔壁 `the_field_order_does_not_depend_on_the_map_implementation`。
+    /// ⇒ **深度 ≥2 今天真有人守着。**
+    ///
+    /// ⚠ 它仍然要配着 `ordering_is_by_name_not_by_arrival` 读：那一条收迭代器，
+    /// 与 `Map` 是哪种实现**无关**；本条则是**靠 `preserve_order` 把 `Map` 换成 `IndexMap`** 才有牙的
+    /// —— 哪天那一行 dev-dependency 被删掉，本条会**悄悄退回**成安慰剂。
+    /// 那一行的理由与读数写在 `crates/creds-core/Cargo.toml` 里，**别当成可有可无的依赖**。
     #[test]
     fn nested_objects_are_also_ordered_by_name_in_what_lands_on_disk() {
         let doc = parse(r#"{"accounts":{"b":{"zzz":1,"aaa":2},"a":{"mmm":3}}}"#).expect("夹具");
         let text = to_pretty_json(&doc);
+
+        // ★ **反空真排最前**〔`D1` 一并修〕：真的落到了嵌套那一层（不是整份被压成一行），
+        //   且落盘的仍然是合法 JSON。先前这两条排在最后。
+        assert!(text.lines().count() >= 8, "输出只有 {} 行", text.lines().count());
+        let back: Value = serde_json::from_str(&text).expect("落盘的东西必须是合法 JSON");
+        assert_eq!(back["accounts"]["b"]["aaa"], 2);
 
         // 深度 1：`a` 排在 `b` 前面。
         let ia = guard_core::find_pinned(&text, "\"a\": {").expect("`a` 应当恰好出现一处");
@@ -769,17 +818,13 @@ mod tests {
         let iaaa = guard_core::find_pinned(&text, "\"aaa\"").expect("`aaa` 应当恰好出现一处");
         let izzz = guard_core::find_pinned(&text, "\"zzz\"").expect("`zzz` 应当恰好出现一处");
         assert!(iaaa < izzz, "深度 2 没按键名排：{text}");
-        // 反空真自检：真的落到了嵌套那一层（不是整份被压成一行）。
-        assert!(text.lines().count() >= 8, "输出只有 {} 行", text.lines().count());
-        // 落盘的仍然是合法 JSON（`KS9①` 在多条形状下照旧成立）。
-        let back: Value = serde_json::from_str(&text).expect("落盘的东西必须是合法 JSON");
-        assert_eq!(back["accounts"]["b"]["aaa"], 2);
     }
 
     /// **数组的顺序是数据，不许排；但数组里的对象要递归进去。**
     ///
-    /// 这一条**有牙**：把 [`ordered_value`] 的 `Value::Array` 那一支改成 `other.clone()`
-    /// 之后它仍绿（同上一条的理由），但把它改成「排数组」会当场红。
+    /// 这一条守的是**方向**：把 [`ordered_value`] 的 `Value::Array` 那一支改成「排数组」会当场红。
+    /// ⚠ 而把那一支改成 `other.clone()`（不递归进数组里的对象）本条**看不出来** ——
+    /// 本条的夹具是一个**标量数组**，人群里没有「数组里套对象」那一形。如实记着。
     #[test]
     fn arrays_keep_their_order_because_that_order_is_data() {
         let doc = parse(r#"{"list":["zzz","aaa","mmm"]}"#).expect("夹具");
