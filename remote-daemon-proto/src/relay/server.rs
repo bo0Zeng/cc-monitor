@@ -3267,6 +3267,162 @@ mod tests {
         drop(squatter);
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // ★★★ `K-H2b` `KH2B1`：**一发真请求**从「起会话那条命令」走到中转、
+    //      被按账号路由到上游，并带着**那个账号那一行**的 key
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// 桩启动器。**它不是 claude**（红线 `C7`：绝不起真 claude），它只做一件事：
+    /// 读 `$ANTHROPIC_BASE_URL`、照它发一发 HTTP、把响应首行印出来。
+    ///
+    /// ⇒ 这一趟里 **env 是真的、中转是真的（真子进程）、上游是真的**，
+    /// **只有 agent 是桩**。它买的是「env → 中转 → 上游」这一截。
+    ///
+    /// ⚠⚠ **它买不到的那一截，写在这里**：`claude` 拿到这个变量之后到底怎么走
+    ///（订阅号的 OAuth 刷新会不会仍打官方域名 · 只设 base URL 不设 token 会不会拒启 ·
+    /// `/v1/messages` 之外还打哪些路径）—— 仓里零证据、红线也禁止实测 ⇒ **`判不了`**。
+    /// 别把这条判据的绿读成「claude 会照它走」。
+    #[cfg(unix)]
+    const STUB_LAUNCHER: &str = r#"#!/usr/bin/env bash
+set -eu
+# 没被注入就**大声失败**（`:?`）—— 这正是「把注入点删掉」那一刀要撞上的地方。
+url=${ANTHROPIC_BASE_URL:?ANTHROPIC_BASE_URL mei you bei zhu ru}
+rest=${url#http://}
+hostport=${rest%%/*}
+path=/${rest#*/}
+host=${hostport%%:*}
+port=${hostport##*:}
+exec 3<>/dev/tcp/$host/$port
+body=hi
+printf 'POST %s/v1/messages HTTP/1.1\r\nHost: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s' $path $hostport ${#body} $body >&3
+head -n 1 <&3
+"#;
+
+    /// ★★★ `KH2B1`。**判定不是「渲染串里含 `ANTHROPIC_BASE_URL`」** ——
+    /// 是「假上游真的收到了那一发，且它带的 `Authorization` 是**那个账号那一行**的 key」。
+    ///
+    /// # 这一趟真实到什么程度（逐段说清，别读宽）
+    ///
+    /// | 段 | 真的假的 |
+    /// |---|---|
+    /// | 起会话那条命令串 | **真的 shell**（`bash -c '<env 前缀><launcher>'`），形状与生产 POSIX 前缀同形 |
+    /// | env | **真的**（子进程自己从环境里读） |
+    /// | 中转 | **真子进程**（`spawn_relay_child_with_creds`：真 `Command::new(exe)` · 端口 0 从 stderr 读回） |
+    /// | 上游 | **真的** TCP 假上游，`auth_values` 收的是**整行** `Authorization:` |
+    /// | agent | **桩**（红线：绝不起真 claude） |
+    ///
+    /// # ⚠ 一条**没买到**的缝，必须写下来
+    ///
+    /// 这里的 env 前缀是**本判据自己拼的**，不是 monitor 侧
+    /// `backend::control::payload::relay_env_prefix_posix` 的返回值 ——
+    /// 两半之间的编译期边（`include_str!`）**必须登记进 `src-tauri/src/cross_half_edge_registry.rs`**，
+    /// 而那个文件不在本件写区里。⇒ **两侧今天靠「同一个形状写了两遍」，没有判据对拍。**
+    /// monitor 那一侧自己那半由 `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched`
+    /// 与 `only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix` 钉着。
+    /// **这一格如实登记为「没买到」，不许读成「对上了」。**
+    #[cfg(unix)]
+    #[test]
+    fn a_launch_command_carrying_the_relay_env_prefix_reaches_the_relay_with_that_accounts_key() {
+        let up = spawn_fake_upstream(None);
+        let dir = tmpdir("kh2b1");
+        let creds = dir.join("relay-credentials.json");
+        // 两条**各自带 key** 的行 —— 「拿 A 的 key 发 B 的请求」是本族最坏的失效形态，
+        // 一行是量不出来的。
+        // ⚠ 写法照 `spawn_relay_child` 那份夹具（转义的普通串，不是 `r#"…"#`）——
+        //   源码扫描型守卫的剥法认的是普通字符串的 `\"` 转义，
+        //   一个内含裸 `"` 的原始串会让它在这里失步、把整段测试当成生产段
+        //   （本轮实测：`readonly_guard` / `bind_guard` / spawn 登记表三条一起红）。
+        std::fs::write(
+            &creds,
+            b"{\n  \"accounts\": {\n    \"acct-a\": { \"api_key\": \"KEY-FOR-A\" },\n              \"acct-b\": { \"api_key\": \"KEY-FOR-B\" }\n  }\n}\n",
+        )
+        .expect("写两条账号的凭据夹具");
+        let relay = spawn_relay_child_with_creds(up.addr, &creds);
+
+        let stub = dir.join("stub-launcher.sh");
+        std::fs::write(&stub, STUB_LAUNCHER).expect("写桩启动器");
+
+        // 起两发：同一条起会话路径，**只有账号段不同**。
+        for (acct, want_key) in [("acct-a", "KEY-FOR-A"), ("acct-b", "KEY-FOR-B")] {
+            // 形状与 monitor 侧 `payload::relay_base_url` / `relay_env_prefix_posix` 同形
+            //（那一侧自己有判据钉着；两侧之间没有，见头注那条「没买到的缝」）。
+            let url = format!(
+                "http://127.0.0.1:{}/s/claude-code/{acct}/k-0123456789abcdef",
+                relay.addr.port()
+            );
+            let cmd = format!(
+                "export ANTHROPIC_BASE_URL='{url}'; bash {}",
+                stub.to_string_lossy()
+            );
+            let out = std::process::Command::new("bash")
+                .arg("-c")
+                .arg(&cmd)
+                .output()
+                .expect("起桩启动器");
+            let so = String::from_utf8_lossy(&out.stdout);
+            let se = String::from_utf8_lossy(&out.stderr);
+            assert!(
+                out.status.success(),
+                "桩启动器没跑成 —— 注入点可能整个不在了。\n\
+                 命令：{cmd}\nstdout：{so:?}\nstderr：{se:?}"
+            );
+            assert!(
+                so.starts_with("HTTP/1.1 200"),
+                "这一发没走完一条转发（账号 {acct}）：{so:?} / {se:?}"
+            );
+        }
+
+        // ★ 正题①：**假上游真的收到了两发**，而且真路径是原样透传的那一条。
+        let seen = up.seen.lock().expect("lock").clone();
+        assert_eq!(
+            seen.len(),
+            2,
+            "上游没收到两发 —— 「那条线接上了」这句话在这一趟里就是假的：{seen:?}"
+        );
+        for line in &seen {
+            assert_eq!(
+                line, "POST /v1/messages HTTP/1.1 auth=true",
+                "路由键那几段没有被剥掉、或者鉴权头没换上：{seen:?}"
+            );
+        }
+        // ★ 正题②：**两个账号各拿各的 key**（`KH2` 逐字点名的最坏失效形态的反面）。
+        let auths = up.auth_values.lock().expect("lock").clone();
+        assert_eq!(
+            auths,
+            vec![
+                "Authorization: Bearer KEY-FOR-A".to_string(),
+                "Authorization: Bearer KEY-FOR-B".to_string(),
+            ],
+            "两发拿到的 key 不是各自那一行的 —— 「拿 A 的 key 发 B 的请求，而两边都显示成功」\n\
+             正是 `KH2` 逐字点名的最坏那一形。实得：{auths:?}"
+        );
+
+        // ★ 正题③（`KL7` 第 2 条）：**表里查不到的账号 ⇒ 404 且一个字节不发上游**。
+        //   非空对照就是上面那两发 —— 同一条路、同一个桩，只有账号段不同。
+        let url = format!(
+            "http://127.0.0.1:{}/s/claude-code/acct-not-in-the-table/k-0123456789abcdef",
+            relay.addr.port()
+        );
+        let out = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(format!(
+                "export ANTHROPIC_BASE_URL='{url}'; bash {}",
+                stub.to_string_lossy()
+            ))
+            .output()
+            .expect("起桩启动器");
+        let so = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            so.starts_with("HTTP/1.1 404"),
+            "表里查不到的账号没有回 404：{so:?}"
+        );
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            2,
+            "查不到的那一发**漏到上游去了** —— 那是 `KL7` 第 2 条逐字禁的回落"
+        );
+    }
+
     fn first_non_loopback_v4() -> Option<Ipv4Addr> {
         // 不引依赖：从 /proc/net/fib_trie 之外最简单的路是连一个不发包的 UDP socket。
         let s = std::net::UdpSocket::bind("0.0.0.0:0").ok()?;

@@ -1356,28 +1356,148 @@ fn launch_local(
     account: Option<&LaunchAccount>,
     tmux_name: Option<&str>,
 ) -> Result<(), String> {
+    // ★★ `K-H2b`：**这一行就是「那条线」** —— 起会话这一刻把 base URL 指向本机中转。
+    //    空串 = 这个号不走中转（`§0e` 裁一：官方号一个字节不进中转）。
+    let relay = relay_prefix_for_launch(action, account)?;
     #[cfg(windows)]
     {
         // Windows 那半**逐字不动**（`C12`：「windows不要tmux」）。`tmux_name` 在这一侧
         // 连读都不读 —— 读了就是给「Windows 也进容器」留了个口子。
         let _ = tmux_name;
-        let ps = build_local_ps_command(action, launcher, account)?;
+        let ps = relay + &build_local_ps_command(action, launcher, account)?;
         crate::launch::launch_powershell_window(&ps, cwd)
     }
     #[cfg(not(windows))]
     {
-        let cmd = match render_local_ccm(action, launcher, account, tmux_name) {
-            Ok(rendered) => rendered,
+        // ★★ **要注入就不走 ccm 那条容器路** —— 这不是偷懒，是一条量出来的边界：
+        //    ccm 的容器分支把载荷经 `send-keys` 送进**新起的 tmux 会话**，
+        //    而 tmux server 的环境不是这一跳的环境 ⇒ 在 `ccm` 外侧 export 的变量
+        //    **在 tmux 边界被吃掉**（ccm 自己为 `CLAUDE_CONFIG_DIR` 专门写了一段
+        //    「把继承值写进载荷内侧」正是为了这个坑，而 `ANTHROPIC_BASE_URL` 没有那一段）。
+        //    ⇒ 照旧走 ccm = **静默地没注入**，那正是本件要治的病。
+        //
+        //    ⚠ **代价如实登记**：走中转的号今天**拿不到 tmux 容器**（无 tty 那条老路）。
+        //    要两样都要，得往 `shared/ccm` 的容器路加一段转发（`:910` 那串 `inner+=`），
+        //    而 `§0e` 裁三已判 `shared/ccm` **不是收口点**、本件不动它 ⇒ 抬进上报口。
+        //
+        //    ⚠ 写法上刻意让 `render_local_ccm(` 与 `build_local_posix_command(` 在本函数体里
+        //    **各恰好一处** —— `the_local_launch_tries_the_renderer_before_the_old_path`
+        //    用它们的相对位置钉「渲染器在前」，两处就管不住顺序了（本轮实测被它逮过一次）。
+        let rendered = if relay.is_empty() {
+            render_local_ccm(action, launcher, account, tmux_name)
+        } else {
+            Err("该账号走本机中转 ⇒ 跳过容器路（env 会在 tmux 边界被吃掉）".to_string())
+        };
+        let cmd = match rendered {
+            Ok(r) => r,
             Err(why) => {
                 // 与远端那条降级**同一种说法**：走回落是正常且预期的路径（没装 ccm 的机器
                 // 每次拉起都走它）⇒ `debug` 而不是 `warn`。要查「为什么这台机没进 tmux」时，
                 // 这一行是唯一线索。
                 tracing::debug!("launch: 本机 CLI 渲染器降级 → 旧路：{why}");
-                build_local_posix_command(action, launcher, account)?
+                relay + &build_local_posix_command(action, launcher, account)?
             }
         };
         crate::launch::launch_local_posix(&cmd, cwd)
     }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-H2b`：注入侧的三个判断（**账号 id 从哪来 · 表里有没有它 · 中转在不在**）
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// 这次拉起的账号在**中转表**里的 id。
+///
+/// # ⚠ 它是**推出来的**，不是传下来的 —— 这一格必须写清楚
+///
+/// [`LaunchAccount::Named`] 只有一个字段 `config_dir`，**没有名字**（`render_local_ccm`
+/// 头注里那条「②有 configDir 没名字 ⇒ 说不出 ⇒ 降级」记的就是这件事）。
+/// 而中转表按**账号 id** 索引 ⇒ 这里只能拿 `config_dir` 的**末段目录名**当 id：
+/// `cc-acct-iso` 的布局逐字是 `~/.claude-accts/<名字>`，`local_accounts.rs` 读出来的
+/// 账号名**就是那个目录名**。
+///
+/// **推错了会怎样**：推出一个表里没有的 id ⇒ [`relay_prefix_for`] 回 `None` ⇒
+/// **逐字节走旧路**，不是拼一条会 404 的 URL。⇒ 这一格的失效方向是**保守**的。
+///
+/// - [`LaunchAccount::Base`]（账号 0）⇒ `None`。**说不出 id 就不注入** ——
+///   账号 0 是「显式不注入 `CLAUDE_CONFIG_DIR`」那一档，它在 manifest 里没有目录名。
+/// - 参数缺席（调用方没表态）⇒ `None`，同上。
+fn relay_account_id(account: Option<&LaunchAccount>) -> Option<String> {
+    match account {
+        Some(LaunchAccount::Named { config_dir }) => std::path::Path::new(config_dir.trim())
+            .file_name()
+            .and_then(|s| s.to_str())
+            .map(str::to_string),
+        _ => None,
+    }
+}
+
+/// 中转凭据文件里今天有哪几条账号 id。**读不到就是零条**（零条 ⇒ 谁都不走中转）。
+///
+/// ⚠ 「读不到」与「一条都没配」在这里**故意同一处置**：两者的正确行为都是
+/// 「照旧走官方直连」，而把「读文件失败」变成一次起会话失败，是拿一个**能用的**状态
+/// 去换一条错误提示。⇒ 只在日志里留一行。
+fn relay_rows() -> Vec<String> {
+    let Some(p) = crate::creds_store::resolve_path() else {
+        return Vec::new();
+    };
+    let Ok(raw) = std::fs::read_to_string(&p) else {
+        return Vec::new();
+    };
+    match creds_core::store::parse(&raw) {
+        Ok(doc) => creds_core::store::read_accounts(&doc)
+            .into_iter()
+            .map(|e| e.id)
+            .collect(),
+        Err(e) => {
+            tracing::debug!("中转凭据文件读不成表（照旧走官方直连）：{e:?}");
+            Vec::new()
+        }
+    }
+}
+
+/// 纯函数半：给定「账号 id / 表里有哪几行 / 中转在不在」，产出要拼上去的前缀。
+///
+/// 空串 = **不走中转**（逐字节旧路）。`Err` = 该走但走不了（`KH2B2`②，出声不静默）。
+fn relay_prefix_for(
+    account_id: Option<&str>,
+    rows: &[String],
+    relay_running: bool,
+    sid: Option<&str>,
+    windows: bool,
+) -> Result<String, String> {
+    let agent = crate::adapter::active().id();
+    let url = crate::backend::control::payload::relay_injection_for(
+        account_id,
+        rows,
+        relay_running,
+        sid,
+        agent,
+    )?;
+    Ok(match url {
+        None => String::new(),
+        Some(u) if windows => crate::backend::control::payload::relay_env_prefix_ps(&u),
+        Some(u) => crate::backend::control::payload::relay_env_prefix_posix(&u),
+    })
+}
+
+/// 上一条的**接线半**：这台机器上的两个事实（表里有哪几行 · 中转在不在）在这里读。
+fn relay_prefix_for_launch(
+    action: &LocalPsAction,
+    account: Option<&LaunchAccount>,
+) -> Result<String, String> {
+    let id = relay_account_id(account);
+    let sid = match action {
+        LocalPsAction::Resume(sid) => Some(sid.as_str()),
+        LocalPsAction::New => None,
+    };
+    relay_prefix_for(
+        id.as_deref(),
+        &relay_rows(),
+        crate::local_daemon::relay_running(),
+        sid,
+        cfg!(windows),
+    )
 }
 
 /// 薄委托——保留旧函数名与调用点不变（`resume_impl` 只改内部实现，DoD 要求两个
@@ -3464,6 +3584,103 @@ mod tests {
         assert_eq!(
             build_local_ps_command(&LocalPsAction::New, None, None).unwrap(),
             expected
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // `K-H2b`：接上注入点 —— 注入侧那三个判断
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// ★★★ `KH2B5`（`§0e` 裁一）**在这一层的对照** —— 同一条起会话路径、同一个函数，
+    /// 只有「这个号在不在中转表里」不同：
+    /// api-key 号（表里有行）的命令**带**那个 env，官方号的命令里**一个字节都没有**。
+    #[test]
+    fn only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix() {
+        let rows = vec!["acct-a".to_string()];
+        let named = |d: &str| LaunchAccount::Named {
+            config_dir: d.to_string(),
+        };
+        // ① 表里有行 ⇒ 前缀在（非空对照：证明这把尺子不是恒空串）。
+        let id = relay_account_id(Some(&named("/home/u/.claude-accts/acct-a")));
+        assert_eq!(id.as_deref(), Some("acct-a"), "账号 id 是从末段目录名推的");
+        let p = relay_prefix_for(id.as_deref(), &rows, true, Some("sid-1"), false).unwrap();
+        assert_eq!(
+            p, "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; ",
+            "api-key 号的命令没带上中转 base URL —— 那条线还是没接"
+        );
+        // ② 表里没有这一行（订阅号）⇒ **空串**，命令逐字节与本件之前相同。
+        let other = relay_account_id(Some(&named("/home/u/.claude-accts/acct-b")));
+        assert_eq!(
+            relay_prefix_for(other.as_deref(), &rows, true, Some("sid-1"), false).unwrap(),
+            "",
+            "没配第三方 key 的号被接进了中转 —— `§0e` 裁一逐字禁这一形"
+        );
+        // ③ 账号 0 / 没表态 ⇒ 说不出 id ⇒ 空串。
+        assert_eq!(relay_account_id(Some(&LaunchAccount::Base)), None);
+        assert_eq!(relay_account_id(None), None);
+        assert_eq!(relay_prefix_for(None, &rows, true, None, false).unwrap(), "");
+        // ④ Windows 那一侧渲的是 PowerShell 形态（**只到「编得过」**，运行时没量过）。
+        let ps = relay_prefix_for(id.as_deref(), &rows, true, Some("sid-1"), true).unwrap();
+        assert_eq!(
+            ps,
+            "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; "
+        );
+    }
+
+    /// ★★ `KH2B2`②在这一层：中转没在跑 ⇒ **起会话这一侧当场说话**，
+    /// 不许渲染成一条指向没人听的口的 URL（那会长成「claude 连不上 API」）。
+    #[test]
+    fn a_launch_that_needs_the_relay_is_refused_when_the_relay_is_not_running() {
+        let rows = vec!["acct-a".to_string()];
+        let e = relay_prefix_for(Some("acct-a"), &rows, false, Some("sid-1"), false)
+            .expect_err("中转没起来却照旧渲染 —— 症状会与网络故障同形");
+        assert!(e.contains("中转没在跑"), "错误得说出真正的原因：{e}");
+        // 非空对照：只把「中转在跑」翻过来，同一条路径就不再报错。
+        assert!(relay_prefix_for(Some("acct-a"), &rows, true, Some("sid-1"), false).is_ok());
+    }
+
+    /// ★★★ **接线判据**：`launch_local` 里那条前缀**真的拼在命令前面**，而且
+    /// 「要注入时不走 ccm 容器路」这个决定是**在渲染器之前**做的。
+    ///
+    /// # 它防的是什么
+    ///
+    /// 上一件的病灶逐字是「代码里有这个形状」被读成「这条线接上了」。
+    /// 一个 `relay_prefix_for_launch(...)` 调用**算出来却没拼上去**，
+    /// 行为上与本件没做完全一样，而所有纯函数判据照绿。
+    /// ⇒ 本条按**源码位置**钉那两处拼接，形状照
+    /// `the_local_launch_tries_the_renderer_before_the_old_path`。
+    #[test]
+    fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
+        let me = include_str!("history.rs");
+        let prod = guard_core::production_code(me);
+        assert!(prod.len() > 5_000, "剥完只剩 {} 字节 —— 剥过头了", prod.len());
+        let at = guard_core::find_pinned(&prod, "fn launch_local(")
+            .unwrap_or_else(|e| panic!("`fn launch_local(` 不是恰好一处：{e}"));
+        let body = &prod[at..at + 2_600.min(prod.len() - at)];
+        // ① 前缀真的算了。
+        assert!(
+            body.contains("relay_prefix_for_launch(action, account)?"),
+            "`launch_local` 里没有那次注入判断 —— 那条线没接"
+        );
+        // ② 两条平台分支各自**真的把它拼上去**。
+        assert_eq!(
+            body.matches("relay + &build_local_").count(),
+            2,
+            "把前缀拼到命令前面的地方不是 2 处（POSIX 一处 · Windows 一处）——\n\
+             算了却没拼上去，行为上与本件没做**完全一样**，而纯函数判据照绿。\n\
+             实得片段：{body}"
+        );
+        // ③ 「要注入 ⇒ 不走容器路」这个决定在渲染器**之前**。
+        let decide = body
+            .find("if relay.is_empty()")
+            .expect("找不到那条「空串就走旧路」的分流 —— 决定点没了");
+        let render = body
+            .find("render_local_ccm(")
+            .expect("找不到 `render_local_ccm(`");
+        assert!(
+            decide < render,
+            "★ 顺序反了：走不走 ccm 容器路的决定得在渲染之前 —— \
+             渲完再判等于已经把载荷送进 tmux 那条路了"
         );
     }
 }

@@ -175,6 +175,52 @@ mod tests {
         );
     }
 
+    /// ★★★ `K-H2b` `KH2B4`：**注入侧要拼出来的那一形，正是本解析器认的那一形。**
+    ///
+    /// # 这一条为什么必须存在（`LEDGER.md#KL7` 第 1 条）
+    ///
+    /// 注入侧拼错一段的症状**不是**「拼错了」，是「一个查不出来的 404」——
+    /// 因为老三段形状**不会被本解析器拒掉**（隔壁那条判据实测过：它被重读成另一条四段路由、
+    /// 解析成功），挡它的是**表里查不到**，而那在另一个文件里。
+    /// ⇒ 两端各写各的，就会各自答错同一个问题，而症状指不向原因。
+    ///
+    /// # ⚠⚠ 这一条**没有**买到什么（照实写，别读宽）
+    ///
+    /// 下面那个字面量是 monitor 侧 `backend::control::payload::RELAY_ROUTE_SAMPLE`
+    /// 的**手抄副本**，**不是** `include_str!` 读过来的 ——
+    /// 两半之间的编译期边必须登记进 `src-tauri/src/cross_half_edge_registry.rs`，
+    /// 而那个文件不在 `K-H2b` 的写区里。
+    /// ⇒ **今天没有任何判据把两侧焊住**：monitor 那边改了拼法而没改这里，**两边都绿**。
+    /// monitor 那一侧自己那半由 `the_relay_route_sample_is_what_the_builder_really_produces`
+    /// 钉着（它断言那个常量逐字节等于构造口的产物）。
+    /// **差的就是跨半边那一格，它叫「量过没有」—— 已抬进件文件的上报口。**
+    #[test]
+    fn the_shape_the_injection_side_builds_lands_in_the_slots_this_parser_expects() {
+        // ⚠ 手抄自 monitor 侧的 `RELAY_ROUTE_SAMPLE`（见上面那条「没有买到什么」）。
+        const SAMPLE_FROM_THE_INJECTION_SIDE: &str = "/s/claude-code/acct-a/k-0123456789abcdef";
+        // 注入侧给的是 base URL（不带真路径），agent 自己往后接 `/v1/messages`。
+        let target = format!("{SAMPLE_FROM_THE_INJECTION_SIDE}/v1/messages");
+        let r = parse(&target).expect("注入侧拼出来的形状必须解析得了 —— 解析不了就是四段没对齐");
+        // 期望值全是**手写字面量**（不是拿被测函数算的，否则自证恒绿）。
+        assert_eq!(r.agent, "claude-code");
+        assert_eq!(r.account, "acct-a", "账号段没落在第 3 段 —— 表就查错行了");
+        assert_eq!(r.key, "k-0123456789abcdef");
+        assert_eq!(r.rest, "/v1/messages", "真路径没被原样透传");
+        // ★ 同一条样例，把**账号段**换掉 ⇒ 切出来的 account 必须跟着变（它是自己一维）。
+        let other = parse("/s/claude-code/acct-b/k-0123456789abcdef/v1/messages").expect("另一行");
+        assert_ne!(r.account, other.account);
+        assert_eq!(other.account, "acct-b");
+        // ★ 段序对调（`<account>` 与 `<key>` 换位）**照样解析得了** ——
+        //   这正是「拼错一段只表现成 404」的机制，本断言把它钉成明文。
+        let swapped =
+            parse("/s/claude-code/k-0123456789abcdef/acct-a/v1/messages").expect("对调也解析得了");
+        assert_eq!(
+            swapped.account, "k-0123456789abcdef",
+            "对调之后被当成账号的是那个 key —— 解析器拦不住它，只有表能"
+        );
+        assert_ne!(swapped.account, r.account);
+    }
+
     /// ★ **同一条性质只许有一个实现**：装路由表时判「这个账号 id 当得了路由段吗」
     /// 走的必须是本模块这个 [`segment_is_safe`]，不是另写一份。
     ///
