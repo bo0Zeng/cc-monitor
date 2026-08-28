@@ -27,6 +27,23 @@
 //!
 //! ⚠ **`vendor/` 下的不算** —— 那是 vendored 第三方（`code-picture-core`），
 //! 有自己的一套（`ci.yml` 单独一步），不受本约定管。
+//!
+//! # ★★ 新增一个共享 crate，要补的**全部**地方（`E` 阻-1 回修补全，08-27）
+//!
+//! 这张清单存在的理由是它**已经漏过两次**，两次都是同一个形状：
+//! 「加了东西，但没回来改那个记着『今天是几』的数」。
+//!
+//! | # | 要补哪儿 | 漏了会怎样 | 谁在钉 |
+//! |---|---|---|---|
+//! | 1 | `src-tauri/Cargo.toml` 的 `[workspace] members` | **静默少跑**（`--workspace` 覆不到非成员，那个 crate 的测试从门禁里消失，不是失败是不存在） | `every_shared_crate_is_a_workspace_member` |
+//! | 2 | `git add` 那个 crate 的 `Cargo.toml` | 别人（和 CI）检出会直接编不过，而你的工作树一切正常 | `every_path_dependency_is_actually_committed` |
+//! | 3 | **`scripts/gate.sh` 的 `run_gate_sum cargo <N>`** | `gate` 当场红，但报文说「有包掉出了 `--workspace`」—— **指错方向** | `the_gate_package_count_tracks_the_number_of_shared_crates`（本轮新加） |
+//! | 4 | ~~两条自检的地板~~ | ~~余量被撑大，「少认一个 crate」不会红~~ | **已消掉**：两条自检改成**两个独立来源对拍**，自动跟上 |
+//!
+//! ★ 第 4 行**划掉**是本轮最要紧的一格：它原来是「要记得回来 +1」，
+//! 而**忘记正是这个病本身** ⇒ 与其把它留在清单上，不如让它不再需要被记住。
+//! （`F03` 漏过一次、`K-H2a` 漏过第二次，两次都是同一条断言。）
+//! ⚠ 第 3 行**还是「要记得」那一类** —— 它没消掉，只是从「漏了会指错方向」变成「漏了会被点名」。
 
 /// ★ `ci.yml` 的**读取与切块只有一个家**〔audit-0805 08-07，定框 E3〕。
 ///
@@ -129,6 +146,39 @@ mod tests {
         names
     }
 
+    /// `[workspace] members` 里那几条 `crates/…` 的目录名。
+    ///
+    /// ★ 它被抽出来是为了给两条自检当**第二个独立来源**〔`E` 阻-1 回修，08-27〕：
+    /// `shared_crate_names()` 读的是**文件系统**（`crates/*/Cargo.toml` 的 `name =`），
+    /// 本函数读的是 **`src-tauri/Cargo.toml` 的 `members` 数组**。
+    /// 两者**同源于盘、彼此独立** ⇒ 拿它们对拍，就不必再写一个「今天是几」的数。
+    fn members_crate_dirs() -> Vec<String> {
+        let toml = fs::read_to_string(root().join("Cargo.toml")).expect("Cargo.toml 读不到");
+        // ⚠ 逐行走一个**小状态机**，刻意**不用** `toml.find("…")` 去切段。
+        //   两个理由：① 本仓 `needle_anchor_registry` 立着一条递减棘轮
+        //   （「语料变量上的裸匹配……needle 被撑大时照样绿」），本轮第一版写成
+        //   `.find("\n[")` 当场撞红（实测「`.find("…")` 9 处 > 上限 8」）；
+        //   ② 状态机本身更准：它按「下一个 `[节]` 开始」收尾，不依赖某个字面量恰好出现在哪。
+        let mut out: Vec<String> = Vec::new();
+        let mut in_ws = false;
+        for line in toml.lines() {
+            let t = line.trim();
+            if t.starts_with('[') {
+                in_ws = t == "[workspace]";
+                continue;
+            }
+            if !in_ws {
+                continue;
+            }
+            let t = t.trim_matches(',').trim_matches('"');
+            if let Some(name) = t.strip_prefix("crates/") {
+                out.push(name.trim_matches('"').to_string());
+            }
+        }
+        out.sort();
+        out
+    }
+
     /// `ci.yml` 里**真的会跑**的那些行 —— 注释行剔掉。
     ///
     /// ⚠ 实测（2026-08-03 复盘 P3）：本模块此前直接对整份 `ci.yml` 做 `contains`，
@@ -147,10 +197,78 @@ mod tests {
         // 却没回来棘这个数 ⇒ 从 F03 到 F12 之间，「抽取器少认一个包」这件事**不会红**，
         // 而那正是上面这段注释逐字警告的场景。是 Phase G 的 `/full-audit` 把它逮出来的。
         // ⇒ 一般化：**「新增一个 X 要补 N 处」的清单里，必须包含「回来棘那条自检的地板」。**
+        // ★★ 〔`E` 阻-1 回修，08-27〕**这条地板第二次落后了，所以这次不再写死一个数。**
+        //
+        // 经过：`K-H2a` 新增第 7 个共享 crate（`creds-core`）时，只补了 `members` 与 `git add`，
+        // **没回来棘这两条地板** ⇒ 余量从 0 撑到 1。`E` 阶段实打：让抽取器少认一个 crate
+        // ⇒ **15 passed / 0 failed 全绿**，少认两个才红（14P/1F）。
+        // ⚠ 而上面那段注释逐字写着同一次事故的规矩（「新增一个 X 要补 N 处的清单里，
+        //    必须包含回来棘那条自检的地板」）—— **同文件、同断言、第二次踩**。
+        //
+        // ⇒ 换形状：**拿两个独立来源对拍**，而不是记一个会过期的数。
+        //   `shared_crate_names()` 读文件系统，`members_crate_dirs()` 读 `members` 数组；
+        //   抽取器少认一个 ⇒ 两边不等 ⇒ 当场红，**不需要谁记得回来改**。
+        //   〔为什么这比棘轮好：棘轮要求「加 crate 的人记得回来 +1」，而**忘记正是这个病本身**。〕
+        let members = members_crate_dirs();
+        assert_eq!(
+            n,
+            members.len(),
+            "从 `crates/*/Cargo.toml` 抽到 {n} 个包名，而 `[workspace] members` 里有 {} 条 `crates/…`。\n\
+             两个独立来源对不上 ⇒ 要么真少了一个 crate，要么抽取器瞎了一个。\n\
+             文件系统那边：{:?}\n`members` 那边：{members:?}",
+            members.len(),
+            shared_crate_names()
+        );
+        // 绝对地板**留着**，但它今天的岗位只有两个：① 反空真（两边同时归零时对拍会「相等」）；
+        // ② 删共享 crate 时的**刻意摩擦**（原注释逐字写的那条）。棘到今天的真值 **7**。
         assert!(
-            n >= 6,
-            "只从 crates/*/Cargo.toml 抽到 {n} 个包名（F12 实测应为 6）—— 抽取器坏了，\
+            n >= 7,
+            "只从 crates/*/Cargo.toml 抽到 {n} 个包名（08-27 实测应为 7）—— 抽取器坏了，\
              下面那条「三样都在 CI 里」会零命中零失败地绿"
+        );
+    }
+
+    /// ★★ **`npm run gate` 那道 cargo 门的包数，必须等于「monitor + 全部共享 crate」**
+    /// 〔`E` 阻-1 回修第二件，08-27〕。
+    ///
+    /// # 它补的是清单里**新漏的那一处**，而那一处是本件自己造出来的
+    ///
+    /// `K-H2a` 给 `scripts/gate.sh` 加了 `run_gate_sum cargo <N>` —— `N` 是**包数相等断言**
+    /// （立它的理由是「合计变小与『有测试没跑』在终端上一模一样」）。
+    /// 但那个 `N` 是**手写的 8**：**再加第 8 个共享 crate，`gate` 会当场红**，
+    /// 而红的报文说的是「有包静默掉出了 --workspace」——**指错方向**，
+    /// 因为真实原因是「有人加了 crate 没来改这个数」。
+    /// ⇒ 本件在治「新增 crate 要补 N 处」这个病的同时，**自己又新开了一处要补的地方**，
+    ///   而没有把它登记进任何清单。这一条就是那一格。
+    ///
+    /// # 形状：**从盘上算**，不再记第二个会过期的数
+    ///
+    /// 期望值 = `1`（根包 `monitor`）+ `shared_crate_names().len()`。
+    /// ⇒ 加/删共享 crate 时，这条判据**自动跟上**；漏改 `gate.sh` 的那个数就当场红，
+    ///   而且报文直接说「去改 gate.sh 那个数」，不会像 `gate` 自己那样指错方向。
+    ///
+    /// ⚠ 它**认不出**什么：`--exclude` 那几项（今天只有 `code-picture-core`）如果被人加减，
+    /// 包数也会变，而本条只按「共享 crate 数」算。那一格由 `gate.sh` 里那段头注的
+    /// 论证（`C7` 逐字「vendor `code-picture-core` 不动」）看着，**没有判据**。
+    #[test]
+    fn the_gate_package_count_tracks_the_number_of_shared_crates() {
+        let gate = fs::read_to_string(root().parent().expect("仓根").join("scripts/gate.sh"))
+            .expect("读不到 scripts/gate.sh —— 抽取器坏了，本条会零命中地绿");
+        let at = guard_core::find_pinned(&gate, "run_gate_sum cargo ")
+            .expect("`gate.sh` 里找不到（或不止一处）`run_gate_sum cargo ` —— 本条按红处理");
+        let n: usize = gate[at + "run_gate_sum cargo ".len()..]
+            .split_whitespace()
+            .next()
+            .and_then(|t| t.parse().ok())
+            .expect("`run_gate_sum cargo` 后面那个数读不出来");
+        let want = 1 + shared_crate_names().len();
+        assert_eq!(
+            n, want,
+            "`scripts/gate.sh` 里 `run_gate_sum cargo {n}`，而今天应当是 **{want}**\n\
+             （1 个根包 `monitor` + {} 个共享 crate）。\n\
+             ⚠ 加/删共享 crate 时**这个数要跟着改** —— 不改的话 `npm run gate` 会红，\n\
+             但它的报文说的是「有包静默掉出了 --workspace」，**指错方向**。",
+            shared_crate_names().len()
         );
     }
 
@@ -445,9 +563,17 @@ mod tests {
         }
         // 抽取器自检：members 里应有 **6** 条 `crates/…`（与 `the_crate_scan_actually_finds_crates`
         // 的地板同源）。扫不到就是取名方式与 Cargo.toml 的写法分家了。
+        // 〔`E` 阻-1 回修，08-27〕同上：与**文件系统**那个来源对拍，不再记一个会过期的数。
+        assert_eq!(
+            scanned,
+            shared_crate_names().len(),
+            "从 `[workspace] members` 扫到 {scanned} 条 `crates/…`，而 `crates/` 下有 {} 个包 —— \
+             本抽取器与 Cargo.toml 的写法分家了，或者真少了一个",
+            shared_crate_names().len()
+        );
         assert!(
-            scanned >= 6,
-            "只从 `[workspace] members` 扫到 {scanned} 条 `crates/…`（应 ≥6）—— \
+            scanned >= 7,
+            "只从 `[workspace] members` 扫到 {scanned} 条 `crates/…`（08-27 实测应为 7）—— \
              要么真少了，要么本抽取器与 Cargo.toml 的写法分家了。后者会让下面那条零命中变绿"
         );
         assert!(
