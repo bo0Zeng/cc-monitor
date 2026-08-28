@@ -1330,6 +1330,65 @@ pub fn stop_local_backend() -> Result<String, String> {
 mod tests {
     use super::*;
 
+    /// ★★★ `K-H2b` `KH2B2`①：**中转有一个具名的启动方**，而且它在**起本机后端的那条路上**。
+    ///
+    /// # 非空对照写在这里（这一条的分母）
+    ///
+    /// 本件之前，全仓 `--relay` 的**生产调用点是 0** —— 中转是一条「有实现、没人起」的路。
+    /// ⇒ 本条钉的就是那个 0 变成了 1，而且**不是随便哪儿的 1**：它必须落在
+    /// `start_local_backend` 里、且排在 `start_detached` 那条**会 `return` 的**分支**之前**
+    /// （接在它后面 = 走常驻那条路时中转不会被起，而那是生产上的主路）。
+    ///
+    /// # 它买不到什么
+    ///
+    /// 只买「接线在」，**不买「那个进程真的起来了」** —— 后者要真 spawn 一个 daemon
+    /// 二进制，而它 `#[cfg(embedded_daemons)]` 门着、CI 上根本不铺（姊妹条
+    /// `the_local_daemon_can_be_stopped_and_started_again` 那条边界原样适用）。
+    #[test]
+    fn the_relay_has_a_named_starter_and_it_runs_before_the_detached_branch_returns() {
+        let me = include_str!("local_daemon.rs");
+        let prod = guard_core::production_code(me);
+        assert!(prod.len() > 5_000, "剥完只剩 {} 字节 —— 剥过头了", prod.len());
+        // ① `--relay` 在生产段里**真的被谁传出去了**（本件之前这个数是 0）。
+        assert_eq!(
+            prod.matches("vec![\"--relay\".into()]").count(),
+            1,
+            "`--relay` 的生产调用点不再是 1 处 —— 0 处就等于回到本件之前\n\
+             （「有实现、没人起」：那条线还是没接）；2 处就是两个各自监护的中转。"
+        );
+        // ② 它落在起本机后端那条路上，且**在常驻那条会 return 的分支之前**。
+        let at = guard_core::find_pinned(&prod, "pub fn start_local_backend()")
+            .unwrap_or_else(|e| panic!("`start_local_backend` 不是恰好一处：{e}"));
+        let body = &prod[at..];
+        let start = body
+            .find("start_local_relay(bin)")
+            .expect("`start_local_backend` 里没有那次起中转 —— 走这条路的机器上中转不会起");
+        let detached = body
+            .find("match start_detached(")
+            .expect("找不到常驻那条分支");
+        assert!(
+            start < detached,
+            "★ 顺序反了：起中转排在 `start_detached` **之后**，而那条分支会 `return` \n\
+             ⇒ 走常驻那条路（生产主路）的机器上中转**根本不会被起**，\n\
+             而症状是「api-key 号的会话被起会话那一侧拒掉」，指不向这里。"
+        );
+        // ③ 端口是**显式传**下去的（不许骑在 daemon 那份 `DEFAULT_PORT` 上）。
+        //    ⚠ 作用域是 `start_local_relay` 的函数体，**不是** `start_local_backend` 的
+        //      —— 第一版写错了作用域，被本条自己当场逮住（那也是「量具的作用域对不上事实」）。
+        let relay_at = guard_core::find_pinned(&prod, "pub fn start_local_relay(")
+            .unwrap_or_else(|e| panic!("`start_local_relay` 不是恰好一处：{e}"));
+        let relay_body = &prod[relay_at..relay_at + 1_200.min(prod.len() - relay_at)];
+        assert!(
+            relay_body.contains("\"CCM_RELAY_PORT\".into()"),
+            "端口没显式交给子进程 —— 注入侧（`payload::RELAY_PORT`）与中转侧\
+             （daemon 的 `DEFAULT_PORT`）就成了各读各的两份默认值"
+        );
+        assert!(
+            relay_body.contains("payload::RELAY_PORT"),
+            "端口不是从注入侧那个常量来的 —— 两侧又成了两个值"
+        );
+    }
+
     /// P2s-Y2（acceptor: **实测**）：**停得掉 · 起得回来 · 状态跟着变**。
     ///
     /// # 为什么按 `/proc` 看而不是读状态字段
