@@ -473,6 +473,71 @@ mod tests {
         }
     }
 
+    /// ★★ **两张表必须说同一件事**〔D2 回修，08-27〕：
+    /// 定义面（`creds-core` 里哪几个 fn 标着 `HandsOut`）与调用面（本文件里哪几个 needle
+    /// 被数调用点）**必须是同一组名字**。
+    ///
+    /// # 它买的是什么
+    ///
+    /// `D2` 点名要「给一条判据钉住 `HandsOut` / `ReadsOnly` 这个区分」。
+    /// 光在定义面钉「`HandsOut` 恰好 2 条」还不够 —— 有人把一个**新出口**标成 `HandsOut`
+    /// 并同时把定义面那条相等断言改大，两边就都绿了。
+    /// ⇒ 本条把它接到**另一个 crate 里的另一张表**上：新出口要绿，得**同时**改两张表，
+    /// 而调用面那张表一改，`the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees`
+    /// 立刻要求它「恰好 1 处调用、住在指定文件」。**三张表互相钉住，改一张不够。**
+    ///
+    /// ⚠ 它**不判**分类对不对（那要判语义）—— 它判的是**两张表有没有说同一件事**。
+    #[test]
+    fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
+        let core = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("crates/creds-core/src/lib.rs"),
+        )
+        .expect("读不到 creds-core 的源码 —— 抽取器坏了，本条会零命中地绿");
+
+        // 从 `INNER_FIELD_USERS` 里挑出标着 `HandsOut` 的行，取它的名字。
+        let at = guard_core::find_pinned(&core, "const INNER_FIELD_USERS:")
+            .expect("切不出定义面那张表 —— 本条按红处理");
+        // ⚠ 切法**不是** `brace_block` —— 这张表是 `&[ … ]`，它的第一个 `{` 可能落在很远的地方
+        //   （实测第一版就是这么切歪的，被下面那条反空真自检当场逮住：「一条 HandsOut 都没抽到」）。
+        //   按它自己的收尾 `];` 切才是这张表的边界。
+        let table = core[at..]
+            .find("\n    ];")
+            .map(|i| &core[at..at + i])
+            .expect("切不出表体（找不到 `];` 收尾）—— 按红处理");
+        assert!(table.len() > 200, "表体只有 {} 字节 —— 切歪了", table.len());
+        let mut hands_out: Vec<String> = Vec::new();
+        for (i, _) in table.match_indices("Handling::HandsOut") {
+            // 往回找最近的一个 `"名字"`。
+            let before = &table[..i];
+            let Some(q_end) = before.rfind('"') else { continue };
+            let Some(q_start) = before[..q_end].rfind('"') else {
+                continue;
+            };
+            hands_out.push(before[q_start + 1..q_end].to_string());
+        }
+        hands_out.sort();
+        assert!(
+            !hands_out.is_empty(),
+            "定义面表里一条 `HandsOut` 都没抽到 —— 抽取器坏了，本条在空转"
+        );
+
+        // 调用面那张表的 needle 去掉尾巴那个左括号，就是方法名。
+        let mut call_side: Vec<String> = PLAINTEXT_EXIT_SITES
+            .iter()
+            .map(|(n, _, _)| n.trim_end_matches('(').to_string())
+            .collect();
+        call_side.sort();
+
+        assert_eq!(
+            hands_out, call_side,
+            "两张表点的**不是同一组出口**：\n\
+             · 定义面（creds-core `INNER_FIELD_USERS` 里标 `HandsOut` 的）= {hands_out:?}\n\
+             · 调用面（本文件 `PLAINTEXT_EXIT_SITES`）= {call_side:?}\n\
+             ⚠ 两边说的不是一件事时，**各自都绿**，而中间那道缝就是明文出去的地方。"
+        );
+    }
+
     /// ★ `KS5` 调用点的机检：`write_key_at` 里收窄**恰好两次**（tmp 一次、目标一次）。
     ///
     /// # 它为什么必须存在（`MU12` 实测：行为判据看不见这一刀）
@@ -532,7 +597,11 @@ mod tests {
     /// 三条既有判据全部量在窗口之外（源码面数次数 · rename 之后的 mode · `make_private` 自己）。
     /// ⇒ 修法不是再加一次收窄，是**让它出生时就不宽**：建文件那一步自己带上权限。
     ///
-    /// # 本条钉的是「**怎么建**」，行为那一半由 `a_temp_file_is_born_owner_only` 钉
+    /// # 本条钉的是「**怎么建**」，行为那一半由 `perm::tests::a_file_created_through_create_private_is_born_owner_only` 钉
+    ///
+    /// ⚠ 这个名字**改过一次**〔D2，08-27〕：先前写的是 `a_temp_file_is_born_owner_only`，
+    /// 而盘上**没有这个判据** —— 真名住 `crates/creds-core/src/perm.rs`。
+    /// **指向一个不存在的判据，比不指更坏**：读的人会以为那一格有人守着。
     ///
     /// 两条各管各的：本条管**过程**（生产段里 tmp 只许经 `create_private` 出生，
     /// 且不许再出现「先写后收」那个形状），那条管**终态**（真建一个出来，立刻 stat）。

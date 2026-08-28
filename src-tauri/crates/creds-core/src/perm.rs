@@ -571,6 +571,71 @@ mod tests {
         None
     }
 
+    /// ★ **`windows_create_owner_only` 的机检覆盖**〔D2 硬伤，08-27〕。
+    ///
+    /// # 它为什么在 D1 那轮是**零覆盖**
+    ///
+    /// D1 补 `create_private` 时，Unix 那半有行为判据（`a_file_created_through_create_private_is_born_owner_only`），
+    /// 而 Windows 那半**一条都没有** —— 那台机器上跑不了它的行为，于是就什么都没写。
+    /// ⚠ 「跑不了行为」不等于「什么都判不了」：**它长什么样是判得了的**，
+    /// 而这一格恰恰是隔壁 `the_windows_half_is_not_a_no_op` 已经证明有价值的那一类
+    /// （`MU5` 实测：把 Windows 半改成无操作，只有机检会红）。
+    ///
+    /// # 它钉四样（每样都钉次数，不是钉「有没有」）
+    #[test]
+    fn the_windows_create_path_really_creates_with_a_dacl() {
+        let prod = production();
+        let body = fn_body(&prod, "fn windows_create_owner_only")
+            .expect("切不出 `windows_create_owner_only` 的函数体 —— 本条按红处理，不是绿");
+        assert!(
+            !body.contains("\nfn ") && !body.contains("\npub fn "),
+            "窗口跨进了下一个函数 —— 窗口无界，下面的断言不算数"
+        );
+        assert!(body.len() > 300, "窗口只有 {} 字节 —— 切法坏了", body.len());
+
+        // ① 真的去**建**文件，恰好一次。
+        assert_eq!(
+            body.matches("CreateFileW(").count(),
+            1,
+            "Windows 那半调 `CreateFileW` 的次数不对 —— 0 次 = 它根本没建文件"
+        );
+        // ② 建的时候**带着安全描述符**（这就是「出生即窄」在 Windows 上的落法）。
+        assert_eq!(
+            body.matches("Some(&sa as *const SECURITY_ATTRIBUTES)").count(),
+            1,
+            "`CreateFileW` 没把 `SECURITY_ATTRIBUTES` 传进去 —— \
+             那它就是按父目录的继承 ACL 建出来的，和 Unix 上按 umask 建是同一个病"
+        );
+        // ③ `CREATE_NEW` = `O_EXCL` 的对应物：已存在就失败，不跟随、不截断。
+        //
+        // ⚠ needle 末尾那个换行是**改过一次的**，而这已经是本件里**第三次**同一个错：
+        //   裸符号名会把 `use` 那一行也数进去（实测「2 次，应当 1 次」）。
+        //   前两次是 `PROTECTED_DACL_SECURITY_INFORMATION`（段一）与
+        //   `expose_for_auth_header(`（D1，那次数到的是**定义**）。
+        //   ⇒ 记在这里当路标：**数一个符号「用了几次」时，先想清楚 `use` 算不算一次。**
+        assert_eq!(
+            body.matches("CREATE_NEW,\n").count(),
+            1,
+            "创建方式不是 `CREATE_NEW` —— 那会跟随并截断一个已存在的东西（含别人预置的链接），\
+             而那时权限是**它的**不是我们的"
+        );
+        // ④ ★ **两条路必须共用同一句 SDDL** —— 各写一份的那天没有任何东西会说。
+        assert_eq!(
+            body.matches("owner_only_sddl(").count(),
+            1,
+            "建文件那条路没有走 `owner_only_sddl` —— \
+             它和 `make_private` 就成了「同一个安全性质两个实现」"
+        );
+        // ⑤ 非空对照：`make_private` 那条路**也**走同一个 helper（证明这把尺子指的是共用，不是巧合）。
+        let harden = fn_body(&prod, "fn windows_set_owner_only_dacl")
+            .expect("切不出 `windows_set_owner_only_dacl`");
+        assert_eq!(
+            harden.matches("owner_only_sddl(").count(),
+            1,
+            "非空对照失败：收窄那条路没走同一个 helper ⇒ 上面第 ④ 条证不了「共用」"
+        );
+    }
+
     /// `KS11`：Unix 上「过宽」的判断，以及它**说不说得清怎么修**。
     #[test]
     fn a_unix_mode_wider_than_owner_only_is_called_out_with_a_fix() {
