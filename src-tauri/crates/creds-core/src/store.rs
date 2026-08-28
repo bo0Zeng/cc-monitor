@@ -483,8 +483,28 @@ mod tests {
     /// ⇒ **`MU9` 当年那条「造不出来」是对当时那份构建说的，不是一条永久事实。**
     /// ⚠ 但**牙的来源变了要说清**：本条今天有牙靠的是那一行 dev-dependency；删了它就退回安慰剂。
     /// `ordering_is_by_name_not_by_arrival` 仍然是**不依赖任何 feature** 的那一格，两条配着用。
+    ///
+    /// ⚠⚠ **而「那一行被删掉」这件事，先前没有任何东西会说**〔`D2` `§五-3`，`C-补` 08-28 补上〕。
+    /// `D2` `P6` 实测：删掉那行 dev-dependency、**生产码一个字不动** ⇒ 全量门禁 `GATE: OK`、
+    /// 三个数逐个不变 —— **本条与 `nested_objects_…` 一起悄悄退回安慰剂，而没人会知道。**
+    /// ⇒ 判据体第一段加了**反空真自检**（直接量「`Map` 是不是插入序」）：
+    /// 那一行没了 ⇒ **本条当场红**，报文逐字点出是哪一行依赖没了，不再是「悄悄退回」。
     #[test]
     fn the_field_order_does_not_depend_on_the_map_implementation() {
+        // ★★ **反空真自检排最前**〔`C-补` 08-28〕：本条的牙**整个**架在
+        //    `[dev-dependencies]` 里 `serde_json` 那行 `preserve_order` 上 —— 没有它
+        //    `Map` 是 `BTreeMap`，下面那两份「插入顺序相反」的夹具**根本造不出来**
+        //    （两边喂进去的本来就是同一个有序结构，删掉排序也照绿）。
+        //    这两行就是「那一行没了会说话的东西」。
+        let mut probe = Map::new();
+        probe.insert("z".into(), Value::from(1));
+        probe.insert("a".into(), Value::from(2));
+        assert_eq!(
+            probe.keys().next().map(String::as_str),
+            Some("z"),
+            "判据构建里 Map 不是插入序 —— `preserve_order` 那行 dev-dependency 没了，本条已退回安慰剂"
+        );
+
         // 两份**内容相同、插入顺序相反**的文档。
         let a = parse(r#"{"aaa":1,"mmm":2,"zzz":3}"#).expect("a");
         let b = parse(r#"{"zzz":3,"mmm":2,"aaa":1}"#).expect("b");
@@ -797,10 +817,27 @@ mod tests {
     ///
     /// ⚠ 它仍然要配着 `ordering_is_by_name_not_by_arrival` 读：那一条收迭代器，
     /// 与 `Map` 是哪种实现**无关**；本条则是**靠 `preserve_order` 把 `Map` 换成 `IndexMap`** 才有牙的
-    /// —— 哪天那一行 dev-dependency 被删掉，本条会**悄悄退回**成安慰剂。
+    /// —— 哪天那一行 dev-dependency 被删掉，本条**先前会悄悄退回**成安慰剂。
     /// 那一行的理由与读数写在 `crates/creds-core/Cargo.toml` 里，**别当成可有可无的依赖**。
+    ///
+    /// ⚠⚠ **「悄悄」那一格已经补上了**〔`D2` `§五-3`，`C-补` 08-28〕：判据体第一段是
+    /// **反空真自检**（直接量「`Map` 是不是插入序」）⇒ 那一行没了本条**当场红**。
+    /// 立项读数：`D2` `P6` 删掉那行、生产码不动 ⇒ 全量门禁 `GATE: OK`、三个数逐个不变，
+    /// **没有任何东西说话**；`P6b`（再删递归）⇒ 32 passed / 0 failed ⇒ 确实退回了安慰剂。
     #[test]
     fn nested_objects_are_also_ordered_by_name_in_what_lands_on_disk() {
+        // ★★ **反空真自检排最前**〔`C-补` 08-28〕：见本条头注最后一段。
+        //    没有 `preserve_order`，下面这个「嵌套层乱序」的夹具造不出来（`parse` 出来就已经排好），
+        //    整条判据会变成「排过的东西还是排过的」——恒真。
+        let mut probe = Map::new();
+        probe.insert("z".into(), Value::from(1));
+        probe.insert("a".into(), Value::from(2));
+        assert_eq!(
+            probe.keys().next().map(String::as_str),
+            Some("z"),
+            "判据构建里 Map 不是插入序 —— `preserve_order` 那行 dev-dependency 没了，本条已退回安慰剂"
+        );
+
         let doc = parse(r#"{"accounts":{"b":{"zzz":1,"aaa":2},"a":{"mmm":3}}}"#).expect("夹具");
         let text = to_pretty_json(&doc);
 
@@ -823,8 +860,19 @@ mod tests {
     /// **数组的顺序是数据，不许排；但数组里的对象要递归进去。**
     ///
     /// 这一条守的是**方向**：把 [`ordered_value`] 的 `Value::Array` 那一支改成「排数组」会当场红。
-    /// ⚠ 而把那一支改成 `other.clone()`（不递归进数组里的对象）本条**看不出来** ——
-    /// 本条的夹具是一个**标量数组**，人群里没有「数组里套对象」那一形。如实记着。
+    ///
+    /// # ⚠⚠ 「递归进去」那一半先前**没有牙**，本轮取到了〔`D2` `§五-4`，`C-补` 08-28〕
+    ///
+    /// 本条先前逐字承认：「把那一支改成 `other.clone()`（不递归进数组里的对象）本条**看不出来**
+    /// —— 夹具是一个**标量数组**，人群里没有『数组里套对象』那一形」。**那句自陈属实**
+    /// （`D2` `P7`：不递归 + 旧夹具 ⇒ **32 passed / 0 failed**，一声不吭）。
+    /// ⇒ 本轮把缺的那一形**加进夹具**：`{"list":[{"zzz":1,"aaa":2}]}`，断 `aaa` 排在 `zzz` 前。
+    /// 今天这一支**真有人守**：不递归 ⇒ 本条红，报文逐字说「数组里那个对象没被递归排序」。
+    ///
+    /// ⚠ **牙的来源要说清**：新那一段与 `nested_objects_…` 同源 —— 它靠
+    /// `[dev-dependencies]` 里 `serde_json` 那行 `preserve_order` 把 `Map` 换成 `IndexMap`，
+    /// 否则 `parse` 出来的内层对象**本来就已经排好**，「有没有递归进去」看不出来。
+    /// ⇒ 那一段前面同样立着**反空真自检**。**数组本身那一半（顺序是数据、不许排）不依赖它。**
     #[test]
     fn arrays_keep_their_order_because_that_order_is_data() {
         let doc = parse(r#"{"list":["zzz","aaa","mmm"]}"#).expect("夹具");
@@ -834,5 +882,29 @@ mod tests {
         assert_eq!(back["list"], serde_json::json!(["zzz", "aaa", "mmm"]));
         // 非空对照：同一把尺子看得见「排过」的样子长什么样（证明它不是恒等）。
         assert_ne!(back["list"], serde_json::json!(["aaa", "mmm", "zzz"]));
+
+        // ── 另一半：**数组里套的对象要递归进去** ──────────────────
+        // ★★ 反空真自检排在这一段最前（同 `nested_objects_…`）：没有 `preserve_order`
+        //    下面那个内层对象 `parse` 出来就已经排好，这一段会恒真。
+        let mut probe = Map::new();
+        probe.insert("z".into(), Value::from(1));
+        probe.insert("a".into(), Value::from(2));
+        assert_eq!(
+            probe.keys().next().map(String::as_str),
+            Some("z"),
+            "判据构建里 Map 不是插入序 —— `preserve_order` 那行 dev-dependency 没了，下面这一段已退回安慰剂"
+        );
+
+        let nested = parse(r#"{"list":[{"zzz":1,"aaa":2}]}"#).expect("嵌套夹具");
+        let nested_text = to_pretty_json(&nested);
+        // 非空对照：落盘的仍是合法 JSON，而且数组那一层**还在**（不是被压没了）。
+        let nested_back: Value = serde_json::from_str(&nested_text).expect("合法 JSON");
+        assert_eq!(nested_back["list"][0]["aaa"], 2);
+        let iaaa = guard_core::find_pinned(&nested_text, "\"aaa\"").expect("`aaa` 应当恰好出现一处");
+        let izzz = guard_core::find_pinned(&nested_text, "\"zzz\"").expect("`zzz` 应当恰好出现一处");
+        assert!(
+            iaaa < izzz,
+            "数组里那个对象没被递归排序 —— `ordered_value` 的 `Value::Array` 那一支没有往下走：{nested_text}"
+        );
     }
 }
