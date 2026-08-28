@@ -111,6 +111,11 @@ mod tests {
 
     #[test]
     fn rejects_everything_that_is_not_the_shape() {
+        // ★ **非空对照排最前**〔`D1` 一并修，08-28〕：先证明这把尺子认得**合法**的那一形，
+        //   否则下面整个循环可能只是因为 `parse` 恒返回 `None` 而全绿。
+        //   （先前它排在循环之后 —— 循环一红，它就一次都没被求值。）
+        assert!(parse("/s/agentA/acctA/sid-AAA/v1").is_some(), "这把尺子是瞎的");
+
         // 分母 = 我列出的这 9 形；不是「所有不合法输入」。
         for bad in [
             "/v1/messages",
@@ -125,8 +130,6 @@ mod tests {
         ] {
             assert!(parse(bad).is_none(), "这一形不该被接受：{bad}");
         }
-        // 非空对照：正确的那一形**确实**被接受（否则上面全是恒真）。
-        assert!(parse("/s/agentA/acctA/sid-AAA/v1").is_some());
     }
 
     /// ★★★ **写这条判据的第一版是错的，经过记下来** —— 它本来写在上面那张「不该被接受」
