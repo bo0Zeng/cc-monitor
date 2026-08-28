@@ -1538,8 +1538,13 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 ///
 /// ⚠ **入参是明文，而它一进来就被包成 `SecretKey`**（在 `write_key` 里）。
 /// 这一层的签名收 `String` 是没办法的事：IPC 边界上只有 JSON。
-/// ⇒ 这一格如实记：**从 webview 到这一行之间，明文经过的是 Tauri 的 IPC**，
-/// 那一段不在本件的判据面里（本件保的是「进了后端之后出不去」）。
+///
+/// ⚠⚠ **订正措辞〔D1，08-27，PM 采纳审计改判〕**：先前这里写的是「那一段**不在本件的判据面里**」
+/// ——**那个词说小了一格**。「射程外」意思是「本件裁定不管它」，而盘上的事实是
+/// **没人量过**：`KS6` 保的是 key **回**前端那个方向，这里是 **去**后端那个方向，
+/// 那是**另一条路上的另一个值**，本件一条判据都没打过它。
+/// ⇒ 它的身份是 **`判不了`**，不是「射程外」。**这两个词不是一回事**：
+/// 前者欠着一次测量，后者是已经裁过不做。件计划 `§0h` 已按这个身份登记。
 #[tauri::command]
 fn write_relay_credentials_key(key: String) -> Result<(), String> {
     creds_store::write_key(&key)

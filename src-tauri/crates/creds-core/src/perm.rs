@@ -199,6 +199,106 @@ pub fn make_private(p: &std::path::Path) -> Result<(), String> {
     }
 }
 
+/// **建**一个只给本人的新文件，并把写句柄交出来。
+///
+/// # ★★ 它与 [`make_private`] 是两件事，别用一个替另一个〔D1 阻-2，08-27〕
+///
+/// `make_private` 是「**把一份已经在盘上的文件收窄**」——它管**终态**。
+/// 而「先按 umask 建出来、写进明文、再收窄」这条路上，**文件出生到收窄之间有一个真实的宽窗口**，
+/// 那个窗口里已经有明文。D1 审计探针实打：
+/// `tmp 刚建出来那一刻 mode=0664，里面已经有明文 = true`（那台机器 umask `0002`；
+/// 常见的 `0022` 下是 `0644` —— **全机可读**）。
+/// 而 crate 头注逐字承诺的正是「**保**：同机器上别的用户读不到」。
+///
+/// ⇒ 本函数管**出生那一刻**：权限是**创建调用自己带上去的**，不存在「还没收窄」的那一段。
+///
+/// - Unix：`OpenOptions::create_new(true).mode(0o600)` —— `mode` 在**创建时**生效。
+///   ⚠ 用 `create_new`（`O_EXCL`）而不是 `create`：目标若已存在（上次崩溃留下的残骸、
+///   或别人预置的一个符号链接），`create` 会**跟随并截断**它，而那时权限是**它的**不是我们的。
+///   `O_EXCL` 让这种情况直接失败，调用方先删再建。
+/// - Windows：`CreateFileW` + `SECURITY_ATTRIBUTES`，DACL 与 [`make_private`] 用的是
+///   **同一句 SDDL**（`owner_only_sddl`）⇒ 两条路不会各自漂。`CREATE_NEW` 是 `O_EXCL` 的对应物。
+/// - 其余平台：**报错**，不假装做到了。
+#[cfg(feature = "harden")]
+pub fn create_private(p: &std::path::Path) -> std::io::Result<std::fs::File> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        return std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .mode(0o600)
+            .open(p);
+    }
+    #[cfg(windows)]
+    {
+        return windows_create_owner_only(p);
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            format!(
+                "这个平台上不知道怎么建一个只给本人的文件（{}）—— 没做到，不假装做到了",
+                p.display()
+            ),
+        ))
+    }
+}
+
+#[cfg(all(windows, feature = "harden"))]
+fn windows_create_owner_only(p: &std::path::Path) -> std::io::Result<std::fs::File> {
+    use std::os::windows::ffi::OsStrExt;
+    use std::os::windows::io::FromRawHandle;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::{LocalFree, BOOL, HLOCAL};
+    use windows::Win32::Security::Authorization::{
+        ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1,
+    };
+    use windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
+    use windows::Win32::Storage::FileSystem::{
+        CreateFileW, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, FILE_GENERIC_WRITE, FILE_SHARE_MODE,
+    };
+
+    let sid = current_user_sid().map_err(std::io::Error::other)?;
+    let sddl: Vec<u16> = owner_only_sddl(&sid)
+        .encode_utf16()
+        .chain(std::iter::once(0))
+        .collect();
+    let path_w: Vec<u16> = p
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    unsafe {
+        let mut psd = PSECURITY_DESCRIPTOR::default();
+        ConvertStringSecurityDescriptorToSecurityDescriptorW(
+            PCWSTR(sddl.as_ptr()),
+            SDDL_REVISION_1,
+            &mut psd,
+            None,
+        )
+        .map_err(|e| std::io::Error::other(e.message().to_string()))?;
+        let sa = SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: psd.0,
+            bInheritHandle: BOOL(0),
+        };
+        let h = CreateFileW(
+            PCWSTR(path_w.as_ptr()),
+            FILE_GENERIC_WRITE.0,
+            FILE_SHARE_MODE(0),
+            Some(&sa as *const SECURITY_ATTRIBUTES),
+            CREATE_NEW,
+            FILE_ATTRIBUTE_NORMAL,
+            None,
+        );
+        let _ = LocalFree(HLOCAL(psd.0));
+        let h = h.map_err(|e| std::io::Error::other(e.message().to_string()))?;
+        Ok(std::fs::File::from_raw_handle(h.0 as *mut core::ffi::c_void))
+    }
+}
+
 /// 当前用户 + SYSTEM，全权；`D:P` 里的 `P` = **断继承**。
 #[cfg(all(windows, feature = "harden"))]
 fn owner_only_sddl(user_sid: &str) -> String {
@@ -555,6 +655,74 @@ mod tests {
             probe(&dir.join("nope")),
             Protection::Undetermined { .. }
         ));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ★★★ **`KS5` 阻-2 的行为那一半〔D1，08-27〕：文件在**出生那一刻**就只给本人。**
+    ///
+    /// # 它量的是别的判据量不到的那一格
+    ///
+    /// 隔壁 `make_private_really_narrows_a_wide_file_to_owner_only` 量的是
+    /// 「**把一份已经宽的收窄**」，`creds_store` 那条量的是「**rename 之后**目标的 mode」——
+    /// 两条都在**出生到收窄**那个窗口之外。而 D1 审计探针实打，那个窗口里的读数是
+    /// `mode=0664，里面已经有明文 = true`。⇒ 本条把观测点挪到**创建调用返回的那一刻**。
+    ///
+    /// # 非空对照**刻意不依赖这台机器的 umask**
+    ///
+    /// 拿「普通 `fs::write` 建出来的比它宽」当对照是脆的：umask 恰好是 `0077` 的机器上
+    /// 那个对照会**恒等**，于是上面那条断言变成空真而没人知道。
+    /// ⇒ 对照改成**显式**把一份文件设成 `0o644`，证明这把尺子**分得出宽窄**。
+    #[cfg(all(unix, feature = "harden"))]
+    #[test]
+    fn a_file_created_through_create_private_is_born_owner_only() {
+        use std::io::Write as _;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!(
+            "ccm-born-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).expect("建临时目录");
+
+        let born = dir.join("born");
+        {
+            let mut f = create_private(&born).expect("建一个只给本人的文件");
+            f.write_all(b"PLAINTEXT-IS-ALREADY-IN-HERE")
+                .expect("写内容");
+            f.sync_all().expect("落盘");
+        }
+        // ★ **出生那一刻**（文件还在原地，没被 rename 走）就量。
+        assert_eq!(
+            probe(&born),
+            Protection::Unix { mode: 0o600 },
+            "文件出生时不是只给本人 —— 那一刻里已经有明文了"
+        );
+        assert_eq!(judge(&probe(&born)), Verdict::OwnerOnly);
+        // 内容确实在里面（否则「窄」的是一个空文件，没意义）。
+        assert_eq!(
+            std::fs::read_to_string(&born).expect("读回"),
+            "PLAINTEXT-IS-ALREADY-IN-HERE"
+        );
+
+        // ★ 非空对照：这把尺子分得出宽窄（**不依赖 umask**）。
+        let wide = dir.join("wide");
+        std::fs::write(&wide, b"x").expect("建对照");
+        std::fs::set_permissions(&wide, std::fs::Permissions::from_mode(0o644)).expect("放宽");
+        assert_eq!(probe(&wide), Protection::Unix { mode: 0o644 });
+        assert!(
+            judge(&probe(&wide)).needs_attention(),
+            "尺子对 0644 都不出声 ⇒ 上面那条「0600」证不了什么"
+        );
+
+        // `create_new` 语义：已存在就**失败**，不跟随、不截断
+        //（挡「别人预置一个符号链接」那一形）。
+        assert!(
+            create_private(&born).is_err(),
+            "对已存在的路径应当直接失败（O_EXCL / CREATE_NEW），而不是跟随并截断它"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

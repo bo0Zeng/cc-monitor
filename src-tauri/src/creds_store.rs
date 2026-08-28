@@ -159,10 +159,32 @@ pub(crate) fn write_key_at(path: &std::path::Path, plain: &str) -> Result<(), St
     let text = store::to_pretty_json(&merged);
 
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, text).map_err(|e| format!("write {}: {e}", tmp.display()))?;
-    // ★ **先收窄再改名**：临时文件那一刻就是明文，中间那一段不许是宽的。
-    //   Windows 上更要紧 —— `MoveFileExW` 会把 tmp 的 ACL 覆盖到目标上，
-    //   所以 tmp 的 ACL 就是目标最终的 ACL。
+    // ★★ **tmp 在出生那一刻就只给本人**〔D1 阻-2 回修，08-27〕。
+    //
+    // 先前这里是 `fs::write(&tmp, text)` + 建完再 `make_private` —— 那条路上
+    // **文件出生到收窄之间有一个真实的宽窗口，而那个窗口里已经有明文**。
+    // D1 审计探针实打：`tmp 刚建出来那一刻 mode=0664，里面已经有明文 = true`
+    //（那台机器 umask `0002`；常见的 `0022` 下是 `0644` —— **全机可读**）。
+    // ⇒ 改成由**创建调用自己带上权限**（Unix 的 `mode(0o600)` / Windows 的 `SECURITY_ATTRIBUTES`）。
+    //
+    // 残骸先清：`create_private` 用的是 `create_new`（`O_EXCL` / `CREATE_NEW`），
+    // 上次崩溃留下的 tmp 会让它直接失败 —— 那是**故意的**：`O_EXCL` 同时挡掉
+    // 「别人预置一个符号链接、我们跟随并截断它」那一形（隔壁 `sftp::upload_atomic`
+    // 的头注为同一件事逐字论证过 `EXCLUDE` 标志）。
+    let _ = std::fs::remove_file(&tmp);
+    {
+        use std::io::Write as _;
+        let mut f = creds_core::perm::create_private(&tmp)
+            .map_err(|e| format!("建 {} 失败: {e}", tmp.display()))?;
+        f.write_all(text.as_bytes())
+            .map_err(|e| format!("write {}: {e}", tmp.display()))?;
+        f.sync_all()
+            .map_err(|e| format!("落盘 {} 失败: {e}", tmp.display()))?;
+    }
+    // ★ 这一句今天是**纵深**，不是必需的那一道：上面已经保证了「出生即窄」。
+    //   留着它的理由有两条：① 哪天有人把创建那步换回按 umask 建，这一句仍把窗口压到最短；
+    //   ② `the_write_path_narrows_both_the_temp_file_and_the_final_one` 那条**既有断言**
+    //      钉的是「收窄恰好 2 次 + tmp 那次排在原子替换之前」——**D1 回修不许动既有断言**。
     crate::platform_fs::make_private(&tmp)?;
     crate::config::atomic_replace(&tmp, path)
         .map_err(|e| format!("replace → {}: {e}", path.display()))?;
@@ -347,6 +369,110 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// 明文两个出口，各自**只许出现在哪棵树的哪个文件里**。
+    ///
+    /// `(方法名, 期望总处数, 期望它住在哪个文件的路径尾巴)`。**默认拒绝**：对不上就红。
+    const PLAINTEXT_EXIT_SITES: &[(&str, usize, &str)] = &[
+        ("expose_for_auth_header(", 1, "remote-daemon-proto/src/relay/server.rs"),
+        ("expose_for_persisting(", 1, "crates/creds-core/src/store.rs"),
+    ];
+
+    /// 本判据扫哪几棵树。**这就是「取明文恰好 N 处」那句全称的分母。**
+    const PLAINTEXT_SCAN_TREES: &[&str] =
+        &["src-tauri/src", "src-tauri/crates", "remote-daemon-proto/src"];
+
+    /// ★★★ **`KS2` 的人群那一格〔D1 阻-1 回修，08-27〕：三棵树全扫，不是一个文件、也不是一个 crate。**
+    ///
+    /// # 它替掉的是一个**按 crate 边界画的人群**
+    ///
+    /// 回修前，「取明文恰好 N 处」这条性质由两处判据分管，而它们的人群加起来**盖不住产品**：
+    /// · `creds-core/src/lib.rs` 只扫 `include_str!("lib.rs")`——**它自己这一个文件**；
+    /// · `relay/creds_guard.rs` 扫 daemon 那个 crate；
+    /// ⇒ **`src-tauri` 整个不在任何人的人群里**，而 monitor 恰恰是明文**第一次进程序**的地方
+    ///   （`write_relay_credentials_key(key: String)`）。
+    /// D1 审计刀 B 实打：在 monitor 生产段取一次明文 `eprintln!` 出去
+    /// ⇒ **8 包合计 1284 passed，一条都没红**。
+    ///
+    /// 件计划 `§0` 逐字警告过这一形：「**判据守的是前门，key 从后门进**」，
+    /// 而它「同时骗过了 PM 与一路审计」。这次它在**同一件里**又长了一次，只是换了个边界。
+    ///
+    /// # 分母（写清它算了什么、没算什么）
+    ///
+    /// 人群 = [`PLAINTEXT_SCAN_TREES`] 那三棵树下**所有 `.rs` 的生产段**（剥掉 `#[cfg(test)]`），
+    /// **外加本文件自己**（见下面那段：`scan_tree!` 按构造摘掉调用者，那正好会把本文件摘出人群）。
+    /// 它数的是**两个具名方法的调用点**，不是「明文」这个概念 ——
+    /// 有人把明文经别的路径带出去（自定义类型、`Deref`），本条看不见；
+    /// 那一格由 `creds-core` 的 `every_string_returning_exit_is_registered_by_name`
+    /// 与 `the_type_has_no_second_impl_block_that_hands_the_inner_string_out` 两条在**定义面**兜。
+    /// **三格一起才成立**：定义面（有几个出口）· 调用面（每个出口被调几次、在哪）· 本条（人群覆盖三棵树）。
+    #[test]
+    fn the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级 = 仓根")
+            .to_path_buf();
+
+        let mut files: Vec<(String, String)> = Vec::new();
+        for sub in PLAINTEXT_SCAN_TREES {
+            for (path, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+                files.push((
+                    path.display().to_string().replace('\\', "/"),
+                    guard_core::production_code(&raw),
+                ));
+            }
+        }
+        // ⚠ `scan_tree!` **按构造摘掉调用者自己那一份** —— 那正好会把本文件摘出人群，
+        //   而本文件是 monitor 侧碰 key 最多的一个。⇒ 单独补回来。
+        files.push((
+            "src-tauri/src/creds_store.rs".to_string(),
+            guard_core::production_code(include_str!("creds_store.rs")),
+        ));
+
+        // 采集面自检：三棵树都要扫到东西，且总量不能小得离谱。
+        assert!(
+            files.len() >= 150,
+            "只扫到 {} 个 .rs —— 遍历坏了，下面全是空真",
+            files.len()
+        );
+        for sub in PLAINTEXT_SCAN_TREES {
+            let leaf = sub.rsplit('/').next().unwrap_or(sub);
+            assert!(
+                files.iter().any(|(p, _)| p.contains(sub) || p.contains(leaf)),
+                "`{sub}` 这棵树一个文件都没扫到 —— 分母缺了一块"
+            );
+        }
+
+        for (needle, want, home) in PLAINTEXT_EXIT_SITES {
+            let mut hits: Vec<String> = Vec::new();
+            for (path, prod) in &files {
+                // ⚠ **只数调用点，不数定义** —— needle 第一版没剥定义，实测当场红：
+                //   `expose_for_auth_header(` 在三棵树里 **2 次**，多出来的那次是
+                //   `creds-core/src/lib.rs` 里的 `pub fn expose_for_auth_header(`。
+                //   「定义」不是一个出口，「调用」才是；两者混在一个数里，
+                //   那个数就同时装了两件事（本区最贵的那族病）。
+                for (i, _) in prod.match_indices(needle) {
+                    if prod[..i].trim_end().ends_with("fn") {
+                        continue; // 这是定义
+                    }
+                    hits.push(path.clone());
+                }
+            }
+            assert_eq!(
+                hits.len(),
+                *want,
+                "`{needle}` 在三棵树的生产段里出现 {} 次，应当 **{want}** 次：{hits:?}\n\
+                 ⚠ `KS2` 逐字：加行是收紧、动断言是放宽 —— 真要多一处，\n\
+                 **必须先在件计划里说清那一处是什么**，不许在实现里顺手把这个数改大。",
+                hits.len()
+            );
+            assert!(
+                hits[0].ends_with(home),
+                "`{needle}` 唯一那处不在 `{home}`，而在 `{}` —— 靶子挪了",
+                hits[0]
+            );
+        }
+    }
+
     /// ★ `KS5` 调用点的机检：`write_key_at` 里收窄**恰好两次**（tmp 一次、目标一次）。
     ///
     /// # 它为什么必须存在（`MU12` 实测：行为判据看不见这一刀）
@@ -387,6 +513,63 @@ mod tests {
         assert!(
             i_tmp < i_rep,
             "tmp 的收窄排在原子替换之后了 —— 那时 tmp 已经变成目标，中间那段宽窗口白留了"
+        );
+    }
+
+    /// ★★★ **`KS5` 阻-2 回修〔D1，08-27〕：临时文件必须在**出生那一刻**就只给本人。**
+    ///
+    /// # 它替掉的不是一条判据，是一个**站错位置的观测点**
+    ///
+    /// 回修前 `write_key_at` 的顺序是
+    /// `fs::write(&tmp, text)` → `make_private(&tmp)` → `atomic_replace` → `make_private(path)`。
+    /// **第一步就把明文写进了一个按 umask 建出来的文件。**
+    /// D1 审计探针实打：`tmp 刚建出来那一刻 mode=0664，里面已经有明文 = true`
+    /// （那台机器 umask 是 `0002`；**常见的 `0022` 下就是 `0644` —— 全机可读**）。
+    /// 而 `§0a` 逐字承诺的正是这一条：「**保**：同机器上别的用户读不到」。
+    ///
+    /// ★ **它是 `MU12` 那个形状的第二次**：`MU12` 的补法钉住了「**有没有收窄**」，
+    /// 把窗口从「写完到 rename」缩短到「写完到 `make_private`」，**但没有消掉那个窗口**。
+    /// 三条既有判据全部量在窗口之外（源码面数次数 · rename 之后的 mode · `make_private` 自己）。
+    /// ⇒ 修法不是再加一次收窄，是**让它出生时就不宽**：建文件那一步自己带上权限。
+    ///
+    /// # 本条钉的是「**怎么建**」，行为那一半由 `a_temp_file_is_born_owner_only` 钉
+    ///
+    /// 两条各管各的：本条管**过程**（生产段里 tmp 只许经 `create_private` 出生，
+    /// 且不许再出现「先写后收」那个形状），那条管**终态**（真建一个出来，立刻 stat）。
+    #[test]
+    fn the_temp_file_is_created_narrow_not_widened_afterwards() {
+        let src = guard_core::production_code(include_str!("creds_store.rs"));
+        let at = guard_core::find_pinned(&src, "pub(crate) fn write_key_at(")
+            .expect("切不出 `write_key_at` —— 本条按红处理，不是绿");
+        let body = brace_block(&src, at).expect("`write_key_at` 的花括号没配平 —— 按红处理");
+        assert!(body.len() > 300, "窗口只有 {} 字节 —— 切法坏了", body.len());
+        assert!(
+            !body.contains("\nfn ") && !body.contains("\npub"),
+            "窗口跨进了下一个 item —— 窗口无界，下面的断言不算数"
+        );
+
+        // ① tmp **必须**经 `create_private` 出生，恰好一次。
+        let born = body.matches("create_private(&tmp)").count();
+        assert_eq!(
+            born, 1,
+            "tmp 经 `create_private` 出生的次数是 {born}，应当恰好 1 —— \n\
+             0 次 = 它是被 umask 建出来的，出生那一刻就是宽的，而那一刻里已经有明文。"
+        );
+        // ② **不许**再出现「先按 umask 建、建完再收」那个形状。
+        assert_eq!(
+            body.matches("fs::write(&tmp").count(),
+            0,
+            "`write_key_at` 里还有 `fs::write(&tmp…)` —— 那是按 umask 建文件，\n\
+             D1 审计探针实打：那一刻 mode=0664（umask 0002）/ 0644（umask 0022），里面已经有明文。"
+        );
+        // ③ 出生必须排在**写内容之前**（否则「出生时窄」买到的是空文件窄，没意义）。
+        let i_born = guard_core::find_pinned(body, "create_private(&tmp)")
+            .expect("上一条已断言它恰好一处");
+        let i_write = guard_core::find_pinned(body, "write_all(")
+            .expect("写内容那一步应当恰好一处");
+        assert!(
+            i_born < i_write,
+            "tmp 的创建排在写内容之后了 —— 那顺序上不成立"
         );
     }
 
