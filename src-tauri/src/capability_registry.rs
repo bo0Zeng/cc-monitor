@@ -195,6 +195,82 @@ mod tests {
              加一个模式 = 把能力发给一类新窗口，要有人看一眼。"
         );
     }
+
+    /// cargo 配置里**真的会扩大执行面**的三个键（`K-G2` 08-28 收窄后的性质本身）：
+    ///
+    /// - `runner` —— `cargo test` / `cargo run` 把产物交给它去执行。「跑测试」的中间人就是它。
+    /// - `linker` —— 链接期换掉链接器：构建机上真正跑起来的是它指定的那个程序。
+    /// - `rustflags` —— 原样透传给 rustc 的旗标；`-C linker=…` / `-Z …` 都能从这一格进来。
+    ///
+    /// ⚠ **不守**：`rustc-wrapper` / `rustdocflags` / `[alias]` 这些同族的键没进本表
+    /// （`K-G2` 的射程逐字只有上面三个）。`[alias]` 里塞 `--config build.rustflags=…`
+    /// 这一形会被下面的整词匹配顺带逮到，但那是**副产品，不是判据** —— 别当它有覆盖。
+    const CARGO_EXEC_KEYS: &[&str] = &["runner", "linker", "rustflags"];
+
+    /// 本仓自己会把 cargo 的 cwd 落在这几个目录（相对仓根）。依据见
+    /// [`the_build_time_execution_surface_stays_registered`] 头注那张表。
+    const CARGO_CFG_DIRS: &[&str] = &[".", "src-tauri", "remote-daemon-proto"];
+
+    /// cargo 认的两种配置文件名（无扩展名那个是老写法，仍然照读）。
+    const CARGO_CFG_NAMES: &[&str] = &["config.toml", "config"];
+
+    /// 剥掉一份 cargo 配置里的**注释**（`#` 到行尾；字符串里的 `#` 不算注释）。
+    ///
+    /// ⚠ 刻意**只剥注释、不剥字符串内容**：TOML 的键可以带引号（`"runner" = "sh"`），
+    /// 内联表的值里也住着键（`target = { x = { runner = "sh" } }`）——
+    /// 把字符串一起剥掉就会在这两处**漏红**。本条是安全判据，方向定为**宁可误红、不许漏红**。
+    /// 代价：值里恰好出现那三个整词也会红。
+    ///
+    /// ⚠ 边界：三引号多行字符串（`"""` / `'''`）本剥法**不认**（引号状态逐行重置），
+    /// 那种字符串里的 `#` 会被当成注释切掉。cargo 配置里它实际不出现；
+    /// 写下这一条是为了不假装它被处理过。
+    fn strip_toml_comments(src: &str) -> String {
+        let mut out = String::with_capacity(src.len());
+        for line in src.lines() {
+            let mut quote: Option<char> = None;
+            let mut escaped = false;
+            let mut cut = line.len();
+            for (i, c) in line.char_indices() {
+                if quote.is_some() {
+                    if escaped {
+                        escaped = false;
+                    } else if c == '\\' && quote == Some('"') {
+                        escaped = true;
+                    } else if quote == Some(c) {
+                        quote = None;
+                    }
+                } else if c == '"' || c == '\'' {
+                    quote = Some(c);
+                } else if c == '#' {
+                    cut = i;
+                    break;
+                }
+            }
+            out.push_str(&line[..cut]);
+            out.push('\n');
+        }
+        out
+    }
+
+    /// 文本里出现过 [`CARGO_EXEC_KEYS`] 的哪几个（**整词**：前后不许是字母/数字/`_`/`-`，
+    /// 否则 `my-runner-name` 这类会假红）。
+    fn exec_keys_in(text: &str) -> Vec<&'static str> {
+        fn is_word(c: char) -> bool {
+            c.is_alphanumeric() || c == '_' || c == '-'
+        }
+        CARGO_EXEC_KEYS
+            .iter()
+            .copied()
+            .filter(|key| {
+                text.match_indices(key).any(|(i, _)| {
+                    let before = text[..i].chars().next_back();
+                    let after = text[i + key.len()..].chars().next();
+                    !before.is_some_and(is_word) && !after.is_some_and(is_word)
+                })
+            })
+            .collect()
+    }
+
     /// ★★ **构建／安装期的执行面**〔audit-0805 08-08，Phase G 第 83 件〕。
     ///
     /// 上面几条钉的是**运行时**谁能扩大执行面（webview 权限 · CSP · 全局 Tauri）。
@@ -206,13 +282,66 @@ mod tests {
     /// | `src-tauri/build.rs` | 起 `sh`/`git`、往 `OUT_DIR` 写 | **08-08 刚并进** `write_site_registry`（第 82 件） |
     /// | `tauri.conf.json` 的 `before*Command` | `npm run dev` / `npm run build` | 本条 |
     /// | `package.json` 的 npm **生命周期钩子** | 一个都没有 | 本条 |
-    /// | `.cargo/config.toml` 的 `runner` | 文件不存在 | 本条 |
+    /// | cargo 配置里的 `runner`/`linker`/`rustflags` | 六格里一份都没设过 | 本条（08-28 起判**内容**） |
     ///
     /// ★ 后两行钉的是**「今天没有」这件事**。它们的危险恰恰在于「加一条就自动执行」：
     /// `postinstall` 在**每一次 `npm install`** 上跑（含 CI、含任何人 clone 之后第一件事）；
     /// `[target.*.runner]` 会让 **`cargo test` 去执行任意二进制**。
     /// 「今天没有」不是判据 —— 没人钉的话，加进来的那天没有任何信号（本会话反复量到的
     /// 「没人守着」与「碰巧没坏」是两回事）。
+    ///
+    /// # ③ 那一格 08-28 被改过：**判内容，不判文件在不在**〔`K-G2`〕
+    ///
+    /// 原来那一格手抄了 **5** 条路径、断言这 5 条一个都不存在。**它的人群与它自己声称的性质对不上，
+    /// 两个方向都不对**：
+    ///
+    /// - **人群比性质大**：一份只有 `[profile.dev]`（`debug` / `split-debuginfo` 那类
+    ///   构建瘦身）的配置**执行不了任何东西**，却照样把它判红。08-27 真发生过：
+    ///   用户本机那份瘦身配置搬进 `src-tauri/.cargo/config.toml` 之后，
+    ///   这一条在用户主树上**恒红**，而它守的执行面一寸也没被碰。
+    /// - **人群比性质小**：它列了 5 个路径，漏掉 `remote-daemon-proto/.cargo/config`
+    ///   —— 那一格 cargo **照读**（见下）。
+    ///
+    /// ⇒ 现在①**收窄性质**：读文件内容，只有真的设了 `runner`/`linker`/`rustflags`
+    /// 才红 —— 剥掉注释之后**不含这三个整词**的配置一律放行（`[profile.*]` 那类构建瘦身
+    /// 正是这一类）；②**补齐人群**到下面那 6 格。
+    /// ⚠ **不许**改成「豁免某个文件名 / 某个路径」—— 那是放宽人群，不是收窄性质。
+    ///
+    /// ## 那 6 格是怎么来的：**3 个发起面 × cargo 认的 2 种文件名**
+    ///
+    /// cargo 读哪一份 `.cargo/config`，由**发起命令的 cwd** 决定，并**沿 cwd 往上找**。
+    /// 08-28 用一次性探针 crate 实测（`[build] target-dir` 观察落点，带非空对照与反向对照）：
+    /// 配置放在 cwd 那一级**生效**，哪怕 manifest 在子目录（`--manifest-path sub/…`）；
+    /// 同一份配置放进那个子目录、cwd 留在上面 ⇒ **不生效**（落回默认 `sub/target`）；
+    /// 把 cwd 移进子目录 ⇒ **又生效**。⇒ 人群 = **本仓自己会把 cwd 落在哪几个目录**。
+    ///
+    /// **尺子**（08-28 现打）：`git ls-files` 里的 `*.sh` / `*.ps1` / `*.yml` / `package.json`
+    /// 全扫一遍 `cargo <子命令>`，**逐处读它的 cwd**。出现过的 cwd 只有下面 3 个：
+    ///
+    /// | 发起面 | 谁从这里发起 cargo |
+    /// |---|---|
+    /// | 仓根 `.` | `ci.yml:662`（`e2e-tmux-rust` job **没有** `working-directory` ⇒ cwd = 仓根）· `scripts/run.ps1:39`。它同时是下面两个的**祖先** —— 往上找一定路过 |
+    /// | `src-tauri/` | `scripts/gate.sh:105` · `package.json` 的 `gen:types` · `ci.yml:26`（`rust` job 的 `working-directory`）· `ci.yml:295` · `e2e/` 四个脚本共 6 处（`tmux-guarded-acceptance.sh:21` · `usage-probe-acceptance.sh:23`/`:129` · `local-backend-supervise.sh:78`/`:86` · `p3t-local-tmux.sh:125`） |
+    /// | `remote-daemon-proto/` | `scripts/gate.sh:157` · `ci.yml:160`（`daemon` job）· `release.yml:42`/`:152`/`:271` · `e2e/daemon-fork-session.sh:24` |
+    ///
+    /// ⚠ **尺子没覆盖到的**（写下来免得把它读成穷举）：① `cargo tauri build` 那种**由工具
+    /// 再去起 cargo** 的，cwd 由 tauri CLI 定，本条没现打；② 人手临时 `cd` 到任意目录敲的
+    /// cargo —— 那个分母没人数得出，也不是一条判据守得住的。
+    /// ③ `scripts/verify-committed-state.sh:60`/`:61`/`:65` 在**另开的临时工作树**里跑，
+    /// 相对目录仍是这两个，不新增发起面。
+    ///
+    /// **为什么是 6 不是 7**：往下没有第 4 个发起面 —— `src-tauri/crates/*` 与
+    /// `src-tauri/vendor/*` 里放一份配置，**上面那张表里的命令一条都读不到它**
+    /// （分母就是那张表 = 上面那把尺子量出来的全部；那些命令的 cwd 都停在 `src-tauri/`，
+    /// 靠 `-p`/`--workspace` 选包，而 cargo 不往下找）。
+    /// 往上也没有 —— `~/.cargo/config.toml` / `$CARGO_HOME` / `cargo --config` 命令行
+    /// 都在仓外，**一次 commit 改不到**，不在本条的人群里（那是另一类威胁模型）。
+    /// 文件名两种：`config.toml` 与**无扩展名** `config`。后者 cargo 照读 —— 08-28 实测
+    /// 报文逐字 `deprecated in favor of config.toml`，且 alias **真生效**；
+    /// 改名成 `config.toml` 行为相同；两个都删 ⇒ `no such command`。
+    ///
+    /// ⚠ 加一个发起面（新 crate、某个 job 换 cwd）就回这张表补一格：
+    /// 下面 `slots.len() == 6` 那条自检会在你只改数组不改本注时把你叫回来。
     #[test]
     fn the_build_time_execution_surface_stays_registered() {
         // ① `tauri.conf.json` 的构建前置命令：登记值 + 理由。
@@ -285,28 +414,68 @@ mod tests {
              真要加：把它和理由写进本条（并想清楚「为什么它不能是一条普通的 `npm run xxx`」）。"
         );
 
-        // ③ `.cargo/config.toml`：它能设 `runner`，让 `cargo test` 去执行任意二进制。
+        // ③ cargo 配置：红不红取决于**文件里有没有那三个键**，不取决于文件在不在。
+        //    人群 = 3 个发起面 × cargo 认的 2 种文件名 = 6 格（依据见本条头注那张表）。
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("仓根")
             .to_path_buf();
-        let cargo_cfgs: Vec<String> = [
-            ".cargo/config.toml",
-            ".cargo/config",
-            "src-tauri/.cargo/config.toml",
-            "src-tauri/.cargo/config",
-            "remote-daemon-proto/.cargo/config.toml",
-        ]
-        .iter()
-        .filter(|rel| root.join(rel).exists())
-        .map(|rel| rel.to_string())
-        .collect();
+        let mut slots: Vec<String> = Vec::new();
+        for dir in CARGO_CFG_DIRS {
+            for name in CARGO_CFG_NAMES {
+                slots.push(format!("{dir}/.cargo/{name}"));
+            }
+        }
+        assert_eq!(
+            slots.len(),
+            6,
+            "本条的人群应当是 3 个发起面 × cargo 认的 2 种文件名 = 6 格，实得 {}：{slots:?}\n\
+             ⚠ 动了那两个数组就回本条头注，把那张「谁从这里发起 cargo」的表一起改 ——\n\
+             只改数组不改头注 = 下一个人读不出「为什么是 6 不是 7」。",
+            slots.len()
+        );
+
+        // 抽取器自检：探针坏了的话，下面整条就是**零命中地绿**。
+        let probe_exec = "[target.'cfg(all())']\nrunner = \"sh\"  # 这里的 linker 是注释\n";
+        let probe_profile = "[profile.dev]\ndebug = \"line-tables-only\"\n";
+        assert_eq!(
+            exec_keys_in(&strip_toml_comments(probe_exec)),
+            vec!["runner"],
+            "探针①：真设了 `runner` 的配置必须被逮到，且注释里的 `linker` 不算"
+        );
         assert!(
-            cargo_cfgs.is_empty(),
-            "仓里出现了 cargo 配置文件：{cargo_cfgs:?}\n\
-             ★ 它能设 `[target.*.runner]` —— 那会让 **`cargo test` 把测试二进制交给另一个程序去跑**，\n\
-             也能设 `rustflags`/`linker`。本仓今天一个都没有，所以「跑测试」这件事没有中间人。\n\
-             真要加（比如交叉测试需要 runner）：写进本条并说清它执行的是什么。"
+            exec_keys_in(&strip_toml_comments(probe_profile)).is_empty(),
+            "探针②：只有 `[profile.*]` 的构建瘦身配置必须放行 —— 那正是 `K-G2` 收窄掉的那一半"
+        );
+
+        let offenders: Vec<String> = slots
+            .iter()
+            .filter_map(|rel| {
+                let p = root.join(rel);
+                if !p.is_file() {
+                    return None;
+                }
+                let Ok(raw) = std::fs::read_to_string(&p) else {
+                    return Some(format!("{rel}（存在但读不出文本，本条看不了它的内容）"));
+                };
+                let keys = exec_keys_in(&strip_toml_comments(&raw));
+                if keys.is_empty() {
+                    None
+                } else {
+                    Some(format!("{rel} 设了 {keys:?}"))
+                }
+            })
+            .collect();
+        assert!(
+            offenders.is_empty(),
+            "cargo 配置里出现了**会扩大执行面**的键：{offenders:?}\n\
+             ★ `runner` 会让 **`cargo test` 把测试二进制交给另一个程序去跑**；\n\
+             `linker` 换掉构建机上真正跑的链接器；`rustflags` 原样透传给 rustc\n\
+             （`-C linker=…` 也能从那里进来）。本仓今天一份都没设，所以「跑测试」没有中间人。\n\
+             ⚠ 本条判的是**内容**不是**文件在不在**：剥掉注释后不含这三个整词的配置一律放行\n\
+             （`[profile.*]` 那类构建瘦身正是这一类）。\n\
+             真要加（比如交叉测试需要 runner）：写进 `CARGO_EXEC_KEYS` 旁边说清它执行的是什么。\n\
+             ⚠ **不许**改成豁免某个文件名或某个路径 —— 那是放宽人群，不是收窄性质。"
         );
     }
 }
