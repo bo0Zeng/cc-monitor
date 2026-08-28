@@ -448,7 +448,10 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     expect(statusOf(row)).not.toBe("未登录 ⚠");
     expect(statusOf(row)).not.toBe("未登录");
     // title 是 `accountStatusBadge` 给的那一句：等号防漂 + 一句字面量防「两边一起坏」的循环自证。
-    expect(row.title).toBe(accountsMod.accountStatusBadge(kk).title);
+    // ⚠〔`K-H2b` `D1 阻-5` 08-28〕chip 现在**明说这一行属于哪一半**：`menuRows` 造的是
+    //    远端那一档（`readRemoteConfig` 给了一台 host）⇒ 这里要拿同样的 scope 去比，
+    //    否则「等号防漂」比的是两句不同的话。
+    expect(row.title).toBe(accountsMod.accountStatusBadge(kk, { scope: "remote" }).title);
     expect(row.title).toContain("请求会在 claude 那边报鉴权失败");
     // ★ 第三轮：这一格**本来就该是警示态**（选得中却连不上），警示由 `.warn` 类呈现 ——
     // 文本里一个字形都不拼，所以上面那三条 `not.toBe` 与这一条并不打架。
@@ -460,7 +463,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     const items = await menuRows([esc, acct({ name: "wei" })], "wei");
     const row = rowOf(items, "esc");
     expect(statusOf(row)).toBe("逃生口");
-    expect(row.title).toBe(accountsMod.accountStatusBadge(esc).title);
+    expect(row.title).toBe(accountsMod.accountStatusBadge(esc, { scope: "remote" }).title);
     expect(row.title).toContain("in-place 模式");
     // 这一格断的是 `accountStatusBadge` **实际给的** `warn` 值 —— 实读 `src/accounts.ts:185-191`：
     // in-place 那一支逐字 `warn: true`（它「选得中但不支持按会话切号」，同样是警示态）。
@@ -476,7 +479,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     expect(statusOf(row)).not.toBe("已登录");
     // 这一句 title 与替换前**逐字相同**（见下面那条「真发现」里贴的替换前三句）。
     expect(row.title).toBe("该账号尚未登录——请在终端里用它 /login");
-    expect(row.title).toBe(accountsMod.accountStatusBadge(old).title);
+    expect(row.title).toBe(accountsMod.accountStatusBadge(old, { scope: "remote" }).title);
     // ★ 第三轮：第二轮丢掉的那个 ⚠ 就补在这儿 —— 不是拼回文本，是拿到 `.warn` 类。
     expect(warnOf(row), "订阅号缺凭据那格没拿到 warn 类 ⇒ 「未登录」丢了警示呈现").toBe(true);
   });
@@ -489,7 +492,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     // 替换前这一支**不设** `row.title`（读作空串）；`accountStatusBadge` 给的 title 是 ""
     // ⇒ 读数逐字相同（差别只在 DOM 上多了个空的 `title` 属性，用户看不见）。
     expect(row.title).toBe("");
-    expect(row.title).toBe(accountsMod.accountStatusBadge(wei).title);
+    expect(row.title).toBe(accountsMod.accountStatusBadge(wei, { scope: "remote" }).title);
     // ★ 第三轮的**阴性对照**：健康态一格不上色（`.accounts-row-badge` 那条注释逐字的道理 ——
     // 恒真的信息不携带信息，涂它只会稀释真正要跳出来的那几档）。无条件加类会在这儿红。
     expect(warnOf(row), "已登录不该上警示色 —— 那说明 warn 被无条件加上了").toBe(false);
@@ -552,5 +555,75 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
     expect(cssLines, "设置那张账号表的 `.accounts-row-badge.warn` 宿主没了 —— 同一套约定的另一半").toContain(
       ".accounts-row-badge.warn {",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `K-H2b` `D1 阻-4` / `阻-5`：**没有远端时，chip 渲染的是本机账号，而且带中转三态**
+// ---------------------------------------------------------------------------
+//
+// ★★ 它治的是两条**同源**的病：
+// ① `阻-4`：本文件此前两处注释写着「远端全关掉时这里渲染的就是本机账号」——**是假的**。
+//    `fetchAccounts` 只问 `list_remote_accounts`，`origin` 为 `null` 时 `refresh` 整个隐藏。
+// ② `阻-5`：于是 `KH2B7` 那三态**在用户看得见的地方一处都没落地**
+//    （`fetchLocalRelayRouting` / `localRelayStateFor` 生产调用方各 0）。
+// ⇒ 本组既钉「本机那几行真的渲染出来了」，也钉「三态真的分得开」。
+describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带中转三态", () => {
+  /** 起一个「没有远端」的 chip，本机账号由 `fetchLocalAccounts` 给、routing 由那条命令给。 */
+  async function localMenuRows(
+    accounts: Account[],
+    routing: { routed: string[]; running: boolean } | "fail",
+  ): Promise<HTMLButtonElement[]> {
+    // ⚠ 本组同一条测试里会开三次菜单，而 `toggleMenu` 把菜单 append 到 `document.body`、
+    //    **不会先关旧的**（既有测试每条只开一次，所以从没撞上）⇒ 每次先扫干净，
+    //    否则数出来的是三次的**累加**（本轮实测：应为 2，实得 4）。
+    document.querySelectorAll(".account-picker").forEach((el) => el.remove());
+    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+    vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue(
+      state({ accounts, defaultName: accounts[0]?.name ?? "" }),
+    );
+    const spy = vi.spyOn(accountsMod, "fetchLocalRelayRouting");
+    if (routing === "fail") spy.mockRejectedValue(new Error("问不到"));
+    else spy.mockResolvedValue(routing);
+    const chip = new AccountChip({ openSettings: () => {} });
+    await chip.refresh();
+    await chip.openMenu();
+    const items = [...document.querySelectorAll<HTMLButtonElement>(".account-picker-item")];
+    expect(items.length, "没有远端时 chip 一行都没渲染 —— 那正是 `阻-4` 那句假话的真实形状").toBe(
+      accounts.length,
+    );
+    return items;
+  }
+  const rowOf = (items: HTMLButtonElement[], name: string): HTMLButtonElement =>
+    items.find((el) => el.querySelector(".account-picker-name")?.textContent === name)!;
+  const statusOf = (row: HTMLButtonElement): string =>
+    row.querySelector<HTMLElement>(".account-picker-status")!.textContent ?? "";
+
+  const apiKey = (name: string, dir: string) =>
+    acct({ name, configDir: dir, authKind: "api-key", loggedIn: false, authReady: true });
+
+  it("★★ 三态在 DOM 上真的分得开（表里有行 + 中转在跑 / 表里有行 + 没跑 / 表里没行）", async () => {
+    const A = apiKey("acct-a", "/h/.claude-accts/acct-a");
+    const B = apiKey("acct-b", "/h/.claude-accts/acct-b");
+    // ① 有行 + 在跑 ⇒ 「经本机中转」；同一趟里 B 没行 ⇒ 「未配置端点」（非空对照就在同一趟）。
+    let items = await localMenuRows([A, B], { routed: ["/h/.claude-accts/acct-a"], running: true });
+    expect(statusOf(rowOf(items, "acct-a"))).toBe("api-key（经本机中转）");
+    expect(statusOf(rowOf(items, "acct-b"))).toBe("api-key（未配置端点）");
+    // ② 只把「中转在不在跑」翻过来 ⇒ 第三档。
+    items = await localMenuRows([A, B], { routed: ["/h/.claude-accts/acct-a"], running: false });
+    expect(statusOf(rowOf(items, "acct-a"))).toBe("api-key（中转未运行）");
+    // ③ 问不到 routing ⇒ **不表态**，回落到缺席那一档（只说条件、不下判断）。
+    items = await localMenuRows([A, B], "fail");
+    expect(statusOf(rowOf(items, "acct-a"))).toBe("api-key（未配置端点）");
+    expect(rowOf(items, "acct-a").title).toContain("不替它下判断");
+  });
+
+  it("★ 本机那一趟问的是本机那条路（不是 `list_remote_accounts`）", async () => {
+    const A = apiKey("acct-a", "/h/.claude-accts/acct-a");
+    const localSpy = vi.spyOn(accountsMod, "fetchLocalAccounts");
+    await localMenuRows([A], { routed: [], running: false });
+    expect(localSpy).toHaveBeenCalled();
+    // 阴性对照：远端那条一次都没被问 —— 否则「渲染的是本机账号」这句话又成了假的。
+    expect(fetchAccountsMock).not.toHaveBeenCalled();
   });
 });

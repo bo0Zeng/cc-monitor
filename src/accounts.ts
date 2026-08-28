@@ -251,6 +251,86 @@ export interface RelayRoutingView {
   running: boolean;
 }
 
+/**
+ * `K-H2b` `D1 阻-1`：**本机起会话时把账号说出来** —— 三条主路共用的唯一取值口。
+ *
+ * # 它为什么必须存在
+ *
+ * `D1` 现打、PM 复核：`tabs.ts` 那处 `invoke("resume_history_session", …)` 与
+ * `views/history.ts` 那两处**一个账号都没传**，而 `history.rs` 自己的注释就写着
+ * 「`fork-flow.ts` 是**全仓唯一**给 `resume_history_session` 传 `configDir` 的」。
+ * ⇒ 主路上账号恒缺席，后果两条：① 起会话落到 shell rc 里那个默认号上（静默串号）；
+ * ② 中转那一格**永远拼不出路由键**（没有 id ⇒ 不注入）。
+ * **一件叫「接上注入点」的东西，主路没接。**
+ *
+ * # ★★ 它为什么是**同步**的（这一格是量出来的，不是选出来的）
+ *
+ * 第一版写成 `async`，在三条主路上 `await` 一下再拼进参数。**实测当场红两条**：
+ * `views/history-search-resume.vitest.ts:67` 与 `views/history-actions.vitest.ts:95`
+ * 逐字 `btn.click(); await Promise.resolve();` —— **只放行一个微任务**，
+ * 而 `await` 一次就多一拍 ⇒ 那两条断言在 invoke 还没发出去时就跑了。
+ * 那两个 vitest **不在本件写区**，而「为了让判据过而去改判据」是本区禁的方向。
+ * ⇒ 换成**同步读快照**：取值那一跳零 `await`，主路的时序**一拍不动**。
+ *
+ * # 快照从哪来、冷的时候怎么办（**诚实边界**）
+ *
+ * 快照由 [`fetchLocalAccounts`]（chip 每次 refresh 都调）与
+ * [`primeLocalLaunchAccounts`]（三条主路各在自己那一跳**不等待**地踢一脚）填。
+ * ⚠ **进程起来后的第一次起会话，快照可能还是冷的** ⇒ 本函数回 `undefined`
+ * = 「没表态」= **逐字节旧行为**（不注入、不切号）。
+ * **这是一个真的洞，不是「应该没事」**：它的代价是那一次会话不走中转。
+ * 消掉它要么让主路等一拍（撞上面那两条判据），要么在启动时就 prime
+ * （那是另一件事的接线面）。⇒ 如实登记。
+ *
+ * # 取哪个账号（两条路，各自的理由）
+ *
+ * | 场景 | 取谁 | 为什么 |
+ * |---|---|---|
+ * | resume 一条已有会话 | 那条会话**上次用的**账号（`list_last_accounts` 的 pin） | 与远端那条路同形（`withAccount(..., {follow:{lastAccount}})`）；用别的号 resume 会在错的数据目录里找不到会话（`#75` 那一族） |
+ * | 起新会话 | **当前账号**（`currentWorkingAccount`） | 「新开一个」本来就该用用户此刻选中的那个 |
+ *
+ * **说不出就缺席，绝不猜**：快照没有 / pin 指向一个已经不可选的号 / 那个号没有
+ * `configDir` ⇒ 一律 `undefined`。⚠ 尤其**不回落到「当前账号」** —— 那会把一条
+ * resume 悄悄换到别的号上，正是 `#75` 那个病灶的形状。
+ */
+let localLaunchSnapshot: { accounts: Account[]; pins: Record<string, string> } | null = null;
+
+export function localLaunchAccountSync(
+  sid: string | null,
+): { kind: "named"; configDir: string } | undefined {
+  const snap = localLaunchSnapshot;
+  if (!snap) return undefined; // 快照还是冷的 ⇒ 没表态（见头注那条诚实边界）
+  let picked: Account | null = null;
+  if (sid) {
+    const name = snap.pins[sid];
+    if (name) picked = snap.accounts.find((a) => a.name === name) ?? null;
+  } else {
+    picked = snap.accounts.find((a) => a.isDefault) ?? null;
+  }
+  if (!picked || !isSelectable(picked)) return undefined;
+  return picked.configDir ? { kind: "named", configDir: picked.configDir } : undefined;
+}
+
+/**
+ * 把上面那份快照填上。**调用方不许 `await` 它**（那就又多一拍了，见 [`localLaunchAccountSync`] 头注）。
+ *
+ * ⚠ 它自己吞掉所有异常：这条路上任何一步坏掉的**正确行为都一样** —— 快照留旧的 / 留空，
+ * 下一次取值回 `undefined` = 逐字节旧行为。让它抛出去会把一次能起的会话变成一个 toast。
+ */
+export function primeLocalLaunchAccounts(): void {
+  void (async () => {
+    try {
+      const [state, pins] = await Promise.all([
+        fetchLocalAccounts(),
+        commands.list_last_accounts().catch(() => ({}) as Record<string, string>),
+      ]);
+      localLaunchSnapshot = { accounts: state?.accounts ?? [], pins: pins ?? {} };
+    } catch {
+      /* 保持旧快照 —— 见上 */
+    }
+  })();
+}
+
 export async function fetchLocalRelayRouting(configDirs: string[]): Promise<RelayRoutingView> {
   return await commands.relay_routing_for({ configDirs });
 }

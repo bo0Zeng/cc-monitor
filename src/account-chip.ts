@@ -3,8 +3,24 @@
 // 账号是 per-origin（每台远端一个 manifest）。cc-monitor 通常只连一台常用远端，
 // 故 chip 绑「第一台可用远端」(pickPrimaryOrigin)，选单里若有多台再让用户切台。
 // 点选账号 = **只改本机默认账号**（非破坏，DESIGN §2 的①），toast 明说已有会话不受影响。
+//
+// ★★ `K-H2b` `D1 阻-4`〔08-28 订正**两句假话**〕：本文件先前有两处注释写着
+// 「远端全关掉时 `origin` 是 `null`，这里渲染的就是本机账号」——**那是假的**。
+// `D1` 现打、PM 复核：`fetchAccounts` 只 `invoke("list_remote_accounts")`，本机那条是
+// **另一个函数** `fetchLocalAccounts`，而它在本文件里当时命中 **0**
+// ⇒ **chip 一次都没渲染过本机账号**（`origin` 为 `null` 时它整个隐藏、直接 `return`）。
+// ⚠ 那两句假话不是笔误，是**从上一轮报告里抄来没量的**（`ROADMAP` `己1-f34` 记着这一条）。
+//
+// ★★ `D1 阻-5`〔08-28〕：现在它**真的会**渲染本机账号 —— 没有远端时回落到
+// `fetchLocalAccounts`，并且那几行的徽章带上「这个号走不走本机中转」的三态
+// （`accountStatusBadge` 的 `{scope:"local",…}`）。在此之前 `KH2B7` 那三态
+// **在用户看得见的地方一处都没落地**（两个取值函数生产调用方各 0）。
 import {
   fetchAccounts,
+  fetchLocalAccounts,
+  fetchLocalRelayRouting,
+  localRelayStateFor,
+  type RelayRoutingView,
   deriveUi,
   currentWorkingAccount,
   accountColorsActive,
@@ -89,6 +105,10 @@ export class AccountChip {
   private usageSpan: HTMLElement;
   private iconEl: HTMLElement;
   private origin: string | null = null;
+  /** `D1 阻-5`：这一拍渲染的是**本机**账号吗（没有远端时回落）。 */
+  private local = false;
+  /** `D1 阻-5`：本机那几个 configDir 走不走中转。`null` = 没问到（远端那半恒 `null`）。 */
+  private relayRouting: RelayRoutingView | null = null;
   private state: AccountsState | null = null;
   private menu: HTMLElement | null = null;
   private menuClose: ((e: Event) => void) | null = null;
@@ -130,12 +150,26 @@ export class AccountChip {
     } catch {
       this.origin = null;
     }
-    if (!this.origin) {
-      this.state = null;
-      this.element.style.display = "none";
-      return;
+    // ★ `D1 阻-5`：**没有远端不等于没有账号** —— 本机 `~/.claude-accts/` 那份 manifest
+    //   一直在，只是此前没有任何界面渲染它（`fetchLocalAccounts` 全仓生产调用方只有
+    //   fork 那个小窗）。⇒ 回落到本机那一份，并把「走不走中转」一起问出来。
+    this.local = !this.origin;
+    this.relayRouting = null;
+    this.state = this.local
+      ? await fetchLocalAccounts(force)
+      : await fetchAccounts(this.origin as string, force);
+    if (this.local && this.state) {
+      // 只问**说得出 configDir** 的那几个（账号 0 没有目录 ⇒ 推不出中转表里的 id）。
+      const dirs = this.state.accounts
+        .map((a) => a.configDir)
+        .filter((d): d is string => typeof d === "string" && d.length > 0);
+      try {
+        this.relayRouting = dirs.length ? await fetchLocalRelayRouting(dirs) : null;
+      } catch {
+        // 问不到就**不表态** —— 徽章回落到「只说条件、不下判断」那一档，不猜。
+        this.relayRouting = null;
+      }
     }
-    this.state = await fetchAccounts(this.origin, force);
     const text = chipLabel(this.state);
     if (!text) {
       this.element.style.display = "none"; // daemonless 等 → 完全不显示
@@ -167,7 +201,11 @@ export class AccountChip {
       this.closeMenu();
       return;
     }
-    if (!this.origin || !this.state) return;
+    // `D1 阻-5`：**本机那一档没有 origin，但有账号** ⇒ 这道门改问「有没有状态」。
+    //   ⚠ 只放这一处：用量探针（`loadCurrentAccountUsage`）与 `snapshotReady` 仍然要 origin，
+    //   它们各自的理由不同（探针要 SSH 到那台机器；快照回的结构里 `origin` 是必填），
+    //   **不许顺手一起放宽** —— 那会让本机那一档走进两条它答不了的路。
+    if ((!this.origin && !this.local) || !this.state) return;
     const ui = deriveUi(this.state);
     const menu = document.createElement("div");
     menu.className = "account-picker";
@@ -274,22 +312,20 @@ export class AccountChip {
     //      它的文本仍逐字是「api-key（未配置端点）」—— 不拼任何字形。
     //   ② in-place：title「in-place 模式：不支持按会话切号」→
     //      「in-place 模式：cc-monitor 不支持对它按会话切号」（同义、更明确，但不逐字相同）。
-    // `K-H2b` `KH2B7`：chip 绑「第一台可用远端」，但**远端全关掉时 `origin` 是 `null`，
-    // 这里渲染的就是本机账号**（`reload` 那条 `fetchAccounts(this.origin)` 会走
-    // `list_local_accounts`）⇒ 两半都可能落到这一行。
+    // `K-H2b` `KH2B7`〔08-28 `D1 阻-4` 订正了这一段：先前它写着「远端全关掉时这里渲染的
+    // 就是本机账号」，而那是假的 —— `fetchAccounts` 只问 `list_remote_accounts`，
+    // `origin` 为 `null` 时 `refresh` 整个隐藏并 `return`，一行都渲染不到。〕
     //
-    // ⚠⚠ **这里今天刻意不传第二个参数**，理由是量出来的、不是偷懒：
-    // ① 本机那一半传不了 —— 要把「中转表里有没有这一行 / 中转在不在跑」端到前端，
-    //    得注册一条只答本机的 tauri 命令，而那会让 `parity_ledger.rs` 的
-    //    `every_tauri_command_is_declared_in_the_ledger` 当场红（本轮实测，报文点名了它），
-    //    那个文件不在 `K-H2b` 的写区；
-    // ② 远端那一半也传不了 —— 本文件的 DOM 判据
-    //    `account-chip.vitest.ts:451` 逐字断言 `row.title === accountStatusBadge(kk).title`
-    //    （**不带**第二个参数），传了就当场红（本轮实测撞过），而那个 vitest 同样不在写区。
-    // ⇒ 缺席那一档的文案**只说两条前置、不替它下判断** —— 它在这两半上都是真话。
-    // 设置里那张表（远端专用）已经传了 `{scope:"remote"}`，两处因此**暂时不同源**，
-    // 如实记在这里，经过住件文件 `§4`。
-    const s = accountStatusBadge(a);
+    // ★ `D1 阻-5`：本机那几行带上「走不走中转」的三态；远端那几行明说是远端那一半。
+    //   问不到 routing（`null`）时**不表态** —— 回落到缺席那一档（只说条件、不下判断）。
+    const s = accountStatusBadge(
+      a,
+      this.local
+        ? this.relayRouting
+          ? localRelayStateFor(a, this.relayRouting)
+          : undefined
+        : { scope: "remote" },
+    );
     status.textContent = s.text;
     if (s.warn) status.classList.add("warn");
     row.title = s.title;

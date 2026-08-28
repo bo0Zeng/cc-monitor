@@ -864,8 +864,21 @@ export const commands = {
   daemon_stop: (args: { origin: string }) => invoke<string>("daemon_stop", args),
 
   /** 在某目录起一个新的本地会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
-  new_local_session: (args: { cwd: string; launcher: string | null }) =>
-    invoke<void>("new_local_session", args),
+  /**
+   * 在某目录起一个**全新**本机会话。
+   *
+   * `account`：`K-H2b` `D1 阻-1` 加的。**三态**，与 `resume_history_session` 同形：
+   * 缺席 = 调用方没表态（逐字节旧行为）· `base` = 用户显式选了账号 0 ·
+   * `named` = 具名账号。⚠ 它**不是**「从某条旧会话继承账号」（那是 fork 的语义）——
+   * 它是「用户此刻选中的当前账号」。没有它，这条主路上一个账号都说不出，
+   * 后果有两条：起会话落到 shell rc 那个默认号上（静默串号），
+   * 以及中转那一格**永远拼不出路由键**。
+   */
+  new_local_session: (args: {
+    cwd: string;
+    launcher: string | null;
+    account?: { kind: "base" } | { kind: "named"; configDir: string };
+  }) => invoke<void>("new_local_session", args),
 
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_settings_window: () => invoke<void>("open_settings_window"),

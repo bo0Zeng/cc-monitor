@@ -1480,13 +1480,34 @@ pub(crate) fn relay_rows() -> Vec<String> {
     let Some(p) = crate::creds_store::resolve_path() else {
         return Vec::new();
     };
-    let Ok(raw) = std::fs::read_to_string(&p) else {
+    relay_rows_at(&p)
+}
+
+/// 上一条剥掉「路径从哪来」之后的那一半〔`D1 阻-6`〕。
+///
+/// ★ 抽出来的理由与 `creds_store::read_status_at` 那次逐字同一条：不抽的话，这段逻辑
+/// **只能对着真实家目录下那份文件跑** —— 而判据不许碰用户的真东西，于是它会变成一格
+/// **永远没人量过**的代码。`D1` 的刀 C 实测过那个后果：把本函数整个换成 `Vec::new()`，
+/// **1221 passed / 0 failed**。
+///
+/// # ⚠ 它与中转那侧的人群**不完全一致**，差在哪要写清楚
+///
+/// 中转装表时会把两类行**丢出表**（`relay::table::build`）：① 账号 id 当不了路由段；
+/// ② `base_url` 解析不了。本函数**只筛得掉第 ①** 类（`payload::relay_segment_is_safe`
+/// 与 `route::segment_is_safe` 是同一条规则，由 `payload.rs` 那边的头注登记着）。
+/// **第 ② 类筛不掉** —— 那要一份 `Base::parse`，而它住 daemon 那一侧、monitor 够不着
+/// （单向依赖）。
+/// ⇒ **残留的症状**：一行 `base_url` 打错的账号，界面会说「经本机中转」而中转那侧 404。
+/// **如实登记，不假装两侧人群相等。**〔`D1` 点名的那条同族，处置是「筛掉能筛的、写清剩下的」。〕
+pub(crate) fn relay_rows_at(path: &std::path::Path) -> Vec<String> {
+    let Ok(raw) = std::fs::read_to_string(path) else {
         return Vec::new();
     };
     match creds_core::store::parse(&raw) {
         Ok(doc) => creds_core::store::read_accounts(&doc)
             .into_iter()
             .map(|e| e.id)
+            .filter(|id| crate::backend::control::payload::relay_segment_is_safe(id))
             .collect(),
         Err(e) => {
             tracing::debug!("中转凭据文件读不成表（照旧走官方直连）：{e:?}");
@@ -1584,22 +1605,34 @@ fn build_new_session_ps_command(launcher: Option<&str>) -> Result<String, String
 /// F96（#62）：历史页右键「在该目录起新会话」——本地分支。远端分支走前端
 /// `runRemoteLauncher`（复用 F53）。在 `cwd` 起一个全新会话（无 sid、无 resume）。
 #[tauri::command]
-pub fn new_local_session(cwd: String, launcher: Option<String>) -> Result<(), String> {
+pub fn new_local_session(
+    cwd: String,
+    launcher: Option<String>,
+    account: Option<LaunchAccount>,
+) -> Result<(), String> {
     // F96：起新会话**依赖 cwd 定位**（不像 resume 靠 sid）——cwd 非空且不是现存目录（项目被
     // 移动/删除）就明确报错，别静默在默认目录起会话 + 弹假成功 toast。`launch_powershell_window`
     // 只把存在的 cwd 作窗口起始目录、失效则回落默认，对 resume 无害、对 new-session 是错目录。
     if !cwd.is_empty() && !std::path::Path::new(&cwd).is_dir() {
         return Err(format!("目录不存在，无法在此起新会话：{cwd}"));
     }
-    // G3b：起**全新**会话不继承任何账号（那是「新开一个」的语义，不是分叉）。
+    // ★★ `K-H2b` `D1 阻-1`：**账号这一格是本轮加的，加它的理由要写清楚。**
+    //
+    // 原注释逐字：「起**全新**会话不继承任何账号（那是『新开一个』的语义，不是分叉）」。
+    // 那句话**今天仍然对**，它说的是「不从某条旧会话继承」。⚠ 但它被读成了「所以这条路
+    // 不该有账号参数」，而后果是：**这条主路上一个账号都说不出**，于是
+    // ① 起会话落到 shell rc 里那个默认号上（`config_dir_prefix_posix` 头注逐字点名的静默串号），
+    // ② 中转那一格**永远拼不出路由键**（没有账号 id ⇒ `relay_account_id` 回 `None`）。
+    // ⇒ 现在收**调用方明说的那一个**：前端传的是「用户此刻选中的当前账号」，
+    //   **不是**从别的会话继承来的。参数缺席仍然是「没表态」，逐字节旧行为。
+    //
     // P3t-Y2：起新会话这条**暂不传名字**（`None` ⇒ 渲染器诚实降级回旧路）。
-    // 名字只许由 `mintTmuxName` 铸，而这条命令今天的两个前端调用点都还没传 ——
-    // 在这里补一个默认名就是 F13 那个坑的第三次。接线归 P3t-Y2b。
+    // 名字只许由 `mintTmuxName` 铸，在这里补一个默认名就是 F13 那个坑的第三次。
     launch_local(
         &LocalPsAction::New,
         launcher.as_deref(),
         Some(&cwd),
-        None,
+        account.as_ref(),
         None,
     )?;
     tracing::info!("history: new local session in {cwd}");
@@ -3664,6 +3697,56 @@ mod tests {
             ps,
             "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; "
         );
+    }
+
+    /// ★★★ `D1 阻-6` 刀 C 的反面：**`relay_rows` 真的去读那份文件、真的解析出行。**
+    ///
+    /// `D1` 实测过：把它整个换成 `Vec::new()`，**1221 passed / 0 failed** ——
+    /// 也就是说「这个号在不在中转表里」这个**取值口**当时一条判据都没有，
+    /// 而它一旦恒空，整件事的表现就是「谁都不走中转」，**而且全绿**。
+    #[test]
+    fn the_rows_really_come_from_that_file_not_from_a_constant() {
+        let dir = std::env::temp_dir().join(format!(
+            "ccm-rows-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).expect("建临时目录");
+        let f = dir.join("relay-credentials.json");
+
+        // ① 文件不在 ⇒ 零条（**不是**报错：读不到与一条没配的正确行为都是「照旧直连」）。
+        assert!(relay_rows_at(&f).is_empty(), "文件不在却读出了行");
+        // ② 真写一份（裸 `fs::write` = 人拿编辑器写的那一份）⇒ 逐条读出来。
+        std::fs::write(
+            &f,
+            b"{\n  \"accounts\": {\n    \"acct-a\": { \"api_key\": \"K1\" },\n    \"acct-b\": {}\n  }\n}\n",
+        )
+        .expect("写夹具");
+        let mut got = relay_rows_at(&f);
+        got.sort();
+        assert_eq!(
+            got,
+            vec!["acct-a".to_string(), "acct-b".to_string()],
+            "没把那份文件里的行读出来 —— 这个取值口恒空的话，谁都不会走中转，而且全绿"
+        );
+        // ③ 当不了路由段的 id **筛掉**（与中转装表那一侧同一条规则）。
+        std::fs::write(
+            &f,
+            b"{\n  \"accounts\": {\n    \"ok-1\": {},\n    \"has.dot\": {},\n    \"has/slash\": {}\n  }\n}\n",
+        )
+        .expect("写夹具");
+        assert_eq!(
+            relay_rows_at(&f),
+            vec!["ok-1".to_string()],
+            "界面这一侧收下了中转装表时会丢掉的行 —— 那会让界面说「经本机中转」而中转 404"
+        );
+        // ④ 文件坏了 ⇒ 零条 + 不 panic（人手编打错一个逗号是常态）。
+        std::fs::write(&f, b"{ not json").expect("写夹具");
+        assert!(relay_rows_at(&f).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// ★★ `KH2B7` 的产出方：**界面问的那个「有没有行」，与起会话那一侧问的是同一个规则。**

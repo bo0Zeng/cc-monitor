@@ -238,6 +238,30 @@ mod tests {
             mine,
             store::path_under_claude_home(&home.join(".claude-other"))
         );
+
+        // ★★ `K-H2b` `D1 阻-3`：**上面那个 `home.join(".claude")` 是手写的根** ——
+        // 它钉住的只有**相对段**（`claudecode-frontend/relay-credentials.json` 这一截），
+        // 钉不住「两侧的**根**会不会算到两个地方去」。而那正是阻-3 的病：
+        // daemon 侧的根走 `resolve_home()`，它**认 `CLAUDE_CONFIG_DIR`**；
+        // monitor 这一侧**刻意不跟随**（本模块头注逐字）⇒ 中转一旦继承到那个变量，
+        // 两侧读写的就是两份文件，而症状是「界面上配好了，中转说没配」。
+        //
+        // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
+        // `local_daemon::start_local_relay` 用 `CCM_RELAY_CREDENTIALS` 把
+        // **本函数算出来的这一个**交给中转（`the_relay_has_a_named_starter_…` 钉着那两行）。
+        // 本条在这里把「传过去的就是这一个」焊上：源码里那一处取的必须是 `resolve_path()`。
+        let starter = guard_core::production_code(include_str!("local_daemon.rs"));
+        assert!(
+            starter.contains("crate::creds_store::resolve_path()"),
+            "起中转那一侧不再从**本函数**取凭据路径 —— 它会退回去读 `CLAUDE_CONFIG_DIR` \
+             底下那份，而 monitor 写的这一份不跟随它"
+        );
+        assert!(
+            starter.contains("\"CCM_RELAY_CREDENTIALS\".into()"),
+            "起中转那一侧没把路径显式传出去 —— 这一格就又靠环境变量猜了"
+        );
+        // 反空真：抽取器真的剥出了东西（不是在空串上自问自答）。
+        assert!(starter.len() > 5_000, "剥完只剩 {} 字节 —— 剥法坏了", starter.len());
     }
 
     /// `KS7`：它**不是**前端整份读写的那份配置。

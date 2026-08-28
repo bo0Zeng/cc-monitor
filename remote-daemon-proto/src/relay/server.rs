@@ -160,12 +160,50 @@ const INTERIM_RESPONSES_ALLOWED: usize = 8;
 /// **那是文本判据，不是编译器。**它认不出：换个字段名（`endpoint:` / `fallback:`）·
 /// 把值藏进别的结构体再放进 `Relay` · 干脆用一个 `static`。
 /// ⚠ **这几条我没有逐条实测**（`D1` 实测的是上表那两形）⇒ 它们是**读源码得出的形状，不是读数**。
+/// 那份凭据文件**这一刻**的印记：(mtime, 字节数)。读不到就是 `None`。
+///
+/// ⚠ 两样一起取是有意的，理由见 [`Relay::refresh_if_changed`] 的「它买不到什么」。
+fn stamp_of(path: &std::path::Path) -> Option<(std::time::SystemTime, u64)> {
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.modified().ok()?, m.len()))
+}
+
+/// `D1 阻-2`：那张表从哪儿重读。
+///
+/// ⚠ **`upstream_default` 不是「可回落的默认上游」**（那条棘轮禁的东西）——
+/// 它是 `table::build` 的**入参**：表里某一行**没写 `base_url`** 时那一行取它。
+/// 「行不在表里」仍然是 404，一个字节都不发上游。两件事别混。
+pub(crate) struct Reload {
+    path: std::path::PathBuf,
+    upstream_default: Base,
+    /// 上次读到的 mtime。`None` = 那时读不到（文件不在 / stat 失败）。
+    seen: std::sync::Mutex<Option<(std::time::SystemTime, u64)>>,
+}
+
+impl Reload {
+    pub(crate) fn new(
+        path: std::path::PathBuf,
+        upstream_default: Base,
+        seen: Option<(std::time::SystemTime, u64)>,
+    ) -> Self {
+        Self { path, upstream_default, seen: std::sync::Mutex::new(seen) }
+    }
+}
+
 pub(crate) struct Relay {
     /// 账号段 → 上游 + key。**决定这条请求发到哪儿、用哪把 key 的唯一住址。**
     ///
     /// ⚠ 它**不进任何 `Debug`**：`SecretKey` 手写的 `Debug` 恒为遮蔽形，
     /// 而本结构体**整个没有** `derive(Debug)`（`KS1` 的第二道）。
-    table: RoutingTable,
+    ///
+    /// ⚠⚠ `K-H2b` `D1 阻-2`：它**从启动快照变成了可重载的**。
+    /// 先前 `load_credentials` 只在 `run_with` 里跑一次、且在**永不返回**的 `serve()` 之前
+    /// ⇒ 用户在界面上配完 key **必须重启**才生效，而不重启的症状是
+    /// **一个静默的 404**（与「账号 id 打错」同形，指不向原因）。
+    /// ⇒ 换成 `RwLock` + [`Reload`]：每条请求进来先看那份文件的 mtime 变没变，变了就重读。
+    table: std::sync::RwLock<RoutingTable>,
+    /// 重载源。`None` = 判据自己造的表（不从文件来）⇒ 永不重载。
+    reload: Option<Reload>,
     tee: TeeSink,
     /// 本进程服务过的请求数 —— `DoD-1㈢`「两个键由同一个中转进程服务」量的就是它。
     served: AtomicU64,
@@ -190,12 +228,51 @@ impl Relay {
     /// 「带不带 key」不再是**中转**的属性，而是**表里某一行**的属性。
     pub(crate) fn new(table: RoutingTable, tee: TeeSink) -> Self {
         Self {
-            table,
+            table: std::sync::RwLock::new(table),
+            reload: None,
             tee,
             served: AtomicU64::new(0),
             inflight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             pumps: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    /// `D1 阻-2`：把「从哪儿重读那张表」接上。**只有 `run_with` 那条真路走它。**
+    pub(crate) fn reloading_from(mut self, r: Reload) -> Self {
+        self.reload = Some(r);
+        self
+    }
+
+    /// 每条请求进来先问一次：那份凭据文件动过没有？动过就重读。
+    ///
+    /// # 为什么按 mtime 而不是「每次都读」
+    ///
+    /// 「每次都读」也对，但那是**每条请求一次磁盘读 + 一次 JSON 解析**；
+    /// 按 mtime 只在**真的改过**之后付一次。
+    /// ⚠ **它不是定时器**：没有任何线程自己醒来，读的是「这条请求进来的这一刻」的元数据。
+    ///
+    /// # 它买不到什么（照实写）
+    ///
+    /// 印记是 **(mtime, 字节数)** 两样，不是只有 mtime —— 因为 mtime 的粒度在某些文件系统上
+    /// 是秒级，**同一秒内改两次**时它可能不动，而那一形的症状是「这一发还用旧表」
+    /// 并且**会留下来**（文件不再变 ⇒ 永远不再重载），不是一次抖动。
+    /// ⚠ 加上字节数**只是把那个窗口收窄，没有关掉它**：同一秒内改成**同样长**的另一份内容
+    /// （比如把一把 key 换成等长的另一把）仍然看不见。**这一形我没量** —— 如实登记。
+    fn refresh_if_changed(&self) {
+        let Some(r) = self.reload.as_ref() else { return };
+        let now = stamp_of(&r.path);
+        {
+            let seen = r.seen.lock().expect("lock");
+            if *seen == now {
+                return;
+            }
+        }
+        let mut loaded = creds::load(&r.path);
+        let (table, rejected) = table::build(std::mem::take(&mut loaded.accounts), &r.upstream_default);
+        // 重载也要**出声**：静默换掉一张表，与静默丢掉一行是同一族。
+        creds::announce(&loaded, table.len(), &rejected, &mut std::io::stderr());
+        *self.table.write().expect("lock") = table;
+        *r.seen.lock().expect("lock") = now;
     }
 
     /// 消费 `pump` 的返回值。**生产段唯一的落点** —— 没有它，返回值就又成了死值。
@@ -383,7 +460,11 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //   ⚠ 与它**同族但不同**的一格：行**在**表里、只是那一行没配 key ⇒
     //   **原样转发下游那份鉴权头**（订阅登录那一档是合法状态）。那一格在
     //   `render_upstream_request` 里，**两条判据分开钉，不许合成一条**。
-    let Some(row) = relay.table.lookup(&r.account) else {
+    // `D1 阻-2`：查表**之前**先看那份文件动过没有 —— 不然「界面上配完 key」要重启才生效，
+    // 而不重启的症状是一个静默的 404（与「账号 id 打错」同形）。
+    relay.refresh_if_changed();
+    let table = relay.table.read().expect("lock");
+    let Some(row) = table.lookup(&r.account) else {
         return respond_and_drain(&mut down_w, "404 Not Found");
     };
     // ★ `阻-1(D3)` + `重要-2(D3)`：请求体这一格先前有**两个**洞，两个都在这几行上。
@@ -671,8 +752,17 @@ fn load_credentials(
     home: &std::path::Path,
     default_base: &Base,
     out: &mut dyn Write,
-) -> RoutingTable {
-    let mut loaded = creds::load(&creds::resolve_path(get, home));
+) -> (
+    RoutingTable,
+    std::path::PathBuf,
+    Option<(std::time::SystemTime, u64)>,
+) {
+    let path = creds::resolve_path(get, home);
+    // `D1 阻-2`：把**这一刻**那份文件的 mtime 一起记下来 —— 重载靠它判「动过没有」。
+    // ⚠ 顺序：**先 stat 再读**。反过来的话，「读完到 stat 之间那次写」会被记成「已经读过了」，
+    //   那一次修改就永远不会被重载看见（一个会留下来的错，不是一次抖动）。
+    let stamp = stamp_of(&path);
+    let mut loaded = creds::load(&path);
     // ★ 装表这一步（`K-H2`）**在出声之前**：`announce` 要印的「有几行进得了表」
     //   与「哪几行进不去、为什么」都是它算出来的。
     //   ⚠ `take` 是因为 `AccountEntry` 里装着 `SecretKey`，而那个类型**刻意不给 `Clone`**
@@ -680,7 +770,7 @@ fn load_credentials(
     //     `announce` 不读 `accounts` 这一格，它读的是路径 / 权限 / 问题，外加下面这两个参数。
     let (table, rejected) = table::build(std::mem::take(&mut loaded.accounts), default_base);
     creds::announce(&loaded, table.len(), &rejected, out);
-    table
+    (table, path, stamp)
 }
 
 fn run_with(
@@ -706,8 +796,12 @@ fn run_with(
     }
     // ⚠ 顺序：**起监听之后、进接受循环之前**。放在起监听之前的话，
     //   端口起不来那条支会先把凭据路径印出来，而那时它还不相干。
-    let table = load_credentials(creds_get, home, &base, &mut std::io::stderr());
-    serve(listener, Arc::new(Relay::new(table, TeeSink::to_stdout())));
+    let (table, creds_path, stamp) = load_credentials(creds_get, home, &base, &mut std::io::stderr());
+    // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
+    // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
+    let relay = Relay::new(table, TeeSink::to_stdout())
+        .reloading_from(Reload::new(creds_path, base.clone(), stamp));
+    serve(listener, Arc::new(relay));
     0
 }
 
@@ -3420,6 +3514,71 @@ head -n 1 <&3
             up.seen.lock().expect("lock").len(),
             2,
             "查不到的那一发**漏到上游去了** —— 那是 `KL7` 第 2 条逐字禁的回落"
+        );
+    }
+
+    /// ★★★ `K-H2b` `D1 阻-2`：**配完 key 不用重启中转** —— 那张表不是启动快照。
+    ///
+    /// # 它治的是什么
+    ///
+    /// 先前 `load_credentials` 只在 `run_with` 里跑一次，而且在**永不返回**的 `serve()` 之前
+    /// ⇒ 用户在界面上按下「保存 key」之后，中转手上还是启动那一刻的表 ⇒
+    /// 那个账号**每一发都是 404**。而 404 与「账号 id 打错」**同形**，指不向原因。
+    ///
+    /// # 这一趟真到什么程度
+    ///
+    /// 真子进程中转 · 真文件（裸 `fs::write`，等价于人拿编辑器改 / 界面那条 IPC 写）·
+    /// 真 TCP 请求 · 真上游。**中转全程没有重启**（同一个 `RelayChild`）。
+    #[test]
+    fn a_row_added_after_the_relay_started_is_picked_up_without_a_restart() {
+        let up = spawn_fake_upstream(None);
+        let dir = tmpdir("reload");
+        let creds = dir.join("relay-credentials.json");
+        // 起手只有一条空账号（等价于 `spawn_relay_child` 那份夹具）。
+        std::fs::write(&creds, b"{\n  \"accounts\": {\n    \"acctA\": {}\n  }\n}\n")
+            .expect("写起手的凭据夹具");
+        let relay = spawn_relay_child_with_creds(up.addr, &creds);
+
+        // ① 起手：那个还没配的账号 **404**（非空对照排最前 —— 证明这把尺子分得出两种结局）。
+        let mut c = send_request(relay.addr, "/s/agentA/acctLate/sid-1/v1/messages", "");
+        let mut got = String::new();
+        c.read_to_string(&mut got).expect("read");
+        assert!(
+            got.starts_with("HTTP/1.1 404"),
+            "还没配的账号应当 404，实得：{got:?}"
+        );
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            0,
+            "404 那一发漏到上游去了 —— 那是 `KL7` 第 2 条逐字禁的回落"
+        );
+
+        // ② **中转不重启**，只把那份文件改掉（多一条带 key 的行）。
+        std::fs::write(
+            &creds,
+            b"{\n  \"accounts\": {\n    \"acctA\": {},\n    \"acctLate\": { \"api_key\": \"KEY-LATE\" }\n  }\n}\n",
+        )
+        .expect("重写凭据夹具");
+
+        // ③ 同一个中转进程、同一条路：这一发必须**走通**，且带的是新那一行的 key。
+        let mut c2 = send_request(relay.addr, "/s/agentA/acctLate/sid-1/v1/messages", "");
+        let mut got2 = String::new();
+        c2.read_to_string(&mut got2).expect("read");
+        assert!(
+            got2.starts_with("HTTP/1.1 200"),
+            "配完之后仍然不认这一行 —— 那张表还是启动快照（用户得重启中转才生效，\n             而不重启的症状是一个静默的 404）。实得：{got2:?}"
+        );
+        let auths = up.auth_values.lock().expect("lock").clone();
+        assert_eq!(
+            auths,
+            vec!["Authorization: Bearer KEY-LATE".to_string()],
+            "重载之后换上的不是新那一行的 key：{auths:?}"
+        );
+        // 非空对照：中转**确实没重启**（同一个子进程，stderr 上只有一句 `listening on`）。
+        assert_eq!(
+            relay.err().matches("listening on").count(),
+            1,
+            "中转重启过 —— 那这一条量的就不是「不重启也生效」"
         );
     }
 
