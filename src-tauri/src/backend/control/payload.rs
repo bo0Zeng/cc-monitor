@@ -543,9 +543,16 @@ pub fn route_key_for_session(sid: Option<&str>) -> String {
     }
 }
 
-/// **POSIX 命令面**的中转前缀 —— 整个 monitor 生产段里唯一一处产出
+/// **POSIX 命令面**的中转前缀 —— **本文件生产段里唯一一处**产出
 /// `export ANTHROPIC_BASE_URL=` 的地方〔`KH2B4`，由
-/// `only_one_place_in_this_crate_exports_the_relay_base_url` 数着〕。
+/// `only_one_place_in_this_file_exports_the_relay_base_url` 数着〕。
+///
+/// ⚠ **那条判据的人群只有本文件**（它 `include_str!("payload.rs")`）——
+/// 别把它读成「全仓唯一一处」。全仓那一格是**一天的读数**，不是一条会自我维持的断言（`K20`）：
+/// 08-28 现打，分母 = 703 个跟踪文件，量法 `git ls-files -z | xargs -0 grep`，
+/// 产出形状 `export ANTHROPIC_BASE_URL=` 的**生产行恰好 1** —— 就是下面这一行；
+/// 其余命中全是判据字面量 / 测试期望 / 散文（非空对照：同一把尺子量
+/// `ANTHROPIC_BASE_URL` 命中 **6** 个文件）。
 pub fn relay_env_prefix_posix(base_url: &str) -> String {
     format!(
         "export ANTHROPIC_BASE_URL={}; ",
@@ -1233,10 +1240,11 @@ mod tests {
     /// 多一处能拼这条 URL 的地方，就多一处可以各自答错**同一个问题**，
     /// 而答错的症状是「一个查不出来的 404」（`KL7` 第 1 条）。
     ///
-    /// ⚠ 人群是**本 crate 的生产段**（`guard_core::production_code` 剥掉 `#[cfg(test)]`），
-    /// **不是**全仓 —— 分母写在这里，别把它读成「全仓只有一处」。
+    /// ⚠ 人群是**本文件的生产段**（`include_str!("payload.rs")` 再 `guard_core::production_code`
+    /// 剥掉 `#[cfg(test)]`）—— **不是本 crate、更不是全仓**。分母写在这里，别把它读宽。
+    /// 全仓那一格的读数与量法住 `relay_env_prefix_posix` 的头注（它是读数，不是断言）。
     #[test]
-    fn only_one_place_in_this_crate_exports_the_relay_base_url() {
+    fn only_one_place_in_this_file_exports_the_relay_base_url() {
         let src = include_str!("payload.rs");
         let prod = guard_core::production_code(src);
         // 抽取器自检：剥完还得看得见东西，且**确实剥掉了**测试段那些字面量。
@@ -1252,7 +1260,7 @@ mod tests {
         assert_eq!(
             prod.matches("export ANTHROPIC_BASE_URL=").count(),
             1,
-            "本 crate 生产段里产出 `export ANTHROPIC_BASE_URL=` 的地方不再是 1 处。\n\
+            "**本文件**生产段里产出 `export ANTHROPIC_BASE_URL=` 的地方不再是 1 处。\n\
              ⇒ 两处各拼一遍就会各自答错同一个问题，而症状是中转回一个查不出来的 404。\n\
              要加第二处，先说清它为什么不能调 `relay_env_prefix_posix`。"
         );
