@@ -50,125 +50,163 @@ pub mod store;
 
 use std::fmt;
 
-/// 一把 key 的明文。
+/// ★★★ **明文字段的唯一可达面**〔`K18` 裁定，`D3` 08-27〕。
 ///
-/// # `KS1`：这个类型**存在的唯一理由**是让「顺手打印」这条路不存在
+/// # 为什么是一个**模块**，而不是又一版判据
 ///
-/// - **手写 [`fmt::Debug`]**，印出来恒为遮蔽形（见下面那个 impl）；
-/// - **不许** `derive(Debug)`（会把内层 `String` 原样印出来）；
-/// - **不许** `derive(Serialize)`（会把它写进任何一帧 JSON）；
-/// - **不许** `impl Display`（`{}` 是最容易被顺手写出来的那一个）。
+/// 这条性质（不许有第三个明文出口）此前换过**三版人群**，每一版都被一刀绕过：
+/// 数 `&self.0` 的字面 ⇒ 被 `as_str()`/`clone()` 绕；按**返回类型**画 ⇒ 被 `pub unsafe fn`
+/// 与**出参形**绕；按**函数体提到 `self.0`** 画 ⇒ 被**模块级自由函数**（`fn f(k: &SecretKey) -> &str { &k.0 }`，
+/// 写在 `impl` 块之外、同一个模块里，**完全普通的 Rust**）与**块内解构 / 回调形**绕。
 ///
-/// 这三条由 `secret_key_has_no_printing_shortcut` 扫本文件的定义面钉住，命中任一即红。
+/// ⚠⚠ 三版共同的错在件计划 `§0i` 里被我写成了一句**不成立的话**：
+/// 「『谁碰了 `self.0`』是一个**内在事实**」。**它不是。**
+/// `self.0` 只是**够到私有字段的一种写法**，而 **Rust 的私有是模块级的，不是类型级** ——
+/// 同模块里任何 item 都合法地够得到它，而那三版判据的窗口都是一个**语法块**。
 ///
-/// # ⚠ 它**认不出**什么（诚实边界 —— 别把这条判据读成「明文不可能泄漏」）
+/// ★ 而审计自己写下了那条决定性的话：**「『文本扫描能不能穷举够到私有字段的所有写法』
+/// 我给不出分母」**。⇒ **给不出分母的判据，绿了不说明什么。**
+/// 再加一版只是把已知能绕的形状少一个，**买不到那条性质**。
 ///
-/// 1. **别处再定义第二个装 key 的类型**（本判据只扫本文件的定义面）；
-/// 2. **把明文 `clone()` 进一个普通 `String` 再打印** ——
-///    一旦出了 [`SecretKey::expose_for_auth_header`] 那道门，本类型就管不着了。
+/// # 今天这一格由**编译器**买
 ///
-/// 这两形由 `KS2`（取明文的地方**恰好一处**）兜：出口只有一个，那一处被逐字钉住。
-/// **两条判据缺一都不成立**：只有本条 ⇒ 换个类型就绕过；只有 `KS2` ⇒ 出口是一处，
-/// 但那一处拿到的东西照样能被 `{:?}` 印出来。
-pub struct SecretKey(String);
-
-impl SecretKey {
-    /// 从明文建一把 key。**唯一入口**（内层字段是私有的）。
-    pub fn new(raw: impl Into<String>) -> Self {
-        SecretKey(raw.into())
-    }
-
-    /// 有没有配。**不碰内容** —— 这是判「配没配」的正确问法。
-    pub fn is_configured(&self) -> bool {
-        !self.0.trim().is_empty()
-    }
-
-    /// 明文的字节数。给诊断用；它**不泄漏内容**，但泄漏长度，所以只在本地日志里用。
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    /// `len() == 0`。clippy 要求有 `len` 就得有它。
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    /// **`KS6` 的后端那一半**：给前端看的东西**只有这一个形状**。
+/// 字段住在这个**私有模块**里 ⇒ `sealed` 之外的任何代码都够不到它，
+/// 无论它写成 `.0` · 解构 · 自由函数 · 回调 · 还没人想出来的第五形。
+/// **判据只剩一格小得多、边界清楚得多的活：`sealed` 里登记了哪几个函数。**
+/// ⇒ 与本仓一贯的偏好一致（`scanning_guard_registry` 头注逐字）：
+/// **让它写不出来，而不是再检测一遍。**
+///
+/// # 划线依据：**能不能不碰字段就做到**
+///
+/// - **必须住这里**：`new`（要构造）· `is_configured` / `len` / `is_empty`（要读那个串）·
+///   `masked`（要从明文派生）· 两个具名出口。
+/// - **刻意留在外面**：`impl fmt::Debug` —— 它写的是一个**常量**，压根不需要碰字段。
+///   ★ 把它挪出去买到的是一条**编译器保证**：谁要是想让 `Debug` 印出明文，
+///   **它编译不过**（字段私有到 `sealed` 之外），而不是等一条判据去逮它。
+mod sealed {
+    /// 一把 key 的明文。
     ///
-    /// 短到看不出前后缀的（`<= MASK_KEEP * 2`）**整条遮掉**——
-    /// 「前后各留几位」在一把 8 字符的 key 上等于把它交出去。
+    /// # `KS1`：这个类型**存在的唯一理由**是让「顺手打印」这条路不存在
     ///
-    /// ⚠ 它**不是** `KS6` 的全部：本函数只保证「这条路上出去的是掩码」，
-    /// 不保证「没有别的路把明文送出去」。那一格归 `KS2`（出口恰好一处）。
-    pub fn masked(&self) -> String {
-        let s = self.0.trim();
-        if s.is_empty() {
-            return String::new();
+    /// - **手写 [`fmt::Debug`]**，印出来恒为遮蔽形（见下面那个 impl）；
+    /// - **不许** `derive(Debug)`（会把内层 `String` 原样印出来）；
+    /// - **不许** `derive(Serialize)`（会把它写进任何一帧 JSON）；
+    /// - **不许** `impl Display`（`{}` 是最容易被顺手写出来的那一个）。
+    ///
+    /// 这三条由 `secret_key_has_no_printing_shortcut` 扫本文件的定义面钉住，命中任一即红。
+    ///
+    /// # ⚠ 它**认不出**什么（诚实边界 —— 别把这条判据读成「明文不可能泄漏」）
+    ///
+    /// 1. **别处再定义第二个装 key 的类型**（本判据只扫本文件的定义面）；
+    /// 2. **把明文 `clone()` 进一个普通 `String` 再打印** ——
+    ///    一旦出了 [`SecretKey::expose_for_auth_header`] 那道门，本类型就管不着了。
+    ///
+    /// 这两形由 `KS2`（取明文的地方**恰好一处**）兜：出口只有一个，那一处被逐字钉住。
+    /// **两条判据缺一都不成立**：只有本条 ⇒ 换个类型就绕过；只有 `KS2` ⇒ 出口是一处，
+    /// 但那一处拿到的东西照样能被 `{:?}` 印出来。
+    pub struct SecretKey(String);
+
+    impl SecretKey {
+        /// 从明文建一把 key。**唯一入口**（内层字段是私有的）。
+        pub fn new(raw: impl Into<String>) -> Self {
+            SecretKey(raw.into())
         }
-        let n = s.chars().count();
-        if n <= MASK_KEEP * 2 {
-            return "*".repeat(n.max(MASK_KEEP));
+
+        /// 有没有配。**不碰内容** —— 这是判「配没配」的正确问法。
+        pub fn is_configured(&self) -> bool {
+            !self.0.trim().is_empty()
         }
-        let head: String = s.chars().take(MASK_KEEP).collect();
-        let tail: String = s.chars().skip(n - MASK_KEEP).collect();
-        format!("{head}{}{tail}", "*".repeat(n - MASK_KEEP * 2))
-    }
 
-    /// ★★ **`KS2`：取明文的唯一出口。**
-    ///
-    /// 名字里写死了它唯一的用途（**往上游请求写鉴权头**），因为
-    /// 「这个函数是干什么的」正是将来有人多加一处调用时唯一能被读出来的约束。
-    ///
-    /// ⚠ **加一处调用是收紧、动那条相等断言是放宽**：
-    /// 将来真要多一处，**必须在件计划里单独说清那一处是什么**，
-    /// 不许在实现里顺手把 `EXPECTED_EXPOSE_SITES` 改大。
-    pub fn expose_for_auth_header(&self) -> &str {
-        &self.0
-    }
+        /// 明文的字节数。给诊断用；它**不泄漏内容**，但泄漏长度，所以只在本地日志里用。
+        pub fn len(&self) -> usize {
+            self.0.len()
+        }
 
-    /// ⚠⚠ **明文的第二个出口：把它写回那份文件。**
-    ///
-    /// # 这一处是**新开的**，不是我顺手加的 —— 经过写在这里
-    ///
-    /// `KS2` 的字面是「取明文的地方**恰好一处**：只有『往上游请求写鉴权头』那一行」。
-    /// 实现时撞上一件绕不过去的事：**落盘也必须碰明文**（`store::merge_key` 要把它写进 JSON）。
-    /// 「一处」在字面上做不到，而把落盘伪装成别的东西（让 `store.rs` 直接摸私有字段）
-    /// 只是**把第二个出口藏起来**，不是消掉它 —— 那正是本工作区在治的病。
-    ///
-    /// ⇒ 处置：**两个出口各自具名、各自钉死次数、各自只在一个 crate 里出现**，
-    /// 再加一条「明文出口总数恰好 2」的全断。`KS2` 那句「不许在实现里顺手把断言改大」
-    /// 我照做了：**没有改任何既有断言**，而是把这一处**逐字写进件计划 `§0f`**交 PM 裁。
-    ///
-    /// # 两个出口各自只许住在哪儿（**这一段是判据的转述，不是承诺** —— 住址逐条给）
-    ///
-    /// - [`SecretKey::expose_for_auth_header`]：**调用点恰好 1 处**，在
-    ///   `remote-daemon-proto/src/relay/server.rs`（中转换头那一行）。
-    /// - `expose_for_persisting`（本方法）：**调用点恰好 1 处**，在
-    ///   `src-tauri/crates/creds-core/src/store.rs`（`merge_key`）。
-    ///
-    /// ⚠⚠ **订正〔D1 阻-1，08-27〕：这一段先前写的是一句盘上没有的承诺。**
-    /// 它原文写着「它在 `src-tauri` 生产段里应当是 0 次」「在 daemon 生产段里应当是 0 次」，
-    /// 并声称「三条断言各自守一格」—— 而实际盘上**那两格根本不存在**：
-    /// `creds-core` 这条判据只扫 `include_str!("lib.rs")`（**它自己这一个文件**），
-    /// daemon 那条只扫 daemon crate，**`src-tauri` 整个不在任何人的人群里**。
-    /// 审计一刀坐实：在 monitor 生产段取一次明文 `eprintln!` 出去 ⇒ 8 包合计 **1284 passed，一条没红**。
-    /// **留着一句盘上没有的承诺，比没有这句话更坏。**
-    ///
-    /// ⇒ 今天它由**三格**真判据钉着，缺一都不成立：
-    /// 1. **定义面**：`every_string_returning_exit_is_registered_by_name`（本文件）——
-    ///    `impl SecretKey` 里能把字符串带出去的 `pub fn` **按名字登记**，多一个就红
-    ///    （**按返回类型画人群，不按某一种拼法** —— 上一版数 `&self.0` 的字面，
-    ///    换成 `self.0.as_str()` / `self.0.clone()` 就绕过去了）；
-    /// 2. **定义面的后门**：`the_type_has_no_second_impl_block_that_hands_the_inner_string_out`（本文件）——
-    ///    `Deref` / `AsRef<str>` 这一类一句话就能开的后门；
-    /// 3. **调用面 + 人群**：`creds_store::the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees`
-    ///    （`src-tauri/src/creds_store.rs`）—— 扫 **`src-tauri/src` · `src-tauri/crates` ·
-    ///    `remote-daemon-proto/src` 三棵树**的生产段，两个出口各自的调用点数与住址都钉死。
-    /// 另有 daemon 那个 crate 内部的一格单断：`relay::creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`。
-    pub fn expose_for_persisting(&self) -> &str {
-        &self.0
+        /// `len() == 0`。clippy 要求有 `len` 就得有它。
+        pub fn is_empty(&self) -> bool {
+            self.0.is_empty()
+        }
+
+        /// **`KS6` 的后端那一半**：给前端看的东西**只有这一个形状**。
+        ///
+        /// 短到看不出前后缀的（`<= MASK_KEEP * 2`）**整条遮掉**——
+        /// 「前后各留几位」在一把 8 字符的 key 上等于把它交出去。
+        ///
+        /// ⚠ 它**不是** `KS6` 的全部：本函数只保证「这条路上出去的是掩码」，
+        /// 不保证「没有别的路把明文送出去」。那一格归 `KS2`（出口恰好一处）。
+        pub fn masked(&self) -> String {
+            let s = self.0.trim();
+            if s.is_empty() {
+                return String::new();
+            }
+            let n = s.chars().count();
+            if n <= super::MASK_KEEP * 2 {
+                return "*".repeat(n.max(super::MASK_KEEP));
+            }
+            let head: String = s.chars().take(super::MASK_KEEP).collect();
+            let tail: String = s.chars().skip(n - super::MASK_KEEP).collect();
+            format!("{head}{}{tail}", "*".repeat(n - super::MASK_KEEP * 2))
+        }
+
+        /// ★★ **`KS2`：取明文的唯一出口。**
+        ///
+        /// 名字里写死了它唯一的用途（**往上游请求写鉴权头**），因为
+        /// 「这个函数是干什么的」正是将来有人多加一处调用时唯一能被读出来的约束。
+        ///
+        /// ⚠ **加一处调用是收紧、动那条相等断言是放宽**：
+        /// 将来真要多一处，**必须在件计划里单独说清那一处是什么**，
+        /// 不许在实现里顺手把 `EXPECTED_EXPOSE_SITES` 改大。
+        pub fn expose_for_auth_header(&self) -> &str {
+            &self.0
+        }
+
+        /// ⚠⚠ **明文的第二个出口：把它写回那份文件。**
+        ///
+        /// # 这一处是**新开的**，不是我顺手加的 —— 经过写在这里
+        ///
+        /// `KS2` 的字面是「取明文的地方**恰好一处**：只有『往上游请求写鉴权头』那一行」。
+        /// 实现时撞上一件绕不过去的事：**落盘也必须碰明文**（`store::merge_key` 要把它写进 JSON）。
+        /// 「一处」在字面上做不到，而把落盘伪装成别的东西（让 `store.rs` 直接摸私有字段）
+        /// 只是**把第二个出口藏起来**，不是消掉它 —— 那正是本工作区在治的病。
+        ///
+        /// ⇒ 处置：**两个出口各自具名、各自钉死次数、各自只在一个 crate 里出现**，
+        /// 再加一条「明文出口总数恰好 2」的全断。`KS2` 那句「不许在实现里顺手把断言改大」
+        /// 我照做了：**没有改任何既有断言**，而是把这一处**逐字写进件计划 `§0f`**交 PM 裁。
+        ///
+        /// # 两个出口各自只许住在哪儿（**这一段是判据的转述，不是承诺** —— 住址逐条给）
+        ///
+        /// - [`SecretKey::expose_for_auth_header`]：**调用点恰好 1 处**，在
+        ///   `remote-daemon-proto/src/relay/server.rs`（中转换头那一行）。
+        /// - `expose_for_persisting`（本方法）：**调用点恰好 1 处**，在
+        ///   `src-tauri/crates/creds-core/src/store.rs`（`merge_key`）。
+        ///
+        /// ⚠⚠ **订正〔D1 阻-1，08-27〕：这一段先前写的是一句盘上没有的承诺。**
+        /// 它原文写着「它在 `src-tauri` 生产段里应当是 0 次」「在 daemon 生产段里应当是 0 次」，
+        /// 并声称「三条断言各自守一格」—— 而实际盘上**那两格根本不存在**：
+        /// `creds-core` 这条判据只扫 `include_str!("lib.rs")`（**它自己这一个文件**），
+        /// daemon 那条只扫 daemon crate，**`src-tauri` 整个不在任何人的人群里**。
+        /// 审计一刀坐实：在 monitor 生产段取一次明文 `eprintln!` 出去 ⇒ 8 包合计 **1284 passed，一条没红**。
+        /// **留着一句盘上没有的承诺，比没有这句话更坏。**
+        ///
+        /// ⇒ 今天它由**三格**真判据钉着，缺一都不成立：
+        /// 1. **定义面**：`every_string_returning_exit_is_registered_by_name`（本文件）——
+        ///    `impl SecretKey` 里能把字符串带出去的 `pub fn` **按名字登记**，多一个就红
+        ///    （**按返回类型画人群，不按某一种拼法** —— 上一版数 `&self.0` 的字面，
+        ///    换成 `self.0.as_str()` / `self.0.clone()` 就绕过去了）；
+        /// 2. **定义面的后门**：`the_type_has_no_second_impl_block_that_hands_the_inner_string_out`（本文件）——
+        ///    `Deref` / `AsRef<str>` 这一类一句话就能开的后门；
+        /// 3. **调用面 + 人群**：`creds_store::the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees`
+        ///    （`src-tauri/src/creds_store.rs`）—— 扫 **`src-tauri/src` · `src-tauri/crates` ·
+        ///    `remote-daemon-proto/src` 三棵树**的生产段，两个出口各自的调用点数与住址都钉死。
+        /// 另有 daemon 那个 crate 内部的一格单断：`relay::creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`。
+        pub fn expose_for_persisting(&self) -> &str {
+            &self.0
+        }
     }
 }
+
+/// 类型本身是公开的；**只有它的字段被关在 `sealed` 里**。
+pub use sealed::SecretKey;
 
 /// 掩码前后各留几位。
 pub const MASK_KEEP: usize = 4;
@@ -332,7 +370,7 @@ mod tests {
     /// ⚠ 切分用 **`fn `**，不是 `pub fn ` —— 后者漏掉 `pub unsafe fn` / `pub(crate) fn` /
     /// `async fn`。D2 复审实打：人群针写成 `"pub fn "` 时，`pub unsafe fn` 那一刀
     /// **creds-core 23 passed; 0 failed**（我自己复打确认）。
-    fn fns_in_block(block: &str) -> Vec<(String, String)> {
+    fn fns_in_block(block: &str) -> Vec<(String, String, String)> {
         let mut out = Vec::new();
         for (i, _) in block.match_indices("fn ") {
             let after = &block[i + 3..];
@@ -346,9 +384,136 @@ mod tests {
             let Some(body) = brace_block(block, i) else {
                 continue;
             };
-            out.push((name, body.to_string()));
+            // ★ **签名**（从 `fn` 到函数体左花括号）单独交出去〔`D3` 阻塞二回修，08-27〕。
+            //   先前只回 `body`，而 `body` 是 `brace_block` 从 `{` 起切的
+            //   ⇒ **参数表根本不在里面**，于是下面第 ⑤ 段对 `body` 做 `find('(')`
+            //   两头都错：真的出参形**漏**（25P/0F 一声不吭），
+            //   而一个只在体内 `std::mem::swap(&mut a, &mut b)`、**完全不碰明文**的函数**误报**
+            //   （报文逐字「收了一个 `&mut` 出参：`(&mut a, &mut b`」）。两处审计都实打过。
+            let sig_end = block[i..].find('{').map(|k| i + k).unwrap_or(block.len());
+            out.push((name, block[i..sig_end].to_string(), body.to_string()));
         }
         out
+    }
+
+    /// `mod sealed` 里允许住哪几个 fn。**判据只买这张表；性质由编译器买。**
+    ///
+    /// ★ `K18` 裁定（`D3`）：字段关进私有模块之后，「谁够得到明文」由 **rustc** 回答 ——
+    /// `sealed` 之外的任何写法（`.0` · 解构 · 自由函数 · 回调 · 还没人想出来的第五形）
+    /// **编译不过**。⇒ 剩下的活只有一格：**盯住 `sealed` 里长了什么**。
+    const SEALED_FNS: &[(&str, &str)] = &[
+        ("new", "构造，明文从这里进来（唯一入口）"),
+        ("is_configured", "读一个与内容无关的布尔"),
+        ("len", "读字节数"),
+        ("is_empty", "`len() == 0`"),
+        ("masked", "从明文派生出遮蔽形"),
+        ("expose_for_auth_header", "**出口**：中转换头"),
+        ("expose_for_persisting", "**出口**：落盘"),
+    ];
+
+    /// ★★★ **`K18` 的正主〔`D3` 08-27〕：边界由编译器守，本条只守登记表。**
+    ///
+    /// # 它钉四样，而这四样合起来**才是**「编译器会替我们拦住」的前提
+    ///
+    /// ㈠ `mod sealed` **恰好一个**，且**不是 `pub`**（是 `pub` 的话外面就够得到里面的私有项路径）；
+    /// ㈡ 字段**不是 `pub`**（`pub struct SecretKey(pub String)` 会当场把整件事作废）；
+    /// ㈢ `sealed` 里的 fn **逐个登记**（默认拒绝）——这是唯一还需要判据的一格；
+    /// ㈣ ★ `impl fmt::Debug` **必须在 `sealed` 之外**。
+    ///    这一条不是洁癖：它在外面 ⇒ 它**够不到字段** ⇒ 「`Debug` 不许印明文」这件事
+    ///    从「一条判据在扫」变成「**编译不过**」。搬回去就把那条编译器保证丢了。
+    ///
+    /// # ⚠ 它**买不到**什么（诚实边界）
+    ///
+    /// 本条仍是文本扫描，**扫的是 `sealed` 这一个块**。但它与前三版有个本质差别：
+    /// 前三版的**性质**依赖扫描穷举（而审计逐字写过「我给不出分母」）；
+    /// 今天**性质由编译器买**，扫描只用来看「这个小块里有没有多长东西」——
+    /// 扫漏一个的后果是「多一个未登记的函数没被人看见」，**不是「明文从别处出去了」**。
+    #[test]
+    fn the_sealed_module_is_the_only_place_that_can_reach_the_field() {
+        let prod = production();
+
+        // ㈠ 恰好一个私有 `mod sealed`
+        assert_eq!(
+            prod.matches("mod sealed {").count(),
+            1,
+            "`mod sealed` 不是恰好一个"
+        );
+        assert_eq!(
+            prod.matches("pub mod sealed").count(),
+            0,
+            "`sealed` 成了 `pub` 模块 —— 那样外面就能顺着路径够到里面，整件事作废"
+        );
+        assert_eq!(
+            prod.matches("pub use sealed::SecretKey;").count(),
+            1,
+            "类型没有被重新导出（或导出了不止一次）"
+        );
+
+        let at = guard_core::find_pinned(&prod, "mod sealed {")
+            .expect("切不出 `mod sealed` —— 本条按红处理，不是绿");
+        let sealed = brace_block(&prod, at).expect("`mod sealed` 的花括号没配平 —— 按红处理");
+        assert!(
+            sealed.len() > 800,
+            "`sealed` 只有 {} 字节 —— 切法坏了",
+            sealed.len()
+        );
+
+        // ㈡ 字段不是 pub
+        assert_eq!(
+            sealed.matches("pub struct SecretKey(String);").count(),
+            1,
+            "字段的声明形状变了 —— 它必须是私有的元组字段"
+        );
+        assert_eq!(
+            prod.matches("SecretKey(pub ").count(),
+            0,
+            "字段被标成 `pub` 了 —— 那样谁都够得到，`sealed` 白关"
+        );
+
+        // ㈢ `sealed` 里的 fn 逐个登记（默认拒绝）
+        let names: Vec<String> = fns_in_block(sealed)
+            .into_iter()
+            .map(|(n, _, _)| n)
+            .collect();
+        assert!(
+            names.len() >= 7,
+            "`sealed` 里只切出 {} 个 fn —— 取法坏了，本条在空转：{names:?}",
+            names.len()
+        );
+        let registered: Vec<&str> = SEALED_FNS.iter().map(|(n, _)| *n).collect();
+        for n in &names {
+            assert!(
+                registered.contains(&n.as_str()),
+                "`mod sealed` 里多了一个函数：`{n}`，**没有登记**。\n\
+                 ⚠ 它够得到明文（这是编译器允许的，因为它在 `sealed` 里）——\n\
+                 所以每加一个都要写清它对明文做什么。今天登记的是：{registered:?}"
+            );
+        }
+        for (n, why) in SEALED_FNS {
+            assert!(
+                names.iter().any(|x| x == n),
+                "登记表里的 `{n}` 已经不在 `sealed` 里了 —— 表和盘对不上"
+            );
+            assert!(why.len() > 8, "`{n}` 这一行没写理由");
+        }
+        assert_eq!(
+            names.len(),
+            SEALED_FNS.len(),
+            "`sealed` 里的 fn 数与登记表不等"
+        );
+
+        // ㈣ ★ `Debug` 必须在 `sealed` 之外 —— 那一条编译器保证就是这么来的。
+        assert_eq!(
+            sealed.matches("impl fmt::Debug").count(),
+            0,
+            "`impl fmt::Debug` 被搬进了 `sealed` —— \n\
+             那样它又够得到字段了，「`Debug` 不许印明文」就从**编译不过**退回成**靠判据扫**。"
+        );
+        assert_eq!(
+            prod.matches("impl fmt::Debug for SecretKey {").count(),
+            1,
+            "`Debug` 的实现不见了或多了一份"
+        );
     }
 
     /// ★★★ **`KS2` 定义面的正主〔D2 回修，08-27〕：人群按「函数体碰没碰 `self.0`」画。**
@@ -393,8 +558,8 @@ mod tests {
         // ① 人群 = 函数体提到 `self.0` 的那些。**默认拒绝。**
         let touchers: Vec<&String> = fns
             .iter()
-            .filter(|(_, body)| body.contains("self.0"))
-            .map(|(n, _)| n)
+            .filter(|(_, _, body)| body.contains("self.0"))
+            .map(|(n, _, _)| n)
             .collect();
         assert!(
             touchers.len() >= 4,
@@ -419,7 +584,11 @@ mod tests {
                 "登记表里的 `{name}` 已经不碰 `self.0` 了 —— 表和盘对不上，删了它"
             );
         }
-        assert_eq!(touchers.len(), INNER_FIELD_USERS.len(), "人群与登记表条数不等");
+        assert_eq!(
+            touchers.len(),
+            INNER_FIELD_USERS.len(),
+            "人群与登记表条数不等"
+        );
 
         // ③ ★ **区分那一格**：`HandsOut` 恰好 2 条，而且就是那两个具名出口。
         let hands_out: Vec<&str> = INNER_FIELD_USERS
@@ -441,15 +610,16 @@ mod tests {
         // ⑤ 结构性纵深：块里**任何 fn 都不许有 `&mut` 出参**。
         //    出参是明文外流的载体，而它**没有返回类型**、也不必是 `pub` —— 分类那一关兜不住它。
         //    D2 复审那一刀（`fn f(&self, out: &mut String)`）正是这一形。
-        for (name, body) in &fns {
-            let Some(open) = body.find('(') else { continue };
-            let Some(close) = body[open..].find(')') else {
+        for (name, sig, _body) in &fns {
+            // ⚠ 扫的是**签名**不是函数体〔`D3` 阻塞二回修〕—— 理由见 `fns_in_block` 里那段。
+            let Some(open) = sig.find('(') else { continue };
+            let Some(close) = sig[open..].find(')') else {
                 continue;
             };
-            let params = &body[open..open + close];
-            let bad = params.match_indices("&mut ").any(|(i, _)| {
-                !params[i + 5..].trim_start().starts_with("self")
-            });
+            let params = &sig[open..open + close];
+            let bad = params
+                .match_indices("&mut ")
+                .any(|(i, _)| !params[i + 5..].trim_start().starts_with("self"));
             assert!(
                 !bad,
                 "`{name}` 收了一个 `&mut` 出参：`{params}`。\n\
@@ -526,7 +696,9 @@ mod tests {
                 .unwrap_or("")
                 .to_string();
             // 签名 = 到函数体左花括号为止。
-            let Some(sig_end) = seg.find('{') else { continue };
+            let Some(sig_end) = seg.find('{') else {
+                continue;
+            };
             let sig = &seg[..sig_end];
             let ret = sig.split("->").nth(1).unwrap_or("").trim();
             // 返回类型能装下字符串的那几种。
@@ -628,7 +800,11 @@ mod tests {
             !block.contains("impl fmt::Debug"),
             "impl 块的窗口跨进了下一个 item —— 窗口无界，下面的断言不算数"
         );
-        assert!(block.len() > 400, "窗口只有 {} 字节 —— 切法坏了", block.len());
+        assert!(
+            block.len() > 400,
+            "窗口只有 {} 字节 —— 切法坏了",
+            block.len()
+        );
 
         // 「把内层字段原样交出去」的唯一写法。
         let exits = block.matches("&self.0").count();
@@ -673,11 +849,11 @@ mod tests {
         let m = long.masked();
         assert!(m.starts_with("sk-a"), "前 4 位应当留着，实得 {m}");
         assert!(m.ends_with("MNOP"), "后 4 位应当留着，实得 {m}");
-        assert!(
-            !m.contains("api03-ABCDEFGHIJKL"),
-            "中段没被遮住：{m}"
+        assert!(!m.contains("api03-ABCDEFGHIJKL"), "中段没被遮住：{m}");
+        assert_eq!(
+            m.chars().count(),
+            "sk-ant-api03-ABCDEFGHIJKLMNOP".chars().count()
         );
-        assert_eq!(m.chars().count(), "sk-ant-api03-ABCDEFGHIJKLMNOP".chars().count());
 
         // ★ 短 key **整条遮掉**：留前后各 4 位等于把一把 8 字符的 key 交出去。
         let short = SecretKey::new("abcdefgh");

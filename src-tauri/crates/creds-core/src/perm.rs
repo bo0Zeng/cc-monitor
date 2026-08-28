@@ -295,7 +295,9 @@ fn windows_create_owner_only(p: &std::path::Path) -> std::io::Result<std::fs::Fi
         );
         let _ = LocalFree(HLOCAL(psd.0));
         let h = h.map_err(|e| std::io::Error::other(e.message().to_string()))?;
-        Ok(std::fs::File::from_raw_handle(h.0 as *mut core::ffi::c_void))
+        Ok(std::fs::File::from_raw_handle(
+            h.0 as *mut core::ffi::c_void,
+        ))
     }
 }
 
@@ -333,7 +335,9 @@ fn current_user_sid() -> Result<String, String> {
         let mut s = PWSTR::null();
         ConvertSidToStringSidW(tu.User.Sid, &mut s)
             .map_err(|e| format!("SID 转不成串: {}", e.message()))?;
-        let out = s.to_string().map_err(|e| format!("SID 串不是合法 UTF-16: {e}"))?;
+        let out = s
+            .to_string()
+            .map_err(|e| format!("SID 串不是合法 UTF-16: {e}"))?;
         let _ = LocalFree(HLOCAL(s.0 as *mut core::ffi::c_void));
         Ok(out)
     }
@@ -601,7 +605,8 @@ mod tests {
         );
         // ② 建的时候**带着安全描述符**（这就是「出生即窄」在 Windows 上的落法）。
         assert_eq!(
-            body.matches("Some(&sa as *const SECURITY_ATTRIBUTES)").count(),
+            body.matches("Some(&sa as *const SECURITY_ATTRIBUTES)")
+                .count(),
             1,
             "`CreateFileW` 没把 `SECURITY_ATTRIBUTES` 传进去 —— \
              那它就是按父目录的继承 ACL 建出来的，和 Unix 上按 umask 建是同一个病"
@@ -645,7 +650,10 @@ mod tests {
         for mode in [0o640, 0o604, 0o666, 0o601] {
             match judge(&Protection::Unix { mode }) {
                 Verdict::TooWide { how, fix } => {
-                    assert!(how.contains(&format!("{mode:04o}")), "说法里没有实际 mode：{how}");
+                    assert!(
+                        how.contains(&format!("{mode:04o}")),
+                        "说法里没有实际 mode：{how}"
+                    );
                     assert!(fix.contains("chmod 600"), "没说清怎么修：{fix}");
                 }
                 other => panic!("mode {mode:04o} 应当判过宽，实得 {other:?}"),
@@ -657,14 +665,27 @@ mod tests {
     #[test]
     fn a_windows_dacl_with_a_wide_principal_is_called_out() {
         let tight = wide_principals_in_sddl("D:P(A;;FA;;;S-1-5-21-1-2-3-1001)(A;;FA;;;SY)");
-        assert!(tight.is_empty(), "只给本人 + SYSTEM 的 DACL 不该被判宽：{tight:?}");
-        assert_eq!(judge(&Protection::Windows { wide_principals: tight }), Verdict::OwnerOnly);
+        assert!(
+            tight.is_empty(),
+            "只给本人 + SYSTEM 的 DACL 不该被判宽：{tight:?}"
+        );
+        assert_eq!(
+            judge(&Protection::Windows {
+                wide_principals: tight
+            }),
+            Verdict::OwnerOnly
+        );
 
         let loose = wide_principals_in_sddl("D:AI(A;;FA;;;WD)(A;;0x1200a9;;;BU)(A;;FA;;;SY)");
         assert_eq!(loose, vec!["WD".to_string(), "BU".to_string()]);
-        match judge(&Protection::Windows { wide_principals: loose }) {
+        match judge(&Protection::Windows {
+            wide_principals: loose,
+        }) {
             Verdict::TooWide { how, fix } => {
-                assert!(how.contains("WD") && how.contains("BU"), "说法里没点名主体：{how}");
+                assert!(
+                    how.contains("WD") && how.contains("BU"),
+                    "说法里没点名主体：{how}"
+                );
                 assert!(fix.contains("Everyone"), "没说清怎么修：{fix}");
             }
             other => panic!("带 Everyone 的 DACL 应当判过宽，实得 {other:?}"),
