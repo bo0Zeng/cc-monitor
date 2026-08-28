@@ -1253,10 +1253,24 @@ pub fn start_local_relay(bin: std::path::PathBuf) -> bool {
         bin,
         vec!["--relay".into()],
         // ★ 端口**显式传**：注入侧（`payload::RELAY_PORT`）与中转侧用同一个值。
-        vec![(
-            "CCM_RELAY_PORT".into(),
-            crate::backend::control::payload::RELAY_PORT.to_string(),
-        )],
+        // ★★ `D1 阻-3`：**凭据路径也显式传**，同一条理由。
+        //
+        // 不传的话，中转走它自己那条 `resolve_path` → `resolve_home()`，而那一条**认
+        // `CLAUDE_CONFIG_DIR`** ⇒ monitor 是从一个**被监护进程继承来的环境变量**里
+        // 决定「中转去读哪份凭据」的。而 monitor 自己写的那份**不跟随** `claudeDir`
+        // （`creds_store::resolve_path` 头注逐字）⇒ 两侧读写的是两份文件，
+        // 症状是「界面上配好了，中转说没配」——**一个静默的 404**。
+        // ⇒ 由**写那份文件的那一侧**把路径说出来，别让它从环境里猜。
+        {
+            let mut envs = vec![(
+                "CCM_RELAY_PORT".into(),
+                crate::backend::control::payload::RELAY_PORT.to_string(),
+            )];
+            if let Some(p) = crate::creds_store::resolve_path() {
+                envs.push(("CCM_RELAY_CREDENTIALS".into(), p.display().to_string()));
+            }
+            envs
+        },
         local_backend::CrashLimits::default(),
         std::sync::Arc::new(|| {
             std::time::SystemTime::now()
@@ -1330,6 +1344,36 @@ pub fn stop_local_backend() -> Result<String, String> {
 mod tests {
     use super::*;
 
+    /// ★★★ `D1 阻-6` 刀 B 的反面：**`relay_running()` 真的在看那张表，不是一个常量。**
+    ///
+    /// `D1` 实测过：把它整个换成 `true`，**1221 passed / 0 failed** ——
+    /// 「中转在不在跑」这个**取值口**当时一条判据都没有，而它一旦恒真，
+    /// `KH2B2`② 那道「起不来就当场拒」的闸就整个失效，**而且全绿**。
+    ///
+    /// # ⚠ 它**不起真 daemon**（红线）
+    ///
+    /// 喂给监护器的是一条**不存在的路径** ⇒ `Command::spawn` 立刻失败、监护器发 `GaveUp`
+    /// 就收工。⇒ 这一趟里**没有任何子进程真的跑起来**，本条量的是
+    /// 「句柄在不在表里」这条状态机，不是「那个进程活没活」（后者见本函数头注的诚实边界）。
+    ///
+    /// ⚠ 它动的是**进程内的全局** `LOCAL_RELAY` ⇒ 起完必须停掉，否则会影响同进程别的判据。
+    #[test]
+    fn relay_running_really_reads_the_handle_table() {
+        // 前置：本条跑之前它必须是「没在跑」（否则下面第一条断言是空真）。
+        assert!(
+            !relay_running(),
+            "起手就说在跑 —— 要么这个取值口恒真，要么别的判据把句柄留在表里了"
+        );
+        let bogus = std::path::PathBuf::from("/nonexistent/ccm-relay-that-cannot-spawn");
+        assert!(start_local_relay(bogus.clone()), "第一次起应当报「起了一个新的」");
+        assert!(relay_running(), "句柄存进表里之后它仍说没在跑 —— 这个取值口没在看那张表");
+        // 幂等：已经在跑就不重复起（`C8`① 的同一条纪律）。
+        assert!(!start_local_relay(bogus), "重复起了第二个中转");
+        // 停掉之后必须翻回去（**这一格是「恒真」那一刀真正的反面**）。
+        stop_local_relay();
+        assert!(!relay_running(), "停掉之后它还说在跑");
+    }
+
     /// ★★★ `K-H2b` `KH2B2`①：**中转有一个具名的启动方**，而且它在**起本机后端的那条路上**。
     ///
     /// # 非空对照写在这里（这一条的分母）
@@ -1386,6 +1430,17 @@ mod tests {
         assert!(
             relay_body.contains("payload::RELAY_PORT"),
             "端口不是从注入侧那个常量来的 —— 两侧又成了两个值"
+        );
+        // ★ `D1 阻-3`：凭据路径同样要**显式传**（否则中转从 `CLAUDE_CONFIG_DIR` 猜，
+        //   而 monitor 写的那份不跟随它 ⇒ 两侧读写两份文件 ⇒ 静默 404）。
+        assert!(
+            relay_body.contains("\"CCM_RELAY_CREDENTIALS\".into()"),
+            "凭据路径没显式交给中转 —— 它会去读 `CLAUDE_CONFIG_DIR` 底下那份，\
+             而 monitor 写的那份**不跟随** `claudeDir`：两侧读写的是两份文件"
+        );
+        assert!(
+            relay_body.contains("creds_store::resolve_path()"),
+            "那个路径不是从 monitor 写它的那条路来的 —— 又成了两份各写各的"
         );
     }
 

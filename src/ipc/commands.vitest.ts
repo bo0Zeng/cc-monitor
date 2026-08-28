@@ -248,3 +248,80 @@ describe("C04a 命令名钉死", () => {
     );
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-H2b` `D1 阻-1`：**本机起会话的每一条主路都要把账号说出来**
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// ★★ 它治的是什么（`D1` 现打，PM 复核属实）：
+// `tabs.ts` 那处 `invoke("resume_history_session", …)` 与 `views/history.ts` 那两处
+// **一个账号都没传**，而 `history.rs` 自己的注释就写着「`fork-flow.ts` 是全仓唯一
+// 给 `resume_history_session` 传 `configDir` 的」。⇒ 主路上账号恒缺席，后果两条：
+// ① 起会话落到 shell rc 里那个默认号上（静默串号）；
+// ② 中转那一格**永远拼不出路由键** —— 一件叫「接上注入点」的东西，主路没接。
+//
+// ⚠ 本条钉的是**人群**，不是「有没有一处传了」：多一条新主路而忘了传账号，当场红。
+// ⚠ 它住**本文件**而不是 `accounts.vitest.ts`：那边加一个目录遍历会撞
+// `scanning-guard-registry` 的递减棘轮（「测试里做目录遍历的文件只许变少」，
+// 本轮实测 11 > 上限 10）。本文件本来就在遍历，人群不多一个。
+describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
+  /** 生产段里起本机会话的那几处调用（剥注释、跳过测试文件与包装层）。 */
+  function localLaunchCallSites(): Array<{ file: string; text: string }> {
+    const out: Array<{ file: string; text: string }> = [];
+    for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+      if (f.includes(".test.") || f.includes(".vitest.")) continue;
+      if (f.endsWith("/ipc/commands.ts")) continue; // 包装层是签名，不是调用点
+      // ⚠ **先剥注释**：散文里逐字写着 `invoke("resume_history_session", …)` 这种句子
+      //    （`launch-requests.ts` 的头注、`accounts.ts` 的说明各一处），
+      //    不剥会被数成调用点 —— 本轮实测扫出 6 处而真实是 4。
+      const code = stripComments(readFileSync(f, "utf8"), "ts");
+      for (const m of code.matchAll(
+        // ⚠ 窗口 1200 字符是**量出来的**：`fork-flow.ts` 那处调用里夹着一整段注释，
+        //    400 的窗口够不到它的收尾 `})`，实测只扫到 3 处（应为 4）—— 那是**假绿**方向。
+        /(?:invoke\s*\(\s*["'](resume_history_session|new_local_session)["']|commands\.(resume_history_session|new_local_session)\s*\()\s*([\s\S]{0,1200}?)\}\s*\)/g,
+      )) {
+        out.push({ file: f.slice(REPO_ROOT.length + 1), text: m[0] });
+      }
+    }
+    return out;
+  }
+
+  it("★ 每一处起本机会话的调用都带 `account`（人群 = 现打出来的那几处）", () => {
+    const sites = localLaunchCallSites();
+    // 抽取器自检：一处都没扫到 = 正则坏了，下面整条在空转。
+    expect(sites.length, "一处本机起会话的调用都没扫到 —— 抽取器坏了").toBeGreaterThan(3);
+    // ⚠ 分母写下来：这是**现打**的处数，不是「所有起会话的路」。
+    //   多一条新主路 ⇒ 这个数变 ⇒ 红一次，逼人回来看要不要传账号。
+    expect(
+      sites.length,
+      `起本机会话的调用点从 4 变成了 ${sites.length}：\n${sites.map((s) => s.file).join("\n")}`,
+    ).toBe(4);
+    const missing = sites.filter((s) => !/\baccount\s*:/.test(s.text)).map((s) => s.file);
+    expect(
+      missing,
+      "这些主路没把账号说出来 ⇒ ① 起会话落到 shell rc 那个默认号上（静默串号）；\n" +
+        "② 中转那一格拼不出路由键（没有账号 id ⇒ 不注入）。\n" +
+        "取值口只有一个：`accounts.ts::localLaunchAccountSync`。",
+    ).toEqual([]);
+  });
+
+  it("★ 取值口只有一个（不许哪条路自己现算一个账号）", () => {
+    // 三条主路走那个唯一取值口；fork 那条是**用户在小窗里显式选的**，
+    // 它有自己的语义（选了账号 0 就要显式 `base`），所以不走这个口 —— 如实记，不强求。
+    for (const f of ["src/tabs.ts", "src/views/history.ts"]) {
+      const code = readFileSync(resolve(REPO_ROOT, f), "utf8");
+      expect(
+        (code.match(/localLaunchAccountSync\(/g) ?? []).length,
+        `${f} 里没调那个唯一取值口`,
+      ).toBeGreaterThan(0);
+      // 取值是同步的，**不许**有人给它加 `await`（那会多一拍，撞两条只放行一个微任务的判据）。
+      expect(code, `${f} 给那个取值口加了 await —— 主路的时序会多一拍`).not.toContain(
+        "await localLaunchAccountSync",
+      );
+    }
+    // 阴性对照：`fork-flow.ts` 那条**刻意**不走它（它是用户显式选的那一格）。
+    const fork = readFileSync(resolve(REPO_ROOT, "src/fork-flow.ts"), "utf8");
+    expect(fork).not.toContain("localLaunchAccountSync");
+    expect(fork).toContain('{ kind: "base" }');
+  });
+});
