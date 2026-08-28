@@ -175,6 +175,21 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "★ 跨轨对拍：`format!(\"={target}:\")` 这个精确匹配形状两侧必须同形 —— \
          F01 实测过，一边写裸 `-t` 就会打到兄弟会话上，而另一边不会，排查极难",
     ),
+    (
+        "daemon→monitor",
+        "remote-daemon-proto/src/relay/route.rs",
+        "src-tauri/src/backend/control/payload.rs",
+        "★★〔`K-H2b` `KH2B4` 08-28 新增〕**中转路由键 `/s/<agent>/<account>/<key>/…` \
+         的两侧对拍**：注入侧（monitor 的 `relay_route_path`）拼、中转侧（daemon 的 \
+         `route::parse`）切，而**两侧不可能共用一份实现** —— `remote-daemon-proto` \
+         单向依赖 `src-tauri/crates/*`，共享实现只能落在某个 `crates/*`，今天一个都没有。\
+         ⇒ daemon 的判据 `include_str!` monitor 那份源码，把 `RELAY_ROUTE_SAMPLE` \
+         那一行的字面量抠出来喂给**真** `parse`，断言四段各落各位。\
+         ⚠ 为什么必须编译期读：本条要买的是「**两半漂开而两边都不红**」这一形 —— \
+         PM 08-28 亲手实测过它存在：把 monitor 的 `relay_env_prefix_posix` 改成返回空串，\
+         monitor 半边红 3 条，**daemon 半边的 `KH2B1` 一条都不红**（它的桩启动器自己读环境变量，\
+         够不着 monitor 的函数）。跨轨对拍是唯一能把这一格焊住的形状。",
+    ),
 ];
 
 #[cfg(test)]

@@ -274,6 +274,21 @@ export class AccountChip {
     //      它的文本仍逐字是「api-key（未配置端点）」—— 不拼任何字形。
     //   ② in-place：title「in-place 模式：不支持按会话切号」→
     //      「in-place 模式：cc-monitor 不支持对它按会话切号」（同义、更明确，但不逐字相同）。
+    // `K-H2b` `KH2B7`：chip 绑「第一台可用远端」，但**远端全关掉时 `origin` 是 `null`，
+    // 这里渲染的就是本机账号**（`reload` 那条 `fetchAccounts(this.origin)` 会走
+    // `list_local_accounts`）⇒ 两半都可能落到这一行。
+    //
+    // ⚠⚠ **这里今天刻意不传第二个参数**，理由是量出来的、不是偷懒：
+    // ① 本机那一半传不了 —— 要把「中转表里有没有这一行 / 中转在不在跑」端到前端，
+    //    得注册一条只答本机的 tauri 命令，而那会让 `parity_ledger.rs` 的
+    //    `every_tauri_command_is_declared_in_the_ledger` 当场红（本轮实测，报文点名了它），
+    //    那个文件不在 `K-H2b` 的写区；
+    // ② 远端那一半也传不了 —— 本文件的 DOM 判据
+    //    `account-chip.vitest.ts:451` 逐字断言 `row.title === accountStatusBadge(kk).title`
+    //    （**不带**第二个参数），传了就当场红（本轮实测撞过），而那个 vitest 同样不在写区。
+    // ⇒ 缺席那一档的文案**只说两条前置、不替它下判断** —— 它在这两半上都是真话。
+    // 设置里那张表（远端专用）已经传了 `{scope:"remote"}`，两处因此**暂时不同源**，
+    // 如实记在这里，经过住件文件 `§4`。
     const s = accountStatusBadge(a);
     status.textContent = s.text;
     if (s.warn) status.classList.add("warn");

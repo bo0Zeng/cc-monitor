@@ -779,7 +779,11 @@ export class AccountsSection {
     // 还是「已登录」。
     const badge = document.createElement("span");
     badge.className = "accounts-row-badge";
-    const status = accountStatusBadge(a);
+    // `K-H2b` `KH2B7`：**这张表是远端专用的** —— `reload` 在 `this.origin` 为空时
+    // 直接早退（「账号功能在远端 Linux 上」），所以这里渲染的每一行都来自远端那一半。
+    // ⇒ 显式告诉徽章是哪一半：远端那一半本件明写不做（`§0e` 裁四），
+    //   它的 hover 该说「只给本机配、远端这一半还不做」，而不是一句不分半边的全称。
+    const status = accountStatusBadge(a, { scope: "remote" });
     badge.textContent = status.text;
     if (status.warn) badge.classList.add("warn");
     if (status.title) badge.title = status.title;
