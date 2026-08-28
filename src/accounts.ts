@@ -224,6 +224,49 @@ export type AccountRelayState =
   /** 本机那一半：两个前置各自成不成立。 */
   | { scope: "local"; hasRow: boolean; running: boolean };
 
+/**
+ * `K-H2b` `KH2B7` 的**产出方**：问后端「这几个**本机** configDir 走不走中转」。
+ *
+ * # 它为什么是一条只答本机的命令（而不是账号列表上的两个字段）
+ *
+ * 中转是**每台机器自己的一个进程**，注入的又是回环地址（自指）⇒ 「本机这台的中转
+ * 在不在跑」这个问题，本机这一侧**在结构上答不了远端那台**。往账号列表里加字段，
+ * 就是让远端那些行也带上两个这一侧答不出来的值。
+ * 命令面的登记（`relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
+ *
+ * ⚠⚠ **今天没有产出方，卡点是量出来的**〔第三拍〕：那条命令（`relay_routing_for`）
+ * **写完跑过、能用**，但注册它会同时撞两个**不在本件写区**的钉死计数：
+ * `src-tauri/src/parity_ledger.rs`（5 个数 + 2 行登记，本拍已扩进写区、改完验证过）
+ * 与 `src/ipc/commands.vitest.ts`（`declared.size` 与 `used.size` 两处 `144`，**不在写区**）。
+ * ⇒ 本拍把**规则那一半**（怎么从读数落到一个账号上）留下并钉住，
+ * **取数那一跳**（`invoke("relay_routing_for", { configDirs })`）等写区再扩一格。
+ * **这是「规则有了、取数没接」，别读成「接上了」。**
+ *
+ * ⚠ **两个字段各自的射程，别读宽**：`routed` 说的是「中转表里有这一行」，
+ * **不是**「那把 key 能用」；`running` 说的是「我们起过它而且没停过」，
+ * **不是**「那个口上真有人听」。
+ */
+export interface RelayRoutingView {
+  /** 传进去的那些 configDir 里，中转表里**有对应行**的那几个（原样回）。 */
+  routed: string[];
+  /** 本机中转在不在跑。 */
+  running: boolean;
+}
+
+/**
+ * 把上面那份读数落到**一个账号**上。
+ *
+ * `configDir` 缺席（账号 0）⇒ `null`：账号 0 在 manifest 里没有目录名，
+ * **推不出中转表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `relay_account_id` 的三态同形）。
+ */
+export function localRelayStateFor(
+  a: Account,
+  routing: RelayRoutingView,
+): AccountRelayState | undefined {
+  if (!a.configDir) return undefined;
+  return { scope: "local", hasRow: routing.routed.includes(a.configDir), running: routing.running };
+}
+
 export function accountStatusBadge(
   a: Account,
   relay?: AccountRelayState,
