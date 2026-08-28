@@ -203,9 +203,24 @@ mod tests {
     /// - `rustflags` —— 原样透传给 rustc 的旗标；`-C linker=…` / `-Z …` 都能从这一格进来。
     ///
     /// ⚠ **不守**：`rustc-wrapper` / `rustdocflags` / `[alias]` 这些同族的键没进本表
-    /// （`K-G2` 的射程逐字只有上面三个）。`[alias]` 里塞 `--config build.rustflags=…`
-    /// 这一形会被下面的整词匹配顺带逮到，但那是**副产品，不是判据** —— 别当它有覆盖。
+    /// （`K-G2` 的射程逐字只有上面三个；那一族归跟进件 `己1-f36`）。
+    /// `[alias]` 里塞 `--config build.rustflags=…` 这一形会被下面的整词匹配顺带逮到，
+    /// 但那是**副产品，不是判据** —— 别当它有覆盖。
     const CARGO_EXEC_KEYS: &[&str] = &["runner", "linker", "rustflags"];
+
+    /// **不是执行面键，是「会让本条看瞎」的键**〔`K-G2` `D1` 回修，08-28〕。
+    ///
+    /// `include` 让一份 cargo 配置**把另一份文件整个拉进来**，而那份文件可以在
+    /// [`CARGO_CFG_DIRS`] × [`CARGO_CFG_NAMES`] 那 6 格**之外的任意位置**。
+    /// 08-28 在 cargo 1.96.1 stable 上实测（一次性 crate + `[alias]` 探针，带非空对照）：
+    /// `include = ["../hidden/x.toml"]` ⇒ 被拉进来的别名**真生效**；把 `include` 那行删掉
+    /// ⇒ 回到 `no such command`。⚠ 值必须是**列表**，写成裸字符串 cargo 会报
+    /// `expected a list of strings or a list of tables` —— 别把那个报错读成「include 不支持」。
+    ///
+    /// ⇒ 本条**看不进**被拉进来的文件。按 fail-closed：**出现 `include` 就红**，
+    /// 并在报文里说清红的理由是「看不见」而不是「你设了执行面」。
+    /// ⚠ 这**不是**扩射程（射程仍是上面那三个执行键），是不许本条被蒙住眼睛。
+    const CARGO_BLINDING_KEYS: &[&str] = &["include"];
 
     /// 本仓自己会把 cargo 的 cwd 落在这几个目录（相对仓根）。依据见
     /// [`the_build_time_execution_surface_stays_registered`] 头注那张表。
@@ -218,8 +233,13 @@ mod tests {
     ///
     /// ⚠ 刻意**只剥注释、不剥字符串内容**：TOML 的键可以带引号（`"runner" = "sh"`），
     /// 内联表的值里也住着键（`target = { x = { runner = "sh" } }`）——
-    /// 把字符串一起剥掉就会在这两处**漏红**。本条是安全判据，方向定为**宁可误红、不许漏红**。
-    /// 代价：值里恰好出现那三个整词也会红。
+    /// 把字符串一起剥掉就会在这两处**漏红**。代价：值里恰好出现那三个整词也会红。
+    ///
+    /// ⚠⚠ 本条的**方向**是「宁可误红」，但**别把方向读成结论** ——
+    /// 08-28 `K-G2` `D1` 现场证过它当时**真的漏红**（转义键那一形，见
+    /// [`decode_toml_escapes`]）。今天补了转义解码，但「还有没有别的写法」这个问题
+    /// **没有穷举的分母**：本条量过哪几种、剩哪几种不守，逐条写在
+    /// [`the_build_time_execution_surface_stays_registered`] 头注的「不守什么」栏。
     ///
     /// ⚠ 边界：三引号多行字符串（`"""` / `'''`）本剥法**不认**（引号状态逐行重置），
     /// 那种字符串里的 `#` 会被当成注释切掉。cargo 配置里它实际不出现；
@@ -252,22 +272,100 @@ mod tests {
         out
     }
 
-    /// 文本里出现过 [`CARGO_EXEC_KEYS`] 的哪几个（**整词**：前后不许是字母/数字/`_`/`-`，
+    /// 把 TOML 基本串里**能拼出字母**的那几种转义解开〔`K-G2` `D1` 回修，08-28〕。
+    ///
+    /// ★ 这是 `D1` 逮到的那个洞的修法。TOML 的键可以是**带转义的基本串**，
+    /// 而 cargo 认的是**解码后**的键名 —— `"runner"` 在 cargo 眼里逐字就是 `runner`。
+    /// `D1` 在真判据、真工作树上跑过：那份配置让 `cargo test` 把测试二进制交给了
+    /// `/bin/echo`，**判据根本没被执行**，而它当时是绿的。三个键同形，`linker`/`rustflags` 一样。
+    ///
+    /// **哪几种转义**（08-28 在 cargo 1.96.1 stable 上逐个实测，`[alias]` 探针 + 非空对照）：
+    /// `\uXXXX` · `\UXXXXXXXX` · **`\xXX`** 三种 cargo 都认（`\x` 是 TOML 1.1 的，
+    /// ⚠ 派工单只点了前两种 —— 第三种是我自己量出来的）。表头里也认
+    /// （`["alias"]` 实测生效）。剩下的转义（`\b \t \n \f \r \" \\`）**拼不出字母**，
+    /// 不进本函数。三引号多行串**不能当键**（实测 cargo 直接
+    /// `could not load Cargo configuration`）⇒ 不是一条路。
+    ///
+    /// ⚠ 刻意**不**特判 `\\`：`"run\\u006Eer"` 在 TOML 里其实是字面量 `runner`、
+    /// cargo 不认它，而本函数会把它解成 `runner` 从而**误红**。那是 fail-closed 的方向，
+    /// 按本条的定盘（宁可误红）留着。
+    fn decode_toml_escapes(src: &str) -> String {
+        let chars: Vec<char> = src.chars().collect();
+        let mut out = String::with_capacity(src.len());
+        let mut i = 0;
+        while i < chars.len() {
+            let width = match chars.get(i..i + 2) {
+                Some(['\\', 'u']) => 4,
+                Some(['\\', 'U']) => 8,
+                Some(['\\', 'x']) => 2,
+                _ => 0,
+            };
+            if width > 0 {
+                if let Some(hex) = chars.get(i + 2..i + 2 + width) {
+                    let s: String = hex.iter().collect();
+                    let decoded = u32::from_str_radix(&s, 16).ok().and_then(char::from_u32);
+                    if let Some(ch) = decoded {
+                        out.push(ch);
+                        i += 2 + width;
+                        continue;
+                    }
+                }
+            }
+            out.push(chars[i]);
+            i += 1;
+        }
+        out
+    }
+
+    /// `text` 里有没有**整词**的 `key`（前后不许是字母/数字/`_`/`-`，
     /// 否则 `my-runner-name` 这类会假红）。
-    fn exec_keys_in(text: &str) -> Vec<&'static str> {
+    fn word_in(text: &str, key: &str) -> bool {
         fn is_word(c: char) -> bool {
             c.is_alphanumeric() || c == '_' || c == '-'
         }
-        CARGO_EXEC_KEYS
-            .iter()
+        text.match_indices(key).any(|(i, _)| {
+            let before = text[..i].chars().next_back();
+            let after = text[i + key.len()..].chars().next();
+            !before.is_some_and(is_word) && !after.is_some_and(is_word)
+        })
+    }
+
+    /// **键位置**出现反斜杠没有〔`K-G2` `D1` 回修的兜底，08-28〕。
+    ///
+    /// ★ 这一条是为了让本条的结论**不靠「我把转义种类数全了」**。论证：
+    /// TOML 的键只有三种写法 —— 裸键 · 字面串键（`'…'`，**不认转义**）· 基本串键（`"…"`）。
+    /// 前两种里那几个字母只能是**明文**，原文那一遍就逮得到；第三种要把字母藏起来
+    /// **必须用反斜杠**。⇒ 键位置只要出现反斜杠就红，**不管那是今天认识的
+    /// `\u`/`\U`/`\x` 还是明天新加的哪一种**。
+    ///
+    /// **「键位置」的近似**：每行第一个 `=` 之前的那段（没有 `=` 的行 —— 表头 `[…]`、
+    /// 多行值的续行 —— 整行算）。TOML 要求键与它的 `=` 同行，所以这个近似对
+    /// **顶层键 / 点分键 / 表头**都成立。
+    /// ⚠ **盖不住内联表里的嵌套键**（`x = { "runer" = "sh" }`，反斜杠在第一个 `=` 之后）——
+    /// 那一形今天靠 [`decode_toml_escapes`] 认识的那三种转义兜着，
+    /// 「内联表 + 将来某种新转义」是本条**已知的、没兜住的**一格。
+    /// ⚠ 代价：多行字符串**值**的续行里有反斜杠、且那一行没有 `=`，会误红。
+    /// cargo 配置里这形状实际不出现；方向照本条的定盘（宁可误红）留着。
+    fn backslash_in_key_position(text: &str) -> bool {
+        text.lines().any(|line| {
+            let head = match line.find('=') {
+                Some(i) => &line[..i],
+                None => line,
+            };
+            head.contains('\\')
+        })
+    }
+
+    /// `keys` 里哪几个在这份配置文本里出现过。
+    ///
+    /// ⚠ **扫两遍取并集**：原文一遍、[`decode_toml_escapes`] 解码后再一遍。
+    /// 两遍都要 —— 解码只会**新增**字符，可能把原本挨着 `\` 的整词边界吃掉
+    /// （`runnerA` 解完成了 `runnerA`，整词就不成立了），所以原文那一遍不能省。
+    fn keys_in(text: &str, keys: &[&'static str]) -> Vec<&'static str> {
+        let decoded = decode_toml_escapes(text);
+        keys.iter()
             .copied()
-            .filter(|key| {
-                text.match_indices(key).any(|(i, _)| {
-                    let before = text[..i].chars().next_back();
-                    let after = text[i + key.len()..].chars().next();
-                    !before.is_some_and(is_word) && !after.is_some_and(is_word)
-                })
-            })
+            .filter(|key| word_in(text, key) || word_in(&decoded, key))
             .collect()
     }
 
@@ -303,9 +401,26 @@ mod tests {
     ///   —— 那一格 cargo **照读**（见下）。
     ///
     /// ⇒ 现在①**收窄性质**：读文件内容，只有真的设了 `runner`/`linker`/`rustflags`
-    /// 才红 —— 剥掉注释之后**不含这三个整词**的配置一律放行（`[profile.*]` 那类构建瘦身
-    /// 正是这一类）；②**补齐人群**到下面那 6 格。
+    /// （**含用 TOML 转义拼出来的写法**，见 [`decode_toml_escapes`]）才红 ——
+    /// 剥掉注释、解开转义之后**都不含这几个整词**的配置一律放行（`[profile.*]`
+    /// 那类构建瘦身正是这一类）；②**补齐人群**到下面那 6 格。
     /// ⚠ **不许**改成「豁免某个文件名 / 某个路径」—— 那是放宽人群，不是收窄性质。
+    ///
+    /// ## ⚠ 这次收窄**引入过一个洞**，记在这里〔`D1` 打回，08-28〕
+    ///
+    /// 第一版只做了「剥注释 + 整词扫原文」。`D1` 用
+    /// `"runner" = "/bin/echo"` 在**真判据、真工作树**上跑通了绕过：
+    /// cargo 认**解码后**的键名，把测试二进制交给了 `/bin/echo`，
+    /// **本条根本没被执行，而它当时是绿的**。三个键同形。
+    /// ★ 而**旧判据在同一份文件上必红** —— 旧的只问「文件在不在」。
+    /// ⇒ 那一版**净额是变宽的**：收窄性质买到了正确性，同时丢了一格覆盖。
+    ///
+    /// ★★ **一般教训**（`K-G2` `D1` 裁定，写在这里给下一个收窄守卫的人）：
+    /// **把一条守卫从「看一个结构性事实」收窄成「看一段文本里有没有那几个词」，
+    /// 就同时买进了那个文本格式的整个转义面。**
+    /// 前者粗，但**伪造不了**；后者准，但继承了格式的所有写法花样。
+    /// ⇒ 收窄之前先问：新落点是**事实**还是**文本模式**？是后者就得把那个格式的
+    /// 写法花样量一遍，并把量过的与没量的分开写下来。
     ///
     /// ## 那 6 格是怎么来的：**3 个发起面 × cargo 认的 2 种文件名**
     ///
@@ -342,6 +457,25 @@ mod tests {
     ///
     /// ⚠ 加一个发起面（新 crate、某个 job 换 cwd）就回这张表补一格：
     /// 下面 `slots.len() == 6` 那条自检会在你只改数组不改本注时把你叫回来。
+    ///
+    /// ## ③ **不守什么**（`D1` 回修时逐条量出来的；铁律 14：诚实边界落进被守对象）
+    ///
+    /// ⚠ 下面是**我量过的那几条**，不是「所有绕法」的穷举 —— 那个分母没人给得出。
+    /// 量法一律是：`scratchpad` 里一次性 crate + `[alias]` 探针，带非空对照与反向对照，
+    /// cargo **1.96.1 stable**（换版本要重量）。
+    ///
+    /// | 不守的东西 | 08-28 现打的读数 |
+    /// |---|---|
+    /// | 同族的执行面键：`rustc-wrapper` · `rustdocflags` · `build.rustc` | 射程逐字只有那三个，这一族归跟进件 `己1-f36` |
+    /// | **环境变量那条配置源**：`CARGO_TARGET_<TRIPLE>_RUNNER` · `RUSTFLAGS` · `CARGO_BUILD_RUSTFLAGS` | cargo 认它们，但它们**不是仓里的文件** ⇒ 本条的人群是文件，够不着。⚠ CI 的 yml 能设环境变量，那是另一个面，本条不声称守它 |
+    /// | `cargo --config <k>=<v>` 命令行 · 仓外的 `$CARGO_HOME/config.toml` | 一次 commit 改不到 ⇒ 不在人群里 |
+    /// | **值**里的写法花样 | 本条对**值**只是整词顺带命中（`[alias]` 里塞 `--config …rustflags=…` 会被逮到）。那是副产品，不是判据 |
+    /// | 多行基本串的续行 `\` 拼词 | 只对**值**成立：三引号串**不能当键**（实测 cargo 直接 `could not load Cargo configuration`）⇒ 键那一侧不是路 |
+    ///
+    /// ⚠⚠ **一条本条自己盖不住的**：`src-tauri/` 那一格上**真生效**的 `runner`
+    /// 会让本条**自己不被执行**（`D1` 现场就是这样：测试二进制被交给 `/bin/echo`）。
+    /// ⇒ 兜住那一形的**不是本条**，是 `scripts/gate.sh` 的 `run_gate_sum`
+    /// 采集面自检：跑到的包数 ≠ 8 就红（现打读过那段代码）。**别把这一格算到本条头上。**
     #[test]
     fn the_build_time_execution_surface_stays_registered() {
         // ① `tauri.conf.json` 的构建前置命令：登记值 + 理由。
@@ -436,16 +570,54 @@ mod tests {
         );
 
         // 抽取器自检：探针坏了的话，下面整条就是**零命中地绿**。
+        // ⚠ 探针③ 是 `D1` 那个洞的**常驻**版本 —— 它一旦变绿，本条就又瞎了。
         let probe_exec = "[target.'cfg(all())']\nrunner = \"sh\"  # 这里的 linker 是注释\n";
         let probe_profile = "[profile.dev]\ndebug = \"line-tables-only\"\n";
+        let probe_escaped = "[target.x86_64-unknown-linux-gnu]\n\"run\\u006Eer\" = \"/bin/echo\"\n";
+        let probe_hex = "[build]\n\"rustfla\\x67s\" = []\n";
+        let probe_backslash_value = "[profile.dev]\nrustc = \"C:\\\\tools\\\\x.exe\"\n";
         assert_eq!(
-            exec_keys_in(&strip_toml_comments(probe_exec)),
+            keys_in(&strip_toml_comments(probe_exec), CARGO_EXEC_KEYS),
             vec!["runner"],
             "探针①：真设了 `runner` 的配置必须被逮到，且注释里的 `linker` 不算"
         );
         assert!(
-            exec_keys_in(&strip_toml_comments(probe_profile)).is_empty(),
+            keys_in(&strip_toml_comments(probe_profile), CARGO_EXEC_KEYS).is_empty(),
             "探针②：只有 `[profile.*]` 的构建瘦身配置必须放行 —— 那正是 `K-G2` 收窄掉的那一半"
+        );
+        assert_eq!(
+            keys_in(&strip_toml_comments(probe_escaped), CARGO_EXEC_KEYS),
+            vec!["runner"],
+            "探针③：**用 TOML 转义拼出来的键**必须被逮到。\n\
+             这一格是 `K-G2` `D1` 现场逮到的洞：cargo 认解码后的键名，\n\
+             而当时的整词扫看的是原文 ⇒ `cargo test` 被交给了 `/bin/echo`，本条却是绿的。"
+        );
+        assert_eq!(
+            keys_in(&strip_toml_comments(probe_hex), CARGO_EXEC_KEYS),
+            vec!["rustflags"],
+            "探针④：`\\xXX`（TOML 1.1）那种写法 cargo 1.96.1 也认，本条也要认"
+        );
+        assert!(
+            keys_in(&strip_toml_comments(probe_backslash_value), CARGO_EXEC_KEYS).is_empty(),
+            "探针⑤：**值**里有反斜杠（Windows 路径）不许误红 —— 本条判的是键，不是有没有 `\\`"
+        );
+        assert!(
+            backslash_in_key_position(&strip_toml_comments(probe_escaped)),
+            "探针⑤b：键位置那道**兜底**必须逮到转义键 —— 它是「不靠数全转义种类」的那一半"
+        );
+        assert!(
+            !backslash_in_key_position(&strip_toml_comments(probe_backslash_value)),
+            "探针⑤c：值里的反斜杠不许触发兜底，否则 Windows 路径会误红成灾"
+        );
+        let probe_include = "include = [\"../elsewhere/x.toml\"]\n[profile.dev]\ndebug = false\n";
+        assert!(
+            keys_in(&strip_toml_comments(probe_include), CARGO_EXEC_KEYS).is_empty(),
+            "探针⑥前半：`include` 不是执行面键，别把它算进 `CARGO_EXEC_KEYS`"
+        );
+        assert_eq!(
+            keys_in(&strip_toml_comments(probe_include), CARGO_BLINDING_KEYS),
+            vec!["include"],
+            "探针⑥后半：`include` 必须被逮到 —— 它能把 6 格之外的文件拉进来，本条读不到那份"
         );
 
         let offenders: Vec<String> = slots
@@ -458,21 +630,36 @@ mod tests {
                 let Ok(raw) = std::fs::read_to_string(&p) else {
                     return Some(format!("{rel}（存在但读不出文本，本条看不了它的内容）"));
                 };
-                let keys = exec_keys_in(&strip_toml_comments(&raw));
-                if keys.is_empty() {
+                let text = strip_toml_comments(&raw);
+                let mut why: Vec<String> = Vec::new();
+                let exec = keys_in(&text, CARGO_EXEC_KEYS);
+                if !exec.is_empty() {
+                    why.push(format!("设了执行面的键 {exec:?}"));
+                }
+                let blind = keys_in(&text, CARGO_BLINDING_KEYS);
+                if !blind.is_empty() {
+                    why.push(format!("设了 {blind:?} —— 本条看不进它拉进来的文件"));
+                }
+                if backslash_in_key_position(&text) {
+                    why.push("键位置有反斜杠 —— 转义拼键是已知的绕法，一律按红处理".to_string());
+                }
+                if why.is_empty() {
                     None
                 } else {
-                    Some(format!("{rel} 设了 {keys:?}"))
+                    Some(format!("{rel}：{}", why.join("；")))
                 }
             })
             .collect();
         assert!(
             offenders.is_empty(),
-            "cargo 配置里出现了**会扩大执行面**的键：{offenders:?}\n\
+            "cargo 配置里出现了本条不许出现的键：{offenders:?}\n\
              ★ `runner` 会让 **`cargo test` 把测试二进制交给另一个程序去跑**；\n\
              `linker` 换掉构建机上真正跑的链接器；`rustflags` 原样透传给 rustc\n\
              （`-C linker=…` 也能从那里进来）。本仓今天一份都没设，所以「跑测试」没有中间人。\n\
-             ⚠ 本条判的是**内容**不是**文件在不在**：剥掉注释后不含这三个整词的配置一律放行\n\
+             ★ `include` 是另一回事：它**不是**执行面，但它能把 6 格之外的任意文件拉进来，\n\
+             而本条只读那 6 格 ⇒ 按 fail-closed 判红，理由是「看不见」而不是「你设了什么」。\n\
+             ⚠ 本条判的是**内容**不是**文件在不在**，而且认**解码后**的键名\n\
+             （`\"run\\u006Eer\"` 一样算 `runner`）：剥掉注释后不含这些整词的配置一律放行\n\
              （`[profile.*]` 那类构建瘦身正是这一类）。\n\
              真要加（比如交叉测试需要 runner）：写进 `CARGO_EXEC_KEYS` 旁边说清它执行的是什么。\n\
              ⚠ **不许**改成豁免某个文件名或某个路径 —— 那是放宽人群，不是收窄性质。"
