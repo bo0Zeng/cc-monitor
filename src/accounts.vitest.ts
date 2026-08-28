@@ -928,3 +928,83 @@ describe("K-A1 KA6a：api-key 号的 UI 文案不许说「已登录」", () => {
     expect(b.text).toBe("逃生口");
   });
 });
+
+describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」逐格对拍", () => {
+  const apiKey = () =>
+    acct({ name: "acct-a", loggedIn: false, authKind: "api-key", authReady: true });
+
+  // ★★ 本 describe 存在的理由，逐字：**本件落地那一刻，那句 hover 就对一部分号成了假话**
+  //（本机、中转表里有它那一行、中转在跑的那些号，cc-monitor **真的**会替它配 base URL）。
+  // 而「改了事实没改说它的那句话」是本区花过六轮的那一族（ROADMAP 风险 6v / 裁定 K20）。
+  // ⇒ 这里把**实现的三态**与**徽章的三态**钉成一一对应：少一格、串一格，都红。
+
+  it("★ 本机 · 表里有这一行 · 中转在跑 ⇒ 「经本机中转」，且不再是警示态", () => {
+    const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: true, running: true });
+    expect(b.text).toBe("api-key（经本机中转）");
+    expect(b.warn).toBe(false);
+    // 它保证的是哪一截，必须写在 hover 里 —— 不许暗示「这个 key 一定能用」。
+    expect(b.title).toContain("ANTHROPIC_BASE_URL");
+    expect(b.title).toContain("到 claude 那边才知道");
+  });
+
+  it("★ 本机 · 表里有这一行 · 中转没跑 ⇒ 「中转未运行」，且说明会被当场拒", () => {
+    const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: true, running: false });
+    expect(b.text).toBe("api-key（中转未运行）");
+    expect(b.warn).toBe(true);
+    // `KH2B2`②：这一条**不许**被说成静默失败 —— 起会话那一侧会当场拒。
+    expect(b.title).toContain("当场拒");
+  });
+
+  it("★ 本机 · 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出**为什么**", () => {
+    const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: false, running: true });
+    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.title).toContain("没有这个账号的一行");
+    // 阴性对照：它**不许**说成「远端不做」那一条（那是另一个成因，处置也不同）。
+    expect(b.title).not.toContain("远端");
+  });
+
+  it("★ 远端那一半 ⇒ 文案要指名是**远端**（`§0e` 裁四：本件明写不做）", () => {
+    const b = accountStatusBadge(apiKey(), { scope: "remote" });
+    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.title).toContain("远端");
+    expect(b.title).toContain("本机");
+    // 阴性对照：不许拿本机那条「表里没有这一行」去解释远端。
+    expect(b.title).not.toContain("没有这个账号的一行");
+  });
+
+  it("★ 调用方没说是哪一半 ⇒ **不替它下判断**，只把两条前置说清", () => {
+    const b = accountStatusBadge(apiKey());
+    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.title).toContain("两件事都成立");
+    expect(b.title).toContain("不替它下判断");
+    // ⚠ 这一档**不许**断言「表里没有这一行」——那是它看不见的事实。
+    expect(b.title).not.toContain("没有这个账号的一行");
+  });
+
+  it("★ 那句已经成假的话，四档里一句都不许再出现（分母 = 我列的这 4 档 + 缺席）", () => {
+    // 逐字：本件之前的原文是「cc-monitor 今天还不会替它配 API key 与 base URL」。
+    const LIE = "今天还不会替它配 API key 与 base URL";
+    const states: Array<Parameters<typeof accountStatusBadge>[1]> = [
+      undefined,
+      { scope: "remote" },
+      { scope: "local", hasRow: false, running: false },
+      { scope: "local", hasRow: true, running: false },
+      { scope: "local", hasRow: true, running: true },
+    ];
+    // 非空对照：先证明这把尺子认得出那句话（否则下面整个循环可能只是因为 needle 打错而全绿）。
+    expect("cc-monitor " + LIE).toContain(LIE);
+    for (const st of states) {
+      expect(accountStatusBadge(apiKey(), st).title).not.toContain(LIE);
+      // 顺带：任何一档都不许说成「已登录」（KA6a 的原话，人群扩到了新那几档）。
+      expect(accountStatusBadge(apiKey(), st).text).not.toContain("已登录");
+    }
+  });
+
+  it("★ 订阅号一格不受影响（阴性对照：新参数不许改到别的 kind）", () => {
+    for (const st of [undefined, { scope: "remote" } as const, { scope: "local", hasRow: true, running: true } as const]) {
+      expect(accountStatusBadge(acct({}), st).text).toBe("已登录");
+      expect(accountStatusBadge(acct({ loggedIn: false }), st).text).toBe("未登录");
+      expect(accountStatusBadge(acct({ mode: "in-place" }), st).text).toBe("逃生口");
+    }
+  });
+});

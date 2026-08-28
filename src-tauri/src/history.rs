@@ -1369,35 +1369,43 @@ fn launch_local(
     }
     #[cfg(not(windows))]
     {
-        // ★★ **要注入就不走 ccm 那条容器路** —— 这不是偷懒，是一条量出来的边界：
-        //    ccm 的容器分支把载荷经 `send-keys` 送进**新起的 tmux 会话**，
-        //    而 tmux server 的环境不是这一跳的环境 ⇒ 在 `ccm` 外侧 export 的变量
-        //    **在 tmux 边界被吃掉**（ccm 自己为 `CLAUDE_CONFIG_DIR` 专门写了一段
-        //    「把继承值写进载荷内侧」正是为了这个坑，而 `ANTHROPIC_BASE_URL` 没有那一段）。
-        //    ⇒ 照旧走 ccm = **静默地没注入**，那正是本件要治的病。
+        // ★★ `K-H2b`（08-28 第二拍）：**照旧走 ccm 那条容器路，前缀拼在它外面。**
         //
-        //    ⚠ **代价如实登记**：走中转的号今天**拿不到 tmux 容器**（无 tty 那条老路）。
-        //    要两样都要，得往 `shared/ccm` 的容器路加一段转发（`:910` 那串 `inner+=`），
-        //    而 `§0e` 裁三已判 `shared/ccm` **不是收口点**、本件不动它 ⇒ 抬进上报口。
+        // # 第一拍为什么绕开它，第二拍为什么不用绕了
         //
-        //    ⚠ 写法上刻意让 `render_local_ccm(` 与 `build_local_posix_command(` 在本函数体里
-        //    **各恰好一处** —— `the_local_launch_tries_the_renderer_before_the_old_path`
-        //    用它们的相对位置钉「渲染器在前」，两处就管不住顺序了（本轮实测被它逮过一次）。
-        let rendered = if relay.is_empty() {
-            render_local_ccm(action, launcher, account, tmux_name)
-        } else {
-            Err("该账号走本机中转 ⇒ 跳过容器路（env 会在 tmux 边界被吃掉）".to_string())
-        };
-        let cmd = match rendered {
-            Ok(r) => r,
+        // 第一拍的判断是：ccm 的容器分支把载荷经 `send-keys` 送进**新起的 tmux 会话**，
+        // 而 tmux server 的 `update-environment` 默认列表**不含**这个变量
+        // ⇒ 在 `ccm` 外侧 export 的东西**在 tmux 边界被吃掉** ⇒ 照旧走 ccm
+        // = **静默地没注入**。于是它两害相权选了「注入成功但没有容器」。
+        //
+        // 那个坑是真的，但**处置选窄了**：`shared/ccm` 里本来就有一段**同形的转发**
+        //（R08 那条：把继承来的 `CLAUDE_CONFIG_DIR` 写进载荷**内侧**）。
+        // 第二拍照它加了一条 `ANTHROPIC_BASE_URL` 的转发 ⇒ **变量穿得过 tmux 边界了**，
+        // 于是「走中转」与「有 tmux 容器」不再互斥。
+        //
+        // ⚠ **那不违反 `§0e` 裁三**：裁三禁的是「把 ccm 当**收口点**」——
+        // 三条生产路结构上绕开它，靠它**注入**会长出一个恒绿的假闸。
+        // 而注入仍然发生在 `payload.rs`，ccm 只是**别把已经注入好的变量吃掉**。
+        // **「不当收口点」≠「不许碰它」。**
+        //
+        // ⚠ **这一格没买到的**：转发那一段由源码形状 + 片段行为两条判据钉着
+        //（`the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary`），
+        // 但「变量真的穿过了一次**真** tmux 边界」**要真机 tmux**，本轮没量 ⇒ 归 e2e。
+        //
+        // ⚠ 写法上刻意让 `render_local_ccm(` 与 `build_local_posix_command(` 在本函数体里
+        // **各恰好一处** —— `the_local_launch_tries_the_renderer_before_the_old_path`
+        // 用它们的相对位置钉「渲染器在前」，两处就管不住顺序了（第一拍被它逮过一次）。
+        let base = match render_local_ccm(action, launcher, account, tmux_name) {
+            Ok(rendered) => rendered,
             Err(why) => {
                 // 与远端那条降级**同一种说法**：走回落是正常且预期的路径（没装 ccm 的机器
                 // 每次拉起都走它）⇒ `debug` 而不是 `warn`。要查「为什么这台机没进 tmux」时，
                 // 这一行是唯一线索。
                 tracing::debug!("launch: 本机 CLI 渲染器降级 → 旧路：{why}");
-                relay + &build_local_posix_command(action, launcher, account)?
+                build_local_posix_command(action, launcher, account)?
             }
         };
+        let cmd = relay + &base;
         crate::launch::launch_local_posix(&cmd, cwd)
     }
 }
@@ -1424,12 +1432,28 @@ fn launch_local(
 /// - 参数缺席（调用方没表态）⇒ `None`，同上。
 fn relay_account_id(account: Option<&LaunchAccount>) -> Option<String> {
     match account {
-        Some(LaunchAccount::Named { config_dir }) => std::path::Path::new(config_dir.trim())
-            .file_name()
-            .and_then(|s| s.to_str())
-            .map(str::to_string),
+        Some(LaunchAccount::Named { config_dir }) => relay_account_id_of_dir(config_dir),
         _ => None,
     }
+}
+
+/// 上一条的**纯派生半** —— 「一个 configDir 对应中转表里哪个 id」。
+///
+/// ★ 抽出来的理由是**只许有一份**：界面那一侧（徽章要显「这个号走不走中转」）问的是
+/// **同一个问题**，而它手上也只有 configDir。两边各写一个 basename 规则，
+/// 漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。
+///
+/// ⚠⚠ **界面那一侧今天还没有人调它** —— 那条把这个事实端给前端的路（一条只答本机的
+/// tauri 命令）**本轮做到一半退回了**：新注册一条命令会让 `parity_ledger.rs` 的
+/// `every_tauri_command_is_declared_in_the_ledger` 当场红（实测报文逐字：
+/// 「这些命令已注册但**没进平价对账表**：["relay_routing_for"]」），
+/// 而那个文件**不在 `K-H2b` 的写区**。⇒ 本函数今天只有起会话那一侧一个调用方；
+/// 它被抽出来是为了「接的时候只有一份规则」，**不是**已经接上了。经过住件文件 `§4`。
+pub(crate) fn relay_account_id_of_dir(config_dir: &str) -> Option<String> {
+    std::path::Path::new(config_dir.trim())
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(str::to_string)
 }
 
 /// 中转凭据文件里今天有哪几条账号 id。**读不到就是零条**（零条 ⇒ 谁都不走中转）。
@@ -1437,7 +1461,7 @@ fn relay_account_id(account: Option<&LaunchAccount>) -> Option<String> {
 /// ⚠ 「读不到」与「一条都没配」在这里**故意同一处置**：两者的正确行为都是
 /// 「照旧走官方直连」，而把「读文件失败」变成一次起会话失败，是拿一个**能用的**状态
 /// 去换一条错误提示。⇒ 只在日志里留一行。
-fn relay_rows() -> Vec<String> {
+pub(crate) fn relay_rows() -> Vec<String> {
     let Some(p) = crate::creds_store::resolve_path() else {
         return Vec::new();
     };
@@ -3656,7 +3680,7 @@ mod tests {
         assert!(prod.len() > 5_000, "剥完只剩 {} 字节 —— 剥过头了", prod.len());
         let at = guard_core::find_pinned(&prod, "fn launch_local(")
             .unwrap_or_else(|e| panic!("`fn launch_local(` 不是恰好一处：{e}"));
-        let body = &prod[at..at + 2_600.min(prod.len() - at)];
+        let body = &prod[at..at + 3_600.min(prod.len() - at)];
         // ① 前缀真的算了。
         assert!(
             body.contains("relay_prefix_for_launch(action, account)?"),
@@ -3664,23 +3688,28 @@ mod tests {
         );
         // ② 两条平台分支各自**真的把它拼上去**。
         assert_eq!(
-            body.matches("relay + &build_local_").count(),
+            body.matches("relay + &").count(),
             2,
             "把前缀拼到命令前面的地方不是 2 处（POSIX 一处 · Windows 一处）——\n\
              算了却没拼上去，行为上与本件没做**完全一样**，而纯函数判据照绿。\n\
              实得片段：{body}"
         );
-        // ③ 「要注入 ⇒ 不走容器路」这个决定在渲染器**之前**。
-        let decide = body
-            .find("if relay.is_empty()")
-            .expect("找不到那条「空串就走旧路」的分流 —— 决定点没了");
+        // ③ POSIX 那一处拼的是**最终要送出去的那一串**，不是只拼在回落支上。
+        //    〔08-28 第二拍改的：第一拍是「要注入就绕开 ccm」，第二拍改成
+        //     「照旧走 ccm，靠 `shared/ccm` 的转发穿过 tmux 边界」⇒ 拼接点搬到了合流之后。〕
+        let merge = body
+            .find("let cmd = relay + &base;")
+            .expect("POSIX 那一处没有拼在合流之后 —— 那样只有回落支带前缀，走 ccm 的那条不带");
         let render = body
             .find("render_local_ccm(")
             .expect("找不到 `render_local_ccm(`");
+        let fallback = body
+            .find("build_local_posix_command(")
+            .expect("找不到 `build_local_posix_command(`");
         assert!(
-            decide < render,
-            "★ 顺序反了：走不走 ccm 容器路的决定得在渲染之前 —— \
-             渲完再判等于已经把载荷送进 tmux 那条路了"
+            render < fallback && fallback < merge,
+            "★ 顺序不对：应当是「先渲染器 → 渲不出来才回落 → 最后统一拼前缀」。\n\
+             实得三处偏移：render={render} fallback={fallback} merge={merge}"
         );
     }
 }

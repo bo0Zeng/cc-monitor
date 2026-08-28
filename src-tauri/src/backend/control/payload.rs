@@ -1351,6 +1351,98 @@ mod tests {
         assert_ne!(c, "has/slash");
     }
 
+    /// ★★★ `K-H2b` 裁三的第三条路：**ccm 的容器路要把中转 base URL 转发过 tmux 边界。**
+    ///
+    /// # 它治的是什么（与 `R08` 逐字同型）
+    ///
+    /// 注入发生在 `ccm` **外侧**（`relay_env_prefix_posix`，本文件唯一发射点）。
+    /// 走容器路时，载荷是经 `send-keys` 打进 **tmux server fork 出来的新 shell** 的，
+    /// 而 `update-environment` 的默认列表**不含**这个变量 ⇒ 外侧那句 export
+    /// 在 tmux 边界被整个吃掉。症状：**中转明明接上了，走 tmux 的会话却全是官方直连**
+    /// —— 「看起来生效了，只是没走中转」，与 `R08`（账号被静默换掉）同型、同样隐蔽。
+    ///
+    /// ⚠ **这不是把 ccm 当注入点**（`§0e` 裁三禁的是那个）：注入仍在本文件，
+    /// ccm 只是**别把已经注入好的变量吃掉**。「不当收口点」≠「不许碰它」。
+    ///
+    /// # 本条量两件事，第二件是**真跑**的
+    ///
+    /// ㈠ **位置**：那段转发落在容器路那个窗口里（载荷拼完之后、`tmux new-session` 之前）；
+    ///    非空对照 = 同一个窗口里必须还看得见 `R08` 那条既有的转发。
+    /// ㈡ **行为**：把那个窗口**原样抠出来交给 `bash` 跑**（`sq` 用一个桩），
+    ///    断言产出的载荷逐字节是什么。⇒ 条件写反、顺序写反、变量名打错，这里都会红。
+    ///
+    /// # ⚠ 它买不到什么
+    ///
+    /// **「变量真的穿过了一次真 tmux 边界」没量** —— 那要真 tmux（红线：本轮不起真 daemon、
+    /// 也不在门禁里起 tmux），归真机 e2e。本条买的是「那段转发在、条件对、拼出来的串对」。
+    #[cfg(unix)]
+    #[test]
+    fn the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary() {
+        const CCM: &str = include_str!("../../../../shared/ccm");
+        // 窗口 = 容器路里「载荷拼好 → 起 tmux」之间那一段。两个锚点全树各恰好一处。
+        let start = CCM.find("\n  payload=\"\"\n").expect("找不到载荷拼装的起点锚点");
+        let end = CCM.find("\n  t=\"$(sq \"=$tmux_name:\")\"").expect("找不到起 tmux 那个锚点");
+        assert!(start < end, "两个锚点的先后反了 —— 窗口取错了");
+        let window = &CCM[start..end];
+        // 抽取器自检 + 非空对照：`R08` 那条既有转发必须在同一个窗口里。
+        assert!(
+            window.contains("export CLAUDE_CONFIG_DIR=$(sq \"$CLAUDE_CONFIG_DIR\"); $payload"),
+            "窗口里看不见 R08 那条既有转发 —— 窗口取错了，下面整条是空真。实得：{window}"
+        );
+        // ㈠ 位置：新那条转发在同一个窗口里。
+        assert!(
+            window.contains("export ANTHROPIC_BASE_URL=$(sq \"$ANTHROPIC_BASE_URL\"); $payload"),
+            "容器路里没有把 `ANTHROPIC_BASE_URL` 转发进载荷内侧 ——\n\
+             走 tmux 的那些会话会静默地不走中转（外侧那句 export 在 tmux 边界被吃掉），\n\
+             而症状是「中转接上了、可它没生效」，指不向这里。实得窗口：{window}"
+        );
+
+        // ㈡ 行为：把窗口原样交给 bash 跑一遍。`sq` 用桩（真的那份住 ccm 上面，不在窗口里）。
+        let script = format!(
+            "sq() {{ printf \"'%s'\" \"$1\"; }}\n\
+             inner=(claude --resume S1)\n\
+             {window}\n\
+             printf '%s' \"$payload\"\n"
+        );
+        let run = |base: Option<&str>, cfg: Option<&str>| -> String {
+            let mut c = std::process::Command::new("bash");
+            c.arg("-c").arg(&script);
+            c.env_remove("ANTHROPIC_BASE_URL");
+            c.env_remove("CLAUDE_CONFIG_DIR");
+            if let Some(b) = base {
+                c.env("ANTHROPIC_BASE_URL", b);
+            }
+            if let Some(d) = cfg {
+                c.env("CLAUDE_CONFIG_DIR", d);
+            }
+            let out = c.output().expect("跑那段窗口");
+            assert!(
+                out.status.success(),
+                "那段窗口自己跑不起来：{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+        // 非空对照：两个变量都没有 ⇒ 载荷就是裸 argv（证明这把尺子不是恒带前缀）。
+        assert_eq!(run(None, None), "'claude' '--resume' 'S1'");
+        // 正题：有 base URL ⇒ 它被写进载荷**内侧**。
+        assert_eq!(
+            run(Some("http://127.0.0.1:8788/s/claude-code/acct-a/sid-1"), None),
+            "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; \
+             'claude' '--resume' 'S1'"
+        );
+        // 两条转发并存时**互不吃掉对方**（R08 那条是既有行为，本件不许改它）。
+        let both = run(
+            Some("http://127.0.0.1:8788/s/claude-code/acct-a/sid-1"),
+            Some("/home/u/.claude-accts/acct-a"),
+        );
+        assert!(
+            both.contains("export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; ")
+                && both.contains("export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/acct-a'; "),
+            "两条转发并存时有一条被吃掉了：{both}"
+        );
+    }
+
     /// ★★★ `KH2B3`：**注入点的人群是枚举出来的、有判据数着** —— 多一个渲染器不接线当场红。
     ///
     /// # 人群怎么定的（按**形状**，不按主题名 —— `K20`）
@@ -1385,7 +1477,11 @@ mod tests {
         const NOT_WIRED_CCM: &str =
             "`shared/ccm` 结构上不是收口点（三条生产路绕开它：`history.rs` 的 \
              `else claude --resume` 支 · tab 右键就地 resume 的默认 launcher 是裸 `claude` · \
-             远端兜底渲染器）⇒ 把闸放在它身上会长出一个恒绿的假闸。本轮不动它。";
+             远端兜底渲染器）⇒ 把**注入**放在它身上会长出一个恒绿的假闸。\
+             ⚠ 但它**转发**（08-28 第二拍加的：容器路把继承来的 `ANTHROPIC_BASE_URL` \
+             写进载荷内侧，否则在 tmux 边界被吃掉）—— 「不当收口点」≠「不许碰它」，\
+             那一格由 `the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` \
+             钉着，与本条数的是两件事。";
         const NOT_WIRED_TS: &str =
             "TS 兜底渲染器服务的是**远端**那族（`tryRenderCli` 拒了之后的回落），\
              而本件 `§0e` 裁四明写只保本机、远端那一半 `判不了`（要先给 `creds.relay-key` 找到主人）。";

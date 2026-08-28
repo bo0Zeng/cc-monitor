@@ -253,6 +253,38 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     expect(subBadge.classList.contains("warn")).toBe(false);
   });
 
+  // ---- `K-H2b` `KH2B7`：那句 hover 本件落地那一刻对一部分号成了假话 ----
+  //
+  // ★ 同样**必须是 DOM 测试**，理由与上一条逐字相同：纯函数那一侧接不接得上，
+  // 是**另一件事**。`accountStatusBadge` 从本件起收第二个参数（这个号属于哪一半），
+  // 而**这张表是远端专用的**（`reload` 在 `origin` 为空时直接早退，
+  // 文案逐字「账号功能在远端 Linux 上」）⇒ 这里必须传 `{scope:"remote"}`。
+  // 不传 ⇒ 渲染出来的是「不替它下判断」那一档，而这张表**判得出来**（它就是远端）。
+  it("★ KH2B7：这张表是远端专用的 ⇒ api-key 那一行的 hover 要指名是**远端**那一半", async () => {
+    fetchAccountsMock.mockResolvedValue(
+      ready({
+        accounts: [
+          acct({ name: A }),
+          acct({ name: B, loggedIn: false, authKind: "api-key", authReady: true }),
+        ],
+      }),
+    );
+    const el = await mount();
+    const rows = [...el.querySelectorAll(".accounts-row")];
+    const byName = (n: string) =>
+      rows.find((r) => r.querySelector(".accounts-row-name")?.textContent === n)!;
+    const title = byName(B).querySelector(".accounts-row-badge")!.getAttribute("title") ?? "";
+    // 非空对照：这一格真的有 hover（不是空串上自问自答）。
+    expect(title.length).toBeGreaterThan(20);
+    // 正题：说清是哪一半 —— 只给本机配、远端这一半还不做。
+    expect(title).toContain("远端");
+    expect(title).toContain("本机");
+    // ⚠ 那句本件落地后就成假的话，一个字都不许留在界面上（逐字原文）。
+    expect(title).not.toContain("今天还不会替它配 API key 与 base URL");
+    // ⚠ 也不许拿本机那条成因（「表里没有这一行」）去解释一个远端账号。
+    expect(title).not.toContain("没有这个账号的一行");
+  });
+
   it("★ KA6a 反面：缺凭据的订阅号仍写「未登录」（不许被 api-key 那一支一起放宽）", async () => {
     fetchAccountsMock.mockResolvedValue(
       ready({

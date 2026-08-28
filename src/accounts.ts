@@ -192,31 +192,37 @@ export interface AccountStatusBadge {
   title: string;
 }
 /**
- * `K-H2b` `KH2B7`：**api-key 号那一格今天有三态，不是一态。**
+ * `K-H2b` `KH2B7`：**api-key 号那一格今天不是一态。**
  *
  * 本件之前那句 hover 文案逐字是「cc-monitor 今天还不会替它配 API key 与 base URL」——
- * 本件落地那一刻它对**一部分号**就成了假话。⇒ 三态各自说自己的话：
+ * 本件落地那一刻，它对**一部分号**就成了假话（本机、且中转表里有它那一行、且中转在跑
+ * 的那些号，cc-monitor **真的**会替它配）。⇒ 按「这个号属于哪一半 / 那两个前置成不成立」
+ * 分别说各自的话。
  *
- * | 中转表里有这一行 | 本机中转在跑 | 用户看到 |
+ * | `relay` | 用户看到 | 那句话为什么是真的 |
  * |---|---|---|
- * | 没有 | — | 「api-key（未配置端点）」——**这句仍然是真的**：没配行就没人替它配 |
- * | 有 | 没跑 | 「api-key（中转未运行）」—— 起会话那一侧会**当场拒**，不是静默失败 |
- * | 有 | 在跑 | 「api-key（经本机中转）」 |
+ * | `{scope:"local",hasRow:true,running:true}` | 「api-key（经本机中转）」 | 两个前置都成立 |
+ * | `{scope:"local",hasRow:true,running:false}` | 「api-key（中转未运行）」 | 起会话那一侧会**当场拒**（`KH2B2`②） |
+ * | `{scope:"local",hasRow:false}` | 「api-key（未配置端点）」 | 表里没有这一行 ⇒ 确实没人替它配 |
+ * | `{scope:"remote"}` | 「api-key（未配置端点）」 | **远端那一半本件明写不做**（`§0e` 裁四） |
+ * | 缺席 | 「api-key（未配置端点）」 | 调用方没说是哪一半 ⇒ **不替它下判断**，只把条件说清 |
  *
  * ⚠ **不许从「不会配」直接跳成「已登录」** —— 中间隔着这两格。
  *
- * ⚠⚠ **诚实边界（本件没做完的那一格）**：`relay` 这个参数今天**没有生产调用方** ——
- * 把这两个事实端到前端要动 `src-tauri/src/accounts.rs` 的 `Account`（生成物会跟着变）
- * 与两个渲染点（`settings/accounts-section.ts` · `account-chip.ts`），
- * 而它们**都不在 `K-H2b` 的写区里**。⇒ 缺席时逐字回落到本件之前那一态（第一行），
- * 界面上今天看到的仍是那一句。**这是「实现有了、线没接」，别读成「接上了」。**
+ * ⚠⚠ **诚实边界（本件没做完的那一格）**：`{scope:"local"}` 那三档今天**没有生产调用方** ——
+ * 要把「表里有没有这一行」「中转在不在跑」端到前端，得注册一条**只答本机**的 tauri 命令，
+ * 而新注册一条命令会让 `src-tauri/src/parity_ledger.rs` 的
+ * `every_tauri_command_is_declared_in_the_ledger` 当场红（本轮实测过，报文点名了那条命令），
+ * 那个文件不在 `K-H2b` 的写区。⇒ 两个生产调用点今天分别传 `{scope:"remote"}`（设置里那张表
+ * 是**远端专用**的：`accounts-section.ts` 的 `reload` 对 `origin` 为空时直接早退）与
+ * 「远端就 `{scope:"remote"}`、本机就缺席」（chip）。
+ * **这是「本机那三档有实现、没接线」，别读成「接上了」。** 经过住件文件 `§4`。
  */
-export interface AccountRelayState {
-  /** 中转凭据文件里有没有这个账号 id 的一行（`relay_injection_for` 判的就是它）。 */
-  hasRow: boolean;
-  /** 本机中转在不在跑（`local_daemon::relay_running`）。 */
-  running: boolean;
-}
+export type AccountRelayState =
+  /** 远端那一半：`K-H2b` `§0e` 裁四明写不做 ⇒ 对它确实没人配端点。 */
+  | { scope: "remote" }
+  /** 本机那一半：两个前置各自成不成立。 */
+  | { scope: "local"; hasRow: boolean; running: boolean };
 
 export function accountStatusBadge(
   a: Account,
@@ -230,18 +236,19 @@ export function accountStatusBadge(
     };
   }
   if (a.authKind === "api-key") {
-    if (relay?.hasRow && relay.running) {
+    const local = relay?.scope === "local" ? relay : null;
+    if (local?.hasRow && local.running) {
       return {
         text: "api-key（经本机中转）",
         warn: false,
         title:
-          "这个号在中转凭据文件里有一行，本机中转也在跑 —— 起会话时 cc-monitor 会把 " +
+          "这个号在中转凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 " +
           "ANTHROPIC_BASE_URL 指向本机中转，由中转按账号换上这一行的 key。\n" +
           "⚠ 它保证的是「请求发得到中转、中转按这一行转发」；" +
           "那把 key 本身对不对、上游认不认，仍然要到 claude 那边才知道。",
       };
     }
-    if (relay?.hasRow) {
+    if (local?.hasRow) {
       return {
         text: "api-key（中转未运行）",
         warn: true,
@@ -251,15 +258,27 @@ export function accountStatusBadge(
           "所以这一条在起会话那一侧就拦下来）。请先起本机后端。",
       };
     }
+    // 三种「没配上」的成因，各说各的 —— **合成一句就等于又写下一句说不准的话**。
+    const why =
+      local != null
+        ? "中转凭据文件里**没有这个账号的一行** ⇒ cc-monitor 不会替它配 base URL。" +
+          "要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在该账号自己的 " +
+          "shell 环境里配好第三方端点。"
+        : relay?.scope === "remote"
+          ? "cc-monitor 今天只给**本机**会话配 base URL；**远端**这一半还不做" +
+            "（把 key 送到远端那台机器是另一件事）⇒ 这个号要用，得在远端那台机器上" +
+            "自己配好第三方端点。"
+          : "cc-monitor 只在两件事都成立时替它配端点（base URL）：① 中转凭据文件里有这个" +
+            "账号 id 的一行；② 本机中转在跑。**这一处没被告知它属于哪一半、那两条成不成立**，" +
+            "所以不替它下判断。";
     return {
       text: "api-key（未配置端点）",
       warn: true,
       title:
         "这个号用 API key 鉴权，不看 ~/.claude 里的订阅凭据 —— 所以它可以被设为当前账号、" +
-        "会话也起得来。但中转凭据文件里**没有这个账号的一行** ⇒ cc-monitor 不会替它配 " +
-        "base URL，请求会在 claude 那边报鉴权失败。\n" +
-        "要用它：在设置里给这个账号配上第三方端点与 key（或直接改那份 JSON），" +
-        "或者在该账号自己的 shell 环境里配好第三方端点。",
+        "会话也起得来。但请求要发得出去还差一格：" +
+        why +
+        "\n没配好就起会话，请求会在 claude 那边报鉴权失败。",
     };
   }
   if (!authReady(a)) {
