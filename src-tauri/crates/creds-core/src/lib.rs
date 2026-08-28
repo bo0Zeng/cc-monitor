@@ -273,6 +273,192 @@ mod tests {
         );
     }
 
+    /// 一个碰了内层明文的函数，**对那份明文做了什么**。
+    ///
+    /// ★ 这个区分是 `D2` 要求「钉住」的那一格：换成「函数体提到 `self.0`」画人群之后，
+    /// 表会变长（内部用法也进来），而**一张长登记表最容易退化成「谁红了就往里加一行」**。
+    /// ⇒ 每一行都要说清它属于哪一类，而 [`Handling::HandsOut`] 那一类**钉死条数**。
+    #[derive(PartialEq, Eq, Debug, Clone, Copy)]
+    enum Handling {
+        /// **把明文原样交到调用方手里。**只许有两条，名字就是那两个具名出口。
+        HandsOut,
+        /// 从明文**派生**出一个不含明文的东西（掩码）。
+        Derives,
+        /// 只读出一个**与内容无关**的事实（空不空 / 多长）。
+        ReadsOnly,
+    }
+
+    /// `impl SecretKey` 块里**每一个函数体提到 `self.0` 的 `fn`**，及它对明文做了什么。
+    ///
+    /// **默认拒绝**：人群从源码派生，没在这张表里的当场红。
+    /// 「谁进人群」由机器定，「它对明文做了什么」才是人的答案。
+    const INNER_FIELD_USERS: &[(&str, Handling, &str)] = &[
+        (
+            "is_configured",
+            Handling::ReadsOnly,
+            "只看它 trim 之后空不空 —— 一个与内容无关的布尔",
+        ),
+        (
+            "len",
+            Handling::ReadsOnly,
+            "只看字节数。⚠ 长度**本身也是信息**（能把候选集缩小一个量级），\
+             所以它只许进本机日志，不许进回帧 —— 手写的 `Debug` 连长度都不印",
+        ),
+        (
+            "is_empty",
+            Handling::ReadsOnly,
+            "`len() == 0`。clippy 要求有 `len` 就得有它；它读不出任何内容",
+        ),
+        (
+            "masked",
+            Handling::Derives,
+            "派生出遮蔽形。**它交出去的不是明文** —— 短到看不出前后缀的整条遮掉，\
+             由 `masking_keeps_only_the_two_ends_and_swallows_short_keys_whole` 钉着",
+        ),
+        (
+            "expose_for_auth_header",
+            Handling::HandsOut,
+            "唯一的**换头**出口。调用点恰好 1 处，在 `remote-daemon-proto/src/relay/server.rs`",
+        ),
+        (
+            "expose_for_persisting",
+            Handling::HandsOut,
+            "唯一的**落盘**出口。调用点恰好 1 处，在 `crates/creds-core/src/store.rs`",
+        ),
+    ];
+
+    /// 把一个 impl 块切成 `(fn 名, 函数体)`。
+    ///
+    /// ⚠ 切分用 **`fn `**，不是 `pub fn ` —— 后者漏掉 `pub unsafe fn` / `pub(crate) fn` /
+    /// `async fn`。D2 复审实打：人群针写成 `"pub fn "` 时，`pub unsafe fn` 那一刀
+    /// **creds-core 23 passed; 0 failed**（我自己复打确认）。
+    fn fns_in_block(block: &str) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for (i, _) in block.match_indices("fn ") {
+            let after = &block[i + 3..];
+            let name: String = after
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if name.is_empty() {
+                continue;
+            }
+            let Some(body) = brace_block(block, i) else {
+                continue;
+            };
+            out.push((name, body.to_string()));
+        }
+        out
+    }
+
+    /// ★★★ **`KS2` 定义面的正主〔D2 回修，08-27〕：人群按「函数体碰没碰 `self.0`」画。**
+    ///
+    /// # 这是同一条性质的**第三次**换人群，前两次都被一刀绕过
+    ///
+    /// | 版本 | 人群怎么画 | 被什么绕过（实测） |
+    /// |---|---|---|
+    /// | 初版 | 数 `&self.0` 这**一个字面**出现几次 | `self.0.as_str()` / `self.0.clone()`（`D1` 阻-1） |
+    /// | 二版 | 返回类型含 `str`/`String` 的 **`pub fn`** | `pub unsafe fn`（针是 `"pub fn "`）· **出参形** `fn f(&self, out: &mut String)`（没有 `->` ⇒ 返回类型读成空串 ⇒ 不进人群）（`D2`） |
+    /// | 今天 | **函数体提到 `self.0` 的每一个 `fn`** | —— |
+    ///
+    /// ★ 为什么这一版对：**「谁碰了 `self.0`」是一个内在事实，而「它长什么样」有无穷多种写法。**
+    /// 从「拼法」→「签名」→「函数体」，每一步都是**判据在贴着性质走，而不是贴着语法走**。
+    ///
+    /// # ⚠ 它**仍然**认不出什么（诚实边界，别读成「明文不可能出去」）
+    ///
+    /// 1. **不经 `self.0` 的路**：有人在别处 `impl` 一个 trait 把明文带出去 ——
+    ///    那不在这个块里，由 `the_type_has_no_second_impl_block_that_hands_the_inner_string_out` 兜。
+    /// 2. **分类是人写的**：机器只判「谁进人群」与「`HandsOut` 有几条」，
+    ///    判不了「一条标成 `ReadsOnly` 的函数是不是真的只读」。
+    ///    ⇒ 配一条结构性纵深：块里**任何函数都不许有 `&mut` 出参**（出参正是明文外流的载体）。
+    /// 3. 宏生成的方法 —— 本类型不用宏，今天没有这一形。
+    #[test]
+    fn every_fn_touching_the_inner_field_is_classified() {
+        let prod = production();
+        let at = guard_core::find_pinned(&prod, "impl SecretKey {")
+            .expect("切不出 `impl SecretKey` —— 本条按红处理，不是绿");
+        let block = brace_block(&prod, at).expect("impl 块的花括号没配平 —— 按红处理");
+        assert!(
+            !block.contains("impl fmt::Debug"),
+            "impl 块的窗口跨进了下一个 item —— 窗口无界，下面的断言不算数"
+        );
+
+        let fns = fns_in_block(block);
+        assert!(
+            fns.len() >= 6,
+            "`impl SecretKey` 里只切出 {} 个 fn —— 取法坏了，本条在空转",
+            fns.len()
+        );
+
+        // ① 人群 = 函数体提到 `self.0` 的那些。**默认拒绝。**
+        let touchers: Vec<&String> = fns
+            .iter()
+            .filter(|(_, body)| body.contains("self.0"))
+            .map(|(n, _)| n)
+            .collect();
+        assert!(
+            touchers.len() >= 4,
+            "只有 {} 个 fn 碰了内层字段 —— 取法坏了：{touchers:?}",
+            touchers.len()
+        );
+        let registered: Vec<&str> = INNER_FIELD_USERS.iter().map(|(n, _, _)| *n).collect();
+        for name in &touchers {
+            assert!(
+                registered.contains(&name.as_str()),
+                "`impl SecretKey` 里多了一个碰内层明文的 fn：`{name}`，**没有登记**。\n\
+                 ⚠ 登记时要说清它对明文做了什么：`HandsOut`（原样交出去）/ `Derives`（派生出不含明文的东西）/ \n\
+                 `ReadsOnly`（只读一个与内容无关的事实）。\n\
+                 `HandsOut` 那一类**条数是钉死的**，多一条必须先在件计划里说清那一处是什么。\n\
+                 今天登记的是：{registered:?}"
+            );
+        }
+        // ② 反向：表里不许留死名字。
+        for (name, _, _) in INNER_FIELD_USERS {
+            assert!(
+                touchers.iter().any(|n| n.as_str() == *name),
+                "登记表里的 `{name}` 已经不碰 `self.0` 了 —— 表和盘对不上，删了它"
+            );
+        }
+        assert_eq!(touchers.len(), INNER_FIELD_USERS.len(), "人群与登记表条数不等");
+
+        // ③ ★ **区分那一格**：`HandsOut` 恰好 2 条，而且就是那两个具名出口。
+        let hands_out: Vec<&str> = INNER_FIELD_USERS
+            .iter()
+            .filter(|(_, h, _)| *h == Handling::HandsOut)
+            .map(|(n, _, _)| *n)
+            .collect();
+        assert_eq!(
+            hands_out,
+            vec!["expose_for_auth_header", "expose_for_persisting"],
+            "把明文原样交出去的 fn 变了。**这一格是本判据的全部意义** —— \n\
+             把一个新出口标成 `ReadsOnly` 混进表里，正是这张表最容易退化成的样子。"
+        );
+        // ④ 每一行都要写得出理由（空理由 = 「谁红了就加一行」的症状）。
+        for (name, _, why) in INNER_FIELD_USERS {
+            assert!(why.len() > 8, "`{name}` 这一行没写理由");
+        }
+
+        // ⑤ 结构性纵深：块里**任何 fn 都不许有 `&mut` 出参**。
+        //    出参是明文外流的载体，而它**没有返回类型**、也不必是 `pub` —— 分类那一关兜不住它。
+        //    D2 复审那一刀（`fn f(&self, out: &mut String)`）正是这一形。
+        for (name, body) in &fns {
+            let Some(open) = body.find('(') else { continue };
+            let Some(close) = body[open..].find(')') else {
+                continue;
+            };
+            let params = &body[open..open + close];
+            let bad = params.match_indices("&mut ").any(|(i, _)| {
+                !params[i + 5..].trim_start().starts_with("self")
+            });
+            assert!(
+                !bad,
+                "`{name}` 收了一个 `&mut` 出参：`{params}`。\n\
+                 ⚠ 出参是明文外流的载体，而它**没有返回类型**、也不必是 `pub` ——\n\
+                 「按返回类型画人群」那一版就是被这一形绕过去的（D2 复审实打，端到端全绿）。"
+            );
+        }
+    }
+
     /// `impl SecretKey` 里**每一个能把字符串带出去的 `pub fn`**，及它为什么可以存在。
     ///
     /// **默认拒绝**：不在这张表里的当场红。⚠ 加一行**就是在放宽**，
@@ -387,10 +573,21 @@ mod tests {
     #[test]
     fn the_type_has_no_second_impl_block_that_hands_the_inner_string_out() {
         let prod = production();
-        let impls: Vec<&str> = prod
+        // ⚠ 人群**按 impl 这个 item 的「头」画，不按「`impl ` 那一行」画**〔D2 回修，08-27〕。
+        //   先前是 `prod[i..].lines().next()` —— **只取一行**，于是
+        //       impl std::ops::Deref
+        //           for SecretKey
+        //       { … }
+        //   这种把头断成两行的写法**整个看不见**，而本条的报文逐字点名 `Deref` 是它要挡的那一形。
+        //   D2 复审实打：那一刀 creds-core **23 passed; 0 failed**（我自己复打确认）。
+        //   今天取的是「从 `impl ` 到它的左花括号为止」——那才是这个 item 的头，换行不影响。
+        let impls: Vec<String> = prod
             .match_indices("impl ")
-            .filter_map(|(i, _)| prod[i..].lines().next())
-            .filter(|l| l.contains("SecretKey"))
+            .filter_map(|(i, _)| {
+                let head = &prod[i..i + prod[i..].find('{')?];
+                head.contains("SecretKey")
+                    .then(|| head.split_whitespace().collect::<Vec<_>>().join(" "))
+            })
             .collect();
         assert!(
             impls.len() >= 2,
@@ -398,7 +595,8 @@ mod tests {
             impls.len()
         );
         // 分母 = 我登记的这 2 个 impl 头；多一个就红，**由人来说清那一个是什么**。
-        let allowed = ["impl SecretKey {", "impl fmt::Debug for SecretKey {"];
+        // 规范化之后的头（空白已折叠成单空格）⇒ 换行、多空格都不影响。
+        let allowed = ["impl SecretKey", "impl fmt::Debug for SecretKey"];
         for head in &impls {
             assert!(
                 allowed.contains(&head.trim()),
