@@ -3,9 +3,9 @@
 use super::creds;
 use super::http1::{self, BodyView, RequestHead};
 use super::route;
-use creds_core::SecretKey;
+use super::table::{self, Row, RoutingTable};
 use super::tee::{SseSplitter, TeeSink};
-use super::upstream::{self, Base};
+use super::upstream::Base;
 use std::io::{BufReader, Read, Write};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -128,17 +128,28 @@ fn apply_downstream_deadline(s: &TcpStream) -> std::io::Result<()> {
 const INTERIM_RESPONSES_ALLOWED: usize = 8;
 
 /// 中转的运行期状态。**一个进程一份**，跨连接共享。
+///
+/// # ⚠⚠ 这里**曾经**有两个字段，`K-H2` 把它们删掉了 —— 经过记在这里
+///
+/// 先前是 `base: Base` + `key: Option<SecretKey>`，两个**各自独立**的进程级字段：
+/// `handle` 里一处取 `relay.base` 去连、另一处取 `relay.key` 去换头，**各取各的**，
+/// 而路由键**一格都不参与**这个决定（它只喂 tee）。
+/// ⇒ 那在语义上就是「**回落到默认上游 + 默认 key**」，而且是当时**唯一**的行为。
+/// 一把 key 时无害；多账号之后，同一条代码路径就是 `KH2` 逐字点名的最坏失效形态：
+/// **拿 A 账号的 key 去发 B 账号的请求，而两边看起来都成功了。**
+///
+/// 今天它们不在了 ⇒ **进程里没有「默认上游」这个值可以回落**，
+/// 而「A 的端点配 B 的 key」也**在类型上不可表示**（两者是 `table::Row` 的私有字段，
+/// `Base` 一次都不出 `Row` 的边界）。这两条都是**编译器**买的。
+/// 不许有人把那两个字段加回来 —— 棘轮住
+/// `table_guard::the_relay_carries_no_process_wide_upstream_and_no_process_wide_key`。
 pub(crate) struct Relay {
-    base: Base,
-    tee: TeeSink,
-    /// ★★ **`K-H2a` 的正主**：中转替客户端换上去的那把 key。
-    ///
-    /// `None` = 没配 ⇒ **原样转发下游那份鉴权头**（`K-H1` 甲半那个形状，一个字节不动）。
-    /// `Some` = 换头 ⇒ 下游那份被**丢掉**，换上这一把。
+    /// 账号段 → 上游 + key。**决定这条请求发到哪儿、用哪把 key 的唯一住址。**
     ///
     /// ⚠ 它**不进任何 `Debug`**：`SecretKey` 手写的 `Debug` 恒为遮蔽形，
     /// 而本结构体**整个没有** `derive(Debug)`（`KS1` 的第二道）。
-    key: Option<SecretKey>,
+    table: RoutingTable,
+    tee: TeeSink,
     /// 本进程服务过的请求数 —— `DoD-1㈢`「两个键由同一个中转进程服务」量的就是它。
     served: AtomicU64,
     /// 每条连接透传收尾时落一笔 —— `DoD-2` acceptor ㈡「下游读到的块数 ≈ 上游发出的块数」量的就是它。
@@ -156,17 +167,14 @@ pub(crate) struct Relay {
 }
 
 impl Relay {
-    /// 不带 key 的中转（`K-H1` 甲半那个形状：原样转发）。
-    pub(crate) fn new(base: Base, tee: TeeSink) -> Self {
-        Self::with_key(base, tee, None)
-    }
-
-    /// 带 key 的中转。**生产段唯一的构造入口**（`run_with` 走它）。
-    pub(crate) fn with_key(base: Base, tee: TeeSink, key: Option<SecretKey>) -> Self {
+    /// **生产段唯一的构造入口**（`run_with` 走它）。
+    ///
+    /// ⚠ 先前有两个入口（`new` / `with_key`），`K-H2` 之后只剩一个：
+    /// 「带不带 key」不再是**中转**的属性，而是**表里某一行**的属性。
+    pub(crate) fn new(table: RoutingTable, tee: TeeSink) -> Self {
         Self {
-            base,
+            table,
             tee,
-            key,
             served: AtomicU64::new(0),
             inflight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             pumps: std::sync::Mutex::new(Vec::new()),
@@ -343,6 +351,24 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     let Some(r) = route::parse(&head.target) else {
         return respond_and_drain(&mut down_w, "404 Not Found");
     };
+    // ★★★ **`K-H2` `KH2` 的正主**：路由键里那一段账号在表里查不到 ⇒ **404**。
+    //
+    //   ⚠ 位置是承重的：**排在读请求体之前、连上游之前**（`upstream` 那一跳在几十行之下）
+    //   ⇒ 查不到的时候**一个字节都不会到上游**。这比「没发 Authorization」强，也更好断。
+    //
+    //   ⚠⚠ 三条**不许**做的，逐条写死（`KH2` 逐字点名的最坏失效形态就在这里）：
+    //     · 不许回落到别的账号的 key —— 那是**拿 A 的 key 发 B 的请求**；
+    //     · 不许回落到默认上游 —— 「配错了」与「没配」会变成同一个结果；
+    //     · 不许在这里「顺手补一行」。
+    //   今天这三条**不是靠这条注释守的**：`Relay` 里根本没有可回落的那个值（编译器兜），
+    //   而「表里有几行」是文件说了算。这条注释只解释为什么这一支必须是 404。
+    //
+    //   ⚠ 与它**同族但不同**的一格：行**在**表里、只是那一行没配 key ⇒
+    //   **原样转发下游那份鉴权头**（订阅登录那一档是合法状态）。那一格在
+    //   `render_upstream_request` 里，**两条判据分开钉，不许合成一条**。
+    let Some(row) = relay.table.lookup(&r.account) else {
+        return respond_and_drain(&mut down_w, "404 Not Found");
+    };
     // ★ `阻-1(D3)` + `重要-2(D3)`：请求体这一格先前有**两个**洞，两个都在这几行上。
     //   ① 长度**无上界** ⇒ `Content-Length: 1e12` 把整个进程 abort 掉（SIGABRT，不走 unwind）；
     //   ② 长度**读不懂**（`7abc`）与「没有这个头」挤在同一个 `None` 里 ⇒ 请求体被静默丢掉、
@@ -360,20 +386,17 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
 
     relay.served.fetch_add(1, Ordering::SeqCst);
 
-    let mut up = match upstream::connect(&relay.base) {
+    // ★ 连的是**这一行自己的**上游 —— `Base` 一次都不出 `Row` 的边界，
+    //   所以「拿 A 的端点」这件事在这里根本写不出来。
+    let mut up = match row.connect() {
         Ok(c) => c,
         Err(e) => {
             eprintln!("[relay] upstream connect failed: {e}");
             return respond_status(&mut down_w, "502 Bad Gateway");
         }
     };
-    up.write_all(&render_upstream_request(
-        &head,
-        &r.rest,
-        &relay.base,
-        body.len(),
-        relay.key.as_ref(),
-    ))?;
+    // ★★ 上游与 key **同源**：这里递的是**同一个** `row`，不是两个各自取的值。
+    up.write_all(&render_upstream_request(&head, &r.rest, row, body.len()))?;
     if !body.is_empty() {
         up.write_all(&body)?;
     }
@@ -420,13 +443,13 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
 
     let mut view = BodyView::for_response(&headers);
     let mut splitter = SseSplitter::default();
-    relay.tee.open(&r.agent, &r.key);
+    relay.tee.open(&r.agent, &r.account, &r.key);
     // ★ 返回值**必须落地**：它是 `DoD-2㈡`「块数对账」的唯一量点。
     // 写成 `pump(...)?;` 就等于把它丢掉 —— 那正是审计 `K4` 能全绿的原因。
     let outcome = pump(&mut up, &mut down_w, &mut |raw| {
         let decoded = view.feed(raw, TEE_DECODE_CAP);
         for payload in splitter.feed(&decoded, TEE_DECODE_CAP) {
-            relay.tee.event(&r.agent, &r.key, &payload);
+            relay.tee.event(&r.agent, &r.account, &r.key, &payload);
         }
         // 解码那一路超上限丢掉的字节要**报出去**，不许静默（见 `TEE_DECODE_CAP` 头注）。
         relay
@@ -499,8 +522,20 @@ fn pump<R: Read, W: Write>(
 /// 1. **配了 key ⇒ 换头**：下游那份 `Authorization` 被**丢掉**，换上中转自己那把。
 ///    取明文的那一行就在下面，它是 `expose_for_auth_header` 在**整个 daemon 生产段里唯一**的调用点
 ///    （`KS2`，由 `creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate` 相等断言钉住）。
-/// 2. **没配 key ⇒ 原样转发**（`K-H1` 甲半那个形状，一个字节不动）。
-///    这一支刻意留着：中转在没配凭据时仍然是一条能用的透传路。
+/// 2. **这一行没配 key ⇒ 原样转发**（`K-H1` 甲半那个形状，一个字节不动）。
+///
+///    ⚠⚠ **订正〔`K-H2` 08-28〕：这一条先前的理由今天是假的，已收口。**
+///    先前逐字写的是「这一支刻意留着：**中转在没配凭据时仍然是一条能用的透传路**」——
+///    那句话描述的是一条**隐式的全局行为**（进程级 `key` 是 `None` ⇒ 所有路由键都透传）。
+///    `K-H2` 把进程级那两个字段删掉之后，「全局」这个东西**不存在了**
+///    ⇒ 那条隐式行为**必然消失**，而且必须消失：它就是「查不到也照发」的另一种写法。
+///
+///    **它没有被删掉，是被改成了显式的一条路**：在凭据文件里写一条空账号
+///    （`{"accounts": {"passthrough": {}}}`）就得到一条 keyless 的透传行。
+///    ⇒ 今天准确的说法只有两句：①**没有配任何账号的中转，全部请求 404**；
+///    ②**透传要显式配一条**。判据分别在
+///    `store::tests::an_unconfigured_file_yields_no_rows_at_all` 与
+///    `store::tests::an_account_with_nothing_filled_in_is_still_a_row`。
 /// 3. 「不记录」那一半照旧由两条判据钉：`the_auth_header_is_forwarded_but_never_teed`
 ///    与 `a_sentinel_auth_header_shows_up_in_neither_the_relay_processs_stderr_nor_its_stdout`。
 /// 4. ★★ **第 4 条那个预言兑现了，而且必须在这里点名**：那两条判据喂进去的是
@@ -521,12 +556,16 @@ fn pump<R: Read, W: Write>(
 fn render_upstream_request(
     head: &RequestHead,
     target: &str,
-    base: &Base,
+    row: &Row,
     body_len: usize,
-    key: Option<&SecretKey>,
 ) -> Vec<u8> {
+    // ★★ **`K-H2`：签名从 `(&Base, Option<&SecretKey>)` 收成了一个 `&Row`。**
+    //    先前那个签名让「A 的端点 + B 的 key」**写得出来** —— 调用方各取各的，
+    //    没有任何东西说它俩必须同源。今天它们是同一个值的两个方法，
+    //    要拼错得先有两行同时在作用域里（`handle` 里只有一行）。
+    let key = row.key();
     let mut out = format!("{} {} HTTP/1.1\r\n", head.method, target);
-    out.push_str(&format!("Host: {}\r\n", base.host_header()));
+    out.push_str(&format!("Host: {}\r\n", row.host_header()));
     out.push_str("Accept-Encoding: identity\r\n");
     out.push_str("Connection: close\r\n");
     for (k, v) in &head.headers {
@@ -609,11 +648,18 @@ fn resolve_config(port_env: Option<&str>, upstream_env: Option<&str>) -> Option<
 fn load_credentials(
     get: &dyn Fn(&str) -> Option<String>,
     home: &std::path::Path,
+    default_base: &Base,
     out: &mut dyn Write,
-) -> Option<SecretKey> {
-    let loaded = creds::load(&creds::resolve_path(get, home));
-    creds::announce(&loaded, out);
-    loaded.key
+) -> RoutingTable {
+    let mut loaded = creds::load(&creds::resolve_path(get, home));
+    // ★ 装表这一步（`K-H2`）**在出声之前**：`announce` 要印的「有几行进得了表」
+    //   与「哪几行进不去、为什么」都是它算出来的。
+    //   ⚠ `take` 是因为 `AccountEntry` 里装着 `SecretKey`，而那个类型**刻意不给 `Clone`**
+    //     （`K-H2a`：少一条能复制明文的路就少一个出口）⇒ 只能把所有权交出去。
+    //     `announce` 不读 `accounts` 这一格，它读的是路径 / 权限 / 问题，外加下面这两个参数。
+    let (table, rejected) = table::build(std::mem::take(&mut loaded.accounts), default_base);
+    creds::announce(&loaded, table.len(), &rejected, out);
+    table
 }
 
 fn run_with(
@@ -639,8 +685,8 @@ fn run_with(
     }
     // ⚠ 顺序：**起监听之后、进接受循环之前**。放在起监听之前的话，
     //   端口起不来那条支会先把凭据路径印出来，而那时它还不相干。
-    let key = load_credentials(creds_get, home, &mut std::io::stderr());
-    serve(listener, Arc::new(Relay::with_key(base, TeeSink::to_stdout(), key)));
+    let table = load_credentials(creds_get, home, &base, &mut std::io::stderr());
+    serve(listener, Arc::new(Relay::new(table, TeeSink::to_stdout())));
     0
 }
 
@@ -686,11 +732,57 @@ pub(crate) fn run(home: &std::path::Path, _args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    // ⚠ `upstream` 这一整个模块只有**判据段**才用得到（生产段今天只经 `Row::connect` 走它，
+    //    而那一处在 `table.rs`）⇒ 这条 `use` 放在测试模块里，不放在文件顶上：
+    //    放上面会在非测试构建里变成一条 unused import。
+    use super::super::upstream;
+    use creds_core::SecretKey;
     use std::io::BufRead;
     use std::sync::mpsc;
 
     /// 假上游发几个事件块。终止块另算 ⇒ 一条响应的**块数** = `UPSTREAM_EVENTS + 1`。
     const UPSTREAM_EVENTS: usize = 3;
+
+    /// 判据里那个「配得到」的账号段。**与 `send_request` 里那些 URL 逐字对应。**
+    const ACCT_A: &str = "acctA";
+    /// 第二个账号段（`routes_two_keys…` 用它证「两个键走同一个进程」）。
+    const ACCT_B: &str = "acctB";
+
+    /// 造一张判据用的表。
+    ///
+    /// ⚠ 它走的是**生产段那条真实的路** `RoutingTable::build` —— 判据不许自己另造一个
+    /// 同构的表，那样量的就不是生产段的那一份了。
+    fn table_of(rows: &[(&str, &Base, Option<&str>)]) -> RoutingTable {
+        RoutingTable::build(rows.iter().map(|(id, b, k)| {
+            (
+                (*id).to_string(),
+                (*b).clone(),
+                k.map(SecretKey::new),
+            )
+        }))
+    }
+
+    /// 判据里最常用的那张表：两个账号段，都指向同一个假上游，都不配 key
+    /// （⇒ 走「原样转发」那一支，与 `K-H1` 甲半的既有判据逐字同形）。
+    fn two_accounts_no_key(base: &Base) -> RoutingTable {
+        table_of(&[(ACCT_A, base, None), (ACCT_B, base, None)])
+    }
+
+    /// 一个只属于本判据的临时目录。**名字中性**（不含被断言的字面），
+    /// 免得诊断把路径原样印进输出、让「输出里含某句话」靠路径恒真
+    /// （`brief` 12 逐字点名的那一形；隔壁 `creds.rs` 的同名助手记着那次真事故）。
+    fn tmpdir(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!(
+            "ccm-rl-{}-{}-{tag}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&d).expect("建临时目录");
+        d
+    }
 
     /// 下游打过去的请求体。**期望值是手写字面量**，判据不许拿被测代码算它（那样自证、恒绿）。
     const REQUEST_BODY: &str = "{\"m\":1}";
@@ -947,7 +1039,7 @@ mod tests {
         let w: Box<dyn Write + Send> =
             custom.unwrap_or_else(|| Box::new(Shared(Arc::clone(&buf), tick)));
         let base = Base::parse(&format!("http://127.0.0.1:{}", up.port())).expect("base");
-        let relay = Arc::new(Relay::new(base, TeeSink::new(w)));
+        let relay = Arc::new(Relay::new(two_accounts_no_key(&base), TeeSink::new(w)));
         let listener = listen(0).expect("listen");
         let addr = listener.local_addr().expect("addr");
         let r2 = Arc::clone(&relay);
@@ -1655,14 +1747,21 @@ mod tests {
     /// 起一个子进程中转，指向 `up`。**端口给 0**（内核选）——
     /// 判据从子进程 stderr 上那句 `listening on` 里读回真端口，
     /// 这样就没有「先探一个空闲端口再去绑」的竞态。
+    /// ⚠⚠ **`K-H2` 改了这个夹具，经过必须写下来**：先前它指到一条**不存在**的路径，
+    /// 靠的是「没配凭据 ⇒ 中转是一条全局透传路」——**那条隐式行为已经不存在了**
+    /// （见 `render_upstream_request` 头注的订正）。今天不给它一份凭据文件的话，
+    /// 表是空的 ⇒ **每一发都是 404**，而这几条判据要的是一趟**真转发**。
+    ///
+    /// ⇒ 今天写一份**只有一条空账号**的真文件：`{"accounts":{"acctA":{}}}`
+    /// —— keyless、用默认上游（`CCM_RELAY_UPSTREAM` 指着假上游），
+    /// 正好等价于先前那条隐式透传，但**是显式的一条路**。
     fn spawn_relay_child(up: SocketAddr) -> RelayChild {
-        // 指到一个**不存在**的临时路径：判据绝不许去碰用户真实的那份凭据文件。
-        let nowhere = std::env::temp_dir().join(format!(
-            "ccm-rc-absent-{}-{}.json",
-            std::process::id(),
-            up.port()
-        ));
-        spawn_relay_child_with_creds(up, &nowhere)
+        // 判据绝不许去碰用户真实的那份凭据文件 ⇒ 自己造一份临时的。
+        let dir = tmpdir(&format!("child-{}", up.port()));
+        let p = dir.join("relay-credentials.json");
+        std::fs::write(&p, b"{\n  \"accounts\": {\n    \"acctA\": {}\n  }\n}\n")
+            .expect("写子进程的凭据夹具");
+        spawn_relay_child_with_creds(up, &p)
     }
 
     /// 起一个子进程中转，并**指定它从哪儿读凭据**。
@@ -1855,15 +1954,7 @@ mod tests {
         //（诊断常把路径原样印进输出 ⇒ 那时「输出里含某句话」会靠路径恒真）。
         const CANARY: &str = "sk-ant-CANARY-MUST-NEVER-LEAVE-THIS-PROCESS";
 
-        let dir = std::env::temp_dir().join(format!(
-            "ccm-rc-canary-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_nanos())
-                .unwrap_or(0)
-        ));
-        std::fs::create_dir_all(&dir).expect("建临时目录");
+        let dir = tmpdir("canary");
         let creds_path = dir.join("relay-credentials.json");
         // ← 这一行就是「人拿编辑器写了一份 JSON 放进去」。没有界面、没有 IPC、没有迁移步骤。
         std::fs::write(
@@ -1876,7 +1967,10 @@ mod tests {
         let relay = spawn_relay_child_with_creds(up.addr, &creds_path);
 
         // ── 正常流程：客户端**一个凭据都不配** ──────────────────────────────
-        let mut c = send_request(relay.addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
+        // ⚠ `K-H2`：账号段是 `default` —— 这份夹具走的是**顶层一把 key** 那个旧形状
+        //   （`K-H2a` 交付时的样子），它被读成一条 id 逐字是 `default` 的**有名字的行**。
+        //   ⇒ 本条同时是「旧文件升级之后照常能用」的端到端判据。
+        let mut c = send_request(relay.addr, "/s/agentA/default/sid-AAA/v1/messages", "");
         let mut got = Vec::new();
         c.read_to_end(&mut got).expect("read");
         let downstream = String::from_utf8_lossy(&got).to_string();
@@ -1893,7 +1987,7 @@ mod tests {
         );
         let (bad_len, _) = send_raw(
             relay.addr,
-            "POST /s/agentA/acctA/sid-AAA/v1/messages HTTP/1.1\r\nHost: x\r\nContent-Length: 7abc\r\n\r\n",
+            "POST /s/agentA/default/sid-AAA/v1/messages HTTP/1.1\r\nHost: x\r\nContent-Length: 7abc\r\n\r\n",
         );
         assert!(
             bad_len.starts_with("HTTP/1.1 400"),
@@ -1957,7 +2051,267 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    // ============================================================ `K-H2` `KH2` / `KH4`
+
+    /// 起一个中转，**表由调用方给**。tee 丢进黑洞（本族判据量的不是 tee）。
+    fn spawn_relay_with_table(table: RoutingTable) -> SocketAddr {
+        let relay = Arc::new(Relay::new(table, TeeSink::new(Box::new(std::io::sink()))));
+        let listener = listen(0).expect("listen");
+        let addr = listener.local_addr().expect("addr");
+        std::thread::spawn(move || serve(listener, relay));
+        addr
+    }
+
+    /// 一个**没人监听**的回环地址：绑一个再立刻放掉。
+    ///
+    /// ⚠ 严格说这是一个 TOCTOU（放掉之后到用之前，内核可能把它分给别人）——
+    /// 本机跑一趟判据的那几毫秒里这概率可以忽略，**但它不是零**，如实记着。
+    fn a_port_nobody_listens_on() -> u16 {
+        let l = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind");
+        let p = l.local_addr().expect("addr").port();
+        drop(l);
+        p
+    }
+
+    /// ★★★ **`KH2` 的正主**：一条路由键在表里**找不到** ⇒ **404，且一个字节都不到上游**。
+    ///
+    /// # 为什么断「上游一次都没被连」而不是「上游没收到 Authorization」
+    ///
+    /// 后者弱：它容许「连上了、发了请求、只是没带鉴权头」。而本件最坏的失效形态是
+    /// **请求本身跑到了另一个账号的端点上** —— 那时就算没带头，请求体（一整份会话上下文）
+    /// 已经出去了。⇒ 断的是**上游的连接数为 0**。
+    ///
+    /// ⚠⚠ **非空对照承重**：同一个进程、同一把尺子，**配得到**的那条路上
+    /// 必须看得见「上游收到了 1 次，而且那一次带着这一行自己的 key」。
+    /// 没有这一格，上面那个 0 可能只是因为中转整个是死的。
+    #[test]
+    fn an_account_that_is_not_in_the_table_gets_404_and_nothing_reaches_upstream() {
+        let up = spawn_fake_upstream(None);
+        let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
+        // 表里**只有** `acctA`。
+        let addr = spawn_relay_with_table(table_of(&[(ACCT_A, &base, Some("KEY-OF-A"))]));
+
+        // ── ㈠ 表里没有的那个账号段 ────────────────────────────────
+        let mut c = send_request(
+            addr,
+            "/s/agentA/acctB/sid-X/v1/messages",
+            "Authorization: Bearer THEIRS\r\n",
+        );
+        let mut got = Vec::new();
+        c.read_to_end(&mut got).expect("read");
+        let miss = String::from_utf8_lossy(&got).to_string();
+
+        // ── ㈠ 上游**一次都没被连**（比「没收到鉴权头」强）────────────
+        //
+        // ⚠⚠ **顺序是刻意的，经过记下来**：这两条先前是「先断状态码、再断上游」，
+        //    而变异实测发现**两刀都先炸状态码那条** ⇒ 上游那条根本没被求值，
+        //    「它有没有牙」一次都没被证明过。断言是顺序求值的 ——
+        //    **把承重的那条放前面**，两条才各自有各自的死值验。
+        //    （`MU-KH2a` 回落 ⇒ 本条红；`MU-KH2b` 改回 502 ⇒ 本条绿而下面那条红。）
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            0,
+            "查不到的那一发跑到上游去了 —— 那就是回落。下游拿到的是：{miss:?}"
+        );
+        assert_eq!(
+            up.auth_values.lock().expect("lock").len(),
+            0,
+            "查不到的那一发把鉴权头发出去了"
+        );
+
+        // ── ㈡ 而且回的是 404 ──────────────────────────────────────
+        assert!(
+            miss.starts_with("HTTP/1.1 404"),
+            "表里查不到的账号段该回 404，实得：{miss:?}"
+        );
+
+        // ── ★★ 非空对照：配得到的那条路走得通，而且带的是**它自己那把** key ──
+        let mut c2 = send_request(
+            addr,
+            "/s/agentA/acctA/sid-X/v1/messages",
+            "Authorization: Bearer THEIRS\r\n",
+        );
+        let mut got2 = Vec::new();
+        c2.read_to_end(&mut got2).expect("read");
+        let hit = String::from_utf8_lossy(&got2).to_string();
+        assert!(
+            hit.starts_with("HTTP/1.1 200"),
+            "非空对照失败：配得到的那条路也不通，上面那个 0 证不了什么：{hit:?}"
+        );
+        let seen = up.seen.lock().expect("lock").clone();
+        assert_eq!(seen.len(), 1, "上游应当恰好被连一次：{seen:?}");
+        let auths = up.auth_values.lock().expect("lock").clone();
+        assert_eq!(auths.len(), 1, "上游应当恰好收到一次鉴权头：{auths:?}");
+        assert!(
+            auths[0].contains("KEY-OF-A"),
+            "换上去的不是这一行自己那把 key：{auths:?}"
+        );
+        assert!(
+            !auths[0].contains("THEIRS"),
+            "客户端那份鉴权头没被丢掉：{auths:?}"
+        );
+    }
+
+    /// ★★★ **`KH4`：金丝雀的多账号版。**配两个账号、两把**不同**的假 key，
+    /// 走**真子进程 + 真转发**，断言：
+    /// ① 每条路由键收到的是**它自己那把**（**不是另一把**）；
+    /// ② 两把 key 都不出现在 stdout（tee）/ 回给下游的字节 / stderr / 错误响应里。
+    ///
+    /// ★ **①比②更要紧**：② 是 `K-H2a` 已经买到的，① 是本件新增的风险。
+    ///
+    /// # ⚠ 它顺带补上了 `K-H2a` 留下的**502 那一格**
+    ///
+    /// 件计划逐字记着 `K-H2a` 的诚实边界：「**502 那条错误支没测**（已测 404/400）」。
+    /// 这里第三个账号 `acct-dead` 的 `base_url` 指着一个**没人监听**的回环端口
+    /// ⇒ `row.connect()` 失败 ⇒ 走 `respond_status(…, "502 Bad Gateway")` 那一支，
+    /// 而它的 stderr 那一行（`upstream connect failed: {e}`）也一并进了下面四个出口的扫描面。
+    ///
+    /// # ⚠ 它**仍然没有**补上的那一格
+    ///
+    /// **panic 那一格没构造出真 panic** —— 与 `K-H2a` 逐字相同，本件也没有构造它的路子。
+    /// 下面那条 `!err.contains("panicked at")` 断的是「这一趟没 panic」，
+    /// **不是**「panic 了也不泄漏」。后一句今天仍是**判不了**，原样抬进上报口。
+    #[test]
+    fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
+        // 两把金丝雀：**不可能自然出现**，且不含任何路径成分。
+        const CANARY_A: &str = "sk-ant-CANARY-ACCOUNT-AAA-MUST-NEVER-LEAK";
+        const CANARY_B: &str = "sk-ant-CANARY-ACCOUNT-BBB-MUST-NEVER-LEAK";
+        const CANARY_DEAD: &str = "sk-ant-CANARY-ACCOUNT-DEAD-MUST-NEVER-LEAK";
+
+        let dead_port = a_port_nobody_listens_on();
+        let dir = tmpdir("canary-multi");
+        let creds_path = dir.join("relay-credentials.json");
+        // ← 人拿编辑器写的一份**多账号** JSON。没有界面、没有 IPC、没有迁移步骤。
+        std::fs::write(
+            &creds_path,
+            format!(
+                "{{\n  \"_note\": \"hand written multi\",\n  \"accounts\": {{\n\
+                 \x20   \"acct-a\": {{ \"api_key\": \"{CANARY_A}\" }},\n\
+                 \x20   \"acct-b\": {{ \"api_key\": \"{CANARY_B}\" }},\n\
+                 \x20   \"acct-dead\": {{ \"api_key\": \"{CANARY_DEAD}\", \"base_url\": \"http://127.0.0.1:{dead_port}\" }}\n\
+                 \x20 }}\n}}\n"
+            ),
+        )
+        .expect("写凭据夹具");
+
+        let up = spawn_fake_upstream(None);
+        let relay = spawn_relay_child_with_creds(up.addr, &creds_path);
+
+        // ── ㈠ 两条路各走一趟（顺序固定 ⇒ 下面按下标对账）────────────
+        let mut downstream = String::new();
+        for acct in ["acct-a", "acct-b"] {
+            let mut c = send_request(
+                relay.addr,
+                &format!("/s/agentA/{acct}/sid-{acct}/v1/messages"),
+                "",
+            );
+            let mut got = Vec::new();
+            c.read_to_end(&mut got).expect("read");
+            let text = String::from_utf8_lossy(&got).to_string();
+            assert!(
+                text.starts_with("HTTP/1.1 200"),
+                "{acct} 那一发得真走完一条转发：{text:?}"
+            );
+            downstream.push_str(&text);
+        }
+
+        // ── ★★★ ① 每条路由键收到的是**它自己那把** ────────────────
+        let auths = up.auth_values.lock().expect("lock").clone();
+        assert_eq!(auths.len(), 2, "上游应当恰好收到两次鉴权头：{auths:?}");
+        assert!(
+            auths[0].contains(CANARY_A) && !auths[0].contains(CANARY_B),
+            "acct-a 那一发带的不是 A 自己那把 key：{auths:?}"
+        );
+        assert!(
+            auths[1].contains(CANARY_B) && !auths[1].contains(CANARY_A),
+            "acct-b 那一发带的不是 B 自己那把 key：{auths:?}"
+        );
+        // 反空真：两把确实**不一样**（否则上面两条恒真）。
+        assert_ne!(CANARY_A, CANARY_B);
+
+        // ── ㈡ 表里没有的账号段 ⇒ 404，且上游那本账**一次都没涨** ──────
+        let (not_found, _) = send_raw(
+            relay.addr,
+            "GET /s/agentA/acct-nope/sid-x/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+        );
+        assert!(
+            not_found.starts_with("HTTP/1.1 404"),
+            "表里查不到的账号段该回 404：{not_found:?}"
+        );
+        assert_eq!(
+            up.auth_values.lock().expect("lock").len(),
+            2,
+            "404 那一发跑到上游去了 —— 那就是回落"
+        );
+
+        // ── ㈢ **502 那一支**（`K-H2a` 留下的那一格，本件补上）──────────
+        let (bad_gateway, _) = send_raw(
+            relay.addr,
+            "GET /s/agentA/acct-dead/sid-x/v1/messages HTTP/1.1\r\nHost: x\r\n\r\n",
+        );
+        assert!(
+            bad_gateway.starts_with("HTTP/1.1 502"),
+            "上游连不上那一支该回 502：{bad_gateway:?}"
+        );
+
+        // ── 非空对照：两条采集面都是活的 ───────────────────────────
+        assert!(
+            wait_until(|| relay.out().contains("\"event\"")),
+            "非空对照：子进程 stdout 上一条事件行都没有 —— 采集面是死的，\
+             下面那几条「零出现」就是空真。stdout 现在是：{:?}",
+            relay.out()
+        );
+        let out = relay.out();
+        let err = relay.err();
+        assert!(
+            err.contains("listening on"),
+            "非空对照：子进程 stderr 一个字都没收到 —— 采集面是死的：{err:?}"
+        );
+        assert!(
+            err.contains("credentials: configured"),
+            "非空对照：子进程没报告它读到了凭据 —— 那条路没跑过：{err:?}"
+        );
+        // 非空对照：tee 行里带着**账号**那一格（路由键三段都落到了 tee 上）。
+        assert!(
+            out.contains("\"account\":\"acct-a\"") || out.contains("\"account\": \"acct-a\""),
+            "tee 行里没有账号那一格：{out:?}"
+        );
+
+        // ── ★★ ② 两把 key，四个出口，一个字节都不许有 ─────────────
+        for (who, canary) in [("A", CANARY_A), ("B", CANARY_B), ("dead", CANARY_DEAD)] {
+            assert!(!out.contains(canary), "㈠ 标准输出（tee）里出现了 {who} 的 key：{out:?}");
+            assert!(
+                !downstream.contains(canary),
+                "㈡ 回给下游客户端的字节里出现了 {who} 的 key：{downstream:?}"
+            );
+            assert!(!err.contains(canary), "㈢ stderr 里出现了 {who} 的 key：{err:?}");
+            assert!(
+                !not_found.contains(canary) && !bad_gateway.contains(canary),
+                "㈢ 错误响应里出现了 {who} 的 key：404={not_found:?} / 502={bad_gateway:?}"
+            );
+        }
+        // 顺带：连凭据文件的**内容**都不该被印出来（只许印路径）。
+        assert!(
+            !err.contains("hand written multi"),
+            "stderr 里出现了凭据文件的内容（不只是路径）：{err:?}"
+        );
+        // ㈣ 的另一半：这一趟里子进程没 panic。
+        // ⚠ 它**不是**「panic 了也不泄漏」——那一格今天仍然判不了（见本判据头注）。
+        assert!(
+            !err.contains("panicked at"),
+            "子进程 panic 了 —— 这一趟的读数按 CRASH 记，不是「零出现」：{err:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// `KS2` 的行为那一半：**配了 key 就换头，没配就原样转发** —— 两支都要有判据。
+    ///
+    /// ⚠⚠ **`K-H2` 之后这两支的意思变了，别按旧的读**：
+    /// 「没配」不再是「**这个中转**没配 key」，而是「**这一行**没配 key」——
+    /// 那是订阅登录那一档的**合法状态**（`table::Row::key` 的头注逐字）。
+    /// 「表里根本没有这一行」是**另一件事**，归 `KH2` 的 404，判据在
+    /// `an_account_that_is_not_in_the_table_gets_404_and_nothing_reaches_upstream`。
     #[test]
     fn a_configured_key_replaces_the_clients_header_instead_of_being_appended() {
         const MINE: &str = "sk-ant-MINE";
@@ -1966,14 +2320,14 @@ mod tests {
         )
         .expect("parse");
         let base = Base::parse("https://api.example.com").expect("base");
-        let key = SecretKey::new(MINE);
+        // 两行：一行配了 key，一行没配。**同一张表**里取，走的是生产段那条真实的路。
+        let t = table_of(&[("with", &base, Some(MINE)), ("without", &base, None)]);
 
         let with = String::from_utf8(render_upstream_request(
             &head,
             "/v1/x",
-            &base,
+            t.lookup("with").expect("配了 key 的那一行"),
             3,
-            Some(&key),
         ))
         .expect("utf8");
         // ★ **恰好一个** `Authorization` —— 追加一条会让上游看见两个，那是未定义行为。
@@ -1988,10 +2342,14 @@ mod tests {
             "客户端那份鉴权头没被丢掉：{with:?}"
         );
 
-        // 非空对照：**没配** key 时那一支是原样转发（不是恒替换）。
-        let without =
-            String::from_utf8(render_upstream_request(&head, "/v1/x", &base, 3, None))
-                .expect("utf8");
+        // 非空对照：**这一行没配** key 时是原样转发（不是恒替换）。
+        let without = String::from_utf8(render_upstream_request(
+            &head,
+            "/v1/x",
+            t.lookup("without").expect("没配 key 的那一行"),
+            3,
+        ))
+        .expect("utf8");
         assert!(without.contains("Authorization: Bearer THEIRS\r\n"));
         assert!(!without.contains(MINE));
     }
@@ -2280,9 +2638,15 @@ mod tests {
         )
         .expect("parse");
         let base = Base::parse("https://api.example.com").expect("base");
-        // `None` = 没配 key ⇒ 原样转发那一支（`K-H1` 甲半的形状）。换头那一支见下一条判据。
-        let out = String::from_utf8(render_upstream_request(&head, "/v1/x", &base, 3, None))
-            .expect("utf8");
+        // 这一行**没配 key** ⇒ 原样转发那一支（`K-H1` 甲半的形状）。换头那一支见下一条判据。
+        let t = table_of(&[("acct", &base, None)]);
+        let out = String::from_utf8(render_upstream_request(
+            &head,
+            "/v1/x",
+            t.lookup("acct").expect("行应当在"),
+            3,
+        ))
+        .expect("utf8");
         assert!(out.starts_with("POST /v1/x HTTP/1.1\r\n"));
         assert!(out.contains("Host: api.example.com\r\n"));
         assert!(out.contains("Accept-Encoding: identity\r\n"));
@@ -2354,7 +2718,10 @@ mod tests {
             "非空对照：accept 出来的 socket 默认该是开着 Nagle 的"
         );
         let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
-        let relay = Relay::new(base, TeeSink::new(Box::new(std::io::sink())));
+        let relay = Relay::new(
+            two_accounts_no_key(&base),
+            TeeSink::new(Box::new(std::io::sink())),
+        );
         handle(down, &relay).expect("handle 必须走完一条转发");
         assert!(
             probe.nodelay().expect("getsockopt"),
@@ -2445,7 +2812,10 @@ mod tests {
             "非空对照：accept 出来的 socket 默认该是**没有**写期限的"
         );
         let base = Base::parse(&format!("http://127.0.0.1:{}", up.addr.port())).expect("base");
-        let relay = Relay::new(base, TeeSink::new(Box::new(std::io::sink())));
+        let relay = Relay::new(
+            two_accounts_no_key(&base),
+            TeeSink::new(Box::new(std::io::sink())),
+        );
         handle(down, &relay).expect("handle 必须走完一条转发");
         assert_eq!(
             probe.read_timeout().expect("getsockopt"),
