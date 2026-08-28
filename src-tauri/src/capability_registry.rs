@@ -338,21 +338,31 @@ mod tests {
     /// **必须用反斜杠**。⇒ 键位置只要出现反斜杠就红，**不管那是今天认识的
     /// `\u`/`\U`/`\x` 还是明天新加的哪一种**。
     ///
-    /// **「键位置」的近似**：每行第一个 `=` 之前的那段（没有 `=` 的行 —— 表头 `[…]`、
-    /// 多行值的续行 —— 整行算）。TOML 要求键与它的 `=` 同行，所以这个近似对
-    /// **顶层键 / 点分键 / 表头**都成立。
-    /// ⚠ **盖不住内联表里的嵌套键**（`x = { "runer" = "sh" }`，反斜杠在第一个 `=` 之后）——
-    /// 那一形今天靠 [`decode_toml_escapes`] 认识的那三种转义兜着，
-    /// 「内联表 + 将来某种新转义」是本条**已知的、没兜住的**一格。
+    /// **「键位置」的近似**：每个 `=` 往前数到上一个 `{` / `,` / 行首的那一段。
+    /// 没有 `=` 的行（表头 `[…]`、多行值的续行）整行算。
+    /// TOML 要求键与它的 `=` 同行，所以这个近似对**顶层键 · 点分键 · 表头 ·
+    /// 内联表里的嵌套键**都成立 —— ⚠ 内联表那一格是量出来要的：08-28 实测
+    /// `alias = { "kg2probe" = "--version" }` **cargo 认**（内联表 + 转义键都认），
+    /// 只看「第一个 `=` 之前」会漏掉它。
+    ///
     /// ⚠ 代价：多行字符串**值**的续行里有反斜杠、且那一行没有 `=`，会误红。
     /// cargo 配置里这形状实际不出现；方向照本条的定盘（宁可误红）留着。
     fn backslash_in_key_position(text: &str) -> bool {
         text.lines().any(|line| {
-            let head = match line.find('=') {
-                Some(i) => &line[..i],
-                None => line,
-            };
-            head.contains('\\')
+            let mut start = 0usize;
+            for (i, b) in line.bytes().enumerate() {
+                match b {
+                    b'{' | b',' => start = i + 1,
+                    b'=' => {
+                        if line[start..i].contains('\\') {
+                            return true;
+                        }
+                        start = i + 1;
+                    }
+                    _ => {}
+                }
+            }
+            !line.contains('=') && line.contains('\\')
         })
     }
 
@@ -608,6 +618,17 @@ mod tests {
         assert!(
             !backslash_in_key_position(&strip_toml_comments(probe_backslash_value)),
             "探针⑤c：值里的反斜杠不许触发兜底，否则 Windows 路径会误红成灾"
+        );
+        // ⑤d/⑤e：内联表那一格 —— 实测 cargo 认内联表 + 转义键，兜底必须跟进去。
+        let probe_inline_key = "target = { x = { \"run\\u006Eer\" = \"/bin/echo\" } }\n";
+        let probe_inline_value = "env = { P = { value = \"C:\\\\t\", relative = false } }\n";
+        assert!(
+            backslash_in_key_position(&strip_toml_comments(probe_inline_key)),
+            "探针⑤d：**内联表里**的转义键也要被兜底逮到（只看第一个 `=` 之前会漏）"
+        );
+        assert!(
+            !backslash_in_key_position(&strip_toml_comments(probe_inline_value)),
+            "探针⑤e：内联表里**值**的反斜杠不许误红 —— 兜底认的是键位置，不是整行"
         );
         let probe_include = "include = [\"../elsewhere/x.toml\"]\n[profile.dev]\ndebug = false\n";
         assert!(
