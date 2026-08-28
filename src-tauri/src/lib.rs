@@ -27,6 +27,7 @@ mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生
                 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
+mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monitor 独占）+ 读侧只回掩码
 mod daemon_control; // P2s（C8）：每台机一个开关的命令层——只认 origin，不认 ssh 也不认进程监护
 mod daemon_policy; // P2s（C8）：每台机一份 daemon 策略（生效值住内存，持久化归前端）
 mod inbound_client;
@@ -41,7 +42,6 @@ mod panorama;
 mod panorama_seam_registry; // P7c-2 第一刀：引擎住哪一侧要可换（整体 #[cfg(test)]）
 mod parser;
 mod paths;
-mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monitor 独占）+ 读侧只回掩码
 mod platform_fs; // C10：平台相关的 fs 原语的唯一住址，注入给平台无关的 backend
 mod plugins; // P8a：Claude Code marketplace 面的只读枚举（**不声称安装/启用**，见模块头注）
 mod port_forward;
@@ -103,9 +103,9 @@ mod lockfile_conflict_guard; // audit-0805 F16：两份 lock 的真冲突必须�
 mod needle_anchor_registry; // audit-0805 F24：匹配单位不许比事实小（F23 的兄弟族）
 #[cfg(test)]
 mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半；内部整体 cfg(test)）
-// EF01（plugin-split）：`E4` 的四候选 × 两轴分类表落成会红的登记表（整体 `#[cfg(test)]`）。
-// ⚠ 注释刻意写在上一行而不是行尾：本模块有一条判据要断言「生产段里没人消费这张表」，
-//   而 `lib.rs` 的这行声明是它存在的方式、不是消费 —— 那条判据按**整行相等**放行它。
+                   // EF01（plugin-split）：`E4` 的四候选 × 两轴分类表落成会红的登记表（整体 `#[cfg(test)]`）。
+                   // ⚠ 注释刻意写在上一行而不是行尾：本模块有一条判据要断言「生产段里没人消费这张表」，
+                   //   而 `lib.rs` 的这行声明是它存在的方式、不是消费 —— 那条判据按**整行相等**放行它。
 mod plugin_class_registry;
 mod polling_registry; // U7-P：前端 + shared/ccm 的周期唤醒清账（daemon 那条零定时器护栏点名要「单独论证」的那半）
 mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）

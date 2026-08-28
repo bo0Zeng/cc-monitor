@@ -222,10 +222,8 @@ mod tests {
     /// `KS10①`：保留未知键。**人加的字段不许被抹掉。**
     #[test]
     fn merging_a_key_never_swallows_anything_the_human_wrote() {
-        let hand = parse(
-            r#"{"_note":"别删我","api_key":"OLD","zzz_last":1,"aaa_first":[1,2]}"#,
-        )
-        .expect("夹具应当可解析");
+        let hand = parse(r#"{"_note":"别删我","api_key":"OLD","zzz_last":1,"aaa_first":[1,2]}"#)
+            .expect("夹具应当可解析");
         let merged = merge_key(&hand, &SecretKey::new("NEW"));
         assert_eq!(merged[KEY_FIELD], "NEW", "key 应当被换成新的");
         // 分母 = 夹具里除 key 外的这 3 个键，逐个查。
@@ -246,7 +244,10 @@ mod tests {
             .iter()
             .map(|s| s.to_string())
             .collect();
-        let got: Vec<&str> = ordered_keys(arrival.iter()).into_iter().map(|s| s.as_str()).collect();
+        let got: Vec<&str> = ordered_keys(arrival.iter())
+            .into_iter()
+            .map(|s| s.as_str())
+            .collect();
         // 期望值是**手写字面量**，不是拿被测函数算出来的（否则本断言自证、恒绿）。
         assert_eq!(got, vec!["aaa", "bbb", "mmm", "zzz"]);
         // 非空对照：到达顺序**确实**不是这个顺序（夹具真的是乱的）。
@@ -299,8 +300,8 @@ mod tests {
         // ① 界面打开时的样子
         let stale = parse(r#"{"_note":"旧的","api_key":"OLD"}"#).expect("stale");
         // ② 人在编辑器里把 `_note` 改了，并且自己加了一个新键
-        let fresh = parse(r#"{"_note":"人刚改成这样","my_own":"别动我","api_key":"OLD"}"#)
-            .expect("fresh");
+        let fresh =
+            parse(r#"{"_note":"人刚改成这样","my_own":"别动我","api_key":"OLD"}"#).expect("fresh");
         // ③ 程序写 key —— 喂的是**写的那一刻**的内容
         let written = merge_key(&fresh, &SecretKey::new("NEW"));
 
@@ -325,19 +326,33 @@ mod tests {
     fn a_broken_file_is_reported_instead_of_being_read_as_not_configured() {
         assert_eq!(parse(""), Ok(Map::new()));
         assert_eq!(parse("   \n "), Ok(Map::new()));
-        assert!(matches!(parse(r#"{"api_key": }"#), Err(StoreError::NotJson(_))));
+        assert!(matches!(
+            parse(r#"{"api_key": }"#),
+            Err(StoreError::NotJson(_))
+        ));
         assert_eq!(parse("[1,2,3]"), Err(StoreError::NotAnObject));
         // 说法里要带得走「怎么修」——人手编打错时看得懂。
         let msg = parse(r#"{"a":}"#).unwrap_err().to_string();
-        assert!(msg.contains("手编"), "错误说法没告诉人这文件是手编的：{msg}");
-        assert!(msg.contains("没有动它"), "错误说法没说清程序没破坏文件：{msg}");
+        assert!(
+            msg.contains("手编"),
+            "错误说法没告诉人这文件是手编的：{msg}"
+        );
+        assert!(
+            msg.contains("没有动它"),
+            "错误说法没说清程序没破坏文件：{msg}"
+        );
     }
 
     /// key 字段的几种「等于没配」的写法。
     #[test]
     fn several_shapes_all_mean_not_configured() {
         // 分母 = 我列出的这 4 形，**不是**「所有写法」。
-        for raw in [r#"{}"#, r#"{"api_key":""}"#, r#"{"api_key":"   "}"#, r#"{"api_key":null}"#] {
+        for raw in [
+            r#"{}"#,
+            r#"{"api_key":""}"#,
+            r#"{"api_key":"   "}"#,
+            r#"{"api_key":null}"#,
+        ] {
             let doc = parse(raw).expect(raw);
             assert!(read_key(&doc).is_none(), "这一形该被当成没配：{raw}");
         }

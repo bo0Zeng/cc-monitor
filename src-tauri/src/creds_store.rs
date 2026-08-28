@@ -105,7 +105,11 @@ pub(crate) fn read_status_at(path: &std::path::Path) -> Result<RelayCredentialsS
         masked,
         path: path.display().to_string(),
         // 文件不存在时不报权限问题（`probe` 那时返回「查不出来」，那不是一条有用的提醒）。
-        notice: if raw.is_empty() { None } else { notice_of(&verdict) },
+        notice: if raw.is_empty() {
+            None
+        } else {
+            notice_of(&verdict)
+        },
         problem,
     })
 }
@@ -138,7 +142,10 @@ fn notice_of(v: &Verdict) -> Option<String> {
 /// 两类文件的正确行为本来就不同。这里选它是因为凭据文件与 `config.json` 同类
 /// ——**都是 monitor 自己的文件**，`INVARIANTS §4` 那条 ACL 保留只限定在**用户的**文件。〕
 pub(crate) fn write_key(plain: &str) -> Result<(), String> {
-    write_key_at(&resolve_path().ok_or_else(|| "no home dir".to_string())?, plain)
+    write_key_at(
+        &resolve_path().ok_or_else(|| "no home dir".to_string())?,
+        plain,
+    )
 }
 
 /// `write_key` 剥掉「路径从哪来」之后的那一半 —— **`KS10` 的行为判据打的就是它**。
@@ -210,7 +217,10 @@ mod tests {
         let daemons = store::path_under_claude_home(&home.join(".claude"));
         assert_eq!(mine, daemons, "两侧算出来的凭据文件路径不一样 —— 契约漂了");
         // 非空对照：这把尺子分得出不同的路径（不是恒相等）。
-        assert_ne!(mine, store::path_under_claude_home(&home.join(".claude-other")));
+        assert_ne!(
+            mine,
+            store::path_under_claude_home(&home.join(".claude-other"))
+        );
     }
 
     /// `KS7`：它**不是**前端整份读写的那份配置。
@@ -301,7 +311,10 @@ mod tests {
 
         let back: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
-        assert_eq!(back["_note"], "human changed this", "人的编辑被陈旧副本盖掉了");
+        assert_eq!(
+            back["_note"], "human changed this",
+            "人的编辑被陈旧副本盖掉了"
+        );
         assert_eq!(back["brand_new"], 7, "人新加的键被吃掉了");
         assert_eq!(back["my_own"], "keep me");
         assert_eq!(back["api_key"], "NEW-KEY");
@@ -336,7 +349,10 @@ mod tests {
 
         // ★ 非空对照：**放宽它，读入口必须出声**（否则上面那条 `is_none` 证不了什么）。
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644)).expect("放宽");
-        let notice = read_status_at(&p).expect("读").notice.expect("过宽了必须出声");
+        let notice = read_status_at(&p)
+            .expect("读")
+            .notice
+            .expect("过宽了必须出声");
         assert!(notice.contains("chmod 600"), "没说清怎么修：{notice}");
         let _ = std::fs::remove_dir_all(&dir);
     }
@@ -373,13 +389,24 @@ mod tests {
     ///
     /// `(方法名, 期望总处数, 期望它住在哪个文件的路径尾巴)`。**默认拒绝**：对不上就红。
     const PLAINTEXT_EXIT_SITES: &[(&str, usize, &str)] = &[
-        ("expose_for_auth_header(", 1, "remote-daemon-proto/src/relay/server.rs"),
-        ("expose_for_persisting(", 1, "crates/creds-core/src/store.rs"),
+        (
+            "expose_for_auth_header(",
+            1,
+            "remote-daemon-proto/src/relay/server.rs",
+        ),
+        (
+            "expose_for_persisting(",
+            1,
+            "crates/creds-core/src/store.rs",
+        ),
     ];
 
     /// 本判据扫哪几棵树。**这就是「取明文恰好 N 处」那句全称的分母。**
-    const PLAINTEXT_SCAN_TREES: &[&str] =
-        &["src-tauri/src", "src-tauri/crates", "remote-daemon-proto/src"];
+    const PLAINTEXT_SCAN_TREES: &[&str] = &[
+        "src-tauri/src",
+        "src-tauri/crates",
+        "remote-daemon-proto/src",
+    ];
 
     /// ★★★ **`KS2` 的人群那一格〔D1 阻-1 回修，08-27〕：三棵树全扫，不是一个文件、也不是一个 crate。**
     ///
@@ -437,7 +464,9 @@ mod tests {
         for sub in PLAINTEXT_SCAN_TREES {
             let leaf = sub.rsplit('/').next().unwrap_or(sub);
             assert!(
-                files.iter().any(|(p, _)| p.contains(sub) || p.contains(leaf)),
+                files
+                    .iter()
+                    .any(|(p, _)| p.contains(sub) || p.contains(leaf)),
                 "`{sub}` 这棵树一个文件都没扫到 —— 分母缺了一块"
             );
         }
@@ -490,8 +519,7 @@ mod tests {
     #[test]
     fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
         let core = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("crates/creds-core/src/lib.rs"),
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/creds-core/src/lib.rs"),
         )
         .expect("读不到 creds-core 的源码 —— 抽取器坏了，本条会零命中地绿");
 
@@ -510,7 +538,9 @@ mod tests {
         for (i, _) in table.match_indices("Handling::HandsOut") {
             // 往回找最近的一个 `"名字"`。
             let before = &table[..i];
-            let Some(q_end) = before.rfind('"') else { continue };
+            let Some(q_end) = before.rfind('"') else {
+                continue;
+            };
             let Some(q_start) = before[..q_end].rfind('"') else {
                 continue;
             };
@@ -573,7 +603,8 @@ mod tests {
              `a_written_file_is_owner_only_and_a_widened_one_is_called_out` 照样绿。"
         );
         // 顺序也要对：tmp 那次必须在原子替换**之前**。
-        let i_tmp = guard_core::find_pinned(body, "make_private(&tmp)").expect("tmp 那次应当恰好一处");
+        let i_tmp =
+            guard_core::find_pinned(body, "make_private(&tmp)").expect("tmp 那次应当恰好一处");
         let i_rep = guard_core::find_pinned(body, "atomic_replace(").expect("原子替换应当恰好一处");
         assert!(
             i_tmp < i_rep,
@@ -632,10 +663,10 @@ mod tests {
              D1 审计探针实打：那一刻 mode=0664（umask 0002）/ 0644（umask 0022），里面已经有明文。"
         );
         // ③ 出生必须排在**写内容之前**（否则「出生时窄」买到的是空文件窄，没意义）。
-        let i_born = guard_core::find_pinned(body, "create_private(&tmp)")
-            .expect("上一条已断言它恰好一处");
-        let i_write = guard_core::find_pinned(body, "write_all(")
-            .expect("写内容那一步应当恰好一处");
+        let i_born =
+            guard_core::find_pinned(body, "create_private(&tmp)").expect("上一条已断言它恰好一处");
+        let i_write =
+            guard_core::find_pinned(body, "write_all(").expect("写内容那一步应当恰好一处");
         assert!(
             i_born < i_write,
             "tmp 的创建排在写内容之后了 —— 那顺序上不成立"
