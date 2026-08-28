@@ -1083,6 +1083,9 @@ pub fn run() {
             // 写那条是「界面」这个第二写者，它与人手编是同一份文件的两个写者（`KS10`）。
             read_relay_credentials_status,
             write_relay_credentials_key,
+            // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走中转」。
+            // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
+            relay_routing_for,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
             cc_bus::read_cc_bus_state,
@@ -1528,6 +1531,50 @@ pub(crate) fn batch_to_payloads(
 #[tauri::command]
 fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus, String> {
     creds_store::read_status()
+}
+
+/// `K-H2b` `KH2B7`：界面问「**这几个本机账号，起会话时会不会走本机中转**」。
+///
+/// # 为什么是一条**只答本机**的命令，而不是往账号列表里加两个字段
+///
+/// 账号列表那份结构（`accounts::RemoteAccount`）**同时**装着远端账号，
+/// 而「走不走中转」这件事**只对本机成立** —— 中转是**每台机器自己的一个进程**
+/// （`relay/mod.rs` 自陈「独立进程」；注入的是那个 agent 进程自己的 `ANTHROPIC_BASE_URL`，
+/// 而 `payload::relay_base_url` 拼的是**回环**地址，回环是**自指**的）
+/// ⇒ 本机这一侧**在结构上答不了远端那台**。往那份结构里加字段，
+/// 就是让远端那些行也带上两个这一侧答不出来的值。
+/// 命令面的登记（`relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
+///
+/// # 两个字段各自的射程，别读宽
+///
+/// - `routed`：**这个 configDir 推出来的账号 id 在中转凭据表里有一行**。
+///   推 id 的规则只有一份（`history::relay_account_id_of_dir`），起会话那一侧调的是同一个，
+///   由 `history::tests::the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule` 钉着。
+///   ⚠ 它**不**答「那把 key 能不能用」（要到 claude 那边才知道），
+///   也**不**答「这次拉起会不会真注入」（那还要过 `running` 那一格）。
+/// - `running`：**我们起过本机中转而且没停过**，**不是**「那个口上真有人听」
+///   （`local_daemon::relay_running` 头注逐字写了那两个分家的窗口）。
+///
+/// ⚠ **本结构刻意不走 `ts-rs`**：`RelayCredentialsStatus` 的先例逐字记着理由 ——
+/// 导出会在 `src/generated/` **新增一个文件**，而那个目录的清单由
+/// `src/generated-boundary-guard.vitest.ts` 逐项等号对拍，那个文件不在本件写区。
+/// ⇒ TS 侧那份是**手写镜像**（`src/accounts.ts::RelayRoutingView`），两侧字段名手动同步。
+/// **如实记：这一格今天没有判据对拍**（`RelayCredentialsStatus` 那条有，本条没有）。
+#[derive(serde::Serialize, Debug, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+struct RelayRouting {
+    /// 传进来的那些 configDir 里，中转表里**有对应行**的那几个（原样回，不是 id）。
+    routed: Vec<String>,
+    /// 本机中转在不在跑。射程见上。
+    running: bool,
+}
+
+#[tauri::command]
+fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
+    RelayRouting {
+        routed: history::relay_routed_subset(&config_dirs, &history::relay_rows()),
+        running: local_daemon::relay_running(),
+    }
 }
 
 /// `K-H2a` `KS10`：从界面配一把 key。

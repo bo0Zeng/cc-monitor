@@ -64,6 +64,8 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍
  *（Rust 的字段名从结构体源码派生、TS 的从本接口体派生，**两边条数相等**，多一个少一个都红）。
  */
+import type { RelayRoutingView } from "../accounts";
+
 export interface RelayCredentialsStatus {
   /** 配了没配。 */
   configured: boolean;
@@ -577,6 +579,18 @@ export const commands = {
    */
   read_relay_credentials_status: () =>
     invoke<RelayCredentialsStatus>("read_relay_credentials_status"),
+
+  /**
+   * `K-H2b` `KH2B7`：问「这几个**本机** configDir 走不走中转」。
+   *
+   * ⚠ **只答本机**，而且那不是欠账：中转是**每台机器自己的一个进程**、注入的是**回环**地址
+   * （自指）⇒ 本机这一侧**在结构上答不了远端那台**。命令面的登记
+   * （`parity_ledger` 的 `relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
+   * ⚠ 返回类型是**手写镜像**（`RelayRoutingView` 住 `src/accounts.ts`），
+   * 与 Rust 的 `RelayRouting` **手动同步、今天没有判据对拍** —— 如实记，别读成有人守。
+   */
+  relay_routing_for: (args: { configDirs: string[] }) =>
+    invoke<RelayRoutingView>("relay_routing_for", args),
 
   read_mcp_servers: (args: { projectDir: string | null }) =>
     invoke<McpServerEntry[]>("read_mcp_servers", args),

@@ -9,6 +9,7 @@
 // **不注入 env（A4）、不重启会话（A5）、不碰本地账号（A7）**。全程走 A2 的
 // available:false 降级：未迁移 / 旧 daemon / daemonless 一律安静隐藏账号 UI，不报错。
 import { invoke } from "@tauri-apps/api/core";
+import { commands } from "./ipc/commands";
 import type { AuthKind } from "./generated/AuthKind";
 import type { RemoteAccount } from "./generated/RemoteAccount";
 import { loadConfig, saveConfig } from "./config";
@@ -234,13 +235,10 @@ export type AccountRelayState =
  * 就是让远端那些行也带上两个这一侧答不出来的值。
  * 命令面的登记（`relay.routing`，`NaturallyAsymmetric`）写着同一条理由。
  *
- * ⚠⚠ **今天没有产出方，卡点是量出来的**〔第三拍〕：那条命令（`relay_routing_for`）
- * **写完跑过、能用**，但注册它会同时撞两个**不在本件写区**的钉死计数：
- * `src-tauri/src/parity_ledger.rs`（5 个数 + 2 行登记，本拍已扩进写区、改完验证过）
- * 与 `src/ipc/commands.vitest.ts`（`declared.size` 与 `used.size` 两处 `144`，**不在写区**）。
- * ⇒ 本拍把**规则那一半**（怎么从读数落到一个账号上）留下并钉住，
- * **取数那一跳**（`invoke("relay_routing_for", { configDirs })`）等写区再扩一格。
- * **这是「规则有了、取数没接」，别读成「接上了」。**
+ * ★〔第四拍〕**取数那一跳接上了**：走包装层 `commands.relay_routing_for`。
+ * ⚠ 经过如实记：第三拍它退回过一次 —— 注册一条命令会同时动两个钉死计数
+ * （`parity_ledger.rs` 5 个数 + `src/ipc/commands.vitest.ts` 两处 `144`），
+ * 而后者当时不在写区。**那两个数是联动的**：注册了不调 ⇒ 前一个红；调了没注册 ⇒ 编不过。
  *
  * ⚠ **两个字段各自的射程，别读宽**：`routed` 说的是「中转表里有这一行」，
  * **不是**「那把 key 能用」；`running` 说的是「我们起过它而且没停过」，
@@ -251,6 +249,10 @@ export interface RelayRoutingView {
   routed: string[];
   /** 本机中转在不在跑。 */
   running: boolean;
+}
+
+export async function fetchLocalRelayRouting(configDirs: string[]): Promise<RelayRoutingView> {
+  return await commands.relay_routing_for({ configDirs });
 }
 
 /**
