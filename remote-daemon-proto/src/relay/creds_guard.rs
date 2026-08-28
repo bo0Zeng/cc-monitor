@@ -97,6 +97,79 @@ mod tests {
             .collect()
     }
 
+    /// ★★★ **`K-H2a` 裁四那句话的判据**〔`E` 阻-2 回修，08-27〕：
+    /// **本 crate 不许打开 `creds-core` 的 `harden` feature。**
+    ///
+    /// # 它守的是一句**承重**的话，而那句话此前零判据
+    ///
+    /// 本件对外声称的形状逐字是：「『daemon 写不了这份文件』是**编译器**兜的，
+    /// 不是一条判据兜的」——`creds_core::perm::make_private` 与 `create_private` 都挂在
+    /// `harden` 上，daemon 不开它 ⇒ 那两个函数在本 crate 里**根本不存在**。
+    ///
+    /// ⚠ 而「不开」这件事本身，此前**只是 manifest 上的一行约定**。
+    /// `E` 阶段实打：给 `remote-daemon-proto/Cargo.toml` 那一行加上 `features = ["harden"]`
+    /// ⇒ **daemon 474 passed / 0 failed，一条都没红**（我自己复打确认，读数逐字相同），
+    /// 顺带依赖树 **96 → 101**、`windows*` 条目 **21 → 26**。
+    /// ⇒ 五轮买来的那格「性质由编译器买」，整个挂在这一行上，而没人看着它。
+    ///
+    /// # 人群 = **整个 crate 的 manifest**，不是某一行
+    ///
+    /// 只断言「`creds-core` 那一行不含 `harden`」是不够的：`harden` 也可能从
+    /// `[features]` 段、`default-features`、或另一条重复的依赖声明里进来。
+    /// ⇒ 本条断言 **`harden` 这个词在本 crate 的整份 `Cargo.toml` 里出现 0 次**。
+    ///
+    /// ⚠ **非空对照是承重的**：同一把尺子量 monitor 那份 manifest ⇒ 必须**数得到** `harden`
+    /// （monitor 是唯一该开它的一侧）。没有这一格，「0 次」可能只是因为尺子瞎了。
+    ///
+    /// ⚠ 它**认不出**什么：`--features harden` 从**命令行**传进来（`cargo test -p … --features`）。
+    /// 那条路不经 manifest，本条看不见；今天没有任何脚本这么跑 daemon（`gate.sh` 里
+    /// daemon 那道门逐字是 `cd remote-daemon-proto && cargo test`，零 `--features`）。
+    #[test]
+    fn this_crate_never_turns_on_the_write_half_of_the_credentials_crate() {
+        let mine = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml"),
+        )
+        .expect("读不到本 crate 的 Cargo.toml —— 抽取器坏了，本条会零命中地绿");
+
+        // 抽取器自检：真读到了那份 manifest，而且里面确实声明了 `creds-core`。
+        assert_eq!(
+            mine.matches("creds-core = {").count(),
+            1,
+            "本 crate 的 manifest 里 `creds-core` 的声明不是恰好一条 —— 取法坏了或有人加了第二条"
+        );
+
+        // ⚠ **剥掉 `#` 注释行再数** —— 这一步是判据第一跑逼出来的：
+        //   本 crate 的 manifest 里有**我自己写的两行注释**逐字提到 `harden`
+        //   （「刻意不开 `harden`」「不开 `harden` ⇒ Windows 上读不了 DACL」）
+        //   ⇒ 第一版实测「出现 2 次，应当 0 次」。
+        //   ★ 那两行注释**恰恰是该留的**（它们解释了为什么不开），
+        //     所以要动的是人群不是被守对象：**判据只该看生效的声明，不该看解释它的话。**
+        let mine = guard_core::strip_hash_comment_lines(&mine);
+        let n = mine.matches("harden").count();
+        assert_eq!(
+            n, 0,
+            "本 crate 的 `Cargo.toml` 里出现了 `harden` {n} 次，应当 **0** 次。\n\
+             ⚠ `K-H2a` 裁四：daemon **只许读**那份凭据文件，不许写。\n\
+             `creds_core::perm::{{make_private, create_private}}` 都挂在 `harden` 上 ——\n\
+             一旦打开，「daemon 写不了这份文件」就从**编译器兜的**退回成**没人兜的**。\n\
+             （`E` 阶段实打：打开它之后 daemon 474 passed，一条都没红。）"
+        );
+
+        // ★ 非空对照：同一把尺子量 monitor 那份 manifest，**必须数得到** `harden`。
+        //   没有这一格，上面那个 0 可能只是因为尺子瞎了。
+        let theirs = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../src-tauri/Cargo.toml"),
+        )
+        .expect("读不到 monitor 的 Cargo.toml");
+        let theirs = guard_core::strip_hash_comment_lines(&theirs);
+        assert!(
+            theirs.matches("harden").count() >= 1,
+            "非空对照失败：monitor 那份 manifest 里也数不到 `harden` —— \
+             这把尺子是瞎的，上面那条「0 次」证不了什么"
+        );
+    }
+
     /// ★★ `KS2`：**取明文的地方恰好一处**，而且就是换头那一行。
     #[test]
     fn the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate() {
