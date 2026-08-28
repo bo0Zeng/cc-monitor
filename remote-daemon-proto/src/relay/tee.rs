@@ -10,9 +10,15 @@
 //! 每个响应先一行 meta，其后每个 SSE 事件一行：
 //!
 //! ```text
-//! {"__meta__":{"source":"relay","proto":"passthrough-v0","agent":"…","key":"…","seq":N}}
-//! {"agent":"…","key":"…","event":"<上游 data: 后面那段，转义成一个 JSON 串>"}
+//! {"__meta__":{"source":"relay","proto":"passthrough-v0","agent":"…","account":"…","key":"…","seq":N}}
+//! {"agent":"…","account":"…","key":"…","event":"<上游 data: 后面那段，转义成一个 JSON 串>"}
 //! ```
+//!
+//! ⚠ `account` 那一格是 `K-H2` 加的（路由键从两段变三段）。**刻意不并进 `key`**：
+//! 并了就是「一个值装了两件事」。`proto` 那个串**没有跟着 bump** ——
+//! 今天这条流**零消费者**（现打 08-28：`passthrough-v0` / `__meta__` 全仓只命中
+//! `doc/IPC-PROTOCOL.md` + 本文件 + `server.rs`，都是它自己和它的文档）
+//! ⇒ 没有任何东西会因为多一格而读错。**第一个真消费者出现时，bump 那个串就成了硬要求。**
 //!
 //! **没有 `t_ns`** —— 理由与它丢掉了什么，见 `super` 的头注㈡。
 //!
@@ -199,11 +205,15 @@ impl TeeSink {
     }
 
     /// 一个响应开头写一行 meta，返回这一响应的序号。
-    pub(crate) fn open(&self, agent: &str, key: &str) -> u64 {
+    ///
+    /// ⚠ `K-H2` 加了 `account` 这一格 —— 路由键有三段，tee 行就该有三格。
+    /// **不合并进 `key`**：那正是「一个值装了两件事」，本工作区最贵的那族病。
+    pub(crate) fn open(&self, agent: &str, account: &str, key: &str) -> u64 {
         let seq = self.seq.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let line = format!(
-            "{{\"__meta__\":{{\"source\":\"relay\",\"proto\":\"passthrough-v0\",\"agent\":{},\"key\":{},\"seq\":{}}}}}\n",
+            "{{\"__meta__\":{{\"source\":\"relay\",\"proto\":\"passthrough-v0\",\"agent\":{},\"account\":{},\"key\":{},\"seq\":{}}}}}\n",
             json_str(agent),
+            json_str(account),
             json_str(key),
             seq
         );
@@ -220,10 +230,11 @@ impl TeeSink {
     /// `json.loads` 两侧解重复键都是 **last-wins** ⇒ **这一行的路由键被上游改写**；
     /// 上游发一段不是 JSON 的文本 ⇒ 整行**不可解析**，而 `DoD-3㈠` 的 acceptor
     /// 逐字要「其后每行可解析」。判据见 `an_upstream_payload_cannot_break_out_of_the_event_field`。
-    pub(crate) fn event(&self, agent: &str, key: &str, payload: &str) {
+    pub(crate) fn event(&self, agent: &str, account: &str, key: &str, payload: &str) {
         let line = format!(
-            "{{\"agent\":{},\"key\":{},\"event\":{}}}\n",
+            "{{\"agent\":{},\"account\":{},\"key\":{},\"event\":{}}}\n",
             json_str(agent),
+            json_str(account),
             json_str(key),
             json_str(payload)
         );
@@ -409,9 +420,9 @@ mod tests {
     #[test]
     fn meta_line_then_event_lines() {
         let (sink, buf, rx) = waitable_sink();
-        let seq = sink.open("agentA", "sid-AAA");
+        let seq = sink.open("agentA", "acctA", "sid-AAA");
         assert_eq!(seq, 0);
-        sink.event("agentA", "sid-AAA", "{\"type\":\"x\"}");
+        sink.event("agentA", "acctA", "sid-AAA", "{\"type\":\"x\"}");
         wait_lines(&rx, 2);
         let raw = buf.lock().expect("lock").clone();
         let text = String::from_utf8(raw).expect("utf8");
@@ -438,9 +449,9 @@ mod tests {
     #[test]
     fn seq_is_monotonic_within_one_sink() {
         let (sink, _buf, _rx) = waitable_sink();
-        assert_eq!(sink.open("a", "k1"), 0);
-        assert_eq!(sink.open("b", "k2"), 1);
-        assert_eq!(sink.open("a", "k1"), 2);
+        assert_eq!(sink.open("a", "acctA", "k1"), 0);
+        assert_eq!(sink.open("b", "acctB", "k2"), 1);
+        assert_eq!(sink.open("a", "acctA", "k1"), 2);
     }
 
     /// ★★ **上游内容是敌手可控的** —— `data:` 后面那一段原样进这一行。
@@ -472,7 +483,7 @@ mod tests {
         ];
         for payload in hostile {
             let (sink, buf, rx) = waitable_sink();
-            sink.event("realA", "sid-AAA", payload);
+            sink.event("realA", "realAcct", "sid-AAA", payload);
             wait_lines(&rx, 1);
             let raw = buf.lock().expect("lock").clone();
             let text = String::from_utf8(raw).expect("utf8");
@@ -533,7 +544,7 @@ mod tests {
 
         // 灌到必然溢出。**期望值不拿 `TEE_QUEUE_LINES` 算**，只断「丢了 > 0 行」。
         for i in 0..(TEE_QUEUE_LINES + 64) {
-            sink.event("agentA", "sid-AAA", &format!("{{\"i\":{i}}}"));
+            sink.event("agentA", "acctA", "sid-AAA", &format!("{{\"i\":{i}}}"));
         }
         gate_tx.send(()).expect("放行");
         // 等到那行补报出来（等不到就红，不许把「还没写完」读成「没有报」）。

@@ -791,10 +791,38 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 
 - **只监听 `127.0.0.1`**，不对外暴露；端口默认 `8788`，`CCM_RELAY_PORT` 可盖。
 - 上游默认 `https://api.anthropic.com`，`CCM_RELAY_UPSTREAM` 可盖（`http://` 只给本机夹具用）。
-- 路由：`claude` 把 `ANTHROPIC_BASE_URL` 指到 `http://127.0.0.1:<port>/s/<agent>/<key>`，
-  中转把 `/s/<agent>/<key>` 剥掉、其余路径与查询串**原样**转给上游。
+- 路由：`claude` 把 `ANTHROPIC_BASE_URL` 指到 `http://127.0.0.1:<port>/s/<agent>/<account>/<key>`，
+  中转把 `/s/<agent>/<account>/<key>` 剥掉、其余路径与查询串**原样**转给上游。
+  ⚠ **`<account>` 那一段是 `K-H2` 加的**，它是中转路由表的**索引键**：
+  表里查不到那个账号 ⇒ **404，一个字节都不发上游**（不回落到别的账号的 key，
+  也不回落到默认上游）。三段仍然都是不透明串 —— 中转不解释它们，只拿 `<account>` 查表。
+  ⚠⚠ **老的三段形状 `/s/<agent>/<key>/…` 不会被解析器拒掉**，它会被重读成
+  `account=<key>`；挡住它的是「表里查不到」那一格，不是解析器
+  （判据 `route::tests::the_old_three_segment_shape_is_not_rejected_here_it_is_reread_as_a_different_route`）。
+- ⚠ **今天还没有任何东西设置 `ANTHROPIC_BASE_URL`** —— 现打（08-28，分母 = `git ls-files` 全部跟踪文件）：
+  这个名字全仓 2 处命中，两处都是文档 / 注释，**生产代码 0 处**；`--relay` 没有任何启动方。
+  ⇒ 上面这条路由今天**没有入口**。接上它是另一件（`K-H2b`），不在 `K-H2` 的射程里。
 - 响应**逐块透传绝不缓冲**；同一批字节里的 SSE 事件抄一份到**本进程的 stdout**
-  （NDJSON，每行带 `agent` / `key`；首行 `__meta__`）。要落文件由启动方重定向。
+  （NDJSON；要落文件由启动方重定向）。**每行都带那三格路由键 `agent` / `account` / `key`**
+  —— 首行在 `__meta__` 对象**里面**，其后每行在**顶层**：
+  - 首行：`{"__meta__":{"source":"relay","proto":"passthrough-v0","agent":…,"account":…,"key":…,"seq":N}}`
+  - 其后每行：`{"agent":…,"account":…,"key":…,"event":"<上游 data: 后面那段，转义成一个 JSON 串>"}`
+
+  ⚠ **订正〔`K-H2` `E` 逮到，08-28 现打改正〕**：先前这里逐字写的是「每行带 `agent` / `key`」，
+  **漏了 `account`**。路由键从两段变三段是 `K-H2` 自己干的，而这一行没跟着改
+  ⇒ **这句假话是本件在自己的写区里造的**。今天的住址（**生产段，不是注释**）：
+  `remote-daemon-proto/src/relay/tee.rs::open`（`:211-219`，造 `__meta__` 那行）·
+  `::event`（`:233-240`，造事件行）。⚠ `seq` 只在首行有；`event` 的值是**一个 JSON 串**
+  （上游那段逐字节保住但不参与本行结构，理由见 `tee.rs` 头注）。
+
+  ⚠⚠ **今天没有任何判据看着这一格 —— 它漂了不会有任何东西说，这次就是这么漂的。**
+  现打（**分母 = 全仓用 `include_str!` 把本文档读进判据的文件，恰好 4 个**：
+  `protocol_doc_guard.rs` · `doc_claim_registry.rs` · `daemon_kill.rs` · `profile_installer.rs`）：
+  四个文件里 `relay` / `tee` / `__meta__` 命中**各 0 处**。
+  非空对照：`protocol_doc_guard.rs`（1266 行）里 `inbound|REGISTRY` = **14 处**
+  ⇒ 那道文档对拍判据的人群是 daemon 的**命令 / wire 面**，**结构上不含中转这一族**，不是碰巧没扫到。
+  ⇒ 这是本文档这一族的**诚实边界**：别把「文档里写着」读成「有人钉着」。
+  ★ 把中转这一族纳进那道判据的人群是**另立一件**的活（放宽人群要单独想形状），**不在这里顺手加**。
 - **请求头原样转发，但一个都不落进 tee、不落进日志。**
 - ⚠ 本刀的 tee 行**不带 `t_ns`**，也**不设上游超时** —— 两处都受 daemon 零定时器护栏所限，
   理由与代价见 `remote-daemon-proto/src/relay/mod.rs` 头注。
