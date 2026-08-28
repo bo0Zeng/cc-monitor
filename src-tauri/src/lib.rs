@@ -27,6 +27,7 @@ mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生
                 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
+mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monitor 独占）+ 读侧只回掩码
 mod daemon_control; // P2s（C8）：每台机一个开关的命令层——只认 origin，不认 ssh 也不认进程监护
 mod daemon_policy; // P2s（C8）：每台机一份 daemon 策略（生效值住内存，持久化归前端）
 mod inbound_client;
@@ -1078,6 +1079,10 @@ pub fn run() {
             daemon_control::daemon_stop,
             config::load_config,
             config::save_config,
+            // K-H2a：中转那把 key。**读那条永远只回掩码**（`KS6`）；
+            // 写那条是「界面」这个第二写者，它与人手编是同一份文件的两个写者（`KS10`）。
+            read_relay_credentials_status,
+            write_relay_credentials_key,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
             cc_bus::read_cc_bus_state,
@@ -1513,6 +1518,38 @@ pub(crate) fn batch_to_payloads(
 
 /// 前端关闭 archived Tab 时调用：从 event_replay 历史里抹掉这个 session，
 /// 防止下次 F5 刷新它原地复活。
+/// `K-H2a` `KS6`：读中转那把 key 的**状态**。**永远只回掩码，不回明文。**
+///
+/// ★ 这是本件里最要紧的一条：一旦回显，key 就从「只住在后端」变成
+/// 「**每次打开那个界面都往前端传一遍**」⇒ 泄漏面从一次变成无数次，
+/// 每一次都新增前端日志 / 崩溃报告 / 截图 / 录屏四个出口。
+/// ⇒ 返回类型 [`creds_store::RelayCredentialsStatus`] **在类型上就装不下明文**，
+/// 由 `the_status_type_cannot_carry_the_plaintext` 钉住。
+#[tauri::command]
+fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus, String> {
+    creds_store::read_status()
+}
+
+/// `K-H2a` `KS10`：从界面配一把 key。
+///
+/// ⚠ **它和人手编是同一份文件的两个写者** —— 写的那一刻才去读盘，
+/// 未知键一个不吃、字段顺序按名字排、原子替换、写完立刻收窄成只给本人。
+/// 整段论证见 `creds_store::write_key`。
+///
+/// ⚠ **入参是明文，而它一进来就被包成 `SecretKey`**（在 `write_key` 里）。
+/// 这一层的签名收 `String` 是没办法的事：IPC 边界上只有 JSON。
+///
+/// ⚠⚠ **订正措辞〔D1，08-27，PM 采纳审计改判〕**：先前这里写的是「那一段**不在本件的判据面里**」
+/// ——**那个词说小了一格**。「射程外」意思是「本件裁定不管它」，而盘上的事实是
+/// **没人量过**：`KS6` 保的是 key **回**前端那个方向，这里是 **去**后端那个方向，
+/// 那是**另一条路上的另一个值**，本件一条判据都没打过它。
+/// ⇒ 它的身份是 **`判不了`**，不是「射程外」。**这两个词不是一回事**：
+/// 前者欠着一次测量，后者是已经裁过不做。件计划 `§0h` 已按这个身份登记。
+#[tauri::command]
+fn write_relay_credentials_key(key: String) -> Result<(), String> {
+    creds_store::write_key(&key)
+}
+
 #[tauri::command]
 fn forget_session(
     session_id: String,
