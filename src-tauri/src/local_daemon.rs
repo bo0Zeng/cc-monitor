@@ -1153,6 +1153,17 @@ pub fn start_local_backend() -> StartOutcome {
     // 它认识 `process_group(0)` / `/proc` / `~/.cc-monitor`，而 `backend/` 那半一样都不许认识
     // （`the_backend_half_stays_platform_agnostic` 的禁针含 `std::os::unix`）。
     // 走不了（平台不支持 / `CCM_NO_DETACH` 关掉了）才回落到下面那条今天的路。
+    // ★★ `K-H2b` `KH2B2`①：**中转的启动方就是这一行**（在本件之前 `--relay` 生产调用点 = 0）。
+    //
+    // ⚠ 放在这里而不是放进下面那两条分支里，是因为**两条路都要有中转**：
+    // 常驻那条（`start_detached`）会 `return`，接在它后面等于「走常驻就没有中转」。
+    // ⚠ 中转与 daemon 是**两个进程**（`relay/mod.rs` 自陈「独立进程」），
+    //   所以这里不是「多给 daemon 一个参数」，是**再监护一个**。
+    // 拿不到二进制时**什么都不做**：那条路上 daemon 自己也起不来，
+    // 下面的 `Resolved::Missing` 会把理由报出去 —— 不在这里再报一遍同一件事。
+    if let Ok(bin) = resolve_daemon_bin(&extract_dir, embedded) {
+        start_local_relay(bin);
+    }
     match start_detached(&|| resolve_daemon_bin(&extract_dir, embedded), &[]) {
         DetachOutcome::Done(out) => return out,
         DetachOutcome::NotTaken => {}
@@ -1194,8 +1205,113 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 /// P2s（`C8`②）：停本机后端。**句柄取走**（`take`）而不是留着 ——
 /// `stop()` 之后那个句柄就是死的（`stopping` 永久置位），留着只会让下一次「起」
 /// 误以为还在跑。
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-H2b` `KH2B2`：**本机中转的启动方** —— 在本件之前，`--relay` 生产调用点是 **0**
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// # 为什么走「再监护一个进程」而不是「折进常驻 daemon」（两条路里选的这一条，理由写下来）
+//
+// `--relay` 今天住 `remote-daemon-proto/src/main.rs` 的**一次性子命令分派臂**，
+// `relay/mod.rs` 头注自陈**是独立进程**，`serve()` **永不返回**。
+// ⇒ 折进常驻 daemon 要动的是 daemon 的进程模型（那条 wire 流与中转的 stdout 会撞，
+//   `relay/mod.rs` 头注逐字记着「谁在同一个进程里既跑流式又跑中转，今天没有任何判据挡着」）。
+// 而「再监护一个」用的是**现成的** `local_backend::supervise`（收 `args` + `envs`），
+// 一行新机制都不用发明。⇒ 本件选 ㈠。
+//
+// # ⚠ 本件**不做端口通告面**（`§0e` 裁五，跟进件 `己1-f26`）
+//
+// 端口是 `payload::RELAY_PORT` 这一个常量，**显式**以 `CCM_RELAY_PORT` 交给子进程
+// ⇒ 注入侧与中转侧用的是同一个值，daemon 那份 `DEFAULT_PORT` 在这条路上不参与。
+// **同机第二个 monitor** 的形状：第二个中转绑不上那个口 ⇒ `run_with` 印
+// `cannot bind loopback port …` 并**退 2** ⇒ 监护器按崩溃计数，三次之后 `GaveUp` 出声。
+// **不静默**，但也**不会自动换口** —— 换口要先答「谁来分配 / 冲突了怎么办 / 远端怎么知道」，
+// 那是另一件的体量。
+//
+// # ⚠ 判不了的（别读成「没问题」）
+//
+// - **中转能不能承受所有会话都走它**：`server.rs::INFLIGHT_CONNECTIONS` 有上界、超了回 503，
+//   那个数够不够**我没量**。（本件裁的是「只接 api-key 号」⇒ 今天的量级远小于「所有会话」。）
+// - **Windows 上这条路的运行时行为**：内嵌的那两份 sidecar 是 musl Linux 二进制，
+//   `start_local_backend` 里那条 `cfg!(target_os = "linux")` 闸对本函数**同样适用**
+//   —— 非 Linux 宿主上 `resolve_daemon_bin` 拿不到东西，本函数就不会被调到。
+
+/// `K-H2b`：本机中转的监护句柄。形状与 [`LOCAL_BACKEND`] 同族（`Mutex<Option<_>>`，
+/// 停了要能再起）。
+pub static LOCAL_RELAY: std::sync::Mutex<Option<SuperviseHandle>> =
+    std::sync::Mutex::new(None);
+
+/// `KH2B2`①：**起本机中转**。已经在跑就不重复起（同 `C8`①「每台机各一个」）。
+///
+/// ⚠ 返回 `bool` = 「本次调用起了一个新的」，**不是**「现在有没有在跑」——
+/// 后者问 [`relay_running`]。两件事分开，是因为「已经在跑」不该被报成失败。
+pub fn start_local_relay(bin: std::path::PathBuf) -> bool {
+    let mut g = LOCAL_RELAY.lock().unwrap_or_else(|e| e.into_inner());
+    if g.is_some() {
+        return false;
+    }
+    let h = local_backend::supervise(
+        bin,
+        vec!["--relay".into()],
+        // ★ 端口**显式传**：注入侧（`payload::RELAY_PORT`）与中转侧用同一个值。
+        vec![(
+            "CCM_RELAY_PORT".into(),
+            crate::backend::control::payload::RELAY_PORT.to_string(),
+        )],
+        local_backend::CrashLimits::default(),
+        std::sync::Arc::new(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0)
+        }),
+        // `KH2B2`②的一半：**起不来要出声**。`GaveUp` 单独抬到 `warn`
+        // —— 它是「这台机器上的 api-key 号今天都发不出请求」的唯一线索。
+        std::sync::Arc::new(|e| match &e {
+            local_backend::SuperviseEvent::GaveUp { reason } => {
+                tracing::warn!("本机中转起不来（api-key 号的会话会被起会话那一侧拒掉）：{reason}")
+            }
+            other => tracing::info!("本机中转: {other:?}"),
+        }),
+    );
+    // ⚠ 写法刻意不用 `*g = Some(h);` —— `local_backend` 那条接线判据用它当**锚点针**，
+    //   而那条针要求全文件**恰好一处**（它的报文逐字：「断言指不明是哪一处」）。
+    g.replace(h);
+    true
+}
+
+/// `KH2B2`②的另一半：**起会话那一侧问得到「中转在不在」**。
+///
+/// ⚠ **诚实边界**：它问的是「**我们起过它、而且没停过**」，**不是**「那个口上真有人听」。
+/// 两者分家的窗口是真的：子进程刚 spawn 还没 bind 的那几毫秒、以及 `GaveUp` 之后
+/// （句柄还在表里，但监护器已经不再重起了）。
+/// ⇒ 本函数**买不到**「一定连得上」；它买的是「**没起过就一定连不上**」那一侧 ——
+/// 而那正是 `§0c-3` 成因㈡今天完全看不见的那一格。真要买另一侧得去连一次那个口，
+/// 那是一次网络往返，**本件没做**。
+pub fn relay_running() -> bool {
+    LOCAL_RELAY
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false)
+}
+
+/// 停本机中转（形状照 [`stop_local_backend`]：句柄 `take` 走，`stop()` 之后它就是死的）。
+pub fn stop_local_relay() -> Option<u32> {
+    let mut g = LOCAL_RELAY.lock().unwrap_or_else(|e| e.into_inner());
+    let h = g.take()?;
+    let pid = h.current_pid();
+    h.stop();
+    pid
+}
+
 pub fn stop_local_backend() -> Result<String, String> {
     let mut g = LOCAL_BACKEND.lock().map_err(|e| format!("锁毒化: {e}"))?;
+    // ★ `K-H2b`：中转跟着一起停。**锁序**与起那一侧一致（`LOCAL_BACKEND` → `LOCAL_RELAY`）。
+    //   ⚠ 它**不改**下面那两条返回的文案 —— 那两条被判据逐字钉着，
+    //     而「中转停没停」是另一件事，塞进同一句话里会让两个状态又合成一个值。
+    let relay_pid = stop_local_relay();
+    if let Some(p) = relay_pid {
+        tracing::info!("本机中转已停（pid={p}）");
+    }
     // ★ `K-P1`：常驻那条路的「停」。**锁序**：仍在 `LOCAL_BACKEND` 的锁里动 `DETACHED`。
     if let Some(msg) = stop_detached_locked() {
         return Ok(msg);
