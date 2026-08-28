@@ -33,6 +33,7 @@ import {
   __resetAccountsCacheForTest,
   isAccountZero,
   accountStatusBadge,
+  localRelayStateFor,
   accountLoginActionLabel,
   type AccountsState,
   type Account,
@@ -998,6 +999,37 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
       // 顺带：任何一档都不许说成「已登录」（KA6a 的原话，人群扩到了新那几档）。
       expect(accountStatusBadge(apiKey(), st).text).not.toContain("已登录");
     }
+  });
+
+  // ★★★ 规则那一段：一份**后端读数**（`RelayRoutingView`）怎么落到某一个账号上，
+  // 以及三档**真的分得开**。喂进来的是读数的形状，**不是**直接喂 `{scope:"local",…}`
+  // —— 后者会把 `localRelayStateFor` 那一格整个绕过去。
+  //
+  // ⚠ **取数那一跳（`invoke`）今天还没接上**，卡点写在 `accounts.ts` 那段头注里
+  // （`src/ipc/commands.vitest.ts` 的两个钉死计数不在本件写区）。⇒ 本组买的是**规则**，
+  // 不是「界面上真的显出来了」。
+  it("★ 读数 → 三档：同一份读数，三个账号落到三个不同的徽章上", () => {
+    const routing = { routed: ["/h/.claude-accts/acct-a"], running: true };
+    const withDir = (name: string, dir: string | null) =>
+      acct({ name, configDir: dir, loggedIn: false, authKind: "api-key", authReady: true });
+
+    // ① 表里有这一行 + 中转在跑 ⇒ 「经本机中转」。
+    const a = withDir("acct-a", "/h/.claude-accts/acct-a");
+    expect(accountStatusBadge(a, localRelayStateFor(a, routing)).text).toBe("api-key（经本机中转）");
+    // ② 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出为什么。
+    const b = withDir("acct-b", "/h/.claude-accts/acct-b");
+    const bb = accountStatusBadge(b, localRelayStateFor(b, routing));
+    expect(bb.text).toBe("api-key（未配置端点）");
+    expect(bb.title).toContain("没有这个账号的一行");
+    // ③ 同一个账号、只把「中转在不在跑」翻过来 ⇒ 第三档（非空对照：两档真的分得开）。
+    const stopped = { routed: ["/h/.claude-accts/acct-a"], running: false };
+    expect(accountStatusBadge(a, localRelayStateFor(a, stopped)).text).toBe("api-key（中转未运行）");
+    // ④ 账号 0（没有 configDir）⇒ 推不出 id ⇒ **不表态**，回落到缺席那一档。
+    const zero = withDir("0", null);
+    expect(localRelayStateFor(zero, routing)).toBeUndefined();
+    expect(accountStatusBadge(zero, localRelayStateFor(zero, routing)).title).toContain(
+      "不替它下判断",
+    );
   });
 
   it("★ 订阅号一格不受影响（阴性对照：新参数不许改到别的 kind）", () => {

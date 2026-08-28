@@ -1456,6 +1456,21 @@ pub(crate) fn relay_account_id_of_dir(config_dir: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// `KH2B7` 的**纯派生半**：给一批 configDir 与一张 id 表，答「哪几个走中转」。
+///
+/// ★ 抽成纯函数的理由与本模块另外两次一样：`relay_rows()` 要读盘、`relay_running()` 要读进程状态，
+/// 而**这条规则本身**（怎么从 configDir 推 id、怎么和表比）不该只能对着真实的家目录跑。
+///
+/// ⚠ **它答的是「表里有没有这一行」，不是「这个 key 能不能用」** —— 后者要到 claude 那边才知道。
+/// ⚠ 也不是「这次拉起会不会真的注入」：那还要过 `relay_running` 那一格（`relay_injection_for`）。
+pub(crate) fn relay_routed_subset(config_dirs: &[String], rows: &[String]) -> Vec<String> {
+    config_dirs
+        .iter()
+        .filter(|d| relay_account_id_of_dir(d).is_some_and(|id| rows.iter().any(|r| *r == id)))
+        .cloned()
+        .collect()
+}
+
 /// 中转凭据文件里今天有哪几条账号 id。**读不到就是零条**（零条 ⇒ 谁都不走中转）。
 ///
 /// ⚠ 「读不到」与「一条都没配」在这里**故意同一处置**：两者的正确行为都是
@@ -3649,6 +3664,43 @@ mod tests {
             ps,
             "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; "
         );
+    }
+
+    /// ★★ `KH2B7` 的产出方：**界面问的那个「有没有行」，与起会话那一侧问的是同一个规则。**
+    ///
+    /// 两处各写一个 basename 规则，漂开的那天症状是「设置里说走中转、起会话时没走」，
+    /// 而两边看起来都没错。⇒ 本条把它钉成**同一个函数的两个调用方**。
+    #[test]
+    fn the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule() {
+        let rows = vec!["acct-a".to_string()];
+        let dirs = vec![
+            "/home/u/.claude-accts/acct-a".to_string(),
+            "/home/u/.claude-accts/acct-b".to_string(),
+            // 末段带尾斜杠 / 带空白的写法也要落到同一个 id 上。
+            "  /home/u/.claude-accts/acct-a/  ".to_string(),
+        ];
+        // 非空对照排最前：先证明这把尺子不是恒空。
+        assert_eq!(
+            relay_routed_subset(&dirs, &rows),
+            vec![
+                "/home/u/.claude-accts/acct-a".to_string(),
+                "  /home/u/.claude-accts/acct-a/  ".to_string()
+            ],
+            "界面那一侧筛出来的不是「表里有行」的那几个"
+        );
+        // ★ 与起会话那一侧**同一个规则**：同一个目录，两条路推出同一个 id。
+        let named = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/acct-a".to_string(),
+        };
+        assert_eq!(
+            relay_account_id(Some(&named)),
+            relay_account_id_of_dir("/home/u/.claude-accts/acct-a"),
+            "两个调用方推出来的账号 id 不一样 —— 那正是「设置里说走中转、起会话时没走」的形状"
+        );
+        // 表里没有的行一个都不许混进来（`KL7` 第 2 条的界面侧倒影）。
+        assert!(relay_routed_subset(&dirs, &[]).is_empty(), "空表却筛出了行");
+        // 账号 0 / 空 configDir 推不出 id ⇒ 不在结果里（说不出就不表态）。
+        assert!(relay_routed_subset(&["".to_string()], &rows).is_empty());
     }
 
     /// ★★ `KH2B2`②在这一层：中转没在跑 ⇒ **起会话这一侧当场说话**，
