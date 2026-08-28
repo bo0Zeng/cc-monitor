@@ -23,9 +23,9 @@
 //! 文件不在时连**模板**一起印。它比 README 更强（在你需要它的那一刻告诉你），
 //! 但**它不是 README** —— 这一格已抬进上报口。
 
+use super::table::Rejected;
 use creds_core::perm::{self, Verdict};
-use creds_core::store;
-use creds_core::SecretKey;
+use creds_core::store::{self, AccountEntry};
 use std::path::{Path, PathBuf};
 
 /// 覆盖那份文件的位置。给判据与「一台机器上跑两个中转」用。
@@ -35,8 +35,12 @@ pub(crate) const ENV_CREDENTIALS: &str = "CCM_RELAY_CREDENTIALS";
 pub(crate) struct Loaded {
     /// 算出来的那条绝对路径 —— **一定要印**（`KS9` 的「路径文档化」落在这儿）。
     pub(crate) path: PathBuf,
-    /// 没配 ⇒ `None`。**「没配」与「读坏了」是两回事**，后者走 `problem`。
-    pub(crate) key: Option<SecretKey>,
+    /// 文件里写着的那些账号。**没配 ⇒ 空** —— 空与「读坏了」是两回事，后者走 `problem`。
+    ///
+    /// ⚠ **它还不是路由表**：这里的每条还带着一个**没解析过**的 `base_url` 字符串，
+    /// 而「id 当不当得了路由段 / `base_url` 解析不解析得了」要 daemon 那两个谓词才判得了。
+    /// 装成表那一步在 `super::table::build`，两条判断都在那里，都出声。
+    pub(crate) accounts: Vec<AccountEntry>,
     /// 权限判断（`KS11`）。`OwnerOnly` 之外都要出声。
     pub(crate) verdict: Verdict,
     /// 文件读不动 / 解析不了时的说法。`None` = 没问题。
@@ -67,7 +71,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             return Loaded {
                 path: path.to_path_buf(),
-                key: None,
+                accounts: Vec::new(),
                 // 文件不存在不是「权限有问题」，把那个判断清掉，免得日志里出现
                 // 「读不到它的元数据」这种误导性的一行。
                 verdict: Verdict::OwnerOnly,
@@ -77,7 +81,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
         Err(e) => {
             return Loaded {
                 path: path.to_path_buf(),
-                key: None,
+                accounts: Vec::new(),
                 verdict,
                 problem: Some(format!("读不动凭据文件：{e}")),
             };
@@ -87,7 +91,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
     match store::parse(&raw) {
         Ok(doc) => Loaded {
             path: path.to_path_buf(),
-            key: store::read_key(&doc),
+            accounts: store::read_accounts(&doc),
             verdict,
             problem: None,
         },
@@ -95,7 +99,7 @@ pub(crate) fn load(path: &Path) -> Loaded {
         //   如果这里静默当成「没配」，症状是一条查不出来的 401。
         Err(e) => Loaded {
             path: path.to_path_buf(),
-            key: None,
+            accounts: Vec::new(),
             verdict,
             problem: Some(e.to_string()),
         },
@@ -106,7 +110,18 @@ pub(crate) fn load(path: &Path) -> Loaded {
 ///
 /// ⚠ 这里印的每一样都在 `creds_guard::ALLOWED_LOG_FIELDS` 那张白名单里（`KS4`）。
 /// **一个字节的 key 都不许进来**：印的是路径、是判断的说法、是「配了没配」这个布尔。
-pub(crate) fn announce(loaded: &Loaded, out: &mut dyn std::io::Write) -> usize {
+///
+/// # ⚠ `K-H2`：多了两个参数，理由逐条
+///
+/// - `rows` = **真正进了表的行数**，不是文件里写了几条。两者不一样时说明有行被拒。
+/// - `rejected` = 被拒的那些行 + 为什么。**静默丢掉一行的症状是「我明明配了，中转永远 404」**，
+///   而那查起来要人去读源码 ⇒ 必须出声。
+pub(crate) fn announce(
+    loaded: &Loaded,
+    rows: usize,
+    rejected: &[Rejected],
+    out: &mut dyn std::io::Write,
+) -> usize {
     let mut n = 0usize;
     // ① 路径 —— `KS9` 的「文档化」就落在这一行。**总是印**，配没配都印。
     let _ = writeln!(out, "[relay] credentials file: {}", loaded.path.display());
@@ -131,10 +146,24 @@ pub(crate) fn announce(loaded: &Loaded, out: &mut dyn std::io::Write) -> usize {
         }
     }
 
-    // ③ 配了没配 —— **只印布尔，不印长度、不印掩码**。
+    // ③ ⚠ **进不了表的那些行要说出去**（`K-H2`）——静默丢一行的症状是
+    //    「我明明配了，中转永远 404」。印的是**账号 id**（它本来就要出现在 URL 路径里，
+    //    不是秘密）与一句**固定文案**；id 走 `{:?}` ⇒ 控制字符被转义，
+    //    不给「把换行塞进日志」留口子。
+    for r in rejected {
+        let _ = writeln!(
+            out,
+            "[relay] credentials: this account cannot be used: {:?} - {}",
+            r.id, r.why
+        );
+        n += 1;
+    }
+
+    // ④ 配了没配 —— **只印布尔与行数，不印长度、不印掩码、不印任何一个 key**。
     //    掩码是给界面看的；日志是给运维看的，运维不需要认出是哪一把。
-    if loaded.key.is_some() {
-        let _ = writeln!(out, "[relay] credentials: configured");
+    //    ⚠ 行数印的是**进了表的**那个数，不是文件里写了几条 —— 两者不一样时上面已经逐条说过了。
+    if rows > 0 {
+        let _ = writeln!(out, "[relay] credentials: configured, {rows} account(s) routable");
     } else {
         let _ = writeln!(out, "[relay] credentials: not configured");
         // ⚠ 文件不在时**连模板一起印** —— 否则「导入」这条要靠猜（`KS9` 逐字）。
@@ -153,6 +182,23 @@ pub(crate) fn announce(loaded: &Loaded, out: &mut dyn std::io::Write) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 判据用薄封装：这份文件**恰好读出一条**账号时，取那一条的 key。
+    ///
+    /// ⚠ 它**故意在条数 != 1 时返回 `None`** —— 下面那几条判据的夹具都是单条文件，
+    /// 哪天夹具变成多条而判据没跟着改，这里会把它变成一次**红**，
+    /// 而不是悄悄拿第一条顶上（拿第一条顶上正是本件在治的那一形）。
+    fn single_key(loaded: &Loaded) -> Option<&creds_core::SecretKey> {
+        if loaded.accounts.len() != 1 {
+            return None;
+        }
+        loaded.accounts[0].key.as_ref()
+    }
+
+    /// `announce` 的判据用薄封装：没有被拒的行，行数取读出来的条数。
+    fn announce_all(loaded: &Loaded, out: &mut dyn std::io::Write) -> usize {
+        announce(loaded, loaded.accounts.len(), &[], out)
+    }
 
     /// 一个只属于本判据的临时目录。**名字中性**（不含被断言的字面），
     /// 免得诊断把路径原样印进输出、让「输出里含某句话」靠路径恒真
@@ -191,16 +237,14 @@ mod tests {
         let loaded = load(&resolved);
         assert!(loaded.problem.is_none(), "不该有问题：{:?}", loaded.problem);
         assert_eq!(
-            loaded
-                .key
-                .as_ref()
+            single_key(&loaded)
                 .expect("应当拿到 key")
                 .expose_for_auth_header(),
             "sk-ant-FROM-A-BARE-FILE"
         );
         // 非空对照：同一条路，文件里没 key 时拿不到（不是恒返回一个值）。
         std::fs::write(&p, b"{\"_note\":\"nothing here\"}").expect("改夹具");
-        assert!(load(&resolved).key.is_none());
+        assert!(load(&resolved).accounts.is_empty());
         let _ = std::fs::remove_dir_all(&home);
     }
 
@@ -221,8 +265,7 @@ mod tests {
         );
         assert_eq!(got, elsewhere);
         assert_eq!(
-            load(&got)
-                .key
+            single_key(&load(&got))
                 .expect("应当拿到 key")
                 .expose_for_auth_header(),
             "sk-ant-ELSEWHERE"
@@ -241,14 +284,14 @@ mod tests {
         std::fs::create_dir_all(p.parent().expect("父目录")).expect("建父目录");
         std::fs::write(&p, b"{\"api_key\": }").expect("写夹具");
         let loaded = load(&p);
-        assert!(loaded.key.is_none());
+        assert!(loaded.accounts.is_empty());
         let problem = loaded.problem.expect("读坏了必须有说法");
         assert!(problem.contains("手编"), "说法没告诉人这是手编的文件：{problem}");
 
         // 非空对照：文件**不存在**时 `problem` 是 `None`（「还没配」不是「坏了」）。
         let missing = load(&home.join("nope.json"));
         assert!(missing.problem.is_none());
-        assert!(missing.key.is_none());
+        assert!(missing.accounts.is_empty());
         let _ = std::fs::remove_dir_all(&home);
     }
 
@@ -265,7 +308,7 @@ mod tests {
 
         let loaded = load(&p);
         let mut buf: Vec<u8> = Vec::new();
-        let lines = announce(&loaded, &mut buf);
+        let lines = announce_all(&loaded, &mut buf);
         let text = String::from_utf8(buf).expect("utf8");
 
         assert!(text.contains("permissions too wide"), "没出声：{text}");
@@ -273,7 +316,9 @@ mod tests {
         assert!(text.contains("chmod 600"), "修法不具体：{text}");
         // ★ **出声而不是拒绝**：key 照样交出去（这是件计划定的产品取舍）。
         assert_eq!(
-            loaded.key.expect("仍应拿到 key").expose_for_auth_header(),
+            single_key(&loaded)
+                .expect("仍应拿到 key")
+                .expose_for_auth_header(),
             "sk-ant-WIDE"
         );
         assert!(lines >= 4, "印的行数 {lines} 太少 —— 量点坏了");
@@ -281,7 +326,7 @@ mod tests {
         // ★★ 非空对照：收紧之后**这几句就不该出现**（否则上面全是恒真）。
         std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o600)).expect("收紧");
         let mut buf2: Vec<u8> = Vec::new();
-        announce(&load(&p), &mut buf2);
+        announce_all(&load(&p), &mut buf2);
         let text2 = String::from_utf8(buf2).expect("utf8");
         assert!(!text2.contains("permissions too wide"), "收紧后仍在出声：{text2}");
         let _ = std::fs::remove_dir_all(&home);
@@ -296,7 +341,7 @@ mod tests {
         std::fs::write(&p, b"{\"api_key\":\"sk-ant-CANARY-IN-ANNOUNCE\"}").expect("写夹具");
         let loaded = load(&p);
         let mut buf: Vec<u8> = Vec::new();
-        announce(&loaded, &mut buf);
+        announce_all(&loaded, &mut buf);
         let text = String::from_utf8(buf).expect("utf8");
         assert!(
             !text.contains("sk-ant-CANARY-IN-ANNOUNCE"),
@@ -321,7 +366,7 @@ mod tests {
         let home = tmpdir("missing");
         let loaded = load(&store::path_under_claude_home(&home));
         let mut buf: Vec<u8> = Vec::new();
-        announce(&loaded, &mut buf);
+        announce_all(&loaded, &mut buf);
         let text = String::from_utf8(buf).expect("utf8");
         assert!(text.contains("not configured"));
         assert!(text.contains(store::KEY_FIELD), "模板里没点名那个字段：{text}");

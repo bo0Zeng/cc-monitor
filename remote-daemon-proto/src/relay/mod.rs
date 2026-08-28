@@ -100,6 +100,8 @@ mod http1;
 mod nodelay_guard; // `重要-5`：Nagle 零命中守卫，同样单住一个文件
 mod route;
 mod server;
+mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值**（`Row` 住私有 `mod sealed`）
+mod table_guard; // `K-H2` `KH1`：决定点三条腿里的两条（焊接点 · 开上游连接点），整体 #[cfg(test)]
 mod tee;
 mod upstream;
 

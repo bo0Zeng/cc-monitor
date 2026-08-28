@@ -83,13 +83,8 @@ pub fn path_under_claude_home(home: &std::path::Path) -> std::path::PathBuf {
 /// 「未知键原样保留」正是 [`merge_key`] 的性质 ⇒ 这份模板**自己就是那条性质的用例**。
 pub const TEMPLATE: &str = r#"{
   "_note": "把第三方 API key 填进 api_key。这份文件可以直接用编辑器改，改完下次读就生效；也可以整份换成另一份 JSON（导入）。本文件之外的键不会被程序动。",
-  "accounts": {
-    "my-account": {
-      "_note": "多账号：每条一个 id，id 会原样出现在中转的路由键里，只许用字母数字与 - _。base_url 留空就用中转启动时那个默认上游。",
-      "api_key": "",
-      "base_url": ""
-    }
-  },
+  "_note_accounts": "多账号写进 accounts：每条一个 id（会原样出现在中转的路由键里，只许字母数字与 - _），每条可带 api_key 与 base_url。base_url 留空就用中转启动时那个默认上游；api_key 留空就原样转发客户端自己那份鉴权头。例：\"accounts\": { \"my-account\": { \"api_key\": \"sk-...\", \"base_url\": \"https://api.example.com\" } }",
+  "accounts": {},
   "api_key": ""
 }
 "#;
@@ -181,11 +176,16 @@ pub struct AccountEntry {
 ///
 /// # ⚠ 三条判断都要说清（每一条都对应一种「读起来像另一件事」的形状）
 ///
+/// - **`accounts` 里每一个对象都是一条**，两个字段一个都没填也算 ——
+///   那是**合法且有用**的一条：`base_url` 空 = 用默认上游，`api_key` 空 = **原样转发
+///   客户端自己那份鉴权头**（`K-H1` 甲半那条「不配凭据也能用的透传路」，
+///   在多账号之后它从「隐式的全局行为」变成「**显式的一条路**」）。
+///   ⚠ 值**不是对象**的那一条跳过（比如有人写成 `"acct": "sk-..."`）。
 /// - **`accounts` 里已经有同名的那一条 ⇒ 顶层那半不再加**。理由：人手写的那条优先，
 ///   程序不许拿一份「历史形状」去盖掉人明确写下的东西。
-/// - **key 与 base_url **都**没有的那一条，不进表**。它是「模板里那条示例」的形状 ——
-///   进了表就会变成一条「查得到、但连不上也没凭据」的路，而那比 404 更难查。
-/// - **顶层完全没有这两个字段 ⇒ 一条都不加**（不是加一条空的）。
+/// - **顶层完全没有 `api_key` / `base_url` ⇒ 一条都不加**（不是加一条空的）。
+///   ⚠⚠ **这一条是承重的**：加一条「什么都没配的默认行」等于给「查不到就用它」
+///   开了门，而那正是 `K-H2` `KH2` 逐字禁的**回落**。**没配就是零条，零条就是全部 404。**
 ///
 /// # 它**不**做什么
 ///
@@ -198,15 +198,10 @@ pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
     if let Some(Value::Object(m)) = doc.get(ACCOUNTS_FIELD) {
         for id in ordered_keys(m.keys()) {
             let Some(obj) = m[id].as_object() else { continue };
-            let key = read_key(obj);
-            let base_url = read_base_url(obj);
-            if key.is_none() && base_url.is_none() {
-                continue;
-            }
             out.push(AccountEntry {
                 id: id.clone(),
-                base_url,
-                key,
+                base_url: read_base_url(obj),
+                key: read_key(obj),
             });
         }
     }
@@ -636,20 +631,57 @@ mod tests {
         assert!(read_accounts(&empty).is_empty());
     }
 
-    /// **模板里那条示例不进表** —— 它 key 与 base_url 都是空的。
+    /// ★★★ **「没配」就是零条 —— 一条「默认行」都不许有。**
     ///
-    /// 没有这一条，一份刚生成的模板会读出一条「查得到、但连不上也没凭据」的路，
-    /// 而那比 404 更难查（`read_accounts` 头注第二条判断）。
+    /// 这是 `K-H2` `KH2` 在存储那一层的那一半：**零条 ⇒ 中转全部 404**。
+    /// 只要这里凭空多出一条什么都没配的行，「查不到就用它」马上就写得出来了，
+    /// 而那正是件计划逐字禁的**回落**。
+    ///
+    /// ⚠ 模板里 `accounts` 是**空对象**、`api_key` 是**空串** ——
+    /// 例子写在 `_note_accounts` 那句**散文**里，不是一条活的行。
+    /// 这是刻意的：模板里放一条活的示例行，等于每个刚装好的人都白得一条路。
     #[test]
-    fn the_template_yields_no_rows_at_all() {
-        let doc = parse(TEMPLATE).expect("模板自己必须是合法的一份 store");
-        assert!(
-            read_accounts(&doc).is_empty(),
-            "模板里那条示例进表了 —— 它会变成一条连不上也没凭据的路"
-        );
-        // 非空对照：同一把尺子，把示例填上就读得到（证明它不是恒空）。
+    fn an_unconfigured_file_yields_no_rows_at_all() {
+        // 分母 = 我列出的这 4 种「没配」的写法。
+        for raw in [
+            TEMPLATE,
+            r#"{}"#,
+            r#"{"_note":"什么都没写"}"#,
+            r#"{"accounts":{},"api_key":""}"#,
+        ] {
+            let doc = parse(raw).expect("夹具应当可解析");
+            assert!(
+                read_accounts(&doc).is_empty(),
+                "这一形凭空多出了行 —— 那就是一条默认行：{raw}"
+            );
+        }
+        // 非空对照：同一把尺子，真配了就读得到（证明它不是恒空）。
         let filled = parse(r#"{"accounts":{"my-account":{"api_key":"K"}}}"#).expect("填上");
         assert_eq!(read_accounts(&filled).len(), 1);
+    }
+
+    /// ★★ **一条什么都没填的账号是合法的一条**：`base_url` 空 = 用默认上游，
+    /// `api_key` 空 = 原样转发客户端自己那份鉴权头。
+    ///
+    /// # 它买回来的是 `K-H1` 甲半那条被多账号「顺手弄没了」的性质
+    ///
+    /// 先前「不配凭据 ⇒ 中转仍是一条能用的透传路」是一条**隐式的全局行为**
+    /// （`render_upstream_request` 的头注逐字写着它）。改成按表路由之后，
+    /// 那条隐式行为**必然消失** —— 因为不再有「全局」这个东西。
+    /// ⇒ 它没有被删掉，是被**改成显式的一条路**：写一条空账号就有了。
+    /// **这两句话差得很远，所以要有一条判据钉着后一句。**
+    #[test]
+    fn an_account_with_nothing_filled_in_is_still_a_row() {
+        let doc = parse(r#"{"accounts":{"passthrough":{}}}"#).expect("夹具");
+        let rows = read_accounts(&doc);
+        assert_eq!(rows.len(), 1, "空账号应当算一条");
+        assert_eq!(rows[0].id, "passthrough");
+        assert!(rows[0].key.is_none(), "它不该有 key");
+        assert!(rows[0].base_url.is_none(), "它不该有自己的上游");
+
+        // ⚠ 但值**不是对象**的那一条要跳过（有人写成 `"acct": "sk-..."`）。
+        let wrong = parse(r#"{"accounts":{"acct":"sk-not-an-object"}}"#).expect("夹具");
+        assert!(read_accounts(&wrong).is_empty(), "非对象的那一条不该进表");
     }
 
     /// ★★★ **`KH5b` 的正主**〔件计划 `§0c` 第 3 问逐字点名的那个**新**形状〕：
