@@ -15,7 +15,9 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock
 vi.mock("../error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 
-import { AccountsSection } from "./accounts-section";
+import { readFileSync } from "node:fs";
+import { AccountsSection, renderRelayKeyBlock } from "./accounts-section";
+import type { RelayCredentialsStatus } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 import * as accounts from "../accounts";
 import type { AccountsState, Account } from "../accounts";
@@ -545,3 +547,117 @@ function accountColorSlotFor(name: string): number {
   }
   return h % 8;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// K-H2a：中转那把第三方 API key 的**前端那一半**（`KS6` 永不回显 / `KS9` 路径 /
+// `KS11` 界面出声 / `KS7` 不进前端整份读写的那份配置）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("K-H2a：中转 API key 的前端一半", () => {
+  // ⚠ 用 `process.cwd()` 相对路径而不是 `import.meta.url`：本仓 vitest 跑在仓根，
+  //   而 `import.meta.url` 在这套 transform 下不是 file: scheme（实测 `The URL must be of scheme file`）。
+  const src = () => readFileSync("src/settings/accounts-section.ts", "utf8");
+
+  function status(p: Partial<RelayCredentialsStatus> = {}): RelayCredentialsStatus {
+    return {
+      configured: true,
+      masked: "sk-a**********WXYZ",
+      path: "/h/.claude/claudecode-frontend/relay-credentials.json",
+      notice: null,
+      problem: null,
+      ...p,
+    };
+  }
+
+  it("KS6：输入框**从不预填** —— 已配置时也一样，要改就重新输", () => {
+    const el = renderRelayKeyBlock(status(), () => {});
+    const input = el.querySelector<HTMLInputElement>("input.relay-key-input");
+    expect(input, "那个输入框不见了 —— 下面的断言会零命中地绿").toBeTruthy();
+    expect(input!.value).toBe("");
+    // 它是密码框（截图 / 录屏那两个出口）。
+    expect(input!.type).toBe("password");
+    // 非空对照：这一块**确实**知道「已经配过了」（不是整块空着才让上面恒真）。
+    expect(el.textContent).toContain("已配置");
+    expect(input!.placeholder).toContain("替换");
+  });
+
+  it("KS6：界面上只出现掩码，明文一个字节都进不来（类型上就没有那个字段）", () => {
+    const el = renderRelayKeyBlock(status({ masked: "sk-a**********WXYZ" }), () => {});
+    expect(el.textContent).toContain("sk-a**********WXYZ");
+    // 明文那个值**根本递不进来** —— 这一条量的是类型面：多传一个字段 tsc 会红。
+    // 行为面这里能量的是：整块里没有任何长得像完整 key 的东西（没有 `*` 的长串）。
+    const looksLikePlaintext = /sk-[A-Za-z0-9-]{20,}/.test(el.textContent ?? "");
+    expect(looksLikePlaintext, `界面上出现了像明文 key 的串：${el.textContent}`).toBe(false);
+  });
+
+  it("KS6 机检：本文件里那个输入框的 `.value` **只许被赋成空串**", () => {
+    // 人群 = 本文件生产段里所有对 `input.value` 的赋值。
+    const assigns = [...src().matchAll(/input\.value\s*=\s*([^;]+);/g)].map((m) => m[1].trim());
+    expect(assigns.length, "一处赋值都没扫到 —— 抽取器坏了，本条在空转").toBeGreaterThan(0);
+    for (const rhs of assigns) {
+      expect(
+        rhs,
+        `输入框被赋了一个不是空串的值（${rhs}）—— 那就是回显。` +
+          "KS6 逐字：一旦回显，key 就从「只住在后端」变成「每次打开那个界面都往前端传一遍」。",
+      ).toBe('""');
+    }
+  });
+
+  it("KS11：权限过宽时**在界面上出声**；没问题时不出声", () => {
+    const warned = renderRelayKeyBlock(
+      status({ notice: "同机器上的别人也读得到它（mode 是 0644…）。怎么修：跑 `chmod 600 …`" }),
+      () => {},
+    );
+    const n = warned.querySelector(".relay-key-notice");
+    expect(n, "过宽了却没在界面上显出来").toBeTruthy();
+    expect(n!.textContent).toContain("chmod 600");
+    // 非空对照：没问题时那一块**不该**出现（否则上面是恒真）。
+    expect(renderRelayKeyBlock(status(), () => {}).querySelector(".relay-key-notice")).toBeNull();
+  });
+
+  it("KS9：那份文件的路径要显出来 —— 能手编但没人知道在哪 = 不能手编", () => {
+    const el = renderRelayKeyBlock(status(), () => {});
+    expect(el.textContent).toContain("relay-credentials.json");
+    expect(el.querySelector(".relay-key-path")?.getAttribute("title")).toContain("编辑器");
+  });
+
+  it("文件读坏了要说出来，**不许静默当成「没配」**", () => {
+    const el = renderRelayKeyBlock(
+      status({ configured: false, masked: "", problem: "凭据文件不是合法 JSON（…）" }),
+      () => {},
+    );
+    expect(el.querySelector(".relay-key-problem")?.textContent).toContain("不是合法 JSON");
+    // 非空对照：没问题时那一块不出现。
+    expect(renderRelayKeyBlock(status(), () => {}).querySelector(".relay-key-problem")).toBeNull();
+  });
+
+  it("存一次：明文原样交给回调，交完输入框**立刻清空**", () => {
+    const seen: string[] = [];
+    const el = renderRelayKeyBlock(status({ configured: false, masked: "" }), (k) => {
+      seen.push(k);
+    });
+    const input = el.querySelector<HTMLInputElement>("input.relay-key-input")!;
+    input.value = "  sk-ant-TYPED-BY-HAND  ";
+    el.querySelector<HTMLButtonElement>("button.relay-key-save")!.click();
+    expect(seen).toEqual(["sk-ant-TYPED-BY-HAND"]);
+    expect(input.value, "存完输入框没清空 —— 明文在 DOM 里留着").toBe("");
+    // 空输入不触发（否则会把 key 存成空串，等于悄悄清掉用户的配置）。
+    el.querySelector<HTMLButtonElement>("button.relay-key-save")!.click();
+    expect(seen).toEqual(["sk-ant-TYPED-BY-HAND"]);
+  });
+
+  it("KS7 机检：那把 key 在前端**只流向一条命令**，绝不进 `save_config`", () => {
+    const code = src();
+    // ① 前端拿到的明文只出现在一处出口。
+    const calls = [...code.matchAll(/commands\.(\w+)\(/g)].map((m) => m[1]);
+    expect(calls, "一条命令调用都没扫到 —— 抽取器坏了").toContain("write_relay_credentials_key");
+    expect(
+      calls.filter((c) => c === "save_config"),
+      "账号这一组里出现了 `save_config` —— key 有可能被塞进前端「读—改—写」整份的那份配置",
+    ).toEqual([]);
+    // ② 那个字段名不许出现在本文件里（它是**后端那份文件**的 schema，不是前端配置的）。
+    expect(
+      code.includes("api_key"),
+      "前端源码里出现了 `api_key` —— 那个字段是后端那份文件的 schema，前端不该认识它",
+    ).toBe(false);
+  });
+});

@@ -19,13 +19,13 @@
 //!   inotify reader. This split is the single most-cited Phase-0 accident
 //!   source; keeping it real is the point.
 
-#[cfg(test)]
-mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
+mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
 mod agent_locality_guard; // S2：codex 的格式知识只许住 agents/codex/ + kind 派发点逐条登记（整体 #[cfg(test)]）
 mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
-mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
-mod cc_bus_boundary_guard; // P4f-Y2：daemon 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
+#[cfg(test)]
+mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
 mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 #[cfg(test)]，生产构建为空）
+mod cc_bus_boundary_guard; // P4f-Y2：daemon 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
 mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
 #[cfg(test)]
@@ -39,8 +39,8 @@ mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第�
 mod plugin; // K-W1A：插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
 mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
 mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
-mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
 mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
+mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
 mod wire;
 
@@ -424,7 +424,9 @@ async fn main() {
             // **daemon 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
             Some("--fork-session") => control::fork_write::run(&agent_home, &args),
             // K-H1：HTTP 中转。**常驻**，起来就不返回；配置面只有环境变量。
-            Some("--relay") => relay::run(&args),
+            // K-H2a：多传一个 `agent_home` —— 中转要从 `<home>/claudecode-frontend/` 下
+            // 读那份凭据文件。**不新开子命令、不动 `SUBCOMMANDS`** ⇒ 不逼出 BUILD_ID bump。
+            Some("--relay") => relay::run(&agent_home, &args),
             // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
             // v3.4.0 出过一次事故：`--account-trust-zero` 在 accounts_query 里实现完整，
             // 但这里漏列 ⇒ 落进下面的 `_` 臂走历史查询 ⇒ `unknown argument` + exit 2，

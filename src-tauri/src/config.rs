@@ -34,10 +34,19 @@ pub fn save_config(value: Value) -> Result<(), String> {
 }
 
 /// 把 src 原子替换到 dst。
+///
+/// ⚠ 〔`K-H2a` 08-27〕**从私有改成 `pub(crate)`，理由不是「顺手」**：
+/// `creds_store::write_key` 要一次原子替换，而它**不许自己写一个 `fs::rename`** ——
+/// `atomic_replace_registry` 按「`rename` / `MoveFileExW` 的**出现次数**」逐文件登记，
+/// 那张表不在 `K-H2a` 的写区。复用这一份 ⇒ 新文件里那两个字面量出现 **0** 次，
+/// 既不动那张表，也不给它挖洞。
+/// 选它（`MoveFileExW` 那套语义）而不是 `ReplaceFileW` 是**有理由的**：
+/// `INVARIANTS §4` 那条 ACL 保留只限定在**用户的**文件，而凭据文件与 `config.json` 同类
+/// ——**都是 monitor 自己的文件**（登记表里 `config.rs` 那两行逐字这么写的）。
 /// std::fs::rename 在 Windows 上目标文件已存在时会失败（不像 POSIX 原子覆盖），
 /// 所以这里走 MoveFileExW(MOVEFILE_REPLACE_EXISTING)；非 Windows 走 std::fs::rename。
 #[cfg(windows)]
-fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+pub(crate) fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     use std::os::windows::ffi::OsStrExt;
     use windows::core::PCWSTR;
     use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVEFILE_REPLACE_EXISTING};
@@ -61,7 +70,7 @@ fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Resu
 }
 
 #[cfg(not(windows))]
-fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+pub(crate) fn atomic_replace(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
     std::fs::rename(src, dst)
 }
 
