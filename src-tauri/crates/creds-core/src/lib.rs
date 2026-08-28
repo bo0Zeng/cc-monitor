@@ -139,16 +139,32 @@ impl SecretKey {
     /// 再加一条「明文出口总数恰好 2」的全断。`KS2` 那句「不许在实现里顺手把断言改大」
     /// 我照做了：**没有改任何既有断言**，而是把这一处**逐字写进件计划 `§0f`**交 PM 裁。
     ///
-    /// # 两个出口的人群是**不相交**的（这一条是承重的）
+    /// # 两个出口各自只许住在哪儿（**这一段是判据的转述，不是承诺** —— 住址逐条给）
     ///
-    /// - [`SecretKey::expose_for_auth_header`]：只出现在 **daemon** 的生产段（中转换头那一行）。
-    ///   monitor 那侧**不换头**，所以它在 `src-tauri` 生产段里应当是 **0** 次。
-    /// - `expose_for_persisting`（本方法）：只出现在 **`creds-core`** 的生产段（`store::merge_key`）。
-    ///   daemon 只读不写（`K-H2a` 裁四）⇒ 它在 daemon 生产段里应当是 **0** 次。
+    /// - [`SecretKey::expose_for_auth_header`]：**调用点恰好 1 处**，在
+    ///   `remote-daemon-proto/src/relay/server.rs`（中转换头那一行）。
+    /// - `expose_for_persisting`（本方法）：**调用点恰好 1 处**，在
+    ///   `src-tauri/crates/creds-core/src/store.rs`（`merge_key`）。
     ///
-    /// ⇒ 「N 个独立源 ⇒ N 格单断 + 1 格全断」：三条断言各自守一格，见
-    /// `creds-core` 的 `the_plaintext_has_exactly_two_named_exits` 与
-    /// daemon 的 `relay::creds_guard`。
+    /// ⚠⚠ **订正〔D1 阻-1，08-27〕：这一段先前写的是一句盘上没有的承诺。**
+    /// 它原文写着「它在 `src-tauri` 生产段里应当是 0 次」「在 daemon 生产段里应当是 0 次」，
+    /// 并声称「三条断言各自守一格」—— 而实际盘上**那两格根本不存在**：
+    /// `creds-core` 这条判据只扫 `include_str!("lib.rs")`（**它自己这一个文件**），
+    /// daemon 那条只扫 daemon crate，**`src-tauri` 整个不在任何人的人群里**。
+    /// 审计一刀坐实：在 monitor 生产段取一次明文 `eprintln!` 出去 ⇒ 8 包合计 **1284 passed，一条没红**。
+    /// **留着一句盘上没有的承诺，比没有这句话更坏。**
+    ///
+    /// ⇒ 今天它由**三格**真判据钉着，缺一都不成立：
+    /// 1. **定义面**：`every_string_returning_exit_is_registered_by_name`（本文件）——
+    ///    `impl SecretKey` 里能把字符串带出去的 `pub fn` **按名字登记**，多一个就红
+    ///    （**按返回类型画人群，不按某一种拼法** —— 上一版数 `&self.0` 的字面，
+    ///    换成 `self.0.as_str()` / `self.0.clone()` 就绕过去了）；
+    /// 2. **定义面的后门**：`the_type_has_no_second_impl_block_that_hands_the_inner_string_out`（本文件）——
+    ///    `Deref` / `AsRef<str>` 这一类一句话就能开的后门；
+    /// 3. **调用面 + 人群**：`creds_store::the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees`
+    ///    （`src-tauri/src/creds_store.rs`）—— 扫 **`src-tauri/src` · `src-tauri/crates` ·
+    ///    `remote-daemon-proto/src` 三棵树**的生产段，两个出口各自的调用点数与住址都钉死。
+    /// 另有 daemon 那个 crate 内部的一格单断：`relay::creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`。
     pub fn expose_for_persisting(&self) -> &str {
         &self.0
     }
@@ -255,6 +271,143 @@ mod tests {
             !window.contains("pub struct") && !window.contains("pub fn"),
             "Debug impl 的窗口跨进了下一个 item —— 窗口无界，上面那条断言不算数"
         );
+    }
+
+    /// `impl SecretKey` 里**每一个能把字符串带出去的 `pub fn`**，及它为什么可以存在。
+    ///
+    /// **默认拒绝**：不在这张表里的当场红。⚠ 加一行**就是在放宽**，
+    /// 而 `KS2` 逐字：「真要多一处，**必须在件计划里单独说清那一处是什么**」。
+    const STRING_RETURNING_EXITS: &[(&str, &str)] = &[
+        (
+            "expose_for_auth_header",
+            "唯一的**换头**出口。只出现在 daemon 生产段，相等断言 == 1",
+        ),
+        (
+            "expose_for_persisting",
+            "唯一的**落盘**出口。只出现在 creds-core 生产段，相等断言 == 1",
+        ),
+        (
+            "masked",
+            "**不是明文出口** —— 它回的是遮蔽形，由 `masking_keeps_only_the_two_ends_and_swallows_short_keys_whole` 钉着。\
+             登记它是因为它的返回类型装得下字符串，而本判据的人群是**按返回类型**画的（宁可多问一句）",
+        ),
+    ];
+
+    /// ★★★ **`KS2` 全断的正主〔D1 阻-1 回修，08-27〕：按「函数」数，不按「某一种拼法」数。**
+    ///
+    /// # 它替掉了什么，以及为什么非替不可
+    ///
+    /// 上一版是 `block.matches("&self.0").count() == 2` —— **性质是「不许有第三个出口」，
+    /// 而人群是「`&self.0` 这一个字面出现几次」**。D1 审计一刀就绕过去了（PM 08-27 16:44 复打）：
+    /// 加 `pub fn d1_probe_third_exit(&self) -> &str { self.0.as_str() }`
+    /// ⇒ **creds-core 20 passed / 8 包合计 1284 passed / daemon 474 passed，一条都没红**。
+    /// 「把内层字段交出去」的写法至少还有 `self.0.as_str()` · `&*self.0` · `&self.0[..]` ·
+    /// `self.0.clone()` —— **换一种写法就绕过去，那不是判据，是巧合**。
+    ///
+    /// # 今天的人群怎么画的（分母写清楚）
+    ///
+    /// 人群 = `impl SecretKey` 块里**每一个返回类型能装下字符串的 `pub fn`**
+    /// （返回 `&str` / `String` / `&String`）。**按返回类型画，不按函数体怎么写画** ——
+    /// 函数体的写法有无穷多种，返回类型只有可数的几种，而「明文出得去」这件事
+    /// **必然经过返回类型**（`&self` 方法要把内层字符串带出去，只能从返回值走）。
+    ///
+    /// ⚠ **它认不出什么**（诚实边界，别读成「明文不可能出去」）：
+    /// 1. 返回**别的类型**而里面裹着明文（`Vec<u8>` / 一个自定义结构体 / `impl Iterator<Item=char>`）——
+    ///    本判据看不见。今天 `impl` 块里没有这一形（下面那条自检数了返回类型的总数）。
+    /// 2. `pub` 之外的可见性（`pub(crate) fn`）—— 本判据只数 `pub fn`；
+    ///    但 crate 外拿不到它，而 crate 内只有 `store.rs` 一个消费者（由 §全断那条钉着）。
+    /// 3. 有人给 `SecretKey` **在别处**写 `impl Deref<Target=str>` —— 那不在这个 `impl` 块里。
+    ///    这一形由下面 `the_type_has_no_second_impl_block_that_hands_the_inner_string_out` 兜。
+    #[test]
+    fn every_string_returning_exit_is_registered_by_name() {
+        let prod = production();
+        let at = guard_core::find_pinned(&prod, "impl SecretKey {")
+            .expect("切不出 `impl SecretKey` —— 本条按红处理，不是绿");
+        let block = brace_block(&prod, at).expect("impl 块的花括号没配平 —— 按红处理");
+        assert!(
+            !block.contains("impl fmt::Debug"),
+            "impl 块的窗口跨进了下一个 item —— 窗口无界，下面的断言不算数"
+        );
+
+        // 人群：块里每一个 `pub fn <名>(...) -> <返回类型>`。
+        let mut string_returning: Vec<String> = Vec::new();
+        let mut all_pub_fns = 0usize;
+        for seg in block.split("pub fn ").skip(1) {
+            all_pub_fns += 1;
+            let name = seg
+                .split(|c: char| !(c.is_alphanumeric() || c == '_'))
+                .next()
+                .unwrap_or("")
+                .to_string();
+            // 签名 = 到函数体左花括号为止。
+            let Some(sig_end) = seg.find('{') else { continue };
+            let sig = &seg[..sig_end];
+            let ret = sig.split("->").nth(1).unwrap_or("").trim();
+            // 返回类型能装下字符串的那几种。
+            if ret.contains("str") || ret.contains("String") {
+                string_returning.push(name);
+            }
+        }
+        // 采集面自检：块里确实有一批 `pub fn`（切歪了就不是「零个出口」而是「没扫到」）。
+        assert!(
+            all_pub_fns >= 5,
+            "`impl SecretKey` 里只扫到 {all_pub_fns} 个 `pub fn` —— 取法坏了，本条在空转"
+        );
+
+        let registered: Vec<&str> = STRING_RETURNING_EXITS.iter().map(|(n, _)| *n).collect();
+        for name in &string_returning {
+            assert!(
+                registered.contains(&name.as_str()),
+                "`impl SecretKey` 里多了一个能把字符串带出去的 `pub fn`：`{name}`。\n\
+                 ⚠ 它**没有登记** —— `KS2` 逐字：加行是收紧、动断言是放宽，\n\
+                 真要多一处**必须先在件计划里说清那一处是什么**，不许在实现里顺手把表加大。\n\
+                 今天登记的是：{registered:?}"
+            );
+        }
+        // 反向：登记表里不许留死名字（改名了就来改表）。
+        for (name, _) in STRING_RETURNING_EXITS {
+            assert!(
+                string_returning.iter().any(|n| n == name),
+                "登记表里的 `{name}` 在 `impl SecretKey` 里找不到了 —— 表和盘对不上"
+            );
+        }
+        assert_eq!(
+            string_returning.len(),
+            STRING_RETURNING_EXITS.len(),
+            "能把字符串带出去的 `pub fn` 有 {} 个，登记了 {} 个：{string_returning:?}",
+            string_returning.len(),
+            STRING_RETURNING_EXITS.len()
+        );
+    }
+
+    /// ★ 上一条那条诚实边界第 3 形的兜底：**本文件里不许有第二个 `impl … for SecretKey`
+    /// 把内层字符串交出去**（`Deref` / `AsRef<str>` / `Borrow<str>` 都是一句话就能开的后门）。
+    ///
+    /// 今天只许有一个 `impl SecretKey`（固有方法）+ 一个 `impl fmt::Debug for SecretKey`。
+    #[test]
+    fn the_type_has_no_second_impl_block_that_hands_the_inner_string_out() {
+        let prod = production();
+        let impls: Vec<&str> = prod
+            .match_indices("impl ")
+            .filter_map(|(i, _)| prod[i..].lines().next())
+            .filter(|l| l.contains("SecretKey"))
+            .collect();
+        assert!(
+            impls.len() >= 2,
+            "只扫到 {} 个与 `SecretKey` 有关的 impl —— 取法坏了，本条在空转：{impls:?}",
+            impls.len()
+        );
+        // 分母 = 我登记的这 2 个 impl 头；多一个就红，**由人来说清那一个是什么**。
+        let allowed = ["impl SecretKey {", "impl fmt::Debug for SecretKey {"];
+        for head in &impls {
+            assert!(
+                allowed.contains(&head.trim()),
+                "`SecretKey` 多了一个 impl：`{}`。\n\
+                 ⚠ `Deref<Target = str>` / `AsRef<str>` / `Borrow<str>` 这一类**一句话就是一个明文后门**，\n\
+                 而按返回类型画人群的那条判据**看不见它们**（它们不在 `impl SecretKey` 块里）。",
+                head.trim()
+            );
+        }
     }
 
     /// ★★ **`KS2` 的「全断」那一格**：明文的出口**恰好两个**，而且都得具名。

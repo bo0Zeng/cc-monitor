@@ -55,6 +55,9 @@ windows = { version = "0.56", optional = true, features = [
     "Win32_Foundation",
     "Win32_Security",
     "Win32_Security_Authorization",
+    # 阻-2 回修：`CreateFileW` —— 建文件那一步就带上 DACL（`SECURITY_ATTRIBUTES`），
+    # 而不是建完再收。理由见 `perm::create_private` 头注。
+    "Win32_Storage_FileSystem",
     "Win32_System_Threading",
 ] }
 
