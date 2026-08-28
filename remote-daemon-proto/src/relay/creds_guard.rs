@@ -56,6 +56,21 @@ mod tests {
         ),
         ("ms[0]", "耗时毫秒数（判据自己印的，生产段不出现）"),
         ("ms[1]", "同上"),
+        (
+            "rows",
+            "**进得了路由表的账号条数**（`K-H2`）。一个 `usize`，与任何一把 key 无关；\
+             印它是因为「文件里写了 N 条、只有 M 条能用」这件事必须看得见",
+        ),
+        (
+            "r.id",
+            "一条**进不了表**的账号 id（`K-H2`）。它本来就要出现在 URL 路径里（路由键那一段），\
+             不是秘密；且它走 `{:?}` 打印 ⇒ 控制字符被转义，不给「把换行塞进日志」留口子",
+        ),
+        (
+            "r.why",
+            "那一条为什么进不了表（`K-H2`）。**是一个 `&'static str` 固定文案**，\
+             不含文件里的任何内容 —— 这一点由 `table::Rejected::why` 的类型兜着",
+        ),
     ];
 
     /// `relay/` 生产段里每一处日志调用的**格式串起首**，`(所在文件, 起首, 它记的是什么)`。
@@ -77,7 +92,17 @@ mod tests {
         ("creds.rs", "[relay] credentials permissions too wide:", "权限过宽（`KS11`）"),
         ("creds.rs", "[relay] how to fix:", "怎么修（`KS11` 要求两样都有）"),
         ("creds.rs", "[relay] credentials permissions unknown:", "查不出权限，也要出声"),
-        ("creds.rs", "[relay] credentials: configured", "配了 —— **只印这个布尔**"),
+        (
+            "creds.rs",
+            "[relay] credentials: this account cannot be used:",
+            "一条账号进不了路由表（id 当不了路由段 / `base_url` 解析不了）—— \
+             `K-H2`：静默丢一行的症状是「我明明配了，中转永远 404」",
+        ),
+        (
+            "creds.rs",
+            "[relay] credentials: configured",
+            "配了 —— **只印这个布尔与进得了表的条数**，不印长度、不印掩码",
+        ),
         ("creds.rs", "[relay] credentials: not configured", "没配"),
         ("creds.rs", "[relay] create that file to configure one", "没配时印模板"),
     ];

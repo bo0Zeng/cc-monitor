@@ -43,6 +43,29 @@ serde_json = "1"
 # **必须是 dev-dependency**：判据全在 `#[cfg(test)]` 里，它没有理由进发布二进制。
 guard-core = { path = "../guard-core" }
 
+# ★★★ **只在判据构建里**把 `serde_json` 的 `preserve_order` 打开〔`K-H2` `D1` 阻-3 回修，08-28〕。
+#
+# # 它治的是一句**被证伪的话**
+#
+# `store::ordered_value` 的头注先前逐字写着：「`serde_json::Map` 在今天这份构建里是
+# `BTreeMap`（插进去就有序）⇒ **造不出一个「嵌套层乱序」的夹具**」——
+# 于是「深度 ≥2 也按键名排」那条判据被登记成「今天没有牙、是给明天用的绊线」。
+# **`D1` 实测证伪了那句话**：加上这一行，原码 32 passed / 0 failed，
+# 把 `ordered_value` 的递归删掉 ⇒ **30 passed + 2 failed**。⇒ 夹具**造得出来**。
+#
+# ★ 这与 `K-H2a` 的 `MU9` 是**同一课的第二次**：那一次的结论是「这台机器上造不出反例」，
+#   而这一次**证明了造得出** ⇒ **「造不出来」这个判断本身要先被打一次才算数**，
+#   不许当成前提直接写进头注。
+#
+# # ⚠ 为什么它不污染发布二进制，以及**这句话我量过**
+#
+# `[dev-dependencies]` 不进 `cargo build`。而 feature 在**测试构建**里是会跨包统一的
+# ⇒ 那一格必须实测，不能推。现打（08-28，我的工作树）：
+#   · 两份 `Cargo.lock` **零变化**（`git status` 未提交条数不含它们）；
+#   · 全量门禁 `cargo --workspace` / daemon / npm **三个数与加它之前逐个相同**。
+# ⇒ 它买到的是「判据里 `Map` 是 `IndexMap`」，**没有**改变发布二进制，也没有动别的包的读数。
+serde_json = { version = "1", features = ["preserve_order"] }
+
 [target.'cfg(windows)'.dependencies]
 # 只在 `harden` 打开时才真的进来。API 与 feature 的对应关系（08-27 实测，非空对照见件文件 `§0c 一`）：
 #   · `SetNamedSecurityInfoW` / SDDL 转换 / `ConvertSidToStringSidW` ⇒ `Win32_Security_Authorization`

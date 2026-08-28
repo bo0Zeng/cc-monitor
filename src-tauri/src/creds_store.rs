@@ -141,6 +141,23 @@ fn notice_of(v: &Verdict) -> Option<String> {
 /// ⇒ 不动那张表，也不给它挖洞。〔它自己头注逐字论证过为什么**刻意不建**统一写入器：
 /// 两类文件的正确行为本来就不同。这里选它是因为凭据文件与 `config.json` 同类
 /// ——**都是 monitor 自己的文件**，`INVARIANTS §4` 那条 ACL 保留只限定在**用户的**文件。〕
+///
+/// # ⚠⚠ `K-H2` 的射程：**它写的是顶层那一把，也就是 `default` 那一条**
+///
+/// 多账号之后那份文件里可以有 N 条（`accounts` 段），而**本函数与它上面那条 IPC
+/// 命令今天只写得了顶层那一格** —— 读出来就是 id 逐字为 `creds_core::store::LEGACY_ACCOUNT_ID`
+/// 的那一条。
+///
+/// 这是**本轮刻意划的界，不是漏了**：改 IPC 那条命令的签名会连带动
+/// `src/ipc/commands.ts` · `src/settings/accounts-section.ts`（含它的 vitest）·
+/// `parity_ledger.rs` 三处的既有判据面，而多条本来就有一条**设计上就该有**的配法 ——
+/// `KS9` 逐字要的「**脱离这个前端也能配**」：直接编辑那份明文 JSON。
+/// ⇒ 今天的形状是：**界面配 `default` 那一条，多账号手编**。
+/// ⚠ 这一格已如实抬进 `K-H2` 的上报口，别读成「界面支持多账号了」。
+///
+/// ⚠ 而「明文入参那一跳」由 `the_plaintext_argument_is_only_ever_handed_one_hop_further`
+/// 钉着：明文进来之后**只许被往下传一次**，一路到 `SecretKey::new`。
+/// **IPC 那一跳本身仍然是 `判不了`**（原样延续 `K-H2a` 的登记）。
 pub(crate) fn write_key(plain: &str) -> Result<(), String> {
     write_key_at(
         &resolve_path().ok_or_else(|| "no home dir".to_string())?,
@@ -763,5 +780,138 @@ mod tests {
         assert!(json.contains('*'), "掩码里没有遮蔽符：{json}");
         // `Debug` 也不许漏（错误路径最爱 `{:?}`）。
         assert!(!format!("{s:?}").contains("sk-ant-PLAINTEXT-NEVER-ECHOED"));
+    }
+
+    // ================================================================ `K-H2` `KH7`
+
+    /// 明文那个入参从 IPC 边界进来之后，一路上**每一跳**允许它出现的地方。
+    ///
+    /// 每行 `(文件, 切窗口的锚点, 明文那个绑定叫什么, 它唯一该出现的那个写法)`。
+    /// ⚠ **加一行、或把某一行的次数改大，都是放宽** —— 要先说清多出来的那一处是什么。
+    const PLAINTEXT_HOPS: &[(&str, &str, &str, &str)] = &[
+        (
+            "lib.rs",
+            "fn write_relay_credentials_key(",
+            "key",
+            "creds_store::write_key(&key)",
+        ),
+        (
+            "creds_store.rs",
+            "pub(crate) fn write_key(",
+            "plain",
+            "plain,",
+        ),
+        (
+            "creds_store.rs",
+            "pub(crate) fn write_key_at(",
+            "plain",
+            "SecretKey::new(plain)",
+        ),
+    ];
+
+    /// 数一个**标识符**出现几次 —— 带词边界，不是子串。
+    ///
+    /// ⚠ **这个助手是第一跑逼出来的，经过记下来**：第一版直接用 `matches(binding).count()`，
+    /// 实测 `key` 在 `write_relay_credentials_key` 的函数体里数出 **2** 次 ——
+    /// 因为它调的那个函数**自己就叫 `write_key`**，`key` 是它的后缀。
+    /// ⇒ 那一版数的根本不是「明文被碰了几次」，是「这几个字母出现了几次」。
+    /// **本工作区最贵那族病的又一形：尺子的作用域对不上事实。**
+    fn count_ident(hay: &str, ident: &str) -> usize {
+        fn is_ident_byte(c: u8) -> bool {
+            c.is_ascii_alphanumeric() || c == b'_'
+        }
+        let b = hay.as_bytes();
+        let (mut n, mut from) = (0usize, 0usize);
+        while let Some(rel) = hay[from..].find(ident) {
+            let at = from + rel;
+            from = at + ident.len();
+            let left_ok = at == 0 || !is_ident_byte(b[at - 1]);
+            let right = at + ident.len();
+            let right_ok = right >= b.len() || !is_ident_byte(b[right]);
+            if left_ok && right_ok {
+                n += 1;
+            }
+        }
+        n
+    }
+
+    /// ★★★ **`K-H2` `KH7` 的机检那一半**：明文入参**只许被往下传一次**，
+    /// 一路上不许进日志、不许被拷进任何别的东西。
+    ///
+    /// # 它补的是哪一格（别把它读大）
+    ///
+    /// `KS6` 保的是 key **回**前端那个方向（`RelayCredentialsStatus` 在**类型上**装不下明文）。
+    /// **去**后端那个方向 `write_relay_credentials_key(key: String)` **入参就是明文**，
+    /// 而 `K-H2a` 把它逐字登记成 **`判不了`**（`lib.rs` 那段头注：
+    /// 「⇒ 它的身份是 **`判不了`**，不是「射程外」。**这两个词不是一回事**：
+    /// 前者欠着一次测量，后者是已经裁过不做。」）。
+    ///
+    /// 本条**没有**把那一格变成「判得了」。它买到的是**出口之后那一段**：
+    /// 明文一进来就只有一条路可走 —— 一路传到 `SecretKey::new`，中间任何一处
+    /// 多碰它一次都会红。
+    ///
+    /// # ⚠⚠ 它**不保**什么（三条，逐条写死）
+    ///
+    /// 1. **IPC 那一跳本身仍然判不了**：明文经 WebView 的消息通道序列化过来，
+    ///    那一段不在本仓的写区，本条一个字都没打过它。**原样延续 `K-H2a` 的登记。**
+    /// 2. **不判语义**：`SecretKey::new(plain)` 里面把明文交给谁，编译器与本条都不管
+    ///    （那是 `K-H2a` 的 `mod sealed` + `KS2` 的活）。
+    /// 3. **人群是这三个函数体**，不是「所有碰得到明文的代码」。第四跳出现时没有东西会红
+    ///    —— 加一跳就来加一行，那正是要的。
+    ///
+    /// # 量法与分母
+    ///
+    /// 窗口 = 每一跳那个函数的花括号块（**有界**），并配两条反空真自检
+    /// （切不出来 ⇒ 红 · 跨进下一个 item ⇒ 红）。窗口里**先剥注释行**再数
+    /// —— 判据只该看生效的代码，不该看解释它的话（`creds_guard` 那条 `harden` 判据
+    /// 第一跑就是被自己的注释撞红的，同一条教训）。
+    #[test]
+    fn the_plaintext_argument_is_only_ever_handed_one_hop_further() {
+        let sources: &[(&str, &str)] = &[
+            ("lib.rs", include_str!("lib.rs")),
+            ("creds_store.rs", include_str!("creds_store.rs")),
+        ];
+
+        for (file, anchor, binding, only_use) in PLAINTEXT_HOPS {
+            let raw = sources
+                .iter()
+                .find(|(f, _)| f == file)
+                .map(|(_, s)| *s)
+                .unwrap_or_else(|| panic!("登记表里的文件 {file} 没被采集 —— 取法坏了"));
+            let src = guard_core::production_code(raw);
+            let at = guard_core::find_pinned(&src, anchor)
+                .unwrap_or_else(|e| panic!("切不出 {file} 的 `{anchor}`（{e}）—— 本条按红处理，不是绿"));
+            let body = brace_block(&src, at)
+                .unwrap_or_else(|| panic!("{file} 的 `{anchor}` 花括号没配平 —— 按红处理"));
+
+            // 反空真自检㈠：窗口不许跨进下一个 item。
+            assert!(
+                !body.contains("\nfn ") && !body.contains("\npub"),
+                "{file} 的 `{anchor}` 窗口跨进了下一个 item —— 窗口无界，下面的断言不算数"
+            );
+            // 反空真自检㈡：窗口里**确实**有那个绑定（切错地方会让下面恒绿）。
+            let code = guard_core::strip_comment_lines(body);
+            assert!(
+                count_ident(&code, binding) > 0,
+                "{file} 的 `{anchor}` 窗口里根本没有 `{binding}` —— 切法坏了，本条在空转"
+            );
+
+            // ★ 正题：那个明文绑定**恰好出现一次**（**按标识符数，不按子串**），
+            //   且就是登记表说的那一处。
+            let n = count_ident(&code, binding);
+            assert_eq!(
+                n, 1,
+                "{file} 的 `{anchor}` 里，明文绑定 `{binding}` 出现了 {n} 次，应当**恰好 1** 次。\n\
+                 ⚠ `K-H2` `KH7`：明文入参只许被往下传一次。多碰一次就多一个出口 ——\n\
+                 进了一句日志 / 被拷进一个错误消息 / 被塞进一个结构体，都会撞这一条。\n\
+                 真要多一处，先在件计划里说清那一处是什么，别在这里把次数改大。\n\
+                 窗口（已剥注释）：{code}"
+            );
+            assert!(
+                code.contains(only_use),
+                "{file} 的 `{anchor}` 里那唯一一次不是登记的写法 `{only_use}` —— 靶子挪了。\n\
+                 窗口（已剥注释）：{code}"
+            );
+        }
     }
 }

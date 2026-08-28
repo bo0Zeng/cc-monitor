@@ -26,7 +26,36 @@ use crate::SecretKey;
 use serde_json::{Map, Value};
 
 /// key 住在哪个字段。**这个名字是契约**：人手编的时候写的就是它。
+///
+/// ⚠ 它在**两个深度**上都是这个名字：顶层（`K-H2a` 交付时那一把）与
+/// [`ACCOUNTS_FIELD`] 里每一条账号内部。**刻意同名** —— 人手编时不必记两套词。
 pub const KEY_FIELD: &str = "api_key";
+
+/// 多账号那张表住哪个字段。**这个名字是契约**〔`K-H2` `KH5`〕。
+///
+/// 形状：`{"accounts": {"<账号 id>": {"api_key": "…", "base_url": "…"}}}`。
+/// `<账号 id>` 会**原样**变成路由键里那一段（`/s/<agent>/<账号 id>/<key>/…`）
+/// ⇒ 它必须是路由段放得下的字符；放不下的那一条**永远匹配不上**，
+/// 由中转起来时出声（`relay::table::build` 那条「这一行进不了表」）。
+pub const ACCOUNTS_FIELD: &str = "accounts";
+
+/// 一条账号的**上游端点**住哪个字段。缺席 / 空串 ⇒ 用中转启动时那个默认上游。
+///
+/// ⚠ 它**不是**「回落」：`base_url` 缺席说的是「这一行用默认端点」，
+/// 而「这一行根本不在表里」说的是**404**。两件事不许混 —— 见 `K-H2` `KH2`。
+pub const BASE_URL_FIELD: &str = "base_url";
+
+/// 顶层那把 key（`K-H2a` 交付时的形状）在表里**叫什么名字**。
+///
+/// # ⚠⚠ 它是一个**有名字的行**，不是「默认行」
+///
+/// 这两件事读起来像，差别却正是 `K-H2` `KH2` 要守的全部：
+/// - **有名字的行**：只有路由键里账号段**逐字**是 `default` 的请求才用它；别的账号段查不到 ⇒ **404**。
+/// - **默认行**（本件明令不做）：查不到就拿它顶上 ⇒ **拿 A 的 key 发 B 的请求**。
+///
+/// 它存在的理由只有一个：`K-H2a` 已经落地的那份文件（顶层一个 `api_key`）
+/// **升级之后要照常能用**，而不是变成「一份读不懂的旧文件」。
+pub const LEGACY_ACCOUNT_ID: &str = "default";
 
 /// 那份文件相对 claude 家目录的位置。**两侧共用的唯一契约。**
 ///
@@ -54,6 +83,8 @@ pub fn path_under_claude_home(home: &std::path::Path) -> std::path::PathBuf {
 /// 「未知键原样保留」正是 [`merge_key`] 的性质 ⇒ 这份模板**自己就是那条性质的用例**。
 pub const TEMPLATE: &str = r#"{
   "_note": "把第三方 API key 填进 api_key。这份文件可以直接用编辑器改，改完下次读就生效；也可以整份换成另一份 JSON（导入）。本文件之外的键不会被程序动。",
+  "_note_accounts": "多账号写进 accounts：每条一个 id（会原样出现在中转的路由键里，只许字母数字与 - _），每条可带 api_key 与 base_url。base_url 留空就用中转启动时那个默认上游；api_key 留空就原样转发客户端自己那份鉴权头。例：\"accounts\": { \"my-account\": { \"api_key\": \"sk-...\", \"base_url\": \"https://api.example.com\" } }",
+  "accounts": {},
   "api_key": ""
 }
 "#;
@@ -109,6 +140,128 @@ pub fn read_key(doc: &Map<String, Value>) -> Option<SecretKey> {
     Some(SecretKey::new(s))
 }
 
+/// 从一份已解析的文档里取上游端点。缺席 / 不是字符串 / 空串 ⇒ `None`（用默认上游）。
+///
+/// ⚠ 与 [`read_key`] 同一条纪律：**只 `trim` 首尾空白，别的一个字节都不动**。
+/// 「顺手补个 `https://`」这种清理猜错一次的代价是**连到另一个地方去**。
+fn read_base_url(doc: &Map<String, Value>) -> Option<String> {
+    let s = doc.get(BASE_URL_FIELD)?.as_str()?.trim();
+    if s.is_empty() {
+        return None;
+    }
+    Some(s.to_string())
+}
+
+/// 表里的一条。**上游与 key 在这里还是分开的两个值** ——
+/// 把它们焊成一个不可分解的值是**中转那一侧**的活（`relay::table` 的 `Row`）。
+///
+/// ⚠ **刻意不 `derive(Debug)`**：同 `relay::server::Relay` 那条（`KS1` 的第二道）。
+/// `SecretKey` 自己的 `Debug` 是遮蔽形，但**少一个能顺手印整条的入口就少一个出口**。
+pub struct AccountEntry {
+    /// 路由键里那一段账号 id。
+    pub id: String,
+    /// 这一行的上游端点；`None` = 用中转启动时那个默认上游。
+    pub base_url: Option<String>,
+    /// 这一行的 key；`None` = **原样转发下游那份鉴权头**（订阅制那一档是合法状态）。
+    pub key: Option<SecretKey>,
+}
+
+/// 把一份文档读成**一张表**〔`K-H2` `KH5`〕。
+///
+/// # 两个来源，合成一张表，**顺序由键名定**
+///
+/// 1. [`ACCOUNTS_FIELD`] 那张表 —— 逐条读。遍历走 [`ordered_keys`]，
+///    ⇒ 输出顺序与 `Map` 今天是 `BTreeMap` 还是 `IndexMap` **无关**。
+/// 2. 顶层那把 key / 那个 `base_url` ⇒ 一条 id 逐字是 [`LEGACY_ACCOUNT_ID`] 的行。
+///
+/// # ⚠ 三条判断都要说清（每一条都对应一种「读起来像另一件事」的形状）
+///
+/// - **`accounts` 里每一个对象都是一条**，两个字段一个都没填也算 ——
+///   那是**合法且有用**的一条：`base_url` 空 = 用默认上游，`api_key` 空 = **原样转发
+///   客户端自己那份鉴权头**（`K-H1` 甲半那条「不配凭据也能用的透传路」，
+///   在多账号之后它从「隐式的全局行为」变成「**显式的一条路**」）。
+///   ⚠ 值**不是对象**的那一条跳过（比如有人写成 `"acct": "sk-..."`）。
+/// - **`accounts` 里已经有同名的那一条 ⇒ 顶层那半不再加**。理由：人手写的那条优先，
+///   程序不许拿一份「历史形状」去盖掉人明确写下的东西。
+/// - **顶层完全没有 `api_key` / `base_url` ⇒ 一条都不加**（不是加一条空的）。
+///   ⚠⚠ **这一条是承重的**：加一条「什么都没配的默认行」等于给「查不到就用它」
+///   开了门，而那正是 `K-H2` `KH2` 逐字禁的**回落**。**没配就是零条，零条就是全部 404。**
+///
+/// # 它**不**做什么
+///
+/// 不判 `id` 能不能当路由段用（那要 `route::segment_is_safe`，住 daemon 那一侧，
+/// 本 crate 刻意不认识 HTTP）· 不解析 `base_url`（那要 `upstream::Base`，同上）。
+/// ⇒ **这两格由中转在装表那一刻判并出声**，本函数只负责「文件里写了什么」。
+pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
+    let mut out: Vec<AccountEntry> = Vec::new();
+
+    if let Some(Value::Object(m)) = doc.get(ACCOUNTS_FIELD) {
+        for id in ordered_keys(m.keys()) {
+            let Some(obj) = m[id].as_object() else { continue };
+            out.push(AccountEntry {
+                id: id.clone(),
+                base_url: read_base_url(obj),
+                key: read_key(obj),
+            });
+        }
+    }
+
+    if !out.iter().any(|e| e.id == LEGACY_ACCOUNT_ID) {
+        let key = read_key(doc);
+        let base_url = read_base_url(doc);
+        if key.is_some() || base_url.is_some() {
+            out.push(AccountEntry {
+                id: LEGACY_ACCOUNT_ID.to_string(),
+                base_url,
+                key,
+            });
+        }
+    }
+
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    out
+}
+
+/// **`KS10` 在多条形状下的正主**〔`K-H2` `KH5`〕：只改 `accounts.<id>.api_key` 那一格，
+/// **别的条一个字节都不动**，两层的未知键都留着。
+///
+/// # 为什么它不收「整张 accounts」
+///
+/// 件计划 `§0d 三㈣` 那条：**公开面上不许有「整份替换 accounts 子对象」的路**。
+/// 有那条路，「只改一条」就退化成「调用方记得只改一条」——而那正是本仓反复栽的形状。
+/// ⇒ 签名逼着调用方说清**改哪一条**，改别的条这件事在本模块的公开面上**不可表示**。
+///
+/// ⚠ **如实说它的分母**：它挡住的是**走本模块的写者**。盘上那份文件仍然可以被别的代码
+/// 整份覆盖（原子替换那一步就在 `src-tauri/src/creds_store.rs` 里）⇒
+/// 这一格守的是「走 `store` 的写者」，**不是「所有写者」**。
+///
+/// # 落盘出口仍然只有一处
+///
+/// 本函数**不自己碰明文** —— 它把那一格转交给 [`merge_key`]，
+/// 而 `expose_for_persisting` 的调用点仍然**恰好 1 处**（在 `merge_key` 里）。
+/// ⇒ `KS2` 那条相等断言一个字节都不用动（`K-H2` `KH3`）。
+pub fn merge_account_key(
+    current: &Map<String, Value>,
+    id: &str,
+    key: &SecretKey,
+) -> Map<String, Value> {
+    let mut out = current.clone();
+
+    // ★ 两层都是 clone-then-replace：顶层的未知键、这一条之外的每一条、
+    //   以及**这一条自己**的未知键，三样都留着。
+    let mut accounts = match out.get(ACCOUNTS_FIELD).and_then(Value::as_object) {
+        Some(m) => m.clone(),
+        None => Map::new(),
+    };
+    let entry = match accounts.get(id).and_then(Value::as_object) {
+        Some(m) => m.clone(),
+        None => Map::new(),
+    };
+    accounts.insert(id.to_string(), Value::Object(merge_key(&entry, key)));
+    out.insert(ACCOUNTS_FIELD.to_string(), Value::Object(accounts));
+    out
+}
+
 /// **`KS10` 的正主**：把 key 并进一份**刚从盘上读回来的**文档，其余键一个不动。
 ///
 /// # 它为什么收 `current` 而不是收一个 `&mut self`
@@ -146,10 +299,72 @@ pub fn merge_key(current: &Map<String, Value>, key: &SecretKey) -> Map<String, V
 ///
 /// ⇒ 把排序抽成一个**收迭代器**的纯函数：判据可以直接喂它一个乱序的序列，
 /// 与 `Map` 今天是哪种实现**无关**。`MU9` 重打后被 `ordering_is_by_name_not_by_arrival` 逮住。
+///
+/// # ⚠⚠ 订正〔`K-H2` `D1` 阻-3 回修，08-28〕：上面那句「那一天今天造不出来」**已被证伪**
+///
+/// 上一段推理**前半对、后半错**。对的是「人群与性质对不上」；
+/// 错的是把「**这台机器今天这份构建**是 `BTreeMap`」滑成「**那个夹具造不出来**」——
+/// 后者是一个**关于分母的全称句**，而它**没有被打过**。
+/// 打它只要一行：给本 crate 的 `[dev-dependencies]` 加 `serde_json`
+/// 并开 `preserve_order` ⇒ **判据构建里 `Map` 就是 `IndexMap`**，夹具当场造得出来。
+/// 实测：删掉 [`ordered_value`] 的递归 ⇒ **30 passed / 2 failed**（两份 `Cargo.lock` 零变化）。
+/// ⇒ 抽出纯函数那一步**仍然是对的**（它不依赖任何 feature），
+/// 但「端到端那条只能是安慰剂」这个结论**当年就下早了**。
+/// ★ 这条经过值一句纪律：**「造不出来」要先被打一次才算数。**
 pub fn ordered_keys<'a>(keys: impl Iterator<Item = &'a String>) -> Vec<&'a String> {
     let mut v: Vec<&'a String> = keys.collect();
     v.sort();
     v
+}
+
+/// 递归地把每一层对象的键按名字排好〔`K-H2` `KH5c`〕。
+///
+/// # 它补的是一个**今天就已经漏着**的洞（`K-H2` `Bx` 摸底发现）
+///
+/// `to_pretty_json` 先前只排**顶层**（`ordered_keys(doc.keys())`），嵌套值是
+/// `doc[k].clone()` 原样塞回去、由 `serde_json::to_string_pretty` 按那个**内层 `Map`
+/// 自己的顺序**输出。而 [`ordered_keys`] 存在的**全部理由**（见它的头注）就是
+/// 「哪天 `preserve_order` 被依赖图里任何一个 crate 打开、`Map` 变成 `IndexMap`」——
+/// **那条理由在深度 ≥2 上原样复现，而先前的实现够不到。**
+/// 多账号把每条账号做成一个嵌套对象 ⇒ 不补这一格，`KS10②` 在多条形状下**静默失效**。
+///
+/// # ⚠⚠ 数组**不排**，但要**递归进去**
+///
+/// 数组的顺序是**数据**（换了就是改内容），对象的键序不是。这两件事不许混。
+///
+/// # ★★★ 它**有牙** —— 而买到这颗牙的过程本身是一课，逐字记下来
+///
+/// `K-H2` `C` 阶段我在这里写下过一句**错话**，逐字是：
+/// 「`serde_json::Map` 在今天这份构建里是 `BTreeMap`（插进去就有序）⇒
+/// **造不出一个「嵌套层乱序」的夹具**」，并据此把本函数登记成
+/// 「今天没有牙、是给明天用的绊线」。**`D1` 审计实测证伪了它。**
+///
+/// 证伪的办法只有一行：给本 crate 的 `[dev-dependencies]` 加
+/// `serde_json = { features = ["preserve_order"] }` —— **判据构建里 `Map` 就成了 `IndexMap`**，
+/// 那个「造不出来」的夹具当场造得出来。读数（我自己复打，与 `D1` 逐字相同）：
+/// **原码 32 passed / 0 failed；把下面 `Value::Object` 那一支删成 `other.clone()`
+/// ⇒ 30 passed / 2 failed**（本函数那条 + 隔壁 `the_field_order_does_not_depend_on_the_map_implementation`）。
+/// 两份 `Cargo.lock` **零变化**，全量门禁三个数**逐个不变**。
+///
+/// ⚠⚠ **这一课是 `MU9` 那一课的第二次，而且更贵**：`MU9` 的结论是
+/// 「这台机器上造不出反例」，本轮**证明了造得出**。
+/// ⇒ **「造不出来」这个判断本身要先被打一次才算数** —— 它是一个**关于分母的全称句**，
+/// 而全称句不许当前提直接写进头注。写下它的那一刻我没有去打它，这就是那次的病灶。
+///
+/// ⚠ 它仍然**不**保什么：本函数只管**对象的键序**。数组那一格由
+/// `arrays_keep_their_order_because_that_order_is_data` 钉，不由本条钉。
+pub fn ordered_value(v: &Value) -> Value {
+    match v {
+        Value::Object(m) => {
+            let mut out = Map::new();
+            for k in ordered_keys(m.keys()) {
+                out.insert(k.clone(), ordered_value(&m[k]));
+            }
+            Value::Object(out)
+        }
+        Value::Array(a) => Value::Array(a.iter().map(ordered_value).collect()),
+        other => other.clone(),
+    }
 }
 
 /// 序列化成盘上那份文本。
@@ -161,13 +376,12 @@ pub fn ordered_keys<'a>(keys: impl Iterator<Item = &'a String>) -> Vec<&'a Strin
 /// 而 monitor 那棵树很大 ⇒ 「今天是有序的」不是一条能靠的性质。
 /// ⇒ 这里**自己排一次序**，两种情况下输出都一样。
 /// 由 `the_field_order_does_not_depend_on_the_map_implementation` 钉住。
+/// ⚠ **订正〔`K-H2` `KH5c`，08-28〕**：这里先前只排**顶层**一层。
+/// 多账号把每条账号做成嵌套对象之后，那条「不靠 `Map` 的默认行为」的承诺在深度 ≥2 上就断了。
+/// ⇒ 今天整份走 [`ordered_value`]（**递归**），它的诚实边界写在那个函数的头注里。
 pub fn to_pretty_json(doc: &Map<String, Value>) -> String {
-    let mut ordered = Map::new();
-    for k in ordered_keys(doc.keys()) {
-        ordered.insert(k.clone(), doc[k].clone());
-    }
-    let mut s = serde_json::to_string_pretty(&Value::Object(ordered))
-        .unwrap_or_else(|_| TEMPLATE.to_string());
+    let ordered = ordered_value(&Value::Object(doc.clone()));
+    let mut s = serde_json::to_string_pretty(&ordered).unwrap_or_else(|_| TEMPLATE.to_string());
     s.push('\n');
     s
 }
@@ -260,12 +474,37 @@ mod tests {
 
     /// `KS10②` 的**端到端那一半**（整份进、整份出）。
     ///
-    /// ⚠ **它单独存在时是安慰剂**，如实记：`serde_json::Map` 在今天这份构建里是
-    /// `BTreeMap`（插进去就有序）⇒ 「两份插入顺序相反的文档」这个夹具**造不出来**，
-    /// 把排序整条删掉它照样绿（`MU9` 实测 19/19）。有牙的那一格是
-    /// `ordering_is_by_name_not_by_arrival`。**两条配着用，别只读这一条的名字。**
+    /// ⚠ **订正〔`K-H2` `D1` 阻-3 回修，08-28〕：本段那句「它单独存在时是安慰剂」今天不成立了。**
+    /// 先前逐字写的是：「`serde_json::Map` 在今天这份构建里是 `BTreeMap`（插进去就有序）
+    /// ⇒『两份插入顺序相反的文档』这个夹具**造不出来**，把排序整条删掉它照样绿（`MU9` 实测 19/19）」。
+    /// `K-H2` 给本 crate 的 `[dev-dependencies]` 加了 `serde_json` 的 `preserve_order`
+    /// ⇒ **判据构建里 `Map` 就是 `IndexMap`**，那个夹具造得出来了。
+    /// 实测：删掉 [`ordered_value`] 的递归 ⇒ **本条与 `nested_objects_…` 两条一起红**（30 passed / 2 failed）。
+    /// ⇒ **`MU9` 当年那条「造不出来」是对当时那份构建说的，不是一条永久事实。**
+    /// ⚠ 但**牙的来源变了要说清**：本条今天有牙靠的是那一行 dev-dependency；删了它就退回安慰剂。
+    /// `ordering_is_by_name_not_by_arrival` 仍然是**不依赖任何 feature** 的那一格，两条配着用。
+    ///
+    /// ⚠⚠ **而「那一行被删掉」这件事，先前没有任何东西会说**〔`D2` `§五-3`，`C-补` 08-28 补上〕。
+    /// `D2` `P6` 实测：删掉那行 dev-dependency、**生产码一个字不动** ⇒ 全量门禁 `GATE: OK`、
+    /// 三个数逐个不变 —— **本条与 `nested_objects_…` 一起悄悄退回安慰剂，而没人会知道。**
+    /// ⇒ 判据体第一段加了**反空真自检**（直接量「`Map` 是不是插入序」）：
+    /// 那一行没了 ⇒ **本条当场红**，报文逐字点出是哪一行依赖没了，不再是「悄悄退回」。
     #[test]
     fn the_field_order_does_not_depend_on_the_map_implementation() {
+        // ★★ **反空真自检排最前**〔`C-补` 08-28〕：本条的牙**整个**架在
+        //    `[dev-dependencies]` 里 `serde_json` 那行 `preserve_order` 上 —— 没有它
+        //    `Map` 是 `BTreeMap`，下面那两份「插入顺序相反」的夹具**根本造不出来**
+        //    （两边喂进去的本来就是同一个有序结构，删掉排序也照绿）。
+        //    这两行就是「那一行没了会说话的东西」。
+        let mut probe = Map::new();
+        probe.insert("z".into(), Value::from(1));
+        probe.insert("a".into(), Value::from(2));
+        assert_eq!(
+            probe.keys().next().map(String::as_str),
+            Some("z"),
+            "判据构建里 Map 不是插入序 —— `preserve_order` 那行 dev-dependency 没了，本条已退回安慰剂"
+        );
+
         // 两份**内容相同、插入顺序相反**的文档。
         let a = parse(r#"{"aaa":1,"mmm":2,"zzz":3}"#).expect("a");
         let b = parse(r#"{"zzz":3,"mmm":2,"aaa":1}"#).expect("b");
@@ -362,6 +601,310 @@ mod tests {
             read_key(&doc).expect("应当读得到").expose_for_auth_header(),
             "sk-x",
             "首尾空白该被 trim（那是编辑器留下的），中间的内容一个字节都不许动"
+        );
+    }
+
+    // ================================================================ `K-H2` `KH5`：多条
+
+    /// ★★ **`KH5a`**：`KS9③`（导入）在**多条**形状下重验 —— 一份人手写的多账号 JSON
+    /// 放进去就算配好，**两层的未知键都还在**，不需要任何迁移步骤。
+    ///
+    /// ⚠ `KS9` 那几条原来只在**一条**的形状上验过（件计划 `§0c` 第 3 问逐字）。
+    #[test]
+    fn a_hand_authored_multi_account_file_is_read_as_a_table_with_both_layers_intact() {
+        let hand = r#"{
+            "_note": "顶层未知键：别删我",
+            "accounts": {
+                "zzz-last": { "api_key": "KEY-Z", "why": "我自己加的注释" },
+                "aaa-first": { "api_key": "KEY-A", "base_url": "https://api.example.invalid" }
+            }
+        }"#;
+        let doc = parse(hand).expect("人手写的多账号 JSON 应当直接被接受");
+        let table = read_accounts(&doc);
+
+        // 分母 = 夹具里这 2 条，逐条查。
+        assert_eq!(table.len(), 2, "读出来的条数不对");
+        // ★ 顺序按**键名**，不按人写的先后（`aaa-first` 写在后面）。
+        assert_eq!(table[0].id, "aaa-first");
+        assert_eq!(table[1].id, "zzz-last");
+        assert_eq!(
+            table[0].key.as_ref().expect("A 应当有 key").expose_for_auth_header(),
+            "KEY-A"
+        );
+        assert_eq!(table[0].base_url.as_deref(), Some("https://api.example.invalid"));
+        assert_eq!(
+            table[1].key.as_ref().expect("Z 应当有 key").expose_for_auth_header(),
+            "KEY-Z"
+        );
+        // 没写 `base_url` 的那条是 `None`（= 用默认上游），**不是空串**。
+        assert_eq!(table[1].base_url, None);
+
+        // 两层的未知键都还在（这是「导入不吃东西」的另一半）。
+        assert_eq!(doc["_note"], "顶层未知键：别删我");
+        assert_eq!(doc["accounts"]["zzz-last"]["why"], "我自己加的注释");
+        // 没有任何「版本号 / schema 迁移」这一步。
+        assert!(doc.get("_schema_version").is_none());
+    }
+
+    /// **`KH5a` 的另一半**：`K-H2a` 交付的那份**旧文件**（顶层一把 key）升级之后照常能用，
+    /// 它变成一条 id 逐字是 [`LEGACY_ACCOUNT_ID`] 的**有名字的行**。
+    ///
+    /// ⚠⚠ 「有名字的行」与「默认行」的分界就在这一条判据上：
+    /// 本条只证「`default` 查得到」，**不证也不许证**「别的 id 也能拿到它」——
+    /// 那一半由 `K-H2` `KH2` 的 404 判据反向钉住。
+    #[test]
+    fn the_legacy_top_level_key_becomes_one_named_row_not_a_default_row() {
+        let doc = parse(r#"{"_note":"旧文件","api_key":"LEGACY-KEY"}"#).expect("旧形状");
+        let table = read_accounts(&doc);
+        assert_eq!(table.len(), 1, "旧文件应当读成**恰好一条**");
+        assert_eq!(table[0].id, LEGACY_ACCOUNT_ID);
+        assert_eq!(
+            table[0].key.as_ref().expect("应当有 key").expose_for_auth_header(),
+            "LEGACY-KEY"
+        );
+
+        // ★ `accounts` 里已经有同名的那一条 ⇒ **人写的那条赢**，顶层那半不再加。
+        let both = parse(
+            r#"{"api_key":"LEGACY-KEY","accounts":{"default":{"api_key":"HAND-WRITTEN"}}}"#,
+        )
+        .expect("两处都有");
+        let t2 = read_accounts(&both);
+        assert_eq!(t2.len(), 1, "同名的两处应当合成一条，不是两条");
+        assert_eq!(
+            t2[0].key.as_ref().expect("key").expose_for_auth_header(),
+            "HAND-WRITTEN",
+            "程序拿历史形状盖掉了人明确写下的那条"
+        );
+
+        // 非空对照：顶层**没有**这两个字段时，一条都不加（不是加一条空的）。
+        let empty = parse(r#"{"_note":"什么都没配"}"#).expect("空");
+        assert!(read_accounts(&empty).is_empty());
+    }
+
+    /// ★★★ **「没配」就是零条 —— 一条「默认行」都不许有。**
+    ///
+    /// 这是 `K-H2` `KH2` 在存储那一层的那一半：**零条 ⇒ 中转全部 404**。
+    /// 只要这里凭空多出一条什么都没配的行，「查不到就用它」马上就写得出来了，
+    /// 而那正是件计划逐字禁的**回落**。
+    ///
+    /// ⚠ 模板里 `accounts` 是**空对象**、`api_key` 是**空串** ——
+    /// 例子写在 `_note_accounts` 那句**散文**里，不是一条活的行。
+    /// 这是刻意的：模板里放一条活的示例行，等于每个刚装好的人都白得一条路。
+    #[test]
+    fn an_unconfigured_file_yields_no_rows_at_all() {
+        // ★ **非空对照排最前**〔`D1` 一并修，08-28〕：先证明这把尺子读得出行，
+        //   否则下面整个循环可能只是因为 `read_accounts` 恒返回空而全绿。
+        let filled = parse(r#"{"accounts":{"my-account":{"api_key":"K"}}}"#).expect("填上");
+        assert_eq!(read_accounts(&filled).len(), 1, "这把尺子是瞎的");
+
+        // 分母 = 我列出的这 4 种「没配」的写法。
+        for raw in [
+            TEMPLATE,
+            r#"{}"#,
+            r#"{"_note":"什么都没写"}"#,
+            r#"{"accounts":{},"api_key":""}"#,
+        ] {
+            let doc = parse(raw).expect("夹具应当可解析");
+            assert!(
+                read_accounts(&doc).is_empty(),
+                "这一形凭空多出了行 —— 那就是一条默认行：{raw}"
+            );
+        }
+    }
+
+    /// ★★ **一条什么都没填的账号是合法的一条**：`base_url` 空 = 用默认上游，
+    /// `api_key` 空 = 原样转发客户端自己那份鉴权头。
+    ///
+    /// # 它买回来的是 `K-H1` 甲半那条被多账号「顺手弄没了」的性质
+    ///
+    /// 先前「不配凭据 ⇒ 中转仍是一条能用的透传路」是一条**隐式的全局行为**
+    /// （`render_upstream_request` 的头注逐字写着它）。改成按表路由之后，
+    /// 那条隐式行为**必然消失** —— 因为不再有「全局」这个东西。
+    /// ⇒ 它没有被删掉，是被**改成显式的一条路**：写一条空账号就有了。
+    /// **这两句话差得很远，所以要有一条判据钉着后一句。**
+    #[test]
+    fn an_account_with_nothing_filled_in_is_still_a_row() {
+        let doc = parse(r#"{"accounts":{"passthrough":{}}}"#).expect("夹具");
+        let rows = read_accounts(&doc);
+        assert_eq!(rows.len(), 1, "空账号应当算一条");
+        assert_eq!(rows[0].id, "passthrough");
+        assert!(rows[0].key.is_none(), "它不该有 key");
+        assert!(rows[0].base_url.is_none(), "它不该有自己的上游");
+
+        // ⚠ 但值**不是对象**的那一条要跳过（有人写成 `"acct": "sk-..."`）。
+        let wrong = parse(r#"{"accounts":{"acct":"sk-not-an-object"}}"#).expect("夹具");
+        assert!(read_accounts(&wrong).is_empty(), "非对象的那一条不该进表");
+    }
+
+    /// ★★★ **`KH5b` 的正主**〔件计划 `§0c` 第 3 问逐字点名的那个**新**形状〕：
+    /// **程序只改其中一条，别的条不许被动。**`K-H2a` 没验过这一格。
+    ///
+    /// # 量法：**B 那一条序列化出来的文本逐字节相等**
+    ///
+    /// ⚠ 刻意**不**逐字段查 —— 逐字段查的分母是「我列出的这几个字段」，
+    /// 而这里要的是「**整条**没被动」，那个全称句只有逐字节比得起。
+    #[test]
+    fn writing_one_account_leaves_every_other_account_byte_for_byte_untouched() {
+        let hand = parse(
+            r#"{
+                "_note": "顶层未知键",
+                "accounts": {
+                    "A": { "api_key": "A-OLD", "note_a": "A 自己的注释", "base_url": "https://a.invalid" },
+                    "B": { "api_key": "B-KEY", "note_b": "别动我", "nested": { "z": 1, "a": 2 } }
+                }
+            }"#,
+        )
+        .expect("夹具应当可解析");
+        let before_b = serde_json::to_string(&hand["accounts"]["B"]).expect("序列化 B");
+
+        let merged = merge_account_key(&hand, "A", &SecretKey::new("A-NEW"));
+        let merged_b = merge_account_key(&hand, "B", &SecretKey::new("B-NEW"));
+
+        // ★★ **非空对照排最前**〔`D1` 一并修，08-28〕：同一把尺子，改 **B** 的时候 B **应当**变。
+        //    没有这一格，下面 ㈡ 那条可能只是因为这把尺子看不见任何变化。
+        //    ⚠ 先前它排在整条判据的**最后** —— 与 `D1-M6` 逮到的那一形同族：
+        //    前面任何一条先炸，它就一次都没被求值。
+        let b_after_writing_b =
+            serde_json::to_string(&merged_b["accounts"]["B"]).expect("序列化 B");
+        assert_ne!(
+            b_after_writing_b, before_b,
+            "改 B 的时候 B 没变 —— 这把尺子是瞎的，下面那条「没被动」证不了什么"
+        );
+
+        // ㈡ **别的条逐字节没动**（本条判据的正题，排在对照之后、别的之前）。
+        let after_b = serde_json::to_string(&merged["accounts"]["B"]).expect("序列化 B");
+        assert_eq!(after_b, before_b, "改 A 的时候 B 那一条被动了");
+
+        // ㈠ 被改的那一条：key 换了，**它自己的未知键**还在。
+        assert_eq!(merged["accounts"]["A"][KEY_FIELD], "A-NEW");
+        assert_eq!(merged["accounts"]["A"]["note_a"], "A 自己的注释");
+        assert_eq!(merged["accounts"]["A"][BASE_URL_FIELD], "https://a.invalid");
+        // ㈢ 顶层的未知键也还在。
+        assert_eq!(merged["_note"], "顶层未知键");
+        // 改 B 的时候，B 自己的未知键与嵌套结构也都留着。
+        assert_eq!(merged_b["accounts"]["B"]["note_b"], "别动我");
+        assert_eq!(merged_b["accounts"]["B"]["nested"]["z"], 1);
+    }
+
+    /// **`KH5b` 的第二半**：往一份**还没有 `accounts` 段**的文件里写一条账号，
+    /// 顶层原有的东西（含 `K-H2a` 那把顶层 key）一个都不许被吃掉。
+    #[test]
+    fn adding_the_first_account_to_a_legacy_file_keeps_the_legacy_half() {
+        let legacy = parse(r#"{"_note":"旧的","api_key":"LEGACY"}"#).expect("旧文件");
+        let merged = merge_account_key(&legacy, "newone", &SecretKey::new("NEW"));
+        assert_eq!(merged["accounts"]["newone"][KEY_FIELD], "NEW");
+        assert_eq!(merged[KEY_FIELD], "LEGACY", "顶层那把 key 被吃掉了");
+        assert_eq!(merged["_note"], "旧的");
+        // 读回来是**两条**（`default` + `newone`）。
+        let rows = read_accounts(&merged);
+        let ids: Vec<&str> = rows.iter().map(|e| e.id.as_str()).collect();
+        assert_eq!(ids, vec![LEGACY_ACCOUNT_ID, "newone"]);
+    }
+
+    /// **`KH5c`**：落盘文本在**深度 ≥2** 上也按键名排。
+    ///
+    /// # ★★ 它**有牙**（`D1` 阻-3 回修之后）
+    ///
+    /// ⚠⚠ **本段先前写的是「这一条今天没有牙，它是一条给明天用的绊线」，那句话已被实测证伪。**
+    /// 病灶是我把一个**关于分母的全称句**（「`BTreeMap` ⇒ 嵌套层乱序的夹具造不出来」）
+    /// 当成前提直接写进了头注，而**没有去打它**。
+    /// `D1` 只加了一行 dev-dependency（`serde_json` 开 `preserve_order`）就把夹具造了出来。
+    ///
+    /// 今天的读数（我自己复打）：原码 **32 passed / 0 failed**；
+    /// 把 [`ordered_value`] 的 `Value::Object` 那一支删成 `other.clone()`
+    /// ⇒ **30 passed / 2 failed**，红的是本条 + 隔壁 `the_field_order_does_not_depend_on_the_map_implementation`。
+    /// ⇒ **深度 ≥2 今天真有人守着。**
+    ///
+    /// ⚠ 它仍然要配着 `ordering_is_by_name_not_by_arrival` 读：那一条收迭代器，
+    /// 与 `Map` 是哪种实现**无关**；本条则是**靠 `preserve_order` 把 `Map` 换成 `IndexMap`** 才有牙的
+    /// —— 哪天那一行 dev-dependency 被删掉，本条**先前会悄悄退回**成安慰剂。
+    /// 那一行的理由与读数写在 `crates/creds-core/Cargo.toml` 里，**别当成可有可无的依赖**。
+    ///
+    /// ⚠⚠ **「悄悄」那一格已经补上了**〔`D2` `§五-3`，`C-补` 08-28〕：判据体第一段是
+    /// **反空真自检**（直接量「`Map` 是不是插入序」）⇒ 那一行没了本条**当场红**。
+    /// 立项读数：`D2` `P6` 删掉那行、生产码不动 ⇒ 全量门禁 `GATE: OK`、三个数逐个不变，
+    /// **没有任何东西说话**；`P6b`（再删递归）⇒ 32 passed / 0 failed ⇒ 确实退回了安慰剂。
+    #[test]
+    fn nested_objects_are_also_ordered_by_name_in_what_lands_on_disk() {
+        // ★★ **反空真自检排最前**〔`C-补` 08-28〕：见本条头注最后一段。
+        //    没有 `preserve_order`，下面这个「嵌套层乱序」的夹具造不出来（`parse` 出来就已经排好），
+        //    整条判据会变成「排过的东西还是排过的」——恒真。
+        let mut probe = Map::new();
+        probe.insert("z".into(), Value::from(1));
+        probe.insert("a".into(), Value::from(2));
+        assert_eq!(
+            probe.keys().next().map(String::as_str),
+            Some("z"),
+            "判据构建里 Map 不是插入序 —— `preserve_order` 那行 dev-dependency 没了，本条已退回安慰剂"
+        );
+
+        let doc = parse(r#"{"accounts":{"b":{"zzz":1,"aaa":2},"a":{"mmm":3}}}"#).expect("夹具");
+        let text = to_pretty_json(&doc);
+
+        // ★ **反空真排最前**〔`D1` 一并修〕：真的落到了嵌套那一层（不是整份被压成一行），
+        //   且落盘的仍然是合法 JSON。先前这两条排在最后。
+        assert!(text.lines().count() >= 8, "输出只有 {} 行", text.lines().count());
+        let back: Value = serde_json::from_str(&text).expect("落盘的东西必须是合法 JSON");
+        assert_eq!(back["accounts"]["b"]["aaa"], 2);
+
+        // 深度 1：`a` 排在 `b` 前面。
+        let ia = guard_core::find_pinned(&text, "\"a\": {").expect("`a` 应当恰好出现一处");
+        let ib = guard_core::find_pinned(&text, "\"b\": {").expect("`b` 应当恰好出现一处");
+        assert!(ia < ib, "深度 1 没按键名排：{text}");
+        // 深度 2：`b` 那条里 `aaa` 排在 `zzz` 前面。
+        let iaaa = guard_core::find_pinned(&text, "\"aaa\"").expect("`aaa` 应当恰好出现一处");
+        let izzz = guard_core::find_pinned(&text, "\"zzz\"").expect("`zzz` 应当恰好出现一处");
+        assert!(iaaa < izzz, "深度 2 没按键名排：{text}");
+    }
+
+    /// **数组的顺序是数据，不许排；但数组里的对象要递归进去。**
+    ///
+    /// 这一条守的是**方向**：把 [`ordered_value`] 的 `Value::Array` 那一支改成「排数组」会当场红。
+    ///
+    /// # ⚠⚠ 「递归进去」那一半先前**没有牙**，本轮取到了〔`D2` `§五-4`，`C-补` 08-28〕
+    ///
+    /// 本条先前逐字承认：「把那一支改成 `other.clone()`（不递归进数组里的对象）本条**看不出来**
+    /// —— 夹具是一个**标量数组**，人群里没有『数组里套对象』那一形」。**那句自陈属实**
+    /// （`D2` `P7`：不递归 + 旧夹具 ⇒ **32 passed / 0 failed**，一声不吭）。
+    /// ⇒ 本轮把缺的那一形**加进夹具**：`{"list":[{"zzz":1,"aaa":2}]}`，断 `aaa` 排在 `zzz` 前。
+    /// 今天这一支**真有人守**：不递归 ⇒ 本条红，报文逐字说「数组里那个对象没被递归排序」。
+    ///
+    /// ⚠ **牙的来源要说清**：新那一段与 `nested_objects_…` 同源 —— 它靠
+    /// `[dev-dependencies]` 里 `serde_json` 那行 `preserve_order` 把 `Map` 换成 `IndexMap`，
+    /// 否则 `parse` 出来的内层对象**本来就已经排好**，「有没有递归进去」看不出来。
+    /// ⇒ 那一段前面同样立着**反空真自检**。**数组本身那一半（顺序是数据、不许排）不依赖它。**
+    #[test]
+    fn arrays_keep_their_order_because_that_order_is_data() {
+        let doc = parse(r#"{"list":["zzz","aaa","mmm"]}"#).expect("夹具");
+        let text = to_pretty_json(&doc);
+        let back: Value = serde_json::from_str(&text).expect("合法 JSON");
+        // 期望值是**手写字面量**，不是拿被测函数算出来的。
+        assert_eq!(back["list"], serde_json::json!(["zzz", "aaa", "mmm"]));
+        // 非空对照：同一把尺子看得见「排过」的样子长什么样（证明它不是恒等）。
+        assert_ne!(back["list"], serde_json::json!(["aaa", "mmm", "zzz"]));
+
+        // ── 另一半：**数组里套的对象要递归进去** ──────────────────
+        // ★★ 反空真自检排在这一段最前（同 `nested_objects_…`）：没有 `preserve_order`
+        //    下面那个内层对象 `parse` 出来就已经排好，这一段会恒真。
+        let mut probe = Map::new();
+        probe.insert("z".into(), Value::from(1));
+        probe.insert("a".into(), Value::from(2));
+        assert_eq!(
+            probe.keys().next().map(String::as_str),
+            Some("z"),
+            "判据构建里 Map 不是插入序 —— `preserve_order` 那行 dev-dependency 没了，下面这一段已退回安慰剂"
+        );
+
+        let nested = parse(r#"{"list":[{"zzz":1,"aaa":2}]}"#).expect("嵌套夹具");
+        let nested_text = to_pretty_json(&nested);
+        // 非空对照：落盘的仍是合法 JSON，而且数组那一层**还在**（不是被压没了）。
+        let nested_back: Value = serde_json::from_str(&nested_text).expect("合法 JSON");
+        assert_eq!(nested_back["list"][0]["aaa"], 2);
+        let iaaa = guard_core::find_pinned(&nested_text, "\"aaa\"").expect("`aaa` 应当恰好出现一处");
+        let izzz = guard_core::find_pinned(&nested_text, "\"zzz\"").expect("`zzz` 应当恰好出现一处");
+        assert!(
+            iaaa < izzz,
+            "数组里那个对象没被递归排序 —— `ordered_value` 的 `Value::Array` 那一支没有往下走：{nested_text}"
         );
     }
 }
