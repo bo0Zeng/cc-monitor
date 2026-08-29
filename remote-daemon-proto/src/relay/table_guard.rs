@@ -298,6 +298,42 @@ mod tests {
     /// 「daemon 不开 `harden`」五轮买来的性质整个挂在 manifest 一行上，而没人看着它。〕
     ///
     /// ⚠ 窗口是 `struct Relay {` 那一块，**有界**，并配两条反空真自检。
+    /// ★★ `K-H2b` `D2 阻-4`：**那张表的读锁不许跨 `pump`。**
+    ///
+    /// `std::sync::RwLock` 是**写优先**的：一个在等的写者（= 用户刚配完一把 key，
+    /// 下一条请求触发重载）会挡住其后所有读者。而 `pump` 是**流式转发**，
+    /// 一条 SSE 长流可以跑几分钟 ⇒ 读锁跨 `pump` 的话，「配一次 key」会被堵在
+    /// **最长那条在飞流**后面。
+    ///
+    /// # ⚠ 它是形状判据，不是行为判据（说清楚）
+    ///
+    /// 挂起时长**没实测**（那要造一条长流再去配 key）。本条只钉那个位置关系：
+    /// `table.read()` 那一句必须出现在 `pump(` **之前**，且中间必须有一处 `};`
+    /// 把守卫收掉。⇒ 谁把守卫改回「活到函数结尾」，位置关系变、本条红。
+    #[test]
+    fn the_routing_table_read_guard_does_not_outlive_the_streaming_pump() {
+        let files = crate_production();
+        let (_, server) = files
+            .iter()
+            .find(|(p, _)| p.ends_with("server.rs"))
+            .expect("扫不到 `server.rs` —— 取法坏了，本条按红处理");
+        let take = server
+            .find("relay.table.read()")
+            .expect("找不到取读锁那一句 —— 形状变了，先修锚点");
+        let pump = server
+            .find("let outcome = pump(")
+            .expect("找不到 `pump(` 的调用点 —— 形状变了，先修锚点");
+        assert!(take < pump, "取读锁排在 `pump` 之后了 —— 那不是本条守的形状");
+        // 守卫必须在两者之间被收掉：那个块的收尾 `};` 就是它的尽头。
+        let between = &server[take..pump];
+        assert!(
+            between.contains("\n    };"),
+            "读锁的守卫没有在 `pump` 之前收掉 —— 它会活到函数结尾、跨整条流。\n\
+             `RwLock` 写优先 ⇒ 用户配一次 key 会被堵在最长那条在飞流后面。\n\
+             实得两者之间：{between}"
+        );
+    }
+
     #[test]
     fn the_relay_carries_no_process_wide_upstream_and_no_process_wide_key() {
         let files = crate_production();
