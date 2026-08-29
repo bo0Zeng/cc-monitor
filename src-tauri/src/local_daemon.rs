@@ -1430,9 +1430,10 @@ mod tests {
     }
 
     // ★★★ `D5 阻-1`：**`the_two_inputs_at_the_call_site_are_still_the_two_take_points`
-    //    这条判据整条删了**，新住址是 `history.rs` 里那两条**行为**判据
-    //    （`the_launch_side_really_asks_those_two_take_points_and_uses_their_answers` ·
-    //     `the_production_relay_facts_are_those_two_take_points`）。
+    //    这条判据整条删了**，新住址是 `history.rs` 里那**三条**判据
+    //    （行为：`the_launch_side_really_asks_those_two_take_points_and_uses_their_answers` ·
+    //     `the_ui_status_side_asks_those_two_take_points_and_uses_their_answers`；
+    //     按函数地址对拍：`the_production_relay_facts_are_those_two_take_points`）。
     //
     // 删它的理由是一个实测读数，不是风格：它量的是「`relay_prefix_for_launch` 的体切出
     // 700 字节，那个窗口里**有没有**那两段文本」。`D5` 现打：在同一个窗口里加一行把那两段
