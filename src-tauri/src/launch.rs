@@ -125,14 +125,30 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
 ///
 /// ⇒ 两刀的修法是同一条：**把这一跳也变成纯函数**，让「载荷逐字节走过去」有东西钉。
 ///
-/// # ⚠ 它买不到什么（**这条边界是量出来的，不是推出来的**）
+/// # 🔴 本函数返回之后那 3 行 —— **今天有判据了，两支各一条**〔`D7 阻-1` / `D7 阻-2`，08-29〕
 ///
 /// 本函数返回之后只剩 3 行（`Command::new(program)` · `.args(&args)` ·
 /// 以及 `cwd` / `env` / `stdio` / `process_group` 那几个设置）——
 /// **在那 3 行里再剥一次前缀，实打 `1229 passed` 全绿**（刀 `Z1c`，08-29）。
-/// 要买它得真开一个窗口再去看那个进程的 argv，而
-/// 「**开窗那条路因此没有行为级判据**」是 `launch_local_posix_via` 头注里 `P5L` 已登记的边界。
-/// ⇒ **登记，不假装钉住了。** 今天做到的是把那条缝**收到 3 行**（先前是整整两段）。
+///
+/// 🔴🔴 **先前这里逐字写着「要买它得真开一个窗口再去看那个进程的 argv」—— 那是假话。**
+/// `D7` 照既有那条 `local_posix_spawn_actually_runs_the_command` 的形状写了一条判据量过：
+/// 带刀 `Z1c` `1229 passed; 1 failed`（红）· 干净树 `1230 passed; 0 failed`（绿）
+/// ⇒ **不用开窗 · 不用真终端 · 不用动 `paths.rs` · 不用 `set_var("HOME")` ·
+/// 不用 `--test-threads=1` · 不用 `#[ignore]`。**
+/// ★ 「做不到」也是一个断言，而那一句只对**它当时想写的那一种**判据成立
+///（同族第二次；上一次是 `RelayFactSources` 头注 ㈠ 那条「要动真实家目录」）。
+///
+/// ⇒ 今天那 3 行由**两条**判据看着，一支一条（`term` 是这条链的分叉点，两支都买）：
+/// - `term = None`（无窗口回落）⇒ `the_spawned_process_really_gets_the_relay_prefix_without_a_terminal`
+///   （观测点 = 起出去的那个进程自己看到的 `ANTHROPIC_BASE_URL`）；
+/// - `term = Some(...)`（开窗）⇒ `the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix`
+///   （观测点 = **假终端**自己收到的 argv；`#!/bin/sh` 脚本打 `"$@"`，**没有窗口会弹出来**）。
+///
+/// 🔴 **为什么非两条不可**：刀 `L10`（剥前缀**只放在 `term.is_some()` 那一支**）
+/// **活过了只买 `None` 那一支的修法** —— 装上走 `None` 的判据之后它仍然 `1229` 全绿、
+/// `GATE: OK`，而**生产上装了规范化终端出口的机器走的正是开窗那一支**。
+/// ⇒ **这条链上的每一条判据，两支都要有；只买一支买到的是「判据去的那一支」。**
 /// **「跑什么」的全部** —— 载荷校验 + argv + 终端包装，一跳到底。
 ///
 /// ★ `launch_local_posix_via` 因此只剩「**怎么起**」（`cwd` / `env` / `stdio` / `process_group`）。
@@ -255,10 +271,21 @@ pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
 /// 既有的 `local_posix_spawn_actually_runs_the_command` 是一条**真跑**的行为测试，
 /// 改之前它直接 spawn `bash`；接上终端出口之后它会**真的弹出一个终端窗口**
 /// —— 实测跑了一次（本机 `xdg-terminal-exec` → `ptyxis`）。
-/// ⇒ 出口作为参数进来，测试传 `None` 走无窗口那条。
+/// ⇒ 出口作为参数进来，判据传 `None` 走无窗口那条 —— **或者传一个自己造的假终端脚本**。
 ///
-/// ⚠ 代价如实登记：**开窗那条路因此没有行为级判据**（只有形状判据）。
-/// 真机验收归 `auto-e2e`，别把「形状对」读成「窗口真开出来了」。
+/// 🔴🔴 **订正〔`D7 阻-2`，08-29〕：先前这里逐字写着「开窗那条路因此没有行为级判据
+/// （只有形状判据）」—— 那句话在 `P5L` 那一轮是对的，今天是假话，而且它宽了两格。**
+/// - 载荷那一半：`the_local_argv_hands_the_command_through_byte_for_byte_prefix_and_all`
+///   喂 `Some("xdg-terminal-exec")` 走的就是开窗那一支（`D7 §A3` 现打）；
+/// - spawn 那一半：`the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix`
+///   喂一个**假终端**（临时目录里的 `#!/bin/sh` 脚本，把 `"$@"` 写进文件）——
+///   `Command::new(program)` 拿绝对路径直接 exec 它，**没有任何窗口会弹出来**。
+/// ⇒ **「不能在开发者桌面上开真窗口」≠「开窗那一支买不到」**：前者是真的，后者是
+///   把「做不到的那一种做法」说成了「做不到这件事」。
+///
+/// ⚠ **今天仍然没有的**：真终端（`xdg-terminal-exec` → 用户配的那个模拟器）拿到 argv
+/// 之后**会不会照着跑**。那是它自己的约定，本仓测不到 ⇒ 真机验收归 `auto-e2e`。
+/// 别把「我们交出去的那一份是对的」读成「窗口真开出来了」。
 #[cfg(not(windows))]
 fn launch_local_posix_via(cmd: &str, cwd: Option<&str>, term: Option<&str>) -> Result<(), String> {
     use std::os::unix::process::CommandExt;
@@ -617,7 +644,13 @@ mod tests {
         //    `build_local_posix_spawn` 之后合并成**一个** —— 开窗点的**人数没变**，
         //    变的是它们从两处 `Command::new(` 收成一处。
         //    ⚠ 这不是「把上限调上去让今天好过」：这个数是**等号**、方向是**减少**，
-        //    而它守的那条不变式（`spawns - carried == 1`，那 1 是 `where.exe` 探测）**逐字仍然成立**。
+        //    三条断言（`carried == 3` · `helper == 2` · `where.exe` 那条身份）**一字未动**。
+        //    🔴 **订正〔`D7 阻-5`③，08-29〕：这里先前逐字写着「它守的那条不变式
+        //    （`spawns - carried == 1`，那 1 是 `where.exe` 探测）**逐字仍然成立**」——
+        //    那句话描述的是一个没有发生过的世界。** 现打 `26f53da`：`spawns == 5` ·
+        //    `carried == 3` ⇒ **差是 2，不是 1**（那时不带 env 的有两个：`where.exe` 探测
+        //    **+ POSIX 无窗口回落**）。⇒ `spawns - carried == 1` 是**这一改之后才第一次成立**的，
+        //    不是「仍然」。结论（收紧）没变，错的是那句话。
         assert_eq!(
             spawns, 4,
             "`launch.rs` 生产代码里的 `Command::new(` 从 4 变成了 {spawns}。\n\
@@ -1004,8 +1037,12 @@ mod tests {
     /// # ⚠ 它买不到什么（射程边缘，如实写）
     ///
     /// 本条量的是**纯函数这一跳**。`launch_local_posix_via` 拿到 `argv` **之后**再动手
-    /// （在 `Command` 上改参数）本条看不见 —— 那一跳要真开窗才观测得到，
-    /// 而「开窗那条路没有行为级判据」是 `P5L` 已经登记过的边界（见本模块 `launch_local_posix_via` 头注）。
+    /// （在 `Command` 上改参数）本条看不见 —— 刀 `Z1c` / `L10` 打的正是那 3 行。
+    /// 🔴 **订正〔`D7 阻-1`/`阻-2`，08-29〕：这里先前逐字写着「那一跳要真开窗才观测得到」
+    /// —— 假话。** 那 3 行今天由**两条**判据看着，一支一条：
+    /// `the_spawned_process_really_gets_the_relay_prefix_without_a_terminal`（`term = None`）
+    /// 与 `the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix`（`term = Some(假终端)`），
+    /// **两条都不开窗**。
     #[test]
     fn the_local_argv_hands_the_command_through_byte_for_byte_prefix_and_all() {
         let payloads = [
@@ -1146,9 +1183,12 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("mkdir");
         let marker = dir.join("ran");
         let cmd = format!("printf ok > {}", marker.display());
-        // ★ P5L：**必须走 `None`（无窗口）那条** —— 否则这条真跑的判据会在开发者桌面上
-        // **弹出一个真终端窗口**（实测跑过一次，本机 `xdg-terminal-exec` → `ptyxis`）。
-        // 开窗那条路只有形状判据，真机验收归 `auto-e2e`（如实登记在 `launch_local_posix_via` 头注）。
+        // ★ P5L：本条走 `None`（无窗口）那条 —— **别在这里喂一个真出口**，
+        // 否则它会在开发者桌面上**弹出一个真终端窗口**（实测跑过一次，本机
+        // `xdg-terminal-exec` → `ptyxis`）。
+        // ⚠ 订正〔`D7 阻-2`〕：这一行先前跟着一句「开窗那条路只有形状判据」—— 今天是假话。
+        // 开窗那一支的 spawn 由 `the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix`
+        // 用一个**假终端脚本**买到了（不弹窗）；这里传 `None` 只是因为**本条**要的是回落那一支。
         launch_local_posix_via(&cmd, dir.to_str(), None).expect("spawn 应成功");
         // 轮询等它落地（spawn 是异步的；上限宽松，判的是「跑没跑」不是快慢）。
         let mut seen = false;
@@ -1167,6 +1207,205 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         assert!(seen, "5s 内没看到标记文件——spawn 那半没真跑");
         assert_eq!(content, "ok", "命令跑了但内容不对");
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // `D7 阻-1` / `D7 阻-2`：**这条链的分叉点是 `term`，两支都要买**
+    // ═════════════════════════════════════════════════════════════════════════
+    //
+    // 病史十层，每一层的形状都是同一个：**在这条链上找一跳，那一跳没有判据看着**。
+    // 链：`history::launch_local` → 拼前缀 → `launch_local_posix` → `launch_local_posix_via`
+    //   → `local_posix_spawn_plan`（纯函数）→ **`Command::new(program).args(args).spawn()`**。
+    // 前九层堵到了纯函数那一跳为止；第九层（刀 `Z1c`）与第十层（刀 `L10`）都长在
+    // **纯函数返回之后那 3 行**上，差别只在 `L10` **只在 `term.is_some()` 那一支动手**。
+    //
+    // 🔴 **`L10` 之所以比 `Z1c` 更坏**：它活过「加一条走 `term = None` 的真起判据」这个
+    //    最便宜的修法，而**生产上装了规范化终端出口的机器（= 有桌面的真实用户）走的正是
+    //    `term = Some(...)` 那一支**。
+    //
+    // ⇒ 下面**两条**判据，一支一条，都在**真正被 spawn 出去的那个进程**上观测：
+    //    ㈠ `term = None` ⇒ 观测点 = 起出去的那个 `bash` **自己看到的 `ANTHROPIC_BASE_URL`**；
+    //    ㈡ `term = Some(<假终端>)` ⇒ 观测点 = 那个终端**自己收到的 argv**。
+    //
+    // ⚠ **不起真终端、不弹任何窗口**：`term` 是入参 ⇒ 判据喂一个自己造的
+    //   `#!/bin/sh` 脚本（把 `"$@"` 写进文件），`Command::new(program)` 拿绝对路径直接 exec 它。
+    //   这与「真开一个窗口再去看进程 argv」是两回事 —— 先前头注里写的「要真开窗才买得到」
+    //   只对**那一种**判据成立，`D7` 实测打穿过（`§A2`）。
+    // ⚠ 两条都**不是 hermetic** 的（`bash -lic` 会 source 用户 rc）——
+    //   而这笔钱仓里今天已经在付（`local_posix_spawn_actually_runs_the_command` 就这么写的，
+    //   且它不在 `10 ignored` 里）⇒ **不是一笔新代价**。
+    // ⚠ **刻意不起任何 agent**：载荷只有一条 `printf`。
+
+    /// 造一份只属于这一条判据的临时目录（名字取中性名，**不进任何断言**）。
+    #[cfg(not(windows))]
+    fn scratch_dir(tag: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0);
+        let dir = std::env::temp_dir().join(format!("l1-{tag}-{}-{nanos}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        dir
+    }
+
+    /// 轮询等一个文件落地（spawn 是异步的；上限宽松，判的是「有没有」不是快慢）。
+    #[cfg(not(windows))]
+    fn wait_for(path: &std::path::Path) -> bool {
+        for _ in 0..100 {
+            if path.is_file() {
+                // 再等一拍，避免读到写了一半的内容。
+                std::thread::sleep(std::time::Duration::from_millis(20));
+                return true;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+        false
+    }
+
+    /// 本件的中转前缀 —— 由**生产那一处**渲染器产出，判据不自己抄一份字面量。
+    #[cfg(not(windows))]
+    fn relay_probe_prefix(url: &str) -> String {
+        crate::backend::control::payload::relay_env_prefix_posix(url)
+    }
+
+    /// ★★★ `D7 阻-1`（第九层，刀 `Z1c`）：**`term = None` 那一支上，
+    /// 真正被 spawn 出去的那个进程拿到了中转注入。**
+    ///
+    /// # 它买的是哪一格
+    ///
+    /// `local_posix_spawn_plan` 返回之后还剩 3 行（`Command::new` · `.args(&args)` ·
+    /// 那几个 `cwd`/`env`/`stdio`/`process_group` 设置）。在那 3 行里再剥一次前缀，
+    /// **纯函数一字不动、全仓锚点一处不少**，而 `D7` 实打 `1229 passed` 全绿。
+    /// ⇒ 本条把观测点挪到**进程自己**：起出去的那条命令 `printf "$ANTHROPIC_BASE_URL"`，
+    /// 它写下来的那一串必须**逐字节等于**我们注入的那个 URL。
+    ///
+    /// # ⚠ 它买不到什么
+    ///
+    /// - **开窗那一支**（`term = Some(...)`）本条一格都不走 —— 那一支由下面那条买
+    ///   （刀 `L10` 只在开窗支动手时本条**不红**，实测如此，别把两条读成一条）。
+    /// - **claude 拿到这个变量之后的真实行为** —— 红线「绝不起真 claude」，原样在「判不了」里。
+    #[cfg(not(windows))]
+    #[test]
+    fn the_spawned_process_really_gets_the_relay_prefix_without_a_terminal() {
+        let dir = scratch_dir("nowin");
+        let seen = dir.join("what-the-process-saw");
+        let url = "http://127.0.0.1:8788/s/claude-code/acct-a/sid-1";
+        let prefix = relay_probe_prefix(url);
+        // 反空真①：前缀本来就该非空且真的是一段 env 注入，否则下面整条是「空 == 空」。
+        assert!(
+            prefix.contains("ANTHROPIC_BASE_URL") && !prefix.is_empty(),
+            "生产那一处渲染器没渲出中转注入 —— 本条按红处理：{prefix:?}"
+        );
+        let payload = format!("{prefix}printf '%s' \"$ANTHROPIC_BASE_URL\" > {}", seen.display());
+        // 反空真②：观测点在**进程那一侧**，起手它必须不存在。
+        assert!(!seen.exists(), "起手观测文件就在了 —— 本条会读到上一趟的痕");
+
+        launch_local_posix_via(&payload, dir.to_str(), None).expect("spawn 应成功");
+
+        let landed = wait_for(&seen);
+        let got = if landed {
+            std::fs::read_to_string(&seen).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(landed, "5s 内那个进程什么都没写下来 —— spawn 那半没真跑");
+        assert_eq!(
+            got, url,
+            "\n★★ **起出去的那个进程没拿到中转注入** —— 这是第九层（刀 `Z1c`）的形状：\n\
+             `local_posix_spawn_plan` 返回之后那 3 行里把 `export ANTHROPIC_BASE_URL=…; `\n\
+             从 argv 里剥掉，纯函数一字不动、全仓锚点一处不少，而上一版全绿。\n\
+             生产后果：claude 直连官方端点，第三方 key 用不上，而门禁四个数一格不动。\n\
+             实得 = {got:?} · 期望 = {url:?}"
+        );
+    }
+
+    /// ★★★ `D7 阻-2`（第十层，刀 `L10`）：**`term = Some(...)` 那一支上，
+    /// 我们真正交给终端的那份 argv 带着中转注入。**
+    ///
+    /// # 🔴 为什么这一支非买不可（它比第九层更坏一格）
+    ///
+    /// 刀 `L10` = 把剥前缀那一手**只放在 `term.is_some()` 那一支**：
+    /// ⇒ `D7` 实打 `1229 passed; 0 failed` + `GATE: OK`，四个数与干净树逐字相同，
+    /// **而且它活过第九层最便宜的修法**（装上那条走 `term = None` 的真起判据之后仍然绿）。
+    /// **生产上这台机器走的正是这一支**（`pick_terminal_exit()` 在 `PATH` 里找
+    /// `xdg-terminal-exec`，现打它在 `/usr/bin/` 里）⇒ `L10` 的后果是
+    /// **在有桌面的真实用户机器上中转注入被整个剥掉**，而判据今天唯一走过的那条
+    /// （无窗口回落）恰恰是那些机器上走不到的。
+    ///
+    /// # 怎么在**不开窗**的前提下观测它
+    ///
+    /// `term` 是入参（`P5L` 做的），⇒ 喂一个**自己造的假终端**：临时目录里一个
+    /// `#!/bin/sh` 脚本，把 `"$@"` 逐行写进一个文件。`Command::new(program)` 拿到的是
+    /// 它的绝对路径 ⇒ 直接 exec，**没有任何窗口会弹出来**。
+    /// 断言它收到的 argv **逐格等于** `["--", "bash", "-lic", <带前缀的命令串>]`。
+    ///
+    /// ⚠ 那个假终端**只记录、不执行** ⇒ 这一趟里载荷一个字都没跑（更不会起 agent）。
+    ///
+    /// # ⚠ 它买不到什么
+    ///
+    /// - **真终端拿到 argv 之后会不会照着跑** —— 那是 `xdg-terminal-exec` 自己的约定，
+    ///   本条只买「我们交出去的那一份是对的」。真机验收归 `auto-e2e`。
+    /// - **无窗口回落那一支**由上面那条买（刀 `Z1c` 只在 `term = None` 支动手时本条不红）。
+    #[cfg(not(windows))]
+    #[test]
+    fn the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = scratch_dir("win");
+        let recorded = dir.join("what-the-terminal-got");
+        let fake_term = dir.join("record-and-exit");
+        std::fs::write(
+            &fake_term,
+            format!(
+                "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > '{}'\n",
+                recorded.display()
+            ),
+        )
+        .expect("写假终端脚本");
+        std::fs::set_permissions(&fake_term, std::fs::Permissions::from_mode(0o755))
+            .expect("给假终端脚本加执行位");
+
+        let url = "http://127.0.0.1:8788/s/claude-code/acct-b/sid-2";
+        let prefix = relay_probe_prefix(url);
+        // 反空真①：同上，前缀本来就该非空。
+        assert!(
+            prefix.contains("ANTHROPIC_BASE_URL") && !prefix.is_empty(),
+            "生产那一处渲染器没渲出中转注入 —— 本条按红处理：{prefix:?}"
+        );
+        let payload = format!("{prefix}printf ok");
+        // 反空真②：观测点起手必须不存在。
+        assert!(!recorded.exists(), "起手观测文件就在了 —— 本条会读到上一趟的痕");
+
+        launch_local_posix_via(&payload, dir.to_str(), fake_term.to_str())
+            .expect("spawn 假终端应成功");
+
+        let landed = wait_for(&recorded);
+        let got: Vec<String> = if landed {
+            std::fs::read_to_string(&recorded)
+                .unwrap_or_default()
+                .lines()
+                .map(str::to_string)
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(landed, "5s 内那个终端什么都没写下来 —— 开窗那一支的 spawn 没真跑");
+        assert_eq!(
+            got,
+            vec![
+                "--".to_string(),
+                "bash".to_string(),
+                "-lic".to_string(),
+                payload.clone(),
+            ],
+            "\n★★ **交给终端的那份 argv 在最后 3 行里被改了** —— 这是第十层（刀 `L10`）的形状：\n\
+             把剥前缀那一手**只放在 `term.is_some()` 那一支**，\n\
+             ⇒ 走 `term = None` 的判据一格不动、全量门禁四个数与干净树逐字相同，\n\
+             而**生产上装了规范化终端出口的机器走的正是这一支**。\n\
+             实得 = {got:?}"
+        );
     }
 
     #[test]
