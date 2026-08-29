@@ -653,6 +653,28 @@ mod tests {
              只改数组不改头注 = 下一个人读不出「为什么是 6 不是 7」。",
             slots.len()
         );
+        // 探针⑨：**人群的身份**，不是它的个数〔`K-G2` `D3` 补，08-28；`K22`〕。
+        // ⚠ 上面那条 `slots.len() == 6` 是一个**表面量**（`testing.md` 硬规则 6）——
+        //   `D3` 现打：把 `CARGO_CFG_DIRS` 的 `remote-daemon-proto` 换成 `e2e`，格数仍是 6
+        //   ⇒ 上面那条照过，而**真 `runner` 放进 `remote-daemon-proto/.cargo/config.toml`
+        //   判据也照绿** —— 那一格正是 `KG2B` 这一件买来的。
+        //   ⇒ 人群必须按**字面量逐格**钉住，个数只是它的副产品。
+        let want_slots: &[&str] = &[
+            "./.cargo/config.toml",
+            "./.cargo/config",
+            "src-tauri/.cargo/config.toml",
+            "src-tauri/.cargo/config",
+            "remote-daemon-proto/.cargo/config.toml",
+            "remote-daemon-proto/.cargo/config",
+        ];
+        assert_eq!(
+            slots.iter().map(String::as_str).collect::<Vec<_>>(),
+            want_slots,
+            "本条的人群**逐格**变了。\n\
+             ⚠ 换掉一格而不改格数，上面那条 `len == 6` 一个字都不会说 —— 这一条才认得出来。\n\
+             真要改（新发起面 / cargo 换了认的文件名）：连本条头注那张\n\
+             「谁从这里发起 cargo」的表一起改，并把新的尺子读数写进去。"
+        );
 
         // 抽取器自检：探针坏了的话，下面整条就是**零命中地绿**。
         // ⚠ 探针③ 是 `D1` 那个洞的**常驻**版本 —— 它一旦变绿，本条就又瞎了。
@@ -705,6 +727,32 @@ mod tests {
             !backslash_in_key_position(&stripped_ok(probe_inline_value)),
             "探针⑤e：内联表里**值**的反斜杠不许误红 —— 兜底认的是键位置，不是整行"
         );
+        // ⑤f：兜底的**第二支** ——「整行没有 `=`」那一支〔`K-G2` `D3` 补，08-28；`K22`〕。
+        // ⚠ ⑤b/⑤d 两个样本都有 `=`，走的是「每个 `=` 往前回溯」那一支
+        //   ⇒ `D3` 现打：把 `!line.contains('=') && line.contains('\\')` 拆掉，
+        //   **上面每一条探针照绿**。这个样本整份没有 `=`，**只**由那一支挡住。
+        // ⚠ 它也不会被 `keys_in` 顺带逮到：解开是 `[build]`，不在那三个执行键里。
+        let probe_header_escape = "[bui\\u006Cd]\n";
+        assert!(
+            keys_in(&stripped_ok(probe_header_escape), CARGO_EXEC_KEYS).is_empty(),
+            "探针⑤f 前半：这个样本必须**不**被整词扫命中，否则它证不了兜底那一支"
+        );
+        assert!(
+            backslash_in_key_position(&stripped_ok(probe_header_escape)),
+            "探针⑤f：**没有 `=` 的行**（表头 / 多行值的续行）里的反斜杠必须被兜底逮到。\n\
+             08-28 实测 cargo 认表头里的转义（`[\"ali\\u0061s\"]` 生效）⇒ 转义面不止叶子键。"
+        );
+        // ⑧：**整词边界**这一维〔`K-G2` `D3` 补，08-28；`K22`〕。
+        // ⚠ `D3` 现打：把 [`word_in`] 退化成 `text.contains(key)`，**上面每一条探针照绿**
+        //   —— 而那一维正是 `K-G2` 这一件买的东西（「人群比性质大」的那一半）：
+        //   同一份变异下，`[profile.dev.package."linker-utils"]` 这份**纯瘦身**配置
+        //   会被点名 `设了执行面的键 ["linker"]`，用户的仓库又恒红一次。
+        let probe_word_boundary = "[profile.dev.package.\"linker-utils\"]\ndebug = false\n";
+        assert!(
+            keys_in(&stripped_ok(probe_word_boundary), CARGO_EXEC_KEYS).is_empty(),
+            "探针⑧：`linker-utils` 这类**包含**那三个词、却不是那个键的写法必须放行 ——\n\
+             本条判的是整词，不是子串。这一条一旦变红，`K-G2` 收窄掉的那一半就回来了。"
+        );
         let probe_include = "include = [\"../elsewhere/x.toml\"]\n[profile.dev]\ndebug = false\n";
         assert!(
             keys_in(&stripped_ok(probe_include), CARGO_EXEC_KEYS).is_empty(),
@@ -742,6 +790,24 @@ mod tests {
                  剥完的文本是 {text:?} —— 真键已经不在里面了。"
             );
         }
+        // ⑦e：剥注释的**第一支** ——「多行字符串定界符」〔`K-G2` `D3` 补，08-28；`K22`〕。
+        // ⚠ 上面四个样本里，前三个同时触发两支信号（定界符 · 行尾引号未闭合），⑦d 只触发第二支
+        //   ⇒ `D3` 现打：把定界符那一支拆掉，**上面四条探针照绿**（`1 passed`）。
+        //   这个样本的三引号在同一行内闭合 ⇒ 行尾引号态是闭合的，**只**触发定界符那一支。
+        let probe_ml_balanced = "a = \"\"\"x\"\"\"\n";
+        let (_, ml_balanced_why) = strip_toml_comments(probe_ml_balanced);
+        assert_eq!(
+            ml_balanced_why.len(),
+            1,
+            "探针⑦e：这个样本应当**只**触发一支信号（定界符），实得 {ml_balanced_why:?} ——\n\
+             触发了两支就证不了「只由这一支挡住」，换一个样本。"
+        );
+        assert!(
+            ml_balanced_why[0].contains("多行字符串定界符"),
+            "探针⑦e：看见 `\"\"\"` / `'''` 就判红这一支必须活着。\n\
+             本剥法**逐行**走、引号态逐行重置 ⇒ 它对跨行的那两种字符串是**不认**的，\n\
+             fail-closed 是它唯一诚实的出路。实得的理由是 {ml_balanced_why:?}。"
+        );
 
         let offenders: Vec<String> = slots
             .iter()
