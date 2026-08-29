@@ -135,16 +135,33 @@ pub(crate) fn pin_t_def(script: &str) -> Result<(), String> {
 }
 
 /// 测量一份脚本文本的强度。**纯函数** —— U9 迁移后拿新的构造点文本再跑一次即可。
+///
+/// # `needles` / `channel_a` 只看**生产段**〔`K-P2` `KP2B`，08-29〕
+///
+/// 首版这两个字段是裸 `script.contains()`：读的是**整份文件、含注释**。
+/// `K-P2` 摸底（08-28）现打出它的失效方式，逐字：11 条 needle 里**除 `@ccm_agent` 外
+/// 全都有注释备份**（`--tmux` 全文件 67 次而代码行只 18 次 · `--print` 27/2 ·
+/// `@ccm_sid` 27/7）⇒ **把实现搬走之后，在注释里写一句就能把 needles 补回 11**，判据照绿。
+/// 那正是本模块头注自己点名的「固定 needle 是空转的」在**读数层**的复发。
+///
+/// ⇒ 两个 `contains` 字段先过 `guard_core::strip_hash_comment_lines`
+/// —— 那是仓里给 `.sh` 用的**那一份**剥注释器（`plugin_class_registry.rs:257/298`
+/// 读的就是同一份 `shared/ccm`），**不另发明第二份**（`structural_scan` 的登记表禁的正是这个）。
+///
+/// 现打（08-29，`shared/ccm` 1258 行 → 生产段 536 行）：11 条 needle **逐条**在生产段仍有命中
+/// （最少的一条是 `@ccm_agent`，1 次），两条通道 A 字面量也都在
+/// ⇒ **[`BASELINE`] 一格没降，判据严格变强**。
+///
+/// ⚠ `t_*` 三个字段**不跟着改**：[`scan_t_targets`] 自己带注释标记（`Some("#")`），
+/// 在外面再剥一次就是第二份剥注释口径。
 pub(crate) fn measure(script: &str) -> Strength {
     let report = scan_t_targets(script);
+    let prod = guard_core::strip_hash_comment_lines(script);
     Strength {
-        needles: REQUIRED_NEEDLES
-            .iter()
-            .filter(|n| script.contains(*n))
-            .count(),
+        needles: REQUIRED_NEEDLES.iter().filter(|n| prod.contains(*n)).count(),
         channel_a: CHANNEL_A_LITERALS
             .iter()
-            .filter(|n| script.contains(*n))
+            .filter(|n| prod.contains(*n))
             .count(),
         // 一次扫描出两个字段 —— 扫两遍就是两份口径，迟早漂。
         t_targets_checked: report.checked,
@@ -166,10 +183,28 @@ pub(crate) const BASELINE: Strength = Strength {
     // 新建会话，不再 attach 进别人正用着的」）：它删掉两处 `tmux display-message -p -t "=…"`、
     // 加回一处 `has-session -t "=…"`，净 −1。**是真实行为变更的正当结果，不是护栏被悄悄丢了**
     // （逐行 diff 核过）。
-    // ⇒ 今天读数 10 == 阈值 `MIN_CHECKED_T_TARGETS` 10，**余量为 0**：再正当地删掉一处
+    // ⇒ 〔08-01 当时〕读数 10 == 阈值 `MIN_CHECKED_T_TARGETS` 10，**余量为 0**：再正当地删掉一处
     // tmux 命令，`require(10)` 就会自己红。那不是 bug，是「来想一想」的信号
     // —— 详见下面`MIN_CHECKED_T_TARGETS >= 10` 那条编译期钉子的注释。
-    t_targets_checked: 10,
+    //
+    // ★★ **订正 08-29（`K-P2` C 阶段第一拍，`KP2B`）：上面那句「余量为 0」是 08-01 的快照，
+    // 已经馊了。** 现打 `measure(CCM_CLI_SCRIPT).t_targets_checked = 11`（真跑，不是推演），
+    // 而这里钉着 10 ⇒ **读数已经悄悄涨回 11，基线底下多出了一格没人看着的余量**。
+    // 那正是本模块头注反复论证的那件事换了个方向：「只钉阈值挡不住『读数掉一格但仍 ≥ 阈值』」——
+    // 基线低于真值一格，效果与阈值低一格**一模一样**：`shared/ccm` 现在可以**静默地少一处
+    // `-t` 用法**（F01 那条生产事故的形状）而这条判据一个字都不说。
+    // ⇒ 把基线抬到真值 **11**。**这是收紧，不是放宽**（`assert_at_least` 是 `>=`）。
+    //
+    // ⚠ **只动这一个字段**：`MIN_CHECKED_T_TARGETS`（阈值）**一个字节没动**，
+    // 它是件计划 `KP2B` 🔴 点名「不许 agent 自己动」的两条编译期下限之一。
+    // 抬基线之后 `BASELINE.t_targets_checked >= MIN_CHECKED_T_TARGETS` 由 10>=10 变成 11>=10，
+    // 那条编译期钉子照旧成立。
+    //
+    // ⚠ 读数为什么从 10 涨到 11：本轮**没查**（本件的题目不是它）。
+    // 只登记「量于 08-29、量具是 `measure(crate::sftp::CCM_CLI_SCRIPT)`、
+    // 在工作树 `.claude/worktrees/k-p2` 上」。要追就用 `git log -S` 追 `-t ` 的增删，
+    // 别拿这里的数当常量。
+    t_targets_checked: 11,
     // **必须是 0，而且这个字段的比较方向与其他三个相反**（见 `assert_at_least`）。
     t_violations: 0,
     t_def_pinned: true,
@@ -1030,5 +1065,393 @@ mod tests {
             at < exec_at,
             "报名字那行排到了 `exec` 后面 —— exec 之后进程已被替换，永远打不出来"
         );
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // `K-P2`（`ccm` 基础命令进后端）在**本模块**立的四条〔08-29，C 阶段第一拍〕
+    //
+    // 为什么它们住在这里而不是 `launch_wire.rs`：`KP2A` 逐字记着现成那条判据的失效方式
+    // —— 「**它的扫描面只有 `src-tauri/src/**\/*.rs`**（`env!("CARGO_MANIFEST_DIR")).join("src")`）
+    // ⇒ **扫不到 `shared/ccm`**。若本件走「ccm 直接问 daemon」，接线落在 `shared/ccm` 里
+    // ⇒ 这条判据**零命中地绿**，而事情做成了它一个字都不说。」
+    // 而 `§0d`〔PM 08-29〕已裁定本件就走那条：**`ccm <子命令>` = 后端二进制以一次性模式跑**。
+    // ⇒ 缺的那个扫描面在这里补：本模块的台子本来就是 `include_str!("../../shared/ccm")`。
+    // ───────────────────────────────────────────────────────────────────────
+
+    /// 仓根下某个文件的全文。`CARGO_MANIFEST_DIR` = `src-tauri`，它的上级就是仓根
+    /// （同 [`cc_spawn_path`] 的取法，不另开第二种）。
+    fn read_repo_file(rel: &str) -> String {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级")
+            .join(rel);
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读 {p:?} 失败: {e}"))
+    }
+
+    /// daemon 的**一次性子命令**表（`remote-daemon-proto/src/main.rs::SUBCOMMANDS`）。
+    ///
+    /// ⚠ 从**源码**里抽，不在这里手抄一份 —— 手抄的镜子本身就是新的漂移源
+    /// （`inbound.rs::CommandSpec::fields` 的头注逐字论证过同一件事）。
+    fn daemon_one_shot_subcommands() -> Vec<String> {
+        let src = guard_core::production_code(&read_repo_file("remote-daemon-proto/src/main.rs"));
+        let beg = src
+            .find("const SUBCOMMANDS: &[&str] = &[")
+            .expect("`main.rs` 里找不到 `SUBCOMMANDS` 表 —— 抽取器坏了，下面全会零命中地绿");
+        let rest = &src[beg..];
+        let end = rest
+            .find("\n];")
+            .expect("`SUBCOMMANDS` 表找不到收尾 `];` —— 段界读法坏了");
+        let mut out: Vec<String> = Vec::new();
+        // `"` 分段：奇数段在引号里。再按 `--` 起头过滤，注释里的引号扰不动它。
+        let mut inside = false;
+        for seg in rest[..end].split('"') {
+            if inside && seg.starts_with("--") {
+                out.push(seg.to_string());
+            }
+            inside = !inside;
+        }
+        out
+    }
+
+    /// `shared/ccm` 的**生产段**（剥 `#` 注释行）。
+    fn ccm_production() -> String {
+        shell_production(include_str!("../../shared/ccm"))
+    }
+
+    /// `shared/ccm` 的生产段里**真的把哪几条子命令发给了后端二进制**。
+    ///
+    /// # ★ 这个取法是变异逼出来的，第一版是错的〔`K-P2` C 阶段第一拍，08-29〕
+    ///
+    /// 首版量的是「子命令 token 在生产段里作为完整的词出现过」。变异 `M3`
+    /// （把真调用点 `"$_ccm_db" --list-accounts …` 改成 `--list-accountsZ`）**存活** ——
+    /// 因为同一段里还有一行**错误文案**：`why="daemon（$_ccm_db）答不出 --list-accounts"`。
+    /// ⇒ 判据数的是「**提到**那个词的行」，不是「**发出**那条命令的行」。
+    ///
+    /// ★ 这正是件计划 `§0b-1` 排除项里点名过的同一族：
+    /// 「`mcp.rs` 8 处、`hooks_diag.rs` 7 处那两个数里**包含错误文案的行**
+    /// （登记表自己逐条注明了，`hits()` 数的是「提到那几个词的行」）⇒ **数字大不等于活多**」。
+    ///
+    /// ⇒ 改成钉**调用形状**：二进制的唯一引用形式是 `"$_ccm_db"`
+    /// （`the_daemon_lookup_rule_exists_exactly_once` 钉着「查找规则只有一份」），
+    /// 紧跟它的第一个 `--` token 才算一次调用。
+    /// `--print` 那条路把同一次调用**再写一遍成文本**（`resolve_recipe`），
+    /// 于是要先把 shell 转义的 `\` 抹平 —— 两种表示因此都数得到，且数成同一条。
+    fn daemon_invocations(prod: &str) -> std::collections::BTreeSet<String> {
+        const AFTER_BIN: &str = "_ccm_db\" ";
+        let flat = prod.replace('\\', "");
+        let mut out = std::collections::BTreeSet::new();
+        for (i, _) in flat.match_indices(AFTER_BIN) {
+            if let Some(tok) = flat[i + AFTER_BIN.len()..].split_whitespace().next() {
+                // `[ -n "$_ccm_db" ]` 这类判空也会命中前缀 —— 只有 `--` 开头的才是子命令。
+                if tok.starts_with("--") {
+                    out.insert(tok.to_string());
+                }
+            }
+        }
+        out
+    }
+
+    /// `KP2B`〔`K-P2` 08-29〕**`needles` 的量法必须「剥注释之后还在」** —— 非空对照在这里。
+    ///
+    /// # 它买的是什么
+    ///
+    /// [`measure`] 的头注写了病理，这一条是它的**牙**：只改量法不配非空对照，
+    /// 「改了」和「没改」在终端上一模一样（两种量法今天给出的都是 11）。
+    /// ⇒ 喂一份**只有注释**的脚本：旧量法读 11，新量法必须读 0。
+    #[test]
+    fn the_needle_measurement_ignores_comment_only_occurrences() {
+        // ① 真脚本：一格没降（这一条与 `ccm_cli_strength_is_at_or_above_baseline` 同源，
+        //    但那条比的是 `>=`，这条钉的是**等于**——换了量法之后读数**恰好**没动。
+        let real = measure(crate::sftp::CCM_CLI_SCRIPT);
+        assert_eq!(
+            real.needles, BASELINE.needles,
+            "换成「剥注释之后还在」的量法之后，真脚本的 needles 从 {} 掉到了 {} ——\n\
+             要么是某条要素只剩注释里那一份（那就是 `KP2B` 要抓的东西），\n\
+             要么是剥注释器的口径变了。**别直接改 BASELINE**：先回答是哪一种。",
+            BASELINE.needles, real.needles
+        );
+        assert_eq!(
+            real.channel_a, BASELINE.channel_a,
+            "通道 A 字面量在生产段只剩 {} 条（基线 {}）—— 意图标记被搬走或被改回裸 `@ccm_sid` 了？",
+            real.channel_a, BASELINE.channel_a
+        );
+
+        // ② 非空对照：每条要素都**只**写在注释里的一份脚本。
+        let mut comments_only = String::new();
+        for n in REQUIRED_NEEDLES {
+            comments_only.push_str("# ");
+            comments_only.push_str(n);
+            comments_only.push('\n');
+        }
+        for c in CHANNEL_A_LITERALS {
+            comments_only.push_str("#   ");
+            comments_only.push_str(c);
+            comments_only.push('\n');
+        }
+        // ★ 夹具自检：那份夹具**真的**把每条都写进去了 —— 否则下面那两条是空真。
+        assert!(
+            REQUIRED_NEEDLES.iter().all(|n| comments_only.contains(*n))
+                && CHANNEL_A_LITERALS.iter().all(|c| comments_only.contains(*c)),
+            "夹具没把全部要素写进去 —— 下面两条会因为「本来就没有」而绿"
+        );
+        let got = measure(&comments_only);
+        assert_eq!(
+            got.needles, 0,
+            "一份**只有注释**的脚本被读出 {} 条要素 —— 剥注释没生效。\n\
+             ⚠ 这正是 `KP2B` 登记的失效方式：实现搬走之后，**在注释里写一句就能把 needles 补回来**。",
+            got.needles
+        );
+        assert_eq!(
+            got.channel_a, 0,
+            "通道 A 字面量写在注释里也被算了 {} 条 —— 同上",
+            got.channel_a
+        );
+    }
+
+    /// `KP2A`②〔`K-P2` 08-29〕**「进后端」的进度尺**：`shared/ccm` 的**生产段**里，
+    /// 真发给后端二进制的一次性子命令有几条。**递增棘轮。**
+    ///
+    /// # 为什么换掉原来那把尺
+    ///
+    /// 件计划 `§0b-1` 逐字：拿 `capabilities=` 的 token 数当「进后端的进度尺」是**量错了对象**
+    /// —— `capabilities=` 是**宿主渲染器 ↔ 远端 ccm 的 CLI 语法协商词表**，
+    /// token 的加法逻辑是「宿主要据此改变渲染才加」，不是「ccm 多了个功能就加」。
+    /// 实测：三件已经搬进后端的东西里**只有一件有 token**。
+    ///
+    /// # 量法与它排除了什么
+    ///
+    /// 分母取自 daemon **源码里那张表**（`main.rs::SUBCOMMANDS`），不是这里手抄的清单。
+    /// 分子取自 [`daemon_invocations`]：**紧跟在 `"$_ccm_db"` 后面的那个 `--` token**
+    /// —— 「发出了这条命令」，不是「提到了这个词」（那个错法被变异 `M3` 当场逮住，
+    /// 头注在 [`daemon_invocations`] 上）。
+    ///
+    /// ⚠ **诚实边界**：这仍是**源码形态**判据，不是行为判据 —— 它证明的是「ccm 的生产段里
+    /// 有一处**把这条子命令发给后端二进制**的调用点」，**不是**「那条路在运行时真的被走到」。
+    /// 行为那一半只可能在 `e2e/ccm-*.sh` 里（件计划 `§1` 逐字：那五套**一条都不在门里**，
+    /// 只在 CI 的 `assert-pass-floor.sh` 那 23 条里）⇒ 接线那一拍必须同时把 e2e 的地板抬上去。
+    #[test]
+    fn ccm_reaches_the_backend_through_one_shot_subcommands() {
+        let table = daemon_one_shot_subcommands();
+        // ★ 抽取器自检 ①：分母没缩水（建判据当天 23 条）。
+        assert!(
+            table.len() >= 20,
+            "只从 `main.rs` 抽到 {} 条一次性子命令 —— 表的段界读法坏了，下面那个比值不算数",
+            table.len()
+        );
+        // ★ 抽取器自检 ②：锚点。只有地板不够 —— 人群被换掉、地板照样过。
+        for anchor in ["--resolve", "--list-accounts", "--launch"] {
+            assert!(
+                table.iter().any(|t| t == anchor),
+                "锚点 `{anchor}` 不在抽到的子命令表里 —— 收的多半不是那张表了"
+            );
+        }
+
+        let prod = ccm_production();
+        // ★ 抽取器自检 ③：**另一侧**也要自检（建判据当天生产段 536 行 / 全文 1258 行）。
+        assert!(
+            prod.lines().count() >= 300,
+            "`shared/ccm` 的生产段只剩 {} 行 —— 剥注释器把代码也剥了？下面那条会零命中地绿",
+            prod.lines().count()
+        );
+
+        let used = daemon_invocations(&prod);
+        // 递增棘轮。**接线成功的那一拍，这个数要跟着抬**（不抬 = 没接上）。
+        assert!(
+            used.len() >= 2,
+            "`shared/ccm` 生产段里只发得出 {} 条后端子命令（{used:?}），少于登记的 2 条。\n\
+             登记的两条：`--resolve`（F06b，resume 的 argv）· `--list-accounts`（`K-C1`，账号表）。\n\
+             ⇒ 有人把 ccm 与后端之间的路拆了。",
+            used.len()
+        );
+        for anchor in ["--resolve", "--list-accounts"] {
+            assert!(
+                used.contains(anchor),
+                "已经搬进后端的 `{anchor}` 在 ccm 的生产段里没有调用点了（现有 {used:?}）—— \
+                 退回本机实现了？（`KP2C`：两侧不许各留一份，而「两边都没有」也满足不了它）"
+            );
+        }
+        // ★ 每一条发出去的子命令都必须在 daemon 的表里 —— 否则那条路**静默失效**。
+        //   `main.rs` 的头注逐字记着这个形状：不在 `SUBCOMMANDS` 里 ⇒ `is_query_mode` 当成
+        //   未知 flag ⇒ 打一行 warn 之后**照常进流模式**，「CLI 面看上去存在却永远调不到」。
+        for u in &used {
+            assert!(
+                table.iter().any(|t| t == u),
+                "ccm 发的 `{u}` 不在 daemon 的 `SUBCOMMANDS` 表里 —— 那条路是**静默失效**的：\n\
+                 daemon 会把它当未知 flag、warn 一行然后进流模式，ccm 拿到的是一堆 jsonl 而不是答案。"
+            );
+        }
+        // ★ 今天的读数，逐字钉住。
+        assert!(
+            !used.contains("--launch"),
+            "ccm 的生产段开始发 `--launch` 了 —— **这多半是好事**：\n\
+             「起会话」那格可能真接到后端一次性口上了 ⇒ 回 `K-P2` 的 `KP2A`/`KP2C`/`KP2D`：\n\
+             ① 把上面那条棘轮从 2 抬到 3；② `KP2D` 的通道 A/B 冲突**必须已经解掉**\n\
+             （daemon 的 `create-or-attach` 今天写的是**裸 `@ccm_sid`**，见\n\
+             `the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`）；\n\
+             ③ e2e 那五套的地板要同轮抬。"
+        );
+    }
+
+    /// `KP2C`〔`K-P2` 08-29〕**搬走的那一块，两侧不许各留一份；留退路就必须出声。**
+    ///
+    /// # 表的形状
+    ///
+    /// 每条 = （后端子命令, ccm 侧那条退路的**可观测**锚点, 退路**出声**的锚点）。
+    /// 第三格是 `None` ⇒ 那条退路**今天是静默的**，记进下面的递减棘轮。
+    ///
+    /// # 为什么第三格要单列而不是直接断言「都出声」
+    ///
+    /// 件计划 `§0b-3` 的三条「为什么必然如此」里第 ③ 条逐字：「降级必须**出声**
+    /// （`K-C1` 的 `§0b` 裁定）⇒ 每条退路配一段文案」。而现打：**两条里只有一条出声**。
+    /// 直接断言「都出声」= 今天就红 ⇒ 那不是判据，是坏的门禁。
+    /// ⇒ 照本仓既有的**递减棘轮**写法（`local_read_surface_registry` 那一族）：
+    /// 把欠账登记成一个**只许变小**的数，欠账因此有名有姓、且不会悄悄变多。
+    const BACKEND_BACKED_PATHS: &[(&str, &str, Option<&str>)] = &[
+        (
+            "--list-accounts",
+            // 走了哪条路是**可观测**的（`K-C1` 的 `_ccm_acct_src` 先例）。
+            "_ccm_acct_src=file",
+            Some("账号解析已降级"),
+        ),
+        (
+            "--resolve",
+            // 退路在（拿不到就回空串，由调用方走本地 resume 串），但**一个字都不说**。
+            "[ -n \"$_ccm_db\" ] || { printf ''; return 0; }",
+            None,
+        ),
+    ];
+
+    #[test]
+    fn every_backend_backed_path_in_ccm_keeps_an_observable_fallback() {
+        let prod = ccm_production();
+        let used = daemon_invocations(&prod);
+        // ① **完备性**：扫出来的每一条都必须在表里登记 —— 新接一条路而不登记，这里当场红。
+        //    （这就是 `KP2C` 的「成对判」在本条上的形态：接线与退路登记同一拍。）
+        for u in &used {
+            assert!(
+                BACKEND_BACKED_PATHS.iter().any(|(c, _, _)| *c == u.as_str()),
+                "`shared/ccm` 生产段里发了 `{u}`，而它没登记在 `BACKEND_BACKED_PATHS` 里。\n\
+                 ⇒ 补一条：（子命令, 退路的可观测锚点, 出声锚点或 None）。\n\
+                 `KP2C` 逐字：「搬走的那一块，两侧不许各留一份；**留退路就必须出声**」。"
+            );
+        }
+        // ② 反向：表里登记的每一条都要真的还在被用 —— 例外是欠账不是免检章。
+        for (cmd, _, _) in BACKEND_BACKED_PATHS {
+            assert!(
+                used.contains(*cmd),
+                "登记着 `{cmd}` 而 ccm 的生产段里已经找不到它的调用点（现有 {used:?}）—— \
+                 删掉这一行，或者说明退回本机了"
+            );
+        }
+        // ③ 每条锚点都要**真在生产段里**（非空对照：锚点烂掉 ⇒ 这条判据就是空真）。
+        let mut silent: Vec<&str> = Vec::new();
+        for (cmd, fallback, speaks) in BACKEND_BACKED_PATHS {
+            assert!(
+                prod.contains(fallback),
+                "`{cmd}` 的退路锚点 {fallback:?} 在生产段里找不到了 —— \
+                 要么退路没了（那 `ccm` 在没有后端的机器上就废了：本文件经 `sftp.rs` 的 \
+                 `include_str!` 部署到**任意**远端，「daemon 不在」是常态），\
+                 要么锚点该更新了。"
+            );
+            match speaks {
+                Some(line) => assert!(
+                    prod.contains(line),
+                    "`{cmd}` 登记为「降级出声」，而它的文案锚点 {line:?} 不在生产段里 —— \
+                     出声那段被删了？（`K-C1` 的 `§0b` 裁定：**降级必须出声**）"
+                ),
+                None => silent.push(cmd),
+            }
+        }
+        // ④ **递减棘轮**：静默降级的条数只许变小。今天 1 条（`--resolve`）。
+        assert!(
+            silent.len() <= 1,
+            "静默降级的后端路涨到了 {} 条（{silent:?}）—— 只许减不许加。\n\
+             `K-C1` 的 `§0b` 裁定逐字：**降级必须出声**；\n\
+             不出声的降级会产出「用了旧实现却以为用的是后端」——\n\
+             件计划 `§0b-4` 逐字记着这个形状：**搬家之后它变得更容易静默**。",
+            silent.len()
+        );
+        assert_eq!(
+            silent,
+            vec!["--resolve"],
+            "静默那条换人了 —— 今天登记的欠账是 `--resolve`（`resolve_from_daemon` 拿不到就\
+             回空串，一个字不说）。换了人就把理由与新住址写进 `K-P2` 的 `§4`。"
+        );
+    }
+
+    /// `KP2D`〔`K-P2` 08-29〕**通道 A（意图）与通道 B（事实）不许在搬家时被合并。**
+    ///
+    /// # 现打的冲突（件计划 `§0b-1` 第 10 行 + `KP2D` 逐字）
+    ///
+    /// 建会话那一刻，`shared/ccm` 写 `@ccm_sid_expect`（**意图**，F04 通道 A），
+    /// 而 daemon 的 `launch` 写**裸 `@ccm_sid`**（**事实**，通道 B）。
+    /// 破坏性动作（`kill`）**只认 `@ccm_sid`** ⇒ 起会话一旦改走 daemon 的 `launch`，
+    /// 「声明了但从未真正跑起来」的会话会**当场获得事实身份**，F04 修掉的那个形状（`R10`）原路回来。
+    ///
+    /// # 这条判据补的是哪个洞
+    ///
+    /// `KP2D` 逐字记着它的失效方式：「`CHANNEL_A_LITERALS` 钉的是 **`shared/ccm` 里那两条
+    /// shell 字面量**。实现搬去 daemon ⇒ 那两条字面量随代码一起消失 ⇒ **判据因为没有靶子
+    /// 而不再红**（不是变绿，是变空真）。」
+    /// ⇒ 这里加两样：**靶子自检**（两条字面量各恰好一处）＋ **成对判**
+    /// （ccm 一旦开始发 `create-or-attach`，daemon 那侧的裸 `@ccm_sid` 必须已经归零）。
+    ///
+    /// ⚠ **本条不改 daemon 的行为**：`launch.rs:292` 写裸 `@ccm_sid` 这件事该由谁改，
+    /// 件计划 `§4` 第 4 条逐字「**本件不自裁**」（改它会动到 `K-P5` 的地面）。
+    /// 本条只做一件事：**把那个冲突钉成机器看得见的**，并让它在接线那一拍变成硬闸。
+    #[test]
+    fn the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move() {
+        let prod = ccm_production();
+        // ① **靶子自检**：两条通道 A 字面量各**恰好一处**，且在生产段里。
+        //    `channel_a` 那个读数只数「命中几条」——靶子整个消失时它会掉到 0 而 `assert_at_least`
+        //    会红，但**换个地方写一份**它同样是 2 ⇒ 用 `find_pinned` 钉「恰好一处、不许被撑大」。
+        for lit in CHANNEL_A_LITERALS {
+            guard_core::find_pinned(&prod, lit).unwrap_or_else(|e| {
+                panic!(
+                    "{e}\n⇒ 通道 A 的意图标记 {lit:?} 不再是恰好一处。\n\
+                     搬家把它带走了 ⇒ **这条判据会因为没有靶子而不再红**（空真，不是绿）：\n\
+                     照 `KP2D` 把它钉在**新住址**上，并把这条自检一起搬过去。"
+                )
+            });
+        }
+
+        // ② daemon 那一侧今天写的是什么 —— **读源码，不跑它**（红线：不许起真 daemon）。
+        let launch =
+            guard_core::production_code(&read_repo_file("remote-daemon-proto/src/control/launch.rs"));
+        assert!(
+            launch.contains("create-or-attach"),
+            "`control/launch.rs` 的生产段里找不到 `create-or-attach` —— 抽取器坏了，下面全是空真"
+        );
+        let bare = launch
+            .match_indices("@ccm_sid")
+            .filter(|(i, _)| !launch[*i..].starts_with("@ccm_sid_expect"))
+            .count();
+        let intent = launch.matches("@ccm_sid_expect").count();
+        assert_eq!(
+            (bare, intent),
+            (2, 0),
+            "daemon `control/launch.rs` 生产段里「裸 `@ccm_sid` / 意图 `@ccm_sid_expect`」\
+             的处数从 (2, 0) 变成了 ({bare}, {intent})。\n\
+             登记的那 2 处是 `Mode::CreateOrAttach` 里的 `set-option … @ccm_sid` 与 \
+             `set-titles-string \"ccm-rbind-#{{@ccm_sid}}\"`。\n\
+             ⇒ 变成 (0, ≥1) = **冲突解掉了**，把 `K-P2 §4` 第 4 条结掉并改这个期望值；\n\
+             ⇒ 变多 = 事实标记又多了一处写点，回 F04 看通道 A/B 的分家。"
+        );
+
+        // ③ **成对判**（`KP2C` ③ 逐字「本条必须与 `KP2A` 成对判」）：
+        //    ccm 一旦开始发 `create-or-attach`，②那个冲突必须**已经**解掉。
+        //    今天 ccm 生产段里零命中 ⇒ 这一支是**待触发**的，不是空真：上面 ① 是它的靶子自检。
+        if guard_core::contains_word(&prod, "create-or-attach")
+            || daemon_invocations(&prod).contains("--launch")
+        {
+            assert_eq!(
+                bare, 0,
+                "`shared/ccm` 开始发 `create-or-attach` 了，而 daemon 建会话时**仍在写裸 \
+                 `@ccm_sid`**（{bare} 处）。\n\
+                 ⇒ 「声明了但从未真正跑起来」的会话会当场获得**事实**身份，而 `kill` 只认它 —— \
+                 F04 修掉的 `R10` 原路回来。\n\
+                 先解 `K-P2 §4` 第 4 条，再接线。"
+            );
+        }
     }
 }
