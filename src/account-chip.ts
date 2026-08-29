@@ -218,7 +218,7 @@ export class AccountChip {
     //   那台机器 —— 那一格**刻意不放宽**（本机那一档连「刷新用量」那个按钮都不渲染）。
     //   🔴 而 [`snapshotReady`] 先前也留在 origin 那道门后面，`D4 阻-4` 查实那是个洞：
     //   **chip 显示、菜单里能切号，而 Ctrl+K 命令面板拿到 `null`** —— 同一件事两个答案，
-    //   而且静默。⇒ 它已经与本行**同源**（`accountPickerGate()`），别再把两处分开写。
+    //   而且静默。⇒ 它已经与本行**同源**（`accountPickerState()`），别再把两处分开写。
     const st = this.accountPickerState();
     if (!st) return;
     const ui = deriveUi(st);
@@ -461,7 +461,7 @@ export class AccountChip {
   /**
    * 同步快照当前 ready 账号（供 Ctrl+K buildCommands 同步读缓存）。非 ready → null。
    *
-   * 🔴 `D4 阻-4`：这道门**已与 [`toggleMenu`] 同源**（[`accountPickerGate`]）——
+   * 🔴 `D4 阻-4`：这道门**已与 [`toggleMenu`] 同源**（[`accountPickerState`]）——
    * 本机那一档从此也回得出一份，命令面板里列得出 chip 菜单里列得出的那几个号。
    *
    * ⚠ `origin` 因此**可空**：`null` = 这份快照来自**本机**那一半。
