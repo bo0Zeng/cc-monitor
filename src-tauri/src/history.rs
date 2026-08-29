@@ -1581,22 +1581,36 @@ fn relay_prefix_for(
 /// ★ 第 ㈡ 条正是治第五层的那一格：把答案问完扔掉（`_unused` 那一形），
 ///   计数器照样涨，而前缀不再随答案变 ⇒ **红**。
 ///
+/// # 谁在用这条缝（**所有同职的地方**，别只收一处 —— 铁律 15）
+///
+/// 现打（`git ls-files -z | xargs -0 /usr/bin/grep -Fn 'relay_rows()'` / `'relay_running()'`，
+/// 排掉定义行与注释行）：这两个取值口的**生产消费方恰好 2** ——
+/// - [`relay_prefix_for_launch`]：**起会话**那一侧（要不要注入中转前缀）；
+/// - `crate::relay_routing_for`：**界面**那一侧（`KH2B7`，徽章要显「这个号走不走中转 / 中转在不在跑」）。
+///
+/// **两处都走这条缝**，各有一条行为判据。⚠ 第一版只收了起会话那一处 —— 收工前自查现打这个分母时
+/// 逮到第二处，如实记：**这一族病（「只覆盖了那条病的一个动词」）差点在治它的这一拍里复发。**
+///
 /// # 它买不到什么（如实写，别读宽）
 ///
 /// 本结构只管「**问不问**」与「**答案用不用**」。「那两个取值口自己答得对不对」由它们各自的
 /// 判据买（[`relay_rows_at`] 那条读真文件的 · `local_daemon::relay_running_really_reads_the_handle_table`）。
 /// 而「生产上这条缝里插的**就是**那两个取值口」由 `the_production_relay_facts_are_those_two_take_points`
 /// 按**函数地址**对拍 —— 不是按文本。
+///
+/// ⚠ **仍然没有判据的那一格**：[`relay_rows`] 自己那三行胶水（`creds_store::resolve_path()` + [`relay_rows_at`]）。
+/// 要驱动它得动**真实家目录**（红线不许）⇒ 今天它由「[`relay_rows_at`] 的行为判据 + 上面那条地址对拍」
+/// 两头夹着，**中间那三行没有判据**。**这一形没实测**，别读成「已排除」。
 #[derive(Clone, Copy)]
-struct RelayFactSources {
+pub(crate) struct RelayFactSources {
     /// 「这个号在不在中转表里」——生产恒指 [`relay_rows`]。
-    rows: fn() -> Vec<String>,
+    pub(crate) rows: fn() -> Vec<String>,
     /// 「中转在不在跑」——生产恒指 [`crate::local_daemon::relay_running`]。
-    running: fn() -> bool,
+    pub(crate) running: fn() -> bool,
 }
 
 /// 生产上这条缝里插的那两个取值口。**只有这一处**，判据按地址对拍它。
-const PRODUCTION_RELAY_FACTS: RelayFactSources = RelayFactSources {
+pub(crate) const PRODUCTION_RELAY_FACTS: RelayFactSources = RelayFactSources {
     rows: relay_rows,
     running: crate::local_daemon::relay_running,
 };
@@ -1610,7 +1624,7 @@ thread_local! {
 
 /// 装替身，离开作用域自动还原（`assert!` 炸了也还原）。
 #[cfg(test)]
-struct RelayFactsGuard(Option<RelayFactSources>);
+pub(crate) struct RelayFactsGuard(Option<RelayFactSources>);
 
 #[cfg(test)]
 impl Drop for RelayFactsGuard {
@@ -1620,12 +1634,12 @@ impl Drop for RelayFactsGuard {
 }
 
 #[cfg(test)]
-fn override_relay_facts(facts: RelayFactSources) -> RelayFactsGuard {
+pub(crate) fn override_relay_facts(facts: RelayFactSources) -> RelayFactsGuard {
     RelayFactsGuard(RELAY_FACTS_OVERRIDE.with(|c| c.replace(Some(facts))))
 }
 
 /// 这一拍要用的两个取值口。生产上恒是 [`PRODUCTION_RELAY_FACTS`]。
-fn relay_facts() -> RelayFactSources {
+pub(crate) fn relay_facts() -> RelayFactSources {
     #[cfg(test)]
     if let Some(f) = RELAY_FACTS_OVERRIDE.with(|c| c.get()) {
         return f;
@@ -3998,6 +4012,79 @@ mod tests {
             relay_prefix_for_launch(&action, Some(&account)).is_err(),
             "中转没在跑却照旧起出去了 —— 「在不在跑」这个答案没被用上，\n\
              症状会长成「claude 连不上 API」，与网络故障同形，而原因在我们这一侧"
+        );
+    }
+
+    /// ★★★ `D5 阻-1` 的**同职第二处**：界面那一侧（`KH2B7` 的 `relay_routing_for`）
+    /// **也真的问了那两件事，而且真的用了答案。**
+    ///
+    /// # 为什么它非有不可（分母在这里）
+    ///
+    /// 那两个取值口的生产消费方**恰好 2**：起会话那一侧（上一条）与本条这一侧。
+    /// 上一条只买了第一处 —— 而「只覆盖了那条病的一个动词」正是本区最近四次打回的形状。
+    /// 本条把第二处也钉住：把 `routed` 写死成空表 / 把 `running` 写死成常量，界面就会
+    /// **说反**（「这个号走中转」和「中转在跑」两句都是用户唯一看得见的说法），而没有别的判据会红。
+    #[test]
+    fn the_ui_status_side_asks_those_two_take_points_and_uses_their_answers() {
+        use std::cell::{Cell, RefCell};
+        thread_local! {
+            static ROWS_CALLS: Cell<u32> = const { Cell::new(0) };
+            static RUNNING_CALLS: Cell<u32> = const { Cell::new(0) };
+            static ROWS_ANSWER: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+            static RUNNING_ANSWER: Cell<bool> = const { Cell::new(false) };
+        }
+        fn spy_rows() -> Vec<String> {
+            ROWS_CALLS.with(|c| c.set(c.get() + 1));
+            ROWS_ANSWER.with(|v| v.borrow().clone())
+        }
+        fn spy_running() -> bool {
+            RUNNING_CALLS.with(|c| c.set(c.get() + 1));
+            RUNNING_ANSWER.with(Cell::get)
+        }
+        fn answer(rows: &[&str], running: bool) {
+            ROWS_ANSWER.with(|v| *v.borrow_mut() = rows.iter().map(|s| s.to_string()).collect());
+            RUNNING_ANSWER.with(|c| c.set(running));
+        }
+
+        let dirs = vec![
+            "/h/.claude-accts/acct-a".to_string(),
+            "/h/.claude-accts/acct-b".to_string(),
+        ];
+        let _guard = override_relay_facts(RelayFactSources {
+            rows: spy_rows,
+            running: spy_running,
+        });
+
+        // ① 表里只有 `acct-a` + 中转在跑 ⇒ 只有那一个 configDir 被判「走中转」，`running` 为真。
+        answer(&["acct-a"], true);
+        let got = crate::relay_routing_for(dirs.clone());
+        assert!(
+            ROWS_CALLS.with(Cell::get) >= 1 && RUNNING_CALLS.with(Cell::get) >= 1,
+            "界面这一侧**没问**那两件事（rows={} running={}）—— 那两格成了常量",
+            ROWS_CALLS.with(Cell::get),
+            RUNNING_CALLS.with(Cell::get)
+        );
+        assert_eq!(
+            got.routed,
+            vec!["/h/.claude-accts/acct-a".to_string()],
+            "问是问了，**答案没被用上** —— 界面会把「走不走中转」说反"
+        );
+        assert!(got.running, "「中转在不在跑」的答案没被用上");
+
+        // ② **只**把表翻过来 ⇒ 一个都不走（不是「随便回一份」）。
+        answer(&[], true);
+        assert!(
+            crate::relay_routing_for(dirs.clone()).routed.is_empty(),
+            "表空了界面还说有号走中转"
+        );
+        // ③ **只**把「在不在跑」翻过来 ⇒ `running` 跟着变（且 `routed` 不受它影响，两格分开）。
+        answer(&["acct-b"], false);
+        let flipped = crate::relay_routing_for(dirs);
+        assert!(!flipped.running, "中转没跑，界面还说在跑");
+        assert_eq!(
+            flipped.routed,
+            vec!["/h/.claude-accts/acct-b".to_string()],
+            "两格串了 —— `routed` 不该跟着「在不在跑」变"
         );
     }
 
