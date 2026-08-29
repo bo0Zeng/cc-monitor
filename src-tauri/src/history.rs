@@ -1560,7 +1560,83 @@ fn relay_prefix_for(
     })
 }
 
+/// `D5 阻-1`：那两个「本机事实」的**取值口**，收成一条判据能替换的缝。
+///
+/// # 为什么非有这条缝不可（这是本件病史的第五层，别退回去）
+///
+/// 先前钉这两个入参的是一条**扫描型**判据：把 [`relay_prefix_for_launch`] 的体切出
+/// 700 字节，断言那个窗口里**有没有**那两段文本。`D5` 现打的读数：在同一个窗口里加一行
+/// 把两段文本原样留住的死赋值（一个用不到的绑定就够），同时把真入参换成空表 / 常量
+/// ⇒ 文本一处不少、锚点命中数一处不少、**全量门禁四个数与干净树逐字相同**，
+/// 而「这个号在不在中转表里」「中转在不在跑」两件事**都不再被问**、中转前缀恒空。
+///
+/// 病史五层，每一层都是**上一层的修法买到的东西被下一层的量法漏掉**：
+/// ① 参数位没有账号 → ② 参数位有、值恒空 → ③ 值到得了、判据只量文本 →
+/// ④ 判据搬了家（不再把自己算进被测对象）、**仍在量文本** → ⑤ **文本留住、行为摘掉**。
+///
+/// ⇒ 处置**不是**再写一个更聪明的文本判据（那是第六层），是**不再量文本**：
+/// 两个事实一律从本结构取，判据换一份**会记账的替身**进来，断言两件事 ——
+/// ㈠ 它**真的被问过**（替身的计数器涨了）；
+/// ㈡ 算出来的前缀**真的随替身给的答案变**（表里有这一行 ⇒ 非空；没有 ⇒ 空；中转没跑 ⇒ `Err`）。
+/// ★ 第 ㈡ 条正是治第五层的那一格：把答案问完扔掉（`_unused` 那一形），
+///   计数器照样涨，而前缀不再随答案变 ⇒ **红**。
+///
+/// # 它买不到什么（如实写，别读宽）
+///
+/// 本结构只管「**问不问**」与「**答案用不用**」。「那两个取值口自己答得对不对」由它们各自的
+/// 判据买（[`relay_rows_at`] 那条读真文件的 · `local_daemon::relay_running_really_reads_the_handle_table`）。
+/// 而「生产上这条缝里插的**就是**那两个取值口」由 `the_production_relay_facts_are_those_two_take_points`
+/// 按**函数地址**对拍 —— 不是按文本。
+#[derive(Clone, Copy)]
+struct RelayFactSources {
+    /// 「这个号在不在中转表里」——生产恒指 [`relay_rows`]。
+    rows: fn() -> Vec<String>,
+    /// 「中转在不在跑」——生产恒指 [`crate::local_daemon::relay_running`]。
+    running: fn() -> bool,
+}
+
+/// 生产上这条缝里插的那两个取值口。**只有这一处**，判据按地址对拍它。
+const PRODUCTION_RELAY_FACTS: RelayFactSources = RelayFactSources {
+    rows: relay_rows,
+    running: crate::local_daemon::relay_running,
+};
+
+#[cfg(test)]
+thread_local! {
+    /// 判据装进来的替身。**线程局部** ⇒ 同进程别的判据不受影响（`cargo test` 是多线程跑的）。
+    static RELAY_FACTS_OVERRIDE: std::cell::Cell<Option<RelayFactSources>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// 装替身，离开作用域自动还原（`assert!` 炸了也还原）。
+#[cfg(test)]
+struct RelayFactsGuard(Option<RelayFactSources>);
+
+#[cfg(test)]
+impl Drop for RelayFactsGuard {
+    fn drop(&mut self) {
+        RELAY_FACTS_OVERRIDE.with(|c| c.set(self.0));
+    }
+}
+
+#[cfg(test)]
+fn override_relay_facts(facts: RelayFactSources) -> RelayFactsGuard {
+    RelayFactsGuard(RELAY_FACTS_OVERRIDE.with(|c| c.replace(Some(facts))))
+}
+
+/// 这一拍要用的两个取值口。生产上恒是 [`PRODUCTION_RELAY_FACTS`]。
+fn relay_facts() -> RelayFactSources {
+    #[cfg(test)]
+    if let Some(f) = RELAY_FACTS_OVERRIDE.with(|c| c.get()) {
+        return f;
+    }
+    PRODUCTION_RELAY_FACTS
+}
+
 /// 上一条的**接线半**：这台机器上的两个事实（表里有哪几行 · 中转在不在）在这里读。
+///
+/// ⚠ 两个事实**只从 [`relay_facts`] 取**（理由见 [`RelayFactSources`] 头注：
+/// 直接在这里调那两个函数的写法，只能靠「文本在不在」来钉，而那一形 `D5` 已经打穿了）。
 fn relay_prefix_for_launch(
     action: &LocalPsAction,
     account: Option<&LaunchAccount>,
@@ -1570,10 +1646,11 @@ fn relay_prefix_for_launch(
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
         LocalPsAction::New => None,
     };
+    let facts = relay_facts();
     relay_prefix_for(
         id.as_deref(),
-        &relay_rows(),
-        crate::local_daemon::relay_running(),
+        &(facts.rows)(),
+        (facts.running)(),
         sid,
         cfg!(windows),
     )
@@ -3816,21 +3893,146 @@ mod tests {
         );
     }
 
-    // ★★★ `D4 阻-1`：**`the_two_inputs_at_the_call_site_are_still_the_two_take_points`
-    //    从本文件搬走了**，新住址 `local_daemon.rs`（同 crate，`include_str!("history.rs")` 扫本文件）。
+    // ★★★ `D5 阻-1`：**那条扫描型判据（`the_two_inputs_at_the_call_site_are_still_the_two_take_points`）
+    //    整条删了**，换成下面两条**行为**判据。删它的理由是一个实测读数，不是风格：
     //
-    // 搬家的理由是一个实测读数，不是风格：那条判据的**针**（`relay_prefix_for_launch`
-    // 那两行入参的字面片段）先前和**被扫的生产段同住本文件** —— `D4` 现打，第一个针
-    // 在本文件**全文件命中 3**（生产 1 + 那条判据的头注 1 + 它的针 1）。
-    // 按本仓的变异纪律（「先断言锚点恰好命中 N 次再改」，然后**全改**）三处一起切 ⇒
-    // **`1224 passed; 0 failed` 照绿**，而生产段已经不问那张表了。
-    // ⚠ 所以本段**刻意不逐字复述那两个针** —— 复述一次，命中数就又涨一处，
-    //   而下一个照「全文件 N 处」去切的人会把本段一起切掉、于是又什么都不红。
-    // ⇒ **判据把自己算进了被测对象，于是它自己把自己解除了武装。**
+    // 它先前住 `local_daemon.rs`（`D4` 搬过去的，为的是「判据与被扫的代码不同文件」），
+    // 而它量的仍然是「`relay_prefix_for_launch` 的体切出 700 字节，窗口里**有没有**那两段文本」。
+    // `D5` 现打：在同一个窗口里加一行把那两段文本原样留住的死赋值，同时把真入参换成空表 / 常量
+    // ⇒ 文本一处不少、**全量门禁四个数与干净树逐字相同**，而中转注入在生产上被整个摘掉。
+    // ⇒ 按铁律 13「删之前先证明它恒绿」——`D5` 那一刀就是那份证明。
     //
-    // 本仓早有成文解法（`remote-daemon-proto/src/relay/table_guard.rs` 头注逐字）：
-    // 「扫描型判据……**判据与被扫的代码必须不在同一个文件**，否则『摘掉自己』正好把靶子摘了」。
-    // ⚠ 别把这条判据搬回来。要改那两行入参，去 `local_daemon.rs` 读那条判据的头注。
+    // ★ 本件病史五层，每层都是**上一层的修法买到的东西被下一层的量法漏掉**：
+    //   ① 参数位没有账号 → ② 值恒空 → ③ 只量文本 → ④ 判据搬了家、仍只量文本 → ⑤ 文本留住、行为摘掉。
+    //   ⇒ **第六层的出路不是更聪明的文本判据，是不量文本。**见 `RelayFactSources` 头注。
+
+    /// ★★★ `D5 阻-1`：**那次拉起真的问了那两件事，而且真的用了答案。**
+    ///
+    /// # 它怎么挡住第五层那一刀
+    ///
+    /// 替身把「被问了几次」记下来，但**光有计数不够** —— 第五层那一刀（问完把答案扔掉）
+    /// 会让计数照涨。⇒ 承重的是第二半：**算出来的前缀必须与「拿替身那两个答案直接喂纯函数」
+    /// 逐字节相同**，并且三种答案组合各自落到不同的脸上（非空 / 空 / `Err`）。
+    /// 把任何一个入参换成常量，这三格里至少一格当场不同。
+    ///
+    /// # 它买不到什么
+    ///
+    /// 它不管那两个取值口**自己答得对不对**（那是 [`relay_rows_at`] 那条读真文件的判据、
+    /// 与 `local_daemon::relay_running_really_reads_the_handle_table` 的活），
+    /// 也不管**生产上插进那条缝的是不是它们**（那是下一条判据按函数地址对拍的活）。
+    /// **三条合起来才等于「这条线真的在问那两件事」。**
+    #[test]
+    fn the_launch_side_really_asks_those_two_take_points_and_uses_their_answers() {
+        use std::cell::{Cell, RefCell};
+        thread_local! {
+            static ROWS_CALLS: Cell<u32> = const { Cell::new(0) };
+            static RUNNING_CALLS: Cell<u32> = const { Cell::new(0) };
+            static ROWS_ANSWER: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+            static RUNNING_ANSWER: Cell<bool> = const { Cell::new(false) };
+        }
+        fn spy_rows() -> Vec<String> {
+            ROWS_CALLS.with(|c| c.set(c.get() + 1));
+            ROWS_ANSWER.with(|v| v.borrow().clone())
+        }
+        fn spy_running() -> bool {
+            RUNNING_CALLS.with(|c| c.set(c.get() + 1));
+            RUNNING_ANSWER.with(Cell::get)
+        }
+        fn answer(rows: &[&str], running: bool) {
+            ROWS_ANSWER.with(|v| *v.borrow_mut() = rows.iter().map(|s| s.to_string()).collect());
+            RUNNING_ANSWER.with(|c| c.set(running));
+        }
+
+        let account = LaunchAccount::Named {
+            config_dir: "/h/.claude-accts/acct-a".to_string(),
+        };
+        let action = LocalPsAction::Resume("sid-1".to_string());
+        let _guard = override_relay_facts(RelayFactSources {
+            rows: spy_rows,
+            running: spy_running,
+        });
+
+        // ① 表里有这一行 + 中转在跑 ⇒ 前缀 = 纯函数在**替身给的那两个答案**上算出来的那一份。
+        answer(&["acct-a"], true);
+        let want = relay_prefix_for(
+            Some("acct-a"),
+            &["acct-a".to_string()],
+            true,
+            Some("sid-1"),
+            cfg!(windows),
+        )
+        .expect("纯函数在这组输入上不该报错");
+        // 反空真：这组输入下期望值本来就该是非空的，否则下面那条 `assert_eq!` 是「空 == 空」。
+        assert!(
+            !want.is_empty(),
+            "期望值是空串 —— 那下面那条相等断言就是空真，本条按红处理"
+        );
+        let got = relay_prefix_for_launch(&action, Some(&account)).expect("这一档不该报错");
+        assert!(
+            ROWS_CALLS.with(Cell::get) >= 1,
+            "这次拉起**没问**「这个号在不在中转表里」—— 那一格成了常量"
+        );
+        assert!(
+            RUNNING_CALLS.with(Cell::get) >= 1,
+            "这次拉起**没问**「中转在不在跑」—— 那一格成了常量"
+        );
+        assert_eq!(
+            got, want,
+            "\n问是问了，**答案没被用上** —— 这正是 `D5` 那一刀的形状：\n\
+             把两个事实算出来扔掉（一个用不到的绑定），入参换成空表 / 常量，\n\
+             两段文本原地留着 ⇒ 上一版那条「窗口里有没有这段文本」的判据照绿，\n\
+             而中转前缀恒空、本件的正题被整个摘掉。"
+        );
+
+        // ② **只**把「表里有没有这一行」翻过来 ⇒ 前缀空（不注入，逐字节旧路）。
+        answer(&["someone-else"], true);
+        assert_eq!(
+            relay_prefix_for_launch(&action, Some(&account)).expect("不该报错"),
+            "",
+            "表里没有这个号，却仍然拼出了前缀 —— 「在不在表里」这个答案没被用上"
+        );
+
+        // ③ **只**把「中转在不在跑」翻过来 ⇒ `Err`（`KH2B2`②：不许静默）。
+        answer(&["acct-a"], false);
+        assert!(
+            relay_prefix_for_launch(&action, Some(&account)).is_err(),
+            "中转没在跑却照旧起出去了 —— 「在不在跑」这个答案没被用上，\n\
+             症状会长成「claude 连不上 API」，与网络故障同形，而原因在我们这一侧"
+        );
+    }
+
+    /// ★★★ `D5 阻-1` 的第三格：**生产上插进那条缝的，就是那两个真取值口。**
+    ///
+    /// 上一条把替身换进去量行为 ⇒ 它量不到「生产那一份指的是谁」。
+    /// 这一条按**函数地址**对拍（不是按文本）：把 [`PRODUCTION_RELAY_FACTS`] 里任何一格
+    /// 换成一个返回常量的闭包 / 别的函数，本条当场红。
+    #[test]
+    fn the_production_relay_facts_are_those_two_take_points() {
+        // 反空真排最前：这把尺子**分得出**「不是那个函数」，否则下面两条是恒真。
+        fn not_it() -> bool {
+            true
+        }
+        assert!(
+            !std::ptr::fn_addr_eq(PRODUCTION_RELAY_FACTS.running, not_it as fn() -> bool),
+            "这把尺子对任何同型函数都说「是」—— 它恒真，本条按红处理"
+        );
+        assert!(
+            std::ptr::fn_addr_eq(
+                PRODUCTION_RELAY_FACTS.rows,
+                relay_rows as fn() -> Vec<String>
+            ),
+            "生产上「这个号在不在中转表里」不再由 `relay_rows` 答 ——\n\
+             换成一个恒空的东西，谁都不走中转，而行为判据（喂替身的那条）照绿"
+        );
+        assert!(
+            std::ptr::fn_addr_eq(
+                PRODUCTION_RELAY_FACTS.running,
+                crate::local_daemon::relay_running as fn() -> bool
+            ),
+            "生产上「中转在不在跑」不再由 `local_daemon::relay_running` 答 ——\n\
+             换成恒真，`KH2B2`② 那道「起不来就当场拒」的闸整个失效，而行为判据照绿"
+        );
+    }
 
     /// ★★★ `D1 阻-6` 刀 C 的反面：**`relay_rows` 真的去读那份文件、真的解析出行。**
     ///
