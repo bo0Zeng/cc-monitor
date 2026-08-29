@@ -416,6 +416,30 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
 /// Plan A：wt.exe（Windows Terminal）新标签；Plan B：powershell.exe +
 /// CREATE_NEW_CONSOLE 独立控制台。`local_cwd`＝Some 且为本地存在目录时作为窗口
 /// 起始目录（远端拉起传 None——cwd 是远端路径）。
+///
+/// # 🔴 **登记：本函数体在本机门禁上「买不到」**〔`K-H2b` `D8 阻-6`，08-29〕
+///
+/// `D8` 的刀 `D8P35`（在 `powershell_encoded_command(` 那一行之前把
+/// `$env:ANTHROPIC_BASE_URL=…; ` 剥掉）实测：**全量门禁四个数一格不动
+/// （`1328 / 一致 / 493 / 1512`）· `GATE: OK`**。
+///
+/// **理由是结构性的，不是「判据写差了」**：四道门全跑在 **Linux 宿主**上，
+/// `#[cfg(windows)]` 的项在类型检查之前就被剔除 ⇒ **本机门禁在构造上看不见这个函数体**。
+/// **它的 `cfg` 就写在上面这一行** —— 这正是 PM 08-29 那条落法要的凭据：
+/// **标「平台判不了」要给得出 `cfg`；给不出 `cfg` = 它在本平台编译 = 不是判不了。**
+///
+/// **唯一的买法**：CI 上一条 Windows job（或交叉编译 + `cargo test --target`），
+/// 落点 `.github/workflows/ci.yml` —— **不在 `K-H2b` 的写区**，归 PM 立跟进件或并进
+/// 已有的 Windows 欠账。⚠ `scripts/gate.sh` 头注自陈「本地门禁比 CI 严」，
+/// 而**这一格恰是反过来的那一格**，别把那句话读成全称。
+///
+/// ⚠ **别把这一条读宽**：同一条腿上的 [`crate::utils::powershell_encoded_command`]
+/// **没有 `cfg`、在 Linux 上真编译** ⇒ 它**不**属于本族（`D8 阻-2`），
+/// 第九轮已给它配了
+/// `utils::tests::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte`。
+/// 而 `history.rs` 那个 `#[cfg(windows)] PRODUCTION_LAUNCH_SINK`（`D8` 表里的 `F3`，
+/// 它**没打**、标着「推的」）第九轮**打了 —— 是红的**，见那一处的头注。
+/// ⇒ **「带 `#[cfg(windows)]`」不蕴含「零感知」**：量文本的判据照样看得见它。
 #[cfg(windows)]
 pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
