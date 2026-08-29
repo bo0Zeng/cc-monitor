@@ -3699,48 +3699,21 @@ mod tests {
         );
     }
 
-    /// ★★★ `D2 阻-1`（`己1-f40`）：**在「当初量出它」的那个地址上钉住那两个入参。**
-    ///
-    /// # 经过（写下来，因为这一条本身就是那条纪律的样本）
-    ///
-    /// `D1 阻-6` 的原刀切的是 `relay_prefix_for_launch` 里那两行**入参**
-    /// （`&relay_rows(),` 与 `crate::local_daemon::relay_running(),`）。
-    /// 我上一拍补的两条判据切的是**被调函数的体** ——
-    /// PM 把原刀原样重打（锚点各命中 1）⇒ **`1223 passed; 0 failed`，原地全绿**。
-    /// ⚠ 件文件里那句「新判据正是原刀的反面」**是假话**，已一并订正。
-    ///
-    /// # 本条量的是什么、买不到什么（别读宽）
-    ///
-    /// 它是**那个地址上的源码形状**：那两行必须还是**去问那两个取值口**，
-    /// 而不是一个常量 / 一个空表。⚠ **它不是行为判据** —— 行为那半在被调函数上
-    /// （`the_rows_really_come_from_that_file_not_from_a_constant` ·
-    /// `local_daemon::relay_running_really_reads_the_handle_table`）。
-    /// **两半合起来才等于「这条线真的在问那两件事」，单独任何一半都不够** ——
-    /// 这正是 `D1 阻-6` 那两刀能原地全绿的成因。
-    #[test]
-    fn the_two_inputs_at_the_call_site_are_still_the_two_take_points() {
-        let me = include_str!("history.rs");
-        let prod = guard_core::production_code(me);
-        assert!(prod.len() > 5_000, "剥完只剩 {} 字节 —— 剥法坏了", prod.len());
-        let at = guard_core::find_pinned(&prod, "fn relay_prefix_for_launch(")
-            .unwrap_or_else(|e| panic!("`fn relay_prefix_for_launch(` 不是恰好一处：{e}"));
-        let body = &prod[at..at + 700.min(prod.len() - at)];
-        // ⚠ 断言的是**原刀切的那两个字面片段**，逐字。
-        for needle in ["&relay_rows(),", "crate::local_daemon::relay_running(),"] {
-            assert!(
-                body.contains(needle),
-                "`relay_prefix_for_launch` 的入参里不再有 `{needle}` ——\n\
-                 那两行正是 `D1 阻-6` 原刀切的地址：把它们换成常量（空表 / `true`），\n\
-                 「这个号在不在中转表里」与「中转在不在跑」就都不再被问，\n\
-                 而**被调函数自己的行为判据照绿**（`D1` 实测 1221、PM 复打 1223 全绿）。"
-            );
-        }
-        // 反空真：窗口真的切到了那个函数（不是在一段无关文本上自问自答）。
-        assert!(
-            body.contains("relay_prefix_for(") && body.contains("cfg!(windows)"),
-            "切出来的窗口不像 `relay_prefix_for_launch` 的体：{body}"
-        );
-    }
+    // ★★★ `D4 阻-1`：**`the_two_inputs_at_the_call_site_are_still_the_two_take_points`
+    //    从本文件搬走了**，新住址 `local_daemon.rs`（同 crate，`include_str!("history.rs")` 扫本文件）。
+    //
+    // 搬家的理由是一个实测读数，不是风格：那条判据的**针**（`relay_prefix_for_launch`
+    // 那两行入参的字面片段）先前和**被扫的生产段同住本文件** —— `D4` 现打，第一个针
+    // 在本文件**全文件命中 3**（生产 1 + 那条判据的头注 1 + 它的针 1）。
+    // 按本仓的变异纪律（「先断言锚点恰好命中 N 次再改」，然后**全改**）三处一起切 ⇒
+    // **`1224 passed; 0 failed` 照绿**，而生产段已经不问那张表了。
+    // ⚠ 所以本段**刻意不逐字复述那两个针** —— 复述一次，命中数就又涨一处，
+    //   而下一个照「全文件 N 处」去切的人会把本段一起切掉、于是又什么都不红。
+    // ⇒ **判据把自己算进了被测对象，于是它自己把自己解除了武装。**
+    //
+    // 本仓早有成文解法（`remote-daemon-proto/src/relay/table_guard.rs` 头注逐字）：
+    // 「扫描型判据……**判据与被扫的代码必须不在同一个文件**，否则『摘掉自己』正好把靶子摘了」。
+    // ⚠ 别把这条判据搬回来。要改那两行入参，去 `local_daemon.rs` 读那条判据的头注。
 
     /// ★★★ `D1 阻-6` 刀 C 的反面：**`relay_rows` 真的去读那份文件、真的解析出行。**
     ///
