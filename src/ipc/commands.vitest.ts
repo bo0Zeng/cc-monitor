@@ -63,6 +63,71 @@ vi.mock("../error-toast", () => ({ showActionFailureToast: vi.fn() }));
 vi.mock("../remote-launch-run", () => ({
   runRemoteResume: vi.fn().mockResolvedValue(undefined),
   runNewSessionRemote: vi.fn().mockResolvedValue(undefined),
+  // ── 下面三条只为 `../tabs` 的导入面（`D5 阻-2` 那一组）——本文件不驱动远端那半。
+  runRemoteResumeTmux: vi.fn().mockResolvedValue(undefined),
+  runRemoteResumeIntoExistingTmux: vi.fn().mockResolvedValue(true),
+  runRemoteAttach: vi.fn().mockResolvedValue(undefined),
+}));
+
+// ── `K-H2b` `D5 阻-2`：文件末尾再加一组行为判据，驱动**真的 `TabManager`**。
+//    `tabs.ts` 的模块图很重（stream / cards / 渲染族），这几条 mock 是**为了让它能在
+//    jsdom 里实例化**，形状照 `src/tabs.vitest.ts`（那边路径少一层 `../`）。
+//    ⚠ 与上面那组同一条纪律：本文件其余判据一条都不经过被 mock 的这几个模块
+//      （它们全是「读源码文本 + 数命令名」），入场/交回各打一次全量核过读数。
+vi.mock("@tauri-apps/plugin-opener", () => ({
+  openPath: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../stream", () => ({
+  MessageStream: class {
+    contentElement = document.createElement("div");
+    constructor(_root: HTMLElement) {}
+    insertNode(): void {}
+    batchInsert(fn: () => void): void {
+      fn();
+    }
+    scrollToBottom(): void {}
+    dispose(): void {}
+  },
+}));
+vi.mock("../record-timeline", () => ({
+  RecordTimeline: class {
+    constructor(_s: unknown) {}
+    insert(): void {}
+    removeByElement(): void {}
+    dispose(): void {}
+    get size(): number {
+      return 0;
+    }
+    get maxSeq(): number {
+      return Number.NEGATIVE_INFINITY;
+    }
+  },
+}));
+vi.mock("../branch-fold", () => ({
+  BranchFolder: class {
+    constructor(_el: unknown) {}
+    setBatchMode(): void {}
+    flushPending(): void {}
+    recordAdded(): void {}
+    unwrapAll(): void {}
+    rebuildNow(): void {}
+    dispose(): void {}
+  },
+}));
+vi.mock("../render-stream-record", () => ({
+  routeMetaAndBranch: vi.fn(() => "content"),
+  renderContentRecord: vi.fn(),
+}));
+vi.mock("../cards", () => ({
+  reconcilePendingToolResults: vi.fn(() => []),
+  isCompactRecord: () => false,
+}));
+vi.mock("../cards/subagent", () => ({ isAgentTool: () => false }));
+vi.mock("../tasks-panel", () => ({ fetchSessionTasks: vi.fn().mockResolvedValue([]) }));
+vi.mock("../turn-notify", () => ({ turnEndNotifier: { observe: vi.fn() } }));
+vi.mock("../account-restart", () => ({
+  restartWithAccount: vi.fn().mockResolvedValue(undefined),
+  DEFAULT_EXIT_WAIT_MS: 10_000,
 }));
 vi.mock("../behavior", () => ({
   getBehavior: () => ({ resumeCommandLocal: "", resumeCommandRemote: "" }),
@@ -74,6 +139,7 @@ import { stripComments } from "../test-support/strip-comments";
 import { commands } from "./commands";
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "../views/history";
+import { TabManager } from "../tabs";
 import {
   primeLocalLaunchAccounts,
   __resetLocalLaunchSnapshotForTests,
@@ -553,6 +619,139 @@ describe("K-H2b D4 阻-2：主路的账号与 pin 是**行为**判据（驱动�
     // 空账号世界：快照冷（`beforeEach` 已 reset），而主路那一脚 prime 拿到的也是空的。
     serveAccounts([], null, {});
     await clickRowAction("在新终端 resume");
+    expect(
+      payloadOf("resume_history_session").account,
+      "说不出账号时它不该猜一个 —— 「不表态」= 逐字节旧行为",
+    ).toBeUndefined();
+    expect(pinWrites(), "说不出账号却往 pin 里写了一条 —— 那是把「不知道」写成了一条 pin").toEqual([]);
+    // 反空真：这一趟主路**真的走到了**（否则上面两条是「什么都没发生」的空真）。
+    expect(invokeMock.mock.calls.some((c) => c[0] === "resume_history_session")).toBe(true);
+  });
+});
+
+describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（驱动真的 TabManager）", () => {
+  // # 为什么这一组非有不可（分母写在最前）
+  //
+  // `localLaunchAccountSync(` 的**生产调用点恰好 3**（现打：`git ls-files -z | xargs -0 grep -Fn`
+  // 排掉 `*.vitest.ts` ⇒ `src/tabs.ts:2246` · `src/views/history.ts:1666` · `:1713`，
+  // 外加定义 1 处）。上一组（`D4 阻-2`）买的 4 条行为判据**全部驱动 `views/history.ts`**，
+  // 而 `tabs.ts` 那一处当时只有**文本**判据。`D5` 现打三刀：
+  //   · `X3a` 整个不传账号 ⇒ `2 failed`（**粗刀挡得住**）
+  //   · `X3b` `localLaunchAccountSync(sid)` → `(null)`（用当前号顶替这条会话的 pin，**静默串号**）⇒ **1509 全绿**
+  //   · `X3c` `recordLocalLaunchAccount(sid,…)` → `("",…)`（调用文本与两个标识符全留，pin 恒不写）⇒ **1509 全绿**
+  // ⇒ **粗刀挡得住、细刀漏得掉。** 本组把那两把细刀各买一条。
+  const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
+
+  const DIR_A = "/h/.claude-accts/acct-a";
+  const DIR_B = "/h/.claude-accts/acct-b";
+
+  function acct(name: string, configDir: string): Account {
+    return {
+      name,
+      email: `${name}@x.edu`,
+      configDir,
+      isDefault: false,
+      mode: "isolated",
+      exists: true,
+      loggedIn: true,
+    } as Account;
+  }
+
+  /** 与上一组同一份「账号世界」：pin 指 `acct-a`，而当前号是 `acct-b` ⇒ 两个值不同。 */
+  function serveAccounts(accounts: Account[], defaultName: string | null, pins: Record<string, string>): void {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_local_accounts") {
+        return Promise.resolve({
+          available: true,
+          error: null,
+          notice: null,
+          meta: {
+            enabled: true,
+            acctsDir: "/h/.claude-accts",
+            manifestPath: "/h/.claude-accts/accounts.json",
+            updatedAt: null,
+            sharedStore: null,
+            count: accounts.length,
+            error: null,
+          },
+          accounts,
+        });
+      }
+      if (cmd === "load_config") return Promise.resolve({ accounts: { defaultName } });
+      if (cmd === "list_last_accounts") return Promise.resolve(pins);
+      return Promise.resolve(undefined);
+    });
+  }
+
+  async function warm(): Promise<void> {
+    primeLocalLaunchAccounts();
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  /** 建一个**本机**（`origin === null`）归档 tab，然后走 tab 栏那条 resume 主路。 */
+  async function resumeLocalTab(sid: string): Promise<TabManager> {
+    document.body.replaceChildren();
+    const bar = document.createElement("div");
+    const root = document.createElement("div");
+    document.body.append(bar, root);
+    const tm = new TabManager(bar, root);
+    tm.ensureTab(sid, "/home/u/p", `/p/${sid}.jsonl`, 0, null);
+    tm.archiveTab(sid);
+    await (tm as unknown as { resumeTab(s: string): Promise<void> }).resumeTab(sid);
+    await new Promise((r) => setTimeout(r, 0));
+    return tm;
+  }
+
+  function payloadOf(cmd: string): Record<string, unknown> {
+    const call = invokeMock.mock.calls.find((c) => c[0] === cmd);
+    expect(call, `一次 \`${cmd}\` 都没发出去 —— 主路根本没走到，下面的断言在空转`).toBeTruthy();
+    return call![1] as Record<string, unknown>;
+  }
+
+  function pinWrites(): Array<Record<string, unknown>> {
+    return invokeMock.mock.calls
+      .filter((c) => c[0] === "update_history_metadata")
+      .map((c) => c[1] as Record<string, unknown>)
+      .filter((a) => (a.patch as Record<string, unknown> | undefined)?.lastAccount !== undefined);
+  }
+
+  beforeEach(() => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue(undefined);
+    __resetAccountsCacheForTest();
+    __resetLocalLaunchSnapshotForTests();
+    document.body.replaceChildren();
+  });
+
+  it("★★ tab 栏 resume：载荷里的 `account` 是**那条会话的 pin**（不是当前号）", async () => {
+    serveAccounts([acct("acct-a", DIR_A), acct("acct-b", DIR_B)], "acct-b", { t1: "acct-a" });
+    await warm();
+    await resumeLocalTab("t1");
+    expect(
+      payloadOf("resume_history_session").account,
+      "tab 栏那条本机 resume 没把**这条会话上次的账号**传下去 ——\n" +
+        "`D5` 刀 `X3b` 正是把这一处换成 `localLaunchAccountSync(null)`（用当前号顶替 pin），\n" +
+        "当时全仓 `1509 passed` 全绿。后果是**静默串号**：切过号之后 resume 落到当前号上，\n" +
+        "中转再按那个错的 id 换上**别人那一行的 key**。",
+    ).toEqual({ kind: "named", configDir: DIR_A });
+  });
+
+  it("★★ tab 栏 resume 之后 pin **真的被写进去**（带那个 sid 与那个名字）", async () => {
+    serveAccounts([acct("acct-a", DIR_A), acct("acct-b", DIR_B)], "acct-b", { t1: "acct-a" });
+    await warm();
+    await resumeLocalTab("t1");
+    expect(
+      pinWrites(),
+      "tab 栏那条本机 resume 之后一条 pin 都没写 ——\n" +
+        "`D5` 刀 `X3c` 正是把 `recordLocalLaunchAccount(sid, …)` 的第一个实参换成 `\"\"`\n" +
+        "（**调用文本与两个标识符全留**，函数首行 `if (!sid || !name) return;` ⇒ 恒不写），\n" +
+        "当时全仓 `1509 passed` 全绿。这条路的本机 pin 恒空 ⇒「pin 优先」在这条路上永远走不到。",
+    ).toEqual([{ sessionId: "t1", patch: { lastAccount: "acct-a" } }]);
+  });
+
+  it("★ 阴性对照：说不出账号 ⇒ 载荷里是 `undefined`，且**一条 pin 都不写**", async () => {
+    serveAccounts([], null, {});
+    await resumeLocalTab("t1");
     expect(
       payloadOf("resume_history_session").account,
       "说不出账号时它不该猜一个 —— 「不表态」= 逐字节旧行为",
