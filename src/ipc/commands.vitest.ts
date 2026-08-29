@@ -305,6 +305,23 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     ).toEqual([]);
   });
 
+  it("★★ 本机 resume 那两条也往 pin 里写（`D3 阻-2`：写入口先前结构上只走远端）", () => {
+    // 现打（`D3`，PM 复核属实）：`recordLastAccount` 的生产调用点**恰好 2**，
+    // 而两处**结构上只走远端** —— `withAccount(` 的 6 个生产调用点 6/6 在 `origin` 分支内；
+    // `restartWithAccount(` 的唯一调用点首行逐字 `if (tab.origin === null) return false;`。
+    // ⇒ 本机的 `list_last_accounts` **恒空** ⇒ 取值口那条「pin 优先」在本机永远走不到，
+    //   而那正是「参数位有、值恒空」那一形的另一半。
+    for (const f of ["src/tabs.ts", "src/views/history.ts"]) {
+      const code = stripComments(readFileSync(resolve(REPO_ROOT, f), "utf8"), "ts");
+      expect(
+        (code.match(/recordLocalLaunchAccount\(/g) ?? []).length,
+        `${f} 里没有本机这条路的记账 —— 本机 pin 恒空，「pin 优先」那一支永远走不到`,
+      ).toBeGreaterThan(0);
+      // 不许 `await` 它（多一拍会撞那两条只放行一个微任务的 DOM 判据）。
+      expect(code).not.toContain("await recordLocalLaunchAccount");
+    }
+  });
+
   it("★ 取值口只有一个（不许哪条路自己现算一个账号）", () => {
     // 三条主路走那个唯一取值口；fork 那条是**用户在小窗里显式选的**，
     // 它有自己的语义（选了账号 0 就要显式 `base`），所以不走这个口 —— 如实记，不强求。
