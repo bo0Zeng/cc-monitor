@@ -23,6 +23,8 @@ import {
 import type { RemoteHostConfig } from "./remote-config";
 import type { AccountsState, Account } from "./accounts";
 import * as accountsMod from "./accounts";
+// `D4 阻-4`：命令面板那一侧的**生产段**（chip 的快照就是喂给它的）。
+import { buildAccountCommands } from "./account-commands";
 import { invalidateAccountUsageCache } from "./account-usage";
 import { showActionFailureToast } from "./error-toast";
 
@@ -678,5 +680,104 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
     expect(labels).toContain("管理账号…");
     // 正题：那个按钮在本机那一档是死的（`loadCurrentAccountUsage` 首行就 return）。
     expect(labels).not.toContain("刷新用量");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// `K-H2b` `D4 阻-4`：**chip 菜单与 Ctrl+K 命令面板必须同源**
+// ---------------------------------------------------------------------------
+//
+// ★★ 它治的是什么（`D4` 现打，PM 裁四认账：这一格是 PM 合并两路审计时漏抄的）：
+// `D2 阻-6` 的事实段里列了三条副作用，`§0m` 只抄了两条。漏掉的那条是 ——
+// `toggleMenu` 那道门 `D1 阻-5` 放宽成「有远端**或**本机那一档」，而 `snapshotReady()`
+// 留在 `!this.origin` 那道旧门后面 ⇒ **本机 ready 那一档：chip 显示、菜单里能切号，
+// 而 Ctrl+K 命令面板拿到 `null`。** 两处对同一件事给两个答案，**而且静默**。
+// ⇒ 正是 `KA6a` 第一轮栽过的「同职两处不同源」。
+//
+// ⚠ 本组量的是**行为**：走真的 `AccountChip.refresh()` + `openMenu()` 拿 DOM，
+//    走真的 `snapshotReady()` 喂真的 `buildAccountCommands`（命令面板那一侧的生产段），
+//    然后把两边**能点选的那几个号**对拍。不读源码文本。
+//
+// ⚠ 本组**买不到**：`main.ts` 那一行是不是真的把 `snapshotReady()` 喂给了
+//    `buildAccountCommands`（`main.ts` 不在本件写区，也没有 DOM 判据够得着它）。
+//    今天靠的是「全仓 `snapshotReady` 的生产消费方恰好只有那一处」——**那是读数，不是判据**。
+describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来", () => {
+  /** 起一个「没有远端」的 chip，本机账号由 `fetchLocalAccounts` 给。 */
+  async function localChip(accounts: Account[], defaultName: string | null): Promise<AccountChip> {
+    document.querySelectorAll(".account-picker").forEach((el) => el.remove());
+    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+    vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue(state({ accounts, defaultName }));
+    vi.spyOn(accountsMod, "fetchLocalRelayRouting").mockResolvedValue({ routed: [], running: false });
+    const chip = new AccountChip({ openSettings: () => {} });
+    await chip.refresh();
+    return chip;
+  }
+  /** chip 菜单里**能点选**的那几个号（`disabled` 的那几行不算 —— 它们点了也不切）。 */
+  async function pickableInMenu(chip: AccountChip): Promise<string[]> {
+    await chip.openMenu();
+    return [...document.querySelectorAll<HTMLButtonElement>(".account-picker-item")]
+      .filter((el) => !el.classList.contains("disabled"))
+      .map((el) => el.querySelector(".account-picker-name")?.textContent ?? "");
+  }
+  /** 命令面板那一侧**真的**产出的那几个号（走生产段 `buildAccountCommands`）。 */
+  function pickableInCommandBar(chip: AccountChip): string[] {
+    return buildAccountCommands({
+      snapshot: chip.snapshotReady(),
+      chordHint: () => undefined,
+      setCurrent: () => {},
+      openSettings: () => {},
+    })
+      .filter((c) => c.id.startsWith("acct-default-"))
+      .map((c) => c.id.slice("acct-default-".length));
+  }
+
+  it("★★ 本机那一档：两边列出**同一组**号（先前 chip 有两行、命令面板一条都没有）", async () => {
+    const A = acct({ name: "acct-a", configDir: "/h/.claude-accts/acct-a" });
+    const B = acct({ name: "acct-b", configDir: "/h/.claude-accts/acct-b" });
+    // 阴性侧就在同一趟里：`exists:false` 那个号两边都不该出现。
+    const gone = acct({ name: "acct-gone", configDir: "/h/.claude-accts/acct-gone", exists: false });
+    const chip = await localChip([A, B, gone], "acct-b");
+    const menu = await pickableInMenu(chip);
+    const bar = pickableInCommandBar(chip);
+    // 反空真：两边都真的列出了东西（否则下面那条相等是 `[] == []` 的空真）。
+    expect(menu, "chip 菜单里一个能点的号都没有 —— 下面那条相等会是空真").toEqual(["acct-a", "acct-b"]);
+    expect(
+      bar,
+      "命令面板那一侧一条账号命令都没有 —— 这正是 `D4 阻-4` 那个洞的形状：\n" +
+        "chip 显示、菜单里能切号，而 Ctrl+K 拿到 `null`（两处对同一件事给两个答案，且静默）",
+    ).toEqual(menu);
+    // 阴性对照：不可选的那个号两边都没有（证明这把尺子不是「把所有号原样倒出来」）。
+    expect(menu).not.toContain("acct-gone");
+    expect(bar).not.toContain("acct-gone");
+  });
+
+  it("★ 远端那一档照旧（放宽只加了本机那一半，没有改远端那一半）", async () => {
+    document.querySelectorAll(".account-picker").forEach((el) => el.remove());
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ host: "hostA" })] });
+    fetchAccountsMock.mockResolvedValue(
+      state({ accounts: [acct({ name: "z", configDir: "/h/.claude-accts/z" })], defaultName: "z" }),
+    );
+    const chip = new AccountChip({ openSettings: () => {} });
+    await chip.refresh();
+    expect(pickableInCommandBar(chip)).toEqual(["z"]);
+    expect(await pickableInMenu(chip)).toEqual(["z"]);
+  });
+
+  it("★ `D2 阻-7` 不许被这一格顺手放宽：本机也没有 manifest ⇒ 两边都空", async () => {
+    document.querySelectorAll(".account-picker").forEach((el) => el.remove());
+    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+    // `meta.enabled:false` ⇒ `deriveUi` 判 not-enabled ⇒ `refresh` 把 state 清回 null 并隐藏。
+    vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue({
+      ...state({ accounts: [], defaultName: null }),
+      meta: { enabled: false, acctsDir: "", manifestPath: "", updatedAt: null, sharedStore: null, count: 0, error: null },
+    } as unknown as AccountsState);
+    vi.spyOn(accountsMod, "fetchLocalRelayRouting").mockResolvedValue({ routed: [], running: false });
+    const chip = new AccountChip({ openSettings: () => {} });
+    await chip.refresh();
+    expect(
+      chip.snapshotReady(),
+      "什么都没有的时候命令面板冒出了一份快照 —— 放宽那道门时把 `D2 阻-7` 一起放宽了",
+    ).toBeNull();
+    expect(pickableInCommandBar(chip)).toEqual([]);
   });
 });

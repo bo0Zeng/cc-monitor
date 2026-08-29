@@ -214,11 +214,14 @@ export class AccountChip {
       return;
     }
     // `D1 阻-5`：**本机那一档没有 origin，但有账号** ⇒ 这道门改问「有没有状态」。
-    //   ⚠ 只放这一处：用量探针（`loadCurrentAccountUsage`）与 `snapshotReady` 仍然要 origin，
-    //   它们各自的理由不同（探针要 SSH 到那台机器；快照回的结构里 `origin` 是必填），
-    //   **不许顺手一起放宽** —— 那会让本机那一档走进两条它答不了的路。
-    if ((!this.origin && !this.local) || !this.state) return;
-    const ui = deriveUi(this.state);
+    //   ⚠ **用量探针**（`loadCurrentAccountUsage`）仍然要 origin，理由是它真的要 SSH 到
+    //   那台机器 —— 那一格**刻意不放宽**（本机那一档连「刷新用量」那个按钮都不渲染）。
+    //   🔴 而 [`snapshotReady`] 先前也留在 origin 那道门后面，`D4 阻-4` 查实那是个洞：
+    //   **chip 显示、菜单里能切号，而 Ctrl+K 命令面板拿到 `null`** —— 同一件事两个答案，
+    //   而且静默。⇒ 它已经与本行**同源**（`accountPickerGate()`），别再把两处分开写。
+    const st = this.accountPickerState();
+    if (!st) return;
+    const ui = deriveUi(st);
     const menu = document.createElement("div");
     menu.className = "account-picker";
 
@@ -233,7 +236,7 @@ export class AccountChip {
       menu.appendChild(info);
       menu.appendChild(this.menuAction("管理 / 部署…", () => this.deps.openSettings()));
     } else {
-      const def = currentWorkingAccount(this.state);
+      const def = currentWorkingAccount(st);
       this.menuCurrentUsageEl = null;
       // F1：chip 是纯全局切换器——只列账号点选切当前账号；批量对齐随 F09 一并删除。
       for (const a of ui.accounts) {
@@ -437,12 +440,41 @@ export class AccountChip {
     return b;
   }
 
-  /** 同步快照当前 ready 账号（供 Ctrl+K buildCommands 同步读缓存）。非 ready → null。 */
-  snapshotReady(): { origin: string; accounts: Account[]; defaultName: string | null } | null {
-    if (!this.origin || !this.state) return null;
-    const ui = deriveUi(this.state);
+  /**
+   * ★★ `D4 阻-4`：**「这个 chip 现在有没有一份可以列出来的账号」只许有一份判断。**
+   *
+   * 先前 [`toggleMenu`] 与 [`snapshotReady`] 各写各的：前者 `D1 阻-5` 放宽成
+   * 「有远端 **或** 本机那一档」，后者留在 `!this.origin` 那道旧门后面。
+   * ⇒ **本机 ready 那一档：chip 显示、菜单里能切号，而 Ctrl+K 命令面板拿到 `null`。**
+   * 两处对同一件事给两个答案，**而且静默** —— 正是 `KA6a` 第一轮栽过的「同职两处不同源」。
+   *
+   * ⚠ 它**不管** ready 不 ready（那是 `deriveUi` 的活，两个调用方各自按需要判）：
+   * 本函数只答「渲染这份账号列表的前置条件成立吗」，成立就把那份状态一起交出去。
+   * ★ **回状态而不是回 `boolean`** 是承重的：回 `boolean` 时两个调用方还得各自再写一次
+   * `!this.state`，那就又是两份判断 —— 而这一条治的正是「同一件事两处各判一次」。
+   */
+  private accountPickerState(): AccountsState | null {
+    if (!this.origin && !this.local) return null;
+    return this.state;
+  }
+
+  /**
+   * 同步快照当前 ready 账号（供 Ctrl+K buildCommands 同步读缓存）。非 ready → null。
+   *
+   * 🔴 `D4 阻-4`：这道门**已与 [`toggleMenu`] 同源**（[`accountPickerGate`]）——
+   * 本机那一档从此也回得出一份，命令面板里列得出 chip 菜单里列得出的那几个号。
+   *
+   * ⚠ `origin` 因此**可空**：`null` = 这份快照来自**本机**那一半。
+   * 今天唯一的消费方 `buildAccountCommands` 只读 `accounts` / `defaultName`
+   * （`account-commands.ts::AccountCommandsInput` 逐字，它连 `origin` 这个键都没有）
+   * ⇒ 放空不改任何行为；留着这个字段是为了让读的人看得出这份快照是哪一半的。
+   */
+  snapshotReady(): { origin: string | null; accounts: Account[]; defaultName: string | null } | null {
+    const st = this.accountPickerState();
+    if (!st) return null;
+    const ui = deriveUi(st);
     if (ui.kind !== "ready") return null;
-    return { origin: this.origin, accounts: ui.accounts, defaultName: currentWorkingAccount(this.state)?.name ?? null };
+    return { origin: this.origin, accounts: ui.accounts, defaultName: currentWorkingAccount(st)?.name ?? null };
   }
 
   /** 按名字切默认账号（供 Ctrl+K 命令；找不到/不可选则忽略）。 */
