@@ -4075,7 +4075,18 @@ mod tests {
     /// `cfg!(windows)` 写在调用点上时是个常量表达式，判据翻不动它 ——
     /// `D6` 的刀 `Xb`（把它写死成 `false`）全绿，而生产后果是 Windows 上渲成 POSIX 形态。
     /// 收进 [`RelayFactSources`] 之后，本条第 ④ 格喂 `|| true` 就该拿到 PowerShell 形态。
-    /// ⚠ **它守的是调用点那一格**；[`platform_is_windows`] 自己的体在 Linux 上判不了（登记在那条头注里）。
+    /// ⚠ **它守的是调用点那一格**；[`platform_is_windows`] 自己的体在 Linux 上判不了
+    ///（登记在 [`RelayFactSources`] 的**结构头注** ㈡ 那一栏里 —— 不在 [`platform_is_windows`]
+    /// 自己的头注里，`D7` 逐字订正过这一处指偏）。
+    ///
+    /// # 🔴🔴 `D7 阻-4`：**「哪一次拉起」（`action` / `sid`）也是一维，先前它的取值域是 1**
+    ///
+    /// 第 ①–④ 格把 `rows` / `running` / `windows` / `account` 四维都打开了，
+    /// **而 `action` 从头到尾只喂过 `Resume("sid-1")`**。`D7` 两刀实打：
+    /// - 刀 `S2`（`LocalPsAction::New => return Ok(String::new())`）⇒ **`1229` 全绿**，
+    ///   生产后果是**新开会话那条路上中转注入恒空**，而 `KH2B6` 逐字写着那条路今天生产可达；
+    /// - 刀 `S1`（`Resume(_sid) => Some("sid-1")`）⇒ 也全绿，那一维什么都没买。
+    /// ⇒ 第 ⑤ 格喂**两个不同的 sid**、第 ⑥ 格喂 **`New`**，两支都断。
     ///
     /// # 它买不到什么
     ///
@@ -4203,6 +4214,77 @@ mod tests {
             relay_prefix_for_launch(&action, Some(&acct_a)).expect("不该报错"),
             ps,
             "两个平台渲出来的前缀一模一样 —— 这把尺子分不出 PowerShell 与 POSIX"
+        );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ⑤⑥ 🔴 `D7 阻-4`：**「哪一次拉起」（`action` / `sid`）也是一维，它的取值域一直是 1**
+        // ═══════════════════════════════════════════════════════════════════
+        //
+        // 上一轮这条判据在 `rows` / `running` / `windows` / `account` 四维上各喂了 ≥2 个值，
+        // **而 `action` 只喂过 `LocalPsAction::Resume("sid-1")` 一个**。`D7` 打了两刀：
+        // - 刀 `S2`：`LocalPsAction::New => return Ok(String::new())` ⇒ **`1229` 全绿**。
+        //   生产后果：**新开会话那条路上中转注入恒空** —— 一个 api-key 号新开一个会话，
+        //   claude 直连官方端点、第三方 key 用不上，而门禁四个数一格不动。
+        //   ⚠ 而件文件 `§3a` 的 `KH2B6` 逐字写着「新开会话这条路**现在生产可达**」。
+        // - 刀 `S1`：`Resume(_sid) => Some("sid-1")`（把 `<key>` 段写死）⇒ 也全绿。
+        //   后果轻（`mint_route_key` 头注登记着这一段对路由惰性），**但那一维什么都没买**。
+        //
+        // ⇒ 与 `term` 那条链同一条纪律：**分叉点上的两支都要喂**，不许只买一支。
+        let key_seg = |prefix: &str| -> String {
+            let url = prefix
+                .split('\'')
+                .nth(1)
+                .unwrap_or_else(|| panic!("前缀里没有被单引号包住的 URL：{prefix:?}"));
+            url.rsplit('/')
+                .next()
+                .expect("URL 一个路径段都没有")
+                .to_string()
+        };
+
+        answer(&["acct-a"], true, false);
+        // ⑤ **`Resume` 那一支**：`<key>` 段必须是**这一次**的 sid，不是一个写死的串。
+        let resumed_1 = relay_prefix_for_launch(&action, Some(&acct_a)).expect("不该报错");
+        let resumed_2 =
+            relay_prefix_for_launch(&LocalPsAction::Resume("sid-9".to_string()), Some(&acct_a))
+                .expect("不该报错");
+        assert_eq!(key_seg(&resumed_1), "sid-1", "路由键的 `<key>` 段不是这次的 sid");
+        assert_eq!(
+            key_seg(&resumed_2),
+            "sid-9",
+            "\n换一个会话 id，路由键的 `<key>` 段没跟着变 —— 刀 `S1` 的形状：\n\
+             `Resume(_sid) => Some(\"sid-1\")` 把这一段写死，那一维什么都没买。\n\
+             实得 = {:?}",
+            key_seg(&resumed_2)
+        );
+
+        // ⑥ 🔴 **`New` 那一支**：新开会话**也真的走中转**，而它的 `<key>` 段是一次性 nonce。
+        let new_1 = relay_prefix_for_launch(&LocalPsAction::New, Some(&acct_a))
+            .expect("新开会话这一档不该报错");
+        assert!(
+            !new_1.is_empty() && new_1.contains("ANTHROPIC_BASE_URL"),
+            "\n★★ **新开会话那条路上中转前缀是空的** —— 这正是刀 `S2` 的形状：\n\
+             `LocalPsAction::New => return Ok(String::new())`，而件文件 `§3a` 的 `KH2B6`\n\
+             逐字写着这条路**现在生产可达**。\n\
+             生产后果：一个 api-key 号新开一个会话 ⇒ **claude 直连官方端点、第三方 key 用不上**，\n\
+             而门禁四个数一格不动。实得 = {new_1:?}"
+        );
+        assert!(
+            new_1.contains("/acct-a/"),
+            "新开会话拼出来的路由键里没有这次的账号段：{new_1:?}"
+        );
+        let new_key = key_seg(&new_1);
+        assert_ne!(
+            new_key,
+            key_seg(&resumed_1),
+            "新开会话拿到了 resume 那一支的 `<key>` 段 —— 这一维被抹平了"
+        );
+        // 反空真：nonce 那一支**每次都不同**（`route_key_for_session(None)` → `mint_route_key`）。
+        // 恒定的 `<key>` 意味着这一支被换成了一个常量，而上面那条 `assert_ne!` 分不出来。
+        let new_2 = relay_prefix_for_launch(&LocalPsAction::New, Some(&acct_a)).expect("不该报错");
+        assert_ne!(
+            new_key,
+            key_seg(&new_2),
+            "两次新开会话拿到同一个 `<key>` 段 —— 那一段不是 nonce，是一个常量"
         );
     }
 
@@ -4492,6 +4574,11 @@ mod tests {
     /// | ① | 表里没这个号 ⇒ 那一串里**一个 `ANTHROPIC_BASE_URL` 都没有** | 无条件注入 |
     /// | ② | 表里有 ⇒ 那一串**逐字节等于**「前缀 + ① 那一串」 | 刀 `Y1`（算了没拼）· 掏空注入点 |
     /// | ③ | 换一个号 ⇒ 前缀里的 `<account>` 段跟着变 | 刀 `E6`（账号段写死成常量） |
+    /// | ⑤ | **新开会话**那一支也带前缀 | 刀 `S2`（`New => Ok(String::new())`） |
+    /// | ⑥ | 换一个 sid ⇒ `<key>` 段跟着变 | 刀 `S1`（`Resume(_sid) => Some("sid-1")`） |
+    ///
+    /// 🔴 ⑤⑥ 是 `D7 阻-4` 补的：先前 ①–④ **全部走 `Resume("sid-1")`**
+    /// ⇒ `action` 这一维的输入域是 1，而**新开会话是 `KH2B6` 逐字写着「现在生产可达」的一条路**。
     ///
     /// # ⚠ 它买不到什么（如实写）
     ///
@@ -4620,6 +4707,51 @@ mod tests {
             SENT.with(|v| v.borrow().len()),
             before,
             "拒了却还是往外送了一条命令 —— 那条「当场拒」只拒在返回值上"
+        );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ⑤⑥ 🔴 `D7 阻-4`：**「哪一次拉起」这一维，在送出去的那一串上也要翻得动**
+        // ═══════════════════════════════════════════════════════════════════
+        //
+        // 上面 ①–④ 全部走 `Resume("sid-1")` ⇒ `action` 这一维的输入域 = 1。
+        // 刀 `S2`（`New => return Ok(String::new())`）在**这条判据上也全绿**，
+        // 而**新开会话是 `KH2B6` 逐字写着「现在生产可达」的一条路**。
+        answer(&["acct-a"], true);
+        let acct = LaunchAccount::Named {
+            config_dir: "/h/.claude-accts/acct-a".to_string(),
+        };
+
+        // ⑤ **`New` 那一支**：送出去的那一串必须也带中转注入，且账号段是这次的号。
+        launch_local(&LocalPsAction::New, None, None, Some(&acct), None)
+            .expect("新开会话走中转这一趟不该失败");
+        let new_sent = last_sent();
+        assert!(
+            new_sent.contains("ANTHROPIC_BASE_URL") && new_sent.contains("/acct-a/"),
+            "\n★★ **新开会话送出去的那一串里没有中转注入** —— 刀 `S2` 的形状：\n\
+             `LocalPsAction::New => return Ok(String::new())`。\n\
+             生产后果：一个 api-key 号**新开**一个会话 ⇒ claude 直连官方端点、\n\
+             第三方 key 用不上，而全量门禁四个数一格不动。实得 = {new_sent:?}"
+        );
+
+        // ⑥ **`Resume` 那一支的 sid 不是写死的**：换一个 sid，送出去的那一串跟着变。
+        launch_local(
+            &LocalPsAction::Resume("sid-9".to_string()),
+            None,
+            None,
+            Some(&acct),
+            None,
+        )
+        .expect("这一趟不该失败");
+        let resumed_9 = last_sent();
+        assert!(
+            resumed_9.contains("/sid-9'"),
+            "\n换一个会话 id，送出去的那一串里的 `<key>` 段没跟着变 —— 刀 `S1` 的形状：\n\
+             `Resume(_sid) => Some(\"sid-1\")`。实得 = {resumed_9:?}"
+        );
+        // 反空真：这两趟本来就该是两条不同的串（否则上面两条里有一条在数同一份东西）。
+        assert_ne!(
+            new_sent, resumed_9,
+            "新开与 resume 送出去的是同一串 —— 「哪一次拉起」这一维成了常量"
         );
     }
 }
