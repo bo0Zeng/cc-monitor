@@ -700,7 +700,9 @@ describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => 
 //
 // ⚠ 本组**买不到**：`main.ts` 那一行是不是真的把 `snapshotReady()` 喂给了
 //    `buildAccountCommands`（`main.ts` 不在本件写区，也没有 DOM 判据够得着它）。
-//    今天靠的是「全仓 `snapshotReady` 的生产消费方恰好只有那一处」——**那是读数，不是判据**。
+//    今天靠的是一个**读数**（08-28 现打，分母 = `git ls-files -z | xargs -0 grep -n snapshotReady`）：
+//    `account-chip.ts` 之外的生产消费方**恰好 1 处**，就是 `main.ts:558`
+//    （chip 内部还有一处 `applyDefaultByName`，那是它自己的事）。**读数不是判据。**
 describe("K-H2b D4 阻-4：chip 能列出来的号，命令面板也能列出来", () => {
   /** 起一个「没有远端」的 chip，本机账号由 `fetchLocalAccounts` 给。 */
   async function localChip(accounts: Account[], defaultName: string | null): Promise<AccountChip> {
