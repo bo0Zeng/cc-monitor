@@ -241,12 +241,37 @@ mod tests {
     /// **没有穷举的分母**：本条量过哪几种、剩哪几种不守，逐条写在
     /// [`the_build_time_execution_surface_stays_registered`] 头注的「不守什么」栏。
     ///
-    /// ⚠ 边界：三引号多行字符串（`"""` / `'''`）本剥法**不认**（引号状态逐行重置），
-    /// 那种字符串里的 `#` 会被当成注释切掉。cargo 配置里它实际不出现；
-    /// 写下这一条是为了不假装它被处理过。
-    fn strip_toml_comments(src: &str) -> String {
+    /// ★★ **这一步为什么必须 fail-closed，而不是「再补一个例」**〔`D2` 回修，08-28；
+    /// `K21` 收紧后的第一条〕。
+    ///
+    /// `#` **不是**注释只有一种情形：它在字符串里。而 TOML 的字符串恰好**四种** ——
+    /// 基本串 `"…"` · 字面串 `'…'`（这两种**规范上不能跨行**）·
+    /// 多行基本串 `"""…"""` · 多行字面串 `'''…'''`（这两种**能**跨行）。
+    /// 本剥法**逐行**走、引号态逐行重置 ⇒ 对前两种**完备**，对后两种**不认**。
+    /// ⇒ 一看见多行定界符、或看见**行尾引号还没闭合**，就把理由回报出去，
+    /// 由调用方**判红**。**没有「它猜错了还接着扫」的第三条路。**
+    ///
+    /// 这就是 `D2` 逮到的那个洞（本条第三次净变宽）：
+    /// `target = { x = { ar = """` 换行 `# """, runner = "…" } }` ——
+    /// 续行第一个字符是 `#`，逐行重置的引号态把**整行**当注释切掉，
+    /// 真键在被扫之前就没了。而那个键 `od -c` 逐字是 `r u n n e r`：
+    /// **明文、零反斜杠** ⇒ [`decode_toml_escapes`] 与 [`backslash_in_key_position`]
+    /// **两层从头到尾没被触发**。⇒ 绕过刀要按**维**打（读文件 → 预处理 → 匹配 → 判定），
+    /// 不是按例打：前两次补的都是「键怎么拼」和「文件怎么来」，这一刀打在**预处理**这一维上。
+    ///
+    /// ⚠ 刻意**只剥注释、不剥字符串内容**：TOML 的键可以带引号（`"runner" = "sh"`），
+    /// 内联表的值里也住着键（`target = { x = { runner = "sh" } }`）——
+    /// 把字符串一起剥掉就会在这两处**漏红**。代价：值里恰好出现那三个整词也会红。
+    ///
+    /// 返回 `(剥完的文本, 看不懂的理由)`；**理由非空 ⇒ 调用方必须判红**。
+    fn strip_toml_comments(src: &str) -> (String, Vec<String>) {
         let mut out = String::with_capacity(src.len());
-        for line in src.lines() {
+        let mut unmodeled: Vec<String> = Vec::new();
+        for (idx, line) in src.lines().enumerate() {
+            let no = idx + 1;
+            if line.contains("\"\"\"") || line.contains("'''") {
+                unmodeled.push(format!("第 {no} 行有多行字符串定界符（`\"\"\"` / `'''`）"));
+            }
             let mut quote: Option<char> = None;
             let mut escaped = false;
             let mut cut = line.len();
@@ -266,10 +291,13 @@ mod tests {
                     break;
                 }
             }
+            if quote.is_some() {
+                unmodeled.push(format!("第 {no} 行的引号到行尾还没闭合"));
+            }
             out.push_str(&line[..cut]);
             out.push('\n');
         }
-        out
+        (out, unmodeled)
     }
 
     /// 把 TOML 基本串里**能拼出字母**的那几种转义解开〔`K-G2` `D1` 回修，08-28〕。
@@ -330,6 +358,17 @@ mod tests {
         })
     }
 
+    /// 探针专用：剥注释，并**要求本剥法认得这个样本**（认不得就当场把样本报出来）。
+    /// ⇒ 探针样本自己落进「看不懂」那一支时，不会静悄悄地按空文本判绿。
+    fn stripped_ok(src: &str) -> String {
+        let (text, unmodeled) = strip_toml_comments(src);
+        assert!(
+            unmodeled.is_empty(),
+            "探针样本自己就让剥注释看不懂了，这条探针此刻无效：{unmodeled:?}"
+        );
+        text
+    }
+
     /// **键位置**出现反斜杠没有〔`K-G2` `D1` 回修的兜底，08-28〕。
     ///
     /// ★ 这一条是为了让本条的结论**不靠「我把转义种类数全了」**。论证：
@@ -345,8 +384,17 @@ mod tests {
     /// `alias = { "kg2probe" = "--version" }` **cargo 认**（内联表 + 转义键都认），
     /// 只看「第一个 `=` 之前」会漏掉它。
     ///
-    /// ⚠ 代价：多行字符串**值**的续行里有反斜杠、且那一行没有 `=`，会误红。
-    /// cargo 配置里这形状实际不出现；方向照本条的定盘（宁可误红）留着。
+    /// ⚠ **代价（说准，08-28 `D2` 打回时订正过一次 —— 原话把它说窄了）**：
+    /// **多行值的续行**里有反斜杠、且那一行没有 `=`，会误红。
+    /// 原话只写「多行**字符串**值」，而实际最常见的是**多行数组** ——
+    /// `rustflags = [` 之后那几行正是它，那是 `rustflags` **最教科书的写法**。
+    /// 现打三条（`§6` 变异台 F1/F2/F3）：
+    /// `rustflags = [` 多行数组 ⇒ **红，点名 `rustflags`** —— 那不是误红，它真的设了；
+    /// `x = [` 多行数组、续行里有反斜杠、**不含**那三个键 ⇒ **红，理由是「键位置有反斜杠」**
+    /// —— **这一条是真误红**；同样的数组、续行里没有反斜杠 ⇒ **绿**。
+    /// ⇒ **判它可接受**：方向是 fail-closed，报文点名了是哪一条规则、哪一格，人一眼能消；
+    /// 而把它修窄（例如跟踪方括号深度、把数组续行排除）是**放宽**一条安全判据 ——
+    /// 本件已经因为「没有维度级论证就放宽」净变宽三次，这一刀不在本轮自批的范围里。
     fn backslash_in_key_position(text: &str) -> bool {
         text.lines().any(|line| {
             let mut start = 0usize;
@@ -468,7 +516,24 @@ mod tests {
     /// ⚠ 加一个发起面（新 crate、某个 job 换 cwd）就回这张表补一格：
     /// 下面 `slots.len() == 6` 那条自检会在你只改数组不改本注时把你叫回来。
     ///
-    /// ## ③ **不守什么**（`D1` 回修时逐条量出来的；铁律 14：诚实边界落进被守对象）
+    /// ## ③ 这一格有**四维**，改它之前先看这张表〔`K21` 收紧后的第一条，`D2` 08-28〕
+    ///
+    /// 本条从输入到判定是四步，**每一步都是一个可以被单独绕过的维**。
+    /// 08-28 连着三次净变宽，洞分别落在**三个不同的维**上 —— 而每一次我补的都是「那个例」，
+    /// 下一刀就从没补过的那一维进来：
+    ///
+    /// | 维 | 这一步做什么 | 被绕过一次 | 今天靠什么守 |
+    /// |---|---|---|---|
+    /// | ① **读文件** | 6 格 = 3 发起面 × 2 文件名 | ✅ `include` 把 6 格之外的文件拉进来 | 人群由数组算出（`slots.len() == 6` 自检）+ `CARGO_BLINDING_KEYS` 判红 |
+    /// | ② **预处理** | 剥注释 → 解转义 | ✅ 多行串让剥注释把真键**整行切掉**（`D2`） | [`strip_toml_comments`] **fail-closed**：看不懂就判红 |
+    /// | ③ **匹配** | 整词扫那三个键 | ✅ `"runner"` 转义拼键（`D1`） | [`decode_toml_escapes`] 解码 + [`backslash_in_key_position`] 兜底 |
+    /// | ④ **判定** | 收集 offender → `assert!` | 还没被绕过 | 八组常驻探针（每组都能单独把本条打红） |
+    ///
+    /// 🔴 **改本条时的纪律**：绕过刀**按维打，不是按例打**。
+    /// 上一轮打了九刀**全在维 ③**（`\u` · `\U` · `\x` · 表头 · 内联表 …）——
+    /// **在计数上像很彻底，在覆盖上是一个点**，`D2` 那一刀从维 ② 进来，九刀一刀都没碰到。
+    ///
+    /// ## ③b **不守什么**（`D1`/`D2` 回修时逐条量出来的；铁律 14：诚实边界落进被守对象）
     ///
     /// ⚠ 下面是**我量过的那几条**，不是「所有绕法」的穷举 —— 那个分母没人给得出。
     /// 量法一律是：`scratchpad` 里一次性 crate + `[alias]` 探针，带非空对照与反向对照，
@@ -480,12 +545,22 @@ mod tests {
     /// | **环境变量那条配置源**：`CARGO_TARGET_<TRIPLE>_RUNNER` · `RUSTFLAGS` · `CARGO_BUILD_RUSTFLAGS` | cargo 认它们，但它们**不是仓里的文件** ⇒ 本条的人群是文件，够不着。⚠ CI 的 yml 能设环境变量，那是另一个面，本条不声称守它 |
     /// | `cargo --config <k>=<v>` 命令行 · 仓外的 `$CARGO_HOME/config.toml` | 一次 commit 改不到 ⇒ 不在人群里 |
     /// | **值**里的写法花样 | 本条对**值**只是整词顺带命中（`[alias]` 里塞 `--config …rustflags=…` 会被逮到）。那是副产品，不是判据 |
-    /// | 多行基本串的续行 `\` 拼词 | 只对**值**成立：三引号串**不能当键**（实测 cargo 直接 `could not load Cargo configuration`）⇒ 键那一侧不是路 |
+    /// | **`[env]` 那一族** | cargo 的 `[env]` 能给构建期的进程设环境变量（`RUSTFLAGS` 那一类正好是环境变量读的） —— 射程外，归 `己1-f36`。⚠ 08-28 之前这一栏**整个漏了它**，而 `己1-f36` 把它记成那一族里最狠的一条 |
+    /// | 多行字符串 `"""` / `'''` | ⚠ **08-28 `D2` 订正**：原话写「三引号串不能当键 ⇒ 键那一侧不是路」，**前后半句都真、合起来是假的** —— 它确实不能当键，但它**是**一条路，走的是**剥注释**那一维（`D2` 的洞）。今天由 [`strip_toml_comments`] 的 fail-closed 挡着：看见定界符或行尾引号未闭合 ⇒ 判红。**不是「不守」，是「守法换了一维」** |
     ///
-    /// ⚠⚠ **一条本条自己盖不住的**：`src-tauri/` 那一格上**真生效**的 `runner`
-    /// 会让本条**自己不被执行**（`D1` 现场就是这样：测试二进制被交给 `/bin/echo`）。
-    /// ⇒ 兜住那一形的**不是本条**，是 `scripts/gate.sh` 的 `run_gate_sum`
-    /// 采集面自检：跑到的包数 ≠ 8 就红（现打读过那段代码）。**别把这一格算到本条头上。**
+    /// ⚠⚠ **一条本条自己盖不住的，而且 08-28 `D2` 证明它比我上一版写的更严重**：
+    /// `src-tauri/` 那一格上**真生效**的 `runner` 会让本条**自己不被执行**。
+    ///
+    /// 上一版这里写的是「兜住它的是 `scripts/gate.sh` 的 `run_gate_sum` 采集面自检：
+    /// 跑到的包数 ≠ 8 就红」。**那句话只在 runner 不真跑测试时成立**（例如 `/bin/echo`：
+    /// 一条 `test result` 都产不出 ⇒ 包数 0 ≠ 8 ⇒ 红）。
+    /// 🔴 `D2` 拿 `gate.sh:105` 那条命令**逐字**跑过，配一个**透明代理** runner
+    /// （起真二进制、把输出原样透出来）⇒ **`rc=0` · 包数 8 · 合计 1303 · marker 8 条**，
+    /// **门禁四个数与基线一模一样** —— 整个 workspace 的测试二进制全是它的程序起的。
+    /// ⇒ **那一形今天没有任何判据兜得住**，本条兜不住，门禁也兜不住。
+    /// 本条能逮到它的，只有「那份配置**还没生效**就被看见」的时机
+    /// （配置在别的发起面 · 别人 clone 之后第一次跑 · 审 diff 的人）。
+    /// **别把这一格算到本条头上，也别再把它算到门禁头上。**
     #[test]
     fn the_build_time_execution_surface_stays_registered() {
         // ① `tauri.conf.json` 的构建前置命令：登记值 + 理由。
@@ -587,59 +662,86 @@ mod tests {
         let probe_hex = "[build]\n\"rustfla\\x67s\" = []\n";
         let probe_backslash_value = "[profile.dev]\nrustc = \"C:\\\\tools\\\\x.exe\"\n";
         assert_eq!(
-            keys_in(&strip_toml_comments(probe_exec), CARGO_EXEC_KEYS),
+            keys_in(&stripped_ok(probe_exec), CARGO_EXEC_KEYS),
             vec!["runner"],
             "探针①：真设了 `runner` 的配置必须被逮到，且注释里的 `linker` 不算"
         );
         assert!(
-            keys_in(&strip_toml_comments(probe_profile), CARGO_EXEC_KEYS).is_empty(),
+            keys_in(&stripped_ok(probe_profile), CARGO_EXEC_KEYS).is_empty(),
             "探针②：只有 `[profile.*]` 的构建瘦身配置必须放行 —— 那正是 `K-G2` 收窄掉的那一半"
         );
         assert_eq!(
-            keys_in(&strip_toml_comments(probe_escaped), CARGO_EXEC_KEYS),
+            keys_in(&stripped_ok(probe_escaped), CARGO_EXEC_KEYS),
             vec!["runner"],
             "探针③：**用 TOML 转义拼出来的键**必须被逮到。\n\
              这一格是 `K-G2` `D1` 现场逮到的洞：cargo 认解码后的键名，\n\
              而当时的整词扫看的是原文 ⇒ `cargo test` 被交给了 `/bin/echo`，本条却是绿的。"
         );
         assert_eq!(
-            keys_in(&strip_toml_comments(probe_hex), CARGO_EXEC_KEYS),
+            keys_in(&stripped_ok(probe_hex), CARGO_EXEC_KEYS),
             vec!["rustflags"],
             "探针④：`\\xXX`（TOML 1.1）那种写法 cargo 1.96.1 也认，本条也要认"
         );
         assert!(
-            keys_in(&strip_toml_comments(probe_backslash_value), CARGO_EXEC_KEYS).is_empty(),
+            keys_in(&stripped_ok(probe_backslash_value), CARGO_EXEC_KEYS).is_empty(),
             "探针⑤：**值**里有反斜杠（Windows 路径）不许误红 —— 本条判的是键，不是有没有 `\\`"
         );
         assert!(
-            backslash_in_key_position(&strip_toml_comments(probe_escaped)),
+            backslash_in_key_position(&stripped_ok(probe_escaped)),
             "探针⑤b：键位置那道**兜底**必须逮到转义键 —— 它是「不靠数全转义种类」的那一半"
         );
         assert!(
-            !backslash_in_key_position(&strip_toml_comments(probe_backslash_value)),
+            !backslash_in_key_position(&stripped_ok(probe_backslash_value)),
             "探针⑤c：值里的反斜杠不许触发兜底，否则 Windows 路径会误红成灾"
         );
         // ⑤d/⑤e：内联表那一格 —— 实测 cargo 认内联表 + 转义键，兜底必须跟进去。
         let probe_inline_key = "target = { x = { \"run\\u006Eer\" = \"/bin/echo\" } }\n";
         let probe_inline_value = "env = { P = { value = \"C:\\\\t\", relative = false } }\n";
         assert!(
-            backslash_in_key_position(&strip_toml_comments(probe_inline_key)),
+            backslash_in_key_position(&stripped_ok(probe_inline_key)),
             "探针⑤d：**内联表里**的转义键也要被兜底逮到（只看第一个 `=` 之前会漏）"
         );
         assert!(
-            !backslash_in_key_position(&strip_toml_comments(probe_inline_value)),
+            !backslash_in_key_position(&stripped_ok(probe_inline_value)),
             "探针⑤e：内联表里**值**的反斜杠不许误红 —— 兜底认的是键位置，不是整行"
         );
         let probe_include = "include = [\"../elsewhere/x.toml\"]\n[profile.dev]\ndebug = false\n";
         assert!(
-            keys_in(&strip_toml_comments(probe_include), CARGO_EXEC_KEYS).is_empty(),
+            keys_in(&stripped_ok(probe_include), CARGO_EXEC_KEYS).is_empty(),
             "探针⑥前半：`include` 不是执行面键，别把它算进 `CARGO_EXEC_KEYS`"
         );
         assert_eq!(
-            keys_in(&strip_toml_comments(probe_include), CARGO_BLINDING_KEYS),
+            keys_in(&stripped_ok(probe_include), CARGO_BLINDING_KEYS),
             vec!["include"],
             "探针⑥后半：`include` 必须被逮到 —— 它能把 6 格之外的文件拉进来，本条读不到那份"
         );
+
+        // ⑦ **预处理这一维**的常驻探针〔`D2` 回修〕。三个样本的真键都是**明文 `runner`**，
+        //    零反斜杠 ⇒ 上面那两层（解码 · 键位反斜杠）**一层都不会被触发**，
+        //    唯一挡住它们的就是「剥注释看不懂 ⇒ 判红」。⚠ 这三条一旦变绿，本条就又瞎了。
+        let probe_ml_hash =
+            "target = { x = { ar = \"\"\"\n# \"\"\", runner = \"/bin/echo\" } }\n";
+        let probe_ml_literal = "target = { x = { ar = '''\n# ''', runner = \"/bin/echo\" } }\n";
+        let probe_ml_midline = "a = \"\"\"\nzz # \"\"\"\nrunner = \"/bin/echo\"\n";
+        // ⚠ ⑦d 是**变异逼出来的**：把「行尾引号未闭合」那一支拆掉之后，上面三个样本
+        //    仍被「多行定界符」那一支挡着 ⇒ 判据照绿。⇒ 那一支当时**没有任何探针盯着**。
+        //    这个样本里没有三引号，**只有**未闭合引号这一个信号。
+        let probe_unterminated = "a = \"unterminated\nrunner = \"/bin/echo\"\n";
+        for (sample, name) in [
+            (probe_ml_hash, "多行基本串 + `#` 起头的续行"),
+            (probe_ml_literal, "多行字面串 `'''` 那一版"),
+            (probe_ml_midline, "`#` 不在行首那一版"),
+            (probe_unterminated, "行尾引号未闭合（**只**由这一支信号挡住）"),
+        ] {
+            let (text, unmodeled) = strip_toml_comments(sample);
+            assert!(
+                !unmodeled.is_empty(),
+                "探针⑦（{name}）：剥注释**必须回报看不懂**。\n\
+                 这一格是 `D2` 现场逮到的洞：续行那个 `#` 把明文的 `runner` 整行切掉，\n\
+                 而它零转义零反斜杠 ⇒ 解码与键位兜底两层都不会被触发。\n\
+                 剥完的文本是 {text:?} —— 真键已经不在里面了。"
+            );
+        }
 
         let offenders: Vec<String> = slots
             .iter()
@@ -651,8 +753,17 @@ mod tests {
                 let Ok(raw) = std::fs::read_to_string(&p) else {
                     return Some(format!("{rel}（存在但读不出文本，本条看不了它的内容）"));
                 };
-                let text = strip_toml_comments(&raw);
+                let (text, unmodeled) = strip_toml_comments(&raw);
                 let mut why: Vec<String> = Vec::new();
+                // ★ 预处理这一维的 fail-closed：剥注释看不懂它 ⇒ 当场红，不往下扫。
+                //   `D2` 逮到的那个洞就在这里：看不懂却接着扫 = 拿一份被切过的文本当真相。
+                if !unmodeled.is_empty() {
+                    why.push(format!(
+                        "剥注释这一步**看不懂它**（{}，共 {} 处）—— 按 fail-closed 判红",
+                        unmodeled[0],
+                        unmodeled.len()
+                    ));
+                }
                 let exec = keys_in(&text, CARGO_EXEC_KEYS);
                 if !exec.is_empty() {
                     why.push(format!("设了执行面的键 {exec:?}"));
