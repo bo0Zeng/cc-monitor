@@ -1280,9 +1280,34 @@ pub fn start_local_relay(bin: std::path::PathBuf) -> bool {
         }),
         // `KH2B2`②的一半：**起不来要出声**。`GaveUp` 单独抬到 `warn`
         // —— 它是「这台机器上的 api-key 号今天都发不出请求」的唯一线索。
+        // ★★ `D2 阻-6`：**中转子进程的 stderr 被 `supervise` null 掉了**
+        //（`local_backend::supervise_with_stdio` 里那行 `.stderr(Stdio::null())`），
+        // 而中转**所有**诊断都写 stderr：启动 announce · 重载 announce ·
+        // `cannot bind loopback port`。⇒ 那几句话**生产上一句都到不了人**。
+        //
+        // ⚠ 那一行不在本件写区（改它会同时改掉 daemon 那条监护路）⇒ **抬进上报口**。
+        // 这里做的是**在写区内能做的那一半**：把监护器**已经交给我的事件**用起来 ——
+        // ① `Exited` 带着退出码（中转的「起不来」恒是退 2）⇒ 出声；
+        // ② `GaveUp` 时**把句柄从表里摘掉**，让 `relay_running()` 从此说真话。
+        //    没有②的话：监护器已经放弃了，而句柄还在表里 ⇒ `relay_running()` 恒真 ⇒
+        //    起会话那一侧**不再拒**，于是那条 api-key 会话被静默地起成一条连不上中转的会话
+        //    —— 中转诊断到不了人的时候，这一格是用户**唯一**看得见的说法。
         std::sync::Arc::new(|e| match &e {
             local_backend::SuperviseEvent::GaveUp { reason } => {
-                tracing::warn!("本机中转起不来（api-key 号的会话会被起会话那一侧拒掉）：{reason}")
+                tracing::warn!(
+                    "本机中转起不来（api-key 号的会话会被起会话那一侧拒掉）：{reason}"
+                );
+                // ⚠ 不能调 `stop_local_relay()`：那会 `stop()` 一个已经死了的句柄，
+                //   而且这里就在监护线程上。只把它摘出表 —— 状态从此与事实一致。
+                let mut g = LOCAL_RELAY.lock().unwrap_or_else(|e| e.into_inner());
+                *g = None;
+            }
+            local_backend::SuperviseEvent::Exited { code, attempt } => {
+                tracing::warn!(
+                    "本机中转退出（第 {attempt} 次，退出码 {code:?}）—— \
+                     中转的 `--relay` 起不来时恒退 2（端口被占 / 上游基址解析不了）。\
+                     ⚠ 它自己的 stderr 被监护器 null 掉了，这一行是今天唯一的线索"
+                );
             }
             other => tracing::info!("本机中转: {other:?}"),
         }),
@@ -1366,12 +1391,42 @@ mod tests {
         );
         let bogus = std::path::PathBuf::from("/nonexistent/ccm-relay-that-cannot-spawn");
         assert!(start_local_relay(bogus.clone()), "第一次起应当报「起了一个新的」");
-        assert!(relay_running(), "句柄存进表里之后它仍说没在跑 —— 这个取值口没在看那张表");
-        // 幂等：已经在跑就不重复起（`C8`① 的同一条纪律）。
-        assert!(!start_local_relay(bogus), "重复起了第二个中转");
-        // 停掉之后必须翻回去（**这一格是「恒真」那一刀真正的反面**）。
+
+        // ★★ `D2 阻-6` 的那一半：**监护器放弃之后，这个取值口必须跟着说真话。**
+        //
+        // 那条二进制根本 spawn 不了 ⇒ 监护线程立刻 `GaveUp`。
+        // 在本轮之前，`GaveUp` **只写一行日志**，句柄留在表里 ⇒ `relay_running()` **恒真**
+        // ⇒ 起会话那一侧不再拒 ⇒ 那条 api-key 会话被静默地起成一条连不上中转的会话。
+        // ⚠ 而中转自己的 stderr 被监护器 null 掉了（那一行不在本件写区）
+        //   ⇒ **这一格是用户今天唯一看得见的说法**。
+        let mut cleared = false;
+        for _ in 0..400 {
+            if !relay_running() {
+                cleared = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(
+            cleared,
+            "监护器放弃之后句柄还留在表里 —— `relay_running()` 从此恒真，\n\
+             而起会话那一侧那道「中转没起来就当场拒」的闸整个失效"
+        );
+        // 反面：表被真的清空了 ⇒ 还能再起一个（恒真的话这里会回 false）。
+        assert!(start_local_relay(bogus), "表没被清干净 —— 再起时被当成「已经在跑」");
         stop_local_relay();
         assert!(!relay_running(), "停掉之后它还说在跑");
+
+        // ⚠ **另一半是源码形状，不是行为**：上面几条量的是「它会不会从真变假」，
+        //   量不出「它恒假」。恒假那一形由这一条兜：它必须真的去读那张表。
+        let prod = guard_core::production_code(include_str!("local_daemon.rs"));
+        let at = guard_core::find_pinned(&prod, "pub fn relay_running() -> bool {")
+            .expect("`relay_running` 不是恰好一处");
+        let body = &prod[at..at + 200.min(prod.len() - at)];
+        assert!(
+            body.contains("LOCAL_RELAY"),
+            "`relay_running` 不再读 `LOCAL_RELAY` —— 它成了一个常量"
+        );
     }
 
     /// ★★★ `K-H2b` `KH2B2`①：**中转有一个具名的启动方**，而且它在**起本机后端的那条路上**。
@@ -1957,6 +2012,14 @@ mod tests {
                 "stop_local_backend()",
                 "常驻那条路的收口。没有它，用户勾了「退出时结束它」而**脱离的那个照样在跑** —— \
                  一个说谎的开关",
+            ),
+            (
+                "stop_local_relay()",
+                "★ `D2 阻-5`（`K-H2b`）：**中转是第三个进程**（`relay/mod.rs` 自陈「独立进程」），\
+                 `stop_local_backend` 一个字都碰不到它。没有它，用户勾了「退出时结束它」、退出，\
+                 中转还在那儿听着那个口 —— 按本条自己的说法就是一个说谎的开关。\
+                 现打过它的成因：`LOCAL_RELAY`/`stop_local_relay` 全仓曾只命中 1 个文件，\
+                 而 `LOCAL_BACKEND` 命中 3 个",
             ),
         ] {
             assert!(

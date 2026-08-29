@@ -1295,6 +1295,20 @@ pub fn run() {
                         Err(e) => tracing::warn!("退出：停常驻后端失败（{e}）—— 它还在跑"),
                     }
                 }
+                // ── ★★ `D2 阻-5`（`K-H2b`）：**中转也是那个勾要管的进程之一** ──
+                //
+                // 现打（`D2`）：`LOCAL_RELAY` / `stop_local_relay` 全仓**只命中 1 个文件**
+                //（非空对照：`LOCAL_BACKEND` 命中 3 个、本文件里 3 处）
+                // ⇒ 退出路径里**一处中转都没有** ⇒ 用户勾了「退出时结束它」、退出，
+                //   中转还在那儿听着 8788 —— 按上面那段头注自己的话，**那就是一个说谎的开关**。
+                // ⚠ 它是**另一个进程**（`relay/mod.rs` 自陈「独立进程」），
+                //   `stop_local_backend` 一个字都碰不到它 ⇒ 必须单独收一次。
+                if kill {
+                    match local_daemon::stop_local_relay() {
+                        Some(pid) => tracing::info!("退出：本机中转已停（pid={pid}）"),
+                        None => tracing::info!("退出：本机中转本来就没在跑"),
+                    }
+                }
             }
         });
 }

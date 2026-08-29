@@ -293,22 +293,62 @@ export interface RelayRoutingView {
  * `configDir` ⇒ 一律 `undefined`。⚠ 尤其**不回落到「当前账号」** —— 那会把一条
  * resume 悄悄换到别的号上，正是 `#75` 那个病灶的形状。
  */
-let localLaunchSnapshot: { accounts: Account[]; pins: Record<string, string> } | null = null;
+let localLaunchSnapshot: { state: AccountsState; pins: Record<string, string> } | null = null;
+
+/**
+ * 上面那条的**取名字**半 —— 与取 `configDir` 那半共用同一条规则（不许两处各判一次）。
+ *
+ * # 规则（`D2 阻-3` / `D3 阻-2` 之后改成与 `withAccount` **同源**）
+ *
+ * | 这一格 | 取谁 | 与远端那条 `withAccount` 的关系 |
+ * |---|---|---|
+ * | 有 pin，且那个号可选 | **pin** | 同（`opts.follow.lastAccount` 优先） |
+ * | 有 pin，但那个号**不可选** | **不表态**（`null`） | 同（`withAccount` 那一支「下沉到 current ⇒ 不记账」，保住原 pin —— 悄悄翻成当前号正是 `#75` 那个病灶） |
+ * | 没有 pin | **当前账号**（`currentWorkingAccount`） | 同（远端那条没 pin 时同样落到当前号） |
+ *
+ * 🔴 **上一拍这里读的是 `a.isDefault`（manifest 字段），而头注写的是 `currentWorkingAccount`
+ * （优先 config.json 的 `defaultName`）—— 两者在「用户切过号」之后就不是同一个答案。**
+ * 后果是**切过号之后新会话静默串号**，而且中转会按错的 id 换上别人那一行的 key。
+ * ⇒ 快照现在整份存 `AccountsState`（`defaultName` 在里面），这里直接调那条唯一的规则。
+ */
+export function localLaunchAccountNameSync(sid: string | null): string | null {
+  const snap = localLaunchSnapshot;
+  if (!snap) return null; // 快照还是冷的 ⇒ 没表态（见下面那条诚实边界）
+  const pin = sid ? snap.pins[sid] : undefined;
+  if (pin) {
+    const hit = snap.state.accounts.find((a) => a.name === pin);
+    // ⚠ 有 pin 但那个号不可选 ⇒ **不表态**，绝不下沉到当前号（那会把一条会话悄悄翻号）。
+    return hit && isSelectable(hit) ? hit.name : null;
+  }
+  const cur = currentWorkingAccount(snap.state);
+  return cur && isSelectable(cur) ? cur.name : null;
+}
 
 export function localLaunchAccountSync(
   sid: string | null,
 ): { kind: "named"; configDir: string } | undefined {
   const snap = localLaunchSnapshot;
-  if (!snap) return undefined; // 快照还是冷的 ⇒ 没表态（见头注那条诚实边界）
-  let picked: Account | null = null;
-  if (sid) {
-    const name = snap.pins[sid];
-    if (name) picked = snap.accounts.find((a) => a.name === name) ?? null;
-  } else {
-    picked = snap.accounts.find((a) => a.isDefault) ?? null;
-  }
-  if (!picked || !isSelectable(picked)) return undefined;
-  return picked.configDir ? { kind: "named", configDir: picked.configDir } : undefined;
+  const name = localLaunchAccountNameSync(sid);
+  if (!snap || !name) return undefined;
+  const picked = snap.state.accounts.find((a) => a.name === name);
+  return picked?.configDir ? { kind: "named", configDir: picked.configDir } : undefined;
+}
+
+/**
+ * `D3 阻-2` / `阻-3`：**本机这条路也要往 pin 里写。**
+ *
+ * 现打（`D3`，PM 复核属实）：`recordLastAccount` 的生产调用点**恰好 2**，
+ * 而两处**结构上只走远端** —— `withAccount(` 的 6 个生产调用点 **6/6** 在 `origin` 分支内
+ * （`tabs.ts` 那处自陈「只在远端调」）；`restartWithAccount(` 的唯一调用点首行逐字
+ * `if (tab.origin === null) return false;`。⇒ **本机的 `list_last_accounts` 恒空**，
+ * 于是上面那个取值口的「pin 优先」那一支**在本机永远走不到**。
+ *
+ * ⇒ 本机起会话成功之后由调用方喊一声。**不等待**（同 prime，多一拍会撞那两条 DOM 判据）。
+ * ⚠ 只在**真的用了一个具名账号**时记 —— 没表态就不记，别把「不知道」写成一条 pin。
+ */
+export function recordLocalLaunchAccount(sid: string, name: string | null): void {
+  if (!sid || !name) return;
+  void recordLastAccount(sid, name);
 }
 
 /**
@@ -324,11 +364,27 @@ export function primeLocalLaunchAccounts(): void {
         fetchLocalAccounts(),
         commands.list_last_accounts().catch(() => ({}) as Record<string, string>),
       ]);
-      localLaunchSnapshot = { accounts: state?.accounts ?? [], pins: pins ?? {} };
+      // ⚠ 整份存 `state`，**不是**只存 `accounts` —— 「当前账号」这条规则要读
+      //   `state.defaultName`（config.json），只留 accounts 就只剩 manifest 的 `isDefault`，
+      //   那正是上一拍那条静默串号的成因（`D2 阻-3`）。
+      if (state) localLaunchSnapshot = { state, pins: pins ?? {} };
     } catch {
       /* 保持旧快照 —— 见上 */
     }
   })();
+}
+
+/** 只给判据用：把快照清回冷态（生产段没有调用方）。 */
+export function __resetLocalLaunchSnapshotForTests(): void {
+  localLaunchSnapshot = null;
+}
+
+/** 只给判据用：直接喂一份快照（免得判据去摆布两条 IPC 的时序）。 */
+export function __setLocalLaunchSnapshotForTests(
+  state: AccountsState,
+  pins: Record<string, string>,
+): void {
+  localLaunchSnapshot = { state, pins };
 }
 
 export async function fetchLocalRelayRouting(configDirs: string[]): Promise<RelayRoutingView> {

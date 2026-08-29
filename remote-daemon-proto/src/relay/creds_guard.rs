@@ -87,6 +87,12 @@ mod tests {
         ("server.rs", "[relay] cannot bind loopback port", "端口起不来"),
         ("server.rs", "[relay] listening on", "起来了，监听在哪"),
         ("server.rs", "[relay] listening (addr unknown", "起来了但问不到地址"),
+        (
+            "server.rs",
+            "[relay] 凭据文件读不成表，**保留上一张表不动**",
+            "`D2 阻-2`：重载时解析失败 —— **不把表换成空**（空表 = 全部 404），\
+             留住上一张能用的、只出声。这一形是「表可重载」之后新长出来的",
+        ),
         ("creds.rs", "[relay] credentials file:", "凭据文件在哪（`KS9` 路径文档化）"),
         ("creds.rs", "[relay] credentials problem:", "文件读不动 / 解析不了"),
         ("creds.rs", "[relay] credentials permissions too wide:", "权限过宽（`KS11`）"),
