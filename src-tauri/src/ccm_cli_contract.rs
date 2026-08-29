@@ -1354,11 +1354,29 @@ mod tests {
                  要么锚点该更新了。"
             );
             match speaks {
-                Some(line) => assert!(
-                    prod.contains(line),
-                    "`{cmd}` 登记为「降级出声」，而它的文案锚点 {line:?} 不在生产段里 —— \
-                     出声那段被删了？（`K-C1` 的 `§0b` 裁定：**降级必须出声**）"
-                ),
+                Some(line) => {
+                    // ★★ **「出声」判的是 stderr，不是「文件里有这句话」**〔铁律 15 自查，08-29〕。
+                    // 本轮 M3 刚证过同一族：判据数到的是**提到那个词的行**而不是**做那件事的行**。
+                    // 只断言 `prod.contains(line)` 会被「把同一句文案挪进一段不发 stderr 的代码」
+                    // 满足 ⇒ 这里改成：文案所在的那一行**及其后 3 行生产行之内**必须有 `>&2`。
+                    // （现打：`shared/ccm` 那句 `printf` 与它的 `>&2` **不在同一行** ——
+                    //  `printf '…' \` 续行，`>&2` 在下一行 ⇒ 同行断言会当场误红。窗口 3 是量出来的，不是猜的。）
+                    let lines: Vec<&str> = prod.lines().collect();
+                    let at = lines.iter().position(|l| l.contains(*line)).unwrap_or_else(|| {
+                        panic!(
+                            "`{cmd}` 登记为「降级出声」，而它的文案锚点 {line:?} 不在生产段里 —— \
+                             出声那段被删了？（`K-C1` 的 `§0b` 裁定：**降级必须出声**）"
+                        )
+                    });
+                    let window = &lines[at..(at + 4).min(lines.len())];
+                    assert!(
+                        window.iter().any(|l| l.contains(">&2")),
+                        "`{cmd}` 的降级文案还在，**但那一段不再往 stderr 说话**了\
+                         （文案行及其后 3 行生产行里找不到 `>&2`）：\n  {window:?}\n\
+                         ⇒ 「出声」变成了往 stdout 说 —— 而 ccm 的 stdout 是**机器读的**\
+                         （`ccm-session=` 那一行、`--print` 的整条串）⇒ 那不是出声，是**污染载荷**。"
+                    );
+                }
                 None => silent.push(cmd),
             }
         }
