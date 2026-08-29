@@ -4880,8 +4880,10 @@ mod tests {
     /// ★★ **探针 ①**〔`D8 阻-1`，`KH2B1`〕：`resume_impl` 这一跳把 `account` / `session_id` / `cwd`
     /// **原样**交给 [`launch_local`]。
     ///
-    /// 刀 `D8P32`（`history.rs:1826` 那一处 `account` 写成 `account.filter(|_| false)`）
+    /// 刀 `D8P32`（`resume_impl` 里那一行 `account,` 写成 `account.filter(|_| false)`）
     /// 在本条落地之前是**全量门禁四个数一格不动**的。
+    /// ⚠ 行号带尖号（`D8 阻-5` 的纪律）：`c02d954` 上是 `:1826`，本尖上是 `:1856`；
+    /// **锚点用文本别用行号** —— `^        account,$` 在本文件全文恰好 **1** 处。
     #[test]
     fn the_resume_hop_above_launch_local_carries_the_account_and_the_sid_through() {
         let (_sink, _facts) = entry_stage();
@@ -4947,8 +4949,9 @@ mod tests {
     /// ★★ **探针 ②**〔`D8 阻-1`，`KH2B1`〕：**前端真正调的那条命令**
     /// [`resume_history_session`]（`#[tauri::command]`）把五个入参原样交给 [`resume_impl`]。
     ///
-    /// 刀 `D8P32b`（`history.rs:892` 那一处 `account.as_ref()`）在本条落地之前是
-    /// **全量门禁四个数一格不动**的。
+    /// 刀 `D8P32b`（[`resume_history_session`] 里那一行 `account.as_ref(),` 写成
+    /// `account.as_ref().filter(|_| false)`）在本条落地之前是**全量门禁四个数一格不动**的。
+    /// ⚠ 行号带尖号（`D8 阻-5`）：`c02d954` 与本尖上都是 `:892`（本轮加的行都在它下面）。
     ///
     /// ⚠ 第 ② 格是**对拍**（同一组输入喂两条入口，两串必须逐字节相同）——
     /// 它买的是「这一跳一个入参都没被换掉」，比只断「有前缀」宽一格：
@@ -5002,8 +5005,9 @@ mod tests {
     /// ★★ **探针 ③**〔`D8 阻-1`，`KH2B1`〕：**「在该目录起新会话」那条命令**
     /// [`new_local_session`]（`#[tauri::command]`）把 `account` / `cwd` 原样交给 [`launch_local`]。
     ///
-    /// 刀 `D8P33`（`history.rs:1871` 那一处 `account.as_ref()`）在本条落地之前是
-    /// **全量门禁四个数一格不动**的。
+    /// 刀 `D8P33`（[`new_local_session`] 里那一行 `account.as_ref(),` 写成
+    /// `account.as_ref().filter(|_| false)`）在本条落地之前是**全量门禁四个数一格不动**的。
+    /// ⚠ 行号带尖号（`D8 阻-5`）：`c02d954` 上是 `:1871`，本尖上是 `:1901`。
     ///
     /// ⚠ 这条路**没有 sid**（`<key>` 段走 nonce，见 `payload::relay_key_for` 的表），
     /// 所以本条只钉账号段与 `cwd`；`<key>` 那一维归 `payload` 那一侧的判据。
