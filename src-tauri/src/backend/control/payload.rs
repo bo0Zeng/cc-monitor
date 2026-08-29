@@ -586,10 +586,14 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 ///
 /// ⇒ **没配第三方 key 的号一个字节都不受影响**：`accounts` 里没有它 ⇒ 本函数回 `None`
 /// ⇒ 前缀逐字节与本件之前相同（`KH2B5` 的对照就打这一格）。
+/// ⚠ **第三个入参刻意不叫 `relay_running`**〔`D6 阻-4`，08-29〕：
+/// `history.rs` 那道人群闸数的是**标识符 `relay_running` 在生产段里出现几次**
+/// （定义 1 + 缝里那一处 1 = 2），一个同名的形参会让那个数恒多两处、闸就只能靠一个
+/// 「今天数出来的 N」活着。⇒ 形参改名，闸的分母回到「这个函数被谁提到」本身。
 pub fn relay_injection_for(
     account_id: Option<&str>,
     rows: &[String],
-    relay_running: bool,
+    running: bool,
     sid: Option<&str>,
     agent: &str,
 ) -> Result<Option<String>, String> {
@@ -599,7 +603,7 @@ pub fn relay_injection_for(
     if !rows.iter().any(|r| r == id) {
         return Ok(None);
     }
-    if !relay_running {
+    if !running {
         // ★ `KH2B2`②：**「中转没起来」不许是静默的**。
         //   把它渲染成一条指向没人听的口的 URL，症状会长成「claude 连不上 API」——
         //   与网络故障同形，而这一条是我们自己的责任。⇒ 在**起会话那一侧**当场说出来。
@@ -1600,6 +1604,120 @@ mod tests {
         assert_eq!(
             relay_env_prefix_ps("http://127.0.0.1:8788/s/a/b/c"),
             "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/a/b/c'; "
+        );
+    }
+
+    /// ★★★ `D6 阻-4` 的**人群闸**：谁绕开 `history::RelayFactSources` / `history::LaunchSink`
+    /// 那两条缝，直接去调那几个取值口 / 那两个送法 ⇒ **当场红**。
+    ///
+    /// # 它为什么必须是一道闸，而不是一句头注
+    ///
+    /// 上一拍（08-28）买那条缝时，`RelayFactSources` 的头注里逐字写着
+    /// 「这两个取值口的**生产消费方恰好 2**」，并把那句话当成了闸。
+    /// `D6` 的刀 `E5` 打穿它：在 `lib.rs` 加**第三个**消费方、绕开缝直接调
+    /// `history::relay_rows()` / `local_daemon::relay_running()`
+    /// ⇒ **`1227 passed; 0 failed`、`GATE: OK`、四个数与干净树逐字相同。**
+    /// ⇒ 那句头注买到的是「**这两处**走缝」，**没买到「所有人都得走缝」**。
+    /// ★ PM `§8 裁四` 的定性：**治一个「今天数出来的 N」的过程中，长出了一个新的。**
+    ///
+    /// # 它钉的是**零调用点**（不是「今天有几个消费方」）
+    ///
+    /// 走缝的写法里，那几个函数只以**函数指针**出现（`rows: relay_rows,`）——
+    /// **没有括号**。⇒ 只要断言「调用形在全树生产段里恰好只剩它们自己的定义行」，
+    /// 这道闸就与「今天有几个消费方」**完全脱钩**：明天多十个消费方，只要都走缝，本条不动；
+    /// 谁不走缝，第一次调用就把那个数顶上去。
+    /// 裸标识符那一半（恰好 2 = 定义 + 缝里那一处）挡的是另一形：**把函数指针复制到第二个地方**。
+    ///
+    /// # ⚠ 分母与它抓不到什么（如实写）
+    ///
+    /// - 人群 = `src-tauri/src` **整棵树**的 `.rs`（`guard_core::scan_tree!` 目录扫描，
+    ///   **不是手写名单**），逐份剥成生产段。
+    /// - `scan_tree!` **按构造摘除调用者自己那份** ⇒ 本文件（`payload.rs`）不在人群里。
+    ///   本文件今天不提那几个符号；真要在这里绕缝，本条看不见 —— **登记，不假装钉住了**。
+    ///   （这也是本条**不住 `history.rs`** 的理由：住在那里等于把缝自己那一份摘出人群。）
+    /// - 它只看 Rust 侧。别的 crate（daemon）够不着这几个符号（单向依赖）。
+    /// - `let f = crate::history::relay_rows; f()` 这一形由裸标识符那一半接住（会变成 3）。
+    #[test]
+    fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let files = guard_core::scan_tree!(&root, &["rs"]);
+        // 抽取器自检：树扫得到东西（否则下面整条是空真）。
+        assert!(
+            files.len() > 30,
+            "只扫到 {} 份 `.rs` —— 取法坏了，本条会零命中地绿",
+            files.len()
+        );
+
+        /// 裸标识符计数：`relay_rows_at` 里的 `relay_rows` 不算。
+        fn bare(hay: &str, ident: &str) -> usize {
+            hay.match_indices(ident)
+                .filter(|(i, _)| {
+                    let after = hay[i + ident.len()..].chars().next();
+                    !after.is_some_and(|c| c.is_alphanumeric() || c == '_')
+                })
+                .count()
+        }
+
+        let mut prod_total = 0usize;
+        // (裸标识符, 调用形恰好几处, 裸标识符恰好几处)
+        let mut counts = [
+            // 定义 1 处（`history.rs`）+ 缝里 `rows: relay_rows,` 1 处。
+            ("relay_rows", 1usize, 2usize, 0usize, 0usize),
+            // 定义 1 处（`local_daemon.rs`）+ 缝里 `running: crate::local_daemon::relay_running,` 1 处。
+            ("relay_running", 1, 2, 0, 0),
+            // 定义 1 处（`history.rs`）+ 缝里 `windows: platform_is_windows,` 1 处。
+            ("platform_is_windows", 1, 2, 0, 0),
+        ];
+        // 送法那一半：人群是**除 `launch.rs` 以外**的全树 —— 送法自己在那个文件里当然要被调。
+        let mut sink_calls: Vec<String> = Vec::new();
+
+        for (path, raw) in &files {
+            let prod = guard_core::production_code(raw);
+            prod_total += prod.len();
+            let rel = path.to_string_lossy().replace('\\', "/");
+            for c in counts.iter_mut() {
+                c.3 += prod.matches(&format!("{}(", c.0)).count();
+                c.4 += bare(&prod, c.0);
+            }
+            if !rel.ends_with("/launch.rs") {
+                for sink in ["launch_local_posix", "launch_powershell_window"] {
+                    let n = prod.matches(&format!("{sink}(")).count();
+                    if n > 0 {
+                        sink_calls.push(format!("{rel}: `{sink}(` × {n}"));
+                    }
+                }
+            }
+        }
+        assert!(
+            prod_total > 200_000,
+            "全树剥完只剩 {prod_total} 字节 —— 剥法坏了，本条是空真"
+        );
+
+        for (ident, want_calls, want_bare, got_calls, got_bare) in counts {
+            assert_eq!(
+                got_calls, want_calls,
+                "\n★★ `{ident}(` 在 `src-tauri/src` 的生产段里有 {got_calls} 处（期望 {want_calls} 处 = \
+                 它自己的定义行）。\n\
+                 ⇒ 有人**绕开 `history::RelayFactSources` 那条缝**直接调了这个取值口。\n\
+                 那正是 `D6` 刀 `E5` 的形状：绕缝的那一处 ① 没有判据数得出来\n\
+                 ② 它「问没问 / 用没用答案」也没有任何判据。\n\
+                 ⇒ 合法出路只有两条：**改成走缝**（`history::relay_facts()`），\n\
+                 或**重新裁定**并在这里说清为什么这一处可以不走。"
+            );
+            assert_eq!(
+                got_bare, want_bare,
+                "\n★ 裸标识符 `{ident}` 在生产段里有 {got_bare} 处（期望 {want_bare} 处 = \
+                 定义 1 + `PRODUCTION_RELAY_FACTS` 里 1）。\n\
+                 ⇒ 有人把这个取值口的**函数指针**复制到了第二个地方 —— \
+                 那条缝就不再是唯一的入口了。"
+            );
+        }
+        assert!(
+            sink_calls.is_empty(),
+            "\n★★ `launch.rs` 之外还有人直接调那两个送法：{sink_calls:?}\n\
+             ⇒ 本机拉起最后交出去的那一串**绕开了 `history::LaunchSink` 那条缝**，\n\
+             而 `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched`\n\
+             量的正是那条缝上的字符串 ⇒ 绕过去的那条路，前缀拼没拼上没有任何判据看得见。"
         );
     }
 }

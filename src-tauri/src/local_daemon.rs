@@ -1244,6 +1244,41 @@ pub static LOCAL_RELAY: std::sync::Mutex<Option<SuperviseHandle>> =
 ///
 /// ⚠ 返回 `bool` = 「本次调用起了一个新的」，**不是**「现在有没有在跑」——
 /// 后者问 [`relay_running`]。两件事分开，是因为「已经在跑」不该被报成失败。
+/// 交给中转子进程的那份 **argv 尾巴**。
+///
+/// ⚠ 抽出来的理由与下面那份 env 逐字同一条〔`D6 阻-1` 的同族，08-29〕：
+/// 不抽的话，「这条子进程是不是按 `--relay` 起的」只能靠**源码里有没有这段文本**来钉，
+/// 而那一形本件已经被打穿过两次（`D5` 的 `X1` · `D6` 的 `Y1`）。
+pub(crate) fn relay_child_args() -> Vec<String> {
+    vec!["--relay".into()]
+}
+
+/// 交给中转子进程的那份 **环境**。**判据读它产出来的东西，不读源码文本。**
+///
+/// ★ 端口**显式传**：注入侧（`payload::RELAY_PORT`）与中转侧用同一个值。
+/// ★★ `D1 阻-3`：**凭据路径也显式传**，同一条理由。
+///
+/// 不传的话，中转走它自己那条 `resolve_path` → `resolve_home()`，而那一条**认
+/// `CLAUDE_CONFIG_DIR`** ⇒ monitor 是从一个**被监护进程继承来的环境变量**里
+/// 决定「中转去读哪份凭据」的。而 monitor 自己写的那份**不跟随** `claudeDir`
+/// （`creds_store::resolve_path` 头注逐字）⇒ 两侧读写的是两份文件，
+/// 症状是「界面上配好了，中转说没配」——**一个静默的 404**。
+/// ⇒ 由**写那份文件的那一侧**把路径说出来，别让它从环境里猜。
+///
+/// ⚠ 它**读一次真实家目录**（`creds_store::resolve_path()` 走 `dirs::home_dir()`）——
+/// 只读，不写。拿不到家目录时那一格**缺席**（不是空串）：中转那时退回它自己那条
+/// `resolve_home()`，而那正是上面这段话说的那个静默 404 的成因 ⇒ 缺席这一格不许被读成「安全」。
+pub(crate) fn relay_child_envs() -> Vec<(String, String)> {
+    let mut envs = vec![(
+        "CCM_RELAY_PORT".into(),
+        crate::backend::control::payload::RELAY_PORT.to_string(),
+    )];
+    if let Some(p) = crate::creds_store::resolve_path() {
+        envs.push(("CCM_RELAY_CREDENTIALS".into(), p.display().to_string()));
+    }
+    envs
+}
+
 pub fn start_local_relay(bin: std::path::PathBuf) -> bool {
     let mut g = LOCAL_RELAY.lock().unwrap_or_else(|e| e.into_inner());
     if g.is_some() {
@@ -1251,26 +1286,8 @@ pub fn start_local_relay(bin: std::path::PathBuf) -> bool {
     }
     let h = local_backend::supervise(
         bin,
-        vec!["--relay".into()],
-        // ★ 端口**显式传**：注入侧（`payload::RELAY_PORT`）与中转侧用同一个值。
-        // ★★ `D1 阻-3`：**凭据路径也显式传**，同一条理由。
-        //
-        // 不传的话，中转走它自己那条 `resolve_path` → `resolve_home()`，而那一条**认
-        // `CLAUDE_CONFIG_DIR`** ⇒ monitor 是从一个**被监护进程继承来的环境变量**里
-        // 决定「中转去读哪份凭据」的。而 monitor 自己写的那份**不跟随** `claudeDir`
-        // （`creds_store::resolve_path` 头注逐字）⇒ 两侧读写的是两份文件，
-        // 症状是「界面上配好了，中转说没配」——**一个静默的 404**。
-        // ⇒ 由**写那份文件的那一侧**把路径说出来，别让它从环境里猜。
-        {
-            let mut envs = vec![(
-                "CCM_RELAY_PORT".into(),
-                crate::backend::control::payload::RELAY_PORT.to_string(),
-            )];
-            if let Some(p) = crate::creds_store::resolve_path() {
-                envs.push(("CCM_RELAY_CREDENTIALS".into(), p.display().to_string()));
-            }
-            envs
-        },
+        relay_child_args(),
+        relay_child_envs(),
         local_backend::CrashLimits::default(),
         std::sync::Arc::new(|| {
             std::time::SystemTime::now()
@@ -1417,8 +1434,21 @@ mod tests {
         stop_local_relay();
         assert!(!relay_running(), "停掉之后它还说在跑");
 
-        // ⚠ **另一半是源码形状，不是行为**：上面几条量的是「它会不会从真变假」，
-        //   量不出「它恒假」。恒假那一形由这一条兜：它必须真的去读那张表。
+        // ⚠⚠ **另一半是源码形状，不是行为** —— `D6 阻-1` 把这一形判死了，而这一格
+        //   **今天换不掉**，如实登记（08-29）：
+        //
+        //   上面几条量的是「它会不会**从真变假**」（那一格是行为，`D2 阻-6` 的正题）；
+        //   量不出「它**恒假**」—— 要量恒假得让表里**稳定地**有一个句柄，而
+        //   ① `SuperviseHandle` 造不出替身（构造子不对外）；
+        //   ② 唯一能把句柄放进表的路是 `start_local_relay`，而它喂什么二进制都会被监护器
+        //      在毫秒级内 `GaveUp` 摘掉 ⇒ 「刚起完那一瞬 `relay_running()` 是真」这条断言**有竞态**；
+        //   ③ 喂一个**真活着**的进程就等于在判据里起一个常驻子进程（红线）。
+        //   ⇒ 这一格留着一条文本断言，**它的绕过形态**逐字：把 `LOCAL_RELAY` 这个词留在
+        //      这 200 字节窗口里（一个用不到的绑定就够）、把返回值换成常量 ⇒ 本格照绿。
+        //
+        //   ⚠ **失效方向要一起写**：`relay_running()` 恒假 ⇒ 每一次 api-key 号的拉起都被
+        //   **当场拒**（`KH2B2`② 那条出声的路）—— 是 fail-closed、有声的，
+        //   与「恒真」那一形（静默起成一条连不上中转的会话）**不同类**。恒真那一形有行为判据接着。
         let prod = guard_core::production_code(include_str!("local_daemon.rs"));
         let at = guard_core::find_pinned(&prod, "pub fn relay_running() -> bool {")
             .expect("`relay_running` 不是恰好一处");
@@ -1463,18 +1493,61 @@ mod tests {
     /// 只买「接线在」，**不买「那个进程真的起来了」** —— 后者要真 spawn 一个 daemon
     /// 二进制，而它 `#[cfg(embedded_daemons)]` 门着、CI 上根本不铺（姊妹条
     /// `the_local_daemon_can_be_stopped_and_started_again` 那条边界原样适用）。
+    ///
+    /// # 🔴 本条里哪几格是**文本**，为什么今天只能是文本〔`D6` 回修，08-29，别读宽〕
+    ///
+    /// `D6 阻-1` 把「窗口里有没有这段文本」这一形判死了，而本条**没有全换掉** ——
+    /// 换掉了的与没换掉的逐格写在这里：
+    ///
+    /// | 格 | 今天的量法 | 为什么 |
+    /// |---|---|---|
+    /// | argv 尾巴是 `--relay` | ✅ **行为**（读 [`relay_child_args`] 产出来的东西） | 抽成纯函数就够 |
+    /// | 端口 == `payload::RELAY_PORT` | ✅ **行为**（读 [`relay_child_envs`]） | 同上 |
+    /// | 凭据路径 == `creds_store::resolve_path()` | ✅ **行为**（读 [`relay_child_envs`]） | 同上 |
+    /// | 起中转**落在** `start_local_backend` 里、在 `start_detached` **之前** | 🔴 **文本** | 这是一条**调用图**性质：按行为量要真跑 `start_local_backend`，而它 `#[cfg(embedded_daemons)]` 门着、且吃**真实**的 `~/.cc-monitor/bin` ⇒ 红线（不许手工起真 daemon） |
+    /// | `start_local_relay` 真的把那份 spec 交出去了 | 🔴 **文本** | 按行为量要在 `local_backend::supervise` 上开一条缝，而 `backend/control/local_backend.rs` **不在本件写区** |
+    ///
+    /// ⇒ 那两格的**绕过形态**逐字：把 `relay_child_envs()` 的结果算出来扔掉、就地再拼一份
+    /// （行为那三格照绿、文本这一格也照绿，因为那两个调用还在）。
+    /// **登记，不假装钉住了。** 解锁条件 = 写区扩到 `backend/control/local_backend.rs`（一条 supervise 缝）。
     #[test]
     fn the_relay_has_a_named_starter_and_it_runs_before_the_detached_branch_returns() {
+        // ① 🔴 `D6 阻-1` 同族：**行为** —— 交给中转子进程的那份 argv 尾巴与环境，
+        //    量的是 `relay_child_args()` / `relay_child_envs()` **产出来的东西**，
+        //    不是「源码里有没有这几段文本」（那一形本件已被打穿两次：`D5` 的 `X1` · `D6` 的 `Y1`）。
+        assert_eq!(
+            relay_child_args(),
+            vec!["--relay".to_string()],
+            "交给中转子进程的 argv 尾巴不再是 `--relay` —— 起出来的不是中转"
+        );
+        let envs = relay_child_envs();
+        assert_eq!(
+            envs.iter()
+                .find(|(k, _)| k == "CCM_RELAY_PORT")
+                .map(|(_, v)| v.as_str()),
+            Some(crate::backend::control::payload::RELAY_PORT.to_string().as_str()),
+            "端口没显式交给子进程、或交的不是注入侧那个常量 —— 注入侧\
+             （`payload::RELAY_PORT`）与中转侧（daemon 的 `DEFAULT_PORT`）就成了各读各的两份默认值。\
+             实得：{envs:?}"
+        );
+        assert_eq!(
+            envs.iter()
+                .find(|(k, _)| k == "CCM_RELAY_CREDENTIALS")
+                .map(|(_, v)| v.clone()),
+            crate::creds_store::resolve_path().map(|p| p.display().to_string()),
+            "凭据路径不是从 monitor 写它的那条路（`creds_store::resolve_path`）来的 ——\
+             中转会去读 `CLAUDE_CONFIG_DIR` 底下那份，而 monitor 写的那份**不跟随**它：\
+             两侧读写的是两份文件，症状是一个静默的 404。实得：{envs:?}"
+        );
+        // 反空真：这把尺子分得出「少了一格」（不是恒相等）。
+        assert!(
+            envs.len() >= 2 && crate::creds_store::resolve_path().is_some(),
+            "这台机器上算不出凭据路径 ⇒ 上面那条相等断言退化成 `None == None`，本条按红处理"
+        );
+
         let me = include_str!("local_daemon.rs");
         let prod = guard_core::production_code(me);
         assert!(prod.len() > 5_000, "剥完只剩 {} 字节 —— 剥过头了", prod.len());
-        // ① `--relay` 在生产段里**真的被谁传出去了**（本件之前这个数是 0）。
-        assert_eq!(
-            prod.matches("vec![\"--relay\".into()]").count(),
-            1,
-            "`--relay` 的生产调用点不再是 1 处 —— 0 处就等于回到本件之前\n\
-             （「有实现、没人起」：那条线还是没接）；2 处就是两个各自监护的中转。"
-        );
         // ② 它落在起本机后端那条路上，且**在常驻那条会 return 的分支之前**。
         let at = guard_core::find_pinned(&prod, "pub fn start_local_backend()")
             .unwrap_or_else(|e| panic!("`start_local_backend` 不是恰好一处：{e}"));
@@ -1491,31 +1564,20 @@ mod tests {
              ⇒ 走常驻那条路（生产主路）的机器上中转**根本不会被起**，\n\
              而症状是「api-key 号的会话被起会话那一侧拒掉」，指不向这里。"
         );
-        // ③ 端口是**显式传**下去的（不许骑在 daemon 那份 `DEFAULT_PORT` 上）。
+        // ③ 上面第 ① 格量的是那份 spec **产得对不对**（行为）；这一格量的是
+        //    `start_local_relay` **真的把它交出去了**。
+        //    ⚠ 这一格今天**只能量文本**，如实登记（见本条头注最后一节）：
+        //      要按行为量得先在 `local_backend::supervise` 上开一条缝，而那个文件不在本件写区。
         //    ⚠ 作用域是 `start_local_relay` 的函数体，**不是** `start_local_backend` 的
         //      —— 第一版写错了作用域，被本条自己当场逮住（那也是「量具的作用域对不上事实」）。
         let relay_at = guard_core::find_pinned(&prod, "pub fn start_local_relay(")
             .unwrap_or_else(|e| panic!("`start_local_relay` 不是恰好一处：{e}"));
         let relay_body = &prod[relay_at..relay_at + 1_200.min(prod.len() - relay_at)];
         assert!(
-            relay_body.contains("\"CCM_RELAY_PORT\".into()"),
-            "端口没显式交给子进程 —— 注入侧（`payload::RELAY_PORT`）与中转侧\
-             （daemon 的 `DEFAULT_PORT`）就成了各读各的两份默认值"
-        );
-        assert!(
-            relay_body.contains("payload::RELAY_PORT"),
-            "端口不是从注入侧那个常量来的 —— 两侧又成了两个值"
-        );
-        // ★ `D1 阻-3`：凭据路径同样要**显式传**（否则中转从 `CLAUDE_CONFIG_DIR` 猜，
-        //   而 monitor 写的那份不跟随它 ⇒ 两侧读写两份文件 ⇒ 静默 404）。
-        assert!(
-            relay_body.contains("\"CCM_RELAY_CREDENTIALS\".into()"),
-            "凭据路径没显式交给中转 —— 它会去读 `CLAUDE_CONFIG_DIR` 底下那份，\
-             而 monitor 写的那份**不跟随** `claudeDir`：两侧读写的是两份文件"
-        );
-        assert!(
-            relay_body.contains("creds_store::resolve_path()"),
-            "那个路径不是从 monitor 写它的那条路来的 —— 又成了两份各写各的"
+            relay_body.contains("relay_child_args()") && relay_body.contains("relay_child_envs()"),
+            "起中转那一处不再把 `relay_child_args()` / `relay_child_envs()` 交出去 ——\n\
+             上面第 ① 格量的那份 spec 就成了一份没人用的摆设（端口与凭据路径又回到各读各的）。\n\
+             实得片段：{relay_body}"
         );
     }
 
