@@ -248,20 +248,31 @@ mod tests {
         //
         // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
         // `local_daemon::start_local_relay` 用 `CCM_RELAY_CREDENTIALS` 把
-        // **本函数算出来的这一个**交给中转（`the_relay_has_a_named_starter_…` 钉着那两行）。
-        // 本条在这里把「传过去的就是这一个」焊上：源码里那一处取的必须是 `resolve_path()`。
-        let starter = guard_core::production_code(include_str!("local_daemon.rs"));
-        assert!(
-            starter.contains("crate::creds_store::resolve_path()"),
-            "起中转那一侧不再从**本函数**取凭据路径 —— 它会退回去读 `CLAUDE_CONFIG_DIR` \
-             底下那份，而 monitor 写的这一份不跟随它"
+        // **本函数算出来的这一个**交给中转。
+        //
+        // 🔴 `D6 阻-1` 回修（08-29）：这里先前是两条「`local_daemon.rs` 的生产段里有没有
+        // `crate::creds_store::resolve_path()` / `"CCM_RELAY_CREDENTIALS".into()` 这两段文本」——
+        // **同一族的病**（文本留住、行为摘掉：把那两段文本留在一处用不到的地方，
+        // 真正交出去的换成别的路径 ⇒ 两条照绿）。
+        // ⇒ 换成读 `local_daemon::relay_child_envs()` **产出来的那一份**：
+        // 那一格的值必须逐字节等于本函数算出来的路径。
+        let envs = crate::local_daemon::relay_child_envs();
+        assert_eq!(
+            envs.iter()
+                .find(|(k, _)| k == "CCM_RELAY_CREDENTIALS")
+                .map(|(_, v)| v.clone()),
+            Some(mine.display().to_string()),
+            "起中转那一侧交出去的凭据路径不是**本函数**算出来的这一个 —— 它会退回去读 \
+             `CLAUDE_CONFIG_DIR` 底下那份，而 monitor 写的这一份不跟随它。实得：{envs:?}"
         );
+        // 反空真：这把尺子分得出「不是那个路径」（不是恒相等）。
         assert!(
-            starter.contains("\"CCM_RELAY_CREDENTIALS\".into()"),
-            "起中转那一侧没把路径显式传出去 —— 这一格就又靠环境变量猜了"
+            !envs.iter().any(|(_, v)| *v
+                == store::path_under_claude_home(&home.join(".claude-other"))
+                    .display()
+                    .to_string()),
+            "这把尺子对任何路径都说「是」—— 它恒真，本条按红处理"
         );
-        // 反空真：抽取器真的剥出了东西（不是在空串上自问自答）。
-        assert!(starter.len() > 5_000, "剥完只剩 {} 字节 —— 剥法坏了", starter.len());
     }
 
     /// `KS7`：它**不是**前端整份读写的那份配置。
