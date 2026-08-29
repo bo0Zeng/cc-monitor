@@ -288,6 +288,13 @@ mod f07_main_path_tests {
     //!
     //! ⚠ 而 08-04 立的那条前提触发器**在它被造出来要报的那个方向上是瞎的**，
     //! 见 `production_ts` 的头注 —— 量具本身是本轮真正修掉的东西。
+    //!
+    //! ⚠⚠ 上表 ① 那个「0 处」的**分母 08-29 换过一次**〔`K-P2` C 阶段第二拍〕：
+    //! 原来只数 `src-tauri/src` 那棵树，现在**同时数 `shared/ccm` 的生产段** ——
+    //! 因为 `K-P2 §0d`〔PM 08-29〕把接线路裁成了「`ccm` 直接问后端二进制」，
+    //! 而那条路整条落在那份 shell 脚本里，旧扫描面**够不到它**。
+    //! **读数仍然是 0，变的是分母。** 逐字理由在
+    //! `the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold` 的头注「第四次」那一节。
 
     fn repo_root() -> std::path::PathBuf {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -431,6 +438,30 @@ mod f07_main_path_tests {
     /// ★ 这是「**依据/度量过期而结论仍对**」在本工作区的**第三次**
     /// （F01 四处「每 ~8s」· F07 `§33b` 两处 · 本条）。三次的处置都一样：
     /// **把结论留住，把依据换成还量得准的那个**。
+    ///
+    /// # ⚠⚠ 第四次：`K-P2` 08-29 —— 依据二的**扫描面**比它要报的事实小了一格
+    ///
+    /// 上面那句「改成直接量后者」把**量法**修对了，却留下一个**面**的洞：
+    /// 扫的是 `env!("CARGO_MANIFEST_DIR")/src`，也就是**只有 `src-tauri/src/**.rs`**。
+    /// 而「起会话改走 daemon」有两条路，`K-P2 §0d`〔PM 08-29〕**裁的是后一条**：
+    ///
+    /// | 路 | 接线落在哪 | 本条**看不看得见** |
+    /// |---|---|---|
+    /// | ㈡ 宿主自己发 `launch` | `src-tauri/src/**.rs` | 看得见 |
+    /// | ㈠ **`ccm` 直接问后端二进制**（`§0d` 裁定：`ccm <子命令>` = 后端以**一次性模式**跑） | `shared/ccm`（**shell**） | **看不见** |
+    ///
+    /// ⇒ 走㈠ 的话，「起会话那格切到 daemon 了」这件事**做成了，而本条一个字都不说**
+    /// —— 那不是绿，是**零命中地绿**。`K-P2` 的 `KP2A` 逐字预言过这个形状：
+    /// 「它的扫描面只有 `src-tauri/src/**/*.rs` ⇒ **扫不到 `shared/ccm`** ……
+    ///  这条判据**零命中地绿**，而事情做成了它一个字都不说」。
+    ///
+    /// ⇒ **把 `shared/ccm` 的生产段加进同一个扫描面**（同一个结论、同一个 needle、
+    /// 同一条失败文案），并给它配自己的抽取器自检。
+    /// **结论仍然只有一条**：「起会话那格有没有切过去」——变的是它够得到哪几棵树。
+    ///
+    /// ⚠ **本条不管「ccm 发了哪几条一次性子命令」**（那是 `ccm_cli_contract` 的
+    /// `ccm_reaches_the_backend_through_one_shot_subcommands`，`K-P2 KP2A②`）：
+    /// 一条判据一件事。本条只回答 F07/U8c-3 要的那一句——**起会话那格切了没有**。
     #[test]
     fn the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold() {
         // 依据一 a：**生产主路仍在调兜底渲染器**（`container: tmux` 的三格都落它）。
@@ -484,11 +515,30 @@ mod f07_main_path_tests {
             scanned >= 50,
             "只扫到 {scanned} 个 .rs —— 遍历坏了，下面那条断言会零命中地绿"
         );
+        // ★★ 第二棵树：`shared/ccm`〔`K-P2` 08-29〕。理由见本条头注「第四次」那一节 ——
+        //    `§0d` 裁定的接线路（㈠）落在这份 shell 脚本里，而上面那棵树够不到它。
+        //    ⚠ needle 也要换个形状：Rust 那边是字面量 `"create-or-attach"`（带引号），
+        //    shell 里它会长在 JSON 串或 argv 里 ⇒ 用**带边界的词**匹配，两种形态都收得到。
+        let word = format!("create-or-{}", "attach");
+        let ccm = guard_core::strip_hash_comment_lines(crate::sftp::CCM_CLI_SCRIPT);
+        // ★ 抽取器自检（这一棵树自己的）：剥注释器没把代码一起剥掉。
+        //   建条当天 `shared/ccm` 生产段 536 行 / 全文 1258 行；地板取 300 与
+        //   `ccm_cli_contract` 那几条同口径。
+        assert!(
+            ccm.lines().count() >= 300,
+            "`shared/ccm` 的生产段只剩 {} 行 —— 剥注释器把代码也剥了？下面那条会零命中地绿",
+            ccm.lines().count()
+        );
+        if guard_core::contains_word(&ccm, &word) {
+            hits.push("shared/ccm".to_string());
+        }
         assert!(
             hits.is_empty(),
             "生产段开始发 `create-or-attach` 了（{hits:?}）—— **这多半是好事**：\n\
              「起会话」那格可能切到 daemon 了 ⇒ `INVARIANTS §33b` 三问的答案① 又变了，\n\
-             回 F07/U8c-3 重裁「删 TS 渲染器」的前置。"
+             回 F07/U8c-3 重裁「删 TS 渲染器」的前置。\n\
+             ⚠ 命中 `shared/ccm` 时同轮还要回 `K-P2`：`KP2A②` 的棘轮要抬、\n\
+             `KP2C` 的退路要登记、`KP2D` 的通道 A/B 冲突必须已经解掉。"
         );
     }
 
