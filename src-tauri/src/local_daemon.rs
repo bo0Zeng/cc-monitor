@@ -1429,81 +1429,24 @@ mod tests {
         );
     }
 
-    /// ★★★ `D2 阻-1`（`己1-f40`）：**在「当初量出它」的那个地址上钉住那两个入参。**
-    ///
-    /// # 经过一（为什么有这条判据）
-    ///
-    /// `D1 阻-6` 的原刀切的是 `history.rs::relay_prefix_for_launch` 里那两行**入参**。
-    /// 先前补的两条判据切的是**被调函数的体** —— PM 把原刀原样重打（锚点各命中 1）
-    /// ⇒ **`1223 passed; 0 failed`，原地全绿**。⇒ 才有了这一条。
-    ///
-    /// # 经过二（`D4 阻-1`：**它为什么住在 `local_daemon.rs`，而被扫的代码在 `history.rs`**）
-    ///
-    /// 🔴 这条判据原先住 `history.rs` 的 `mod tests` 里，**和它扫的生产段同一个文件**。
-    /// `D4` 现打：第一个针在 `history.rs` **全文件命中 3**（生产 1 + 本条头注 1 + 本条的针 1）。
-    /// - 只切生产段那一处 ⇒ `1223 passed; 1 failed`（有牙）；
-    /// - **三处一起切**（= 本仓变异纪律逐字要求的做法：先断言锚点恰好命中 N 次，然后全改）
-    ///   ⇒ **`1224 passed; 0 failed` 照绿**，而生产段已经不再问那张表。
-    ///
-    /// ⇒ **判据把自己算进了被测对象，于是按纪律去切它，它自己把自己解除了武装。**
-    /// 本仓早有成文解法（`remote-daemon-proto/src/relay/table_guard.rs` 头注逐字）：
-    /// 「扫描型判据……**判据与被扫的代码必须不在同一个文件**，否则『摘掉自己』正好把靶子摘了」。
-    /// ⇒ 搬到这里。**别搬回去。**
-    ///
-    /// # 针为什么不是原刀那两个字面量（这一格是这一轮想清楚的，别退回去）
-    ///
-    /// 换个文件只挡住「按文件全量替换」那一种切法。**针本身如果与生产段的文本逐字节相同**，
-    /// 一次**跨文件**的全量替换照样能同时改掉生产段和针 ⇒ 又回到「自己解除自己武装」。
-    /// ⇒ 这里的两根针**刻意取生产文本的真子串**（去掉 `&` / `crate::` / 结尾逗号）：
-    /// 把生产段那两行整行换成常量，子串就不再命中 ⇒ 本条红；
-    /// 而对**原刀那两个整串**做全量替换**碰不到**本文件里的针。
-    ///
-    /// ⚠ **诚实边界**：有人直接对这两个**子串**做全仓替换的话，本条仍会被一起改掉。
-    /// 那一形**没有判据兜**（我量过的就这几形，分母不是「全部」），如实记着 ——
-    /// 出路是「改判据的人要说清自己在改判据」，不是再套一层针。
-    ///
-    /// # 本条量的是什么、买不到什么（别读宽）
-    ///
-    /// 它是**那个地址上的源码形状**：那两行必须还是**去问那两个取值口**，
-    /// 而不是一个常量 / 一个空表。⚠ **它不是行为判据** —— 行为那半在被调函数上
-    /// （`history::tests::the_rows_really_come_from_that_file_not_from_a_constant` ·
-    /// 本文件上一条 `relay_running_really_reads_the_handle_table`）。
-    /// **两半合起来才等于「这条线真的在问那两件事」，单独任何一半都不够** ——
-    /// 这正是 `D1 阻-6` 那两刀能原地全绿的成因。
-    #[test]
-    fn the_two_inputs_at_the_call_site_are_still_the_two_take_points() {
-        // ⚠ 扫的是**隔壁那个文件**，本条自己住这里 —— 见头注「经过二」。
-        let scanned = include_str!("history.rs");
-        let prod = guard_core::production_code(scanned);
-        assert!(prod.len() > 5_000, "剥完只剩 {} 字节 —— 剥法坏了", prod.len());
-        let at = guard_core::find_pinned(&prod, "fn relay_prefix_for_launch(")
-            .unwrap_or_else(|e| panic!("`fn relay_prefix_for_launch(` 不是恰好一处：{e}"));
-        let body = &prod[at..at + 700.min(prod.len() - at)];
-        // ⚠ 两根针是原刀那两行入参的**真子串**（理由见头注那一节）。
-        for (needle, what) in [
-            ("relay_rows()", "这个号在不在中转表里"),
-            ("local_daemon::relay_running()", "中转在不在跑"),
-        ] {
-            assert!(
-                body.contains(needle),
-                "`relay_prefix_for_launch` 的入参里不再问 `{needle}` ——\n\
-                 那一行正是 `D1 阻-6` 原刀切的地址：把它换成常量（空表 / `true`），\n\
-                 「{what}」就不再被问，\n\
-                 而**被调函数自己的行为判据照绿**（`D1` 实测 1221、PM 复打 1223 全绿）。"
-            );
-        }
-        // 反空真①：窗口真的切到了那个函数（不是在一段无关文本上自问自答）。
-        assert!(
-            body.contains("relay_prefix_for(") && body.contains("cfg!(windows)"),
-            "切出来的窗口不像 `relay_prefix_for_launch` 的体：{body}"
-        );
-        // 反空真②：这把尺子**数得到别的东西** —— 同一个窗口里那两个针之外还有真内容。
-        //   （光有①还不够：①那两个串万一也被同一刀带走，整条会静默塌成「窗口不对」。）
-        assert!(
-            body.contains("LocalPsAction::Resume(sid)"),
-            "窗口里连 `LocalPsAction::Resume(sid)` 都没有 —— 取法坏了，本条按红处理"
-        );
-    }
+    // ★★★ `D5 阻-1`：**`the_two_inputs_at_the_call_site_are_still_the_two_take_points`
+    //    这条判据整条删了**，新住址是 `history.rs` 里那两条**行为**判据
+    //    （`the_launch_side_really_asks_those_two_take_points_and_uses_their_answers` ·
+    //     `the_production_relay_facts_are_those_two_take_points`）。
+    //
+    // 删它的理由是一个实测读数，不是风格：它量的是「`relay_prefix_for_launch` 的体切出
+    // 700 字节，那个窗口里**有没有**那两段文本」。`D5` 现打：在同一个窗口里加一行把那两段
+    // 文本原样留住的死赋值，同时把真入参换成空表 / 常量 ⇒ 文本一处不少、判据照绿、
+    // **全量门禁四个数与干净树逐字相同**，而中转注入在生产上被整个摘掉。
+    // ⇒ 铁律 13「删之前先证明它恒绿」：`D5` 那一刀就是那份证明。
+    //
+    // ⚠ **别在这里补一个「更聪明的文本判据」**（比如切实参表按逗号分段再比字面量）——
+    //   `D4` 那一轮的修法（把判据搬出被扫文件）买到的东西正是被下一层的量法漏掉的，
+    //   而两轮的量法都是「量文本」。这一族已经连着五层了，出路是**不量文本**：
+    //   两个事实走 `history.rs::RelayFactSources` 那条缝，判据喂替身、断言前缀随答案变。
+    //
+    // ⚠ 本文件上一条 `relay_running_really_reads_the_handle_table` **留着**，
+    //   它买的是另一半（那个取值口自己真的读 `LOCAL_RELAY`），两者不重叠。
 
     /// ★★★ `K-H2b` `KH2B2`①：**中转有一个具名的启动方**，而且它在**起本机后端的那条路上**。
     ///
