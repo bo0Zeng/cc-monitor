@@ -1408,6 +1408,88 @@ mod tests {
         );
     }
 
+    /// ★★★ **这条链上今天最后一跳**：`launch_local_posix` 那一行包装〔第八轮自查，08-29〕。
+    ///
+    /// # 它是我这一轮自己找出来的第十一层（先量了，再堵）
+    ///
+    /// 上面那两条判据（两支各一条）驱动的是 [`launch_local_posix_via`]，
+    /// 而生产的入口是它外面那一行包装 [`launch_local_posix`]：
+    /// ```text
+    /// launch_local_posix_via(cmd, cwd, pick_terminal_exit())
+    /// ```
+    /// 🔴 **在那一行之前把前缀剥掉**（`let cmd = …strip…;`），实打
+    /// **`1232 passed; 0 failed` 全绿** —— 两条新判据都直调 `_via`，看不见它；
+    /// 而 `history` 那条缝量的是**交给送法之前**那一串，也看不见它。
+    /// 锚点 `launch_local_posix_via(cmd, cwd, pick_terminal_exit())` 全仓 **1**，切前切后都是 1。
+    /// **生产后果**：**两条支路上中转注入一起没了**（比 `L10` 还宽一格）。
+    ///
+    /// # 为什么它只能由一条**文本**判据看着（如实登记，不假装钉住了）
+    ///
+    /// 要行为地驱动它就得调 [`launch_local_posix`] 本身，而它里面那个
+    /// [`pick_terminal_exit`] 会在**装了规范化终端出口的机器上真的弹出一个窗口**
+    ///（本机 `/usr/bin/xdg-terminal-exec` 现打存在）—— 红线逐字禁这一形。
+    /// ⇒ 本条钉的是**形状**：那个函数体里**只许有那一行**。
+    ///
+    /// **绕过形态**（写清楚，别读宽）：
+    /// - 把剥前缀塞进 [`pick_terminal_exit`] 是**没用的**（它不碰 `cmd`）；
+    /// - 但把剥前缀塞进 [`build_local_posix_argv`] / `build_local_posix_spawn` 的**上游调用方**
+    ///   （比如 `history::launch_local` 与本函数之间新长出来的一跳）**本条看不见** ——
+    ///   那一跳今天不存在，一旦长出来，`PRODUCTION_LAUNCH_SINK` 的地址对拍会先红。
+    /// - **本条自己的绕过形态**：把那一行改写成一个语义相同、字面不同的表达式
+    ///   （例如换行、加类型标注）⇒ 本条**假红**，不是假绿 —— 方向是 fail-closed。
+    ///
+    /// **重新裁定的落点**：本栏。要把这一跳也变成行为，得把「挑终端出口」也做成入参
+    ///（再套一层 `_using` 形），而那只会把同一个问题往外挪一层 —— 值不值得由 PM 裁。
+    #[cfg(not(windows))]
+    #[test]
+    fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
+        let prod = guard_core::production_code(include_str!("launch.rs"));
+        // 锚点必须**唯一**：Windows 那一份的形参带下划线前缀（`_cmd` / `_cwd`）⇒ 签名不同。
+        let head = "pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {";
+        let at = guard_core::find_pinned(&prod, head)
+            .unwrap_or_else(|e| panic!("`launch_local_posix` 的签名不是恰好一处 —— 先修锚点：{e}"));
+        // 花括号配平切体（本文件唯一一处切块，刻意不另造第二种切法）。
+        let bytes = prod.as_bytes();
+        let open = at + head.len() - 1;
+        let mut depth = 0i32;
+        let mut end = bytes.len();
+        for i in open..bytes.len() {
+            if bytes[i] == b'{' {
+                depth += 1;
+            } else if bytes[i] == b'}' {
+                depth -= 1;
+                if depth == 0 {
+                    end = i;
+                    break;
+                }
+            }
+        }
+        let body = &prod[open + 1..end];
+        // 反空真：切到了东西（切错了就红，别在一个空串上绿着）。
+        assert!(
+            (10..400).contains(&body.len()),
+            "切出来的体只有 {} 字节 —— 配平切错了，本条会零命中地绿",
+            body.len()
+        );
+        let stmts: Vec<&str> = body
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty())
+            .collect();
+        assert_eq!(
+            stmts,
+            vec!["launch_local_posix_via(cmd, cwd, pick_terminal_exit())"],
+            "\n★★ **这条链上最后那一行包装长胖了。**\n\
+             实打过的第十一层就长在这里：在这一行**之前**把 `export ANTHROPIC_BASE_URL=…; ` 剥掉，\n\
+             ⇒ `cargo test -p monitor --lib` **1232 全绿** —— 上面那两条判据都直调 `_via`，看不见它；\n\
+             `history::LaunchSink` 那条缝量的是**交给送法之前**那一串，也看不见它。\n\
+             **生产后果比刀 `L10` 还宽一格：两条支路上中转注入一起没了。**\n\
+             ⇒ 这个函数体只许有那一行。要在这里加事情，先把「挑终端出口」也做成入参，\n\
+             让判据驱动得到它（见本条头注「重新裁定的落点」）。\n\
+             实得：{stmts:?}"
+        );
+    }
+
     #[test]
     fn build_basic_agent_auth() {
         let c = cfg("pi.local", "pi", 22, None);
