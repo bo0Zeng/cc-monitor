@@ -4094,6 +4094,14 @@ mod tests {
     /// 上一条把替身换进去量行为 ⇒ 它量不到「生产那一份指的是谁」。
     /// 这一条按**函数地址**对拍（不是按文本）：把 [`PRODUCTION_RELAY_FACTS`] 里任何一格
     /// 换成一个返回常量的闭包 / 别的函数，本条当场红。
+    ///
+    /// # 🔴🔴 第二半是**我自己找第六层时找出来的**，别删
+    ///
+    /// 只对拍那个 `const` **不够**：`relay_facts()` 才是生产真正取值的那一跳。
+    /// 有人把 `relay_facts()` 改成「不装替身时也回一份写死的」而**一个字节不动那个 `const`**
+    /// ⇒ 地址对拍照绿（它读的是 `const`）、行为判据也照绿（它们装了替身、走的是另一支）
+    /// ⇒ **又是一次「文本/形状留住、行为摘掉」，全绿。**
+    /// ⇒ 所以下面**先在没装替身的状态下调一次 `relay_facts()`**，按地址断言它交出来的就是那两个真取值口。
     #[test]
     fn the_production_relay_facts_are_those_two_take_points() {
         // 反空真排最前：这把尺子**分得出**「不是那个函数」，否则下面两条是恒真。
@@ -4103,6 +4111,21 @@ mod tests {
         assert!(
             !std::ptr::fn_addr_eq(PRODUCTION_RELAY_FACTS.running, not_it as fn() -> bool),
             "这把尺子对任何同型函数都说「是」—— 它恒真，本条按红处理"
+        );
+        // ★★ 第二半：**没装替身**的那一跳（= 生产那一跳）交出来的必须就是那两个真取值口。
+        //    ⚠ 本条**刻意不装替身**；替身住 thread-local ⇒ 别的判据装的那份影响不到这里。
+        let live = relay_facts();
+        assert!(
+            std::ptr::fn_addr_eq(live.rows, relay_rows as fn() -> Vec<String>),
+            "没装替身时 `relay_facts()` 交出来的「表从哪来」不是 `relay_rows` ——\n\
+             生产那一跳被换掉了，而只对拍那个 `const` 的判据看不见（第六层的形状）"
+        );
+        assert!(
+            std::ptr::fn_addr_eq(
+                live.running,
+                crate::local_daemon::relay_running as fn() -> bool
+            ),
+            "没装替身时 `relay_facts()` 交出来的「中转在不在跑」不是 `local_daemon::relay_running`"
         );
         assert!(
             std::ptr::fn_addr_eq(
