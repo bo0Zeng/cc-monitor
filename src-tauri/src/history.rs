@@ -1380,17 +1380,36 @@ fn launch_local(
         //
         // 那个坑是真的，但**处置选窄了**：`shared/ccm` 里本来就有一段**同形的转发**
         //（R08 那条：把继承来的 `CLAUDE_CONFIG_DIR` 写进载荷**内侧**）。
-        // 第二拍照它加了一条 `ANTHROPIC_BASE_URL` 的转发 ⇒ **变量穿得过 tmux 边界了**，
-        // 于是「走中转」与「有 tmux 容器」不再互斥。
+        // 第二拍照它加了一条 `ANTHROPIC_BASE_URL` 的转发 ⇒ **tmux 边界那一格不再是拦路的那格**。
         //
         // ⚠ **那不违反 `§0e` 裁三**：裁三禁的是「把 ccm 当**收口点**」——
         // 三条生产路结构上绕开它，靠它**注入**会长出一个恒绿的假闸。
         // 而注入仍然发生在 `payload.rs`，ccm 只是**别把已经注入好的变量吃掉**。
         // **「不当收口点」≠「不许碰它」。**
         //
-        // ⚠ **这一格没买到的**：转发那一段由源码形状 + 片段行为两条判据钉着
-        //（`the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary`），
-        // 但「变量真的穿过了一次**真** tmux 边界」**要真机 tmux**，本轮没量 ⇒ 归 e2e。
+        // 🔴🔴 **订正（`D4 阻-3`）：这里先前逐字写着「于是『走中转』与『有 tmux 容器』
+        // 不再互斥」—— 那是假话，今天仍然互斥，只是成因换了。**
+        //
+        // 成因不再是「变量在 tmux 边界被吃掉」，而是**具名账号根本进不了 ccm**：
+        // 能推出中转 id 的只有 `LaunchAccount::Named`（`relay_account_id`：`Base` 与缺席
+        // 一律 `None`），而 `render_local_ccm` 对 `Named` **必然** §35 短路
+        //（`Named` 只有 configDir、没有名字，CLI 只会 `--account <名字>`）
+        // ⇒ **带中转前缀的本机拉起，必然落到下面那条 `build_local_posix_command`，
+        // 而那条路没有 tmux 容器；走 ccm 容器路的，`relay` 必然是空串。**
+        //
+        // ⇒ 这个事实由 `tests::a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`
+        // **逐格钉住**（三种形状各喂一次）。消掉它要给 `LaunchAccount::Named` 补名字
+        //（改 `LaunchAccount` 与它的前端调用点，都不在本件写区）——**那一天要同一拍改四处**，
+        // 清单写在那条判据的头注里，别只改一处。
+        //
+        // ⚠ **`shared/ccm` 那条转发因此今天在本条路上生产不可达**：那段 shell 真的会转发
+        //（`the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` 量的是它），
+        // 但**没有任何生产输入能同时走到中转与容器** ⇒ 它是**为将来那条路预备的**。
+        // 那条判据的头注里也写了这句话，两处别只改一处。
+        //
+        // ⚠ **这一格没买到的**：「变量真的穿过了一次**真** tmux 边界」要真机 tmux，
+        // 本轮没量 ⇒ 归 e2e；而按上面那条，**今天在本机中转这条路上根本走不到**
+        // —— 不只是「没量」，是「今天量不到」。
         //
         // ⚠ 写法上刻意让 `render_local_ccm(` 与 `build_local_posix_command(` 在本函数体里
         // **各恰好一处** —— `the_local_launch_tries_the_renderer_before_the_old_path`
@@ -2333,6 +2352,104 @@ mod tests {
         assert!(
             reason.contains("account"),
             "具名账号的降级理由该指向 account 维度（§35 短路），实得：{reason}"
+        );
+    }
+
+    /// ★★★ `D4 阻-3`：**「走中转」与「有 tmux 容器」今天仍然互斥** —— 把这个事实钉住。
+    ///
+    /// # 它为什么存在：盘上写着「已消掉」，而其实没消掉
+    ///
+    /// 第一拍报过一条代价「走中转的号拿不到 tmux 容器」（当时的成因：外侧那句 export
+    /// 在 tmux 边界被吃掉）。第二拍照 `R08` 在 `shared/ccm` 里加了一条转发，于是件文件
+    /// 与 [`launch_local`] 的头注都写上了**「不再互斥」**。
+    /// 🔴 `D4` 现打证伪：**代价原样还在，只是成因换了。**
+    ///
+    /// # 今天的成因（本条逐格量出来，不是推的）
+    ///
+    /// 分母 = [`LaunchAccount`] 的**全部形状**加上「参数缺席」，共三格：
+    ///
+    /// | 形状 | [`relay_account_id`] | [`render_local_ccm_with`] |
+    /// |---|---|---|
+    /// | 缺席（`None`） | `None`（不走中转） | `Err`（CLI 说不出「继承」） |
+    /// | `Base`（账号 0） | `None`（不走中转） | `Ok`（**唯一渲得出容器的那一格**） |
+    /// | `Named{config_dir}` | `Some(id)`（**唯一走得了中转的那一格**） | `Err`（§35 短路：有 configDir 没名字） |
+    ///
+    /// ⇒ **能推出中转 id 的那一格，正是 ccm 渲染器拒掉的那一格。**
+    /// 凡是带中转前缀的本机拉起，必然落 [`build_local_posix_command`]（那条路没有 tmux 容器）；
+    /// 凡是走 ccm 容器路的，中转前缀必然是空串。**两条路今天不相交。**
+    ///
+    /// # ⚠ 它连带说明了一件别处的事（别让那条判据被读宽）
+    ///
+    /// `shared/ccm` 那条 `ANTHROPIC_BASE_URL` 转发（连同钉它的
+    /// `payload::tests::the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary`
+    /// 与件文件里的 `M12`/`M12b`）量的是一条**在本机中转这条路上今天生产不可达**的路：
+    /// 那段 shell 真的会转发，而**没有任何生产输入能同时走到中转与容器**。
+    /// 它不是假的，它买不到本件要的那一格。**那条判据的头注里也写了这句话，两处别只改一处。**
+    ///
+    /// # 🔴 这条前提**本来就该变** —— 变的那天去哪里重新裁定（`testing.md` 三.11 要的那一栏）
+    ///
+    /// 消掉互斥要给 [`LaunchAccount::Named`] 补上**名字**（要改 `LaunchAccount` 与它的前端
+    /// 调用点，都不在 `K-H2b` 的写区）。真做那一天，**同一拍**要做完这四样，缺一样就是又一次
+    /// 「盘上写着已解而其实没解」：
+    ///   ① 本条会红 —— **在这里重新裁定**（改成「不再互斥」并说清新的人群）；
+    ///   ② [`launch_local`] 的头注里那段「互不互斥」跟着改；
+    ///   ③ 件计划 `K-H2b §4` 那条登记跟着改；
+    ///   ④ **`shared/ccm` 的 `capabilities=` 串要加上那个 token** —— 现打 17 个 token 里
+    ///      含 `relay`/`base-url`/`anthropic` 的 **0** 个，而 `ccm_probe` 探的是 PATH 上那个 ccm
+    ///      ⇒ 不加的话，装了旧 ccm 的机器会**静默吃掉**这个变量。
+    #[test]
+    #[cfg(not(windows))]
+    fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
+        let act = LocalPsAction::Resume("s1".into());
+        let named = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/acct-a".into(),
+        };
+        let base = LaunchAccount::Base;
+        // 分母就是这三格 —— `LaunchAccount` 今天只有两个变体，加上「参数缺席」。
+        let shapes: [(&str, Option<&LaunchAccount>); 3] = [
+            ("缺席", None),
+            ("Base", Some(&base)),
+            ("Named", Some(&named)),
+        ];
+
+        let mut relayed = Vec::new();
+        let mut containered = Vec::new();
+        for (label, acct) in shapes {
+            let relay_id = relay_account_id(acct);
+            let renders = render_local_ccm_with(
+                &act,
+                None,
+                acct,
+                Some("s1abcdef-cc"),
+                &caps_of_a_current_ccm(),
+                true,
+            )
+            .is_ok();
+            if relay_id.is_some() {
+                relayed.push(label);
+            }
+            if renders {
+                containered.push(label);
+            }
+        }
+        // 反空真：两边**都非空**（都空的话下面那条不相交是空真）。
+        assert_eq!(
+            relayed,
+            ["Named"],
+            "能推出中转 id 的形状变了 —— 本条的结论要重新裁定（见头注最后一节）"
+        );
+        assert_eq!(
+            containered,
+            ["Base"],
+            "能渲染出 ccm 容器的形状变了 —— 本条的结论要重新裁定（见头注最后一节）"
+        );
+        // 正题：两个集合不相交 ⇒ 今天没有任何一次本机拉起同时拿到中转前缀与 tmux 容器。
+        assert!(
+            relayed.iter().all(|l| !containered.contains(l)),
+            "「走中转」与「有 tmux 容器」不再互斥了 —— 那是**好事**，但盘上有四处话要跟着改：\n\
+             ① 本条（重新裁定）② `launch_local` 头注 ③ 件计划 `K-H2b §4` 那条登记\n\
+             ④ `shared/ccm` 的 `capabilities=` 串要加 token（否则装了旧 ccm 的机器静默吃掉那个变量）。\n\
+             实得：走中转的 {relayed:?} · 有容器的 {containered:?}"
         );
     }
 
