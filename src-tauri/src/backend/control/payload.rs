@@ -1375,6 +1375,24 @@ mod tests {
     ///
     /// **「变量真的穿过了一次真 tmux 边界」没量** —— 那要真 tmux（红线：本轮不起真 daemon、
     /// 也不在门禁里起 tmux），归真机 e2e。本条买的是「那段转发在、条件对、拼出来的串对」。
+    ///
+    /// # 🔴🔴 **诚实边界（`D4 阻-3`）：本条量的是一条今天生产上到不了的路。**
+    ///
+    /// 本条**不是假的**（那段 shell 真的会按条件转发，`M12b` 把条件写反就红），
+    /// 但**本机中转这条路上没有任何生产输入能走到它**：
+    /// 能推出中转 id 的只有 `LaunchAccount::Named`，而 ccm 渲染器对 `Named` **必然** §35 短路
+    /// （只有 configDir、没有名字）⇒ **带中转前缀的拉起必然落回没有 tmux 容器的旧路，
+    /// 走 ccm 容器路的中转前缀必然是空串。两条路今天不相交。**
+    /// 那个事实由 `history::tests::a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`
+    /// 逐格钉住（三种账号形状各喂一次）。
+    ///
+    /// ⇒ **本条是「为将来那条路预备的」**：等 `LaunchAccount::Named` 补上名字、
+    /// 具名账号能走进 ccm 的那天，它才开始有生产人群。**别把它的绿读成
+    /// 「走中转的会话拿到了 tmux 容器」** —— 那正是 `K-H2b` 这一件在治的那条病
+    /// （「代码里有这个形状」≠「这条线接上了」）。
+    /// ⚠ 那一天还要**同一拍**给 `shared/ccm` 的 `capabilities=` 串加上对应 token
+    /// （现打 17 个 token 里含 `relay`/`base-url`/`anthropic` 的 **0** 个，而 `ccm_probe`
+    /// 探的是 PATH 上那个 ccm ⇒ 不加的话装了旧 ccm 的机器会**静默吃掉**这个变量）。
     #[cfg(unix)]
     #[test]
     fn the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary() {
