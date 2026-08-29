@@ -34,13 +34,52 @@
  * 有 `#[cfg(windows)]` / `#[cfg(not(windows))]` 一对（`lib.rs:1376` 与 `lib.rs:1475`）。
  * 用 `Set` 去重是对的；拿 `grep -c` 复核的人会以为差了一个。
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { resolve, join } from "node:path";
+
+// ── `K-H2b` `D4 阻-2`：文件末尾那一组是**行为**判据，要驱动真的 `views/history.ts`。
+//    mock 骨架照 `views/history-actions.vitest.ts`（路径多一层 `../`）。
+//    ⚠ 这几条 mock 是**文件级**的，但本文件其余判据全是「读源码文本 + 数命令名」，
+//      一条都不经过被 mock 的那几个模块 ⇒ 它们的读数一格不动（入场/交回各打过一次全量）。
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: vi.fn(),
+  Channel: class {
+    onmessage: ((v: unknown) => void) | null = null;
+  },
+}));
+vi.mock("../views/session-viewer", () => ({
+  SessionViewer: class {
+    element = document.createElement("div");
+    constructor(_c: () => void) {}
+    load(): void {}
+    dispose(): void {}
+  },
+}));
+vi.mock("../keybindings/registry", () => ({
+  dispatcher: { pushOverlay: vi.fn(), popOverlay: vi.fn() },
+}));
+vi.mock("../error-toast", () => ({ showActionFailureToast: vi.fn() }));
+vi.mock("../remote-launch-run", () => ({
+  runRemoteResume: vi.fn().mockResolvedValue(undefined),
+  runNewSessionRemote: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock("../behavior", () => ({
+  getBehavior: () => ({ resumeCommandLocal: "", resumeCommandRemote: "" }),
+}));
+vi.mock("../format", () => ({ formatTimestampSmart: () => "时间" }));
 
 import { REPO_ROOT } from "../test-support/repo-root";
 import { stripComments } from "../test-support/strip-comments";
 import { commands } from "./commands";
+import { invoke } from "@tauri-apps/api/core";
+import { HistoryView } from "../views/history";
+import {
+  primeLocalLaunchAccounts,
+  __resetLocalLaunchSnapshotForTests,
+  __resetAccountsCacheForTest,
+  type Account,
+} from "../accounts";
 
 /** Rust 有、但 TS 侧**静态**看不见的命令（全部经动态命令名调用）。见头注「不能写的断言 2」。 */
 /**
@@ -261,6 +300,14 @@ describe("C04a 命令名钉死", () => {
 // ② 中转那一格**永远拼不出路由键** —— 一件叫「接上注入点」的东西，主路没接。
 //
 // ⚠ 本条钉的是**人群**，不是「有没有一处传了」：多一条新主路而忘了传账号，当场红。
+//
+// 🔴🔴 **`D4 阻-2` 的订正：本组量的是「那几行字在不在」，不是「那件事发生没发生」。**
+// `D4` 两刀实测（读数逐字在本文件末那一组的头注里）：把值换成 `undefined`、把写入口的
+// 函数体掏空而**调用文本一字不动** —— 本组**两刀都照绿**（`1502 passed`）。
+// ⇒ **本组的射程只到「人群 + 那一行字还在」**，行为那一半由本文件**末尾那一组**买
+// （`K-H2b D4 阻-2：主路的账号与 pin 是**行为**判据`）。两组合起来才是那条性质，
+// **单独任何一组都不够** —— 别再拿本组的绿当「账号真的传到了后端」。
+//
 // ⚠ 它住**本文件**而不是 `accounts.vitest.ts`：那边加一个目录遍历会撞
 // `scanning-guard-registry` 的递减棘轮（「测试里做目录遍历的文件只许变少」，
 // 本轮实测 11 > 上限 10）。本文件本来就在遍历，人群不多一个。
@@ -340,5 +387,178 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     const fork = readFileSync(resolve(REPO_ROOT, "src/fork-flow.ts"), "utf8");
     expect(fork).not.toContain("localLaunchAccountSync");
     expect(fork).toContain('{ kind: "base" }');
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-H2b` `D4 阻-2`：**账号真的进了载荷、pin 真的被写进去**（行为，不是文本）
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// ★★ 它治的是什么（`D4` 两刀实测，逐字）：
+// 上面那一组判据钉的是「那几行字在不在」——`(code.match(/recordLocalLaunchAccount\(/g)).length > 0`
+// 与 `/\baccount\s*:/`。`D4` 用两刀证明那**买不到这件事发生没发生**：
+//   · 刀 `D2k6`：`views/history.ts` 起新会话那一行的 `account` 入参换成硬写的 `undefined`
+//     ⇒ **`1502 passed` 全绿**（那一行字还在，值没了）；
+//     ⚠ 这里**刻意不逐字复述那个锚点** —— 复述一次，下一个照「全仓 N 处一起切」的人
+//     就会把本段一起切掉（`阻-1` 那条病的形状，别在治它的这一拍里再长一次）。
+//   · 刀 `A2`：`accounts.ts::recordLocalLaunchAccount` 的函数体掏空成永不生效、
+//     **调用文本一个字不动** ⇒ **`1502 passed` 全绿**（本机 pin 从此恒不写）。
+//
+// ⇒ 本组一律走**真的 `HistoryView`**：造一行、开右键菜单、点那两条，然后
+//    **取出那次 `invoke` 的第 2 个实参、直接读 `.account`**。
+// ⚠ **不许用 `toHaveBeenCalledWith` 的整对象比** —— `toEqual` 语义下
+//    `account: undefined` 与「没有这个键」**相等**，那两条断言对本格恒真（`D4 §D` 现打）。
+//
+// ⚠ **本组买不到什么**：它止于「monitor 发出去的那一发 `invoke` 载荷里有这个值」。
+//    「后端真的拿它拼出了前缀」由 `history.rs` / `payload.rs` 那几条买，
+//    「那一发真的走到中转」由 `KH2B1` 的端到端买。三段各买各的，别读成一段。
+describe("K-H2b D4 阻-2：主路的账号与 pin 是**行为**判据（驱动真的 HistoryView）", () => {
+  const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
+
+  const DIR_A = "/h/.claude-accts/acct-a";
+  const DIR_B = "/h/.claude-accts/acct-b";
+
+  function acct(name: string, configDir: string): Account {
+    return {
+      name,
+      email: `${name}@x.edu`,
+      configDir,
+      isDefault: false,
+      mode: "isolated",
+      exists: true,
+      loggedIn: true,
+    } as Account;
+  }
+
+  /**
+   * 让 `invoke` 按一份**账号世界**回话。
+   *
+   * `accounts` 为空 ⇒ 取值口说不出账号（阴性对照那一档）。
+   * ⚠ 阴性对照**不靠时序**：主路那一脚 `primeLocalLaunchAccounts()` 是不等待的，
+   *   万一它抢在读值之前跑完，喂给它的也是这份空世界 ⇒ 两种排序下答案相同。
+   */
+  function serveAccounts(accounts: Account[], defaultName: string | null, pins: Record<string, string>): void {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_local_accounts") {
+        return Promise.resolve({
+          available: true,
+          error: null,
+          notice: null,
+          meta: {
+            enabled: true,
+            acctsDir: "/h/.claude-accts",
+            manifestPath: "/h/.claude-accts/accounts.json",
+            updatedAt: null,
+            sharedStore: null,
+            count: accounts.length,
+            error: null,
+          },
+          accounts,
+        });
+      }
+      if (cmd === "load_config") return Promise.resolve({ accounts: { defaultName } });
+      if (cmd === "list_last_accounts") return Promise.resolve(pins);
+      return Promise.resolve(undefined);
+    });
+  }
+
+  /** 把快照**用生产段那条路**填热（`primeLocalLaunchAccounts` 是不等待的 ⇒ 这里冲一轮宏任务）。 */
+  async function warm(): Promise<void> {
+    primeLocalLaunchAccounts();
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  function proj(): Record<string, unknown> {
+    return { projectPath: "/p", projectName: "P", projectDir: "pd", sessionCount: 2, starredCount: 0, hiddenCount: 0, lastActivity: 1, hasLive: false };
+  }
+  function entry(): Record<string, unknown> {
+    return { sessionId: "s1", projectPath: "/p", projectName: "P", aiTitle: "T", firstUserExcerpt: "x", startedAt: 1, updatedAt: 1, jsonlPath: "/p/s1.jsonl", isLive: false, messageCountApprox: 1, starred: false, hidden: false };
+  }
+
+  /** 造一行、开右键菜单、点 `label` 那一条，然后把异步链排空。 */
+  async function clickRowAction(label: string): Promise<void> {
+    const view = new HistoryView();
+    const row = (view as unknown as { buildEntryRow(e: unknown, p: unknown): HTMLElement }).buildEntryRow(entry(), proj());
+    document.body.appendChild(row);
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    const items = [...document.querySelectorAll<HTMLButtonElement>(".history-context-item")];
+    const btn = items.find((b) => b.textContent === label);
+    // 抽取器自检：菜单没出来 / 文案改了 ⇒ 下面整条在空转，必须红。
+    expect(btn, `右键菜单里没有「${label}」—— 实得 ${JSON.stringify(items.map((b) => b.textContent))}`).toBeTruthy();
+    btn!.click();
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  /** 那一发 `invoke` 的第 2 个实参（**取出来直接读字段**，不做整对象比 —— 见本组头注）。 */
+  function payloadOf(cmd: string): Record<string, unknown> {
+    const call = invokeMock.mock.calls.find((c) => c[0] === cmd);
+    expect(call, `一次 \`${cmd}\` 都没发出去 —— 主路根本没走到，下面的断言在空转`).toBeTruthy();
+    return call![1] as Record<string, unknown>;
+  }
+
+  /** 记 pin 的那一发（`recordLastAccount` → `update_history_metadata` 带 `lastAccount`）。 */
+  function pinWrites(): Array<Record<string, unknown>> {
+    return invokeMock.mock.calls
+      .filter((c) => c[0] === "update_history_metadata")
+      .map((c) => c[1] as Record<string, unknown>)
+      .filter((a) => (a.patch as Record<string, unknown> | undefined)?.lastAccount !== undefined);
+  }
+
+  beforeEach(() => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue(undefined);
+    __resetAccountsCacheForTest();
+    __resetLocalLaunchSnapshotForTests();
+    document.body.replaceChildren();
+    document.querySelectorAll(".history-context-menu").forEach((n) => n.remove());
+  });
+
+  it("★★ resume 主路：载荷里的 `account` 是**那条会话的 pin**（不是常量、不是当前号）", async () => {
+    // pin 指 acct-a，而**当前账号是 acct-b** ⇒ 两个值不同 ⇒ 「随便回一个」也过不了。
+    serveAccounts([acct("acct-a", DIR_A), acct("acct-b", DIR_B)], "acct-b", { s1: "acct-a" });
+    await warm();
+    await clickRowAction("在新终端 resume");
+    expect(
+      payloadOf("resume_history_session").account,
+      "resume 的载荷里没有那条会话上次用的账号 ——\n" +
+        "① 起会话落到 shell rc 那个默认号上（静默串号）；② 中转那一格拼不出路由键。\n" +
+        "⚠ 这一条是**行为**：`account:` 那行字还在、值是 `undefined` 时它必须红。",
+    ).toEqual({ kind: "named", configDir: DIR_A });
+  });
+
+  it("★★ 新开主路：载荷里的 `account` 是**当前账号**（与上一条取到不同的值 ⇒ 不是常量）", async () => {
+    serveAccounts([acct("acct-a", DIR_A), acct("acct-b", DIR_B)], "acct-b", { s1: "acct-a" });
+    await warm();
+    await clickRowAction("在该目录起新会话");
+    expect(
+      payloadOf("new_local_session").account,
+      "起新会话的载荷里没有当前账号 —— `D4` 刀 `D2k6` 正是把这一行的值换成 `undefined`，\n" +
+        "而当时全仓 `1502 passed` 全绿。",
+    ).toEqual({ kind: "named", configDir: DIR_B });
+  });
+
+  it("★★ resume 之后 pin **真的被写进去**（`update_history_metadata` 带那个 sid 与那个名字）", async () => {
+    serveAccounts([acct("acct-a", DIR_A), acct("acct-b", DIR_B)], "acct-b", { s1: "acct-a" });
+    await warm();
+    await clickRowAction("在新终端 resume");
+    expect(
+      pinWrites(),
+      "本机 resume 之后一条 pin 都没写 —— `D4` 刀 `A2` 正是把 `recordLocalLaunchAccount`\n" +
+        "的函数体掏空、**调用文本一字不动**，而当时全仓 `1502 passed` 全绿。\n" +
+        "本机 pin 恒空 ⇒ 取值口那条「pin 优先」在本机永远走不到。",
+    ).toEqual([{ sessionId: "s1", patch: { lastAccount: "acct-a" } }]);
+  });
+
+  it("★ 阴性对照：说不出账号 ⇒ 载荷里是 `undefined`，且**一条 pin 都不写**", async () => {
+    // 空账号世界：快照冷（`beforeEach` 已 reset），而主路那一脚 prime 拿到的也是空的。
+    serveAccounts([], null, {});
+    await clickRowAction("在新终端 resume");
+    expect(
+      payloadOf("resume_history_session").account,
+      "说不出账号时它不该猜一个 —— 「不表态」= 逐字节旧行为",
+    ).toBeUndefined();
+    expect(pinWrites(), "说不出账号却往 pin 里写了一条 —— 那是把「不知道」写成了一条 pin").toEqual([]);
+    // 反空真：这一趟主路**真的走到了**（否则上面两条是「什么都没发生」的空真）。
+    expect(invokeMock.mock.calls.some((c) => c[0] === "resume_history_session")).toBe(true);
   });
 });
