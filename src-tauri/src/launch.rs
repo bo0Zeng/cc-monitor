@@ -111,6 +111,53 @@ pub fn build_local_posix_argv(cmd: &str) -> Result<Vec<String>, String> {
     Ok(vec!["bash".into(), "-lic".into(), cmd.into()])
 }
 
+/// 上一条的**下一跳**：`(argv, 终端出口)` → 真正要 spawn 的 `(program, args)`。
+///
+/// # 为什么它非抽出来不可〔`K-H2b` `D6` 第九拍，08-29〕
+///
+/// `K-H2b` 那条「中转前缀真的拼上去了」的判据量的是
+/// **`history::launch_local` 交给送法的那一串**。送法拿到之后再动手，那条判据看不见 ——
+/// 收工前按铁律 15 找「第八层」时实打过两刀，两刀都在这一跳附近：
+/// - 在 [`build_local_posix_argv`] 里剥掉 `export ANTHROPIC_BASE_URL=…; ` ⇒ **当时全绿**
+///   （隔壁那条透传判据只喂一个不带前缀的 payload ⇒ 输入域 = 1，与 `D6 阻-2` 同族）；
+/// - 在 `launch_local_posix_via` 里、`build_local_posix_argv` **之后**剥 ⇒ **也全绿**
+///   （那一段当时就地拼 `Command`，没有任何纯函数可打）。
+///
+/// ⇒ 两刀的修法是同一条：**把这一跳也变成纯函数**，让「载荷逐字节走过去」有东西钉。
+///
+/// # ⚠ 它买不到什么（**这条边界是量出来的，不是推出来的**）
+///
+/// 本函数返回之后只剩 3 行（`Command::new(program)` · `.args(&args)` ·
+/// 以及 `cwd` / `env` / `stdio` / `process_group` 那几个设置）——
+/// **在那 3 行里再剥一次前缀，实打 `1229 passed` 全绿**（刀 `Z1c`，08-29）。
+/// 要买它得真开一个窗口再去看那个进程的 argv，而
+/// 「**开窗那条路因此没有行为级判据**」是 `launch_local_posix_via` 头注里 `P5L` 已登记的边界。
+/// ⇒ **登记，不假装钉住了。** 今天做到的是把那条缝**收到 3 行**（先前是整整两段）。
+/// **「跑什么」的全部** —— 载荷校验 + argv + 终端包装，一跳到底。
+///
+/// ★ `launch_local_posix_via` 因此只剩「**怎么起**」（`cwd` / `env` / `stdio` / `process_group`）。
+/// 这条边界是**实打逼出来的**：先前那两段（[`build_local_posix_argv`] 与就地拼 `Command`）
+/// 中间隔着一跳没有判据，在那里剥掉中转前缀 ⇒ 全绿。
+#[cfg(not(windows))]
+fn local_posix_spawn_plan(cmd: &str, term: Option<&str>) -> Result<(String, Vec<String>), String> {
+    let argv = build_local_posix_argv(cmd)?;
+    Ok(build_local_posix_spawn(term, &argv))
+}
+
+#[cfg(not(windows))]
+fn build_local_posix_spawn(term: Option<&str>, argv: &[String]) -> (String, Vec<String>) {
+    match term {
+        // `xdg-terminal-exec` / `x-terminal-emulator` 都收 `-- <argv…>` 之后的命令行。
+        Some(t) => (
+            t.to_string(),
+            std::iter::once("--".to_string())
+                .chain(argv.iter().cloned())
+                .collect(),
+        ),
+        None => (argv[0].clone(), argv[1..].to_vec()),
+    }
+}
+
 /// P5L-Y3：**规范化**终端出口，有序候选。
 ///
 /// # 为什么是这两个，为什么**不探测具体终端**
@@ -217,32 +264,28 @@ fn launch_local_posix_via(cmd: &str, cwd: Option<&str>, term: Option<&str>) -> R
     use std::os::unix::process::CommandExt;
     use std::process::{Command, Stdio};
 
-    let argv = build_local_posix_argv(cmd)?;
+    // ★★ `K-H2b` `D6` 第九拍：**「跑什么」整段收成一个纯函数**，本函数只剩「怎么起」。
+    //    先前这里是 `build_local_posix_argv` + 就地拼 `Command` 两段，中间那一跳
+    //    **没有任何判据** —— 实打：在这两段之间插一个剥掉 `export ANTHROPIC_BASE_URL=…; `
+    //    的映射，`1229 passed` 全绿（第八层的下游版本）。
+    let (program, args) = local_posix_spawn_plan(cmd, term)?;
     // ★★ P5L-Y1（`U14`〔用 08-12〕「要做，功能必须一样」）：**真开一个终端窗口**。
     //
     // 改之前这里是 `Stdio::null()` 直接 spawn ⇒ 产出一个**无 tty、无窗口**的进程
     //（`P3t` 摸底记下的那条：用户敲进去的字会被脚本吃掉）。
     //
     // ⚠ **载荷一个字不改**：`argv` 原样进终端的参数位。本件只加「怎么开窗」，不碰「开什么」。
-    let (mut builder, opened_window) = match term {
-        Some(term) => {
-            let mut b = Command::new(term);
-            // `xdg-terminal-exec` / `x-terminal-emulator` 都收 `-- <argv…>` 之后的命令行。
-            b.arg("--").args(&argv);
-            (b, true)
-        }
-        None => {
-            // 诚实降级：一个规范化出口都没有 ⇒ 回落到改之前那条无窗口的路，**并说清**。
-            // 不静默、也不报一个与真实原因无关的错。
-            tracing::warn!(
-                "本机没有规范化终端出口（试过 {TERMINAL_EXITS:?}）—— \
-                 回落到无窗口直起；命令仍会跑，但没有可交互的终端"
-            );
-            let mut b = Command::new(&argv[0]);
-            b.args(&argv[1..]);
-            (b, false)
-        }
-    };
+    let opened_window = term.is_some();
+    if !opened_window {
+        // 诚实降级：一个规范化出口都没有 ⇒ 回落到改之前那条无窗口的路，**并说清**。
+        // 不静默、也不报一个与真实原因无关的错。
+        tracing::warn!(
+            "本机没有规范化终端出口（试过 {TERMINAL_EXITS:?}）—— \
+             回落到无窗口直起；命令仍会跑，但没有可交互的终端"
+        );
+    }
+    let mut builder = Command::new(&program);
+    builder.args(&args);
     // 只有真实存在的目录才作起始目录（与 Windows 那条路同一条纪律）。
     if let Some(d) = cwd.filter(|c| std::path::Path::new(c).is_dir()) {
         builder.current_dir(d);
@@ -569,8 +612,14 @@ mod tests {
             "测试段没剥干净（`gnome-terminal` 只出现在测试的字符串字面量里）"
         );
         // 生产里 4 个：三个开窗点 + 一个 `where.exe` 探测（它不是开窗，不需要 env）。
+        // 🔴 〔`K-H2b` `D6` 第九拍，08-29〕**5 → 4**：POSIX 那条路上先前是两个 `Command::new(`
+        //    （开窗一个 · 无窗口回落一个），本轮把「谁被 spawn · 带哪些参数」抽成纯函数
+        //    `build_local_posix_spawn` 之后合并成**一个** —— 开窗点的**人数没变**，
+        //    变的是它们从两处 `Command::new(` 收成一处。
+        //    ⚠ 这不是「把上限调上去让今天好过」：这个数是**等号**、方向是**减少**，
+        //    而它守的那条不变式（`spawns - carried == 1`，那 1 是 `where.exe` 探测）**逐字仍然成立**。
         assert_eq!(
-            spawns, 5,
+            spawns, 4,
             "`launch.rs` 生产代码里的 `Command::new(` 从 4 变成了 {spawns}。\n\
              若新增的是**开终端窗口**，它必须也带上 `daemon_bin_env_for_window(...)` 的 env，\n\
              否则那条路上的 `ccm resume` 会**静默地**永远走本地（与名字打错同一族的静默失败）；\n\
@@ -792,25 +841,48 @@ mod tests {
 
     /// ★ P5L-Y1：**载荷原样进终端的参数位** —— 本件只加「怎么开窗」，不碰「开什么」。
     ///
-    /// 钉的是源码形状：`argv` 整个进 `args(&argv)`，且前面隔着一个 `--`
-    ///（否则终端会把 `bash` 之后的东西当成自己的选项解析）。
+    /// # 🔴 前三条断言从**源码文本**换成了**行为**〔`K-H2b` `D6` 第九拍，08-29〕
+    ///
+    /// 先前这三条钉的是三段源码字面（`b.arg("--").args(&argv);` ·
+    /// `Command::new(&argv[0])` · `match term {`）。**实打证明那不够**：
+    /// 在 `build_local_posix_argv` **之后**、拼 `Command` **之前**插一段剥掉
+    /// `export ANTHROPIC_BASE_URL=…; ` 的映射 ⇒ **三段文本一处不少、`1229 passed` 全绿**，
+    /// 而真正跑起来的 `bash -lic` 里没有中转注入。
+    /// ⇒ 那一跳抽成了纯函数 [`build_local_posix_spawn`]，本条改成**读它产出来的东西**。
+    /// 「分流真的看 `term`」那一格也跟着变成行为：两个入参各喂一次，答案必须不同。
     #[test]
     fn opening_a_window_does_not_touch_the_payload() {
         let prod = guard_core::production_code(include_str!("launch.rs"));
-        assert!(
-            prod.contains("b.arg(\"--\").args(&argv);"),
+        let argv: Vec<String> = ["bash", "-lic", "unset X; claude --resume s1"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        // ★ 开窗那条：`argv` **整个原样**进参数位，且前面隔着一个 `--`
+        //   （否则终端会把 `bash` 之后的东西当成自己的选项解析）。
+        let (program, args) = build_local_posix_spawn(Some("xdg-terminal-exec"), &argv);
+        assert_eq!(program, "xdg-terminal-exec");
+        assert_eq!(
+            args,
+            {
+                let mut w = vec!["--".to_string()];
+                w.extend(argv.iter().cloned());
+                w
+            },
             "开窗那条路没有把 `argv` **整个原样**交出去 —— \n\
-             本件的全部承诺是「只加怎么开窗，不碰开什么」，这一行就是那句话本身。"
+             本件的全部承诺是「只加怎么开窗，不碰开什么」，这一格就是那句话本身。"
         );
         // 无窗口那条回落必须还在（`P5L-Y2`）：它是「一个出口都没有」时的唯一去处。
-        assert!(
-            prod.contains("Command::new(&argv[0])"),
-            "无窗口回落没了 —— 那样在没有规范化出口的机器上会变成「点了没反应」"
+        let (fallback_program, fallback_args) = build_local_posix_spawn(None, &argv);
+        assert_eq!(
+            (fallback_program.as_str(), &fallback_args[..]),
+            (argv[0].as_str(), &argv[1..]),
+            "无窗口回落不再原样起 `argv[0]` —— 那样在没有规范化出口的机器上会变成「点了没反应」"
         );
-        // ⚠ **分流必须真的看 `term`**〔变异 M2 逼出来的〕：只钉「源码里有开窗那段」的话，
-        // 把 `match term` 换成 `match None::<&str>` 它照样绿 —— 那段代码还在，只是**走不到**。
-        assert!(
-            prod.contains("match term {"),
+        // ⚠ **分流必须真的看 `term`**〔变异 M2 逼出来的〕：先前这一格钉的是源码里有 `match term {`，
+        // 而那只证明「那段代码在」，不证明「它走得到」。⇒ 换成行为：两个入参答案必须不同。
+        assert_ne!(
+            build_local_posix_spawn(Some("xdg-terminal-exec"), &argv),
+            build_local_posix_spawn(None, &argv),
             "开窗那条分流不再按入参 `term` 走 —— 那段代码可能还在，但已经**走不到**了"
         );
         // P5L-Y2：降级必须**说清**，不是静默。
@@ -903,6 +975,90 @@ mod tests {
              ⚠ P5L 已按这条开锁条件放行了**规范化出口**（`TERMINAL_EXITS`：xdg-terminal-exec / \
              x-terminal-emulator）——它们把选择权交还给桌面，与「挑一个具名终端」是两回事。"
         );
+    }
+
+    /// ★★★ **第八层，第九拍自查当轮逮到并堵掉**〔`K-H2b` `D6` 回修，08-29〕。
+    ///
+    /// # 它是怎么长出来的
+    ///
+    /// `D6 阻-1` 那一轮把「中转前缀真的拼上去了」从**文本**换成了**行为**：
+    /// `history::LaunchSink` 那条缝让判据看得见 `launch_local` **真正交出去的那一串**。
+    /// 收工前按铁律 15 问「第八层会怎么绕过这一轮」时，最像的一条是
+    /// **在缝的下游动手** —— 本函数正是那条缝的**下游第一跳**。
+    ///
+    /// **实打（刀 `Z1`）**：在 [`build_local_posix_argv`] 里把
+    /// `export ANTHROPIC_BASE_URL=…; ` 这一段从命令串里剥掉（**只剥这一段，别的一字不动**）
+    /// ⇒ **`1228 passed; 0 failed` 全绿。**
+    /// 上游那条缝的判据照绿（它量的是**交给**本函数的那一串），
+    /// 而真正跑起来的 `bash -lic` 里**没有中转注入** —— 与本件没做完全一样。
+    ///
+    /// # 为什么隔壁那条判据挡不住
+    ///
+    /// `local_and_remote_share_the_same_payload` 断的正是「逐字节透传」，
+    /// 而它**只喂一个 payload，且那个 payload 里没有中转前缀**
+    /// ⇒ 一把**只针对前缀**的剪刀从它下面走过去。
+    /// ★ 这与 `D6 阻-2` 是**同一族病**：**输入域 = 1**（「形状对、恒答其中一张脸」）。
+    ///
+    /// ⇒ 本条把输入域打开：**三个 payload，两个带中转前缀、两个不同的账号**。
+    ///
+    /// # ⚠ 它买不到什么（射程边缘，如实写）
+    ///
+    /// 本条量的是**纯函数这一跳**。`launch_local_posix_via` 拿到 `argv` **之后**再动手
+    /// （在 `Command` 上改参数）本条看不见 —— 那一跳要真开窗才观测得到，
+    /// 而「开窗那条路没有行为级判据」是 `P5L` 已经登记过的边界（见本模块 `launch_local_posix_via` 头注）。
+    #[test]
+    fn the_local_argv_hands_the_command_through_byte_for_byte_prefix_and_all() {
+        let payloads = [
+            // ① 不带中转前缀的那一形（隔壁那条判据今天只喂这一形）。
+            "unset CLAUDE_CONFIG_DIR; ccm --tmux claude --resume s1",
+            // ② 带中转前缀 —— 第八层就长在「没人喂这一形」上。
+            "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; \
+             export CLAUDE_CONFIG_DIR='/h/.claude-accts/acct-a'; claude --resume s1",
+            // ③ **另一个号** —— 「哪个号」这一维也不许在这一跳上被抹平。
+            "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-b/sid-2'; \
+             export CLAUDE_CONFIG_DIR='/h/.claude-accts/acct-b'; claude --resume s2",
+        ];
+        // 反空真：这三形本来就该是三个不同的串（否则下面三条里有两条是同一条）。
+        assert_eq!(
+            payloads.iter().collect::<std::collections::BTreeSet<_>>().len(),
+            3,
+            "三个 payload 里有重复 —— 本条的输入域没有真的打开"
+        );
+        for payload in payloads {
+            let argv = build_local_posix_argv(payload).expect("这三形都该通过校验");
+            assert_eq!(
+                argv,
+                vec!["bash".to_string(), "-lic".to_string(), payload.to_string()],
+                "\n★★ **送出去的那一串在这一跳上被改了** —— 这是第八层的形状：\n\
+                 上游那条缝（`history::LaunchSink`）的判据量的是**交给本函数的那一串**，\n\
+                 本函数再剥掉一段，两边都不红，而真正跑起来的 `bash -lic` 里没有中转注入。\n\
+                 实得 argv：{argv:?}"
+            );
+            // ★★ **整跳钉住**：命令串 → 真正要 spawn 的 `(program, args)`。
+            //    先前 `launch_local_posix_via` 里 `build_local_posix_argv` 与拼 `Command`
+            //    之间隔着一跳**没有任何判据** ⇒ 在那里剥前缀实测全绿（第八层的下游版本）。
+            let (program, args) =
+                local_posix_spawn_plan(payload, Some("xdg-terminal-exec")).expect("该通过校验");
+            assert_eq!(program, "xdg-terminal-exec");
+            assert_eq!(
+                args,
+                vec![
+                    "--".to_string(),
+                    "bash".to_string(),
+                    "-lic".to_string(),
+                    payload.to_string()
+                ],
+                "开窗那条路上载荷被改了 —— `--` 之后必须是 argv **逐字节原样**"
+            );
+            // 无窗口回落那一支：同一份载荷，只是少了终端那一层包装。
+            let (program, args) = local_posix_spawn_plan(payload, None).expect("该通过校验");
+            assert_eq!(program, "bash");
+            assert_eq!(
+                args,
+                vec!["-lic".to_string(), payload.to_string()],
+                "无窗口回落那条路上载荷被改了"
+            );
+        }
     }
 
     /// ★ L1 的验收判据（主计划 §2「关键判断」第 1 条逐字）：
