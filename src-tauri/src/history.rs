@@ -1628,9 +1628,19 @@ fn relay_prefix_for(
 ///    `std::env::set_var("HOME", …)`）⇒ **写得出来，一个字节都不用动 `paths.rs`**。
 ///    **真代价**是这种判据必须 `--test-threads=1` ⇒ 只能住 `#[ignore]` 的 e2e 那条道
 ///    ⇒ **进不了 `scripts/gate.sh`**。重新裁定的落点就是这一栏 + 件文件 `§4`。
+///    🔴 **裁定（`D8 §4` 第 1 条，PM 08-29 采纳，第九轮照抄进这一栏）：
+///    这一格是「买得到」，不是「做不到」。** 买法**不在判据这一侧** ——
+///    是给 `scripts/gate.sh` 加一条**单线程道**，把 `#[ignore]` 那一族纳进第五个数。
+///    🔴 `scripts/gate.sh` **不在 `K-H2b` 的写区** ⇒ 第九轮**没做**，抬给 PM（上报口有一条）。
+///    ⚠ 别再把这一栏读成「做不到」：那正是 `D8 §10 裁一` 判过两次的那一形。
 /// ㈡ [`platform_is_windows`] 自己的体（`cfg!(windows)`）。在 Linux 上把它写死成 `false`
 ///    是一次**恒等变换** ⇒ **任何运行时判据都分不出来**（它只在 Windows 上有区别，而
 ///    Windows 运行时行为本件本来就在「判不了」里）。**登记，不假装钉住了。**
+///    ⚠ **过一遍 PM 08-29 那道闸**（「标平台判不了要给得出 `cfg`」）：**本函数没有 `cfg`，
+///    在 Linux 上真编译**（`cargo test -p monitor --lib` 跑得到它）⇒ 它**不**属于
+///    「不进编译单元」那一族。它判不了的理由是**另一条**：在 Linux 上 `false` 是它的真值，
+///    换上去是**恒等变换**（`D8 §1` 的排除表逐字：恒等变换不算「剥掉」那张脸）。
+///    ⇒ 两条理由别混：一条是**构造上看不见**，一条是**看得见但换不出第二张脸**。
 ///    ⚠ 它与先前那条被删的文本判据的差别在于：**调用点**那一格今天买回来了 ——
 ///    调用点走 `(facts.windows)()`，谁在那里写死一个常量，
 ///    `the_launch_side_really_asks_those_two_take_points_and_uses_their_answers` 的
@@ -1760,6 +1770,26 @@ pub(crate) struct LaunchSink(pub(crate) fn(&str, Option<&str>) -> Result<(), Str
 #[cfg(not(windows))]
 pub(crate) const PRODUCTION_LAUNCH_SINK: LaunchSink = LaunchSink(crate::launch::launch_local_posix);
 /// 生产上这条缝里插的送法。**只有这一处**，判据按地址对拍它。
+///
+/// # 🔴 **订正 `D8` 表里的 `F3`：这一格有判据，不是「零感知」**〔`D8 阻-6` / 阻-5，08-29〕
+///
+/// `D8` 把这一支标成「❌ 没有（**推的，我没打这一刀**）」，理由是「与 `F1` 同属
+/// `#[cfg(windows)]`，Linux 上不进编译单元」。**第九轮把这一刀打了，读数与那个推断相反。**
+///
+/// - **刀**（`§11.6` 形㈠ 的 Windows 版）：加一个 `#[cfg(windows)]` 的新一跳
+///   `fn r9_probe_sink(cmd, cwd)`，体里先 `split_once("; ")` 剥掉中转前缀再委托给
+///   `launch_powershell_window`，把本 `const` 指向它。锚点 = 本 `const` 的定义，**命中 1**。
+/// - **读数**：`cargo test -p monitor --lib` ⇒ **`1236 passed; 1 failed`**，红的正是
+///   `payload::nobody_reaches_the_relay_take_points_without_going_through_the_seam`，
+///   报文逐字点名「`launch.rs` 之外还有人直接调那两个送法：history.rs: `launch_powershell_window(` × 1」。
+///   （快道红 ⇒ 方向安全，按纪律不升全量门。）
+///
+/// **成因**：那道人群闸是**量文本**的（`guard_core::production_code` + 目录扫描），
+/// 而 `production_code` **只剥 `#[cfg(test)]` 段与整行注释，不剥 `#[cfg(windows)]`**
+/// ⇒ Windows-only 的源码**在文本这一层是可见的**。
+/// ⇒ 🔴 **「带 `#[cfg(windows)]`」蕴含「运行时判据看不见」，不蕴含「所有判据都看不见」。**
+/// `F1`（[`crate::launch::launch_powershell_window`] 的**函数体**）仍然买不到 ——
+/// 那一刀不新增任何跨文件调用形，量文本的闸够不着它。**两格别合并读。**
 #[cfg(windows)]
 pub(crate) const PRODUCTION_LAUNCH_SINK: LaunchSink =
     LaunchSink(crate::launch::launch_powershell_window);
@@ -4752,6 +4782,289 @@ mod tests {
         assert_ne!(
             new_sent, resumed_9,
             "新开与 resume 送出去的是同一串 —— 「哪一次拉起」这一维成了常量"
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // 🔴🔴 `D8 阻-1`：**账号传递链那三跳** —— 生产主路，第九轮之前一格判据都没有
+    // ═════════════════════════════════════════════════════════════════════════
+    //
+    // # 病是怎么长出来的（`D8 §4` 第 2 条，别只读结论）
+    //
+    // 本件所有承重的行为判据（[`the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched`]
+    // / [`the_launch_side_really_asks_those_two_take_points_and_uses_their_answers`]）的
+    // **驱动入口都是 [`launch_local`] 或更下游**，而**生产入口在它上面两跳**：
+    //
+    // ```text
+    // #[tauri::command] resume_history_session  →  resume_impl  →  launch_local
+    // #[tauri::command] new_local_session       ─────────────────→  launch_local
+    // ```
+    //
+    // ⇒ **判据的射程上界正好卡在 `launch_local`，而九轮买的那些牙全长在它的下游。**
+    // `D8` 三刀实打（三处调用点各写一次 `account.filter(|_| false)`）：
+    // **全量门禁四个数一格不动（`1328 / 一致 / 493 / 1512`）、`GATE: OK`，而中转前缀恒空。**
+    //
+    // 🔴 **而看起来在守它的那把尺子，作用域对不上事实**：`src/ipc/commands.vitest.ts:402`
+    //「每一处起本机会话的调用都带 `account`」守的是 **TS 那一侧**（`D8` 的 `E4` 实测：
+    // 在前端调用点上下同一形状的刀，`npm` 那道门当场红）。
+    // **同一根链的 Rust 这一侧三跳，一格都没守。** —— 「两条路只修了一条」。
+    //
+    // # 为什么是**三条**判据而不是一条（`K22` 的口径）
+    //
+    // **N 支信号要 N 个只由这一支挡住的探针。** 三跳各自能独立答错，所以三刀的**红名单
+    // 必须两两不同**（本轮实打的三张红名单在件文件 `§12` 的变异表里逐行给了）：
+    //
+    // | 刀 | 落在哪一处 | 红名单 |
+    // |---|---|---|
+    // | ① | `resume_impl` 里那一处 `account` | 探针 ① **与** ② 一起红 |
+    // | ② | `resume_history_session` 里那一处 `account.as_ref()` | **只有**探针 ② 红 |
+    // | ③ | `new_local_session` 里那一处 `account.as_ref()` | **只有**探针 ③ 红 |
+    //
+    // ⚠ 探针 ② 在刀 ① 上也红，是**链的包含关系**（②的驱动路径经过①），不是重复计数：
+    // 三张红名单两两不同 ⇒ 三刀可区分 ⇒ **三格**。反过来只写一条探针 ② 的话，
+    // ①②两刀的红名单会相同 ⇒ 那才是「N 支只买了一格」。
+    //
+    // # ⚠ 它们**买不到**什么（如实写）
+    //
+    // - **前端到底传没传 `account`**：那是 `commands.vitest.ts:402` 那把尺子的面，本族只管
+    //   「传进来之后 Rust 这一侧有没有原样送到拼前缀那一行」。**两把尺子各守一侧，别只改一处。**
+    // - **`launch_local` 以下的任何一格**：那是上面那条 `…_is_really_prepended_…` 的面。
+    //   本族刻意**不**重复买它 —— 三条探针的反空真只断「不走中转那一趟长得像一条真拉起」。
+    // - **Windows 那条腿**：`PRODUCTION_LAUNCH_SINK` 在 Windows 上是另一个送法，
+    //   而门禁跑在 Linux ⇒ 本族与本文件其余判据同样只驱动 POSIX 那一支（登记，不假装）。
+
+    thread_local! {
+        /// `D8 阻-1` 三支探针共用的记账台：这一趟真正交出去的 `(命令串, cwd)`。
+        /// **线程局部** ⇒ 三条判据并行跑互不干扰（`cargo test` 一测一线程）。
+        static ENTRY_SENT: std::cell::RefCell<Vec<(String, Option<String>)>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+        /// 这一拍中转表里有哪几行（探针自己写）。
+        static ENTRY_ROWS: std::cell::RefCell<Vec<String>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+    }
+
+    fn entry_recorder(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
+        ENTRY_SENT.with(|v| {
+            v.borrow_mut()
+                .push((cmd.to_string(), cwd.map(str::to_string)))
+        });
+        Ok(())
+    }
+    fn entry_rows() -> Vec<String> {
+        ENTRY_ROWS.with(|v| v.borrow().clone())
+    }
+    fn entry_running() -> bool {
+        true
+    }
+    /// 装台：一条会记账的送法 + 一组答案由探针写死的取值口。两个守卫掉出作用域自动还原。
+    fn entry_stage() -> (LaunchSinkGuard, RelayFactsGuard) {
+        ENTRY_SENT.with(|v| v.borrow_mut().clear());
+        ENTRY_ROWS.with(|v| v.borrow_mut().clear());
+        (
+            override_launch_sink(LaunchSink(entry_recorder)),
+            override_relay_facts(RelayFactSources {
+                rows: entry_rows,
+                running: entry_running,
+                // 平台那一格照生产那个取值口（翻它的是别处那条判据的第 ④ 格）。
+                windows: platform_is_windows,
+            }),
+        )
+    }
+    fn entry_answer(rows: &[&str]) {
+        ENTRY_ROWS.with(|v| *v.borrow_mut() = rows.iter().map(|s| s.to_string()).collect());
+    }
+    fn entry_last() -> (String, Option<String>) {
+        ENTRY_SENT.with(|v| v.borrow().last().cloned().expect("这一趟什么都没送出去"))
+    }
+
+    /// ★★ **探针 ①**〔`D8 阻-1`，`KH2B1`〕：`resume_impl` 这一跳把 `account` / `session_id` / `cwd`
+    /// **原样**交给 [`launch_local`]。
+    ///
+    /// 刀 `D8P32`（`history.rs:1826` 那一处 `account` 写成 `account.filter(|_| false)`）
+    /// 在本条落地之前是**全量门禁四个数一格不动**的。
+    #[test]
+    fn the_resume_hop_above_launch_local_carries_the_account_and_the_sid_through() {
+        let (_sink, _facts) = entry_stage();
+        let dir = "/h/.claude-accts/acct-r1";
+        let account = LaunchAccount::Named {
+            config_dir: dir.to_string(),
+        };
+        // 中性名（`brief` 12：断言用的子串不许取自夹具名字里带含义的那半）。
+        let cwd = "/p/one";
+
+        // ① 反空真 —— 表里没有这个号 ⇒ 这条入口本来就该送出一条**不带中转注入**的命令，
+        //    而且它得像一条真的本机拉起（这个号的 configDir 在里面）。
+        //    没有这一格，下面那条「有前缀」的断言在「整条链恒空」时会读成假红/假绿。
+        entry_answer(&[]);
+        resume_impl("sid-r1", cwd, None, Some(&account), None).expect("不走中转这一趟不该失败");
+        let (bare, bare_cwd) = entry_last();
+        assert!(
+            bare.contains(dir),
+            "基准串里连这个号的 configDir 都没有 —— 这条入口根本没把账号送下去：{bare:?}"
+        );
+        assert!(
+            !bare.contains("ANTHROPIC_BASE_URL"),
+            "表里没有这个号，送出去的那一串却带着中转注入：{bare:?}"
+        );
+        assert_eq!(
+            bare_cwd.as_deref(),
+            Some(cwd),
+            "这一跳把 `cwd` 弄丢了 —— 会话会起在默认目录上，而 toast 照报成功"
+        );
+
+        // ② 表里有这个号 ⇒ 送出去的那一串带中转注入，账号段与 sid 段都是**这一发**的。
+        entry_answer(&["acct-r1"]);
+        resume_impl("sid-r1", cwd, None, Some(&account), None).expect("走中转这一趟不该失败");
+        let (routed, _) = entry_last();
+        assert!(
+            routed.contains("ANTHROPIC_BASE_URL"),
+            "\n★★ **`resume_impl` 这一跳把账号扔了** —— 刀 `D8P32` 的形状：\n\
+             `launch_local(…, account.filter(|_| false), …)`。\n\
+             生产后果：历史页 resume 一个 api-key 号 ⇒ claude 直连官方端点、第三方 key 用不上，\n\
+             而在 `D8` 实测里**全量门禁四个数一格不动**。实得 = {routed:?}"
+        );
+        assert!(
+            routed.contains(&format!("/{}/", "acct-r1")),
+            "路由键里的账号段不是这一发的号：{routed:?}"
+        );
+        assert!(
+            routed.contains("/sid-r1'"),
+            "路由键里的 `<key>` 段不是这一发的 sid —— `session_id` 在这一跳被换掉了：{routed:?}"
+        );
+        // 逐字节：前缀 + 基准串。剥掉第一段之后剩下的**必须**逐字节等于 ① 那趟的基准串
+        // —— 「多注入一个前缀」与「顺手把命令体也换了」在只断 `contains` 的判据上同形。
+        let (head, tail) = routed.split_once("; ").expect("走中转那一趟没有前缀段");
+        assert!(
+            head.starts_with("export ANTHROPIC_BASE_URL="),
+            "第一段不是中转注入：{head:?}"
+        );
+        assert_eq!(
+            tail, bare,
+            "剥掉中转前缀之后的命令体与不走中转那一趟不一样 —— 这一跳除了账号还动了别的"
+        );
+    }
+
+    /// ★★ **探针 ②**〔`D8 阻-1`，`KH2B1`〕：**前端真正调的那条命令**
+    /// [`resume_history_session`]（`#[tauri::command]`）把五个入参原样交给 [`resume_impl`]。
+    ///
+    /// 刀 `D8P32b`（`history.rs:892` 那一处 `account.as_ref()`）在本条落地之前是
+    /// **全量门禁四个数一格不动**的。
+    ///
+    /// ⚠ 第 ② 格是**对拍**（同一组输入喂两条入口，两串必须逐字节相同）——
+    /// 它买的是「这一跳一个入参都没被换掉」，比只断「有前缀」宽一格：
+    /// 换掉 `launcher` / `tmux_name` / `cwd` 中任何一个，这一格也红。
+    #[test]
+    fn the_resume_command_the_frontend_calls_hands_all_five_arguments_down_unchanged() {
+        let (_sink, _facts) = entry_stage();
+        let dir = "/h/.claude-accts/acct-r2";
+        let cwd = "/p/two";
+        entry_answer(&["acct-r2"]);
+
+        // ① 从**那条 `#[tauri::command]`** 进去。
+        resume_history_session(
+            "sid-r2".to_string(),
+            cwd.to_string(),
+            Some("cc".to_string()),
+            Some(LaunchAccount::Named {
+                config_dir: dir.to_string(),
+            }),
+            None,
+        )
+        .expect("这一趟不该失败");
+        let (from_cmd, cmd_cwd) = entry_last();
+        assert!(
+            from_cmd.contains("ANTHROPIC_BASE_URL") && from_cmd.contains("/acct-r2/"),
+            "\n★★ **那条 `#[tauri::command]` 把账号扔了** —— 刀 `D8P32b` 的形状：\n\
+             `resume_impl(…, account.as_ref().filter(|_| false), …)`。\n\
+             这一跳就是**历史页 resume 那个按钮真正调的那条命令**，\n\
+             而在 `D8` 实测里一刀下去**全量门禁四个数一格不动**。实得 = {from_cmd:?}"
+        );
+        assert!(
+            from_cmd.contains("/sid-r2'"),
+            "路由键里的 `<key>` 段不是这一发的 sid：{from_cmd:?}"
+        );
+
+        // ② 对拍：同一组输入直接喂下一跳，两串必须**逐字节相同**。
+        //    ⇒ 这一跳换掉五个入参里的**任何一个**（不只是 `account`），本格都红。
+        let account = LaunchAccount::Named {
+            config_dir: dir.to_string(),
+        };
+        resume_impl("sid-r2", cwd, Some("cc"), Some(&account), None).expect("这一趟不该失败");
+        let (from_impl, impl_cwd) = entry_last();
+        assert_eq!(
+            from_cmd, from_impl,
+            "\n那条 `#[tauri::command]` 与它下一跳送出去的不是同一串 —— \
+             这一跳换掉了某个入参（不一定是 `account`）"
+        );
+        assert_eq!(cmd_cwd, impl_cwd, "`cwd` 在这一跳被换掉了");
+    }
+
+    /// ★★ **探针 ③**〔`D8 阻-1`，`KH2B1`〕：**「在该目录起新会话」那条命令**
+    /// [`new_local_session`]（`#[tauri::command]`）把 `account` / `cwd` 原样交给 [`launch_local`]。
+    ///
+    /// 刀 `D8P33`（`history.rs:1871` 那一处 `account.as_ref()`）在本条落地之前是
+    /// **全量门禁四个数一格不动**的。
+    ///
+    /// ⚠ 这条路**没有 sid**（`<key>` 段走 nonce，见 `payload::relay_key_for` 的表），
+    /// 所以本条只钉账号段与 `cwd`；`<key>` 那一维归 `payload` 那一侧的判据。
+    #[test]
+    fn the_new_session_command_the_frontend_calls_carries_the_account_and_the_cwd_through() {
+        let (_sink, _facts) = entry_stage();
+        let tmp = TmpDir::new(); // `new_local_session` 会先核 `cwd` 是不是现存目录
+        let cwd = tmp.0.to_string_lossy().into_owned();
+        let dir = "/h/.claude-accts/acct-r3";
+
+        // ① 反空真：表里没有这个号 ⇒ 不带中转注入，但 configDir 与 cwd 都得走到。
+        entry_answer(&[]);
+        new_local_session(
+            cwd.clone(),
+            None,
+            Some(LaunchAccount::Named {
+                config_dir: dir.to_string(),
+            }),
+        )
+        .expect("不走中转这一趟不该失败");
+        let (bare, bare_cwd) = entry_last();
+        assert!(
+            bare.contains(dir),
+            "基准串里连这个号的 configDir 都没有：{bare:?}"
+        );
+        assert!(
+            !bare.contains("ANTHROPIC_BASE_URL"),
+            "表里没有这个号却带着中转注入：{bare:?}"
+        );
+        assert_eq!(
+            bare_cwd.as_deref(),
+            Some(cwd.as_str()),
+            "这一跳把 `cwd` 弄丢了 —— 「在该目录起新会话」会起到别的目录去"
+        );
+
+        // ② 表里有这个号 ⇒ 带中转注入，且账号段是这一发的号。
+        entry_answer(&["acct-r3"]);
+        new_local_session(
+            cwd.clone(),
+            None,
+            Some(LaunchAccount::Named {
+                config_dir: dir.to_string(),
+            }),
+        )
+        .expect("走中转这一趟不该失败");
+        let (routed, routed_cwd) = entry_last();
+        assert!(
+            routed.contains("ANTHROPIC_BASE_URL") && routed.contains("/acct-r3/"),
+            "\n★★ **「在该目录起新会话」那条命令把账号扔了** —— 刀 `D8P33` 的形状：\n\
+             `launch_local(…, account.as_ref().filter(|_| false), …)`。\n\
+             生产后果：一个 api-key 号**新开**会话 ⇒ 直连官方端点，\n\
+             而在 `D8` 实测里一刀下去**全量门禁四个数一格不动**。实得 = {routed:?}"
+        );
+        assert_eq!(
+            routed_cwd.as_deref(),
+            Some(cwd.as_str()),
+            "走中转这一趟把 `cwd` 弄丢了"
+        );
+        assert_ne!(
+            bare, routed,
+            "两趟送出去的是同一串 —— 「表里有没有这一行」这一维在这条入口上成了常量"
         );
     }
 }
