@@ -317,24 +317,29 @@ mod tests {
             .iter()
             .find(|(p, _)| p.ends_with("server.rs"))
             .expect("扫不到 `server.rs` —— 取法坏了，本条按红处理");
-        let take = server
-            .find("relay.table.read()")
-            .expect("找不到取读锁那一句 —— 形状变了，先修锚点");
-        let pump = server
-            .find("let outcome = pump(")
-            .expect("找不到 `pump(` 的调用点 —— 形状变了，先修锚点");
-        assert!(take < pump, "取读锁排在 `pump` 之后了 —— 那不是本条守的形状");
-        // ★ 守卫必须**绑在那个块里面**。
-        //
-        // ⚠ 第一版写的是「两者之间存在一个 `\n    };`」——**那把尺子太松**：
-        //   变异实测（把 `let table = …read()` 提到块外、`let mut up = { … };` 原样留着）
-        //   ⇒ 守卫活到函数结尾、跨整条 `pump`，而那个 `};` 仍在 ⇒ **本条照绿**。
-        //   ⇒ 改成钉那个**绑定的位置**：`read()` 必须紧跟在块的开花括号之后。
+
+        // ⚠ **不做位置比较**（`structural_scan` 那条纪律：位置比较要么切段、要么核唯一性，
+        //    而这一格根本不需要位置 —— 它要的是**一个确切的绑定形状**）。
+        //    第一版写成「`read()` 在 `pump(` 之前，且两者之间有个 `};`」，
+        //    被一次「把绑定提到块外」的变异**照绿**（`M32` 实测）⇒ 换成钉那个形状本身。
+        let shape = "let mut up = {\n        let table = relay.table.read()";
+        assert_eq!(
+            server.matches(shape).count(),
+            1,
+            "读锁的守卫不再**绑在那个块里**（实得 {} 处该形状）—— \n\
+             它会活到函数结尾、跨整条 `pump`。`RwLock` 写优先 ⇒ \n\
+             用户配一次 key 会被堵在**最长那条在飞流**后面。",
+            server.matches(shape).count()
+        );
+        // 反空真：`pump(` 与 `read()` 都真的在这份生产段里（否则上面那条可能只是巧合成立）。
+        assert_eq!(
+            server.matches("relay.table.read()").count(),
+            1,
+            "取读锁的地方不是恰好一处 —— 锚点不唯一，本条的结论不算数"
+        );
         assert!(
-            server.contains("let mut up = {\n        let table = relay.table.read()"),
-            "读锁的守卫不再绑在那个块里 —— 它会活到函数结尾、跨整条流。\n\
-             `RwLock` 写优先 ⇒ 用户配一次 key 会被堵在最长那条在飞流后面。\n\
-             （第一版这条判据只数两者之间有没有 `}};`，被一次「把绑定提到块外」的变异照绿。）"
+            server.contains("let outcome = pump("),
+            "扫到的 `server.rs` 里没有 `pump(` —— 取法坏了，本条按红处理"
         );
     }
 
