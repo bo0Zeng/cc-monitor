@@ -19,6 +19,8 @@ import {
   withAccount,
   type SessionAccount,
   localLaunchAccountSync,
+  localLaunchAccountNameSync,
+  recordLocalLaunchAccount,
   primeLocalLaunchAccounts,
 } from "./accounts";
 import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
@@ -2243,6 +2245,10 @@ export class TabManager {
         tmuxName,
         account: localLaunchAccountSync(sid),
       });
+      // `D3 阻-2`：**本机这条路也要往 pin 里写** —— 在此之前 `recordLastAccount` 的两个
+      //   生产调用点结构上只走远端 ⇒ 本机 `list_last_accounts` 恒空 ⇒ 上面那句「pin 优先」
+      //   在本机永远走不到。⚠ 不等待（多一拍会撞那两条只放行一个微任务的 DOM 判据）。
+      recordLocalLaunchAccount(sid, localLaunchAccountNameSync(sid));
     } catch (err) {
       showActionFailureToast("恢复失败", String(err));
     }

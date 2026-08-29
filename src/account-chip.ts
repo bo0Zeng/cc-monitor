@@ -158,6 +158,18 @@ export class AccountChip {
     this.state = this.local
       ? await fetchLocalAccounts(force)
       : await fetchAccounts(this.origin as string, force);
+    // ★★ `D2 阻-7`：**本机那一档 not-ready 就整个隐藏** —— 与本件之前**逐字节相同**。
+    //
+    // 不加这一格的话，「没有远端 + 本机也没有 accounts.json」会从「整个隐藏」变成
+    // chip 显出来、菜单里写一句**远端口吻的假话**「该远端尚未启用多账号」——
+    // 而那台「远端」根本不存在。⇒ 本件只该**加**「本机有账号时能看见」，
+    // 不该**改**「什么都没有时看不见」。
+    if (this.local && (!this.state || deriveUi(this.state).kind !== "ready")) {
+      this.state = null;
+      this.relayRouting = null;
+      this.element.style.display = "none";
+      return;
+    }
     if (this.local && this.state) {
       // 只问**说得出 configDir** 的那几个（账号 0 没有目录 ⇒ 推不出中转表里的 id）。
       const dirs = this.state.accounts
@@ -241,7 +253,15 @@ export class AccountChip {
       // 列表(那是"刷新"的事,两者混在一起会让用户以为点了刷新账号列表也会顺带重新探测用量)。
       // F10 Phase D 审计（UX，重要）：menuAction 点击会立刻关闭菜单,用户看不到刷新过程——
       // 补一条完成 toast（同 selectDefault 既有惯例），不然用户只能凭空猜"刚才点了有没有生效"。
-      menu.appendChild(this.menuAction("刷新用量", () => this.loadCurrentAccountUsage(def, true, true)));
+      // ⚠ `D2 阻-7`：本机那一档**不渲染这个按钮** —— `loadCurrentAccountUsage` 的首行
+      //   逐字 `if (!def || !this.origin) return;` ⇒ 在本机那一档它是个**静默死按钮**
+      //   （点了什么都不发生，连一句「本机还探不了用量」都没有）。
+      //   用量探针要 SSH 到那台机器，本机那条路今天没有对侧（`usage.per-account` 那笔账）。
+      if (!this.local) {
+        menu.appendChild(
+          this.menuAction("刷新用量", () => this.loadCurrentAccountUsage(def, true, true)),
+        );
+      }
       // 菜单展开时才懒加载当前账号用量(不是 app 启动/`refresh()` 时——那是轻量调用,不该
       // 背上几秒的探针成本)。
       if (def) this.loadCurrentAccountUsage(def, false);

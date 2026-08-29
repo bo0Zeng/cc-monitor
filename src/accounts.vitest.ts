@@ -33,6 +33,10 @@ import {
   __resetAccountsCacheForTest,
   isAccountZero,
   accountStatusBadge,
+  localLaunchAccountSync,
+  localLaunchAccountNameSync,
+  __setLocalLaunchSnapshotForTests,
+  __resetLocalLaunchSnapshotForTests,
   fetchLocalRelayRouting,
   localRelayStateFor,
   accountLoginActionLabel,
@@ -1072,6 +1076,86 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
       expect(accountStatusBadge(acct({}), st).text).toBe("已登录");
       expect(accountStatusBadge(acct({ loggedIn: false }), st).text).toBe("未登录");
       expect(accountStatusBadge(acct({ mode: "in-place" }), st).text).toBe("逃生口");
+    }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-H2b` `D2 阻-3` / `D3 阻-2`：**取值口的行为判据**（先前它零行为判据）
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// ★★ `D2` 现打过两刀，**两刀都是 1495 全绿**：
+// ① 把取值口掏空成「永远说不出账号」；② 把它头注**逐字禁止**的那条回落
+//（有 pin 但不可选 ⇒ 下沉到当前号）真加进生产段。
+// ⇒ 那时只有两条**源码形状**判据（数调用点），一条量行为的都没有。
+// 本组就是那两刀的反面：**掏空必须红，加回落也必须红。**
+describe("K-H2b：本机起会话取账号那一口（行为）", () => {
+  const st = (accounts: Account[], defaultName: string | null): AccountsState => ({
+    origin: "<local>",
+    available: true,
+    error: null,
+    meta: null,
+    accounts,
+    defaultName,
+    notice: null,
+  });
+  const A = acct({ name: "acct-a", configDir: "/h/.claude-accts/acct-a" });
+  const B = acct({ name: "acct-b", configDir: "/h/.claude-accts/acct-b" });
+  /** 不可选：缺凭据的订阅号（`isSelectable` 那条规则的既有形状）。 */
+  const dead = acct({ name: "acct-dead", configDir: "/h/.claude-accts/acct-dead", loggedIn: false });
+
+  beforeEach(() => __resetLocalLaunchSnapshotForTests());
+
+  it("★ 掏空那一刀的反面：快照有东西时，它必须真的说得出账号", () => {
+    // 冷快照 ⇒ 不表态（这一格本身也是那条诚实边界的判据）。
+    expect(localLaunchAccountSync(null)).toBeUndefined();
+    expect(localLaunchAccountNameSync("s1")).toBeNull();
+    // 有快照 ⇒ **必须说得出**（掏空成恒 `undefined` 的那一刀在这里红）。
+    __setLocalLaunchSnapshotForTests(st([A, B], "acct-b"), {});
+    expect(localLaunchAccountNameSync(null)).toBe("acct-b");
+    expect(localLaunchAccountSync(null)).toEqual({
+      kind: "named",
+      configDir: "/h/.claude-accts/acct-b",
+    });
+  });
+
+  it("★★ 「当前账号」读的是 config.json 的 `defaultName`，不是 manifest 的 `isDefault`", () => {
+    // 🔴 上一拍这里读的是 `a.isDefault` ⇒ **用户切过号之后新会话静默串号**，
+    //    而且中转会按错的 id 换上别人那一行的 key。这一条就是那个形状的反面：
+    //    manifest 说 A 是默认，而用户切到了 B ——必须听用户的。
+    const manifestDefault = acct({
+      name: "acct-a",
+      configDir: "/h/.claude-accts/acct-a",
+      isDefault: true,
+    });
+    __setLocalLaunchSnapshotForTests(st([manifestDefault, B], "acct-b"), {});
+    expect(localLaunchAccountNameSync(null)).toBe("acct-b");
+    // 非空对照：把 `defaultName` 拿掉 ⇒ 才回落到 manifest 那一格（规则本身没变）。
+    __setLocalLaunchSnapshotForTests(st([manifestDefault, B], null), {});
+    expect(localLaunchAccountNameSync(null)).toBe("acct-a");
+  });
+
+  it("★★ 回落那一刀的反面：有 pin 但那个号不可选 ⇒ **不表态**，绝不下沉到当前号", () => {
+    __setLocalLaunchSnapshotForTests(st([A, B, dead], "acct-b"), { s1: "acct-dead" });
+    // 非空对照排最前：pin 指向一个**可选**的号时它确实跟 pin 走（尺子不是恒 null）。
+    __setLocalLaunchSnapshotForTests(st([A, B, dead], "acct-b"), { s1: "acct-a" });
+    expect(localLaunchAccountNameSync("s1")).toBe("acct-a");
+    // 正题：pin 指向不可选的号 ⇒ `null`。**下沉到 "acct-b" 就是 `#75` 那个病灶**
+    //（把一条会话悄悄翻到别的号上），那条回落一加进生产段，这里当场红。
+    __setLocalLaunchSnapshotForTests(st([A, B, dead], "acct-b"), { s1: "acct-dead" });
+    expect(localLaunchAccountNameSync("s1")).toBeNull();
+    expect(localLaunchAccountSync("s1")).toBeUndefined();
+    // 没有 pin 的会话仍然跟当前号（与远端那条 `withAccount` 同形）。
+    expect(localLaunchAccountNameSync("s-nopin")).toBe("acct-b");
+  });
+
+  it("★ 取名字与取 configDir 是同一条规则的两半（不许两处各判一次）", () => {
+    __setLocalLaunchSnapshotForTests(st([A, B, dead], "acct-b"), { s1: "acct-a", s2: "acct-dead" });
+    for (const sid of [null, "s1", "s2", "s-nopin"]) {
+      const name = localLaunchAccountNameSync(sid);
+      const arg = localLaunchAccountSync(sid);
+      if (name === null) expect(arg).toBeUndefined();
+      else expect(arg?.configDir).toBe(st([A, B, dead], "acct-b").accounts.find((a) => a.name === name)!.configDir);
     }
   });
 });

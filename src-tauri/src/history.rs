@@ -3699,6 +3699,49 @@ mod tests {
         );
     }
 
+    /// ★★★ `D2 阻-1`（`己1-f40`）：**在「当初量出它」的那个地址上钉住那两个入参。**
+    ///
+    /// # 经过（写下来，因为这一条本身就是那条纪律的样本）
+    ///
+    /// `D1 阻-6` 的原刀切的是 `relay_prefix_for_launch` 里那两行**入参**
+    /// （`&relay_rows(),` 与 `crate::local_daemon::relay_running(),`）。
+    /// 我上一拍补的两条判据切的是**被调函数的体** ——
+    /// PM 把原刀原样重打（锚点各命中 1）⇒ **`1223 passed; 0 failed`，原地全绿**。
+    /// ⚠ 件文件里那句「新判据正是原刀的反面」**是假话**，已一并订正。
+    ///
+    /// # 本条量的是什么、买不到什么（别读宽）
+    ///
+    /// 它是**那个地址上的源码形状**：那两行必须还是**去问那两个取值口**，
+    /// 而不是一个常量 / 一个空表。⚠ **它不是行为判据** —— 行为那半在被调函数上
+    /// （`the_rows_really_come_from_that_file_not_from_a_constant` ·
+    /// `local_daemon::relay_running_really_reads_the_handle_table`）。
+    /// **两半合起来才等于「这条线真的在问那两件事」，单独任何一半都不够** ——
+    /// 这正是 `D1 阻-6` 那两刀能原地全绿的成因。
+    #[test]
+    fn the_two_inputs_at_the_call_site_are_still_the_two_take_points() {
+        let me = include_str!("history.rs");
+        let prod = guard_core::production_code(me);
+        assert!(prod.len() > 5_000, "剥完只剩 {} 字节 —— 剥法坏了", prod.len());
+        let at = guard_core::find_pinned(&prod, "fn relay_prefix_for_launch(")
+            .unwrap_or_else(|e| panic!("`fn relay_prefix_for_launch(` 不是恰好一处：{e}"));
+        let body = &prod[at..at + 700.min(prod.len() - at)];
+        // ⚠ 断言的是**原刀切的那两个字面片段**，逐字。
+        for needle in ["&relay_rows(),", "crate::local_daemon::relay_running(),"] {
+            assert!(
+                body.contains(needle),
+                "`relay_prefix_for_launch` 的入参里不再有 `{needle}` ——\n\
+                 那两行正是 `D1 阻-6` 原刀切的地址：把它们换成常量（空表 / `true`），\n\
+                 「这个号在不在中转表里」与「中转在不在跑」就都不再被问，\n\
+                 而**被调函数自己的行为判据照绿**（`D1` 实测 1221、PM 复打 1223 全绿）。"
+            );
+        }
+        // 反空真：窗口真的切到了那个函数（不是在一段无关文本上自问自答）。
+        assert!(
+            body.contains("relay_prefix_for(") && body.contains("cfg!(windows)"),
+            "切出来的窗口不像 `relay_prefix_for_launch` 的体：{body}"
+        );
+    }
+
     /// ★★★ `D1 阻-6` 刀 C 的反面：**`relay_rows` 真的去读那份文件、真的解析出行。**
     ///
     /// `D1` 实测过：把它整个换成 `Vec::new()`，**1221 passed / 0 failed** ——

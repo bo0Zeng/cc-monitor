@@ -35,6 +35,8 @@ import {
   isSelectable,
   withAccount,
   localLaunchAccountSync,
+  localLaunchAccountNameSync,
+  recordLocalLaunchAccount,
   primeLocalLaunchAccounts,
 } from "../accounts";
 import {
@@ -1663,6 +1665,8 @@ export class HistoryView {
           launcher: behavior.resumeCommandLocal || null,
           account: localLaunchAccountSync(ctx.sessionId),
         });
+        // `D3 阻-2`：本机这条路也要往 pin 里写（同 `tabs.ts` 那处，理由见取值口头注）。
+        recordLocalLaunchAccount(ctx.sessionId, localLaunchAccountNameSync(ctx.sessionId));
       } catch (err) {
         showActionFailureToast("恢复失败", String(err));
       }

@@ -268,6 +268,23 @@ impl Relay {
             }
         }
         let mut loaded = creds::load(&r.path);
+        // ★★ `D2 阻-2`：**解析坏了就不换表。**
+        //
+        // `creds::load` 在「读不动 / 不是合法 JSON」时回的是 `accounts: 空 + problem: Some(_)`
+        // ⇒ 照着装表就是**把整张表换成空**，而空表的行为是**全部 404**。
+        // 用户那一侧看到的是「我明明配好了、刚才还能用，现在每一发都 404」——
+        // 而成因是他刚才手编那份 JSON 少了一个逗号。
+        // ⚠ **换表之前这一形不存在**（表是启动快照，坏文件只影响下一次启动）⇒
+        //   它是**本轮改动新长出来的**，处置写在这里：**留住上一张能用的表，只出声**。
+        // ⚠ 「一条都没配」与「读坏了」是两回事：前者 `problem` 是 `None`、accounts 空，
+        //   那是一个**合法**状态（谁都不走中转），照换不误。
+        if let Some(why) = loaded.problem.as_deref() {
+            eprintln!(
+                "[relay] 凭据文件读不成表，**保留上一张表不动**（不是换成空表）：{why}"
+            );
+            // 印记也**不更新** —— 下次请求进来还会再试一次，人把文件改回来就自动恢复。
+            return;
+        }
         let (table, rejected) = table::build(std::mem::take(&mut loaded.accounts), &r.upstream_default);
         // 重载也要**出声**：静默换掉一张表，与静默丢掉一行是同一族。
         creds::announce(&loaded, table.len(), &rejected, &mut std::io::stderr());
@@ -463,14 +480,21 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     // `D1 阻-2`：查表**之前**先看那份文件动过没有 —— 不然「界面上配完 key」要重启才生效，
     // 而不重启的症状是一个静默的 404（与「账号 id 打错」同形）。
     relay.refresh_if_changed();
-    let table = relay.table.read().expect("lock");
-    let Some(row) = table.lookup(&r.account) else {
-        return respond_and_drain(&mut down_w, "404 Not Found");
-    };
+    // ★★ `D2 阻-4`：**读锁的活法是承重的，写下来。**
+    //
+    // 这个守卫**只活到「请求头 + 请求体已经写给上游」为止**（下面那个 `}` 就是它的尽头），
+    // **不跨 `pump`**。理由：`std::sync::RwLock` 是**写优先**的 —— 一个在等的写者
+    // （= 用户刚配完一把 key，下一条请求触发重载）会挡住后面所有读者；
+    // 而 `pump` 是**流式转发**，一条 SSE 长流可以跑几分钟。
+    // ⇒ 守卫跨 `pump` 的话，「配一次 key」会把中转堵在**最长那条在飞流**后面。
+    // ⚠ **挂起时长我没实测**（那要造一条长流再去配 key）—— 这是读源码得出的形状。
+    // ⇒ 现在的写法让锁只覆盖「查表 → 连上游 → 写请求」这一小段，`pump` 在守卫之外跑。
     // ★ `阻-1(D3)` + `重要-2(D3)`：请求体这一格先前有**两个**洞，两个都在这几行上。
     //   ① 长度**无上界** ⇒ `Content-Length: 1e12` 把整个进程 abort 掉（SIGABRT，不走 unwind）；
     //   ② 长度**读不懂**（`7abc`）与「没有这个头」挤在同一个 `None` 里 ⇒ 请求体被静默丢掉、
     //      上游收到空体、下游拿到一条正常的 200。中转搬的正是 `POST /v1/messages` 的载荷。
+    // ⚠ 顺序：它排在**取读锁之前**（`D2 阻-4`）—— 读下游是一次可能很慢的 IO，
+    //   握着表的读锁去等它，等于让「配一次 key」跟着它一起慢。
     let body = match head.content_length() {
         http1::BodyLen::Exact(n) => match http1::read_exact_body(&mut down_r, n, BODY_CAP)? {
             Some(b) => b,
@@ -484,25 +508,39 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
 
     relay.served.fetch_add(1, Ordering::SeqCst);
 
-    // ★ 连的是**这一行自己的**上游。
-    //   ⚠ 订正〔`D1` 阻-1，08-28〕：先前这里逐字写着「所以『拿 A 的端点』这件事在这里
-    //   **根本写不出来**」——**那句是假的**。`D1-M2` 实测：两行同时在作用域里、
-    //   `a.connect()` 配 `render_upstream_request(…, b, …)`，**编译通过、跑得通**。
-    //   今天这一行之所以对，靠的是**这个作用域里只有一行**这个事实，**不是类型**。
-    //   真正量它的是 `KH2`/`KH4` 那几条走真转发的行为判据。
-    let mut up = match row.connect() {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("[relay] upstream connect failed: {e}");
-            return respond_status(&mut down_w, "502 Bad Gateway");
+    // ★★ `D2 阻-4`：**读锁的活法是承重的，写下来。**
+    //
+    // 这个守卫只活到**这个块结束**（请求头 + 请求体已经写给上游），**不跨 `pump`**。
+    // 理由：`std::sync::RwLock` 是**写优先**的 —— 一个在等的写者（= 用户刚配完一把 key，
+    // 下一条请求触发重载）会挡住后面所有读者；而 `pump` 是**流式转发**，
+    // 一条 SSE 长流可以跑几分钟 ⇒ 守卫跨 `pump` 的话，「配一次 key」会被堵在
+    // **最长那条在飞流**后面。⚠ **挂起时长我没实测** —— 这是读源码得出的形状，不是读数。
+    let mut up = {
+        let table = relay.table.read().expect("lock");
+        let Some(row) = table.lookup(&r.account) else {
+            return respond_and_drain(&mut down_w, "404 Not Found");
+        };
+        // ★ 连的是**这一行自己的**上游。
+        //   ⚠ 订正〔`D1` 阻-1，08-28〕：先前这里逐字写着「所以『拿 A 的端点』这件事在这里
+        //   **根本写不出来**」——**那句是假的**。`D1-M2` 实测：两行同时在作用域里、
+        //   `a.connect()` 配 `render_upstream_request(…, b, …)`，**编译通过、跑得通**。
+        //   今天这一行之所以对，靠的是**这个作用域里只有一行**这个事实，**不是类型**。
+        //   真正量它的是 `KH2`/`KH4` 那几条走真转发的行为判据。
+        let mut up = match row.connect() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[relay] upstream connect failed: {e}");
+                return respond_status(&mut down_w, "502 Bad Gateway");
+            }
+        };
+        // ★★ 上游与 key **同源**：这里递的是**同一个** `row`，不是两个各自取的值。
+        up.write_all(&render_upstream_request(&head, &r.rest, row, body.len()))?;
+        if !body.is_empty() {
+            up.write_all(&body)?;
         }
+        up.flush()?;
+        up
     };
-    // ★★ 上游与 key **同源**：这里递的是**同一个** `row`，不是两个各自取的值。
-    up.write_all(&render_upstream_request(&head, &r.rest, row, body.len()))?;
-    if !body.is_empty() {
-        up.write_all(&body)?;
-    }
-    up.flush()?;
 
     // ★★ `重要-1(D3)`：**1xx 是中间响应，不是最终响应**。
     //
@@ -3579,6 +3617,59 @@ head -n 1 <&3
             relay.err().matches("listening on").count(),
             1,
             "中转重启过 —— 那这一条量的就不是「不重启也生效」"
+        );
+    }
+
+    /// ★★★ `D2 阻-2`：**重载时解析失败，不许把表换成空。**
+    ///
+    /// 空表的行为是**全部 404** ⇒ 用户手编那份 JSON 少一个逗号，症状就是
+    /// 「我明明配好了、刚才还能用，现在每一发都 404」。
+    /// ⚠ **这一形是「表可重载」之后新长出来的** —— 表是启动快照时，坏文件只影响下一次启动。
+    #[test]
+    fn a_broken_credentials_file_keeps_the_last_good_table_instead_of_emptying_it() {
+        let up = spawn_fake_upstream(None);
+        let dir = tmpdir("reload-bad");
+        let creds = dir.join("relay-credentials.json");
+        std::fs::write(
+            &creds,
+            b"{\n  \"accounts\": {\n    \"acctA\": { \"api_key\": \"KEY-A\" }\n  }\n}\n",
+        )
+        .expect("写起手的凭据夹具");
+        let relay = spawn_relay_child_with_creds(up.addr, &creds);
+
+        // 非空对照：起手这一发走得通（否则下面「仍然走得通」是空真）。
+        let mut c = send_request(relay.addr, "/s/agentA/acctA/sid-1/v1/messages", "");
+        let mut got = String::new();
+        c.read_to_string(&mut got).expect("read");
+        assert!(got.starts_with("HTTP/1.1 200"), "起手就不通：{got:?}");
+
+        // ★ 把文件改坏（人手编少一个逗号那一形）。
+        std::fs::write(&creds, b"{ \"accounts\": { \"acctA\": { } ").expect("写坏文件");
+
+        // 正题：**仍然走得通** —— 上一张能用的表还在。
+        let mut c2 = send_request(relay.addr, "/s/agentA/acctA/sid-2/v1/messages", "");
+        let mut got2 = String::new();
+        c2.read_to_string(&mut got2).expect("read");
+        assert!(
+            got2.starts_with("HTTP/1.1 200"),
+            "文件读坏了就把整张表换成空了 —— 那是**全部 404**，\n\
+             而用户看到的是「刚才还能用，现在每一发都 404」。实得：{got2:?}"
+        );
+        // 而且**不是静默的**：那一句必须出现在中转的诊断流里。
+        assert!(
+            wait_until(|| relay.err().contains("保留上一张表不动")),
+            "读坏了却一声不吭 —— 静默换表与静默丢一行是同一族。stderr 现在是：{:?}",
+            relay.err()
+        );
+        // 两把 key 都还是那一行的（表没被换掉的第二个读数）。
+        let auths = up.auth_values.lock().expect("lock").clone();
+        assert_eq!(
+            auths,
+            vec![
+                "Authorization: Bearer KEY-A".to_string(),
+                "Authorization: Bearer KEY-A".to_string()
+            ],
+            "实得：{auths:?}"
         );
     }
 

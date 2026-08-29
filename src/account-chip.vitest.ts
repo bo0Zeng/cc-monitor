@@ -627,3 +627,56 @@ describe("K-H2b D1 阻-5：没有远端时 chip 渲染本机账号，徽章带�
     expect(fetchAccountsMock).not.toHaveBeenCalled();
   });
 });
+
+// ---------------------------------------------------------------------------
+// `K-H2b` `D2 阻-7`：**本件只该「加」看得见，不该「改」看不见**
+// ---------------------------------------------------------------------------
+describe("K-H2b D2 阻-7：本机那一档 not-ready 仍然整个隐藏", () => {
+  it("★ 没有远端 + 本机也没有 manifest ⇒ chip 隐藏（不许冒出一句远端口吻的假话）", async () => {
+    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+    // 本机没启用多账号：`available:true` 但 `meta.enabled:false` ⇒ `deriveUi` 判 not-enabled。
+    vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue({
+      origin: "<local>",
+      available: true,
+      error: null,
+      meta: {
+        enabled: false,
+        acctsDir: "",
+        manifestPath: "",
+        updatedAt: null,
+        sharedStore: null,
+        count: 0,
+        error: null,
+        accountZeroAware: true,
+      },
+      accounts: [],
+      defaultName: null,
+      notice: null,
+    } as unknown as AccountsState);
+    const chip = new AccountChip({ openSettings: () => {} });
+    await chip.refresh();
+    const el = (chip as unknown as { element: HTMLElement }).element;
+    expect(
+      el.style.display,
+      "本件之前这一形是**整个隐藏**；放宽 origin 门之后它会显出来，\n" +
+        "菜单里还写一句「该远端尚未启用多账号」—— 而那台『远端』根本不存在。",
+    ).toBe("none");
+  });
+
+  it("★ 本机那一档不渲染「刷新用量」那个静默死按钮", async () => {
+    document.querySelectorAll(".account-picker").forEach((el) => el.remove());
+    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+    vi.spyOn(accountsMod, "fetchLocalAccounts").mockResolvedValue(
+      state({ accounts: [acct({ name: "acct-a", configDir: "/h/.claude-accts/acct-a" })], defaultName: "acct-a" }),
+    );
+    vi.spyOn(accountsMod, "fetchLocalRelayRouting").mockResolvedValue({ routed: [], running: false });
+    const chip = new AccountChip({ openSettings: () => {} });
+    await chip.refresh();
+    await chip.openMenu();
+    const labels = [...document.querySelectorAll(".account-picker *")].map((e) => e.textContent);
+    // 非空对照：菜单确实渲染出来了（否则下面那条 not.toContain 是空真）。
+    expect(labels).toContain("管理账号…");
+    // 正题：那个按钮在本机那一档是死的（`loadCurrentAccountUsage` 首行就 return）。
+    expect(labels).not.toContain("刷新用量");
+  });
+});
