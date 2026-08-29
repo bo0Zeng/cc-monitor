@@ -1583,11 +1583,16 @@ struct RelayRouting {
     running: bool,
 }
 
+/// ⚠ **两个事实只从 [`history::relay_facts`] 取**（`D5 阻-1`）：这是那两个取值口的
+/// **第二个**生产消费方（第一个是起会话那一侧的 `history::relay_prefix_for_launch`），
+/// 两处走同一条缝、各有一条行为判据。直接在这里调那两个函数的写法只能靠「文本在不在」来钉，
+/// 而那一形 `D5` 已经打穿了 —— 整段理由住 `history::RelayFactSources` 的头注。
 #[tauri::command]
 fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
+    let facts = history::relay_facts();
     RelayRouting {
-        routed: history::relay_routed_subset(&config_dirs, &history::relay_rows()),
-        running: local_daemon::relay_running(),
+        routed: history::relay_routed_subset(&config_dirs, &(facts.rows)()),
+        running: (facts.running)(),
     }
 }
 
