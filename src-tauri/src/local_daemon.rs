@@ -3764,7 +3764,7 @@ mod tests {
 //
 // 🔴 **为什么不是直接把 `mod tests` 改成 `pub(crate) mod tests`** —— 09-01 实打，
 //   那一改**当场打红 17 条**（`cargo test -p monitor --lib`：`1194 passed; 17 failed`）。
-//   机制现打自 `crates/guard-core/src/lib.rs:139`：`test_module_ranges` 认测试模块的条件是
+//   机制现打自 `src-tauri/crates/guard-core/src/lib.rs:141`：`test_module_ranges` 认测试模块的条件是
 //   「`#[cfg(test)]` 的下一行 `trim()` 后 **`starts_with("mod ")`** 且以 `{` 收尾」——
 //   `pub(crate) mod tests {` 过不了这一关 ⇒ 整个测试段被当成**生产段**，
 //   于是走 `production_source` / `production_code` 的守卫跟着去扫测试代码
