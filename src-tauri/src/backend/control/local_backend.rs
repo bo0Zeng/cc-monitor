@@ -1479,7 +1479,16 @@ mod tests {
     /// 那句注释说的是另一件对的事（不继承「测试进程恰好在哪个 tmux 里」），别把它读成隔离。
     ///
     /// ⇒ 与那条正题同样三道锁：`#[ignore]` + `CCM_E2E_TMUX_SHIM_BIN` fail-closed（排在
-    /// **任何 spawn 之前**）+ 那个 shim **真的挂进 daemon 的 `PATH`**（探针与被监护进程都要）。
+    /// **任何 spawn 之前**）+ 那个 shim **真的挂进 daemon 的 `PATH` 最前面**（探针与被监护进程都要）。
+    ///
+    /// ⚠⚠ **第三道锁的射程要分两格看**〔`D1` 审计 08-31 查实，阻塞 4 的另一半〕——
+    /// 与 `local_daemon.rs::the_local_daemon_can_be_stopped_and_started_again` 头注里那张表**同一份**：
+    /// 走 `bash e2e/local-backend-supervise.sh` 时 `tmux-shim.sh` 已经把 shim 挂进
+    /// **测试进程自己的 `PATH`**，而 `supervise_with_stdio` **从不 `env_clear()`**
+    /// ⇒ 第三道锁在**那条跑法上是冗余的**；它真正买的是「**手工 `cargo test -- --ignored`、
+    /// 变量设上但 shim 不在自己 `PATH` 上**」那一格。别把两格混着读。
+    /// 看着它的判据是 `local_daemon.rs` 那条
+    /// `every_test_that_starts_the_real_daemon_demands_a_private_tmux` 的第 ㈡ 条腿。
     #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
     #[test]
     #[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 e2e/local-backend-supervise.sh 那条带 shim 的路"]
