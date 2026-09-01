@@ -1214,6 +1214,58 @@ pub fn stop_local_backend() -> Result<String, String> {
 mod tests {
     use super::*;
 
+    // ══ 第二道锁 ② 的**唯一入口**〔`K-R7` 09-01，`§0q` 裁一 · 出路乙〕═══════════
+    //
+    // # 它为什么存在：`D4` 一刀走过了原来那道判据
+    //
+    // 原来 ② 靠的是一条**同行文本形状**：「本体里有一行同时含 `CCM_E2E_TMUX_SHIM_BIN`
+    // 与 `.expect(`」。`D4` 09-01 实测把取值换成
+    // `var(SHIM).unwrap_or_else(|_| var(<真 PATH 那个变量>).expect(..))` ——
+    // **同一行上两样都还在** ⇒ 判据说合规，而变量缺席时 shim = 真 PATH，
+    // daemon 沿真 PATH 找到真 tmux ⇒ 装用户的 `[50]`。**全量门禁新红 0。**
+    // 那正是 `§1` 表里 08-26 / 08-27 / 08-29 各犯一次的**降级裸跑**。
+    //
+    // # 买到的是什么：**把「fail-closed」这件事从文本形状换成运行期读数**
+    //
+    // 下面 `require_tmux_shim` 是**纯函数**（喂它一个 `Result`，不读环境）
+    // ⇒ 「拿不到就炸」这条性质能被一条**普通 `#[test]`**（不带 `#[ignore]`）
+    // 在**默认门禁里真跑一遍**：[`the_one_shim_gate_really_fails_closed`]。
+    // 谁把这里改成降级，**门禁当场红** —— 那是机器守的，不是纪律、也不是文本钉。
+    //
+    // # 买不到的是什么（别读大）
+    //
+    // 「**这条测试走不走这个口**」仍然是一条**文本判据**（守卫里的 ㈠：本体里出现
+    // `demand_tmux_shim(`）。攻击面从**5 处**缩到**1 处**，不是缩到 0：
+    // 一条根本不进人群的测试（诚实边界 5「第四种来历」）照旧够不着。
+    // ⚠ 而**只要本体里真的调到了这个口**（不是写在死代码里），缺变量就一定炸 ——
+    //   因为炸在口里，不在调用处的写法上。这一格比原来那条同行判据强的正是这里。
+    /// 那个变量的名字 —— 全仓**只在这一处**当「要去取的键」用。
+    pub(crate) const TMUX_SHIM_VAR: &str = "CCM_E2E_TMUX_SHIM_BIN";
+
+    /// **纯函数**：把「取变量的结果」变成 shim 目录。**拿不到就炸，绝不降级。**
+    ///
+    /// 它刻意**不自己读环境** —— 读环境的是下面那个 [`demand_tmux_shim`]。
+    /// 分开的理由只有一条：**这样「fail-closed」才测得了**，
+    /// 不用去动进程级的环境变量（那会跟别的测试线程打架，也会让读数依赖跑法）。
+    pub(crate) fn require_tmux_shim(got: Result<String, std::env::VarError>, why: &str) -> String {
+        match got {
+            Ok(dir) => dir,
+            Err(e) => panic!(
+                "要 {TMUX_SHIM_VAR}（{e:?}）—— {why}\n\
+                 ★ 被起的 daemon 一上来就往它连得到的 tmux server 装三条**全局** hook\n\
+                 （固定槽位 [50]，**没有关掉它的开关**）⇒ 不隔离就是去改用户真实 tmux 的状态。\n\
+                 ⚠ 这不是理论：08-11 打没过用户 9 个真实会话；08-26 / 08-27 / 08-29 各盖过一次 [50]。\n\
+                 ⇒ 必须 **fail closed**：拿不到 shim 就炸，**绝不降级裸跑**。\n\
+                 跑法：bash e2e/local-backend-supervise.sh"
+            ),
+        }
+    }
+
+    /// 五个落点取 shim 的**唯一**口子。加新的起真 daemon 的测试，也从这里取。
+    pub(crate) fn demand_tmux_shim(why: &str) -> String {
+        require_tmux_shim(std::env::var(TMUX_SHIM_VAR), why)
+    }
+
     /// P2s-Y2（acceptor: **实测**）：**停得掉 · 起得回来 · 状态跟着变**。
     ///
     /// # 为什么按 `/proc` 看而不是读状态字段
@@ -1320,10 +1372,8 @@ mod tests {
 
         // ★★ **fail closed，而且排在一切之前**：拿不到 shim 就当场炸，绝不降级裸跑。
         //    降级裸跑 = 去改用户真实 tmux server 的 `[50]` 槽位（08-11 / 08-26 / 08-27 / 08-29 各一次）。
-        let shim = std::env::var("CCM_E2E_TMUX_SHIM_BIN").expect(
-            "要 CCM_E2E_TMUX_SHIM_BIN —— 本条起真 daemon，而 daemon 一上来就往它连得到的 \
-             tmux server 装三条**全局** hook（槽位 [50]，没有开关）。\
-             跑法：bash e2e/local-backend-supervise.sh",
+        let shim = demand_tmux_shim(
+            "本条起真 daemon，而 daemon 一上来就往它连得到的 tmux server 装全局 hook",
         );
         let _guard = crate::inbound_client::local_origin_test_lock();
         let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -2185,6 +2235,51 @@ mod tests {
         }
     }
 
+    /// ★★ **第二道锁 ② 本身，在默认门禁里真跑一遍**〔`K-R7` 09-01，`§0q` 裁一 · 出路乙〕。
+    ///
+    /// # 它买的是「② 不再是形状钉」这一格
+    ///
+    /// `D4` 09-01 实测：原来 ② 靠「同一行上既有 `CCM_E2E_TMUX_SHIM_BIN` 又有 `.expect(`」
+    /// 这条**文本形状**判。把取值换成 `var(SHIM).unwrap_or_else(|_| var(<真 PATH>).expect(..))`
+    /// ⇒ 三样东西都还在、判据说合规，而 fail-closed **没了**，全量门禁新红 **0**。
+    /// ⇒ 现在取 shim 只剩 [`demand_tmux_shim`] 一个口，而**这条测试盯的正是那个口**：
+    /// 喂它一个「变量不在」的读数，它**必须炸**。
+    ///
+    /// # 为什么是纯函数而不是去动环境变量
+    ///
+    /// `cargo test` 一个进程里跑很多线程，改进程级环境变量会跟别人打架；
+    /// 而且 `e2e/local-backend-supervise.sh` 那条路**是设了**这个变量的
+    /// ⇒ 「按环境当场试一把」的写法会让读数随跑法翻面。
+    /// [`require_tmux_shim`] 收的是 `Result`，所以这一格**与环境无关**，两条路上读数相同。
+    ///
+    /// # 反空真
+    ///
+    /// 只断「缺变量会炸」是**半格**：一个恒 `panic!` 的实现也能过。
+    /// ⇒ 另加一格「有值时原样交出来」，两格一起才钉住「**恰好是 fail-closed，不是恒炸**」。
+    #[test]
+    fn the_one_shim_gate_really_fails_closed() {
+        // ① 缺变量 ⇒ 必须炸。**这是运行期读数，不是源码文本的形状。**
+        let r = std::panic::catch_unwind(|| {
+            require_tmux_shim(Err(std::env::VarError::NotPresent), "本条自检")
+        });
+        assert!(
+            r.is_err(),
+            "`require_tmux_shim` 拿不到 {TMUX_SHIM_VAR} 却**没有炸** —— 这就是降级裸跑。\n\
+             ★ 它一降级，所有走这个口的 e2e 都会沿真 PATH 找到真 tmux，\n\
+             daemon 一上来就往用户那台 server 装三条全局 hook（槽位 [50]，没有开关）。\n\
+             08-11 打没过用户 9 个真实会话；08-26 / 08-27 / 08-29 各盖过一次。\n\
+             ⚠ 这一格是 `D4` 09-01 买回来的：在它之前，② 只由一条**同行文本形状**钉着，\n\
+             而那条形状被一刀走过去了（`unwrap_or_else` 里再套一个 `.expect(`）。"
+        );
+        // ② 反空真：有值时必须**原样**交出来。少了这一格，「恒 panic」也能过上面那一格。
+        let got = require_tmux_shim(Ok("/夹具/shim-bin".to_string()), "本条自检");
+        assert_eq!(
+            got, "/夹具/shim-bin",
+            "`require_tmux_shim` 拿到值却没有原样交出来 —— 那么上面那一格是空真：\n\
+             一个「永远炸」的实现照样能过，而它会把 e2e 全部打死在起跑线上。"
+        );
+    }
+
     /// ★★★ **人群画在「会起真 daemon 的测试」上 —— 不是画在某个属性上**〔`K-R7-D2`，08-31〕。
     ///
     /// # 它为什么必须是新的一条，而不是把上面那条改宽一点
@@ -2219,7 +2314,16 @@ mod tests {
     /// # 要求：fail-closed 地要一个私有 tmux **并且真的用上它** —— 两种合法形态
     ///
     /// ① **自己要 + 自己挂**（**三格缺一不可**）：
-    ///    ㈠ 本体里有一行**同时**含 `CCM_E2E_TMUX_SHIM_BIN` 与 `.expect(`（**第二道锁**：取到）；
+    ///    ㈠ 本体里走了取 shim 的**唯一入口** `demand_tmux_shim(..)`（**第二道锁**：取到）；
+    ///       ⚠⚠ **这一格 09-01 换过一次判法**〔`§0q` 裁一 · 出路乙，`D4` 阻塞 1〕：
+    ///       原来判的是「本体里有一行**同时**含 `CCM_E2E_TMUX_SHIM_BIN` 与 `.expect(`」——
+    ///       `D4` 把取值换成 `var(SHIM).unwrap_or_else(|_| var(<真 PATH>).expect(..))`
+    ///       ⇒ **同一行上三样东西都还在**、判据说合规，而变量缺席时 shim = 真 `PATH`
+    ///       ⇒ daemon 沿真 `PATH` 找到真 tmux，**全量门禁新红 0**。那正是 `§1` 里
+    ///       08-26 / 08-27 / 08-29 各犯一次的「降级裸跑」。
+    ///       ⇒ 今天 ㈠ 只判「**走没走那个口**」；「**口关不关得上**」由
+    ///       [`the_one_shim_gate_really_fails_closed`] 在**默认门禁里真跑一遍**
+    ///       （纯函数 + `catch_unwind`，与环境无关）—— 那一格是**机器守的，不是文本钉**。
     ///    ㈡ 本体里有一行**同时**含 `"PATH"` 与 `"{<绑定名>}:`（**第三道锁**：挂进 `PATH` 最前面）
     ///       —— 注意开头那个**双引号**：插值必须是那个格式串的**串首**，不只是「冒号左边」；
     ///    ㈢ `PATH` 作为 env 键在本体里**恰好被写一次**（**同一张 `envs` 里后写的赢**）。
@@ -2380,6 +2484,12 @@ mod tests {
     #[test]
     fn every_test_that_starts_the_real_daemon_demands_a_private_tmux() {
         const SHIM: &str = "CCM_E2E_TMUX_SHIM_BIN";
+        // ㈠ 判的是「**走没走那个唯一的口**」，不再是「同一行上有没有 `.expect(`」
+        // 〔`K-R7` 09-01，`§0q` 裁一 · 出路乙；`D4` 把旧那条同行形状一刀走过去了〕。
+        // ★ 口子本身 fail-closed 这件事**不在这里判** —— 它由
+        //   `the_one_shim_gate_really_fails_closed` 在默认门禁里**真跑一遍**。
+        //   ⇒ 这一条现在只管「谁进了那个口」，那条管「口是不是关得上」。
+        const GATE: &str = "demand_tmux_shim(";
         const DELEGATE: &str = "E2eSandbox::demand";
         // 真 daemon 的三种来历。**默认拒绝**：出现任何一条就进人群。
         const PROVENANCE: [&str; 3] = ["embedded-daemons", "CCM_E2E_DAEMON", DELEGATE];
@@ -2390,7 +2500,12 @@ mod tests {
         const LEG_NEITHER: &str = "两条腿都没走（连第二道锁 ② 都没有）";
         // 「差在哪一格」——㈡ 与 ㈢ **各占一条**，不许合成一句（`K13`，09-01 `D2` 阻塞 1）。
         const MISS_NONE: &str = "";
-        const MISS_LOCK2: &str = "没有 fail-closed 地要 shim，也没委托（**第二道锁 ②**）";
+        const MISS_LOCK2: &str = "没走取 shim 的那个唯一入口 `demand_tmux_shim(..)`，\
+             也没委托给 `E2eSandbox::demand()`（**第二道锁 ②**）。\n      \
+             ⚠ 09-01 起本格判的是「**走没走那个口**」，不是「同一行上有没有 `.expect(`」——\
+             后者被 `D4` 一刀走过去了（`unwrap_or_else(|_| var(<真 PATH>).expect(..))` \
+             同行上三样都在，而 fail-closed 没了）。**口本身关不关得上**由 \
+             `the_one_shim_gate_really_fails_closed` 在默认门禁里真跑一遍";
         const MISS_FRONT: &str = "要了 shim 却没把它写在给 daemon 的 `PATH` **串首**\
              （**第三道锁 ③ · ㈡ 写法**）—— 要的形状是 `(\"PATH\", format!(\"{shim}:{}\", ..))`，\
              插值**紧跟开引号**；写成 `\"/usr/bin:{shim}:{}\"` 也不算：那样真 tmux 先被解析到";
@@ -2469,7 +2584,7 @@ mod tests {
         let shim_first_on_path = |code: &str| -> bool {
             let binding = code
                 .lines()
-                .find(|l| l.contains(SHIM) && l.contains(".expect("))
+                .find(|l| l.contains(GATE))
                 .map(|l| l.trim())
                 .and_then(|l| l.strip_prefix("let "))
                 .and_then(|r| r.split_once('='))
@@ -2609,9 +2724,7 @@ mod tests {
                     .map(|(n, _)| n.to_string())
                     .unwrap_or_else(|| "<读不出名字>".to_string());
                 // 两种合法形态：**自己要 + 自己挂**，或委托给 `E2eSandbox::demand()`。
-                let asks_itself = code
-                    .lines()
-                    .any(|l| l.contains(SHIM) && l.contains(".expect("));
+                let asks_itself = code.contains(GATE);
                 let hangs_it_on_path = shim_first_on_path(&code);
                 let writes = path_writes(&code);
                 let delegates = code.contains(DELEGATE);
@@ -2717,12 +2830,14 @@ mod tests {
         //   （`let kill = kill_on_exit(..); if h.current_pid().is_some() { h.stop(); }`）——
         //   **我在治它的这一轮里又犯了一次。**
         assert!(
-            demand
-                .lines()
-                .any(|l| l.contains(SHIM) && l.contains(".expect(")),
-            "`E2eSandbox::demand()` 不再 fail-closed 地要 `{SHIM}` ——\n\
+            demand.contains(GATE),
+            "`E2eSandbox::demand()` 不再走取 shim 的那个唯一入口（`{GATE}`）——\n\
              那么所有委托给它的测试都在裸跑，而本条会对着一张空头支票说「合规」。\n\
-             ⚠ 判的是「**同一行上**既有 `{SHIM}` 又有 `.expect(`」，不是「这一段里两样都出现过」。\n\
+             ⚠⚠ **判的不再是「同一行上既有 `{SHIM}` 又有 `.expect(`」**〔`K-R7` 09-01 换的〕：\n\
+             `D4` 实测把取值换成 `var({SHIM}).unwrap_or_else(|_| var(<真 PATH>).expect(..))`\n\
+             ⇒ 同一行上三样东西都还在、旧判据说合规，而 fail-closed 没了，全量门禁新红 **0**。\n\
+             ⇒ 现在只判「走没走那个口」，「口关不关得上」由\n\
+             `the_one_shim_gate_really_fails_closed` 在默认门禁里**真跑一遍**。\n\
              实得：\n{demand}"
         );
         // ⚠ 转发者的**第三道锁**也要钉〔`D1` 回修 08-31，阻塞 4〕：
@@ -3266,7 +3381,7 @@ mod tests {
             let bin = std::env::var("CCM_E2E_DAEMON").expect("要 CCM_E2E_DAEMON");
             // ★ **fail closed**：拿不到 shim 就炸，绝不降级裸跑 ——
             //   裸跑 = 去改用户真实 tmux server 的 `[50]` 槽位（08-11 / 08-26 各出过一次）。
-            let shim = std::env::var("CCM_E2E_TMUX_SHIM_BIN").expect("要 CCM_E2E_TMUX_SHIM_BIN");
+            let shim = demand_tmux_shim("委托腿上的 PATH 全由本处一处代办");
             let work = std::path::PathBuf::from(
                 std::env::var("CCM_E2E_WORK").expect("要 CCM_E2E_WORK"),
             );
@@ -3546,3 +3661,22 @@ mod tests {
         }
     }
 }
+
+// ══ 取 shim 那个唯一入口的**跨文件出口**〔`K-R7` 09-01，`§0q` 裁一 · 出路乙〕════
+//
+// `backend/control/local_backend.rs` 的三个落点也要走这个口，而 `mod tests` 是私有的
+// ⇒ 在这里 `pub(crate)` 重导出一次。
+//
+// 🔴 **为什么不是直接把 `mod tests` 改成 `pub(crate) mod tests`** —— 09-01 实打，
+//   那一改**当场打红 17 条**（`cargo test -p monitor --lib`：`1194 passed; 17 failed`）。
+//   机制现打自 `crates/guard-core/src/lib.rs:139`：`test_module_ranges` 认测试模块的条件是
+//   「`#[cfg(test)]` 的下一行 `trim()` 后 **`starts_with("mod ")`** 且以 `{` 收尾」——
+//   `pub(crate) mod tests {` 过不了这一关 ⇒ 整个测试段被当成**生产段**，
+//   于是全仓所有走 `production_source` / `production_code` 的守卫一起去扫测试代码
+//   （`guard-core` 的反向自检逐字：「剥完仍残留 **23** 个测试属性 —— 剥法坏了」）。
+//   ⇒ **本行这种写法是被那次实测选出来的，不是随手写的**：`#[cfg(test)]` 底下不是
+//     `mod X {` 的东西，剥法会原样跳过（`i = attr_end; continue;`），一个字节都不影响剥法。
+//   ⚠ 它也**排在 `mod tests` 之后** ⇒ 「文件里首个 `#[cfg(test)]` 之前那一段」逐字节没变
+//     （本件四拍守着的「生产段零改动」按的就是那个切法）。
+#[cfg(test)]
+pub(crate) use tests::demand_tmux_shim;
