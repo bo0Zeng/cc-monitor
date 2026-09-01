@@ -1488,7 +1488,13 @@ mod tests {
     /// ⇒ 第三道锁在**那条跑法上是冗余的**；它真正买的是「**手工 `cargo test -- --ignored`、
     /// 变量设上但 shim 不在自己 `PATH` 上**」那一格。别把两格混着读。
     /// 看着它的判据是 `local_daemon.rs` 那条
-    /// `every_test_that_starts_the_real_daemon_demands_a_private_tmux` 的第 ㈡ 条腿。
+    /// `every_test_that_starts_the_real_daemon_demands_a_private_tmux` 的 ㈡ 与 ㈢ **两格**
+    /// ——㈡ 判**写法**（`"PATH"` 与 `"{<绑定名>}:` 同行，插值紧跟开引号），
+    /// ㈢ 判**处数**（`PATH` 这个 env 键在本体里恰好写一次）。
+    /// ⚠ ㈢ 是 `D2` 复审 09-01 逼出来的〔阻塞 1 形 ②〕：本条的 `envs` 里**再追加一条**
+    /// `("PATH", …)` 就能把上面那条带 shim 的整个盖掉（`supervise_with_stdio` 是
+    /// `for (k, v) in &envs { cmd.env(k, v); }`，**后写的赢**，见 `:336`-`:337`），
+    /// 而在 ㈢ 落地之前那一刀**全量门禁新红 0**。两格的代价不是一种，判据也刻意分开（`K13`）。
     #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
     #[test]
     #[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 e2e/local-backend-supervise.sh 那条带 shim 的路"]
