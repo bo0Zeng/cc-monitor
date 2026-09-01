@@ -1188,10 +1188,7 @@ mod tests {
         use std::time::Duration;
 
         // ★★ **fail closed，排在一切之前**（`K-R7`）。
-        let shim = std::env::var("CCM_E2E_TMUX_SHIM_BIN").expect(
-            "要 CCM_E2E_TMUX_SHIM_BIN —— 本条起真 daemon 且起真 tmux。\
-             跑法：bash e2e/local-backend-supervise.sh",
-        );
+        let shim = crate::local_daemon::demand_tmux_shim("本条起真 daemon 且起真 tmux");
         let _guard = crate::inbound_client::local_origin_test_lock();
 
         // ★★★ 「用户真实的 tmux」这一问**必须绕开 PATH 上的 shim**〔`K-R7` 08-31，实测逼出来的〕。
@@ -1512,10 +1509,8 @@ mod tests {
     #[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 e2e/local-backend-supervise.sh 那条带 shim 的路"]
     fn the_local_daemon_really_registers_an_inbound_client() {
         // ★★ **fail closed，而且排在一切之前** —— 见上面头注第三段。
-        let shim = std::env::var("CCM_E2E_TMUX_SHIM_BIN").expect(
-            "要 CCM_E2E_TMUX_SHIM_BIN —— 本条起真 daemon，而 daemon 一上来就往它连得到的 \
-             tmux server 装三条**全局** hook（槽位 [50]，没有开关）。\
-             跑法：bash e2e/local-backend-supervise.sh",
+        let shim = crate::local_daemon::demand_tmux_shim(
+            "本条起真 daemon，而 daemon 一上来就往它连得到的 tmux server 装全局 hook",
         );
         let _guard = crate::inbound_client::local_origin_test_lock();
         let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -2315,6 +2310,8 @@ mod tests {
         //   **显式选择器压得过 `$TMUX`**。本条钉的性质一个字没变：
         //   **起真 daemon 的 e2e 必须 fail-closed 地要一个私有 tmux 隔离**。
         const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_SHIM_BIN";
+        // 取 shim 的**唯一入口**〔`K-R7` 09-01〕：住 `local_daemon::tests::demand_tmux_shim`。
+        const GATE: &str = "demand_tmux_shim(";
         let src = include_str!("local_backend.rs");
         // ⚠ **不在语料串上做裸 `split`**：`needle_anchor_registry` 的递减棘轮把它
         //   判为「匹配单位比事实小」的一族，且**不许调上限**（本条第一版就栽在这）。
@@ -2354,21 +2351,35 @@ mod tests {
                 .and_then(|r| r.split_once('('))
                 .map(|(n, _)| n)
                 .unwrap_or("<未知>");
+            // ⚠⚠ **这一格 09-01 换过一次判法**〔`K-R7` `§0q` 裁一 · 出路乙，`D4` 阻塞 1〕。
+            //   原来是两句：先找「含 `CCM_E2E_TMUX_SHIM_BIN` 的那一行」，再判那行含 `.expect(`。
+            //   `D4` 那一刀（`var(SHIM).unwrap_or_else(|_| var(<真 PATH>).expect(..))`）
+            //   **同一行上三样东西都还在** ⇒ 旧判据说合规，而 fail-closed 没了。
+            //   🔴 **本条是那一族的第 4 处，而 `§0q` 只点了 `local_daemon.rs` 的 3 处** ——
+            //     09-01 实测：只改本条人群里那条 e2e（`e2e_the_supervisor_restarts_…`）的取值，
+            //     **全量门禁新红 0**，本条一声不吭。⇒ 一起换。
+            //   现在判的是「**走没走取 shim 的那个唯一入口**」；
+            //   「**那个口关不关得上**」由 `local_daemon.rs` 的
+            //   `the_one_shim_gate_really_fails_closed` 在**默认门禁里真跑一遍**（不是文本钉）。
             let line = c
                 .lines()
-                .find(|l| l.contains(PRIVATE_TMUX))
+                .find(|l| l.contains(GATE))
                 .unwrap_or_else(|| {
                     panic!(
-                        "`{name}` 会起一个**真** daemon，却没要 `{PRIVATE_TMUX}` —— \
-                         它会连上用户真实的 tmux server。本模块头注写的是「绝不」。"
+                        "`{name}` 会起一个**真** daemon，却没走取 shim 的那个唯一入口 \
+                         （`{GATE}`）—— 它会连上用户真实的 tmux server。\n\
+                         本模块头注写的是「绝不」。⚠ 那个变量叫 `{PRIVATE_TMUX}`，\
+                         而**取它只许从那一个口取**（`local_daemon::tests::demand_tmux_shim`）：\
+                         口里那句 fail-closed 是被一条真跑的测试钉住的，\
+                         自己现取就退回到「谁也没在守」。"
                     )
                 });
+            // 反空真：光找到那一行不够 —— 它得真是**赋值**给某个绑定的（不是注释里提一句）。
             assert!(
-                line.contains(".expect("),
-                "`{name}` 拿 `{PRIVATE_TMUX}` 的那行不是 fail-closed 的：\n  {}\n\
-                 ⚠ `unwrap_or_default()` / `unwrap_or(..)` 会让**没设这个变量时静默用真 tmux**。\n\
-                 这条 e2e 平时被 `#[ignore]` 挡着不跑，坏了也没人知道 —— \
-                 所以它必须在**缺变量时当场炸**，而不是降级。",
+                line.trim_start().starts_with("let "),
+                "`{name}` 里出现 `{GATE}` 的那一行不是一条绑定：\n  {}\n\
+                 ⇒ 本条只认「`let <名字> = …demand_tmux_shim(..)`」这一种写法，\
+                 因为下游（`local_daemon.rs` 那条正题的 ㈡）要从这一行上取绑定名。",
                 line.trim()
             );
         }
@@ -2379,7 +2390,7 @@ mod tests {
     #[ignore]
     fn e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed() {
         let bin = std::env::var("CCM_E2E_DAEMON").expect("要 CCM_E2E_DAEMON");
-        let shim = std::env::var("CCM_E2E_TMUX_SHIM_BIN").expect("要 CCM_E2E_TMUX_SHIM_BIN");
+        let shim = crate::local_daemon::demand_tmux_shim("本条起真 daemon");
         let claude = std::env::var("CCM_E2E_CLAUDE_DIR").expect("要 CCM_E2E_CLAUDE_DIR");
         let events: Arc<Mutex<Vec<SuperviseEvent>>> = Arc::new(Mutex::new(Vec::new()));
         let ev = events.clone();
