@@ -1243,13 +1243,44 @@ mod tests {
     /// ⚠ 另一条边界：它**不调生产的 `start_local_backend` / `stop_local_backend`**
     /// （前者读真实 `~/.cc-monitor`、不接受环境注入）⇒ **生产的停口零覆盖**，
     /// 那一格由 `the_stop_command_really_calls_this_module` 的源码接线钉补上。
+    ///
+    /// # ★★ `K-R7`（08-31）：本条从「普通 `#[test]`」改成「`#[ignore]` + fail-closed + 真用 shim」
+    ///
+    /// 〔用 08-29〕逐字：「**你只能做产品, 不能动机器**」。而在此之前**本条自己在动机器**：
+    /// 它是**普通 `#[test]`**（只由 `cfg(embedded_daemons)` 门着），起一个真 daemon，
+    /// 而 daemon 一上来就**无条件**往它连得到的 tmux server 装三条**全局** hook
+    /// （固定槽位 `[50]`，**没有关掉它的开关**）。
+    /// ⇒ **任何人在铺了 `embedded-daemons/` 的树上跑一次 `cargo test`**（**包括用户自己
+    /// clone 下来跑一遍**）**都会改这台机器的 tmux 全局状态**。已经发生过三次
+    /// （08-26 实现方 · 08-27 PM · 08-29 PM）⇒ **靠纪律这一档已经实证无效**。
+    ///
+    /// 三道锁一起上，少一道都不够：
+    /// ① `#[ignore]` ⇒ 默认 `cargo test` **跑不到它**；
+    /// ② `CCM_E2E_TMUX_SHIM_BIN` **fail-closed**（`expect`，且排在**任何 spawn 之前**）
+    ///    ⇒ 连 `cargo test -- --ignored` 也不能裸跑它；
+    /// ③ 那个 shim **真的挂进被监护 daemon 的 `PATH`**。
+    ///
+    /// ⚠ ③ 不是装饰：**只做 ①② 会变成一次仪式** —— 要了一个变量却不用它，
+    /// daemon 照样沿真 `PATH` 找到真 tmux。
+    /// ⚠⚠ 而**只清 `TMUX` 是不够的**（`supervise_with_stdio` 内部就在清它）：
+    /// `TMUX` 一空，tmux 客户端**回落到默认 socket** `/tmp/tmux-$UID/default` ——
+    /// 那**正是**用户那台 server。隔离必须靠**显式选择器**（shim 强插 `-L`/`-S`），
+    /// 不能靠「不继承某个变量」。
     #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
     #[test]
+    #[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 e2e/local-backend-supervise.sh 那条带 shim 的路"]
     fn the_local_daemon_can_be_stopped_and_started_again() {
         use std::path::Path;
         use std::sync::Arc;
         use std::time::Duration;
 
+        // ★★ **fail closed，而且排在一切之前**：拿不到 shim 就当场炸，绝不降级裸跑。
+        //    降级裸跑 = 去改用户真实 tmux server 的 `[50]` 槽位（08-11 / 08-26 / 08-27 / 08-29 各一次）。
+        let shim = std::env::var("CCM_E2E_TMUX_SHIM_BIN").expect(
+            "要 CCM_E2E_TMUX_SHIM_BIN —— 本条起真 daemon，而 daemon 一上来就往它连得到的 \
+             tmux server 装三条**全局** hook（槽位 [50]，没有开关）。\
+             跑法：bash e2e/local-backend-supervise.sh",
+        );
         let _guard = crate::inbound_client::local_origin_test_lock();
         let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("embedded-daemons")
@@ -1262,6 +1293,12 @@ mod tests {
             (
                 "CLAUDE_CONFIG_DIR".to_string(),
                 cfg_dir.display().to_string(),
+            ),
+            // ★ 隔离**真的用上**：shim 目录挂在 `PATH` 最前面，daemon shell out 的 `tmux`
+            //   会被强插显式选择器 ⇒ 它连得到的只有 e2e 自己那台 server。
+            (
+                "PATH".to_string(),
+                format!("{shim}:{}", std::env::var("PATH").unwrap_or_default()),
             ),
         ];
         let now = || {
@@ -1305,6 +1342,11 @@ mod tests {
             .and_then(|v| v.as_u64())
             .expect("起来了却没有 pid") as u32;
         assert!(alive(pid1), "状态给了 pid={pid1}，但 /proc 里没有这个进程");
+        // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `e2e/local-backend-supervise.sh` 驱动，
+        //   而那个脚本的收尾自检是「**标记数 < 跑成的测试数 ⇒ 有测试提前退出**」
+        //   ⇒ 不打标记的话，它一进那条 `--ignored` 路就会把套件判红，
+        //   而红的理由是**假的**（不是断言没走完，是本条从来不打标记）。
+        println!("E2E-OK P2s 本机后端起得来（pid={pid1}，/proc 里真有）");
 
         // ── 停：进程必须**真的**没了 ──────────────────────────────────
         LOCAL_BACKEND
@@ -1327,6 +1369,7 @@ mod tests {
              ★ 这条断言刻意不读状态字段：只改字段的实现会让那种断言绿着过。"
         );
         assert!(wait_channel(false), "进程没了，通道却还挂在登记表里");
+        println!("E2E-OK P2s `stop()` 之后 pid={pid1} 真的从 /proc 里消失、通道也摘了");
 
         // ── 再起：必须是**新的**一条命 ────────────────────────────────
         *LOCAL_BACKEND.lock().expect("锁") = Some(spawn());
@@ -1345,6 +1388,7 @@ mod tests {
             "两次拿到同一个 pid —— 那说明「再起」其实什么都没做，\n\
              或者句柄根本没被换掉（`OnceLock` 时代就是这个形态：写一次就锁死）。"
         );
+        println!("E2E-OK P2s 停了之后起得回来，而且是**新的**一条命（{pid1} → {pid2}）");
 
         // ── 收尾 ──────────────────────────────────────────────────────
         if let Some(h) = LOCAL_BACKEND.lock().expect("锁").take() {
@@ -2033,9 +2077,22 @@ mod tests {
     ///
     /// # 形状
     ///
-    /// `local_backend.rs` 有一条同职的（`the_e2e_that_spawns_a_real_daemon_demands_private_tmux`），
+    /// `local_backend.rs` 有一条同职的（`every_real_daemon_e2e_demands_a_private_tmux_dir`），
     /// 而它**只扫它自己那个文件** —— 本件的真进程判据住这里，落在它的扫描面之外。
     /// 「守卫范围 ≠ 性质范围」那一族，这里是它的又一形。⇒ 本文件自己补一条。
+    ///
+    /// # ⚠⚠ 射程订正〔`K-R7-D2`，08-31〕：**本条的人群画在属性上，够不着最危险的那一形**
+    ///
+    /// 本条的人群逐字是「**带 `#[ignore]` 的**」。而**属性是可以不写的** ——
+    /// 08-31 现打，本仓有 **2** 条起真 daemon 的**普通 `#[test]`**
+    /// （`the_local_daemon_can_be_stopped_and_started_again` 与
+    /// `backend/control/local_backend.rs` 的 `the_local_daemon_really_registers_an_inbound_client`），
+    /// **本条与那条姊妹判据谁也够不着它们**。
+    /// ⇒ 正题已经搬到本文件下面那条
+    /// [`every_test_that_starts_the_real_daemon_demands_a_private_tmux`]：
+    /// 它的人群按「**那个二进制哪来的**」派生，**两个文件一起扫**，不看任何属性。
+    /// **本条留着**，它今天守的是一格更窄但仍然真的性质（`#[ignore]` 那一族的形状回归），
+    /// 别把它读成「起真 daemon 这件事有人守了」—— 守它的是下面那条。
     #[test]
     fn every_ignored_test_here_that_spawns_a_real_daemon_demands_private_tmux() {
         const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_SHIM_BIN";
@@ -2082,6 +2139,203 @@ mod tests {
                  ⇒ 必须 **fail closed**：拿不到 shim 就 `expect` 炸掉，绝不降级裸跑。"
             );
         }
+    }
+
+    /// ★★★ **人群画在「会起真 daemon 的测试」上 —— 不是画在某个属性上**〔`K-R7-D2`，08-31〕。
+    ///
+    /// # 它为什么必须是新的一条，而不是把上面那条改宽一点
+    ///
+    /// 上面那条（`every_ignored_test_here_that_spawns_a_real_daemon_demands_private_tmux`）
+    /// 的人群是「**带 `#[ignore]` 的**」，`local_backend.rs` 那条
+    /// （`every_real_daemon_e2e_demands_a_private_tmux_dir`）的人群是
+    /// 「**带 `#[ignore]` 且提到 `CCM_E2E_DAEMON` 的**」。两条**都把人群画在属性上**。
+    ///
+    /// ⇒ 而**属性是可以不写的，而不写的那一个恰恰最危险**：
+    /// `the_local_daemon_can_be_stopped_and_started_again` 与
+    /// `the_local_daemon_really_registers_an_inbound_client` 两条都是**普通 `#[test]`**，
+    /// 于是**两条守卫谁也够不着它们**，而它们起的是同一个真 daemon，
+    /// 那个 daemon 一上来就**无条件**装三条**全局** tmux hook（槽位 `[50]`，没有开关）。
+    /// 后果不是理论：08-11 打没用户 **9 个**真实会话；08-26 / 08-27 / 08-29 各盖过一次 `[50]`。
+    ///
+    /// # 人群怎么派生的 —— 按「**那个二进制哪来的**」，不按「怎么标记的」
+    ///
+    /// 一条测试会不会装全局 hook，取决于**它起的是不是那个真 daemon**。
+    /// ⇒ 判准取**二进制的来历**，三条（默认拒绝，出现任何一条就进人群）：
+    ///
+    /// | 来历 | 长什么样 |
+    /// |---|---|
+    /// | 内嵌那份 | 源码里出现 `embedded-daemons` |
+    /// | e2e 传进来的那份 | 源码里出现 `CCM_E2E_DAEMON` |
+    /// | 共享 e2e 沙箱 | 源码里出现 `E2eSandbox::demand` |
+    ///
+    /// **两个文件一起扫**：`local_daemon.rs` 与 `backend/control/local_backend.rs`。
+    /// 「守卫范围 ≠ 性质范围」在本仓已经出过七形，上面那两条各是其中一形
+    /// （各自**只扫自己那个文件**）。
+    ///
+    /// # 要求：fail-closed 地要一个私有 tmux —— 两种合法形态
+    ///
+    /// ① 自己要：本体里有一行**同时**含 `CCM_E2E_TMUX_SHIM_BIN` 与 `.expect(`；
+    /// ② 委托给 `E2eSandbox::demand()` —— 而**转发者自己被本条单独钉住**（见下面第 ③ 段），
+    ///    不然「委托」就是一张空头支票。
+    ///
+    /// # ⚠ 诚实边界（逐形登记，不假装覆盖）
+    ///
+    /// 1. **人群是「起真 daemon」，不是「起任何进程」。** 用**自造脚本**喂 `supervise()`
+    ///    的那几条（`a_child_that_floods_stdout_and_exits_is_still_detected_as_dead` 等）
+    ///    **刻意不在人群里**：它们起的东西不装 tmux hook。判准是「后果」不是「动作」。
+    /// 2. **扫描面是这两个文件。** 别处新写一条起真 daemon 的测试，本条看不见。
+    ///    今天真 daemon 的两个来源（内嵌目录 · `CCM_E2E_DAEMON`）都只在这两个文件里出现，
+    ///    但那是**今天的事实**，不是结构保证。
+    /// 3. **守卫自己要排除掉。** 判准是「本体里出现 `include_str!` 这个宏」——
+    ///    读源码的是守卫，不是运行期测试。⇒ 一条**既起真 daemon 又读源码**的测试会被漏掉。
+    ///    今天没有这一形（现打：人群 6 条，无一读源码）。
+    ///    ⚠ 那个判准串在下面是**拼出来的**（`concat!`），不是写死的字面量 ——
+    ///    `cross_half_edge_registry::every_non_literal_include_is_registered_with_a_reason`
+    ///    数的是「`include_*!` 后面跟着 `(`」的**出现次数**，注释与字符串里也算
+    ///    ⇒ 直接写字面量会让本条把自己变成那张登记表上的两处「解析不出路径的 include」。
+    ///    〔08-31 实打：第一版就是这么红的，`left: [("src-tauri/src/local_daemon.rs", 2), …]`。〕
+    /// 4. **它证不了 shim 真的挡住了。** 它只证「要了、而且缺了就炸」。
+    ///    「真的落在私有 server 上」那一格由 `the_local_tmux_frames_really_land_in_the_ledger`
+    ///    的**跑前跑后比对**买（那条自己是 `#[ignore]`）。
+    #[test]
+    fn every_test_that_starts_the_real_daemon_demands_a_private_tmux() {
+        const SHIM: &str = "CCM_E2E_TMUX_SHIM_BIN";
+        const DELEGATE: &str = "E2eSandbox::demand";
+        // 真 daemon 的三种来历。**默认拒绝**：出现任何一条就进人群。
+        const PROVENANCE: [&str; 3] = ["embedded-daemons", "CCM_E2E_DAEMON", DELEGATE];
+        let files: [(&str, &str); 2] = [
+            ("local_daemon.rs", include_str!("local_daemon.rs")),
+            (
+                "backend/control/local_backend.rs",
+                include_str!("backend/control/local_backend.rs"),
+            ),
+        ];
+
+        // ── 抽取：按行切成「一个 `#[test]` 到下一个 `#[test]`」的块 ──────────
+        // ⚠ **不在语料串上做裸 `split`**（`needle_anchor_registry` 判它「匹配单位比事实小」）。
+        let chunks_of = |src: &str| -> Vec<String> {
+            let mut out: Vec<String> = Vec::new();
+            let mut cur: Vec<&str> = Vec::new();
+            for line in src.lines() {
+                if line.trim() == concat!("#[te", "st]") {
+                    if !cur.is_empty() {
+                        out.push(cur.join("\n"));
+                        cur.clear();
+                    }
+                    continue;
+                }
+                cur.push(line);
+            }
+            out.push(cur.join("\n"));
+            out
+        };
+        // ⚠ 判人群要看**代码**，不能看文档注释 —— 本条的头注里就写着那三条来历字面量。
+        //   `local_backend.rs` 那条同族守卫在这上面**自红过一次**（它的注释里写着
+        //   `#[ignore]` 与 `CCM_E2E_DAEMON`，第一版把自己算进了人群）。
+        let code_only = |c: &str| -> String {
+            c.lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+
+        let mut population: Vec<(String, bool)> = Vec::new(); // (名字, 满足要求吗)
+        let mut total_chunks = 0usize;
+        for (who, src) in files {
+            let chunks = chunks_of(src);
+            total_chunks += chunks.len();
+            for c in &chunks {
+                let code = code_only(c);
+                // 守卫排除：读源码的是守卫（诚实边界 3）。**串拼出来，别写死**（同上）。
+                if code.contains(concat!("include_", "str!(")) {
+                    continue;
+                }
+                if !PROVENANCE.iter().any(|p| code.contains(p)) {
+                    continue;
+                }
+                let name = code
+                    .lines()
+                    .find_map(|l| l.trim().strip_prefix("fn "))
+                    .and_then(|r| r.split_once('('))
+                    .map(|(n, _)| n.to_string())
+                    .unwrap_or_else(|| "<读不出名字>".to_string());
+                // 两种合法形态：自己 fail-closed 地要，或委托给 `E2eSandbox::demand()`。
+                let asks_itself = code
+                    .lines()
+                    .any(|l| l.contains(SHIM) && l.contains(".expect("));
+                let delegates = code.contains(DELEGATE);
+                population.push((format!("{who}::{name}"), asks_itself || delegates));
+            }
+        }
+
+        // ── 反空真①：抽取器真的切出了东西 ────────────────────────────────
+        assert!(
+            total_chunks >= 40,
+            "两个文件一共只切出 {total_chunks} 个测试块 —— 切法坏了，下面整条在空转"
+        );
+        // ── 反空真②：人群非空，而且**该在里面的那几条真在里面** ───────────
+        //    〔判据规范 7：先证「够得到」（地板），再问有没有违例；否则「零违例」是空真。〕
+        //    ⚠ 这是**地板不是等号**：新写一条起真 daemon 的测试会自动进人群、自动被要求合规。
+        //      地板只挡「已知的那几条**静默掉出人群**」（改名 / 换来历 / 被删）。
+        let names: Vec<&str> = population.iter().map(|(n, _)| n.as_str()).collect();
+        for must in [
+            "local_daemon.rs::the_local_daemon_can_be_stopped_and_started_again",
+            "local_daemon.rs::e2e_a_second_host_adopts_the_running_daemon_instead_of_starting_a_second_one",
+            "local_daemon.rs::e2e_a_detached_daemon_that_dies_leaves_no_zombie",
+            "backend/control/local_backend.rs::the_local_tmux_frames_really_land_in_the_ledger",
+            "backend/control/local_backend.rs::the_local_daemon_really_registers_an_inbound_client",
+            "backend/control/local_backend.rs::e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed",
+        ] {
+            assert!(
+                names.contains(&must),
+                "`{must}` 掉出了人群 —— 它起真 daemon 的来历不见了（改名？换写法？）。\n\
+                 ★ 人群缩水与「本来就没有违例」在输出上一模一样，只有这条地板认得出来。\n\
+                 现打人群：{names:?}"
+            );
+        }
+
+        // ── ③ 转发者自己必须是 fail-closed 的（不然「委托」是空头支票）─────
+        let me = include_str!("local_daemon.rs");
+        let at = me
+            .find(concat!("fn dem", "and() -> Self {"))
+            .expect("`E2eSandbox::demand()` 不在了 —— 委托那条腿没了，来改本条");
+        let demand: String = me[at..].lines().take(20).collect::<Vec<_>>().join("\n");
+        // ⚠⚠ **必须落在同一行上判**〔08-31 死值验当场逮到的，就在我自己刚写的这一行里〕：
+        //   本条第一版写的是 `demand.contains(SHIM) && demand.contains(".expect(")`。
+        //   实测把那一行换成 `.unwrap_or_default()` ⇒ **1210 passed / 0 failed，一条都不红** ——
+        //   因为 `demand()` 体内**另外两行**（`CCM_E2E_DAEMON` / `CCM_E2E_WORK`）还带着 `.expect(`，
+        //   而 `SHIM` 那个**变量名**照样在。三样东西都在，语义却不是那回事。
+        //   ★ 这正是本文件下面 `local_backend.rs` 那条退出臂判据头注里逐字骂过的同一形
+        //   （`let kill = kill_on_exit(..); if h.current_pid().is_some() { h.stop(); }`）——
+        //   **我在治它的这一轮里又犯了一次。**
+        assert!(
+            demand
+                .lines()
+                .any(|l| l.contains(SHIM) && l.contains(".expect(")),
+            "`E2eSandbox::demand()` 不再 fail-closed 地要 `{SHIM}` ——\n\
+             那么所有委托给它的测试都在裸跑，而本条会对着一张空头支票说「合规」。\n\
+             ⚠ 判的是「**同一行上**既有 `{SHIM}` 又有 `.expect(`」，不是「这一段里两样都出现过」。\n\
+             实得：\n{demand}"
+        );
+
+        // ── 正题 ─────────────────────────────────────────────────────────
+        let bad: Vec<&str> = population
+            .iter()
+            .filter(|(_, ok)| !ok)
+            .map(|(n, _)| n.as_str())
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "这几条会起**真** daemon，却没有 fail-closed 地要 `{SHIM}`：\n  {}\n\
+             ★ 被起的 daemon 一上来就往它连得到的 tmux server 装三条**全局** hook\n\
+             （固定槽位 `[50]`，**没有关掉它的开关**）⇒ 不隔离就是去改用户真实 tmux 的状态。\n\
+             ⚠ 这不是理论：08-11 打没用户 9 个真实会话；08-26 / 08-27 / 08-29 各盖过一次 `[50]`。\n\
+             ⚠⚠ **只写 `env_remove(\"TMUX\")` 不算** —— `TMUX` 一空，tmux 就回落到默认 socket\n\
+             `/tmp/tmux-$UID/default`，那**正是**用户那台 server。隔离要靠**显式选择器**。\n\
+             ⇒ 两条合法出路：本体里 `env::var(\"{SHIM}\").expect(..)` 并把它挂进 daemon 的 PATH；\n\
+             或走 `{DELEGATE}()`。",
+            bad.join("\n  ")
+        );
     }
 
     /// token 每次都不一样、够长，而且**不是空串**（空串会让 attach 那道门形同虚设）。

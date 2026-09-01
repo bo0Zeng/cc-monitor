@@ -8,10 +8,31 @@
 #
 # ★ 真进程那部分住在 Rust 侧的 `#[ignore]` 测试里（`supervise()` 的 API 在那儿），
 #   本脚本负责三件 Rust 测试不该管的事：
-#     ① **隔离** —— 私有 `TMUX_TMPDIR`（被监护的 daemon 一起来就往 tmux server 装三条
-#        全局 hook，**没有开关**；不隔离就是去改用户真实 tmux 的状态）；
+#     ① **隔离** —— 私有 tmux（shim 强插 `-L`；被监护的 daemon 一起来就往 tmux server
+#        装三条全局 hook，**没有开关**；不隔离就是去改用户真实 tmux 的状态）；
 #     ② 临时工作目录（必崩脚本、空目录探测都在里面造）；
 #     ③ 断言计数与收尾格式（与全仓其余 18 套逐字一致）。
+#
+# ## ★★ `K-R7`（08-31）：**本套件多接了两条 —— 而它们此前是普通 `#[test]`**
+#
+# 〔用 08-29〕逐字：「**你只能做产品, 不能动机器**」·「**以后所有开发测试都不允许直接在本机跑**」。
+# 在此之前，下面这两条起真 daemon 的测试是**普通 `#[test]`**（只由 `cfg(embedded_daemons)` 门着）：
+#
+#   · `local_daemon::tests::the_local_daemon_can_be_stopped_and_started_again`
+#   · `backend::control::local_backend::tests::the_local_daemon_really_registers_an_inbound_client`
+#
+# ⇒ **任何人在铺了 `src-tauri/embedded-daemons/` 的树上跑一次 `cargo test`**（包括用户自己
+# clone 下来跑一遍）**都会改这台机器的 tmux 全局状态**。已经真发生过三次
+# （08-26 实现方 · 08-27 PM · 08-29 PM）。
+# ⇒ 两条都改成 `#[ignore]` + `CCM_E2E_TMUX_SHIM_BIN` fail-closed，**并接到本脚本这条带 shim 的路上**。
+# 人群那一侧由 `local_daemon.rs` 的
+# `every_test_that_starts_the_real_daemon_demands_a_private_tmux` 守着（按「二进制哪来的」派生，
+# 不看属性，两个文件一起扫）。
+#
+# ⚠ 那两条 + `the_local_tmux_frames_really_land_in_the_ledger` 都由 `cfg(embedded_daemons)` 门着，
+#   而 `embedded-daemons/` 是 gitignore 的 ⇒ **干净 clone 与 CI 上它们不编译进来**，
+#   本脚本那时跑到的仍是原来那几条。**别把「本脚本绿了」读成「那三条验过了」** ——
+#   下面 `RAN` 那个自检印的是真实跑成的条数，以它为准。
 #
 # 红线：**绝不碰用户真实的 tmux server**（unset TMUX + 私有 TMUX_TMPDIR）；不碰真 ~/.claude。
 # 跑法：bash e2e/local-backend-supervise.sh   （npm run test:local-backend）
@@ -132,7 +153,10 @@ if [ "$RC" -ne 0 ]; then
   grep -E '^(thread|assertion|  left|  right)' "$OUT" | head -20
 fi
 
-# 三条 ignore 测试，每条至少产一个标记；标记数少于测试数 ⇒ 有测试提前 return 了。
+# 每条 ignore 测试至少产一个标记；标记数少于测试数 ⇒ 有测试提前 return 了。
+# ⚠ 〔`K-R7` 08-31〕**这一条对「新接进来的测试」是有门槛的**：接进本套件的每一条
+#    都必须**至少打一个 `E2E-OK` 标记**，否则这条自检会红，而红的理由是**假的**
+#    （不是「断言没走完」，是「那条从来不打标记」）。本轮接进来的两条各补了标记。
 if [ "$MARKS" -lt "$RAN" ]; then
   bad "标记数 $MARKS < 跑成的测试数 $RAN —— 有测试提前退出、断言没走完"
 fi
