@@ -1495,6 +1495,18 @@ mod tests {
     /// `("PATH", …)` 就能把上面那条带 shim 的整个盖掉（`supervise_with_stdio` 是
     /// `for (k, v) in &envs { cmd.env(k, v); }`，**后写的赢**，见 `:336`-`:337`），
     /// 而在 ㈢ 落地之前那一刀**全量门禁新红 0**。两格的代价不是一种，判据也刻意分开（`K13`）。
+    ///
+    /// # 🔴 复跑纪律：**换了 `embedded-daemons/` 的有无之后，必须 `touch src-tauri/build.rs`**
+    ///
+    /// 〔`D2 §G-1` 的陈账，09-01 收 —— 此前只写在件文件里，**被守对象这一侧一个字都没有**。〕
+    /// 本条由 `#[cfg(embedded_daemons)]` 门着。**实测的现象**（`D2` 复审 09-01，我没重打，
+    /// 住址 `audits/K-R7-D2.md#§G-1`）：同一个 `CARGO_TARGET_DIR` 里把
+    /// `src-tauri/embedded-daemons/` 从「无」加成「有」，**`build.rs` 不重跑** ⇒
+    /// 读出的是「无 emb」那一档的数（`1208/0/10`），`touch build.rs` 之后才是 `1211/0/11`。
+    /// ⚠⚠ **两档的输出面长得一模一样，这个坑看不出来。**
+    /// ⇒ 换 emb 状态之后 `touch src-tauri/build.rs`，或**直接换一个全新的 target 目录名**。
+    /// ⚠ 机制**我没有实验证明**；`local_daemon.rs` 那条姊妹测试的同名小节里记着两条候选，
+    /// 其中「`rerun-if-changed` 只在文件存在时登记」那条**现打对不上源码**（那一行是无条件的）。
     #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
     #[test]
     #[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 e2e/local-backend-supervise.sh 那条带 shim 的路"]
