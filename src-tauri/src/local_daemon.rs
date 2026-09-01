@@ -2570,9 +2570,25 @@ mod tests {
              后者被 `D4` 一刀走过去了（`unwrap_or_else(|_| var(<真 PATH>).expect(..))` \
              同行上三样都在，而 fail-closed 没了）。**口本身关不关得上**由 \
              `the_one_shim_gate_really_fails_closed` 在默认门禁里真跑一遍";
-        const MISS_FRONT: &str = "要了 shim 却没把它写在给 daemon 的 `PATH` **串首**\
-             （**第三道锁 ③ · ㈡ 写法**）—— 要的形状是 `(\"PATH\", format!(\"{shim}:{}\", ..))`，\
-             插值**紧跟开引号**；写成 `\"/usr/bin:{shim}:{}\"` 也不算：那样真 tmux 先被解析到";
+        // ⚠⚠ **下面这两条 09-01 从一条拆成两条**〔`D5` 阻塞 2；PM `§0s` 五 ①〕：
+        //   `shim_first_on_path` 原来用**一个 `bool`** 装了「读不出绑定名」与
+        //   「读出来了但没挂串首」两件事，而报文只会说后一件。
+        //   `D5-M5` 实证：把那条合法调用按 rustfmt 在 `=` 后断行 ⇒ 落的是前一件，
+        //   印出来的却是「没把它写在 `PATH` 串首」，**而串首那一行一个字没动**。
+        //   （本工作区最贵的那一族：**一个值装了两件事**。）
+        const MISS_NO_BINDING: &str = "含取 shim 那个口的那一行**读不出绑定名**\
+             （**第三道锁 ③ · ㈡ 取名**）—— 本条要的形状是**一行到底**的 \
+             `let <名字> = …demand_tmux_shim(..)`。\n      \
+             ⚠ 判决仍然是 fail closed（读不懂就不说「合规」），**变的只是这句话说的是哪一件事**：\
+             说的是「**我读不懂那一行**」，不是「你没把它挂在 `PATH` 串首」。\n      \
+             ⚠ **一形已知会落到这里的假阳**：按 rustfmt 在 `=` 后断行（`let shim =` 换行再写调用）\
+             —— 语义逐字不变而本条会红（`D5-M5`）。今天要的是**单行写法**；\
+             这一格没有放宽（放宽要另做一次「先量再选」，不在本拍写区）";
+        const MISS_FRONT: &str = "要了 shim、绑定名也读出来了，**却没有一行把它写在给 daemon 的 \
+             `PATH` 串首**（**第三道锁 ③ · ㈡ 写法**）—— 要的形状是 \
+             `(\"PATH\", format!(\"{shim}:{}\", ..))`，插值**紧跟开引号**；\
+             写成 `\"/usr/bin:{shim}:{}\"` 也不算：那样真 tmux 先被解析到。\n      \
+             ⚠ 这一条 09-01 起**只**说这一件事 —— 「读不出绑定名」已经拆去 `MISS_NO_BINDING`";
         // ⚠⚠ 下面两条报文 09-01 改过一次〔`D3` `§E-1`〕：原来它们**断言**「你写了 `PATH`」，
         //   而判据看的只是一个**文本形状** ⇒ 对着一次纯读也会这么说，**那是报文在说假话**。
         //   （`M-δ4` 实证：加一行 `var_os("PATH")` 纯读 ⇒ 假红 + 逐字「你在自己本体里也写了」。）
@@ -2645,11 +2661,33 @@ mod tests {
         //   ⇒ 「在冒号左边」买不到「在最前面」，**要钉到串首**。
         //   先量后选（铁律 18，分母 = 走「自己要 + 自己挂」腿的 4 条 + 转发者 1 处 = 5 个落点）：
         //   收紧之后**假阳 0/5**（五处写法全同、全部通过）⇒ 买。全表见件文件 `§0l-1`。
-        let shim_first_on_path = |code: &str| -> bool {
-            let binding = code
-                .lines()
-                .find(|l| l.contains(GATE))
-                .map(|l| l.trim())
+        // ⚠⚠ **一个 `bool` 装了两件事，09-01（`C` 第六拍）拆开**〔`D5` 阻塞 2；PM `§0s` 五 ①〕。
+        //
+        //   原来它返回 `bool`，而**两件不同的事挤在同一个 `false` 里**：
+        //   ① 含口的那一行**读不出绑定名**（不是 `let <名字> = …` 的形状）；
+        //   ② 读出来了，但**没有一行把它挂在 `PATH` 串首**。
+        //   下游只有一句报文 `MISS_FRONT`（「要了 shim 却没把它写在 `PATH` **串首**」）
+        //   ⇒ 落到 ① 的时候，**印出来的是 ② 的说法**。
+        //   `D5-M5` 实证：把那条合法调用按 rustfmt 在 `=` 后断行（语义逐字不变）
+        //   ⇒ 含口的那一行不再以 `let ` 打头 ⇒ 走的是 ①，
+        //   而印出来的是「要了 shim 却没把它写在 `PATH` 串首」——**串首那一行一个字没动**。
+        //   ★ 这正是本工作区记着的最贵那一族：**一个值装了两件事**。
+        //
+        //   ⇒ 现在返回**三值**，两种「不合规」各带各的报文与实得。
+        //   🔴 **判决一个字没改**（两种都仍然 fail closed、都仍然算违例）——
+        //   改的只是**它说的是哪一件**。这一拍**不许给调用处加任何新判据**〔PM `§0s` 五 ④〕，
+        //   拆值不是加钉：人群、通过条件、处数口径逐字照旧。
+        enum ShimOnPath {
+            /// 读出了绑定名，而且真有一行把它挂在 `PATH` 串首。
+            Front,
+            /// **读不出绑定名** —— 含口的那一行不是 `let <名字> = …` 的形状（附那一行原文）。
+            NoBinding(String),
+            /// 读出了绑定名，但没有一行同时含 `"PATH"` 与 `"{<绑定名>}:`（附那个绑定名）。
+            NotFront(String),
+        }
+        let shim_first_on_path = |code: &str| -> ShimOnPath {
+            let gate_line = code.lines().find(|l| l.contains(GATE)).map(|l| l.trim());
+            let binding = gate_line
                 .and_then(|l| l.strip_prefix("let "))
                 .and_then(|r| r.split_once('='))
                 .map(|(n, _)| n.trim().to_string());
@@ -2657,11 +2695,22 @@ mod tests {
                 Some(n) => {
                     // ⚠ 头上那个 `\"` 就是「串首」那一格：`"{shim}:` 而不是 `{shim}:`。
                     let front = format!("\"{{{n}}}:");
-                    code.lines()
+                    if code
+                        .lines()
                         .any(|l| l.contains("\"PATH\"") && l.contains(&front))
+                    {
+                        ShimOnPath::Front
+                    } else {
+                        ShimOnPath::NotFront(n)
+                    }
                 }
                 // 取不出绑定名 ⇒ **判不合规**（fail closed）：读不懂就别说「合规」。
-                None => false,
+                // 变的只是**说法**：说「我读不懂那一行」，不说「你没挂在串首」。
+                None => ShimOnPath::NoBinding(
+                    gate_line
+                        .unwrap_or("<本体里根本没有那个口 —— 那该由 ㈠ 先拦下>")
+                        .to_string(),
+                ),
             }
         };
 
@@ -2820,7 +2869,6 @@ mod tests {
                     .unwrap_or_else(|| "<读不出名字>".to_string());
                 // 两种合法形态：**自己要 + 自己挂**，或委托给 `E2eSandbox::demand()`。
                 let asks_itself = code.contains(GATE);
-                let hangs_it_on_path = shim_first_on_path(&code);
                 let writes = path_writes(&code);
                 let delegates = code.contains(DELEGATE);
                 let (ok, leg, missing) = if delegates {
@@ -2836,22 +2884,36 @@ mod tests {
                     )
                 } else if !asks_itself {
                     (false, LEG_NEITHER, MISS_LOCK2.to_string())
-                } else if !hangs_it_on_path {
-                    // 走「自己要」这条腿 ⇒ 归 ㈡㈢ 管。㈡：那一行写对了没有。
-                    (false, LEG_SELF_SERVED, MISS_FRONT.to_string())
-                } else if writes != 1 {
-                    // ㈢：写对的那一行会不会被**后面又一条写位**盖掉。
-                    (
-                        false,
-                        LEG_SELF_SERVED,
-                        format!(
-                            "{MISS_TWICE}\n      实得：写位形状 {writes} 处（要的是 1 处）。\
-                             本体里提到 `PATH` 的行，原样贴在这里，自己核对：\n{}",
-                            path_mentions(&code)
-                        ),
-                    )
                 } else {
-                    (true, LEG_SELF_SERVED, MISS_NONE.to_string())
+                    // 走「自己要」这条腿 ⇒ 归 ㈡㈢ 管。
+                    // ⚠ ㈡ 今天分**两件事各说各的**〔`D5` 阻塞 2〕：读不出名字 / 读出来了但没挂串首。
+                    match shim_first_on_path(&code) {
+                        ShimOnPath::NoBinding(l) => (
+                            false,
+                            LEG_SELF_SERVED,
+                            format!("{MISS_NO_BINDING}\n      实得那一行（剥完注释）：{l}"),
+                        ),
+                        ShimOnPath::NotFront(n) => (
+                            false,
+                            LEG_SELF_SERVED,
+                            format!(
+                                "{MISS_FRONT}\n      实得绑定名：`{n}`。\
+                                 本体里提到 `PATH` 的行，原样贴在这里，自己核对：\n{}",
+                                path_mentions(&code)
+                            ),
+                        ),
+                        // ㈢：写对的那一行会不会被**后面又一条写位**盖掉。
+                        ShimOnPath::Front if writes != 1 => (
+                            false,
+                            LEG_SELF_SERVED,
+                            format!(
+                                "{MISS_TWICE}\n      实得：写位形状 {writes} 处（要的是 1 处）。\
+                                 本体里提到 `PATH` 的行，原样贴在这里，自己核对：\n{}",
+                                path_mentions(&code)
+                            ),
+                        ),
+                        ShimOnPath::Front => (true, LEG_SELF_SERVED, MISS_NONE.to_string()),
+                    }
                 };
                 population.push((format!("{who}::{name}"), ok, leg, missing));
             }
@@ -2938,15 +3000,36 @@ mod tests {
         // ⚠ 转发者的**第三道锁**也要钉〔`D1` 回修 08-31，阻塞 4〕：
         //   委托那条腿上，「挂进 `PATH` 最前面」这件事全由 `demand()` 一处代办
         //   ⇒ 它退掉，两条 `e2e_*` 的隔离一起没，而人群那一侧一声不吭。
+        // ⚠ 三值拆开之后这里也跟着说准〔`D5` 阻塞 2〕：**判决不变（两种都不合规），
+        //   变的是它说的是哪一件事** —— 原来两件都印「没挂在 `PATH` 最前面」。
+        let (fwd_ok, fwd_why) = match shim_first_on_path(&demand) {
+            ShimOnPath::Front => (true, String::new()),
+            ShimOnPath::NoBinding(l) => (
+                false,
+                format!(
+                    "含取 shim 那个口的那一行**读不出绑定名** —— 要的形状是一行到底的\n\
+                     `let <名字> = …{GATE}..)`。⚠ **这句话说的是「我读不懂那一行」**，\n\
+                     不是「没挂在串首」：那两件事 09-01 从一个 `bool` 里拆开了\n\
+                     （`D5-M5`：rustfmt 在 `=` 后断行会落到这一条，而串首那一行一个字没动）。\n\
+                     实得那一行：{l}"
+                ),
+            ),
+            ShimOnPath::NotFront(n) => (
+                false,
+                format!(
+                    "绑定名读出来了（`{n}`），**却没有一行把它挂到给 daemon 的 `PATH` 最前面** ——\n\
+                     取到了 shim 却不用它 = 第二道锁做了、第三道锁没做，daemon 照样沿真 `PATH`\n\
+                     找到真 tmux（手工 `cargo test -- --ignored` 那一格）。\n\
+                     ⚠ 判的是「同一行上既有 `\"PATH\"` 又有 `\"{{<绑定名>}}:`」——\n\
+                     插值要**紧跟开引号**（= 那个格式串的串首）。写成 `\"/usr/bin:{{shim}}:{{}}\"`\n\
+                     也不算：那样真 `/usr/bin/tmux` 先被解析到。"
+                ),
+            ),
+        };
         assert!(
-            shim_first_on_path(&demand),
-            "`E2eSandbox::demand()` 不再把 `{SHIM}` 挂到给 daemon 的 `PATH` **最前面** ——\n\
-             取到了 shim 却不用它 = 第二道锁做了、第三道锁没做，daemon 照样沿真 `PATH`\n\
-             找到真 tmux（手工 `cargo test -- --ignored` 那一格）。\n\
-             ⚠ 判的是「同一行上既有 `\"PATH\"` 又有 `\"{{<绑定名>}}:`」——\n\
-             插值要**紧跟开引号**（= 那个格式串的串首）。写成 `\"/usr/bin:{{shim}}:{{}}\"`\n\
-             也不算：那样真 `/usr/bin/tmux` 先被解析到。\n\
-             实得：\n{demand}"
+            fwd_ok,
+            "`E2eSandbox::demand()` 的**第三道锁 ③ · ㈡** 没过：\n{fwd_why}\n\
+             实得（`demand()` 起 20 行，剥完注释）：\n{demand}"
         );
         // ⚠ 转发者的 ㈢ 也要钉〔`D2` 回修 09-01，阻塞 1 形 ②〕：
         //   `demand()` 里那条 `shim_path` 写对了，可要是同一段里再写一次 `PATH`，
@@ -2982,13 +3065,18 @@ mod tests {
              ⚠ 这不是理论：08-11 打没用户 9 个真实会话；08-26 / 08-27 / 08-29 各盖过一次 `[50]`。\n\
              ⚠⚠ **只写 `env_remove(\"TMUX\")` 不算** —— `TMUX` 一空，tmux 就回落到默认 socket\n\
              `/tmp/tmux-$UID/default`，那**正是**用户那台 server。隔离要靠**显式选择器**。\n\
-             ⚠⚠ **只 `expect` 到 shim 也不算**（第三道锁）—— 取到一个变量却不把它挂进\n\
+             ⚠⚠ **只取到 shim 也不算**（第三道锁）—— 取到一个值却不把它挂进\n\
              daemon 的 `PATH` 最前面，那是一次仪式：daemon 照样沿真 `PATH` 找到真 tmux。\n\
              ⚠⚠ **写对一行也不够**（第三道锁 · ㈢）—— 同一张 `envs` 里再写一条 `PATH`，\n\
              `for (k, v) in &envs {{ cmd.env(k, v); }}` **后写的赢**，shim 那条就被盖掉了。\n\
-             ⇒ 两条合法出路：本体里 `env::var(\"{SHIM}\").expect(..)`\n\
-             **并**写一行 `(\"PATH\", format!(\"{{shim}}:{{}}\", ..))`（插值**紧跟开引号**、\n\
-             且本体里 `PATH` 这个键**只写这一次**）；或走 `{DELEGATE}()`。",
+             ⇒ 两条合法出路：本体里 `let <名字> = {GATE}..)`（**一行到底**）\n\
+             **并**写一行 `(\"PATH\", format!(\"{{<名字>}}:{{}}\", ..))`（插值**紧跟开引号**、\n\
+             且本体里 `PATH` 这个键**只写这一次**）；或走 `{DELEGATE}()`。\n\
+             🔴 **这两行 09-01（`C` 第六拍）改过 —— 原文教的正是今天会被拒的写法**：\n\
+             逐字写着「本体里 `env::var(\"{SHIM}\").expect(..)`」，而 ㈠ 从 09-01 起判的是\n\
+             「**走没走那个唯一入口**」，自己现取当场红（`D5-M3` 实证，新红 2）。\n\
+             ⇒ 那是「**只修一半**」的第三个动词：`C` 第五拍换了 ㈠ 的判法，\n\
+             **却没跟着改这句教人怎么写的话**，于是判据与它自己的建议互相矛盾。",
             bad.join("\n  ")
         );
     }
