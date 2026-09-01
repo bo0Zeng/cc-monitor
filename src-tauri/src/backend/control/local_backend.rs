@@ -1167,18 +1167,66 @@ mod tests {
     ///
     /// **这是降级不是放弃**：P3-Y1 因此今天**没有实测证据**，如实登记在件的 §0h / 12e-1，
     /// 不拿「判据绿」冒充「验过了」。
+    ///
+    /// # ★ `K-R7`（08-31）：隔离原语从**自己手搓一份**换成**共享那一份**
+    ///
+    /// 本条原来在测试体里现场造 shim（`exec 真tmux -S <私有 sock>`）——形态是对的，
+    /// 但那是 `C7i` 那条红线原语在 Rust 侧的**第二份实现**。
+    /// `e2e/tmux-shim.sh` 的头注逐字写过为什么它要被抽成共享文件：
+    /// 「红线的落地**不该有三份实现**：改一处漏两处」。
+    /// ⇒ 改成问 `CCM_E2E_TMUX_SHIM_BIN` 要那一份（`$BIN/tmux` 强插 `-L`），
+    /// **同时**让本条的人群判据与那两条同族测试**变成同一条**（见
+    /// `every_test_that_starts_the_real_daemon_demands_a_private_tmux`）。
+    ///
+    /// ⚠ 跑前/跑后那两次 `tmux ls`（`user_tmux()`）**刻意绕开 shim、按绝对路径问** ——
+    /// 它们要问的正是**用户那台真 server**「你变了没有」。走了 shim 就问到自己那台上去了，
+    /// 那条比对会变成一句恒真的空话。**而它此前正是那样**（见函数体里那段实打记录）。
     #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
     #[test]
     #[ignore = "会起真 tmux；08-11 出过误伤用户会话的事故，改成显式触发"]
     fn the_local_tmux_frames_really_land_in_the_ledger() {
         use std::time::Duration;
 
+        // ★★ **fail closed，排在一切之前**（`K-R7`）。
+        let shim = crate::local_daemon::demand_tmux_shim("本条起真 daemon 且起真 tmux");
         let _guard = crate::inbound_client::local_origin_test_lock();
-        let user_tmux_before = std::process::Command::new("tmux")
-            .arg("ls")
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-            .unwrap_or_default();
+
+        // ★★★ 「用户真实的 tmux」这一问**必须绕开 PATH 上的 shim**〔`K-R7` 08-31，实测逼出来的〕。
+        //
+        // 本条由 `e2e/local-backend-supervise.sh` 驱动，而那个脚本把 shim 目录挂在
+        // **本测试进程自己的 `PATH`** 最前面（`tmux-shim.sh` 里那句 `export PATH=…`）
+        // ⇒ 裸 `Command::new("tmux")` 解析到的是 **shim**，问到的是 e2e 自己那台 server，
+        // **根本不是用户那台**。
+        //
+        // 〔实打 08-31：本条原来把自己的会话建在**另一个** socket 上，于是 before/after
+        //   两侧都在问 shim 那台空 server、两侧恒为空串 ⇒ **这条比对是空真**：
+        //   隔离坏掉时它照样绿，而它的诊断文案写着「用户真实的 tmux 变了」。
+        //   把会话搬到 shim 那台之后它**当场红** —— 而那次红正好证明了它此前问错了对象。〕
+        // ⇒ 从 `PATH` 里把 shim 那一段剔掉再找 `tmux`，按**绝对路径**问。
+        let real_tmux: Option<std::path::PathBuf> = {
+            let shim_dir = std::path::Path::new(&shim);
+            std::env::var("PATH")
+                .unwrap_or_default()
+                .split(':')
+                .filter(|p| !p.is_empty() && std::path::Path::new(p) != shim_dir)
+                .map(|p| std::path::Path::new(p).join("tmux"))
+                .find(|c| c.is_file())
+        };
+        // 反空真：找不到 shim 之外的真 tmux ⇒ 下面那条比对又会退化成「空 == 空」。
+        let real_tmux = real_tmux.expect(
+            "`PATH` 上除了 shim 之外找不到第二个 `tmux` —— \
+             那么下面「用户真实的 tmux 变了没有」那条比对会退化成空真（空 == 空），\
+             隔离坏掉时它照样绿。",
+        );
+        let user_tmux = || -> String {
+            std::process::Command::new(&real_tmux)
+                .arg("ls")
+                .env_remove("TMUX")
+                .output()
+                .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+                .unwrap_or_default()
+        };
+        let user_tmux_before = user_tmux();
 
         let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("embedded-daemons")
@@ -1186,48 +1234,26 @@ mod tests {
         let base = std::env::temp_dir().join(format!("p3-tmux-{}", std::process::id()));
         let home = base.join("home");
         let cfg_dir = home.join(".claude");
-        let tmux_tmp = base.join("tmux");
         std::fs::create_dir_all(cfg_dir.join("projects")).expect("建沙箱 HOME");
-        std::fs::create_dir_all(&tmux_tmp).expect("建私有 TMUX_TMPDIR");
 
         let sess = format!("ccm-p3-{}", std::process::id());
-        // ★★ **socket 用 `-S` 显式给死**〔事故订正 08-11〕。
+        // ★★ **socket 选择器写死在 shim 里**〔事故订正 08-11 · `K-R7` 08-31 换成共享原语〕。
         //
         // 原来只给 `TMUX_TMPDIR` + `env_remove("TMUX")`。那样**只要漏掉后者**，
         // `TMUX` 就会压过 `TMUX_TMPDIR`，命令直接打到用户真实的 server 上 ——
         // 我在一次 shell 探针里正是漏了它，用户 9 个会话没了。
-        // `-S <绝对路径>` 不受 `TMUX` 影响，**漏一个环境变量也不会打偏**。
-        let sock = tmux_tmp.join("p3.sock");
+        // ⇒ 客户端这一侧**也按绝对路径调 shim**（不是裸 `tmux`）：
+        //   shim 与 daemon 走的是**同一个** `-L`，而「同一台 server」正是本条的全部要害。
+        let shim_tmux = std::path::Path::new(&shim).join("tmux");
+        assert!(
+            shim_tmux.exists(),
+            "`CCM_E2E_TMUX_SHIM_BIN` 指的目录里没有 `tmux` —— \
+             那不是 `e2e/tmux-shim.sh` 造出来的那份，隔离无从谈起：{shim_tmux:?}"
+        );
         let tmux = |args: &[&str]| {
-            let mut c = std::process::Command::new("tmux");
-            c.arg("-S").arg(&sock);
+            let mut c = std::process::Command::new(&shim_tmux);
             c.args(args).env_remove("TMUX").output()
         };
-        // 给 daemon 用的 shim：`exec` 真 tmux + 强插 `-S <同一个 sock>`。
-        // daemon 内部裸调 `tmux`，PATH 一挂上它就落到本条自己那台 server 上。
-        let shim_dir = base.join("bin");
-        std::fs::create_dir_all(&shim_dir).expect("建 shim 目录");
-        let real_tmux = String::from_utf8_lossy(
-            &std::process::Command::new("sh")
-                .args(["-c", "command -v tmux"])
-                .output()
-                .expect("找 tmux")
-                .stdout,
-        )
-        .trim()
-        .to_string();
-        assert!(!real_tmux.is_empty(), "本机没有 tmux，这条实测跑不了");
-        let shim = shim_dir.join("tmux");
-        std::fs::write(
-            &shim,
-            format!("#!/bin/sh\nexec {real_tmux} -S {} \"$@\"\n", sock.display()),
-        )
-        .expect("写 shim");
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&shim, std::fs::Permissions::from_mode(0o755))
-                .expect("chmod shim");
-        }
 
         let made = tmux(&["new-session", "-d", "-s", &sess]).expect("起私有 tmux 失败");
         assert!(
@@ -1254,20 +1280,18 @@ mod tests {
                 ("HOME".into(), home.display().to_string()),
                 ("CLAUDE_CONFIG_DIR".into(), cfg_dir.display().to_string()),
                 // ★★ 〔`P0e` 08-13〕**这条以前验不到帧，病根就写在原注释里**：
-                // 「daemon 内部用默认 socket 名……上面客户端用 `-S <tmux_tmp>/p3.sock`。
+                // 「daemon 内部用默认 socket 名……上面客户端用另一个 socket。
                 //  **两者不是同一个 socket**」⇒ `seen` 恒 false（`P3 §0h` 如实登记过）。
                 //
                 // 修法与 e2e 那边同一手：给 daemon 一条**前面挂着 shim 的 PATH**，
-                // shim `exec` 真 tmux 并强插 **`-S <同一个 sock>`** ⇒ 两边落在同一台 server 上。
-                // ⚠ 用 `-S <绝对路径>` 而不是 `-L`：本条的客户端一直用 `-S`，
-                // 而**同一个 socket** 才是这条实测的全部要害。`-S` 也不受 `$TMUX` 影响。
+                // shim `exec` 真 tmux 并强插选择器 ⇒ 两边落在同一台 server 上。
+                // ⚠ 〔`K-R7` 08-31〕客户端那一侧现在**按绝对路径调同一个 shim**，
+                //   所以「同一台 server」不再靠两处各自写对一个 socket 名去对齐 ——
+                //   它由**同一个 shim 文件**保证。选择器是 `-L` 还是 `-S` 归 `tmux-shim.sh` 管，
+                //   本条一个字都不用知道（那正是把原语收成一处买到的东西）。
                 (
                     "PATH".into(),
-                    format!(
-                        "{}:{}",
-                        shim_dir.display(),
-                        std::env::var("PATH").unwrap_or_default()
-                    ),
+                    format!("{shim}:{}", std::env::var("PATH").unwrap_or_default()),
                 ),
             ],
             CrashLimits::default(),
@@ -1294,11 +1318,7 @@ mod tests {
             std::thread::sleep(Duration::from_millis(100));
         }
 
-        let user_tmux_after = std::process::Command::new("tmux")
-            .arg("ls")
-            .output()
-            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
-            .unwrap_or_default();
+        let user_tmux_after = user_tmux();
         cleanup(Some(&h));
         // 摘掉本条写进去的那一份，别留给同批别的用例。
         crate::ssh_source::record_tmux_raw(crate::inbound_client::LOCAL_ORIGIN, String::new());
@@ -1306,15 +1326,17 @@ mod tests {
         assert_eq!(
             user_tmux_before, user_tmux_after,
             "★ `C7e`：用户真实的 tmux 变了。\n\
-             隔离没做对（私有 `TMUX_TMPDIR` 没生效 / `TMUX` 没清）⇒ 本条刚才操作的是用户的 server。\n\
-             ⚠ 这条比对**不是附带步骤**：隔离坏掉时上面那条断言**照样会过**。"
+             隔离没做对（shim 没挂上 / 客户端绕过了 shim）⇒ 本条刚才操作的是用户的 server。\n\
+             ⚠ 这条比对**不是附带步骤**：隔离坏掉时下面那条断言**照样会过**。"
         );
+        println!("E2E-OK P3 跑前跑后用户真实 tmux 一个字没变（隔离是断言，不是假设）");
         assert!(
             seen,
             "15s 内账本里没出现 `{sess}` —— 本机 tmux 帧没进 `snapshot_tmux_by_origin()`。\n\
              ★ 「消费者收到了」不算：消费者里加一行日志也能让人以为通了。\n\
              本条读的是 emitter 真正会读的那一份。"
         );
+        println!("E2E-OK P3 本机 daemon 的 tmux 帧真的进了账本（`{sess}` 出现在快照里）");
     }
 
     /// ★★ **本机读帧不许被一个坏字节杀死，也不许无界**〔D 阶段补审 08-11 新增〕。
@@ -1439,9 +1461,57 @@ mod tests {
     /// gitignore 的 ⇒ 干净 clone 上本条**不编译进去**，`cargo test` 照样全绿。
     /// 不做成「缺了就 red」是因为那会让干净 clone 无法跑测试；缺失不是静默的 ——
     /// `build.rs` 那处 `cargo:warning=缺少内嵌 daemon` 会喊（U-1 那次事故之后加的）。
+    ///
+    /// # ★★ `K-R7`（08-31）：**这一条此前没有人点过名，而它与那条正题完全同形**
+    ///
+    /// `K-R7` 的件文件 `§0` / `§2` 与风险 `6p` 讲的都只是
+    /// `local_daemon::tests::the_local_daemon_can_be_stopped_and_started_again`。
+    /// 而 `D3` 的全表现打之后，**本条是同一族的第二条**：普通 `#[test]`、同一个 `cfg`、
+    /// 起同一个真 daemon 二进制（还起了两次：探针一次 + `supervise_with_stdio` 一次），
+    /// 而 daemon 一上来就**无条件**往它连得到的 tmux server 装三条**全局** hook（槽位 `[50]`）。
+    ///
+    /// ⚠⚠ **本条原来那句 `.env_remove("TMUX")` 读起来像隔离，其实不是**：
+    /// `TMUX` 一空，tmux 客户端就**回落到默认 socket** `/tmp/tmux-$UID/default` ——
+    /// 那正是用户那台 server。清一个变量买不到隔离，**只有显式选择器**（shim 强插 `-L`/`-S`）能。
+    /// 那句注释说的是另一件对的事（不继承「测试进程恰好在哪个 tmux 里」），别把它读成隔离。
+    ///
+    /// ⇒ 与那条正题同样三道锁：`#[ignore]` + `CCM_E2E_TMUX_SHIM_BIN` fail-closed（排在
+    /// **任何 spawn 之前**）+ 那个 shim **真的挂进 daemon 的 `PATH` 最前面**（探针与被监护进程都要）。
+    ///
+    /// ⚠⚠ **第三道锁的射程要分两格看**〔`D1` 审计 08-31 查实，阻塞 4 的另一半〕——
+    /// 与 `local_daemon.rs::the_local_daemon_can_be_stopped_and_started_again` 头注里那张表**同一份**：
+    /// 走 `bash e2e/local-backend-supervise.sh` 时 `tmux-shim.sh` 已经把 shim 挂进
+    /// **测试进程自己的 `PATH`**，而 `supervise_with_stdio` **从不 `env_clear()`**
+    /// ⇒ 第三道锁在**那条跑法上是冗余的**；它真正买的是「**手工 `cargo test -- --ignored`、
+    /// 变量设上但 shim 不在自己 `PATH` 上**」那一格。别把两格混着读。
+    /// 看着它的判据是 `local_daemon.rs` 那条
+    /// `every_test_that_starts_the_real_daemon_demands_a_private_tmux` 的 ㈡ 与 ㈢ **两格**
+    /// ——㈡ 判**写法**（`"PATH"` 与 `"{<绑定名>}:` 同行，插值紧跟开引号），
+    /// ㈢ 判**处数**（`PATH` 这个 env 键在本体里恰好写一次）。
+    /// ⚠ ㈢ 是 `D2` 复审 09-01 逼出来的〔阻塞 1 形 ②〕：本条的 `envs` 里**再追加一条**
+    /// `("PATH", …)` 就能把上面那条带 shim 的整个盖掉（`supervise_with_stdio` 是
+    /// `for (k, v) in &envs { cmd.env(k, v); }`，**后写的赢**，见 `:336`-`:337`），
+    /// 而在 ㈢ 落地之前那一刀**全量门禁新红 0**。两格的代价不是一种，判据也刻意分开（`K13`）。
+    ///
+    /// # 🔴 复跑纪律：**换了 `embedded-daemons/` 的有无之后，必须 `touch src-tauri/build.rs`**
+    ///
+    /// 〔`D2 §G-1` 的陈账，09-01 收 —— 此前只写在件文件里，**被守对象这一侧一个字都没有**。〕
+    /// 本条由 `#[cfg(embedded_daemons)]` 门着。**实测的现象**（`D2` 复审 09-01，我没重打，
+    /// 住址 `audits/K-R7-D2.md#§G-1`）：同一个 `CARGO_TARGET_DIR` 里把
+    /// `src-tauri/embedded-daemons/` 从「无」加成「有」，**`build.rs` 不重跑** ⇒
+    /// 读出的是「无 emb」那一档的数（`1208/0/10`），`touch build.rs` 之后才是 `1211/0/11`。
+    /// ⚠⚠ **两档的输出面长得一模一样，这个坑看不出来。**
+    /// ⇒ 换 emb 状态之后 `touch src-tauri/build.rs`，或**直接换一个全新的 target 目录名**。
+    /// ⚠ 机制**我没有实验证明**；`local_daemon.rs` 那条姊妹测试的同名小节里记着两条候选，
+    /// 其中「`rerun-if-changed` 只在文件存在时登记」那条**现打对不上源码**（那一行是无条件的）。
     #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
     #[test]
+    #[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 e2e/local-backend-supervise.sh 那条带 shim 的路"]
     fn the_local_daemon_really_registers_an_inbound_client() {
+        // ★★ **fail closed，而且排在一切之前** —— 见上面头注第三段。
+        let shim = crate::local_daemon::demand_tmux_shim(
+            "本条起真 daemon，而 daemon 一上来就往它连得到的 tmux server 装全局 hook",
+        );
         let _guard = crate::inbound_client::local_origin_test_lock();
         let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("embedded-daemons")
@@ -1463,6 +1533,12 @@ mod tests {
             (
                 "CLAUDE_CONFIG_DIR".to_string(),
                 cfg_dir.display().to_string(),
+            ),
+            // ★ `K-R7`：隔离**真的用上**。探针那一跳走 `.envs(envs…)`，被监护那一跳走
+            //   `supervise_with_stdio(.., envs, ..)` ⇒ 写在这里两跳都盖得到。
+            (
+                "PATH".to_string(),
+                format!("{shim}:{}", std::env::var("PATH").unwrap_or_default()),
             ),
         ];
 
@@ -1495,6 +1571,9 @@ mod tests {
                  `resolve_claude_dir()` 是 `$CLAUDE_CONFIG_DIR` 优先、`$HOME/.claude` 兜底，\n\
                  两个都要设。（只设 HOME 那版跑起来一切正常，隔离却是假的。）"
             );
+            // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `e2e/local-backend-supervise.sh` 驱动，
+            //   而那个脚本的收尾自检是「标记数 < 跑成的测试数 ⇒ 有测试提前退出」。
+            println!("E2E-OK P2 daemon 自陈的 claude_dir 就在沙箱里（隔离是断言，不是假设）");
         }
 
         let h = supervise_with_stdio(
@@ -1540,6 +1619,7 @@ mod tests {
             client.accepts("launch") && client.accepts("kill"),
             "通道登记了，但 daemon 没声明接受 launch/kill ⇒ P3 接过来也发不出去"
         );
+        println!("E2E-OK P2 本机入方向通道登记上了，而且声明接受 launch/kill");
 
         // P2-Y3：关写端**不许**把 daemon 带走（C8 裁定「默认不 kill、daemon 继续跑」）。
         // 单独观测，不顺带看一眼 —— 件里 §0d 把这条从「推断」改成了实测，就是这个意思。
@@ -1555,6 +1635,7 @@ mod tests {
              这与 C8「默认不 kill」直接冲突，也推翻了 local_backend.rs:221 那句\n\
              「daemon 对 stdin 关闭刻意不敏感」——那句注释得改，不是这条测试得改。"
         );
+        println!("E2E-OK P2 关掉 stdin 写端之后 daemon（pid={pid}）还活着（C8「默认不 kill」）");
     }
 
     use super::*;
@@ -2206,6 +2287,18 @@ mod tests {
     ///
     /// 人群**从源码派生**：本文件里 `#[ignore]` 且体内出现 `CCM_E2E_DAEMON`
     /// （= 真的要一个 daemon 二进制）的测试。用假二进制的那条不在其中。
+    ///
+    /// # ⚠⚠ 射程订正〔`K-R7-D2`，08-31〕：**人群画在两个属性上，都够不着最危险的那一形**
+    ///
+    /// 本条的人群有两个条件，**两个都是「怎么标记的」**：`#[ignore]` · 提到 `CCM_E2E_DAEMON`。
+    /// 而本文件里 `the_local_daemon_really_registers_an_inbound_client` 是**普通 `#[test]`**、
+    /// 用的是**内嵌**那份二进制（不经 `CCM_E2E_DAEMON`）⇒ **两个条件各差一个**，
+    /// 于是它起着真 daemon 而本条一声不吭。`local_daemon.rs` 那条姊妹判据同理够不着。
+    /// ⇒ 正题已经搬到 `local_daemon.rs` 的
+    /// `every_test_that_starts_the_real_daemon_demands_a_private_tmux`：
+    /// 人群按「**那个二进制哪来的**」派生（内嵌目录 / `CCM_E2E_DAEMON` / `E2eSandbox::demand`），
+    /// **两个文件一起扫**，不看任何属性。
+    /// **本条留着**（它守的是一格更窄但仍然真的性质），但别把它读成「起真 daemon 有人守了」。
     #[test]
     fn every_real_daemon_e2e_demands_a_private_tmux_dir() {
         const REAL: &str = "CCM_E2E_DAEMON";
@@ -2217,6 +2310,8 @@ mod tests {
         //   **显式选择器压得过 `$TMUX`**。本条钉的性质一个字没变：
         //   **起真 daemon 的 e2e 必须 fail-closed 地要一个私有 tmux 隔离**。
         const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_SHIM_BIN";
+        // 取 shim 的**唯一入口**〔`K-R7` 09-01〕：住 `local_daemon::tests::demand_tmux_shim`。
+        const GATE: &str = "demand_tmux_shim(";
         let src = include_str!("local_backend.rs");
         // ⚠ **不在语料串上做裸 `split`**：`needle_anchor_registry` 的递减棘轮把它
         //   判为「匹配单位比事实小」的一族，且**不许调上限**（本条第一版就栽在这）。
@@ -2249,28 +2344,77 @@ mod tests {
             "本文件里找不到「`#[ignore]` 且要 {REAL}」的测试（08-08 实测 1 条）—— \
              抽取器坏了或那条 e2e 被删了，本条此刻无效"
         );
+        // ⚠⚠ **剥注释这一步是 09-01（`C` 第六拍）补的**〔`D5` 阻塞 2；PM `§0s` 五 ①〕。
+        //
+        //   下面那两格原来判在 `c.lines()`（**没剥注释的原始行**）上，而下游
+        //   —— `local_daemon.rs` 那条正题的 ㈡（`shim_first_on_path` 取绑定名）——
+        //   读的是它自己那份 `code_only`（**剥掉 `//` 打头的行**）。**两条判在不同的文本上。**
+        //   `D5-M4` 实证：在合法落点上方加**一行纯注释**提到那个口
+        //   ⇒ **本条当场红（新红 1）、主守卫一声不吭**，而本条的报文却说
+        //   「因为下游要从这一行上取绑定名」——**那句归因在唯一分岔的场合恰好是假的**。
+        //
+        //   🔴 **这个坑本仓在这条守卫上已经栽过一次**：主守卫 `code_only` 上方那段注释逐字
+        //   写着「判人群要看**代码**，不能看文档注释 —— `local_backend.rs` 那条同族守卫在
+        //   这上面**自红过一次**」，主守卫为此加了 `code_only`，
+        //   **而 `C` 第五拍给本条新加的那一格没有跟着剥**
+        //   ⇒ 那正是「**只修一半 / 同族当场复发**」，只换了个动词（从「量词」换成
+        //   「判在剥没剥注释的哪一份文本上」）。
+        //
+        //   ⇒ 现在**先剥再判**，剥法逐字与主守卫那份 `code_only` 相同
+        //   （`trim_start().starts_with("//")`，`///` 也在内）——**同一把尺子**。
+        //   ⚠ 只让本条**更松**（少几行可看），不放水：被判的那一行本来就得是代码。
+        let code_only = |c: &str| -> String {
+            c.lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
         for c in real_e2e {
-            let name = c
+            let code = code_only(c);
+            let name = code
                 .lines()
                 .find_map(|l| l.trim().strip_prefix("fn "))
                 .and_then(|r| r.split_once('('))
                 .map(|(n, _)| n)
                 .unwrap_or("<未知>");
-            let line = c
+            // ⚠⚠ **这一格 09-01 换过一次判法**〔`K-R7` `§0q` 裁一 · 出路乙，`D4` 阻塞 1〕。
+            //   原来是两句：先找「含 `CCM_E2E_TMUX_SHIM_BIN` 的那一行」，再判那行含 `.expect(`。
+            //   `D4` 那一刀（`var(SHIM).unwrap_or_else(|_| var(<真 PATH>).expect(..))`）
+            //   **同一行上三样东西都还在** ⇒ 旧判据说合规，而 fail-closed 没了。
+            //   🔴 **本条是那一族的第 4 处，而 `§0q` 只点了 `local_daemon.rs` 的 3 处** ——
+            //     09-01 实测：只改本条人群里那条 e2e（`e2e_the_supervisor_restarts_…`）的取值，
+            //     **全量门禁新红 0**，本条一声不吭。⇒ 一起换。
+            //   现在判的是「**走没走取 shim 的那个唯一入口**」；
+            //   「**那个口关不关得上**」由 `local_daemon.rs` 的
+            //   `the_one_shim_gate_really_fails_closed` 在**默认门禁里真跑一遍**（不是文本钉）。
+            //   ⚠ **判在剥过注释的 `code` 上**（见上面那段）—— 09-01 之前判的是原始行。
+            let line = code
                 .lines()
-                .find(|l| l.contains(PRIVATE_TMUX))
+                .find(|l| l.contains(GATE))
                 .unwrap_or_else(|| {
                     panic!(
-                        "`{name}` 会起一个**真** daemon，却没要 `{PRIVATE_TMUX}` —— \
-                         它会连上用户真实的 tmux server。本模块头注写的是「绝不」。"
+                        "`{name}` 会起一个**真** daemon，却没走取 shim 的那个唯一入口 \
+                         （`{GATE}`）—— 它会连上用户真实的 tmux server。\n\
+                         本模块头注写的是「绝不」。⚠ 那个变量叫 `{PRIVATE_TMUX}`，\
+                         而**取它只许从那一个口取**（`local_daemon::tests::demand_tmux_shim`）：\
+                         口里那句 fail-closed 是被一条真跑的测试钉住的，\
+                         自己现取就退回到「谁也没在守」。\n\
+                         ⚠ 判的是**剥掉 `//` 打头的行之后**的本体：写在注释里提一句不算数，\
+                         也不再让本条假红（`D5-M4`）。"
                     )
                 });
+            // 反空真：光找到那一行不够 —— 它得真是**赋值**给某个绑定的。
             assert!(
-                line.contains(".expect("),
-                "`{name}` 拿 `{PRIVATE_TMUX}` 的那行不是 fail-closed 的：\n  {}\n\
-                 ⚠ `unwrap_or_default()` / `unwrap_or(..)` 会让**没设这个变量时静默用真 tmux**。\n\
-                 这条 e2e 平时被 `#[ignore]` 挡着不跑，坏了也没人知道 —— \
-                 所以它必须在**缺变量时当场炸**，而不是降级。",
+                line.trim_start().starts_with("let "),
+                "`{name}` 里出现 `{GATE}` 的那一行（**剥掉注释之后**）不是一条绑定：\n  {}\n\
+                 ⇒ 本条只认「`let <名字> = …` 一行到底」这一种写法，因为下游\
+                 （`local_daemon.rs` 那条正题的 ㈡）要从**同一把尺子剥出来的这一行**上取绑定名。\n\
+                 ⚠ **两条已知的边界，写在这里免得下一个人以为自己写错了**：\n\
+                 ① **假阳**：把这条调用按 rustfmt 在 `=` 后断行（`let shim =` 换行再写调用）\
+                 ⇒ 含口的那一行不再以 `let ` 打头，本条与下游 ㈡ **一起红**，\
+                 而那是一条语义逐字不变的合法写法（`D5-M5` 实证）。**今天要的是单行写法。**\n\
+                 ② 本条 09-01 起判在**剥过注释**的文本上（`D5-M4`：一行纯注释曾让本条假红，\
+                 而下游一声不吭）—— 两条判在不同文本上的日子结束了。",
                 line.trim()
             );
         }
@@ -2281,7 +2425,7 @@ mod tests {
     #[ignore]
     fn e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed() {
         let bin = std::env::var("CCM_E2E_DAEMON").expect("要 CCM_E2E_DAEMON");
-        let shim = std::env::var("CCM_E2E_TMUX_SHIM_BIN").expect("要 CCM_E2E_TMUX_SHIM_BIN");
+        let shim = crate::local_daemon::demand_tmux_shim("本条起真 daemon");
         let claude = std::env::var("CCM_E2E_CLAUDE_DIR").expect("要 CCM_E2E_CLAUDE_DIR");
         let events: Arc<Mutex<Vec<SuperviseEvent>>> = Arc::new(Mutex::new(Vec::new()));
         let ev = events.clone();
