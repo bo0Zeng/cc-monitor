@@ -2769,12 +2769,38 @@ mod tests {
         // ⚠ 判人群要看**代码**，不能看文档注释 —— 本条的头注里就写着那三条来历字面量。
         //   `local_backend.rs` 那条同族守卫在这上面**自红过一次**（它的注释里写着
         //   `#[ignore]` 与 `CCM_E2E_DAEMON`，第一版把自己算进了人群）。
-        let code_only = |c: &str| -> String {
-            c.lines()
-                .filter(|l| !l.trim_start().starts_with("//"))
-                .collect::<Vec<_>>()
-                .join("\n")
-        };
+        //
+        // ⚠⚠ **剥注释这一步 09-01（`C` 第七拍）收口成共享原语**〔`D6` `B2`〕。
+        //   这里原来是一份**私有副本**（墓碑，原文逐字）：
+        //   `let code_only = |c: &str| -> String { c.lines()`
+        //   `    .filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n") };`
+        //   ⇒ 它只剥「`//` 打头的整行」。现在两处调用点直接调
+        //   `guard_core::strip_comment_lines`（`crates/guard-core/src/lib.rs:594`）。
+        //
+        //   **为什么换**（两条，各自独立成立）：
+        //   ① **仓规**：`structural_scan.rs:425` 那条
+        //      `every_comment_stripping_transformer_is_registered`，头注逐字
+        //      「剥注释只许有一个权威实现」「想再加一个 ⇒ 先问『共享原语为什么不够』，
+        //      答得出来才加进下面这张表」。上面那份私有副本**没问、也没登记**。
+        //      ⚠ 它当时没红**不等于它同意**：那条判据的采集面是 `fn … -> String` / `-> Vec<`
+        //      （`structural_scan.rs:508`-`:526`），**看不见闭包** —— 那是它自己的盲点。
+        //      〔那条判据不在本拍写区，一个字没动，已走上报口。〕
+        //   ② **换过去关掉一形真的假阳**：在一个完全合法的落点上方加**一行式**块注释
+        //      （`/* 历史写法留档：demand_tmux_shim("旧") */`）⇒ 旧剥法剥不掉它，
+        //      下面 ㈡ 的 `find(..GATE..)` 先撞上那一行、`strip_prefix("let ")` 失败
+        //      ⇒ 两条守卫一起**假红**（`D6-M1` 实打，新红 2）。
+        //
+        //   🔴 **换之前先量了，不是照抄**（铁律 18）。量具 `scratchpad/kr7-c7-starline.py`
+        //   （照本条与姊妹守卫的切法重写），被测对象 = 本工作树尖 `aee8b9f`，量于 09-01：
+        //   `strip_comment_lines` 连 **`*` 与 `/*` 打头的整行**一起剥，而 Rust 的**解引用行**
+        //   （`*g = Some(..)`）正是那个形状 ⇒ 换过去会多剥掉一批**代码行**。
+        //   现打：两个文件里这样的行共 **19** 条（本文件 17 · `local_backend.rs` 2；
+        //   其中 10 条是解引用赋值，7 条是多行字符串里以 `**` 打头的续行），
+        //   落在本条人群那 6 个块里的有 **6** 条（三条测试各 2 条 `*XXX.lock()… = …;`）。
+        //   两种剥法**逐格对照**（人群进出 · 委托 · 要口 · `writes` · ㈡ 的三值）：
+        //   **人群同为 6 条，判决不同 0 处**；姊妹守卫人群 1 条、转发者 20 行窗口同样全同。
+        //   ⇒ **今天代价 0**；换进来的**新盲点方向**逐形登记在头注「诚实边界 10」。
+        //   ⚠ 它**换空行、不删行** ⇒ 行位不变（下面转发者那 20 行窗口因此仍是原文前 20 行）。
 
         // ── 第三道锁 ③ 的判据〔`D1` 回修 08-31，阻塞 4〕：**取到 shim ≠ 用上 shim** ──
         //
@@ -2988,7 +3014,7 @@ mod tests {
             let chunks = chunks_of(src);
             total_chunks += chunks.len();
             for c in &chunks {
-                let code = code_only(c);
+                let code = guard_core::strip_comment_lines(c);
                 // 守卫排除：读源码的是守卫（诚实边界 3）。**串拼出来，别写死**（同上）。
                 if code.contains(concat!("include_", "str!(")) {
                     continue;
@@ -3109,10 +3135,14 @@ mod tests {
         let at = me
             .find(concat!("fn dem", "and() -> Self {"))
             .expect("`E2eSandbox::demand()` 不在了 —— 委托那条腿没了，来改本条");
-        // ⚠ 与人群那一侧同一把尺子：**先剥掉 `//` 注释行再判**〔09-01 加的〕。
+        // ⚠ 与人群那一侧同一把尺子：**先剥掉整行注释再判**〔09-01 加的；同日收口成共享原语〕。
         //   ㈢ 是**按处数**判的 ⇒ 转发者这一段里随便一句注释提到 `"PATH"` 就会变成一次假红。
         //   剥注释只会让 ㈠㈡ 更严（少几行可看），不会放水。
-        let demand: String = code_only(&me[at..].lines().take(20).collect::<Vec<_>>().join("\n"));
+        //   ⚠ 共享原语把被剥的行**换成空行**（不删行）⇒ 这仍然是 `demand()` 起**原文** 20 行，
+        //   行位不变；下面报文贴出来的也是这一份（空行就是被剥掉的注释行）。
+        let demand: String = guard_core::strip_comment_lines(
+            &me[at..].lines().take(20).collect::<Vec<_>>().join("\n"),
+        );
         // ⚠⚠ **必须落在同一行上判**〔08-31 死值验当场逮到的，就在我自己刚写的这一行里〕：
         //   本条第一版写的是 `demand.contains(SHIM) && demand.contains(".expect(")`。
         //   实测把那一行换成 `.unwrap_or_default()` ⇒ **1210 passed / 0 failed，一条都不红** ——
