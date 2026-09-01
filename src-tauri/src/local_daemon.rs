@@ -1258,10 +1258,23 @@ mod tests {
     /// ① `#[ignore]` ⇒ 默认 `cargo test` **跑不到它**；
     /// ② `CCM_E2E_TMUX_SHIM_BIN` **fail-closed**（`expect`，且排在**任何 spawn 之前**）
     ///    ⇒ 连 `cargo test -- --ignored` 也不能裸跑它；
-    /// ③ 那个 shim **真的挂进被监护 daemon 的 `PATH`**。
+    /// ③ 那个 shim **真的挂进被监护 daemon 的 `PATH` 最前面**。
     ///
-    /// ⚠ ③ 不是装饰：**只做 ①② 会变成一次仪式** —— 要了一个变量却不用它，
-    /// daemon 照样沿真 `PATH` 找到真 tmux。
+    /// # ⚠⚠ ③ 的射程要**分两格看**〔`D1` 审计 08-31 查实，阻塞 4 的另一半〕
+    ///
+    /// 本段原来只写一句「③ 不是装饰：只做 ①② 会变成一次仪式 —— 要了一个变量却不用它，
+    /// daemon 照样沿真 `PATH` 找到真 tmux」。**那句话把两格混着写了**，逐格拆开：
+    ///
+    /// | 跑法 | ③ 买到什么 | 为什么 |
+    /// |---|---|---|
+    /// | **文档指定的那条**：`bash e2e/local-backend-supervise.sh` | **冗余** | `e2e/tmux-shim.sh` 里那句 `export PATH="$TMUX_SHIM_BIN:$PATH"` 已经把 shim 挂进了**测试进程自己的 `PATH`**，而 `supervise_with_stdio` 只做 `env_remove("TMUX")` + 逐条 `env(k, v)`、**从不 `env_clear()`** ⇒ 子进程本来就继承那份带 shim 的 `PATH` |
+    /// | **手工 `cargo test -- --ignored`**（变量设上、但 shim 不在自己 `PATH` 上） | ★ **这一格是真的** | 没有 ③ 的话，daemon 继承的是那个人的真 `PATH` ⇒ 沿真 `PATH` 找到真 tmux ⇒ 盖用户的 `[50]` |
+    ///
+    /// ⇒ **③ 值得留，但别把它读成「e2e 那条路上也靠它挡着」** —— 那条路上挡住的是 shim 的继承。
+    /// 看着 ③ 的判据是 `every_test_that_starts_the_real_daemon_demands_a_private_tmux`
+    /// 的第 ㈡ 条腿（`"PATH"` 与 `{<绑定名>}:` 同行）；在它落地之前，
+    /// **③ 退掉全量门禁一条都不红**（审计 `M-α` / `M-α′` 两刀实测，新红各 0）。
+    ///
     /// ⚠⚠ 而**只清 `TMUX` 是不够的**（`supervise_with_stdio` 内部就在清它）：
     /// `TMUX` 一空，tmux 客户端**回落到默认 socket** `/tmp/tmux-$UID/default` ——
     /// 那**正是**用户那台 server。隔离必须靠**显式选择器**（shim 强插 `-L`/`-S`），
@@ -2172,11 +2185,19 @@ mod tests {
     /// 「守卫范围 ≠ 性质范围」在本仓已经出过七形，上面那两条各是其中一形
     /// （各自**只扫自己那个文件**）。
     ///
-    /// # 要求：fail-closed 地要一个私有 tmux —— 两种合法形态
+    /// # 要求：fail-closed 地要一个私有 tmux **并且真的用上它** —— 两种合法形态
     ///
-    /// ① 自己要：本体里有一行**同时**含 `CCM_E2E_TMUX_SHIM_BIN` 与 `.expect(`；
+    /// ① **自己要 + 自己挂**（两条腿缺一不可）：
+    ///    ㈠ 本体里有一行**同时**含 `CCM_E2E_TMUX_SHIM_BIN` 与 `.expect(`（**第二道锁**：取到）；
+    ///    ㈡ 本体里有一行**同时**含 `"PATH"` 与 `{<绑定名>}:`（**第三道锁**：挂进 `PATH` 最前面）。
     /// ② 委托给 `E2eSandbox::demand()` —— 而**转发者自己被本条单独钉住**（见下面第 ③ 段），
-    ///    不然「委托」就是一张空头支票。
+    ///    ㈠㈡ 两条腿都钉，不然「委托」就是一张空头支票。
+    ///
+    /// ⚠⚠ **㈡ 是 08-31 `D1` 审计买回来的**〔阻塞 4〕：本条第一版只判 ㈠。
+    /// 审计两刀实测 —— 把 `format!("{shim}:{}", PATH)` 换成 `format!("{}:{shim}", PATH)`
+    /// （shim 从最前挪到最后）、以及把那一格整个换成 `("CCM_AUDIT_UNUSED", shim)`
+    /// （第三道锁整个退掉）—— **全量门禁新红都是 0**。
+    /// 「取到了一个变量」与「用上了它」是两件事，而本条当时只判前一件。
     ///
     /// # ⚠ 诚实边界（逐形登记，不假装覆盖）
     ///
@@ -2184,25 +2205,87 @@ mod tests {
     ///    的那几条（`a_child_that_floods_stdout_and_exits_is_still_detected_as_dead` 等）
     ///    **刻意不在人群里**：它们起的东西不装 tmux hook。判准是「后果」不是「动作」。
     /// 2. **扫描面是这两个文件。** 别处新写一条起真 daemon 的测试，本条看不见。
-    ///    今天真 daemon 的两个来源（内嵌目录 · `CCM_E2E_DAEMON`）都只在这两个文件里出现，
-    ///    但那是**今天的事实**，不是结构保证。
+    ///    ⚠⚠ **订正〔`D1` 审计 08-31，阻塞 2〕**：本段原来写的是
+    ///    「今天真 daemon 的两个来源（内嵌目录 · `CCM_E2E_DAEMON`）**都只在这两个文件里出现**」——
+    ///    **后半句是假的**。现打（分母 = 仓内 187 个 `.rs`，去 `target` / `node_modules` /
+    ///    `vendor` / `.git` / `dist` / `embedded-daemons`）：
+    ///    - `CCM_E2E_DAEMON` 在 **2** 个 `.rs` 里（就是这两个）—— 这半是真的；
+    ///    - `E2eSandbox` 在 **2** 个 `.rs` 里（就是这两个）—— 这半也是真的；
+    ///    - **`embedded-daemons` 在 8 个 `.rs` 里**：本文件 · `local_backend.rs` ·
+    ///      `src-tauri/build.rs`（`Path::new("embedded-daemons")`，**是代码不是散文**）·
+    ///      `src-tauri/src/tool_registry.rs`（登记表数据）· `src-tauri/src/sftp.rs` ·
+    ///      `src-tauri/src/write_site_registry.rs` · `remote-daemon-proto/src/main.rs` ·
+    ///      `remote-daemon-proto/src/build_id_guard.rs`（后四个是文档注释 / 错误文案）。
+    ///    ⇒ **结论不变**（那 6 个文件里一条起真 daemon 的测试都没有，逐个看过），
+    ///    **坏的是论证的分母** —— 而那句话是本条关于「人群完整性今天够用」的**唯一**正面论证。
+    ///    今天它只能说到这里：扫描面是这两个文件，别处**没有守**。
     /// 3. **守卫自己要排除掉。** 判准是「本体里出现 `include_str!` 这个宏」——
     ///    读源码的是守卫，不是运行期测试。⇒ 一条**既起真 daemon 又读源码**的测试会被漏掉。
-    ///    今天没有这一形（现打：人群 6 条，无一读源码）。
+    ///    ⚠ **订正证据〔`D1` 审计 08-31，`§C-3`〕**：本段原来的证据是「现打：人群 6 条，
+    ///    无一读源码」—— 那是**循环的**：人群正是先把读源码的排除掉之后才得到的，
+    ///    换任何一棵树都成立，**一格都买不到**。正确的问法是「**被排除掉的那些块里
+    ///    有没有真起 daemon 的**」。现打（分母 = 两个文件切出的 57 个块）：被
+    ///    `include_str!` 规则排除、且带来历字面量的块 **3** 个 —— 本条本体 · 姊妹守卫
+    ///    `every_real_daemon_e2e_demands_a_private_tmux_dir` · `the_listen_token_file_is_pinned_cell_by_cell`
+    ///    （最后那条用 `temp_dir()` 造目录调 `ensure_listen_token(&dir)`，**一个进程都不起**）。
+    ///    ⇒ 今天没有这一形。
     ///    ⚠ 那个判准串在下面是**拼出来的**（`concat!`），不是写死的字面量 ——
     ///    `cross_half_edge_registry::every_non_literal_include_is_registered_with_a_reason`
     ///    数的是「`include_*!` 后面跟着 `(`」的**出现次数**，注释与字符串里也算
     ///    ⇒ 直接写字面量会让本条把自己变成那张登记表上的两处「解析不出路径的 include」。
     ///    〔08-31 实打：第一版就是这么红的，`left: [("src-tauri/src/local_daemon.rs", 2), …]`。〕
-    /// 4. **它证不了 shim 真的挡住了。** 它只证「要了、而且缺了就炸」。
+    /// 4. **它证不了 shim 真的挡住了。** 它只证「要了、缺了就炸、而且写在 `PATH` 最前面」。
     ///    「真的落在私有 server 上」那一格由 `the_local_tmux_frames_really_land_in_the_ledger`
     ///    的**跑前跑后比对**买（那条自己是 `#[ignore]`）。
+    ///    ⚠ 第三道锁那条腿（㈡）是**形状钉**：它证「shim 被写在 `PATH` 最前面」这个**写法**，
+    ///    不证「解析真的先到 shim」—— 后者是 `PATH` 本身的语义（最前面那个目录赢），
+    ///    是操作系统的性质，不是本仓的代码，本仓也没有判据能替它作证。
+    /// 5. 🔴 **第四种来历逮不到**〔`D1` 审计 08-31 造出反例并实跑，阻塞 3〕。
+    ///    形状：一条**普通 `#[test]`**（无 `#[ignore]`、无 `cfg`）、**就在这两个文件里**、
+    ///    真调 `local_backend::supervise_with_stdio(..)` 起 daemon，只把二进制来历换成
+    ///    **第四种**取法（例如一个新环境变量 `CCM_AUDIT_DAEMON`）⇒ 三条来历字面量一条都不出现
+    ///    ⇒ 它不进人群，本条与两条姊妹守卫**全不出声**（审计实跑：`1210 passed; 0 failed`）。
+    ///    ⚠ 它也**不会被别的网接住**：`write_site_registry::spawn_sites::SPAWNS` 登记的是
+    ///    **生产侧** spawn 落点，而这样一条测试调的正是那个**已登记**的落点
+    ///    ⇒ `every_local_spawn_is_declared` 照样绿。
+    ///
+    ///    **为什么不换成「按调用派生」的判准**（`调了 supervise* / spawn_detached
+    ///    且没 fail-closed 地要 shim`）—— 08-31 先量后选（铁律 18），量在同一个扫描面上：
+    ///
+    ///    | 判准 | 人群 | 真阳 | 假阳 | 真阳率 |
+    ///    |---|---|---|---|---|
+    ///    | 现判准（来历字面量） | 6 | 6 | 0 | **6/6** |
+    ///    | 候选（按调用派生） | 9 | 4 | 5 | **4/9** |
+    ///    | 候选（再剔掉「首个 `#[test]` 之前那一块」这个显然 bug 之后的最好情形） | 7 | 4 | 3 | **4/7** |
+    ///
+    ///    候选那 5 条假阳的来历有两种，**两种都不是能调参数调掉的**：
+    ///    ㈠ **2 条根本不是测试** —— 本切法的第 0 块是「首个 `#[test]` 之前的全部内容」，
+    ///       也就是**这两个文件的生产代码本体**，而生产代码里当然有 `supervise(` /
+    ///       `spawn_detached(`（那正是被调的落点）⇒ 候选判准会把**生产代码**判成两条违例，
+    ///       **在一棵干净的树上当场假红**；
+    ///    ㈡ **3 条是诚实边界 1 那一族** —— 拿**自造脚本**喂 `supervise()` 的
+    ///       （`a_child_that_floods_stdout_and_exits_is_still_detected_as_dead` ·
+    ///       `stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on` ·
+    ///       `e2e_a_binary_that_always_dies_is_given_up_on_within_the_cap`）。
+    ///       它们起的东西不装 tmux hook，**要求它们要 shim 是一条没有意义的要求**。
+    ///    而且候选判准**还净漏 2 条今天已经管住的**：两条 `e2e_*` 委托给 `E2eSandbox`，
+    ///    自己不直接调 `supervise*` ⇒ 候选覆盖 4 条，现判准覆盖 6 条。
+    ///    ⇒ **换判准是拿 100% 真阳率换 44%、同时丢掉三分之一覆盖**，压不住噪声。
+    ///    **选：留现判准，把这一形逐形登记在此**（铁律 14：写进功能件**并**落进被守对象头注）。
+    ///    **另一条路的代价**（登记而不换判准）：这一形今天**真的没有机器守着**，
+    ///    靠的是代码评审 + 本段这条登记。谁要加第四种取二进制的方式，
+    ///    **请把它加进下面 `PROVENANCE` 那张表**，那是本条唯一的入口。
     #[test]
     fn every_test_that_starts_the_real_daemon_demands_a_private_tmux() {
         const SHIM: &str = "CCM_E2E_TMUX_SHIM_BIN";
         const DELEGATE: &str = "E2eSandbox::demand";
         // 真 daemon 的三种来历。**默认拒绝**：出现任何一条就进人群。
         const PROVENANCE: [&str; 3] = ["embedded-daemons", "CCM_E2E_DAEMON", DELEGATE];
+        // 两条合法的腿。**取常量比字面量**：下面的反空真③要按腿数人，
+        // 而按字面量数就会在改一个字的时候静默数成 0（那正是「人群缩水」那一族）。
+        const LEG_SELF_SERVED: &str = "自己要 + 自己挂";
+        const LEG_DELEGATES: &str = "委托给 E2eSandbox::demand()";
+        const LEG_NEITHER: &str = "两条腿都没走（连第二道锁 ② 都没有）";
         let files: [(&str, &str); 2] = [
             ("local_daemon.rs", include_str!("local_daemon.rs")),
             (
@@ -2239,7 +2322,46 @@ mod tests {
                 .join("\n")
         };
 
-        let mut population: Vec<(String, bool)> = Vec::new(); // (名字, 满足要求吗)
+        // ── 第三道锁 ③ 的判据〔`D1` 回修 08-31，阻塞 4〕：**取到 shim ≠ 用上 shim** ──
+        //
+        // 审计两刀实测：把 `format!("{shim}:{}", PATH)` 换成 `format!("{}:{shim}", PATH)`
+        // （shim 从最前挪到最后）、以及把那一格整个换成 `("CCM_AUDIT_UNUSED", shim)`
+        // （③ 整个退掉），**全量门禁新红都是 0** —— 因为上面那条「同一行 SHIM + `.expect(`」
+        // 只看**取没取到**，不看**挂没挂上**。⇒ 这里补一条。
+        //
+        // 判什么：本体里有一行**同时**含 `"PATH"` 与 `{<绑定名>}:` ——
+        // 插值排在冒号**左边** = 那个目录挂在 `PATH` **最前面**，而 `PATH` 的语义是
+        // **最前面那个目录赢**。挂在后面（`{}:{shim}`）解析先撞到真 tmux ⇒ 隔离没了。
+        // 绑定名不写死，从「要 shim 那一行」上现取（`let <名字> = std::env::var(SHIM)…`），
+        // 改个变量名不该变成一次假红。
+        //
+        // ⚠ 诚实边界（这一条买到的是哪一格，见头注「诚实边界 5」）：这是**形状钉**，
+        //   它证的是「shim 被写在 `PATH` 最前面」这个写法，**不是**「解析真的先到 shim」。
+        //   后者是 `PATH` 本身的语义（操作系统的性质，不是本仓的代码）。
+        let shim_first_on_path = |code: &str| -> bool {
+            let binding = code
+                .lines()
+                .find(|l| l.contains(SHIM) && l.contains(".expect("))
+                .map(|l| l.trim())
+                .and_then(|l| l.strip_prefix("let "))
+                .and_then(|r| r.split_once('='))
+                .map(|(n, _)| n.trim().to_string());
+            match binding {
+                Some(n) => {
+                    let front = format!("{{{n}}}:");
+                    code.lines()
+                        .any(|l| l.contains("\"PATH\"") && l.contains(&front))
+                }
+                // 取不出绑定名 ⇒ **判不合规**（fail closed）：读不懂就别说「合规」。
+                None => false,
+            }
+        };
+
+        // (名字, 合规吗, **走的是哪条腿**)
+        // ⚠ 「哪条腿」记的是**它归谁管**，不是「它过没过」——
+        //   下面的反空真③要按腿数「有几条被 ㈡ 查着」，把没过的那几条从腿里踢出去
+        //   会让「全员违例」自动变成「这条腿没人走」，两种病搅在一起就都读不出来了。
+        let mut population: Vec<(String, bool, &'static str)> = Vec::new();
         let mut total_chunks = 0usize;
         for (who, src) in files {
             let chunks = chunks_of(src);
@@ -2259,12 +2381,21 @@ mod tests {
                     .and_then(|r| r.split_once('('))
                     .map(|(n, _)| n.to_string())
                     .unwrap_or_else(|| "<读不出名字>".to_string());
-                // 两种合法形态：自己 fail-closed 地要，或委托给 `E2eSandbox::demand()`。
+                // 两种合法形态：**自己要 + 自己挂**，或委托给 `E2eSandbox::demand()`。
                 let asks_itself = code
                     .lines()
                     .any(|l| l.contains(SHIM) && l.contains(".expect("));
+                let hangs_it_on_path = shim_first_on_path(&code);
                 let delegates = code.contains(DELEGATE);
-                population.push((format!("{who}::{name}"), asks_itself || delegates));
+                let (ok, leg) = if delegates {
+                    (true, LEG_DELEGATES)
+                } else if !asks_itself {
+                    (false, LEG_NEITHER)
+                } else {
+                    // 走「自己要」这条腿 ⇒ 归 ㈡ 管；过不过看它有没有真挂上。
+                    (hangs_it_on_path, LEG_SELF_SERVED)
+                };
+                population.push((format!("{who}::{name}"), ok, leg));
             }
         }
 
@@ -2277,7 +2408,7 @@ mod tests {
         //    〔判据规范 7：先证「够得到」（地板），再问有没有违例；否则「零违例」是空真。〕
         //    ⚠ 这是**地板不是等号**：新写一条起真 daemon 的测试会自动进人群、自动被要求合规。
         //      地板只挡「已知的那几条**静默掉出人群**」（改名 / 换来历 / 被删）。
-        let names: Vec<&str> = population.iter().map(|(n, _)| n.as_str()).collect();
+        let names: Vec<&str> = population.iter().map(|(n, _, _)| n.as_str()).collect();
         for must in [
             "local_daemon.rs::the_local_daemon_can_be_stopped_and_started_again",
             "local_daemon.rs::e2e_a_second_host_adopts_the_running_daemon_instead_of_starting_a_second_one",
@@ -2293,6 +2424,30 @@ mod tests {
                  现打人群：{names:?}"
             );
         }
+
+        // ── 反空真③：「自己要 + 自己挂」那条腿今天真的有人走 ────────────────
+        //    〔`D1` 回修 08-31，阻塞 4〕上面那条第三道锁的判据只落在**这条腿**上；
+        //    全员都走「委托」的话它一圈都不转，而「零违例」会读起来像「都合规」。
+        //    地板取 3（今天实打 4：`the_local_daemon_can_be_stopped_and_started_again` ·
+        //    `the_local_tmux_frames_really_land_in_the_ledger` ·
+        //    `the_local_daemon_really_registers_an_inbound_client` ·
+        //    `e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed`），
+        //    留一格给「某一条改走委托」，掉到 2 就该回来改本条。
+        let self_served = population
+            .iter()
+            .filter(|(_, _, leg)| *leg == LEG_SELF_SERVED)
+            .count();
+        assert!(
+            self_served >= 3,
+            "走「{LEG_SELF_SERVED}」那条腿的只剩 {self_served} 条 —— \
+             第三道锁 ③（shim 真的挂进 daemon 的 `PATH` 最前面）的判据**只落在这条腿上**，\n\
+             人少到这个份上它就快成空转了：那时「零违例」与「没人被查」在输出上一模一样。\n\
+             现打人群（名字 · 走哪条腿）：{:?}",
+            population
+                .iter()
+                .map(|(n, _, leg)| format!("{n} [{leg}]"))
+                .collect::<Vec<_>>()
+        );
 
         // ── ③ 转发者自己必须是 fail-closed 的（不然「委托」是空头支票）─────
         let me = include_str!("local_daemon.rs");
@@ -2317,23 +2472,44 @@ mod tests {
              ⚠ 判的是「**同一行上**既有 `{SHIM}` 又有 `.expect(`」，不是「这一段里两样都出现过」。\n\
              实得：\n{demand}"
         );
+        // ⚠ 转发者的**第三道锁**也要钉〔`D1` 回修 08-31，阻塞 4〕：
+        //   委托那条腿上，「挂进 `PATH` 最前面」这件事全由 `demand()` 一处代办
+        //   ⇒ 它退掉，两条 `e2e_*` 的隔离一起没，而人群那一侧一声不吭。
+        assert!(
+            shim_first_on_path(&demand),
+            "`E2eSandbox::demand()` 不再把 `{SHIM}` 挂到给 daemon 的 `PATH` **最前面** ——\n\
+             取到了 shim 却不用它 = 第二道锁做了、第三道锁没做，daemon 照样沿真 `PATH`\n\
+             找到真 tmux（手工 `cargo test -- --ignored` 那一格）。\n\
+             ⚠ 判的是「同一行上既有 `\"PATH\"` 又有 `{{<绑定名>}}:`」——\n\
+             插值要排在冒号**左边**（最前面那个目录赢）。\n\
+             实得：\n{demand}"
+        );
 
         // ── 正题 ─────────────────────────────────────────────────────────
-        let bad: Vec<&str> = population
+        let bad: Vec<String> = population
             .iter()
-            .filter(|(_, ok)| !ok)
-            .map(|(n, _)| n.as_str())
+            .filter(|(_, ok, _)| !ok)
+            .map(|(n, _, leg)| {
+                let missing = if *leg == LEG_SELF_SERVED {
+                    "要了 shim 却没把它挂到给 daemon 的 `PATH` 最前面（**第三道锁 ③**）"
+                } else {
+                    "没有 fail-closed 地要 shim，也没委托（**第二道锁 ②**）"
+                };
+                format!("{n}\n      走的腿：{leg}\n      差在：{missing}")
+            })
             .collect();
         assert!(
             bad.is_empty(),
-            "这几条会起**真** daemon，却没有 fail-closed 地要 `{SHIM}`：\n  {}\n\
+            "这几条会起**真** daemon，却没有 fail-closed 地要 `{SHIM}` **并真的用上它**：\n  {}\n\
              ★ 被起的 daemon 一上来就往它连得到的 tmux server 装三条**全局** hook\n\
              （固定槽位 `[50]`，**没有关掉它的开关**）⇒ 不隔离就是去改用户真实 tmux 的状态。\n\
              ⚠ 这不是理论：08-11 打没用户 9 个真实会话；08-26 / 08-27 / 08-29 各盖过一次 `[50]`。\n\
              ⚠⚠ **只写 `env_remove(\"TMUX\")` 不算** —— `TMUX` 一空，tmux 就回落到默认 socket\n\
              `/tmp/tmux-$UID/default`，那**正是**用户那台 server。隔离要靠**显式选择器**。\n\
-             ⇒ 两条合法出路：本体里 `env::var(\"{SHIM}\").expect(..)` 并把它挂进 daemon 的 PATH；\n\
-             或走 `{DELEGATE}()`。",
+             ⚠⚠ **只 `expect` 到 shim 也不算**（第三道锁）—— 取到一个变量却不把它挂进\n\
+             daemon 的 `PATH` 最前面，那是一次仪式：daemon 照样沿真 `PATH` 找到真 tmux。\n\
+             ⇒ 两条合法出路：本体里 `env::var(\"{SHIM}\").expect(..)`\n\
+             **并**写一行 `(\"PATH\", format!(\"{{shim}}:{{}}\", ..))`；或走 `{DELEGATE}()`。",
             bad.join("\n  ")
         );
     }
