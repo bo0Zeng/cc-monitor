@@ -1272,8 +1272,16 @@ mod tests {
     ///
     /// ⇒ **③ 值得留，但别把它读成「e2e 那条路上也靠它挡着」** —— 那条路上挡住的是 shim 的继承。
     /// 看着 ③ 的判据是 `every_test_that_starts_the_real_daemon_demands_a_private_tmux`
-    /// 的第 ㈡ 条腿（`"PATH"` 与 `{<绑定名>}:` 同行）；在它落地之前，
+    /// 的 ㈡ 与 ㈢ **两格**；在它们落地之前，
     /// **③ 退掉全量门禁一条都不红**（审计 `M-α` / `M-α′` 两刀实测，新红各 0）。
+    /// - ㈡ **写法**（`"PATH"` 与 `"{<绑定名>}:` 同行，插值**紧跟开引号**）—— `D1` 08-31 买回，
+    ///   `D2` 09-01 把「冒号左边」收紧成「串首」〔阻塞 1 形 ①：`format!("/usr/bin:{shim}:{}", PATH)`
+    ///   写法上 shim 排第二，原判准照样放行，实测新红 0〕；
+    /// - ㈢ **处数**（`PATH` 这个 env 键在本体里**恰好写一次**）—— `D2` 09-01 买回
+    ///   〔阻塞 1 形 ②：同一张 `envs` 里再追加一条 `("PATH", …)`，`supervise_with_stdio` 的
+    ///   `for (k, v) in &envs { cmd.env(k, v); }` **后写的赢**，daemon 拿到的 `PATH` 里
+    ///   一点 shim 都没有，而 ㈡ 照样说合规，实测新红 0〕。
+    /// ⚠ 两格**刻意分开**（`K13`）：破 ㈡ 要「特意在串首前面塞一段」，破 ㈢ 只要「顺手再加一条环境变量」。
     ///
     /// ⚠⚠ 而**只清 `TMUX` 是不够的**（`supervise_with_stdio` 内部就在清它）：
     /// `TMUX` 一空，tmux 客户端**回落到默认 socket** `/tmp/tmux-$UID/default` ——
@@ -2187,11 +2195,21 @@ mod tests {
     ///
     /// # 要求：fail-closed 地要一个私有 tmux **并且真的用上它** —— 两种合法形态
     ///
-    /// ① **自己要 + 自己挂**（两条腿缺一不可）：
+    /// ① **自己要 + 自己挂**（**三格缺一不可**）：
     ///    ㈠ 本体里有一行**同时**含 `CCM_E2E_TMUX_SHIM_BIN` 与 `.expect(`（**第二道锁**：取到）；
-    ///    ㈡ 本体里有一行**同时**含 `"PATH"` 与 `{<绑定名>}:`（**第三道锁**：挂进 `PATH` 最前面）。
+    ///    ㈡ 本体里有一行**同时**含 `"PATH"` 与 `"{<绑定名>}:`（**第三道锁**：挂进 `PATH` 最前面）
+    ///       —— 注意开头那个**双引号**：插值必须是那个格式串的**串首**，不只是「冒号左边」；
+    ///    ㈢ `PATH` 作为 env 键在本体里**恰好被写一次**（**同一张 `envs` 里后写的赢**）。
     /// ② 委托给 `E2eSandbox::demand()` —— 而**转发者自己被本条单独钉住**（见下面第 ③ 段），
-    ///    ㈠㈡ 两条腿都钉，不然「委托」就是一张空头支票。
+    ///    ㈠㈡㈢ 三格都钉，不然「委托」就是一张空头支票。
+    ///    ⚠ 委托方**自己本体里 `PATH` 要写 0 次**（㈢ 在这条腿上的取值）：`PATH` 全由
+    ///    `demand()` 一处代办（`envs()` 逐字 `vec![self.shim_path.clone()]`），
+    ///    委托方再写一条排在它后面就是**把它盖掉**。
+    ///
+    /// ⚠ **㈡ 与 ㈢ 是两件事，刻意不合成一格**（`K13`：一个值装了两件事）：
+    /// ㈡ 判**那一行长什么样**（写法上 shim 排第几），㈢ 判**本体里写了几次**（有没有被后一条盖掉）。
+    /// 两者的**代价也不是一种**：破 ㈡ 要「特意在串首前面塞一段」，破 ㈢ 只要「顺手再加一条环境变量」。
+    /// 合成一格之后，诊断就说不出「你差在哪一件」。
     ///
     /// ⚠⚠ **㈡ 是 08-31 `D1` 审计买回来的**〔阻塞 4〕：本条第一版只判 ㈠。
     /// 审计两刀实测 —— 把 `format!("{shim}:{}", PATH)` 换成 `format!("{}:{shim}", PATH)`
@@ -2234,12 +2252,29 @@ mod tests {
     ///    数的是「`include_*!` 后面跟着 `(`」的**出现次数**，注释与字符串里也算
     ///    ⇒ 直接写字面量会让本条把自己变成那张登记表上的两处「解析不出路径的 include」。
     ///    〔08-31 实打：第一版就是这么红的，`left: [("src-tauri/src/local_daemon.rs", 2), …]`。〕
-    /// 4. **它证不了 shim 真的挡住了。** 它只证「要了、缺了就炸、而且写在 `PATH` 最前面」。
+    /// 4. **它证不了 shim 真的挡住了。** 它只证「要了、缺了就炸、写在串首、而且只写了一次」。
     ///    「真的落在私有 server 上」那一格由 `the_local_tmux_frames_really_land_in_the_ledger`
     ///    的**跑前跑后比对**买（那条自己是 `#[ignore]`）。
-    ///    ⚠ 第三道锁那条腿（㈡）是**形状钉**：它证「shim 被写在 `PATH` 最前面」这个**写法**，
-    ///    不证「解析真的先到 shim」—— 后者是 `PATH` 本身的语义（最前面那个目录赢），
-    ///    是操作系统的性质，不是本仓的代码，本仓也没有判据能替它作证。
+    ///
+    ///    ⚠⚠ **归因订正〔`D2` 复审 09-01，阻塞 1〕—— 本段原来的归因是错的，不是不完整。**
+    ///    原文逐字：「㈡ 是**形状钉**：它证『shim 被写在 `PATH` 最前面』这个**写法**，
+    ///    不证『解析真的先到 shim』—— 后者是 `PATH` 本身的语义（最前面那个目录赢），
+    ///    **是操作系统的性质，不是本仓的代码**」。
+    ///    复审造了**两形**，**两形新红都是 0**，而**两形都在「形状」这一层、都是本仓的代码**：
+    ///    ① `format!("/usr/bin:{shim}:{}", PATH)` —— 写法上 shim **就排第二**；
+    ///    ② 同一张 `envs` 里**再追加一条** `("PATH", …)` —— `supervise_with_stdio` 是
+    ///       `for (k, v) in &envs { cmd.env(k, v); }`（`local_backend.rs:336`-`337`），**后写的赢**。
+    ///    ⇒ 把缺口推给「操作系统的性质」是**把自己的射程写宽了一格**：
+    ///    那两形本仓的判据**本来就看得见**，只是当时没看。
+    ///    **两形 09-01 都买回来了**（㈡ 收紧到「插值在串首」· 新增 ㈢「`PATH` 恰好写一次」，
+    ///    先量后选的分母与全表见件文件 `§0l-1`），本段不再拿它们当边界。
+    ///
+    ///    **今天真正的边界，逐字写准**：㈠㈡㈢ 三格判的都是**源码文本的形状**
+    ///    ——「某一行长什么样」与「某个东西在本体里出现几次」——
+    ///    它们**不追这个值的去向**。⇒ 逮不到的是下面第 6 条那几形（逐形登记）。
+    ///    「解析真的先到 shim」那句话**留着**，但它现在只是一句**补充说明**：
+    ///    ㈡ 钉的是写法，而写法与解析结果之间那一跳靠 `PATH` 的语义 —— 那**不是**本条的缺口，
+    ///    本条的缺口是下面第 6 条。
     /// 5. 🔴 **第四种来历逮不到**〔`D1` 审计 08-31 造出反例并实跑，阻塞 3〕。
     ///    形状：一条**普通 `#[test]`**（无 `#[ignore]`、无 `cfg`）、**就在这两个文件里**、
     ///    真调 `local_backend::supervise_with_stdio(..)` 起 daemon，只把二进制来历换成
@@ -2275,6 +2310,22 @@ mod tests {
     ///    **另一条路的代价**（登记而不换判准）：这一形今天**真的没有机器守着**，
     ///    靠的是代码评审 + 本段这条登记。谁要加第四种取二进制的方式，
     ///    **请把它加进下面 `PROVENANCE` 那张表**，那是本条唯一的入口。
+    /// 6. 🔴 **㈡㈢ 判的是文本形状，不追值的去向**〔`D2` 复审 09-01 逼出来的，逐形登记〕。
+    ///    ⚠ 这一条**替换**掉上面第 4 条原来那句错归因（那句话把缺口推给了「操作系统的性质」）。
+    ///    下面每一形都带**今天现打的处数**（分母 = 本条扫描面那两个文件；量于 09-01）：
+    ///
+    ///    | # | 逮不到什么 | 为什么 | 今天有几处 |
+    ///    |---|---|---|---|
+    ///    | 6a | 那张 `envs` 写得完全对，却**根本没被交给起进程那一跳**（换成另一个 vec / `clone()` 被丢掉） | ㈡㈢ 只读源码文本，**不做数据流** | **0**（五个落点逐条读过，都真把那张表传进 `supervise*`） |
+    ///    | 6b | 绑定名**被重新绑**：`let shim = var(SHIM).expect(..); … let shim = <别的东西>;` | 绑定名从「要 shim 那一行」现取，**只取第一处**，后面再绑一次它看不见 | **0**（`grep -c 'let shim = '` ⇒ `local_daemon.rs` **2** · `local_backend.rs` **3**，逐处看过，**五处全是那条 `expect` 行**，无一是重绑） |
+    ///    | 6c | `PATH` 由本体**调的另一个函数**追加（helper / builder），或写在转发者那 **20 行窗口之外** | ㈢ 数的是**本体**（转发者是 `demand()` 起 20 行）里的处数 | **0**（今天五处全是本体里的字面写法） |
+    ///    | 6d | ㈢ 的「写」口径是「`"PATH"` 全部出现 **减去** `var("PATH")`」⇒ 键名**拼出来**的（`concat!("PA","TH")` 这类）数不到 | 按字面串数，不是按语义数 | **0**（两个文件 `grep -c 'concat!.*PA'` ⇒ **0 / 0**） |
+    ///    | 6e | 反方向的**假红**：把 `let old = var("PATH")…;` 提到上一行、写 `format!("{shim}:{old}")` ⇒ 那一行没有 `"PATH"` ⇒ ㈡ 判不合规 | ㈡ 要求 `"PATH"` 与插值**同一行** | **0**（今天五处写法全同）。⚠ 这一形是**看得见的**（红了就会去读诊断），与假绿不是一种代价 |
+    ///    | 6f | 委托腿上，第二条 `PATH` 被写进 **`E2eSandbox::envs()` 或别的 helper**，而不是测试本体 | ㈢ 在委托腿上数的是**测试本体**（要 0 次）；helper 不是测试块，不进人群 | **0**（`envs()` 逐字 `vec![self.shim_path.clone()]`，全仓今天只有这一处） |
+    ///
+    ///    ⇒ 一句话：**㈡㈢ 买的是「这几行写对了」，不是「这个值真的到了 daemon 手里」。**
+    ///    后一格今天由 `the_local_tmux_frames_really_land_in_the_ledger` 的**跑前跑后比对**买
+    ///    （见第 4 条），而那条自己是 `#[ignore]`。
     #[test]
     fn every_test_that_starts_the_real_daemon_demands_a_private_tmux() {
         const SHIM: &str = "CCM_E2E_TMUX_SHIM_BIN";
@@ -2286,6 +2337,19 @@ mod tests {
         const LEG_SELF_SERVED: &str = "自己要 + 自己挂";
         const LEG_DELEGATES: &str = "委托给 E2eSandbox::demand()";
         const LEG_NEITHER: &str = "两条腿都没走（连第二道锁 ② 都没有）";
+        // 「差在哪一格」——㈡ 与 ㈢ **各占一条**，不许合成一句（`K13`，09-01 `D2` 阻塞 1）。
+        const MISS_NONE: &str = "";
+        const MISS_LOCK2: &str = "没有 fail-closed 地要 shim，也没委托（**第二道锁 ②**）";
+        const MISS_FRONT: &str = "要了 shim 却没把它写在给 daemon 的 `PATH` **串首**\
+             （**第三道锁 ③ · ㈡ 写法**）—— 要的形状是 `(\"PATH\", format!(\"{shim}:{}\", ..))`，\
+             插值**紧跟开引号**；写成 `\"/usr/bin:{shim}:{}\"` 也不算：那样真 tmux 先被解析到";
+        const MISS_TWICE: &str = "shim 那一行写对了，但本体里 `PATH` 这个 env 键**不止写了一次**\
+             （**第三道锁 ③ · ㈢ 处数**）—— `supervise_with_stdio` 是 \
+             `for (k, v) in &envs { cmd.env(k, v); }`，**后写的赢** ⇒ 后面那条会把 shim 整个盖掉";
+        const MISS_DELEGATE_OVERRIDE: &str = "它走的是**委托**腿（`PATH` 由 \
+             `E2eSandbox::demand()` 一处代办），却在**自己本体里也写了 `PATH`**\
+             （**第三道锁 ③ · ㈢ 处数**）—— 起进程那一跳后写的赢，\
+             排在 `sb.envs()` 之后的那条会把 shim 整个盖掉。委托方本体里 `PATH` 应当**写 0 次**";
         let files: [(&str, &str); 2] = [
             ("local_daemon.rs", include_str!("local_daemon.rs")),
             (
@@ -2329,15 +2393,19 @@ mod tests {
         // （③ 整个退掉），**全量门禁新红都是 0** —— 因为上面那条「同一行 SHIM + `.expect(`」
         // 只看**取没取到**，不看**挂没挂上**。⇒ 这里补一条。
         //
-        // 判什么：本体里有一行**同时**含 `"PATH"` 与 `{<绑定名>}:` ——
-        // 插值排在冒号**左边** = 那个目录挂在 `PATH` **最前面**，而 `PATH` 的语义是
+        // ㈡ 判什么：本体里有一行**同时**含 `"PATH"` 与 `"{<绑定名>}:`（**注意开头那个双引号**）——
+        // 插值必须是那个格式串的**串首** = 那个目录挂在 `PATH` **最前面**，而 `PATH` 的语义是
         // **最前面那个目录赢**。挂在后面（`{}:{shim}`）解析先撞到真 tmux ⇒ 隔离没了。
         // 绑定名不写死，从「要 shim 那一行」上现取（`let <名字> = std::env::var(SHIM)…`），
         // 改个变量名不该变成一次假红。
         //
-        // ⚠ 诚实边界（这一条买到的是哪一格，见头注「诚实边界 5」）：这是**形状钉**，
-        //   它证的是「shim 被写在 `PATH` 最前面」这个写法，**不是**「解析真的先到 shim」。
-        //   后者是 `PATH` 本身的语义（操作系统的性质，不是本仓的代码）。
+        // ⚠⚠ **那个开头的双引号是 09-01 `D2` 复审买回来的**〔阻塞 1，形 ①〕：
+        //   本条第一版只判「`{绑定名}:` 出现在含 `"PATH"` 的某一行上」——
+        //   而 `format!("/usr/bin:{shim}:{}", PATH)` 照样满足它（冒号左边有插值），
+        //   **写法上 shim 却排第二**，真 `/usr/bin/tmux` 先被解析到。复审实测**新红 0**。
+        //   ⇒ 「在冒号左边」买不到「在最前面」，**要钉到串首**。
+        //   先量后选（铁律 18，分母 = 走「自己要 + 自己挂」腿的 4 条 + 转发者 1 处 = 5 个落点）：
+        //   收紧之后**假阳 0/5**（五处写法全同、全部通过）⇒ 买。全表见件文件 `§0l-1`。
         let shim_first_on_path = |code: &str| -> bool {
             let binding = code
                 .lines()
@@ -2348,7 +2416,8 @@ mod tests {
                 .map(|(n, _)| n.trim().to_string());
             match binding {
                 Some(n) => {
-                    let front = format!("{{{n}}}:");
+                    // ⚠ 头上那个 `\"` 就是「串首」那一格：`"{shim}:` 而不是 `{shim}:`。
+                    let front = format!("\"{{{n}}}:");
                     code.lines()
                         .any(|l| l.contains("\"PATH\"") && l.contains(&front))
                 }
@@ -2357,11 +2426,48 @@ mod tests {
             }
         };
 
-        // (名字, 合规吗, **走的是哪条腿**)
+        // ── ㈢ `PATH` 作为 env 键**恰好写一次**〔`D2` 复审 09-01 买回来的，阻塞 1，形 ②〕──
+        //
+        // 复审第二刀：**原来那一行一个字没动**，只在同一张 `envs` 里**再追加一条**
+        // `("PATH".to_string(), std::env::var("PATH").unwrap_or_default())`。
+        // `local_backend::supervise_with_stdio` 是 `for (k, v) in &envs { cmd.env(k, v); }`
+        // （`local_backend.rs:336`-`337`）⇒ **后写的赢** ⇒ daemon 拿到的 `PATH` 里
+        // **一点 shim 都没有**，而 ㈡ 照样说合规（它看见第一条合规的行就够了）。
+        // 复审实测**新红 0**。⇒ 光判「有没有一行写对」不够，还要判「**有没有第二行把它盖掉**」。
+        //
+        // ⚠ 数的是「**写**」不是「**读**」：`"PATH"` 的全部出现**减去** `var("PATH")` 那种读。
+        //   〔09-01 先量后选（铁律 18）。**两个判准的分母不是同一个，逐个写明**：
+        //     · PM 提的字面判准「`("PATH"` 恰好一处」—— 它是提议加在 ㈡ 那条腿上的
+        //       ⇒ 分母 = **㈡ 判的 5 个落点**（4 条自服务 + 转发者 1 处）⇒ **假阳 1/5**：
+        //       `the_local_tmux_frames_really_land_in_the_ledger` 本体里有**两处** `("PATH"`，
+        //       第二处是 `std::env::var("PATH")` —— 它为了**绕开** shim 找真 tmux 才读的，
+        //       而那一处**正是本件上一拍买的反空真**（`§5-3`）⇒ 那个判准会在**干净树上假红**，
+        //       打的还是自己刚买的东西。**一次假阳就足以让人把整个守卫关掉。**
+        //     · 换成「减掉读」的口径（就是下面这个）⇒ 分母 = **㈢ 判的 7 个落点**
+        //       （4 条自服务要 1 次 + **2 条委托腿要 0 次** + 转发者要 1 次）⇒ **假阳 0/7**。
+        //       噪声面另量一层：两个文件切出的 57 个块里，写处数 ≥1 的只有 **5** 块，
+        //       且**全部恰好 1**（而 `("PATH"` 那个串有 1 块是 2）。⇒ 买这一个。
+        //     两个数都在件文件 `§0l-1` 的表里，量具住址也在那儿。〕
+        //
+        // ⚠ **两条腿都要数，只是要的数不一样**（`brief` 15：治的是所有同职的地方，不是一处）：
+        //   · 走「自己要 + 自己挂」的 ⇒ **恰好 1**（那一条就是它自己写的 shim 那条）；
+        //   · 走「委托」的 ⇒ **恰好 0** —— `PATH` 全由 `E2eSandbox::demand()` 一处代办
+        //     （`envs()` 逐字 `vec![self.shim_path.clone()]`），委托方**自己再写一条就是覆盖**。
+        //     〔09-01 现打：两条委托的本体里 `PATH` 写处数各 **0** ⇒ 这一格假阳 0。〕
+        let path_writes = |code: &str| -> usize {
+            let all = code.matches("\"PATH\"").count();
+            let reads = code.matches("var(\"PATH\")").count();
+            all.saturating_sub(reads)
+        };
+
+        // (名字, 合规吗, **走的是哪条腿**, **差在哪一格**)
         // ⚠ 「哪条腿」记的是**它归谁管**，不是「它过没过」——
         //   下面的反空真③要按腿数「有几条被 ㈡ 查着」，把没过的那几条从腿里踢出去
         //   会让「全员违例」自动变成「这条腿没人走」，两种病搅在一起就都读不出来了。
-        let mut population: Vec<(String, bool, &'static str)> = Vec::new();
+        // ⚠⚠ 第 4 格（差在哪）是 09-01 加的〔`D2` 阻塞 1〕：㈡ 与 ㈢ 是**两件事**
+        //   （写法 vs 处数），代价也不是一种 ⇒ **诊断必须分得开**，不许合成一格（`K13`）。
+        //   它是「合规吗」那个 `bool` 的**说明**，不是它的替身 —— 两个值各装一件事。
+        let mut population: Vec<(String, bool, &'static str, &'static str)> = Vec::new();
         let mut total_chunks = 0usize;
         for (who, src) in files {
             let chunks = chunks_of(src);
@@ -2386,16 +2492,23 @@ mod tests {
                     .lines()
                     .any(|l| l.contains(SHIM) && l.contains(".expect("));
                 let hangs_it_on_path = shim_first_on_path(&code);
+                let writes = path_writes(&code);
                 let delegates = code.contains(DELEGATE);
-                let (ok, leg) = if delegates {
-                    (true, LEG_DELEGATES)
+                let (ok, leg, missing) = if delegates {
+                    // 委托 ⇒ `PATH` 归转发者一处代办，本体里再写一条就是把它盖掉。
+                    (writes == 0, LEG_DELEGATES, MISS_DELEGATE_OVERRIDE)
                 } else if !asks_itself {
-                    (false, LEG_NEITHER)
+                    (false, LEG_NEITHER, MISS_LOCK2)
+                } else if !hangs_it_on_path {
+                    // 走「自己要」这条腿 ⇒ 归 ㈡㈢ 管。㈡：那一行写对了没有。
+                    (false, LEG_SELF_SERVED, MISS_FRONT)
+                } else if writes != 1 {
+                    // ㈢：写对的那一行会不会被**后面又一条 `("PATH", …)`** 盖掉。
+                    (false, LEG_SELF_SERVED, MISS_TWICE)
                 } else {
-                    // 走「自己要」这条腿 ⇒ 归 ㈡ 管；过不过看它有没有真挂上。
-                    (hangs_it_on_path, LEG_SELF_SERVED)
+                    (true, LEG_SELF_SERVED, MISS_NONE)
                 };
-                population.push((format!("{who}::{name}"), ok, leg));
+                population.push((format!("{who}::{name}"), ok, leg, missing));
             }
         }
 
@@ -2408,7 +2521,7 @@ mod tests {
         //    〔判据规范 7：先证「够得到」（地板），再问有没有违例；否则「零违例」是空真。〕
         //    ⚠ 这是**地板不是等号**：新写一条起真 daemon 的测试会自动进人群、自动被要求合规。
         //      地板只挡「已知的那几条**静默掉出人群**」（改名 / 换来历 / 被删）。
-        let names: Vec<&str> = population.iter().map(|(n, _, _)| n.as_str()).collect();
+        let names: Vec<&str> = population.iter().map(|(n, _, _, _)| n.as_str()).collect();
         for must in [
             "local_daemon.rs::the_local_daemon_can_be_stopped_and_started_again",
             "local_daemon.rs::e2e_a_second_host_adopts_the_running_daemon_instead_of_starting_a_second_one",
@@ -2435,7 +2548,7 @@ mod tests {
         //    留一格给「某一条改走委托」，掉到 2 就该回来改本条。
         let self_served = population
             .iter()
-            .filter(|(_, _, leg)| *leg == LEG_SELF_SERVED)
+            .filter(|(_, _, leg, _)| *leg == LEG_SELF_SERVED)
             .count();
         assert!(
             self_served >= 3,
@@ -2445,7 +2558,7 @@ mod tests {
              现打人群（名字 · 走哪条腿）：{:?}",
             population
                 .iter()
-                .map(|(n, _, leg)| format!("{n} [{leg}]"))
+                .map(|(n, _, leg, _)| format!("{n} [{leg}]"))
                 .collect::<Vec<_>>()
         );
 
@@ -2454,7 +2567,10 @@ mod tests {
         let at = me
             .find(concat!("fn dem", "and() -> Self {"))
             .expect("`E2eSandbox::demand()` 不在了 —— 委托那条腿没了，来改本条");
-        let demand: String = me[at..].lines().take(20).collect::<Vec<_>>().join("\n");
+        // ⚠ 与人群那一侧同一把尺子：**先剥掉 `//` 注释行再判**〔09-01 加的〕。
+        //   ㈢ 是**按处数**判的 ⇒ 转发者这一段里随便一句注释提到 `"PATH"` 就会变成一次假红。
+        //   剥注释只会让 ㈠㈡ 更严（少几行可看），不会放水。
+        let demand: String = code_only(&me[at..].lines().take(20).collect::<Vec<_>>().join("\n"));
         // ⚠⚠ **必须落在同一行上判**〔08-31 死值验当场逮到的，就在我自己刚写的这一行里〕：
         //   本条第一版写的是 `demand.contains(SHIM) && demand.contains(".expect(")`。
         //   实测把那一行换成 `.unwrap_or_default()` ⇒ **1210 passed / 0 failed，一条都不红** ——
@@ -2480,23 +2596,33 @@ mod tests {
             "`E2eSandbox::demand()` 不再把 `{SHIM}` 挂到给 daemon 的 `PATH` **最前面** ——\n\
              取到了 shim 却不用它 = 第二道锁做了、第三道锁没做，daemon 照样沿真 `PATH`\n\
              找到真 tmux（手工 `cargo test -- --ignored` 那一格）。\n\
-             ⚠ 判的是「同一行上既有 `\"PATH\"` 又有 `{{<绑定名>}}:`」——\n\
-             插值要排在冒号**左边**（最前面那个目录赢）。\n\
+             ⚠ 判的是「同一行上既有 `\"PATH\"` 又有 `\"{{<绑定名>}}:`」——\n\
+             插值要**紧跟开引号**（= 那个格式串的串首）。写成 `\"/usr/bin:{{shim}}:{{}}\"`\n\
+             也不算：那样真 `/usr/bin/tmux` 先被解析到。\n\
              实得：\n{demand}"
+        );
+        // ⚠ 转发者的 ㈢ 也要钉〔`D2` 回修 09-01，阻塞 1 形 ②〕：
+        //   `demand()` 里那条 `shim_path` 写对了，可要是同一段里再写一次 `PATH`，
+        //   委托那条腿上的两条 `e2e_*` 一起没隔离，而 ㈡ 照样说合规。
+        //   ⚠ 射程：它看的是 `demand()` **起 20 行**这个窗口（`take(20)`）——
+        //     写在窗口之外的第二条 `PATH` 它看不见（头注「诚实边界 6c」已登记）。
+        assert!(
+            path_writes(&demand) == 1,
+            "`E2eSandbox::demand()` 里 `PATH` 这个 env 键写了 {} 次（要的是恰好 1 次）——\n\
+             起进程那一跳是 `for (k, v) in &envs {{ cmd.env(k, v); }}`，**后写的赢**\n\
+             ⇒ 后面那条会把带 shim 的那条整个盖掉，daemon 拿到的 `PATH` 里一点 shim 都没有。\n\
+             ⚠ 数的是「写」不是「读」：`var(\"PATH\")` 不算。\n\
+             实得：\n{demand}",
+            path_writes(&demand)
         );
 
         // ── 正题 ─────────────────────────────────────────────────────────
         let bad: Vec<String> = population
             .iter()
-            .filter(|(_, ok, _)| !ok)
-            .map(|(n, _, leg)| {
-                let missing = if *leg == LEG_SELF_SERVED {
-                    "要了 shim 却没把它挂到给 daemon 的 `PATH` 最前面（**第三道锁 ③**）"
-                } else {
-                    "没有 fail-closed 地要 shim，也没委托（**第二道锁 ②**）"
-                };
-                format!("{n}\n      走的腿：{leg}\n      差在：{missing}")
-            })
+            .filter(|(_, ok, _, _)| !ok)
+            // ⚠ 「差在哪」是**派生时就定好的那一格**，不是在这里按腿回猜〔09-01，`D2` 阻塞 1〕：
+            //   ㈡（写法）与 ㈢（处数）都归 `LEG_SELF_SERVED`，按腿回猜就把两件事说成一件。
+            .map(|(n, _, leg, missing)| format!("{n}\n      走的腿：{leg}\n      差在：{missing}"))
             .collect();
         assert!(
             bad.is_empty(),
@@ -2508,8 +2634,11 @@ mod tests {
              `/tmp/tmux-$UID/default`，那**正是**用户那台 server。隔离要靠**显式选择器**。\n\
              ⚠⚠ **只 `expect` 到 shim 也不算**（第三道锁）—— 取到一个变量却不把它挂进\n\
              daemon 的 `PATH` 最前面，那是一次仪式：daemon 照样沿真 `PATH` 找到真 tmux。\n\
+             ⚠⚠ **写对一行也不够**（第三道锁 · ㈢）—— 同一张 `envs` 里再写一条 `PATH`，\n\
+             `for (k, v) in &envs {{ cmd.env(k, v); }}` **后写的赢**，shim 那条就被盖掉了。\n\
              ⇒ 两条合法出路：本体里 `env::var(\"{SHIM}\").expect(..)`\n\
-             **并**写一行 `(\"PATH\", format!(\"{{shim}}:{{}}\", ..))`；或走 `{DELEGATE}()`。",
+             **并**写一行 `(\"PATH\", format!(\"{{shim}}:{{}}\", ..))`（插值**紧跟开引号**、\n\
+             且本体里 `PATH` 这个键**只写这一次**）；或走 `{DELEGATE}()`。",
             bad.join("\n  ")
         );
     }
