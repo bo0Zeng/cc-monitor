@@ -158,12 +158,48 @@ run_gate daemon  bash -c 'cd remote-daemon-proto && cargo test 2>&1'
 run_gate npm     npm test
 
 # pb check 不打「passed」，单独判：它自己会打 `FAIL=<n> BROKEN=<n>`。
-pb_out="$(python3 "$HOME/.claude-accts/z/skills/planned-build/bin/pb.py" check \
-          ../.claude/planned-build/control-parity 2>&1 | tail -1)"
-case "$pb_out" in
-  *"FAIL=0 BROKEN=0"*) printf '  ok   %-14s %s\n' "pb check" "$pb_out" ;;
-  *) fails+=("pb check（$pb_out）") ;;
-esac
+#
+# ★★ `K-R10`（09-01）：**查哪个计划工作区，由调用方用环境变量 `PB_WS` 给** ——
+#    在此之前这里硬写着 `../.claude/planned-build/control-parity`。
+#
+# 它骗过的人是现打的：`K-R7` 收官前后，**实现方与 PM 各被它误导过一次** ——
+# 门禁打绿的那行说的是 `control-parity`，而当时在做的是 `backend-consolidation`。
+# ⇒ 这是本仓最高频的那族病（**量具的作用域对不上事实**）长在门禁自己身上。
+#
+# ⚠ **为什么是「调用方给」而不是「从工作树推导」** —— 推导那条路 09-01 摸底否掉了，
+#   理由不是它难写，是**它的失效面形状和今天这个 bug 一模一样但更隐蔽**：
+#   推错时它会印出一个**看起来完全合理的工作区名**，而硬写的常量至少肉眼可查。
+#   拿一个更难发现的同族 bug 去换一个已经被发现的，不划算。
+#  （盘上也没有权威映射：`.dispatch.json` 只有 2/54 条能点出工作树，
+#    而且那两条用了两个不同的 key 名、两种路径写法。）
+#
+# ⚠ **为什么是环境变量而不是加一个位置参**：`.claude/devbox/gate` 的 arg2 已经是 TAG，
+#   再加 arg3 会让「两参写法」被静默吃成 TAG —— 又一个静默失效面。
+#
+# ★★ **fail-closed：不给 `PB_WS` 就红，不回落任何默认值。**
+#   这条是承重的，别改成 `${PB_WS:-control-parity}` 之类「友好」的写法：
+#   回落默认 = 把今天这个 bug 原样搬进 `:-` 右边，而且从此**连硬写的常量都看不见了**。
+#   ⚠ 直接跑 `npm run gate`（不经沙箱）会因此红 —— **那是设计**：红线本来就写着
+#   门禁一律走沙箱，那条路本就不该是绿的，让它红是把纪律变成闸。
+#
+# ★★ **绿的那一行必须自报家门（逐字带上 `PB_WS`）**，`fails` 那一支同样带。
+#   理由逐字：**这个 bug 骗过两个人靠的不是数字错，是那行字里没有任何能让人发现
+#   它在说别人的信息。** 一行不带名字的 `ok pb check FAIL=0`，不论 FAIL 是几都不算数。
+#
+# ⚠ 名字**给错**那一侧不用在这里再判：`pb.py` 今天就已经 fail-closed
+#   （不存在的目录 rc=3 · 没 `features/` rc=2 · 空目录 rc=2，三种都试过）⇒
+#   在这里补一层「目录存不存在」是仪式。本处只治**同一性**（查的是不是你那个），不治存在性。
+if [ -z "${PB_WS:-}" ]; then
+  fails+=("pb check（没给 PB_WS —— 这道门查哪个计划工作区必须由调用方指定；\
+不许回落默认值：硬写一个名字正是 K-R10 治的那个 bug）")
+else
+  pb_out="$(python3 "$HOME/.claude-accts/z/skills/planned-build/bin/pb.py" check \
+            "../.claude/planned-build/$PB_WS" 2>&1 | tail -1)"
+  case "$pb_out" in
+    *"FAIL=0 BROKEN=0"*) printf '  ok   %-14s [%s] %s\n' "pb check" "$PB_WS" "$pb_out" ;;
+    *) fails+=("pb check[$PB_WS]（$pb_out）") ;;
+  esac
+fi
 
 echo
 if [ "${#fails[@]}" -eq 0 ]; then
