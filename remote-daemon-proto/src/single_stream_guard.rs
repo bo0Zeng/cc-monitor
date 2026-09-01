@@ -56,8 +56,10 @@
 //! **不是**「一个看不见的角落」—— 一个正常拼法就能塞进第二个真消费者。
 //!
 //! ⇒ 治法**不是把 ① 的数改大**（`§0a` 那条承重线仍然写死），而是**再钉一条**：
-//! **② 生产段里不许有不带 turbofish 的通道诞生点。** 两条合起来，
-//! 「造一条搬 `Frame` 的 mpsc 通道」在本 crate 里**只剩 turbofish 一种拼法**，而那一种由 ① 数着。
+//! **② 生产段里不许有「带路径前缀、却不带 turbofish」的通道诞生点**（锚点逐字 `::channel(`）。
+//! 两条合起来，「造一条搬 `Frame` 的 mpsc 通道」在**这两条锚点够得着的那批拼法内**
+//! 只剩 turbofish 一种写法，而那一种由 ① 数着。
+//! ⚠ **够不着的那批逐条列在下面「保证不了什么」1–4** —— 别把上面这句读成「只剩一种拼法」。
 //!
 //! - **它数的是什么**（两条针，各数各的）：
 //!   ① 生产段里 `mpsc::channel::<Frame>(` 出现几次 = **3**（`PINS` 里 `observe/watcher.rs`
@@ -65,14 +67,14 @@
 //!      今天 3 = 观测 1（`observe/watcher.rs`）+ 应答 2（`main.rs`：stdio 那条 + 常驻那条，
 //!      与 `writer_task(` 那条针的 2 同源）。
 //!   ② 生产段里 `::channel(` 出现几次 = **0**
-//!      （[`tests::every_channel_birth_spells_its_payload_type`]）—— 一处**不带 turbofish
-//!      的通道诞生点都没有**。⚠ 它是一条**关于拼法**的棘轮，不是关于 `Frame` 的：
-//!      谁的载荷都算，它数的是「有没有人把载荷类型交给推导」。
+//!      （[`tests::no_qualified_channel_call_leaves_its_payload_type_to_inference`]）——
+//!      一处「**带路径前缀而把载荷类型交给推导**」的诞生点都没有。
+//!      ⚠ 它是一条**关于拼法**的棘轮，不是关于 `Frame` 的：谁的载荷都算。
 //! - **它因此能保证什么**：`tokio` 的 `mpsc::Receiver` **不可 clone**（类型层面挡着）
 //!   ⇒ 一条通道**至多**一个消费端 ⇒ **通道诞生数是 `Frame` 消费端数的上界**
 //!   （是上界不是等式：造了通道而把 receiver 立刻扔掉，消费端就是 0）。
-//!   ② 把「诞生点必须自报载荷类型」变成硬约束 ⇒ ① 在**它够得着的那批拼法内**是完整的
-//!   （够不着的逐条写在下面）。于是「再造一条 `Frame` 通道」（fan-out 落地的必经一步）
+//!   ② 把「**带路径前缀的**诞生点必须自报载荷类型」变成硬约束 ⇒ ① 在**它够得着的那批拼法内**
+//!   是完整的（够不着的逐条写在下面）。于是「再造一条 `Frame` 通道」（fan-out 落地的必经一步）
 //!   **当场红**：turbofish 那一形被 ① 逮，类型标注 / 全推导那一形被 ② 逮。
 //!   而**传递 / 借用 / move 一个已有的 `Receiver<Frame>`**（抽 helper、把 rx 交给另一个
 //!   task、把返回元组改成 struct）**两条针一处都不增** —— 那正是旧针分不开的那一格。
@@ -83,9 +85,11 @@
 //! - **它保证不了什么**（诚实边界，别读成证明）：
 //!   1. **② 要求 `::` 紧挨着 `channel(`。** `use tokio::sync::mpsc::channel;` 之后裸调
 //!      `channel(8)` / `channel::<Frame>(8)` —— ①②**都看不见**。
-//!      （现打，`0abfacc` 全 crate 生产段：`channel(` **0 处**；`use tokio::sync::mpsc`
-//!      **2 处**，`inbound.rs:35` 与 `observe/watcher.rs:77`，两处都停在 `::mpsc;`，
-//!      没有一处 import 到函数那一级。**这是今天的读数，不是不变量。**）
+//!      （现打于 `0abfacc`，分母 = 全 crate 生产段 **72 个文件 / 248 588 字节**（摘掉本模块自己），
+//!      量法 = 与 `crate_sources()` 同一份剥法逐文件数子串：`channel(` **0 处**；
+//!      `use tokio::sync::mpsc` **2 处**，`inbound.rs:35` 与 `observe/watcher.rs:77`，
+//!      两处都停在 `::mpsc;`，没有一处 import 到函数那一级。
+//!      **这是那一刻的读数，不是不变量** —— 引用前重打。）
 //!   2. **别的构造函数名**：`std::sync::mpsc::sync_channel(4)` 里 `::` 不紧挨 `channel(`
 //!      ⇒ ② 看不见。今天那一处（`relay/tee.rs:169`）写着 turbofish 且与 `Frame` 无关。
 //!   3. **给 `Frame` 起个类型别名再造通道**（`type F = Frame; mpsc::channel::<F>(8)`）：
@@ -189,9 +193,10 @@ mod tests {
              ★★ 〔`K-G5` 09-01〕**本行一个人挡不住第二个消费者** —— 它只认 turbofish 那一形，\
              而靠左边类型标注定型的写法（`… : (Sender<Frame>, Receiver<Frame>) = mpsc::channel(8)`）\
              它一处都不数（`PM` 实打：daemon `489 passed` 0 failed，静默过）。\
-             ⇒ 与 `every_channel_birth_spells_its_payload_type` **成对**：那条钉着\
-             「生产段里 `::channel(` 恰好 0 处」，把诞生点逼回 turbofish 这一种拼法，\
-             本行才数得全。**改本行之前先读那一条。**",
+             ⇒ 与 `no_qualified_channel_call_leaves_its_payload_type_to_inference` **成对**：\
+             那条钉着「生产段里 `::channel(` 恰好 0 处」，把**带路径前缀的**诞生点逼回 turbofish\
+             这一种写法，本行在**那两条锚点够得着的范围内**才数得全（够不着的四条列在模块头注）。\
+             **改本行之前先读那一条。**",
         ),
         (
             "listen.rs",
@@ -370,7 +375,11 @@ mod tests {
         }
     }
 
-    /// ★★ `K-G5` 09-01：**每一条通道的诞生点都要自报载荷类型** —— 生产段里 `::channel(` 恰好 0 处。
+    /// ★★ `K-G5` 09-01：**带路径前缀的通道诞生点必须自报载荷类型** —— 生产段里 `::channel(` 恰好 0 处。
+    ///
+    /// ⚠ **名字与它数的东西对齐过一次**（本件治的正是这一族）：它叫 `qualified`，
+    /// 因为锚点要求 `::` **紧挨** `channel(` ⇒ `use …::channel;` 之后裸调的 `channel(8)`
+    /// 它**看不见**。别把它读成「每一条通道」。
     ///
     /// # 它为什么在这儿（它是 `PINS` 那条观测针的另一半）
     ///
@@ -396,13 +405,14 @@ mod tests {
     /// ⚠ 但它**对零语义变更的纯重构一处都不红**（那是本件的承重线），
     /// 而且它的解法是「把载荷类型写出来」——**不是放宽判据**。这笔换是本件选它的理由。
     #[test]
-    fn every_channel_birth_spells_its_payload_type() {
+    fn no_qualified_channel_call_leaves_its_payload_type_to_inference() {
         // 反空真③·匹配器自检：**独立手写**的样本，不用 `BARE_BIRTH` 自己拼。
         for should_hit in [
             "let (tx, rx) = tokio::sync::mpsc::channel(8);",
             "        mpsc::channel(REPLY_CHANNEL_CAPACITY)",
             "let (events_tx, events_rx) = std::sync::mpsc::channel();",
             "let (gate_tx, gate_rx) = tokio::sync::oneshot::channel();",
+            "let (tx, rx) = tokio::sync::broadcast::channel(16);",
         ] {
             assert!(
                 should_hit.contains(BARE_BIRTH),
