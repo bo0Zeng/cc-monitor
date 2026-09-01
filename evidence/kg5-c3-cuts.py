@@ -193,6 +193,21 @@ CUTS["M5"] = (
     1,
 )
 
+CUTS["M6"] = (
+    "叠在 M3 上：把 `none_of_these_anchors…` 的反空真② 退掉（M4 的同族一刀，换另一条判据）",
+    '''        assert!(
+            !corpus
+                .iter()
+                .any(|(rel, _)| rel.ends_with("single_stream_guard.rs")),
+            "本护栏自己进了语料 —— `scan_tree!` 的自摘那一刀没落下。\\
+             ★ 本格认的是**摘除坏了这件事本身**，不是「`PINS` 里那六个锚点会多数出来」：\\
+             本模块的生产段今天只有 15 字节、六个锚点各 0 处（09-01 现打），\\
+             进了语料也一处都不会多算 —— 会出声的只有本格。"
+        );''',
+    '''        // C3-M6：把本格退掉（摘除仍然坏着），看本条还有没有别的东西认得出来。''',
+    1,
+)
+
 READINGS = """
 本拍五刀的真实读数（量于基线尖 a68fd25，沙箱 ccmon-devbox:latest，--network host，
 CARGO_TARGET_DIR=.claude/pm-targets/k-g5-c3，这棵树未铺 embedded-daemons）：
@@ -207,6 +222,9 @@ CARGO_TARGET_DIR=.claude/pm-targets/k-g5-c3，这棵树未铺 embedded-daemons�
                                ⇒ 那一格是本条判据里**唯一**认得出「摘除坏了」的东西
   M5  锚点 1 处 · 判定行 489/1  `channel(` 合计 0（分布空）；`use tokio::sync::mpsc` 合计 2
                                = inbound.rs 1 + observe/watcher.rs 1；`use tokio::sync::mpsc::` 合计 0
+  M6  锚点 1 处 · 判定行 489/1  M3 之上退掉 `none_of_these_anchors…` 的反空真② ⇒ 本条也**绿着走过去**
+                               （量于 6c61a2f，那一刀之后红的只剩 `no_qualified…`）
+                               ⇒ 两条判据各自的那一格，各自都是**唯一**认得出「摘除坏了」的东西
 
 分母怎么数的：判定行取 `cargo test` 自己那行 `test result:`（daemon 一个二进制、一行）；
 「几处」一律 `str::matches(needle).count()`，语料 = `crate_sources()`（全 crate 生产段，摘掉本模块自己）。
