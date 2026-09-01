@@ -27,7 +27,7 @@
 //!    那个数是 D 审计实测「500ms 内应答 70789 条 / 实时行 4 条」之后加的。
 //!    每连接一个 writer 之后，这条预算要**按连接算**。
 //!
-//! # ★ 第 2 格那根针挪到了「通道的诞生点」〔`K-G5`，08-28〕
+//! # ★ 第 2 格那根针钉的是「通道的诞生点」〔`K-G5`：08-28 挪位 · 09-01 补第二条〕
 //!
 //! **为什么挪 —— 旧针钉错了地方。** 旧针数的是**类型名** `mpsc::Receiver<Frame>` 在生产段里
 //! 出现几次（登记 3），而那个 3 里有 **2 处是 `main.rs::writer_task` 的形参**。形参是
@@ -38,27 +38,66 @@
 //! ★★ **假阳会训练人绕过判据，比没有判据更坏。**
 //! ⚠ 治法**不是把 3 改成 4** —— 下一次插第二个 helper 又红，那是同一个病推迟一轮。
 //!
-//! - **它数的是什么**：生产段里 `mpsc::channel::<Frame>(` 出现几次 —— **按这一个拼法**，
-//!   就是**这个进程里造出过几条搬 `Frame` 的 mpsc 通道**（通道的**诞生点**，不是类型名的
-//!   出现处）。⚠ 拼法之外的造法它一处都看不见，见下面「保证不了什么」①。
-//!   今天 3 = 观测 1（`observe/watcher.rs`）+ 应答 2（`main.rs`：stdio 那条 + 常驻那条，
-//!   与 `writer_task(` 那条针的 2 同源）。
+//! ## ⚠⚠ 09-01 补的那一条：只钉 turbofish，那它在一个**正常拼法**上比旧针还弱
+//!
+//! 08-28 那一版只有下面的 ①（`mpsc::channel::<Frame>(`）。`PM` 09-01 现打了这一刀
+//! （逐字，插在 `main.rs:585` 之后）：
+//!
+//! ```text
+//! let (_pm_tx2, mut _pm_rx2): (tokio::sync::mpsc::Sender<Frame>, tokio::sync::mpsc::Receiver<Frame>) =
+//!     tokio::sync::mpsc::channel(8);
+//! tokio::spawn(async move { while let Some(_f) = _pm_rx2.recv().await {} });
+//! ```
+//!
+//! 一个**真的**第二消费者（真 task、真 `recv`），只是靠**左边的类型标注**定型而不是 turbofish。
+//! 读数（本工作树 `0abfacc`，沙箱门禁，`DEVBOX_NET=host`）：**`GATE: OK` · daemon
+//! `489 passed` · 0 failed —— 静默走过去**；而同一段里含 `mpsc::Receiver<Frame>` **1 次**
+//! ⇒ **旧针会红（3→4）**。★ 这一形上「新针比旧针弱」是**一次回退**，
+//! **不是**「一个看不见的角落」—— 一个正常拼法就能塞进第二个真消费者。
+//!
+//! ⇒ 治法**不是把 ① 的数改大**（`§0a` 那条承重线仍然写死），而是**再钉一条**：
+//! **② 生产段里不许有不带 turbofish 的通道诞生点。** 两条合起来，
+//! 「造一条搬 `Frame` 的 mpsc 通道」在本 crate 里**只剩 turbofish 一种拼法**，而那一种由 ① 数着。
+//!
+//! - **它数的是什么**（两条针，各数各的）：
+//!   ① 生产段里 `mpsc::channel::<Frame>(` 出现几次 = **3**（`PINS` 里 `observe/watcher.rs`
+//!      那一行）—— **搬 `Frame` 的 mpsc 通道的诞生点**，不是类型名的出现处。
+//!      今天 3 = 观测 1（`observe/watcher.rs`）+ 应答 2（`main.rs`：stdio 那条 + 常驻那条，
+//!      与 `writer_task(` 那条针的 2 同源）。
+//!   ② 生产段里 `::channel(` 出现几次 = **0**
+//!      （[`tests::every_channel_birth_spells_its_payload_type`]）—— 一处**不带 turbofish
+//!      的通道诞生点都没有**。⚠ 它是一条**关于拼法**的棘轮，不是关于 `Frame` 的：
+//!      谁的载荷都算，它数的是「有没有人把载荷类型交给推导」。
 //! - **它因此能保证什么**：`tokio` 的 `mpsc::Receiver` **不可 clone**（类型层面挡着）
 //!   ⇒ 一条通道**至多**一个消费端 ⇒ **通道诞生数是 `Frame` 消费端数的上界**
-//!   （是上界不是等式：造了通道而把 receiver 立刻扔掉，消费端就是 0）。于是
-//!   「再造一条 `Frame` 通道」（fan-out 落地的必经一步）**当场红**；而**传递 / 借用 /
-//!   move 一个已有的 `Receiver<Frame>`**（抽 helper、把 rx 交给另一个 task、把返回元组
-//!   改成 struct）**一处都不增本针的计数** —— 那正是旧针分不开的那一格。
+//!   （是上界不是等式：造了通道而把 receiver 立刻扔掉，消费端就是 0）。
+//!   ② 把「诞生点必须自报载荷类型」变成硬约束 ⇒ ① 在**它够得着的那批拼法内**是完整的
+//!   （够不着的逐条写在下面）。于是「再造一条 `Frame` 通道」（fan-out 落地的必经一步）
+//!   **当场红**：turbofish 那一形被 ① 逮，类型标注 / 全推导那一形被 ② 逮。
+//!   而**传递 / 借用 / move 一个已有的 `Receiver<Frame>`**（抽 helper、把 rx 交给另一个
+//!   task、把返回元组改成 struct）**两条针一处都不增** —— 那正是旧针分不开的那一格。
+//! - **② 的代价，先说清楚它是哪一种**：它**过宽** —— 新造一条与 `Frame` 毫无关系的通道，
+//!   只要不写 turbofish 也会红。⚠ 但这笔代价与旧针那笔**方向相反**：旧针的假阳出在
+//!   **零语义变更的纯重构**上（`§0a` 的承重线正是这一条），而 ② 只在**真的新造了一条通道**
+//!   时出声，且它的解法是「**把载荷类型写出来**」——**不是放宽判据**。纯重构一处都不碰它。
 //! - **它保证不了什么**（诚实边界，别读成证明）：
-//!   1. **只认 `mpsc::channel::<Frame>(` 这一个拼法。** 不带 turbofish（靠左边的类型标注
-//!      定型）、换成 `broadcast` / `watch` 这类多消费者原语、或给 `Frame` 起个类型别名再造
-//!      通道 —— 本条**一处都看不见**。
-//!   2. 它数的是**造了几条通道**，不是**几个人在收**：一条通道被 `Arc<Mutex<_>>` 包起来给
+//!   1. **② 要求 `::` 紧挨着 `channel(`。** `use tokio::sync::mpsc::channel;` 之后裸调
+//!      `channel(8)` / `channel::<Frame>(8)` —— ①②**都看不见**。
+//!      （现打，`0abfacc` 全 crate 生产段：`channel(` **0 处**；`use tokio::sync::mpsc`
+//!      **2 处**，`inbound.rs:35` 与 `observe/watcher.rs:77`，两处都停在 `::mpsc;`，
+//!      没有一处 import 到函数那一级。**这是今天的读数，不是不变量。**）
+//!   2. **别的构造函数名**：`std::sync::mpsc::sync_channel(4)` 里 `::` 不紧挨 `channel(`
+//!      ⇒ ② 看不见。今天那一处（`relay/tee.rs:169`）写着 turbofish 且与 `Frame` 无关。
+//!   3. **给 `Frame` 起个类型别名再造通道**（`type F = Frame; mpsc::channel::<F>(8)`）：
+//!      有 turbofish ⇒ ② 不红；字面不是 `Frame` ⇒ ① 也不数。**两条都看不见。**
+//!   4. **`broadcast` / `watch` 这类多消费者原语**带 turbofish 写出来时同理：② 不红、① 不数。
+//!      而多消费者那天真正会走的路，很可能就是这一条。
+//!   5. 它数的是**造了几条通道**，不是**几个人在收**：一条通道被 `Arc<Mutex<_>>` 包起来给
 //!      两个 task 轮流 `recv()`，计数不变，而消费者真的是两个。
-//!   3. 剥法的边界在 `src-tauri/crates/guard-core/src/lib.rs`：`production_code` 只剥
+//!   6. 剥法的边界在 `src-tauri/crates/guard-core/src/lib.rs`：`production_code` 只剥
 //!      `#[cfg(test)] mod` 与**整行** `//` 注释 —— **行尾注释与块注释不剥**，
 //!      在那里写一句这个字面量照样计入。**别把它读成「注释都剥干净了」。**
-//!   4. 它只管「观测帧那条通道有没有第二个消费端」；`Overflow.lost` 那本账**该怎么**重新
+//!   7. 它只管「观测帧那条通道有没有第二个消费端」；`Overflow.lost` 那本账**该怎么**重新
 //!      定义，判据一个字都不管 —— 那要立件。
 //!
 //! # 它**挡不住**什么（说清楚，别让人以为它是证明）
@@ -137,7 +176,8 @@ mod tests {
             3,
             "观测帧**只有一个消费者**，钉在那条通道的**诞生点**上：`watcher::spawn` 里\
              `mpsc::channel::<Frame>(CHANNEL_CAPACITY)` 那一句，**全 crate 只此一次造观测通道**。\
-             `tokio` 的 `Receiver` 不可 clone ⇒ 一条通道恰好一个消费端 ⇒ 再造一条 `Frame` 通道\
+             `tokio` 的 `Receiver` 不可 clone ⇒ 一条通道**至多**一个消费端（是上界不是等式：\
+             造了通道而把 receiver 立刻扔掉，消费端就是 0）⇒ 再造一条 `Frame` 通道\
              就是 fan-out 落地，而 `Overflow.lost` 的丢帧账是按那**一个**通道记的\
              ⇒ 语义变更，不是搬运。\
              ⇒ 全 crate 3 = 观测 1 + `main.rs` 的应答通道 2（stdio 那条 + 常驻那条，\
@@ -145,7 +185,13 @@ mod tests {
              ⚠ 〔`K-G5` 08-28〕本行从 `mpsc::Receiver<Frame>`（数**类型名出现几处**）换成**诞生点**：\
              旧针把 `writer_task` 的两个**形参**算进那个 3，于是抽一个借用同一条通道的 helper\
              这种**零语义变更的纯重构**会红（`K-G2 D2` 实打）。传递 / 借用 / move 一个**已有的**\
-             `Receiver<Frame>` 不增本行计数；射程与诚实边界逐条写在本模块头注。",
+             `Receiver<Frame>` 不增本行计数；射程与诚实边界逐条写在本模块头注。\
+             ★★ 〔`K-G5` 09-01〕**本行一个人挡不住第二个消费者** —— 它只认 turbofish 那一形，\
+             而靠左边类型标注定型的写法（`… : (Sender<Frame>, Receiver<Frame>) = mpsc::channel(8)`）\
+             它一处都不数（`PM` 实打：daemon `489 passed` 0 failed，静默过）。\
+             ⇒ 与 `every_channel_birth_spells_its_payload_type` **成对**：那条钉着\
+             「生产段里 `::channel(` 恰好 0 处」，把诞生点逼回 turbofish 这一种拼法，\
+             本行才数得全。**改本行之前先读那一条。**",
         ),
         (
             "listen.rs",
@@ -168,6 +214,22 @@ mod tests {
              ⇒ 全 crate 也是 2：这条预算**不许有第二个家**。",
         ),
     ];
+
+    /// 「**不带 turbofish 的通道诞生点**」的锚点〔`K-G5` 09-01〕。
+    ///
+    /// `PINS` 里那条观测针只认 `mpsc::channel::<Frame>(`。少了本条，
+    /// 一个**正常拼法**（靠左边的类型标注定型）就能塞进第二个真消费者而它一声不吭 ——
+    /// `PM` 09-01 现打过：daemon `489 passed` · 0 failed（那一刀的逐字形状见模块头注）。
+    ///
+    /// ★ 本锚点要求 `::` **紧挨着** `channel(`：
+    /// - 逮得到：`mpsc::channel(8)` · `tokio::sync::mpsc::channel(N)` · `std::sync::mpsc::channel()`
+    ///   · `oneshot::channel()` · `broadcast::channel(16)`；
+    /// - 逮不到（**故意**）：`mpsc::channel::<Frame>(8)`（有 turbofish，那是 `PINS` 那条的活）
+    ///   · `sync_channel::<String>(4)` 与任何 `xxx_channel(` （`::` 不紧挨）
+    ///   · `fn reply_channel(cap: usize)` 与 `inbound::reply_channel(8)`
+    ///     —— **抽一个叫 `…_channel` 的 helper 是纯重构，它一处都不许红**，
+    ///     这正是本件 `§0a` 那条承重线；用 `channel(` 当锚点就会在这里出假阳。
+    const BARE_BIRTH: &str = "::channel(";
 
     /// 全 crate 语料：`src/` 下**全部**（含子目录）`.rs` 的生产段。
     ///
@@ -308,17 +370,115 @@ mod tests {
         }
     }
 
+    /// ★★ `K-G5` 09-01：**每一条通道的诞生点都要自报载荷类型** —— 生产段里 `::channel(` 恰好 0 处。
+    ///
+    /// # 它为什么在这儿（它是 `PINS` 那条观测针的另一半）
+    ///
+    /// `PINS` 那条只认 `mpsc::channel::<Frame>(`。`PM` 09-01 现打的那一刀
+    /// （逐字形状在模块头注）用**类型标注**定型而不是 turbofish ⇒ 那条针 0 命中，
+    /// **daemon `489 passed` · 0 failed 静默走过去**，而**旧针（数类型名）在同一形上会红**。
+    /// ⇒ 那一版在这一形上是相对旧针的**回退**，不是「一个看不见的角落」。
+    ///
+    /// 本条把那条缝堵上的办法**不是**把那个数改大一格（`§0a` 写死了不许），而是**换个方向**：
+    /// 逼所有诞生点回到 turbofish 那一种拼法，`PINS` 那条才数得全。
+    ///
+    /// # ⚠ 它是一条 `== 0` 的断言 —— 三道反空真在下面，别删
+    ///
+    /// 「今天该是空的」那种格天然会空转（`brief` 第 9 条）。所以本条带着：
+    /// ① 语料下限（文件数 / 字节数）；② 本护栏自己真的被摘掉了；
+    /// ③ **匹配器自检** —— 一组**独立手写**的样本，正反两面各断一次
+    /// （`inbound.rs` 那条 `tokio::main` 自检的纪律：**不用锚点自己拼样本**）。
+    /// 而这条判据真有牙的活体证据在 `§3` 死值验：把 `PM` 那一刀插进 `main.rs` ⇒ 它当场红。
+    ///
+    /// # 它的代价（写在这儿，别只写在头注里）
+    ///
+    /// **过宽**：新造一条与 `Frame` 毫无关系的通道，只要不写 turbofish 也会红。
+    /// ⚠ 但它**对零语义变更的纯重构一处都不红**（那是本件的承重线），
+    /// 而且它的解法是「把载荷类型写出来」——**不是放宽判据**。这笔换是本件选它的理由。
+    #[test]
+    fn every_channel_birth_spells_its_payload_type() {
+        // 反空真③·匹配器自检：**独立手写**的样本，不用 `BARE_BIRTH` 自己拼。
+        for should_hit in [
+            "let (tx, rx) = tokio::sync::mpsc::channel(8);",
+            "        mpsc::channel(REPLY_CHANNEL_CAPACITY)",
+            "let (events_tx, events_rx) = std::sync::mpsc::channel();",
+            "let (gate_tx, gate_rx) = tokio::sync::oneshot::channel();",
+        ] {
+            assert!(
+                should_hit.contains(BARE_BIRTH),
+                "锚点 `{BARE_BIRTH}` 认不出这个**不带 turbofish 的诞生点**：{should_hit:?}\n\
+                 ⇒ 本条此刻是空转的，`PINS` 那条观测针也就少了另一半。"
+            );
+        }
+        for should_miss in [
+            // 有 turbofish ⇒ 归 `PINS` 那条数，不归本条。
+            "let (tx, rx) = tokio::sync::mpsc::channel::<Frame>(8);",
+            "let (tx, rx) = std::sync::mpsc::sync_channel::<String>(TEE_QUEUE_LINES);",
+            // ★ 这两行是本条的**假阳护栏**：抽一个叫 `…_channel` 的 helper 是纯重构。
+            "fn reply_channel(cap: usize) -> (Sender<Frame>, Receiver<Frame>) {",
+            "let (tx, rx) = inbound::reply_channel(8);",
+        ] {
+            assert!(
+                !should_miss.contains(BARE_BIRTH),
+                "锚点 `{BARE_BIRTH}` 在这一行上有命中：{should_miss:?}\n\
+                 ★ 它逮到的要么是 turbofish 那一形（那是 `PINS` 那条的活、会重复计数），\n\
+                 要么是一次**纯重构**（抽一个 `…_channel` helper）—— 后者正是本件在治的假阳。"
+            );
+        }
+
+        let corpus = crate_sources();
+        // 反空真①：语料塌了 ⇒ 下面是一句 0 == 0 的空真。
+        assert!(
+            corpus.len() >= 30,
+            "全 crate 语料只有 {} 个文件（下限 30）—— 遍历坏了（多半是没递归进子目录）",
+            corpus.len()
+        );
+        let bytes: usize = corpus.iter().map(|(_, c)| c.len()).sum();
+        assert!(
+            bytes >= 150_000,
+            "全 crate 语料只有 {bytes} 字节（下限 150_000）—— 剥过头了，本条此刻在空转"
+        );
+        // 反空真②：本护栏自己真的被摘掉了 —— 上面那组手写样本逐字带着这个锚点。
+        assert!(
+            !corpus
+                .iter()
+                .any(|(rel, _)| rel.ends_with("single_stream_guard.rs")),
+            "本护栏自己进了语料 —— 它的匹配器自检里逐字带着 `{BARE_BIRTH}` 的正面样本，\
+             那样本条会拿自己的样本把自己打红"
+        );
+
+        let dist: Vec<(&str, usize)> = corpus
+            .iter()
+            .map(|(rel, code)| (rel.as_str(), code.matches(BARE_BIRTH).count()))
+            .filter(|(_, n)| *n > 0)
+            .collect();
+        let got: usize = dist.iter().map(|(_, n)| n).sum();
+        assert_eq!(
+            got, 0,
+            "\n全 crate 生产段里有 {got} 处**不带 turbofish 的通道诞生点**（锚点 `{BARE_BIRTH}`）。\n\
+             分布：{dist:?}\n\
+             ★ 本条要的不是「别造通道」，是「**造的时候把载荷类型写出来**」：\n\
+             把 `…::channel(N)` 改成 `…::channel::<那个类型>(N)` 就绿了 —— 这是一次\n\
+             **零语义变更**的改动，而且它让 `PINS` 里那条观测针看得见你造的是不是 `Frame` 通道。\n\
+             ⚠ **别把本条的数从 0 调上去**：那等于把「诞生点自报类型」这条约束放掉，\n\
+             而 `K-P1 §2` 明确不做「多客户端的流」，靠的正是「`Frame` 通道只有一条」这句话数得准。\n\
+             ⇒ 真要造第二条 `Frame` 通道：先立件把 `Overflow.lost` 那本账重新定义清楚。"
+        );
+    }
+
     /// ★★ `K-G5`：观测帧那根针认的是**通道的诞生点**，不是**类型名出现几处**。
     ///
     /// 本条把那件事的**双向**死值验钉进判据自己 —— 不然它只是头注里的一段散文，
     /// 下一个人把针改回类型名（或者把那个数往上调一格）时，**没有任何东西会红**。
     ///
-    /// - **假阳那一侧**（这是本件买的东西）：`K-G2` `D2` 那一刀的形状 —— 一个**借用同一条
-    ///   通道**的 helper（零语义变更的纯重构）⇒ 本针**必须 0 命中**。
-    ///   旧针在这一格上是 1，于是全 crate 计数 3→4 当场假红。
+    /// - **假阳那一侧**（这是本件买的东西）：三种**零语义变更的纯重构**（`D2` 逐字那一刀 ·
+    ///   把 rx move 进另一个 task · 把返回元组改成 struct）⇒ **两条针都必须 0 命中**。
+    ///   旧针在第一种上是 1，于是全 crate 计数 3→4 当场假红。
     /// - **真违规那一侧**（这是没被拔牙的证据）：真的再造一条 `Frame` 通道 ——
-    ///   `Receiver` 不可 clone，第二个消费端**只能这么来** ⇒ 本针**必须命中**。
-    ///   缺了这一格，「消假阳」最省事的走法就是把针改成恒不命中，而**恒绿判据 = 假绿**。
+    ///   `Receiver` 不可 clone，第二个消费端**只能这么来** ⇒ **两个拼法各断一次**，
+    ///   turbofish 那一形归 `PINS` 那条、类型标注那一形归 `BARE_BIRTH` 那条。
+    ///   ⚠ 09-01 之前本条**只断了 turbofish 那一形** —— 于是「消假阳」在另一形上
+    ///   把牙一起拔了却没有东西出声，而**恒绿判据 = 假绿**。
     #[test]
     fn the_observation_pin_counts_channel_births_not_type_name_mentions() {
         let needle: &str = PINS
@@ -326,24 +486,71 @@ mod tests {
             .find(|(home, _, _, _, _)| *home == "observe/watcher.rs")
             .expect("`PINS` 里 `observe/watcher.rs` 那一行不见了 —— 观测帧那一格的针没了")
             .1;
-        // 假阳那一侧：`D2-M4` 逐字那一刀（**借用**同一条通道，没造第二条）。
-        let pure_refactor = "#[allow(dead_code)] async fn d2_drain_one(\
-                             rx: &mut tokio::sync::mpsc::Receiver<Frame>) \
-                             -> Option<Frame> { rx.recv().await }";
-        assert_eq!(
-            pure_refactor.matches(needle).count(),
-            0,
-            "针 `{needle}` 在一次**零语义变更的纯重构**上有命中 —— 它又在数「类型名出现几处」了。\n\
-             ★ `K-G5 §0a` 写死：治法**不是**把那个数改大一格（下一个 helper 又红 = 同一个病\n\
-             推迟一轮），而是让它数**产出 / 诞生点**：谁在造通道，不是谁提到了那个类型名。"
-        );
-        // 真违规那一侧：真的第二条 `Frame` 通道 = 真的第二个消费端。
-        let real_second_consumer = "let (tx2, rx2) = tokio::sync::mpsc::channel::<Frame>(8);";
-        assert!(
-            real_second_consumer.contains(needle),
-            "针 `{needle}` 认不出「再造一条 `Frame` 通道」——\n\
-             消假阳把牙一起拔了，而恒绿的判据就是假绿。"
-        );
+        // ── 假阳那一侧（这是本件买的东西）：三种**零语义变更的纯重构**，两条针都必须 0 命中。
+        //
+        // ⚠ 只验第一种是不够的：`D2` 那一刀是**借用**，而「把 rx move 进另一个 task」
+        // 与「把返回元组改成 struct」同样是纯重构，同样**一个消费者都没多**。
+        for (what, refactored) in [
+            (
+                "`D2` 逐字那一刀：借用同一条通道的 helper",
+                "#[allow(dead_code)] async fn d2_drain_one(\
+                 rx: &mut tokio::sync::mpsc::Receiver<Frame>) \
+                 -> Option<Frame> { rx.recv().await }",
+            ),
+            (
+                "把 rx move 进另一个 task（同一条通道，仍然只有一个人在收）",
+                "tokio::spawn(async move { while let Some(f) = rx.recv().await { let _ = f; } });",
+            ),
+            (
+                "把 `watcher::spawn` 的返回元组改成 struct",
+                "pub struct WatcherHandle { \
+                 pub rx: tokio::sync::mpsc::Receiver<Frame>, pub poke: WatcherPoke }",
+            ),
+        ] {
+            assert_eq!(
+                refactored.matches(needle).count(),
+                0,
+                "针 `{needle}` 在一次**零语义变更的纯重构**（{what}）上有命中 ——\n\
+                 它又在数「类型名出现几处」了。\n\
+                 ★ `K-G5 §0a` 写死：治法**不是**把那个数改大一格（下一个 helper 又红 = 同一个病\n\
+                 推迟一轮），而是让它数**产出 / 诞生点**：谁在造通道，不是谁提到了那个类型名。"
+            );
+            assert_eq!(
+                refactored.matches(BARE_BIRTH).count(),
+                0,
+                "锚点 `{BARE_BIRTH}` 在一次**零语义变更的纯重构**（{what}）上有命中 ——\n\
+                 09-01 补的那条针本来只该管**诞生点**，现在它把纯重构也一起打红了，\n\
+                 那就是把旧针的病换个地方长回来。"
+            );
+        }
+
+        // ── 真违规那一侧（这是没被拔牙的证据）：**两个拼法各一刀**。
+        //
+        // ★★ 09-01 之前这里只有拼法 ① —— 而拼法 ② 是个**正常写法**，
+        //    实测能塞进一个真的第二消费者（真 task、真 `recv`）而门禁 `489 passed` 静默过去。
+        //    「只验一个拼法」正是那一版被打回的原因。
+        let caught = |probe: &str| (probe.matches(needle).count(), probe.matches(BARE_BIRTH).count());
+        for (spelling, probe) in [
+            (
+                "① turbofish：`mpsc::channel::<Frame>(8)`（由 `PINS` 那条数）",
+                "let (tx2, mut rx2) = tokio::sync::mpsc::channel::<Frame>(8);",
+            ),
+            (
+                "② 靠左边的类型标注定型（`PM` 09-01 那一刀，由 `BARE_BIRTH` 那条数）",
+                "let (_pm_tx2, mut _pm_rx2): (tokio::sync::mpsc::Sender<Frame>, \
+                 tokio::sync::mpsc::Receiver<Frame>) = tokio::sync::mpsc::channel(8);",
+            ),
+        ] {
+            let (by_pin, by_bare) = caught(probe);
+            assert!(
+                by_pin + by_bare > 0,
+                "「再造一条 `Frame` 通道」的拼法 {spelling} **两条针都没认出来**\n\
+                 （`{needle}` {by_pin} 处 · `{BARE_BIRTH}` {by_bare} 处）：\n\
+                 {probe:?}\n\
+                 ★ 这一刀是**真的**第二个消费端（`Receiver` 不可 clone，第二个消费端只能这么来）。\n\
+                 消假阳把牙一起拔了，而恒绿的判据就是假绿。"
+            );
+        }
     }
 
     /// ★ 那条**不由本模块钉**的（`HelloFlushed` 见证）要指得住住址。
