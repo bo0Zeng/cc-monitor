@@ -514,4 +514,52 @@ mod tests {
         );
         assert!(!enc.contains(' ') && !enc.contains(';') && !enc.contains('"'));
     }
+
+    /// ★★ 〔`K-H2b` `D8 阻-2`，08-29〕**带中转前缀的那一串，编码之后前缀还在。**
+    ///
+    /// # 它为什么活到第九轮才有人量 —— **一次平台归属的连坐误分类**
+    ///
+    /// `powershell_encoded_command` **没有 `cfg`，在 Linux 上是真编译的**
+    ///（本文件没有任何 `#[cfg(windows)]`，`cargo test -p monitor --lib` 里它被跑到）。
+    /// 但它**长在 Windows 那条腿上**（`launch::launch_powershell_window` 是它唯一的生产调用方），
+    /// 于是被连坐地当成了「Windows ⇒ 判不了」那一族。
+    /// `D8` 的刀 `D8P36`（体首行把 `$env:ANTHROPIC_BASE_URL=…; ` 那一段剥掉再编码）实测：
+    /// **全量门禁四个数一格不动（`1328 / 一致 / 493 / 1512`）· `GATE: OK`。**
+    /// 成因：上面那两条判据喂的是 `"echo hi"` 与那条 `nasty` —— **两条都不带中转前缀**，
+    /// 一把只剥「以某个字面段开头」的刀在它们身上是恒等变换。
+    ///
+    /// 🔴 **PM 08-29 由此立的那条落法**（本条是它的第一个兑现）：
+    /// **凡是标「平台判不了」的，要给出它的 `cfg`；给不出 `cfg` = 它在本平台编译 = 不是判不了。**
+    ///
+    /// # 量法：一个已知的 base64（**不是**拿本函数自己算一遍去比自己）
+    ///
+    /// 期望值由**另一套实现**独立算出（`python3 -c
+    /// "base64.b64encode(s.encode('utf-16-le'))"`，08-29 现打）⇒ 本条不是恒真。
+    /// 第二格是**非空对照**：把前缀那一段拿掉，同一把编码器必须给出**另一个**值 ——
+    /// 没有这一格，一条「剥了前缀照样等于期望值」的读数分不出「买到了」还是「x == x」。
+    ///
+    /// ⚠ **它买不到什么**：Windows 上 `powershell.exe -EncodedCommand` 真的照这个串起了进程
+    /// —— 那要真机，本件登记在「判不了」里（而那一格**给得出 `cfg`**：调用方
+    /// `launch::launch_powershell_window` 带 `#[cfg(windows)]`，门禁跑在 Linux ⇒ 不进编译单元）。
+    #[test]
+    fn the_relay_prefix_survives_the_powershell_encoding_byte_for_byte() {
+        // 形状照 `payload::relay_env_prefix_ps` 的产物 + `local_launch_choice` 的探测形。
+        let with_relay = "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/k-0123456789abcdef'; if (Get-Command cc) { cc } else { claude }";
+        // 独立算出的期望值（UTF-16LE → 标准 base64）。
+        assert_eq!(
+            powershell_encoded_command(with_relay),
+            "JABlAG4AdgA6AEEATgBUAEgAUgBPAFAASQBDAF8AQgBBAFMARQBfAFUAUgBMAD0AJwBoAHQAdABwADoALwAvADEAMgA3AC4AMAAuADAALgAxADoAOAA3ADgAOAAvAHMALwBjAGwAYQB1AGQAZQAtAGMAbwBkAGUALwBhAGMAYwB0AC0AYQAvAGsALQAwADEAMgAzADQANQA2ADcAOAA5AGEAYgBjAGQAZQBmACcAOwAgAGkAZgAgACgARwBlAHQALQBDAG8AbQBtAGEAbgBkACAAYwBjACkAIAB7ACAAYwBjACAAfQAgAGUAbABzAGUAIAB7ACAAYwBsAGEAdQBkAGUAIAB9AA==",
+            "\n★★ **中转前缀在编码这一跳掉了** —— 刀 `D8P36` 的形状：\n\
+             体首行把 `$env:ANTHROPIC_BASE_URL=…; ` 剥掉再编码。\n\
+             生产后果（Windows）：wt.exe 那条腿起出来的 claude 进程拿不到 base URL ⇒ 直连官方端点，\n\
+             而在 `D8` 实测里**全量门禁四个数一格不动**。"
+        );
+        // 非空对照：把前缀那一段拿掉，同一把编码器必须给出另一个值。
+        let without_relay = "if (Get-Command cc) { cc } else { claude }";
+        assert_ne!(
+            powershell_encoded_command(with_relay),
+            powershell_encoded_command(without_relay),
+            "带不带中转前缀编出来是同一串 —— 上面那条相等断言在数一个与前缀无关的东西"
+        );
+    }
 }

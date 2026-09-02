@@ -175,6 +175,82 @@ mod tests {
         );
     }
 
+    /// ★★★ `K-H2b` `KH2B4`：**注入侧真的拼出来的那一形，正是本解析器认的那一形。**
+    ///
+    /// # 这一条为什么必须存在（`LEDGER.md#KL7` 第 1 条）
+    ///
+    /// 注入侧拼错一段的症状**不是**「拼错了」，是「一个查不出来的 404」——
+    /// 因为老三段形状**不会被本解析器拒掉**（隔壁那条判据实测过：它被重读成另一条四段路由、
+    /// 解析成功），挡它的是**表里查不到**，而那在另一个文件里。
+    /// ⇒ 两端各写各的，就会各自答错同一个问题，而症状指不向原因。
+    ///
+    /// # ★ 它是**跨半边对拍**，不是「再抄一遍」
+    ///
+    /// 样例**不是**手抄的常量，是**从 monitor 的源码里抠出来的**
+    /// （`include_str!` 那份 `payload.rs`，取 `RELAY_ROUTE_SAMPLE` 那一行的字面量）。
+    /// 两侧因此被焊成一条链：
+    ///
+    /// | 环 | 谁钉的 |
+    /// |---|---|
+    /// | 构造口的产物 == `RELAY_ROUTE_SAMPLE` | monitor 侧 `the_relay_route_sample_is_what_the_builder_really_produces` |
+    /// | `RELAY_ROUTE_SAMPLE` 落进本解析器的哪几段 | **本条** |
+    ///
+    /// ⇒ monitor 那边改了段序或前缀 ⇒ 抠出来的样例跟着变 ⇒ **本条的槽位断言当场红**；
+    /// 本解析器改了切法 ⇒ 同一条样例切出别的段 ⇒ **也是本条红**。
+    /// 「两半漂开而两边都不红」这一形，从这一刀起不成立。
+    ///
+    /// ⚠ 这条**跨半边编译期边已登记**在 `src-tauri/src/cross_half_edge_registry.rs`
+    /// （那张表默认拒绝：不登记就红），并且它**只长在判据里** ——
+    /// `no_cross_half_edge_lives_in_production_code` 钉着「一条都不许长到生产段」。
+    #[test]
+    fn the_shape_the_injection_side_builds_lands_in_the_slots_this_parser_expects() {
+        // ★ 跨半边：读 monitor 那一侧的**源码**，把它的样例常量抠出来。
+        const MONITOR_PAYLOAD_RS: &str =
+            include_str!("../../../src-tauri/src/backend/control/payload.rs");
+        let key = "pub const RELAY_ROUTE_SAMPLE: &str = \"";
+        let at = MONITOR_PAYLOAD_RS.find(key).expect(
+            "monitor 侧找不到 `RELAY_ROUTE_SAMPLE` —— 抽取器坏了或那个常量被改名了，\n\
+             本条会在一个空串上自问自答（抽取器自检就是为了不让它悄悄变成那样）",
+        );
+        let rest = &MONITOR_PAYLOAD_RS[at + key.len()..];
+        let sample = &rest[..rest.find('"').expect("那个字面量没收尾")];
+        // 抽取器自检：抠出来的必须像一条路由键，不是空串、不是半截。
+        assert!(
+            sample.starts_with("/s/") && sample.len() > 10,
+            "从 monitor 抠出来的样例不像路由键：{sample:?}"
+        );
+
+        // 注入侧给的是 base URL（不带真路径），agent 自己往后接 `/v1/messages`。
+        let target = format!("{sample}/v1/messages");
+        let r = parse(&target).unwrap_or_else(|| {
+            panic!(
+                "monitor 侧真的拼出来的那一形，本解析器解析不了：{target:?}\n\
+                 ⇒ 两半的路由键形状漂开了。注入侧拼错一段在生产上只表现成\n\
+                 「一个查不出来的 404」，指不向原因 —— 所以要在这里当场红。"
+            )
+        });
+        // 期望值全是**手写字面量**（不是拿被测函数算的，否则自证恒绿）。
+        // ⚠ 它们同时是「monitor 那边不许偷偷换段序」的那道闸：换了，下面三条里必有一条红。
+        assert_eq!(r.agent, "claude-code", "第 2 段不是 agent 了 —— 两半漂开");
+        assert_eq!(r.account, "acct-a", "账号段没落在第 3 段 —— 表就查错行了");
+        assert_eq!(r.key, "k-0123456789abcdef", "第 4 段不是 key 了 —— 两半漂开");
+        assert_eq!(r.rest, "/v1/messages", "真路径没被原样透传");
+
+        // ★ 同一条样例，把**账号段**换掉 ⇒ 切出来的 account 必须跟着变（它是自己一维）。
+        let other = parse("/s/claude-code/acct-b/k-0123456789abcdef/v1/messages").expect("另一行");
+        assert_ne!(r.account, other.account);
+        assert_eq!(other.account, "acct-b");
+        // ★ 段序对调（`<account>` 与 `<key>` 换位）**照样解析得了** ——
+        //   这正是「拼错一段只表现成 404」的机制，本断言把它钉成明文。
+        let swapped =
+            parse("/s/claude-code/k-0123456789abcdef/acct-a/v1/messages").expect("对调也解析得了");
+        assert_eq!(
+            swapped.account, "k-0123456789abcdef",
+            "对调之后被当成账号的是那个 key —— 解析器拦不住它，只有表能"
+        );
+        assert_ne!(swapped.account, r.account);
+    }
+
     /// ★ **同一条性质只许有一个实现**：装路由表时判「这个账号 id 当得了路由段吗」
     /// 走的必须是本模块这个 [`segment_is_safe`]，不是另写一份。
     ///

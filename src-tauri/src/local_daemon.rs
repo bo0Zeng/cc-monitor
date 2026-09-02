@@ -1153,6 +1153,17 @@ pub fn start_local_backend() -> StartOutcome {
     // 它认识 `process_group(0)` / `/proc` / `~/.cc-monitor`，而 `backend/` 那半一样都不许认识
     // （`the_backend_half_stays_platform_agnostic` 的禁针含 `std::os::unix`）。
     // 走不了（平台不支持 / `CCM_NO_DETACH` 关掉了）才回落到下面那条今天的路。
+    // ★★ `K-H2b` `KH2B2`①：**中转的启动方就是这一行**（在本件之前 `--relay` 生产调用点 = 0）。
+    //
+    // ⚠ 放在这里而不是放进下面那两条分支里，是因为**两条路都要有中转**：
+    // 常驻那条（`start_detached`）会 `return`，接在它后面等于「走常驻就没有中转」。
+    // ⚠ 中转与 daemon 是**两个进程**（`relay/mod.rs` 自陈「独立进程」），
+    //   所以这里不是「多给 daemon 一个参数」，是**再监护一个**。
+    // 拿不到二进制时**什么都不做**：那条路上 daemon 自己也起不来，
+    // 下面的 `Resolved::Missing` 会把理由报出去 —— 不在这里再报一遍同一件事。
+    if let Ok(bin) = resolve_daemon_bin(&extract_dir, embedded) {
+        start_local_relay(bin);
+    }
     match start_detached(&|| resolve_daemon_bin(&extract_dir, embedded), &[]) {
         DetachOutcome::Done(out) => return out,
         DetachOutcome::NotTaken => {}
@@ -1194,8 +1205,226 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 /// P2s（`C8`②）：停本机后端。**句柄取走**（`take`）而不是留着 ——
 /// `stop()` 之后那个句柄就是死的（`stopping` 永久置位），留着只会让下一次「起」
 /// 误以为还在跑。
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-H2b` `KH2B2`：**本机中转的启动方** —— 在本件之前，`--relay` 生产调用点是 **0**
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// # 为什么走「再监护一个进程」而不是「折进常驻 daemon」（两条路里选的这一条，理由写下来）
+//
+// `--relay` 今天住 `remote-daemon-proto/src/main.rs` 的**一次性子命令分派臂**，
+// `relay/mod.rs` 头注自陈**是独立进程**，`serve()` **永不返回**。
+// ⇒ 折进常驻 daemon 要动的是 daemon 的进程模型（那条 wire 流与中转的 stdout 会撞，
+//   `relay/mod.rs` 头注逐字记着「谁在同一个进程里既跑流式又跑中转，今天没有任何判据挡着」）。
+// 而「再监护一个」用的是**现成的** `local_backend::supervise`（收 `args` + `envs`），
+// 一行新机制都不用发明。⇒ 本件选 ㈠。
+//
+// # ⚠ 本件**不做端口通告面**（`§0e` 裁五，跟进件 `己1-f26`）
+//
+// 端口是 `payload::RELAY_PORT` 这一个常量，**显式**以 `CCM_RELAY_PORT` 交给子进程
+// ⇒ 注入侧与中转侧用的是同一个值，daemon 那份 `DEFAULT_PORT` 在这条路上不参与。
+// **同机第二个 monitor** 的形状：第二个中转绑不上那个口 ⇒ `run_with` 印
+// `cannot bind loopback port …` 并**退 2** ⇒ 监护器按崩溃计数，三次之后 `GaveUp` 出声。
+// **不静默**，但也**不会自动换口** —— 换口要先答「谁来分配 / 冲突了怎么办 / 远端怎么知道」，
+// 那是另一件的体量。
+//
+// # ⚠ 判不了的（别读成「没问题」）
+//
+// - **中转能不能承受所有会话都走它**：`server.rs::INFLIGHT_CONNECTIONS` 有上界、超了回 503，
+//   那个数够不够**我没量**。（本件裁的是「只接 api-key 号」⇒ 今天的量级远小于「所有会话」。）
+// - **Windows 上这条路的运行时行为**：内嵌的那两份 sidecar 是 musl Linux 二进制，
+//   `start_local_backend` 里那条 `cfg!(target_os = "linux")` 闸对本函数**同样适用**
+//   —— 非 Linux 宿主上 `resolve_daemon_bin` 拿不到东西，本函数就不会被调到。
+
+/// `K-H2b`：本机中转的监护句柄。形状与 [`LOCAL_BACKEND`] 同族（`Mutex<Option<_>>`，
+/// 停了要能再起）。
+pub static LOCAL_RELAY: std::sync::Mutex<Option<SuperviseHandle>> =
+    std::sync::Mutex::new(None);
+
+/// `KH2B2`①：**起本机中转**。已经在跑就不重复起（同 `C8`①「每台机各一个」）。
+///
+/// ⚠ 返回 `bool` = 「本次调用起了一个新的」，**不是**「现在有没有在跑」——
+/// 后者问 [`relay_running`]。两件事分开，是因为「已经在跑」不该被报成失败。
+/// 交给中转子进程的那份 **argv 尾巴**。
+///
+/// ⚠ 抽出来的理由与下面那份 env 逐字同一条〔`D6 阻-1` 的同族，08-29〕：
+/// 不抽的话，「这条子进程是不是按 `--relay` 起的」只能靠**源码里有没有这段文本**来钉，
+/// 而那一形本件已经被打穿过两次（`D5` 的 `X1` · `D6` 的 `Y1`）。
+pub(crate) fn relay_child_args() -> Vec<String> {
+    vec!["--relay".into()]
+}
+
+/// 交给中转子进程的那份 **环境**。**判据读它产出来的东西，不读源码文本。**
+///
+/// ★ 端口**显式传**：注入侧（`payload::RELAY_PORT`）与中转侧用同一个值。
+/// ★★ `D1 阻-3`：**凭据路径也显式传**，同一条理由。
+///
+/// 不传的话，中转走它自己那条 `resolve_path` → `resolve_home()`，而那一条**认
+/// `CLAUDE_CONFIG_DIR`** ⇒ monitor 是从一个**被监护进程继承来的环境变量**里
+/// 决定「中转去读哪份凭据」的。而 monitor 自己写的那份**不跟随** `claudeDir`
+/// （`creds_store::resolve_path` 头注逐字）⇒ 两侧读写的是两份文件，
+/// 症状是「界面上配好了，中转说没配」——**一个静默的 404**。
+/// ⇒ 由**写那份文件的那一侧**把路径说出来，别让它从环境里猜。
+///
+/// ⚠ 它**读一次真实家目录**（`creds_store::resolve_path()` 走 `dirs::home_dir()`）——
+/// 只读，不写。拿不到家目录时那一格**缺席**（不是空串）：中转那时退回它自己那条
+/// `resolve_home()`，而那正是上面这段话说的那个静默 404 的成因 ⇒ 缺席这一格不许被读成「安全」。
+pub(crate) fn relay_child_envs() -> Vec<(String, String)> {
+    let mut envs = vec![(
+        "CCM_RELAY_PORT".into(),
+        crate::backend::control::payload::RELAY_PORT.to_string(),
+    )];
+    if let Some(p) = crate::creds_store::resolve_path() {
+        envs.push(("CCM_RELAY_CREDENTIALS".into(), p.display().to_string()));
+    }
+    envs
+}
+
+pub fn start_local_relay(bin: std::path::PathBuf) -> bool {
+    let mut g = LOCAL_RELAY.lock().unwrap_or_else(|e| e.into_inner());
+    if g.is_some() {
+        return false;
+    }
+    let h = local_backend::supervise(
+        bin,
+        relay_child_args(),
+        relay_child_envs(),
+        local_backend::CrashLimits::default(),
+        std::sync::Arc::new(|| {
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_millis() as u64)
+                .unwrap_or(0)
+        }),
+        // `KH2B2`②的一半：**起不来要出声**。`GaveUp` 单独抬到 `warn`
+        // —— 它是「这台机器上的 api-key 号今天都发不出请求」的唯一线索。
+        // ★★ `D2 阻-6`：**中转子进程的 stderr 被 `supervise` null 掉了**
+        //（`local_backend::supervise_with_stdio` 里那行 `.stderr(Stdio::null())`），
+        // 而中转**所有**诊断都写 stderr：启动 announce · 重载 announce ·
+        // `cannot bind loopback port`。⇒ 那几句话**生产上一句都到不了人**。
+        //
+        // ⚠ 那一行不在本件写区（改它会同时改掉 daemon 那条监护路）⇒ **抬进上报口**。
+        // 这里做的是**在写区内能做的那一半**：把监护器**已经交给我的事件**用起来 ——
+        // ① `Exited` 带着退出码（中转的「起不来」恒是退 2）⇒ 出声；
+        // ② `GaveUp` 时**把句柄从表里摘掉**，让 `relay_running()` 从此说真话。
+        //    没有②的话：监护器已经放弃了，而句柄还在表里 ⇒ `relay_running()` 恒真 ⇒
+        //    起会话那一侧**不再拒**，于是那条 api-key 会话被静默地起成一条连不上中转的会话
+        //    —— 中转诊断到不了人的时候，这一格是用户**唯一**看得见的说法。
+        std::sync::Arc::new(|e| match &e {
+            local_backend::SuperviseEvent::GaveUp { reason } => {
+                tracing::warn!(
+                    "本机中转起不来（api-key 号的会话会被起会话那一侧拒掉）：{reason}"
+                );
+                // ⚠ 不能调 `stop_local_relay()`：那会 `stop()` 一个已经死了的句柄，
+                //   而且这里就在监护线程上。只把它摘出表 —— 状态从此与事实一致。
+                let mut g = LOCAL_RELAY.lock().unwrap_or_else(|e| e.into_inner());
+                *g = None;
+            }
+            local_backend::SuperviseEvent::Exited { code, attempt } => {
+                tracing::warn!(
+                    "本机中转退出（第 {attempt} 次，退出码 {code:?}）—— \
+                     中转的 `--relay` 起不来时恒退 2（端口被占 / 上游基址解析不了）。\
+                     ⚠ 它自己的 stderr 被监护器 null 掉了，这一行是今天唯一的线索"
+                );
+            }
+            other => tracing::info!("本机中转: {other:?}"),
+        }),
+    );
+    // ⚠ 写法刻意不用 `*g = Some(h);` —— `local_backend` 那条接线判据用它当**锚点针**，
+    //   而那条针要求全文件**恰好一处**（它的报文逐字：「断言指不明是哪一处」）。
+    g.replace(h);
+    true
+}
+
+/// `KH2B2`②的另一半：**起会话那一侧问得到「中转在不在」**。
+///
+/// ⚠ **诚实边界**：它问的是「**我们起过它、而且没停过**」，**不是**「那个口上真有人听」。
+/// 两者分家的窗口是真的：子进程刚 spawn 还没 bind 的那几毫秒、以及 `GaveUp` 之后
+/// （句柄还在表里，但监护器已经不再重起了）。
+/// ⇒ 本函数**买不到**「一定连得上」；它买的是「**没起过就一定连不上**」那一侧 ——
+/// 而那正是 `§0c-3` 成因㈡今天完全看不见的那一格。真要买另一侧得去连一次那个口，
+/// 那是一次网络往返，**本件没做**。
+pub fn relay_running() -> bool {
+    LOCAL_RELAY
+        .lock()
+        .map(|g| g.is_some())
+        .unwrap_or(false)
+}
+
+/// 停本机中转（形状照 [`stop_local_backend`]：句柄 `take` 走，`stop()` 之后它就是死的）。
+pub fn stop_local_relay() -> Option<u32> {
+    let mut g = LOCAL_RELAY.lock().unwrap_or_else(|e| e.into_inner());
+    let h = g.take()?;
+    let pid = h.current_pid();
+    h.stop();
+    pid
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `D7 阻-3`：退出臂里**那两条自己不会死的起法**，各收成一个具名收口点
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// 它们先前是写在 `lib.rs` 那条 `RunEvent::Exit` 臂里的两段就地代码，
+// 而守着它们的是一条**量文本**的判据 ⇒ `D7` 的刀 `T13` 把行为摘掉、文本留住 ⇒ 全绿。
+// ⇒ 抽成具名函数 + 进 `lib::ExitShutdownSinks` 那条缝之后，
+//   「勾了收几个」变成了一件**判据装替身就能数**的事（`lib::shutdown_detached_ways_on_exit`）。
+//
+// ⚠ **第三条（被监护那条）不在这里** —— 它必须留在退出臂体内，理由与残留的洞
+//   逐字写在 `lib::ExitShutdownSinks` 的头注里（写区外那条判据要求它在臂里）。
+// ⚠ 两个都返回 `bool`（「这一趟真的动手收了没有」）而不是 `Result`：
+//   **退出路上没有人接得住错误**，失败只能靠日志说出来 —— 这一格先前就是这么做的，
+//   本轮不改语义，返回值只供缝里那一行日志与判据的替身用。
+
+/// 收口点 ①：**常驻（脱离）**那条起法〔`K-P1`〕。
+///
+/// 它没有 `SuperviseHandle`（那条路上**没有监护器** —— `K14` 裁的第一档），
+/// 手里只有 pid + 二进制路径 ⇒ 收它走 [`stop_local_backend`]
+///（我们起的那个直接 kill+wait；接管来的那个先核 `/proc/<pid>/exe` 再 SIGTERM）。
+///
+/// ⚠ **没脱离就什么都不做** —— 那一格由 [`is_detached`] 判，不是猜的。
+pub fn stop_detached_backend_on_exit() -> bool {
+    if !is_detached() {
+        return false;
+    }
+    match stop_local_backend() {
+        Ok(msg) => {
+            tracing::info!("退出：{msg}");
+            true
+        }
+        // **说出来**：这一格失败的后果是「用户勾了却没停」，静默就成了骗人。
+        Err(e) => {
+            tracing::warn!("退出：停常驻后端失败（{e}）—— 它还在跑");
+            false
+        }
+    }
+}
+
+/// 收口点 ②：🔴 **中转是第三个进程**〔`D2 阻-5`（`K-H2b`）〕。
+///
+/// `relay/mod.rs` 自陈「独立进程」，[`stop_local_backend`] 一个字都碰不到它
+/// ⇒ 必须单独收一次。没有它，用户勾了「退出时结束它」、退出，
+/// **中转还在那儿听着那个口** —— 一个说谎的开关。
+pub fn stop_relay_on_exit() -> bool {
+    match stop_local_relay() {
+        Some(pid) => {
+            tracing::info!("退出：本机中转已停（pid={pid}）");
+            true
+        }
+        None => {
+            tracing::info!("退出：本机中转本来就没在跑");
+            false
+        }
+    }
+}
+
 pub fn stop_local_backend() -> Result<String, String> {
     let mut g = LOCAL_BACKEND.lock().map_err(|e| format!("锁毒化: {e}"))?;
+    // ★ `K-H2b`：中转跟着一起停。**锁序**与起那一侧一致（`LOCAL_BACKEND` → `LOCAL_RELAY`）。
+    //   ⚠ 它**不改**下面那两条返回的文案 —— 那两条被判据逐字钉着，
+    //     而「中转停没停」是另一件事，塞进同一句话里会让两个状态又合成一个值。
+    let relay_pid = stop_local_relay();
+    if let Some(p) = relay_pid {
+        tracing::info!("本机中转已停（pid={p}）");
+    }
     // ★ `K-P1`：常驻那条路的「停」。**锁序**：仍在 `LOCAL_BACKEND` 的锁里动 `DETACHED`。
     if let Some(msg) = stop_detached_locked() {
         return Ok(msg);
@@ -1213,6 +1442,201 @@ pub fn stop_local_backend() -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ★★★ `D1 阻-6` 刀 B 的反面：**`relay_running()` 真的在看那张表，不是一个常量。**
+    ///
+    /// `D1` 实测过：把它整个换成 `true`，**1221 passed / 0 failed** ——
+    /// 「中转在不在跑」这个**取值口**当时一条判据都没有，而它一旦恒真，
+    /// `KH2B2`② 那道「起不来就当场拒」的闸就整个失效，**而且全绿**。
+    ///
+    /// # ⚠ 它**不起真 daemon**（红线）
+    ///
+    /// 喂给监护器的是一条**不存在的路径** ⇒ `Command::spawn` 立刻失败、监护器发 `GaveUp`
+    /// 就收工。⇒ 这一趟里**没有任何子进程真的跑起来**，本条量的是
+    /// 「句柄在不在表里」这条状态机，不是「那个进程活没活」（后者见本函数头注的诚实边界）。
+    ///
+    /// ⚠ 它动的是**进程内的全局** `LOCAL_RELAY` ⇒ 起完必须停掉，否则会影响同进程别的判据。
+    #[test]
+    fn relay_running_really_reads_the_handle_table() {
+        // 前置：本条跑之前它必须是「没在跑」（否则下面第一条断言是空真）。
+        assert!(
+            !relay_running(),
+            "起手就说在跑 —— 要么这个取值口恒真，要么别的判据把句柄留在表里了"
+        );
+        let bogus = std::path::PathBuf::from("/nonexistent/ccm-relay-that-cannot-spawn");
+        assert!(start_local_relay(bogus.clone()), "第一次起应当报「起了一个新的」");
+
+        // ★★ `D2 阻-6` 的那一半：**监护器放弃之后，这个取值口必须跟着说真话。**
+        //
+        // 那条二进制根本 spawn 不了 ⇒ 监护线程立刻 `GaveUp`。
+        // 在本轮之前，`GaveUp` **只写一行日志**，句柄留在表里 ⇒ `relay_running()` **恒真**
+        // ⇒ 起会话那一侧不再拒 ⇒ 那条 api-key 会话被静默地起成一条连不上中转的会话。
+        // ⚠ 而中转自己的 stderr 被监护器 null 掉了（那一行不在本件写区）
+        //   ⇒ **这一格是用户今天唯一看得见的说法**。
+        let mut cleared = false;
+        for _ in 0..400 {
+            if !relay_running() {
+                cleared = true;
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        assert!(
+            cleared,
+            "监护器放弃之后句柄还留在表里 —— `relay_running()` 从此恒真，\n\
+             而起会话那一侧那道「中转没起来就当场拒」的闸整个失效"
+        );
+        // 反面：表被真的清空了 ⇒ 还能再起一个（恒真的话这里会回 false）。
+        assert!(start_local_relay(bogus), "表没被清干净 —— 再起时被当成「已经在跑」");
+        stop_local_relay();
+        assert!(!relay_running(), "停掉之后它还说在跑");
+
+        // ⚠⚠ **另一半是源码形状，不是行为** —— `D6 阻-1` 把这一形判死了，而这一格
+        //   **今天换不掉**，如实登记（08-29）：
+        //
+        //   上面几条量的是「它会不会**从真变假**」（那一格是行为，`D2 阻-6` 的正题）；
+        //   量不出「它**恒假**」—— 要量恒假得让表里**稳定地**有一个句柄，而
+        //   ① `SuperviseHandle` 造不出替身（构造子不对外）；
+        //   ② 唯一能把句柄放进表的路是 `start_local_relay`，而它喂什么二进制都会被监护器
+        //      在毫秒级内 `GaveUp` 摘掉 ⇒ 「刚起完那一瞬 `relay_running()` 是真」这条断言**有竞态**；
+        //   ③ 喂一个**真活着**的进程就等于在判据里起一个常驻子进程（红线）。
+        //   ⇒ 这一格留着一条文本断言，**它的绕过形态**逐字：把 `LOCAL_RELAY` 这个词留在
+        //      这 200 字节窗口里（一个用不到的绑定就够）、把返回值换成常量 ⇒ 本格照绿。
+        //
+        //   ⚠ **失效方向要一起写**：`relay_running()` 恒假 ⇒ 每一次 api-key 号的拉起都被
+        //   **当场拒**（`KH2B2`② 那条出声的路）—— 是 fail-closed、有声的，
+        //   与「恒真」那一形（静默起成一条连不上中转的会话）**不同类**。恒真那一形有行为判据接着。
+        let prod = guard_core::production_code(include_str!("local_daemon.rs"));
+        let at = guard_core::find_pinned(&prod, "pub fn relay_running() -> bool {")
+            .expect("`relay_running` 不是恰好一处");
+        let body = &prod[at..at + 200.min(prod.len() - at)];
+        assert!(
+            body.contains("LOCAL_RELAY"),
+            "`relay_running` 不再读 `LOCAL_RELAY` —— 它成了一个常量"
+        );
+    }
+
+    // ★★★ `D5 阻-1`：**`the_two_inputs_at_the_call_site_are_still_the_two_take_points`
+    //    这条判据整条删了**，新住址是 `history.rs` 里那**三条**判据
+    //    （行为：`the_launch_side_really_asks_those_two_take_points_and_uses_their_answers` ·
+    //     `the_ui_status_side_asks_those_two_take_points_and_uses_their_answers`；
+    //     按函数地址对拍：`the_production_relay_facts_are_those_two_take_points`）。
+    //
+    // 删它的理由是一个实测读数，不是风格：它量的是「`relay_prefix_for_launch` 的体切出
+    // 700 字节，那个窗口里**有没有**那两段文本」。`D5` 现打：在同一个窗口里加一行把那两段
+    // 文本原样留住的死赋值，同时把真入参换成空表 / 常量 ⇒ 文本一处不少、判据照绿、
+    // **全量门禁四个数与干净树逐字相同**，而中转注入在生产上被整个摘掉。
+    // ⇒ 铁律 13「删之前先证明它恒绿」：`D5` 那一刀就是那份证明。
+    //
+    // ⚠ **别在这里补一个「更聪明的文本判据」**（比如切实参表按逗号分段再比字面量）——
+    //   `D4` 那一轮的修法（把判据搬出被扫文件）买到的东西正是被下一层的量法漏掉的，
+    //   而两轮的量法都是「量文本」。这一族已经连着五层了，出路是**不量文本**：
+    //   两个事实走 `history.rs::RelayFactSources` 那条缝，判据喂替身、断言前缀随答案变。
+    //
+    // ⚠ 本文件上一条 `relay_running_really_reads_the_handle_table` **留着**，
+    //   它买的是另一半（那个取值口自己真的读 `LOCAL_RELAY`），两者不重叠。
+
+    /// ★★★ `K-H2b` `KH2B2`①：**中转有一个具名的启动方**，而且它在**起本机后端的那条路上**。
+    ///
+    /// # 非空对照写在这里（这一条的分母）
+    ///
+    /// 本件之前，全仓 `--relay` 的**生产调用点是 0** —— 中转是一条「有实现、没人起」的路。
+    /// ⇒ 本条钉的就是那个 0 变成了 1，而且**不是随便哪儿的 1**：它必须落在
+    /// `start_local_backend` 里、且排在 `start_detached` 那条**会 `return` 的**分支**之前**
+    /// （接在它后面 = 走常驻那条路时中转不会被起，而那是生产上的主路）。
+    ///
+    /// # 它买不到什么
+    ///
+    /// 只买「接线在」，**不买「那个进程真的起来了」** —— 后者要真 spawn 一个 daemon
+    /// 二进制，而它 `#[cfg(embedded_daemons)]` 门着、CI 上根本不铺（姊妹条
+    /// `the_local_daemon_can_be_stopped_and_started_again` 那条边界原样适用）。
+    ///
+    /// # 🔴 本条里哪几格是**文本**，为什么今天只能是文本〔`D6` 回修，08-29，别读宽〕
+    ///
+    /// `D6 阻-1` 把「窗口里有没有这段文本」这一形判死了，而本条**没有全换掉** ——
+    /// 换掉了的与没换掉的逐格写在这里：
+    ///
+    /// | 格 | 今天的量法 | 为什么 |
+    /// |---|---|---|
+    /// | argv 尾巴是 `--relay` | ✅ **行为**（读 [`relay_child_args`] 产出来的东西） | 抽成纯函数就够 |
+    /// | 端口 == `payload::RELAY_PORT` | ✅ **行为**（读 [`relay_child_envs`]） | 同上 |
+    /// | 凭据路径 == `creds_store::resolve_path()` | ✅ **行为**（读 [`relay_child_envs`]） | 同上 |
+    /// | 起中转**落在** `start_local_backend` 里、在 `start_detached` **之前** | 🔴 **文本** | 这是一条**调用图**性质：按行为量要真跑 `start_local_backend`，而它 `#[cfg(embedded_daemons)]` 门着、且吃**真实**的 `~/.cc-monitor/bin` ⇒ 红线（不许手工起真 daemon） |
+    /// | `start_local_relay` 真的把那份 spec 交出去了 | 🔴 **文本** | 按行为量要在 `local_backend::supervise` 上开一条缝，而 `backend/control/local_backend.rs` **不在本件写区** |
+    ///
+    /// ⇒ 那两格的**绕过形态**逐字：把 `relay_child_envs()` 的结果算出来扔掉、就地再拼一份
+    /// （行为那三格照绿、文本这一格也照绿，因为那两个调用还在）。
+    /// **登记，不假装钉住了。** 解锁条件 = 写区扩到 `backend/control/local_backend.rs`（一条 supervise 缝）。
+    #[test]
+    fn the_relay_has_a_named_starter_and_it_runs_before_the_detached_branch_returns() {
+        // ① 🔴 `D6 阻-1` 同族：**行为** —— 交给中转子进程的那份 argv 尾巴与环境，
+        //    量的是 `relay_child_args()` / `relay_child_envs()` **产出来的东西**，
+        //    不是「源码里有没有这几段文本」（那一形本件已被打穿两次：`D5` 的 `X1` · `D6` 的 `Y1`）。
+        assert_eq!(
+            relay_child_args(),
+            vec!["--relay".to_string()],
+            "交给中转子进程的 argv 尾巴不再是 `--relay` —— 起出来的不是中转"
+        );
+        let envs = relay_child_envs();
+        assert_eq!(
+            envs.iter()
+                .find(|(k, _)| k == "CCM_RELAY_PORT")
+                .map(|(_, v)| v.as_str()),
+            Some(crate::backend::control::payload::RELAY_PORT.to_string().as_str()),
+            "端口没显式交给子进程、或交的不是注入侧那个常量 —— 注入侧\
+             （`payload::RELAY_PORT`）与中转侧（daemon 的 `DEFAULT_PORT`）就成了各读各的两份默认值。\
+             实得：{envs:?}"
+        );
+        assert_eq!(
+            envs.iter()
+                .find(|(k, _)| k == "CCM_RELAY_CREDENTIALS")
+                .map(|(_, v)| v.clone()),
+            crate::creds_store::resolve_path().map(|p| p.display().to_string()),
+            "凭据路径不是从 monitor 写它的那条路（`creds_store::resolve_path`）来的 ——\
+             中转会去读 `CLAUDE_CONFIG_DIR` 底下那份，而 monitor 写的那份**不跟随**它：\
+             两侧读写的是两份文件，症状是一个静默的 404。实得：{envs:?}"
+        );
+        // 反空真：这把尺子分得出「少了一格」（不是恒相等）。
+        assert!(
+            envs.len() >= 2 && crate::creds_store::resolve_path().is_some(),
+            "这台机器上算不出凭据路径 ⇒ 上面那条相等断言退化成 `None == None`，本条按红处理"
+        );
+
+        let me = include_str!("local_daemon.rs");
+        let prod = guard_core::production_code(me);
+        assert!(prod.len() > 5_000, "剥完只剩 {} 字节 —— 剥过头了", prod.len());
+        // ② 它落在起本机后端那条路上，且**在常驻那条会 return 的分支之前**。
+        let at = guard_core::find_pinned(&prod, "pub fn start_local_backend()")
+            .unwrap_or_else(|e| panic!("`start_local_backend` 不是恰好一处：{e}"));
+        let body = &prod[at..];
+        let start = body
+            .find("start_local_relay(bin)")
+            .expect("`start_local_backend` 里没有那次起中转 —— 走这条路的机器上中转不会起");
+        let detached = body
+            .find("match start_detached(")
+            .expect("找不到常驻那条分支");
+        assert!(
+            start < detached,
+            "★ 顺序反了：起中转排在 `start_detached` **之后**，而那条分支会 `return` \n\
+             ⇒ 走常驻那条路（生产主路）的机器上中转**根本不会被起**，\n\
+             而症状是「api-key 号的会话被起会话那一侧拒掉」，指不向这里。"
+        );
+        // ③ 上面第 ① 格量的是那份 spec **产得对不对**（行为）；这一格量的是
+        //    `start_local_relay` **真的把它交出去了**。
+        //    ⚠ 这一格今天**只能量文本**，如实登记（见本条头注最后一节）：
+        //      要按行为量得先在 `local_backend::supervise` 上开一条缝，而那个文件不在本件写区。
+        //    ⚠ 作用域是 `start_local_relay` 的函数体，**不是** `start_local_backend` 的
+        //      —— 第一版写错了作用域，被本条自己当场逮住（那也是「量具的作用域对不上事实」）。
+        let relay_at = guard_core::find_pinned(&prod, "pub fn start_local_relay(")
+            .unwrap_or_else(|e| panic!("`start_local_relay` 不是恰好一处：{e}"));
+        let relay_body = &prod[relay_at..relay_at + 1_200.min(prod.len() - relay_at)];
+        assert!(
+            relay_body.contains("relay_child_args()") && relay_body.contains("relay_child_envs()"),
+            "起中转那一处不再把 `relay_child_args()` / `relay_child_envs()` 交出去 ——\n\
+             上面第 ① 格量的那份 spec 就成了一份没人用的摆设（端口与凭据路径又回到各读各的）。\n\
+             实得片段：{relay_body}"
+        );
+    }
 
     // ══ 第二道锁 ② 的**唯一入口**〔`K-R7` 09-01，`§0q` 裁一 · 出路乙〕═══════════
     //
@@ -1931,63 +2355,204 @@ mod tests {
         );
     }
 
-    /// ★★ **退出路径要收的是「两条起法」，不是「新那条」。**
+    /// ★★★ **退出路径要收的是「三条起法」，不是「新那条」——** 而且这一条**量的是行为**。
     ///
     /// # 它治的是一个会骗人的开关
     ///
     /// 「monitor 退出时结束它」这个勾，在 `K-P1` 之前只对**被监护的那条路**生效
-    /// （退出钩子读的是 `LOCAL_BACKEND` 里的 `SuperviseHandle`，而脱离那条路根本没有它）。
+    /// （退出钩子读的是 `LOCAL_BACKEND` 里的 `SuperviseHandle`，而脱离那条路根本没有它）；
+    /// `D2 阻-5` 又补上了第三条（**中转是另一个进程**）。
     /// ⇒ 用户勾了、退出、它没被结束 —— 而界面上一个字都不会说。
     /// **一个说谎的开关比「做不到但说出来」更坏**，所以这一格不是文案能补的。
     ///
-    /// # 钉三件（少一件这条就只证明了一半）
+    /// # 🔴🔴🔴 上一版是**文本判据**，而 `D7` 的刀 `T13` 把它打穿了
     ///
-    /// ① 策略**只读一次**且读在两条路之前（读两次 = 两条路可能拿到不同的答案）；
-    /// ② 被监护那条还在（`.stop()` 在退出臂体内）；
-    /// ③ 常驻那条也在（`is_detached()` + `stop_local_backend()` 在同一个退出臂体内）。
+    /// 上一版的形态是：`production_code(include_str!("lib.rs"))` → `braced_block(…, "RunEvent::Exit", …)`
+    /// → `body.matches("kill_on_exit(").count() == 1` + `body.contains(needle)` **×4** + 两处位置序。
+    /// **= 「那个窗口里有没有这几段文本」**，与本件病史里被打穿过四次的那一形逐字同族。
     ///
-    /// ⚠ 切法与 `local_backend.rs` 那条同职判据**同一个**（按花括号配平切退出臂的体），
-    /// 刻意不另造一种 —— 两种切法迟早在同一段代码上给出两个答案。
+    /// 刀 `T13`（只动 `lib.rs` 退出臂一处：`if kill {` → `if kill && !kill {`，
+    /// **`stop_local_relay()` 那段文本一字不动**；四个锚点 6/20/9/34 逐个与干净树相同）
+    /// ⇒ **`1229 passed; 0 failed` + `GATE: OK`，四个数与干净树逐字相同。**
+    /// **生产后果**：用户勾了「退出时结束它」、退出，**本机中转还在那儿听着那个口** ——
+    /// **正是本件自己往这条判据里加的那颗针逐字说要防的「说谎的开关」。**
+    ///
+    /// ⚠ **这一条当时不在那张「量文本的判据」全表里** —— 不是它不在写脚印里
+    /// （`D2 阻-5` 那颗针就是本件加的），是那张表的尺子只看得见「diff 里出现原语的行」。
+    ///
+    /// # ⇒ 换成量行为：那两条**自己不会死**的起法进 [`crate::ExitShutdownSinks`] 那条缝
+    ///
+    /// 判据装一份**会记账的替身**，断言**两支**（`kill` 是这一格的分叉点，两支都买）：
+    /// - **勾了** ⇒ 两个收口点**各被调恰好一次**；
+    /// - **没勾** ⇒ **一个都没被调**（这一支上一版根本没有 —— 它只数文本在不在，
+    ///   而文本在不在与「没勾时会不会误收」无关）。
+    ///
+    /// 第三格按**函数地址**对拍「生产上插进那条缝的就是那两个口」，不按文本
+    ///（形状照 `history::the_production_relay_facts_are_those_two_take_points`）。
+    ///
+    /// # 🔴🔴 它买不到什么（射程边缘 —— **这一栏是写区拦出来的，不是我不想买**）
+    ///
+    /// - **被监护那条起法（`LOCAL_BACKEND` 的 `.stop()`）不在这条缝里。**
+    ///   写区外的 `backend/control/local_backend.rs::the_exit_path_really_stops_the_local_backend`
+    ///   逐条要求退出臂**体内**恰好一处 `.stop()`、恰好一处 `kill_on_exit(`、策略在前、
+    ///   中间那个 `if` 判的就是策略绑定名 ⇒ 抽走它那条判据当场红，
+    ///   **而那个文件不在本件登记的 27 项写区里**。
+    ///   ⚠ **残留的洞**：`if kill && !kill { h.stop(); }` 过得了那条判据
+    ///   （它断的是 `between.contains("if kill")`），**今天没有行为判据接住那一形**。
+    ///   **重新裁定的落点**：`crate::ExitShutdownSinks` 头注那一栏 + 本轮上报口。
+    /// - **`RunEvent::Exit` 那个闭包本身驱动不了** —— 那要真跑一次 tauri app（红线内够不着）。
+    ///   ⇒ 臂里那几行由 [`the_exit_arm_hands_the_other_two_ways_to_the_seam`] 的零命中守卫看着。
+    ///   **那一行委托本身没有行为级判据，这是这条链上今天最后一跳** —— 登记，不假装钉住了。
+    /// - **收口点自己收干净了没有**是它们各自的活（`stop_local_backend` /
+    ///   [`stop_local_relay`] 的头注与判据），本条只买「收不收 · 收哪几个」。
     #[test]
     fn the_exit_path_covers_both_ways_of_starting_the_local_backend() {
+        use std::cell::Cell;
+        thread_local! {
+            static DETACHED: Cell<u32> = const { Cell::new(0) };
+            static RELAY: Cell<u32> = const { Cell::new(0) };
+        }
+        fn spy_detached() -> bool {
+            DETACHED.with(|c| c.set(c.get() + 1));
+            true
+        }
+        fn spy_relay() -> bool {
+            RELAY.with(|c| c.set(c.get() + 1));
+            true
+        }
+        fn counts() -> (u32, u32) {
+            (DETACHED.with(Cell::get), RELAY.with(Cell::get))
+        }
+        // ⚠ 归零写成闭包而不是 `fn`：`structural_scan` 那道闸把测试段里「无参无返回的
+        //   `fn 名()`」一律当成**忘了加 `#[test]` 的死判据**（08-11 全树逮到过三条）。
+        let zero = || {
+            DETACHED.with(|c| c.set(0));
+            RELAY.with(|c| c.set(0));
+        };
+
+        let spies = crate::ExitShutdownSinks {
+            detached: spy_detached,
+            relay: spy_relay,
+        };
+
+        // ── 支一：**勾了** ⇒ 那两条起法一个不漏 ────────────────────────
+        zero();
+        crate::shutdown_detached_ways_on_exit(true, spies);
+        assert_eq!(
+            counts(),
+            (1, 1),
+            "\n★★ **用户勾了「退出时结束它」，而那两条起法没有被逐个收掉。**\n\
+             这正是刀 `T13` 的形状：`if kill {{` → `if kill && !kill {{`，\n\
+             `stop_local_relay()` 那段文本一字不动 ⇒ 上一版那条数文本的判据照绿，\n\
+             而**中转还在那儿听着那个口**。\n\
+             读数是 (常驻, 中转)，期望 (1, 1)。"
+        );
+
+        // ── 支二：**没勾** ⇒ 一个都不收（上一版整支缺失）────────────────
+        zero();
+        crate::shutdown_detached_ways_on_exit(false, spies);
+        assert_eq!(
+            counts(),
+            (0, 0),
+            "\n★★ **用户没勾，而退出路上照样动手收了东西。**\n\
+             `P2s`（C8②③）逐字：缺省**不杀** —— 被监护的 daemon 是纯 stdio 子进程，\n\
+             monitor 一退它自己就死；无条件收掉等于把这个勾变成一个装饰品，\n\
+             方向与「说谎的开关」相反、同样是骗人。\n\
+             ⚠ 这一支上一版**根本没有**：它只数「窗口里有没有那几段文本」，\n\
+             而文本在不在与「没勾时会不会误收」毫无关系。\n\
+             读数是 (常驻, 中转)，期望 (0, 0)。"
+        );
+
+        // ── ③ 生产上插进这条缝的**就是那两个口**（按函数地址对拍，不按文本）──
+        let p = crate::PRODUCTION_EXIT_SHUTDOWN;
+        for (got, want, who) in [
+            (
+                p.detached as usize,
+                stop_detached_backend_on_exit as usize,
+                "常驻（脱离）那条起法的收口",
+            ),
+            (
+                p.relay as usize,
+                stop_relay_on_exit as usize,
+                "🔴 中转那条起法的收口（第三个进程）",
+            ),
+        ] {
+            assert_eq!(
+                got, want,
+                "`PRODUCTION_EXIT_SHUTDOWN` 里「{who}」插的不是那个函数 —— \n\
+                 上面两支量的是**替身**，这一格才是「生产上插进去的就是它」。\n\
+                 两条合起来才等于「退出时真的会收那两条起法」。"
+            );
+        }
+    }
+
+    /// ★★ 上一条的**射程边缘**：那两条起法在退出臂里只剩**一行委托**，由本条看着。
+    ///
+    /// # 为什么还需要它
+    ///
+    /// `RunEvent::Exit` 那个闭包驱动不了（要真跑一次 tauri app），
+    /// ⇒ 上一条量到的只有 [`crate::shutdown_detached_ways_on_exit`] 往里那一段。
+    /// **谁在那条臂里再就地收一样东西**（或者把委托那一行删掉），上一条一格都不动。
+    /// ⇒ 本条钉三件：
+    /// ① 那条臂里那行委托**恰好一处**；
+    /// ② `stop_local_backend(` / `stop_local_relay(` 在臂里**零命中**
+    ///    （有一个就说明有人又把它们搬回臂里就地写了 —— 那正是刀 `T13` 打穿的那一版）；
+    /// ③ 全文件里那条缝的**调用点恰好一个**（定义 1 + 调用 1 = 2 处），
+    ///    生产常量 `PRODUCTION_EXIT_SHUTDOWN` 同理 —— 第二个调用点意味着第二条退出路径。
+    ///
+    /// ⚠ **臂里那一处 `.stop()` 与那一处 `kill_on_exit(` 是刻意留着的**，不在禁针里：
+    /// 被监护那条起法必须留在臂里（理由与残留的洞见 `crate::ExitShutdownSinks` 头注），
+    /// 而写区外那条 `the_exit_path_really_stops_the_local_backend` 正是数它们的。
+    ///
+    /// ⚠ **它是文本判据，如实登记**：本条量的是「有没有人在这条臂里另起炉灶」，
+    /// 不是「退出时真的收了东西」（那是上一条的活）。
+    /// **绕过形态**：把收口点包一层别的名字再在臂里调 —— 本条零命中地绿。
+    /// ⇒ 那一形今天没实测，也没有第二道闸接住；重新裁定的落点就是这一栏。
+    ///
+    /// ⚠ 切法与上一版**同一个**（按花括号配平切退出臂的体），刻意不另造一种 ——
+    /// 两种切法迟早在同一段代码上给出两个答案。
+    #[test]
+    fn the_exit_arm_hands_the_other_two_ways_to_the_seam() {
         let prod = guard_core::production_code(include_str!("lib.rs"));
         // 反空真在 `braced_block` 里（切错了就红，别在一个空串上绿着）。
         // ⚠ 找不到 `RunEvent::Exit` 就是整段钩子没了 —— 实测：删掉它，全仓判据一条不红。
-        let body = braced_block(&prod, "RunEvent::Exit", 200, 6000);
+        let body = braced_block(&prod, "RunEvent::Exit", 200, 3000);
         assert_eq!(
-            body.matches("kill_on_exit(").count(),
+            body.matches("shutdown_detached_ways_on_exit(").count(),
             1,
-            "退出臂里读了不止一次策略 —— 两条路可能拿到**不同的答案**（中间它是可以被改的）"
+            "退出臂里那条委托不是恰好一处 —— 零处 = 常驻与中转两条起法退出时都不收\
+             （而上一条判据照绿，因为它量的是那条缝往里那一段）；多处 = 有第二条退出路径"
         );
         for (needle, why) in [
             (
-                ".stop()",
-                "被监护那条路的收口。没有它，勾了也不会有任何反应（`P2s` 那条判据钉的就是这一处）",
+                "stop_local_backend(",
+                "常驻那条路的收口应当住 `stop_detached_backend_on_exit`，由那条缝调",
             ),
             (
-                "is_detached()",
-                "常驻那条路的判别。没有它，下面那句要么不跑、要么把没脱离的也走一遍",
-            ),
-            (
-                "stop_local_backend()",
-                "常驻那条路的收口。没有它，用户勾了「退出时结束它」而**脱离的那个照样在跑** —— \
-                 一个说谎的开关",
+                "stop_local_relay(",
+                "★ `D2 阻-5`：中转那条收口应当住 `stop_relay_on_exit`。\
+                 它就地写在臂里的那一版，正是刀 `T13` 打穿的那一版",
             ),
         ] {
             assert!(
-                body.contains(needle),
-                "退出臂里找不到 `{needle}`。\n说法：{why}\n\
-                 ★ 本条要的是**两条起法都被收**，不是只证明新那条。"
+                !body.contains(needle),
+                "退出臂里出现了 `{needle}` —— 有人又开始在这条臂里就地收东西了。\n\
+                 说法：{why}\n\
+                 ★ 这两条起法只许经 `shutdown_detached_ways_on_exit(kill, PRODUCTION_EXIT_SHUTDOWN)` 走。\n\
+                 实得臂体：{body}"
             );
         }
-        // ★ 位置性：两条路都必须排在读策略**之后**（读在后面的那份只可能是打日志用的）。
-        let policy_at = body.find("kill_on_exit(").expect("上面刚数过");
-        for needle in [".stop()", "stop_local_backend()"] {
-            assert!(
-                body.find(needle).expect("上面刚断言过") > policy_at,
-                "`{needle}` 排在读策略之前 —— 那不是「按策略决定」，是「先动手再查开关」"
-            );
-        }
+        assert_eq!(
+            prod.matches("shutdown_detached_ways_on_exit(").count(),
+            2,
+            "`lib.rs` 生产段里 `shutdown_detached_ways_on_exit(` 不是 2 处（定义 1 + 调用点 1）—— \
+             多出来的那处是第二条退出路径，它不在上面那条行为判据的射程里"
+        );
+        assert_eq!(
+            prod.matches("PRODUCTION_EXIT_SHUTDOWN").count(),
+            2,
+            "`lib.rs` 生产段里 `PRODUCTION_EXIT_SHUTDOWN` 不是 2 处（定义 1 + 调用点 1）"
+        );
     }
 
     /// ★★ `KPY5`：**`detached` 的真相源只能是「起它的时候走没走那条路」。**
