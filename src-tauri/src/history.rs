@@ -1441,7 +1441,14 @@ fn launch_local(
     //    数文本的判据 —— `D6` 的刀 `Y1` 把它打穿了（见 `LaunchSink` 头注）。
     //    合成一处之后，这一行在 Linux 上就被
     //    `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched` 真驱动到。
-    let cmd = relay + &base;
+    //
+    // ★★ `K-P5b` `KP5BD3`：**身份那一句拼在中转前缀与命令体之间**，两个平台共用这一行。
+    //    位置不是随手挑的：拼在中转前缀**之前**会把
+    //    `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched` 那条
+    //    「送出去的那一串逐字节等于『中转前缀 + 基准串』」的相等断言改掉 ——
+    //    而那条断言正是 `D6` 刀 `Y1`（算出来没拼上去）今天唯一的牙。⇒ 拼在它后面，
+    //    身份那一段落在两趟的**基准串里**，那条断言逐字不动，两件事各自有各自的牙。
+    let cmd = relay + &launch_identity_prefix(action) + &base;
     // ★★ 送出去也走缝：判据装一个记账替身，量的是**真正交出去的那一串**，不是源码里的文本。
     (launch_sink().0)(&cmd, cwd)
 }
@@ -1730,6 +1737,78 @@ fn relay_prefix_for_launch(
         sid,
         (facts.windows)(),
     )
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-P5b`：**起会话方把这条会话的身份塞进下一跳进程的环境**（`L1` 这一处）
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// 身份落在进程环境里的那个变量名。**全树只有这一处写下这个字面串** ——
+/// `launcher_identity_registry` 那张棘轮表数着它（多一处 ⇒ 红）。
+///
+/// # 它是什么、不是什么
+///
+/// 它是**起会话方现铸的一个 token**，不是 sid。`K-P5 §3 三` 现打过一条横贯 5 个起会话方的
+/// 结构性事实：**没有一处在起「新」会话时知道 sid**（sid 是 claude 自己起来之后才写进 pidfile 的）
+/// ⇒ 身份 token 只能是起会话方现铸的 nonce，resume 那一支可以拿 sid 当那个 nonce。
+///
+/// ⚠ **不许把「有没有 tmux」或「有没有窗口标题」当它能不能落的判据**（`KP5BD1` 逐字）——
+/// 本变量与那两样东西**一格关系都没有**：它是一句 `export`，在哪个终端里、有没有 tmux、
+/// 窗口标题写了什么，都不改变它落不落。
+pub(crate) const LAUNCH_ID_VAR: &str = "CCM_LAUNCH_ID";
+
+/// 这一次拉起的身份 token。**铸法只有一份** ——
+/// 直接调 [`crate::backend::control::payload::route_key_for_session`]，本文件不另写一条规则。
+///
+/// # 为什么是「共用那一份」而不是「两侧各写一份再对拍」〔`KP5BD1`，照 `K-H2c` 买到的形状〕
+///
+/// 那一件的读数逐字是「漂开这件事在**结构上不可表示**」。两侧各写一份、再用判据焊住，
+/// 买到的只是「今天这几条输入两侧同答」；共用一份实现，**漂开根本没有位置可以发生**。
+/// ⇒ 这里刻意**不**写 `match action { Resume(sid) => sid.clone(), New => Uuid::new_v4() }`
+///    这种「看起来一样」的第二份 —— 它与那一份的差别只在**白名单回落**那一格
+///    （sid 过不了 `relay_segment_is_safe` 时那一份回落到 nonce），而那一格恰恰是
+///    「本条真的调了那一份铸法吗」唯一能被判据翻出来的一维。
+///
+/// # ⚠ 它欠的一笔账（如实登记，别读成缺陷也别读成没有）
+///
+/// **新开**会话时，中转路由键与本 token 是**两个不同的 nonce**（同一份铸法被调了两次）——
+/// 中转那一次在 `payload::relay_injection_for` 里面，本文件够不着它算好的值。
+/// 今天不构成缺陷：`mint_route_key` 头注现打登记过「route key 对路由完全惰性、tee 今天零消费者」，
+/// 而身份 token 与它**不共享任何消费者**。要它们相等得改 `payload.rs`（本拍只许读它）。
+fn launch_identity_token(action: &LocalPsAction) -> String {
+    let sid = match action {
+        LocalPsAction::Resume(sid) => Some(sid.as_str()),
+        LocalPsAction::New => None,
+    };
+    crate::backend::control::payload::route_key_for_session(sid)
+}
+
+/// 把 token 渲成「设进下一跳进程环境」的那一句前缀。**纯函数**（平台由调用方给）。
+///
+/// 形状照 `payload::relay_env_prefix_posix` / `relay_env_prefix_ps` 那一对 ——
+/// 两个平台的语法真的不同，这不是「两份实现」，是同一件事的两种**书写法**；
+/// 决定用哪一种的那一格只有一处（下面 [`launch_identity_prefix`] 里那个 `windows`）。
+fn launch_identity_env_prefix(token: &str, windows: bool) -> String {
+    if windows {
+        format!("$env:{LAUNCH_ID_VAR}='{token}'; ")
+    } else {
+        format!(
+            "export {LAUNCH_ID_VAR}={}; ",
+            shell_quote_core::posix_quote(token)
+        )
+    }
+}
+
+/// 上面两条的**接线半**：铸一个 token，按这台机器是不是 Windows 渲成一句前缀。
+///
+/// ⚠ 平台那一格**走 [`relay_facts`] 那条缝取**，不写 `cfg!(windows)`：
+/// `D6` 的刀 `Xb` 现打过，写在调用点上的 `cfg!(windows)` 是个**常量表达式**，
+/// 判据没有任何办法让它变 ⇒ 「Windows 上渲成 POSIX 形态」这一形全绿。
+/// 走缝之后它成了可翻的一维（判据喂 `|| true` 就该拿到 PowerShell 形态）。
+/// ⚠ 这里**刻意不提 `platform_is_windows` 这个裸标识符** —— `payload.rs` 那道人群闸
+/// 数的正是它在生产段里出现几处（定义 1 + 缝里 1），提一次就多一处。
+fn launch_identity_prefix(action: &LocalPsAction) -> String {
+    launch_identity_env_prefix(&launch_identity_token(action), (relay_facts().windows)())
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -4782,6 +4861,207 @@ mod tests {
         assert_ne!(
             new_sent, resumed_9,
             "新开与 resume 送出去的是同一串 —— 「哪一次拉起」这一维成了常量"
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // 🔴 `K-P5b` `KP5BD1`：**起会话方把身份塞进了下一跳的进程环境**
+    // ═════════════════════════════════════════════════════════════════════════
+
+    /// 从送出去的那一串里，把身份那一段（到第一个 `; ` 为止）抠出来。
+    ///
+    /// ⚠ 用**变量名**定位，不用位置定位：位置是会变的（今天身份那一段前面还有中转前缀），
+    /// 而「哪一段是身份」这件事只有变量名说得准。
+    fn identity_segment(cmd: &str) -> Option<&str> {
+        let i = cmd.find(LAUNCH_ID_VAR)?;
+        let seg = &cmd[i..];
+        Some(&seg[..seg.find("; ").unwrap_or(seg.len())])
+    }
+
+    /// ★★★ `KP5BD1`：`launch_local` **真正交出去的那一串**里，身份被塞进了进程环境。
+    ///
+    /// # 它量的是行为，不是文本（这条纪律是 `D6` 刀 `Y1` 花一整轮买回来的）
+    ///
+    /// 量文本那一形已经在本文件里被打穿过一次：`relay_prefix_for_launch` 照样被调、
+    /// 答案照样对，而拼装那一行把它扔了 ⇒ 三个文本锚点一处不少、全量门禁四个数与干净树逐字相同。
+    /// ⇒ 本条一个字节的源码都不扫，只看 [`LaunchSink`] 那条缝上**真正交出去的那个字符串**。
+    ///
+    /// # 五格，每格能被哪一刀翻掉
+    ///
+    /// | 格 | 断的是什么 | 翻掉它的形状 |
+    /// |---|---|---|
+    /// | ① | 送出去的那一串里**有** `CCM_LAUNCH_ID=<sid>` 这一句 | 把 `+ &launch_identity_prefix(action)` 从拼装那一行删掉（刀 `Y1` 同形） |
+    /// | ② | 换一个 sid ⇒ 那一段跟着变 | `Resume(_) => Some("sid-1")`（身份写死） |
+    /// | ③ | **新开**那一支也有身份，且两趟 token 不同 | `New => String::new()`（只给 resume 落身份 —— 而 `K-P5 §3 三` 现打的正是「新开那一支没有 sid」，它才是本件的正主） |
+    /// | ④ | **铸法是共用那一份**：喂一个过不了白名单的 sid ⇒ token **不是**那个 sid | 在本文件里另写一份 `match { Resume(s) => s.clone(), … }`（第二份铸法，白名单回落那一格丢了） |
+    /// | ⑤ | 平台那一维翻得动：`windows = true` ⇒ 渲成 `$env:` 形态 | 把 `windows` 那一格写死（`D6` 刀 `Xb` 同形，生产后果是 Windows 上塞出一句 POSIX `export`） |
+    ///
+    /// # ⚠ 它买不到什么（如实写，别读宽）
+    ///
+    /// - **走 ccm 容器那一支身份到不到得了 agent 进程**：到不了。本条喂 `tmux_name = None`
+    ///   ⇒ 走的是回落那条路（渲染器早退，见 [`NO_TMUX_NAME`]）。容器那一支上外侧这句 `export`
+    ///   会在 tmux 边界被吃掉（与 `K-H2b` 给 `ANTHROPIC_BASE_URL` 踩过的**同一个坑**，
+    ///   那一次的修法是在 `shared/ccm` 的容器载荷内侧补一句转发）——
+    ///   `shared/ccm` **本拍是红线文件**，那一句没补 ⇒ 这一格**今天是个洞**，
+    ///   登记在 `launcher_identity_registry` 的 `L1` 那一行里，别读成「已经全覆盖」。
+    /// - **读的那一侧**：daemon 从 `/proc/<pid>/environ` 读回来、经 wire 帧发出去 —— 本拍**没有做**
+    ///   （面在 `remote-daemon-proto/`，不在本拍写区）。⇒ 今天这个变量**有人写、没人读**。
+    /// - **Windows 上的运行时行为**：一行都没量（这台机器是 Linux）。⑤ 买到的只是
+    ///   「平台那一格翻得动、渲出来的形态跟着变」，不是「PowerShell 里真的设上了」。
+    #[test]
+    fn the_launcher_plants_the_session_identity_into_the_process_environment() {
+        use std::cell::{Cell, RefCell};
+        thread_local! {
+            static SENT: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+            static WINDOWS_ANSWER: Cell<bool> = const { Cell::new(false) };
+        }
+        fn recorder(cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
+            SENT.with(|v| v.borrow_mut().push(cmd.to_string()));
+            Ok(())
+        }
+        fn no_rows() -> Vec<String> {
+            Vec::new()
+        }
+        fn relay_up() -> bool {
+            true
+        }
+        fn spy_windows() -> bool {
+            WINDOWS_ANSWER.with(Cell::get)
+        }
+        fn last_sent() -> String {
+            SENT.with(|v| v.borrow().last().cloned().expect("这一趟什么都没送出去"))
+        }
+
+        let _sink = override_launch_sink(LaunchSink(recorder));
+        // 表里一行都没有 ⇒ 中转前缀恒空 ⇒ 本条量到的只有身份那一段（两件事分开量）。
+        let _facts = override_relay_facts(RelayFactSources {
+            rows: no_rows,
+            running: relay_up,
+            windows: spy_windows,
+        });
+        let account = LaunchAccount::Named {
+            config_dir: "/h/.claude-accts/acct-a".to_string(),
+        };
+
+        // ① resume：身份就是这条会话的 sid，逐字节。
+        let sid = "0198f0d2-1111-4222-8333-444455556666";
+        launch_local(
+            &LocalPsAction::Resume(sid.to_string()),
+            None,
+            None,
+            Some(&account),
+            None,
+        )
+        .expect("这一趟不该失败");
+        let first = last_sent();
+        assert!(
+            !first.contains("ANTHROPIC_BASE_URL"),
+            "表里一行都没有，却混进了中转前缀 —— 本条的替身没装上，下面几格量的不是身份：{first:?}"
+        );
+        let want_first = format!("{LAUNCH_ID_VAR}='{sid}'");
+        assert_eq!(
+            identity_segment(&first),
+            Some(want_first.as_str()),
+            "\n★★ **起会话方没把身份塞进进程环境** —— 刀的形状是把\n\
+             `+ &launch_identity_prefix(action)` 从拼装那一行删掉（`D6` 刀 `Y1` 同形：\n\
+             token 照样铸得出来，只是没拼上去）。\n\
+             生产后果：起出来的那条会话**在环境里说不出自己是谁**，\n\
+             读的那一侧只能退回去扫窗口标题 —— 那正是本件要消灭的东西。\n\
+             实得整串 = {first:?}"
+        );
+
+        // ② 换一个 sid ⇒ 身份那一段跟着变（不是常量）。
+        let sid9 = "0198f0d2-9999-4222-8333-444455556666";
+        launch_local(
+            &LocalPsAction::Resume(sid9.to_string()),
+            None,
+            None,
+            Some(&account),
+            None,
+        )
+        .expect("这一趟不该失败");
+        let second = last_sent();
+        let want_second = format!("{LAUNCH_ID_VAR}='{sid9}'");
+        assert_eq!(
+            identity_segment(&second),
+            Some(want_second.as_str()),
+            "换一条会话，环境里的身份没跟着变 —— 「这条会话是谁」成了常量：{second:?}"
+        );
+
+        // ③ **新开**那一支也落身份，而且两趟拿到的是两个不同的 nonce。
+        //   `K-P5 §3 三` 现打：5 个起会话方**没有一处**在起新会话时知道 sid
+        //   ⇒ 新开这一支才是本件的正主，它落不落身份不能靠 resume 那一支代言。
+        launch_local(&LocalPsAction::New, None, None, Some(&account), None)
+            .expect("新开这一趟不该失败");
+        let new_a = identity_segment(&last_sent())
+            .expect("新开那一支送出去的串里没有身份 —— `New => String::new()` 那一刀的形状")
+            .to_string();
+        launch_local(&LocalPsAction::New, None, None, Some(&account), None)
+            .expect("新开这一趟不该失败");
+        let new_b = identity_segment(&last_sent()).expect("同上").to_string();
+        assert_ne!(
+            new_a, new_b,
+            "两次新开拿到同一个身份 —— nonce 成了常量，两条会话在环境里说自己是同一个人"
+        );
+        assert!(
+            !new_a.contains(sid) && !new_a.contains(sid9),
+            "新开那一支把上一条 resume 的 sid 当成了自己的身份：{new_a:?}"
+        );
+
+        // ④ **铸法是共用那一份**：喂一个过不了 `relay_segment_is_safe` 白名单的 sid，
+        //   共用那份铸法会回落到 nonce；本文件里另写的第二份不会。
+        //   ⇒ 这一格是「有没有真的调那一份」唯一翻得出来的一维。
+        //
+        //   ⚠ 夹具**必须同时满足两件事**，第一版选错了（现打修的）：
+        //   ① 过得了 `local_launch_choice` 那道 sid 校验（字母数字 + `-` + `_`，**无长度上限**）——
+        //      带 `/` 的串在那一关就被拒了，整趟 `launch_local` 回 `Err`，
+        //      本条量到的是「拉起失败」而不是「身份铸法」；
+        //   ② 过不了 `relay_segment_is_safe`（同一套字符集，但**多一条 ≤128 字节**）。
+        //   ⇒ 两者的差集今天恰好只有**长度**这一维 ⇒ 用一个 129 字节的纯字母 sid。
+        let bad = "a".repeat(129);
+        let bad = bad.as_str();
+        assert!(
+            !crate::backend::control::payload::relay_segment_is_safe(bad),
+            "夹具选错了：这个 sid 过得了白名单 ⇒ 下面那条断言是空真"
+        );
+        launch_local(
+            &LocalPsAction::Resume(bad.to_string()),
+            None,
+            None,
+            Some(&account),
+            None,
+        )
+        .expect("这一趟不该失败");
+        let dirty = identity_segment(&last_sent()).expect("这一趟没有身份").to_string();
+        assert!(
+            !dirty.contains(bad),
+            "\n★★ **本文件自己又铸了一份身份** —— 一个过不了白名单的 sid 被原样当成了身份。\n\
+             共用的那份铸法（`payload::route_key_for_session`）在这一格会回落到 nonce；\n\
+             会这样答的只有第二份实现。⇒ `KP5BD1`「铸法只有一份」当场破。实得 = {dirty:?}"
+        );
+
+        // ⑤ 平台那一维翻得动：`windows = true` ⇒ 渲成 PowerShell 形态。
+        //   写死那一格的生产后果是 Windows 上往 PowerShell 串里塞一句 POSIX `export`
+        //   ⇒ 身份注入整个失效（`D6` 刀 `Xb` 在中转那一格上的同一形）。
+        WINDOWS_ANSWER.with(|c| c.set(true));
+        launch_local(
+            &LocalPsAction::Resume(sid.to_string()),
+            None,
+            None,
+            Some(&account),
+            None,
+        )
+        .expect("这一趟不该失败");
+        let ps = last_sent();
+        assert!(
+            ps.contains(&format!("$env:{LAUNCH_ID_VAR}='{sid}'; ")),
+            "\n把「这台机是不是 Windows」翻成 true，身份那一句还是 POSIX 形态 ——\n\
+             那一格是个常量，Windows 上会往 PowerShell 串里塞一句 `export`。实得 = {ps:?}"
+        );
+        // 反空真：POSIX 那一趟本来就该拿不到这个形状（否则上面那条恒真）。
+        assert!(
+            !first.contains("$env:"),
+            "POSIX 那一趟也渲出了 `$env:` —— 上面那条断言是恒真的"
         );
     }
 
