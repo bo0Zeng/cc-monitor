@@ -3556,6 +3556,173 @@ head -n 1 <&3
         );
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // ★★★ `K-H2c` `KH2C2`：**写侧产出的那份文件**能让那个账号的会话走到中转
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// 照 monitor 写侧那两步造一份凭据文件的内容。
+    ///
+    /// # ★★ 它为什么不手写 JSON（这一格是本条判据的地基）
+    ///
+    /// `KH2C2` 要证的是「**写侧产出的那份文件**能让那个账号的会话走到中转」。
+    /// 手写一份 JSON 只能证「**我以为写侧会产出的那个形状**能走通」——
+    /// 写侧哪天换个形状（换个字段名 / 换一层嵌套 / 换个 id），这条判据**照绿**。
+    ///
+    /// ⇒ 这里调的是 `creds_store::write_key_at` 生产段里逐字那两个纯函数
+    /// （`store::merge_account_key` + `store::to_pretty_json`），两侧因此**在 `creds-core`
+    /// 这个共同祖先上会合**：daemon 单向依赖 `src-tauri/crates/*`，够得着它们。
+    ///
+    /// # ⚠⚠ 它**买不到**什么 —— 逐字落在这里，别读宽〔PM `裁二`，09-02〕
+    ///
+    /// > `KH2C2` 要读成「**写侧产出的那份文件**能让那个账号的会话走到中转」，
+    /// > **不是**「点了保存按钮之后」。那一跳归 `KH2C1`。
+    ///
+    /// ⇒ **两条 DoD 合起来才是那条链**，各自都别读宽。这里没有被证到的两跳是：
+    /// ① 界面那条 IPC 命令真的被点出去（`KH2C1` 前端那两堵墙，住 `accounts-section` 那一侧）；
+    /// ② `write_key_at` 里**写盘那一段**（tmp / 原子替换 / 收窄）——
+    ///    本条只走它算内容的那两步，写盘由 monitor 侧那几条既有判据分管。
+    ///
+    /// ⚠ 另有一跳**本来就不归本条**：id 是怎么从 `configDir` 推出来的
+    /// （`history::relay_account_id_of_dir`，住 monitor，daemon 够不着）——
+    /// 那一格由 `what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for` 钉。
+    /// **本条从「已经有了一个 id」那一刻接手。**
+    #[cfg(unix)]
+    fn creds_text_the_write_side_would_produce(rows: &[(&str, &str)]) -> String {
+        let mut doc = serde_json::Map::new();
+        for (id, key) in rows {
+            // 一行一次，正是界面上「保存」按一次的那一步（同一个函数、同一个顺序）。
+            doc = creds_core::store::merge_account_key(&doc, id, &SecretKey::new(*key));
+        }
+        creds_core::store::to_pretty_json(&doc)
+    }
+
+    /// ★★★ `KH2C2`。判定**不是**「那份文件里有那一行」——
+    /// 是「假上游真的收到了那一发，且它带的 `Authorization` 是**那个账号那一行**的 key」。
+    ///
+    /// # 这一趟真实到什么程度（逐段说清，别读宽）
+    ///
+    /// | 段 | 真的假的 |
+    /// |---|---|
+    /// | 那份凭据文件 | **写侧那两步真的算出来的**（`merge_account_key` + `to_pretty_json`），不是手写 JSON |
+    /// | 起会话那条命令串 | **真的 shell**（`bash -c '<env 前缀><launcher>'`），与 `KH2B1` 同一套 |
+    /// | env | **真的**（子进程自己从环境里读） |
+    /// | 中转 | **真子进程**（`spawn_relay_child_with_creds`：真 `Command::new(exe)` · 端口 0 从 stderr 读回） |
+    /// | 上游 | **真的** TCP 假上游 |
+    /// | agent | **桩**（红线：绝不起真 claude） |
+    ///
+    /// ⚠ 红线的例外口径逐字〔PM 09-02〕：**由测试自己拉起、跑在沙箱容器内、端口 0、
+    /// 用完即杀的中转子进程，不算「起真 daemon」**。它**不覆盖**那个会碰 tmux 的 daemon ·
+    /// 在宿主上拉任何进程 · 手工起 daemon 冒烟。
+    #[cfg(unix)]
+    #[test]
+    fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upstream() {
+        let up = spawn_fake_upstream(None);
+        let dir = tmpdir("kh2c2");
+        let creds = dir.join("relay-credentials.json");
+
+        // ★ 两条 —— 一条量不出「拿 A 的 key 发 B 的请求」，那是本族最坏的失效形态。
+        //   id 取中性名：断言里用的是 key 那个值，不是目录名（`brief` 12 那条）。
+        std::fs::write(
+            &creds,
+            creds_text_the_write_side_would_produce(&[("row-one", "KEY-ONE"), ("row-two", "KEY-TWO")]),
+        )
+        .expect("写凭据夹具");
+        // 采集面自检：写侧那两步**真的产出了一份能解析的、带那两行的文件**。
+        // 切歪了 / 产出空的时候，下面那几条会红在「404」上而指不出原因。
+        // ⚠ 这里**按结构判，不按子串判**：`needle_anchor_registry` 那条递减棘轮逐字禁
+        //   「语料变量上的裸 `contains`」（本轮实测撞过一次：35 > 上限 33），
+        //   而它禁的理由与这里要的东西正好同向 —— 子串在 `{"api_key":"…"}` 换成
+        //   任何别的字段名时照样命中，那就不是「写侧产出的形状」了。
+        let on_disk: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&creds).expect("读回"))
+                .expect("写侧那两步产出的不是合法 JSON —— 夹具坏了，下面全是空真");
+        assert_eq!(
+            on_disk[creds_core::store::ACCOUNTS_FIELD]["row-one"][creds_core::store::KEY_FIELD],
+            "KEY-ONE",
+            "写侧那两步产出的东西里没有那一行 —— 夹具坏了，下面全是空真：{on_disk}"
+        );
+
+        let relay = spawn_relay_child_with_creds(up.addr, &creds);
+        let stub = dir.join("stub-launcher.sh");
+        std::fs::write(&stub, STUB_LAUNCHER).expect("写桩启动器");
+
+        // 起两发：同一条起会话路径，**只有账号段不同**。
+        for acct in ["row-one", "row-two"] {
+            let url = format!(
+                "http://127.0.0.1:{}/s/claude-code/{acct}/k-0123456789abcdef",
+                relay.addr.port()
+            );
+            let out = std::process::Command::new("bash")
+                .arg("-c")
+                .arg(format!(
+                    "export ANTHROPIC_BASE_URL='{url}'; bash {}",
+                    stub.to_string_lossy()
+                ))
+                .output()
+                .expect("起桩启动器");
+            let so = String::from_utf8_lossy(&out.stdout);
+            let se = String::from_utf8_lossy(&out.stderr);
+            assert!(
+                so.starts_with("HTTP/1.1 200"),
+                "写侧产出的那份文件里明明有 `{acct}` 这一行，这一发却没走完一条转发：\
+                 {so:?} / {se:?}\n中转 stderr：{:?}",
+                relay.err()
+            );
+        }
+
+        // ★ 正题①：假上游**真的收到了两发**，路由键那几段被剥掉了。
+        let seen = up.seen.lock().expect("lock").clone();
+        assert_eq!(
+            seen.len(),
+            2,
+            "上游没收到两发 —— 「配完之后那条链真的通」这句话在这一趟里就是假的：{seen:?}"
+        );
+        for line in &seen {
+            assert_eq!(line, "POST /v1/messages HTTP/1.1 auth=true", "实得：{seen:?}");
+        }
+        // ★ 正题②：**两个账号各拿各的 key**。
+        let auths = up.auth_values.lock().expect("lock").clone();
+        assert_eq!(
+            auths,
+            vec![
+                "Authorization: Bearer KEY-ONE".to_string(),
+                "Authorization: Bearer KEY-TWO".to_string(),
+            ],
+            "两发拿到的 key 不是各自那一行的 —— 「拿 A 的 key 发 B 的请求，而两边都显示成功」\n\
+             正是 `KH2` 逐字点名的最坏那一形。实得：{auths:?}"
+        );
+
+        // ★ 正题③（非空对照 + `KL7` 第 2 条）：写侧**没写过**的那个账号 ⇒ 404，
+        //   且一个字节不发上游。⇒ 上面那两发的 200 不是「什么都能过」。
+        //   ⚠ 这一条同时钉住 `KH2C3` 在**端到端**那一面：写侧不再落 `default` 那一行
+        //   ⇒ 一个没配过的账号段**不会**被那一行顶上。
+        for miss in ["row-three", creds_core::store::LEGACY_ACCOUNT_ID] {
+            let url = format!(
+                "http://127.0.0.1:{}/s/claude-code/{miss}/k-0123456789abcdef",
+                relay.addr.port()
+            );
+            let out = std::process::Command::new("bash")
+                .arg("-c")
+                .arg(format!(
+                    "export ANTHROPIC_BASE_URL='{url}'; bash {}",
+                    stub.to_string_lossy()
+                ))
+                .output()
+                .expect("起桩启动器");
+            let so = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                so.starts_with("HTTP/1.1 404"),
+                "写侧没写过的账号段 `{miss}` 没有回 404：{so:?}"
+            );
+        }
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            2,
+            "查不到的那两发**漏到上游去了** —— 那是 `KL7` 第 2 条逐字禁的回落"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// ★★★ `K-H2b` `D1 阻-2`：**配完 key 不用重启中转** —— 那张表不是启动快照。
     ///
     /// # 它治的是什么
