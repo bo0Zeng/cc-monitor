@@ -1,5 +1,27 @@
 //! U4a（2026-08-01）：**非目标平台的 fallback 分支，不许凭空返回一个「成功」值。**
 //!
+//! # `K-G6` `KG62`：性质与人群，两行逐字（**各自只许有一句**，`readonly_guard::g6_scope_pins` 钉着）
+//!
+//! - **它守的性质是**：非目标平台的 fallback 分支，不许凭空返回一个看起来无害的「成功」值 —— 答不上来的问题要诚实地说不知道（`false` / `None` / `unimplemented!()`）。
+//! - **它扫的人群是**：`src/platform/` 递归全部 `.rs`（跳过自身）的生产段里，每一个非主分支的平台 cfg 属性**紧跟着的那一个 item 或块**，判红条件只有两条：块体里出现裸 `true` · 块的**最后一个表达式**以 `Some(` / `Ok(` 打头。
+//!
+//! ⚠ **这两行今天双向同时错开，而且「它们是同一件事」钉不住** —— 三道护栏里最严重的一道，如实登记：
+//! 人群比性质**大**（真正的平台实现也在人群里，而且它是 [`tests::the_platform_blocks_are_still_a_mixed_population`] 那条断言的样本）；
+//! 人群比性质**小**（性质说的是「非目标平台的 fallback 分支」，人群只有 `platform/` 这一个目录）；
+//! 而两者之间**没有可机检的桥**：性质是「诚实」这个语义判断，人群是「那个块的最后一行长什么样」这个文本形状。
+//! ⇒ **今天靠纪律。** 它今天真能拦住的形状全表、以及**两条**今天就通过了的反例，在 [`g6_reach`]。
+//!
+//! # 〔`K-G6` `KG61`〕本护栏的定性：**今天既不构成阻塞，也不构成保护**
+//!
+//! - **不构成阻塞**：惯用写法（`#[cfg(平台)] mod x;` + 独立文件）整文件绕过；返回**计算值**的
+//!   真实现也通过 —— `platform/paths.rs` 那个 Windows 分支今天就在人群里、就通过。
+//! - **不构成保护**：它要挡的那个形状（非目标平台的回退块、块体一个裸 `true`）
+//!   今天就在 `plugin/discover.rs` 活着，而人群够不着它。
+//! - **它真守住的那一点点是**：`platform/` 这一层里、**内联写法**的、**字面**乐观值。
+//!
+//! 🔴 两条反例**分开列、不合成一条**：一条证「不构成阻塞」，一条证「不构成保护」——
+//! 合成一条会让下一个人以为**一条反例就够**，而那正是本轮要治的病。
+//!
 //! # 这条护栏从一个真实的地雷来
 //!
 //! `pid_alive` 的非 Linux 分支曾经是：
@@ -89,7 +111,7 @@ mod tests {
     const PRIMARY_CFGS: &[&str] = &["#[cfg(target_os = \"linux\")]", "#[cfg(unix)]"];
 
     /// 一份源码里全部**平台**条件编译属性（`#[cfg(test)]` 之类不算）。
-    fn platform_cfgs(code: &str) -> Vec<String> {
+    pub(super) fn platform_cfgs(code: &str) -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
         let mut from = 0usize;
         while let Some(rel) = code[from..].find("#[cfg(") {
@@ -115,7 +137,7 @@ mod tests {
         out
     }
 
-    fn platform_sources() -> Vec<(String, String)> {
+    pub(super) fn platform_sources() -> Vec<(String, String)> {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join("platform");
@@ -171,7 +193,7 @@ mod tests {
     ///   （它自己头注表里标为「最坏」的选项），没有任何门禁会响。
     ///
     /// ⇒ 现在：先看 cfg 之后**先遇到 `{` 还是先遇到 `;`**。先 `;` ⇒ 是 item 声明，取到 `;` 为止。
-    fn block_after(code: &str, start: usize) -> Option<&str> {
+    pub(super) fn block_after(code: &str, start: usize) -> Option<&str> {
         let tail = &code[start..];
         let brace = tail.find('{');
         let semi = tail.find(';');
@@ -225,6 +247,61 @@ mod tests {
         }
     }
 
+    /// **判红本体**：一个 cfg 块体今天会不会被判成「凭空造了一个成功值」。
+    ///
+    /// 返回命中的**说法**（可能同时命中两条）。
+    ///
+    /// # 〔`K-G6`〕为什么从判据体里抽出来
+    ///
+    /// `KG61` 要交一张「它今天真能拦住的形状全表」和一条「形状相同却通过了的反例」，
+    /// 两者都要**喂给判据本体**。抽成纯函数是为了让那些一刀读数量到**被测者实际用的那个对象** ——
+    /// 本文件下面那段自检逐字记过同一条纪律：量一个「同样构造」的副本，
+    /// 副本一旦与本体分叉，红灯就开始骗人。**抽取是纯重构，两条判红条件一个字没动。**
+    ///
+    /// - 裸 `true` —— 用词边界避开 `true_x` / `is_true` 之类，**全体扫**。
+    /// - 〔audit-0805 08-06〕`Some(..)` / `Ok(..)` 这两个 —— 本模块头注把它们与 `true`
+    ///   并列为「最危险的那几个」，而检查**只查了 `true`**。
+    ///   实测：把 `proc.rs` 非 Linux 那支的 `None` 改成 `Some(0)`，本守卫 3 passed 全绿。
+    ///   那个 0 不是无害的：判活表按 `captured != current` 判 PID 复用，
+    ///   一个编造的 `0` 会让活着的进程被判成「已复用 ⇒ 已死」——正是误归档。
+    ///   ⚠ 只看**块体的最后一个表达式**（块的值），不像 `true` 那样全体扫：
+    ///   体内的 `if let Some(x)` 是合法解构，全体扫会把它误伤成「凭空造值」。
+    /// 块体的**最后一个有效表达式行**（= 块的值）。
+    ///
+    /// ⚠ **它不是一份「剥注释的 transformer」，别把它读成那个**：
+    /// 它不产出一份剥干净的副本，它只回答「这个块的值那一行长什么样」，
+    /// 跳过 `//` 行只是为了**不把一句注释当成块的值**
+    /// —— 与 `structural_scan::TRANSFORMERS` 里那几条逐字登记为「不是剥法」的同形
+    /// （`refusal_variants` 逐字：「跳过 doc 行只是为了不把注释当变体」）。
+    /// ⇒ 因此它返回**借用的一行**而不是 `String`/`Vec`，
+    /// 也因此不该、也确实不会被那条判据当成第二份剥法收走。
+    pub(super) fn block_tail(body: &str) -> &str {
+        body.lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with("//") && *l != "{" && *l != "}")
+            .next_back()
+            .unwrap_or("")
+            .trim_end_matches([';', '}'])
+            .trim()
+    }
+
+    pub(super) fn fabricates(body: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let bare_true = body
+            .split(|c: char| !c.is_alphanumeric() && c != '_')
+            .any(|t| t == "true");
+        if bare_true {
+            out.push("块体里出现裸 `true`".to_string());
+        }
+        let tail = block_tail(body);
+        if tail.starts_with("Some(") || tail.starts_with("Ok(") {
+            out.push(format!(
+                "块体最后一个表达式是 `{tail}` —— 凭空造了一个「成功」值"
+            ));
+        }
+        out
+    }
+
     #[test]
     fn fallback_branches_must_not_fabricate_success() {
         let files = platform_sources();
@@ -255,35 +332,8 @@ mod tests {
                     let i = from + rel;
                     if let Some(body) = block_after(code, i + cfg.len()) {
                         checked += 1;
-                        // 裸 `true` —— 用词边界避开 `true_x` / `is_true` 之类。
-                        let fabricates = body
-                            .split(|c: char| !c.is_alphanumeric() && c != '_')
-                            .any(|t| t == "true");
-                        if fabricates {
-                            bad.push(format!("{name} 的 `{cfg}` 块体里出现裸 `true`"));
-                        }
-                        // 〔audit-0805 08-06〕`Some(..)` / `Ok(..)` 这两个 —— 本模块头注把它们
-                        // 与 `true` 并列为「最危险的那几个」，而检查**只查了 `true`**。
-                        // 实测：把 `proc.rs` 非 Linux 那支的 `None` 改成 `Some(0)`，本守卫 3 passed 全绿。
-                        // 那个 0 不是无害的：判活表按 `captured != current` 判 PID 复用，
-                        // 一个编造的 `0` 会让活着的进程被判成「已复用 ⇒ 已死」——正是误归档。
-                        //
-                        // ⚠ 只看**块体的最后一个表达式**（块的值），不像 `true` 那样全体扫：
-                        // 体内的 `if let Some(x)` 是合法解构，全体扫会把它误伤成「凭空造值」。
-                        let tail = body
-                            .lines()
-                            .map(str::trim)
-                            .filter(|l| {
-                                !l.is_empty() && !l.starts_with("//") && *l != "{" && *l != "}"
-                            })
-                            .next_back()
-                            .unwrap_or("")
-                            .trim_end_matches([';', '}'])
-                            .trim();
-                        if tail.starts_with("Some(") || tail.starts_with("Ok(") {
-                            bad.push(format!(
-                                "{name} 的 `{cfg}` 块体最后一个表达式是 `{tail}` —— 凭空造了一个「成功」值"
-                            ));
+                        for what in fabricates(body) {
+                            bad.push(format!("{name} 的 `{cfg}` {what}"));
                         }
                     }
                     from = i + cfg.len();
@@ -399,5 +449,274 @@ mod tests {
              （枚举每个块、要求它的值是 `false`/`None`/`unimplemented!()` 之一）——\n\
              那样「等价改写绕得过」那个洞会一起消失。请回来改，并删掉本条。"
         );
+    }
+}
+
+/// 〔`K-G6` `KG61`〕**本护栏今天真能拦住的形状全表 + 两条今天就通过了的反例。**
+///
+/// # 两条反例**分开列**，因为它们证的不是同一件事（`§0c 裁三`）
+///
+/// - **甲** 证「**不构成阻塞**」：一个**真的** Windows 实现今天就在人群里、就通过 ——
+///   所以「在 `platform/` 里写真 Windows 实现会当场红」这句话是假的。
+/// - **乙** 证「**不构成保护**」：本护栏来历里那个地雷的**逐字同形**今天在生产段活着，
+///   而人群够不着它。
+///
+/// 🔴 合成一条会让下一个人以为**一条反例就够** —— 而那正是本轮要治的病。
+#[cfg(test)]
+mod g6_reach {
+    use super::tests::{block_after, fabricates, platform_cfgs, platform_sources};
+    use crate::guard_support::production_code;
+
+    /// 取某个 cfg 属性后面那个块（合成样本与真语料共用同一条取块逻辑）。
+    fn block_of(code: &str, cfg: &str) -> String {
+        let i = code
+            .find(cfg)
+            .unwrap_or_else(|| panic!("语料里找不到 `{cfg}` —— 反例的住址变了，回来重判"));
+        block_after(code, i + cfg.len())
+            .unwrap_or_else(|| panic!("`{cfg}` 后面取不到块 —— `block_after` 认不了这种 item 形状"))
+            .to_string()
+    }
+
+    /// 全表①：它今天**真能拦住**的形状。`(形状, 样本块体)`
+    const CATCHABLE: &[(&str, &str)] = &[
+        ("块体里出现裸 `true`（全体扫，带词边界）", "{ let _ = pid; true }"),
+        ("块的值是 `Some(..)`", "{\n    Some(0)\n}"),
+        ("块的值是 `Ok(..)`", "{\n    Ok(())\n}"),
+    ];
+
+    /// 全表②：它今天**拦不住**的形状。`(形状, 样本块体, 为什么它不红)`
+    ///
+    /// ⚠ 后两条是**应当**通过的（诚实表达），列在这里是为了让全表既说清「漏了什么」，
+    /// 也说清「哪些是它有意放行的」—— 只列漏洞的表读起来像一份缺陷清单，那会误导下一个人。
+    const BLIND: &[(&str, &str, &str)] = &[
+        (
+            "等价改写的恒真值",
+            "{\n    !false\n}",
+            "判红条件是**字面** `true` / `Some(` / `Ok(`；任何恒真表达式都绕得过。\
+             本模块头注逐字登记过：这条**刻意不追**，完备性在这里做不到。",
+        ),
+        (
+            "恒真比较",
+            "{\n    1 == 1\n}",
+            "同上，等价改写那一族。",
+        ),
+        (
+            "真实现返回计算值",
+            "{\n    PathBuf::from(p.to_string_lossy().to_ascii_lowercase())\n}",
+            "**应当**通过：人群里混着真正的平台实现，判红只看那两个字面乐观值。\
+             这也正是反例甲的形状。",
+        ),
+        (
+            "诚实空壳 `false`",
+            "{\n    false\n}",
+            "**应当**通过：保守方向的诚实表达（发不出信号当没发）。",
+        ),
+        (
+            "诚实空壳 `None`",
+            "{\n    None\n}",
+            "**应当**通过：`None` 就是「我不知道」的正确写法。",
+        ),
+    ];
+
+    /// ★ 全表①：逐形喂给**判据本体**，逐形要求它红。
+    #[test]
+    fn every_catchable_shape_reds_when_fed_to_the_real_predicate() {
+        assert_eq!(
+            CATCHABLE.len(),
+            3,
+            "能拦住的形状从 3 条变成 {} 条了 —— 全表的分母变了。\n\
+             变少 = 判红条件被拿掉了一条，那是放宽；变多 = 补了人群，同轮把这张表也补上。",
+            CATCHABLE.len()
+        );
+        for (shape, sample) in CATCHABLE {
+            assert!(
+                !fabricates(sample).is_empty(),
+                "判据对「{shape}」这个形状不响了 —— 全表里这一格今天是空的"
+            );
+        }
+    }
+
+    /// ★ 全表②：逐形喂给判据本体，逐形要求它**不**红，并逐形写清为什么。
+    #[test]
+    fn every_blind_shape_passes_and_says_why() {
+        assert_eq!(BLIND.len(), 5, "拦不住的形状表条数变了：{}", BLIND.len());
+        for (shape, sample, why) in BLIND {
+            assert!(
+                fabricates(sample).is_empty(),
+                "「{shape}」今天红了 —— 本护栏的射程变了，这张表说的话已经不成立"
+            );
+            assert!(
+                why.trim().chars().count() >= 10,
+                "「{shape}」没写清为什么它不红 —— 一张只列形状不给理由的表，下一轮没人敢动"
+            );
+        }
+    }
+
+    /// ★★ **反例甲**（证「不构成阻塞」）：一个**真的** Windows 实现，今天在人群里、今天通过。
+    ///
+    /// 它直接证伪「在 `platform/` 里写一个真的 Windows 实现 ⇒ 当场红」这句话。
+    /// 准确说法是：**只有「内联 cfg 块 + 块尾是字面 `Ok(` / `Some(`」这一种写法会红**；
+    /// 返回计算值、或用惯用的 `#[cfg(平台)] mod x;` + 独立文件，一个字都不用改护栏。
+    #[test]
+    fn counterexample_a_a_real_windows_impl_is_inside_the_population_and_still_passes() {
+        let files = platform_sources();
+        let (_, paths) = files
+            .iter()
+            .find(|(n, _)| n.as_str() == "paths.rs")
+            .expect("`platform/paths.rs` 不在人群里了 —— 反例甲的住址变了，回来重判");
+        let cfg = "#[cfg(windows)]";
+        assert!(
+            platform_cfgs(paths).iter().any(|c| c == cfg),
+            "`paths.rs` 的 `{cfg}` 不再被派生人群认成回退分支 —— 口径变了"
+        );
+        let body = block_of(paths, cfg);
+        // 它是**真实现**，不是诚实空壳：既不是 `false`/`None`，也没有「大声说没做」的宏。
+        assert!(
+            !body.contains("unimplemented!(") && !body.contains("todo!("),
+            "反例甲变成诚实空壳了 —— 那它就不再证明「真实现也通过」，回来重判"
+        );
+        assert!(
+            body.contains("PathBuf::from("),
+            "反例甲里那个返回计算值的真实现不见了 —— 修掉了就同轮摘登记"
+        );
+        assert!(
+            fabricates(&body).is_empty(),
+            "反例甲今天**红了** —— 本护栏的射程变了（或那处实现改了写法），\
+             「不构成阻塞」这个定性要回来重判"
+        );
+    }
+
+    /// ★★ **反例乙**（证「不构成保护」）：本护栏来历地雷的**逐字同形**，今天在生产段活着，
+    /// 而人群够不着它。
+    ///
+    /// # 两个断言合起来才是这条反例
+    ///
+    /// ① 把那段真代码喂给**判据本体**，它**会红** ⇒ **形状对得上**；
+    /// ② 而它住 `plugin/`，不住 `platform/` ⇒ 人群够不着 ⇒ **今天通过**。
+    /// 少了任何一半都证不出「不构成保护」：只有①是「假想的坏写法」，只有②是「一句范围声明」。
+    ///
+    /// ⚠ 它的后果是真的：那个函数是「这个路径今天是不是一个能跑的文件」，
+    /// 恒真 ⇒ 在非 unix 平台上，一个**存在但不可执行**的候选会被当成可用插件。
+    /// ⚠ **修它归谁，本件没定** —— 修掉之后本条会红（断言①不再成立），
+    /// 那时**同轮摘登记**并回来重判本护栏的射程。那正是形态二要买的东西。
+    #[test]
+    fn counterexample_b_the_origin_mine_is_alive_outside_the_population() {
+        let discover = production_code(include_str!("../plugin/discover.rs"));
+        let cfg = "#[cfg(not(unix))]";
+        let body = block_of(&discover, cfg);
+        assert!(
+            !fabricates(&body).is_empty(),
+            "反例乙的形状变了：`plugin/discover.rs` 的 `{cfg}` 块体不再是「一个裸 `true`」。\n\
+             ⇒ 要么它被修好了（好事 —— **同轮摘登记**），\n\
+             要么判红条件被改松了（坏事 —— 那是放宽，先摆出全表再谈）。"
+        );
+        // ② 它今天通过，原因只有一个：人群按**目录**画，而它不在那个目录里。
+        assert!(
+            !platform_sources()
+                .iter()
+                .any(|(n, _)| n.contains("discover")),
+            "`discover.rs` 进人群了 —— 那这条反例就不成立了，回来重判"
+        );
+        // ★ 同一段代码，换个住址就会红 —— 这一刀把「人群够不着」与「判据看不出」分开。
+        //   缺了它，上面两条读起来像「它不该红」，而事实是「它该红而没人看得见」。
+        assert!(
+            !fabricates("{\n    true\n}").is_empty(),
+            "连合成的同形样本都不红了 —— 那就不是人群问题，是判据本身坏了"
+        );
+    }
+}
+
+/// 〔`K-G6` `KG62`〕**钉住 `readonly_guard.rs` 的「性质行 / 人群行」各自只有一句 +
+/// 收窄前那句绝对话不许回来。**
+///
+/// # 为什么钉在这里
+///
+/// `ratchet_guard.rs` 头注逐字给过理由：判据**不许与被扫的文本同住一个文件**
+/// （它会在自己的注释里找到自己 ⇒ 恒绿）。
+/// `readonly_guard.rs` 那半钉另外两道，本模块钉它 —— **三道两两互钉**，每一针都跨文件。
+///
+/// ⚠ 正确落点其实是 `ratchet_guard.rs`（本仓已有的那张针表），
+/// 但它不在 `K-G6` `C` 拍的写区里 ⇒ 暂住这里，**已上报 PM**。
+#[cfg(test)]
+mod g6_scope_pins {
+    /// 两行的标记 + 承重词。**运行时拼**，免得本文件把自己数进去。
+    fn needles() -> (String, String, Vec<String>) {
+        (
+            format!("//! - **它守的{}**", "性质是"),
+            format!("//! - **它扫的{}**", "人群是"),
+            vec![
+                format!("必须{}", "只读"),
+                format!("绝不{}", "写"),
+            ],
+        )
+    }
+
+    /// ★ `readonly_guard.rs` 的性质行与人群行**各自恰好一行**。
+    #[test]
+    fn the_readonly_guard_states_its_property_and_population_exactly_once() {
+        let src = include_str!("../readonly_guard.rs");
+        let (prop, popu, _) = needles();
+        for (what, mark) in [("性质行", &prop), ("人群行", &popu)] {
+            let hits: Vec<&str> = src.lines().filter(|l| l.starts_with(mark.as_str())).collect();
+            assert_eq!(
+                hits.len(),
+                1,
+                "`readonly_guard.rs` 里以 `{mark}` 打头的{what}有 {} 行（应恰好 1 行）。\n\
+                 **多了**就是同一道护栏又有了两句性质声明 —— 那正是本轮逮到的病：\n\
+                 一句宽一句窄，判据只兑现窄的那句，而宽的那句被下游件逐字引用。",
+                hits.len()
+            );
+            let body = hits[0].trim_start_matches(mark.as_str());
+            assert!(
+                body.trim().chars().count() >= 20,
+                "`readonly_guard.rs` 的{what}只有 {} 字 —— 写不下去的性质声明等于没写",
+                body.trim().chars().count()
+            );
+        }
+    }
+
+    /// ★★ 反向棘轮：`D1` 收窄**之前**那句绝对话的承重词，今天起在 `readonly_guard.rs` 里零命中。
+    ///
+    /// # 它治的是一次已经发生的「只修一半」
+    ///
+    /// `doc/INVARIANTS.md` §41.6 早就把那句标成**原措辞**并给了现措辞，
+    /// 而 `readonly_guard.rs` 里同时留着收窄前的绝对句两处（头注一处 + 报错文案一处），
+    /// 判据兑现的却是收窄后那句。⇒ 判据的性质行是假话，且下游件在逐字引用它。
+    ///
+    /// ⚠ **它挡不住换个措辞说同一句话**（`ratchet_guard` 登记过这条同族边界）。
+    /// 它挡的是**顺手抄回来**，那是实际会发生的动作。
+    #[test]
+    fn the_pre_narrowing_absolute_does_not_come_back() {
+        let src = include_str!("../readonly_guard.rs");
+        let (_, _, forbidden) = needles();
+        assert!(
+            forbidden.len() >= 2,
+            "承重词表只剩 {} 条 —— 本条此刻在空转",
+            forbidden.len()
+        );
+        for word in &forbidden {
+            assert!(
+                !src.contains(word.as_str()),
+                "`readonly_guard.rs` 里又出现了 `{word}` —— 那是 `D1` **收窄前**的说法，\n\
+                 判据从来没兑现过它（它只认本 crate 源码文本里那三个命名空间的调用，\n\
+                 既不认起进程、也不认依赖 crate）。\n\
+                 ⇒ 要么把人群补齐到那句话上，要么就别写那句话。\n\
+                 （`§0a` 四情形表：这一格叫 `补齐人群`，不叫「先把话说满」。）"
+            );
+        }
+        // ★ 反空真：这几个承重词必须**真的**匹配得上收窄前那句原话，
+        //   否则上面那几条断言靠「钉了几个谁也不会写的字」恒绿。
+        //   原话在这里**运行时拼**，免得本文件自己成为那句假话的第三处住址。
+        let historical = format!(
+            "daemon 对被观测文件系统（`~/.claude` 等）**必须{}**——只 watch/scan/read，绝不{}。",
+            "只读", "写"
+        );
+        for word in &forbidden {
+            assert!(
+                historical.contains(word.as_str()),
+                "承重词 `{word}` 连收窄前那句原话都匹配不上 —— 它钉错了词，\
+                 上面那几条零命中断言此刻说明不了任何事"
+            );
+        }
     }
 }
