@@ -96,6 +96,8 @@ mod capability_registry;
 mod doc_copy_registry; // audit-0805 F18：散文里的数字副本清账（E12 的第二条路变成机检）
 mod e2e_gate_registry; // audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进
 mod exec_site_registry;
+#[cfg(test)]
+mod launcher_identity_registry; // K-P5b：起会话方身份落点清账 + 递减棘轮（人群 = 所有起会话方；整体 cfg(test)）
 mod local_read_surface_registry; // F10（出口④）：本机读面清账 + 递减棘轮（正题被 F05b 挡着）
 #[cfg(test)]
 mod lockfile_conflict_guard; // audit-0805 F16：两份 lock 的真冲突必须为空（超集不算）
