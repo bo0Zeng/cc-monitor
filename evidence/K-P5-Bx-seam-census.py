@@ -204,8 +204,12 @@ def launch_capability() -> None:
 
 # 每条：(载体名, 本机/跨机器/两者, 针列表, 只在这些路径下数)
 CARRIERS: list[tuple[str, str, tuple[str, ...], tuple[str, ...]]] = [
+    # ⚠ C1 用**正则**（`re:` 前缀）：`@ccm_sid` 后面不许紧跟 `_`，否则会把 C2 的
+    #   `@ccm_sid_expect` 一起数进来。第一版用的是一组字面针（`@ccm_sid ` / `"@ccm_sid"` / …），
+    #   它**漏掉了 tmux 格式串里的 `#{@ccm_sid}`**（`tmux.rs:22` 的 `TMUX_LS_FMT` 正是这一形）
+    #   ⇒ 那一版的 38 是**漏数**。留下这条注释，别再回到字面针。
     ("C1 `@ccm_sid`（tmux 会话级 option · 事实通道 B）", "跨机器",
-     ("@ccm_sid ", '"@ccm_sid"', "@ccm_sid'", "@ccm_sid`", "@ccm_sid,"),
+     ("re:@ccm_sid(?!_)",),
      ("src-tauri/src/", "remote-daemon-proto/src/", "shared/", "src/")),
     ("C2 `@ccm_sid_expect`（tmux 会话级 option · 意图通道 A）", "跨机器",
      ("@ccm_sid_expect",),
@@ -249,12 +253,19 @@ def carriers(files: list[Path]) -> None:
         total = 0
         per: dict[str, int] = {}
         prod: dict[str, int] = {}
+        # 针分两类：`re:` 前缀 = 正则；其余 = 字面子串。**两类都印在 CARRIERS 里，可复核。**
+        pats = [re.compile(k[3:]) for k in needles if k.startswith("re:")]
+        lits = [k for k in needles if not k.startswith("re:")]
+
+        def hit(line: str) -> bool:
+            return any(k in line for k in lits) or any(p.search(line) for p in pats)
+
         for f in files:
             rel = f.relative_to(ROOT).as_posix()
             if not any(rel.startswith(p) for p in prefixes):
                 continue
             txt = strip_for(f, read(f))
-            n = sum(1 for line in txt.splitlines() if any(k in line for k in needles))
+            n = sum(1 for line in txt.splitlines() if hit(line))
             if n:
                 per[rel] = n
                 total += n
