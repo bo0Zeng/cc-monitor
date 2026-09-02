@@ -221,6 +221,132 @@ pub fn pin_definition(
     Ok(())
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-R17`：源码里的**地址**这一族 —— 两个纯抽取器
+//
+// 「某个文件的某一行」这种地址**会烂**，而在本件之前盘上**没有任何判据**在它们
+// 变馊时会响：08-25 / 09-01 / 09-02 三次撞见，三次都是顺带撞见的。
+//
+// 处方 08-25 就写在仓里了（`byte_cap_registry.rs` 那段订正，逐字）：
+// 「⇒ 改成点**函数名**……行号是**每一轮都会变的量**，写进登记表下一轮自动变成假话。」
+//
+// ⚠⚠ **这里必须把「机器判得了什么」说死，别把射程写宽了一格**：
+//
+// 「这句引文说的还不还是被引行那件事」**本质上要读语义**，机器读不了。
+// 机器判得了的只有下面这三样，一样都不涉及语义：
+//   ㈠ 被引的**符号**在不在（`文件.rs::符号` ⇒ 那个文件里有没有这个声明）；
+//   ㈡ 被引的**行号**越没越界（`文件.rs:行号` ⇒ 那个文件有没有这么多行）；
+//   ㈢ 行号地址的**处数**有没有涨（棘轮）。
+// 判不了的是**其余全部** —— 一个裸行号地址今天指得对不对，机器一个字也读不出来。
+// ⇒ 出路不是让机器变聪明，是**把新写的地址逼进 ㈠ 那个子集**：符号地址的真伪
+//   完全机器判得了，而行号地址的真伪完全判不了。棘轮就是那道逼迫。
+//
+// 同族先例（本件的形状抄它，只是把扫描面从散文换成源码）：
+// `doc_claim_registry.rs::every_code_symbol_named_in_the_docs_still_resolves`
+// —— 它 08-06 就在守 `doc/` 里的符号地址了，**而源码这一侧一直没人守**。
+// 那正是「处方写好了只落了一处」的机制答案：处方落进了一个**没有判据的人群**。
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 一处**符号地址**：`(引用点行号, 被引文件基名, 符号名, 是不是前缀形)`。
+pub type SymbolAddress = (usize, String, String, bool);
+
+/// 一处**行号地址**：`(引用点行号, 被引路径原样, 被引行号)`。
+pub type LineAddress = (usize, String, usize);
+
+/// 显式标记：这一处行号地址是**故意留着的历史反例**（订正段 / 墓碑），不许判。
+///
+/// 为什么要显式标记而不是从散文里认：`ratchet_guard.rs` 头注量过同一格 ——
+/// 「试跑限定词规则**误红 7 处全是合法文本**，把限定词表调到全绿就是曲线拟合」。
+/// ⇒ 由写的人**声明**，不由判据**猜**。
+pub const LINE_ADDRESS_TOMBSTONE: &str = "〔行号墓碑〕";
+
+fn is_path_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_' || c == '.' || c == '/' || c == '-'
+}
+
+/// 往前收一个 ASCII 路径 —— 遇到中文（多字节）自然停在字符边界上。
+///
+/// 抄 `doc_claim_registry.rs` 那条同族判据的收法：本仓的地址几乎都嵌在中文散文里。
+fn path_before(line: &str, at: usize) -> &str {
+    let b = line.as_bytes();
+    let mut s = at;
+    while s > 0 && is_path_char(b[s - 1] as char) {
+        s -= 1;
+    }
+    &line[s..at]
+}
+
+/// 枚举 `text` 里每一处 `文件.rs::符号`。
+///
+/// **前缀形**（第四个返回值 `true`）：抽出来的符号名以 `_` 收尾。本仓真实出现两形，
+/// 都不是腐坏，而是写法：
+///   · 通配（`build_local_` 后面跟着 `*_command`）；
+///   · 行折（`emit_daemon_` 与它的后半截被 `///` 换行拆开）。
+/// ⇒ 这一档降级成「那个文件里有**某个**以它打头的声明」，**不许**当成找不到就报红。
+pub fn symbol_addresses(text: &str) -> Vec<SymbolAddress> {
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        let b = line.as_bytes();
+        let mut from = 0usize;
+        while let Some(k) = line[from..].find(".rs::") {
+            let at = from + k;
+            let base = {
+                let p = path_before(line, at);
+                let full = format!("{p}.rs");
+                full.rsplit('/').next().unwrap_or_default().to_string()
+            };
+            let mut e = at + 5;
+            while e < b.len() && {
+                let c = b[e] as char;
+                c.is_ascii_alphanumeric() || c == '_'
+            } {
+                e += 1;
+            }
+            let sym = line[at + 5..e].to_string();
+            if !sym.is_empty() && base != ".rs" {
+                let prefix = sym.ends_with('_');
+                out.push((i + 1, base, sym, prefix));
+            }
+            from = at + 5;
+        }
+    }
+    out
+}
+
+/// 枚举 `text` 里每一处 `文件.rs:行号`（`文件.rs:行号-行号` 只取头一个数）。
+///
+/// 带 [`LINE_ADDRESS_TOMBSTONE`] 标记的那一行**不进枚举**（形 B）。
+/// `文件.rs::符号` **不会**被误收：`::` 后面不是数字。
+pub fn line_addresses(text: &str) -> Vec<LineAddress> {
+    let mut out = Vec::new();
+    for (i, line) in text.lines().enumerate() {
+        if line.contains(LINE_ADDRESS_TOMBSTONE) {
+            continue;
+        }
+        let b = line.as_bytes();
+        let mut from = 0usize;
+        while let Some(k) = line[from..].find(".rs:") {
+            let at = from + k;
+            let mut e = at + 4;
+            let mut n = 0usize;
+            let mut any = false;
+            while e < b.len() && (b[e] as char).is_ascii_digit() {
+                n = n * 10 + (b[e] - b'0') as usize;
+                any = true;
+                e += 1;
+            }
+            if any {
+                let p = path_before(line, at);
+                if !p.is_empty() {
+                    out.push((i + 1, format!("{p}.rs"), n));
+                }
+            }
+            from = at + 4;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -999,6 +1125,448 @@ mod tests {
              ⇒ 修法：语料先过 `production_code`；别用 `rfind`；\n\
              锚点要么切一段（`arm_of`）、要么当场核一次唯一性（`matches(..).count() == 1`）。",
             bad.join("\n")
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R17`：源码里的地址这一族，三条判据
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 仓根。
+    ///
+    /// ⚠ **只跳一级**（`src-tauri` 的上级就是仓根，这是 cargo 给的事实，不是猜的）。
+    /// 跳两级那种写法是 `K-R13` 刚治过的病：主树上算出来的东西恰好存在、工作树上
+    /// 算错了却被人补了一个假落点 ⇒ 判据变绿而它证明的事根本不成立。
+    /// 形状与 `frame_cadence_guard.rs` 里那条同源（本仓已有先例）。
+    fn addr_repo_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级 = 仓根")
+            .to_path_buf()
+    }
+
+    /// 地址判据的**语料面**：四个根下的全部 `.rs` + 本文件自己。
+    ///
+    /// **为什么本文件自己也要进来**：`scan_tree!` 按构造摘除调用者（那是「判据读到自己」
+    /// 的防护），但摘掉之后本文件里写的地址就**没有任何东西守着**了 ——
+    /// 同族的 `doc/` 判据 08-06 正是在这一格上栽过一次，它的订正逐字：
+    /// 「把『已知的例外』变成『已修的缺陷』」。⇒ 这里一开始就把自己收进来。
+    /// 本文件的头注为了讲形状会写地址样例，样例一律用**中文文件名**（抽取器只收 ASCII 路径），
+    /// 因此不会把样例算进人群。
+    fn addr_corpus() -> Vec<(std::path::PathBuf, String)> {
+        let root = addr_repo_root();
+        let mut out: Vec<(std::path::PathBuf, String)> = Vec::new();
+        for sub in ["src-tauri/src", "src-tauri/crates", "remote-daemon-proto/src"] {
+            out.extend(guard_core::scan_tree!(&root.join(sub), &["rs"]));
+        }
+        let br = root.join("src-tauri/build.rs");
+        let br_src = std::fs::read_to_string(&br).expect("读不到 src-tauri/build.rs");
+        out.push((br, br_src));
+        out.push((
+            std::path::PathBuf::from("structural_scan.rs"),
+            include_str!("structural_scan.rs").to_string(),
+        ));
+        // ★ 抽取器自检：语料面塌了 ⇒ 下面三条一起零命中地绿。
+        assert!(
+            out.len() >= 180,
+            "地址判据只收到 {} 份源文件 —— 语料面坏了（09-02 现打 187 份：\
+             四个根下 186 + build.rs 1，与 `git ls-files` 的分母逐份对上）",
+            out.len()
+        );
+        out
+    }
+
+    /// 文件基名。
+    fn addr_base(p: &std::path::Path) -> String {
+        p.file_name()
+            .expect("源文件名")
+            .to_string_lossy()
+            .to_string()
+    }
+
+    /// 全仓声明：符号名 → 它出现在哪些**文件基名**里。
+    ///
+    /// 口径逐字取自本仓已有的同族判据
+    /// `doc_claim_registry.rs::every_code_symbol_named_in_the_docs_still_resolves`：
+    /// 「文档写 `a·rs::foo`，就要求 `foo` 的声明**出现在 `a·rs` 里**」——
+    /// 比「符号存在」严一档，因为**搬家**恰恰是本仓重构的常见形态。
+    /// 注释里的 `fn foo` 不算声明（先过 `strip_comment_lines`），否则「注掉一个函数」
+    /// 这种变异会被放过。
+    fn addr_declarations(
+        corpus: &[(std::path::PathBuf, String)],
+    ) -> std::collections::BTreeMap<String, std::collections::BTreeSet<String>> {
+        const KW: &[&str] = &[
+            "fn", "struct", "enum", "const", "static", "trait", "mod", "type",
+        ];
+        let mut decl: std::collections::BTreeMap<
+            String,
+            std::collections::BTreeSet<String>,
+        > = std::collections::BTreeMap::new();
+        for (p, raw) in corpus {
+            let fname = addr_base(p);
+            for line in guard_core::strip_comment_lines(raw).lines() {
+                let mut it = line.split_whitespace().peekable();
+                while let Some(tok) = it.next() {
+                    if !KW.contains(&tok) {
+                        continue;
+                    }
+                    let Some(next) = it.peek() else { continue };
+                    let ident: String = next
+                        .chars()
+                        .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                        .collect();
+                    if !ident.is_empty() {
+                        decl.entry(ident).or_default().insert(fname.clone());
+                    }
+                }
+            }
+        }
+        decl
+    }
+
+    /// ★★ **源码里点名的代码符号必须解析得到，且住在它说的那个文件里。**
+    ///
+    /// # 它买的是什么
+    ///
+    /// 08-25 的处方是「别点行号，点函数名」。**处方本身没有任何判据守着** ——
+    /// 09-02 现打：源码里 `文件·rs::符号` 这种地址有两百多处，
+    /// **一处都没有人对过账**，而「改名 / 删除 / 搬家」三种动作都让它们变假。
+    /// ⇒ 没有本条，处方只是一句劝告：换成符号地址之后**照样会烂，照样没人响**。
+    ///
+    /// # 它买不到什么（如实写明，别把射程写宽了一格）
+    ///
+    /// 它判的是**符号在不在那个文件里**，**不判**「那句话说的还是不是这个符号的事」。
+    /// 后者要读语义，机器读不了。⇒ 一个符号地址指着一个还存在、但语义已经变了的函数，
+    /// 本条**一声不吭**。这是本族**判不了**的那一半，不假装它覆盖了。
+    #[test]
+    fn every_symbol_address_in_the_sources_still_resolves() {
+        /// 例外表：**每条都写清「为什么它解析不到却是对的」**。
+        /// 下面有一条保鲜自检把「已经不需要的例外」揪出来 —— 例外表自己也会腐。
+        const EXCEPTIONS: &[(&str, &str)] = &[
+            (
+                "Hello",
+                "它是 `Frame` 的**枚举变体**，不是一处 item 声明；本口径只认 \
+                 `fn/struct/enum/const/static/trait/mod/type` 的声明行",
+            ),
+            (
+                "resolve_claude_dir",
+                "**历史句**：那句话逐字写的就是「从它**原样搬来**」——今天它已经改名并搬进 \
+                 agent 适配层。删掉这个地址反而丢掉「这段逻辑是从哪儿来的」",
+            ),
+            (
+                "setup",
+                "tauri 的 `.setup(move |app| …)` 钩子闭包 —— 是真东西，但不是一处声明。\
+                 （同一条例外逐字住在 `doc/` 那条同族判据里，两处口径一致）",
+            ),
+            // 下面两条是**示例占位符**：`doc_claim_registry.rs` 的头注要讲「地址长什么样」，
+            // 于是逐字写了一个假地址。同族的 `doc/` 判据也有一条同形的例外
+            // （`CONTRIBUTING.md` 里教人「照这样加一行」的那个占位符），口径一致。
+            // ⚠ 例外**按符号名**认 ⇒ 它们同时也遮住了真名叫 `symbol` / `foo` 的符号。
+            //   今天全仓这两个名字**一处声明都没有**（现打），所以遮不住任何真东西；
+            //   哪天真有人这么命名，上面那条保鲜自检会让这条例外**变成假绿**，如实登记。
+            (
+                "symbol",
+                "**示例占位符**：讲「地址长什么样」时写的假地址，本就不指向真符号",
+            ),
+            (
+                "foo",
+                "**示例占位符**：同上，讲口径时举的例子",
+            ),
+        ];
+
+        let corpus = addr_corpus();
+        let decl = addr_declarations(&corpus);
+        // ★ 抽取器自检 1：收不到足够多的声明 ⇒ 遍历或剥法坏了。
+        assert!(
+            decl.len() > 2000,
+            "全仓只抽到 {} 个声明符号 —— 遍历或剥法坏了（09-02 现打 4411 个 / 187 份源文件）",
+            decl.len()
+        );
+
+        let mut refs: Vec<(String, usize, String, String, bool)> = Vec::new();
+        for (p, raw) in &corpus {
+            let fname = addr_base(p);
+            for (ln, base, sym, prefix) in symbol_addresses(raw) {
+                refs.push((fname.clone(), ln, base, sym, prefix));
+            }
+        }
+        // ★ 抽取器自检 2：这一族本来就有两百来处 —— 抽到个位数就是剥法坏了。
+        assert!(
+            refs.len() >= 150,
+            "只抽到 {} 处符号地址 —— 剥法坏了（09-02 现打 213 处，量于本件尖）",
+            refs.len()
+        );
+
+        let resolves = |base: &String, sym: &String, prefix: bool| -> Option<Vec<String>> {
+            if prefix {
+                // 前缀形（通配 / 行折）：那个文件里有**某个**以它打头的声明就算数。
+                let any = decl
+                    .iter()
+                    .any(|(k, fs)| k.starts_with(sym.as_str()) && fs.contains(base));
+                return if any { None } else { Some(Vec::new()) };
+            }
+            match decl.get(sym) {
+                None => Some(Vec::new()),
+                Some(fs) if !fs.contains(base) => Some(fs.iter().cloned().collect()),
+                _ => None,
+            }
+        };
+
+        // ★ 自检 3：例外表保鲜。例外是**欠账**，不是免检章。
+        for (sym, why) in EXCEPTIONS {
+            let used: Vec<&(String, usize, String, String, bool)> =
+                refs.iter().filter(|r| r.3 == *sym).collect();
+            assert!(
+                !used.is_empty(),
+                "例外表里的 `{sym}` 在源码里已经没人写了 —— 删掉这一行。（它当初的理由：{why}）"
+            );
+            assert!(
+                used.iter().any(|r| resolves(&r.2, &r.3, r.4).is_some()),
+                "例外 `{sym}` 现在**解析得到了** —— 删掉这条例外，\
+                 别让例外表替真判据挡枪。（它当初的理由：{why}）"
+            );
+        }
+
+        let bad: Vec<String> = refs
+            .iter()
+            .filter(|r| !EXCEPTIONS.iter().any(|(s, _)| *s == r.3))
+            .filter_map(|(f, ln, base, sym, prefix)| {
+                resolves(base, sym, *prefix).map(|homes| {
+                    if homes.is_empty() {
+                        format!("  {f}:{ln}  指 {base} 里的 `{sym}` —— **全仓找不到这个符号**（改名或删了）")
+                    } else {
+                        format!("  {f}:{ln}  指 {base} 里的 `{sym}` —— 符号还在，但**搬家了**：现住 {homes:?}")
+                    }
+                })
+            })
+            .collect();
+        assert!(
+            bad.is_empty(),
+            "源码里点名了这些代码符号，而它们今天对不上：\n{}\n\n\
+             ⚠ 这是**停滞式腐坏**：改代码的人不会回来改注释，而在本条之前\
+             **源码这一侧没有任何东西会因此变红**（`doc/` 那一侧 08-06 就有人守了）。\n\
+             两条修法：① 把地址改对（点今天真的那个符号）；\
+             ② 那句话若只是历史，就写清「已删 / 已改名」并进本条的例外表，**带理由**。",
+            bad.join("\n")
+        );
+    }
+
+    /// ★★ **行号地址：不许越界，而且不许再添新的。**
+    ///
+    /// # 为什么是棘轮，而不是「判它今天指得对不对」
+    ///
+    /// 判后者**要读语义**，机器读不了 —— 09-02 逐处手核过全部 70 处，
+    /// 而**一处都不是机器判出来的**。粗判据试过一次：拿地址旁边的引文去比对，
+    /// 手核四支**假阳两支**（一支的引文是引用方自己的话；一支是订正段里当反面教材
+    /// 留着的历史行号 —— 天真的判据会去红「记录了这个病的那段话」本身）。
+    ///
+    /// ⇒ 本条**不判真伪**，只做两件机器判得了的事：
+    ///   ① **越界**：被引文件根本没有那么多行 ⇒ 一定是假的（零语义）。
+    ///   ② **棘轮**：存量登记在下表里，**新写的地址一律红** ——
+    ///      逼它去写符号地址，而符号地址的真伪由上面那条**真的判得了**。
+    ///
+    /// # 它买不到什么（逐条写明）
+    ///
+    /// - 存量那三十几处**今天指得对不对，本条判不了**，将来烂了也不会红。
+    /// - 棘轮**按去重后的（引用方文件, 被引地址）对**认：把一处删掉、另换一处写上，
+    ///   总数不变，本条**看不见**。它拦的是「顺手又写一个」，不是恶意。
+    /// - 被引文件不在本仓（第三方 crate 的路径）时，越界那半**无从判起**，如实跳过。
+    #[test]
+    fn line_number_addresses_stay_in_range_and_never_grow() {
+        /// **存量登记**：`(引用方文件基名, 被引路径原样, 被引行号)`。
+        ///
+        /// 这一张表就是「这一拍之后还剩什么没牙」的**逐条点名**：
+        /// 表里每一行都是一处**判不了真伪**的地址。想少一行的唯一办法是把它改成符号地址。
+        ///
+        /// ⚠ 加行之前先问一遍：**能不能点符号**？答得出来就别加。
+        const INVENTORY: &[(&str, &str, usize)] = &[
+            ("atomic_replace_registry.rs", "fenced_block.rs", 5),
+            ("bind.rs", "bind.rs", 225),
+            ("bind.rs", "bind.rs", 319),
+            ("bridge.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
+            ("data_paths.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
+            ("inbound_client.rs", "bridge.rs", 95),
+            ("launch.rs", "launch.rs", 122),
+            ("lib.rs", "ccm_cli_contract.rs", 181),
+            ("lib.rs", "main.rs", 26),
+            ("lib.rs", "russh-sftp-2.3.0/src/protocol/file_attrs.rs", 29),
+            ("lib.rs", "sftp.rs", 141),
+            ("local_backend.rs", "structural_scan.rs", 425),
+            ("local_daemon.rs", "launch.rs", 196),
+            ("local_daemon.rs", "launch.rs", 198),
+            ("local_daemon.rs", "local_backend.rs", 336),
+            ("local_daemon.rs", "src-tauri/crates/guard-core/src/lib.rs", 141),
+            ("local_daemon.rs", "structural_scan.rs", 425),
+            ("local_daemon.rs", "structural_scan.rs", 508),
+            ("panorama.rs", "engine.rs", 42),
+            ("parity_ledger.rs", "config_surface.rs", 1062),
+            ("parity_ledger.rs", "sftp.rs", 141),
+            ("ratchet_guard.rs", "control/tmux_hook.rs", 6),
+            ("ratchet_guard.rs", "control/tmux_hook.rs", 102),
+            ("ratchet_guard.rs", "main.rs", 651),
+            ("ratchet_guard.rs", "observe/watcher.rs", 1040),
+            ("ratchet_guard.rs", "tmux_hook.rs", 6),
+            ("single_stream_guard.rs", "inbound.rs", 35),
+            ("single_stream_guard.rs", "main.rs", 585),
+            ("single_stream_guard.rs", "observe/watcher.rs", 77),
+            ("single_stream_guard.rs", "relay/tee.rs", 169),
+            ("single_stream_guard.rs", "src-tauri/src/backend/mod.rs", 22),
+            ("table.rs", "server.rs", 24),
+        ];
+
+        let corpus = addr_corpus();
+        // 基名 → 盘上的那几份（消歧要用）
+        let mut bybase: std::collections::BTreeMap<String, Vec<&(std::path::PathBuf, String)>> =
+            std::collections::BTreeMap::new();
+        for e in &corpus {
+            bybase.entry(addr_base(&e.0)).or_default().push(e);
+        }
+
+        let mut seen: std::collections::BTreeSet<(String, String, usize)> =
+            std::collections::BTreeSet::new();
+        let mut hits = 0usize;
+        let mut newly: Vec<String> = Vec::new();
+        let mut overrun: Vec<String> = Vec::new();
+        for (p, raw) in &corpus {
+            let fname = addr_base(p);
+            for (ln, cited, n) in line_addresses(raw) {
+                hits += 1;
+                let key = (fname.clone(), cited.clone(), n);
+                seen.insert(key.clone());
+                if !INVENTORY
+                    .iter()
+                    .any(|(a, b, c)| *a == fname && *b == cited && *c == n)
+                {
+                    newly.push(format!("  {fname}:{ln}  指 {cited} 的第 {n} 行"));
+                }
+                // 越界那半：先消歧，消不了就如实跳过（不猜）。
+                let base = cited.rsplit('/').next().unwrap_or(&cited).to_string();
+                let Some(cands) = bybase.get(&base) else {
+                    continue; // 第三方 crate / 不在本仓 ⇒ 无从判起
+                };
+                // 消歧只走一步：**路径后缀唯一**。消不了就跳过，**不猜**
+                // —— 猜错时它会输出一个看起来完全合理的东西（`K-R10` 否掉选法 ① 的
+                // 理由逐字就是这个），那比不判更坏。
+                let narrowed: Vec<&&(std::path::PathBuf, String)> = cands
+                    .iter()
+                    .filter(|e| e.0.to_string_lossy().ends_with(cited.as_str()))
+                    .collect();
+                if narrowed.len() != 1 {
+                    continue;
+                }
+                let len = narrowed[0].1.lines().count();
+                if n > len {
+                    overrun.push(format!(
+                        "  {fname}:{ln}  指 {cited} 的第 {n} 行，而它只有 {len} 行"
+                    ));
+                }
+            }
+        }
+
+        // ★ 三条断言的**顺序是承重的**（09-02 变异台逼出来的）：
+        //   越界 → 新增 → 登记表保鲜。把保鲜排在前面时，「有人把一处地址指到了文件末尾之后」
+        //   这一刀报出来的是「登记表里那一行盘上没有了」——**指错了修法**，
+        //   而本仓反复吃过「读诊断」的亏：指错地方的诊断比没有诊断更费时间。
+        // ★ 抽取器自检：人群塌了 ⇒ 本条零命中地绿。
+        assert!(
+            hits >= 25,
+            "只抽到 {hits} 处行号地址 —— 抽取器坏了（09-02 现打 36 处 / 去重 32 对）"
+        );
+        assert!(
+            overrun.is_empty(),
+            "这些行号地址**越界**了 —— 被引文件根本没有那么多行，一定是假的：\n{}\n\n\
+             ⇒ 改法只有一条：**点符号**（函数名 / 常量名 / 类型名），别换一个今天对的行号 ——\
+             换一个今天对的行号就是把这一族再走一遍。",
+            overrun.join("\n")
+        );
+        assert!(
+            newly.is_empty(),
+            "这几处是**新写的行号地址**，而行号是每一轮都会变的量，写下去下一轮自动变成假话：\n{}\n\n\
+             ⇒ 三条出路，按优先级：\n\
+             ① **点符号**（`文件·rs::函数名` / 常量名 / 类型名）—— 它的真伪由\
+             `every_symbol_address_in_the_sources_still_resolves` 真的判得了；\n\
+             ② 那一处是**故意留着的历史反例**（订正段 / 墓碑）⇒ 在同一行加 \
+             `LINE_ADDRESS_TOMBSTONE` 那个标记；\n\
+             ③ 确实只能用行号 ⇒ 加进本条的存量登记表，**并在提交信息里写清为什么点不了符号**。\n\
+             ⚠ **不许**为了让本条变绿就把它删掉了事：删掉的是线索，不是病。",
+            newly.join("\n")
+        );
+
+        // ★ 登记表保鲜：登记的那一处已经不在盘上了 ⇒ 删掉它，别让表替真判据挡枪。
+        let gone: Vec<String> = INVENTORY
+            .iter()
+            .filter(|(a, b, c)| !seen.contains(&(a.to_string(), b.to_string(), *c)))
+            .map(|(a, b, c)| format!("  {a} → {b} 的第 {c} 行"))
+            .collect();
+        assert!(
+            gone.is_empty(),
+            "存量登记里这几条盘上已经没有了 —— **把它们从表里删掉**（多半是有人把它改成符号地址了，那是好事）：\n{}",
+            gone.join("\n")
+        );
+    }
+
+    /// 上面两条判据的**活体夹具** —— 它们在真树上今天恰好都是绿的
+    /// （越界 0 处、新增 0 处、符号对不上 0 处），而「今天该是空的」那种格是**空真**：
+    /// 闸死了 `[] == []` 照样成立。⇒ 这里造一份**真的会红**的语料，逐格切开验。
+    ///
+    /// 夹具文本一律**现拼**（`.rs` 与冒号分开写），免得夹具自己被真树上的扫描收进人群 ——
+    /// 「别让夹具的名字混进断言」这一条本仓栽过两次。
+    #[test]
+    fn the_address_extractors_really_see_each_shape() {
+        let colon = ":";
+        let dcolon = "::";
+
+        // ① 行号地址：认得出，且区间形只取头一个数。
+        let t = format!("见 relay/server.rs{colon}97 与 table.rs{colon}18-23 两处");
+        let got = line_addresses(&t);
+        assert_eq!(
+            got,
+            vec![
+                (1, "relay/server.rs".to_string(), 97),
+                (1, "table.rs".to_string(), 18),
+            ],
+            "行号地址抽取器认错了：{got:?}"
+        );
+
+        // ② 形 B：带墓碑标记的那一行整行不进人群。
+        let t = format!("这里先前点着 relay/server.rs{colon}97，今天不对了 {LINE_ADDRESS_TOMBSTONE}");
+        assert!(
+            line_addresses(&t).is_empty(),
+            "带 {LINE_ADDRESS_TOMBSTONE} 的行不该进人群 —— 否则判据会去红「记录了这个病的那段话」本身"
+        );
+
+        // ③ 符号地址：认得出；`::` 后面是数字的**不是**符号地址，两个人群不许互相污染。
+        let t = format!("见 relay/server.rs{dcolon}handle 与 main.rs{colon}651");
+        let syms = symbol_addresses(&t);
+        assert_eq!(
+            syms,
+            vec![(1, "server.rs".to_string(), "handle".to_string(), false)],
+            "符号地址抽取器认错了：{syms:?}"
+        );
+
+        // ④ 前缀形：以 `_` 收尾 ⇒ 通配或行折，降级成前缀比对而不是报红。
+        let t = format!("见 history.rs{dcolon}build_local_*_command");
+        let syms = symbol_addresses(&t);
+        assert_eq!(syms.len(), 1, "前缀形没抽到：{syms:?}");
+        assert!(syms[0].3, "以 `_` 收尾的符号必须标成前缀形，否则它会被误报成「找不到」");
+
+        // ⑤ 中文文件名不进人群（本文件头注里的形状样例正是这么写的）。
+        let t = format!("形如 文件.rs{colon}123 与 文件.rs{dcolon}符号");
+        assert!(line_addresses(&t).is_empty() && symbol_addresses(&t).is_empty());
+
+        // ⑥ **越界真的判得出来**：拿真树上一份文件，指它末行之后一行。
+        let corpus = addr_corpus();
+        let (probe, src) = corpus
+            .iter()
+            .find(|(p, _)| addr_base(p) == "structural_scan.rs")
+            .expect("语料面里必须有本文件自己 —— 没有就说明自收那一步掉了");
+        let len = src.lines().count();
+        assert!(len > 100, "{probe:?} 只有 {len} 行 —— 语料读坏了");
+        let addr = line_addresses(&format!("指 structural_scan.rs{colon}{}", len + 1));
+        assert_eq!(addr.len(), 1);
+        assert!(
+            addr[0].2 > len,
+            "越界那一格必须是「被引行号 > 文件行数」，否则上面那条的越界半边是空转的"
         );
     }
 }

@@ -664,7 +664,7 @@ pub(crate) fn detach_wanted(is_linux: bool, no_detach_env: Option<&str>) -> bool
 /// ⇒ 与 `supervise_with_stdio` 头注记的是**同一条**（那边逐字写过「guard 活在闭包里
 /// ⇒ `wait()` 整段都持着锁，而 `stop()` 第一件事就是取那把锁」）—— 本仓第二次。
 ///
-/// 收尸落在一条**专用线程**上（形状抄 `launch.rs:261` 那条），
+/// 收尸落在一条**专用线程**上（形状抄 `launch.rs::launch_local_posix_via` 里那条），
 /// 它随子进程结束而结束；`Child` 被取走之后句柄里只剩 pid + 二进制路径，
 /// 「停」那一步照样有凭据（走 [`kill_adopted`] 的身份核对）。
 fn reap_detached() {
@@ -2746,7 +2746,7 @@ mod tests {
     ///    那是**全称**，而一条以 `*` 打头的内层行今天恰好剥得掉 —— `brief` 15 收工自查逮到的）。
     ///    🔴 **换共享原语也关不掉** —— 这一句是**实测**，不是推断：
     ///    `guard_core::strip_comment_lines` 同样按行前缀判，它自己的头注
-    ///    （`crates/guard-core/src/lib.rs:593`）逐字写着
+    ///    （`guard-core/src/lib.rs::strip_comment_lines` 头注）逐字写着
     ///    「⚠ **别把这条边界读成「注释都剥干净了」** —— 只剥整行的那种」。
     ///    `D6` `M-D6-9` 打过一趟；**本拍 `M-c7-D` 是在「已经换成共享原语」的这棵树上打的**
     ///    （`B2` 已收口）⇒ 上面那个 `GATE: OK` 本身就是这句话的证据。
@@ -2835,7 +2835,7 @@ mod tests {
              **只要自己不以 `//` / `*` / `/*` 打头**就一个字都剥不掉。\n      \
              那时内层行**不以 `let ` 打头**就落到这里，而上面那句「实得那一行」\
              印出来的**就是一条注释** —— 那不是报文说假话，是这把尺子**本来就只剥整行**\
-             （共享原语头注 `crates/guard-core/src/lib.rs:593` 逐字：\
+             （共享原语 `guard-core/src/lib.rs::strip_comment_lines` 头注逐字：\
              「别把这条边界读成『注释都剥干净了』—— 只剥整行的那种」）；\
              内层行**以 `let ` 打头**时更糟：**连红都不会红**，那是一次静默的假绿，\
              逐条登记在本条头注「诚实边界 9」，归跟进件 `K-R8`。\n      \
@@ -2900,7 +2900,7 @@ mod tests {
         //   `let code_only = |c: &str| -> String { c.lines()`
         //   `    .filter(|l| !l.trim_start().starts_with("//")).collect::<Vec<_>>().join("\n") };`
         //   ⇒ 它只剥「`//` 打头的整行」。现在两处调用点直接调
-        //   `guard_core::strip_comment_lines`（`crates/guard-core/src/lib.rs:594`）。
+        //   `guard_core::strip_comment_lines`（`guard-core/src/lib.rs::strip_comment_lines`）。
         //
         //   **为什么换**（两条，各自独立成立）：
         //   ① **仓规**：`structural_scan.rs:425` 那条
