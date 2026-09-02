@@ -46,6 +46,29 @@
 #   `ccm-cli` / `ccm-contract-parity`（要 `jq` 的那两套）里。本行落地之后，
 #   「`shared/ccm` 的行为面进了出货门禁」这句话**只对 20 条断言成立**（12 + 8），
 #   不对那 54 条成立。别把这一格读大。
+#
+# ★★ 本脚本**今天仍然盖不到的两维**（`K-G3` `己1-f13` / `己1-f14`，09-01 现打；
+#    写在这里是因为「自称的射程 > 实际盖住的面」正是这个文件被立案的原因）：
+#
+#   ① **Windows 那半编不编得过**：`grep -c -- --target` 本文件 = **0**。
+#      `creds-core` 的 `harden` feature 带 `#[cfg(windows)]` 的平台原语，
+#      本脚本跑在 Linux 上 ⇒ 那一段**根本不参与编译**。
+#      刀已切过（把 `perm.rs` 的 `FILE_ATTRIBUTE_NORMAL` 改坏）：
+#      `cargo check --target x86_64-pc-windows-msvc` **rc=101**，而**本脚本六格全绿、印 `GATE: OK`**。
+#      买法是一行 `cargo check -p creds-core --features harden --target x86_64-pc-windows-msvc`
+#      （冷 5.67s / 热 0.15s），**卡在沙箱镜像没装那个 target**（`rustup target list --installed`
+#      只有 `x86_64-unknown-linux-gnu`）⇒ 归 PM。
+#      ⚠ 诚实边界：那一行买的是「**编得过**」，**买不到「行为对」** —— 行为要真 Windows 机器，
+#      那一格今天是**判不了**，不是「通过」。
+#
+#   ② **格式漂移**：`grep -c fmt` 本文件 = **0**。
+#      `cargo fmt --all --check` 在 `b28464e` 上是 **rc=1 / 78 处 / 18 个文件 / 1.09 秒**
+#      （存量最重的是 `local_daemon.rs` 28 处）。**卡在沙箱镜像没装 `rustfmt` 组件**
+#      （`cargo fmt --version` 报 `'cargo-fmt' is not installed`）⇒ 归 PM。
+#
+#   ⚠ 这两条**不是「以后再说」**，是「买法在写区外」：两条都要改
+#     `.claude/devbox/Dockerfile`（55+ 棵树共用、且不在任何 git 仓里）。
+#     在它改之前，把这两维写成一道门 = 把 55 棵树的门禁一起打红。
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 2
