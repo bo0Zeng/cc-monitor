@@ -183,11 +183,93 @@ def section_four(root: Path) -> None:
         print(f"   {'在  ' if ok else '不在'} {rel}  `{frag}`   ↳ {why}")
 
 
+def items_of(text: str) -> dict[str, str]:
+    """粗抽取器：把一份 `.rs` 切成「条目 -> md5」。
+
+    ⚠ 口径写明白，别读大（同 `K-R13-C-fn-md5.py` 那条）：
+      · brief 第四部分要的是「`ast` 逐函数 md5」，那条是**给 Python 写的**；Rust 没有现成的 `ast`，
+        这里是**按缩进 + 大括号配平**切块的粗抽取器。
+      · 切出来的块**含紧挨其上的连续注释行**（`///` / `//`）——
+        改文档注释也会让 md5 变，**这是刻意的**：本轮改了三份头注，那必须看得见。
+      · `const` 一类按「同缩进的 `;` 收尾」切；配不平就切到文件尾（宁可多算，别静默漏）。
+      · 同名条目（不同模块里的同名函数）会互相覆盖 —— 键里带了缩进层级，够用但不完美。
+        ⇒ 这份读数用来回答「哪几处变了」，**不用来证明「别处一个字节没动」**；
+        后者的量法是整份文件的 `git diff`，别拿这张表顶它的班。
+    """
+    import re
+
+    lines = text.splitlines()
+    head = re.compile(r"^(?P<ind>[ \t]*)(?:pub(?:\([^)]*\))?\s+)?(?P<kw>fn|const|mod|static)\s+(?P<name>\w+)")
+    out: dict[str, str] = {}
+    for i, line in enumerate(lines):
+        m = head.match(line)
+        if not m:
+            continue
+        ind = len(m.group("ind"))
+        # 往上收紧挨着的注释行 / 属性行。
+        start = i
+        while start > 0:
+            prev = lines[start - 1].strip()
+            if prev.startswith("//") or prev.startswith("#["):
+                start -= 1
+            else:
+                break
+        # 往下找结尾：有 `{` 就配平，没有就找同缩进的 `;`。
+        depth = 0
+        seen_brace = False
+        end = i
+        for j in range(i, len(lines)):
+            depth += lines[j].count("{") - lines[j].count("}")
+            if "{" in lines[j]:
+                seen_brace = True
+            end = j
+            if seen_brace and depth <= 0:
+                break
+            if not seen_brace and lines[j].rstrip().endswith(";"):
+                break
+        key = f"{m.group('kw')} {m.group('name')} @缩进{ind}"
+        blob = "\n".join(lines[start : end + 1]).encode("utf-8")
+        out[key] = __import__("hashlib").md5(blob).hexdigest()[:12]
+    return out
+
+
+def section_five(root: Path, rev: str) -> None:
+    print(f"\n⑤ 改动面：三份护栏文件逐条目 md5（基线 {rev} vs 工作树）")
+    for rel in GUARDS:
+        old = subprocess.run(
+            ["git", "-C", str(root), "show", f"{rev}:{rel}"], capture_output=True
+        )
+        if old.returncode != 0:
+            print(f"   ⚠ 基线里没有 {rel}")
+            continue
+        a = items_of(old.stdout.decode("utf-8"))
+        b = items_of((root / rel).read_text(encoding="utf-8"))
+        added = sorted(set(b) - set(a))
+        gone = sorted(set(a) - set(b))
+        changed = sorted(k for k in set(a) & set(b) if a[k] != b[k])
+        same = len(set(a) & set(b)) - len(changed)
+        print(f"   {rel}")
+        print(
+            f"      基线条目 {len(a)} · 现在 {len(b)} · 新增 {len(added)} · 没了 {len(gone)} "
+            f"· 改了 {len(changed)} · 没动 {same}"
+        )
+        for k in changed:
+            print(f"      改了 {k}   {a[k]} -> {b[k]}")
+        for k in gone:
+            print(f"      没了 {k}   {a[k]}")
+        for k in added:
+            print(f"      新增 {k}   {b[k]}")
+
+
 def main() -> int:
     if len(sys.argv) < 2:
         print(__doc__)
         return 2
-    roots = [Path(a).resolve() for a in sys.argv[1:3]]
+    positional = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if not positional:
+        print(__doc__)
+        return 2
+    roots = [Path(a).resolve() for a in positional[:2]]
     for r in roots:
         if not (r / "remote-daemon-proto").is_dir():
             print(f"❌ 不像本仓的仓根（没有 remote-daemon-proto/）：{r}")
@@ -200,6 +282,14 @@ def main() -> int:
     section_two(roots[0])
     section_three(roots[0])
     section_four(roots[0])
+    base = None
+    for a in sys.argv[1:]:
+        if a.startswith("--base="):
+            base = a.split("=", 1)[1]
+    if base:
+        section_five(roots[0], base)
+    else:
+        print("\n⑤ 改动面：没给 `--base=<sha>` ⇒ **没量**（不是「没变化」）")
     return 0
 
 
