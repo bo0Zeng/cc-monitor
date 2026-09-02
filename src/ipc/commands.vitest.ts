@@ -169,6 +169,44 @@ const DYNAMIC_ONLY: string[] = [];
 
 const WRAPPER_FILE = "src/ipc/commands.ts";
 
+/**
+ * 两个「期望的计数」——**报文（`it` 标题 + `expect` 的诊断）与断言共用同一个值**〔`K-R4`〕。
+ *
+ * ## 为什么要立成常量，而不是各写各的字面量
+ *
+ * 本文件此前是这条病的活体：`it` 标题写「计数恰好 **142**」而断言是 `.toBe(144)`；
+ * 另一条标题写「唯一名数 == **137**」而断言同样是 `.toBe(144)`。
+ * 判据红了，人照标题去查 142 / 137 —— **查的是一个不存在的事实**。
+ * 根因是「一个值装了两件事」〔`K13`〕：标题里那个数是**写的时候手抄的**，
+ * 断言里那个数是**跟着代码走的**，两者之间没有任何东西钉住它们相等。
+ * ⇒ 把两份拷贝合成一个值：改了断言，标题与诊断**结构上不可能不跟着变**。
+ *
+ * ## 为什么是两个常量而不是一个
+ *
+ * 今天两个数都是 144，而且本文件的两条子集断言（`bogus` 空 + `rustOnly == DYNAMIC_ONLY`）
+ * 合起来钉的正是「两个集合相等」⇒ 它们**structurally** 同值。
+ * 但它们量的是**两件事**（Rust 侧声明的命令集 · TS 侧静态可见的字面量命令名集），
+ * 合成一个常量就是反过来再犯一次「一个值装了两件事」。
+ *
+ * ⚠ 改这两个数之前先读上面那句：加/删命令时**两个都要动**，
+ *   只动一个会被那两条子集断言当场逮住。
+ */
+/** Rust 侧 `#[tauri::command]` 声明（= `invoke_handler` 注册）的唯一命令名个数。 */
+const RUST_COMMAND_COUNT = 145;
+// 增量账（谁把这个数推上去的）：**K-H2a +2**（read_relay_credentials_status /
+// write_relay_credentials_key）；U8c-2c-2 +1（render_ccm_launch）；
+// U8a-2c-pre +1（render_launch_payload）；P3t-Y2b +1（local_tmux_names）；
+// **P4c +2**（cc_bus_broadcast / cc_bus_kill，#77/#78）；**P8a +1**（list_plugin_marketplaces，#70）；
+// **PS1 +1**（deploy_local_cc_bus）；**PS2 +1**（cc_bus_install_state）；
+// **K-H2b +1**（relay_routing_for：界面问「这几个**本机**账号走不走中转」）。
+
+/** TS 侧**字面量** `invoke("…")` 里出现过的唯一命令名个数。 */
+const TS_LITERAL_COMMAND_COUNT = 145;
+// 增量账：**K-H2a +2**（同上）；devbench F03 +3（skill 接入面三条）；U8c-2c-2 +1；
+// U8a-2c-pre +1；P3t-Y2b +1（local_tmux_names）；**P4c +2**；
+// **P8a +1**（list_plugin_marketplaces）；**PS1 +1**（deploy_local_cc_bus）；**PS2 +1**（cc_bus_install_state）；
+// **K-H2b +1**（relay_routing_for，同上 —— 它落进了包装层，所以 `keys.length` 那个数也 +1）。
+
 function walk(dir: string, ext: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
@@ -273,7 +311,9 @@ function wrapperEntries(): Map<string, string> {
 }
 
 describe("C04a 命令名钉死", () => {
-  it("Rust 侧「声明 = 注册」，且计数恰好 142", () => {
+  // ★ 标题里的数从 `RUST_COMMAND_COUNT` 渲染，不再手抄〔`K-R4`〕——
+  //   `it` 标题是 vitest 失败输出的第一行，**它就是报文**。
+  it(`Rust 侧「声明 = 注册」，且计数恰好 ${RUST_COMMAND_COUNT}`, () => {
     const declared = rustCommands();
     const registered = registeredCommands();
 
@@ -287,9 +327,15 @@ describe("C04a 命令名钉死", () => {
     expect(onlyRegistered, "这些注册了却找不到声明 ⇒ 注册表里有死名字").toEqual([]);
 
     // 计数自检用等号：加/删命令必须红一次，逼人来更新这个数与包装层
-    expect(declared.size, `期望恰好 145 个命令，实得 ${declared.size}`).toBe(145); //；**K-H2a +2（read_relay_credentials_status / write_relay_credentials_key）** // U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；P3t-Y2b +1（local_tmux_names）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）**；**P8a +1（list_plugin_marketplaces，#70）**；**PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**；**K-H2b +1（relay_routing_for：界面问「这几个**本机**账号走不走中转」——只答本机是机制决定的：中转是每台机器自己的进程、注入的是回环地址，本机这一侧答不了远端那台）**
-    // ⚠ 上面那句提示原本写「期望恰好 131」而断言是 136 —— 报错文案与断言值**对不上**，
-    //   本件顺手订正：它会把一次真实的计数变动报成一个不存在的数。
+    expect(declared.size, `期望恰好 ${RUST_COMMAND_COUNT} 个命令，实得 ${declared.size}`).toBe(
+      RUST_COMMAND_COUNT,
+    );
+    // ⚠ 这句提示曾两次与断言值对不上（写「131」而断言 136；标题写「142」而断言 144）——
+    //   **两次都是手抄**。`K-R4` 把它换成从 `RUST_COMMAND_COUNT` 渲染：
+    //   改断言那个值，标题与这句提示**必须**跟着变，没有第二份拷贝可以馊。
+    // ⚠ 合并 `K-H2b` 时这里撞了一次：分支那侧还是「写死 145 + 一长串手抄增量账」的老形状。
+    //   **取的是主干这一侧的形状，只把常量从 144 抬到 145**（增量账挪去常量定义旁边）——
+    //   反过来（保住分支那侧）等于把 `K-R4` 刚拆掉的那份拷贝又装回来。
   });
 
   it("包装层：键名 ⊆ Rust 集，**且每个条目的键名 == 它传给 invoke 的字面量**", () => {
@@ -324,7 +370,9 @@ describe("C04a 命令名钉死", () => {
 
   // 标题里的数原先写着 112，而断言早就是 119 了（Z05 起 120；local-as-remote L3a 起 121）——**标题也是记录**，
   // 一并订正，免得下一个人拿标题当依据。
-  it("TS 侧字面量命令名 ⊆ Rust 集，唯一名数 == 137，动态名盲区逐字钉死", () => {
+  // ⚠ **那次订正只改了拷贝，没拆掉「两份拷贝」这个结构** ⇒ 它又馊了一次：
+  //   09-01 现打，标题写 137 而断言是 144。`K-R4` 改成从 `TS_LITERAL_COMMAND_COUNT` 渲染。
+  it(`TS 侧字面量命令名 ⊆ Rust 集，唯一名数 == ${TS_LITERAL_COMMAND_COUNT}，动态名盲区逐字钉死`, () => {
     const rust = rustCommands();
     const used = tsLiteralCommands();
 
@@ -344,7 +392,10 @@ describe("C04a 命令名钉死", () => {
     // 两处是 `origin ? "A" : "B"` 的两字面量三元（`session-viewer.ts` / `views/history.ts`）、
     // 一处是 `doWrite(cmd, args)` 转发 helper 而调用方传的全是字面量（`sftp/panel.ts`）。
     // 改成静态调用 / thunk 后**盲区归零** ⇒ 下面 `DYNAMIC_ONLY` 现在是空集。
-    expect(used.size, `期望恰好 145 个字面量命令名，实得 ${used.size}`).toBe(145); //；**K-H2a +2（read_relay_credentials_status / write_relay_credentials_key）** // devbench F03 +3（skill 接入面三条） // U8c-2c-2 +1；U8a-2c-pre +1；P3t-Y2b +1（local_tmux_names）；**P4c +2**；**P8a +1（list_plugin_marketplaces）**；**PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**；**K-H2b +1（relay_routing_for：界面问「这几个**本机**账号走不走中转」——只答本机是机制决定的：中转是每台机器自己的进程、注入的是回环地址，本机这一侧答不了远端那台）**
+    expect(
+      used.size,
+      `期望恰好 ${TS_LITERAL_COMMAND_COUNT} 个字面量命令名，实得 ${used.size}`,
+    ).toBe(TS_LITERAL_COMMAND_COUNT);
 
     // **不断言反向**（Rust ⊆ TS），但把盲区本身钉死：动态名集变了必须红一次。
     const rustOnly = [...rust].filter((c) => !used.has(c)).sort();
