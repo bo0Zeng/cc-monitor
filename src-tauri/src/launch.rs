@@ -417,29 +417,84 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
 /// CREATE_NEW_CONSOLE 独立控制台。`local_cwd`＝Some 且为本地存在目录时作为窗口
 /// 起始目录（远端拉起传 None——cwd 是远端路径）。
 ///
-/// # 🔴 **登记：本函数体在本机门禁上「买不到」**〔`K-H2b` `D8 阻-6`，08-29〕
+/// # 🔴 **登记：这个函数体分两半 —— 文本那一半买得到而且已经买了，行为那一半买不到**
 ///
-/// `D8` 的刀 `D8P35`（在 `powershell_encoded_command(` 那一行之前把
-/// `$env:ANTHROPIC_BASE_URL=…; ` 剥掉）实测：**全量门禁四个数一格不动
-/// （`1328 / 一致 / 493 / 1512`）· `GATE: OK`**。
+/// 〔`K-H2b` `D8 阻-6` 08-29 立 · `D9 阻-2`/`阻-4` 打回 · `C` 第十轮 09-02 重写〕
 ///
-/// **理由是结构性的，不是「判据写差了」**：四道门全跑在 **Linux 宿主**上，
-/// `#[cfg(windows)]` 的项在类型检查之前就被剔除 ⇒ **本机门禁在构造上看不见这个函数体**。
-/// **它的 `cfg` 就写在上面这一行** —— 这正是 PM 08-29 那条落法要的凭据：
+/// ## 🔴🔴 先记这段登记自己犯过的病（别删，它就是这一格的病理）
+///
+/// 上一版这 24 行里**同时躺着一条全称和它的反例**：
+/// 一句写「本机门禁**在构造上**看不见这个函数体」＋「**唯一的买法**是 CI 上一条 Windows job，
+/// 落点不在写区」，另一句写「量文本的判据照样看得见它」。
+/// **而被拿去定路由（判成「买不到 / 落点在写区外」）的是假的那一条。**
+/// ⇒ 要订正的不是措辞，是**这段登记自相矛盾**。〔`D9` 逮到；PM `§17 裁二` 接〕
+///
+/// ## ① 量**文本**的那一类：**看得见，而且今天真的有牙**
+///
+/// `#[cfg(windows)]` 是**类型检查**那一层剔的；而 `guard_core::production_code`
+/// 只剥 `#[cfg(test)] mod X { }` 段与注释（整行的与行尾的都剥 —— 行尾那一半是 `K-R3`
+/// 09-01 才补上的），**它不剥任何 `cfg`** ⇒ 本函数体在**文本**这一层原样在场。
+///
+/// 现打（量具 `evidence/K-H2b-C10-cfgwin-visibility.py`，喂的是本工作树的
+/// `src-tauri/src/launch.rs`，09-02；量具先拿本文件那条真判据钉的三个等号自检过
+/// 复刻对不对得上 —— 对不上它就拒绝出读数）：
+///
+/// | 构造 | 剥完全文件几处 | 其中在本函数体内 |
+/// |---|---|---|
+/// | `Command::new(` | 4 | **2** |
+/// | `.env(k, v)` | 3 | **2** |
+/// | `daemon_bin_env_for_window(` | 2 | **1** |
+///
+/// ⇒ 本文件那条**普通 `#[test]`**
+/// `launch.rs::every_terminal_window_backend_opens_carries_the_daemon_path`
+/// （就在 `cargo` 门里跑）用**三条等号断言**钉着这 5 个构造。
+///
+/// **实打（`C` 第十轮 刀 `R10M1`，沙箱快道 `cargo test -p monitor --lib`，09-02）**：
+/// 把本函数体里 Plan B 那个 `if let Some((k, v)) = daemon_env { builder.env(k, v); }`
+/// 换成 `let _ = daemon_env;`（＝真实缺陷形状「开窗点漏了带 env」；锚点是那三行，**全文命中 1**）
+/// ⇒ **`1243 passed; 2 failed`**（同树干净分母 **`1245 passed; 0 failed`**），红名单**恰好两条**：
+/// `launch.rs::every_terminal_window_backend_opens_carries_the_daemon_path` 与
+/// `payload.rs::the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated`。
+///
+/// ⚠ **分母话**：那是**一刀打出来的红名单**，不是「全部判据」的枚举 ——
+/// 我没有逐条去数还有几条判据碰得到这个函数体。⇒ 只能写「**我这一刀量到的是这两条**」。
+///
+/// ## ② 量**行为**的那一类：在本机上**造不出来**，这一半才是真的买不到
+///
+/// 要驱动本函数体，先得有这个 item；而 Linux 上它在类型检查之前就没了
+/// ⇒ 任何「真的调用它、看它干了什么」的判据在本机**不存在**。
+/// **它的 `cfg` 就写在下面那一行** —— 这正是 PM 08-29 那条落法要的凭据：
 /// **标「平台判不了」要给得出 `cfg`；给不出 `cfg` = 它在本平台编译 = 不是判不了。**
 ///
-/// **唯一的买法**：CI 上一条 Windows job（或交叉编译 + `cargo test --target`），
-/// 落点 `.github/workflows/ci.yml` —— **不在 `K-H2b` 的写区**，归 PM 立跟进件或并进
-/// 已有的 Windows 欠账。⚠ `scripts/gate.sh` 头注自陈「本地门禁比 CI 严」，
-/// 而**这一格恰是反过来的那一格**，别把那句话读成全称。
+/// **实打（刀 `R10M2`，`D8P35` 同形，第九轮 `R9M9` 的复打，09-02）**：在
+/// `let encoded = crate::utils::powershell_encoded_command(ps_command);`
+/// 之前把 `$env:ANTHROPIC_BASE_URL=…; ` 前缀剥掉（锚点是那一行，**全文命中 1**）
+/// ⇒ 🔴 **`1245 passed; 0 failed`**，与同树干净分母逐字相同 —— **零感知**。
 ///
-/// ⚠ **别把这一条读宽**：同一条腿上的 [`crate::utils::powershell_encoded_command`]
-/// **没有 `cfg`、在 Linux 上真编译** ⇒ 它**不**属于本族（`D8 阻-2`），
-/// 第九轮已给它配了
-/// `utils::tests::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte`。
-/// 而 `history.rs` 那个 `#[cfg(windows)] PRODUCTION_LAUNCH_SINK`（`D8` 表里的 `F3`，
-/// 它**没打**、标着「推的」）第九轮**打了 —— 是红的**，见那一处的头注。
-/// ⇒ **「带 `#[cfg(windows)]`」不蕴含「零感知」**：量文本的判据照样看得见它。
+/// ⇒ 买**这一半**要 CI 上一条 Windows job（或交叉编译 ＋ `cargo test --target`），
+/// 落点 `.github/workflows/ci.yml`，**不在 `K-H2b` 的写区** ⇒ 归 PM 立跟进件。
+/// ⚠ `scripts/gate.sh` 头注自陈「本地门禁比 CI 严」，而**这一格恰是反过来的那一格**，
+/// 别把那句话读成全称。
+///
+/// ## 🔴 `阻-4`：这里不许再写全称，要写清是哪一类
+///
+/// 上一版那句「**本机门禁在构造上看不见这个函数体**」是**全称**（分母＝门禁七格里的
+/// 全部判据），而它在 ① 那一格上当场为假。今天的写法是**两半各自带读数、判据指名点姓**。
+/// ⇒ 这一族今天的口径逐字是：
+/// **「带 `#[cfg(windows)]`」蕴含「量行为的判据看不见它」，不蕴含「所有判据都看不见它」。**
+///
+/// ⚠ 同族第三次（`D8` 表里的 `F3` · `D9` 抓的这一处 · PM `§17 裁一` 自陈的那句）——
+/// 三次都是同一个动作：**把一个准确的局部读数放大成全称**。
+///
+/// ## ⚠ 别把这一条读宽（两处邻居，都不属于本族）
+///
+/// - 同一条腿上的 [`crate::utils::powershell_encoded_command`] **没有 `cfg`、在 Linux 上真编译**
+///   ⇒ 不属于本族（`D8 阻-2`）；第九轮已给它配了
+///   `utils.rs::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte`。
+/// - `history.rs::PRODUCTION_LAUNCH_SINK` 的 `#[cfg(windows)]` 那一支（`D8` 表里的 `F3`，
+///   `D8` **没打**、标着「推的」）第九轮打了、**是红的**；`C` 第十轮刀 `R10M8` 复打，
+///   读数一致：**`1244 passed; 1 failed`**，红的是
+///   `payload.rs::nobody_reaches_the_relay_take_points_without_going_through_the_seam`。
 #[cfg(windows)]
 pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Result<(), String> {
     use std::os::windows::process::CommandExt;
