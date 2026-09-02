@@ -1113,7 +1113,8 @@ struct ReaderState {
     offsets: HashMap<PathBuf, ReadCursor>,
     /// Per-file monotonic seq source. `SeqCounter` only ever climbs for a given
     /// path (it is never reset), so truncation resetting `offsets` cannot pull
-    /// the seq back — exactly the `watcher.rs:243-247` invariant.
+    /// the seq back — exactly the invariant this module's header states as
+    /// `on truncation the cursor resets to byte 0`.
     seqs: SeqCounter,
     /// PID-file path → [`SessionEntry`] for sessions currently considered ACTIVE
     /// (announced via `SessionAdded`). The pid + captured procStart let the
