@@ -102,6 +102,19 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join(layer);
+        layer_sources_at(&root, layer)
+    }
+
+    /// [`layer_sources`] 的**根可注入**版本。
+    ///
+    /// 抽出这一层只为一件事：`K-G4` 的活体夹具要让**真判据本身**（不是它的复刻）
+    /// 跑在一棵真的、盘上存在的小树上。根写死在函数里的话，夹具只能另写一份扫描，
+    /// 而「另写一份」证明的是那一份、不是护栏〔`brief` 第 9 条：空真要用**活体**夹具治〕。
+    ///
+    /// `label` 只进报错文本里的相对路径前缀，**不进任何断言**〔`6g`：断言别取自夹具的名字〕。
+    fn layer_sources_at(root: &std::path::Path, label: &str) -> Vec<(String, String)> {
+        let layer = label;
+        let root = root.to_path_buf();
         let mut out = Vec::new();
         let mut stack = vec![root.clone()];
         while let Some(dir) = stack.pop() {
@@ -276,6 +289,16 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join(layer);
+        assert_collection_is_complete_at(&root, layer, files);
+    }
+
+    /// [`assert_collection_is_complete`] 的**根可注入**版本（理由同 [`layer_sources_at`]）。
+    fn assert_collection_is_complete_at(
+        root: &std::path::Path,
+        layer: &str,
+        files: &[(String, String)],
+    ) {
+        let root = root.to_path_buf();
         // 刻意与 `layer_sources` 分开写：那边还要读文件、剥生产段，这边只数个数。
         let mut tree = 0usize;
         let mut stack = vec![root];
@@ -499,6 +522,358 @@ mod tests {
             !ALLOWED_INTO_PLUGIN.is_empty(),
             "登记表空了 —— 那条等号断言会变成「空 == 空」，恒绿"
         );
+    }
+
+    // ══════════════════════════════════════════════════════════════════════
+    // ★★★ `K-G4`（09-02）：`relay/` 那一层的三条方向判据
+    //
+    // 摸底读数（`K-G4` 派工时 PM 复打、C 实现拍开工前自己重打）：
+    // `grep -c relay layering_guard.rs` = **0** ⇒ `K-H1` 立起来的 `relay/`，
+    // 「谁能引谁」三个方向**一条判据都没有**。这与 `KY5` 治过的是同一族病
+    //（新立一层、分层护栏没跟上），**同区第二次**。
+    //
+    // ⚠ 分母先说清：`relay/` 今天是 **12 个 `.rs`**（09-02 现打，`ls -1 src/relay/*.rs | wc -l`）。
+    // 件文件 `§0` 写的「8 个文件」量于 **08-26**，此后长了 4 个 ⇒ **那个数已经馊了，别沿用**。
+    //
+    // ⚠ **别与 `relay/bind_guard` · `relay/nodelay_guard` 混起来**（件文件 `§0a`）：
+    // 那两条护的是**中转自己的行为**（绑哪个口、开不开 Nagle），
+    // 与「**层与层之间谁能引谁**」不是一回事。拿它们答「已经有护栏了」，
+    // 正是本区「量具的作用域对不上事实」那一族。
+    // ══════════════════════════════════════════════════════════════════════
+
+    /// `relay/` **不许**认识的那几层，逐条给理由。
+    ///
+    /// 判据 ① 的人群就是这张表。**它刻意不含 `plugin`** —— 那一支归判据 ③，
+    /// 两支的人群不许重叠：重叠了就没有「**只由这一支挡住**」的探针，
+    /// 而〔定框 `K22`〕要的正是 N 支独立信号配 N 个单断探针。
+    const RELAY_MUST_NOT_KNOW: &[(&str, &str)] = &[
+        (
+            "observe",
+            "中转是**搬字节**的，它不读世界。观测面一旦被它认识，\
+             「一个进程服务 N 个会话」那条就会退化成「中转顺手替某个会话查点东西」",
+        ),
+        (
+            "control",
+            "中转**不改变世界**（除了把字节递过去）。认识控制面等于给它开一条\
+             「转发的路上顺手 kill / launch 一下」的门，而那条门在 HTTP 处理线程上",
+        ),
+        (
+            "agents",
+            "`relay/mod.rs` 头注第一句逐字写着「**它不懂任何 agent 的语义**」。\
+             今天这条是真的、而且**承重**：`run(home, args)` 的 `home` 是**入参**\
+             （`main.rs` 的 `--relay` 分派臂传进来），不是中转自己去 `agents/` 里问出来的 —— \
+             那正是 `E6`「本层要的东西一律走入参」的形状",
+        ),
+    ];
+
+    /// 方向 ② 的**人群**：这两层不许伸手进 `relay/` 内部。
+    ///
+    /// `plugin/` 刻意不在这里 —— 它归方向 ③（人群不重叠，理由同 [`RELAY_MUST_NOT_KNOW`]）。
+    const WHO_MAY_NOT_REACH_INTO_RELAY: &[&str] = &["observe", "control"];
+
+    /// 方向 ② 扫的**目标层**。
+    ///
+    /// 🔴 这三个 `D*_` 常量**不是为了少打几个字** —— 它们是「判据与活体夹具共用同一份
+    /// 权威源」的落点〔`E3`：一个事实恰好一个权威源〕。夹具若各写一份字面量，
+    /// 那把某条方向的被禁层改坏，**夹具照样全绿** —— 它证明的是自己那份字面量。
+    /// 现在改坏任何一条，对应探针**当场红**（变异表逐刀在件文件里）。
+    const D2_REACHING_INTO_RELAY: &[&str] = &["relay"];
+
+    /// 方向 ③ 的正向那一半：`relay/` 不许引 `plugin/`。
+    const D3_RELAY_TO_PLUGIN: &[&str] = &["plugin"];
+
+    /// 方向 ③ 的反向那一半：`plugin/` 不许引 `relay/`。
+    const D3_PLUGIN_TO_RELAY: &[&str] = &["relay"];
+
+    /// 方向 ① 的被禁层名（从 [`RELAY_MUST_NOT_KNOW`] 派生，理由栏不参与判定）。
+    fn d1_relay_must_not_know() -> Vec<&'static str> {
+        RELAY_MUST_NOT_KNOW.iter().map(|(l, _)| *l).collect()
+    }
+
+    /// 三条 `relay/` 方向判据**共用的核**：给一份 `(名字, 生产段)` 表与一组被禁层，
+    /// 数出所有违规边。
+    ///
+    /// # 为什么要抽出来 —— 它是活体夹具的落点
+    ///
+    /// `KG43` 摸底读数是 **0**（三个方向全 0，见下面那条自检的头注）⇒ 三条判据今天
+    /// 全是 **`[] == []`** 的空真。〔`brief` 第 9 条〕治空真只能靠**活体夹具**，
+    /// 而活体夹具必须跑**真判据本身**：夹具若另写一份扫描，它证明的是那一份、不是护栏。
+    /// ⇒ 真判据与夹具都只经由这一个函数，中间没有第二份实现。
+    fn violating_edges(files: &[(String, String)], forbidden: &[&str]) -> Vec<String> {
+        let mut bad: Vec<String> = Vec::new();
+        for (name, code) in files {
+            for other in forbidden {
+                for sym in refs_to_layer(code, other) {
+                    bad.push(format!("{name} → {sym}"));
+                }
+            }
+        }
+        bad.sort();
+        bad
+    }
+
+    /// ★★★ `K-G4` 方向 ①：**`relay/` 不许引 `observe/` · `control/` · `agents/`**。
+    ///
+    /// 零容忍，不设登记表。**为什么这一支不照 `ALLOWED_INTO_PLUGIN` 那种「逐条登记」的形状**：
+    /// 登记表的价值在于「有正当例外、让每条边被人看见一次」，而今天这三条方向
+    /// **一条边都没有**（现打 0）⇒ 建出来就是一张空表，而本文件自己在
+    /// [`the_plugin_layer_scan_actually_bites`] 里逐字写着「登记表空了 ⇒ 那条等号断言会变成
+    /// 「空 == 空」，恒绿」。空表比没表更糟：它长得像有护栏。
+    /// ⇒ 先零容忍；真出现有理由的第一条边时，那一刻再把表建起来（那时它非空）。
+    ///
+    /// # ⚠ 诚实边界：`relay/` 的**测试段**确实引了 `agents/`，那不算违规
+    ///
+    /// `relay/server.rs::relay_child_process_entry_point`（子进程入口，`#[ignore]`）
+    /// 走 `crate::agents::claudecode::paths::resolve_home()`。本判据扫的是
+    /// `production_code`（测试段被剥掉）⇒ 看不见它，**这是有意的**：
+    /// 分层是**生产架构**的性质，测试跨层构造夹具是正常的（`refs_to_layer` 头注同款取舍）。
+    /// 写在这里免得下一个人 `grep` 到那一行、以为本判据坏了。
+    #[test]
+    fn relay_layer_must_not_reference_the_semantic_layers() {
+        let files = layer_sources("relay");
+        assert_collection_is_complete("relay", &files);
+        let bad = violating_edges(&files, &d1_relay_must_not_know());
+        assert!(
+            bad.is_empty(),
+            "relay/ 引用了它不该认识的层：\n  {}\n\
+             **先别急着加例外** —— 中转要的每一样东西都该由**调用方传进来**\n\
+             （`home` 今天就是这么来的：`main.rs` 的 `--relay` 臂把它当参数递进 `relay::run`）。\n\
+             先问：跨过来的那个东西，是不是其实该走入参？理由逐条见 `RELAY_MUST_NOT_KNOW`。",
+            bad.join("\n  ")
+        );
+    }
+
+    /// ★★★ `K-G4` 方向 ②：**别处不许反过来伸手进 `relay/` 内部**。
+    ///
+    /// 人群是 `observe/` 与 `control/` 两层（`plugin/` 归判据 ③，人群不重叠）。
+    /// 中转对外**只有一个口**：`relay/mod.rs` 里那一行 `pub(crate) use server::run;`。
+    /// 谁绕过它去引 `crate::relay::table` / `crate::relay::upstream`，
+    /// 中转的内部结构就变成了公共契约 —— 之后 `table.rs` 想换个形状都得先问一圈。
+    ///
+    /// # ⚠ 这一支够不到哪儿（如实登记，别读成「全体没有」）
+    ///
+    /// 它的人群是**两个层目录下的 18 个 `.rs`**（09-02 现打：`observe/` 8 + `control/` 10）。
+    /// `src/` 顶层那几个文件（`main.rs` · `listen.rs` · `wire.rs` …）**不在人群里**，
+    /// 而且就算放进来也扫不到：`mod relay;` 声明在 `main.rs`，它写的是**裸** `relay::run`，
+    /// 而 `refs_to_layer` 的锚点是 `crate::relay` / `super::super::relay`。
+    /// ⇒ 顶层文件伸手进 `relay::table::…` 这一形，**本判据看不见**。留作跟进件，不在本件买。
+    #[test]
+    fn no_layer_may_reach_into_relay_internals() {
+        let mut bad: Vec<String> = Vec::new();
+        for layer in WHO_MAY_NOT_REACH_INTO_RELAY {
+            let files = layer_sources(layer);
+            assert_collection_is_complete(layer, &files);
+            bad.extend(violating_edges(&files, D2_REACHING_INTO_RELAY));
+        }
+        bad.sort();
+        assert!(
+            bad.is_empty(),
+            "有人伸手进了 relay/ 内部（对外只有 `relay::run` 一个口）：\n  {}\n\
+             **先别急着加例外** —— 先问那个东西是不是根本不属于中转：\n\
+             `U3` 摸底时那条反向边的正解就是「被引的那个函数放错了地方」，搬进 `common/` 之后边就没了。\n\
+             真要新开一个口，那个口该住 `relay/mod.rs` 的 `pub(crate) use`，并在这里配一张非空登记表。",
+            bad.join("\n  ")
+        );
+    }
+
+    /// ★★★ `K-G4` 方向 ③：**`relay/` 与 `plugin/` 互不认识**（两个方向都零容忍）。
+    ///
+    /// 这两层是**两条互不相干的基础设施**：一条搬 HTTP 字节，一条按 argv 起外部程序。
+    /// 谁先认识谁都会把对方的知识继承过来 —— 中转认识调用口，就等于在 HTTP 处理线程上
+    /// 长出一条起进程的路（而全 crate 唯一一处起进程口是
+    /// `crate::plugin::invoke::run`，它在 `readonly_guard::ALLOWED` 里单独登记着）；
+    /// 调用口认识中转，它就不再是「谁都能用的口」。
+    ///
+    /// ⚠ 本支**刻意与判据 ① 的人群不重叠**（`RELAY_MUST_NOT_KNOW` 里没有 `plugin`）：
+    /// 重叠了就造不出「只由这一支挡住」的探针〔`K22`〕。
+    #[test]
+    fn relay_and_plugin_must_not_reference_each_other() {
+        let relay = layer_sources("relay");
+        assert_collection_is_complete("relay", &relay);
+        let plugin = layer_sources("plugin");
+        assert_collection_is_complete("plugin", &plugin);
+        let mut bad = violating_edges(&relay, D3_RELAY_TO_PLUGIN);
+        bad.extend(violating_edges(&plugin, D3_PLUGIN_TO_RELAY));
+        bad.sort();
+        assert!(
+            bad.is_empty(),
+            "relay/ 与 plugin/ 互相认识了（两条互不相干的基础设施）：\n  {}\n\
+             **先别急着加例外** —— 两边要的东西都该由**调用方传进来**（`E6`）。\n\
+             ⚠ 若这条边是 `relay → plugin::invoke`：那等于在 HTTP 处理线程上开了一条起进程的路，\n\
+             先回定框，别在这里加例外。",
+            bad.join("\n  ")
+        );
+    }
+
+    /// ★★★ `K-G4` `KG43`：**上面三条今天全是空真 ⇒ 用活体夹具证明它们真会红**。
+    ///
+    /// # 先报摸底读数（`brief` 第 12 条：分母怎么数的一起写）
+    ///
+    /// 09-02 现打，量具住 `evidence/K-G4-C-relay-layer-census.py`（被测对象写死指向
+    /// `worktrees/k-g4/remote-daemon-proto/src`）：
+    ///
+    /// | 方向 | 违规处数 | 分母 |
+    /// |---|---|---|
+    /// | ① `relay/` → `observe`·`control`·`agents` | **0** | `relay/` 的 **12** 个 `.rs` 的生产段 |
+    /// | ② `observe`·`control` → `relay/` | **0** | 两层合计 **18** 个 `.rs` 的生产段 |
+    /// | ③ `relay/` ↔ `plugin/` | **0** | 两层合计 **16** 个 `.rs` 的生产段 |
+    ///
+    /// 三个方向全 0 ⇒ 三条断言都是 **`[] == []`**，**闸死了照样绿**。
+    /// 那份量具自己带**非空对照**（同一把尺子量 `control → plugin`，
+    /// 现打 **5** 条边，与 `ALLOWED_INTO_PLUGIN` 的 5 条逐条对上）——
+    /// 「差集为空」与「命令没跑」在终端上一模一样，必须有非空的那一格〔`brief` 12·14w②〕。
+    ///
+    /// # 夹具为什么造在**盘上**，而不是喂字符串
+    ///
+    /// 本文件已有的两条 `*_actually_bites` 喂的是字符串，它们证明的是
+    /// [`refs_to_layer`] **这一个函数**会咬人 —— 那是**扫描器**的牙，不是**判据**的牙。
+    /// 判据还有「走目录 → 剥生产段 → 采集面自检 → 汇总 → 断言」四段，
+    /// 喂字符串一段都没盖到。⇒ 这里造真目录、真 `.rs` 文件，
+    /// 让 [`layer_sources_at`] · [`assert_collection_is_complete_at`] · [`violating_edges`]
+    /// **原封不动**跑一遍。
+    ///
+    /// # 四个探针，**每个只由一支挡住**〔定框 `K22`〕
+    ///
+    /// 拆掉任一支必有东西红，且红的只有那一支：
+    ///
+    /// | 探针 | ① | ② | ③ |
+    /// |---|---|---|---|
+    /// | relay 形状的文件引 `control` | 🔴 | 绿 | 绿 |
+    /// | control 形状的文件引 `relay` | 绿 | 🔴 | 绿 |
+    /// | relay 形状的文件引 `plugin` | 绿 | 绿 | 🔴 |
+    /// | plugin 形状的文件引 `relay` | 绿 | 绿 | 🔴 |
+    ///
+    /// ⚠ 夹具的目录名 / 文件名一律**中性**，且下面每一条断言都只认**符号**
+    ///（`crate::control::gate` 这一类，来自文件**内容**），不认路径 ——
+    /// 〔`6g`〕断言取自夹具的名字会靠路径恒真。
+    #[test]
+    fn the_relay_direction_judgments_actually_bite_on_a_live_tree() {
+        // 每棵树都放**两个** `.rs`：一个违规、一个干净。两个的理由有两条 ——
+        // ① `assert_collection_is_complete_at` 的地板是 `tree >= 2`；
+        // ② 顺带证明遍历真的走到了第二个文件，而不是撞见第一个就返回。
+        let clean = "pub fn ok() -> usize { crate::common::fs::len() }\n";
+
+        // 探针一：relay 形状的文件引 control。
+        let t1 = write_probe_tree("a", "use crate::control::gate;\npub fn x() {}\n", clean);
+        let f1 = layer_sources_at(&t1, "x");
+        assert_collection_is_complete_at(&t1, "x", &f1);
+        let forbidden1 = d1_relay_must_not_know();
+        let hit1 = violating_edges(&f1, &forbidden1);
+        assert!(
+            hit1.iter().any(|h| h.contains("crate::control")),
+            "判据 ① 对一条真的 relay→control 边没出声 —— 它此刻是空转的。实得：{hit1:?}"
+        );
+        // 单断：这条边只归 ①，②③ 的人群/被禁层都不该认它。
+        assert!(
+            violating_edges(&f1, D2_REACHING_INTO_RELAY).is_empty(),
+            "② 认领了本该只归 ① 的那条边 —— 两支的信号串了，探针不再是单断的"
+        );
+        assert!(
+            violating_edges(&f1, D3_RELAY_TO_PLUGIN).is_empty(),
+            "③ 认领了本该只归 ① 的那条边 —— 两支的信号串了，探针不再是单断的"
+        );
+
+        // 探针二：control 形状的文件伸手进 relay 内部。
+        let t2 = write_probe_tree("b", "pub fn y() { crate::relay::table::look(); }\n", clean);
+        let f2 = layer_sources_at(&t2, "x");
+        assert_collection_is_complete_at(&t2, "x", &f2);
+        let hit2 = violating_edges(&f2, D2_REACHING_INTO_RELAY);
+        assert!(
+            hit2.iter().any(|h| h.contains("crate::relay::table")),
+            "判据 ② 对一条真的 →relay 内部边没出声 —— 它此刻是空转的。实得：{hit2:?}"
+        );
+        assert!(
+            violating_edges(&f2, &forbidden1).is_empty(),
+            "① 认领了本该只归 ② 的那条边 —— 信号串了"
+        );
+        assert!(
+            violating_edges(&f2, D3_RELAY_TO_PLUGIN).is_empty(),
+            "③ 认领了本该只归 ② 的那条边 —— 信号串了"
+        );
+
+        // 探针三：relay 形状的文件引 plugin（③ 的正向那一半）。
+        let t3 = write_probe_tree(
+            "c",
+            "pub fn z() { crate::plugin::invoke::run(&b, &[], 1, &[]); }\n",
+            clean,
+        );
+        let f3 = layer_sources_at(&t3, "x");
+        assert_collection_is_complete_at(&t3, "x", &f3);
+        let hit3 = violating_edges(&f3, D3_RELAY_TO_PLUGIN);
+        assert!(
+            hit3.iter().any(|h| h.contains("crate::plugin::invoke")),
+            "判据 ③ 对一条真的 relay→plugin 边没出声 —— 它此刻是空转的。实得：{hit3:?}"
+        );
+        assert!(
+            violating_edges(&f3, &forbidden1).is_empty(),
+            "① 认领了本该只归 ③ 的那条边 —— `RELAY_MUST_NOT_KNOW` 里混进了 `plugin`，\
+             那样 ③ 就再也没有单断探针了〔`K22`〕"
+        );
+        assert!(
+            violating_edges(&f3, D2_REACHING_INTO_RELAY).is_empty(),
+            "② 认领了本该只归 ③ 的那条边 —— 信号串了"
+        );
+
+        // 探针四：plugin 形状的文件反过来引 relay（③ 的另一半 —— 少了这个，
+        // ③ 就只买到了单向，而它的名字承诺的是「互不认识」）。
+        let t4 = write_probe_tree("d", "use crate::relay as rl;\npub fn w() {}\n", clean);
+        let f4 = layer_sources_at(&t4, "x");
+        assert_collection_is_complete_at(&t4, "x", &f4);
+        let hit4 = violating_edges(&f4, D3_PLUGIN_TO_RELAY);
+        assert!(
+            hit4.iter().any(|h| h.contains("模块级引入")),
+            "③ 的反向那一半对层别名没出声 —— 引进来之后用法全是裸 `relay::…`，扫不到。实得：{hit4:?}"
+        );
+        assert!(
+            violating_edges(&f4, &forbidden1).is_empty(),
+            "① 认领了本该只归 ③ 的那条边 —— 信号串了"
+        );
+
+        // ② 的**人群**本身也要有牙 —— 上面四个探针盖的是「扫到的东西判得对不对」，
+        // 一个都盖不到「**扫了谁**」。人群被缩空或改成不存在的层名，判据会静默变成空转，
+        // 而它的输出与「跑了、没违规」在终端上一模一样〔`brief` 12·14w②〕。
+        assert!(
+            WHO_MAY_NOT_REACH_INTO_RELAY.len() >= 2,
+            "② 的人群缩到了 {} 层 —— 少一层就是少一整面没人看着",
+            WHO_MAY_NOT_REACH_INTO_RELAY.len()
+        );
+        for layer in WHO_MAY_NOT_REACH_INTO_RELAY {
+            // 层名写错 ⇒ `layer_sources` 在 `read_dir` 上直接 panic，同样是红。
+            let fs = layer_sources(layer);
+            assert!(
+                fs.len() >= 2,
+                "② 的人群里 `{layer}` 只采到 {} 个 `.rs` —— 那一层此刻没人扫",
+                fs.len()
+            );
+        }
+
+        // 采集面自检本身也要有牙：树上有 2 个 `.rs`，采集表里塞回 1 个 ⇒ 必须红。
+        // 没有这一格，`assert_collection_is_complete_at` 就是本护栏里唯一没人验过的那段。
+        let shrunk = vec![f1[0].clone()];
+        let r = std::panic::catch_unwind(|| assert_collection_is_complete_at(&t1, "x", &shrunk));
+        assert!(
+            r.is_err(),
+            "采集面自检对「采集漏了一个文件」没出声 —— 那意味着上面三条判据可以被\
+             「悄悄少扫几个文件」整个绕开"
+        );
+
+        for t in [t1, t2, t3, t4] {
+            let _ = std::fs::remove_dir_all(&t);
+        }
+    }
+
+    /// 给 [`the_relay_direction_judgments_actually_bite_on_a_live_tree`] 造一棵**真**小树。
+    ///
+    /// `tag` 只用来把四棵树的目录名岔开（配 pid 防并行撞车），**一律取中性名**，
+    /// 且**不许**出现在任何断言里〔`6g`：断言取自夹具名字会靠路径恒真〕。
+    fn write_probe_tree(tag: &str, dirty: &str, clean: &str) -> std::path::PathBuf {
+        let root = std::env::temp_dir().join(format!("ccm-lg-{}-{}", tag, std::process::id()));
+        // 先清一次：上一趟留下的文件会让「树上有几个 .rs」这个分母漂。
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(&root).expect("造夹具目录");
+        std::fs::write(root.join("one.rs"), dirty).expect("写夹具文件");
+        std::fs::write(root.join("two.rs"), clean).expect("写夹具文件");
+        root
     }
 
     /// 反向自检：判据真的会抓人（喂字符串，不改真文件）。
