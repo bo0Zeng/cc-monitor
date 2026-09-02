@@ -180,18 +180,158 @@ pub fn test_source(src: &str) -> String {
     out
 }
 
-/// `production_source` + 剥掉行注释。
+/// 把一行里的**字符字面量**（`'x'` / `'\n'` / `'\u{2028}'`）换成等长的 `_`。
+///
+/// 只服务于 [`strip_trailing_comments`] 的状态机：一个 `'"'` 会把「现在在不在字符串里」
+/// 这件事整段带偏（此后所有 `//` 都被当成字符串内容 ⇒ 剥法静默失效）。
+/// 等长替换 ⇒ 下标与原行一一对应，切的时候切**原行**。
+///
+/// ⚠ 生命周期（`&'a str` / `'static`）刻意不匹配：它们没有收尾引号。
+fn mask_char_literals(line: &str) -> String {
+    let b = line.as_bytes();
+    let mut out = b.to_vec();
+    let mut i = 0usize;
+    while i < b.len() {
+        if b[i] == b'\'' {
+            // `'\X'` / `'\u{…}'`：转义符在 i+2，收尾引号从 i+3 起找。
+            if i + 3 < b.len() && b[i + 1] == b'\\' {
+                if let Some(k) = b[i + 3..].iter().position(|&c| c == b'\'') {
+                    let end = i + 3 + k;
+                    out[i..=end].fill(b'_');
+                    i = end + 1;
+                    continue;
+                }
+            }
+            // `'c'`（c 可能是多字节 —— 整个字符一起替，UTF-8 才不会被切碎）。
+            if let Some(c) = line[i + 1..].chars().next() {
+                let cl = c.len_utf8();
+                if c != '\'' && c != '\\' && b.get(i + 1 + cl) == Some(&b'\'') {
+                    out[i..=i + 1 + cl].fill(b'_');
+                    i = i + 2 + cl;
+                    continue;
+                }
+            }
+        }
+        i += 1;
+    }
+    String::from_utf8(out).expect("只把整字符替成 `_`，不会切碎多字节 ⇒ 仍是合法 UTF-8")
+}
+
+/// **剥掉行尾注释**（`//` 到行末），字符串字面量安全。
+///
+/// # 它治的洞〔`K-H2b` 第九轮 `R9M7` 实测 · `K-R3` 09-01 复现在退出臂上〕
+///
+/// [`production_code`] 原先只剔**整行**注释（那一行 `trim_start` 之后以 `//` 打头）。
+/// 于是**任何行尾注释都能把任意文本带进「生产文本」**：
+///
+/// ```text
+/// let _ = h.current_pid(); // h.stop();
+/// ```
+///
+/// 生产上**再也不会**收掉那条后端，而所有 `contains(".stop()")` 型判据照样绿。
+/// 09-01 在本仓退出臂上现打：这一刀装上去，**门禁七格一个数不动、`GATE: OK`**。
+///
+/// # 为什么不是「按第一个 `//` 截断」
+///
+/// [`strip_comment_lines`] 的头注逐字写着它**刻意不剥行尾注释**，理由是
+/// 「按第一个 `//` 截断会砍坏字符串字面量里的 `//`（`"http://host"`）」。
+/// **那个理由只否决了『按第一个 `//` 截断』这一种实现，不否决这件事本身。**
+/// 本函数带一个最小状态机，只在**不在字符串里**的位置切 ⇒ `"http://host"` 原样保留。
+///
+/// # 🔴 保守边界（宁可留洞，不许造假红）
+///
+/// 下面三种情形**整行不动**，它们上面的洞仍然开着 —— 写出来，别当作已经关干净：
+///
+/// 1. 行里出现 raw / byte string 的开头（`r"` · `r#` · `b"`）；
+/// 2. 上一行的字符串没收口（跨行字符串**里面**的行）；
+/// 3. 引号在本行内不配平时，`//` 落在「字符串里」那一侧 ⇒ 不切。
+///
+/// 行数**不变**（[`pin_line`] 的行号语义不许动），只是行可能变短。
+pub fn strip_trailing_comments(src: &str) -> String {
+    let mut out: Vec<String> = Vec::new();
+    let mut in_str = false;
+    for raw in src.split('\n') {
+        let masked = mask_char_literals(raw);
+        if masked.contains("r\"") || masked.contains("r#") || masked.contains("b\"") {
+            // raw / byte string：这份剥法不解析它，且状态不可信 ⇒ 原样留下、状态归零。
+            out.push(raw.to_string());
+            in_str = false;
+            continue;
+        }
+        let mb = masked.as_bytes();
+        if in_str {
+            // 本行在字符串里 ⇒ 一个字都不切，只把「收没收口」扫出来。
+            let mut i = 0usize;
+            while i < mb.len() {
+                if mb[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if mb[i] == b'"' {
+                    in_str = false;
+                    break;
+                }
+                i += 1;
+            }
+            out.push(raw.to_string());
+            continue;
+        }
+        let mut i = 0usize;
+        let mut cut: Option<usize> = None;
+        while i < mb.len() {
+            if in_str {
+                if mb[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if mb[i] == b'"' {
+                    in_str = false;
+                }
+                i += 1;
+                continue;
+            }
+            if mb[i] == b'"' {
+                in_str = true;
+                i += 1;
+                continue;
+            }
+            if mb[i] == b'/' && mb.get(i + 1) == Some(&b'/') {
+                cut = Some(i);
+                break;
+            }
+            i += 1;
+        }
+        match cut {
+            // `cut` 指向 `/`，那一定是字符边界 ⇒ 切原行安全。
+            Some(c) => out.push(raw[..c].to_string()),
+            None => out.push(raw.to_string()),
+        }
+    }
+    out.join("\n")
+}
+
+/// `production_source` + 剥掉行注释（**整行的与行尾的都剥**）。
 ///
 /// 剥注释是必需的：两侧的注释**大量**在解释「为什么这里没有定时器了 / 哪些写模式被
 /// 禁了 / 有哪些子命令」，逐字提到那些字面量。不剥的话守卫会被**解释它自己的那段散文**
 /// 喂饱（daemon 的 `no_timer_guard` P4 实测被打红过；`build_id_guard` 的指纹会被注释里的
 /// 子命令名污染）。
+///
+/// # ★ 09-01（`K-R3`）：行尾注释那一半是**后补的**，补之前它是这一族的活体洞
+///
+/// 原先只剔整行注释 ⇒ **行尾注释整行保留**（那一行不以 `//` 开头）
+/// ⇒ 把一处真调用换成 `别的调用(); // 原调用()`，所有存在型文本判据照样绿。
+/// 剥法见 [`strip_trailing_comments`]（连同它**没有**关掉的三种情形一起写在那儿）。
+///
+/// ⚠ 同一个函数、同一族病、**第二次**：上一次（本模块头注）治的是「自检太弱」，
+/// 这次露的是「**剥法太窄**」。⇒ 加新原语时先问一句「它剥不掉的那部分，谁在看着」。
 pub fn production_code(src: &str) -> String {
-    production_source(src)
+    let kept = production_source(src)
         .lines()
         .filter(|l| !l.trim_start().starts_with("//"))
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    strip_trailing_comments(&kept)
 }
 
 /// 反向自检：剥完的文本里**不许再出现测试属性**。
@@ -582,17 +722,22 @@ pub fn contains_word(hay: &str, needle: &str) -> bool {
 /// ⚠ 迁移既有调用点时这一点**改变了返回值**：原先删行的两处，`pin_line` 的行号
 /// 从「剥后序号」变成「原文序号」—— 那是修正，不是回归。
 ///
-/// # ★ 它**不剥行尾注释**，这是刻意的
+/// # ★★ 09-01（`K-R3`）：**行尾注释现在也剥了 —— 原来那条「刻意不剥」的理由不成立**
 ///
-/// `let n = 5; // MAX_FOO = 99` 里那个 `MAX_FOO` **仍然会被扫到**。
+/// 〔原文留档，别当它还是现状〕「`let n = 5; // MAX_FOO = 99` 里那个 `MAX_FOO` **仍然会被扫到**。
 /// 不剥的理由不是偷懒：按第一个 `//` 截断会砍坏**字符串字面量**里的 `//`
-/// （`"http://host"`、`"a//b"` 这类），把好行截成半行、制造新的假阴性。
-/// 谁的语料里确定没有这种字面量，谁自己在调用点截 —— `profile_installer.rs`
-/// 就是这么做的（它扫的是自己生成的 shell/rc 片段，可控）。
+/// （`"http://host"`、`"a//b"` 这类），把好行截成半行、制造新的假阴性。」
 ///
-/// ⚠ **别把这条边界读成「注释都剥干净了」** —— 只剥整行的那种。
+/// 🔴 **那个理由只否决了『按第一个 `//` 截断』这一种实现，不否决这件事本身。**
+/// [`strip_trailing_comments`] 带一个最小状态机，只在**不在字符串里**的位置切
+/// ⇒ `"http://host"` 原样保留，而 `MAX_FOO` 剥得掉。**同职的两处（本函数与
+/// [`production_code`]）同一拍一起改** —— 只改一处就是「只覆盖了那条病的一个动词」。
+///
+/// ⚠ **仍然剥不干净的三种情形**逐条写在 [`strip_trailing_comments`] 头注里
+/// （raw / byte string 那一行 · 跨行字符串里面 · 引号本行不配平）。**别把这条边界读成「注释都剥干净了」。**
 pub fn strip_comment_lines(src: &str) -> String {
-    src.lines()
+    let blanked = src
+        .lines()
         .map(|l| {
             let t = l.trim_start();
             // `*` 与 `/*` 是块注释的续行与开头；不含 `*/`（那行通常已经是续行形态）。
@@ -603,7 +748,8 @@ pub fn strip_comment_lines(src: &str) -> String {
             }
         })
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    strip_trailing_comments(&blanked)
 }
 
 /// **把一个事实钉成一整行**（trim 后逐字相等，且恰好一行）〔audit-0805 F24〕。
@@ -817,6 +963,83 @@ mod tests {
         let prod = production_code(src);
         assert!(!prod.contains("forbidden_token"), "注释没剥掉：{prod:?}");
         assert!(prod.contains("fn a()"), "生产代码被剥掉了：{prod:?}");
+    }
+
+    /// ★★ `K-R3` 09-01：**行尾注释不许再喂饱存在型判据**。
+    ///
+    /// 语料是本仓退出臂那一刀的最小形（09-01 现打过真值：改之前门禁七格一个数不动）：
+    /// 真调用被换掉、只在**行尾注释**里留下原来那句 —— 生产上功能没了，判据却绿。
+    #[test]
+    fn a_trailing_comment_can_no_longer_feed_an_existence_guard() {
+        let holed = "fn exit() {\n    let _ = h.current_pid(); // h.stop();\n}\n";
+        let prod = production_code(holed);
+        assert!(
+            !prod.contains(".stop()"),
+            "行尾注释把 `.stop()` 带进了生产文本 —— 那正是「功能抽走、判据照绿」那个洞：{prod:?}"
+        );
+        // 非空对照：真调用还在时**必须**读得到（不然上面那条可能只是「什么都读不到」）。
+        let real = "fn exit() {\n    h.stop(); // 勾了才收；缺省不收见 C8③\n}\n";
+        assert!(
+            production_code(real).contains(".stop()"),
+            "真调用被误剥了 —— 这是拿假阳换真阳（铁律 18）"
+        );
+    }
+
+    /// 🔴 `strip_comment_lines` 头注给「不剥行尾」写的理由是
+    /// 「按第一个 `//` 截断会砍坏 `\"http://host\"`」——
+    /// 本条钉住：新剥法**没有**落进那个坑，两侧都断。
+    #[test]
+    fn a_double_slash_inside_a_string_literal_is_not_a_comment() {
+        let src = "fn a() {\n    let u = \"http://host/x\"; // 真注释在这儿\n}\n";
+        let prod = production_code(src);
+        assert!(
+            prod.contains("\"http://host/x\""),
+            "字符串字面量被当成注释砍掉了：{prod:?}"
+        );
+        assert!(
+            !prod.contains("真注释"),
+            "那一行真正的行尾注释没被剥掉：{prod:?}"
+        );
+    }
+
+    /// 一个 `'\"'` 字符字面量不许把状态机整段带偏（此后所有 `//` 都被当成字符串内容）。
+    #[test]
+    fn a_quote_char_literal_does_not_derail_the_scanner() {
+        let src = "fn a() {\n    if c == '\"' { let _ = 0; } // 尾注释\n}\n";
+        let prod = production_code(src);
+        assert!(!prod.contains("尾注释"), "字符字面量把剥法带瞎了：{prod:?}");
+        assert!(prod.contains("if c == '\"'"), "字符字面量本身被砍了：{prod:?}");
+    }
+
+    /// 保守边界的**正面兑现**：raw string 与跨行字符串里的 `//` 一个字都不许动。
+    ///
+    /// 这两种情形上的洞**仍然开着**（[`strip_trailing_comments`] 头注逐条写了）——
+    /// 本条钉的不是「洞关了」，是「**没有为了关洞去砍字符串**」。
+    #[test]
+    fn raw_and_multiline_strings_are_left_alone() {
+        let raw = "fn a() {\n    let s = r#\"keep // this\"#;\n}\n";
+        assert!(
+            production_code(raw).contains("keep // this"),
+            "raw string 里的 `//` 被当注释砍了：{:?}",
+            production_code(raw)
+        );
+        let multi = "fn a() {\n    let s = \"first\n    second // still inside\";\n}\n";
+        assert!(
+            production_code(multi).contains("second // still inside"),
+            "跨行字符串里的 `//` 被当注释砍了：{:?}",
+            production_code(multi)
+        );
+    }
+
+    /// 行数不许变 —— [`pin_line`] 报的是行号，剥法改变行数就等于让它的读数全体漂一格。
+    #[test]
+    fn stripping_trailing_comments_keeps_the_line_count() {
+        let src = "fn a() { let _ = 0; } // 尾\nfn b() {}\nlet u = \"a//b\";\n";
+        assert_eq!(
+            strip_trailing_comments(src).split('\n').count(),
+            src.split('\n').count(),
+            "行数变了 ⇒ pin_line 的行号全体错位"
+        );
     }
 
     /// `assert_no_test_code` 真的会咬人（否则它是安慰剂）。
