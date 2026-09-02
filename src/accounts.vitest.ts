@@ -33,6 +33,12 @@ import {
   __resetAccountsCacheForTest,
   isAccountZero,
   accountStatusBadge,
+  localLaunchAccountSync,
+  localLaunchAccountNameSync,
+  __setLocalLaunchSnapshotForTests,
+  __resetLocalLaunchSnapshotForTests,
+  fetchLocalRelayRouting,
+  localRelayStateFor,
   accountLoginActionLabel,
   type AccountsState,
   type Account,
@@ -926,5 +932,230 @@ describe("K-A1 KA6a：api-key 号的 UI 文案不许说「已登录」", () => {
       acct({ mode: "in-place", authKind: "api-key", authReady: true }),
     );
     expect(b.text).toBe("逃生口");
+  });
+});
+
+describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」逐格对拍", () => {
+  const apiKey = () =>
+    acct({ name: "acct-a", loggedIn: false, authKind: "api-key", authReady: true });
+
+  // ★★ 本 describe 存在的理由，逐字：**本件落地那一刻，那句 hover 就对一部分号成了假话**
+  //（本机、中转表里有它那一行、中转在跑的那些号，cc-monitor **真的**会替它配 base URL）。
+  // 而「改了事实没改说它的那句话」是本区花过六轮的那一族（ROADMAP 风险 6v / 裁定 K20）。
+  // ⇒ 这里把**实现的三态**与**徽章的三态**钉成一一对应：少一格、串一格，都红。
+
+  it("★ 本机 · 表里有这一行 · 中转在跑 ⇒ 「经本机中转」，且不再是警示态", () => {
+    const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: true, running: true });
+    expect(b.text).toBe("api-key（经本机中转）");
+    expect(b.warn).toBe(false);
+    // 它保证的是哪一截，必须写在 hover 里 —— 不许暗示「这个 key 一定能用」。
+    expect(b.title).toContain("ANTHROPIC_BASE_URL");
+    expect(b.title).toContain("到 claude 那边才知道");
+  });
+
+  it("★ 本机 · 表里有这一行 · 中转没跑 ⇒ 「中转未运行」，且说明会被当场拒", () => {
+    const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: true, running: false });
+    expect(b.text).toBe("api-key（中转未运行）");
+    expect(b.warn).toBe(true);
+    // `KH2B2`②：这一条**不许**被说成静默失败 —— 起会话那一侧会当场拒。
+    expect(b.title).toContain("当场拒");
+  });
+
+  it("★ 本机 · 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出**为什么**", () => {
+    const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: false, running: true });
+    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.title).toContain("没有这个账号的一行");
+    // 阴性对照：它**不许**说成「远端不做」那一条（那是另一个成因，处置也不同）。
+    expect(b.title).not.toContain("远端");
+  });
+
+  it("★ 远端那一半 ⇒ 文案要指名是**远端**（`§0e` 裁四：本件明写不做）", () => {
+    const b = accountStatusBadge(apiKey(), { scope: "remote" });
+    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.title).toContain("远端");
+    expect(b.title).toContain("本机");
+    // 阴性对照：不许拿本机那条「表里没有这一行」去解释远端。
+    expect(b.title).not.toContain("没有这个账号的一行");
+  });
+
+  it("★ 调用方没说是哪一半 ⇒ **不替它下判断**，只把两条前置说清", () => {
+    const b = accountStatusBadge(apiKey());
+    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.title).toContain("两件事都成立");
+    expect(b.title).toContain("不替它下判断");
+    // ⚠ 这一档**不许**断言「表里没有这一行」——那是它看不见的事实。
+    expect(b.title).not.toContain("没有这个账号的一行");
+  });
+
+  it("★ 那句已经成假的话，四档里一句都不许再出现（分母 = 我列的这 4 档 + 缺席）", () => {
+    // 逐字：本件之前的原文是「cc-monitor 今天还不会替它配 API key 与 base URL」。
+    const LIE = "今天还不会替它配 API key 与 base URL";
+    const states: Array<Parameters<typeof accountStatusBadge>[1]> = [
+      undefined,
+      { scope: "remote" },
+      { scope: "local", hasRow: false, running: false },
+      { scope: "local", hasRow: true, running: false },
+      { scope: "local", hasRow: true, running: true },
+    ];
+    // 非空对照：先证明这把尺子认得出那句话（否则下面整个循环可能只是因为 needle 打错而全绿）。
+    expect("cc-monitor " + LIE).toContain(LIE);
+    for (const st of states) {
+      expect(accountStatusBadge(apiKey(), st).title).not.toContain(LIE);
+      // 顺带：任何一档都不许说成「已登录」（KA6a 的原话，人群扩到了新那几档）。
+      expect(accountStatusBadge(apiKey(), st).text).not.toContain("已登录");
+    }
+  });
+
+  // ★★★ 规则那一段：一份**后端读数**（`RelayRoutingView`）怎么落到某一个账号上，
+  // 以及三档**真的分得开**。喂进来的是读数的形状，**不是**直接喂 `{scope:"local",…}`
+  // —— 后者会把 `localRelayStateFor` 那一格整个绕过去。
+  //
+  // ⚠ **取数那一跳（`invoke`）今天还没接上**，卡点写在 `accounts.ts` 那段头注里
+  // （`src/ipc/commands.vitest.ts` 的两个钉死计数不在本件写区）。⇒ 本组买的是**规则**，
+  // 不是「界面上真的显出来了」。
+  it("★ 产出方：问的是 `relay_routing_for`，入参是那几个 configDir", async () => {
+    invokeMock.mockResolvedValue({ routed: ["/h/.claude-accts/acct-a"], running: true });
+    const got = await fetchLocalRelayRouting(["/h/.claude-accts/acct-a", "/h/.claude-accts/acct-b"]);
+    // 命令名打错在生产上是**运行时** `invoke` reject（不是编译错）⇒ 在这里钉死它。
+    expect(invokeMock).toHaveBeenCalledWith("relay_routing_for", {
+      configDirs: ["/h/.claude-accts/acct-a", "/h/.claude-accts/acct-b"],
+    });
+    expect(got).toEqual({ routed: ["/h/.claude-accts/acct-a"], running: true });
+  });
+
+  it("★★ 走真产出方 → 三档：读数从那条命令来，三个账号落到三个不同的徽章上", async () => {
+    // ⚠ 与下面那条的差别就是**这一格**：这里的 routing 是 `fetchLocalRelayRouting` 的返回值
+    //（即那条命令的产物），不是判据手写的字面量 ⇒ 命令名 / 入参 / 字段名任一处坏掉，这里就散。
+    invokeMock.mockResolvedValue({ routed: ["/h/.claude-accts/acct-a"], running: true });
+    const routing = await fetchLocalRelayRouting([
+      "/h/.claude-accts/acct-a",
+      "/h/.claude-accts/acct-b",
+    ]);
+    const withDir = (name: string, dir: string | null) =>
+      acct({ name, configDir: dir, loggedIn: false, authKind: "api-key", authReady: true });
+    const a = withDir("acct-a", "/h/.claude-accts/acct-a");
+    const b = withDir("acct-b", "/h/.claude-accts/acct-b");
+    expect(accountStatusBadge(a, localRelayStateFor(a, routing)).text).toBe("api-key（经本机中转）");
+    expect(accountStatusBadge(b, localRelayStateFor(b, routing)).text).toBe(
+      "api-key（未配置端点）",
+    );
+    // 非空对照：同一条产出方、只把 `running` 翻过来 ⇒ 第三档真的分得开。
+    invokeMock.mockResolvedValue({ routed: ["/h/.claude-accts/acct-a"], running: false });
+    const stopped = await fetchLocalRelayRouting(["/h/.claude-accts/acct-a"]);
+    expect(accountStatusBadge(a, localRelayStateFor(a, stopped)).text).toBe(
+      "api-key（中转未运行）",
+    );
+  });
+
+  it("★ 读数 → 三档：同一份读数，三个账号落到三个不同的徽章上", () => {
+    const routing = { routed: ["/h/.claude-accts/acct-a"], running: true };
+    const withDir = (name: string, dir: string | null) =>
+      acct({ name, configDir: dir, loggedIn: false, authKind: "api-key", authReady: true });
+
+    // ① 表里有这一行 + 中转在跑 ⇒ 「经本机中转」。
+    const a = withDir("acct-a", "/h/.claude-accts/acct-a");
+    expect(accountStatusBadge(a, localRelayStateFor(a, routing)).text).toBe("api-key（经本机中转）");
+    // ② 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出为什么。
+    const b = withDir("acct-b", "/h/.claude-accts/acct-b");
+    const bb = accountStatusBadge(b, localRelayStateFor(b, routing));
+    expect(bb.text).toBe("api-key（未配置端点）");
+    expect(bb.title).toContain("没有这个账号的一行");
+    // ③ 同一个账号、只把「中转在不在跑」翻过来 ⇒ 第三档（非空对照：两档真的分得开）。
+    const stopped = { routed: ["/h/.claude-accts/acct-a"], running: false };
+    expect(accountStatusBadge(a, localRelayStateFor(a, stopped)).text).toBe("api-key（中转未运行）");
+    // ④ 账号 0（没有 configDir）⇒ 推不出 id ⇒ **不表态**，回落到缺席那一档。
+    const zero = withDir("0", null);
+    expect(localRelayStateFor(zero, routing)).toBeUndefined();
+    expect(accountStatusBadge(zero, localRelayStateFor(zero, routing)).title).toContain(
+      "不替它下判断",
+    );
+  });
+
+  it("★ 订阅号一格不受影响（阴性对照：新参数不许改到别的 kind）", () => {
+    for (const st of [undefined, { scope: "remote" } as const, { scope: "local", hasRow: true, running: true } as const]) {
+      expect(accountStatusBadge(acct({}), st).text).toBe("已登录");
+      expect(accountStatusBadge(acct({ loggedIn: false }), st).text).toBe("未登录");
+      expect(accountStatusBadge(acct({ mode: "in-place" }), st).text).toBe("逃生口");
+    }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-H2b` `D2 阻-3` / `D3 阻-2`：**取值口的行为判据**（先前它零行为判据）
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// ★★ `D2` 现打过两刀，**两刀都是 1495 全绿**：
+// ① 把取值口掏空成「永远说不出账号」；② 把它头注**逐字禁止**的那条回落
+//（有 pin 但不可选 ⇒ 下沉到当前号）真加进生产段。
+// ⇒ 那时只有两条**源码形状**判据（数调用点），一条量行为的都没有。
+// 本组就是那两刀的反面：**掏空必须红，加回落也必须红。**
+describe("K-H2b：本机起会话取账号那一口（行为）", () => {
+  const st = (accounts: Account[], defaultName: string | null): AccountsState => ({
+    origin: "<local>",
+    available: true,
+    error: null,
+    meta: null,
+    accounts,
+    defaultName,
+    notice: null,
+  });
+  const A = acct({ name: "acct-a", configDir: "/h/.claude-accts/acct-a" });
+  const B = acct({ name: "acct-b", configDir: "/h/.claude-accts/acct-b" });
+  /** 不可选：缺凭据的订阅号（`isSelectable` 那条规则的既有形状）。 */
+  const dead = acct({ name: "acct-dead", configDir: "/h/.claude-accts/acct-dead", loggedIn: false });
+
+  beforeEach(() => __resetLocalLaunchSnapshotForTests());
+
+  it("★ 掏空那一刀的反面：快照有东西时，它必须真的说得出账号", () => {
+    // 冷快照 ⇒ 不表态（这一格本身也是那条诚实边界的判据）。
+    expect(localLaunchAccountSync(null)).toBeUndefined();
+    expect(localLaunchAccountNameSync("s1")).toBeNull();
+    // 有快照 ⇒ **必须说得出**（掏空成恒 `undefined` 的那一刀在这里红）。
+    __setLocalLaunchSnapshotForTests(st([A, B], "acct-b"), {});
+    expect(localLaunchAccountNameSync(null)).toBe("acct-b");
+    expect(localLaunchAccountSync(null)).toEqual({
+      kind: "named",
+      configDir: "/h/.claude-accts/acct-b",
+    });
+  });
+
+  it("★★ 「当前账号」读的是 config.json 的 `defaultName`，不是 manifest 的 `isDefault`", () => {
+    // 🔴 上一拍这里读的是 `a.isDefault` ⇒ **用户切过号之后新会话静默串号**，
+    //    而且中转会按错的 id 换上别人那一行的 key。这一条就是那个形状的反面：
+    //    manifest 说 A 是默认，而用户切到了 B ——必须听用户的。
+    const manifestDefault = acct({
+      name: "acct-a",
+      configDir: "/h/.claude-accts/acct-a",
+      isDefault: true,
+    });
+    __setLocalLaunchSnapshotForTests(st([manifestDefault, B], "acct-b"), {});
+    expect(localLaunchAccountNameSync(null)).toBe("acct-b");
+    // 非空对照：把 `defaultName` 拿掉 ⇒ 才回落到 manifest 那一格（规则本身没变）。
+    __setLocalLaunchSnapshotForTests(st([manifestDefault, B], null), {});
+    expect(localLaunchAccountNameSync(null)).toBe("acct-a");
+  });
+
+  it("★★ 回落那一刀的反面：有 pin 但那个号不可选 ⇒ **不表态**，绝不下沉到当前号", () => {
+    __setLocalLaunchSnapshotForTests(st([A, B, dead], "acct-b"), { s1: "acct-dead" });
+    // 非空对照排最前：pin 指向一个**可选**的号时它确实跟 pin 走（尺子不是恒 null）。
+    __setLocalLaunchSnapshotForTests(st([A, B, dead], "acct-b"), { s1: "acct-a" });
+    expect(localLaunchAccountNameSync("s1")).toBe("acct-a");
+    // 正题：pin 指向不可选的号 ⇒ `null`。**下沉到 "acct-b" 就是 `#75` 那个病灶**
+    //（把一条会话悄悄翻到别的号上），那条回落一加进生产段，这里当场红。
+    __setLocalLaunchSnapshotForTests(st([A, B, dead], "acct-b"), { s1: "acct-dead" });
+    expect(localLaunchAccountNameSync("s1")).toBeNull();
+    expect(localLaunchAccountSync("s1")).toBeUndefined();
+    // 没有 pin 的会话仍然跟当前号（与远端那条 `withAccount` 同形）。
+    expect(localLaunchAccountNameSync("s-nopin")).toBe("acct-b");
+  });
+
+  it("★ 取名字与取 configDir 是同一条规则的两半（不许两处各判一次）", () => {
+    __setLocalLaunchSnapshotForTests(st([A, B, dead], "acct-b"), { s1: "acct-a", s2: "acct-dead" });
+    for (const sid of [null, "s1", "s2", "s-nopin"]) {
+      const name = localLaunchAccountNameSync(sid);
+      const arg = localLaunchAccountSync(sid);
+      if (name === null) expect(arg).toBeUndefined();
+      else expect(arg?.configDir).toBe(st([A, B, dead], "acct-b").accounts.find((a) => a.name === name)!.configDir);
+    }
   });
 });

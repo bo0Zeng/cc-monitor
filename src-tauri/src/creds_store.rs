@@ -238,6 +238,41 @@ mod tests {
             mine,
             store::path_under_claude_home(&home.join(".claude-other"))
         );
+
+        // ★★ `K-H2b` `D1 阻-3`：**上面那个 `home.join(".claude")` 是手写的根** ——
+        // 它钉住的只有**相对段**（`claudecode-frontend/relay-credentials.json` 这一截），
+        // 钉不住「两侧的**根**会不会算到两个地方去」。而那正是阻-3 的病：
+        // daemon 侧的根走 `resolve_home()`，它**认 `CLAUDE_CONFIG_DIR`**；
+        // monitor 这一侧**刻意不跟随**（本模块头注逐字）⇒ 中转一旦继承到那个变量，
+        // 两侧读写的就是两份文件，而症状是「界面上配好了，中转说没配」。
+        //
+        // ⇒ 今天买断这一格的**不是**路径算法，是**把路径显式传过去**：
+        // `local_daemon::start_local_relay` 用 `CCM_RELAY_CREDENTIALS` 把
+        // **本函数算出来的这一个**交给中转。
+        //
+        // 🔴 `D6 阻-1` 回修（08-29）：这里先前是两条「`local_daemon.rs` 的生产段里有没有
+        // `crate::creds_store::resolve_path()` / `"CCM_RELAY_CREDENTIALS".into()` 这两段文本」——
+        // **同一族的病**（文本留住、行为摘掉：把那两段文本留在一处用不到的地方，
+        // 真正交出去的换成别的路径 ⇒ 两条照绿）。
+        // ⇒ 换成读 `local_daemon::relay_child_envs()` **产出来的那一份**：
+        // 那一格的值必须逐字节等于本函数算出来的路径。
+        let envs = crate::local_daemon::relay_child_envs();
+        assert_eq!(
+            envs.iter()
+                .find(|(k, _)| k == "CCM_RELAY_CREDENTIALS")
+                .map(|(_, v)| v.clone()),
+            Some(mine.display().to_string()),
+            "起中转那一侧交出去的凭据路径不是**本函数**算出来的这一个 —— 它会退回去读 \
+             `CLAUDE_CONFIG_DIR` 底下那份，而 monitor 写的这一份不跟随它。实得：{envs:?}"
+        );
+        // 反空真：这把尺子分得出「不是那个路径」（不是恒相等）。
+        assert!(
+            !envs.iter().any(|(_, v)| *v
+                == store::path_under_claude_home(&home.join(".claude-other"))
+                    .display()
+                    .to_string()),
+            "这把尺子对任何路径都说「是」—— 它恒真，本条按红处理"
+        );
     }
 
     /// `KS7`：它**不是**前端整份读写的那份配置。

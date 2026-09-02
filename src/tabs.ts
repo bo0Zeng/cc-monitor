@@ -18,6 +18,10 @@ import {
   detectAccountMismatch,
   withAccount,
   type SessionAccount,
+  localLaunchAccountSync,
+  localLaunchAccountNameSync,
+  recordLocalLaunchAccount,
+  primeLocalLaunchAccounts,
 } from "./accounts";
 import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
 import { validateLocalLaunch } from "./launch-requests";
@@ -2218,6 +2222,8 @@ export class TabManager {
     // 没起 / 还没推过帧），不是「一个名字都没占」。不知道的时候**不铸名**、不传 `tmuxName`
     // ⇒ 后端诚实降级回旧路（不进容器）。硬要铸就是「不避让」，那正是 issue #76
     //「静默接进第一个会话，而用户以为开了新的」。
+    // `D1 阻-1`：**不等待**地把账号快照踢一脚（等它就多一拍，见那个取值口的头注）。
+    primeLocalLaunchAccounts();
     let tmuxName: string | null = null;
     try {
       const sessions = await commands.list_local_tmux();
@@ -2227,12 +2233,22 @@ export class TabManager {
       tmuxName = null;
     }
     try {
+      // ★★ `K-H2b` `D1 阻-1`：**账号这一格先前是空的** —— 这条是 tab 栏那条主路，
+      //    而它一个账号都不传 ⇒ ① 起会话落到 shell rc 里那个默认号上（静默串号）；
+      //    ② 中转那一格永远拼不出路由键（没有账号 id ⇒ 不注入）。
+      //    取值口只有一个（`resolveLocalLaunchAccount`）：resume 走那条会话上次的 pin，
+      //    说不出就**缺席**（逐字节旧行为），绝不回落到「当前账号」——那是 #75 的形状。
       await invoke("resume_history_session", {
         sessionId: sid,
         cwd: tab.cwd ?? "",
         launcher: behavior.resumeCommandLocal || null,
         tmuxName,
+        account: localLaunchAccountSync(sid),
       });
+      // `D3 阻-2`：**本机这条路也要往 pin 里写** —— 在此之前 `recordLastAccount` 的两个
+      //   生产调用点结构上只走远端 ⇒ 本机 `list_last_accounts` 恒空 ⇒ 上面那句「pin 优先」
+      //   在本机永远走不到。⚠ 不等待（多一拍会撞那两条只放行一个微任务的 DOM 判据）。
+      recordLocalLaunchAccount(sid, localLaunchAccountNameSync(sid));
     } catch (err) {
       showActionFailureToast("恢复失败", String(err));
     }

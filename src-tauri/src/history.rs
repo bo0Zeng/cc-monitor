@@ -1230,12 +1230,24 @@ fn build_local_posix_command(
 /// 于是「精心让出 `<sid8>-cc-2`」被直接撞掉。在这里补一个铸造口 = 第三次犯同一个错。
 /// ⇒ 名字由前端传下来（P3t-Y2b 接线）；没传 ⇒ 说不出容器 ⇒ 诚实降级回旧路。
 #[cfg(not(windows))]
+const NO_TMUX_NAME: &str = "没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸";
+
+#[cfg(not(windows))]
 fn render_local_ccm(
     action: &LocalPsAction,
     launcher: Option<&str>,
     account: Option<&LaunchAccount>,
     tmux_name: Option<&str>,
 ) -> Result<String, String> {
+    // ★★ `D6 阻-1`：**说不出容器名就不必先付一次 `bash -lic` 的钱**。
+    //    下面那个纯函数半在同一格上也拒（同一个 `NO_TMUX_NAME`，不是两份文案），
+    //    所以这不是第二条规则，是把**已经确定的拒**提到探测之前。
+    //    ⚠ 它同时是判据能驱动 [`launch_local`] 的前提：不早退的话，一条只想看
+    //    「最后交出去的是哪一串」的判据会顺带在跑测试的这台机器上起一次 `bash -lic`
+    //    —— 那正是本函数与 `render_local_ccm_with` 当初分家要避开的那件事。
+    if tmux_name.is_none_or(str::is_empty) {
+        return Err(NO_TMUX_NAME.into());
+    }
     // ★ 探测与渲染**分家**（P3t-Y3）：探测是这台机器的事实，渲染是纯函数。
     // 合在一起时，判据的结论会跟着「跑测试的机器装没装 ccm」变 —— 而「本机恰好没装
     // ⇒ 判据静默 return ⇒ 报绿」与「真的测过了」在输出上完全一样，那是「0 passed 不是绿」同族。
@@ -1257,7 +1269,7 @@ fn render_local_ccm_with(
     use crate::backend::control::ccm_invocation as ci;
 
     let Some(name) = tmux_name.filter(|n| !n.is_empty()) else {
-        return Err("没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸".into());
+        return Err(NO_TMUX_NAME.into());
     };
     let sanitized = sanitize_launcher(launcher)?;
     let agent = crate::adapter::active();
@@ -1356,17 +1368,64 @@ fn launch_local(
     account: Option<&LaunchAccount>,
     tmux_name: Option<&str>,
 ) -> Result<(), String> {
+    // ★★ `K-H2b`：**这一行就是「那条线」** —— 起会话这一刻把 base URL 指向本机中转。
+    //    空串 = 这个号不走中转（`§0e` 裁一：官方号一个字节不进中转）。
+    let relay = relay_prefix_for_launch(action, account)?;
+    // Windows 那半**逐字不动**（`C12`：「windows不要tmux」）。`tmux_name` 在这一侧
+    // 连读都不读 —— 读了就是给「Windows 也进容器」留了个口子。
     #[cfg(windows)]
-    {
-        // Windows 那半**逐字不动**（`C12`：「windows不要tmux」）。`tmux_name` 在这一侧
-        // 连读都不读 —— 读了就是给「Windows 也进容器」留了个口子。
+    let base = {
         let _ = tmux_name;
-        let ps = build_local_ps_command(action, launcher, account)?;
-        crate::launch::launch_powershell_window(&ps, cwd)
-    }
+        build_local_ps_command(action, launcher, account)?
+    };
     #[cfg(not(windows))]
-    {
-        let cmd = match render_local_ccm(action, launcher, account, tmux_name) {
+    let base = {
+        // ★★ `K-H2b`（08-28 第二拍）：**照旧走 ccm 那条容器路，前缀拼在它外面。**
+        //
+        // # 第一拍为什么绕开它，第二拍为什么不用绕了
+        //
+        // 第一拍的判断是：ccm 的容器分支把载荷经 `send-keys` 送进**新起的 tmux 会话**，
+        // 而 tmux server 的 `update-environment` 默认列表**不含**这个变量
+        // ⇒ 在 `ccm` 外侧 export 的东西**在 tmux 边界被吃掉** ⇒ 照旧走 ccm
+        // = **静默地没注入**。于是它两害相权选了「注入成功但没有容器」。
+        //
+        // 那个坑是真的，但**处置选窄了**：`shared/ccm` 里本来就有一段**同形的转发**
+        //（R08 那条：把继承来的 `CLAUDE_CONFIG_DIR` 写进载荷**内侧**）。
+        // 第二拍照它加了一条 `ANTHROPIC_BASE_URL` 的转发 ⇒ **tmux 边界那一格不再是拦路的那格**。
+        //
+        // ⚠ **那不违反 `§0e` 裁三**：裁三禁的是「把 ccm 当**收口点**」——
+        // 三条生产路结构上绕开它，靠它**注入**会长出一个恒绿的假闸。
+        // 而注入仍然发生在 `payload.rs`，ccm 只是**别把已经注入好的变量吃掉**。
+        // **「不当收口点」≠「不许碰它」。**
+        //
+        // 🔴🔴 **订正（`D4 阻-3`）：这里先前逐字写着「于是『走中转』与『有 tmux 容器』
+        // 不再互斥」—— 那是假话，今天仍然互斥，只是成因换了。**
+        //
+        // 成因不再是「变量在 tmux 边界被吃掉」，而是**具名账号根本进不了 ccm**：
+        // 能推出中转 id 的只有 `LaunchAccount::Named`（`relay_account_id`：`Base` 与缺席
+        // 一律 `None`），而 `render_local_ccm` 对 `Named` **必然** §35 短路
+        //（`Named` 只有 configDir、没有名字，CLI 只会 `--account <名字>`）
+        // ⇒ **带中转前缀的本机拉起，必然落到下面那条 `build_local_posix_command`，
+        // 而那条路没有 tmux 容器；走 ccm 容器路的，`relay` 必然是空串。**
+        //
+        // ⇒ 这个事实由 `tests::a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`
+        // **逐格钉住**（三种形状各喂一次）。消掉它要给 `LaunchAccount::Named` 补名字
+        //（改 `LaunchAccount` 与它的前端调用点，都不在本件写区）——**那一天要同一拍改四处**，
+        // 清单写在那条判据的头注里，别只改一处。
+        //
+        // ⚠ **`shared/ccm` 那条转发因此今天在本条路上生产不可达**：那段 shell 真的会转发
+        //（`the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` 量的是它），
+        // 但**没有任何生产输入能同时走到中转与容器** ⇒ 它是**为将来那条路预备的**。
+        // 那条判据的头注里也写了这句话，两处别只改一处。
+        //
+        // ⚠ **这一格没买到的**：「变量真的穿过了一次**真** tmux 边界」要真机 tmux，
+        // 本轮没量 ⇒ 归 e2e；而按上面那条，**今天在本机中转这条路上根本走不到**
+        // —— 不只是「没量」，是「今天量不到」。
+        //
+        // ⚠ 写法上刻意让 `render_local_ccm(` 与 `build_local_posix_command(` 在本函数体里
+        // **各恰好一处** —— `the_local_launch_tries_the_renderer_before_the_old_path`
+        // 用它们的相对位置钉「渲染器在前」，两处就管不住顺序了（第一拍被它逮过一次）。
+        match render_local_ccm(action, launcher, account, tmux_name) {
             Ok(rendered) => rendered,
             Err(why) => {
                 // 与远端那条降级**同一种说法**：走回落是正常且预期的路径（没装 ccm 的机器
@@ -1375,9 +1434,396 @@ fn launch_local(
                 tracing::debug!("launch: 本机 CLI 渲染器降级 → 旧路：{why}");
                 build_local_posix_command(action, launcher, account)?
             }
-        };
-        crate::launch::launch_local_posix(&cmd, cwd)
+        }
+    };
+    // ★★ `D6 阻-1`：**全仓唯一一处**把中转前缀拼到命令前面的地方，两个平台共用。
+    //    先前这里是两处（POSIX 一处 · Windows 一处），而守着「两处都拼了」的是一条
+    //    数文本的判据 —— `D6` 的刀 `Y1` 把它打穿了（见 `LaunchSink` 头注）。
+    //    合成一处之后，这一行在 Linux 上就被
+    //    `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched` 真驱动到。
+    let cmd = relay + &base;
+    // ★★ 送出去也走缝：判据装一个记账替身，量的是**真正交出去的那一串**，不是源码里的文本。
+    (launch_sink().0)(&cmd, cwd)
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-H2b`：注入侧的三个判断（**账号 id 从哪来 · 表里有没有它 · 中转在不在**）
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// 这次拉起的账号在**中转表**里的 id。
+///
+/// # ⚠ 它是**推出来的**，不是传下来的 —— 这一格必须写清楚
+///
+/// [`LaunchAccount::Named`] 只有一个字段 `config_dir`，**没有名字**（`render_local_ccm`
+/// 头注里那条「②有 configDir 没名字 ⇒ 说不出 ⇒ 降级」记的就是这件事）。
+/// 而中转表按**账号 id** 索引 ⇒ 这里只能拿 `config_dir` 的**末段目录名**当 id：
+/// `cc-acct-iso` 的布局逐字是 `~/.claude-accts/<名字>`，`local_accounts.rs` 读出来的
+/// 账号名**就是那个目录名**。
+///
+/// **推错了会怎样**：推出一个表里没有的 id ⇒ [`relay_prefix_for`] 回 `None` ⇒
+/// **逐字节走旧路**，不是拼一条会 404 的 URL。⇒ 这一格的失效方向是**保守**的。
+///
+/// - [`LaunchAccount::Base`]（账号 0）⇒ `None`。**说不出 id 就不注入** ——
+///   账号 0 是「显式不注入 `CLAUDE_CONFIG_DIR`」那一档，它在 manifest 里没有目录名。
+/// - 参数缺席（调用方没表态）⇒ `None`，同上。
+fn relay_account_id(account: Option<&LaunchAccount>) -> Option<String> {
+    match account {
+        Some(LaunchAccount::Named { config_dir }) => relay_account_id_of_dir(config_dir),
+        _ => None,
     }
+}
+
+/// 上一条的**纯派生半** —— 「一个 configDir 对应中转表里哪个 id」。
+///
+/// ★ 抽出来的理由是**只许有一份**：界面那一侧（徽章要显「这个号走不走中转」）问的是
+/// **同一个问题**，而它手上也只有 configDir。两边各写一个 basename 规则，
+/// 漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。
+///
+/// ⚠⚠ **界面那一侧今天还没有人调它** —— 那条把这个事实端给前端的路（一条只答本机的
+/// tauri 命令）**本轮做到一半退回了**：新注册一条命令会让 `parity_ledger.rs` 的
+/// `every_tauri_command_is_declared_in_the_ledger` 当场红（实测报文逐字：
+/// 「这些命令已注册但**没进平价对账表**：["relay_routing_for"]」），
+/// 而那个文件**不在 `K-H2b` 的写区**。⇒ 本函数今天只有起会话那一侧一个调用方；
+/// 它被抽出来是为了「接的时候只有一份规则」，**不是**已经接上了。经过住件文件 `§4`。
+pub(crate) fn relay_account_id_of_dir(config_dir: &str) -> Option<String> {
+    std::path::Path::new(config_dir.trim())
+        .file_name()
+        .and_then(|s| s.to_str())
+        .map(str::to_string)
+}
+
+/// `KH2B7` 的**纯派生半**：给一批 configDir 与一张 id 表，答「哪几个走中转」。
+///
+/// ★ 抽成纯函数的理由与本模块另外两次一样：`relay_rows()` 要读盘、`relay_running()` 要读进程状态，
+/// 而**这条规则本身**（怎么从 configDir 推 id、怎么和表比）不该只能对着真实的家目录跑。
+///
+/// ⚠ **它答的是「表里有没有这一行」，不是「这个 key 能不能用」** —— 后者要到 claude 那边才知道。
+/// ⚠ 也不是「这次拉起会不会真的注入」：那还要过 `relay_running` 那一格（`relay_injection_for`）。
+pub(crate) fn relay_routed_subset(config_dirs: &[String], rows: &[String]) -> Vec<String> {
+    config_dirs
+        .iter()
+        .filter(|d| relay_account_id_of_dir(d).is_some_and(|id| rows.iter().any(|r| *r == id)))
+        .cloned()
+        .collect()
+}
+
+/// 中转凭据文件里今天有哪几条账号 id。**读不到就是零条**（零条 ⇒ 谁都不走中转）。
+///
+/// ⚠ 「读不到」与「一条都没配」在这里**故意同一处置**：两者的正确行为都是
+/// 「照旧走官方直连」，而把「读文件失败」变成一次起会话失败，是拿一个**能用的**状态
+/// 去换一条错误提示。⇒ 只在日志里留一行。
+pub(crate) fn relay_rows() -> Vec<String> {
+    let Some(p) = crate::creds_store::resolve_path() else {
+        return Vec::new();
+    };
+    relay_rows_at(&p)
+}
+
+/// 上一条剥掉「路径从哪来」之后的那一半〔`D1 阻-6`〕。
+///
+/// ★ 抽出来的理由与 `creds_store::read_status_at` 那次逐字同一条：不抽的话，这段逻辑
+/// **只能对着真实家目录下那份文件跑** —— 而判据不许碰用户的真东西，于是它会变成一格
+/// **永远没人量过**的代码。`D1` 的刀 C 实测过那个后果：把本函数整个换成 `Vec::new()`，
+/// **1221 passed / 0 failed**。
+///
+/// # ⚠ 它与中转那侧的人群**不完全一致**，差在哪要写清楚
+///
+/// 中转装表时会把两类行**丢出表**（`relay::table::build`）：① 账号 id 当不了路由段；
+/// ② `base_url` 解析不了。本函数**只筛得掉第 ①** 类（`payload::relay_segment_is_safe`
+/// 与 `route::segment_is_safe` 是同一条规则，由 `payload.rs` 那边的头注登记着）。
+/// **第 ② 类筛不掉** —— 那要一份 `Base::parse`，而它住 daemon 那一侧、monitor 够不着
+/// （单向依赖）。
+/// ⇒ **残留的症状**：一行 `base_url` 打错的账号，界面会说「经本机中转」而中转那侧 404。
+/// **如实登记，不假装两侧人群相等。**〔`D1` 点名的那条同族，处置是「筛掉能筛的、写清剩下的」。〕
+pub(crate) fn relay_rows_at(path: &std::path::Path) -> Vec<String> {
+    let Ok(raw) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+    match creds_core::store::parse(&raw) {
+        Ok(doc) => creds_core::store::read_accounts(&doc)
+            .into_iter()
+            .map(|e| e.id)
+            .filter(|id| crate::backend::control::payload::relay_segment_is_safe(id))
+            .collect(),
+        Err(e) => {
+            tracing::debug!("中转凭据文件读不成表（照旧走官方直连）：{e:?}");
+            Vec::new()
+        }
+    }
+}
+
+/// 纯函数半：给定「账号 id / 表里有哪几行 / 中转在不在」，产出要拼上去的前缀。
+///
+/// 空串 = **不走中转**（逐字节旧路）。`Err` = 该走但走不了（`KH2B2`②，出声不静默）。
+fn relay_prefix_for(
+    account_id: Option<&str>,
+    rows: &[String],
+    running: bool,
+    sid: Option<&str>,
+    windows: bool,
+) -> Result<String, String> {
+    let agent = crate::adapter::active().id();
+    let url = crate::backend::control::payload::relay_injection_for(
+        account_id, rows, running, sid, agent,
+    )?;
+    Ok(match url {
+        None => String::new(),
+        Some(u) if windows => crate::backend::control::payload::relay_env_prefix_ps(&u),
+        Some(u) => crate::backend::control::payload::relay_env_prefix_posix(&u),
+    })
+}
+
+/// `D5 阻-1`：那两个「本机事实」的**取值口**，收成一条判据能替换的缝。
+///
+/// # 为什么非有这条缝不可（这是本件病史的第五层，别退回去）
+///
+/// 先前钉这两个入参的是一条**扫描型**判据：把 [`relay_prefix_for_launch`] 的体切出
+/// 700 字节，断言那个窗口里**有没有**那两段文本。`D5` 现打的读数：在同一个窗口里加一行
+/// 把两段文本原样留住的死赋值（一个用不到的绑定就够），同时把真入参换成空表 / 常量
+/// ⇒ 文本一处不少、锚点命中数一处不少、**全量门禁四个数与干净树逐字相同**，
+/// 而「这个号在不在中转表里」「中转在不在跑」两件事**都不再被问**、中转前缀恒空。
+///
+/// 病史五层，每一层都是**上一层的修法买到的东西被下一层的量法漏掉**：
+/// ① 参数位没有账号 → ② 参数位有、值恒空 → ③ 值到得了、判据只量文本 →
+/// ④ 判据搬了家（不再把自己算进被测对象）、**仍在量文本** → ⑤ **文本留住、行为摘掉**。
+///
+/// ⇒ 处置**不是**再写一个更聪明的文本判据（那是第六层），是**不再量文本**：
+/// 两个事实一律从本结构取，判据换一份**会记账的替身**进来，断言两件事 ——
+/// ㈠ 它**真的被问过**（替身的计数器涨了）；
+/// ㈡ 算出来的前缀**真的随替身给的答案变**（表里有这一行 ⇒ 非空；没有 ⇒ 空；中转没跑 ⇒ `Err`）。
+/// ★ 第 ㈡ 条正是治第五层的那一格：把答案问完扔掉（`_unused` 那一形），
+///   计数器照样涨，而前缀不再随答案变 ⇒ **红**。
+///
+/// # 🔴🔴 谁在用这条缝 —— **由一道人群闸数着，不是由这段头注数着**〔`D6 阻-4`，08-29〕
+///
+/// 先前这里逐字写着「这两个取值口的**生产消费方恰好 2**」，并把那个 2 当成了闸。
+/// `D6` 的刀 `E5` 打穿它：在 `lib.rs` 加**第三个**消费方、**绕开这条缝**直接调
+/// `history::relay_rows()` / `local_daemon::relay_running()` ⇒ **全量门禁四个数与干净树逐字相同**。
+/// ⇒ 那句头注买到的是「**这两处**走缝」，**没买到「所有人都得走缝」**。
+/// ★ 定性（PM `§8 裁四`）：**治一个「今天数出来的 N」的过程中，长出了一个新的「今天数出来的 N」。**
+///
+/// **今天数着这件事的是一道闸**，住 `backend/control/payload.rs::
+/// `nobody_reaches_the_relay_take_points_without_going_through_the_seam`（**目录扫描**
+/// `src-tauri/src`，不是手写名单）。它钉的是**零调用点**：
+/// - `relay_rows()` / `relay_running()` 的**调用形**在生产段全树**各恰好 1 处**（就是它们自己的定义行）；
+/// - 裸标识符 `relay_rows` / `relay_running` / `platform_is_windows` 各恰好 **2** 处（定义 + 本结构这一处）。
+///
+/// ⇒ 谁绕开这条缝直接调那三个取值口、或把它们的函数指针复制到第二个地方，**当场红**。
+/// 今天的两个生产消费方（起会话侧 [`relay_prefix_for_launch`] · 界面侧 `crate::relay_routing_for`）
+/// 各有一条行为判据；**闸不数它们有几个**，闸数的是「有没有人绕过去」。
+///
+/// # 它买不到什么（如实写，别读宽）
+///
+/// 本结构只管「**问不问**」与「**答案用不用**」。「那三个取值口自己答得对不对」由它们各自的
+/// 判据买（[`relay_rows_at`] 那条读真文件的 · `local_daemon::relay_running_really_reads_the_handle_table`）。
+/// 而「生产上这条缝里插的**就是**那三个取值口」由 `the_production_relay_facts_are_those_two_take_points`
+/// 按**函数地址**对拍 —— 不是按文本。
+///
+/// ⚠ **仍然没有判据的那两格**（`D6 阻-4` / PM `§8 裁六` 订正过这两栏，别再照旧读）：
+/// ㈠ [`relay_rows`] 自己那三行胶水（`creds_store::resolve_path()` + [`relay_rows_at`]）。
+///    `D6` 的刀 `Xa` 把它掏空成 `Vec::new()` ⇒ **全绿、门禁四个数与干净树逐字相同**。
+///    🔴 **先前这里写的理由（「要动真实家目录，红线不许 ⇒ 做不到」）是假的，解锁条件（「要动 `paths.rs`」）也是假的**：
+///    `paths.rs` 从 `dirs::home_dir()` 拼路径 ⇒ 在 Linux 上它读的就是 `$HOME`，
+///    而**本 crate 今天就有这个手法的先例**（`local_daemon::become_host_with_home` 里那行
+///    `std::env::set_var("HOME", …)`）⇒ **写得出来，一个字节都不用动 `paths.rs`**。
+///    **真代价**是这种判据必须 `--test-threads=1` ⇒ 只能住 `#[ignore]` 的 e2e 那条道
+///    ⇒ **进不了 `scripts/gate.sh`**。重新裁定的落点就是这一栏 + 件文件 `§4`。
+///    🔴 **裁定（`D8 §4` 第 1 条，PM 08-29 采纳，第九轮照抄进这一栏）：
+///    这一格是「买得到」，不是「做不到」。** 买法**不在判据这一侧** ——
+///    是给 `scripts/gate.sh` 加一条**单线程道**，把 `#[ignore]` 那一族纳进第五个数。
+///    🔴 `scripts/gate.sh` **不在 `K-H2b` 的写区** ⇒ 第九轮**没做**，抬给 PM（上报口有一条）。
+///    ⚠ 别再把这一栏读成「做不到」：那正是 `D8 §10 裁一` 判过两次的那一形。
+/// ㈡ [`platform_is_windows`] 自己的体（`cfg!(windows)`）。在 Linux 上把它写死成 `false`
+///    是一次**恒等变换** ⇒ **任何运行时判据都分不出来**（它只在 Windows 上有区别，而
+///    Windows 运行时行为本件本来就在「判不了」里）。**登记，不假装钉住了。**
+///    ⚠ **过一遍 PM 08-29 那道闸**（「标平台判不了要给得出 `cfg`」）：**本函数没有 `cfg`，
+///    在 Linux 上真编译**（`cargo test -p monitor --lib` 跑得到它）⇒ 它**不**属于
+///    「不进编译单元」那一族。它判不了的理由是**另一条**：在 Linux 上 `false` 是它的真值，
+///    换上去是**恒等变换**（`D8 §1` 的排除表逐字：恒等变换不算「剥掉」那张脸）。
+///    ⇒ 两条理由别混：一条是**构造上看不见**，一条是**看得见但换不出第二张脸**。
+///    ⚠ 它与先前那条被删的文本判据的差别在于：**调用点**那一格今天买回来了 ——
+///    调用点走 `(facts.windows)()`，谁在那里写死一个常量，
+///    `the_launch_side_really_asks_those_two_take_points_and_uses_their_answers` 的
+///    「PowerShell 那一格」当场红（`D6` 的刀 `Xb` 打的正是调用点那一格）。
+#[derive(Clone, Copy)]
+pub(crate) struct RelayFactSources {
+    /// 「这个号在不在中转表里」——生产恒指 [`relay_rows`]。
+    pub(crate) rows: fn() -> Vec<String>,
+    /// 「中转在不在跑」——生产恒指 [`crate::local_daemon::relay_running`]。
+    pub(crate) running: fn() -> bool,
+    /// 🔴 「这台机是不是 Windows」——生产恒指 [`platform_is_windows`]〔`D6 阻-3`，08-29〕。
+    ///
+    /// 先前这一格在调用点上逐字写着 `cfg!(windows)`，而**它是一个常量表达式** ——
+    /// 唯一守着它的是那条被删掉的文本判据（反空真①「窗口里有 `cfg!(windows)`」）。
+    /// `D6` 的刀 `Xb`（`cfg!(windows)` → `false`）⇒ 全绿，而生产后果是
+    /// **Windows 上中转前缀渲染成 POSIX 形态**（`export …` 塞进 PowerShell 串）⇒ 注入整个失效。
+    /// ⇒ 收进本结构之后它成了**可翻的一维**：判据喂 `|| true` 就该拿到 PowerShell 形态。
+    pub(crate) windows: fn() -> bool,
+}
+
+/// 「这台机是不是 Windows」的生产取值口。**只有这一处**说得出这句话。
+///
+/// ⚠ 抽成函数不是为了好看：`cfg!(windows)` 写在调用点上时它是个**常量表达式**，
+/// 判据没有任何办法让它变。抽出来 + 进 [`RelayFactSources`] 之后，
+/// 「调用点用没用这个答案」变成了可翻的一维（见本结构 `windows` 那一格的头注）。
+pub(crate) fn platform_is_windows() -> bool {
+    cfg!(windows)
+}
+
+/// 生产上这条缝里插的那三个取值口。**只有这一处**，判据按地址对拍它。
+pub(crate) const PRODUCTION_RELAY_FACTS: RelayFactSources = RelayFactSources {
+    rows: relay_rows,
+    running: crate::local_daemon::relay_running,
+    windows: platform_is_windows,
+};
+
+#[cfg(test)]
+thread_local! {
+    /// 判据装进来的替身。**线程局部** ⇒ 同进程别的判据不受影响（`cargo test` 是多线程跑的）。
+    static RELAY_FACTS_OVERRIDE: std::cell::Cell<Option<RelayFactSources>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// 装替身，离开作用域自动还原（`assert!` 炸了也还原）。
+#[cfg(test)]
+pub(crate) struct RelayFactsGuard(Option<RelayFactSources>);
+
+#[cfg(test)]
+impl Drop for RelayFactsGuard {
+    fn drop(&mut self) {
+        RELAY_FACTS_OVERRIDE.with(|c| c.set(self.0));
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn override_relay_facts(facts: RelayFactSources) -> RelayFactsGuard {
+    RelayFactsGuard(RELAY_FACTS_OVERRIDE.with(|c| c.replace(Some(facts))))
+}
+
+/// 这一拍要用的两个取值口。生产上恒是 [`PRODUCTION_RELAY_FACTS`]。
+pub(crate) fn relay_facts() -> RelayFactSources {
+    #[cfg(test)]
+    if let Some(f) = RELAY_FACTS_OVERRIDE.with(|c| c.get()) {
+        return f;
+    }
+    PRODUCTION_RELAY_FACTS
+}
+
+/// 上一条的**接线半**：这台机器上的两个事实（表里有哪几行 · 中转在不在）在这里读。
+///
+/// ⚠ 两个事实**只从 [`relay_facts`] 取**（理由见 [`RelayFactSources`] 头注：
+/// 直接在这里调那两个函数的写法，只能靠「文本在不在」来钉，而那一形 `D5` 已经打穿了）。
+fn relay_prefix_for_launch(
+    action: &LocalPsAction,
+    account: Option<&LaunchAccount>,
+) -> Result<String, String> {
+    let id = relay_account_id(account);
+    let sid = match action {
+        LocalPsAction::Resume(sid) => Some(sid.as_str()),
+        LocalPsAction::New => None,
+    };
+    let facts = relay_facts();
+    relay_prefix_for(
+        id.as_deref(),
+        &(facts.rows)(),
+        (facts.running)(),
+        sid,
+        (facts.windows)(),
+    )
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `D6 阻-1`：**最后送出去的那一串**收成一条缝
+// ═════════════════════════════════════════════════════════════════════════════
+
+/// 「本机拉起最后把哪一串交出去」的取值口 —— 收成一条判据能替换的缝〔`D6 阻-1`，08-29〕。
+///
+/// # 为什么非有这条缝不可（这是本件病史的第七层，别退回去）
+///
+/// 先前钉「前缀真的拼上去了」的是一条**扫描型**判据
+/// （`the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched` 的第一版）：
+/// 从 `fn launch_local(` 起切 3600 字节，断言那个窗口里**有没有**
+/// `relay_prefix_for_launch(action, account)?` · `relay + &`（恰好 2 处）· `let cmd = relay + &base;`。
+/// `D6` 的刀 `Y1` 现打：在拼装那一行加
+/// `let relay = if relay.is_empty() { relay } else { String::new() };`
+/// ⇒ 三样文本**一处不少**（三个锚点数与干净树相同）⇒ **全量门禁四个数与干净树逐字相同**，
+/// 而**前缀算出来了没拼上去** —— 本件的正题在生产上被整个摘掉。
+/// ⚠ **那条判据自己的头注逐字写着要防的正是这件事**（「算出来却没拼上去，行为上与本件没做完全一样」）
+/// —— 威胁模型写对了，买的东西是文本。
+///
+/// ⇒ 处置**不是**再写一个更聪明的文本判据（那是下一层），是**不量文本**：
+/// 把「送出去」收成本结构这一跳，判据换一个**会记账的替身**进来，断言
+/// **真正交出去的那一串**以正确的前缀打头、且前缀随 [`RelayFactSources`] 给的答案与
+/// **哪个账号**一起变。
+///
+/// # 顺带被这条缝按平了的一格
+///
+/// 收缝的同一拍把 [`launch_local`] 里那**两处**拼接（POSIX 一处 · Windows 一处）
+/// 合并成了**一处** —— 平台差异现在只剩「`base` 由谁渲」与「送法是哪一个」两格，
+/// 而拼前缀那一步两个平台**共用同一行**。
+/// ⇒ 先前那条判据的第 ② 颗牙（「两条平台分支各自真的拼上去」）不再需要一条
+/// **只能在 Windows 上验证**的断言来守 —— 那一行在 Linux 上就被驱动到了。
+#[derive(Clone, Copy)]
+pub(crate) struct LaunchSink(pub(crate) fn(&str, Option<&str>) -> Result<(), String>);
+
+/// 生产上这条缝里插的送法。**只有这一处**，判据按地址对拍它。
+#[cfg(not(windows))]
+pub(crate) const PRODUCTION_LAUNCH_SINK: LaunchSink = LaunchSink(crate::launch::launch_local_posix);
+/// 生产上这条缝里插的送法。**只有这一处**，判据按地址对拍它。
+///
+/// # 🔴 **订正 `D8` 表里的 `F3`：这一格有判据，不是「零感知」**〔`D8 阻-6` / 阻-5，08-29〕
+///
+/// `D8` 把这一支标成「❌ 没有（**推的，我没打这一刀**）」，理由是「与 `F1` 同属
+/// `#[cfg(windows)]`，Linux 上不进编译单元」。**第九轮把这一刀打了，读数与那个推断相反。**
+///
+/// - **刀**（`§11.6` 形㈠ 的 Windows 版）：加一个 `#[cfg(windows)]` 的新一跳
+///   `fn r9_probe_sink(cmd, cwd)`，体里先 `split_once("; ")` 剥掉中转前缀再委托给
+///   `launch_powershell_window`，把本 `const` 指向它。锚点 = 本 `const` 的定义，**命中 1**。
+/// - **读数**：`cargo test -p monitor --lib` ⇒ **`1236 passed; 1 failed`**，红的正是
+///   `payload::nobody_reaches_the_relay_take_points_without_going_through_the_seam`，
+///   报文逐字点名「`launch.rs` 之外还有人直接调那两个送法：history.rs: `launch_powershell_window(` × 1」。
+///   （快道红 ⇒ 方向安全，按纪律不升全量门。）
+///
+/// **成因**：那道人群闸是**量文本**的（`guard_core::production_code` + 目录扫描），
+/// 而 `production_code` **只剥 `#[cfg(test)]` 段与整行注释，不剥 `#[cfg(windows)]`**
+/// ⇒ Windows-only 的源码**在文本这一层是可见的**。
+/// ⇒ 🔴 **「带 `#[cfg(windows)]`」蕴含「运行时判据看不见」，不蕴含「所有判据都看不见」。**
+/// `F1`（[`crate::launch::launch_powershell_window`] 的**函数体**）仍然买不到 ——
+/// 那一刀不新增任何跨文件调用形，量文本的闸够不着它。**两格别合并读。**
+#[cfg(windows)]
+pub(crate) const PRODUCTION_LAUNCH_SINK: LaunchSink =
+    LaunchSink(crate::launch::launch_powershell_window);
+
+#[cfg(test)]
+thread_local! {
+    /// 判据装进来的替身。**线程局部** ⇒ 同进程别的判据不受影响（`cargo test` 是多线程跑的）。
+    static LAUNCH_SINK_OVERRIDE: std::cell::Cell<Option<LaunchSink>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// 装替身，离开作用域自动还原（`assert!` 炸了也还原）。
+#[cfg(test)]
+pub(crate) struct LaunchSinkGuard(Option<LaunchSink>);
+
+#[cfg(test)]
+impl Drop for LaunchSinkGuard {
+    fn drop(&mut self) {
+        LAUNCH_SINK_OVERRIDE.with(|c| c.set(self.0));
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn override_launch_sink(sink: LaunchSink) -> LaunchSinkGuard {
+    LaunchSinkGuard(LAUNCH_SINK_OVERRIDE.with(|c| c.replace(Some(sink))))
+}
+
+/// 这一拍要用的送法。生产上恒是 [`PRODUCTION_LAUNCH_SINK`]。
+pub(crate) fn launch_sink() -> LaunchSink {
+    #[cfg(test)]
+    if let Some(s) = LAUNCH_SINK_OVERRIDE.with(|c| c.get()) {
+        return s;
+    }
+    PRODUCTION_LAUNCH_SINK
 }
 
 /// 薄委托——保留旧函数名与调用点不变（`resume_impl` 只改内部实现，DoD 要求两个
@@ -1425,22 +1871,34 @@ fn build_new_session_ps_command(launcher: Option<&str>) -> Result<String, String
 /// F96（#62）：历史页右键「在该目录起新会话」——本地分支。远端分支走前端
 /// `runRemoteLauncher`（复用 F53）。在 `cwd` 起一个全新会话（无 sid、无 resume）。
 #[tauri::command]
-pub fn new_local_session(cwd: String, launcher: Option<String>) -> Result<(), String> {
+pub fn new_local_session(
+    cwd: String,
+    launcher: Option<String>,
+    account: Option<LaunchAccount>,
+) -> Result<(), String> {
     // F96：起新会话**依赖 cwd 定位**（不像 resume 靠 sid）——cwd 非空且不是现存目录（项目被
     // 移动/删除）就明确报错，别静默在默认目录起会话 + 弹假成功 toast。`launch_powershell_window`
     // 只把存在的 cwd 作窗口起始目录、失效则回落默认，对 resume 无害、对 new-session 是错目录。
     if !cwd.is_empty() && !std::path::Path::new(&cwd).is_dir() {
         return Err(format!("目录不存在，无法在此起新会话：{cwd}"));
     }
-    // G3b：起**全新**会话不继承任何账号（那是「新开一个」的语义，不是分叉）。
+    // ★★ `K-H2b` `D1 阻-1`：**账号这一格是本轮加的，加它的理由要写清楚。**
+    //
+    // 原注释逐字：「起**全新**会话不继承任何账号（那是『新开一个』的语义，不是分叉）」。
+    // 那句话**今天仍然对**，它说的是「不从某条旧会话继承」。⚠ 但它被读成了「所以这条路
+    // 不该有账号参数」，而后果是：**这条主路上一个账号都说不出**，于是
+    // ① 起会话落到 shell rc 里那个默认号上（`config_dir_prefix_posix` 头注逐字点名的静默串号），
+    // ② 中转那一格**永远拼不出路由键**（没有账号 id ⇒ `relay_account_id` 回 `None`）。
+    // ⇒ 现在收**调用方明说的那一个**：前端传的是「用户此刻选中的当前账号」，
+    //   **不是**从别的会话继承来的。参数缺席仍然是「没表态」，逐字节旧行为。
+    //
     // P3t-Y2：起新会话这条**暂不传名字**（`None` ⇒ 渲染器诚实降级回旧路）。
-    // 名字只许由 `mintTmuxName` 铸，而这条命令今天的两个前端调用点都还没传 ——
-    // 在这里补一个默认名就是 F13 那个坑的第三次。接线归 P3t-Y2b。
+    // 名字只许由 `mintTmuxName` 铸，在这里补一个默认名就是 F13 那个坑的第三次。
     launch_local(
         &LocalPsAction::New,
         launcher.as_deref(),
         Some(&cwd),
-        None,
+        account.as_ref(),
         None,
     )?;
     tracing::info!("history: new local session in {cwd}");
@@ -2141,6 +2599,104 @@ mod tests {
         assert!(
             reason.contains("account"),
             "具名账号的降级理由该指向 account 维度（§35 短路），实得：{reason}"
+        );
+    }
+
+    /// ★★★ `D4 阻-3`：**「走中转」与「有 tmux 容器」今天仍然互斥** —— 把这个事实钉住。
+    ///
+    /// # 它为什么存在：盘上写着「已消掉」，而其实没消掉
+    ///
+    /// 第一拍报过一条代价「走中转的号拿不到 tmux 容器」（当时的成因：外侧那句 export
+    /// 在 tmux 边界被吃掉）。第二拍照 `R08` 在 `shared/ccm` 里加了一条转发，于是件文件
+    /// 与 [`launch_local`] 的头注都写上了**「不再互斥」**。
+    /// 🔴 `D4` 现打证伪：**代价原样还在，只是成因换了。**
+    ///
+    /// # 今天的成因（本条逐格量出来，不是推的）
+    ///
+    /// 分母 = [`LaunchAccount`] 的**全部形状**加上「参数缺席」，共三格：
+    ///
+    /// | 形状 | [`relay_account_id`] | [`render_local_ccm_with`] |
+    /// |---|---|---|
+    /// | 缺席（`None`） | `None`（不走中转） | `Err`（CLI 说不出「继承」） |
+    /// | `Base`（账号 0） | `None`（不走中转） | `Ok`（**唯一渲得出容器的那一格**） |
+    /// | `Named{config_dir}` | `Some(id)`（**唯一走得了中转的那一格**） | `Err`（§35 短路：有 configDir 没名字） |
+    ///
+    /// ⇒ **能推出中转 id 的那一格，正是 ccm 渲染器拒掉的那一格。**
+    /// 凡是带中转前缀的本机拉起，必然落 [`build_local_posix_command`]（那条路没有 tmux 容器）；
+    /// 凡是走 ccm 容器路的，中转前缀必然是空串。**两条路今天不相交。**
+    ///
+    /// # ⚠ 它连带说明了一件别处的事（别让那条判据被读宽）
+    ///
+    /// `shared/ccm` 那条 `ANTHROPIC_BASE_URL` 转发（连同钉它的
+    /// `payload::tests::the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary`
+    /// 与件文件里的 `M12`/`M12b`）量的是一条**在本机中转这条路上今天生产不可达**的路：
+    /// 那段 shell 真的会转发，而**没有任何生产输入能同时走到中转与容器**。
+    /// 它不是假的，它买不到本件要的那一格。**那条判据的头注里也写了这句话，两处别只改一处。**
+    ///
+    /// # 🔴 这条前提**本来就该变** —— 变的那天去哪里重新裁定（`testing.md` 三.11 要的那一栏）
+    ///
+    /// 消掉互斥要给 [`LaunchAccount::Named`] 补上**名字**（要改 `LaunchAccount` 与它的前端
+    /// 调用点，都不在 `K-H2b` 的写区）。真做那一天，**同一拍**要做完这四样，缺一样就是又一次
+    /// 「盘上写着已解而其实没解」：
+    ///   ① 本条会红 —— **在这里重新裁定**（改成「不再互斥」并说清新的人群）；
+    ///   ② [`launch_local`] 的头注里那段「互不互斥」跟着改；
+    ///   ③ 件计划 `K-H2b §4` 那条登记跟着改；
+    ///   ④ **`shared/ccm` 的 `capabilities=` 串要加上那个 token** —— 现打 17 个 token 里
+    ///      含 `relay`/`base-url`/`anthropic` 的 **0** 个，而 `ccm_probe` 探的是 PATH 上那个 ccm
+    ///      ⇒ 不加的话，装了旧 ccm 的机器会**静默吃掉**这个变量。
+    #[test]
+    #[cfg(not(windows))]
+    fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
+        let act = LocalPsAction::Resume("s1".into());
+        let named = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/acct-a".into(),
+        };
+        let base = LaunchAccount::Base;
+        // 分母就是这三格 —— `LaunchAccount` 今天只有两个变体，加上「参数缺席」。
+        let shapes: [(&str, Option<&LaunchAccount>); 3] = [
+            ("缺席", None),
+            ("Base", Some(&base)),
+            ("Named", Some(&named)),
+        ];
+
+        let mut relayed = Vec::new();
+        let mut containered = Vec::new();
+        for (label, acct) in shapes {
+            let relay_id = relay_account_id(acct);
+            let renders = render_local_ccm_with(
+                &act,
+                None,
+                acct,
+                Some("s1abcdef-cc"),
+                &caps_of_a_current_ccm(),
+                true,
+            )
+            .is_ok();
+            if relay_id.is_some() {
+                relayed.push(label);
+            }
+            if renders {
+                containered.push(label);
+            }
+        }
+        // 反空真：两边**都非空**（都空的话下面那条不相交是空真）。
+        assert_eq!(
+            relayed,
+            ["Named"],
+            "能推出中转 id 的形状变了 —— 本条的结论要重新裁定（见头注最后一节）"
+        );
+        assert_eq!(
+            containered,
+            ["Base"],
+            "能渲染出 ccm 容器的形状变了 —— 本条的结论要重新裁定（见头注最后一节）"
+        );
+        // 正题：两个集合不相交 ⇒ 今天没有任何一次本机拉起同时拿到中转前缀与 tmux 容器。
+        assert!(
+            relayed.iter().all(|l| !containered.contains(l)),
+            "「走中转」与「有 tmux 容器」不再互斥了 —— 那是**好事**，但盘上有四处话要跟着改：\n\
+             ① 本条（重新裁定）② `launch_local` 头注 ③ 件计划 `K-H2b §4` 那条登记\n\
+             ④ `shared/ccm` 的 `capabilities=` 串要加 token（否则装了旧 ccm 的机器静默吃掉那个变量）。\n\
+             实得：走中转的 {relayed:?} · 有容器的 {containered:?}"
         );
     }
 
@@ -3353,8 +3909,13 @@ mod tests {
         // 光有上面的行为半不够 —— 渲染器可以在 `launch_local` 里被调、把容器加在
         // `build_local_ps_command` **之外**，那样上面六组照样全绿。
         let prod = guard_core::production_code(include_str!("history.rs"));
-        let at = guard_core::find_pinned(&prod, "#[cfg(windows)]")
-            .unwrap_or_else(|e| panic!("`#[cfg(windows)]` 不是恰好一处，先修锚点：{e}"));
+        // ⚠ 锚点从裸 `#[cfg(windows)]` 扩到「它 + 它门着的那一行」〔`D6` 回修，08-29〕：
+        //   本轮 `PRODUCTION_LAUNCH_SINK` 也按平台分了两支 ⇒ 裸锚点从 1 处变成 2 处，
+        //   本条当场红（报文逐字「断言指不明是哪一处」）。**它逮到的是真的**：
+        //   锚点不唯一时下面切出来的臂可能是别人的。⇒ 按 `F19` 那条纪律
+        //   「把 needle 扩到能唯一确定那个事实的大小」，而**不是**把断言放宽。
+        let at = guard_core::find_pinned(&prod, "#[cfg(windows)]\n    let base = {")
+            .unwrap_or_else(|e| panic!("`launch_local` 的 Windows 臂锚点不是恰好一处，先修锚点：{e}"));
         let arm = {
             let b = prod.as_bytes();
             let open = (at..b.len()).find(|&i| b[i] == b'{').expect("找不到块起点");
@@ -3464,6 +4025,1050 @@ mod tests {
         assert_eq!(
             build_local_ps_command(&LocalPsAction::New, None, None).unwrap(),
             expected
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
+    // `K-H2b`：接上注入点 —— 注入侧那三个判断
+    // ═════════════════════════════════════════════════════════════════════
+
+    /// ★★★ `KH2B5`（`§0e` 裁一）**在这一层的对照** —— 同一条起会话路径、同一个函数，
+    /// 只有「这个号在不在中转表里」不同：
+    /// api-key 号（表里有行）的命令**带**那个 env，官方号的命令里**一个字节都没有**。
+    #[test]
+    fn only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix() {
+        let rows = vec!["acct-a".to_string()];
+        let named = |d: &str| LaunchAccount::Named {
+            config_dir: d.to_string(),
+        };
+        // ① 表里有行 ⇒ 前缀在（非空对照：证明这把尺子不是恒空串）。
+        let id = relay_account_id(Some(&named("/home/u/.claude-accts/acct-a")));
+        assert_eq!(id.as_deref(), Some("acct-a"), "账号 id 是从末段目录名推的");
+        let p = relay_prefix_for(id.as_deref(), &rows, true, Some("sid-1"), false).unwrap();
+        assert_eq!(
+            p, "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; ",
+            "api-key 号的命令没带上中转 base URL —— 那条线还是没接"
+        );
+        // ② 表里没有这一行（订阅号）⇒ **空串**，命令逐字节与本件之前相同。
+        let other = relay_account_id(Some(&named("/home/u/.claude-accts/acct-b")));
+        assert_eq!(
+            relay_prefix_for(other.as_deref(), &rows, true, Some("sid-1"), false).unwrap(),
+            "",
+            "没配第三方 key 的号被接进了中转 —— `§0e` 裁一逐字禁这一形"
+        );
+        // ③ 账号 0 / 没表态 ⇒ 说不出 id ⇒ 空串。
+        assert_eq!(relay_account_id(Some(&LaunchAccount::Base)), None);
+        assert_eq!(relay_account_id(None), None);
+        assert_eq!(relay_prefix_for(None, &rows, true, None, false).unwrap(), "");
+        // ④ Windows 那一侧渲的是 PowerShell 形态（**只到「编得过」**，运行时没量过）。
+        let ps = relay_prefix_for(id.as_deref(), &rows, true, Some("sid-1"), true).unwrap();
+        assert_eq!(
+            ps,
+            "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; "
+        );
+    }
+
+    // ★★★ `D5 阻-1`：**那条扫描型判据（`the_two_inputs_at_the_call_site_are_still_the_two_take_points`）
+    //    整条删了**，换成下面**三条**判据（两条行为 + 一条按函数地址对拍）。
+    //    删它的理由是一个实测读数，不是风格：
+    //
+    // 它先前住 `local_daemon.rs`（`D4` 搬过去的，为的是「判据与被扫的代码不同文件」），
+    // 而它量的仍然是「`relay_prefix_for_launch` 的体切出 700 字节，窗口里**有没有**那两段文本」。
+    // `D5` 现打：在同一个窗口里加一行把那两段文本原样留住的死赋值，同时把真入参换成空表 / 常量
+    // ⇒ 文本一处不少、**全量门禁四个数与干净树逐字相同**，而中转注入在生产上被整个摘掉。
+    // ⇒ 按铁律 13「删之前先证明它恒绿」——`D5` 那一刀就是那份证明。
+    //
+    // ★ 本件病史五层，每层都是**上一层的修法买到的东西被下一层的量法漏掉**：
+    //   ① 参数位没有账号 → ② 值恒空 → ③ 只量文本 → ④ 判据搬了家、仍只量文本 → ⑤ 文本留住、行为摘掉。
+    //   ⇒ **第六层的出路不是更聪明的文本判据，是不量文本。**见 `RelayFactSources` 头注。
+
+    /// ★★★ `D5 阻-1` + `D6 阻-2` + `D6 阻-3`：**那次拉起真的问了那三件事，而且真的用了答案。**
+    ///
+    /// # 它怎么挡住第五层那一刀
+    ///
+    /// 替身把「被问了几次」记下来，但**光有计数不够** —— 第五层那一刀（问完把答案扔掉）
+    /// 会让计数照涨。⇒ 承重的是第二半：**算出来的前缀必须与「拿替身那几个答案直接喂纯函数」
+    /// 逐字节相同**，并且几种答案组合各自落到不同的脸上（非空 / 空 / `Err` / PowerShell 形态）。
+    /// 把任何一个入参换成常量，这几格里至少一格当场不同。
+    ///
+    /// # 🔴🔴 `D6 阻-2`：**「哪个号」也是一维，而它先前的输入域是 1**
+    ///
+    /// 第一版只喂**一个**账号（`acct-a`）⇒ `D6` 的刀 `E6` 把 [`relay_account_id`] 的答案
+    /// `.map(|_| "acct-a")` 写死（那段文本一字不动）⇒ **全绿、门禁四个数与干净树逐字相同**。
+    /// 生产后果是**路由键的 `<account>` 段恒是一个号** ⇒ 中转按它取 key ⇒
+    /// **acct-b 的会话拿着 acct-a 的那把 key 发请求，两边都显示成功** ——
+    /// 正是整个多账号工作要防的最坏那一形。
+    /// ⇒ 本条**至少喂两个不同的号**，并断言前缀里的 `<account>` 段跟着变。
+    ///
+    /// # 🔴 `D6 阻-3`：**平台开关也收进了这条缝**
+    ///
+    /// `cfg!(windows)` 写在调用点上时是个常量表达式，判据翻不动它 ——
+    /// `D6` 的刀 `Xb`（把它写死成 `false`）全绿，而生产后果是 Windows 上渲成 POSIX 形态。
+    /// 收进 [`RelayFactSources`] 之后，本条第 ④ 格喂 `|| true` 就该拿到 PowerShell 形态。
+    /// ⚠ **它守的是调用点那一格**；[`platform_is_windows`] 自己的体在 Linux 上判不了
+    ///（登记在 [`RelayFactSources`] 的**结构头注** ㈡ 那一栏里 —— 不在 [`platform_is_windows`]
+    /// 自己的头注里，`D7` 逐字订正过这一处指偏）。
+    ///
+    /// # 🔴🔴 `D7 阻-4`：**「哪一次拉起」（`action` / `sid`）也是一维，先前它的取值域是 1**
+    ///
+    /// 第 ①–④ 格把 `rows` / `running` / `windows` / `account` 四维都打开了，
+    /// **而 `action` 从头到尾只喂过 `Resume("sid-1")`**。`D7` 两刀实打：
+    /// - 刀 `S2`（`LocalPsAction::New => return Ok(String::new())`）⇒ **`1229` 全绿**，
+    ///   生产后果是**新开会话那条路上中转注入恒空**，而 `KH2B6` 逐字写着那条路今天生产可达；
+    /// - 刀 `S1`（`Resume(_sid) => Some("sid-1")`）⇒ 也全绿，那一维什么都没买。
+    /// ⇒ 第 ⑤ 格喂**两个不同的 sid**、第 ⑥ 格喂 **`New`**，两支都断。
+    ///
+    /// # 它买不到什么
+    ///
+    /// 它不管那几个取值口**自己答得对不对**（那是 [`relay_rows_at`] 那条读真文件的判据、
+    /// 与 `local_daemon::relay_running_really_reads_the_handle_table` 的活），
+    /// 也不管**生产上插进那条缝的是不是它们**（那是下一条判据按函数地址对拍的活）。
+    /// **三条合起来才等于「这条线真的在问那几件事」。**
+    #[test]
+    fn the_launch_side_really_asks_those_two_take_points_and_uses_their_answers() {
+        use std::cell::{Cell, RefCell};
+        thread_local! {
+            static ROWS_CALLS: Cell<u32> = const { Cell::new(0) };
+            static RUNNING_CALLS: Cell<u32> = const { Cell::new(0) };
+            static ROWS_ANSWER: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+            static RUNNING_ANSWER: Cell<bool> = const { Cell::new(false) };
+            static WINDOWS_ANSWER: Cell<bool> = const { Cell::new(false) };
+        }
+        fn spy_rows() -> Vec<String> {
+            ROWS_CALLS.with(|c| c.set(c.get() + 1));
+            ROWS_ANSWER.with(|v| v.borrow().clone())
+        }
+        fn spy_running() -> bool {
+            RUNNING_CALLS.with(|c| c.set(c.get() + 1));
+            RUNNING_ANSWER.with(Cell::get)
+        }
+        fn spy_windows() -> bool {
+            WINDOWS_ANSWER.with(Cell::get)
+        }
+        fn answer(rows: &[&str], running: bool, windows: bool) {
+            ROWS_ANSWER.with(|v| *v.borrow_mut() = rows.iter().map(|s| s.to_string()).collect());
+            RUNNING_ANSWER.with(|c| c.set(running));
+            WINDOWS_ANSWER.with(|c| c.set(windows));
+        }
+
+        let acct_a = LaunchAccount::Named {
+            config_dir: "/h/.claude-accts/acct-a".to_string(),
+        };
+        // 🔴 `D6 阻-2`：**第二个号**。「哪个号」这一维的输入域从 1 变成 2。
+        let acct_b = LaunchAccount::Named {
+            config_dir: "/h/.claude-accts/acct-b".to_string(),
+        };
+        let action = LocalPsAction::Resume("sid-1".to_string());
+        let _guard = override_relay_facts(RelayFactSources {
+            rows: spy_rows,
+            running: spy_running,
+            windows: spy_windows,
+        });
+
+        // ① 表里有这一行 + 中转在跑 ⇒ 前缀 = 纯函数在**替身给的那几个答案**上算出来的那一份。
+        answer(&["acct-a", "acct-b"], true, false);
+        let want = relay_prefix_for(
+            Some("acct-a"),
+            &["acct-a".to_string(), "acct-b".to_string()],
+            true,
+            Some("sid-1"),
+            false,
+        )
+        .expect("纯函数在这组输入上不该报错");
+        // 反空真：这组输入下期望值本来就该是非空的，否则下面那条 `assert_eq!` 是「空 == 空」。
+        assert!(
+            !want.is_empty(),
+            "期望值是空串 —— 那下面那条相等断言就是空真，本条按红处理"
+        );
+        let got = relay_prefix_for_launch(&action, Some(&acct_a)).expect("这一档不该报错");
+        assert!(
+            ROWS_CALLS.with(Cell::get) >= 1,
+            "这次拉起**没问**「这个号在不在中转表里」—— 那一格成了常量"
+        );
+        assert!(
+            RUNNING_CALLS.with(Cell::get) >= 1,
+            "这次拉起**没问**「中转在不在跑」—— 那一格成了常量"
+        );
+        assert_eq!(
+            got, want,
+            "\n问是问了，**答案没被用上** —— 这正是 `D5` 那一刀的形状：\n\
+             把两个事实算出来扔掉（一个用不到的绑定），入参换成空表 / 常量，\n\
+             两段文本原地留着 ⇒ 上一版那条「窗口里有没有这段文本」的判据照绿，\n\
+             而中转前缀恒空、本件的正题被整个摘掉。"
+        );
+
+        // ①b 🔴 `D6 阻-2`：**同一张表、只换一个号** ⇒ 路由键的 `<account>` 段必须跟着变。
+        let got_b = relay_prefix_for_launch(&action, Some(&acct_b)).expect("这一档不该报错");
+        assert_ne!(
+            got, got_b,
+            "\n换一个号，拼出来的前缀一个字节都没变 —— 「这次拉起是哪个号」这一维成了常量。\n\
+             生产后果：路由键的 `<account>` 段恒指一个号 ⇒ 中转按它取 key ⇒\n\
+             **acct-b 的会话拿着 acct-a 的那把 key 发请求，而两边都显示成功。**"
+        );
+        assert!(
+            got.contains("/acct-a/") && got_b.contains("/acct-b/"),
+            "路由键里的账号段不是这次拉起的那个号：acct-a ⇒ {got:?} · acct-b ⇒ {got_b:?}"
+        );
+
+        // ② **只**把「表里有没有这一行」翻过来 ⇒ 前缀空（不注入，逐字节旧路）。
+        answer(&["someone-else"], true, false);
+        assert_eq!(
+            relay_prefix_for_launch(&action, Some(&acct_a)).expect("不该报错"),
+            "",
+            "表里没有这个号，却仍然拼出了前缀 —— 「在不在表里」这个答案没被用上"
+        );
+
+        // ③ **只**把「中转在不在跑」翻过来 ⇒ `Err`（`KH2B2`②：不许静默）。
+        answer(&["acct-a"], false, false);
+        assert!(
+            relay_prefix_for_launch(&action, Some(&acct_a)).is_err(),
+            "中转没在跑却照旧起出去了 —— 「在不在跑」这个答案没被用上，\n\
+             症状会长成「claude 连不上 API」，与网络故障同形，而原因在我们这一侧"
+        );
+
+        // ④ 🔴 `D6 阻-3`：**只**把「这台机是不是 Windows」翻过来 ⇒ 渲成 PowerShell 形态。
+        //    先前这一格是调用点上的 `cfg!(windows)`（常量表达式），刀 `Xb` 把它写死成 `false`
+        //    ⇒ 全绿。收进缝之后，写死常量就意味着**这一格的答案没被用上**。
+        answer(&["acct-a"], true, true);
+        let ps = relay_prefix_for_launch(&action, Some(&acct_a)).expect("这一档不该报错");
+        assert_eq!(
+            ps, "$env:ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; ",
+            "\n「这台机是不是 Windows」这个答案没被用上 —— 调用点把那一格写死了。\n\
+             生产后果：Windows 上中转前缀渲染成 POSIX 形态（`export …` 塞进 PowerShell 串）\n\
+             ⇒ 中转注入在 Windows 上整个失效，而 Windows 运行时行为本件在「判不了」里\n\
+             ⇒ **判据是那一格唯一的守卫**。"
+        );
+        // 阴性对照：同一组输入只翻这一格，答案必须真的不同（否则上面那条是「两张脸长一样」）。
+        answer(&["acct-a"], true, false);
+        assert_ne!(
+            relay_prefix_for_launch(&action, Some(&acct_a)).expect("不该报错"),
+            ps,
+            "两个平台渲出来的前缀一模一样 —— 这把尺子分不出 PowerShell 与 POSIX"
+        );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ⑤⑥ 🔴 `D7 阻-4`：**「哪一次拉起」（`action` / `sid`）也是一维，它的取值域一直是 1**
+        // ═══════════════════════════════════════════════════════════════════
+        //
+        // 上一轮这条判据在 `rows` / `running` / `windows` / `account` 四维上各喂了 ≥2 个值，
+        // **而 `action` 只喂过 `LocalPsAction::Resume("sid-1")` 一个**。`D7` 打了两刀：
+        // - 刀 `S2`：`LocalPsAction::New => return Ok(String::new())` ⇒ **`1229` 全绿**。
+        //   生产后果：**新开会话那条路上中转注入恒空** —— 一个 api-key 号新开一个会话，
+        //   claude 直连官方端点、第三方 key 用不上，而门禁四个数一格不动。
+        //   ⚠ 而件文件 `§3a` 的 `KH2B6` 逐字写着「新开会话这条路**现在生产可达**」。
+        // - 刀 `S1`：`Resume(_sid) => Some("sid-1")`（把 `<key>` 段写死）⇒ 也全绿。
+        //   后果轻（`mint_route_key` 头注登记着这一段对路由惰性），**但那一维什么都没买**。
+        //
+        // ⇒ 与 `term` 那条链同一条纪律：**分叉点上的两支都要喂**，不许只买一支。
+        let key_seg = |prefix: &str| -> String {
+            let url = prefix
+                .split('\'')
+                .nth(1)
+                .unwrap_or_else(|| panic!("前缀里没有被单引号包住的 URL：{prefix:?}"));
+            url.rsplit('/')
+                .next()
+                .expect("URL 一个路径段都没有")
+                .to_string()
+        };
+
+        answer(&["acct-a"], true, false);
+        // ⑤ **`Resume` 那一支**：`<key>` 段必须是**这一次**的 sid，不是一个写死的串。
+        let resumed_1 = relay_prefix_for_launch(&action, Some(&acct_a)).expect("不该报错");
+        let resumed_2 =
+            relay_prefix_for_launch(&LocalPsAction::Resume("sid-9".to_string()), Some(&acct_a))
+                .expect("不该报错");
+        assert_eq!(key_seg(&resumed_1), "sid-1", "路由键的 `<key>` 段不是这次的 sid");
+        assert_eq!(
+            key_seg(&resumed_2),
+            "sid-9",
+            "\n换一个会话 id，路由键的 `<key>` 段没跟着变 —— 刀 `S1` 的形状：\n\
+             `Resume(_sid) => Some(\"sid-1\")` 把这一段写死，那一维什么都没买。\n\
+             实得 = {:?}",
+            key_seg(&resumed_2)
+        );
+
+        // ⑥ 🔴 **`New` 那一支**：新开会话**也真的走中转**，而它的 `<key>` 段是一次性 nonce。
+        let new_1 = relay_prefix_for_launch(&LocalPsAction::New, Some(&acct_a))
+            .expect("新开会话这一档不该报错");
+        assert!(
+            !new_1.is_empty() && new_1.contains("ANTHROPIC_BASE_URL"),
+            "\n★★ **新开会话那条路上中转前缀是空的** —— 这正是刀 `S2` 的形状：\n\
+             `LocalPsAction::New => return Ok(String::new())`，而件文件 `§3a` 的 `KH2B6`\n\
+             逐字写着这条路**现在生产可达**。\n\
+             生产后果：一个 api-key 号新开一个会话 ⇒ **claude 直连官方端点、第三方 key 用不上**，\n\
+             而门禁四个数一格不动。实得 = {new_1:?}"
+        );
+        assert!(
+            new_1.contains("/acct-a/"),
+            "新开会话拼出来的路由键里没有这次的账号段：{new_1:?}"
+        );
+        let new_key = key_seg(&new_1);
+        assert_ne!(
+            new_key,
+            key_seg(&resumed_1),
+            "新开会话拿到了 resume 那一支的 `<key>` 段 —— 这一维被抹平了"
+        );
+        // 反空真：nonce 那一支**每次都不同**（`route_key_for_session(None)` → `mint_route_key`）。
+        // 恒定的 `<key>` 意味着这一支被换成了一个常量，而上面那条 `assert_ne!` 分不出来。
+        let new_2 = relay_prefix_for_launch(&LocalPsAction::New, Some(&acct_a)).expect("不该报错");
+        assert_ne!(
+            new_key,
+            key_seg(&new_2),
+            "两次新开会话拿到同一个 `<key>` 段 —— 那一段不是 nonce，是一个常量"
+        );
+    }
+
+    /// ★★★ `D5 阻-1` 的**同职第二处**：界面那一侧（`KH2B7` 的 `relay_routing_for`）
+    /// **也真的问了那两件事，而且真的用了答案。**
+    ///
+    /// # 为什么它非有不可（分母在这里）
+    ///
+    /// 那两个取值口的生产消费方**恰好 2**：起会话那一侧（上一条）与本条这一侧。
+    /// 上一条只买了第一处 —— 而「只覆盖了那条病的一个动词」正是本区最近四次打回的形状。
+    /// 本条把第二处也钉住：把 `routed` 写死成空表 / 把 `running` 写死成常量，界面就会
+    /// **说反**（「这个号走中转」和「中转在跑」两句都是用户唯一看得见的说法），而没有别的判据会红。
+    #[test]
+    fn the_ui_status_side_asks_those_two_take_points_and_uses_their_answers() {
+        use std::cell::{Cell, RefCell};
+        thread_local! {
+            static ROWS_CALLS: Cell<u32> = const { Cell::new(0) };
+            static RUNNING_CALLS: Cell<u32> = const { Cell::new(0) };
+            static ROWS_ANSWER: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+            static RUNNING_ANSWER: Cell<bool> = const { Cell::new(false) };
+        }
+        fn spy_rows() -> Vec<String> {
+            ROWS_CALLS.with(|c| c.set(c.get() + 1));
+            ROWS_ANSWER.with(|v| v.borrow().clone())
+        }
+        fn spy_running() -> bool {
+            RUNNING_CALLS.with(|c| c.set(c.get() + 1));
+            RUNNING_ANSWER.with(Cell::get)
+        }
+        fn answer(rows: &[&str], running: bool) {
+            ROWS_ANSWER.with(|v| *v.borrow_mut() = rows.iter().map(|s| s.to_string()).collect());
+            RUNNING_ANSWER.with(|c| c.set(running));
+        }
+
+        let dirs = vec![
+            "/h/.claude-accts/acct-a".to_string(),
+            "/h/.claude-accts/acct-b".to_string(),
+        ];
+        let _guard = override_relay_facts(RelayFactSources {
+            rows: spy_rows,
+            running: spy_running,
+            // 界面那一侧不看平台（徽章文案两个平台同一份）⇒ 这一格照生产那个取值口，不装替身。
+            windows: platform_is_windows,
+        });
+
+        // ① 表里只有 `acct-a` + 中转在跑 ⇒ 只有那一个 configDir 被判「走中转」，`running` 为真。
+        answer(&["acct-a"], true);
+        let got = crate::relay_routing_for(dirs.clone());
+        assert!(
+            ROWS_CALLS.with(Cell::get) >= 1 && RUNNING_CALLS.with(Cell::get) >= 1,
+            "界面这一侧**没问**那两件事（rows={} running={}）—— 那两格成了常量",
+            ROWS_CALLS.with(Cell::get),
+            RUNNING_CALLS.with(Cell::get)
+        );
+        assert_eq!(
+            got.routed,
+            vec!["/h/.claude-accts/acct-a".to_string()],
+            "问是问了，**答案没被用上** —— 界面会把「走不走中转」说反"
+        );
+        assert!(got.running, "「中转在不在跑」的答案没被用上");
+
+        // ② **只**把表翻过来 ⇒ 一个都不走（不是「随便回一份」）。
+        answer(&[], true);
+        assert!(
+            crate::relay_routing_for(dirs.clone()).routed.is_empty(),
+            "表空了界面还说有号走中转"
+        );
+        // ③ **只**把「在不在跑」翻过来 ⇒ `running` 跟着变（且 `routed` 不受它影响，两格分开）。
+        answer(&["acct-b"], false);
+        let flipped = crate::relay_routing_for(dirs);
+        assert!(!flipped.running, "中转没跑，界面还说在跑");
+        assert_eq!(
+            flipped.routed,
+            vec!["/h/.claude-accts/acct-b".to_string()],
+            "两格串了 —— `routed` 不该跟着「在不在跑」变"
+        );
+    }
+
+    /// ★★★ `D5 阻-1` 的第三格：**生产上插进那条缝的，就是那两个真取值口。**
+    ///
+    /// 上一条把替身换进去量行为 ⇒ 它量不到「生产那一份指的是谁」。
+    /// 这一条按**函数地址**对拍（不是按文本）：把 [`PRODUCTION_RELAY_FACTS`] 里任何一格
+    /// 换成一个返回常量的闭包 / 别的函数，本条当场红。
+    ///
+    /// # 🔴🔴 第二半是**我自己找第六层时找出来的**，别删
+    ///
+    /// 只对拍那个 `const` **不够**：`relay_facts()` 才是生产真正取值的那一跳。
+    /// 有人把 `relay_facts()` 改成「不装替身时也回一份写死的」而**一个字节不动那个 `const`**
+    /// ⇒ 地址对拍照绿（它读的是 `const`）、行为判据也照绿（它们装了替身、走的是另一支）
+    /// ⇒ **又是一次「文本/形状留住、行为摘掉」，全绿。**
+    /// ⇒ 所以下面**先在没装替身的状态下调一次 `relay_facts()`**，按地址断言它交出来的就是那两个真取值口。
+    #[test]
+    fn the_production_relay_facts_are_those_two_take_points() {
+        // 反空真排最前：这把尺子**分得出**「不是那个函数」，否则下面两条是恒真。
+        fn not_it() -> bool {
+            true
+        }
+        assert!(
+            !std::ptr::fn_addr_eq(PRODUCTION_RELAY_FACTS.running, not_it as fn() -> bool),
+            "这把尺子对任何同型函数都说「是」—— 它恒真，本条按红处理"
+        );
+        // ★★ 第二半：**没装替身**的那一跳（= 生产那一跳）交出来的必须就是那两个真取值口。
+        //    ⚠ 本条**刻意不装替身**；替身住 thread-local ⇒ 别的判据装的那份影响不到这里。
+        let live = relay_facts();
+        assert!(
+            std::ptr::fn_addr_eq(live.rows, relay_rows as fn() -> Vec<String>),
+            "没装替身时 `relay_facts()` 交出来的「表从哪来」不是 `relay_rows` ——\n\
+             生产那一跳被换掉了，而只对拍那个 `const` 的判据看不见（第六层的形状）"
+        );
+        assert!(
+            std::ptr::fn_addr_eq(
+                live.running,
+                crate::local_daemon::relay_running as fn() -> bool
+            ),
+            "没装替身时 `relay_facts()` 交出来的「中转在不在跑」不是 `local_daemon::relay_running`"
+        );
+        assert!(
+            std::ptr::fn_addr_eq(
+                PRODUCTION_RELAY_FACTS.rows,
+                relay_rows as fn() -> Vec<String>
+            ),
+            "生产上「这个号在不在中转表里」不再由 `relay_rows` 答 ——\n\
+             换成一个恒空的东西，谁都不走中转，而行为判据（喂替身的那条）照绿"
+        );
+        assert!(
+            std::ptr::fn_addr_eq(
+                PRODUCTION_RELAY_FACTS.running,
+                crate::local_daemon::relay_running as fn() -> bool
+            ),
+            "生产上「中转在不在跑」不再由 `local_daemon::relay_running` 答 ——\n\
+             换成恒真，`KH2B2`② 那道「起不来就当场拒」的闸整个失效，而行为判据照绿"
+        );
+        // 🔴 `D6 阻-3`：第三格（平台开关）同样按地址对拍，两跳都拍。
+        assert!(
+            std::ptr::fn_addr_eq(live.windows, platform_is_windows as fn() -> bool)
+                && std::ptr::fn_addr_eq(
+                    PRODUCTION_RELAY_FACTS.windows,
+                    platform_is_windows as fn() -> bool
+                ),
+            "生产上「这台机是不是 Windows」不再由 `platform_is_windows` 答 ——\n\
+             换成一个恒假的东西，Windows 上前缀渲成 POSIX 形态、注入整个失效，\n\
+             而 Windows 运行时在本件的「判不了」里 ⇒ 这一格只有判据这一个守卫"
+        );
+
+        // ★★ `D6 阻-1`：**送出去**那条缝同样按地址对拍（同样两跳：`const` 与没装替身的那一跳）。
+        //    只对拍 `const` 不够的理由与上面第二半逐字同一条。
+        let sink = launch_sink();
+        #[cfg(not(windows))]
+        let production_sink =
+            crate::launch::launch_local_posix as fn(&str, Option<&str>) -> Result<(), String>;
+        #[cfg(windows)]
+        let production_sink =
+            crate::launch::launch_powershell_window as fn(&str, Option<&str>) -> Result<(), String>;
+        assert!(
+            std::ptr::fn_addr_eq(sink.0, production_sink)
+                && std::ptr::fn_addr_eq(PRODUCTION_LAUNCH_SINK.0, production_sink),
+            "没装替身时最后送出去的那一步不是 `launch::launch_local_posix` / \
+             `launch::launch_powershell_window` ——\n\
+             生产那一跳被换掉了，而驱动 `launch_local` 的那条行为判据装了替身、看不见这件事"
+        );
+    }
+
+    /// ★★★ `D1 阻-6` 刀 C 的反面：**`relay_rows` 真的去读那份文件、真的解析出行。**
+    ///
+    /// `D1` 实测过：把它整个换成 `Vec::new()`，**1221 passed / 0 failed** ——
+    /// 也就是说「这个号在不在中转表里」这个**取值口**当时一条判据都没有，
+    /// 而它一旦恒空，整件事的表现就是「谁都不走中转」，**而且全绿**。
+    #[test]
+    fn the_rows_really_come_from_that_file_not_from_a_constant() {
+        let dir = std::env::temp_dir().join(format!(
+            "ccm-rows-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&dir).expect("建临时目录");
+        let f = dir.join("relay-credentials.json");
+
+        // ① 文件不在 ⇒ 零条（**不是**报错：读不到与一条没配的正确行为都是「照旧直连」）。
+        assert!(relay_rows_at(&f).is_empty(), "文件不在却读出了行");
+        // ② 真写一份（裸 `fs::write` = 人拿编辑器写的那一份）⇒ 逐条读出来。
+        std::fs::write(
+            &f,
+            b"{\n  \"accounts\": {\n    \"acct-a\": { \"api_key\": \"K1\" },\n    \"acct-b\": {}\n  }\n}\n",
+        )
+        .expect("写夹具");
+        let mut got = relay_rows_at(&f);
+        got.sort();
+        assert_eq!(
+            got,
+            vec!["acct-a".to_string(), "acct-b".to_string()],
+            "没把那份文件里的行读出来 —— 这个取值口恒空的话，谁都不会走中转，而且全绿"
+        );
+        // ③ 当不了路由段的 id **筛掉**（与中转装表那一侧同一条规则）。
+        std::fs::write(
+            &f,
+            b"{\n  \"accounts\": {\n    \"ok-1\": {},\n    \"has.dot\": {},\n    \"has/slash\": {}\n  }\n}\n",
+        )
+        .expect("写夹具");
+        assert_eq!(
+            relay_rows_at(&f),
+            vec!["ok-1".to_string()],
+            "界面这一侧收下了中转装表时会丢掉的行 —— 那会让界面说「经本机中转」而中转 404"
+        );
+        // ④ 文件坏了 ⇒ 零条 + 不 panic（人手编打错一个逗号是常态）。
+        std::fs::write(&f, b"{ not json").expect("写夹具");
+        assert!(relay_rows_at(&f).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ★★ `KH2B7` 的产出方：**界面问的那个「有没有行」，与起会话那一侧问的是同一个规则。**
+    ///
+    /// 两处各写一个 basename 规则，漂开的那天症状是「设置里说走中转、起会话时没走」，
+    /// 而两边看起来都没错。⇒ 本条把它钉成**同一个函数的两个调用方**。
+    #[test]
+    fn the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule() {
+        let rows = vec!["acct-a".to_string()];
+        let dirs = vec![
+            "/home/u/.claude-accts/acct-a".to_string(),
+            "/home/u/.claude-accts/acct-b".to_string(),
+            // 末段带尾斜杠 / 带空白的写法也要落到同一个 id 上。
+            "  /home/u/.claude-accts/acct-a/  ".to_string(),
+        ];
+        // 非空对照排最前：先证明这把尺子不是恒空。
+        assert_eq!(
+            relay_routed_subset(&dirs, &rows),
+            vec![
+                "/home/u/.claude-accts/acct-a".to_string(),
+                "  /home/u/.claude-accts/acct-a/  ".to_string()
+            ],
+            "界面那一侧筛出来的不是「表里有行」的那几个"
+        );
+        // ★ 与起会话那一侧**同一个规则**：同一个目录，两条路推出同一个 id。
+        let named = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/acct-a".to_string(),
+        };
+        assert_eq!(
+            relay_account_id(Some(&named)),
+            relay_account_id_of_dir("/home/u/.claude-accts/acct-a"),
+            "两个调用方推出来的账号 id 不一样 —— 那正是「设置里说走中转、起会话时没走」的形状"
+        );
+        // 表里没有的行一个都不许混进来（`KL7` 第 2 条的界面侧倒影）。
+        assert!(relay_routed_subset(&dirs, &[]).is_empty(), "空表却筛出了行");
+        // 账号 0 / 空 configDir 推不出 id ⇒ 不在结果里（说不出就不表态）。
+        assert!(relay_routed_subset(&["".to_string()], &rows).is_empty());
+    }
+
+    /// ★★ `KH2B2`②在这一层：中转没在跑 ⇒ **起会话这一侧当场说话**，
+    /// 不许渲染成一条指向没人听的口的 URL（那会长成「claude 连不上 API」）。
+    #[test]
+    fn a_launch_that_needs_the_relay_is_refused_when_the_relay_is_not_running() {
+        let rows = vec!["acct-a".to_string()];
+        let e = relay_prefix_for(Some("acct-a"), &rows, false, Some("sid-1"), false)
+            .expect_err("中转没起来却照旧渲染 —— 症状会与网络故障同形");
+        assert!(e.contains("中转没在跑"), "错误得说出真正的原因：{e}");
+        // 非空对照：只把「中转在跑」翻过来，同一条路径就不再报错。
+        assert!(relay_prefix_for(Some("acct-a"), &rows, true, Some("sid-1"), false).is_ok());
+    }
+
+    /// ★★★ **接线判据**：`launch_local` **真正交出去的那一串**以中转前缀打头。
+    ///
+    /// # 🔴🔴🔴 它先前是一条文本判据，而 `D6` 的刀 `Y1` 把它打穿了（第七层）
+    ///
+    /// 第一版量的是「从 `fn launch_local(` 起切 3600 字节，窗口里**有没有**这三样文本」：
+    /// ① `relay_prefix_for_launch(action, account)?` ② `relay + &` 恰好 2 处
+    /// ③ `let cmd = relay + &base;` 与另外两处的先后序。
+    /// 刀 `Y1` 在拼装那一行加了一句
+    /// `let relay = if relay.is_empty() { relay } else { String::new() };`
+    /// ⇒ 三样文本**一处不少**（三个锚点数与干净树逐字相同）
+    /// ⇒ **`1227 passed; 0 failed`、`GATE: OK`、四个数与干净树逐字相同**，
+    /// **而前缀算出来了没拼上去 —— 本件的正题整个被摘掉。**
+    /// ⚠ 而**上一版这段头注里逐字写着它要防的正是这件事**（「算出来却没拼上去，行为上与本件
+    /// 没做完全一样」）—— 威胁模型写对了，买的东西是文本。
+    /// ⚠ 它还带着 `D4 阻-1` 那一形：判据住 `history.rs::tests`，而它 `include_str!("history.rs")`
+    /// 扫的就是本文件 ⇒ `relay + &` 全仓 4 = 生产 2 + 本条的针 1 + 报文 1，按本仓变异纪律
+    /// 「锚点全改」会把针一起带走。
+    ///
+    /// # ⇒ 换成量**真正送出去的那一串**
+    ///
+    /// [`LaunchSink`] 那条缝让判据能装一个记账替身，于是本条量的不再是源码，是
+    /// **`launch_local` 最后交给送法的那个字符串**。三格，每格都能被一刀翻掉：
+    ///
+    /// | 格 | 断的是什么 | 翻掉它的形状 |
+    /// |---|---|---|
+    /// | ① | 表里没这个号 ⇒ 那一串里**一个 `ANTHROPIC_BASE_URL` 都没有** | 无条件注入 |
+    /// | ② | 表里有 ⇒ 那一串**逐字节等于**「前缀 + ① 那一串」 | 刀 `Y1`（算了没拼）· 掏空注入点 |
+    /// | ③ | 换一个号 ⇒ 前缀里的 `<account>` 段跟着变 | 刀 `E6`（账号段写死成常量） |
+    /// | ⑤ | **新开会话**那一支也带前缀 | 刀 `S2`（`New => Ok(String::new())`） |
+    /// | ⑥ | 换一个 sid ⇒ `<key>` 段跟着变 | 刀 `S1`（`Resume(_sid) => Some("sid-1")`） |
+    ///
+    /// 🔴 ⑤⑥ 是 `D7 阻-4` 补的：先前 ①–④ **全部走 `Resume("sid-1")`**
+    /// ⇒ `action` 这一维的输入域是 1，而**新开会话是 `KH2B6` 逐字写着「现在生产可达」的一条路**。
+    ///
+    /// # ⚠ 它买不到什么（如实写）
+    ///
+    /// - **走 ccm 容器那一支**：本条喂 `tmux_name = None` ⇒ 走的是回落那条路。
+    ///   而按 `a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`，
+    ///   **带中转前缀的拉起今天必然落到回落路** ⇒ 本条驱动的正是那条生产可达的路。
+    ///   ccm 那一支上「前缀有没有拼」由同一行代码管（合流之后**只有一处**拼接）。
+    /// - **送法自己拿到串之后干了什么**：那是 `launch::launch_local_posix` 自己的判据面；
+    ///   「生产上插进这条缝的就是它」由 `the_production_relay_facts_are_those_two_take_points`
+    ///   末尾那一格按**函数地址**对拍。
+    /// - **谁绕开这条缝直接调送法**：由 `payload.rs` 那道人群闸数着（零调用点）。
+    #[test]
+    fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
+        use std::cell::{Cell, RefCell};
+        thread_local! {
+            static SENT: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+            static ROWS_ANSWER: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+            static RUNNING_ANSWER: Cell<bool> = const { Cell::new(false) };
+        }
+        fn recorder(cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
+            SENT.with(|v| v.borrow_mut().push(cmd.to_string()));
+            Ok(())
+        }
+        fn spy_rows() -> Vec<String> {
+            ROWS_ANSWER.with(|v| v.borrow().clone())
+        }
+        fn spy_running() -> bool {
+            RUNNING_ANSWER.with(Cell::get)
+        }
+        fn answer(rows: &[&str], running: bool) {
+            ROWS_ANSWER.with(|v| *v.borrow_mut() = rows.iter().map(|s| s.to_string()).collect());
+            RUNNING_ANSWER.with(|c| c.set(running));
+        }
+        fn last_sent() -> String {
+            SENT.with(|v| v.borrow().last().cloned().expect("这一趟什么都没送出去"))
+        }
+
+        let _sink = override_launch_sink(LaunchSink(recorder));
+        let _facts = override_relay_facts(RelayFactSources {
+            rows: spy_rows,
+            running: spy_running,
+            // 平台那一格照生产那个取值口（本条不翻它 —— 翻它的是上面那条判据的第 ④ 格）。
+            windows: platform_is_windows,
+        });
+
+        let action = LocalPsAction::Resume("sid-1".to_string());
+        let accounts = [
+            ("acct-a", "/h/.claude-accts/acct-a"),
+            // 🔴 `D6 阻-2`：**两个号**，不是一个 —— 「这次拉起是哪个号」也要能翻。
+            ("acct-b", "/h/.claude-accts/acct-b"),
+        ];
+
+        let mut with_relay = Vec::new();
+        for (id, dir) in accounts {
+            let account = LaunchAccount::Named {
+                config_dir: dir.to_string(),
+            };
+            // ① 表里没有这个号 ⇒ 逐字节旧路。这一趟同时是下面那条相等断言的**基准串**。
+            answer(&[], true);
+            launch_local(&action, None, None, Some(&account), None).expect("不走中转这一趟不该失败");
+            let bare = last_sent();
+            assert!(
+                !bare.is_empty() && bare.contains(dir),
+                "基准串不像一条本机拉起命令（连这个号的 configDir 都没有）：{bare:?}"
+            );
+            assert!(
+                !bare.contains("ANTHROPIC_BASE_URL"),
+                "表里没有这个号，送出去的那一串却带着中转注入 —— \
+                 `KH2B5`「没配第三方 key 的号一个字节都不受影响」当场破了：{bare:?}"
+            );
+
+            // ② 表里有这个号 ⇒ 送出去的那一串**逐字节等于**「前缀 + 基准串」。
+            answer(&["acct-a", "acct-b"], true);
+            let prefix = relay_prefix_for(
+                Some(id),
+                &["acct-a".to_string(), "acct-b".to_string()],
+                true,
+                Some("sid-1"),
+                cfg!(windows),
+            )
+            .expect("纯函数在这组输入上不该报错");
+            // 反空真：期望的前缀本来就该是非空的，否则下面那条相等断言是「x == x」。
+            assert!(!prefix.is_empty(), "期望前缀是空串 —— 本条按红处理");
+            launch_local(&action, None, None, Some(&account), None).expect("走中转这一趟不该失败");
+            let routed = last_sent();
+            assert_eq!(
+                routed,
+                format!("{prefix}{bare}"),
+                "\n★★ **算出来了没拼上去** —— 这正是 `D6` 刀 `Y1` 的形状：\n\
+                 `relay_prefix_for_launch` 照样被调、照样答对，而拼装那一行把它扔了\n\
+                 ⇒ 起会话的命令串里没有 `ANTHROPIC_BASE_URL`，本件的正题整个被摘掉，\n\
+                 **而上一版那条数三样文本的判据照绿。**\n\
+                 号 = {id} · 实得 = {routed:?} · 期望 = {:?}",
+                format!("{prefix}{bare}")
+            );
+            with_relay.push((id, routed));
+        }
+
+        // ③ 🔴 `D6 阻-2`：**两个号送出去的前缀必须不一样**，而且各自带自己的账号段。
+        let (id_a, cmd_a) = &with_relay[0];
+        let (id_b, cmd_b) = &with_relay[1];
+        assert!(
+            cmd_a.contains(&format!("/{id_a}/")) && cmd_b.contains(&format!("/{id_b}/")),
+            "\n路由键里的账号段不是这次拉起的那个号 —— 刀 `E6` 的形状：\n\
+             把 `relay_account_id` 的答案 `.map(|_| \"acct-a\")` 写死，\n\
+             生产后果是 **acct-b 的会话拿着 acct-a 的那把 key 发请求，两边都显示成功**。\n\
+             实得：{cmd_a:?} · {cmd_b:?}"
+        );
+        assert_ne!(
+            cmd_a.split("; ").next(),
+            cmd_b.split("; ").next(),
+            "两个号送出去的第一段（中转前缀）逐字节相同 —— 「哪个号」这一维成了常量"
+        );
+
+        // ④ 中转没在跑 ⇒ **当场拒，而且一个字节都没送出去**（`KH2B2`②：不许静默）。
+        let before = SENT.with(|v| v.borrow().len());
+        answer(&["acct-a"], false);
+        let account = LaunchAccount::Named {
+            config_dir: "/h/.claude-accts/acct-a".to_string(),
+        };
+        assert!(
+            launch_local(&action, None, None, Some(&account), None).is_err(),
+            "中转没在跑却照旧起出去了"
+        );
+        assert_eq!(
+            SENT.with(|v| v.borrow().len()),
+            before,
+            "拒了却还是往外送了一条命令 —— 那条「当场拒」只拒在返回值上"
+        );
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ⑤⑥ 🔴 `D7 阻-4`：**「哪一次拉起」这一维，在送出去的那一串上也要翻得动**
+        // ═══════════════════════════════════════════════════════════════════
+        //
+        // 上面 ①–④ 全部走 `Resume("sid-1")` ⇒ `action` 这一维的输入域 = 1。
+        // 刀 `S2`（`New => return Ok(String::new())`）在**这条判据上也全绿**，
+        // 而**新开会话是 `KH2B6` 逐字写着「现在生产可达」的一条路**。
+        answer(&["acct-a"], true);
+        let acct = LaunchAccount::Named {
+            config_dir: "/h/.claude-accts/acct-a".to_string(),
+        };
+
+        // ⑤ **`New` 那一支**：送出去的那一串必须也带中转注入，且账号段是这次的号。
+        launch_local(&LocalPsAction::New, None, None, Some(&acct), None)
+            .expect("新开会话走中转这一趟不该失败");
+        let new_sent = last_sent();
+        assert!(
+            new_sent.contains("ANTHROPIC_BASE_URL") && new_sent.contains("/acct-a/"),
+            "\n★★ **新开会话送出去的那一串里没有中转注入** —— 刀 `S2` 的形状：\n\
+             `LocalPsAction::New => return Ok(String::new())`。\n\
+             生产后果：一个 api-key 号**新开**一个会话 ⇒ claude 直连官方端点、\n\
+             第三方 key 用不上，而全量门禁四个数一格不动。实得 = {new_sent:?}"
+        );
+
+        // ⑥ **`Resume` 那一支的 sid 不是写死的**：换一个 sid，送出去的那一串跟着变。
+        launch_local(
+            &LocalPsAction::Resume("sid-9".to_string()),
+            None,
+            None,
+            Some(&acct),
+            None,
+        )
+        .expect("这一趟不该失败");
+        let resumed_9 = last_sent();
+        assert!(
+            resumed_9.contains("/sid-9'"),
+            "\n换一个会话 id，送出去的那一串里的 `<key>` 段没跟着变 —— 刀 `S1` 的形状：\n\
+             `Resume(_sid) => Some(\"sid-1\")`。实得 = {resumed_9:?}"
+        );
+        // 反空真：这两趟本来就该是两条不同的串（否则上面两条里有一条在数同一份东西）。
+        assert_ne!(
+            new_sent, resumed_9,
+            "新开与 resume 送出去的是同一串 —— 「哪一次拉起」这一维成了常量"
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // 🔴🔴 `D8 阻-1`：**账号传递链那三跳** —— 生产主路，第九轮之前一格判据都没有
+    // ═════════════════════════════════════════════════════════════════════════
+    //
+    // # 病是怎么长出来的（`D8 §4` 第 2 条，别只读结论）
+    //
+    // 本件所有承重的行为判据（[`the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched`]
+    // / [`the_launch_side_really_asks_those_two_take_points_and_uses_their_answers`]）的
+    // **驱动入口都是 [`launch_local`] 或更下游**，而**生产入口在它上面两跳**：
+    //
+    // ```text
+    // #[tauri::command] resume_history_session  →  resume_impl  →  launch_local
+    // #[tauri::command] new_local_session       ─────────────────→  launch_local
+    // ```
+    //
+    // ⇒ **判据的射程上界正好卡在 `launch_local`，而九轮买的那些牙全长在它的下游。**
+    // `D8` 三刀实打（三处调用点各写一次 `account.filter(|_| false)`）：
+    // **全量门禁四个数一格不动（`1328 / 一致 / 493 / 1512`）、`GATE: OK`，而中转前缀恒空。**
+    //
+    // 🔴 **而看起来在守它的那把尺子，作用域对不上事实**：`src/ipc/commands.vitest.ts:402`
+    //「每一处起本机会话的调用都带 `account`」守的是 **TS 那一侧**（`D8` 的 `E4` 实测：
+    // 在前端调用点上下同一形状的刀，`npm` 那道门当场红）。
+    // **同一根链的 Rust 这一侧三跳，一格都没守。** —— 「两条路只修了一条」。
+    //
+    // # 为什么是**三条**判据而不是一条（`K22` 的口径）
+    //
+    // **N 支信号要 N 个只由这一支挡住的探针。** 三跳各自能独立答错，所以三刀的**红名单
+    // 必须两两不同**（本轮实打的三张红名单在件文件 `§12` 的变异表里逐行给了）：
+    //
+    // | 刀 | 落在哪一处 | 红名单 |
+    // |---|---|---|
+    // | ① | `resume_impl` 里那一处 `account` | 探针 ① **与** ② 一起红 |
+    // | ② | `resume_history_session` 里那一处 `account.as_ref()` | **只有**探针 ② 红 |
+    // | ③ | `new_local_session` 里那一处 `account.as_ref()` | **只有**探针 ③ 红 |
+    //
+    // ⚠ 探针 ② 在刀 ① 上也红，是**链的包含关系**（②的驱动路径经过①），不是重复计数：
+    // 三张红名单两两不同 ⇒ 三刀可区分 ⇒ **三格**。反过来只写一条探针 ② 的话，
+    // ①②两刀的红名单会相同 ⇒ 那才是「N 支只买了一格」。
+    //
+    // # ⚠ 它们**买不到**什么（如实写）
+    //
+    // - **前端到底传没传 `account`**：那是 `commands.vitest.ts:402` 那把尺子的面，本族只管
+    //   「传进来之后 Rust 这一侧有没有原样送到拼前缀那一行」。**两把尺子各守一侧，别只改一处。**
+    // - **`launch_local` 以下的任何一格**：那是上面那条 `…_is_really_prepended_…` 的面。
+    //   本族刻意**不**重复买它 —— 三条探针的反空真只断「不走中转那一趟长得像一条真拉起」。
+    // - **Windows 那条腿**：`PRODUCTION_LAUNCH_SINK` 在 Windows 上是另一个送法，
+    //   而门禁跑在 Linux ⇒ 本族与本文件其余判据同样只驱动 POSIX 那一支（登记，不假装）。
+
+    thread_local! {
+        /// `D8 阻-1` 三支探针共用的记账台：这一趟真正交出去的 `(命令串, cwd)`。
+        /// **线程局部** ⇒ 三条判据并行跑互不干扰（`cargo test` 一测一线程）。
+        static ENTRY_SENT: std::cell::RefCell<Vec<(String, Option<String>)>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+        /// 这一拍中转表里有哪几行（探针自己写）。
+        static ENTRY_ROWS: std::cell::RefCell<Vec<String>> =
+            const { std::cell::RefCell::new(Vec::new()) };
+    }
+
+    fn entry_recorder(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
+        ENTRY_SENT.with(|v| {
+            v.borrow_mut()
+                .push((cmd.to_string(), cwd.map(str::to_string)))
+        });
+        Ok(())
+    }
+    fn entry_rows() -> Vec<String> {
+        ENTRY_ROWS.with(|v| v.borrow().clone())
+    }
+    fn entry_running() -> bool {
+        true
+    }
+    /// 装台：一条会记账的送法 + 一组答案由探针写死的取值口。两个守卫掉出作用域自动还原。
+    fn entry_stage() -> (LaunchSinkGuard, RelayFactsGuard) {
+        ENTRY_SENT.with(|v| v.borrow_mut().clear());
+        ENTRY_ROWS.with(|v| v.borrow_mut().clear());
+        (
+            override_launch_sink(LaunchSink(entry_recorder)),
+            override_relay_facts(RelayFactSources {
+                rows: entry_rows,
+                running: entry_running,
+                // 平台那一格照生产那个取值口（翻它的是别处那条判据的第 ④ 格）。
+                windows: platform_is_windows,
+            }),
+        )
+    }
+    fn entry_answer(rows: &[&str]) {
+        ENTRY_ROWS.with(|v| *v.borrow_mut() = rows.iter().map(|s| s.to_string()).collect());
+    }
+    fn entry_last() -> (String, Option<String>) {
+        ENTRY_SENT.with(|v| v.borrow().last().cloned().expect("这一趟什么都没送出去"))
+    }
+
+    /// ★★ **探针 ①**〔`D8 阻-1`，`KH2B1`〕：`resume_impl` 这一跳把 `account` / `session_id` / `cwd`
+    /// **原样**交给 [`launch_local`]。
+    ///
+    /// 刀 `D8P32`（`resume_impl` 里那一行 `account,` 写成 `account.filter(|_| false)`）
+    /// 在本条落地之前是**全量门禁四个数一格不动**的。
+    /// ⚠ 行号带尖号（`D8 阻-5` 的纪律）：`c02d954` 上是 `:1826`，本尖上是 `:1856`；
+    /// **锚点用文本别用行号** —— `^        account,$` 在本文件全文恰好 **1** 处。
+    #[test]
+    fn the_resume_hop_above_launch_local_carries_the_account_and_the_sid_through() {
+        let (_sink, _facts) = entry_stage();
+        let dir = "/h/.claude-accts/acct-r1";
+        let account = LaunchAccount::Named {
+            config_dir: dir.to_string(),
+        };
+        // 中性名（`brief` 12：断言用的子串不许取自夹具名字里带含义的那半）。
+        let cwd = "/p/one";
+
+        // ① 反空真 —— 表里没有这个号 ⇒ 这条入口本来就该送出一条**不带中转注入**的命令，
+        //    而且它得像一条真的本机拉起（这个号的 configDir 在里面）。
+        //    没有这一格，下面那条「有前缀」的断言在「整条链恒空」时会读成假红/假绿。
+        entry_answer(&[]);
+        resume_impl("sid-r1", cwd, None, Some(&account), None).expect("不走中转这一趟不该失败");
+        let (bare, bare_cwd) = entry_last();
+        assert!(
+            bare.contains(dir),
+            "基准串里连这个号的 configDir 都没有 —— 这条入口根本没把账号送下去：{bare:?}"
+        );
+        assert!(
+            !bare.contains("ANTHROPIC_BASE_URL"),
+            "表里没有这个号，送出去的那一串却带着中转注入：{bare:?}"
+        );
+        assert_eq!(
+            bare_cwd.as_deref(),
+            Some(cwd),
+            "这一跳把 `cwd` 弄丢了 —— 会话会起在默认目录上，而 toast 照报成功"
+        );
+
+        // ② 表里有这个号 ⇒ 送出去的那一串带中转注入，账号段与 sid 段都是**这一发**的。
+        entry_answer(&["acct-r1"]);
+        resume_impl("sid-r1", cwd, None, Some(&account), None).expect("走中转这一趟不该失败");
+        let (routed, _) = entry_last();
+        assert!(
+            routed.contains("ANTHROPIC_BASE_URL"),
+            "\n★★ **`resume_impl` 这一跳把账号扔了** —— 刀 `D8P32` 的形状：\n\
+             `launch_local(…, account.filter(|_| false), …)`。\n\
+             生产后果：历史页 resume 一个 api-key 号 ⇒ claude 直连官方端点、第三方 key 用不上，\n\
+             而在 `D8` 实测里**全量门禁四个数一格不动**。实得 = {routed:?}"
+        );
+        assert!(
+            routed.contains(&format!("/{}/", "acct-r1")),
+            "路由键里的账号段不是这一发的号：{routed:?}"
+        );
+        assert!(
+            routed.contains("/sid-r1'"),
+            "路由键里的 `<key>` 段不是这一发的 sid —— `session_id` 在这一跳被换掉了：{routed:?}"
+        );
+        // 逐字节：前缀 + 基准串。剥掉第一段之后剩下的**必须**逐字节等于 ① 那趟的基准串
+        // —— 「多注入一个前缀」与「顺手把命令体也换了」在只断 `contains` 的判据上同形。
+        let (head, tail) = routed.split_once("; ").expect("走中转那一趟没有前缀段");
+        assert!(
+            head.starts_with("export ANTHROPIC_BASE_URL="),
+            "第一段不是中转注入：{head:?}"
+        );
+        assert_eq!(
+            tail, bare,
+            "剥掉中转前缀之后的命令体与不走中转那一趟不一样 —— 这一跳除了账号还动了别的"
+        );
+    }
+
+    /// ★★ **探针 ②**〔`D8 阻-1`，`KH2B1`〕：**前端真正调的那条命令**
+    /// [`resume_history_session`]（`#[tauri::command]`）把五个入参原样交给 [`resume_impl`]。
+    ///
+    /// 刀 `D8P32b`（[`resume_history_session`] 里那一行 `account.as_ref(),` 写成
+    /// `account.as_ref().filter(|_| false)`）在本条落地之前是**全量门禁四个数一格不动**的。
+    /// ⚠ 行号带尖号（`D8 阻-5`）：`c02d954` 与本尖上都是 `:892`（本轮加的行都在它下面）。
+    ///
+    /// ⚠ 第 ② 格是**对拍**（同一组输入喂两条入口，两串必须逐字节相同）——
+    /// 它买的是「这一跳一个入参都没被换掉」，比只断「有前缀」宽一格：
+    /// 换掉 `launcher` / `tmux_name` / `cwd` 中任何一个，这一格也红。
+    #[test]
+    fn the_resume_command_the_frontend_calls_hands_all_five_arguments_down_unchanged() {
+        let (_sink, _facts) = entry_stage();
+        let dir = "/h/.claude-accts/acct-r2";
+        let cwd = "/p/two";
+        entry_answer(&["acct-r2"]);
+
+        // ① 从**那条 `#[tauri::command]`** 进去。
+        resume_history_session(
+            "sid-r2".to_string(),
+            cwd.to_string(),
+            Some("cc".to_string()),
+            Some(LaunchAccount::Named {
+                config_dir: dir.to_string(),
+            }),
+            None,
+        )
+        .expect("这一趟不该失败");
+        let (from_cmd, cmd_cwd) = entry_last();
+        assert!(
+            from_cmd.contains("ANTHROPIC_BASE_URL") && from_cmd.contains("/acct-r2/"),
+            "\n★★ **那条 `#[tauri::command]` 把账号扔了** —— 刀 `D8P32b` 的形状：\n\
+             `resume_impl(…, account.as_ref().filter(|_| false), …)`。\n\
+             这一跳就是**历史页 resume 那个按钮真正调的那条命令**，\n\
+             而在 `D8` 实测里一刀下去**全量门禁四个数一格不动**。实得 = {from_cmd:?}"
+        );
+        assert!(
+            from_cmd.contains("/sid-r2'"),
+            "路由键里的 `<key>` 段不是这一发的 sid：{from_cmd:?}"
+        );
+
+        // ② 对拍：同一组输入直接喂下一跳，两串必须**逐字节相同**。
+        //    ⇒ 这一跳换掉五个入参里的**任何一个**（不只是 `account`），本格都红。
+        let account = LaunchAccount::Named {
+            config_dir: dir.to_string(),
+        };
+        resume_impl("sid-r2", cwd, Some("cc"), Some(&account), None).expect("这一趟不该失败");
+        let (from_impl, impl_cwd) = entry_last();
+        assert_eq!(
+            from_cmd, from_impl,
+            "\n那条 `#[tauri::command]` 与它下一跳送出去的不是同一串 —— \
+             这一跳换掉了某个入参（不一定是 `account`）"
+        );
+        assert_eq!(cmd_cwd, impl_cwd, "`cwd` 在这一跳被换掉了");
+    }
+
+    /// ★★ **探针 ③**〔`D8 阻-1`，`KH2B1`〕：**「在该目录起新会话」那条命令**
+    /// [`new_local_session`]（`#[tauri::command]`）把 `account` / `cwd` 原样交给 [`launch_local`]。
+    ///
+    /// 刀 `D8P33`（[`new_local_session`] 里那一行 `account.as_ref(),` 写成
+    /// `account.as_ref().filter(|_| false)`）在本条落地之前是**全量门禁四个数一格不动**的。
+    /// ⚠ 行号带尖号（`D8 阻-5`）：`c02d954` 上是 `:1871`，本尖上是 `:1901`。
+    ///
+    /// ⚠ 这条路**没有 sid**（`<key>` 段走 nonce，见 `payload::relay_key_for` 的表），
+    /// 所以本条只钉账号段与 `cwd`；`<key>` 那一维归 `payload` 那一侧的判据。
+    #[test]
+    fn the_new_session_command_the_frontend_calls_carries_the_account_and_the_cwd_through() {
+        let (_sink, _facts) = entry_stage();
+        let tmp = TmpDir::new(); // `new_local_session` 会先核 `cwd` 是不是现存目录
+        let cwd = tmp.0.to_string_lossy().into_owned();
+        let dir = "/h/.claude-accts/acct-r3";
+
+        // ① 反空真：表里没有这个号 ⇒ 不带中转注入，但 configDir 与 cwd 都得走到。
+        entry_answer(&[]);
+        new_local_session(
+            cwd.clone(),
+            None,
+            Some(LaunchAccount::Named {
+                config_dir: dir.to_string(),
+            }),
+        )
+        .expect("不走中转这一趟不该失败");
+        let (bare, bare_cwd) = entry_last();
+        assert!(
+            bare.contains(dir),
+            "基准串里连这个号的 configDir 都没有：{bare:?}"
+        );
+        assert!(
+            !bare.contains("ANTHROPIC_BASE_URL"),
+            "表里没有这个号却带着中转注入：{bare:?}"
+        );
+        assert_eq!(
+            bare_cwd.as_deref(),
+            Some(cwd.as_str()),
+            "这一跳把 `cwd` 弄丢了 —— 「在该目录起新会话」会起到别的目录去"
+        );
+
+        // ② 表里有这个号 ⇒ 带中转注入，且账号段是这一发的号。
+        entry_answer(&["acct-r3"]);
+        new_local_session(
+            cwd.clone(),
+            None,
+            Some(LaunchAccount::Named {
+                config_dir: dir.to_string(),
+            }),
+        )
+        .expect("走中转这一趟不该失败");
+        let (routed, routed_cwd) = entry_last();
+        assert!(
+            routed.contains("ANTHROPIC_BASE_URL") && routed.contains("/acct-r3/"),
+            "\n★★ **「在该目录起新会话」那条命令把账号扔了** —— 刀 `D8P33` 的形状：\n\
+             `launch_local(…, account.as_ref().filter(|_| false), …)`。\n\
+             生产后果：一个 api-key 号**新开**会话 ⇒ 直连官方端点，\n\
+             而在 `D8` 实测里一刀下去**全量门禁四个数一格不动**。实得 = {routed:?}"
+        );
+        assert_eq!(
+            routed_cwd.as_deref(),
+            Some(cwd.as_str()),
+            "走中转这一趟把 `cwd` 弄丢了"
+        );
+        assert_ne!(
+            bare, routed,
+            "两趟送出去的是同一串 —— 「表里有没有这一行」这一维在这条入口上成了常量"
         );
     }
 }
