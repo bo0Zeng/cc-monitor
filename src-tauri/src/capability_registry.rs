@@ -472,6 +472,99 @@ mod tests {
             .collect()
     }
 
+    /// **装配层**：把 `root` 下那几格 cargo 配置逐格读出来，每格给一条 offender 理由
+    /// （这一格没问题就 `None`）。
+    ///
+    /// ★★ **它为什么是一个具名函数**〔`K-R5` 09-02〕。
+    ///
+    /// 这一段原本是主判据体里的一个**匿名 `filter_map` 闭包**。而生产那一遍
+    /// **6 格全缺席** ⇒ 下面 `!p.is_file()` 那道守卫一律提前 `return None`，
+    /// **闭包体后面整段根本不执行**；上面那些探针又**全都直接调那几个原语**
+    /// （[`keys_in`] / [`backslash_in_key_position`] / [`strip_toml_comments`]），
+    /// **没有一条走过这个闭包** ⇒ **「把原语串起来」这一层零常驻覆盖**。
+    /// `K-G2` 第七轮按切法 `R7` 现打、`K-R5` 09-02 在今天的主干上逐支复打：
+    /// 这一段 **7 支信号里 6 支拆掉，判据与整道 cargo 门都绿**。
+    ///
+    /// ⇒ 抽成具名函数**就是为了让探针能喂它一份夹具根**（生产那一遍喂的是真仓根）——
+    /// 探针 ⑩–⑮ 逐支把那 6 支买下来。
+    ///
+    /// ⚠ **抽出来这一刀本身不改行为**：`root` 与 `slots` 就是原来那个闭包捕获的同两个值，
+    /// 闭包体一个字节没动。
+    ///
+    /// ⚠ **它没买到的一格，如实记**：「主判据体真的调了本函数」这件事本身没有独立探针。
+    /// 今天挡着它的是 `F1`（`!p.is_file()`）那一支的牙 —— 拆掉 `F1`，本函数会给
+    /// **6 格各回一条**「存在但读不出文本」，主 `assert!` 当场红。⇒ 这条链路是通的，
+    /// 但那是**顺带**，不是「只由这一支挡住」。⚠ 而 `F1` 的牙**有前提**：它靠「那 6 格今天
+    /// 一份都不存在」。真有人往那 6 格里放一份**读得出**的配置，`F1` 那一格的机制就变了。
+    fn offenders_under(root: &std::path::Path, slots: &[String]) -> Vec<String> {
+        slots
+            .iter()
+            .filter_map(|rel| {
+                let p = root.join(rel);
+                if !p.is_file() {
+                    return None;
+                }
+                let Ok(raw) = std::fs::read_to_string(&p) else {
+                    return Some(format!("{rel}（存在但读不出文本，本条看不了它的内容）"));
+                };
+                let (text, unmodeled) = strip_toml_comments(&raw);
+                let mut why: Vec<String> = Vec::new();
+                // ★ 预处理这一维的 fail-closed：剥注释看不懂它 ⇒ 当场红，不往下扫。
+                //   `D2` 逮到的那个洞就在这里：看不懂却接着扫 = 拿一份被切过的文本当真相。
+                if !unmodeled.is_empty() {
+                    why.push(format!(
+                        "剥注释这一步**看不懂它**（{}，共 {} 处）—— 按 fail-closed 判红",
+                        unmodeled[0],
+                        unmodeled.len()
+                    ));
+                }
+                let exec = keys_in(&text, CARGO_EXEC_KEYS);
+                if !exec.is_empty() {
+                    why.push(format!("设了执行面的键 {exec:?}"));
+                }
+                let blind = keys_in(&text, CARGO_BLINDING_KEYS);
+                if !blind.is_empty() {
+                    why.push(format!("设了 {blind:?} —— 本条看不进它拉进来的文件"));
+                }
+                if backslash_in_key_position(&text) {
+                    why.push("键位置有反斜杠 —— 转义拼键是已知的绕法，一律按红处理".to_string());
+                }
+                if why.is_empty() {
+                    None
+                } else {
+                    Some(format!("{rel}：{}", why.join("；")))
+                }
+            })
+            .collect()
+    }
+
+    /// 探针专用夹具：在临时目录里摆**一格**真配置文件，整段喂给 [`offenders_under`]，
+    /// 返回那一格的判词（`None` = 这一格没被判成 offender）。
+    ///
+    /// ⚠ **绝不碰仓里被守的那 6 格** —— 往那 6 格里写东西 = 把判据自己弄红。
+    /// 夹具落 `std::env::temp_dir()`（本仓测试的既有写法，21 个文件在用），跑完就删。
+    /// ⚠ 目录名与那一格的相对路径都取**中性名**（`brief` `6g`：夹具的名字不许成为断言的
+    /// 承重词）——下面每一条断言认的都是**判据自己报文里的词**，不是这里的路径。
+    fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
+        let dir =
+            std::env::temp_dir().join(format!("ccm-capreg-slot-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let rel = "d/.cargo/config.toml".to_string();
+        let p = dir.join(&rel);
+        std::fs::create_dir_all(p.parent().expect("夹具的父目录"))
+            .expect("建不出夹具目录 —— 这条探针此刻无效");
+        std::fs::write(&p, body).expect("写不出夹具 —— 这条探针此刻无效");
+        let out = offenders_under(&dir, std::slice::from_ref(&rel));
+        let _ = std::fs::remove_dir_all(&dir);
+        // 夹具自检：只摆了一格，判出两条以上说明喂错了东西，下面那条断言就不算数。
+        assert!(
+            out.len() <= 1,
+            "夹具只摆了一格，却判出 {} 条：{out:?} —— 这条探针此刻无效",
+            out.len()
+        );
+        out.into_iter().next()
+    }
+
     /// ★★ **构建／安装期的执行面**〔audit-0805 08-08，Phase G 第 83 件〕。
     ///
     /// 上面几条钉的是**运行时**谁能扩大执行面（webview 权限 · CSP · 全局 Tauri）。
@@ -536,17 +629,38 @@ mod tests {
     /// **尺子**（08-28 现打）：`git ls-files` 里的 `*.sh` / `*.ps1` / `*.yml` / `package.json`
     /// 全扫一遍 `cargo <子命令>`，**逐处读它的 cwd**。出现过的 cwd 只有下面 3 个：
     ///
-    /// | 发起面 | 谁从这里发起 cargo |
+    /// 🔴 **这张表一律用「内容锚点」指路，不写行号**〔`K-R5` 09-02 订正，全表 8 处〕。
+    /// **行号是快照** —— `brief` 12 逐字：「带具体读数的与描述盘上现状的话都是那一刻的快照，
+    /// 引用前重打，别当常量」；`K-R9` `§3` 记的是同一个病：「**谁再在上方加注释就会把它推馊**」。
+    /// **它真的馊过一次**：`K-G3` 09-01 往 `scripts/gate.sh` 加了门六、往
+    /// `e2e/local-backend-supervise.sh` 加了头注，行号整体往下推
+    /// ⇒ 本表与下面 `§12.2` 那几处引它们的行号**当天全部指到注释行**。
+    /// **09-02 现打的读数**（分母 = 本文件当时全部 23 条 `文件:行号` 引用）：**8 条馊了**，
+    /// 分处 5 个地方 —— 引 `scripts/gate.sh` 的 6 条（本表 2 条、下面 `§12.2` 4 条：那条 cargo 命令 ·
+    /// `run_gate_sum()` 的行段 · `set -uo pipefail` 两处）与引 `e2e/local-backend-supervise.sh`
+    /// 的 2 条。**它们今天全部指到注释行**（其中一条指到一个光秃秃的 `#`）。
+    /// 🔴 **本轮一处都不再写行号** —— 连「今天它搬到第几行」都不写：那个数下一次加注释又会假。
+    /// ⚠ **量具**（可重跑）：`evidence/K-R5-C-line-refs.py` —— 把本文件里每一条 `文件:行号`
+    /// 引用拿到盘上现打一次，印出那一行今天长什么样。它**判不了「引用的意图对不对」**，只印原文；
+    /// 它也**不是判据**（没有机器口径的对错），是一把尺子。跑一次就知道这一栏有没有回潮。
+    ///
+    /// | 发起面 | 谁从这里发起 cargo（认**这条命令**，不认行号） |
     /// |---|---|
-    /// | 仓根 `.` | `ci.yml:662`（`e2e-tmux-rust` job **没有** `working-directory` ⇒ cwd = 仓根）· `scripts/run.ps1:39`。它同时是下面两个的**祖先** —— 往上找一定路过 |
-    /// | `src-tauri/` | `scripts/gate.sh:105` · `package.json` 的 `gen:types` · `ci.yml:26`（`rust` job 的 `working-directory`）· `ci.yml:295` · `e2e/` 四个脚本共 6 处（`tmux-guarded-acceptance.sh:21` · `usage-probe-acceptance.sh:23`/`:129` · `local-backend-supervise.sh:78`/`:86` · `p3t-local-tmux.sh:125`） |
-    /// | `remote-daemon-proto/` | `scripts/gate.sh:157` · `ci.yml:160`（`daemon` job）· `release.yml:42`/`:152`/`:271` · `e2e/daemon-fork-session.sh:24` |
+    /// | 仓根 `.` | `ci.yml` 的 `e2e-tmux-rust` job（**没有** `working-directory` ⇒ cwd = 仓根；那一条是 `cargo build --manifest-path remote-daemon-proto/Cargo.toml`）· `scripts/run.ps1` 的 `"check"` 分支（`cargo check --manifest-path src-tauri\Cargo.toml`）。它同时是下面两个的**祖先** —— 往上找一定路过 |
+    /// | `src-tauri/` | `scripts/gate.sh` 的 `run_gate_sum cargo 8 …`（`cd src-tauri && cargo test --workspace --exclude code-picture-core --lib`）· `package.json` 的 `gen:types` · `ci.yml` 里**两处** `working-directory: src-tauri`（`rust` job 与 `linux-app-build` job）· `e2e/` 四个脚本共 **6 处**（`tmux-guarded-acceptance.sh` 的 `emit_guarded_commands_for_e2e` · `usage-probe-acceptance.sh` 的 `emit_usage_probe_cmd_for_e2e` 与 `e2e_the_local_execution_surface` · `local-backend-supervise.sh` 的 `local_backend` 与 `local_daemon` 两条 `cargo test --lib -- --ignored` · `p3t-local-tmux.sh` 的 `P3T_E2E_SID=…` 那一条） |
+    /// | `remote-daemon-proto/` | `scripts/gate.sh` 的 `run_gate daemon …`（`cd remote-daemon-proto && cargo test`）· `ci.yml` 的 `daemon` job（`working-directory: remote-daemon-proto`）· `release.yml` 里**三处** `working-directory: remote-daemon-proto`（`build-daemons` · `build-windows` · `build-linux` 三个 job）· `e2e/daemon-fork-session.sh` 的 `cd "$ROOT/remote-daemon-proto" && cargo build` |
+    ///
+    /// ⚠ **为什么这里只能用锚点、不能用「函数名 + 行号」两样都给**〔`K-R5` `§4` 那一问的答〕：
+    /// `ci.yml` / `release.yml` 那几处逐字都是同一句 `working-directory: <目录>`，**行号是它们
+    /// 今天唯一的区分**；所以这里改成**按 job 名**指路（job 名是 yml 自己的标识符，改名会连带改
+    /// 那一段的语义，不会被「上面加两行注释」推馊）。`e2e/` 那几处同理，用**测试名 / 变量名**。
+    /// ⇒ **一处都不靠行号**；代价是「共几处」这个数要人回来数，那个数本身也写在表里了。
     ///
     /// ⚠ **尺子没覆盖到的**（写下来免得把它读成穷举）：① `cargo tauri build` 那种**由工具
     /// 再去起 cargo** 的，cwd 由 tauri CLI 定，本条没现打；② 人手临时 `cd` 到任意目录敲的
     /// cargo —— 那个分母没人数得出，也不是一条判据守得住的。
-    /// ③ `scripts/verify-committed-state.sh:60`/`:61`/`:65` 在**另开的临时工作树**里跑，
-    /// 相对目录仍是这两个，不新增发起面。
+    /// ③ `scripts/verify-committed-state.sh` 的 `run monitor-lib` / `run daemon` / `run daemon-win`
+    /// 三条在**另开的临时工作树**里跑，相对目录仍是这两个，不新增发起面。
     ///
     /// **为什么是 6 不是 7**：往下没有第 4 个发起面 —— `src-tauri/crates/*` 与
     /// `src-tauri/vendor/*` 里放一份配置，**上面那张表里的命令一条都读不到它**
@@ -583,10 +697,11 @@ mod tests {
     /// | ① **读文件** | 6 格 = 3 发起面 × 2 文件名 | ✅ `include` 把 6 格之外的文件拉进来 | 人群由数组算出（`slots.len() == 6` 自检）+ `CARGO_BLINDING_KEYS` 判红 |
     /// | ② **预处理** | 剥注释 → 解转义 | ✅ 多行串让剥注释把真键**整行切掉**（`D2`） | [`strip_toml_comments`] **fail-closed**：看不懂就判红 |
     /// | ③ **匹配** | 整词扫那三个键 | ✅ `"runner"` 转义拼键（`D1`） | [`decode_toml_escapes`] 解码 + [`backslash_in_key_position`] 兜底 |
-    /// | ④ **判定** | 收集 offender → `assert!` | ✅ 被绕过**两次**，且**今天还有一个活口** —— 见紧接着这张表的那一段 | **九组**常驻探针 ①–⑨（加/删探针就回来改这个数） |
+    /// | ④ **判定** | 收集 offender → `assert!` | ✅ 被绕过**两次**；`K-R5` 09-02 之前**装配这一层零常驻覆盖** —— 见紧接着这张表的那一段 | **二十一组**常驻探针 ①–㉑（⑩–㉑ 是 `K-R5` 09-02 补的；**加/删探针就回来改这个数**） |
     ///
     /// 🔴 **维 ④ 那一格：别再写「还没被绕过」**〔`D4` 08-29 逮到，而写下那句话的
-    /// 那个 commit 自己的账里就记着一次；「九组」那个数也是 `D4` 逮的 —— `c197917`
+    /// 那个 commit 自己的账里就记着一次；**当时那个「九组」**（今天是二十一组，见上表）
+    /// 也是 `D4` 逮的 —— `c197917`
     /// 把探针从 ①–⑦ 加到 ①–⑨，而这一格的数没跟着改，盘上一度同时躺着「探针⑨」和「八组」〕。
     /// 三条逐字，全是 08-29 我自己复打的：
     /// ① **`D2` 轮被绕过一次** —— 拆掉「行尾引号未闭合」那一支，**判据照绿**
@@ -595,14 +710,13 @@ mod tests {
     ///    「探针⑦（行尾引号未闭合（**只**由这一支信号挡住））：剥注释**必须回报看不懂**。」
     /// ② **`D3` 轮被绕过一次** —— `M5` 把人群换一格（格数仍 6），**判据照绿**。
     ///    补了探针⑨ 之后**今天再换当场红**：现打**红**，报文逐字「本条的人群**逐格**变了。」
-    /// ③ 🔴 **今天有一批活口，最老的那个是**：「存在但读不出文本」那一支 fail-closed **没有**
-    ///    「只由这一支挡住」的探针 —— 08-29 现打：把那一行 `return Some(…)` 改成 `return None`
-    ///    ⇒ **判据照绿**（只跑本条 `1 passed; …; 1217 filtered out`；**整道 cargo 门也绿**：
-    ///    `rc=0` · 包数 **8** · 合计 **1303**）。这是 `K22` 的欠账，`D3`/`D4` 都已登记，
-    ///    **不是新洞，是没关的旧洞**。
-    ///    〔🔴 上一版逐字写「今天仍有**一个**活口」——**说窄了**，而且是同一句里的分母病：
-    ///     按 `D3` 那条切法今天就已经是 **2** 个（本文件 [`keys_in`] 头注 08-29 自己记了第二个），
-    ///     按第七轮那条统一切法 `R7` 是 **17** 个。**逐支读数见下面「两格分母」那一段。**
+    /// ③ 🔴 **08-29 那一批活口，`K-R5` 09-02 关掉了 15 支，还剩 2 支** —— 逐支见下面
+    ///    「两格分母」那一段。最老的那个（「存在但读不出文本」那一支 fail-closed 没有
+    ///    「只由这一支挡住」的探针）**今天关掉了**：现打，把那一行 `return Some(…)` 改成
+    ///    `return None` ⇒ **红**，报文逐字「探针⑩（`let Ok(raw) … else` 那道守卫，
+    ///    **只**由这一支挡住）」。它曾经是 `K22` 的欠账，`D3`/`D4` 都登记过。
+    ///    〔🔴 `D6` 那一版逐字写「今天仍有**一个**活口」——**说窄了**，而且是同一句里的分母病：
+    ///     按 `D3` 那条切法当时已经是 **2** 个，按统一切法 `R7` 是 **17** 个。
     ///     ⚠ 这一句原本长在「加了探针而这一格的数没跟着改」那段病史的 8 行之内。〕
     ///
     /// ⚠ **两格分母**（免得把上面读成穷举）：
@@ -611,9 +725,16 @@ mod tests {
     ///      而那张表的粒度从「一整个函数」（`S8` = [`decode_toml_escapes`]）一路到「一个 `if`」（`S5`–`S7`）；
     ///    · 第七轮定了一条**统一**的切法 `R7`（**一支 = 一个「能用一刀改成恒定答案、而语法与类型契约
     ///      都不变」的最小语法位置**；`||`/`&&` 的每个操作数各算一支；**排除**循环边界 · 通配臂 ·
-    ///      纯计算 · 判据自己的 `assert!` 与九组探针 · `BEFORE`/`LIFECYCLE` 那两块人群），
+    ///      纯计算 · 判据自己的 `assert!` 与那几组常驻探针 · `BEFORE`/`LIFECYCLE` 那两块人群），
     ///      **在同一片面上数出 41 支，08-29 逐支现打 24 红 17 绿**（17 绿逐支都在**整道 cargo 门**
     ///      这个宽分母上复打：`rc=0` · 包数 **8** · 合计 **1303**）。
+    ///    · 🔴 **`K-R5` 09-02 把这 41 支在今天的主干上从头数了一遍、逐支重打**（**一个旧数都没沿用**）：
+    ///      分母仍是 **41**（量具 `evidence/K-R5-C-r7-census.py --census`，逐支锚点现打命中 1 次，
+    ///      41/41 命中），逐支读数仍是 **24 红 17 绿**，**而 17 绿那一组的成员逐支相同**。
+    ///      ⚠ **门那四个数变了**：08-29 是 `rc=0` · 包数 **8** · 合计 **1303**，
+    ///      09-02 是 `rc=0` · 包数 **8** · 合计 **1313** —— 主干这几天动过，
+    ///      **不是同一个读数，只是同一个判定**。⚠ 那个合计还带第二维：
+    ///      `src-tauri/embedded-daemons/` **铺没铺**（09-02 这棵树**没铺**，现打 `ls` 不存在）。
     ///    🔴 **所以这个读数答的不是「哪几支没人盯着」，是「在某一条切法下哪几支没人盯着」** ——
     ///    `D3` 的切法下 1 支，`R7` 的切法下 17 支，**而多出来的不是新洞，是同一片面被切得更细**。
     ///    〔🔴 上一版逐字写「**它答得了「哪几支没人盯着」**，答不了『支数对不对』」——**说宽了**：
@@ -621,24 +742,33 @@ mod tests {
     ///     切法规则里** ⇒ 切法依赖同样吃到那一问。⚠ 而这句话就长在上面那段病史之内 ——
     ///     那段逐字讲的正是「`c197917` 把探针从 ①–⑦ 加到 ①–⑨，**而这一格的数没跟着改**」。
     ///     **同一段里，上一句在讲一个病，下一句就犯了它。**〕
-    ///    🔴 **那 17 支的逐支住址**（`R7` 切法，08-29 逐支现打，**17 支在整道 cargo 门上逐支都绿**）：
-    ///    · [`strip_toml_comments`] **5**：`line.contains("'''")` 那个析取项 · `if escaped` 那一支 ·
-    ///      `c == '\\'` · `quote == Some('"')` · `c == '\''`；
-    ///    · [`decode_toml_escapes`] **1**：`\U`（8 位十六进制）那个 `match` 臂 ——
-    ///      **本函数认的三种转义里，只有 `\u`（探针③）与 `\x`（探针④）有探针**；
-    ///    · [`word_in`] **3**：`is_word` 的 `c.is_alphanumeric()` 与 `c == '_'`，
-    ///      以及整词边界的**前**半 `!before.is_some_and(is_word)` —— **只有「后」那半由探针⑧ 挡着**；
-    ///    · [`backslash_in_key_position`] **1**：`b'{'` 那个候选（`b','` 那个有牙 —— 拆掉它探针⑤e 开火）；
-    ///    · 🔴 **主判据体那个 `filter_map` 闭包，6 支全无牙**：`let Ok(raw) … else`（即 `S4`）·
-    ///      fail-closed 那一支 · `exec` · `blind` · 键位反斜杠 · `why.is_empty()`。
-    ///      **机制由两个现打读数合起来定住**：① 这 6 支逐支拆掉，判据与整道门都绿；
-    ///      ② 而**它上面那一支** `if !p.is_file()` 一拆就红，报文逐字列出**全部 6 格**
-    ///      「（存在但读不出文本，本条看不了它的内容）」⇒ **6 格全缺席时那道守卫一律提前 `return None`，
-    ///      闭包体后面整段今天根本不执行**，而九组探针全都直接调那几个原语 ⇒ **装配这一层今天零常驻覆盖**；
-    ///    · [`keys_in`] **1**：`word_in(text, key)`（原文那一遍）。
-    ///    ⚠ **这一格是诚实边界，不是「现在就该补 17 条探针」** —— 归 `K22`，要不要立跟进件由 PM 定。
-    /// ② 「九组」是**组数**，不是「九组都验过牙」：08-29 这一轮真被打红过的是
-    ///    **7 组**（①③⑤⑥⑦⑧⑨），**② 与 ④ 这两组我这一轮没打**。
+    ///    🔴 **那 17 支后来怎么了：`K-R5` 09-02 买了 15 支，明说不买 2 支。**
+    ///
+    ///    **买的判准**（逐支过一遍铁律 18「宁可宽松让模型自己判断，也不要用严格的错误引入噪声」）：
+    ///    这一支拆掉会产生**已量到的实害形状**（**漏红**：真 `runner` 不再被点名；
+    ///    **误红**：一份纯瘦身配置被点名），**且**它守的是这几个函数 docstring **自己声明的契约**，
+    ///    而不是 fail-closed 那个**近似的具体形状**。⇒ 换一种剥法只要仍满足契约，那几条探针照样绿。
+    ///
+    ///    | 支（`R7`） | 买了没有 | 谁挡住它 · 或者为什么不买 |
+    ///    |---|---|---|
+    ///    | [`strip_toml_comments`] 的 `if escaped` 与 `c == '\\'` | ✅ | 探针⑯（基本串里的 `\"` 不结束该串 ⇒ 后面那个 `#` 不是注释）。⚠ **这两支在函数外面行为上分不开**，实测任拆一支读数逐格相同 ⇒ **一条探针挡两支**，如实记 |
+    ///    | [`strip_toml_comments`] 的 `quote == Some('"')` | ✅ | 探针⑰（字面串里没有转义 —— `'C:\tools\'` 那种 Windows 路径不许被读成「引号没闭合」）。方向是**误红** |
+    ///    | [`strip_toml_comments`] 的 `c == '\''` | ✅ | 探针⑱（字面串里的 `#` 不是注释）。方向是**漏红**，与 `D2` 那个洞同一维 |
+    ///    | [`strip_toml_comments`] 的 `line.contains("'''")` | ❌ **不买** | 它守的是 **fail-closed 那个近似本身**（「看见 `'''` 就判红」），不是契约 ⇒ 买了就把「换一种剥法（真去认多行串）」变成一次判据大修。而**实害形状已被另一支挡住**：现打，一个 `'''` 开头的续行样本会让行尾引号态不闭合 ⇒ 「行尾引号未闭合」那一支（有牙，探针⑦）先开火；这一支单独失守时**只剩「同一行内定界符成对」那一形，而那一形什么都没藏住** |
+    ///    | [`decode_toml_escapes`] 的 `\U` 臂 | ✅ | 探针⑲。三种转义 cargo 都认，而在此之前只有 `\u`（③）与 `\x`（④）有探针 |
+    ///    | [`word_in`] 的 `c.is_alphanumeric()` · `c == '_'` · 整词边界的**前**半 | ✅ | 探针⑳（两个样本：`myrunner` · `my_runner`）。⚠ **「前半」那一支分不开**：它是「前面那一侧」的总闸，任何前半样本都同时挡住它与所用的那一类词字符；两个样本各自把「字母数字」与「下划线」**单独**挡住 |
+    ///    | [`backslash_in_key_position`] 的 `b'{'` 候选 | ❌ **不买** | 🔴 **我构造不出实害输入**：那一支的作用是「在 `{` 处重置键位段」，而它与前一个重置点（`=` / `,`）之间**在 TOML 里只可能隔着空白**（`{` 只出现在 `=` 之后）⇒ 拆掉它，键位段最多多含几个空格，答案不变。⚠ **分母 = 我试过的那几形**（顶层键 · 点分键 · 表头 · 内联表 · 嵌套内联表 · 多行数组续行），**不是穷举**；要买它只能拿一个不合法的 TOML 当样本，那就把实现细节钉死了 |
+    ///    | 主判据体那个 `filter_map` 闭包的 6 支 | ✅ | 探针⑩–⑮，**一支一条**（`K22`）。见 [`offenders_under`] 头注 |
+    ///    | [`keys_in`] 的 `word_in(text, key)`（原文那一遍） | ✅ | 探针㉑。本文件 [`keys_in`] 头注 08-29 就把它记成欠账了 |
+    ///
+    ///    🔴 **补完之后还剩几支没牙：2 支** —— 上表那两行 ❌（`'''` 那个析取项 · `b'{'` 那个候选）。
+    ///    **09-02 现打确认它们今天仍然无牙**：逐支拆掉 ⇒ `rc=0` · 包数 **8** · 合计 **1313** · 判定绿。
+    ///    ⚠ **这两支是诚实边界，不是「下一轮该补」** —— 上表逐支写了为什么判它不值。
+    ///    ⚠ **一格对称性如实记**：不买 `'''` 的那条理由，对**已经买了的** `"""`（探针⑦e）**同样成立**。
+    ///    我没有去动⑦e —— 删一条已经买下的探针不在本件射程里，也不是实现方能自批的事。
+    /// ② 「二十一组」是**组数**，不是「二十一组都验过牙」：`K-R5` 09-02 这一轮真被打红过的是
+    ///    **⑩–㉑ 那 12 组全部**（逐组现打，每组由它自己那一支挡住）+ 旧的 ①③⑤⑥⑦⑧⑨；
+    ///    **旧的 ② 与 ④ 这两组我这一轮没打**（08-29 那一轮也没打）。
     ///
     /// 🔴 **改本条时的纪律**：绕过刀**按维打，不是按例打**。
     /// 上一轮打了九刀**全在维 ③**（`\u` · `\U` · `\x` · 表头 · 内联表 …）——
@@ -821,9 +951,17 @@ mod tests {
     /// 正确的说法要**分形说**〔PM 08-28 裁定的三形表；`D3` 逐形实打、`D4` 08-29 独立复核；
     /// **形 2s 是 `D5` 08-29 加的第四形**，我 08-29 复打。
     /// ⚠ **哪一行是哪一拍量的、开没开 pipefail，看最后一列的署名** ——
-    /// 本拍的量具是 `/home/zbl/.cache/kg2r6/gatedoor.sh`（逐字复刻 `scripts/gate.sh:105`
-    /// 与 `run_gate_sum(:82-101)`，⚠ **连 `gate.sh:22` 的 `set -uo pipefail` 一起复刻**，
-    /// 被测对象是本工作树、`CARGO_TARGET_DIR` 独立）〕：
+    /// `K-G2` 那几拍的量具是 `/home/zbl/.cache/kg2r6/gatedoor.sh`（逐字复刻 `scripts/gate.sh` 里
+    /// **`run_gate_sum cargo 8 …` 那条 cargo 命令**与 **`run_gate_sum()` 那个函数**，
+    /// ⚠ **连 `gate.sh` 顶上那一行 `set -uo pipefail` 一起复刻**，
+    /// 被测对象是本工作树、`CARGO_TARGET_DIR` 独立）。
+    /// ⚠ **`K-R5` 09-02 那一拍换了一把**：`evidence/K-R5-C-r7-door.py`（同样是复刻那三样，
+    /// 但**跑在沙箱里**、`CARGO_TARGET_DIR` 落 `.claude/pm-targets/`，
+    /// 并且复刻了 `.claude/devbox/gate` 里那句 `mkdir -p "$HOME/.claude/projects"` ——
+    /// 少了它 `history` 那条围栏判据会因为「目录不存在」被拒，基线**假红**；09-02 现打过这个反例）。
+    /// 🔴 **上面这三处原本写的是行号**，**09-02 现打三处全指到注释行** ——
+    /// 成因（`K-G3` 09-01 加门六，把行号整体推下去）与订正法（一律换成内容锚点）
+    /// 见上面那张「谁从这里发起 cargo」表的头一段。〕：
     ///
     /// | 形 | 谁兜得住 · 靠哪一支 | 四个数 | 谁在哪一拍量的 |
     /// |---|---|---|---|
@@ -847,7 +985,8 @@ mod tests {
     /// `-ne 1` ⇒ 第二支 · **整支删掉** ⇒ **第三支**接住。
     /// 非空对照：同一把尺子喂形 0 的输出 ⇒ **绿**（`1303 passed`／8 个包）⇒ 尺子不是恒红。
     ///
-    /// ⚠ **口径一格，复打前先看**：`scripts/gate.sh:22` 逐字 `set -uo pipefail`
+    /// ⚠ **口径一格，复打前先看**：`scripts/gate.sh` 顶上那一行逐字是 `set -uo pipefail`
+    /// （**认这一行的字面，别认行号** —— 09-02 现打，它已经从 `:22` 被推到 `:72`）
     /// ⇒ 形 1 那条 `n=` 管道里 `grep` 无命中让整条管道失败、`|| echo 0` 兜出 **`"0"`**，
     /// 接住形 1 的是第三支的 **`[ "$n" -eq 0 ]`** 这个子条件，报文逐字
     /// 「读数是 0 —— 0 passed 不是绿」。**不开 pipefail** 时 `n` 是空串、走 `[ -z "$n" ]`、
@@ -1132,45 +1271,184 @@ mod tests {
              fail-closed 是它唯一诚实的出路。实得的理由是 {ml_balanced_why:?}。"
         );
 
-        let offenders: Vec<String> = slots
-            .iter()
-            .filter_map(|rel| {
-                let p = root.join(rel);
-                if !p.is_file() {
-                    return None;
-                }
-                let Ok(raw) = std::fs::read_to_string(&p) else {
-                    return Some(format!("{rel}（存在但读不出文本，本条看不了它的内容）"));
-                };
-                let (text, unmodeled) = strip_toml_comments(&raw);
-                let mut why: Vec<String> = Vec::new();
-                // ★ 预处理这一维的 fail-closed：剥注释看不懂它 ⇒ 当场红，不往下扫。
-                //   `D2` 逮到的那个洞就在这里：看不懂却接着扫 = 拿一份被切过的文本当真相。
-                if !unmodeled.is_empty() {
-                    why.push(format!(
-                        "剥注释这一步**看不懂它**（{}，共 {} 处）—— 按 fail-closed 判红",
-                        unmodeled[0],
-                        unmodeled.len()
-                    ));
-                }
-                let exec = keys_in(&text, CARGO_EXEC_KEYS);
-                if !exec.is_empty() {
-                    why.push(format!("设了执行面的键 {exec:?}"));
-                }
-                let blind = keys_in(&text, CARGO_BLINDING_KEYS);
-                if !blind.is_empty() {
-                    why.push(format!("设了 {blind:?} —— 本条看不进它拉进来的文件"));
-                }
-                if backslash_in_key_position(&text) {
-                    why.push("键位置有反斜杠 —— 转义拼键是已知的绕法，一律按红处理".to_string());
-                }
-                if why.is_empty() {
-                    None
-                } else {
-                    Some(format!("{rel}：{}", why.join("；")))
-                }
-            })
-            .collect();
+        // ══════════════════════════════════════════════════════════════════════
+        // ⑩–⑮ **装配层那 6 支**〔`K-R5` 09-02；`K22`〕
+        //
+        // ★ 治的是什么：上面 ①–⑨ **全都直接调那几个原语**，没有一条走过
+        //   [`offenders_under`] 那个闭包；而生产那一遍 6 格全缺席 ⇒ `!p.is_file()`
+        //   一律提前 `return None` ⇒ **闭包体后面整段今天根本不执行**。
+        //   `K-R5` 09-02 在今天的主干上逐支现打：那 7 支里 **6 支拆掉、判据与整道
+        //   cargo 门都绿**（`rc=0` · 包数 8 · 合计 1313）。本组把这 6 支买下来。
+        //
+        // 🔴 **一支一条，不许一条挡 6 支**（`K22` 逐字：N 支信号要 N 个只由这一支挡住
+        //   的探针）。每条下面都写了它**只**由哪一支挡住，以及它够不着哪一支。
+        //
+        // ⚠ **`F1`（`!p.is_file()`）本组没配探针** —— 它今天**有牙**（拆掉它，主 `assert!`
+        //   逐字列出全部 6 格），再配一条是重复。它的诚实边界写在 [`offenders_under`] 头注。
+
+        // ⑩ `let Ok(raw) … else`（`K-G2` 的 `S4`）：**存在但读不出文本** ⇒ 必须上报。
+        //    ⚠ 样本是**非法 UTF-8 字节**：`is_file()` 对它恒真 ⇒ 拆掉 `F1` 这条一声不吭；
+        //      拆掉 `F3`–`F7` 它够不着（在那之前就 `return` 了）⇒ **只**由这一支挡住。
+        let why = probe_slot_verdict("a", &[0xff, 0xfe, 0x00, 0x80]);
+        assert!(
+            why.as_deref().is_some_and(|w| w.contains("存在但读不出文本")),
+            "探针⑩（`let Ok(raw) … else` 那道守卫，**只**由这一支挡住）：\n\
+             一格**存在、却读不出文本**时本条必须上报它 —— 那正是「本条看不了它的内容」。\n\
+             改成 `return None` 就等于「读不出就当没事」。这一格实得 {why:?}。"
+        );
+
+        // ⑪ 预处理 fail-closed（`F3`）：样本**只**触发「剥注释看不懂」这一支 ——
+        //    它不含那三个执行键、不含 `include`、键位零反斜杠 ⇒ 拆掉 `F4`/`F5`/`F6`
+        //    它照样上报，拆掉 `F3` 当场变绿。
+        let why = probe_slot_verdict("b", b"a = \"\"\"x\"\"\"\n");
+        assert!(
+            why.as_deref().is_some_and(|w| w.contains("剥注释这一步")),
+            "探针⑪（预处理 fail-closed，**只**由这一支挡住）：\n\
+             剥注释回报「看不懂」时，装配这一层必须把它变成一条 offender 理由。\n\
+             这一支一旦恒假，`D2` 那个洞（多行串把真键整行切掉）就原样回来。实得 {why:?}。"
+        );
+
+        // ⑫ 执行面键（`F4`）：样本只设了 `runner`，别的信号一支不触发。
+        let why = probe_slot_verdict("c", b"[target.x]\nrunner = \"sh\"\n");
+        assert!(
+            why.as_deref().is_some_and(|w| w.contains("设了执行面的键")),
+            "探针⑫（`exec` 那一支，**只**由这一支挡住）：\n\
+             [`keys_in`] 逮到了执行面键，而装配这一层必须把它变成一条 offender 理由。\n\
+             ⚠ 原语有牙不等于装配有牙：这一支恒假时 [`keys_in`] 照常返回 `[\"runner\"]`，\n\
+             只是没人再看它一眼。实得 {why:?}。"
+        );
+
+        // ⑬ 致盲键（`F5`）：样本只设了 `include`，不含那三个执行键、键位零反斜杠。
+        let why = probe_slot_verdict("d", b"include = [\"../elsewhere/x.toml\"]\n");
+        assert!(
+            why.as_deref()
+                .is_some_and(|w| w.contains("本条看不进它拉进来的文件")),
+            "探针⑬（`blind` 那一支，**只**由这一支挡住）：\n\
+             `include` 能把那 6 格之外的任意文件拉进来，而本条读不到那一份 ⇒ 按 fail-closed 判红。\n\
+             这一支恒假 = 本条被蒙上眼睛还自称绿。实得 {why:?}。"
+        );
+
+        // ⑭ 键位反斜杠（`F6`）：样本整行没有 `=`、解开是 `[build]`（不在那三个执行键里）
+        //    ⇒ `F3`/`F4`/`F5` 一支都不触发。
+        let why = probe_slot_verdict("e", b"[bui\\u006Cd]\n");
+        assert!(
+            why.as_deref().is_some_and(|w| w.contains("键位置有反斜杠")),
+            "探针⑭（键位反斜杠那一支，**只**由这一支挡住）：\n\
+             [`backslash_in_key_position`] 是「不靠数全转义种类」的那一半兜底，\n\
+             而装配这一层必须把它的 `true` 变成一条 offender 理由。实得 {why:?}。"
+        );
+
+        // ⑮ `why.is_empty()`（`F7`）：**干净的一格必须判 `None`**。
+        //    ⚠ 这一支有**两张脸**，本条买的是其中一张，另一张说清在哪：
+        //      · `if false`（恒当成 offender）⇒ **只**由本条挡住（下面这条断言当场红）；
+        //      · `if true`（永不上报）⇒ 由 ⑪⑫⑬⑭ **四条一起**挡住 —— 它是那四条的
+        //        **下游**，没有任何探针能「只」挡住它。**这不是探针的毛病，是这段代码的形状。**
+        let why = probe_slot_verdict("f", b"[profile.dev]\ndebug = false\n");
+        assert!(
+            why.is_none(),
+            "探针⑮（`why.is_empty()` 那道分岔的 `if false` 那张脸，**只**由这一支挡住）：\n\
+             一条理由都没有的一格**必须**判 `None` —— 恒当成 offender 会让用户的仓库恒红，\n\
+             而 08-27 真发生过一次（那次的消法是把判据放宽，本工作区走过太多次了）。实得 {why:?}。"
+        );
+
+        // ══════════════════════════════════════════════════════════════════════
+        // ⑯–㉑ 原语那几支里**买下来的**〔`K-R5` 09-02〕
+        //
+        // 🔴 **买的判准**（逐支过一遍铁律 18「宁可宽松，别用严格的错误引入噪声」）：
+        //   这一支拆掉会产生**已量到的实害形状**（漏红：真 `runner` 不再被点名；
+        //   误红：一份纯瘦身配置被点名），**且**它守的是这几个函数 docstring
+        //   **自己声明的契约**，而不是 fail-closed 那个**近似的具体形状**。
+        //   ⇒ 换一种剥法（比如真去认多行串）只要仍满足契约，下面这几条照样绿。
+        // 🔴 **没买的两支写在头注**（`K-R5-D3`）：`B2`（`'''` 定界符）· `E1`（或模式候选 `b'{'`）。
+
+        // ⑯ 剥注释契约的一半：**基本串里被转义的引号不结束这个串**〔`B4`+`B5`〕。
+        //    docstring 逐字：「`#` 到行尾；**字符串里的 `#` 不算注释**」。
+        //    ⚠ `B4`（`if escaped`）与 `B5`（`c == '\\'`）**在函数外面behaviour 上分不开**：
+        //      任拆一支，`\"` 都会当场把串关掉 ⇒ 同一条探针挡住两支。这是**实测出来的**，
+        //      不是偷懒；要分开得去断言内部状态，那就把实现细节钉死了。
+        //    ⚠ 这条也会被 `B7`（`quote == Some(c)`）拆掉时打红，而 `B7` 今天本来就有牙（⑦）。
+        let sample_escaped_quote = "target = { x = \"a\\\"#b\", runner = \"sh\" }\n";
+        assert_eq!(
+            keys_in(&stripped_ok(sample_escaped_quote), CARGO_EXEC_KEYS),
+            vec!["runner"],
+            "探针⑯：基本串里的 `\\\"` **不结束这个串** ⇒ 它后面那个 `#` 不是注释，\n\
+             真键 `runner` 必须活着走出剥注释这一步。\n\
+             这一支一恒假，`#` 之后整行被切掉，而剥注释**一声不吭**（引号态在 break 时是闭合的）\n\
+             ⇒ 那是一次**静默漏红**，与 `D2` 逮到的那个洞同一维。"
+        );
+
+        // ⑰ 剥注释契约的另一半：**字面串 `'…'` 里没有转义**〔`B6`〕。
+        //    ⚠ 方向是**误红**：这一支一旦恒真，一条以反斜杠结尾的 Windows 路径
+        //      （`'C:\tools\'` —— TOML 字面串最教科书的写法）会被读成「引号没闭合」
+        //      ⇒ fail-closed 判红 ⇒ 用户的仓库恒红。08-27 真发生过一次同族的事。
+        let (_, why_literal_path) = strip_toml_comments("rustc = 'C:\\tools\\'\n");
+        assert!(
+            why_literal_path.is_empty(),
+            "探针⑰：TOML **字面串**里反斜杠就是反斜杠（没有转义）—— \
+             `'C:\\tools\\'` 这一行本剥法必须认得，不许回报「看不懂」。\n\
+             实得 {why_literal_path:?}。⚠ 这一条护的是**误红**那一侧：误红最省事的消法\
+             是把判据放宽，那条路本工作区走过太多次了。"
+        );
+
+        // ⑱ 剥注释契约的第三条：**字面串里的 `#` 不算注释**〔`B9`〕。
+        //    ⚠ 拆掉这一支，`'` 不再开串 ⇒ 串里那个 `#` 把整行切掉，而引号态是闭合的
+        //      ⇒ **一声不吭地漏红**。⚠ 这条也会被 `B7` 拆掉时打红（`B7` 今天有牙）。
+        let sample_hash_in_literal = "target = { x = 'a#b', runner = \"sh\" }\n";
+        assert_eq!(
+            keys_in(&stripped_ok(sample_hash_in_literal), CARGO_EXEC_KEYS),
+            vec!["runner"],
+            "探针⑱：**字面串**里的 `#` 不是注释 —— 真键 `runner` 必须活着走出剥注释这一步。\n\
+             这一支恒假 ⇒ 整行从 `#` 处被切掉，而「看不懂」一个字都不报。"
+        );
+
+        // ⑲ 转义面的第三种：`\UXXXXXXXX`〔`C2`〕。
+        //    [`decode_toml_escapes`] 认三种（`\u` · `\U` · `\x`），而 08-29 之前
+        //    **只有 `\u`（③）与 `\x`（④）有探针**。三种 cargo 都认（头注那段实测）。
+        let probe_upper_escape = "[target.x]\n\"\\U00000072unner\" = 1\n";
+        assert_eq!(
+            keys_in(&stripped_ok(probe_upper_escape), CARGO_EXEC_KEYS),
+            vec!["runner"],
+            "探针⑲：`\\UXXXXXXXX`（8 位十六进制）那种写法 cargo 也认，本条也要认。\n\
+             这一格与 `D1` 逮到的那个洞同形：cargo 认**解码后**的键名，\n\
+             而这一臂一旦答通配臂那个 0，`\"\\U00000072unner\"` 就再也解不成 `runner`。"
+        );
+
+        // ⑳ 整词边界的**前**半〔`D4`〕与词字符那两类〔`D1` 字母数字 · `D2` 下划线〕。
+        //    ⚠ 探针⑧ 买的是**后**半（`linker-utils`），前半今天没人盯着。
+        //    ⚠ **分不开的一格如实记**：`D4` 是「前面那一侧」的总闸 ⇒ 任何前半样本都同时
+        //      挡住 `D4` 与它用到的那一类词字符；没有任何样本能「只」挡住 `D4`。
+        //      两个样本各自把 `D1` / `D2` 单独挡住（换一类词字符，另一类拆掉照绿）。
+        for (sample, cls) in [
+            ("[profile.dev.package.myrunner]\ndebug = false\n", "字母数字"),
+            ("[profile.dev.package.my_runner]\ndebug = false\n", "下划线"),
+        ] {
+            assert!(
+                keys_in(&stripped_ok(sample), CARGO_EXEC_KEYS).is_empty(),
+                "探针⑳（整词边界的**前**半 + 词字符「{cls}」那一类）：\n\
+                 `myrunner` / `my_runner` 这类**前面接着词字符**的写法不是那个键，必须放行。\n\
+                 探针⑧ 只买了「后」那半（`linker-utils`）—— 前半一旦失守，\n\
+                 `K-G2` 收窄掉的那一半（「人群比性质大」）就从另一侧回来，\n\
+                 而它的代价是实打实的：08-27 用户主树上的瘦身配置让本条恒红了一次。"
+            );
+        }
+
+        // ㉑ [`keys_in`] 扫**原文**那一遍〔`G1`〕—— 本文件头注 08-29 就记着这条欠账。
+        //    ⚠ 解码那一遍由探针③ 挡着；原文那一遍在本条之前**零常驻覆盖**。
+        //    机制：解码把 `\`（非词字符）换成词字符 ⇒ **两个方向都会动整词边界**。
+        //    这个样本走的是「解码之后整词反而不成立」那个方向。
+        let probe_raw_pass = "[target.x]\n\"runner\\x41\" = \"y\"\n";
+        assert_eq!(
+            keys_in(&stripped_ok(probe_raw_pass), CARGO_EXEC_KEYS),
+            vec!["runner"],
+            "探针㉑：`\"runner\\x41\"` —— **原文**里 `runner` 后面是 `\\`（非词字符）⇒ 整词成立；\n\
+             解完是 `runnerA`，后面是 `A`（词字符）⇒ 整词**不**成立。\n\
+             ⇒ 只有**原文那一遍**逮得到它。那一遍恒假，这一形当场从报文里消失，\n\
+             而 [`keys_in`] 头注逐字写着「两遍都要」。"
+        );
+
+        // ⚠ 这一段的 7 支信号住 [`offenders_under`]（`K-R5` 09-02 抽出来的，**行为没动**）——
+        //   抽出来是为了让探针 ⑩–⑮ 能喂它一份夹具根，理由见那个函数的头注。
+        let offenders: Vec<String> = offenders_under(&root, &slots);
         assert!(
             offenders.is_empty(),
             "cargo 配置里出现了本条不许出现的键：{offenders:?}\n\
