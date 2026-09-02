@@ -613,7 +613,7 @@ pub fn extract_embedded_to(
     // 会写同一个 `.partial` —— 一个写到一半、另一个 `rename` 走，出来的可能是**半截文件**，
     // 而这道 `.partial` + `rename` 存在的全部理由就是「半截文件不许被当成可执行的 daemon 起起来」。
     // ⚠ 这不是理论：`tauri_plugin_single_instance` **只在 `#[cfg(windows)]` 注册**
-    // （`lib.rs:220`）⇒ Linux/macOS 上两个 monitor 天然并存。
+    // （`lib.rs::run` 里那段 `#[cfg(windows)]`）⇒ Linux/macOS 上两个 monitor 天然并存。
     // ⇒ 每个进程写自己那份，`rename` 仍是原子的，互不覆盖。
     let tmp = dir.join(format!(
         ".{}.{}.partial",
@@ -1632,8 +1632,8 @@ mod tests {
         assert!(
             alive,
             "关掉 stdin 写端之后 daemon（pid={pid}）没了。\n\
-             这与 C8「默认不 kill」直接冲突，也推翻了 local_backend.rs:221 那句\n\
-             「daemon 对 stdin 关闭刻意不敏感」——那句注释得改，不是这条测试得改。"
+             这与 C8「默认不 kill」直接冲突，也推翻了 `local_backend.rs::stop` 头注那句\n\
+             「它的入方向对『写端关闭』是刻意不敏感的」——那句注释得改，不是这条测试得改。"
         );
         println!("E2E-OK P2 关掉 stdin 写端之后 daemon（pid={pid}）还活着（C8「默认不 kill」）");
     }
@@ -2410,7 +2410,7 @@ mod tests {
                          或 `/*` 打头的**整行**换成空行。写在**整行注释**里提一句不算数，\
                          也不再让本条假红（`D5-M4`）。\n\
                          🔴 **别把这句读成「注释都剥干净了」**（共享原语自己的头注 \
-                         `crates/guard-core/src/lib.rs:593` 逐字写着这条边界）：\
+                         `guard-core/src/lib.rs::strip_comment_lines` 头注逐字写着这条边界）：\
                          多行块注释的内层行**只要自己不以 `//` / `*` / `/*` 打头就剥不掉** \
                          —— `/*` 与 `*/` 各独占一行、内层行以 `let ` 打头时，它 \
                          `trim_start()` 之后仍是普通代码行，照旧算数，而且**一声不吭**\

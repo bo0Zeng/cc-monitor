@@ -651,7 +651,7 @@ mod tests {
         // 08-06 那次（`c87d123`）的账是「扫描面本身是个洞」，扩到了 `doc/` + 两份 README。
         // 今天再量：**洞还在，只是挪了个位置** —— `e2e/restart-cmd-driver.ts:6` 那句
         // 「GUI 全链在 Linux 结构性不可达（launch.rs 仅 Windows→回退剪贴板）」
-        // 就躺在扫不到的地方，而 `launch.rs:144` 明明有 `launch_local_posix`。
+        // 就躺在扫不到的地方，而 `launch.rs::launch_local_posix` 明明就在本文件里。
         //
         // ⇒ **这不是巧合**：扫描面按「想到哪扫哪」长出来，而假话按「写在哪就在哪」分布。
         // 两者的形状不一样，所以「上次扩过了」不等于「这次够了」。
