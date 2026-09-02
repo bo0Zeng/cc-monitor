@@ -16,16 +16,95 @@
 # 用法就一句纪律：**先跑它、看见 `GATE: OK`，再单独敲 `git commit`。**
 # ⚠ 它**故意不提交任何东西**、也不接 `--commit` 之类的开关 —— 那会把刚拆开的两件事又焊回去。
 #
-# ⚠ 覆盖面如实写：它跑的是**工作树**的三道门 + 一道生成物漂移检查。
+# ⚠ 覆盖面如实写：它跑的是**工作树**的三道门 + 一道生成物漂移检查 + `pb check` + 两套 `ccm` e2e。
 # · 跨平台 / 提交状态那一维归 `npm run verify:committed`（`C16`，动 daemon 时跑）；
-# · 真机 e2e 归各自的套件（本脚本不跑它们 —— 它们要 tmux/Xvfb，几分钟起步）。
+#
+# ★★ `K-G3`（09-01）：**「真机 e2e 本脚本不跑它们」这句话已经作废，但只作废了 2/6。**
+#
+# 上一版这一行逐字写着「真机 e2e 归各自的套件（本脚本不跑它们 —— 它们要 tmux/Xvfb，
+# 几分钟起步）」。`丙1-f1` 逮到的正是这句话与那句「出货前的**唯一闸门**」对不上：
+# `grep -c ccm scripts/gate.sh` = **0**（PM 08-24 独立复核，K-G3 09-01 在 `b28464e` 上复打，仍是 0）。
+#
+# **「几分钟起步」这个理由现打是假的**（09-01，沙箱 `ccmon-devbox:latest` 里逐套计时）：
+#   · `ccm-print-parity` **1.28 秒** · `ccm-rbind-title` **0.28 秒**（两套合计 ≈ 1.6 秒）
+#   · `ccm-cli` 7.16 秒 · `ccm-contract-parity` 5.60 秒
+#   · `ccm-acceptance` 37.7 秒 · `ccm-pretrust` 35.6 秒
+# 分母：门禁基线墙钟 **148 秒**（09-01，同一沙箱，同一棵树，`k-g3-c1` target）。
+#
+# ⚠ **为什么只挂两套，另外四套的确切拦路石**（如实写，别读成「它们太慢」）：
+#   · `ccm-cli` / `ccm-acceptance` / `ccm-contract-parity` / `ccm-pretrust` 都硬依赖 `jq`，
+#     而**沙箱镜像 `ccmon-devbox:latest` 里没有 `jq`**（现打：`command -v jq` ⇒ MISSING）。
+#     四套都是 fail-closed 的（自己打「需要 jq」再 exit 1），所以它们**不会假绿**，
+#     但今天挂上去就是四条恒红 ⇒ 不挂。
+#   · 在一份**只多装了 `jq`** 的探针镜像上现打过：`ccm-cli` 126 PASS/0 FAIL、
+#     `ccm-contract-parity` 68 PASS/0 FAIL（这两套加 `jq` 就能挂，合计 +12.8 秒）；
+#     而 `ccm-acceptance` 28/1、`ccm-pretrust` 14/1 —— **沙箱里各红 1 条**，
+#     那是另一笔账（`.claude/devbox/gate` 头注自己写着「容器里 `HOME` 几乎是空的」）。
+#   · `.claude/devbox/Dockerfile` 不在 `K-G3` 的写区 ⇒ 加 `jq` 这一步交回 PM 裁。
+#
+# ⚠ **诚实边界：这两套买不到 `K-C1` 那 54 条。** `K-C1` 的账号解析判据住在
+#   `ccm-cli` / `ccm-contract-parity`（要 `jq` 的那两套）里。本行落地之后，
+#   「`shared/ccm` 的行为面进了出货门禁」这句话**只对 20 条断言成立**（12 + 8），
+#   不对那 54 条成立。别把这一格读大。
+#
+# ★★ 本脚本**今天仍然盖不到的两维**（`K-G3` `己1-f13` / `己1-f14`，09-01 现打；
+#    写在这里是因为「自称的射程 > 实际盖住的面」正是这个文件被立案的原因）：
+#
+#   ① **Windows 那半编不编得过**：`grep -c -- --target` 本文件 = **0**。
+#      `creds-core` 的 `harden` feature 带 `#[cfg(windows)]` 的平台原语，
+#      本脚本跑在 Linux 上 ⇒ 那一段**根本不参与编译**。
+#      刀已切过（把 `perm.rs` 的 `FILE_ATTRIBUTE_NORMAL` 改坏）：
+#      `cargo check --target x86_64-pc-windows-msvc` **rc=101**，而**本脚本六格全绿、印 `GATE: OK`**。
+#      买法是一行 `cargo check -p creds-core --features harden --target x86_64-pc-windows-msvc`
+#      （冷 5.67s / 热 0.15s），**卡在沙箱镜像没装那个 target**（`rustup target list --installed`
+#      只有 `x86_64-unknown-linux-gnu`）⇒ 归 PM。
+#      ⚠ 诚实边界：那一行买的是「**编得过**」，**买不到「行为对」** —— 行为要真 Windows 机器，
+#      那一格今天是**判不了**，不是「通过」。
+#
+#   ② **格式漂移**：`grep -c fmt` 本文件 = **0**。
+#      `cargo fmt --all --check` 在 `b28464e` 上是 **rc=1 / 78 处 / 18 个文件 / 1.09 秒**
+#      （存量最重的是 `local_daemon.rs` 28 处）。**卡在沙箱镜像没装 `rustfmt` 组件**
+#      （`cargo fmt --version` 报 `'cargo-fmt' is not installed`）⇒ 归 PM。
+#
+#   ⚠ 这两条**不是「以后再说」**，是「买法在写区外」：两条都要改
+#     `.claude/devbox/Dockerfile`（55+ 棵树共用、且不在任何 git 仓里）。
+#     在它改之前，把这两维写成一道门 = 把 55 棵树的门禁一起打红。
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 2
 fails=()
 
+# ★★ `K-G3`（09-01）第二个参数 `denom` 是**这个数的分母**，跟着绿行一起印出来。
+#
+# 它治的是题面里的**第 5 个洞**：`sort -rn | head -1` 取的是**所有 `N passed` 里的最大值**，
+# 而 `npm test` 是 **17** 个套件（1 个 vitest `test:dom` + **16** 个 `tsx`）用 `&&` 串起来的。
+#
+# ★ **分母现打（`K-G3` 09-01，跑了一趟真 `npm test` 数命中行，不是抽样）**：
+#   整趟输出里命中 `([0-9]+) (passed|个测试)` 的**只有 3 行** ——
+#   `test:diff` 的 `17 passed, 0 failed`（`src/cards/diff.test.ts:234`）·
+#   vitest 的 `117 passed`（Test Files）与 `1480 passed`（Tests）。
+#   ⇒ **16 个 tsx 套件里有 15 个不带数字**（`all X tests passed` 那一形），**第 16 个（`diff`）带**，
+#   但它的 17 被 `sort -rn` 吃掉 ⇒ **`n` 仍恒等于 `test:dom` 那一个数**。
+#   ⚠ 件文件 `§0b-1` 逐字写的是「**16** 个 tsx 套件……**没有数字**」—— 那句是 **15/16**，
+#   已在 `§4a` 订正；**结论不受影响**（多出来的那个数比它小，`max` 照样吃掉）。
+#
+# ⚠ 洞的准确形状（别读大）：那 16 套的**失败**逮得到 —— `&&` 链里任一非零退出码
+#   都会走上面 `rc != 0` 那一支。逮不到的是「某套**跑了 0 个测试**却照样 exit 0」
+#   （文件改名 / `describe` 被注释 / glob 没匹配上）：它照打那句 `all X tests passed`、
+#   照退 0 ⇒ `n` 仍是 `test:dom` 的数 ⇒ 全绿。**`C7` 那条「0 passed 不是绿」，
+#   在 16/17 的面上是空的。**
+#
+# ⚠ **本参数不是判据，是分母** —— 它一个字都没改上面那两条自检（`K-G3 §2` 逐字禁止）。
+#   买的只有一件事：**那行绿不再自称它不是的东西**。PM 08-29 逐字承认过被它骗：
+#   「我这一整窗汇报里写的每一个 `npm 1512 passed`，读法都错了 —— 那不是
+#   『npm 门跑了 1512 个测试』，是『`test:dom` 这一个套件 1512 个』。」
+#   ⇒ 与 `K-R10` 给 `pb check` 那行加 `[$PB_WS]` 是同一条道理：
+#   **一行不带分母的读数，不论数字是几都不算数。**
+#
+# ⚠ `fails` 那两支**刻意没动**：`K-G3 §2` 写死「`0 passed 不是绿` 这条自检一个字不许改」。
+#   代价如实记：**红的那一行今天仍不带分母。** 要补得连着改那条自检的字面，归 PM 裁。
 run_gate() {
-  local name="$1"; shift
+  local name="$1"; local denom="$2"; shift 2
   local out
   out="$("$@" 2>&1)"
   local rc=$?
@@ -38,7 +117,7 @@ run_gate() {
   elif [ -z "$n" ] || [ "$n" -eq 0 ]; then
     fails+=("$name（读数是 ${n:-<找不到>} —— 0 passed 不是绿）")
   else
-    printf '  ok   %-14s %s passed\n' "$name" "$n"
+    printf '  ok   %-14s %s passed（分母：%s）\n' "$name" "$n" "$denom"
   fi
 }
 
@@ -104,6 +183,30 @@ run_gate_sum() {
 # 8 个包 = `monitor` + 7 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
 run_gate_sum cargo 8 bash -c 'cd src-tauri && cargo test --workspace --exclude code-picture-core --lib 2>&1'
 
+# ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src-tauri/embedded-daemons/` 铺没铺。
+#
+# `build.rs:376` 只有在 `src-tauri/embedded-daemons/` 里两个 arch 的二进制**都在且 build_id 对得上**
+# 时才 `println!("cargo:rustc-cfg=embedded_daemons")`；那个目录被 `.gitignore` 挡着
+# ⇒ **它跟着「铺没铺」走，不跟着 git 走**。挂 `#[cfg(embedded_daemons)]` 的那一族全是
+# 「本地后端真的能起来吗」：`sftp::embedded_daemon_binaries_present_and_valid` ·
+# `local_daemon::the_local_daemon_can_be_stopped_and_started_again` ·
+# `local_backend::the_local_tmux_frames_really_land_in_the_ledger` ·
+# `local_backend::the_local_daemon_really_registers_an_inbound_client`。
+#
+# 病灶逐字（`ROADMAP.md` 风险行 `5t`，PM 08-25 实测撞上、08-29 复打）：
+# **「没有任何东西报出『这一跑少编了几条』」** —— 少编与「都跑了」在终端上一模一样，
+# 因为那个合计只会**变小**，而变小没有任何东西认得出来。
+#
+# ⚠ **这一行只自报家门，不是判据**，理由是判不了：地板得是个常数，而同一份代码
+#   铺了与没铺**本来就该是两个数**，钉死任何一个都会把另一种铺法误判成红。
+#   真要买成判据得先有一张「铺法 ⇒ 应有条数」的映射，那张表今天盘上没有 ⇒ 交回 PM。
+# ⚠ 行首刻意**不是** `ok` —— 它不判任何东西，写成 `ok` 就是把一条诊断伪装成一格绿。
+if [ -d src-tauri/embedded-daemons ]; then
+  printf '  分母 %-14s %s\n' "cargo" "本树铺了 src-tauri/embedded-daemons/ ⇒ embedded_daemons cfg 会置上，「本地后端真的能起来吗」那一族在跑"
+else
+  printf '  分母 %-14s %s\n' "cargo" "本树未铺 src-tauri/embedded-daemons/ ⇒ embedded_daemons cfg 不置 ⇒ 上面那个合计里少了「本地后端真的能起来吗」那一族（4 条，逐个点名见上方注释）"
+fi
+
 # ★ 生成物漂移（K-A1 第四轮 `R1`）：**改了 Rust 不跑生成，这里红。**
 #
 # 形状照 `.github/workflows/ci.yml` 那条「生成物必须最新（C05）」来 —— 它逐字是
@@ -154,8 +257,46 @@ case "$gen_rc" in
     ;;
 esac
 
-run_gate daemon  bash -c 'cd remote-daemon-proto && cargo test 2>&1'
-run_gate npm     npm test
+run_gate daemon '单包 remote-daemon-proto，只有一行 test result ⇒ 最大值 = 合计' \
+         bash -c 'cd remote-daemon-proto && cargo test 2>&1'
+run_gate npm '17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字（test:dom 1480 · test:diff 17），而取最大值 ⇒ 这个数恒是 test:dom 的；另 15 个 tsx 套件只打「all X tests passed」，它们「跑了 0 个」这一格守不住（失败仍由 && 链的退出码守）' \
+         npm test
+
+# ── 门⑥ `ccm` e2e（`K-G3` 09-01，治 `丙1-f1`）────────────────────────────────
+#
+# ★★ 它买的是什么：`shared/ccm` 是 1258 行的 bash 启动器，`K-C1` 为它写了 54 条断言，
+#    而在本行落地之前 `grep -c ccm scripts/gate.sh` = **0** ⇒ 出货那一刀**一条都不看**。
+#    头注那句「出货前的**唯一闸门**」与这个 0 对不上，`丙1-f1` 就是这笔账。
+#
+# ★ **判法不自造，复用 `e2e/assert-pass-floor.sh`** —— CI 的 26 条 e2e 步骤用的就是它，
+#   地板值也照抄 `ci.yml` 那两行（`ccm-print-parity 12` · `ccm-rbind-title 8`）。
+#   一个性质两个量法就是本区最贵那族病（`K13`）；这里刻意只留一份。
+#   它自己 fail-closed 的三条（头注逐字）：非零退出 ⇒ 红 · 抓不到「合计 PASS=」⇒ 红
+#   （不当 0 也不当过）· 实得 < 地板 ⇒ 红。
+#
+# ⚠ **本函数在它之外再判一次「抓不抓得到那个数」**，不是重复：`assert-pass-floor.sh`
+#   自己红时会 `exit 1`，而**它整个没跑起来**（脚本被删 / bash 起不来）时 `rc` 也是非零，
+#   两者在 `fails` 里长得一样。多抓一次 `n` 是为了让绿行**带上实得数**——
+#   门禁类判据的专属陷阱是「门没跑」与「门跑了结果是空」在终端上一模一样。
+run_e2e() {
+  local suite="$1"; local floor="$2"
+  local out rc n
+  out="$(bash e2e/assert-pass-floor.sh "$suite" "$floor" 2>&1)"
+  rc=$?
+  n="$(printf '%s' "$out" | grep -oE '合计 PASS=[0-9]+' | grep -oE '[0-9]+' | tail -1)"
+  if [ "$rc" -ne 0 ]; then
+    fails+=("ccm e2e/$suite（退出码 $rc；实得 PASS=${n:-<抓不到>}，地板 $floor。\
+诊断原文见上方本套件自己的输出）")
+    printf '%s\n' "$out" | tail -20
+  elif [ -z "$n" ]; then
+    fails+=("ccm e2e/$suite（退出码 0 但抓不到「合计 PASS=<n>」—— 门没跑与门跑了结果是空\
+在终端上一模一样，判不了，不许当成绿）")
+  else
+    printf '  ok   %-14s %-22s PASS=%s（地板 %s）\n' "ccm e2e" "$suite" "$n" "$floor"
+  fi
+}
+run_e2e ccm-print-parity 12
+run_e2e ccm-rbind-title  8
 
 # pb check 不打「passed」，单独判：它自己会打 `FAIL=<n> BROKEN=<n>`。
 #
@@ -203,9 +344,17 @@ fi
 
 echo
 if [ "${#fails[@]}" -eq 0 ]; then
-  echo "GATE: OK —— 三道门 + 生成物漂移 + pb check 全绿，可以出货"
+  echo "GATE: OK —— 三道门 + 生成物漂移 + pb check + 两套 ccm e2e 全绿，可以出货"
   exit 0
 fi
-printf 'GATE: FAIL —— %s\n' "$(IFS='；'; echo "${fails[*]}")"
+# ★ `K-G3`（09-01）：分隔符**不能**走 `IFS='；'` —— `IFS` 是按**字节**认的，
+#   而 `；`（U+FF1B）是 3 个字节，`${fails[*]}` 只会拿它的**第一个字节**去拼
+#   ⇒ 两格以上一起红时，裁决行里印出来的是一个坏字节（`�`），后面那几格的名字被它糊住。
+#   现打：本拍的死值验 `C1` / `C2` 两刀各撞到一次（两格同红）。一格红时看不出来 ——
+#   这正是「只在多失败那一支才发作」的形状，而没人会为了看分隔符去造两格同红。
+#   ⇒ 自己拼，不借 `IFS`。
+joined=""
+for f in "${fails[@]}"; do joined="${joined:+$joined；}$f"; done
+printf 'GATE: FAIL —— %s\n' "$joined"
 echo "**别提交**。先修，再重跑本脚本。"
 exit 1
