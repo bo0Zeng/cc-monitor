@@ -67,6 +67,17 @@ pub struct RelayCredentialsStatus {
 }
 
 /// 读一次，**只回掩码**。
+///
+/// # ⚠⚠ `K-H2c` `KH2C3`：它读的是**顶层那一把**，也就是 `LEGACY_ACCOUNT_ID` 那一行
+///
+/// 那一格今天仍然**读得出来**（老用户手上那份文件、以及 `K-H2a` 期界面写下的那一把），
+/// 而 `K-H2c` 之后它**不再是写进去的地方** —— 写侧落的是 `accounts.<id>`
+/// （见 [`write_key`] 头注）。**这两句话必须一起读**：
+/// 只读前半会以为它被废了，只读后半会以为它被删了，而**两件事都没有发生**。
+///
+/// ⇒ 「某个**账号**配没配」不由本函数答，由 `history::relay_rows_at` 那一族答
+/// （那正是起会话那一侧用的同一个取值口，`KH2B7` 已经把它端给了界面）。
+/// 本函数答的三样是**文件级**的：那份文件在哪 · 权限过不过宽 · 是不是被手编坏了。
 pub(crate) fn read_status() -> Result<RelayCredentialsStatus, String> {
     read_status_at(&resolve_path().ok_or_else(|| "no home dir".to_string())?)
 }
@@ -142,25 +153,43 @@ fn notice_of(v: &Verdict) -> Option<String> {
 /// 两类文件的正确行为本来就不同。这里选它是因为凭据文件与 `config.json` 同类
 /// ——**都是 monitor 自己的文件**，`INVARIANTS §4` 那条 ACL 保留只限定在**用户的**文件。〕
 ///
-/// # ⚠⚠ `K-H2` 的射程：**它写的是顶层那一把，也就是 `default` 那一条**
+/// # ⚠⚠ `K-H2c`：它写的是 `accounts.<id>` 那一格，**不再是顶层那一把**
 ///
-/// 多账号之后那份文件里可以有 N 条（`accounts` 段），而**本函数与它上面那条 IPC
-/// 命令今天只写得了顶层那一格** —— 读出来就是 id 逐字为 `creds_core::store::LEGACY_ACCOUNT_ID`
-/// 的那一条。
+/// `<id>` **不是**调用方给的名字，而是由 `config_dir` 经**全仓唯一那份规则**
+/// [`crate::history::relay_account_id_of_dir`] 推出来的 —— 起会话那一侧
+/// （`history::relay_account_id`）调的是**同一个函数**，不是一份同形的第二实现。
+/// ⚠ 两边各写一份「取末段名」的逻辑，漂开的那天症状是
+/// 「设置里说走中转、起会话时没走」，而两边看起来都没错（那条头注自己就是这么写的）。
+/// ⇒ 这一格由 `what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for`
+/// （行为，跨两半）与 `the_account_id_rule_is_not_reimplemented_on_the_write_side`（机检）钉住。
 ///
-/// 这是**本轮刻意划的界，不是漏了**：改 IPC 那条命令的签名会连带动
-/// `src/ipc/commands.ts` · `src/settings/accounts-section.ts`（含它的 vitest）·
-/// `parity_ledger.rs` 三处的既有判据面，而多条本来就有一条**设计上就该有**的配法 ——
-/// `KS9` 逐字要的「**脱离这个前端也能配**」：直接编辑那份明文 JSON。
-/// ⇒ 今天的形状是：**界面配 `default` 那一条，多账号手编**。
-/// ⚠ 这一格已如实抬进 `K-H2` 的上报口，别读成「界面支持多账号了」。
+/// ⚠ **顶层那一把（`LEGACY_ACCOUNT_ID` 那一条）一个字节都没被删** —— 它今天仍然读得回来
+/// （`creds_core::store::read_accounts` 那一支），**但它不再是写进去的地方**〔`KH2C3`〕。
+/// 机检住 `the_write_side_no_longer_targets_the_legacy_top_level_slot`。
+///
+/// ⚠ 说不出 id（`config_dir` 是空串 / 只有分隔符 / 账号 0 那一档根本没有目录名）⇒ **报错，
+/// 不回落到顶层那一格**。回落等于「用户以为配给了 A，实际写进了 default」，
+/// 而那一形与 `K-H2` `KH2` 逐字禁的「查不到就拿默认行顶上」是同一族。
+///
+/// # ⚠ 订正一句**盘上的假话**〔`K-H2c`，09-02；`K-R17` 纪律：点符号不点行号〕
+///
+/// 这一段先前逐字写着：改 IPC 那条命令的签名会连带动「`src/ipc/commands.ts` ·
+/// `src/settings/accounts-section.ts`（含它的 vitest）· `parity_ledger.rs` **三处**的既有判据面」。
+/// **`parity_ledger.rs` 那一项是错的，而它漏了 `lib.rs` 自己。** 现打的依据：
+/// · `parity_ledger.rs` 对**签名**只有一条断言 `local_or_both_commands_take_no_remote_only_parameter`，
+///   而它的 needle 是运行时现拼的 `origin:` 与 `RemoteConfig` 两个 —— `config_dir` 两个都不是；
+/// · `checked` 那个数由 `EXPECTED_LOCAL_OR_BOTH` 钉，它数的是**命令条数**、不是参数；
+/// · 命令**名**没变 ⇒ `every_tauri_command_is_declared_in_the_ledger` 与 `ledger_shape_is_pinned` 都不动。
+/// ⇒ 按**文件**数，真正跟着动的是 **4** 个：`commands.ts` · `accounts-section.ts` · 它的 vitest ·
+/// **`lib.rs` 自己**。〔本轮实测兑现：这四个都动了，`parity_ledger.rs` 一个字节没动。〕
 ///
 /// ⚠ 而「明文入参那一跳」由 `the_plaintext_argument_is_only_ever_handed_one_hop_further`
 /// 钉着：明文进来之后**只许被往下传一次**，一路到 `SecretKey::new`。
 /// **IPC 那一跳本身仍然是 `判不了`**（原样延续 `K-H2a` 的登记）。
-pub(crate) fn write_key(plain: &str) -> Result<(), String> {
+pub(crate) fn write_key(config_dir: &str, plain: &str) -> Result<(), String> {
     write_key_at(
         &resolve_path().ok_or_else(|| "no home dir".to_string())?,
+        config_dir,
         plain,
     )
 }
@@ -169,7 +198,25 @@ pub(crate) fn write_key(plain: &str) -> Result<(), String> {
 ///
 /// ⚠ 不抽的话它只能对着**真实 home 目录下那份文件**跑，而判据绝不许碰用户的真东西
 /// ⇒ 「未知键一个不吃 / 顺序稳定 / 原子替换 / 交错」这四条**一条都量不到**。
-pub(crate) fn write_key_at(path: &std::path::Path, plain: &str) -> Result<(), String> {
+///
+/// ⚠⚠ **它仍然是本文件唯一那个写函数**〔`K-H2c` 的设计约束，不是巧合〕：
+/// `write_site_registry.rs` 按 `(文件, 函数名)` 登记写盘落点，本文件那一行逐字是
+/// `("creds_store.rs", "write_key_at", …)`。⇒ 本轮**只给它加一格入参**，
+/// **不另起第二个写函数** —— 另起就得动那张登记表，而那正是本工作区在治的那族病
+/// （写盘落点从登记表底下溜出去）。
+pub(crate) fn write_key_at(
+    path: &std::path::Path,
+    config_dir: &str,
+    plain: &str,
+) -> Result<(), String> {
+    // ★★ 「这是哪个账号」**全仓只有一份规则** —— 直接调起会话那一侧的那一个。
+    //    这不是「两侧对拍」，是**共用一份实现**：漂开这件事在结构上不可表示。
+    let id = crate::history::relay_account_id_of_dir(config_dir).ok_or_else(|| {
+        format!(
+            "说不出这是哪个账号（configDir 是 {config_dir:?}）—— 这一格不许回落到顶层那一把：\
+             回落的症状是「以为配给了 A，其实写进了 default」，而 default 那一行谁都能命中。"
+        )
+    })?;
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("mkdir {}: {e}", parent.display()))?;
     }
@@ -179,7 +226,9 @@ pub(crate) fn write_key_at(path: &std::path::Path, plain: &str) -> Result<(), St
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => serde_json::Map::new(),
         Err(e) => return Err(format!("读不动 {}：{e}", path.display())),
     };
-    let merged = store::merge_key(&current, &SecretKey::new(plain));
+    // ★★ `KH2C1`：落进 `accounts.<id>` 那一格，**不是顶层那一把**。
+    //    `merge_account_key` 只改这一条，别的条与两层的未知键一个字节都不动。
+    let merged = store::merge_account_key(&current, &id, &SecretKey::new(plain));
     let text = store::to_pretty_json(&merged);
 
     let tmp = path.with_extension("json.tmp");
@@ -359,7 +408,7 @@ mod tests {
         .expect("改夹具");
 
         // ④ 程序这时候才写。
-        write_key_at(&p, "NEW-KEY").expect("写");
+        write_key_at(&p, "/h/.claude-accts/acct-x", "NEW-KEY").expect("写");
 
         let back: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
@@ -369,16 +418,26 @@ mod tests {
         );
         assert_eq!(back["brand_new"], 7, "人新加的键被吃掉了");
         assert_eq!(back["my_own"], "keep me");
-        assert_eq!(back["api_key"], "NEW-KEY");
+        // ★★ `K-H2c` `KH2C1`：新的那一把落在**账号那一格**，不在顶层。
+        assert_eq!(back["accounts"]["acct-x"][store::KEY_FIELD], "NEW-KEY");
+        // ★★ `K-H2c` `KH2C3`：人手写的**顶层那一把一个字节没动** ——
+        //    「不许顺手删它」在**写这条路上**的兑现（读那条路由 `creds-core` 那两条钉）。
+        assert_eq!(
+            back[store::KEY_FIELD], "OLD",
+            "写侧把顶层那一把盖掉了 —— 那是老用户手上那份文件里唯一那把 key"
+        );
         // 非空对照：界面那一份**确实**是旧的（不是「它碰巧一样」让上面恒真）。
         assert!(!seen_earlier.masked.is_empty());
 
         // `KS10②` 顺序稳定：整份文本按键名排序。
+        // ⚠ 挑的这四个键**每个都恰好出现一处** —— `api_key` 今天在两个深度上各有一处
+        //   （顶层 + `accounts.acct-x` 里），拿它当锚点会让 `find_pinned` 直接报「不止一处」。
         let text = std::fs::read_to_string(&p).expect("读回");
         let ia = guard_core::find_pinned(&text, "_note").expect("_note 应当恰好出现一处");
-        let ib = guard_core::find_pinned(&text, "api_key").expect("api_key 应当恰好出现一处");
+        let ib = guard_core::find_pinned(&text, "accounts").expect("accounts 应当恰好出现一处");
         let ic = guard_core::find_pinned(&text, "brand_new").expect("brand_new 应当恰好出现一处");
-        assert!(ia < ib && ib < ic, "落盘不是按键名排序的：{text}");
+        let id = guard_core::find_pinned(&text, "my_own").expect("my_own 应当恰好出现一处");
+        assert!(ia < ib && ib < ic && ic < id, "落盘不是按键名排序的：{text}");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -391,7 +450,7 @@ mod tests {
         let dir = tmpdir("perm");
         let p = dir.join("relay-credentials.json");
 
-        write_key_at(&p, "sk-ant-JUST-WRITTEN").expect("写");
+        write_key_at(&p, "/h/.claude-accts/acct-perm", "sk-ant-JUST-WRITTEN").expect("写");
         let mode = std::fs::metadata(&p).expect("stat").permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "写完没有收窄成只给本人（实测 {mode:04o}）");
         assert!(
@@ -410,6 +469,12 @@ mod tests {
     }
 
     /// 三态：没配 · 配了 · 文件读坏了。**「读坏了」不许退化成「没配」**。
+    ///
+    /// ⚠ 订正〔`K-H2c`〕：第 ② 步先前是 `write_key_at(…)` —— 而写侧今天落的是
+    /// `accounts.<id>`，本函数读的是**顶层那一把** ⇒ 那样写这一步会读成「没配」。
+    /// ⇒ 第 ② 步改成**人手编那一份**（裸 `fs::write` 一个顶层 `api_key`），
+    /// 那恰好就是本函数今天答的那件事：`KS9` 逐字要的「脱离这个前端也能配」的那条路，
+    /// 以及老用户手上那份文件。**这不是把判据改弱，是把它对准它真正守的那一格。**
     #[test]
     fn a_broken_file_is_surfaced_instead_of_looking_unconfigured() {
         let dir = tmpdir("three-states");
@@ -419,8 +484,8 @@ mod tests {
         let s0 = read_status_at(&p).expect("读");
         assert!(!s0.configured && s0.problem.is_none() && s0.notice.is_none());
 
-        // ② 配了 ⇒ 只回掩码。
-        write_key_at(&p, "sk-ant-0123456789ABCDEF").expect("写");
+        // ② 配了（顶层那一把 —— 手编 / 老文件那一条路）⇒ 只回掩码。
+        std::fs::write(&p, b"{\n  \"api_key\": \"sk-ant-0123456789ABCDEF\"\n}\n").expect("写夹具");
         let s1 = read_status_at(&p).expect("读");
         assert!(s1.configured);
         assert!(!s1.masked.contains("0123456789"), "回了明文：{}", s1.masked);
@@ -434,6 +499,182 @@ mod tests {
             s2.problem.expect("读坏了必须有说法").contains("手编"),
             "没告诉人这是一份手编的文件"
         );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    // ============================================================ `K-H2c` `KH2C1` / `KH2C3`
+
+    /// ★★★ **`KH2C1` 的行为那一半，而且它是跨两半的**：
+    /// 写侧落下的那一行，**正是起会话那一侧会去找的那一行**。
+    ///
+    /// # 它为什么不是「写完能读回来」
+    ///
+    /// 「读回来」用的是本文件自己的读法 ⇒ 两边同错就同绿（本仓判过的那族）。
+    /// 这里**换一侧的取值口来读**：`history::relay_rows_at` 是起会话那一侧
+    /// **生产上真正用的那一个**（`PRODUCTION_RELAY_FACTS.rows` 指的就是它的无参半），
+    /// 判断也用那一侧的 `history::relay_routed_subset`（`KH2B7` 与徽章共用的那一条）。
+    /// ⇒ 绿的含义是「**界面写下的那一行，起会话那一刻找得到**」，不是「我写了我读得到」。
+    ///
+    /// # ⚠ 它买不到什么
+    ///
+    /// 买不到「点了保存按钮之后」那一跳（那是 IPC 与 UI 那两堵墙，由
+    /// `the_ui_hands_the_write_command_a_config_dir_not_a_name` 与 `PLAINTEXT_HOPS` 那条分管），
+    /// 也买不到「那一发请求真的到了上游」（那是 `KH2C2`，住 `remote-daemon-proto`）。
+    #[test]
+    fn what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for() {
+        let dir = tmpdir("same-source");
+        let p = dir.join("relay-credentials.json");
+        // ⚠ 目录名取中性名：断言里用的是**它派生出来的那个 id**，
+        //   而 `brief` 12 逐字点名过「断言用的子串取自夹具的名字」那一形。
+        let one = "/h/.claude-accts/acct-one";
+        let two = "/h/.claude-accts/acct-two";
+
+        // 非空对照**排最前**：还没写的时候，起会话那一侧说「这个号没有行」。
+        assert!(
+            crate::history::relay_routed_subset(
+                &[one.to_string()],
+                &crate::history::relay_rows_at(&p)
+            )
+            .is_empty(),
+            "文件还不存在就说这个号有行了 —— 这把尺子恒真，下面全是空真"
+        );
+
+        write_key_at(&p, one, "KEY-FOR-ONE").expect("写");
+
+        // ★ 正题：用**起会话那一侧**的取值口 + 它的判断读这份文件。
+        let rows = crate::history::relay_rows_at(&p);
+        assert_eq!(
+            crate::history::relay_routed_subset(&[one.to_string()], &rows),
+            vec![one.to_string()],
+            "界面写下的那一行，起会话那一侧找不到 —— 「设置里说走中转、起会话时没走」\n\
+             正是 `relay_account_id_of_dir` 头注逐字点名的那一形。表里现在是：{rows:?}"
+        );
+        // 只配了一个号 ⇒ 另一个号**不许**被顺带配上（「拿 A 的 key 发 B 的请求」的反面）。
+        assert!(
+            crate::history::relay_routed_subset(&[two.to_string()], &rows).is_empty(),
+            "只配了一个号，另一个号也说走中转了：{rows:?}"
+        );
+        // ⚠ 而且它落的**不是** `default` 那一行 —— 那一行谁的会话都命中得了。
+        assert!(
+            !rows.iter().any(|r| r == store::LEGACY_ACCOUNT_ID),
+            "写侧仍然落在 `{}` 那一行上：{rows:?}",
+            store::LEGACY_ACCOUNT_ID
+        );
+
+        // 盘上那一格逐字在 `accounts.<末段名>` 底下（形状那一维，与上面的行为那一维分开）。
+        let back: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
+        assert_eq!(back[store::ACCOUNTS_FIELD]["acct-one"][store::KEY_FIELD], "KEY-FOR-ONE");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ★★ **`KH2C1` 的机检那一半**：写侧**没有第二份**「取末段名」的实现。
+    ///
+    /// `KH2C1` 逐字禁的是「两边各写一份取末段名的逻辑」。行为那一条（上面那个）
+    /// 在两份实现**碰巧同形**的那一天照样绿 —— 漂开是**以后**才发生的事。
+    /// ⇒ 这一条钉的是结构：写侧只许**调**那一份唯一的规则，自己不许再取一次末段名。
+    #[test]
+    fn the_account_id_rule_is_not_reimplemented_on_the_write_side() {
+        let src = guard_core::production_code(include_str!("creds_store.rs"));
+        guard_core::assert_no_test_code("creds_store 写侧 id 规则", &src);
+        // ① **调**那一份唯一的规则，恰好一处。
+        assert_eq!(
+            src.matches("relay_account_id_of_dir(").count(),
+            1,
+            "写侧调那条唯一规则的次数不是 1 —— 0 次说明它自己算了一份，\n\
+             多次说明这条线上有两个地方在推 id。生产段：{src}"
+        );
+        // ② 自己**不许**再取一次末段名。人群 = 本文件生产段，针 = 四种常见写法。
+        for needle in ["file_name(", "rsplit('/')", "split('/')", ".components()"] {
+            assert_eq!(
+                src.matches(needle).count(),
+                0,
+                "写侧出现了 `{needle}` —— 那是在长第二份「取末段名」的规则。\n\
+                 ⚠ `relay_account_id_of_dir` 的头注逐字写着它被抽出来的理由：\n\
+                 「两边各写一个 basename 规则，漂开的那天症状是『设置里说走中转、起会话时没走』，\n\
+                 而两边看起来都没错」。"
+            );
+        }
+        // 反空真：这把尺子**认得出**那一族针（不是恒 0）。它在**注入侧**那一份实现里有。
+        let launch = guard_core::production_code(include_str!("history.rs"));
+        assert!(
+            launch.contains("file_name("),
+            "同一把尺子在注入侧那份实现上也数出 0 —— 它恒 0，本条按红处理"
+        );
+    }
+
+    /// ★★★ **`KH2C3` 后半**：顶层那一把**不再是界面的写入目标**（前半「不许删」由
+    /// `creds-core` 那两条钉，见下面那段）。
+    ///
+    /// # 两维一起判，缺一条都能被绕过
+    ///
+    /// · **结构**：写侧生产段里 `store::merge_key(` 恰好 **0** 次 ——
+    ///   它是「写顶层那一格」的唯一入口，留着一处就是留着一条回落路。
+    /// · **行为**：往一份**全新的**文件写一次，顶层那一格**根本不该被创建**。
+    ///   〔只钉结构会被「换个写法写顶层」绕过；只钉行为会被「平时不写、某条分支写」绕过。〕
+    ///
+    /// # ⚠ 「不许删」那一半**不在这里**，别以为本条也管
+    ///
+    /// 它今天由 `creds-core` 的
+    /// `the_legacy_top_level_key_becomes_one_named_row_not_a_default_row` 与
+    /// `an_unconfigured_file_yields_no_rows_at_all` 两条钉着（读那条路），
+    /// 外加本文件 `a_program_write_keeps_everything_the_human_put_there` 里那条
+    /// 「顶层那一把一个字节没动」（写那条路）。**三条各管一格。**
+    #[test]
+    fn the_write_side_no_longer_targets_the_legacy_top_level_slot() {
+        let src = guard_core::production_code(include_str!("creds_store.rs"));
+        // 反空真排最前：这把尺子**认得出**那一族名字（不是恒 0）。
+        assert!(
+            src.contains("store::merge_account_key("),
+            "生产段里连新那个写口都没有 —— 取法坏了，下面那条恒 0 地绿"
+        );
+        assert_eq!(
+            src.matches("store::merge_key(").count(),
+            0,
+            "写侧还有一处在写**顶层那一格**。`KH2C3` 逐字：它是读得出来的一行，\n\
+             但**不再是写进去的地方** —— 留着一处，界面配的 key 就还有一条落到 \n\
+             `{}` 那一行上的路，而那一行谁的会话都命中得了。",
+            store::LEGACY_ACCOUNT_ID
+        );
+
+        // 行为那一维：全新文件写一次，顶层那一格不许被创建。
+        let dir = tmpdir("legacy-slot");
+        let p = dir.join("relay-credentials.json");
+        write_key_at(&p, "/h/.claude-accts/acct-fresh", "KEY-FRESH").expect("写");
+        let back: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
+        assert!(
+            back.get(store::KEY_FIELD).is_none(),
+            "一份全新的文件被写出了顶层那一格：{back}"
+        );
+        // 非空对照：这一趟**确实**写进去了（不是整份空着让上面恒真）。
+        assert_eq!(back[store::ACCOUNTS_FIELD]["acct-fresh"][store::KEY_FIELD], "KEY-FRESH");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ★ 说不出 id 的时候**报错，不回落**。
+    ///
+    /// 回落到顶层那一格的症状是「用户以为配给了 A，实际写进了 `default`」，
+    /// 而 `default` 那一行**谁的会话都命中得了** —— 与 `K-H2` `KH2` 逐字禁的
+    /// 「查不到就拿默认行顶上」是同一族。
+    #[test]
+    fn a_config_dir_that_names_no_account_is_refused_instead_of_falling_back() {
+        let dir = tmpdir("no-id");
+        let p = dir.join("relay-credentials.json");
+        for bad in ["", "   ", "/"] {
+            let e = write_key_at(&p, bad, "KEY-SHOULD-NOT-LAND")
+                .expect_err("说不出账号却写成功了 —— 那一把落到哪儿了？");
+            assert!(e.contains("说不出这是哪个账号"), "报错没说清原因：{e}");
+        }
+        // ★ 正题：那三趟**一个字节都没落盘**（错误路径不许留下半份文件）。
+        assert!(
+            !p.exists(),
+            "被拒的那几趟仍然建出了文件：{}",
+            std::fs::read_to_string(&p).unwrap_or_default()
+        );
+        // 非空对照：同一个入口喂一个说得出 id 的 configDir**是**写得进去的。
+        write_key_at(&p, "/h/.claude-accts/acct-ok", "KEY-OK").expect("写");
+        assert!(p.exists());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -828,7 +1069,7 @@ mod tests {
             "lib.rs",
             "fn write_relay_credentials_key(",
             "key",
-            "creds_store::write_key(&key)",
+            "creds_store::write_key(&config_dir, &key)",
         ),
         (
             "creds_store.rs",

@@ -335,8 +335,14 @@ export const commands = {
    *
    * ⚠ 它和**人手编那份文件**是同一份文件的两个写者 —— 后端在**写的那一刻**才读盘，
    * 未知键一个不吃、字段顺序按名字排、原子替换、写完立刻把文件收窄成只给本人。
+   *
+   * ⚠⚠ `K-H2c` `KH2C1`：**`configDir` 是承重的入参，别换成账号名。**
+   * 那把 key 落进 `accounts.<账号 id>` 那一格，而 `<账号 id>` 由 Rust 用**全仓唯一那份规则**
+   * （`history::relay_account_id_of_dir`）从 `configDir` 推 —— 起会话那一侧调的是同一个函数。
+   * 前端**一个字都不许自己推那个 id**（`split('/').pop()` 那一形）：那是在长第二份规则，
+   * 漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。
    */
-  write_relay_credentials_key: (args: { key: string }) =>
+  write_relay_credentials_key: (args: { key: string; configDir: string }) =>
     invoke<void>("write_relay_credentials_key", args),
 
   write_skill_file: (args: { cwd: string; skillId: string; path: string; content: string }) =>

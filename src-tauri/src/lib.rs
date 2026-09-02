@@ -1679,9 +1679,20 @@ fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
 /// 那是**另一条路上的另一个值**，本件一条判据都没打过它。
 /// ⇒ 它的身份是 **`判不了`**，不是「射程外」。**这两个词不是一回事**：
 /// 前者欠着一次测量，后者是已经裁过不做。件计划 `§0h` 已按这个身份登记。
+///
+/// # ⚠⚠ `K-H2c` `KH2C1`：**第二个入参是 `configDir`，不是账号名**
+///
+/// 界面手上的账号对象**两个字段都有**（`local_accounts.rs` 的 `RawAccount { name, configDir }`），
+/// 而它们是 manifest 里**两个独立字段、可以漂开**。中转表按**账号 id** 索引，
+/// 而那个 id 由 [`history::relay_account_id_of_dir`] 从 `configDir` 推出来 ——
+/// **全仓只有那一份规则**，起会话那一侧（`history::relay_account_id`）调的是同一个函数。
+///
+/// ⇒ 这条命令**只收 `configDir`，由 Rust 推 id**。收 `name`、或让 TS 自己
+/// `split('/').pop()`，都是在长出**第二份**规则，而那正是 `KH2C1` 红字禁的那件事
+/// （前端那一侧由 `the_ui_never_derives_the_account_id_itself` 机检钉着）。
 #[tauri::command]
-fn write_relay_credentials_key(key: String) -> Result<(), String> {
-    creds_store::write_key(&key)
+fn write_relay_credentials_key(key: String, config_dir: String) -> Result<(), String> {
+    creds_store::write_key(&config_dir, &key)
 }
 
 #[tauri::command]
