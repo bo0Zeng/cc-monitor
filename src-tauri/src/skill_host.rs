@@ -545,13 +545,273 @@ mod tests {
     ///
     /// ⚠ 这是一个**假设**，写出来免得它变成隐含知识：计划目录住工作目录的 `.claude/`，
     /// 而 `cc-monitor` 是工作目录下的子仓。生产路径上这个 cwd 由**活跃 tab** 决定
-    /// （同 panorama 的 `RepoInfoGetter`），测试里用相对 `CARGO_MANIFEST_DIR` 的推导。
+    /// （同 panorama 的 `RepoInfoGetter`），测试里从**这个 crate 属于哪个仓**推出来。
+    ///
+    /// # 它**问 git**，不从路径往上数〔`K-R13` 09-01〕
+    ///
+    /// 原来的算式是 `CARGO_MANIFEST_DIR` 往上跳两级。
+    /// 主树上那是 `…/cc-monitor/src-tauri` ⇒ 跳两级恰好是工作目录，**算对了**；
+    /// git 工作树上那是 `…/worktrees/<名>/src-tauri` ⇒ 跳两级是 `…/worktrees`，
+    /// 那不是任何项目的工作目录，**算错了**。
+    ///
+    /// 而 08-26 有人在那个错落点上补了一个同名的东西 ⇒ **错的算式指到了一个真实存在的
+    /// 目录**，靠它的两条判据从此在几十棵树上一起绿，一条也没出声
+    /// （09-01 现打：56/56 棵工作树的老落点是**同一个**目录）。
+    ///
+    /// ⇒ 换成问**权威**：`git rev-parse --git-common-dir` 给的是主仓的 `.git`，
+    /// 在链接工作树里问也一样 ⇒ **主树与工作树同一个答案、同一个理由**，
+    /// 而不是一边靠算对、一边靠盘上碰巧有个同名的东西。
+    ///
+    /// ⚠ **推不出来就 panic（fail-closed），不回落旧算式** —— 见 [`workspace_cwd_from`]。
     fn workspace_cwd() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")) // …/cc-monitor/src-tauri
-            .parent() // …/cc-monitor
-            .and_then(|p| p.parent()) // 工作目录
-            .expect("推不出工作目录 —— 目录层级变了，本条会零命中地绿")
-            .to_path_buf()
+        workspace_cwd_from(Path::new(env!("CARGO_MANIFEST_DIR")))
+            .unwrap_or_else(|why| panic!("推不出工作目录，本条判不了（不许当成绿）—— {why}"))
+    }
+
+    /// 问 git 要「本 crate 属于**哪个仓**」，再上跳两级 = 工作目录。
+    ///
+    /// `rev-parse --git-common-dir` 给的是**主仓**的 `.git`（在链接工作树里问也一样）——
+    /// 这是本条唯一的权威。`<仓>/.git` → `<仓>` → 工作目录，恰好两级。
+    ///
+    /// ⚠ **推不出来一律 `Err`，不猜、不回落**。回落到「往上跳两级」等于把今天这个 bug
+    /// 原样搬进 `unwrap_or` 的右边，而且从此连报错都没有。
+    ///
+    /// 参数是目录而不是写死 `CARGO_MANIFEST_DIR`，为的是能**对着一棵不是工作树的目录跑一次**
+    /// （`the_workspace_cwd_fails_closed_when_git_cannot_answer` 就是那一格）。
+    fn workspace_cwd_from(dir: &Path) -> Result<PathBuf, String> {
+        let common = git_common_dir(dir)?;
+        let repo = common
+            .parent()
+            .ok_or_else(|| format!("git 给的 {} 没有上一级 —— 层级不够，不猜", common.display()))?;
+        let ws = repo
+            .parent()
+            .ok_or_else(|| format!("仓根 {} 没有上一级 —— 层级不够，不猜", repo.display()))?;
+        Ok(ws.to_path_buf())
+    }
+
+    /// 一次只读的 `git rev-parse`。**两种「问不到」都要判**，它们在类型上不是一回事：
+    /// 机器上没有 `git` 时 [`std::process::Command`] 给的是 `io::Error(NotFound)`，
+    /// **不是**一个非零退出码（09-01 现打，两侧都量过）。
+    fn git_common_dir(dir: &Path) -> Result<PathBuf, String> {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["rev-parse", "--path-format=absolute", "--git-common-dir"])
+            .output()
+            .map_err(|e| {
+                format!(
+                    "起不来 `git`（{e}）—— 本条靠 git 当权威，问不到就不许猜一个出来。\n\
+                     ⚠ 这一支不是「git 说不知道」，是**进程都没起来**（PATH 里没有它）。"
+                )
+            })?;
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).trim().to_string();
+            // 把 fail-closed 的两种来路分开 —— 它们在 git 的报错里长得一模一样，
+            // 而处置完全不同：一种是这棵树自己的登记没了，一种是压根没在 git 树里。
+            let why = if linked_worktree_pointer(dir).is_some() {
+                "这棵树的 worktree 登记没了：它的 `.git` 还是那行指回主仓的指针，\
+                 而主仓里对应的那份登记已经被 prune 掉了（盘上的树还在，版本控制里没有它了）。\n\
+                 ⇒ 这不是本判据坏了，是这棵树本身已经不在版本控制里；\
+                 它的门禁在更早的格子上就已经红了。"
+            } else {
+                "这里不在任何 git 树里（连指回主仓的那行指针都没有）。"
+            };
+            return Err(format!(
+                "`git rev-parse` 在 {} 上退出码 {:?} —— {why}\ngit 自己说：{stderr}",
+                dir.display(),
+                out.status.code()
+            ));
+        }
+        let raw = String::from_utf8_lossy(&out.stdout).trim().to_string();
+        let p = PathBuf::from(&raw);
+        if !p.is_absolute() {
+            return Err(format!(
+                "git 给的 common-dir 不是绝对路径（{raw}）—— `--path-format=absolute` 被拿掉了？\
+                 相对路径在这里没有意义：它相对的是 git 进程的 cwd，不是我们问的那个目录。"
+            ));
+        }
+        Ok(p)
+    }
+
+    /// 从 `from` 往上找：这棵树的 `.git` 是不是「一行指回主仓的指针」（链接工作树的形状）。
+    ///
+    /// 先撞到目录形的 `.git` ⇒ 不是链接工作树，`None`。
+    fn linked_worktree_pointer(from: &Path) -> Option<PathBuf> {
+        for d in from.ancestors() {
+            let g = d.join(".git");
+            if g.is_file() {
+                return Some(g);
+            }
+            if g.is_dir() {
+                return None;
+            }
+        }
+        None
+    }
+
+    /// **第二条权威路**：`git worktree list --porcelain` 的第一条 = 主工作树的住址。
+    ///
+    /// ⚠ 刻意与 [`workspace_cwd_from`] 走**不同的查询** —— 把同一条查询抄两遍是自证，
+    /// 不是对拍：那样改一处 flag 两边一起变，判据一声不吭。
+    fn main_checkout_from_git(dir: &Path) -> Result<PathBuf, String> {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(dir)
+            .args(["worktree", "list", "--porcelain"])
+            .output()
+            .map_err(|e| format!("起不来 `git`（{e}）—— 对拍的那一侧也问不到权威了"))?;
+        if !out.status.success() {
+            return Err(format!(
+                "`git worktree list` 在 {} 上退出码 {:?}：{}",
+                dir.display(),
+                out.status.code(),
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        let text = String::from_utf8_lossy(&out.stdout).into_owned();
+        for l in text.lines() {
+            // porcelain 格式：主工作树恒排第一条，字段名逐字是 `worktree <绝对路径>`。
+            if let Some(rest) = l.strip_prefix("worktree ") {
+                return Ok(PathBuf::from(rest));
+            }
+        }
+        Err("`git worktree list --porcelain` 里一条 `worktree ` 字段都没有 —— \
+             抽取器坏了，本条会零命中地绿"
+            .to_string())
+    }
+
+    /// ★★ **P3：`workspace_cwd()` 算得**对**不对 —— 直接断言，不再借「盘上有」。**
+    ///
+    /// # 为什么非要另立这一格〔`K-R13` 09-01，本件第一条验收〕
+    ///
+    /// 下面 [`the_editable_paths_point_at_real_files`] 的断言正文是
+    /// `p.canonicalize().is_ok()` —— **纯粹「盘上有」**。它同时透过这一个观测手段
+    /// 守着三件互相独立的事：
+    ///
+    /// | | 性质 | 工作树里还守不守 |
+    /// |---|---|---|
+    /// | P1 | `editable` 的基准是 `artifacts.root` 不是实例目录（F02 那个原缺陷） | 守 |
+    /// | P2 | `artifacts.root` 的字面与真实盘上目录名对得上 | 守 |
+    /// | P3 | `workspace_cwd()` **推得对** | **不守** |
+    ///
+    /// P3 出错之后盘上**仍然有**（08-26 有人在那个错落点上补了一个同名的东西）⇒
+    /// 观测手段照旧满足，两条判据照旧绿。**判据没有坏，是它从来没有 P3 那一格。**
+    /// 08-26 之前工作树里 P3 一错 P1 跟着红，那是**巧合的耦合**，不是有人在守。
+    ///
+    /// ⇒ 换算法只是把今天这个答案改对；**只有这一格会在它下次算错时出声。**
+    ///
+    /// # 它怎么判（两条**不同的** git 查询对拍）
+    ///
+    /// 实现问的是 `rev-parse --git-common-dir`（本 crate 属于哪个仓）；
+    /// 本条问的是 `worktree list --porcelain` 的第一条（主工作树在哪）。
+    /// 少跳一级 / 换个 flag / 退回「往上跳两级」，本条都红。
+    ///
+    /// ⚠ P3 **在词法上判不了**：`workspace_cwd()` 想要的「工作目录」是**项目**定义的
+    /// （生产路径上由活跃 tab 给），不是 crate 位置的函数，而它也不是任何一级祖先所独有的特征。
+    /// ⇒ 要判它只能问一个权威。这就是本条为什么起进程。
+    #[test]
+    fn the_workspace_cwd_is_derived_from_git_not_guessed_from_the_path() {
+        let got = workspace_cwd();
+        let main = main_checkout_from_git(Path::new(env!("CARGO_MANIFEST_DIR")))
+            .unwrap_or_else(|why| panic!("问不到主工作树的住址，本条判不了 —— {why}"));
+        let want = main
+            .parent()
+            .unwrap_or_else(|| panic!("主工作树 {} 没有上一级", main.display()))
+            .to_path_buf();
+        // 两边都 canonicalize：换个等价写法不该让本条红，**算错才该让它红**。
+        let g = got.canonicalize().unwrap_or_else(|e| {
+            panic!(
+                "算出来的工作目录 {} 打不开（{e}）—— 算式推出了一个盘上没有的地方",
+                got.display()
+            )
+        });
+        let w = want
+            .canonicalize()
+            .unwrap_or_else(|e| panic!("权威给的 {} 打不开（{e}）", want.display()));
+        assert_eq!(
+            g,
+            w,
+            "工作目录**算错了**。\n\
+             算出来 : {}\n\
+             权威说 : {}\n\
+             ⇒ 这一格判的是「算式推得对」，不是「算出来的地方盘上有东西」。\n\
+             两者今天分得开：一个算错的路径完全可能指到一个真实存在的同名目录，\n\
+             那时「盘上有」照样满足，而这一格会红。",
+            g.display(),
+            w.display()
+        );
+    }
+
+    /// ★ **fail-closed 那一侧自己也要有一格** —— 「推不出来就不许猜」不许只写在注释里。
+    ///
+    /// 夹具形状 = 一棵**登记被 prune 掉**的树：`.git` 还是那行指回主仓的指针，
+    /// 而它指向的 gitdir 不存在。09-01 现打，盘上真有 6 棵是这个形状。
+    ///
+    /// ⚠ 断言的子串取自**我们自己的诊断**，不取自夹具的目录名 —— 后者会让这一格靠路径恒真。
+    #[test]
+    fn the_workspace_cwd_fails_closed_when_git_cannot_answer() {
+        let base = std::env::temp_dir().join(format!("wc-probe-{}", std::process::id()));
+        let deep = base.join("a").join("b");
+        std::fs::create_dir_all(&deep).expect("造夹具失败 —— 本条会零命中地绿");
+        std::fs::write(base.join(".git"), "gitdir: /no-such-gitdir-for-this-case\n")
+            .expect("造夹具失败 —— 本条会零命中地绿");
+
+        let err = workspace_cwd_from(&deep).expect_err(
+            "git 答不上来，它竟然还给出了一个工作目录 —— 那正是本件治的那个形状：\
+             推错了还猜一个看起来很合理的东西出来",
+        );
+        let says_prune = err.contains("登记没了");
+        std::fs::remove_dir_all(&base).ok();
+        assert!(
+            says_prune,
+            "fail-closed 的正文没说清是哪一种「问不到」。\n\
+             这一格要的不是「红」，是**红得说得清**：一棵树登记被 prune（盘上还在、\
+             版本控制里没了）与「压根不在 git 树里」在 git 自己的报错里长得一样，\n\
+             而两者的处置完全不同。实际拿到的是：\n{err}"
+        );
+    }
+
+    /// ★ **git 给的必须是绝对路径，否则拒收** —— `--path-format=absolute` 那一段是承重的。
+    ///
+    /// # 为什么它值单独一格（而不是靠上面两条顺带守住）
+    ///
+    /// 09-01 两侧现打：`rev-parse --git-common-dir` **在链接工作树里本来就回绝对路径**
+    /// （`…/cc-monitor/.git`），只有在**主工作树**里才回相对的 `../.git`。
+    /// ⇒ 把那段 flag 拿掉，**在工作树上一格都不红**，而在主树上「往上跳两级」
+    /// 会从一个相对路径起跳，跳到哪儿全看 git 进程的 cwd。
+    ///
+    /// 那正是本仓最贵那族病的形状：**在我这棵树上量不到，换一棵树才炸**。
+    /// ⇒ 本条自己 `git init` 一棵**主工作树形状**的仓当夹具，
+    /// 于是这一刀在**任何**树上跑都逮得到，不再靠「碰巧跑在哪棵树上」。
+    #[test]
+    fn a_relative_answer_from_git_is_refused_not_patched_up() {
+        let base = std::env::temp_dir().join(format!("wc-repo-{}", std::process::id()));
+        std::fs::remove_dir_all(&base).ok();
+        std::fs::create_dir_all(&base).expect("造夹具失败 —— 本条会零命中地绿");
+        let init = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&base)
+            .args(["init", "-q"])
+            .status()
+            .expect("起不来 `git` —— 本条判不了，不许当成绿");
+        assert!(init.success(), "夹具仓建不起来 —— 本条会零命中地绿");
+
+        let got = git_common_dir(&base);
+        std::fs::remove_dir_all(&base).ok();
+        let p = got.unwrap_or_else(|why| {
+            panic!(
+                "在一棵刚建好的仓上都问不到 common-dir —— {why}\n\
+                 ⇒ 多半是问法变了（`--path-format=absolute` 被拿掉，git 回了相对路径，\
+                 而我们**拒收**相对路径）。拒收是对的：相对路径相对的是 git 进程的 cwd，\
+                 拿它往上跳两级跳到哪儿没人说得准。"
+            )
+        });
+        assert!(
+            p.is_absolute(),
+            "git 回了一个非绝对路径而它竟然被收下了：{}\n\
+             ⇒ 那道 `is_absolute` 的闸被拆了。",
+            p.display()
+        );
     }
 
     /// ★★ **接线层判据：算出来的路径必须真的指向存在的文件。**
@@ -565,7 +825,21 @@ mod tests {
     /// ⇒ 纯函数判据看不出「集合**整体**指错地方」。这条补的就是那一层：
     /// 在**真实工作目录**上算一次，断言每条路径都能 `canonicalize`。
     ///
-    /// ⚠ 它对文件系统有依赖 —— 这是**刻意的**，也是它唯一有价值的原因。
+    /// ⚠ 它对**某个真实文件系统**有依赖 —— 这是**刻意的**。
+    ///
+    /// ⚠⚠ **这句话原来的后半截是错的，09-01 现打推翻**〔`K-R13` `§0a` 四③〕。
+    /// 原文逐字：「它对文件系统有依赖……**也是它唯一有价值的原因**」。
+    /// 实测不成立：换成**夹具目录**（在 `tempdir` 里搭一份同形的产物树）之后，
+    /// 本条**照样守得住 P1**（`editable` 的基准写成实例目录，变异在夹具上照红）——
+    /// 丢掉的只是 P2（`artifacts.root` 的字面与真实盘上目录名对得上），
+    /// 而且只在「夹具从声明生成」那一版才丢。
+    /// ⇒ 「真实」这个词买到的是 P2，**不是**本条的全部价值。把它写成「唯一」，
+    /// 会让下一个想换夹具的人以为那等于把这条判据整个废掉。
+    ///
+    /// ⚠ 它**没有** P3（`workspace_cwd()` 推得对）那一格 —— 那一格另立在
+    /// [`the_workspace_cwd_is_derived_from_git_not_guessed_from_the_path`]，
+    /// 理由写在那条上：本条的断言正文是「盘上有」，而一个算错的路径完全可能指到
+    /// 一个真实存在的同名目录，那时「盘上有」照样满足。
     #[test]
     fn the_editable_paths_point_at_real_files() {
         let cwd = workspace_cwd();
@@ -583,8 +857,12 @@ mod tests {
                      ⇒ 要么 `artifacts.root` 错了，要么 `editable` 的基准理解错了。\n\
                      ★ F02 收工时正是这个错：基准写成「实例目录」，而收件箱是**项目级**的\n\
                      （planned-build 明写「住计划目录根，不住工作区」）。\n\
-                     ⚠ 若本条在别人机器上红，先确认工作目录布局：`artifacts.root` 相对的是\n\
-                     **工作目录**（`cc-monitor/` 的上一级），不是仓根。",
+                     ⚠ 本条红**不代表算式错了** —— 算式对不对由\n\
+                     `the_workspace_cwd_is_derived_from_git_not_guessed_from_the_path` 单独判。\n\
+                     那一格绿而本条红 ⇒ 工作目录是对的，是声明或盘上的产物对不上；\n\
+                     两格一起红 ⇒ 先修那一格，本条多半是被它带红的。\n\
+                     〔09-01 订正：这里原写「若本条红先确认工作目录布局」，而 08-26 起\n\
+                     那句提醒被盘上一个同名目录消音了整整六天 —— 本条那时**没有红**。〕",
                     spec.id,
                     p.display()
                 );

@@ -686,6 +686,11 @@ mod tests {
         let origin_needle = format!("{}:", "origin");
         let needles = [origin_needle.clone(), format!("Remote{}", "Config")];
         let mut checked = 0usize;
+        // 报文里那句「Local A + Both B」也**现算**，不手抄〔`K-R4`〕——
+        // 手抄的分解式会与 `checked` 各自漂：先前那句「84 = Local 53 + Both 31」
+        // 三个数**没有一个**等于当时的 `checked`（88）。
+        let mut n_local = 0usize;
+        let mut n_both = 0usize;
         for (cmd, _, side) in LEDGER {
             if !matches!(side, Side::Local | Side::Both) {
                 continue;
@@ -695,6 +700,10 @@ mod tests {
             };
             let flat: String = params.split_whitespace().collect::<Vec<_>>().join(" ");
             checked += 1;
+            match side {
+                Side::Local => n_local += 1,
+                _ => n_both += 1,
+            }
             for n in &needles {
                 if *n == origin_needle && ORIGIN_TAKING_BOTH.iter().any(|(c, _)| c == cmd) {
                     continue; // 已登记：见 ORIGIN_TAKING_BOTH 的理由
@@ -710,20 +719,47 @@ mod tests {
         }
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
+        //
+        // ★★ **报文里的每一个数都从这个常量或现算量渲染出来，一个手抄的都没有**〔`K-R4`〕。
+        //
+        // 先前这里是「一个值装了两件事」的活体〔`K13`〕：断言写 `checked == 88`，
+        // 而同一条报文逐字写「真实应为 **84** = Local 53 + Both 31」——
+        // **三个数没有一个是 88**。判据一红，人照报文去查 84 / 53 / 31，
+        // 查的是一个不存在的事实；而那串增量账（+3 / +1 / +1 / +1 / +4 / +1）
+        // 也凑不出 88。根因是断言那个数**跟着代码走**、报文那个数**是写的时候手抄的**，
+        // 两者之间没有任何东西钉住它们相等。
+        //
+        // ⇒ 把两份拷贝合成一个值。改 `EXPECTED_LOCAL_OR_BOTH`，
+        //   报文里印出来的数**结构上不可能不跟着变**。
+        //
+        // # 这个数是怎么长起来的（改 `LEDGER` 就来读这一段，然后改上面那个常量）
+        //
+        // - P4a（08-12）把 cc-bus **读面三条**从 `Remote` 转成 `Both`
+        //   （本机跑同一条命令串，只是不包进 ssh）；
+        // - devbench F03 的 skill 接入面 **+3**（`list_skills` / `read_skill_file` /
+        //   `write_skill_file`，都 `Local`）；
+        // - E79 的 `list_local_session_accounts` **+1**；
+        // - U-CC1 的 `drift_ledger_report` **+1**，`Both` —— 本地行与远端行都经同一个
+        //   `parse_line` 喂进同一个进程内账本；
+        // - F08 的 `account_usage_local` **+1** —— 它补平了 `usage.per-account` 那条 ParityDebt；
+        // - P2s 的 `set_daemon_kill_on_exit` / `daemon_status` / `daemon_start` / `daemon_stop`
+        //   **+4**，都是 `Both` —— per-host daemon 策略与状态，本机 origin 是 `<local>`（C1）；
+        // - P8a 的 `list_plugin_marketplaces` **+1**，`Local` —— marketplace 只读枚举今天只有
+        //   本机口，欠的那半写在 `plugins.marketplaces` 那行上；
+        // - K-H2a **+2**（`read_relay_credentials_status` / `write_relay_credentials_key`，都 `Local`）；
+        // - K-H2b **+1**（`relay_routing_for`，`Local`）—— 界面问「这几个**本机**账号走不走中转」。
+        //   只答本机不是欠账，是**机制决定的**：中转是每台机器自己的进程、注入的是回环地址，
+        //   本机这一侧答不了远端那台 ⇒ 它在 `ASYMMETRY_REASONS` 里记的是 `NaturallyAsymmetric`。
+        //
+        // ⚠ 这一段是**账**，不是判据。它里面的数**没有**任何东西钉住 ——
+        //   真值以 `EXPECTED_LOCAL_OR_BOTH` 与失败时印出来的 `Local {n} + Both {m}` 为准。
+        const EXPECTED_LOCAL_OR_BOTH: usize = 89;
         assert_eq!(
-            checked, 89,  // **K-H2a +2（read_relay_credentials_status / write_relay_credentials_key，都 Local）** // **K-H2b +1（relay_routing_for，Local —— 中转是每台机器自己的进程，本机这一侧答不了远端那台）**
-            "检到 {checked} 条 Local/Both 命令（真实应为 84 = Local 53 + Both 31；\
-             ★ P4a（08-12）把 cc-bus **读面三条**从 Remote 转成 Both（本机跑同一条命令串，\
-             只是不包进 ssh）⇒ Both 28→31、总数 80→83；\
-             devbench F03 的 skill 接入面是 +3（list_skills / read_skill_file / write_skill_file，\
-             都 Local）；\
-             E79 的 `list_local_session_accounts` 是 +1；U-CC1 的 `drift_ledger_report` 是 +1，\
-             它是 Both —— 本地行与远端行都经同一个 `parse_line` 喂进同一个进程内账本；\
-             **F08 的 `account_usage_local` 是 +1** —— 它补平了 `usage.per-account` 那条 ParityDebt；\
-             **P2s 的 `set_daemon_kill_on_exit` / `daemon_status` / `daemon_start` / `daemon_stop` 是 +4**，都是 Both —— per-host daemon 策略与状态，本机 origin 是 `<local>`（C1））\
-             ；**`P8a` 的 `list_plugin_marketplaces` 是 +1**，`Local` —— marketplace 只读枚举\n\
-             今天只有本机口，欠的那半写在 `plugins.marketplaces` 那行上\n\
-             ——改 LEDGER 就要来确认这个数"
+            checked, EXPECTED_LOCAL_OR_BOTH,
+            "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\
+             而本条期望 {EXPECTED_LOCAL_OR_BOTH} 条。\n\
+             改 LEDGER 就要来确认这个数：把 `EXPECTED_LOCAL_OR_BOTH` 改成新值，\
+             并到它上面那段「这个数是怎么长起来的」里补一行说明谁加/删了哪几条。"
         );
     }
 
