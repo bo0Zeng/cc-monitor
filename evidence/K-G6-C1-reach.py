@@ -272,7 +272,7 @@ def main() -> int:
     roots = [Path(a).resolve() for a in positional[:2]]
     for r in roots:
         if not (r / "remote-daemon-proto").is_dir():
-            print(f"❌ 不像本仓的仓根（没有 remote-daemon-proto/）：{r}")
+            print(f"不像本仓的仓根（没有 remote-daemon-proto/）：{r}")
             return 3
     head = subprocess.run(
         ["git", "-C", str(roots[0]), "rev-parse", "HEAD"], capture_output=True, check=True
