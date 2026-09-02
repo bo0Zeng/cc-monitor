@@ -119,7 +119,7 @@ pub enum ToolDestination {
     /// T02 审计追问「注册表与真写入方零耦合」时查出来的（比审计报的更严重）：
     /// - `remote-daemon` 原先声明 `RemoteHomeRelative(".local/bin/ccm-daemon")`，
     ///   而这个字符串**全仓只出现在注册表自己里**；真实路径是 `RemoteConfig.daemon_path`，
-    ///   每个远端各自配置（`remote_history.rs:46` 直接 `shell_quote(&cfg.daemon_path)`）。
+    ///   每个远端各自配置（`remote_history.rs::run_list_query` 直接 `shell_quote(&cfg.daemon_path)`）。
     /// - `cc-acct-iso` 原先声明 `LocalHomeRelative(".claude/skills/cc-acct-iso")`，
     ///   而 `acct_iso_deploy::deploy_remote_acct_iso(cfg, dest_dir)` 是**远端**部署、
     ///   落点还是**前端传进来的** `dest_dir`。

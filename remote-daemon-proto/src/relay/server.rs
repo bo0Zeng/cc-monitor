@@ -2484,7 +2484,8 @@ mod tests {
         //      ⇒ ① 排最前**符合它自己的优先级**。
         // ⇒ 代价照实说：前面几条炸掉时 ② 不被求值（`D1` 五刀里有四刀都在它之前炸）。
         //   **而这一格已经单独还上了** —— ② 的死值验由 `D1-M5`（把整条上游请求头印进 stderr）承担：
-        //   **484 passed / 4 failed**，红在「㈢ stderr 里出现了 A 的 key」（`D1` 报的住址 `server.rs:2289`）。
+        //   **484 passed / 4 failed**，红在「㈢ stderr 里出现了 A 的 key」（`D1` 报的住址：
+        //   `server.rs::the_substituted_key_never_shows_up_in_any_of_the_four_exits` 的 ㈢ 那条断言）。
         //   ⇒ **② 有牙，是被那一刀单独证过的，不是靠这里的排序证的。**
         for (who, canary) in [("A", CANARY_A), ("B", CANARY_B), ("dead", CANARY_DEAD)] {
             assert!(!out.contains(canary), "㈠ 标准输出（tee）里出现了 {who} 的 key：{out:?}");
@@ -3363,7 +3364,7 @@ mod tests {
             .expect("`--relay` 入口必须**返回** —— 超时说明它没退出，而是进了 serve()")
     }
 
-    /// ★ `重要-6` 之二：**起不来就退出并出声**（`server.rs:16-17` 头注承诺的处置）。
+    /// ★ `重要-6` 之二：**起不来就退出并出声**（`server.rs::DEFAULT_PORT` 头注承诺的处置）。
     ///
     /// ⚠ 本条全程**只碰回环**：不打任何 API、不起任何 claude、不绑非回环地址。
     /// 成功那一条路（真起监听 + `serve()` + `TeeSink::to_stdout()` 接线）**判不了**，见件文件登记。

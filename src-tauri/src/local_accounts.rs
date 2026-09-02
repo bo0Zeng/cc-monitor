@@ -732,7 +732,8 @@ mod tests {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 〔F10b 第二批·下半〕`MAX_LOCAL_SESSION_FILES` / `MAX_LOCAL_SESSION_FILE_BYTES` **已删** ——
-// 它们是 daemon 侧同名上限的**第二份**（`observe/accounts_query.rs:47/:49`，值逐字相同：
+// 它们是 daemon 侧同名上限的**第二份**（`accounts_query.rs::MAX_SESSION_FILES` 与
+// `accounts_query.rs::MAX_SESSION_FILE_BYTES`，值逐字相同：
 // 500 个文件 / 1 MiB）。唯一的用处随 `list_local_session_accounts` 改走 sidecar 一起消失
 // ⇒ 留着就是「同一个数两处各写一份」（定框 §4）。上限现在只有一个家：daemon 那边，
 // 且由它自己的测试与 `read_regular_capped` 钉着。
