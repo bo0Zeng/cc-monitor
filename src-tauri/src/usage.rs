@@ -1,8 +1,9 @@
 //! F88a（#52）：会话用量聚合——按 (会话, 模型, 天) 累加 token。**只 token 不 $**（用户 2026-07-17 拍板：
 //! cc-monitor 无 API key/不联网、定价会过期要维护 → 只做「已花费 token」这半，不做费用）。
 //!
-//! 数据源现成：`ApiMessage.usage`（`messages.rs:231`）挂在 assistant 记录上。本模块复用 history 的
-//! 项目/会话遍历骨架（`history.rs:135/221`）；**口径本身在共享 crate `usage-core`**
+//! 数据源现成：`messages.rs::ApiMessage` 的 `usage` 字段挂在 assistant 记录上。本模块复用 history
+//! 的项目/会话遍历骨架（`history.rs::list_history_projects` /
+//! `history.rs::stream_history_sessions_in_project`）；**口径本身在共享 crate `usage-core`**
 //! （U7-2 起与远端 daemon 同一份实现，本文件不再各写一遍、也不再经 `parse_line`）。
 //! 纯读纯算、不写任何 Claude 数据。用量视图按需触发（非 history 热路径），全扫可接受（后续可加增量缓存）。
 //!

@@ -75,7 +75,7 @@ pub struct DataPathInfo {
     ///      `formatBytes(info.sizeBytes)` 而 `formatBytes` 内有 `.toFixed()`，
     ///      `bigint` 没有该方法 ⇒ 真是 BigInt 的话生产里早就 `TypeError`。
     ///      **它只证明「今天不是 bigint」，不证明「不可能是」。**
-    ///    - **仓内同向先例**：`usage.rs:24-27` 的 `TokenUsage` 四个 `u64` 字段跨边界，
+    ///    - **仓内同向先例**：`usage.rs::UsageTotals` 那四个 `u64` 字段跨边界，
     ///      TS 侧 `views/usage-pivot.ts` 声明 `number` 并直接做算术。全仓无 BigInt。
     ///
     ///    **收窄成 `number` 在这里是安全的**：本字段只用于展示文件大小，

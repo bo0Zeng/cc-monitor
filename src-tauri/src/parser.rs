@@ -7,7 +7,7 @@
 //!
 //! F63 之前的两条静默丢失路径：
 //! - **未知 `type`** → `#[serde(other)] Unknown`（零字段）→ `is_displayable()` false
-//!   → `lib.rs:1123` `Ok(_) => {}` 静默丢，连 warn 都没有（实测 8,774 条 / 5.6%）
+//!   → `lib.rs::batch_to_payloads` 里那个 `Ok(_) => {}` 静默丢，连 warn 都没有（实测 8,774 条 / 5.6%）
 //! - **已知 `type` 但字段解析失败** → `Err` → `history.rs` / `remote_history.rs`
 //!   的 `_ => continue` 静默丢（实测 1 条 / 157,385 行）
 //!
