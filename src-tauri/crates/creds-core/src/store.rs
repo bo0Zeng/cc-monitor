@@ -55,6 +55,27 @@ pub const BASE_URL_FIELD: &str = "base_url";
 ///
 /// 它存在的理由只有一个：`K-H2a` 已经落地的那份文件（顶层一个 `api_key`）
 /// **升级之后要照常能用**，而不是变成「一份读不懂的旧文件」。
+///
+/// # ⚠⚠ `K-H2c` `KH2C3` 逐字：**它是读得出来的一行，但不再是写进去的地方**
+///
+/// 这两句必须一起读，只读一句都会读错一格：
+/// - **读**：[`read_accounts`] 今天仍然把顶层那一把折成一条 id 为本常量的行 ——
+///   老用户手上那份文件、以及 `KS9` 那条「脱离这个前端也能配」的手编路，都照常能用。
+///   **谁都不许顺手删它**（删掉就是打掉老用户手上那份文件），
+///   由 `the_legacy_top_level_key_becomes_one_named_row_not_a_default_row` 与
+///   `an_unconfigured_file_yields_no_rows_at_all` 两条钉着。
+/// - **写**：界面那条路（`creds_store::write_key_at`）落的是 `accounts.<id>`，
+///   **一个字节都不再往顶层那一格写**。机检住 monitor 侧的
+///   `the_write_side_no_longer_targets_the_legacy_top_level_slot`。
+///
+/// ★ 为什么写侧非换不可（这不是洁癖）：写顶层那一格 ⇒ 读回来 id 逐字是本常量，
+/// 而起会话那一侧按**账号目录末段名**索引 ⇒ **从界面配的 key 永远匹配不上任何账号**，
+/// 中转按 `KL7` 第 2 条给 404、一个字节不发上游。
+/// 〔`K-H2c` `§0` 的立件读数，09-02 在写侧接上之前仍然属实。〕
+///
+/// ⚠ 而 [`merge_key`]（写顶层那一格的那个纯函数）**没有被删**：
+/// 它仍是 [`merge_account_key`] 内部改「某一条里那个 `api_key`」的实现。
+/// **「不再往顶层写」是调用面的事实，不是这个模块少了一个函数。**
 pub const LEGACY_ACCOUNT_ID: &str = "default";
 
 /// 那份文件相对 claude 家目录的位置。**两侧共用的唯一契约。**
