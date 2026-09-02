@@ -54,9 +54,16 @@ fails=()
 # ★★ `K-G3`（09-01）第二个参数 `denom` 是**这个数的分母**，跟着绿行一起印出来。
 #
 # 它治的是题面里的**第 5 个洞**：`sort -rn | head -1` 取的是**所有 `N passed` 里的最大值**，
-# 而 `npm test` 是 **17** 个套件（1 个 vitest `test:dom` + **16** 个 `tsx`）用 `&&` 串起来的，
-# 那 16 个 tsx 套件打的是 `all branching tests passed` 这种**不带数字**的形状
-# ⇒ 这个 `grep -oE` 在它们的输出里**零命中** ⇒ **`n` 恒等于 `test:dom` 那一个数**。
+# 而 `npm test` 是 **17** 个套件（1 个 vitest `test:dom` + **16** 个 `tsx`）用 `&&` 串起来的。
+#
+# ★ **分母现打（`K-G3` 09-01，跑了一趟真 `npm test` 数命中行，不是抽样）**：
+#   整趟输出里命中 `([0-9]+) (passed|个测试)` 的**只有 3 行** ——
+#   `test:diff` 的 `17 passed, 0 failed`（`src/cards/diff.test.ts:234`）·
+#   vitest 的 `117 passed`（Test Files）与 `1480 passed`（Tests）。
+#   ⇒ **16 个 tsx 套件里有 15 个不带数字**（`all X tests passed` 那一形），**第 16 个（`diff`）带**，
+#   但它的 17 被 `sort -rn` 吃掉 ⇒ **`n` 仍恒等于 `test:dom` 那一个数**。
+#   ⚠ 件文件 `§0b-1` 逐字写的是「**16** 个 tsx 套件……**没有数字**」—— 那句是 **15/16**，
+#   已在 `§4a` 订正；**结论不受影响**（多出来的那个数比它小，`max` 照样吃掉）。
 #
 # ⚠ 洞的准确形状（别读大）：那 16 套的**失败**逮得到 —— `&&` 链里任一非零退出码
 #   都会走上面 `rc != 0` 那一支。逮不到的是「某套**跑了 0 个测试**却照样 exit 0」
@@ -229,7 +236,7 @@ esac
 
 run_gate daemon '单包 remote-daemon-proto，只有一行 test result ⇒ 最大值 = 合计' \
          bash -c 'cd remote-daemon-proto && cargo test 2>&1'
-run_gate npm '17 个套件里只有 test:dom（vitest）打得出数字，这个数只是它一个；另 16 个 tsx 套件的失败由 && 链的退出码守，「跑了 0 个」则守不住' \
+run_gate npm '17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字（test:dom 1480 · test:diff 17），而取最大值 ⇒ 这个数恒是 test:dom 的；另 15 个 tsx 套件只打「all X tests passed」，它们「跑了 0 个」这一格守不住（失败仍由 && 链的退出码守）' \
          npm test
 
 # ── 门⑥ `ccm` e2e（`K-G3` 09-01，治 `丙1-f1`）────────────────────────────────
