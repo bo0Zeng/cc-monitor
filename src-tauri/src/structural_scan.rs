@@ -1626,4 +1626,790 @@ mod tests {
             "越界那一格必须是「被引行号 > 文件行数」，否则上面那条的越界半边是空转的"
         );
     }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R20`：**只活在散文里的名字**（零定义的名字被当现状说）
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 至少几个下划线才进人群。**只能是 2，不许往上调。**
+    ///
+    /// 整条曲线（现打，量于本件基点）：
+    /// `>=1` 100 个/143 处 · **`>=2` 58/84** · `>=3` 43/61 · `>=4` 33/50 · `>=5` 30/44。
+    /// 🔴 旗舰活体 `local_tmux_names` **只有 2 个下划线，在 `>=3` 就掉出人群**。
+    /// ⇒ 把阈值调上去换一个好看的人群数，等于把本条要逮的那个逮不着。
+    const DEAD_NAME_MIN_UNDERSCORES: usize = 2;
+
+    /// 仓根相对路径（`\` 一律归一成 `/`，登记表才在 Windows 上也对得上）。
+    fn dead_name_rel(root: &std::path::Path, p: &std::path::Path) -> String {
+        p.strip_prefix(root)
+            .unwrap_or(p)
+            .to_string_lossy()
+            .replace('\\', "/")
+    }
+
+    /// 本条的语料面：**六个根 + `src-tauri/build.rs`**，`(仓根相对路径, 原文)`。
+    ///
+    /// # 三条边界，每条都是**对拍逮出来的**，不是想出来的
+    ///
+    /// · **`build.rs` 非收不可**：`emit_daemon_capabilities` 真的定义在那儿
+    ///   （`addr_corpus()` 也是单独把它捞进来的）。不收它 ⇒ 当场多一处假阳。
+    /// · **`evidence/` 刻意不收**（它不在六个根下，本条按构造够不着）：那是量具与记录，
+    ///   散文里逐字写着一堆死名（`local_tmux_names` 就在里面）。收进来 =
+    ///   **代码侧被本族自己的记录喂饱**，旗舰活体当场从人群里消失。
+    /// · **不按扩展名筛**（`scan_tree!` 空列表那一档）：代码侧越宽假红越少，
+    ///   而 `.json` / `.tsv` / 无扩展名的脚本都可能是一个名字真正的家。
+    ///
+    /// ⚠ `scan_tree!` **按构造摘掉调用者自己** ⇒ 本文件不在语料里。这一刀**非落不可**：
+    /// 下面 `INVENTORY` 里每个死名都是一个**字符串字面量 = 代码**，不摘的话
+    /// 凡是登记过的名字全都「在代码里出现过」，**人群当场塌成空集**。
+    /// 代价如实写明：**本文件自己的散文没人看** —— 那是 `ratchet_guard.rs` 头注那条纪律
+    /// 「判据不许与被扫文本同住一个文件」的另一面。**射程外，不假装覆盖了。**
+    fn dead_name_corpus() -> Vec<(String, String)> {
+        let root = addr_repo_root();
+        let mut out: Vec<(String, String)> = Vec::new();
+        for sub in [
+            "src-tauri/src",
+            "src-tauri/crates",
+            "remote-daemon-proto/src",
+            "src",
+            "doc",
+            "e2e",
+        ] {
+            for (p, src) in guard_core::scan_tree!(&root.join(sub), &[] as &[&str]) {
+                let rel = dead_name_rel(&root, &p);
+                out.push((rel, src));
+            }
+        }
+        let br = root.join("src-tauri/build.rs");
+        let br_src = std::fs::read_to_string(&br).expect("读不到 src-tauri/build.rs");
+        out.push((dead_name_rel(&root, &br), br_src));
+        // ★ 抽取器自检：语料面塌了 ⇒ 下面整条零命中地绿。
+        assert!(
+            out.len() >= 550,
+            "死名判据只收到 {} 份源文件 —— 语料面坏了（09-03 现打 598：六个根 597 + build.rs 1）",
+            out.len()
+        );
+        out
+    }
+
+    /// 一个词是不是「**全小写 `snake_case` + 至少 `min_us` 个下划线**」。
+    ///
+    /// 零词表、纯句法 —— 这正是本条与 `K-R6` 网 A / `K-R18` R1 撞的那种
+    /// 「历史限定词」开放类词表**形状不同**的地方：那两次要枚举的是自然语言，怎么枚都枚不全。
+    fn is_dead_name_shape(w: &str, min_us: usize) -> bool {
+        let segs: Vec<&str> = w.split('_').collect();
+        if segs.len() < min_us + 1 {
+            return false;
+        }
+        if !segs[0].starts_with(|c: char| c.is_ascii_lowercase()) {
+            return false;
+        }
+        segs.iter().all(|s| {
+            !s.is_empty()
+                && s.chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        })
+    }
+
+    /// 抽出 `text` 里每一个符合上面那个形状的标识符。
+    ///
+    /// 取的是**极大 run**（一路吃到不是 `[A-Za-z0-9_]` 为止）⇒ 两侧边界自带：
+    /// `Foo_bar_baz` 整个取出来、整个判否，**不会**从中间抠出一个 `bar_baz`。
+    /// 这一条是承重的：本仓 `find_pinned` 头注整段在讲「匹配单位比事实小」那一族。
+    fn dead_name_idents(text: &str, min_us: usize) -> Vec<&str> {
+        fn is_id(c: u8) -> bool {
+            c.is_ascii_alphanumeric() || c == b'_'
+        }
+        let b = text.as_bytes();
+        let mut out = Vec::new();
+        let mut i = 0usize;
+        while i < b.len() {
+            if !is_id(b[i]) {
+                i += 1;
+                continue;
+            }
+            let s = i;
+            while i < b.len() && is_id(b[i]) {
+                i += 1;
+            }
+            // `s`/`i` 都落在 ASCII 与非 ASCII 的交界上 ⇒ 一定是字符边界，切原串安全。
+            let w = &text[s..i];
+            if is_dead_name_shape(w, min_us) {
+                out.push(w);
+            }
+        }
+        out
+    }
+
+    /// 一段反引号跨度**整个就是一个裸符号引用**吗？（可带 `路径::` 前缀、`()` / `!` 后缀）
+    ///
+    /// # 为什么要「整个是」，而不是「跨度里出现过」
+    ///
+    /// 「跨度里出现过」会把整句散文的跨度收进来（现打差 27 处，全是噪声）。
+    /// # 为什么不是「跨度逐字等于名字」
+    ///
+    /// 那样 `` `local_tmux_names()` ``（带括号）与 `` `a.rs::foo_bar_baz` ``（带路径）
+    /// 都会漏掉，而**那正是订正段最常见的写法** —— 漏掉它们就漏掉了本条要看的那一半。
+    fn bare_symbol_in_span(span: &str, min_us: usize) -> Option<&str> {
+        let mut s = span.trim();
+        if let Some(t) = s.strip_suffix("()").or_else(|| s.strip_suffix('!')) {
+            s = t;
+        }
+        if let Some(k) = s.rfind("::") {
+            let (pre, post) = s.split_at(k);
+            if pre.is_empty()
+                || !pre
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || "_./-".contains(c))
+            {
+                return None;
+            }
+            s = &post[2..];
+        }
+        if is_dead_name_shape(s, min_us) {
+            Some(s)
+        } else {
+            None
+        }
+    }
+
+    /// 从左到右**成对**取一行里的反引号跨度。
+    ///
+    /// ⚠ 刻意不用「非反引号字符 ≥1」那种配法：markdown 的双反引号
+    /// `` `` `x` `` `` 会让它错位（第一对里没有非反引号字符 ⇒ 从第二个反引号起配，
+    /// 把里面那个名字切丢）。成对扫描把空跨度也算一对，双反引号形就正常收得到。
+    fn backtick_spans(line: &str) -> Vec<&str> {
+        let mut out = Vec::new();
+        let mut i = 0usize;
+        while let Some(a) = line[i..].find('`') {
+            let s = i + a + 1;
+            let Some(b) = line[s..].find('`') else { break };
+            out.push(&line[s..s + b]);
+            i = s + b + 1;
+        }
+        out
+    }
+
+    /// 把一份文件切成 `(行号1基, 代码段, 注释段)`。
+    ///
+    /// `//` 那一族（`.rs` / `.ts` / …）走 [`guard_core::strip_comment_lines`] ——
+    /// **整行注释与行尾注释都剥，而且字符串安全**（`"http://host"` 不会被切短）。
+    ///
+    /// 🔴 **行尾注释必须算注释**，这是 `K-R19` 实测出来的坑：它第一版尺子只认整行注释，
+    /// 于是 `src/ipc/commands.vitest.ts` 那行「代码 + 行尾注释」被判成「代码里有这个名字」
+    /// ⇒ 旗舰活体 `local_tmux_names` **一次都没进人群**。
+    ///
+    /// `.md` 整份算散文（它不定义任何符号）；其余一律**整份算代码**（最保守：
+    /// 代码侧越宽，假红越少 —— 本条宁可漏抓，不许假红）。
+    ///
+    /// ⚠ 射程如实写明：`strip_comment_lines` 有三种情形**整行不动**
+    /// （raw / byte string、跨行字符串内部、引号本行不配平），那几行的注释本条看不见。
+    fn dead_name_split(path: &str, text: &str) -> Vec<(usize, String, String)> {
+        if text.is_empty() {
+            return Vec::new();
+        }
+        let base = path.rsplit('/').next().unwrap_or(path);
+        let ext = if base.contains('.') {
+            base.rsplit('.').next().unwrap_or("")
+        } else {
+            ""
+        };
+        let lines: Vec<&str> = text.lines().collect();
+        if ext == "md" {
+            return lines
+                .iter()
+                .enumerate()
+                .map(|(i, l)| (i + 1, String::new(), (*l).to_string()))
+                .collect();
+        }
+        if !matches!(ext, "rs" | "ts" | "tsx" | "mts" | "mjs" | "js" | "cjs") {
+            return lines
+                .iter()
+                .enumerate()
+                .map(|(i, l)| (i + 1, (*l).to_string(), String::new()))
+                .collect();
+        }
+        let stripped = guard_core::strip_comment_lines(text);
+        let code: Vec<&str> = stripped.split('\n').collect();
+        assert_eq!(
+            code.len(),
+            lines.len(),
+            "剥注释改变了行数 ⇒ 下面按行配对会错位（{path}）"
+        );
+        lines
+            .iter()
+            .zip(code.iter())
+            .enumerate()
+            .map(|(i, (raw, c))| {
+                let cmt = if raw.starts_with(*c) {
+                    raw[c.len()..].to_string()
+                } else {
+                    (*raw).to_string()
+                };
+                (i + 1, (*c).to_string(), cmt)
+            })
+            .collect()
+    }
+
+    /// 全语料现打：`(路径, 名字)` → `(未声明处数, 带墓碑处数)`，只留**代码侧零出现**的。
+    fn dead_names_on_disk(
+        corpus: &[(String, String)],
+        min_us: usize,
+    ) -> (
+        usize,
+        std::collections::BTreeMap<(String, String), (usize, usize)>,
+    ) {
+        let mut in_code: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        let mut in_prose: std::collections::BTreeMap<(String, String), (usize, usize)> =
+            std::collections::BTreeMap::new();
+        for (path, text) in corpus {
+            for (_, code, cmt) in dead_name_split(path, text) {
+                for w in dead_name_idents(&code, min_us) {
+                    in_code.insert(w.to_string());
+                }
+                let tomb = cmt.contains(PROSE_NAME_TOMBSTONE);
+                for span in backtick_spans(&cmt) {
+                    if let Some(name) = bare_symbol_in_span(span, min_us) {
+                        let e = in_prose
+                            .entry((path.clone(), name.to_string()))
+                            .or_insert((0, 0));
+                        if tomb {
+                            e.1 += 1;
+                        } else {
+                            e.0 += 1;
+                        }
+                    }
+                }
+            }
+        }
+        let dead = in_prose
+            .into_iter()
+            .filter(|((_, n), _)| !in_code.contains(n))
+            .collect();
+        (in_code.len(), dead)
+    }
+
+    /// ★★ **散文里点名的名字，要么在代码里，要么由写的人声明成历史。**
+    ///
+    /// # 它买的是什么
+    ///
+    /// 本仓的判据全叫 `every_x_is_y` 这种长 `snake_case` 名字，而散文**大量**在
+    /// 「由 `X` 钉住」「`X` 那条机检管着」这么说。改名 / 删掉 / 换实现之后，
+    /// **那句话不会跟着改，也没有任何东西会因此变红** —— 于是一个不存在的名字
+    /// 被当成现状说了下去，读的人以为「这件事有人守着」。
+    ///
+    /// 🔴 **不是假想的病**：本仓的人**手工撞见过至少两次**，每次留一段字，然后没有闸 ——
+    /// `alloc_probe.rs` 里那条「`the_probe_sees_allocations_made_by_the_reader_task` 钉着」，
+    /// 与 `listen.rs` 里那条「这里原先指的是一个**不存在的文件**」。
+    ///
+    /// # 它买不到什么（逐条写明，别把射程写宽了一格）
+    ///
+    /// · **判不了「这句话是不是当现状在说」。** 存量里绝大多数是散文自己已经声明了历史
+    ///   （「原 `X`」「上一版是 `X`」「已删」），那些是合法的；机器分不开它们与真陈账。
+    ///   ⇒ 本条**不判真伪**，只做两件机器判得了的事：**登记存量** + **新写的一律红**。
+    /// · **棘轮按 `(路径, 名字, 处数)` 认。** 把一处删掉、另换一处写上，
+    ///   同一份文件里处数不变的话本条**看不见**。它拦的是「顺手又写一个」，不是恶意。
+    /// · **本文件自己的散文没人看**（语料按构造摘掉调用者）——见 `dead_name_corpus` 头注。
+    /// · **只看反引号里的裸符号引用**。`（local_tmux_names）` 这种**不带反引号**的写法
+    ///   本条看不见 —— 现打 `src/ipc/commands.vitest.ts` 里就有三处这样的，
+    ///   如实登记成射程外，**不假装覆盖了**。
+    #[test]
+    fn every_dead_name_named_in_the_prose_is_declared_dead() {
+        /// **存量登记**：`(仓根相对路径, 名字, 未声明的处数)`。
+        ///
+        /// 这张表就是「这一拍之后还剩什么没牙」的**逐条点名**：每一行都是一处
+        /// **判不了真伪**的名字。想少一行的唯一办法是**把那句话改对**。
+        ///
+        /// ⚠ 加行之前先问一遍：**这个名字今天真的存在吗？** 不存在就先改话，别先加行。
+        /// ⚠ **不许**靠贴墓碑把存量抹平 —— 墓碑只给「本轮真的改过的那几处订正段」。
+        const INVENTORY: &[(&str, &str, usize)] = &[
+            ("doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1),
+            ("doc/CONTRIBUTING.md", "list_active_session_ids", 1),
+            ("doc/INVARIANTS.md", "every_monitor_file_strips_clean", 1),
+            ("doc/INVARIANTS.md", "path_shell_safe", 1),
+            ("doc/INVARIANTS.md", "snapshot_announced_by_origin", 1),
+            ("doc/STATE-MATRIX.md", "read_session_jsonl", 1),
+            (
+                "remote-daemon-proto/src/agents/claudecode/accounts.rs",
+                "trust_of_claude_json",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/alloc_probe.rs",
+                "the_probe_sees_allocations_made_by_the_reader_task",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/inbound.rs",
+                "handlers_never_run_on_the_reader_task",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/inbound.rs",
+                "hello_commands_match_the_dispatch_table",
+                3,
+            ),
+            (
+                "remote-daemon-proto/src/inbound.rs",
+                "hello_is_flushed_before_the_inbound_reader_starts",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/listen.rs",
+                "frozen_single_client_guard",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/observe/accounts_query.rs",
+                "credential_filename_matches_native_identity_declaration",
+                2,
+            ),
+            (
+                "remote-daemon-proto/src/observe/accounts_query.rs",
+                "every_comment_stripping_transformer_is_registered",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/observe/accounts_query.rs",
+                "path_shell_safe",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/observe/watcher.rs",
+                "spawn_tmux_ticker",
+                2,
+            ),
+            (
+                "remote-daemon-proto/src/protocol_doc_guard.rs",
+                "hello_commands_match_the_dispatch_table",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/relay/http1.rs",
+                "handle_alloc_error",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/relay/http1.rs",
+                "head_cap_is_enforced",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/relay/nodelay_guard.rs",
+                "both_directions_disable_nagle_in_relay_production_code",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/relay/server.rs",
+                "handle_alloc_error",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/relay/server.rs",
+                "the_relay_entry_reads_each_env_var_into_its_own_config_slot",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/relay/upstream.rs",
+                "tls_client_config_builds_and_carries_roots",
+                1,
+            ),
+            (
+                "src-tauri/crates/acct-core/src/lib.rs",
+                "contract_matches_the_daemon_implementation",
+                1,
+            ),
+            (
+                "src-tauri/crates/guard-core/src/lib.rs",
+                "every_monitor_file_strips_clean",
+                2,
+            ),
+            (
+                "src-tauri/src/backend/control/launch_wire.rs",
+                "local_is_posix",
+                1,
+            ),
+            (
+                "src-tauri/src/backend/control/local_backend.rs",
+                "every_position_comparison_over_source_pins_and_bounds_its_anchors",
+                1,
+            ),
+            (
+                "src-tauri/src/backend/control/payload.rs",
+                "the_sample_the_monitor_side_builds_parses_into_the_slots_we_expect",
+                1,
+            ),
+            ("src-tauri/src/bind.rs", "handle_await_files", 1),
+            ("src-tauri/src/byte_cap_registry.rs", "handle_alloc_error", 1),
+            (
+                "src-tauri/src/byte_cap_registry.rs",
+                "inline_literal_byte_caps_are_still_just_the_one",
+                1,
+            ),
+            (
+                "src-tauri/src/ccm_probe.rs",
+                "the_local_and_remote_probe_ask_the_same_question",
+                1,
+            ),
+            ("src-tauri/src/codex_record.rs", "token_usage_fields", 1),
+            (
+                "src-tauri/src/config_surface.rs",
+                "locality_is_derivable_from_destination_today",
+                1,
+            ),
+            (
+                "src-tauri/src/creds_store.rs",
+                "a_temp_file_is_born_owner_only",
+                1,
+            ),
+            (
+                "src-tauri/src/creds_store.rs",
+                "the_ui_hands_the_write_command_a_config_dir_not_a_name",
+                1,
+            ),
+            ("src-tauri/src/history.rs", "launch_identity_prefix", 1),
+            (
+                "src-tauri/src/history.rs",
+                "list_history_sessions_in_project",
+                2,
+            ),
+            ("src-tauri/src/history.rs", "read_session_jsonl", 1),
+            ("src-tauri/src/history.rs", "relay_key_for", 1),
+            (
+                "src-tauri/src/history.rs",
+                "the_two_inputs_at_the_call_site_are_still_the_two_take_points",
+                1,
+            ),
+            ("src-tauri/src/history.rs", "up_to_message_id", 1),
+            (
+                "src-tauri/src/local_daemon.rs",
+                "every_comment_stripping_transformer_is_registered",
+                1,
+            ),
+            ("src-tauri/src/local_daemon.rs", "futex_do_wait", 1),
+            (
+                "src-tauri/src/local_daemon.rs",
+                "the_two_inputs_at_the_call_site_are_still_the_two_take_points",
+                1,
+            ),
+            ("src-tauri/src/panorama.rs", "guard_doc_rel", 1),
+            ("src-tauri/src/panorama.rs", "symbols_in_file", 3),
+            (
+                "src-tauri/src/panorama_seam_registry.rs",
+                "panorama_raw_query",
+                1,
+            ),
+            (
+                "src-tauri/src/parser.rs",
+                "unknown_type_falls_through_to_unknown_variant",
+                1,
+            ),
+            (
+                "src-tauri/src/polling_registry.rs",
+                "every_comment_stripping_transformer_is_registered",
+                1,
+            ),
+            (
+                "src-tauri/src/polling_registry.rs",
+                "the_per_second_identity_poller_spawns_nothing_per_tick",
+                1,
+            ),
+            (
+                "src-tauri/src/profile_installer.rs",
+                "repro_local_eats_user_content_on_damaged_fence",
+                1,
+            ),
+            (
+                "src-tauri/src/rust_timer_registry.rs",
+                "the_one_real_ticker",
+                1,
+            ),
+            ("src-tauri/src/shared_crate_registry.rs", "ci_live_lines", 1),
+            (
+                "src-tauri/src/ssh_source.rs",
+                "copy_bidirectional_with_sizes",
+                1,
+            ),
+            (
+                "src-tauri/src/ssh_source.rs",
+                "hello_commands_match_the_dispatch_table",
+                1,
+            ),
+            ("src-tauri/src/ssh_source.rs", "local_tmux_names", 1),
+            (
+                "src-tauri/src/ssh_source.rs",
+                "snapshot_announced_by_origin",
+                1,
+            ),
+            (
+                "src-tauri/src/ssh_source.rs",
+                "the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache",
+                2,
+            ),
+            (
+                "src-tauri/src/tmux.rs",
+                "the_name_set_question_is_exactly_what_the_hooks_cover",
+                1,
+            ),
+            (
+                "src-tauri/src/tmux_daemon_gate_guard.rs",
+                "both_daemon_commands_use_this_one_router",
+                1,
+            ),
+            ("src-tauri/src/tool_registry.rs", "inbox_id_from_filename", 1),
+            (
+                "src-tauri/src/tool_registry.rs",
+                "locality_is_derivable_from_destination_today",
+                1,
+            ),
+            (
+                "src-tauri/src/verified_write.rs",
+                "write_failure_short_circuits_without_rollback",
+                1,
+            ),
+            (
+                "src/agent-profile-parity.vitest.ts",
+                "the_gaps_are_named_not_forgotten",
+                1,
+            ),
+            (
+                "src/daemon-policy.vitest.ts",
+                "the_boot_path_really_pushes_the_daemon_policy",
+                1,
+            ),
+            (
+                "src/render-stream-record.ts",
+                "queued_user_message_never_enters_the_branch_chain",
+                1,
+            ),
+            (
+                "src/settings/daemon-section.vitest.ts",
+                "the_unattended_wording_is_actually_present",
+                1,
+            ),
+            ("src/tabs.ts", "local_tmux_names", 1),
+        ];
+
+        /// **墓碑登记**：`(仓根相对路径, 名字, 带 [`PROSE_NAME_TOMBSTONE`] 的处数)`。
+        ///
+        /// 🔴 这张表就是 `PROSE_NAME_TOMBSTONE` 头注里承诺的那道拦逃生舱的闸：
+        /// **贴了墓碑不登记 ⇒ 红；登记了盘上没有 ⇒ 也红。**
+        /// ⇒ 贴一个墓碑是一次**会被看见的记账**，而 `K4` 逐字要求 PM 自己读 diff。
+        ///
+        /// 这 6 处全是 `K-R20` 本轮真的改过的**订正段** —— 订正段逐字引用旧名字，
+        /// 那正是 `K-R19` 实测到「订正落盘之后尺子读数一动没动」的原因。
+        const TOMBSTONED: &[(&str, &str, usize)] = &[
+            (
+                "doc/IPC-PROTOCOL.md",
+                "handlers_never_run_on_the_reader_task",
+                1,
+            ),
+            (
+                "doc/IPC-PROTOCOL.md",
+                "hello_commands_match_the_dispatch_table",
+                1,
+            ),
+            (
+                "doc/IPC-PROTOCOL.md",
+                "hello_is_flushed_before_the_inbound_reader_starts",
+                1,
+            ),
+            (
+                "remote-daemon-proto/src/wire.rs",
+                "hello_bytes_for_claude_are_frozen",
+                1,
+            ),
+            (
+                "src-tauri/src/lib.rs",
+                "the_ui_never_derives_the_account_id_itself",
+                1,
+            ),
+            (
+                "src/settings/accounts-section.ts",
+                "the_ui_never_derives_the_account_id_itself",
+                1,
+            ),
+        ];
+
+        let corpus = dead_name_corpus();
+        let (code_names, disk) = dead_names_on_disk(&corpus, DEAD_NAME_MIN_UNDERSCORES);
+
+        // ★ 抽取器自检 1：代码侧塌了 ⇒ 全世界都成了「零定义」，下面会红成一片假红。
+        assert!(
+            code_names.len() >= 2500,
+            "代码侧只抽到 {} 个 snake_case 名字 —— 剥法或遍历坏了（09-03 现打 3011）",
+            code_names.len()
+        );
+        let hits: usize = disk.values().map(|(u, t)| u + t).sum();
+        // ★ 抽取器自检 2：注释侧塌了 ⇒ 本条零命中地绿（`ScanReport::require` 那条纪律）。
+        assert!(
+            hits >= 60,
+            "只抽到 {hits} 处「只活在散文里的名字」—— 抽取器坏了（09-03 现打 84 处 / 58 个名字）"
+        );
+
+        let mut newly: Vec<String> = Vec::new();
+        let mut tombs: Vec<String> = Vec::new();
+        for ((path, name), (undeclared, tombstoned)) in &disk {
+            let want = INVENTORY
+                .iter()
+                .find(|(p, n, _)| p == path && n == name)
+                .map(|(_, _, c)| *c)
+                .unwrap_or(0);
+            if *undeclared != want {
+                newly.push(format!(
+                    "  {path}  `{name}`  盘上 {undeclared} 处，登记表写 {want} 处"
+                ));
+            }
+            let want_t = TOMBSTONED
+                .iter()
+                .find(|(p, n, _)| p == path && n == name)
+                .map(|(_, _, c)| *c)
+                .unwrap_or(0);
+            if *tombstoned != want_t {
+                tombs.push(format!(
+                    "  {path}  `{name}`  盘上 {tombstoned} 处带墓碑，登记表写 {want_t} 处"
+                ));
+            }
+        }
+
+        // ★ 顺序是承重的（照 `K-R17` 那条棘轮的教训）：先报「新写的」，
+        //   再报「登记表腐了」—— 反过来的话，「有人新写了一个死名」会被报成
+        //   「登记表里那一行盘上没有了」，**指错修法**。
+        assert!(
+            newly.is_empty(),
+            "这几处散文点名了一个**代码里根本不存在**的名字，而登记表对不上：\n{}\n\n\
+             ⇒ 三条出路，按优先级：\n\
+             ① **把话改对** —— 点今天真的那个符号（`文件·rs::函数名`），\
+             它的真伪由 `every_symbol_address_in_the_sources_still_resolves` 真的判得了；\n\
+             ② 那一句是**订正段 / 墓碑**（逐字引用一个旧名字来说明它已经不在了）⇒ \
+             在**同一行**加 `PROSE_NAME_TOMBSTONE` 那个标记，**并登记进 `TOMBSTONED`**；\n\
+             ③ 那个名字是**仓外**的（std / 第三方 / 内核 / 另一个仓）⇒ 加进 `INVENTORY`，\
+             并在提交信息里写清它住在哪儿。\n\
+             ⚠ **不许**为了让本条变绿就把那句话删掉了事：删掉的是线索，不是病。",
+            newly.join("\n")
+        );
+        assert!(
+            tombs.is_empty(),
+            "墓碑登记对不上盘面：\n{}\n\n\
+             ⇒ 贴墓碑是一次**记账**，不是一个免检章：贴了就登记，改回去了就把行删掉。\n\
+             这一条是 `PROSE_NAME_TOMBSTONE` 头注里承诺的那道拦逃生舱的闸 —— \
+             没有它，「红了就贴标签」当场成立。",
+            tombs.join("\n")
+        );
+
+        // ★ 两张表的保鲜自检：登记的那一处盘上已经没有了 ⇒ 删掉它，别让表替真判据挡枪。
+        let gone: Vec<String> = INVENTORY
+            .iter()
+            .map(|(p, n, _)| ("存量", *p, *n))
+            .chain(TOMBSTONED.iter().map(|(p, n, _)| ("墓碑", *p, *n)))
+            .filter(|(_, p, n)| !disk.contains_key(&(p.to_string(), n.to_string())))
+            .map(|(k, p, n)| format!("  [{k}] {p}  `{n}`"))
+            .collect();
+        assert!(
+            gone.is_empty(),
+            "这几条登记盘上已经没有了 —— **把它们从表里删掉**\
+             （多半是有人把那句话改对了，那是好事）：\n{}",
+            gone.join("\n")
+        );
+    }
+
+    /// 上面那条判据的**活体夹具** —— 它在真树上今天恰好是绿的（登记表逐格对上），
+    /// 而「今天该对上」那种格是**空真**：闸死了照样对得上。
+    /// ⇒ 这里造一份**真的会红**的语料，逐格切开验。
+    ///
+    /// 夹具文本一律**现拼**（名字分段拼、反引号分开写），免得夹具自己被真树上的扫描收进人群
+    /// —— 本文件按构造已被摘出语料，这是第二道保险，「别让夹具的名字混进断言」本仓栽过两次。
+    #[test]
+    fn the_dead_name_scanner_really_sees_each_shape() {
+        let tick = "`";
+        let n = format!("zz{u}alpha{u}beta{u}gamma", u = "_");
+        let min = DEAD_NAME_MIN_UNDERSCORES;
+
+        // ① 形状：>=2 个下划线才算数；大写 / 少下划线 / 前后粘连一律不算。
+        assert!(is_dead_name_shape(&n, min));
+        assert!(!is_dead_name_shape("only_one", min), "1 个下划线不该进人群");
+        assert!(!is_dead_name_shape("Zz_alpha_beta", min), "带大写不该进人群");
+        let glued = format!("Xy{n}");
+        assert_eq!(
+            dead_name_idents(&glued, min),
+            Vec::<&str>::new(),
+            "极大 run 没生效 —— 被粘在别的标识符里时不许从中间抠出来"
+        );
+
+        // ② 反引号跨度：裸符号 / 带 `()` / 带路径前缀都认，整句散文不认。
+        let called = format!("{n}()");
+        let addressed = format!("a.rs::{n}");
+        let sentence = format!("由 {n} 钉住");
+        assert_eq!(bare_symbol_in_span(&n, min), Some(n.as_str()));
+        assert_eq!(bare_symbol_in_span(&called, min), Some(n.as_str()));
+        assert_eq!(bare_symbol_in_span(&addressed, min), Some(n.as_str()));
+        assert_eq!(
+            bare_symbol_in_span(&sentence, min),
+            None,
+            "整句散文的跨度不该被当成一处符号引用"
+        );
+
+        // ③ **双反引号形**（markdown 的 `` `x` ``）收得到 —— 成对扫描买的正是这一格。
+        let md = format!("{tick}{tick} {tick}{n}{tick} {tick}{tick}");
+        assert!(
+            backtick_spans(&md).iter().any(|s| s.trim() == n),
+            "双反引号形被切丢了：{:?}",
+            backtick_spans(&md)
+        );
+
+        // ④ 🔴 **行尾注释必须算注释**（`K-R19` 那个坑）：一行「代码 + 行尾注释」，
+        //    名字写在行尾注释里 ⇒ 它属于注释侧，**不是**「代码里有这个名字」。
+        let ts = format!("expect(keys.length).toBe(135) // 见 {tick}{n}{tick}\n");
+        let rows = dead_name_split("x.ts", &ts);
+        assert_eq!(rows.len(), 1);
+        assert!(
+            !rows[0].1.contains(n.as_str()) && rows[0].2.contains(n.as_str()),
+            "行尾注释没被算成注释 —— 这一格漏了，旗舰活体就一次都进不了人群。实得 {rows:?}"
+        );
+
+        // ⑤ 字符串里的 `//` 不许把代码截短（`https://` 那个代价，`strip_comment_lines` 已保证）。
+        let url = format!("const u = \"https://h/{n}\";\n");
+        let rows = dead_name_split("x.ts", &url);
+        assert!(
+            rows[0].1.contains(n.as_str()),
+            "字符串里的 `//` 把代码截短了 ⇒ 人群会偏大。实得 {rows:?}"
+        );
+
+        // ⑥ 端到端：造一份**只活在散文里**的语料 ⇒ 它必须进人群；
+        //    同一个名字一旦在代码侧出现，就必须**立刻退出**人群。
+        let prose = format!("/// 由 {tick}{n}{tick} 钉住。\npub fn f() {{}}\n");
+        let (_, dead) = dead_names_on_disk(&[("a.rs".to_string(), prose.clone())], min);
+        assert_eq!(
+            dead.get(&("a.rs".to_string(), n.clone())),
+            Some(&(1, 0)),
+            "散文里点名、代码里零出现 —— 这一处没进人群，闸就是死的：{dead:?}"
+        );
+        let with_code = format!("{prose}fn {n}() {{}}\n");
+        let (_, dead) = dead_names_on_disk(&[("a.rs".to_string(), with_code)], min);
+        assert!(
+            dead.is_empty(),
+            "代码里有这个名字了，它还留在人群里 ⇒ 本条会去红一堆活着的符号：{dead:?}"
+        );
+
+        // ⑦ 🔴 **墓碑真的被读了**（`KR20D1` 的死值验就切这一格）：
+        //    同一行加上标记 ⇒ 那一处记进「已声明」那一格，而不是「未声明」。
+        let tombed = format!(
+            "/// 原先写的是 {tick}{n}{tick}{mark}，已删。\npub fn f() {{}}\n",
+            mark = PROSE_NAME_TOMBSTONE
+        );
+        let (_, dead) = dead_names_on_disk(&[("a.rs".to_string(), tombed)], min);
+        assert_eq!(
+            dead.get(&("a.rs".to_string(), n.clone())),
+            Some(&(0, 1)),
+            "带墓碑的那一处没被记进「已声明」—— 标记根本没被读，那它就是个装饰：{dead:?}"
+        );
+
+        // ⑧ `.md` 整份算散文；其余扩展名整份算代码（`.json` 里的名字是**定义**，不是提法）。
+        let md_text = format!("见 {tick}{n}{tick}\n");
+        let md_rows = dead_name_split("a.md", &md_text);
+        assert!(md_rows[0].1.is_empty() && md_rows[0].2.contains(n.as_str()));
+        let json_text = format!("{{\"k\": \"{n}\"}}\n");
+        let json_rows = dead_name_split("a.json", &json_text);
+        assert!(json_rows[0].2.is_empty() && json_rows[0].1.contains(n.as_str()));
+    }
 }
