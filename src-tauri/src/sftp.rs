@@ -1202,13 +1202,38 @@ mod tests {
         // `ccm_cli_strength_is_at_or_above_baseline`。
         use crate::ccm_cli_contract as contract;
 
-        for needle in contract::REQUIRED_NEEDLES {
+        // ★★ 〔`K-P2` C 第五拍，09-03；PM `§13 裁五` **窄授权**〕**这两条循环认住址账本了。**
+        //
+        // # 它修的是什么：同一条性质**两份实现，而它们不知道对方在**
+        //
+        // `ccm_cli_contract` 那边 C 第四拍已经把「少一条要素」拆成了**流失**（红）与
+        // **搬家**（记了账、新住址真有它 ⇒ 绿）。**本函数这一份没跟着换** ——
+        // 它只问「这个串在不在这份文件里」，于是「搬家照样绿」**只在半个仓里成立**：
+        // 同一个提交，`ccm_cli_contract` 说搬家 OK，这里说少了一条要素。
+        // C 第四拍的 `M3`（真搬家）实测过：唯一剩下的那条红就是本函数。
+        //
+        // # 认账本 ≠ 放水
+        //
+        // 跳过的**只有**登记为 `Backend` 的那些，而每一条 `Backend` 都要付两条断言
+        //（`every_needle_that_moved_is_actually_at_its_new_home`：新住址真有锚点 ＋
+        //  旧住址真没了）。**把某条改成 `Backend` 换不来免检**，只是把举证换了个地方。
+        // ⚠ 那条判据在**门①**、与本条同一道门 ⇒ 不存在「那边没跑而这边放行」的窗口。
+        let ledger = contract::LEDGER;
+        for (needle, home) in ledger.needles {
+            if matches!(home, contract::NeedleHome::Backend { .. }) {
+                continue; // 记了账的搬家，举证在 `every_needle_that_moved_is_actually_at_its_new_home`
+            }
             assert!(
                 CCM_CLI_SCRIPT.contains(needle),
-                "ccm CLI 缺关键要素: {needle}"
+                "ccm CLI 缺关键要素: {needle}\n\
+                 （它在住址账本里登记为仍住 `shared/ccm`。真搬走了就**同拍改那张账本**，\
+                 别在这里删一行 —— 那样两份实现又会各说各话。）"
             );
         }
-        for needle in contract::CHANNEL_A_LITERALS {
+        for (needle, home) in ledger.channel_a {
+            if matches!(home, contract::NeedleHome::Backend { .. }) {
+                continue;
+            }
             assert!(
                 CCM_CLI_SCRIPT.contains(needle),
                 "通道A（意图声明）必须写 @ccm_sid_expect（而非裸 @ccm_sid），缺: {needle}"
@@ -1232,11 +1257,20 @@ mod tests {
         // 追溯到 `666cc14`（无名 `--tmux` 改为无条件新建会话）：删两处 `display-message -p -t`、
         // 加一处 `has-session -t`，净 −1，是正当的行为变更。**不下调阈值** —— 下调等于把
         // 「少一处 tmux 命令」重新变成无声的。读数本身由 `ccm_cli_contract::BASELINE` 单独盯着。
+        //
+        // ★★ 〔C 第五拍；PM `§13 裁五`〕**这条下限也认住址账本** —— 理由同上面那两条循环。
+        // `--tmux` 那一块里有 3 处 `-t`，搬走之后现扫读数从 11 掉到 8，而
+        // `MIN_CHECKED_T_TARGETS` 是 `KP2B` 🔴 逐字禁止 agent 下调的两个数之一
+        // ⇒ 不认账本的话，`§11 丙`（守恒）在这一维上买不到，只能去动那个数。
+        //
+        // ⚠ **减的是「已经登记搬走了几处」，不是「允许少几处」**：`MOVED_T_TARGETS` 每一行都要付
+        // 「新住址真有锚点 ＋ ccm 那处真没了」两条断言。
+        // ⚠ 兜底在 `require` 自己身上：它对 `min_checked == 0` 是**硬失败**
+        //（逐字「那等于关掉计数自检」）⇒ 有人把 10 处全登记成「搬走了」时这里当场红，
+        //  而不是静默地变成一条永远通过的判据。
+        let floor = contract::MIN_CHECKED_T_TARGETS.saturating_sub(contract::MOVED_T_TARGETS.len());
         contract::scan_t_targets(CCM_CLI_SCRIPT)
-            .require(
-                contract::MIN_CHECKED_T_TARGETS,
-                "CLI 的 tmux 目标（INVARIANTS §31a）",
-            )
+            .require(floor, "CLI 的 tmux 目标（INVARIANTS §31a）")
             .expect("结构性扫描不通过");
     }
 
