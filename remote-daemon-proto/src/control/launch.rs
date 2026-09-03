@@ -173,7 +173,10 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
     let ccm_sid = get_str("ccm_sid").map(str::to_string);
     if let Some(s) = &ccm_sid {
         check_field("ccm_sid", s)?;
-        // 它会被拼进 tmux 的格式串（`ccm-rbind-#{@ccm_sid}`），收紧到确定安全的字符集。
+        // 它最终会被 tmux 的格式串展开（窗口标题 `#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}`），
+        // 收紧到确定安全的字符集。⚠ 本命令自己写的是**意图**键 `@ccm_sid_expect`
+        //（见 `run` 里那段头注）；这个值要经 `identity_tag` 过检提升之后才进 `@ccm_sid`，
+        // 而那一侧有它自己的 `sid_is_safe` —— **两道各自成立，不许因为「上游已经查过」而拆掉任一道**。
         if !s
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
@@ -288,15 +291,50 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
             }
             // 身份标记与标题是**次要**动作：失败绝不阻断主要动作（键入载荷）。
             // 与 monitor 侧 `session-backend.ts` 里 `(… 2>/dev/null || true) &&` 同一条纪律。
+            //
+            // ★★ **建会话这一刻写的是「意图」，不是「事实」**〔`K-P2` C 第五拍，09-03；
+            //    PM `§13 裁三` 裁「候选丙」〕。
+            //
+            // # 它修的是什么（**不是**冒名，别把两件事压成一句）
+            //
+            // 这一处落在**幂等闸之后** —— 会话已存在 ⇒ 上面 `new-session` 失败 ⇒ 短路
+            // 返回 `created:false` ⇒ 走到这里的**只可能是刚刚新建成功的那个会话**。
+            // 所以它够不着别人的会话，「冒名」那一层在这里不成立。
+            //
+            // 它真正的问题是**过早取得权威**：`@ccm_sid` 是破坏性动作（`kill`，
+            // `super::gate::admit_destructive` → `gate_core::gate2`）**唯一认的事实**。
+            // 建会话即写它 ⇒ 一个「声明了 sid、但那个 claude 进程还没起（甚至永远起不来）」
+            // 的空会话**当场获得事实身份**。那正是 F04 修掉的 `R10`：
+            // 意图（通道 A）与事实（通道 B）之间的那道确认被绕过去了。
+            //
+            // # 事实由谁写：仍然只有一个人
+            //
+            // [`super::identity_tag`]：pidfile 出现 **＋** 过 `procStart` 冒名检查之后才写
+            //（那份文件逐字「打错就是杀错」）。本处一个字都不写 `@ccm_sid`
+            // —— 由 monitor 侧 `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
+            // 的 `(写点, 读点, 意图)` 三元组钉住（写点必须恒为 0）。
+            //
+            // ⚠ **为什么可以现在就改**：这条臂今天**零生产调用方** ——
+            //   `launch_wire::the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold`
+            //   与 `readonly_guard` 的 `g6_staged_zero` 两条判据一起钉着「生产段不发
+            //   `create-or-attach`」。⇒ 本改动今天不改变任何一条在跑的路径的行为，
+            //   它是把「接线那一拍会踩的那颗雷」在接线之前拆掉。
+            //
+            // ⚠ **标题格式串同拍换成带回退的那一份**：`@ccm_sid` 在建会话这一刻起不再有值，
+            //   而旧的 `ccm-rbind-#{@ccm_sid}` 会把窗口标题渲成一个**空的 `ccm-rbind-`**
+            //   （提升发生之前）。`shared/ccm:1247` 早就为同一件事用了
+            //   `#{?@ccm_sid,…,#T}`（那份文件逐字：「sid 还没回填时回退 `#T`，
+            //   不产出一个空的 `ccm-rbind-`」）—— 两侧同一条性质，不留两种写法。
+            //   ⇒ 提升一发生，tmux 自己就把新标题推给 client（`identity_tag` 头注实测过）。
             if let Some(sid) = &req.ccm_sid {
-                let _ = tmux(&["set-option", "-t", &t, "@ccm_sid", sid]);
+                let _ = tmux(&["set-option", "-t", &t, "@ccm_sid_expect", sid]);
                 let _ = tmux(&["set-option", "-t", &t, "set-titles", "on"]);
                 let _ = tmux(&[
                     "set-option",
                     "-t",
                     &t,
                     "set-titles-string",
-                    "ccm-rbind-#{@ccm_sid}",
+                    "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}",
                 ]);
             }
             type_payload(&t, &req.payload)?;
@@ -504,6 +542,14 @@ mod tests {
     /// 而 A（去掉 `-d`）**会红** —— 但读诊断就知道那是**假信号**：红的是
     /// `daemon_kill` 的创建路径人群探测器（它的发现口径恰好含 `-d`），
     /// 诊断说的是「那条路没了 ⇒ 删登记」，照做反而会把这条路移出人群。
+    ///
+    /// ⚠ **订正上面 B 那一格**〔`K-P2` C 第五拍，09-03〕：本文件的创建臂**今天不再写
+    /// `@ccm_sid`** 了（写的是意图键 `@ccm_sid_expect`，见 [`run`] 里那段头注）
+    /// ⇒ 「`@ccm_sid` 改名」那个变异**在本文件里已经没有靶子**。
+    /// 而这一族今天真有人盯着，只是**不在本包**：monitor 侧
+    /// `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
+    /// 逐字数本文件生产段的 `(写点, 读点, 意图)` 三元组 ⇒ **门① 会红、门③ 仍不会**。
+    /// 别把「门③ 绿」读成「没人看着」，也别读成「有人看着」—— 它们分在两个包里。
     ///
     /// ⇒ E10 说结构守卫**钉得住顺序与字面量**，那这一条就该有人写。本条补上。
     /// 它不改变 E10 的结论（argv 的**语义**仍要 e2e），只是把能钉的那半钉住。
