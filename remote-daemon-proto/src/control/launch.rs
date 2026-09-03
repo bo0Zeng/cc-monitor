@@ -541,6 +541,92 @@ mod tests {
         assert_eq!(e.0, "invalid_args");
     }
 
+    /// ★〔`K-P2` `D3` 09-03〕`agent` / `width` / `height` 的形状校验。
+    ///
+    /// # 为什么 `width`/`height` 要一条**「只给一半就拒」**
+    ///
+    /// 只给 `width` 时 tmux 会拿默认值补 `height` ⇒ 会话**起得来**、尺寸**只对一半**。
+    /// 那是「写了个修饰、看起来生效了、其实只生效了一半」——本仓反复消灭的那个形状。
+    /// ⇒ 这里 fail-fast，而不是让它变成一个没人看得出来的怪尺寸。
+    #[test]
+    fn the_create_only_fields_have_their_own_shapes() {
+        let ok = |extra: serde_json::Value| {
+            let mut v = serde_json::json!({
+                "mode":"create-or-attach","name":"n","payload":"p"
+            });
+            let obj = v.as_object_mut().expect("对象");
+            for (k, x) in extra.as_object().expect("对象") {
+                obj.insert(k.clone(), x.clone());
+            }
+            v
+        };
+        // 合法的一组：三个都给
+        let r = parse_request(&ok(serde_json::json!({
+            "agent":"claude","width":"220","height":"50"
+        })))
+        .expect("三个都合法时应当通过");
+        assert_eq!(r.agent.as_deref(), Some("claude"));
+        assert_eq!((r.width.as_deref(), r.height.as_deref()), (Some("220"), Some("50")));
+        // 三个都不给也合法（`send-into` 那两条 mode 从来不带它们）
+        let bare = parse_request(&ok(serde_json::json!({}))).expect("都不给也该通过");
+        assert_eq!((bare.agent, bare.width, bare.height), (None, None, None));
+
+        for (extra, why) in [
+            (serde_json::json!({"agent":"a b"}), "agent 含空格（它进 tmux option 值）"),
+            (serde_json::json!({"agent":""}), "agent 为空"),
+            (serde_json::json!({"agent":"a\nb"}), "agent 含控制字符"),
+            (serde_json::json!({"width":"220"}), "★只给 width 不给 height"),
+            (serde_json::json!({"height":"50"}), "★只给 height 不给 width"),
+            (serde_json::json!({"width":"22a","height":"50"}), "width 不是纯数字"),
+            (serde_json::json!({"width":"","height":"50"}), "width 为空"),
+            (serde_json::json!({"width":"12345","height":"50"}), "width 超过 4 位"),
+            (serde_json::json!({"width":"220","height":"-5"}), "height 带负号"),
+        ] {
+            match parse_request(&ok(extra)) {
+                Ok(_) => panic!("{why} 居然通过了"),
+                Err(e) => assert_eq!(e.0, "invalid_args", "{why}"),
+            }
+        }
+    }
+
+    /// ★★〔`K-P2` `D3` 09-03〕**收得下 ≠ 起作用**：那三个新字段必须真的被 `run` 用掉。
+    ///
+    /// # 它补的洞
+    ///
+    /// [`parse_request`] 与 `launch_for_inbound` 的键名有一面镜子
+    /// （`inbound::structure_guards::launch_fields_match_its_parser_and_output`），
+    /// 而那面镜子**只看解析器与输出构造器** —— 一个字段完全可以「解析出来、存进结构体、
+    /// 然后一个地方都不用」。⇒ 症状是 **ccm 照发、daemon 照收、`@ccm_agent` 与尺寸静默消失**，
+    /// 而两侧任何一条现有判据都不会红。**那正是本命令这一拍要防的那件事。**
+    ///
+    /// ⚠ 这里只能判**源码形态**（真验要起 tmux，红线禁）。诚实边界写在这儿，别读大了。
+    #[test]
+    fn the_create_arm_actually_uses_the_three_new_fields() {
+        let prod = crate::guard_support::production_code(include_str!("launch.rs"));
+        // ★ 抽取器自检：剥注释器没把代码也剥掉（建条当天生产段 300+ 行）。
+        assert!(
+            prod.lines().count() >= 200,
+            "`control/launch.rs` 的生产段只剩 {} 行 —— 剥注释器把代码也剥了？下面几条会零命中地绿",
+            prod.lines().count()
+        );
+        for (needle, what) in [
+            ("req.agent", "`agent` 读点"),
+            ("\"@ccm_agent\"", "`@ccm_agent` 这个 tmux option 名"),
+            ("req.width", "`width` 读点"),
+            ("req.height", "`height` 读点"),
+            ("\"-x\"", "`new-session` 的 `-x`"),
+            ("\"-y\"", "`new-session` 的 `-y`"),
+        ] {
+            assert!(
+                prod.contains(needle),
+                "生产段里找不到 {what}（needle {needle:?}）—— 字段**收得下却不起作用**：\n\
+                 ccm 照发、daemon 照收，而 `@ccm_agent` 与窗口尺寸静默消失。\n\
+                 `launch_fields_match_its_parser_and_output` 那面镜子只看解析器与输出构造器，\n\
+                 **它看不见这一格**（`K-P2` `D3` 立本条的全部理由）。"
+            );
+        }
+    }
+
     /// ★ **不许照抄 monitor 的「禁双引号」** —— 那是 PowerShell 专属。
     ///
     /// 这条路是 argv 直传，双引号只是一个普通字符。抄过来会让一大批合法载荷被拒，
