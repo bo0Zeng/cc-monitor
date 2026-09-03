@@ -1401,9 +1401,30 @@ mod tests {
     #[test]
     fn the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary() {
         const CCM: &str = include_str!("../../../../shared/ccm");
-        // 窗口 = 容器路里「载荷拼好 → 起 tmux」之间那一段。两个锚点全树各恰好一处。
-        let start = CCM.find("\n  payload=\"\"\n").expect("找不到载荷拼装的起点锚点");
-        let end = CCM.find("\n  t=\"$(sq \"=$tmux_name:\")\"").expect("找不到起 tmux 那个锚点");
+        // 窗口 = 容器路里「载荷拼好 → 起 tmux」之间那一段。
+        const START: &str = "\n  payload=\"\"\n";
+        const END: &str = "\n  t=\"$(sq \"=$tmux_name:\")\"";
+        // ① 两个锚点**全树各恰好一处** —— 先断这个，下面的 `find` 才是「那一处」而不是「第一处」。
+        //
+        // 🔴〔`K-P5e` `KP5ED3`〕**这三行是补上来的。** 在此之前这里只有一句注释逐字写着
+        //    「两个锚点全树各恰好一处」，而本函数体里 `.matches(` / `.count()` **各 0 处**
+        //    （`K-P5c` 与 `K-P5d` 两拍各现打一次，读数一致）⇒ **那是一句没有牙的注释**：
+        //    真长出第二处锚点时 `find` 会静默地取「第一处」，窗口整个取错、下面全是空真。
+        //    补法**逐格照抄**下面那条 `…_forwards_the_launch_identity_…`（`K-P5c` 那条真断言），
+        //    **没发明第二种写法**。
+        assert_eq!(
+            CCM.matches(START).count(),
+            1,
+            "载荷拼装那个起点锚点在 `shared/ccm` 里不是恰好一处 —— \
+             `find` 取的就成了「第一处」，窗口可能整个取错"
+        );
+        assert_eq!(
+            CCM.matches(END).count(),
+            1,
+            "起 tmux 那个终点锚点在 `shared/ccm` 里不是恰好一处 —— 同上"
+        );
+        let start = CCM.find(START).expect("找不到载荷拼装的起点锚点");
+        let end = CCM.find(END).expect("找不到起 tmux 那个锚点");
         assert!(start < end, "两个锚点的先后反了 —— 窗口取错了");
         let window = &CCM[start..end];
         // 抽取器自检 + 非空对照：`R08` 那条既有转发必须在同一个窗口里。
@@ -1475,11 +1496,29 @@ mod tests {
     /// # 它买的是什么
     ///
     /// `K-P5b` 把身份塞进的是**起会话方那一侧**的进程环境（`history.rs` 里
-    /// `relay + launch_identity_prefix(action) + base` 那一行）。走 ccm 容器那一支时，
+    /// `let identity = launch_identity(action);` + `let cmd = relay + &identity.prefix + &base;`
+    /// 那两行）。走 ccm 容器那一支时，
     /// 那句 `export` 落在**外层 shell** 上，而 `send-keys` 打进的是 tmux server fork 出来的
     /// 新 shell —— `update-environment` 的默认列表不含它 ⇒ **整个被吃掉，到不了 agent 进程。**
     /// 这与 `R08`（`CLAUDE_CONFIG_DIR`）· `K-H2b`（`ANTHROPIC_BASE_URL`）**是同一个坑的第三次**。
     /// 本条买的是「那段转发在、条件对、拼出来的串对」。
+    ///
+    /// 🔴〔`K-P5e` `§8 一`〕**上面那句引用是订正过的，别把它读成一直如此。**
+    /// 它先前逐字写着 `relay + launch_identity_prefix(action) + base`，而 `K-P5h`（09-02 晚）
+    /// 把那个函数**改名成了 `launch_identity`** ⇒ 主干 `4cf4301` 之后这一句指向一个
+    /// **不存在的符号**。人群现打（09-02，尺子 = 全仓 731 个跟踪文件里出现旧符号名的**行**）：
+    /// **5 行** —— `history.rs` 里 `launch_local` 拼装那一段的注释、与
+    /// [`crate::history`] 那个身份结构的头注，两处都是 `K-P5h` 自己写的**历史引用**
+    /// （逐字「上一版是…」「本拍已改名为」）⇒ **它们是对的，别动**；
+    /// 另两行在 `evidence/K-P5d-C-ccm-negotiation-probe.py`（`§8 二`，同拍收）；
+    /// **本行是唯一那句真陈账。**
+    /// ⚠ 订正之后它**不再只是一句散文**：`let identity = launch_identity(action);` 与
+    /// `let cmd = relay + &identity.prefix + &base;` 两行现在都被
+    /// [`tests::every_variable_exported_outside_ccm_is_forwarded_by_the_container_path`]
+    /// 用 `find_pinned` 钉在 `history.rs` 的**生产段**上（各恰好一处）
+    /// ⇒ 那边再改名，本行当场有人红。
+    /// 🔴 但**别把这一格读成「陈账这一族被治住了」** —— 那张网归 `K-R18`，
+    /// 本件只收这一句（`K-P5e §8 三` 逐字裁的）。
     ///
     /// # 🔴 它与上面那条先例**有一格不同**（别把两条读成同一句话）
     ///
@@ -1615,6 +1654,396 @@ mod tests {
         assert!(
             all.ends_with("'claude' '--resume' 'S1'"),
             "转发把 argv 顶掉了：{all}"
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // 🔴 `K-P5e`：**拼在 `ccm` 外面 `export` 的变量 ⊆ 容器路转发的变量**
+    // ═════════════════════════════════════════════════════════════════════════
+    //
+    // 下面四个函数是**判据本体**（`KP5ED2` 要的那一格）：真判据
+    // [`every_variable_exported_outside_ccm_is_forwarded_by_the_container_path`] 与活体夹具
+    // [`the_outside_export_gate_really_reddens_on_a_live_breach`] **共用**它们，
+    // 夹具跑的不是它们的复刻。
+    //
+    // 🔴 **09-02 现打的两刀读数**（`K-G4 §7 裁六` 那一刀的形状，逐字记在这里）：
+    //   · 掏空 `not_forwarded` ⇒ **真判据留绿、只有活体夹具红** —— 与 `K-G4` 实测同形，
+    //     ⇒ **本族的牙长在活体夹具那一格上，它是承重件**，别当它是「一条多余的复刻」。
+    //   · 掏空 `exported_var_names` ⇒ **两条都红**（真判据被「左集恰好 2 个」那一格接住）。
+    // ⚠ 另外两个（`fn_body` · `forwarded_by_container_path`）**这一拍没逐个下刀**，
+    //   它们各自带自检（切不出来 / 数不到就 panic）—— 那是**登记，不是「已经验过」**。
+
+    /// 按花括号配平切一个**函数体**（含两端花括号）。
+    ///
+    /// 🔴 **切不出来就 panic，不回空串** —— 回空串会让上层的计数变成「零命中地绿」，
+    /// 那正是本工作区最贵的那类病。锚点走 [`guard_core::find_pinned`]（要求恰好一处 + 有词边界）。
+    ///
+    /// ⚠ 它是个**朴素**的配平器：只对「体里的花括号成对」的函数成立
+    /// （今天的两个渲染器都是一句 `format!`，`{}`/`{ident}` 都是成对的）。
+    /// 拿它去切带不配对花括号字面量的函数会切错 —— 长度自检只挡得住离谱的那种。
+    fn fn_body(prod: &str, sig: &str) -> String {
+        let at = guard_core::find_pinned(prod, sig)
+            .unwrap_or_else(|e| panic!("锚点 `{sig}` 不是恰好一处 —— 形状变了，先修锚点：{e}"));
+        let open = at + prod[at..].find('{').unwrap_or_else(|| panic!("`{sig}` 之后找不到函数体的左花括号"));
+        let mut depth = 0usize;
+        for (i, c) in prod[open..].char_indices() {
+            match c {
+                '{' => depth += 1,
+                '}' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let body = prod[open..open + i + 1].to_string();
+                        assert!(
+                            (20..4_000).contains(&body.len()),
+                            "`{sig}` 的体切出来 {} 字节 —— 不像一个前缀渲染器的体，抽取器可能坏了",
+                            body.len()
+                        );
+                        return body;
+                    }
+                }
+                _ => {}
+            }
+        }
+        panic!("`{sig}` 的体花括号没配平 —— 抽取器坏了，别当它切出来了");
+    }
+
+    /// 判据本体·**左半**：从「拼在 `ccm` 外面那几截」里逐截抠出**被 `export` 的变量名**。
+    ///
+    /// 入参是**生产代码现取的那几截**（渲染器的函数体 / 渲染器真跑出来的串），
+    /// **不是手写名单**：那边改了变量名、或同一个渲染器多 `export` 一个，本函数下一趟就跟着变。
+    ///
+    /// 认法：每一处 `export ` 到下一个 `=` 之间那一段就是变量名。
+    /// 🔴 抠出来的东西**不像一个变量名就 panic** —— 比如插值没解析开（`{SOME_CONST}`）。
+    /// 不许把它当成一个名字混进人群再去做 ⊆：那会在**恰好该红的那一刻**零命中地绿。
+    fn exported_var_names(chunks: &[String]) -> Vec<String> {
+        let mut out = Vec::new();
+        for c in chunks {
+            let mut from = 0usize;
+            while let Some(rel) = c[from..].find("export ") {
+                let s = from + rel + "export ".len();
+                let e = s + c[s..]
+                    .find('=')
+                    .unwrap_or_else(|| panic!("`export ` 后面找不到 `=`，这一截不是前缀：{c:?}"));
+                let name = &c[s..e];
+                assert!(
+                    !name.is_empty()
+                        && name
+                            .chars()
+                            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_'),
+                    "从 `export …=` 里抠出来的不像一个变量名：{name:?}（整截：{c:?}）\n\
+                     ⇒ 多半是插值没解析开（比如 `{{SOME_CONST}}`）。**不许把它当成一个名字混进人群**\n\
+                     —— 那会让下面的 ⊆ 在恰好该红的那一刻绿掉。\n\
+                     回来给这个新形状写一条解析法，或者说清它为什么不在人群里。"
+                );
+                out.push(name.to_string());
+                from = e;
+            }
+        }
+        out
+    }
+
+    /// 判据本体·**右半**：容器路那个窗口里，**逐条枚举**出来的转发面。
+    ///
+    /// 枚举法（分母就是它）：窗口里形如
+    /// `payload="export <VAR>=$(sq "$<VAR>"); $payload"` 的**行**，逐行抠出 `<VAR>`，
+    /// 并把这一行剩下那半**逐字节**核一遍（写成 `$(sq "$别的变量")` 也算跑偏 ⇒ 红）。
+    /// **不是手写名单** —— `shared/ccm` 里加一条转发，本函数下一趟就多回一个名字。
+    ///
+    /// 🔴 窗口取不到 / 一条都数不到就 **panic**，不许回空表冒充「零条」：
+    /// 回空表会把下面的 ⊆ 从「今天成立」翻成「今天全违规」—— 方向相反，但同样是假读数。
+    fn forwarded_by_container_path(ccm: &str) -> Vec<String> {
+        const START: &str = "\n  payload=\"\"\n";
+        const END: &str = "\n  t=\"$(sq \"=$tmux_name:\")\"";
+        assert_eq!(
+            ccm.matches(START).count(),
+            1,
+            "载荷拼装那个起点锚点不是恰好一处 —— 窗口可能整个取错"
+        );
+        assert_eq!(
+            ccm.matches(END).count(),
+            1,
+            "起 tmux 那个终点锚点不是恰好一处 —— 同上"
+        );
+        let (s, e) = (ccm.find(START).unwrap(), ccm.find(END).unwrap());
+        assert!(s < e, "两个锚点的先后反了 —— 窗口取错了");
+        let mut out = Vec::new();
+        for line in ccm[s..e].lines() {
+            let Some(rest) = line.trim().strip_prefix("payload=\"export ") else {
+                continue;
+            };
+            let (name, tail) = rest
+                .split_once('=')
+                .unwrap_or_else(|| panic!("这一行像转发却没有 `=`：{line:?}"));
+            assert_eq!(
+                tail,
+                format!("$(sq \"${name}\"); $payload\""),
+                "\n★ 容器路那条转发的形状跑偏了：{line:?}\n\
+                 要的是 `payload=\"export <VAR>=$(sq \"$<VAR>\"); $payload\"` —— \
+                 转发的必须是**同一个变量**，且拼在载荷**内侧**。"
+            );
+            out.push(name.to_string());
+        }
+        assert!(
+            !out.is_empty(),
+            "容器路窗口里一条转发都数不到 —— 窗口取错了或认法坏了，本条此刻是空转的"
+        );
+        out
+    }
+
+    /// 判据本体·**差集**：左集里没有被容器路转发的那些。空 ⇒ 这道闸今天成立。
+    fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
+        left.iter().filter(|v| !right.contains(v)).cloned().collect()
+    }
+
+    /// ★★★ `KP5ED1`：**拼在 `ccm` 外面 `export` 的变量 ⊆ 容器路转发的变量。**
+    ///
+    /// # 🔴 标签是被收窄过的，别读宽（`K-R18` 的口径，`K-P5e §1` 逐字）
+    ///
+    /// 原来那个标签「起会话方 `export` 的变量」念起来盖**三个人群**而尺子只数得了**一个**，
+    /// **而漏的那一次恰是第一次**（`R08` 的 `CLAUDE_CONFIG_DIR` 是**继承**来的、不是 `export` 的）。
+    /// ⇒ 本条只买「**拼在 `ccm` 外面 `export` 的**」那一个人群。它**买不到**：
+    /// - **继承来的**变量（`R08` 那一形 —— 第一次那个坑本条逮不住）；
+    /// - **agent 需要但没人 `export` 的**（`K-P5c` `KP5CD3` PM 已裁**不收**那张表）；
+    /// - 🔴 **面一：已经装在这台机器上的那些旧 `ccm` 副本会静默吃掉变量** ——
+    ///   那归 `K26`（本机没有 `ccm` 的安装路），**本件一个字节都买不到它**
+    ///   （`K-P5d 裁三`：两道闸，一个字节都不互相顶替）。
+    ///
+    /// # 两个集合各自怎么枚举，分母是什么（`KP5ED1` 逐字要这一节）
+    ///
+    /// **左集 = 拼在 `ccm` 外面 `export` 的变量**，09-02 现打 **2 个**
+    /// （`ANTHROPIC_BASE_URL` · `CCM_LAUNCH_ID`）。枚举法**按函数体切，不按文件切**：
+    /// 1. `history.rs` 生产段里那一句 `let cmd = relay + …;`（`find_pinned` ⇒ 恰好一处）
+    ///    拆成的段，今天**恰好 3 段**：前两段是前缀、末段 `&base` 是命令体；
+    /// 2. 两段前缀各自的**渲染器函数体**（`relay_env_prefix_posix` · `launch_identity_env_prefix`），
+    ///    体里 `export ` 各**恰好 1 处**；
+    /// 3. 变量名**从生产代码现取**：中转那截从体里读出来再拿**真跑一遍**的产出对拍，
+    ///    身份那截把体里 `{LAUNCH_ID_VAR}` 用生产常量 [`crate::history::LAUNCH_ID_VAR`] 解析开。
+    ///    ⇒ **一个字面量都没写死**，那边改名本条自动跟着走。
+    ///
+    /// ⚠ **`K-P5d` 的量具第一版按整份 `payload.rs` 切**，把 `render_env_ops` 混进来数成 4。
+    /// 本拍现打复现了那把坏尺子：整份 `payload.rs` 生产段上 `"export (\w+)={}; "` 命中
+    /// **3 个名字**（多出 `ANTHROPIC_MODEL` · `CLAUDE_CONFIG_DIR`，两个都住 `render_env_ops`）
+    /// + `history.rs` 那 1 个 = **4**，而真值 **2**。
+    /// `render_env_ops` 服务的是 `render_payload` 那条路（`launch_wire` / 用量探针），
+    /// **根本不经过本条说的那个 tmux 边界** ⇒ 它不在人群里。**这就是为什么按函数体切。**
+    ///
+    /// **右集 = 容器路转发的变量**，09-02 现打 **3 条**
+    /// （`CLAUDE_CONFIG_DIR` · `ANTHROPIC_BASE_URL` · `CCM_LAUNCH_ID`）。
+    /// 枚举法见 [`forwarded_by_container_path`]：容器路那个窗口里逐行认，不是手写名单。
+    /// ⚠ **3 ≠ 2 不是错**：`CLAUDE_CONFIG_DIR` 那条是转发**继承**来的值（`R08`），
+    /// 它在右集里、**不在左集里** —— 那正是 `§1` 说的「标签被收窄过」那一格。
+    ///
+    /// # 🔴 这道闸今天就是绿的 —— 那是它的形状，不是缺陷
+    ///
+    /// 2 ⊆ 3 今天成立。**它买的是「第四次在提交那一刻有人红」**：
+    /// 谁再往外面那一串上拼一段 `export`，① 段数那一格红 ② 左集那个数红
+    /// ③ 忘了在 `shared/ccm` 里加对应转发时 ⊆ 那一格红。
+    /// ⚠ 而「今天零违规的判据可能连自己的地基被抽掉都不会响」这件事，由
+    /// [`the_outside_export_gate_really_reddens_on_a_live_breach`] 那一格顶着（`KP5ED2`）——
+    /// **牙全长在那一格上，它是承重件**（`K-G4 §7 裁六` 的实测结论）。
+    ///
+    /// # ⚠ 它还买不到什么（如实写）
+    ///
+    /// - **Windows 那条腿不在人群里**：`ccm` 容器路只有 POSIX 这一支（`C12`「windows不要tmux」），
+    ///   `$env:` 那一形本条只数处数、不进集合。
+    /// - **`&base` 内部**（`render_local_ccm` / `build_local_posix_command` 渲的那一截）不在人群里：
+    ///   它拼在 `ccm` 的**里面**，不过这个边界。
+    /// - **`launch.rs` 的 `.env(k, v)`**（开窗那一跳，进程级）不在人群里：它不是一句 `export`。
+    /// - **「变量真的穿过了一次真 tmux 边界」没量** —— 那要真 tmux，归真机 e2e。
+    /// - 有人在**别的文件**里另起一条拼装路，本条一个字节都不会动
+    ///   （它只从那一句 `let cmd = relay + …;` 出发）。⇒ 这是**诚实边界**，不是「今天恰好没有」。
+    #[test]
+    fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
+        const CCM: &str = include_str!("../../../../shared/ccm");
+        let hist = guard_core::production_code(include_str!("../../history.rs"));
+        let pay = guard_core::production_code(include_str!("payload.rs"));
+        // 抽取器自检：剥完还得看得见东西（否则下面整条是空真）。
+        // 门槛现打（09-02，剥完的字节数）：`history.rs` ≈ 48.7k（原文 213k）· `payload.rs` ≈ 8.2k（原文 88k）
+        // —— 门槛按现打值往下留一档，不贴着写。
+        assert!(
+            hist.len() > 30_000 && pay.len() > 5_000,
+            "剥完只剩 history={} payload={} 字节 —— 剥法坏了，本条会零命中地绿",
+            hist.len(),
+            pay.len()
+        );
+
+        // ── ① 左集的分母之一：外面那一串**由几段拼起来** ────────────────────────
+        let at = guard_core::find_pinned(&hist, "let cmd = relay + ")
+            .unwrap_or_else(|e| panic!("本机拉起那一句拼装不是恰好一处 —— 形状变了：{e}"));
+        let stmt = &hist[at..][..hist[at..].find(';').expect("拼装那一句没有 `;`")];
+        let rhs = stmt.split_once('=').expect("拼装那一句没有 `=`").1;
+        let segs: Vec<&str> = rhs.split('+').map(str::trim).collect();
+        assert_eq!(
+            segs,
+            vec!["relay", "&identity.prefix", "&base"],
+            "\n★★ 本机拉起拼出来的那一串**段数或段名变了**（实得 {segs:?}）。\n\
+             ⇒ 如果新那一段也 `export` 了变量，它必须**同一拍**在 `shared/ccm` 的容器路里\n\
+             加一条对应的转发（形状抄 `R08`/`K-H2b`/`K-P5c` 那三条），否则走 tmux 的会话\n\
+             会在 tmux 边界把它整个吃掉，而症状指不向这里。\n\
+             ⇒ 合法出路只有两条：把新那一段接进本条的左集，或在这里写清它为什么不 `export`。"
+        );
+        // 那两段前缀各自是谁渲的 —— 整条链**逐环钉住**（改名当场红）。
+        for anchor in [
+            "let relay = relay_prefix_for_launch(action, account)?;",
+            "let identity = launch_identity(action);",
+            "relay_env_prefix_posix(&u)",
+            "let prefix = launch_identity_env_prefix(&token,",
+        ] {
+            guard_core::find_pinned(&hist, anchor).unwrap_or_else(|e| {
+                panic!("`{anchor}` 不是恰好一处 —— 前缀那条链换了形状，本条的左集就取歪了：{e}")
+            });
+        }
+
+        // ── ② 左集：**按函数体切**，变量名从生产代码现取 ─────────────────────────
+        let body_relay = fn_body(&pay, "pub fn relay_env_prefix_posix(");
+        let body_id = fn_body(&hist, "fn launch_identity_env_prefix(");
+        assert_eq!(
+            body_relay.matches("export ").count(),
+            1,
+            "中转那个渲染器的**体**里 `export ` 不再是恰好 1 处 —— 同一个渲染器多 export 了一个变量？\
+             那一个也要进左集、也要有人转发。实得体：{body_relay}"
+        );
+        assert_eq!(
+            body_id.matches("export ").count(),
+            1,
+            "身份那个渲染器的**体**里 `export ` 不再是恰好 1 处 —— 同上。实得体：{body_id}"
+        );
+        assert_eq!(
+            body_id.matches("$env:").count(),
+            1,
+            "身份那个渲染器的 Windows 那一形不再是恰好 1 处 —— 形状变了先回来读头注。实得体：{body_id}"
+        );
+        // 身份那截：把体里那个**生产常量**的插值解析开。解析不开 ⇒ `exported_var_names` 会 panic。
+        let id_chunk = body_id.replace("{LAUNCH_ID_VAR}", crate::history::LAUNCH_ID_VAR);
+        assert_ne!(
+            id_chunk, body_id,
+            "身份渲染器的体里不再用 `LAUNCH_ID_VAR` 那个常量了 —— \
+             本条的「变量名从生产现取」就断了，回来重接，别让它悄悄退回写死字面量"
+        );
+        let left = exported_var_names(&[body_relay, id_chunk]);
+        assert_eq!(
+            left.len(),
+            2,
+            "\n★ 左集（拼在 `ccm` 外面 `export` 的变量）从 2 个变成了 {} 个：{left:?}\n\
+             09-02 现打的 2 个是 `ANTHROPIC_BASE_URL`（中转那截）· `CCM_LAUNCH_ID`（身份那截）。\n\
+             **多了** ⇒ 回来读本条头注那一节，并确认新那个在 `shared/ccm` 的容器路里有对应转发。\n\
+             **少了 / 归零** ⇒ 先别改这个数：多半是上面那两个渲染器的体没取到，\
+             本条此刻是空转的（09-02 实测：把左半那个原语掏空，就是这个读数）。",
+            left.len()
+        );
+        // 文本 ↔ 行为 对拍：中转那截**真跑一遍**，名字必须与从体里读出来的是同一个。
+        assert_eq!(
+            exported_var_names(&[relay_env_prefix_posix(
+                "http://127.0.0.1:8788/s/claude-code/acct-a/sid-1"
+            )]),
+            vec![left[0].clone()],
+            "中转那个渲染器**跑出来**的变量名与从它体里读出来的不是同一个 —— \
+             本条读源码这一半量的不是它真做的事"
+        );
+
+        // ── ③ 右集：容器路那个窗口里逐条枚举 ────────────────────────────────────
+        let right = forwarded_by_container_path(CCM);
+        assert_eq!(
+            right.len(),
+            3,
+            "\n★ 容器路的转发面从 3 条变成了 {} 条：{right:?}\n\
+             09-02 现打的 3 条 = `CLAUDE_CONFIG_DIR`（`R08`，转发**继承**值）· \
+             `ANTHROPIC_BASE_URL`（`K-H2b`）· `CCM_LAUNCH_ID`（`K-P5c`）。\n\
+             加一条是好事，但要回来把这个分母改掉并写清新那条守的是谁 —— \
+             否则这一格就变成一句没人维护的话。",
+            right.len()
+        );
+
+        // ── ④ 正题：⊆ ─────────────────────────────────────────────────────────
+        let missing = not_forwarded(&left, &right);
+        assert!(
+            missing.is_empty(),
+            "\n★★ **有变量拼在 `ccm` 外面 `export` 了，而容器路没有转发它**：{missing:?}\n\
+             左集（外面 export，按函数体切）：{left:?}\n\
+             右集（容器路转发，窗口里逐行认）：{right:?}\n\
+             ⇒ 走 tmux 那条支的会话，这个变量在 tmux 边界被**整个吃掉**\
+             （`update-environment` 的默认列表不含它），\n\
+             而症状是「起会话方以为交下去了」，**指不向这里**。\
+             这个坑到今天已经是第三次了（`R08` · `K-H2b` · `K-P5c`）。\n\
+             ⇒ 修法：在 `shared/ccm` 容器路那个窗口里照那三条的形状加一行\n\
+             `payload=\"export <VAR>=$(sq \\\"$<VAR>\\\"); $payload\"`。\n\
+             🔴 **本条买不到面一**（这台机器上已装的旧 `ccm` 副本会静默吃掉它）—— 那归 `K26`。"
+        );
+    }
+
+    /// ★★★ `KP5ED2` **活体夹具**：今天零违规 ⇒ 上面那条是空真 ⇒ 牙必须长在这一格上。
+    ///
+    /// # 为什么非有它不可（`K-G4 §7 裁六` 的实测结论，逐字带过来）
+    ///
+    /// `K-G4` 那一拍 PM 打过这一刀：**掏空判据共用的那个原语时，三条方向判据全留绿，
+    /// 只有活体夹具红。** ⇒ 一条「今天零违规」的判据，连自己的地基被抽掉都不会响。
+    ///
+    /// # 它怎么做到「跑的是判据本体，不是它的复刻」
+    ///
+    /// 上面那条与本条**共用**四个函数（[`fn_body`] · [`exported_var_names`] ·
+    /// [`forwarded_by_container_path`] · [`not_forwarded`]）。本条只换**输入**：
+    /// - **活体甲**：拿真的 `shared/ccm`，把 `CCM_LAUNCH_ID` 那条转发**抠掉一行**
+    ///   （`R08`/`K-H2b`/`K-P5c` 那个坑的复发形），断言差集**恰好**点名它；
+    /// - **活体乙**：在左集上**真加一截会 export 的渲染器体**（本件买的「第四次」那一形），
+    ///   断言差集**恰好**点名那个新变量。
+    ///
+    /// ⇒ 把 [`exported_var_names`] 掏空成 `vec![]`：上面那条**照样绿**（左集空 ⇒ ⊆ 空真），
+    /// 而本条两格**都红**。那正是这一格存在的全部理由。
+    ///
+    /// # ⚠ 它买不到什么
+    ///
+    /// 它量的是**判据认不认得出违规**，不是「生产上真会不会漏」——
+    /// 后者由上面那条在真树上跑。两格各买各的，别合并读。
+    #[test]
+    fn the_outside_export_gate_really_reddens_on_a_live_breach() {
+        const CCM: &str = include_str!("../../../../shared/ccm");
+        let hist = guard_core::production_code(include_str!("../../history.rs"));
+        let pay = guard_core::production_code(include_str!("payload.rs"));
+        let body_relay = fn_body(&pay, "pub fn relay_env_prefix_posix(");
+        let body_id = fn_body(&hist, "fn launch_identity_env_prefix(")
+            .replace("{LAUNCH_ID_VAR}", crate::history::LAUNCH_ID_VAR);
+        let left = exported_var_names(&[body_relay, body_id]);
+        let right = forwarded_by_container_path(CCM);
+        // 非空对照：干净树上差集是空的 —— 证明下面两格的红不是「本来就红」。
+        assert!(
+            not_forwarded(&left, &right).is_empty(),
+            "干净树上就已经有人没被转发了 —— 先去看 \
+             `every_variable_exported_outside_ccm_is_forwarded_by_the_container_path`，\
+             本条此刻量不了「夹具红不红」"
+        );
+
+        // ── 活体甲：容器路那一条转发被抽掉 ──────────────────────────────────────
+        let var = crate::history::LAUNCH_ID_VAR;
+        let line = format!("    payload=\"export {var}=$(sq \"${var}\"); $payload\"\n");
+        assert_eq!(
+            CCM.matches(line.as_str()).count(),
+            1,
+            "要抠掉的那一行在 `shared/ccm` 里不是恰好一处 —— 夹具的地基变了，先修夹具。要找的：{line:?}"
+        );
+        let holed = CCM.replace(line.as_str(), "");
+        assert!(
+            holed.len() < CCM.len(),
+            "夹具什么都没抠掉 —— 下面那一格是空真"
+        );
+        assert_eq!(
+            not_forwarded(&left, &forwarded_by_container_path(&holed)),
+            vec![var.to_string()],
+            "\n★★ **活体夹具没红。** 造的活体是：容器路把 `{var}` 那条转发抠掉了\n\
+             （那正是 `R08` · `K-H2b` · `K-P5c` 三次同坑的复发形），而判据本体没认出来。\n\
+             ⇒ 上面那条今天的绿是**空真** —— 先修判据本体，别改这里。"
+        );
+
+        // ── 活体乙：外面多 export 了一个没人转发的变量（本件买的「第四次」） ──────
+        const LIVE: &str = "CCM_P5E_LIVE_PROBE";
+        let fourth = format!("{{ format!(\"export {LIVE}={{}}; \", x) }}");
+        let mut left_plus = left.clone();
+        left_plus.extend(exported_var_names(&[fourth]));
+        assert_eq!(
+            not_forwarded(&left_plus, &right),
+            vec![LIVE.to_string()],
+            "\n★★ **活体夹具没红。** 造的活体是：外面那一串上多拼了一截\n\
+             `export {LIVE}=…; `，而容器路没有转发它 —— 判据本体没认出来。\n\
+             ⇒ 「第四次在提交那一刻有人红」这件事**买不到**，而那是本件的全部正题。"
         );
     }
 

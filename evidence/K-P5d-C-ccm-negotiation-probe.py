@@ -24,8 +24,13 @@
   分母 = `--revs` 那几个版本 + PATH 上那一份，每份跑一次。
 
 - `G3` **外侧那一串今天 `export` 了哪几个变量**（`KP5DD2` 的人群）：
-  从 `history.rs` 拼装那一行（`let cmd = relay + &launch_identity_prefix(action) + &base;`）
+  从 `history.rs` 拼装那一行**现取**（锚点 `let cmd = relay + `，那一行的正文不写死在本文件里），
   逆着数**它的两个前缀生产者**各渲出哪个变量名。
+  🔴 **09-02 订正（`K-P5e §8 二`）**：这里原先把那一行**写死**成
+  `let cmd = relay + &launch_identity_prefix(action) + &base;`。`K-P5h`（09-02 晚）把
+  `launch_identity_prefix` 改名为 `launch_identity` 之后，那个字面量就指向一个**不存在的符号**，
+  而本量具复跑时只会安静地打一句 `拼装行「不在」` —— **量具的地基被一次改名抽掉了，而它不会响。**
+  现在按锚点现取，并把「注释里的那几处历史引用」与「生产那一处」**分开数**（两者都打出来）。
   🔴 **这是源码级读数，不是行为级** —— 行为级要走 `launch_sink()` 那条缝（判据能做，本量具不编 Rust）。
   分母写在输出里：**只数拼在 `base` 外面的那两截**，`base` 内部（旧路 `config_dir_prefix_posix`）
   **不在分母里**，理由是它那一支根本不走 ccm 容器。
@@ -147,6 +152,39 @@ def _fn_body(src: str, sig: str) -> str:
     return ""
 
 
+JOIN_ANCHOR = "let cmd = relay + "
+
+
+def join_line(hist: str) -> dict:
+    """拼装那一行**从生产代码现取**（`G3` 的地基）。
+
+    🔴 **本函数是 09-02 补上来的，补的是一个「量具的地基被改名抽掉了而它不会响」的洞**
+    （`K-P5e §8 二`）。原来这里写死着
+    `let cmd = relay + &launch_identity_prefix(action) + &base;` —— `K-P5h` 改名之后
+    它**零命中地**打一句「不在」，而下面的变量表照样算得出来 ⇒ **看起来一切正常。**
+
+    ⚠ 分母怎么切的写在返回值里：命中按**行**数，并把「整行注释里的那几处」单列——
+    **不点行号**（行号每一轮都会变，写下去下一轮自动变成假话；`K-R17` 那条闸就是治这个的）。
+    09-02 现打：命中 **4 行**，其中整行注释 **3 行**（一行是 `K-P5h` 写的「上一版是…」，
+    另两行是更早那版 `let cmd = relay + &base;` 的散文引用），**生产恰好 1 处**。
+    ⇒ 那 3 行都是**带时态的历史引用，不是陈账**，别顺手删。
+    生产那一处不是恰好 1 时**如实报出来**，不许挑一处凑数。
+    """
+    hits = []
+    for n, line in enumerate(hist.split("\n"), 1):
+        if JOIN_ANCHOR in line:
+            hits.append((n, line.strip(), line.lstrip().startswith("//")))
+    code = [h for h in hits if not h[2]]
+    return {
+        "锚点": JOIN_ANCHOR,
+        "命中行数": len(hits),
+        "其中整行注释": len(hits) - len(code),
+        "生产处数": len(code),
+        "生产那一行": code[0][1] if len(code) == 1 else None,
+        "全部命中": hits,
+    }
+
+
 def outer_prefix_population(tree: Path) -> dict:
     """`G3`：拼在 ccm 调用**外面**那两截各 export 了哪个变量名。
 
@@ -161,9 +199,7 @@ def outer_prefix_population(tree: Path) -> dict:
     """
     hist = (tree / "src-tauri/src/history.rs").read_text(encoding="utf-8")
     pay = (tree / "src-tauri/src/backend/control/payload.rs").read_text(encoding="utf-8")
-    join = "let cmd = relay + &launch_identity_prefix(action) + &base;"
-    out: dict = {"拼装行在不在": join in hist, "拼装行处数": hist.count(join),
-                 "变量": [], "同形但不在人群里": []}
+    out: dict = {"拼装行": join_line(hist), "变量": [], "同形但不在人群里": []}
     # ① 中转那一截：`payload::relay_env_prefix_posix`（**只切它的函数体**）
     body = _fn_body(pay, "pub fn relay_env_prefix_posix(")
     if not body:
@@ -248,7 +284,18 @@ def main() -> int:
 
         print("\n## G3 · 外侧那一串今天 export 了哪几个变量（源码级；分母 = 拼在 `base` 外面的两截）")
         pop = outer_prefix_population(tree)
-        print(f"拼装行「{'在' if pop['拼装行在不在'] else '不在'}」，处数 = {pop['拼装行处数']}")
+        j = pop["拼装行"]
+        print(f"拼装行（锚点 `{j['锚点']}` **现取**，不写死正文）：")
+        print(f"  命中 {j['命中行数']} 行，其中整行注释 {j['其中整行注释']} 行 ⇒ 生产 {j['生产处数']} 处")
+        if j["生产那一行"] is None:
+            print("  ❌ 生产那一处不是恰好 1 —— 形状变了，下面的变量表**先别信**，回来看全部命中：")
+            for n, text, is_c in j["全部命中"]:
+                print(f"     {'注释' if is_c else '生产'} :{n}  {text}")
+        else:
+            print(f"  生产那一行逐字：{j['生产那一行']}")
+            for n, text, is_c in j["全部命中"]:
+                if is_c:
+                    print(f"  （注释里的历史引用，正确，别当陈账）:{n}  {text}")
         for name, where in pop["变量"]:
             print(f"  - {name}   ← {where}")
         print(f"  人群大小 = {len(pop['变量'])}")
