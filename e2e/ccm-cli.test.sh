@@ -1407,6 +1407,13 @@ while [ "$_wi" -lt 5 ]; do
      "$(WEXP "${W_SIDS[$_wi]}")" "$(WSTDIN)"
   _wi=$((_wi+1))
 done
+# ⚠ **这一条是死值验现打出来的缺口**〔`D2` `N5`：把 exec 路的 `--resolve` 改名 ⇒ 只红了
+#   `WIRE/发了②` 与 `WIRE/分得开②` 两条，**配方路一条没红**〕。
+#   成因：`resolve_recipe` 的那行 `printf` 里**自己又写了一份 `--resolve`** ——
+#   与 `resolve_from_daemon` 那份是**两处字面**，改一处不会有任何东西说话。
+#   ⇒ 那正是 `DAEMON_BIN_RECIPE` 头注立的「两处各写一遍迟早漂」，补上这一条钉住它。
+ck "WIRE/配方路 · 配方跑出来那一趟的 argv 也是 --resolve（配方里那份 --resolve 是**另一处字面**）" \
+   "--resolve" "$(WARGV)"
 ck "WIRE/配方路 · 配方跑出来也真的 exec 了 daemon 回的那条 command（两条路同一个终点）" \
    "WIRE_EXEC_OK" "$(WOUT)"
 
