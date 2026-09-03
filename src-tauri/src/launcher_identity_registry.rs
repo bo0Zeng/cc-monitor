@@ -80,9 +80,14 @@ mod tests {
             anchors: &[],
             plants: true,
             why: "★ **本拍落的就是这一处**：`history.rs::launch_local` 在拼装那一行把 \
-                  `launch_identity_prefix` 拼进真正交出去的那一串，token 由 \
+                  `launch_identity` 算出来的那句前缀拼进真正交出去的那一串，token 由 \
                   `payload::route_key_for_session` 铸（**共用那一份，不是第二份**）。\
                   行为判据见 `PLANTED_JUDGE`。\
+                  ★〔`K-P5h` `KP5HD1`〕**同一处今天还多买到一格**：那个铸出来的 token \
+                  不再被扔掉，而是经 `launch_local` → `new_local_session` 交回给调用方 \
+                  （判据 `the_minted_identity_token_is_handed_back_to_the_caller`）—— \
+                  `K-P5g` 现打的卡点「写侧把 token 铸完就扔」在这一处收掉了。\
+                  ⚠ 那**没有**改这一行的 `plants`：塞不塞进环境与交不交出来是两件事。\
                   ⚠ **它有一个今天补不上的洞，别读成全覆盖**：走 ccm 容器那一支时，\
                   外侧这句 `export` 会在 tmux 边界被吃掉（tmux server 的 `update-environment` \
                   默认列表不含它）—— 与 `K-H2b` 给 `ANTHROPIC_BASE_URL` 踩过的**同一个坑**，\

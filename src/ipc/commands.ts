@@ -869,7 +869,6 @@ export const commands = {
   /** P2s（C8）：停这台机的 daemon。⚠ 远端返回的是「已断流」不是「已停进程」⇒ **桶②**。 */
   daemon_stop: (args: { origin: string }) => invoke<string>("daemon_stop", args),
 
-  /** 在某目录起一个新的本地会话。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   /**
    * 在某目录起一个**全新**本机会话。
    *
@@ -879,12 +878,20 @@ export const commands = {
    * 它是「用户此刻选中的当前账号」。没有它，这条主路上一个账号都说不出，
    * 后果有两条：起会话落到 shell rc 那个默认号上（静默串号），
    * 以及中转那一格**永远拼不出路由键**。
+   *
+   * # 🔴 返回值〔`K-P5h` `KP5HD1`〕：**这次拉起的身份 token**（不是 sid）
+   *
+   * Rust 侧从 `Result<(), String>` 改成 `Result<String, String>` ⇒ 这里从 `invoke<void>`
+   * 改成 `invoke<string>`。`K-P5 §3 三` 现打「5 处起会话方没有一处在起新会话时知道 sid」——
+   * 这个 token 就是为那件事存在的：拿它去 `accounts.ts::sidOfLaunch` 反查，
+   * 起会话方才说得出「我刚起的那条是哪个会话」。
+   * ⚠ 它是**内部 nonce**：不许显示给用户，也不许当 sid 用。
    */
   new_local_session: (args: {
     cwd: string;
     launcher: string | null;
     account?: { kind: "base" } | { kind: "named"; configDir: string };
-  }) => invoke<void>("new_local_session", args),
+  }) => invoke<string>("new_local_session", args),
 
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_settings_window: () => invoke<void>("open_settings_window"),

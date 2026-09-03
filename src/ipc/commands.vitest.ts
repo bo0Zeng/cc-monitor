@@ -486,6 +486,37 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     }
   });
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // `K-P5h` `KP5HD3`：**回填的那一跳挂在会话出生那条事件上**
+  //
+  // 🔴🔴 **本条与上面那组同病：它量的是「那一行字在不在」，不是「那件事发生没发生」。**
+  // `main.ts` **一个 export 都没有**（它是入口模块）⇒ 那一跳在本仓今天**没有任何办法
+  // 用行为判据驱动**（`session-accounts-poll.ts` 的头注为同一个理由把三条性质搬出了 `main.ts`）。
+  // ⇒ 本条**只买两件事**：① 那一跳还接在那条事件上；② 它没有偷偷变成一个定时器。
+  //   把 `resolvePendingLocalLaunches` 的函数体掏空、或把它接到一条错的事件上，
+  //   **本条照绿** —— 别把它读成「回填真的会被触发」。
+  //   反查那一跳本身的行为判据在 `accounts.vitest.ts` 与 `views/history-actions.vitest.ts`。
+  // ═══════════════════════════════════════════════════════════════════════
+  it("★ `K-P5h`：待回填由「会话出生」那条事件触发，**不是**由一个新定时器触发", () => {
+    const code = stripComments(readFileSync(resolve(REPO_ROOT, "src/main.ts"), "utf8"), "ts");
+    // ① 那一跳还在，且**在 `onSessionStarted` 这个处理器里**（不是随便哪儿调一次）。
+    const handler = code.split("onSessionStarted:")[1] ?? "";
+    expect(
+      handler.length,
+      "`main.ts` 里没有 `onSessionStarted` 处理器了 —— 抽取器坏了，下面那条会零命中地绿",
+    ).toBeGreaterThan(50);
+    expect(
+      handler.slice(0, 800),
+      "回填那一跳没有接在 `session-started` 上 ⇒ 起完新会话之后再也没人来问，\n" +
+        "整条「拿 token 反查 sid」在生产上不会发生（而它的单测照样全绿）。",
+    ).toContain("resolvePendingLocalLaunches");
+    // ② 🔴 **不许在这条路上开一个新的周期唤醒** —— 本项目有一条已交付的性质是
+    //    「判活不靠定时轮询（内核一有事就通知）」，回填在这里起表就是开倒车。
+    //    ⚠ 这一格钉的是**本仓这一处**，全仓的调度点由 `polling_registry` 那两条管。
+    expect(handler.slice(0, 800)).not.toContain("setInterval");
+    expect(handler.slice(0, 800)).not.toContain("setTimeout");
+  });
+
   it("★ 取值口只有一个（不许哪条路自己现算一个账号）", () => {
     // 三条主路走那个唯一取值口；fork 那条是**用户在小窗里显式选的**，
     // 它有自己的语义（选了账号 0 就要显式 `base`），所以不走这个口 —— 如实记，不强求。
