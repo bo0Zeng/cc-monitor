@@ -1,0 +1,134 @@
+# cc-monitor 开发测试沙箱
+#
+# 立于 2026-08-29，起因〔用 08-29〕逐字：「**以后所有开发测试都不允许直接在本机跑**」。
+#
+# 🔴 它要挡的是什么（写要挡的东西，不写理由 —— 定框 K31 的教训）：
+#    跑一次 `cargo test` 就会改这台机器的持久状态。已实证三次，最近一次是
+#    `the_local_daemon_can_be_stopped_and_started_again`（**普通 #[test]，不是 #[ignore]**）
+#    起真 daemon ⇒ daemon 无条件装三条**全局** tmux hook ⇒ 盖掉用户槽位 [50]。
+#
+# ⚠ 本镜像**不修那个缺陷**（那是 K-R7 的活）。它做的是：**让缺陷发作时伤不到这台机器**。
+#    两件事都要做 —— 容器是围栏，K-R7 是把野兽拴住。
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# ⚠ 这台机器的 DNS 被代理软件劫成 fake-IP（`archive.ubuntu.com` 解析到 198.18.0.18），
+#   容器默认网络够不着 ⇒ **构建时用 `--network host` 借宿主网络 + 走它的代理**。
+#   运行时反过来：`--network none`（`gate` 脚本的默认值，`DEVBOX_NET=host` 可覆盖）。
+#
+# ⚠⚠ **08-29 订正 —— 本行原文是假的**：先前逐字写着「运行时反过来：`--network none`，
+#    完全断网（**见 `gate` 脚本**）」，而当时 `gate` 里**一个 `--network` 参数都没有**。
+#    `K-H2b` 的 `D9` 逮到（它读了两份文件对账，没有靠跑）。
+#    ★ **同一天我裁了七八条「说了而没做」的病，然后在自己刚建的文件里犯了一次。**
+#    今天 `gate` 真的带 `--network "$NET"`（默认 `none`），并在首次运行时从宿主
+#    `~/.cargo/registry` **只读**播种 crates 缓存，好让断网跑得起来。
+ARG http_proxy=
+ARG https_proxy=
+ARG no_proxy=
+
+# ── 系统依赖 ────────────────────────────────────────────────────────────────
+# tauri 2 在 Linux 上链接 webkit2gtk-4.1 + gtk-3；缺了 `cargo test --lib` 连不起来。
+# 其余：git（门禁那道 generated 漂移用它）· python3（pb check）· 构建链。
+# 🔴 **`tmux` 是刻意装的**〔08-29 实测〕：daemon 门里
+#    `pidfd_watches_a_real_tmux_server_and_stays_silent_while_it_lives` 逐字要求
+#    「本测试要求环境有 tmux」。★ **而这正是沙箱该做的事** —— 那条测试要起一个**真 tmux server**，
+#    在容器里起是安全的（容器有自己的 tmux 生态，够不着用户那台机器上的）。
+# ⚠ 不单列 libjavascriptcoregtk-4.1-dev / libsoup-3.0-dev —— Ubuntu 24.04 上它们没有独立包，跟着 webkit2gtk 走。
+#
+# ⚠ **apt 走国内源，不走代理**（08-29 实测的两条读数）：
+#    ① 容器默认网络的 DNS 被劫成 fake-IP（三个国内源全「不通」）⇒ 必须 `--network host`；
+#    ② 走宿主代理下大包会 **502 Bad Gateway**（第一次构建就是这么挂的，
+#       死在 `gir1.2-harfbuzz`）⇒ 换阿里源，宿主网络下实测 OK 且**不需要代理**。
+RUN sed -i 's|http://archive.ubuntu.com|http://mirrors.aliyun.com|g; s|http://security.ubuntu.com|http://mirrors.aliyun.com|g' \
+      /etc/apt/sources.list.d/ubuntu.sources \
+ && printf 'Acquire::Retries "5";\nAcquire::http::Timeout "30";\n' > /etc/apt/apt.conf.d/99retries \
+ && http_proxy= https_proxy= apt-get update \
+ && http_proxy= https_proxy= apt-get install -y --no-install-recommends \
+      build-essential pkg-config curl ca-certificates git python3 \
+      libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev \
+      librsvg2-dev libssl-dev xz-utils \
+      tmux \
+      bc \
+    && rm -rf /var/lib/apt/lists/*
+# ⚠ `bc` 不是可选的〔K-R7 交回时逮到，PM 08-31 独立复核〕：
+#   `scripts/gate.sh:90` 的 cargo 门用 `… | paste -sd+ - | bc 2>/dev/null || echo 0` 求和。
+#   镜像里没有 `bc` ⇒ `n` **恒为 0** ⇒ 落进 `[ "$n" -eq 0 ]` 那一支 ⇒
+#   `fails+=("cargo（读数是 0 —— 0 passed 不是绿）")` ⇒ **沙箱里 `GATE: OK` 在构造上拿不到**，
+#   而同一趟实际是 8 包 1305 passed / 0 failed / 退出码 0。
+#   🔴 病灶是那个 `2>/dev/null`：**「求和器不在」与「真的一个测试都没跑」在输出面上一模一样** ——
+#   与 08-29 播种那一步被逮到的是同一个病，同一天同一个人换了个文件又犯一次。
+#   ⚠ 诚实边界：这里补的是**镜像**这一侧。`gate.sh` 那个吞掉失败的 `2>/dev/null` 仍在，
+#   换任何一台没有 `bc` 的机器还会复发 —— 那一格归 `K-G3`（门禁自己的洞），不在本轮射程里。
+
+# ── Node ────────────────────────────────────────────────────────────────────
+# 本机是 v22.22.1 / npm 9.2.0。这里锁 22 主版本；小版本漂移不影响门禁读数，
+# 真漂了 `npm test` 的数会变，而门禁是拿数对账的 ⇒ 会被逮到，不会静默。
+ARG NODE_VERSION=22.22.1
+RUN curl -fsSL "https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-linux-x64.tar.xz" \
+      -o /tmp/node.tar.xz \
+ && tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1 \
+ && rm /tmp/node.tar.xz \
+ && node --version && npm --version
+
+# ── 与宿主同 uid 的用户 ─────────────────────────────────────────────────────
+# 不这么做，容器里写出来的文件全归 root，宿主这边改不动。
+ARG UID=1000
+ARG GID=1000
+RUN (getent group $GID || groupadd -g $GID dev) \
+ && (getent passwd $UID || useradd -m -u $UID -g $GID -s /bin/bash dev) \
+ && mkdir -p /home/zbl && chown $UID:$GID /home/zbl
+USER $UID:$GID
+
+# ── Rust ────────────────────────────────────────────────────────────────────
+# 本机 rustc 1.96.1 —— 锁死。版本不一样，`cargo test` 的数就可能不一样，
+# 而整套门禁是拿数对账的。
+ARG RUST_VERSION=1.96.1
+ENV RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo
+ENV PATH=/opt/rust/cargo/bin:$PATH
+USER root
+RUN mkdir -p /opt/rust && chown $UID:$GID /opt/rust
+USER $UID:$GID
+# ⚠ **rustup 走官方源，但必须把代理清掉** —— 08-29 三条实测，逐条记（省得下次再试一遍）：
+#    ① 设了代理去 `sh.rustup.rs` ⇒ `SSL_ERROR_SYSCALL`（第二次构建死在这里）；
+#    ② 换阿里 / 清华的 rustup 镜像 ⇒ **两家都没有 1.96.1**（`404`，版本太新）；
+#    ③ **不设代理**去 `static.rust-lang.org` ⇒ **200**（宿主网络下直连得到）。
+#    ⇒ 与 apt 同一个治法：`--network host` + 那一步把 `http_proxy`/`https_proxy` 清空。
+RUN http_proxy= https_proxy= curl -fsSL https://sh.rustup.rs -o /tmp/rustup-init \
+ && chmod +x /tmp/rustup-init \
+ && http_proxy= https_proxy= /tmp/rustup-init -y \
+      --default-toolchain ${RUST_VERSION} --profile minimal --no-modify-path \
+ && rm /tmp/rustup-init \
+ && rustc --version && cargo --version
+
+# ── jq ──────────────────────────────────────────────────────────────────────
+# 🔴 **刻意放在最后一层**〔`K-G7`，09-03，PM 自己落 —— 本文件在**仓外**，写区闸放不进去，派不了人〕。
+#   第一版把 `jq` 加进上面那条系统依赖 `RUN` 里，**它后面所有层都要重建**（Node、用户、Rust 工具链），
+#   而那趟构建三次都没跑完（成因各不相同：① 容器默认网络 DNS 被劫 ⇒ 全部包「找不到」；
+#   ② 我自己的 `| tail -8` 把输出吞了；③ 后台任务随轮次结束被收掉）。
+#   ⇒ 单开一层，缓存只失效这一层。
+#
+# # 它买的是什么
+#
+# `e2e/ccm-cli.test.sh` 与 `e2e/ccm-contract-parity.sh` 硬依赖 `jq`，两套都是 **fail-closed**
+# （自己打「需要 jq」再 exit 1）⇒ 没有 `jq` 时它们**恒红**，所以一直没挂进门禁。
+# `scripts/gate.sh` 头注 09-01 在只多装 `jq` 的探针镜像上现打过：
+# `ccm-cli` **126 PASS/0 FAIL**、`ccm-contract-parity` **68 PASS/0 FAIL**，合计 **+12.8 秒**
+# （门禁基线墙钟 148 秒）。⇒ 加它买到的是「**ccm 真的把请求发给了 daemon**」那一跳的验收。
+#
+# 🔴 **只为那两套加**：`ccm-acceptance` / `ccm-pretrust` 在沙箱里**各红 1 条**
+# （`.claude/devbox/gate` 头注：「容器里 `HOME` 几乎是空的」）——那是另一笔账，**不许顺手挂**。
+USER root
+RUN http_proxy= https_proxy= apt-get update \
+ && http_proxy= https_proxy= apt-get install -y --no-install-recommends jq \
+ && rm -rf /var/lib/apt/lists/* \
+ && jq --version
+USER $UID:$GID
+
+# 门禁里 `pb check` 那一步硬写着 `$HOME/.claude-accts/z/skills/...`（scripts/gate.sh:161）——
+# 那条硬写路径是 K-G3 登记的洞之一。这里不改它，靠挂载把那个路径喂进来。
+ENV HOME=/home/zbl
+WORKDIR /home/zbl/文档/claudecode-frontend/cc-monitor
+
+CMD ["bash"]
