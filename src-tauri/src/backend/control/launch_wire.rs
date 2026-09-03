@@ -529,16 +529,42 @@ mod f07_main_path_tests {
             "`shared/ccm` 的生产段只剩 {} 行 —— 剥注释器把代码也剥了？下面那条会零命中地绿",
             ccm.lines().count()
         );
-        if guard_core::contains_word(&ccm, &word) {
-            hits.push("shared/ccm".to_string());
-        }
+        // ★★ 〔`K-P2` `D` 阶段第三拍 09-03〕**这一半本拍翻了面。**
+        //
+        // 它原来与 Rust 那棵树同判：「**两棵树都不许**出现 `create-or-attach`」。
+        // `K-P2` `D3` 把 `shared/ccm` 的 `--tmux` 接到了后端那条一次性口上
+        //（`launch_via_daemon` 发 `mode=create-or-attach`）⇒ **这一半当场红了，红得对**。
+        //
+        // ⇒ 翻成正向：`shared/ccm` 从「不许有」变成「**必须有**」。
+        // **别把它删掉**：删掉之后「起会话又退回本机 tmux 直起」就没有任何东西会说话。
+        //
+        // 🔴 **而本条的结论不变，理由要写清楚**（这正是那句 assert 文案要求「回来重裁」的事）：
+        // 三问的答案① 变了（起会话这一格 `shared/ccm` 已经切到 daemon），
+        // **但上面那两条依据是独立的、且都还成立** ——
+        // ① a：`remote-launch-run.ts` 的生产主路仍在调 `renderFallback(`；
+        // ① b：`launch-render-fallback.ts` 仍问 `SESSION_BACKEND.` 要外层 tmux 命令。
+        // 那两条说的是 **monitor 自己那条 `↗` 路**（TS 渲染 → `ssh -t bash -lic '<串>'`），
+        // 它与「ccm 在远端自己起会话时问不问 daemon」**是两条路，别压成一句**。
+        // 再加上 `the_daemonless_remote_still_needs_the_ts_fallback_renderer` 那条**硬**障碍
+        // （daemonless 主机今天仍是产品提供的开关）⇒ **删 TS 渲染器的前置仍然不成立。**
+        // ⚠ 而 **Rust 那棵树仍然必须是零** —— monitor 侧那条 `.call("launch")` 至今只发
+        //   `send-into` / `send-keys-raw`（`daemon_launch::the_only_mode_this_channel_can_speak_is_send_into`
+        //   钉着它）。**两棵树本拍起口径不同，这不是疏漏，是两件不同的事。**
         assert!(
             hits.is_empty(),
-            "生产段开始发 `create-or-attach` 了（{hits:?}）—— **这多半是好事**：\n\
-             「起会话」那格可能切到 daemon 了 ⇒ `INVARIANTS §33b` 三问的答案① 又变了，\n\
+            "**Rust 生产段**开始发 `create-or-attach` 了（{hits:?}）—— **这多半是好事**：\n\
+             monitor 侧「起会话」那格可能也切到 daemon 了 ⇒ `INVARIANTS §33b` 三问的答案① 又变了，\n\
              回 F07/U8c-3 重裁「删 TS 渲染器」的前置。\n\
-             ⚠ 命中 `shared/ccm` 时同轮还要回 `K-P2`：`KP2A②` 的棘轮要抬、\n\
-             `KP2C` 的退路要登记、`KP2D` 的通道 A/B 冲突必须已经解掉。"
+             ⚠ 同轮还要回 `K-P2`：`KP2A②` 的棘轮要抬、`KP2C` 的退路要登记、\n\
+             `KP2D` 的通道 A/B 冲突必须已经解掉。\n\
+             ⚠ `shared/ccm` **不在本断言的人群里**（它在下面单判，`K-P2` `D3` 已经切过去了）。"
+        );
+        assert!(
+            guard_core::contains_word(&ccm, &word),
+            "`shared/ccm` 的生产段**不再发** `create-or-attach` 了 —— 起会话退回本机 tmux 直起？\n\
+             `K-P2` `D3`（09-03）把它接到了后端那条一次性口上（`launch_via_daemon`）。\n\
+             ⇒ 真要退回来，请连同 `ccm_cli_contract::BACKEND_BACKED_PATHS` 的登记、\n\
+             那条 2→3 的棘轮、与 e2e `WIRE/launch` 一节一起撤，并回 `K-P2` 说明为什么。"
         );
     }
 
