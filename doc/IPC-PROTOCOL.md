@@ -448,8 +448,8 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 
 **★ 两条时序 / 线程约束，两侧都做成了「不可表示」——不是机检，更不是注释：**
 
-> ⚠ 本节此前指名了两条机检（`hello_is_flushed_before_the_inbound_reader_starts` /
-> `handlers_never_run_on_the_reader_task`）。**它们在 U6b-3 已经被删掉了** ——
+> ⚠ 本节此前指名了两条机检（`hello_is_flushed_before_the_inbound_reader_starts`〔散文墓碑〕 /
+> `handlers_never_run_on_the_reader_task`〔散文墓碑〕）。**它们在 U6b-3 已经被删掉了** ——
 > 因为 D 审计用普通写法把两条都绕过去了，处置是「让违规不可表示」而不是往判据上加正则。
 > 文档没跟上，指着两个不存在的测试名。U8a-2a 订正。
 
@@ -484,7 +484,12 @@ daemon 侧刻意**不管**这些 —— 零定时器铁律不改，超时一律�
 （`the_e2e_ping_line_is_exactly_what_the_encoder_produces`），否则那套件只是在验证一个
 monitor 永远不会发的形状。
 
-**今天有三条命令**：`ping` / `cancel`（骨架验收用）+ **`resolve`**（第一条真业务命令，见下），它们随 `hello` 的 `commands` 字段上线 —— 那是与分派表**同一份真相源**（`hello_commands_match_the_dispatch_table` 钉住：声明了却不接 ⇒ 客户端发过去石沉大海；接了却不声明 ⇒ 客户端不知道能用）。真业务命令从 `--resolve` 吸收开始。
+**今天有三条命令**：`ping` / `cancel`（骨架验收用）+ **`resolve`**（第一条真业务命令，见下），它们随 `hello` 的 `commands` 字段上线 —— 那是与分派表**同一份真相源**（`inbound.rs::the_commands_mirror_matches_the_registry` 钉住：声明了却不接 ⇒ 客户端发过去石沉大海；接了却不声明 ⇒ 客户端不知道能用）。真业务命令从 `--resolve` 吸收开始。
+
+> ⚠ 〔`K-R20` 订正 09-03〕上面那句原先点的是 `hello_commands_match_the_dispatch_table`〔散文墓碑〕——
+> **那个名字全仓零定义**（`U8a-2d` 把「扫 `dispatch` 分派臂文本」换成了「`COMMANDS` 对 `REGISTRY` 数据对数据」
+> 的时候换掉的），而这句话一直**当现状在说**。同一个已删名今天在 `inbound.rs` 里也有一处
+> 当现状说的（PM 09-03 自己收了）与一处自陈「上一版是 …」的 —— **一份文件里一处当现状、一处说是历史**。
 
 #### `bus-list`：谁在线 + 各自待读多少（P4f，第一条 cc-bus 命令）
 
