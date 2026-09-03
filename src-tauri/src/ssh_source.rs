@@ -1251,9 +1251,13 @@ mod stream_flag_gate_tests {
         assert!(up((true, false), (false, true)), "swap：新开 tail 该升级");
     }
 
-    /// F66：确认 `EMBEDDED_DAEMON_CAPABILITIES` 的 build.rs 单源管道真的通（非空、含当前
+    /// F66：确认 `build.rs::emit_daemon_capabilities` 那条单源管道真的通（非空、含当前
     /// token）——否则乐观路径静默退化成「第一轮降级 + hello 自愈」（仍正确，只慢一轮）。
     /// 用 `contains` 而非精确相等：daemon 将来加 token 时本测试仍过，不误红。
+    ///
+    /// 〔`K-R19` 订正 09-03〕这一句原先点的是 `EMBEDDED_DAEMON_CAPABILITIES`，**全仓零定义**
+    /// ——管道上三个真名依次是：`build.rs::emit_daemon_capabilities` → 编译期 env
+    /// `DAEMON_CAPABILITIES` → `ssh_source.rs::embedded_daemon_capabilities`。
     #[test]
     fn embedded_capabilities_single_source_wired() {
         let caps = super::embedded_daemon_capabilities();
@@ -1423,7 +1427,13 @@ fn tmux_raw_registry() -> &'static std::sync::Mutex<std::collections::HashMap<St
 ///
 /// `origin` 的取值域**只有两类**：远端的 `host_label`/`origin_label`，
 /// 或本机的 [`crate::inbound_client::LOCAL_ORIGIN`]。
-/// 由 `the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache` 钉住。
+/// 由 `ssh_source.rs::the_tmux_cache_has_one_writer_and_only_origin_keys` 钉住。
+///
+/// 〔`K-R19` 订正 09-03〕这一句原先点的是
+/// `the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache`。
+/// 那个名字**本文件里那条判据自己的 `///` 就写着「名字换过一次」**（原名今天主动误导：
+/// 本地 sid 已经进表了），而这一句仍**当成现状在说**——同一份文件里两句话互相矛盾。
+/// ⚠ 它之所以没人管：`K-R17` 的 ㈠ 只收 `文件.rs::符号` 形，**裸 `符号` 形不进人群**。
 pub(crate) fn record_tmux_raw(origin: &str, raw: String) {
     // ⚠ **中毒也要拿到锁**〔D 阶段补审 08-11 修，B3〕。
     //
@@ -1471,7 +1481,9 @@ pub fn snapshot_tmux_by_origin() -> std::collections::HashMap<String, String> {
 /// ① **中毒也要拿到锁**。写入口 `record_tmux_raw` 早就是 `unwrap_or_else(|e| e.into_inner())`
 ///    （B3 那条：它跑在本机消费者那条没有 `catch_unwind` 的裸线程上，一次中毒 panic
 ///    会滚成「全绿的死锁态」）。而这个读口若还是 `.unwrap()`，中毒之后
-///    `local_tmux_names` 就变成必 panic 的 tauri 命令 —— 等于把写侧刚补好的那道又从读侧漏掉。
+///    `tmux.rs::list_local_tmux` 就变成必 panic 的 tauri 命令 —— 等于把写侧刚补好的那道又从读侧漏掉。
+///    〔`K-R19` 订正 09-03〕这里原先写的是 `local_tmux_names`，**全仓零定义**：
+///    真名从来就是 `list_local_tmux`（`lib.rs` 的注册表与 `commands.ts` 的包装层都是这个）。
 /// ② **不克隆整张表**。调用方只要本机那一份，`snapshot_tmux_by_origin` 会把所有 origin 的
 ///    `tmux ls` 原文全拷一遍；那是每次本机 resume 都白付一次的钱。
 pub(crate) fn tmux_raw_for(origin: &str) -> Option<String> {
@@ -2782,7 +2794,11 @@ mod emits_parity {
     /// ★ `KNOWN_FRAME_KINDS` 必须与 `parse_frame` 的 match 臂**完全一致**。
     ///
     /// 两份名单必然漂移 —— 这条让它们只能是同一份（同 daemon 侧
-    /// `hello_commands_match_the_dispatch_table` 的思路）。
+    /// `inbound.rs::the_commands_mirror_matches_the_registry` 的思路）。
+    ///
+    /// 〔`K-R19` 订正 09-03〕这一句原先点的是 `hello_commands_match_the_dispatch_table`，
+    /// **全仓零定义**——那是 daemon 侧那条判据的**上一版**名字（`U8a-2d` 换掉的），
+    /// 而这一句仍当成现状在说。
     #[test]
     fn known_kinds_matches_parse_frame() {
         let src = include_str!("ssh_source.rs");
