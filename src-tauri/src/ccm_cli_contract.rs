@@ -145,8 +145,9 @@ pub(crate) fn pin_t_def(script: &str) -> Result<(), String> {
 /// 那正是本模块头注自己点名的「固定 needle 是空转的」在**读数层**的复发。
 ///
 /// ⇒ 两个 `contains` 字段先过 `guard_core::strip_hash_comment_lines`
-/// —— 那是仓里给 `.sh` 用的**那一份**剥注释器（`plugin_class_registry.rs:257/298`
-/// 读的就是同一份 `shared/ccm`），**不另发明第二份**（`structural_scan` 的登记表禁的正是这个）。
+/// —— 那是仓里给 `.sh` 用的**那一份**剥注释器（`plugin_class_registry.rs::ccm_agent_arms`
+/// 与 `plugin_class_registry.rs::ccm_probe_values` 读的就是同一份 `shared/ccm`），
+/// **不另发明第二份**（`structural_scan` 的登记表禁的正是这个）。
 ///
 /// 现打（08-29，`shared/ccm` 1258 行 → 生产段 536 行）：11 条 needle **逐条**在生产段仍有命中
 /// （最少的一条是 `@ccm_agent`，1 次），两条通道 A 字面量也都在
@@ -1414,7 +1415,8 @@ mod tests {
     /// ⇒ 这里加两样：**靶子自检**（两条字面量各恰好一处）＋ **成对判**
     /// （ccm 一旦开始发 `create-or-attach`，daemon 那侧的裸 `@ccm_sid` 必须已经归零）。
     ///
-    /// ⚠ **本条不改 daemon 的行为**：`launch.rs:292` 写裸 `@ccm_sid` 这件事该由谁改，
+    /// ⚠ **本条不改 daemon 的行为**：`control/launch.rs::run` 的 `Mode::CreateOrAttach` 臂里
+    /// 写裸 `@ccm_sid` 这件事该由谁改，
     /// 件计划 `§4` 第 4 条逐字「**本件不自裁**」（改它会动到 `K-P5` 的地面）。
     /// 本条只做一件事：**把那个冲突钉成机器看得见的**，并让它在接线那一拍变成硬闸。
     #[test]
