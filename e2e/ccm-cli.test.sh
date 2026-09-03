@@ -1458,11 +1458,12 @@ WL() { # WL <daemon 路径或 -> [额外 ccm 参数…]：真跑 `--tmux` 的 ex
                  WIRE_SPOOL="$WTMP/spool" "${WL_EXTRA_ENV[@]}")
   [ "$d" != - ] && envs+=(CCM_DAEMON_BIN="$d")
   env -i PATH="$WTMP/bin:/usr/bin:/bin" "${envs[@]}" \
-      bash "$CCM" new --tmux=wire-d3 --cwd "$WTMP/cwd" --detach --tmux-size 220x50 "$@" \
+      bash "$CCM" new --tmux=wire-d3 --cwd "$WTMP/cwd" --detach "${WL_SIZE[@]}" "$@" \
       > "$WTMP/out" 2> "$WTMP/err"
   WL_RC=$?
 }
 WL_EXTRA_ENV=()
+WL_SIZE=(--tmux-size 220x50)
 WTMUXLOG() { [ -f "$WTMP/spool/tmux.log" ] && cat "$WTMP/spool/tmux.log"; }
 WERR()     { cat "$WTMP/err"; }
 # 本机那条 `send-keys` 打出去的**载荷原文**（shim 用 `"$*"`，shell 引号已被 bash 解析掉）。
@@ -1518,6 +1519,16 @@ ck "WIRE/launch/发对了④ · \`@ccm_agent\` 没被吃掉：线上真有 agent
    "claude" "$(WSTDIN | jq -r .agent)"
 ck "WIRE/launch/发对了⑤ · mode 逐字是 create-or-attach（不是 send-into —— 那条不许新建会话）" \
    "create-or-attach" "$(WSTDIN | jq -r .mode)"
+
+# ── 族二·补一格：**不给 `--tmux-size` 那条才是缺省人群**（上面每一趟都给了 220x50）────
+# ⚠ daemon 侧 `width`/`height` 是「**两个一起给或都不给**」；`ccm` 这侧「都不给」是**缺省**
+#   （`--tmux-size` 是可选修饰）。少了这一格，「都不给」那条分支在本套件里一次都没走过。
+WL_SIZE=()
+WL "$WTMP/bin/kd-launch"
+ck "WIRE/launch/缺省尺寸① · 不给 --tmux-size ⇒ 请求体里**没有** width/height（不是空串、不是 0）" \
+   "null null" "$(WSTDIN | jq -r '(.width|tostring) + " " + (.height|tostring)')"
+ck "WIRE/launch/缺省尺寸② · 而这一趟照样发得出去（①不是靠「整条没发」凑出来的）" "1" "$(WCALLS)"
+WL_SIZE=(--tmux-size 220x50)
 
 # ── 族二·下半：**编码器**在这条路上也得对 —— 拿会咬人的 `cwd` 喂，`jq -Rs .` 当预言机 ──
 # ⚠ 上面那条手算期望用的是一个「干净」的 cwd（mktemp 路径）⇒ 它证不了编码。
