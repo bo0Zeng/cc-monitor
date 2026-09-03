@@ -13,5 +13,31 @@ export type SessionAccount = { pid: number, sessionId: string | null, cwd: strin
 account: string | null, 
 /**
  * 进程活着但没设 `CLAUDE_CONFIG_DIR`（迁移后不该出现）。
+ *
+ * 🔴 **它的语义钉死在 `CLAUDE_CONFIG_DIR` 这一个变量上**〔`K-P5f` `KP5FD4`〕：
+ * `K-P5f` 给出参加了第二个环境变量（[`Self::launch_id`]），而这个布尔**没有**
+ * 跟着拓宽 —— 「没设 `CCM_LAUNCH_ID`」不进这一格，那由 `launch_id: None` 自己表达。
+ * 让一个布尔同时表示两个变量的缺席，正是「一个值装了两件事」那族病。
  */
-bare: boolean, alive: boolean, };
+bare: boolean, alive: boolean, 
+/**
+ * `K-P5f`：起会话方铸进这条会话进程环境的**身份 token**（`CCM_LAUNCH_ID`）。
+ *
+ * `None` = **不作数**，四种原因合并成一个 `None`（**不猜**，同 [`Self::account`]）：
+ * ① 进程没设它；② 值的形状过不了白名单；③ 它同时落在别的活会话上
+ * （继承来的，判不出谁是原主）；④ 进程已死（不读它的 environ）。
+ *
+ * ⚠ **additive**：老 daemon 的出参里**没有这个键**，缺了必须读成 `None`，
+ * **不许把老 daemon 判成坏行**（那会让整条会话账号映射消失，症状是徽章整片没了，
+ * 而没有任何地方说得出为什么）。判据 = `session_account_row_parses` 里那条
+ * **逐字节没有 `launchId` 键**的老 daemon 金样行。
+ *
+ * 🔴 **`#[serde(default)]` 在这一格上不是承重的，写清楚免得后人误读**〔`K-P5f` 第二拍死值验现打〕：
+ * 把它删掉，上面那条金样行**照样绿**（serde 的 derive 对 `Option<T>` 本来就把
+ * 「键缺席」当 `None`）。真正会翻掉 additive 的那一刀是**加一个非 `Option`、
+ * 又没有 `default` 的字段** —— 实打过：临时加一个 `pub probe_required: bool`，
+ * 两条金样当场红（`missing field \`probeRequired\``）。
+ * ⇒ 这个属性留着是**声明意图**（与同结构体里 `bare` / `alive` 那两个 `bool` 一致），
+ * 不是那条 additive 判据的牙。
+ */
+launchId: string | null, };
