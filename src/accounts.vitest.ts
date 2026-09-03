@@ -41,6 +41,14 @@ import {
   localRelayStateFor,
   accountLoginActionLabel,
   restartLocateFailureMessage,
+  sidOfLaunch,
+  rememberLocalLaunch,
+  resolvePendingLocalLaunches,
+  __resetPendingLocalLaunchesForTests,
+  __pendingLocalLaunchCountForTests,
+  PENDING_LAUNCH_TTL_MS,
+  PENDING_LAUNCH_MAX_ASKS,
+  PENDING_LAUNCH_CAP,
   type AccountsState,
   type Account,
   type SessionAccount,
@@ -1236,5 +1244,205 @@ describe("K-P5g：换号重启定位不到 tmux 时，用身份 token 决定说�
     const m = restartLocateFailureMessage(row({ launchId: TOKEN }));
     expect(m.body).toContain("带着本工具铸的身份标记");
     expect(m.body).not.toContain("一定是本工具");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-P5h` `KP5HD2`：**拿身份 token 回填新会话的 sid**
+//
+// ★★ 本组与上面 `K-P5g` 那组的分工：那组买的是「拿 token 分了一次岔」，
+//    本组买的是「**拿 token 说出了一个它自己里面没有的 sid**」——
+//    输入里 token 与 sid 是两个独立的格，输出必须是**那一条**的 sid，
+//    而不是「第一条」「唯一一条」或任何与 token 无关的东西。
+// ⚠ **人群只算「新开」那一支**：`K-P5g` 已现打 resume 那一支会退化成布尔谓词
+//   （token 就是 sid ⇒ 答案要么是它自己要么 `null`），本组一格都不为它写。
+// ═══════════════════════════════════════════════════════════════════════════
+describe("K-P5h：用身份 token 反查新会话的 sid（sidOfLaunch）", () => {
+  const T1 = "0198f0d2-1111-4222-8333-444455556666";
+  const T2 = "0198f0d2-2222-4222-8333-444455556666";
+  const r = (over: Partial<SessionAccount> = {}): SessionAccount => ({
+    pid: 4242,
+    sessionId: "s1",
+    cwd: "/w",
+    configDir: null,
+    account: null,
+    bare: true,
+    alive: true,
+    launchId: null,
+    ...over,
+  });
+
+  it("★★ 正题（判别格）：两条行只差 `launchId`，答案跟着 token 走，不跟着位置走", () => {
+    // ⚠ 两条行**逐字节只差 `sessionId` 与 `launchId`**（同一个 `r()` 基座）⇒
+    //   下面两条不同的答案只可能由 token 那一格造成。
+    const rows = [r({ sessionId: "sid-A", launchId: T1 }), r({ sessionId: "sid-B", launchId: T2 })];
+    expect(sidOfLaunch(rows, T1)).toBe("sid-A");
+    // 🔴 **死值验就钉在这一行**：把 `sidOfLaunch` 改成回一个常量（比如恒回
+    //    `rows[0].sessionId`），上面那条照样绿、这一条当场红。
+    expect(sidOfLaunch(rows, T2)).toBe("sid-B");
+  });
+
+  it("查不到就说查不到（fail closed）：没有行带这个 token ⇒ null", () => {
+    expect(sidOfLaunch([r({ sessionId: "sid-A", launchId: T1 })], T2)).toBeNull();
+    expect(sidOfLaunch([], T1)).toBeNull();
+    expect(sidOfLaunch(null, T1)).toBeNull();
+  });
+
+  it("空 token 不是通配符：空串 / null / undefined 一律 null（**不许**匹配没设身份的行）", () => {
+    const rows = [r({ sessionId: "sid-A", launchId: null }), r({ sessionId: "sid-B", launchId: "" })];
+    // 反空真：这批行里**真的有** `launchId` 为空的行 —— 「空 token 匹配空 launchId」
+    // 那种写法会在这里答出 `sid-A`，而那意味着「一次没铸出 token 的拉起」
+    // 会把第一条没设身份的会话认成自己刚起的那条。
+    expect(sidOfLaunch(rows, "")).toBeNull();
+    expect(sidOfLaunch(rows, null)).toBeNull();
+    expect(sidOfLaunch(rows, undefined)).toBeNull();
+  });
+
+  it("死进程的行不作数：`alive:false` 上的 token 一律不参与", () => {
+    // 非空对照排前：同一条行 `alive:true` 时确实答得出来（尺子不是恒 null）。
+    expect(sidOfLaunch([r({ sessionId: "sid-A", launchId: T1 })], T1)).toBe("sid-A");
+    expect(sidOfLaunch([r({ sessionId: "sid-A", launchId: T1, alive: false })], T1)).toBeNull();
+  });
+
+  it("认得出进程、说不出会话（`sessionId` 缺席）⇒ null，不猜", () => {
+    expect(sidOfLaunch([r({ sessionId: null, launchId: T1 })], T1)).toBeNull();
+  });
+
+  it("★ 同一个 token 落在一条以上活会话上 ⇒ null（继承值，判不出谁是原主）", () => {
+    // daemon 侧本来就会把这种涉事的行全置 `null`，但这一格**不靠上游守**。
+    const rows = [r({ sessionId: "sid-A", launchId: T1 }), r({ sessionId: "sid-B", launchId: T1 })];
+    expect(sidOfLaunch(rows, T1)).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-P5h` `KP5HD2` / `KP5HD3`：**待回填表** —— 起会话方终于把 pin 写得出来
+// ═══════════════════════════════════════════════════════════════════════════
+describe("K-P5h：新会话的账号 pin 靠 token 回填（等多久 / 问几次 / 问不到怎么办）", () => {
+  const T1 = "0198f0d2-1111-4222-8333-444455556666";
+  const T2 = "0198f0d2-2222-4222-8333-444455556666";
+  const row = (sid: string, token: string): SessionAccount => ({
+    pid: 42,
+    sessionId: sid,
+    cwd: "/w",
+    configDir: null,
+    account: null,
+    bare: false,
+    alive: true,
+    launchId: token,
+  });
+  /** 让 `list_local_session_accounts` 答这批行；别的命令一律记账后回 undefined。 */
+  const answerRows = (rows: SessionAccount[], available = true): void => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_local_session_accounts") {
+        return Promise.resolve({ available, error: null, sessions: rows });
+      }
+      return Promise.resolve(undefined);
+    });
+  };
+  /** 本轮里往 pin 写过的 `(sid, account)`。 */
+  const pinned = (): Array<[string, string]> =>
+    invokeMock.mock.calls
+      .filter((c) => c[0] === "update_history_metadata")
+      .map((c) => {
+        const a = c[1] as { sessionId: string; patch: { lastAccount: string } };
+        return [a.sessionId, a.patch.lastAccount] as [string, string];
+      });
+
+  beforeEach(() => {
+    __resetPendingLocalLaunchesForTests();
+    invokeMock.mockReset();
+  });
+
+  it("★★ 正题：起会话时没有 sid，会话跑起来之后 pin 被补写到**那一条**上", async () => {
+    // 这一刻起会话方手上只有 token（`K-P5 §3 三`：起新会话时没有一处知道 sid）。
+    rememberLocalLaunch(T1, "acct-a");
+    // 会话真的跑起来了 —— `--session-accounts` 里出现两条，只有一条带我们的 token。
+    answerRows([row("sid-other", T2), row("sid-mine", T1)]);
+    await resolvePendingLocalLaunches();
+    // 🔴 **判别格**：pin 落在 `sid-mine` 上，不是「第一条」也不是「唯一一条」。
+    expect(pinned()).toEqual([["sid-mine", "acct-a"]]);
+    // 命中即出表 —— 同一条不会被回填第二次。
+    expect(__pendingLocalLaunchCountForTests()).toBe(0);
+  });
+
+  it("★ 两条待回填各认各的 token（不是「谁先来谁拿」）", async () => {
+    rememberLocalLaunch(T1, "acct-a");
+    rememberLocalLaunch(T2, "acct-b");
+    answerRows([row("sid-B", T2), row("sid-A", T1)]);
+    await resolvePendingLocalLaunches();
+    expect(pinned().sort()).toEqual([
+      ["sid-A", "acct-a"],
+      ["sid-B", "acct-b"],
+    ]);
+  });
+
+  it("问不到怎么办：**什么都不做，也不猜** —— 待办留着等下一次事件", async () => {
+    rememberLocalLaunch(T1, "acct-a");
+    answerRows([row("sid-other", T2)]);
+    await resolvePendingLocalLaunches();
+    // 🔴 一条 pin 都不许写 —— 回落到「拿当前账号顶上」正是 `#75` 那个病灶的形状。
+    expect(pinned()).toEqual([]);
+    expect(__pendingLocalLaunchCountForTests()).toBe(1);
+    // 下一次事件到达时命中 ⇒ 「留着等」是真的在等，不是留了个死条目。
+    answerRows([row("sid-mine", T1)]);
+    await resolvePendingLocalLaunches();
+    expect(pinned()).toEqual([["sid-mine", "acct-a"]]);
+  });
+
+  it("后端答不出（`available:false`，Windows 那一格）⇒ 静默作废，不写 pin", async () => {
+    rememberLocalLaunch(T1, "acct-a");
+    // ⚠ 行里**确实有**那条会话 —— 但 `available:false` 意味着这批行不作数。
+    answerRows([row("sid-mine", T1)], false);
+    await resolvePendingLocalLaunches();
+    expect(pinned()).toEqual([]);
+  });
+
+  it("查询整个抛错也不许把主路弄崩（回填是补记账，不是关键路径）", async () => {
+    rememberLocalLaunch(T1, "acct-a");
+    invokeMock.mockRejectedValue(new Error("sidecar 不在"));
+    await expect(resolvePendingLocalLaunches()).resolves.toBeUndefined();
+    expect(pinned()).toEqual([]);
+  });
+
+  it("🔴 `KP5HD3` 问几次：上限 PENDING_LAUNCH_MAX_ASKS 次，用完就丢（不许无限问）", async () => {
+    rememberLocalLaunch(T1, "acct-a");
+    answerRows([row("sid-other", T2)]);
+    for (let i = 0; i < PENDING_LAUNCH_MAX_ASKS; i++) await resolvePendingLocalLaunches();
+    expect(__pendingLocalLaunchCountForTests()).toBe(0);
+    // 用完之后再来多少次事件都不再发查询 —— 上限不是「问慢一点」，是**真的停**。
+    const before = invokeMock.mock.calls.length;
+    await resolvePendingLocalLaunches();
+    await resolvePendingLocalLaunches();
+    expect(invokeMock.mock.calls.length).toBe(before);
+  });
+
+  it("🔴 `KP5HD3` 等多久：过了 PENDING_LAUNCH_TTL_MS 就不再问（惰性判定，无定时器）", async () => {
+    const t0 = 1_000_000;
+    rememberLocalLaunch(T1, "acct-a", t0);
+    answerRows([row("sid-mine", T1)]);
+    // 过期之后即使那条会话真的出现了，也不再回填 —— 「过一会儿再问」是有尽头的。
+    await resolvePendingLocalLaunches(t0 + PENDING_LAUNCH_TTL_MS + 1);
+    expect(pinned()).toEqual([]);
+    expect(__pendingLocalLaunchCountForTests()).toBe(0);
+    // 非空对照：同一批输入，在 TTL 之内是命中的（上面那条不是恒不命中）。
+    rememberLocalLaunch(T1, "acct-a", t0);
+    await resolvePendingLocalLaunches(t0 + PENDING_LAUNCH_TTL_MS - 1);
+    expect(pinned()).toEqual([["sid-mine", "acct-a"]]);
+  });
+
+  it("同时挂着的待回填有上限（超了丢最老的，不是丢最新的）", () => {
+    for (let i = 0; i < PENDING_LAUNCH_CAP + 3; i++) rememberLocalLaunch(`tok-${i}`, "acct-a");
+    expect(__pendingLocalLaunchCountForTests()).toBe(PENDING_LAUNCH_CAP);
+  });
+
+  it("账号说不出就不挂待办（挂一条什么都不做的待办只会白发 IPC）", async () => {
+    rememberLocalLaunch(T1, null);
+    rememberLocalLaunch(null, "acct-a");
+    rememberLocalLaunch("", "acct-a");
+    expect(__pendingLocalLaunchCountForTests()).toBe(0);
+    await resolvePendingLocalLaunches();
+    // 表空 ⇒ 一次查询都不发（`resolve` 的第一件事就是空表早返）。
+    expect(invokeMock.mock.calls.length).toBe(0);
   });
 });
