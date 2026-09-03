@@ -1691,7 +1691,12 @@ fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
 ///
 /// ⇒ 这条命令**只收 `configDir`，由 Rust 推 id**。收 `name`、或让 TS 自己
 /// `split('/').pop()`，都是在长出**第二份**规则，而那正是 `KH2C1` 红字禁的那件事
-/// （前端那一侧由 `the_ui_never_derives_the_account_id_itself` 机检钉着）。
+/// （前端那一侧由 `src/settings/accounts-section.vitest.ts` 里那条机检钉着 ——
+/// 标题以「KH2C1 机检：前端一个字都不推账号 id」打头的那个 `it`，
+/// 它扫整份 `accounts-section.ts` 找「自己从路径取末段名」的四种写法）。
+/// ⚠ 〔`K-R20` 订正 09-03〕原先点的是
+/// `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕，**那个名字全仓零定义**，
+/// 而这句话是当现状在说。
 #[tauri::command]
 fn write_relay_credentials_key(key: String, config_dir: String) -> Result<(), String> {
     creds_store::write_key(&config_dir, &key)
