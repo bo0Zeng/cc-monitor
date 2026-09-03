@@ -1242,5 +1242,183 @@ ck "JSONENC/接线 · 含制表符的 sid 变成短名 \\t（旧模板会塞一�
    "$(case "$(ccm resume "$(printf 'a\tb')" --cwd /p --print)" in *"$J_TABEXP"*) printf yes ;; *) printf no ;; esac)"
 
 echo
+echo "===== WIRE：真发请求那一半（K-P2 D 阶段第二拍，09-03）====="
+# ★★ **这一节买的那句话**：
+#     「**ccm 真的把请求发给了 daemon，而且发出去的就是它该发的那个 JSON**」。
+#
+#   上面 `JSONENC/接线` 那三条只走 `--print`，看的是**配方文本** ——
+#   文本里有那个 JSON，**不等于那些字节真的上了线**（`--print` 根本不发请求）。
+#   这一节把**真 exec 路**（`shared/ccm` 的 `resolve_from_daemon`）跑起来，
+#   看的是**落到 daemon stdin 上的那一份字节**。
+#
+# ★★ **判据分两族，而且它们必须分得开** ——
+#   · 「**发了**」= 有个进程被调用了（`calls` 有一行、argv 是 `--resolve`）。
+#     ⚠ 这一族**很弱**：随便发什么字节它都成立，连发个空串也成立。
+#   · 「**发对了**」= 落盘的那份 stdin **逐字节**等于它该发的那个 JSON。
+#   ⇒ 下面 `WIRE/分得开` 那四条是这两族的**成对自检**：在一份「只把落盘那份 stdin
+#     改掉一个字节」的假 daemon 底下，「发了」两条**照样绿**、「发对了」**当场分歧**。
+#     **少了那四条，「发了」那族看起来像在测接线，其实什么都没测。**
+#
+# ★ **用现成的桩，不发明第二套**：这份假 daemon 与本文件既有的 `mk_kd` / `mk_mirror_daemon`
+#   同形（`cat > 落点` + `chmod +x` + 记账），只多做一件事：**把 stdin 原样落盘**。
+#   ⇒ **不需要真 daemon、不需要真 tmux、不起真 agent**：daemon 回一帧
+#     `{"command":"echo <标记>"}`，ccm 那句 `exec $_ccm_c` 就 exec 了 `echo`。
+#
+# ⚠ **不在 tmux 里跑是刻意的，也是这条路走得通的前提**：`shared/ccm` 里 `agent_has_identity`
+#   那段在 `$TMUX` **未设**时只往 stderr 说一句、**不拦**（设了才 `die`）。
+#   `env -i` 已把 `TMUX` 摘掉 ⇒ 本节**一条 tmux 命令都不起**。
+#
+# ⚠ **本节的射程，写出来别读大了**：它证的是「ccm 这一侧把那串字节交给了那个二进制」。
+#   **daemon 那一侧收不收、`check_field` 拒不拒**（`control/launch.rs` 对含控制字符的字段
+#   是拒收的）**本节一个字都没测** —— 红线禁起真 daemon。件文件 `§18` 逐条登记。
+WTMP="$(mktemp -d)"
+mkdir -p "$WTMP/bin" "$WTMP/spool" "$WTMP/cwd"
+
+# 落盘式假 daemon：记一次调用 ＋ 记 argv ＋ **把 stdin 原样落盘**，然后回一帧。
+# 第 4 个参数是「落盘前先过一道」的过滤器（默认 `cat` = 原样）——`WIRE/分得开` 那份用它改一个字节。
+mk_wire_daemon() { # mk_wire_daemon <落点> <spool 目录> <回帧里的 command 串> [落盘过滤器]
+  cat > "$1" <<EOF
+#!/bin/sh
+echo call >> "$2/calls"
+printf '%s\n' "\$*" >> "$2/argv"
+${4:-cat} > "$2/stdin.bin"
+printf '{"command":"$3"}\n'
+exit 0
+EOF
+  chmod +x "$1"
+}
+mk_wire_daemon "$WTMP/bin/daemon" "$WTMP/spool" 'echo WIRE_EXEC_OK'
+# 首字节 `{` 换成 `[` —— **恰好一个字节**（下面用到的 sid 里一个 `{` 都没有）。
+mk_wire_daemon "$WTMP/bin/daemon-corrupt" "$WTMP/spool" 'echo WIRE_EXEC_OK' "tr '{' '['"
+# 本地兜底那条要 `exec claude` ⇒ **必须给个 shim**，否则拿不到 daemon 时会去摸这台机器上真的那个。
+cat > "$WTMP/bin/claude" <<'WSHIM'
+#!/bin/sh
+printf 'WIRE_LOCAL %s\n' "$*"
+WSHIM
+chmod +x "$WTMP/bin/claude"
+
+W() { # W <daemon 路径或 -> <sid>：**真跑 exec 路**（不是 --print）；stdout→out、stderr→err
+  local d="$1" sid="$2"
+  rm -rf "$WTMP/spool"; mkdir -p "$WTMP/spool"
+  local -a envs=(HOME="$WTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent
+                 CCM_ACCTS_MANIFEST=/nonexistent)
+  [ "$d" != - ] && envs+=(CCM_DAEMON_BIN="$d")
+  env -i PATH="$WTMP/bin:/usr/bin:/bin" "${envs[@]}" \
+      bash "$CCM" resume "$sid" --cwd "$WTMP/cwd" > "$WTMP/out" 2> "$WTMP/err"
+}
+# ⚠ 文件不在时的分支**用 `-f` 先判，不靠 `2>/dev/null`**：`< 不存在的文件` 是**外层 shell**
+#   在起 `wc` 之前就失败的，那句 `No such file` 由外层 shell 打，`wc` 自己的 `2>/dev/null`
+#   **盖不住**（第一版就是这样，套件输出里混进一行看着像真错的噪声）。
+WSTDIN() { [ -f "$WTMP/spool/stdin.bin" ] && cat "$WTMP/spool/stdin.bin"; }
+WBYTES() { [ -f "$WTMP/spool/stdin.bin" ] || { printf '缺'; return 0; }; wc -c < "$WTMP/spool/stdin.bin"; }
+WCALLS() { [ -f "$WTMP/spool/calls" ] || { printf '0'; return 0; }; wc -l < "$WTMP/spool/calls"; }
+WARGV()  { [ -f "$WTMP/spool/argv" ] && cat "$WTMP/spool/argv"; }
+WOUT()   { cat "$WTMP/out"; }
+# 「它**该发**的那个 JSON」——**编码那一段拿 `jq -Rs .` 当预言机**（另一份实现、另一种语言、
+# 另一批作者），外面那层 `{"sessionId":…}` 是协议形状（`remote-daemon-proto` 的
+# `control/resolve_query.rs`：stdin 收 `ResumeSpec`，`sessionId` 必填）。
+# ⚠ **刻意不从 ccm 里取期望** —— 从 ccm 取就是同义反复。
+WEXP() { printf '{"sessionId":%s}' "$(JORA "$1")"; }
+
+# ── 夹具自检：先证这把尺子会说话 ─────────────────────────────────────────────
+W "$WTMP/bin/daemon" 'k-p2-d2'
+ck "WIRE/夹具自检① · 落盘式假 daemon 在位 ⇒ 它真的被调用了（calls 恰好 1 行）" "1" "$(WCALLS)"
+ck "WIRE/夹具自检② · 那份 stdin 真的落下来了（字节数 > 0，不是「文件都没有也照样绿」）" "yes" \
+   "$([ "$(WBYTES)" != 缺 ] && [ "$(WBYTES)" -gt 0 ] && printf yes || printf no)"
+W - 'k-p2-d2'
+ck "WIRE/夹具自检③ · **没有 daemon 时 calls 是 0** ⇒ ①那条不是恒真（少了这条，①测不出任何东西）" \
+   "0" "$(WCALLS)"
+ck "WIRE/夹具自检④ · 没有 daemon ⇒ 走本地兜底那条 exec（诚实降级，不是静默什么都不干）" \
+   "WIRE_LOCAL --resume k-p2-d2" "$(WOUT)"
+
+# ── 族一：「**发了**」。⚠ 弱 —— 只要有个进程被调用就成立 ─────────────────────
+W "$WTMP/bin/daemon" 'k-p2-d2'
+ck "WIRE/发了① · daemon 被调用**恰好一次**（不是 0，也不是「每问一次一趟」）" "1" "$(WCALLS)"
+ck "WIRE/发了② · 调用时的 argv 逐字是 --resolve（不是别的子命令、不是空）" "--resolve" "$(WARGV)"
+ck "WIRE/发了③ · daemon 回的那条 command **真的被 exec 了** ⇒ 这是一次真往返，不是「调用了但没用回帧」" \
+   "WIRE_EXEC_OK" "$(WOUT)"
+
+# ── 族二：「**发对了**」。看落盘那份 stdin 的字节 ────────────────────────────
+# ⚠ `$(cat …)` 会把**结尾换行吃掉** ⇒ 内容与字节数**分成两条**，
+#   否则「多吐一个换行」这一格会静默通过（生产那行 `printf '{"sessionId":%s}'` 是**不带换行**的）。
+ck "WIRE/发对了① · 纯 sid：落盘 stdin 逐字节 = 手写的那个 JSON" \
+   '{"sessionId":"k-p2-d2"}' "$(WSTDIN)"
+ck "WIRE/发对了② · 纯 sid：落盘 stdin **恰好 23 字节**（不多一个换行、不少一截）" "23" "$(WBYTES)"
+
+# 会咬人的 sid 集。**一处定义，两条路（exec 路 / 配方路）共用**。
+W_SNAMES=(纯sid 双引号 制表 反斜杠 换行 多字节 真payload)
+W_SIDS=('k-p2-d2' 'a"b' "$(printf 'a\tb')" 'a\b' "$(printf 'a\nb')" '中文🔥' \
+        "export CLAUDE_CONFIG_DIR='/home/z/.claude-accts/z'; exec claude --model 'x\"y'")
+_wi=0
+while [ "$_wi" -lt "${#W_SIDS[@]}" ]; do
+  W "$WTMP/bin/daemon" "${W_SIDS[$_wi]}"
+  ck "WIRE/发对了·预言机 · ${W_SNAMES[$_wi]}：落盘 stdin = {\"sessionId\":<jq -Rs . 的编码>}（逐字节）" \
+     "$(WEXP "${W_SIDS[$_wi]}")" "$(WSTDIN)"
+  _wi=$((_wi+1))
+done
+
+# ── 族三：**手算的**逐字期望（不经 jq —— 万一 jq 与我们同时错，这一族仍是独立的一票）──
+# ⚠ 反斜杠**单独用 `J_BS` 变量给**：源码里刻意不出现「反斜杠紧跟 t」那个写法 ——
+#   它会被各路工具当成转义序列吃掉，而吃掉之后期望值变成一个**真 TAB**，
+#   判据就从「要转义」悄悄变成「不要转义」，**而它照样是绿的**。
+#   09-03 `D1` 落 `JSONENC` 那节时当场踩过一次（件文件 `§16-3` 的 `E3`）。
+W "$WTMP/bin/daemon" "$(printf 'a\tb')"
+ck "WIRE/发对了·手算 · 含制表符的 sid ⇒ 线上是短名（旧模板会把一个**生 TAB** 塞进 JSON 串 = 非法 JSON）" \
+   "{\"sessionId\":\"a${J_BS}tb\"}" "$(WSTDIN)"
+W "$WTMP/bin/daemon" 'a"b'
+ck 'WIRE/发对了·手算 · 含双引号的 sid ⇒ 线上是转义过的（旧模板会把一个值劈成两个）' \
+   '{"sessionId":"a\"b"}' "$(WSTDIN)"
+ck "WIRE/往返（弱判据·旁证）· 落盘那份 stdin 自己是合法 JSON，且 .sessionId 取回来 = 原 sid" \
+   'a"b' "$(WSTDIN | jq -r .sessionId)"
+
+# ── ★★ 尺子自检：把「发了」与「发对了」**拆开** ──────────────────────────────
+# 一份**只把落盘那份 stdin 改掉一个字节**的假 daemon（首字节 `{` → `[`）。
+# 它证的是：「发了」那两条在它底下**照样绿**（有个进程被调用了、argv 也对），
+# 而「发对了」**当场分歧** ⇒ 两族判据真的分得开
+#   「**有个进程被调用**」与「**发出去的就是它该发的那个 JSON**」。
+# ⚠ 这四条是**成对自检**，不是凑数：拆掉它们，上面「发了」那族就退化成「有东西被跑过」。
+W "$WTMP/bin/daemon-corrupt" 'k-p2-d2'
+ck "WIRE/分得开① · 改了字节的 daemon 底下，「**发了**」照样绿：calls 仍是 1" "1" "$(WCALLS)"
+ck "WIRE/分得开② · 改了字节的 daemon 底下，「**发了**」照样绿：argv 仍是 --resolve" "--resolve" "$(WARGV)"
+ck "WIRE/分得开③ · 而「**发对了**」当场分歧（落盘 stdin ≠ 它该发的那个 JSON）" "differs" \
+   "$([ "$(WSTDIN)" = "$(WEXP 'k-p2-d2')" ] && printf same || printf differs)"
+printf '%s' "$(WEXP 'k-p2-d2')" > "$WTMP/expect.bin"
+ck "WIRE/分得开④ · 分歧**只有一个字节** ⇒ 钉住「改一个字节就够红」，不是靠改一大片才红" "1" \
+   "$(cmp -l "$WTMP/expect.bin" "$WTMP/spool/stdin.bin" 2>/dev/null | wc -l)"
+
+# ── 族四：`--print` 吐的那行**真跑一遍**，与 exec 路上线的字节逐字节相同 ──────
+# ⚠ 上面 `JSONENC/接线` 只看**配方文本**里有没有那个 JSON；这里把那行**真的执行掉**，
+#   看它上线的字节。两条路各写一份实现（`resolve_from_daemon` / `resolve_recipe`）
+#   ⇒ 它们分家过一次，`--print` 那半就白测了。
+# ★ 这是 `e2e/ccm-contract-parity.sh` A′ 组（print↔exec 的 argv 差分）在**线上字节**这一维的同一条纪律。
+WRECIPE() { # WRECIPE <sid>：取 --print 那行 → 真跑一遍（stdout→out）
+  rm -rf "$WTMP/spool"; mkdir -p "$WTMP/spool"
+  local line
+  line="$(env -i PATH="$WTMP/bin:/usr/bin:/bin" HOME="$WTMP" CCM_SELF=/usr/local/bin/ccm \
+          CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent \
+          bash "$CCM" resume "$1" --cwd "$WTMP/cwd" --print 2>/dev/null)"
+  env -i PATH="$WTMP/bin:/usr/bin:/bin" HOME="$WTMP" CCM_DAEMON_BIN="$WTMP/bin/daemon" \
+      sh -c "$line" > "$WTMP/out" 2>/dev/null
+}
+_wi=0
+while [ "$_wi" -lt 5 ]; do
+  WRECIPE "${W_SIDS[$_wi]}"
+  ck "WIRE/配方路 · ${W_SNAMES[$_wi]}：--print 那行真跑一遍，上线字节 = 该发的那个 JSON（逐字节）" \
+     "$(WEXP "${W_SIDS[$_wi]}")" "$(WSTDIN)"
+  _wi=$((_wi+1))
+done
+# ⚠ **这一条是死值验现打出来的缺口**〔`D2` `N5`：把 exec 路的 `--resolve` 改名 ⇒ 只红了
+#   `WIRE/发了②` 与 `WIRE/分得开②` 两条，**配方路一条没红**〕。
+#   成因：`resolve_recipe` 的那行 `printf` 里**自己又写了一份 `--resolve`** ——
+#   与 `resolve_from_daemon` 那份是**两处字面**，改一处不会有任何东西说话。
+#   ⇒ 那正是 `DAEMON_BIN_RECIPE` 头注立的「两处各写一遍迟早漂」，补上这一条钉住它。
+ck "WIRE/配方路 · 配方跑出来那一趟的 argv 也是 --resolve（配方里那份 --resolve 是**另一处字面**）" \
+   "--resolve" "$(WARGV)"
+ck "WIRE/配方路 · 配方跑出来也真的 exec 了 daemon 回的那条 command（两条路同一个终点）" \
+   "WIRE_EXEC_OK" "$(WOUT)"
+
+rm -rf "$WTMP"
+
+echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ]
