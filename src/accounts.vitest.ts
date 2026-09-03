@@ -40,6 +40,7 @@ import {
   fetchLocalRelayRouting,
   localRelayStateFor,
   accountLoginActionLabel,
+  restartLocateFailureMessage,
   type AccountsState,
   type Account,
   type SessionAccount,
@@ -1157,5 +1158,83 @@ describe("K-H2b：本机起会话取账号那一口（行为）", () => {
       if (name === null) expect(arg).toBeUndefined();
       else expect(arg?.configDir).toBe(st([A, B, dead], "acct-b").accounts.find((a) => a.name === name)!.configDir);
     }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-P5g` `KP5GD1`：**读回来的身份 token 真有人拿它做决定**
+//
+// ★★ 本组的全部意义在于**分得开两件事**：
+//   ㈠「有人**读到**它」—— `K-P5f` 已经买到了（`launchId` 一路解析到前端类型上，
+//      `session_account_row_carries_the_launch_identity` 钉着）。**本组不重复买它。**
+//   ㈡「有人**拿它做决定**」—— 输出因这一格而**不同**，而输出里**一个字节都没有它**。
+//      ⇒ 「把读到的值显示出来」这种形态**喂不饱**下面那条 `★★`：token 不在输出里、
+//      输出却因它而变，那就只能是有人拿它分了一次岔。
+// ═══════════════════════════════════════════════════════════════════════════
+describe("K-P5g：换号重启定位不到 tmux 时，用身份 token 决定说哪一条成因", () => {
+  const TOKEN = "0198f0d2-1111-4222-8333-444455556666";
+  const row = (over: Partial<SessionAccount> = {}): SessionAccount => ({
+    pid: 4242,
+    sessionId: "s1",
+    cwd: "/w",
+    configDir: null,
+    account: null,
+    bare: true,
+    alive: true,
+    ...over,
+  });
+  // 「两条成因并排摆着」那句老话的锚点 —— 它在场 = 这次没把成因分开。
+  const BOTH_CAUSES = "或无法精确定位";
+
+  it("非空对照（尺子不是恒同一句）：没有身份 token ⇒ 还是那句「两条成因并排」的老话", () => {
+    const m = restartLocateFailureMessage(row({ launchId: null }));
+    expect(m.body).toContain(BOTH_CAUSES);
+    // 老 daemon 的出参逐字节没有这个键 ⇒ `undefined`，必须与 `null` 同判。
+    expect(restartLocateFailureMessage(row())).toEqual(m);
+    // 行整个缺席（这条会话根本不在 `--session-accounts` 里）也走这一支。
+    expect(restartLocateFailureMessage(undefined)).toEqual(m);
+  });
+
+  it("正题：带着身份 token ⇒ 成因被判定成「tmux 标记丢了」，不再并排摆两条", () => {
+    const m = restartLocateFailureMessage(row({ launchId: TOKEN }));
+    expect(m.body).not.toContain(BOTH_CAUSES);
+    expect(m.body).toContain("身份标记");
+    expect(m.title).not.toBe(restartLocateFailureMessage(row({ launchId: null })).title);
+  });
+
+  it("★★ 判别格：两条输入只差 `launchId` 这一格 ⇒ 输出必须不同，且输出里没有那个 token", () => {
+    // ⚠ 这两个对象**逐字节只差 `launchId`**（同一个 `row()` 基座），所以下面那个不等式
+    // 只可能由那一格造成 —— 其余每一格都被固定住了。
+    const withMark = restartLocateFailureMessage(row({ launchId: TOKEN }));
+    const without = restartLocateFailureMessage(row({ launchId: null }));
+    expect(withMark).not.toEqual(without);
+    // 🔴 **这几行是「决定」与「显示」的分界**：token 一个字节都不许进输出
+    //（它是内部 nonce，给用户看毫无意义）。既然它不在输出里、输出却因它而变，
+    //   那就只能是**有人拿它分了一次岔**。死值验：把生产段那一行判断换成常量 `false`，
+    //   上面那条 `not.toEqual` 当场红；而任何只买到「读到了」的判据都不会红。
+    expect(withMark.body).not.toContain(TOKEN);
+    expect(withMark.title).not.toContain(TOKEN);
+    expect(without.body).not.toContain(TOKEN);
+  });
+
+  it("进程已死的行不作数：`alive:false` 上的 token 一律不参与这次判断", () => {
+    // daemon 侧本来就不读死进程的 environ，但这一格**不靠上游守**：本函数自己判。
+    expect(restartLocateFailureMessage(row({ launchId: TOKEN, alive: false }))).toEqual(
+      restartLocateFailureMessage(row({ launchId: null })),
+    );
+  });
+
+  it("空串不是「有」：`launchId` 为空串读成没有（空值 ≠ 未设，本仓一贯口径）", () => {
+    expect(restartLocateFailureMessage(row({ launchId: "" }))).toEqual(
+      restartLocateFailureMessage(row({ launchId: null })),
+    );
+  });
+
+  it("⚠ 它答不到的（登记，不是缺陷）：文案强度只到「带着本工具铸的标记」", () => {
+    // `launchId` 是继承型环境变量，父会话已退出时那个继承值仍会被报出来
+    //（`K-P5f` 已把这一格单独登记）。⇒ 文案**不许**写成「一定是本工具直接拉起的」。
+    const m = restartLocateFailureMessage(row({ launchId: TOKEN }));
+    expect(m.body).toContain("带着本工具铸的身份标记");
+    expect(m.body).not.toContain("一定是本工具");
   });
 });

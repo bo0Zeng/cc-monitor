@@ -16,6 +16,7 @@ import {
   sessionBadge,
   shouldShowAccountBadge,
   detectAccountMismatch,
+  restartLocateFailureMessage,
   withAccount,
   type SessionAccount,
   localLaunchAccountSync,
@@ -2845,11 +2846,13 @@ export class TabManager {
     // 新进程 = 双进程 / jsonl 双写（§5.2 要防的严重态）。`findClaudeTmuxMatches` 只精确匹配、
     // 不含 cwd 回退，故 `matches` 为空即代表"未精确命中"，天然对齐这条守卫（不猜）。
     if (!live) {
-      showActionFailureToast(
-        "无法换号重启",
-        "该会话不在（本工具的）tmux 里、或无法精确定位（缺 @ccm_sid 会话标记）——可先归档后用右键「把此会话切到账号 X」。",
-        { level: "info", durationMs: 8000 },
-      );
+      // `K-P5g`：这句话原来把**两条成因**并排摆着（「不在本工具 tmux 里」**或**「不是本工具
+      // 起的」），而当时没有任何东西分得开它们。现在分得开了——`--session-accounts` 读回来的
+      // 身份 token（`launchId`）说得出这条会话是不是从本工具这条路起来的，于是这里**拿它做
+      // 决定**：选哪一条成因、给哪一句补救。判据见 `accounts.ts::restartLocateFailureMessage`
+      // 头注与 `accounts.vitest.ts`；本处的接线由 `tabs.vitest.ts` 那两条对照钉着。
+      const msg = restartLocateFailureMessage(this.sessionAccountsByS.get(sid));
+      showActionFailureToast(msg.title, msg.body, { level: "info", durationMs: 8000 });
       return false;
     }
     return await restartWithAccount({
