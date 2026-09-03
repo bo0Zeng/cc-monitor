@@ -1276,20 +1276,23 @@ mkdir -p "$WTMP/bin" "$WTMP/spool" "$WTMP/cwd"
 
 # 落盘式假 daemon：记一次调用 ＋ 记 argv ＋ **把 stdin 原样落盘**，然后回一帧。
 # 第 4 个参数是「落盘前先过一道」的过滤器（默认 `cat` = 原样）——`WIRE/分得开` 那份用它改一个字节。
-mk_wire_daemon() { # mk_wire_daemon <落点> <spool 目录> <回帧里的 command 串> [落盘过滤器]
+# ⚠ 第 3 个参数〔`D3` 09-03〕从「回帧里的 command 串」改成**整条回帧** ——
+#   `--launch` 的结局帧是 `{"session":…,"created":…,"typed":…}`，与 `--resolve` 的
+#   `{"command":…}` 不同形。**扩这一份、不另起第二个工厂**（本节头注那条「用现成的桩」）。
+mk_wire_daemon() { # mk_wire_daemon <落点> <spool 目录> <整条回帧 JSON> [落盘过滤器]
   cat > "$1" <<EOF
 #!/bin/sh
 echo call >> "$2/calls"
 printf '%s\n' "\$*" >> "$2/argv"
 ${4:-cat} > "$2/stdin.bin"
-printf '{"command":"$3"}\n'
+printf '%s\n' '$3'
 exit 0
 EOF
   chmod +x "$1"
 }
-mk_wire_daemon "$WTMP/bin/daemon" "$WTMP/spool" 'echo WIRE_EXEC_OK'
+mk_wire_daemon "$WTMP/bin/daemon" "$WTMP/spool" '{"command":"echo WIRE_EXEC_OK"}'
 # 首字节 `{` 换成 `[` —— **恰好一个字节**（下面用到的 sid 里一个 `{` 都没有）。
-mk_wire_daemon "$WTMP/bin/daemon-corrupt" "$WTMP/spool" 'echo WIRE_EXEC_OK' "tr '{' '['"
+mk_wire_daemon "$WTMP/bin/daemon-corrupt" "$WTMP/spool" '{"command":"echo WIRE_EXEC_OK"}' "tr '{' '['"
 # 本地兜底那条要 `exec claude` ⇒ **必须给个 shim**，否则拿不到 daemon 时会去摸这台机器上真的那个。
 cat > "$WTMP/bin/claude" <<'WSHIM'
 #!/bin/sh
@@ -1416,6 +1419,191 @@ ck "WIRE/配方路 · 配方跑出来那一趟的 argv 也是 --resolve（配方
    "--resolve" "$(WARGV)"
 ck "WIRE/配方路 · 配方跑出来也真的 exec 了 daemon 回的那条 command（两条路同一个终点）" \
    "WIRE_EXEC_OK" "$(WOUT)"
+
+# ══ WIRE/launch：**起会话**那一跳〔`K-P2` `D` 阶段第三拍，09-03〕════════════════
+#
+# ★★ **这一族买的那句话**：
+#     「**`ccm --tmux` 真的把建会话交给了后端，而且交出去的就是它该交的那些字节；
+#       交不出去时退回本地那条、并且出声**」。
+#
+# 🔴 **它与上面那一族的区别，写出来别读混**：上面 `WIRE/…` 那 30 条盖的是 **`--resolve`**
+#   那一跳（`ccm resume` 问 daemon 要 argv）。**`D2` 那一拍没有一条盖住 `launch`** ——
+#   同一个桩、同一套读法，但**被测的那条生产路完全不同**（`resolve_from_daemon`
+#   vs `launch_via_daemon`）。⇒ 下面这一节是 `D3` 自己的验收，不是上面那族的复用。
+#
+# ★ **桩仍然是同一个**（`mk_wire_daemon`：落盘 stdin + 记 argv + 回一帧），只多一件：
+#   一个 **tmux shim**。它买两样东西 ——
+#   ① 让本地那条路**跑得起来而不碰真 tmux**（红线：不起真 daemon、不起真 agent）；
+#   ② 让「**后端建的**」与「**本机建的**」**分得开** ——
+#      走后端那一趟 `tmux.log` 必须是**空的**，退回本地那一趟必须有 `new-session`。
+#   **少了 ②，「发了 --launch」与「建会话真的不在本机做了」就是两件被压成一句的事。**
+#
+# ⚠ **射程照旧**：本节证的是 ccm 这一侧交出去的字节；**daemon 那一侧收不收，本节一个字没测**
+#   （红线禁起真 daemon）。件文件 `§20` 逐条登记。
+mkdir -p "$WTMP/bin"
+# tmux shim：记 argv；`WIRE_TMUX_NEWFAIL=1` 时让 `new-session` **失败**（造撞名那一格）。
+cat > "$WTMP/bin/tmux" <<'WTMUX'
+#!/bin/sh
+printf '%s\n' "$*" >> "$WIRE_SPOOL/tmux.log"
+if [ "${WIRE_TMUX_NEWFAIL:-}" = 1 ] && [ "$1" = new-session ]; then exit 1; fi
+exit 0
+WTMUX
+chmod +x "$WTMP/bin/tmux"
+
+WL() { # WL <daemon 路径或 -> [额外 ccm 参数…]：真跑 `--tmux` 的 exec 路
+  local d="$1"; shift
+  rm -rf "$WTMP/spool"; mkdir -p "$WTMP/spool"
+  local -a envs=(HOME="$WTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent
+                 CCM_ACCTS_MANIFEST=/nonexistent CCM_NO_PRETRUST=1
+                 WIRE_SPOOL="$WTMP/spool" "${WL_EXTRA_ENV[@]}")
+  [ "$d" != - ] && envs+=(CCM_DAEMON_BIN="$d")
+  env -i PATH="$WTMP/bin:/usr/bin:/bin" "${envs[@]}" \
+      bash "$CCM" new --tmux=wire-d3 --cwd "$WTMP/cwd" --detach "${WL_SIZE[@]}" "$@" \
+      > "$WTMP/out" 2> "$WTMP/err"
+  WL_RC=$?
+}
+WL_EXTRA_ENV=()
+WL_SIZE=(--tmux-size 220x50)
+WTMUXLOG() { [ -f "$WTMP/spool/tmux.log" ] && cat "$WTMP/spool/tmux.log"; }
+WERR()     { cat "$WTMP/err"; }
+# 本机那条 `send-keys` 打出去的**载荷原文**（shim 用 `"$*"`，shell 引号已被 bash 解析掉）。
+# ⚠ 它与 `.payload` 是**两条各自独立的产出**：一条经 `sq` + bash 再解析，一条经 `json_str` + jq 解析。
+WLOCALPAYLOAD() { WTMUXLOG | sed -n 's/^send-keys -t =wire-d3: \(.*\) Enter$/\1/p'; }
+# 「它**该发**的那条 JSON」——**逐字手算**，一个字符都不从 ccm 里取（从 ccm 取就是同义反复）。
+# 形状取自 `doc/IPC-PROTOCOL.md` 的 `#### launch` 小节；载荷是零修饰调用可以逐字预测的那条。
+WLEXP() { # WLEXP <cwd>
+  printf '{"mode":"create-or-attach","name":"wire-d3","payload":%s,"agent":"claude","cwd":%s,"width":"220","height":"50"}' \
+     "$(JORA "'/usr/local/bin/ccm' '--cwd' '$1' '--agent' 'claude' '--launcher' 'claude'")" "$(JORA "$1")"
+}
+LAUNCH_REPLY='{"session":"wire-d3","created":true,"typed":true}'
+mk_wire_daemon "$WTMP/bin/kd-launch" "$WTMP/spool" "$LAUNCH_REPLY"
+mk_wire_daemon "$WTMP/bin/kd-busy"   "$WTMP/spool" '{"session":"wire-d3","created":false,"typed":false}'
+
+# ── 夹具自检 ＋「发了」：先证这把尺子会说话，再证它量的是 launch ────────────────
+WL "$WTMP/bin/kd-launch"
+ck "WIRE/launch/夹具自检① · 有 daemon ⇒ 它真的被调用了（calls 恰好 1 行）" "1" "$(WCALLS)"
+ck "WIRE/launch/发了① · 调用时的 argv 逐字是 --launch（不是 --resolve、不是空）" "--launch" "$(WARGV)"
+ck "WIRE/launch/发了② · rc=0（后端答了 created:true ⇒ 不再走本地那条）" "0" "$WL_RC"
+ck "WIRE/launch/发了③ · ★**建会话真的不在本机做了**：整趟一条 tmux 都没起" "" "$(WTMUXLOG)"
+ck "WIRE/launch/发了④ · 会话名照旧报回 stdout（--detach 的既有契约没被接线改掉）" \
+   "ccm-session=wire-d3" "$(cat "$WTMP/out")"
+ck "WIRE/launch/发了⑤ · 走后端那一趟**不说降级**（它没降级）" "no" \
+   "$(WERR | grep -q '建会话已降级' && printf yes || printf no)"
+
+# ── 诚实降级：没有 daemon 时本地那条真的跑，而且**出声** ───────────────────────
+WL -
+ck "WIRE/launch/降级① · 没 daemon ⇒ calls 是 0（上面①不是恒真）" "0" "$(WCALLS)"
+ck "WIRE/launch/降级② · 没 daemon ⇒ 本机那条真的建了会话（不是静默什么都不干）" "yes" \
+   "$(WTMUXLOG | grep -q '^new-session -d -s wire-d3 ' && printf yes || printf no)"
+ck "WIRE/launch/降级③ · 而且**出声**（\`BACKEND_BACKED_PATHS\` 那条递减棘轮要的就是它）" "yes" \
+   "$(WERR | grep -q '建会话已降级' && printf yes || printf no)"
+ck "WIRE/launch/降级④ · 出声要说清是**哪一格**（四种原因不许糊成一句「降级了」）" "yes" \
+   "$(WERR | grep -q '找不到 daemon' && printf yes || printf no)"
+ck "WIRE/launch/降级⑤ · 降级也 rc=0（没有后端不是失败 —— 本文件会被部署到任意远端）" "0" "$WL_RC"
+WL_EXTRA_ENV=(CCM_NO_DAEMON=1)
+WL "$WTMP/bin/kd-launch"
+ck "WIRE/launch/降级⑥ · CCM_NO_DAEMON=1 ⇒ **整条关掉**：daemon 在也不发（calls 0）" "0" "$(WCALLS)"
+ck "WIRE/launch/降级⑦ · 而且说的是那一格（明示关掉 ≠ 找不到）" "yes" \
+   "$(WERR | grep -q 'CCM_NO_DAEMON=1' && printf yes || printf no)"
+WL_EXTRA_ENV=()
+
+# ── 族二：「**发对了**」—— 落盘那份 stdin 的字节 ───────────────────────────────
+WL "$WTMP/bin/kd-launch"
+ck "WIRE/launch/发对了① · 落盘 stdin **逐字节** = 手算的那整条请求（mode/name/payload/agent/cwd/width/height）" \
+   "$(WLEXP "$WTMP/cwd")" "$(WSTDIN)"
+ck "WIRE/launch/发对了② · **不多一个换行**（生产那句 printf 是不带换行的）" \
+   "$(printf '%s' "$(WLEXP "$WTMP/cwd")" | wc -c)" "$(WBYTES)"
+ck "WIRE/launch/发对了③ · \`--tmux-size\` 没被吃掉：线上真有 width/height（旧路是 \`-x/-y\`）" "220 50" \
+   "$(WSTDIN | jq -r '.width + " " + .height')"
+ck "WIRE/launch/发对了④ · \`@ccm_agent\` 没被吃掉：线上真有 agent（这一格是本拍给 daemon 加字段的理由）" \
+   "claude" "$(WSTDIN | jq -r .agent)"
+ck "WIRE/launch/发对了⑤ · mode 逐字是 create-or-attach（不是 send-into —— 那条不许新建会话）" \
+   "create-or-attach" "$(WSTDIN | jq -r .mode)"
+
+# ── 族二·补一格：**不给 `--tmux-size` 那条才是缺省人群**（上面每一趟都给了 220x50）────
+# ⚠ daemon 侧 `width`/`height` 是「**两个一起给或都不给**」；`ccm` 这侧「都不给」是**缺省**
+#   （`--tmux-size` 是可选修饰）。少了这一格，「都不给」那条分支在本套件里一次都没走过。
+WL_SIZE=()
+WL "$WTMP/bin/kd-launch"
+ck "WIRE/launch/缺省尺寸① · 不给 --tmux-size ⇒ 请求体里**没有** width/height（不是空串、不是 0）" \
+   "null null" "$(WSTDIN | jq -r '(.width|tostring) + " " + (.height|tostring)')"
+ck "WIRE/launch/缺省尺寸② · 而这一趟照样发得出去（①不是靠「整条没发」凑出来的）" "1" "$(WCALLS)"
+WL_SIZE=(--tmux-size 220x50)
+
+# ── 族二·下半：**编码器**在这条路上也得对 —— 拿会咬人的 `cwd` 喂，`jq -Rs .` 当预言机 ──
+# ⚠ 上面那条手算期望用的是一个「干净」的 cwd（mktemp 路径）⇒ 它证不了编码。
+#   这里换一个含双引号 / 反斜杠 / 多字节的 `cwd`：**旧模板会把值劈成两个**（非法 JSON）。
+#   ⚠ 目录不必存在：`--cwd` 非 auto 值原样透传，而 `CCM_NO_PRETRUST=1` 之后没有人 `cd` 它。
+W_NASTY_CWD="/tmp/a\"b\\c 中文🔥"
+WL "$WTMP/bin/kd-launch" --cwd "$W_NASTY_CWD"
+ck "WIRE/launch/发对了·预言机 · 会咬人的 cwd：线上 \"cwd\": 那一段 = jq -Rs . 的编码（逐字节）" "yes" \
+   "$(WSTDIN | grep -qF "\"cwd\":$(JORA "$W_NASTY_CWD")" && printf yes || printf no)"
+ck "WIRE/launch/发对了·手算 · 含双引号的 cwd ⇒ 线上是**转义过的**（旧模板会把一个值劈成两个）" "yes" \
+   "$(WSTDIN | grep -qF '/tmp/a\"b' && printf yes || printf no)"
+ck "WIRE/launch/发对了·往返（弱判据·旁证）· 落盘那份自己是合法 JSON，且 .cwd 取回来 = 原值" \
+   "$W_NASTY_CWD" "$(WSTDIN | jq -r .cwd)"
+
+# ── 族三：**新路与旧路送的是同一件事**（两条各自独立产出，不是同义反复）──────────
+# ⚠ 这一族是「搬家」这件事真正要买的东西：搬走之后**行为不许变**。
+#   左边来自 `json_str` + `jq` 解析，右边来自 `sq` + bash 再解析 —— 两条链没有共用的一环。
+WL "$WTMP/bin/kd-launch"; WNEW_PAYLOAD="$(WSTDIN | jq -r .payload)"; WNEW_CWD="$(WSTDIN | jq -r .cwd)"
+WL -
+ck "WIRE/launch/同一件事① · 后端那条的 .payload **逐字节等于**本机 send-keys 打出去的那条" \
+   "$(WLOCALPAYLOAD)" "$WNEW_PAYLOAD"
+ck "WIRE/launch/同一件事② · 后端那条的 .cwd 等于本机 new-session 的 \`-c\`" \
+   "$(WTMUXLOG | sed -n 's/^new-session -d -s wire-d3 -c \([^ ]*\) .*/\1/p')" "$WNEW_CWD"
+ck "WIRE/launch/同一件事③ · 本机那条也真的带 \`-x 220 -y 50\`（不带的话上面那条 width/height 判据就是单边的）" \
+   "yes" "$(WTMUXLOG | grep -q '^new-session .* -x 220 -y 50$' && printf yes || printf no)"
+ck "WIRE/launch/同一件事④ · 本机那条也真的写 @ccm_agent claude（同上：单边判据不算判据）" \
+   "yes" "$(WTMUXLOG | grep -q '^set-option -t =wire-d3: @ccm_agent claude$' && printf yes || printf no)"
+
+# ── 🔴 族四：**控制字符那一格**（`D3` 必须裁的那一格，裁的是「ccm 这侧先挡」）──────
+# daemon 的 `check_field` 拒收含控制字符的字段（`\n` 会让 send-keys 多敲一次回车）。
+# 本拍**没有放宽 daemon**（那条拒收是对的，且会同时改掉 send-into / send-keys-raw 的收件口径），
+# 改成 **ccm 这侧发之前就判**。⇒ 判据要证的是「**一个字节都没发出去**」，不是「发了但被拒」。
+WL "$WTMP/bin/kd-launch" -- "$(printf 'a\nb')"
+ck "WIRE/launch/控制字符① · ★载荷含换行 ⇒ daemon **一次都没被调用**（挡在 ccm 这侧，不是发了被拒）" \
+   "0" "$(WCALLS)"
+ck "WIRE/launch/控制字符② · 而且说清命中的是**这一格**（不是笼统一句「降级了」）" "yes" \
+   "$(WERR | grep -q '控制字符' && printf yes || printf no)"
+ck "WIRE/launch/控制字符③ · 退回本地那条**真的把会话建出来了**（挡住的是新路，不是这次调用）" "yes" \
+   "$(WTMUXLOG | grep -q '^new-session -d -s wire-d3 ' && printf yes || printf no)"
+ck "WIRE/launch/控制字符④ · 反向对照：**同一条命令去掉那个换行**就发得出去（③不是恒真）" "1" \
+   "$(WL "$WTMP/bin/kd-launch" -- 'ab'; WCALLS)"
+
+# ── 族五：撞名 —— `created:false` **不是降级**，交给本地那条响亮失败 ─────────────
+WL_EXTRA_ENV=(WIRE_TMUX_NEWFAIL=1)
+WL "$WTMP/bin/kd-busy"
+ck "WIRE/launch/撞名① · 后端说 created:false ⇒ **不静默接回**：rc=3（C14「spawn 就是起」）" "3" "$WL_RC"
+ck "WIRE/launch/撞名② · 报错带上是哪个名字（不带名字的报错等于没报）" "yes" \
+   "$(WERR | grep -q 'wire-d3 已被占用' && printf yes || printf no)"
+ck "WIRE/launch/撞名③ · ★撞名**不说降级** —— 它不是降级，说了就是把两件事糊成一句" "no" \
+   "$(WERR | grep -q '建会话已降级' && printf yes || printf no)"
+ck "WIRE/launch/撞名④ · daemon 仍然被问过（不是「没问就报占用」）" "1" "$(WCALLS)"
+WL_EXTRA_ENV=()
+
+# ── 族六：`--print` **仍是本地那条** —— 本拍**登记的**一处分家，不是没想到 ──────────
+# `--print` 必须是纯的（不查实时状态、不起进程、不发请求），而 `launch_via_daemon` 要发请求
+# ⇒ `--tmux` 这一格从本拍起 `--print` 与真 exec **不是同一条路**。
+# `resolve` 那一族靠 `resolve_recipe`「把配方原样吐出来」避开了这件事；这里吐配方等于把整块
+# 编排搬进一个字符串再 `eval`，本拍不做。⇒ **把这个事实钉住**，别让它成为静默差异。
+rm -rf "$WTMP/spool"; mkdir -p "$WTMP/spool"
+WPRINT="$(env -i PATH="$WTMP/bin:/usr/bin:/bin" HOME="$WTMP" CCM_SELF=/usr/local/bin/ccm \
+          CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent WIRE_SPOOL="$WTMP/spool" \
+          CCM_DAEMON_BIN="$WTMP/bin/kd-launch" \
+          bash "$CCM" new --tmux=wire-d3 --cwd "$WTMP/cwd" --detach --print 2>/dev/null)"
+ck "WIRE/launch/--print① · ★\`--print\` 一个请求都不发（纯：不起进程、不查状态）" "0" "$(WCALLS)"
+ck "WIRE/launch/--print② · \`--print\` 吐的仍是**本机 tmux 编排**（含 new-session）" "yes" \
+   "$(printf '%s' "$WPRINT" | grep -q 'tmux new-session -d -s ' && printf yes || printf no)"
+# ⚠ needle 要**带右边界**：`--launcher` 里就含着 `--launch` 这五个字符 ——
+#   第一版写的是裸 `grep -- '--launch'`，而零修饰调用的载荷里恒有 `'--launcher' 'claude'`
+#   ⇒ 它当场把「配方里有 --launch」误报成 yes。**尺子枚举的集合 ≠ 标签说的集合**，本区第 N 次。
+ck "WIRE/launch/--print③ · **登记的分家**：\`--print\` 那条串里没有 --launch（真 exec 路有）" "no" \
+   "$(printf '%s' "$WPRINT" | grep -qE -- '--launch([^a-zA-Z]|$)' && printf yes || printf no)"
+ck "WIRE/launch/--print④ · \`--print\` 也不出声降级（它没走那条路，说了就是假话）" "" \
+   "$(env -i PATH="$WTMP/bin:/usr/bin:/bin" HOME="$WTMP" CCM_SELF=/usr/local/bin/ccm \
+      CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent WIRE_SPOOL="$WTMP/spool" \
+      bash "$CCM" new --tmux=wire-d3 --cwd "$WTMP/cwd" --detach --print 2>&1 >/dev/null)"
 
 rm -rf "$WTMP"
 

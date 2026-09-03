@@ -620,10 +620,29 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
      "name":"cc-1a2b3c4d",
      "payload":"cd '/x' && claude --resume …",
      "cwd":"/x",             // 可选，仅 create-or-attach
-     "ccm_sid":"<完整 sid>"   // 可选，仅 create-or-attach；[A-Za-z0-9_-]
+     "ccm_sid":"<完整 sid>",  // 可选，仅 create-or-attach；[A-Za-z0-9_-]
+     "agent":"claude",       // 可选，仅 create-or-attach；[A-Za-z0-9_-]
+     "width":"220",          // 可选，仅 create-or-attach；与 height **同时给或都不给**
+     "height":"50"           // 可选；1–4 位十进制**字符串**
    }}
 ← {"kind":"reply","id":"L1","ok":true,"data":{"session":"cc-1a2b3c4d","created":true,"typed":true}}
 ```
+
+##### ★ `agent` / `width` / `height`（`K-P2` D3，2026-09-03）：**接线补的那三个，不是「顺手加的功能」**
+
+它们是「`shared/ccm` 的 `--tmux` 真的改走这条路」逼出来的。ccm 那条本地编排里
+`new-session` 之后紧跟着 `set-option @ccm_agent <agent>`，`new-session` 自己还带 `-x/-y`
+（`--tmux-size`）—— 而这条命令此前**没有任何字段能表达它们** ⇒ 不补就是**静默丢修饰**：
+会话照建、载荷照送，只是 `@ccm_agent` 没了、窗口回到 80x24 把 agent 输出折行。
+**「看起来生效了、只是少了一件」正是这条协议一路在消灭的形状。**
+
+⚠ `width` / `height` 是**字符串**不是数字：它们原样进 tmux 的 argv，而 `parse_request`
+只有 `get_str` 一种取法（换第二种取法就得给 `launch_fields_match_its_parser_and_output`
+那面镜子加第二种抽取，而那条判据的全部价值就在于镜子自己不会漂）。值域由
+`check_size` 收窄成「非空、纯十进制、≤4 位」——**不靠类型靠校验**。
+⚠ 两个**必须同时给**：只给一半 tmux 会用默认值补另一半 ⇒ `invalid_args`。
+⚠ **没有 `avoid_collision`**：撞名避让住在 ccm 要搬的那一块**之外**，而「撞了」这件事
+本命令已经用 `created:false` 表达完了 —— 调用方据此走它自己的响亮失败。
 
 **三件事它刻意不做**：
 

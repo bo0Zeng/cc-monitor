@@ -375,6 +375,90 @@ resolve_recipe() {
   printf '%s' " if [ -n \"\$_ccm_c\" ]; then set -f; exec \$_ccm_c$3; else $2; fi"
 }
 
+# ===== 建会话走后端（BEGIN launch-wire）=====
+#
+# ## 它买的那句话〔`K-P2` `D` 阶段第三拍，09-03〕
+#
+# 在这之前，`--tmux` 那一块的会话是 **ccm 自己起的**（下面那条 `tmux new-session`）。
+# 本函数让它**先走后端那条一次性子命令 `--launch`**（`mode=create-or-attach`），
+# 拿不到后端才退回本地那条 —— **查找规则（`DAEMON_BIN_RECIPE`）、超时纪律、降级出声**
+# 三样全部与 `resolve_from_daemon` / `acct_table_load` 同形，**不发明第二套**。
+#
+# ## 为什么值得搬
+#
+# `control/launch.rs` 头注逐字：那一侧用 `Command::new("tmux").args([...])` **argv 直传、
+# 不过 shell** ⇒ 引号 / 转义 / 注入这一整类问题**在那条路上不存在**（不是「被挡住了」）。
+# 本地这条是把一整条 shell 串交给 `bash -c` 再交给 tmux，那一类问题一直得靠 `sq` 一层层挡。
+#
+# ## 🔴 控制字符这一格：**本拍挑的是「ccm 这侧先挡」**〔PM `§19 裁六` 要求二选一〕
+#
+# daemon 的 `check_field` **按设计拒收含控制字符的字段**，理由写在它自己那行注释上：
+# 「控制字符会让 send-keys 的语义变掉（`\n` = 多敲一次回车）」。
+# ⇒ **不去放宽它**：① 那条拒收本身是对的；② 放宽它会同时改掉**已有两个生产调用方**的行为
+#   （`daemon_launch.rs` 的 `send-into` · `daemon_send_keys.rs` 的裸键），
+#   而本拍是接线拍，不该顺手改别人那两条路的收件口径。
+# ⇒ 改成 **ccm 这侧发之前就判**：有控制字符就不发，退回本地那条，并**出声说明命中的是这一格**。
+# ⚠ **如实登记**：退回去的那条**也有**同一个 send-keys 语义问题（载荷里的换行照样多敲一次
+#   回车）—— 那是今天就在的老账，**本拍没修它**，只是没让新路把它变成一个 `invalid_args`。
+#
+# ## 撞名**不走**降级那条口
+#
+# daemon 回 `created:false` = 会话已存在（它自己的幂等短路）。**那不是降级** ⇒ 本函数回 2、
+# 一个字不说，交给下面本地那条去 `new-session` 撞名、走 `P3sc` 那条**响亮失败**（`exit 3`）
+# ⇒ 那句文案与那个退出码**仍然只有一处字面**（`an_explicit_tmux_name_collision_fails_loudly` 钉着它）。
+#
+# ## 超时为什么不是 `resolve` 那个 3 秒
+#
+# `--resolve` 只读文件；`--launch` 真起进程（`new-session` ＋ 几条 `set-option` ＋ `send-keys`）。
+# ⇒ 给 10 秒。⚠ **代价如实写在这儿**：掐断发生在「会话已经建出来、回帧还没拿到」那一瞬时，
+#   ccm 会退回本地那条、然后撞上自己刚建出来的名字 ⇒ **`exit 3` 报「已被占用」**。
+#   那是**响亮的错**（不是静默接回别人的会话），但它报的原因与事实不符。没有实测，登记为空缺。
+launch_via_daemon() {
+  # $1=会话名 $2=载荷 $3=cwd $4=ccm_sid（可空） $5=agent $6=<W>x<H>（可空）
+  # rc：0 = 后端已经把会话建好并键入载荷 · 2 = 后端说这个名字已经在（交给本地那条响亮失败）
+  #     1 = 没走成，**已经出声**，退回本地那条
+  local why="" req="" out to n p a c s
+  eval "$DAEMON_BIN_RECIPE"
+  if [ -z "$_ccm_db" ]; then
+    if [ "${CCM_NO_DAEMON:-}" = 1 ]; then why="CCM_NO_DAEMON=1（明示整条关掉 daemon）"
+    else why="这台机器上找不到 daemon（cc-monitor-remote）"; fi
+  elif [[ "$1$2$3$4$5$6" == *[[:cntrl:]]* ]]; then
+    why="要发的字段里有控制字符 —— daemon 的 check_field 按设计拒收（换行会让 send-keys 多敲一次回车）"
+  elif ! n="$(json_str "$1")" || ! p="$(json_str "$2")" || ! a="$(json_str "$5")" \
+       || ! c="$(json_str "$3")" || ! s="$(json_str "$4")"; then
+    # ⚠ **五个字段一起编、一个编不出就整条不发**：编不出的那个若被「静默丢掉」，
+    #   daemon 会建出一个**少了 cwd** 的会话 —— 那是「看起来生效了、只是换成了错的」。
+    why="这几个字段编不成 JSON（当前 locale 认不出的字节）"
+  else
+    # **值位一律走 `json_str`**，一处模板都不留 —— 理由见它的头注。
+    req="{\"mode\":\"create-or-attach\",\"name\":$n,\"payload\":$p,\"agent\":$a"
+    [ -n "$3" ] && req="$req,\"cwd\":$c"
+    [ -n "$4" ] && req="$req,\"ccm_sid\":$s"
+    # `--tmux-size` 上游已校验「只含数字与单个 x」⇒ 这里拆开即可；两个都给或都不给。
+    [ -n "$6" ] && req="$req,\"width\":$(json_str "${6%x*}"),\"height\":$(json_str "${6#*x}")"
+    req="$req}"
+    # 与 `resolve_from_daemon` 同一条纪律：有 `timeout` 就套上、没有就裸调。
+    to="$(command -v timeout >/dev/null 2>&1 && printf 'timeout 10 ' || true)"
+    # shellcheck disable=SC2086  # $to 要么空、要么是 `timeout 10`，**有意不 quote**
+    if ! out="$(printf '%s' "$req" | $to "$_ccm_db" --launch 2>/dev/null)"; then
+      why="daemon（$_ccm_db）答不出 --launch"
+    else
+      case "$out" in
+        *'"created":true'*)  unset _ccm_db; return 0 ;;
+        *'"created":false'*) unset _ccm_db; return 2 ;;
+        *) why="daemon（$_ccm_db）回的不是 launch 的结局帧" ;;
+      esac
+    fi
+  fi
+  unset _ccm_db
+  # **降级出声**（`K-C1` `§0b` 裁定；`every_backend_backed_path_in_ccm_keeps_an_observable_fallback`
+  # 那条递减棘轮不许再多一条静默的）。
+  printf 'ccm: 建会话已降级为**本机 tmux 直起**（%s）—— 后端那条是 argv 直传（不过 shell），本机这条是把一整条串交给 bash -c。\n' \
+     "$why" >&2
+  return 1
+}
+# ===== 建会话走后端（END launch-wire）=====
+
 # ===== 默认值 =====
 action=new
 sid=""
@@ -1066,6 +1150,27 @@ if [ "$use_tmux" = 1 ]; then
   # ⚠ 这**不影响**缺省名那一支：它在上游已经无条件避让（`P3s §0c` 实测），走不到这里。
   # ⚠ 也不影响 `ccm attach <名>`：那是**另一条命令**，`P3s` 起会话与 attach 分家之后，
   #   「我要接回已有会话」有它自己的入口，不必再靠这条静默兜。
+  #
+  # ★★ 〔`K-P2` `D` 阶段第三拍 09-03〕**建会话先走后端那条一次性口**（见 `launch_via_daemon`）。
+  # ⚠ **`--print` 一步都不走它**：那条路必须是纯的（不查实时状态、不起进程、不发请求）——
+  #   与 `resolve_recipe` 那条同一条纪律。⇒ `--print` 吐的仍是**本地那条**。
+  #   🔴 **代价如实登记**：`--tmux` 这一格从本拍起 `--print` 与真 exec **不再是同一条路**
+  #   （`--print` 显示本机 tmux 编排，真跑时若有后端则由后端建）。
+  #   `resolve` 那一族靠 `resolve_recipe` 把配方原样吐出来避免了这件事，
+  #   而这里吐配方等于把整块编排搬进一个字符串再 `eval` —— 本拍不做，交回 PM 裁。
+  _ccm_launched=0
+  # ⚠ 直接判命令的退出码（`if cmd; then`），不走 `$?` —— 只有 rc=0 才算「后端做完了」，
+  #   rc=1（降级，已出声）与 rc=2（撞名，不出声）**都**落到下面本地那条。
+  if [ "$do_print" != 1 ] \
+     && launch_via_daemon "$tmux_name" "$payload" "$cwd" "$ccm_sid" "$agent" "$tmux_size"; then
+    _ccm_launched=1
+  fi
+  if [ "$_ccm_launched" = 1 ]; then
+    # 会话与载荷都已经由后端做完（`created:true` ⇒ 它同时保证 `typed:true`）。
+    # 剩下的三件仍是**本机**的事：预信任兜底轮询 · attach（平面③，daemon 开不了你面前的窗）·
+    # 总线登记（要 pane id）。⇒ 它们照旧挂在下面。
+    seq=":"
+  else
   seq="{ tmux new-session -d -s $(sq "$tmux_name") -c $(sq "$cwd")$size_opt 2>/dev/null"
   seq="$seq || { printf 'ccm: tmux 会话名 %s 已被占用 —— 拒绝静默接回别人的会话（C14：spawn 就是起）\\n' $(sq "$tmux_name") >&2; exit 3; }; }"
   seq="$seq && (tmux set-option -t $t @ccm_agent $(sq "$agent") 2>/dev/null || true)"
@@ -1075,6 +1180,7 @@ if [ "$use_tmux" = 1 ]; then
   # ⚠ `U-NP④`（08-14）：通道B 的执行者已是 **daemon**（`control/identity_tag.rs`），不是 ccm。
   [ -n "$ccm_sid" ] && seq="$seq && (tmux set-option -t $t @ccm_sid_expect $(sq "$ccm_sid") 2>/dev/null || true)"
   seq="$seq && tmux send-keys -t $t $(sq "$payload") Enter"
+  fi
   # Phase D 审计（阻塞项修复）：预信任只搬了"写入"，没搬 cc-spawn 真正的安全网——写入没成功
   # 时（jq/文件缺失/写失败，任何原因）轮询抓 pane 文本找信任框、自动按 Enter（同 cc-spawn
   # cc-spawn:122-133）。detached 会话没人盯着，且本地 tmux 会话在 cc-monitor 前端完全不可见

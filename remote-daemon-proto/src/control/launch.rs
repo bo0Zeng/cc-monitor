@@ -97,6 +97,28 @@ pub(crate) struct LaunchRequest {
     pub(crate) payload: String,
     pub(crate) cwd: Option<String>,
     pub(crate) ccm_sid: Option<String>,
+    /// 哪个 AI（`claude` / `codex`）。落成 tmux 的 `@ccm_agent` 标记。
+    ///
+    /// ★★ 〔`K-P2` `D` 阶段第三拍 09-03〕**它是为「ccm 的 `--tmux` 真的改走这条路」补的**：
+    /// `shared/ccm` 那条本地编排里 `new-session` 之后紧跟着
+    /// `set-option -t <名> @ccm_agent <agent>`，而这一侧此前**没有任何字段能表达它**
+    /// ⇒ 不补的话，「起会话改走后端」会**静默丢掉 `@ccm_agent`**（`REQUIRED_NEEDLES` 里
+    /// 那条 needle 守的正是它），而那是本文件反复消灭的病：**看起来生效了，只是少了一件**。
+    pub(crate) agent: Option<String>,
+    /// 新建会话的宽 / 高（`--tmux-size <W>x<H>` 的两半）。
+    ///
+    /// # 为什么是**字符串**而不是数字
+    ///
+    /// ① 它最终原样进 tmux 的 argv（`-x 220 -y 50`），本来就是文本；
+    /// ② `parse_request` 是**手工从 `Map` 取键**的，取法只有 `get_str` 一种 ——
+    ///    换一种取法就得给 `launch_fields_match_its_parser_and_output` 那面镜子加第二种抽取，
+    ///    而那条判据的全部价值就在于「镜子自己不会漂」。
+    /// ⇒ 值域由下面 `check_size` 收窄成「非空、纯十进制、≤4 位」，**不靠类型靠校验**。
+    ///
+    /// ⚠ **两个必须同时给**：只给一半时 tmux 会用默认值补另一半，
+    /// 那是「写了个修饰、看起来生效了、其实只生效了一半」——直接 `invalid_args`。
+    pub(crate) width: Option<String>,
+    pub(crate) height: Option<String>,
 }
 
 /// 一次 `launch` 的结局。三个字段就是「没起成 / 起了但没确认 / 起成了」的载体。
@@ -188,13 +210,63 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
         }
     }
 
+    // 〔`K-P2` `D3`〕`@ccm_agent` 标记的值。收窄到 `[A-Za-z0-9_-]`：它进的是 tmux 的
+    // option 值，且下游（monitor / `ccm attach`）按字面比对 agent 名。
+    let agent = get_str("agent").map(str::to_string);
+    if let Some(a) = &agent {
+        check_field("agent", a)?;
+        if !a
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        {
+            return Err(("invalid_args", format!("`agent` 只许 [A-Za-z0-9_-]：{a:?}")));
+        }
+    }
+
+    // 〔`K-P2` `D3`〕新建会话的尺寸。**两个一起给或都不给**，见字段头注。
+    let width = get_str("width").map(str::to_string);
+    let height = get_str("height").map(str::to_string);
+    match (&width, &height) {
+        (Some(w), Some(h)) => {
+            check_size("width", w)?;
+            check_size("height", h)?;
+        }
+        (None, None) => {}
+        _ => {
+            return Err((
+                "invalid_args",
+                "`width` 与 `height` 必须同时给 —— 只给一半时 tmux 会拿默认值补另一半，\
+                 那是「写了个修饰、看起来生效了、其实只生效了一半」"
+                    .to_string(),
+            ))
+        }
+    }
+
     Ok(LaunchRequest {
         mode,
         name,
         payload,
         cwd,
         ccm_sid,
+        agent,
+        width,
+        height,
     })
+}
+
+/// 尺寸那两个字段的值域：**非空、纯十进制、≤4 位**（tmux 自己的上限远小于此）。
+///
+/// ⚠ 刻意**不复用** [`check_field`]：那一条是给「一条人能读的启动命令」定的（8 KiB 上限），
+/// 拿它守一个尺寸数等于什么都没守 —— `-x` 后面跟一个 8000 字符的串，tmux 会把它当参数错误，
+/// 而错误信息里看不出是谁给的。
+fn check_size(what: &str, v: &str) -> Result<(), CmdErr> {
+    if v.is_empty() || v.len() > 4 || !v.chars().all(|c| c.is_ascii_digit()) {
+        return Err((
+            "invalid_args",
+            format!("`{what}` 只许 1–4 位十进制数字：{v:?}"),
+        ));
+    }
+    Ok(())
 }
 
 fn check_field(what: &str, v: &str) -> Result<(), CmdErr> {
@@ -270,6 +342,15 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
                 new_args.push("-c");
                 new_args.push(cwd);
             }
+            // 〔`K-P2` `D3`〕`--tmux-size`：detached 会话默认 80x24，太窄会把 agent 输出折行。
+            // **只对新建生效** —— 幂等短路那一支根本走不到这里，与 `shared/ccm` 那条注释
+            // 逐字同义（「已有会话的尺寸归它自己，可能有人正 attach 着」）。
+            if let (Some(w), Some(h)) = (&req.width, &req.height) {
+                new_args.push("-x");
+                new_args.push(w);
+                new_args.push("-y");
+                new_args.push(h);
+            }
             // 幂等闸：会话已存在 ⇒ new-session 失败 ⇒ **短路，什么都不做**。
             // 与今天那条 shell 串 `new-session -d … 2>/dev/null && send-keys …` 逐字同义
             // （不重复 resume）。区别只是这里不吞 stderr 靠 `2>/dev/null`，而是看退出码。
@@ -326,6 +407,12 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
             //   `#{?@ccm_sid,…,#T}`（那份文件逐字：「sid 还没回填时回退 `#T`，
             //   不产出一个空的 `ccm-rbind-`」）—— 两侧同一条性质，不留两种写法。
             //   ⇒ 提升一发生，tmux 自己就把新标题推给 client（`identity_tag` 头注实测过）。
+            // 〔`K-P2` `D3`〕`@ccm_agent`：与 `shared/ccm` 那条本地编排**同一个顺序**
+            // （`new-session` → `@ccm_agent` → `@ccm_sid_expect` → `send-keys`）。
+            // 同样是**次要动作**：失败不阻断键入载荷（`shared/ccm` 那边写的是 `|| true`）。
+            if let Some(agent) = &req.agent {
+                let _ = tmux(&["set-option", "-t", &t, "@ccm_agent", agent]);
+            }
             if let Some(sid) = &req.ccm_sid {
                 let _ = tmux(&["set-option", "-t", &t, "@ccm_sid_expect", sid]);
                 let _ = tmux(&["set-option", "-t", &t, "set-titles", "on"]);
@@ -452,6 +539,92 @@ mod tests {
         }))
         .unwrap_err();
         assert_eq!(e.0, "invalid_args");
+    }
+
+    /// ★〔`K-P2` `D3` 09-03〕`agent` / `width` / `height` 的形状校验。
+    ///
+    /// # 为什么 `width`/`height` 要一条**「只给一半就拒」**
+    ///
+    /// 只给 `width` 时 tmux 会拿默认值补 `height` ⇒ 会话**起得来**、尺寸**只对一半**。
+    /// 那是「写了个修饰、看起来生效了、其实只生效了一半」——本仓反复消灭的那个形状。
+    /// ⇒ 这里 fail-fast，而不是让它变成一个没人看得出来的怪尺寸。
+    #[test]
+    fn the_create_only_fields_have_their_own_shapes() {
+        let ok = |extra: serde_json::Value| {
+            let mut v = serde_json::json!({
+                "mode":"create-or-attach","name":"n","payload":"p"
+            });
+            let obj = v.as_object_mut().expect("对象");
+            for (k, x) in extra.as_object().expect("对象") {
+                obj.insert(k.clone(), x.clone());
+            }
+            v
+        };
+        // 合法的一组：三个都给
+        let r = parse_request(&ok(serde_json::json!({
+            "agent":"claude","width":"220","height":"50"
+        })))
+        .expect("三个都合法时应当通过");
+        assert_eq!(r.agent.as_deref(), Some("claude"));
+        assert_eq!((r.width.as_deref(), r.height.as_deref()), (Some("220"), Some("50")));
+        // 三个都不给也合法（`send-into` 那两条 mode 从来不带它们）
+        let bare = parse_request(&ok(serde_json::json!({}))).expect("都不给也该通过");
+        assert_eq!((bare.agent, bare.width, bare.height), (None, None, None));
+
+        for (extra, why) in [
+            (serde_json::json!({"agent":"a b"}), "agent 含空格（它进 tmux option 值）"),
+            (serde_json::json!({"agent":""}), "agent 为空"),
+            (serde_json::json!({"agent":"a\nb"}), "agent 含控制字符"),
+            (serde_json::json!({"width":"220"}), "★只给 width 不给 height"),
+            (serde_json::json!({"height":"50"}), "★只给 height 不给 width"),
+            (serde_json::json!({"width":"22a","height":"50"}), "width 不是纯数字"),
+            (serde_json::json!({"width":"","height":"50"}), "width 为空"),
+            (serde_json::json!({"width":"12345","height":"50"}), "width 超过 4 位"),
+            (serde_json::json!({"width":"220","height":"-5"}), "height 带负号"),
+        ] {
+            match parse_request(&ok(extra)) {
+                Ok(_) => panic!("{why} 居然通过了"),
+                Err(e) => assert_eq!(e.0, "invalid_args", "{why}"),
+            }
+        }
+    }
+
+    /// ★★〔`K-P2` `D3` 09-03〕**收得下 ≠ 起作用**：那三个新字段必须真的被 `run` 用掉。
+    ///
+    /// # 它补的洞
+    ///
+    /// [`parse_request`] 与 `launch_for_inbound` 的键名有一面镜子
+    /// （`inbound::structure_guards::launch_fields_match_its_parser_and_output`），
+    /// 而那面镜子**只看解析器与输出构造器** —— 一个字段完全可以「解析出来、存进结构体、
+    /// 然后一个地方都不用」。⇒ 症状是 **ccm 照发、daemon 照收、`@ccm_agent` 与尺寸静默消失**，
+    /// 而两侧任何一条现有判据都不会红。**那正是本命令这一拍要防的那件事。**
+    ///
+    /// ⚠ 这里只能判**源码形态**（真验要起 tmux，红线禁）。诚实边界写在这儿，别读大了。
+    #[test]
+    fn the_create_arm_actually_uses_the_three_new_fields() {
+        let prod = crate::guard_support::production_code(include_str!("launch.rs"));
+        // ★ 抽取器自检：剥注释器没把代码也剥掉（建条当天生产段 300+ 行）。
+        assert!(
+            prod.lines().count() >= 200,
+            "`control/launch.rs` 的生产段只剩 {} 行 —— 剥注释器把代码也剥了？下面几条会零命中地绿",
+            prod.lines().count()
+        );
+        for (needle, what) in [
+            ("req.agent", "`agent` 读点"),
+            ("\"@ccm_agent\"", "`@ccm_agent` 这个 tmux option 名"),
+            ("req.width", "`width` 读点"),
+            ("req.height", "`height` 读点"),
+            ("\"-x\"", "`new-session` 的 `-x`"),
+            ("\"-y\"", "`new-session` 的 `-y`"),
+        ] {
+            assert!(
+                prod.contains(needle),
+                "生产段里找不到 {what}（needle {needle:?}）—— 字段**收得下却不起作用**：\n\
+                 ccm 照发、daemon 照收，而 `@ccm_agent` 与窗口尺寸静默消失。\n\
+                 `launch_fields_match_its_parser_and_output` 那面镜子只看解析器与输出构造器，\n\
+                 **它看不见这一格**（`K-P2` `D3` 立本条的全部理由）。"
+            );
+        }
     }
 
     /// ★ **不许照抄 monitor 的「禁双引号」** —— 那是 PowerShell 专属。

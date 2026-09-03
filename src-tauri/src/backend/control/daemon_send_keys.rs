@@ -74,7 +74,16 @@ pub(crate) async fn daemon_send_keys(
     let Some(client) = crate::inbound_client::client_for(origin) else {
         return super::daemon_route::no_channel(origin);
     };
-    let args = crate::inbound_client::launch_args(mode_for(enter), name, keys, None, None);
+    // ⚠ `LaunchExtras::default()`：这条路发的是 `send-into` / `send-keys-raw`，
+    //   而 `agent` / `width` / `height` 只对**新建会话**有意义（`K-P2` `D3`）。
+    let args = crate::inbound_client::launch_args(
+        mode_for(enter),
+        name,
+        keys,
+        None,
+        None,
+        Default::default(),
+    );
     match client
         .call("launch", args, Duration::from_secs(CALL_TIMEOUT_SECS))
         .await
