@@ -1159,9 +1159,11 @@ if [ "$use_tmux" = 1 ]; then
   #   `resolve` 那一族靠 `resolve_recipe` 把配方原样吐出来避免了这件事，
   #   而这里吐配方等于把整块编排搬进一个字符串再 `eval` —— 本拍不做，交回 PM 裁。
   _ccm_launched=0
-  if [ "$do_print" != 1 ]; then
-    launch_via_daemon "$tmux_name" "$payload" "$cwd" "$ccm_sid" "$agent" "$tmux_size"
-    [ "$?" = 0 ] && _ccm_launched=1
+  # ⚠ 直接判命令的退出码（`if cmd; then`），不走 `$?` —— 只有 rc=0 才算「后端做完了」，
+  #   rc=1（降级，已出声）与 rc=2（撞名，不出声）**都**落到下面本地那条。
+  if [ "$do_print" != 1 ] \
+     && launch_via_daemon "$tmux_name" "$payload" "$cwd" "$ccm_sid" "$agent" "$tmux_size"; then
+    _ccm_launched=1
   fi
   if [ "$_ccm_launched" = 1 ]; then
     # 会话与载荷都已经由后端做完（`created:true` ⇒ 它同时保证 `typed:true`）。
