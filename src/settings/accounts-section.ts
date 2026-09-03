@@ -48,10 +48,16 @@ import {
  * ⚠⚠ `K-H2c` `KH2C1`：`configDir` 在前端是一个**不透明串** —— 前端一个字都不解析它，
  * 原样递给那条命令，由 Rust 用**全仓唯一那份规则**（`history::relay_account_id_of_dir`）
  * 推出账号 id。前端自己从那个路径里取末段名，就是在长**第二份**规则，
- * ⚠ 这句话**刻意不写成代码形状** —— `the_ui_never_derives_the_account_id_itself`
- * 那条机检扫的是整份文件（含注释），写成代码形状会让它红在一句注释上。
+ * ⚠ 这句话**刻意不写成代码形状** —— `accounts-section.vitest.ts` 里那条机检
+ * （标题以「KH2C1 机检：前端一个字都不推账号 id」打头的那个 `it`）
+ * 扫的是整份文件（含注释），写成代码形状会让它红在一句注释上。
  * 漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。
- * 由 `the_ui_never_derives_the_account_id_itself` 机检钉着。
+ * 由那条机检钉着。
+ *
+ * ⚠ 〔`K-R20` 订正 09-03〕上面两处原先都点着
+ * `the_ui_never_derives_the_account_id_itself`〔散文墓碑〕—— **那个名字全仓零定义**。
+ * 真正钉这件事的是一条**中文标题**的 `it`，它本来就没有 snake_case 名字，
+ * 而这两处一直**当现状在说**。
  */
 export interface RelayKeyAccount {
   /** 显示用的名字（**只用来显示**，绝不当成 id 递给后端）。 */
