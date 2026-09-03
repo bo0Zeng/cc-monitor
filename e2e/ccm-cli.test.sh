@@ -1130,5 +1130,117 @@ ck "★ KCM6 · 无 jq + pretty-print + **键序反转** ⇒ 照样解析对（�
 rm -rf "$KTMP"
 
 echo
+echo "===== JSONENC：shell 侧真 JSON 编码器（K-P2 D 阶段第一拍，09-03）====="
+# ★★ **为什么这一节从 `shared/ccm` 里把那段真文本抽出来跑，而不是在这儿另写一份**
+#   在这儿另写一份 = **两份实现互证**，那正是本仓最贵的那族病。
+#   `shared/ccm` 的 `DAEMON_BIN_RECIPE` 头注逐字反对过同一形状：「照 `BUS_ID_RECIPE` 的先例
+#   本该写两份『逐行同构、改一边必须改另一边』—— 这次更进一步：**只写一份字符串**」。
+#   ⇒ 照 `e2e/ccm-rbind-title.sh` 那条既有先例（它也是 `sed … "$ROOT/shared/ccm"` 抽 `FMT`），
+#   **抽生产文件里的那一段来 `eval`** ⇒ 测的就是将来真跑的那几行，不是它的复制品。
+#
+# ★★ **主判据是「与 `jq` 逐字节相等」，不是「塞进去能取出来」**
+#   往返（encode → decode）**在两侧用同一套错规则时照样通过** —— 那是本仓治过多次的形状，
+#   所以它在这里只当**旁证**（三条，名字里写明「弱判据」）。
+#   主判据用 `jq -Rs .` 当预言机：**另一份实现、另一种语言、另一批作者**。
+#   ⚠ 能这么写的前提是编码器**一条可选项都不留**（RFC 8259 允许 `/`、U+007F、非 ASCII
+#     转或不转）—— 留了就得配一张「这几种输入允许不一样」的例外表，
+#     而**例外表会替以后所有真 bug 挡枪**。理由逐字写在 `shared/ccm` 的 `json_str` 头注里。
+#
+# ★ **最后一条是尺子自检**：拿**被换掉的那个模板**（`printf '"%s"'`，即旧那处
+#   `printf '{"sessionId":"%s"}'` 的编码部分）当被测对象跑同一族输入，它必须在**恰好 19 条**
+#   上与 `jq` 分歧。那条一绿，上面那一族才叫「有牙」；它红了就是**输入集被人悄悄改软了**。
+JSONLIB="$(sed -n '/BEGIN json-encoder/,/END json-encoder/p' "$CCM")"
+JHAS() { case "$JSONLIB" in *"$1"*) printf yes ;; *) printf no ;; esac; }
+ck "JSONENC/抽取器自检① · 抽到的那一段行数 ≥ 20（防「抽到一行也照样绿」）" "yes" \
+   "$([ "$(printf '%s\n' "$JSONLIB" | wc -l)" -ge 20 ] && printf yes || printf no)"
+ck "JSONENC/抽取器自检② · 里面真有 json_str 的函数定义（不是抽到一堆注释）" "yes" "$(JHAS 'json_str() {')"
+ck "JSONENC/抽取器自检③ · 里面真有控制字符表 _CCM_JSON_CTRL" "yes" "$(JHAS '_CCM_JSON_CTRL=')"
+eval "$JSONLIB"
+
+# ── 会咬人的输入集。**一处定义，三族判据共用** ──────────────────────────────
+# ⚠ 每一条都要说得出「它咬的是哪一种写法」，否则就是凑数：
+#   双引号/反斜杠 = 最基本的两条必转；结尾反斜杠 = 「把 `"` 吃掉」那一类；
+#   字面 `\n` = 「把两个字符当成一个」那一类；换行/制表/回车 = 有短名的控制字符；
+#   退格/换页/垂直制表 = 短名与 `\u` 两条路的分界；`\001`/`\007`/`\016`/ESC/`\037`/DEL
+#   = 没有短名的那一段（DEL 是 RFC 说「可选」而 jq 选了转的那一格）；
+#   中文/emoji = 多字节透传；`{"a":1}` = 已经像 JSON 的串；单引号/正斜杠/`$`/反引号
+#   = **不该被动的**（过度转义与转义不足是同一族病的两面）；真 payload = 生产形态；
+#   全控制字符串 = 31 个一次打完，防「只对我举的例子成立」。
+J_NAMES=(空串 双引号 反斜杠 结尾反斜杠 字面反斜杠n 换行 制表 回车 退格 换页 垂直制表 \
+         SOH01 BEL07 SO0E ESC1B US1F DEL7F 中文 emoji 像JSON 单引号 正斜杠 美元反引号 \
+         真payload 全控制字符)
+J_INS=('' 'a"b' 'a\b' 'a\' 'a\nb' "$(printf 'a\nb')x" "$(printf 'a\tb')" "$(printf 'a\rb')" \
+       "$(printf 'a\bb')" "$(printf 'a\fb')" "$(printf 'a\vb')" \
+       "$(printf 'a\001b')" "$(printf 'a\007b')" "$(printf 'a\016b')" "$(printf 'a\033b')" \
+       "$(printf 'a\037b')" "$(printf 'a\177b')" '中文测试' '🔥火' '{"a":1}' "a'b" 'a/b' 'a$b`c' \
+       "export CLAUDE_CONFIG_DIR='/home/z/.claude-accts/z'; exec claude --model 'x\"y'" \
+       "$(printf 'a\001\002\003\004\005\006\007\010\011\012\013\014\015\016\017\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037b')")
+
+JORA() { printf '%s' "$1" | jq -Rs .; }   # 独立预言机：jq 自己的编码器
+_ji=0
+while [ "$_ji" -lt "${#J_INS[@]}" ]; do
+  ck "JSONENC/oracle · ${J_NAMES[$_ji]}（与 jq -Rs . 逐字节相等）" \
+     "$(JORA "${J_INS[$_ji]}")" "$(json_str "${J_INS[$_ji]}")"
+  _ji=$((_ji+1))
+done
+
+# ── 族二：**手算的**逐字期望。不经 jq —— 万一 jq 与我们同时错，这一族仍是独立的一票 ──
+ck "JSONENC/手算 · 空串" '""' "$(json_str '')"
+ck "JSONENC/手算 · 双引号" '"a\"b"' "$(json_str 'a"b')"
+ck "JSONENC/手算 · 反斜杠" '"a\\b"' "$(json_str 'a\b')"
+ck "JSONENC/手算 · 结尾反斜杠（不许把收尾那个 \" 吃掉）" '"a\\"' "$(json_str 'a\')"
+ck "JSONENC/手算 · 字面 \\n 两个字符，不许被当成换行" '"a\\nb"' "$(json_str 'a\nb')"
+ck "JSONENC/手算 · 真换行 ⇒ 短名 \\n" '"a\nb"' "$(json_str "$(printf 'a\nb')")"
+ck "JSONENC/手算 · 制表 ⇒ 短名 \\t" '"a\tb"' "$(json_str "$(printf 'a\tb')")"
+# ⚠ 期望串里那个反斜杠**单独用变量给** —— 源码里刻意不出现「反斜杠紧跟 u」那个写法：
+#   它会被各路工具（编辑器 / 补丁工具 / 本文件自己的 `eval`）当成转义序列吃掉，
+#   而吃掉之后期望值变成一个**真控制字符**，判据就从「要转义」悄悄变成「不要转义」。
+#   09-03 落这一节时**当场踩了一次**，见件文件 `§16-3` 的 `E3`。
+J_BS='\'
+ck "JSONENC/手算 · 无短名的控制字符 ⇒ 反斜杠u0001（小写十六进制）" "\"a${J_BS}u0001b\"" "$(json_str "$(printf 'a\001b')")"
+ck "JSONENC/手算 · U+007F 也转（RFC 说可选，本编码器不留可选项）" "\"a${J_BS}u007fb\"" "$(json_str "$(printf 'a\177b')")"
+ck "JSONENC/手算 · 已经像 JSON 的串要被当成**数据**" '"{\"a\":1}"' "$(json_str '{"a":1}')"
+ck "JSONENC/手算 · 中文原样透传（不转 \\uXXXX、不动字节）" '"中文测试"' "$(json_str '中文测试')"
+ck "JSONENC/手算 · 单引号/正斜杠/\$/反引号**一个都不许动**（过度转义与转义不足同族）" \
+   '"a'"'"'b a/b a$b`c"' "$(json_str "a'b a/b a\$b\`c")"
+
+# ── 族三：往返。**弱判据，只当旁证** —— 两侧用同一套错规则时它照样绿 ──
+ck "JSONENC/往返（弱判据·旁证）· 引号反斜杠" 'a"b\c' "$(json_str 'a"b\c' | jq -r .)"
+ck "JSONENC/往返（弱判据·旁证）· 控制字符" "$(printf 'a\nb\tc\001d')" \
+   "$(json_str "$(printf 'a\nb\tc\001d')" | jq -r .)"
+ck "JSONENC/往返（弱判据·旁证）· 多字节" '中文🔥' "$(json_str '中文🔥' | jq -r .)"
+
+# ── 尺子自检：旧那个模板必须在这一族输入上大量分歧 ──────────────────────────
+# ⚠ **19 是现打的**（09-03，`jq-1.7`，上面那 25 条输入）：模板只在 6 条上碰巧对
+#   （空串 · 中文 · emoji · 单引号 · 正斜杠 · `$`反引号 —— 全是「本来就不用转」的）。
+#   ⇒ 这个数变小 = 有人把上面那个输入集改软了；变大 = 加了新的会咬人的输入（那要连这里一起改）。
+J_TPL() { printf '"%s"' "$1"; }   # 旧那处 `printf '{"sessionId":"%s"}'` 的编码部分，逐字同形
+_jd=0; _ji=0
+while [ "$_ji" -lt "${#J_INS[@]}" ]; do
+  [ "$(J_TPL "${J_INS[$_ji]}")" = "$(JORA "${J_INS[$_ji]}")" ] || _jd=$((_jd+1))
+  _ji=$((_ji+1))
+done
+ck "JSONENC/尺子自检 · 被换掉的那个**模板**在这 ${#J_INS[@]} 条输入上与 jq 分歧的条数（一绿才说明上面那族有牙）" \
+   "19" "$_jd"
+
+# ── 生产接线：**上面测的那个函数，生产路径真的在用它** ────────────────────────
+# ⚠ 没有这两条，上面 40 多条判据可以在「json_str 定义了但没人调」的情况下全绿 ——
+#   那正是本工作区反复在治的「早写好、零调用方」。
+#   ⇒ 走 `--print`（纯的、不起 tmux 不起 agent），看 `resolve_recipe` 吐出来的那段里
+#   sid 是不是**编码过的**。期望串是**手写的**，不从 ccm 取（从 ccm 取就是同义反复）。
+ck "JSONENC/接线 · --print 的 resume 配方里，含双引号的 sid 被真编码了（不是模板拼进去）" "yes" \
+   "$(case "$(ccm resume 'a"b' --cwd /p --print)" in *'{"sessionId":"a\"b"}'*) printf yes ;; *) printf no ;; esac)"
+# ⚠ 这一条**两层**：先 `json_str`（单引号在 JSON 里不用转）、再 `sq`（把 `'` 变成 `'\''`）。
+#   期望串在这里用双引号拼出来，别在 case 模式里手叠三层引号 —— 那是写错了也看不出来的形状。
+J_SQEXP="{\"sessionId\":\"a'\\''b\"}"
+ck "JSONENC/接线 · 含单引号的 sid：json_str 不转它、sq 转它，两层各司其职" "yes" \
+   "$(case "$(ccm resume "a'b" --cwd /p --print)" in *"$J_SQEXP"*) printf yes ;; *) printf no ;; esac)"
+# ⚠ 这一条咬得最狠：**旧模板会把一个生 TAB 直接塞进 JSON 字符串里**（那是非法 JSON），
+#   而 `--print` 那条路上没有任何别的东西会说话。
+J_TABEXP="{\"sessionId\":\"a${J_BS}tb\"}"
+ck "JSONENC/接线 · 含制表符的 sid 变成短名 \\t（旧模板会塞一个生 TAB 进 JSON）" "yes" \
+   "$(case "$(ccm resume "$(printf 'a\tb')" --cwd /p --print)" in *"$J_TABEXP"*) printf yes ;; *) printf no ;; esac)"
+
+echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
 [ "$FAIL" -eq 0 ]

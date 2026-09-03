@@ -1910,6 +1910,98 @@ mod tests {
         );
     }
 
+    /// `KP2C`〔`K-P2` `D` 阶段第一拍，09-03〕**ccm 送给后端的 JSON 只许有一个产地。**
+    ///
+    /// # 它守的是什么 —— 「模板」与「编码器」在正常路径上一模一样
+    ///
+    /// `--launch` 那条一次性口**只收 stdin JSON**，而 `payload` / `cwd` 是**任意串**。
+    /// 在 `D1` 之前，`shared/ccm` 里唯一一处产 JSON 是 `printf '{"sessionId":"%s"}' "$1"` ——
+    /// 那**不是编码器，是一个只对受限字符集成立的模板**（`sessionId` 在
+    /// `control/launch.rs::parse_request` 那侧已被收窄到 `[A-Za-z0-9_-]`，所以它看着一直对）。
+    /// ⇒ 危险不在「今天错了」，在**照抄它去送 payload**：那一刀落下去之前，
+    /// 任何跑得起来的判据都不会响，因为**正常路径上两者逐字节相同**。
+    ///
+    /// # 为什么是「值位不许是带引号的展开」，而不是「同行要有 `json_str`」
+    ///
+    /// 首版写的是「每一处 JSON 字面量所在的行必须同行出现 `json_str`」，**它在真代码上当场不成立**：
+    /// `resolve_from_daemon` 里编码与 `printf` **本来就该分两行**（中间要判编码失败）。
+    /// 退而求其次去开一个「上下三行的窗口」，撞的是 `t_target_is_exact` 头注钉过的同一条：
+    /// 「看整个窗口时，同一行里出现诱饵就能让违规归零」。
+    /// ⇒ 改成**直接禁掉那个坏形状本身**：JSON 对象字面量的**值位**不许是「双引号包着的展开」
+    /// （`":"$…"` / `":"%s"`，以及它们在 shell 双引号里的转义形 `\":\"$…`）。
+    /// 这条**逐行成立、不开窗口**，而且它禁的正是模板那一行的字面形状。
+    ///
+    /// # 三条自检（缺一条这个判据就能零命中地绿）
+    ///
+    /// ① 生产段没缩水（剥注释器没把代码也剥了）；② JSON 字面量的**处数**逐字钉住
+    /// （今天 2 处；蒸发成 0 处时上面那个 for 循环一次都不进，**不报错地绿**）；
+    /// ③ `json_str` **定义恰好一次**且**被调用**至少 2 次 —— 没有 ③ 的话，
+    /// 「把两处 JSON 连同调用一起删掉」也满足前两条（`KP2C` 头注逐字：
+    /// 「『两边都没有』也满足不了它」，这里是同一条道理）。
+    #[test]
+    fn ccm_builds_backend_json_in_exactly_one_place_and_never_by_template() {
+        let prod = ccm_production();
+        // ★ 自检①：另一侧的抽取面（建判据当天生产段 536 行 / 全文 1258 行）。
+        assert!(
+            prod.lines().count() >= 300,
+            "`shared/ccm` 的生产段只剩 {} 行 —— 剥注释器把代码也剥了？下面几条会零命中地绿",
+            prod.lines().count()
+        );
+
+        // ★ 自检③：编码器**定义恰好一次**（两份实现互证是本区最贵那族病）。
+        let defs = prod.matches("json_str() {").count();
+        assert_eq!(
+            defs, 1,
+            "`shared/ccm` 生产段里 `json_str` 的定义有 {defs} 处，应当恰好 1 处。\n\
+             0 处 = 编码器没了（那两处 JSON 退回模板了？）；\n\
+             ≥2 处 = 同一件事两份实现，改一边不改另一边就是静默漂移。"
+        );
+        // ★ 自检③下半：它**真的被调用**。只判「定义在」的话，把调用点全删掉照样绿。
+        let calls = prod.matches("json_str ").count();
+        assert!(
+            calls >= 2,
+            "`shared/ccm` 生产段里 `json_str` 只被调用 {calls} 次（应 ≥2：\
+             `resolve_from_daemon` 真跑那条 · `resolve_recipe` 文本那条）—— \
+             编码器成了死代码，而 JSON 多半又是拼出来的。"
+        );
+
+        // ★ 正题：每一处 JSON 对象字面量，**值位不许是带引号的展开**。
+        //   四种形状 = ｛裸 / shell 双引号里的转义形｝×｛`$` 展开 / `printf` 的 `%s`｝。
+        const TEMPLATE_SHAPES: &[(&str, &str)] = &[
+            ("\":\"$", "裸引号 + `$` 展开"),
+            ("\":\"%", "裸引号 + printf 占位符"),
+            ("\\\":\\\"$", "转义引号 + `$` 展开"),
+            ("\\\":\\\"%", "转义引号 + printf 占位符"),
+        ];
+        let mut json_literal_lines = 0usize;
+        for line in prod.lines() {
+            if !(line.contains("{\"") || line.contains("{\\\"")) {
+                continue;
+            }
+            json_literal_lines += 1;
+            for (shape, human) in TEMPLATE_SHAPES {
+                assert!(
+                    !line.contains(shape),
+                    "`shared/ccm` 生产段这一行在**拼** JSON 而不是**编码** JSON（{human}）：\n\
+                     　{}\n\
+                     ⇒ 值位要走 `json_str`（`printf '{{\"k\":%s}}' \"$(json_str \"$v\")\"`），\n\
+                     　 不要 `\"%s\"` / `\"$v\"` 那种模板 —— 模板只对受限字符集成立，\n\
+                     　 而 `--launch` 的 `payload`/`cwd` 是任意串。理由见 `json_str` 头注。",
+                    line.trim()
+                );
+            }
+        }
+        // ★ 自检②：处数逐字钉住。**蒸发成 0 时上面那个 for 一次都不进，会不报错地绿。**
+        assert_eq!(
+            json_literal_lines, 2,
+            "`shared/ccm` 生产段里 JSON 对象字面量有 {json_literal_lines} 处，应当恰好 2 处\n\
+             （`resolve_from_daemon` 那条真跑的 · `resolve_recipe` 那条给 `--print` 的文本）。\n\
+             变多 = 新开了一处产 JSON 的地方，它得跟这两处走同一个编码器；\n\
+             变少 = 上面那条「不许拼」的循环**一次都没进**，判据在零命中地绿。\n\
+             真加/删了产 JSON 的地方就来改这个数，并在 `K-P2` 件文件里说清增量归谁。"
+        );
+    }
+
     /// `KP2C`〔`K-P2` 08-29〕**搬走的那一块，两侧不许各留一份；留退路就必须出声。**
     ///
     /// # 表的形状
