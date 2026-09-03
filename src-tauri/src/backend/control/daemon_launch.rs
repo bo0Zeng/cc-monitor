@@ -173,7 +173,16 @@ pub async fn daemon_send_into(req: SendIntoRequest) -> SendIntoResponse {
     let Some(client) = crate::inbound_client::client_for(&req.origin) else {
         return SendIntoResponse::from_routed(super::daemon_route::no_channel(&req.origin));
     };
-    let args = crate::inbound_client::launch_args("send-into", &req.name, &req.payload, None, None);
+    // ⚠ `LaunchExtras::default()`：`agent` / `width` / `height` 是 `create-or-attach` 专有的
+    //   （`K-P2` `D3` 加的），这条路**只发 `send-into`** ⇒ 一个都不该带。
+    let args = crate::inbound_client::launch_args(
+        "send-into",
+        &req.name,
+        &req.payload,
+        None,
+        None,
+        Default::default(),
+    );
     match client
         .call("launch", args, Duration::from_secs(CALL_TIMEOUT_SECS))
         .await
@@ -209,7 +218,14 @@ mod tests {
     /// 那正是 issue #76 的失管会话形态（本条与 CLI 渲染器的 #76 防线是同一条纪律的两侧）。
     #[test]
     fn the_only_mode_this_channel_can_speak_is_send_into() {
-        let args = crate::inbound_client::launch_args("send-into", "cc-x", "true", None, None);
+        let args = crate::inbound_client::launch_args(
+            "send-into",
+            "cc-x",
+            "true",
+            None,
+            None,
+            Default::default(),
+        );
         assert_eq!(args["mode"], "send-into");
         // 本模块的生产段里不许出现另一个 mode 字面量。
         let prod = guard_core::production_code(include_str!("daemon_launch.rs"));

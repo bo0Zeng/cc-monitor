@@ -443,8 +443,14 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
             "create_failed",
             "typed_unconfirmed",
         ],
+        // 〔`K-P2` `D` 阶段第三拍 09-03〕8 → 11：`agent` / `width` / `height`。
+        // 那三个是「ccm 的 `--tmux` 真的改走这条路」逼出来的 —— 本地那条编排里
+        // `@ccm_agent` 与 `-x/-y` 一直都在，这一侧此前没有字段能表达它们
+        // ⇒ 不补就是**静默丢修饰**。⚠ `avoid_collision` **不加**：撞名避让住在要搬的那一块
+        // **之外**，而「撞了」这件事 daemon 已经用 `created:false` 表达完了（`§15 裁五`）。
         fields: &[
-            "ccm_sid", "created", "cwd", "mode", "name", "payload", "session", "typed",
+            "agent", "ccm_sid", "created", "cwd", "height", "mode", "name", "payload", "session",
+            "typed", "width",
         ],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::launch::launch_for_inbound(&r.args).map(Some)),
