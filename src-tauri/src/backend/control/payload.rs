@@ -1465,6 +1465,159 @@ mod tests {
         );
     }
 
+    /// ★★★ `KP5CD2`：**容器路把起会话方铸的身份 token 转发过 tmux 边界。**
+    ///
+    /// 形状**逐格照抄**上面那条
+    /// [`the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary`]
+    /// —— 同一个窗口、同一个抽取法、同一套四样（① 锚点唯一 · ② 抽取器自检 + 非空对照 ·
+    /// ㈠ 位置 · ㈡ 行为）。**一格新方法都没发明。**
+    ///
+    /// # 它买的是什么
+    ///
+    /// `K-P5b` 把身份塞进的是**起会话方那一侧**的进程环境（`history.rs` 里
+    /// `relay + launch_identity_prefix(action) + base` 那一行）。走 ccm 容器那一支时，
+    /// 那句 `export` 落在**外层 shell** 上，而 `send-keys` 打进的是 tmux server fork 出来的
+    /// 新 shell —— `update-environment` 的默认列表不含它 ⇒ **整个被吃掉，到不了 agent 进程。**
+    /// 这与 `R08`（`CLAUDE_CONFIG_DIR`）· `K-H2b`（`ANTHROPIC_BASE_URL`）**是同一个坑的第三次**。
+    /// 本条买的是「那段转发在、条件对、拼出来的串对」。
+    ///
+    /// # 🔴 它与上面那条先例**有一格不同**（别把两条读成同一句话）
+    ///
+    /// 那条先例的头注逐字写着自己「量的是一条今天生产上到不了的路」（能推出中转 id 的只有
+    /// `LaunchAccount::Named`，而 ccm 渲染器对 `Named` 必然 §35 短路）。
+    /// **本条不是**：身份前缀是**无条件**拼上去的（不看账号形状），而 `LaunchAccount::Base`
+    /// 正是 `render_local_ccm_with` 唯一渲得出容器的那一格
+    /// ⇒ **「Base 账号 + 有 tmux 名」这条今天就走得到的输入，直接落在本条守的那段 shell 上。**
+    /// ⇒ 别把本条读成「又一条为将来预备的」。
+    ///
+    /// # ⚠ 它买不到什么（如实写）
+    ///
+    /// - **「变量真的穿过了一次真 tmux 边界」没量** —— 那要真 tmux（红线：门禁里不起 tmux），归 e2e。
+    ///   本条把那段窗口原样交给 `bash` 跑，量的是**拼出来的载荷串**。
+    /// - **PATH 上装的那个 `ccm` 是旧版时会静默吃掉它**：`capabilities=` 里没有对应 token
+    ///   （现打 17 个 token 里含 `launch-id`/`identity` 的 **0** 个），而 `ccm_probe` 探的是
+    ///   PATH 上那个 `ccm`，不是本仓这份 ⇒ **调用方无从协商**。本拍照 `K-H2b` 的先例
+    ///   没加 token（加了就要同拍补一行用法块，`every_advertised_capability_has_a_usage_line`
+    ///   数着），**挂在件文件的上报口里等 PM 裁** —— 而它与那条先例的债不同：
+    ///   那一条今天生产不可达，**这一条可达**。
+    /// - `sq` 用的是**桩**（`printf "'%s'"`），真的那份住 `ccm` 上面、不在窗口里
+    ///   ⇒ 本条**不量引法的正确性**，只量「引了、拼在内侧」。
+    #[cfg(unix)]
+    #[test]
+    fn the_ccm_container_path_forwards_the_launch_identity_across_the_tmux_boundary() {
+        const CCM: &str = include_str!("../../../../shared/ccm");
+        // 窗口 = 容器路里「载荷拼好 → 起 tmux」之间那一段。
+        const START: &str = "\n  payload=\"\"\n";
+        const END: &str = "\n  t=\"$(sq \"=$tmux_name:\")\"";
+        // ① 两个锚点**全树各恰好一处** —— 先断这个，下面的 `find` 才是「那一处」而不是「第一处」。
+        assert_eq!(
+            CCM.matches(START).count(),
+            1,
+            "载荷拼装那个起点锚点在 `shared/ccm` 里不是恰好一处 —— \
+             `find` 取的就成了「第一处」，窗口可能整个取错"
+        );
+        assert_eq!(
+            CCM.matches(END).count(),
+            1,
+            "起 tmux 那个终点锚点在 `shared/ccm` 里不是恰好一处 —— 同上"
+        );
+        let start = CCM.find(START).expect("找不到载荷拼装的起点锚点");
+        let end = CCM.find(END).expect("找不到起 tmux 那个锚点");
+        assert!(start < end, "两个锚点的先后反了 —— 窗口取错了");
+        let window = &CCM[start..end];
+        // ② 抽取器自检 + 非空对照：**既有那两条转发都必须在同一个窗口里**。
+        //    少了这一格，窗口取歪了下面整条恒绿 —— 那是先例报文里逐字写着的空真形状。
+        for (who, needle) in [
+            (
+                "R08 · CLAUDE_CONFIG_DIR",
+                "export CLAUDE_CONFIG_DIR=$(sq \"$CLAUDE_CONFIG_DIR\"); $payload",
+            ),
+            (
+                "K-H2b · ANTHROPIC_BASE_URL",
+                "export ANTHROPIC_BASE_URL=$(sq \"$ANTHROPIC_BASE_URL\"); $payload",
+            ),
+        ] {
+            assert!(
+                window.contains(needle),
+                "窗口里看不见既有转发 `{who}` —— 窗口取错了，下面整条是空真。实得：{window}"
+            );
+        }
+
+        // ㈠ 位置：新那条转发在同一个窗口里。
+        // 🔴 针**从 `history.rs` 那个常量现拼**，不写死字面量：
+        //    改了那边的变量名而没改 `ccm` ⇒ 本条当场红（漂开在结构上被逮住，
+        //    而不是靠两处各写一份字面量再指望有人记得同时改）。
+        let var = crate::history::LAUNCH_ID_VAR;
+        let forward = format!("export {var}=$(sq \"${var}\"); $payload");
+        assert!(
+            window.contains(&forward),
+            "容器路里没有把 `{var}` 转发进载荷内侧 ——\n\
+             走 tmux 的那些会话，agent 进程环境里根本没有身份（外侧那句 export 在 tmux \
+             边界被吃掉），\n\
+             而症状是「起会话方以为交下去了」，指不向这里。要找的那一句：{forward}\n\
+             实得窗口：{window}"
+        );
+
+        // ㈡ 行为：把窗口原样交给 bash 跑一遍。`sq` 用桩（真的那份住 ccm 上面，不在窗口里）。
+        let script = format!(
+            "sq() {{ printf \"'%s'\" \"$1\"; }}\n\
+             inner=(claude --resume S1)\n\
+             {window}\n\
+             printf '%s' \"$payload\"\n"
+        );
+        let run = |id: Option<&str>, base: Option<&str>, cfg: Option<&str>| -> String {
+            let mut c = std::process::Command::new("bash");
+            c.arg("-c").arg(&script);
+            c.env_remove(var);
+            c.env_remove("ANTHROPIC_BASE_URL");
+            c.env_remove("CLAUDE_CONFIG_DIR");
+            if let Some(v) = id {
+                c.env(var, v);
+            }
+            if let Some(b) = base {
+                c.env("ANTHROPIC_BASE_URL", b);
+            }
+            if let Some(d) = cfg {
+                c.env("CLAUDE_CONFIG_DIR", d);
+            }
+            let out = c.output().expect("跑那段窗口");
+            assert!(
+                out.status.success(),
+                "那段窗口自己跑不起来：{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+        // 非空对照：三个变量都没有 ⇒ 载荷就是裸 argv（证明这把尺子不是恒带前缀）。
+        assert_eq!(run(None, None, None), "'claude' '--resume' 'S1'");
+        // 正题：有身份 ⇒ 它被写进载荷**内侧**。
+        assert_eq!(
+            run(Some("tok-1"), None, None),
+            format!("export {var}='tok-1'; 'claude' '--resume' 'S1'")
+        );
+        // 三条转发并存时**互不吃掉对方**（上面两条是既有行为，本件不许改它们）。
+        let all = run(
+            Some("tok-1"),
+            Some("http://127.0.0.1:8788/s/claude-code/acct-a/sid-1"),
+            Some("/home/u/.claude-accts/acct-a"),
+        );
+        for expect in [
+            format!("export {var}='tok-1'; "),
+            "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; "
+                .to_string(),
+            "export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/acct-a'; ".to_string(),
+        ] {
+            assert!(
+                all.contains(&expect),
+                "三条转发并存时有一条被吃掉了（缺 `{expect}`）：{all}"
+            );
+        }
+        assert!(
+            all.ends_with("'claude' '--resume' 'S1'"),
+            "转发把 argv 顶掉了：{all}"
+        );
+    }
+
     /// ★★★ `KH2B3`：**注入点的人群是枚举出来的、有判据数着** —— 多一个渲染器不接线当场红。
     ///
     /// # 人群怎么定的（按**形状**，不按主题名 —— `K20`）
