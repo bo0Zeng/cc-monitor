@@ -30,7 +30,16 @@ import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
 import { validateLocalLaunch } from "../launch-requests";
-import { fetchAccounts, isSelectable, withAccount } from "../accounts";
+import {
+  fetchAccounts,
+  isSelectable,
+  withAccount,
+  localLaunchAccountSync,
+  localLaunchAccountNameSync,
+  recordLocalLaunchAccount,
+  primeLocalLaunchAccounts,
+  rememberLocalLaunch,
+} from "../accounts";
 import {
   actionsFor,
   type HistoryActionCtx,
@@ -1638,6 +1647,7 @@ export class HistoryView {
       // F06：走一遍本地 IR 构造，sid 校验先于任何 IPC 往返（同其余 planXxx 早有的
       // isValidSessionId 检查）；构造失败与拉起失败分两个 catch，headline 对齐远端
       // `runRemoteResume` 的"无法构造 resume 命令"/"拉起失败"两分，不再共用一个"恢复失败"。
+      primeLocalLaunchAccounts(); // `D1 阻-1`：同上，不等待
       try {
         validateLocalLaunch({ kind: "resume", sid: ctx.sessionId }, ctx.cwd);
       } catch (err) {
@@ -1647,11 +1657,17 @@ export class HistoryView {
       try {
         // F34：用户自定义本地 resume 命令（如 cct）；空 = 后端默认（cc 检测→默认）
         const behavior = await getBehavior();
+        // ★★ `K-H2b` `D1 阻-1`：账号这一格先前是空的（历史页 resume 那条主路）。
+        //    取值口只有一个（`resolveLocalLaunchAccount`），resume 走那条会话上次的 pin ——
+        //    与上面远端那条 `withAccount(..., {follow:{lastAccount}})` **同形**。
         await commands.resume_history_session({
           sessionId: ctx.sessionId,
           cwd: ctx.cwd,
           launcher: behavior.resumeCommandLocal || null,
+          account: localLaunchAccountSync(ctx.sessionId),
         });
+        // `D3 阻-2`：本机这条路也要往 pin 里写（同 `tabs.ts` 那处，理由见取值口头注）。
+        recordLocalLaunchAccount(ctx.sessionId, localLaunchAccountNameSync(ctx.sessionId));
       } catch (err) {
         showActionFailureToast("恢复失败", String(err));
       }
@@ -1659,6 +1675,8 @@ export class HistoryView {
   }
 
   private async runNewSession(ctx: RowActionCtx): Promise<void> {
+    // `D1 阻-1`：**不等待**地把账号快照踢一脚（等它就多一拍，撞两条只放行一个微任务的判据）。
+    primeLocalLaunchAccounts();
     const behavior = await getBehavior();
     if (ctx.origin) {
       // 远端：薄封装 F53 拉起（tmux 名派生 + 默认拉起命令兜底都在 runNewSessionRemote 里，
@@ -1686,10 +1704,24 @@ export class HistoryView {
         // 任何 IPC 之前跑），new 分支没有 sid 需要拦截，`getBehavior()` 是 remote 分支也要用的
         // 共享读取，不为这里的顺序特意重排。
         validateLocalLaunch({ kind: "new" }, ctx.cwd);
-        await commands.new_local_session({
+        // ★★ `K-H2b` `D1 阻-1`：起新会话这条主路同样一个账号都不传。
+        //    ⚠ 它取的是**当前账号**（不是从别的会话继承 —— 那是 fork 的语义），
+        //    与远端那条 `runNewSessionRemote` 的 `withAccount(origin, null, …, {follow:{}})`
+        //    **同形**：新会话跟随当前账号。
+        // ★★ `K-P5h` `KP5HD2`：**这条命令现在把这次拉起的身份 token 交回来。**
+        //    `K-P5 §3 三` 现打的那条结构性事实（「没有一处在起新会话时知道 sid」）
+        //    在这一行上是活的：这一刻我们手上有 cwd、有账号，**就是没有 sid** ——
+        //    于是那条 `recordLocalLaunchAccount` 的 pin 今天写不出来
+        //    （`tabs.ts` 那条远端同形注释逐字写着「新会话无 sid → 不记账」）。
+        //    ⇒ 把 token 挂进待回填表，等这条会话真的跑起来之后拿它反查 sid 再补写 pin。
+        //    ⚠ **不 `await` 回填**（它要等进程起来，见 `resolvePendingLocalLaunches` 头注）；
+        //      这里只是登记，一拍都不多花 —— 那两条只放行一个微任务的 DOM 判据在盯着。
+        const launchId = await commands.new_local_session({
           cwd: ctx.cwd,
           launcher: behavior.resumeCommandLocal || null,
+          account: localLaunchAccountSync(null),
         });
+        rememberLocalLaunch(launchId, localLaunchAccountNameSync(null));
         showActionFailureToast(
           "已在该目录起新会话",
           `新终端窗口正在 ${ctx.cwd} 启动。`,

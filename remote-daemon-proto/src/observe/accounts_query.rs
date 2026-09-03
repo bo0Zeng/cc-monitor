@@ -52,7 +52,14 @@
 //! - `.credentials.json` **只 stat 存在性，绝不读内容**。
 //! - `.claude.json` 只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔；
 //!   **绝不回传文件内容**——那里面有 `mcpServers` 的环境变量（可能含 API key）。
-//! - `/proc/<pid>/environ` 只抠 `CLAUDE_CONFIG_DIR` 一个键，**不回传整个环境快照**。
+//! - `/proc/<pid>/environ` 只抠**两个写死的键**（`CLAUDE_CONFIG_DIR` 与
+//!   `CCM_LAUNCH_ID`），**不回传整个环境快照**。
+//!   ⚠ `K-P5f` 加第二个键那一拍要求把「两个键」与「整个快照」的界说清楚，界在这里：
+//!   **键名是本文件里的两个常量**（`paths::CONFIG_DIR_ENV` 与 [`LAUNCH_ID_ENV`]），
+//!   **不接受任何调用方传进来的键名**。一旦键名成为一维参数，这条查询就退化成
+//!   「任意环境变量读」原语 —— 与 `--account-trust` 那条「`configDir` 必须 ∈ manifest，
+//!   否则就是任意文件读」是同一形的退化。⇒ 判据 `the_only_env_keys_this_module_reads_are_the_two_named_constants`
+//!   数着本文件生产段里 `proc_env_var(` 的调用点，**多一处 ⇒ 红**。
 //! - `--account-trust` 的 `configDir` 必须逐字等于 manifest 里某个账号的 `configDir`，
 //!   否则拒绝——避免它退化成"任意文件读"原语。`--account-trust-zero` 不收路径参数
 //!   （路径是 `$HOME/.claude.json`，写死在代码里），所以它连这个面都没有。
@@ -325,6 +332,123 @@ fn session_process_identity_ok(pid: u32, pidfile: &serde_json::Value) -> bool {
     }
 }
 
+// ------------------------------------------------- K-P5f：身份 token 读回来那一侧
+
+/// cc-monitor 起会话时铸进下一跳进程环境的**身份 token**〔`K-P5b` 写侧，`K-P5f` 读侧〕。
+///
+/// # 🔴 双写点，且**共享不了常量** —— 界在这里说清楚
+///
+/// monitor 侧的家是 `src-tauri/src/history.rs::LAUNCH_ID_VAR`，而
+/// `remote-daemon-proto` 是**另一个 crate、另一份 `Cargo.lock`**（`src-tauri/Cargo.toml`
+/// 的 workspace members 里逐字没有它）⇒ 两侧不可能 `use` 同一个 `const`。
+/// 与 `CREDENTIALS_NAME` 那个双写点（Rust ↔ bash）同形，处置也照它：
+/// **由测试对拍**（[`tests::the_launch_id_env_var_matches_the_monitor_side_home`]，
+/// `include_str!` 直接读 monitor 那份源码）。**改这里必须改那边，反之亦然。**
+///
+/// # ⚠ 它**不住** `agents/claudecode/paths.rs`，这不是疏忽
+///
+/// 那一层装的是「**Claude** 的目录布局与环境变量」（`CONFIG_DIR_ENV` 住那儿是对的：
+/// 那是 Claude 认的变量）。而本变量是 **cc-monitor 自己**铸的 token，Claude 一个字都不认
+/// ⇒ 把它塞进 `agents/claudecode/` 会让那一层多出一件不属于它的知识。
+/// 今天读它的只有本文件这一处，家就设在这里。
+const LAUNCH_ID_ENV: &str = "CCM_LAUNCH_ID";
+
+/// 身份 token 的字符集 —— **fail closed**，形状不对就不往下游递。
+///
+/// 与铸法那一侧同一条：`payload::relay_segment_is_safe` 逐字是
+/// 「只许字母数字与 `-` `_`，1..=128 字节」，而 `route_key_for_session` 铸出来的
+/// 要么是 UUID v4（`[0-9a-f-]`，36 字节）、要么是过了那条白名单的 sid ⇒ 两种都在集内。
+///
+/// # 为什么读回来还要再核一次（"来源可信"不是放行的理由）
+///
+/// 这个值来自 `/proc/<pid>/environ`，而**谁都能 `export CCM_LAUNCH_ID=…` 再起 claude** ——
+/// 它是本模块唯一一个**任意用户可控**的出参。同 `identity_tag::sid_is_safe` 那条头注
+/// 逐字记的纪律：「本仓栽过的那些坑里，最贵的一类就是『这个值不可能有问题』」。
+fn launch_id_is_safe(v: &str) -> bool {
+    !v.is_empty()
+        && v.len() <= 128
+        && v.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// 一条会话在出参里的全部字段（`--session-accounts` 每行一个）。
+///
+/// `K-P5f` 之前这里没有中间结构、边算边 `json!` —— 现在要有，理由是**防冒名那一格
+/// 只能在看完整批之后才判得出来**（见 [`suppress_inherited_launch_ids`]）。
+struct SessionRow {
+    pid: u32,
+    sid: Option<String>,
+    cwd: Option<String>,
+    config_dir: Option<String>,
+    account: Option<String>,
+    alive: bool,
+    /// 从 `/proc/<pid>/environ` 抠到、且过了 [`launch_id_is_safe`] 的原值。
+    /// 还没过防冒名那一格 —— **别直接往出参里填这一格**。
+    launch_id: Option<String>,
+}
+
+/// 🔴🔴 **防冒名：不唯一的身份 token 一律不作数**〔`KP5FD5`〕。
+///
+/// # 它防的是什么（与本文件里另一道身份检查**不是同一件事**）
+///
+/// 同一个文件里已经有一道 [`session_process_identity_ok`]，它防的是 **PID 复用**：
+/// pidfile 记的 `procStart` 必须与 `/proc/<pid>` 当前的 starttime 精确相等，
+/// 否则这个 pid 已经是别人的了。⇒ 它买到的是「**这个 pid 就是写那份 pidfile 的那个进程**」。
+///
+/// **它一个字都不管环境变量是从哪继承来的。** 而 `CCM_LAUNCH_ID` 是**继承型**变量：
+/// `export CCM_LAUNCH_ID=…; claude …` 之后，claude 再 spawn 的**子进程原样继承它**
+/// （SDK 起的、claude 自己起的 claude）。那些子进程会写**自己的** `sessions/<PID>.json`
+/// ⇒ 它们过得了 `procStart` 对拍（pid 与 pidfile 确实是同一个进程），
+/// **但按 pid 读回来的 token 是父会话的**。
+/// ⚠ 这两件事很容易被当成一件 —— 看见那一行 `session_process_identity_ok` 就以为
+/// 「防冒名」已经打过勾了。**那正是本工作区最贵的那族病。**
+///
+/// # 为什么不照抄盘上那两条已上线的防法（`KP5FD5` 要求说清选的是哪条、为什么）
+///
+/// | 盘上的防法 | 它防的 | 能不能用在这里 |
+/// |---|---|---|
+/// | ① `@ccm_sid` 那一侧的 `procStart` 冒名检查（`identity_tag.rs` 头注逐字：daemon 打标前已过 `pid_alive` + `add_time_verdict`）| **PID 复用** | ❌ **威胁模型不对** —— 与上面那道是同一族，继承一格都不防 |
+/// | ② `CC_BUS_ID` 那一侧的「无条件覆盖继承值」（`shared/ccm:1128`–`:1136`，记着一次**有可复现反例**的事故）| 继承 | ⚠ **原则可用、实现抄不了**：它成立靠「会话名是这个会话身份的唯一事实来源」——`derive_bus_id` 在**本地**就算得出真值，所以敢无条件覆盖。`CCM_LAUNCH_ID` **没有这样的本地真值**（token 是起会话方现铸的 nonce，被起的那一方无从复算）⇒ 写侧无法分辨「监视器刚给我的」与「我从父进程继承的」 |
+///
+/// ⇒ 本函数落的是 **② 的原则在读侧的兑现**：`CC_BUS_ID` 那条头注最后一句逐字是
+/// 「**继承来的值一律不作数**」。读侧能独立判出来的「不作数」只有一条 ——
+/// **一个 launch token 只对应一次拉起，因而只该落在一条活会话上**；
+/// 落在两条以上，其中至少一条是继承来的，而**谁是原主判不出来**
+/// ⇒ 照 `account: null` 那条「查不到就是查不到，**不猜**」，涉事的**全部**置 `None`。
+///
+/// # ⚠ 它买不到什么（如实写，别读宽）
+///
+/// - **父会话已经死了**的那一格买不到：死进程过不了 `procStart` 对拍 ⇒ `alive:false`
+///   ⇒ 根本不读它的 environ ⇒ 撞不出重复，活着的那个子进程会带着继承来的 token 出现。
+///   ⇒ 这条读回路的诚实边界是「**同一批里唯一**」，不是「**确实是它的**」。
+/// - **跨批次**不判：本查询是一次性的（`exec` 一次、`ssh` 一次），没有跨调用的记忆。
+/// - `launchId: null` **不区分原因**（没设 / 形状不对 / 不唯一 / 进程已死）。
+///   要区分就得给出参加状态位，那是**改上线契约**——与本文件头注给 `configDir`
+///   那一格写下的裁决同一条（「不属本区范围」），此处照办。
+fn suppress_inherited_launch_ids(rows: &mut [SessionRow]) {
+    let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    for r in rows.iter() {
+        if let Some(v) = r.launch_id.as_deref() {
+            *seen.entry(v).or_insert(0) += 1;
+        }
+    }
+    let dup: std::collections::HashSet<String> = seen
+        .into_iter()
+        .filter(|(_, n)| *n > 1)
+        .map(|(v, _)| v.to_string())
+        .collect();
+    for r in rows.iter_mut() {
+        if r.launch_id.as_deref().is_some_and(|v| dup.contains(v)) {
+            tracing::warn!(
+                "会话 pid={} 的 {LAUNCH_ID_ENV} 与别的活会话撞了 —— 至少有一条是继承来的，\
+                 判不出谁是原主 ⇒ 两边都不作数（launchId: null）",
+                r.pid
+            );
+            r.launch_id = None;
+        }
+    }
+}
+
 // ---------------------------------------------------------------- 命令
 
 /// `--list-accounts`：meta 行 + 每账号一行。永远 exit 0（"未启用"是正常状态，不是错误）。
@@ -451,10 +575,10 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
         })
         .unwrap_or_default();
 
-    let mut out = Vec::new();
+    let mut out: Vec<SessionRow> = Vec::new();
     let dir = crate::agents::claudecode::paths::sessions_root(agent_home);
     let Ok(rd) = std::fs::read_dir(&dir) else {
-        return out; // 没有 sessions/ → 零行（exit 0）
+        return Vec::new(); // 没有 sessions/ → 零行（exit 0）
     };
     let mut seen = 0usize;
     for ent in rd.flatten() {
@@ -510,6 +634,15 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
         } else {
             None
         };
+        // `K-P5f`：**第二个键**。进程已死时一个字节都不读（同 `configDir` 那一格的理由：
+        // `/proc/<pid>/environ` 在进程消失那一刻整个不存在，读了也只是 `None`；
+        // 而万一 pid 被复用，读到的就是**别人的**环境）。
+        // 形状不对 ⇒ 直接当没有（fail closed，见 `launch_id_is_safe`）。
+        let launch_id = if alive {
+            proc_env_var(pid, LAUNCH_ID_ENV).filter(|v| launch_id_is_safe(v))
+        } else {
+            None
+        };
         let cfg_norm = cfg.as_deref().map(|c| norm_dir(c).to_string());
         // 归属：有 configDir 就逐字匹配；没有且**进程确实活着**就是账号 0。
         // 进程已死时不归属（cfg 恒 None，归给账号 0 会把死会话贴成账号 0 的）。
@@ -521,23 +654,46 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
         } else {
             None
         };
-        out.push(
-            serde_json::json!({
-                "pid": pid,
-                "sessionId": json_str(sid),
-                "cwd": json_str(cwd),
-                "configDir": json_str(cfg_norm.as_deref()),
-                "account": json_str(account.as_deref()),
-                // 进程活着（身份已确认）但没设 CLAUDE_CONFIG_DIR。**Z01 起这不再是异常**：
-                // 它就是账号 0（上面的 `account` 会给出名字）。字段保留是因为下游要用它
-                // 区分「账号 0」与「设了 configDir 的账号」——语义从「告警」变成「事实」。
-                "bare": alive && cfg_norm.is_none(),
-                "alive": alive,
-            })
-            .to_string(),
-        );
+        out.push(SessionRow {
+            pid,
+            sid: sid.map(str::to_string),
+            cwd: cwd.map(str::to_string),
+            config_dir: cfg_norm,
+            account,
+            alive,
+            launch_id,
+        });
     }
-    out
+    // 🔴 防冒名那一格**只能在这里判**：它要看完整批才知道有没有撞（`KP5FD5`）。
+    suppress_inherited_launch_ids(&mut out);
+    out.into_iter()
+        .map(|r| {
+            serde_json::json!({
+                "pid": r.pid,
+                "sessionId": json_str(r.sid.as_deref()),
+                "cwd": json_str(r.cwd.as_deref()),
+                "configDir": json_str(r.config_dir.as_deref()),
+                "account": json_str(r.account.as_deref()),
+                // 🔴 **`bare` 的语义钉死在 `CLAUDE_CONFIG_DIR` 上，加第二个键没有把它拓宽。**
+                // 〔`KP5FD4`，`K-P5f` 第二拍现打的一格〕它的全部含义是「进程活着（身份已确认）
+                // 但没设 `CLAUDE_CONFIG_DIR`」，**Z01 起这不再是异常**：它就是账号 0
+                // （上面的 `account` 会给出名字）。字段保留是因为下游要用它区分
+                // 「账号 0」与「设了 configDir 的账号」——语义从「告警」变成「事实」。
+                // ⚠ **没设 `CCM_LAUNCH_ID` 不进这一格**，理由是两件事：`bare` 答的是
+                // **账号**这一维（它与 `account` 是一对），`launchId` 答的是**身份**这一维。
+                // 让一个布尔同时表示两个变量的缺席，正是本工作区最贵的那族病
+                // （「一个值装了两件事」）；`launchId: null` 自己就说得清「没有」。
+                "bare": r.alive && r.config_dir.is_none(),
+                "alive": r.alive,
+                // `K-P5f`：起会话方铸的身份 token（`CCM_LAUNCH_ID`），过了形状核与防冒名两道。
+                // **`null` = 不作数**（没设 / 形状不对 / 与别的活会话撞了 / 进程已死），
+                // 四种原因**刻意不区分** —— 同 `account: null` 那条「不猜」。
+                // ⚠ 老 daemon 不出这个键，下游读成 `None`（additive）。
+                "launchId": json_str(r.launch_id.as_deref()),
+            })
+            .to_string()
+        })
+        .collect()
 }
 
 /// `--account-trust <configDir> <cwd>`：目标账号是否已信任该目录。
@@ -1485,6 +1641,390 @@ mod tests {
             prod.matches("api-key").count(),
             0,
             "生产段里出现了 `api-key` 字面量 —— 鉴权方式的分类只许住 acct-core"
+        );
+    }
+
+    // ============================================================================
+    // `K-P5f` 第二拍：身份 token 读回来那一侧
+    // ============================================================================
+
+    /// 本文件生产段的**去注释**文本。
+    ///
+    /// 🔴 **它自己不写剥法，调共享原语** —— 第一版写了一份（切到 `#[cfg(test)]` + 过滤
+    /// `//` 开头的行），`structural_scan::every_comment_stripping_transformer_is_registered`
+    /// 当场逮住它，逐字问：「先问共享原语为什么不够 —— 答得出来就登记，答不出来就改成调它」。
+    /// **答不出来**（`production_code` 做的就是这两件事）⇒ 改成调它。
+    /// ⚠ 那张登记表住 `src-tauri/src/structural_scan.rs`，**不在本拍写区** ——
+    /// 而它给的第一条出路本来就不需要动登记表。〔与 `launcher_identity_registry` 头注
+    /// 记的那一次是同一条：那一次也是这条判据逮的，处置也一样。〕
+    fn production_text() -> String {
+        let me = include_str!("accounts_query.rs");
+        assert!(
+            me.len() > 20_000,
+            "include_str! 没读到源码，本条在空转（实得 {} 字节）",
+            me.len()
+        );
+        let prod = crate::guard_support::production_code(me);
+        crate::guard_support::assert_no_test_code("accounts_query.rs", &prod);
+        assert!(
+            prod.contains("fn session_accounts(agent_home: &Path")
+                && prod.contains("fn suppress_inherited_launch_ids(")
+                && prod.len() > 8_000,
+            "剥过头 / 锚点挪了（实得 {} 字节）—— 用它的那几条会零命中地绿",
+            prod.len()
+        );
+        prod
+    }
+
+    /// ★★ **双写点对拍**：身份变量名两侧必须逐字一致。
+    ///
+    /// monitor 侧的家是 `src-tauri/src/history.rs::LAUNCH_ID_VAR`，而这里是
+    /// [`LAUNCH_ID_ENV`] —— 两个 crate、两份 `Cargo.lock`，**共享不了常量**
+    /// （同 `CREDENTIALS_NAME` 那个 Rust ↔ bash 的双写点，处置照它：由测试钉住）。
+    ///
+    /// # 🔴 为什么**运行时读**对面那份源码，而不是编译期把它拉进来
+    ///
+    /// 本 crate 已有的跨树先例（`control/launch.rs` 钉 `TMUX_LS_FMT` 那个双写点）走的是
+    /// 编译期那条。**本条刻意不走**：编译期那一形是「两半之间的编译期边」，
+    /// 由 `src-tauri/src/cross_half_edge_registry.rs` 的登记表逐条数着（多一条 ⇒ 红），
+    /// 而**那张表不在本拍写区**。实打过：第一版用编译期那条，那条判据当场红
+    /// （`实得 18，登记 16`）。⇒ 改成运行时读，代价与补偿如实写：
+    /// - **代价**：文件不在 / 路径挪了时，编译期那条编不过（响亮），运行时这条只有本条红；
+    /// - **补偿**：`expect` + 字节数地板 —— 读不到就 panic，**不许静默成 0 字节地绿**。
+    ///
+    /// ⚠ 它买不到什么：只买「**那个字面量两边一样**」。写侧真的把它 `export` 出去了没有，
+    /// 是 monitor 那边 `the_launcher_plants_the_session_identity_into_the_process_environment`
+    /// 五格的活，本条不重复买。
+    #[test]
+    fn the_launch_id_env_var_matches_the_monitor_side_home() {
+        let monitor_history_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("remote-daemon-proto 的上级 = 仓根")
+            .join("src-tauri/src/history.rs");
+        let monitor_history = std::fs::read_to_string(&monitor_history_path)
+            .unwrap_or_else(|e| panic!("读不到 {monitor_history_path:?}：{e}"));
+        assert!(
+            monitor_history.len() > 50_000,
+            "只读到 {} 字节的 monitor `history.rs` —— 没读到真文件，本条在空转",
+            monitor_history.len()
+        );
+        let expected = format!("LAUNCH_ID_VAR: &str = \"{LAUNCH_ID_ENV}\"");
+        assert!(
+            monitor_history.contains(&expected),
+            "\n★★ 身份变量名双写点漂移：monitor 侧 `history.rs` 里找不到 {expected:?}。\n\
+             写侧（`history.rs::LAUNCH_ID_VAR`）与读侧（本文件的 `LAUNCH_ID_ENV`）\n\
+             必须是同一个字面串 —— 漂开的症状是**读侧恒 `null`**，\n\
+             而 `null` 在本查询里是合法值（「不作数」）⇒ **不会有任何东西报错**。"
+        );
+    }
+
+    /// ★★ **读环境这件事的射程不许悄悄变大**〔本文件头注那条「两个写死的键」的判据〕。
+    ///
+    /// 守的性质：`/proc/<pid>/environ` 只抠**两个常量键**，键名**不许成为一维参数**。
+    /// 多一处 `proc_env_var(pid, …)` ⇒ 红，来这里回答「新那个键是什么、为什么它不
+    /// 把本查询变成任意环境变量读原语」。
+    #[test]
+    fn the_only_env_keys_this_module_reads_are_the_two_named_constants() {
+        let prod = production_text();
+        let total = prod.matches("proc_env_var(pid, ").count();
+        assert_eq!(
+            total, 2,
+            "\n本文件生产段里 `proc_env_var(pid, …)` 有 {total} 处（登记 2 处）。\n\
+             **多了** ⇒ 又读了第三个环境变量：来模块头注那一格写清它是什么、\n\
+             以及为什么这条查询仍然不是「任意环境变量读」原语。\n\
+             **少了** ⇒ 有一条读回路被摘掉了。"
+        );
+        assert_eq!(
+            prod.matches("proc_env_var(pid, crate::agents::claudecode::paths::CONFIG_DIR_ENV)")
+                .count(),
+            1,
+            "抠 `CLAUDE_CONFIG_DIR` 那一处不见了 / 变形了"
+        );
+        assert_eq!(
+            prod.matches("proc_env_var(pid, LAUNCH_ID_ENV)").count(),
+            1,
+            "抠身份 token 那一处不见了 / 变形了（`K-P5f` 读侧的正主）"
+        );
+    }
+
+    /// ★★ **「盘上写着的」↔「我们真发的」对拍**〔`KP5FD4` 那句「判据要自己长出来」〕。
+    ///
+    /// # 它为什么非有不可
+    ///
+    /// `K-P5f` 摸底现打过：往 `--session-accounts` 加字段这条路**撞 0 道机检**
+    /// （`protocol_doc_guard` 那两条一条够不着它 —— 出参是本文件里一个就地
+    /// `serde_json::json!`，不是 `wire.rs` 里的类型；另一条数的是**子命令名**，
+    /// 而 `--session-accounts` 早在表里）。⇒ 文档那一行**只靠人记得改**。
+    /// 而「没有闸看着的文档事实」正是本工作区反复判过的假绿源
+    /// （`K-P5c §7 上报-3`「写着有、其实没有」同族）。**这条就是那道闸。**
+    ///
+    /// # 三格
+    ///
+    /// | 格 | 断的是什么 | 翻掉它的形状 |
+    /// |---|---|---|
+    /// | ① | 出参字段表逐字等于生产段真发的那几个键（**顺序也算**） | 加一个字段不改文档 / 改了名字 |
+    /// | ② | 文档那一行把**两个**环境变量键都点了名 | 加第二个键、却留着「只抠 `CLAUDE_CONFIG_DIR` 一个键」那句假话 |
+    /// | ③ | 本文件头注也把两个键都点了名 | 只改文档、漏了 `:55` 那句同义的诚实边界（派工单逐字：「两处都改，漏一处就是留假话」） |
+    ///
+    /// # ⚠ 它买不到什么
+    ///
+    /// 只买「**那几个名字都在场**」。文档那一行**说得对不对**（比如 `launchId` 的语义
+    /// 解释）它一个字都判不了 —— 那是评审的活。
+    #[test]
+    fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
+        const DOC: &str = include_str!("../../../doc/IPC-PROTOCOL.md");
+        assert!(
+            DOC.len() > 20_000,
+            "只读到 {} 字节的 `doc/IPC-PROTOCOL.md` —— include_str! 没读到，本条在空转",
+            DOC.len()
+        );
+        let row = DOC
+            .lines()
+            .find(|l| l.starts_with("- `--session-accounts "))
+            .expect("`doc/IPC-PROTOCOL.md` 里找不到 `--session-accounts` 那一行 —— 锚点挪了");
+
+        // ── ① 出参字段表：从生产段把 `json!` 的键抠出来，与文档里那个花括号表对拍 ──
+        let prod = production_text();
+        let start = prod
+            .find("fn session_accounts(agent_home")
+            .expect("找不到 `session_accounts` —— 抽取器坏了");
+        let body = &prod[start..];
+        let j = body
+            .find("serde_json::json!({")
+            .expect("`session_accounts` 里找不到出参 `json!` —— 抽取器坏了");
+        let mut keys: Vec<String> = Vec::new();
+        for l in body[j..].lines().skip(1) {
+            let t = l.trim();
+            if t == "})" {
+                break;
+            }
+            if let Some(r) = t.strip_prefix('"') {
+                if let Some(i) = r.find("\":") {
+                    keys.push(r[..i].to_string());
+                }
+            }
+        }
+        assert_eq!(
+            keys.len(),
+            8,
+            "从出参 `json!` 只抠到 {} 个键（09-02 现打 8）—— 抽取器坏了，下面那格会零命中地绿：{keys:?}",
+            keys.len()
+        );
+        let table = format!("{{{}}}", keys.join(","));
+        assert!(
+            row.contains(&table),
+            "\n★★ `doc/IPC-PROTOCOL.md` 的 `--session-accounts` 那一行里找不到字段表 {table:?}。\n\
+             出参加了字段 / 改了名 / 换了顺序，而文档没跟着改 —— **盘上留了一句假话**，\n\
+             而这条路撞 0 道机检，除了本条没有任何东西会说。\n\
+             文档那一行现在写的是：\n  {row}"
+        );
+
+        // ── ② / ③ 「只抠几个键」那句诚实边界：文档与本文件头注都得把两个键点到名 ──
+        let header: String = include_str!("accounts_query.rs")
+            .lines()
+            .take_while(|l| l.starts_with("//!") || l.trim().is_empty())
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            header.len() > 2_000,
+            "头注只切出 {} 字节 —— 切法坏了，③ 那格会零命中地绿",
+            header.len()
+        );
+        for (what, hay) in [("doc/IPC-PROTOCOL.md 那一行", row), ("本文件头注", header.as_str())] {
+            for key in ["CLAUDE_CONFIG_DIR", LAUNCH_ID_ENV] {
+                assert!(
+                    hay.contains(key),
+                    "\n★ {what} 里没点名 `{key}` —— 「`/proc/<pid>/environ` 只抠哪几个键」\n\
+                     这句诚实边界在那儿就成了假话（漏一处就是留假话，派工单逐字）。"
+                );
+            }
+        }
+    }
+
+    /// fail closed：形状不对的 token 一律不往下游递。
+    #[test]
+    fn the_launch_id_shape_gate_is_fail_closed() {
+        // 两种真形态都得过：UUID v4（新开那一支的 nonce）与 sid（resume 那一支）。
+        assert!(launch_id_is_safe("0198f0d2-1111-4222-8333-444455556666"));
+        assert!(launch_id_is_safe("a_b-1"));
+        // 空 / 超长 / 能破坏下游的字符，全挡。
+        assert!(!launch_id_is_safe(""));
+        assert!(!launch_id_is_safe(&"a".repeat(129)));
+        for bad in [
+            "a b",
+            "a;rm -rf /",
+            "$(id)",
+            "a'b",
+            "a\"b",
+            "a\nb",
+            "a\u{0}b",
+            "中文",
+        ] {
+            assert!(!launch_id_is_safe(bad), "{bad:?} 不该被放行");
+        }
+    }
+
+    fn row(pid: u32, sid: &str, launch: Option<&str>) -> SessionRow {
+        SessionRow {
+            pid,
+            sid: Some(sid.to_string()),
+            cwd: None,
+            config_dir: None,
+            account: None,
+            alive: true,
+            launch_id: launch.map(str::to_string),
+        }
+    }
+
+    /// 防冒名那一格的**纯函数**半：唯一的留下，撞了的一律不作数。
+    #[test]
+    fn a_launch_id_that_lands_on_more_than_one_session_counts_for_nobody() {
+        let mut rows = vec![
+            row(1, "sid-a", Some("tok-shared")),
+            row(2, "sid-b", Some("tok-shared")),
+            row(3, "sid-c", Some("tok-alone")),
+            row(4, "sid-d", None),
+        ];
+        suppress_inherited_launch_ids(&mut rows);
+        assert_eq!(rows[0].launch_id, None, "撞了的那一条必须不作数");
+        assert_eq!(rows[1].launch_id, None, "撞了的另一条也必须不作数");
+        assert_eq!(
+            rows[2].launch_id.as_deref(),
+            Some("tok-alone"),
+            "只落在一条会话上的 token 必须留下 —— 否则本函数是「全部抹掉」，那不是判据是空转"
+        );
+        assert_eq!(rows[3].launch_id, None);
+    }
+
+    /// 🔴🔴 **活体夹具**〔`KP5FD5`〕：造一个**真的**「父的值漏进子进程」的活体，
+    /// 让**判据本体**（`session_accounts` 自己，不是它的复刻）跑在上面。
+    ///
+    /// # 为什么非活体不可（`K-G4 §7 裁六` 的实测）
+    ///
+    /// 那一拍现打过：掏空共用原语时**方向判据全留绿，只有活体夹具红**。
+    /// 这里的等价失效是：把 [`suppress_inherited_launch_ids`] 的函数体清空，
+    /// 上面那条纯函数判据当然会红 —— 但那条判据**是我自己喂的 rows**，
+    /// 它证明不了「真从 `/proc` 读回来的两条会话真的会撞」。本条证明它。
+    ///
+    /// # 这个活体是真的（逐条说清哪一格是真的）
+    ///
+    /// - **真进程**：`sh` 起来之后 `exec sleep`，环境里带着 token；
+    /// - **真继承**：它 fork 出的后台 `sleep` 的 `CCM_LAUNCH_ID` **一个字都不是自己的**，
+    ///   是从父进程继承的 —— 这正是 `/branch` / SDK 起的子进程 / claude 自己 spawn 的
+    ///   那一族在生产上的形状；
+    /// - **真 `/proc`**：两条都过 `session_process_identity_ok`（pidfile 的 `procStart`
+    ///   是现读的），也就是说**它们过得了本文件里另一道身份检查** ——
+    ///   那道防的是 PID 复用，一个字都不防继承；
+    /// - **判据本体**：断言跑的是 `session_accounts(...)` 的出参 JSON，不是任何复刻。
+    ///
+    /// # 非空对照（第二段）
+    ///
+    /// 把子进程那份 pidfile 删掉再跑一次，父那条**必须**带着 token 回来。
+    /// 没有这一段，「全都 `null`」也会绿 —— 而那是本条最容易退化成的样子。
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_inherited_launch_id_is_never_reported_as_the_childs_own_identity() {
+        use std::io::{BufRead, BufReader};
+
+        const TOKEN: &str = "kp5f-live-0198f0d2-1111-4222-8333";
+        let root = tmpdir("inherit");
+        let claude = root.join("claude");
+        let sessions = claude.join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+
+        // 父：`sh` 先 fork 一个后台 `sleep`（**继承者**），印出它的 pid，再把自己 exec 成 `sleep`。
+        // `exec` 不改 pid、不改 starttime、**不改环境** ⇒ 两个进程的 environ 里都有 TOKEN。
+        let mut parent = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("sleep 60 & printf '%s\\n' \"$!\"; exec sleep 60")
+            .env(LAUNCH_ID_ENV, TOKEN)
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .expect("起不来 sh —— 活体夹具起不来就**不许当绿**");
+        let ppid = parent.id();
+        let mut line = String::new();
+        BufReader::new(parent.stdout.take().expect("拿不到 stdout"))
+            .read_line(&mut line)
+            .expect("读不到子进程 pid");
+        let cpid: u32 = line.trim().parse().expect("子进程 pid 不是数字");
+
+        // 第三个活体：token 的**形状**过不了白名单（空格 + `;`）。它与上面两条不撞 ⇒
+        // 它那一格的 `null` **只能**来自形状核 ⇒ 拆掉 `launch_id_is_safe` 那一格它就红。
+        // （没有这一段，形状核在活体上一颗牙都没有：`launch_id_is_safe` 的单测是纯函数，
+        //  拆掉调用点它照样全绿 —— 那正是 `K-G4 §7 裁六` 记的那一形。）
+        let mut evil = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("exec sleep 60")
+            .env(LAUNCH_ID_ENV, "not a token; rm -rf /")
+            .spawn()
+            .expect("起不来 sh（形状那一格的活体）");
+        let epid = evil.id();
+
+        let write_pidfile = |pid: u32, sid: &str| {
+            let ticks = proc_starttime(pid)
+                .unwrap_or_else(|| panic!("读不到 pid={pid} 的 starttime —— 活体没活着"));
+            fs::write(
+                sessions.join(format!("{pid}.json")),
+                format!(r#"{{"sessionId":"{sid}","cwd":"/w","procStart":"{ticks}"}}"#),
+            )
+            .unwrap();
+        };
+        write_pidfile(ppid, "sid-parent");
+        write_pidfile(cpid, "sid-child");
+        write_pidfile(epid, "sid-badshape");
+
+        // ① 两条都在 ⇒ 撞 ⇒ 两条都不作数。
+        let both = sid_map(&session_accounts(&claude, &root.join("no-accts")));
+        // ② 非空对照：只留父那一条 ⇒ token 必须回得来。
+        fs::remove_file(sessions.join(format!("{cpid}.json"))).unwrap();
+        let alone = sid_map(&session_accounts(&claude, &root.join("no-accts")));
+
+        // 先收拾活体，再断言（断言失败也不留孤儿 `sleep`）。
+        let _ = parent.kill();
+        let _ = parent.wait();
+        let _ = evil.kill();
+        let _ = evil.wait();
+        let _ = std::process::Command::new("kill")
+            .arg(cpid.to_string())
+            .status();
+        let _ = fs::remove_dir_all(&root);
+
+        assert_eq!(
+            both["sid-parent"]["alive"], true,
+            "父那条没判活 —— 夹具没装上，下面几格量的不是本件的东西"
+        );
+        assert_eq!(
+            both["sid-child"]["alive"], true,
+            "子那条没判活 —— 而它**正是**过得了 procStart 对拍、却拿着别人 token 的那一格"
+        );
+        assert_eq!(
+            both["sid-child"]["launchId"],
+            serde_json::Value::Null,
+            "\n🔴 子会话把**继承来的** token 报成了自己的身份。\n\
+             这就是 `CC_BUS_ID` 那条头注记着的、**有可复现反例**的事故换个方向重演：\n\
+             父 agent 的身份漏进子 agent ⇒ 冒名。"
+        );
+        assert_eq!(
+            both["sid-parent"]["launchId"],
+            serde_json::Value::Null,
+            "\n🔴 撞了之后**父那条也不许留** —— 判不出谁是原主时挑一个留下就是猜，\n\
+             而本查询的纪律逐字是「查不到就是查不到，不猜」。"
+        );
+        assert_eq!(
+            both["sid-badshape"]["alive"], true,
+            "形状那一格的活体没判活 —— 它那一格的 null 就说明不了是形状核干的"
+        );
+        assert_eq!(
+            both["sid-badshape"]["launchId"],
+            serde_json::Value::Null,
+            "\n🔴 形状过不了白名单的 token 被原样递给了下游。\n\
+             它与另外两条**不撞** ⇒ 这一格的 null 只能由 `launch_id_is_safe` 买；\n\
+             红了就是那道 fail-closed 被摘掉了（而这个值是任意用户可控的）。"
+        );
+        assert_eq!(
+            alone["sid-parent"]["launchId"], TOKEN,
+            "\n🔴 非空对照红了：只有一条会话时 token 都回不来 —— \n\
+             那么上面两格的 `null` 证明不了防冒名在起作用（全抹掉也是这个读数）。"
         );
     }
 }

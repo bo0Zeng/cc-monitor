@@ -941,6 +941,24 @@ if [ "$use_tmux" = 1 ]; then
     payload="export CLAUDE_CONFIG_DIR=$(sq "$CLAUDE_CONFIG_DIR"); $payload"
   fi
 
+  # K-H2b：中转 base URL 与上面 R08 同坑同修法（外侧那句 export 会在 tmux 边界被吃掉，
+  # 症状是「中转接上了、走 tmux 的会话却全是官方直连」）。ccm 仍不是注入点，只是别吃掉它。
+  # 判据住 `payload.rs::the_ccm_container_path_forwards_the_relay_base_url_…`。
+  if [ -n "${ANTHROPIC_BASE_URL:-}" ]; then
+    payload="export ANTHROPIC_BASE_URL=$(sq "$ANTHROPIC_BASE_URL"); $payload"
+  fi
+
+  # K-P5c：起会话方铸的**身份 token** 与上面 R08 / K-H2b 同坑同修法（第三次了：外侧那句
+  # export 在 tmux 边界被整个吃掉）。症状是「起会话方以为把身份交下去了，而 agent 进程的
+  # 环境里根本没有它」。ccm 仍**不是注入点**——铸法只有一份，住 Rust 侧的
+  # `payload::route_key_for_session`；这里只是**别吃掉它**。
+  # 判据住 `payload.rs::the_ccm_container_path_forwards_the_launch_identity_…`。
+  # ⚠ 与上面两条不同的是：**这一条今天真有生产人群**（身份前缀是无条件拼的，而 `Base` 账号
+  # 渲得出 ccm 容器）——上面那条 base URL 的今天走不到（具名账号进不了 ccm，见那条判据头注）。
+  if [ -n "${CCM_LAUNCH_ID:-}" ]; then
+    payload="export CCM_LAUNCH_ID=$(sq "$CCM_LAUNCH_ID"); $payload"
+  fi
+
   t="$(sq "=$tmux_name:")"
   # `--tmux-size`：detached 会话默认 80x24，太窄会把 agent 输出折行（cc-spawn 一直用 220x50）。
   # 只对**新建**生效——幂等接回既有会话时 new-session 失败短路，尺寸自然不动，这是对的：

@@ -18,6 +18,8 @@ import {
   accountStatusBadge,
   accountLoginActionLabel,
   setDefaultName,
+  // K-H2c：「这几个号在不在中转表里」问后端要 —— 前端不推账号 id、也不读那份凭据文件。
+  fetchLocalRelayRouting,
   getModelForAccount,
   setModelForAccount,
   invalidateAccountsCache,
@@ -41,6 +43,26 @@ import {
 } from "./acct-deploy";
 
 /**
+ * 中转 key 那一块要显的**一个账号**。只带界面真正用得到的三样。
+ *
+ * ⚠⚠ `K-H2c` `KH2C1`：`configDir` 在前端是一个**不透明串** —— 前端一个字都不解析它，
+ * 原样递给那条命令，由 Rust 用**全仓唯一那份规则**（`history::relay_account_id_of_dir`）
+ * 推出账号 id。前端自己从那个路径里取末段名，就是在长**第二份**规则，
+ * ⚠ 这句话**刻意不写成代码形状** —— `the_ui_never_derives_the_account_id_itself`
+ * 那条机检扫的是整份文件（含注释），写成代码形状会让它红在一句注释上。
+ * 漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。
+ * 由 `the_ui_never_derives_the_account_id_itself` 机检钉着。
+ */
+export interface RelayKeyAccount {
+  /** 显示用的名字（**只用来显示**，绝不当成 id 递给后端）。 */
+  name: string;
+  /** 递给后端那条命令的不透明串。 */
+  configDir: string;
+  /** 中转表里今天有没有它那一行 —— `KH2B7` 的答案，**后端算的**。 */
+  routed: boolean;
+}
+
+/**
  * `K-H2a` `KS6` 前端那一半：中转那把第三方 API key 的一块。
  *
  * # ★★ **永不回显** —— 这一块存在的全部意义
@@ -61,10 +83,25 @@ import {
  * - `KS9`：**把那份文件的路径显出来** —— 一个「能手编但没人知道在哪」的文件等于不能手编。
  * - `KS11`：权限过宽 / 查不出来时**在界面上出声**（件计划定的是「出声」不是「拒绝」；
  *   拒绝会把人卡死在一个他不知道怎么修的地方）。
+ *
+ * # ⚠⚠ `K-H2c`：它从「一把全局 key」变成「**配给某一个账号**」
+ *
+ * 先前这一块只有一个输入框，`onSave` 只收 `key` ⇒ 后端只写得了**顶层那一格**，
+ * 读出来 id 逐字是 `default`，而起会话那一侧按**账号目录末段名**索引
+ * ⇒ **从界面配的 key 永远匹配不上任何账号，中转一律 404、一个字节不发上游。**
+ * 今天多一个账号选择器，`onSave` 连 `configDir` 一起交出去。
+ *
+ * ⚠ **「哪个账号」这件事前端不推**，见 [`RelayKeyAccount`] 头注。
+ *
+ * ⚠ **`status.configured` / `status.masked` 说的是「顶层那一把」**（历史格式那一行），
+ * **不是**当前选中这个账号 —— 它读得出来，但界面不再往那儿写（`KH2C3`）。
+ * 「这个号配没配」由 [`RelayKeyAccount.routed`] 答（后端算的那一格）。
+ * **这两件事分两行显，不许合成一行** —— 合成一行就是拿 A 的状态冒充 B 的。
  */
 export function renderRelayKeyBlock(
   status: RelayCredentialsStatus,
-  onSave: (key: string) => void | Promise<void>,
+  accounts: RelayKeyAccount[],
+  onSave: (key: string, configDir: string) => void | Promise<void>,
 ): HTMLElement {
   const box = document.createElement("div");
   box.className = "relay-key-block";
@@ -74,10 +111,30 @@ export function renderRelayKeyBlock(
   title.textContent = "中转 API key";
   box.appendChild(title);
 
+  // ★ `K-H2c`：配给**哪个账号**。选项的 value 是那个不透明的 configDir。
+  const picker = document.createElement("select");
+  picker.className = "relay-key-account";
+  for (const a of accounts) {
+    const opt = document.createElement("option");
+    opt.value = a.configDir;
+    opt.textContent = a.name;
+    picker.appendChild(opt);
+  }
   const state = document.createElement("div");
   state.className = "relay-key-state";
-  // ⚠ 显示的是**掩码**，不是明文。没配就说没配 —— 不显示一个空的掩码冒充「配了」。
-  state.textContent = status.configured ? `已配置：${status.masked}` : "未配置";
+  const selected = (): RelayKeyAccount | undefined =>
+    accounts.find((a) => a.configDir === picker.value);
+  const syncState = (): void => {
+    const a = selected();
+    state.textContent = !a
+      ? "这台机器上没有能配的账号：账号 0 在 manifest 里没有目录名，说不出 id ⇒ 配了也不会被注入。先加一个隔离账号，或者直接编辑下面那份 JSON。"
+      : a.routed
+        ? `${a.name}：中转表里已经有它那一行。再存一次会**替换**它那一把 key。`
+        : `${a.name}：中转表里还没有它那一行 —— 它的会话今天走官方直连。`;
+  };
+  if (accounts.length) box.appendChild(picker);
+  syncState();
+  picker.addEventListener("change", syncState);
   box.appendChild(state);
 
   // `KS9`：路径要能被找到，人才改得动它。
@@ -102,22 +159,39 @@ export function renderRelayKeyBlock(
     box.appendChild(bad);
   }
 
+  // ★ `KH2C3`：**顶层那一把**（历史格式那一行）单独一行显。它读得出来，
+  //   但界面不再往那儿写 —— 与上面那行「这个号配没配」是**两件事**，不许合成一行。
+  if (status.configured) {
+    const legacy = document.createElement("div");
+    legacy.className = "relay-key-legacy";
+    legacy.textContent = `顶层那一把（历史格式）：已配置 ${status.masked}。它照常还能用，但界面不再往那一格写。`;
+    box.appendChild(legacy);
+  }
+
   const input = document.createElement("input");
   input.type = "password";
   input.className = "relay-key-input";
   // ★★ **这里刻意什么都不做** —— 不预填、不 placeholder 回显掩码。
   //    `status` 里也没有明文可填（类型上就没有那个字段）。
-  input.placeholder = status.configured ? "输入新的 key 以替换" : "粘贴 key";
+  input.placeholder = selected()?.routed ? "输入新的 key 以替换" : "粘贴 key";
+  input.disabled = accounts.length === 0;
   box.appendChild(input);
+  picker.addEventListener("change", () => {
+    input.placeholder = selected()?.routed ? "输入新的 key 以替换" : "粘贴 key";
+  });
 
   const save = mkBtn("保存");
   save.className = "relay-key-save";
+  save.disabled = accounts.length === 0;
   save.addEventListener("click", () => {
     const v = input.value.trim();
-    if (!v) return;
+    const a = selected();
+    // 说不出配给哪个账号就**什么都不做** —— 后端那一侧也会拒（不回落到顶层那一格），
+    // 这里挡一次只是别让人对着一个没有目标的输入框按半天。
+    if (!v || !a) return;
     // 先清空再交出去：**明文在 DOM 里停留的时间越短越好**（截图 / 录屏那两个出口）。
     input.value = "";
-    void onSave(v);
+    void onSave(v, a.configDir);
   });
   box.appendChild(save);
   return box;
@@ -579,7 +653,8 @@ export class AccountsSection {
 
     // K-H2a：中转那把第三方 API key。**挂在账号这一组里**——它是「用哪个身份打上游」
     // 这件事的一部分，而不是一个独立的设置面。
-    void this.mountRelayKeyBlock();
+    // K-H2c：把这一页显的这几个账号递进去 —— 那把 key 今天是**配给某一个号**的。
+    void this.mountRelayKeyBlock(accounts);
 
     // U8：数的是**可选**账号数,不是总数——1 个 isolated + 1 个 in-place 逃生口时总数=2 但
     // 你其实还只有一个能用的号,此刻"加第二个账号"仍是正路。与 accountColorsActive 同源判据。
@@ -591,14 +666,40 @@ export class AccountsSection {
    *
    * ⚠ **读失败不许静默**：这一格与账号列表不同——账号读不到只是少一块信息，
    * 而凭据读不到时用户可能正打算配它。失败就把失败显出来。
+   *
+   * # ⚠ `K-H2c` 三条口径，一条都别省
+   *
+   * ① **「这个号在不在中转表里」是问后端要的**（`KH2B7` 那条既有命令），
+   *    前端不推账号 id、也不读那份凭据文件。它失败**不挡配 key** ——
+   *    那只影响状态那一行的措辞，而配 key 本身是这一块存在的理由。
+   * ② **没有 `configDir` 的账号（账号 0）被滤掉**：起会话那一侧对它逐字回 `None`
+   *    （`relay_account_id` 头注：「说不出 id 就不注入」）⇒ 给它配一把 key 是配了也不生效。
+   * ③ ⚠⚠ **如实记一条今天没买到的**：这一页显的是 `this.origin` 那台机器的账号，
+   *    而 `read_relay_credentials_status` / `write_relay_credentials_key` / `relay_routing_for`
+   *    **全是本机**的（那三条命令自己的头注逐字都写着「只答本机」）。
+   *    在 `cc-acct-iso` 的布局下两边的目录末段名同名 ⇒ 实际用起来对得上，
+   *    但**这一格没有任何东西钉着**。这是 `K-H2a` 起就有的形状（那一块本来就无条件挂着），
+   *    本轮**没有把它变好也没有把它变坏**，登记在件文件 `§7` 的上报口里。
    */
-  private async mountRelayKeyBlock(): Promise<void> {
+  private async mountRelayKeyBlock(accounts: Account[]): Promise<void> {
     try {
       const status = await commands.read_relay_credentials_status();
+      const dirs = accounts.map((a) => a.configDir).filter((d): d is string => !!d);
+      let routed: string[] = [];
+      try {
+        routed = dirs.length ? (await fetchLocalRelayRouting(dirs)).routed : [];
+      } catch {
+        // 口径①：这一格失败只让状态那一行说「还没有它那一行」，不挡配 key。
+      }
+      const entries: RelayKeyAccount[] = dirs.map((configDir) => ({
+        name: accounts.find((a) => a.configDir === configDir)?.name ?? configDir,
+        configDir,
+        routed: routed.includes(configDir),
+      }));
       this.body.appendChild(
-        renderRelayKeyBlock(status, async (key) => {
+        renderRelayKeyBlock(status, entries, async (key, configDir) => {
           try {
-            await commands.write_relay_credentials_key({ key });
+            await commands.write_relay_credentials_key({ key, configDir });
             void this.reload(true);
           } catch (e) {
             showActionFailureToast("保存中转 API key", String(e));
@@ -779,7 +880,11 @@ export class AccountsSection {
     // 还是「已登录」。
     const badge = document.createElement("span");
     badge.className = "accounts-row-badge";
-    const status = accountStatusBadge(a);
+    // `K-H2b` `KH2B7`：**这张表是远端专用的** —— `reload` 在 `this.origin` 为空时
+    // 直接早退（「账号功能在远端 Linux 上」），所以这里渲染的每一行都来自远端那一半。
+    // ⇒ 显式告诉徽章是哪一半：远端那一半本件明写不做（`§0e` 裁四），
+    //   它的 hover 该说「只给本机配、远端这一半还不做」，而不是一句不分半边的全称。
+    const status = accountStatusBadge(a, { scope: "remote" });
     badge.textContent = status.text;
     if (status.warn) badge.classList.add("warn");
     if (status.title) badge.title = status.title;

@@ -238,10 +238,35 @@ pub struct SessionAccount {
     /// configDir 反查 manifest 得到的账号名；查不到 = `None`（**不猜**）。
     pub account: Option<String>,
     /// 进程活着但没设 `CLAUDE_CONFIG_DIR`（迁移后不该出现）。
+    ///
+    /// 🔴 **它的语义钉死在 `CLAUDE_CONFIG_DIR` 这一个变量上**〔`K-P5f` `KP5FD4`〕：
+    /// `K-P5f` 给出参加了第二个环境变量（[`Self::launch_id`]），而这个布尔**没有**
+    /// 跟着拓宽 —— 「没设 `CCM_LAUNCH_ID`」不进这一格，那由 `launch_id: None` 自己表达。
+    /// 让一个布尔同时表示两个变量的缺席，正是「一个值装了两件事」那族病。
     #[serde(default)]
     pub bare: bool,
     #[serde(default)]
     pub alive: bool,
+    /// `K-P5f`：起会话方铸进这条会话进程环境的**身份 token**（`CCM_LAUNCH_ID`）。
+    ///
+    /// `None` = **不作数**，四种原因合并成一个 `None`（**不猜**，同 [`Self::account`]）：
+    /// ① 进程没设它；② 值的形状过不了白名单；③ 它同时落在别的活会话上
+    /// （继承来的，判不出谁是原主）；④ 进程已死（不读它的 environ）。
+    ///
+    /// ⚠ **additive**：老 daemon 的出参里**没有这个键**，缺了必须读成 `None`，
+    /// **不许把老 daemon 判成坏行**（那会让整条会话账号映射消失，症状是徽章整片没了，
+    /// 而没有任何地方说得出为什么）。判据 = `session_account_row_parses` 里那条
+    /// **逐字节没有 `launchId` 键**的老 daemon 金样行。
+    ///
+    /// 🔴 **`#[serde(default)]` 在这一格上不是承重的，写清楚免得后人误读**〔`K-P5f` 第二拍死值验现打〕：
+    /// 把它删掉，上面那条金样行**照样绿**（serde 的 derive 对 `Option<T>` 本来就把
+    /// 「键缺席」当 `None`）。真正会翻掉 additive 的那一刀是**加一个非 `Option`、
+    /// 又没有 `default` 的字段** —— 实打过：临时加一个 `pub probe_required: bool`，
+    /// 两条金样当场红（`missing field \`probeRequired\``）。
+    /// ⇒ 这个属性留着是**声明意图**（与同结构体里 `bare` / `alive` 那两个 `bool` 一致），
+    /// 不是那条 additive 判据的牙。
+    #[serde(default)]
+    pub launch_id: Option<String>,
 }
 
 #[derive(serde::Serialize, Debug, Clone, Default)]
@@ -521,6 +546,40 @@ mod tests {
         assert!(row.bare);
         assert!(row.alive);
         assert!(row.account.is_none());
+        // ★ `K-P5f` `KP5FD4` 的 **additive 那一半**：上面这一行是**老 daemon 的出参**
+        // （逐字节没有 `launchId` 键）。它必须照样解析成功、读成 `None`。
+        // 生产上翻掉它的症状是**整台远端的会话账号映射一条都不剩**（每行解析失败被 warn
+        // 跳过），徽章整片消失且没人说得出为什么。
+        // ⚠ **翻掉它的那一刀不是删 `#[serde(default)]`**（`Option<T>` 缺键 serde 本来就给
+        // `None`，实打过：删掉本条照样绿）——是**加一个非 `Option` 又没有 `default` 的字段**
+        // （实打：临时加 `pub probe_required: bool` ⇒ 本条与下一条当场红
+        // `missing field \`probeRequired\``）。这一格记在 `SessionAccount::launch_id` 头注里。
+        assert!(
+            row.launch_id.is_none(),
+            "老 daemon 的行缺 launchId 应读成 None，不是报错"
+        );
+    }
+
+    /// `K-P5f`：新 daemon 那一侧 —— `launchId` 有值时逐字带回来，`null` 读成 `None`。
+    ///
+    /// ⚠ 这里刻意**不**判「什么时候该是 null」：那是 daemon 侧
+    /// `accounts_query::suppress_inherited_launch_ids` 与它的活体夹具的活。
+    /// 本条只买「这条线在 monitor 侧接得住」——一个性质两个量法就是本区最贵那族病。
+    #[test]
+    fn session_account_row_carries_the_launch_identity() {
+        let with: SessionAccount = serde_json::from_str(
+            r#"{"pid":1,"sessionId":"s","cwd":"/w","configDir":null,"account":null,"bare":true,"alive":true,"launchId":"tok-1"}"#,
+        )
+        .unwrap();
+        assert_eq!(with.launch_id.as_deref(), Some("tok-1"));
+        let nulled: SessionAccount = serde_json::from_str(
+            r#"{"pid":1,"sessionId":"s","cwd":"/w","configDir":null,"account":null,"bare":true,"alive":true,"launchId":null}"#,
+        )
+        .unwrap();
+        assert!(
+            nulled.launch_id.is_none(),
+            "daemon 判「不作数」时发的是 null，monitor 侧必须读成 None"
+        );
     }
 
     // ---- Z01：账号 0（configDir 缺席）----

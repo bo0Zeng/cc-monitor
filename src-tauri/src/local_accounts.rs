@@ -732,7 +732,8 @@ mod tests {
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 〔F10b 第二批·下半〕`MAX_LOCAL_SESSION_FILES` / `MAX_LOCAL_SESSION_FILE_BYTES` **已删** ——
-// 它们是 daemon 侧同名上限的**第二份**（`observe/accounts_query.rs:47/:49`，值逐字相同：
+// 它们是 daemon 侧同名上限的**第二份**（`accounts_query.rs::MAX_SESSION_FILES` 与
+// `accounts_query.rs::MAX_SESSION_FILE_BYTES`，值逐字相同：
 // 500 个文件 / 1 MiB）。唯一的用处随 `list_local_session_accounts` 改走 sidecar 一起消失
 // ⇒ 留着就是「同一个数两处各写一份」（定框 §4）。上限现在只有一个家：daemon 那边，
 // 且由它自己的测试与 `read_regular_capped` 钉着。
@@ -772,8 +773,13 @@ mod tests {
 /// - **sidecar 不在**（开发树）⇒ `available:false` + 「本机后端不在…（找过哪些路径）」。
 /// - **查询失败** ⇒ `available:false` + 退出码与 stderr 原样带出（定框 §5：诚实降级）。
 /// - 零行是合法的（本机没有活会话）—— 同远端那条的判断，不额外区分「旧 daemon」。
-/// - ⚠ 只抠 `CLAUDE_CONFIG_DIR` 一个键、`configDir` 过白名单 —— 那两条现在由 daemon 侧守
-///   （它的 `observe/accounts_query.rs` 头注逐字写着同一套边界）。
+/// - ⚠ 只抠**两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`）、`configDir` 过白名单
+///   —— 那两条现在由 daemon 侧守（它的 `observe/accounts_query.rs` 头注逐字写着同一套边界）。
+///   🔴 **第二个键是 `K-P5f` 加的**（身份 token 读回来那一侧）；这句话原先逐字写着
+///   「只抠 `CLAUDE_CONFIG_DIR` **一个键**」，**不同拍改它就是在盘上留一句假话** ——
+///   而它这一处**没有任何机检看着**（路② 撞 0 道机检，`K-P5f §7 二㈡` 现打），
+///   全靠人记得来改。同族病史见 `K-P5c §7 上报-3`「写着有、其实没有」。
+///   键名**不是参数**（daemon 侧两个常量），所以「两个键」与「整个环境快照」的界没有松动。
 #[tauri::command]
 pub async fn list_local_session_accounts() -> Result<crate::accounts::SessionAccountsResult, String>
 {

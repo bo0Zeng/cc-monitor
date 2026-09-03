@@ -353,7 +353,7 @@ mod tests {
             format!("use {}::", "windows"),
             // ⚠ **第四批，audit-0805 F19 下半补的**：`std::env::consts::*` 是
             // **没有 `cfg` 的平台原语** —— `EXE_SUFFIX` 在 Windows 上是 `.exe`、别处是空串。
-            // 上面那十几条形态一个都匹配不上它，于是 `local_backend.rs:421` 那处
+            // 上面那十几条形态一个都匹配不上它，于是 `local_backend.rs::resolve_beside_this_exe` 那处
             // **在生产段里逃逸了整整一轮**（F19 §4 点过名，但当时归因成「管辖面太窄」，
             // 实际是**形态集太窄**）。
             // ★ 这已经是形态集第二次被扩：第三批是反向锚点逼出来的，这批是逐条读代码读出来的。

@@ -55,9 +55,117 @@ const STATUS_CELLS: &[(&str, &str)] = &[
     ("`common/`", "monitor-backend-common-landed"),
 ];
 
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-P5g` `KP5GD3`：**一句话散在好几处** —— 本模块头注那个病的第三次发作
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// # 病史（三次，一次比一次贵）
+//
+// 本模块头注逐字记着前两次：F01 的四处「每 ~8s」；F07 订正了 §33b 三问的答案 ①、
+// 却漏了**同一节里 11 行之前**那个说着同一句话的单元格 ——
+// 「**订正手头那一处，不等于订正那句话**」。
+//
+// 第三次是 `K-P5f`（09-02）：`/proc/<pid>/environ` 从读一个环境变量变成读两个，
+// 那一拍把「读几个」这句话改对了三处、**漏了 `doc/INVARIANTS.md` 那一处**，
+// 而且同一拍还给这句话**新写了第五份副本**（`accounts_query.rs` 里那条判据的头注）。
+//
+// # 🔴 为什么那句假话活得下来：**它不在任何一张登记表里**
+//
+// `K-P5g` 派工前现打：`STATUS_CELLS` 登记 11 格，针 `environ` / `CLAUDE_CONFIG_DIR`
+// 在整个 `doc_claim_registry.rs` 里 **0 命中** ⇒ 改那句话不会打破任何闸，
+// 于是它只能靠「下一个人记得来改」活着 —— 而那正是本模块开头声称要治的病。
+//
+// ⇒ **本组判据不是来补那一处的**（补一处是 `KP5GD2` 的活，一次性）。
+//   它买的是：**这句话再多一份副本、或哪份副本对不上现场，都会有东西变红。**
+//
+// # 手法：人群**扫出来**，登记表只说「这一份是哪一类」
+//
+// 与 `STATUS_CELLS` 同形（那张表刻意不存文档写的状态，只存「怎么量」）：
+// 这里也**不存那个计数词**，只存「这一份属于哪一类」。计数词从**生产代码**里数出来
+// （daemon 侧真读了几个环境变量），再与每一份副本上写着的对拍 ⇒ 那个数只有一个家。
+//
+// ⚠ 分类是必需的，不是偷懒：盘上确实有几份副本**逐字带着旧说法**，
+// 因为它们是在**引用那句假话本身**（病史 / 判据失败文案）。
+// 词法扫描分不开「在断言」与「在引述」，那一格只能由人裁 —— 那就是这张表存在的理由。
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum EnvKeyClaim {
+    /// **断言当下**：这一份真的在说「今天从进程环境里读几个」。⇒ 过计数词对拍。
+    Asserts,
+    /// **在引述那句话本身**（病史 / 判据文案）。它逐字带着旧说法是**故意的**，不判计数词。
+    Quotes,
+    /// 同一句式，但**主语不是进程环境**（说的是别的抽取器抠出几样东西）。不判计数词。
+    OtherSubject,
+}
+
+/// 「从 `/proc/<pid>/environ` 读几个」这句话在盘上的**每一份副本** → 它是哪一类。
+///
+/// `(仓相对路径, 那一行里的一段锚点原文, 类别)`。
+///
+/// ⚠ **锚点刻意避开扫描器用的那两个字**，于是本文件自己**不会**成为它所描述的人群的一员
+/// （`the_registry_file_itself_stays_out_of_that_population` 钉着这条性质）。
+#[cfg(test)]
+const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
+    // ── 断言当下的那几份 ──────────────────────────────────────────────────
+    // 🔴 `K-P5f` 漏的就是这一份：铁律那一节，全树寿命最长的文档。
+    (
+        "doc/INVARIANTS.md",
+        "绝不回传整个环境快照",
+        EnvKeyClaim::Asserts,
+    ),
+    (
+        "doc/IPC-PROTOCOL.md",
+        "`--session-accounts [--accts-dir <p>]`",
+        EnvKeyClaim::Asserts,
+    ),
+    (
+        "remote-daemon-proto/src/observe/accounts_query.rs",
+        "//! - `/proc/<pid>/environ`",
+        EnvKeyClaim::Asserts,
+    ),
+    // `K-P5f` 同一拍新写的第五份 —— 它自己就是「订正的同时又添一份副本」的活证据。
+    (
+        "remote-daemon-proto/src/observe/accounts_query.rs",
+        "守的性质：",
+        EnvKeyClaim::Asserts,
+    ),
+    (
+        "src-tauri/src/local_accounts.rs",
+        "、`configDir` 过白名单",
+        EnvKeyClaim::Asserts,
+    ),
+    // ── 在引述那句话本身的那几份（逐字带着旧说法是故意的）────────────────
+    (
+        "remote-daemon-proto/src/observe/accounts_query.rs",
+        "文档那一行把",
+        EnvKeyClaim::Quotes,
+    ),
+    (
+        "remote-daemon-proto/src/observe/accounts_query.rs",
+        "那句诚实边界：文档与本文件头注",
+        EnvKeyClaim::Quotes,
+    ),
+    (
+        "remote-daemon-proto/src/observe/accounts_query.rs",
+        "里没点名",
+        EnvKeyClaim::Quotes,
+    ),
+    (
+        "src-tauri/src/local_accounts.rs",
+        "不同拍改它就是在盘上留一句假话",
+        EnvKeyClaim::Quotes,
+    ),
+    // ── 同句式、别的主语 ──────────────────────────────────────────────────
+    (
+        "remote-daemon-proto/src/observe/accounts_query.rs",
+        "从出参 `json!`",
+        EnvKeyClaim::OtherSubject,
+    ),
+];
+
 #[cfg(test)]
 mod tests {
-    use super::STATUS_CELLS;
+    use super::{EnvKeyClaim, ENV_KEY_CLAIM_SITES, STATUS_CELLS};
     use std::path::{Path, PathBuf};
 
     const INVARIANTS: &str = include_str!("../../doc/INVARIANTS.md");
@@ -1474,5 +1582,287 @@ mod tests {
              真要跑部分，请带过滤串（`cargo test --lib <模块>`）或 `--`（`-- --nocapture`）。",
             bare.join("\n")
         );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // `K-P5g` `KP5GD3`：**「读几个」那句话的每一份副本，都被登记住**
+    //
+    // 分工（照 `STATUS_CELLS` 那一族的形状）：
+    //   · 人群 **扫出来**（`env_key_claim_lines`）—— 手写清单描述人群，是本仓最贵的病之一；
+    //   · 登记表 **只说「这一份是哪一类」**，不存那个数；
+    //   · 那个数从 **生产代码** 数出来（`env_keys_actually_read`）—— 它只有一个家。
+    // ⇒ 多写一份副本 ⇒ `every_copy_of_that_sentence_is_registered` 红；
+    //   哪份副本上的数与现场对不上 ⇒ `every_registered_copy_says_the_number_we_actually_read` 红。
+    // ═════════════════════════════════════════════════════════════════════════
+
+    /// 扫描器的针，**拆成两半、分行写**。
+    ///
+    /// 🔴 合起来写在同一行上，本文件立刻成为它自己所描述的人群的一员
+    /// （登记表会开始登记自己）—— `the_registry_file_itself_stays_out_of_that_population`
+    /// 钉着这条性质，**别把这两行并回一行**，也别在本文件里把这两个词写在同一行上。
+    const NEEDLE_HEAD: &str = "只抠";
+    const NEEDLE_TAIL: &str = "键";
+
+    /// 全仓（`git ls-files` 口径）扫出那句话的每一份副本：`(仓相对路径, 行号, 行文)`。
+    fn env_key_claim_lines() -> Vec<(String, usize, String)> {
+        const EXTS: &[&str] = &[
+            "rs", "ts", "tsx", "sh", "mjs", "json", "yml", "toml", "md", "py",
+        ];
+        let out = std::process::Command::new("git")
+            .args(["ls-files"])
+            .current_dir(repo_root())
+            .output()
+            .expect("跑不动 `git ls-files` —— 本组判据的人群口径就是它");
+        assert!(out.status.success(), "`git ls-files` 非零退出");
+        let files: Vec<String> = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .map(|s| s.to_string())
+            .collect();
+        // ★ 自检：清单太短 ⇒ 口径坏了，下面整组会零命中地绿。
+        assert!(
+            files.len() > 300,
+            "`git ls-files` 只列出 {} 个文件 —— 口径坏了（本仓实测七百多）",
+            files.len()
+        );
+        let mut hits: Vec<(String, usize, String)> = Vec::new();
+        for rel in files {
+            let Some(ext) = rel.rsplit('.').next() else {
+                continue;
+            };
+            if !EXTS.contains(&ext) {
+                continue;
+            }
+            let Ok(text) = std::fs::read_to_string(repo_root().join(&rel)) else {
+                continue;
+            };
+            for (i, l) in text.lines().enumerate() {
+                if l.contains(NEEDLE_HEAD) && l.contains(NEEDLE_TAIL) {
+                    hits.push((rel.clone(), i + 1, l.to_string()));
+                }
+            }
+        }
+        hits
+    }
+
+    /// daemon **今天真的**从 `/proc/<pid>/environ` 里读几个环境变量 —— 从生产代码数出来。
+    ///
+    /// ★ 这个数**只有一个家**（那段生产代码）：不是本文件里的常量，也不是文档里那个词。
+    /// 这正是本模块头注那条手法：「判据不自己写那个数 —— 它把数抽出来，再与现场量的比」。
+    fn env_keys_actually_read() -> usize {
+        let p = repo_root().join("remote-daemon-proto/src/observe/accounts_query.rs");
+        let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
+        assert!(
+            raw.len() > 20_000,
+            "只读到 {} 字节的 `accounts_query.rs` —— 没读到真文件，本组在空转",
+            raw.len()
+        );
+        // ⚠ 剥生产段**走 `guard_core` 那一份**（与全树共用同一个区间判定），本文件不另写一条。
+        let prod = guard_core::production_code(&raw);
+        guard_core::assert_no_test_code("accounts_query.rs", &prod);
+        // ⚠ 锚点用**带边界的钉法**，不写裸 `contains`
+        //（`needle_anchor_registry` 那条递减棘轮：语料变量上的裸 `contains` 只许比今天少）。
+        guard_core::find_pinned(&prod, "fn session_accounts(agent_home: &Path").unwrap_or_else(
+            |e| panic!("`accounts_query.rs` 生产段的锚点挪了 —— 下面两条会零命中地绿：{e}"),
+        );
+        let n = prod.matches("proc_env_var(pid, ").count();
+        assert!(
+            n > 0,
+            "生产段里一处 `proc_env_var(pid, …)` 都没有 —— 抽取器坏了，本组在空转"
+        );
+        n
+    }
+
+    /// N → 中文里写这个数**允许**用的那几个字。读到第三个变量时来这儿补一行。
+    fn count_words_for(n: usize) -> &'static [char] {
+        match n {
+            1 => &['一'],
+            2 => &['两', '二'],
+            3 => &['三'],
+            4 => &['四'],
+            _ => panic!("现在读 {n} 个了 —— 来 `count_words_for` 补上这个数中文怎么写"),
+        }
+    }
+
+    /// 从一份副本里抠出它写着的那个计数词。`None` = 那处没写数（写的是「几」「N」之类）。
+    fn count_word_in(line: &str) -> Option<char> {
+        let at = line.find(NEEDLE_HEAD)? + NEEDLE_HEAD.len();
+        let rest = &line[at..];
+        let k = rest.find('个')?;
+        rest[..k]
+            .chars()
+            .next_back()
+            .filter(|c| "一二两三四五六七八九十".contains(*c))
+    }
+
+    /// ★ 抽取器自检：扫不到东西 / 只扫到一个文件 ⇒ 下面三条会零命中地绿。
+    #[test]
+    fn the_environ_key_claim_scan_is_not_zero_hit() {
+        let hits = env_key_claim_lines();
+        assert!(
+            hits.len() >= 8,
+            "只扫到 {} 份副本（`K-P5g` 建判据当天实测 10 份 / 4 个文件）—— 针或人群坏了",
+            hits.len()
+        );
+        let files: std::collections::BTreeSet<&str> =
+            hits.iter().map(|(f, _, _)| f.as_str()).collect();
+        assert!(
+            files.len() >= 3,
+            "只扫到 {} 个文件 —— 人群塌了：{files:?}",
+            files.len()
+        );
+        // 锚点：数量地板对「收的是不是同一类东西」是瞎的（本模块另一条判据现打过这一课）。
+        // 🔴 用 `K-P5f` 漏掉的那一处当锚点 —— 它不在场就说明这条判据没在看该看的地方。
+        const CANARY: &str = "doc/INVARIANTS.md";
+        assert!(
+            hits.iter().any(|(f, _, _)| f == CANARY),
+            "扫到了 {} 份，但**锚点 `{CANARY}` 不在里面** —— 收的多半不是那句话了",
+            hits.len()
+        );
+        // 生产段那个数抽得出来，否则下面那条恒绿。
+        assert!(env_keys_actually_read() >= 1);
+    }
+
+    /// ★★ **多一份副本、少一份副本，都红。**
+    ///
+    /// # 这条买的是什么（`KP5GD3` 的正题）
+    ///
+    /// `K-P5f` 那一拍订正了三处、漏了第四处，**而没有任何东西因此变红** ——
+    /// 因为那句话根本不在任何一张表里。本条把「这句话散在哪几处」变成一件
+    /// **有闸看着**的事：再添一份副本，作者必须来这里说清它是哪一类。
+    ///
+    /// ⚠ 它买不到「那句话说得对不对」（那是评审的活），只买「每一份都在册」。
+    #[test]
+    fn every_copy_of_that_sentence_is_registered() {
+        let hits = env_key_claim_lines();
+        let matches_site = |rel: &str, line: &str, site: &(&str, &str, EnvKeyClaim)| {
+            rel == site.0 && line.contains(site.1)
+        };
+
+        // ① 扫到的每一份都得在册，且**只对上一条**（锚点不许含糊）。
+        let mut orphans: Vec<String> = Vec::new();
+        for (rel, ln, line) in &hits {
+            let n = ENV_KEY_CLAIM_SITES
+                .iter()
+                .filter(|s| matches_site(rel, line, s))
+                .count();
+            if n != 1 {
+                orphans.push(format!(
+                    "  {rel}:{ln}  对上 {n} 条登记（该是 1）\n      {}",
+                    line.trim()
+                ));
+            }
+        }
+        assert!(
+            orphans.is_empty(),
+            "\n★★ 这几份副本没在册（或锚点含糊）：\n{}\n\n\
+             ⚠ 这句话说的是「daemon 从 `/proc/<pid>/environ` 读几个环境变量」，\
+             它在盘上**散着好几份**。`K-P5f` 那一拍改了三处、漏了第四处 ——\n\
+             **订正手头那一处，不等于订正那句话**（本模块头注对同一个病记过两次）。\n\
+             ⇒ 新写一份副本，就来 `ENV_KEY_CLAIM_SITES` 登记它是哪一类：\n\
+             `Asserts`（在断言当下，要过计数词对拍）/ `Quotes`（在引述那句话本身）/\n\
+             `OtherSubject`（同句式但主语不是进程环境）。",
+            orphans.join("\n")
+        );
+
+        // ② 反向：登记表自己也会腐 —— 在册却扫不到，说明那处已经改写/删了。
+        let stale: Vec<String> = ENV_KEY_CLAIM_SITES
+            .iter()
+            .filter(|s| {
+                hits.iter()
+                    .filter(|(rel, _, line)| matches_site(rel, line, s))
+                    .count()
+                    != 1
+            })
+            .map(|(f, a, c)| format!("  {f}  锚点 {a:?}（登记为 {c:?}）"))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "\n这几条登记在盘上对不到**恰好一处**（改写了 / 删了 / 锚点现在能对上多处）：\n{}\n\n\
+             ⇒ 那处真没了就删掉这一行；只是挪了就换锚点。**别让登记表替真判据挡枪。**",
+            stale.join("\n")
+        );
+    }
+
+    /// ★★ **每一份「在断言当下」的副本，写的数必须等于生产代码今天真读的那个数。**
+    ///
+    /// 这条就是 `K-P5f` 漏掉第四处时**本该变红**的那条。
+    #[test]
+    fn every_registered_copy_says_the_number_we_actually_read() {
+        let n = env_keys_actually_read();
+        let want = count_words_for(n);
+        let hits = env_key_claim_lines();
+        let find = |site: &(&str, &str, EnvKeyClaim)| {
+            hits.iter()
+                .find(|(rel, _, line)| rel == site.0 && line.contains(site.1))
+                .cloned()
+        };
+
+        let mut bad: Vec<String> = Vec::new();
+        for site in ENV_KEY_CLAIM_SITES {
+            let Some((rel, ln, line)) = find(site) else {
+                continue; // 上一条判据专管「在册却扫不到」，这里不重复报
+            };
+            let got = count_word_in(&line);
+            match site.2 {
+                EnvKeyClaim::Asserts => {
+                    let ok = got.is_some_and(|c| want.contains(&c));
+                    if !ok {
+                        bad.push(format!(
+                            "  {rel}:{ln}  写的是 {got:?}，而现场是 {n}（该写 {want:?}）\n      {}",
+                            line.trim()
+                        ));
+                    }
+                }
+                // 🔴 **反洗白**：引述那一类不许悄悄装着一句「正好也对」的断言 ——
+                // 否则把一处真断言登记成 `Quotes` 就能绕开上面那格。
+                EnvKeyClaim::Quotes | EnvKeyClaim::OtherSubject => {
+                    if got.is_some_and(|c| want.contains(&c)) {
+                        bad.push(format!(
+                            "  {rel}:{ln}  登记成 {:?}，可它写的数（{got:?}）与现场一致\n      \
+                             ⇒ 它其实是在**断言当下**，改登记成 `Asserts`。\n      {}",
+                            site.2,
+                            line.trim()
+                        ));
+                    }
+                }
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "\n★★ 「daemon 从 `/proc/<pid>/environ` 读几个环境变量」这句话，\
+             盘上这几份与现场对不上：\n{}\n\n\
+             现场那个数从生产代码数出来（`accounts_query.rs` 生产段里 `proc_env_var(pid, …)` 的处数 = {n}），\n\
+             ⇒ 要么是代码改了而这几份没跟着改（**盘上留了假话**），\n\
+             要么是抽取器坏了。⚠ 改的时候**每一份都要改** ——\n\
+             `K-P5f` 就是改了三处漏了第四处，而当时没有任何东西会红。",
+            bad.join("\n")
+        );
+    }
+
+    /// 本文件**自己不许进那个人群**：登记表登记自己会变成一条自指的死循环。
+    ///
+    /// 手法是把针拆成两半分行写（见 `NEEDLE_HEAD` / `NEEDLE_TAIL` 头注）。
+    /// 这条钉住那条性质 —— 有人把它们并回一行时当场红，而不是等到人群悄悄多出几条。
+    #[test]
+    fn the_registry_file_itself_stays_out_of_that_population() {
+        let me = include_str!("doc_claim_registry.rs");
+        assert!(
+            me.len() > 20_000,
+            "include_str! 只读到 {} 字节 —— 没读到自己，本条在空转",
+            me.len()
+        );
+        let self_hits: Vec<usize> = me
+            .lines()
+            .enumerate()
+            .filter(|(_, l)| l.contains(NEEDLE_HEAD) && l.contains(NEEDLE_TAIL))
+            .map(|(i, _)| i + 1)
+            .collect();
+        assert!(
+            self_hits.is_empty(),
+            "本文件第 {self_hits:?} 行把针的两半写到了同一行上 —— \
+             登记表于是成了它自己所描述的人群的一员。拆开写。"
+        );
+        // 非空对照：针本身是有效的（同一把尺子在别处确实抓得到东西）。
+        assert!(!env_key_claim_lines().is_empty());
     }
 }
