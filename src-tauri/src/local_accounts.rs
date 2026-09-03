@@ -773,8 +773,13 @@ mod tests {
 /// - **sidecar 不在**（开发树）⇒ `available:false` + 「本机后端不在…（找过哪些路径）」。
 /// - **查询失败** ⇒ `available:false` + 退出码与 stderr 原样带出（定框 §5：诚实降级）。
 /// - 零行是合法的（本机没有活会话）—— 同远端那条的判断，不额外区分「旧 daemon」。
-/// - ⚠ 只抠 `CLAUDE_CONFIG_DIR` 一个键、`configDir` 过白名单 —— 那两条现在由 daemon 侧守
-///   （它的 `observe/accounts_query.rs` 头注逐字写着同一套边界）。
+/// - ⚠ 只抠**两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`）、`configDir` 过白名单
+///   —— 那两条现在由 daemon 侧守（它的 `observe/accounts_query.rs` 头注逐字写着同一套边界）。
+///   🔴 **第二个键是 `K-P5f` 加的**（身份 token 读回来那一侧）；这句话原先逐字写着
+///   「只抠 `CLAUDE_CONFIG_DIR` **一个键**」，**不同拍改它就是在盘上留一句假话** ——
+///   而它这一处**没有任何机检看着**（路② 撞 0 道机检，`K-P5f §7 二㈡` 现打），
+///   全靠人记得来改。同族病史见 `K-P5c §7 上报-3`「写着有、其实没有」。
+///   键名**不是参数**（daemon 侧两个常量），所以「两个键」与「整个环境快照」的界没有松动。
 #[tauri::command]
 pub async fn list_local_session_accounts() -> Result<crate::accounts::SessionAccountsResult, String>
 {
