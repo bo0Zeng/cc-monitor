@@ -117,10 +117,97 @@ pub(crate) const NEEDLE_HOMES: &[(&str, NeedleHome)] = &[
 /// F04（结构性，防 D6 复发）：两处「通道 A 立刻打标」必须写 `@ccm_sid_expect`，
 /// **不得**写裸 `@ccm_sid` —— 否则一个从未被确认过的意图声明会永久冒充「事实」。
 /// 用带引号的完整 `set-option … @ccm_sid_expect` 片段做锚点，防未来改动悄悄改回去。
+///
+/// ⚠ 第 0 条住在 **`--tmux` 容器路**里（那一块正是 `K-P2` 要搬进后端的），
+/// 第 1 条住在**非容器路**（ccm 自己 exec 进去的那条，搬不走）。
+/// 住址由 [`CHANNEL_A_HOMES`] 单独记 —— 见那里的头注。
 pub(crate) const CHANNEL_A_LITERALS: &[&str] = &[
     "tmux set-option -t $t @ccm_sid_expect $(sq \"$ccm_sid\")",
     "tmux set-option @ccm_sid_expect \"$ccm_sid\"",
 ];
+
+/// [`CHANNEL_A_LITERALS`] 每一条的住址〔`K-P2` C 第五拍，09-03；PM `§13 裁三` 代价②〕。
+///
+/// # 为什么它非有不可 —— 上一拍那张账本**盖不住这一维**
+///
+/// C 第四拍把 `needles` 换成了住址账本（搬家照样绿、流失照样红），但账本**只覆盖 needles**。
+/// 而 PM `§13 裁三` 现打点名的代价②逐字：
+/// 「`BASELINE.channel_a == 2` 会掉到 1 而账本管不着」——
+/// 也就是说**同一种事故（搬家被误判成流失）在第二个维度上原样存在**，
+/// 而 `BASELINE.channel_a` 有一条编译期钉子（`CHANNEL_A_LITERALS.len() == BASELINE.channel_a
+/// && BASELINE.channel_a == 2`）⇒ 搬走第 0 条就**编不过**，形状与 `needles >= 11` 那次一模一样。
+///
+/// ⇒ 把住址这一维**同形**地铺到 channel_a 上。**不是新机制，是同一张账本多了一列人群。**
+///
+/// ⚠⚠ 与 `needles` 那一维**唯一的不同**：channel_a 的 needle 是一整句 shell，
+/// 搬进后端之后长成 argv 字面量（`"@ccm_sid_expect"`）⇒ [`NeedleHome::Backend`] 那个
+/// **锚点与 needle 分开**的设计在这里是必需的，不是装饰。
+pub(crate) const CHANNEL_A_HOMES: &[(&str, NeedleHome)] = &[
+    (CHANNEL_A_LITERALS[0], NeedleHome::Ccm), // 容器路（`--tmux`）——`K-P2` 要搬的那一块
+    (CHANNEL_A_LITERALS[1], NeedleHome::Ccm), // 非容器路（exec 那条）——搬不走
+];
+
+/// 一处**已经搬进后端的 `-t` 目标用法**〔`K-P2` C 第五拍，09-03〕。
+///
+/// # 为什么 `t_targets` 也要一张账本 —— 这一格 PM 没点名，是实现方现打出来的
+///
+/// PM `§13 裁三` 只点了两笔代价（channel_a 的账本 · 意图锚点钉新住址）。**还有第三笔**：
+/// `--tmux` 那一块里有 **3 处 `-t`**（`set-option @ccm_agent` · `set-option @ccm_sid_expect`
+/// · `send-keys`，现打住址 `shared/ccm:985/990/991`），搬走之后
+/// `scan_t_targets(CCM_CLI_SCRIPT).checked` 从 **11 掉到 8**：
+/// · `BASELINE.t_targets_checked = 11` ⇒ `assert_at_least` 当场红；
+/// · `sftp.rs::ccm_cli_has_required_elements` 里那句 `require(…)`（**那条下限的真执行点**）也红；
+/// · 而把基线降到 8 会撞编译期钉子 `BASELINE.t_targets_checked >= MIN_CHECKED_T_TARGETS`(10)
+///   ⇒ 只能连 `MIN_CHECKED_T_TARGETS` 一起降，而那是 `KP2B` 🔴 逐字禁止 agent 动的两个数之一。
+/// ⇒ **不给这一维记账，`§11 丙`（守恒）在第三个维度上就买不到。**
+///
+/// # 行的形状：两侧都要给，缺一半就是免检章
+///
+/// · `gone_from_ccm`：ccm 生产段里那一处的锚点 —— 登记之后它**必须不在了**
+///   （否则就是「两侧各留一份」，`KP2C` ① 逐字禁止）；
+/// · `file` + `anchor`：新住址与那份文件**生产段**里必须逐字出现的锚点。
+///
+/// ⚠ 锚点刻意与 shell 那一侧**不同形**（shell 是 `-t $t`，Rust 是 argv 切片）——
+/// 同 [`NeedleHome::Backend`] 的头注：「同一件事换了语言就换了形状」。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MovedTTarget {
+    /// 搬走之前它在 `shared/ccm` 生产段里长什么样。**登记之后必须消失。**
+    pub(crate) gone_from_ccm: &'static str,
+    /// 新住址（仓根相对路径）。
+    pub(crate) file: &'static str,
+    /// 新住址**生产段**里必须逐字出现的锚点。
+    pub(crate) anchor: &'static str,
+}
+
+/// 今天**一处都还没搬**。搬一处的动作与 [`NEEDLE_HOMES`] 同：**同一个提交里**
+/// ① 在这里加一行；② 代码真的到那个住址；③ ccm 那边不许再留一份。
+///
+/// ⚠ **它不是「允许少几处」的旋钮**：每加一行都要付出「新住址真有它 + 旧住址真没了」两条断言
+/// （`every_needle_that_moved_is_actually_at_its_new_home`）。
+/// 而 `MIN_CHECKED_T_TARGETS` 那个阈值**一个字节都不许因此下调**。
+pub(crate) const MOVED_T_TARGETS: &[MovedTTarget] = &[];
+
+/// 一整本住址账本 —— 三个维度**同一种记法**。
+///
+/// 抽成一个结构体而不是三个散参数，是因为 `measure_with` / `conservation_violations`
+/// 必须**成对读同一本账**：一处读真账本、一处读夹具账本，就会出现「读数按 A 记、
+/// 真伪按 B 判」这种谁也发现不了的漂移。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Ledger<'a> {
+    /// [`REQUIRED_NEEDLES`] 每条的住址。
+    pub(crate) needles: &'a [(&'a str, NeedleHome)],
+    /// [`CHANNEL_A_LITERALS`] 每条的住址。
+    pub(crate) channel_a: &'a [(&'a str, NeedleHome)],
+    /// 已搬进后端的 `-t` 用法。
+    pub(crate) t_targets: &'a [MovedTTarget],
+}
+
+/// 今天这本真账本。
+pub(crate) const LEDGER: Ledger<'static> = Ledger {
+    needles: NEEDLE_HOMES,
+    channel_a: CHANNEL_A_HOMES,
+    t_targets: MOVED_T_TARGETS,
+};
 
 /// 唯一允许的间接 tmux 目标变量 `$t` 的定义。**逐字钉死**：不钉的话它可以被改成裸值，
 /// 从而绕过下面的 `-t` 结构性扫描（T01 审计 S3 已独立复现）。
@@ -224,14 +311,29 @@ pub(crate) fn pin_t_def(script: &str) -> Result<(), String> {
 /// ⚠ `t_*` 三个字段**不跟着改**：[`scan_t_targets`] 自己带注释标记（`Some("#")`），
 /// 在外面再剥一次就是第二份剥注释口径。
 ///
-/// # `needles` 数的是「在不在**它自己的住址**」，不是「在不在这份脚本里」〔C 第四拍，09-03〕
+/// # 三个维度数的都是「在不在**它自己的住址**」，不是「在不在这份脚本里」〔C 第四/第五拍〕
 ///
-/// 见 [`NeedleHome`]：搬走一条要素**同拍改 [`NEEDLE_HOMES`] 那一行**，读数不掉；
+/// 见 [`NeedleHome`]：搬走一条要素**同拍改账本那一行**，读数不掉；
 /// 而**没记账地少一条**（流失）读数照掉。⚠ `Backend` 那一分是记账换来的，
 /// **账的真伪不在这里判** —— 在 `every_needle_that_moved_is_actually_at_its_new_home`。
-/// 本函数仍是**纯函数**（只读 `script` 与一张 const 表），迁移对拍那条纪律不变。
+/// 〔C 第五拍〕这条记法从 `needles` 一维铺到了 [`Ledger`] 的**三维**
+/// （`needles` · `channel_a` · `t_targets`），理由见 [`CHANNEL_A_HOMES`] 与 [`MovedTTarget`]。
+/// 本函数仍是**纯函数**（只读 `script` 与几张 const 表），迁移对拍那条纪律不变。
 pub(crate) fn measure(script: &str) -> Strength {
-    measure_with(NEEDLE_HOMES, script)
+    measure_with(LEDGER, script)
+}
+
+/// 一张（名字, 住址）表在某份脚本上的读数：住 `Ccm` 的要**真在脚本里**，
+/// 记了账搬走的那一分**归账本**（账的真伪不在这里判，见
+/// [`tests::every_needle_that_moved_is_actually_at_its_new_home`]）。
+fn score_homes(homes: &[(&str, NeedleHome)], prod: &str) -> usize {
+    homes
+        .iter()
+        .filter(|(n, home)| match home {
+            NeedleHome::Ccm => prod.contains(*n),
+            NeedleHome::Backend { .. } => true,
+        })
+        .count()
 }
 
 /// 拿**指定的**住址账本测一份脚本。
@@ -240,24 +342,19 @@ pub(crate) fn measure(script: &str) -> Strength {
 /// ⇒ 把下面那个 `Backend => true` 退回「只数 ccm」，本模块新加的三条判据**一条都不红**
 /// （实测）。⇒ 让 `the_conservation_ledger_tells_a_move_from_a_loss` 拿夹具账本
 /// 直接判「同一条要素、同一份脚本，只因住址不同而读数不同」——**那一分才有人守**。
-pub(crate) fn measure_with(homes: &[(&str, NeedleHome)], script: &str) -> Strength {
+///
+/// ⚠⚠ 〔C 第五拍〕**三个维度同一种记法**：`needles` / `channel_a` 各按自己那张表记分，
+/// `t_targets_checked` 则是「这份脚本里还扫得到几处」**加上**「账本说搬走了几处」。
+/// 三者少一个，`§11 丙`（守恒）就只在部分维度上成立 —— 而搬 `--tmux` 那一块**同时**动三维。
+pub(crate) fn measure_with(ledger: Ledger<'_>, script: &str) -> Strength {
     let report = scan_t_targets(script);
     let prod = guard_core::strip_hash_comment_lines(script);
     Strength {
-        needles: homes
-            .iter()
-            .filter(|(n, home)| match home {
-                NeedleHome::Ccm => prod.contains(*n),
-                // 记了账的移动：这一分归账本，不归这份脚本。
-                NeedleHome::Backend { .. } => true,
-            })
-            .count(),
-        channel_a: CHANNEL_A_LITERALS
-            .iter()
-            .filter(|n| prod.contains(*n))
-            .count(),
+        needles: score_homes(ledger.needles, &prod),
+        channel_a: score_homes(ledger.channel_a, &prod),
         // 一次扫描出两个字段 —— 扫两遍就是两份口径，迟早漂。
-        t_targets_checked: report.checked,
+        // 搬走的那几处由账本补回（每一处都要付「新住址真有它 + 旧住址真没了」两条断言）。
+        t_targets_checked: report.checked + ledger.t_targets.len(),
         t_violations: report.violations.len(),
         t_def_pinned: pin_t_def(script).is_ok(),
     }
@@ -323,6 +420,9 @@ const _: () = assert!(REQUIRED_NEEDLES.len() == BASELINE.needles);
 /// `the_home_ledger_covers_every_needle_exactly_once` 钉（`&str` 比较不是 const fn，
 /// 编译期只钉得住长度这一半 —— **如实登记，别把它读成「两张表对上了」**）。
 const _: () = assert!(NEEDLE_HOMES.len() == REQUIRED_NEEDLES.len());
+/// 通道 A 的住址账本与它的要素表**等长**〔C 第五拍〕。同上，逐条同名由
+/// `the_home_ledger_covers_every_needle_exactly_once` 钉。
+const _: () = assert!(CHANNEL_A_HOMES.len() == CHANNEL_A_LITERALS.len());
 /// 通道 A 恰好两处，见 F04。
 const _: () = assert!(CHANNEL_A_LITERALS.len() == BASELINE.channel_a && BASELINE.channel_a == 2);
 /// 读数基线不得低于阈值 —— 低了就意味着 `require(MIN_CHECKED_T_TARGETS)` 当下就跑不过，
@@ -1295,20 +1395,25 @@ mod tests {
         // ⚠ 期望值不是硬写的 0，是**今天已搬走的条数**〔C 第四拍〕：搬走的那些由住址账本
         //    记分，与这份夹具无关（夹具量的是 ccm 这一侧）。今天账本里 0 条 `Backend`
         //    ⇒ 这个期望仍是 0，而它**会随搬家自己走**，不必回来改数字。
-        let moved = NEEDLE_HOMES
-            .iter()
-            .filter(|(_, h)| !matches!(h, NeedleHome::Ccm))
-            .count();
+        let moved = |homes: &[(&str, NeedleHome)]| {
+            homes
+                .iter()
+                .filter(|(_, h)| !matches!(h, NeedleHome::Ccm))
+                .count()
+        };
+        let moved_n = moved(NEEDLE_HOMES);
         assert_eq!(
-            got.needles, moved,
-            "一份**只有注释**的脚本被读出 {} 条要素，而账本里只有 {moved} 条登记为已搬走 —— \
+            got.needles, moved_n,
+            "一份**只有注释**的脚本被读出 {} 条要素，而账本里只有 {moved_n} 条登记为已搬走 —— \
              剥注释没生效。\n\
              ⚠ 这正是 `KP2B` 登记的失效方式：实现搬走之后，**在注释里写一句就能把 needles 补回来**。",
             got.needles
         );
+        // 〔C 第五拍〕通道 A 那一维同理 —— 期望值同样**不是硬写的 0**，是账本里已搬走的条数。
+        let moved_c = moved(CHANNEL_A_HOMES);
         assert_eq!(
-            got.channel_a, 0,
-            "通道 A 字面量写在注释里也被算了 {} 条 —— 同上",
+            got.channel_a, moved_c,
+            "通道 A 字面量写在注释里也被算了 {} 条（账本里登记为已搬走的只有 {moved_c} 条）—— 同上",
             got.channel_a
         );
     }
@@ -1324,51 +1429,89 @@ mod tests {
         }
     }
 
-    /// 住址账本（[`NEEDLE_HOMES`]）的违规清单。
+    /// 住址账本（[`Ledger`]，三维）的违规清单。
     ///
     /// # 为什么抽成函数而不是直接写死在测试里
     ///
-    /// 今天真账本里 **`Backend` 那一支一条人群都没有**（11 条全 `Ccm`）——
+    /// 今天真账本里 **`Backend` 那一支三维都是零人群**（needles 11 条全 `Ccm`、
+    /// channel_a 2 条全 `Ccm`、`t_targets` 空表）——
     /// 只钉真账本的话，「搬家判得了吗」这半条判据**从落地那天起就是空转的**，
     /// 而空转与绿在终端上一模一样。⇒ 抽出来，让 `the_conservation_ledger_tells_a_move_from_a_loss`
-    /// 拿**夹具账本**把三种形态各打一遍：真搬家 / 假搬家（账记了东西没到）/ 两侧各留一份。
+    /// 拿**夹具账本**把每种形态各打一遍：真搬家 / 假搬家（账记了东西没到）/ 两侧各留一份 / 流失。
     ///
-    /// ⚠ **如实边界**：第三条用的是 `ccm_prod.contains(needle)`，而 needle 之间**有包含关系**
-    /// （`@ccm_sid` 是 `@ccm_sid_expect` 的前缀）⇒ 真要搬 `@ccm_sid` 那条时它会**误红**。
+    /// ⚠ **如实边界①**：「两侧各留一份」那条用的是 `ccm_prod.contains(needle)`，
+    /// 而 needle 之间**有包含关系**（`@ccm_sid` 是 `@ccm_sid_expect` 的前缀）
+    /// ⇒ 真要搬 `@ccm_sid` 那条时它会**误红**。
     /// 今天没人搬它，登记下来不动手：**误红是可发现的，漏判不是**。
+    /// ⚠ 同一条包含关系在 `channel_a` 那一维上**不成立**（两条字面量互不为前缀，
+    /// 一条带 `-t $t` 一条不带）—— 逐字核过，别把上面那句照搬过去。
+    ///
+    /// ⚠ **如实边界②**（`t_targets` 那一维）：它判「新住址有锚点」＋「旧住址没了」，
+    /// **不判「新住址那一处的目标是不是 `=名:` 精确形态」**。后者在后端由
+    /// `control/launch.rs::exact_target` 与 `exact_target_shape_matches_the_monitor_side`
+    /// 管着（门③）—— 本条**不重复实现**它，但也因此**证不了**它：
+    /// 账本只回答「搬到了没有」，不回答「搬过去之后还对不对」。
     fn conservation_violations(
-        homes: &[(&str, NeedleHome)],
+        ledger: Ledger<'_>,
         ccm_prod: &str,
         backend_prod: &dyn Fn(&str) -> String,
     ) -> Vec<String> {
         let mut bad: Vec<String> = Vec::new();
-        for (n, home) in homes {
-            match home {
-                NeedleHome::Ccm => {
-                    if !ccm_prod.contains(*n) {
-                        bad.push(format!(
-                            "`{n}` 登记住在 `shared/ccm`，而它的生产段里已经没有了 —— \
-                             **这是流失，不是搬家**。\n\
-                             要么把实现放回去；要么在 `NEEDLE_HOMES` 里写清它搬去了哪 \
-                             （**同一个提交里**，且新住址真的有它）。"
-                        ));
+        // `needles` 与 `channel_a` 的行形状相同 ⇒ **同一段逻辑**，别写两遍
+        //（写两遍就是两份口径，而这正是本模块一路在收的那一族）。
+        for (which, homes) in [("要素", ledger.needles), ("通道 A 字面量", ledger.channel_a)] {
+            for (n, home) in homes {
+                match home {
+                    NeedleHome::Ccm => {
+                        if !ccm_prod.contains(*n) {
+                            bad.push(format!(
+                                "{which} `{n}` 登记住在 `shared/ccm`，而它的生产段里已经没有了 —— \
+                                 **这是流失，不是搬家**。\n\
+                                 要么把实现放回去；要么在住址账本里写清它搬去了哪 \
+                                 （**同一个提交里**，且新住址真的有它）。"
+                            ));
+                        }
+                    }
+                    NeedleHome::Backend { file, anchor } => {
+                        if !backend_prod(file).contains(*anchor) {
+                            bad.push(format!(
+                                "{which} `{n}` 登记为已搬进 `{file}`，而那份文件的**生产段**里找不到锚点 \
+                                 {anchor:?} —— **账记了、东西没到**。\n\
+                                 守恒不是免检章：登记一条 `Backend` 就必须有人能在新住址看见它。"
+                            ));
+                        }
+                        if ccm_prod.contains(*n) {
+                            bad.push(format!(
+                                "{which} `{n}` 登记为已搬进 `{file}`，而 `shared/ccm` 的生产段里**还留着一份**。\n\
+                                 `KP2C` ① 逐字：「搬走的那一块，两侧不许各留一份」—— 留两份 = 改一处漏一处。"
+                            ));
+                        }
                     }
                 }
-                NeedleHome::Backend { file, anchor } => {
-                    if !backend_prod(file).contains(*anchor) {
-                        bad.push(format!(
-                            "`{n}` 登记为已搬进 `{file}`，而那份文件的**生产段**里找不到锚点 \
-                             {anchor:?} —— **账记了、东西没到**。\n\
-                             守恒不是免检章：登记一条 `Backend` 就必须有人能在新住址看见它。"
-                        ));
-                    }
-                    if ccm_prod.contains(*n) {
-                        bad.push(format!(
-                            "`{n}` 登记为已搬进 `{file}`，而 `shared/ccm` 的生产段里**还留着一份**。\n\
-                             `KP2C` ① 逐字：「搬走的那一块，两侧不许各留一份」—— 留两份 = 改一处漏一处。"
-                        ));
-                    }
-                }
+            }
+        }
+        // `-t` 那一维**只有 `Backend` 一种行**：没搬走的那些由 `scan_t_targets` 现扫，
+        // 用不着登记（登记它们等于再抄一份清单 —— 正是 `§4` 第 27 条那个教训）。
+        for m in ledger.t_targets {
+            if !backend_prod(m.file).contains(m.anchor) {
+                bad.push(format!(
+                    "`-t` 用法 {gone:?} 登记为已搬进 `{file}`，而那份文件的**生产段**里找不到锚点 \
+                     {anchor:?} —— **账记了、东西没到**。\n\
+                     ⚠ 这一维的记账直接顶着 `MIN_CHECKED_T_TARGETS` 那条下限（`sftp.rs` 那个 \
+                     `require` 是它的真执行点），空头账等于把 F01 的防线拆掉一格。",
+                    gone = m.gone_from_ccm,
+                    file = m.file,
+                    anchor = m.anchor
+                ));
+            }
+            if ccm_prod.contains(m.gone_from_ccm) {
+                bad.push(format!(
+                    "`-t` 用法 {gone:?} 登记为已搬进 `{file}`，而 `shared/ccm` 的生产段里**还留着一份**。\n\
+                     那样 `scan_t_targets` 会**照旧扫到它**，账本再加一分 ⇒ **同一处被数两遍**，\
+                     读数虚高一格 —— 这条判据存在的意义就是不许出现那种账。",
+                    gone = m.gone_from_ccm,
+                    file = m.file
+                ));
             }
         }
         bad
@@ -1390,6 +1533,15 @@ mod tests {
              任何一条不一一对应，`measure` 数的就不是 `REQUIRED_NEEDLES` 那 11 条了，\
              而 `sftp.rs::ccm_cli_has_required_elements` 仍在按后者判 ⇒ 两把尺子各说各话。"
         );
+        // 〔C 第五拍〕通道 A 那一维同理 —— 它也是下标引用，失效方式一模一样。
+        let ch: Vec<&str> = CHANNEL_A_HOMES.iter().map(|(n, _)| *n).collect();
+        assert_eq!(
+            ch,
+            CHANNEL_A_LITERALS.to_vec(),
+            "`CHANNEL_A_HOMES` 与 `CHANNEL_A_LITERALS` 对不上（顺序也算）。\n\
+             两条字面量**语义不同**（第 0 条是 `--tmux` 容器路、第 1 条是 exec 那条非容器路），\
+             错位之后「搬走容器路那条」会被记到另一条头上，而两条都是 `Ccm` 时读数一模一样。"
+        );
     }
 
     /// `KP2B`〔`K-P2` C 第四拍，09-03；PM `§11` 丙〕**搬家照样绿，流失照样红。**
@@ -1407,7 +1559,7 @@ mod tests {
             "`shared/ccm` 的生产段只剩 {} 行 —— 剥注释器坏了，下面那些「流失」是假的",
             prod.lines().count()
         );
-        let bad = conservation_violations(NEEDLE_HOMES, &prod, &backend_production);
+        let bad = conservation_violations(LEDGER, &prod, &backend_production);
         assert!(
             bad.is_empty(),
             "住址账本对不上现场（{} 条）：\n  {}\n\n\
@@ -1416,15 +1568,49 @@ mod tests {
             bad.len(),
             bad.join("\n  ")
         );
-        // 读数对拍：账本说「11 条各在其位」，`measure` 就必须读出 11。
+        // 读数对拍：账本说「各在其位」，`measure` 就必须在两个「集合」维度上读出满分。
+        let got = measure(crate::sftp::CCM_CLI_SCRIPT);
         assert_eq!(
-            measure(crate::sftp::CCM_CLI_SCRIPT).needles,
-            NEEDLE_HOMES.len(),
+            (got.needles, got.channel_a),
+            (NEEDLE_HOMES.len(), CHANNEL_A_HOMES.len()),
             "账本一条违规都没有，而 `measure` 读出来不是满分 —— 两处量法漂了"
+        );
+        // `t_targets` 那一维没有「满分」可比（它是现扫 + 记账），钉的是**两处相加**这件事：
+        // 现扫读数 + 账本条数 == `measure` 报的那个数。加法漂了这里当场红。
+        assert_eq!(
+            got.t_targets_checked,
+            scan_t_targets(crate::sftp::CCM_CLI_SCRIPT).checked + MOVED_T_TARGETS.len(),
+            "`t_targets_checked` 不再是「现扫 + 账本」了 —— 那个加法是这一维守恒的全部内容"
         );
     }
 
-    /// 上一条的**牙**：拿夹具账本把三种形态各打一遍（今天真账本里 `Backend` 零人群）。
+    /// 三个「只填一维、别的维度留空」的夹具账本构造器。
+    ///
+    /// ⚠ 这样写是为了让每一格夹具**只测一件事**：把三维塞进同一个夹具，
+    /// 「哪一维红的」就要靠读文案猜，而那正是本模块反复在收的「一个值装两件事」。
+    fn ledger_of_needles<'a>(homes: &'a [(&'a str, NeedleHome)]) -> Ledger<'a> {
+        Ledger {
+            needles: homes,
+            channel_a: &[],
+            t_targets: &[],
+        }
+    }
+    fn ledger_of_channel_a<'a>(homes: &'a [(&'a str, NeedleHome)]) -> Ledger<'a> {
+        Ledger {
+            needles: &[],
+            channel_a: homes,
+            t_targets: &[],
+        }
+    }
+    fn ledger_of_t_targets(rows: &[MovedTTarget]) -> Ledger<'_> {
+        Ledger {
+            needles: &[],
+            channel_a: &[],
+            t_targets: rows,
+        }
+    }
+
+    /// 上一条的**牙**：拿夹具账本把每种形态各打一遍（今天真账本里三维都是 `Backend` 零人群）。
     #[test]
     fn the_conservation_ledger_tells_a_move_from_a_loss() {
         // 假后端：只有 `moved.rs` 里有锚点。
@@ -1435,7 +1621,7 @@ mod tests {
                 String::new()
             }
         };
-        let moved = |file: &'static str| {
+        let moved_row = |file: &'static str| {
             [(
                 "NEEDLE_X",
                 NeedleHome::Backend {
@@ -1444,15 +1630,23 @@ mod tests {
                 },
             )]
         };
-
         // ① **搬家**：ccm 里没了、新住址有了 ⇒ 一条违规都没有。
         assert!(
-            conservation_violations(&moved("moved.rs"), "echo hi\n", &backend).is_empty(),
+            conservation_violations(
+                ledger_of_needles(&moved_row("moved.rs")),
+                "echo hi\n",
+                &backend
+            )
+            .is_empty(),
             "记了账、东西也到了新住址 —— 这是搬家，不该红"
         );
 
         // ② **假搬家**：账记了，新住址空的。
-        let v = conservation_violations(&moved("nowhere.rs"), "echo hi\n", &backend);
+        let v = conservation_violations(
+            ledger_of_needles(&moved_row("nowhere.rs")),
+            "echo hi\n",
+            &backend,
+        );
         assert_eq!(v.len(), 1, "假搬家该恰好红一条：{v:?}");
         assert!(
             v[0].contains("账记了、东西没到"),
@@ -1460,13 +1654,17 @@ mod tests {
         );
 
         // ③ **两侧各留一份**：新住址有了，旧住址也还在。
-        let v = conservation_violations(&moved("moved.rs"), "echo NEEDLE_X\n", &backend);
+        let v = conservation_violations(
+            ledger_of_needles(&moved_row("moved.rs")),
+            "echo NEEDLE_X\n",
+            &backend,
+        );
         assert_eq!(v.len(), 1, "两侧各留一份该恰好红一条：{v:?}");
         assert!(v[0].contains("还留着一份"), "红的不是那一格：{v:?}");
 
         // ④ **流失**：没记账地少一条。
-        let stays = [("NEEDLE_Y", NeedleHome::Ccm)];
-        let v = conservation_violations(&stays, "echo hi\n", &backend);
+        const STAYS: &[(&str, NeedleHome)] = &[("NEEDLE_Y", NeedleHome::Ccm)];
+        let v = conservation_violations(ledger_of_needles(STAYS), "echo hi\n", &backend);
         assert_eq!(v.len(), 1, "流失该恰好红一条：{v:?}");
         assert!(
             v[0].contains("这是流失，不是搬家"),
@@ -1475,7 +1673,8 @@ mod tests {
 
         // ⑤ **反向的反向**：好好待在原地的那条不许被误判成流失。
         assert!(
-            conservation_violations(&stays, "echo NEEDLE_Y\n", &backend).is_empty(),
+            conservation_violations(ledger_of_needles(STAYS), "echo NEEDLE_Y\n", &backend)
+                .is_empty(),
             "要素还在原住址，不该红 —— 否则这条判据是「凡账本必红」，不是守恒"
         );
 
@@ -1483,18 +1682,147 @@ mod tests {
         //    `7u` 实测：把那一支退回「只数 ccm」，上面五格**一条都不红** ——
         //    也就是说守恒的读数那一半当时只有变异证过、没有站着的判据。这一格补上。
         //    同一份脚本、同一条要素，**只因住址不同而读数不同**：这就是「搬家不掉分」。
+        const ONE_CCM: &[(&str, NeedleHome)] = &[("NEEDLE_X", NeedleHome::Ccm)];
         let script = "# 一份没有 NEEDLE_X 的脚本\n";
         assert_eq!(
-            measure_with(&[("NEEDLE_X", NeedleHome::Ccm)], script).needles,
+            measure_with(ledger_of_needles(ONE_CCM), script).needles,
             0,
             "登记住在 ccm 而脚本里没有 ⇒ 读数必须掉（**流失照样红**）"
         );
         assert_eq!(
-            measure_with(&moved("moved.rs"), script).needles,
+            measure_with(ledger_of_needles(&moved_row("moved.rs")), script).needles,
             1,
             "登记为已搬走 ⇒ 读数**不掉**（**搬家照样绿**）。\n\
              这一分掉了，就意味着搬一块东西必须去动 `BASELINE.needles`／那两条编译期下限 —— \
              而 `KP2B` 逐字禁止 agent 动它们。"
+        );
+    }
+
+    /// 〔C 第五拍〕上一条在 **`channel_a` 那一维**的同款 —— PM `§13 裁三` 的代价②。
+    ///
+    /// 分开写不是重复：夹具人群不同、失败文案不同，而且**这一维今天就要搬**
+    /// （`CHANNEL_A_LITERALS[0]` 住在 `--tmux` 那一块里）。
+    /// 合在上一条里的话，「channel_a 这一维到底有没有牙」会被 `needles` 那几格的绿掩盖。
+    #[test]
+    fn the_conservation_ledger_covers_the_channel_a_dimension_too() {
+        let backend = |f: &str| -> String {
+            if f == "moved.rs" {
+                "let _ = tmux(&[\"set-option\", \"-t\", &t, \"@ccm_sid_expect\", sid]);".to_string()
+            } else {
+                String::new()
+            }
+        };
+        const CH_MOVED: &[(&str, NeedleHome)] = &[(
+            "tmux set-option -t $t @ccm_sid_expect",
+            NeedleHome::Backend {
+                file: "moved.rs",
+                anchor: "\"@ccm_sid_expect\"",
+            },
+        )];
+        const CH_STAYS: &[(&str, NeedleHome)] = &[("tmux set-option -t $t @ccm_sid_expect", NeedleHome::Ccm)];
+        let ch = ledger_of_channel_a;
+
+        // ① 真搬家：ccm 里没了、新住址那句 argv 有了。
+        assert!(
+            conservation_violations(ch(CH_MOVED), "echo hi\n", &backend).is_empty(),
+            "通道 A 那条记了账、也到了新住址 —— 是搬家，不该红"
+        );
+        // ② 假搬家。
+        let v = conservation_violations(
+            ch(&[(
+                "tmux set-option -t $t @ccm_sid_expect",
+                NeedleHome::Backend {
+                    file: "nowhere.rs",
+                    anchor: "\"@ccm_sid_expect\"",
+                },
+            )]),
+            "echo hi\n",
+            &backend,
+        );
+        assert_eq!(v.len(), 1, "假搬家该恰好红一条：{v:?}");
+        assert!(v[0].contains("通道 A 字面量"), "文案没说清是哪一维：{v:?}");
+        assert!(v[0].contains("账记了、东西没到"), "红的不是那一格：{v:?}");
+        // ③ 两侧各留一份。
+        let v = conservation_violations(
+            ch(CH_MOVED),
+            "tmux set-option -t $t @ccm_sid_expect $(sq \"$ccm_sid\")\n",
+            &backend,
+        );
+        assert_eq!(v.len(), 1, "两侧各留一份该恰好红一条：{v:?}");
+        assert!(v[0].contains("还留着一份"), "红的不是那一格：{v:?}");
+        // ④ 流失：登记住 ccm 而 ccm 里没有。
+        let v = conservation_violations(ch(CH_STAYS), "echo hi\n", &backend);
+        assert_eq!(v.len(), 1, "流失该恰好红一条：{v:?}");
+        assert!(v[0].contains("这是流失，不是搬家"), "红的不是那一格：{v:?}");
+
+        // ⑤ ★★ **记账那一分**：同一份脚本、同一条字面量，只因住址不同而 `channel_a` 读数不同。
+        //    没有这一格，`measure` 里 channel_a 那支的 `Backend => true` 就是没人守的。
+        let script = "# 一份没有那句 set-option 的脚本\n";
+        assert_eq!(
+            measure_with(ch(CH_STAYS), script).channel_a,
+            0,
+            "登记住在 ccm 而脚本里没有 ⇒ channel_a 读数必须掉"
+        );
+        assert_eq!(
+            measure_with(ch(CH_MOVED), script).channel_a,
+            1,
+            "登记为已搬走 ⇒ channel_a 读数**不掉**。\n\
+             这一分掉了就意味着搬走容器路那条意图打标必须去动 \
+             `const _: () = assert!(CHANNEL_A_LITERALS.len() == BASELINE.channel_a && … == 2)` \
+             那条编译期钉子 —— 而那是**编不过**，不是红。"
+        );
+    }
+
+    /// 〔C 第五拍〕`-t` 那一维的守恒 —— **PM 没点名的第三笔代价**，见 [`MovedTTarget`] 头注。
+    #[test]
+    fn the_conservation_ledger_covers_the_t_target_dimension_too() {
+        let backend = |f: &str| -> String {
+            if f == "moved.rs" {
+                "let _ = tmux(&[\"set-option\", \"-t\", &t, \"@ccm_agent\", agent]);".to_string()
+            } else {
+                String::new()
+            }
+        };
+        const MOVED: &[MovedTTarget] = &[MovedTTarget {
+            gone_from_ccm: "tmux set-option -t $t @ccm_agent",
+            file: "moved.rs",
+            anchor: "\"-t\", &t, \"@ccm_agent\"",
+        }];
+        const NOWHERE: &[MovedTTarget] = &[MovedTTarget {
+            gone_from_ccm: "tmux set-option -t $t @ccm_agent",
+            file: "nowhere.rs",
+            anchor: "\"-t\", &t, \"@ccm_agent\"",
+        }];
+        let tt = ledger_of_t_targets;
+
+        // ① 真搬家。
+        assert!(
+            conservation_violations(tt(MOVED), "echo hi\n", &backend).is_empty(),
+            "`-t` 那一处记了账、也到了新住址 —— 是搬家，不该红"
+        );
+        // ② 假搬家（账记了、新住址没有）。
+        let v = conservation_violations(tt(NOWHERE), "echo hi\n", &backend);
+        assert_eq!(v.len(), 1, "假搬家该恰好红一条：{v:?}");
+        assert!(v[0].contains("账记了、东西没到"), "红的不是那一格：{v:?}");
+        // ③ **两侧各留一份 ⇒ 同一处被数两遍**（这一维特有的失效方式）。
+        let v = conservation_violations(
+            tt(MOVED),
+            "seq=\"$seq && (tmux set-option -t $t @ccm_agent x)\"\n",
+            &backend,
+        );
+        assert_eq!(v.len(), 1, "两侧各留一份该恰好红一条：{v:?}");
+        assert!(v[0].contains("同一处被数两遍"), "红的不是那一格：{v:?}");
+
+        // ④ ★★ **记账那一分**：同一份脚本，账本多一行 ⇒ `t_targets_checked` 多一分。
+        //    没有这一格，`measure_with` 里那个 `+ ledger.t_targets.len()` 就是没人守的
+        //    （而它顶着 `MIN_CHECKED_T_TARGETS` 那条 🔴 不许下调的下限）。
+        let script = "tmux has-session -t \"=$n:\"\n";
+        let base = measure_with(tt(&[]), script).t_targets_checked;
+        assert_eq!(
+            measure_with(tt(MOVED), script).t_targets_checked,
+            base + 1,
+            "账本登记了一处已搬走的 `-t`，而读数没跟着补回来 ⇒ 搬家会被读成「少了一处 tmux 命令」，\n\
+             那正是 `MIN_CHECKED_T_TARGETS` 那条下限要报的**另一件事**（F01：少一处 `-t` 用法）。"
         );
     }
 
@@ -1687,46 +2015,95 @@ mod tests {
         );
     }
 
+    /// 通道 A 在**后端**那一侧的住址与锚点〔C 第五拍；PM `§13 裁三` 代价①〕。
+    ///
+    /// ⚠ 锚点是 **argv 字面量**（带引号），不是 shell 那边那句 —— 见 [`NeedleHome::Backend`]
+    /// 头注：「同一件事换了语言就换了形状，用同一个串去两个语言里找，找到的多半不是同一件事」。
+    const CHANNEL_A_BACKEND: (&str, &str) = (
+        "remote-daemon-proto/src/control/launch.rs",
+        "\"@ccm_sid_expect\"",
+    );
+
     /// `KP2D`〔`K-P2` 08-29〕**通道 A（意图）与通道 B（事实）不许在搬家时被合并。**
     ///
-    /// # 现打的冲突（件计划 `§0b-1` 第 10 行 + `KP2D` 逐字）
+    /// # 那个冲突是什么、**今天已经解掉了**〔C 第五拍，09-03〕
     ///
     /// 建会话那一刻，`shared/ccm` 写 `@ccm_sid_expect`（**意图**，F04 通道 A），
-    /// 而 daemon 的 `launch` 写**裸 `@ccm_sid`**（**事实**，通道 B）。
+    /// 而 daemon 的 `launch` **此前写的是裸 `@ccm_sid`**（**事实**，通道 B 的键）。
     /// 破坏性动作（`kill`）**只认 `@ccm_sid`** ⇒ 起会话一旦改走 daemon 的 `launch`，
     /// 「声明了但从未真正跑起来」的会话会**当场获得事实身份**，F04 修掉的那个形状（`R10`）原路回来。
+    ///
+    /// ⚠ **别把它读成「冒名」**（PM `§13 裁三` 现打订正过一格）：daemon 那一处落在**幂等闸之后**
+    /// ⇒ 只可能给「刚刚新建成功」的会话打标，**够不着别人的会话**。
+    /// 它真正的问题是**过早取得权威** —— 建会话即获得事实身份。两件事不同。
+    ///
+    /// **PM `§13 裁三` 裁「候选丙」**：建会话那一刻写**意图**标记 `@ccm_sid_expect`
+    /// （与建会话原子），事实标记 `@ccm_sid` 仍**只**由 `identity_tag.rs` 在 pidfile 出现
+    /// ＋ 过 `procStart` 冒名检查之后写。已落地 ⇒ 下面 ② 的期望值是 `(0, 2, 1)`。
     ///
     /// # 这条判据补的是哪个洞
     ///
     /// `KP2D` 逐字记着它的失效方式：「`CHANNEL_A_LITERALS` 钉的是 **`shared/ccm` 里那两条
     /// shell 字面量**。实现搬去 daemon ⇒ 那两条字面量随代码一起消失 ⇒ **判据因为没有靶子
     /// 而不再红**（不是变绿，是变空真）。」
-    /// ⇒ 这里加两样：**靶子自检**（两条字面量各恰好一处）＋ **成对判**
-    /// （ccm 一旦开始发 `create-or-attach`，daemon 那侧的裸 `@ccm_sid` 必须已经归零）。
-    ///
-    /// ⚠ **本条不改 daemon 的行为**：`control/launch.rs::run` 的 `Mode::CreateOrAttach` 臂里
-    /// 写裸 `@ccm_sid` 这件事该由谁改，
-    /// 件计划 `§4` 第 4 条逐字「**本件不自裁**」（改它会动到 `K-P5` 的地面）。
-    /// 本条只做一件事：**把那个冲突钉成机器看得见的**，并让它在接线那一拍变成硬闸。
+    /// ⇒ 这里有四样：**靶子自检**（① 每条字面量在**它登记的住址**上恰好一处）＋
+    /// **后端侧意图锚点**（①b）＋ **三元组读数**（②）＋ **成对判**（③）。
     #[test]
     fn the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move() {
         let prod = ccm_production();
-        // ① **靶子自检**：两条通道 A 字面量各**恰好一处**，且在生产段里。
+        // ① **靶子自检**：每条通道 A 字面量在**它登记的那个住址**上**恰好一处**。
         //    `channel_a` 那个读数只数「命中几条」——靶子整个消失时它会掉到 0 而 `assert_at_least`
         //    会红，但**换个地方写一份**它同样是 2 ⇒ 用 `find_pinned` 钉「恰好一处、不许被撑大」。
-        for lit in CHANNEL_A_LITERALS {
-            guard_core::find_pinned(&prod, lit).unwrap_or_else(|e| {
+        //
+        // ★★ 〔C 第五拍；PM `§13 裁三` **代价①**〕**靶子跟着住址走**。
+        //    `KP2D` 头注逐字预言过：「实现搬去 daemon ⇒ 那两条字面量随代码一起消失
+        //    ⇒ **判据因为没有靶子而不再红**（不是变绿，是变空真）」。
+        //    上一版这里硬读 `CHANNEL_A_LITERALS` + 只在 `shared/ccm` 里找 ⇒ 那句预言会当场兑现。
+        //    改成读住址账本：住 `Ccm` 的在 ccm 里钉、记了账搬走的**在新住址上钉**。
+        for (lit, home) in CHANNEL_A_HOMES {
+            let (where_, hay) = match home {
+                NeedleHome::Ccm => ("shared/ccm".to_string(), prod.clone()),
+                NeedleHome::Backend { file, anchor } => {
+                    let hay = backend_production(file);
+                    guard_core::find_pinned(&hay, anchor).unwrap_or_else(|e| {
+                        panic!(
+                            "{e}\n⇒ 通道 A 的意图标记登记为已搬进 `{file}`，而那份文件的生产段里\n\
+                             它不是恰好一处（锚点 {anchor:?}）。**搬家之后靶子必须在新住址上**，\n\
+                             否则这条判据就是 `KP2D` 头注预言的那种「空真」。"
+                        )
+                    });
+                    continue;
+                }
+            };
+            guard_core::find_pinned(&hay, lit).unwrap_or_else(|e| {
                 panic!(
-                    "{e}\n⇒ 通道 A 的意图标记 {lit:?} 不再是恰好一处。\n\
-                     搬家把它带走了 ⇒ **这条判据会因为没有靶子而不再红**（空真，不是绿）：\n\
-                     照 `KP2D` 把它钉在**新住址**上，并把这条自检一起搬过去。"
+                    "{e}\n⇒ 通道 A 的意图标记 {lit:?} 在 `{where_}` 里不再是恰好一处。\n\
+                     若是搬走了：**同拍改 `CHANNEL_A_HOMES` 那一行**（写清新住址与锚点），\n\
+                     这条自检会自己跟过去；只删不记账 = `KP2D` 说的那种空真。"
                 )
             });
         }
 
+        // ①b ★★ **后端那一侧的意图锚点**〔C 第五拍；PM `§13 裁三` 裁「候选丙」〕。
+        //
+        // 丙 落地之后，**建会话那一刻写意图**这条性质在 daemon 里也有了一份实现
+        //（`control/launch.rs` 的 `Mode::CreateOrAttach` 臂）。上面 ① 只管 ccm 那两条的住址，
+        // 管不着这一份 —— 而它恰恰是**接线之后真正会跑的那一份**。
+        // ⇒ 单独钉：那句 argv 里必须写意图键，且**恰好一处**。
+        let launch = backend_production(CHANNEL_A_BACKEND.0);
+        guard_core::find_pinned(&launch, CHANNEL_A_BACKEND.1).unwrap_or_else(|e| {
+            panic!(
+                "{e}\n⇒ daemon 建会话那一刻不再写**意图**键 {:?}（住址 `{}`）。\n\
+                 它此前写的是**裸 `@ccm_sid`** —— 也就是绕过 `identity_tag` 那道\n\
+                 「pidfile 出现 + 过 procStart 冒名检查」直接授予**事实**身份，\n\
+                 而 `kill` 只认事实身份 ⇒ 那正是 F04 修掉的 `R10`。\n\
+                 ⚠ 改回去之前先读 `K-P2 §13 裁三`：那一格是 PM 裁的，不是顺手写的。",
+                CHANNEL_A_BACKEND.1, CHANNEL_A_BACKEND.0
+            )
+        });
+
         // ② daemon 那一侧今天写的是什么 —— **读源码，不跑它**（红线：不许起真 daemon）。
-        let launch =
-            guard_core::production_code(&read_repo_file("remote-daemon-proto/src/control/launch.rs"));
+        //    与 ①b 读的是**同一份文本**（同一个住址常量），不另开第二处取法。
         assert!(
             launch.contains("create-or-attach"),
             "`control/launch.rs` 的生产段里找不到 `create-or-attach` —— 抽取器坏了，下面全是空真"
@@ -1755,8 +2132,16 @@ mod tests {
         // ⇒ 分成两个数。**这是收紧不是放宽**：上一版一个数说不出「写点变成了读点」，
         // 而下面这条 `(writes, reads, intent)` 三元组对那种调包**当场红**。
         // ⚠ 危险的一直是**写**：破坏性动作认的是事实标记，冒名靠的是写。
+        //
+        // ★★ 〔C 第五拍订正，09-03〕**读点有两种形状，都是读**。
+        //    丙 落地时标题格式串换成了带回退的那一份（`#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}`，
+        //    与 `shared/ccm:1247` 同形）—— 理由：写点归零之后，建会话那一刻 `@ccm_sid` 是空的，
+        //    旧的 `ccm-rbind-#{@ccm_sid}` 会把标题渲成一个**空的 `ccm-rbind-`**。
+        //    那一句里 `@ccm_sid` 出现**两次**（条件头 `#{?@ccm_sid,` ＋ 取值 `#{@ccm_sid}`），
+        //    两次都是**显示时读**。⇒ 读点这一类要把两种形状都收进来，
+        //    否则下面那条分类完备性自检会把「换了个更对的格式串」误报成「出现了分不出类的用法」。
         let writes = launch.matches("\"@ccm_sid\"").count();
-        let reads = launch.matches("#{@ccm_sid}").count();
+        let reads = launch.matches("#{@ccm_sid}").count() + launch.matches("#{?@ccm_sid,").count();
         // ★ **分类完备性自检**：出现第三种形状（既不是 argv 字面量、也不是格式串）时，
         //   上面两个数会加不满 `bare` ⇒ 在这里响，而不是在别处静默地少数一处。
         assert_eq!(
@@ -1769,13 +2154,16 @@ mod tests {
         );
         assert_eq!(
             (writes, reads, intent),
-            (1, 1, 0),
+            (0, 2, 1),
             "daemon `control/launch.rs` 生产段里「事实标记**写点** / 事实标记**读点** / \
-             意图标记」的处数从 (1, 1, 0) 变成了 ({writes}, {reads}, {intent})。\n\
-             登记的读数：写点 = `Mode::CreateOrAttach` 里那句 `set-option … \"@ccm_sid\" sid`；\
-             读点 = `set-titles-string \"ccm-rbind-#{{@ccm_sid}}\"`（**显示时读**，不授予身份）。\n\
-             ⇒ 写点变 0 = **冲突解掉了**，把 `K-P2 §4` 第 4 条结掉并改这个期望值；\n\
-             ⇒ 写点变多 = 事实标记又多了一处写点，回 F04 看通道 A/B 的分家；\n\
+             意图标记」的处数从 (0, 2, 1) 变成了 ({writes}, {reads}, {intent})。\n\
+             登记的读数〔C 第五拍，PM `§13 裁三` 裁「候选丙」之后〕：\n\
+             · 写点 = **0** —— 建会话那一刻**不写事实标记**；事实只由 `identity_tag` 过检之后写；\n\
+             · 读点 = **2** —— `set-titles-string \"#{{?@ccm_sid,ccm-rbind-#{{@ccm_sid}},#T}}\"` \
+               那一句里的条件头与取值（**显示时读**，不授予身份）；\n\
+             · 意图 = **1** —— `set-option … \"@ccm_sid_expect\" sid`（与建会话原子）。\n\
+             ⇒ 写点变回 ≥1 = **`R10` 原路回来**（建会话即获得事实身份，而 `kill` 只认它）；\n\
+             ⇒ 意图变 0 = 建会话那一刻什么都不声明了，`identity_tag` 之前那段窗口期没人认领；\n\
              ⇒ 读点变 0 = 标题回填没了（`e2e/ccm-rbind-title.sh` 地板 8 守的就是它）。"
         );
 
@@ -1784,16 +2172,19 @@ mod tests {
         //    今天 ccm 生产段里零命中 ⇒ 这一支是**待触发**的，不是空真：上面 ① 是它的靶子自检。
         // ⚠ 判的是**写点**，不是裸命中数 —— 理由在上面那段：把读点也算进来，
         //    这条判据就只有「删掉标题功能」一种满足法，那是**判不了也做不对**。
+        // ⚠⚠ 〔C 第五拍〕**这一支今天已经满足了**（`writes == 0`）——
+        //    也就是说它**不再是接线的闸**。**别把它删掉**：它守的是「接线之后也不许把写点加回来」，
+        //    而那一天正是最容易顺手加回来的时候（「远端会话没有 @ccm_sid，UI 认不出来」）。
         if guard_core::contains_word(&prod, "create-or-attach")
             || daemon_invocations(&prod).contains("--launch")
         {
             assert_eq!(
                 writes, 0,
-                "`shared/ccm` 开始发 `create-or-attach` 了，而 daemon 建会话时**仍在写事实标记 \
+                "`shared/ccm` 开始发 `create-or-attach` 了，而 daemon 建会话时**又在写事实标记 \
                  `@ccm_sid`**（{writes} 处）。\n\
                  ⇒ 「声明了但从未真正跑起来」的会话会当场获得**事实**身份，而 `kill` 只认它 —— \
                  F04 修掉的 `R10` 原路回来。\n\
-                 先解 `K-P2 §4` 第 4 条（「过了后端之后 `@ccm_sid` 由谁写」），再接线。"
+                 `K-P2 §13 裁三` 裁的是**候选丙**：建会话写意图、事实只由 `identity_tag` 过检后写。"
             );
         }
     }
