@@ -38,6 +38,7 @@ import {
   localLaunchAccountNameSync,
   recordLocalLaunchAccount,
   primeLocalLaunchAccounts,
+  rememberLocalLaunch,
 } from "../accounts";
 import {
   actionsFor,
@@ -1707,11 +1708,20 @@ export class HistoryView {
         //    ⚠ 它取的是**当前账号**（不是从别的会话继承 —— 那是 fork 的语义），
         //    与远端那条 `runNewSessionRemote` 的 `withAccount(origin, null, …, {follow:{}})`
         //    **同形**：新会话跟随当前账号。
-        await commands.new_local_session({
+        // ★★ `K-P5h` `KP5HD2`：**这条命令现在把这次拉起的身份 token 交回来。**
+        //    `K-P5 §3 三` 现打的那条结构性事实（「没有一处在起新会话时知道 sid」）
+        //    在这一行上是活的：这一刻我们手上有 cwd、有账号，**就是没有 sid** ——
+        //    于是那条 `recordLocalLaunchAccount` 的 pin 今天写不出来
+        //    （`tabs.ts` 那条远端同形注释逐字写着「新会话无 sid → 不记账」）。
+        //    ⇒ 把 token 挂进待回填表，等这条会话真的跑起来之后拿它反查 sid 再补写 pin。
+        //    ⚠ **不 `await` 回填**（它要等进程起来，见 `resolvePendingLocalLaunches` 头注）；
+        //      这里只是登记，一拍都不多花 —— 那两条只放行一个微任务的 DOM 判据在盯着。
+        const launchId = await commands.new_local_session({
           cwd: ctx.cwd,
           launcher: behavior.resumeCommandLocal || null,
           account: localLaunchAccountSync(null),
         });
+        rememberLocalLaunch(launchId, localLaunchAccountNameSync(null));
         showActionFailureToast(
           "已在该目录起新会话",
           `新终端窗口正在 ${ctx.cwd} 启动。`,

@@ -38,7 +38,15 @@ vi.mock("../format", () => ({ formatTimestampSmart: () => "时间" }));
 import { invoke } from "@tauri-apps/api/core";
 import { HistoryView } from "./history";
 import { runNewSessionRemote } from "../remote-launch-run";
-import { invalidateAccountsCache } from "../accounts";
+import {
+  invalidateAccountsCache,
+  resolvePendingLocalLaunches,
+  __resetPendingLocalLaunchesForTests,
+  __pendingLocalLaunchCountForTests,
+  __resetLocalLaunchSnapshotForTests,
+  __setLocalLaunchSnapshotForTests,
+  type AccountsState,
+} from "../accounts";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const runNewRemote = runNewSessionRemote as unknown as ReturnType<typeof vi.fn>;
@@ -96,6 +104,96 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     const call = invokeMock.mock.calls.find((c) => c[0] === "new_local_session");
     expect(call).toBeTruthy();
     expect(call![1]).toMatchObject({ cwd: "/p", launcher: null });
+  });
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // `K-P5h` `KP5HD2`：**起会话方拿回 token → 会话跑起来后把 sid 反查出来 → 补写 pin**
+  //
+  // ⚠ 本条是这条链上**唯一驱动 `views/history.ts` 那一跳**的判据：
+  //   `accounts.vitest.ts` 那两组量的是 `sidOfLaunch` 与待回填表**本身**，
+  //   把 `rememberLocalLaunch(launchId, …)` 这一行从 `runNewSession` 里删掉，
+  //   那两组**一条都不会红** —— 与 `D8 阻-1` 那次「判据的射程上界卡在下游」同形。
+  // ═════════════════════════════════════════════════════════════════════════
+  it("★★ `K-P5h`：本地起新会话 → 记住 token → 会话出现后把账号 pin 补写到反查出来的 sid 上", async () => {
+    __resetPendingLocalLaunchesForTests();
+    __resetLocalLaunchSnapshotForTests();
+    invalidateAccountsCache();
+    const TOKEN = "0198f0d2-1111-4222-8333-444455556666";
+    const ACCT = {
+      name: "acct-a",
+      email: "a@x.edu",
+      configDir: "/h/.claude-accts/acct-a",
+      isDefault: true,
+      mode: "isolated",
+      exists: true,
+      loggedIn: true,
+    };
+    invokeMock.mockImplementation((cmd: string) => {
+      switch (cmd) {
+        // 账号快照（`localLaunchAccountNameSync` 要它才说得出账号名）。
+        case "list_local_accounts":
+          return Promise.resolve({ available: true, error: null, meta: null, accounts: [ACCT], notice: null });
+        case "load_config":
+          return Promise.resolve({ accounts: { defaultName: "acct-a" } });
+        case "list_last_accounts":
+          return Promise.resolve({});
+        // ★ 起会话这一跳**交回身份 token**（`KP5HD1` 那一格的前端这一侧）。
+        case "new_local_session":
+          return Promise.resolve(TOKEN);
+        // ★ 会话真的跑起来了 —— 两条行里只有一条带着我们那个 token。
+        case "list_local_session_accounts":
+          return Promise.resolve({
+            available: true,
+            error: null,
+            sessions: [
+              { pid: 1, sessionId: "sid-other", cwd: "/w", configDir: null, account: null, bare: false, alive: true, launchId: "别人的" },
+              { pid: 2, sessionId: "sid-new", cwd: "/p", configDir: null, account: null, bare: false, alive: true, launchId: TOKEN },
+            ],
+          });
+        default:
+          return Promise.resolve({});
+      }
+    });
+
+    // ⚠ **快照要先喂热**：`primeLocalLaunchAccounts` 是**不等待**地踢出去的
+    //   （多等一拍会撞那两条只放行一个微任务的 DOM 判据，见 `localLaunchAccountSync` 头注），
+    //   所以起会话那一跳读到的很可能还是冷快照 —— 那是一条**已登记的诚实边界**，不是本条要量的东西。
+    //   本条量的是「**说得出账号名时，那次拉起被记住了**」。
+    const snap: AccountsState = {
+      origin: "__local__",
+      available: true,
+      error: null,
+      notice: null,
+      meta: null,
+      accounts: [ACCT],
+      defaultName: "acct-a",
+    };
+    __setLocalLaunchSnapshotForTests(snap, {});
+
+    const view = new HistoryView();
+    const row = buildRow(view, entry(), proj());
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    menuItem("在该目录起新会话")!.click();
+    // 冲一轮宏任务：起会话那一跳的 `await` 要落地。
+    await new Promise((r) => setTimeout(r, 0));
+
+    // ① 起会话方**记住了**这次拉起（这一刻它手上只有 token，没有 sid）。
+    expect(
+      __pendingLocalLaunchCountForTests(),
+      "起完新会话没有挂上待回填 —— `rememberLocalLaunch` 那一行被摘了，\n" +
+        "或者交回来的 token 是空的（`new_local_session` 还在回 `void`）",
+    ).toBe(1);
+
+    // ② 会话出现之后（生产上由 `main.ts` 的 `session-started` 事件触发这一跳），
+    //    sid 被反查出来、pin 落到**那一条**上。
+    await resolvePendingLocalLaunches();
+    const pin = invokeMock.mock.calls
+      .filter((c) => c[0] === "update_history_metadata")
+      .map((c) => c[1]);
+    expect(pin, "反查出 sid 之后没有补写账号 pin").toHaveLength(1);
+    // 🔴 判别格：落在 `sid-new` 上而不是 `sid-other` —— 这一格只有 token 说得出来。
+    expect(pin[0]).toMatchObject({ sessionId: "sid-new", patch: { lastAccount: "acct-a" } });
+    expect(__pendingLocalLaunchCountForTests()).toBe(0);
   });
 
   it("菜单「在该目录起新会话」远端 → runNewSessionRemote（不 invoke new_local_session）", async () => {

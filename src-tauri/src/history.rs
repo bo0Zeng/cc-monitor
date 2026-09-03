@@ -1361,13 +1361,26 @@ fn render_local_ccm_with(
 /// 这不是漏做，也不是已裁 —— 是**没人裁过**：`launch` 与 `kill`/`send-keys` 可能本来就不同类
 ///（后两者对**已存在**的会话下达指令，而 launch 是**造**一个，`§1.3` 又把最终那次 exec
 /// 钉在用户自己的终端进程里）。⇒ 已开 `U13`，别把这一段读成缺口后顺手「补」上。
+///
+/// # 🔴 返回值〔`K-P5h` `KP5HD1`〕：**这次拉起的身份 token**
+///
+/// 上一版回的是 `Result<(), String>`（「成了没有」）。本拍把**铸出来的那个 token**
+/// 一路交回给调用方 —— 那是 `K-P5g` 现打的卡点（「写侧把 token 铸完就扔」）唯一的解，
+/// 也是 [`new_local_session`] 的调用方能拿到「我刚起的那条是哪个会话」的**唯一**入口。
+///
+/// ⚠ **它不是 sid**：`K-P5 §3 三` 现打「5 处起会话方没有一处在起新会话时知道 sid」。
+/// 拿它反查 sid 是**下一跳**的事（前端 `accounts.ts::sidOfLaunch` 与它旁边那张待回填表），
+/// 而那一跳必然要**等进程真的跑起来**才问得到 —— 时序那一格归 `KP5HD3`。
+///
+/// ⚠ **`Err` 那一支不回 token**：拉起没成功就没有「刚起的那条」可言，
+/// 回一个 token 会让调用方去等一条根本不存在的会话。
 fn launch_local(
     action: &LocalPsAction,
     launcher: Option<&str>,
     cwd: Option<&str>,
     account: Option<&LaunchAccount>,
     tmux_name: Option<&str>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     // ★★ `K-H2b`：**这一行就是「那条线」** —— 起会话这一刻把 base URL 指向本机中转。
     //    空串 = 这个号不走中转（`§0e` 裁一：官方号一个字节不进中转）。
     let relay = relay_prefix_for_launch(action, account)?;
@@ -1448,9 +1461,19 @@ fn launch_local(
     //    「送出去的那一串逐字节等于『中转前缀 + 基准串』」的相等断言改掉 ——
     //    而那条断言正是 `D6` 刀 `Y1`（算出来没拼上去）今天唯一的牙。⇒ 拼在它后面，
     //    身份那一段落在两趟的**基准串里**，那条断言逐字不动，两件事各自有各自的牙。
-    let cmd = relay + &launch_identity_prefix(action) + &base;
+    //
+    // 🔴🔴〔`K-P5h` `KP5HD1`〕**本拍在这两行上只做了一件事：把铸出来的 token 留下来。**
+    //    上一版是 `let cmd = relay + &launch_identity_prefix(action) + &base;` ——
+    //    铸法把 token 渲成前缀之后当场丢掉。现在改调 [`launch_identity`]，
+    //    **拼进去的仍是同一个 `prefix`（同一份铸法、同一份渲法、同样的顺序）**，
+    //    只是 token 那一半没有被扔掉，而是在拉起成功之后交回给调用方。
+    //    ⇒ **拼出来的那一串一个字节没变**，这句话由
+    //    `the_minted_identity_token_is_handed_back_to_the_caller` 逐字节对拍钉住。
+    let identity = launch_identity(action);
+    let cmd = relay + &identity.prefix + &base;
     // ★★ 送出去也走缝：判据装一个记账替身，量的是**真正交出去的那一串**，不是源码里的文本。
-    (launch_sink().0)(&cmd, cwd)
+    (launch_sink().0)(&cmd, cwd)?;
+    Ok(identity.token)
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1787,7 +1810,7 @@ fn launch_identity_token(action: &LocalPsAction) -> String {
 ///
 /// 形状照 `payload::relay_env_prefix_posix` / `relay_env_prefix_ps` 那一对 ——
 /// 两个平台的语法真的不同，这不是「两份实现」，是同一件事的两种**书写法**；
-/// 决定用哪一种的那一格只有一处（下面 [`launch_identity_prefix`] 里那个 `windows`）。
+/// 决定用哪一种的那一格只有一处（下面 [`launch_identity`] 里那个 `windows`）。
 fn launch_identity_env_prefix(token: &str, windows: bool) -> String {
     if windows {
         format!("$env:{LAUNCH_ID_VAR}='{token}'; ")
@@ -1799,6 +1822,35 @@ fn launch_identity_env_prefix(token: &str, windows: bool) -> String {
     }
 }
 
+/// 一次拉起的身份：**铸出来的那个 token** 与**要拼进命令串的那一句前缀**。
+///
+/// # 🔴 它为什么存在〔`K-P5h` `KP5HD1`〕
+///
+/// 这个结构是**本拍唯一的行为增量**，而增量只有一句话：**把铸出来的 token 交给调用方**。
+///
+/// `K-P5g` 交回时现打过一条卡点，逐字：「用 token 回填新会话的 sid 是这条路上最值钱的
+/// 那个消费者，它今天**买不到**，卡点是**写侧把 token 铸完就扔**」——
+/// 上一版的 `launch_identity_prefix`（本结构的前身，本拍已改名为 [`launch_identity`]）签名是
+/// `fn(&LocalPsAction) -> String`，回的是**拼好的前缀**，token 在函数体里当场丢掉
+/// ⇒ 全仓**没有任何调用方手上有那个 token**，而 `K-P5 §3 三` 现打的
+/// 「5 处起会话方没有一处在起新会话时知道 sid」**正是这个 token 存在的全部理由**。
+///
+/// # 🔴 additive 的判据钉在哪（别读成「加个字段而已」）
+///
+/// **拼出来的命令串必须一个字节没变** —— 那是 additive 的全部含义。
+/// 钉住它的是 [`tests::the_minted_identity_token_is_handed_back_to_the_caller`] 那一格：
+/// 它拿**真正交出去的那一串**与 `前缀 + 基准串` 逐字节相等对拍
+///（两边都由生产函数现算，不抄第二份规则）。
+/// ⚠ 另有两条老判据在旁边守着同一件事，本拍一个字节都没动它们：
+/// `the_launcher_plants_the_session_identity_into_the_process_environment`（身份那一段的形状）
+/// 与 `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched`（中转前缀那一段）。
+struct LaunchIdentity {
+    /// 铸出来的那个 token 本身。**交给调用方的就是它。**
+    token: String,
+    /// 渲好的那一句 `export …; ` / `$env:…; `，原样拼进命令串。
+    prefix: String,
+}
+
 /// 上面两条的**接线半**：铸一个 token，按这台机器是不是 Windows 渲成一句前缀。
 ///
 /// ⚠ 平台那一格**走 [`relay_facts`] 那条缝取**，不写 `cfg!(windows)`：
@@ -1807,8 +1859,15 @@ fn launch_identity_env_prefix(token: &str, windows: bool) -> String {
 /// 走缝之后它成了可翻的一维（判据喂 `|| true` 就该拿到 PowerShell 形态）。
 /// ⚠ 这里**刻意不提 `platform_is_windows` 这个裸标识符** —— `payload.rs` 那道人群闸
 /// 数的正是它在生产段里出现几处（定义 1 + 缝里 1），提一次就多一处。
-fn launch_identity_prefix(action: &LocalPsAction) -> String {
-    launch_identity_env_prefix(&launch_identity_token(action), (relay_facts().windows)())
+///
+/// 🔴〔`K-P5h` `KP5HD1`〕**本拍只改了返回什么，没改铸什么、也没改怎么拼**：
+/// 铸法仍是 [`launch_identity_token`]（那一份共用的 `route_key_for_session`），
+/// 渲法仍是 [`launch_identity_env_prefix`]，两者的入参与顺序逐字未动 ⇒
+/// `prefix` 这一半与上一版那个 `-> String` 的返回值**逐字节相同**。
+fn launch_identity(action: &LocalPsAction) -> LaunchIdentity {
+    let token = launch_identity_token(action);
+    let prefix = launch_identity_env_prefix(&token, (relay_facts().windows)());
+    LaunchIdentity { token, prefix }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1928,6 +1987,11 @@ fn resume_impl(
     account: Option<&LaunchAccount>,
     tmux_name: Option<&str>,
 ) -> Result<(), String> {
+    // 🔴〔`K-P5h`〕**resume 这一支刻意把 token 丢掉，那不是疏忽。**
+    // `K-P5g` 现打过：resume 时 token **就是 sid**（`route_key_for_session(Some(sid))` 在 sid
+    // 过白名单时原样返回）⇒ 「拿 token 反查 sid」在这一支上退化成
+    // 「答案要么是它自己、要么 `None`」，一个布尔谓词，**买不到本件的正题**。
+    // 本件的正主是**新开**那一支（见 [`new_local_session`]）—— 那一支才没有 sid。
     launch_local(
         &LocalPsAction::Resume(session_id.to_string()),
         launcher,
@@ -1949,12 +2013,23 @@ fn build_new_session_ps_command(launcher: Option<&str>) -> Result<String, String
 
 /// F96（#62）：历史页右键「在该目录起新会话」——本地分支。远端分支走前端
 /// `runRemoteLauncher`（复用 F53）。在 `cwd` 起一个全新会话（无 sid、无 resume）。
+///
+/// # 🔴 返回值〔`K-P5h` `KP5HD1`〕：**这次拉起的身份 token**
+///
+/// 上一版回 `Result<(), String>`。本件把 [`launch_local`] 交出来的那个 token 原样回给前端 ——
+/// **这条命令是全仓唯一「起一条新会话」的 tauri 入口**，也就是唯一一处
+/// 「起会话方手上有 token、而这条会话还没有 sid」的地方。
+///
+/// ⚠ **token 不是 sid，也不许被当成 sid 用**。前端拿它去做的事只有一件：
+/// 在这条会话真的跑起来之后，用 `accounts.ts::sidOfLaunch` 从 `--session-accounts`
+/// 的行里把 sid **反查**出来（`KP5HD2`）。
+/// ⚠ **它是个内部 nonce**：不许显示给用户（同 `K-P5g` 那条判据的口径）。
 #[tauri::command]
 pub fn new_local_session(
     cwd: String,
     launcher: Option<String>,
     account: Option<LaunchAccount>,
-) -> Result<(), String> {
+) -> Result<String, String> {
     // F96：起新会话**依赖 cwd 定位**（不像 resume 靠 sid）——cwd 非空且不是现存目录（项目被
     // 移动/删除）就明确报错，别静默在默认目录起会话 + 弹假成功 toast。`launch_powershell_window`
     // 只把存在的 cwd 作窗口起始目录、失效则回落默认，对 resume 无害、对 new-session 是错目录。
@@ -1973,15 +2048,17 @@ pub fn new_local_session(
     //
     // P3t-Y2：起新会话这条**暂不传名字**（`None` ⇒ 渲染器诚实降级回旧路）。
     // 名字只许由 `mintTmuxName` 铸，在这里补一个默认名就是 F13 那个坑的第三次。
-    launch_local(
+    let launch_id = launch_local(
         &LocalPsAction::New,
         launcher.as_deref(),
         Some(&cwd),
         account.as_ref(),
         None,
     )?;
+    // ⚠ **日志里不写 token**：它是身份凭据形态的 nonce，而 tracing 的 ERROR 那一档会被
+    //   `bindErrorToast` 刷到界面上 —— 内部 nonce 一个字节都不该往那条路上走。
     tracing::info!("history: new local session in {cwd}");
-    Ok(())
+    Ok(launch_id)
 }
 
 // === 内部：项目级 / jsonl 级扫描 ===
@@ -4890,7 +4967,7 @@ mod tests {
     ///
     /// | 格 | 断的是什么 | 翻掉它的形状 |
     /// |---|---|---|
-    /// | ① | 送出去的那一串里**有** `CCM_LAUNCH_ID=<sid>` 这一句 | 把 `+ &launch_identity_prefix(action)` 从拼装那一行删掉（刀 `Y1` 同形） |
+    /// | ① | 送出去的那一串里**有** `CCM_LAUNCH_ID=<sid>` 这一句 | 把 `+ &identity.prefix` 从拼装那一行删掉（刀 `Y1` 同形） |
     /// | ② | 换一个 sid ⇒ 那一段跟着变 | `Resume(_) => Some("sid-1")`（身份写死） |
     /// | ③ | **新开**那一支也有身份，且两趟 token 不同 | `New => String::new()`（只给 resume 落身份 —— 而 `K-P5 §3 三` 现打的正是「新开那一支没有 sid」，它才是本件的正主） |
     /// | ④ | **铸法是共用那一份**：喂一个过不了白名单的 sid ⇒ token **不是**那个 sid | 在本文件里另写一份 `match { Resume(s) => s.clone(), … }`（第二份铸法，白名单回落那一格丢了） |
@@ -4963,7 +5040,7 @@ mod tests {
             identity_segment(&first),
             Some(want_first.as_str()),
             "\n★★ **起会话方没把身份塞进进程环境** —— 刀的形状是把\n\
-             `+ &launch_identity_prefix(action)` 从拼装那一行删掉（`D6` 刀 `Y1` 同形：\n\
+             `+ &identity.prefix` 从拼装那一行删掉（`D6` 刀 `Y1` 同形：\n\
              token 照样铸得出来，只是没拼上去）。\n\
              生产后果：起出来的那条会话**在环境里说不出自己是谁**，\n\
              读的那一侧只能退回去扫窗口标题 —— 那正是本件要消灭的东西。\n\
@@ -5062,6 +5139,162 @@ mod tests {
         assert!(
             !first.contains("$env:"),
             "POSIX 那一趟也渲出了 `$env:` —— 上面那条断言是恒真的"
+        );
+    }
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // 🔴🔴 `K-P5h` `KP5HD1`：**铸出来的那个 token 真的交到了调用方手上**
+    // ═════════════════════════════════════════════════════════════════════════
+
+    /// ★★★ `KP5HD1`：[`launch_local`] / [`new_local_session`] 回的那个串，
+    /// **就是塞进那次拉起进程环境里的同一个 token**；而拼出来的命令串**一个字节没变**。
+    ///
+    /// # 它与旁边那条老判据的分工（两条都要，别合并）
+    ///
+    /// [`the_launcher_plants_the_session_identity_into_the_process_environment`] 买的是
+    /// 「**塞进去了**」；本条买的是「**交出来了**」。`K-P5g` 交回时现打的卡点逐字是
+    /// 「写侧把 token 铸完就扔」—— 那一天上面那条老判据**全绿**，
+    /// 因为塞进去这件事一直是对的，缺的是**没有任何调用方手上有那个 token**。
+    /// ⇒ 两件事各自要有自己的牙。
+    ///
+    /// # 五格，每格能被哪一刀翻掉
+    ///
+    /// | 格 | 断的是什么 | 翻掉它的形状 |
+    /// |---|---|---|
+    /// | ① | 回的那个串**逐字节**是命令里 `CCM_LAUNCH_ID=` 后面那个值 | `Ok("x".into())`（回一个常量）· `Ok(identity.prefix)`（回错那一半） |
+    /// | ② | 两趟**新开**回的是两个不同的 token | 同上那个常量刀（`KP5HD1` 的死值验逐字点名的就是它） |
+    /// | ③ | resume 那一支回的是 sid 本身 | 把 `New`/`Resume` 两支的返回值接反 |
+    /// | ④ | **additive**：交出来这件事没改动命令串 —— 送出去的那一串逐字节等于 `前缀 + 基准串` | 在拼装那一行顺手动一下（多拼 / 少拼 / 换序，`D6` 刀 `Y1` 那一族） |
+    /// | ⑤ | 拉起**失败**时不回 token | 把 `?` 换成忽略错误（那会让调用方去等一条不存在的会话） |
+    ///
+    /// # ⚠ 它买不到什么（如实写）
+    ///
+    /// - **拿这个 token 真能反查出 sid**：那要一条真的跑起来的会话 + 一个真 daemon。
+    ///   本条只买到「token 到了调用方手上」，反查那一跳的判据在前端
+    ///   （`src/accounts.vitest.ts` 的 `K-P5h` 那一组，`KP5HD2`）。
+    /// - **走 ccm 容器那一支**：与老判据同一个洞（喂 `tmux_name = None` ⇒ 走回落那条路），
+    ///   登记在 `launcher_identity_registry` 的 `L1` 那一行里。
+    /// - **Windows 上的运行时行为**：④ 那一格按平台各自取基准串，但这台机器是 Linux，
+    ///   PowerShell 那一侧一行都没真跑过。
+    #[test]
+    fn the_minted_identity_token_is_handed_back_to_the_caller() {
+        use std::cell::RefCell;
+        thread_local! {
+            static SENT2: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+        }
+        fn recorder(cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
+            SENT2.with(|v| v.borrow_mut().push(cmd.to_string()));
+            Ok(())
+        }
+        fn boom(_cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
+            Err("拉起失败（判据夹具）".to_string())
+        }
+        fn no_rows() -> Vec<String> {
+            Vec::new()
+        }
+        fn relay_up() -> bool {
+            true
+        }
+        fn not_windows() -> bool {
+            false
+        }
+        fn last_sent() -> String {
+            SENT2.with(|v| v.borrow().last().cloned().expect("这一趟什么都没送出去"))
+        }
+
+        let _sink = override_launch_sink(LaunchSink(recorder));
+        // 表里一行都没有 ⇒ 中转前缀恒空 ⇒ ④ 那一格量的是「身份 + 基准串」这两段，
+        // 中转那一段由它自己那条判据管（两件事分开量）。
+        let _facts = override_relay_facts(RelayFactSources {
+            rows: no_rows,
+            running: relay_up,
+            windows: not_windows,
+        });
+        let account = LaunchAccount::Named {
+            config_dir: "/h/.claude-accts/acct-a".to_string(),
+        };
+
+        // ① **新开**那一支：回的那个串就是命令里那个值。
+        //    ⚠ 这里刻意**不**拿 `identity_segment` 的整段去比 —— 那样只要回的是
+        //    「`CCM_LAUNCH_ID=…` 这一整句」就绿了，而本条要的是**值本身**。
+        let token_a = launch_local(&LocalPsAction::New, None, None, Some(&account), None)
+            .expect("新开这一趟不该失败");
+        assert!(
+            !token_a.trim().is_empty(),
+            "新开那一趟回了个空串 —— 「交出来」这一步等于没做"
+        );
+        let sent_a = last_sent();
+        let want_a = format!("{LAUNCH_ID_VAR}='{token_a}'");
+        assert_eq!(
+            identity_segment(&sent_a),
+            Some(want_a.as_str()),
+            "\n★★ **交回来的 token 不是塞进环境里的那一个。**\n\
+             刀的形状：`Ok(\"x\".into())`（回一个常量）或 `Ok(identity.prefix)`（回错那一半）。\n\
+             生产后果：起会话方拿着一个**谁也不认识**的串去反查 sid ⇒ 永远查不到，\n\
+             而「查不到就不猜」会让整条回填静默失效 —— 与本件没做完全一样。\n\
+             交回来的 = {token_a:?}，送出去的整串 = {sent_a:?}"
+        );
+
+        // ② 两趟新开 ⇒ 两个**不同**的 token（常量刀在这里也红一次，两格互为纵深）。
+        let token_b = launch_local(&LocalPsAction::New, None, None, Some(&account), None)
+            .expect("新开这一趟不该失败");
+        assert_ne!(
+            token_a, token_b,
+            "两趟新开交回来的是同一个 token —— 「交出来」那一步回的是常量，\n\
+             而 `KP5HD1` 的死值验逐字点名的就是这一刀"
+        );
+
+        // ③ resume 那一支：token 就是 sid 本身（`route_key_for_session(Some(sid))` 原样返回）。
+        //    ⚠ 这一格**不是**本件的正主（`K-P5g` 现打过它会退化成布尔谓词），
+        //    写在这里只为钉住「两支没接反」。
+        let sid = "0198f0d2-1111-4222-8333-444455556666";
+        let token_r = launch_local(
+            &LocalPsAction::Resume(sid.to_string()),
+            None,
+            None,
+            Some(&account),
+            None,
+        )
+        .expect("这一趟不该失败");
+        assert_eq!(
+            token_r, sid,
+            "resume 那一支交回来的不是 sid —— 两支的返回值接反了"
+        );
+
+        // ④ ★★ **additive**：送出去的那一串逐字节 = 「身份那一句 + 基准串」。
+        //    两边都由**生产函数现算**，本条不抄第二份拼装规则 ——
+        //    抄一份的话，改了生产那一行、判据跟着抄错，两边一起错还全绿。
+        {
+            let act = LocalPsAction::Resume(sid.to_string());
+            #[cfg(windows)]
+            let base = build_local_ps_command(&act, None, Some(&account))
+                .expect("基准串算不出来，④ 这一格是空真");
+            #[cfg(not(windows))]
+            let base = build_local_posix_command(&act, None, Some(&account))
+                .expect("基准串算不出来，④ 这一格是空真");
+            let want = format!("{}{base}", launch_identity_env_prefix(&token_r, false));
+            let got = last_sent();
+            // 反空真：基准串不是空的（空的话下面那条就退化成「送出去的等于身份那一句」）。
+            assert!(
+                base.len() > 10,
+                "基准串只有 {} 字节 —— ④ 这一格在拿一个空壳对拍",
+                base.len()
+            );
+            assert_eq!(
+                got, want,
+                "\n★★ **「把 token 交出来」这一拍改动了拼出来的命令串** —— \
+                 而 `KP5HD1` 逐字要求「拼出来的命令串一个字节没变」。\n\
+                 additive 的全部含义就是这一行；两边都是生产函数现算的，\n\
+                 对不上说明拼装那一行被动过（多拼 / 少拼 / 换序，`D6` 刀 `Y1` 那一族）。"
+            );
+        }
+
+        // ⑤ 拉起**失败**时不回 token —— 回了会让调用方去等一条根本不存在的会话。
+        let _boom = override_launch_sink(LaunchSink(boom));
+        let failed = launch_local(&LocalPsAction::New, None, None, Some(&account), None);
+        assert!(
+            failed.is_err(),
+            "拉起失败了却回了 `Ok` —— 失败被吞掉，调用方会去等一条不存在的会话：{failed:?}"
         );
     }
 
