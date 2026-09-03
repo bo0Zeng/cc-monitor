@@ -54,6 +54,7 @@ import {
   fetchSessionAccounts,
   fetchAccounts,
   currentAccountForBadge,
+  resolvePendingLocalLaunches,
 } from "./accounts";
 
 // === 启动 perf 测量 ===
@@ -710,6 +711,15 @@ window.addEventListener("DOMContentLoaded", async () => {
       } else {
         tabs.createSkeletonTab(sessionId, meta.cwd || null, null, meta.kind, meta.name);
       }
+      // ★★ `K-P5h` `KP5HD3`：**「过一会儿再问」搭的是这条已有的事件，不是一个新定时器。**
+      //    身份 token 在会话起来**之前**就铸好了，而 `--session-accounts` 要进程已经在跑
+      //    才读得到 ⇒ 回填必然要等。等的办法有两种，这里选的是「内核一有事就通知」那种：
+      //    `sessions/<PID>.json` 一变，`lib.rs` 的 `session-changes-emitter` 就发这条事件 ——
+      //    **一条新会话出生正是它响的时刻**，也正是回填该问的时刻。
+      //    🔴 不排定时器：本项目有一条已交付的性质是「判活不靠定时轮询」，
+      //       在这里起一个新的周期唤醒就是开倒车（`polling_registry` 那两张表在管这件事）。
+      //    ⚠ 不 `await`：回填是补记账，失败也不该影响建 tab 这条主路（它自己吞异常）。
+      void resolvePendingLocalLaunches();
     },
     // 启动重放（jsonl-batch）期间走 batch 模式（lazy hljs + BranchFolder.batchMode），
     // 结束时 flush。onChunk 已删 —— B 重构后 chunk 切边界对前端不可见。

@@ -16,8 +16,13 @@ import {
   sessionBadge,
   shouldShowAccountBadge,
   detectAccountMismatch,
+  restartLocateFailureMessage,
   withAccount,
   type SessionAccount,
+  localLaunchAccountSync,
+  localLaunchAccountNameSync,
+  recordLocalLaunchAccount,
+  primeLocalLaunchAccounts,
 } from "./accounts";
 import { restartWithAccount, DEFAULT_EXIT_WAIT_MS } from "./account-restart";
 import { validateLocalLaunch } from "./launch-requests";
@@ -2218,6 +2223,8 @@ export class TabManager {
     // 没起 / 还没推过帧），不是「一个名字都没占」。不知道的时候**不铸名**、不传 `tmuxName`
     // ⇒ 后端诚实降级回旧路（不进容器）。硬要铸就是「不避让」，那正是 issue #76
     //「静默接进第一个会话，而用户以为开了新的」。
+    // `D1 阻-1`：**不等待**地把账号快照踢一脚（等它就多一拍，见那个取值口的头注）。
+    primeLocalLaunchAccounts();
     let tmuxName: string | null = null;
     try {
       const sessions = await commands.list_local_tmux();
@@ -2227,12 +2234,22 @@ export class TabManager {
       tmuxName = null;
     }
     try {
+      // ★★ `K-H2b` `D1 阻-1`：**账号这一格先前是空的** —— 这条是 tab 栏那条主路，
+      //    而它一个账号都不传 ⇒ ① 起会话落到 shell rc 里那个默认号上（静默串号）；
+      //    ② 中转那一格永远拼不出路由键（没有账号 id ⇒ 不注入）。
+      //    取值口只有一个（`resolveLocalLaunchAccount`）：resume 走那条会话上次的 pin，
+      //    说不出就**缺席**（逐字节旧行为），绝不回落到「当前账号」——那是 #75 的形状。
       await invoke("resume_history_session", {
         sessionId: sid,
         cwd: tab.cwd ?? "",
         launcher: behavior.resumeCommandLocal || null,
         tmuxName,
+        account: localLaunchAccountSync(sid),
       });
+      // `D3 阻-2`：**本机这条路也要往 pin 里写** —— 在此之前 `recordLastAccount` 的两个
+      //   生产调用点结构上只走远端 ⇒ 本机 `list_last_accounts` 恒空 ⇒ 上面那句「pin 优先」
+      //   在本机永远走不到。⚠ 不等待（多一拍会撞那两条只放行一个微任务的 DOM 判据）。
+      recordLocalLaunchAccount(sid, localLaunchAccountNameSync(sid));
     } catch (err) {
       showActionFailureToast("恢复失败", String(err));
     }
@@ -2829,11 +2846,13 @@ export class TabManager {
     // 新进程 = 双进程 / jsonl 双写（§5.2 要防的严重态）。`findClaudeTmuxMatches` 只精确匹配、
     // 不含 cwd 回退，故 `matches` 为空即代表"未精确命中"，天然对齐这条守卫（不猜）。
     if (!live) {
-      showActionFailureToast(
-        "无法换号重启",
-        "该会话不在（本工具的）tmux 里、或无法精确定位（缺 @ccm_sid 会话标记）——可先归档后用右键「把此会话切到账号 X」。",
-        { level: "info", durationMs: 8000 },
-      );
+      // `K-P5g`：这句话原来把**两条成因**并排摆着（「不在本工具 tmux 里」**或**「不是本工具
+      // 起的」），而当时没有任何东西分得开它们。现在分得开了——`--session-accounts` 读回来的
+      // 身份 token（`launchId`）说得出这条会话是不是从本工具这条路起来的，于是这里**拿它做
+      // 决定**：选哪一条成因、给哪一句补救。判据见 `accounts.ts::restartLocateFailureMessage`
+      // 头注与 `accounts.vitest.ts`；本处的接线由 `tabs.vitest.ts` 那两条对照钉着。
+      const msg = restartLocateFailureMessage(this.sessionAccountsByS.get(sid));
+      showActionFailureToast(msg.title, msg.body, { level: "info", durationMs: 8000 });
       return false;
     }
     return await restartWithAccount({

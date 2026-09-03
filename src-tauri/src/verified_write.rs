@@ -5,12 +5,14 @@
 //! 去重本身证成不了一个抽象。真正的理由是实测发现：本仓这套范式有 **4 处独立实现，
 //! 而它们的校验强度并不一致**——
 //!
+//! （下表记的是 **T01 之前**那四处各自的强度；四处今天都已改走本模块。）
+//!
 //! | 处 | 比什么 | 失败时 |
 //! |---|---|---|
-//! | `profile_installer.rs:242`（写入） | **只比长度** | 从备份恢复 |
-//! | `profile_installer.rs:305`（剥离） | **只比长度** | 从备份恢复 |
-//! | `sftp.rs:729`（远端 ccm CLI） | 比内容 | 报错，不动 profile |
-//! | `sftp.rs:767`（远端 profile） | 比内容 | 回滚 |
+//! | `profile_installer.rs::install_to_profile`（写入） | **只比长度** | 从备份恢复 |
+//! | `profile_installer.rs::uninstall_from_profile`（剥离） | **只比长度** | 从备份恢复 |
+//! | `sftp.rs::install_remote_ccm_helper` 里 `CCM_CLI_SCRIPT` 那半（远端 ccm CLI） | 比内容 | 报错，不动 profile |
+//! | `sftp.rs::install_remote_ccm_helper` 里 `merged` 那半（远端 profile） | 比内容 | 回滚 |
 //!
 //! **本机侧只比长度 = 同长度的损坏被静默放过**：字节翻转、编码变形、CRLF↔LF 等长替换
 //! 都能穿过去。而 `~/.bashrc` / `$PROFILE` 写坏的后果是用户下次开终端就炸。

@@ -2059,6 +2059,98 @@ describe("F09 活会话右键：Restart 一级项 + flyout（换号重启，无�
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-P5g` `KP5GD1` 的**接线那一半**
+//
+// `accounts.vitest.ts` 那一组钉的是「那个纯函数会不会分岔」；本组钉的是
+// **它真的被接在了生产路径上、而且喂进去的正是 `--session-accounts` 那一格**。
+// 两条都要：只有纯函数 ⇒ 它可以躺着没人调；只有接线 ⇒ 分岔可以是假的。
+//
+// ⚠ 这两条只在 `launchId` 这一格上不同（同一个 `ROW` 基座、同一套 mock、同一串点击），
+// 所以两条断言的差别只可能由那一格造成。
+// ═══════════════════════════════════════════════════════════════════════════
+describe("K-P5g：tmux 定位不到时，那句提示真的由读回来的身份 token 决定", () => {
+  let tm: TabManager;
+  const rightClick = (sid: string): void => {
+    (tm as unknown as { tabButtons: Map<string, { root: HTMLElement }> }).tabButtons
+      .get(sid)!
+      .root.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+  };
+  const clickItem = (label: string): void => {
+    const btn = [
+      ...(document.body.querySelector(".tab-context-menu")?.querySelectorAll(".tab-context-menu-item") ?? []),
+    ].find((b) => b.textContent === label) as HTMLButtonElement | undefined;
+    btn?.click();
+  };
+  const ROW = (launchId: string | null) => ({
+    pid: 4242,
+    sessionId: "m1",
+    cwd: "/w",
+    configDir: null,
+    account: null,
+    bare: true,
+    alive: true,
+    launchId,
+  });
+
+  /** 走完「右键 → Restart → 直接重启」，回那次 toast 的 `[title, body]`。 */
+  const restartAndCatchToast = async (launchId: string | null): Promise<[string, string]> => {
+    vi.mocked(invoke).mockImplementation((cmd: string) => {
+      if (cmd === "list_remote_accounts") {
+        return Promise.resolve({
+          available: true,
+          error: null,
+          meta: { enabled: true, acctsDir: "/h", manifestPath: "/h/accounts.json", updatedAt: null, sharedStore: null, count: 2, error: null },
+          accounts: [
+            { name: "z", email: "z@x", configDir: "/h/z", isDefault: true, mode: "isolated", exists: true, loggedIn: true },
+            { name: "b", email: "b@x", configDir: "/h/b", isDefault: false, mode: "isolated", exists: true, loggedIn: true },
+          ],
+        });
+      }
+      // ★ 关键前提：tmux 里**精确命中不到**这条 sid ⇒ 走 `!live` 那条拒绝分支。
+      if (cmd === "list_remote_tmux") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+    tm.ensureTab("m1", "/w", "/p/m1.jsonl", 0, "aya");
+    // 这就是那一格的**唯一入口**：daemon 的 `--session-accounts` 出参经 main.ts 喂进来。
+    tm.setSessionAccounts([ROW(launchId)], new Map());
+    rightClick("m1");
+    await flushMicro();
+    await flushMicro();
+    clickItem("直接重启");
+    for (let i = 0; i < 6; i++) await flushMicro();
+    expect(restartWithAccount).not.toHaveBeenCalled(); // 拒绝分支：绝不能真去重启
+    const calls = vi.mocked(showActionFailureToast).mock.calls;
+    expect(calls.length).toBe(1);
+    return [String(calls[0][0]), String(calls[0][1])];
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    document.body.querySelectorAll(".tab-context-menu").forEach((n) => n.remove());
+    invalidateAccountsCache();
+    tm = makeTM();
+  });
+
+  it("没有身份 token ⇒ 老话（两条成因并排摆着）", async () => {
+    const [title, body] = await restartAndCatchToast(null);
+    expect(title).toBe("无法换号重启");
+    expect(body).toContain("或无法精确定位");
+  });
+
+  it("★★ 带着身份 token ⇒ 提示换了一条，且 token 一个字节都没进提示", async () => {
+    const TOKEN = "0198f0d2-1111-4222-8333-444455556666";
+    const [title, body] = await restartAndCatchToast(TOKEN);
+    expect(title).toBe("无法换号重启：tmux 标记丢了");
+    expect(body).toContain("带着本工具铸的身份标记");
+    expect(body).not.toContain("或无法精确定位");
+    // 🔴 死值验的落点：把生产段那一行改回写死的老文案（不读 `sessionAccountsByS`），
+    //    本条当场红；而 `K-P5f` 已经买到的「读到了」那一族一条都不会红。
+    expect(body).not.toContain(TOKEN);
+    expect(title).not.toContain(TOKEN);
+  });
+});
+
 const flushMicro = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
 
 describe("F74 findClaudeTmux（精确 tmux↔sid 映射）", () => {

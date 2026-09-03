@@ -160,12 +160,50 @@ const INTERIM_RESPONSES_ALLOWED: usize = 8;
 /// **那是文本判据，不是编译器。**它认不出：换个字段名（`endpoint:` / `fallback:`）·
 /// 把值藏进别的结构体再放进 `Relay` · 干脆用一个 `static`。
 /// ⚠ **这几条我没有逐条实测**（`D1` 实测的是上表那两形）⇒ 它们是**读源码得出的形状，不是读数**。
+/// 那份凭据文件**这一刻**的印记：(mtime, 字节数)。读不到就是 `None`。
+///
+/// ⚠ 两样一起取是有意的，理由见 [`Relay::refresh_if_changed`] 的「它买不到什么」。
+fn stamp_of(path: &std::path::Path) -> Option<(std::time::SystemTime, u64)> {
+    let m = std::fs::metadata(path).ok()?;
+    Some((m.modified().ok()?, m.len()))
+}
+
+/// `D1 阻-2`：那张表从哪儿重读。
+///
+/// ⚠ **`upstream_default` 不是「可回落的默认上游」**（那条棘轮禁的东西）——
+/// 它是 `table::build` 的**入参**：表里某一行**没写 `base_url`** 时那一行取它。
+/// 「行不在表里」仍然是 404，一个字节都不发上游。两件事别混。
+pub(crate) struct Reload {
+    path: std::path::PathBuf,
+    upstream_default: Base,
+    /// 上次读到的 mtime。`None` = 那时读不到（文件不在 / stat 失败）。
+    seen: std::sync::Mutex<Option<(std::time::SystemTime, u64)>>,
+}
+
+impl Reload {
+    pub(crate) fn new(
+        path: std::path::PathBuf,
+        upstream_default: Base,
+        seen: Option<(std::time::SystemTime, u64)>,
+    ) -> Self {
+        Self { path, upstream_default, seen: std::sync::Mutex::new(seen) }
+    }
+}
+
 pub(crate) struct Relay {
     /// 账号段 → 上游 + key。**决定这条请求发到哪儿、用哪把 key 的唯一住址。**
     ///
     /// ⚠ 它**不进任何 `Debug`**：`SecretKey` 手写的 `Debug` 恒为遮蔽形，
     /// 而本结构体**整个没有** `derive(Debug)`（`KS1` 的第二道）。
-    table: RoutingTable,
+    ///
+    /// ⚠⚠ `K-H2b` `D1 阻-2`：它**从启动快照变成了可重载的**。
+    /// 先前 `load_credentials` 只在 `run_with` 里跑一次、且在**永不返回**的 `serve()` 之前
+    /// ⇒ 用户在界面上配完 key **必须重启**才生效，而不重启的症状是
+    /// **一个静默的 404**（与「账号 id 打错」同形，指不向原因）。
+    /// ⇒ 换成 `RwLock` + [`Reload`]：每条请求进来先看那份文件的 mtime 变没变，变了就重读。
+    table: std::sync::RwLock<RoutingTable>,
+    /// 重载源。`None` = 判据自己造的表（不从文件来）⇒ 永不重载。
+    reload: Option<Reload>,
     tee: TeeSink,
     /// 本进程服务过的请求数 —— `DoD-1㈢`「两个键由同一个中转进程服务」量的就是它。
     served: AtomicU64,
@@ -190,12 +228,68 @@ impl Relay {
     /// 「带不带 key」不再是**中转**的属性，而是**表里某一行**的属性。
     pub(crate) fn new(table: RoutingTable, tee: TeeSink) -> Self {
         Self {
-            table,
+            table: std::sync::RwLock::new(table),
+            reload: None,
             tee,
             served: AtomicU64::new(0),
             inflight: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             pumps: std::sync::Mutex::new(Vec::new()),
         }
+    }
+
+    /// `D1 阻-2`：把「从哪儿重读那张表」接上。**只有 `run_with` 那条真路走它。**
+    pub(crate) fn reloading_from(mut self, r: Reload) -> Self {
+        self.reload = Some(r);
+        self
+    }
+
+    /// 每条请求进来先问一次：那份凭据文件动过没有？动过就重读。
+    ///
+    /// # 为什么按 mtime 而不是「每次都读」
+    ///
+    /// 「每次都读」也对，但那是**每条请求一次磁盘读 + 一次 JSON 解析**；
+    /// 按 mtime 只在**真的改过**之后付一次。
+    /// ⚠ **它不是定时器**：没有任何线程自己醒来，读的是「这条请求进来的这一刻」的元数据。
+    ///
+    /// # 它买不到什么（照实写）
+    ///
+    /// 印记是 **(mtime, 字节数)** 两样，不是只有 mtime —— 因为 mtime 的粒度在某些文件系统上
+    /// 是秒级，**同一秒内改两次**时它可能不动，而那一形的症状是「这一发还用旧表」
+    /// 并且**会留下来**（文件不再变 ⇒ 永远不再重载），不是一次抖动。
+    /// ⚠ 加上字节数**只是把那个窗口收窄，没有关掉它**：同一秒内改成**同样长**的另一份内容
+    /// （比如把一把 key 换成等长的另一把）仍然看不见。**这一形我没量** —— 如实登记。
+    fn refresh_if_changed(&self) {
+        let Some(r) = self.reload.as_ref() else { return };
+        let now = stamp_of(&r.path);
+        {
+            let seen = r.seen.lock().expect("lock");
+            if *seen == now {
+                return;
+            }
+        }
+        let mut loaded = creds::load(&r.path);
+        // ★★ `D2 阻-2`：**解析坏了就不换表。**
+        //
+        // `creds::load` 在「读不动 / 不是合法 JSON」时回的是 `accounts: 空 + problem: Some(_)`
+        // ⇒ 照着装表就是**把整张表换成空**，而空表的行为是**全部 404**。
+        // 用户那一侧看到的是「我明明配好了、刚才还能用，现在每一发都 404」——
+        // 而成因是他刚才手编那份 JSON 少了一个逗号。
+        // ⚠ **换表之前这一形不存在**（表是启动快照，坏文件只影响下一次启动）⇒
+        //   它是**本轮改动新长出来的**，处置写在这里：**留住上一张能用的表，只出声**。
+        // ⚠ 「一条都没配」与「读坏了」是两回事：前者 `problem` 是 `None`、accounts 空，
+        //   那是一个**合法**状态（谁都不走中转），照换不误。
+        if let Some(why) = loaded.problem.as_deref() {
+            eprintln!(
+                "[relay] 凭据文件读不成表，**保留上一张表不动**（不是换成空表）：{why}"
+            );
+            // 印记也**不更新** —— 下次请求进来还会再试一次，人把文件改回来就自动恢复。
+            return;
+        }
+        let (table, rejected) = table::build(std::mem::take(&mut loaded.accounts), &r.upstream_default);
+        // 重载也要**出声**：静默换掉一张表，与静默丢掉一行是同一族。
+        creds::announce(&loaded, table.len(), &rejected, &mut std::io::stderr());
+        *self.table.write().expect("lock") = table;
+        *r.seen.lock().expect("lock") = now;
     }
 
     /// 消费 `pump` 的返回值。**生产段唯一的落点** —— 没有它，返回值就又成了死值。
@@ -383,13 +477,24 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
     //   ⚠ 与它**同族但不同**的一格：行**在**表里、只是那一行没配 key ⇒
     //   **原样转发下游那份鉴权头**（订阅登录那一档是合法状态）。那一格在
     //   `render_upstream_request` 里，**两条判据分开钉，不许合成一条**。
-    let Some(row) = relay.table.lookup(&r.account) else {
-        return respond_and_drain(&mut down_w, "404 Not Found");
-    };
+    // `D1 阻-2`：查表**之前**先看那份文件动过没有 —— 不然「界面上配完 key」要重启才生效，
+    // 而不重启的症状是一个静默的 404（与「账号 id 打错」同形）。
+    relay.refresh_if_changed();
+    // ★★ `D2 阻-4`：**读锁的活法是承重的，写下来。**
+    //
+    // 这个守卫**只活到「请求头 + 请求体已经写给上游」为止**（下面那个 `}` 就是它的尽头），
+    // **不跨 `pump`**。理由：`std::sync::RwLock` 是**写优先**的 —— 一个在等的写者
+    // （= 用户刚配完一把 key，下一条请求触发重载）会挡住后面所有读者；
+    // 而 `pump` 是**流式转发**，一条 SSE 长流可以跑几分钟。
+    // ⇒ 守卫跨 `pump` 的话，「配一次 key」会把中转堵在**最长那条在飞流**后面。
+    // ⚠ **挂起时长我没实测**（那要造一条长流再去配 key）—— 这是读源码得出的形状。
+    // ⇒ 现在的写法让锁只覆盖「查表 → 连上游 → 写请求」这一小段，`pump` 在守卫之外跑。
     // ★ `阻-1(D3)` + `重要-2(D3)`：请求体这一格先前有**两个**洞，两个都在这几行上。
     //   ① 长度**无上界** ⇒ `Content-Length: 1e12` 把整个进程 abort 掉（SIGABRT，不走 unwind）；
     //   ② 长度**读不懂**（`7abc`）与「没有这个头」挤在同一个 `None` 里 ⇒ 请求体被静默丢掉、
     //      上游收到空体、下游拿到一条正常的 200。中转搬的正是 `POST /v1/messages` 的载荷。
+    // ⚠ 顺序：它排在**取读锁之前**（`D2 阻-4`）—— 读下游是一次可能很慢的 IO，
+    //   握着表的读锁去等它，等于让「配一次 key」跟着它一起慢。
     let body = match head.content_length() {
         http1::BodyLen::Exact(n) => match http1::read_exact_body(&mut down_r, n, BODY_CAP)? {
             Some(b) => b,
@@ -403,25 +508,39 @@ fn handle(down: TcpStream, relay: &Relay) -> std::io::Result<()> {
 
     relay.served.fetch_add(1, Ordering::SeqCst);
 
-    // ★ 连的是**这一行自己的**上游。
-    //   ⚠ 订正〔`D1` 阻-1，08-28〕：先前这里逐字写着「所以『拿 A 的端点』这件事在这里
-    //   **根本写不出来**」——**那句是假的**。`D1-M2` 实测：两行同时在作用域里、
-    //   `a.connect()` 配 `render_upstream_request(…, b, …)`，**编译通过、跑得通**。
-    //   今天这一行之所以对，靠的是**这个作用域里只有一行**这个事实，**不是类型**。
-    //   真正量它的是 `KH2`/`KH4` 那几条走真转发的行为判据。
-    let mut up = match row.connect() {
-        Ok(c) => c,
-        Err(e) => {
-            eprintln!("[relay] upstream connect failed: {e}");
-            return respond_status(&mut down_w, "502 Bad Gateway");
+    // ★★ `D2 阻-4`：**读锁的活法是承重的，写下来。**
+    //
+    // 这个守卫只活到**这个块结束**（请求头 + 请求体已经写给上游），**不跨 `pump`**。
+    // 理由：`std::sync::RwLock` 是**写优先**的 —— 一个在等的写者（= 用户刚配完一把 key，
+    // 下一条请求触发重载）会挡住后面所有读者；而 `pump` 是**流式转发**，
+    // 一条 SSE 长流可以跑几分钟 ⇒ 守卫跨 `pump` 的话，「配一次 key」会被堵在
+    // **最长那条在飞流**后面。⚠ **挂起时长我没实测** —— 这是读源码得出的形状，不是读数。
+    let mut up = {
+        let table = relay.table.read().expect("lock");
+        let Some(row) = table.lookup(&r.account) else {
+            return respond_and_drain(&mut down_w, "404 Not Found");
+        };
+        // ★ 连的是**这一行自己的**上游。
+        //   ⚠ 订正〔`D1` 阻-1，08-28〕：先前这里逐字写着「所以『拿 A 的端点』这件事在这里
+        //   **根本写不出来**」——**那句是假的**。`D1-M2` 实测：两行同时在作用域里、
+        //   `a.connect()` 配 `render_upstream_request(…, b, …)`，**编译通过、跑得通**。
+        //   今天这一行之所以对，靠的是**这个作用域里只有一行**这个事实，**不是类型**。
+        //   真正量它的是 `KH2`/`KH4` 那几条走真转发的行为判据。
+        let mut up = match row.connect() {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("[relay] upstream connect failed: {e}");
+                return respond_status(&mut down_w, "502 Bad Gateway");
+            }
+        };
+        // ★★ 上游与 key **同源**：这里递的是**同一个** `row`，不是两个各自取的值。
+        up.write_all(&render_upstream_request(&head, &r.rest, row, body.len()))?;
+        if !body.is_empty() {
+            up.write_all(&body)?;
         }
+        up.flush()?;
+        up
     };
-    // ★★ 上游与 key **同源**：这里递的是**同一个** `row`，不是两个各自取的值。
-    up.write_all(&render_upstream_request(&head, &r.rest, row, body.len()))?;
-    if !body.is_empty() {
-        up.write_all(&body)?;
-    }
-    up.flush()?;
 
     // ★★ `重要-1(D3)`：**1xx 是中间响应，不是最终响应**。
     //
@@ -671,8 +790,17 @@ fn load_credentials(
     home: &std::path::Path,
     default_base: &Base,
     out: &mut dyn Write,
-) -> RoutingTable {
-    let mut loaded = creds::load(&creds::resolve_path(get, home));
+) -> (
+    RoutingTable,
+    std::path::PathBuf,
+    Option<(std::time::SystemTime, u64)>,
+) {
+    let path = creds::resolve_path(get, home);
+    // `D1 阻-2`：把**这一刻**那份文件的 mtime 一起记下来 —— 重载靠它判「动过没有」。
+    // ⚠ 顺序：**先 stat 再读**。反过来的话，「读完到 stat 之间那次写」会被记成「已经读过了」，
+    //   那一次修改就永远不会被重载看见（一个会留下来的错，不是一次抖动）。
+    let stamp = stamp_of(&path);
+    let mut loaded = creds::load(&path);
     // ★ 装表这一步（`K-H2`）**在出声之前**：`announce` 要印的「有几行进得了表」
     //   与「哪几行进不去、为什么」都是它算出来的。
     //   ⚠ `take` 是因为 `AccountEntry` 里装着 `SecretKey`，而那个类型**刻意不给 `Clone`**
@@ -680,7 +808,7 @@ fn load_credentials(
     //     `announce` 不读 `accounts` 这一格，它读的是路径 / 权限 / 问题，外加下面这两个参数。
     let (table, rejected) = table::build(std::mem::take(&mut loaded.accounts), default_base);
     creds::announce(&loaded, table.len(), &rejected, out);
-    table
+    (table, path, stamp)
 }
 
 fn run_with(
@@ -706,8 +834,12 @@ fn run_with(
     }
     // ⚠ 顺序：**起监听之后、进接受循环之前**。放在起监听之前的话，
     //   端口起不来那条支会先把凭据路径印出来，而那时它还不相干。
-    let table = load_credentials(creds_get, home, &base, &mut std::io::stderr());
-    serve(listener, Arc::new(Relay::new(table, TeeSink::to_stdout())));
+    let (table, creds_path, stamp) = load_credentials(creds_get, home, &base, &mut std::io::stderr());
+    // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
+    // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
+    let relay = Relay::new(table, TeeSink::to_stdout())
+        .reloading_from(Reload::new(creds_path, base.clone(), stamp));
+    serve(listener, Arc::new(relay));
     0
 }
 
@@ -2352,7 +2484,8 @@ mod tests {
         //      ⇒ ① 排最前**符合它自己的优先级**。
         // ⇒ 代价照实说：前面几条炸掉时 ② 不被求值（`D1` 五刀里有四刀都在它之前炸）。
         //   **而这一格已经单独还上了** —— ② 的死值验由 `D1-M5`（把整条上游请求头印进 stderr）承担：
-        //   **484 passed / 4 failed**，红在「㈢ stderr 里出现了 A 的 key」（`D1` 报的住址 `server.rs:2289`）。
+        //   **484 passed / 4 failed**，红在「㈢ stderr 里出现了 A 的 key」（`D1` 报的住址：
+        //   `server.rs::the_substituted_key_never_shows_up_in_any_of_the_four_exits` 的 ㈢ 那条断言）。
         //   ⇒ **② 有牙，是被那一刀单独证过的，不是靠这里的排序证的。**
         for (who, canary) in [("A", CANARY_A), ("B", CANARY_B), ("dead", CANARY_DEAD)] {
             assert!(!out.contains(canary), "㈠ 标准输出（tee）里出现了 {who} 的 key：{out:?}");
@@ -3231,7 +3364,7 @@ mod tests {
             .expect("`--relay` 入口必须**返回** —— 超时说明它没退出，而是进了 serve()")
     }
 
-    /// ★ `重要-6` 之二：**起不来就退出并出声**（`server.rs:16-17` 头注承诺的处置）。
+    /// ★ `重要-6` 之二：**起不来就退出并出声**（`server.rs::DEFAULT_PORT` 头注承诺的处置）。
     ///
     /// ⚠ 本条全程**只碰回环**：不打任何 API、不起任何 claude、不绑非回环地址。
     /// 成功那一条路（真起监听 + `serve()` + `TeeSink::to_stdout()` 接线）**判不了**，见件文件登记。
@@ -3265,6 +3398,447 @@ mod tests {
             "端口起不来必须退 2（被占的端口 {port}）"
         );
         drop(squatter);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ★★★ `K-H2b` `KH2B1`：**一发真请求**从「起会话那条命令」走到中转、
+    //      被按账号路由到上游，并带着**那个账号那一行**的 key
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// 桩启动器。**它不是 claude**（红线 `C7`：绝不起真 claude），它只做一件事：
+    /// 读 `$ANTHROPIC_BASE_URL`、照它发一发 HTTP、把响应首行印出来。
+    ///
+    /// ⇒ 这一趟里 **env 是真的、中转是真的（真子进程）、上游是真的**，
+    /// **只有 agent 是桩**。它买的是「env → 中转 → 上游」这一截。
+    ///
+    /// ⚠⚠ **它买不到的那一截，写在这里**：`claude` 拿到这个变量之后到底怎么走
+    ///（订阅号的 OAuth 刷新会不会仍打官方域名 · 只设 base URL 不设 token 会不会拒启 ·
+    /// `/v1/messages` 之外还打哪些路径）—— 仓里零证据、红线也禁止实测 ⇒ **`判不了`**。
+    /// 别把这条判据的绿读成「claude 会照它走」。
+    #[cfg(unix)]
+    const STUB_LAUNCHER: &str = r#"#!/usr/bin/env bash
+set -eu
+# 没被注入就**大声失败**（`:?`）—— 这正是「把注入点删掉」那一刀要撞上的地方。
+url=${ANTHROPIC_BASE_URL:?ANTHROPIC_BASE_URL mei you bei zhu ru}
+rest=${url#http://}
+hostport=${rest%%/*}
+path=/${rest#*/}
+host=${hostport%%:*}
+port=${hostport##*:}
+exec 3<>/dev/tcp/$host/$port
+body=hi
+printf 'POST %s/v1/messages HTTP/1.1\r\nHost: %s\r\nContent-Length: %d\r\nConnection: close\r\n\r\n%s' $path $hostport ${#body} $body >&3
+head -n 1 <&3
+"#;
+
+    /// ★★★ `KH2B1`。**判定不是「渲染串里含 `ANTHROPIC_BASE_URL`」** ——
+    /// 是「假上游真的收到了那一发，且它带的 `Authorization` 是**那个账号那一行**的 key」。
+    ///
+    /// # 这一趟真实到什么程度（逐段说清，别读宽）
+    ///
+    /// | 段 | 真的假的 |
+    /// |---|---|
+    /// | 起会话那条命令串 | **真的 shell**（`bash -c '<env 前缀><launcher>'`），形状与生产 POSIX 前缀同形 |
+    /// | env | **真的**（子进程自己从环境里读） |
+    /// | 中转 | **真子进程**（`spawn_relay_child_with_creds`：真 `Command::new(exe)` · 端口 0 从 stderr 读回） |
+    /// | 上游 | **真的** TCP 假上游，`auth_values` 收的是**整行** `Authorization:` |
+    /// | agent | **桩**（红线：绝不起真 claude） |
+    ///
+    /// # ⚠ 一条**没买到**的缝，必须写下来
+    ///
+    /// 这里的 env 前缀是**本判据自己拼的**，不是 monitor 侧
+    /// `backend::control::payload::relay_env_prefix_posix` 的返回值 ——
+    /// 两半之间的编译期边（`include_str!`）**必须登记进 `src-tauri/src/cross_half_edge_registry.rs`**，
+    /// 而那个文件不在本件写区里。⇒ **两侧今天靠「同一个形状写了两遍」，没有判据对拍。**
+    /// monitor 那一侧自己那半由 `the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched`
+    /// 与 `only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix` 钉着。
+    /// **这一格如实登记为「没买到」，不许读成「对上了」。**
+    #[cfg(unix)]
+    #[test]
+    fn a_launch_command_carrying_the_relay_env_prefix_reaches_the_relay_with_that_accounts_key() {
+        let up = spawn_fake_upstream(None);
+        let dir = tmpdir("kh2b1");
+        let creds = dir.join("relay-credentials.json");
+        // 两条**各自带 key** 的行 —— 「拿 A 的 key 发 B 的请求」是本族最坏的失效形态，
+        // 一行是量不出来的。
+        // ⚠ 写法照 `spawn_relay_child` 那份夹具（转义的普通串，不是 `r#"…"#`）——
+        //   源码扫描型守卫的剥法认的是普通字符串的 `\"` 转义，
+        //   一个内含裸 `"` 的原始串会让它在这里失步、把整段测试当成生产段
+        //   （本轮实测：`readonly_guard` / `bind_guard` / spawn 登记表三条一起红）。
+        std::fs::write(
+            &creds,
+            b"{\n  \"accounts\": {\n    \"acct-a\": { \"api_key\": \"KEY-FOR-A\" },\n              \"acct-b\": { \"api_key\": \"KEY-FOR-B\" }\n  }\n}\n",
+        )
+        .expect("写两条账号的凭据夹具");
+        let relay = spawn_relay_child_with_creds(up.addr, &creds);
+
+        let stub = dir.join("stub-launcher.sh");
+        std::fs::write(&stub, STUB_LAUNCHER).expect("写桩启动器");
+
+        // 起两发：同一条起会话路径，**只有账号段不同**。
+        for (acct, want_key) in [("acct-a", "KEY-FOR-A"), ("acct-b", "KEY-FOR-B")] {
+            // 形状与 monitor 侧 `payload::relay_base_url` / `relay_env_prefix_posix` 同形
+            //（那一侧自己有判据钉着；两侧之间没有，见头注那条「没买到的缝」）。
+            let url = format!(
+                "http://127.0.0.1:{}/s/claude-code/{acct}/k-0123456789abcdef",
+                relay.addr.port()
+            );
+            let cmd = format!(
+                "export ANTHROPIC_BASE_URL='{url}'; bash {}",
+                stub.to_string_lossy()
+            );
+            let out = std::process::Command::new("bash")
+                .arg("-c")
+                .arg(&cmd)
+                .output()
+                .expect("起桩启动器");
+            let so = String::from_utf8_lossy(&out.stdout);
+            let se = String::from_utf8_lossy(&out.stderr);
+            assert!(
+                out.status.success(),
+                "桩启动器没跑成 —— 注入点可能整个不在了。\n\
+                 命令：{cmd}\nstdout：{so:?}\nstderr：{se:?}"
+            );
+            assert!(
+                so.starts_with("HTTP/1.1 200"),
+                "这一发没走完一条转发（账号 {acct}）：{so:?} / {se:?}"
+            );
+        }
+
+        // ★ 正题①：**假上游真的收到了两发**，而且真路径是原样透传的那一条。
+        let seen = up.seen.lock().expect("lock").clone();
+        assert_eq!(
+            seen.len(),
+            2,
+            "上游没收到两发 —— 「那条线接上了」这句话在这一趟里就是假的：{seen:?}"
+        );
+        for line in &seen {
+            assert_eq!(
+                line, "POST /v1/messages HTTP/1.1 auth=true",
+                "路由键那几段没有被剥掉、或者鉴权头没换上：{seen:?}"
+            );
+        }
+        // ★ 正题②：**两个账号各拿各的 key**（`KH2` 逐字点名的最坏失效形态的反面）。
+        let auths = up.auth_values.lock().expect("lock").clone();
+        assert_eq!(
+            auths,
+            vec![
+                "Authorization: Bearer KEY-FOR-A".to_string(),
+                "Authorization: Bearer KEY-FOR-B".to_string(),
+            ],
+            "两发拿到的 key 不是各自那一行的 —— 「拿 A 的 key 发 B 的请求，而两边都显示成功」\n\
+             正是 `KH2` 逐字点名的最坏那一形。实得：{auths:?}"
+        );
+
+        // ★ 正题③（`KL7` 第 2 条）：**表里查不到的账号 ⇒ 404 且一个字节不发上游**。
+        //   非空对照就是上面那两发 —— 同一条路、同一个桩，只有账号段不同。
+        let url = format!(
+            "http://127.0.0.1:{}/s/claude-code/acct-not-in-the-table/k-0123456789abcdef",
+            relay.addr.port()
+        );
+        let out = std::process::Command::new("bash")
+            .arg("-c")
+            .arg(format!(
+                "export ANTHROPIC_BASE_URL='{url}'; bash {}",
+                stub.to_string_lossy()
+            ))
+            .output()
+            .expect("起桩启动器");
+        let so = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            so.starts_with("HTTP/1.1 404"),
+            "表里查不到的账号没有回 404：{so:?}"
+        );
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            2,
+            "查不到的那一发**漏到上游去了** —— 那是 `KL7` 第 2 条逐字禁的回落"
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ★★★ `K-H2c` `KH2C2`：**写侧产出的那份文件**能让那个账号的会话走到中转
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// 照 monitor 写侧那两步造一份凭据文件的内容。
+    ///
+    /// # ★★ 它为什么不手写 JSON（这一格是本条判据的地基）
+    ///
+    /// `KH2C2` 要证的是「**写侧产出的那份文件**能让那个账号的会话走到中转」。
+    /// 手写一份 JSON 只能证「**我以为写侧会产出的那个形状**能走通」——
+    /// 写侧哪天换个形状（换个字段名 / 换一层嵌套 / 换个 id），这条判据**照绿**。
+    ///
+    /// ⇒ 这里调的是 `creds_store::write_key_at` 生产段里逐字那两个纯函数
+    /// （`store::merge_account_key` + `store::to_pretty_json`），两侧因此**在 `creds-core`
+    /// 这个共同祖先上会合**：daemon 单向依赖 `src-tauri/crates/*`，够得着它们。
+    ///
+    /// # ⚠⚠ 它**买不到**什么 —— 逐字落在这里，别读宽〔PM `裁二`，09-02〕
+    ///
+    /// > `KH2C2` 要读成「**写侧产出的那份文件**能让那个账号的会话走到中转」，
+    /// > **不是**「点了保存按钮之后」。那一跳归 `KH2C1`。
+    ///
+    /// ⇒ **两条 DoD 合起来才是那条链**，各自都别读宽。这里没有被证到的两跳是：
+    /// ① 界面那条 IPC 命令真的被点出去（`KH2C1` 前端那两堵墙，住 `accounts-section` 那一侧）；
+    /// ② `write_key_at` 里**写盘那一段**（tmp / 原子替换 / 收窄）——
+    ///    本条只走它算内容的那两步，写盘由 monitor 侧那几条既有判据分管。
+    ///
+    /// ⚠ 另有一跳**本来就不归本条**：id 是怎么从 `configDir` 推出来的
+    /// （`history::relay_account_id_of_dir`，住 monitor，daemon 够不着）——
+    /// 那一格由 `what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for` 钉。
+    /// **本条从「已经有了一个 id」那一刻接手。**
+    #[cfg(unix)]
+    fn creds_text_the_write_side_would_produce(rows: &[(&str, &str)]) -> String {
+        let mut doc = serde_json::Map::new();
+        for (id, key) in rows {
+            // 一行一次，正是界面上「保存」按一次的那一步（同一个函数、同一个顺序）。
+            doc = creds_core::store::merge_account_key(&doc, id, &SecretKey::new(*key));
+        }
+        creds_core::store::to_pretty_json(&doc)
+    }
+
+    /// ★★★ `KH2C2`。判定**不是**「那份文件里有那一行」——
+    /// 是「假上游真的收到了那一发，且它带的 `Authorization` 是**那个账号那一行**的 key」。
+    ///
+    /// # 这一趟真实到什么程度（逐段说清，别读宽）
+    ///
+    /// | 段 | 真的假的 |
+    /// |---|---|
+    /// | 那份凭据文件 | **写侧那两步真的算出来的**（`merge_account_key` + `to_pretty_json`），不是手写 JSON |
+    /// | 起会话那条命令串 | **真的 shell**（`bash -c '<env 前缀><launcher>'`），与 `KH2B1` 同一套 |
+    /// | env | **真的**（子进程自己从环境里读） |
+    /// | 中转 | **真子进程**（`spawn_relay_child_with_creds`：真 `Command::new(exe)` · 端口 0 从 stderr 读回） |
+    /// | 上游 | **真的** TCP 假上游 |
+    /// | agent | **桩**（红线：绝不起真 claude） |
+    ///
+    /// ⚠ 红线的例外口径逐字〔PM 09-02〕：**由测试自己拉起、跑在沙箱容器内、端口 0、
+    /// 用完即杀的中转子进程，不算「起真 daemon」**。它**不覆盖**那个会碰 tmux 的 daemon ·
+    /// 在宿主上拉任何进程 · 手工起 daemon 冒烟。
+    #[cfg(unix)]
+    #[test]
+    fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upstream() {
+        let up = spawn_fake_upstream(None);
+        let dir = tmpdir("kh2c2");
+        let creds = dir.join("relay-credentials.json");
+
+        // ★ 两条 —— 一条量不出「拿 A 的 key 发 B 的请求」，那是本族最坏的失效形态。
+        //   id 取中性名：断言里用的是 key 那个值，不是目录名（`brief` 12 那条）。
+        std::fs::write(
+            &creds,
+            creds_text_the_write_side_would_produce(&[("row-one", "KEY-ONE"), ("row-two", "KEY-TWO")]),
+        )
+        .expect("写凭据夹具");
+        // 采集面自检：写侧那两步**真的产出了一份能解析的、带那两行的文件**。
+        // 切歪了 / 产出空的时候，下面那几条会红在「404」上而指不出原因。
+        // ⚠ 这里**按结构判，不按子串判**：`needle_anchor_registry` 那条递减棘轮逐字禁
+        //   「语料变量上的裸 `contains`」（本轮实测撞过一次：35 > 上限 33），
+        //   而它禁的理由与这里要的东西正好同向 —— 子串在 `{"api_key":"…"}` 换成
+        //   任何别的字段名时照样命中，那就不是「写侧产出的形状」了。
+        let on_disk: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&creds).expect("读回"))
+                .expect("写侧那两步产出的不是合法 JSON —— 夹具坏了，下面全是空真");
+        assert_eq!(
+            on_disk[creds_core::store::ACCOUNTS_FIELD]["row-one"][creds_core::store::KEY_FIELD],
+            "KEY-ONE",
+            "写侧那两步产出的东西里没有那一行 —— 夹具坏了，下面全是空真：{on_disk}"
+        );
+
+        let relay = spawn_relay_child_with_creds(up.addr, &creds);
+        let stub = dir.join("stub-launcher.sh");
+        std::fs::write(&stub, STUB_LAUNCHER).expect("写桩启动器");
+
+        // 起两发：同一条起会话路径，**只有账号段不同**。
+        for acct in ["row-one", "row-two"] {
+            let url = format!(
+                "http://127.0.0.1:{}/s/claude-code/{acct}/k-0123456789abcdef",
+                relay.addr.port()
+            );
+            let out = std::process::Command::new("bash")
+                .arg("-c")
+                .arg(format!(
+                    "export ANTHROPIC_BASE_URL='{url}'; bash {}",
+                    stub.to_string_lossy()
+                ))
+                .output()
+                .expect("起桩启动器");
+            let so = String::from_utf8_lossy(&out.stdout);
+            let se = String::from_utf8_lossy(&out.stderr);
+            assert!(
+                so.starts_with("HTTP/1.1 200"),
+                "写侧产出的那份文件里明明有 `{acct}` 这一行，这一发却没走完一条转发：\
+                 {so:?} / {se:?}\n中转 stderr：{:?}",
+                relay.err()
+            );
+        }
+
+        // ★ 正题①：假上游**真的收到了两发**，路由键那几段被剥掉了。
+        let seen = up.seen.lock().expect("lock").clone();
+        assert_eq!(
+            seen.len(),
+            2,
+            "上游没收到两发 —— 「配完之后那条链真的通」这句话在这一趟里就是假的：{seen:?}"
+        );
+        for line in &seen {
+            assert_eq!(line, "POST /v1/messages HTTP/1.1 auth=true", "实得：{seen:?}");
+        }
+        // ★ 正题②：**两个账号各拿各的 key**。
+        let auths = up.auth_values.lock().expect("lock").clone();
+        assert_eq!(
+            auths,
+            vec![
+                "Authorization: Bearer KEY-ONE".to_string(),
+                "Authorization: Bearer KEY-TWO".to_string(),
+            ],
+            "两发拿到的 key 不是各自那一行的 —— 「拿 A 的 key 发 B 的请求，而两边都显示成功」\n\
+             正是 `KH2` 逐字点名的最坏那一形。实得：{auths:?}"
+        );
+
+        // ★ 正题③（非空对照 + `KL7` 第 2 条）：写侧**没写过**的那个账号 ⇒ 404，
+        //   且一个字节不发上游。⇒ 上面那两发的 200 不是「什么都能过」。
+        //   ⚠ 这一条同时钉住 `KH2C3` 在**端到端**那一面：写侧不再落 `default` 那一行
+        //   ⇒ 一个没配过的账号段**不会**被那一行顶上。
+        for miss in ["row-three", creds_core::store::LEGACY_ACCOUNT_ID] {
+            let url = format!(
+                "http://127.0.0.1:{}/s/claude-code/{miss}/k-0123456789abcdef",
+                relay.addr.port()
+            );
+            let out = std::process::Command::new("bash")
+                .arg("-c")
+                .arg(format!(
+                    "export ANTHROPIC_BASE_URL='{url}'; bash {}",
+                    stub.to_string_lossy()
+                ))
+                .output()
+                .expect("起桩启动器");
+            let so = String::from_utf8_lossy(&out.stdout);
+            assert!(
+                so.starts_with("HTTP/1.1 404"),
+                "写侧没写过的账号段 `{miss}` 没有回 404：{so:?}"
+            );
+        }
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            2,
+            "查不到的那两发**漏到上游去了** —— 那是 `KL7` 第 2 条逐字禁的回落"
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// ★★★ `K-H2b` `D1 阻-2`：**配完 key 不用重启中转** —— 那张表不是启动快照。
+    ///
+    /// # 它治的是什么
+    ///
+    /// 先前 `load_credentials` 只在 `run_with` 里跑一次，而且在**永不返回**的 `serve()` 之前
+    /// ⇒ 用户在界面上按下「保存 key」之后，中转手上还是启动那一刻的表 ⇒
+    /// 那个账号**每一发都是 404**。而 404 与「账号 id 打错」**同形**，指不向原因。
+    ///
+    /// # 这一趟真到什么程度
+    ///
+    /// 真子进程中转 · 真文件（裸 `fs::write`，等价于人拿编辑器改 / 界面那条 IPC 写）·
+    /// 真 TCP 请求 · 真上游。**中转全程没有重启**（同一个 `RelayChild`）。
+    #[test]
+    fn a_row_added_after_the_relay_started_is_picked_up_without_a_restart() {
+        let up = spawn_fake_upstream(None);
+        let dir = tmpdir("reload");
+        let creds = dir.join("relay-credentials.json");
+        // 起手只有一条空账号（等价于 `spawn_relay_child` 那份夹具）。
+        std::fs::write(&creds, b"{\n  \"accounts\": {\n    \"acctA\": {}\n  }\n}\n")
+            .expect("写起手的凭据夹具");
+        let relay = spawn_relay_child_with_creds(up.addr, &creds);
+
+        // ① 起手：那个还没配的账号 **404**（非空对照排最前 —— 证明这把尺子分得出两种结局）。
+        let mut c = send_request(relay.addr, "/s/agentA/acctLate/sid-1/v1/messages", "");
+        let mut got = String::new();
+        c.read_to_string(&mut got).expect("read");
+        assert!(
+            got.starts_with("HTTP/1.1 404"),
+            "还没配的账号应当 404，实得：{got:?}"
+        );
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            0,
+            "404 那一发漏到上游去了 —— 那是 `KL7` 第 2 条逐字禁的回落"
+        );
+
+        // ② **中转不重启**，只把那份文件改掉（多一条带 key 的行）。
+        std::fs::write(
+            &creds,
+            b"{\n  \"accounts\": {\n    \"acctA\": {},\n    \"acctLate\": { \"api_key\": \"KEY-LATE\" }\n  }\n}\n",
+        )
+        .expect("重写凭据夹具");
+
+        // ③ 同一个中转进程、同一条路：这一发必须**走通**，且带的是新那一行的 key。
+        let mut c2 = send_request(relay.addr, "/s/agentA/acctLate/sid-1/v1/messages", "");
+        let mut got2 = String::new();
+        c2.read_to_string(&mut got2).expect("read");
+        assert!(
+            got2.starts_with("HTTP/1.1 200"),
+            "配完之后仍然不认这一行 —— 那张表还是启动快照（用户得重启中转才生效，\n             而不重启的症状是一个静默的 404）。实得：{got2:?}"
+        );
+        let auths = up.auth_values.lock().expect("lock").clone();
+        assert_eq!(
+            auths,
+            vec!["Authorization: Bearer KEY-LATE".to_string()],
+            "重载之后换上的不是新那一行的 key：{auths:?}"
+        );
+        // 非空对照：中转**确实没重启**（同一个子进程，stderr 上只有一句 `listening on`）。
+        assert_eq!(
+            relay.err().matches("listening on").count(),
+            1,
+            "中转重启过 —— 那这一条量的就不是「不重启也生效」"
+        );
+    }
+
+    /// ★★★ `D2 阻-2`：**重载时解析失败，不许把表换成空。**
+    ///
+    /// 空表的行为是**全部 404** ⇒ 用户手编那份 JSON 少一个逗号，症状就是
+    /// 「我明明配好了、刚才还能用，现在每一发都 404」。
+    /// ⚠ **这一形是「表可重载」之后新长出来的** —— 表是启动快照时，坏文件只影响下一次启动。
+    #[test]
+    fn a_broken_credentials_file_keeps_the_last_good_table_instead_of_emptying_it() {
+        let up = spawn_fake_upstream(None);
+        let dir = tmpdir("reload-bad");
+        let creds = dir.join("relay-credentials.json");
+        std::fs::write(
+            &creds,
+            b"{\n  \"accounts\": {\n    \"acctA\": { \"api_key\": \"KEY-A\" }\n  }\n}\n",
+        )
+        .expect("写起手的凭据夹具");
+        let relay = spawn_relay_child_with_creds(up.addr, &creds);
+
+        // 非空对照：起手这一发走得通（否则下面「仍然走得通」是空真）。
+        let mut c = send_request(relay.addr, "/s/agentA/acctA/sid-1/v1/messages", "");
+        let mut got = String::new();
+        c.read_to_string(&mut got).expect("read");
+        assert!(got.starts_with("HTTP/1.1 200"), "起手就不通：{got:?}");
+
+        // ★ 把文件改坏（人手编少一个逗号那一形）。
+        std::fs::write(&creds, b"{ \"accounts\": { \"acctA\": { } ").expect("写坏文件");
+
+        // 正题：**仍然走得通** —— 上一张能用的表还在。
+        let mut c2 = send_request(relay.addr, "/s/agentA/acctA/sid-2/v1/messages", "");
+        let mut got2 = String::new();
+        c2.read_to_string(&mut got2).expect("read");
+        assert!(
+            got2.starts_with("HTTP/1.1 200"),
+            "文件读坏了就把整张表换成空了 —— 那是**全部 404**，\n\
+             而用户看到的是「刚才还能用，现在每一发都 404」。实得：{got2:?}"
+        );
+        // 而且**不是静默的**：那一句必须出现在中转的诊断流里。
+        assert!(
+            wait_until(|| relay.err().contains("保留上一张表不动")),
+            "读坏了却一声不吭 —— 静默换表与静默丢一行是同一族。stderr 现在是：{:?}",
+            relay.err()
+        );
+        // 两把 key 都还是那一行的（表没被换掉的第二个读数）。
+        let auths = up.auth_values.lock().expect("lock").clone();
+        assert_eq!(
+            auths,
+            vec![
+                "Authorization: Bearer KEY-A".to_string(),
+                "Authorization: Bearer KEY-A".to_string()
+            ],
+            "实得：{auths:?}"
+        );
     }
 
     fn first_non_loopback_v4() -> Option<Ipv4Addr> {

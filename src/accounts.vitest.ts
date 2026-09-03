@@ -33,7 +33,22 @@ import {
   __resetAccountsCacheForTest,
   isAccountZero,
   accountStatusBadge,
+  localLaunchAccountSync,
+  localLaunchAccountNameSync,
+  __setLocalLaunchSnapshotForTests,
+  __resetLocalLaunchSnapshotForTests,
+  fetchLocalRelayRouting,
+  localRelayStateFor,
   accountLoginActionLabel,
+  restartLocateFailureMessage,
+  sidOfLaunch,
+  rememberLocalLaunch,
+  resolvePendingLocalLaunches,
+  __resetPendingLocalLaunchesForTests,
+  __pendingLocalLaunchCountForTests,
+  PENDING_LAUNCH_TTL_MS,
+  PENDING_LAUNCH_MAX_ASKS,
+  PENDING_LAUNCH_CAP,
   type AccountsState,
   type Account,
   type SessionAccount,
@@ -926,5 +941,508 @@ describe("K-A1 KA6a：api-key 号的 UI 文案不许说「已登录」", () => {
       acct({ mode: "in-place", authKind: "api-key", authReady: true }),
     );
     expect(b.text).toBe("逃生口");
+  });
+});
+
+describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」逐格对拍", () => {
+  const apiKey = () =>
+    acct({ name: "acct-a", loggedIn: false, authKind: "api-key", authReady: true });
+
+  // ★★ 本 describe 存在的理由，逐字：**本件落地那一刻，那句 hover 就对一部分号成了假话**
+  //（本机、中转表里有它那一行、中转在跑的那些号，cc-monitor **真的**会替它配 base URL）。
+  // 而「改了事实没改说它的那句话」是本区花过六轮的那一族（ROADMAP 风险 6v / 裁定 K20）。
+  // ⇒ 这里把**实现的三态**与**徽章的三态**钉成一一对应：少一格、串一格，都红。
+
+  it("★ 本机 · 表里有这一行 · 中转在跑 ⇒ 「经本机中转」，且不再是警示态", () => {
+    const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: true, running: true });
+    expect(b.text).toBe("api-key（经本机中转）");
+    expect(b.warn).toBe(false);
+    // 它保证的是哪一截，必须写在 hover 里 —— 不许暗示「这个 key 一定能用」。
+    expect(b.title).toContain("ANTHROPIC_BASE_URL");
+    expect(b.title).toContain("到 claude 那边才知道");
+  });
+
+  it("★ 本机 · 表里有这一行 · 中转没跑 ⇒ 「中转未运行」，且说明会被当场拒", () => {
+    const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: true, running: false });
+    expect(b.text).toBe("api-key（中转未运行）");
+    expect(b.warn).toBe(true);
+    // `KH2B2`②：这一条**不许**被说成静默失败 —— 起会话那一侧会当场拒。
+    expect(b.title).toContain("当场拒");
+  });
+
+  it("★ 本机 · 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出**为什么**", () => {
+    const b = accountStatusBadge(apiKey(), { scope: "local", hasRow: false, running: true });
+    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.title).toContain("没有这个账号的一行");
+    // 阴性对照：它**不许**说成「远端不做」那一条（那是另一个成因，处置也不同）。
+    expect(b.title).not.toContain("远端");
+  });
+
+  it("★ 远端那一半 ⇒ 文案要指名是**远端**（`§0e` 裁四：本件明写不做）", () => {
+    const b = accountStatusBadge(apiKey(), { scope: "remote" });
+    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.title).toContain("远端");
+    expect(b.title).toContain("本机");
+    // 阴性对照：不许拿本机那条「表里没有这一行」去解释远端。
+    expect(b.title).not.toContain("没有这个账号的一行");
+  });
+
+  it("★ 调用方没说是哪一半 ⇒ **不替它下判断**，只把两条前置说清", () => {
+    const b = accountStatusBadge(apiKey());
+    expect(b.text).toBe("api-key（未配置端点）");
+    expect(b.title).toContain("两件事都成立");
+    expect(b.title).toContain("不替它下判断");
+    // ⚠ 这一档**不许**断言「表里没有这一行」——那是它看不见的事实。
+    expect(b.title).not.toContain("没有这个账号的一行");
+  });
+
+  it("★ 那句已经成假的话，四档里一句都不许再出现（分母 = 我列的这 4 档 + 缺席）", () => {
+    // 逐字：本件之前的原文是「cc-monitor 今天还不会替它配 API key 与 base URL」。
+    const LIE = "今天还不会替它配 API key 与 base URL";
+    const states: Array<Parameters<typeof accountStatusBadge>[1]> = [
+      undefined,
+      { scope: "remote" },
+      { scope: "local", hasRow: false, running: false },
+      { scope: "local", hasRow: true, running: false },
+      { scope: "local", hasRow: true, running: true },
+    ];
+    // 非空对照：先证明这把尺子认得出那句话（否则下面整个循环可能只是因为 needle 打错而全绿）。
+    expect("cc-monitor " + LIE).toContain(LIE);
+    for (const st of states) {
+      expect(accountStatusBadge(apiKey(), st).title).not.toContain(LIE);
+      // 顺带：任何一档都不许说成「已登录」（KA6a 的原话，人群扩到了新那几档）。
+      expect(accountStatusBadge(apiKey(), st).text).not.toContain("已登录");
+    }
+  });
+
+  // ★★★ 规则那一段：一份**后端读数**（`RelayRoutingView`）怎么落到某一个账号上，
+  // 以及三档**真的分得开**。喂进来的是读数的形状，**不是**直接喂 `{scope:"local",…}`
+  // —— 后者会把 `localRelayStateFor` 那一格整个绕过去。
+  //
+  // ⚠ **取数那一跳（`invoke`）今天还没接上**，卡点写在 `accounts.ts` 那段头注里
+  // （`src/ipc/commands.vitest.ts` 的两个钉死计数不在本件写区）。⇒ 本组买的是**规则**，
+  // 不是「界面上真的显出来了」。
+  it("★ 产出方：问的是 `relay_routing_for`，入参是那几个 configDir", async () => {
+    invokeMock.mockResolvedValue({ routed: ["/h/.claude-accts/acct-a"], running: true });
+    const got = await fetchLocalRelayRouting(["/h/.claude-accts/acct-a", "/h/.claude-accts/acct-b"]);
+    // 命令名打错在生产上是**运行时** `invoke` reject（不是编译错）⇒ 在这里钉死它。
+    expect(invokeMock).toHaveBeenCalledWith("relay_routing_for", {
+      configDirs: ["/h/.claude-accts/acct-a", "/h/.claude-accts/acct-b"],
+    });
+    expect(got).toEqual({ routed: ["/h/.claude-accts/acct-a"], running: true });
+  });
+
+  it("★★ 走真产出方 → 三档：读数从那条命令来，三个账号落到三个不同的徽章上", async () => {
+    // ⚠ 与下面那条的差别就是**这一格**：这里的 routing 是 `fetchLocalRelayRouting` 的返回值
+    //（即那条命令的产物），不是判据手写的字面量 ⇒ 命令名 / 入参 / 字段名任一处坏掉，这里就散。
+    invokeMock.mockResolvedValue({ routed: ["/h/.claude-accts/acct-a"], running: true });
+    const routing = await fetchLocalRelayRouting([
+      "/h/.claude-accts/acct-a",
+      "/h/.claude-accts/acct-b",
+    ]);
+    const withDir = (name: string, dir: string | null) =>
+      acct({ name, configDir: dir, loggedIn: false, authKind: "api-key", authReady: true });
+    const a = withDir("acct-a", "/h/.claude-accts/acct-a");
+    const b = withDir("acct-b", "/h/.claude-accts/acct-b");
+    expect(accountStatusBadge(a, localRelayStateFor(a, routing)).text).toBe("api-key（经本机中转）");
+    expect(accountStatusBadge(b, localRelayStateFor(b, routing)).text).toBe(
+      "api-key（未配置端点）",
+    );
+    // 非空对照：同一条产出方、只把 `running` 翻过来 ⇒ 第三档真的分得开。
+    invokeMock.mockResolvedValue({ routed: ["/h/.claude-accts/acct-a"], running: false });
+    const stopped = await fetchLocalRelayRouting(["/h/.claude-accts/acct-a"]);
+    expect(accountStatusBadge(a, localRelayStateFor(a, stopped)).text).toBe(
+      "api-key（中转未运行）",
+    );
+  });
+
+  it("★ 读数 → 三档：同一份读数，三个账号落到三个不同的徽章上", () => {
+    const routing = { routed: ["/h/.claude-accts/acct-a"], running: true };
+    const withDir = (name: string, dir: string | null) =>
+      acct({ name, configDir: dir, loggedIn: false, authKind: "api-key", authReady: true });
+
+    // ① 表里有这一行 + 中转在跑 ⇒ 「经本机中转」。
+    const a = withDir("acct-a", "/h/.claude-accts/acct-a");
+    expect(accountStatusBadge(a, localRelayStateFor(a, routing)).text).toBe("api-key（经本机中转）");
+    // ② 表里没有这一行 ⇒ 仍是「未配置端点」，而且说得出为什么。
+    const b = withDir("acct-b", "/h/.claude-accts/acct-b");
+    const bb = accountStatusBadge(b, localRelayStateFor(b, routing));
+    expect(bb.text).toBe("api-key（未配置端点）");
+    expect(bb.title).toContain("没有这个账号的一行");
+    // ③ 同一个账号、只把「中转在不在跑」翻过来 ⇒ 第三档（非空对照：两档真的分得开）。
+    const stopped = { routed: ["/h/.claude-accts/acct-a"], running: false };
+    expect(accountStatusBadge(a, localRelayStateFor(a, stopped)).text).toBe("api-key（中转未运行）");
+    // ④ 账号 0（没有 configDir）⇒ 推不出 id ⇒ **不表态**，回落到缺席那一档。
+    const zero = withDir("0", null);
+    expect(localRelayStateFor(zero, routing)).toBeUndefined();
+    expect(accountStatusBadge(zero, localRelayStateFor(zero, routing)).title).toContain(
+      "不替它下判断",
+    );
+  });
+
+  it("★ 订阅号一格不受影响（阴性对照：新参数不许改到别的 kind）", () => {
+    for (const st of [undefined, { scope: "remote" } as const, { scope: "local", hasRow: true, running: true } as const]) {
+      expect(accountStatusBadge(acct({}), st).text).toBe("已登录");
+      expect(accountStatusBadge(acct({ loggedIn: false }), st).text).toBe("未登录");
+      expect(accountStatusBadge(acct({ mode: "in-place" }), st).text).toBe("逃生口");
+    }
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-H2b` `D2 阻-3` / `D3 阻-2`：**取值口的行为判据**（先前它零行为判据）
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// ★★ `D2` 现打过两刀，**两刀都是 1495 全绿**：
+// ① 把取值口掏空成「永远说不出账号」；② 把它头注**逐字禁止**的那条回落
+//（有 pin 但不可选 ⇒ 下沉到当前号）真加进生产段。
+// ⇒ 那时只有两条**源码形状**判据（数调用点），一条量行为的都没有。
+// 本组就是那两刀的反面：**掏空必须红，加回落也必须红。**
+describe("K-H2b：本机起会话取账号那一口（行为）", () => {
+  const st = (accounts: Account[], defaultName: string | null): AccountsState => ({
+    origin: "<local>",
+    available: true,
+    error: null,
+    meta: null,
+    accounts,
+    defaultName,
+    notice: null,
+  });
+  const A = acct({ name: "acct-a", configDir: "/h/.claude-accts/acct-a" });
+  const B = acct({ name: "acct-b", configDir: "/h/.claude-accts/acct-b" });
+  /** 不可选：缺凭据的订阅号（`isSelectable` 那条规则的既有形状）。 */
+  const dead = acct({ name: "acct-dead", configDir: "/h/.claude-accts/acct-dead", loggedIn: false });
+
+  beforeEach(() => __resetLocalLaunchSnapshotForTests());
+
+  it("★ 掏空那一刀的反面：快照有东西时，它必须真的说得出账号", () => {
+    // 冷快照 ⇒ 不表态（这一格本身也是那条诚实边界的判据）。
+    expect(localLaunchAccountSync(null)).toBeUndefined();
+    expect(localLaunchAccountNameSync("s1")).toBeNull();
+    // 有快照 ⇒ **必须说得出**（掏空成恒 `undefined` 的那一刀在这里红）。
+    __setLocalLaunchSnapshotForTests(st([A, B], "acct-b"), {});
+    expect(localLaunchAccountNameSync(null)).toBe("acct-b");
+    expect(localLaunchAccountSync(null)).toEqual({
+      kind: "named",
+      configDir: "/h/.claude-accts/acct-b",
+    });
+  });
+
+  it("★★ 「当前账号」读的是 config.json 的 `defaultName`，不是 manifest 的 `isDefault`", () => {
+    // 🔴 上一拍这里读的是 `a.isDefault` ⇒ **用户切过号之后新会话静默串号**，
+    //    而且中转会按错的 id 换上别人那一行的 key。这一条就是那个形状的反面：
+    //    manifest 说 A 是默认，而用户切到了 B ——必须听用户的。
+    const manifestDefault = acct({
+      name: "acct-a",
+      configDir: "/h/.claude-accts/acct-a",
+      isDefault: true,
+    });
+    __setLocalLaunchSnapshotForTests(st([manifestDefault, B], "acct-b"), {});
+    expect(localLaunchAccountNameSync(null)).toBe("acct-b");
+    // 非空对照：把 `defaultName` 拿掉 ⇒ 才回落到 manifest 那一格（规则本身没变）。
+    __setLocalLaunchSnapshotForTests(st([manifestDefault, B], null), {});
+    expect(localLaunchAccountNameSync(null)).toBe("acct-a");
+  });
+
+  it("★★ 回落那一刀的反面：有 pin 但那个号不可选 ⇒ **不表态**，绝不下沉到当前号", () => {
+    __setLocalLaunchSnapshotForTests(st([A, B, dead], "acct-b"), { s1: "acct-dead" });
+    // 非空对照排最前：pin 指向一个**可选**的号时它确实跟 pin 走（尺子不是恒 null）。
+    __setLocalLaunchSnapshotForTests(st([A, B, dead], "acct-b"), { s1: "acct-a" });
+    expect(localLaunchAccountNameSync("s1")).toBe("acct-a");
+    // 正题：pin 指向不可选的号 ⇒ `null`。**下沉到 "acct-b" 就是 `#75` 那个病灶**
+    //（把一条会话悄悄翻到别的号上），那条回落一加进生产段，这里当场红。
+    __setLocalLaunchSnapshotForTests(st([A, B, dead], "acct-b"), { s1: "acct-dead" });
+    expect(localLaunchAccountNameSync("s1")).toBeNull();
+    expect(localLaunchAccountSync("s1")).toBeUndefined();
+    // 没有 pin 的会话仍然跟当前号（与远端那条 `withAccount` 同形）。
+    expect(localLaunchAccountNameSync("s-nopin")).toBe("acct-b");
+  });
+
+  it("★ 取名字与取 configDir 是同一条规则的两半（不许两处各判一次）", () => {
+    __setLocalLaunchSnapshotForTests(st([A, B, dead], "acct-b"), { s1: "acct-a", s2: "acct-dead" });
+    for (const sid of [null, "s1", "s2", "s-nopin"]) {
+      const name = localLaunchAccountNameSync(sid);
+      const arg = localLaunchAccountSync(sid);
+      if (name === null) expect(arg).toBeUndefined();
+      else expect(arg?.configDir).toBe(st([A, B, dead], "acct-b").accounts.find((a) => a.name === name)!.configDir);
+    }
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-P5g` `KP5GD1`：**读回来的身份 token 真有人拿它做决定**
+//
+// ★★ 本组的全部意义在于**分得开两件事**：
+//   ㈠「有人**读到**它」—— `K-P5f` 已经买到了（`launchId` 一路解析到前端类型上，
+//      `session_account_row_carries_the_launch_identity` 钉着）。**本组不重复买它。**
+//   ㈡「有人**拿它做决定**」—— 输出因这一格而**不同**，而输出里**一个字节都没有它**。
+//      ⇒ 「把读到的值显示出来」这种形态**喂不饱**下面那条 `★★`：token 不在输出里、
+//      输出却因它而变，那就只能是有人拿它分了一次岔。
+// ═══════════════════════════════════════════════════════════════════════════
+describe("K-P5g：换号重启定位不到 tmux 时，用身份 token 决定说哪一条成因", () => {
+  const TOKEN = "0198f0d2-1111-4222-8333-444455556666";
+  const row = (over: Partial<SessionAccount> = {}): SessionAccount => ({
+    pid: 4242,
+    sessionId: "s1",
+    cwd: "/w",
+    configDir: null,
+    account: null,
+    bare: true,
+    alive: true,
+    ...over,
+  });
+  // 「两条成因并排摆着」那句老话的锚点 —— 它在场 = 这次没把成因分开。
+  const BOTH_CAUSES = "或无法精确定位";
+
+  it("非空对照（尺子不是恒同一句）：没有身份 token ⇒ 还是那句「两条成因并排」的老话", () => {
+    const m = restartLocateFailureMessage(row({ launchId: null }));
+    expect(m.body).toContain(BOTH_CAUSES);
+    // 老 daemon 的出参逐字节没有这个键 ⇒ `undefined`，必须与 `null` 同判。
+    expect(restartLocateFailureMessage(row())).toEqual(m);
+    // 行整个缺席（这条会话根本不在 `--session-accounts` 里）也走这一支。
+    expect(restartLocateFailureMessage(undefined)).toEqual(m);
+  });
+
+  it("正题：带着身份 token ⇒ 成因被判定成「tmux 标记丢了」，不再并排摆两条", () => {
+    const m = restartLocateFailureMessage(row({ launchId: TOKEN }));
+    expect(m.body).not.toContain(BOTH_CAUSES);
+    expect(m.body).toContain("身份标记");
+    expect(m.title).not.toBe(restartLocateFailureMessage(row({ launchId: null })).title);
+  });
+
+  it("★★ 判别格：两条输入只差 `launchId` 这一格 ⇒ 输出必须不同，且输出里没有那个 token", () => {
+    // ⚠ 这两个对象**逐字节只差 `launchId`**（同一个 `row()` 基座），所以下面那个不等式
+    // 只可能由那一格造成 —— 其余每一格都被固定住了。
+    const withMark = restartLocateFailureMessage(row({ launchId: TOKEN }));
+    const without = restartLocateFailureMessage(row({ launchId: null }));
+    expect(withMark).not.toEqual(without);
+    // 🔴 **这几行是「决定」与「显示」的分界**：token 一个字节都不许进输出
+    //（它是内部 nonce，给用户看毫无意义）。既然它不在输出里、输出却因它而变，
+    //   那就只能是**有人拿它分了一次岔**。死值验：把生产段那一行判断换成常量 `false`，
+    //   上面那条 `not.toEqual` 当场红；而任何只买到「读到了」的判据都不会红。
+    expect(withMark.body).not.toContain(TOKEN);
+    expect(withMark.title).not.toContain(TOKEN);
+    expect(without.body).not.toContain(TOKEN);
+  });
+
+  it("进程已死的行不作数：`alive:false` 上的 token 一律不参与这次判断", () => {
+    // daemon 侧本来就不读死进程的 environ，但这一格**不靠上游守**：本函数自己判。
+    expect(restartLocateFailureMessage(row({ launchId: TOKEN, alive: false }))).toEqual(
+      restartLocateFailureMessage(row({ launchId: null })),
+    );
+  });
+
+  it("空串不是「有」：`launchId` 为空串读成没有（空值 ≠ 未设，本仓一贯口径）", () => {
+    expect(restartLocateFailureMessage(row({ launchId: "" }))).toEqual(
+      restartLocateFailureMessage(row({ launchId: null })),
+    );
+  });
+
+  it("⚠ 它答不到的（登记，不是缺陷）：文案强度只到「带着本工具铸的标记」", () => {
+    // `launchId` 是继承型环境变量，父会话已退出时那个继承值仍会被报出来
+    //（`K-P5f` 已把这一格单独登记）。⇒ 文案**不许**写成「一定是本工具直接拉起的」。
+    const m = restartLocateFailureMessage(row({ launchId: TOKEN }));
+    expect(m.body).toContain("带着本工具铸的身份标记");
+    expect(m.body).not.toContain("一定是本工具");
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-P5h` `KP5HD2`：**拿身份 token 回填新会话的 sid**
+//
+// ★★ 本组与上面 `K-P5g` 那组的分工：那组买的是「拿 token 分了一次岔」，
+//    本组买的是「**拿 token 说出了一个它自己里面没有的 sid**」——
+//    输入里 token 与 sid 是两个独立的格，输出必须是**那一条**的 sid，
+//    而不是「第一条」「唯一一条」或任何与 token 无关的东西。
+// ⚠ **人群只算「新开」那一支**：`K-P5g` 已现打 resume 那一支会退化成布尔谓词
+//   （token 就是 sid ⇒ 答案要么是它自己要么 `null`），本组一格都不为它写。
+// ═══════════════════════════════════════════════════════════════════════════
+describe("K-P5h：用身份 token 反查新会话的 sid（sidOfLaunch）", () => {
+  const T1 = "0198f0d2-1111-4222-8333-444455556666";
+  const T2 = "0198f0d2-2222-4222-8333-444455556666";
+  const r = (over: Partial<SessionAccount> = {}): SessionAccount => ({
+    pid: 4242,
+    sessionId: "s1",
+    cwd: "/w",
+    configDir: null,
+    account: null,
+    bare: true,
+    alive: true,
+    launchId: null,
+    ...over,
+  });
+
+  it("★★ 正题（判别格）：两条行只差 `launchId`，答案跟着 token 走，不跟着位置走", () => {
+    // ⚠ 两条行**逐字节只差 `sessionId` 与 `launchId`**（同一个 `r()` 基座）⇒
+    //   下面两条不同的答案只可能由 token 那一格造成。
+    const rows = [r({ sessionId: "sid-A", launchId: T1 }), r({ sessionId: "sid-B", launchId: T2 })];
+    expect(sidOfLaunch(rows, T1)).toBe("sid-A");
+    // 🔴 **死值验就钉在这一行**：把 `sidOfLaunch` 改成回一个常量（比如恒回
+    //    `rows[0].sessionId`），上面那条照样绿、这一条当场红。
+    expect(sidOfLaunch(rows, T2)).toBe("sid-B");
+  });
+
+  it("查不到就说查不到（fail closed）：没有行带这个 token ⇒ null", () => {
+    expect(sidOfLaunch([r({ sessionId: "sid-A", launchId: T1 })], T2)).toBeNull();
+    expect(sidOfLaunch([], T1)).toBeNull();
+    expect(sidOfLaunch(null, T1)).toBeNull();
+  });
+
+  it("空 token 不是通配符：空串 / null / undefined 一律 null（**不许**匹配没设身份的行）", () => {
+    const rows = [r({ sessionId: "sid-A", launchId: null }), r({ sessionId: "sid-B", launchId: "" })];
+    // 反空真：这批行里**真的有** `launchId` 为空的行 —— 「空 token 匹配空 launchId」
+    // 那种写法会在这里答出 `sid-A`，而那意味着「一次没铸出 token 的拉起」
+    // 会把第一条没设身份的会话认成自己刚起的那条。
+    expect(sidOfLaunch(rows, "")).toBeNull();
+    expect(sidOfLaunch(rows, null)).toBeNull();
+    expect(sidOfLaunch(rows, undefined)).toBeNull();
+  });
+
+  it("死进程的行不作数：`alive:false` 上的 token 一律不参与", () => {
+    // 非空对照排前：同一条行 `alive:true` 时确实答得出来（尺子不是恒 null）。
+    expect(sidOfLaunch([r({ sessionId: "sid-A", launchId: T1 })], T1)).toBe("sid-A");
+    expect(sidOfLaunch([r({ sessionId: "sid-A", launchId: T1, alive: false })], T1)).toBeNull();
+  });
+
+  it("认得出进程、说不出会话（`sessionId` 缺席）⇒ null，不猜", () => {
+    expect(sidOfLaunch([r({ sessionId: null, launchId: T1 })], T1)).toBeNull();
+  });
+
+  it("★ 同一个 token 落在一条以上活会话上 ⇒ null（继承值，判不出谁是原主）", () => {
+    // daemon 侧本来就会把这种涉事的行全置 `null`，但这一格**不靠上游守**。
+    const rows = [r({ sessionId: "sid-A", launchId: T1 }), r({ sessionId: "sid-B", launchId: T1 })];
+    expect(sidOfLaunch(rows, T1)).toBeNull();
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-P5h` `KP5HD2` / `KP5HD3`：**待回填表** —— 起会话方终于把 pin 写得出来
+// ═══════════════════════════════════════════════════════════════════════════
+describe("K-P5h：新会话的账号 pin 靠 token 回填（等多久 / 问几次 / 问不到怎么办）", () => {
+  const T1 = "0198f0d2-1111-4222-8333-444455556666";
+  const T2 = "0198f0d2-2222-4222-8333-444455556666";
+  const row = (sid: string, token: string): SessionAccount => ({
+    pid: 42,
+    sessionId: sid,
+    cwd: "/w",
+    configDir: null,
+    account: null,
+    bare: false,
+    alive: true,
+    launchId: token,
+  });
+  /** 让 `list_local_session_accounts` 答这批行；别的命令一律记账后回 undefined。 */
+  const answerRows = (rows: SessionAccount[], available = true): void => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_local_session_accounts") {
+        return Promise.resolve({ available, error: null, sessions: rows });
+      }
+      return Promise.resolve(undefined);
+    });
+  };
+  /** 本轮里往 pin 写过的 `(sid, account)`。 */
+  const pinned = (): Array<[string, string]> =>
+    invokeMock.mock.calls
+      .filter((c) => c[0] === "update_history_metadata")
+      .map((c) => {
+        const a = c[1] as { sessionId: string; patch: { lastAccount: string } };
+        return [a.sessionId, a.patch.lastAccount] as [string, string];
+      });
+
+  beforeEach(() => {
+    __resetPendingLocalLaunchesForTests();
+    invokeMock.mockReset();
+  });
+
+  it("★★ 正题：起会话时没有 sid，会话跑起来之后 pin 被补写到**那一条**上", async () => {
+    // 这一刻起会话方手上只有 token（`K-P5 §3 三`：起新会话时没有一处知道 sid）。
+    rememberLocalLaunch(T1, "acct-a");
+    // 会话真的跑起来了 —— `--session-accounts` 里出现两条，只有一条带我们的 token。
+    answerRows([row("sid-other", T2), row("sid-mine", T1)]);
+    await resolvePendingLocalLaunches();
+    // 🔴 **判别格**：pin 落在 `sid-mine` 上，不是「第一条」也不是「唯一一条」。
+    expect(pinned()).toEqual([["sid-mine", "acct-a"]]);
+    // 命中即出表 —— 同一条不会被回填第二次。
+    expect(__pendingLocalLaunchCountForTests()).toBe(0);
+  });
+
+  it("★ 两条待回填各认各的 token（不是「谁先来谁拿」）", async () => {
+    rememberLocalLaunch(T1, "acct-a");
+    rememberLocalLaunch(T2, "acct-b");
+    answerRows([row("sid-B", T2), row("sid-A", T1)]);
+    await resolvePendingLocalLaunches();
+    expect(pinned().sort()).toEqual([
+      ["sid-A", "acct-a"],
+      ["sid-B", "acct-b"],
+    ]);
+  });
+
+  it("问不到怎么办：**什么都不做，也不猜** —— 待办留着等下一次事件", async () => {
+    rememberLocalLaunch(T1, "acct-a");
+    answerRows([row("sid-other", T2)]);
+    await resolvePendingLocalLaunches();
+    // 🔴 一条 pin 都不许写 —— 回落到「拿当前账号顶上」正是 `#75` 那个病灶的形状。
+    expect(pinned()).toEqual([]);
+    expect(__pendingLocalLaunchCountForTests()).toBe(1);
+    // 下一次事件到达时命中 ⇒ 「留着等」是真的在等，不是留了个死条目。
+    answerRows([row("sid-mine", T1)]);
+    await resolvePendingLocalLaunches();
+    expect(pinned()).toEqual([["sid-mine", "acct-a"]]);
+  });
+
+  it("后端答不出（`available:false`，Windows 那一格）⇒ 静默作废，不写 pin", async () => {
+    rememberLocalLaunch(T1, "acct-a");
+    // ⚠ 行里**确实有**那条会话 —— 但 `available:false` 意味着这批行不作数。
+    answerRows([row("sid-mine", T1)], false);
+    await resolvePendingLocalLaunches();
+    expect(pinned()).toEqual([]);
+  });
+
+  it("查询整个抛错也不许把主路弄崩（回填是补记账，不是关键路径）", async () => {
+    rememberLocalLaunch(T1, "acct-a");
+    invokeMock.mockRejectedValue(new Error("sidecar 不在"));
+    await expect(resolvePendingLocalLaunches()).resolves.toBeUndefined();
+    expect(pinned()).toEqual([]);
+  });
+
+  it("🔴 `KP5HD3` 问几次：上限 PENDING_LAUNCH_MAX_ASKS 次，用完就丢（不许无限问）", async () => {
+    rememberLocalLaunch(T1, "acct-a");
+    answerRows([row("sid-other", T2)]);
+    for (let i = 0; i < PENDING_LAUNCH_MAX_ASKS; i++) await resolvePendingLocalLaunches();
+    expect(__pendingLocalLaunchCountForTests()).toBe(0);
+    // 用完之后再来多少次事件都不再发查询 —— 上限不是「问慢一点」，是**真的停**。
+    const before = invokeMock.mock.calls.length;
+    await resolvePendingLocalLaunches();
+    await resolvePendingLocalLaunches();
+    expect(invokeMock.mock.calls.length).toBe(before);
+  });
+
+  it("🔴 `KP5HD3` 等多久：过了 PENDING_LAUNCH_TTL_MS 就不再问（惰性判定，无定时器）", async () => {
+    const t0 = 1_000_000;
+    rememberLocalLaunch(T1, "acct-a", t0);
+    answerRows([row("sid-mine", T1)]);
+    // 过期之后即使那条会话真的出现了，也不再回填 —— 「过一会儿再问」是有尽头的。
+    await resolvePendingLocalLaunches(t0 + PENDING_LAUNCH_TTL_MS + 1);
+    expect(pinned()).toEqual([]);
+    expect(__pendingLocalLaunchCountForTests()).toBe(0);
+    // 非空对照：同一批输入，在 TTL 之内是命中的（上面那条不是恒不命中）。
+    rememberLocalLaunch(T1, "acct-a", t0);
+    await resolvePendingLocalLaunches(t0 + PENDING_LAUNCH_TTL_MS - 1);
+    expect(pinned()).toEqual([["sid-mine", "acct-a"]]);
+  });
+
+  it("同时挂着的待回填有上限（超了丢最老的，不是丢最新的）", () => {
+    for (let i = 0; i < PENDING_LAUNCH_CAP + 3; i++) rememberLocalLaunch(`tok-${i}`, "acct-a");
+    expect(__pendingLocalLaunchCountForTests()).toBe(PENDING_LAUNCH_CAP);
+  });
+
+  it("账号说不出就不挂待办（挂一条什么都不做的待办只会白发 IPC）", async () => {
+    rememberLocalLaunch(T1, null);
+    rememberLocalLaunch(null, "acct-a");
+    rememberLocalLaunch("", "acct-a");
+    expect(__pendingLocalLaunchCountForTests()).toBe(0);
+    await resolvePendingLocalLaunches();
+    // 表空 ⇒ 一次查询都不发（`resolve` 的第一件事就是空表早返）。
+    expect(invokeMock.mock.calls.length).toBe(0);
   });
 });

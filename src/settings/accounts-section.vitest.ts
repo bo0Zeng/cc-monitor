@@ -253,6 +253,38 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     expect(subBadge.classList.contains("warn")).toBe(false);
   });
 
+  // ---- `K-H2b` `KH2B7`：那句 hover 本件落地那一刻对一部分号成了假话 ----
+  //
+  // ★ 同样**必须是 DOM 测试**，理由与上一条逐字相同：纯函数那一侧接不接得上，
+  // 是**另一件事**。`accountStatusBadge` 从本件起收第二个参数（这个号属于哪一半），
+  // 而**这张表是远端专用的**（`reload` 在 `origin` 为空时直接早退，
+  // 文案逐字「账号功能在远端 Linux 上」）⇒ 这里必须传 `{scope:"remote"}`。
+  // 不传 ⇒ 渲染出来的是「不替它下判断」那一档，而这张表**判得出来**（它就是远端）。
+  it("★ KH2B7：这张表是远端专用的 ⇒ api-key 那一行的 hover 要指名是**远端**那一半", async () => {
+    fetchAccountsMock.mockResolvedValue(
+      ready({
+        accounts: [
+          acct({ name: A }),
+          acct({ name: B, loggedIn: false, authKind: "api-key", authReady: true }),
+        ],
+      }),
+    );
+    const el = await mount();
+    const rows = [...el.querySelectorAll(".accounts-row")];
+    const byName = (n: string) =>
+      rows.find((r) => r.querySelector(".accounts-row-name")?.textContent === n)!;
+    const title = byName(B).querySelector(".accounts-row-badge")!.getAttribute("title") ?? "";
+    // 非空对照：这一格真的有 hover（不是空串上自问自答）。
+    expect(title.length).toBeGreaterThan(20);
+    // 正题：说清是哪一半 —— 只给本机配、远端这一半还不做。
+    expect(title).toContain("远端");
+    expect(title).toContain("本机");
+    // ⚠ 那句本件落地后就成假的话，一个字都不许留在界面上（逐字原文）。
+    expect(title).not.toContain("今天还不会替它配 API key 与 base URL");
+    // ⚠ 也不许拿本机那条成因（「表里没有这一行」）去解释一个远端账号。
+    expect(title).not.toContain("没有这个账号的一行");
+  });
+
   it("★ KA6a 反面：缺凭据的订阅号仍写「未登录」（不许被 api-key 那一支一起放宽）", async () => {
     fetchAccountsMock.mockResolvedValue(
       ready({
@@ -568,8 +600,16 @@ describe("K-H2a：中转 API key 的前端一半", () => {
     };
   }
 
+  // `K-H2c`：那一块今天要**配给某一个账号**。默认给两个号，第一个已经在中转表里。
+  // ⚠ 名字与 configDir 末段**刻意不同名**（`n1` vs `dir-one`）：断言里凡是用到 id 的地方，
+  //   同名会让「前端拿名字当 id」与「后端从 configDir 推 id」两种实现**都绿**。
+  const ACCTS = [
+    { name: "n1", configDir: "/h/.claude-accts/dir-one", routed: true },
+    { name: "n2", configDir: "/h/.claude-accts/dir-two", routed: false },
+  ];
+
   it("KS6：输入框**从不预填** —— 已配置时也一样，要改就重新输", () => {
-    const el = renderRelayKeyBlock(status(), () => {});
+    const el = renderRelayKeyBlock(status(), ACCTS, () => {});
     const input = el.querySelector<HTMLInputElement>("input.relay-key-input");
     expect(input, "那个输入框不见了 —— 下面的断言会零命中地绿").toBeTruthy();
     expect(input!.value).toBe("");
@@ -581,7 +621,7 @@ describe("K-H2a：中转 API key 的前端一半", () => {
   });
 
   it("KS6：界面上只出现掩码，明文一个字节都进不来（类型上就没有那个字段）", () => {
-    const el = renderRelayKeyBlock(status({ masked: "sk-a**********WXYZ" }), () => {});
+    const el = renderRelayKeyBlock(status({ masked: "sk-a**********WXYZ" }), ACCTS, () => {});
     expect(el.textContent).toContain("sk-a**********WXYZ");
     // 明文那个值**根本递不进来** —— 这一条量的是类型面：多传一个字段 tsc 会红。
     // 行为面这里能量的是：整块里没有任何长得像完整 key 的东西（没有 `*` 的长串）。
@@ -605,17 +645,20 @@ describe("K-H2a：中转 API key 的前端一半", () => {
   it("KS11：权限过宽时**在界面上出声**；没问题时不出声", () => {
     const warned = renderRelayKeyBlock(
       status({ notice: "同机器上的别人也读得到它（mode 是 0644…）。怎么修：跑 `chmod 600 …`" }),
+      ACCTS,
       () => {},
     );
     const n = warned.querySelector(".relay-key-notice");
     expect(n, "过宽了却没在界面上显出来").toBeTruthy();
     expect(n!.textContent).toContain("chmod 600");
     // 非空对照：没问题时那一块**不该**出现（否则上面是恒真）。
-    expect(renderRelayKeyBlock(status(), () => {}).querySelector(".relay-key-notice")).toBeNull();
+    expect(
+      renderRelayKeyBlock(status(), ACCTS, () => {}).querySelector(".relay-key-notice"),
+    ).toBeNull();
   });
 
   it("KS9：那份文件的路径要显出来 —— 能手编但没人知道在哪 = 不能手编", () => {
-    const el = renderRelayKeyBlock(status(), () => {});
+    const el = renderRelayKeyBlock(status(), ACCTS, () => {});
     expect(el.textContent).toContain("relay-credentials.json");
     expect(el.querySelector(".relay-key-path")?.getAttribute("title")).toContain("编辑器");
   });
@@ -623,16 +666,19 @@ describe("K-H2a：中转 API key 的前端一半", () => {
   it("文件读坏了要说出来，**不许静默当成「没配」**", () => {
     const el = renderRelayKeyBlock(
       status({ configured: false, masked: "", problem: "凭据文件不是合法 JSON（…）" }),
+      ACCTS,
       () => {},
     );
     expect(el.querySelector(".relay-key-problem")?.textContent).toContain("不是合法 JSON");
     // 非空对照：没问题时那一块不出现。
-    expect(renderRelayKeyBlock(status(), () => {}).querySelector(".relay-key-problem")).toBeNull();
+    expect(
+      renderRelayKeyBlock(status(), ACCTS, () => {}).querySelector(".relay-key-problem"),
+    ).toBeNull();
   });
 
   it("存一次：明文原样交给回调，交完输入框**立刻清空**", () => {
     const seen: string[] = [];
-    const el = renderRelayKeyBlock(status({ configured: false, masked: "" }), (k) => {
+    const el = renderRelayKeyBlock(status({ configured: false, masked: "" }), ACCTS, (k) => {
       seen.push(k);
     });
     const input = el.querySelector<HTMLInputElement>("input.relay-key-input")!;
@@ -643,6 +689,103 @@ describe("K-H2a：中转 API key 的前端一半", () => {
     // 空输入不触发（否则会把 key 存成空串，等于悄悄清掉用户的配置）。
     el.querySelector<HTMLButtonElement>("button.relay-key-save")!.click();
     expect(seen).toEqual(["sk-ant-TYPED-BY-HAND"]);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // `K-H2c` `KH2C1` 前端那两堵墙：那一块说得出「配给哪个账号」，而且**不自己推 id**。
+  // ───────────────────────────────────────────────────────────────────────────
+
+  it("KH2C1：存的时候把**选中那个账号的 configDir** 一起交出去 —— 换一个号就换一个值", () => {
+    const seen: Array<[string, string]> = [];
+    const el = renderRelayKeyBlock(status({ configured: false, masked: "" }), ACCTS, (k, d) => {
+      seen.push([k, d]);
+    });
+    const picker = el.querySelector<HTMLSelectElement>("select.relay-key-account");
+    expect(picker, "账号选择器不见了 —— 下面全是空真").toBeTruthy();
+    // 选项的 value 是**不透明的 configDir**，不是名字（名字只用来显示）。
+    expect([...picker!.options].map((o) => o.value)).toEqual([
+      "/h/.claude-accts/dir-one",
+      "/h/.claude-accts/dir-two",
+    ]);
+    expect([...picker!.options].map((o) => o.textContent)).toEqual(["n1", "n2"]);
+
+    const input = el.querySelector<HTMLInputElement>("input.relay-key-input")!;
+    const save = el.querySelector<HTMLButtonElement>("button.relay-key-save")!;
+    input.value = "sk-ant-FOR-ONE";
+    save.click();
+    // ★ 换一个号，同一个输入框，交出去的**第二格必须跟着变**。
+    picker!.value = "/h/.claude-accts/dir-two";
+    picker!.dispatchEvent(new Event("change"));
+    input.value = "sk-ant-FOR-TWO";
+    save.click();
+    expect(seen).toEqual([
+      ["sk-ant-FOR-ONE", "/h/.claude-accts/dir-one"],
+      ["sk-ant-FOR-TWO", "/h/.claude-accts/dir-two"],
+    ]);
+  });
+
+  it("KH2C1：状态那一行说的是**选中那个号**配没配，`status.configured` 说的是顶层那一把 —— 两行分开", () => {
+    const el = renderRelayKeyBlock(status(), ACCTS, () => {});
+    const state = el.querySelector(".relay-key-state")!;
+    // 选中的是 routed=true 那个 ⇒ 说「已经有它那一行」。
+    expect(state.textContent).toContain("n1");
+    expect(state.textContent).toContain("已经有它那一行");
+    // ★ 换到 routed=false 那个 ⇒ 同一行必须翻面（非空对照：这把尺子分得出两种结局）。
+    const picker = el.querySelector<HTMLSelectElement>("select.relay-key-account")!;
+    picker.value = "/h/.claude-accts/dir-two";
+    picker.dispatchEvent(new Event("change"));
+    expect(state.textContent).toContain("n2");
+    expect(state.textContent).toContain("还没有它那一行");
+    // 顶层那一把是**另一行**（`KH2C3`：读得出来，但界面不再往那儿写）。
+    const legacy = el.querySelector(".relay-key-legacy");
+    expect(legacy?.textContent, "顶层那一把没有单独显 —— 它会被读成当前这个号的状态").toContain(
+      "sk-a**********WXYZ",
+    );
+    expect(legacy!.textContent).toContain("不再往那一格写");
+  });
+
+  it("KH2C1：一个能配的账号都没有时**存不出去** —— 不许悄悄落到顶层那一格", () => {
+    const seen: Array<[string, string]> = [];
+    const el = renderRelayKeyBlock(status({ configured: false, masked: "" }), [], (k, d) => {
+      seen.push([k, d]);
+    });
+    expect(el.querySelector("select.relay-key-account"), "没有账号却还挂着选择器").toBeNull();
+    const input = el.querySelector<HTMLInputElement>("input.relay-key-input")!;
+    const save = el.querySelector<HTMLButtonElement>("button.relay-key-save")!;
+    expect(input.disabled).toBe(true);
+    expect(save.disabled).toBe(true);
+    // 即便有人绕过 disabled 直接点，也不许交出去（`disabled` 在 jsdom 里不拦 `.click()`）。
+    input.value = "sk-ant-NOWHERE-TO-GO";
+    save.click();
+    expect(seen, "没有账号可配却把 key 交出去了 —— 那一把会落到哪儿？").toEqual([]);
+    // 而且要说清为什么配不了（不是一个空白的死胡同）。
+    expect(el.querySelector(".relay-key-state")!.textContent).toContain("没有能配的账号");
+  });
+
+  it("KH2C1 机检：前端**一个字都不推账号 id** —— 那条规则全仓只有 Rust 那一份", () => {
+    const code = src();
+    // 人群 = 本文件生产段。针 = 四种「自己取末段名」的常见写法。
+    for (const needle of ["split(\"/\")", "split('/')", "basename(", "lastIndexOf(\"/\")"]) {
+      expect(
+        code.includes(needle),
+        `前端出现了 \`${needle}\` —— 那是在长**第二份**「从 configDir 取账号 id」的规则。\n` +
+          "`relay_account_id_of_dir` 的头注逐字：两边各写一个 basename 规则，" +
+          "漂开的那天症状是「设置里说走中转、起会话时没走」，而两边看起来都没错。",
+      ).toBe(false);
+    }
+    // ★ 非空对照：这把尺子**认得出**东西（不是恒 false）。
+    // ⚠ 这里刻意**不用**语料变量上那个裸的子串包含判断：`scanning-guard-registry`
+    //   立着一条递减棘轮（本轮实测撞过两次：9 > 上限 8，第二次撞的是**这句注释自己**
+    //   —— 那个扫描器扫的是原始源码，注释里写成代码形状照样计数）。
+    //   它禁的理由与这里要的东西同向：子串比事实小。⇒ 用带词边界的正则。
+    expect(/\bconfigDir\b/.test(code), "同一把尺子连 `configDir` 都量不到 —— 它恒 false").toBe(
+      true,
+    );
+    // ★ 正题的另一半：那条命令**确实**收到了 configDir（不是「什么都没传所以没推 id」）。
+    expect(
+      /write_relay_credentials_key\(\{\s*key,\s*configDir\s*\}\)/.test(code),
+      "那条写命令没把 configDir 一起交出去 —— 后端就只能落到顶层那一格",
+    ).toBe(true);
   });
 
   it("KS7 机检：那把 key 在前端**只流向一条命令**，绝不进 `save_config`", () => {

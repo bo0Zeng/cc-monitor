@@ -93,6 +93,8 @@ mod tests {
             "creds.relay-key",
             Side::Local,
         ),
+        // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走中转」。理由见 `relay.routing` 那行。
+        ("relay_routing_for", "relay.routing", Side::Local),
         ("open_settings_window", "app.window.settings", Side::Both),
         ("bring_monitor_to_front", "app.window.self", Side::Both),
         // devbench F03：skill 接入面（列出 skill / 读写那个「人手写的注入文件」）。
@@ -314,7 +316,7 @@ mod tests {
         // 它原来的注释写「Remote-only 且未裁定 —— 本机该不该也有一个后端进程来收这件事，
         // 正是 §1.2 今天悬着的问题」。**两半都被证伪了**：
         // ① 「还没裁定」——`C1`/`C8` 已裁（用户 08-11「本地要和远端一样」）；
-        // ② 「本机没有后端进程」——P2 交付了：`local_backend.rs:795` 逐字
+        // ② 「本机没有后端进程」——P2 交付了：`local_backend.rs::local_stdio_consumer` 里逐字
         //    `inbound_client::register(LOCAL_ORIGIN, client)`，`client_for("<local>")` 实测通。
         // ③ 而 **P3 刀 3 让生产段真的用它了**：`runLocalResumeIntoExistingTmux`
         //    以 `<local>` 调 `daemon_send_into` 就地 resume。
@@ -407,7 +409,7 @@ mod tests {
         ("acct-iso.check", Asym::ParityDebt, "本机同样需要「这台装没装 cc-acct-iso」的检测（切号要靠它），今天只能查远端 —— 命令面实测只有 `check_remote_acct_iso`，本机零对侧；而本机确实**用得着**它：`local_accounts.rs` 头注逐字说这份数据有三个读者，其中写侧就是 `cc-acct-iso`。归 L3。"),
         ("acct-iso.deploy", Asym::NaturallyAsymmetric, "vendored 副本要**传到**远端才能用（`deploy_remote_acct_iso`）；本地就在本机、不存在传输这一步。⚠⚠ **P3b 标疑（08-12）：这条理由属于「从未被验证过」那一类，别当它已经核过。** 「不存在传输」是真的，但**「不存在安装」没人量过** —— 实测本机 `~/.local/bin` 下确实躺着 `cc-acct-iso`（`config_surface.rs:1062` 记着那 12 条 `cc-*`），而它是**怎么到那儿的**、要不要 monitor 管，本表从来没答过。⇒ 若答案是「要 monitor 管」，这条就该从 `natural` 变 `ParityDebt`。归 `P3b` 的后续或 `L3`。"),
         ("skill.inbox", Asym::Undecided, "devbench F03：skill 接入面今天只读写**本机工作目录**下的 `.claude/planned-build/INBOX.txt`。远端项目也可能有同一份结构（那边的 `.claude/` 一样在），技术上走 SFTP 就能读写 —— **但「远端项目的收件箱要不要能在这里编辑」没人裁定过**。⇒ 刻意记 `Undecided` 而不是 `NaturallyAsymmetric`：后者会替产品做主说「本地不需要」，而事实是**没想过**。⚠ 若将来要做，写面围栏那三道得先想清楚远端版怎么算（`canonicalize` 在远端不成立）。"),
-        ("tmux.local-census", Asym::NaturallyAsymmetric, "「本机今天有哪些 tmux 会话」。★ P3 刀 2 的 UI 半把它从「只回名字」放宽到「回整条会话」——杀会话的菜单必须按 `@ccm_sid` 认归属，按 `<sid8>-cc` 前缀猜与 §30 逐字禁的「按目录回退猜」是同一类错。**反向缺口，且是天然的**：远端问同一个问题**已经有答案** —— `list_remote_tmux` 一次性 SSH `tmux ls` 就是它，前端 `pickFreshTmuxName(sid, existing)` 拿的正是那份。本机没有 SSH 那一跳，所以要一个自己的口；开它不是本机多了什么能力，是**把远端本来就有的那一格在本机补上**。⇒ 记 `NaturallyAsymmetric` 而不是 `ParityDebt`：欠的是本机这一侧，而本行一落地就已经补平，没有留下去处。★ 它读的是 daemon 推来的 tmux 快照而不是现跑 `tmux ls`，理由与射程见 `tmux.rs::local_tmux_names` 头注：那份快照由 `session-created/closed/renamed` 三条 hook 驱动，**恰好就是改变名字集合的那三件事** ⇒ 对这个问题它是权威的，对「pane 前台命令变了没有」才是陈旧的（那条已被 devbench F08 裁定不开口）。"),
+        ("tmux.local-census", Asym::NaturallyAsymmetric, "「本机今天有哪些 tmux 会话」。★ P3 刀 2 的 UI 半把它从「只回名字」放宽到「回整条会话」——杀会话的菜单必须按 `@ccm_sid` 认归属，按 `<sid8>-cc` 前缀猜与 §30 逐字禁的「按目录回退猜」是同一类错。**反向缺口，且是天然的**：远端问同一个问题**已经有答案** —— `list_remote_tmux` 一次性 SSH `tmux ls` 就是它，前端 `pickFreshTmuxName(sid, existing)` 拿的正是那份。本机没有 SSH 那一跳，所以要一个自己的口；开它不是本机多了什么能力，是**把远端本来就有的那一格在本机补上**。⇒ 记 `NaturallyAsymmetric` 而不是 `ParityDebt`：欠的是本机这一侧，而本行一落地就已经补平，没有留下去处。★ 它读的是 daemon 推来的 tmux 快照而不是现跑 `tmux ls`，理由与射程见 `tmux.rs::list_local_tmux` 头注：那份快照由 `session-created/closed/renamed` 三条 hook 驱动，**恰好就是改变名字集合的那三件事** ⇒ 对这个问题它是权威的，对「pane 前台命令变了没有」才是陈旧的（那条已被 devbench F08 裁定不开口）。"),
         ("cc-bus.install-state", Asym::ParityDebt, "`PS2`：本机 cc-bus 装的是哪一版（没装 / 已是最新 / 装了但不是这一版）。**只读**，逐文件与内嵌那 17 个字节串比。⚠ 欠的与 `cc-bus.deploy` 是**同一笔**：远端那侧同样有 `~/.claude/skills/`，要问「远端装的是哪一版」得让 daemon 出一条具名读命令（形状抄 `P4d` 那批）。⇒ 两条一起补，别分两次。★ 顺带记口径：本条能答得出来，**全靠 `U9`② 裁了「仓内那份为准」**（用@08-13）—— 没有真相源就没有「不是这一版」这个判断，`PS2` 摸底时那条判据逐字写着「加第三态之前先答版本口径」。"),
         ("cc-bus.deploy", Asym::ParityDebt, "`PS1`〔`U10b` 用@08-13 裁「开」后落地〕：把内嵌的 cc-bus 装到 **本机** `<claude_dir>/skills/cc-bus/`。⚠ 欠的是什么要写准：**不是**「远端不需要」——远端同样有 `~/.claude/skills/`，而且本仓**已经有**一条同族的远端部署路（`acct-iso.deploy` 走 SFTP 推 vendored 脚本）。欠的是**把这条本机路复制到远端**：SFTP 推 17 个文件 + 远端侧的围栏（`canonicalize` 在远端不成立，要换成 daemon 侧校验）。⇒ 如实记欠，**不假装两侧都有**。★ 顺带记一条口径：本条的落点是**用户数据目录**，与 `acct-iso.deploy` 那条「只写 cc-monitor 自己的 bin 目录」**性质不同** —— 后者不需要豁免，本条需要（`INVARIANTS` 第 7 条）。"),
         ("plugins.marketplaces", Asym::ParityDebt, "`P8a`：列 marketplace（来源 / 落点 / 更新时间 / 它**声明**的插件数）今天**只有本机**。⚠ 欠的是什么要写准：**不是**「远端不需要」——远端的 `~/.claude/plugins/` 一样在，daemon 早就会读远端 claude 目录（`--list-projects` / `--list-sessions` / `--list-subagents` 三条现成的形状）。欠的是**一条 daemon 子命令**（`--list-marketplaces`）+ 一次 BUILD_ID/协议文档/内嵌重编，那是另一件事的体量，本件是梯队 5 的只读面 ⇒ 如实记欠，**不假装两侧都有**。★ 它与 `local_read_surface_registry` 里 `plugins.rs` 那条 `reader` 的退役条件是**同一条**：daemon 补上那条子命令，本机改走后端、远端这半一起补平 —— **一件事清两笔账**。⚠ 另记一条**本行答不了的**：本行说的是「有哪些 marketplace」，**不是**「装了/启用了哪些插件」——后者今天**两侧都没有真相源**（待决 `U10d`），那不是平价问题，是那份数据在盘上根本不存在。"),
@@ -421,6 +423,7 @@ mod tests {
         ("mcp.list-origins", Asym::NaturallyAsymmetric, "`list_remote_mcp_origins` 答的是「哪几台远端有 MCP 配置」——「有哪些 origin」这个问题在本机侧退化成一台，没有可列的集合。⚠ 注意它与 `daemon_machines` 不同：那条**包含**本机（`LOCAL_ORIGIN`），因为它答的是「哪几台有 daemon」而本机也有。"),
         ("panorama.code-graph", Asym::Undecided, "**本表交出的最大一处新发现**：21 条命令全部只吃本机 `repo` 路径。远端 repo 的代码图谱既没做、也没在任何计划里登记过。**不擅自判它是天然不对称**——那需要产品判断（远端开发是不是本工具的场景）。登记待裁定。"),
         ("creds.relay-key", Asym::ParityDebt, "`K-H2a`：中转那把第三方 API key 今天**只有本机这一侧**能配。⚠ 欠的是什么要写准：**不是**「远端不需要」——远端跑的中转读的是**远端那台机器上**的同一份文件（相对路径由 `creds_core::store::FILE_NAME` 两侧共用），它一样要有人把 key 放进去。欠的是**一条把它送到远端的路**。★ 而这条路**不能照抄现成的 SFTP 上传**：`K-H2a §0c 二` 现打（08-27）—— `sftp::upload_atomic` 的 mode 参数只以 SFTP v3 的 `PERMISSIONS` 属性搭在 `SSH_FXP_OPEN` 上（服务端可以忽略、协议不回执），`sftp.rs:141-147` 头注**逐字禁掉**了兜底 `set_metadata`，而 `upload_atomic_verified` 只比**字节与长度**、全仓**没有一处回读权限**，再加上全仓唯一那条 OS 判定 `src/settings/host-os.ts` 量的是 **monitor 自己**跑在哪、**不是远端** ⇒ 对面是 Windows 时那个 `0o600` **不是「不生效」，是「静默地不生效」**。⇒ 补这条路的时候，机密性必须由**拿着那份文件的那台机器自己检查**（`creds_core::perm`，daemon 侧已在 `relay::creds::announce` 里出声），不能由写它的那一跳「设一下就当保住了」。归 `K-H2`。"),
+        ("relay.routing", Asym::NaturallyAsymmetric, "`K-H2b` `KH2B7`：「这个账号起会话时会不会走中转 / 中转在不在跑」。⚠ **记 `natural` 记的是一件关于机制的事，不是「远端还没做」**：中转是**每台机器自己的一个进程**（`relay/mod.rs` 自陈「独立进程」；注入的是那个 agent 进程自己的 `ANTHROPIC_BASE_URL`，而 `payload::relay_base_url` 拼的是**回环**地址 —— 回环是**自指**的，同一个字面串写进哪台机器就指哪台）⇒ 「本机这台的中转在不在跑」这个问题，**本机这一侧在结构上答不了远端那台**：那不是一条缺失的命令，是一个**问错了机器**的问题。远端那台要答同一个问题，得由**跑在那台上的 daemon** 自己答（读那台机器上的 `relay-credentials.json`、看那台机器上的中转进程），那是**远端 daemon 的一条新子命令**，与本条不是同一条命令的两侧。⚠ **另记一笔不在本条里的欠账，别混**：把 key **送到**远端那台机器的路今天没有主人，那笔记在 `creds.relay-key`（`ParityDebt`）。本条说的是「**问状态**」，那条说的是「**配上去**」。"),
         ("port-forward", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 2 条：本地没有「转发到自己」这个需求。"),
         ("search.index", Asym::NaturallyAsymmetric, "远端**不建索引**：`search_history` 对远端是实时 SSH fan-out（其头注自陈「本地内存索引查询与远端 fan-out 并发」）。索引是本机侧的实现细节，不是一项对外能力。"),
         ("session.tasks", Asym::ParityDebt, "**实测**：`get_session_tasks` 走 `tasks_root_for_current_claude_dir()` → `paths::resolve_claude_dir()`，读的是**本机**目录。远端会话的任务在远端机器上 ⇒ 远端 tab 拿不到任务列表。"),
@@ -683,6 +686,11 @@ mod tests {
         let origin_needle = format!("{}:", "origin");
         let needles = [origin_needle.clone(), format!("Remote{}", "Config")];
         let mut checked = 0usize;
+        // 报文里那句「Local A + Both B」也**现算**，不手抄〔`K-R4`〕——
+        // 手抄的分解式会与 `checked` 各自漂：先前那句「84 = Local 53 + Both 31」
+        // 三个数**没有一个**等于当时的 `checked`（88）。
+        let mut n_local = 0usize;
+        let mut n_both = 0usize;
         for (cmd, _, side) in LEDGER {
             if !matches!(side, Side::Local | Side::Both) {
                 continue;
@@ -692,6 +700,10 @@ mod tests {
             };
             let flat: String = params.split_whitespace().collect::<Vec<_>>().join(" ");
             checked += 1;
+            match side {
+                Side::Local => n_local += 1,
+                _ => n_both += 1,
+            }
             for n in &needles {
                 if *n == origin_needle && ORIGIN_TAKING_BOTH.iter().any(|(c, _)| c == cmd) {
                     continue; // 已登记：见 ORIGIN_TAKING_BOTH 的理由
@@ -707,20 +719,47 @@ mod tests {
         }
         // 反向自检：一条都没检到 = 签名采集坏了。**等号而不是 `>=`**（T04 审计重要 5：
         // 写 `>= N` 恰好容忍一次静默降级）。
+        //
+        // ★★ **报文里的每一个数都从这个常量或现算量渲染出来，一个手抄的都没有**〔`K-R4`〕。
+        //
+        // 先前这里是「一个值装了两件事」的活体〔`K13`〕：断言写 `checked == 88`，
+        // 而同一条报文逐字写「真实应为 **84** = Local 53 + Both 31」——
+        // **三个数没有一个是 88**。判据一红，人照报文去查 84 / 53 / 31，
+        // 查的是一个不存在的事实；而那串增量账（+3 / +1 / +1 / +1 / +4 / +1）
+        // 也凑不出 88。根因是断言那个数**跟着代码走**、报文那个数**是写的时候手抄的**，
+        // 两者之间没有任何东西钉住它们相等。
+        //
+        // ⇒ 把两份拷贝合成一个值。改 `EXPECTED_LOCAL_OR_BOTH`，
+        //   报文里印出来的数**结构上不可能不跟着变**。
+        //
+        // # 这个数是怎么长起来的（改 `LEDGER` 就来读这一段，然后改上面那个常量）
+        //
+        // - P4a（08-12）把 cc-bus **读面三条**从 `Remote` 转成 `Both`
+        //   （本机跑同一条命令串，只是不包进 ssh）；
+        // - devbench F03 的 skill 接入面 **+3**（`list_skills` / `read_skill_file` /
+        //   `write_skill_file`，都 `Local`）；
+        // - E79 的 `list_local_session_accounts` **+1**；
+        // - U-CC1 的 `drift_ledger_report` **+1**，`Both` —— 本地行与远端行都经同一个
+        //   `parse_line` 喂进同一个进程内账本；
+        // - F08 的 `account_usage_local` **+1** —— 它补平了 `usage.per-account` 那条 ParityDebt；
+        // - P2s 的 `set_daemon_kill_on_exit` / `daemon_status` / `daemon_start` / `daemon_stop`
+        //   **+4**，都是 `Both` —— per-host daemon 策略与状态，本机 origin 是 `<local>`（C1）；
+        // - P8a 的 `list_plugin_marketplaces` **+1**，`Local` —— marketplace 只读枚举今天只有
+        //   本机口，欠的那半写在 `plugins.marketplaces` 那行上；
+        // - K-H2a **+2**（`read_relay_credentials_status` / `write_relay_credentials_key`，都 `Local`）；
+        // - K-H2b **+1**（`relay_routing_for`，`Local`）—— 界面问「这几个**本机**账号走不走中转」。
+        //   只答本机不是欠账，是**机制决定的**：中转是每台机器自己的进程、注入的是回环地址，
+        //   本机这一侧答不了远端那台 ⇒ 它在 `ASYMMETRY_REASONS` 里记的是 `NaturallyAsymmetric`。
+        //
+        // ⚠ 这一段是**账**，不是判据。它里面的数**没有**任何东西钉住 ——
+        //   真值以 `EXPECTED_LOCAL_OR_BOTH` 与失败时印出来的 `Local {n} + Both {m}` 为准。
+        const EXPECTED_LOCAL_OR_BOTH: usize = 89;
         assert_eq!(
-            checked, 88,  // **K-H2a +2（read_relay_credentials_status / write_relay_credentials_key，都 Local）**
-            "检到 {checked} 条 Local/Both 命令（真实应为 84 = Local 53 + Both 31；\
-             ★ P4a（08-12）把 cc-bus **读面三条**从 Remote 转成 Both（本机跑同一条命令串，\
-             只是不包进 ssh）⇒ Both 28→31、总数 80→83；\
-             devbench F03 的 skill 接入面是 +3（list_skills / read_skill_file / write_skill_file，\
-             都 Local）；\
-             E79 的 `list_local_session_accounts` 是 +1；U-CC1 的 `drift_ledger_report` 是 +1，\
-             它是 Both —— 本地行与远端行都经同一个 `parse_line` 喂进同一个进程内账本；\
-             **F08 的 `account_usage_local` 是 +1** —— 它补平了 `usage.per-account` 那条 ParityDebt；\
-             **P2s 的 `set_daemon_kill_on_exit` / `daemon_status` / `daemon_start` / `daemon_stop` 是 +4**，都是 Both —— per-host daemon 策略与状态，本机 origin 是 `<local>`（C1））\
-             ；**`P8a` 的 `list_plugin_marketplaces` 是 +1**，`Local` —— marketplace 只读枚举\n\
-             今天只有本机口，欠的那半写在 `plugins.marketplaces` 那行上\n\
-             ——改 LEDGER 就要来确认这个数"
+            checked, EXPECTED_LOCAL_OR_BOTH,
+            "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\
+             而本条期望 {EXPECTED_LOCAL_OR_BOTH} 条。\n\
+             改 LEDGER 就要来确认这个数：把 `EXPECTED_LOCAL_OR_BOTH` 改成新值，\
+             并到它上面那段「这个数是怎么长起来的」里补一行说明谁加/删了哪几条。"
         );
     }
 
@@ -779,11 +818,11 @@ mod tests {
         // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
         // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
         // 归属错了就不如没有。**
-        assert_eq!(LEDGER.len(), 144, "命令总数变了"); // **K-H2a +2（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）** // **P8a +1（list_plugin_marketplaces，#70）** // **PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**
+        assert_eq!(LEDGER.len(), 145, "命令总数变了"); // **K-H2a +2（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）** // **P8a +1（list_plugin_marketplaces，#70）** // **PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）** // **K-H2b +1（relay_routing_for，Local-only；新能力 `relay.routing`，`NaturallyAsymmetric`）**
         let sides = capability_sides();
-        assert_eq!(sides.len(), 63, "能力总数变了"); // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy）**；**PS2 +1（cc-bus.install-state）**
+        assert_eq!(sides.len(), 64, "能力总数变了"); // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy）**；**PS2 +1（cc-bus.install-state）**；**K-H2b +1（relay.routing，Local-only）**
         let asym = asymmetric_capabilities();
-        assert_eq!(asym.len(), 24, "不对称能力数变了"); // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
+        assert_eq!(asym.len(), 25, "不对称能力数变了"); // **K-H2b +1（relay.routing，NaturallyAsymmetric）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
                                                         // P3t-Y2b +1（tmux.local-census）；**P3b -1（launch.send-into 结清：P3 刀 3 让本机真的在用它 ⇒ Both，不再不对称）**
                                                         // **P7c-1 -1（subagent.load 结清：远端展开做出来了 ⇒ Both）** —— daemon 只列候选，挑选留本侧（C1）
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
@@ -796,7 +835,7 @@ mod tests {
                 })
                 .or_default() += 1;
         }
-        assert_eq!(kinds.get("natural"), Some(&10), "天然不对称条数变了"); // U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）。★ P3t-Y4：这两条的**理由**换过（原来引 §36 说「本地不经 IR」——§36 只绑 Windows，且那个理由已被本机探针实测证伪），但 `natural` 的**条数没变**。P3t-Y2b +1（tmux.name-census）
+        assert_eq!(kinds.get("natural"), Some(&11), "天然不对称条数变了"); // U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）。★ P3t-Y4：这两条的**理由**换过（原来引 §36 说「本地不经 IR」——§36 只绑 Windows，且那个理由已被本机探针实测证伪），但 `natural` 的**条数没变**。P3t-Y2b +1（tmux.name-census）。**K-H2b +1（relay.routing）—— 记 `natural` 记的是「回环自指 ⇒ 这个问题问错了机器」，不是「远端还没做」；把 key 送到远端那笔账在 `creds.relay-key` 那行（`debt`），两者别混。**
         assert_eq!(kinds.get("debt"), Some(&11), "平价欠账条数变了"); // **K-H2a +1（creds.relay-key：本机能配、远端那侧还没有路 —— 而且不能照抄 SFTP 上传，理由见那一行）** // F08 -1（usage.per-account 补平） // G6 -1；E79 -1；**P7c-1 -1（subagent.load 结清：远端展开做出来了）**；**P8a +1（plugins.marketplaces：新开的本机口，远端那半要等 daemon 的 `--list-marketplaces`）**
         assert_eq!(kinds.get("undecided"), Some(&3), "未裁定条数变了"); // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
                                                                         // P3b -1（launch.send-into：它的「还没裁定」被 C1/C8 + P2 + P3 刀 3 三重证伪）

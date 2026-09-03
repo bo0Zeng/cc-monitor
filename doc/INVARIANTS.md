@@ -27,7 +27,7 @@
 **A2 多账号只读查询是本约的「读」面延伸（澄清，非例外/非松动）**：`remote-daemon-proto/src/observe/accounts_query.rs` + `src-tauri/src/accounts.rs` 为「按会话切账号」新增三条**纯只读**远端查询（`--list-accounts` / `--session-accounts` / `--account-trust`），**零写入**、**不 shell out**。它把 daemon 的读面从 `<claude_dir>` 扩到三处新位置，各自有硬边界:
 
 1. **`$ACCTS_DIR/accounts.json`**（cc-acct-iso 的 manifest，契约 v1）—— 只读整份 JSON;`configDir` 视为**不可信字符串**，逐条过 shell-safe 白名单（与 cc-acct-iso 的 `path_shell_safe` 同一套字符集），不合格的账号直接丢弃。
-2. **`/proc/<pid>/environ`** —— **只抠 `CLAUDE_CONFIG_DIR` 一个键**，绝不回传整个环境快照（那里面有用户全部的密钥类环境变量）。pid 来自 `<claude_dir>/sessions/<PID>.json` 的文件名。
+2. **`/proc/<pid>/environ`** —— **只抠两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`），绝不回传整个环境快照（那里面有用户全部的密钥类环境变量）。pid 来自 `<claude_dir>/sessions/<PID>.json` 的文件名。⚠ **第二个键是 `K-P5f` 加的**（会话身份 token，写侧住 `history.rs::LAUNCH_ID_VAR`）；**变的只是那个计数词，这条铁律一格都没松**：键名**不是参数**（daemon 侧两个常量），所以这条查询仍然不是「任意环境变量读」原语，也仍然绝不回传整个快照。⚠ 这句话在盘上**散着好几份副本**（`doc/IPC-PROTOCOL.md` 的 `--session-accounts` 那一行、daemon 侧 `accounts_query.rs` 头注、monitor 侧 `local_accounts.rs`）——`K-P5f` 改了其中三处、**漏了本处**，`K-P5g` 补上并把这一族副本登记进 `doc_claim_registry.rs`（那张表的判据从生产代码里数出今天真读几个键，再与每一份副本的计数词对拍）。
 3. **`<configDir>/.claude.json`** —— **只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔**，绝不回传文件内容（内含 `mcpServers` 的环境变量，可能有 API key）。且 `configDir` **必须逐字等于 manifest 里某个账号的 configDir**，否则拒绝——否则 `--account-trust` 就退化成任意文件读原语。
 
 **`.credentials.json` 只 stat 存在性、永不读内容**（`loggedIn` 字段就是这么来的）。**动凭据的部署操作（`cc-acct-iso … --apply`）绝不经 daemon**——那会往只读组件里塞写权限;一律由 cc-monitor 拼好命令后弹一个**用户可见的终端窗口**执行（`launch_remote_terminal`，同时也是 `/login` 必须走 TTY 的唯一出路）。见 `.claude/planned-build/account-isolation/DESIGN-account-switching.md` §6。
