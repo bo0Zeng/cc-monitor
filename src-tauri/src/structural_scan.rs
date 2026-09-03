@@ -1748,8 +1748,12 @@ mod tests {
     /// 「跨度里出现过」会把整句散文的跨度收进来（现打差 27 处，全是噪声）。
     /// # 为什么不是「跨度逐字等于名字」
     ///
-    /// 那样 `` `local_tmux_names()` ``（带括号）与 `` `a.rs::foo_bar_baz` ``（带路径）
+    /// 那样 `` `local_tmux_names()` ``（带括号）与 `` `文件.rs::foo_bar_baz` ``（带路径）
     /// 都会漏掉，而**那正是订正段最常见的写法** —— 漏掉它们就漏掉了本条要看的那一半。
+    ///
+    /// ⚠ 上面那个样例**刻意用中文文件名**：`symbol_addresses` 只收 ASCII 路径，
+    /// 写成 ASCII 的话本文件就多了一处指向不存在符号的地址 ——
+    /// 09-03 现打，第一版就是这么红的，与本文件头注那条同源。
     fn bare_symbol_in_span(span: &str, min_us: usize) -> Option<&str> {
         let mut s = span.trim();
         if let Some(t) = s.strip_suffix("()").or_else(|| s.strip_suffix('!')) {
@@ -2236,9 +2240,8 @@ mod tests {
 
         // ★ 抽取器自检 1：代码侧塌了 ⇒ 全世界都成了「零定义」，下面会红成一片假红。
         assert!(
-            code_names.len() >= 2500,
-            "代码侧只抽到 {} 个 snake_case 名字 —— 剥法或遍历坏了（09-03 现打 3011）",
-            code_names.len()
+            code_names >= 2500,
+            "代码侧只抽到 {code_names} 个 snake_case 名字 —— 剥法或遍历坏了（09-03 现打 3011）"
         );
         let hits: usize = disk.values().map(|(u, t)| u + t).sum();
         // ★ 抽取器自检 2：注释侧塌了 ⇒ 本条零命中地绿（`ScanReport::require` 那条纪律）。
