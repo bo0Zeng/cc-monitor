@@ -28,8 +28,22 @@
 
   python3 evidence/K-G8-run-suites.py <落日志的目录> [套名 …]
 
+⚠ **点名跑某几套时，`--timeout` 一类的选项必须写在位置参数之前**：
+
+  python3 evidence/K-G8-run-suites.py --timeout 300 <落日志的目录> daemon-fork local-backend
+
+  写成 `<目录> --timeout 300 <套名…>` 会被 argparse 判成
+  `unrecognized arguments`（`nargs='*'` 的位置参被中间的选项截断，argparse 的已知形状）。
+  09-03 实打踩过一次，写在这里省下一次。
+
 不给套名 ⇒ 跑 `ci.yml` 调用行里的**全部** 23 套（顺序照 `ci.yml`）。
 每套单独超时（默认 300 秒，`--timeout` 或 `K_G8_TIMEOUT` 可调）；超时也落日志、记退出码。
+
+⚠ **`daemon-*` / `*-frames` / `local-backend` 那 9 套要先有 daemon 二进制**，
+  住址逐字 `remote-daemon-proto/target/debug/cc-monitor-remote`（它们自己 fail-closed，
+  没有就打「需要 daemon 二进制」再退非零，**不假绿**）。
+  🔴 构建那一步**不许带 `CARGO_TARGET_DIR`** —— 门禁那条跑法把它指到 `pm-targets/<tag>`，
+  于是二进制落在别处、那 9 套照样找不到。先 `cd remote-daemon-proto && cargo build`（不带该变量）。
 
 宿主上启动整趟的那一条（供复算）：
 
