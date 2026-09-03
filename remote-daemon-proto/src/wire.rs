@@ -93,7 +93,14 @@ pub enum Frame {
         /// 而它们还没被任何人收到的**现在**就是最便宜的一刻。
         ///
         /// skip_if_empty：今天 agent **发现**（DG1）未接线 ⇒ 恒空 ⇒ 省略
-        /// ⇒ **hello 帧对 Claude 的线上字节逐字节不变**（`hello_bytes_for_claude_are_frozen` 钉住）。
+        /// ⇒ **hello 帧对 Claude 的线上字节逐字节不变** —— 由
+        /// `wire.rs::production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen`
+        /// （生产路径**确实**给空表）与
+        /// `wire.rs::dg3_codex_fields_skipped_when_absent_claude_byte_equivalent`
+        /// （**给了**空表就得到旧字节）两条**合起来**钉住 —— 缺任一条这句话都不成立。
+        /// ⚠ 〔`K-R20` 订正 09-03〕原先写的是 `hello_bytes_for_claude_are_frozen`〔散文墓碑〕，
+        /// **那个名字全仓零定义**，而这句话是**当现状在说**，还撑着一条**契约级**结论
+        /// （仓外 aterm 的 hello fixture 按精确字节对，契约冻结 2026-07-18）。
         /// `S5` 落地时往这里填，**不要再加第二个目录字段**。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         homes: Vec<AgentHome>,
