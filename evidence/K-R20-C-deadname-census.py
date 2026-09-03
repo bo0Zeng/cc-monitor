@@ -47,10 +47,30 @@ NAME_RE_TMPL = r"(?<![A-Za-z0-9_])[a-z][a-z0-9]*(?:_[a-z0-9]+){%d,}(?![A-Za-z0-9
 #   ① 不要求「跨度逐字等于名字」——否则 `` `local_tmux_names()` ``（带括号）与
 #      `` `a.rs::foo_bar` ``（带路径）都会漏掉，而那正是订正段最常见的写法；
 #   ② 也不放宽成「跨度里出现过」——那会把整句散文的跨度收进来（现打差 27 处）。
-SPAN_RE = re.compile(r"`([^`\n]+)`")
 BARE_TMPL = (r"^(?:[A-Za-z0-9_./-]+::)?"
              r"([a-z][a-z0-9]*(?:_[a-z0-9]+){%d,})"
              r"(?:\(\)|!)?$")
+
+
+def spans(line):
+    """从左到右**成对**取反引号跨度 —— 与 Rust 侧那份逐字同形。
+
+    ⚠ 不用正则 `` `[^`]+` ``：它遇到 markdown 的双反引号 `` `` `x` `` `` 会错位
+    （第一对里没有非反引号字符 ⇒ 正则从第二个反引号起配，把 `x` 切丢）。
+    成对扫描把空跨度也当成一对，于是双反引号形正常收得到。
+    """
+    out = []
+    i = 0
+    n = len(line)
+    while True:
+        a = line.find("`", i)
+        if a < 0:
+            return out
+        b = line.find("`", a + 1)
+        if b < 0:
+            return out
+        out.append(line[a + 1:b])
+        i = b + 1
 
 TOMBSTONE = "〔散文墓碑〕"
 
@@ -179,8 +199,8 @@ def census(wt, minu, face="G"):
         for ln, c, k in split_file(p, text):
             for m in nre.finditer(c):
                 in_code.add(m.group(0))
-            for span in SPAN_RE.finditer(k):
-                m = bre.match(span.group(1).strip())
+            for span in spans(k):
+                m = bre.match(span.strip())
                 if m:
                     in_comment.setdefault(m.group(1), []).append(
                         (rel, ln, k.strip(), TOMBSTONE in k))
