@@ -836,9 +836,15 @@ mod tests {
     /// ① 失败分支**在**（`|| { … exit 3; }`）；② 它**报得出是哪个名字**（不带名字的报错
     /// 等于没报）；③ **`2>/dev/null` 仍在** —— 那是给 tmux 自己那句噪声用的，
     /// 我们要的是**自己那句**说清楚，不是把 tmux 的原文糊到用户脸上。
+    ///
+    /// ⚠ 〔`K-P2` `D3` 09-03〕**改成只读生产段**。原来第二段（找「已被占用」那一行）读的是
+    /// **整份文件**，而第一段已经自己 `!starts_with('#')` 过 —— 两段口径不一致。
+    /// `D3` 在上面写了一段注释解释「掐断发生在会话已建出来那一瞬时会**报「已被占用」**」，
+    /// 那句注释当场被 `.find` 抢先命中 ⇒ 本条红在「报错不带名字」上。
+    /// **红得对**：它证明了这条判据此前可以被**一句注释**满足。⇒ 两段一起走剥注释器。
     #[test]
     fn an_explicit_tmux_name_collision_fails_loudly() {
-        let ccm = include_str!("../../shared/ccm");
+        let ccm = shell_production(include_str!("../../shared/ccm"));
         let line = ccm
             .lines()
             .find(|l| !l.trim_start().starts_with('#') && l.contains("seq=\"{ tmux new-session"))
@@ -1874,14 +1880,16 @@ mod tests {
 
         let used = daemon_invocations(&prod);
         // 递增棘轮。**接线成功的那一拍，这个数要跟着抬**（不抬 = 没接上）。
+        // 〔`K-P2` `D` 阶段第三拍 09-03〕2 → **3**：`--launch`（`launch_via_daemon`，起会话）。
         assert!(
-            used.len() >= 2,
-            "`shared/ccm` 生产段里只发得出 {} 条后端子命令（{used:?}），少于登记的 2 条。\n\
-             登记的两条：`--resolve`（F06b，resume 的 argv）· `--list-accounts`（`K-C1`，账号表）。\n\
+            used.len() >= 3,
+            "`shared/ccm` 生产段里只发得出 {} 条后端子命令（{used:?}），少于登记的 3 条。\n\
+             登记的三条：`--resolve`（F06b，resume 的 argv）· `--list-accounts`（`K-C1`，账号表）\n\
+             · `--launch`（`K-P2` `D3`，**起会话**）。\n\
              ⇒ 有人把 ccm 与后端之间的路拆了。",
             used.len()
         );
-        for anchor in ["--resolve", "--list-accounts"] {
+        for anchor in ["--resolve", "--list-accounts", "--launch"] {
             assert!(
                 used.contains(anchor),
                 "已经搬进后端的 `{anchor}` 在 ccm 的生产段里没有调用点了（现有 {used:?}）—— \
@@ -1898,15 +1906,27 @@ mod tests {
                  daemon 会把它当未知 flag、warn 一行然后进流模式，ccm 拿到的是一堆 jsonl 而不是答案。"
             );
         }
-        // ★ 今天的读数，逐字钉住。
+        // ★★ 〔`K-P2` `D` 阶段第三拍 09-03〕**这一条本拍翻了面**。
+        //
+        // 它原来是一条**触发器**：`!used.contains("--launch")` —— 「哪天 ccm 开始发
+        // `--launch` 就红一次，提醒回来抬棘轮 / 解通道冲突 / 抬 e2e 地板」。**它今天真的红了**，
+        // 三件也真的在同一拍做完了（棘轮 2→3 见上；通道 A/B 由
+        // `the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move` 的 `(0,2,1)` 钉着，
+        // `C5` 就解掉了；e2e 地板见 `e2e/ccm-cli.test.sh` 的 `WIRE/launch` 一节）。
+        //
+        // ⇒ **翻成正向**：`--launch` 从「不许有」变成「**必须有**」（它已经在上面那个
+        // anchor 循环里了）。**别把它删掉** —— 删掉之后「起会话又退回本机 tmux 直起」
+        // 这件事就没有任何东西会说话，而那正是本件要守的那一格。
+        //
+        // ⚠ **诚实边界照旧**（见本条头注）：这里证的仍然是「生产段有一处把它发给后端二进制」，
+        //   **不是**「那条路在运行时真的被走到」。行为那一半住 `e2e/ccm-cli.test.sh`
+        //   的 `WIRE/launch`：真跑 exec 路、看落到 daemon stdin 上的那份字节。
         assert!(
-            !used.contains("--launch"),
-            "ccm 的生产段开始发 `--launch` 了 —— **这多半是好事**：\n\
-             「起会话」那格可能真接到后端一次性口上了 ⇒ 回 `K-P2` 的 `KP2A`/`KP2C`/`KP2D`：\n\
-             ① 把上面那条棘轮从 2 抬到 3；② `KP2D` 的通道 A/B 冲突**必须已经解掉**\n\
-             （daemon 的 `create-or-attach` 今天写的是**裸 `@ccm_sid`**，见\n\
-             `the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`）；\n\
-             ③ e2e 那五套的地板要同轮抬。"
+            used.contains("--launch"),
+            "ccm 的生产段**不再发** `--launch` 了（现有 {used:?}）—— 起会话退回本机 tmux 直起？\n\
+             `K-P2` `D3` 把它接上了后端那条一次性口（`launch_via_daemon`）：\n\
+             那条路是 argv 直传、不过 shell，本机这条是把一整条串交给 `bash -c`。\n\
+             ⇒ 真要退回来，请连同 `BACKEND_BACKED_PATHS` 的登记与 e2e 的 `WIRE/launch` 一起撤。"
         );
     }
 
@@ -1992,10 +2012,14 @@ mod tests {
             }
         }
         // ★ 自检②：处数逐字钉住。**蒸发成 0 时上面那个 for 一次都不进，会不报错地绿。**
+        // 〔`K-P2` `D3` 09-03〕2 → **3**：`launch_via_daemon` 那条 `--launch` 的请求体。
+        // 增量归 `K-P2`（接线拍）。⚠ 它的值位**一个模板都没有**（全走 `json_str`），
+        // 上面那四个坏形状因此在它身上一条都不命中 —— 那正是加这一处的前提。
         assert_eq!(
-            json_literal_lines, 2,
-            "`shared/ccm` 生产段里 JSON 对象字面量有 {json_literal_lines} 处，应当恰好 2 处\n\
-             （`resolve_from_daemon` 那条真跑的 · `resolve_recipe` 那条给 `--print` 的文本）。\n\
+            json_literal_lines, 3,
+            "`shared/ccm` 生产段里 JSON 对象字面量有 {json_literal_lines} 处，应当恰好 3 处\n\
+             （`resolve_from_daemon` 真跑的 · `resolve_recipe` 给 `--print` 的文本 · \
+             `launch_via_daemon` 那条 `--launch` 的请求体）。\n\
              变多 = 新开了一处产 JSON 的地方，它得跟这两处走同一个编码器；\n\
              变少 = 上面那条「不许拼」的循环**一次都没进**，判据在零命中地绿。\n\
              真加/删了产 JSON 的地方就来改这个数，并在 `K-P2` 件文件里说清增量归谁。"
@@ -2028,6 +2052,16 @@ mod tests {
             // 退路在（拿不到就回空串，由调用方走本地 resume 串），但**一个字都不说**。
             "[ -n \"$_ccm_db\" ] || { printf ''; return 0; }",
             None,
+        ),
+        (
+            // 〔`K-P2` `D` 阶段第三拍 09-03〕起会话。
+            "--launch",
+            // 退路 = **本机 tmux 直起**那一整块。锚点取那个状态变量的初值：它就是
+            // 「这一趟没走成后端」的运行时事实（`= 1` 才跳过本地那块）。
+            "_ccm_launched=0",
+            // ⚠ **它出声**，而且四种原因各说各的（找不到 daemon / `CCM_NO_DAEMON=1` /
+            //   字段含控制字符 / daemon 答不出）——「降级了」与「为什么降级」分开说。
+            Some("建会话已降级为"),
         ),
     ];
 

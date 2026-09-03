@@ -574,6 +574,7 @@ pub fn launch_args(
     payload: &str,
     cwd: Option<&str>,
     ccm_sid: Option<&str>,
+    extras: LaunchExtras<'_>,
 ) -> Value {
     let mut m = serde_json::Map::new();
     m.insert("mode".into(), Value::String(mode.to_string()));
@@ -585,7 +586,35 @@ pub fn launch_args(
     if let Some(s) = ccm_sid {
         m.insert("ccm_sid".into(), Value::String(s.to_string()));
     }
+    if let Some(a) = extras.agent {
+        m.insert("agent".into(), Value::String(a.to_string()));
+    }
+    if let (Some(w), Some(h)) = (extras.width, extras.height) {
+        m.insert("width".into(), Value::String(w.to_string()));
+        m.insert("height".into(), Value::String(h.to_string()));
+    }
     Value::Object(m)
+}
+
+/// `create-or-attach` **专有**的那三个可选字段〔`K-P2` `D3` 09-03〕。
+///
+/// # 为什么是一个结构体，不是再挂三个位置参数
+///
+/// 挂上去就是**连着五个 `Option<&str>`** —— `width` 与 `height` 同型同类，
+/// 调换两个实参编译器一个字都不会说，而症状是「窗口尺寸反了」这种没人会怀疑到调用点的事。
+/// 具名字段让那类错**在源码上就看得见**。
+///
+/// ⚠ `send-into` / `send-keys-raw` 那两个 mode 用 [`LaunchExtras::default`]：
+/// 这三个字段**只对新建会话有意义**（daemon 侧也只在 `CreateOrAttach` 那条臂上读它们）。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct LaunchExtras<'a> {
+    /// 哪个 AI —— 落成 tmux 的 `@ccm_agent` 标记。
+    pub agent: Option<&'a str>,
+    /// 新建窗口宽（十进制串）。**与 `height` 成对**：只给一半时这里直接两个都不发，
+    /// 让「半个尺寸」在**发出去之前**就不存在，而不是等 daemon 回 `invalid_args`。
+    pub width: Option<&'a str>,
+    /// 新建窗口高（十进制串）。见 `width`。
+    pub height: Option<&'a str>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
@@ -1054,7 +1083,14 @@ mod tests {
             encode_request(
                 "e2e-si-1",
                 "launch",
-                &launch_args("send-into", "e2e-si-fixed-cc", "true", None, None)
+                &launch_args(
+                    "send-into",
+                    "e2e-si-fixed-cc",
+                    "true",
+                    None,
+                    None,
+                    Default::default(),
+                )
             ),
             "\ne2e 脚本喂给真 daemon 的 send-into 行与 monitor 编码器的产物不一致。\n\
              `launch_args` 的键名/键序改了就把脚本里那条 `INBOUND_SEND_INTO_LINE` 一起改 ——\n\
@@ -1150,12 +1186,20 @@ mod tests {
             wanted.len()
         );
 
+        // ⚠ **每个可选字段都要给**：漏一个，`got` 就少一个键，而 `wanted` 是从 daemon
+        //   解析器抠的 —— 这条 `assert_eq!` 会当场红。那正是它该有的样子（`K-P2` `D3`
+        //   加 `agent`/`width`/`height` 时它逐字红过一次）。
         let full = launch_args(
             "create-or-attach",
             "cc-x",
             "true",
             Some("/tmp"),
             Some("sid-1"),
+            LaunchExtras {
+                agent: Some("claude"),
+                width: Some("220"),
+                height: Some("50"),
+            },
         );
         let mut got: Vec<String> = full
             .as_object()
@@ -1171,12 +1215,32 @@ mod tests {
         );
 
         // 可选字段真的可选：不传就不出现（daemon 侧 `cwd`/`ccm_sid` 都是 `Option`）。
-        let minimal = launch_args("send-into", "cc-x", "true", None, None);
+        let minimal = launch_args("send-into", "cc-x", "true", None, None, Default::default());
         let keys: Vec<&String> = minimal.as_object().expect("对象").keys().collect();
         assert_eq!(
             keys.len(),
             3,
             "最小形态应当只有 mode/name/payload：{keys:?}"
+        );
+        // ★〔`K-P2` `D3`〕**半个尺寸不许上线**：只给 `width` 时两个都不发 ——
+        //   让「一半的修饰」在**发出去之前**就不存在，而不是等 daemon 回 `invalid_args`。
+        let half = launch_args(
+            "create-or-attach",
+            "cc-x",
+            "true",
+            None,
+            None,
+            LaunchExtras {
+                agent: None,
+                width: Some("220"),
+                height: None,
+            },
+        );
+        let half_keys: Vec<&String> = half.as_object().expect("对象").keys().collect();
+        assert_eq!(
+            half_keys.len(),
+            3,
+            "只给了 width 而 height 缺席时，两个都不该发：{half_keys:?}"
         );
     }
 
