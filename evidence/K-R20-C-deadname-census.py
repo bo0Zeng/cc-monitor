@@ -23,7 +23,13 @@ import sys
 EXCLUDE_DIRS = {"node_modules", ".git", "target", "dist", "vendor", "coverage", ".vite"}
 
 # 闸真正扫的那一面（Rust 侧逐根对应）。
+# ⚠ `src-tauri/build.rs` **非收不可**（`addr_corpus()` 也是单独把它捞进来的）：
+#   `emit_daemon_capabilities` 真的定义在那儿，漏掉它就是一处假阳。
+# ⚠ `evidence/` **刻意不收**：那是量具与记录，它的散文里逐字写着一堆死名
+#   （`local_tmux_names` / `launch_identity_prefix` 都在），收进来会把代码侧喂饱
+#   ⇒ 旗舰活体当场消失。这一族本仓的说法是「判据被自己的散文喂饱」。
 ROOTS_G = ["src-tauri/src", "src-tauri/crates", "remote-daemon-proto/src", "src", "doc", "e2e"]
+FILES_G = ["src-tauri/build.rs"]
 
 SLASH_EXT = {"rs", "ts", "tsx", "js", "mjs", "cjs", "mts"}   # 走 guard_core 那份剥法
 PROSE_EXT = {"md"}                                     # 整份都是散文 ⇒ 全算注释、不供代码侧
@@ -156,6 +162,8 @@ def split_file(path, text):
 
 def census(wt, minu, face="G"):
     files = walk(wt, ROOTS_G if face == "G" else None)
+    if face == "G":
+        files += [os.path.join(wt, f) for f in FILES_G if os.path.isfile(os.path.join(wt, f))]
     nre = re.compile(NAME_RE_TMPL % minu)
     bre = re.compile(BARE_TMPL % minu)
     in_code = set()
