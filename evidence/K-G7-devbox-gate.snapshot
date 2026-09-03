@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# 在沙箱里跑门禁 —— 〔用 08-29〕「以后所有开发测试都不允许直接在本机跑」
+#
+# 用法：
+#   .claude/devbox/gate <工作树绝对路径> [target 目录名]
+# 环境变量：
+#   DEVBOX_NET=none|host   运行时网络（默认 none = 完全断网）。
+#                          第一次跑、或加了新依赖时用 host 让 cargo 去取 crates。
+#
+# 退出码直接透传 gate.sh 的（0 = GATE: OK）。
+set -o pipefail
+
+WT="${1:?用法: gate <工作树绝对路径> [target 目录名]}"
+TAG="${2:-$(basename "$WT")}"
+NET="${DEVBOX_NET:-none}"
+
+PROJ=/home/zbl/文档/claudecode-frontend
+SKILL=/home/zbl/.claude-accts/z/skills/planned-build
+TARGETS="$PROJ/.claude/pm-targets"
+CARGO_CACHE=ccmon-cargo-registry
+
+[ -d "$WT/src-tauri" ] || { echo "❌ 不像工作树（没有 src-tauri/）：$WT" >&2; exit 3; }
+docker image inspect ccmon-devbox:latest >/dev/null 2>&1 \
+  || { echo "❌ 镜像 ccmon-devbox:latest 不存在 —— 先 build，别退回宿主跑" >&2; exit 3; }
+mkdir -p "$TARGETS/$TAG"
+
+# ── crates 缓存：第一次用先从宿主播种，之后就能断网跑 ──────────────────────
+# 🔴 只读挂宿主的 registry、拷进具名卷 ⇒ **不写宿主任何东西**（K31）。
+seed_ok=0
+if docker volume inspect "$CARGO_CACHE" >/dev/null 2>&1; then
+  # 卷在，但**空的或属主不对**照样跑不动 ⇒ 每次都验一遍，别只看「卷存在」。
+  docker run --rm -v "$CARGO_CACHE:/v" ccmon-devbox:latest \
+    bash -c 'test -w /v && test -d /v/cache' >/dev/null 2>&1 && seed_ok=1
+fi
+if [ "$seed_ok" -ne 1 ]; then
+  echo "· 播种 crates 缓存：从宿主 ~/.cargo/registry 拷进具名卷（只读挂宿主，不写宿主）"
+  docker volume create "$CARGO_CACHE" >/dev/null
+  # 🔴 **两处都是 08-29 踩过的坑，别改回去**：
+  #   ① `--user root` + 事后 `chown` —— 卷的根是 **root 属主**，容器默认用户（uid 1000）
+  #      写不进去，实测 `cargo` 当场 `Permission denied (os error 13)` ⇒ 门禁 `退出码 101`；
+  #   ② **不许写 `2>/dev/null`** —— 第一版就是它把 `cp` 的失败吞掉了，
+  #      于是「卷是空的」与「播种成功」在输出面上一模一样。**那正是本项目治了一整天的病。**
+  docker run --rm --user root \
+    -v "$HOME/.cargo/registry:/seed:ro" \
+    -v "$CARGO_CACHE:/dst" \
+    ccmon-devbox:latest \
+    bash -c "cp -a /seed/. /dst/ && chown -R $(id -u):$(id -g) /dst && echo \"  播种完成：\$(du -sh /dst | cut -f1)\"" \
+    || { echo "❌ 播种失败 —— 不许当没事，先修再跑" >&2; exit 3; }
+fi
+
+# 🔴 挂什么、不挂什么 —— 这一段就是这个沙箱的全部意义所在
+#
+# 挂：
+#   · 项目目录（工作树 · 计划仓 · 主树的 node_modules · pm-targets 都在里面）
+#   · 那条硬写的 skill 路径（`scripts/gate.sh:161` 要它 —— 它硬写了 `$HOME/.claude-accts/z/…`）
+#   · 一个具名卷做 cargo registry 缓存
+#
+# 🔴 **不挂**（这几条不是省略，是这个沙箱存在的理由）：
+#   · `/tmp/tmux-1000`   ⇒ 容器里起的 daemon 够不着你的 tmux server，装不了全局 hook
+#   · `~/.cc-monitor`    ⇒ 碰不到已部署的那份
+#   · `$HOME` 的其余部分 ⇒ 碰不到 `~/.claude`、`~/.cargo`、shell 配置
+#   · 宿主 PID 命名空间（默认就隔离）⇒ 看不见、杀不掉宿主进程
+#   · 网络（默认 `--network none`）
+#
+# ⚠⚠ **一条已知的不等价，写出来别装作没有**〔`K-H2b` `D9` 08-29 逮到〕：
+#   容器里 `HOME=/home/zbl` **存在但几乎是空的**（只有 `文档/claudecode-frontend` 挂进来）。
+#   ⇒ 任何读真实家目录的判据（`dirs::home_dir()` 那一族），**沙箱与宿主未必同值**。
+#   🔴 **这不是沙箱的 bug，是它要买的东西** —— 一条依赖宿主家目录的测试，
+#      正是「会动这台机器」那一类。**但第一趟读数出来必须先对这个账**，
+#      读数与宿主对不上要**当成一条读数报出来**，不许自己找补。
+#
+# ★★ `PB_WS` 那一行〔`K-R10` 09-01，PM 挂〕：门禁第 5 格（`pb check`）**查哪个计划工作区**，
+#    由调用方给。在此之前 `gate.sh` 里硬写着 `control-parity` —— 它误导过实现方与 PM 各一次。
+#
+# 🔴 **必须是裸形 `-e PB_WS`，不许写成 `-e PB_WS="${PB_WS:-}"`** ——
+#    后者会把「**未设**」抹成「**空串**」，而 `gate.sh` 靠 `-z` 判 fail-closed，
+#    两者在它眼里同形，于是「没给名字」这条判据当场变瞎。
+#    裸形语义已实测：宿主未设 ⇒ 容器里也未设（`${PB_WS+x}` 为空）；设了 ⇒ 原样传进去。
+#
+# ⚠ **本行落地时是 no-op，这是刻意的顺序（先挂后拆）**：挂的这一刻 55 棵工作树里
+#    只有 `k-r10` 的 `gate.sh` 读它，其余 54 棵非注释代码零 `PB_WS`（现打）⇒ 传不传都一样。
+#    ⇒ 让这个**没有版本控制**的文件单独落地、单独验，比与 `gate.sh` 同拍改安全得多。
+#    🔴 反过来（先拆后挂）会让 55 棵树的门禁在第 5 格齐红。
+#
+# ⚠ 挂上之后，**跑门禁要带 `PB_WS=<工作区名>`**，不带就在第 5 格红（fail-closed，不回落默认）。
+exec docker run --rm \
+  --network "$NET" \
+  -v "$PROJ:$PROJ" \
+  -v "$SKILL:$SKILL:ro" \
+  -v "$CARGO_CACHE:/opt/rust/cargo/registry" \
+  -e "CARGO_TARGET_DIR=$TARGETS/$TAG" \
+  -e HOME=/home/zbl \
+  -e PB_WS \
+  -w "$WT" \
+  ccmon-devbox:latest \
+  bash -o pipefail -c 'mkdir -p "$HOME/.claude/projects" && bash scripts/gate.sh'
+# ⚠ 那个 `mkdir` 是 08-29 实测出来的：`history::tests::the_delete_entry_point_actually_goes_through_the_fence`
+#   要 `canonicalize ~/.claude/projects`，容器里没有 ⇒ **它被「目录不存在」拒掉，而不是被围栏拒掉**。
+#   ★ 那条测试自己的报错写得很好，逐字：「拒绝了，但**不是围栏的越界检查**拒的……
+#     两者长得一样，**只有这句话分得开**」——**它准确地认出了自己没在测该测的东西。**
+#   🔴 建一个**空**目录，不挂宿主那份 —— 挂了就等于把沙箱的意义丢掉。
