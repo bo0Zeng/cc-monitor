@@ -2219,7 +2219,10 @@ export class TabManager {
     // 基名规则**，正是 F13 收敛掉的那个重复（我在上一句里刚写完「唯一铸造口」）。
     // `session_name_registry` 当场判红（它数的就是「谁在产 `-cc` 基名」）。⇒ 改用现成的那个。
     //
-    // `existing` 从 `local_tmux_names()` 来。⚠ 它回 `null` 表示**不知道**（本机 daemon 通道
+    // `existing` 从 `commands.list_local_tmux()` 来（就在下面几行）。
+    // 〔K-R19 订正 09-03〕这里原先写的是 `local_tmux_names()`，**全仓零定义**：
+    // 真名从来就是 `list_local_tmux`（Rust 侧 `tmux.rs::list_local_tmux`）。
+    // ⚠ 它回 `null` 表示**不知道**（本机 daemon 通道
     // 没起 / 还没推过帧），不是「一个名字都没占」。不知道的时候**不铸名**、不传 `tmuxName`
     // ⇒ 后端诚实降级回旧路（不进容器）。硬要铸就是「不避让」，那正是 issue #76
     //「静默接进第一个会话，而用户以为开了新的」。
@@ -2237,7 +2240,10 @@ export class TabManager {
       // ★★ `K-H2b` `D1 阻-1`：**账号这一格先前是空的** —— 这条是 tab 栏那条主路，
       //    而它一个账号都不传 ⇒ ① 起会话落到 shell rc 里那个默认号上（静默串号）；
       //    ② 中转那一格永远拼不出路由键（没有账号 id ⇒ 不注入）。
-      //    取值口只有一个（`resolveLocalLaunchAccount`）：resume 走那条会话上次的 pin，
+      //    取值口只有一个（`accounts.ts::localLaunchAccountSync`，就在下面几行调着）：
+      //    〔K-R19 订正 09-03〕原先写的是 `resolveLocalLaunchAccount`，**全仓零定义**；
+      //    钉这件事的那条判据（`commands.vitest.ts`）逐字写的就是 `localLaunchAccountSync`。
+      //    resume 走那条会话上次的 pin，
       //    说不出就**缺席**（逐字节旧行为），绝不回落到「当前账号」——那是 #75 的形状。
       await invoke("resume_history_session", {
         sessionId: sid,
