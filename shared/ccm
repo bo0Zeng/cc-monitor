@@ -156,6 +156,85 @@ qarg() {
   esac
 }
 
+# ===== JSON 编码器（BEGIN json-encoder）=====
+#
+# ## 它为什么存在〔`K-P2` `D` 阶段第一拍，09-03〕
+#
+# daemon 的一次性口 `--launch` **只收 stdin JSON**（`cli_control.rs` 头注逐字：「CLI 面收
+# **stdin JSON** 而不是把参数摊进 argv，正是为了不引入一层 shell 解析把它丢掉」），
+# 而 `launch` 要送的 `payload` / `cwd` 是**任意串** —— `payload` 是本文件用 `sq` 拼出来的
+# 一整条命令行（含单引号、双引号、反斜杠、`$`），前面还可能挂着若干段 `export …=…; `。
+#
+# 🔴 **在本函数之前，本文件唯一一处产 JSON 是 `printf '{"sessionId":"%s"}' "$1"`** ——
+# 那**不是编码器，是一个只对受限字符集成立的模板**：`sessionId` 在
+# `control/launch.rs::parse_request` 那一侧已被收窄到 `[A-Za-z0-9_-]`，
+# 所以模板看着一直是对的。⇒ **照抄它去送 payload 就是拿转义换正确性。**
+# 那两处已经改走本函数（见 `resolve_from_daemon` / `resolve_recipe`），
+# 「本文件里还有第二种产 JSON 的办法」由 `ccm_cli_contract.rs` 那条结构判据钉住。
+#
+# ## 为什么是纯 bash，不借 `jq` / `python`
+#
+# 本文件经 `sftp.rs` 的 `include_str!` **部署到任意远端** ⇒ 「那台机器上装了什么」
+# 不是本文件可以假设的东西（`DAEMON_BIN_RECIPE` 头注为 `timeout` 立过同一条纪律）。
+# 而 `KC6d` 那一族判据（`e2e/ccm-cli.test.sh` 的 `KNF` / `KALLNEW`）逐条钉着热路径上
+# **零外部依赖** ⇒ 本函数一个外部命令都不起（`printf` 是 builtin，`case` 是语法）。
+#
+# ## 编码规则：与 `jq` **逐字节同形**，一条例外都不留
+#
+# RFC 8259 只强制转义 `"` `\` 与 U+0000–U+001F；其余（`/` · U+007F · 非 ASCII）**可转可不转**。
+# 而「可选」正是「大多数输入下看着对」的藏身处 ⇒ 本函数**不留可选项**，选定 `jq` 的那一套：
+# `\" \\ \b \f \n \r \t`，**其余控制字符与 U+007F** 走 `\u00xx`（小写十六进制），
+# `/` 不转义，非 ASCII **原样透传 UTF-8 字节**。
+# ⇒ 判据因此可以写成「**与 `jq -Rs .` 逐字节相等**」（`e2e/ccm-cli.test.sh` 的 `JSONENC` 那节），
+# 而不是一张「这几种输入允许不一样」的例外表 —— **例外表会替以后所有真 bug 挡枪**。
+# ⚠ U+007F 那一格是**实测逼出来的**，不是设计出来的：初版照 RFC 的「可选」把它透传，
+#   与 `jq` 对拍当场 1 处 DIFF（件文件 `§16-3` 的 `E1`）。
+#
+# ## 逐字符扫描，而且**字节保真**
+#
+# `${s#?}` 在 UTF-8 locale 下吃掉一个**字符**、在 C locale 下吃掉一个**字节**；
+# 两种切法下非 ASCII 都只走 `*)` 那一支原样拼回 ⇒ **输出逐字节与 locale 无关**
+#（三种 locale 实测同值，`§16-3` 的 `E2`）。
+# ⚠ `?` **一个字节都吃不动**时（locale 认不出的字节）`s` 不会变短 ⇒ 写成 while 就是**死循环**。
+#   ⇒ 当场出声 + `return 1`，**不猜、不静默丢、不转圈**。
+#
+# ⚠ **本函数不做的事，写出来别让人以为它做了**：它不判输入是不是合法 UTF-8
+#（非法字节会被原样透传成非法 JSON，由收端报错），也不管 `MAX_FIELD_BYTES` 那条长度限。
+#   ⚠ 还有一格是**行为差异不是编码细节**：daemon 的 `check_field` **拒收含控制字符的字段**
+#   ⇒ 载荷里真有换行时，新路会拿到 `invalid_args`，而今天那条 shell 路照跑。
+_CCM_JSON_CTRL=$'\001\002\003\004\005\006\007\013\016\017\020\021\022\023\024\025\026\027\030\031\032\033\034\035\036\037\177'
+
+json_str() {  # $1=任意串 → stdout: 一个**完整的 JSON 字符串**（含外围双引号）
+  local s="$1" out="" c rest hex
+  while [ -n "$s" ]; do
+    rest="${s#?}"
+    c="${s%"$rest"}"
+    if [ -z "$c" ]; then
+      printf 'ccm: json_str: 输入里有当前 locale 认不出的字节，拒绝编码\n' >&2
+      return 1
+    fi
+    s="$rest"
+    case "$c" in
+      '"')   out="$out"'\"' ;;
+      '\')   out="$out"'\\' ;;
+      $'\b') out="$out"'\b' ;;
+      $'\f') out="$out"'\f' ;;
+      $'\n') out="$out"'\n' ;;
+      $'\r') out="$out"'\r' ;;
+      $'\t') out="$out"'\t' ;;
+      *)
+        # 剩下的控制字符（含 U+007F）没有短名 ⇒ `\u00xx`。
+        # `"'$c"` 是 POSIX printf 的「取首字符码位」写法；这里只对**单字节**控制字符走这一支。
+        case "$_CCM_JSON_CTRL" in
+          *"$c"*) printf -v hex '%04x' "'$c"; out="$out\\u$hex" ;;
+          *)      out="$out$c" ;;
+        esac ;;
+    esac
+  done
+  printf '"%s"' "$out"
+}
+# ===== JSON 编码器（END json-encoder）=====
+
 # ===== agent 轴（哪个 AI）——CLI 主体零分支，全部查表 =====
 # 与 src/agent-profile.ts 的 AGENT_PROFILE 对位；改这里要同步那边。
 agent_default_launcher() { case "$1" in claude) echo claude ;; codex) echo codex ;; esac; }
@@ -266,10 +345,14 @@ DAEMON_BIN_RECIPE='_ccm_db=""; if [ "${CCM_NO_DAEMON:-}" != 1 ]; then for _ccm_x
 resolve_from_daemon() {   # $1=sid → stdout: daemon 给的 command 串（拿不到就空）
   eval "$DAEMON_BIN_RECIPE"
   [ -n "$_ccm_db" ] || { printf ''; return 0; }
+  # `K-P2` `D1`：`sessionId` 也走 `json_str`，**不再用模板** —— 理由见 `json_str` 头注。
+  # ⚠ 对 `[A-Za-z0-9_-]` 的 sid，产出与旧模板**逐字节相同**（黄金串因此一个字不动）；
+  #   换掉的是「模板只对那个字符集成立」这件事本身。
+  local _sj; _sj="$(json_str "$1")" || return 0
   # 见上方 `DAEMON_BIN_RECIPE` 头注那段「问 daemon 要加超时」：有 `timeout` 就套上，没有就裸调。
   _to="$(command -v timeout >/dev/null 2>&1 && printf 'timeout 3 ' || true)"
   # shellcheck disable=SC2086  # $_to 要么空、要么是 `timeout 3`，**有意不 quote**
-  printf '{"sessionId":"%s"}' "$1" | $_to "$_ccm_db" --resolve 2>/dev/null \
+  printf '{"sessionId":%s}' "$_sj" | $_to "$_ccm_db" --resolve 2>/dev/null \
     | grep -o '"command":"[^"]*"' | head -1 | cut -d'"' -f4
   return 0
 }
@@ -280,7 +363,10 @@ resolve_from_daemon() {   # $1=sid → stdout: daemon 给的 command 串（拿�
 # ⚠ 第 3 个参数是 F10 补的：daemon 给的串里不可能带用户的 `--` 透传（协议无此字段），
 #   而 `exec $_ccm_c` 是整条换掉 argv ⇒ 不补就丢参数。**与 exec 路逐行同构**。
 resolve_recipe() {
-  local sid_json="{\"sessionId\":\"$1\"}"
+  # `K-P2` `D1`：与 exec 路**同一个编码器**（`json_str`），不再各写一份模板 ——
+  # 「两处各写一遍迟早漂」正是 `DAEMON_BIN_RECIPE` 头注立的那条纪律，这里照办。
+  local enc; enc="$(json_str "$1")" || return 1
+  local sid_json="{\"sessionId\":$enc}"
   # `P4e`：查找规则**只有一份**（`DAEMON_BIN_RECIPE`）—— 这里原样吐出它，真跑那侧 eval 它。
   printf '%s' "_ccm_c=\"\"; $DAEMON_BIN_RECIPE if [ -n \"\$_ccm_db\" ]; then"
   printf '%s' " _ccm_c=\"\$(printf '%s' $(sq "$sid_json") | \$(command -v timeout >/dev/null 2>&1 && printf 'timeout 3 ') \"\$_ccm_db\" --resolve 2>/dev/null"
