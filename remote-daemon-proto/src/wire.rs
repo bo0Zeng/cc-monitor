@@ -69,6 +69,44 @@ pub struct AgentHome {
     pub path: String,
 }
 
+/// `hello.unavailable` 的一项 —— **这条命令我接得下，但在这台机器上做不到，以及为什么**
+///〔`K-P4` 09-04，用户逐字「事前协商是要的」〕。
+///
+/// # 它为什么是一张**负向**表（这一格是本结构最贵的判断，不是口味）
+///
+/// 三条既有的能力面都是**正向**清单。正向在这里**结构上表达不了「我什么都做不到」**：
+/// additive 要求空表省略（`skip_serializing_if`），而「省略」必须等于**旧 daemon 的语义**。
+/// 于是正向表的空集只有两种读法，两种都坏：
+/// ① 空=「一条都做不到」⇒ 每台旧 daemon 都变成「什么都不能干」，功能当场全消失；
+/// ② 空=「全都做得到」⇒ 一台**真的什么都做不到**的机器无法把这件事说出口。
+/// 负向表没有这个二选一：**空 = 我没有任何「做不到」的把握** ——
+/// 这**逐字就是今天的语义**（客户端照发、点了才由命令级 code 兜底），旧 daemon 天然落在这一格。
+///
+/// # `code` 为什么与**调用时**的错误码同一套取值空间
+///
+/// 「做不到」这件事今天**已经**有表达手段，只是发生在调用之后：`kill`/`launch` 回 `no_tmux`
+/// （`control/kill.rs` · `control/gate.rs` · `control/launch.rs`），`bus-*` 回 `not_installed`。
+/// 事前那一句要是自造一套词，客户端就得维护**两张**「这句话怎么翻成人话」的表 ——
+/// 而 monitor 侧那张表已经写好了（`backend/control/daemon_launch.rs` 等三处逐字「远端未安装 tmux」）。
+/// ⇒ 复用同一套 code，**事前与事后是同一句话，只是来得早**。
+/// 这一条由 `main.rs::the_declared_code_is_one_the_registry_already_declares` 钉住：
+/// 本表只许说 `inbound::REGISTRY` 里那条命令**自己登记过**的 code。
+///
+/// # 为什么不带一句 `message`
+///
+/// 那句人话今天归 monitor（见上）。再发一份等于给同一句话开第二个真相源，
+/// 而 daemon 这一侧连用户的语言都不知道。**要诊断细节的场合走真调用**，那条路的 message
+/// 本来就说得更细（`not_installed_message` 会列出查过哪几个目录）。
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Unavailable {
+    /// 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::COMMANDS`）。
+    /// ⚠ 它**必须**同时出现在 `commands` 里：本表说的是「接得下但做不到」，
+    /// 「根本不接」那一格由不在 `commands` 里表达（客户端 `accepts()` 一个字节都不发）。
+    pub command: String,
+    /// 为什么做不到 —— **就是真调用那一刻会回的那个命令级 code**（如 `no_tmux`）。
+    pub code: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Frame {
@@ -126,6 +164,60 @@ pub enum Frame {
         /// 空/缺 = **这个 daemon 不读 stdin**（U6b-1 之前的所有版本），客户端别发命令。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         commands: Vec<String>,
+        /// `K-P4`（09-04，additive，**与上面三条都正交**）：本 daemon **接得下、但在这台
+        /// 机器上做不到**的命令，以及原因（`[{command, code}]`，见 [`Unavailable`]）。
+        ///
+        /// # 它买的是什么：**事前**那一半
+        ///
+        /// `commands` 说的是「**我接这条命令**」，不是「**我做得到这件事**」。差额今天
+        /// **只有调用之后**才知道：Windows 上没有 tmux，握手帧照样宣称接 `kill`/`launch`，
+        /// 前端照样画按钮，点了才收到 `no_tmux`。用户 09-04 逐字裁「**事前协商是要的**」。
+        /// ⇒ 本字段是握手帧的第四条面，回答的是**「我做得到什么」**。
+        ///
+        /// # 三条既有面为什么都装不下它（每条都有各自的硬理由，不是嫌挤）
+        ///
+        /// · `capabilities`：受 §26 死循环护栏 + `every_capability_token_is_strippable` ——
+        ///   **每个 token 必须有一条能被 `split_stream_flags` 剥掉的流 flag**。「做得到 kill」
+        ///   没有对应的流 flag ⇒ 塞进去要么当场红，要么被迫编一个假 flag（更坏）。
+        ///   而且它的默认方向是相反的：缺 = 最小能力集（往下降级安全）；本字段缺 = **没有把握**
+        ///   （不许往下降级，否则能用的功能会消失）。**一个字段装两个方向的默认值**，
+        ///   正是本工作区最贵的那一类病。
+        /// · `emits`：取值空间是**帧 kind**，语义是「我会发什么」。
+        /// · `commands`：取值空间是**命令名**，语义是「我接什么」；而且它是正向表，
+        ///   把做不到的从里面**摘掉**是错的 —— 那会让客户端 `accepts()` 直接拒发，
+        ///   连「点了告诉你为什么」这条兜底路都没了，也让 `COMMANDS`/`REGISTRY` 双向相等
+        ///   那条判据被迫按平台分叉。
+        /// ⇒ 本字段的键是 **(命令名 × 命令级 code)** 这个**对**，三条面没有一条是这个形状。
+        ///
+        /// # 消费侧口径（三句，缺一句就会读错）
+        ///
+        /// ① **空/缺 = 这台 daemon 没有任何「做不到」的把握**，不是「全都做得到」——
+        ///    客户端照今天的样子办（照发、点了看 code）。旧 daemon 天然落这一格。
+        /// ② 列出来的那条 = **别画那个按钮**（或画成灰的，配 `code` 那句人话）。
+        /// ③ 🔴 **它是提示，不是闸门。** daemon 自己**绝不**拿这张表去拒命令。
+        ///    **过期窗口比「一次连接」大得多，别按直觉估**：`build_hello` 在分档**之前**
+        ///    只调一次（`main.rs`），那一帧随后交给两条载体，而常驻那条（`listen.rs`）
+        ///    的分档表逐字写着「**不限次的『只读 hello 就走』**」——
+        ///    ⇒ **同一帧会被这个进程后续的所有连接共用，读数可以任意旧。**
+        ///    真拿它去拒 = 把一份可能几小时前的读数变成一次真停机。
+        ///    客户端硬发照样走真路，成不成由 `no_tmux` 那条老路回答。
+        ///    ⇒ 将来要「**会变的**可用性」，走一条新帧（`emits` 那一轴），**不要回头改 hello**：
+        ///    hello 结构上就是「连接建立时说一次」的东西。现成材料已经有 ——
+        ///    `observe/watcher.rs` 的 `OBS_NO_TMUX` 是一份运行期读数（watch loop 周期跑
+        ///    本地 `tmux ls`），它不是做不到，是**来得比握手晚**。
+        ///
+        /// # ★ 今天恒空 —— 是排期，不是做不到（同 `homes` 的 `S5` 口径：**能填不真填**）
+        ///
+        /// `main.rs` 硬写 `Vec::new()`（`production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen`
+        /// 钉住）⇒ **hello 帧的线上字节逐字节不变**。而「不是没能力」由
+        /// `main.rs::the_answer_is_a_function_of_the_machine_not_of_the_build` 钉另一半。
+        /// 真填 = 一次**跨仓契约变更**（仓外 aterm 按精确字节读这一帧，契约冻结 2026-07-18），
+        /// 而本机没有 aterm 仓、验不了它的运行时 ⇒ 留成一次**纯发布决策**。
+        /// 真填那天要**同轮**做三件事：① 换 `main.rs` 那一行（`Vec::new()` → `unavailable_here()`）；
+        /// ② 更新 `hello_unavailable_is_additive_present_and_absent` 的期望串；
+        /// ③ **bump `BUILD_ID`**（那天线上字节真的变了，已部署的远端得被判 stale 重装）。
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        unavailable: Vec<Unavailable>,
     },
     /// One raw JSONL line tailed from a session file.
     Line {
@@ -745,6 +837,7 @@ mod tests {
                     capabilities: vec!["bg".into(), "tail-only".into()],
                     emits: vec!["line".into(), "session_status".into()],
                     commands: vec![],
+                    unavailable: vec![],
                 },
                 "hello",
             ),
@@ -945,6 +1038,7 @@ mod tests {
             capabilities: caps,
             emits,
             commands: vec![],
+            unavailable: vec![],
         }
     }
 
@@ -1137,6 +1231,7 @@ mod tests {
             capabilities: vec![],
             emits: vec![],
             commands: vec![],
+            unavailable: vec![],
         })
         .expect("填了 homes 的 hello 必须序列化得出来");
         assert_eq!(
@@ -1197,6 +1292,7 @@ mod tests {
             capabilities: vec![],
             emits: vec![],
             commands: vec![],
+            unavailable: vec![],
         })
         .unwrap();
         // ★ 精确字节（aterm fixture 交叉核真值）：字段按声明序，`homes` 在 `claude_dir` 之后；
@@ -1252,6 +1348,7 @@ mod tests {
             capabilities: vec![],
             emits: vec![],
             commands: vec![],
+            unavailable: vec![],
         })
         .unwrap();
         assert_eq!(
@@ -1292,6 +1389,75 @@ mod tests {
             ss, "{\"kind\":\"session_status\",\"sid\":\"s\",\"status\":\"idle\"}\n",
             "liveness_confidence 省略，字节等价旧形"
         );
+    }
+
+    /// ★ `K-P4`（09-04）握手帧**第四条面**的线上形状：absent 形字节等价 + present 形精确字节。
+    ///
+    /// # 两半为什么在同一条测试里
+    ///
+    /// 分开写的话，「省略时字节不变」那半在**真填那天照样绿** —— 它构造的是自己那张空表，
+    /// 不是生产那张。⇒ 本条钉的是「**这个字段**的两种形状各自长什么样」；
+    /// 「**生产给的是哪一种**」由 `main.rs` 那条抽取式判据钉，两条合起来才是「今天不变」。
+    /// 同 `homes` 的两条（`production_hello_leaves_homes_empty…` + `dg3_…_byte_equivalent`）
+    /// 的分工，缺任一条那句话都不成立。
+    #[test]
+    fn hello_unavailable_is_additive_present_and_absent() {
+        // ① absent：空表省略 ⇒ 与第四条面加进来**之前**逐字节相同。
+        //    ★ 右边这串与 `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent`
+        //      里那串**刻意逐字重复**：那条守 `S4` 的红线，本条守 `K-P4` 的。
+        //      同一串钉在两处，任何一处被改掉都还有另一处会红。
+        let absent = to_line(&Frame::Hello {
+            v: 1,
+            build_id: "b".into(),
+            host_arch: "x86_64".into(),
+            claude_dir: "/c".into(),
+            homes: vec![],
+            capabilities: vec![],
+            emits: vec![],
+            commands: vec![],
+            unavailable: vec![],
+        })
+        .unwrap();
+        assert_eq!(
+            absent,
+            "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\"}\n",
+            "空表没被省略 ⇒ hello 的线上字节变了 ⇒ 仓外 aterm 那份按精确字节对的 fixture 当场对不上\n\
+             （契约冻结 2026-07-18）。additive 的全部意义就在这一格。"
+        );
+
+        // ② present：字段落在 `commands` **之后**（serde 按声明序），
+        //    表内每项按 `Unavailable` 的声明序 `command` → `code`。
+        //    ★ 这一串是**真填那天**给 aterm 的 fixture 真值（同 `dg3_…_serialize_when_present` 的地位）。
+        let present = to_line(&Frame::Hello {
+            v: 1,
+            build_id: "b".into(),
+            host_arch: "x86_64".into(),
+            claude_dir: "/c".into(),
+            homes: vec![],
+            capabilities: vec![],
+            emits: vec![],
+            commands: vec!["kill".into(), "ping".into()],
+            unavailable: vec![Unavailable {
+                command: "kill".into(),
+                code: "no_tmux".into(),
+            }],
+        })
+        .unwrap();
+        assert_eq!(
+            present,
+            "{\"kind\":\"hello\",\"v\":1,\"build_id\":\"b\",\"host_arch\":\"x86_64\",\"claude_dir\":\"/c\",\
+             \"commands\":[\"kill\",\"ping\"],\"unavailable\":[{\"command\":\"kill\",\"code\":\"no_tmux\"}]}\n"
+        );
+
+        // ③ **`kill` 同时在两张表里**，这不是笔误 —— 本字段说的是「接得下但做不到」。
+        //    从 `commands` 里摘掉才是错的：那样客户端 `accepts()` 会直接拒发，
+        //    连「点了告诉你为什么」这条兜底路都没了。
+        assert!(
+            present.contains("\"commands\":[\"kill\""),
+            "present 形里 `kill` 必须仍留在 `commands` 里：{present}"
+        );
+        // ④ 反向自检：两串不同（否则上面两条可能被同一个退化实现一起满足）。
+        assert_ne!(absent, present);
     }
 
     /// ★ S0：`cause` 的线上表现 —— `Gone` **不写字段**（additive，旧 monitor 原样工作），
