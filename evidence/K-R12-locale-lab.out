@@ -39,8 +39,7 @@ ldd (Ubuntu GLIBC 2.39-0ubuntu8.8) 2.39
     LC_ALL=zz_ZZ.UTF-8 -> rc=0  charmap=locale: Cannot set LC_CTYPE to default locale: No such file or directory|locale: Cannot set LC_MESSAGES to default locale: No such file or directory|locale: Cannot set LC_ALL to default locale: No such file or directory|ANSI_X3.4-1968
     LC_ALL=xx_XX -> rc=0  charmap=locale: Cannot set LC_CTYPE to default locale: No such file or directory|locale: Cannot set LC_MESSAGES to default locale: No such file or directory|locale: Cannot set LC_ALL to default locale: No such file or directory|ANSI_X3.4-1968
   tmux 在 BOGUS 下的 stderr（上面 E2 已把 2>&1 并进来了，这里单独看 stderr）：
-    stderr 字节数 = 0   内容 = 
-    退出码 = 0
+    退出码 = 0   stderr 字节数 = 0   内容 = []
 
 ############ 4 · E4 · -u 的位置约束（放到子命令后面会怎样）
   tmux display-message -u -p ... -> rc=1 out=[command display-message: unknown flag -u]
@@ -84,16 +83,16 @@ ldd (Ubuntu GLIBC 2.39-0ubuntu8.8) 2.39
 
 ############ 9 · E9 · capture-pane -p 的输出走不走同一条 sanitize
   -- POSIX
-      0000000 344 270 255 346 226 207 346 265 213 350 257 225   A   B   C   c
-      0000020   0   7   b   e   1   8   5   :   /   t   m   p   /   k   r   1
+      0000000 344 270 255 346 226 207 346 265 213 350 257 225   A   B   C   7
+      0000020   0   3   1   c   f   e   3   :   /   t   m   p   /   k   r   1
       0000040   2   -   l   a   b   /   M   -   f   M   -   M   -   M   -   f
   -- CUTF8
-      0000000 344 270 255 346 226 207 346 265 213 350 257 225   A   B   C   c
-      0000020   0   7   b   e   1   8   5   :   /   t   m   p   /   k   r   1
+      0000000 344 270 255 346 226 207 346 265 213 350 257 225   A   B   C   7
+      0000020   0   3   1   c   f   e   3   :   /   t   m   p   /   k   r   1
       0000040   2   -   l   a   b   /   M   -   f   M   -   M   -   M   -   f
   -- DASH_U
-      0000000 344 270 255 346 226 207 346 265 213 350 257 225   A   B   C   c
-      0000020   0   7   b   e   1   8   5   :   /   t   m   p   /   k   r   1
+      0000000 344 270 255 346 226 207 346 265 213 350 257 225   A   B   C   7
+      0000020   0   3   1   c   f   e   3   :   /   t   m   p   /   k   r   1
       0000040   2   -   l   a   b   /   M   -   f   M   -   M   -   M   -   f
 
 ############ 10 · E10 · sh -c 串里两种写法各自站不站得住
