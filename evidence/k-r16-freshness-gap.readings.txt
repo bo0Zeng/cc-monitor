@@ -1,0 +1,8 @@
+# 量于 2026-09-04 13:40:37  分母=4 个 pidfile（只数 /home/zbl/.claude/sessions）
+     pid sid       status   灯   活      pidfile龄    status龄    jsonl龄       gap
+# 量于 2026-09-04 13:40:50  分母=4 个 pidfile（只数 /home/zbl/.claude/sessions）
+     pid sid       status   灯   活      pidfile龄    status龄    jsonl龄       gap
+  105382 abfa3e79  busy     绿   True     1961.0     1961.0      31.2    1929.8
+ 1393402 831279fb  busy     绿   True      125.1      125.2       4.7     120.4
+ 1713971 d10d3b71  idle     红   True      261.8      261.8     261.7       0.1
+  268622 07e0f799  busy     绿   True     3112.9     3112.9    1391.4    1721.5
