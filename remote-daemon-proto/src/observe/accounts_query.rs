@@ -310,7 +310,7 @@ fn json_str(v: Option<&str>) -> serde_json::Value {
 // 合并前**逐条核过单位**：单位不同的话它们就不是重复，合并就是引 bug。
 use crate::common::fs::read_regular_capped;
 use crate::agents::claudecode::accounts as cc_accounts;
-use crate::platform::proc::{proc_env_var, proc_starttime};
+use crate::platform::proc::{proc_env_var, proc_starttime, EnvRead};
 
 /// 从 pidfile 字节里取 `procStart`（CC 写的是 starttime ticks 的十进制字符串；容忍裸数字）。
 fn parse_procstart_ticks(v: &serde_json::Value) -> Option<u64> {
@@ -382,6 +382,17 @@ struct SessionRow {
     config_dir: Option<String>,
     account: Option<String>,
     alive: bool,
+    /// 🔴 `K-R21`：读 `CLAUDE_CONFIG_DIR` 的**那一次**，`/proc/<pid>/environ`
+    /// **这一刻取不到**（读失败 / 读回 0 字节）。
+    ///
+    /// 它与 `config_dir: None` 是**两件事**：`None` 说的是「读到了、这个键没设」，
+    /// 本格说的是「这一刻我读不出来」。⇒ 本格为真时**不归属账号、也不算裸起**。
+    ///
+    /// ⚠ **不进出参**：出参形状一个字节都没动（`configDir:null` + `account:null`
+    /// + `bare:false` 今天就表达得了「不知道」）。要把「为什么不知道」也发出去，
+    /// 那是给出参加状态位、是改上线契约 —— 同 [`suppress_inherited_launch_ids`]
+    /// 头注里那条已被前人裁死的口径。
+    cfg_env_unreadable: bool,
     /// 从 `/proc/<pid>/environ` 抠到、且过了 [`launch_id_is_safe`] 的原值。
     /// 还没过防冒名那一格 —— **别直接往出参里填这一格**。
     launch_id: Option<String>,
@@ -422,9 +433,13 @@ struct SessionRow {
 ///   ⇒ 根本不读它的 environ ⇒ 撞不出重复，活着的那个子进程会带着继承来的 token 出现。
 ///   ⇒ 这条读回路的诚实边界是「**同一批里唯一**」，不是「**确实是它的**」。
 /// - **跨批次**不判：本查询是一次性的（`exec` 一次、`ssh` 一次），没有跨调用的记忆。
-/// - `launchId: null` **不区分原因**（没设 / 形状不对 / 不唯一 / 进程已死）。
-///   要区分就得给出参加状态位，那是**改上线契约**——与本文件头注给 `configDir`
-///   那一格写下的裁决同一条（「不属本区范围」），此处照办。
+/// - `launchId: null` **不区分原因**（没设 / 形状不对 / 不唯一 / 进程已死 /
+///   **读那一刻环境取不到**）。要区分就得给出参加状态位，那是**改上线契约**——
+///   与本文件头注给 `configDir` 那一格写下的裁决同一条（「不属本区范围」），此处照办。
+///   ⚠ 第五种是 `K-R21`（09-03）现打出来的：它**一直都在**，只是从前混在「没设」里
+///   数不出来（`platform/proc.rs` 那个 `None` 装着四件事）。**这条不是新增的行为，
+///   是把「四种」这句旧话订正成实话** —— 而 `configDir` 那一半已经把它拆出来了
+///   （`SessionRow::cfg_env_unreadable`），只有身份这一半仍按上面那条裁定合并着。
 fn suppress_inherited_launch_ids(rows: &mut [SessionRow]) {
     let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for r in rows.iter() {
@@ -629,24 +644,54 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
         // 别的进程占用。只按 /proc/<pid> 存在性判活会把已死会话误贴成"活着 + 别人的账号"
         // （审计 R1，已在沙盒复现）。身份不符 → 当作该会话已死，不读 environ、不归属。
         let alive = session_process_identity_ok(pid, &v);
-        let cfg = if alive {
-            proc_env_var(pid, crate::agents::claudecode::paths::CONFIG_DIR_ENV)
+        // 🔴 `K-R21`（09-03）：**这一处从前在说一句斩钉截铁的假话。**
+        //
+        // 从前它是 `let cfg = if alive { proc_env_var(...) } else { None };` ——
+        // 而 `proc_env_var` 那个 `None` 装着四件事，其中「**环境这一刻取不到**」
+        // （读失败，或读回 0 字节：exec 窗口 / 僵尸进程）会一路走成
+        // `cfg_norm = None` ⇒ 在下面的 `by_dir` 里**正好撞上账号 0 那个 `None` 键**
+        // （`:568` 逐字 `None => Some((None, a.name))`）
+        // ⇒ 出参不是「不知道」，是 `account: "<账号0>"` + `bare: true`。
+        // ⇒ **一条真跑在账号 Z 下的会话，会被报成账号 0 的**，而且无声无息：
+        // `alive` 仍是 `true`（它读 `/proc/<pid>/stat`，与 `environ` 不是同一次读）。
+        //
+        // 现在：「取不到」单独一支，**不归属、不算裸起**（`configDir:null` + `account:null`
+        // + `bare:false` 今天就是一个可表达的状态 ⇒ 出参形状一个字节都没改）。
+        // ⚠ 另两支（键不在 / 值是空串）**仍然合并**，理由在 `EnvRead` 的类型头注。
+        let (cfg, cfg_env_unreadable) = if alive {
+            match proc_env_var(pid, crate::agents::claudecode::paths::CONFIG_DIR_ENV) {
+                EnvRead::Value(v) => (Some(v), false),
+                EnvRead::Unset => (None, false),
+                EnvRead::Unreadable => (None, true),
+            }
         } else {
-            None
+            // 进程已死时一个字节都不读 ⇒ 谈不上「取不到」，那一格照旧是「没读」。
+            (None, false)
         };
         // `K-P5f`：**第二个键**。进程已死时一个字节都不读（同 `configDir` 那一格的理由：
         // `/proc/<pid>/environ` 在进程消失那一刻整个不存在，读了也只是 `None`；
         // 而万一 pid 被复用，读到的就是**别人的**环境）。
         // 形状不对 ⇒ 直接当没有（fail closed，见 `launch_id_is_safe`）。
+        // ⚠ `K-R21` **刻意没动这一处**：它是 fail-closed 的（「取不到」与「没设」
+        // 都得同一个保守答案 `None`），而 `:425` 那条裁定写着要区分就得给出参加状态位、
+        // 那是改上线契约。⇒ 这里用 `.value()`，等于声明「这两件事对我等价」。
+        // 🔴 代价如实登记：那条 flaky 判据
+        // （`an_inherited_launch_id_is_never_reported_as_the_childs_own_identity`）
+        // 红在**这条**读回路上，不是上面那条 ⇒ **本拍没有让它变绿，也不该被读成让它变绿**。
         let launch_id = if alive {
-            proc_env_var(pid, LAUNCH_ID_ENV).filter(|v| launch_id_is_safe(v))
+            proc_env_var(pid, LAUNCH_ID_ENV)
+                .value()
+                .filter(|v| launch_id_is_safe(v))
         } else {
             None
         };
         let cfg_norm = cfg.as_deref().map(|c| norm_dir(c).to_string());
-        // 归属：有 configDir 就逐字匹配；没有且**进程确实活着**就是账号 0。
+        // 归属：有 configDir 就逐字匹配；没有、**进程确实活着**、**且环境这一刻读得到**
+        // 才是账号 0。
         // 进程已死时不归属（cfg 恒 None，归给账号 0 会把死会话贴成账号 0 的）。
-        let account = if alive {
+        // 🔴 `cfg_env_unreadable` 时也不归属（`K-R21`）：那一刻我们**不知道**它设没设，
+        // 而「不知道」与「确实没设」在这里的差别就是一句假话的差别。
+        let account = if alive && !cfg_env_unreadable {
             by_dir
                 .iter()
                 .find(|(d, _)| d.as_deref() == cfg_norm.as_deref())
@@ -661,6 +706,7 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
             config_dir: cfg_norm,
             account,
             alive,
+            cfg_env_unreadable,
             launch_id,
         });
     }
@@ -683,11 +729,19 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
                 // **账号**这一维（它与 `account` 是一对），`launchId` 答的是**身份**这一维。
                 // 让一个布尔同时表示两个变量的缺席，正是本工作区最贵的那族病
                 // （「一个值装了两件事」）；`launchId: null` 自己就说得清「没有」。
-                "bare": r.alive && r.config_dir.is_none(),
+                // 🔴 **`K-R21`（09-03）给它补了第三个合取项，而语义没有拓宽、是收窄**：
+                // 「没设」这句话只有在**环境读得到**的时候才说得出口。环境这一刻取不到时
+                // （exec 窗口 / 僵尸进程）从前这里会斩钉截铁地报 `bare:true` ——
+                // 那不是「裸起」，那是「不知道」。⇒ 加 `!r.cfg_env_unreadable`。
+                // ⚠ 布尔仍然只答**账号**这一维，一格都没多装（那正是上一段在防的病）。
+                "bare": r.alive && !r.cfg_env_unreadable && r.config_dir.is_none(),
                 "alive": r.alive,
                 // `K-P5f`：起会话方铸的身份 token（`CCM_LAUNCH_ID`），过了形状核与防冒名两道。
-                // **`null` = 不作数**（没设 / 形状不对 / 与别的活会话撞了 / 进程已死），
-                // 四种原因**刻意不区分** —— 同 `account: null` 那条「不猜」。
+                // **`null` = 不作数**（没设 / 形状不对 / 与别的活会话撞了 / 进程已死 /
+                // **读那一刻环境取不到**），五种原因**刻意不区分** —— 同 `account: null` 那条「不猜」。
+                // ⚠ 第五种是 `K-R21`（09-03）现打出来的，**它一直都在、只是没人写出来**：
+                // 从前它混在「没设」里数不出来。⇒ 这里不是新增了一种行为，是把一句
+                // 「四种」的旧话订正成实话。
                 // ⚠ 老 daemon 不出这个键，下游读成 `None`（additive）。
                 "launchId": json_str(r.launch_id.as_deref()),
             })
@@ -1359,6 +1413,176 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    /// 🔴🔴 **`K-R21`：「环境这一刻取不到」不许被报成「账号 0 + 裸起」。**
+    ///
+    /// # 它守的那句假话长什么样
+    ///
+    /// `proc_env_var` 从前把四件事压成一个 `None`，其中「**这一刻读不出来**」会一路走成
+    /// `configDir: null` ⇒ 在 `by_dir` 里**正好撞上账号 0 那个 `None` 键**
+    /// ⇒ 出参是**斩钉截铁**的 `account:"0"` + `bare:true`。
+    /// 而 `alive` 仍是 `true`（它读 `/proc/<pid>/stat`，与 `environ` **不是同一次读**）
+    /// ⇒ **无声无息**：一条真跑在账号 Z 下的会话，会被报成账号 0 的。
+    ///
+    /// # 三个活体：两个是病，一个是对照
+    ///
+    /// | 活体 | 它让那次读走哪一支 | 该报什么 |
+    /// |---|---|---|
+    /// | 甲 · **僵尸**（子进程已退、故意不回收）| `std::fs::read` 回 **`Err`**（mm 已释放）| `account:null` · `bare:false` |
+    /// | 乙 · **空环境活体**（`env_clear` 起的 `sleep`）| 回 **`Ok(vec![])`**（0 字节）| 同上 |
+    /// | 丙 · **对照**：环境读得到、非空、确实没设那个键 | `Unset` | `account:"0"` · `bare:true` |
+    ///
+    /// 🔴 **丙这一格非有不可**：没有它，「三条全是 `null`」也会绿 ——
+    /// 而那正是本条最容易退化成的样子（把归属整个摘掉也是这个读数）。
+    /// 🔴 甲乙的 `alive` **都必须是 `true`**：那正是这句假话的杀伤力所在 ——
+    /// 判活与读环境不是同一次读，所以「活着」与「读不出来」可以同时成立。
+    ///
+    /// # ⚠ 乙身上有一格**如实登记的重合**（别把本条读宽）
+    ///
+    /// `env_clear` 起的进程，它的环境**读得到、而且真的是空的** ——
+    /// 也就是说「0 字节」这个信号自己也装着两件事：「这一刻读不出来」与「环境真的是空的」。
+    /// 生产上后者不会发生（真 claude 进程至少有 `PATH`/`HOME`），且两者都落到**保守**的
+    /// 那一侧（报「不知道」而不是报「账号 0」）⇒ `K-R21` **刻意不拆它**，登记在 `§7`。
+    /// **别把本条读成「daemon 分得清这两件事」—— 它分不清。**
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn an_unreadable_environ_is_never_reported_as_the_zero_account() {
+        let root = tmpdir("envhole");
+        let claude = root.join("claude");
+        let sessions = claude.join("sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let accts = root.join("accts");
+        write_manifest(
+            &accts,
+            r#"{"version":1,"accounts":[{"name":"0","mode":"bare"}]}"#,
+        );
+
+        // 甲：僵尸 —— 起一个立刻退出的子进程，**故意不 `wait`**（不回收 ⇒ `/proc/<pid>` 还在）。
+        let mut zombie = std::process::Command::new("sh")
+            .arg("-c")
+            .arg("exit 0")
+            .spawn()
+            .expect("起不来 sh —— 活体夹具起不来就**不许当绿**");
+        let zpid = zombie.id();
+        // 乙：空环境活体（真的在跑，state = S）。
+        let mut empty = std::process::Command::new("sleep")
+            .arg("60")
+            .env_clear()
+            .spawn()
+            .expect("起不来 sleep（空环境活体）");
+        let epid = empty.id();
+        // 丙：对照活体 —— 环境读得到、**非空**、就是没设那个键。
+        let mut plain = std::process::Command::new("sleep")
+            .arg("60")
+            .env_clear()
+            .env("PATH", "/usr/bin:/bin")
+            .spawn()
+            .expect("起不来 sleep（对照活体）");
+        let ppid = plain.id();
+
+        // 等甲真的成了僵尸（`/proc/<pid>/stat` 的 state 字段 = `Z`）。**不睡死等**：
+        // 成不了僵尸就让下面的自检把它打红，而不是让本条零命中地绿。
+        let state_of = |pid: u32| -> Option<char> {
+            let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+            let after = stat.rfind(')')? + 2;
+            stat[after..].chars().next()
+        };
+        for _ in 0..2_000 {
+            if state_of(zpid) == Some('Z') {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+
+        // ── 🔴 反空真自检：三个活体**此刻**真的各在自己那一支上 ──────────────
+        // 没有这一段，夹具悄悄退化（比如僵尸被回收了、或空环境没生效）时本条会
+        // 零命中地绿 —— 那正是 `K-G4 §7 裁六` 记的那一形。
+        let zombie_state = state_of(zpid);
+        let read_a = std::fs::read(format!("/proc/{zpid}/environ"));
+        let read_b = std::fs::read(format!("/proc/{epid}/environ"));
+        let read_c = std::fs::read(format!("/proc/{ppid}/environ"));
+        let a_unreadable = match &read_a {
+            Err(_) => true,
+            Ok(b) => b.is_empty(),
+        };
+        let b_zero = matches!(&read_b, Ok(b) if b.is_empty());
+        let c_ok = matches!(&read_c, Ok(b) if !b.is_empty());
+
+        // 判据本体跑在**三条真活体**上（不是任何复刻）。
+        let write_pidfile = |pid: u32, sid: &str| {
+            let ticks = proc_starttime(pid)
+                .unwrap_or_else(|| panic!("读不到 pid={pid} 的 starttime —— 活体没活着"));
+            fs::write(
+                sessions.join(format!("{pid}.json")),
+                format!(r#"{{"sessionId":"{sid}","cwd":"/w","procStart":"{ticks}"}}"#),
+            )
+            .unwrap();
+        };
+        write_pidfile(zpid, "sid-zombie");
+        write_pidfile(epid, "sid-emptyenv");
+        write_pidfile(ppid, "sid-control");
+        let by = sid_map(&session_accounts(&claude, &accts));
+
+        // 先收拾活体，再断言（断言失败也不留孤儿进程）。
+        let _ = empty.kill();
+        let _ = empty.wait();
+        let _ = plain.kill();
+        let _ = plain.wait();
+        let _ = zombie.wait();
+        let _ = fs::remove_dir_all(&root);
+
+        assert_eq!(
+            zombie_state,
+            Some('Z'),
+            "甲没成僵尸（state={zombie_state:?}）—— 夹具没装上，下面几格量的不是本条要的东西"
+        );
+        assert!(
+            a_unreadable,
+            "甲的 environ 这一刻**读得出内容**（{:?}）—— 它就不在「取不到」那一支上了",
+            read_a.as_ref().map(|b| b.len())
+        );
+        assert!(
+            b_zero,
+            "乙的 environ 不是 0 字节（{:?}）—— `env_clear` 没生效，支四那一格是空转",
+            read_b.as_ref().map(|b| b.len())
+        );
+        assert!(
+            c_ok,
+            "丙的 environ 读不到或是空的（{:?}）—— 对照就不成其为对照了",
+            read_c.as_ref().map(|b| b.len())
+        );
+
+        for sid in ["sid-zombie", "sid-emptyenv"] {
+            assert_eq!(
+                by[sid]["alive"], true,
+                "{sid} 没判活 —— 而「活着」与「环境读不出来」同时成立正是这句假话的杀伤力所在"
+            );
+            assert_eq!(
+                by[sid]["account"],
+                serde_json::Value::Null,
+                "\n🔴🔴 {sid}：环境这一刻**取不到**，而出参斩钉截铁地说它属于账号 0。\n\
+                 那不是「裸起」，那是「不知道」——`by_dir` 里账号 0 的键正好也是 `None`，\n\
+                 于是「读不出来」与「确实没设」撞在同一格上。\n\
+                 ⇒ 一条真跑在账号 Z 下的会话会被报成账号 0 的，而 `alive` 仍是 `true`、无声无息。"
+            );
+            assert_eq!(
+                by[sid]["bare"],
+                false,
+                "\n🔴 {sid}：`bare:true` 的含义是「进程活着、**读到了**、就是没设那个变量」。\n\
+                 这一刻根本没读到 ⇒ 它说不出这句话。"
+            );
+            assert_eq!(by[sid]["configDir"], serde_json::Value::Null);
+        }
+        // 对照：读得到、非空、确实没设 ⇒ 归属**照旧**。掏掉归属那一格这里会红。
+        assert_eq!(by["sid-control"]["alive"], true);
+        assert_eq!(
+            by["sid-control"]["account"], "0",
+            "\n🔴 对照红了：环境读得到、非空、确实没设 `CLAUDE_CONFIG_DIR` —— 这就是**真裸起**，\n\
+             它必须仍然归到账号 0。上面两格的 `null` 若与这一格同值，本条就退化成\n\
+             「把归属整个摘掉也绿」。"
+        );
+        assert_eq!(by["sid-control"]["bare"], true);
+    }
+
     /// 反向：manifest 里 **没有** 账号 0 时，裸起会话仍旧行为（account: null）。
     /// 钉住「归属来自 manifest」，而不是在 Rust 里硬编码了个 "0"。
     #[cfg(target_os = "linux")]
@@ -1718,7 +1942,17 @@ mod tests {
         );
     }
 
-    /// ★★ **读环境这件事的射程不许悄悄变大**〔本文件头注那条「两个写死的键」的判据〕。
+    /// ★★ **本文件读环境这件事的射程不许悄悄变大**〔本文件头注那条「两个写死的键」的判据〕。
+    ///
+    /// 🔴 **主语就是「本文件」，不是「daemon 全体」**〔`K-R21` 09-03 收窄的措辞〕：
+    /// 本条的分母是 `include_str!("accounts_query.rs")` 的生产段 —— **一个文件**，
+    /// 与测试名里那个 `this_module` 逐字对齐。
+    /// ⚠ daemon 里**还有第三处**在读 `/proc/<pid>/environ`：`control/identity_tag.rs`
+    /// 读 `TMUX_PANE`（09-03 现打，生产段共 3 个调用方）。它**不在本条视野里**，
+    /// 而这句话原来读起来像全仓 —— 那正是本仓登记过的「量具的作用域对不上事实」那一形。
+    /// ⇒ `K-R21` PM 裁定：**不为此装第二把尺子**（那个人群今天产出过 0 条假话，
+    /// 为它付一把新尺子的固定成本不划算 —— 同 `K-R19` 裁「闸 G 不装」的口径），
+    /// **改的是这句话的主语**。别把这一格读成「全 daemon 只读两个键」。
     ///
     /// 守的性质：`/proc/<pid>/environ` 只抠**两个常量键**，键名**不许成为一维参数**。
     /// 多一处 `proc_env_var(pid, …)` ⇒ 红，来这里回答「新那个键是什么、为什么它不
@@ -1872,6 +2106,8 @@ mod tests {
             config_dir: None,
             account: None,
             alive: true,
+            // 这几条纯函数用例喂的是**已经读完之后**的 rows ⇒ 那一次读是成功的。
+            cfg_env_unreadable: false,
             launch_id: launch.map(str::to_string),
         }
     }

@@ -71,8 +71,69 @@ pub(crate) fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
         .ok()
 }
 
-/// 从 `/proc/<pid>/environ` 抠**某一个**环境变量的值。空值按未设算（回 `None`）。
-/// 读不到（进程已消失 / 非同 uid）→ `None`。形状照同模块的 [`proc_cmdline`]。
+/// 读一次 `/proc/<pid>/environ` 抠某个键的**三态结果**〔`K-R21`，2026-09-03〕。
+///
+/// # 它为什么存在：那个 `Option` 装的不是一件事，是四件
+///
+/// [`proc_env_var`] 从前回 `Option<String>`，而那个 `None` 是**四条不同的事实**的共同出口：
+///
+/// | 支 | 何处 | 事实 | 09-03 现打：实测发不发生 |
+/// |---|---|---|---|
+/// | 一 | `std::fs::read(…)` 回 `Err` | 环境**读不到**（进程没了 / 权限 / 竞态） | **400 次 `Err = 0`** —— 几乎不发生 |
+/// | 四 | `std::fs::read(…)` 回 `Ok(vec![])` | **读得到，但回 0 字节** | **`397 / 400`** —— 真正在咬人的就是它 |
+/// | 二 | 键在，值是空串 | 显式设成了空 | — |
+/// | 三 | 循环走完没命中 | **压根没这个键** | — |
+///
+/// **支四与支三从前走同一条出口、不可区分** —— 而它俩说的是相反的两件事：
+/// 一个是「这一刻我读不出来」，一个是「我读到了，它确实没设」。
+/// 支四的两个真实来源：**exec 窗口**（60–140 µs，进程刚 `execve`、mm 还没装好）
+/// 与**僵尸进程**（`/proc/<pid>/stat` 还在 ⇒ 判活仍是 `true`，而 mm 已释放 ⇒ environ 读回 0 字节）。
+///
+/// # 🔴 它**只**拆出一支，另两支**刻意仍然合并**（`K-R21` PM 裁定选「乙」不选「甲」）
+///
+/// - `Unreadable` = 「**环境这一刻取不到**」= 支一 ∪ 支四；
+/// - `Unset` = 「读得到、但这个键不作数」= 支二 ∪ 支三，**仍然合并**。
+///
+/// 合并那两支的依据是 09-03 逐个调用方现打的等价性：三个调用方的下游谓词
+/// （`launch_id_is_safe` / `pane_is_safe` / `is_safe_config_dir`）**都对空串恒 `false`**
+/// ⇒ 「键不在」与「值是空串」在今天的每一个调用方那里都落到同一格。
+/// ⚠ 这条等价性**是量出来的、不是永真的**：哪天有调用方开始把空串当有意义的值，
+/// 这两支就得再拆一次。
+///
+/// ⚠ **「甲」（每一支各给一格、调用方逐个决定）没有作废** —— 它是这一族的终局形状，
+/// `K-R21` 把它登记成后续清理，不在那一拍射程里。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum EnvRead {
+    /// 读到了这个键，且值非空。
+    Value(String),
+    /// 环境**读得到**，而这个键不作数：没有这个键 / 它的值是空串（两支合并，见类型头注）。
+    Unset,
+    /// **环境这一刻取不到**：读失败，或读回 0 字节。
+    ///
+    /// 🔴 它**不是**「没设」—— 把它当成「没设」正是 `K-R21` 治的那句假话
+    /// （`observe/accounts_query.rs` 会据此把一条真跑在账号 Z 下的会话报成账号 0 的）。
+    Unreadable,
+}
+
+impl EnvRead {
+    /// 把「取不到」与「没设」合回一个 `None` —— **今天不需要区分**的调用方用这个。
+    ///
+    /// ⚠ 用它就等于声明「这两件事对我等价」。`K-R21` 逐个核过：
+    /// `control/identity_tag.rs` 与 `accounts_query.rs` 的 `CCM_LAUNCH_ID` 那一处
+    /// 今天都是 **fail-closed**（两条路都得同一个保守答案）⇒ 对它们确实等价。
+    /// 而 `accounts_query.rs` 的 `CLAUDE_CONFIG_DIR` 那一处**不等价**（它 fail-open），
+    /// 所以那一处**不用这个方法**，它自己 `match` 三支。
+    pub(crate) fn value(self) -> Option<String> {
+        match self {
+            EnvRead::Value(v) => Some(v),
+            EnvRead::Unset | EnvRead::Unreadable => None,
+        }
+    }
+}
+
+/// 从 `/proc/<pid>/environ` 抠**某一个**环境变量的值，三态返回（见 [`EnvRead`]）。
+/// 空值按未设算（回 `Unset`）。**这一刻读不出来**（读失败 / 读回 0 字节）回 `Unreadable`。
+/// 形状照同模块的 [`proc_cmdline`]。
 ///
 /// U2 从 `accounts_query.rs` 搬来（Phase D 审计：它带着两个 `target_os` cfg 留在 observe 侧文件里，
 /// U3 一划层就会当场违反「`platform/` 是唯一允许平台 cfg 的层」）。
@@ -81,10 +142,39 @@ pub(crate) fn parse_starttime_from_stat(stat: &str) -> Option<u64> {
 /// `CLAUDE_CONFIG_DIR` 写死在这一层。`platform/` 是"唯一允许平台原语"的层，
 /// 它不该认识任何一个 agent 的环境变量叫什么 —— 那是 `agents/<名>/` 的事。
 /// 这一处是本件让 `platform/` 整层变干净、从而能进 `S1` 的 `CORE_FILES` 的**唯一**改动。
-pub(crate) fn proc_env_var(pid: u32, name: &str) -> Option<String> {
+///
+/// ⚠⚠ **调用形状（`proc_env_var(pid, <键>)` 这一串字面）是两把尺子的量点**，别改：
+/// `observe/accounts_query.rs::the_only_env_keys_this_module_reads_are_the_two_named_constants`
+/// 与**跨 crate** 的 `src-tauri/src/doc_claim_registry.rs::env_keys_actually_read`
+/// 都按这串字面数「daemon 今天真读几个键」，后者再拿那个数去与盘上五份文档的计数词对拍。
+/// `K-R21` 只换返回类型、**一个字面都没动**，正是为了不惊动它们。
+///
+/// 🔴 **`warn!` 在这里而不在调用方**：这是那次读的**唯一发生地**，
+/// 只有这里知道刚才走的是哪一支（`K-R21` PM 裁定 ㈢：「今天先加 `warn!` 而不拆状态，
+/// 等于打印一个自己也分不清的值」⇒ 拆状态与留痕必须同拍）。
+pub(crate) fn proc_env_var(pid: u32, name: &str) -> EnvRead {
     #[cfg(target_os = "linux")]
     {
-        let bytes = std::fs::read(format!("/proc/{pid}/environ")).ok()?;
+        let bytes = match std::fs::read(format!("/proc/{pid}/environ")) {
+            Ok(b) => b,
+            Err(e) => {
+                tracing::warn!(
+                    "读 /proc/{pid}/environ 失败（要取 {name}）：{e} \
+                     —— 环境这一刻**取不到**，不是「这个键没设」"
+                );
+                return EnvRead::Unreadable;
+            }
+        };
+        // 🔴 支四：`Ok(vec![])`。从前它会走完下面那个循环、落到函数尾，
+        // 与「压根没这个键」用同一条出口 —— 而它俩说的是相反的两件事。
+        if bytes.is_empty() {
+            tracing::warn!(
+                "/proc/{pid}/environ 读回 0 字节（要取 {name}）\
+                 —— 环境这一刻**取不到**，不是「这个键没设」\
+                 （exec 窗口，或进程已成僵尸：stat 还在 ⇒ 判活仍为真，而 mm 已释放）"
+            );
+            return EnvRead::Unreadable;
+        }
         for entry in bytes.split(|b| *b == 0) {
             if entry.is_empty() {
                 continue;
@@ -92,17 +182,24 @@ pub(crate) fn proc_env_var(pid: u32, name: &str) -> Option<String> {
             let s = String::from_utf8_lossy(entry);
             if let Some(v) = s.strip_prefix(&format!("{name}=")) {
                 if v.is_empty() {
-                    return None;
+                    return EnvRead::Unset;
                 }
-                return Some(v.to_string());
+                return EnvRead::Value(v.to_string());
             }
         }
-        None
+        EnvRead::Unset
     }
     #[cfg(not(target_os = "linux"))]
     {
+        // 非目标平台没有 `/proc` ⇒ 诚实答「这一刻取不到」，**不是**「读到了、没设」。
+        // ⚠ 顺带如实登记一格：本文件这个块从前的值是字面 `None`，
+        // 而 `platform/fallback_guard::the_platform_blocks_are_still_a_mixed_population`
+        // 的分类器只认字面 `false` / `None` / `unimplemented!(` 当「诚实空壳」
+        // ⇒ 换成 `EnvRead::Unreadable` 之后它会把这个块数进「真实现」那一类。
+        // 两条断言（地板 4 · `real > 0`）都还过，但那张表的 stub/real 读数从此偏了一格。
+        // 那个文件不在 `K-R21` 的写区，已上报（`§6`）。
         let _ = (pid, name);
-        None
+        EnvRead::Unreadable
     }
 }
 
