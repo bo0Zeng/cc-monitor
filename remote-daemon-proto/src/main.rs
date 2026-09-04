@@ -245,16 +245,22 @@ fn unavailable_from(tmux: Option<bool>) -> Vec<wire::Unavailable> {
 /// 三处都走 `Command::new("tmux")`，unix 上它是 `execvp` ⇒ 逐字就是 `PATH` 查找。
 /// 事前那句话与事后那句话用**同一个判准**，两者才不会各说各话。
 ///
-/// # `None`（判不出来）的两个来源 —— 都不是凑数的
+/// # `None`（判不出来）今天只剩**一个**来源
 ///
 /// ① `PATH` 没设、或切不出任何一个非空目录 ⇒ **无处可查**，「没找到」这句话说不出口。
-/// ② 🔴 **非 unix** ⇒ 这个判准在那儿**不成立**：Windows 的 `CreateProcess` 还会看进程
-///    自身目录与当前目录，而且真装了也叫 `tmux.exe`（本扫描找的是 `tmux`）⇒ 在 Windows 上
-///    它**几乎必然报「没有」，而那有可能是错的**，错的方向正好是最坏那一侧
-///    （把一个能用的功能灰掉）。本机是 Linux，**验不了那一格 ⇒ 不猜**。
-///    ⚠ 后果要说清楚：**本字段今天在 Windows 上恒为空** —— 而 Windows 正是这一件的
-///    动机所在。解锁条件是一次**真 Windows 读数**（`K-P4` 的 `KP4Y3` 那一格），
-///    不是在这里多写一个 `#[cfg]` 分支。
+///
+/// # 🔴 首行那个 `cfg!(unix)` 今天只说一件事（`K-P4` 下一拍拆开的就是它）
+///
+/// 上一版它**同时**说了两句话：「**我这个探针在非 unix 上不工作**」（**真的** ——
+/// Windows 的 `CreateProcess` 还会看进程自身目录、当前目录、`System32`，并按 `PATHEXT`
+/// 补后缀，真装了的那个叫 `tmux.exe`，而本扫描找的是无后缀的 `tmux`）
+/// 与「**所以答案未知**」（**假的**）。后一句让这张表**在 Windows 上恒空**，
+/// 而 Windows 正是这一件的动机平台 —— 原始问题在那儿一格都没被治。
+///
+/// 现在**平台那一维搬去了 [`TmuxPlatform`]**：非 unix 上压根走不到这个函数
+/// （`tmux_present` 在 windows 那一档调的是 [`tmux_exe_in`]）。
+/// ⇒ 这一行留着，只表达**它自己那一句**：「扫 `PATH` 找无后缀 `tmux`」这个判准
+/// 只在 unix 上与 `execvp` 等价，别处不等价，所以它在别处**不开口**。
 #[allow(dead_code)] // 同上。
 fn tmux_in(path: Option<&std::ffi::OsStr>) -> Option<bool> {
     if !cfg!(unix) {
@@ -272,6 +278,109 @@ fn tmux_in(path: Option<&std::ffi::OsStr>) -> Option<bool> {
     )
 }
 
+/// `K-P4`（下一拍）：**平台**这一维 —— 与「探针」那一维分开的第二个值。
+///
+/// # 它治的是「一个值装了两件事」
+///
+/// 上一拍 `tmux_in` 的首行把「**探针在这个平台上不工作**」（真）与「**答案未知**」（假）
+/// 压成了同一个 `None`。于是 `unavailable_from(None)` 不列任何命令 ⇒
+/// **这张表在 Windows 上恒空** ⇒「没有 tmux 却宣称我认 `kill`/`launch`」这个原始问题，
+/// 在**动机平台**上一格都没治。⇒ 本枚举把那两件事拆成两个值。
+///
+/// # 三档，🔴 不许再合并
+///
+/// ⚠ 拆开的是**平台**这一维，**不是**三态处置那条规则 —— 那条（「不知道」不许压成
+/// 「做不到」）在 [`unavailable_from`] 的头注里，本拍一个字没动，也不该动：
+/// 它论证过「不知道」压成「做不到」会让**能用的功能从界面上无声消失**。
+/// 上一拍的病不在那条规则，在**把 Windows 归进了「不知道」这一档**。
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[allow(dead_code)] // 同 `unavailable_here`：生产今天不接线。
+enum TmuxPlatform {
+    /// **unix** —— 平台这一维**没有结论**，整件事交给探针（[`tmux_in`] 扫 `PATH`）。
+    /// 探针的三档原样保留：找到 = `Some(true)` · 没找到 = `Some(false)` ·
+    /// `PATH` 无处可查 = `None`。
+    AskThePath,
+    /// **windows** —— 那儿**没有原生 tmux**（它要 `fork` / pty / unix domain socket）
+    /// ⇒ 默认答案是**确证的「没有」**，这一句在**编译期**就成立，不需要探针去证。
+    ///
+    /// 探针在这一档里只有**一个方向**的作用：把答案**抬成「有」**（有人把 MSYS2 /
+    /// Cygwin 的 `tmux.exe` 放上了 `PATH` —— 那台机器上 `Command::new("tmux")` 真的能起来）；
+    /// 它**永远不会**把答案压回「不知道」。
+    ///
+    /// ⇒ 漏看的方向也是安全的：`tmux_exe_in` 看不见的地方（进程自身目录 / 当前目录 /
+    /// `System32`），我们说「没有」，而同一台机器真调用时 `CreateProcess` **也搜 `PATH`**、
+    /// 一样失败、一样回 `no_tmux` ⇒ **事前那句话与事后那句话仍然是同一句**。
+    AbsentUnlessExeOnPath,
+    /// **既不是 unix 也不是 windows** —— 探针不适用，平台这一维**也没有结论**
+    /// ⇒ 老实说「不知道」，按三态处置那条不列进表。
+    /// 🔴 **这一档不许再拿来装 Windows**：那正是上一拍的病。
+    NoOpinion,
+}
+
+/// `K-P4`：Windows 形状的探针 —— `PATH` 上有没有一个叫 `tmux.exe` 的普通文件。
+///
+/// # 为什么不复用 [`tmux_in`]
+///
+/// 那个找的是**无后缀**的 `tmux`，还要执行位；而 Windows 上真装了的叫 `tmux.exe`，
+/// 且那儿没有执行位这个概念（`plugin::discover::is_executable` 在非 unix 上恒真）。
+/// 两条都不是那边的形状 ⇒ 各写各的判准，别让一个函数装两个平台的语义。
+///
+/// # 它证不到什么（如实写）
+///
+/// `CreateProcess` 的查找面比 `PATH` 大（进程自身目录 · 当前目录 · `System32` · `Windows`），
+/// 还会按 `PATHEXT` 补后缀 ⇒ **它可能漏看**。漏看之后答案是「没有」，
+/// 而那正是 [`TmuxPlatform::AbsentUnlessExeOnPath`] 头注里论证过的安全方向。
+#[allow(dead_code)] // 同上。
+fn tmux_exe_in(path: Option<&std::ffi::OsStr>) -> bool {
+    let Some(path) = path else {
+        return false;
+    };
+    std::env::split_paths(path)
+        .filter(|d| !d.as_os_str().is_empty())
+        .any(|d| d.join("tmux.exe").is_file())
+}
+
+/// `K-P4`：两维合起来 —— **平台**（编译期定死）× **探针**（去世界上看）。
+///
+/// 三个入参组合的答案由 [`TmuxPlatform`] 各档头注给；这个函数本身**不碰 `cfg!`**，
+/// 平台是**入参**。⇒ 本机是 Linux 也能把「Windows 那台机器」当成一个入参跑出来，
+/// 而那正是 `the_windows_answer_is_confirmed_absent_not_unknown` 拿到读数的方式。
+#[allow(dead_code)] // 同上。
+fn tmux_present(platform: TmuxPlatform, path: Option<&std::ffi::OsStr>) -> Option<bool> {
+    match platform {
+        TmuxPlatform::AskThePath => tmux_in(path),
+        TmuxPlatform::AbsentUnlessExeOnPath => Some(tmux_exe_in(path)),
+        TmuxPlatform::NoOpinion => None,
+    }
+}
+
+/// 这份二进制编译到哪个平台 —— **全文件唯一**一处把平台翻成值的地方。
+///
+/// 「唯一一处」与「windows 那一支给的是哪一档」由
+/// `the_windows_arm_is_wired_into_the_source` 钉住（它读的是**磁盘上的源码文本**）。
+#[allow(dead_code)] // 同上。
+const TMUX_PLATFORM: TmuxPlatform = if cfg!(windows) {
+    TmuxPlatform::AbsentUnlessExeOnPath
+} else if cfg!(unix) {
+    TmuxPlatform::AskThePath
+} else {
+    TmuxPlatform::NoOpinion
+};
+
+/// ★ 一条**只在 Windows 编译时存在**的编译期断言。
+///
+/// 🔴 **它在本仓门禁上给不出任何读数** —— 本机是 Linux，这个 item 在这儿
+/// **编译期就不存在**。它开口的时刻是任何一次 **Windows 编译**
+/// （daemon「必须在 Windows 上编得过」这条纪律见 `plugin/discover.rs::is_executable` 头注）。
+/// 写它的理由：Linux 那侧只有源码文本判据（读的是「那一支写在那儿」），
+/// 而这一条读的是「**那一支真的被编进去了**」—— 两者证的不是同一件事。
+#[cfg(windows)]
+const _: () = assert!(
+    matches!(TMUX_PLATFORM, TmuxPlatform::AbsentUnlessExeOnPath),
+    "Windows 上平台这一维必须是「确证没有」而不是「不知道」——\
+     改回 NoOpinion 会让握手帧第四条面在 Windows 上恒空，而 Windows 正是这一件的动机平台。"
+);
+
 /// `K-P4`：生产入口 —— 这一帧**真填的话**该填什么。
 ///
 /// ⚠ 今天生产**不调它**（`build_hello` 硬写 `Vec::new()`）——与 `agents::visible_homes()`
@@ -285,7 +394,10 @@ fn tmux_in(path: Option<&std::ffi::OsStr>) -> Option<bool> {
 /// 而消费侧必须把它当**提示**（`wire.rs` 那个字段头注的口径③）。
 #[allow(dead_code)] // `K-P4`：能填不真填 —— 接线是一次纯发布决策，不是忘了。
 fn unavailable_here() -> Vec<wire::Unavailable> {
-    unavailable_from(tmux_in(std::env::var_os("PATH").as_deref()))
+    unavailable_from(tmux_present(
+        TMUX_PLATFORM,
+        std::env::var_os("PATH").as_deref(),
+    ))
 }
 
 // 本测块紧邻被测的第四条面（就近可读）、不挪文件尾；显式 allow 让 clippy --all-targets 净
@@ -293,7 +405,10 @@ fn unavailable_here() -> Vec<wire::Unavailable> {
 #[allow(clippy::items_after_test_module)]
 #[cfg(test)]
 mod fourth_face_tests {
-    use super::{tmux_in, unavailable_from, unavailable_here, NO_TMUX};
+    use super::{
+        tmux_exe_in, tmux_in, tmux_present, unavailable_from, unavailable_here, TmuxPlatform,
+        NO_TMUX,
+    };
 
     /// ★ `K-P4` 红线之一：**生产路径今天恒空** ⇒ hello 帧的线上字节逐字节不变。
     ///
@@ -415,14 +530,14 @@ mod fourth_face_tests {
         }
         #[cfg(not(unix))]
         {
-            // 🔴 非 unix 上这个判准**不成立**（`tmux_in` 头注第二条）⇒ 它必须诚实地说
-            //    「判不出来」，而不是拿一个几乎必然为假的扫描结果去灰掉按钮。
-            //    ⚠ 后果：**本字段今天在 Windows 上恒为空**，而 Windows 正是这一件的动机。
-            //    解锁要的是一次真 Windows 读数，不是在这里加一个 cfg 分支。
+            // 🔴 这一格断的是**探针**，不是**答案**（下一拍把两者拆开了）：
+            //    「扫 `PATH` 找无后缀 `tmux`」这个判准在非 unix 上不等价于 `execvp`
+            //    ⇒ 这个**函数**必须不开口。而那台机器上的**答案**由 `TmuxPlatform` 给，
+            //    走 `tmux_exe_in`，见 `the_windows_answer_is_confirmed_absent_not_unknown`。
             assert_eq!(
                 tmux_in(Some(with.as_os_str())),
                 None,
-                "非 unix 上必须报「判不出来」——`Command::new(\"tmux\")` 在那儿还会看进程自身\
+                "非 unix 上这个探针必须不开口 ——`Command::new(\"tmux\")` 在那儿还会看进程自身\
                  目录与当前目录，而且真装了也叫 `tmux.exe`，这个扫描对不上它"
             );
         }
@@ -438,6 +553,197 @@ mod fourth_face_tests {
                 u.command
             );
         }
+    }
+
+    /// ★★ `K-P4` 下一拍的正题：**Windows 上那张表不许是空的。**
+    ///
+    /// # 上一拍在这一格上明确没买到，而它恰好是动机平台
+    ///
+    /// 上一版 `tmux_in` 首行 `if !cfg!(unix) { return None; }` ⇒ Windows 上恒「判不出来」
+    /// ⇒ `unavailable_from(None)` 不列 ⇒ **表恒空** ⇒「没有 tmux 却宣称我认 `kill`/`launch`」
+    /// 在 Windows 上一格没治。病灶是**一个值装了两件事**：探针不工作（真）＋答案未知（假）。
+    ///
+    /// # 🔴 这个读数是怎么取的，以及它**证不到什么**（本机没有 Windows）
+    ///
+    /// 走的是**纯函数入参**：`tmux_present` 自己**不碰 `cfg!`**，平台是它的第一个参数。
+    /// ⇒ 下面每一条都是**在这台 Linux 上真跑出来的**，不是「合成样本上大概会这样」。
+    /// **它守得住**：那两维怎么合成答案（包括「Windows 那一档必须给确证的 `Some(false)`」）。
+    /// **它守不住**：Windows 上编出来的二进制**真的选了**那一档 —— 那是 `TMUX_PLATFORM`
+    /// 那一行的事，由 `the_windows_arm_is_wired_into_the_source`（源码文本）与
+    /// `#[cfg(windows)] const _`（只在 Windows 编译时开口）各守一半。
+    /// ⚠ **别把本条读成「Windows 上成立」** —— 本条成立的是「给定平台入参时成立」。
+    #[test]
+    fn the_windows_answer_is_confirmed_absent_not_unknown() {
+        let root = std::env::temp_dir().join(format!("ccm-kp4-win-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let bare = root.join("bare"); // 什么都没有的一格 PATH
+        let msys = root.join("msys"); // 有人把 MSYS2 的 tmux.exe 放上来了
+        std::fs::create_dir_all(&bare).expect("建夹具目录");
+        std::fs::create_dir_all(&msys).expect("建夹具目录");
+        std::fs::write(msys.join("tmux.exe"), b"pretend this is msys2 tmux").expect("写合成 exe");
+
+        // ── ① 正题：没有 tmux.exe 的那台 Windows ⇒ **确证的「没有」**，不是「不知道」──
+        assert_eq!(
+            tmux_present(TmuxPlatform::AbsentUnlessExeOnPath, Some(bare.as_os_str())),
+            Some(false),
+            "Windows 那一档又变回「不知道」了 —— 那正是上一拍的病：\n\
+             tmux 结构上不存在于 Windows，「没有」这句话在编译期就成立，不需要探针去证。"
+        );
+        let names: Vec<String> =
+            unavailable_from(tmux_present(TmuxPlatform::AbsentUnlessExeOnPath, Some(bare.as_os_str())))
+                .iter()
+                .map(|u| u.command.clone())
+                .collect();
+        assert_eq!(
+            names,
+            vec!["kill".to_string(), "launch".to_string()],
+            "🔴 **Windows 上这张表又空了** —— 这一格就是本拍的正题。\n\
+             握手帧第四条面在动机平台上不说话 = 这一拍什么都没买到。\n\
+             ⚠ 本条红未必是错：新加了一条会回 `no_tmux` 的命令，它会自动进表 —— 那就补期望值。\n\
+             实得：{names:?}"
+        );
+
+        // ── ② `PATH` 读不到，Windows 上**仍然**是确证的「没有」──────────────────
+        //    这一档的默认值来自**平台**，不来自探针 ⇒ 探针无话可说不影响它。
+        //    （unix 那一档正相反：没有默认值，探针不开口就只能是 `None`。）
+        assert_eq!(
+            tmux_present(TmuxPlatform::AbsentUnlessExeOnPath, None),
+            Some(false),
+            "Windows 上「PATH 读不到」被读成了「答案未知」—— 又把两件事压回一个值了"
+        );
+
+        // ── ③ 探针只能把它**抬成「有」**，不会把它压回「不知道」────────────────
+        assert_eq!(
+            tmux_present(TmuxPlatform::AbsentUnlessExeOnPath, Some(msys.as_os_str())),
+            Some(true),
+            "`PATH` 上摆着 `tmux.exe` 却仍报「没有」⇒ 会把一个真能用的按钮灰掉\n\
+             （MSYS2 / Cygwin 那台机器上 `Command::new(\"tmux\")` 是真能起来的）"
+        );
+        assert!(
+            unavailable_from(tmux_present(
+                TmuxPlatform::AbsentUnlessExeOnPath,
+                Some(msys.as_os_str())
+            ))
+            .is_empty(),
+            "有 tmux.exe 还报做不到 ⇒ 界面会灰掉一个能用的按钮"
+        );
+
+        // ── ④ 🔴 Linux 那一侧一格都没破：三档原样 ──────────────────────────────
+        assert_eq!(
+            tmux_present(TmuxPlatform::AskThePath, None),
+            None,
+            "unix 上 `PATH` 无处可查仍然必须是「判不出来」—— 这一档不许被 Windows 那一档带跑"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let with = root.join("with");
+            std::fs::create_dir_all(&with).expect("建夹具目录");
+            let fake = with.join("tmux");
+            std::fs::write(&fake, b"#!/bin/sh\nexit 0\n").expect("写合成 tmux");
+            let mut perm = std::fs::metadata(&fake).expect("读夹具权限").permissions();
+            perm.set_mode(0o755);
+            std::fs::set_permissions(&fake, perm).expect("给合成 tmux 上执行位");
+            assert_eq!(
+                tmux_present(TmuxPlatform::AskThePath, Some(with.as_os_str())),
+                Some(true),
+                "unix 那一档必须仍然走探针 —— 摆着一个可执行的 `tmux` 却说没有"
+            );
+            assert_eq!(
+                tmux_present(TmuxPlatform::AskThePath, Some(bare.as_os_str())),
+                Some(false),
+                "unix 上 `tmux` 不在 `PATH` 上仍然必须是**确证没有**（不是「不知道」）"
+            );
+            // ★ 两个平台形状的判准**不许互串**：`tmux.exe` 不是 unix 上的 tmux，
+            //   无后缀 `tmux`（且没有执行位）也不是 Windows 认的那个。
+            assert_eq!(
+                tmux_present(TmuxPlatform::AskThePath, Some(msys.as_os_str())),
+                Some(false),
+                "unix 那一档把 `tmux.exe` 当成 tmux 了 —— 两个平台的判准串了线"
+            );
+            assert!(
+                !tmux_exe_in(Some(with.as_os_str())),
+                "Windows 那个判准把无后缀的 `tmux` 当成 `tmux.exe` 了"
+            );
+        }
+
+        // ── ⑤ 第三档还在：既不是 unix 也不是 windows ⇒ 仍然老实说「不知道」──────
+        assert_eq!(
+            tmux_present(TmuxPlatform::NoOpinion, Some(msys.as_os_str())),
+            None,
+            "「真不知道」这一档被合并掉了 —— 拆的是平台那一维，不是三态处置那条规则"
+        );
+        assert!(
+            unavailable_from(tmux_present(TmuxPlatform::NoOpinion, Some(bare.as_os_str())))
+                .is_empty(),
+            "「不知道」被压成了「做不到」—— 能用的功能会从界面上无声消失"
+        );
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// ★ `K-P4` 下一拍第二条：**windows 那一支真的写在生产源码里，且只写了一处。**
+    ///
+    /// # 为什么单有上面那条不够
+    ///
+    /// 上面那条把平台当**入参**，于是它在 Linux 上跑得出真读数；
+    /// 代价是：**没有任何东西说生产那一行怎么选这个入参**。
+    /// 把 `TMUX_PLATFORM` 的 windows 那一支改回 `NoOpinion`，上面那条**照样全绿** ——
+    /// 表在 Windows 上重新恒空，而没有人会说话。本条钉的就是那一行。
+    ///
+    /// # 🔴 它守不住什么（本机没有 Windows，这一句必须写在这儿）
+    ///
+    /// 它读的是**磁盘上的源码文本**，证的是「那一支写在那儿、而且只有一处」；
+    /// 它**证不了**「Windows 上编出来的二进制真的走了那一支」——
+    /// 那由 `#[cfg(windows)] const _` 那条编译期断言守，而**那一条在本仓门禁上不存在**。
+    #[test]
+    fn the_windows_arm_is_wired_into_the_source() {
+        let prod = crate::guard_support::production_code(include_str!("main.rs"));
+        let decl = "const TMUX_PLATFORM: TmuxPlatform = if cfg!(windows) {";
+        let at = guard_core::pin_line(&prod, decl)
+            .unwrap_or_else(|why| panic!("生产段里钉不住那一行：{why}\n（找的是 `{decl}`）"));
+        let body: Vec<&str> = prod
+            .lines()
+            .skip(at)
+            .take_while(|l| l.trim() != "};")
+            .collect();
+        // 反空真：抽取跑飞了（没收住尾）时下面几条会在整份文件上恒真。
+        assert!(
+            (2..=12).contains(&body.len()),
+            "抽出来 {} 行 —— 那不是一个三档选择器，抽取器跑飞了",
+            body.len()
+        );
+        let body = body.join("\n");
+        let win = body
+            .find("AbsentUnlessExeOnPath")
+            .expect("windows 那一支不见了 —— 表会在 Windows 上重新恒空");
+        let unix = body
+            .find("cfg!(unix)")
+            .expect("unix 那一支不见了 —— Linux 上会不再走探针");
+        assert!(
+            win < unix,
+            "`cfg!(windows)` 那一支给的不是「确证没有」——两支的次序被换过了：\n{body}"
+        );
+        assert!(
+            body.contains("NoOpinion"),
+            "第三档没了 —— 「真不知道」被合并进别的档里了：\n{body}"
+        );
+        // 「只许一处」：全生产段里把平台翻成值的地方**恰好一个**。
+        assert_eq!(
+            prod.matches("cfg!(windows)").count(),
+            1,
+            "生产段里有 {} 处 `cfg!(windows)` —— 平台这一维只许在 `TMUX_PLATFORM` 一处成值，\n\
+             第二处就是第二份真相（本工作区最贵的那一类病）。",
+            prod.matches("cfg!(windows)").count()
+        );
+        // windows 那一档给出的必须是一个**确定的布尔**，不是 `None`。
+        guard_core::pin_line(
+            &prod,
+            "TmuxPlatform::AbsentUnlessExeOnPath => Some(tmux_exe_in(path)),",
+        )
+        .unwrap_or_else(|why| {
+            panic!("windows 那一档不再给确定答案了：{why}\n它一旦回 `None`，表在 Windows 上就又空了。")
+        });
     }
 
     /// ★ `K-P4` 红线之三：**声明用的 code，必须是那条命令自己登记过的 code。**
@@ -478,6 +784,177 @@ mod fourth_face_tests {
                 spec.codes
             );
         }
+    }
+}
+
+// `K-P4`：拉窗构件的**落点判据**（PM 09-04 裁的那一条，见 `K-P4-PM.md §五㈠`）。
+//
+// # 它管的是哪一维 —— 与已有三道护栏**不重叠**
+//
+// 摸底那一拍现打过：Win32 那几个构件在三张针表里**一个都没有**
+//（`readonly_guard` 的 11 条写盘针 · `no_timer_guard` 的 5 条周期唤醒针 + 8 条调用形态）
+// ⇒ 一道拦写盘、一道拦「自己醒来」，**拉窗那一段没有任何后端判据看着它**。
+// 而 `platform/fallback_guard` **只扫 `src/platform/`**，且它自陈「人群比性质小」、
+// 真守住的是那一层里**内联写法**的 ⇒ 它本来就不是「管平台原语」的那把尺子。
+// 🔴 PM 因此裁：**拉窗构件落 `platform/` 之外，并同拍补一条判据管那一维** —— 就是本模块。
+//
+// # 今天它扫到的真实命中是 **0**（这一句必须写在前面）
+//
+// daemon crate 里今天一个 Win32 拉窗构件都没有（`Cargo.toml` 里 `windows`/`winapi` 命中 0）。
+// ⇒ 上面两条正题断言今天**都在空转**，真正有读数的是**空转自检**那两条合成样本。
+// 本模块是**在搬家之前**先把闸门立起来：等 `control/focus.rs` 那一段真落进来的那天，
+// 它是第一个开口的人。
+#[allow(clippy::items_after_test_module)]
+#[cfg(test)]
+mod window_raise_guard {
+    /// 拉窗那一族构件（Win32）。**只认名字，不认它从哪个 crate 来** ——
+    /// `windows` 与 `winapi` 两条路都盖得住，换 crate 不会让它掉出人群。
+    const WINDOW_RAISE: &[&str] = &[
+        "SetForegroundWindow",
+        "AllowSetForegroundWindow",
+        "AttachThreadInput",
+        "BringWindowToTop",
+        "SwitchToThisWindow",
+        "ShowWindow",
+        "SetWindowPos",
+        "EnumWindows",
+        "GetForegroundWindow",
+        "keybd_event",
+        "WindowsAndMessaging",
+        "winapi::um::winuser",
+    ];
+
+    /// 「带 `#[cfg(windows)]`」只认这两种写法。
+    ///
+    /// ⚠ 刻意**不认** `#[cfg(all(windows, …))]` 之类：那种写法要么是加了第二个条件
+    ///（于是这段代码在某些 Windows 上会不存在，那是另一件事、要另外说清楚），
+    /// 要么是把平台条件藏进了一个更长的表达式里。**要放宽就来改这里，别在别处绕。**
+    const WINDOWS_CFGS: &[&str] = &["#[cfg(windows)]", "#[cfg(target_os = \"windows\")]"];
+
+    /// 一份**生产段**文本里，拉窗构件的落法合不合规。`Ok(n)` = 命中 n 处且每处都在门后。
+    ///
+    /// # 判法：往上找**最近的一条** `#[cfg(`
+    ///
+    /// 它必须是 `WINDOWS_CFGS` 里那两种之一。
+    /// **守得住**：完全不带 cfg 就写了一段拉窗 · 带的是别的平台 cfg（`unix`/`linux`）·
+    /// 带的是更长的 cfg 表达式。
+    /// **守不住**（如实写）：属性归属是**文本近似**，不是语法树 ——
+    /// 一个 `#[cfg(windows)]` 挂在 A 上、拉窗写在它下面**另一个**没有 cfg 的 item 里，
+    /// 本条会误判为合规。要堵这一格得解析语法树，本拍不假装能做。
+    fn raise_sites_are_gated(prod: &str) -> Result<usize, String> {
+        // 🔴 注释里提到名字**不算落点** —— 一段注释调不动 Win32，而且这一族名字
+        //    正是要在注释里被讨论的。剥法用共享那份（块注释也剥、行号不变，`K-R9`），
+        //    别在这里内联第二份。
+        let text = guard_core::strip_comment_lines(prod);
+        let lines: Vec<&str> = text.lines().collect();
+        let mut sites = 0usize;
+        for (i, line) in lines.iter().enumerate() {
+            let Some(hit) = WINDOW_RAISE.iter().find(|n| line.contains(**n)) else {
+                continue;
+            };
+            sites += 1;
+            let gate = lines[..i]
+                .iter()
+                .rev()
+                .find(|l| l.trim_start().starts_with("#[cfg("));
+            match gate {
+                Some(g) if WINDOWS_CFGS.contains(&g.trim()) => {}
+                Some(g) => {
+                    return Err(format!(
+                        "第 {} 行的 `{hit}` 落在 `{}` 之下，而不是 `#[cfg(windows)]` —— \
+                         拉窗构件只许在 Windows 那一支里存在。",
+                        i + 1,
+                        g.trim()
+                    ))
+                }
+                None => {
+                    return Err(format!(
+                        "第 {} 行的 `{hit}` **一条 `#[cfg]` 门都没有** —— 它会被编进每个平台，\
+                         而拉窗这件事只在 Windows 上成立。",
+                        i + 1
+                    ))
+                }
+            }
+        }
+        Ok(sites)
+    }
+
+    /// ★ 正题：**拉窗构件只许出现在一处，且只许在 `#[cfg(windows)]` 之下。**
+    ///
+    /// # 「一处」为什么按**文件**算
+    ///
+    /// 这一件真正怕的是「Windows 那条路在后端里长出第二份」：一份在 `control/focus.rs`、
+    /// 一份在别人顺手写的地方，两份各自演化 ⇒ 就是本工作区最贵的那类病（第二份真相）。
+    /// 文件是今天唯一能机检的「一处」；更细的粒度要语法树。
+    #[test]
+    fn window_raising_lives_in_one_file_and_only_behind_cfg_windows() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        // ⚠ 走 `scan_tree!` 而不是自己 `read_dir`：`scanning_guard_registry` 那条棘轮要求如此，
+        //   而它按构造摘掉**调用者自己那份**（`main.rs`）⇒ 下面必须把 `main.rs` 补回来，
+        //   否则「拉窗写进 main.rs」这一格逃得掉，而逃掉之后看起来和守住一模一样。
+        let mut files: Vec<(String, String)> = guard_core::scan_tree!(&root, &["rs"])
+            .into_iter()
+            .map(|(p, src)| {
+                let rel = p
+                    .strip_prefix(&root)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                (rel, crate::guard_support::production_code(&src))
+            })
+            .collect();
+        assert!(
+            !files.iter().any(|(rel, _)| rel == "main.rs"),
+            "`scan_tree!` 的自摘那一刀没落下 —— 下面补回来的那份会变成第二份"
+        );
+        files.push((
+            "main.rs".to_string(),
+            crate::guard_support::production_code(include_str!("main.rs")),
+        ));
+        // 反空真：扫描面塌了的话，下面两条会在空集上恒绿。地板同 `guard_support` 那条（37）。
+        assert!(
+            files.len() >= 37,
+            "只扫到 {} 个 `.rs`（地板 37）—— 扫描面塌了，本护栏正在空转",
+            files.len()
+        );
+
+        let mut hosts: Vec<(String, usize)> = Vec::new();
+        for (rel, prod) in &files {
+            match raise_sites_are_gated(prod) {
+                Ok(0) => {}
+                Ok(n) => hosts.push((rel.clone(), n)),
+                Err(why) => panic!("{rel}：{why}"),
+            }
+        }
+        assert!(
+            hosts.len() <= 1,
+            "拉窗构件散在 {} 个文件里（只许一处）：{hosts:?}\n\
+             ⇒ 第二处就是第二份真相；要挪就整段挪，别两边各留一半。",
+            hosts.len()
+        );
+
+        // ── 空转自检：今天真实命中是 0 ⇒ 上面两条都在空转，判定本体的读数只能从这儿来 ──
+        assert_eq!(
+            raise_sites_are_gated("#[cfg(windows)]\nfn f() { unsafe { SetForegroundWindow(h) } }")
+                .expect("带门的合规样本被判违规了"),
+            1,
+            "带 `#[cfg(windows)]` 的拉窗必须放行，否则这条判据会逼人把它藏起来"
+        );
+        assert!(
+            raise_sites_are_gated("fn f() { unsafe { SetForegroundWindow(h) } }").is_err(),
+            "🔴 不带任何 cfg 的拉窗**没被逮住** —— 本护栏此刻是个摆设"
+        );
+        assert!(
+            raise_sites_are_gated("#[cfg(unix)]\nfn f() { unsafe { AttachThreadInput(a, b) } }")
+                .is_err(),
+            "带着**别的平台** cfg 的拉窗没被逮住 —— 那比不带 cfg 更坏（它看起来是合规的）"
+        );
+        assert_eq!(
+            raise_sites_are_gated("fn f() { /* 这里提一句 SetForegroundWindow */ }")
+                .expect("注释里提一句不该算违规"),
+            0,
+            "注释里提到名字被算成了落点 —— 那会让人不敢在注释里讨论它"
+        );
     }
 }
 
