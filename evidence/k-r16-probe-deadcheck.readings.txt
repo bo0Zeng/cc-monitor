@@ -1,6 +1,6 @@
 === 绿臂：探针盯真目录，注入一次写 ⇒ 该报 1 ===
 [green] seen=1 write=1 (期望 1)
-    2026-09-04 13:47:10 gap=2.606s idle -> busy changed=['status', 'updatedAt', 'statusUpdatedAt']
+    2026-09-04 14:07:53 gap=2.61s idle -> busy changed=['status', 'updatedAt', 'statusUpdatedAt']
 [green] PASS
 
 === 红臂：同一台探针指到空诱饵目录，写仍发生在真目录 ⇒ 该报 0，判据该翻红 ===
