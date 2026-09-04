@@ -1,6 +1,6 @@
 {
   "root": "/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r16b",
-  "files_scanned": 456,
+  "files_scanned": 499,
   "hops": [
     {
       "hop": "L2",
@@ -357,7 +357,7 @@
       "desc": "tmuxIdle / tmux-idle（灰灯，与红绿黄正交）",
       "scope": "全仓",
       "prod_hits": 26,
-      "test_hits": 20,
+      "test_hits": 26,
       "prod_sample": [
         "src/e2e-probe.ts:115",
         "src/tabs.ts:172",

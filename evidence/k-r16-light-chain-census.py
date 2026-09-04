@@ -83,13 +83,19 @@ HOPS: list[tuple[str, str, str, list[str] | None]] = [
 ]
 
 SRC_DIRS = ["src", "src-tauri/src", "remote-daemon-proto/src", "shared", "e2e"]
-EXT = {".rs", ".ts", ".js", ".css", ".html", ".py", ""}
+# ⚠ 第一版这里漏了 `.sh` / `.mts` / `.mjs`，而**门禁跑的那四套 e2e 全是 `.sh`**
+#   （`e2e/ccm-print-parity.sh` · `ccm-rbind-title.sh` · `ccm-cli.test.sh` · `ccm-contract-parity.sh`）
+#   ⇒ 那一版的「e2e 零覆盖」是靠另跑一遍裸 `grep -r e2e/` 得出的，**不是本尺子量的**。
+#   尺子要自洽：把它们收进来，让「e2e 零命中」这句话由同一把尺子负责。
+EXT = {".rs", ".ts", ".js", ".css", ".html", ".py", ".sh", ".mts", ".mjs", ""}
 SKIP_DIRS = {"node_modules", "target", ".git", "dist", "generated"}
 
 
 def is_test_file_ts(p: pathlib.Path) -> bool:
     n = p.name
-    return ".vitest." in n or ".spec." in n or ".e2e." in n or "e2e" in p.parts or n.endswith(".test.ts")
+    if "e2e" in p.parts:  # e2e/ 下一律算测试段（含 .sh / .mts）
+        return True
+    return ".vitest." in n or ".spec." in n or ".e2e." in n or n.endswith(".test.ts")
 
 
 def rust_test_ranges(lines: list[str]) -> list[tuple[int, int]]:
@@ -173,7 +179,10 @@ def main() -> int:
             rel = str(p.relative_to(root))
             if scope and not any(s in rel for s in scope):
                 continue
-            ts_test = p.suffix in (".ts", ".js") and is_test_file_ts(p)
+            # 非 .rs 的测试段判定（.rs 走花括号配对的 `tranges`）。
+            # ⚠ 第一版这里写的是 `p.suffix in (".ts", ".js") and …`，
+            #   于是 `e2e/*.sh` 即便被收进来也会被算成**生产段** —— 尺子的两半对不上。
+            ts_test = p.suffix != ".rs" and is_test_file_ts(p)
             for i, line in enumerate(lines, 1):
                 if not rx.search(line):
                     continue
