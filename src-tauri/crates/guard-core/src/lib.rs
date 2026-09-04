@@ -310,6 +310,280 @@ pub fn strip_trailing_comments(src: &str) -> String {
     out.join("\n")
 }
 
+/// 一处 `r"…"` / `r#"…"#` / `b"…"` / `br#"…"#` 的**开头**在不在 `sb[i]`。
+///
+/// 返回 `Some((井号个数, 开头一共几个字节))`；`None` = 这里不是原始/字节串的开头。
+///
+/// ⚠ **`r#type` 那种原始标识符不算**：本函数要求井号之后**紧跟一个引号**，
+/// 而 `r#type` 后面跟的是字母 ⇒ 返回 `None`。少了这一条，任何一个 `r#fn` / `r#match`
+/// 都会被当成一个永不收口的字符串，把它后面**整份文件**变成「字符串里面」。
+///
+/// ⚠ 前一个字符是标识符字符时也不算（`var"` 里那个 `r` 是变量名的一部分，不是前缀）。
+fn raw_string_open(sb: &[u8], i: usize) -> Option<(usize, usize)> {
+    let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+    if i > 0 && ident(sb[i - 1]) {
+        return None;
+    }
+    // `b"…"` 是字节串，没有井号，行为与普通串一致；`br…` 与 `r…` 一样往下走。
+    let mut k = i;
+    if sb.get(k) == Some(&b'b') {
+        k += 1;
+        if sb.get(k) == Some(&b'"') {
+            return Some((0, k + 1 - i));
+        }
+    }
+    if sb.get(k) != Some(&b'r') {
+        return None;
+    }
+    k += 1;
+    let hash_start = k;
+    while sb.get(k) == Some(&b'#') {
+        k += 1;
+    }
+    if sb.get(k) != Some(&b'"') {
+        return None;
+    }
+    Some((k - hash_start, k + 1 - i))
+}
+
+/// **把块注释 `/* … */` 的内容抹成空格**（等长替换，行数与字节数都不变）。
+///
+/// 剥不动时返回 `None` —— 见下面「兜底」那一节。这是 [`strip_block_comments`] 与
+/// [`block_comment_model_holds`] 共用的那一份实现（E3：一个事实一个权威源）。
+///
+/// # 它治的洞〔`K-R9`，09-04〕
+///
+/// [`production_code`] 此前只剥**整行 `//`**（`starts_with("//")`）与**行尾 `//`**
+/// （`K-R3` 09-01 补的），**块注释一个字都不剥**。于是把一段真代码包进
+/// **多行块注释**、再换一个桩值，所有源码形态判据照样绿：
+///
+/// ```text
+/// /*
+/// if g.is_some() {
+///     return StartOutcome::AlreadyRunning;
+/// }
+/// */
+/// let _shim = g.is_some();
+/// ```
+///
+/// 09-04 在本仓 `local_daemon.rs` 的幂等门上现打过这一刀：monitor 侧
+/// **1275 条测试全绿、0 失败**，而生产上「点两下起出第二个 daemon」那个阻塞级缺陷回来了 ——
+/// 连**专门为它写的**那条判据（`starting_twice_does_not_spawn_a_second_local_daemon`）
+/// 都在数块注释里的那份文本。
+///
+/// ⚠⚠ **而多行块注释正是编辑器「注释掉这几行」的默认产物** —— 这不是一个刁钻的绕法。
+///
+/// # 判据（逐条对着「剥狠了会误伤」那三种情形写）
+///
+/// 单趟从左往右扫，状态 = 码 / 普通串 / 原始串 / 行注释 / 块注释（带深度）：
+///
+/// 1. **字符串字面量里的 `/*` 不是注释**。`"a/*b"` 里那两个字节在**串**状态下读到
+///    ⇒ 不开块。`'"'` 这种字符字面量先过 [`mask_char_literals`]（与
+///    [`strip_trailing_comments`] 同一把），否则一个 `'"'` 会把此后的串状态整段带偏 ——
+///    实测：`shared_crate_registry.rs::shared_crate_names` 里的 `.trim_end_matches('"')`
+///    正是这一形，不掩码的话该文件扫到末尾深度会停在 **5**。
+/// 2. **嵌套块注释**（Rust 允许）：`/* a /* b */ c */` 靠 `depth` 加减吃干净，
+///    **不是**遇到第一个 `*/` 就收口。只认第一个 `*/` 会把 ` c */` 当代码吐回来。
+/// 3. **`/**` 与 `/*!` 文档注释**：它们就是「`/*` + 内容」，同一条规则吃掉。
+///    剥它们是**对的**且与既有行为一致 —— `///` / `//!` 早就被剥了，
+///    块形的文档注释同样是散文，留着它就是留着喂饱判据的那口食。
+///    （`/**/` 与 `/***/` 这两个退化形也按同一条规则收口，见测试。）
+///
+/// 另外两条是「别把不是注释的东西当注释」：
+///
+/// 4. **行注释里的 `/*` 不开块**：`// 见 /* 这里`。扫到 `//` 就**跳到行尾**，
+///    那之后的 `/*` 根本不进眼。少了这一条，一句解释性散文就能把它后面整份文件吃掉。
+/// 5. **原始串 / 字节串按真语法跟踪**（`r"…"` · `r#"…"#` · `b"…"` · `br#"…"#`，
+///    井号个数配平、可跨行）。⚠ 这一条是**现打出来的**，不是防御性编程：
+///    `remote-daemon-proto/src/relay/server.rs` 的 `STUB_LAUNCHER` 是一段 shell，
+///    里面逐字有 `hostport=${rest%%/*}` 与 `path=/${rest#*/}` —— 一个 `/*` 一个 `*/`。
+///    按 [`strip_trailing_comments`] 那种「含 `r#` 的**那一行**整行不动」的便宜办法，
+///    跨行原始串**内部**的行照样被当代码扫 ⇒ 那 18 个字节会被当块注释抹掉，
+///    而它们是**真的字符串内容**。那就是「拿假阳换真阳」，铁律 18 禁的正是这个。
+///
+/// # 🔴 兜底：模型崩了就**一个字都不剥**（宁可留洞，不许造假红）
+///
+/// 扫完整份之后 `depth` 不为 0、或还停在某个字符串里 ⇒ 说明上面这套词法与这份文本
+/// **对不上**（能编译的 Rust 一定两边都收口）⇒ 返回 `None`，调用方原样把 `src` 交回去。
+///
+/// ⚠ **这条兜底会静默地把洞重新打开**，所以它不许只活在这段散文里：
+/// [`assert_block_comment_model_holds`] 把「今天有几份文件走了兜底」变成一条判据
+/// （本仓 187 份 `.rs` 今天是 **0** 份）。**别把这条边界读成「兜底永远不会触发」。**
+fn try_strip_block_comments(src: &str) -> Option<String> {
+    let mut out: Vec<u8> = Vec::with_capacity(src.len());
+    let mut depth = 0usize;
+    let mut in_str = false;
+    let mut raw_hashes: Option<usize> = None;
+
+    for (li, raw) in src.split('\n').enumerate() {
+        if li > 0 {
+            out.push(b'\n');
+        }
+        // 掩码只在「码」这个状态下做：串里 / 注释里的 `'` 是普通字符，
+        // 掩了反而可能把一个真的收尾引号盖住。
+        let masked;
+        let scan: &str = if depth == 0 && !in_str && raw_hashes.is_none() {
+            masked = mask_char_literals(raw);
+            &masked
+        } else {
+            raw
+        };
+        let sb = scan.as_bytes();
+        // 抹在**原行**上（掩码是等长的 ⇒ 下标一一对应）。
+        let mut line: Vec<u8> = raw.as_bytes().to_vec();
+        let mut i = 0usize;
+        while i < sb.len() {
+            if depth > 0 {
+                if sb[i] == b'/' && sb.get(i + 1) == Some(&b'*') {
+                    depth += 1;
+                    line[i] = b' ';
+                    line[i + 1] = b' ';
+                    i += 2;
+                    continue;
+                }
+                if sb[i] == b'*' && sb.get(i + 1) == Some(&b'/') {
+                    depth -= 1;
+                    line[i] = b' ';
+                    line[i + 1] = b' ';
+                    i += 2;
+                    continue;
+                }
+                // 逐**字节**抹成空格：多字节字符整段变空格，仍是合法 UTF-8，
+                // 而且长度不变 ⇒ `find_pinned` 的字节偏移、`pin_line` 的行号都不动。
+                line[i] = b' ';
+                i += 1;
+                continue;
+            }
+            if let Some(h) = raw_hashes {
+                if sb[i] == b'"'
+                    && sb.len() >= i + 1 + h
+                    && sb[i + 1..i + 1 + h].iter().all(|&c| c == b'#')
+                {
+                    raw_hashes = None;
+                    i += 1 + h;
+                    continue;
+                }
+                i += 1;
+                continue;
+            }
+            if in_str {
+                if sb[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if sb[i] == b'"' {
+                    in_str = false;
+                }
+                i += 1;
+                continue;
+            }
+            // ── 以下是「码」状态 ──
+            if let Some((h, consumed)) = raw_string_open(sb, i) {
+                // `b"…"`（无井号且不是 `br`）走普通串那条路：它认反斜杠转义。
+                if h == 0 && sb[i] == b'b' {
+                    in_str = true;
+                } else {
+                    raw_hashes = Some(h);
+                }
+                i += consumed;
+                continue;
+            }
+            if sb[i] == b'"' {
+                in_str = true;
+                i += 1;
+                continue;
+            }
+            if sb[i] == b'/' && sb.get(i + 1) == Some(&b'/') {
+                // 行注释：本行剩下的一律不看（`//` 那一半归 `strip_trailing_comments`）。
+                break;
+            }
+            if sb[i] == b'/' && sb.get(i + 1) == Some(&b'*') {
+                depth += 1;
+                line[i] = b' ';
+                line[i + 1] = b' ';
+                i += 2;
+                continue;
+            }
+            i += 1;
+        }
+        out.extend_from_slice(&line);
+    }
+    if depth != 0 || in_str || raw_hashes.is_some() {
+        return None;
+    }
+    String::from_utf8(out).ok()
+}
+
+/// **剥掉块注释**（内容抹成等长空格，行数不变）。剥不动时**原样返回**。
+///
+/// 判据、三种误伤怎么处理、兜底为什么是「不剥」——**全部逐条写在
+/// [`try_strip_block_comments`] 头注里**，改这里之前先读那一段。
+pub fn strip_block_comments(src: &str) -> String {
+    try_strip_block_comments(src).unwrap_or_else(|| src.to_string())
+}
+
+/// 这份文本上，块注释的词法模型**站不站得住**（`false` = 走了兜底、一个字没剥）。
+///
+/// 它存在的唯一理由是**别让兜底静默**：兜底是「宁可留洞」，而留下的洞正是
+/// [`try_strip_block_comments`] 要治的那一个。⇒ 用 [`assert_block_comment_model_holds`]
+/// 把它钉成判据，别只在散文里写一句「一般不会触发」。
+pub fn block_comment_model_holds(src: &str) -> bool {
+    try_strip_block_comments(src).is_some()
+}
+
+/// 遍历一棵源码树，断言**没有一份文件走块注释剥法的兜底**。
+///
+/// # 它看着的是什么
+///
+/// [`try_strip_block_comments`] 的兜底（`depth` 不为 0 / 停在串里 ⇒ 一个字都不剥）
+/// 是**静默**的：那一份文件的块注释洞当场重新打开，而门禁上一个数都不动。
+/// 本条把「今天有几份走兜底」变成读数 —— 本仓 187 份 `.rs` 现打 **0** 份。
+///
+/// `min_files` 与 [`assert_tree_strips_clean`] 同职：扫到的文件数低于它说明**遍历坏了**，
+/// 不是代码变干净了。
+///
+/// # Panics
+///
+/// 目录 / 文件读不了、有文件走了兜底、或扫到的文件数 `< min_files` 时 panic
+/// （守卫语义，只在测试里调）。
+pub fn assert_block_comment_model_holds(root: &std::path::Path, min_files: usize) {
+    assert!(min_files > 0, "min_files 不得为 0 —— 那等于关掉计数自检");
+    let mut n = 0usize;
+    let mut bad: Vec<String> = Vec::new();
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(d) = stack.pop() {
+        for entry in std::fs::read_dir(&d).unwrap_or_else(|e| panic!("读目录 {d:?} 失败: {e}")) {
+            let path = entry.expect("dir entry").path();
+            if path.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                continue;
+            }
+            let src =
+                std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读 {path:?} 失败: {e}"));
+            if !block_comment_model_holds(&src) {
+                bad.push(path.to_string_lossy().to_string());
+            }
+            n += 1;
+        }
+    }
+    assert!(
+        n >= min_files,
+        "只扫到 {n} 个 .rs 文件（期望至少 {min_files}）—— **遍历坏了**，本条此刻是空转的"
+    );
+    assert!(
+        bad.is_empty(),
+        "{} 份文件走了块注释剥法的**兜底**（一个字都没剥）⇒ 这几份上「块注释喂饱判据」\
+         那个洞此刻是**开着**的：{bad:?}\n\
+         ★ 兜底的判据是「扫完 depth 不为 0 / 还停在字符串里」——\
+         多半是新出现了一种本剥法不认的字面量形态。先读 `try_strip_block_comments` 头注，\
+         **别把这条判据删掉了事**。",
+        bad.len()
+    );
+}
+
 /// `production_source` + 剥掉行注释（**整行的与行尾的都剥**）。
 ///
 /// 剥注释是必需的：两侧的注释**大量**在解释「为什么这里没有定时器了 / 哪些写模式被
@@ -325,8 +599,23 @@ pub fn strip_trailing_comments(src: &str) -> String {
 ///
 /// ⚠ 同一个函数、同一族病、**第二次**：上一次（本模块头注）治的是「自检太弱」，
 /// 这次露的是「**剥法太窄**」。⇒ 加新原语时先问一句「它剥不掉的那部分，谁在看着」。
+///
+/// # ★★ 09-04（`K-R9`）：**第三次** —— 块注释
+///
+/// 09-01 补上行尾那一半之后，头注（与 `strip_comment_lines` 那一段）逐字留了这句边界：
+/// 「**别把这条边界读成「注释都剥干净了」**」。那句话写下来了，**但没有人守着它**：
+/// 剥法仍然只认 `//`，`/* … */` 一个字都不剥。⇒ 把真代码包进**多行块注释**再换个桩值，
+/// 判据全绿（09-04 在 `local_daemon.rs` 的幂等门上现打：monitor **1275 条全绿 0 失败**）。
+///
+/// ⇒ 本轮的处置**不是**再写一句边界，而是[`strip_block_comments`] 把它剥掉，
+/// 并用 [`assert_block_comment_model_holds`] 看着那条兜底。
+/// ★ 三次同族，教训一句话：**「写下来的边界」不是判据，只有判据是判据。**
 pub fn production_code(src: &str) -> String {
-    let kept = production_source(src)
+    // 🔴 顺序：块注释**先**剥。整行 `//` 那道 filter 会**删行**，
+    //    先删就可能把 `/*` 开头那一行删掉、只留下半截块注释。
+    //    而块注释剥法自己认得 `//`（行注释里的 `/*` 不开块），先后不会互相打架。
+    let no_block = strip_block_comments(&production_source(src));
+    let kept = no_block
         .lines()
         .filter(|l| !l.trim_start().starts_with("//"))
         .collect::<Vec<_>>()
@@ -735,7 +1024,25 @@ pub fn contains_word(hay: &str, needle: &str) -> bool {
 ///
 /// ⚠ **仍然剥不干净的三种情形**逐条写在 [`strip_trailing_comments`] 头注里
 /// （raw / byte string 那一行 · 跨行字符串里面 · 引号本行不配平）。**别把这条边界读成「注释都剥干净了」。**
+///
+/// # ★★ 09-04（`K-R9`）：上面那句边界**曾经是一个活体洞**，现在它被剥掉了一半
+///
+/// 本函数原先只按**行前缀**判块注释（`*` / `/*` 打头的整行），**没有任何跨行状态**：
+///
+/// ```text
+/// /*
+/// h.stop();          ← 这一行不以 `*` 或 `/*` 打头 ⇒ 原样留在「生产文本」里
+/// */
+/// ```
+///
+/// ⇒ 编辑器「注释掉这几行」的默认产物**整段穿过去**。现在先过
+/// [`strip_block_comments`]（带深度的真词法，等长抹空格 ⇒ **行数仍然不变**），
+/// 行前缀那一刀留着当第二层（兜底触发时它还能接住 `*` 打头的续行）。
+///
+/// ⚠ **与 [`production_code`] 同一拍改** —— 本函数头注上面那段逐字写着
+/// 「同职的两处同一拍一起改，只改一处就是『只覆盖了那条病的一个动词』」。
 pub fn strip_comment_lines(src: &str) -> String {
+    let src = &strip_block_comments(src);
     let blanked = src
         .lines()
         .map(|l| {
@@ -1028,6 +1335,166 @@ mod tests {
             production_code(multi).contains("second // still inside"),
             "跨行字符串里的 `//` 被当注释砍了：{:?}",
             production_code(multi)
+        );
+    }
+
+    // ══════════════════════════════════════════════════════════════════
+    // `K-R9` 09-04：块注释那一半
+    // ══════════════════════════════════════════════════════════════════
+
+    /// ★★ **本件的正题**：多行块注释不许再喂饱存在型判据。
+    ///
+    /// 形状照 09-04 在 `local_daemon.rs` 幂等门上现打的那一刀：真代码包进
+    /// `/*` `*/`（两个符号各占一行 —— 编辑器「注释掉这几行」的默认产物）、换一个桩值。
+    /// 改之前 monitor 侧 **1275 条全绿 0 失败**，而生产上那道门已经没了。
+    #[test]
+    fn a_block_comment_can_no_longer_feed_an_existence_guard() {
+        let holed = "fn start() {\n    /*\n    if g.is_some() {\n        return Already;\n    }\n    */\n    let _shim = g.is_some();\n}\n";
+        let prod = production_code(holed);
+        assert!(
+            !prod.contains("return Already"),
+            "块注释把真代码带进了生产文本 —— 那正是「功能抽走、判据照绿」那个洞：{prod:?}"
+        );
+        assert!(
+            !prod.contains("if g.is_some() {"),
+            "块注释里的 `if g.is_some() {{` 仍被数进生产段：{prod:?}"
+        );
+        // 非空对照：真代码还在时**必须**读得到（不然上面两条可能只是「什么都读不到」）。
+        let real = "fn start() {\n    if g.is_some() {\n        return Already;\n    }\n}\n";
+        assert!(
+            production_code(real).contains("return Already"),
+            "真代码被误剥了 —— 这是拿假阳换真阳（铁律 18）"
+        );
+    }
+
+    /// 误伤一：**字符串字面量里的 `/*` 不是注释**。
+    ///
+    /// 语料取自本仓真形：`shared_crate_registry.rs` 里逐字有 `crates/*/Cargo.toml`
+    /// 与 `shared/**`，`relay/server.rs` 里有 shell 的 `${rest%%/*}`。
+    #[test]
+    fn a_block_open_inside_a_string_literal_is_not_a_comment() {
+        let src = "fn a() {\n    let g = \"crates/*/Cargo.toml\";\n    let h = \"shared/** files\";\n    keep_me();\n}\n";
+        let prod = production_code(src);
+        assert!(
+            prod.contains("\"crates/*/Cargo.toml\""),
+            "串里的 `/*` 被当成块注释开头：{prod:?}"
+        );
+        assert!(
+            prod.contains("keep_me()"),
+            "串里那个 `/*` 把它后面的真代码吃掉了 —— 这正是「剥狠了」那一格：{prod:?}"
+        );
+    }
+
+    /// 误伤一的**变体**：`'\"'` 这种字符字面量不许把串状态整段带偏。
+    ///
+    /// 实测语料：`shared_crate_registry.rs::shared_crate_names` 里的 `.trim_end_matches('\"')`
+    /// —— 不掩码的话该文件扫到末尾深度停在 **5**，后面大片真代码会被当注释抹掉。
+    #[test]
+    fn a_quote_char_literal_does_not_derail_the_block_scanner() {
+        let src = "fn a() {\n    let v = x.trim_end_matches('\"').to_string();\n    let g = \"crates/*/Cargo.toml\";\n    keep_me();\n}\n";
+        assert!(
+            block_comment_model_holds(src),
+            "`'\"'` 把块注释词法带瞎了（走了兜底）"
+        );
+        assert!(
+            production_code(src).contains("keep_me()"),
+            "真代码被误剥了：{:?}",
+            production_code(src)
+        );
+    }
+
+    /// 误伤二：**嵌套块注释**要吃到最外层那个 `*/`，不是第一个。
+    #[test]
+    fn nested_block_comments_are_consumed_to_the_outer_close() {
+        let src = "fn a() {\n    /* 外 /* 内 */ 还在注释里 hidden_token */\n    keep_me();\n}\n";
+        let prod = production_code(src);
+        assert!(!prod.contains("hidden_token"), "嵌套只吃到第一个 `*/`：{prod:?}");
+        assert!(prod.contains("keep_me()"), "嵌套吃过头了：{prod:?}");
+    }
+
+    /// 误伤三：**`/**` 与 `/*!` 文档注释**是散文，与 `///` 同等对待 —— 剥掉。
+    /// 附两个退化形 `/**/` 与 `/***/`（它们必须**恰好**收口，不许多吃一格）。
+    #[test]
+    fn block_doc_comments_are_prose_and_two_degenerate_forms_close_exactly() {
+        let doc = "/** 这里说明为什么不许 forbidden_token */\nfn a() { keep_me(); }\n";
+        let prod = production_code(doc);
+        assert!(!prod.contains("forbidden_token"), "块文档注释没剥掉：{prod:?}");
+        assert!(prod.contains("keep_me()"), "块文档注释吃掉了真代码：{prod:?}");
+        for degenerate in ["fn a() { /**/ keep_me(); }\n", "fn a() { /***/ keep_me(); }\n"] {
+            assert!(
+                production_code(degenerate).contains("keep_me()"),
+                "`{degenerate}` 这个退化形没有恰好收口：{:?}",
+                production_code(degenerate)
+            );
+        }
+    }
+
+    /// 误伤四：**行注释里的 `/*` 不开块** —— 否则一句散文能吃掉它后面整份文件。
+    #[test]
+    fn a_block_open_inside_a_line_comment_does_not_swallow_the_file() {
+        let src = "fn a() {\n    let _ = 0; // 见 /* 那一段\n    keep_me();\n}\n";
+        assert!(
+            production_code(src).contains("keep_me()"),
+            "行注释里的 `/*` 开了块、把后面的真代码吃了：{:?}",
+            production_code(src)
+        );
+    }
+
+    /// 误伤五：**跨行原始串内部**一个字都不许动。
+    ///
+    /// 这条不是防御性编程 —— 语料是本仓 `relay/server.rs::STUB_LAUNCHER` 那段 shell 的最小形，
+    /// 里面逐字有一个 `/*`（`${rest%%/*}`）和一个 `*/`（`${rest#*/}`）。
+    /// 按「含 `r#` 的**那一行**整行不动」的便宜办法，中间这两行会被当块注释抹掉 18 个字节，
+    /// 而它们是真的字符串内容。
+    #[test]
+    fn a_multiline_raw_string_holding_shell_globs_is_left_alone() {
+        let src = "const S: &str = r#\"#!/usr/bin/env bash\nhostport=${rest%%/*}\npath=/${rest#*/}\nhost=${hostport%%:*}\n\"#;\nfn a() { keep_me(); }\n";
+        let prod = production_code(src);
+        assert!(
+            prod.contains("hostport=${rest%%/*}") && prod.contains("path=/${rest#*/}"),
+            "跨行原始串里的 shell 被当块注释抹了：{prod:?}"
+        );
+        assert!(prod.contains("keep_me()"), "原始串把后面的真代码吃了：{prod:?}");
+    }
+
+    /// 抹成**等长空格** ⇒ 行数与字节数都不变 ⇒ [`pin_line`] 的行号、
+    /// [`find_pinned`] 的字节偏移一格都不漂。
+    #[test]
+    fn stripping_block_comments_moves_neither_a_line_nor_a_byte() {
+        let src = "fn a() {\n    /* 多字节也要\n       等长抹掉 */\n    keep_me();\n}\n";
+        let out = strip_block_comments(src);
+        assert_eq!(out.len(), src.len(), "字节数变了 ⇒ `find_pinned` 的偏移全体漂");
+        assert_eq!(
+            out.split('\n').count(),
+            src.split('\n').count(),
+            "行数变了 ⇒ `pin_line` 的行号全体错位"
+        );
+        assert!(!out.contains("等长抹掉"), "没剥干净：{out:?}");
+    }
+
+    /// 🔴 兜底：模型崩了就**一个字都不剥**（宁可留洞，不许造假红），
+    /// 而且这件事**说得出来**（`block_comment_model_holds` 为 `false`）。
+    #[test]
+    fn a_broken_model_strips_nothing_and_says_so() {
+        let unterminated = "fn a() {\n    /* 开了不收口\n    keep_me();\n}\n";
+        assert!(
+            !block_comment_model_holds(unterminated),
+            "没收口的块注释居然被判成模型站得住"
+        );
+        assert_eq!(
+            strip_block_comments(unterminated),
+            unterminated,
+            "兜底没有原样返回 —— 那会把真代码剥掉、造一片假红"
+        );
+    }
+
+    /// 本 crate 自己的源码上，块注释词法**不许走兜底**（吃自己的狗粮）。
+    /// 树级的那两份（monitor / daemon）由两侧各自的判据钉着。
+    #[test]
+    fn this_crate_never_falls_back_to_not_stripping() {
+        assert_block_comment_model_holds(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            1,
         );
     }
 
