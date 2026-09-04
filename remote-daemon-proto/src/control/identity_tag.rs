@@ -114,8 +114,23 @@ fn pane_is_safe(pane: &str) -> bool {
 }
 
 /// 取这个进程所在的 tmux pane（`TMUX_PANE`），核过形状才回。
+///
+/// # ⚠ 上面那条「空串必须挡住」的防线，**在这条路上够不到**〔`K-R21` 09-03 现打，如实登记〕
+///
+/// `proc_env_var` 在**读侧**就把空串压成了 `EnvRead::Unset`（`platform/proc.rs`：
+/// 「值是空串」与「压根没这个键」两支合并）⇒ 下面这个 `?` 一律早退成 `Outcome::NotInTmux`
+/// ⇒ **`pane_is_safe("")` 永远不会在生产路上被执行到**。
+///
+/// 🔴 它**不是坏的，是死的**：它挡的是「拿到空串」，而上游让它拿不到。
+/// 今天还活着的只有它的单元测试（`pane_is_safe("")` 那几条直喂）。
+///
+/// ⚠ **`K-R21` 刻意没有把它治活**：治活要拆的是「键不在 / 值是空串」那两支，
+/// 而那一拍选的「乙」明确**只拆「环境这一刻取不到」**、把那两支留在一起
+/// （拆它们属于「甲」，已登记为后续清理）。**也刻意没删它** ——
+/// 它是 08-14 一次真事故（`display-message -t ''` 静默解析成「当前会话」⇒ 打错标就杀错）
+/// 撞出来的，那条 `?` 哪天换成别的写法，它就是唯一还站着的那道门。
 fn pane_of(pid: u32) -> Option<String> {
-    let raw = crate::platform::proc::proc_env_var(pid, "TMUX_PANE")?;
+    let raw = crate::platform::proc::proc_env_var(pid, "TMUX_PANE").value()?;
     let pane = raw.trim().to_string();
     pane_is_safe(&pane).then_some(pane)
 }
