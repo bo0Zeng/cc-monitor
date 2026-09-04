@@ -143,6 +143,83 @@ set -uo pipefail
 cd "$(dirname "$0")/.." || exit 2
 fails=()
 
+# ── 失败诊断（`K-R22` 09-04）：**红的那一格必须自带「为什么红」** ────────────────
+#
+# 病灶逐字：本文件把子命令的输出吃进变量，而**失败支只记退出码、把输出整个丢掉**
+# ⇒ 终端上只剩一行 `GATE: FAIL —— cargo（退出码 101）`，哪条测试红的一个字都没有。
+#
+# ★★ **它比「少印一段日志」严重，理由是那个退出码装着好几件互不相关的事。**
+#   `cargo` 的 `101` 在本仓至少是四件：① 真有测试红 ② **编译错误（测试一条都没跑）**
+#   ③ **被内核杀掉（OOM）** ④ 环境不满足（`--network none` 下 blackhole 判据秒失败）。
+#   四件事的处置完全不同，而**唯一能把它们分开的就是被丢掉的那段字**。
+#   09-04 一天里 PM 与三路 agent **各自独立**撞上，四次都得把那一格重跑一遍才知道是哪一件。
+#   ⇒ 这正是本区最贵那族病（**一个值装了几件事**）长在门禁自己身上。
+#
+# ★ **人群不是一个 `if`，是 6 处**（`K-R22 D1` 量于 `5e1d07b`，主尺 `grep -n 'fails+=('`
+#   得 11 处判红支，真跑了命令的 10 处里**全丢 6 处**：`run_gate` 两支 · `run_gate_sum`
+#   三支 · `run_e2e` 的「抓不到数」支）⇒ **修必须落在共用的这一段上**，落在某一个 `if`
+#   里面只治得了六分之一。
+#
+# ★ 取法：**两段 + 一条兜底**，两侧都要避（印太少还得重跑；印太多把裁决那行埋掉）。
+#   ① **关键行**：整段输出里匹配下面那张模式表的行（`-A1` 带一行下文），封顶 `GATE_DIAG_KEY` 行。
+#      模式表按**形状**选，不按工具选 —— 每一条都点名它治的是哪一形：
+#        `^error`              cargo 的 `error[E0xxx]:` · `error: could not compile` ·
+#                              `error: test failed`；**被信号杀掉那一形也走它**
+#                              （`error: could not compile … (signal: 9, SIGKILL: kill)`）
+#        `^thread .+ panicked` panic 落点（自带 `文件:行:列`）；`-A1` 把断言原文带出来
+#        `^failures:`          cargo 失败清单的头
+#        `^test result: FAILED` 那一格的合计（几过几败）
+#        `^ *Running`          正在跑哪个测试二进制 —— **被杀那一形唯一能说明「死在哪个包」的行**
+#        `^npm error` `^npm ERR!` npm 两代前缀
+#        `^::error::`          `e2e/assert-pass-floor.sh` 自己的诊断
+#        `^ *(FAIL|BROKEN|×|✗)` 本仓 bash e2e 与 `pb check` 自己的失败行
+#   ② **原文尾部** `GATE_DIAG_TAIL` 行：**恒印**。
+#   ③ 输出短于 `GATE_DIAG_WHOLE` 行 ⇒ 不摘要，**全印**（那一形上摘要的收益是负的）。
+#
+# ★★ **② 是 fail-closed 的那一半，别当冗余删掉。**
+#   ① 是一张**模式表**，而模式表天生会漏（换了工具 / 换了措辞 / 本地化）。
+#   ⚠ 直答 `K-R22 D2` 那问：**编译错误那一形没有 `failures:` 段** ——
+#     它落在 `^error` 与 `-A1` 带出来的 `--> 文件:行:列` 上（死值验现打 5 行，件文件 `§5`）；
+#     而**假如哪天它连 `^error` 都不匹配**，② 仍把最后几十行原样端上来
+#     ⇒ **「印出零个字」在任何形状上都不可能**。这条比模式表准不准重要得多。
+#
+# ⚠ 每行加 `  | ` 前缀是**承重的，不是排版**：被测命令的输出里要是自己打了一行
+#   `GATE: OK` 或 `  ok   xxx`，不带前缀就会**混进本脚本自己的裁决面**。
+#
+# ⚠ **它一个字都没碰任何一条判定**（`K-G3 §143` 硬边界：那五道门的口径不许动）——
+#   `fails+=` 的条件、包数自检、`0 passed 不是绿`，逐字原样。本段只加「印什么」。
+GATE_DIAG_KEY="${GATE_DIAG_KEY:-40}"
+GATE_DIAG_TAIL="${GATE_DIAG_TAIL:-30}"
+GATE_DIAG_WHOLE="${GATE_DIAG_WHOLE:-60}"
+GATE_DIAG_PAT='^(error|npm error|npm ERR!|thread .+ panicked|failures:|test result: FAILED|::error::)|^[[:space:]]*(FAIL|BROKEN|Running|×|✗)'
+
+gate_diag() {
+  local name="$1"; local out="$2"
+  local total key
+  # 「输出为空」本身就是一条读数，不许静默 —— **被信号杀掉那一形长这样**。
+  if [ -z "$out" ]; then
+    printf '  ---- %s 诊断：被测命令 stdout+stderr **一个字都没有**（退出码非零而输出为空——多半是被信号杀掉，如 OOM）\n' "$name"
+    return 0
+  fi
+  total="$(printf '%s\n' "$out" | wc -l)"
+  if [ "$total" -le "$GATE_DIAG_WHOLE" ]; then
+    printf '  ---- %s 失败原文（全 %s 行）----\n' "$name" "$total"
+    printf '%s\n' "$out" | sed 's/^/  | /'
+    printf '  ---- %s 诊断完 ----\n' "$name"
+    return 0
+  fi
+  key="$(printf '%s\n' "$out" | grep -E -A1 "$GATE_DIAG_PAT" | grep -v '^--$' | head -n "$GATE_DIAG_KEY")"
+  if [ -n "$key" ]; then
+    printf '  ---- %s 关键行（%s 行输出里匹配到的，封顶 %s 行）----\n' "$name" "$total" "$GATE_DIAG_KEY"
+    printf '%s\n' "$key" | sed 's/^/  | /'
+  else
+    printf '  ---- %s 关键行：一条都没匹配上（共 %s 行）—— 模式表漏了这一形，只看下面的尾部\n' "$name" "$total"
+  fi
+  printf '  ---- %s 原文尾部 %s 行（共 %s 行）----\n' "$name" "$GATE_DIAG_TAIL" "$total"
+  printf '%s\n' "$out" | tail -n "$GATE_DIAG_TAIL" | sed 's/^/  | /'
+  printf '  ---- %s 诊断完 ----\n' "$name"
+}
+
 # ★★ `K-G3`（09-01）第二个参数 `denom` 是**这个数的分母**，跟着绿行一起印出来。
 #
 # 它治的是题面里的**第 5 个洞**：`sort -rn | head -1` 取的是**所有 `N passed` 里的最大值**，
@@ -183,8 +260,10 @@ run_gate() {
   n="$(printf '%s' "$out" | grep -oE '([0-9]+) (passed|个测试)' | grep -oE '[0-9]+' | sort -rn | head -1)"
   if [ "$rc" -ne 0 ]; then
     fails+=("$name（退出码 $rc）")
+    gate_diag "$name" "$out"          # K-R22：判定一个字没动，只是把 $out 端出来
   elif [ -z "$n" ] || [ "$n" -eq 0 ]; then
     fails+=("$name（读数是 ${n:-<找不到>} —— 0 passed 不是绿）")
+    gate_diag "$name" "$out"          # K-R22：这一支同样得说清「那它到底打了什么」
   else
     printf '  ok   %-14s %s passed（分母：%s）\n' "$name" "$n" "$denom"
   fi
@@ -238,16 +317,62 @@ run_gate_sum() {
   n="$(printf '%s' "$lines" | grep -oE '[0-9]+' | paste -sd+ - | bc 2>/dev/null || echo 0)"
   if [ "$rc" -ne 0 ]; then
     fails+=("$name（退出码 $rc）")
+    gate_diag "$name" "$out"          # K-R22：本件的病灶就是这一支，判定一个字没动
   elif [ "$pkgs" -ne "$want_pkgs" ]; then
     # ⚠ 这一支是**采集面自检**，不是测试失败：包数对不上 ⇒ 下面那个合计不算数。
     fails+=("$name（只跑到 $pkgs 个包，应当 $want_pkgs —— 有包静默掉出了 --workspace；\
 合计变小与「有测试没跑」在终端上一模一样，只有这条认得出来。真加/删了 crate 就来改这个数）")
+    # K-R22：这一形最需要的恰是那几行 `Running …`（到底跑到了哪几个包），模式表里有它。
+    gate_diag "$name" "$out"
   elif [ -z "$n" ] || [ "$n" -eq 0 ]; then
     fails+=("$name（读数是 ${n:-<找不到>} —— 0 passed 不是绿）")
+    gate_diag "$name" "$out"
   else
     printf '  ok   %-14s %s passed（%s 个包合计）\n' "$name" "$n" "$pkgs"
   fi
 }
+
+# ── 门禁自己的自检（`K-R22 D3`）：**「盘上有 echo」不等于「失败时真的印了」** ──────
+#
+# ★ 这一格**最容易假绿的写法**是钉一条 `grep -q gate_diag scripts/gate.sh` ——
+#   那只证明**盘上有**，不证明**被走到**（`K-R18` 语料八：盘上有 ≠ 被走到）。
+#   ⇒ 这里**真跑必红的合成命令**，断言那一趟的**标准输出里出现被测命令自己印的哨兵串**。
+#   删掉任何一个 `gate_diag` 调用、或把取法改回「只记退出码」，这三条里至少一条当场红。
+#
+# ⚠ 三条探针合计 ≈ 10 毫秒：**不碰 cargo / npm / 网络 / 文件系统**，只 `printf` 几行再退非零。
+# ⚠ 它们跑在**子 shell**（`$( )`）里 ⇒ 里面那几个 `fails+=` 落在数组副本上，
+#   污染不到真裁决；能漏出来的只有标准输出，而那正是要断言的东西。
+# ⚠ 探针② 走的是**编译错误那一形**（**没有 `failures:` 段**）—— `K-R22 D2` 特意问的那一格，
+#   从此每趟出货都验一遍，不是只在死值验那天验过一次。
+# ⚠ 探针③ 造的输出**长过 `GATE_DIAG_WHOLE`（不走「全印」那条捷径）且一条模式都不匹配**，
+#   哨兵只出现在最后几行 ⇒ **它只能靠「原文尾部恒印」那半兜底才看得见**。
+#   那半是 fail-closed 的承重墙，得有一条判据专门盯着它。
+#
+# ★ 这是**新加的一格自检**，不是改了哪一道旧门 —— `K-G3 §143` 那五道门的判定口径逐字未动。
+gate_selftest() {
+  local probe
+  probe="$(run_gate 自检① - bash -c 'printf "error: KR22-PROBE-A\n"; exit 3' 2>&1)"
+  case "$probe" in
+    *KR22-PROBE-A*) ;;
+    *) fails+=("gate 自检①（run_gate 的失败支没把被测命令的输出印出来 —— K-R22 那一格被改回去了：\
+门禁红了又不说为什么红）") ;;
+  esac
+  probe="$(run_gate_sum 自检② 8 bash -c 'printf "error[E0425]: KR22-PROBE-B\n --> src/x.rs:1:1\n"; exit 101' 2>&1)"
+  case "$probe" in
+    *KR22-PROBE-B*) ;;
+    *) fails+=("gate 自检②（run_gate_sum 的失败支在「编译错误」那一形上印不出东西 —— \
+那一形没有 failures: 段，正是 K-R22 D2 点名要盖住的那格）") ;;
+  esac
+  probe="$(run_gate 自检③ - bash -c 'i=1; while [ $i -le 100 ]; do
+      if [ $i -ge 97 ]; then printf "尾部第 %s 行 KR22-PROBE-C\n" "$i"; else printf "无关行 %s\n" "$i"; fi
+      i=$((i + 1)); done; exit 4' 2>&1)"
+  case "$probe" in
+    *KR22-PROBE-C*) ;;
+    *) fails+=("gate 自检③（模式表一条都没匹配上时，「原文尾部恒印」那半兜底没走到 —— \
+fail-closed 的承重墙塌了：从此模式表漏掉的形状会退化成一个字都不印）") ;;
+  esac
+}
+gate_selftest
 
 # 8 个包 = `monitor` + 7 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
 run_gate_sum cargo 8 bash -c 'cd src-tauri && cargo test --workspace --exclude code-picture-core --lib 2>&1'
@@ -386,10 +511,17 @@ run_e2e() {
   if [ "$rc" -ne 0 ]; then
     fails+=("ccm e2e/$suite（退出码 $rc；实得 PASS=${n:-<抓不到>}，地板 $floor，判法 exact。\
 诊断原文见上方本套件自己的输出）")
-    printf '%s\n' "$out" | tail -20
+    # K-R22：原来这里是裸 `tail -20`。换成共用的 `gate_diag` 有两处不是排版：
+    #   ① 套件自己的 `::error::` 诊断行**可能落在尾部 20 行之外**（`assert-pass-floor.sh`
+    #      先 `cat` 整份输出再打诊断，一套失败几十条时那行就被顶出去了）—— 模式表把它捞回来；
+    #   ② 加了 `  | ` 前缀，套件输出里的 `PASS=`/`FAIL=` 行不再混进本脚本的裁决面。
+    gate_diag "e2e/$suite" "$out"
   elif [ -z "$n" ]; then
     fails+=("ccm e2e/$suite（退出码 0 但抓不到「合计 PASS=<n>」—— 门没跑与门跑了结果是空\
 在终端上一模一样，判不了，不许当成绿）")
+    # K-R22 D1 #9：这一支原来一个字都不印，而「门没跑」与「门跑了结果是空」
+    # **恰恰只能靠那段输出分开** —— 不印等于把这条判据自己那句话作废。
+    gate_diag "e2e/$suite" "$out"
   else
     printf '  ok   %-14s %-22s PASS=%s（地板 %s，恒等）\n' "ccm e2e" "$suite" "$n" "$floor"
   fi
@@ -452,12 +584,29 @@ if [ -z "${PB_WS:-}" ]; then
   fails+=("pb check（没给 PB_WS —— 这道门查哪个计划工作区必须由调用方指定；\
 不许回落默认值：硬写一个名字正是 K-R10 治的那个 bug）")
 else
-  pb_out="$(python3 "$HOME/.claude-accts/z/skills/planned-build/bin/pb.py" check \
-            "../.claude/planned-build/$PB_WS" 2>&1 | tail -1)"
+  # ★ `K-R22`（09-04）：**判定那一行一个字没动，改的只是「红了印什么」。**
+  #   原来是 `pb_out="$(python3 … | tail -1)"` ⇒ 其余几十行在**进变量之前**就没了，
+  #   红的时候终端上只剩一句 `FAIL=1 BROKEN=0`：**几条红一目了然，是哪一条一个字都没有。**
+  #   ⚠ 本件收官前自己被它咬了一口：那个 `FAIL=1` 查出来是 `[J3 陈账] INDEX.md 比源文件旧`，
+  #     而那一趟门禁**没有任何一个字**指得到它 —— 又赔进去一趟重跑。
+  #
+  # ⚠ **为什么是落文件，而不是 `printf '%s\n' "$(…)" | tail -1`** —— 这一步承重，别「简化」：
+  #   `$(cmd | tail -1)` 与 `$(tail -1 文件)` 对命令替换而言**逐字等价**（两者都是对 `tail`
+  #   的输出做替换）；而 `printf '%s\n' "$(cmd)" | tail -1` **不等价** ——
+  #   命令替换会先把结尾的空行吃掉。合成命令现打（输出 `a\nb\n\n\n`）：
+  #   `$(cmd|tail -1)` 得 **``**（空），`printf '%s\n' "$(cmd)"|tail -1` 得 **`b`**。
+  #   ⇒ 那一格差别能**把一条本该红的判据变绿**（空串匹配不上 `FAIL=0 BROKEN=0` ⇒ 红；
+  #     换成 `b` 就可能匹配上 ⇒ 绿）。所以这里走文件，不走那个写法。
+  pb_raw="$(mktemp)"
+  python3 "$HOME/.claude-accts/z/skills/planned-build/bin/pb.py" check \
+          "../.claude/planned-build/$PB_WS" >"$pb_raw" 2>&1
+  pb_out="$(tail -1 "$pb_raw")"
   case "$pb_out" in
     *"FAIL=0 BROKEN=0"*) printf '  ok   %-14s [%s] %s\n' "pb check" "$PB_WS" "$pb_out" ;;
-    *) fails+=("pb check[$PB_WS]（$pb_out）") ;;
+    *) fails+=("pb check[$PB_WS]（$pb_out）")
+       gate_diag "pb check[$PB_WS]" "$(cat "$pb_raw")" ;;
   esac
+  rm -f -- "$pb_raw"
 fi
 
 echo
