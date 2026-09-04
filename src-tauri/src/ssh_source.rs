@@ -7324,8 +7324,8 @@ Host prod
         // ① 前提这一半：对端确实收到了客户端的 SSH 标识 ⇒ TCP 连上了、卡的是**握手**那一段。
         assert!(
             settled(|| seen.lock().unwrap().is_some()).await,
-            "前提不成立：静默对端一个字节都没收到（本机 loopback 没连通？）\
-             —— 这条今天判不了，**它不是「看门狗坏了」**"
+            "前提不成立：该卡住的那个静默对端一个字节都没收到 —— 拨的根本不是它？\
+             本机 loopback 不通？总之这条今天判不了，**它不是「看门狗坏了」**"
         );
         let banner = seen.lock().unwrap().clone().unwrap_or_default();
         assert!(
