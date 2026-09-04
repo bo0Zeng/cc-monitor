@@ -1,0 +1,59 @@
+############ E11 · tmux 到底看哪个变量、看的是「存在」还是「字符串长相」
+  （什么都不设）                  -> DIRTY
+  LC_ALL=C.UTF-8                         -> CLEAN
+  LC_ALL=zz_ZZ.UTF-8（locale 不存在） -> CLEAN
+  LC_ALL=完全胡写.UTF8               -> CLEAN
+  LC_ALL=utf8（连点都没有）       -> CLEAN
+  LC_ALL=zh_CN.GB18030（真·非 UTF-8） -> DIRTY
+  LC_ALL=C                               -> DIRTY
+  LC_ALL=''（空串）                  -> DIRTY
+
+  -- 优先级：LC_ALL > LC_CTYPE > LANG ？
+  LC_ALL=C + LANG=C.UTF-8                -> DIRTY
+  LC_ALL='' + LANG=C.UTF-8               -> CLEAN
+  LC_CTYPE=C + LANG=C.UTF-8              -> DIRTY
+  LANG=C.UTF-8（只有它）            -> CLEAN
+
+  -- -u 能不能盖过一个真·非 UTF-8 的 LC_ALL？
+  LC_ALL=zh_CN.GB18030 且 tmux -u       -> CLEAN
+  env -i（环境全清）且 tmux -u    -> CLEAN
+  env -i（环境全清）不加 -u      -> DIRTY
+
+############ E12 · 判据形状①：字段数下溢（< N）会不会误伤合法内容
+  会话名里塞一个真 TAB，tmux 收不收：
+    new-session -s 'aa<TAB>bb' -> rc=0 out=[]
+  pane_current_path 里塞一个真 TAB（目录名带 TAB）：
+    mkdir 带 TAB 的目录 -> OK
+  UTF-8 客户端下逐行字段数（期望 6；带 TAB 的内容会 >6，不会 <6）：
+    行1: 字段数=6  首段=[aa\tbb]
+    行2: 字段数=6  首段=[lab文档]
+    行3: 字段数=7  首段=[tabpath]
+  POSIX 客户端下逐行字段数（期望全 1）：
+    行1: 字段数=1
+    行2: 字段数=1
+    行3: 字段数=1
+
+############ E13 · 判据形状②：canary 的最小形状
+  canary=✓  UTF-8下末段=[✓]  POSIX下末段=[11__]  判得出？YES
+  canary=·   UTF-8下末段=[·]  POSIX下末段=[11__]  判得出？YES
+  canary=µ   UTF-8下末段=[µ]  POSIX下末段=[11__]  判得出？YES
+  canary=À   UTF-8下末段=[À]  POSIX下末段=[11__]  判得出？YES
+  纯 ASCII 的 canary 能不能只靠自己判（不靠字段数）：
+  canary=OK   UTF-8下末段=[OK]  POSIX下末段=[11_OK]  判得出？YES
+
+############ E14 · 「同一趟」成不成立：canary 与真数据是不是同一次输出
+  一条命令同时拿数据与 canary（不新增 subprocess）：
+        0000000   1   1   _   /   t   m   p   /   k   r   1   2   -   l   a   b
+        0000020   2   /   s   o   c   k   _   _  \n
+        0000000   1   1  \t   /   t   m   p   /   k   r   1   2   -   l   a   b
+        0000020   2   /   s   o   c   k  \t 342 234 223  \n
+
+bash: line 96: _: command not found
+############ E15 · 那个  到底按什么替换（字节数？显示宽度？）
+  [文] 字节=3  UTF-8下=[]  POSIX下=[] 长度=0
+  [文档] 字节=6  UTF-8下=[]  POSIX下=[] 长度=0
+  [é] 字节=2  UTF-8下=[]  POSIX下=[] 长度=0
+  [ab] 字节=2  UTF-8下=[]  POSIX下=[] 长度=0
+
+############ 收摊
+done
