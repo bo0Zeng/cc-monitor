@@ -1,0 +1,106 @@
+############ 0 · 环境
+tmux 3.4
+locale -a: C C.utf8 POSIX 
+LANG=<unset>  LC_ALL=<unset>  LC_CTYPE=<unset>
+ldd (Ubuntu GLIBC 2.39-0ubuntu8.8) 2.39
+
+############ 1 · 起一台私有 server（会话名与 pane cwd 都带中文）
+  server 起来了？ $0
+
+############ 2 · E2 复现：watcher.rs:452 那条格式串（#{pid}<TAB>#{socket_path}）
+  -- POSIX (rc=0)
+      0000000   1   7   _   /   t   m   p   /   k   r   1   2   -   l   a   b
+      0000020   /   s   o   c   k
+      0000025
+  -- CUTF8 (rc=0)
+      0000000   1   7  \t   /   t   m   p   /   k   r   1   2   -   l   a   b
+      0000020   /   s   o   c   k
+      0000025
+  -- DASH_U (rc=0)
+      0000000   1   7  \t   /   t   m   p   /   k   r   1   2   -   l   a   b
+      0000020   /   s   o   c   k
+      0000025
+  -- BOGUS (rc=0)
+      0000000   1   7  \t   /   t   m   p   /   k   r   1   2   -   l   a   b
+      0000020   /   s   o   c   k
+      0000025
+  -- BOGUS_U (rc=0)
+      0000000   1   7  \t   /   t   m   p   /   k   r   1   2   -   l   a   b
+      0000020   /   s   o   c   k
+      0000025
+  -- LANGONLY (rc=0)
+      0000000   1   7  \t   /   t   m   p   /   k   r   1   2   -   l   a   b
+      0000020   /   s   o   c   k
+      0000025
+
+############ 3 · E3〔D2 的核心〕LC_ALL 指向不存在的 locale：有没有任何一声
+  setlocale 本身怎么说（同一条 glibc 路径）：
+    LC_ALL=C.UTF-8 -> rc=0  charmap=UTF-8
+    LC_ALL=zz_ZZ.UTF-8 -> rc=0  charmap=locale: Cannot set LC_CTYPE to default locale: No such file or directory|locale: Cannot set LC_MESSAGES to default locale: No such file or directory|locale: Cannot set LC_ALL to default locale: No such file or directory|ANSI_X3.4-1968
+    LC_ALL=xx_XX -> rc=0  charmap=locale: Cannot set LC_CTYPE to default locale: No such file or directory|locale: Cannot set LC_MESSAGES to default locale: No such file or directory|locale: Cannot set LC_ALL to default locale: No such file or directory|ANSI_X3.4-1968
+  tmux 在 BOGUS 下的 stderr（上面 E2 已把 2>&1 并进来了，这里单独看 stderr）：
+    退出码 = 0   stderr 字节数 = 0   内容 = []
+
+############ 4 · E4 · -u 的位置约束（放到子命令后面会怎样）
+  tmux display-message -u -p ... -> rc=1 out=[command display-message: unknown flag -u]
+  tmux ls -u -F ...             -> rc=1 out=[command list-sessions: unknown flag -u]
+
+############ 5 · E5 · TMUX_LS_FMT（六列真 TAB，含中文 pane_current_path）
+  -- POSIX  切出的字段数=1
+      0000000   l   a   b   _   _   _   _   _   /   t   m   p   /   k   r   1
+      0000020   2   -   l   a   b   /   _   _   _   _   _   b   a   s   h   _
+      0000040   0   _   1   _
+      0000044
+  -- CUTF8  切出的字段数=6
+      0000000   l   a   b 346 226 207 346 241 243  \t   /   t   m   p   /   k
+      0000020   r   1   2   -   l   a   b   / 346 226 207 346 241 243  \t   b
+      0000040   a   s   h  \t   0  \t   1  \t
+      0000050
+  -- DASH_U  切出的字段数=6
+      0000000   l   a   b 346 226 207 346 241 243  \t   /   t   m   p   /   k
+      0000020   r   1   2   -   l   a   b   / 346 226 207 346 241 243  \t   b
+      0000040   a   s   h  \t   0  \t   1  \t
+      0000050
+
+############ 6 · E6 · cut -f 在「整行没有分隔符」时的行为（tmux.rs:441 的 Gate 2 依赖它）
+    printf '1\tabc' | cut -f2  -> [abc]
+    printf '1_'      | cut -f2  -> [1_]      <= 无 TAB 时整行被原样吐出
+    printf '1_'      | cut -f1  -> [1_]
+    printf '1_'      | cut -sf2 -> []     <= -s 才会压掉
+    ⇒ 被改写后 sid="整行" 非空 ⇒ [ -n "$sid" ] 恒真
+
+############ 7 · E7 · canary：格式串尾巴挂一个固定非 ASCII 标记，能不能验出通道脏了
+  -- POSIX  末段=[17_/tmp/kr12-lab/sock__]  末段==✓ ? NO
+  -- CUTF8  末段=[✓]  末段==✓ ? YES
+  -- DASH_U  末段=[✓]  末段==✓ ? YES
+  -- BOGUS  末段=[✓]  末段==✓ ? YES
+
+############ 8 · E8 · tmux 自己有没有一个「客户端是不是 UTF-8」的可读变量
+  -- POSIX  #{client_utf8}=[]
+  -- CUTF8  #{client_utf8}=[]
+  -- DASH_U  #{client_utf8}=[]
+  -- BOGUS  #{client_utf8}=[]
+
+############ 9 · E9 · capture-pane -p 的输出走不走同一条 sanitize
+  -- POSIX
+      0000000 344 270 255 346 226 207 346 265 213 350 257 225   A   B   C   7
+      0000020   0   3   1   c   f   e   3   :   /   t   m   p   /   k   r   1
+      0000040   2   -   l   a   b   /   M   -   f   M   -   M   -   M   -   f
+  -- CUTF8
+      0000000 344 270 255 346 226 207 346 265 213 350 257 225   A   B   C   7
+      0000020   0   3   1   c   f   e   3   :   /   t   m   p   /   k   r   1
+      0000040   2   -   l   a   b   /   M   -   f   M   -   M   -   M   -   f
+  -- DASH_U
+      0000000 344 270 255 346 226 207 346 265 213 350 257 225   A   B   C   7
+      0000020   0   3   1   c   f   e   3   :   /   t   m   p   /   k   r   1
+      0000040   2   -   l   a   b   /   M   -   f   M   -   M   -   M   -   f
+
+############ 10 · E10 · sh -c 串里两种写法各自站不站得住
+  (a) export 前置：0000000   1   7  \t   /   t   m   p   /   k   r   1   2   -   l   a   b
+  (b) 赋值前缀 + exec（特殊内建）：0000000   1   7  \t   /   t   m   p   /   k   r   1   2   -   l   a   b
+  (c) 赋值前缀 + 普通命令：0000000   1   7  \t   /   t   m   p   /   k   r   1   2   -   l   a   b
+  (d) 父进程 env 传下去（模拟 Command::env("LC_ALL")）：0000000   1   7  \t   /   t   m   p   /   k   r   1   2   -   l   a   b
+  sh 是谁：/usr/bin/dash
+
+############ 11 · 收摊（只杀本实验那台私有 server）
+done
