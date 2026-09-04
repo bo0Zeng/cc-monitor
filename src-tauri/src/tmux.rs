@@ -1091,6 +1091,132 @@ mod tests {
         );
     }
 
+    /// 把 builder 的**生产命令串**交给真 `/bin/sh` 跑一遍，`$info` 由调用方喂。
+    ///
+    /// **不起真 tmux**（R7）：`tmux` 用一个 **shell 函数**顶掉 —— `command -v` 认函数，
+    /// 所以生产串开头那句 `command -v tmux` 照样通过。函数对 `display-message` 吐我们喂的
+    /// 那条 `$info`，对**其余任何动词**吐 `ACTION_RAN:<动词>`。
+    /// ⇒ 「被守护的动作到底跑没跑」变成一个可断言的读数，而且零真 tmux、零 socket、
+    /// 零临时文件、不动这台机器任何状态。
+    fn run_door_with_info(cmd: &str, info: &str) -> String {
+        let q = format!("'{}'", info.replace('\'', "'\\''"));
+        let script = format!(
+            "CCM_FAKE_INFO={q}; \
+             tmux() {{ case \"$1\" in \
+             display-message) printf '%s' \"$CCM_FAKE_INFO\" ;; \
+             *) printf 'ACTION_RAN:%s\\n' \"$1\" ;; \
+             esac; }}; \
+             {cmd}"
+        );
+        let out = std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(&script)
+            .output()
+            .expect("跑不了 /bin/sh —— 本条无从判断，别读成绿");
+        let mut s = String::from_utf8_lossy(&out.stdout).into_owned();
+        s.push_str(&String::from_utf8_lossy(&out.stderr));
+        s.trim().to_string()
+    }
+
+    /// ★★ **K-R23：通道脏（TAB 没了）的时候，这道门必须拒绝。**
+    ///
+    /// # 病的形状（09-04 现打，本条是它的墓碑）
+    ///
+    /// 远端 `display-message` 用 **TAB 分隔**吐两字段、本地 shell 拆。原来那句拆法是
+    /// `cut -f2` —— 它在**没有分隔符**时**把整行原样吐出来**（沙箱实测：
+    /// `printf %s cc-abc12345 | cut -f2` ⇒ `cc-abc12345`）⇒ `$sid` = 整行 ⇒ **非空**
+    /// ⇒ `[ -n "$sid" ]` **恒真** ⇒ §34 Gate 2 的**远端核验那一半被静默绕过**。
+    ///
+    /// 🔴 **不是「这道门 fail-open」，是「两条路只有一条 fail-open」**：
+    /// `kill` 那条当时也拒绝，但那是**碰巧** —— 它多查一个 `[ "$w" = "1" ]`，
+    /// 而 `$w` 那时同样是整行垃圾、≠ `"1"`。
+    /// **拒绝建立在一个与本病无关的字段上，不是这道门对「通道脏」做了处置。**
+    /// ⇒ 所以本条把 `kill` 也一起钉住：它今天靠碰巧拒绝，明天靠这条判据拒绝。
+    ///
+    /// # 为什么判据是「喂脏输入真跑」而不是「串里有没有某个 flag」
+    ///
+    /// **盘上有 ≠ 被走到。** 断言命令串里出现了某个写法，和「通道脏时这道门真的拒绝了」
+    /// 是两件事 —— R1 的教训（三门禁全绿仍放行过一个让 send-keys 完全失效的改动）就是这一形。
+    /// 本条跑的是 builder 产出的**生产串**（不手搓等价命令，同 `emit_guarded_commands_for_e2e`），
+    /// 喂一条**没有 TAB** 的 `$info`，断言**被守护的动作没有被执行**。
+    ///
+    /// # 正对照不能省
+    ///
+    /// 只钉「脏输入被拒」的话，把门焊死成「永远拒绝」也能绿 —— 那买到的是「门坏了」
+    /// 而不是「门对了」。所以**干净输入必须放行**一起钉住。
+    ///
+    /// # 第三个读数：两件不同的事不许共用一个读数
+    ///
+    /// 「远端没设 `@ccm_sid`」（`info = "1\t"`）与「通道坏了」（`info` 没有 TAB）
+    /// **处置相同（都拒绝），但报出来的话必须不一样** —— 否则下一个人拿到一句
+    /// `CCM_GUARD_REJECTED sid=` 还得把 K-R12 那条字符集成因重查一遍。
+    ///
+    /// # 为什么在 Windows 上 `ignore`
+    ///
+    /// 同 `the_shell_gate_expression_agrees_with_the_golden_table`：要真 `/bin/sh`，
+    /// `rust` job 跑在 `windows-latest` 上没有。被测性质属**远端 POSIX**，与宿主系统无关；
+    /// 用 `ignore` 而非 `cfg` 是为了让「这台机器上没验过」在测试输出里可见。
+    #[test]
+    #[cfg_attr(
+        windows,
+        ignore = "要真 /bin/sh；rust job 在 windows-latest 上没有。被测性质属远端 POSIX，Linux 侧照跑"
+    )]
+    fn a_dirty_channel_that_lost_the_tab_must_not_open_the_door() {
+        // 通道脏：K-R12 量到的那个成因下，那条 TAB 分隔输出**整条被改写**，TAB 没了。
+        const DIRTY: &str = "cc-abc12345";
+        // 干净：两字段俱全（正对照 —— 门必须还开得了）。
+        const CLEAN: &str = "1\tcc-abc12345";
+        // 会话在、但远端 `@ccm_sid` 没设：拆得出字段，只是第二格是空的。
+        const SID_UNSET: &str = "1\t";
+
+        // 人群 = D1 点名的两条路里**真的装了这道门**的那两格（目标名非 `cc-*`
+        // ⇒ `need_sid = true`）。`cc-*` 那两格不在本条人群里：send-keys 走退化分支
+        // （门整个不装、也不问远端），kill 只核 windows、格式串里根本没有 TAB。
+        let sk = build_send_keys_remote_cmd("e2e-custom", "CCMPROBE", true).unwrap();
+        let kill = build_kill_session_cmd("e2e-custom").unwrap();
+
+        let sk_dirty = run_door_with_info(&sk, DIRTY);
+        let kill_dirty = run_door_with_info(&kill, DIRTY);
+        let sk_clean = run_door_with_info(&sk, CLEAN);
+        let kill_clean = run_door_with_info(&kill, CLEAN);
+        let sk_unset = run_door_with_info(&sk, SID_UNSET);
+
+        // 五个读数一律打出来 —— 这条红的时候，人要能直接看见门说了什么，
+        // 而不是只看见一句「断言失败」。
+        println!("[K-R23] send-keys · 脏输入（无 TAB） ⇒ {sk_dirty}");
+        println!("[K-R23] kill      · 脏输入（无 TAB） ⇒ {kill_dirty}");
+        println!("[K-R23] send-keys · 干净输入         ⇒ {sk_clean}");
+        println!("[K-R23] kill      · 干净输入         ⇒ {kill_clean}");
+        println!("[K-R23] send-keys · sid 未设         ⇒ {sk_unset}");
+
+        assert!(
+            !sk_dirty.contains("ACTION_RAN"),
+            "🔴 通道脏时 send-keys 那条门**放行**了 —— 这正是 K-R23 那个洞：\n\
+             `cut -f2` 在无分隔符时吐整行 ⇒ `$sid` 非空 ⇒ `[ -n \"$sid\" ]` 恒真。\n\
+             实得: {sk_dirty}"
+        );
+        assert!(
+            !kill_dirty.contains("ACTION_RAN"),
+            "🔴 通道脏时 kill 那条门放行了 —— 它原来靠 `[ \"$w\" = \"1\" ]` **碰巧**拒绝，\n\
+             现在应当是显式拒绝。实得: {kill_dirty}"
+        );
+        assert!(
+            sk_clean.contains("ACTION_RAN:send-keys"),
+            "正对照红了：干净输入下 send-keys 应当放行。\n\
+             只钉「脏的被拒」而不钉这条，把门焊死成「永远拒绝」也能绿。实得: {sk_clean}"
+        );
+        assert!(
+            kill_clean.contains("ACTION_RAN:kill-session"),
+            "正对照红了：干净输入 + windows=1 下 kill 应当放行。实得: {kill_clean}"
+        );
+        assert_ne!(
+            sk_dirty, sk_unset,
+            "「通道坏了」与「远端没设 @ccm_sid」共用了同一个读数 —— \n\
+             处置相同（都拒绝）没问题，**报出来的话相同**就等于把两件事压成一个，\n\
+             下一个人还得再查一遍。"
+        );
+    }
+
     /// A5+：send-keys 命令构造（补 R1）——enter=true 尾附 ` Enter`，false 不附；target/keys 经 shell_quote。
     /// F01：target 形态为 `'=<名>:'`（精确匹配，见 `exact_target`）。用 cc-* 名走零 Gate 的退化路径，
     /// 命令形状与今天逐字节相同（F04 对 100% 真实流量零改动的验证点）。
