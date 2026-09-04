@@ -1,0 +1,36 @@
+K-R23 · §3 死值验的四个读数（+ 一个第五读数）
+=====================================================================
+判据    : src-tauri/src/tmux.rs::tests::a_dirty_channel_that_lost_the_tab_must_not_open_the_door
+跑法    : 沙箱（ccmon-devbox:latest，--network none）里
+          `cargo test --lib -- --nocapture a_dirty_channel_that_lost_the_tab`
+          🔴 宿主上一条都没跑。不起真 tmux：`tmux` 用 shell 函数顶掉
+          （`command -v` 认函数），`display-message` 吐喂进去的 `$info`，
+          其余动词吐 `ACTION_RAN:<动词>`。
+喂什么  : 脏 = "cc-abc12345"（**没有 TAB** —— K-R12 量到的成因下整条被改写）
+          干净 = "1\tcc-abc12345"
+          sid 未设 = "1\t"
+命令串  : builder 的**生产串**（`build_send_keys_remote_cmd("e2e-custom", "CCMPROBE", true)`
+          / `build_kill_session_cmd("e2e-custom")`），不手搓等价命令。
+          目标名非 `cc-*` ⇒ `need_sid = true` ⇒ 这两格才真的装了这道门。
+
+---------------------------------------------------------------------
+① 改之前（工作树 track/k-r23 @ 8f61d3f，= 基点 3a2ba00 只加了判据、门没动）
+---------------------------------------------------------------------
+send-keys · 脏输入（无 TAB） ⇒ ACTION_RAN:send-keys                                   🔴 放行
+kill      · 脏输入（无 TAB） ⇒ CCM_GUARD_REJECTED sid=cc-abc12345 windows=cc-abc12345  ✅ 拒绝
+send-keys · 干净输入         ⇒ ACTION_RAN:send-keys                                   放行（正对照）
+kill      · 干净输入         ⇒ ACTION_RAN:kill-session                                放行（正对照）
+send-keys · sid 未设         ⇒ CCM_GUARD_REJECTED sid=                                拒绝
+
+判据结果: FAILED（第一条断言炸）—— **这条在修之前是红的，这是本件那个洞的复现。**
+
+★ 顺带把「kill 那条是碰巧安全」证死了：它的拒绝消息是
+  `sid=cc-abc12345 windows=cc-abc12345` —— **两个字段拿到的是同一行整串**。
+  它拒绝不是因为这道门认出了「通道脏」，而是因为
+  `$w`（那行整串）恰好 ≠ `"1"`。换一条恰好以 `1` 开头且没有 TAB 的脏串，
+  `[ "$w" = "1" ]` 也不成立（整串 ≠ "1"），但这条安全**建立在一个与本病无关的字段上**。
+
+---------------------------------------------------------------------
+② 改之后（工作树 track/k-r23 @ <见 §5>，取值那一步改成 shell 原生拆 + 显式判「拆不出」）
+---------------------------------------------------------------------
+（读数见本文件末尾「改后」段 / 件文件 §5）
