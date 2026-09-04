@@ -1,0 +1,10 @@
+=== 绿臂：探针盯真目录，注入一次写 ⇒ 该报 1 ===
+[green] seen=1 write=1 (期望 1)
+    2026-09-04 13:47:10 gap=2.606s idle -> busy changed=['status', 'updatedAt', 'statusUpdatedAt']
+[green] PASS
+
+=== 红臂：同一台探针指到空诱饵目录，写仍发生在真目录 ⇒ 该报 0，判据该翻红 ===
+[decoy] seen=0 write=0 (期望 1)
+[decoy] FAIL
+
+DEADCHECK: PASS —— 绿臂 PASS 且红臂**真的红了** ⇒ 探针的「零写入」是读数，不是死值。
