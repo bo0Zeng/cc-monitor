@@ -1,0 +1,516 @@
+{
+  "root": "/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r16b",
+  "files_scanned": 499,
+  "hops": [
+    {
+      "hop": "L2",
+      "desc": "SessionInfo 结构体（serde 反序列化落点）",
+      "scope": "全仓",
+      "prod_hits": 20,
+      "test_hits": 13,
+      "prod_sample": [
+        "src-tauri/src/utils.rs:10",
+        "src-tauri/src/session_map.rs:141",
+        "src-tauri/src/session_map.rs:178",
+        "src-tauri/src/session_map.rs:179",
+        "src-tauri/src/session_map.rs:239",
+        "src-tauri/src/session_map.rs:240",
+        "src-tauri/src/session_map.rs:281",
+        "src-tauri/src/session_map.rs:287"
+      ],
+      "test_sample": [
+        "src-tauri/src/session_map.rs:905",
+        "src-tauri/src/session_map.rs:910",
+        "src-tauri/src/session_map.rs:911",
+        "src-tauri/src/session_map.rs:934"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "L3",
+      "desc": "scan_dir（重扫整个 sessions/ 目录）",
+      "scope": [
+        "session_map.rs"
+      ],
+      "prod_hits": 3,
+      "test_hits": 9,
+      "prod_sample": [
+        "src-tauri/src/session_map.rs:196",
+        "src-tauri/src/session_map.rs:281",
+        "src-tauri/src/session_map.rs:466"
+      ],
+      "test_sample": [
+        "src-tauri/src/session_map.rs:780",
+        "src-tauri/src/session_map.rs:803",
+        "src-tauri/src/session_map.rs:804",
+        "src-tauri/src/session_map.rs:808"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "L4",
+      "desc": "diff_sessions（算 status_changed 的唯一实现点）",
+      "scope": "全仓",
+      "prod_hits": 2,
+      "test_hits": 9,
+      "prod_sample": [
+        "src-tauri/src/session_map.rs:358",
+        "src-tauri/src/session_map.rs:472"
+      ],
+      "test_sample": [
+        "src-tauri/src/session_map.rs:999",
+        "src-tauri/src/session_map.rs:1011",
+        "src-tauri/src/session_map.rs:1051",
+        "src-tauri/src/session_map.rs:1063"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "L5",
+      "desc": "run_watcher（notify 事件 + 2s 心跳双触发）",
+      "scope": [
+        "session_map.rs"
+      ],
+      "prod_hits": 2,
+      "test_hits": 0,
+      "prod_sample": [
+        "src-tauri/src/session_map.rs:217",
+        "src-tauri/src/session_map.rs:425"
+      ],
+      "test_sample": [],
+      "verdict": "只有生产段引用（零测试）"
+    },
+    {
+      "hop": "L6",
+      "desc": "is_process_alive（心跳那一路的判活）",
+      "scope": [
+        "session_map.rs"
+      ],
+      "prod_hits": 9,
+      "test_hits": 0,
+      "prod_sample": [
+        "src-tauri/src/session_map.rs:234",
+        "src-tauri/src/session_map.rs:499",
+        "src-tauri/src/session_map.rs:539",
+        "src-tauri/src/session_map.rs:615",
+        "src-tauri/src/session_map.rs:680",
+        "src-tauri/src/session_map.rs:697",
+        "src-tauri/src/session_map.rs:707",
+        "src-tauri/src/session_map.rs:719"
+      ],
+      "test_sample": [],
+      "verdict": "只有生产段引用（零测试）"
+    },
+    {
+      "hop": "L7",
+      "desc": "SessionChange.status_changed（承载灯的那个字段）",
+      "scope": "全仓",
+      "prod_hits": 18,
+      "test_hits": 10,
+      "prod_sample": [
+        "src-tauri/src/session_map.rs:116",
+        "src-tauri/src/session_map.rs:355",
+        "src-tauri/src/session_map.rs:404",
+        "src-tauri/src/session_map.rs:411",
+        "src-tauri/src/session_map.rs:421",
+        "src-tauri/src/session_map.rs:477",
+        "src-tauri/src/session_map.rs:518",
+        "src-tauri/src/ssh_source.rs:3657"
+      ],
+      "test_sample": [
+        "src/tabs.vitest.ts:499",
+        "src-tauri/src/session_map.rs:996",
+        "src-tauri/src/session_map.rs:1002",
+        "src-tauri/src/session_map.rs:1003"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "L8",
+      "desc": "SessionMap::snapshot_activity（F5 快照源）",
+      "scope": "全仓",
+      "prod_hits": 2,
+      "test_hits": 0,
+      "prod_sample": [
+        "src-tauri/src/session_map.rs:247",
+        "src-tauri/src/lib.rs:1937"
+      ],
+      "test_sample": [],
+      "verdict": "只有生产段引用（零测试）"
+    },
+    {
+      "hop": "L9",
+      "desc": "list_session_activity（快照 IPC）",
+      "scope": "全仓",
+      "prod_hits": 6,
+      "test_hits": 1,
+      "prod_sample": [
+        "src/tabs.ts:1733",
+        "src/tabs.ts:1738",
+        "src-tauri/src/bridge.rs:23",
+        "src-tauri/src/bridge.rs:31",
+        "src-tauri/src/lib.rs:1204",
+        "src-tauri/src/lib.rs:1934"
+      ],
+      "test_sample": [
+        "src-tauri/src/parity_ledger.rs:129"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "L10",
+      "desc": "events::SESSION_ACTIVITY（Tauri 事件名常量）",
+      "scope": "全仓",
+      "prod_hits": 4,
+      "test_hits": 0,
+      "prod_sample": [
+        "src-tauri/src/bridge.rs:24",
+        "src-tauri/src/ssh_source.rs:1676",
+        "src-tauri/src/lib.rs:719",
+        "src-tauri/src/lib.rs:902"
+      ],
+      "test_sample": [],
+      "verdict": "只有生产段引用（零测试）"
+    },
+    {
+      "hop": "L11",
+      "desc": "SessionActivityPayload（过线的那个结构）",
+      "scope": "全仓",
+      "prod_hits": 10,
+      "test_hits": 1,
+      "prod_sample": [
+        "src/events.ts:28",
+        "src/events.ts:39",
+        "src/events.ts:107",
+        "src/events.ts:476",
+        "src-tauri/src/bridge.rs:235",
+        "src-tauri/src/ssh_source.rs:1671",
+        "src-tauri/src/lib.rs:713",
+        "src-tauri/src/lib.rs:896"
+      ],
+      "test_sample": [
+        "src/generated-boundary-guard.vitest.ts:197"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "R1",
+      "desc": "daemon: Frame/InboundFrame::SessionStatus",
+      "scope": "全仓",
+      "prod_hits": 5,
+      "test_hits": 7,
+      "prod_sample": [
+        "src-tauri/src/ssh_source.rs:2614",
+        "src-tauri/src/ssh_source.rs:4215",
+        "remote-daemon-proto/src/wire.rs:362",
+        "remote-daemon-proto/src/wire.rs:383",
+        "remote-daemon-proto/src/observe/watcher.rs:1640"
+      ],
+      "test_sample": [
+        "src-tauri/src/ssh_source.rs:6465",
+        "src-tauri/src/ssh_source.rs:6475",
+        "remote-daemon-proto/src/wire.rs:778",
+        "remote-daemon-proto/src/wire.rs:1228"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "R2",
+      "desc": "daemon: SessionEntry（差分用的上一次值住这里）",
+      "scope": "全仓",
+      "prod_hits": 4,
+      "test_hits": 0,
+      "prod_sample": [
+        "remote-daemon-proto/src/observe/watcher.rs:1119",
+        "remote-daemon-proto/src/observe/watcher.rs:1123",
+        "remote-daemon-proto/src/observe/watcher.rs:1187",
+        "remote-daemon-proto/src/observe/watcher.rs:1701"
+      ],
+      "test_sample": [],
+      "verdict": "只有生产段引用（零测试）"
+    },
+    {
+      "hop": "R3",
+      "desc": "线上 kind=\"session_status\" 字面量",
+      "scope": "全仓",
+      "prod_hits": 4,
+      "test_hits": 7,
+      "prod_sample": [
+        "src-tauri/src/ssh_source.rs:2611",
+        "remote-daemon-proto/src/main.rs:186",
+        "remote-daemon-proto/src/wire.rs:116",
+        "remote-daemon-proto/src/wire.rs:383"
+      ],
+      "test_sample": [
+        "src-tauri/src/ssh_source.rs:2732",
+        "src-tauri/src/ssh_source.rs:6462",
+        "src-tauri/src/ssh_source.rs:6472",
+        "remote-daemon-proto/src/wire.rs:746"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "R4",
+      "desc": "ssh_source: announced meta.status 回写（F28 重发）",
+      "scope": [
+        "ssh_source.rs"
+      ],
+      "prod_hits": 2,
+      "test_hits": 0,
+      "prod_sample": [
+        "src-tauri/src/ssh_source.rs:4222",
+        "src-tauri/src/ssh_source.rs:4227"
+      ],
+      "test_sample": [],
+      "verdict": "只有生产段引用（零测试）"
+    },
+    {
+      "hop": "F1",
+      "desc": "events.ts 订阅 \"session-activity\"",
+      "scope": "全仓",
+      "prod_hits": 2,
+      "test_hits": 0,
+      "prod_sample": [
+        "src/events.ts:476",
+        "src-tauri/src/bridge.rs:24"
+      ],
+      "test_sample": [],
+      "verdict": "只有生产段引用（零测试）"
+    },
+    {
+      "hop": "F2",
+      "desc": "TabManager.updateActivity",
+      "scope": "全仓",
+      "prod_hits": 3,
+      "test_hits": 7,
+      "prod_sample": [
+        "src/tabs.ts:1543",
+        "src/tabs.ts:1735",
+        "src/main.ts:739"
+      ],
+      "test_sample": [
+        "src/tabs.vitest.ts:475",
+        "src/tabs.vitest.ts:479",
+        "src/tabs.vitest.ts:483",
+        "src/tabs.vitest.ts:505"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "F3",
+      "desc": "TabManager.syncActivitySnapshot（F5 收敛）",
+      "scope": "全仓",
+      "prod_hits": 2,
+      "test_hits": 0,
+      "prod_sample": [
+        "src/tabs.ts:1729",
+        "src/main.ts:811"
+      ],
+      "test_sample": [],
+      "verdict": "只有生产段引用（零测试）"
+    },
+    {
+      "hop": "F4",
+      "desc": "activityLightClass（灯色语义单一事实源）",
+      "scope": "全仓",
+      "prod_hits": 3,
+      "test_hits": 7,
+      "prod_sample": [
+        "src/tabs.ts:3566",
+        "src/session-status.ts:20",
+        "src/views/grid-monitor.ts:422"
+      ],
+      "test_sample": [
+        "src/session-status.vitest.ts:8",
+        "src/session-status.vitest.ts:9",
+        "src/session-status.vitest.ts:12",
+        "src/session-status.vitest.ts:15"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "F6",
+      "desc": "CSS 类 act-idle / act-waiting",
+      "scope": "全仓",
+      "prod_hits": 15,
+      "test_hits": 14,
+      "prod_sample": [
+        "src/tabs.ts:3567",
+        "src/tabs.ts:3568",
+        "src/session-status.ts:12",
+        "src/session-status.ts:16",
+        "src/session-status.ts:17",
+        "src/session-status.ts:21",
+        "src/session-status.ts:22",
+        "src/styles.css:1375"
+      ],
+      "test_sample": [
+        "src/session-status.vitest.ts:7",
+        "src/session-status.vitest.ts:8",
+        "src/session-status.vitest.ts:9",
+        "src/session-status.vitest.ts:11"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "F7",
+      "desc": "tmuxIdle / tmux-idle（灰灯，与红绿黄正交）",
+      "scope": "全仓",
+      "prod_hits": 26,
+      "test_hits": 26,
+      "prod_sample": [
+        "src/e2e-probe.ts:115",
+        "src/tabs.ts:172",
+        "src/tabs.ts:177",
+        "src/tabs.ts:1190",
+        "src/tabs.ts:1209",
+        "src/tabs.ts:1217",
+        "src/tabs.ts:1287",
+        "src/tabs.ts:1288"
+      ],
+      "test_sample": [
+        "src/tabs.vitest.ts:547",
+        "src/tabs.vitest.ts:549",
+        "src/tabs.vitest.ts:557",
+        "src/tabs.vitest.ts:561"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "F8",
+      "desc": "markTmuxIdle（置灰入口）",
+      "scope": "全仓",
+      "prod_hits": 3,
+      "test_hits": 11,
+      "prod_sample": [
+        "src/tabs.ts:1525",
+        "src/main.ts:704",
+        "src/main.ts:1015"
+      ],
+      "test_sample": [
+        "src/gray-light-wiring.vitest.ts:93",
+        "src/gray-light-wiring.vitest.ts:94",
+        "src/gray-light-wiring.vitest.ts:100",
+        "src/gray-light-wiring.vitest.ts:101"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "X1",
+      "desc": "statusUpdatedAt —— CC 自己写的「这个 status 什么时候定的」",
+      "scope": "全仓",
+      "prod_hits": 0,
+      "test_hits": 1,
+      "prod_sample": [],
+      "test_sample": [
+        "src-tauri/src/session_map.rs:1124"
+      ],
+      "verdict": "只有测试段引用（生产段零引用）"
+    },
+    {
+      "hop": "X2",
+      "desc": "pidfile 的 updatedAt（限本链，避开 accounts/history 的同名字段）",
+      "scope": [
+        "session_map.rs",
+        "observe/watcher.rs",
+        "ssh_source.rs",
+        "src-tauri/src/lib.rs",
+        "bridge.rs",
+        "src/events.ts",
+        "src/tabs.ts",
+        "src/session-status.ts",
+        "src/views/grid-monitor.ts",
+        "src/main.ts",
+        "src/styles.css",
+        "wire.rs"
+      ],
+      "prod_hits": 0,
+      "test_hits": 1,
+      "prod_sample": [],
+      "test_sample": [
+        "src-tauri/src/session_map.rs:1124"
+      ],
+      "verdict": "只有测试段引用（生产段零引用）"
+    },
+    {
+      "hop": "X3",
+      "desc": "messagingSocketPath / cc-socks —— CC 自己开的活体通道",
+      "scope": "全仓",
+      "prod_hits": 0,
+      "test_hits": 0,
+      "prod_sample": [],
+      "test_sample": [],
+      "verdict": "盘上没有"
+    },
+    {
+      "hop": "X4",
+      "desc": "peerFeatures / notify_idle —— CC 宣告的能力位",
+      "scope": "全仓",
+      "prod_hits": 0,
+      "test_hits": 0,
+      "prod_sample": [],
+      "test_sample": [],
+      "verdict": "盘上没有"
+    },
+    {
+      "hop": "X5",
+      "desc": "pidfile 的 mtime（限本链：灯链上有没有人读文件时间）",
+      "scope": [
+        "session_map.rs",
+        "observe/watcher.rs",
+        "ssh_source.rs",
+        "src-tauri/src/lib.rs",
+        "bridge.rs",
+        "src/events.ts",
+        "src/tabs.ts",
+        "src/session-status.ts",
+        "src/views/grid-monitor.ts",
+        "src/main.ts",
+        "src/styles.css",
+        "wire.rs"
+      ],
+      "prod_hits": 21,
+      "test_hits": 6,
+      "prod_sample": [
+        "src-tauri/src/ssh_source.rs:4451",
+        "src-tauri/src/ssh_source.rs:4456",
+        "src-tauri/src/lib.rs:2205",
+        "src-tauri/src/lib.rs:2214",
+        "remote-daemon-proto/src/wire.rs:160",
+        "remote-daemon-proto/src/wire.rs:185",
+        "remote-daemon-proto/src/observe/watcher.rs:1675",
+        "remote-daemon-proto/src/observe/watcher.rs:1716"
+      ],
+      "test_sample": [
+        "remote-daemon-proto/src/observe/watcher.rs:3351",
+        "remote-daemon-proto/src/observe/watcher.rs:3368",
+        "remote-daemon-proto/src/observe/watcher.rs:3373",
+        "remote-daemon-proto/src/observe/watcher.rs:4134"
+      ],
+      "verdict": "生产+测试都有"
+    },
+    {
+      "hop": "X6",
+      "desc": "pidfile 的 tmux 字段（CC 自己记的 pane，§6 那条边界的对侧）",
+      "scope": [
+        "session_map.rs",
+        "observe/watcher.rs",
+        "ssh_source.rs",
+        "src-tauri/src/lib.rs",
+        "bridge.rs",
+        "src/events.ts",
+        "src/tabs.ts",
+        "src/session-status.ts",
+        "src/views/grid-monitor.ts",
+        "src/main.ts",
+        "src/styles.css",
+        "wire.rs"
+      ],
+      "prod_hits": 0,
+      "test_hits": 0,
+      "prod_sample": [],
+      "test_sample": [],
+      "verdict": "盘上没有"
+    }
+  ]
+}
