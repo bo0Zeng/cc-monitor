@@ -193,6 +193,294 @@ const EMITS: &[&str] = &[
     "tmux_session_closed",
 ];
 
+/// `K-P4`（09-04）：命令级 code —— **「这台机器上没有 tmux」**。
+///
+/// ⚠ 这是这个字面量在仓里的第 N 份，但它**不是第 N 个真相源**：真相是
+/// `inbound::REGISTRY` 里各条命令自己登记的 `codes`，本常量只拿它去**查那张表**。
+/// 查不到就红（`the_declared_code_is_one_the_registry_already_declares`）⇒
+/// 谁把那边的拼写改了，这边不会静默跟丢。
+const NO_TMUX: &str = "no_tmux";
+
+/// `K-P4`：这台机器上**做不到**的命令 —— **纯判定那一半**（不碰世界 ⇒ 可拿合成读数驱动）。
+///
+/// # 这里为什么没有一张手写的「命令 → 它依赖什么」表
+///
+/// 那件事 `inbound::REGISTRY` 已经说过了：**谁会回 `no_tmux`，谁就依赖 tmux**。
+/// 再手写一张 = 第二份真相，而两份真相里迟早有一份是旧的（本工作区最贵的那一类病）。
+/// ⇒ 直接从 `codes` 派生。副作用正是要的：以后**新加**一条会回 `no_tmux` 的命令，
+/// 它自动进这张表，没有人需要记得来改这里。
+///
+/// # `tmux` 的三态各自落在哪（🔴 这一格是本函数唯一容易假绿的地方）
+///
+/// · `Some(false)`（**确证没有**）⇒ 列进表；
+/// · `Some(true)` ⇒ 不列；
+/// · `None`（**判不出来**）⇒ **不列**。
+///
+/// 「不知道」有两条压法，两条都坏、但坏得不一样：压成**做不到** ⇒ 客户端灰掉按钮 ⇒
+/// **能用的功能从界面上消失，而这种消失没有任何回音**（用户只会以为它不支持）；
+/// 压成**做得到** ⇒ 客户端照今天的样子办（照发、点了看 `no_tmux`）⇒
+/// **一个字节都没退化**，只是这一格没买到。⇒ 后者是唯一安全的那一侧。
+/// 一句话：**这张表只在有把握时才开口，没把握时它退回今天的行为。**
+#[allow(dead_code)] // 同 `unavailable_here`：唯一的生产调用点是它，而它今天不接线。
+fn unavailable_from(tmux: Option<bool>) -> Vec<wire::Unavailable> {
+    let mut out = Vec::new();
+    if tmux == Some(false) {
+        for spec in inbound::REGISTRY {
+            if spec.codes.contains(&NO_TMUX) {
+                out.push(wire::Unavailable {
+                    command: spec.name.to_string(),
+                    code: NO_TMUX.to_string(),
+                });
+            }
+        }
+    }
+    out
+}
+
+/// `K-P4`：与世界打交道的那一半 —— 给定 `PATH` 的值，`tmux` 在不在它上面。
+///
+/// # 判准为什么正好是「`PATH` 上有没有一个可执行的 `tmux`」
+///
+/// 因为**真调用那一刻就是这么找的**：`control/kill.rs` `control/gate.rs` `control/launch.rs`
+/// 三处都走 `Command::new("tmux")`，unix 上它是 `execvp` ⇒ 逐字就是 `PATH` 查找。
+/// 事前那句话与事后那句话用**同一个判准**，两者才不会各说各话。
+///
+/// # `None`（判不出来）的两个来源 —— 都不是凑数的
+///
+/// ① `PATH` 没设、或切不出任何一个非空目录 ⇒ **无处可查**，「没找到」这句话说不出口。
+/// ② 🔴 **非 unix** ⇒ 这个判准在那儿**不成立**：Windows 的 `CreateProcess` 还会看进程
+///    自身目录与当前目录，而且真装了也叫 `tmux.exe`（本扫描找的是 `tmux`）⇒ 在 Windows 上
+///    它**几乎必然报「没有」，而那有可能是错的**，错的方向正好是最坏那一侧
+///    （把一个能用的功能灰掉）。本机是 Linux，**验不了那一格 ⇒ 不猜**。
+///    ⚠ 后果要说清楚：**本字段今天在 Windows 上恒为空** —— 而 Windows 正是这一件的
+///    动机所在。解锁条件是一次**真 Windows 读数**（`K-P4` 的 `KP4Y3` 那一格），
+///    不是在这里多写一个 `#[cfg]` 分支。
+#[allow(dead_code)] // 同上。
+fn tmux_in(path: Option<&std::ffi::OsStr>) -> Option<bool> {
+    if !cfg!(unix) {
+        return None;
+    }
+    let dirs: Vec<PathBuf> = std::env::split_paths(path?)
+        .filter(|d| !d.as_os_str().is_empty())
+        .collect();
+    if dirs.is_empty() {
+        return None;
+    }
+    Some(
+        dirs.iter()
+            .any(|d| plugin::discover::is_executable(&d.join("tmux"))),
+    )
+}
+
+/// `K-P4`：生产入口 —— 这一帧**真填的话**该填什么。
+///
+/// ⚠ 今天生产**不调它**（`build_hello` 硬写 `Vec::new()`）——与 `agents::visible_homes()`
+/// 同一个口径：**能填不真填**。摘掉下面这个 `allow` 的那天，就是把 `build_hello` 那一行
+/// 换成本函数的那天；要**同轮**做的三件事写在 `wire.rs` 那个字段的头注里。
+///
+/// 🔴 **真填那天连着要想清楚的一件事：这一趟探测的结果会被用很久。**
+/// `build_hello` 在分档**之前**只调一次，那一帧随后交给两条载体；常驻那条（`listen.rs`）
+/// 服务**不限次**的「只读 hello 就走」⇒ **同一帧被这个进程后续的所有连接共用**。
+/// ⇒ 探测本身必须**便宜且挂不住**（所以 `tmux_in` 是纯 `stat` 扫 `PATH`，不是真 exec 一次），
+/// 而消费侧必须把它当**提示**（`wire.rs` 那个字段头注的口径③）。
+#[allow(dead_code)] // `K-P4`：能填不真填 —— 接线是一次纯发布决策，不是忘了。
+fn unavailable_here() -> Vec<wire::Unavailable> {
+    unavailable_from(tmux_in(std::env::var_os("PATH").as_deref()))
+}
+
+// 本测块紧邻被测的第四条面（就近可读）、不挪文件尾；显式 allow 让 clippy --all-targets 净
+//（同上面 `stream_flag_tests` 那一块的理由）。
+#[allow(clippy::items_after_test_module)]
+#[cfg(test)]
+mod fourth_face_tests {
+    use super::{tmux_in, unavailable_from, unavailable_here, NO_TMUX};
+
+    /// ★ `K-P4` 红线之一：**生产路径今天恒空** ⇒ hello 帧的线上字节逐字节不变。
+    ///
+    /// 它与 `wire.rs::hello_unavailable_is_additive_present_and_absent` 是**两半**：
+    /// 那条证「给空表就得到旧字节」，本条证「**生产确实给的是空表**」。
+    /// 缺任一条，「今天线上字节没变」这句话都不成立 —— 与 `homes` 那两条同一个分工。
+    /// ⚠ 真填那天本条会**故意变红**：那是提醒（去 bump `BUILD_ID`、去更新 fixture），不是障碍。
+    #[test]
+    fn production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen() {
+        let prod = crate::guard_support::production_code(include_str!("main.rs"));
+        let sites: Vec<&str> = prod
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("unavailable:"))
+            .collect();
+        assert_eq!(
+            sites.len(),
+            1,
+            "`main.rs` 生产段里给 `unavailable` 赋值的地方有 {} 处（应当恰好 1 处）——\n\
+             0 处 ⇒ 抽取坏了（本断言此刻在空转）；≥2 处 ⇒ 有第二条路，红线只守住一条。\n\
+             实得：{sites:?}",
+            sites.len()
+        );
+        assert_eq!(
+            sites[0], "unavailable: Vec::new(),",
+            "`main.rs` 开始往 `unavailable` 里填东西了 ⇒ hello 帧的线上字节**变了**。\n\
+             那是一次**跨仓契约变更**（仓外 aterm 按精确字节读这一帧，契约冻结 2026-07-18）。\n\
+             要真填就同轮做三件事（见 `wire.rs` 那个字段的头注）：换这一行 · 更新 fixture 期望串 ·\n\
+             **bump `BUILD_ID`**（否则已部署的远端不判 stale、不重装，整轮改动在那边休眠）。"
+        );
+    }
+
+    /// ★★ `K-P4` 红线之二，也是本拍的核心交付：**这个字段不是编译期常量。**
+    ///
+    /// # 少了本条会怎样
+    ///
+    /// 只有上一条的话，「`unavailable` 恒空」与「daemon 根本答不出这个问题」在判据眼里
+    /// **一模一样** —— 那样这一拍就只是在 wire 上多挂了一个永远为空的字段，
+    /// 也就是握手帧上多了一句谁都不会读的话。**「事前协商」一格都没买到，而没有任何东西会说。**
+    ///
+    /// # 它证的到底是什么
+    ///
+    /// 同一份二进制，**换一台机器就换一个答案**。所以两半都要证：
+    /// ① **判定**那一半（`unavailable_from`）—— 三种世界，两种答案，且「判不出来」不倒向「做不到」；
+    /// ② **读世界**那一半（`tmux_in`）—— 真去文件系统上看，看得见和看不见给不同的答案。
+    /// 只证 ① 的话，一个 `fn tmux_in(_) -> Option<bool> { Some(true) }` 的退化实现照样绿。
+    #[test]
+    fn the_answer_is_a_function_of_the_machine_not_of_the_build() {
+        // ── ① 判定那一半：三种"世界"，两种答案 ──────────────────────────────
+        assert!(
+            unavailable_from(Some(true)).is_empty(),
+            "有 tmux 还报做不到 ⇒ 界面会灰掉一个能用的按钮"
+        );
+        assert!(
+            unavailable_from(None).is_empty(),
+            "🔴 **「判不出来」被压成了「做不到」** —— 这是本字段最贵的那个错：\n\
+             能用的功能会从界面上消失，而这种消失没有任何回音（用户只会以为它不支持）。\n\
+             没把握时必须退回今天的行为（照发、点了看命令级 code），那一侧是安全的。"
+        );
+        let missing = unavailable_from(Some(false));
+        let names: Vec<&str> = missing.iter().map(|u| u.command.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["kill", "launch"],
+            "没有 tmux 的那台机器上，做不到的恰好是 `REGISTRY` 里登记了 `{NO_TMUX}` 的那几条。\n\
+             ⚠ 本条红**未必是错**：你要是新加了一条会回 `{NO_TMUX}` 的命令，它已经自动进表了\n\
+             （这张表是从 `codes` 派生的，不是手写的）—— 那就把这里的期望值补上。\n\
+             实得：{names:?}"
+        );
+        assert!(
+            missing.iter().all(|u| u.code == NO_TMUX),
+            "表里出现了不是 `{NO_TMUX}` 的原因：{missing:?}"
+        );
+
+        // ── ② 读世界那一半：真去文件系统上看 ────────────────────────────────
+        //
+        // 夹具**不依赖这台机器上装没装 tmux**（那是世界的事实，不是代码的），
+        // 所以两个答案都能精确断言。同 `wire.rs` 那条 `homes` 夹具的纪律。
+        assert_eq!(
+            tmux_in(None),
+            None,
+            "`PATH` 没设 ⇒ **无处可查** ⇒ 「没找到」这句话说不出口，只能是「判不出来」"
+        );
+
+        let root = std::env::temp_dir().join(format!("ccm-kp4-tmux-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        let with = root.join("with");
+        let without = root.join("without");
+        std::fs::create_dir_all(&with).expect("建夹具目录");
+        std::fs::create_dir_all(&without).expect("建夹具目录");
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let fake = with.join("tmux");
+            std::fs::write(&fake, b"#!/bin/sh\nexit 0\n").expect("写合成 tmux");
+            let mut perm = std::fs::metadata(&fake).expect("读夹具权限").permissions();
+            perm.set_mode(0o755);
+            std::fs::set_permissions(&fake, perm).expect("给合成 tmux 上执行位");
+
+            assert_eq!(
+                tmux_in(Some(with.as_os_str())),
+                Some(true),
+                "`PATH` 上摆着一个可执行的 `tmux` 却没看见 ⇒ 读世界那一半是瞎的"
+            );
+            assert_eq!(
+                tmux_in(Some(without.as_os_str())),
+                Some(false),
+                "空目录当 `PATH` 却报「有」⇒ 读世界那一半在撒谎（退化成常量了）"
+            );
+
+            // ★ 合起来：**同一份代码，两台不同的机器，两个不同的答案。**
+            //   这一步才是「不是编译期常量」的正面证据 —— 上面两组各自都只证了一半。
+            assert!(
+                unavailable_from(tmux_in(Some(without.as_os_str()))).len() == 2
+                    && unavailable_from(tmux_in(Some(with.as_os_str()))).is_empty(),
+                "端到端：没有 tmux 的机器上要报出两条做不到，有 tmux 的机器上一条都不报"
+            );
+        }
+        #[cfg(not(unix))]
+        {
+            // 🔴 非 unix 上这个判准**不成立**（`tmux_in` 头注第二条）⇒ 它必须诚实地说
+            //    「判不出来」，而不是拿一个几乎必然为假的扫描结果去灰掉按钮。
+            //    ⚠ 后果：**本字段今天在 Windows 上恒为空**，而 Windows 正是这一件的动机。
+            //    解锁要的是一次真 Windows 读数，不是在这里加一个 cfg 分支。
+            assert_eq!(
+                tmux_in(Some(with.as_os_str())),
+                None,
+                "非 unix 上必须报「判不出来」——`Command::new(\"tmux\")` 在那儿还会看进程自身\
+                 目录与当前目录，而且真装了也叫 `tmux.exe`，这个扫描对不上它"
+            );
+        }
+        let _ = std::fs::remove_dir_all(&root);
+
+        // ── ③ 生产入口跑得通（真填那天换过去的就是它）────────────────────────
+        //   只断言**与世界无关**的性质：不断言条数 —— 那会变成「跑测试这台机器上装没装 tmux」。
+        for u in &unavailable_here() {
+            assert!(
+                super::inbound::COMMANDS.contains(&u.command.as_str()),
+                "声明做不到的 `{}` 根本不在 `commands` 里 —— 本字段说的是「接得下但做不到」，\
+                 「根本不接」那一格由不在 `commands` 里表达",
+                u.command
+            );
+        }
+    }
+
+    /// ★ `K-P4` 红线之三：**声明用的 code，必须是那条命令自己登记过的 code。**
+    ///
+    /// 事前那句话与事后那句话要是各说各的词，客户端就得维护**两张**「这句话怎么翻成人话」
+    /// 的表，而 monitor 侧那张已经写好了（`daemon_launch.rs` 等三处逐字「远端未安装 tmux」）。
+    ///
+    /// # 它真正逮的是什么（不是同义反复）
+    ///
+    /// 这张表从 `REGISTRY.codes` 派生，但**常量 `NO_TMUX` 那个字面量是第二份拷贝**。
+    /// 有人把 `REGISTRY` 里的 `no_tmux` 改名（比如收窄成 `tmux_missing`），
+    /// 派生出来的表会**静默变空** —— 所有测试照绿，而第四条面从此永远不说话。
+    /// 本条把那次改名变成一次红。
+    #[test]
+    fn the_declared_code_is_one_the_registry_already_declares() {
+        let owners: Vec<&str> = crate::inbound::REGISTRY
+            .iter()
+            .filter(|s| s.codes.contains(&NO_TMUX))
+            .map(|s| s.name)
+            .collect();
+        assert!(
+            !owners.is_empty(),
+            "`REGISTRY` 里没有任何一条命令登记 `{NO_TMUX}` —— 要么那个 code 被改名了、\n\
+             要么依赖 tmux 的命令都没了。无论哪种，握手帧第四条面此刻**永远为空**，\n\
+             而它自己不会喊疼。（本常量只是拿去查表，`REGISTRY` 才是真相源。）"
+        );
+        for u in unavailable_from(Some(false)) {
+            let spec = crate::inbound::REGISTRY
+                .iter()
+                .find(|s| s.name == u.command)
+                .unwrap_or_else(|| panic!("声明了一条 `REGISTRY` 里没有的命令：{}", u.command));
+            assert!(
+                spec.codes.contains(&u.code.as_str()),
+                "给 `{}` 声明的原因 `{}` 不在它自己登记的 codes {:?} 里 ——\n\
+                 事前说的和事后回的不是同一句话，客户端得为此维护第二张翻译表。",
+                u.command,
+                u.code,
+                spec.codes
+            );
+        }
+    }
+}
+
 // U6b-2 **argv 三分表**：daemon 认识的每个 `--token` 恰好属于其中一类。
 //
 // # 为什么要有这张表
@@ -549,6 +837,24 @@ fn build_hello(agent_home: &std::path::Path) -> Frame {
         capabilities: CAPABILITIES.iter().map(|s| s.to_string()).collect(),
         emits: EMITS.iter().map(|s| s.to_string()).collect(),
         commands: inbound::COMMANDS.iter().map(|s| s.to_string()).collect(),
+        // ★★〔`K-P4` 09-04〕**握手帧第四条面：「我做得到什么」。这一行也是空表，
+        // 而它同样已经不是因为"做不到"了。** `unavailable_here()` 今天就能答出这台机器上
+        // 哪几条命令做不到（判准 = `tmux` 在不在 `PATH` 上，与真调用那一刻同一个判准；
+        // 表本身从 `inbound::REGISTRY` 的 `codes` **派生**，不是手写的第二份真相）。
+        //
+        // 换过去只要改这一行 —— 口径与 `homes` 那一行逐字相同：**能填不真填**。
+        //   填 = 一次**跨仓契约变更**（仓外 aterm 的 hello fixture 按精确字节对，
+        //   契约冻结 2026-07-18），而本机没有 aterm 仓、验不了它的运行时
+        //   ⇒ 把「何时真填」留成一次**纯发布决策**。
+        // 真填那天要同轮做的三件事写在 `wire.rs` 那个字段的头注里（第三件是 **bump `BUILD_ID`**）。
+        //
+        // 🔴 **真填之前，这一格买到的不是「事前协商」本身，是它的形状 + 一条能验的填法。**
+        // 别把「字段加上了」读成「界面已经不会画死按钮了」——那要等消费侧接线。
+        // 这一行由 `production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen`
+        // 钉住（它会在那天**故意变红**：那是提醒，不是障碍）；旁边那条
+        // `the_answer_is_a_function_of_the_machine_not_of_the_build` 钉的是另一半 ——
+        // **空表不等于这个字段是个编译期常量**。
+        unavailable: Vec::new(),
     }
 }
 
