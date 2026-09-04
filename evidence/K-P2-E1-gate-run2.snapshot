@@ -1,0 +1,27 @@
+# K-P2 `E` 阶段摸底拍 · 门禁第二趟落盘
+#
+# 跑法（宿主上零测试，全部在沙箱里）：
+#   set -o pipefail
+#   DEVBOX_NET=host PB_WS=backend-consolidation \
+#     .claude/devbox/gate /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-p2e k-p2e
+#
+# 工作树 .claude/worktrees/k-p2e @ 分支 track/k-p2e，入场尖 e1944e8，**零生产代码改动**。
+# 量于 2026-09-04。
+#
+# ⚠ 第一趟（同样的命令、同一个 tag、同一个尖、我一个字节都没改代码）是：
+#     GATE: FAIL —— cargo（退出码 101）；pb check[backend-consolidation]（FAIL=1 BROKEN=0）
+#   第二趟（下面这份）全绿。成因没拆开量，登记为空缺。件文件 §6-6 有逐条说明。
+#   写出来是为了不让它下次以「门禁偶发」的名义盖掉一条真红。
+
+  ok   cargo          1375 passed（8 个包合计）
+  分母 cargo          本树未铺 src-tauri/embedded-daemons/ ⇒ embedded_daemons cfg 不置 ⇒ 上面那个合计里少了「本地后端真的能起来吗」那一族（4 条，逐个点名见上方注释）
+  ok   generated      与 Rust 源一致（跑过上面那道 cargo 门之后再判的）
+  ok   daemon         530 passed（分母：单包 remote-daemon-proto，只有一行 test result ⇒ 最大值 = 合计）
+  ok   npm            1541 passed（分母：17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字（test:dom 1480 · test:diff 17），而取最大值 ⇒ 这个数恒是 test:dom 的；另 15 个 tsx 套件只打「all X tests passed」，它们「跑了 0 个」这一格守不住（失败仍由 && 链的退出码守））
+  ok   ccm e2e        ccm-print-parity       PASS=12（地板 12，恒等）
+  ok   ccm e2e        ccm-rbind-title        PASS=8（地板 8，恒等）
+  ok   ccm e2e        ccm-cli                PASS=242（地板 242，恒等）
+  ok   ccm e2e        ccm-contract-parity    PASS=68（地板 68，恒等）
+  ok   pb check       [backend-consolidation] ===== pb check: FAIL=0 BROKEN=0 =====
+
+GATE: OK —— 三道门 + 生成物漂移 + pb check + 四套 ccm e2e 全绿，可以出货
