@@ -6,3 +6,27 @@
  1393402 831279fb  busy     绿   True      125.1      125.2       4.7     120.4
  1713971 d10d3b71  idle     红   True      261.8      261.8     261.7       0.1
   268622 07e0f799  busy     绿   True     3112.9     3112.9    1391.4    1721.5
+# 量于 2026-09-04 13:43:08  分母=4 个 pidfile（只数 /home/zbl/.claude/sessions）
+     pid sid       status   灯   活      pidfile龄    status龄    jsonl龄       gap
+  105382 abfa3e79  busy     绿   True     2098.6     2098.6      17.1    2081.5
+ 1393402 831279fb  busy     绿   True      262.6      262.7      29.2     233.5
+ 1713971 d10d3b71  idle     红   True      399.3      399.3     399.2       0.1
+  268622 07e0f799  busy     绿   True     3250.4     3250.4    1528.9    1721.5
+# 量于 2026-09-04 13:47:57  分母=4 个 pidfile（只数 /home/zbl/.claude/sessions）
+     pid sid       status   灯   活      pidfile龄    status龄    jsonl龄       gap
+  105382 abfa3e79  busy     绿   True     2388.5     2388.5       0.3    2388.1
+ 1393402 831279fb  idle     红   True      288.7      288.7     288.6       0.1
+ 1713971 d10d3b71  busy     绿   True       57.4       57.5       3.4      54.0
+  268622 07e0f799  busy     绿   True       42.0       42.0      41.8       0.2
+# 量于 2026-09-04 13:48:32  分母=4 个 pidfile（只数 /home/zbl/.claude/sessions）
+     pid sid       status   灯   活      pidfile龄    status龄    jsonl龄       gap
+  105382 abfa3e79  busy     绿   True     2422.8     2422.8      29.4    2393.4
+ 1393402 831279fb  idle     红   True      323.0      323.0     322.9       0.1
+ 1713971 d10d3b71  busy     绿   False       91.7       91.8      37.7      54.0
+  268622 07e0f799  busy     绿   True       76.3       76.3      21.5      54.8
+# 量于 2026-09-04 14:10:18  分母=4 个 pidfile（只数 /home/zbl/.claude/sessions）
+     pid sid       status   灯   活      pidfile龄    status龄    jsonl龄       gap
+  105382 abfa3e79  busy     绿   True     3729.2     3729.2      22.8    3706.3
+ 1393402 831279fb  idle     红   True     1629.4     1629.4    1629.3       0.1
+ 1713971 d10d3b71  busy     绿   False     1398.1     1398.2    1344.1      54.0
+  268622 07e0f799  busy     绿   True     1382.7     1382.7     809.5     573.2
