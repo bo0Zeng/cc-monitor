@@ -7184,9 +7184,16 @@ Host prod
 
     // === F45：race_connect 编排（可控 mock，不依赖真 SSH）===
     // 用一个内存 TCP listener 模拟「快地址」（accept 即断=握手必失败但 TCP 连得上），
-    // 及不存在端口模拟「立即拒绝」；黑洞地址模拟握手挂起。断言编排语义：首个可用者
-    // 决定结果、全失败聚合、看门狗生效。注：这些测走 race_connect 的错误路径（无真
-    // SSH server 故握手都失败），验证的是编排（顺序/聚合/超时/取消），非握手成功路径。
+    // 及不存在端口模拟「立即拒绝」；**本地静默对端**（`spawn_silent_peer`）模拟握手挂起。
+    // 断言编排语义：首个可用者决定结果、全失败聚合、看门狗生效。注：这些测走 race_connect
+    // 的错误路径（无真 SSH server 故握手都失败），验证的是编排（顺序/聚合/超时/取消），
+    // 非握手成功路径。
+    //
+    // 🔴 **本段的前提纪律**〔`K-R24` 09-04〕：这几条判据要的对端一律**自己起在 loopback 上**。
+    // 不许再靠「这台机器到某个外部地址是什么反应」—— 那是一条**没人建立、也没人检查**的
+    // 环境前提，前提不成立时它吐的红与「被测的东西真坏了」**长得一模一样**。
+    // ⚠ 判据不是靠一张「禁用哪些 IP」的词表守的（那种表迟早腐）：守它的是**门禁自己的
+    // 默认口径 `--network none`** —— 断网下还能绿，才说明这条判据的前提是它自己建立的。
 
     use tokio::net::TcpListener;
 
@@ -7196,6 +7203,58 @@ Host prod
         let p = l.local_addr().unwrap().port();
         drop(l);
         p
+    }
+
+    /// 一个「TCP 接了，但**永不吐 SSH 版本串**」的本地对端 —— 看门狗那条判据的前提。
+    ///
+    /// # 为什么不是黑洞 IP〔`K-R24`〕
+    ///
+    /// 旧写法拨 `10.255.255.1:22`，靠「这台机器到那个地址**有路由**、且包被静默丢弃」
+    /// 让 connect 挂起。那条前提是**环境性的，而它既不建立、也不检查**：沙箱默认
+    /// `--network none` 里没有那条路由 ⇒ connect 立刻 `ENETUNREACH` ⇒ 内层瞬间跑完
+    /// ⇒ 走 `race_connect` 的**聚合失败**支而不是 deadline 支
+    /// ⇒ 「看门狗坏了」与「本机没有到黑洞的路由」共用了同一个红。
+    ///
+    /// # 它挂在哪一段（这一格是本修的要害）
+    ///
+    /// 本对端 `accept()` 之后**一个字节都不回**。russh `client::connect_stream` 的次序是
+    /// **先写自己的 `SSH-2.0-…` 标识，再 `read_ssh_id().await` 等对端的**，而
+    /// `client::Config::default()` 的 `inactivity_timeout` 是 `None`（无客户端侧超时）
+    /// ⇒ 卡住的是**握手**，不是 TCP 连接。
+    /// ★ 这才对得上断言原文那句「握手超时」—— 黑洞地址连 TCP connect 都没完成过，
+    ///   它驱动的其实是「连接挂起」那条路，措辞却是「握手」那条路的。
+    ///
+    /// 返回 `(地址, 对端收到的首批字节)`。后者让**前提本身可被断言**：收到了客户端的
+    /// SSH 标识 ⇒ TCP 早已连上、正卡在握手 ⇒ 前提确已建立。
+    async fn spawn_silent_peer() -> (Endpoint, Arc<Mutex<Option<String>>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let seen: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+        let seen_w = Arc::clone(&seen);
+        tokio::spawn(async move {
+            // 只接一条。收下之后读一次（记下对端的 SSH 标识），然后**攥着不放** ——
+            // 既不回字节、也不关连接，让对端一直卡在 `read_ssh_id`。
+            if let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 128];
+                if let Ok(n) = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await {
+                    *seen_w.lock().unwrap() = Some(String::from_utf8_lossy(&buf[..n]).into_owned());
+                }
+                std::future::pending::<()>().await;
+            }
+        });
+        (ep("127.0.0.1", addr.port()), seen)
+    }
+
+    /// 等一个条件成立，最多 ~2s（立刻成立就立刻返回，不花这 2s）。
+    /// 用在断言「前提确已建立」之前 —— 免得把**调度抖动**读成「前提不成立」。
+    async fn settled(mut cond: impl FnMut() -> bool) -> bool {
+        for _ in 0..200 {
+            if cond() {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        false
     }
 
     fn test_config() -> Arc<client::Config> {
@@ -7232,18 +7291,57 @@ Host prod
         assert!(err.contains(&p1.to_string()), "应含首地址: {err}");
     }
 
+    /// 看门狗：到点整批 abort、不吊死。对端是**本地静默 listener**（握手挂起）。
+    ///
+    /// 🔴 这条判据的前提由它**自己建立**（`spawn_silent_peer`），并且**自己断言**。
+    /// 从前「红」这一个读数装着三件事，现在三件各有各的话：
+    ///   ① **前提没建立**（对端没收到客户端标识）⇒ 「前提不成立……这条今天判不了」；
+    ///   ② **看门狗吊死**（deadline 根本不兑现）⇒ 「3 秒内没返回」，当场红而不是把测试二进制挂住；
+    ///   ③ **走错了支**（快速失败顺路带出措辞 / 措辞变了）⇒ 「没等到 deadline」或「应超时」。
     #[tokio::test]
-    async fn race_watchdog_times_out_on_blackhole() {
-        // 10.255.255.1 = 保留黑洞地址，TCP connect 挂起 → 看门狗到点整批 abort。
-        let order = vec![ep("10.255.255.1", 22)];
+    async fn race_watchdog_times_out_on_a_silent_peer() {
+        let (silent, seen) = spawn_silent_peer().await;
         let start = std::time::Instant::now();
-        let err = race_err(
-            race_connect(test_config(), None, order, Duration::from_millis(400), None).await,
-        );
-        assert!(err.contains("握手超时"), "应超时: {err}");
+        // 外层再兜一道 3s：看门狗真坏时**当场红并说清楚**，而不是把整个测试二进制吊死。
+        // （原来那条 `elapsed < 3s` 的上界改由这一道守 —— 上界没丢，换了个说得出话的地方。）
+        let raced = tokio::time::timeout(
+            Duration::from_secs(3),
+            race_connect(
+                test_config(),
+                None,
+                vec![silent],
+                Duration::from_millis(400),
+                None,
+            ),
+        )
+        .await;
+        let elapsed = start.elapsed();
+        let Ok(inner) = raced else {
+            panic!("看门狗没兑现：deadline 给的是 400ms，3 秒内 race_connect 没返回 —— 它吊死了");
+        };
+        let err = race_err(inner);
+
+        // ① 前提这一半：对端确实收到了客户端的 SSH 标识 ⇒ TCP 连上了、卡的是**握手**那一段。
         assert!(
-            start.elapsed() < Duration::from_secs(3),
-            "看门狗应在 deadline 附近返回,不吊死"
+            settled(|| seen.lock().unwrap().is_some()).await,
+            "前提不成立：静默对端一个字节都没收到（本机 loopback 没连通？）\
+             —— 这条今天判不了，**它不是「看门狗坏了」**"
+        );
+        let banner = seen.lock().unwrap().clone().unwrap_or_default();
+        assert!(
+            banner.starts_with("SSH-2.0-"),
+            "前提不成立：对端收到的不是 SSH 标识而是 {banner:?} —— 卡住的不是握手，\
+             这条今天判不了，**它不是「看门狗坏了」**"
+        );
+
+        // ② 被测性质这一半：到点走 deadline 支（那句「握手超时」只在那一支出现）。
+        assert!(err.contains("握手超时"), "应超时: {err}");
+        // ③ 它是**等到 deadline 才**返回的 —— 不靠措辞一条腿站着：快速失败那一支
+        //    （`ENETUNREACH` / RST）会在几毫秒内返回，这一条把那种情形直接判红。
+        assert!(
+            elapsed >= Duration::from_millis(400),
+            "只花了 {elapsed:?} 就返回 —— 没等到 400ms deadline，走的是快速失败那一支，\
+             不是看门狗那一支"
         );
     }
 
@@ -7323,22 +7421,35 @@ AAAEDRp5kloww4Jpr8K56RETPX0tLdId9XD8a+yNz5Tx0XOQFVxedWxKBYvdEBkTWvt5st
     #[tokio::test]
     async fn race_live_server_wins_when_first() {
         let live = spawn_mock_server().await;
-        // live 排 i=0 立即拨、黑洞 i=1 延迟 → live 握手先成功即胜。
-        let order = vec![live.clone(), ep("10.255.255.1", 22)];
+        // live 排 i=0 立即拨、静默对端 i=1 延迟 → live 握手先成功即胜。
+        // （i=1 那位通常根本没被拨到就被 abort 了 ⇒ 这里不断言它的前提，见下一条。）
+        let (silent, _seen) = spawn_silent_peer().await;
+        let order = vec![live.clone(), silent];
         let win =
             race_win(race_connect(test_config(), None, order, Duration::from_secs(5), None).await);
         assert_eq!(win, live, "live server 应胜出");
     }
 
+    /// 静默对端排首(i=0 立即拨,卡在握手永不完成)、live 排 i=1(250ms 后拨)——慢地址被弃,live 仍胜。
+    /// 佐证 trap #8:首地址挂起不吊死整批,后位可达地址照样赢。
+    ///
+    /// 🔴 **这条的判决从来不随环境翻转，翻转的是它测没测到东西**〔`K-R24` D1 边界〕：
+    /// 旧写法拨黑洞 IP，断网下它**瞬间报错**而不是挂起 ⇒ live 照样胜 ⇒ **判决仍绿，
+    /// 而「首地址挂起」这半再没被驱动过**。⇒ 换成静默对端 + 把前提也断言出来，
+    /// 这句话才在任何环境下都是真的。
     #[tokio::test]
-    async fn race_live_server_wins_when_blackhole_first() {
-        // 黑洞排首(i=0 立即拨但永不完成)、live 排 i=1(250ms 后拨)——慢地址被弃,live 仍胜。
-        // 佐证 trap #8:首地址挂起不吊死整批,后位可达地址照样赢。
+    async fn race_live_server_wins_when_a_hung_peer_is_first() {
         let live = spawn_mock_server().await;
-        let order = vec![ep("10.255.255.1", 22), live.clone()];
+        let (hung, seen) = spawn_silent_peer().await;
+        let order = vec![hung, live.clone()];
         let win =
             race_win(race_connect(test_config(), None, order, Duration::from_secs(5), None).await);
-        assert_eq!(win, live, "首地址黑洞时后位 live 仍应胜出");
+        assert_eq!(win, live, "首地址挂起时后位 live 仍应胜出");
+        assert!(
+            settled(|| seen.lock().unwrap().is_some()).await,
+            "前提不成立：首地址那个对端根本没被拨到 —— 「首地址挂起也不吊死整批」这半没被驱动，\
+             这一条此刻是**绿得没有意义**的"
+        );
     }
 
     // === F46：连接分阶段事件 ===
