@@ -14,6 +14,37 @@
 #    抓不到只有两种可能：套件被改得不打印了，或它压根没跑到收尾 —— 两种都该红。
 # 3. `n < 地板` ⇒ 失败，诊断里同时给出实得与地板
 #
+# ## ★★ 第三个参数：`at-least`（默认，旧行为）/ `exact`（恒等）〔`K-G8` 09-03〕
+#
+# 上面第 3 条只挡**缩水**。**它不挡「涨了而地板没跟」**，而那一侧是**静默**的 ——
+# 09-03 的活体逐字记在 `.github/workflows/ci.yml` 那段散文里：`K-P2` `D1` 交回时
+# `ccm-cli` 实得 **173**、地板还停在 **126** ⇒ 门禁那行印的是 `PASS=173（地板 126）`，
+# **绿的**，那 47 条断言在地板眼里等于不存在（当天可以被整族删掉而没有任何东西说一句话）。
+# 最后是下一拍的人**顺手**把地板棘上去的 —— **不是任何判据逮到的。**
+#
+# ⇒ ★ **余量的宽度不是这套机制的属性，是「上一次有人手动棘距今多久」的属性。**
+#
+# 第三个参数就是给这一侧装的闸：
+#   · `at-least`（**不给第三个参数时的默认**）：`n < 地板` 红。**与本文件立起来那天逐字同义。**
+#   · `exact`：`n < 地板` 红（**同一条，一个字没改**）**外加** `n > 地板` 也红。
+#
+# 🔴 **为什么是 opt-in，而不是把 `-lt` 直接改成 `-ne`**（这一条是承重的，别"简化"）：
+#   本仓今天有 **23** 条调用行，其中**只有 4 条**住在 `scripts/gate.sh` 里、每趟出货真跑；
+#   另外 **19** 条只住在 `ci.yml` 里，而那条流水线 **29 天 / 751 个提交没通电**
+#   （`origin/main` = `1eeb4bf` @2026-08-05，`K-G8` 摸底现打、PM 复核）。
+#   ⇒ 给一条**没人在跑**的判据换判法，等于**没有任何读数能验它** ——
+#   而「实得稳不稳」这一格 `K-G8` 只在**沙箱 Linux** 上量过，CI runner 上**是未知，不是稳**。
+#   ⇒ **谁在跑它，谁才配换判法。** 那 19 条归 `K-G3`，本文件对它们**一个字节没改**。
+#
+# ⚠ **不认识的第三个参数 ⇒ exit 2**，不回落 `at-least`。回落 = 把「拼错了」
+#   静默降级成旧行为，而那正是本段要治的那一族（静默）。
+#
+# ⚠ **它买不到什么**（射程，别读宽）：
+#   · 它判的是**条数**，不是**牙口**。断言被掏空成 `assert true` 而条数不变 ⇒ 本条看不见。
+#   · `FAIL > 0` 的那一趟**根本走不到这里**（上面第 1 条先 `exit "$rc"` 了）
+#     ⇒ 这个量唯一的独立射程是「套件 `FAIL=0` 而 `PASS` 少了 / 多了」。
+#   · 它挡不住「删一条、加一条」——**条数不变**的等量替换，本条看不见。
+#
 # ## 地板值写在调用处（`ci.yml`），不写在这里
 #
 # 这个脚本对「哪套该有多少条」**一无所知**，它只是个可复用的度量器。地板与套件的对应
@@ -21,14 +52,21 @@
 # （对比 G-B：vendored `run-tests.sh` 的地板写在脚本自己里，那是因为 SS-10 不许改副本，
 #  这里没有那个约束，所以按「改动可见性」选调用处。）
 #
-# 用法：bash e2e/assert-pass-floor.sh <npm-script-后缀> <地板>
-#   例：bash e2e/assert-pass-floor.sh tmux-target 26   → 跑 `npm run test:tmux-target`
+# 用法：bash e2e/assert-pass-floor.sh <npm-script-后缀> <地板> [at-least|exact]
+#   例：bash e2e/assert-pass-floor.sh tmux-target 26           → 跑 `npm run test:tmux-target`
+#       bash e2e/assert-pass-floor.sh ccm-cli 242 exact        → 同上，但实得 ≠ 地板就红
 set -uo pipefail
 
-SUITE="${1:?用法: assert-pass-floor.sh <npm-script-后缀> <地板>}"
+SUITE="${1:?用法: assert-pass-floor.sh <npm-script-后缀> <地板> [at-least|exact]}"
 FLOOR="${2:?缺地板值}"
+MODE="${3:-at-least}"
 
 case "$FLOOR" in ''|*[!0-9]*) echo "地板必须是非负整数，实得：$FLOOR" >&2; exit 2 ;; esac
+# fail-closed：拼错的模式名**不许**回落成 `at-least` —— 那是把「拼错了」静默降级成旧行为。
+case "$MODE" in
+  at-least|exact) ;;
+  *) echo "第三个参数只认 at-least（默认，只挡缩水）或 exact（恒等）。实得：$MODE" >&2; exit 2 ;;
+esac
 
 OUT_FILE="$(mktemp)"
 trap 'rm -f -- "$OUT_FILE"' EXIT
@@ -58,4 +96,18 @@ if [ "$n" -lt "$FLOOR" ]; then
   exit 1
 fi
 
-echo "[assert-pass-floor] $SUITE: PASS=$n（地板 $FLOOR）"
+# ★★ `exact` 那一侧（`K-G8` 09-03）。**上面那条 `-lt` 一个字没动** ——
+#    这里是**加了一条**，不是**换掉一条**：两侧红的是两件不同的事，诊断也必须是两段不同的话。
+#    （`K-G8 §4` 死值验第 2 条逐字要求「确认原来那条还在」。）
+if [ "$MODE" = exact ] && [ "$n" -gt "$FLOOR" ]; then
+  echo "::error::$SUITE 断言数涨了而地板没跟：实得 $n > 地板 $FLOOR（本套按 exact 判，实得 ≠ 地板就红）。"
+  echo "::error::⇒ 两条出路，按优先级："
+  echo "::error::  ① **这 $((n - FLOOR)) 条是真买到的东西** ⇒ 把地板棘到 $n，并在 commit 里写清「这几条盖住了什么」——"
+  echo "::error::     不是写「+$((n - FLOOR))」，是写那几条断言各自逮的是哪个失效形状（照 ci.yml 那串「先跑再棘」的先例）。"
+  echo "::error::  ② 实得涨了但你**不知道涨的是什么** ⇒ 先去看那几条是谁加的，别先改数。"
+  echo "::error::⚠ **不许**为了变绿就把新加的断言删掉，也**不许**把第三个参数从 exact 改回 at-least ——"
+  echo "::error::   那两条都是把闸拆掉，而这道闸治的正是「涨了没人管、下一拍可以被整族静默删掉」。"
+  exit 1
+fi
+
+echo "[assert-pass-floor] $SUITE: PASS=$n（地板 $FLOOR，判法 $MODE）"
