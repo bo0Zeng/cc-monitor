@@ -277,6 +277,12 @@ fn tmux_in(path: Option<&std::ffi::OsStr>) -> Option<bool> {
 /// ⚠ 今天生产**不调它**（`build_hello` 硬写 `Vec::new()`）——与 `agents::visible_homes()`
 /// 同一个口径：**能填不真填**。摘掉下面这个 `allow` 的那天，就是把 `build_hello` 那一行
 /// 换成本函数的那天；要**同轮**做的三件事写在 `wire.rs` 那个字段的头注里。
+///
+/// 🔴 **真填那天连着要想清楚的一件事：这一趟探测的结果会被用很久。**
+/// `build_hello` 在分档**之前**只调一次，那一帧随后交给两条载体；常驻那条（`listen.rs`）
+/// 服务**不限次**的「只读 hello 就走」⇒ **同一帧被这个进程后续的所有连接共用**。
+/// ⇒ 探测本身必须**便宜且挂不住**（所以 `tmux_in` 是纯 `stat` 扫 `PATH`，不是真 exec 一次），
+/// 而消费侧必须把它当**提示**（`wire.rs` 那个字段头注的口径③）。
 #[allow(dead_code)] // `K-P4`：能填不真填 —— 接线是一次纯发布决策，不是忘了。
 fn unavailable_here() -> Vec<wire::Unavailable> {
     unavailable_from(tmux_in(std::env::var_os("PATH").as_deref()))
