@@ -14,6 +14,17 @@ Anthropic 那一套」这件事被**写死**在哪几处。每一处给住址 + 
 应当是 **0 处**。这一路是甲路的对照 —— 它证的是「今天的假设**不在**转发路径
 的语义层，只在几个字面量上」，也正是「加转换层」要动的那条性质。
 
+**丙路 · 配置面的静默丢弃（本拍摸出来的、此前没登记过的一格）**：
+`Base` 只有 `tls` / `host` / `port` 三个字段，**没有 path 那一格**，而
+`Base::parse` 拿 `rest.split('/').next()` 只取 authority ⇒ 写进
+`relay-credentials.json` 的 `base_url` **路径部分被丢掉，且 `parse` 照样回
+`Some`** ⇒ `table::build` 不把它记进 `Rejected`、`announce` 一个字都不说。
+症状：配 `https://vendor.example/anthropic` 的人，请求实际发到
+`https://vendor.example/v1/messages`（真路径由客户端给、逐字透传）。
+本路数两个数把这一格钉成明文：`Base` 的字段名单，以及**全仓喂给
+`Base::parse` / 当 `base_url` 用的字面量里带路径的有几条**（现打：0 条 ⇒
+这个问题从来没有被任何判据问过）。
+
 它是怎么量的（分母口径，逐条写出来）
 ------------------------------------
 - **分母不是「所有可能的假设」** —— 分母是**本文件里写死的这张锚点表**。
@@ -208,6 +219,56 @@ def main() -> int:
         print("  %-24s ⇒ %d 处 %s" % (needle, total, ("  " + ", ".join(where)) if where else ""))
         if total != 0:
             bad += 1
+
+    print()
+    print("=" * 72)
+    print("丙路 · 配置面的静默丢弃（`base_url` 的路径部分）")
+    print("=" * 72)
+    up = os.path.join(RELAY, "upstream.rs")
+    with open(up, encoding="utf-8") as fh:
+        prod = production_code(fh.read())
+    # ㈠ `Base` 有哪几个字段 —— 有没有 path 那一格。
+    fields, in_base = [], False
+    for n, line in prod:
+        if "pub(crate) struct Base {" in line:
+            in_base = True
+            continue
+        if in_base:
+            if "}" in line:
+                break
+            m = re.search(r"pub\(crate\)\s+(\w+)\s*:", line)
+            if m:
+                fields.append("%s(:%d)" % (m.group(1), n))
+    print("  `Base` 的字段     ⇒ %s" % ", ".join(fields))
+    has_path = any(f.startswith("path") for f in fields)
+    print("  有 path 那一格吗  ⇒ %s" % ("有" if has_path else "**没有** ⇒ 路径存不下来"))
+    if has_path:
+        print("  ⚠ 盘上多了 path 字段 —— 本路的结论过期了，重读。")
+        bad += 1
+
+    # ㈡ authority 是怎么切的 —— 路径被丢在哪一行。
+    cut = [n for n, line in prod if "rest.split('/').next()" in line]
+    print("  切掉路径的那一行  ⇒ upstream.rs:%s" % (", ".join(map(str, cut)) or "（找不到 ⇐ ⚠）"))
+    if len(cut) != 1:
+        bad += 1
+
+    # ㈢ 全仓喂过带路径的 base_url 吗 —— 分母 = 两棵树 .rs 里的这两种字面量。
+    lits, withpath = [], []
+    pat = re.compile(r'(?:Base::parse\("([^"]*)"|"base_url"\s*:\s*"([^"]*)")')
+    for tree in ("remote-daemon-proto/src", "src-tauri/src"):
+        for dirpath, _, names in os.walk(os.path.join(ROOT, tree)):
+            for name in names:
+                if not name.endswith(".rs"):
+                    continue
+                with open(os.path.join(dirpath, name), encoding="utf-8") as fh:
+                    for m in pat.finditer(fh.read()):
+                        s = m.group(1) or m.group(2)
+                        lits.append(s)
+                        after = s.split("://", 1)[-1] if "://" in s else s
+                        if "/" in after:
+                            withpath.append(s)
+    print("  喂过的字面量      ⇒ %d 条（分母：两棵树全部 .rs，**含测试段**）" % len(lits))
+    print("  其中带路径的      ⇒ %d 条 %s" % (len(withpath), withpath or "⇒ 这个问题从没被问过"))
 
     print()
     if bad:
