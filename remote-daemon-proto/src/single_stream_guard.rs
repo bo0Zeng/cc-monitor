@@ -368,11 +368,29 @@ mod tests {
     ///
     /// 现打（09-04，本工作树，**未铺** `src-tauri/embedded-daemons/`）：daemon `src/` 下
     /// **73 份 `.rs`，走兜底 0 份**。地板 70 是计数自检（遍历坏了要红，不是静默扫 0 份通过）。
+    ///
+    /// # ★★ 09-04（`K-R25`）：**上面那句「本模块所有计数的分母」要带单位**
+    ///
+    /// 兜底触发不触发，**由交进剥法的那段文本自己配不配平决定**，不由它所属的文件决定。
+    /// 上一版本条只按**整份文件**喂 ⇒ 凡是「先把文件切小、再交进剥法」的调用点，
+    /// 它一个字都看不见（`K-R9` 落定拍在 monitor 侧实打过那一形：整份配平、单块不配平，
+    /// 看门判据绿、被喂的那条守卫判「合规」、全量 monitor 全绿）。
+    /// ⇒ 今天 `guard_core::assert_block_comment_model_holds` 量**两个单位**：
+    /// 整份文件 ＋ `guard_core::test_attr_chunks` 按 `#[test]` 切出的每一块。
+    /// 两个地板各自量（**块数不是文件数**）：`min_files` 挡「遍历坏了」，`min_blocks` 挡「切法坏了」。
+    ///
+    /// ⚠ **daemon 这一侧今天的读数**（量具 `evidence/K-R25-D1-strip-input-unit-census.py`，
+    /// 量于本树 `HEAD`，输出头一行印着被测对象与 sha）：
+    /// `remote-daemon-proto/src` 下把「不是整份文件」的文本交进剥法的调用点 **0 处**
+    /// —— 也就是说这一侧今天**没有**块级的活体洞，本条的块那一半在这一侧是**预防**，不是修补。
+    /// ⚠ 那个 0 的分母是**那把尺子的射程**（它自己判不了的逐条列在输出的 `PARAM` 段里，
+    /// 由 `evidence/K-R25-D2-unit-alignment.md` 逐条手核）—— 不是「所有写法」的全称。
     #[test]
     fn no_daemon_file_falls_back_to_leaving_block_comments_in() {
         guard_core::assert_block_comment_model_holds(
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
             70,
+            500,
         );
     }
 
