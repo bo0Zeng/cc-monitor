@@ -38,7 +38,8 @@ import { showActionFailureToast } from "../error-toast";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
 import { SETTINGS_APPLIED_EVENT } from "./events";
 // Phase G：这两格此前**没有任何生产者**，见下面 `note()` 的注释。
-import { recordFacet } from "./machine-status";
+// `N-F2`：本机那条路也要写进同一本账 ⇒ 连本机那个 key 一起取，别在这儿长第二个名字。
+import { recordFacet, LOCAL_MACHINE_KEY } from "./machine-status";
 import {
   buildAcctIsoCmd,
   validateAcctName,
@@ -300,13 +301,44 @@ export class AccountsSection {
    * 每台机器恒定产出 ≥2 条 `unknown` ⇒ `summarizeGaps` 恒非 null ⇒
    * `remote-section` 里「全绿就整块不出现」那一支是**死代码**。
    * 一张自称「还差什么、点哪里补齐」却既补不齐也消不掉的清单，比不做这个功能更糟。
+   *
+   * # `N-F2`（09-05）：那个洞**在本机这条路上一直还开着**，本件把它补上
+   *
+   * 上面那段说的是「全仓」，而这一行此前逐字写着 `if (!this.origin) return;`
+   * ⇒ 远端补上了，**本机一格都没写过**（`N-F2` 开工时现打：全仓对 `LOCAL_MACHINE_KEY`
+   * 的 `recordFacet` 写点 **0 个** —— ⚠ **这是那一刻的快照，而改掉它的正是下面这一行**：
+   * 本件之后是 1 个，就是这里）。而 `readiness.notApplicable` 对本机只排掉
+   * `daemon` / `connection` 两格（`ccm` 另有一条，仅 Windows），
+   * 于是本机的 `acctIso` / `accounts` 是**适用而恒 `unknown`** 的两格 ——
+   * 上面那句「清单在任何真实安装上都清不空」在本机这一侧原封不动地仍然成立。
+   *
+   * ⚠ **那道守卫看不见这件事**：`facet-producer-guard.vitest.ts` 扫的是
+   * 「源码里有没有 `note("acctIso", …)` 这个形状」，而它**一直是绿的** ——
+   * 因为写点确实存在，只是被这一行早返回挡在本机之外。
+   * 「代码库里有没有写点」与「某条路上写不写得到」是两个作用域。
+   *
+   * # 那句被撤掉的注释：「本机：这两格由 `L3b` 补，今天表示不了」
+   *
+   * `NF2D1` 现打核实，这句话**两头都不成立**（查证过程见件文件 `§3a`）：
+   * - `L3b`（`planned-build/local-as-remote/MASTERPLAN.md:117`）是**本地账号管理·写**
+   *   ——建 / 迁 / 删 / 改默认号，状态列逐字「待规划」、`STATUS.md:3` 逐字「L3b 未做」，
+   *   代码仓里零实现。它是**写**那一摊，而这两格问的是**读得出来没有**
+   *   ⇒ 就算 L3b 落地了，也**不是它**来补这两格：挂错了件。
+   * - 「今天表示不了」也过期了：`N-F1b` / `N-F1c` 之后本机这条路
+   *   （`reloadLocal` ⇒ `fetchLocalAccounts`）本来就有三档结局，那正是这两格要写的东西。
+   *
+   * # 本机用哪个 key
+   *
+   * `LOCAL_MACHINE_KEY` —— 与 `remote-section` 算那张清单时传的入参
+   * （`origins: [LOCAL_MACHINE_KEY, ...]`）、以及本机那一行显状态格用的
+   * `readStatus(LOCAL_MACHINE_KEY)` 是**同一个常量**，不在这里长第二个名字。
+   * 远端那条路的 key 与写进去的值**一个字节不变**（`this.origin` 非空时走的还是它）。
    */
   private note(
     facet: "acctIso" | "accounts",
     state: { kind: "ok" | "fail" | "na"; detail?: string },
   ): void {
-    if (!this.origin) return; // 本机：这两格由 L3b 补，今天表示不了
-    recordFacet(this.origin, facet, state);
+    recordFacet(this.origin || LOCAL_MACHINE_KEY, facet, state);
   }
 
   private async reload(force: boolean): Promise<void> {
@@ -380,6 +412,25 @@ export class AccountsSection {
    * 读不出来 / 一个号都没有 / 有号 —— 前两个长得像但完全不是一回事：
    * 把「读不出来」渲染成「你没有账号」，用户会去装一个他已经装好的东西。
    * 由 `NF1bD1` 那一族的两条「诚实降级」判据钉着。
+   *
+   * # `N-F2`：这三个结局**每一个都要往账本里记一笔**
+   *
+   * 这一支此前渲染完就走，一格都不写 ⇒ 本机的 `acctIso` / `accounts` 恒 `unknown`
+   *（详见 `note()` 的头注）。本件给每一档配一个**互不相同**的写法，
+   * 因为「没测过 / 读不动 / 后端不在 / 读到了但没启用 / 都好」在
+   *「还差什么」那张清单上要说的是五句不同的话。
+   *
+   * ⚠ **读失败那两档为什么 `acctIso` 也记 `fail`，而不是留空**：账本的词汇只有
+   * `ok` / `fail` / `na` 三个，留空的含义是「**没测过**」。而这两档是**测过了**
+   *（我们真去问了本机后端），结论是这台机器此刻**按账号隔离地起会话这件事做不到**
+   * —— 那正是 `FACET_MEANING.acctIso.consequence` 逐字写的后果。
+   * 记 `na`（不适用）与记空（没测过）在这里都是假话；`detail` 里带上是哪一档，
+   * 用户才知道该去修后端还是去装工具。⇒ 这不是选出来的，是词汇表逼出来的。
+   *
+   * ⚠ **诚实边界**：前端分不出后端那三档里的 `NoBackend` 与 `Unreadable`
+   *（`local_accounts.rs` 把两者一起塞进 `available:false` + 一句 `error` 文案）。
+   * 要在格子上分开它们，得让后端多带一个字段回来 —— 那是 `src-tauri` 那一侧的事，
+   * 不在本件射程里。所以这里的档名说的是**面板看得见的那三档**，不是 Rust 那个枚举。
    */
   private async reloadLocal(force: boolean): Promise<void> {
     const box = document.createElement("div");
@@ -391,14 +442,25 @@ export class AccountsSection {
     try {
       state = await fetchLocalAccounts(force);
     } catch (e) {
+      // 档三：**读不动** —— 那条 Promise 直接 rejected，命令根本没跑通。
+      this.note("accounts", { kind: "fail", detail: "读不动" });
+      this.note("acctIso", { kind: "fail", detail: "读不动" });
       this.localFail(box, String(e));
       return;
     }
     if (!state.available) {
+      // 档二：**后端不在** —— 后端答了「不可用」，那句原因在 `state.error` 里。
+      this.note("accounts", { kind: "fail", detail: "后端不在" });
+      this.note("acctIso", { kind: "fail", detail: "后端不在" });
       this.localFail(box, state.error ?? LOCAL_ACCOUNTS_COPY.unknownReason);
       return;
     }
     if (!state.meta?.enabled || state.accounts.length === 0) {
+      // 档一的空态：清单**读到了**（零个也是一个答案）⇒ `accounts` 是 `ok`；
+      // 而多账号隔离在这台机上确实还没启用 ⇒ `acctIso` 是真的缺。
+      // 两格分开说，与远端那条路的 `not-enabled` 一支逐字同形。
+      this.note("accounts", { kind: "ok", detail: "已读取" });
+      this.note("acctIso", { kind: "fail", detail: "未启用" });
       AccountsSection.line(
         box,
         "accounts-info accounts-local-empty-title",
@@ -412,6 +474,10 @@ export class AccountsSection {
       return;
     }
 
+    // 档一：**读出来了**，而且这台机真的启用着隔离账号 ⇒ 两格都绿。
+    // 这是本机那两格唯一能变绿的一档 —— `NF2D3` 那条判据买的就是它。
+    this.note("accounts", { kind: "ok", detail: `${state.accounts.length} 个` });
+    this.note("acctIso", { kind: "ok", detail: "已启用" });
     AccountsSection.line(
       box,
       "accounts-meta accounts-local-count",
