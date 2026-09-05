@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 # ruff: noqa
-"""K-W1B · D1 量具：把「agent 解耦」的人群一次切清 —— 五把尺子，每把带满五样。
+"""K-W1B · D1 量具：把「agent 解耦」的人群一次切清 —— 每把尺子带满五样。
+
+⚠ **刻意不在散文里写「几把尺子」**：那是一个会漂的基数副本（brief 13b：报一个基数
+也是复述 ⇒ 现算，别写死）。尺子的闭集只有一个住址 —— 下面那个 `RULERS`；
+`len(RULERS)` 就是答案，输出里逐把印出来。
+〔本条是自查改的：初版这一行手写了「五把」，而 `RULERS` 里是 6 项。〕
 
 住址（唯一）：`evidence/K-W1B-D1-agent-coupling-census.py`（名字带件号 K-W1B，本件独占）。
 被测对象：**本文件所在的那棵工作树**（`Path(__file__).resolve().parents[1]`）——
@@ -8,7 +13,7 @@
 「同一住址下先后住过两份被测对象不同的量具」那种静默假读数（brief 12·5k）。
 
 跑法：
-    python3 evidence/K-W1B-D1-agent-coupling-census.py            # 五把尺子的表
+    python3 evidence/K-W1B-D1-agent-coupling-census.py            # 逐把尺子的表
     python3 evidence/K-W1B-D1-agent-coupling-census.py --calibrate # 只跑标定（见下）
     python3 evidence/K-W1B-D1-agent-coupling-census.py --kp2       # KP2 那一问的证据面
     python3 evidence/K-W1B-D1-agent-coupling-census.py --json      # 机读
