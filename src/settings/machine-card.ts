@@ -554,7 +554,10 @@ export class MachineCard {
     this.daemonInstallButton = mkBtn(
       "安装 daemon",
       "settings-btn-secondary",
-      "把内嵌的 daemon 二进制按远端架构装到 daemonPath（已是最新则跳过）",
+      // K-W4 §0c：此前这句写「已是最新则跳过」，而「最新」当时只看同目录 .build_id
+      // 那个字符串 —— 落点那个文件被删/截成 0 字节时它照样跳过，且回「无需重装」。
+      // 判定改成两个事实各自说话之后，这句话跟着说清跳过的条件是两条。
+      "把内嵌的 daemon 二进制按远端架构装到 daemonPath（版本已是最新、且落点那个文件在，才跳过）",
       () => void this.onDeployDaemon(),
     );
     actionRow.appendChild(this.daemonInstallButton);
