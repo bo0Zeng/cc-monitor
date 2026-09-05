@@ -61,6 +61,82 @@ export const EXIT_UNATTENDED =
 /** ③ 勾掉 + **没脱离**（平台不支持 / 被关掉了 / 脱离失败）⇒ 保持今天那句，一字不改。 */
 export const EXIT_SELF_DIES = "monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出";
 
+// ══════════════════════════════════════════════════════════════════════════
+// K-P3 KP3C（09-04）：**那句「无人监护」后面接的那个读数。**
+//
+// K14 逐字要的是「如实说『继续跑，无人监护』」，而 K-P1 KPY4 已经把那句话钉住了。
+// 本件加的那一半是：那句话后面要能接上一个**真读数**（上次崩没崩、崩过几次），
+// 而不是永远只是一句静态承诺。
+//
+// ★★ 这三句话最要紧的一句是 HEALTH_UNKNOWN，而它买的正是 K-P3 §0-1 那一格：
+//    今天不是「它没崩过」，是「**没有任何东西在记它崩没崩**」——
+//    §0-1 逐字：「这两句话差得很远，件计划里不许混用」。
+//    ⇒ 读数的默认档是**答不出来**，不是「没崩过」。把它写成后者就是把一句
+//    查不出来的事说成了一个绿灯。
+//
+// ⚠ 这三句**不进 describeExitBehavior 的返回值**。那个函数被
+//   `settings/daemon-section.vitest.ts` 用**等号**逐格钉着（它自己逐字写着
+//   「不是「包含」而是「等于」——「包含」会放过「在正确那句后面又加了一句错的」」），
+//   在它后面接一句就是当场红那四格。⇒ 读数是**另一句话**，由界面另起一行说。
+//
+// ⚠ 占位符（{misread} / {crashed} / {last}）是**两侧共用的字面**：Rust 那侧
+//   `daemon_policy.rs` 有同名同值的四条 const，由
+//   `every_cross_language_table_is_compared_on_both_sides` 逐字对拍
+//   （形状抄 `the_exit_copy_is_the_same_string_on_both_sides`，只是人群从
+//   `CROSS_LANGUAGE_COPY` 那张清单派生 ⇒ 加一张新表不配对拍会当场红）。
+//   **两边漂了不会报错**，所以改文案要同一拍改两处。
+// ══════════════════════════════════════════════════════════════════════════
+
+/**
+ * ① 账上一条都没有 ⇒ **答不出来**。
+ *
+ * ⚠ 这一句刻意不说「没崩过」。今天那本账**不跨 monitor 进程**
+ * （唯一的持久账 `~/.cc-monitor/bin/wrap.log` 现打 2 行、停在 07-08、两行都 rc=0，
+ * 而且仓里没有任何一处写它 —— 一本没有写者的孤账）。
+ */
+export const HEALTH_UNKNOWN =
+  "上次崩没崩：答不出来 —— 今天没有任何东西在跨 monitor 进程地记它崩没崩，而「答不出来」不等于「没崩过」";
+/** ② 记到过事，但**一次崩溃都没有**。读坏了那一格单独说，它不算崩。 */
+export const HEALTH_CLEAN =
+  "这次 monitor 开着以来：它一次都没崩过（读坏了 {misread} 次不算它崩 —— 那是我们这一侧的读端）";
+/** ③ 崩过。带次数与最后那一行。 */
+export const HEALTH_CRASHED =
+  "这次 monitor 开着以来：它崩过 {crashed} 次，最后一次是「{last}」";
+/** ④ 崩过但那一行没留住（表被清过 / 锁毒化）—— 也要说出口，不许拿空串糊过去。 */
+export const HEALTH_LAST_MISSING = "那一行没留下来";
+
+/**
+ * 一台机的死亡账**读数**。四个计数分开装 —— 「读坏了」不许被算成一次崩溃。
+ *
+ * ⚠ 那一条是 B1 那次事故的全部内容（`backend/control/local_backend.rs:696` 与 `:1348`）：
+ * 一个坏字节让 `InvalidData` 与 EOF 走同一条路 ⇒ 消费者返回 = 判死 ⇒ 记一次「崩溃」，
+ * 三次之后整个进程周期不再起来，日志写「崩了 3 次」——源码逐字：「**一个错误的诊断**」。
+ */
+export interface DaemonHealth {
+  crashed: number;
+  refused: number;
+  neverStarted: number;
+  misread: number;
+  last: string | null;
+}
+
+/**
+ * 那句读数 —— 三档。**纯函数**，三档在单测里逐格钉得死。
+ *
+ * ⚠ 第一档的判准是「**这本账上一条记录都没有**」，不是「crashed === 0」。
+ * 写成后者的话，一台从来没被记过的机器会被说成「一次都没崩过」——
+ * 那正是 §0-1 点名不许混用的那两句话。
+ */
+export function describeDaemonHealth(h: DaemonHealth): string {
+  const seen = h.crashed + h.refused + h.neverStarted + h.misread;
+  if (seen === 0) return HEALTH_UNKNOWN;
+  if (h.crashed === 0) return HEALTH_CLEAN.replace("{misread}", String(h.misread));
+  return HEALTH_CRASHED.replace("{crashed}", String(h.crashed)).replace(
+    "{last}",
+    h.last ?? HEALTH_LAST_MISSING,
+  );
+}
+
 /** 一台机此刻的退出行为。`detached` 来自 `daemon_status`（远端恒 null ⇒ 按未脱离算）。 */
 export interface ExitState {
   killOnExit: boolean;
