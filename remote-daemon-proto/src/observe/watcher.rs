@@ -287,83 +287,30 @@ const DEBOUNCE_MS: u64 = 100;
 /// `parse_tmux_ls` 靠它解析）。name⇥path⇥cmd⇥attached⇥windows⇥@ccm_sid。**改此须同步 monitor（双写点）。**
 const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}";
 
-/// `TMUX_LS_FMT` 的列数 —— [`tmux_tab_underflow`] 的 N。**改格式串必须同步这个数**
+/// `TMUX_LS_FMT` 的列数 —— [`tab_underflow`] 的 N。**改格式串必须同步这个数**
 /// （而格式串本身是红线双写点，见上面那条头注）。
 const TMUX_LS_FMT_FIELDS: usize = 6;
 
-/// ★★ **K-R12（09-04）：让本模块起的 tmux 客户端始终按 UTF-8 输出。**
-///
-/// # 病：**我们靠来分列的那个 TAB，被 tmux 自己吃掉了**，而且完全静默
-///
-/// tmux 对**输出通道**做 sanitize：客户端不是 UTF-8 时，`ls -F` / `display-message -p`
-/// 打出来的控制字符与非 ASCII **一律换成 `_`**（按**显示宽度**替换，不按字节数：
-/// 实测 `文`(3B)→`__`、`é`(2B)→`_`）。真 TAB（0x09）首当其冲。
-/// 沙箱实测（`evidence/K-R12-locale-lab.md`，容器内 tmux 3.4，私有 socket，`od -c` 读字节）：
-/// POSIX 客户端下 `TMUX_LS_FMT` 那**六列塌成 1 段**，于是
-/// [`session_names`] 把**整行**当会话名、monitor 的 `parse_tmux_ls` 因 `f.len() != 6` 丢掉每一行
-/// ⇒ **界面上一个 tmux 会话都没有，而 rc 仍是 0、日志一条不打。**
-///
-/// # 判「是不是 UTF-8 客户端」的规则**不问 glibc**
-///
-/// 实测（`lab2.sh` E11）：tmux 取 `LC_ALL` → `LC_CTYPE` → `LANG` 的第一个非空值，做一次
-/// **大小写不敏感的 `UTF-8`/`UTF8` 子串匹配**，`setlocale` 那条路走不到。
-/// ⇒ `zz_ZZ.UTF-8`（**locale 根本不存在**）干净、`utf8` 干净；`C` 脏、`zh_CN.GB18030` 脏、
-/// `LC_ALL=''`（设了但空）脏、什么都不设脏。
-/// 🔴 **这条正好把「`C.UTF-8` 万一没装怎么办」这个顾虑消掉了**：tmux 不查它装没装。
-/// （门禁沙箱里 `locale -a` 只有 `C` / `C.utf8` / `POSIX`，本条照样成立。）
-///
-/// # 为什么这两处用 `LC_ALL` 而不是 `tmux -u`
-///
-/// 两种写法实测都干净，但代价在这里**不对称** —— 本模块这两处都是 `sh -c <脚本字符串>`：
-///
-/// 1. 🔴 **一行 `.env` 盖住 [`tmux_probe_script`] 里的两条 `exec` 分支**（有 `timeout` / 没有
-///    `timeout`）。改成 `-u` 就要在字符串里改**两处**，而**漏掉没有 `timeout` 的那条是永远
-///    看不见的** —— CI、门禁沙箱、绝大多数生产机都有 `timeout`，漏了也照绿。
-///    这正是本件最容易埋进去的一个假绿，`§5.1` 点过名。
-/// 2. **脚本字符串一个字节不用动** ⇒ [`query_tmux_server`] 那条脚本在测试里有一份**逐字复制**
-///    （`tests::tmux_server_query_yields_nothing_without_a_server`），用 `-u` 会让两份漂开。
-/// 3. 实测（`lab.sh` E10(d)）：父进程挂在 `Command` 上的 env **会传到 `sh` 的子进程 `tmux`**。
-///    这两处都是 daemon 自己起本机 `sh`，中间没有 SSH、没有 `env -i`，那条链是我们自己的。
-///
-/// ⚠ **反过来，跨 SSH 的两处（`src-tauri/src/tmux.rs`）必须用 `-u`**：那边没有本地 `Command`
-/// 可挂 env，走 `request_env` 要赌对端 sshd 的 `AcceptEnv`（不认就**静默拒绝**）。
-/// ⇒ 「一处治六处」落地上是**两类各治一半**，不是一种写法。
-///
-/// ⚠ **`LC_ALL` 单独不够**，它的失效面是「忘了挂」或「挂成空串」，两种都是静默的
-/// ⇒ 同拍装了 [`tmux_tab_underflow`]（K-R12 的 `J1`）。**预防与处置是两件事。**
-const TMUX_UTF8_ENV: (&str, &str) = ("LC_ALL", "C.UTF-8");
-
-/// ★★ **K-R12 `J1`：段数下溢 —— 「拆不出段」不许被当成好数据。**
-///
-/// > 按 TAB 切 tmux 的打印通道，切出的段数 **< 预期 N** ⇒ 出声 **+ 拒绝把这行当好数据**。
-///
-/// # 为什么是「下溢」而不是「恰好 N」
-///
-/// 实测（`lab2.sh` E12）：**合法内容只会把段数推高，永远不会推低** ——
-/// 会话名里的真 TAB 被 tmux 转义成字面 `\t` 两个字符（那行仍是 6 段），
-/// 而 `pane_current_path` 里带真 TAB 的会话会切出 **7** 段。
-/// ⇒ `< N` **零误报**；`!= N` 会误伤（monitor 的 `parse_tmux_ls` 今天就在犯，见那边头注）。
-///
-/// # 为什么下溢是**完备**检测器
-///
-/// sanitize 是**每客户端全有全无**的：同一台 server、同一条命令，只换客户端那一侧，
-/// 输出要么整条干净、要么整条被改写。⇒ 通道一脏，格式串里的 TAB **全部**消失，
-/// 段数必然从 N 塌到 **1**。**不存在「内容被改写了但 TAB 还在」的中间态**
-/// ⇒ 这一条同时盖住「分隔符被吞」与「内容被改写」两半，**而且格式串一个字节不用动**。
-///
-/// # 🔴 它必须装在 **raw 的入口**，不是每个 splitter 上
-///
-/// [`session_names`] 与 monitor 的 `ssh_source::remove_tmux_line` **只取第 1 段**、永远取得到
-/// ⇒ 下溢判据装在它们身上恒真，而它们在通道脏时拿到的「会话名」**就是整行**。
-/// 这两处与 monitor 的 `parse_tmux_ls` 读的是**同一份 raw** ⇒ 判据装在 [`classify_tmux_probe`]
-/// （raw 进 daemon 的唯一入口），一处盖住下游全部消费者。
-///
-/// ⚠ 同一口径在 `control/gate.rs` 与 monitor 的 `src-tauri/src/tmux.rs` 各另有一份：
-/// `layering_guard` 钉死 `control/` 不许引用 `observe/`（「反向一条都不许」），而 monitor 是另一个仓面。
-/// **不是抄漏，是层界与仓界逼出来的**；三份口径必须一致（`< N` ⇒ 出声 + 丢）。
-fn tmux_tab_underflow(line: &str, expected: usize) -> bool {
-    line.split('\t').count() < expected
-}
+// ★★ **K-R12 下一拍（09-04）：这两个口径的家搬到了 `crate::common::tmux_utf8`。**
+//
+// 上一拍这里各写了一份（`TMUX_UTF8_ENV` 与 `tmux_tab_underflow`），而 `control/gate.rs`
+// 也各写了一份，头注里逐字登记着「三份口径今天**靠人对齐**」——
+// 成因是 `layering_guard` 钉死 `control/` 不许引用 `observe/` ⇒ 共用的家只能是 `common/`，
+// 而它当时不在写区。本拍写区含 `common/` ⇒ 两份都归位，两层各自 `use` 同一个家。
+//
+// 口径本身、两种表示为什么是**一个**口径、以及「什么形态的调用点该用哪种表示」
+// 全部只有一个住址：那个模块的头注。**这里不复述**（`brief` 13b：闭集只许一个住址）。
+//
+// 只留本调用点专属的两句：
+//
+// ① 本模块这两处都是 `sh -c <脚本字符串>` ⇒ 按那张表用 **env 形**。这里最要紧的不是
+//    「哪个更硬」，而是 [`tmux_probe_script`] 里有**两条 `exec` 分支**（有 / 没有 `timeout`）：
+//    一行 `.env` **结构性地**盖住两条，而改 argv 要在字符串里改两处，
+//    且漏掉没有 `timeout` 那条**只在缺 `timeout` 的机器上发作** ⇒ CI 与门禁沙箱永远绿。
+// ② [`query_tmux_server`] 那条脚本在测试里有一份**逐字复制**
+//    （`tests::tmux_server_query_yields_nothing_without_a_server`）⇒ 动脚本串会让两份漂开，
+//    而挂 env 一个字节都不用动它。
+use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_ENV};
 
 // ---------- P1（zero-poll-liveness）：`TmuxSessions.observation` 的取值 ----------
 //
@@ -470,7 +417,7 @@ const TMUX_PROBE_TIMEOUT_SECS: u32 = 5;
 /// 刻意**不看 stderr**——P0 实测 stderr 有两种措辞，且拿英文消息当判据本身就是错的）。
 ///
 /// ⚠ **K-R12 起判据多了一条**：rc=0 且 stdout 非空时，还要看**段数有没有下溢**
-/// （见 [`tmux_tab_underflow`]）。下溢 ⇒ `Unobservable` + 一条 warn ——
+/// （见 [`tab_underflow`]）。下溢 ⇒ `Unobservable` + 一条 warn ——
 /// 所以本函数不再是严格无副作用的（脏输入那一支会打一行日志），返回值仍然只由入参决定。
 ///
 /// `code == None` = 被信号杀（如 tmux 卡死后探测线程连带被清）⇒ 观测无效。
@@ -485,7 +432,7 @@ fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
         // 🔴 这一档的处置差别是**要命的**：当成 `Sessions` 会让 [`session_names`] 把整行当
         // 会话名 ⇒ 下一轮差分把**所有活会话**报成消失（`diff_closed` 的 `Sessions` 分支）；
         // 归 `Unobservable` 则「什么都不结论、快照不动」，等下一次成功观测。
-        Some(0) if stdout.lines().any(|l| !l.trim().is_empty() && tmux_tab_underflow(l, TMUX_LS_FMT_FIELDS)) => {
+        Some(0) if stdout.lines().any(|l| !l.trim().is_empty() && tab_underflow(l, TMUX_LS_FMT_FIELDS)) => {
             tracing::warn!(
                 "CCM_TMUX_UNPARSABLE tmux ls 有行切出的段数 < {TMUX_LS_FMT_FIELDS} —— \
                  tmux 打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 与非 ASCII 变 `_`），\
@@ -518,8 +465,8 @@ fn run_tmux_ls() -> TmuxObservation {
     match std::process::Command::new("sh")
         .arg("-c")
         .arg(tmux_probe_script())
-        // K-R12：**一行盖住脚本里两条 `exec` 分支**（有/没有 `timeout`）。见 `TMUX_UTF8_ENV`。
-        .env(TMUX_UTF8_ENV.0, TMUX_UTF8_ENV.1)
+        // K-R12：**一行盖住脚本里两条 `exec` 分支**（有/没有 `timeout`）。家在 `common::tmux_utf8`。
+        .env(UTF8_CLIENT_ENV.0, UTF8_CLIENT_ENV.1)
         .output()
     {
         Ok(out) => classify_tmux_probe(out.status.code(), &String::from_utf8_lossy(&out.stdout)),
@@ -554,9 +501,9 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     let out = match std::process::Command::new("sh")
         .arg("-c")
         .arg(script)
-        // K-R12：挂 env 而不是往 `script` 里插 `-u` —— 那条脚本在测试里有一份**逐字复制**
+        // K-R12：挂 env 而不是往 `script` 里插旗 —— 那条脚本在测试里有一份**逐字复制**
         // （`tests::tmux_server_query_yields_nothing_without_a_server`），改串会让两份漂开。
-        .env(TMUX_UTF8_ENV.0, TMUX_UTF8_ENV.1)
+        .env(UTF8_CLIENT_ENV.0, UTF8_CLIENT_ENV.1)
         .output()
     {
         Ok(o) => o,
@@ -577,7 +524,7 @@ fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     // ⇒ 落进 `match probe.server_pid` 的 `_ => {}` 那条**什么都不打的**臂
     // ⇒ `spawn_pid_watcher` 与 `socket_path` 那路 inotify 一次都不装，**而外面看起来一切正常**。
     // 那正是本件立件时看到的症状。处置不变（拿不到就是拿不到），**加的是那句话**。
-    if !line.is_empty() && tmux_tab_underflow(line, 2) {
+    if !line.is_empty() && tab_underflow(line, 2) {
         tracing::warn!(
             "CCM_TMUX_UNPARSABLE display-message 切出 {} 段 < 2 —— \
              tmux 打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 变 `_`），\
@@ -3101,15 +3048,90 @@ mod tests {
     /// 与上一条分开写，是因为上一条量的是「处置对不对」，这一条量的是「那条不等号的方向」。
     #[test]
     fn the_underflow_predicate_only_fires_downward() {
-        assert!(tmux_tab_underflow("一段而已", TMUX_LS_FMT_FIELDS), "1 < 6 ⇒ 下溢");
-        assert!(tmux_tab_underflow("a\tb\tc\td\te", TMUX_LS_FMT_FIELDS), "5 < 6 ⇒ 下溢");
-        assert!(!tmux_tab_underflow("a\tb\tc\td\te\tf", TMUX_LS_FMT_FIELDS), "恰好 6 ⇒ 不红");
+        assert!(tab_underflow("一段而已", TMUX_LS_FMT_FIELDS), "1 < 6 ⇒ 下溢");
+        assert!(tab_underflow("a\tb\tc\td\te", TMUX_LS_FMT_FIELDS), "5 < 6 ⇒ 下溢");
+        assert!(!tab_underflow("a\tb\tc\td\te\tf", TMUX_LS_FMT_FIELDS), "恰好 6 ⇒ 不红");
         assert!(
-            !tmux_tab_underflow("a\tb\tc\td\te\tf\tg", TMUX_LS_FMT_FIELDS),
+            !tab_underflow("a\tb\tc\td\te\tf\tg", TMUX_LS_FMT_FIELDS),
             "7 段是合法内容（路径里有真 TAB）⇒ **不许红**，否则就成了 `!= 6` 那个误伤"
         );
-        assert!(tmux_tab_underflow("15_/tmp/x/sock", 2), "query_tmux_server 那条 N=2 的同理");
-        assert!(!tmux_tab_underflow("15\t/tmp/x/sock", 2));
+        assert!(tab_underflow("15_/tmp/x/sock", 2), "query_tmux_server 那条 N=2 的同理");
+        assert!(!tab_underflow("15\t/tmp/x/sock", 2));
+    }
+
+    /// ★★ **K-R12 下一拍（09-04）：本模块每一处起 `sh` 的地方都必须挂上 UTF-8 那个 env
+    /// —— 一处都不许漏。**
+    ///
+    /// # 🔴 它补的是上一拍留下的一个真洞（现打）
+    ///
+    /// 上一拍把 `.env(…)` 挂上去了，却**没有任何判据看得见它**：
+    /// 全仓（两棵树）搜 `TMUX_UTF8_ENV` / `LC_ALL` 的命中，除了本文件生产段那三行之外
+    /// **一条都不在测试段里**。⇒ 那时把其中一处的 `.env(…)` 删掉，
+    /// cargo 一条都不会红（两处都删掉才会有个 unused 的**告警**，而本仓不 deny warnings）
+    /// ⇒ **静默回到病态**，而这一件治的就是静默。
+    ///
+    /// 上一拍在 `control/gate.rs` 那侧装了同职的一条（`both_tmux_call_sites_…`），
+    /// **这一侧漏了** —— 正是「只覆盖了那条病的一个动词」那一族。
+    ///
+    /// # 它守的是「每一处」，不是「有没有」
+    ///
+    /// 逐处查（不只比总数）：从每一个 `Command::new("sh")` 到它那句 `.output()` 之间
+    /// 必须出现那行 `.env(…)`。只比总数的话，「一处挂了两遍、另一处零」照样绿。
+    ///
+    /// 🔴 **本条守的是「别漏」，不是「它真的生效了」**（「盘上有 ≠ 被走到」）。
+    /// 行为那一半的死值在 `evidence/K-R12-deathvalue.md`：同样这两条脚本对真 tmux 3.4
+    /// 私有 socket 打过，改前段数 1、改后各回各的 N。
+    #[test]
+    fn every_sh_call_site_in_this_module_carries_the_utf8_env() {
+        let prod = crate::guard_support::production_code(include_str!("watcher.rs"));
+        crate::guard_support::assert_no_test_code("observe/watcher.rs", &prod);
+        // 非空对照：剥过头 / 没读到 ⇒ 下面全是 0 == 0 的空真。
+        // 地板 = 实测值的一半（09-04 现打 41_149 字节）。
+        assert!(
+            prod.len() > 20_000,
+            "生产段只有 {} 字节 —— 没读到或剥过头，本条此刻在空转",
+            prod.len()
+        );
+        /// 本模块起 `sh` 的处数 —— **登记值**。这张表不是豁免清单：
+        /// 新增一处 ⇒ 它也要挂 env，并把这个数一起改。
+        const SH_CALL_SITES: usize = 2;
+        let starts = prod.matches("Command::new(\"sh\")").count();
+        assert_eq!(
+            starts, SH_CALL_SITES,
+            "本模块起 `sh` 的处数变了（实得 {starts}，登记 {SH_CALL_SITES}）—— \
+             新增的那一处也要挂 UTF-8 那个 env（家在 `common::tmux_utf8`），\
+             并把这条判据的数一起改。**这张表不是豁免清单。**"
+        );
+        let env_call = format!(
+            ".env({}.0, {}.1)",
+            "UTF8_CLIENT_ENV", "UTF8_CLIENT_ENV"
+        );
+        // 逐处查：每个调用点到它那句 `.output()` 之间必须有那行 `.env(…)`。
+        let mut checked = 0usize;
+        for seg in prod.split("Command::new(\"sh\")").skip(1) {
+            let head = seg.split(".output()").next().unwrap_or(seg);
+            assert!(
+                head.contains(&env_call),
+                "第 {} 处起 `sh` 的地方没挂 `{env_call}` —— 那一处的 tmux 客户端会退回\
+                 非 UTF-8，输出里的 TAB 与非 ASCII 全变 `_`，而 rc 仍是 0、\
+                 段数下溢那条只会把整趟观测判成「观测无效」：**看起来像远端没事**。\n\
+                 这一段是：{head:?}",
+                checked + 1
+            );
+            checked += 1;
+        }
+        assert_eq!(
+            checked, SH_CALL_SITES,
+            "逐处查只走到 {checked} 处 —— 切法坏了，上面那条等号是空转的"
+        );
+        // 反向：env 那一行不许被换成「往脚本串里插旗」。那一改会让 `query_tmux_server`
+        // 的脚本与测试里那份逐字复制漂开，而 `tmux_probe_script` 的两条 `exec` 分支
+        // 也会退回「要改两处、漏一处永远看不见」。
+        assert!(
+            !prod.contains("tmux -u ") && !prod.contains(" -u ls "),
+            "本模块的脚本串里出现了 argv 形的旗 —— 这一侧按调用点形态该用 env 形，\
+             理由（两条 `exec` 分支 + 那份逐字复制）在文件上方那段注释里"
+        );
     }
 
     /// **`raw` 载荷与 P1 之前逐字节一致**——旧 monitor 行为零变化的那条保证。
