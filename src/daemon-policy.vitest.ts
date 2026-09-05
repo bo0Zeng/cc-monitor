@@ -43,8 +43,14 @@ import {
   killOnExit,
   setKillOnExit,
   initDaemonPolicy,
+  describeDaemonHealth,
+  HEALTH_CLEAN,
+  HEALTH_CRASHED,
+  HEALTH_LAST_MISSING,
+  HEALTH_UNKNOWN,
   LOCAL_ORIGIN,
   DEFAULT_KILL_ON_EXIT,
+  type DaemonHealth,
 } from "./daemon-policy";
 
 beforeEach(() => {
@@ -159,5 +165,71 @@ describe("P2s 每台机一份 daemon 策略", () => {
         "② 有但形状变了（比如去掉了 .catch）⇒ 策略读不到会把主界面拖垮，它只是附加功能。\n" +
         "改了那一行的写法，就来改这里的字面量 —— 这条摩擦是有意的。",
     ).toBe(1);
+  });
+});
+
+/**
+ * K-P3 KP3C 的 TS 那一半 ——〔`K-P3` `§3-5` 第四行登记的欠账，`K-P3b` 补上〕。
+ *
+ * 交付第一档时这份文件不在那件的写区 ⇒ TS 侧只有 Rust 那侧的**源码文本**判据
+ * （`the_health_reading_branches_are_wired_into_the_typescript`，它证的是「那三支写在那儿」）。
+ * 这一组是**运行时**那一半：三档逐格等号。
+ */
+describe("K-P3 那句读数 —— 三档逐格钉死", () => {
+  const NONE: DaemonHealth = {
+    crashed: 0,
+    refused: 0,
+    neverStarted: 0,
+    misread: 0,
+    last: null,
+  };
+
+  it("★★ 第一档：账上一条都没有 ⇒「答不出来」，**即使 crashed === 0**", () => {
+    expect(
+      describeDaemonHealth({ ...NONE }),
+      "一条记录都没有的机器被说成了别的 —— §0-1 逐字：\n" +
+        "「今天不是『它没崩过』，是『没有任何东西在记它崩没崩』…… 这两句话差得很远，不许混用」。",
+    ).toBe(HEALTH_UNKNOWN);
+    // ★ 这一格是**判准本身**：把 `seen === 0` 换成 `crashed === 0`，上面那格照样绿，
+    //   而这一格当场红 —— 一台记到过 2 次读坏了的机器会被说成「答不出来」，
+    //   可它明明有账。**两格一起才钉住那个判准。**
+    expect(
+      describeDaemonHealth({ ...NONE, misread: 2 }),
+      "账上记到过事（读坏了 2 次），却仍说「答不出来」——\n" +
+        "那说明第一档的判准是 `crashed === 0` 而不是「这本账上一条记录都没有」。",
+    ).not.toBe(HEALTH_UNKNOWN);
+  });
+
+  it("★ 第二档：记到过事、一次崩溃都没有 ⇒「没崩过」，且带得出读坏了几次", () => {
+    expect(describeDaemonHealth({ ...NONE, misread: 2 })).toBe(
+      HEALTH_CLEAN.replace("{misread}", "2"),
+    );
+    // 「读坏了」不算它崩 —— 那是我们这一侧的读端（B1 那条错误诊断的全部内容）。
+    expect(describeDaemonHealth({ ...NONE, refused: 1, misread: 0 })).toBe(
+      HEALTH_CLEAN.replace("{misread}", "0"),
+    );
+  });
+
+  it("★ 第三档：崩过 ⇒ 带次数与最后那一行；那一行没留住也要说出口", () => {
+    expect(describeDaemonHealth({ ...NONE, crashed: 3, last: "甲那一行" })).toBe(
+      HEALTH_CRASHED.replace("{crashed}", "3").replace("{last}", "甲那一行"),
+    );
+    expect(
+      describeDaemonHealth({ ...NONE, crashed: 1, last: null }),
+      "崩过、而那一行没留住 —— 这一格不许拿空串糊过去",
+    ).toBe(HEALTH_CRASHED.replace("{crashed}", "1").replace("{last}", HEALTH_LAST_MISSING));
+  });
+
+  it("★ 占位符必须真的被填掉 —— 漏一个 replace 就把 `{crashed}` 端到用户眼前", () => {
+    for (const h of [
+      { ...NONE, misread: 5 },
+      { ...NONE, crashed: 2, last: "乙" },
+      { ...NONE, crashed: 2, last: null },
+    ]) {
+      const said = describeDaemonHealth(h);
+      for (const ph of ["{crashed}", "{last}", "{misread}"]) {
+        expect(said.includes(ph), `读数里还留着占位符 ${ph}：${said}`).toBe(false);
+      }
+    }
   });
 });

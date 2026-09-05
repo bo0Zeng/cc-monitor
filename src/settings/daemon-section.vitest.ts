@@ -78,7 +78,12 @@ import {
   EXIT_KILLS,
   EXIT_SELF_DIES,
   EXIT_UNATTENDED,
+  HEALTH_CLEAN,
+  HEALTH_CRASHED,
+  HEALTH_LAST_MISSING,
+  HEALTH_UNKNOWN,
   LOCAL_ORIGIN,
+  describeDaemonHealth,
   describeExitBehavior,
 } from "../daemon-policy";
 
@@ -152,7 +157,19 @@ describe("P2s daemon 开关区", () => {
       expect(f.src.length, `${f.name} 读出来只有 ${f.src.length} 字节 —— 人群坏了，本条在空转`)
         .toBeGreaterThan(500);
     }
-    const literals = [EXIT_KILLS, EXIT_UNATTENDED, EXIT_SELF_DIES];
+    // ⚠ `K-P3b KP3W4`③：人群扩到 `HEALTH_*` 四句 —— 它们与那三句同一条规矩，
+    //   而 `K-P3` 交付时这一格只由 Rust 那侧的 `the_health_copy_has_exactly_one_home` 看着
+    //   （那份 vitest 当时不在它的写区）。两侧各有一条不是重复：
+    //   Rust 那条的人群含 `daemon_control.rs`，这一条的人群是前端那两份。
+    const literals = [
+      EXIT_KILLS,
+      EXIT_UNATTENDED,
+      EXIT_SELF_DIES,
+      HEALTH_UNKNOWN,
+      HEALTH_CLEAN,
+      HEALTH_CRASHED,
+      HEALTH_LAST_MISSING,
+    ];
     for (const lit of literals) {
       const homes = files.filter((f) => visibleOf(f.src).includes(lit)).map((f) => f.name);
       expect(
@@ -263,6 +280,47 @@ describe("P2s daemon 开关区", () => {
       s.element.querySelector(".daemon-row-state")?.textContent,
       "起完只画了一次就停手 —— 那张是操作前的快照（daemon_start 只是 spawn 了监护线程就返回）",
     ).toContain("已连上");
+  });
+
+  it("★★ K-P3b：读数**另起一行**画出来，而退出那一行一个字节不变", async () => {
+    // ⚠ 桩里那四个计数与 `last` 就是后端 `daemon_status` 那一格的形状
+    //   （键名与 Rust 侧 `Health` 逐格对齐：crashed / refused / neverStarted / misread / last）。
+    const health = { crashed: 2, refused: 0, neverStarted: 1, misread: 3, last: "甲那一行" };
+    status = { channel: true, pid: 42, detached: true, health };
+    const s = new DaemonSection({ headless: true });
+    await flush();
+    await flush();
+    const row = s.element.querySelector<HTMLElement>(".daemon-row")!;
+    expect(
+      row.querySelector<HTMLElement>(".daemon-row-health")?.textContent,
+      "读数那一行画的不是 `describeDaemonHealth(那份)` —— 界面上那句话与纯函数分叉了",
+    ).toBe(describeDaemonHealth(health));
+    // ★ 同一拍里退出那一行仍然**等于**它自己那句 —— 读数没被接在它后面。
+    //   把读数接到 `paintExit` 的串后面 ⇒ 本格与 `:116-123` 那四格一起红。
+    expect(
+      row.querySelector<HTMLElement>(".daemon-row-exit")?.textContent,
+      "退出那一行被改了 —— 读数是**另一句话**，接上去就把那四根等号一起拽红了",
+    ).toBe(describeExitBehavior({ killOnExit: false, detached: true }));
+  });
+
+  it("★★ K-P3b：后端**没给** `health`（旧后端）⇒ 说「答不出来」，不说「没崩过」", async () => {
+    // ⚠ 这一格是**负例**，方向与上面 `detached` 缺席那一格一致：
+    //   缺席时替后端补一个「四个 0」的读数 ⇒ `describeDaemonHealth` 会说「一次都没崩过」，
+    //   而 `K-P3 §0-1` 逐字：「今天不是『它没崩过』，是『没有任何东西在记它崩没崩』……
+    //   这两句话差得很远，不许混用」。
+    status = { channel: true, pid: 42 };
+    const s = new DaemonSection({ headless: true });
+    await flush();
+    await flush();
+    const el = s.element.querySelector<HTMLElement>(".daemon-row-health");
+    expect(
+      el?.textContent,
+      "后端没给这一格，界面却说出了一个读数 —— 那个读数没有依据",
+    ).toBe(HEALTH_UNKNOWN);
+    expect(
+      el?.textContent === "",
+      "读数那一行是空的 —— 缺席不是「没什么可说」，缺席正是「答不出来」这句话本身",
+    ).toBe(false);
   });
 
   it("★ 存不下就把勾回退——屏上写着 A 而实际是 B 比报错更坏", async () => {

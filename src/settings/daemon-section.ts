@@ -32,13 +32,47 @@ const SETTLE_TRIES = 30;
 const SETTLE_INTERVAL_MS = 100;
 import { showActionFailureToast } from "../error-toast";
 import {
+  HEALTH_UNKNOWN,
   LOCAL_ORIGIN,
+  describeDaemonHealth,
   describeExitBehavior,
   initDaemonPolicy,
   killOnExit,
   setKillOnExit,
+  type DaemonHealth,
   type DaemonPolicy,
 } from "../daemon-policy";
+
+/**
+ * 从 `daemon_status` 那份 JSON 里取死亡账读数。**缺席 / 形状不对 ⇒ `null`**。
+ *
+ * ⚠ 方向与 `detached` 缺席那一格一致：**答不出来就说答不出来**，不替后端补一个
+ * 「四个 0」的读数 —— 那会被 `describeDaemonHealth` 说成「一次都没崩过」，
+ * 而那两句话（「没崩过」与「没有任何东西在记」）正是 K-P3 §0-1 点名不许混用的。
+ *
+ * ⚠ 它住在这里而不是 `daemon-policy.ts`：那边是**文案与纯函数**的家，
+ * 这一段是**wire 解析**（`daemon_status` 回的是 `Record<string, unknown>`），
+ * 与同文件 `st.detached === true` 那一句同层。
+ */
+function readHealth(raw: unknown): DaemonHealth | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const h = raw as Record<string, unknown>;
+  const num = (k: string): number | null => (typeof h[k] === "number" ? (h[k] as number) : null);
+  const crashed = num("crashed");
+  const refused = num("refused");
+  const neverStarted = num("neverStarted");
+  const misread = num("misread");
+  if (crashed === null || refused === null || neverStarted === null || misread === null) {
+    return null;
+  }
+  return {
+    crashed,
+    refused,
+    neverStarted,
+    misread,
+    last: typeof h.last === "string" ? h.last : null,
+  };
+}
 
 /** 一台机在这一区里的身份。`origin` 是唯一键，`title` 只给人看。 */
 interface Machine {
@@ -163,6 +197,16 @@ export class DaemonSection {
     exit.className = "daemon-row-exit";
     row.appendChild(exit);
 
+    // ★★ `K-P3b KP3W4`：**那句「无人监护」后面接的那个读数**，另起一行。
+    //
+    // ⚠ **不许接在上面那一行后面**：`describeExitBehavior` 的四张脸被
+    // `daemon-section.vitest.ts` 用**等号**逐格钉着（它自己逐字写着「不是「包含」
+    // 而是「等于」——「包含」会放过「在正确那句后面又加了一句错的」」）。
+    // 接上去当场红那四格，而那**不是误报**：那两句话说的是两件事。
+    const health = document.createElement("div");
+    health.className = "daemon-row-health";
+    row.appendChild(health);
+
     return row;
   }
 
@@ -181,6 +225,21 @@ export class DaemonSection {
       detached,
     });
     el.dataset.detached = String(detached);
+  }
+
+  /**
+   * 重画一行的「上次崩没崩」。
+   *
+   * `health` **缺席**（旧后端，那份 JSON 里没有这一格）⇒ 画 `HEALTH_UNKNOWN`
+   * —— 方向与 `detached` 缺席那一格一致：**答不出来就说答不出来**。
+   * ⚠ 别在这里退回一个「四个 0」的读数：那会被说成「一次都没崩过」，
+   * 而 K-P3 §0-1 逐字点名这两句话「差得很远，不许混用」。
+   */
+  private paintHealth(origin: string, raw: unknown): void {
+    const el = this.rows.get(origin)?.querySelector<HTMLElement>(".daemon-row-health");
+    if (!el) return;
+    const h = readHealth(raw);
+    el.textContent = h === null ? HEALTH_UNKNOWN : describeDaemonHealth(h);
   }
 
   /**
@@ -254,6 +313,8 @@ export class DaemonSection {
       // K-P1：`detached` 只认后端给的那一格。**缺席 / null ⇒ 按「没脱离」算**
       // （旧后端没有这一格；远端天然没有）—— 保守方向：不脱离那句话是今天一直在说的那句。
       this.paintExit(origin, st.detached === true);
+      // K-P3b：**同一份 JSON**，另一个元素。不新开一次查询，也不接在上面那一行后面。
+      this.paintHealth(origin, st.health);
       return on;
     } catch (e) {
       state.textContent = "状态查不到";
