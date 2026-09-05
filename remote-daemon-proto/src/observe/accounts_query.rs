@@ -112,31 +112,52 @@ struct Manifest {
 /// 允许普通空格与常规非 ASCII（如中文；单引号内无害且常见），拒绝引号/命令替换/
 /// 重定向/通配/控制字符 + 视觉欺骗类 Unicode。
 fn is_safe_config_dir(p: &str) -> bool {
-    if !p.starts_with('/') {
+    // 🔴 `N-F1c`：这个判据被**拆成两半**了。拆法逐字照 monitor 那份同名实现的模块头注
+    // （`src-tauri/src/local_accounts.rs` 顶部那一节，逐字：「判据落在性质上，不落在表面
+    // 特征上 —— 照抄 `starts_with('/')` 是抄了形式、丢了性质」）：
+    //   ① shell 元字符与视觉欺骗字符 = **平台无关的安全性质**，两侧逐字同一套；
+    //   ② 「是绝对路径」= **平台相关的形式**，各写各的。
+    //
+    // 为什么现在才拆：本函数此前只服务远端（daemon 只跑在 Linux 上），而
+    // `N-F1c` 起 **monitor 的本机账号清单也来问这个二进制**（`--list-accounts`），
+    // 而那份 monitor 要在 Windows 上跑 —— Windows 的账号目录是 `C:\Users\…`，
+    // 旧的第一条会把每一个 Windows 账号判成不安全 ⇒ **清单恒空**。
+    // ⚠ 障碍是这条检查，**不是**「daemon 不能在 Windows 上跑」：发版流水线的
+    //   `build-windows` 里有原生 sidecar 构建，产物装进 `externalBin`。
+    fn looks_absolute(p: &str) -> bool {
+        if p.starts_with('/') {
+            return true; // POSIX
+        }
+        // Windows：盘符（`C:\` / `C:/`）或 UNC（`\\server\share`）。
+        let b = p.as_bytes();
+        let drive = b.len() >= 3
+            && b[0].is_ascii_alphabetic()
+            && b[1] == b':'
+            && (b[2] == b'\\' || b[2] == b'/');
+        drive || p.starts_with("\\\\")
+    }
+    if !looks_absolute(p) {
         return false;
     }
     if p == "/" || p.contains("/../") || p.ends_with("/..") {
         return false;
     }
+    // 反斜杠成了合法分隔符 ⇒ **上跳那一手也要按反斜杠再拒一次**，否则放宽绝对路径的同时
+    // 就把 `C:\Users\..\..\x` 一起放进来了（monitor 那份加这一条正是为此）。
+    if p.contains("\\..\\") || p.ends_with("\\..") {
+        return false;
+    }
+    // 平台无关的那一半：shell 元字符 + 视觉欺骗字符，**与 monitor 那份逐字同一套**。
+    // **反斜杠不在此列** —— Windows 的路径分隔符就是它。放行它在这里是安全的，
+    // 因为**下游那一层自己会拒**：monitor 把 configDir 拼进 POSIX 命令之前要过
+    // `config_dir_command_safe`，那个函数明确把 `\` 列进拒绝集。
+    // ⇒ 这是**分层校验**，不是「反正没人拿它拼命令」。
     !p.chars().any(|c| {
         c.is_control()
             || is_deceptive_char(c)
             || matches!(
                 c,
-                '\'' | '"'
-                    | '\\'
-                    | '`'
-                    | '$'
-                    | ';'
-                    | '|'
-                    | '&'
-                    | '<'
-                    | '>'
-                    | '*'
-                    | '?'
-                    | '('
-                    | ')'
-                    | '!'
+                '\'' | '"' | '`' | '$' | ';' | '|' | '&' | '<' | '>' | '*' | '?' | '(' | ')' | '!'
             )
     })
 }
@@ -988,6 +1009,22 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+    /// 被 `is_safe_config_dir` 拒掉的 shell 元字符，**测试侧只有这一份**。
+    ///
+    /// 🔴 `N-F1c`：抽出来是因为它现在要被**两种路径形状**各用一次（POSIX 与 Windows）。
+    /// 手抄两遍必漂，而漂掉的那一格恰恰是本件最怕的那一格 ——
+    /// 「为了让 Windows 路径过，顺手把安全那一半也放宽了」。
+    ///
+    /// ⚠ 如实说清它**不是**真相源：生产那一侧是 `is_safe_config_dir` 里的一个
+    /// `matches!` 臂，没有可 import 的具名常量 ⇒ 这仍是一份**手抄**，
+    /// 只是从两份收敛成一份。少了一个字符两边会**一起**变绿（同族假阴），
+    /// 接住它的是下面那条「地板」自检与 `NcM3` 那一刀。
+    fn shell_meta_chars() -> &'static [char] {
+        &[
+            '\'', '"', '`', '$', ';', '|', '&', '<', '>', '*', '?', '(', ')', '!',
+        ]
+    }
+
     #[test]
     fn safe_config_dir_predicate() {
         assert!(is_safe_config_dir("/home/u/.claude-accts/z"));
@@ -999,13 +1036,159 @@ mod tests {
         assert!(!is_safe_config_dir("/"));
         assert!(!is_safe_config_dir("/a/../b"));
         assert!(!is_safe_config_dir("/a/b/.."));
-        for bad in [
-            "/a'b", "/a\"b", "/a`b", "/a$b", "/a;b", "/a|b", "/a&b", "/a<b", "/a>b", "/a*b",
-            "/a?b", "/a(b", "/a)b", "/a!b", "/a\\b",
-        ] {
-            assert!(!is_safe_config_dir(bad), "{bad} 应被拒");
+        for c in shell_meta_chars() {
+            let bad = format!("/a{c}b");
+            assert!(!is_safe_config_dir(&bad), "{bad} 应被拒");
         }
         assert!(!is_safe_config_dir("/a\nb"));
+        // 🔴 `N-F1c` 起 `\` **不再**在元字符表里 —— 它是 Windows 的路径分隔符，
+        // 拒掉它就等于拒掉每一个 Windows 账号目录。本行是那一格改动的**正面记录**：
+        // 从前这里逐字断言 `!is_safe_config_dir("/a\\b")`。
+        // 放行它安全的理由不是「没人拼命令」，是**下游那一层自己会拒**
+        // （monitor 的 `config_dir_command_safe` 明确把 `\` 列进拒绝集）——**分层校验**。
+        assert!(
+            is_safe_config_dir("/a\\b"),
+            "`\\` 已经从元字符表里拿掉了（它是 Windows 的分隔符）"
+        );
+    }
+
+    /// ★★ `NF1cD2` 正题：**路径检查拆成「性质 / 形式」两半之后，两侧都要成立。**
+    ///
+    /// # 先证会红
+    ///
+    /// 拆之前第一条是 `if !p.starts_with('/')` ⇒ 下面「Windows 形状收得进」那一组**全红**；
+    /// 而它在 `list_accounts` 那一层的表现是**清单恒空**（每个账号都被 `continue` 掉）——
+    /// 那一格由 `a_windows_shaped_account_survives_the_listing` 单独钉。
+    ///
+    /// # 分母怎么数的（`NF1cD2` 的 acceptor 逐字要的就是这个）
+    ///
+    /// 「危险形状照旧拒」那一侧的分母 = 下面四组之和，**现算**、失败时逐个点名：
+    /// 相对路径 · 裸根 · 上跳（POSIX 与 Windows 各写各的）· shell 元字符（`shell_meta_chars`
+    /// 那一份，套在 **Windows 形状**上再拒一次 —— 只在 POSIX 形状上验，
+    /// 「放宽了绝对路径顺手把元字符也放过」这一刀会活着走出去）。
+    ///
+    /// ⚠ 视觉欺骗字符那一族**不在本条的分母里**：它有自己的一条
+    /// （`deceptive_unicode_rejected`），本条只补 Windows 这一维，不搬家。
+    /// ⚠ 本条喂的是**字符串给纯函数**，不是真在 Windows 上列一次账号
+    ///（`nc1` 那格诚实边界，解锁条件是一次真机实测）。
+    #[test]
+    fn windows_shaped_config_dirs_are_accepted_and_dangerous_ones_still_are_not() {
+        // ① Windows 形状**收得进** —— 四形：盘符+反斜杠 / 盘符+正斜杠 / 小写盘符 / UNC。
+        let accepted = [
+            "C:\\Users\\alice\\.claude-accts\\z",
+            "C:/Users/alice/.claude-accts/z",
+            "d:\\x",
+            "\\\\server\\share\\accts\\z",
+        ];
+        for good in accepted {
+            assert!(
+                is_safe_config_dir(good),
+                "Windows 形状被判成不安全：{good:?}\n\
+                 ⇒ 那就是「照抄 `starts_with('/')`」那一刀：Windows 上账号列表会**恒空**。"
+            );
+        }
+
+        // ② 危险形状**照旧拒**。四组分开列，坏在哪一组一眼看得出。
+        let relative = vec!["relative", "C:Users\\x", "z\\x"];
+        let bare_root = vec!["/"];
+        let updir = vec![
+            "/a/../b",
+            "/a/b/..",
+            "C:\\Users\\..\\..\\x",
+            "C:\\Users\\..",
+        ];
+        // ★ 元字符那一组套在 **Windows 形状**上 —— `NcM3` 切的正是这一格。
+        let meta: Vec<String> = shell_meta_chars()
+            .iter()
+            .map(|c| format!("C:\\Users\\a{c}b"))
+            .collect();
+
+        // 反空真：任何一组塌了，下面的循环就零命中地绿。
+        assert!(
+            meta.len() >= 14,
+            "元字符夹具只剩 {} 个 —— 人群塌了，本条在空转",
+            meta.len()
+        );
+        let refused: Vec<String> = relative
+            .iter()
+            .chain(bare_root.iter())
+            .chain(updir.iter())
+            .map(|s| (*s).to_string())
+            .chain(meta.iter().cloned())
+            .collect();
+        assert!(
+            refused.len() >= 20,
+            "「该拒」的人群只剩 {} 格 —— 分母塌了",
+            refused.len()
+        );
+        let leaked: Vec<&String> = refused
+            .iter()
+            .filter(|p| is_safe_config_dir(p))
+            .collect();
+        assert!(
+            leaked.is_empty(),
+            "这些危险形状被放进来了（分母 {} 格，逐个点名）：{leaked:?}\n\
+             ⇒ `NcM3` 那一刀的形状就是它：**只放宽绝对路径那一半、顺手把安全那一半也放过**。",
+            refused.len()
+        );
+    }
+
+    /// ★★ `NF1cD2` 的**后果面**：那条谓词在清单那一层的表现是「列表恒空 / 不恒空」。
+    ///
+    /// 只断纯函数不够 —— `NF1cD2` 逐字说的是「**Windows 上列得出来**」，
+    /// 而列不列得出来是 `list_accounts` 那一层的事（不安全的 `configDir` 会被 `continue` 掉）。
+    /// ⇒ 本条喂一份 **Windows 形状的 manifest**，断它出得来几个、名字是什么。
+    ///
+    /// 拆之前：两条都被判不安全 ⇒ `count == 0`，用户看到的是一张**空表**，
+    /// 而 `enabled` 仍是 `true` —— 那正是「够不着被渲染成你没有账号」那族病的源头。
+    ///
+    /// ⚠ 同 `nc1`：这是**在 Linux 上喂 Windows 形状的字符串**，不是真机读数。
+    /// `exists` 在这里必然是 `false`（那个盘符路径在 Linux 上不存在），
+    /// 而账号**仍然要在列表里** —— 「探不到目录」与「不安全被丢掉」是两回事。
+    #[test]
+    fn a_windows_shaped_account_survives_the_listing() {
+        let root = tmpdir("winshape");
+        let accts = root.join("accts");
+        write_manifest(
+            &accts,
+            r#"{"version":1,"accounts":[
+                {"name":"alice","configDir":"C:\\Users\\alice\\.claude-accts\\z"},
+                {"name":"unc","configDir":"\\\\srv\\share\\accts\\u"},
+                {"name":"dodgy","configDir":"C:\\Users\\alice\\..\\..\\etc"},
+                {"name":"meta","configDir":"C:\\Users\\a$(id)\\x"}]}"#,
+        );
+        let lines = list_accounts(&accts);
+        let m = meta(&lines);
+        assert_eq!(m["enabled"], true);
+        assert_eq!(
+            m["count"], 2,
+            "Windows 形状的账号没能留在列表里（或危险的那两条也混进来了）——\n\
+             拆之前这里是 0，那就是「Windows 上账号列表恒空」的**直接读数**。"
+        );
+        let names: Vec<String> = lines[1..]
+            .iter()
+            .map(|l| {
+                serde_json::from_str::<serde_json::Value>(l).unwrap()["name"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect();
+        assert_eq!(
+            names,
+            vec!["alice", "unc"],
+            "留下来的不是该留的那两个 —— 上跳与元字符那两条必须照旧被丢掉"
+        );
+        let a0: serde_json::Value = serde_json::from_str(&lines[1]).unwrap();
+        assert_eq!(
+            a0["configDir"], "C:\\Users\\alice\\.claude-accts\\z",
+            "configDir 被改写了 —— 本条只该判安不安全，不该动内容"
+        );
+        assert_eq!(
+            a0["exists"], false,
+            "这条断的是「探不到目录 ≠ 被丢掉」：账号在表里，`exists` 诚实地说 false"
+        );
+        let _ = fs::remove_dir_all(&root);
     }
 
     // ---- 4. --account-trust ----
