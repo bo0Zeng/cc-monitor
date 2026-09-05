@@ -32,6 +32,20 @@ CFG="$TMP/ccm-config"
 mkdir -p "$TMP/ws"
 printf 'CCM_WORKSPACE=%s\n' "$TMP/ws" > "$CFG"
 export CCM_CONFIG="$CFG" CCM_SELF="$CCM"
+# ★★ 〔`K-P2` `F` 拍 09-04；用@「**ccm不要管找不到, 统一走后端**」〕**本套件必须自带一份后端。**
+#
+# 两条腿都没有本地退路了：**账号解析**（问不到后端 ⇒ `exit 4`）与 **`--tmux` 建会话**
+# （同上）。不带的话本套件每一个场景都死在 `exit 4` 上 —— 那不是「判据红了」，
+# 是**整套测不到它要测的东西**（预信任写入发生在建会话之前，可它连起都起不来）。
+# ⚠ `e2e/fake-daemon` 里的 `tmux` 走 **PATH** ⇒ 落在上面那个 `-L $SOCK` 的 shim 上，
+#   与本套件其余部分同一个隔离 socket，碰不到用户的 tmux server。
+# ⚠ `CCM_ACCTS_MANIFEST` 显式指向一个**不存在的**隔离路径（形态仍是 `<目录>/accounts.json`）：
+#   ① 不指的话它会落到 `$HOME/.claude-accts/accounts.json`，那是**开发者本人的账号库**
+#      —— 本套件其余每一处都在极力避免碰用户的东西；
+#   ② 后端对它答的是「meta ＋ 零个账号」= 一张空表 ⇒ ccm 退化为基座启动器，不注入账号，
+#      本套件要测的预信任面因此干净。
+export CCM_DAEMON_BIN="$REPO/e2e/fake-daemon"
+export CCM_ACCTS_MANIFEST="$TMP/no-accts/accounts.json"
 
 T() { "$TMUX_BIN" -L "$SOCK" "$@"; }
 reset() { T kill-server 2>/dev/null; sleep 0.3; }
