@@ -71,6 +71,23 @@ mod tests {
             "那一条为什么进不了表（`K-H2`）。**是一个 `&'static str` 固定文案**，\
              不含文件里的任何内容 —— 这一点由 `table::Rejected::why` 的类型兜着",
         ),
+        (
+            "note.id",
+            "一条**进了表、但行为与默认不同**的账号 id（`K-R1`）。理由与 `r.id` 逐字同一条：\
+             它本来就要出现在 URL 路径里，不是秘密；且走 `{:?}` 打印 ⇒ 控制字符被转义",
+        ),
+        (
+            "note.what",
+            "那一条哪里与默认不同（`K-R1`：带了路径前缀 / 换了鉴权头形状）。\
+             **是一个 `&'static str` 固定文案**，由 `table::Note::what` 的类型兜着 ——\
+             ⚠ 刻意**不印**那个前缀本身、也不印那个认不出的词：那两样是文件内容",
+        ),
+        (
+            "legal",
+            "`auth_style` 认得的那几个值，由 `creds_core::store::AuthStyle::ALL` **现算**\
+             （`brief` 13b：闭集只许有一个住址，不许在日志里再抄一份字面量）。\
+             全是编译期 `&'static str`，与任何一把 key 无关",
+        ),
     ];
 
     /// `relay/` 生产段里每一处日志调用的**格式串起首**，`(所在文件, 起首, 它记的是什么)`。
@@ -108,6 +125,19 @@ mod tests {
             "creds.rs",
             "[relay] credentials: configured",
             "配了 —— **只印这个布尔与进得了表的条数**，不印长度、不印掩码",
+        ),
+        (
+            "creds.rs",
+            "[relay] credentials: auth_style must be one of:",
+            "有一条的 `auth_style` 认不出时，把认得的那几个**现算**着印出来（`K-R1`）——\
+             它是给正在排错的人看的最后一句话，所以不许是一份会变旧的字面量清单",
+        ),
+        (
+            "creds.rs",
+            "[relay] credentials: this account is not on the default path:",
+            "一条**进了表、但行为与默认不同**的账号（`K-R1`：带了路径前缀 / 换了鉴权头形状）。\
+             它与上面那条「cannot be used」是两件事：这一条**照发**，只是发出去的字节不同 ⇒ \
+             它错了的症状是上游的 404 / 401，与「上游挂了」同形，必须在启动时说出来",
         ),
         ("creds.rs", "[relay] credentials: not configured", "没配"),
         ("creds.rs", "[relay] create that file to configure one", "没配时印模板"),
