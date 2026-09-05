@@ -108,7 +108,13 @@ struct Manifest {
 }
 
 /// 路径是否可安全地交给下游（cc-monitor 会把 configDir 拼进 `export CLAUDE_CONFIG_DIR='…'`）。
-/// 与 cc-acct-iso 的 `path_shell_safe` 同一套字符集——两端对齐，避免一端放行另一端炸。
+/// 与 cc-acct-iso 的 `path_shell_safe` **在安全字符那一半上**同一套——两端对齐，避免一端放行另一端炸。
+/// ⚠ `N-F1c`（09-05）之后**不再是整套同一**：`\` 从本函数的拒绝集里拿出来了（Windows 的路径
+/// 分隔符就是它），而上面那一侧照旧拒。这不是漂移，是**分层校验** ——
+/// monitor 把 `configDir` 拼进 POSIX 命令之前要过 `config_dir_command_safe`，那个函数明确拒 `\`。
+/// 〔旧文逐字，留作来历：「同一套字符集——两端对齐」——「整套同一」今天不成立。〕
+/// ⚠⚠ 上面那个名字**在本文件里只许出现一次** —— `structural_scan::INVENTORY` 按**处数**钉着它
+/// （PM 09-05 改这段注释时多写了一次，当场红：「盘上 2 处，登记表写 1 处」）。
 /// 允许普通空格与常规非 ASCII（如中文；单引号内无害且常见），拒绝引号/命令替换/
 /// 重定向/通配/控制字符 + 视觉欺骗类 Unicode。
 fn is_safe_config_dir(p: &str) -> bool {
