@@ -117,6 +117,18 @@ pub fn daemon_status(origin: String) -> Result<serde_json::Value, String> {
     } else {
         (None, None, serde_json::Value::Null)
     };
+    // ★★ `K-P3b KP3W4`：**死亡账的读数也从这一口出去。**
+    //
+    // ⚠ 它**不走 `is_local` 分派**，理由是硬的：那张账是按 origin 存的
+    // （`daemon_policy::health(origin)`），远端那一格今天恒是「四个 0」——
+    // 而那对远端是**真话**：本件不接远端（退出状态在别人机器上拿不到），
+    // 所以「没人在记」正是那台机的实情，TS 那侧会照 `seen == 0` 说「答不出来」。
+    // ⇒ 这里**不能**填 `null` 装作不对称：`pid`/`attempts` 是「那个进程在别人机器上」，
+    // 而这一格是「我们这边一条都没记过」，两件事。
+    //
+    // ⚠ 再开一个 `is_local(&origin)` 分派会当场撞
+    // `the_three_ports_are_one_command_each_and_all_take_origin`（逐口恰好一处）。
+    let h = crate::daemon_policy::health(&origin);
     Ok(serde_json::json!({
         "origin": origin,
         "channel": channel,
@@ -124,6 +136,14 @@ pub fn daemon_status(origin: String) -> Result<serde_json::Value, String> {
         "attempts": attempts,
         "detached": detached,
         "killOnExit": crate::daemon_policy::kill_on_exit(&origin),
+        // 键名与 TS 的 `DaemonHealth` 接口逐格对齐（`src/daemon-policy.ts`）。
+        "health": serde_json::json!({
+            "crashed": h.crashed,
+            "refused": h.refused,
+            "neverStarted": h.never_started,
+            "misread": h.misread,
+            "last": h.last,
+        }),
     }))
 }
 

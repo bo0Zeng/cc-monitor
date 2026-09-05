@@ -215,6 +215,16 @@ pub enum ReaderEnd {
     CleanEof,
     /// 读出错（`B1` 那一形：`InvalidData` 与 EOF 走同一条路），带**原样**的那句错。
     Broken(String),
+    /// ★ `K-P3b`：**这条路上根本没有读端**。
+    ///
+    /// 今天唯一的生产来源是「从来没起来」那一支（`local_daemon::start_local_backend`
+    /// 返回 `Failed` 那一个出口）：进程一次都没存在过 ⇒ 也就没有过一根管子。
+    ///
+    /// ⚠ **它刻意不与 [`ReaderEnd::CleanEof`] 合并**：后者逐字的意思是
+    /// 「管子关了 / 它走了」，而那条路上从来没有过管子 ⇒ 写 `CleanEof`
+    /// 就是给一格**没有事实可说**的维度填一个看起来合理的值，
+    /// 正是 `platform/fallback_guard.rs` 治的那一族。
+    NotObserved,
 }
 
 /// 一次「它没了」的全部可观测证据。**三维分开装，一个字段一件事。**
@@ -274,10 +284,21 @@ pub enum Death {
 /// 而给它单开第五档就是发明一件今天没有证据支持的事（本件的 DoD 说的是**四件**）。
 /// 真撞上它 ⇒ 那是第二档的题目，回来重判，别在这里悄悄加一档。
 pub fn verdict(ev: &DeathEvidence) -> Option<Death> {
-    if let ReaderEnd::Broken(detail) = &ev.reader {
-        return Some(Death::Misread {
-            detail: detail.clone(),
-        });
+    match &ev.reader {
+        ReaderEnd::Broken(detail) => {
+            return Some(Death::Misread {
+                detail: detail.clone(),
+            })
+        }
+        // ★ `K-P3b` 新增的那一臂：**没有读端**这件事在这里**让开**，不冒充一次干净 EOF。
+        //
+        // 它既不是「读坏了」（那说的是我们这一侧读出了错），也不是「干净 EOF」
+        // （那说的是管子关了 —— 而那条路上从来没有过管子）。⇒ 这一维不参与判定，
+        // 剩下两维（`Outcome::NeverSpawned` 那一支）足够判出「从来没起来」。
+        //
+        // ⚠ **既有四条臂的结论一个字没变**：这一臂只让 `NotObserved` 落到与
+        //   `CleanEof` 相同的下游，而它存在的全部理由是**别在证据里编一个值**。
+        ReaderEnd::NotObserved | ReaderEnd::CleanEof => {}
     }
     if matches!(ev.outcome, Outcome::NeverSpawned) {
         let (reason, looked_at) = ev
@@ -458,6 +479,44 @@ fn ledger() -> &'static Mutex<HashMap<String, Health>> {
     static L: OnceLock<Mutex<HashMap<String, Health>>> = OnceLock::new();
     L.get_or_init(|| Mutex::new(HashMap::new()))
 }
+
+/// ★★ `K-P3b KP3W3`：[`record_death`] 的**生产调用点逐处点名**。
+///
+/// 形状照 `remote-daemon-proto/src/readonly_guard.rs::ALLOWED` 那种
+/// 「**逐处点名 + 相等**」，不是地板 —— 地板在变大方向上是瞎的
+/// （那张表的报错文案逐字：「不许改回地板」）。
+///
+/// # 它守的是什么
+///
+/// `K-P3` 第一档交付时这个数是 **0**：判据、账、文案全买了，**一个消费者都没有**
+/// （`K-P3` `§3-5` 第一行如实登记）。本件把它接成 3 处；
+/// [`tests::the_death_ledger_is_wired_at_exactly_these_sites`] 让「接了几处就是几处」
+/// 变成一条相等断言 —— 摘掉任何一处**都会点名是哪一处少了**。
+///
+/// `(文件, 那一处的宿主函数头, 它记的是哪条路)`
+///
+/// ⚠ 第二列是**函数头整行的前缀**，用来把那一处的函数体切出来单独数 ——
+/// 只数全局总数的话，「某一处塌了、另一处多了一次」会互相抵消（本仓 `daemon_control.rs`
+/// 那条「逐口切体，不数全局」的头注为同一形栽过一次）。
+pub const DEATH_RECORD_SITES: &[(&str, &str, &str)] = &[
+    (
+        "local_daemon.rs",
+        "fn note_detached_death(",
+        "脱离路：`attach_stream` 的流断了 ⇒ `reap_detached` 那条收尸线程 `wait()` 回来那一拍",
+    ),
+    (
+        "local_daemon.rs",
+        "fn daemon_supervise_events(",
+        "监护路：daemon 那个 `on_event` **闭包**收到 `Exited` 那一拍。\
+         它抽成一个返回闭包的函数，只为让 `KP3W3` 那三只假 daemon 能跑**同一个闭包**\
+         —— 内联的闭包测试够不着，那条行为判据就只能退回读源码",
+    ),
+    (
+        "local_daemon.rs",
+        "fn note_never_started(",
+        "起不来：`start_local_backend` 返回 `StartOutcome::Failed` 那一个出口",
+    ),
+];
 
 /// 记一笔。`None` = 那不是一次死亡（正常收工），不上账。
 ///
@@ -1159,6 +1218,209 @@ mod tests {
             set_daemon_kill_on_exit("  ".into(), true).is_err(),
             "空 origin 必须拒。放过它等于悄悄造出一档「全局策略」，\n\
              而 `kill_on_exit(真 origin)` 永远读不到它 —— 设了没反应，且不报错。"
+        );
+    }
+
+    // ── `K-P3b`：接了几处就是几处 ────────────────────────────────────────
+
+    /// 把一段（函数体）从生产段里切出来：从 `head` 那一行的下一行起，
+    /// 到第一行**恰好是右花括号**为止。形状抄 `local_daemon.rs::body_of`。
+    ///
+    /// ⚠ 收尾行**不写字面量右花括号** —— 本仓有判据用「花括号配平」剥测试段，
+    /// 源码里多一个孤立的右花括号会让它提前闭合（`local_backend.rs` 那处逐字记过）。
+    fn body_after(prod: &str, head: &str) -> String {
+        let at = guard_core::find_pinned(prod, head).unwrap_or_else(|e| {
+            panic!("切不出 `{head}`（{e}）—— 它改名或搬家了，来改 `DEATH_RECORD_SITES`")
+        });
+        prod[at..]
+            .lines()
+            .skip(1)
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    /// ★★ `KP3W3` 的「数」那一格：[`record_death`] 的生产调用点 == [`DEATH_RECORD_SITES`]。
+    ///
+    /// **相等，不是地板** —— 地板在变大方向上是瞎的（`readonly_guard::ALLOWED` 那张表的
+    /// 报错文案逐字：「不许改回地板」）。
+    ///
+    /// 两格一起判，缺一格就漏一种：
+    /// ① **总数**：整棵 `src-tauri/src` 的生产段里恰好这么多处；
+    /// ② **逐处点名**：每一处的宿主函数体内**恰好一处** ——
+    ///    只数总数的话，「某一处塌了、另一处多记了一次」会互相抵消
+    ///    （`daemon_control.rs` 那条「逐口切体，不数全局」为同一形栽过一次）。
+    ///
+    /// ⚠ 人群里**没有本文件自己**：`scan_tree!` 按 `file!()` 摘掉调用者那一份，
+    /// 而 [`record_death`] 的定义与它自己的单测都住这儿 —— 不摘就恒有命中。
+    ///
+    /// # ⚠ 诚实边界：它数的是**源码文本**，不是「那一行真的会跑到」
+    ///
+    /// 〔09-05 `7u` 那一刀当场量出来的，不是想出来的〕：把三处接线一起退成
+    /// 「形状对、恒答一张脸」（每处开头加一句 `if true { … return; }`，
+    /// 调用点原文留着），**本条一个字都不会说** —— 那一趟实测本条绿着，
+    /// 而红的是三条**行为**判据（`three_fake_daemons…` · `the_never_started_reason…` ·
+    /// `the_consumer_reports_what_it_observed…`）。
+    ///
+    /// ⇒ 本条买的是「**那几行还在、而且只在这几处**」，买不到「它们走得到」。
+    /// 走得到那一半由上面那三条行为判据管；两条合起来才闭合，单独任何一条都不够。
+    /// **别把本条读成「接线还活着」。**
+    #[test]
+    fn the_death_ledger_is_wired_at_exactly_these_sites() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
+        assert!(
+            files.len() >= 20,
+            "只扫到 {} 份 `.rs` —— 抽取坏了，本条会零命中地绿",
+            files.len()
+        );
+        let mut scanned = 0usize;
+        let mut hits: Vec<(String, usize)> = Vec::new();
+        for (path, raw) in &files {
+            let prod = guard_core::production_code(raw);
+            scanned += prod.len();
+            let n = prod.matches("record_death(").count();
+            if n > 0 {
+                hits.push((
+                    path.file_name()
+                        .map(|s| s.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                    n,
+                ));
+            }
+        }
+        assert!(
+            scanned > 200_000,
+            "剥完只剩 {scanned} 字节可扫 —— 剥过头了，本条在空转"
+        );
+        // ⚠⚠ **逐处点名排在总数前面，这个次序是有意的**〔09-05 死值验当场逼出来的〕。
+        //   先跑总数那一条时，摘掉任意一处 `record_death` 印出来的是
+        //   「生产调用点是 2 处（登记 3 处）。实得：[("local_daemon.rs", 2)]」——
+        //   它说得出**少了一处**，说不出**少的是哪一处**（三处都在同一个文件里）。
+        //   ⇒ 先红的该是**说得出病在哪**的那句诊断，而不是要人再去查一遍的记账话。
+        //   （形状抄 `local_daemon.rs::the_user_actionable_start_failures_all_reach_the_user`
+        //   头注那一段：「②③ 排在 ④ 前面是有意的」。）
+        for (file, head, why) in DEATH_RECORD_SITES {
+            let raw: &str = match *file {
+                "local_daemon.rs" => include_str!("local_daemon.rs"),
+                other => panic!("`DEATH_RECORD_SITES` 里出现了没接语料的文件：{other}"),
+            };
+            let prod = guard_core::production_code(raw);
+            let body = body_after(&prod, head);
+            assert!(
+                body.len() > 100,
+                "`{file}` 的 `{head}` 切出来只有 {} 字节 —— 切错了，这一格在空转",
+                body.len()
+            );
+            let n = body.matches("record_death(").count();
+            assert_eq!(
+                n, 1,
+                "`{file}` 的 `{head}` 体内 `record_death(` 有 {n} 处（该恰好 1 处）。\n\
+                 这一处记的是：{why}\n\
+                 ★ 0 处 = **这条路的死亡从此没人记**；而只数总数的话，\n\
+                 「这一处塌了、另一处多记了一次」会互相抵消，谁都不出声。"
+            );
+        }
+        let total: usize = hits.iter().map(|(_, n)| *n).sum();
+        assert_eq!(
+            total,
+            DEATH_RECORD_SITES.len(),
+            "`record_death` 的生产调用点是 {total} 处（登记 {} 处）。实得：{hits:?}\n\
+             ★ **接了几处就是几处**。变少 = 某一条观测路又回到了「看得见它没了、却没人记」，\n\
+             那正是 `K-P3` `§3-5` 第一行登记的那一格（当时这个数是 0）；\n\
+             变多 = 有第四条路开始记账（上面逐处那一圈只看登记过的三处，\n\
+             **第四处它一个字都不会说**）⇒ 回来把它写进 `DEATH_RECORD_SITES`，\n\
+             并说清它记的是哪条路。",
+            DEATH_RECORD_SITES.len()
+        );
+    }
+
+    /// ★★ `KP3W3`：**监护器自己一笔都不许记。**
+    ///
+    /// 同一个 `supervise_with_stdio` 今天有两种客户：daemon 与中转。
+    /// 记账落进监护器体内 ⇒ 中转的死会记到「这台机的 daemon」头上，
+    /// 而那本账的定义就是「这台机的 daemon」的账（`§0a` 逐字）。
+    /// ⇒ 接线必须落在**客户这一侧**的 `on_event` 上。
+    #[test]
+    fn the_supervisor_itself_never_records_a_death() {
+        let prod = guard_core::production_code(include_str!("backend/control/local_backend.rs"));
+        assert!(
+            prod.len() > 10_000,
+            "剥完只剩 {} 字节 —— 本条在空转",
+            prod.len()
+        );
+        let body = body_after(&prod, "pub fn supervise_with_stdio(");
+        assert!(
+            body.len() > 1_000,
+            "`supervise_with_stdio` 切出来只有 {} 字节 —— 切错了",
+            body.len()
+        );
+        assert_eq!(
+            body.matches("record_death(").count(),
+            0,
+            "`supervise_with_stdio` 体内出现了 `record_death(` ——\n\
+             ★ 它同时监护 daemon 与中转 ⇒ 中转的死会被记进「这台机的 daemon」那本账。\n\
+             ⇒ 记账落在客户那一侧的 `on_event`（`local_daemon::daemon_supervise_events`）。"
+        );
+        // 整棵 `backend/` 也是 0 —— 判与记都不在那一半（`B1` 那次误诊正是判断落在 backend 层的产物）。
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/backend");
+        let files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
+        assert!(
+            files.len() >= 5,
+            "只扫到 {} 份 backend 文件 —— 抽取坏了，本条在空转",
+            files.len()
+        );
+        let mut offenders: Vec<String> = Vec::new();
+        for (path, raw) in &files {
+            if guard_core::production_code(raw).contains("record_death(") {
+                offenders.push(path.display().to_string());
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "`backend/` 的生产段里出现了 `record_death(`：{offenders:?}\n\
+             ⇒ 判与记该在宿主层。`backend/` 那半**只搬证据**（`SuperviseEvent::Exited` 的\n\
+             `status` / `witness` 两个字段就是它搬的全部）。"
+        );
+    }
+
+    /// ★ `K-P3b`：**「根本没有读端」不是一次干净 EOF，也永远不是「读坏了」。**
+    ///
+    /// 死值验：把 `verdict` 里 `ReaderEnd::NotObserved` 那一臂改成
+    /// `return Some(Death::Misread { .. })` ⇒ 下面两格一起红。
+    #[test]
+    fn a_reader_that_never_existed_is_neither_a_clean_eof_nor_a_misread() {
+        assert_ne!(
+            ReaderEnd::NotObserved,
+            ReaderEnd::CleanEof,
+            "「根本没有读端」与「干净 EOF」变成同一个值了 —— \
+             那句「管子关了 / 它走了」对一条从来没有过管子的路是假话"
+        );
+        // ① 从来没起来：这一维让开，判定由剩下两维给出。
+        let never = DeathEvidence {
+            outcome: Outcome::NeverSpawned,
+            handshake: Handshake::NeverSpoke,
+            reader: ReaderEnd::NotObserved,
+            start_failure: Some(("拿不到那一份".to_string(), Vec::new())),
+        };
+        assert_eq!(
+            death_kind(&verdict(&never).expect("起不来是一件要上账的事")),
+            "从来没起来",
+            "没有读端被判成了别的 —— 「读坏了」说的是我们这一侧读**出了错**，\
+             而那条路上连读端都没有过"
+        );
+        // ② 非空对照：同一个 `NotObserved` 配一个真的异常终止 ⇒ 仍然判「崩了」，
+        //    这一维不许把判定拽走。
+        let signalled = DeathEvidence {
+            outcome: Outcome::Signalled(9),
+            handshake: Handshake::Spoke,
+            reader: ReaderEnd::NotObserved,
+            start_failure: None,
+        };
+        assert_eq!(
+            death_kind(&verdict(&signalled).expect("被信号打死要上账")),
+            "崩了",
+            "`NotObserved` 把一次真的异常终止判成了别的格"
         );
     }
 }
