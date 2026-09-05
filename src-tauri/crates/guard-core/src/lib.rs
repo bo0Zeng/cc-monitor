@@ -407,8 +407,23 @@ fn raw_string_open(sb: &[u8], i: usize) -> Option<(usize, usize)> {
 /// **对不上**（能编译的 Rust 一定两边都收口）⇒ 返回 `None`，调用方原样把 `src` 交回去。
 ///
 /// ⚠ **这条兜底会静默地把洞重新打开**，所以它不许只活在这段散文里：
-/// [`assert_block_comment_model_holds`] 把「今天有几份文件走了兜底」变成一条判据
-/// （本仓 187 份 `.rs` 今天是 **0** 份）。**别把这条边界读成「兜底永远不会触发」。**
+/// [`assert_block_comment_model_holds`] 把「今天有几处走了兜底」变成一条判据。
+/// **别把这条边界读成「兜底永远不会触发」。**
+///
+/// # 🔴 兜底触发不触发，**由交进来的那段文本是什么单位决定**〔`K-R25`，09-04〕
+///
+/// 「能编译的 Rust 一定两边都收口」这句话的分母是**整份文件**。
+/// 把整份文件**切小**再交进来（按 `#[test]` 切块 · 函数体窗口 · 任意切片），
+/// 那一小段就**不一定**配平了：`/*` 留在这一段里、`*/` 落在段外
+/// ⇒ 扫完 `depth != 0` ⇒ 兜底 ⇒ 这一段上的洞开着，而**整份文件那一档照旧配平**。
+/// ⇒ 上一版看门判据只按整份文件喂 ⇒ 那一形它一个字都看不见
+/// （`K-R9` 落定拍实打：看门判据绿 · 被喂的那条守卫判「合规」· 全量 monitor 全绿）。
+///
+/// ⇒ **两条纪律**（`K-R25`）：
+/// ① 调用方**先剥整份、再切块**，别反（次序的理由写在 [`test_attr_chunks`] 头注里）；
+/// ② 看门判据把「块」也当一个单位去量（现在它两个单位各判一遍）。
+/// ⚠ 它量的是**那两个单位**，不是「所有单位」—— 别的单位逐处登记在
+/// `evidence/K-R25-D2-unit-alignment.md`。
 fn try_strip_block_comments(src: &str) -> Option<String> {
     let mut out: Vec<u8> = Vec::with_capacity(src.len());
     let mut depth = 0usize;
@@ -531,25 +546,93 @@ pub fn block_comment_model_holds(src: &str) -> bool {
     try_strip_block_comments(src).is_some()
 }
 
-/// 遍历一棵源码树，断言**没有一份文件走块注释剥法的兜底**。
+/// 把一份 Rust 源码按「一个 `#[test]` 到下一个 `#[test]`」切成块（**边界那几行本身不进块**）。
+///
+/// # 为什么它住在这儿（`K-R25`，09-04）
+///
+/// 本仓有两条守卫（monitor 的 `every_test_that_starts_the_real_daemon_demands_a_private_tmux`
+/// 与它的姊妹 `every_real_daemon_e2e_demands_a_private_tmux_dir`）**先按 `#[test]` 切块、
+/// 再逐块判**，而它们各写了一份**私有副本**的切法。切法是一个事实
+/// ⇒ 恰好一个权威源（E3）。本函数就是那一份。
+///
+/// # ⚠ 它与「剥法」的先后是**承重的**，别调
+///
+/// 交进剥法的那段文本是什么**单位**，决定了看门判据
+/// （[`assert_block_comment_model_holds`]）看不看得见它的兜底。
+/// **先切块再剥** ⇒ 单位是块，而看门判据量的是文件 ⇒ 两把尺子对不上
+/// （`K-R9` 落定拍现打过：`/*` 落 A 块、`*/` 落 B 块，整份配平、单块不配平，
+/// rustc 眼里就是条普通跨行块注释 ⇒ A 块掉进兜底、洞开着，而看门判据**绿的**）。
+/// ⇒ **正确的次序是「先剥整份、再切块」**：块注释的开合状态在整份文件上是配平的
+/// （能编译的 Rust 一定配平），剥完之后每一块都干净。
+///
+/// ⚠ 剥完再切，落在块注释**里面**的那种 `#[test]` 行会被抹成等长空格
+/// ⇒ 它不再是边界，前后两块合成一块。**那是对的**：注释里的 `#[test]` 不是一条测试。
+/// 而剥法**不改行数、不改字节数**（[`try_strip_block_comments`] 等长抹空格；
+/// [`strip_comment_lines`] 把整行注释换成空行），所以行位与原文仍然一一对应。
+///
+/// 自指：锚点**运行时拼**（否则本函数的源码自己就是一个边界）。
+pub fn test_attr_chunks(src: &str) -> Vec<String> {
+    // ⚠ **不在语料串上做裸 `split`**（`needle_anchor_registry` 判它「匹配单位比事实小」）：
+    //   按行扫，边界是「整行 trim 之后逐字等于那条属性」，比子串确定。
+    let anchor = concat!("#[te", "st]");
+    let mut out: Vec<String> = Vec::new();
+    let mut cur: Vec<&str> = Vec::new();
+    for line in src.lines() {
+        if line.trim() == anchor {
+            if !cur.is_empty() {
+                out.push(cur.join("\n"));
+                cur.clear();
+            }
+            continue;
+        }
+        cur.push(line);
+    }
+    out.push(cur.join("\n"));
+    out
+}
+
+/// 遍历一棵源码树，断言**没有一份文件、也没有一个 `#[test]` 块走块注释剥法的兜底**。
 ///
 /// # 它看着的是什么
 ///
 /// [`try_strip_block_comments`] 的兜底（`depth` 不为 0 / 停在串里 ⇒ 一个字都不剥）
-/// 是**静默**的：那一份文件的块注释洞当场重新打开，而门禁上一个数都不动。
-/// 本条把「今天有几份走兜底」变成读数 —— 本仓 187 份 `.rs` 现打 **0** 份。
+/// 是**静默**的：那一段文本的块注释洞当场重新打开，而门禁上一个数都不动。
+/// 本条把「今天有几处走兜底」变成读数。
 ///
-/// `min_files` 与 [`assert_tree_strips_clean`] 同职：扫到的文件数低于它说明**遍历坏了**，
-/// 不是代码变干净了。
+/// # 🔴 两个单位，而这正是本条 `K-R25`（09-04）改的那一格
+///
+/// 上一版**只按整份文件**喂。而剥法真正被喂的单位由调用点决定：有调用点
+/// **先按 `#[test]` 切块、再逐块剥**（[`test_attr_chunks`] 头注写着是哪两条）。
+/// ⇒ 「整份配平、单块不配平」那一形，上一版**一个字都看不见**
+/// （`K-R9` 落定拍实打：本条绿 · 那条守卫判「合规」· 全量 monitor `1278 passed; 0 failed`）。
+/// ⇒ 现在**两个单位各判一遍**：整份文件 ＋ [`test_attr_chunks`] 切出的每一块。
+///
+/// ⚠ **射程，写清（别读成全称）**：它看着的是**这两个单位**。
+/// 别的单位 —— 函数体窗口（`body_of(..)` / `brace_block(..)`）· 任意切片 `&src[a..b]` ·
+/// `.lines().take(n)` 行窗口 —— **它一个都看不见**。今天全仓这样的调用点逐处点了名，
+/// 数与住址在 `evidence/K-R25-D2-unit-alignment.md`（量具 `evidence/K-R25-D1-strip-input-unit-census.py`）。
+/// **别把「两个单位」读成「所有单位」。**
+///
+/// `min_files` / `min_blocks` 与 [`assert_tree_strips_clean`] 的 `min_files` 同职：
+/// 扫到的数低于它说明**遍历（或切法）坏了**，不是代码变干净了。
+/// ⚠ **块数不是文件数**，两个地板各自量、各自报 —— 这是 `K-R25` `KR25D2` 那格前置问题
+/// 「块级看门的分母怎么报」的答案：不换尺子就没法读，所以两个数一起印。
 ///
 /// # Panics
 ///
-/// 目录 / 文件读不了、有文件走了兜底、或扫到的文件数 `< min_files` 时 panic
-/// （守卫语义，只在测试里调）。
-pub fn assert_block_comment_model_holds(root: &std::path::Path, min_files: usize) {
+/// 目录 / 文件读不了、有文件或有块走了兜底、或扫到的文件数 `< min_files`
+/// / 块数 `< min_blocks` 时 panic（守卫语义，只在测试里调）。
+pub fn assert_block_comment_model_holds(
+    root: &std::path::Path,
+    min_files: usize,
+    min_blocks: usize,
+) {
     assert!(min_files > 0, "min_files 不得为 0 —— 那等于关掉计数自检");
+    assert!(min_blocks > 0, "min_blocks 不得为 0 —— 那等于关掉块级计数自检");
     let mut n = 0usize;
+    let mut blocks = 0usize;
     let mut bad: Vec<String> = Vec::new();
+    let mut bad_blocks: Vec<String> = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(d) = stack.pop() {
         for entry in std::fs::read_dir(&d).unwrap_or_else(|e| panic!("读目录 {d:?} 失败: {e}")) {
@@ -567,11 +650,28 @@ pub fn assert_block_comment_model_holds(root: &std::path::Path, min_files: usize
                 bad.push(path.to_string_lossy().to_string());
             }
             n += 1;
+            // 🔴 第二个单位：按 `#[test]` 切出的块。**整份配平不等于单块配平** ——
+            //    那正是 `K-R9` 落定拍逮到的那一形（`/*` 落 A 块、`*/` 落 B 块）。
+            for (i, c) in test_attr_chunks(&src).into_iter().enumerate() {
+                blocks += 1;
+                if !block_comment_model_holds(&c) {
+                    bad_blocks.push(format!("{}#块{i}", path.to_string_lossy()));
+                }
+            }
         }
     }
     assert!(
         n >= min_files,
         "只扫到 {n} 个 .rs 文件（期望至少 {min_files}）—— **遍历坏了**，本条此刻是空转的"
+    );
+    // ⚠ 属性名**运行时拼**（本 crate 头注「自指陷阱」那一条）：报文是**生产段**，
+    //   直接写字面量会被 `assert_no_test_code` 数成「剥完仍残留测试属性」。
+    //   〔09-04 现打：第一版就是这么红的 —— `this_crate_strips_clean` 报 `left: 2`。〕
+    let attr = concat!("#[te", "st]");
+    assert!(
+        blocks >= min_blocks,
+        "只切出 {blocks} 个 `{attr}` 块（期望至少 {min_blocks}，扫了 {n} 份文件）—— \
+         **切法坏了**，本条的块级那一半此刻是空转的"
     );
     assert!(
         bad.is_empty(),
@@ -581,6 +681,19 @@ pub fn assert_block_comment_model_holds(root: &std::path::Path, min_files: usize
          多半是新出现了一种本剥法不认的字面量形态。先读 `try_strip_block_comments` 头注，\
          **别把这条判据删掉了事**。",
         bad.len()
+    );
+    assert!(
+        bad_blocks.is_empty(),
+        "{} 个 `{attr}` **块**走了块注释剥法的兜底（整份文件是配平的，单块不配平）\
+         ⇒ 凡是**先切块再剥**的判据，在这几块上「块注释喂饱判据」那个洞此刻是**开着**的：\
+         {bad_blocks:?}\n\
+         ★ 典型形状：`/*` 落在一块里、`*/` 落在下一块里 —— 对 rustc 它就是一条合法的\
+         跨行块注释，**编得过、整份配平**，所以文件级那一半看不见它（`K-R9` 落定拍实打）。\n\
+         ★ 出路**不是**把本条这一半删掉：把那条判据的次序改成\
+         **先剥整份、再切块**（`guard_core::test_attr_chunks` 头注写着为什么），\
+         那样它交进剥法的单位就是整份文件、与本条量的单位对上了。\n\
+         （分母：本趟扫了 {n} 份文件 · 切出 {blocks} 块 —— 块数不是文件数，两个数各自读。）",
+        bad_blocks.len()
     );
 }
 
@@ -610,6 +723,16 @@ pub fn assert_block_comment_model_holds(root: &std::path::Path, min_files: usize
 /// ⇒ 本轮的处置**不是**再写一句边界，而是[`strip_block_comments`] 把它剥掉，
 /// 并用 [`assert_block_comment_model_holds`] 看着那条兜底。
 /// ★ 三次同族，教训一句话：**「写下来的边界」不是判据，只有判据是判据。**
+///
+/// # ★★★ 09-04（`K-R25`）：**第四次 —— 同一族病，这次长在「作用域」上**
+///
+/// 上一条（`K-R9`）把块注释关掉了，而**它声称守的面（文件）比它的作用域（交进来的那段文本）大**：
+/// 剥法在哪个单位上跑由调用方决定，看门判据却只按整份文件量
+/// ⇒ 「整份配平、单块不配平」那一形**原样复现了一次全绿**。
+/// ⇒ 本拍的处置是**两条一起**：调用方先剥整份再切块（[`test_attr_chunks`]），
+/// 看门判据把块也当一个单位量（[`assert_block_comment_model_holds`]）。
+/// ★ 四次同族，教训再加一句：**审一条修法，要问的不是「它修好了吗」，
+/// 是「它的作用域与它声称守的面是不是同一个」。**
 pub fn production_code(src: &str) -> String {
     // 🔴 顺序：块注释**先**剥。整行 `//` 那道 filter 会**删行**，
     //    先删就可能把 `/*` 开头那一行删掉、只留下半截块注释。
@@ -1041,6 +1164,14 @@ pub fn contains_word(hay: &str, needle: &str) -> bool {
 ///
 /// ⚠ **与 [`production_code`] 同一拍改** —— 本函数头注上面那段逐字写着
 /// 「同职的两处同一拍一起改，只改一处就是『只覆盖了那条病的一个动词』」。
+///
+/// # 🔴 09-04（`K-R25`）：**交进来的是什么单位，是调用方的责任**
+///
+/// 上面那条块注释剥法带一条静默兜底，而**兜底会不会触发取决于交进来的那段文本自己
+/// 配不配平**，不取决于它所属的文件配不配平。⇒ 把整份文件切小了再交进来
+/// （按 `#[test]` 切块 · 函数体窗口 · `&src[a..b]`），那一小段就可能不配平
+/// ⇒ 这一格上的洞悄悄开着，而看门判据看的是别的单位。
+/// **纪律：先剥整份，再切块。** 理由与那一形的实测读数写在 [`test_attr_chunks`] 头注。
 pub fn strip_comment_lines(src: &str) -> String {
     let src = &strip_block_comments(src);
     let blanked = src
@@ -1490,12 +1621,116 @@ mod tests {
 
     /// 本 crate 自己的源码上，块注释词法**不许走兜底**（吃自己的狗粮）。
     /// 树级的那两份（monitor / daemon）由两侧各自的判据钉着。
+    /// ⚠ 09-04（`K-R25`）起两个单位一起量：整份文件 ＋ 按 `#[test]` 切出的每一块。
     #[test]
     fn this_crate_never_falls_back_to_not_stripping() {
         assert_block_comment_model_holds(
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
             1,
+            30,
         );
+    }
+
+    /// 🔴🔴 **`K-R25` 的正题：钉「剥法的输入单位 = 看门判据的输入单位」这条关系。**
+    ///
+    /// # 它钉的**不是**一个形状
+    ///
+    /// 不是「剥法必须按文件跑」这句话（那是一个形状，换个写法就绕过去了），
+    /// 而是**「先切块再剥」与「先剥再切块」这两条路答案不同**这件事本身。
+    /// 只要它们不同，「剥法在哪个单位上跑」就是一个**承重**的选择，
+    /// 而看门判据 [`assert_block_comment_model_holds`] 量的单位就必须把它包住。
+    ///
+    /// # 活体夹具（**不是空真**：它今天真的分得开两条路）
+    ///
+    /// `/*` 落在 A 块里、`*/` 落在 B 块里 —— **整份文件配平、单块不配平**。
+    /// 对 rustc 这就是一条普通的跨行块注释（编得过），所以
+    /// **看门判据的文件那一半在它上面是绿的**，而块那一半会红。
+    /// 这一形是 `K-R9` 落定拍在真仓上实打出来的（`evidence/K-R9-R2-fallback-watch-scope.md §C 刀 2`：
+    /// 那一趟两条判据全绿、全量 monitor `1278 passed; 0 failed`）。
+    ///
+    /// ⚠ **谁退掉哪一格会让本条红**：兜底改成「照剥」⇒ ② 断；
+    /// 词法不再跨行延续状态 ⇒ ① 或 ④ 断；剥法不再抹掉注释内容 ⇒ ③ 断；
+    /// 「剥完再切」不再收掉注释里那条边界 ⇒ ⑤ 断。
+    #[test]
+    fn cutting_first_and_stripping_first_do_not_give_the_same_answer() {
+        // 自指：这两个串**运行时拼** —— 写死会让本文件自己多出一条边界 / 被判据数到。
+        let attr = concat!("#[te", "st]");
+        let gate = concat!("demand_tmux_", "shim(");
+        // A 块开了块注释而没收口；收口的 `*/` 落在 B 块里。
+        let straddling = format!(
+            "{attr}\nfn a() {{\n    /*\n    let shim = {gate}\"x\");\n}}\n\n\
+             {attr}\nfn b() {{\n    */\n    let _ = 0;\n}}\n"
+        );
+        // ① 整份文件那一档**是配平的** ⇒ 看门判据的文件那一半在它上面绿。
+        assert!(
+            block_comment_model_holds(&straddling),
+            "夹具坏了：整份文件本该配平（一个 `/*` 一个 `*/`），否则下面证不出「文件级看不见」"
+        );
+        // ② 先切块再剥 ⇒ 单位是**块**，而块上模型崩了（兜底）。
+        let cut_first = test_attr_chunks(&straddling);
+        let broken: Vec<usize> = cut_first
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| !block_comment_model_holds(c))
+            .map(|(i, _)| i)
+            .collect();
+        assert_eq!(
+            broken.len(),
+            1,
+            "先切块再剥：本该恰好 1 块掉进兜底（整份配平、单块不配平），实得 {broken:?}；\
+             切出 {} 块。**这一格断了就说明两条路不再分得开** —— 那时本条钉的关系没了对象，\
+             回来重新造夹具，别把本条删掉。",
+            cut_first.len()
+        );
+        // ③ 兜底 = 一个字都不剥 ⇒ 注释里那句真调用**原样活着**，洞是开着的。
+        assert!(
+            strip_comment_lines(&cut_first[broken[0]]).contains(gate),
+            "兜底那一块居然被剥了 —— 那么「宁可留洞，不许造假红」这条取舍变了，\
+             本条的 ② 与它一起要重判"
+        );
+        // ④ 先剥整份再切块 ⇒ 每一块都干净，注释里那句话**一块都不剩**。
+        let stripped_first = strip_comment_lines(&straddling);
+        let after = test_attr_chunks(&stripped_first);
+        for (i, c) in after.iter().enumerate() {
+            assert!(
+                block_comment_model_holds(c),
+                "先剥再切之后第 {i} 块仍然掉进兜底 —— 剥法没把跨块的那条注释吃掉"
+            );
+            assert!(
+                !c.contains(gate),
+                "先剥再切之后第 {i} 块里还留着注释里那句真调用 —— 洞没关上：{c:?}"
+            );
+        }
+        // ⑤ 前置问题的答案（`KR25D2` 甲的那一格）：**落在块注释里面的那条 `#[test]`
+        //    边界会被剥掉**，于是前后两块合成一块。那是**对的** —— 注释里的 `#[test]`
+        //    不是一条测试。而行数一个都不少（剥法等长抹空格 / 整行换空行）。
+        assert_eq!(
+            (cut_first.len(), after.len()),
+            (2, 1),
+            "边界数变了：剥之前该切出 2 块（第二条 `{attr}` 落在块注释里面）、\
+             剥之后该只剩 1 块。这一格是「剥完再切，边界本身会不会被剥掉」那个前置问题的读数"
+        );
+        assert_eq!(
+            stripped_first.lines().count(),
+            straddling.lines().count(),
+            "行数变了 ⇒ `pin_line` 的行号与 `.lines().take(n)` 的窗口全体错位"
+        );
+        // ⑥ 对照臂（**块内配平**那一形）：先切块再剥**照样剥得掉**
+        //    ⇒ `K-R9` 买到的东西还在，本条治的是**作用域**不是词法。
+        let contained = format!(
+            "{attr}\nfn a() {{\n    /*\n    let shim = {gate}\"x\");\n    */\n    let _ = 0;\n}}\n\n\
+             {attr}\nfn b() {{\n    let _ = 1;\n}}\n"
+        );
+        for (i, c) in test_attr_chunks(&contained).iter().enumerate() {
+            assert!(
+                block_comment_model_holds(c),
+                "对照臂第 {i} 块本该配平（`/*` 与 `*/` 都在块内），夹具坏了"
+            );
+            assert!(
+                !strip_comment_lines(c).contains(gate),
+                "对照臂第 {i} 块：块内配平的块注释没被剥掉 —— **`K-R9` 买到的东西丢了**"
+            );
+        }
     }
 
     /// 行数不许变 —— [`pin_line`] 报的是行号，剥法改变行数就等于让它的读数全体漂一格。

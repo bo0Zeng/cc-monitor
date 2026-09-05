@@ -3293,6 +3293,20 @@ mod tests {
     ///    ⇒ **别把下面这段读成「这一族已经没有了」** —— 它今天仍然开着，只是换了单位。
     ///    读数与三刀逐字落在 `evidence/K-R9-R2-fallback-watch-scope.md`。
     ///
+    ///    ★★★ **09-04 `K-R25` 再就地订正一次：上面那句「它今天仍然开着」现在不成立了。**
+    ///    `K-R25` 把**两把尺子的单位对齐**了，两条一起改（写区就是这三个文件）：
+    ///    · **本条**：剥法从「先切块再剥」改成**先剥整份、再切块**
+    ///      （`guard_core::strip_comment_lines(整份)` → `guard_core::test_attr_chunks`）
+    ///      ⇒ 交进剥法的单位就是**文件**，与看门判据量的单位是同一个；
+    ///    · **看门判据**：`guard_core::assert_block_comment_model_holds` 现在量**两个单位**
+    ///      （整份文件 ＋ 按 `#[test]` 切出的每一块）⇒ 「整份配平、单块不配平」那一形
+    ///      **它自己就会红并点名到块**。
+    ///    ⇒ 上面那一形今天有**两个独立的红源**，逐格单断的读数在
+    ///    `evidence/K-R25-D2-unit-alignment.md`（连「只退掉一侧」的两趟一起贴）。
+    ///    ⚠ **仍然不是全称**：对齐的是这两个单位。别的单位（函数体窗口 `body_of(..)` ·
+    ///    任意切片 `&src[a..b]`）今天全仓逐处点了名，其中**只有本文件那两处在写区**，
+    ///    其余走了上报口、一个字没动（量具 `evidence/K-R25-D1-strip-input-unit-census.py`）。
+    ///
     ///    关它的**不是**本条加了钉，而是共用剥法 `guard_core::production_code` 补上了块注释
     ///    （`guard-core/src/lib.rs::try_strip_block_comments`）。⇒ 块注释的内容被抹成等长空格，
     ///    `asks_itself` 在它上面**不再为真**，本条落回 `MISS_LOCK2` **当场红**。
@@ -3331,6 +3345,9 @@ mod tests {
     ///    · 「那件事由 [`tests::no_monitor_file_falls_back_to_leaving_block_comments_in`] 看着」
     ///      ——**半真，射程要收窄**：它看的是**文件**。本条的剥法跑在**块**上
     ///      ⇒ **块级兜底它一个字都看不见**（上面那段订正里的那一刀就是这么全绿过去的）。
+    ///      〔★ **`K-R25` 09-04 再订正**：这句话说的是**上一版**。今天那条看门判据量
+    ///        **两个单位**（文件 ＋ `#[test]` 块），而本条也改成先剥整份再切块
+    ///        ⇒ 「块级兜底看不见」这句**今天不成立**。别再引它当现状。〕
     ///    · 下面原文「`guard_core::strip_comment_lines` 同样按行前缀判」，以及它那句
     ///      「只剥整行的那种」的**逐字引用**——**今天两句都不成立了**：它今天第一步就是
     ///      `strip_block_comments`，而被引的那句头注 `K-R9` 当拍改过，**逐字已经不在那儿**。
@@ -3483,18 +3500,25 @@ mod tests {
              （`guard-core/src/lib.rs::try_strip_block_comments`），块注释内容被抹成等长空格\
              ⇒ `asks_itself` 在它上面为假 ⇒ 三种内层行写法**一律**落到上面那条 `MISS_LOCK2`，\
              不再有「以 `let ` 打头就静默通过」那一格。\n      \
-             🔴 **09-04 落定拍就地订正：上面这句「一律」要带射程。**\
-             本条剥的单位是**按 `#[test]` 切出来的块**，不是整份文件 ⇒ 只在\
+             🔴 **09-04 落定拍就地订正：上面这句「一律」要带射程。**〔**下一段 `K-R25` 又把它订正了一次，两段一起读**〕\
+             那一版剥的单位是**按 `#[test]` 切出来的块**，不是整份文件 ⇒ 只在\
              **这一块自己块注释配平**时成立。把 `/*` 与 `*/` **分落两块**（整份配平、单块不配平，\
              rustc 眼里就是条普通跨行块注释）⇒ 这一块掉进剥法的兜底、一个字都不剥\
-             ⇒ 「以 `let ` 打头就静默通过」那一格**原样回来**，而下面那条看门判据**还是绿的**。\
+             ⇒ 「以 `let ` 打头就静默通过」那一格**原样回来**，而那一版的看门判据**还是绿的**。\
              实测于 `4eb271f`：本条判「合规」，全量 monitor `1278 passed; 0 failed`。\n      \
              〔`K-R9` `D3` 两个读数：同一把刀（`local_backend.rs::the_local_tmux_frames_really_land_in_the_ledger`）\
              旧剥法 monitor `1275 passed / 0 failed`；新剥法本条当场红。\
              ⚠ 那个 1275 量于上一拍的旧基点，**别当今天的分母**（今天 monitor 那个包是 1287 条）。〕\n      \
-             ⚠ 边界**换了地方没有消失**：新剥法词法与某份文件对不上时**一个字都不剥**（兜底），\
-             那份文件上这个洞会重开 —— 由 `no_monitor_file_falls_back_to_leaving_block_comments_in` 看着\
-             （⚠ 它量的是**文件**这个单位，看不见上面说的**块级**兜底）";
+             ★★★ **09-04 `K-R25`：上面那一格关上了 —— 关它的是「把两把尺子的单位对齐」。**\
+             本条今天**先把整份文件过一遍剥法、再切块**（`guard_core::test_attr_chunks`）\
+             ⇒ 剥法的输入单位就是**文件**；而看门判据 \
+             `no_monitor_file_falls_back_to_leaving_block_comments_in` 今天量**两个单位**\
+             （整份文件 ＋ 每一块）⇒ 「分落两块」那一形**两个独立红源**各红一次。\n      \
+             ⚠ **射程仍然不是全称**：对齐的是这两个单位；函数体窗口 / 任意切片那些单位\
+             逐处点名在 `evidence/K-R25-D2-unit-alignment.md`。\n      \
+             ⚠ 边界**换了地方没有消失**：剥法词法与交进去的那段文本对不上时**一个字都不剥**（兜底），\
+             那一段上这个洞会重开 —— 由 `no_monitor_file_falls_back_to_leaving_block_comments_in` 看着\
+             （⚠ 它量的是**文件 ＋ `#[test]` 块**这两个单位，别的单位它看不见）";
         const MISS_FRONT: &str = "要了 shim、绑定名也读出来了，**却没有一行把它写在给 daemon 的 \
              `PATH` 串首**（**第三道锁 ③ · ㈡ 写法**）—— 要的形状是 \
              `(\"PATH\", format!(\"{shim}:{}\", ..))`，插值**紧跟开引号**；\
@@ -3524,24 +3548,51 @@ mod tests {
             ),
         ];
 
-        // ── 抽取：按行切成「一个 `#[test]` 到下一个 `#[test]`」的块 ──────────
-        // ⚠ **不在语料串上做裸 `split`**（`needle_anchor_registry` 判它「匹配单位比事实小」）。
-        let chunks_of = |src: &str| -> Vec<String> {
-            let mut out: Vec<String> = Vec::new();
-            let mut cur: Vec<&str> = Vec::new();
-            for line in src.lines() {
-                if line.trim() == concat!("#[te", "st]") {
-                    if !cur.is_empty() {
-                        out.push(cur.join("\n"));
-                        cur.clear();
-                    }
-                    continue;
-                }
-                cur.push(line);
-            }
-            out.push(cur.join("\n"));
-            out
-        };
+        // ── 🔴🔴 剥法按**整份文件**跑，切块在**剥完之后**做〔`K-R25` 09-04，出路甲〕──
+        //
+        // **上一版是反的**：先按 `#[test]` 切块，再对每一块调 `strip_comment_lines`。
+        // 于是**剥法的输入单位是「块」，而看门判据
+        // `no_monitor_file_falls_back_to_leaving_block_comments_in` 量的是「文件」**
+        // —— 两把尺子的作用域对不上，本工作区最贵的那一族（`K-R9` 落定拍第三刀逮到）。
+        //
+        // **代价是活的，不是理论上的**：把 `/*` 与 `*/` **分落两块**
+        // （整份文件配平、单块不配平；对 rustc 就是一条普通的跨行块注释、照样编译），
+        // 真调用与那行合规的 `PATH` 写位一起躺进注释、只留一个桩值
+        // ⇒ 那一块掉进剥法的**静默兜底**（一个字都不剥）⇒ `asks_itself` 在**注释里的文本**上
+        // 为真 ⇒ 本条判「合规」，而看门判据**还是绿的**（它看的是整份文件，整份是配平的）。
+        // 实测于 `4eb271f`：本条绿 · 看门判据绿 · 全量 monitor `1278 passed; 0 failed`
+        // 〔`evidence/K-R9-R2-fallback-watch-scope.md §C 刀 2`〕。
+        //
+        // ⇒ **现在的次序**：整份文件先过 `guard_core::strip_comment_lines`，**再**切块。
+        //   块注释的开合状态在整份文件上一定配平（能编译的 Rust 一定配平）
+        //   ⇒ 剥完之后每一块都干净，交进判据的单位与看门判据量的单位**是同一个**。
+        //
+        // ⚠ **两条边界，都写清**：
+        //   ① 落在块注释**里面**的那种 `#[test]` 行会被抹成等长空格 ⇒ 它不再是边界，
+        //      前后两块合成一块。**那是对的**：注释里的 `#[test]` 不是一条测试。
+        //      这一格的读数落在 `guard-core` 那条
+        //      `cutting_first_and_stripping_first_do_not_give_the_same_answer`（⑤ 那一格）。
+        //   ② 剥法**不改行数、不改字节位**（块注释等长抹空格 · 整行注释换空行）
+        //      ⇒ 下面转发者那个 `take(20)` 的窗口仍然是原文的那 20 行。
+        //
+        // ⚠ 切法本身收口成共享原语 `guard_core::test_attr_chunks`（E3：一个事实一个权威源）——
+        //   这里原来是一份**私有副本**，而姊妹守卫
+        //   `local_backend.rs::every_real_daemon_e2e_demands_a_private_tmux_dir` 里还有第二份
+        //   （**那个文件不在本拍写区，一个字没动，已走上报口**：它今天仍然「先切块再剥」）。
+        // ⚠⚠ **刻意写成 `Vec::new()` ＋ `push`，不写 `files.iter().map(..).collect()`**
+        //   〔09-04 现打，两趟门禁读数〕：`needle_anchor_registry` 那条递减棘轮的语料变量集
+        //   **按名字走传递闭包**，而 `let <名> = files…` 这一行会让 `stripped` 进集合，
+        //   再由 `let me = stripped…` 把 **`me` 这个短名**卷进去 ——
+        //   于是本文件**别的测试里既有的三行**（`body.contains("LOCAL_RELAY")` ·
+        //   `head.contains("target_os = \"linux\"")` · `!me.contains("DefaultHasher")`）
+        //   被算成新增欠账，棘轮 `.contains(` 33→36 · `.find(` 8→11 · `.matches(` 9→11 **三条齐红**。
+        //   ⇒ 那正是那条棘轮自己头注叫的「**判据跑飞**」（短名一进集合就卷走一片）。
+        //   **不许调它的上限**（递减棘轮），也不该把三行别人的代码改了 ⇒ 断掉那条派生边：
+        //   RHS 不以语料变量打头，`stripped` 就不进集合。语义与 `map().collect()` 逐字等同。
+        let mut stripped: Vec<(&str, String)> = Vec::new();
+        for (who, src) in files {
+            stripped.push((who, guard_core::strip_comment_lines(src)));
+        }
         // ⚠ 判人群要看**代码**，不能看文档注释 —— 本条的头注里就写着那三条来历字面量。
         //   `local_backend.rs` 那条同族守卫在这上面**自红过一次**（它的注释里写着
         //   `#[ignore]` 与 `CCM_E2E_DAEMON`，第一版把自己算进了人群）。
@@ -3786,11 +3837,13 @@ mod tests {
         //   **仍然是派生时定死**，不是打印时按腿回猜 —— 那一条纪律没变。
         let mut population: Vec<(String, bool, &'static str, String)> = Vec::new();
         let mut total_chunks = 0usize;
-        for (who, src) in files {
-            let chunks = chunks_of(src);
+        for (who, src) in &stripped {
+            // 🔴 `src` **已经在整份文件上剥过了**（见上面那段）⇒ 这里**不再逐块剥**。
+            //   这一步就是 `K-R25` 改的那一格：剥法的输入单位从「块」抬回「文件」。
+            let chunks = guard_core::test_attr_chunks(src);
             total_chunks += chunks.len();
             for c in &chunks {
-                let code = guard_core::strip_comment_lines(c);
+                let code: &str = c;
                 // 守卫排除：读源码的是守卫（诚实边界 3）。**串拼出来，别写死**（同上）。
                 if code.contains(concat!("include_", "str!(")) {
                     continue;
@@ -3806,7 +3859,7 @@ mod tests {
                     .unwrap_or_else(|| "<读不出名字>".to_string());
                 // 两种合法形态：**自己要 + 自己挂**，或委托给 `E2eSandbox::demand()`。
                 let asks_itself = code.contains(GATE);
-                let writes = path_writes(&code);
+                let writes = path_writes(code);
                 let delegates = code.contains(DELEGATE);
                 let (ok, leg, missing) = if delegates {
                     // 委托 ⇒ `PATH` 归转发者一处代办，本体里再写一条就是把它盖掉。
@@ -3816,7 +3869,7 @@ mod tests {
                         format!(
                             "{MISS_DELEGATE_OVERRIDE}\n      实得：写位形状 {writes} 处（要的是 0 处）。\
                              本体里提到 `PATH` 的行，原样贴在这里，自己核对：\n{}",
-                            path_mentions(&code)
+                            path_mentions(code)
                         ),
                     )
                 } else if !asks_itself {
@@ -3824,7 +3877,7 @@ mod tests {
                 } else {
                     // 走「自己要」这条腿 ⇒ 归 ㈡㈢ 管。
                     // ⚠ ㈡ 今天分**两件事各说各的**〔`D5` 阻塞 2〕：读不出名字 / 读出来了但没挂串首。
-                    match shim_first_on_path(&code) {
+                    match shim_first_on_path(code) {
                         ShimOnPath::NoBinding(l) => (
                             false,
                             LEG_SELF_SERVED,
@@ -3839,7 +3892,7 @@ mod tests {
                             format!(
                                 "{MISS_FRONT}\n      实得绑定名：`{n}`。\
                                  本体里提到 `PATH` 的行，原样贴在这里，自己核对：\n{}",
-                                path_mentions(&code)
+                                path_mentions(code)
                             ),
                         ),
                         // ㈢：写对的那一行会不会被**后面又一条写位**盖掉。
@@ -3849,7 +3902,7 @@ mod tests {
                             format!(
                                 "{MISS_TWICE}\n      实得：写位形状 {writes} 处（要的是 1 处）。\
                                  本体里提到 `PATH` 的行，原样贴在这里，自己核对：\n{}",
-                                path_mentions(&code)
+                                path_mentions(code)
                             ),
                         ),
                         ShimOnPath::Front => (true, LEG_SELF_SERVED, MISS_NONE.to_string()),
@@ -3910,18 +3963,29 @@ mod tests {
         );
 
         // ── ③ 转发者自己必须是 fail-closed 的（不然「委托」是空头支票）─────
-        let me = include_str!("local_daemon.rs");
+        // ⚠ 与人群那一侧同一把尺子：**先剥掉注释再判**〔09-01 加的；同日收口成共享原语〕。
+        //   ㈢ 是**按处数**判的 ⇒ 转发者这一段里随便一句注释提到 `"PATH"` 就会变成一次假红。
+        //   剥注释只会让 ㈠㈡ 更严（少几行可看），不会放水。
+        //   ⚠ 共享原语把被剥的行**换成空行**（不删行）、块注释**等长抹成空格**（不删字节）
+        //   ⇒ 这仍然是 `demand()` 起**原文** 20 行，行位不变；下面报文贴出来的也是这一份。
+        //
+        // 🔴🔴 **09-04（`K-R25`）：这里也是「先切窗口再剥」——同一条病的第二个落点。**
+        //   上一版是 `strip_comment_lines(&me[at..].lines().take(20)…)`：交进剥法的是一个
+        //   **20 行的窗口**，而看门判据量的是**文件**。窗口里出现一个不收口的 `/*`
+        //   （`*/` 落在第 21 行之后）⇒ 这个窗口掉进兜底、一个字不剥，而文件级照旧配平。
+        //   ⇒ 现在**取剥过的整份文件**（上面那份 `stripped`），窗口在**剥完之后**切。
+        //   ⚠ 锚点也跟着改在剥过的文本上找：那是**更严**，不是放水 ——
+        //   锚点要是落进了块注释里，`find` 会**找不到**并当场 panic（fail closed），
+        //   而上一版在**原文**里找，注释里的一句 `fn demand() -> Self {` 就能把窗口带偏。
+        let me: &str = stripped
+            .iter()
+            .find(|(who, _)| *who == "local_daemon.rs")
+            .map(|(_, s)| s.as_str())
+            .expect("`local_daemon.rs` 不在语料里 —— 上面那张 `files` 表被改坏了");
         let at = me
             .find(concat!("fn dem", "and() -> Self {"))
             .expect("`E2eSandbox::demand()` 不在了 —— 委托那条腿没了，来改本条");
-        // ⚠ 与人群那一侧同一把尺子：**先剥掉整行注释再判**〔09-01 加的；同日收口成共享原语〕。
-        //   ㈢ 是**按处数**判的 ⇒ 转发者这一段里随便一句注释提到 `"PATH"` 就会变成一次假红。
-        //   剥注释只会让 ㈠㈡ 更严（少几行可看），不会放水。
-        //   ⚠ 共享原语把被剥的行**换成空行**（不删行）⇒ 这仍然是 `demand()` 起**原文** 20 行，
-        //   行位不变；下面报文贴出来的也是这一份（空行就是被剥掉的注释行）。
-        let demand: String = guard_core::strip_comment_lines(
-            &me[at..].lines().take(20).collect::<Vec<_>>().join("\n"),
-        );
+        let demand: String = me[at..].lines().take(20).collect::<Vec<_>>().join("\n");
         // ⚠⚠ **必须落在同一行上判**〔08-31 死值验当场逮到的，就在我自己刚写的这一行里〕：
         //   本条第一版写的是 `demand.contains(SHIM) && demand.contains(".expect(")`。
         //   实测把那一行换成 `.unwrap_or_default()` ⇒ **1210 passed / 0 failed，一条都不红** ——
@@ -4512,28 +4576,54 @@ mod tests {
     ///   —— 本条**当场红并逐份点名**，同一状态下全量 monitor 是 `1276 passed; 1 failed`
     ///   ⇒ **一份文件整个掉进兜底，全树只有本条会说话**（那正是它存在的理由，现在它是读数不是散文）。
     ///
-    /// · 🔴 **刀二 · 本条的射程被打穿**：本条量的单位是**文件**，而剥法在
+    /// · 🔴 **刀二 · 本条的射程被打穿**〔**这一段说的是上一版；`K-R25` 把它关上了，见下**〕：
+    ///   那一版量的单位是**文件**，而剥法在
     ///   [`tests::every_test_that_starts_the_real_daemon_demands_a_private_tmux`] 里
-    ///   真正跑的单位是**按 `#[test]` 切出来的块**（它先切块、再对每块调 `strip_comment_lines`）。
+    ///   真正跑的单位是**按 `#[test]` 切出来的块**（那一版先切块、再对每块调 `strip_comment_lines`）。
     ///   ⇒ 让 `/*` 与 `*/` **分落两块**（整份配平、单块不配平，rustc 眼里就是条普通跨行块注释），
     ///   把真调用与那行合规的 `PATH` 写位一起放进注释、只留一个桩值活着
-    ///   ⇒ **本条绿 · 那条守卫判「合规」· 全量 monitor `1278 passed; 0 failed`**。
+    ///   ⇒ **那一版本条绿 · 那条守卫判「合规」· 全量 monitor `1278 passed; 0 failed`**。
     ///   **09-01 那个静默假绿的形状，在 `K-R9` 的修补之上原样复现了一次。**
     ///
-    /// ⚠ **今天的曝光是 0，但那是巧合、不是被谁钉住的**：用 guard-core 自己那把词法
+    /// ⚠ **那一拍的曝光是 0，而那是巧合、不是被谁钉住的**：用 guard-core 自己那把词法
     /// （`guard_core::block_comment_model_holds`）按 `#[test]` 切块普查 `src-tauri/src`
-    /// ⇒ **105 份 · 1278 块 · 块级走兜底 0 个**。刀二只改了一处，块级就变成 1 而本条还是绿的。
+    /// ⇒ **105 份 · 1278 块 · 块级走兜底 0 个**。刀二只改了一处，块级就变成 1 而那一版还是绿的。
+    /// 〔`K-R25` 09-04：那个「巧合」现在被钉住了 —— 块级那个 0 **是本条自己的断言**，
+    ///  不再是别人普查出来的一个快照。〕
     ///
     /// ⚠ **覆盖面另有缺口，一并登记**：本条 105 ＋ daemon 侧 73 ＋ guard-core 自检 1 = **179 份**，
     /// 而排掉 vendor 的全仓是 **188 份**。差的 9 份里，`crates/usage-core/src/lib.rs`
     /// **确实被 `guard_core::production_code` 吃**（`usage.rs::tests::the_usage_kou_jing_has_exactly_one_home`）
     /// ⇒ 它掉进兜底的话，三条判据一条都不会响。
-    /// 〔本拍写区只有本文件，收口要动 guard-core / 那两条守卫的切法 ⇒ **只登记，不动手**。〕
+    /// 〔那一拍写区只有本文件，收口要动 guard-core / 那两条守卫的切法 ⇒ 只登记，没动手。
+    ///  **`K-R25`（09-04）答清了那 9 份各是什么**，逐份带住址与「要不要拉进来」的裁定，
+    ///  落在 `evidence/K-R25-D4-nine-uncovered-files.md` —— 那一件是**只答不改**。〕
+    ///
+    /// # ★★★ 09-04（`K-R25`）：**刀二那个缺口关上了 —— 本条现在两个单位各量一遍**
+    ///
+    /// 上面「刀二」那一段说的是**上一版**的射程（只按整份文件喂）。今天
+    /// `guard_core::assert_block_comment_model_holds` 量**两个单位**：
+    /// 整份文件 ＋ `guard_core::test_attr_chunks` 按 `#[test]` 切出的**每一块**
+    /// ⇒ 「`/*` 落 A 块、`*/` 落 B 块」那一形**本条当场红并点名到块**。
+    /// 而被它看着的那条守卫（[`tests::every_test_that_starts_the_real_daemon_demands_a_private_tmux`]）
+    /// 同一拍把次序改成**先剥整份、再切块** ⇒ 两把尺子的单位**现在是同一个**。
+    /// ⇒ 这一形今天有**两个独立的红源**（本条的块那一半 · 那条守卫落回 `MISS_LOCK2`），
+    /// 逐格单断的读数在 `evidence/K-R25-D2-unit-alignment.md`。
+    ///
+    /// ⚠ **射程仍然不是全称，别读大**：两个单位以外的单位它一个都看不见 ——
+    /// 函数体窗口（`body_of(..)` / `brace_block(..)`）· 任意切片 `&src[a..b]`。
+    /// 今天全仓这样的调用点**逐处点了名**（量具 `evidence/K-R25-D1-strip-input-unit-census.py`，
+    /// 读数与住址在 `evidence/K-R25-D2-unit-alignment.md`）；其中**只有本文件那两处在 `K-R25` 的写区**，
+    /// 其余逐处走了上报口，**一个字没动**。
+    ///
+    /// ⚠ 两个地板各自量、各自报（**块数不是文件数**）：`min_files` 挡「遍历坏了」，
+    /// `min_blocks` 挡「切法坏了」。棘轮纪律：只许升不许降。
     #[test]
     fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
         guard_core::assert_block_comment_model_holds(
             &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
             100,
+            1200,
         );
     }
 
