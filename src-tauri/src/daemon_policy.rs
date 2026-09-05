@@ -1253,6 +1253,18 @@ mod tests {
     ///
     /// ⚠ 人群里**没有本文件自己**：`scan_tree!` 按 `file!()` 摘掉调用者那一份，
     /// 而 [`record_death`] 的定义与它自己的单测都住这儿 —— 不摘就恒有命中。
+    ///
+    /// # ⚠ 诚实边界：它数的是**源码文本**，不是「那一行真的会跑到」
+    ///
+    /// 〔09-05 `7u` 那一刀当场量出来的，不是想出来的〕：把三处接线一起退成
+    /// 「形状对、恒答一张脸」（每处开头加一句 `if true { … return; }`，
+    /// 调用点原文留着），**本条一个字都不会说** —— 那一趟实测本条绿着，
+    /// 而红的是三条**行为**判据（`three_fake_daemons…` · `the_never_started_reason…` ·
+    /// `the_consumer_reports_what_it_observed…`）。
+    ///
+    /// ⇒ 本条买的是「**那几行还在、而且只在这几处**」，买不到「它们走得到」。
+    /// 走得到那一半由上面那三条行为判据管；两条合起来才闭合，单独任何一条都不够。
+    /// **别把本条读成「接线还活着」。**
     #[test]
     fn the_death_ledger_is_wired_at_exactly_these_sites() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
