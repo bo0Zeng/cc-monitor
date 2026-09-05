@@ -47,7 +47,14 @@ import {
   sftpEligibleHosts,
 } from "../remote-config";
 import type { RemoteHostConfig, RemoteConfig } from "../remote-config";
-import { recordFacet, readStatus, LOCAL_MACHINE_KEY } from "./machine-status";
+// `N-F2`：`forgetMachine` 是本文件末尾那条「先证会红」用的 —— 只抹本机那一栏，
+// 而不是 `localStorage.clear()`，这样「回到旧行为」这句话是按机器说的，不是按整本账说的。
+import {
+  recordFacet,
+  readStatus,
+  forgetMachine,
+  LOCAL_MACHINE_KEY,
+} from "./machine-status";
 import { __setHostOsForTests } from "./host-os";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -580,6 +587,87 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       localCcm(await mount([mkH("a", "1.1.1.1")], fakePages().host)),
       "Linux 本机的 ccm 是真能装的，照常算数",
     ).toBe(true);
+  });
+
+  // ───────────────────────────────────────────────────────────────────────────
+  // `N-F2` `NF2D3` **最后那一跳**：`summary === null` ⇒ 这一块**整块不出现**
+  //（`remote-section.ts` 里 `renderGaps` 的 `if (!summary)` 那一支）。
+  //
+  // # 它此前是死代码，而这里是唯一断得到它的地方
+  //
+  // 本机的 `acctIso` / `accounts` 在 `N-F2` 之前**全仓没有任何 `recordFacet` 生产者**
+  //（唯一的写点 `accounts-section.note()` 第一行是 `if (!this.origin) return`，
+  // 而本机这条路上 `origin` 恒空）⇒ 那两格恒 `unknown` ⇒ `summarizeGaps` 恒非 null
+  // ⇒ 这一支**在结构上走不到**。`accounts-section.vitest.ts` 里 `N-F2` 那一族
+  // 只断到 `summarizeGaps === null` 为止 —— **DOM 这一跳它够不着**。
+  //
+  // ⚠ 上面那条 `★ E56「还差什么」：全新用户…` 只断过它的**反面**
+  //（`expect(box.style.display).not.toBe("none")`）⇒ `display:none` 那一支
+  // 在本件之前是**零覆盖**。这两条就是去覆盖它。
+  //
+  // ⚠ 这一块的 `display` 出厂值就是 `"none"`（构造时设的）⇒ 只断「等于 none」
+  // 会被「`renderGaps` 压根没跑」喂饱。所以第一条**先断它真的出现过**、
+  // 且逐项等于本机那两格，那一屏就是分母本身。
+  // ───────────────────────────────────────────────────────────────────────────
+
+  /** 本机那两格写绿 —— 值取 `accounts-section` 在「读出来了·有号」那一档写的那对。 */
+  function greenLocalTwo(): void {
+    recordFacet(LOCAL_MACHINE_KEY, "acctIso", { kind: "ok", detail: "已启用" });
+    recordFacet(LOCAL_MACHINE_KEY, "accounts", { kind: "ok", detail: "3 个" });
+  }
+  const gapsBoxOf = (sec: RemoteSection): HTMLElement =>
+    sec.element.querySelector<HTMLElement>(".remote-gaps")!;
+  /** 这一块里逐条的 `机器/格:类别` —— 按 `data-*` 认，不按文案认。 */
+  const gapKeysOf = (box: HTMLElement): string[] =>
+    [...box.querySelectorAll<HTMLElement>(".remote-gap")].map(
+      (i) => `${i.dataset.origin}/${i.dataset.facet}:${i.dataset.kind}`,
+    );
+
+  it("★ NF2D3 最后那一跳：本机全绿 + 零远端 ⇒ 「还差什么」整块不出现", async () => {
+    // 分母先钉死，别让「一台机器都没有」蒙混过去：
+    //   · 远端 **0** 台，而清单的入参是 `[LOCAL_MACHINE_KEY, ...hosts]` ⇒ 机器数 **1**；
+    //   · monitor 跑在 Windows 上 ⇒ 本机的适用格**恰好**是 `acctIso` / `accounts` 两格
+    //     （`daemon`/`connection` 不适用；`ccm` 的对应物是「终端集成」那块）。
+    // 下面这一屏是那个分母的**真实渲染**：它必须先真的出现、且逐项等于这两格。
+    localStorage.clear();
+    __setHostOsForTests("windows");
+    const before = gapsBoxOf(await mount([], fakePages().host));
+    expect(
+      before.style.display,
+      "分母塌了：这一块本来就没出现（或 renderGaps 没跑）⇒ 下面那条 none 是空真",
+    ).not.toBe("none");
+    expect(gapKeysOf(before)).toEqual([
+      `${LOCAL_MACHINE_KEY}/acctIso:unknown`,
+      `${LOCAL_MACHINE_KEY}/accounts:unknown`,
+    ]);
+
+    // 把那两格写绿 —— 这正是 `N-F2` 给本机那条路补上的写点会写进去的东西。
+    greenLocalTwo();
+    const after = gapsBoxOf(await mount([], fakePages().host));
+    expect(
+      after.style.display,
+      "本机全绿、零远端，那一块却还挂在落地页最上面 ⇒ 那一支仍是死代码",
+    ).toBe("none");
+    // 「藏起来」与「清空了」是两件事，两样都断 —— 免得将来改成只清空不隐藏（或反过来）。
+    expect(gapKeysOf(after)).toEqual([]);
+  });
+
+  it("★ NF2D3 先证会红：把本机那两格改回「没测过」⇒ 那一块又出现", async () => {
+    localStorage.clear();
+    __setHostOsForTests("windows");
+    greenLocalTwo();
+    expect(gapsBoxOf(await mount([], fakePages().host)).style.display).toBe("none");
+
+    // 只抹掉本机那一栏 = 回到 `N-F2` 之前的行为（那两格从来没人写）。
+    forgetMachine(LOCAL_MACHINE_KEY);
+    expect(readStatus(LOCAL_MACHINE_KEY), "账本没被抹干净，下面那条不算数").toEqual({});
+    const back = gapsBoxOf(await mount([], fakePages().host));
+    expect(back.style.display, "回到旧行为时那一块该又出现").not.toBe("none");
+    expect(back.textContent).toContain("还没测过");
+    expect(gapKeysOf(back)).toEqual([
+      `${LOCAL_MACHINE_KEY}/acctIso:unknown`,
+      `${LOCAL_MACHINE_KEY}/accounts:unknown`,
+    ]);
   });
 
   it("★ 渲染「还差什么」不发任何后端请求（只读账本）", async () => {
