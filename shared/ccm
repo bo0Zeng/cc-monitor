@@ -494,12 +494,23 @@ launch_via_daemon() {
   #     **没有 rc=1**〔`K-P2` `F` 拍 09-04〕：后端不可达那一格从「出声 + 退回本地」
   #     换成了 `backend_unreachable`（唯一失败面，`exit $CCM_RC_NO_BACKEND`）⇒ 它不返回。
   local why="" req="" out to n p a c s
+  # ★★ 〔`K-P2` `F` 拍 09-04〕**载荷里的 `\n` / `\t` 是「键」，不是畸形字节。**
+  #    退路还在的时候，这两个字符被这道闸挡下来只是「退回本机那条」，而本机那条一直接受它们
+  #    （`tmux send-keys -t X '第一行<换行>第二行' Enter`）。退路一删，挡住就是**挡死**
+  #    ⇒ 「多行任务」这个真实能力整个没了（`e2e/cc-spawn-uplift.sh` 那一族 4 条现打红）。
+  #    ⇒ 两侧同拍放行这两个：daemon 侧是 `control/launch.rs::check_typed_payload`
+  #      （**只对 `create-or-attach`**，`send-into` / `send-keys-raw` 一个字节不动）。
+  #    ⚠ 别的控制字符（`ESC` / `CR` / `NUL` …）照旧挡 —— 它们不是键，是会改掉终端状态的东西。
+  #      这一格因此**比旧的本机那条更严**：旧路经 `sq` + `bash` 什么都放过去。
+  local _pl="${2//$'\n'/}"; _pl="${_pl//$'\t'/}"
   eval "$DAEMON_BIN_RECIPE"
   if [ -z "$_ccm_db" ]; then
     if [ "${CCM_NO_DAEMON:-}" = 1 ]; then why="CCM_NO_DAEMON=1（明示整条关掉 daemon）"
     else why="这台机器上找不到 daemon（cc-monitor-remote）"; fi
-  elif [[ "$1$2$3$4$5$6" == *[[:cntrl:]]* ]]; then
-    why="要发的字段里有控制字符 —— daemon 的 check_field 按设计拒收（换行会让 send-keys 多敲一次回车）"
+  elif [[ "$1$3$4$5$6$_pl" == *[[:cntrl:]]* ]]; then
+    # 会话名 / cwd / sid / agent / 尺寸：**任何**控制字符都挡（它们进的是 tmux 目标、
+    # option 值与格式串）。载荷：只挡 `\n` / `\t` **之外**的那些（见上方头注）。
+    why="要发的字段里有控制字符（会话名 / cwd / sid / agent / 尺寸里的任何一个，或载荷里 换行/制表符 之外的那些）—— daemon 的 check_field 按设计拒收"
   elif ! n="$(json_str "$1")" || ! p="$(json_str "$2")" || ! a="$(json_str "$5")" \
        || ! c="$(json_str "$3")" || ! s="$(json_str "$4")"; then
     # ⚠ **五个字段一起编、一个编不出就整条不发**：编不出的那个若被「静默丢掉」，
