@@ -258,7 +258,11 @@ sleep 1
 C_BACK="$(loss_pct 3 0.2 2)"
 : "${C_BEFORE:=0}" "${C_AFTER:=0}" "${C_BACK:=100}"
 judge "断链（丢包百分点）" "100% 全断" "$C_BEFORE" "$C_AFTER" "$GATE_CUT_PCT" "%"
-if [ "$C_BACK" -le 5 ]; then
+# ⚠ 「回得来」这一格的**分母是「先真断了」** —— 规则压根没加上时它照样绿（空真）。
+#   09-05 现打的活体：把 tc_add 整个退成空操作，这一格仍 PASS。⇒ 先核分母再判。
+if [ "$C_AFTER" -lt "$GATE_CUT_PCT" ]; then
+  no "断链恢复：分母没了（改后只丢 $C_AFTER% < $GATE_CUT_PCT%，根本没断过）—— 这一格不许算绿"
+elif [ "$C_BACK" -le 5 ]; then
   ok "断链：删掉规则后立刻回得来（丢包 $C_BACK%）"
 else
   no "断链：删掉规则后没回来（丢包仍 $C_BACK%，断前是 $C_BEFORE%）"
@@ -310,7 +314,12 @@ tc_add "$DEV" netem loss 100%
 read -r S_CUT S_RC2 <<<"$(ssh_probe)"
 tc_del "$DEV"
 : "${S_CUT:=0}" "${S_RC2:=0}"
-if [ "$S_RC2" -ne 0 ]; then
+# ⚠ 同一族空真：**没有远端可连时这条 ssh 本来就会失败**，于是「断链要报错」恒绿。
+#   09-05 现打的活体：把 B 的 sshd 拿掉，D2 那格 5 条红，而这一条照样 PASS。
+#   ⇒ 它的分母是「改前那条 ssh 真的连得上」，先核分母。
+if [ "$S_RC0" -ne 0 ]; then
+  no "断链：分母没了（改前那条 ssh 就没连上，退出码 $S_RC0）—— 「断链会报错」这一格不许算绿"
+elif [ "$S_RC2" -ne 0 ]; then
   ok "断链：那条 ssh 报错退出（退出码 $S_RC2，耗时 ${S_CUT}ms，ConnectTimeout=5）"
 else
   no "断链：loss 100% 之下那条 ssh 居然还成功了（耗时 ${S_CUT}ms）—— 规则没打到这条连接上"
