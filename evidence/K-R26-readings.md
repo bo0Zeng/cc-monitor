@@ -124,7 +124,11 @@ PWF-ENV-READING 父进程键数=38 · 子进程键数=3 · 口在子进程里=fa
 | 改后 + 候选适配层补丁 | 见 `§5`，在**副本**里试的 | **PASS=50 FAIL=0** | `ccbus-LAB-with-adapter-patch.log` |
 
 **19 红是真缺陷，不是台架写法的问题。** 机制：那一族插件今天靠**继承**拿自己的配置 ——
-`CC_BUS_HOME`（脚本里现打 13 处）· `CCBUS_POLICY_MODE` · 不带 `from` 那一趟的 `CC_BUS_ID`。
+`CC_BUS_HOME` · `CCBUS_POLICY_MODE` · 不带 `from` 那一趟的 `CC_BUS_ID`。
+⚠ **`CC_BUS_HOME` 在那些脚本里有几处，两把尺子给两个数，分母都写出来**（09-05 现打，
+面 = `shared/cc-bus/scripts/`）：按 **`$` 引用形**（`grep -rhoE '\$\{?CC_BUS_HOME'`）**13**；
+按**整词命中**（`grep -rho 'CC_BUS_HOME'`，含赋值与 `export`）**16**。
+两个数都不承重 —— 承重的是「它今天只从**继承**这条路过去」。
 `control/cc_bus.rs::run_as` 今天只在 `as_id.is_some()` 时显式交办 `CC_BUS_ID`，其余**一个都不交办**。
 ⇒ `env_clear()` 一上，它们就没了。
 
