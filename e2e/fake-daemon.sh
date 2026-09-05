@@ -24,13 +24,22 @@
 # ⚠ **单一事实源仍是那份 manifest**：账号那一段把 `<accts-dir>/accounts.json` 翻一遍，
 #   **不在这里手抄一张账号表**（抄了就有两份要同步 —— 这份文件治的正是那一族）。
 #
-# ⚠ **`tmux` 走 PATH，刻意的**：调用它的套件各自在 PATH 前面挂了自己的 `tmux` shim
-#   （`-L <私有 socket>` 或只记 argv 的那种）⇒ 这份假 daemon 自动落在**那个** tmux 上，
-#   碰不到用户的 tmux server。**本文件自己一句 `-L` 都不写**：写死一个 socket 名
-#   就等于给它自己发明了第二套隔离口径，而套件那一份才是真的那一份。
+# ⚠⚠ **`tmux` 一律经 `_tmux()`，而它永远带 `-L`；不给 socket 就 fail-closed。**
+#
+#   第一版写的是「裸调 `tmux`，靠调用方 PATH 上的 shim 强插 `-L`」。
+#   `e2e_gate_registry::no_e2e_suite_isolates_with_tmux_tmpdir` **当场把它逮住了**，
+#   而且它是对的：那种写法**手跑一次就会把 fixture 会话建到用户的默认 socket 上**
+#   （`C7i` 那条红线的来历正是 08-11 那次打没了用户 9 个真实会话）。
+#   「靠调用方」这个理由对**别的**夹具成立（它们登记在那条判据的例外表里），
+#   但那张表在本件写区外，而且**靠登记不如靠结构**：
+#   ⇒ 本文件自带选择器，并且**没有 socket 就不跑** —— 手跑也伤不到任何人。
+#   ⚠ 调用方的 shim 会再插一个 `-L`（`realtmux -L <套件的> -L <这里的> …`），
+#     tmux 取**最后一个** ⇒ 两边给同一个名字即可，套件那一行是这么写的。
 #
 # # 环境钩子（都只影响这份假货，不进 `shared/ccm` 的任何契约）
 #
+#   FAKE_DAEMON_TMUX_SOCK=<名>  **`--launch` 必需**：tmux 的私有 socket 名（`-L <名>`）。
+#                               不给就 fail-closed（见下方 `_tmux` 那段头注）。
 #   FAKE_DAEMON_SPOOL=<目录>    落盘调用痕迹：`calls`（一行一次）· `argv` · `stdin.bin`
 #   FAKE_DAEMON_RESOLVE=<串>    `--resolve` 回的 `command` 值；未设 ⇒ 回空 JSON（拿不到）
 #   FAKE_DAEMON_DEAF=1          **装作答不上来**：任何子命令都只 `exit 0` 不吐东西
@@ -67,9 +76,12 @@ if [ "${FAKE_DAEMON_DEAF:-}" = 1 ]; then
 fi
 
 command -v jq >/dev/null 2>&1 || {
-  echo "e2e/fake-daemon: 需要 jq —— 它要解析 --launch/--list-accounts 那条 JSON。" >&2
+  echo "e2e/fake-daemon.sh: 需要 jq —— 它要解析 --launch/--list-accounts 那条 JSON。" >&2
   echo "     缺它会静默少答一条，而调用方会把那读成「后端答不出」（环境缺工具被误报成产品缺陷）。" >&2
   exit 3; }
+
+# `tmux` 的唯一出口 —— **永远带选择器**（`-L`）。见头注那段「fail-closed」的理由。
+_tmux() { tmux -L "$FAKE_DAEMON_TMUX_SOCK" "$@"; }
 
 case "$_sub" in
   --list-accounts)
@@ -89,6 +101,12 @@ case "$_sub" in
 
   --launch)
     req="$(_slurp)"
+    # 🔴 **fail-closed**：没给私有 socket 就不碰 tmux（手跑一次就会打到用户默认 socket ——
+    #    `C7i` 那条红线的来历）。⚠ 这一条**排在最前**，别挪到后面去。
+    [ -n "${FAKE_DAEMON_TMUX_SOCK:-}" ] || {
+      echo "e2e/fake-daemon.sh: --launch 需要 FAKE_DAEMON_TMUX_SOCK=<私有 socket 名>。" >&2
+      echo "     不给就不跑 —— 裸调 tmux 会把 fixture 会话建到**用户的默认 socket** 上（C7i）。" >&2
+      exit 3; }
     # 只哑这一条腿（见头注 `FAKE_DAEMON_NO_LAUNCH`）。⚠ **stdin 先吞掉再退**：
     # 不吞的话调用方那条 `printf … | 本脚本` 会拿到 EPIPE，症状变成「管道坏了」而不是「答不出」。
     [ "${FAKE_DAEMON_NO_LAUNCH:-}" = 1 ] && exit 0
@@ -106,21 +124,21 @@ case "$_sub" in
     # 回 `created:false`（撞名由**调用方**去走它自己的响亮失败，不在这里替它决定）。
     if [ -n "$cwd" ]; then set -- new-session -d -s "$name" -c "$cwd"; else set -- new-session -d -s "$name"; fi
     [ -n "$w" ] && [ -n "$h" ] && set -- "$@" -x "$w" -y "$h"
-    if ! tmux "$@" 2>/dev/null; then
+    if ! _tmux "$@" 2>/dev/null; then
       printf '{"session":"%s","created":false,"typed":false}\n' "$name"
       exit 0
     fi
     # 顺序照 `control/launch.rs`：`new-session` → `@ccm_agent` → `@ccm_sid_expect` → `send-keys`。
-    [ -n "$agent" ] && tmux set-option -t "$t" @ccm_agent "$agent" 2>/dev/null
+    [ -n "$agent" ] && _tmux set-option -t "$t" @ccm_agent "$agent" 2>/dev/null
     if [ -n "$sid" ]; then
       # ★ **意图**标记，不是事实标记。写裸 `@ccm_sid` 就是 F04 修掉的 `R10` 原路回来
       #   —— 那一格由 `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
       #   在**真** daemon 那侧钉着；这份假货照它的形状走，别在这里发明第二套。
-      tmux set-option -t "$t" @ccm_sid_expect "$sid" 2>/dev/null
-      tmux set-option -t "$t" set-titles on 2>/dev/null
-      tmux set-option -t "$t" set-titles-string '#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}' 2>/dev/null
+      _tmux set-option -t "$t" @ccm_sid_expect "$sid" 2>/dev/null
+      _tmux set-option -t "$t" set-titles on 2>/dev/null
+      _tmux set-option -t "$t" set-titles-string '#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}' 2>/dev/null
     fi
-    tmux send-keys -t "$t" "$payload" Enter 2>/dev/null
+    _tmux send-keys -t "$t" "$payload" Enter 2>/dev/null
     printf '{"session":"%s","created":true,"typed":true}\n' "$name"
     exit 0 ;;
 

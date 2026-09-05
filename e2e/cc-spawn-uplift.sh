@@ -44,12 +44,15 @@ export CCM_CODEXTOML="$SANDBOX/codex-config.toml"
 # 问不到后端就 `exit 4`。不带后端的话，本套件 72 条里 41 条连锁失败（现打过），
 # 而它们红的原因（这台机器没装后端）与它们要测的东西（cc-spawn 有没有把活交给 ccm）**无关**。
 # ⇒ 与 `tmux` shim / 假 launcher 同一条既有纪律：**要测的变量之外的东西，套件自己钉住**。
-# ⚠ `e2e/fake-daemon` 里的 `tmux` 走 **PATH** ⇒ 落在上面那个 `-L $SOCK` 的 shim 上，
+# ⚠ `e2e/fake-daemon.sh` 里的 `tmux` 走 **PATH** ⇒ 落在上面那个 `-L $SOCK` 的 shim 上，
 #   隔离面一格没变（它碰不到用户的 tmux server）。
 # ⚠ `CCM_ACCTS_MANIFEST` 指向一个**不存在的**隔离路径（形态仍是 `<目录>/accounts.json`）：
 #   后端对它答「meta ＋ 零个账号」= 空表 ⇒ ccm 退化为基座启动器、不注入账号，
 #   本套件要测的那一面因此干净；同时**绝不摸**开发者真实的 `~/.claude-accts`。
-export CCM_DAEMON_BIN="$REPO/e2e/fake-daemon"
+# `FAKE_DAEMON_TMUX_SOCK` 与本套件的 `-L $SOCK` **给同一个名字**（理由同上：那份假后端
+# 自带选择器且 fail-closed；shim 会再插一个，tmux 取最后一个）。
+export FAKE_DAEMON_TMUX_SOCK="$SOCK"
+export CCM_DAEMON_BIN="$REPO/e2e/fake-daemon.sh"
 export CCM_ACCTS_MANIFEST="$SANDBOX/no-accts/accounts.json"
 
 # ⚠⚠ **`set +e` 是这里的第一条**〔08-13 实测〕：本套件在 `:338` 之后 `set -e` 是**开着**的，

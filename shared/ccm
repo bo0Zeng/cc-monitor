@@ -1513,12 +1513,24 @@ if agent_has_identity "$agent"; then
       # 明示放弃身份的逃生口。**照样说一句** —— 静默降级正是本条要根除的东西。
       printf 'ccm: CCM_NO_DAEMON=1 ⇒ 本会话不会被打上 @ccm_sid（身份归 daemon）。cc-monitor 里它绑不上窗口、点 ↗ 会说未绑定。\n' >&2
     else
-      # ★★ 〔`K-P2` `F` 拍 09-04〕**这里原来是 `die`（码 2），换成唯一失败面（码 4）。**
-      #    根因与账号那条、建会话那条**是同一个**（这台机器上没有后端）⇒ 三条路给出
-      #    三个不同的退出码，调用方就得维护三份判法。「怎么办」那几行原本写在这里，
-      #    已经**上提进那唯一一句文案**（三条路给的建议本来就一模一样）。
-      #    ⚠ 剩下这一格独有的信息 —— **后果**（认不出这个会话）—— 留在 `why` 里。
-      backend_unreachable "在 tmux 里起有身份的 agent，而身份（@ccm_sid）自 U-NP④ 起**只**由后端打；没有它，cc-monitor 列表里绑不上这个会话、点 ↗ 弹「未绑定窗口」、结束会话按不动"
+      # 🔴 **这一格的码是 2（`die`），而账号 / 建会话那两条是 4 —— 同一个根因两个码。**
+      #
+      # 〔`K-P2` `F` 拍 09-04〕我**试过**把它也收进 `backend_unreachable`（唯一失败面），
+      # 理由是根因确实是同一个（这台机器上没有后端），三个码就是三份判法。
+      # **两条判据当场把我拦下了，而且它们不在本件写区**：
+      #   · `src-tauri/src/polling_registry.rs::ccm_fails_loudly_when_no_daemon_can_be_found`
+      #     逐字钉着 `die "找不到 daemon`；
+      #   · 它自己的头注又逐字写着「行为那半由 `e2e/ccm-cli.test.sh` …验（**rc=2**）」。
+      # ⇒ 改这一格要动**写区外**的判据 ⇒ **本件不自批**，恢复原样，把提案交回 PM
+      #   （逐字 diff 在件文件 `§23-8`）。
+      # ⚠ **在 PM 裁之前，「后端不可达」这件事在 `ccm` 上有两个码**：
+      #   身份这条 **2**、账号与建会话那两条 **4**。这一格如实登记着，别读成「已经统一了」。
+      die "找不到 daemon（cc-monitor-remote），而身份（@ccm_sid）自 U-NP④ 起**只**由它打。
+     没有它：会话照样能起，但 cc-monitor 认不出这个 tmux 会话 —— 列表里绑不上、
+     点 ↗ 弹「未绑定窗口」、结束会话按不动，**而且没有任何地方会告诉你为什么**。
+     查找顺序：\$CCM_DAEMON_BIN → ~/.cc-monitor/bin/cc-monitor-remote → PATH 上的 cc-monitor-remote。
+     怎么办（三选一）：① 在 cc-monitor 里对这台机器跑一次部署（会把 daemon 装到第二个位置）；
+     ② 有二进制就 export CCM_DAEMON_BIN=<它的路径>；③ 明确不要身份：CCM_NO_DAEMON=1 ccm …"
     fi
     unset _ccm_db
   else
