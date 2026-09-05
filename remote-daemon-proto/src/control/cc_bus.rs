@@ -151,14 +151,50 @@ fn run(name: &str, args: &[&str]) -> Result<Done, CmdErr> {
 ///
 /// `cc-whoami` 的优先级第一条逐字就是 `$CC_BUS_ID`（可选覆盖）——**这是 cc-bus 现成的契约**。
 /// 用户 08-13 逐字「细节先按原本的就行」⇒ 不动 cc-bus 本体。
+///
+/// # ★★ 这一族环境键从此**由本模块显式交办**，不再靠继承〔`K-R26` 09-05〕
+///
+/// `plugin::invoke::run` 今天先 `env_clear()`、再按它自己那张白名单
+/// （`plugin::invoke::INHERITED_ENV_KEYS`）喂 —— 那一刀关掉的是「daemon 进程内部的秘密
+/// （常驻监听口的地址与令牌）顺着环境漏进插件」这条没人设计过的回程。
+///
+/// ⚠ **代价落在这里**：本插件族此前是靠**继承**拿到自己的配置的
+/// （`CC_BUS_HOME` · `CCBUS_POLICY_MODE` · 不带 `from` 那一趟的 `CC_BUS_ID`），
+/// 而本模块**一个都没显式交办过**。现打读数：只加 `env_clear()` 那一刀之后
+/// `e2e/daemon-cc-bus.sh` 从 `PASS=50 FAIL=0` 掉到 `PASS=31 FAIL=19`，
+/// 其中最重的一格是 `[15]`：`CC_BUS_HOME` 一没，`cc-kill` 就照着一份**空台账**
+/// 判「这个名字还是原来那个人吗」，判成「是」，**把同名的无辜会话连进程一起杀了**。
+///
+/// # 🔴 修法**不许**是「往那张白名单里加键」
+///
+/// 那等于让通用调用口认识一个具体插件 —— 而
+/// `plugin::layer_guard::the_generic_port_names_no_concrete_plugin` 的针里
+/// **逐字就有这个前缀**（那张表里那一条注着「某个插件的环境变量前缀」）。
+/// ⇒ **谁的插件，谁交办**：这一族键的家只能是本模块。
+///
+/// 按**前缀**而不是逐个列名：这是 cc-bus 自己的命名空间，而它是一族**会长**的东西
+/// （`CCBUS_RATE_*` · `CCBUS_DEDUP_WINDOW` · `CCBUS_TTL` · `CCBUS_NUDGE_DEBOUNCE` …），
+/// 逐个列名今天就会漏，明天更会漏。
+/// ⚠ 诚实边界：前缀式交办把**本进程环境里**带这两个前缀的键**全部**交给子进程 ——
+/// 它守的是「不再多给」（宿主的秘密不在这个命名空间里），**不是**「按需最小授权」。
+/// 真要收到按键最小化，那是给这一族插件立一份「它认哪几个键」的清单，另一件。
 fn run_as(name: &str, args: &[&str], as_id: Option<&str>) -> Result<Done, CmdErr> {
     let bin = find(name)?;
     let secs = timeout_secs();
+    let owned: Vec<(String, String)> = std::env::vars()
+        .filter(|(k, _)| k.starts_with("CC_BUS_") || k.starts_with("CCBUS_"))
+        .collect();
+    let mut env: Vec<(&str, &str)> = owned
+        .iter()
+        .map(|(k, v)| (k.as_str(), v.as_str()))
+        .collect();
     // `CC_BUS_ID` 是 cc-bus 自己的契约 ⇒ 由本模块拼，通用口只负责把 env 传下去。
-    let env: Vec<(&str, &str)> = match as_id {
-        Some(id) => vec![("CC_BUS_ID", id)],
-        None => Vec::new(),
-    };
+    // 显式指定身份时它**压过**上面顺下来的那一份（`retain` 那一句就是这个意思，
+    // 少了它 `invoke::run` 会看到同一个键两次，而「后一个赢」是它的实现细节、不是契约）。
+    if let Some(id) = as_id {
+        env.retain(|(k, _)| *k != "CC_BUS_ID");
+        env.push(("CC_BUS_ID", id));
+    }
     crate::plugin::invoke::run(&bin, args, secs, &env).map_err(|e| match e {
         // ★ **E2BIG 要单独说**〔08-13 实测〕：`{"code":"failed","message":"起不来 cc-send：
         //   Argument list too long"}` 有两处不对 —— ① `failed` 是兜底桶，调用方分不出

@@ -16,18 +16,28 @@
 
 ## 1 · 门禁九格（入场 / 交回）
 
-| 格 | 入场（`9acbdd8`，工作树无改动） | 交回（本轮全部改动） | 差 |
-|---|---|---|---|
-| cargo | 1428 passed | 1428 passed | 0 |
-| generated | ok | ok | — |
-| **daemon** | **583 passed** | **585 passed** | **+2** |
-| npm | 1542 passed | 1542 passed | 0 |
-| ccm-print-parity | PASS=12 | PASS=12 | 0 |
-| ccm-rbind-title | PASS=8 | PASS=8 | 0 |
-| ccm-cli | PASS=264 | PASS=264 | 0 |
-| ccm-contract-parity | PASS=72 | PASS=72 | 0 |
-| pb check | FAIL=0 BROKEN=0 | FAIL=0 BROKEN=0 | 0 |
-| **合计** | **GATE: OK** | **GATE: OK** | |
+| 格 | 入场（`9acbdd8`，工作树无改动） | 中途（只有 `env_clear` 那一刀，`gate-02`） | **交回**（含适配层显式交办，`gate-06`） | 交回 − 入场 |
+|---|---|---|---|---|
+| cargo | 1428 passed | 1428 passed | **1428 passed** | 0 |
+| generated | ok | ok | **ok** | — |
+| **daemon** | **583 passed** | 585 passed | **585 passed** | **+2** |
+| npm | 1542 passed | 1542 passed | **1542 passed** | 0 |
+| ccm-print-parity | PASS=12 | PASS=12 | **PASS=12** | 0 |
+| ccm-rbind-title | PASS=8 | PASS=8 | **PASS=8** | 0 |
+| ccm-cli | PASS=264 | PASS=264 | **PASS=264** | 0 |
+| ccm-contract-parity | PASS=72 | PASS=72 | **PASS=72** | 0 |
+| pb check | FAIL=0 BROKEN=0 | FAIL=0 BROKEN=0 | **FAIL=1**（只有 `[J3 陈账]`） | +1，见下 |
+| **合计** | **GATE: OK** | **GATE: OK** | **GATE: FAIL**（只因那一格） | |
+
+⚠ **第 9 格那个 `FAIL=1` 的成因可证，而且不是代码的账**：判据是
+`[J3 陈账] INDEX.md 比源文件旧`。现打 `find . -name '*.md' -newer INDEX.md`（面 = 计划仓
+`backend-consolidation/`）⇒ **恰好一个文件**，就是本件件文件。派工令要求实现方写它、
+又不许提交，而 `pb index` 归 PM 在收窗口那一拍跑（铁律 19：窗口开着期间一概不跑生成命令）。
+⇒ **代码仓那一侧是全绿的**：`gate-02` 那一列是在动件文件**之前**跑的，`GATE: OK`。
+
+⚠ **适配层那一刀没有让任何一格变差**：`gate-02`（只有 `env_clear`）与 `gate-06`（含适配层）
+八格逐格相等 —— 也就是说 `cc_bus_boundary_guard` 那 5 根针 · `layering_guard` ·
+`readonly_guard` 对新写的那几行**一条都没红**。这正是 `§5` 那条诚实边界当时说要补的一半。
 
 **`+2` 的分母怎么数的**：本轮往 daemon 那一包加了 **3** 条判据 ——
 `a_plugin_started_here_never_sees_the_listen_port_or_token`（外层，算 passed）·
@@ -119,9 +129,17 @@ PWF-ENV-READING 父进程键数=38 · 子进程键数=3 · 口在子进程里=fa
 
 | 臂 | 代码状态 | 读数 | 落点 |
 |---|---|---|---|
-| 改前 | 退掉 `env_clear` + 白名单（在**最终树**上切一刀复现） | **PASS=50 FAIL=0** | `ccbus-BEFORE-cut4.log` |
-| 改后 | 本轮交回的状态 | **PASS=31 FAIL=19** | `ccbus-AFTER-final.log` |
-| 改后 + 候选适配层补丁 | 见 `§5`，在**副本**里试的 | **PASS=50 FAIL=0** | `ccbus-LAB-with-adapter-patch.log` |
+| 改前 | 退掉 `env_clear` + 白名单（在树上切一刀复现） | **PASS=50 FAIL=0** | `ccbus-BEFORE-cut4.log` |
+| 只加 `env_clear`（适配层未改） | 🔴 **就是这一格逼出了 `§5`** | **PASS=31 FAIL=19** | `ccbus-AFTER-final.log` |
+| 只加 `env_clear` + 候选补丁 | 在**副本**里先试的 | **PASS=50 FAIL=0** | `ccbus-LAB-with-adapter-patch.log` |
+| **本轮最终交回的状态** | `env_clear` + 白名单 + 适配层显式交办 | **PASS=50 FAIL=0** | `ccbus-AFTER-adapter.log` |
+
+**最终那一趟里 `[15]` 那三格逐字**（就是当初最重的那一格，全部回绿）：
+```
+  PASS ★★ 名字被别人占：**不是 killed**，而是 stale_only
+  PASS ★★ 无辜会话还在
+  PASS ★★ 无辜进程还在
+```
 
 **19 红是真缺陷，不是台架写法的问题。** 机制：那一族插件今天靠**继承**拿自己的配置 ——
 `CC_BUS_HOME` · `CCBUS_POLICY_MODE` · 不带 `from` 那一趟的 `CC_BUS_ID`。
@@ -143,7 +161,12 @@ FAIL ★★ 无辜进程还在: 期望[在] 实得[被杀了]
 判「这个名字还是原来那个人吗」，判成「是」，于是**把一个同名的无辜会话连进程一起杀了**。
 ⇒ 这不是「关严了一点」，是**把一条破坏性命令的安全判定喂瞎了**。
 
-## 5 · 候选修法（**不在本轮写区，请 PM 落**）——已在副本里验过
+## 5 · 修法（**PM 09-05 裁定把写区临时扩这一项，已落工作树**）
+
+〔PM 裁定逐字〕认了实现方报的那条互斥，**放掉的是「`§2` 不改 `cc_bus.rs`」那一条** ——
+写区临时扩一项 `remote-daemon-proto/src/control/cc_bus.rs`，**只许动 `run_as` 那一处**；
+键**不进白名单**（那根针钉着，实现方判得对）。
+⇒ 本节因此从「候选修法，请 PM 落」变成「已落」；副本那一趟（`§4` 第三行）留着当**先证**。
 
 **住址**：`remote-daemon-proto/src/control/cc_bus.rs` 的 `run_as`。**唯一一处**，其余零改动。
 
@@ -180,15 +203,19 @@ FAIL ★★ 无辜进程还在: 期望[在] 实得[被杀了]
 ```
 （替换掉今天那个 `let env: Vec<(&str, &str)> = match as_id { … };`。）
 
-**副本怎么做的**（`brief` 12c：拷 git worktree 做实验先把 `.git` 删掉）：
+**先证那一趟（副本）怎么做的**（`brief` 12c：拷 git worktree 做实验先把 `.git` 删掉）：
 `tar --exclude=.git --exclude=node_modules --exclude=target` 拷到 scratchpad 下的 `lab-ccbus/`，
 在副本里改 `cc_bus.rs`，用副本自己的 target 目录构建、在同一个沙箱镜像里跑那套 e2e。
-⇒ **本轮工作树里 `control/cc_bus.rs` 一个字节没动**（`git status` 可核）。
+那一趟**只验了 `e2e/daemon-cc-bus.sh` 这一套（50 格）**，没跑 `cargo test`
+（`cc_bus_boundary_guard` 那 5 根针 · `layering_guard` · `readonly_guard` 都可能对新写的
+这几行有话说）—— 所以当时如实写了「别把这个 50/0 读成整套都验过了」。
 
-⚠ **诚实边界**：这份补丁我只验了 `e2e/daemon-cc-bus.sh` 这一套（50 格）。
-副本里**没有**跑 `cargo test`（`cc_bus_boundary_guard` 那 5 根针 · `layering_guard` ·
-`readonly_guard` 都可能对新写的这几行有话说）⇒ **PM 落它的时候要重跑整套门禁**，
-别把我这个 50/0 读成「整套都验过了」。
+**落到工作树之后补上的那一半**：整套门禁跑过（读数在 `§1` 那张表的第三列），
+上面点名的那三族判据**一条没红**。⇒ 那条诚实边界**今天被兑现了**，不是被删掉的。
+
+⚠ **仍在的诚实边界**：前缀式交办把**本进程环境里**带那两个前缀的键**全部**交给子进程 ——
+它守的是「**不再多给**」（宿主那两个秘密不在这个命名空间里），**不是**「按键最小授权」。
+真要收到按键最小化，那是给这一族插件立一份「它认哪几个键」的清单，另一件。
 
 ## 6 · 死值验（`§3` 那几刀 + `7u`）—— 逐行真实输出
 
