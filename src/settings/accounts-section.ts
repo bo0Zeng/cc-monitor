@@ -11,6 +11,10 @@ import { emit } from "@tauri-apps/api/event";
 import { commands, type RelayCredentialsStatus } from "../ipc/commands";
 import {
   fetchAccounts,
+  // `N-F1b`：本机那条路。**读口与文案都不是本件新造的** —— `fetchLocalAccounts` 自
+  // `a354c83` 起就在盘上（状态栏那个 chip 现在就在用它），空的只有这一节。
+  fetchLocalAccounts,
+  LOCAL_ACCOUNTS_COPY,
   deriveUi,
   currentWorkingAccount,
   selectableAccounts,
@@ -308,7 +312,12 @@ export class AccountsSection {
   private async reload(force: boolean): Promise<void> {
     this.body.innerHTML = "";
     if (!this.origin) {
-      this.info("没有已配置的远端。账号功能在远端 Linux 上——先在「连接」组配一台远端。");
+      // `N-F1b`：这里原先逐字印
+      // 「没有已配置的远端。账号功能在远端 Linux 上——先在「连接」组配一台远端。」
+      // 然后早返回。那句话在一台**本来就有账号**的机器上是一句坏话：它把「这一节
+      // 没接上本机那条路」说成了「你缺一台远端 Linux」，而账号今天就读得出来
+      //（定框 `N1` 09-05 订正段 / `N-F1` 摸底）。⇒ 换成走本机那条路。
+      await this.reloadLocal(force);
       return;
     }
     let state: AccountsState;
@@ -343,6 +352,139 @@ export class AccountsSection {
         await this.renderTable(state, ui.accounts, ui.notice);
         return;
     }
+  }
+
+  /**
+   * `N-F1b`：**没有配任何远端时，这一节讲的是这台机器。**
+   *
+   * # 它为什么是一条**自己的**渲染路，而不是把本机塞进 `renderTable`
+   *
+   * 远端那张表带着一整套只对远端成立的东西：维护区那几个按钮会**动远端目录**、
+   * 「去登录」会去拉一个**远端终端**（`accountLoginActionLabel` 的两句文案都逐字带「远端」）、
+   * 中转那一块问的是「这几个 configDir 走不走**本机**中转」而表里显的是远端的号
+   *（`mountRelayKeyBlock` 头注口径③ 自己记着这笔账）。把本机接进那条路，
+   * 等于把「一台远端机器」这个概念套到本机头上 —— 那正是 `N2` 排除的那件事，
+   * 也正是 `control-parity` 那个区花 41 件治过的病。
+   * ⇒ 本机这一支只做它今天真做得到的事：**把清单列出来**。
+   *
+   * # 🔴 射程线：本件只换「面板走不走得到」，不换数据源
+   *
+   * 数据源是今天已经能用的本机读口 `fetchLocalAccounts`（直读磁盘）。
+   * 用户 09-05 拍的板（`DECISIONS.md` `NR1` / `NR2`）说的终态是「每台机的账号由那台机的
+   * **后端**管」，那是**下一件**（`N-F1c`），它压着两处现打的障碍：后端那份路径检查
+   * 第一条是 `starts_with('/')`（Windows 列表会恒空）· 开发树里没有后端程序。
+   * ⇒ 这一支将来是**换实现不换界面**，别在这里预支它。
+   *
+   * # 三个结局，一个都不许合并
+   *
+   * 读不出来 / 一个号都没有 / 有号 —— 前两个长得像但完全不是一回事：
+   * 把「读不出来」渲染成「你没有账号」，用户会去装一个他已经装好的东西。
+   * 由 `NF1bD1` 那一族的两条「诚实降级」判据钉着。
+   */
+  private async reloadLocal(force: boolean): Promise<void> {
+    const box = document.createElement("div");
+    box.className = "accounts-local";
+    this.body.appendChild(box);
+    AccountsSection.line(box, "accounts-meta accounts-local-head", LOCAL_ACCOUNTS_COPY.heading);
+
+    let state: AccountsState;
+    try {
+      state = await fetchLocalAccounts(force);
+    } catch (e) {
+      this.localFail(box, String(e));
+      return;
+    }
+    if (!state.available) {
+      this.localFail(box, state.error ?? LOCAL_ACCOUNTS_COPY.unknownReason);
+      return;
+    }
+    if (!state.meta?.enabled || state.accounts.length === 0) {
+      AccountsSection.line(
+        box,
+        "accounts-info accounts-local-empty-title",
+        LOCAL_ACCOUNTS_COPY.emptyTitle,
+      );
+      AccountsSection.line(
+        box,
+        "accounts-hint accounts-local-empty-next",
+        LOCAL_ACCOUNTS_COPY.emptyNext,
+      );
+      return;
+    }
+
+    AccountsSection.line(
+      box,
+      "accounts-meta accounts-local-count",
+      `${state.accounts.length} ${LOCAL_ACCOUNTS_COPY.countSuffix} · ` +
+        `${LOCAL_ACCOUNTS_COPY.manifestPrefix} ${state.meta.manifestPath}`,
+    );
+    // 「当前账号」在本机与远端是**同一格**（`config.json` 的 `accounts.defaultName`），
+    // 所以这里就用那个既有的纯函数，不长第二套判定。
+    const cur = currentWorkingAccount(state);
+    const table = document.createElement("div");
+    table.className = "accounts-local-table";
+    for (const a of state.accounts) {
+      table.appendChild(AccountsSection.localRow(a, cur?.name === a.name));
+    }
+    box.appendChild(table);
+    AccountsSection.line(box, "accounts-hint accounts-local-hint", LOCAL_ACCOUNTS_COPY.scopeHint);
+  }
+
+  /**
+   * 读不出来时那一格。
+   *
+   * ⚠ **原因一定要带出来**：一个不说原因的失败，用户修不了；
+   * 而 `fetchLocalAccounts` 的两条失败路（invoke 抛错 / `available:false`）
+   * 都带着后端给的那句话。
+   */
+  private localFail(box: HTMLElement, why: string): void {
+    AccountsSection.line(
+      box,
+      "accounts-info accounts-local-fail",
+      `${LOCAL_ACCOUNTS_COPY.loadFailed}：${why}`,
+    );
+  }
+
+  /** 一行文本。`cls` 里第一个类名一律取既有的那几个（`accounts-info` / `accounts-hint` / `accounts-meta`），第二个是本机那一支自己的钩子。 */
+  private static line(parent: HTMLElement, cls: string, text: string): HTMLElement {
+    const el = document.createElement("div");
+    el.className = cls;
+    el.textContent = text;
+    parent.appendChild(el);
+    return el;
+  }
+
+  /**
+   * 本机清单里的一行。**只读** —— 这一件不做切号，也不做加号。
+   *
+   * ⚠ 徽章走 `accountStatusBadge(a)` 而**不传** `relay`：那个参数说的是
+   * 「这个号在中转表里有没有一行、本机中转在不在跑」，本件没有去问后端要这两格
+   *（那要多一条 IPC，属下一件）⇒ **不传就是如实说「这一处没被告知」**，
+   * 它自己的那一支逐字写着「所以不替它下判断」。
+   * 🔴 **千万别顺手传 `{ scope: "remote" }`** —— 那会让一台本机的号被解释成远端那一半，
+   * 文案里当场出现「远端」两个字；`NF1bD2` 那条判据正是钉这个的。
+   */
+  private static localRow(a: Account, isCurrent: boolean): HTMLElement {
+    const row = document.createElement("div");
+    row.className = isCurrent ? "accounts-local-row current" : "accounts-local-row";
+    row.appendChild(accountAvatarEl(a.name, { size: 16, ghost: !isSelectable(a) }));
+    AccountsSection.line(row, "accounts-local-row-name", a.name);
+    AccountsSection.line(row, "accounts-local-row-email", a.email);
+
+    const badge = accountStatusBadge(a);
+    const badgeEl = AccountsSection.line(
+      row,
+      badge.warn ? "accounts-local-row-badge warn" : "accounts-local-row-badge",
+      badge.text,
+    );
+    if (badge.title) badgeEl.title = badge.title;
+
+    // 账号 0（`mode: "bare"`）没有 configDir —— 那一格空着，不许编一个出来。
+    AccountsSection.line(row, "accounts-local-row-dir", a.configDir ?? "");
+    if (isCurrent) {
+      AccountsSection.line(row, "accounts-local-row-mark", LOCAL_ACCOUNTS_COPY.currentMark);
+    }
+    return row;
   }
 
   /**
