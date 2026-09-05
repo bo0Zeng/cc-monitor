@@ -1057,6 +1057,67 @@ mod tests {
         );
     }
 
+    /// K-W1C D4 乙：**「窗口还在，但里面已经换人了」这一格今天靠 `Superseded` 兜住，
+    /// `verify_binding` 自己判不了。**
+    ///
+    /// # 它钉的是一句**负向**的话，为什么值得钉
+    ///
+    /// `verify_binding` 只看三样：`IsWindow` · 属主 PID · 属主 procStart。
+    /// 窗口还在、属主进程没换 ⇒ **恒绿**，哪怕那个终端里现在跑的是另一个会话。
+    /// 链上唯一能分辨这件事的证据是 `title_at_bind` —— 它**写四处、读作判据零处**
+    /// （唯一的非写读点是一句 `tracing::info!`）。
+    ///
+    /// 今天真正挡住这一幕的是**另一条路**：同一个 pidfile 换 sid 会被判 `Superseded`
+    /// → 推成 removed → `apply_local_removal` 把旧绑定忘掉。
+    /// ⇒ 这是一条**隐式前提**：`verify_binding` 的安全性**借给了上游那条边**。
+    /// 本条把它从注释变成判据 —— 谁哪天给 `verify_binding` 加上标题比对（那是件好事），
+    /// 这一条会红，红的那句话要求同轮补一条**真机正向**判据。
+    ///
+    /// # 它买不到什么（逐条写明）
+    ///
+    /// - 买不到「这一幕今天真的到不了」——那一问要 Windows 真机造一次
+    ///   「A 的 ↗ 拉到 B 的窗口」，本机做不到（拉前整族 Windows-only）。件计划 D4 甲。
+    /// - 买不到「加了标题比对就对了」——标题会被 claude 自己改写，
+    ///   正向判据必须在真窗口上验（先例：`remote_bind_finds_real_ccm_rbind_window`
+    ///   要在 session 1 跑）。
+    /// - 它按**源文本**判，不按行为判 ⇒ 只对 `#[cfg(windows)]` 那一支的**写法**说话；
+    ///   哪天有人把标题比对写进一个被调用的 helper 里，本条**看不见**。
+    #[test]
+    fn verify_binding_cannot_tell_that_the_window_changed_hands() {
+        let prod = guard_core::production_code(include_str!("bind.rs"));
+        let at = prod
+            .find("pub fn verify_binding")
+            .expect("生产段里没有 `pub fn verify_binding` —— 抽取器坏了，本条此刻无效");
+        let body: Vec<&str> = prod[at..]
+            .lines()
+            .take_while(|l| {
+                l.is_empty() || l.starts_with(char::is_whitespace) || l.starts_with("pub fn")
+            })
+            .collect();
+        // 抽取器自检：拿到的必须是 Windows 那一支（非 Windows 那支只有一句 Err），
+        // 而且它**确实**在看那三样。少了这三句，下面那两句会零命中地绿。
+        for needle in ["IsWindow", "owner_pid", "owner_proc_start"] {
+            assert!(
+                body.iter().any(|l| l.contains(needle)),
+                "抽出来的 `verify_binding` 里没有 `{needle}` —— \
+                 要么抽到了非 Windows 那一支，要么它的判据换了，本条此刻无效"
+            );
+        }
+        for forbidden in ["title_at_bind", "GetWindowText"] {
+            let hits: Vec<&&str> = body.iter().filter(|l| l.contains(forbidden)).collect();
+            assert!(
+                hits.is_empty(),
+                "`verify_binding` 开始看窗口标题了（命中 `{forbidden}`）：{hits:?}\n\
+                 ★ 这大概率是**一件好事** —— 它正是件计划 D4 要的那一格。\n\
+                 但本条守的是「这一格今天靠 `Superseded` 兜住、verify 自己判不了」\n\
+                 这个**隐式前提**：前提一旦不成立，同轮必须\n\
+                 ① 给「窗口还在但换人了」补一条**真机正向**判据（不许与「窗口没了」\n\
+                    压回同一个读数 —— 那是又造一个「一个值装两件事」）；\n\
+                 ② 把本条改写成新的事实。**别只把这句话删掉。**"
+            );
+        }
+    }
+
     /// F-Vwin：真 Windows 验证 #74/#41（远端 ↗ HWND 绑定层）。
     ///
     /// 建一个标题含 `ccm-rbind-<sid>` 的**真可见顶层窗口**（用预注册系统类 `Static`，
