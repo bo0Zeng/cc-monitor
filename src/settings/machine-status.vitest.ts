@@ -13,6 +13,7 @@ import {
   renameMachine,
   formatAge,
   describeFacet,
+  LOCAL_MACHINE_KEY,
 } from "./machine-status";
 import { LS_KEYS } from "../local-storage";
 
@@ -78,6 +79,32 @@ describe("账本读写", () => {
     const raw = localStorage.getItem(LS_KEYS.machineStatus);
     expect(raw).toBeTruthy();
     expect(JSON.parse(raw!)).toEqual({ aya: { connection: { kind: "ok", at: T0 } } });
+  });
+
+  /**
+   * `N-F2`：**本机那个哨兵是一个合法的账本 key。**
+   *
+   * `recordFacet` 第一行是 `if (!origin) return;` —— 一个**静默丢弃**。
+   * 本机那条路（`accounts-section.note()`）现在就拿 `LOCAL_MACHINE_KEY` 当 key 记账，
+   * 而它是个手写常量：哪天它被改成空串 / `undefined`，本机那两格会一声不响地回到
+   *「没测过」，界面上看不出区别，本件那一族在**面板**那一层也照样绿
+   *（那边断的是「面板调了 note」的结果，而这里丢的是 `recordFacet` 自己那一刀）。
+   */
+  it("★ N-F2：`LOCAL_MACHINE_KEY` 记得进也读得出（它落进那条静默丢弃的话，本机那两格会无声地回到「没测过」）", () => {
+    expect(LOCAL_MACHINE_KEY, "本机那个 key 是空的 ⇒ recordFacet 会静默丢掉每一次写").toBeTruthy();
+    recordFacet(LOCAL_MACHINE_KEY, "accounts", { kind: "ok", detail: "3 个", at: T0 });
+    expect(readStatus(LOCAL_MACHINE_KEY).accounts).toEqual({
+      kind: "ok",
+      detail: "3 个",
+      at: T0,
+    });
+    // 反向自检：它与真实 origin 不撞车（本机的记录不该被一台叫这个名字的远端继承）。
+    expect(readStatus("aya")).toEqual({});
+  });
+
+  it("★ N-F2 反面：空 key 确实被丢掉（上一条不是恒真）", () => {
+    recordFacet("", "accounts", { kind: "ok", at: T0 });
+    expect(localStorage.getItem(LS_KEYS.machineStatus)).toBeNull();
   });
 });
 

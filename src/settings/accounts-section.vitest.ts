@@ -27,6 +27,10 @@ vi.mock("../remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMoc
 
 import { readFileSync } from "node:fs";
 import { AccountsSection, renderRelayKeyBlock } from "./accounts-section";
+// `N-F2`：账本与那张清单 —— 本文件末尾那一族要断的正是「面板跑完之后账本里是什么」，
+// 所以取的是**真的** `readStatus` / `computeGaps`，一个桩都不架。
+import { readStatus, LOCAL_MACHINE_KEY, type MachineStatus } from "./machine-status";
+import { computeGaps, summarizeGaps } from "./readiness";
 import type { RelayCredentialsStatus } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 import * as accounts from "../accounts";
@@ -1110,5 +1114,264 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     // 远端那三件套照旧在（非空对照：这条不是在一屏空白上判的）。
     expect(el.querySelector(".accounts-table")).not.toBeNull();
     expect(el.querySelector(".accounts-current-banner")).not.toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `N-F2`：**本机也进「还差什么」那张清单** —— 那张清单本来就把本机算进去了，缺的是写点。
+//
+// 病（件文件 `§0a` / 定框 `N2` 09-05 订正段，本族开工时逐条现打复核过）：
+// `computeGaps` 的入参里本来就有 `LOCAL_MACHINE_KEY`，而 `notApplicable` 只把本机的
+// `daemon` / `connection` 排掉 ⇒ 本机的 `acctIso` / `accounts` 是**适用**的两格；
+// 可它们的唯一写点 `AccountsSection.note()` 第一行是 `if (!this.origin) return`，
+// 而本机这条路上 `origin` 恒空 ⇒ 那两格**永远停在「没测过」**，
+// 于是 `summarizeGaps` 恒非 null，`remote-section` 里「全绿就整块不出现」那一支是死代码。
+//
+// ★ 本族**两侧都断**（件文件 `NF2D2` 逐字要求）：
+//   ① 本机侧：跑完之后账本里那两格不再是 `unknown`，且**三档各写各的**；
+//   ② 远端侧：远端那条路写进去的东西**一格不变**（只断①的话，把远端那几行顺手改坏也不会红）。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("N-F2 本机那两格真的被写进账本", () => {
+  /** 每条都从一本干净的账本出发 —— 账本住 localStorage，跨用例会串。 */
+  beforeEach(() => localStorage.clear());
+
+  const L1 = "wei";
+  const L2 = "amy";
+  const L3 = "kit";
+  const threeLocal = () =>
+    localState({
+      accounts: [
+        acct({ name: L1, configDir: "/h/.claude-accts/wei" }),
+        acct({ name: L2, email: "amy@x.edu", configDir: "/h/.claude-accts/amy" }),
+        acct({ name: L3, email: "kit@x.edu", configDir: "/h/.claude-accts/kit" }),
+      ],
+      defaultName: L1,
+    });
+
+  function noRemotes(): void {
+    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+  }
+
+  /** 跑一遍本机那条路，回来时账本里本机那一栏长什么样。 */
+  async function localLedgerAfter(st: AccountsState | Error): Promise<MachineStatus> {
+    noRemotes();
+    if (st instanceof Error) fetchLocalAccountsMock.mockReset().mockRejectedValue(st);
+    else fetchLocalAccountsMock.mockReset().mockResolvedValue(st);
+    await mount();
+    return readStatus(LOCAL_MACHINE_KEY);
+  }
+
+  /** 只留 `kind` 与 `detail`：`at` 是 `Date.now()`，比它等于在断时钟。 */
+  function shape(s: MachineStatus): Record<string, { kind: string; detail?: string }> {
+    const out: Record<string, { kind: string; detail?: string }> = {};
+    for (const [k, v] of Object.entries(s)) {
+      if (v) out[k] = { kind: v.kind, detail: v.detail };
+    }
+    return out;
+  }
+
+  // ---- 先证会红：今天的行为长什么样 ----
+
+  it("★ NF2D2 地板：本机那条路**跑之前**，账本里本机那一栏是空的（这一族不是空真）", () => {
+    // 这条是分母自检。没有它，下面每一条「写进去了」都可能是在断一本本来就有内容的账。
+    expect(readStatus(LOCAL_MACHINE_KEY)).toEqual({});
+    // 而那两格是**适用**的：`notApplicable` 只排掉本机的 daemon / connection。
+    const before = computeGaps({
+      origins: [LOCAL_MACHINE_KEY],
+      statusOf: readStatus,
+      hostOs: "windows",
+    });
+    expect(
+      before.map((g) => `${g.facet}:${g.kind}`),
+      "本机在 Windows 上的适用格不是恰好这两格 —— 下面几条的题面就得重写",
+    ).toEqual(["acctIso:unknown", "accounts:unknown"]);
+  });
+
+  // ---- 三档各写各的 ----
+
+  it("★ NF2D2 档一（读出来了·有号）：两格都 ok，且账号那格说得出是几个", async () => {
+    const led = await localLedgerAfter(threeLocal());
+    expect(shape(led)).toEqual({
+      accounts: { kind: "ok", detail: "3 个" },
+      acctIso: { kind: "ok", detail: "已启用" },
+    });
+  });
+
+  it("★ NF2D2 档一（读出来了·零个号）：清单读到了 = ok，隔离没启用 = fail —— 两格不许合成一句", async () => {
+    // 「读到了但一个号都没有」与「读不出来」是两件事：前者 accounts 该绿。
+    const led = await localLedgerAfter(localState({ accounts: [] }));
+    expect(shape(led)).toEqual({
+      accounts: { kind: "ok", detail: "已读取" },
+      acctIso: { kind: "fail", detail: "未启用" },
+    });
+  });
+
+  it("★ NF2D2 档二（后端不在）：两格 fail，且 detail 说得出是这一档", async () => {
+    const led = await localLedgerAfter(
+      localState({ available: false, error: "本机后端不在，问不出…", accounts: [] }),
+    );
+    expect(shape(led)).toEqual({
+      accounts: { kind: "fail", detail: "后端不在" },
+      acctIso: { kind: "fail", detail: "后端不在" },
+    });
+  });
+
+  it("★ NF2D2 档三（读不动）：两格 fail，且 detail 与上一档**不同**", async () => {
+    const led = await localLedgerAfter(new Error("backend down"));
+    expect(shape(led)).toEqual({
+      accounts: { kind: "fail", detail: "读不动" },
+      acctIso: { kind: "fail", detail: "读不动" },
+    });
+  });
+
+  it("★ NF2D2 三档两两不同 —— 只断「调了 recordFacet」的话，三档写成同一个值也全绿", async () => {
+    // 分母：**面板看得见的那三档**（读出来了 / 后端不在 / 读不动），逐档各跑一次真面板。
+    // ⚠ 诚实边界：后端那侧其实是三档（`Listed` / `NoBackend` / `Unreadable`），
+    // 而 `NoBackend` 与 `Unreadable` 到前端都变成 `available:false` + 一句 error 文案，
+    // 前端分不出来 —— 分开它们要后端多带一个字段回来（`src-tauri`，本件射程外）。
+    const cases: Array<[string, AccountsState | Error]> = [
+      ["读出来了", threeLocal()],
+      ["后端不在", localState({ available: false, error: "x", accounts: [] })],
+      ["读不动", new Error("backend down")],
+    ];
+    const seen: string[] = [];
+    for (const [, st] of cases) {
+      const led = await localLedgerAfter(st);
+      // 两格都得写到 —— 漏一格，那一格就还停在「没测过」。
+      expect(led.accounts, "accounts 这一格没被写").toBeDefined();
+      expect(led.acctIso, "acctIso 这一格没被写").toBeDefined();
+      seen.push(JSON.stringify(shape(led)));
+    }
+    expect(seen.length, "分母塌了 —— 一档都没跑").toBe(3);
+    expect(
+      new Set(seen).size,
+      `三档在账本上写成了同一个样子：${seen.join(" | ")}`,
+    ).toBe(3);
+  });
+
+  it("★ NF2D2 本机侧总账：三档跑完，那两格**没有一档**还停在「没测过」", async () => {
+    for (const st of [
+      threeLocal(),
+      localState({ accounts: [] }),
+      localState({ available: false, error: "x", accounts: [] }),
+      new Error("boom"),
+    ] as Array<AccountsState | Error>) {
+      const led = await localLedgerAfter(st);
+      const gaps = computeGaps({
+        origins: [LOCAL_MACHINE_KEY],
+        statusOf: readStatus,
+        hostOs: "windows",
+      });
+      // 「没测过」= `unknown`。测过了但确认缺（`missing`）是另一回事，这条不管那个。
+      expect(
+        gaps.filter((g) => g.kind === "unknown").map((g) => g.facet),
+        `跑完之后本机还有格子停在「没测过」（账本：${JSON.stringify(shape(led))}）`,
+      ).toEqual([]);
+    }
+  });
+
+  // ---- 远端那条路一个字节不变 ----
+
+  it("★ NF2D2 远端侧：远端那五支写进账本的东西逐格不变，且本机那一栏一格不长", async () => {
+    // 分母 = 远端那条路今天**全部**五支（`reload` 里 catch + `deriveUi` 的四个 kind），
+    // 逐支各跑一次真面板。少一支，那一支上顺手改坏一行不会红。
+    const H = host().label;
+    const remote = async (
+      set: () => void,
+    ): Promise<Record<string, { kind: string; detail?: string }>> => {
+      localStorage.clear();
+      readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
+      fetchAccountsMock.mockReset();
+      set();
+      await mount();
+      // 本机那一栏一格不长 —— 配了远端时这一节讲的不是本机。
+      expect(readStatus(LOCAL_MACHINE_KEY), "远端页上把东西写进了本机那一栏").toEqual({});
+      return shape(readStatus(H));
+    };
+
+    expect(
+      await remote(() => fetchAccountsMock.mockRejectedValue(new Error("net"))),
+      "拉取失败那一支",
+    ).toEqual({ accounts: { kind: "fail", detail: "拉取失败" } });
+
+    expect(
+      await remote(() =>
+        fetchAccountsMock.mockResolvedValue(
+          state({ available: false, error: "该主机配置为 daemonless", accounts: [] }),
+        ),
+      ),
+      "daemonless 那一支",
+    ).toEqual({
+      accounts: { kind: "na", detail: "daemonless" },
+      acctIso: { kind: "na", detail: "daemonless" },
+    });
+
+    expect(
+      await remote(() =>
+        fetchAccountsMock.mockResolvedValue(
+          state({ available: false, error: "daemon 过旧", accounts: [] }),
+        ),
+      ),
+      "老 daemon 那一支",
+    ).toEqual({ accounts: { kind: "fail", detail: "daemon 需更新" } });
+
+    expect(
+      await remote(() => fetchAccountsMock.mockResolvedValue(state({ accounts: [] }))),
+      "未启用那一支",
+    ).toEqual({
+      accounts: { kind: "ok", detail: "已读取" },
+      acctIso: { kind: "fail", detail: "未启用" },
+    });
+
+    expect(
+      await remote(() =>
+        fetchAccountsMock.mockResolvedValue(
+          state({ accounts: [acct({ name: L1 }), acct({ name: L2 })], defaultName: L1 }),
+        ),
+      ),
+      "已启用那一支",
+    ).toEqual({
+      accounts: { kind: "ok", detail: "2 个" },
+      acctIso: { kind: "ok", detail: "已启用" },
+    });
+  });
+
+  // ---- `NF2D3`：从**真的一次面板运行**接到「整块该不该出现」 ----
+
+  it("★ NF2D3：本机全绿 + 一台远端都没有 ⇒ summarizeGaps 返回 null（那一块整块不出现的前提）", async () => {
+    // 分母写清（`NF2D3` 的 acceptor 逐字要求，防「一台机器都没有」蒙混）：
+    //   · 机器数 = 1（本机），**不是空清单**；
+    //   · 这台机在 Windows 上的适用格 = { acctIso, accounts }（daemon / connection 不适用、
+    //     ccm 的对应物是「终端集成」那块）—— 上面那条「地板」用例已把这个集合逐项断过；
+    //   · 这两格由**真的一次面板运行**写绿，账本不是手工摆出来的。
+    const led = await localLedgerAfter(threeLocal());
+    expect(shape(led), "前提没成立：这一次面板运行没把两格写绿").toEqual({
+      accounts: { kind: "ok", detail: "3 个" },
+      acctIso: { kind: "ok", detail: "已启用" },
+    });
+    const origins = [LOCAL_MACHINE_KEY];
+    expect(origins.length, "分母是空的 —— 下面那条 null 是空真").toBe(1);
+    const gaps = computeGaps({ origins, statusOf: readStatus, hostOs: "windows" });
+    expect(gaps).toEqual([]);
+    expect(
+      summarizeGaps(gaps),
+      "本机全绿、没有远端，那张清单却还有话说 ⇒「全绿就整块不出现」仍是死代码",
+    ).toBeNull();
+  });
+
+  it("★ NF2D3 先证会红：把那两格改回「没测过」⇒ 清单又出现，且逐字写着「没测过」", async () => {
+    await localLedgerAfter(threeLocal());
+    // 只把本机那一栏抹掉 = 回到本件之前的行为（那两格从来没人写）。
+    localStorage.clear();
+    expect(readStatus(LOCAL_MACHINE_KEY)).toEqual({});
+    const gaps = computeGaps({
+      origins: [LOCAL_MACHINE_KEY],
+      statusOf: readStatus,
+      hostOs: "windows",
+    });
+    expect(gaps.map((g) => g.facet)).toEqual(["acctIso", "accounts"]);
+    const s = summarizeGaps(gaps);
+    expect(s).not.toBeNull();
+    expect(s, "回到旧行为时它该说「还没测过」").toContain("还没测过");
   });
 });

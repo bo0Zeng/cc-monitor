@@ -143,6 +143,81 @@ describe("computeGaps", () => {
   });
 });
 
+/**
+ * `N-F2` `NF2D3`：**「全绿就整块不出现」那一支从死代码变成走得到。**
+ *
+ * 它此前是死代码，不是因为这个纯函数错了 —— 恰恰相反，`computeGaps` 一直就把本机
+ * 算进去、`notApplicable` 也一直只排掉本机的 `daemon` / `connection`。死的是**写点**：
+ * 本机的 `acctIso` / `accounts` 全仓没有任何 `recordFacet` 生产者
+ * ⇒ 恒 `unknown` ⇒ `summarizeGaps` 恒非 null。
+ *
+ * ⇒ 本族断的是**这个纯函数这一侧的地板**：给一本「本机全绿」的账本，它必须真的
+ * 返回空、`summarizeGaps` 必须真的返回 `null`。写点那一侧由
+ * `accounts-section.vitest.ts` 的 `N-F2` 那一族用**真的一次面板运行**接上。
+ */
+describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消失", () => {
+  /** 本机那条路上真会被写绿的两格（`accounts-section.note()` 的两个 facet）。 */
+  const localGreen: MachineStatus = {
+    acctIso: { kind: "ok", at: T },
+    accounts: { kind: "ok", at: T },
+  };
+
+  it("★ Windows 本机：适用格恰好是那两格，写绿之后 summarizeGaps 返回 null", () => {
+    // 分母（`NF2D3` 的 acceptor 逐字要求，防「一台机器都没有」蒙混）：
+    //   · 机器数 = 1，**不是空清单**；
+    //   · 先断这台机在这个 OS 上的适用格集合非空、且恰好是我们要写绿的那两格。
+    const origins = [LOCAL_MACHINE_KEY];
+    expect(origins.length).toBe(1);
+    const before = computeGaps({ origins, statusOf: none, hostOs: "windows" });
+    expect(
+      before.map((g) => g.facet),
+      "适用格不是这两格 —— 那下面这条 null 就不是本件买来的",
+    ).toEqual(["acctIso", "accounts"]);
+
+    const after = computeGaps({ origins, statusOf: () => localGreen, hostOs: "windows" });
+    expect(after).toEqual([]);
+    expect(summarizeGaps(after)).toBeNull();
+  });
+
+  it("★ 先证会红：把那两格改回「没测过」⇒ 清单又出现，且写的是「还没测过」", () => {
+    const gaps = computeGaps({
+      origins: [LOCAL_MACHINE_KEY],
+      statusOf: none, // = 本件之前的行为：那两格从来没人写
+      hostOs: "windows",
+    });
+    expect(gaps.map((g) => `${g.facet}:${g.kind}`)).toEqual([
+      "acctIso:unknown",
+      "accounts:unknown",
+    ]);
+    const s = summarizeGaps(gaps);
+    expect(s).toBe("2 项还没测过");
+  });
+
+  it("★ 诚实边界：非 Windows 本机还剩 `ccm` 一格 —— 本机的 ccm 至今没有任何写点", () => {
+    // 这一条**不是**在断本件做完了，正相反：它把本件**没**买到的那一格钉在明处。
+    // `machine-card` 那三格（connection / daemon / ccm）的写点全都按远端 host key 记账
+    //（`this.persistedKey ?? hostKey(this.collect())`）⇒ 全仓对 `LOCAL_MACHINE_KEY`
+    // 的 ccm 写点是 **0 个**。于是在 Linux / macOS 上，本机那一栏就算这两格全绿，
+    // 清单里仍会剩一条「本机 · ccm：未测过」。
+    // ⇒ 「整块消失」今天只在 **Windows 本机 + 零远端** 这一格上真的走得到。
+    const rest = computeGaps({
+      origins: [LOCAL_MACHINE_KEY],
+      statusOf: () => localGreen,
+      hostOs: "linux",
+    });
+    expect(rest.map((g) => g.facet)).toEqual(["ccm"]);
+    expect(summarizeGaps(rest)).not.toBeNull();
+    // 把 ccm 也记上就空了 —— 剩下的确实只有它这一格，不是别的没补齐。
+    expect(
+      computeGaps({
+        origins: [LOCAL_MACHINE_KEY],
+        statusOf: () => ({ ...localGreen, ccm: { kind: "ok" as const, at: T } }),
+        hostOs: "linux",
+      }),
+    ).toEqual([]);
+  });
+});
+
 describe("summarizeGaps —— 措辞必须区分「缺」与「没测过」", () => {
   const mk = (kind: Gap["kind"]): Gap => ({
     origin: "aya",
