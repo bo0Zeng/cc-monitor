@@ -191,12 +191,59 @@ pub fn decide(crash_times_ms: &[u64], now_ms: u64, limits: CrashLimits) -> Decis
     Decision::Restart
 }
 
+/// 消费者这一侧观测到的两维证据 —— **只搬观测，不做判断**。
+///
+/// # 为什么这一维要有一个「没观测到」的档〔`K-P3b KP3W2`〕
+///
+/// `supervise_with_stdio` 有两种客户：**接了消费者**的（daemon —— 有人解帧、有人读错误）
+/// 与**没接消费者**的（中转 —— 缺省那支只把 stdout `io::copy` 进 `sink`）。
+/// 后者身上「它跟我们说过话没有」这件事**一次都没有被观测过**。
+///
+/// ⚠ 把它填成「观测到它没说话」是**假证据**，而那正是 2026-07-09 那次事故的判别式：
+/// 「非零退出 **且** 从来没说过话」= 被拒了，两个条件缺一不可。
+/// 用一个没人观测过的值去顶第二个条件，判出来的「被拒了」是编的。
+/// ⇒ 这里给它一个**明写「没观测到」**的档，由宿主层决定拿它怎么办
+/// （今天：daemon 那条路上不该出现它，出现了就出声、不上账）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StreamWitness {
+    /// **这条路上没有消费者**（缺省那支）⇒ 两维都没有观测者。
+    NoConsumer,
+    /// **消费者自己没了**（体内 panic 被兜底外壳接住）⇒ 它手里那两维随它一起没了。
+    ConsumerGone,
+    /// 消费者交回来的两维。类型取自 [`crate::daemon_policy`]（判据那一侧的**同一份**表示）——
+    /// 在这里另造一套平行的 `bool` + `Option<String>` 就是同一个事实的第二份表示，
+    /// 而两份表示会漂。
+    Observed {
+        handshake: crate::daemon_policy::Handshake,
+        reader: crate::daemon_policy::ReaderEnd,
+    },
+}
+
 /// 监护器对外说的话。**调用方决定怎么呈现** —— 本模块不 emit 任何事件（宿主无关）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SuperviseEvent {
-    Started { pid: u32, attempt: u32 },
-    Exited { code: Option<i32>, attempt: u32 },
-    GaveUp { reason: String },
+    Started {
+        pid: u32,
+        attempt: u32,
+    },
+    Exited {
+        code: Option<i32>,
+        attempt: u32,
+        /// ★ `K-P3b`：收尸拿到的**原样退出状态**。
+        ///
+        /// `code` 在**被信号打死**时是 `None`，**信号号已经丢了** —— 而
+        /// 「崩了」那一格恰恰要它（`daemon_policy::exit_status` 逐字打 `signal N`）。
+        /// 取信号号要 `std::os::unix::process::ExitStatusExt`，而
+        /// `the_backend_half_stays_platform_agnostic` 的禁针含 `std::os::unix`
+        /// ⇒ **这一层只能原样把它交上去**，由宿主层取。
+        /// `None` = 连 `wait()` 都没成功（子进程句柄已被别处摘走）。
+        status: Option<std::process::ExitStatus>,
+        /// ★ `K-P3b`：消费者这一侧观测到的两维。见 [`StreamWitness`]。
+        witness: StreamWitness,
+    },
+    GaveUp {
+        reason: String,
+    },
 }
 
 /// 监护句柄。
@@ -270,8 +317,22 @@ pub enum ConsumerExit {
     Early,
 }
 
-pub type StdioSink =
-    Arc<dyn Fn(std::process::ChildStdin, std::process::ChildStdout) -> ConsumerExit + Send + Sync>;
+/// 消费者返回时交回来的**全部**东西〔`K-P3b`〕。
+///
+/// ⚠ [`ConsumerExit`] 一个字节没动：它回答的是「`supervise` 要不要补一刀」，
+/// 与「这次死亡的证据是什么」是**两件事**。把两件事塞进同一个枚举，
+/// 就是本工作区最贵的那一类病（一个值装了两件事）。⇒ 并排放两个字段。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsumerReport {
+    /// `supervise` 要不要补一刀。
+    pub exit: ConsumerExit,
+    /// 这一命里消费者观测到的两维证据。
+    pub witness: StreamWitness,
+}
+
+pub type StdioSink = Arc<
+    dyn Fn(std::process::ChildStdin, std::process::ChildStdout) -> ConsumerReport + Send + Sync,
+>;
 
 pub fn supervise(
     bin: PathBuf,
@@ -387,17 +448,27 @@ pub fn supervise_with_stdio(
             // `externalBin`）—— **离生效只差一个配置项**，而 `e2e/local-backend-supervise.sh`
             // 那条真进程路径现在就在跑它。
             // ⇒ `io::copy` 到 `io::sink()`：**EOF 语义完全不变**，但一个字节都不留。
-            let exit_reason = match (&stdio, out, in_) {
+            let report = match (&stdio, out, in_) {
                 // P2：消费者**负责把 stdout 读到底** —— 它返回就等于流结束。
                 // B4 之后它还要说清**为什么**返回（EOF 还是早退），见 `ConsumerExit`。
+                // `K-P3b` 之后它还要交回**观测到的两维证据**，见 `StreamWitness`。
                 (Some(f), Some(o), Some(i)) => f(i, o),
                 // 缺省：F16 那条 —— EOF 语义不变，一个字节都不留。`copy` 返回即 EOF。
+                // ⚠ `K-P3b`：这一支**没有消费者** ⇒ 「它说过话没有」一次都没被观测过。
+                //   如实报 `NoConsumer`，不拿「观测到它没说话」去顶（见 `StreamWitness` 头注）。
                 (_, Some(mut o), _) => {
                     let _ = std::io::copy(&mut o, &mut std::io::sink());
-                    ConsumerExit::Eof
+                    ConsumerReport {
+                        exit: ConsumerExit::Eof,
+                        witness: StreamWitness::NoConsumer,
+                    }
                 }
-                (_, None, _) => ConsumerExit::Eof,
+                (_, None, _) => ConsumerReport {
+                    exit: ConsumerExit::Eof,
+                    witness: StreamWitness::NoConsumer,
+                },
             };
+            let exit_reason = report.exit;
             // EOF 之后收尸。
             //
             // ⚠ **F16 修**：原来是 `child.lock().ok().and_then(|mut g| … c.wait())` ——
@@ -431,12 +502,17 @@ pub fn supervise_with_stdio(
                 }
                 g.take()
             };
-            let code = reaped
-                .as_mut()
-                .and_then(|c| c.wait().ok())
-                .and_then(|s| s.code());
+            // ★ `K-P3b`：`status` **原样**留着交上去 —— `code()` 在被信号打死时是 `None`，
+            //   而信号号只有宿主层取得到（`ExitStatusExt` 在本层的禁针里）。
+            let status = reaped.as_mut().and_then(|c| c.wait().ok());
+            let code = status.and_then(|s| s.code());
             pid.store(0, Ordering::SeqCst);
-            on_event(SuperviseEvent::Exited { code, attempt });
+            on_event(SuperviseEvent::Exited {
+                code,
+                attempt,
+                status,
+                witness: report.witness,
+            });
 
             if stopping.load(Ordering::SeqCst) {
                 return;
@@ -810,7 +886,7 @@ fn absorb_local_frame(frame: &crate::ssh_source::InboundFrame) {
 pub(crate) fn local_stdio_consumer(
     stdin: std::process::ChildStdin,
     stdout: std::process::ChildStdout,
-) -> ConsumerExit {
+) -> ConsumerReport {
     use std::io::BufRead;
 
     let stdin =
@@ -822,14 +898,30 @@ pub(crate) fn local_stdio_consumer(
                 // 转换失败 ⇒ 写不出去，但**stdout 还得读到底**（那是判死信号）。
                 tracing::warn!("本机 stdin 转 tokio 失败（{e}）；入方向通道不登记，仍读完 stdout");
                 let mut o = stdout;
-                let _ = std::io::copy(&mut o, &mut std::io::sink());
-                return ConsumerExit::Eof;
+                let copied = std::io::copy(&mut o, &mut std::io::sink());
+                // ⚠ `K-P3b`：这一支两维都**观测得到**，如实交 ——
+                //   「一句 hello 都没解过」是真的（这条路根本没进解帧循环），
+                //   而读端怎么结束的就是 `copy` 的返回值。
+                return ConsumerReport {
+                    exit: ConsumerExit::Eof,
+                    witness: StreamWitness::Observed {
+                        handshake: crate::daemon_policy::Handshake::NeverSpoke,
+                        reader: match copied {
+                            Ok(_) => crate::daemon_policy::ReaderEnd::CleanEof,
+                            Err(e) => crate::daemon_policy::ReaderEnd::Broken(e.to_string()),
+                        },
+                    },
+                };
             }
         };
     let mut parked = Some(crate::inbound_client::park_owned_writer(stdin));
     // 留一份副本给 `unregister` —— 它要 `&Arc` 比对身份（「不摘别人的 client」）。
     let mut registered: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
     let mut early = false;
+    // ★ `K-P3b`：**我们这一侧的读端怎么结束的** —— 观测在这里，判在宿主层。
+    //   初值是「干净 EOF」，而它**只在真的读到 EOF 时才成立**：下面那条 `Err` 支
+    //   会把它换成 `Broken`，两个出口各写各的，没有第三条路能带着初值出去。
+    let mut reader_end = crate::daemon_policy::ReaderEnd::CleanEof;
 
     let mut rd = std::io::BufReader::new(stdout);
     loop {
@@ -840,6 +932,9 @@ pub(crate) fn local_stdio_consumer(
                 // 真读错误（不是坏字节 —— 那条已被 `from_utf8_lossy` 吸收）。
                 // ⚠ **子进程可能还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。
                 tracing::warn!("本机后端 stdout 读错误（{e}）；按早退处理");
+                // ★ `K-P3b`：那句错**原样**带上去 —— 账上那一行要它
+                //   （`B1` 逐字：「读坏了」说的是我们这一侧，**不算它崩了一次**）。
+                reader_end = crate::daemon_policy::ReaderEnd::Broken(e.to_string());
                 early = true;
                 break;
             }
@@ -881,6 +976,14 @@ pub(crate) fn local_stdio_consumer(
         );
     }
 
+    // ★ `K-P3b`：**「它跟我们说过话没有」的唯一变真处就是上面那一行 `registered = Some(client)`**
+    //   —— 而那一行只在 `DaemonHello::from_hello_frame` 给出见证之后才跑得到。
+    //   ⇒ 这一维是**观测**，不是默认值：把它在这里读一次，别在别处猜。
+    let handshake = if registered.is_some() {
+        crate::daemon_policy::Handshake::Spoke
+    } else {
+        crate::daemon_policy::Handshake::NeverSpoke
+    };
     // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。
     if let Some(mine) = registered {
         crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &mine);
@@ -892,10 +995,16 @@ pub(crate) fn local_stdio_consumer(
     // 成了「tmux 还在」的**陈旧证据**：`find_tmux_origin_for_sid` 仍返回 `Some(<local>)`
     // ⇒ `classify_removed(Some(_), Gone)` = `Idle` = 那个「永远消不掉、也 attach 不上的灰点」。
     crate::ssh_source::forget_tmux_raw(crate::inbound_client::LOCAL_ORIGIN);
-    if early {
-        ConsumerExit::Early
-    } else {
-        ConsumerExit::Eof
+    ConsumerReport {
+        exit: if early {
+            ConsumerExit::Early
+        } else {
+            ConsumerExit::Eof
+        },
+        witness: StreamWitness::Observed {
+            handshake,
+            reader: reader_end,
+        },
     }
 }
 
@@ -919,12 +1028,12 @@ pub(crate) fn local_stdio_consumer(
 fn local_stdio_consumer_guarded(
     stdin: std::process::ChildStdin,
     stdout: std::process::ChildStdout,
-) -> ConsumerExit {
+) -> ConsumerReport {
     let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
         local_stdio_consumer(stdin, stdout)
     }));
-    if let Ok(reason) = r {
-        return reason;
+    if let Ok(report) = r {
+        return report;
     }
     tracing::error!(
         "本机 stdio 消费者 panic —— 已兜住并按流结束处理。\n\
@@ -932,7 +1041,13 @@ fn local_stdio_consumer_guarded(
          daemon 还活着但没人读它的 stdout ⇒ 管道填满冻死，而 UI 显示一切正常。"
     );
     // panic 时**子进程多半还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。
-    ConsumerExit::Early
+    // ★ `K-P3b`：那两维**随 panic 一起没了** —— `catch_unwind` 拿不回它体内的局部状态。
+    //   如实报 `ConsumerGone`，不替它编一个 handshake：编出来的那个值会被
+    //   `verdict` 当成 2026-07-09 判别式的第二个条件用。**如实登记的降级，不是漏洞。**
+    ConsumerReport {
+        exit: ConsumerExit::Early,
+        witness: StreamWitness::ConsumerGone,
+    }
 }
 
 /// P2z（`control-parity` 的定框 C10）：**生产入口的自释放版** —— exe 旁边找不到 sidecar 时，
@@ -2779,7 +2894,27 @@ mod tests {
         let mut saw_exit = None;
         for _ in 0..6 {
             match rx.recv_timeout(std::time::Duration::from_secs(20)) {
-                Ok(SuperviseEvent::Exited { code, .. }) => {
+                // ⚠ `K-P3b`：新字段**逐个点名**，不用 `..` 把它们静默掉 ——
+                //   那正是「加了一维而没人回来看一眼」的入口。
+                //   这一跑的形状：缺省那支（没有消费者）⇒ `witness` 必是 `NoConsumer`；
+                //   `sh -c '…; exit 3'` 正常退出 ⇒ `status` 有值且退出码是 3。
+                Ok(SuperviseEvent::Exited {
+                    code,
+                    attempt: _,
+                    status,
+                    witness,
+                }) => {
+                    assert_eq!(
+                        witness,
+                        StreamWitness::NoConsumer,
+                        "这一跑没接消费者，`witness` 却不是 `NoConsumer` —— \
+                         那意味着有人替一条**没有观测者**的路填了两维证据"
+                    );
+                    assert_eq!(
+                        status.and_then(|s| s.code()),
+                        code,
+                        "原样交上来的 `status` 与 `code` 对不上 —— 那两个字段说的该是同一件事"
+                    );
                     saw_exit = Some(code);
                     break;
                 }
