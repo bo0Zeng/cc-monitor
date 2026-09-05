@@ -1,0 +1,58 @@
+== 环境 ==
+tmux 3.4
+locale -a: C C.utf8 POSIX 
+
+台子：会话 kr12，cwd=/tmp/kr12dv/文档/proj，@ccm_sid=cc-deadval1
+
+############ ① 改之前（今天的生产写法，POSIX 客户端）############
+S1 gate.rs list_sessions   tmux list-sessions -F ...
+  段数=1  真TAB=无  ⇒ kr12_$0_cc-deadval1
+S2 gate.rs probe           tmux display-message -p -t ...
+  段数=1  真TAB=无  ⇒ $0_cc-deadval1_1
+S3 watcher run_tmux_ls     sh -c 'exec timeout -s KILL 5 tmux ls -F ...'（有 timeout 那条分支）
+  段数=1  真TAB=无  ⇒ kr12_/tmp/kr12dv/____/proj_bash_0_1_cc-deadval1
+S3' 同上，**没有 timeout 那条分支**（:377 —— 漏了它在装了 timeout 的机器上永远看不见）
+  段数=1  真TAB=无  ⇒ kr12_/tmp/kr12dv/____/proj_bash_0_1_cc-deadval1
+S4 watcher query_tmux_server sh -c 'exec tmux display-message -p ...'
+  段数=1  真TAB=无  ⇒ 15_/tmp/kr12dv/sock
+S5 tmux.rs list_remote_tmux（生产命令串逐字，只多一个 -S 私有 socket）
+  段数=1  真TAB=无  ⇒ kr12_/tmp/kr12dv/____/proj_bash_0_1_cc-deadval1
+S6 tmux.rs build_guarded_tmux_cmd 里那条取值 display-message
+  段数=1  真TAB=无  ⇒ 1_cc-deadval1
+
+  —— 字节级复核（S5 那行 od -c，头 3 行）——
+0000000   k   r   1   2   _   /   t   m   p   /   k   r   1   2   d   v
+0000020   /   _   _   _   _   /   p   r   o   j   _   b   a   s   h   _
+0000040   0   _   1   _   c   c   -   d   e   a   d   v   a   l   1  \n
+
+############ ② 改之后（本拍落的写法，同一台 server、同一个 POSIX 客户端）############
+S1 gate.rs   -u 在子命令之前
+  段数=3  真TAB=有  ⇒ kr12@$0@cc-deadval1
+S2 gate.rs   -u 在子命令之前
+  段数=3  真TAB=有  ⇒ $0@cc-deadval1@1
+S3 watcher   LC_ALL=C.UTF-8 挂在 sh 上（有 timeout 分支）
+  段数=6  真TAB=有  ⇒ kr12@/tmp/kr12dv/文档/proj@bash@0@1@cc-deadval1
+S3' watcher  **同一行 env** 也盖住了没有 timeout 那条分支 ← 这就是不用 -u 的全部理由
+  段数=6  真TAB=有  ⇒ kr12@/tmp/kr12dv/文档/proj@bash@0@1@cc-deadval1
+S4 watcher   LC_ALL=C.UTF-8 挂在 sh 上
+  段数=2  真TAB=有  ⇒ 15@/tmp/kr12dv/sock
+S5 tmux.rs   tmux -u ls -F ...
+  段数=6  真TAB=有  ⇒ kr12@/tmp/kr12dv/文档/proj@bash@0@1@cc-deadval1
+S6 tmux.rs   tmux -u display-message -p -t ...
+  段数=2  真TAB=有  ⇒ 1@cc-deadval1
+
+  —— 字节级复核（S5 那行 od -c，头 3 行）——
+0000000   k   r   1   2  \t   /   t   m   p   /   k   r   1   2   d   v
+0000020   / 346 226 207 346 241 243   /   p   r   o   j  \t   b   a   s
+0000040   h  \t   0  \t   1  \t   c   c   -   d   e   a   d   v   a   l
+
+############ ③ 反向死值：把 -u 放错位置，必须**响**（不是静默）############
+  tmux ls -u -F ...            rc=1 out=[command list-sessions: unknown flag -u]
+  tmux display-message -u -p   rc=1 out=[command display-message: unknown flag -u]
+############ ④ LC_ALL 的两档静默失效（件文件 §5.2 的 (a) 档，实测复核）############
+  段数=1  真TAB=无  ⇒ kr12_/tmp/kr12dv/____/proj_bash_0_1_cc-deadval1
+  ↑ LC_ALL 设了但是**空串** ⇒ 落回 LC_CTYPE/LANG ⇒ 仍然脏（写 LC_ALL=${VAR} 而 VAR 未定义就是这一档）
+  段数=6  真TAB=有  ⇒ kr12@/tmp/kr12dv/文档/proj@bash@0@1@cc-deadval1
+  ↑ locale **根本不存在**但长相带 UTF-8 ⇒ 干净（tmux 不问 glibc，只做子串匹配）
+
+== 完 ==
