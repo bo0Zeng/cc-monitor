@@ -172,7 +172,9 @@ mod tests {
     ///   `kill`（`899538a`，08-04）。`git merge-base --is-ancestor` 三条全 YES。
     ///
     /// ⇒ **加了整整一个命令面，一次 bump 都没被逼出来**，因为指纹结构上看不见它。
-    /// 而 `sftp.rs::deploy_decision` 判「远端要不要换 daemon」的**唯一**判据就是 build_id 字符串
+    /// 而 `sftp.rs::deploy_decision` 判「远端要不要换 daemon」时，**版本那一维**的唯一判据就是 build_id 字符串
+    /// （〔K-W4 09-04〕daemon 那条部署路今天走 `deploy_decision_at`，另加了「落点文件在不在」这一维；
+    /// 本句的实质警告不变：**stale 但文件在**的 daemon 仍只凭 build_id 判换不换）
     /// ⇒ 已部署的旧 daemon 报同一个 id ⇒ 判 `Skip` ⇒ **整个控制面在远端静默不可用**。
     ///
     /// # 这不只是结构缺陷，本机实测到了它的后果
