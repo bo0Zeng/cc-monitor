@@ -360,6 +360,72 @@ pub(crate) fn admit_destructive(name: &str, target: &str) -> Result<String, CmdE
 mod tests {
     use super::*;
 
+    /// ★★ **K-R12：本模块两处起 tmux 的地方，`-u` 必须在子命令之前 —— 一处都不许漏。**
+    ///
+    /// # 为什么这一条只能是「扫源码」，以及它守不住什么
+    ///
+    /// 本模块的两处是 **argv 直传**（`Command::new("tmux")`），没有 builder 能把命令行取回来，
+    /// 也没有办法在不污染整个测试进程 `PATH` 的前提下把它指向一个假 tmux
+    /// （`Command::new` 走进程级 `PATH`，`std::env::set_var` 会波及并行跑的别的测试）。
+    /// ⇒ **行为那一半的死值不在 cargo 里**，在 `evidence/K-R12-deathvalue.md`：
+    /// 同样这两条 argv 对真 tmux 3.4 私有 socket 打过，改前 `段数=1`、改后 `段数=3`。
+    ///
+    /// 🔴 **本条守的是「别漏、别搬错位置」，不是「它真的生效了」**（「盘上有 ≠ 被走到」）。
+    /// 位置这一维值得单独钉：`-u` 放到子命令**后面**是 `rc=1 + unknown flag -u`
+    /// （实测），而本模块两处都**刻意不看退出码** ⇒ 那个响错在这里会退化成
+    /// 「一个会话都没有」/「探不到」，**又变回一次静默失效**。
+    #[test]
+    fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
+        let prod = crate::guard_support::production_code(include_str!("gate.rs"));
+        crate::guard_support::assert_no_test_code("control/gate.rs", &prod);
+
+        let starts = prod.matches("Command::new(\"tmux\")").count();
+        assert_eq!(
+            starts, 2,
+            "本模块起 tmux 的处数变了（实得 {starts}，登记 2）—— 新增的那一处也要带 `-u`，\
+             并把这条判据的数一起改。**这张表不是豁免清单。**"
+        );
+        for verb in ["list-sessions", "display-message"] {
+            let want = format!(".args([UTF8_CLIENT_FLAG, \"{verb}\"");
+            assert!(
+                prod.contains(&want),
+                "`{verb}` 那一处没有把 `-u` 放在子命令**之前**（找不到 `{want}`）。\
+                 放到后面是 rc=1 的响错，而本模块不看退出码 ⇒ 会退化成又一次静默失效。"
+            );
+        }
+        // 反向：不许有人把 `-u` 塞到子命令后面（那是 rc=1，且本模块看不见）。
+        for bad in ["\"list-sessions\", UTF8_CLIENT_FLAG", "\"display-message\", UTF8_CLIENT_FLAG"] {
+            assert!(!prod.contains(bad), "`-u` 被放到了子命令后面：{bad}");
+        }
+    }
+
+    /// ★★ **K-R12 `J1` 死值验（本模块这一侧）：段数下溢必须红。**
+    ///
+    /// 死值取自 `evidence/K-R12-deathvalue.md` ①：真 tmux 3.4 + POSIX 客户端下，
+    /// `list-sessions` 那三列打出来是 `kr12_$0_cc-deadval1`、
+    /// `display-message` 那三列打出来是 `$0_cc-deadval1_1` —— **TAB 全没了，段数 1**。
+    ///
+    /// ⚠ 过溢那一档**不在这里**：`PROBE_FMT`/`LIST_FMT` 的列里没有路径，
+    /// 三列的取值域都排除真 TAB ⇒ 合法内容推不高段数（理由见 `PROBE_FMT_FIELDS` 头注）。
+    /// 但判据仍写成「下溢」而不是「不等于」，与另外两处同一口径 —— **口径一致本身是要买的东西**。
+    #[test]
+    fn the_underflow_predicate_catches_the_real_dirty_bytes() {
+        assert!(
+            tab_underflow("kr12_$0_cc-deadval1", 3),
+            "真 tmux 打出来的脏字节必须判下溢"
+        );
+        assert!(tab_underflow("$0_cc-deadval1_1", 3), "同上（probe 那一条）");
+        assert!(!tab_underflow("kr12\t$0\tcc-deadval1", 3), "干净的三段必须放行");
+        assert!(
+            !tab_underflow("$0\t\t1", 3),
+            "🔴 `@ccm_sid` **没设**是合法的（中间那段是空串）—— 它与「拆不出」是两件事，不许判红"
+        );
+        assert!(
+            !tab_underflow("a\tb\tc\td", 3),
+            "过溢不许红（口径与另外两处一致：判的是下溢，不是不等于）"
+        );
+    }
+
     /// 判定表的**唯一真相源**，三条轨道各自独立读它（见文件头注）。
     const GOLDEN: &str =
         include_str!("../../../src-tauri/src/backend/control/fixtures/gate2-golden.tsv");

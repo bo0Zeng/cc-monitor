@@ -1345,6 +1345,114 @@ mod tests {
         s.trim().to_string()
     }
 
+    /// ★★ **K-R12：跨 SSH 的两处都要 `-u`，且必须在子命令之前。**
+    ///
+    /// `build_guarded_tmux_cmd` 那一处拿得到**真的生产串**（不是扫源码），
+    /// `list_remote_tmux` 那一处的串拼在 `async fn` 里、外面取不到 ⇒ 只能扫源码，如实标注。
+    ///
+    /// 位置这一维必须单独钉：`-u` 放到子命令**后面**实测是
+    /// `rc=1 + command display-message: unknown flag -u`，而这条串里 `display-message`
+    /// 的 stderr 被 `2>/dev/null` 吞掉、rc 也不看 ⇒ `$info` 变空 ⇒ 退化成 `CCM_NO_SESSION`。
+    /// **一个响错会在这里被压成一句「会话不存在」。**
+    #[test]
+    fn both_cross_ssh_tmux_reads_ask_for_a_utf8_client_before_the_subcommand() {
+        // ① 真生产串（门那一条）
+        for cmd in [
+            build_send_keys_remote_cmd("e2e-custom", "CCMPROBE", true).unwrap(),
+            build_kill_session_cmd("e2e-custom").unwrap(),
+        ] {
+            assert!(
+                cmd.contains("tmux -u display-message -p -t "),
+                "取值那条 display-message 没带 `-u`（或位置不对）：{cmd}"
+            );
+            assert!(
+                !cmd.contains("display-message -u"),
+                "`-u` 被放到了子命令后面 —— 那是 rc=1，而这条串把 stderr 和 rc 都丢了：{cmd}"
+            );
+        }
+
+        // ② `list_remote_tmux` 那条：扫源码。**盘上有 ≠ 被走到**，行为那一半的死值在
+        //    `evidence/K-R12-deathvalue.md` ②/S5（真 tmux 3.4，改前段数 1 / 改后段数 6）。
+        let prod = guard_core::production_code(include_str!("tmux.rs"));
+        guard_core::assert_no_test_code("tmux.rs", &prod);
+        assert!(
+            prod.contains("tmux {UTF8_CLIENT_FLAG} ls -F"),
+            "`list_remote_tmux` 的命令串没有把 `-u` 放在 `ls` 之前"
+        );
+        assert!(
+            !prod.contains("ls {UTF8_CLIENT_FLAG}") && !prod.contains("ls -u"),
+            "`-u` 被放到了 `ls` 后面（实测 rc=1 + unknown flag）"
+        );
+    }
+
+    /// ★★ **K-R12 × K-R23 共存**：一条串上**两层同时在**，谁也没把谁挤掉。
+    ///
+    /// | 层 | 治什么 | 在串里长什么样 |
+    /// |---|---|---|
+    /// | `K-R12`（本件） | **为什么会脏** —— 让远端客户端按 UTF-8 输出，TAB 一开始就不会变 `_` | `tmux -u display-message …` |
+    /// | `K-R23` | **脏了以后怎么办** —— shell 原生拆 + 拆不出就拒 + 报的话不一样 | `${info%%$tab*}` / `CCM_GUARD_UNPARSABLE` |
+    ///
+    /// 🔴 缺一条都不行，理由写在 `build_guarded_tmux_cmd` 头注。
+    /// 而「K-R23 那道门今天还真的会拒」由
+    /// [`a_dirty_channel_that_lost_the_tab_must_not_open_the_door`] 喂脏输入真跑着钉 ——
+    /// **本条只钉两层同时在盘上，别把它读成行为证明。**
+    #[test]
+    fn the_prevention_layer_and_the_door_layer_coexist_on_the_same_command() {
+        let sk = build_send_keys_remote_cmd("e2e-custom", "CCMPROBE", true).unwrap();
+        assert!(sk.contains("tmux -u display-message"), "K-R12 那层不在了：{sk}");
+        assert!(
+            sk.contains("w=\"${info%%$tab*}\"") && sk.contains("sid=\"${info#*$tab}\""),
+            "K-R23 的 shell 原生拆被动过了：{sk}"
+        );
+        assert!(
+            sk.contains("CCM_GUARD_UNPARSABLE"),
+            "K-R23 的「拆不出」读数没了：{sk}"
+        );
+        assert!(
+            !sk.contains("cut -f"),
+            "K-R23 明确把 `cut` 去掉了（它无分隔符时原样吐整行 ⇒ fail-open），不许回来：{sk}"
+        );
+        // `-u` 必须落在 `command -v tmux` 那道门**之后** ⇒ 「远端没装 tmux」那一档零变化。
+        let gate_at = sk.find("command -v tmux").expect("门控没了");
+        let u_at = sk.find("tmux -u").expect("K-R12 那层不在了");
+        assert!(gate_at < u_at, "`-u` 跑到了 `command -v tmux` 门控前面：{sk}");
+    }
+
+    /// ★★ **K-R12 `J1` 死值验（monitor 这一侧）：段数下溢必须被判废。**
+    ///
+    /// 死值取自 `evidence/K-R12-deathvalue.md` ①/S5：真 tmux 3.4 + POSIX 客户端，
+    /// 六列塌成 1 段，连 `文档` 都按显示宽度变成了 `____`。
+    ///
+    /// 这一条同时把 `§5.4` 点名的那条**误伤**钉成一个可见的读数：**过溢的行今天照样被丢掉**。
+    /// 处置本拍**刻意没改**（理由见 [`parse_tmux_ls`] 头注），所以这里断言的是**现状**——
+    /// 哪天有人去修那条误伤，本条会红，那正是它该红的时候。
+    #[test]
+    fn a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today() {
+        const DIRTY: &str = "kr12_/tmp/kr12dv/____/proj_bash_0_1_cc-deadval1";
+        const CLEAN: &str = "kr12\t/tmp/kr12dv/文档/proj\tbash\t0\t1\tcc-deadval1";
+        const OVERFLOW: &str = "kr12\t/tmp/a\tb\tbash\t0\t1\tcc-deadval1";
+
+        assert!(tmux_tab_underflow(DIRTY, TMUX_LS_FMT_FIELDS), "真脏字节必须判下溢");
+        assert!(!tmux_tab_underflow(CLEAN, TMUX_LS_FMT_FIELDS), "干净六段不许红");
+        assert!(
+            !tmux_tab_underflow(OVERFLOW, TMUX_LS_FMT_FIELDS),
+            "过溢是合法内容 ⇒ 判据不许红（这一格就是「下溢」而不是「不等于 6」的死值）"
+        );
+
+        assert!(parse_tmux_ls(DIRTY).is_empty(), "脏行不许进结果");
+        let ok = parse_tmux_ls(CLEAN);
+        assert_eq!(ok.len(), 1, "干净行必须解析出来（正对照）");
+        assert_eq!(ok[0].name, "kr12");
+        assert_eq!(ok[0].path, "/tmp/kr12dv/文档/proj");
+        assert_eq!(ok[0].sid.as_deref(), Some("cc-deadval1"));
+        assert!(
+            parse_tmux_ls(OVERFLOW).is_empty(),
+            "⚠ 现状：过溢的行**今天照样被整行丢掉**（`f.len() != 6`）—— \
+             这是 K-R12 §5.4 点名的误伤，本拍只让它出声、没有改处置。\
+             修它的那一拍会让本条红，那是对的。"
+        );
+    }
+
     /// ★★ **K-R23：通道脏（TAB 没了）的时候，这道门必须拒绝。**
     ///
     /// # 病的形状（09-04 现打，本条是它的墓碑）

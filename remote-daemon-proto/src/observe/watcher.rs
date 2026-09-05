@@ -3029,6 +3029,89 @@ mod tests {
         assert_eq!(classify_tmux_probe(None, ""), TmuxObservation::Unobservable);
     }
 
+    /// ★★ **K-R12 `J1` 死值验：让段数真的下溢一次，它必须红。**
+    ///
+    /// # 这一条钉的到底是什么
+    ///
+    /// 不是「有没有那行 `if`」，是**下溢那一档的处置**。今天（改之前）rc=0 + 非空 ⇒ 一律
+    /// `Sessions(raw)`，于是脏输入会被**当成好数据往下游送**，而下游的伤害是最大的那一档：
+    /// [`session_names`] 只取第 1 段、永远取得到 ⇒ 它把**整行**当会话名
+    /// ⇒ [`diff_closed`] 下一轮把**所有真会话**算成「消失了」⇒ 一批活着的会话被 retire。
+    /// ⇒ 所以本条第二段量的是**那个后果**，不是那个分支。
+    ///
+    /// # 死值从哪来（不是我编的）
+    ///
+    /// `DIRTY` 是 09-04 在**零挂载容器**里对真 tmux 3.4 私有 socket 打出来的字节
+    /// （`evidence/K-R12-deathvalue.md` ①/S5，`od -c` 逐字节复核）：POSIX 客户端下
+    /// 六个真 TAB 全变 `_`，连 `文档`（3 字节/字）都按**显示宽度**变成了 `____`。
+    /// `CLEAN` 是同一台 server、同一条命令、只加了本拍那条口径之后的输出（同文件 ②/S5）。
+    ///
+    /// # 正对照不能省 —— 两个方向都要钉
+    ///
+    /// 只钉「脏的被拒」的话，把 `classify` 焊死成「永远 Unobservable」也能绿。所以：
+    /// ① 干净的 6 段必须照常 `Sessions`；② **7 段（过溢）也必须照常 `Sessions`** ——
+    /// 那是**合法内容**（cwd 里带真 TAB 的会话，实测切出 7 段），
+    /// 判据写成 `!= 6` 就会在这里误伤。**这一格就是「下溢而不是不等于」那个选择的死值。**
+    #[test]
+    fn a_dirty_tmux_channel_is_unobservable_never_sessions() {
+        // 真 tmux 3.4 + POSIX 客户端打出来的字节（见头注）。六列塌成 1 段。
+        const DIRTY: &str = "kr12_/tmp/kr12dv/____/proj_bash_0_1_cc-deadval1\n";
+        // 同一台 server、加了 `-u`/`LC_ALL` 之后的同一行。
+        const CLEAN: &str = "kr12\t/tmp/kr12dv/文档/proj\tbash\t0\t1\tcc-deadval1\n";
+        // 合法的**过溢**：cwd 里有一个真 TAB ⇒ 7 段。`!= 6` 会误伤它，`< 6` 不会。
+        const OVERFLOW: &str = "kr12\t/tmp/a\tb\tbash\t0\t1\tcc-deadval1\n";
+
+        assert_eq!(
+            classify_tmux_probe(Some(0), DIRTY),
+            TmuxObservation::Unobservable,
+            "通道脏（段数下溢）必须判观测无效；判成 Sessions 就是把垃圾当好数据送下游"
+        );
+        assert!(
+            matches!(classify_tmux_probe(Some(0), CLEAN), TmuxObservation::Sessions(ref s) if s == CLEAN),
+            "正对照：干净的六段必须照常放行，否则买到的是「门坏了」而不是「门对了」"
+        );
+        assert!(
+            matches!(classify_tmux_probe(Some(0), OVERFLOW), TmuxObservation::Sessions(_)),
+            "过溢是**合法内容**（cwd 里带真 TAB）⇒ 必须放行。这一格钉的是「下溢」而不是「不等于 6」"
+        );
+
+        // ── 第二段：量**后果**，不是量分支 ────────────────────────────────
+        // 先用一份干净观测建立快照，再喂一份脏的，断言**一个会话都没被报死**。
+        let mut prev = None;
+        let first = "s1\t/p\tclaude\t1\t1\tsid-a\ns2\t/q\tbash\t0\t1\t\n";
+        let closed = diff_closed(&mut prev, &classify_tmux_probe(Some(0), first));
+        assert!(closed.is_empty(), "第一次观测不该报任何死亡");
+        assert_eq!(prev.as_ref().map(|s| s.len()), Some(2), "快照该记住两个会话");
+
+        let dirty_two = "s1_/p_claude_1_1_sid-a\ns2_/q_bash_0_1_\n";
+        let closed = diff_closed(&mut prev, &classify_tmux_probe(Some(0), dirty_two));
+        assert!(
+            closed.is_empty(),
+            "🔴 通道一脏就把**全部活会话**报成消失 —— 这才是本件真正的伤害。实得：{closed:?}"
+        );
+        assert_eq!(
+            prev.as_ref().map(|s| s.len()),
+            Some(2),
+            "观测无效时快照必须原样保留，等下一次成功观测"
+        );
+    }
+
+    /// K-R12 `J1` 的判据本体：**下溢红、恰好绿、过溢绿**。
+    ///
+    /// 与上一条分开写，是因为上一条量的是「处置对不对」，这一条量的是「那条不等号的方向」。
+    #[test]
+    fn the_underflow_predicate_only_fires_downward() {
+        assert!(tmux_tab_underflow("一段而已", TMUX_LS_FMT_FIELDS), "1 < 6 ⇒ 下溢");
+        assert!(tmux_tab_underflow("a\tb\tc\td\te", TMUX_LS_FMT_FIELDS), "5 < 6 ⇒ 下溢");
+        assert!(!tmux_tab_underflow("a\tb\tc\td\te\tf", TMUX_LS_FMT_FIELDS), "恰好 6 ⇒ 不红");
+        assert!(
+            !tmux_tab_underflow("a\tb\tc\td\te\tf\tg", TMUX_LS_FMT_FIELDS),
+            "7 段是合法内容（路径里有真 TAB）⇒ **不许红**，否则就成了 `!= 6` 那个误伤"
+        );
+        assert!(tmux_tab_underflow("15_/tmp/x/sock", 2), "query_tmux_server 那条 N=2 的同理");
+        assert!(!tmux_tab_underflow("15\t/tmp/x/sock", 2));
+    }
+
     /// **`raw` 载荷与 P1 之前逐字节一致**——旧 monitor 行为零变化的那条保证。
     /// 有会话时 `observation` 必须**省略**（热路径不加字节）。
     #[test]
