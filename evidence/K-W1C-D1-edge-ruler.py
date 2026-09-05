@@ -76,20 +76,17 @@ EDGES = {
     },
     (
         "src-tauri/src/lib.rs",
-        "forget",
-        "cache_for_emitter.forget(&sid)",
+        "apply_local_removal",
+        "cache_for_emitter.apply_local_removal(&removed)",
     ): {
         "kind": "忘",
         "fact": "本机 diff 报 removed（Gone 或 Superseded）",
         "cache": "SidHwndCache",
-        "acceptor": (),
-        "pending": (
-            "PM 把这一行换成 `cache_for_emitter.apply_local_removal(&removed);`",
-            (
-                "a_local_session_that_is_gone_gets_forgotten_in_memory_and_on_disk",
-                "a_local_session_that_was_superseded_gets_forgotten_too",
-            ),
+        "acceptor": (
+            "a_local_session_that_is_gone_gets_forgotten_in_memory_and_on_disk",
+            "a_local_session_that_was_superseded_gets_forgotten_too",
         ),
+        "pending": None,
     },
     (
         "src-tauri/src/lib.rs",
@@ -104,20 +101,20 @@ EDGES = {
     },
     (
         "src-tauri/src/lib.rs",
-        "forget",
-        "remote_cache_for_emitter.forget(&sid)",
+        "apply_remote_disposition",
+        "remote_cache_for_emitter.apply_remote_disposition(&sid, &disposition)",
     ): {
-        "kind": "忘",
-        "fact": "远端 daemon 帧报 removed，且 classify_removed 裁 Archive",
+        "kind": "忘 / 不忘（按分流裁决）",
+        # ⚠ 这条边**盖住两种归宿**：`Archive` ⇒ 忘 · `Idle` ⇒ 不忘。`lib.rs` 这一句是
+        # **无条件**调用的，「哪种要忘」整个住在 `apply_remote_disposition` 里 ——
+        # 那正是本波要买的东西（判断只有一个住址，且那个住址测得动）。
+        "fact": "远端 daemon 帧报 removed，classify_removed 的裁决到达",
         "cache": "RemoteHwndCache",
-        "acceptor": (),
-        "pending": (
-            "PM 把这一行挪成 `remote_cache_for_emitter.apply_remote_disposition(&sid, &disposition);`",
-            (
-                "a_remote_session_classified_as_archive_gets_forgotten",
-                "a_remote_session_that_only_went_idle_keeps_its_binding",
-            ),
+        "acceptor": (
+            "a_remote_session_classified_as_archive_gets_forgotten",
+            "a_remote_session_that_only_went_idle_keeps_its_binding",
         ),
+        "pending": None,
     },
     (
         "src-tauri/src/lib.rs",
@@ -148,10 +145,12 @@ EDGES = {
 
 # 写方法里**今天生产段零调用点**的那些：必须逐条登记为「入口尚未接线」，
 # 否则一个白抽出来、谁也不调的入口会在读数里静默消失。
-PENDING_ENTRIES = {
-    "apply_local_removal": "本波新抽的本机入口；接线那一行住 `lib.rs`，不在本波写区 ⇒ 归 PM",
-    "apply_remote_disposition": "本波新抽的远端入口；同上",
-}
+#
+# ⚠ **09-04 接线那一拍清空了它**：`apply_local_removal` / `apply_remote_disposition`
+# 两个入口的 `lib.rs` 那两行已经落地（PM 裁定后由实现方落）⇒ 两条登记按本表自己那条
+# 反向对账（「已经接上线了 ⇒ 删掉这一行」）删掉。**空不是「没查」，是「今天一个都没有」**：
+# 真出现一个零调用点的写方法，下面那道对账会当场退 3。
+PENDING_ENTRIES: dict[str, str] = {}
 
 
 def anchored(text: str, anchor: str) -> bool:
@@ -288,24 +287,36 @@ def scan_rust(root: Path, files: list[Path]):
             start = prod[: prod.find(blk)].count("\n")
             for k in range(start, start + blk.count("\n") + 1):
                 self_ty[k] = ty
-        for i, line in enumerate(lines):
-            for m in re.finditer(r"(\w+)\.(\w+)\(", line):
-                who, meth = m.group(1), m.group(2)
-                enclosing = self_ty.get(i)
-                ty = enclosing if who == "self" else recv.get(who)
-                if ty is None or meth not in w[ty]:
-                    continue
-                row = {
-                    "file": str(p.relative_to(root)),
-                    "line": i + 1,
-                    "text": line.strip(),
-                    "meth": meth,
-                    "cache": ty,
-                    "comment": line.lstrip().startswith("//"),
-                }
-                # 🔴 调用点落在这份缓存自己的 `impl` 块里 ⇒ 事实没有在这里到达，
-                #    它是同一条边的**内部转调**（第一版尺子把这几处算成了边）。
-                (inner if enclosing == ty else edges).append(row)
+        # 🔴 **按整份文本扫，不按单行扫。**
+        # 第一版按行扫，于是 `receiver` 与 `.method(` **换行分开**的那一种写法整个看不见
+        # （本仓长调用被折行是常态）。接线那一拍现打逮到活体：
+        # `remote_cache_for_emitter\n    .apply_remote_disposition(&sid, &disposition);`
+        # 被漏成一条边，而 `apply_remote_disposition` 当场被误报成「入口尚未接线」——
+        # 那是一句**自信的错答案**，不是「判不了」。⇒ `\s*` 跨得过换行。
+        for m in re.finditer(r"(\w+)\s*\.\s*(\w+)\(", prod):
+            who, meth = m.group(1), m.group(2)
+            i = prod.count("\n", 0, m.start())  # 接收者所在行（0 基）
+            enclosing = self_ty.get(i)
+            ty = enclosing if who == "self" else recv.get(who)
+            if ty is None or meth not in w[ty]:
+                continue
+            # 逐字校验位：把这次调用横跨的那几行**折成一行**（多余空白压成一个空格），
+            # 折行写法与单行写法于是给出同一个校验位。
+            j = prod.count("\n", 0, m.end())
+            text = " ".join(" ".join(lines[i : j + 1]).split())
+            # 折行处的 `接收者 . 方法(` 再压掉那个空格 ⇒ 校验位读起来就是一行真代码。
+            text = re.sub(r"\s*\.\s*", ".", text)
+            row = {
+                "file": str(p.relative_to(root)),
+                "line": i + 1,
+                "text": text,
+                "meth": meth,
+                "cache": ty,
+                "comment": lines[i].lstrip().startswith("//"),
+            }
+            # 🔴 调用点落在这份缓存自己的 `impl` 块里 ⇒ 事实没有在这里到达，
+            #    它是同一条边的**内部转调**（第一版尺子把这几处算成了边）。
+            (inner if enclosing == ty else edges).append(row)
     return edges, inner, w, recv_total
 
 
