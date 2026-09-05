@@ -30,6 +30,18 @@ import sys
 
 UI = "src/settings/accounts-section.ts"
 
+# `N2M6` 切的是这一份 —— 它**在本件写区之外**（写区里只有它的 `.vitest.ts`）。
+#
+# 为什么还是切它：`NF2D3` 最后那一跳（`if (!summary) { …display = "none"; return; }`）
+# 就住在这份文件里，**没有任何在写区内的改动够得到它** ——
+# 那两条新判据是直接把账本写绿再渲染的，`accounts-section.ts` 上的任何一刀都碰不到它们。
+# ⇒ 不切它，那两条判据就没有死值验，而「一条没证过会红的判据」是本仓判得最重的一种空真。
+# 切法是**改一句、当场还原**：`restore` 里点着这份文件，交回时 `git status --short`
+# 与 `git diff <基点>` 两个口径都会当场把没还原的情况打红（`NF2D4` 那三个口径就是干这个的）。
+# ⚠ 这是实现方的一个判断，已在交回报告里点名报给 PM —— 要是 PM 认为不该碰，这一刀撤掉，
+#   那两条判据就只剩测试内那一组正反对照（绿→红→绿），没有源码级的死值验。
+SEC = "src/settings/remote-section.ts"
+
 # 本机那四档的写点（`reloadLocal` 里）。缩进是判据的一部分：远端那八行里有
 # 逐字相同的句子（`已读取` / `未启用` / `已启用`），只有缩进与 `state.` / `ui.`
 # 分得开它们 —— 锚点取宽一点就会连远端那条路一起切，那一刀就不是「最小面」了。
@@ -94,6 +106,18 @@ CUTS: dict[str, tuple[str, list[tuple[str, int, str]], str]] = {
             )
         ],
         "NF2D2 两侧：顺手改一行**远端**那条路的写点 —— 只断本机那一侧的判据不会红",
+    ),
+    "N2M6": (
+        SEC,
+        [
+            (
+                '      this.gapsBox.style.display = "none";',
+                1,
+                '      this.gapsBox.style.display = "";',
+            )
+        ],
+        "NF2D3 最后那一跳：把「整块不出现」那一句打掉（分支照跑照 return，只是不再藏）"
+        " —— 只有 remote-section.vitest.ts 那两条新判据够得到它",
     ),
     "N2M5": (
         UI,
