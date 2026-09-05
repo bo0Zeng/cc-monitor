@@ -1071,18 +1071,41 @@ mod tests {
              件计划 `§6-3` 逐字排除过用 env 开关（如 `CCM_FORCE_LOCAL=1`）买这件事 ——\
              「一个环境变量就能走回本地 ⇒ 旧住址还在。**不许这么买**」。"
         );
-        // exec 那一支（`else` 到 `fi`）里不许有 `tmux new-session`。
+        // exec 那一支（`else` 到**与它配对的那个** `fi`）里不许有 `tmux new-session`。
         let else_at = lines[at..]
             .iter()
             .position(|l| l.trim() == "else")
             .map(|i| at + i)
             .expect("`--print` 那一支后面找不到 `else` —— 分支形状变了，本条该重写");
-        let fi_at = lines[else_at..]
-            .iter()
-            .position(|l| l.trim() == "fi")
-            .map(|i| else_at + i)
-            .expect("`else` 之后找不到 `fi` —— 段界读法坏了");
+        // ★★ **配对要数嵌套，不能取「第一个 `fi`」**〔本轮自查逮到，铁律 15〕。
+        //    exec 那一支里**本来就有一层 `if ! launch_via_daemon …; then … fi`**
+        //    ⇒ 取第一个 `fi` 会在**内层**那个就停住，扫描窗口比它标签说的那一段短一截。
+        //    那正是本工作区最贵那一族：**尺子枚举的集合 ≠ 标签说的集合** ——
+        //    窗口之外加一句 `tmux new-session`，这条判据一个字都不说。
+        let mut depth = 0usize;
+        let mut fi_at = None;
+        for (i, l) in lines.iter().enumerate().skip(else_at + 1) {
+            let t = l.trim();
+            // `if …; then` 与 `fi` 各算一层。`elif` 不改深度（它不新开一层）。
+            if t.starts_with("if ") || t == "if" {
+                depth += 1;
+            } else if t == "fi" || t.starts_with("fi ") || t == "fi;" {
+                if depth == 0 {
+                    fi_at = Some(i);
+                    break;
+                }
+                depth -= 1;
+            }
+        }
+        let fi_at = fi_at.expect("`else` 之后找不到与它配对的 `fi` —— 段界读法坏了");
         let exec_arm = lines[else_at..fi_at].join("\n");
+        // 抽取器自检：配对出来的这一段必须**真的比内层那个 `fi` 长** ——
+        // 不然上面那段推理就白写了（内层 `if` 至少一处，见下面那条非空对照）。
+        assert!(
+            exec_arm.contains("seq=\":\""),
+            "exec 那一支的段界读到的范围里没有 `seq=\":\"` —— 它是这一支的**最后一句**，\n\
+             读不到就说明配对停早了（多半又停在内层那个 `fi` 上）。实得：\n{exec_arm}"
+        );
         assert!(
             !exec_arm.contains("new-session"),
             "exec 那一支（`else` … `fi`）里出现了 `new-session`：\n{exec_arm}\n\

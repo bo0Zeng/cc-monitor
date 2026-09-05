@@ -156,6 +156,14 @@ CUTS = [
         "本条最后那条断言该逮住它（`§21 裁二` 那把 `if false; then`）",
     ),
     (
+        "F12", "shared/ccm",
+        '    seq=":"',
+        '    [ 1 = 2 ] && tmux new-session -d -s never\n    seq=":"',
+        1, ("cargo", "the_local_launch_recipe_is_reachable_only_from_print"),
+        "把 `new-session` 塞进 exec 那一支里、**且在内层 `fi` 之后** —— "
+        "上一版取「第一个 `fi`」的段界读法在这里会停早，看不见它（本轮自查逮到的那一格）",
+    ),
+    (
         "F11", "shared/ccm",
         "  # ⚠ **删掉的那个状态变量叫 `_ccm_launched=`**",
         "  # ⚠ **删掉的那个状态变量**",
