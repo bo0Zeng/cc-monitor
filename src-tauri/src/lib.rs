@@ -695,8 +695,8 @@ pub fn run() {
                             // S0：本地路径没有 idle-tmux 灰点（`SESSION_IDLE` 是远端专有），
                             // cause 在这里无分支意义，取 sid 即可。
                             for removed in change.removed {
+                                cache_for_emitter.apply_local_removal(&removed);
                                 let sid = removed.sid;
-                                cache_for_emitter.forget(&sid);
                                 let payload = bridge::SessionEndedPayload {
                                     session_id: sid.clone(),
                                 };
@@ -859,7 +859,11 @@ pub fn run() {
                                         removed.cause,
                                         tmux_origin
                                     );
-                                    match ssh_source::classify_removed(tmux_origin, removed.cause) {
+                                    let disposition =
+                                        ssh_source::classify_removed(tmux_origin, removed.cause);
+                                    remote_cache_for_emitter
+                                        .apply_remote_disposition(&sid, &disposition);
+                                    match disposition {
                                         ssh_source::RemovedDisposition::Idle { origin } => {
                                             ssh_source::mark_idle(&origin, &sid);
                                             let payload = bridge::SessionIdlePayload {
@@ -875,7 +879,6 @@ pub fn run() {
                                         }
                                         ssh_source::RemovedDisposition::Archive => {
                                             ssh_source::clear_idle(&sid);
-                                            remote_cache_for_emitter.forget(&sid);
                                             let payload = bridge::SessionEndedPayload {
                                                 session_id: sid.clone(),
                                             };
