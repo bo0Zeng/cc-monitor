@@ -431,8 +431,12 @@ resolve_recipe() {
 #      `cc-monitor-remote` —— 件文件 `§6-1㈢` 现打）在这一句里**仍与「装都没装」同形**。
 #      那一格要改的是查找规则**或**宿主的落名，**两侧只许改一侧**（`§6-5㈡` 第 7 行，PM 挑边）。
 CCM_RC_NO_BACKEND=4
-backend_unreachable() {   # $1=是哪一格（一句人话，接在同一句后面）—— **绝不返回**
-  printf 'ccm: 后端不可达，起不来 —— %s。本地那条退路已经不在了（用@09-04：ccm 不要管找不到，统一走后端）；装/起本机后端在 cc-monitor 里做，不在 ccm 里。\n' \
+backend_unreachable() {   # $1=是哪一格（一句人话，接在第一行后面）—— **绝不返回**
+  printf 'ccm: 后端不可达，起不来 —— %s。本地那条退路已经不在了（用@09-04：ccm 不要管找不到，统一走后端）。
+     查找顺序：$CCM_DAEMON_BIN → ~/.cc-monitor/bin/cc-monitor-remote → PATH 上的 cc-monitor-remote。
+     怎么办（三选一）：① 在 cc-monitor 里对这台机器跑一次部署（会把后端装到第二个位置）；
+     ② 有二进制就 export CCM_DAEMON_BIN=<它的路径>；③ 只想要一个不碰后端的容器：tmux new-session -s <名字> -c <目录>。
+     ⚠ CCM_NO_DAEMON=1 是「明示关掉整条后端路」，**不是**逃生口 —— 关掉之后照样是这个码：起不来。\n' \
      "$1" >&2
   exit "$CCM_RC_NO_BACKEND"
 }
@@ -763,19 +767,28 @@ avoid_name_collision() {
 # ⇒ 名字→目录 / 名字清单 / 默认号 这三个问题**一趟 `--list-accounts` 全答完**
 #   （旧版是三个函数各读一遍文件 ⇒ 落默认号那条路实际读两遍）。
 #
-# ## `§0b` 的裁定：**诚实降级，但比 `resume` 那条严一格 —— 降级要出声**
+# ## 🔴 `§0b` 那条裁定〔08-24〕**09-04 被用户推翻了** —— 这一段整段重写，别照旧读
 #
-# 于是三条通道三种哲学，**这是有意的**：身份可以牺牲（`CCM_NO_DAEMON=1` 是个安全的放弃态）·
-# `resume` 的 argv 只是建议（本地那条同样正确，降级静默）· **账号错了就是错了**
-#（既不能失败、也不能不响）。三条不跟身份的理由，一句一条：
-#  1. 「放弃账号」不是安全状态（会静默落到基座那个通常已没凭据的 config dir）⇒ 逃生口**只能**是
-#     读文件 ⇒ 退路无论如何都得留着 ⇒ 改成「没 daemon 就起不来」只换来「谁按开关」，
-#     代价却是 `zcc`/`bcc`（用户每天在敲）在没部署 daemon 的机器上直接起不来；
-#  2. 它会破掉一条已被判据钉住的纪律：`e2e/ccm-cli.test.sh` 逐字钉着「预言机不许因为这台机器
-#     没装 daemon 就哑掉」，而 `config_dir` 是**值**、逐字进黄金串 ⇒ 没法像 `BUS_ID_RECIPE` /
-#     `DAEMON_BIN_RECIPE` 那样把求值推迟到执行时；
-#  3. 而照抄 `resume` 的**静默**降级也不行 —— 换号出偏差的后果是「跑在错的号上」，
-#     身份那条头注逐字记着这一族：「不再是少一个锦上添花，而是**没人知道为什么**」。
+# 〔用@09-04 逐字〕「**ccm不要管找不到, 统一走后端**」。
+# ⇒ 账号解析**没有退路**：问不到后端就 `backend_unreachable`（唯一失败面，码 4）。
+#
+# **旧裁定逐字是「诚实降级，但比 `resume` 那条严一格 —— 降级要出声」**，它给了三条留存依据；
+# 这三条今天各自的下场（写出来，别让下一个人以为是漏做的）：
+#  1. 「『放弃账号』不是安全状态（会静默落到基座那个通常已没凭据的 config dir）⇒ 逃生口**只能**
+#     是读文件」—— **推翻。** 用户挑的逃生口是「**响亮失败**」而不是「读文件」：
+#     落到一个没登录的 config dir 是**静默走错**，起不来是**当场说清楚**。
+#     ⚠ **代价照旧属实、不许说没有**：`zcc`/`bcc` 在**没部署后端**的机器上从此直接起不来。
+#     那正是这条裁定买的东西（把「装后端」从可选变成前置），不是它的副作用。
+#  2. 「`e2e/ccm-cli.test.sh` 钉着『预言机不许因为这台机器没装 daemon 就哑掉』」—— **换了落法。**
+#     那是**判据的**依据，不是产品的；判据跟着契约走 ⇒ `F` 拍给 `e2e/` 补了一份可复用的
+#     假 daemon（`e2e/fake-daemon`），套件从此不依赖「这台机器装没装」。
+#  3. 「照抄 `resume` 的**静默**降级也不行」—— **这一条今天更强了**：不是「不许静默降级」，
+#     是「**根本没有降级**」。换号出偏差的后果（跑在错的号上）在结构上不再可能发生。
+#
+# ⇒ 三条通道今天的哲学是**两种**（不是三种）：
+#   · `resume` 的 argv 只是**建议**（本地那条同样正确 ⇒ 降级静默，欠账登记在
+#     `ccm_cli_contract::BACKEND_BACKED_PATHS` 的递减棘轮里）；
+#   · **建会话与账号 —— 后端是唯一真相源**，问不到就响亮失败，同一个函数、同一句文案、同一个码。
 # **五条排除项、代价怎么算的、逐条实测读数**：住件文件
 # `.claude/planned-build/backend-consolidation/features/K-C1-ccm账号解析走daemon.md` 的 `§0b` /
 # `§0-Bx-2` —— **这里刻意不抄一遍**（论证与读数外移留住址，本文件的头注体量已经在被判据盯着：
@@ -860,37 +873,29 @@ daemon_out_to_table() {   # $1 = daemon 的整段输出
   fi
 }
 
-# 退路：直接读 manifest 文件。**只在 daemon 缺位 / 答不出 / 问不对时走。**
-manifest_to_table() {
-  [ -f "$CCM_ACCTS_MANIFEST" ] || return 0
-  if command -v jq >/dev/null 2>&1; then
-    jq -r '.accounts[]? | select(.name) | [.name, (.configDir // ""), (if .isDefault then "1" else "0" end)] | @tsv' \
-       "$CCM_ACCTS_MANIFEST" 2>/dev/null
-  else
-    # 无 jq：按 `{` 切块喂给共用解析器（`read -d '{'` 是 bash 内建 ⇒ 不需要 `tr`）。
-    # 顺带修掉旧兜底两条脆弱假设：①「每账号一行的紧凑格式」（pretty-print 就失灵）；② 键序（见上）。
-    # ★ `|| [ -n "$chunk" ]` **不能省**〔08-24 实测，第一版就栽在这儿〕：末块后面没有 `{`
-    #   ⇒ 纯 `read -d '{'` 把**最后一个账号对象整块丢掉**（单账号时表直接变空，
-    #   症状是「可用: (无账号库)」而 manifest 明明在）。
-    #   ⚠ **订正**〔D2 `B3` 订数、D3 `B4` 订枚举；08-25 重数重切〕。**分母：`KCM6` 判据今天 4 条**
-    #   （`grep -c '^ck ".*KCM6' e2e/ccm-cli.test.sh`，量于 08-25），顺序：①daemon 在位 ②无 daemon·**首块**
-    #   z ③无 daemon·**末块** f ④pretty-print+键序反转。删这条守卫（`MU-E1`，锚点 1/1；判定行
-    #   = 全套条数，R7 08-25 重切时 126、别当常量）⇒
-    #   **恰好 2 红 = ③④**；**不红的是 ①②**（① 走 `daemon_out_to_table` 与本行无关；② 查首块 `z`，
-    #   末块丢了照样解析得出来）。旧注的「第三条」是 R4 前只有 3 条时的序数，且漏了 ②。⚠ R4 也**不是**
-    #   「把靶子从 `z` 改成 `f`」：diff 是**保留**旧那条（改名「首块 z」）＋**另加**一条查 `f` 的。
-    local chunk
-    while IFS= read -r -d '{' chunk || [ -n "$chunk" ]; do
-      acct_row_from_slice "$chunk"
-    done < "$CCM_ACCTS_MANIFEST"
-  fi
-}
+# ★★ 〔`K-P2` `F` 拍 09-04；用@09-04 逐字「**ccm不要管找不到, 统一走后端**」〕
+#    **这里原来有一个 `manifest_to_table()` —— 直接读 manifest 文件的退路，删掉了。**
+#
+#    它的两条留存依据（原头注逐字记着）今天各自的下场：
+#      · 「『放弃账号』不是安全状态 ⇒ 逃生口只能是读文件」——**用户裁定推翻了它**：
+#        逃生口不是「读文件」，是「**响亮失败**」。落到一个没登录的 config dir 上
+#        与起不来相比，前者是**静默走错**，后者是**当场说清楚**；用户挑了后者。
+#      · 「`e2e/ccm-cli.test.sh` 钉着『预言机不许因为这台机器没装 daemon 就哑掉』」
+#        —— 那是**判据的**依据，不是产品的。判据跟着契约走：本拍给 `e2e/` 补了
+#        一份可复用的假 daemon（`e2e/fake-daemon`），套件不再依赖「这台机器装没装」。
+#
+#    ⚠ **这一句不是纪念碑，是判据的靶子**：`ccm_cli_contract` 的 `BACKEND_BACKED_PATHS`
+#      给 `--list-accounts` 登记的 `gone` 就是 `_ccm_acct_src=file` 这个串，而那条判据要求它
+#      「在**注释里**找得到、在**生产段**里找不到」（同 `--launch` 那一条的写法）。
 
 # 账号表：一行一个账号，TAB 分隔 `<name>\t<configDir>\t<isDefault 0|1>`。
 # ★★ **必须在主流程里 load 一次，绝不在 `$(...)` 里 load**：子 shell 里填的缓存出了那层就没了
 #    ⇒ 「一趟往返」会变成每问一次一趟（默认号那条路要问两次：默认号 + 它的目录）。
+# ★★ 〔`F` 拍〕**它现在只有一条路**：问后端。问不到 ⇒ `backend_unreachable`（唯一失败面）。
+#    ⚠ **一格例外，而且它不是退路**：`CCM_ACCTS_MANIFEST` 的**形态**不对时走 `die`（码 2）——
+#      那不是「后端不可达」，那是**调用方给的环境变量 daemon 的 `--accts-dir` 表达不了**，
+#      属「你敲错了」那一类。两类分开，正是那两个退出码存在的理由。
 _ccm_acct_tab=""
-_ccm_acct_src=""      # daemon | file —— 只作诊断，不参与任何判定
 _ccm_acct_loaded=0
 acct_table_load() {
   [ "$_ccm_acct_loaded" = 1 ] && return 0
@@ -899,12 +904,13 @@ acct_table_load() {
   am_dir="${CCM_ACCTS_MANIFEST%/*}"; am_name="${CCM_ACCTS_MANIFEST##*/}"
   # 查找规则**只有一份**（`DAEMON_BIN_RECIPE`，与 resume / 身份那两条共用）。
   eval "$DAEMON_BIN_RECIPE"
-  if [ -z "$_ccm_db" ]; then
+  if [ "$am_name" != "$_CCM_MANIFEST_NAME" ] || [ -z "$am_dir" ] || [ "$am_dir" = "$CCM_ACCTS_MANIFEST" ]; then
+    # 见上方「`--accts-dir` 是目录」那段：这个问题 daemon 答不了，**不是它坏了** ⇒ 走 `die`（码 2）。
+    unset _ccm_db
+    die "CCM_ACCTS_MANIFEST 不是 <目录>/$_CCM_MANIFEST_NAME 形态（现值 $CCM_ACCTS_MANIFEST），daemon 的 --accts-dir 表达不了它"
+  elif [ -z "$_ccm_db" ]; then
     if [ "${CCM_NO_DAEMON:-}" = 1 ]; then why="CCM_NO_DAEMON=1（明示整条关掉 daemon）"
     else why="这台机器上找不到 daemon（cc-monitor-remote）"; fi
-  elif [ "$am_name" != "$_CCM_MANIFEST_NAME" ] || [ -z "$am_dir" ] || [ "$am_dir" = "$CCM_ACCTS_MANIFEST" ]; then
-    # 见上方「`--accts-dir` 是目录」那段：这个问题 daemon 答不了，不是它坏了。
-    why="CCM_ACCTS_MANIFEST 不是 <目录>/$_CCM_MANIFEST_NAME 形态，daemon 的 --accts-dir 表达不了它"
   else
     # 有 `timeout` 就套上、没有就裸调 —— 与 `resolve_from_daemon` 同一条纪律、同一个写法。
     to="$(command -v timeout >/dev/null 2>&1 && printf 'timeout 3 ' || true)"
@@ -914,21 +920,20 @@ acct_table_load() {
     # （PATH 上捡到的同名第三方 / 太旧 / 崩了 / 被 timeout 掐了 —— 全长这样）。
     case "$out" in
       *'"kind":"accounts-meta"'*)
+        # ⚠ **「一个账号都没有」是一个合法答案**，不是失败：后端答上了（meta 行在），
+        #   只是这台机器上没有账号库 ⇒ 表是空的，ccm 退化为基座启动器，一个字不说。
+        #   这一格与「后端答不出」分得开，靠的就是那行 meta。
         _ccm_acct_tab="$(daemon_out_to_table "$out")"
-        _ccm_acct_src=daemon
         unset _ccm_db
         return 0 ;;
       *) why="daemon（$_ccm_db）答不出 --list-accounts" ;;
     esac
   fi
   unset _ccm_db
-  _ccm_acct_src=file
-  _ccm_acct_tab="$(manifest_to_table)"
-  # **降级出声**（`§0b` 裁定）。⚠ 只在**真读了一份 manifest** 时说：压根没账号库的机器上
-  # ccm 就是个基座启动器，不该被它吵（判据：「无账号库 → 退化为基座（不报错）」）。
-  [ -f "$CCM_ACCTS_MANIFEST" ] && printf 'ccm: 账号解析已降级为**直接读 manifest**（%s）—— %s。后端本该是账号的唯一真相源；两份不一致时你拿到的是文件那一份（daemon 有 schema 版本闸与 configDir 安全谓词，文件这条没有）。\n' \
-     "$CCM_ACCTS_MANIFEST" "$why" >&2
-  return 0
+  # ★★ 〔`F` 拍〕**这里原来是「降级出声 ＋ 读 manifest」，退路删了 ⇒ 唯一失败面。**
+  #    与建会话那条**同一个函数、同一句文案、同一个退出码** —— 那正是 `KP2C` 要的：
+  #    两处各写一句就是两份措辞，而调用方是按码判失败种类的。
+  backend_unreachable "$why"
 }
 
 # 名字 → configDir。解析不到 → 回空串（由**顶层**判空后中止；显式选号绝不静默降级）。
@@ -1497,12 +1502,12 @@ if agent_has_identity "$agent"; then
       # 明示放弃身份的逃生口。**照样说一句** —— 静默降级正是本条要根除的东西。
       printf 'ccm: CCM_NO_DAEMON=1 ⇒ 本会话不会被打上 @ccm_sid（身份归 daemon）。cc-monitor 里它绑不上窗口、点 ↗ 会说未绑定。\n' >&2
     else
-      die "找不到 daemon（cc-monitor-remote），而身份（@ccm_sid）自 U-NP④ 起**只**由它打。
-     没有它：会话照样能起，但 cc-monitor 认不出这个 tmux 会话 —— 列表里绑不上、
-     点 ↗ 弹「未绑定窗口」、结束会话按不动，**而且没有任何地方会告诉你为什么**。
-     查找顺序：\$CCM_DAEMON_BIN → ~/.cc-monitor/bin/cc-monitor-remote → PATH 上的 cc-monitor-remote。
-     怎么办（三选一）：① 在 cc-monitor 里对这台机器跑一次部署（会把 daemon 装到第二个位置）；
-     ② 有二进制就 export CCM_DAEMON_BIN=<它的路径>；③ 明确不要身份：CCM_NO_DAEMON=1 ccm …"
+      # ★★ 〔`K-P2` `F` 拍 09-04〕**这里原来是 `die`（码 2），换成唯一失败面（码 4）。**
+      #    根因与账号那条、建会话那条**是同一个**（这台机器上没有后端）⇒ 三条路给出
+      #    三个不同的退出码，调用方就得维护三份判法。「怎么办」那几行原本写在这里，
+      #    已经**上提进那唯一一句文案**（三条路给的建议本来就一模一样）。
+      #    ⚠ 剩下这一格独有的信息 —— **后果**（认不出这个会话）—— 留在 `why` 里。
+      backend_unreachable "在 tmux 里起有身份的 agent，而身份（@ccm_sid）自 U-NP④ 起**只**由后端打；没有它，cc-monitor 列表里绑不上这个会话、点 ↗ 弹「未绑定窗口」、结束会话按不动"
     fi
     unset _ccm_db
   else
