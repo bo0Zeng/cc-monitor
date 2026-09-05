@@ -779,8 +779,22 @@ export class SettingsPanel {
     this.perMachineSlot.className = "machine-page-sections";
     this.perMachineBlocks = [
       {
-        // 账号列表是 per-origin 的远端概念（本机的多账号入口是 L3a 的欠账，见 BACKLOG）。
-        appliesTo: "remote",
+        // 账号这一节**两页都有意义** —— 每台机器的账号归那台机器（用户 09-05 拍的板）。
+        //
+        // ⚠ 这里原先逐字写着「账号列表是 per-origin 的**远端**概念（本机的多账号入口是
+        // L3a 的欠账，见 BACKLOG）」并登记成 `appliesTo: "remote"`。那句话**已经不成立**：
+        // 本机那条读口（`accounts.ts` 的 `fetchLocalAccounts` → `list_local_accounts`）
+        // 自 `a354c83` 起就在盘上，状态栏那个账号 chip 一直在用它；`N-F1b` 之后
+        // `AccountsSection.reload()` 在 `origin` 为空时也走本机那一支了。
+        //
+        // 🔴 而 `appliesTo: "remote"` 是**第二道锁**：`movePerMachineTo` 会把不匹配的整块
+        // `hidden` 掉 ⇒ 本机页上这一节是黑的，而**一台没有配任何远端的机器只有本机页**
+        // ⇒ 那一节渲染得再对，新用户也看不见它（定框 `G1` 成功标准第 1 条卡在这一行上）。
+        // 两条判据分工：那一节**渲染成什么样**归 `accounts-section.vitest.ts`；
+        // 它在**哪一页上看得见**归 `panel-machine-page-visibility.vitest.ts`
+        // —— 后者从 `SettingsPanel` 这一头进，断的是渲染之后的 `el.hidden`，
+        // 因为前者在 jsdom 里直接 `new AccountsSection()`，结构性地绕过了这一层。
+        appliesTo: "both",
         tab: "acct",
         el: this.safeBlock("账号", () => new AccountsSection().element),
       },
