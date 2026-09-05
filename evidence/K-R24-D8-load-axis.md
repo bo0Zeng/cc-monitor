@@ -264,9 +264,49 @@ PM 转来的 `K-W4` 那趟里有两条 `Test timed out`，其一逐字是 `src/i
 
 ---
 
+### ㈤ `observe::accounts_query` 那条 —— **第五个活体，在我自己的收官门禁里逮到的**
+
+交付尖 `e07d8a4` 的两趟门禁（同一棵树、同一个提交，相隔五分钟）：
+
+| 口径 | 时刻 | 宿主 1 分钟负载 | daemon 那格 |
+|---|---|---|---|
+| `DEVBOX_NET=none` | 23:03:30–23:08:16 | **50.01** | **ok 542 passed** |
+| `DEVBOX_NET=host` | 23:08:16–23:13:34 | **132.08** | 🔴 **FAILED 541 passed / 1 failed** |
+
+红的是 `observe::accounts_query::tests::an_inherited_launch_id_is_never_reported_as_the_childs_own_identity`，
+`panicked at remote-daemon-proto/src/observe/accounts_query.rs:2236:9`。
+**`:2236` 我逐行核过，是这一条**（不是夹具那两条）：
+`assert_eq!(both["sid-child"]["launchId"], Null, "🔴 子会话把**继承来的** token 报成了自己的身份 …… 父 agent 的身份漏进子 agent ⇒ 冒名。")`
+
+🔴🔴 **这是本册里那句话最吓人的一次**：一次**时序前提没建立**，报出来的是一句**冒名安全事故**。
+（这条判据的台子里有**两个真起出来的子进程**、两份 pidfile、一次「两条都在 ⇒ 撞 ⇒ 都不作数」的对拍
+—— 前提链上每一环都是时序。）
+
+**先定轴，再说话**（两趟之间差了**两件事**：网络口径 ＋ 负载）：
+
+| 口径 | 轮数 | 读数 | 负载 |
+|---|---|---|---|
+| `--network host` | **15** | **15 趟全 `ok 1 passed`** | 39.14 |
+| `--network none` | **15** | **15 趟全 `ok 1 passed`** | 39.14 |
+
+⇒ **网络轴排除**：它是**确定性**的轴，若成因是它，`host` 那 15 趟该趟趟红。
+⇒ 剩下的候选是负载轴（红那趟负载 **132.08**，这 30 趟负载 **39**）。
+⚠ **而这一句是「最佳解释」，不是一个正面读数** —— 我**没有**在负载 130+ 下重跑过它
+（那要造一次满载，理由见第三节）。**它进「今晚点到名的」那一栏，不进「已实测坐实」那一栏。**
+⚠ **panic 的报文被门禁的诊断截断了**（`assertion left == right failed:` 之后一片空白）
+⇒ **`left` 实际是什么我读不到** ⇒ 机制**判不了**，要一趟带全量输出的重跑才判得了。
+
+**它归谁**：`remote-daemon-proto/src/observe/accounts_query.rs` **不在本波任何一道的写区**
+（各道写区表现打）⇒ **无人认领，交 PM 派。**
+
+---
+
 ## 五 · 这条轴上人群到底多大：**判不了，而且我说得出缺什么**
 
-**已经点到名的 = 3 条**（三个门各一条），**分母 = PM 那批 12 棵树 × 九格**。
+**已经点到名的 = 5 条判据 + 3 条超时**（`launch.rs` 的 `ETXTBSY` · `relay/server.rs:1724` ·
+`relay/server.rs:2633` · `events-burst.vitest` · `accounts_query.rs:2236` ／
+`ipc/commands.vitest.ts` 的 `:316`·`:341`·`:375` · `eslint-baseline.vitest.ts:96`），
+**三个门都有**。分母 = PM 那批 12 棵树 × 九格 ＋ 本册那几趟受控台子 ＋ 本件收官的两趟门禁。
 
 🔴 **这个 3 是下界，不是人群大小。** 三条理由：
 
