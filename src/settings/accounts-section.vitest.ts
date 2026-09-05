@@ -8,6 +8,16 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const readRemoteConfigMock = vi.fn();
 const fetchAccountsMock = vi.fn();
+/**
+ * `N-F1b`：本机那条读口的桩。
+ *
+ * 🔴 它**必须有一个默认返回值**（见下面 `beforeEach`）：本件之后，
+ * 「没有配任何远端」那一支不再是一句静态说明，而是真的去调 `fetchLocalAccounts`。
+ * 不给默认值 ⇒ 真函数被调 ⇒ 它会去 `invoke("list_local_accounts")`，
+ * 而那条路在 jsdom 里的结局取决于 `invokeMock` 这一刻恰好被设成什么
+ * —— 那种绿是**跟着别的测试的设置漂**的绿。
+ */
+const fetchLocalAccountsMock = vi.fn();
 const invokeMock = vi.fn();
 
 vi.mock("@tauri-apps/api/event", () => ({ emit: vi.fn() }));
@@ -54,6 +64,13 @@ function state(p: Partial<AccountsState>): AccountsState {
     ...p,
   };
 }
+/**
+ * `N-F1b`：本机那条路的 fixture —— `origin` 是那个哨兵，**不是**某台远端的名字。
+ * 形状与远端那份逐字段相同（`fetchLocalAccounts` 头注：两条路填的是同一个 Rust 结构体）。
+ */
+function localState(p: Partial<AccountsState> = {}): AccountsState {
+  return state({ origin: accounts.LOCAL_ORIGIN, ...p });
+}
 const host = (p: Record<string, unknown> = {}) => ({
   label: "aya",
   host: "h",
@@ -83,7 +100,11 @@ beforeEach(() => {
   readRemoteConfigMock.mockReset().mockResolvedValue({ enabled: true, hosts: [host()] });
   invokeMock.mockReset().mockResolvedValue(undefined);
   fetchAccountsMock.mockReset();
+  // `N-F1b`：默认给「这台机一个隔离账号都没有」——最保守的一档，
+  // 想量别的态的用例自己在里面覆盖掉它。
+  fetchLocalAccountsMock.mockReset().mockResolvedValue(localState({ accounts: [] }));
   vi.spyOn(accounts, "fetchAccounts").mockImplementation(() => fetchAccountsMock());
+  vi.spyOn(accounts, "fetchLocalAccounts").mockImplementation(() => fetchLocalAccountsMock());
   vi.spyOn(accounts, "invalidateAccountsCache").mockImplementation(() => {});
 });
 
@@ -95,11 +116,35 @@ function expectNoReadyChrome(el: HTMLElement): void {
 }
 
 describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", () => {
-  it("没有已配置的远端 → 只给一句说明，不渲染表/横幅/维护区", async () => {
+  /**
+   * ⚠⚠ `N-F1b` `NF1bD3`：**这一条的题面被 `N-F1b` 正面推翻，逐字换过。**
+   *
+   * 旧题（逐字）：`没有已配置的远端 → 只给一句说明，不渲染表/横幅/维护区`
+   * 旧断言里被推翻的那一句（逐字）：
+   *   `expect(el.querySelector(".accounts-info")?.textContent).toContain("没有已配置的远端");`
+   *
+   * 为什么改：`N-F1b` 做的正是「没有远端时不再只给一句说明，而是列出**这台机器**的账号」
+   * ⇒ 那一句断言从「守住降级态」变成了「**钉住那个洞**」，不改它这一件就做不成。
+   *
+   * 换成什么：这一条**只留还成立的那一半**，并且换到「远端那一支照旧」的口径上 ——
+   * 没有远端时，远端那三件套（表 / 横幅 / 维护区）一件都不该长出来，
+   * 而且**远端那条读口一次都不该被调**（后者是新加的，旧版没有）。
+   * 本机那一支**渲染成什么样**归 `NF1bD1` 那一族（本文件末尾），
+   * 这里只留一个「它确实走了本机那条路」的非空对照，免得整块空着也让上面三条恒真。
+   */
+  it("没有已配置的远端 → 远端那三件套一件不出、远端读口一次不调（本机那一支归 NF1bD1）", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
     const el = await mount();
-    expect(el.querySelector(".accounts-info")?.textContent).toContain("没有已配置的远端");
     expectNoReadyChrome(el);
+    expect(
+      fetchAccountsMock,
+      "没有配任何远端，却去调了远端那条读口 —— 那是拿一个不存在的 origin 去问远端",
+    ).not.toHaveBeenCalled();
+    // 非空对照：这一屏不是空的，它走的是本机那一支（内容由 NF1bD1 那一族钉）。
+    expect(
+      el.querySelector(".accounts-local"),
+      "本机那一支整块没渲染 —— 上面三条会在一屏空白上恒真",
+    ).not.toBeNull();
   });
 
   it("daemonless 远端 → 安静说明，不渲染表", async () => {
@@ -802,5 +847,268 @@ describe("K-H2a：中转 API key 的前端一半", () => {
       code.includes("api_key"),
       "前端源码里出现了 `api_key` —— 那个字段是后端那份文件的 schema，前端不该认识它",
     ).toBe(false);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `N-F1b`：**没有配任何远端时，这一节讲的是这台机器。**
+//
+// 病（`N-F1` 摸底 / 定框 `N1` 订正段）：本机账号**今天就读得出来**
+//（`fetchLocalAccounts` 自 `a354c83` 起在盘上、状态栏那个 chip 现在就在渲染它），
+// 空的只有面板这一节 —— 它在 `origin` 为空时直接早返回，逐字劝用户「先去配一台远端 Linux」。
+// 于是一台本来就有三个账号的机器，用户打开设置看到的是「你先去买一台远端」。
+//
+// ★ 这一族**两侧都要断**（件文件 `NF1bD1` 的 acceptor 失效路径逐字写着）：
+// 只断「那句话没了」的话，把那一行 `this.info(...)` 删掉就能骗过整族判据。
+// ⇒ 正面（列出来了、几行、名字逐个对上）与反面（旧那句话一个字不出）各有断言。
+// ─────────────────────────────────────────────────────────────────────────────
+describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", () => {
+  /** 三个名字刻意落不同色槽，顺带让「渲染了几行」那条不会因为同名而弱绿。 */
+  const L1 = "wei";
+  const L2 = "amy";
+  const L3 = "kit";
+  const three = () =>
+    localState({
+      accounts: [
+        acct({ name: L1, configDir: "/h/.claude-accts/wei" }),
+        acct({ name: L2, email: "amy@x.edu", configDir: "/h/.claude-accts/amy" }),
+        acct({ name: L3, email: "kit@x.edu", configDir: "/h/.claude-accts/kit" }),
+      ],
+      defaultName: L1,
+    });
+
+  /** 没有配任何远端 —— 本族每条都从这里出发。 */
+  function noRemotes(): void {
+    readRemoteConfigMock.mockResolvedValue({ enabled: false, hosts: [] });
+  }
+
+  /**
+   * `NF1bD2` 的**人群**：本机那一支真渲染出来的每一个字符串。
+   *
+   * 分母怎么数的：本机那块（`.accounts-local`）子树里
+   *   ① 每个**叶子**元素的 `textContent`（去空白后非空的才进）—— 非叶子会把子串重复计一遍；
+   *   ② 每个元素的 `title` 属性（hover 也是用户看得见的文案，`KH2B7` 那一条正是钉在 title 上的）。
+   * 取不到那块（整块没渲染）就回空数组 ⇒ 调用方那条「分母不许是 0」的断言会先红。
+   */
+  function localStrings(el: HTMLElement): string[] {
+    const root = el.querySelector(".accounts-local");
+    if (!root) return [];
+    const out: string[] = [];
+    for (const n of [root, ...root.querySelectorAll("*")]) {
+      if (n.children.length === 0) {
+        const t = (n.textContent ?? "").trim();
+        if (t) out.push(t);
+      }
+      const title = (n.getAttribute("title") ?? "").trim();
+      if (title) out.push(title);
+    }
+    return out;
+  }
+
+  // ---- `NF1bD1` 正面：真列出来了 ----
+
+  it("★ NF1bD1 正面：喂 3 个本机账号 → 真渲染出 3 行，名字逐个对上", async () => {
+    noRemotes();
+    fetchLocalAccountsMock.mockResolvedValue(three());
+    const el = await mount();
+    const rows = [...el.querySelectorAll(".accounts-local-row")];
+    expect(rows.length, "本机账号没被渲染成行 —— 这一件的正题就是这个数").toBe(3);
+    expect(
+      rows.map((r) => r.querySelector(".accounts-local-row-name")?.textContent),
+      "行渲染出来了但名字对不上 —— 那是渲染了别的东西，不是渲染了这三个号",
+    ).toEqual([L1, L2, L3]);
+    // 计数那一行也得说得出同一个数（两处不许各说各的）。
+    expect(el.querySelector(".accounts-local-count")?.textContent).toContain(
+      `3 ${accounts.LOCAL_ACCOUNTS_COPY.countSuffix}`,
+    );
+    // 当前账号那一格接上了 `currentWorkingAccount`（defaultName = L1）。
+    expect(el.querySelector(".accounts-local-row.current .accounts-local-row-name")?.textContent).toBe(
+      L1,
+    );
+  });
+
+  // ---- `NF1bD1` 反面：旧那句话一个字都不许留 ----
+
+  it("★ NF1bD1 反面：旧那句「先在「连接」组配一台远端」一个字都不出现", async () => {
+    noRemotes();
+    fetchLocalAccountsMock.mockResolvedValue(three());
+    const el = await mount();
+    const seen = el.textContent ?? "";
+    // 非空对照：这一屏真的有东西（否则下面两条在空串上恒真）。
+    expect(seen.length, "整屏是空的 —— 下面两条会恒真").toBeGreaterThan(20);
+    expect(seen).not.toContain("没有已配置的远端");
+    expect(seen).not.toContain("先在「连接」组配一台远端");
+    expect(seen).not.toContain("账号功能在远端 Linux 上");
+  });
+
+  it("★ NF1bD1 空态：一个隔离账号都没有 → 说「还没有隔离账号 + 下一步」，不是「先去配远端」", async () => {
+    noRemotes();
+    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [] }));
+    const el = await mount();
+    expect(el.querySelector(".accounts-local-empty-title")?.textContent).toBe(
+      accounts.LOCAL_ACCOUNTS_COPY.emptyTitle,
+    );
+    // 「下一步」那一格不许空着 —— 一个说不出下一步的空态等于一条死胡同。
+    const next = el.querySelector(".accounts-local-empty-next")?.textContent ?? "";
+    expect(next.length, "空态没有下一步 —— 用户被停在这里").toBeGreaterThan(10);
+    expect(next).toBe(accounts.LOCAL_ACCOUNTS_COPY.emptyNext);
+    expect(el.textContent ?? "").not.toContain("先在「连接」组配一台远端");
+    // 阴性对照同一格：空态不许长出行来。
+    expect(el.querySelectorAll(".accounts-local-row").length).toBe(0);
+  });
+
+  it("★ NF1bD1 诚实降级：本机读口读不出来 → 如实说读不出来，**不许**渲染成「你没有账号」", async () => {
+    noRemotes();
+    fetchLocalAccountsMock.mockResolvedValue(
+      localState({ available: false, error: "取不到 HOME", accounts: [] }),
+    );
+    const el = await mount();
+    const fail = el.querySelector(".accounts-local-fail")?.textContent ?? "";
+    expect(fail).toContain(accounts.LOCAL_ACCOUNTS_COPY.loadFailed);
+    expect(fail, "后端给了原因却没显出来 —— 用户修不了一个不说原因的失败").toContain("取不到 HOME");
+    // ★ 正题的另一半：读**失败**与「这台机真的一个号都没有」是两件事，不许合成一句。
+    expect(el.querySelector(".accounts-local-empty-title"), "把读失败渲染成了空态").toBeNull();
+  });
+
+  it("★ NF1bD1 诚实降级：本机读口抛错 → 同样如实说，不炸", async () => {
+    noRemotes();
+    fetchLocalAccountsMock.mockRejectedValue(new Error("backend down"));
+    const el = await mount();
+    const fail = el.querySelector(".accounts-local-fail")?.textContent ?? "";
+    expect(fail).toContain(accounts.LOCAL_ACCOUNTS_COPY.loadFailed);
+    expect(fail).toContain("backend down");
+  });
+
+  // ---- `NF1bD2`：本机口吻的文案，不复用远端那套 ----
+
+  it("★ NF1bD2：本机那一支真渲染出来的字符串里，「远端」零命中（分母现算并断非空）", async () => {
+    const harvested: string[] = [];
+    // 三个本机态各量一次：有账号 / 零账号 / 读不出来。只量一个态的话，
+    // 另外两个态里塞一句带「远端」的话不会红。
+    const cases: Array<[string, AccountsState | Error]> = [
+      ["有账号", three()],
+      ["零账号", localState({ accounts: [] })],
+      ["读不出来", localState({ available: false, error: "取不到 HOME", accounts: [] })],
+    ];
+    for (const [, st] of cases) {
+      noRemotes();
+      fetchLocalAccountsMock.mockReset().mockResolvedValue(st);
+      harvested.push(...localStrings(await mount()));
+    }
+    // 分母：抽取器自检 —— 数不出东西的话下面那条是空真。
+    expect(
+      harvested.length,
+      `本机那一支只收到 ${harvested.length} 个字符串 —— 抽取器或渲染坏了，下面那条会零命中地绿`,
+    ).toBeGreaterThan(10);
+    expect(
+      harvested.filter((s) => s.includes("远端")),
+      "本机那一支上出现了「远端」——这一节讲的是这台机器",
+    ).toEqual([]);
+    // 点名那一句：件计划 `NF1bD2` 逐字禁的就是它（`deriveUi` 的 not-enabled 那一支）。
+    expect(harvested.filter((s) => s.includes("该远端尚未启用多账号"))).toEqual([]);
+    // 阴性对照：同一把尺子在**远端**那一支上**认得出**「远端」——它不是恒空。
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
+    fetchAccountsMock.mockResolvedValue(state({ available: false, error: "该远端配置为 daemonless" }));
+    const remoteEl = await mount();
+    expect(
+      (remoteEl.textContent ?? "").includes("远端"),
+      "远端那一支上也找不到「远端」—— 上面那把尺子量不到东西",
+    ).toBe(true);
+  });
+
+  it("★ NF1bD2：本机文案表里逐条不含「远端」（分母 = 表的条目数，现算）", () => {
+    const table = Object.entries(accounts.LOCAL_ACCOUNTS_COPY);
+    // 分母现算（`brief` 13b：报一个基数也是复述 ⇒ 不写死条数）。
+    expect(table.length, "文案表是空的 —— 下面那条是空真").toBeGreaterThan(0);
+    expect(
+      table.filter(([, v]) => v.includes("远端")).map(([k]) => k),
+      "本机文案表里有一条带「远端」",
+    ).toEqual([]);
+  });
+
+  /**
+   * `NF1bD2` 的后半：**文案只许有一个家。**
+   *
+   * # 为什么这把尺子不是「面板源码里 grep 那几句」
+   *
+   * 第一版就是那么写的，跑出来**当场三条假阳**：`countSuffix`（`个账号`）·
+   * `manifestPrefix`（`清单`）· `currentMark`（`当前`）在面板里各有命中 ——
+   * 而那些命中全是**远端那条路自己的文案**（`已启用 · N 个账号 · manifest …`、
+   * `设为当前账号`）。短词是两条路共用的词汇，「不出现在面板里」对它们根本不成立。
+   * ⇒ 那把尺子会逼着人去改**产品文案**来迁就判据。〔`brief` 第 12 条那一族：
+   * 断言用的子串别取自与被测性质无关的东西〕
+   *
+   * # 换成的尺子
+   *
+   * 人群仍是**本机那一支渲染出来的字符串**（`NF1bD2` 的 acceptor 逐字要求）。
+   * 做法：把「合法来源」逐个从渲染串里抠掉，剩下的**不许再有汉字**。
+   * 合法来源三类，逐类现算、逐类都写在下面：
+   *   ① 本机文案表 `LOCAL_ACCOUNTS_COPY` 的全部取值；
+   *   ② 徽章那一族的取值 —— 它们的家在 `accounts.ts` 的 `accountStatusBadge`
+   *      （另一个家，但**也是一个家**，不是面板里写死的）；
+   *   ③ 这一轮桩喂进去的动态值（账号名 / 邮箱 / configDir / 清单路径 / 后端错误串）。
+   * 剩下汉字 ⇒ 那句话既不在表里、也不是数据 ⇒ 它被就地写在面板里了。
+   *
+   * ⚠ **诚实边界**：这把尺子量的是**渲染出来的文本**。
+   * 有人在面板里就地写一句**与表里某条逐字相同**的话，它看不出来（残渣是空的）。
+   * 它买到的是「面板没有第二套**说法**」，不是「面板里没有第二份**字面量**」。
+   */
+  it("★ NF1bD2 只有一个家：本机那一支渲染出来的汉字，全部来自文案表 / 徽章 / 数据", async () => {
+    const st = three();
+    noRemotes();
+    fetchLocalAccountsMock.mockResolvedValue(st);
+    const el = await mount();
+    const rendered = localStrings(el);
+    expect(rendered.length, "本机那一支没渲染出东西 —— 下面那条是空真").toBeGreaterThan(5);
+
+    const allowed = [
+      // ① 本机文案表（现算，不写死条数）
+      ...Object.values(accounts.LOCAL_ACCOUNTS_COPY),
+      // ② 徽章那一族：家在 accounts.ts，逐个账号现算
+      ...st.accounts.flatMap((a) => {
+        const b = accounts.accountStatusBadge(a);
+        return [b.text, b.title];
+      }),
+      // ③ 这一轮桩喂进去的动态值
+      ...st.accounts.flatMap((a) => [a.name, a.email, a.configDir ?? ""]),
+      st.meta?.manifestPath ?? "",
+      String(st.accounts.length),
+    ].filter((s) => s.length > 0);
+    // 长的先抠，短的后抠 —— 反过来会把长句拆碎、留下假残渣。
+    allowed.sort((a, b) => b.length - a.length);
+
+    const residue = rendered
+      .map((s) => {
+        let left = s;
+        for (const a of allowed) left = left.split(a).join("");
+        return [s, left.replace(/[\s·|/:：，。]/g, "")] as const;
+      })
+      .filter(([, left]) => /[一-鿿]/.test(left));
+    expect(
+      residue,
+      "本机那一支上出现了既不在文案表里、也不是数据的汉字 —— 那句话被就地写在面板里了",
+    ).toEqual([]);
+
+    // 抽取器自检：这把尺子**认得出**残渣（不是恒空）。喂一句谁都没登记过的话进去。
+    const probe = "这一句谁都没登记过";
+    let leftProbe = `${accounts.LOCAL_ACCOUNTS_COPY.heading}${probe}`;
+    for (const a of allowed) leftProbe = leftProbe.split(a).join("");
+    expect(leftProbe, "同一把尺子连一句没登记过的话都抠不出来 —— 它恒空").toBe(probe);
+  });
+
+  // ---- `NF1bD3`：远端那条路一个字节没动 ----
+
+  it("★ NF1bD3：配了远端时照旧走远端那条读口，本机那一支一格不长", async () => {
+    readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
+    fetchAccountsMock.mockResolvedValue(
+      state({ accounts: [acct({ name: L1 })], defaultName: L1 }),
+    );
+    const el = await mount();
+    expect(fetchAccountsMock, "配了远端却没走远端那条读口").toHaveBeenCalled();
+    expect(fetchLocalAccountsMock, "配了远端却去读了本机的账号").not.toHaveBeenCalled();
+    expect(el.querySelector(".accounts-local"), "远端页上长出了本机那一块").toBeNull();
+    // 远端那三件套照旧在（非空对照：这条不是在一屏空白上判的）。
+    expect(el.querySelector(".accounts-table")).not.toBeNull();
+    expect(el.querySelector(".accounts-current-banner")).not.toBeNull();
   });
 });
