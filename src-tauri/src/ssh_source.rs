@@ -7218,9 +7218,11 @@ Host prod
     /// # 它挂在哪一段（这一格是本修的要害）
     ///
     /// 本对端 `accept()` 之后**一个字节都不回**。russh `client::connect_stream` 的次序是
-    /// **先写自己的 `SSH-2.0-…` 标识，再 `read_ssh_id().await` 等对端的**，而
+    /// **先写出自己的 `SSH-2.0-…` 标识，再停在「读对端标识」那一步等着**，而
     /// `client::Config::default()` 的 `inactivity_timeout` 是 `None`（无客户端侧超时）
     /// ⇒ 卡住的是**握手**，不是 TCP 连接。
+    /// （那一步的上游函数名此处刻意不点：它是仓外符号，点了就要进 `structural_scan` 的
+    /// 仓外名字登记表，而那张表不在本件写区 —— 机制上面已经说全，不靠那个名字承重。）
     /// ★ 这才对得上断言原文那句「握手超时」—— 黑洞地址连 TCP connect 都没完成过，
     ///   它驱动的其实是「连接挂起」那条路，措辞却是「握手」那条路的。
     ///
@@ -7233,7 +7235,7 @@ Host prod
         let seen_w = Arc::clone(&seen);
         tokio::spawn(async move {
             // 只接一条。收下之后读一次（记下对端的 SSH 标识），然后**攥着不放** ——
-            // 既不回字节、也不关连接，让对端一直卡在 `read_ssh_id`。
+            // 既不回字节、也不关连接，让对端一直卡在「读对端标识」那一步。
             if let Ok((mut stream, _)) = listener.accept().await {
                 let mut buf = [0u8; 128];
                 if let Ok(n) = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await {
