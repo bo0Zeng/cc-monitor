@@ -1689,10 +1689,16 @@ mod tests {
         drop(held);
 
         // 腿③（反侧）：一个**不是** `ETXTBSY` 的真失败必须读成 `Broken`。
-        // 台子：一个存在、但**没有执行位**的文件当终端 ⇒ execve 被权限拒（不是 errno 26）。
-        let not_exec = dir.join("no-exec-bit");
-        std::fs::write(&not_exec, "#!/bin/sh\nexit 0\n").expect("写一个没有执行位的文件");
-        let refused = spawn_fake_terminal(payload, dir.to_str(), not_exec.to_str(), 2);
+        //
+        // 🔴 台子取的是**一个根本不存在的路径**，而不是「一个存在但没有执行位的文件」——
+        //    〔本轮自查，第 15 条：拿本轮的病理回头打自己的代码〕第一版正是后者，
+        //    而后者**自己就带着本件在治的那条前提**：那个文件也是这一趟刚写出来的，
+        //    它也可能被别的线程 fork 出来的子进程握着写 fd ⇒ 那一趟拿到的会是 errno 26
+        //    而不是权限被拒 ⇒ **这条腿自己变成偶发红**。
+        //    不存在的路径**不可能被谁开着写** ⇒ 这一腿的前提是恒成立的，不需要建立也不需要检查。
+        let missing = dir.join("no-such-terminal-here");
+        assert!(!missing.exists(), "这条腿要一个**不存在**的路径，它却在：{missing:?}");
+        let refused = spawn_fake_terminal(payload, dir.to_str(), missing.to_str(), 2);
 
         let _ = std::fs::remove_dir_all(&dir);
 
