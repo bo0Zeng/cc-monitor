@@ -180,6 +180,11 @@ chmod +x "$BIN8/tmux"
 mkdir -p "$WORK/inh"
 (
   export PATH="$BIN8:$PATH"
+  # ⚠ 〔`K-P2` `F` 拍 09-04〕**假后端那个 socket 也要跟着换**：它自带 `-L`（fail-closed，
+  #   见 `e2e/fake-daemon.sh` 头注），而 shim 插的 `-L` 在它**前面** ⇒ tmux 取最后一个
+  #   ⇒ 不换的话会话会落回 `$SOCK`，本格那个「现起一个 server」的前提当场不成立
+  #   （现打逮到过：本格两条一起红，而红的原因与它要测的东西无关）。
+  export FAKE_DAEMON_TMUX_SOCK="$SOCK8"
   # 该 socket 上尚无 server → 这次调用会**现起**一个，从而把 CC_BUS_ID 带进 server 全局环境
   CCM_NO_PRETRUST=1 CC_BUS_ID=STALEPARENT timeout 30 "$CCSPAWN" --tool codex "$WORK/inh" > "$WORK/out5.txt" 2>&1
 )

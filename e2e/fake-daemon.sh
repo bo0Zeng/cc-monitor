@@ -101,15 +101,18 @@ case "$_sub" in
 
   --launch)
     req="$(_slurp)"
+    # 只哑这一条腿（见头注 `FAKE_DAEMON_NO_LAUNCH`）。⚠ **stdin 先吞掉再退**：
+    # 不吞的话调用方那条 `printf … | 本脚本` 会拿到 EPIPE，症状变成「管道坏了」而不是「答不出」。
+    # ⚠⚠ **它必须排在下面那条 fail-closed 之前**〔现打逮到〕：这一格**一个 tmux 都不碰**
+    #    ⇒ 它不需要 socket。排在后面的话，「答不出结局帧」那一格会变成「rc≠0，答不出 --launch」
+    #    —— 两个 `why` 是不同的格，判据钉的正是「说得出是哪一格」。
+    [ "${FAKE_DAEMON_NO_LAUNCH:-}" = 1 ] && exit 0
     # 🔴 **fail-closed**：没给私有 socket 就不碰 tmux（手跑一次就会打到用户默认 socket ——
-    #    `C7i` 那条红线的来历）。⚠ 这一条**排在最前**，别挪到后面去。
+    #    `C7i` 那条红线的来历）。⚠ 它排在**所有真会碰 tmux 的分支之前**。
     [ -n "${FAKE_DAEMON_TMUX_SOCK:-}" ] || {
       echo "e2e/fake-daemon.sh: --launch 需要 FAKE_DAEMON_TMUX_SOCK=<私有 socket 名>。" >&2
       echo "     不给就不跑 —— 裸调 tmux 会把 fixture 会话建到**用户的默认 socket** 上（C7i）。" >&2
       exit 3; }
-    # 只哑这一条腿（见头注 `FAKE_DAEMON_NO_LAUNCH`）。⚠ **stdin 先吞掉再退**：
-    # 不吞的话调用方那条 `printf … | 本脚本` 会拿到 EPIPE，症状变成「管道坏了」而不是「答不出」。
-    [ "${FAKE_DAEMON_NO_LAUNCH:-}" = 1 ] && exit 0
     mode="$(printf '%s' "$req" | jq -r '.mode // ""')"
     name="$(printf '%s' "$req" | jq -r '.name // ""')"
     payload="$(printf '%s' "$req" | jq -r '.payload // ""')"
