@@ -6526,6 +6526,99 @@ body.settings-window-mode .grid-monitor-trigger {
   line-height: 1.5;
 }
 
+/* ─── N-F1b：本机那一支（没有配任何远端时，这一节讲的是这台机器） ────────────────
+   刻意**不复用** .accounts-table / .accounts-row：那两个类的列轨道是按远端那张表的
+   8 列排的（★/头像/名/邮箱/状态/用量/路径/操作），本机这几行只有 6 格，套上去列会错位。
+   ⚠ 本机这一支今天是**只读**的：没有操作列、没有用量列 —— 少的那两列不是漏写。
+   列宽的权重照 .accounts-table 那段头注的同一条理由：邮箱 > 路径（isolated 账号的
+   configDir 逐行只差最后一个字符，而邮箱才分辨得出是哪个号）。 */
+.accounts-local-head {
+  color: var(--text-2);
+}
+.accounts-local-table {
+  display: grid;
+  /* 头像 / 名 / 邮箱 / 状态 / 路径 / 当前标记 */
+  grid-template-columns:
+    16px minmax(0, auto) minmax(0, 1.2fr) auto minmax(0, 1fr) auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  /* 设置窗没有 min_inner_size，用户可以拖到很窄 —— 宁可横向滚也别把最右一格裁掉。 */
+  overflow-x: auto;
+}
+.accounts-local-row {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-left: 2px solid transparent;
+}
+/* subgrid 不支持时（Chromium <117 / WebKitGTK <2.42）：那条声明会被整条丢弃，行退化成
+   单列竖排堆叠 —— 比不对齐更糟。显式退回 flex 行。理由与 .accounts-table 那段逐字同源。 */
+@supports not (grid-template-columns: subgrid) {
+  .accounts-local-table {
+    display: flex;
+    flex-direction: column;
+  }
+  .accounts-local-row {
+    display: flex;
+    flex-wrap: wrap;
+  }
+}
+.accounts-local-row + .accounts-local-row {
+  border-top: 1px solid var(--border-faint);
+}
+.accounts-local-row:hover {
+  background: var(--overlay-hover);
+}
+/* 比 hover 更实一档：否则鼠标划过任意一行时，那行与当前行背景一模一样。 */
+.accounts-local-row.current {
+  border-left-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+/* 账号名最长可到 64 字符（validateAcctName）——不省略会把 auto 列撑爆。 */
+.accounts-local-row-name {
+  font-size: var(--font-size-mono);
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+.accounts-local-row-email,
+.accounts-local-row-dir {
+  font-size: var(--font-size-small);
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.accounts-local-row-dir {
+  color: var(--text-faint);
+  font-family: var(--font-mono, monospace);
+}
+/* 健康态 faint、异常态才上 warn —— 恒真的信息不携带信息，涂色只会稀释真正要跳出来的那几个。
+   （与 .accounts-row-badge 同一条理由，那里的头注写着全文。） */
+.accounts-local-row-badge {
+  font-size: var(--font-size-small);
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+.accounts-local-row-badge.warn {
+  color: var(--warn);
+}
+.accounts-local-row-mark {
+  font-size: var(--font-size-small);
+  color: var(--accent);
+  white-space: nowrap;
+}
+/* 空态：正题一行 + 下一步一行。下一步走普通 hint 的弱色，别和正题抢。 */
+.accounts-local-empty-next {
+  margin-top: 4px;
+}
+
 /* U7：维护区收进 <details> 默认折叠——加账号 / 自检 / 补链都低频且带 danger，不该常驻占版面。 */
 .accounts-maint-wrap {
   margin-top: 10px;
