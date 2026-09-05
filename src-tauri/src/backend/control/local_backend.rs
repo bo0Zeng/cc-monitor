@@ -2972,4 +2972,44 @@ mod tests {
                  生产上它跑在**主线程**（`RunEvent::Exit`）⇒ 窗口关了、进程退不出去，只能 kill -9。",
             );
     }
+
+    /// ★★ `K-P3b KP3W2`：**消费者交上去的那两维是观测出来的，不是默认值。**
+    ///
+    /// 两处观测点各钉一行：
+    /// - 「读端怎么结束的」：读错误那一支把**那句错原样**装进 `ReaderEnd::Broken`；
+    ///   喂 `CleanEof` 会让「读坏了」在账上变成「崩了」（`B1` 那条错误诊断的全部内容：
+    ///   `InvalidData` 与 EOF 走同一条路 ⇒ 记一次崩溃 ⇒ 三次之后整个进程周期不再起来）。
+    /// - 「它说过话没有」：读的是 `registered`，而那个值**只在**
+    ///   `DaemonHello::from_hello_frame` 给出见证之后才变成 `Some` ——
+    ///   写成常量就等于把 2026-07-09 的判别式换成一句猜测。
+    ///
+    /// # ⚠ 射程：这是**源码判据**，如实登记
+    ///
+    /// 「读端出错」那一支要一次**真的 IO 错误**才走得到（`read_capped_line_sync` 的 `Err`），
+    /// 在一根真管道上造不出来 ⇒ 这一格只证「那一行写在那儿」。
+    /// 行为那一半在 `local_daemon.rs::three_fake_daemons_land_in_three_different_cells`：
+    /// 那里 ①② 两格走的是**真的**这个消费者（hello 之后 `exit 3` / 一个字节不说就 `exit 2`），
+    /// ③ 那一格喂的是注入的消费者 —— 各自的射程写在那条判据自己的头注里。
+    #[test]
+    fn the_consumer_reports_what_it_observed_not_a_default() {
+        let prod = guard_core::production_code(include_str!("local_backend.rs"));
+        assert!(
+            prod.len() > 10_000,
+            "剥完只剩 {} 字节 —— 本条在空转",
+            prod.len()
+        );
+        for l in [
+            "reader_end = crate::daemon_policy::ReaderEnd::Broken(e.to_string());",
+            "let handshake = if registered.is_some() {",
+        ] {
+            guard_core::pin_line(&prod, l).unwrap_or_else(|why| {
+                panic!(
+                    "{why}\n\
+                     ⇒ 消费者交上去的那一维不再是**观测**来的。\n\
+                     ★ 那两维是宿主层判「崩了 / 被拒了 / 读坏了」的全部输入，\n\
+                     填一个看起来合理的值 ⇒ 判出来的那一格是编的，而它**不会报错**。"
+                )
+            });
+        }
+    }
 }
