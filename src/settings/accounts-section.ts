@@ -305,8 +305,10 @@ export class AccountsSection {
    * # `N-F2`（09-05）：那个洞**在本机这条路上一直还开着**，本件把它补上
    *
    * 上面那段说的是「全仓」，而这一行此前逐字写着 `if (!this.origin) return;`
-   * ⇒ 远端补上了，**本机一格都没写过**（全仓对 `LOCAL_MACHINE_KEY` 的 `recordFacet`
-   * 写点是 0 个）。`readiness.notApplicable` 只把本机的 `daemon` / `connection` 排掉，
+   * ⇒ 远端补上了，**本机一格都没写过**（`N-F2` 开工时现打：全仓对 `LOCAL_MACHINE_KEY`
+   * 的 `recordFacet` 写点 **0 个** —— ⚠ **这是那一刻的快照，而改掉它的正是下面这一行**：
+   * 本件之后是 1 个，就是这里）。而 `readiness.notApplicable` 对本机只排掉
+   * `daemon` / `connection` 两格（`ccm` 另有一条，仅 Windows），
    * 于是本机的 `acctIso` / `accounts` 是**适用而恒 `unknown`** 的两格 ——
    * 上面那句「清单在任何真实安装上都清不空」在本机这一侧原封不动地仍然成立。
    *
