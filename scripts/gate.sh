@@ -116,10 +116,13 @@
 #       继续以为「不挂是因为它红」。
 #
 #   ★★ **`F` 拍后半的收尾读数（同一趟量具，改完之后重打）**：那 71 条**全部回绿**，
-#     而且四套里两套还涨了：`ccm-cli` 242→**261** · `ccm-contract-parity` 68→**72** ·
-#     `ccm-acceptance` 29→**31** · `ccm-pretrust` 14/1→**15/0** · `cc-spawn-uplift`
-#     **67/5 = 与基线逐字相同**（那 5 条是本套件在沙箱里的既有红，不是本件的账）。
-#     买到这些的是一份**可复用的假后端** `e2e/fake-daemon`（四套共用一份，不是四份各写一遍）。
+#     而且六套里四套还涨了：`ccm-cli` 242→**264** · `ccm-contract-parity` 68→**72** ·
+#     `ccm-acceptance` 29→**31** · `ccm-pretrust` 14/1→**15/0** ·
+#     `ccm-print-parity` 12（=）· `ccm-rbind-title` 8（=）。
+#     `cc-spawn-uplift` 67/5→**71/1**：那 1 条是**沙箱的既有红**（非 ASCII 目录名在容器里
+#     被搞成 `__ ____ ______`，locale 的事），**与 `shared/ccm` 无关** ——
+#     现打对照：同一份新夹具喂**旧** `shared/ccm` 也是 **71/1**，逐字相同。
+#     买到这些的是一份**可复用的假后端** `e2e/fake-daemon`（六套共用一份，不是六份各写一遍）。
 #
 #   🔴 **给 `K-G` 的建议（只写建议，本件不挂）**：把 `ccm-acceptance` 挂进本门。
 #     理由三条，都是本拍现打出来的：
@@ -128,7 +131,8 @@
 #       ③ 它是四套里**唯一真起 tmux** 的那一套 ⇒ 它买的是「命令在真 tmux 上干了什么」，
 #          与现挂四套（都只看串与字节）**不同源**。
 #     ⚠ 代价如实写：它 **37.7 秒**（本文件上面那段计时），比现挂四套合计还长一倍多；
-#       而 `cc-spawn-uplift` **今天挂不了**（沙箱里既有 5 红，那是另一笔账）。
+#       而 `cc-spawn-uplift` **今天仍挂不了**（沙箱那 1 条既有红，那是另一笔账 ——
+#       修它要动容器 locale，不在本件写区）。
 #
 # ⚠ **`jq` 哪天从镜像里没了，这两行是 fail-closed 的**（`K-G7 §4` 死值验现打）：
 #   把 `/usr/bin/jq` 挡掉再跑**整趟**门禁 ⇒ 那两格双双红、诊断原文里带着套件自己打的
@@ -587,9 +591,12 @@ run_e2e ccm-rbind-title  8
 #     · `ccm-contract-parity` +4：`A″`/`A′e`/`A′h` 三处的反向对照从「关掉后端」换成
 #       「换一份后端」（同一条代码路径、只有输入不同 —— provenance 正是后者），
 #       并各补一格「`CCM_NO_DAEMON=1` ⇒ rc=4」。
-#   量于 `ccmon-devbox:latest`，`PASS=261 FAIL=0` / `PASS=72 FAIL=0`。
+#     · `ccm-cli` 再 +3：`控制字符` 那一族拆成两半 —— 「换行照发」（修回来的那个能力：
+#       载荷里的 `\n`/`\t` 是**键**，`create-or-attach` 放行；`ESC`/`CR`/`NUL` 照旧挡）
+#       ＋「线上那份请求里那个换行是**转义**过去的」。
+#   量于 `ccmon-devbox:latest`，`PASS=264 FAIL=0` / `PASS=72 FAIL=0`。
 #   ⚠ **`ci.yml` 那两行不在本件写区** ⇒ 逐字 diff 交回 PM 落（头注那条「三处一起改」的纪律照旧）。
-run_e2e ccm-cli               261
+run_e2e ccm-cli               264
 run_e2e ccm-contract-parity   72
 
 # pb check 不打「passed」，单独判：它自己会打 `FAIL=<n> BROKEN=<n>`。
