@@ -11,6 +11,17 @@
 //! 同时又比性质**大**（daemon 写一个与用户无关的自己的文件也会红）。
 //! ⇒ **它今天真能拦住的形状全表在 [`g6_reach`]，一个今天在盘上、形状相同却通过了的反例也在那里。**
 //!
+//! # 〔`K-R2` 09-04〕人群那三条「小」里的第一条：**依赖 crate 的写面，今天有人签字了**
+//!
+//! 上面那一行逐字承认人群「不含依赖 crate 的写」。本轮**不补人群**（那是 `K-G6` 的射程），
+//! 而是把这一条从「判据看不见」变成「有人签过字」：清单上每一条依赖都要有一行登记
+//! （有没有写面 · 依据是什么 · 判档），**新加一条而没签字 ⇒ 当场红**。
+//! 表与判据住 [`g6_dependency_signoff`]。
+//!
+//! 🔴 立表顺手量出一件事：那张表里**真有一条有写面** —— `creds-core` 的 `perm.rs` 里两处，
+//! 而它们今天进不了发布二进制靠的是**一个 feature 没开**。
+//! 在本轮之前，盘上没有任何东西钉着那件事。
+//!
 //! # 〔`K-G6` 订正〕收窄前那句绝对话今天是假的，本轮**两处一次改完**
 //!
 //! `D1` 之后 `doc/INVARIANTS.md` §41.6 已经把铁律改成上面那句，并把收窄前那句绝对话
@@ -1547,6 +1558,464 @@ mod g6_scope_pins {
         assert!(
             with_words >= 1,
             "禁词表全空 —— 本条此刻是空转的（每一条都走了 `why_empty` 那一支）"
+        );
+    }
+}
+
+/// 〔`K-R2` 09-04，兑现 `K-W2D` `KW2D5` 的一半〕**依赖 crate 的写面：从「判据看不见」
+/// 变成「有人签过字」。**
+///
+/// # 洞在哪 —— 本文件的人群行自己承认的那一句
+///
+/// 人群行逐字写着人群比性质**小**，而它列的第一条就是「不含依赖 crate 的写」。
+/// ⇒ 一个依赖 crate 在**它自己的**代码里写盘 / 起进程，本护栏两层判据一层都不会响：
+/// 它扫的是**本 crate 源码文本**里那三个命名空间的调用。
+///
+/// 🔴 **这不是假想形态**：`creds-core` 是本清单上的直接依赖，它自己的 `perm.rs` 里
+/// 就有两处写面（`make_private` 收窄权限 · `create_private` 建私有文件）。
+/// 它们今天进不了本 crate 的依赖树，靠的是**那个 feature 没开** ——
+/// 而在本模块之前，盘上没有任何东西钉着「那个 feature 不许开」。
+///
+/// # 本模块**不补人群**（那是 `K-G6` 的射程），它买的是另一格
+///
+/// 补人群 = 去扫依赖 crate 的源码树，那是另一件事的规模。本模块只做一件机器判得了的事：
+/// **清单上每一条依赖都得有一行签字**，新加一条而没签字 ⇒ 当场红。
+/// 签字里写清「有没有写面 · 依据是什么 · 落哪一档」。
+///
+/// # 它买不到什么（逐条写明，别读大一格）
+///
+/// - **不检查那行签字说得对不对** —— 同 [`spawn_registry`] 那条登记过的边界。
+///   它钉的是「说得出来」，不是「真的想过」。
+/// - **分母是清单上直接声明的那几条**，传递依赖不在里面 ⇒ 一条依赖的依赖在写盘，本条一声不吭。
+///   ⚠⚠ **订正（09-04 同轮，别读成「看不见」）**：本条初版逐字写的是
+///   「那个分母要起子进程去问 cargo 才数得出来」—— **那句话是假的**：`Cargo.lock` 就在盘上、
+///   纯文本、解析得动（同一天另一道判据现打就是读它来判「谁链了引擎」）。
+///   ⇒ 准确的说法是**口径选择**，不是能力边界：签字要签在「**我们自己写下的那一条依赖**」上，
+///   那才是有人做过决定的地方；锁文件那一面是另一张表、另一件事。
+///   〔这一条自己就是本仓最高频那族的活体：**把「我没做」写成了「做不到」**。〕
+/// - **按「crate 名 + 段」认**：同一条依赖换版本 / 换 feature 集合不会红。
+///   唯一的例外是那条**有写面**的（它的签字前提由本模块单独一条判据钉着）。
+/// - 它读的是**本半自己那份清单**（编译期 `include_str!`），不跨半边、不新增跨界编译边。
+#[cfg(test)]
+mod g6_dependency_signoff {
+    /// 本 crate 的清单。**编译期读**，而且是本半自己那一份。
+    const MANIFEST: &str = include_str!("../Cargo.toml");
+
+    /// 清单里**带依赖的段**，逐段登记（**相等**对拍，不是子集）。
+    ///
+    /// 一整段依赖溜出分母是这一族最省事的漏法：`[build-dependencies]` 与
+    /// `[target.'…'.dependencies]` 在隔壁那份清单上真的有，本清单今天没有 ——
+    /// 哪天有了，本模块要先出声。
+    const DEPS: &str = "[dependencies]";
+    const DEV_DEPS: &str = "[dev-dependencies]";
+    const DEP_SECTIONS: &[&str] = &[DEPS, DEV_DEPS];
+
+    /// 判档：**闭集**，名字只有这一处住址（表里与签字行都引这几个常量，不写第二遍字面量）。
+    const MEASURED_WRITES: &str = "已量·有写面";
+    const MEASURED_CLEAN: &str = "已量·未见写面";
+    const UNMEASURED: &str = "未量·靠用法签字";
+
+    /// `(判档, 什么时候落在这一档, 这一档自己的解锁条件)`。
+    ///
+    /// 解锁条件按**档**给一次，不在每条签字里抄一遍 —— 抄一遍就会漂（本仓 E12）。
+    const VERDICTS: &[(&str, &str, &str)] = &[
+        (
+            MEASURED_WRITES,
+            "读过它的源码、并在里面找到了文件系统变更或起进程的调用。\
+             它今天进不进得了发布二进制是**另一件事** —— 凭什么进不来，要写在签字里",
+            "那条「凭什么进不来」的前提没了（feature 开了 / 调用路接上了）⇒ 这一条回来**重签**，\
+             不是改个字。而那个前提本身必须有一条判据钉着，否则这一档只是好听的说法",
+        ),
+        (
+            MEASURED_CLEAN,
+            "仓内 crate —— 整棵 `src` 按本护栏那两张模式表加起进程点现打，命中 0 处\
+             （量具是 `evidence/` 下那份 `.py`，交回里给了住址与量于哪个提交）",
+            "它长出第一处写面那天。⚠ 如实写明：**没有任何判据会在那一刻自动红** —— \
+             这一档的尺子是签字那一刻现打的，不是常驻的。要常驻就得补人群，那是 `K-G6` 的射程",
+        ),
+        (
+            UNMEASURED,
+            "**没读它的源码。** 签字依据只有「daemon 在它身上的用法不需要它自己写盘」——\
+             那是**用法**判断，不是对它源码的读数",
+            "有人真去读了它的源码（或它进了一次真的依赖审计）⇒ 那一条升到已量的两档之一；\
+             在那之前如实标着「未量」，不许因为「看起来不会写」就升档",
+        ),
+    ];
+
+    /// 判档闭集比对（**枚举，不是子串** —— 判据规范规则 3）。
+    fn is_verdict(tag: &str) -> bool {
+        VERDICTS.iter().any(|(v, ..)| *v == tag)
+    }
+
+    /// 报错文案要印出闭集全体（**现算**，不写基数）。
+    fn verdict_names() -> Vec<&'static str> {
+        VERDICTS.iter().map(|(v, ..)| *v).collect()
+    }
+
+    /// 有写面那一档今天唯一的成员，与它那个被关着的 feature。
+    const GATED_CRATE: &str = "creds-core";
+
+    /// **签字表**：`(crate 名, 段, 判档, 签字——它在 daemon 里做什么 · 凭什么落这一档)`。
+    ///
+    /// 谁签的：`实@09-04`（本轮实现方）。整表一个签字人，所以不占一列 ——
+    /// 哪天有第二个人往里加行，那一列再立。
+    const SIGNED: &[(&str, &str, &str, &str)] = &[
+        (
+            "acct-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "账号记录变换（纯数据），与 monitor 共用同一份；仓内 crate，现打 0 处写面",
+        ),
+        (
+            "branch-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "分叉的记录变换（纯数据），与 monitor 共用同一份；仓内 crate，现打 0 处写面",
+        ),
+        (
+            GATED_CRATE,
+            DEPS,
+            MEASURED_WRITES,
+            "第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。\
+             ★ **它自己有两处写面**：`perm.rs` 的 `make_private`（收窄既有文件的权限）与 \
+             `create_private`（建一个只给本人的新文件）。两处**都在那个 feature 后面**，\
+             而本清单**刻意不开**它（清单那段注释逐字写着理由：daemon 只许读那份文件）\
+             ⇒ 今天编不进来。这条前提由本模块那条 feature 判据钉着，不靠纪律",
+        ),
+        (
+            "gate-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "§34 Gate 2 的唯一实现（生产段真的在执行它）；仓内 crate，现打 0 处写面",
+        ),
+        (
+            "guard-core",
+            DEV_DEPS,
+            MEASURED_CLEAN,
+            "源码扫描型判据的共用剥法。**只在测试期链接**，不进发布二进制；\
+             仓内 crate，现打 0 处写面",
+        ),
+        (
+            "libc",
+            DEPS,
+            UNMEASURED,
+            "只用 pidfd 那三样（清单那段注释逐字），零 feature。它是 syscall 绑定 ——\
+             写不写盘看调用点，而调用点在本 crate 里、由默认层那条判据数",
+        ),
+        (
+            "notify",
+            DEPS,
+            UNMEASURED,
+            "inotify 观测：daemon 只拿它订阅被观测目录底下的变化，一条写路径都不经它",
+        ),
+        (
+            "notify-debouncer-mini",
+            DEPS,
+            UNMEASURED,
+            "把上面那条的事件去抖之后再交出来 —— 同一条路上的第二段，同样只在读侧",
+        ),
+        (
+            "rustls",
+            DEPS,
+            UNMEASURED,
+            "TLS 握手与记录层（provider 钉了 `ring`）；证书链由下面那条 crate 以常量表给出，\
+             本机不落盘、不建缓存目录",
+        ),
+        (
+            "serde",
+            DEPS,
+            UNMEASURED,
+            "序列化派生；daemon 只拿它把 wire 帧与结构体互转，落盘那一步不经它",
+        ),
+        (
+            "serde_json",
+            DEPS,
+            UNMEASURED,
+            "JSON 编解码；同 `serde`，只在内存里把字节变成结构体、再变回去",
+        ),
+        (
+            "shell-quote-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "POSIX 单引号 quote 的唯一实现（纯字符串变换）；仓内 crate，现打 0 处写面",
+        ),
+        (
+            "tokio",
+            DEPS,
+            UNMEASURED,
+            "运行时 + io。⚠ **本表唯一「写面在我们自己手上」的一条**：`fs` feature 开着 ⇒ \
+             它**提供**写 API，而调用点全在本 crate 里 —— 那一面由默认层与只读白名单\
+             那两条判据数，不由本表。本表管的是「它自己会不会写」",
+        ),
+        (
+            "tracing",
+            DEPS,
+            UNMEASURED,
+            "日志门面：它自己不选落点，落点由 subscriber 那一条决定",
+        ),
+        (
+            "tracing-subscriber",
+            DEPS,
+            UNMEASURED,
+            "只开 `env-filter`。日志去向由本 crate 自己给的 writer 定（今天是标准错误）——\
+             落盘那一形要另一条 crate，而本清单上没有",
+        ),
+        (
+            "usage-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "用量记录变换（纯数据），与 monitor 共用同一份；仓内 crate，现打 0 处写面",
+        ),
+        (
+            "walkdir",
+            DEPS,
+            UNMEASURED,
+            "目录遍历，纯只读：它交出的是路径，读不读、写不写由调用点决定",
+        ),
+        (
+            "webpki-roots",
+            DEPS,
+            UNMEASURED,
+            "根证书**数据**（一张常量表）—— 它没有 IO 那条代码路径要谈",
+        ),
+    ];
+
+    /// 清单的**依赖段**逐条：`(段名, crate 名, 那一行原文)`。
+    ///
+    /// 两条判据：段名以 `dependencies]` 收尾 · 条目从**列 0 起**
+    /// （多行内联表的续行 —— 那些 feature 字面量 —— 不是条目）。
+    ///
+    /// ⚠ 剥 `#` 整行注释走 `guard_core` 的**共享原语**，不在这里自己写第二份 ——
+    /// 本函数第一版内联了一个 `#` 过滤，而 monitor 侧那张「剥注释实现只许一份」的登记表
+    /// **当场逮住了它**（09-04 现打；它的人群跨三棵树，daemon 这一侧也在里面）。
+    fn dep_entries(manifest_text: &str) -> Vec<(String, String, String)> {
+        let mut out: Vec<(String, String, String)> = Vec::new();
+        let mut section = String::new();
+        let uncommented = guard_core::strip_hash_comment_lines(manifest_text);
+        for line in uncommented.lines() {
+            let entry = line.trim();
+            if entry.starts_with('[') {
+                section = if entry.ends_with("dependencies]") {
+                    entry.to_string()
+                } else {
+                    String::new()
+                };
+                continue;
+            }
+            if section.is_empty() || line.starts_with(char::is_whitespace) {
+                continue;
+            }
+            let Some((key, _)) = entry.split_once('=') else {
+                continue;
+            };
+            let name = key.trim();
+            if name.is_empty()
+                || !name
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            {
+                continue;
+            }
+            out.push((section.clone(), name.to_string(), entry.to_string()));
+        }
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// 清单的依赖段里某一条依赖的**那一行原文**（`None` = 那一段里没有这条依赖）。
+    fn dep_line(manifest_text: &str, name: &str) -> Option<String> {
+        dep_entries(manifest_text)
+            .into_iter()
+            .find(|(_, n, _)| n.as_str() == name)
+            .map(|(_, _, line)| line)
+    }
+
+    /// 没签字的那些（诊断用的住址表）。**纯函数** —— 能直接喂合成清单，
+    /// 否则「今天零条未签字」这个读数与「这把尺子根本不报」在终端上没有区别。
+    fn unsigned_of(declared: &[(String, String, String)]) -> Vec<String> {
+        declared
+            .iter()
+            .filter(|(sect, name, _)| {
+                !SIGNED
+                    .iter()
+                    .any(|(n, s, ..)| *n == name.as_str() && *s == sect.as_str())
+            })
+            .map(|(sect, name, _)| format!("  {sect} 里的 {name}"))
+            .collect()
+    }
+
+    /// ★ 正题：**清单上每一条依赖都得有一行签字**，而带依赖的段本身也钉住。
+    #[test]
+    fn every_dependency_this_manifest_declares_carries_a_signature() {
+        let declared = dep_entries(MANIFEST);
+        // 抽取器自检：分母塌了下面两条一起零命中地绿。
+        assert!(
+            declared.len() >= 15,
+            "清单的依赖段里只抽出 {} 条依赖（09-04 现打 18）—— 抽取坏了，本条在空转：{declared:?}",
+            declared.len()
+        );
+        let mut sections: Vec<String> = declared.iter().map(|(s, ..)| s.clone()).collect();
+        sections.sort();
+        sections.dedup();
+        let mut registered: Vec<String> = DEP_SECTIONS.iter().map(|s| (*s).to_string()).collect();
+        registered.sort();
+        assert_eq!(
+            sections, registered,
+            "清单里**带依赖的段**变了。\n\
+             **多一段**（`[build-dependencies]` / `[target.'…'.dependencies]` 那些）⇒ \
+             那是一整段依赖从本表分母里溜走的入口，先把它登记进 `DEP_SECTIONS`；\n\
+             **少一段** ⇒ 那一段的依赖没了，回来把 `SIGNED` 里对应的行摘掉。"
+        );
+        let unsigned = unsigned_of(&declared);
+        assert!(
+            unsigned.is_empty(),
+            "这些依赖没有签字：\n{}\n\n\
+             ⇒ 本护栏的人群行逐字承认它「不含依赖 crate 的写」——\
+             一条新依赖在它自己的代码里写盘 / 起进程，两层判据一层都不会响。\n\
+             **本表买的就是那一格**：加一条依赖，就在 `SIGNED` 里写一行\
+             「它在 daemon 里做什么 · 有没有写面 · 依据是什么」。\n\
+             判档只有这几个（现算）：{}",
+            unsigned.join("\n"),
+            verdict_names().join(" / ")
+        );
+    }
+
+    /// ★ 反向那半：签字表里不许有**幽灵条目**，每一档都要在闭集里、每一行都要有依据。
+    #[test]
+    fn the_signature_table_has_no_ghost_entries_and_every_verdict_is_a_registered_one() {
+        assert_eq!(
+            VERDICTS.len(),
+            3,
+            "判档闭集现在有 {} 格 —— **相等断言，不是地板**。\n\
+             加一格 = 判档表被改了，那不是顺手能加的；少一格 = 有人把某一种判档拿掉了，\n\
+             而那正是要有人看一眼的时刻。",
+            VERDICTS.len()
+        );
+        let mut names = verdict_names();
+        let before = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(before, names.len(), "判档闭集里有重名的档：{names:?}");
+        for (verdict, when, unlock) in VERDICTS {
+            assert!(
+                when.trim().chars().count() >= 20,
+                "`{verdict}` 没写清「什么时候落在这一档」（实得 {} 字）",
+                when.trim().chars().count()
+            );
+            assert!(
+                unlock.trim().chars().count() >= 20,
+                "`{verdict}` 没写**这一档自己的解锁条件**（实得 {} 字）—— \
+                 一张没有解锁条件的判档表，用不了几轮就会变成装饰",
+                unlock.trim().chars().count()
+            );
+        }
+        let declared = dep_entries(MANIFEST);
+        for (name, sect, verdict, why) in SIGNED {
+            assert!(
+                is_verdict(verdict),
+                "`{name}` 的判档是 `{verdict}` —— 它不在闭集里。闭集（现算）：{}",
+                verdict_names().join(" / ")
+            );
+            assert!(
+                why.trim().chars().count() >= 20,
+                "`{name}` 的签字太短（实得 {} 字）—— 这一列的读者是下一个想加依赖的人，\
+                 要写的是「它在 daemon 里做什么 · 凭什么落这一档」，不是一句「没问题」",
+                why.trim().chars().count()
+            );
+            assert!(
+                declared
+                    .iter()
+                    .any(|(s, n, _)| n.as_str() == *name && s.as_str() == *sect),
+                "签字表里的 `{sect}` / `{name}` 在清单上已经找不到了 —— 幽灵条目。\n\
+                 依赖摘掉了就**同轮**把签字摘掉：留着的后果不是多一行没用的字，\
+                 是下一个人以为这条依赖还在、而它的写面理由还挂在旧地址上。"
+            );
+        }
+    }
+
+    /// ★★ 那条**有写面**的签字，它的前提是「那个 feature 本清单没开」—— 把前提钉住。
+    ///
+    /// 这一条是本模块里唯一**不只钉「说得出来」**的判据：它钉的是那句话赖以成立的那个事实。
+    /// feature 一开，两处写面就真进了本 crate 的依赖树，而那时签字里那句
+    /// 「今天编不进来」当场变成假话 —— 本仓最高频的病是「代码订正了，盘没跟着改」，
+    /// 这一条挡的正是它的反面：**盘上写着的前提被代码改掉了而盘不知道。**
+    #[test]
+    fn the_only_signed_write_surface_still_rides_on_a_feature_this_manifest_leaves_off() {
+        let with_surface: Vec<&str> = SIGNED
+            .iter()
+            .filter(|(_, _, v, _)| *v == MEASURED_WRITES)
+            .map(|(n, ..)| *n)
+            .collect();
+        assert_eq!(
+            with_surface,
+            vec![GATED_CRATE],
+            "「有写面」那一档的成员变了：{with_surface:?}\n\
+             本条只钉得住 `{GATED_CRATE}` 那一条的前提（它的写面在一个 feature 后面）。\n\
+             新来一条有写面的依赖 ⇒ 先回答「它凭什么进不来」「那个前提谁钉着」，再改这里。"
+        );
+        // 针**运行时拼**：清单的注释里逐字写着这个词，而下面只看那一行、不看注释。
+        let feature = format!("har{}", "den");
+        let line = dep_line(MANIFEST, GATED_CRATE).unwrap_or_else(|| {
+            panic!(
+                "清单的依赖段里找不到 `{GATED_CRATE}` —— 签字的对象没了，回来重判 `SIGNED`\
+                 （而不是把本条删掉）"
+            )
+        });
+        assert!(
+            !guard_core::contains_word(&line, &feature),
+            "本清单给 `{GATED_CRATE}` 开了 `{feature}`：{line}\n\
+             ⇒ 那个 feature 才带「把文件收窄 / 建私有文件」的平台原语，一开，\
+             它那两处写面就真编进本 crate 的依赖树了。\n\
+             **这不是改个断言的事**：`SIGNED` 里那一行的签字前提当场作废，回来重签，\
+             并回答「daemon 现在算不算自己在写用户既有数据」。"
+        );
+        // 反空真：探针对「开着」的写法必须认得出来，否则上面那条零命中断言什么也不说明。
+        //
+        // 🔴 **样本里那个词不许由 needle 拼出来** —— 那样这条控制**恒真**。
+        // 09-04 现打的活体（本轮死值验 M5 逮到的，就在这一行上）：第一版逐字是
+        // `format!("… features = [\"{feature}\"] …")`，把 needle 改成一个盘上不存在的词之后
+        // **控制照样绿** ⇒ 它当时什么都没在证明，而它的表现与真控制一模一样。
+        // ⇒ 样本里是**另一处独立字面量**。两处「重复」是刻意的：
+        //   一条控制要的正是**独立见证**，与 needle 同源就不是见证。
+        let sample_with_it = format!(
+            "{GATED_CRATE} = {{ path = \"…\", features = [\"{}\"] }}",
+            "harden"
+        );
+        assert!(
+            guard_core::contains_word(&sample_with_it, &feature),
+            "探针连样本 `{sample_with_it}` 都认不出来 —— 上面那条零命中断言此刻是空转的。\
+             （两处若漂开了，先核**清单里那个 feature 今天叫什么**，别顺手把针改成样本。）"
+        );
+    }
+
+    /// ★★ 「今天零条未签字」这个读数要先证明**尺子接上了** —— 喂一份合成清单，它必须点名。
+    ///
+    /// 合成的那条刻意就是本件的形状：**引擎作为一条新依赖进来**那天。
+    #[test]
+    fn an_unsigned_dependency_is_really_reported_so_that_the_zero_is_not_vacuous() {
+        // 引擎那个 crate 名**运行时拼**：monitor 侧有一条判据在数「哪几棵树里出现过它」，
+        // 别让本文件变成那张表里的第二处命中。
+        let engine = format!("code-picture{}core", "-");
+        let fake = format!(
+            "[package]\nname = \"某个壳\"\nversion = \"0.0.0\"\n\n\
+             {DEPS}\nserde = \"1\"\n{engine} = {{ path = \"vendor/引擎\" }}\n\n\
+             {DEV_DEPS}\nguard-core = {{ path = \"../共享/guard-core\" }}\n"
+        );
+        let declared = dep_entries(&fake);
+        assert_eq!(
+            declared.len(),
+            3,
+            "合成清单里抽出 {} 条依赖（应当恰好是 serde · 引擎 · guard-core）：{declared:?}\n\
+             抽取器读不准这份合成清单 ⇒ 它读真清单的那个读数也说明不了什么",
+            declared.len()
+        );
+        assert_eq!(
+            unsigned_of(&declared),
+            vec![format!("  {DEPS} 里的 {engine}")],
+            "★ 这一刀正是本件的形状：**引擎被编进 daemon** 那天，它会作为一条新依赖出现，\
+             而它自己就是「在 vendor 里写盘、判据看不见」的那一个 —— 本条要求那时候当场点名它。\
+             同时它反向证明另一半：已经签过字的 `serde` / `guard-core` 不许被误报成没签字。"
         );
     }
 }
