@@ -103,10 +103,22 @@ CUTS = [
     ),
     (
         "F3b", "shared/ccm",
+        '  #    两处各写一句就是两份措辞，而调用方是按码判失败种类的。\n'
+        '  backend_unreachable "$why"',
+        '  #    两处各写一句就是两份措辞，而调用方是按码判失败种类的。\n'
+        '  return 0',
+        1, ("cargo", "the_backend_unreachable_failure_face_has_exactly_one_home"),
+        "**账号**那条腿不再走唯一失败面（另一条腿 —— 证 F3 不是只逮一处）",
+    ),
+    (
+        # 🔴 **这一刀故意打在源码判据的射程之外**，用来把那条射程量出来。
+        "F3d", "shared/ccm",
         '  # ★★ 〔`F` 拍〕**这里原来是「降级出声 ＋ 读 manifest」，退路删了 ⇒ 唯一失败面。**',
         '  return 0\n  # ★★ 〔`F` 拍〕**这里原来是「降级出声 ＋ 读 manifest」，退路删了 ⇒ 唯一失败面。**',
-        1, ("cargo", "the_backend_unreachable_failure_face_has_exactly_one_home"),
-        "**账号**那条腿不再走唯一失败面（同上，另一条腿 —— 证 F3 不是只逮一处）",
+        1, ("e2e", None),
+        "把账号那条腿的失败面**变成够不着的死代码**（调用行还在，只是永远走不到）—— "
+        "**源码判据看不见这一刀**（它数的是「有几行写着调用」），**e2e 看得见**（rc 从 4 变 0）。"
+        "两条并排读，就把那条源码判据的射程量出来了",
     ),
     (
         "F3c", "shared/ccm",
