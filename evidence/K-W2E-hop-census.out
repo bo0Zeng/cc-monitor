@@ -1,0 +1,77 @@
+# 被测的那棵树：/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-w2e
+# ⚠ 这一行就是本读数的分母边界：换一棵树，下面每个数都可能不同。
+
+## plugin/discover.rs —— 5 条判据（生产段 2725 字节 · 测试段 2732 字节）
+   - the_not_installed_message_names_every_place_it_looked: 跳4
+   - an_empty_candidate_list_still_says_something_useful: 跳4
+   - the_first_candidate_that_exists_wins: 跳4
+   - a_directory_with_the_same_name_is_not_executable: 跳4
+   - opting_out_of_path_really_skips_it: 跳4
+
+## plugin/probe.rs —— 8 条判据（生产段 5226 字节 · 测试段 7965 字节）
+   - the_required_list_is_checked_against_what_the_real_plugin_declares: 跳5
+   - a_complete_answer_passes_negotiation: 跳5
+   - a_missing_capability_is_named_and_only_it_is_named: 跳5
+   - the_message_does_not_blame_the_call: 跳5
+   - a_stranger_that_happens_to_have_the_same_name_is_rejected: 跳5
+   - the_version_number_never_decides_anything: 跳5
+   - an_empty_requirement_list_still_checks_the_identity: 跳5
+   - whitespace_and_trailing_commas_do_not_become_tokens: 跳5
+
+## plugin/invoke.rs —— 6 条判据（生产段 4483 字节 · 测试段 3231 字节）
+   - the_deadline_command_becomes_the_prefix: 跳6
+   - without_a_deadline_command_it_runs_bare_and_says_so_in_the_argv: 跳6
+   - an_empty_arg_list_stays_empty: 跳6
+   - a_signal_death_is_not_an_exit_code: 跳7
+   - the_diagnosis_prefers_stderr_and_falls_back_to_stdout: 跳7
+   - invalid_utf8_output_still_yields_a_line: 跳7
+
+## plugin/mod.rs —— 6 条判据（生产段 5503 字节 · 测试段 14018 字节）
+   - the_plugin_layer_collection_is_complete: 无直接命中
+   - the_generic_port_names_no_concrete_plugin: 无直接命中
+   - the_port_guard_actually_bites: 无直接命中
+   - the_generic_port_does_not_translate_exit_codes: 无直接命中
+   - the_only_exit_code_constants_here_are_the_registered_generic_ones: 无直接命中
+   - the_exit_code_shape_guard_actually_bites: 无直接命中
+
+## control/cc_bus.rs —— 7 条判据（生产段 16913 字节 · 测试段 4087 字节）
+   - parse_list_reads_the_table_and_skips_everything_else: 无直接命中
+   - a_long_id_that_overflows_the_column_is_still_parsed: 无直接命中
+   - non_data_lines_never_become_agents: 无直接命中
+   - the_not_installed_message_names_the_places_it_looked: 跳4
+   - the_override_dir_wins_over_the_fixed_places: 跳4
+   - the_three_exit_codes_map_to_three_different_meanings: 跳8
+   - the_daemon_does_not_re_implement_the_recipient_charset_rule: 无直接命中
+
+## plugin_walk_fixture.rs —— 12 条判据（生产段 5112 字节 · 测试段 60494 字节）
+   - this_fake_plugin_is_deliberately_unlike_the_real_one: 跳4/8
+   - one_fake_plugin_walks_six_hops_as_one_path: 跳7/8（＋经 driver 传递：跳2/4/5/6）  ★真起进程
+   - the_walk_really_started_a_process_not_a_hand_built_done: 无直接命中（＋经 driver 传递：跳2/4/5/6/7/8）  ★真起进程
+   - digging_out_any_one_hop_stops_where_it_can_name_it: 无直接命中（＋经 driver 传递：跳2/4/5/6/7/8）  ★真起进程
+   - a_missing_or_unarmed_executable_says_where_it_looked: 跳4
+   - an_unarmed_plugin_stops_at_hop_four_saying_where_it_looked: 无直接命中（＋经 driver 传递：跳2/4/5/6/7/8）  ★真起进程
+   - the_pre_declaration_reuses_the_word_the_registry_already_owns: 跳2/4
+   - the_generic_port_never_learns_this_fixtures_vocabulary: 跳6
+   - this_fixture_never_ships: 无直接命中
+   - the_deadline_lands_on_the_child_not_on_the_host: 跳4/5/6/7/8  ★真起进程
+   - nothing_here_hands_the_plugin_a_designed_way_back_into_the_host_commands: 跳4/5/6  ★真起进程
+   - adding_a_plugin_still_costs_the_host_something: 无直接命中
+
+## 合计（每个数的分母写在括号里）
+   判据总条数：44（分母 = 上面 6 个语料文件里 `#[test]` 的处数）
+     · plugin/discover.rs = 5
+     · plugin/probe.rs = 8
+     · plugin/invoke.rs = 6
+     · plugin/mod.rs = 6
+     · control/cc_bus.rs = 7
+     · plugin_walk_fixture.rs = 12
+   同时驱动 ≥2 跳的判据：8（分母 = 同一个 44）
+     · plugin_walk_fixture.rs::this_fake_plugin_is_deliberately_unlike_the_real_one → 跳4/8
+     · plugin_walk_fixture.rs::one_fake_plugin_walks_six_hops_as_one_path → 跳2/4/5/6/7/8
+     · plugin_walk_fixture.rs::the_walk_really_started_a_process_not_a_hand_built_done → 跳2/4/5/6/7/8
+     · plugin_walk_fixture.rs::digging_out_any_one_hop_stops_where_it_can_name_it → 跳2/4/5/6/7/8
+     · plugin_walk_fixture.rs::an_unarmed_plugin_stops_at_hop_four_saying_where_it_looked → 跳2/4/5/6/7/8
+     · plugin_walk_fixture.rs::the_pre_declaration_reuses_the_word_the_registry_already_owns → 跳2/4
+     · plugin_walk_fixture.rs::the_deadline_lands_on_the_child_not_on_the_host → 跳4/5/6/7/8
+     · plugin_walk_fixture.rs::nothing_here_hands_the_plugin_a_designed_way_back_into_the_host_commands → 跳4/5/6
+   真起进程的判据：6（分母 = 同一个 44；针 = ['invoke::run(', 'Command::new(']）
