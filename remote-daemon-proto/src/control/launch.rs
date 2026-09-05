@@ -185,7 +185,39 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
     let payload = get_str("payload")
         .ok_or(("invalid_args", "缺 `payload`".to_string()))?
         .to_string();
-    check_field("payload", &payload)?;
+    // ★★ 🔴 〔`K-P2` `F` 拍 09-04〕**`create-or-attach` 的 `payload` 放行 `\n` / `\t`，
+    //    别的模式一个字节不动。** 这是 `§19 裁六` 登记的那条「真搬那拍的硬前置」。
+    //
+    // # 为什么必须现在解
+    //
+    // 那条拒收本来有一个**退路**兜着：`shared/ccm` 判出控制字符就退回本机 tmux 直起，
+    // 而本机那条**一直是接受换行的**（`tmux send-keys -t X '第一行<换行>第二行' Enter`）。
+    // 用@09-04「统一走后端」把退路删了 ⇒ 那条拒收从「挡住新路」变成**挡住这次调用**，
+    // 于是「多行任务」这个**真实能力**整个没了。
+    // 现打：`e2e/cc-spawn-uplift.sh` 的「多行任务」一族 **4 条**当场红
+    //（仍上总线 / 台账恰好一行 / 那行仍是 4 列 / 换行被转义信息没丢）。
+    // ⇒ 这不是判据要不要改的问题，是**能力回归**。修它，不是翻它。
+    //
+    // # 为什么只放行这两个、只放行这一个模式
+    //
+    // · `payload` 在这条模式里是**要被键入的东西** —— `\n` 在它里面是一个**有意义的键**
+    //   （就是回车），不是畸形字节。本机那条路一直这么理解它。
+    // · 别的控制字符（`ESC` / `CR` / `NUL` …）不是「键」，是**会改掉终端状态**的东西
+    //   ⇒ 照旧拒收。⚠ 这一格**比本机那条旧路更严**：旧路经 `sq` + `bash` 什么都放过去。
+    // · `send-into` / `send-keys-raw` **一个字节不动**：`§19 裁六` 逐字「放宽它会同时改掉
+    //   已有两个生产调用方的行为」（`daemon_launch.rs` 的 send-into · `daemon_send_keys.rs`
+    //   的裸键）—— 那两条路的 `payload` 语义不同，不该被这一格牵连。
+    // ⚠ **这里刻意写 `if matches!(…)` 而不是 `match mode { Mode::CreateOrAttach => … }`**
+    //   〔本轮现打，判据当场逮住的〕：`create_or_attach_never_types_into_a_session_it_did_not_just_create`
+    //   用 `arm_of(&src, "Mode::CreateOrAttach =>")` 取那个分支的源码段，而它取的是**第一处**
+    //   ⇒ 在 `run()` 之前再写一个同形的 `match` 臂，会把那条判据的**扫描面整个换掉**
+    //   （它会去读这里这几行，然后报「分支里没有 type_payload」）。
+    //   那正是本仓最贵那族：**尺子量的对象跟标签对不上**。⇒ 换一个不产生那个字面的写法。
+    if matches!(mode, Mode::CreateOrAttach) {
+        check_typed_payload(&payload)?;
+    } else {
+        check_field("payload", &payload)?;
+    }
 
     let cwd = get_str("cwd").map(str::to_string);
     if let Some(c) = &cwd {
@@ -282,6 +314,39 @@ fn check_field(what: &str, v: &str) -> Result<(), CmdErr> {
     // 控制字符会让 send-keys 的语义变掉（`\n` = 多敲一次回车）。形状问题。
     if v.chars().any(char::is_control) {
         return Err(("invalid_args", format!("`{what}` 含控制字符")));
+    }
+    Ok(())
+}
+
+/// `create-or-attach` 的 `payload` 专用检查〔`K-P2` `F` 拍 09-04〕。
+///
+/// 与 [`check_field`] **只差一条**：放行 `\n` 与 `\t`。理由与射程写在
+/// `parse_request` 里调用它的那一处（那里离决策更近）。
+///
+/// ⚠ **空 / 过长两条一个字不改** —— 复用 [`check_field`] 判它们，
+/// 不在这里抄第二份（抄了就是「同一条规矩两处实现」）。
+fn check_typed_payload(v: &str) -> Result<(), CmdErr> {
+    // 先把两个「有意义的键」抹掉，再交给原来那把尺子 ——
+    // 这样「空」「过长」「别的控制字符」三条判法**逐字复用**，且长度判的仍是原串
+    // （下面那次 `check_field` 收到的是抹过的串，只用来判控制字符）。
+    if v.trim().is_empty() {
+        return Err(("invalid_args", "`payload` 为空".to_string()));
+    }
+    if v.len() > MAX_FIELD_BYTES {
+        return Err((
+            "invalid_args",
+            format!("`payload` 过长（{} > {MAX_FIELD_BYTES}）", v.len()),
+        ));
+    }
+    if let Some(bad) = v.chars().find(|c| c.is_control() && *c != '\n' && *c != '\t') {
+        return Err((
+            "invalid_args",
+            format!(
+                "`payload` 含 `\\n` / `\\t` 之外的控制字符（U+{:04X}）—— \
+                 那些不是「键」，是会改掉终端状态的东西",
+                bad as u32
+            ),
+        ));
     }
     Ok(())
 }
