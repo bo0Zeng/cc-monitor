@@ -283,10 +283,26 @@ describe("S2 设置面板分页结构", () => {
     const visibleTitles = [...local.querySelectorAll<HTMLElement>(".settings-group")]
       .filter((g) => !g.hidden)
       .map((g) => g.querySelector(".settings-group-title")?.textContent ?? "");
-    // 「账号」是 per-origin 的远端概念 ⇒ 本机页上隐藏；
     // 「终端集成」（PowerShell $PROFILE）只对本机有意义 ⇒ 显示。
     expect(visibleTitles).toContain("终端集成");
-    expect(visibleTitles).not.toContain("账号");
+    // 🔴 **`N-F1b`（09-05）改了这一格的事实，PM 落**。
+    //
+    // 旧断言逐字：`expect(visibleTitles).not.toContain("账号");`
+    // 旧理由逐字：「「账号」是 per-origin 的远端概念 ⇒ 本机页上隐藏」。
+    //
+    // 那句话今天是假的：账号**在本机也有**（`local_accounts.rs` 的读口自 `a354c83` 就在，
+    // 状态栏那个账号标签一直在渲染本机账号），`N-F1b` 把设置面板那一节也接上了本机那条路，
+    // 并把它的 `appliesTo` 由 `"remote"` 改成 `"both"`。
+    //
+    // ⚠ **本条的题目没变**（「本机页上不出现只对远端有意义的块」仍然要守），
+    // 变的只是**「账号」不再属于那个集合**；它守的另外三格一个字没动。
+    //
+    // ⚠⚠ 为什么这一行必须跟着改，而不是「两条判据打架、权衡一下」——
+    // 它与 `panel-machine-page-visibility.vitest.ts` 那条断的是**同一个比特的两个相反符号**：
+    // `appliesTo: "remote"` 时本条绿、那条红；改成 `"both"` 时反过来。
+    // **任何时刻恰好一绿一红，两条不可能同时绿**（`N-F1b` 的 `NbM5` 实打过）。
+    // ⇒ 同一件事实写在两处，本件改了那件事实 ⇒ 两处一起改，不是二选一。
+    expect(visibleTitles).toContain("账号");
     // MCP / cc-bus 钩子两边都有意义
     expect(visibleTitles).toContain("MCP");
     expect(visibleTitles).toContain("cc-bus 钩子");
