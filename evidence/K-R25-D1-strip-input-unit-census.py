@@ -102,6 +102,21 @@ def head(root: Path) -> str:
     ).stdout.strip()
 
 
+def dirty(root: Path) -> list:
+    """工作树上被改过的**已跟踪**文件（未跟踪的不算：它们不影响被测内容）。
+
+    ⚠ **为什么要印它**〔09-04 现打，自抓〕：本量具读的是**盘上的文件**，而它印的 sha 是 `HEAD`。
+    两者可以不一致 —— 我自己就这么用过一次：把三份源码 `git restore --source=<基点>` 到工作树上
+    量「改之前」，而那一趟输出的 sha 是**出货尖**。**输出长得一模一样，那是一次静默的假读数。**
+    ⇒ 现在盘上与 `HEAD` 不一致就在头两行喊出来，并逐份点名。
+    """
+    out = subprocess.run(
+        ["git", "-C", str(root), "status", "--porcelain", "--untracked-files=no"],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    return [l for l in out.split("\n") if l]
+
+
 def rs_files(root: Path):
     out = subprocess.run(
         ["git", "-C", str(root), "ls-files", "*.rs"],
@@ -333,6 +348,14 @@ def main():
 
     total = sum(len(v) for v in buckets.values())
     print(f"【K-R25 D1 · 剥法输入单位普查】被测对象 = {root}  @ {sha}")
+    d = dirty(root)
+    if d:
+        print(f"🔴 **盘上与 `HEAD` 不一致：{len(d)} 份已跟踪文件被改过** ⇒ 上面那个 sha "
+              f"**不是**本趟真正量的内容，报数时要连这几份一起写：")
+        for line in d:
+            print(f"     {line}")
+    else:
+        print("盘上与 `HEAD` 一致（已跟踪文件零改动）⇒ 上面那个 sha 就是本趟量的内容")
     print("采集面：`git ls-files '*.rs'`，排掉 vendor 与 guard-core 本体")
     print(f"命中总数 {total}（另排掉：" + " · ".join(f"{k} {v} 处" for k, v in dropped.items()) + "）")
     print()

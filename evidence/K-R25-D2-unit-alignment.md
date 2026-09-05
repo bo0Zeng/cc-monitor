@@ -39,16 +39,26 @@
 那把旧尺子是 **268** 处。287 这个数我没重打出来，**不知道它的分母是哪一把**。
 ⇒ 下面所有的数用我这把尺子，尺子的住址在量具头注里。
 
-### ㈡ 读数（量于 `d305ffa` = 改之前）
+### ㈡ 读数（内容 = `d305ffa` 的那三份源码 = 改之前）
 
 ```
 命中总数 285（另排掉：注释行 12 处 · fn 定义 1 处 · 字面量语料 3 处）
-  FILE        247      整份文件的原文
-  PRESTRIP      0      切小了，但底座已过过一遍文件级剥法
+  FILE        250      整份文件的原文
+  PRESTRIP      1      切小了，但底座已过过一遍文件级剥法
   SUBUNIT       8      交进去的就是原文的一小块  ← 人群
   PARAM        24      本量具判不了 ← 逐条手核见 ㈢
   WATCH         2      看门判据本体
+按剥法拆：production_code FILE=233 PARAM=16 SUBUNIT=4 · strip_comment_lines FILE=7 PARAM=7
+          PRESTRIP=1 SUBUNIT=4 · production_source FILE=10 · test_source PARAM=1 · WATCH 2
 ```
+
+🔴 **这一趟的量法要写清，不然它就是一次静默的假读数**：我是把那三份源码
+`git restore --source=d305ffa --worktree` 放到工作树上跑的，而**当时 `HEAD` 是出货尖 `82f0c54`**
+⇒ 量具头一行印的 sha **不是**它真正量的内容。
+**这一格是我自己撞出来的，当轮就把量具改硬了**：现在它会先跑一次
+`git status --porcelain -uno`，盘上与 `HEAD` 不一致就在头两行喊出来并逐份点名
+（`dirty()` 的 docstring 逐字记着这次）。⇒ 复跑本表要么真的 `git checkout d305ffa`，
+要么照我这样 restore 那三份、并把量具那两行警告一起贴出来。
 
 **`SUBUNIT` 8 处逐条（量于 `d305ffa`）**：
 
@@ -56,17 +66,19 @@
 |---|---|---|---|---|
 | 1 | `src-tauri/src/local_daemon.rs:3793` | `strip_comment_lines` | 按 `#[test]` 切出的**块** | ✅ **本拍改了** |
 | 2 | `src-tauri/src/local_daemon.rs:3922` | `strip_comment_lines` | `me[at..].lines().take(20)` **行窗口** | ✅ **本拍改了** |
-| 3 | `src-tauri/src/creds_store.rs:1169` | `strip_comment_lines` | `brace_block(&src, at)` 函数体窗口 | ❌ 写区外 |
-| 4 | `src-tauri/src/parity_ledger.rs:468` | `strip_comment_lines` | `&src[open + 1..end]` 切片 | ❌ 写区外 |
-| 5 | `src-tauri/src/structural_scan.rs:746` | `strip_comment_lines` | `raw[body_at..]` 起 3000 字符、按大括号配平（配不平退回 700 字符）的窗口 | ❌ 写区外 |
-| 6 | `src-tauri/src/tmux_daemon_gate_guard.rs:442` | `production_code` | `body_of(MONITOR_TMUX, "pub async fn kill_remote_tmux(")` | ❌ 写区外 |
-| 7 | `src-tauri/src/tmux_daemon_gate_guard.rs:477` | `production_code` | 同上 | ❌ 写区外 |
-| 8 | `src-tauri/src/tmux_daemon_gate_guard.rs:512` | `production_code` | `body_of(MONITOR_TMUX, "pub async fn tmux_send_keys(")` | ❌ 写区外 |
+| 3 | `src-tauri/src/parity_ledger.rs:468` | `strip_comment_lines` | `&src[open + 1..end]` 切片 | ❌ 写区外 |
+| 4 | `src-tauri/src/structural_scan.rs:746` | `strip_comment_lines` | `raw[body_at..]` 起 3000 字符、按大括号配平（配不平退回 700 字符）的窗口 | ❌ 写区外 |
+| 5 | `src-tauri/src/tmux_daemon_gate_guard.rs:442` | `production_code` | `body_of(MONITOR_TMUX, "pub async fn kill_remote_tmux(")` | ❌ 写区外 |
+| 6 | `src-tauri/src/tmux_daemon_gate_guard.rs:477` | `production_code` | 同上 | ❌ 写区外 |
+| 7 | `src-tauri/src/tmux_daemon_gate_guard.rs:512` | `production_code` | `body_of(MONITOR_TMUX, "pub async fn tmux_send_keys(")` | ❌ 写区外 |
+| 8 | `src-tauri/src/tmux_daemon_gate_guard.rs:552` | `production_code` | `body_of(MONITOR_TMUX, sig)`（`sig` 走 `GUARDED_COMMANDS`） | ❌ 写区外 |
 
-⚠ 第 3 处（`creds_store.rs:1169`）**改后被量具重判成 `PRESTRIP`** —— 那不是它变了，是量具补上了
-「切小之前底座已经过过一遍文件级剥法」这一档（`let src = production_code(raw);` 之后才 `brace_block(&src, at)`）
-⇒ 块注释在文件级那一趟已被抹成等长空格，**这一处的单位再小也不会新掉进兜底**。
-**它不在人群里**，登记下来是因为「同形而无害」这件事本身要写清，不然下一个人会把它算进去。
+⚠ **一处同形而无害的，单列出来别算进人群**：`src-tauri/src/creds_store.rs:1169`
+`strip_comment_lines(body)`，`body = brace_block(&src, at)` 也是个函数体窗口 ——
+**但它的底座 `src` 是 `production_code(raw)` 的产物**（`creds_store.rs:1157`，整份文件级）
+⇒ 块注释在文件级那一趟已被抹成等长空格，这一处的单位再小也**不会新掉进兜底**。
+量具把它判成 `PRESTRIP`。写下来是因为「同形而无害」这件事本身要说清，
+不然下一个人照形状数会把它算进去 —— **人群的判据是「底座是不是原文」，不是「切没切小」。**
 
 ### ㈢ 24 条 `PARAM` 逐条手核（`d305ffa`）
 
@@ -113,8 +125,10 @@
 **daemon 侧今天 0 处**。这一侧本拍装上的块级那一半是**预防**，不是修补。
 （⚠ 那个 0 的分母是上面那把尺子的射程，不是「所有写法」的全称。）
 
-**改后（`3aab95a`）复打同一把尺子**：`SUBUNIT` **8 → 6**，`PRESTRIP` **0 → 1**，
-`local_daemon.rs:3793` 与 `:3922` 从人群里退出；连手核那一处，人群 **9 → 7**。
+**改后（出货尖 `82f0c54`，盘上与 `HEAD` 一致）复打同一把尺子**：命中总数 **284**
+（`FILE` 250 · `PRESTRIP` 1 · `SUBUNIT` **6** · `PARAM` 25 · `WATCH` 2；另排掉注释行 14 处）——
+`local_daemon.rs:3793` 与 `:3922` 从 `SUBUNIT` 里退出（一处并进了整份文件那一趟、一处不再是独立调用点）。
+连手核那一处，**人群 9 → 7**，剩下的 7 处全在写区外，逐处走上报口（`§D`）。
 
 ---
 
