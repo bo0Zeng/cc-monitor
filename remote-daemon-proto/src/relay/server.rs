@@ -285,9 +285,13 @@ impl Relay {
             // 印记也**不更新** —— 下次请求进来还会再试一次，人把文件改回来就自动恢复。
             return;
         }
-        let (table, rejected) = table::build(std::mem::take(&mut loaded.accounts), &r.upstream_default);
+        let (table, rejected, notes) =
+            table::build(std::mem::take(&mut loaded.accounts), &r.upstream_default);
         // 重载也要**出声**：静默换掉一张表，与静默丢掉一行是同一族。
-        creds::announce(&loaded, table.len(), &rejected, &mut std::io::stderr());
+        // ⚠ `K-R1`：`notes` 也要跟着走这一趟 —— 一次重载把某一行改成非默认行为
+        //   （加了路径前缀 / 换了鉴权头形状）而**只有第一次启动才说**的话，
+        //   那句话就成了「说过一次的历史」，而不是「现在盘上是这样」。
+        creds::announce(&loaded, table.len(), &rejected, &notes, &mut std::io::stderr());
         *self.table.write().expect("lock") = table;
         *r.seen.lock().expect("lock") = now;
     }
@@ -688,14 +692,29 @@ fn pump<R: Read, W: Write>(
 ///
 /// # ⚠ 射程如实写：换的是**哪一个**头
 ///
-/// 只换 `Authorization`（`K11 裁定一` 逐字点名的就是它）。
-/// 客户端若自带 `x-api-key` / `Proxy-Authorization` 一类，本函数**照旧原样转发**——
-/// 那不是本件要保的那个值（本件保的是**中转自己**那把 key 不出去），
-/// 而「上游到底认哪个头 / 要不要连别的鉴权头一起收掉」是 `K-H2` 正文的活（本件 `§2` 已划走）。
-/// ⇒ 这一格**登记为射程外**，不是漏掉。
+/// ⚠⚠ **订正〔`K-R1` 09-04〕：这一节先前那两句今天是假的，逐字重写。**
+/// 先前写的是「只换 `Authorization`（`K11 裁定一` 逐字点名的就是它）」+
+/// 「客户端若自带 `x-api-key` / `Proxy-Authorization` 一类，本函数**照旧原样转发**」，
+/// 并把后者登记成射程外、说那是 `K-H2` 正文的活。**`K-H2` 已签收，那一格没人接。**
+///
+/// **今天盘上的真话**：
+/// 1. **换哪个头由那一行的 `auth_style` 定**（见 [`auth_header_of`]）——
+///    〔用 09-04〕逐字要「api做成通用的」⇒ 只押一种鉴权头 = 只接得上一半的上游，
+///    而押错的症状是 **401**，与「key 打错了」同形。
+/// 2. **这一行有自己的 key 时，客户端那份鉴权头一律不转发** ——
+///    人群是 [`AUTH_HEADER_NAMES`] 那个闭集，不只 `Authorization` 那一个。
+///    ⚠ 这是**行为改变**，理由两条：㈠ 我这一趟要写的那个头名可能正是客户端也带着的
+///    （`x-api-key` 那一档），同名头出现两次是未定义行为 —— 那正是先前丢掉
+///    `Authorization` 的理由，逐字同一条；㈡ 把客户端的凭据**连带**送给一个第三方上游，
+///    是把一份不属于这一行的秘密多送出去一次。
+///    ⚠ **`Proxy-Authorization` 仍然照旧转发** —— 它说的是「与代理之间」的鉴权，
+///    不是与上游之间的，收掉它是另一件事。**登记为射程外，不假装覆盖了。**
+/// 3. **这一行没有 key 时，一个字节都不动**（`Authorization` / `x-api-key` 全照旧转发）
+///    —— 订阅登录那一档要的正是这条透传路。
+///    ⚠ 例外是 `AuthStyle::NoAuth`：它逐字说的就是「一个鉴权头都不发」⇒ 客户端那份也不转发。
 fn render_upstream_request(
     head: &RequestHead,
-    target: &str,
+    rest: &str,
     row: &Row,
     body_len: usize,
 ) -> Vec<u8> {
@@ -704,10 +723,22 @@ fn render_upstream_request(
     //    没有任何东西说它俩必须同源。今天它们是同一个值的两个方法，
     //    要拼错得先有两行同时在作用域里（`handle` 里只有一行）。
     let key = row.key();
+    let style = row.auth_style();
+    // ★★★ **`K-R1`：请求行的目标由那一行自己算**（前缀 + 客户端的真路径）。
+    //    ⚠ 参数名从 `target` 改成 `rest` 是有意的：进来的是**下游那一段**，
+    //      发出去的目标是**算出来的**。留着旧名字会让下一个人以为它已经是最终目标。
+    //    ⚠ 拼接刻意**不在这里做** —— `&Base` 那个值不出 `Row` 的边界（见 `table.rs` 头注），
+    //      而且「忘了拼前缀」这件事在这个签名上写不出来（`rest` 只有一条去处）。
+    let target = row.upstream_target(rest);
     let mut out = format!("{} {} HTTP/1.1\r\n", head.method, target);
     out.push_str(&format!("Host: {}\r\n", row.host_header()));
     out.push_str("Accept-Encoding: identity\r\n");
     out.push_str("Connection: close\r\n");
+    // ★ 这一趟要不要把客户端自带的鉴权头收掉：**我自己要发一个** 或 **这一行声明不发任何头**。
+    //   ⚠ 两个条件都要，缺一格就漏一形：只看前者的话 `NoAuth` 那一行会把客户端的
+    //     真 key 原样送给一个声明了不校验凭据的本地端点。
+    let drop_client_auth = (key.is_some() && auth_header_of(style).is_some())
+        || style == creds_core::store::AuthStyle::NoAuth;
     for (k, v) in &head.headers {
         if http1::is_hop_by_hop(k)
             || k.eq_ignore_ascii_case("host")
@@ -716,10 +747,10 @@ fn render_upstream_request(
         {
             continue;
         }
-        // ★ 换头那一支：配了 key 就把下游那份 `Authorization` **整条丢掉**。
+        // ★ 换头那一支：把下游那几份鉴权头**整条丢掉**。
         //   丢在这里而不是在下面覆盖，是因为 HTTP 允许同名头出现多次 ——
-        //   「追加一条」会让上游看见**两个** `Authorization`，那是未定义行为。
-        if key.is_some() && k.eq_ignore_ascii_case("authorization") {
+        //   「追加一条」会让上游看见**两个**同名鉴权头，那是未定义行为。
+        if drop_client_auth && AUTH_HEADER_NAMES.iter().any(|n| k.eq_ignore_ascii_case(n)) {
             continue;
         }
         out.push_str(&format!("{k}: {v}\r\n"));
@@ -728,14 +759,52 @@ fn render_upstream_request(
     //    它就在「往上游请求写鉴权头」这一行上，与 `KS2` 的字面逐字对应。
     //    ⚠ 加第二处是**放宽**：必须先在件计划里说清那一处是什么，
     //      不许在实现里顺手把 `creds_guard` 那条相等断言改大。
-    if let Some(k) = key {
-        out.push_str(&format!("Authorization: Bearer {}\r\n", k.expose_for_auth_header()));
+    //    ⚠⚠ `K-R1` 把**头名与值前缀**变成了变量，而 `expose_for_auth_header(`
+    //      这个调用点**仍然恰好一处** —— 那条相等断言一个字节都没动。
+    //      〔这是有意的设计约束：一种新鉴权头形状不该换来一个新的明文出口。〕
+    if let (Some(k), Some((name, prefix))) = (key, auth_header_of(style)) {
+        out.push_str(&format!("{name}: {prefix}{}\r\n", k.expose_for_auth_header()));
     }
     if body_len > 0 {
         out.push_str(&format!("Content-Length: {body_len}\r\n"));
     }
     out.push_str("\r\n");
     out.into_bytes()
+}
+
+/// 中转**认得的鉴权头名**（小写）。**闭集，一个住址**〔`brief` 13b〕。
+///
+/// # 它是什么，不是什么
+///
+/// 它是「换头时要先丢掉的下游头」的人群 —— 也就是 [`auth_header_of`] **可能写出来**的
+/// 那几个头名的全集。两者必须对得上，由
+/// `every_header_this_relay_may_write_is_in_the_set_it_clears_first` 钉住
+/// （否则会出现「我写了一个头，而同名的客户端那份没被丢掉」= 同名头出现两次）。
+///
+/// ⚠ **它不是「所有鉴权头」的枚举** —— 那个分母没人给得出（`Cookie` / 各家自定义 /
+/// `Proxy-Authorization`…）。`creds_guard` 头注为同一件事逐字论证过为什么日志那边
+/// 只能用白名单而不能用「除了 X 之外全记」。这里是**白名单方向**：
+/// 只丢我可能自己写的那几个，别的原样转发。
+const AUTH_HEADER_NAMES: &[&str] = &["authorization", "x-api-key"];
+
+/// 一种鉴权头形状 → `(头名, 值前缀)`；`None` = **不发鉴权头**。
+///
+/// # ★ 这是 `AuthStyle` → HTTP 的**唯一**一处映射，而它刻意住在这一侧
+///
+/// `creds-core` 那一侧**刻意不认识 HTTP**（`table.rs` 头注逐字：「本 crate 刻意不认识
+/// HTTP」）⇒ 头名与前缀不许写在那边。那边只管**格式**（文件里那个词是什么），
+/// 这边只管**协议**（那个词对应哪个头）。
+///
+/// ⚠ 穷尽 `match`：加一个成员**编译不过** —— 这一格是编译器买的，
+/// 不是一条文本判据买的。〔`table.rs` 头注那张表逐条记着「读着像买断 ≠ 买断了」，
+/// 这一处是真的那一档：新成员漏了这里，`cargo` 当场不过。〕
+fn auth_header_of(style: creds_core::store::AuthStyle) -> Option<(&'static str, &'static str)> {
+    use creds_core::store::AuthStyle;
+    match style {
+        AuthStyle::Bearer => Some(("Authorization", "Bearer ")),
+        AuthStyle::XApiKey => Some(("x-api-key", "")),
+        AuthStyle::NoAuth => None,
+    }
 }
 
 /// 响应头**逐字节原样**回给下游，只把连接管理那一条换成 `close`。
@@ -770,7 +839,12 @@ fn resolve_config(port_env: Option<&str>, upstream_env: Option<&str>) -> Option<
     let port = port_env
         .and_then(|v| v.parse::<u16>().ok())
         .unwrap_or(DEFAULT_PORT);
-    let base = Base::parse(upstream_env.unwrap_or(DEFAULT_UPSTREAM))?;
+    // ⚠ `K-R1`：`Base::parse` 现在带着**一句为什么**回来，而这里把它丢掉了
+    //   —— 如实登记为射程外，不是漏掉：这一支的调用方（`run_with`）只印一句
+    //   `[relay] bad upstream base url` 就退 2，而那条路上**还没有任何日志出口**能带这句话。
+    //   真要带上，改的是 `run_with` 的报文与 `creds_guard::LOG_SITES` 那张表 ⇒ 另一拍。
+    //   ★ 而**每一行**账号的 `base_url` 那句为什么，今天是真的印出去了（`table::build`）。
+    let base = Base::parse(upstream_env.unwrap_or(DEFAULT_UPSTREAM)).ok()?;
     Some((port, base))
 }
 
@@ -806,8 +880,8 @@ fn load_credentials(
     //   ⚠ `take` 是因为 `AccountEntry` 里装着 `SecretKey`，而那个类型**刻意不给 `Clone`**
     //     （`K-H2a`：少一条能复制明文的路就少一个出口）⇒ 只能把所有权交出去。
     //     `announce` 不读 `accounts` 这一格，它读的是路径 / 权限 / 问题，外加下面这两个参数。
-    let (table, rejected) = table::build(std::mem::take(&mut loaded.accounts), default_base);
-    creds::announce(&loaded, table.len(), &rejected, out);
+    let (table, rejected, notes) = table::build(std::mem::take(&mut loaded.accounts), default_base);
+    creds::announce(&loaded, table.len(), &rejected, &notes, out);
     (table, path, stamp)
 }
 
@@ -906,11 +980,28 @@ mod tests {
     /// ⚠ 它走的是**生产段那条真实的路** `RoutingTable::build` —— 判据不许自己另造一个
     /// 同构的表，那样量的就不是生产段的那一份了。
     fn table_of(rows: &[(&str, &Base, Option<&str>)]) -> RoutingTable {
-        RoutingTable::build(rows.iter().map(|(id, b, k)| {
+        // ⚠ `K-R1`：这个薄封装给每一行填 `AuthStyle::DEFAULT`。
+        //   它**不是**「本件不关心鉴权头形状」的意思 —— 它是「既有的这些判据量的都是
+        //   **默认那条路**」，而默认那条路本件要求它逐字节不变。
+        //   要量非默认形状的判据走 [`table_of_styled`]。
+        table_of_styled(
+            &rows
+                .iter()
+                .map(|(id, b, k)| (*id, *b, *k, creds_core::store::AuthStyle::DEFAULT))
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    /// 带鉴权头形状的那一版〔`K-R1`〕。走的仍是生产段那条真实的 `RoutingTable::build`。
+    fn table_of_styled(
+        rows: &[(&str, &Base, Option<&str>, creds_core::store::AuthStyle)],
+    ) -> RoutingTable {
+        RoutingTable::build(rows.iter().map(|(id, b, k, s)| {
             (
                 (*id).to_string(),
                 (*b).clone(),
                 k.map(SecretKey::new),
+                *s,
             )
         }))
     }
@@ -2563,6 +2654,161 @@ mod tests {
         assert!(!without.contains(MINE));
     }
 
+    /// ★★★ **`K-R1` 的正主之一**：**鉴权头形状跟着那一行走** ——
+    /// 拿 A 风格的行发不出 B 风格的头。
+    ///
+    /// # 死值验落在哪一格
+    ///
+    /// 把 [`auth_header_of`] 里 `XApiKey` 那一支改成 `Some(("Authorization", "Bearer "))`
+    /// （形状对、恒答默认那张脸）⇒ 本条的 `x-api-key` 那几格当场红，
+    /// 而**默认那一行**那几格仍绿 ⇒ 这一刀是**单断**，不是目录级塌陷。
+    ///
+    /// # ⚠ 它证不了什么
+    ///
+    /// 证不了「某一家上游真的认这个头」—— 那要打真网，本轮禁（沙箱默认断网）。
+    /// 它证的是「**文件里写什么，线上就发什么**」，而那正是先前唯一没人量过的一格。
+    #[test]
+    fn the_auth_header_shape_follows_the_row_and_not_a_process_wide_guess() {
+        const MINE: &str = "sk-ROW-OWN-KEY";
+        use creds_core::store::AuthStyle;
+        let head = http1::parse_request(
+            b"POST /s/a/acct/k/v1/x HTTP/1.1\r\nHost: relay\r\nAuthorization: Bearer THEIRS\r\nx-api-key: THEIRS-XAK\r\nContent-Length: 3\r\n\r\n",
+        )
+        .expect("parse");
+        let base = Base::parse("https://api.example.com").expect("base");
+        // 三行**同一把 key、同一个端点**，只有鉴权头形状不同 ⇒ 量到的差别只能来自那一格。
+        let t = table_of_styled(&[
+            ("bearer", &base, Some(MINE), AuthStyle::Bearer),
+            ("xapikey", &base, Some(MINE), AuthStyle::XApiKey),
+            ("noauth", &base, None, AuthStyle::NoAuth),
+        ]);
+        let render = |id: &str| {
+            String::from_utf8(render_upstream_request(
+                &head,
+                "/v1/x",
+                t.lookup(id).unwrap_or_else(|| panic!("{id} 那一行该在")),
+                3,
+            ))
+            .expect("utf8")
+        };
+
+        let b = render("bearer");
+        let x = render("xapikey");
+        let n = render("noauth");
+        // ★★ **反空真排最前**：三份渲染两两不同（一样的话下面整族断言恒真）。
+        assert_ne!(b, x, "两种形状渲染出同一份请求头 —— 那一格没被读");
+        assert_ne!(b, n);
+        assert_ne!(x, n);
+
+        // ㈠ Bearer 那一行：期望值是**手写字面量**。
+        assert!(b.contains(&format!("Authorization: Bearer {MINE}\r\n")), "{b:?}");
+        assert_eq!(b.matches("Authorization:").count(), 1, "同名鉴权头出现了两次：{b:?}");
+        // ㈡ x-api-key 那一行：换的是**那个头**，而且**不许**顺手也写一个 Authorization。
+        assert!(x.contains(&format!("x-api-key: {MINE}\r\n")), "{x:?}");
+        assert_eq!(x.matches("x-api-key:").count(), 1, "同名鉴权头出现了两次：{x:?}");
+        assert!(
+            !x.contains("Authorization"),
+            "x-api-key 那一行还带了 Authorization —— 「拿 A 风格的行发 B 风格的头」正是本格要拦的：{x:?}"
+        );
+        // ㈢ 无鉴权那一行：**一个鉴权头都没有**，客户端那两份也没转过去。
+        assert!(!n.contains("Authorization"), "{n:?}");
+        assert!(!n.contains("x-api-key"), "{n:?}");
+        assert!(!n.contains("THEIRS"), "客户端那份鉴权头被转给了本地端点：{n:?}");
+        // ㈣ 三行都**没有**把客户端那两份带上（它们有自己的 key / 声明了不发）。
+        for (id, r) in [("bearer", &b), ("xapikey", &x)] {
+            assert!(!r.contains("THEIRS"), "{id} 那一行把客户端的凭据一起送上去了：{r:?}");
+        }
+        // ㈤ 非鉴权的头照旧原样转发（本条不许顺手变成一把大扫帚）。
+        for r in [&b, &x, &n] {
+            assert!(r.contains("Accept-Encoding: identity\r\n"));
+            assert_eq!(r.matches("Content-Length:").count(), 1);
+        }
+    }
+
+    /// ★★ `K-R1`：**我可能自己写出来的每一个头名，都在「先丢掉」那个集合里**。
+    ///
+    /// 缺一格的症状是同名鉴权头出现**两次**（上游谁赢没有定义）——
+    /// 那正是先前丢掉 `Authorization` 的理由，而新加一种形状很容易只加一半。
+    /// ⇒ 这一条把两个集合焊在一起：它们各自的住址只有一个，本条核它们对得上。
+    #[test]
+    fn every_header_this_relay_may_write_is_in_the_set_it_clears_first() {
+        use creds_core::store::AuthStyle;
+        // 反空真：`AUTH_HEADER_NAMES` 非空，而且**全是小写**
+        //（比对走 `eq_ignore_ascii_case`，但表里混大小写会让读的人以为它区分大小写）。
+        assert!(!AUTH_HEADER_NAMES.is_empty(), "那个集合是空的 —— 本条在空转");
+        for n in AUTH_HEADER_NAMES {
+            assert_eq!(*n, n.to_ascii_lowercase(), "表里这一项不是小写：{n}");
+        }
+        let mut written = 0usize;
+        for s in AuthStyle::ALL.iter().copied() {
+            let Some((name, _)) = auth_header_of(s) else {
+                continue;
+            };
+            written += 1;
+            assert!(
+                AUTH_HEADER_NAMES
+                    .iter()
+                    .any(|n| n.eq_ignore_ascii_case(name)),
+                "`{name}` 是本中转会写出去的头，却不在「换头前先丢掉」那个集合里 \
+                 ⇒ 客户端也带一个同名的时候，上游会看见两个"
+            );
+        }
+        // 反空真：真的走过至少两种「会写头」的形状（全是 `None` 的话上面循环空转）。
+        assert!(written >= 2, "只有 {written} 种形状会写头 —— 本条在空转");
+    }
+
+    /// ★★★ **`K-R1` 的正主之二**：`base_url` 里那一段路径前缀
+    /// **真的到了发给上游的请求行上**。
+    ///
+    /// # 改前的读数（死值验的另一半）
+    ///
+    /// 改前 `Base` 存不下路径 ⇒ 配 `https://gw/anthropic` 的人，请求实际打到
+    /// `https://gw/v1/messages`（前缀被静默丢掉、不记 `Rejected`、不 `announce`）。
+    /// ⇒ 把 `Row::upstream_target` 的返回改成 `rest.to_string()`（形状对、恒答
+    /// 「没有前缀」那张脸）= 把改前那一版原样装回来 ⇒ 本条当场红，
+    /// 而没配前缀的那一族判据**仍然全绿**（单断）。
+    #[test]
+    fn the_path_prefix_from_the_base_url_really_reaches_the_request_line() {
+        let head = http1::parse_request(
+            b"POST /s/a/acct/k/v1/messages HTTP/1.1\r\nHost: relay\r\nContent-Length: 0\r\n\r\n",
+        )
+        .expect("parse");
+        let prefixed = Base::parse("https://gw.example.com/anthropic").expect("带前缀那一形");
+        let bare = Base::parse("https://gw.example.com").expect("不带前缀那一形");
+        let t = table_of(&[("with-prefix", &prefixed, None), ("no-prefix", &bare, None)]);
+        let render = |id: &str, rest: &str| {
+            String::from_utf8(render_upstream_request(
+                &head,
+                rest,
+                t.lookup(id).unwrap_or_else(|| panic!("{id} 那一行该在")),
+                0,
+            ))
+            .expect("utf8")
+        };
+
+        // ★★ 承重的那一格排最前：期望值是**手写字面量**的整条请求行。
+        let with = render("with-prefix", "/v1/messages");
+        assert!(
+            with.starts_with("POST /anthropic/v1/messages HTTP/1.1\r\n"),
+            "前缀没到请求行上（改前那一版就是这个读数）：{with:?}"
+        );
+        // 查询串跟着走，一个字节不改。
+        let q = render("with-prefix", "/v1/messages?beta=true");
+        assert!(
+            q.starts_with("POST /anthropic/v1/messages?beta=true HTTP/1.1\r\n"),
+            "{q:?}"
+        );
+        // ★ 非空对照 + 单断：**没配前缀**的那一行与改前逐字节相同。
+        let without = render("no-prefix", "/v1/messages");
+        assert!(
+            without.starts_with("POST /v1/messages HTTP/1.1\r\n"),
+            "没配前缀的那一路被改了字节 —— 那一路本件要求它一个字节不动：{without:?}"
+        );
+        // `Host:` 头里**没有**那一段（前缀属于请求行）。
+        assert!(with.contains("Host: gw.example.com\r\n"), "{with:?}");
+        assert!(!with.contains("Host: gw.example.com/anthropic"), "{with:?}");
+    }
+
     /// ★ `重要-4(D3)`：`DoD-1㈢` acceptor 逐字那半句「两次请求由**同一个中转进程**服务
     /// （**进程数 = 1**）」。
     ///
@@ -3256,7 +3502,10 @@ mod tests {
             Base {
                 tls: true,
                 host: "api.anthropic.com".to_string(),
-                port: 443
+                port: 443,
+                // ★ `K-R1`：默认上游**没有**路径前缀 —— 官方端点就挂在根上，
+                //   而客户端自己会发 `/v1/messages`。这一格是手写字面量，不是算出来的。
+                path: String::new()
             },
             "默认上游"
         );
@@ -3269,9 +3518,34 @@ mod tests {
             Base {
                 tls: false,
                 host: "127.0.0.1".to_string(),
-                port: 1
+                port: 1,
+                path: String::new()
             },
             "CCM_RELAY_UPSTREAM 必须盖得住默认"
+        );
+
+        // ★★ `K-R1`：`CCM_RELAY_UPSTREAM` 里那一段**路径前缀**也盖得住 ——
+        //    先前它在这一层就被丢掉了（`Base` 存不下），而这一格此前零判据。
+        let (_, base) = resolve_config(None, Some("https://gw.example.com/anthropic"))
+            .expect("带前缀的默认上游应当成立");
+        assert_eq!(
+            base,
+            Base {
+                tls: true,
+                host: "gw.example.com".to_string(),
+                port: 443,
+                path: "/anthropic".to_string()
+            },
+            "默认上游里那一段路径前缀被丢掉了"
+        );
+        // 反空真：这把尺子分得出「带前缀」与「不带」（不是恒相等）。
+        assert_ne!(
+            resolve_config(None, Some("https://gw.example.com/anthropic"))
+                .expect("带前缀")
+                .1,
+            resolve_config(None, Some("https://gw.example.com"))
+                .expect("不带前缀")
+                .1
         );
 
         // 端口读不懂 ⇒ **回默认**，不是 0、也不是崩。

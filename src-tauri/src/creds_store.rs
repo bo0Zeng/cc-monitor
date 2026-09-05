@@ -441,6 +441,80 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    /// ★★★ **`K-R1` 在写侧的那一格**：界面按一次「保存」，**不许**吃掉那一行上
+    /// 人手编的 `auth_style` 与 `base_url`。
+    ///
+    /// # 它为什么不是「顺手多测一个字段」
+    ///
+    /// 这两个字段今天**只有手编这一条路**（界面上还没有它们的入口 —— 那要动
+    /// `src/ipc/commands.ts` 与 `src/settings/`，**都不在本轮写区**，已抬进上报口）。
+    /// ⇒ 「配一次 key 就把手编的那两格清掉」这一形的症状是：
+    /// **上游从第三方悄悄退回官方端点、鉴权头悄悄退回默认那一种**，
+    /// 而界面上一切正常。它与 `K-H2` `KH2` 逐字禁的那条回落是同一族，
+    /// 只是这次的施害者是**写侧**。
+    ///
+    /// ⚠ 它**不**证明 `merge_account_key` 对**所有**字段都不吃
+    /// （那条由 `creds-core` 那侧的逐字节判据钉）—— 它证的是
+    /// 「走**真的写盘那条路**（含原子替换）之后，这两格还在，而且值没变」。
+    #[test]
+    fn a_saved_key_does_not_swallow_the_hand_written_upstream_or_auth_style() {
+        let dir = tmpdir("keep-row-fields");
+        let p = dir.join("relay-credentials.json");
+
+        // ① 人手编：这一条账号指着一个第三方端点、用非默认的鉴权头形状。
+        //    ⚠ 期望值全是**手写字面量**，不是拿被测代码算出来的。
+        std::fs::write(
+            &p,
+            b"{\n  \"accounts\": {\n    \"acct-x\": {\n      \"api_key\": \"OLD\",\n      \"auth_style\": \"x-api-key\",\n      \"base_url\": \"https://gw.example.com/anthropic\",\n      \"my_own\": \"keep me\"\n    },\n    \"acct-y\": {\n      \"api_key\": \"Y\"\n    }\n  }\n}\n",
+        )
+        .expect("写夹具");
+
+        // ② 界面按「保存」，走的是**生产段那条真实的写路**。
+        write_key_at(&p, "/h/.claude-accts/acct-x", "NEW-KEY").expect("写");
+
+        let back: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
+        let row = &back["accounts"]["acct-x"];
+        // ★★ 承重的两格排最前。
+        assert_eq!(
+            row[store::AUTH_STYLE_FIELD], "x-api-key",
+            "写侧把手编的 auth_style 吃掉了 —— 症状是鉴权头悄悄退回默认那一种：{back}"
+        );
+        assert_eq!(
+            row[store::BASE_URL_FIELD], "https://gw.example.com/anthropic",
+            "写侧把手编的 base_url 吃掉了 —— 症状是上游悄悄退回默认端点：{back}"
+        );
+        // key 真的换了（不然上面两格可能只是因为整份文件没被动过）。
+        assert_eq!(row[store::KEY_FIELD], "NEW-KEY", "key 没被换掉：{back}");
+        // 这一条自己的未知键也在。
+        assert_eq!(row["my_own"], "keep me");
+        // ★ 非空对照：**别的那一条**一个字节没动。
+        assert_eq!(back["accounts"]["acct-y"][store::KEY_FIELD], "Y");
+        assert!(
+            back["accounts"]["acct-y"].get(store::AUTH_STYLE_FIELD).is_none(),
+            "写侧给没写过 auth_style 的那一条**凭空加**了一格：{back}"
+        );
+
+        // ★★ 而这份文件**装回中转那一侧**之后，那两格真的被读了出来
+        //    —— 只断「JSON 里还在」的话，一个读侧的回落（比如把 `auth_style` 忽略掉）
+        //    在本条上**看不见**。
+        let doc = store::parse(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
+        let rows = store::read_accounts(&doc);
+        let x = rows
+            .iter()
+            .find(|e| e.id == "acct-x")
+            .expect("acct-x 该读得出来");
+        assert_eq!(
+            x.auth_style,
+            store::AuthStyleSetting::Known(store::AuthStyle::XApiKey)
+        );
+        assert_eq!(
+            x.base_url.as_deref(),
+            Some("https://gw.example.com/anthropic")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// `KS5` 调用点 + `KS11` 门①那半：写完那份文件**立刻只给本人**，
     /// 而读入口在它被放宽时**出声**。
     #[cfg(unix)]

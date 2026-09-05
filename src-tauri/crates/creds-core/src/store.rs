@@ -45,6 +45,15 @@ pub const ACCOUNTS_FIELD: &str = "accounts";
 /// 而「这一行根本不在表里」说的是**404**。两件事不许混 —— 见 `K-H2` `KH2`。
 pub const BASE_URL_FIELD: &str = "base_url";
 
+/// 一条账号**怎么把 key 交给上游**住哪个字段〔`K-R1`〕。缺席 / 空串 ⇒ [`AuthStyle::DEFAULT`]。
+///
+/// ⚠⚠ **它说的只有「鉴权头怎么写」这一件事，不是「上游说哪种方言」。**
+/// 这两件事读起来像，混成一个字段就是本工作区最贵的那族病（一个值装了两件事）：
+/// 中转对请求体**一个字节都不解析**（`relay/` 生产段零 `serde_json`，`K-R1 §0c` 乙路现打），
+/// ⇒ 它没有资格声称自己知道上游要哪种 body。方言那一格若将来真要买，
+/// 是**另一个字段**（`K-R1` 的 `KR12`/`KR13`），不是给本字段多加几个值。
+pub const AUTH_STYLE_FIELD: &str = "auth_style";
+
 /// 顶层那把 key（`K-H2a` 交付时的形状）在表里**叫什么名字**。
 ///
 /// # ⚠⚠ 它是一个**有名字的行**，不是「默认行」
@@ -102,9 +111,16 @@ pub fn path_under_claude_home(home: &std::path::Path) -> std::path::PathBuf {
 /// ⚠ 它是**注释 + 一个空字段**，不是一份能直接用的配置 —— 目的是让人一眼看出该填哪儿。
 /// JSON 没有注释语法，所以说明写成一个**未知键**（`_note`），而
 /// 「未知键原样保留」正是 [`merge_key`] 的性质 ⇒ 这份模板**自己就是那条性质的用例**。
+///
+/// # ⚠ 它刻意**不列举** `auth_style` 的合法值〔`K-R1`，`brief` 13b〕
+///
+/// 那个闭集只有一个住址（[`AuthStyle::ALL`]）。在这里再抄一份，加第四个成员的那天
+/// 这份模板会**静默变旧**，而它是随产物发到用户机器上的那一份。
+/// ⇒ 模板只点名字段，合法值由中转启动时**现算**印出来（`relay::creds::announce`）。
 pub const TEMPLATE: &str = r#"{
   "_note": "把第三方 API key 填进 api_key。这份文件可以直接用编辑器改，改完下次读就生效；也可以整份换成另一份 JSON（导入）。本文件之外的键不会被程序动。",
-  "_note_accounts": "多账号写进 accounts：每条一个 id（会原样出现在中转的路由键里，只许字母数字与 - _），每条可带 api_key 与 base_url。base_url 留空就用中转启动时那个默认上游；api_key 留空就原样转发客户端自己那份鉴权头。例：\"accounts\": { \"my-account\": { \"api_key\": \"sk-...\", \"base_url\": \"https://api.example.com\" } }",
+  "_note_accounts": "多账号写进 accounts：每条一个 id（会原样出现在中转的路由键里，只许字母数字与 - _），每条可带 api_key、base_url 与 auth_style。base_url 留空就用中转启动时那个默认上游，写全路径（含网关前缀）也认；api_key 留空就原样转发客户端自己那份鉴权头。例：\"accounts\": { \"my-account\": { \"api_key\": \"sk-...\", \"base_url\": \"https://api.example.com\" } }",
+  "_note_auth_style": "auth_style 说的是「这一把 key 用哪种鉴权头交给上游」，不是「上游说哪种方言」—— 中转对请求体一个字节都不解析。留空就用今天的默认。写了一个认不出的词不会被悄悄当默认：中转起来时会逐条说出来，并把它认得的那几个值现算着印在同一屏。本地部署（不校验凭据的那种）要的就是「一个鉴权头都不发」那一档。",
   "accounts": {},
   "api_key": ""
 }
@@ -173,6 +189,121 @@ fn read_base_url(doc: &Map<String, Value>) -> Option<String> {
     Some(s.to_string())
 }
 
+/// 这一行的 key **用哪种鉴权头交给上游**〔`K-R1`〕。
+///
+/// # ★ 为什么这三个值是「头怎么写」，而不是「哪一家供应商」
+///
+/// 〔用 09-04〕逐字点了「供应商deepseek\kimi\qwen\等等」，并要「api做成通用的,
+/// 还可以接本地部署的」。**按供应商枚举做不到「通用」** —— 每加一家就得加一条路，
+/// 而那张表永远落后于现实。⇒ 本枚举按**协议形状**切：今天现实里只有两种鉴权头形状
+/// （一个 `Authorization: Bearer`、一个 `x-api-key`）加一种「不发」。
+/// 供应商是谁**不进代码**：DeepSeek / Kimi / Qwen 用哪一种，是那一行 `auth_style`
+/// 里写着的，不是本 crate 里判的。
+///
+/// # ⚠ 它**不**说什么（射程如实写）
+///
+/// 不说上游要哪种请求体、不说路径长什么样、不说用哪个模型名。
+/// 中转对 body 零解析 ⇒ 这三样今天全由客户端决定，本字段一个字都管不到。
+///
+/// # 值的**闭集只有一个住址** —— [`AuthStyle::ALL`]
+///
+/// 散文里不复述成员（`brief` 13b）：要印出来就现算 [`AuthStyle::field_value`] 再 `join`。
+/// [`AuthStyle::from_field_value`] 也是从 `ALL` 派生的 ⇒ **没有第二份字面量会漂**。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthStyle {
+    /// `Authorization: Bearer <key>`。**这是今天盘上的行为**，也是缺席时的默认
+    /// ⇒ 一份没写 `auth_style` 的旧文件，上游收到的字节与本件之前**逐字节相同**。
+    Bearer,
+    /// `x-api-key: <key>`。
+    XApiKey,
+    /// **一个鉴权头都不发**，并且把客户端自带的那几个也丢掉。
+    ///
+    /// ★ 这一档是**本地部署那一格**（〔用 09-04〕「还可以接本地部署的」）：
+    /// 本机跑的推理服务默认不校验凭据，而「把一把真 key 发给一个不校验的本地端点」
+    /// 是把凭据白送出去。⇒ 无鉴权要能**显式表示**，不是靠「不配 key 恰好也能用」。
+    ///
+    /// ⚠ 它与「这一行不配 key」**不是一回事**，两者的区别是承重的：
+    /// 不配 key ⇒ **原样转发客户端那份鉴权头**（订阅登录那一档要的正是这个）；
+    /// 本档 ⇒ **连客户端那份也不转发**。
+    NoAuth,
+}
+
+impl AuthStyle {
+    /// 缺席 / 空串时用哪一个。**取今天的行为**，不是取「最安全的那个」——
+    /// 换默认值等于给每一份既有文件改行为，那是另一次决定，要另一件去做。
+    pub const DEFAULT: AuthStyle = AuthStyle::Bearer;
+
+    /// 这个闭集的**唯一住址**。判据与日志都从这里派生，不许再写第二份字面量。
+    pub const ALL: &'static [AuthStyle] = &[AuthStyle::Bearer, AuthStyle::XApiKey, AuthStyle::NoAuth];
+
+    /// 人在文件里写的那个词。**这是契约**（手编时写的就是它）。
+    ///
+    /// ⚠ 刻意不叫 `"anthropic"` / `"openai"`：那两个词说的是**方言**，
+    /// 而本枚举一个字节的 body 都不看 —— 用方言名给它命名，会让读的人以为
+    /// 配了它中转就会替他翻译。**它不会。**
+    pub fn field_value(self) -> &'static str {
+        match self {
+            AuthStyle::Bearer => "bearer",
+            AuthStyle::XApiKey => "x-api-key",
+            AuthStyle::NoAuth => "none",
+        }
+    }
+
+    /// 反过来：文件里那个词 → 这个值。认不出就是 `None`（调用方要**出声**，不许回落）。
+    ///
+    /// ★ 它**从 [`AuthStyle::ALL`] 派生**，不是第二个 `match`：加一个成员，
+    /// 这一头自动跟上；写成第二个 `match` 的话，漏一支就是一次静默回落。
+    pub fn from_field_value(s: &str) -> Option<AuthStyle> {
+        let s = s.trim();
+        AuthStyle::ALL
+            .iter()
+            .copied()
+            .find(|v| v.field_value().eq_ignore_ascii_case(s))
+    }
+}
+
+/// 文件里那一格 `auth_style` 的**三种状态**〔`K-R1`〕。
+///
+/// # ⚠ 为什么是三态而不是 `Option<AuthStyle>`
+///
+/// 「缺席」与「写了一个认不出的词」**必须分开**：合成一态就只能回落成默认，
+/// 而一个打错字母的 `auth_style` 静默走 Bearer 的症状是**一条查不出来的 401**
+/// ——与「key 打错了」同形。〔`K-R21` 那一族逐字：一个 `None` 装了三件事。〕
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AuthStyleSetting {
+    /// 字段缺席 / 空串 ⇒ 用 [`AuthStyle::DEFAULT`]。
+    Absent,
+    /// 认得的那几个之一。
+    Known(AuthStyle),
+    /// 字段在、但不是认得的那几个之一。
+    ///
+    /// ⚠ **它刻意什么都不带** —— 不留那个原字符串。理由：它下一跳的落点是
+    /// 中转的启动日志，而 `creds_guard` 那张白名单要的正是「进日志的东西不含文件内容」。
+    /// 认不出的那个词长什么样，人自己看那份文件；日志只说「这一条的 auth_style 认不出」。
+    Unknown,
+}
+
+/// 从一份已解析的（子）文档里取 `auth_style`。
+///
+/// ⚠ 与 [`read_key`] / `read_base_url` 同一条纪律：只 `trim` 首尾空白。
+/// 值不是字符串（有人写成数字 / 对象）⇒ 与「写了个认不出的词」**同归 `Unknown`**：
+/// 两者都是「人写了东西但我读不懂」，都该出声。
+pub fn read_auth_style(doc: &Map<String, Value>) -> AuthStyleSetting {
+    let Some(v) = doc.get(AUTH_STYLE_FIELD) else {
+        return AuthStyleSetting::Absent;
+    };
+    let Some(s) = v.as_str() else {
+        return AuthStyleSetting::Unknown;
+    };
+    if s.trim().is_empty() {
+        return AuthStyleSetting::Absent;
+    }
+    match AuthStyle::from_field_value(s) {
+        Some(k) => AuthStyleSetting::Known(k),
+        None => AuthStyleSetting::Unknown,
+    }
+}
+
 /// 表里的一条。**上游与 key 在这里还是分开的两个值** ——
 /// 把它们焊成一个不可分解的值是**中转那一侧**的活（`relay::table` 的 `Row`）。
 ///
@@ -185,6 +316,10 @@ pub struct AccountEntry {
     pub base_url: Option<String>,
     /// 这一行的 key；`None` = **原样转发下游那份鉴权头**（订阅制那一档是合法状态）。
     pub key: Option<SecretKey>,
+    /// 这一行的鉴权头风格〔`K-R1`〕。**三态原样带出去，本模块不替它做决定** ——
+    /// 同 `base_url`：把 `Unknown` 折成默认值是一次静默回落，而出声那一步在中转那侧
+    /// （它才有日志出口）。
+    pub auth_style: AuthStyleSetting,
 }
 
 /// 把一份文档读成**一张表**〔`K-H2` `KH5`〕。
@@ -223,6 +358,7 @@ pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
                 id: id.clone(),
                 base_url: read_base_url(obj),
                 key: read_key(obj),
+                auth_style: read_auth_style(obj),
             });
         }
     }
@@ -230,11 +366,16 @@ pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
     if !out.iter().any(|e| e.id == LEGACY_ACCOUNT_ID) {
         let key = read_key(doc);
         let base_url = read_base_url(doc);
+        // ⚠⚠ **顶层的 `auth_style` 单独在，不足以造出这一行**〔`K-R1`〕：
+        //   它进不了上面那个 `if` 的条件，是刻意的 —— 加进去就等于「只写了
+        //   `auth_style` 的文件也有一条什么都没配的 default 行」，而那正是本函数头注
+        //   逐字禁的**回落**。⇒ 它只在这一行**因为别的字段已经存在**时被读进来。
         if key.is_some() || base_url.is_some() {
             out.push(AccountEntry {
                 id: LEGACY_ACCOUNT_ID.to_string(),
                 base_url,
                 key,
+                auth_style: read_auth_style(doc),
             });
         }
     }
@@ -755,6 +896,127 @@ mod tests {
         // ⚠ 但值**不是对象**的那一条要跳过（有人写成 `"acct": "sk-..."`）。
         let wrong = parse(r#"{"accounts":{"acct":"sk-not-an-object"}}"#).expect("夹具");
         assert!(read_accounts(&wrong).is_empty(), "非对象的那一条不该进表");
+        // ★ `K-R1`：没写 `auth_style` 的那一条读回来是 `Absent`，**不是**默认值 ——
+        //   把它折成默认值是调用方的事，本模块只报「文件里写了什么」。
+        assert_eq!(rows[0].auth_style, AuthStyleSetting::Absent);
+    }
+
+    /// ★★ `K-R1`：那个闭集**只有一个住址**，而且两头对得上。
+    ///
+    /// # 它买的是什么
+    ///
+    /// [`AuthStyle::from_field_value`] 刻意从 [`AuthStyle::ALL`] 派生，不是第二个 `match`。
+    /// 本条把这句话变成读数：`ALL` 里每一个成员，`field_value` 出去再进得回来，
+    /// **而且回到的是同一个成员**。写成第二个 `match` 而漏一支的话，那一支在这里当场红。
+    ///
+    /// ⚠ 它**不**证明「这三个词就是现实里所有的鉴权头形状」—— 那是一个没人给得出分母的
+    /// 全称句。它证的是「我登记的这几个，代码两头一致」。
+    #[test]
+    fn every_registered_auth_style_survives_the_round_trip_through_its_field_value() {
+        // 反空真：`ALL` 不是空的（空的话下面整个循环恒真）。
+        assert!(
+            AuthStyle::ALL.len() >= 2,
+            "闭集只有 {} 个成员 —— 少于两个的话「按形状切」这句话没有内容",
+            AuthStyle::ALL.len()
+        );
+        // 每个成员的词**互不相同**（重了的话 `from_field_value` 会把两个折成一个）。
+        let mut words: Vec<&str> = AuthStyle::ALL.iter().map(|s| s.field_value()).collect();
+        let n = words.len();
+        words.sort();
+        words.dedup();
+        assert_eq!(words.len(), n, "有两个成员的 field_value 撞了：{words:?}");
+
+        for want in AuthStyle::ALL {
+            let w = want.field_value();
+            assert_eq!(
+                AuthStyle::from_field_value(w),
+                Some(*want),
+                "`{w}` 进不回它自己 —— 两头漂了"
+            );
+            // 大小写与首尾空白都要认（人手编时会带）。
+            assert_eq!(
+                AuthStyle::from_field_value(&format!("  {}  ", w.to_ascii_uppercase())),
+                Some(*want)
+            );
+        }
+        // ★ 非空对照：认不出的词就是认不出，**不许**回落到默认值。
+        //   分母 = 我列出的这 3 形（不是「所有不合法输入」）。
+        for bad in ["Bearer token", "x_api_key", "openai"] {
+            assert_eq!(
+                AuthStyle::from_field_value(bad),
+                None,
+                "`{bad}` 被认成了某个合法值 —— 静默回落正是本件在治的那一形"
+            );
+        }
+    }
+
+    /// ★★★ `K-R1`：`auth_style` 那一格读出来是**三态**，
+    /// 「缺席」与「写了个认不出的词」**不许挤进同一态**。
+    ///
+    /// 合成一态的唯一去处是回落成默认 ⇒ 一个打错字母的 `auth_style` 静默走默认头，
+    /// 症状是**一条查不出来的 401**，与「key 打错了」同形。〔`K-R21` 那一族〕
+    #[test]
+    fn a_typo_in_auth_style_is_not_the_same_state_as_leaving_it_out() {
+        // 分母 = 下面这 6 形，逐形手写期望值。
+        let cases: &[(&str, AuthStyleSetting)] = &[
+            (r#"{"accounts":{"a":{}}}"#, AuthStyleSetting::Absent),
+            (
+                r#"{"accounts":{"a":{"auth_style":""}}}"#,
+                AuthStyleSetting::Absent,
+            ),
+            (
+                r#"{"accounts":{"a":{"auth_style":"   "}}}"#,
+                AuthStyleSetting::Absent,
+            ),
+            (
+                r#"{"accounts":{"a":{"auth_style":"bearerr"}}}"#,
+                AuthStyleSetting::Unknown,
+            ),
+            // 值不是字符串（有人写成数字）也归 `Unknown` —— 同样是「写了但读不懂」。
+            (
+                r#"{"accounts":{"a":{"auth_style":7}}}"#,
+                AuthStyleSetting::Unknown,
+            ),
+            (
+                r#"{"accounts":{"a":{"auth_style":"none"}}}"#,
+                AuthStyleSetting::Known(AuthStyle::NoAuth),
+            ),
+        ];
+        for (raw, want) in cases {
+            let doc = parse(raw).expect("夹具应当可解析");
+            let rows = read_accounts(&doc);
+            assert_eq!(rows.len(), 1, "夹具该读出恰好一条：{raw}");
+            assert_eq!(&rows[0].auth_style, want, "这一形读错了：{raw}");
+        }
+        // ★ 非空对照：这把尺子分得出三态里的**两两不同**（不是恒答一张脸）。
+        assert_ne!(AuthStyleSetting::Absent, AuthStyleSetting::Unknown);
+        assert_ne!(
+            AuthStyleSetting::Known(AuthStyle::Bearer),
+            AuthStyleSetting::Known(AuthStyle::NoAuth)
+        );
+    }
+
+    /// ★★ `K-R1`：顶层那一格 `auth_style` **单独在，造不出一条行**。
+    ///
+    /// 加进「要不要造这一行」的条件里就等于「只写了 `auth_style` 的文件也有一条
+    /// 什么都没配的 `default` 行」，而那正是 [`read_accounts`] 头注逐字禁的**回落**。
+    #[test]
+    fn a_top_level_auth_style_on_its_own_does_not_conjure_a_row() {
+        let alone = parse(r#"{"auth_style":"none"}"#).expect("夹具");
+        assert!(
+            read_accounts(&alone).is_empty(),
+            "只写了 auth_style 就凭空多出一条行 —— 那是一条默认行"
+        );
+        // ★ 非空对照：同一格与 `api_key` 一起写时，它**被读进那一行**（不是被忽略）。
+        let with_key = parse(r#"{"api_key":"K","auth_style":"none"}"#).expect("夹具");
+        let rows = read_accounts(&with_key);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].id, LEGACY_ACCOUNT_ID);
+        assert_eq!(
+            rows[0].auth_style,
+            AuthStyleSetting::Known(AuthStyle::NoAuth),
+            "顶层那一格没被读进这一行"
+        );
     }
 
     /// ★★★ **`KH5b` 的正主**〔件计划 `§0c` 第 3 问逐字点名的那个**新**形状〕：
