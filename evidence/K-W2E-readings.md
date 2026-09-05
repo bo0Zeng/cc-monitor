@@ -162,6 +162,41 @@
 （新加的第 12 条 · 期限那一格 · 环境继承那一格 · 天花板的抽取自检）。
 另外 8 条买的是别的性质，它们仍绿**不是仪式**，但**也不能拿来给「真起进程」作证**。
 
+## 5c · PM 追加那一格：通用口的词汇针补第二族（`M8a` / `M8b` 复打）
+
+**先答冲突**：本件那个假插件的词是**第三族**（`hedron` · `facets` · `seal` · `nap` ·
+`HEDRON_REALM` · `alpha` · `emit-ledger` · `dry-run` · `sealed` · `stale_ledger` ·
+`realm_locked` · `broke` · `signalled`），与 PM 给的 5 个词**零重叠** ⇒ **不冲突**，照加。
+
+加针前现打（`grep` 于本树 `d305ffa`，`plugin/` 三个被扫文件）：
+`code-picture` · `codepicture` · `panorama` · `code_picture_core` · `index.db`
+**逐个命中均为 0** ——与 `K-W2D` 的读数一致。
+
+| 刀 | 状态 | 判定行 | 新红 | 红的那句话（逐字） |
+|---|---|---|---|---|
+| **M8a** | 针 = 旧 6 根 ＋ 往 `discover::find` 生产段头上塞 `let _ = "codepicture";` | `554 passed; 0 failed; 1 ignored` | **0** | ——（**一条都不红**：那条判据此前对第二个插件是**空的**） |
+| **M8b** | 针 = 11 根（旧 6 ＋ 新 5）＋ **同一刀** | `553 passed; 1 failed; 1 ignored` | **1** | ``通用插件调用口里出现了**某一个具体插件**的词汇：``  ``  plugin/discover.rs:53 [另一个插件的数据目录名] let _ = "codepicture";`` |
+
+⇒ 新红**恰好 1 条**、**正是那一格**（`plugin::layer_guard::the_generic_port_names_no_concrete_plugin`）、
+**最小面**（逐字点名那一行，不牵连别的判据）。刀撤干净：
+`git diff -- plugin/discover.rs` **逐字节相同**。
+
+**同轮做的两件（不做就会立刻长出新债）**：
+- **散文收成一个住址**：模块头注那张表 · `concrete_plugin_words` 的头注 · 正题那条的射程段
+  此前**各抄了一份**「**6 根针** ＋ 逐个列名」。加第二族之后三处一起变假 ⇒ 一律改成**只给住址**
+  （报错文案里那个数本来就是 `words.len()` 现算的）。⚠ 本件自己那份文档里也抄过一处，同轮改掉。
+- **阴性对照扩成「一族一个样本」**：只喂一族的话，另一族的针**整族失效**会被这一族盖住
+  （本仓「N 个独立源只断一次」踩过）。新加一族词就在那里加一行样本。
+
+⚠ **射程如实写**：加完之后它仍然**只认表里那两族**。本件的假插件换的是第三族，
+这张表对它**一根都对不上** —— 那一半由 `plugin_walk_fixture` 自带的一组专有针管（`E6`）。
+
+⚠ **顺带一条给 PM / `K-W2D` 的读数（我没改它）**：monitor 侧
+`plugin_class_registry` 那条「daemon 整棵源码树零全景引擎」用的针是
+`format!("code{}picture", '_')` ＝ `code_picture`，且走 `contains_word`（`-` 与 `_` 都算词内字符）
+⇒ 它**匹配不上** `codepicture`、`code-picture`，连 `code_picture_core` 也因尾随 `_` 而不算词命中。
+本轮这 5 根针与它**几乎不重叠**（是互补，不是重复）；那条针自己的射程要不要收，归 `K-W2D` 判。
+
 ## 6 · 顶回 PM 题面的地方（逐条带现打读数）
 
 ① **`control/cc_bus.rs` 是 7 条判据，不是 6 条。**

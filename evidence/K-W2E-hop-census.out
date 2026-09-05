@@ -26,7 +26,7 @@
    - the_diagnosis_prefers_stderr_and_falls_back_to_stdout: 跳7
    - invalid_utf8_output_still_yields_a_line: 跳7
 
-## plugin/mod.rs —— 6 条判据（生产段 5503 字节 · 测试段 14018 字节）
+## plugin/mod.rs —— 6 条判据（生产段 5541 字节 · 测试段 15661 字节）
    - the_plugin_layer_collection_is_complete: 无直接命中
    - the_generic_port_names_no_concrete_plugin: 无直接命中
    - the_port_guard_actually_bites: 无直接命中
@@ -43,7 +43,7 @@
    - the_three_exit_codes_map_to_three_different_meanings: 跳8
    - the_daemon_does_not_re_implement_the_recipient_charset_rule: 无直接命中
 
-## plugin_walk_fixture.rs —— 12 条判据（生产段 5112 字节 · 测试段 60494 字节）
+## plugin_walk_fixture.rs —— 12 条判据（生产段 5112 字节 · 测试段 61102 字节）
    - this_fake_plugin_is_deliberately_unlike_the_real_one: 跳4/8
    - one_fake_plugin_walks_six_hops_as_one_path: 跳7/8（＋经 driver 传递：跳2/4/5/6）  ★真起进程
    - the_walk_really_started_a_process_not_a_hand_built_done: 无直接命中（＋经 driver 传递：跳2/4/5/6/7/8）  ★真起进程
