@@ -1281,16 +1281,13 @@ mod tests {
             scanned > 200_000,
             "剥完只剩 {scanned} 字节可扫 —— 剥过头了，本条在空转"
         );
-        let total: usize = hits.iter().map(|(_, n)| *n).sum();
-        assert_eq!(
-            total,
-            DEATH_RECORD_SITES.len(),
-            "`record_death` 的生产调用点是 {total} 处（登记 {} 处）。实得：{hits:?}\n\
-             ★ **接了几处就是几处**。变少 = 某一条观测路又回到了「看得见它没了、却没人记」，\n\
-             那正是 `K-P3` `§3-5` 第一行登记的那一格（当时这个数是 0）；\n\
-             变多 = 有第四条路开始记账，回来把它写进 `DEATH_RECORD_SITES` 并说清它记的是哪条路。",
-            DEATH_RECORD_SITES.len()
-        );
+        // ⚠⚠ **逐处点名排在总数前面，这个次序是有意的**〔09-05 死值验当场逼出来的〕。
+        //   先跑总数那一条时，摘掉任意一处 `record_death` 印出来的是
+        //   「生产调用点是 2 处（登记 3 处）。实得：[("local_daemon.rs", 2)]」——
+        //   它说得出**少了一处**，说不出**少的是哪一处**（三处都在同一个文件里）。
+        //   ⇒ 先红的该是**说得出病在哪**的那句诊断，而不是要人再去查一遍的记账话。
+        //   （形状抄 `local_daemon.rs::the_user_actionable_start_failures_all_reach_the_user`
+        //   头注那一段：「②③ 排在 ④ 前面是有意的」。）
         for (file, head, why) in DEATH_RECORD_SITES {
             let raw: &str = match *file {
                 "local_daemon.rs" => include_str!("local_daemon.rs"),
@@ -1308,9 +1305,22 @@ mod tests {
                 n, 1,
                 "`{file}` 的 `{head}` 体内 `record_death(` 有 {n} 处（该恰好 1 处）。\n\
                  这一处记的是：{why}\n\
-                 ★ 0 处 = **这条路的死亡从此没人记**，而上面那条总数断言可能被别处多记的一次盖住。"
+                 ★ 0 处 = **这条路的死亡从此没人记**；而只数总数的话，\n\
+                 「这一处塌了、另一处多记了一次」会互相抵消，谁都不出声。"
             );
         }
+        let total: usize = hits.iter().map(|(_, n)| *n).sum();
+        assert_eq!(
+            total,
+            DEATH_RECORD_SITES.len(),
+            "`record_death` 的生产调用点是 {total} 处（登记 {} 处）。实得：{hits:?}\n\
+             ★ **接了几处就是几处**。变少 = 某一条观测路又回到了「看得见它没了、却没人记」，\n\
+             那正是 `K-P3` `§3-5` 第一行登记的那一格（当时这个数是 0）；\n\
+             变多 = 有第四条路开始记账（上面逐处那一圈只看登记过的三处，\n\
+             **第四处它一个字都不会说**）⇒ 回来把它写进 `DEATH_RECORD_SITES`，\n\
+             并说清它记的是哪条路。",
+            DEATH_RECORD_SITES.len()
+        );
     }
 
     /// ★★ `KP3W3`：**监护器自己一笔都不许记。**
