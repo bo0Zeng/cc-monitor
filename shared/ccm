@@ -1242,6 +1242,14 @@ if [ "$use_tmux" = 1 ]; then
   #      ⇒ 换掉配方要**同拍重写那一套**，而 `e2e/` 不在本件写区。
   #      件文件 `§6-5 上报③`（「`--print` 删掉本地那条之后吐什么 —— 牵动 80 条 e2e」）
   #      已登记这一格归 PM/用户裁，本拍**不自批**。
+  #
+  # ⚠ **删掉的那个状态变量叫 `_ccm_launched=`** —— 它是「这一趟没走成后端」的运行时事实
+  #   （`= 1` 才跳过本地那块）。退路一删它就没有存在的理由了。
+  #   **这一句不是纪念碑，是判据的靶子**：`ccm_cli_contract` 的 `BACKEND_BACKED_PATHS`
+  #   给 `--launch` 登记的 `gone` 就是这个串，而那条判据要求它
+  #   「在**注释里**找得到、在**生产段**里找不到」——
+  #   ⇒ 把这个名字从注释里删掉，判据当场红；而不写这一句的话，`gone` 那个锚点
+  #   可以被改成任何一个「反正不在生产段里」的串，那一半就退化成空真。
   if [ "$do_print" = 1 ]; then
     seq="{ tmux new-session -d -s $(sq "$tmux_name") -c $(sq "$cwd")$size_opt 2>/dev/null"
     seq="$seq || { printf $(sq "$NAME_TAKEN_FMT") $(sq "$tmux_name") >&2; exit 3; }; }"
