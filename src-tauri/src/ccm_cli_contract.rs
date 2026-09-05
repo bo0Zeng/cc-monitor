@@ -857,17 +857,241 @@ mod tests {
             line.contains("2>/dev/null"),
             "tmux 自己那句噪声仍该吞掉 —— 我们要的是**自己**那句说清楚"
         );
-        let fail_branch = ccm
+        // ★★ 〔`K-P2` `F` 拍 09-04〕**这句文案从「一处」变成「一处定义 + 两处消费」。**
+        //
+        // 退路一删，撞名有了**两个**报出口：`--print` 吐的那条配方里那一份，
+        // 与 exec 路上后端说 `created:false` 那一格。上一版这里 `.find(第一个含「已被占用」的行)`
+        // ⇒ 两份措辞里它只看得见**先出现的那一份**，另一份可以悄悄写成别的话而它一个字不说。
+        // ⇒ 改成钉「**定义恰好一处 + 每个消费点都响亮**」。
+        let fmt = ccm
             .lines()
-            .find(|l| l.contains("已被占用"))
-            .expect("撞名必须有**响亮失败**那一支 —— 静默接回别人的会话与 #76 后果逐字相同");
+            .find(|l| l.starts_with("NAME_TAKEN_FMT="))
+            .expect(
+                "撞名那句文案不再是一处具名字面量（`NAME_TAKEN_FMT=`）—— \
+                 它有两个报出口（`--print` 的配方 · exec 路 `created:false` 那一格），\
+                 两处各写一句就是两份措辞，而本条钉不住「两份」，只钉得住「响亮」。",
+            );
         assert!(
-            fail_branch.contains("exit 3"),
-            "失败要有**非零退出码**，否则调用方（cc-spawn / monitor）判不出失败：{fail_branch}"
+            fmt.contains("%s"),
+            "报错必须**带上是哪个名字** —— 不带名字的报错等于没报：{fmt}"
         );
         assert!(
-            fail_branch.contains("%s"),
-            "报错必须**带上是哪个名字** —— 不带名字的报错等于没报：{fail_branch}"
+            fmt.contains("已被占用"),
+            "撞名文案不再说「已被占用」—— 换措辞就来改这条判据，别让它零命中地绿：{fmt}"
+        );
+        // ⚠ **定义恰好一处**：两份定义 = 本条上一版的病原样复发。
+        //   ⚠ `ccm` 这个变量**已经是生产段**（上面 `shell_production`）—— 别在这里再剥一遍，
+        //   那会是第二份口径（本模块头注反复点名的那一族）。
+        guard_core::find_pinned(&ccm, "NAME_TAKEN_FMT=")
+            .unwrap_or_else(|e| panic!("{e}\n⇒ 撞名文案的定义不是恰好一处。"));
+        // 消费点：每一处引用它的生产行**都**要带 `exit 3`（响亮 + 非零码，`C14`）。
+        // ⚠ 认「提到这个名字」而不是某一种写法（`"$X"` / `$(sq "$X")` / `"${X}"` 都算），
+        //   再把**定义那一行**单独排掉 —— 只认一两种写法的话，换个写法它就少数一个出口。
+        let users: Vec<&str> = ccm
+            .lines()
+            .filter(|l| l.contains("NAME_TAKEN_FMT") && !l.starts_with("NAME_TAKEN_FMT="))
+            .collect();
+        assert_eq!(
+            users.len(),
+            2,
+            "引用撞名文案的生产行有 {} 处，应当恰好 2 处（`--print` 的配方 · \
+             exec 路 `created:false` 那一格）。\n\
+             变多 = 又长出一个报出口；变少 = 有一条路上撞名**不再响亮**（那正是 `#76` 的形状：\
+             静默接回别人的会话）。实得：{users:?}",
+            users.len()
+        );
+        for u in &users {
+            assert!(
+                u.contains("exit 3"),
+                "撞名的一个报出口没有**非零退出码**，调用方（cc-spawn / monitor）判不出失败：{u}"
+            );
+        }
+    }
+
+    /// `KP2C`〔`K-P2` `F` 拍 09-04；用@09-04 逐字「**ccm不要管找不到, 统一走后端**」〕
+    /// **「后端不可达」这个失败面只有一处住址：一句文案、一个退出码。**
+    ///
+    /// # 它买的是什么
+    ///
+    /// PM 本拍的落法逐字：「后端不可达 ⇒ `ccm` **只有一种失败面**：出声（stderr 一句人话）
+    /// ＋ 非零退出 ＋ **唯一**退出码与文案」。而本仓的血账是：失败面**最容易长成两份** ——
+    /// 建会话那条与账号解析那条各写一句「找不到 daemon」，措辞迟早对不上；
+    /// 更贵的是**退出码**：调用方是按码分辨失败种类的，两个码就是两套契约。
+    ///
+    /// # 三条腿（缺一条就不是判据）
+    ///
+    /// ① 文案是**一处具名字面量**（`find_pinned`：在不在 ＋ 是不是只有一份）；
+    /// ② 退出码也是**一处具名常量**，且**不与既有的码撞**（`die` 的 2 · 撞名的 3）；
+    /// ③ **靶子自检**：`backend_unreachable` 真的**被调用**，且每个调用点都在
+    ///    「后端这条路走不通」那一段里 —— 一处调用点都没有 ⇒ 上面两条是空真。
+    ///
+    /// ⚠ **本条与 `KP2A` 成对读**（`KP2C ③` 逐字要求）：`KP2A` 那边判「新路真的被走到」，
+    /// 本条判「走不通那一格的失败面只有一个」。少了前者，本条可以被
+    /// 「两条路都没有」满足（把 ccm 那段整个删掉，失败面自然唯一而功能整个消失）。
+    /// ⇒ 下面 ④ 就是那条成对判：`--launch` 必须真的还在被发。
+    #[test]
+    fn the_backend_unreachable_failure_face_has_exactly_one_home() {
+        let prod = ccm_production();
+
+        // ① 文案：一处具名字面量。
+        guard_core::find_pinned(&prod, "printf 'ccm: 后端不可达").unwrap_or_else(|e| {
+            panic!(
+                "{e}\n⇒ 「后端不可达」的文案不是恰好一处。\n\
+                 两处 = 两份措辞（本仓治了一整族的形状）；零处 = 那条失败面被删了\n\
+                 ⇒ 后端走不通时 ccm 又变成**静默**的，而它已经没有本地退路可退了。"
+            )
+        });
+
+        // ② 退出码：一处具名常量，且**不与既有的码撞**。
+        let rc_def = prod
+            .lines()
+            .find(|l| l.starts_with("CCM_RC_NO_BACKEND="))
+            .expect(
+                "找不到 `CCM_RC_NO_BACKEND=` —— 退出码要有**一处具名住址**。\
+                 写成裸数字 `exit 4` 的话，「这个码是什么意思」只活在注释里，\
+                 而注释不进任何判据（`brief` 铁律 15：写在源码注释里的自证等于埋掉了）。",
+            );
+        let rc: u32 = rc_def
+            .trim_start_matches("CCM_RC_NO_BACKEND=")
+            .trim()
+            .parse()
+            .unwrap_or_else(|e| panic!("`CCM_RC_NO_BACKEND` 不是一个数：{rc_def}（{e}）"));
+        // **不许与别的码撞。**
+        // ⚠ 别的码**现算** —— 从生产段里把每一处 `exit <数字>` 挖出来，
+        //   不在这里手抄一份「今天有 0/2/3」的闭集（`brief` 13b：闭集只许有一个住址，
+        //   散文里一律只给住址、不复述成员；要印就现算）。
+        let other_rcs: std::collections::BTreeSet<u32> = prod
+            .lines()
+            // 排掉**它自己那一行**（`exit "$CCM_RC_NO_BACKEND"` 本来就该是这个码）。
+            .filter(|l| !l.contains("CCM_RC_NO_BACKEND"))
+            .flat_map(|l| {
+                l.match_indices("exit ")
+                    .filter_map(|(i, _)| {
+                        let t: String = l[i + 5..].chars().take_while(char::is_ascii_digit).collect();
+                        t.parse::<u32>().ok()
+                    })
+                    .collect::<Vec<u32>>()
+            })
+            .collect();
+        // 抽取器自检：一个都挖不到 ⇒ 下面那条是空真。
+        assert!(
+            other_rcs.len() >= 2,
+            "生产段里只挖到 {} 个别的 `exit <码>`（{other_rcs:?}）—— \
+             抽取器坏了（`die` 的 2 与撞名的 3 至少该在里面），下面那条撞码判据是空真。",
+            other_rcs.len()
+        );
+        assert!(
+            !other_rcs.contains(&rc),
+            "「后端不可达」的码是 {rc}，而生产段里已经有别的路在用这个码了（现打全集 {other_rcs:?}）。\n\
+             ⇒ 调用方分不开「**你敲错了**」（`die`）/「**撞名**」（`C14`）/\
+             「**这台机器上没有后端**」—— 而只有最后一条是可修的部署缺口，\
+             那正是这个码要表达的事。换一个没人用的。"
+        );
+
+        // ③ 靶子自检：`backend_unreachable` 真的被调用（不是只定义了一个没人用的函数）。
+        guard_core::find_pinned(&prod, "backend_unreachable() {").unwrap_or_else(|e| {
+            panic!("{e}\n⇒ 唯一失败面的实现不是恰好一处。")
+        });
+        let callers: Vec<&str> = prod
+            .lines()
+            .filter(|l| l.contains("backend_unreachable ") || l.contains("backend_unreachable \""))
+            .collect();
+        assert!(
+            !callers.is_empty(),
+            "`backend_unreachable` 定义了却**一处都没被调用** —— \
+             上面 ①② 于是是空真：文案与码都在，而没有任何一条路会走到它们。\n\
+             那正是 `KP2C` 头注点名的失效方式：「只查①（旧实现没了）是**可以被『两边都没有』满足的**」。"
+        );
+
+        // ④ **成对判**（`KP2C ③`）：ccm 必须真的还在发 `--launch`。
+        //    否则「失败面唯一」可以靠「一条路都没有」满足。
+        assert!(
+            daemon_invocations(&prod).contains("--launch"),
+            "`shared/ccm` 生产段里已经找不到 `--launch` 的调用点了 —— \
+             那不是「失败面唯一」，那是**建会话这件事整个没了**。\n\
+             `KP2C` 逐字：「①③ 必须同一轮、且 ③ 的非空对照是『把新路摘掉 ⇒ `KP2A` 必须红』」。"
+        );
+    }
+
+    /// `KP2C ①`〔`K-P2` `F` 拍 09-04〕**本机 tmux 直起那条编排，exec 路上一步都走不到。**
+    ///
+    /// # 为什么判的是「够不够得到」而不是「字面在不在」
+    ///
+    /// 件计划 `§6-3` 的腿① 是「生产段（剥注释）里 `tmux new-session` 的处数 == 0」，
+    /// 而那一节**自己写着它必要不充分**，并列了三条理由（换成 `$TMUXBIN` 字面就没了 ·
+    /// 挡不住换个地方重实现 · 形态判据看不到「被走到」）。
+    ///
+    /// 而本拍的事实是：那段编排**还在**，因为 `--print` 仍要吐它
+    ///（`§6-5 上报③` 未裁，`e2e/ccm-print-parity.sh` 12 条里 11 条逐字断言它的内容）。
+    /// ⇒ 拿腿① 的字面口径判，本条只能红或只能靠删掉 `--print` 的输出买 —— 两条都不对。
+    ///
+    /// ⇒ **判「可达性」**：那段编排必须整块住在 `if [ "$do_print" = 1 ]; then` 的**那一支**里，
+    /// 而 exec 那一支（`else`）里**一处 `tmux new-session` 都不许有**。
+    /// 两支互斥 ＋ `--print` 只 `printf` 不执行 ⇒ **exec 路上它一次都跑不到**。
+    ///
+    /// ⚠ **如实登记本条的射程**：它是**结构**判据（读源码的分支形状），
+    /// 不是行为判据。真正的行为反证是 `§6-3` 腿②（把后端拿掉 ⇒ `tmux.log` 是空的 ＋ `rc ≠ 0`），
+    /// 那一条住 `e2e/ccm-cli.test.sh` 的 `WIRE/launch/降级②⑤`，而那两条今天期望的是
+    /// **反面**（`yes` / `0`）⇒ 必须同拍翻面，**而 `e2e/` 不在本件写区**
+    ///（逐字 diff 在件文件 `§4`，PM 落）。**本条买不到那一半，别把它读成买到了。**
+    #[test]
+    fn the_local_launch_recipe_is_reachable_only_from_print() {
+        let prod = ccm_production();
+        let lines: Vec<&str> = prod.lines().collect();
+        // 抽取器自检：那段编排的头一行必须找得到，且**恰好一处**。
+        guard_core::find_pinned(&prod, "seq=\"{ tmux new-session").unwrap_or_else(|e| {
+            panic!(
+                "{e}\n⇒ 构造本机 `new-session` 那一行不是恰好一处 —— \
+                 抽取器坏了（下面全是空真），或者那段编排又分叉了。"
+            )
+        });
+        let at = lines
+            .iter()
+            .position(|l| l.contains("seq=\"{ tmux new-session"))
+            .expect("上面 find_pinned 已经保证它在");
+        // 往上找最近的 `if`/`else`：它必须是 `--print` 那一支的头。
+        let guard = lines[..at]
+            .iter()
+            .rev()
+            .find(|l| {
+                let t = l.trim_start();
+                t.starts_with("if ") || t.starts_with("elif ") || t == "else"
+            })
+            .unwrap_or_else(|| panic!("那段编排上方找不到任何分支头 —— 它是无条件执行的？"));
+        assert!(
+            guard.contains("$do_print") && guard.contains("= 1"),
+            "本机 `new-session` 那段编排**不在 `--print` 那一支里**了。\n\
+             它上方最近的分支头是：{guard}\n\
+             ⇒ 期望 `if [ \"$do_print\" = 1 ]; then` —— 只有这个形状才保证\
+             **exec 路一步都走不到它**（`--print` 那一支只 `printf`，不执行）。\n\
+             用@09-04 逐字：「ccm不要管找不到, **统一走后端**」；\
+             件计划 `§6-3` 逐字排除过用 env 开关（如 `CCM_FORCE_LOCAL=1`）买这件事 ——\
+             「一个环境变量就能走回本地 ⇒ 旧住址还在。**不许这么买**」。"
+        );
+        // exec 那一支（`else` 到 `fi`）里不许有 `tmux new-session`。
+        let else_at = lines[at..]
+            .iter()
+            .position(|l| l.trim() == "else")
+            .map(|i| at + i)
+            .expect("`--print` 那一支后面找不到 `else` —— 分支形状变了，本条该重写");
+        let fi_at = lines[else_at..]
+            .iter()
+            .position(|l| l.trim() == "fi")
+            .map(|i| else_at + i)
+            .expect("`else` 之后找不到 `fi` —— 段界读法坏了");
+        let exec_arm = lines[else_at..fi_at].join("\n");
+        assert!(
+            !exec_arm.contains("new-session"),
+            "exec 那一支（`else` … `fi`）里出现了 `new-session`：\n{exec_arm}\n\
+             ⇒ 本地退路又回来了。用@09-04 裁的是「统一走后端」——\
+             后端不可达就 `backend_unreachable`（唯一失败面），不许自己建。"
+        );
+        // 非空对照：exec 那一支**真的在发** `--launch`（不然上面那条是空真 ——
+        // 一个空的 `else` 分支照样不含 `new-session`）。
+        assert!(
+            exec_arm.contains("launch_via_daemon "),
+            "exec 那一支里找不到 `launch_via_daemon` 的调用 —— \
+             上面那条「不许有 new-session」于是是**空真**（空分支也满足它）。\n实得：\n{exec_arm}"
         );
     }
 
@@ -2026,42 +2250,88 @@ mod tests {
         );
     }
 
-    /// `KP2C`〔`K-P2` 08-29〕**搬走的那一块，两侧不许各留一份；留退路就必须出声。**
+    /// 一条后端路**走不通的时候**是什么形状〔`K-P2` `F` 拍 09-04 加第三档〕。
+    ///
+    /// # 为什么要有第三档
+    ///
+    /// 上一版这张表是 `(&str, &str, Option<&str>)` —— 第二格**恒是一条退路的锚点**，
+    /// 也就是说这张表的形状本身**假设了「每条后端路都有退路」**。
+    /// 用@09-04 逐字「**ccm不要管找不到, 统一走后端**」把这个假设推翻了：
+    /// 建会话那条从此**没有退路**，走不通就唯一失败面。
+    /// ⇒ 照旧塞进 `(锚点, Some(文案))` 的话，只能拿失败面的锚点冒充「退路锚点」——
+    /// 那就是**一个字段装了两件事**（本工作区最贵的那一族，`§0b` 那边一天逮过十次）。
+    enum FallbackShape {
+        /// 有退路，且**出声**（`K-C1` `§0b` 裁定）。
+        Speaks {
+            /// 退路在生产段里的**可观测**锚点。
+            anchor: &'static str,
+            /// 出声那句文案的锚点。
+            says: &'static str,
+        },
+        /// 有退路，**一个字不说** —— 欠账，进下面的递减棘轮。
+        Silent { anchor: &'static str },
+        /// **没有退路**：走不通 ⇒ 唯一失败面（出声 ＋ 非零码）。
+        ///
+        /// 两格都承重，缺一格这一档就退化成免检章：
+        /// · `face` 必须**在** —— 不然「没退路」＝ 走不通时**什么都不做**（静默失败）；
+        /// · `gone` 必须**不在** —— 那是 `KP2C ①`「两侧不许各留一份」的机检形式。
+        NoFallback {
+            /// 唯一失败面在生产段里的锚点。
+            face: &'static str,
+            /// 退路删掉**之前**那个锚点。登记之后它必须消失。
+            gone: &'static str,
+        },
+    }
+
+    /// `KP2C`〔`K-P2` 08-29；`F` 拍 09-04 换形状〕
+    /// **搬走的那一块，两侧不许各留一份；留退路就必须出声。**
     ///
     /// # 表的形状
     ///
-    /// 每条 = （后端子命令, ccm 侧那条退路的**可观测**锚点, 退路**出声**的锚点）。
-    /// 第三格是 `None` ⇒ 那条退路**今天是静默的**，记进下面的递减棘轮。
+    /// 每条 = （后端子命令, [`FallbackShape`]）。三档：**出声的退路** / **静默的退路** /
+    /// **没有退路**（走不通 ⇒ 唯一失败面）。三档各自要付的断言写在那个枚举的每一支上。
     ///
-    /// # 为什么第三格要单列而不是直接断言「都出声」
+    /// ⚠ 〔`K-P2` `F` 拍 09-04〕第三档是**这一拍加的**，上一版的元组形状里没有它 ——
+    /// 那个形状本身假设了「每条后端路都有退路」，而用@09-04
+    /// 逐字「**ccm不要管找不到, 统一走后端**」把这个假设推翻了。详见 [`FallbackShape`] 头注。
+    ///
+    /// # 为什么「出声/静默」要分档而不是直接断言「都出声」
     ///
     /// 件计划 `§0b-3` 的三条「为什么必然如此」里第 ③ 条逐字：「降级必须**出声**
     /// （`K-C1` 的 `§0b` 裁定）⇒ 每条退路配一段文案」。而现打：**两条里只有一条出声**。
     /// 直接断言「都出声」= 今天就红 ⇒ 那不是判据，是坏的门禁。
     /// ⇒ 照本仓既有的**递减棘轮**写法（`local_read_surface_registry` 那一族）：
     /// 把欠账登记成一个**只许变小**的数，欠账因此有名有姓、且不会悄悄变多。
-    const BACKEND_BACKED_PATHS: &[(&str, &str, Option<&str>)] = &[
+    /// 〔`F` 拍〕**棘轮从此有两条**：静默的条数（④）＋ 还留着退路的条数（⑤）。
+    const BACKEND_BACKED_PATHS: &[(&str, FallbackShape)] = &[
         (
             "--list-accounts",
-            // 走了哪条路是**可观测**的（`K-C1` 的 `_ccm_acct_src` 先例）。
-            "_ccm_acct_src=file",
-            Some("账号解析已降级"),
+            FallbackShape::Speaks {
+                // 走了哪条路是**可观测**的（`K-C1` 的 `_ccm_acct_src` 先例）。
+                anchor: "_ccm_acct_src=file",
+                says: "账号解析已降级",
+            },
         ),
         (
             "--resolve",
-            // 退路在（拿不到就回空串，由调用方走本地 resume 串），但**一个字都不说**。
-            "[ -n \"$_ccm_db\" ] || { printf ''; return 0; }",
-            None,
+            FallbackShape::Silent {
+                // 退路在（拿不到就回空串，由调用方走本地 resume 串），但**一个字都不说**。
+                anchor: "[ -n \"$_ccm_db\" ] || { printf ''; return 0; }",
+            },
         ),
         (
-            // 〔`K-P2` `D` 阶段第三拍 09-03〕起会话。
+            // 〔`K-P2` `D` 阶段第三拍 09-03 接线；`F` 拍 09-04 **退路删掉**〕起会话。
             "--launch",
-            // 退路 = **本机 tmux 直起**那一整块。锚点取那个状态变量的初值：它就是
-            // 「这一趟没走成后端」的运行时事实（`= 1` 才跳过本地那块）。
-            "_ccm_launched=0",
-            // ⚠ **它出声**，而且四种原因各说各的（找不到 daemon / `CCM_NO_DAEMON=1` /
-            //   字段含控制字符 / daemon 答不出）——「降级了」与「为什么降级」分开说。
-            Some("建会话已降级为"),
+            FallbackShape::NoFallback {
+                // 唯一失败面（`the_backend_unreachable_failure_face_has_exactly_one_home`
+                // 那边单独钉它的文案与退出码；这里只要「走不通那一格真的通到它」）。
+                face: "backend_unreachable \"$why\"",
+                // 退路删掉之前的锚点：那个状态变量的初值。它是「这一趟没走成后端」的
+                // 运行时事实（`= 1` 才跳过本地那块）⇒ 本地那块一删，它就没有存在的理由了。
+                // ⚠ 用 `_ccm_launched=` 而不是 `_ccm_launched=0`：把 `0` 改成别的初值
+                //   同样是把退路留回来，而只钉 `=0` 的话那种写法它一个字都不说。
+                gone: "_ccm_launched=",
+            },
         ),
     ];
 
@@ -2073,14 +2343,14 @@ mod tests {
         //    （这就是 `KP2C` 的「成对判」在本条上的形态：接线与退路登记同一拍。）
         for u in &used {
             assert!(
-                BACKEND_BACKED_PATHS.iter().any(|(c, _, _)| *c == u.as_str()),
+                BACKEND_BACKED_PATHS.iter().any(|(c, _)| *c == u.as_str()),
                 "`shared/ccm` 生产段里发了 `{u}`，而它没登记在 `BACKEND_BACKED_PATHS` 里。\n\
-                 ⇒ 补一条：（子命令, 退路的可观测锚点, 出声锚点或 None）。\n\
+                 ⇒ 补一条：（子命令, `FallbackShape::{{Speaks|Silent|NoFallback}}`）。\n\
                  `KP2C` 逐字：「搬走的那一块，两侧不许各留一份；**留退路就必须出声**」。"
             );
         }
         // ② 反向：表里登记的每一条都要真的还在被用 —— 例外是欠账不是免检章。
-        for (cmd, _, _) in BACKEND_BACKED_PATHS {
+        for (cmd, _) in BACKEND_BACKED_PATHS {
             assert!(
                 used.contains(*cmd),
                 "登记着 `{cmd}` 而 ccm 的生产段里已经找不到它的调用点（现有 {used:?}）—— \
@@ -2089,14 +2359,53 @@ mod tests {
         }
         // ③ 每条锚点都要**真在生产段里**（非空对照：锚点烂掉 ⇒ 这条判据就是空真）。
         let mut silent: Vec<&str> = Vec::new();
-        for (cmd, fallback, speaks) in BACKEND_BACKED_PATHS {
-            assert!(
-                prod.contains(fallback),
-                "`{cmd}` 的退路锚点 {fallback:?} 在生产段里找不到了 —— \
-                 要么退路没了（那 `ccm` 在没有后端的机器上就废了：本文件经 `sftp.rs` 的 \
-                 `include_str!` 部署到**任意**远端，「daemon 不在」是常态），\
-                 要么锚点该更新了。"
-            );
+        let mut has_fallback: Vec<&str> = Vec::new();
+        for (cmd, shape) in BACKEND_BACKED_PATHS {
+            let speaks: Option<&str> = match shape {
+                // ★★ 〔`K-P2` `F` 拍 09-04〕**没有退路**那一档：两格都判，缺一格是免检章。
+                FallbackShape::NoFallback { face, gone } => {
+                    assert!(
+                        prod.contains(face),
+                        "`{cmd}` 登记为**没有退路**，而它的失败面锚点 {face:?} 在生产段里找不到 ——\n\
+                         ⇒ 「没有退路」＋「走不通时什么都不说」= **静默失败**，\
+                         那比留一条会出声的退路更坏（`§0b-4` 逐字：搬家之后它变得更容易静默）。"
+                    );
+                    assert!(
+                        !prod.contains(gone),
+                        "`{cmd}` 登记为**没有退路**，而旧退路的锚点 {gone:?} **还在**生产段里。\n\
+                         ⇒ 这正是 `KP2C ①` 禁的那个形状：「搬走的那一块，**两侧不许各留一份**」。\n\
+                         要么把它删干净，要么把这一行改回 `Speaks`/`Silent` 并说明退路为什么留着。"
+                    );
+                    None
+                }
+                FallbackShape::Speaks { anchor, says } => {
+                    has_fallback.push(cmd);
+                    assert!(
+                        prod.contains(anchor),
+                        "`{cmd}` 的退路锚点 {anchor:?} 在生产段里找不到了 —— \
+                         要么退路没了（那就把这一行改成 `NoFallback`，**并同拍登记唯一失败面**：\
+                         本文件经 `sftp.rs` 的 `include_str!` 部署到**任意**远端，\
+                         「daemon 不在」是常态 ⇒ 那一格必须有话说、有非零码），\
+                         要么锚点该更新了。"
+                    );
+                    Some(says)
+                }
+                FallbackShape::Silent { anchor } => {
+                    has_fallback.push(cmd);
+                    assert!(
+                        prod.contains(anchor),
+                        "`{cmd}` 的退路锚点 {anchor:?} 在生产段里找不到了 —— \
+                         退路没了就改成 `NoFallback`（并登记唯一失败面），别只删锚点。"
+                    );
+                    // ⚠ **只有这一档进 `silent` 棘轮**〔本轮自查逮到，铁律 15〕。
+                    //   第一版把 `NoFallback` 也算进去了（它的 `speaks` 也是 `None`）⇒
+                    //   `silent` 当场从 1 涨到 2、④ 那条棘轮误红。**「没有退路」不是「静默降级」**：
+                    //   它出声、而且非零退出。**一个数装了两件事** —— 本工作区最贵的那一族，
+                    //   而这一次它长在治它的那张表里。
+                    silent.push(cmd);
+                    None
+                }
+            };
             match speaks {
                 Some(line) => {
                     // ★★ **「出声」判的是 stderr，不是「文件里有这句话」**〔铁律 15 自查，08-29〕。
@@ -2106,7 +2415,7 @@ mod tests {
                     // （现打：`shared/ccm` 那句 `printf` 与它的 `>&2` **不在同一行** ——
                     //  `printf '…' \` 续行，`>&2` 在下一行 ⇒ 同行断言会当场误红。窗口 3 是量出来的，不是猜的。）
                     let lines: Vec<&str> = prod.lines().collect();
-                    let at = lines.iter().position(|l| l.contains(*line)).unwrap_or_else(|| {
+                    let at = lines.iter().position(|l| l.contains(line)).unwrap_or_else(|| {
                         panic!(
                             "`{cmd}` 登记为「降级出声」，而它的文案锚点 {line:?} 不在生产段里 —— \
                              出声那段被删了？（`K-C1` 的 `§0b` 裁定：**降级必须出声**）"
@@ -2121,7 +2430,9 @@ mod tests {
                          （`ccm-session=` 那一行、`--print` 的整条串）⇒ 那不是出声，是**污染载荷**。"
                     );
                 }
-                None => silent.push(cmd),
+                // `None` 有两种来历（`Silent` / `NoFallback`），而进棘轮的只有前者
+                // ⇒ 那一档在自己的臂里就 `push` 了，这里**什么都不做**。
+                None => {}
             }
         }
         // ④ **递减棘轮**：静默降级的条数只许变小。今天 1 条（`--resolve`）。
@@ -2138,6 +2449,28 @@ mod tests {
             vec!["--resolve"],
             "静默那条换人了 —— 今天登记的欠账是 `--resolve`（`resolve_from_daemon` 拿不到就\
              回空串，一个字不说）。换了人就把理由与新住址写进 `K-P2` 的 `§4`。"
+        );
+        // ⑤ ★★ **第二条递减棘轮：还留着退路的条数只许变小**〔`K-P2` `F` 拍 09-04，PM 点名要的〕。
+        //
+        // 用@09-04 逐字「**ccm不要管找不到, 统一走后端**」⇒ 方向是**单向的**：
+        // 退路只许减。而④ 那条棘轮只数「静默的」——一条**出声的**退路被悄悄加回来，
+        // 它一个字都不说（`silent` 不变）。⇒ 补这一条，把「有没有退路」这一维也棘住。
+        //
+        // ⚠ **分母**：`BACKEND_BACKED_PATHS` 全表 3 条（`--list-accounts` · `--resolve` ·
+        //   `--launch`），其中还留着退路的 **2** 条。改前是 **3** 条
+        //   （`--launch` 那条 09-04 之前是「本机 tmux 直起 + 降级出声」）。
+        // ⚠ 剩下这 2 条**不是漏做**：`--resolve` 的降级是静默且**正确**的（`resume` 的 argv
+        //   只是建议，本地那条同样正确）；`--list-accounts` 那条归 `K-C1`，
+        //   而「本地退路不留」适不适用于它这一格**本件不自批** —— 现打的代价见
+        //   `K-P2` 件文件 `§4`（删它 ⇒ `ccm-print-parity` / `ccm-contract-parity` /
+        //   `ccm-cli` 三套里凡「没 daemon 也要跑得起来」的判据全红）。
+        assert!(
+            has_fallback.len() <= 2,
+            "还留着本地退路的后端路涨到了 {} 条（{has_fallback:?}）—— **只许减不许加**。\n\
+             用@09-04 逐字：「ccm不要管找不到, **统一走后端**」。\n\
+             ⇒ 加回一条退路（哪怕它出声）等于把「后端是唯一真相源」这条裁定退回去；\n\
+             真要留就先上报 `K-P2` 的 `§4`，由 PM/用户明批，再来改这个数。",
+            has_fallback.len()
         );
     }
 
