@@ -554,7 +554,7 @@ def ruler3() -> dict:
 # （按 `file!()` 构造性摘除自己）＋ `production_code`（剥掉 `#[cfg(test)]` 与注释）。
 # 差别不是小心，是**用了本仓为这一族立的那两个原语**。
 RULER4_NOISE: dict[str, str] = {
-    "agent_boundary_guard.rs": "本件 D2 的判据自己 —— 它的头注、登记表与反向夹具里"
+    "agent_dispatch_registry.rs": "本件 D2 的判据自己 —— 它的头注、登记表与反向夹具里"
     "逐字写着这个针形（它必须写，那正是它要钉的东西）。走 `scan_tree!` 的判据按构造"
     "读不到自己；本尺子是裸扫，读得到。",
 }

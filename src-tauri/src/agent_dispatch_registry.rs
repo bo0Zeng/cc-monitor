@@ -1,19 +1,25 @@
 //! `K-W1B D2`：**桌面侧「通用层认得出某个 agent」的地方逐条登记** —— 那一半今天零判据。
 //!
-//! # 🔴 名字撞了，而这不是本模块自己能改的
+//! # 名字的来历 —— 它**不叫** `agent_boundary_guard`，而那是刻意的
 //!
-//! daemon 那棵树里**已经有**一个 `agent_boundary_guard`
-//! （`remote-daemon-proto/src/agent_boundary_guard.rs`，`S1`：通用层不许知道任何 agent 的
-//! 名字与文件格式，人群由它的 `CORE_FILES` **opt-in** 列举）。**本模块不是它的桌面版**：
-//! 那一条判「通用层提没提 agent 的名字/布局」，本条数「通用层认不认得出**具体哪一个**
-//! adapter」，形态照的是 daemon 侧另一条 —— `agent_locality_guard` 的判据④
-//! （`general_layer_adapter_call_sites_are_enumerated_one_by_one`）。
+//! 本模块初版就叫那个名字（派工时的预批名），落地当轮撞出一处真伤害，PM 裁定改名。
+//! 把来历留在这儿，是为了让下一个人**不要再把它改回去**：
 //!
-//! ⚠ **现打的活体伤害**：`src-tauri/src/ssh_source.rs` 里有一处逐字写着
-//! 「`agent_boundary_guard::FROZEN_COMPAT`」，它指的是 **daemon 那一个**（本模块没有
-//! `FROZEN_COMPAT`）。本模块一落地，那一处在本树里就变成了一个**指得到、但指错**的名字。
-//! ⇒ 本模块的名字**由 PM 定夺**（派工时逐字「名字可议」）；建议改名，理由与替代名住交回报告。
-//! 本条头注留在这儿，是为了让**下一个读到这个名字的人**不必再查一遍。
+//! 1. **daemon 那棵树里已经有一个 `agent_boundary_guard`**
+//!    （`remote-daemon-proto/src/agent_boundary_guard.rs`，`S1`：通用层不许知道任何 agent 的
+//!    名字与文件格式，人群由它的 `CORE_FILES` **opt-in** 列举）。**本模块不是它的桌面版**：
+//!    那一条判「通用层提没提 agent 的名字/布局」，本条数「通用层认不认得出**具体哪一个**
+//!    adapter」—— 形态照的是 daemon 侧**另一条**，`agent_locality_guard` 的判据④
+//!    （`general_layer_adapter_call_sites_are_enumerated_one_by_one`）。
+//! 2. **同名会当场把一处既有引用指错**：`src-tauri/src/ssh_source.rs` 里有一处逐字写着
+//!    「`agent_boundary_guard::FROZEN_COMPAT`」，指的是 **daemon 那一个**。本模块若同名，
+//!    那一处在本树里就变成一个**指得到、但指错**的名字（本模块没有 `FROZEN_COMPAT`）。
+//!    ⚠ 那一处**不用改**：改名之后它在本树里重新变成唯一解 —— 只指 daemon 那个模块，而那是对的。
+//! 3. **`K-W3` 正要把两棵树并成一个 crate** ⇒ 同名同 crate 时必须改，早改比晚改便宜。
+//!
+//! 名字按 monitor 侧「清账 + 递减棘轮」那族的既有命名取（`local_read_surface_registry` ·
+//! `launcher_identity_registry` · `session_name_registry` · `exec_site_registry`），
+//! 并说出它**数什么**（派发/调用点），不用含糊的「boundary」。
 //!
 //! # 它数什么 —— 四张脸，前三张该压到零，第四张方向相反
 //!
