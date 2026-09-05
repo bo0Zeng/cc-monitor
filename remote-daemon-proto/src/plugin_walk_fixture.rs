@@ -143,15 +143,6 @@ mod tests {
     const REALM_LOCKED: i32 = 6;
     const UNKNOWN_SUB: i32 = 7;
 
-    /// 「它没被装上」那一格用的**命令级 code**。
-    ///
-    /// ⚠ 它**不是**我造的词：`inbound::REGISTRY` 里那几条命令自己登记着它
-    /// （由 [`the_pre_declaration_reuses_the_word_the_registry_already_owns`] 钉住 ——
-    /// 那边改名，这里当场红）。运行时拼，免得本文件成为它自己的语料。
-    fn not_installed_word() -> String {
-        format!("not_ins{}", "talled")
-    }
-
     /// 给子进程的期限（秒）。宽一点：这个数不进任何断言，只是不许没有。
     const DEADLINE_SECS: u64 = 20;
     /// 期限那一格专用的秒数（要小于假插件卡住的时长）。
@@ -338,8 +329,9 @@ mod tests {
 
         /// 完整的一套（正题用）。
         ///
-        /// ⚠ `unavailable_code` 走 [`not_installed_word`] 的 `&'static str` 版：
-        /// 那个词必须是 `REGISTRY` 里真有的，而不是本表编的。
+        /// ⚠ `unavailable_code` 取 [`REGISTRY_OWNED_CODE`]：
+        /// 那个词必须是 `inbound::REGISTRY` 里真有人登记的，而不是本表编的
+        /// （由 [`the_pre_declaration_reuses_the_word_the_registry_already_owns`] 钉住）。
         fn full() -> Self {
             Self {
                 unavailable_code: Some(REGISTRY_OWNED_CODE),
@@ -376,12 +368,15 @@ mod tests {
         }
     }
 
-    /// `REGISTRY` 自己拥有的那个词的 `&'static str` 形（`Caps::full` 要 `'static`）。
+    /// 插件轴那个「它没被装上」的命令级 code —— **本文件里它只有这一处住址**。
     ///
-    /// ⚠ 它与 [`not_installed_word`] **必须逐字相同**，而那一格由
-    /// [`the_pre_declaration_reuses_the_word_the_registry_already_owns`] 断言 ——
-    /// 两处写法不同（一处拼、一处字面量）是刻意的：字面量那份进不了「运行时拼」的自指防护，
-    /// 所以它得有人核。
+    /// ⚠ 它**不是我造的词**：`inbound::REGISTRY` 里那几条转调插件的命令自己登记着它，
+    /// 而「它必须有主」这件事由 [`the_pre_declaration_reuses_the_word_the_registry_already_owns`]
+    /// 钉住 —— 那边改了名，这里当场红（派生出来的表会变空，而空表会被那条断言逮住）。
+    ///
+    /// ★ 本文件第一版为它写过**两份**（一份运行时拼、一份字面量）＋一条相等断言看着；
+    /// 自查按「一个事实一个住址」收成一份 —— 相等断言守不住的是「两份一起被改错」，
+    /// 而一处住址**根本不给那种机会**（`brief` 13b 那一族）。
     const REGISTRY_OWNED_CODE: &str = "not_installed";
 
     /// 流程停下来的原因 —— **必须说得出「哪一跳、为什么」**。
@@ -869,8 +864,15 @@ mod tests {
     fn one_fake_plugin_walks_six_hops_as_one_path() {
         let root = build_fixture("walk");
         let name = plugin_name();
-        let w = walk(&Caps::full(), &root)
-            .unwrap_or_else(|e| panic!("这几样知识凑不出一条路 —— 接口面漏了东西：{e:?}"));
+        // ⚠ 这句话**刻意不预判原因**：停车的原因由 `Stop` 那五种自己说
+        //（把「走不通」一律归成「接口面漏了东西」，正是本件在治的笼统归因 —— 自查抓到）。
+        let w = walk(&Caps::full(), &root).unwrap_or_else(|e| {
+            panic!(
+                "这条路没走通。原因看下面这一行是哪一种：缺知识 ⇒ 接口面漏了东西；\
+                 没装 / 起不来 ⇒ 夹具没建对；协商没过 ⇒ 假插件的探测输出与必需清单对不上；\
+                 读数自相矛盾 ⇒ 这一格没在测该测的东西。\n实得：{e:?}"
+            )
+        });
         assert_eq!(
             w.done.as_slice(),
             HOPS,
@@ -1205,12 +1207,10 @@ mod tests {
     /// 3. 宣称的 `code` 必须是那条命令自己登记过的 —— 那正是本格的正题。
     #[test]
     fn the_pre_declaration_reuses_the_word_the_registry_already_owns() {
-        // 两份写法（一份运行时拼、一份字面量）必须逐字相同 —— 字面量那份得有人核。
-        assert_eq!(
-            not_installed_word(),
-            REGISTRY_OWNED_CODE,
-            "那个词的两份写法漂开了"
-        );
+        // ⚠ 那个词在本文件里**只有一处住址**（[`REGISTRY_OWNED_CODE`]）——
+        //   本文件第一版为它写过两份（一份运行时拼、一份字面量）＋一条相等断言看着，
+        //   自查时按「一个事实一个住址」收成一份：一处住址就不需要那条断言了。
+        //   它真正的对照在下面 ①：那个词**必须是 `inbound::REGISTRY` 里真有人登记的**。
 
         // ① 那个词**必须有主**：`REGISTRY` 里得真有命令登记它。
         let owners: Vec<&str> = crate::inbound::REGISTRY
@@ -1269,7 +1269,7 @@ mod tests {
         let (fixed, hint) = discovery_of(&root, &name);
         let after = crate::plugin::discover::find(&name, &fixed, false, hint)
             .err()
-            .map(|_| not_installed_word())
+            .map(|_| REGISTRY_OWNED_CODE.to_string())
             .expect("没装却说找到了");
         assert_eq!(
             after,
@@ -1300,10 +1300,12 @@ mod tests {
     ///
     /// # 为什么非得自己写一条
     ///
-    /// `plugin::layer_guard::the_generic_port_names_no_concrete_plugin` 今天认 **6 根针**，
-    /// 全是**另一个**插件族的专有词（`cc-list`/`cc-send`/`cc-kill`/`CC_BUS_`/`ccm-probe`/`skills`）——
-    /// 它自己的头注逐字写着「**换一族词汇的插件它一个都认不出来**」。
-    /// ⇒ 本夹具换的正是一族词汇，那条判据对它**零覆盖**，别指望它接住。
+    /// `plugin::layer_guard::the_generic_port_names_no_concrete_plugin` 的分母是
+    /// `layer_guard::concrete_plugin_words` 那张表（成员与条数只住那一处，这里**不复述**）。
+    /// 09-04 之前那张表只有**一族**词；同日加了**第二族**（代码全景那个插件）。
+    /// 而它的头注逐字仍然写着「**换一族词汇的插件它一个都认不出来**」——
+    /// ⇒ 本夹具换的正是**第三族**词，那条判据对它**零覆盖**，别指望它接住。
+    /// 这一格就是 `E6` 那句「每加一个插件要加它自己那组专有针」在本件上的兑现。
     ///
     /// ⚠ 本条的**射程**：分母 = [`fixture_vocabulary`] 那张表（今天现算，见报错文案里的数），
     /// 不是「所有可能的插件词」。
@@ -1460,8 +1462,10 @@ mod tests {
         let name = plugin_name();
         let (fixed, hint) = discovery_of(&root, &name);
         let bin = crate::plugin::discover::find(&name, &fixed, false, hint).expect("该找得到");
+        // ⚠ 把 `NotRun` 那两支的原文带上：「参数太大」（自己能修）与「那个程序坏了」
+        //（自己修不了）是两件事，合成一句「起不来」就是归错因（`invoke::NotRun` 的头注逐字）。
         let out = crate::plugin::invoke::run(&bin, &probe_argv(), DEADLINE_SECS, &[])
-            .unwrap_or_else(|_| panic!("起不来"));
+            .unwrap_or_else(|e| panic!("那个假插件没跑起来：{}", why_not_run(e)));
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
         let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS)
             .unwrap_or_else(|e| panic!("协商没过：{}", e.message()));
@@ -1488,7 +1492,7 @@ mod tests {
                 );
                 // 而且它**真的会收**：卡住那条子命令必须被收掉，码是那个通用码。
                 let napped = crate::plugin::invoke::run(&bin, &[NAP_SUB], NAP_DEADLINE_SECS, &[])
-                    .unwrap_or_else(|_| panic!("起不来"));
+                    .unwrap_or_else(|e| panic!("卡住那条子命令没跑起来：{}", why_not_run(e)));
                 assert!(
                     napped.timed_out(),
                     "卡住的子进程没被期限收掉：code={:?}",
@@ -1588,8 +1592,10 @@ mod tests {
         let name = plugin_name();
         let (fixed, hint) = discovery_of(&root, &name);
         let bin = crate::plugin::discover::find(&name, &fixed, false, hint).expect("该找得到");
+        // ⚠ 把 `NotRun` 那两支的原文带上：「参数太大」（自己能修）与「那个程序坏了」
+        //（自己修不了）是两件事，合成一句「起不来」就是归错因（`invoke::NotRun` 的头注逐字）。
         let out = crate::plugin::invoke::run(&bin, &probe_argv(), DEADLINE_SECS, &[])
-            .unwrap_or_else(|_| panic!("起不来"));
+            .unwrap_or_else(|e| panic!("那个假插件没跑起来：{}", why_not_run(e)));
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
         let answer = crate::plugin::probe::negotiate(&text, &name, REQUIRED_CAPS)
             .unwrap_or_else(|e| panic!("协商没过：{}", e.message()));
