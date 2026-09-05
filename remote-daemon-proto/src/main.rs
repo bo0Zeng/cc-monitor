@@ -140,7 +140,8 @@ const PROTO_VERSION: u32 = 1;
 ///   `inbound::COMMANDS` 从零条长到 5 条（`cancel`/`ping`/`resolve` 08-02、`kill` 08-04），
 ///   而 `build_id_guard` 的指纹只看 `main.rs` 的 `Some("--`（一次性子命令那一面）
 ///   ⇒ **加了整整一个命令面，一次 bump 都没被逼出来**。
-///   ⚠ 后果不是纸面的：`sftp.rs::deploy_decision` 的唯一判据是 build_id 字符串，
+///   ⚠ 后果不是纸面的：`sftp.rs::deploy_decision` 判**版本那一维**的唯一判据是 build_id 字符串
+///   （〔K-W4 09-04〕daemon 部署路今天走 `deploy_decision_at`，另看「落点文件在不在」；stale 但文件在时仍只凭 build_id），
 ///   报同一个 id ⇒ 判 `Skip` ⇒ 已部署的旧 daemon **整个控制面静默不可用**。
 ///   本轮把通道面纳入指纹并 bump；**本条 bump 本身就是那笔欠账的偿付** ——
 ///   报 `p1v` 的远端从此会被判 stale 并重装。CLI 那一面**一字未改**。

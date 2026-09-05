@@ -693,8 +693,9 @@ pub fn run() {
                                     }
                                 }
                             }
-                            // S0：本地路径没有 idle-tmux 灰点（`SESSION_IDLE` 是远端专有），
-                            // cause 在这里无分支意义，取 sid 即可。
+                            // S0：本地路径没有 idle-tmux 灰点（`SESSION_IDLE` 是远端专有）。
+                            // 「两种 cause 一视同仁」这句话的正主住 `SidHwndCache::apply_local_removal` 的头注
+                            //（K-W1C 09-04：在这里加 `match cause` 是行为改动，不是可测性改动）。
                             for removed in change.removed {
                                 cache_for_emitter.apply_local_removal(&removed);
                                 let sid = removed.sid;
