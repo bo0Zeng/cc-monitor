@@ -23,34 +23,104 @@ use std::net::TcpStream;
 use std::sync::Arc;
 use std::time::Duration;
 
-/// 上游基址。`https` 走 TLS，`http` 走明文（**明文只给本机夹具用**）。
+/// 一条 `base_url` **进不了 `Base`** 的理由。
+///
+/// # ⚠ 它为什么必须带一句话，而不是一个 `None`〔`K-R1`〕
+///
+/// 先前 [`Base::parse`] 回 `Option`，于是「不是个 URL」「协议不认识」「端口读不懂」
+/// 「路径里带查询串」全挤在同一个 `None` 里，而调用方只能印一句**万能的**
+/// 「base_url 解析不了（要 https:// 或 http://）」——那句话在后三形上都是**假的指引**。
+/// 〔`K-R21` 那一族逐字：一个 `None` 装了几件事，而它在生产路上。〕
+///
+/// ⚠ 里面那句话是 `&'static str`（**不含文件内容**）⇒ 它进日志是安全的，
+/// 与 `table::Rejected::why` 同一条理由，也正是那个字段的类型能直接收它的原因。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct BaseIssue(pub(crate) &'static str);
+
+/// 上游基址。`https` 走 TLS，`http` 走明文。
+///
+/// # ⚠⚠ 「明文只给本机夹具用」这句话，`K-R1` 之后**变了半格**
+///
+/// 〔用 09-04〕逐字要「api做成通用的, 还可以接本地部署的」⇒ 本机跑的推理服务
+/// （回环上的 http 明文）从「夹具的特权」升成**一等公民**。
+/// ⚠ 而 `裁-1`（PM 08-25）「只准 TLS」那一条**没有被推翻**：升的只有**回环**这一格。
+/// 「明文 + 非回环」= 一把 key 明着过网线 ⇒ 由 `table::build` **拒掉并出声**
+/// （判据 `a_plaintext_upstream_is_only_allowed_on_loopback`）。
+/// 本结构体自己**不判**这一条：它只答「这个串长什么样」，不答「许不许用」。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Base {
     pub(crate) tls: bool,
     pub(crate) host: String,
     pub(crate) port: u16,
+    /// 基址里那一段**路径前缀**，`""` = 没有。带前导 `/`、**不带**尾随 `/`。
+    ///
+    /// # ★★ 它为什么必须存在（`K-R1` 摸底那一格，PM 09-04 复核过）
+    ///
+    /// 先前本结构体只有 `tls`/`host`/`port` 三个字段 ⇒ `Base::parse` 拿
+    /// `rest.split('/').next()` **只取 authority**，路径**被丢掉、且照样回 `Some`**，
+    /// 装表那一步不记 `Rejected`、`announce` 一个字都不说。
+    ///
+    /// 而它**只在第三种配法下才错**，这正是它危险的原因：
+    /// `https://host` 对；`https://host/v1` 也**碰巧对**（丢掉的 `/v1` 客户端自己带着）；
+    /// `https://host/<网关前缀>` **静默打到别的地方**。
+    /// ⇒ 「在两种常见配法下都工作」的东西没有人会去怀疑。
+    ///
+    /// 而带前缀的形状**不是边角料**：第三方把「Anthropic 兼容」这一套挂在一个
+    /// 前缀底下是常见做法（〔用 09-04〕点名的那几家里就有）⇒ 前缀装不下 =
+    /// 那一类端点**根本配不出来**，而那正是本件要接的东西。
+    ///
+    /// ⚠ **它是承重的、会改变字节**：拼法与射程见 `Row::upstream_target`（住 `table.rs`），
+    /// 拼出来的东西由 `the_path_prefix_from_the_base_url_really_reaches_the_request_line`
+    /// 钉住。〔这里只存值，不拼。〕
+    pub(crate) path: String,
 }
 
 impl Base {
-    pub(crate) fn parse(url: &str) -> Option<Base> {
-        let (scheme, rest) = url.split_once("://")?;
-        let tls = match scheme {
-            "https" => true,
-            "http" => false,
-            _ => return None,
+    /// 认得的两种协议。**闭集只有这一个住址**〔`brief` 13b〕：
+    /// 报错文案与判据都从这里派生，不许再写第二份字面量。
+    pub(crate) const SCHEMES: &'static [(&'static str, bool)] = &[("https", true), ("http", false)];
+
+    pub(crate) fn parse(url: &str) -> Result<Base, BaseIssue> {
+        let Some((scheme, rest)) = url.split_once("://") else {
+            return Err(BaseIssue("base_url 不是一个 URL（要 https:// 或 http:// 打头）"));
         };
-        let authority = rest.split('/').next()?;
+        let Some((_, tls)) = Base::SCHEMES.iter().find(|(s, _)| *s == scheme) else {
+            return Err(BaseIssue("base_url 的协议不认识（只认 https:// 与 http://）"));
+        };
+        let tls = *tls;
+        // ★ 这一行是本格的正主：authority 与**路径**从这里分家，
+        //   而先前那一版把后半截整个扔了。
+        let (authority, raw_path) = match rest.find('/') {
+            Some(i) => (&rest[..i], &rest[i..]),
+            None => (rest, ""),
+        };
         if authority.is_empty() {
-            return None;
+            return Err(BaseIssue("base_url 里没有主机名"));
+        }
+        // ⚠ 查询串**没有路径也塞得进来**（`https://h?x=1` 里 authority 逐字是 `h?x=1`）
+        //   ⇒ 这一格不查的话，那一形会被当成一个叫 `h?x=1` 的主机名接受下来。
+        if authority.contains('?') || authority.contains('#') {
+            return Err(BaseIssue(
+                "base_url 里带了查询串或 # 片段 —— 基址只能是「协议 + 主机 + 可选的路径前缀」",
+            ));
         }
         let (host, port) = match authority.rsplit_once(':') {
-            Some((h, p)) => (h.to_string(), p.parse().ok()?),
+            Some((h, p)) => (
+                h.to_string(),
+                p.parse::<u16>()
+                    .map_err(|_| BaseIssue("base_url 的端口读不懂（要 0-65535 的十进制数）"))?,
+            ),
             None => (authority.to_string(), if tls { 443u16 } else { 80u16 }),
         };
         if host.is_empty() {
-            return None;
+            return Err(BaseIssue("base_url 里没有主机名"));
         }
-        Some(Base { tls, host, port })
+        Ok(Base {
+            tls,
+            host,
+            port,
+            path: normalize_prefix(raw_path)?,
+        })
     }
 
     /// `Host:` 头该写什么（默认端口不写端口，非默认端口要写）。
@@ -62,6 +132,65 @@ impl Base {
             format!("{}:{}", self.host, self.port)
         }
     }
+
+    /// 这个基址指的是**本机回环**吗〔`K-R1`：本地部署那一格〕。
+    ///
+    /// # ⚠ 分母如实写 —— 它认两类，第二类是**约定**不是保证
+    ///
+    /// 1. **能解析成 IP 的**（含 `[::1]` 那种带方括号的写法）⇒ 走
+    ///    `IpAddr::is_loopback`，那是标准库按 RFC 判的，`127.0.0.0/8` 与 `::1` 都算。
+    /// 2. **逐字是 `localhost`** ⇒ 算。⚠ 它算回环靠的是「解析器把这个名字解到回环」，
+    ///    那是一条**约定**（`/etc/hosts` 与各平台的内建规则），**不是**本条证得了的事实。
+    ///    有人在 `hosts` 里把 `localhost` 指到别处，本条就说错了。**如实记，不假装。**
+    ///
+    /// ⇒ 别的名字（`my-box.local` / 一个真解到 `127.0.0.1` 的域名）本条一律说**不是**：
+    /// 那要 DNS 才判得了，而这里在**装表**那一刻跑（没起任何网络）。
+    /// 宁可把一条其实安全的配法拒掉并出声，不许把一条明文过网线的放行。
+    pub(crate) fn host_is_loopback(&self) -> bool {
+        let h = self.host.trim_start_matches('[').trim_end_matches(']');
+        match h.parse::<std::net::IpAddr>() {
+            Ok(ip) => ip.is_loopback(),
+            Err(_) => h.eq_ignore_ascii_case("localhost"),
+        }
+    }
+}
+
+/// 把 `base_url` 里那一截原始路径收成一个**前缀**：带前导 `/`、不带尾随 `/`、`""` = 没有。
+///
+/// # ⚠ 它只做「去掉没有意义的尾巴」，不做任何**猜测**
+///
+/// 与 `store::read_key` 那条纪律同源（逐字：人写进去什么，上游就该收到什么）：
+/// 尾随的 `/` 在一个**前缀**里不携带信息（拼上去只会多一个空段），去掉是安全的；
+/// 而「顺手补一段 `/v1`」「把重复的段合掉」这类清理**一律不做** —— 猜错一次的代价
+/// 是**静默打到另一个地方**，而那正是本格在治的病。
+///
+/// # 三形拒掉，逐形给理由（**都出声**，不许静默吞掉）
+///
+/// - **带 `?` 或 `#`**：查询串与片段是**这一次请求**的东西，不是基址的。
+///   放进来的话它会被拼在客户端真路径的**前面** ⇒ 拼出一个谁都不认识的目标。
+/// - **`//` 打头**：拼出来的请求行会以 `//` 起首，那在 HTTP 里读作 authority
+///   ⇒ 一个基址里的手滑变成「把请求发到别处」。〔`K-R9` 那一族：剥法与 `//`〕
+/// - ⚠ **中间的空段**（`/a//b`）**不拒**：那是人写下的东西，原样带着。如实记为射程外。
+fn normalize_prefix(raw: &str) -> Result<String, BaseIssue> {
+    if raw.is_empty() {
+        return Ok(String::new());
+    }
+    if raw.contains('?') || raw.contains('#') {
+        return Err(BaseIssue(
+            "base_url 里带了查询串或 # 片段 —— 基址只能是「协议 + 主机 + 可选的路径前缀」",
+        ));
+    }
+    let trimmed = raw.trim_end_matches('/');
+    if trimmed.is_empty() {
+        // 整段就是一个或多个 `/` ⇒ 它说的是「根」，等价于没有前缀。
+        return Ok(String::new());
+    }
+    if trimmed.starts_with("//") {
+        return Err(BaseIssue(
+            "base_url 的路径前缀以 // 打头 —— 那在 HTTP 请求行里读作另一个主机名",
+        ));
+    }
+    Ok(trimmed.to_string())
 }
 
 /// 一条上游连接。两个变体都实现 `Read`/`Write` ⇒ 转发循环对 TLS 与否**一无所知**。
@@ -180,18 +309,20 @@ mod tests {
     fn parses_the_two_schemes_and_their_default_ports() {
         assert_eq!(
             Base::parse("https://api.example.com"),
-            Some(Base {
+            Ok(Base {
                 tls: true,
                 host: "api.example.com".to_string(),
-                port: 443
+                port: 443,
+                path: String::new()
             })
         );
         assert_eq!(
             Base::parse("http://127.0.0.1:18789"),
-            Some(Base {
+            Ok(Base {
                 tls: false,
                 host: "127.0.0.1".to_string(),
-                port: 18789
+                port: 18789,
+                path: String::new()
             })
         );
     }
@@ -206,7 +337,105 @@ mod tests {
             "://x",
             "https://:443",
         ] {
-            assert!(Base::parse(bad).is_none(), "这一形不该被接受：{bad}");
+            assert!(Base::parse(bad).is_err(), "这一形不该被接受：{bad}");
+        }
+        // ★ 非空对照排在后面也够（上面几形都是 `Err`，尺子不可能恒 `Err` 还让这一句过）。
+        assert!(Base::parse("https://ok.example").is_ok(), "这把尺子是瞎的");
+    }
+
+    /// ★★★ **`K-R1` 的正主之一**：`base_url` 里那一段路径**装得下了**，
+    /// 而先前它被 `rest.split('/').next()` 整个丢掉、且照样回 `Some`。
+    ///
+    /// # 死值验就在这条判据的第一格上
+    ///
+    /// 第一格逐字是 PM 补充里点名的那个读数：`Base::parse("https://h:443/v1")`。
+    /// **改前**它回 `Some(Base{host:"h",port:443})`，`/v1` 静默消失、没有任何东西出声；
+    /// **改后**那一段留在 `path` 里。⇒ 把 [`normalize_prefix`] 的返回改成
+    /// 恒 `Ok(String::new())`（形状对、恒答「没有前缀」那张脸），本条当场红。
+    #[test]
+    fn the_path_part_of_a_base_url_is_kept_instead_of_being_silently_dropped() {
+        // 分母 = 我列出的这 7 形，逐形手写期望值。
+        let cases: &[(&str, &str)] = &[
+            ("https://h:443/v1", "/v1"),
+            ("https://vendor.example/anthropic", "/anthropic"),
+            ("http://127.0.0.1:11434/v1", "/v1"),
+            ("https://h/openai/v1", "/openai/v1"),
+            // 尾随的 `/` 在一个前缀里不携带信息 ⇒ 去掉。
+            ("https://h/v1/", "/v1"),
+            // 整段就是一个 `/` ⇒ 说的是「根」，等价于没有前缀。
+            ("https://h/", ""),
+            ("https://h", ""),
+        ];
+        for (url, want) in cases {
+            let b = Base::parse(url).unwrap_or_else(|e| panic!("{url} 该解析得了：{e:?}"));
+            assert_eq!(&b.path, want, "这一形的前缀取错了：{url}");
+        }
+        // ★ 非空对照承重：这把尺子**分得出**「有前缀」与「没前缀」
+        //   （没有这一格，上面那两条 `""` 可能只是因为它恒回空串）。
+        assert_ne!(
+            Base::parse("https://h/v1").expect("有前缀那一形").path,
+            Base::parse("https://h").expect("没前缀那一形").path
+        );
+    }
+
+    /// **`base_url` 里丢东西要出声** —— 三形各自的理由**不许挤进同一个 `None`**。
+    #[test]
+    fn a_base_url_that_carries_things_a_prefix_cannot_carry_says_why() {
+        // 分母 = 我列出的这 4 形。
+        for bad in [
+            "https://h/v1?beta=true",
+            "https://h/v1#frag",
+            "https://h//v1",
+            "https://h:99999/v1",
+        ] {
+            assert!(Base::parse(bad).is_err(), "这一形不该被接受：{bad}");
+        }
+        // ★★ 理由**逐形不同**：四个理由串放进集合去重之后必须还是 4 个。
+        //    这一格才是「一个 None 装了几件事」被治掉的读数 —— 只断 `is_err()` 的话，
+        //    把每一支的理由都换成同一句，本条照样全绿。
+        let mut whys: Vec<&'static str> = ["ftp://x", "https://", "https://h/v1?x=1", "https://h//v1"]
+            .iter()
+            .map(|u| Base::parse(u).expect_err("这几形都该是 Err").0)
+            .collect();
+        let n = whys.len();
+        whys.sort();
+        whys.dedup();
+        assert_eq!(
+            whys.len(),
+            n,
+            "有两形共用了同一句理由 —— 那句话在其中一形上是假的指引：{whys:?}"
+        );
+    }
+
+    /// `K-R1`：**本地部署那一格的谓词** —— 回环认得出来，别的一律说「不是」。
+    ///
+    /// ⚠ 它只是**谓词**；「明文非回环要不要拒」是 `table::build` 的决定，判据在那边。
+    #[test]
+    fn the_loopback_predicate_says_yes_only_to_the_local_machine() {
+        // 分母 = 我列出的这 4 形回环写法。
+        for yes in [
+            "http://127.0.0.1:11434",
+            "http://127.0.0.1",
+            "http://localhost:8000/v1",
+            "http://[::1]:11434/v1",
+        ] {
+            assert!(
+                Base::parse(yes).expect("该解析得了").host_is_loopback(),
+                "这一形是回环，却被说成不是：{yes}"
+            );
+        }
+        // ★ 非空对照 + 单断：分母 = 我列出的这 4 形非回环写法。
+        for no in [
+            "http://1.2.3.4/v1",
+            "https://api.example.com",
+            "http://10.0.0.1:8000",
+            // ⚠ 一个**名字**里含 localhost 不算 —— 它解到哪儿本条判不了。
+            "http://localhost.evil.example",
+        ] {
+            assert!(
+                !Base::parse(no).expect("该解析得了").host_is_loopback(),
+                "这一形不是回环，却被说成是：{no}"
+            );
         }
     }
 
@@ -216,6 +445,9 @@ mod tests {
         assert_eq!(d.host_header(), "api.example.com");
         let n = Base::parse("http://127.0.0.1:18789").expect("n");
         assert_eq!(n.host_header(), "127.0.0.1:18789");
+        // ★ `K-R1`：`Host:` 头里**没有**路径前缀那一段（它属于请求行，不属于这里）。
+        let p = Base::parse("https://api.example.com/anthropic").expect("p");
+        assert_eq!(p.host_header(), "api.example.com");
     }
 
     /// TLS 那条路本轮**没有任何行为验证**（不许打真 API，本机也没有 HTTPS 夹具）。

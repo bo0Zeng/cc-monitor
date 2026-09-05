@@ -23,9 +23,9 @@
 //! 文件不在时连**模板**一起印。它比 README 更强（在你需要它的那一刻告诉你），
 //! 但**它不是 README** —— 这一格已抬进上报口。
 
-use super::table::Rejected;
+use super::table::{Note, Rejected, WHY_AUTH_STYLE_UNKNOWN};
 use creds_core::perm::{self, Verdict};
-use creds_core::store::{self, AccountEntry};
+use creds_core::store::{self, AccountEntry, AuthStyle};
 use std::path::{Path, PathBuf};
 
 /// 覆盖那份文件的位置。给判据与「一台机器上跑两个中转」用。
@@ -116,10 +116,18 @@ pub(crate) fn load(path: &Path) -> Loaded {
 /// - `rows` = **真正进了表的行数**，不是文件里写了几条。两者不一样时说明有行被拒。
 /// - `rejected` = 被拒的那些行 + 为什么。**静默丢掉一行的症状是「我明明配了，中转永远 404」**，
 ///   而那查起来要人去读源码 ⇒ 必须出声。
+///
+/// # ⚠ `K-R1`：又多了一个参数，理由与上面那两条同族
+///
+/// - `notes` = **进了表、但行为与默认不同**的那些行。它与 `rejected` 是两件事：
+///   被拒的那一行的后果是 404（用户立刻看得见），而带 note 的那一行**照发**，
+///   只是发出去的字节与默认不同 ⇒ 它错了的症状是**上游的 404 / 401**，
+///   与「上游挂了」「key 打错了」同形。**这类才是必须在启动时说出来的。**
 pub(crate) fn announce(
     loaded: &Loaded,
     rows: usize,
     rejected: &[Rejected],
+    notes: &[Note],
     out: &mut dyn std::io::Write,
 ) -> usize {
     let mut n = 0usize;
@@ -155,6 +163,36 @@ pub(crate) fn announce(
             out,
             "[relay] credentials: this account cannot be used: {:?} - {}",
             r.id, r.why
+        );
+        n += 1;
+    }
+
+    // ③b ⚠ **`auth_style` 认不出的时候，把认得的那几个现算着印出来**〔`K-R1`〕。
+    //
+    //    ★ 为什么是**现算**而不是一句写死的清单（`brief` 13b）：那个闭集只有一个住址
+    //      （`creds_core::store::AuthStyle::ALL`）。在这里再抄一份，加第四个成员的那天
+    //      这一行会**静默变旧**，而它是给正在排错的人看的最后一句话。
+    //    ⚠ 只在真有一条这么写错的时候印 —— 每次启动都印等于噪音。
+    if rejected.iter().any(|r| r.why == WHY_AUTH_STYLE_UNKNOWN) {
+        let legal = AuthStyle::ALL
+            .iter()
+            .map(|s| s.field_value())
+            .collect::<Vec<_>>()
+            .join(" | ");
+        let _ = writeln!(out, "[relay] credentials: auth_style must be one of: {legal}");
+        n += 1;
+    }
+
+    // ③c ⚠ **进了表、但行为与默认不同的那些行**〔`K-R1`〕。
+    //    印的与 ③ 同形：账号 id（`{:?}` 转义控制字符）+ 一句**固定文案**。
+    //    ⚠ 刻意**不印**那个前缀本身 / 那个认不出的词：那是文件内容，而
+    //      `creds_guard` 那张白名单买的正是「进日志的东西不含文件内容」这条性质，
+    //      由 `Note::what` 的类型（`&'static str`）兜着，不由「记得别塞进来」兜着。
+    for note in notes {
+        let _ = writeln!(
+            out,
+            "[relay] credentials: this account is not on the default path: {:?} - {}",
+            note.id, note.what
         );
         n += 1;
     }
@@ -197,7 +235,7 @@ mod tests {
 
     /// `announce` 的判据用薄封装：没有被拒的行，行数取读出来的条数。
     fn announce_all(loaded: &Loaded, out: &mut dyn std::io::Write) -> usize {
-        announce(loaded, loaded.accounts.len(), &[], out)
+        announce(loaded, loaded.accounts.len(), &[], &[], out)
     }
 
     /// 一个只属于本判据的临时目录。**名字中性**（不含被断言的字面），
