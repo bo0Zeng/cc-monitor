@@ -50,7 +50,21 @@ ck() { # ck <描述> <期望> <实得>
 # **全文件恒隔离 CLAUDE_CONFIG_DIR**：本机开发者本人就可能正跑在某个隔离账号下（这里真的
 # 踩过——CLAUDE_CONFIG_DIR=/home/zbl/.claude-accts/z 是本次开发时的真实环境）。account-reset
 # 修复后 ccm 会真的读这个变量，不隔离会让测试结果随"是谁在跑测试"而漂移。
-ccm() { env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent bash "$CCM" "$@" 2>&1; }
+# ★★ 〔`K-P2` `F` 拍 09-04；用@09-04「**ccm不要管找不到, 统一走后端**」〕**两处跟着契约改**：
+#
+#  ① **本套件自带一份后端**（`FAKED`）。账号解析从此没有本地退路 ⇒ 不给后端的话
+#     下面**每一条**判据都会死在 `exit 4` 上（那不是「判据红了」，是整套测不到东西）。
+#     ⚠ 这与本文件既有的隔离纪律**同向**，不是放宽：从前它靠「没有后端 ⇒ 走本地那条」
+#     把「这台机器装没装后端」这个变量拿掉，今天靠**自带一份**拿掉。
+#     ⚠ 需要「**真的没有后端**」的那几格（`WIRE/launch/不可达*`）自己不带 `CCM_DAEMON_BIN`，
+#     那是它们要测的东西，不是遗漏。
+#  ② `CCM_ACCTS_MANIFEST` 从裸 `/nonexistent` 换成 `/nonexistent/accounts.json`。
+#     语义一个字没变（那个目录照旧不存在 = 这台机器没有账号库），变的是**形态**：
+#     `shared/ccm` 要把它拆成 `--accts-dir <目录>` 发给后端，裸 `/nonexistent` 拆不出目录
+#     ⇒ 那是**调用方给错了环境变量**（`die`，码 2），与「后端不可达」（码 4）分属两类。
+#     生产上这个值恒是 `<目录>/accounts.json`（`shared/ccm` 的默认值逐字如此）⇒ **更贴生产**。
+FAKED="$REPO/e2e/fake-daemon.sh"
+ccm() { env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json CCM_DAEMON_BIN="$FAKED" bash "$CCM" "$@" 2>&1; }
 
 UNSET="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION"
 
@@ -284,7 +298,8 @@ cmp_cwd() {
       else g="$(git rev-parse --show-toplevel 2>/dev/null)"; [ -n "$g" ] && REPLY="$(dirname "$g")" || REPLY="$PWD"; fi
       printf "%s" "$REPLY"' )"
   got="$( cd "$dir" && HOME="$home" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG="$CFG" \
-      CCM_ACCTS_MANIFEST=/nonexistent bash "$CCM" --print 2>&1 | sed -n "s/.*cd '\\([^']*\\)' && .*/\\1/p" )"
+      CCM_DAEMON_BIN="$FAKED" \
+      CCM_ACCTS_MANIFEST=/nonexistent/accounts.json bash "$CCM" --print 2>&1 | sed -n "s/.*cd '\\([^']*\\)' && .*/\\1/p" )"
   ck "$desc" "$want" "$got"
 }
 cmp_cwd "布局1：在 \$HOME → 工作区"        "$FAKEHOME" "$FAKEHOME"
@@ -303,7 +318,7 @@ echo "===== 会话名派生：与前端 deriveTmuxName **真值对拍**（跨语
 # 「响亮失败」时，把 `tmux new-session` 包进了 `{ … || { …; exit 3; }; }` ——
 # 于是这条 `sed` 的 `^tmux` 锚点**零命中**，下面 5 条跨语言对拍**全部拿到空串、静默常红**。
 # 这正是「判据的匹配单位跟不上事实的形状」那一族：报的是「对拍不一致」，真因是抽取器失灵。
-name_of() { env -u TMUX CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent bash "$CCM" --tmux --cwd "$1" --print 2>&1 \
+name_of() { env -u TMUX CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json CCM_DAEMON_BIN="$FAKED" bash "$CCM" --tmux --cwd "$1" --print 2>&1 \
             | sed -n "s/^[{ ]*tmux new-session -d -s \\('[^']*'\\|[^ ]*\\) .*/\\1/p" | tr -d "'"; }
 if command -v npx >/dev/null 2>&1; then
   for d in /home/pi/proj "/home/pi/a  b" /home/pi/proj/// / /home/pi/.hidden.dir; do
@@ -360,33 +375,48 @@ printf '#!/bin/sh\nexit 0\n' > "$DTMP/bin/fake-daemon"; chmod +x "$DTMP/bin/fake
 cp "$(command -v bash)" "$DTMP/bin/bash" 2>/dev/null || ln -s "$(command -v bash)" "$DTMP/bin/bash"
 
 # 受控运行：空环境 + 只有 bin/ 的 PATH（**没有 tmux、没有 cc-monitor-remote**）。
+#
+# ★★ 〔`K-P2` `F` 拍 09-04〕**每一趟都带 `--base`，这是本节射程的一部分，不是顺手加的。**
+#
+# 用@09-04「统一走后端」之后，**账号解析排在身份前置检查之前**，而它也没有退路
+# ⇒ 不给 `--base` 的话，「找不到后端」会被**账号那条腿**先报掉，本节测到的就永远是那条腿，
+#   **而不是它标签说的身份前置检查**。那正是本区最贵那族：**尺子量的对象跟标签对不上**。
+# ⇒ `--base` = 「这一趟明确不要账号」⇒ 账号那条腿整个跳过 ⇒ 落到身份那条腿上。
+# ⚠ `--base` 不影响本节任何一条断言的对象（它们看的是 rc · `$DTMP/ran` · stderr，不看命令串）。
 idrun() { # idrun <额外 env…> —— stdout/stderr 落文件，回显退出码
   rm -f "$DTMP/ran"
   env -i HOME="$DTMP/home" PATH="$DTMP/bin" \
-      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent \
-      "$@" bash "$CCM" --cwd "$DTMP/proj" --launcher "$DTMP/bin/mark" \
+      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json \
+      "$@" bash "$CCM" --base --cwd "$DTMP/proj" --launcher "$DTMP/bin/mark" \
       > "$DTMP/out" 2> "$DTMP/err"
   printf '%s' "$?"
 }
 
 RC="$(idrun TMUX=/faux/socket,1,0)"
+# 🔴 〔`F` 拍 09-04 如实登记〕**这一格的码是 2，而账号 / 建会话那两条是 4 —— 同一个根因两个码。**
+#   本拍**试过**把它也收进 `backend_unreachable`（唯一失败面），被**写区外**两条判据拦下
+#   （`src-tauri/src/polling_registry.rs::ccm_fails_loudly_when_no_daemon_can_be_found`
+#    逐字钉 `die "找不到 daemon`，它的头注又逐字钉着这里的 `rc=2`）⇒ 恢复原样，提案交回 PM。
+#   ⇒ 下面那条「反向对照」因此**多买到一样东西**：两条腿今天连**码**都分得开（2 vs 4）。
 ck "★ 在 tmux 里 + 找不到 daemon ⇒ **响亮失败**（rc=2，不是静默降级）" "2" "$RC"
 ck "★ 失败时**没有** exec launcher（会话不许在没有身份的情况下起来）" \
    "no" "$([ -f "$DTMP/ran" ] && echo yes || echo no)"
 ck "失败信息里说得出是缺什么" "yes" \
    "$(grep -q '找不到 daemon' "$DTMP/err" && echo yes || echo no)"
-ck "失败信息里说得出**怎么办**（查找顺序 / 逃生口）" "yes" \
+ck "失败信息里说得出**这一格的后果**（认不出这个会话 ≠ 笼统一句「找不到」）" "yes" \
+   "$(grep -q '未绑定窗口' "$DTMP/err" && echo yes || echo no)"
+ck "失败信息里说得出**怎么办**（查找顺序 / 三选一）" "yes" \
    "$(grep -q 'CCM_DAEMON_BIN' "$DTMP/err" && grep -q 'CCM_NO_DAEMON' "$DTMP/err" && echo yes || echo no)"
 
 RC="$(idrun TMUX=/faux/socket,1,0 CCM_DAEMON_BIN="$DTMP/bin/fake-daemon")"
-ck "找得到 daemon ⇒ 照常起（rc=0）" "0" "$RC"
-ck "找得到 daemon ⇒ launcher 真被 exec 了" "yes" \
+ck "找得到后端 ⇒ 照常起（rc=0）" "0" "$RC"
+ck "找得到后端 ⇒ launcher 真被 exec 了" "yes" \
    "$([ -f "$DTMP/ran" ] && echo yes || echo no)"
-ck "★ 找得到 daemon ⇒ stderr **一个字都没有**（别把正常路径变吵）" "" "$(cat "$DTMP/err")"
+ck "★ 找得到后端 ⇒ stderr **一个字都没有**（别把正常路径变吵）" "" "$(cat "$DTMP/err")"
 
 RC="$(idrun TMUX=/faux/socket,1,0 CCM_NO_DAEMON=1)"
-ck "逃生口 CCM_NO_DAEMON=1 ⇒ 放行（rc=0）" "0" "$RC"
-ck "★ 逃生口**照样说一句**（明示放弃身份 ≠ 闷声降级）" "yes" \
+ck "CCM_NO_DAEMON=1 ⇒ 放行（rc=0）—— 明示放弃身份是一个安全的放弃态" "0" "$RC"
+ck "★ 明示放弃**照样说一句**（放弃 ≠ 闷声降级）" "yes" \
    "$(grep -q 'CCM_NO_DAEMON=1' "$DTMP/err" && echo yes || echo no)"
 
 RC="$(idrun)"
@@ -395,17 +425,40 @@ ck "★ 不在 tmux 里也**说一句**（旧版这里有窗口标题，随轮�
    "$(grep -q '不在 tmux 里' "$DTMP/err" && echo yes || echo no)"
 
 RC="$(env -i HOME="$DTMP/home" PATH="$DTMP/bin" TMUX=/faux/socket,1,0 \
-      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent \
-      bash "$CCM" --cwd "$DTMP/proj" --agent codex --launcher "$DTMP/bin/mark" \
+      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json \
+      bash "$CCM" --base --cwd "$DTMP/proj" --agent codex --launcher "$DTMP/bin/mark" \
       > "$DTMP/out" 2> "$DTMP/err"; printf '%s' "$?")"
-ck "codex 没有身份面（agent_has_identity 为假）⇒ 不要求 daemon、不吵" "0|" \
+ck "codex 没有身份面（agent_has_identity 为假）⇒ 不要求后端、不吵" "0|" \
    "$RC|$(cat "$DTMP/err")"
 
-# `--print` 是**纯的**：它在前置检查之前就退出了，缺 daemon 也照样吐串（rc=0）。
+# 🔴 〔`F` 拍新增〕**上面那条 `--base` 不是免检章 —— 反向对照：不给 `--base` 就是账号那条腿先报。**
+# 没有这一格的话，「本节量的是身份那条腿」只是一句话；有了它，两条腿在读数上**分得开**。
 RC="$(env -i HOME="$DTMP/home" PATH="$DTMP/bin" TMUX=/faux/socket,1,0 \
-      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent \
-      bash "$CCM" --cwd "$DTMP/proj" --print > "$DTMP/out" 2>/dev/null; printf '%s' "$?")"
-ck "★ --print 不受前置检查影响（预言机不许因为这台机器没装 daemon 就哑掉）" "0" "$RC"
+      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json \
+      bash "$CCM" --cwd "$DTMP/proj" --launcher "$DTMP/bin/mark" \
+      > "$DTMP/out" 2> "$DTMP/err"; printf '%s' "$?")"
+ck "★ 反向对照 · 不给 --base ⇒ **账号那条腿先报**，而且它的码是 **4**（身份那条是 2 —— 分得开）" "4" "$RC"
+ck "★ 反向对照 · 而且说的是**账号那一格**（不是身份那一格 —— 两条腿的文案也分得开）" "yes|no" \
+   "$(grep -q '后端不可达' "$DTMP/err" && printf yes || printf no)|$(grep -q '未绑定窗口' "$DTMP/err" && printf yes || printf no)"
+
+# `--print` 是**纯的**：它在**身份前置检查**之前就退出了 ⇒ 那道检查缺 daemon 也拦不住它。
+# ⚠ 〔`F` 拍 09-04〕**这一条的射程今天窄了一格，写清楚**：
+#   `--print` 仍然不受**身份前置检查**影响（`--base` 这一趟证的就是它：那道检查在 tmux 里
+#   缺 daemon 会 `exit 4`，而 `--print` 照样 rc=0）。
+#   但它**不再**「缺后端也照样吐串」—— **账号解析**排在更前面，而它也没有退路了。
+#   ⇒ 那不是「预言机哑掉了」，是**预言机也要有账号表才答得出 `config_dir`**
+#   （`config_dir` 是**值**，逐字进黄金串 —— 没法像 `DAEMON_BIN_RECIPE` 那样推迟求值）。
+#   本条因此加 `--base`：那一趟明确不要账号 ⇒ 射程正好落在它标签说的那道检查上。
+RC="$(env -i HOME="$DTMP/home" PATH="$DTMP/bin" TMUX=/faux/socket,1,0 \
+      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json \
+      bash "$CCM" --base --cwd "$DTMP/proj" --print > "$DTMP/out" 2>/dev/null; printf '%s' "$?")"
+ck "★ --print 不受**身份前置检查**影响（那道检查在同样的环境下是 rc=4，见上面第一条）" "0" "$RC"
+# 🔴 非空对照：**同一趟、只去掉 `--print`** ⇒ 那道检查真的会拦。少了它，上一条可以被
+# 「那道检查压根没生效」满足（那样 `--print` 当然 rc=0，而它证不了「`--print` 是纯的」）。
+RC="$(env -i HOME="$DTMP/home" PATH="$DTMP/bin" TMUX=/faux/socket,1,0 \
+      CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json \
+      bash "$CCM" --base --cwd "$DTMP/proj" --launcher "$DTMP/bin/mark" > "$DTMP/out" 2>/dev/null; printf '%s' "$?")"
+ck "★ 非空对照 · 同一趟去掉 --print ⇒ 那道检查真的拦（rc=2）⇒ 上一条不是恒真" "2" "$RC"
 
 rm -rf "$DTMP"
 
@@ -466,6 +519,15 @@ chmod +x "$KTMP/bin/mute"
 mk_kd "$KTMP/bin/ghost" "$KTMP/no-such-dir" "$KTMP/no-such-dir-2"
 # 一份多带一个**未知字段**的 daemon（前向兼容：daemon/aterm 那边加字段不许把我们打碎）。
 mk_kd "$KTMP/bin/extra" "$KTMP/from-daemon" "$KTMP/dflt-daemon" ',"someFutureKey":{"a":1}'
+# ★★ 〔`K-P2` `F` 拍 09-04〕**第二份后端 —— 它是 KCY1 那一族的非空对照。**
+#
+# 用@09-04「统一走后端」之后，账号解析**没有本地退路**了 ⇒ 从前那几条「反向：无 daemon ⇒
+# 来自**文件**」在今天读到的是 `exit 4`，它们证不了任何 provenance。
+# 而它们本来要买的东西是「**上一条不是恒真**」——「值真的跟着后端的答案走，不是碰巧」。
+# ⇒ 换一份**答另一套目录**的后端：同一个夹具、同一条命令，**只换后端** ⇒ 值必须跟着换。
+# ⚠ 这比原来那一对**更贴事实**：原来的反向臂换的是「有没有后端」（两条不同的代码路径），
+#   这一对换的是「后端说什么」（同一条代码路径，只有输入不同）—— provenance 正是后者。
+mk_kd "$KTMP/bin/daemon2" "$KTMP/from-file" "$KTMP/dflt-file"
 
 # 受控运行。**HOME 换成 $KTMP** —— 查找次序第二档读的是 `$HOME/.cc-monitor/bin/`，
 # 不换的话开发机上会摸到用户的真二进制、CI 上摸不到 ⇒ 同一条判据两台机器走两条路。
@@ -542,15 +604,15 @@ ck "夹具自检：账号 f 的目录**真实存在**（不是坏账号；否则
 K "$KTMP/bin/daemon" "" --account z >/dev/null
 ck "★ KCY1 · 显式 --account：daemon 在位 ⇒ configDir 来自 **daemon**（不是文件）" \
    "$(GOLD "$KTMP/from-daemon")" "$(KOUT)"
-K - "" --account z >/dev/null
-ck "KCY1 · 反向：同一夹具、无 daemon ⇒ 来自**文件**（成对才有区分力：只有上一条时「永远读文件」也能绿）" \
+K "$KTMP/bin/daemon2" "" --account z >/dev/null
+ck "KCY1 · 反向：同一夹具、**换一份后端** ⇒ 值跟着换（成对才有区分力：只有上一条时「值恒是那个」也能绿）" \
    "$(GOLD "$KTMP/from-file")" "$(KOUT)"
 K "$KTMP/bin/daemon" "" >/dev/null
 ck "★ KCY1 · 默认号那条路**也**走 daemon（文件说默认号是 z、daemon 说是 d ⇒ 拿到 d 的目录）" \
    "$(GOLD "$KTMP/dflt-daemon")" "$(KOUT)"
-K - "" >/dev/null
-ck "KCY1 · 反向：无 daemon ⇒ 默认号是**文件**说的那个（z）" \
-   "$(GOLD "$KTMP/from-file")" "$(KOUT)"
+K "$KTMP/bin/daemon2" "" >/dev/null
+ck "KCY1 · 反向：换一份后端 ⇒ **默认号**也跟着换（它同样只由后端说了算）" \
+   "$(GOLD "$KTMP/dflt-file")" "$(KOUT)"
 # ★ 一趟往返：默认号那条路要答**两个**问题（谁是默认号 / 它的目录在哪）。
 #   把 `acct_table_load` 挪进 `$(...)` 里 ⇒ 缓存被子 shell 吃掉 ⇒ 这里会变成 2。
 K "$KTMP/bin/daemon" "" >/dev/null
@@ -578,9 +640,13 @@ ck "★ KCY1 · 可用列表**就是 daemon 那一份**：文件里那个 daemon
    "z d" "$(KAVAIL)"
 # 成对的自检：证明 `f` **真的**在文件里、且真的会出现 —— 否则上一条恒真（拿一个压根不存在的
 # 名字去断言「它不出现」，是本仓最典型的那类空转判据）。
-K - "" --account nope >/dev/null
-ck "KCY1 · 夹具自检：无 daemon 时那份文件列表**确实更宽**（z d f）⇒ 上一条不是恒真" \
-   "z d f" "$(KAVAIL)"
+# 〔`F` 拍〕从前这一条是「无 daemon 时那份**文件**列表确实更宽（z d f）」——
+# 账号那条退路删掉之后，文件永远不会被读 ⇒ 那条读到的是 `exit 4`，证不了任何东西。
+# 而它要买的是「上一条不是恒真」：`f` **真的**在那份 manifest 里、真的是个会出现的名字。
+# ⇒ 直接量那份 manifest（**另一份实现、另一种语言**：`jq`，不经 ccm）。
+ck "KCY1 · 夹具自检：那份 manifest 里**确实**有一个 daemon 没有的 f ⇒ 上一条不是恒真" \
+   "z d f" \
+   "$(jq -r '[.accounts[].name] | join(" ")' "$KTMP/accts/accounts.json" 2>/dev/null)"
 # ★★ 上面那一对钉的是「**用了**谁的值」。`§0b` 排除项③ 排的还有一半是「**读了**谁」——
 #   「daemon 在位时也拿文件那份去校对」这一刀（读了不用）在**值**上一个字节都不差,
 #   任何比输出的判据都逮不到它（审计 `MU-A` 第一刀实测 189/189 全绿）。
@@ -649,52 +715,76 @@ ck "★ KCY1 · daemon 在位 ⇒ 那份 manifest **一次都没被解析**（�
    "0" "$(KJQMF)"
 ck "KCY1 · 上一条的前提自检：这一跑确实走了 daemon（拿到的是 daemon 那个目录）" \
    "$(GOLD "$KTMP/from-daemon")" "$(KOUT)"
-KREC - --account z
-ck "KCY1 · 夹具自检：无 daemon 时那份 manifest **确实**被解析了 1 次 ⇒ 这把尺子会说话" \
+# 〔`F` 拍〕从前这一条是「无 daemon 时那份 manifest **确实**被解析了 1 次 ⇒ 这把尺子会说话」。
+# 账号退路删掉之后，**没有任何一条路会去解析它** ⇒ 那条今天读到的是 `exit 4`，
+# 而这把尺子会不会说话**还是得有人证**（不证的话，上面那条「0 次」就是空真：
+# 一把永远读 0 的尺子当然读 0）。
+# ⇒ 改成**直接拿这把尺子去量一次真的解析**：让记账 `jq` 亲手读一遍那份 manifest。
+#   与上面那条「两种读法都看得见」是同一把尺子的两半：那半证形状，这半证它此刻**装好了**。
+: > "$KTMP/jqcalls"
+env -i PATH="$KTMP/recbin:/usr/bin:/bin" sh -c \
+    "jq -r '.accounts' '$KTMP/accts/accounts.json' >/dev/null 2>&1"
+ck "KCY1 · 尺子自检：拿它去量一次**真的**解析 ⇒ 读得到 1 次（上面那条 0 次因此不是空真）" \
    "1" "$(KJQMF)"
 
-# ---- KCY2：降级策略是裁过的，判据钉住裁的那一条（退出码 **与** stderr 文本）----
-# §0b 裁定 = 诚实降级 + **出声**。⇒ 只断退出码不够（那会让「出声」退化成「闷声」）。
+# ---- 🔴 KCY2：**这一族整族翻面**〔`K-P2` `F` 拍 09-04；用@「ccm不要管找不到, 统一走后端」〕----
+#
+# 从前这一族钉的是 `§0b` 那条裁定：**诚实降级 ＋ 出声**（无 daemon ⇒ 读文件 ＋ 说一句 ＋ rc=0）。
+# 用户 09-04 把那条裁定推翻了 ⇒ 今天钉的是：**没有退路 ＋ 唯一失败面**
+#（一句人话 ＋ 非零码 ＋ **同一个** rc 与同一句文案，与建会话那条腿共用）。
+#
+# ⚠ **翻面之后它买到的东西是「更多」而不是「更少」**：从前的 `rc=0` 只能证「没崩」，
+#   今天的 `rc=4` 与那句文案一起，把「哪一格失败了」变成一个**调用方判得出来**的读数。
+#   而「说得出是哪一格」那几条一条没丢 —— `why` 那六格逐字没动，只是说完之后不再降级。
 RC="$(K - "" --account z)"
-ck "★ KCY2 · 无 daemon ⇒ **照旧起得来**（rc=0，不是响亮失败）" "0" "$RC"
-ck "★ KCY2 · 无 daemon ⇒ stderr **有那句话**（降级不许闷声）" "yes" \
-   "$(grep -q '账号解析已降级' "$KTMP/err" && echo yes || echo no)"
-ck "★ KCY2 · 那句话说得出**读的是哪个文件**（诊断得能定位）" "yes" \
-   "$(grep -qF "$KTMP/accts/accounts.json" "$KTMP/err" && echo yes || echo no)"
-ck "★ KCY2 · 那句话说得出**为什么**降级（这一格：找不到 daemon）" "yes" \
+ck "★ KCY2 · 没后端 ⇒ **响亮失败**（rc=4 唯一失败面，不是降级 rc=0）" "4" "$RC"
+ck "★ KCY2 · 没后端 ⇒ stderr **有那句话**（失败不许闷声）" "yes" \
+   "$(grep -q '后端不可达' "$KTMP/err" && echo yes || echo no)"
+ck "★ KCY2 · 那句话说得出**怎么办**（查找顺序 / 三选一 —— 诊断得能落到动作上）" "yes" \
+   "$(grep -q 'CCM_DAEMON_BIN' "$KTMP/err" && grep -q '部署' "$KTMP/err" && echo yes || echo no)"
+ck "★ KCY2 · 那句话说得出**为什么**（这一格：找不到 daemon）" "yes" \
    "$(grep -q '找不到 daemon' "$KTMP/err" && echo yes || echo no)"
-ck "★ KCY2 · 四种降级原因**互斥**：这一格只许命中一格（不许合并成一句「daemon 不可用」）" "1" "$(KWHY)"
-ck "★ KCY2 · 那句话说清了**性质**（后端本该是唯一真相源 / 你拿到的是文件那一份）" "yes" \
-   "$(grep -q '唯一真相源' "$KTMP/err" && grep -q '文件那一份' "$KTMP/err" && echo yes || echo no)"
+ck "★ KCY2 · 四种原因**互斥**：这一格只许命中一格（不许合并成一句「daemon 不可用」）" "1" "$(KWHY)"
+ck "★ KCY2 · 那句话说清了**性质**（本地那条退路已经不在了，不是「暂时用不了」）" "yes" \
+   "$(grep -q '退路已经不在' "$KTMP/err" && grep -q '统一走后端' "$KTMP/err" && echo yes || echo no)"
 K "$KTMP/bin/daemon" "" --account z >/dev/null
 ck "★ KCY2 · daemon 在位 ⇒ stderr **一个字都没有**（别把正常路径变吵）" "" "$(KERR)"
-K "$KTMP/bin/daemon" "CCM_NO_DAEMON=1" --account z >/dev/null
-ck "KCY2 · CCM_NO_DAEMON=1 ⇒ 也降级、也说话，且说的是**那一格**（明示整条关掉）" "yes" \
+RC="$(K "$KTMP/bin/daemon" "CCM_NO_DAEMON=1" --account z)"
+ck "KCY2 · CCM_NO_DAEMON=1 ⇒ 也失败、也说话，且说的是**那一格**（明示整条关掉）" "yes" \
    "$(grep -q 'CCM_NO_DAEMON=1（明示整条关掉 daemon）' "$KTMP/err" && echo yes || echo no)"
-ck "KCY2 · 四种降级原因**互斥**：CCM_NO_DAEMON=1 这一格只许命中一格" "1" "$(KWHY)"
-ck "KCY2 · CCM_NO_DAEMON=1 ⇒ 拿到的是文件那一份（逃生口真的把 daemon 那条关掉了）" \
-   "$(GOLD "$KTMP/from-file")" "$(KOUT)"
+ck "KCY2 · 四种原因**互斥**：CCM_NO_DAEMON=1 这一格只许命中一格" "1" "$(KWHY)"
+ck "★ KCY2 · CCM_NO_DAEMON=1 **不是逃生口**：关掉之后照样 rc=4（它只是把原因换了一格）" "4" "$RC"
 cp "$KTMP/accts/accounts.json" "$KTMP/accts/m.json"
 rm -f "$KTMP/calls"; : > "$KTMP/err"
 env -i PATH="/usr/bin:/bin" HOME="$KTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
     CCM_ACCTS_MANIFEST="$KTMP/accts/m.json" CCM_DAEMON_BIN="$KTMP/bin/daemon" \
     bash "$CCM" --cwd /p --account z --print > "$KTMP/out" 2> "$KTMP/err"
+RC=$?
 ck "KCY2 · manifest 叫别的名字 ⇒ 说的是**那一格**（--accts-dir 表达不了它），不是含糊的「daemon 不可用」" "yes" \
    "$(grep -q 'daemon 的 --accts-dir 表达不了它' "$KTMP/err" && echo yes || echo no)"
-ck "KCY2 · 四种降级原因**互斥**：--accts-dir 表达不了 这一格只许命中一格" "1" "$(KWHY)"
+# ★★ 〔`F` 拍〕**这一格的码是 2 不是 4，而且那是有意的。**
+#   `CCM_ACCTS_MANIFEST` 给成了后端表达不了的形态 = **调用方给错了环境变量**（「你敲错了」那一类），
+#   与「这台机器上没有后端」（可修的部署缺口）是两件事。两个码分得开，调用方才判得出该修哪一边。
+ck "★ KCY2 · 而且它的码是 **2**（用法错），不是 4（后端不可达）—— 两类分得开" "2" "$RC"
+ck "KCY2 · 四种原因**互斥**：--accts-dir 表达不了 这一格只许命中一格" "1" "$(KWHY)"
 ck "KCY2 · 那一格**不许悄悄去问 daemon**（问了就是读了另一个文件）：调用次数 0" "0" "$(KCALLS)"
-K "$KTMP/bin/mute" "" --account z >/dev/null
-ck "KCY2 · daemon 在位但**答不出** ⇒ 说的是那一格，并落回文件" "yes" \
+RC="$(K "$KTMP/bin/mute" "" --account z)"
+ck "KCY2 · daemon 在位但**答不出** ⇒ 说的是那一格" "yes" \
    "$(grep -q '答不出 --list-accounts' "$KTMP/err" && echo yes || echo no)"
-ck "KCY2 · 四种降级原因**互斥**：答不出 这一格只许命中一格" "1" "$(KWHY)"
-ck "KCY2 · daemon 答不出 ⇒ 值来自文件（诚实降级，不是报错、也不是空账号）" \
-   "$(GOLD "$KTMP/from-file")" "$(KOUT)"
-# ★ 反面：这句话**不许变成噪音**。压根没有账号库的机器上 ccm 就是个基座启动器。
+ck "KCY2 · 四种原因**互斥**：答不出 这一格只许命中一格" "1" "$(KWHY)"
+ck "★ KCY2 · daemon 答不出 ⇒ **也是 rc=4**（同一个失败面 —— 不再落回文件）" "4" "$RC"
+# ★ 反面：**「一个账号都没有」是一个合法答案，不是失败。**
+#   后端答上了（那行 meta 在）、只是表是空的 ⇒ ccm 退化为基座启动器，一个字不说、rc=0。
+#   ⚠ 这一格与上面「答不出」只差**一行 meta**，而两者的结局天差地别（rc=0 / rc=4）
+#   ⇒ 它同时是「靠 meta 分辨答上没答上」这条设计的行为证据。
 rm -f "$KTMP/calls"; : > "$KTMP/err"
 env -i PATH="/usr/bin:/bin" HOME="$KTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
-    CCM_ACCTS_MANIFEST="$KTMP/accts/nope.json" \
+    CCM_ACCTS_MANIFEST="$KTMP/accts/nope-dir/accounts.json" CCM_DAEMON_BIN="$FAKED" \
     bash "$CCM" --cwd /p --print > "$KTMP/out" 2> "$KTMP/err"
-ck "★ KCY2 · **无账号库 ⇒ 一个字都不说**（降级提示不许变成每次都吵的噪音）" "" "$(cat "$KTMP/err")"
+RC=$?
+ck "★ KCY2 · **无账号库 ⇒ 一个字都不说**（空表是合法答案，不是失败）" "" "$(cat "$KTMP/err")"
+ck "★ KCY2 · 无账号库 ⇒ rc=0 且退化为基座启动器（没有 CLAUDE_CONFIG_DIR 注入）" "0|no" \
+   "$RC|$(grep -q 'CLAUDE_CONFIG_DIR=' "$KTMP/out" && printf yes || printf no)"
 
 # ---- KCY3（我们这一侧）：那个面加字段不许把我们打碎 ----
 # ⚠ 如实边界：这条证的是「**我们**的解析器对新增字段是宽的」，**不是**「aterm 那边不碎」——
@@ -743,7 +833,13 @@ ck "KCY3/KC6g · …而且**一声不吭**：不算「答不出」⇒ 不降级�
 PROBE_K="$(env -i PATH="/usr/bin:/bin" HOME="$KTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent bash "$CCM" --ccm-probe 2>&1)"
 ck "★ KCY4 · capabilities= 里有 account-via-daemon（消费者据此分辨新旧 ccm）" "1" \
    "$(printf '%s\n' "$PROBE_K" | sed -n 's/^capabilities=//p' | tr ',' '\n' | grep -cx 'account-via-daemon')"
-ck "KCY4 · capabilities 变了 ⇒ 版本号跟着走（既有纪律：不能只改后者）" "version=3" \
+# 〔`K-P2` `F` 拍 09-04〕**3 → 4**：这一拍 `capabilities=` 一个字节没动，变的是**行为**
+# （`--tmux` 建会话与账号解析的本地退路都删了，后端不可达 ⇒ `exit 4`）。
+# `shared/ccm` 的版本注释逐字写着这个号「同时是**行为**变化的版本标记」，而那条纪律是
+# 「caps 变了 ⇒ 版本跟着走」，**不是**「只有 caps 变了才许走版本」。
+# 一台远端上装的是 3 还是 4，决定了「后端没部署时那台机器起不起得来会话」——
+# 这是 `ccm_probe` 唯一分辨得出来的东西。
+ck "KCY4 · 行为/capabilities 变了 ⇒ 版本号跟着走（既有纪律：不能只改后者）" "version=4" \
    "$(printf '%s\n' "$PROBE_K" | grep '^version=')"
 # ⚠ 描述里那对反引号**必须转义**〔08-24 逮到〕：不转义的话它是**命令替换**，
 #   每跑一次套件就真去 exec 一个叫 `--help` 的命令、往 stderr 吐一行 `--help: 未找到命令`，
@@ -1092,8 +1188,45 @@ ck "★ KC6d/热路径 · 无 jq + **daemon 那条**解析路（daemon_out_to_ta
 #   ⚠ 它不是「零依赖」，**别把这一条读成那一条**：两条判的是两个面，名字里各自写明了。
 ck "★ KC6d/整趟 · 无 jq + daemon 在位 ⇒ 整趟没有**声明清单之外**的外部命令（清单：sed · 那一次 daemon 往返）" "" \
    "$(KALLNEW 'sed|<KTMP>/bin/daemon')"
-ck "KCM6 · 无 jq + 无 daemon ⇒ 文件那条兜底真的解析出来了（**首块** z）" \
-   "$(GOLD "$KTMP/from-file")" "$(NOJQ - "$KTMP/accts/accounts.json")"
+# ★★ 🔴 〔`K-P2` `F` 拍 09-04〕**下面三条整族改了被测对象，而解析器是同一个。**
+#
+# 从前它们喂的是**文件**（`manifest_to_table` + `acct_row_from_slice`）。
+# 用@09-04「统一走后端」把文件那条路整条删了 ⇒ 那三条今天喂不进去东西。
+# 而它们要买的东西 ——「**无 jq 时那个纯 bash 解析器对三种难形状照样解析对**」——
+# **一格没变**，因为 `acct_row_from_slice` 还在，只是喂它的人从「文件切块」换成了「daemon 输出逐行」
+# （`daemon_out_to_table` 的 `else` 分支）。⇒ 把三种形状**照搬到 daemon 输出上**。
+#
+# ⚠ **一形没法照搬，如实说**：原来的「pretty-print（一个账号对象跨多行）」是**文件切块**
+#   那条路特有的（它按 `{` 切块，块可以跨行）；daemon 那条是**逐行**读的 ⇒ 跨行对象在那条路上
+#   本来就不成立，不是「漏测了」。⇒ 那一形换成同族的、在这条路上**真有守卫**的一形：
+#   **末行没有结尾换行**（`daemon_out_to_table` 里 `|| [ -n "$l" ]` 那道守卫的靶子，
+#   与 `manifest_to_table` 里 `|| [ -n "$chunk" ]` 是同一条纪律的两处住址）。
+mk_shape_daemon() { # mk_shape_daemon <落点> <形状：first|last-noeol|keyorder>
+  cat > "$1" <<EOF
+#!/bin/sh
+echo call >> "$KTMP/calls"
+[ "\$1" = --list-accounts ] || { cat >/dev/null; exit 0; }
+printf '%s\\n' '{"accountZeroAware":true,"acctsDir":"x","count":2,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"x","sharedStore":null,"updatedAt":null}'
+EOF
+  case "$2" in
+    first)  # z 是**首个**账号行
+      printf "printf '%%s\\\\n' '{\"configDir\":\"%s\",\"isDefault\":true,\"name\":\"z\"}'\nprintf '%%s\\\\n' '{\"configDir\":\"%s\",\"isDefault\":false,\"name\":\"f\"}'\n" \
+             "$KTMP/from-file" "$KTMP/file-only" >> "$1" ;;
+    last-noeol)  # f 是**末行**，而且**没有结尾换行**（`|| [ -n "\$l" ]` 那道守卫的靶子）
+      printf "printf '%%s\\\\n' '{\"configDir\":\"%s\",\"isDefault\":true,\"name\":\"z\"}'\nprintf '%%s' '{\"configDir\":\"%s\",\"isDefault\":false,\"name\":\"f\"}'\n" \
+             "$KTMP/from-file" "$KTMP/file-only" >> "$1" ;;
+    keyorder)  # **键序反转**：configDir 排在 name 前面（解析器不许依赖键序）
+      printf "printf '%%s\\\\n' '{\"isDefault\":true,\"mode\":\"isolated\",\"configDir\":\"%s\",\"email\":\"\",\"name\":\"z\"}'\n" \
+             "$KTMP/from-file" >> "$1" ;;
+  esac
+  printf 'exit 0\n' >> "$1"
+  chmod +x "$1"
+}
+mk_shape_daemon "$KTMP/bin/shape-first"  first
+mk_shape_daemon "$KTMP/bin/shape-noeol"  last-noeol
+mk_shape_daemon "$KTMP/bin/shape-korder" keyorder
+ck "KCM6 · 无 jq + daemon 输出**首个**账号行 ⇒ 纯 bash 解析路真的解析出来了（首块 z）" \
+   "$(GOLD "$KTMP/from-file")" "$(NOJQ "$KTMP/bin/shape-first" "$KTMP/accts/accounts.json")"
 # ★★ **这一条为什么查 `f`（末块那个账号）—— 那份话的唯一权威住址在 `shared/ccm`**
 #   （`manifest_to_table` 里 `|| [ -n "$chunk" ]` 那段头注）。**这里只指路，不在这里造第二份。**
 #   ★ 原本贴在这儿的是那份话的**逐字副本**，而它三句全假（08-25 R7 逐句重切）：
@@ -1103,29 +1236,16 @@ ck "KCM6 · 无 jq + 无 daemon ⇒ 文件那条兜底真的解析出来了（**
 #   那一份订正了、**漏了这一份**（谱系第 7 次）。
 #   ★ **它能活到今天正是因为它离判据更近**（判据就在下一行）—— 下一个人读的是近的那份。
 #   ⇒ 近的那份只许是**指路**：副本会被单独订正漏掉，指路不会。
-ck "★ KCM6 · 无 jq + 无 daemon ⇒ **末块**那个账号 f 也解析得出来（末块守卫 \"|| [ -n \$chunk ]\" 的靶子）" \
-   "$(GOLD "$KTMP/file-only")" "$(NOJQ - "$KTMP/accts/accounts.json" f)"
-ck "★ KC6d/热路径 · 无 jq + **文件**那条解析路（manifest_to_table + acct_row_from_slice）上零外部依赖" "0" "$(KNF)"
-ck "★ KC6d/整趟 · 无 jq + 无 daemon ⇒ 同上，且清单里**没有** daemon（这条路一次往返都不该起）" "" \
-   "$(KALLNEW 'sed')"
-# pretty-print + 键序反转：旧那条 grep 兜底在这一格是**静默失灵**的（它要求 name 排在 configDir 前）。
-# ⚠ 这里原写 `cat > "…/pretty/accounts.json" 2>/dev/null || mkdir -p …` —— **重定向在
-#   `2>/dev/null` 生效之前就求值了**，所以目录还不在时那句报错**照样打到 stderr**：基线跑
-#   每次都有一行「…/accts/pretty/accounts.json: 没有那个文件或目录」。功能没坏（`||` 兜住了），
-#   但它是**基线噪音**，而基线噪音会让下一个人把真信号读漏〔审计 `D4` 建议-4；非 R6 引入〕。
-mkdir -p "$KTMP/accts/pretty"
-cat > "$KTMP/accts/pretty/accounts.json" <<JSON
-{
-  "version": 1,
-  "accounts": [
-    { "configDir": "$KTMP/from-file",
-      "isDefault": true,
-      "name": "z" }
-  ]
-}
-JSON
-ck "★ KCM6 · 无 jq + pretty-print + **键序反转** ⇒ 照样解析对（旧兜底在这一格静默失灵）" \
-   "$(GOLD "$KTMP/from-file")" "$(NOJQ - "$KTMP/accts/pretty/accounts.json")"
+ck "★ KCM6 · 无 jq + daemon 输出**末行没有结尾换行** ⇒ 末行那个账号 f 也解析得出来（\"|| [ -n \$l ]\" 那道守卫的靶子）" \
+   "$(GOLD "$KTMP/file-only")" "$(NOJQ "$KTMP/bin/shape-noeol" "$KTMP/accts/accounts.json" f)"
+ck "★ KC6d/热路径 · 无 jq + **纯 bash** 那条解析路（daemon_out_to_table 的 else + acct_row_from_slice）上零外部依赖" "0" "$(KNF)"
+ck "★ KC6d/整趟 · 无 jq ⇒ 同上；清单里除 sed 外只有**那一次** daemon 往返" "" \
+   "$(KALLNEW 'sed|<KTMP>/bin/shape-noeol')"
+# 键序反转：旧那条 grep 兜底在这一格是**静默失灵**的（它要求 name 排在 configDir 前）。
+# 〔`F` 拍〕靶子从「文件里那个 pretty-print 块」换成「daemon 输出里那一行」——
+# 解析器同一个（`acct_row_from_slice`），要守的性质同一条（**不许依赖键序**）。
+ck "★ KCM6 · 无 jq + daemon 输出**键序反转**（configDir 在 name 前）⇒ 照样解析对（旧兜底在这一格静默失灵）" \
+   "$(GOLD "$KTMP/from-file")" "$(NOJQ "$KTMP/bin/shape-korder" "$KTMP/accts/accounts.json")"
 
 rm -rf "$KTMP"
 
@@ -1282,6 +1402,22 @@ mkdir -p "$WTMP/bin" "$WTMP/spool" "$WTMP/cwd"
 mk_wire_daemon() { # mk_wire_daemon <落点> <spool 目录> <整条回帧 JSON> [落盘过滤器]
   cat > "$1" <<EOF
 #!/bin/sh
+# ★★ 〔\`K-P2\` \`F\` 拍 09-04〕**账号那条腿要先答上，而且不许污染下面的计数。**
+#
+# 用@09-04「统一走后端」之后，\`shared/ccm\` 的**账号解析没有本地退路**：
+# 它会在**建会话/resume 之前**先问一次 \`--list-accounts\`，问不到就 \`exit 4\`。
+# 这份桩子原来对任何子命令都吐同一条回帧 ⇒ 账号那次拿到的是一条 launch 回帧
+# （里面没有 \`"kind":"accounts-meta"\`）⇒ ccm 读成「后端答不出账号」⇒ 整趟死在那儿，
+# **下面每一条 WIRE 判据都测不到它该测的东西**。
+#
+# ⇒ 认出 \`--list-accounts\` 就单独答一条空账号库的 meta 帧，然后**立刻退出**：
+#   ⚠ **不记 calls / 不写 argv / 不落 stdin** —— 记了的话 \`WCALLS\` 会从 1 变 2，
+#     而那个数是「**这一条子命令**发了几次」的读数。**一个计数器装两件事**正是本区最贵那族。
+if [ "\$1" = --list-accounts ]; then
+  d=""; while [ \$# -gt 0 ]; do [ "\$1" = --accts-dir ] && d="\$2"; shift; done
+  printf '{"accountZeroAware":true,"acctsDir":"%s","count":0,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"%s/accounts.json","sharedStore":null,"updatedAt":null}\n' "\$d" "\$d"
+  exit 0
+fi
 echo call >> "$2/calls"
 printf '%s\n' "\$*" >> "$2/argv"
 ${4:-cat} > "$2/stdin.bin"
@@ -1304,11 +1440,13 @@ W() { # W <daemon 路径或 -> <sid>：**真跑 exec 路**（不是 --print）�
   local d="$1" sid="$2"
   rm -rf "$WTMP/spool"; mkdir -p "$WTMP/spool"
   local -a envs=(HOME="$WTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent
-                 CCM_ACCTS_MANIFEST=/nonexistent)
+                 CCM_ACCTS_MANIFEST=/nonexistent/accounts.json)
   [ "$d" != - ] && envs+=(CCM_DAEMON_BIN="$d")
   env -i PATH="$WTMP/bin:/usr/bin:/bin" "${envs[@]}" \
       bash "$CCM" resume "$sid" --cwd "$WTMP/cwd" > "$WTMP/out" 2> "$WTMP/err"
+  W_RC=$?   # 〔`F` 拍〕rc 从此有话说（没有后端 = `exit 4`，不再是「降级 rc=0」）
 }
+W_RC=0
 # ⚠ 文件不在时的分支**用 `-f` 先判，不靠 `2>/dev/null`**：`< 不存在的文件` 是**外层 shell**
 #   在起 `wc` 之前就失败的，那句 `No such file` 由外层 shell 打，`wc` 自己的 `2>/dev/null`
 #   **盖不住**（第一版就是这样，套件输出里混进一行看着像真错的噪声）。
@@ -1331,8 +1469,29 @@ ck "WIRE/夹具自检② · 那份 stdin 真的落下来了（字节数 > 0，�
 W - 'k-p2-d2'
 ck "WIRE/夹具自检③ · **没有 daemon 时 calls 是 0** ⇒ ①那条不是恒真（少了这条，①测不出任何东西）" \
    "0" "$(WCALLS)"
-ck "WIRE/夹具自检④ · 没有 daemon ⇒ 走本地兜底那条 exec（诚实降级，不是静默什么都不干）" \
+# ★★ 〔`K-P2` `F` 拍 09-04〕**这一格整条翻面，而且它翻的是两件事，别只读成「期望值改了」。**
+#
+# 从前：没有 daemon ⇒ `resume` 走本地那条 exec（诚实降级）。
+# 今天：`resume` 会先过**账号解析**那条腿，而它**没有退路**了 ⇒ 整趟 `exit 4`，
+#      一个字都不会 exec 出来。
+# ⚠ **`--resolve` 那条静默退路本身没被删** —— 它还在，登记在
+#   `ccm_cli_contract::BACKEND_BACKED_PATHS` 的递减棘轮里（今天唯一那一条）。
+#   只是**够得到它的前提变了**：要先有一个能答账号的后端。⇒ 下面 ④b 专门测那一格。
+ck "WIRE/夹具自检④ · 没有后端 ⇒ **本地兜底不再存在**：一个字都没 exec 出来" "" "$(WOUT)"
+ck "WIRE/夹具自检④a · 而且 rc=4（唯一失败面，不是「降级 rc=0」）" "4" "$W_RC"
+# 🔴 **④b 是 ④ 的非空对照，缺了它上一条可以被「resume 整个坏掉」满足。**
+# 后端在（账号那条腿答得上）、但它**答不出 `--resolve`** ⇒ 本地那条 resume 串照常跑。
+# 那正是 `--resolve` 那笔**登记在案的静默欠账**：`resume` 的 argv 只是建议，本地那条同样正确。
+W "$FAKED" 'k-p2-d2'
+ck "WIRE/夹具自检④b · 后端在、只是答不出 --resolve ⇒ **本地那条 exec 照常跑**（登记在案的静默退路）" \
    "WIRE_LOCAL --resume k-p2-d2" "$(WOUT)"
+ck "WIRE/夹具自检④c · 而且 rc=0（那一条是**建议**级的降级，不是失败）" "0" "$W_RC"
+# ⚠ 判的是「**那笔欠账**是静默的」，不是「整趟一个字都不说」——
+#   这一趟不在 tmux 里，身份那段会照常说一句「不在 tmux 里 ⇒ 没有 @ccm_sid」，
+#   那是**另一条路的**、且是**有意的**一句话（`U-NP④`：不闷声）。
+#   把它算进来的话，这一条量的就不是它标签说的那件事了。
+ck "WIRE/夹具自检④d · 而且**那笔欠账**一个字都不说（`--resolve` 拿不到 ⇒ 静默走本地，棘轮登记着它）" "no" \
+   "$(grep -qE '后端不可达|降级|resolve' "$WTMP/err" && printf yes || printf no)"
 
 # ── 族一：「**发了**」。⚠ 弱 —— 只要有个进程被调用就成立 ─────────────────────
 W "$WTMP/bin/daemon" 'k-p2-d2'
@@ -1397,8 +1556,12 @@ ck "WIRE/分得开④ · 分歧**只有一个字节** ⇒ 钉住「改一个字�
 WRECIPE() { # WRECIPE <sid>：取 --print 那行 → 真跑一遍（stdout→out）
   rm -rf "$WTMP/spool"; mkdir -p "$WTMP/spool"
   local line
+  # 〔`F` 拍〕`--print` 那一趟也要过账号那条腿 ⇒ 给它一份能答账号的后端。
+  # ⚠ 它**只影响打印那一趟**：下面真跑配方时用的是 `$WTMP/bin/daemon`（落盘式那份），
+  #   配方里的查找规则在**执行时**才求值 —— 那正是 `DAEMON_BIN_RECIPE` 的设计。
   line="$(env -i PATH="$WTMP/bin:/usr/bin:/bin" HOME="$WTMP" CCM_SELF=/usr/local/bin/ccm \
-          CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent \
+          CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json \
+          CCM_DAEMON_BIN="$FAKED" \
           bash "$CCM" resume "$1" --cwd "$WTMP/cwd" --print 2>/dev/null)"
   env -i PATH="$WTMP/bin:/usr/bin:/bin" HOME="$WTMP" CCM_DAEMON_BIN="$WTMP/bin/daemon" \
       sh -c "$line" > "$WTMP/out" 2>/dev/null
@@ -1454,7 +1617,7 @@ WL() { # WL <daemon 路径或 -> [额外 ccm 参数…]：真跑 `--tmux` 的 ex
   local d="$1"; shift
   rm -rf "$WTMP/spool"; mkdir -p "$WTMP/spool"
   local -a envs=(HOME="$WTMP" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent
-                 CCM_ACCTS_MANIFEST=/nonexistent CCM_NO_PRETRUST=1
+                 CCM_ACCTS_MANIFEST=/nonexistent/accounts.json CCM_NO_PRETRUST=1
                  WIRE_SPOOL="$WTMP/spool" "${WL_EXTRA_ENV[@]}")
   [ "$d" != - ] && envs+=(CCM_DAEMON_BIN="$d")
   env -i PATH="$WTMP/bin:/usr/bin:/bin" "${envs[@]}" \
@@ -1490,21 +1653,44 @@ ck "WIRE/launch/发了④ · 会话名照旧报回 stdout（--detach 的既有�
 ck "WIRE/launch/发了⑤ · 走后端那一趟**不说降级**（它没降级）" "no" \
    "$(WERR | grep -q '建会话已降级' && printf yes || printf no)"
 
-# ── 诚实降级：没有 daemon 时本地那条真的跑，而且**出声** ───────────────────────
+# ── 🔴 后端不可达：**唯一失败面**〔`K-P2` `F` 拍 09-04；用@「ccm不要管找不到, 统一走后端」〕──
+#
+# **这一族整族翻面了。** 从前它叫「诚实降级」，证的是「没 daemon ⇒ 本机那条真的跑、而且出声」；
+# 今天本机那条**在 exec 路上不存在了** ⇒ 它证的是「没后端 ⇒ **一条 tmux 都不起** ＋ 响亮失败」。
+# ★ **翻面本身就是「旧住址没了」的行为证据**（件计划 `§6-3` 腿②逐字）：
+#   它不问「盘上有没有」，它问「**拿掉后端之后，会话还建不建得出来**」。
+#   建得出来 ⇒ 一定还有第二条路，不管它长什么样。
 WL -
-ck "WIRE/launch/降级① · 没 daemon ⇒ calls 是 0（上面①不是恒真）" "0" "$(WCALLS)"
-ck "WIRE/launch/降级② · 没 daemon ⇒ 本机那条真的建了会话（不是静默什么都不干）" "yes" \
+ck "WIRE/launch/不可达① · 没后端 ⇒ calls 是 0（上面①不是恒真）" "0" "$(WCALLS)"
+ck "WIRE/launch/不可达② · ★没后端 ⇒ 本机**一条会话都没建**（腿②：退路真的没了）" "no" \
    "$(WTMUXLOG | grep -q '^new-session -d -s wire-d3 ' && printf yes || printf no)"
-ck "WIRE/launch/降级③ · 而且**出声**（\`BACKEND_BACKED_PATHS\` 那条递减棘轮要的就是它）" "yes" \
-   "$(WERR | grep -q '建会话已降级' && printf yes || printf no)"
-ck "WIRE/launch/降级④ · 出声要说清是**哪一格**（四种原因不许糊成一句「降级了」）" "yes" \
+ck "WIRE/launch/不可达②b · 整趟**一条 tmux 都没起**（比上一条更宽：连 attach/轮询都没有）" "" "$(WTMUXLOG)"
+ck "WIRE/launch/不可达③ · 而且**出声**（唯一失败面那一句人话）" "yes" \
+   "$(WERR | grep -q '后端不可达' && printf yes || printf no)"
+ck "WIRE/launch/不可达④ · 出声要说清是**哪一格**（六种原因不许糊成一句「不可达」）" "yes" \
    "$(WERR | grep -q '找不到 daemon' && printf yes || printf no)"
-ck "WIRE/launch/降级⑤ · 降级也 rc=0（没有后端不是失败 —— 本文件会被部署到任意远端）" "0" "$WL_RC"
+ck "WIRE/launch/不可达⑤ · ★rc=4（唯一退出码；与 die 的 2、撞名的 3 分得开）" "4" "$WL_RC"
+ck "WIRE/launch/不可达⑤b · 而且**不再说「降级」**（那句话的主句已经作废，留着就是假话）" "no" \
+   "$(WERR | grep -q '降级' && printf yes || printf no)"
+ck "WIRE/launch/不可达⑤c · 失败面里说得出**怎么办**（查找顺序 / 三选一）" "yes" \
+   "$(grep -q 'CCM_DAEMON_BIN' "$WTMP/err" && grep -q '部署' "$WTMP/err" && printf yes || printf no)"
 WL_EXTRA_ENV=(CCM_NO_DAEMON=1)
 WL "$WTMP/bin/kd-launch"
-ck "WIRE/launch/降级⑥ · CCM_NO_DAEMON=1 ⇒ **整条关掉**：daemon 在也不发（calls 0）" "0" "$(WCALLS)"
-ck "WIRE/launch/降级⑦ · 而且说的是那一格（明示关掉 ≠ 找不到）" "yes" \
+ck "WIRE/launch/不可达⑥ · CCM_NO_DAEMON=1 ⇒ **整条关掉**：daemon 在也不发（calls 0）" "0" "$(WCALLS)"
+ck "WIRE/launch/不可达⑦ · 而且说的是那一格（明示关掉 ≠ 找不到）" "yes" \
    "$(WERR | grep -q 'CCM_NO_DAEMON=1' && printf yes || printf no)"
+ck "WIRE/launch/不可达⑦b · ★明示关掉**也是 rc=4** —— 它不是逃生口（关掉之后照样起不来）" "4" "$WL_RC"
+WL_EXTRA_ENV=()
+
+# 🔴 **专测「建会话那条腿」自己没有退路** —— 上面那几格测不到它，这一格才测得到。
+# 后端整个不在的话，**账号那条腿会先报**（它排在前面，也没有退路）⇒ 上面读到的红是那条腿的。
+# ⇒ 用一份「账号答得上、只有 `--launch` 答不出」的后端，把两条腿分开。
+WL_EXTRA_ENV=(FAKE_DAEMON_NO_LAUNCH=1)
+WL "$FAKED"
+ck "WIRE/launch/腿分开① · 账号那条腿过得去（走到了建会话，不是死在账号上）" "yes" \
+   "$(WERR | grep -q '结局帧' && printf yes || printf no)"
+ck "WIRE/launch/腿分开② · ★而建会话那条腿**没有退路**：一条 tmux 都没起" "" "$(WTMUXLOG)"
+ck "WIRE/launch/腿分开③ · 同一个失败面（rc=4，同一句文案）" "4" "$WL_RC"
 WL_EXTRA_ENV=()
 
 # ── 族二：「**发对了**」—— 落盘那份 stdin 的字节 ───────────────────────────────
@@ -1546,29 +1732,81 @@ ck "WIRE/launch/发对了·往返（弱判据·旁证）· 落盘那份自己是
 # ── 族三：**新路与旧路送的是同一件事**（两条各自独立产出，不是同义反复）──────────
 # ⚠ 这一族是「搬家」这件事真正要买的东西：搬走之后**行为不许变**。
 #   左边来自 `json_str` + `jq` 解析，右边来自 `sq` + bash 再解析 —— 两条链没有共用的一环。
+#
+# ★★ 〔`K-P2` `F` 拍 09-04〕**右边换了来源，两条链仍然没有共用的一环。**
+#
+# 从前右边是「**本机那条真跑出来**的 tmux argv」（`WL -` 之后读 `tmux.log`）。
+# 退路一删，exec 路上那条编排一次都不跑 ⇒ 右边那个产出**不存在了**，
+# 这一族会以「期望是空串」的形式**静默塌成同义反复**（左边跟空串比，比什么都过不了；
+# 就算改成两边都空，那也是 `[] == []` 的空真）。
+# ⇒ 右边改取 **`--print` 吐的那条配方** —— 它**逐字就是**搬家前那条编排的字面
+#   （`--print` 那一支一个字节没动，`ccm-print-parity` 12 条现打钉着它）。
+# ⚠ **它买到的比从前少一格，如实写**：从前比的是「后端那条 vs 本机那条**真跑**」，
+#   今天比的是「后端那条 vs 本机那条**的配方**」。配方与真行为的分家本身是另一格
+#   （件计划 `§6-5 上报③`，未裁）—— **本族买不到它，别当买到了**。
+#   而这一族要守的那件事（**同一个 cwd / 同一份载荷 / 同一个尺寸 / 同一个 agent，
+#   两条各自独立产出**）一格没丢：左边 `json_str`+`jq`，右边 `sq`+bash 再解析。
 WL "$WTMP/bin/kd-launch"; WNEW_PAYLOAD="$(WSTDIN | jq -r .payload)"; WNEW_CWD="$(WSTDIN | jq -r .cwd)"
-WL -
-ck "WIRE/launch/同一件事① · 后端那条的 .payload **逐字节等于**本机 send-keys 打出去的那条" \
+# 右边：`--print` 吐的那条配方，**真跑一遍**（跑在 tmux shim 上，只记 argv、不起真会话）。
+# ⚠ **不去 `sed` 那条串**：配方里的载荷是 `sq` 过的（`'` → `'\''`），手写一个反解就是
+#   **第二份反引用实现**，而反引用正是本文件反复消灭的那一族。让 **bash 自己**解一遍
+#   —— 那也正是它在生产上被解的方式。这与 `WIRE/配方路` 那一族（resume）是同一条手法。
+WLPRINT="$(env -i PATH="$WTMP/bin:/usr/bin:/bin" HOME="$WTMP" CCM_SELF=/usr/local/bin/ccm \
+           CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json \
+           CCM_NO_PRETRUST=1 CCM_DAEMON_BIN="$FAKED" \
+           bash "$CCM" new --tmux=wire-d3 --cwd "$WTMP/cwd" --detach --tmux-size 220x50 --print 2>/dev/null)"
+rm -rf "$WTMP/spool"; mkdir -p "$WTMP/spool"
+env -i PATH="$WTMP/bin:/usr/bin:/bin" HOME="$WTMP" WIRE_SPOOL="$WTMP/spool" \
+    bash -c "$WLPRINT" >/dev/null 2>&1
+ck "WIRE/launch/同一件事① · 后端那条的 .payload **逐字节等于**本机配方跑出来的 send-keys 那条" \
    "$(WLOCALPAYLOAD)" "$WNEW_PAYLOAD"
-ck "WIRE/launch/同一件事② · 后端那条的 .cwd 等于本机 new-session 的 \`-c\`" \
+ck "WIRE/launch/同一件事② · 后端那条的 .cwd 等于本机配方跑出来的 new-session 的 \`-c\`" \
    "$(WTMUXLOG | sed -n 's/^new-session -d -s wire-d3 -c \([^ ]*\) .*/\1/p')" "$WNEW_CWD"
 ck "WIRE/launch/同一件事③ · 本机那条也真的带 \`-x 220 -y 50\`（不带的话上面那条 width/height 判据就是单边的）" \
    "yes" "$(WTMUXLOG | grep -q '^new-session .* -x 220 -y 50$' && printf yes || printf no)"
 ck "WIRE/launch/同一件事④ · 本机那条也真的写 @ccm_agent claude（同上：单边判据不算判据）" \
    "yes" "$(WTMUXLOG | grep -q '^set-option -t =wire-d3: @ccm_agent claude$' && printf yes || printf no)"
+ck "WIRE/launch/同一件事⑤ · ★抽取器自检：那条配方**真的跑出东西来了**（空比空是空真）" "yes" \
+   "$([ -n "$(WLOCALPAYLOAD)" ] && printf yes || printf no)"
 
-# ── 🔴 族四：**控制字符那一格**（`D3` 必须裁的那一格，裁的是「ccm 这侧先挡」）──────
-# daemon 的 `check_field` 拒收含控制字符的字段（`\n` 会让 send-keys 多敲一次回车）。
-# 本拍**没有放宽 daemon**（那条拒收是对的，且会同时改掉 send-into / send-keys-raw 的收件口径），
-# 改成 **ccm 这侧发之前就判**。⇒ 判据要证的是「**一个字节都没发出去**」，不是「发了但被拒」。
+# ── 🔴 族四：**控制字符那一格**（`D3` 裁的是「ccm 这侧先挡」；`F` 拍把它拆成两半）──────
+#
+# ★★ 〔`K-P2` `F` 拍 09-04〕**这一族从「一刀切」拆成两半，而那是修了一个能力回归。**
+#
+# `D3` 那一版逐字写着「本拍**没有放宽 daemon**」，靠的是**退路兜着**：判出控制字符就
+# 退回本机那条，而本机那条**一直接受换行**（`tmux send-keys -t X '第一行<换行>第二行' Enter`）。
+# 用@09-04 把退路删了 ⇒ 那条拒收从「挡住新路」变成**挡住这次调用**
+# ⇒ 「多行任务」这个真实能力整个没了（现打：`e2e/cc-spawn-uplift.sh` 那一族 **4 条**当场红）。
+# ⇒ `§19 裁六` 早把这一格登记成「**真搬那拍的硬前置**」。本拍解它：
+#   · **载荷里的 `\n` / `\t` 放行**（它们是「键」，本机那条一直这么理解）——
+#     daemon 侧 `control/launch.rs::check_typed_payload`，**只对 `create-or-attach`**；
+#   · **别的控制字符照旧挡**（`ESC` / `CR` / `NUL` 不是键，是会改终端状态的东西）——
+#     这一格因此**比旧的本机那条更严**：旧路经 `sq` + `bash` 什么都放过去。
+#   · `send-into` / `send-keys-raw` **一个字节没动**（`§19 裁六` 逐字：放宽它会改掉
+#     已有两个生产调用方的行为）。
+#
+# ── 半一：**换行照发**（修回来的那个能力）───────────────────────────────────────
 WL "$WTMP/bin/kd-launch" -- "$(printf 'a\nb')"
-ck "WIRE/launch/控制字符① · ★载荷含换行 ⇒ daemon **一次都没被调用**（挡在 ccm 这侧，不是发了被拒）" \
+ck "WIRE/launch/控制字符/换行① · ★载荷含**换行** ⇒ 照发（它是「键」，不是畸形字节）" "1" "$(WCALLS)"
+ck "WIRE/launch/控制字符/换行② · 而且 rc=0（会话真的建出来了 —— 多行任务这个能力还在）" "0" "$WL_RC"
+# ⚠ 判「线上那份 JSON 里那个换行**被转义着送过去了**」——`json_str` 把真换行编成 `\n` 两个字符。
+#   ⇒ 落盘那份**字节里**要有 `\n` 这两个字符，而**不该**有真的换行（真换行会把一条请求劈成两行）。
+#   （生产那句 `printf` 不带结尾换行 ⇒ 整条请求里的真换行数**应当恰好 0**。）
+ck "WIRE/launch/控制字符/换行③ · 线上那份请求里那个换行是**转义**过去的（`\\\\n` 在、真换行 0 个）" "yes|0" \
+   "$(WSTDIN | grep -qF '\n' && printf yes || printf no)|$(WSTDIN | wc -l | tr -d ' ')"
+# ── 半二：**别的控制字符仍然挡死**（`ESC`）───────────────────────────────────────
+WL "$WTMP/bin/kd-launch" -- "$(printf 'a\033b')"
+ck "WIRE/launch/控制字符① · ★载荷含 ESC ⇒ daemon **一次都没被调用**（挡在 ccm 这侧，不是发了被拒）" \
    "0" "$(WCALLS)"
-ck "WIRE/launch/控制字符② · 而且说清命中的是**这一格**（不是笼统一句「降级了」）" "yes" \
+ck "WIRE/launch/控制字符② · 而且说清命中的是**这一格**（不是笼统一句「不可达」）" "yes" \
    "$(WERR | grep -q '控制字符' && printf yes || printf no)"
-ck "WIRE/launch/控制字符③ · 退回本地那条**真的把会话建出来了**（挡住的是新路，不是这次调用）" "yes" \
+# ★★ 这一条的标签本身也翻面了，不是只改期望值：从前逐字写着「挡住的是新路，**不是这次调用**」
+#   —— 退路一删，挡住新路**就是**挡住这次调用。标签跟着事实改，别留一句馊了的话在绿灯下面。
+ck "WIRE/launch/控制字符③ · 一条会话都没建（退路删了 ⇒ 挡住新路**就是**挡住这次调用）" "no" \
    "$(WTMUXLOG | grep -q '^new-session -d -s wire-d3 ' && printf yes || printf no)"
-ck "WIRE/launch/控制字符④ · 反向对照：**同一条命令去掉那个换行**就发得出去（③不是恒真）" "1" \
+ck "WIRE/launch/控制字符③b · ★而且 rc=4 —— 把「这次调用真的失败了」钉成读数（不是只钉 tmux.log 是空的）" \
+   "4" "$WL_RC"
+ck "WIRE/launch/控制字符④ · 反向对照：**同一条命令去掉那个 ESC** 就发得出去（③不是恒真）" "1" \
    "$(WL "$WTMP/bin/kd-launch" -- 'ab'; WCALLS)"
 
 # ── 族五：撞名 —— `created:false` **不是降级**，交给本地那条响亮失败 ─────────────
@@ -1589,7 +1827,7 @@ WL_EXTRA_ENV=()
 # 编排搬进一个字符串再 `eval`，本拍不做。⇒ **把这个事实钉住**，别让它成为静默差异。
 rm -rf "$WTMP/spool"; mkdir -p "$WTMP/spool"
 WPRINT="$(env -i PATH="$WTMP/bin:/usr/bin:/bin" HOME="$WTMP" CCM_SELF=/usr/local/bin/ccm \
-          CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent WIRE_SPOOL="$WTMP/spool" \
+          CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json WIRE_SPOOL="$WTMP/spool" \
           CCM_DAEMON_BIN="$WTMP/bin/kd-launch" \
           bash "$CCM" new --tmux=wire-d3 --cwd "$WTMP/cwd" --detach --print 2>/dev/null)"
 ck "WIRE/launch/--print① · ★\`--print\` 一个请求都不发（纯：不起进程、不查状态）" "0" "$(WCALLS)"
@@ -1600,9 +1838,15 @@ ck "WIRE/launch/--print② · \`--print\` 吐的仍是**本机 tmux 编排**（�
 #   ⇒ 它当场把「配方里有 --launch」误报成 yes。**尺子枚举的集合 ≠ 标签说的集合**，本区第 N 次。
 ck "WIRE/launch/--print③ · **登记的分家**：\`--print\` 那条串里没有 --launch（真 exec 路有）" "no" \
    "$(printf '%s' "$WPRINT" | grep -qE -- '--launch([^a-zA-Z]|$)' && printf yes || printf no)"
-ck "WIRE/launch/--print④ · \`--print\` 也不出声降级（它没走那条路，说了就是假话）" "" \
+# 〔`F` 拍〕这一格从「不出声**降级**」变成「不出声，**一个字都不说**」——
+# 降级那句话已经不存在了，而 `--print` 那一支连后端都不问 ⇒ 它该是完全安静的。
+# ⚠ 要给它一份能答账号的后端：账号那条腿**在 `--print` 上也要走**（它解析出来的
+#   `config_dir` 逐字进黄金串）⇒ 不给的话这一格会读到「后端不可达」那一大段，
+#   而那**不是**「`--print` 吵了」，是整趟没跑起来。两者在这条断言上同形，必须分开。
+ck "WIRE/launch/--print④ · \`--print\` 那一趟 stderr **一个字都没有**（它没走后端那条路）" "" \
    "$(env -i PATH="$WTMP/bin:/usr/bin:/bin" HOME="$WTMP" CCM_SELF=/usr/local/bin/ccm \
-      CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent WIRE_SPOOL="$WTMP/spool" \
+      CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json WIRE_SPOOL="$WTMP/spool" \
+      CCM_DAEMON_BIN="$FAKED" \
       bash "$CCM" new --tmux=wire-d3 --cwd "$WTMP/cwd" --detach --print 2>&1 >/dev/null)"
 
 rm -rf "$WTMP"

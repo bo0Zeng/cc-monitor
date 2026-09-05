@@ -68,17 +68,35 @@ JSON
 #   （「ccm 自己不打 @ccm_sid」）射程不变。它也**不进流模式**（那才会往 tmux server 装 hook）。
 # ⚠ **单一事实源仍是那份 manifest**：它把 `<accts-dir>/accounts.json` 原样翻成帧形状，
 #   不在这里手抄一张账号表（抄了就有两份要同步）。
+# ★★ 🔴 〔`K-P2` `F` 拍 09-04；用@「**ccm不要管找不到, 统一走后端**」〕**它现在还要真的建会话。**
+#
+# 上面那段头注逐字写着「这份假 daemon **只答 `--list-accounts`**，一个字节都不写盘」——
+# 那句话今天**必须作废**：`--tmux` 建会话的本地退路删掉了，会话改由后端建。
+# 只答账号的话，`--launch` 拿到的是**空回帧** ⇒ ccm 读成「后端答不出」⇒ `exit 4`
+# ⇒ 本套件 29 条里 24 条连锁失败（现打过），而它们红的原因与它们要测的东西**毫无关系**。
+#
+# ⇒ 把 `--launch` 那一格委托给**仓里那份可复用的假后端** `e2e/fake-daemon.sh`：
+#   它按 `doc/IPC-PROTOCOL.md` 的 `create-or-attach` 形状真去 `tmux new-session` / 打标 / `send-keys`，
+#   顺序与 `remote-daemon-proto/src/control/launch.rs` 的 `CreateOrAttach` 臂逐条同序。
+#   ⚠ **不在这里再写一份**：写了就是同一件事两份实现（本套件治的正是那一族）。
+#   ⚠ 它调的 `tmux` 走 **PATH** ⇒ 落在本套件那个 `-L $SOCK` 的 shim 上，隔离面一格没变。
+# ⚠ **`@ccm_sid` 那条负向断言的射程仍然没变**：这份假后端写的是**意图**标记
+#   `@ccm_sid_expect`，与真 daemon 同形；**事实**标记 `@ccm_sid` 它一个字都不写
+#   （场景 3b 断言的就是「ccm 自己不打 `@ccm_sid`」）。
 mk_mirror_daemon() { # mk_mirror_daemon <落点>
-  cat > "$1" <<'MIRROR'
+  cat > "$1" <<MIRROR
 #!/bin/sh
-[ "$1" = --list-accounts ] || { cat >/dev/null; exit 0; }
-d=""; while [ $# -gt 0 ]; do [ "$1" = --accts-dir ] && d="$2"; shift; done
-printf '{"accountZeroAware":true,"acctsDir":"%s","count":0,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"%s/accounts.json","sharedStore":null,"updatedAt":null}\n' "$d" "$d"
-jq -c '.accounts[] | {configDir:(.configDir // null),email:"",exists:true,isDefault:(.isDefault // false),loggedIn:false,mode:"isolated",name:.name}' "$d/accounts.json" 2>/dev/null
+[ "\$1" = --launch ] && exec "$REPO/e2e/fake-daemon.sh" "\$@"
+[ "\$1" = --list-accounts ] || { cat >/dev/null; exit 0; }
+d=""; while [ \$# -gt 0 ]; do [ "\$1" = --accts-dir ] && d="\$2"; shift; done
+printf '{"accountZeroAware":true,"acctsDir":"%s","count":0,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"%s/accounts.json","sharedStore":null,"updatedAt":null}\n' "\$d" "\$d"
+jq -c '.accounts[] | {configDir:(.configDir // null),email:"",exists:true,isDefault:(.isDefault // false),loggedIn:false,mode:"isolated",name:.name}' "\$d/accounts.json" 2>/dev/null
 exit 0
 MIRROR
   chmod +x "$1"
 }
+# `FAKE_DAEMON_TMUX_SOCK` 与本套件的 `-L $SOCK` **给同一个名字**（理由见 `e2e/fake-daemon.sh` 头注）。
+export FAKE_DAEMON_TMUX_SOCK="$SOCK"
 mk_mirror_daemon "$BIN/kc1-mirror-daemon"
 export CCM_DAEMON_BIN="$BIN/kc1-mirror-daemon"
 
@@ -375,6 +393,9 @@ echo "===== 场景 7：账号解析走 daemon（K-C1）—— **真起会话**�
 mkdir -p "$ACCTS/z-daemon"
 cat > "$BIN/kc1-diff-daemon" <<STUB
 #!/bin/sh
+# 〔\`K-P2\` \`F\` 拍 09-04〕\`--launch\` 委托给仓里那份可复用的假后端（理由同 \`mk_mirror_daemon\`：
+# 会话改由后端建了，只答账号的话这两条场景连会话都起不来）。
+[ "\$1" = --launch ] && exec "$REPO/e2e/fake-daemon.sh" "\$@"
 if [ "\$1" = --list-accounts ]; then
   printf '%s\n' '{"accountZeroAware":true,"acctsDir":"x","count":1,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"x","sharedStore":null,"updatedAt":null}'
   printf '%s\n' '{"configDir":"$ACCTS/z-daemon","email":"","exists":true,"isDefault":true,"loggedIn":false,"mode":"isolated","name":"z"}'
@@ -399,13 +420,27 @@ CCM_DAEMON_BIN="$BIN/kc1-diff-daemon" \
 wait_probe || true
 ck "★ 场景7 · 真起会话：内层拿到的 CLAUDE_CONFIG_DIR 来自 **daemon**（不是 manifest）" \
    "CFG=$ACCTS/z-daemon" "$(grep '^CFG=' "$TMP/probe.log" | head -1)"
-# ★ 反向那一格：同一夹具、明示关掉 daemon ⇒ 必须落回 manifest 那份（逃生口在真机上也真的通）。
-#   只有正向那一格时，「永远走 daemon、逃生口失效」也能绿。
+# ★★ 🔴 反向那一格〔`K-P2` `F` 拍 09-04 换了对照物〕：**只有正向那一格时，「值恒是那个」也能绿。**
+#
+# 从前这里用 `CCM_NO_DAEMON=1`（「明示关掉 ⇒ 落回 manifest 那份」）。
+# 用@09-04「统一走后端」之后**没有 manifest 那份可落**了：关掉之后 `exit 4`，会话根本起不来
+# ⇒ 照旧写的话，这一格读到的是空串，而它标签说的是 provenance。
+# ⇒ 换成**换一份后端**：镜像那份（`kc1-mirror-daemon`，答的是 manifest 里那个 `$ACCTS/z`）
+#   vs 差异那份（`kc1-diff-daemon`，答 `$ACCTS/z-daemon`）—— **同一条代码路径，只有输入不同**，
+#   而 provenance 正是后者。⚠ 这比从前**更贴**：从前换的是「有没有后端」（两条不同的路径）。
 reset
-bash -c "cd '$TMP/proj' && CCM_NO_DAEMON=1 CCM_DAEMON_BIN='$BIN/kc1-diff-daemon' bash '$CCM' --tmux --account z --launcher CCMPROBE >/dev/null 2>&1 &"
+bash -c "cd '$TMP/proj' && CCM_DAEMON_BIN='$BIN/kc1-mirror-daemon' bash '$CCM' --tmux --account z --launcher CCMPROBE >/dev/null 2>&1 &"
 wait_probe || true
-ck "场景7 · 反向：CCM_NO_DAEMON=1 ⇒ 真起会话也落回 manifest 那份（诚实降级在真机上通）" \
+ck "★ 场景7 · 反向：**换一份后端**（答 manifest 那个目录）⇒ 真起会话拿到的值跟着换" \
    "CFG=$ACCTS/z" "$(grep '^CFG=' "$TMP/probe.log" | head -1)"
+# 🔴 补一格：**`CCM_NO_DAEMON=1` 不再是逃生口** —— 真机上它也只是把失败原因换了一格。
+#   这一格把「关掉后端会怎样」的今天的答案钉在**真 tmux** 上，免得下一个人照旧以为「落回文件」。
+reset
+CCM_NO_DAEMON=1 CCM_DAEMON_BIN="$BIN/kc1-diff-daemon" \
+  bash "$CCM" --tmux --account z --launcher CCMPROBE >/dev/null 2>"$TMP/nod.err"; _nod_rc=$?
+ck "★ 场景7 · CCM_NO_DAEMON=1 ⇒ 真机上也是**响亮失败**（rc=4，不再落回 manifest）" "4" "$_nod_rc"
+ck "★ 场景7 · 而且**一个会话都没建出来**（退路真的没了，不是「建了但没账号」）" "" \
+   "$(T ls -F '#{session_name}' 2>/dev/null)"
 
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="

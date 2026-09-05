@@ -33,9 +33,28 @@ echo "$TSV" | sed 's/^/  /'
 get_line() { echo "$TSV" | awk -F'\t' -v k="$1" '$1==k{print $2}'; }
 
 # 隔离环境：不受本机 CLAUDE_CONFIG_DIR/manifest/工作区污染（R11 教训）。
+#
+# ★★ 〔`K-P2` `F` 拍 09-04；用@09-04「**ccm不要管找不到, 统一走后端**」〕**两处跟着契约改**：
+#
+#  ① `CCM_DAEMON_BIN` 指到 `e2e/fake-daemon.sh`。
+#     账号解析从此**没有本地退路** ⇒ 不给后端的话这 12 条会**全部**死在 `exit 4` 上
+#     （现打过：那不是「判据红了」，是**整套跑不起来**）。
+#     ⚠ 这**不是**放宽断言：本套件测的一直是「`renderCli` 渲出来的那行，被真 `ccm` 解析后
+#     展开成什么」——「这台机器装没装后端」从来不是它要测的变量。
+#     照它自己头注那条纪律（「不显式隔离，开发者本机状态就会污染测试断言」）：
+#     从前它靠「没有后端 ⇒ 走本地那条」把这个变量拿掉，今天靠**自带一份后端**拿掉。
+#
+#  ② `CCM_ACCTS_MANIFEST` 从 `/nonexistent` 换成 `/nonexistent/accounts.json`。
+#     语义**一个字没变**（都是「这台机器没有账号库」，那个目录照旧不存在），
+#     变的是**形态**：`shared/ccm` 现在要把它拆成 `--accts-dir <目录>` 发给后端，
+#     而裸 `/nonexistent` 拆不出目录 ⇒ 那是**调用方给错了环境变量**（`die`，码 2），
+#     与「后端不可达」（码 4）是两类。生产上这个值恒是 `<目录>/accounts.json`
+#     （`shared/ccm` 的默认值逐字如此）⇒ 换成带目录的形态**更贴生产**，不是迁就判据。
+FAKE_DAEMON="$REPO/e2e/fake-daemon.sh"
 run_print() {
   env -u TMUX -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
-    CCM_ACCTS_MANIFEST=/nonexistent bash -c "$1 --print"
+    CCM_DAEMON_BIN="$FAKE_DAEMON" \
+    CCM_ACCTS_MANIFEST=/nonexistent/accounts.json bash -c "$1 --print"
 }
 
 echo

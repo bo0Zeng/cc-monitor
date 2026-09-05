@@ -186,6 +186,12 @@ cat >/dev/null
 exit 0
 STUB
 chmod +x "$W/bin/dm-acct"
+# ★★ 〔`K-P2` `F` 拍 09-04；用@「ccm不要管找不到, 统一走后端」〕**第二份后端 —— 反向那一对的新对照。**
+# 账号解析没有本地退路了 ⇒ 从前那一对「`CCM_NO_DAEMON=1` ⇒ 落回 manifest 那份」今天读到的是
+# `exit 4`，它证不了 provenance。而它要买的是「上一对不是恒真」——「值真的跟着后端的答案走」。
+# ⇒ 换一份**答另一套目录**的后端：同一条代码路径，只有输入不同 —— provenance 正是后者。
+sed "s|$W/acct-daemon-b|$W/acct-b|" "$W/bin/dm-acct" > "$W/bin/dm-acct2"
+chmod +x "$W/bin/dm-acct2"
 # ★ 自检必须问「daemon **实际答了什么**」，不是比两个路径字面量 —— 那两个字符串恒不相等,
 #   于是「把假 daemon 改成答与 manifest 相同的目录」这一刀在它眼里毫无变化 ⇒ 恒绿。
 #   （`e2e/ccm-cli.test.sh` 那节的同款自检 08-24 就是这么栽的，这里一起改。）
@@ -204,16 +210,26 @@ base_env CCM_DAEMON_BIN="$W/bin/dm-acct" bash "$CCM" --cwd "$CWD" --launcher env
 ck "★ A″ · **print 路**跑出来的是同一个值（两条路同源；只钉 exec 路时「print 退回读文件」会存活）" \
    "CLAUDE_CONFIG_DIR=$W/acct-daemon-b" \
    "$(base_env bash -c "$(cat "$W/a2.line")" 2>/dev/null | grep '^CLAUDE_CONFIG_DIR=')"
-# ★ 反向那一对：同一夹具、明示关掉 daemon ⇒ **两条路都**落回文件那份。
-#   只有正向那一对时，「永远走 daemon、逃生口失效」也能全绿。
-BASE_EXTRA=(CCM_NO_DAEMON=1)
-ck "A″ · 反向（exec 路）：CCM_NO_DAEMON=1 ⇒ 落回 manifest 那份" "CLAUDE_CONFIG_DIR=$W/acct-b" \
-   "$(base_env CCM_DAEMON_BIN="$W/bin/dm-acct" bash "$CCM" --cwd "$CWD" --launcher env --account b 2>/dev/null \
+# ★ 反向那一对〔`F` 拍 09-04 换了对照物〕：同一夹具、**换一份后端** ⇒ **两条路都**跟着换。
+#   只有正向那一对时，「值恒是那个」也能全绿。
+#   ⚠ 从前这里换的是「有没有后端」（`CCM_NO_DAEMON=1` ⇒ 落回文件）—— 那是**两条不同的代码路径**；
+#     今天换的是「后端说什么」（同一条路径，只有输入不同），而 provenance 正是后者。
+ck "A″ · 反向（exec 路）：**换一份后端** ⇒ 值跟着换" "CLAUDE_CONFIG_DIR=$W/acct-b" \
+   "$(base_env CCM_DAEMON_BIN="$W/bin/dm-acct2" bash "$CCM" --cwd "$CWD" --launcher env --account b 2>/dev/null \
         | grep '^CLAUDE_CONFIG_DIR=')"
-base_env CCM_DAEMON_BIN="$W/bin/dm-acct" bash "$CCM" --cwd "$CWD" --launcher env --account b --print \
+base_env CCM_DAEMON_BIN="$W/bin/dm-acct2" bash "$CCM" --cwd "$CWD" --launcher env --account b --print \
   > "$W/a2b.line" 2>/dev/null
-ck "A″ · 反向（print 路）：同样落回 manifest 那份" "CLAUDE_CONFIG_DIR=$W/acct-b" \
+ck "A″ · 反向（print 路）：同样跟着换（两条路同源）" "CLAUDE_CONFIG_DIR=$W/acct-b" \
    "$(base_env bash -c "$(cat "$W/a2b.line")" 2>/dev/null | grep '^CLAUDE_CONFIG_DIR=')"
+# 🔴 **补一格：`CCM_NO_DAEMON=1` 不再是逃生口** —— 它现在只是把失败原因换了一格。
+#   这一格是上面那一对的**第三条腿**：它把「关掉后端会怎样」这个问题的今天的答案钉住，
+#   免得下一个人照旧以为「关掉 ⇒ 落回文件」。
+BASE_EXTRA=(CCM_NO_DAEMON=1)
+base_env CCM_DAEMON_BIN="$W/bin/dm-acct" bash "$CCM" --cwd "$CWD" --launcher env --account b \
+  > "$W/a2c.out" 2> "$W/a2c.err"; _a2c_rc=$?
+ck "A″ · CCM_NO_DAEMON=1 ⇒ **响亮失败**（rc=4 唯一失败面，不再落回 manifest）" "4" "$_a2c_rc"
+ck "A″ · 而且说的是**那一格**（明示整条关掉 ≠ 找不到）" "yes" \
+   "$(grep -q 'CCM_NO_DAEMON=1（明示整条关掉 daemon）' "$W/a2c.err" && printf yes || printf no)"
 BASE_EXTRA=()
 
 echo
@@ -338,15 +354,27 @@ predicted_argv_nolauncher() {
 }
 ck "A′e · print↔exec 一致（靠 discovery 找到的 daemon）" "$AE" \
    "$(predicted_argv_nolauncher resume abc-123 --agent claude)"
-# 逃生口：整条关掉之后必须落回本地那条。
 # ★ 这一对**成对才有区分力**：只有上一条时，「永远走 daemon」也能绿；
 #   只有下一条时，「永远不走 daemon」也能绿（今天之前它就是这样）。
 # ⚠ **数组不能做命令前缀**：`BASE_EXTRA=(X=1) some_func` 不会把它带进去（首版这么写，
 #   这条当场红 —— 它其实钉住了「前缀没生效」这个事实，报得对）。照本文件既有写法：先赋值、后复位。
-BASE_EXTRA=(CCM_NO_DAEMON=1)
-ck "A′e · CCM_NO_DAEMON=1 整条关掉，落回本地" "ARGV|--resume abc-123" \
+#
+# ★★ 〔`K-P2` `F` 拍 09-04〕**对照物换了，理由写清楚。**
+#   从前这一条用 `CCM_NO_DAEMON=1`（「整条关掉 ⇒ 落回本地」）。用@09-04「统一走后端」之后
+#   那条命令**没有本地可落**了：账号那条腿先报 `exit 4`（它也没有退路）
+#   ⇒ 照旧写的话，这一条读到的是「整趟没跑起来」，而它标签说的是「argv 走本地那条」。
+#   ⇒ 换成**部署落点上那份「答得出账号、答不出 `--resolve`」的 stub**（`_null_daemon`）——
+#   那正是 `--resolve` 那笔**登记在案的静默欠账**唯一还够得着的局面，也是这一条一直要钉的东西。
+_null_daemon
+ck "A′e · 后端在、只是答不出 --resolve ⇒ argv 落回本地那条（登记在案的静默退路）" "ARGV|--resume abc-123" \
    "$(actual_argv_nolauncher resume abc-123 --agent claude)"
+# 🔴 补一格：**`CCM_NO_DAEMON=1` 不再是逃生口**（它现在只把失败原因换一格）。
+BASE_EXTRA=(CCM_NO_DAEMON=1)
+base_env bash "$CCM" resume abc-123 --agent claude --cwd "$CWD" > "$W/ae2.out" 2> "$W/ae2.err"; _ae2_rc=$?
 BASE_EXTRA=()
+ck "A′e · CCM_NO_DAEMON=1 ⇒ **响亮失败**（rc=4，不再落回本地）" "4" "$_ae2_rc"
+ck "A′e · 而且 argv 一个都没产出（不是「跑了本地那条」）" "" "$(grep '^ARGV|' "$W/ae2.out" | head -1)"
+cp "$W/bin/faux-daemon" "$W/home/.cc-monitor/bin/cc-monitor-remote"
 # `--print` 必须**纯**：同一条命令，装没装 daemon 吐出的字节必须逐字相同
 #（吐的是**配方**不是查找结果 —— 与 BUS_ID_RECIPE 同一条纪律）。
 #
@@ -360,20 +388,28 @@ BASE_EXTRA=()
 #            分不清是哪一半变了；
 #         ② 差别**只**落在 stderr 的那一句降级提示上（新增的一格：证明差别是有意的、
 #            且只在诊断面上，没有漏到命令串里）。
-ck "A′e · --print 的**命令串**不因机器上有没有 daemon 而变（配方不是查找结果）" "same" \
+# ★★ 〔`K-P2` `F` 拍 09-04〕**这一对的对照物也换了，而且它买到的东西变强了。**
+#   从前比的是「装了 daemon / `CCM_NO_DAEMON=1`」两趟的 `--print` 输出 ——
+#   而后者今天整趟 `exit 4`，两趟根本没得比。
+#   ⇒ 换成比「**部署落点那份答得出 `--resolve` / 答不出 `--resolve`**」两趟：
+#   这才是「配方吐的是**配方**、不是**查找结果**」的正题 ——
+#   配方里那段查找与调用是**执行时**才求值的，所以后端答什么都不该改动那条串一个字节。
+#   ⚠ 比从前严：从前那一对里「有没有 daemon」还会改动**账号**那一段（`config_dir` 是值），
+#   今天两趟的账号那一段完全相同 ⇒ 任何差异都只可能出在 resume 那一段上。
+ck "A′e · --print 的**命令串**不因后端答不答得出 --resolve 而变（配方不是查找结果）" "same" \
    "$(_p1="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>/dev/null)"
-      BASE_EXTRA=(CCM_NO_DAEMON=1)
+      _null_daemon
       _p2="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>/dev/null)"
-      BASE_EXTRA=()
+      cp "$W/bin/faux-daemon" "$W/home/.cc-monitor/bin/cc-monitor-remote"
       [ "$_p1" = "$_p2" ] && echo same || echo differs)"
-ck "A′e · 装没装 daemon 的差别**只**落在 stderr 那句降级提示上（K-C1 §0b：降级不许闷声）" "quiet|loud" \
+ck "A′e · 而且两趟 stderr **都是空的**（`--print` 是纯的：它一个请求都不发，也没什么可降级的）" "quiet|quiet" \
    "$(_e1="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>&1 >/dev/null)"
-      BASE_EXTRA=(CCM_NO_DAEMON=1)
+      _null_daemon
       _e2="$(base_env bash "$CCM" resume abc-123 --cwd "$CWD" --print 2>&1 >/dev/null)"
-      BASE_EXTRA=()
+      cp "$W/bin/faux-daemon" "$W/home/.cc-monitor/bin/cc-monitor-remote"
       printf '%s|%s' \
         "$([ -z "$_e1" ] && echo quiet || echo "noisy:[$_e1]")" \
-        "$(printf '%s' "$_e2" | grep -q '账号解析已降级' && echo loud || echo "silent:[$_e2]")")"
+        "$([ -z "$_e2" ] && echo quiet || echo "noisy:[$_e2]")")"
 # ⚠ `U-NP④`：这里原来是 `rm -f` —— 删掉之后**后面每一条真跑都会撞上身份前置检查**。
 #   改成恢复成"答不出"的那份（见本文件头部 `_null_daemon` 的理由）。
 _null_daemon
@@ -470,9 +506,15 @@ ck "agents= 行列出 claude 与 codex" "1" \
 # ⚠ `bad-hang` 也要**先**答完 `--list-accounts` 再挂〔`K-C1` 08-24〕：
 #   本组量的是「**resume 那条路**挂住时会不会自己停」，若账号那条也陪着挂，
 #   读数就变成两条路超时的**和**（3s+3s），量的东西就不是原来那个了。
+# ⚠ 〔`K-P2` `F` 拍 09-04〕**三份坏 daemon 现在都要先答完 `--list-accounts`。**
+#   上面那条纪律（`bad-hang` 要先答完账号再挂）原本只对挂住那一份成立，理由是
+#   「若账号那条也陪着挂，读数就变成两条路超时的**和**」。
+#   用@09-04「统一走后端」之后，账号那条**没有退路** ⇒ 不先答完的话它直接 `exit 4`，
+#   本组量到的就是「账号那条腿失败了」，**而它标签说的是 resume 那条腿坏掉时怎么兜**。
+#   ⇒ 同一条理由，射程从一份扩到三份。**这不是放宽：坏的仍然是 resume 那条腿。**
 { printf '#!/bin/sh\n'; _acct_prefix; printf 'sleep 300\n'; } > "$W/bin/bad-hang"; chmod +x "$W/bin/bad-hang"
-printf '#!/bin/sh\ncat >/dev/null\necho 不是JSON\n' > "$W/bin/bad-garbage"; chmod +x "$W/bin/bad-garbage"
-printf '#!/bin/sh\nexit 9\n'                       > "$W/bin/bad-broken";  chmod +x "$W/bin/bad-broken"
+{ printf '#!/bin/sh\n'; _acct_prefix; printf 'cat >/dev/null\necho 不是JSON\n'; } > "$W/bin/bad-garbage"; chmod +x "$W/bin/bad-garbage"
+{ printf '#!/bin/sh\n'; _acct_prefix; printf 'exit 9\n'; }                       > "$W/bin/bad-broken";  chmod +x "$W/bin/bad-broken"
 for _bad in hang garbage broken; do
   _t0=$(date +%s)
   _got="$(base_env CCM_DAEMON_BIN="$W/bin/bad-$_bad" bash "$CCM" resume abc-123 --agent claude \
@@ -489,8 +531,9 @@ done
 #   但不 quote 的展开**同时**会做路径名展开。而 daemon 可能是 PATH 上捡到的第三方二进制
 #   （见 ccm 里 `DAEMON_BIN_RECIPE` 的查找次序）⇒ 这两条性质值得逐个钉死。
 mkdir -p "$W/globdir" && touch "$W/globdir/aaa" "$W/globdir/bbb"
-printf '#!/bin/sh\ncat >/dev/null\nprintf %%s "{\\"command\\":\\"%s/argvstub GLOB *\\"}"\n' "$W/bin" \
-  > "$W/bin/daemon-glob"; chmod +x "$W/bin/daemon-glob"
+{ printf '#!/bin/sh\n'; _acct_prefix   # 〔`F` 拍〕账号那条腿没退路了 ⇒ 每份假 daemon 都要先答完它
+  printf 'cat >/dev/null\nprintf %%s "{\\"command\\":\\"%s/argvstub GLOB *\\"}"\n' "$W/bin"
+} > "$W/bin/daemon-glob"; chmod +x "$W/bin/daemon-glob"
 ck "A′g · daemon 命令里的 \`*\` **不许**被 cwd 的文件名改写" "ARGV|GLOB *" \
    "$(base_env CCM_DAEMON_BIN="$W/bin/daemon-glob" bash "$CCM" resume abc-123 --agent claude \
         --cwd "$W/globdir" 2>&1 | grep '^ARGV|' | head -1)"
@@ -560,9 +603,16 @@ _h3_rc() { shift; PATH="$W/h3/pathbin:$W/bin:$PATH" HOME="$W/h3/home" \
         TMUX=/faux/socket,1,0 \
         CCM_ACCTS_MANIFEST="$W/accounts.json" "$@" \
     bash "$CCM" resume abc-123 --agent claude --cwd "$CWD" >/dev/null 2>&1; printf '%s' "$?"; }
-ck "A′h · 一个都没有 ⇒ **响亮失败**（rc=2，不是悄悄没有身份）" "2" "$(_h3_rc none)"
-ck "A′h · 一个都没有 + CCM_NO_DAEMON=1（明示放弃身份）⇒ 才落回本地那条" \
-   "ARGV|--resume abc-123" "$(_h3 none CCM_NO_DAEMON=1)"
+# ★★ 〔`K-P2` `F` 拍 09-04〕**这两格的结局又变了一次，同样不是判据放宽。**
+#   用@09-04「ccm不要管找不到, 统一走后端」之后：
+#     · 「一个都没有」的码从 **2** 变 **4** —— 根因（这台机器上没有后端）与账号那条腿、
+#       建会话那条腿是同一个，三条路从此走**同一个**失败面（`backend_unreachable`）。
+#       给三个码的话，调用方要维护三份判法。
+#     · `CCM_NO_DAEMON=1` **不再是逃生口**：账号那条腿也没有退路了，明示关掉之后照样 `exit 4`
+#       ——它只把失败原因换了一格。⇒ 那一条从「落回本地」翻成「同一个码、说的是那一格」。
+ck "A′h · 一个都没有 ⇒ **响亮失败**（rc=4 唯一失败面，不是悄悄没有身份）" "4" "$(_h3_rc none)"
+ck "A′h · 一个都没有 + CCM_NO_DAEMON=1 ⇒ **照样 rc=4**（它不是逃生口，只是换了一格原因）" \
+   "4" "$(_h3_rc none CCM_NO_DAEMON=1)"
 
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="
