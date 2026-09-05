@@ -64,6 +64,34 @@ const TMUX_LS_FMT_FIELDS: usize = 6;
 /// 处置那一半分别是：`list_remote_tmux` 装 [`tmux_tab_underflow`]（K-R12 `J1`）、
 /// `build_guarded_tmux_cmd` 那条门用 `K-R23` 落的 `CCM_GUARD_UNPARSABLE`。
 /// **预防（本条）与处置（那两条）是两件事，缺一不可，且必须能共存。**
+///
+/// # ★★ K-R12 下一拍（09-04）：**这一份为什么留在这里** —— 两条路各自的论据
+///
+/// daemon 那两份上一拍是三份里的两份，本拍已经归位到**一个家**
+/// （`remote-daemon-proto/src/common/tmux_utf8.rs`，`control/` 与 `observe/` 两层各自 `use` 它，
+/// 编译器兜住、漂不了）。本份是**第三份**，它跨的是二进制，两条路都量过：
+///
+/// - **乙 · 放进某个已有的 `*-core` 共享 crate**（那是本仓治「五份逐字节相同」的成方，
+///   `shell-quote-core` 的头注逐字写着「两个二进制不共享源码树 ⇒ 共享 crate 是唯一载体」）。
+///   逐个对职责，**七个都装不下**，其中两条是硬的、不是口味：
+///   ① `guard-core` 在 daemon 那侧只是 `[dev-dependencies]` ⇒ 生产段**引不到**它，
+///      而本 const 恰恰长在生产段（结构性不可能，不是取舍）；
+///   ② `gate-core` 的边界头注逐字是「**本 crate 只判，不取**」，而「怎么起 tmux」正是**取**那一侧
+///      （它自己接着写：把取值塞进来「共享当场破掉」）；
+///   ③ `shell-quote-core` 头注逐字「**本 crate 只剩这一件事**」，而它缩到只剩一件的理由
+///      逐字是「那批东西**不是共享的，是没处放的**」—— 往它塞一个无关口径，
+///      正是 `P4b` 刚治完的那个病复发；
+///   ④ `branch-core` / `usage-core` / `acct-core` / `creds-core` 是各自的域（分叉记录变换 /
+///      用量 / 账号 / 凭据），职责上不沾。
+///   ⚠ **新开一个 crate 不在本拍的选项里**（要动 `src-tauri/Cargo.toml` 的 workspace，PM 未裁）。
+/// - **甲 · 留在这里 + 一条跨仓对拍**（本拍选它）。它不是妥协，有两条正面理由：
+///   ① 本仓对**同一族**的同一个问题已经这么解过两次，而且就在本文件里：
+///      `tmux_ls_fmt_double_write_point_stays_in_sync` 与
+///      `observation_tokens_double_write_point_stays_in_sync` —— 那两条钉的
+///      `TMUX_LS_FMT`、`OBS_*` 与本 const **读的是同一条 `tmux ls` 输出**。
+///      同族的第三个口径用同一种机制钉，读的人对得起来；
+///   ② 对拍的作用域**说得清**：它读两棵树、跑在 monitor 那格 cargo 里
+///      （逐字见 `utf8_client_kou_jing_has_one_home_and_this_side_matches_it` 的头注）。
 const UTF8_CLIENT_FLAG: &str = "-u";
 
 /// ★★ **K-R12 `J1`：段数下溢 —— 「拆不出段」不许被当成好数据。**
@@ -79,8 +107,11 @@ const UTF8_CLIENT_FLAG: &str = "-u";
 /// 六个 TAB **全部**消失，段数必然从 6 塌到 1。**没有「内容被改写了但 TAB 还在」的中间态**
 /// ⇒ 一条判据同时盖住「分隔符被吞」与「内容被改写」两半，**格式串一个字节不用动**。
 ///
-/// ⚠ 同一口径在 daemon 的 `observe/watcher.rs` 与 `control/gate.rs` 各另有一份 ——
-/// 跨仓 + 那边 `layering_guard` 钉死 `control/` 不许引用 `observe/`。**三份口径必须一致。**
+/// ⚠ **K-R12 下一拍（09-04）订正这条边界**：daemon 那两份已经归位到**一个家**
+/// （`remote-daemon-proto/src/common/tmux_utf8.rs::tab_underflow`）——
+/// 上一拍这里写的「各另有一份」今天只剩**跨仓那一份**（就是本函数）。
+/// 两侧同形由 `utf8_client_kou_jing_has_one_home_and_this_side_matches_it` 对拍着
+/// （它把本函数的**函数体**当成被比的东西，不是名字）。
 fn tmux_tab_underflow(line: &str, expected: usize) -> bool {
     line.split('\t').count() < expected
 }
@@ -1382,6 +1413,170 @@ mod tests {
         assert!(
             !prod.contains("ls {UTF8_CLIENT_FLAG}") && !prod.contains("ls -u"),
             "`-u` 被放到了 `ls` 后面（实测 rc=1 + unknown flag）"
+        );
+    }
+
+    /// daemon 侧那个「一个口径一个家」的家（相对**仓根**）—— 跨仓对拍的被读对象。
+    ///
+    /// 单一落点：路径写死在这里一处，daemon 再搬家只改这一行。
+    const DAEMON_KOU_JING_HOME: &str = "remote-daemon-proto/src/common/tmux_utf8.rs";
+
+    /// ★★ **K-R12 下一拍（09-04）：「同一个口径只有一个家 + 另一侧引用它或有对拍」——
+    /// 本 const 走的是**对拍**那一支。**
+    ///
+    /// # 这条钉的是**关系**，不是词表
+    ///
+    /// 三件事一起断言，缺一件就只买到一角：
+    ///
+    /// | # | 断的什么 | 缺了它会怎样 |
+    /// |---|---|---|
+    /// | ① | 本侧**只有一个**声明（本文件那一处，全 monitor 树无第二处） | 本侧自己先分了两份，对拍再准也没用 |
+    /// | ② | 本侧那个值与 daemon 家里那一行**逐字相等**（值是从本侧 const **现取**的） | 两侧漂开而两边都不红 —— 正是本件治的那个形状 |
+    /// | ③ | daemon 家里**两种表示都还在** | 有人把家「收口」成一种表示 ⇒ 另一类调用点静默失效 |
+    ///
+    /// ②③ 都是**读两棵树**才验得了的性质：两个 crate 不共享源码树，共用 `const` 拿不到
+    /// （七个 `*-core` 的职责逐条都装不下，论据在 `UTF8_CLIENT_FLAG` 的头注里）。
+    ///
+    /// # ⚠ 作用域，逐条说清（`brief` 12：报一个数就要说清尺子）
+    ///
+    /// - **在哪跑**：monitor 那格 cargo（`cargo test --workspace --lib`）。
+    ///   daemon 自己那格看不见它 —— 但门禁两格都跑，所以任一侧漂开都会在门禁里红。
+    /// - **读了哪两棵树**：本侧 `include_str!("tmux.rs")`（编译期，同一半）+
+    ///   daemon 侧 [`DAEMON_KOU_JING_HOME`]（**运行期** `read_to_string`）。
+    /// - 🔴 **为什么 daemon 那一半刻意用运行期读、而不是 `include_str!`**：
+    ///   `include_str!` 会新长出一条**跨半边的编译期边**，而那种边由
+    ///   `cross_half_edge_registry::CROSS_EDGES` 逐条登记着（多一条就红），
+    ///   **那个文件不在本拍写区**。运行期读在本仓是**既有做法**、不是绕道：
+    ///   `cross_half_edge_registry` 自己就是运行期遍历 daemon 那棵树的
+    ///   （`both_halves()` 扫 `remote-daemon-proto/src`），`scanning_guard_registry::PENDING`
+    ///   里也直接列着 daemon 的文件。而且它在该登记表关心的那一维上**更轻**：
+    ///   daemon 换布局时这里是一句说得清的运行期失败，不是 `cargo test` 编不过。
+    ///   ⚠ 代价如实写下：这条边因此**不出现在** `CROSS_EDGES` 里。
+    ///   PM 若要它以编译期形态登记，改法是**两处一起动、不许只动一处**：
+    ///   ① 把下面那句运行期读换成编译期读（`include_str!` 配 `concat!` / `env!` 拼路径，
+    ///      形状照本文件已有的 `daemon_watcher_src` 那个单一落点宏）；
+    ///   ② 同轮在 `CROSS_EDGES` 里加一条 `monitor→daemon` 的登记
+    ///      （读者 `src-tauri/src/tmux.rs` · 被读 `remote-daemon-proto/src/common/tmux_utf8.rs` ·
+    ///      理由「跨轨对拍：口径的家在对面，本侧那一份必须与它逐字相等」）。
+    ///   🔴 只动 ① 会让那张表的条数当场对不上 —— 它是**两个方向都查**的。
+    /// - **不管什么**：它不证明「那个旗真的被走到了」（「盘上有 ≠ 被走到」）。
+    ///   行为那一半的死值在 `evidence/K-R12-deathvalue.md`（真 tmux 3.4 私有 socket）。
+    #[test]
+    fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
+        let prod = guard_core::production_code(include_str!("tmux.rs"));
+        guard_core::assert_no_test_code("tmux.rs", &prod);
+
+        // ── ① 本侧只有一个声明 ────────────────────────────────────────────
+        let decl_prefix = format!("{}: &str =", "UTF8_CLIENT_FLAG");
+        guard_core::find_pinned(&prod, &decl_prefix).unwrap_or_else(|e| {
+            panic!("本文件生产段里 `{decl_prefix}` 不是恰好一处：{e}")
+        });
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级 = 仓根");
+        let others = guard_core::scan_tree!(&root.join("src-tauri/src"), &["rs"]);
+        assert!(
+            others.len() >= 60,
+            "monitor 树只采到 {} 个 .rs —— 遍历坏了，「无第二处」此刻是空转的",
+            others.len()
+        );
+        let dup: Vec<String> = others
+            .iter()
+            .filter(|(_, raw)| guard_core::production_code(raw).contains(&decl_prefix))
+            .map(|(p, _)| p.to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            dup.is_empty(),
+            "monitor 侧有**第二个** `{decl_prefix}`：{dup:?}\n\
+             ⇒ 从此两份靠人对齐。正解是引用本文件那一处。"
+        );
+
+        // ── ② 与 daemon 那个家逐字相等（值现取，不写死） ──────────────────
+        let home_path = root.join(DAEMON_KOU_JING_HOME);
+        let home = std::fs::read_to_string(&home_path).unwrap_or_else(|e| {
+            panic!(
+                "读不到 daemon 侧那个家 {home_path:?}：{e}\n\
+                 它是 K-R12 下一拍建的「一个口径一个家」。文件被搬了 ⇒ 改本文件那个常量；\
+                 家被删了 ⇒ 那个口径退回三份靠人对齐，先回件文件。"
+            )
+        });
+        assert!(
+            home.len() > 2_000,
+            "daemon 那个家只有 {} 字节 —— 没读到内容，下面的对拍是空转的",
+            home.len()
+        );
+        let want_flag = format!("{}: &str = {UTF8_CLIENT_FLAG:?};", "UTF8_CLIENT_FLAG");
+        assert!(
+            home.contains(&want_flag),
+            "跨仓漂移：本侧的旗是 {UTF8_CLIENT_FLAG:?}，而 daemon 那个家里找不到 `{want_flag}`。\n\
+             两侧漂开时**两边都不会因为别的判据变红** —— 那正是本件立件时的那个形状。"
+        );
+        // 段数下溢那个谓词是同一族的第二个口径：比的是**函数体**，不是名字。
+        let body = format!("{}.count() < expected", ".split('\\t')");
+        guard_core::find_pinned(&prod, &body)
+            .unwrap_or_else(|e| panic!("本侧那个下溢谓词的体不是恰好一处：{e}"));
+        assert!(
+            home.contains(&body),
+            "跨仓漂移：下溢谓词的体两侧不一致（本侧是 `{body}`，daemon 家里找不到）。\n\
+             口径一致本身就是要买的东西：一侧改成 `!=` 就会开始误伤合法内容。"
+        );
+
+        // ── ③ daemon 家里两种表示都还在 ───────────────────────────────────
+        // ⚠ 锚点只钉「那里有一个声明」（`const <名>:`），**不钉类型写法** ——
+        //   带类型标注的锚点实测会被 `(&'static str, &'static str)` 这种合法写法误伤，
+        //   而它印出来的话是「家里少了 env 形」：一句指向完全错误方向的诊断。
+        //   ⚠ 同时**刻意收在 `:` 上**：收在标识符上时 `const <名>X:` 会被裸 `contains`
+        //   当成命中（「匹配单位比事实小」那一族），于是「家改名了」这一形看不见。
+        // 表里存**标识符**，锚点现拼 —— 反向自检那份「改了名」的夹具必须从标识符派生，
+        // 从锚点文本派生的夹具会跟着锚点一起变松，于是「锚点变松了」这件事自己看不见
+        // （daemon 那侧的同职判据实测栽过这一形，头注里逐字记着）。
+        let anchor = |ident: &str| format!("const {ident}:");
+        for (label, ident) in [
+            ("argv 形（旗）", "UTF8_CLIENT_FLAG"),
+            ("env 形", "UTF8_CLIENT_ENV"),
+        ] {
+            let needle = anchor(ident);
+            assert!(
+                home.contains(&needle),
+                "daemon 那个家里少了**{label}**（找不到 `{needle}`）—— \
+                 「一个口径两种表示」被收口成一种了，而两类调用点各需要一种：\
+                 少了哪一种，那一类调用点就静默退回非 UTF-8 客户端。"
+            );
+            // 反向自检（③ 那一半的牙）：一个**改了名**的声明不许算命中。
+            // 没有这一格，③ 就是「那个大文件里恰好有这个串」式的恒真。
+            let renamed = anchor(&format!("{ident}X"));
+            assert!(
+                !format!("pub {renamed} (&str, &str) = (\"x\", \"y\");\n").contains(&needle),
+                "③ 的锚点匹配单位比事实小：`{renamed}` 这样一个改了名的声明也算成 `{needle}` 在"
+            );
+        }
+        // 本侧**不许**长出 env 形：跨 SSH 这一侧没有本地 `Command` 可挂 env，
+        // 走 `request_env` 要赌对端 `AcceptEnv`（不认就静默拒绝）⇒ 拿一条静默失效治另一条。
+        //
+        // ⚠ **必须先剥注释再扫**：本文件的头注里逐字讨论过 `LC_ALL` 那条路为什么不走
+        //   （那是**警告**，不是用法），不剥就当场误报 —— 本仓「判据数到注释」已栽过三次。
+        let code = guard_core::strip_comment_lines(&prod);
+        assert!(
+            code.len() > 5_000,
+            "剥注释之后只剩 {} 字节 —— 剥过头了，下面那条在空转",
+            code.len()
+        );
+        assert!(
+            !code.contains("LC_ALL"),
+            "monitor 这一侧长出了 env 形 —— 跨 SSH 那两处该用旗，理由在 `UTF8_CLIENT_FLAG` 头注"
+        );
+
+        // ── 反向自检：上面那两条 `contains` 真的分得清 ────────────────────
+        // 没有这一格，② 就可能是「随便什么串都在那个大文件里」式的恒真。
+        let drifted = format!("{}: &str = \"{UTF8_CLIENT_FLAG}x\";", "UTF8_CLIENT_FLAG");
+        assert!(
+            !home.contains(&drifted),
+            "喂一个**漂了的**值居然也在 daemon 那个家里命中（`{drifted}`）—— \
+             ② 那条对拍此刻恒真，它什么都没在守"
+        );
+        assert!(
+            !home.contains(&format!("{}.count() != expected", ".split('\\t')")),
+            "daemon 家里同时存在 `!=` 那一版下溢谓词 —— 口径不一致，且 `!=` 会误伤合法内容"
         );
     }
 
