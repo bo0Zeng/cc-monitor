@@ -38,6 +38,79 @@ use std::process::{Command, Stdio};
 /// 命令级错误：`(code, message)`。与 [`super::launch`] 同型。
 pub(crate) type CmdErr = (&'static str, String);
 
+/// ★★ **K-R12（09-04）：`-u` —— 让这一侧的 tmux 客户端始终按 UTF-8 输出。**
+///
+/// # 病：**格式串里的 TAB 会被 tmux 自己吃掉**，而且完全静默
+///
+/// tmux 对**输出通道**做 sanitize：客户端不是 UTF-8 时，`display-message -p` /
+/// `list-sessions -F` 打出来的**控制字符与非 ASCII 一律换成 `_`** —— 我们靠来分列的
+/// 那个真 TAB（0x09）首当其冲。沙箱实测（`evidence/K-R12-locale-lab.md`，容器内
+/// tmux 3.4 私有 socket，`od -c` 读字节）：POSIX 客户端下 `1\t/tmp/x` 变成 `1_/tmp/x`。
+/// ⇒ `line.split('\t')` 切不出段 ⇒ 本模块两个解析点全部拿到垃圾，**没有任何日志、rc 仍是 0**。
+///
+/// # 🔴 判「是不是 UTF-8 客户端」的规则**不问 glibc**，所以配置推不出结果
+///
+/// 实测（`lab2.sh` E11，同一台 server、只换客户端那一侧）：tmux 取
+/// `LC_ALL` → `LC_CTYPE` → `LANG` 的**第一个非空值**，做一次**大小写不敏感的
+/// `UTF-8`/`UTF8` 子串匹配**，`setlocale` 那条路它根本走不到。于是：
+/// `zz_ZZ.UTF-8`（locale 压根不存在）**干净**、`utf8`（连点都没有）**干净**，
+/// 而 `zh_CN.GB18030` **脏**、`C` **脏**、`LC_ALL=''`（设了但空）**脏**、什么都不设 **脏**。
+/// ⇒ **「我们设没设对」这个问题的答案与结果之间隔着一条不直观的子串规则** ——
+/// 任何「把 daemon 的 `LC_ALL`/`LANG` 打进日志」的判据都在量错的东西。
+///
+/// # 为什么这两处用 `-u` 而不是 `.env("LC_ALL", "C.UTF-8")`
+///
+/// 两种写法都能让客户端变成 UTF-8（实测都干净），但代价不对称。本模块这两处选 `-u`，
+/// 五条理由（前两条是它相对 `LC_ALL` 的优势，后三条是「为什么这里不适用 `LC_ALL` 的优势」）：
+///
+/// 1. **`-u` 不依赖任何继承来的 env。** 实测：`env -i`（环境全清）+ `-u` 仍然干净；
+///    `env -i` 不加 `-u` 就脏。而 daemon 的 env **恰恰是我们最不控制的那个** ——
+///    它由 sshd/systemd/launchd 起，被剥干净是常态。
+/// 2. **`-u` 与它保护的那个格式串在同一个 `.args([…])` 表达式里**：格式串与它的编码口径
+///    一起被读到。`.env(…)` 是 builder 上另一步，重构时最容易被搬开而没人发觉。
+/// 3. **这两处没有分支多重性。** `LC_ALL` 在 `observe/watcher.rs` 那两处胜出的唯一理由是
+///    「一行 `.env` 盖住 `sh -c` 脚本里的两条 `exec` 分支」；这里是 argv 直传、一处就是一处，
+///    那条优势在这里不存在。
+/// 4. **与 monitor 侧同形。** `src-tauri/src/tmux.rs` 那两处跨 SSH 的也用 `-u`
+///    （那边没有本地 `Command` 可挂 env）。`tmux_daemon_gate_guard` 钉的是两侧那道门等价，
+///    两侧用同一种机制，读的人对得起来。
+/// 5. **位置是硬的**：`-u` 必须在子命令**之前**。实测 `tmux display-message -u -p …`
+///    是 `rc=1 + command display-message: unknown flag -u` ⇒ **放错位置是响的，不是静默的**。
+///
+/// ⚠ **`-u` 单独不够。** 它自己的失效面是「某一处忘了插」，而那是静默的
+/// ⇒ 本模块两个解析点同时装了 [`tab_underflow`]（K-R12 的 `J1`）。
+/// **预防（`-u`）与处置（`J1`）是两件事，缺一不可。**
+const UTF8_CLIENT_FLAG: &str = "-u";
+
+/// ★★ **K-R12 `J1`：段数下溢 —— 「拆不出段」不许长得像「字段是空的」。**
+///
+/// > 按 TAB 切 tmux 的打印通道，切出的段数 **< 预期 N** ⇒ 出声 **+ 拒绝把这行当好数据**。
+///
+/// # 为什么判据是「下溢」而不是「恰好 N」
+///
+/// 沙箱实测（`lab2.sh` E12）：**合法内容只会把段数推高，永远不会推低** ——
+/// 会话名里的真 TAB 被 tmux 转义成字面 `\t` 两个字符（`new-session -s $'aa\tbb'` 之后那行
+/// 仍是 6 段），而 `pane_current_path` 里的真 TAB 会切出 7 段。
+/// ⇒ `< N` **零误报**；`!= N` 会误伤（见本文件 [`probe`] 与 `tmux.rs::parse_tmux_ls` 头注）。
+///
+/// # 为什么下溢是**完备**检测器
+///
+/// sanitize 是**每客户端全有全无**的（实测：同一台 server、同一条命令，只换客户端那一侧，
+/// 输出要么整条干净、要么整条被改写）⇒ 通道一脏，格式串里的 TAB **全部**消失
+/// ⇒ 段数必然从 N 塌到 **1**。**不存在「内容被改写了但 TAB 还在」的中间态**
+/// ⇒ 这一条判据同时盖住「分隔符被吞」与「内容被改写」两半，而且**格式串一个字节不用动**。
+///
+/// # ⚠ 为什么它在本文件里又写了一份
+///
+/// `layering_guard` 钉死 **`control/` 不许引用 `observe/`**（「反向一条都不许」）。
+/// 同样的判据在 `observe/watcher.rs` 与 monitor 的 `src-tauri/src/tmux.rs` 各有一份 ——
+/// 那不是抄漏，是层界与仓界逼出来的。**三份的口径必须一致**：`< N` ⇒ 出声 + 丢这行。
+/// 🔴 今天靠人对齐；`K-R12` 的 `J2`（登记表：凡按 TAB 切 tmux 输出的地方都要过同一口径，
+/// 多一处红、少一处也红）**尚未装**，PM 那边还没裁。
+fn tab_underflow(line: &str, expected: usize) -> bool {
+    line.split('\t').count() < expected
+}
+
 /// 探测回来的两样东西。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Probed {
@@ -76,8 +149,14 @@ pub(crate) struct Probed {
 /// `@ccm_sid` 空 = 那个会话不是 `ccm` 起的（或还没绑 sid）—— 如实回空串，不猜。
 pub(crate) fn list_sessions() -> Result<Vec<(String, String, String)>, CmdErr> {
     const LIST_FMT: &str = "#{session_name}\t#{session_id}\t#{@ccm_sid}";
+    /// `LIST_FMT` 的列数 —— [`tab_underflow`] 的 N。三列都不可能含真 TAB
+    /// （会话名被 tmux 转义成字面 `\t`；`session_id` 恒是 `$<数字>`；
+    /// `@ccm_sid` 的字符集在 `launch::parse_request` 里收到了 `[A-Za-z0-9_-]`）
+    /// ⇒ 这里**下溢与过溢都不会由合法内容触发**，下溢只可能是通道被改写。
+    const LIST_FMT_FIELDS: usize = 3;
     let out = Command::new("tmux")
-        .args(["list-sessions", "-F", LIST_FMT])
+        // K-R12：`-u` 必须在子命令**之前**（放后面是 rc=1 的响错，见 `UTF8_CLIENT_FLAG`）。
+        .args([UTF8_CLIENT_FLAG, "list-sessions", "-F", LIST_FMT])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
@@ -92,6 +171,17 @@ pub(crate) fn list_sessions() -> Result<Vec<(String, String, String)>, CmdErr> {
     Ok(String::from_utf8_lossy(&out.stdout)
         .lines()
         .filter_map(|line| {
+            // K-R12 `J1`：段数下溢 ⇒ 通道被改写 ⇒ **出声 + 整行不当好数据**。
+            // 空行不算下溢（它本来就该被下面那句 `name.is_empty()` 丢掉，不是病）。
+            if !line.trim().is_empty() && tab_underflow(line, LIST_FMT_FIELDS) {
+                tracing::warn!(
+                    "CCM_TMUX_UNPARSABLE list-sessions 切出 {} 段 < {LIST_FMT_FIELDS} —— \
+                     tmux 打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 变 `_`），\
+                     整行不当好数据。原样回包：{line:?}",
+                    line.split('\t').count()
+                );
+                return None;
+            }
             let mut it = line.split('\t');
             let name = it.next()?.trim();
             if name.is_empty() {
@@ -116,6 +206,18 @@ pub(crate) fn list_sessions() -> Result<Vec<(String, String, String)>, CmdErr> {
 /// （那边的 `build_guarded_tmux_cmd` 头注写着「**总是**在格式串里带 `#{session_windows}`」）。
 const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}";
 
+/// `PROBE_FMT` 的列数 —— [`tab_underflow`] 的 N。
+///
+/// 🔴 **顺带订正一条上一拍写错的话**：`K-R12` 的 `§5.4` 说
+/// 「`gate.rs` 那条 `it.next().is_some()` 在多出一段时静默丢掉整个会话 —— 一个带 TAB 的
+/// 目录名就能触发」。**在本处不成立**：`PROBE_FMT` 里根本没有路径列
+/// （`pane_current_path` 只在 `TMUX_LS_FMT` 里），三列各自的取值域都排除了真 TAB
+/// （`$<数字>` / `[A-Za-z0-9_-]` / 正整数）。
+/// ⇒ 本处的**过溢只可能来自「有人手工把 `@ccm_sid` 设成含 TAB 的值」或格式串被改**，
+/// 那两种都该拒 ⇒ 既有的 fail-closed 处置是对的，**本拍不动它**。
+/// 那条误伤是真的、但只在 `src-tauri/src/tmux.rs::parse_tmux_ls` 那一处（见该处头注）。
+const PROBE_FMT_FIELDS: usize = 3;
+
 /// 跑一次 `tmux display-message -p -t <target> '<fmt>'` 并把 stdout 取回来。
 ///
 /// `Ok(None)` = 目标不存在（输出为空，见模块头注：**不看退出码**）。
@@ -126,7 +228,8 @@ const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}";
 /// 调用方必须自己挡（`identity_tag::pane_is_safe` 就是那道门）。
 pub(crate) fn probe(target: &str) -> Result<Option<Probed>, CmdErr> {
     let out = Command::new("tmux")
-        .args(["display-message", "-p", "-t", target, PROBE_FMT])
+        // K-R12：`-u` 必须在子命令**之前**（`display-message -u -p` 是 rc=1 的响错）。
+        .args([UTF8_CLIENT_FLAG, "display-message", "-p", "-t", target, PROBE_FMT])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
@@ -139,6 +242,23 @@ pub(crate) fn probe(target: &str) -> Result<Option<Probed>, CmdErr> {
     let text = String::from_utf8_lossy(&out.stdout);
     let line = text.trim_end_matches(['\n', '\r']);
     if line.is_empty() {
+        return Ok(None);
+    }
+    // ★ K-R12 `J1`：**段数下溢 ⇒ 通道被改写**，出声 + 拒绝把这行当好数据。
+    //
+    // 🔴 不装这一条的后果，与 `K-R23` 在 monitor 侧治的是**同一个形状**：通道脏时
+    // `session_id` 会拿到**整行**、`ccm_sid` 拿到**空串** ⇒ `admit` 报出来的话是
+    // 「远端 `@ccm_sid` 也没设」—— 与「远端真的没设」**逐字相同**。
+    // 两件不同的事共用一个读数，下一个人还得把成因重查一遍。
+    // ⇒ 处置沿用既有的 `Ok(None)`（= 目标不存在，fail-closed，`admit` 回 `no_such_session`），
+    //   **但话不一样**：这一条 warn 里带原样回包，一眼看得见远端到底吐了什么。
+    if tab_underflow(line, PROBE_FMT_FIELDS) {
+        tracing::warn!(
+            "CCM_TMUX_UNPARSABLE display-message 切出 {} 段 < {PROBE_FMT_FIELDS} —— \
+             tmux 打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 变 `_`），\
+             判成「探不到」而不是「@ccm_sid 没设」。原样回包：{line:?}",
+            line.split('\t').count()
+        );
         return Ok(None);
     }
     // 逐段切。**多出一段就是格式串被人动过了**，宁可判不存在也不猜。
@@ -239,6 +359,72 @@ pub(crate) fn admit_destructive(name: &str, target: &str) -> Result<String, CmdE
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ★★ **K-R12：本模块两处起 tmux 的地方，`-u` 必须在子命令之前 —— 一处都不许漏。**
+    ///
+    /// # 为什么这一条只能是「扫源码」，以及它守不住什么
+    ///
+    /// 本模块的两处是 **argv 直传**（`Command::new("tmux")`），没有 builder 能把命令行取回来，
+    /// 也没有办法在不污染整个测试进程 `PATH` 的前提下把它指向一个假 tmux
+    /// （`Command::new` 走进程级 `PATH`，`std::env::set_var` 会波及并行跑的别的测试）。
+    /// ⇒ **行为那一半的死值不在 cargo 里**，在 `evidence/K-R12-deathvalue.md`：
+    /// 同样这两条 argv 对真 tmux 3.4 私有 socket 打过，改前 `段数=1`、改后 `段数=3`。
+    ///
+    /// 🔴 **本条守的是「别漏、别搬错位置」，不是「它真的生效了」**（「盘上有 ≠ 被走到」）。
+    /// 位置这一维值得单独钉：`-u` 放到子命令**后面**是 `rc=1 + unknown flag -u`
+    /// （实测），而本模块两处都**刻意不看退出码** ⇒ 那个响错在这里会退化成
+    /// 「一个会话都没有」/「探不到」，**又变回一次静默失效**。
+    #[test]
+    fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
+        let prod = crate::guard_support::production_code(include_str!("gate.rs"));
+        crate::guard_support::assert_no_test_code("control/gate.rs", &prod);
+
+        let starts = prod.matches("Command::new(\"tmux\")").count();
+        assert_eq!(
+            starts, 2,
+            "本模块起 tmux 的处数变了（实得 {starts}，登记 2）—— 新增的那一处也要带 `-u`，\
+             并把这条判据的数一起改。**这张表不是豁免清单。**"
+        );
+        for verb in ["list-sessions", "display-message"] {
+            let want = format!(".args([UTF8_CLIENT_FLAG, \"{verb}\"");
+            assert!(
+                prod.contains(&want),
+                "`{verb}` 那一处没有把 `-u` 放在子命令**之前**（找不到 `{want}`）。\
+                 放到后面是 rc=1 的响错，而本模块不看退出码 ⇒ 会退化成又一次静默失效。"
+            );
+        }
+        // 反向：不许有人把 `-u` 塞到子命令后面（那是 rc=1，且本模块看不见）。
+        for bad in ["\"list-sessions\", UTF8_CLIENT_FLAG", "\"display-message\", UTF8_CLIENT_FLAG"] {
+            assert!(!prod.contains(bad), "`-u` 被放到了子命令后面：{bad}");
+        }
+    }
+
+    /// ★★ **K-R12 `J1` 死值验（本模块这一侧）：段数下溢必须红。**
+    ///
+    /// 死值取自 `evidence/K-R12-deathvalue.md` ①：真 tmux 3.4 + POSIX 客户端下，
+    /// `list-sessions` 那三列打出来是 `kr12_$0_cc-deadval1`、
+    /// `display-message` 那三列打出来是 `$0_cc-deadval1_1` —— **TAB 全没了，段数 1**。
+    ///
+    /// ⚠ 过溢那一档**不在这里**：`PROBE_FMT`/`LIST_FMT` 的列里没有路径，
+    /// 三列的取值域都排除真 TAB ⇒ 合法内容推不高段数（理由见 `PROBE_FMT_FIELDS` 头注）。
+    /// 但判据仍写成「下溢」而不是「不等于」，与另外两处同一口径 —— **口径一致本身是要买的东西**。
+    #[test]
+    fn the_underflow_predicate_catches_the_real_dirty_bytes() {
+        assert!(
+            tab_underflow("kr12_$0_cc-deadval1", 3),
+            "真 tmux 打出来的脏字节必须判下溢"
+        );
+        assert!(tab_underflow("$0_cc-deadval1_1", 3), "同上（probe 那一条）");
+        assert!(!tab_underflow("kr12\t$0\tcc-deadval1", 3), "干净的三段必须放行");
+        assert!(
+            !tab_underflow("$0\t\t1", 3),
+            "🔴 `@ccm_sid` **没设**是合法的（中间那段是空串）—— 它与「拆不出」是两件事，不许判红"
+        );
+        assert!(
+            !tab_underflow("a\tb\tc\td", 3),
+            "过溢不许红（口径与另外两处一致：判的是下溢，不是不等于）"
+        );
+    }
 
     /// 判定表的**唯一真相源**，三条轨道各自独立读它（见文件头注）。
     const GOLDEN: &str =

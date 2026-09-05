@@ -21,6 +21,70 @@ use tokio::io::{AsyncReadExt, BufReader};
 /// 旧的 path/cmd 匹配,向后兼容。
 const TMUX_LS_FMT: &str = "#{session_name}\t#{pane_current_path}\t#{pane_current_command}\t#{?session_attached,1,0}\t#{session_windows}\t#{@ccm_sid}";
 
+/// `TMUX_LS_FMT` 的列数 —— [`tmux_tab_underflow`] 的 N。**改格式串必须同步这个数**
+/// （格式串本身是红线 I8 双写点，见上面头注）。
+const TMUX_LS_FMT_FIELDS: usize = 6;
+
+/// ★★ **K-R12（09-04）：`-u` —— 让**远端**那个 tmux 客户端始终按 UTF-8 输出。**
+///
+/// # 病：不是「格式串写错了」，是 **tmux 自己把输出重写了**
+///
+/// 模块头注那条「格式串不解释字面 `\t`、必须给真 TAB」说的是**我们怎么写**；
+/// 这一条说的是**tmux 怎么打**。tmux 对输出通道做 sanitize：**客户端不是 UTF-8 时，
+/// 控制字符与非 ASCII 一律换成 `_`**（按**显示宽度**替换，不按字节数：实测 `文`(3B)→`__`）。
+/// 我们靠来分列的真 TAB（0x09）首当其冲。沙箱实测（`evidence/K-R12-locale-lab.md`，
+/// 容器内 tmux 3.4 + 私有 socket + `od -c` 读字节）：POSIX 客户端下 `TMUX_LS_FMT`
+/// 那**六列塌成 1 段** ⇒ [`parse_tmux_ls`] 的 `f.len() != 6` 把**每一行**都丢掉
+/// ⇒ **右键菜单里一个 tmux 会话都没有，而 rc=0、stderr 空、一条日志都没有。**
+///
+/// # 判「是不是 UTF-8 客户端」的规则**不问 glibc**，所以配置推不出结果
+///
+/// 实测：tmux 取 `LC_ALL` → `LC_CTYPE` → `LANG` 的第一个非空值，做一次
+/// **大小写不敏感的 `UTF-8`/`UTF8` 子串匹配**。`zz_ZZ.UTF-8`（locale 根本不存在）**干净**，
+/// 而 `C` / `zh_CN.GB18030` / `LC_ALL=''` / 什么都不设 **全脏**。
+///
+/// # 🔴 为什么跨 SSH 这两处必须用 `-u`，不能学 daemon 那边挂 `LC_ALL`
+///
+/// 1. **这里没有本地 `Command` 可挂 env** —— 命令是一条字符串，交给 `russh` 的
+///    `channel.exec` 在**对端**跑。
+/// 2. 走 SSH 的 `request_env` 要赌**对端 sshd 的 `AcceptEnv`**：不认就**静默拒绝**，
+///    我们这侧看不出任何区别 —— 拿一条静默失效去治另一条静默失效。
+///    （全仓 `.env("LANG"/"LC_ALL"/"LC_CTYPE")` 命中 0 处，`channel.exec` 也不带 env 请求。）
+/// 3. 在命令串里前缀 `LC_ALL=C.UTF-8 tmux …` 也能成（实测 dash 上成立），但它要求
+///    **对端认得这个赋值前缀**；而 `-u` 实测**连 `env -i`（环境全清）都盖得住**，
+///    **不需要对端装任何 locale、不需要 sshd 配合**。这是本仓对远端假设最少的一条。
+/// 4. 位置是硬的：`-u` 必须在子命令**之前**。实测 `tmux ls -u -F …` 与
+///    `tmux display-message -u -p …` 都是 `rc=1 + unknown flag -u` ⇒ **放错是响的**。
+///
+/// ⚠ `capture-pane -p` **不在人群里**：实测它抓回来的中文是原始 UTF-8 字节，
+/// POSIX / `C.UTF-8` / `-u` 三种模式逐字节相同 ⇒ [`capture_remote_pane`] 与
+/// `account_usage.rs` 的用量探针**不受本件影响**，本拍**刻意不给它们加 `-u`**（不扩面）。
+///
+/// ⚠ **`-u` 单独不够**，它的失效面是「某一处忘了插」，而那是静默的。
+/// 处置那一半分别是：`list_remote_tmux` 装 [`tmux_tab_underflow`]（K-R12 `J1`）、
+/// `build_guarded_tmux_cmd` 那条门用 `K-R23` 落的 `CCM_GUARD_UNPARSABLE`。
+/// **预防（本条）与处置（那两条）是两件事，缺一不可，且必须能共存。**
+const UTF8_CLIENT_FLAG: &str = "-u";
+
+/// ★★ **K-R12 `J1`：段数下溢 —— 「拆不出段」不许被当成好数据。**
+///
+/// > 按 TAB 切 tmux 的打印通道，切出的段数 **< 预期 N** ⇒ 出声 **+ 拒绝把这行当好数据**。
+///
+/// **为什么是「下溢」而不是「恰好 N」**：实测**合法内容只会把段数推高，永远不会推低** ——
+/// 会话名里的真 TAB 被 tmux 转义成字面 `\t` 两个字符（那行仍是 6 段），
+/// 而 `pane_current_path` 里带真 TAB 的目录会切出 **7** 段。
+/// ⇒ `< N` **零误报**；`!= N` **会误伤**（[`parse_tmux_ls`] 今天就在犯，见那边头注）。
+///
+/// **为什么下溢是完备检测器**：sanitize 是**每客户端全有全无**的 ⇒ 通道一脏，
+/// 六个 TAB **全部**消失，段数必然从 6 塌到 1。**没有「内容被改写了但 TAB 还在」的中间态**
+/// ⇒ 一条判据同时盖住「分隔符被吞」与「内容被改写」两半，**格式串一个字节不用动**。
+///
+/// ⚠ 同一口径在 daemon 的 `observe/watcher.rs` 与 `control/gate.rs` 各另有一份 ——
+/// 跨仓 + 那边 `layering_guard` 钉死 `control/` 不许引用 `observe/`。**三份口径必须一致。**
+fn tmux_tab_underflow(line: &str, expected: usize) -> bool {
+    line.split('\t').count() < expected
+}
+
 /// 一个远端 tmux 会话(反查 + 未来管理用)。
 ///
 /// G6：加 ts-rs 导出。此前前端在 `tabs.ts` 里**手抄了一份同名 interface**——两份各写各的，
@@ -44,6 +108,31 @@ pub struct TmuxSession {
 
 /// 解析 `tmux ls -F '<TMUX_LS_FMT>'` 输出(真 TAB 分列)。字段数不符 / name 空的行跳过
 /// (半截行、非法行不进结果);windows 非数字回退 0;末列 `@ccm_sid` 空串→ `None`。
+///
+/// # ★ K-R12（09-04）：那个 `!= 6` 是**两件事**，本拍把它们分开说，处置**都不动**
+///
+/// 上一拍量出来（`lab2.sh` E12 实测）：**合法内容只会把段数推高，永远不会推低**。
+/// 于是 `f.len() != 6` 这一条同时挡着**方向相反**的两种行：
+///
+/// | | 什么时候发生 | 今天的处置 | 本拍怎么办 |
+/// |---|---|---|---|
+/// | **下溢** `< 6` | 通道被改写（客户端不是 UTF-8 ⇒ TAB 变 `_`），**六列塌成 1 段** | 丢行（对） | **加一句话**（原来完全静默） |
+/// | **过溢** `> 6` | `pane_current_path` 里有真 TAB —— **一个带 TAB 的目录名就够**（实测切出 7 段） | 丢行（**误伤**：整个会话从界面上消失） | **只加一句话，处置不改**（理由见下） |
+///
+/// 🔴 **过溢那条为什么本拍不修**（这是个刻意的裁定，不是漏）：
+/// 1. **它与本件的失效方向相反。** 本件是「通道脏」（内容不可信），过溢是「内容完全合法」。
+///    把两者的处置搅在一起，会让「下溢判据零误报」这个论证失去干净的边界。
+/// 2. **正确的重组要引入一个新假设**：得先钉死「这六列里只有 `pane_current_path`
+///    可能含真 TAB」，才能从两端往中间拼（`name` 取头、`attached`/`windows`/`@ccm_sid`
+///    取尾、中间归 path）。那个假设**本拍没有实测**，`pane_current_command` 那一列尤其没量过。
+/// 3. 它需要自己的验收（带 TAB 的目录名那条 e2e）⇒ **该单独立件**，不该搭本件的车。
+///
+/// ⇒ 本拍买到的是：**它不再是静默的**。谁被它丢掉、因为哪个方向丢的，日志里说得出来。
+///
+/// ⚠ 另记一条边界：`f.len() != 6` 里的**下溢**这半在 [`list_remote_tmux`] 那条路上
+/// **已经走不到**了（`J1` 在 raw 入口就把整份判废、回 `Err`）。它在这里仍然必须留着 ——
+/// 本函数还吃 **daemon 推来的 `tmux_sessions` 帧**那份 raw，而那条路的入口不在本文件里
+/// （daemon 侧由 `watcher.rs::classify_tmux_probe` 把关；**老 daemon 没有那道关**）。
 pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
     output
         .lines()
@@ -53,6 +142,22 @@ pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
             }
             let f: Vec<&str> = line.split('\t').collect();
             if f.len() != 6 || f[0].is_empty() {
+                // K-R12：处置照旧（丢行），**但不再静默** —— 两个方向分开报。
+                // 只有段数不对才报；`name` 空是另一档（半截行），本来就该安静丢掉。
+                if f.len() < TMUX_LS_FMT_FIELDS && !line.trim().is_empty() {
+                    tracing::warn!(
+                        "CCM_TMUX_UNPARSABLE parse_tmux_ls 段数下溢（{} < {TMUX_LS_FMT_FIELDS}）—— \
+                         tmux 打印通道被改写（K-R12），整行丢弃。原样行：{line:?}",
+                        f.len()
+                    );
+                } else if f.len() > TMUX_LS_FMT_FIELDS {
+                    tracing::warn!(
+                        "parse_tmux_ls 段数过溢（{} > {TMUX_LS_FMT_FIELDS}）—— 多半是 \
+                         `pane_current_path` 里有真 TAB（合法内容），**这一行的会话会从界面上消失**。\
+                         这是 K-R12 §5.4 点名的误伤，处置待单独立件。原样行：{line:?}",
+                        f.len()
+                    );
+                }
                 return None;
             }
             Some(TmuxSession {
@@ -101,8 +206,9 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
     let cfg = crate::load_remote_config_by_label(&origin)
         .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
     // `tmux ls` 无会话时非零退出("no server running")→ `|| true` 吞掉,得空输出=空列表。
+    // K-R12：`-u` 在子命令**之前**（`tmux ls -u -F` 是 rc=1 的响错）。见 `UTF8_CLIENT_FLAG`。
     let cmd = format!(
-        "if command -v tmux >/dev/null 2>&1; then tmux ls -F '{TMUX_LS_FMT}' 2>/dev/null || true; else printf 'NO_TMUX\\n'; fi"
+        "if command -v tmux >/dev/null 2>&1; then tmux {UTF8_CLIENT_FLAG} ls -F '{TMUX_LS_FMT}' 2>/dev/null || true; else printf 'NO_TMUX\\n'; fi"
     );
     let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
     let mut reader = BufReader::new(stream);
@@ -115,6 +221,24 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
     let out = String::from_utf8_lossy(&buf);
     if out.trim() == "NO_TMUX" {
         return Ok(None);
+    }
+    // ★★ K-R12 `J1`：**raw 的入口**（这条路上 raw 只从这里进）。段数下溢 ⇒ 通道被改写。
+    //
+    // 🔴 处置必须是 `Err`，不能是 `Ok(Some(vec![]))`：后者与「远端真的一个会话都没有」
+    // **逐字相同**，正是本件那条「没有任何判据看得见它」的成因。也不能是 `Ok(None)` ——
+    // 那一档的语义是「远端没装 tmux」（前端据此隐藏 attach 项），同样是另一件事。
+    // ⇒ 三档不共用读数：没装 tmux = `None`、零会话 = `Some([])`、通道脏 = `Err`。
+    // 调用方（`tabs.ts` / `fork-flow.ts`）对 `Err` 一律走失败路径 ⇒ **fail-closed**。
+    if let Some(bad) = out
+        .lines()
+        .find(|l| !l.trim().is_empty() && tmux_tab_underflow(l, TMUX_LS_FMT_FIELDS))
+    {
+        return Err(format!(
+            "CCM_TMUX_UNPARSABLE tmux ls 有行切出 {} 段 < {TMUX_LS_FMT_FIELDS} —— \
+             远端 tmux 的打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 与非 ASCII 变 `_`）。\
+             这一趟的会话列表**整份作废**，不当成「远端零会话」。原样回包：{bad:?}",
+            bad.split('\t').count()
+        ));
     }
     Ok(Some(parse_visible_tmux_sessions(&out)))
 }
@@ -452,6 +576,24 @@ fn gate_guard_expr(need_sid: bool, need_windows: bool) -> &'static str {
 ///
 /// ⚠ 这一支只在 `need_sid` 时存在：`need_sid=false` 时格式串里**根本没有 TAB**
 /// （`fmt = "#{session_windows}"`、`extract = w="$info"`），没有「拆」这一步，也就没有这条判据。
+///
+/// # ★★ K-R12（09-04）叠在这里的那一层：**为什么会脏** —— 与上面那一层共存，不替换它
+///
+/// `K-R23`（上面整段）治的是**脏了以后这道门怎么办**：拆不出字段 ⇒ `CCM_GUARD_UNPARSABLE`
+/// ⇒ 拒绝。`K-R12` 治的是**为什么会脏**：`display-message` 前面那个 `-u`
+/// （见 [`UTF8_CLIENT_FLAG`]）让远端客户端始终按 UTF-8 输出，那个 TAB 一开始就不会被换成 `_`。
+///
+/// 🔴 **两层必须同时在，缺一条都不行**：
+/// - 只有 `-u`：**某一处忘了插就静默回到今天**，而「忘了插」没有任何判据看得见。
+/// - 只有 `K-R23`：门是拒了，可**用户看到的是一句拒绝**，而 tmux 会话列表那条路
+///   （[`list_remote_tmux`]）此刻已经空了 —— 病没治，只是不再放行。
+///
+/// ⚠ **`-u` 只加在取值那一条 `display-message` 上，不加在 `{action}` 上**：
+/// `kill-session` / `send-keys` **不读输出**，编码口径与它们无关；给它们加只是扩面。
+/// （`capture-pane` 更是实测**不受本件影响** —— 它吐的是原始 UTF-8 字节，见 `UTF8_CLIENT_FLAG`。）
+///
+/// ⚠ `-u` 落在 `command -v tmux` 那道门**之后**，所以「远端没装 tmux」这一档
+/// （`NO_TMUX`）的行为一个字节没变。
 fn build_guarded_tmux_cmd(
     target: &str,
     need_sid: bool,
@@ -498,7 +640,7 @@ fn build_guarded_tmux_cmd(
     };
     Ok(format!(
         "if command -v tmux >/dev/null 2>&1; then \
-info=\"$(tmux display-message -p -t {t} '{fmt}' 2>/dev/null)\"; \
+info=\"$(tmux {UTF8_CLIENT_FLAG} display-message -p -t {t} '{fmt}' 2>/dev/null)\"; \
 if [ -z \"$info\" ]; then printf 'CCM_NO_SESSION\\n'; else {extract} \
 {split_check}if {guard}; then {action}; else {reject_msg}; fi; fi; \
 else printf 'NO_TMUX\\n'; fi"
@@ -1178,9 +1320,16 @@ mod tests {
     /// 零临时文件、不动这台机器任何状态。
     fn run_door_with_info(cmd: &str, info: &str) -> String {
         let q = format!("'{}'", info.replace('\'', "'\\''"));
+        // ★ K-R12：生产串里 `tmux` 与子命令之间现在有一个 `-u`（让远端客户端按 UTF-8 输出，
+        //   见 `UTF8_CLIENT_FLAG`）。假 tmux 必须先**吃掉子命令前的全部 flag** 再看动词 ——
+        //   否则 `$1` 是 `-u`，它会落进 `*)` 打出 `ACTION_RAN:-u`，本条会红。
+        //   ⚠ 这个 `while` 只剥**第一个非 `-` 之前**的东西，所以子命令后面的 `-p`/`-t` 一个不动。
+        //   这一改本身就是 K-R12 与 K-R23 共存的第一份证据：**门的判定一个字没动，
+        //   动的只是它前面那条取值命令的编码口径**。
         let script = format!(
             "CCM_FAKE_INFO={q}; \
-             tmux() {{ case \"$1\" in \
+             tmux() {{ while [ $# -gt 0 ]; do case \"$1\" in -*) shift ;; *) break ;; esac; done; \
+             case \"$1\" in \
              display-message) printf '%s' \"$CCM_FAKE_INFO\" ;; \
              *) printf 'ACTION_RAN:%s\\n' \"$1\" ;; \
              esac; }}; \
@@ -1194,6 +1343,114 @@ mod tests {
         let mut s = String::from_utf8_lossy(&out.stdout).into_owned();
         s.push_str(&String::from_utf8_lossy(&out.stderr));
         s.trim().to_string()
+    }
+
+    /// ★★ **K-R12：跨 SSH 的两处都要 `-u`，且必须在子命令之前。**
+    ///
+    /// `build_guarded_tmux_cmd` 那一处拿得到**真的生产串**（不是扫源码），
+    /// `list_remote_tmux` 那一处的串拼在 `async fn` 里、外面取不到 ⇒ 只能扫源码，如实标注。
+    ///
+    /// 位置这一维必须单独钉：`-u` 放到子命令**后面**实测是
+    /// `rc=1 + command display-message: unknown flag -u`，而这条串里 `display-message`
+    /// 的 stderr 被 `2>/dev/null` 吞掉、rc 也不看 ⇒ `$info` 变空 ⇒ 退化成 `CCM_NO_SESSION`。
+    /// **一个响错会在这里被压成一句「会话不存在」。**
+    #[test]
+    fn both_cross_ssh_tmux_reads_ask_for_a_utf8_client_before_the_subcommand() {
+        // ① 真生产串（门那一条）
+        for cmd in [
+            build_send_keys_remote_cmd("e2e-custom", "CCMPROBE", true).unwrap(),
+            build_kill_session_cmd("e2e-custom").unwrap(),
+        ] {
+            assert!(
+                cmd.contains("tmux -u display-message -p -t "),
+                "取值那条 display-message 没带 `-u`（或位置不对）：{cmd}"
+            );
+            assert!(
+                !cmd.contains("display-message -u"),
+                "`-u` 被放到了子命令后面 —— 那是 rc=1，而这条串把 stderr 和 rc 都丢了：{cmd}"
+            );
+        }
+
+        // ② `list_remote_tmux` 那条：扫源码。**盘上有 ≠ 被走到**，行为那一半的死值在
+        //    `evidence/K-R12-deathvalue.md` ②/S5（真 tmux 3.4，改前段数 1 / 改后段数 6）。
+        let prod = guard_core::production_code(include_str!("tmux.rs"));
+        guard_core::assert_no_test_code("tmux.rs", &prod);
+        assert!(
+            prod.contains("tmux {UTF8_CLIENT_FLAG} ls -F"),
+            "`list_remote_tmux` 的命令串没有把 `-u` 放在 `ls` 之前"
+        );
+        assert!(
+            !prod.contains("ls {UTF8_CLIENT_FLAG}") && !prod.contains("ls -u"),
+            "`-u` 被放到了 `ls` 后面（实测 rc=1 + unknown flag）"
+        );
+    }
+
+    /// ★★ **K-R12 × K-R23 共存**：一条串上**两层同时在**，谁也没把谁挤掉。
+    ///
+    /// | 层 | 治什么 | 在串里长什么样 |
+    /// |---|---|---|
+    /// | `K-R12`（本件） | **为什么会脏** —— 让远端客户端按 UTF-8 输出，TAB 一开始就不会变 `_` | `tmux -u display-message …` |
+    /// | `K-R23` | **脏了以后怎么办** —— shell 原生拆 + 拆不出就拒 + 报的话不一样 | `${info%%$tab*}` / `CCM_GUARD_UNPARSABLE` |
+    ///
+    /// 🔴 缺一条都不行，理由写在 `build_guarded_tmux_cmd` 头注。
+    /// 而「K-R23 那道门今天还真的会拒」由
+    /// [`a_dirty_channel_that_lost_the_tab_must_not_open_the_door`] 喂脏输入真跑着钉 ——
+    /// **本条只钉两层同时在盘上，别把它读成行为证明。**
+    #[test]
+    fn the_prevention_layer_and_the_door_layer_coexist_on_the_same_command() {
+        let sk = build_send_keys_remote_cmd("e2e-custom", "CCMPROBE", true).unwrap();
+        assert!(sk.contains("tmux -u display-message"), "K-R12 那层不在了：{sk}");
+        assert!(
+            sk.contains("w=\"${info%%$tab*}\"") && sk.contains("sid=\"${info#*$tab}\""),
+            "K-R23 的 shell 原生拆被动过了：{sk}"
+        );
+        assert!(
+            sk.contains("CCM_GUARD_UNPARSABLE"),
+            "K-R23 的「拆不出」读数没了：{sk}"
+        );
+        assert!(
+            !sk.contains("cut -f"),
+            "K-R23 明确把 `cut` 去掉了（它无分隔符时原样吐整行 ⇒ fail-open），不许回来：{sk}"
+        );
+        // `-u` 必须落在 `command -v tmux` 那道门**之后** ⇒ 「远端没装 tmux」那一档零变化。
+        let gate_at = sk.find("command -v tmux").expect("门控没了");
+        let u_at = sk.find("tmux -u").expect("K-R12 那层不在了");
+        assert!(gate_at < u_at, "`-u` 跑到了 `command -v tmux` 门控前面：{sk}");
+    }
+
+    /// ★★ **K-R12 `J1` 死值验（monitor 这一侧）：段数下溢必须被判废。**
+    ///
+    /// 死值取自 `evidence/K-R12-deathvalue.md` ①/S5：真 tmux 3.4 + POSIX 客户端，
+    /// 六列塌成 1 段，连 `文档` 都按显示宽度变成了 `____`。
+    ///
+    /// 这一条同时把 `§5.4` 点名的那条**误伤**钉成一个可见的读数：**过溢的行今天照样被丢掉**。
+    /// 处置本拍**刻意没改**（理由见 [`parse_tmux_ls`] 头注），所以这里断言的是**现状**——
+    /// 哪天有人去修那条误伤，本条会红，那正是它该红的时候。
+    #[test]
+    fn a_dirty_line_underflows_and_an_overflowing_line_is_still_dropped_today() {
+        const DIRTY: &str = "kr12_/tmp/kr12dv/____/proj_bash_0_1_cc-deadval1";
+        const CLEAN: &str = "kr12\t/tmp/kr12dv/文档/proj\tbash\t0\t1\tcc-deadval1";
+        const OVERFLOW: &str = "kr12\t/tmp/a\tb\tbash\t0\t1\tcc-deadval1";
+
+        assert!(tmux_tab_underflow(DIRTY, TMUX_LS_FMT_FIELDS), "真脏字节必须判下溢");
+        assert!(!tmux_tab_underflow(CLEAN, TMUX_LS_FMT_FIELDS), "干净六段不许红");
+        assert!(
+            !tmux_tab_underflow(OVERFLOW, TMUX_LS_FMT_FIELDS),
+            "过溢是合法内容 ⇒ 判据不许红（这一格就是「下溢」而不是「不等于 6」的死值）"
+        );
+
+        assert!(parse_tmux_ls(DIRTY).is_empty(), "脏行不许进结果");
+        let ok = parse_tmux_ls(CLEAN);
+        assert_eq!(ok.len(), 1, "干净行必须解析出来（正对照）");
+        assert_eq!(ok[0].name, "kr12");
+        assert_eq!(ok[0].path, "/tmp/kr12dv/文档/proj");
+        assert_eq!(ok[0].sid.as_deref(), Some("cc-deadval1"));
+        assert!(
+            parse_tmux_ls(OVERFLOW).is_empty(),
+            "⚠ 现状：过溢的行**今天照样被整行丢掉**（`f.len() != 6`）—— \
+             这是 K-R12 §5.4 点名的误伤，本拍只让它出声、没有改处置。\
+             修它的那一拍会让本条红，那是对的。"
+        );
     }
 
     /// ★★ **K-R23：通道脏（TAB 没了）的时候，这道门必须拒绝。**
