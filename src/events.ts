@@ -482,6 +482,17 @@ export async function bindEvents(
   await Promise.all(registrations);
 }
 
+/**
+ * 「这个东西可以 `.catch`」—— 下面那一跳唯一依赖的那条前提，抽出来给它一个名字。
+ *
+ * ⚠ 判的是 **`.catch`**，不是 `.then`。两者在「thenable」这个词下常被当成一件事，
+ * 而调用点真正要的是前者 —— 一个只有 `.then` 的 thenable 照样会在 `.catch(` 那一行炸。
+ * **判据要贴着调用点写，不贴着行话写。**
+ */
+function isCatchable(v: unknown): v is Promise<unknown> {
+  return typeof (v as { catch?: unknown } | null | undefined)?.catch === "function";
+}
+
 /** 启动管线 perf timeline 输出（onBatchEnd 真正 fire 时调一次） */
 function emitPerfSummary(
   p: typeof window.__ccmPerf,
@@ -513,5 +524,27 @@ function emitPerfSummary(
   ];
   console.info(lines.join("\n"));
   // Batch13-F40:无 devtools 环境的唯一取证通道——经后端写进 monitor 日志(grep fe_perf)
-  void commands.frontend_perf_log({ lines: lines.join("\n") }).catch(() => {});
+  //
+  // 🔴 **这一行曾把一条没人建立、也没人检查的前提当成事实**〔K-W1C 09-04〕：
+  // 它直接对返回值调 `.catch`，而那句话只在「返回的东西有 `.catch`」时成立。
+  // 前提破了的时候（桩返回 `undefined`）抛的是
+  // `TypeError: Cannot read properties of undefined (reading 'catch')`，
+  // 而它发生在 300ms grace 那个 `setTimeout` 的回调里 ⇒ 没有任何调用栈接得住
+  // ⇒ vitest 记成 **unhandled error：整格红，而报文一个判据名都点不出来**。
+  //
+  // 这里补的是**检查**那一半（建立那一半在 `events-burst.vitest.ts` 的收尾里）：
+  // 前提不成立就**出声**，不炸。
+  // ⚠ **生产行为一个字节没变**：真 tauri 命令返回 Promise ⇒ 走的仍是原来那一支，
+  // 逐字同样是 `void …catch(() => {})`。新增的只有「前提破了」那条岔路。
+  const sent: unknown = commands.frontend_perf_log({ lines: lines.join("\n") });
+  if (isCatchable(sent)) {
+    void sent.catch(() => {});
+  } else {
+    console.warn(
+      `[perf] frontend_perf_log 的返回值没有 .catch（拿到 ${typeof sent}）——` +
+        "本次 perf timeline 没能经后端落盘。\n" +
+        "★ 在测试里看到这一行 = 那个桩返回的不是 Promise；" +
+        "它此前的表现是一条点不出判据名的 unhandled error。",
+    );
+  }
 }
