@@ -92,11 +92,29 @@ CUTS = [
         "退出码与 `die` 撞（调用方从此分不开「你敲错了」与「没有后端」）",
     ),
     (
+        # ⚠ 〔`F` 拍后半〕`backend_unreachable "$why"` 今天**有两处**（账号 · 建会话）
+        #   ⇒ 锚点要带上下文才唯一。这一刀切的是**建会话**那一处
+        #   （它上面那句注释是 `launch_via_daemon` 独有的）。
         "F3", "shared/ccm",
-        '  backend_unreachable "$why"\n}',
-        "  return 1\n}",
+        '  #      `ccm_cli_contract::BACKEND_BACKED_PATHS`。〕\n  backend_unreachable "$why"',
+        '  #      `ccm_cli_contract::BACKEND_BACKED_PATHS`。〕\n  return 1',
         1, ("cargo", "the_backend_unreachable_failure_face_has_exactly_one_home"),
-        "唯一失败面**没人调用**（文案与码都在，而没有任何一条路走到它们）",
+        "建会话那条腿**不再走唯一失败面**（③b/③c：调用点数与登记的无退路条数对不上）",
+    ),
+    (
+        "F3b", "shared/ccm",
+        '  # ★★ 〔`F` 拍〕**这里原来是「降级出声 ＋ 读 manifest」，退路删了 ⇒ 唯一失败面。**',
+        '  return 0\n  # ★★ 〔`F` 拍〕**这里原来是「降级出声 ＋ 读 manifest」，退路删了 ⇒ 唯一失败面。**',
+        1, ("cargo", "the_backend_unreachable_failure_face_has_exactly_one_home"),
+        "**账号**那条腿不再走唯一失败面（同上，另一条腿 —— 证 F3 不是只逮一处）",
+    ),
+    (
+        "F3c", "shared/ccm",
+        '      backend_unreachable "在 tmux 里起有身份的 agent',
+        '      die "在 tmux 里起有身份的 agent',
+        1, ("cargo", "the_backend_unreachable_failure_face_has_exactly_one_home"),
+        "身份前置检查那一处**退回自己一套说法**（③c：调用点总数 3→2）"
+        "—— 它不在 `BACKEND_BACKED_PATHS` 里，只有 ③c 逮得到",
     ),
     (
         "F4", "shared/ccm",
@@ -125,6 +143,23 @@ CUTS = [
         'gone: "这个串在生产段里当然找不到",',
         1, ("cargo", "every_backend_backed_path_in_ccm_keeps_an_observable_fallback"),
         "`gone` **锚点烂掉** ⇒ 「不该在」那半条本会空真。本轮补的靶子自检该逮住它",
+    ),
+    (
+        "F13", "shared/ccm",
+        '  _ccm_acct_tab="$(daemon_out_to_table "$out")"',
+        '  _ccm_acct_src=file\n  _ccm_acct_tab="$(daemon_out_to_table "$out")"',
+        1, ("cargo", "every_backend_backed_path_in_ccm_keeps_an_observable_fallback"),
+        "**账号**那条的 `NoFallback.gone`（`_ccm_acct_src=file`）又回到生产段里 —— "
+        "证 F5 那一刀不是只对建会话那一条成立",
+    ),
+    (
+        "F14", "shared/ccm",
+        '  if [ "$do_print" = 1 ]; then\n    seq="{ tmux new-session',
+        '  if [ "$do_print" = 1 ] || [ "${CCM_FORCE_LOCAL:-}" = 1 ]; then\n    seq="{ tmux new-session',
+        1, ("cargo", "the_local_launch_recipe_is_reachable_only_from_print"),
+        "🔴 **用一个环境变量把退路塞回来**（`§6-3` 逐字排除过这种买法：「一个环境变量就能"
+        "走回本地 ⇒ 旧住址还在。**不许这么买**」）—— 它含着 `[ \"$do_print\" = 1 ]`、也不含 "
+        "`!=` ⇒ **上一版的子串判会放它过去**；本轮改成逐字钉整条守卫才逮得到〔自查第二处〕",
     ),
     (
         "F7", "shared/ccm",
