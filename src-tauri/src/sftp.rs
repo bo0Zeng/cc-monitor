@@ -347,6 +347,12 @@ pub enum DeployAction {
 }
 
 /// 比对远端版本标记与期望 build_id，决定是否（重）部署。
+///
+/// ⚠ **这个函数只回答「版本对不对」一件事**，它的入参里根本没有落点那个文件
+/// ——「那个文件在不在」由 [`TargetBinary`] 单独取样、在 [`deploy_decision_at`] 里
+/// 与本判定合并。daemon 那条路**只许走 `deploy_decision_at`**（见它的头注）；
+/// 本函数留给 `acct_iso_deploy` 那条按目录取标记的路，那里标记与内容同一次上传、
+/// 且落点是目录不是单个文件。
 pub fn deploy_decision(remote_build_id: Option<&str>, expected: &str) -> DeployAction {
     match remote_build_id {
         None => DeployAction::Deploy("远端无 daemon / 无版本标记".to_string()),
@@ -354,6 +360,89 @@ pub fn deploy_decision(remote_build_id: Option<&str>, expected: &str) -> DeployA
             DeployAction::Deploy(format!("版本不符（远端 {} ≠ 期望 {expected}）", r.trim()))
         }
         Some(_) => DeployAction::Skip,
+    }
+}
+
+/// 部署落点那个文件**本身**的取样结论（`deploy_decision_at` 的第二个输入）。
+///
+/// 与 [`interpret_profile_read`] 同一条纪律：**「问不出来」不许读成上面任何一个确定答案**
+/// ——把无权限/传输失败当成「不在」会变成每次连接都重传（把版本门控拆了），
+/// 当成「在」则退回本枚举要治的那个静默。**所以它不是 `bool`。**
+/// ⚠ 成员就在下面，别在散文里复述一份基数 —— 那份字面量会在加成员那天变成假话。
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum TargetBinary {
+    /// stat 说它在，且有字节。
+    Present,
+    /// stat **明确说**它不在。
+    Missing,
+    /// stat 说它在，但是 **0 字节** —— 不是假想形态：本模块 `upload_atomic` 里
+    /// 「绝不 set_metadata」那条注释记的就是真机 e2e 实测把 daemon 截成 0 字节、
+    /// 不可 exec 的那次事故。`try_exists` 会把它算成「在」。
+    Empty,
+    /// 问不出来（无权限 / 传输失败 / 服务器不给属性）—— 不许读成上面任何一个。
+    Unknown,
+}
+
+/// 版本这一侧的事实用一句话说出来（给 `Deploy` 的人读原因用）。
+/// 单独抽出来是因为**两侧的事实要各自有各自的话**：落点没文件时，
+/// 版本可能是对的、不符的、或压根没标记，三种都要说得出来。
+fn marker_phrase(remote_build_id: Option<&str>, expected: &str) -> String {
+    match remote_build_id {
+        None => "且无版本标记".to_string(),
+        Some(r) if r.trim() != expected => {
+            format!("版本标记也不符（远端 {} ≠ 期望 {expected}）", r.trim())
+        }
+        Some(_) => format!("而版本标记说它已是 {expected}"),
+    }
+}
+
+/// 部署决策 —— **两个各自独立的事实合起来判**：`.build_id` 说的「版本对不对」
+/// 与落点那个文件的「在不在」。
+///
+/// ## 为什么不能只看 `.build_id`（K-W4 `§0c`）
+///
+/// `.build_id` 是 **目录级** 的（[`marker_path`] 把它放在二进制的同目录，
+/// 路径里不带二进制名），而 [`deploy_decision`] **只读它、从不 stat 二进制本身**。
+/// 于是那一个读数今天同时被当成两件事用：「版本对不对」**和**「那个文件在不在」。
+/// 已部署且 build 未变的机器上，二进制被删 / 被截成 0 字节 / `daemonPath` 被改到
+/// 同目录另一个文件名，标记照旧匹配 ⇒ 判 `Skip` ⇒ 新的字节**永远不会上传**，
+/// 而 exec 走的是那个不存在的路径。
+///
+/// ⚠ **那时用户看到什么，逐字**（`ssh_source.rs` 的连接面）：
+/// 「SSH 连上了，但 daemon 在超时内未回 hello（未部署 / 路径错 / 启动失败？）。」
+/// —— 一个**三选一的猜测**。★ 病灶正在这里：**手里握着一条 SFTP 会话、能一问就知道
+/// 那个文件在不在的这一层，什么都没说**；而要去猜的是**够不着那个事实**的那一层。
+/// 本函数买的就是让前一层把它知道的那半句说出来。
+///
+/// ⚠ **本条没实测过的部分**：上面那句是从源码摘的逐字串（住址在 `ssh_source.rs` 里
+/// `未回 hello` 那一处），**不是**真机跑出来的截图 —— 本轮不碰真远端。
+///
+/// 本模块此前只断掉了这条链的**上传那一段**（`upload_atomic_verified` 的头注：
+/// 「标记写在校验之后，就断了这条链」）—— 那管的是「我们自己传坏了」，
+/// **管不到部署成功之后那个文件再出事**。这里补的是后半段。
+///
+/// ## 边界：不是「每次都重传」
+/// 只有落点**明确**没文件 / 是 0 字节才越过版本门控。`Present` 与 `Unknown`
+/// 一律交回 [`deploy_decision`]，Batch8/9 那套 stale 防御一个字节没动。
+pub fn deploy_decision_at(
+    remote_build_id: Option<&str>,
+    expected: &str,
+    target: TargetBinary,
+) -> DeployAction {
+    match target {
+        TargetBinary::Missing => DeployAction::Deploy(format!(
+            "落点没有 daemon 二进制（{}）",
+            marker_phrase(remote_build_id, expected)
+        )),
+        TargetBinary::Empty => DeployAction::Deploy(format!(
+            "落点的 daemon 二进制是 0 字节（{}）",
+            marker_phrase(remote_build_id, expected)
+        )),
+        // 「在」与「问不出来」都退回版本门控 —— 后者刻意保守：宁可与今天同答，
+        // 也不拿一次 stat 失败换一次全量重传。
+        TargetBinary::Present | TargetBinary::Unknown => {
+            deploy_decision(remote_build_id, expected)
+        }
     }
 }
 
@@ -367,12 +456,38 @@ fn remote_parent(path: &str) -> &str {
 }
 
 /// 版本标记文件路径：daemon 二进制同目录下 `.build_id`。
+///
+/// ⚠ **目录级** —— 路径里不带二进制名。所以它认不出「同目录里换了个文件名」，
+/// 那半个事实由 [`probe_target_binary`] 单独取样（K-W4 `§0c`）。
 fn marker_path(daemon_path: &str) -> String {
     let dir = remote_parent(daemon_path);
     if dir == "/" {
         "/.build_id".to_string()
     } else {
         format!("{dir}/.build_id")
+    }
+}
+
+/// [`deploy_decision_at`] 的异步取样：**只问落点那个文件在不在 / 有没有字节**。
+///
+/// 不 `read` 它 —— 那是 2.3 MB 的二进制，为判存在把它拉回来是白花带宽；
+/// `metadata` 一次往返就够。取样与判定分开（纯函数可单测）是本模块既有的形状，
+/// 见 [`read_profile_text`] / [`interpret_profile_read`]。
+///
+/// `metadata` 失败才补问 `try_exists`：要区分「明确不在」与「问不出来」，
+/// 而这两者在 `metadata` 的 `Err` 里长得一模一样。
+async fn probe_target_binary(sftp: &SftpSession, path: &str) -> TargetBinary {
+    match sftp.metadata(path.to_string()).await {
+        // 服务器不给 size（size=None）≠ 0 字节：存在是确定的，别把「没说」读成「空」。
+        Ok(attrs) => match attrs.size {
+            Some(0) => TargetBinary::Empty,
+            _ => TargetBinary::Present,
+        },
+        Err(_) => match sftp.try_exists(path.to_string()).await {
+            Ok(false) => TargetBinary::Missing,
+            Ok(true) => TargetBinary::Present,
+            Err(_) => TargetBinary::Unknown,
+        },
     }
 }
 
@@ -447,8 +562,10 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>
     let remote_id = read_optional(sftp, &marker)
         .await
         .map(|b| String::from_utf8_lossy(&b).trim().to_string());
+    // K-W4 §0c：标记是目录级的，光凭它判 Skip 会在「标记还在、二进制没了」时静默跳过。
+    let target = probe_target_binary(sftp, &cfg.daemon_path).await;
 
-    match deploy_decision(remote_id.as_deref(), bin.build_id) {
+    match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
         DeployAction::Skip => {
             tracing::info!(
                 "远端 [{}] daemon 已是 {}，跳过部署",
@@ -579,7 +696,10 @@ pub async fn deploy_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {
     let remote_id = read_optional(sftp, &marker)
         .await
         .map(|b| String::from_utf8_lossy(&b).trim().to_string());
-    match deploy_decision(remote_id.as_deref(), bin.build_id) {
+    // K-W4 §0c：手动「安装 daemon」按钮此前也只看标记 —— 落点文件被删/截断时，
+    // 它会对着一个不存在的文件回「已是最新，无需重装」。同一条病，同一处修法。
+    let target = probe_target_binary(sftp, &path).await;
+    match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
         DeployAction::Skip => Ok(format!(
             "远端已是最新 daemon（{}，{arch}）：{path}，无需重装。",
             bin.build_id
@@ -1569,6 +1689,162 @@ mod tests {
             DeployAction::Skip,
             "标记文件可能带尾随换行，trim 后比对"
         );
+    }
+
+    /// K-W4 `§0c` 那条断裂：`.build_id` 是**目录级**的，光凭它判不出落点那个文件在不在。
+    ///
+    /// 这一格钉的是**两件事不许再压在一个读数上**：喂**同一份**版本事实
+    /// （标记在、且与期望相符），只让「落点那个文件」这一侧变，判定必须跟着变。
+    /// 它红的时候说明 `deploy_decision_at` 又把 `Missing` 当成了「版本对就跳过」——
+    /// 那正是「新名/被删的二进制永远不会上传，而用户看到的是连不上」那个静默。
+    #[test]
+    fn a_matching_marker_no_longer_speaks_for_a_binary_that_is_not_there() {
+        const EXPECT: &str = "p1b-overflow";
+        // 版本这一侧两个世界完全相同（标记在、逐字相符）——只有文件那一侧不同。
+        assert_eq!(
+            deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Present),
+            DeployAction::Skip,
+            "文件在 + 版本对 ⇒ 仍然跳过（这一半是今天的行为，不许动）"
+        );
+        let missing = deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Missing);
+        let DeployAction::Deploy(reason) = &missing else {
+            panic!(
+                "标记相符但落点没有二进制，判定仍是 Skip —— \
+                 一个 `.build_id` 又同时替「版本对不对」和「那个文件在不在」两件事说了话"
+            );
+        };
+        // 「说得出是哪种坏」：这一句必须谈那个文件，而不是谈版本。
+        assert!(
+            reason.contains("落点没有 daemon 二进制"),
+            "原因没说清是「那个文件不在」：{reason}"
+        );
+        assert!(
+            !reason.contains("版本不符"),
+            "版本明明是相符的，别把「文件不在」说成「版本不符」：{reason}"
+        );
+        // 两侧的事实各自有各自的话 —— 同一句里也要说清版本这一侧是什么状态。
+        assert!(
+            reason.contains(EXPECT),
+            "同一句话里没带上版本那一侧的事实：{reason}"
+        );
+        // 三种版本状态下，「文件不在」这句话都要说得出来（不是只在版本相符时才说）。
+        for (marker, what) in [
+            (Some(EXPECT), "版本相符"),
+            (Some("p1a-history"), "版本不符"),
+            (None, "无标记"),
+        ] {
+            let DeployAction::Deploy(r) = deploy_decision_at(marker, EXPECT, TargetBinary::Missing)
+            else {
+                panic!("{what} + 文件不在 ⇒ 竟然跳过");
+            };
+            assert!(r.contains("落点没有 daemon 二进制"), "{what}: {r}");
+        }
+    }
+
+    /// 反向那一刀：**没有顺手改成「每次都重传」**。
+    /// `sftp.rs` 那套 Batch8/9 stale 防御是买来的——版本门控必须仍然是承重的，
+    /// 且「stat 问不出来」不许被读成「文件不在」（那等于每次连接都重传 2.3MB）。
+    #[test]
+    fn splitting_the_two_facts_did_not_dismantle_the_version_gate() {
+        const EXPECT: &str = "p1b-overflow";
+        // ① 文件在 + 版本对 ⇒ Skip（门控还在，不是每次都传）
+        assert_eq!(
+            deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Present),
+            DeployAction::Skip
+        );
+        assert_eq!(
+            deploy_decision_at(Some("p1b-overflow\n"), EXPECT, TargetBinary::Present),
+            DeployAction::Skip,
+            "trim 语义不许在合并判定里丢掉"
+        );
+        // ② 问不出来 ⇒ 与今天同答（Skip），不许当成「不在」
+        assert_eq!(
+            deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Unknown),
+            DeployAction::Skip,
+            "stat 问不出来被读成「文件不在」⇒ 一次 stat 失败换一次全量重传，门控就废了"
+        );
+        // ③ 版本不符 ⇒ 照旧 Deploy，且说的是版本（presence 没把版本门控短路掉）
+        let DeployAction::Deploy(reason) =
+            deploy_decision_at(Some("p1a-history"), EXPECT, TargetBinary::Present)
+        else {
+            panic!("版本不符 + 文件在 ⇒ 竟然跳过，stale 防御被拆了");
+        };
+        assert!(
+            reason.contains("版本不符"),
+            "文件在而版本不符，这一句该谈版本：{reason}"
+        );
+        // ④ 无标记 ⇒ 照旧 Deploy
+        assert!(matches!(
+            deploy_decision_at(None, EXPECT, TargetBinary::Present),
+            DeployAction::Deploy(_)
+        ));
+    }
+
+    /// 0 字节那一格 **不是假想形态**：本模块 `upload_atomic` 里「绝不 set_metadata」
+    /// 那条注释记的就是真机 e2e 把 daemon 截成 0 字节、不可 exec 的那次事故。
+    /// 而 `try_exists` 会把它算成「在」⇒ 只问存在性的修法在这一形上仍然静默。
+    #[test]
+    fn a_zero_byte_daemon_is_not_a_deployed_daemon() {
+        const EXPECT: &str = "p1b-overflow";
+        let DeployAction::Deploy(reason) =
+            deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Empty)
+        else {
+            panic!("标记相符 + 落点是 0 字节 ⇒ 竟然跳过（那个文件不可 exec）");
+        };
+        assert!(
+            reason.contains("0 字节"),
+            "原因没说清是「那个文件是空的」：{reason}"
+        );
+        assert!(
+            !reason.contains("版本不符"),
+            "版本是相符的，别说成版本不符：{reason}"
+        );
+    }
+
+    /// **防空转**：上面三格全在纯函数上，实现只要不接到调用点就是死代码，而三格照样绿。
+    /// 这一格钉的是**两条 daemon 部署路真的去问了那个文件**：
+    /// `ensure_daemon_deployed`（自动部署）与 `deploy_remote_daemon`（手动按钮）。
+    ///
+    /// ⚠ 射程：只到 daemon 那两条路。`acct_iso_deploy` 那条**刻意不在分母里**——
+    /// 它的标记落在目录上、内容是同一次上传的一批脚本，是另一种形状（见
+    /// `deploy_decision` 的头注）；那条路今天有没有同族的病，本格判不了。
+    #[test]
+    fn both_daemon_deploy_paths_ask_the_file_itself_not_only_the_marker() {
+        fn body<'a>(src: &'a str, sig: &str) -> &'a str {
+            let i = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
+            let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
+            &src[i..j]
+        }
+        let src = include_str!("sftp.rs");
+        for sig in [
+            "pub async fn ensure_daemon_deployed(",
+            "pub async fn deploy_remote_daemon(",
+        ] {
+            let code = body(src, sig)
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            // 反向自检：真取到函数体了（不然下面两条断言在空串上恒假、这一格变成假红/假绿源）
+            assert!(
+                code.contains("marker_path("),
+                "{sig}: 取到的体里连版本标记都没读，守卫在空转"
+            );
+            assert!(
+                code.contains("probe_target_binary("),
+                "{sig}: 没有取样落点那个文件在不在 —— 判定只拿到了版本这一半事实"
+            );
+            assert!(
+                code.contains("deploy_decision_at("),
+                "{sig}: 仍在用只看版本的判定"
+            );
+            assert!(
+                !code.contains("deploy_decision("),
+                "{sig}: 还留着裸 `deploy_decision(` 调用 —— 两条判定并存迟早分叉"
+            );
+        }
     }
 
     #[test]
