@@ -36,7 +36,7 @@ get_line() { echo "$TSV" | awk -F'\t' -v k="$1" '$1==k{print $2}'; }
 #
 # ★★ 〔`K-P2` `F` 拍 09-04；用@09-04「**ccm不要管找不到, 统一走后端**」〕**两处跟着契约改**：
 #
-#  ① `CCM_DAEMON_BIN` 指到 `e2e/fake-daemon`。
+#  ① `CCM_DAEMON_BIN` 指到 `e2e/fake-daemon.sh`。
 #     账号解析从此**没有本地退路** ⇒ 不给后端的话这 12 条会**全部**死在 `exit 4` 上
 #     （现打过：那不是「判据红了」，是**整套跑不起来**）。
 #     ⚠ 这**不是**放宽断言：本套件测的一直是「`renderCli` 渲出来的那行，被真 `ccm` 解析后
@@ -50,7 +50,7 @@ get_line() { echo "$TSV" | awk -F'\t' -v k="$1" '$1==k{print $2}'; }
 #     而裸 `/nonexistent` 拆不出目录 ⇒ 那是**调用方给错了环境变量**（`die`，码 2），
 #     与「后端不可达」（码 4）是两类。生产上这个值恒是 `<目录>/accounts.json`
 #     （`shared/ccm` 的默认值逐字如此）⇒ 换成带目录的形态**更贴生产**，不是迁就判据。
-FAKE_DAEMON="$REPO/e2e/fake-daemon"
+FAKE_DAEMON="$REPO/e2e/fake-daemon.sh"
 run_print() {
   env -u TMUX -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
     CCM_DAEMON_BIN="$FAKE_DAEMON" \

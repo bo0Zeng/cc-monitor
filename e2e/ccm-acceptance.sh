@@ -75,7 +75,7 @@ JSON
 # 只答账号的话，`--launch` 拿到的是**空回帧** ⇒ ccm 读成「后端答不出」⇒ `exit 4`
 # ⇒ 本套件 29 条里 24 条连锁失败（现打过），而它们红的原因与它们要测的东西**毫无关系**。
 #
-# ⇒ 把 `--launch` 那一格委托给**仓里那份可复用的假后端** `e2e/fake-daemon`：
+# ⇒ 把 `--launch` 那一格委托给**仓里那份可复用的假后端** `e2e/fake-daemon.sh`：
 #   它按 `doc/IPC-PROTOCOL.md` 的 `create-or-attach` 形状真去 `tmux new-session` / 打标 / `send-keys`，
 #   顺序与 `remote-daemon-proto/src/control/launch.rs` 的 `CreateOrAttach` 臂逐条同序。
 #   ⚠ **不在这里再写一份**：写了就是同一件事两份实现（本套件治的正是那一族）。
@@ -86,7 +86,7 @@ JSON
 mk_mirror_daemon() { # mk_mirror_daemon <落点>
   cat > "$1" <<MIRROR
 #!/bin/sh
-[ "\$1" = --launch ] && exec "$REPO/e2e/fake-daemon" "\$@"
+[ "\$1" = --launch ] && exec "$REPO/e2e/fake-daemon.sh" "\$@"
 [ "\$1" = --list-accounts ] || { cat >/dev/null; exit 0; }
 d=""; while [ \$# -gt 0 ]; do [ "\$1" = --accts-dir ] && d="\$2"; shift; done
 printf '{"accountZeroAware":true,"acctsDir":"%s","count":0,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"%s/accounts.json","sharedStore":null,"updatedAt":null}\n' "\$d" "\$d"
@@ -95,6 +95,8 @@ exit 0
 MIRROR
   chmod +x "$1"
 }
+# `FAKE_DAEMON_TMUX_SOCK` 与本套件的 `-L $SOCK` **给同一个名字**（理由见 `e2e/fake-daemon.sh` 头注）。
+export FAKE_DAEMON_TMUX_SOCK="$SOCK"
 mk_mirror_daemon "$BIN/kc1-mirror-daemon"
 export CCM_DAEMON_BIN="$BIN/kc1-mirror-daemon"
 
@@ -393,7 +395,7 @@ cat > "$BIN/kc1-diff-daemon" <<STUB
 #!/bin/sh
 # 〔\`K-P2\` \`F\` 拍 09-04〕\`--launch\` 委托给仓里那份可复用的假后端（理由同 \`mk_mirror_daemon\`：
 # 会话改由后端建了，只答账号的话这两条场景连会话都起不来）。
-[ "\$1" = --launch ] && exec "$REPO/e2e/fake-daemon" "\$@"
+[ "\$1" = --launch ] && exec "$REPO/e2e/fake-daemon.sh" "\$@"
 if [ "\$1" = --list-accounts ]; then
   printf '%s\n' '{"accountZeroAware":true,"acctsDir":"x","count":1,"enabled":true,"error":null,"kind":"accounts-meta","manifestPath":"x","sharedStore":null,"updatedAt":null}'
   printf '%s\n' '{"configDir":"$ACCTS/z-daemon","email":"","exists":true,"isDefault":true,"loggedIn":false,"mode":"isolated","name":"z"}'

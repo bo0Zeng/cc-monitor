@@ -63,7 +63,7 @@ ck() { # ck <描述> <期望> <实得>
 #     `shared/ccm` 要把它拆成 `--accts-dir <目录>` 发给后端，裸 `/nonexistent` 拆不出目录
 #     ⇒ 那是**调用方给错了环境变量**（`die`，码 2），与「后端不可达」（码 4）分属两类。
 #     生产上这个值恒是 `<目录>/accounts.json`（`shared/ccm` 的默认值逐字如此）⇒ **更贴生产**。
-FAKED="$REPO/e2e/fake-daemon"
+FAKED="$REPO/e2e/fake-daemon.sh"
 ccm() { env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json CCM_DAEMON_BIN="$FAKED" bash "$CCM" "$@" 2>&1; }
 
 UNSET="unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION"
@@ -393,17 +393,20 @@ idrun() { # idrun <额外 env…> —— stdout/stderr 落文件，回显退出�
 }
 
 RC="$(idrun TMUX=/faux/socket,1,0)"
-# 〔`F` 拍〕**rc 从 2 变 4**：这一格的根因（这台机器上没有后端）与账号那条、建会话那条
-# 是同一个 ⇒ 三条路给三个码的话，调用方要维护三份判法。今天它们走**同一个**失败面。
-ck "★ 在 tmux 里 + 找不到后端 ⇒ **响亮失败**（rc=4 唯一失败面，不是静默降级）" "4" "$RC"
+# 🔴 〔`F` 拍 09-04 如实登记〕**这一格的码是 2，而账号 / 建会话那两条是 4 —— 同一个根因两个码。**
+#   本拍**试过**把它也收进 `backend_unreachable`（唯一失败面），被**写区外**两条判据拦下
+#   （`src-tauri/src/polling_registry.rs::ccm_fails_loudly_when_no_daemon_can_be_found`
+#    逐字钉 `die "找不到 daemon`，它的头注又逐字钉着这里的 `rc=2`）⇒ 恢复原样，提案交回 PM。
+#   ⇒ 下面那条「反向对照」因此**多买到一样东西**：两条腿今天连**码**都分得开（2 vs 4）。
+ck "★ 在 tmux 里 + 找不到 daemon ⇒ **响亮失败**（rc=2，不是静默降级）" "2" "$RC"
 ck "★ 失败时**没有** exec launcher（会话不许在没有身份的情况下起来）" \
    "no" "$([ -f "$DTMP/ran" ] && echo yes || echo no)"
 ck "失败信息里说得出是缺什么" "yes" \
-   "$(grep -q '后端不可达' "$DTMP/err" && echo yes || echo no)"
-ck "失败信息里说得出**这一格的后果**（认不出这个会话 ≠ 笼统一句「不可达」）" "yes" \
+   "$(grep -q '找不到 daemon' "$DTMP/err" && echo yes || echo no)"
+ck "失败信息里说得出**这一格的后果**（认不出这个会话 ≠ 笼统一句「找不到」）" "yes" \
    "$(grep -q '未绑定窗口' "$DTMP/err" && echo yes || echo no)"
 ck "失败信息里说得出**怎么办**（查找顺序 / 三选一）" "yes" \
-   "$(grep -q 'CCM_DAEMON_BIN' "$DTMP/err" && grep -q 'cc-monitor-remote' "$DTMP/err" && echo yes || echo no)"
+   "$(grep -q 'CCM_DAEMON_BIN' "$DTMP/err" && grep -q 'CCM_NO_DAEMON' "$DTMP/err" && echo yes || echo no)"
 
 RC="$(idrun TMUX=/faux/socket,1,0 CCM_DAEMON_BIN="$DTMP/bin/fake-daemon")"
 ck "找得到后端 ⇒ 照常起（rc=0）" "0" "$RC"
@@ -434,9 +437,9 @@ RC="$(env -i HOME="$DTMP/home" PATH="$DTMP/bin" TMUX=/faux/socket,1,0 \
       CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json \
       bash "$CCM" --cwd "$DTMP/proj" --launcher "$DTMP/bin/mark" \
       > "$DTMP/out" 2> "$DTMP/err"; printf '%s' "$?")"
-ck "★ 反向对照 · 不给 --base ⇒ **账号那条腿先报**（同一个码 4，同一句文案）" "4" "$RC"
-ck "★ 反向对照 · 而且说的是**账号那一格**（不是身份那一格 —— 两条腿的 why 分得开）" "yes|no" \
-   "$(grep -q '找不到 daemon（cc-monitor-remote）' "$DTMP/err" && printf yes || printf no)|$(grep -q '未绑定窗口' "$DTMP/err" && printf yes || printf no)"
+ck "★ 反向对照 · 不给 --base ⇒ **账号那条腿先报**，而且它的码是 **4**（身份那条是 2 —— 分得开）" "4" "$RC"
+ck "★ 反向对照 · 而且说的是**账号那一格**（不是身份那一格 —— 两条腿的文案也分得开）" "yes|no" \
+   "$(grep -q '后端不可达' "$DTMP/err" && printf yes || printf no)|$(grep -q '未绑定窗口' "$DTMP/err" && printf yes || printf no)"
 
 # `--print` 是**纯的**：它在**身份前置检查**之前就退出了 ⇒ 那道检查缺 daemon 也拦不住它。
 # ⚠ 〔`F` 拍 09-04〕**这一条的射程今天窄了一格，写清楚**：
@@ -455,7 +458,7 @@ ck "★ --print 不受**身份前置检查**影响（那道检查在同样的环
 RC="$(env -i HOME="$DTMP/home" PATH="$DTMP/bin" TMUX=/faux/socket,1,0 \
       CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST=/nonexistent/accounts.json \
       bash "$CCM" --base --cwd "$DTMP/proj" --launcher "$DTMP/bin/mark" > "$DTMP/out" 2>/dev/null; printf '%s' "$?")"
-ck "★ 非空对照 · 同一趟去掉 --print ⇒ 那道检查真的拦（rc=4）⇒ 上一条不是恒真" "4" "$RC"
+ck "★ 非空对照 · 同一趟去掉 --print ⇒ 那道检查真的拦（rc=2）⇒ 上一条不是恒真" "2" "$RC"
 
 rm -rf "$DTMP"
 
