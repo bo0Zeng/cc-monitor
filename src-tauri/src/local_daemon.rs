@@ -68,6 +68,26 @@ pub enum StartOutcome {
     },
 }
 
+impl StartOutcome {
+    /// 起不来那一支的两个字段。`None` = 这一次不是「从来没起来」。
+    ///
+    /// # ⚠ 这里为什么写 `Self::` 而不是把类型名写全〔`K-P3b`，别改回去〕
+    ///
+    /// 同文件那条 [`tests::the_user_actionable_start_failures_all_reach_the_user`] 的第 ① 格
+    /// 数的是**字面** `StartOutcome::Failed {`，它的分母自称是「**失败的构造点**」——
+    /// 而**解构与构造在 Rust 里长得一模一样**。
+    /// 照那个写法写这一处，那把尺子会多数出一处**不需要分档的东西**，
+    /// 而它红出来的诊断（「新增一处失败就要给它分档」）**是假的**
+    /// —— 本文件逐字记过：「假诊断比不红更贵：它把人引到错的地方」。
+    /// ⇒ 这一处写 `Self::`：同一件事，而那把尺子的分母仍然只装构造点。
+    fn failure(&self) -> Option<(&str, &[std::path::PathBuf])> {
+        match self {
+            Self::Failed { reason, looked_at } => Some((reason.as_str(), looked_at.as_slice())),
+            Self::Started(_) | Self::AlreadyRunning => None,
+        }
+    }
+}
+
 // ══════════════════════════════════════════════════════════════════════════
 // `K-P1`：常驻那条路 —— **真脱离 · 一个监听口 · 起时认得出已有实例**
 //
@@ -667,7 +687,7 @@ pub(crate) fn detach_wanted(is_linux: bool, no_detach_env: Option<&str>) -> bool
 /// 收尸落在一条**专用线程**上（形状抄 `launch.rs::launch_local_posix_via` 里那条），
 /// 它随子进程结束而结束；`Child` 被取走之后句柄里只剩 pid + 二进制路径，
 /// 「停」那一步照样有凭据（走 [`kill_adopted`] 的身份核对）。
-fn reap_detached() {
+fn reap_detached(handshake: crate::daemon_policy::Handshake, reader: crate::daemon_policy::ReaderEnd) {
     let taken = {
         let mut g = DETACHED.lock().unwrap_or_else(|e| e.into_inner());
         g.as_mut().and_then(|h| h.child.take())
@@ -677,10 +697,103 @@ fn reap_detached() {
         .name("ccm-detached-reaper".into())
         .spawn(move || {
             // `process_group` 不改变父子关系 ⇒ 不 `wait` 就留僵尸（`launch.rs:198` 逐字）。
-            let _ = c.wait();
+            // ★ `K-P3b`：**`wait()` 回来那一拍就是这条路上唯一拿得到退出状态的时刻** ——
+            //   在这里记账，不在别处猜。
+            match c.wait() {
+                Ok(status) => note_detached_death(status, handshake, reader),
+                Err(e) => tracing::warn!(
+                    "收不了脱离那个 daemon 的尸（{e}）⇒ 这一次死亡的退出状态拿不到，账上不记 —— \
+                     ⚠ 如实降级：编一个退出状态比不记更坏"
+                ),
+            }
         })
         .map(|_| ())
         .unwrap_or_else(|e| tracing::warn!("起不来收尸线程（{e}）⇒ 那个 pid 会留成僵尸"));
+}
+
+/// 把一次 `wait()` 的结果翻成 [`crate::daemon_policy::Outcome`]。
+///
+/// ★ **信号号只有这一层取得到**：它要 `std::os::unix::process::ExitStatusExt`，
+/// 而 `std::os::unix` 在 `backend/mod.rs::the_backend_half_stays_platform_agnostic`
+/// 的禁针里 ⇒ `backend/` 那半只能把 `ExitStatus` **原样**交上来
+/// （`SuperviseEvent::Exited.status`），翻译落在这里。
+///
+/// `None` = 既没有退出码也没有信号号。那一格**没有事实可说** ⇒ 调用方出声、不上账；
+/// 编一个 `Exited(0)` 顶上去正是 `platform/fallback_guard.rs` 治的那一族。
+fn outcome_of_status(status: std::process::ExitStatus) -> Option<crate::daemon_policy::Outcome> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if let Some(sig) = status.signal() {
+            return Some(crate::daemon_policy::Outcome::Signalled(sig));
+        }
+    }
+    status.code().map(crate::daemon_policy::Outcome::Exited)
+}
+
+/// 脱离那条路上「它跟我们说过话没有」这一维。
+///
+/// ★ **它是从一个事实推出来的，不是一个孤零零的字面量**：入参就是那道门的产物。
+/// [`attach_stream`] 开头两行是 `parse_frame` + `DaemonHello::from_hello_frame`，
+/// 任一给不出东西就 `Err` 返回、**根本进不到流循环**，也就没有人调得到 [`reap_detached`]。
+/// ⇒ **拿得出一份 [`crate::inbound_client::DaemonHello`] = 一帧合法 hello 已经到手**，
+/// 而那正是「它说过话」的定义。要这个参数是为了让这条推理**在类型上**成立：
+/// 没有见证就调不出这个函数（见证的构造入口只有 `from_hello_frame` 一个，
+/// 由 `inbound_client` 那条「见证不许凭空造」的判据钉着）。
+///
+/// ⚠ 前提哪天变了（有人让 `attach_stream` 不带 hello 也能进流循环），
+/// 这一句就成了假的 —— 由 [`tests::the_detached_handshake_is_derived_from_the_hello_gate`]
+/// 钉住那道门还在。
+fn handshake_from_hello(
+    _witness: &crate::inbound_client::DaemonHello,
+) -> crate::daemon_policy::Handshake {
+    crate::daemon_policy::Handshake::Spoke
+}
+
+/// 脱离那条路的死亡账。**三维各自的来历逐条写在这儿，一个都不是默认值。**
+fn note_detached_death(
+    status: std::process::ExitStatus,
+    handshake: crate::daemon_policy::Handshake,
+    reader: crate::daemon_policy::ReaderEnd,
+) {
+    let Some(outcome) = outcome_of_status(status) else {
+        tracing::warn!(
+            "脱离的 daemon 退出状态里既没有退出码也没有信号号（{status:?}）—— \
+             这一格没有事实可说，账上不记"
+        );
+        return;
+    };
+    let ev = crate::daemon_policy::DeathEvidence {
+        // ① `Outcome`：`wait()` 的 `ExitStatus`，信号号在这一层取（见 `outcome_of_status`）。
+        outcome,
+        // ② `Handshake`：由 `attach_stream` 那道 hello 门推出来（见 `handshake_from_hello`）。
+        handshake,
+        // ③ `ReaderEnd`：流循环两个出口各自带上来的（EOF / 那句读错误原样）。
+        reader,
+        // 这条路上进程真的起来过 ⇒ 没有「起不来」那一支的两个字段。
+        start_failure: None,
+    };
+    shout_if_the_ledger_refused(crate::daemon_policy::record_death(
+        crate::inbound_client::LOCAL_ORIGIN,
+        &ev,
+        &mut crate::daemon_policy::MonitorLog,
+    ));
+}
+
+/// 记完一笔之后**不许把 [`crate::daemon_policy::Recorded`] 丢掉**。
+///
+/// `#[must_use]` 拦得住 `let _ =` 之外的忘记，拦不住「写了 `let _ =`」。
+/// ⇒ 三处接线一律把它交到这里：落点拒收时**再喊一声**。
+/// `record_death` 自己已经 `error!` 过一次 —— 这一声证的是**调用方没把它吞了**
+/// （`KP3A` 死值验那一刀分开的正是「没写」与「写了但吞了错」）。
+fn shout_if_the_ledger_refused(rec: Option<crate::daemon_policy::Recorded>) {
+    let Some(r) = rec else { return };
+    if let Some(why) = &r.sink_error {
+        tracing::error!(
+            "死亡账写不进去（{why}）—— 调用方这一侧也喊一声，别让它只死在落点里：{}",
+            r.line
+        );
+    }
 }
 
 /// 把一条已经认证过的连接接成入方向通道。
@@ -696,6 +809,9 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
         .ok_or_else(|| "hello 行解析不出帧".to_string())?;
     let witness = crate::inbound_client::DaemonHello::from_hello_frame(&frame)
         .ok_or_else(|| "首帧不是 hello ⇒ 拿不到见证，按契约不许登记通道".to_string())?;
+    // ★ `K-P3b`：**「它说过话没有」这一维就在这一行变真的** —— 上面那道门给出见证的那一刻。
+    //   下面把它一路带到收尸那一拍，而不是在那边写一个 `Handshake::Spoke` 字面量。
+    let handshake = handshake_from_hello(&witness);
     sock.set_nonblocking(true)
         .map_err(|e| format!("socket 转非阻塞失败：{e}"))?;
     // 期限只属于**握手**那一段；进了流之后这条连接是长连接，装着期限反而会把它掐断。
@@ -715,6 +831,9 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
         use crate::ssh_source::{CappedLine, DAEMON_FRAME_LINE_CAP};
         let mut reader = tokio::io::BufReader::new(rd);
         let mut buf: Vec<u8> = Vec::new();
+        // ★ `K-P3b`：**我们这一侧的读端怎么结束的**。初值只在真读到 EOF 时才成立 ——
+        //   下面那条 `Err` 支会把它换掉，两个出口各写各的。
+        let mut reader_end = crate::daemon_policy::ReaderEnd::CleanEof;
         loop {
             match crate::ssh_source::read_capped_line(&mut reader, &mut buf, DAEMON_FRAME_LINE_CAP)
                 .await
@@ -728,6 +847,9 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
                 Ok(CappedLine::Line) => {}
                 Err(e) => {
                     tracing::warn!("本机常驻后端读错误（{e}）；按流结束处理");
+                    // ★ `K-P3b`：那句错**原样**带到账上 —— 「读坏了」说的是我们这一侧，
+                    //   而它**不算它崩了一次**（`B1` 那条错误诊断的全部内容）。
+                    reader_end = crate::daemon_policy::ReaderEnd::Broken(e.to_string());
                     break;
                 }
             }
@@ -748,7 +870,8 @@ fn attach_stream(sock: std::net::TcpStream, hello_line: &str) -> Result<(), Stri
         crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
         crate::ssh_source::forget_tmux_raw(crate::inbound_client::LOCAL_ORIGIN);
         // 收尸：`process_group` 不改父子关系，不 `wait` 就留 `Z`。**事件驱动，不是轮询。**
-        reap_detached();
+        // ★ `K-P3b`：两维证据一起交下去 —— 收尸那一拍才拿得到第三维（退出状态）。
+        reap_detached(handshake, reader_end);
         tracing::info!("本机常驻后端的流结束（EOF）");
     });
     Ok(())
@@ -1080,6 +1203,110 @@ fn signal_term(pid: u32) -> Result<(), String> {
     }
 }
 
+/// daemon 那条监护路的 `on_event` —— ★ **判与记都在这个闭包里**。
+///
+/// # 为什么不落进 `supervise_with_stdio` 体内
+///
+/// 同一个监护器今天有**两种客户**：这条（daemon）与中转（[`start_local_relay`]）。
+/// 死亡账是「**这台机的 daemon**」的账 ⇒ 落进监护器体内，中转的死会记到 daemon 头上
+/// （或者要给监护器多一个「你在监护谁」的概念）。⇒ 接线落在**客户这一侧**。
+/// 由 `daemon_policy::tests::the_supervisor_itself_never_records_a_death` 钉着。
+///
+/// # 为什么是一个**返回闭包的函数**，而不是内联在下面那个调用里
+///
+/// 内联的闭包测试够不着 ⇒ `KP3W3` 那条「三只假 daemon 各判成哪一格」就只能读源码。
+/// 抽出来之后，判据可以拿**同一个闭包**跑一遍真进程
+/// （[`tests::three_fake_daemons_land_in_three_different_cells`]）。
+fn daemon_supervise_events() -> std::sync::Arc<dyn Fn(local_backend::SuperviseEvent) + Send + Sync>
+{
+    std::sync::Arc::new(|e| {
+        let (code, attempt, status, witness) = match e {
+            local_backend::SuperviseEvent::Exited {
+                code,
+                attempt,
+                status,
+                witness,
+            } => (code, attempt, status, witness),
+            other => {
+                tracing::info!("本机后端: {other:?}");
+                return;
+            }
+        };
+        tracing::info!("本机后端: 第 {attempt} 次那一命结束（code={code:?}）");
+        // ① 两维证据：只认**观测到的**那一档。
+        let (handshake, reader) = match witness {
+            local_backend::StreamWitness::Observed { handshake, reader } => (handshake, reader),
+            unwitnessed => {
+                // 到这里说明这一命没有消费者、或者消费者自己 panic 了 ——
+                // 两种情况下「它说过话没有」都**没有被观测过**，而那正是 2026-07-09
+                // 判别式的第二个条件。⇒ **出声，不上账**：编一个 handshake 顶上去，
+                // 判出来的「被拒了 / 崩了」是假的。
+                //
+                // ⚠ 如实登记的降级：这一命的死亡**不会出现在账上**。
+                // daemon 这条路今天恒有消费者（`start_or_extract` 无条件传
+                // `Some(Arc::new(local_stdio_consumer_guarded))`，那条线由
+                // `the_production_entry_hands_the_stdio_consumer_down` 钉着）
+                // ⇒ 生产上只有「消费者 panic」那一形到得了这里，而那一形兜底外壳已经
+                // LOUD 记过一条。真常来 ⇒ 回来重判，别在这里补一个默认值。
+                tracing::error!(
+                    "本机后端这一命结束了，而那两维证据没有观测者（{unwitnessed:?}）—— \
+                     死亡账这一笔不记：拿一个没人观测过的「说过话没有」去判，\
+                     判出来的是编的（2026-07-09 那次死循环的判别式就是它）"
+                );
+                return;
+            }
+        };
+        // ② 退出状态：`code` 在被信号打死时是 `None`，信号号在 `status` 里，
+        //    而翻译它要 `ExitStatusExt`（宿主层的事，见 `outcome_of_status`）。
+        let Some(status) = status else {
+            tracing::error!("本机后端这一命结束了，而收尸没拿到退出状态 —— 账上不记");
+            return;
+        };
+        let Some(outcome) = outcome_of_status(status) else {
+            tracing::error!(
+                "本机后端的退出状态里既没有退出码也没有信号号（{status:?}）—— 账上不记"
+            );
+            return;
+        };
+        let ev = crate::daemon_policy::DeathEvidence {
+            outcome,
+            handshake,
+            reader,
+            // 这条路上进程真的起来过 ⇒ 没有「起不来」那一支的两个字段。
+            start_failure: None,
+        };
+        shout_if_the_ledger_refused(crate::daemon_policy::record_death(
+            crate::inbound_client::LOCAL_ORIGIN,
+            &ev,
+            &mut crate::daemon_policy::MonitorLog,
+        ));
+    })
+}
+
+/// 「从来没起来」那条臂的**唯一生产喂点**：[`start_local_backend`] 的两个出口都从这里过。
+///
+/// ⚠ `reason` / `looked_at` **原样转**，不另写一份 —— 本文件那一族逐字的纪律：
+/// 「两份措辞迟早对不上」。账上那一行里的原因与 `StartOutcome::Failed` 手上的那一句
+/// **逐字相同**，由 `the_never_started_reason_is_the_same_string_the_caller_gets` 钉着。
+fn note_never_started(out: StartOutcome) -> StartOutcome {
+    if let Some((reason, looked_at)) = out.failure() {
+        let ev = crate::daemon_policy::DeathEvidence {
+            outcome: crate::daemon_policy::Outcome::NeverSpawned,
+            // 进程一次都没存在过 ⇒ 它当然一个字节都没说过。这不是猜，是那条路的定义。
+            handshake: crate::daemon_policy::Handshake::NeverSpoke,
+            // ★ **这条路上根本没有读端** ⇒ 明写「没观测到」，不冒充一次干净 EOF。
+            reader: crate::daemon_policy::ReaderEnd::NotObserved,
+            start_failure: Some((reason.to_string(), looked_at.to_vec())),
+        };
+        shout_if_the_ledger_refused(crate::daemon_policy::record_death(
+            crate::inbound_client::LOCAL_ORIGIN,
+            &ev,
+            &mut crate::daemon_policy::MonitorLog,
+        ));
+    }
+    out
+}
+
 pub fn start_local_backend() -> StartOutcome {
     // ★★ **锁全程持有**〔D 阶段补审 08-11 修，原版是阻塞级缺陷〕。
     //
@@ -1165,7 +1392,8 @@ pub fn start_local_backend() -> StartOutcome {
         start_local_relay(bin);
     }
     match start_detached(&|| resolve_daemon_bin(&extract_dir, embedded), &[]) {
-        DetachOutcome::Done(out) => return out,
+        // ★ `K-P3b`：这是本函数**两个**返回 `Failed` 的出口之一 —— 都从 `note_never_started` 过。
+        DetachOutcome::Done(out) => return note_never_started(out),
         DetachOutcome::NotTaken => {}
     }
     let (resolved, sup) = local_backend::start_or_extract(
@@ -1174,15 +1402,17 @@ pub fn start_local_backend() -> StartOutcome {
         embedded,
         // `backend-split` 的 C10：平台知识由宿主注入，backend 那半不认识 `#[cfg(unix)]`。
         &crate::platform_fs::make_executable,
-        std::sync::Arc::new(|e| tracing::info!("本机后端: {e:?}")),
+        // ★ `K-P3b`：daemon 这条监护路的死亡账**就记在这个闭包里**（见它的头注）。
+        daemon_supervise_events(),
     );
     if let Some(h) = sup {
         *g = Some(h);
     }
-    match resolved {
+    // ★ `K-P3b`：另一个返回 `Failed` 的出口，同样从 `note_never_started` 过。
+    note_never_started(match resolved {
         Resolved::Found(p) => StartOutcome::Started(p),
         Resolved::Missing { reason, looked_at } => StartOutcome::Failed { reason, looked_at },
-    }
+    })
 }
 
 /// 本机独有的两个读数（远端没有对应物：那个进程在别人机器上）。
@@ -1319,7 +1549,16 @@ pub fn start_local_relay(bin: std::path::PathBuf) -> bool {
                 let mut g = LOCAL_RELAY.lock().unwrap_or_else(|e| e.into_inner());
                 *g = None;
             }
-            local_backend::SuperviseEvent::Exited { code, attempt } => {
+            // ⚠ `K-P3b`：`Exited` 加了 `status` / `witness` 两个字段，这里**逐个点名**
+            //   （不用 `..` 静默掉）。中转**不记账** —— 死亡账是「这台机的 daemon」的账，
+            //   而中转是另一个进程；它这一支上 `witness` 恒是 `NoConsumer`
+            //   （中转没接消费者），拿它去判「被拒了」判出来的是编的。
+            local_backend::SuperviseEvent::Exited {
+                code,
+                attempt,
+                status: _,
+                witness: _,
+            } => {
                 tracing::warn!(
                     "本机中转退出（第 {attempt} 次，退出码 {code:?}）—— \
                      中转的 `--relay` 起不来时恒退 2（端口被占 / 上游基址解析不了）。\
@@ -4932,6 +5171,275 @@ mod tests {
             *DETACHED.lock().expect("锁") = None;
             let _ = std::env::var("CCM_E2E_TMUX_SHIM_BIN");
         }
+    }
+
+    // ══ `K-P3b`：死亡账接线 —— 三处观测点真的喂到了 `record_death` ═══════════
+    //
+    // `K-P3` 第一档交付的是「判据 + 账 + 文案」，而 `§3-5` 第一行如实登记：
+    // **`record_death` 今天没有生产调用点**。下面这几条钉的就是那一格被补上了，
+    // 而且**每一处判出来的是对的那一格**。
+
+    /// 本机那台机的死亡账读数（三处接线都记在 `LOCAL_ORIGIN` 名下）。
+    fn local_health() -> crate::daemon_policy::Health {
+        crate::daemon_policy::health(crate::inbound_client::LOCAL_ORIGIN)
+    }
+
+    /// ★★ `KP3W2` 脱离路：**`Handshake` 那一维不是一个孤零零的字面量。**
+    ///
+    /// 两半缺一不可：
+    /// ① **纯函数**那一半 —— 拿一份**真的**见证进去得到「说过话」。
+    ///    见证只有一个构造入口（`DaemonHello::from_hello_frame`，由 `inbound_client`
+    ///    那条「见证不许凭空造」的判据钉着）⇒ 这一格拿不到假见证，
+    ///    而那正是这条推理**在类型上**成立的地方。
+    ///    死值验：把 `handshake_from_hello` 的返回改成 `NeverSpoke` ⇒ 本格当场红。
+    /// ② **接线**那一半 —— 那道门还在，而且证据是从它那儿取的、一路交到收尸那一拍。
+    #[test]
+    fn the_detached_handshake_is_derived_from_the_hello_gate() {
+        let line = concat!(
+            r#"{"kind":"hello","v":1,"build_id":"kp3b-jia","host_arch":"x86_64","#,
+            r#""claude_dir":"/dev/null","commands":["ping"]}"#
+        );
+        let frame = crate::ssh_source::parse_frame(line).expect("这一行该解析成 hello 帧");
+        let witness = crate::inbound_client::DaemonHello::from_hello_frame(&frame)
+            .expect("hello 帧该给得出见证 —— 给不出的话下面那一格是空转的");
+        assert_eq!(
+            handshake_from_hello(&witness),
+            crate::daemon_policy::Handshake::Spoke,
+            "拿到了一份**真的** hello 见证，这一维却不是「说过话」——\n\
+             ★ 2026-07-09 那次死循环的判别式就是它：「非零退出 **且** 从来没说过话」= 被拒了，\n\
+             两个条件缺一不可。这一维答错，脱离路上一个说过话之后 `exit 2` 的 daemon\n\
+             会被判成「被拒了」，而下一步的建议正好相反。"
+        );
+
+        let prod = guard_core::production_code(include_str!("local_daemon.rs"));
+        assert!(prod.len() > 20_000, "剥完只剩 {} 字节 —— 本条在空转", prod.len());
+        // 那道门本身（`attach_stream` 的前两行之一）：它没了，上面那条推理就没了前提。
+        guard_core::find_pinned(&prod, "DaemonHello::from_hello_frame(&frame)").unwrap_or_else(
+            |e| {
+                panic!(
+                    "`attach_stream` 那道 hello 门不是恰好一处（{e}）——\n\
+                     ⇒ 「进得了流循环 = 一帧合法 hello 已经到手」这条推理没有前提了，\n\
+                     而收尸那一拍报的仍然是「说过话」：那时它才真的变成一个编出来的值。"
+                )
+            },
+        );
+        for l in [
+            "let handshake = handshake_from_hello(&witness);",
+            "reap_detached(handshake, reader_end);",
+        ] {
+            guard_core::pin_line(&prod, l).unwrap_or_else(|why| {
+                panic!(
+                    "{why}\n\
+                     ⇒ 脱离路那两维不再是**从观测一路带下来的**。\n\
+                     少了第一行 = `Handshake` 又变回一个写死在收尸处的字面量；\n\
+                     少了第二行 = 那两维根本没交到 `wait()` 回来那一拍手上。"
+                )
+            });
+        }
+        // 「起不来」那一支的读端**明写没观测到**，不冒充一次干净 EOF。
+        guard_core::pin_line(&prod, "reader: crate::daemon_policy::ReaderEnd::NotObserved,")
+            .unwrap_or_else(|why| {
+                panic!(
+                    "{why}\n\
+                     ⇒ 「从来没起来」那条路上根本没有读端，而这里给它填了一个别的值。\n\
+                     填 `CleanEof` 是一句假话（那条路上从来没有过管子），\n\
+                     正是 `platform/fallback_guard.rs` 治的那一族。"
+                )
+            });
+    }
+
+    /// ★★ `KP3W3` 起不来：**账上那一行里的原因与调用方拿到的那一句逐字相同。**
+    ///
+    /// 逐字，不是「包含」——「包含」放得过「在正确那句外面又裹了一层自己的措辞」，
+    /// 而本文件那一族的纪律逐字是「两份措辞迟早对不上」。
+    #[test]
+    fn the_never_started_reason_is_the_same_string_the_caller_gets() {
+        let _guard = crate::inbound_client::local_origin_test_lock();
+        let origin = crate::inbound_client::LOCAL_ORIGIN;
+        // 中性夹具串：**不取自任何路径或夹具名**（`brief` 第 12 条那一族）。
+        let reason = "那一份不在，旁边也没有 ⇒ 拒绝报「已起」".to_string();
+        let looked_at = vec![
+            std::path::PathBuf::from("/甲/乙"),
+            std::path::PathBuf::from("/丙"),
+        ];
+        let before = local_health();
+        let out = note_never_started(StartOutcome::Failed {
+            reason: reason.clone(),
+            looked_at: looked_at.clone(),
+        });
+        // ① 结局**原样**还回去 —— 记一笔不许动调用方手上的东西。
+        match &out {
+            StartOutcome::Failed {
+                reason: got,
+                looked_at: paths,
+            } => {
+                assert_eq!(got, &reason, "记账把调用方那句原因改写了");
+                assert_eq!(paths, &looked_at, "记账把「找过哪些地方」改了");
+            }
+            _ => panic!("`Failed` 进去，出来的不是 `Failed` —— 接线把结局换掉了"),
+        }
+        // ② 账上**恰好**多一格「从来没起来」，别的三格一动不动。
+        let after = local_health();
+        assert_eq!(
+            (
+                after.never_started,
+                after.crashed,
+                after.refused,
+                after.misread
+            ),
+            (
+                before.never_started + 1,
+                before.crashed,
+                before.refused,
+                before.misread
+            ),
+            "「从来没起来」这一笔没落在它自己那一格上（前 {before:?} / 后 {after:?}）"
+        );
+        // ③ 那一行与「拿同一份证据重算一遍」**逐字相同**。
+        let same_evidence = crate::daemon_policy::DeathEvidence {
+            outcome: crate::daemon_policy::Outcome::NeverSpawned,
+            handshake: crate::daemon_policy::Handshake::NeverSpoke,
+            reader: crate::daemon_policy::ReaderEnd::NotObserved,
+            start_failure: Some((reason.clone(), looked_at.clone())),
+        };
+        let d = crate::daemon_policy::verdict(&same_evidence).expect("起不来是一件要上账的事");
+        assert_eq!(
+            crate::daemon_policy::death_kind(&d),
+            "从来没起来",
+            "同一份证据判出来的不是「从来没起来」—— 那接线喂进去的三维就不是这一份"
+        );
+        assert_eq!(
+            after.last.as_deref(),
+            Some(crate::daemon_policy::ledger_line(origin, &d).as_str()),
+            "账上那一行与「拿同一份证据重算一遍」不是同一个串。\n\
+             ⇒ 接线那一处对 `reason` / `looked_at` 动过手（本条是**逐字**比，不是「包含」）。"
+        );
+        // ④ **非空对照**：起来了不许上账 —— 否则上面那个 +1 只能说明「什么都记」。
+        let mid = local_health();
+        let back = note_never_started(StartOutcome::Started(std::path::PathBuf::from("/丁")));
+        assert!(
+            matches!(back, StartOutcome::Started(_)),
+            "`Started` 进去出来的不是 `Started`"
+        );
+        assert_eq!(
+            local_health().seen(),
+            mid.seen(),
+            "起来了也在账上留了一行 —— 那本账在数的不是死亡"
+        );
+    }
+
+    /// ★★ `KP3W3` 行为（监护路）：**三只假 daemon，各落进三个不同的格。**
+    ///
+    /// 走的是**生产的那个 `on_event` 闭包**（[`daemon_supervise_events`]），
+    /// 不是在测试里另写一份判读 —— 否则量的是判据自己。
+    ///
+    /// | 假 daemon | 它干了什么 | 该落哪一格 |
+    /// |---|---|---|
+    /// | ① | 发一帧合法 hello 之后 `exit 3` | 崩了（`crashed` +1，`refused` 不动） |
+    /// | ② | 一个字节不说就 `exit 2` | 被拒了（`refused` +1，`crashed` 不动） |
+    /// | ③ | 说过话之后**我们这一侧**读错误 | 读坏了（`misread` +1，`crashed` 不动） |
+    ///
+    /// ⚠ **诚实边界，别读大**：
+    /// - 三只都是 `sh`，不是真 daemon ⇒ 它们不碰 tmux，也不证明真 daemon 会这么死；
+    /// - ③ 那一格的「读错误」在真管道上造不出来（`read_capped_line_sync` 的 `Err`
+    ///   要一次真的 IO 错误）⇒ 它喂的是一个**注入的消费者**，报「说过话了 + 读端出错」。
+    ///   ⇒ 这一格量的是**闭包怎么判**，不是「读错误真的会发生」。
+    ///   ①② 两格走的是**真的** `local_stdio_consumer`，那两维是它自己观测出来的。
+    #[test]
+    fn three_fake_daemons_land_in_three_different_cells() {
+        use std::sync::Arc;
+        let _guard = crate::inbound_client::local_origin_test_lock();
+        let hello = concat!(
+            r#"{"kind":"hello","v":1,"build_id":"kp3b-yi","host_arch":"x86_64","#,
+            r#""claude_dir":"/dev/null","commands":["ping"]}"#
+        );
+        // 崩一次就放弃 ⇒ 每只恰好一个 `Exited` 事件，不会重起。
+        let once = local_backend::CrashLimits {
+            max_crashes: 1,
+            window_ms: 60_000,
+        };
+        let wait_for = |what: &str, pred: &dyn Fn(&crate::daemon_policy::Health) -> bool| {
+            for _ in 0..200 {
+                let h = local_health();
+                if pred(&h) {
+                    return h;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            panic!("10 秒内账上没等到「{what}」那一笔 —— 实得 {:?}", local_health());
+        };
+
+        // ── ① 说过话之后 exit 3 ⇒ 崩了 ────────────────────────────────
+        let base = local_health();
+        let h1 = local_backend::supervise_with_stdio(
+            std::path::PathBuf::from("sh"),
+            vec![
+                "-c".into(),
+                "printf '%s\\n' \"$CCM_KP3B_HELLO\"; exit 3".into(),
+            ],
+            vec![("CCM_KP3B_HELLO".to_string(), hello.to_string())],
+            once,
+            Arc::new(|| 0),
+            daemon_supervise_events(),
+            Some(Arc::new(local_backend::local_stdio_consumer)),
+        );
+        let a = wait_for("崩了", &|h| h.crashed > base.crashed || h.refused > base.refused);
+        h1.stop();
+        assert_eq!(
+            (a.crashed, a.refused, a.misread),
+            (base.crashed + 1, base.refused, base.misread),
+            "① 说过话之后 `exit 3` 没落进「崩了」（前 {base:?} / 后 {a:?}）。\n\
+             ★ 落进「被拒了」= 那一维被填成了「从来没说过话」，而它明明说过 ——\n\
+             那正是 2026-07-09 判别式被架空的形状。"
+        );
+
+        // ── ② 一个字节不说就 exit 2 ⇒ 被拒了 ──────────────────────────
+        let h2 = local_backend::supervise_with_stdio(
+            std::path::PathBuf::from("sh"),
+            vec!["-c".into(), "exit 2".into()],
+            Vec::new(),
+            once,
+            Arc::new(|| 0),
+            daemon_supervise_events(),
+            Some(Arc::new(local_backend::local_stdio_consumer)),
+        );
+        let b = wait_for("被拒了", &|h| h.refused > a.refused || h.crashed > a.crashed);
+        h2.stop();
+        assert_eq!(
+            (b.crashed, b.refused, b.misread),
+            (a.crashed, a.refused + 1, a.misread),
+            "② 一个字节都没说就 `exit 2` 没落进「被拒了」（前 {a:?} / 后 {b:?}）。\n\
+             ★ 落进「崩了」= monitor 会去重连重发同一个参数，那就是 2026-07-09 的死循环。"
+        );
+
+        // ── ③ 说过话之后我们这一侧读错误 ⇒ 读坏了，且**不算它崩了一次** ────
+        let broken: local_backend::StdioSink = Arc::new(|_in, _out| local_backend::ConsumerReport {
+            exit: local_backend::ConsumerExit::Early,
+            witness: local_backend::StreamWitness::Observed {
+                handshake: crate::daemon_policy::Handshake::Spoke,
+                reader: crate::daemon_policy::ReaderEnd::Broken(
+                    "读端出错（注入）：这一维说的是我们这一侧".to_string(),
+                ),
+            },
+        });
+        let h3 = local_backend::supervise_with_stdio(
+            std::path::PathBuf::from("sh"),
+            vec!["-c".into(), "sleep 30".into()],
+            Vec::new(),
+            once,
+            Arc::new(|| 0),
+            daemon_supervise_events(),
+            Some(broken),
+        );
+        let c = wait_for("读坏了", &|h| h.misread > b.misread || h.crashed > b.crashed);
+        h3.stop();
+        assert_eq!(
+            (c.crashed, c.refused, c.misread),
+            (b.crashed, b.refused, b.misread + 1),
+            "③ 我们这一侧读错误没落进「读坏了」（前 {b:?} / 后 {c:?}）。\n\
+             ★ 被计成一次崩溃 = `B1` 那条「一个错误的诊断」原样复发：\n\
+             三次之后整个进程周期不再起来，日志写「崩了 3 次」。"
+        );
     }
 }
 
