@@ -598,6 +598,29 @@ impl SidHwndCache {
         }
     }
 
+    /// K-W1C：**本机**一个 sid 离开活跃集这个**事实**到达时，这份缓存该变成什么样。
+    ///
+    /// # 为什么这一步必须住在这里
+    ///
+    /// 原先它整条住在 Tauri `setup` 闭包里那条 `session-changes-emitter` 线程上
+    /// （拿着 `AppHandle`）—— **测不动**。于是「后端算出会话没了」到「那条绑定真的
+    /// 被忘了」这一段线，本仓一条判据都没有：唯一碰 `forget` 的单测是直接调原语的
+    /// `remote_hwnd_cache_insert_lookup_forget`，**一条推送边都不经过**。
+    /// 抽成方法之后，判据钉的是**行为**（事实进来、缓存变成什么样），
+    /// 不是那段闭包的行号 —— 这条链哪天搬家，判据整块跟着走。
+    ///
+    /// # 今天的行为，逐字一句
+    ///
+    /// **两种 cause 一视同仁，都忘。** `Gone` 是真死；`Superseded` 是同一个 pidfile
+    /// 原地换了 sid（`/branch` `/clear`），旧 sid 连 attach 都 attach 不上
+    /// ⇒ 那条绑定对它已经没有任何意义。
+    ///
+    /// ⚠ **在这里长出 `match cause` 是一次行为改动，不是重构。** 判据两条各钉一格
+    /// （`Gone` / `Superseded`），谁在这里加分支，那一格会出声。
+    pub fn apply_local_removal(&self, removed: &crate::session_map::RemovedSid) {
+        self.forget(&removed.sid);
+    }
+
     fn persist(&self) {
         let snapshot = self.by_sid.read().clone();
         if let Err(e) = crate::utils::atomic_write_json(&self.file, &snapshot) {
@@ -632,6 +655,31 @@ impl RemoteHwndCache {
 
     pub fn forget(&self, sid: &str) {
         self.by_sid.write().remove(sid);
+    }
+
+    /// K-W1C：**远端**那条 removed 的分流结果到达时，这份缓存该变成什么样。
+    ///
+    /// 入参是 `classify_removed` 的裁决，不是原始 cause —— 「该归档还是该判灰」
+    /// 那个判断只有一个住址（那个纯函数），本方法**只答缓存忘不忘**，不许在这里
+    /// 重算一遍分流（那会长出第二份语义）。
+    ///
+    /// # 今天的行为，两句
+    ///
+    /// - `Archive`（claude 死了、tmux 那一格也没了）⇒ **忘**。
+    /// - `Idle`（claude 退了、tmux 会话还在，灰灯那一格）⇒ **不忘**：
+    ///   本地那个 ssh 窗口可能还开着，那条绑定仍然拉得前。
+    ///
+    /// ⚠ 「`Idle` 到底该不该忘」这一问**还没裁**（件计划 D5 在问它，理由是那条绑定
+    /// 此刻指的窗口未必还是那个会话的窗口）。本方法只把**今天是这样**钉住，
+    /// 好让哪天有人改它的时候有一条判据出声，而不是靠读注释。
+    pub fn apply_remote_disposition(
+        &self,
+        sid: &str,
+        disposition: &crate::ssh_source::RemovedDisposition,
+    ) {
+        if matches!(disposition, crate::ssh_source::RemovedDisposition::Archive) {
+            self.forget(sid);
+        }
     }
 
     /// 扫本地窗口找标题含 `ccm-rbind-<sid>` 的窗口并绑定。成功返 true。
@@ -835,6 +883,178 @@ mod tests {
 
         cache.forget("sess-42");
         assert!(cache.lookup("sess-42").is_none(), "forget 后应查不到");
+    }
+
+    // ==== K-W1C：三条主动失效边的端到端判据 ====
+    //
+    // 病灶逐字（件计划 §0b 甲）：`bind.rs` 原有 4 条判据，碰 `forget` 的只有
+    // `remote_hwnd_cache_insert_lookup_forget`，而它是**直接调原语**
+    // （insert → lookup → forget），**一条推送边都不经过** ⇒ 「后端算出会话没了/被顶替」
+    // 到「那条缓存真的被忘了」这一段线，本仓没人验。
+    //
+    // 下面四条钉的是**事实 → 缓存状态**，不是「调用了 forget」。形状照 `K-R16` 那条
+    // 先例（`src/gray-light-wiring.vitest.ts` 是「帧 → 前端状态」的直测），同形不同料。
+    //
+    // ⚠ 每条都先断言「本来在」再断言「已经没了」——少了入场自检，一份没建起来的夹具
+    // 会让下半截**空转地绿**（brief 第 9 条那族「空真」）。
+
+    /// 造一条形状完整的绑定。字段值只要求**互不相同、且不含 sid**：
+    /// 落盘那一半按**解析后的键**判，不按子串判，免得 sid 从别的字段（如标题）漏进来。
+    fn sample_binding(hwnd: isize) -> SidHwndBinding {
+        SidHwndBinding {
+            hwnd,
+            owner_pid: 4321,
+            owner_proc_start: 132456789012345678,
+            ps_pid: 8765,
+            ps_proc_start: "639150434950992340".to_string(),
+            title_at_bind: "Windows PowerShell".to_string(),
+            registered_at: 1716393600000,
+        }
+    }
+
+    /// 造一份**盘上已经有一条绑定**的本机缓存，返回（缓存, 落盘文件）。
+    /// `tag` 只为让并行跑的各条判据各用一个目录（同进程同 pid），**不进任何断言**。
+    fn seeded_local_cache(tag: &str, sid: &str) -> (Arc<SidHwndCache>, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("ccm-bindcache-{}-{tag}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("sid-hwnd-cache.json");
+        let mut on_disk: HashMap<String, SidHwndBinding> = HashMap::new();
+        on_disk.insert(sid.to_string(), sample_binding(0x1111));
+        std::fs::write(&file, serde_json::to_string(&on_disk).unwrap()).unwrap();
+        (SidHwndCache::load(file.clone()), file)
+    }
+
+    /// 读回落盘那份，按**键**判（不按子串）。
+    fn on_disk_sids(file: &Path) -> HashMap<String, SidHwndBinding> {
+        let raw = std::fs::read_to_string(file).expect("落盘文件应该在");
+        serde_json::from_str(&raw).expect("落盘文件应该是一份 sid → 绑定的 map")
+    }
+
+    /// K-W1C D3 第一句：**本机会话真死（`Gone`）⇒ 那条 sid 查不到了，且落盘里也没了。**
+    #[test]
+    fn a_local_session_that_is_gone_gets_forgotten_in_memory_and_on_disk() {
+        let sid = "s-alpha";
+        let (cache, file) = seeded_local_cache("l1", sid);
+        assert!(
+            cache.lookup(sid).is_some(),
+            "入场自检：绑定本来就不在内存里 —— 夹具没建起来，下面那句是空转"
+        );
+        assert!(
+            on_disk_sids(&file).contains_key(sid),
+            "入场自检：绑定本来就不在盘上 —— 落盘那一半此刻是空转"
+        );
+
+        cache.apply_local_removal(&crate::session_map::RemovedSid::gone(sid));
+
+        assert!(
+            cache.lookup(sid).is_none(),
+            "本机会话真死之后那条绑定还查得到 —— 「主动推送」这条边断了：\n\
+             ↗ 会继续拉一个已经不属于那个会话的窗口，而这正是用户逐字要防的\n\
+             「防止搞到错误的」。"
+        );
+        assert!(
+            !on_disk_sids(&file).contains_key(sid),
+            "内存忘了、**落盘文件里还留着** —— monitor 一重启这条死绑定就复活。\n\
+             本机这份缓存是持久化的（`sid-hwnd-cache.json`），忘掉必须落到盘上才算忘。"
+        );
+    }
+
+    /// K-W1C D3 第二句：**本机会话被顶替（`Superseded`）⇒ 同上。**
+    ///
+    /// ★ 这一格今天是**顺带**买到的（`lib.rs` 那句头注逐字「cause 在这里无分支意义，
+    /// 取 sid 即可」）⇒ 属「碰巧对」。本条把它变成「设计如此」：谁在
+    /// `apply_local_removal` 里加一个 `match cause`，这一条就红。
+    ///
+    /// ⚠ 它**不**覆盖上游那一步（「同 pid + 同 procStart 换 sid 该判 `Superseded`」）——
+    /// 那一格由 `diff_detects_superseded_only_with_positive_identity_evidence` 守着，
+    /// 是另一条边。两条缺一不可，别把其中一条读成两条。
+    #[test]
+    fn a_local_session_that_was_superseded_gets_forgotten_too() {
+        let sid = "s-beta";
+        let (cache, file) = seeded_local_cache("l2", sid);
+        assert!(
+            cache.lookup(sid).is_some(),
+            "入场自检：绑定本来就不在内存里 —— 夹具没建起来，下面那句是空转"
+        );
+        assert!(
+            on_disk_sids(&file).contains_key(sid),
+            "入场自检：绑定本来就不在盘上 —— 落盘那一半此刻是空转"
+        );
+
+        cache.apply_local_removal(&crate::session_map::RemovedSid::superseded(sid));
+
+        assert!(
+            cache.lookup(sid).is_none(),
+            "会话被顶替（`/branch` `/clear` 同一个 pidfile 原地换 sid）之后，\n\
+             旧 sid 那条绑定还查得到 —— 旧 sid 连 attach 都 attach 不上，\n\
+             那条绑定只会把用户拉到一个**现在挂着别的会话**的窗口上。"
+        );
+        assert!(
+            !on_disk_sids(&file).contains_key(sid),
+            "被顶替的那条绑定还留在落盘文件里 —— 重启即复活。"
+        );
+    }
+
+    /// K-W1C D3 第三句（前半）：**远端判 `Archive` ⇒ 那条 sid 在远端缓存里查不到了。**
+    #[test]
+    fn a_remote_session_classified_as_archive_gets_forgotten() {
+        let sid = "s-gamma";
+        let cache = RemoteHwndCache::new();
+        cache
+            .by_sid
+            .write()
+            .insert(sid.to_string(), sample_binding(0x2222));
+        assert!(
+            cache.lookup(sid).is_some(),
+            "入场自检：绑定本来就不在 —— 夹具没建起来，下面那句是空转"
+        );
+
+        cache.apply_remote_disposition(sid, &crate::ssh_source::RemovedDisposition::Archive);
+
+        assert!(
+            cache.lookup(sid).is_none(),
+            "远端会话归档之后那条绑定还查得到 —— 远端这条推送边断了。"
+        );
+    }
+
+    /// K-W1C D3 第三句（后半）：**远端判 `Idle` ⇒ 不忘。**
+    ///
+    /// 这是**今天的行为**，本条只钉住它：`Idle` = claude 退了、tmux 会话还在
+    /// （灰灯那一格），此时本地那个 ssh 窗口可能还开着 ⇒ 绑定仍然拉得前。
+    ///
+    /// ⚠ **它对不对，本条不答**（件计划 D5 在问：那条绑定此刻指的窗口还是不是
+    /// 那个会话的窗口）。⇒ 谁哪天裁「Idle 也该忘」，这一条会红，**红就是提醒去改判据，
+    /// 不是提醒去改回代码**。
+    ///
+    /// ⚠ **诚实边界**：它是一条**负向**性质 ⇒ 把 `apply_remote_disposition` 的函数体
+    /// 整个掏空，本条**仍绿**。它的牙在反方向那一刀上（改成无条件 `forget`）。
+    #[test]
+    fn a_remote_session_that_only_went_idle_keeps_its_binding() {
+        let sid = "s-delta";
+        let cache = RemoteHwndCache::new();
+        cache
+            .by_sid
+            .write()
+            .insert(sid.to_string(), sample_binding(0x3333));
+        assert!(
+            cache.lookup(sid).is_some(),
+            "入场自检：绑定本来就不在 —— 夹具没建起来，下面那句是空转"
+        );
+
+        cache.apply_remote_disposition(
+            sid,
+            &crate::ssh_source::RemovedDisposition::Idle {
+                origin: "one-host".to_string(),
+            },
+        );
+
+        assert!(
+            cache.lookup(sid).is_some(),
+            "远端只是进了 idle-tmux（claude 退了、tmux 会话还在），绑定却被忘了 ——\n\
+             那个 ssh 窗口可能还开着，忘掉它 ↗ 当场失灵。\n\
+             ⚠ 若这是**有意**改的（件计划 D5 裁「Idle 也该忘」），\n\
+             要改的是这一条判据、并同轮说清理由，不是把这句话删掉。"
+        );
     }
 
     /// F-Vwin：真 Windows 验证 #74/#41（远端 ↗ HWND 绑定层）。
