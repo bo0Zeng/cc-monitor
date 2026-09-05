@@ -1,0 +1,77 @@
+K-R23 · §3 死值验的四个读数（+ 一个第五读数）
+=====================================================================
+判据    : src-tauri/src/tmux.rs::tests::a_dirty_channel_that_lost_the_tab_must_not_open_the_door
+跑法    : 沙箱（ccmon-devbox:latest，--network none）里
+          `cargo test --lib -- --nocapture a_dirty_channel_that_lost_the_tab`
+          🔴 宿主上一条都没跑。不起真 tmux：`tmux` 用 shell 函数顶掉
+          （`command -v` 认函数），`display-message` 吐喂进去的 `$info`，
+          其余动词吐 `ACTION_RAN:<动词>`。
+          ⇒ 零真 tmux / 零 socket / 零临时文件 / 不动这台机器任何状态（R7）。
+喂什么  : 脏      = "cc-abc12345"（**没有 TAB** —— K-R12 量到的成因下整条被改写）
+          干净    = "1\tcc-abc12345"
+          sid 未设 = "1\t"（拆得出字段，只是第二格空）
+命令串  : builder 的**生产串**（`build_send_keys_remote_cmd("e2e-custom","CCMPROBE",true)`
+          / `build_kill_session_cmd("e2e-custom")`），不手搓等价命令。
+          目标名非 `cc-*` ⇒ `need_sid = true` ⇒ 这两格才真的装了这道门。
+
+---------------------------------------------------------------------
+① 改之前  量于 commit 1832380（= 基点 3a2ba00 + 只加了判据，门一个字没动）
+---------------------------------------------------------------------
+send-keys · 脏输入（无 TAB） ⇒ ACTION_RAN:send-keys                                   🔴 放行
+kill      · 脏输入（无 TAB） ⇒ CCM_GUARD_REJECTED sid=cc-abc12345 windows=cc-abc12345  拒绝
+send-keys · 干净输入         ⇒ ACTION_RAN:send-keys                                   放行（正对照）
+kill      · 干净输入         ⇒ ACTION_RAN:kill-session                                放行（正对照）
+send-keys · sid 未设         ⇒ CCM_GUARD_REJECTED sid=                                拒绝
+
+判据结果: FAILED —— **这条在修之前是红的，这是本件那个洞的复现。**
+
+★ 顺带把「kill 那条是碰巧安全」证死了：它的拒绝消息逐字是
+  `sid=cc-abc12345 windows=cc-abc12345` —— **两个字段拿到的是同一行整串**。
+  它拒绝不是因为这道门认出了「通道脏」，而是因为 `$w`（那行整串）恰好 ≠ `"1"`
+  —— 一个**与本病无关**的字段。
+
+---------------------------------------------------------------------
+② 改之后  量于 commit = 本文件所在的这一提交（取值那一步：`cut` → shell 原生拆 + 显式判「拆不出」）
+---------------------------------------------------------------------
+send-keys · 脏输入（无 TAB） ⇒ CCM_GUARD_UNPARSABLE info=cc-abc12345  ✅ 拒绝（洞堵上了）
+kill      · 脏输入（无 TAB） ⇒ CCM_GUARD_UNPARSABLE info=cc-abc12345  ✅ 拒绝（对照：改前改后都拒绝）
+send-keys · 干净输入         ⇒ ACTION_RAN:send-keys                   放行（正对照没塌）
+kill      · 干净输入         ⇒ ACTION_RAN:kill-session                放行（正对照没塌）
+send-keys · sid 未设         ⇒ CCM_GUARD_REJECTED sid=                拒绝，且**与脏输入的读数不同**
+
+判据结果: ok（1 passed）
+
+⚠ kill 那条对照要看清一格，别读成误伤：
+  **处置没变**（改前拒绝、改后拒绝，`ACTION_RAN` 两次都没出现）——这正是件文件要的对照。
+  **变的是它报出来的话**：从 `CCM_GUARD_REJECTED sid=<整行> windows=<整行>`（碰巧撞出来的）
+  变成 `CCM_GUARD_UNPARSABLE info=<整行>`（显式认出「通道脏」）。
+  这不是误伤，这正是 D2③ + D4 要买的东西：kill 的拒绝**不再建立在一个与本病无关的字段上**。
+
+---------------------------------------------------------------------
+③ `need_sid=false` 那两格：命令串**逐字节没动**
+---------------------------------------------------------------------
+`emit_guarded_commands_for_e2e`（沙箱跑）产出的四条生产串里：
+  kill_owned      : `... else w="$info"; if [ "$w" = "1" ]; then tmux kill-session ...`
+  send_keys_owned : `... then tmux send-keys ...`（退化分支，门整个不装）
+两条都不含 `tab=` / `CCM_GUARD_UNPARSABLE` —— `split_check` 在 `need_sid=false` 时是空串，
+格式串里本来就没有 TAB、没有「拆」这一步，所以也不该有这条判据。
+
+---------------------------------------------------------------------
+④ 旁证：那两条 `cut` 读数（沙箱现打，GNU coreutils 9.4）
+---------------------------------------------------------------------
+printf %s cc-abc12345 | cut -f2   ⇒ [cc-abc12345]   ← 病根：无分隔符时吐整行
+printf %s cc-abc12345 | cut -sf2  ⇒ []              ← PM 那条线索成立
+printf %s cc-abc12345 | cut -f1   ⇒ [cc-abc12345]
+printf %s cc-abc12345 | cut -sf1  ⇒ []              ← 🔴 `-s` **会动到 `$w` 那一侧**
+printf '1\tcc-x'      | cut -sf1  ⇒ [1] ; cut -sf2 ⇒ [cc-x]   ← 有分隔符时 `-s` 无影响
+
+⚠ 本沙箱镜像里只有 GNU coreutils 9.4，**没有 busybox**（现打：`command -v busybox` 空）。
+  ⇒ 「`cut -s` 在对端也这么干」这件事，本机验不了 —— 这正是件文件点名最容易假绿的一格。
+  所以修法不建在 `cut -s` 上（见 tmux.rs 里 `build_guarded_tmux_cmd` 头注的三格）。
+
+shell 原生拆法的对端可移植性（沙箱现打，dash 与 bash 逐行同值）：
+  in=[1\tcc-abc12345] ⇒ w=[1]           sid=[cc-abc12345]  SPLIT
+  in=[cc-abc12345]    ⇒ w=[cc-abc12345] sid=[cc-abc12345]  UNPARSABLE
+  in=[1\t]            ⇒ w=[1]           sid=[]             SPLIT
+  in=[]               ⇒                                    UNPARSABLE
+  `$tab` 为空串（printf 求值失败）时：一律 UNPARSABLE ⇒ **fail-closed**。
