@@ -1818,8 +1818,16 @@ mod tests {
             ms.push(el);
         }
         // 非空对照：那个落点**真的被写过**（否则「没卡住」可能只是 tee 整条路没走）。
+        //
+        // ⚠⚠ **它必须 `wait_until`，不许瞬时读**〔`K-R24` 读出来的机制，09-04〕：
+        // tee 是**队列 + 写线程**，而上面两发是从**这条测试线程**上量完就往下走的
+        // ⇒ 瞬时读会落在「转发已经走完、写线程还没写第一笔」那个窗口里，
+        // 读到 0 ⇒ 间歇性红，报文逐字是「卡住的那个落点一次都没被写过」。
+        // 同模块上面几条对同类前提（`inflight` 那几格）用的就是 `wait_until`，这里照抄。
+        // ⚠ 它**不改本条量的东西**：`ms[0]`/`ms[1]` 在这一句**之前**就量完了，
+        //   而 `wait_until` 的 4s 上限与那两条 1500ms 阈值量的是**两件事**。
         assert!(
-            writes.load(Ordering::SeqCst) >= 1,
+            wait_until(|| writes.load(Ordering::SeqCst) >= 1),
             "非空对照：卡住的那个落点一次都没被写过 ⇒ 本条量的不是 tee 这条路"
         );
         println!("[阻-2] tee 卡 3000ms 时：A 耗时 {} ms · B 耗时 {} ms", ms[0], ms[1]);
@@ -2057,11 +2065,21 @@ mod tests {
         let err_c = Arc::clone(&err);
         std::thread::spawn(move || {
             for line in BufReader::new(se).lines().map_while(Result::ok) {
+                // ★★ **次序是承重的：先写缓冲，再 `send`**〔`K-R24` 读出来的机制，09-04〕。
+                //
+                // 反过来（先 `send` 再写缓冲）的话，`rx.recv_timeout` 就是判据的**同步点**，
+                // 而它返回的那一刻 banner 这一行**可能还没进 `err`** ⇒ 一条读
+                // 「`err` 里有没有 / 有几行 `listening on`」的判据会**间歇性**红，
+                // 报文里 `{err:?}` 印出来的正是一个空串。
+                // ⇒ 今天由**构造**兜住：`send` 发生时缓冲里必然已经有它了，
+                // 而 `send` 是判据唯一等得到的那个信号。
+                // ⚠ 它买的是**这一个**窗口，不是「err 里所有内容都齐了」——
+                //   banner **之后**那些行仍然是异步进来的，读它们的判据仍要自己等。
+                err_c.lock().expect("lock").push_str(&line);
+                err_c.lock().expect("lock").push('\n');
                 if line.contains("listening on") {
                     let _ = tx.send(line.clone());
                 }
-                err_c.lock().expect("lock").push_str(&line);
-                err_c.lock().expect("lock").push('\n');
             }
         });
 
