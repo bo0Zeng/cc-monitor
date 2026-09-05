@@ -64,12 +64,21 @@ STEPS = [
 ]
 
 
-def run_cell(cell, home, do_mkdir, out_dir):
+# ⚠ 补一趟 `--no-fail-fast`：上面那条 cargo 逐字复刻门禁，而门禁那条**不带**它 ——
+#   于是某个测试二进制一红，**后面的二进制根本不跑**，那些判据这一格**没被判到**。
+#   「没被判到」不等于「没翻转」⇒ 人群只报得出下界。这一趟把那个缺口补上。
+STEPS_NFF = [
+    ("cargo-nff",
+     "cd src-tauri && cargo test --workspace --exclude code-picture-core --lib --no-fail-fast"),
+]
+
+
+def run_cell(cell, home, do_mkdir, out_dir, steps=None):
     """一格：逐字复刻 `.claude/devbox/gate` 的 docker run，只换 HOME 那一维。"""
     pre = 'mkdir -p "$HOME/.claude/projects" && ' if do_mkdir else ""
     print(f"── 格 {cell}：HOME={home} · mkdir={'有' if do_mkdir else '无'} · --network none ──",
           flush=True)
-    for name, cmd in STEPS:
+    for name, cmd in (steps or STEPS):
         argv = [
             "docker", "run", "--rm",
             "--network", "none",
@@ -103,11 +112,73 @@ def run_gates(out_dir):
         print(f"   rc={rc}  ⇒ {log}", flush=True)
 
 
+def verdicts(path):
+    """从一份 cargo 全量输出里抠出**逐条判决**：{判据全名: ok|FAILED|ignored}。
+
+    ⚠ 这是本量具唯一「看得见单条判据」的地方 —— 门禁那九格只到**格**这一级。
+    """
+    out = {}
+    if not os.path.exists(path):
+        return out
+    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+        for line in fh:
+            line = line.rstrip("\n")
+            if not line.startswith("test ") or " ... " not in line:
+                continue
+            name, _, verdict = line[5:].partition(" ... ")
+            verdict = verdict.strip()
+            # cargo 并发跑时行可能被别的输出粘在后面 ⇒ 只认这三种干净收尾
+            if verdict in ("ok", "FAILED", "ignored"):
+                out[name.strip()] = verdict
+    return out
+
+
+def cell_verdicts(out_dir, cell):
+    """一格的全部 Rust 逐条判决。**有 `--no-fail-fast` 那一趟就用它** ——
+    不带它的那一趟在首个红二进制处就停了，后面的判据没被判到。"""
+    got = {}
+    nff = os.path.join(out_dir, f"{cell}.cargo-nff.log")
+    got.update(verdicts(nff if os.path.exists(nff)
+                        else os.path.join(out_dir, f"{cell}.cargo.log")))
+    got.update(verdicts(os.path.join(out_dir, f"{cell}.daemon.log")))
+    return got
+
+
+def run_diff(out_dir):
+    """A/B/C/D 逐条对拍 —— **判决翻转的**才进人群。"""
+    base = cell_verdicts(out_dir, "A")
+    print(f"分母（格 A 逐条采到的 Rust 判决）= {len(base)}")
+    for cell in ("B", "C", "D"):
+        cur = cell_verdicts(out_dir, cell)
+        flipped = sorted(
+            n for n in set(base) & set(cur)
+            if base[n] != cur[n]
+        )
+        only_a = sorted(set(base) - set(cur))
+        only_c = sorted(set(cur) - set(base))
+        print(f"\n── A ⇄ {cell} ── 采到 {len(cur)} 条 · **翻转 {len(flipped)} 条**"
+              f" · 只在 A 有 {len(only_a)} · 只在 {cell} 有 {len(only_c)}")
+        for n in flipped:
+            print(f"   翻转  {base[n]:>7} → {cur[n]:<7} {n}")
+        for n in only_a[:20]:
+            print(f"   缺席  A有/{cell}无  {n}")
+        for n in only_c[:20]:
+            print(f"   新增  A无/{cell}有  {n}")
+
+
 def main():
     if len(sys.argv) < 2:
         sys.exit(__doc__)
     out_dir = sys.argv[1]
     what = sys.argv[2] if len(sys.argv) > 2 else "all"
+    if what == "diff":
+        run_diff(out_dir)
+        return
+    if what == "nff":
+        for cell, home, do_mkdir in CELLS:
+            run_cell(cell, home, do_mkdir, out_dir, STEPS_NFF)
+        print("=== 全部跑完 ===", flush=True)
+        return
     os.makedirs(out_dir, exist_ok=True)
     # 🔴 **串行** —— 几格共用同一个 CARGO_TARGET_DIR，并行会撞 cargo 的锁。
     if what in ("gates", "all"):
