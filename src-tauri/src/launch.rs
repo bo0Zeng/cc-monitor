@@ -1347,6 +1347,131 @@ mod tests {
         crate::backend::control::payload::relay_env_prefix_posix(url)
     }
 
+    // ─────────────────────────────────────────────────────────────────────────
+    // ★★ `K-R24`：**exec 一个自己刚写出来的文件，前提是「这一刻没人握着它的写 fd」**
+    //    —— 而这条前提，先前**没人建立、也没人检查**。
+    //
+    // # 病历（PM 09-04 夜实打，同一棵树同一个提交两趟）
+    //
+    // 第一趟开窗那条判据红，报文逐字
+    // `spawn 假终端应成功: "spawn 本地命令失败: Text file busy (os error 26)"`；
+    // 第二趟全绿。⇒ 一个读数装着**两件事**：
+    //   ① 开窗那一支的 spawn 真的坏了（真缺陷）；
+    //   ② 这一趟 exec 撞上了 `ETXTBSY`（环境时序，与被测那一半无关）。
+    // ★ **这正是 `K-R24` 的正题（一个值装了几件事），长在我自己这条判据上。**
+    //
+    // # 机制：为什么会有别人握着写 fd
+    //
+    // `ETXTBSY` 的定义就是「execve 的目标文件此刻正被某个进程打开着写」。
+    // 本进程自己那把写句柄在 `install_fake_terminal` 里**确定性地关掉了**（见那里）。
+    // 剩下的唯一来路是**别的线程**：这个测试二进制的生产段里有 40+ 处真起进程的调用点
+    //（`write_site_registry` 那张 `SPAWNS` 表逐条登记着），起进程要么 fork 要么 posix-spawn，
+    // 两者都把父进程此刻打开的 fd **复制一份给子进程**，而 close-on-exec 要到子进程
+    // **exec 那一刻**才生效 ⇒ 「fork 之后、exec 之前」那段窗口里，那个子进程就是
+    // **一个握着我们这个文件写 fd 的进程**。我们此刻 execve 它 = `ETXTBSY`。
+    // ★ 同一个成因在别的工具链上是有名的：go 与 cargo 都是靠**对 `ETXTBSY` 重试**收的。
+    //
+    // # 本段把那一个读数拆成三个（这才是本件的正题）
+    //
+    // | 坏法 | 红的是哪一句 |
+    // |---|---|
+    // | ① 前提没建立（上限内一直 `ETXTBSY`） | 「前提不成立：exec 那一刻有人握着…… 这条今天判不了」 |
+    // | ② spawn 那一半真坏了（别的错） | 「开窗那一支的 spawn 真的失败了（不是 ETXTBSY）」 |
+    // | ③ 夹具没装好（没有执行位） | 「假终端没有执行位 —— 红的是夹具，不是被测那一半」 |
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// 允许撞几次 `ETXTBSY` 才算「这条前提建不起来」。
+    ///
+    /// 🔴 **它不是「睡够久就当没事」**：上限到了**照样红**，只是红的那句话换成
+    /// 「前提不成立」。50 × 20ms ≈ 1s，而它要等的那个窗口（别人的 fork 到 exec）
+    /// 在实测里是亚毫秒级 —— 这个上限是**宽的**，不是**紧的**。
+    #[cfg(not(windows))]
+    const FAKE_TERM_ETXTBSY_TRIES: u32 = 50;
+
+    /// 起那个假终端时，「没人握着它的写 fd」这条前提的三种结局。
+    #[cfg(not(windows))]
+    #[derive(Debug)]
+    enum FakeTermSpawn {
+        /// 起成功了 —— 前提成立。
+        Ok,
+        /// 上限内一直 `ETXTBSY` ⇒ **前提没建立**，这条今天判不了。
+        PremiseUnmet(String),
+        /// 别的错 ⇒ **spawn 那一半真的坏了**。
+        Broken(String),
+    }
+
+    /// 一条 spawn 错误是不是 `ETXTBSY`。
+    ///
+    /// 🔴 **认的是 `os error 26` 那一半，不是 `Text file busy` 那一半**：
+    /// 后半句由 C 库按 `LC_MESSAGES` 打（glibc 有中文翻译），拿它当判据等于给这条判据
+    /// 再挂一条**隐式的 locale 前提** —— 而那正是本件在治的病。前半句是 errno 的十进制，
+    /// 与 locale 无关。
+    #[cfg(not(windows))]
+    fn spawn_error_is_etxtbsy(err: &str) -> bool {
+        err.contains("os error 26")
+    }
+
+    /// 写一个「只记录、不执行」的假终端脚本，并**把前提真的建立起来**。
+    ///
+    /// 两半都在这里：
+    /// - **写句柄**：具名句柄 + `sync_all` + 显式 drop。先前这里是 `std::fs::write`，
+    ///   它也会关，但那是**实现细节** —— 读的人看不出「关掉写 fd」是这条判据的前提之一。
+    ///   本件要买的正是「**让前提看得见**」。
+    /// - **执行位**：加完当场读回来核一遍（它是确定性的，所以直接断言，不重试）。
+    #[cfg(not(windows))]
+    fn install_fake_terminal(path: &std::path::Path, body: &str) {
+        use std::io::Write as _;
+        use std::os::unix::fs::PermissionsExt;
+        let mut fh = std::fs::File::create(path).expect("建假终端脚本");
+        fh.write_all(body.as_bytes()).expect("写假终端脚本");
+        fh.sync_all().expect("把假终端脚本落到盘上");
+        drop(fh);
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+            .expect("给假终端脚本加执行位");
+        let mode = std::fs::metadata(path)
+            .expect("读回假终端脚本的权限")
+            .permissions()
+            .mode();
+        assert!(
+            mode & 0o111 != 0,
+            "假终端没有执行位（mode={mode:o}）—— 红的是夹具，不是被测那一半"
+        );
+    }
+
+    /// 起那个假终端，并把「前提没建立」与「spawn 坏了」**分成两个读数**。
+    ///
+    /// `tries` = 允许撞几次 `ETXTBSY`。⚠ 只对 `ETXTBSY` 重试；**别的错一次都不重试**
+    /// （重试一个真缺陷 = 把它变成偶尔绿的偶发红，那比今天更糟）。
+    #[cfg(not(windows))]
+    fn spawn_fake_terminal(
+        payload: &str,
+        cwd: Option<&str>,
+        term: Option<&str>,
+        tries: u32,
+    ) -> FakeTermSpawn {
+        let mut last = String::new();
+        for i in 0..tries.max(1) {
+            match launch_local_posix_via(payload, cwd, term) {
+                Ok(()) => return FakeTermSpawn::Ok,
+                Err(e) if spawn_error_is_etxtbsy(&e) => {
+                    // 🔴 **出声**（本波派工单逐字要的那一格）：重试**不许静默** ——
+                    //    静默的重试会让「这条前提今天被破了几次」变成一个**没人量得到的数**，
+                    //    而那正是本件在治的病换个地方长。这一行同时是量具的读数来源
+                    //   （`evidence/K-R24-D7-load-axis-stress.py` 数的就是它）。
+                    eprintln!(
+                        "[K-R24] 前提被破了一次：exec 假终端撞上 ETXTBSY（第 {} 次），\
+                         上限 {tries} 次内重试；逐字：{e}",
+                        i + 1
+                    );
+                    last = format!("撞了 {} 次，最后一次逐字：{e}", i + 1);
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                }
+                Err(e) => return FakeTermSpawn::Broken(e),
+            }
+        }
+        FakeTermSpawn::PremiseUnmet(last)
+    }
+
     /// ★★★ `D7 阻-1`（第九层，刀 `Z1c`）：**`term = None` 那一支上，
     /// 真正被 spawn 出去的那个进程拿到了中转注入。**
     ///
@@ -1429,21 +1554,16 @@ mod tests {
     #[cfg(not(windows))]
     #[test]
     fn the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix() {
-        use std::os::unix::fs::PermissionsExt;
-
         let dir = scratch_dir("win");
         let recorded = dir.join("what-the-terminal-got");
         let fake_term = dir.join("record-and-exit");
-        std::fs::write(
+        install_fake_terminal(
             &fake_term,
-            format!(
+            &format!(
                 "#!/bin/sh\nfor a in \"$@\"; do printf '%s\\n' \"$a\"; done > '{}'\n",
                 recorded.display()
             ),
-        )
-        .expect("写假终端脚本");
-        std::fs::set_permissions(&fake_term, std::fs::Permissions::from_mode(0o755))
-            .expect("给假终端脚本加执行位");
+        );
 
         let url = "http://127.0.0.1:8788/s/claude-code/acct-b/sid-2";
         let prefix = relay_probe_prefix(url);
@@ -1456,8 +1576,33 @@ mod tests {
         // 反空真②：观测点起手必须不存在。
         assert!(!recorded.exists(), "起手观测文件就在了 —— 本条会读到上一趟的痕");
 
-        launch_local_posix_via(&payload, dir.to_str(), fake_term.to_str())
-            .expect("spawn 假终端应成功");
+        // ★★ `K-R24`：这一处先前是 `.expect("spawn 假终端应成功")` —— 一个读数装着
+        //    「spawn 坏了」与「exec 那一刻撞上 `ETXTBSY`」两件事。现在两件各有各的话。
+        match spawn_fake_terminal(
+            &payload,
+            dir.to_str(),
+            fake_term.to_str(),
+            FAKE_TERM_ETXTBSY_TRIES,
+        ) {
+            FakeTermSpawn::Ok => {}
+            FakeTermSpawn::PremiseUnmet(m) => {
+                let _ = std::fs::remove_dir_all(&dir);
+                panic!(
+                    "\n前提不成立：**exec 那一刻一直有人握着这个假终端的写 fd**（`ETXTBSY`）——\n\
+                     成因是这个测试二进制里别的线程正卡在「起进程」的 fork 与 exec 之间，\n\
+                     它继承了本判据写这个脚本时那把写 fd。\n\
+                     ⇒ **这条今天判不了**，它**不是**「开窗那一支的 spawn 坏了」。\n\
+                     {m}"
+                );
+            }
+            FakeTermSpawn::Broken(m) => {
+                let _ = std::fs::remove_dir_all(&dir);
+                panic!(
+                    "\n★★ **开窗那一支的 spawn 真的失败了**（不是 `ETXTBSY`，所以不是前提问题）：\n\
+                     {m}"
+                );
+            }
+        }
 
         let landed = wait_for(&recorded);
         let got: Vec<String> = if landed {
@@ -1484,6 +1629,93 @@ mod tests {
              ⇒ 走 `term = None` 的判据一格不动、全量门禁四个数与干净树逐字相同，\n\
              而**生产上装了规范化终端出口的机器走的正是这一支**。\n\
              实得 = {got:?}"
+        );
+    }
+
+    /// ★★★ `K-R24`：**「前提没建立」与「spawn 坏了」真的是两个读数** —— 就地断言出来。
+    ///
+    /// # 它买的是哪一格
+    ///
+    /// 上面那条开窗判据在 `ETXTBSY` 上偶发红过（病历见 `spawn_fake_terminal` 上方那一段）。
+    /// 修法是「只对 `ETXTBSY` 重试、上限到了换一句话红」，而**这个修法自己也需要一条判据**：
+    /// 若哪天有人把分类器写宽（比如认成 `Broken` 一律重试、或反过来把真缺陷认成前提问题），
+    /// **今天没有任何东西会红**。本条就是那条。
+    ///
+    /// # 台子怎么搭的（不靠猜，靠 `ETXTBSY` 的定义）
+    ///
+    /// `ETXTBSY` 的定义是「execve 的目标此刻被某个进程打开着写」。⇒ 本条**自己攥一把写句柄**
+    /// 不放，那一刻 execve 必然是它。三条腿，**两侧都堵**：
+    /// - **反空真 / 非空对照**：不攥的时候它**必须起得来** —— 否则下面那个「认成前提不成立」
+    ///   可能只是「这条路根本起不来」的恒答，那是空真。
+    /// - **正题（这一侧）**：攥着的时候，得到的必须是 `PremiseUnmet` 且成因逐字带着 errno，
+    ///   **不是** `Broken`（那就又把两件事塞回一个读数了）。
+    /// - **反侧**：一个**不是** `ETXTBSY` 的真失败（拿一个没有执行位的文件当终端 ⇒ 权限被拒）
+    ///   必须读成 `Broken`。🔴 少了这一条，一个「一律认成前提问题」的退化分类器**照样全绿**，
+    ///   而它的后果是**把真缺陷说成「今天判不了」并且重试它** —— 比今天更糟。
+    ///
+    /// # ⚠ 它买不到什么
+    ///
+    /// - **它复现的不是真实那条时序**：真实成因是别的线程 fork 出来的子进程**短暂**继承了写 fd，
+    ///   本条是**自己长时间攥着**。两者对 execve 是同一件事（都是「有人开着写」），
+    ///   但本条**不证明**那条 fork 竞态真的发生过 —— 那一格由病历里那两趟读数与
+    ///   `evidence/K-R24-D7-load-axis-stress.py` 那份量具承重，如实登记。
+    /// - **不证明重试上限选得对**：上限是宽的，那是取舍，不是判据。
+    #[cfg(not(windows))]
+    #[test]
+    fn an_open_write_handle_reads_as_an_unmet_premise_not_as_a_broken_spawn() {
+        let dir = scratch_dir("etxtbsy");
+        let fake_term = dir.join("record-and-exit");
+        install_fake_terminal(&fake_term, "#!/bin/sh\nexit 0\n");
+        let payload = "printf ok";
+
+        // 腿①（非空对照）：没人攥写句柄时，这条路本来就该起得来。
+        let clean = spawn_fake_terminal(
+            payload,
+            dir.to_str(),
+            fake_term.to_str(),
+            FAKE_TERM_ETXTBSY_TRIES,
+        );
+        assert!(
+            matches!(clean, FakeTermSpawn::Ok),
+            "干净时就起不来 ⇒ 下面那一格是空真（它会恒答「前提不成立」）：{clean:?}"
+        );
+
+        // 腿②（正题）：把前提**主动破掉** —— 攥一把写句柄不放。
+        let held = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&fake_term)
+            .expect("攥住假终端的写句柄");
+        let got = spawn_fake_terminal(payload, dir.to_str(), fake_term.to_str(), 2);
+        drop(held);
+
+        // 腿③（反侧）：一个**不是** `ETXTBSY` 的真失败必须读成 `Broken`。
+        //
+        // 🔴 台子取的是**一个根本不存在的路径**，而不是「一个存在但没有执行位的文件」——
+        //    〔本轮自查，第 15 条：拿本轮的病理回头打自己的代码〕第一版正是后者，
+        //    而后者**自己就带着本件在治的那条前提**：那个文件也是这一趟刚写出来的，
+        //    它也可能被别的线程 fork 出来的子进程握着写 fd ⇒ 那一趟拿到的会是 errno 26
+        //    而不是权限被拒 ⇒ **这条腿自己变成偶发红**。
+        //    不存在的路径**不可能被谁开着写** ⇒ 这一腿的前提是恒成立的，不需要建立也不需要检查。
+        let missing = dir.join("no-such-terminal-here");
+        assert!(!missing.exists(), "这条腿要一个**不存在**的路径，它却在：{missing:?}");
+        let refused = spawn_fake_terminal(payload, dir.to_str(), missing.to_str(), 2);
+
+        let _ = std::fs::remove_dir_all(&dir);
+
+        match got {
+            FakeTermSpawn::PremiseUnmet(m) => assert!(
+                m.contains("os error 26"),
+                "认成了「前提不成立」，可成因不是 `ETXTBSY` ⇒ 分类器认的是别的东西：{m}"
+            ),
+            other => panic!(
+                "\n★★ 有人攥着写 fd 时 execve 必是 `ETXTBSY`，而这条判据把它读成了 {other:?}\n\
+                 ⇒ 「前提没建立」又和别的坏法共用一个读数了 —— 那正是 `K-R24` 的正题。"
+            ),
+        }
+        assert!(
+            matches!(refused, FakeTermSpawn::Broken(_)),
+            "\n★★ 一个**没有执行位**的终端是**真失败**，不是「前提不成立」，而这条判据把它读成了 {refused:?}\n\
+             ⇒ 分类器退化成了「一律认成前提问题」：真缺陷会被说成「今天判不了」并被重试。"
         );
     }
 
