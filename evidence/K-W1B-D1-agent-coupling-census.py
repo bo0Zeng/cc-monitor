@@ -535,6 +535,26 @@ def ruler3() -> dict:
     }
 
 
+# ★ 尺子④的**已知噪音**，逐条登记 + 写清「它到底是什么」。
+#
+# ⚠ 这张表的性质与「欠账」相反（照 daemon 侧 `NOT_AGENT_KNOWLEDGE` 的头注）：
+# 那种是「将来要清零」；**这张是「尺子看走眼了，永远留着」**。
+# 把噪音塞进欠账表的后果是它永远清不掉。
+#
+# 🔴 **它是现打出来的，不是防御性编程**：本件的 D2 判据落地那一刻，尺子④
+# 从 **23 涨到 37**，而 14 行全部来自那个判据文件自己的散文与反向夹具 ——
+# **量具数到了为量它而写的那份判据**。这是尺子④「不能用」的**第三条**理由
+# （前两条：注释行与定义行进分母 · `parse_for_kind` 那 7 行答非所问）。
+# ★ 对照着看：D2 那条判据**免疫**同一个病 —— 它走 `guard_core::scan_tree!`
+# （按 `file!()` 构造性摘除自己）＋ `production_code`（剥掉 `#[cfg(test)]` 与注释）。
+# 差别不是小心，是**用了本仓为这一族立的那两个原语**。
+RULER4_NOISE: dict[str, str] = {
+    "agent_boundary_guard.rs": "本件 D2 的判据自己 —— 它的头注、登记表与反向夹具里"
+    "逐字写着这个针形（它必须写，那正是它要钉的东西）。走 `scan_tree!` 的判据按构造"
+    "读不到自己；本尺子是裸扫，读得到。",
+}
+
+
 def ruler4() -> dict:
     """④ 桌面 `for_kind(` **裸子串**、**不剥生产段** —— 留着它就是为了展示它为什么不能用。"""
     files = rs_files(MONITOR_SRC)
@@ -553,6 +573,8 @@ def ruler4() -> dict:
                 breakdown["定义行"] += 1
             else:
                 breakdown["剩下的真调用"] += 1
+    noise = {f: len(rows) for f, rows in got.items() if f in RULER4_NOISE}
+    total = sum(len(v) for v in got.values())
     return {
         "tree": "src-tauri/src/**/*.rs",
         "denominator": {"该树 .rs 总数": len(files), "扣除": 0, "人群": len(files)},
@@ -560,8 +582,10 @@ def ruler4() -> dict:
         "needles": [call],
         "segment": "🔴 **原文，一个字不剥** —— 注释行与定义行都在分母里",
         "by_file": {k: len(v) for k, v in sorted(got.items())},
-        "total": sum(len(v) for v in got.values()),
+        "total": total,
         "breakdown": breakdown,
+        "noise": {"逐文件": noise, "合计": sum(noise.values()), "住址": RULER4_NOISE},
+        "total_minus_noise": total - sum(noise.values()),
         "rows": {k: v for k, v in sorted(got.items())},
     }
 
@@ -583,11 +607,25 @@ def agent_name_needles() -> list[str]:
     ]
 
 
+# ★ 尺子⑤的**已知噪音**：针打中了，但那不是 agent 知识。逐条写清它到底是什么。
+#
+# 判准一句话：**这个词指的是「那个 agent」，还是指「本仓自己」**。
+RULER5_NOISE: dict[str, str] = {
+    "creds-core/src/store.rs:97": '`home.join("claudecode-frontend")` 是**本仓自己**的'
+    "数据目录名（cc-monitor 的仓名），不是 Claude 的布局。同 `local_read_surface_registry` "
+    "头注点破的那一族：`~/.claude`（agent 的数据目录）与 `<cwd>/.claude`（项目自己的配置目录）"
+    "被同一根针打中，靠分类分开。**这不是针的缺陷**（放宽命中面是对的），是分类该干的活。",
+}
+
+
 def ruler5() -> dict:
     """⑤ **共享 crate 树**（`src-tauri/crates/**`）里的 agent 名字 —— 前四把尺子一根针都够不着。"""
     root = TREE / SHARED_CRATES
     files = rs_files(root)
     got = hits_by_file(files, agent_name_needles(), prod=True)
+    noise = sum(
+        1 for f, rows in got.items() for n, _ in rows if f"{f}:{n}" in RULER5_NOISE
+    )
     return {
         "tree": f"{SHARED_CRATES}/**/*.rs（**两棵被量的树之外的第三棵**）",
         "denominator": {
@@ -601,6 +639,8 @@ def ruler5() -> dict:
         "segment": "production_code",
         "by_file": {k: len(v) for k, v in sorted(got.items())},
         "total": sum(len(v) for v in got.values()),
+        "noise": {"合计": noise, "住址": RULER5_NOISE},
+        "total_minus_noise": sum(len(v) for v in got.values()) - noise,
         "rows": {k: v for k, v in sorted(got.items())},
     }
 
@@ -728,6 +768,9 @@ def main() -> int:
         print(f"  合计       : {r['total']}")
         if "breakdown" in r:
             print(f"  分解       : {r['breakdown']}")
+        if "noise" in r:
+            print(f"  已知噪音   : {r['noise']['合计']}（住址见 --json 的 `noise.住址`）")
+            print(f"  扣噪音后   : {r['total_minus_noise']}")
         if "registry_file_hits" in r:
             print(f"  注册表文件 : {r['registry_file_hits']}（判据⑦钉死 = REGISTRY.len()）")
         if a.rows:
