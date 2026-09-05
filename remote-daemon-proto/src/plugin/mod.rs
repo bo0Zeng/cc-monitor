@@ -293,6 +293,145 @@ mod layer_guard {
     }
 
     // ───────────────────────────────────────────────────────────────────────
+    // 环境那一族〔`K-R26` 09-05〕：**「哪些键交给子进程」只许有一个家**
+    //
+    // 病历住 `invoke::INHERITED_ENV_KEYS` 的头注（本层此前不清环境 ⇒ 子进程继承 daemon
+    // 的整份环境，常驻监听口的地址与令牌跟着漏过去）。本族守的是**修法不会悄悄散开**：
+    // 白名单散成两三处之后，「不在表里的键到不了子进程」这句话就再也没人说得准。
+    // 形状照 `common::tmux_utf8` 那条「家唯一」：**正面钉家在**、**反面钉别处零处**、
+    // 再加一格阴性对照（喂真会违规的输入给判据的核）。
+    // ───────────────────────────────────────────────────────────────────────
+
+    /// 本层**动子进程环境**的三种调用形。⚠ 三者两两不含（`.env_clear(` 与 `.envs(`
+    /// 都不含 `.env(`），所以下面那张普查表不会重复计数。
+    const ENV_CALL_SHAPES: &[&str] = &[".env_clear(", ".env(", ".envs("];
+
+    /// 今天的**登记面**：`(文件, 调用形, 处数)`。三处，全在同一个函数里。
+    ///
+    /// · `.env_clear(` 一处 —— 那一刀本身；
+    /// · `.env(` 两处 —— ① 按白名单逐键喂 · ② 调用方**显式交办**的那几项
+    ///   （次序承重：② 排在后面 ⇒ 显式压过继承）。
+    ///
+    /// 🔴 **加第四处之前先回答一句**：它是在给「继承」这一侧再开一个口子吗？
+    /// 是的话，正解是往 [`super::invoke::INHERITED_ENV_KEYS`] 里加一条并写为什么，
+    /// **不是**在别处再写一段 `.env(`。
+    const ENV_CALL_SITES: &[(&str, &str, usize)] = &[
+        ("invoke.rs", ".env(", 2),
+        ("invoke.rs", ".env_clear(", 1),
+    ];
+
+    /// 判据的**核**：数出本层每个文件里各种「动子进程环境」的调用形各几处。
+    ///
+    /// 抽出来的理由同 `tmux_utf8::second_homes`：正题与阴性对照必须经由**同一个**函数，
+    /// 夹具另写一份扫描证明的是那一份。
+    fn env_call_census(files: &[(String, String)]) -> Vec<(String, String, usize)> {
+        let mut out: Vec<(String, String, usize)> = Vec::new();
+        for (name, prod) in files {
+            for shape in ENV_CALL_SHAPES {
+                let n = prod.matches(shape).count();
+                if n > 0 {
+                    out.push((name.clone(), (*shape).to_string(), n));
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
+    /// ★★ **白名单只有一个家，而那个家是 `invoke.rs` 里那个具名常量。**
+    ///
+    /// 三半都断言，缺一半就只买到一部分：
+    /// - **家在**：`const INHERITED_ENV_KEYS:` 在 `invoke.rs` 的生产段里**恰好一处**
+    ///   （没有这一半，把家删掉之后「别处零处」照样成立，本条会绿着报「只有一个家」）；
+    /// - **别处零处**：本层其余文件里一处都没有；
+    /// - **调用面登记**：动子进程环境的调用形逐处对账 —— 多一处就得有人来回答一句。
+    ///
+    /// ⚠ **射程**（[`plugin_sources`] 的构造性缺口，这里不重复理由）：采集面里**没有
+    /// `mod.rs`**（`scan_tree!` 按构造摘掉调用者自己）⇒ 有人把第二份白名单写进 `mod.rs`
+    /// 的生产段，本条看不见。今天 `mod.rs` 的生产段就是那几行 `mod` 声明，藏不进东西，
+    /// 但那是**事实**不是**判据**。
+    #[test]
+    fn the_child_environment_allowlist_has_exactly_one_home() {
+        let files = plugin_sources();
+        assert!(
+            files.len() >= 3,
+            "本层只采到 {} 个 .rs —— 采集坏了，下面每一句都在空转",
+            files.len()
+        );
+        let bytes: usize = files.iter().map(|(_, c)| c.len()).sum();
+        assert!(
+            bytes >= 5_000,
+            "本层生产段只有 {bytes} 字节 —— 剥过头了，本条此刻在空转"
+        );
+
+        // ── ① 家在，而且在 `invoke.rs` ────────────────────────────────────
+        // 锚点收在 `:` 上（非标识符字符）：改了名的 `INHERITED_ENV_KEYSX` 不许命中
+        //（`tmux_utf8::kou_jing_homes` 头注逐字记着那条被前缀撑大的活体）。
+        let anchor = format!("const INHERITED_ENV_{}:", "KEYS");
+        let home = files
+            .iter()
+            .find(|(n, _)| n == "invoke.rs")
+            .map(|(_, p)| p.clone())
+            .unwrap_or_else(|| panic!("采集面里没有 `invoke.rs` —— 采集坏了"));
+        guard_core::find_pinned(&home, &anchor).unwrap_or_else(|e| {
+            panic!(
+                "子进程环境白名单的家不在 `invoke.rs` 里（或有两处）：{e}\n\
+                 家没了 ⇒ 「不在表里的键到不了子进程」这句话从此没有住址；\n\
+                 家有两处 ⇒ 两份靠人对齐，而漂开的那天没有任何东西会红。"
+            )
+        });
+
+        // ── ② 别处零处 ────────────────────────────────────────────────────
+        let dup: Vec<String> = files
+            .iter()
+            .filter(|(n, _)| n != "invoke.rs")
+            .filter(|(_, p)| p.contains(&anchor))
+            .map(|(n, _)| n.clone())
+            .collect();
+        assert!(
+            dup.is_empty(),
+            "子进程环境白名单在本层有**第二个家**：{dup:?}\n\
+             正解是 `use`/引用 `invoke::INHERITED_ENV_KEYS`，不是再声明一份。"
+        );
+
+        // ── ③ 动环境的调用面逐处对账 ──────────────────────────────────────
+        let got = env_call_census(&files);
+        let want: Vec<(String, String, usize)> = {
+            let mut w: Vec<(String, String, usize)> = ENV_CALL_SITES
+                .iter()
+                .map(|(f, s, n)| ((*f).to_string(), (*s).to_string(), *n))
+                .collect();
+            w.sort();
+            w
+        };
+        assert_eq!(
+            got, want,
+            "本层「动子进程环境」的调用面与登记的对不上。\n\
+             **多出来的**：先回答一句「它是不是在给**继承**这一侧再开一个口子」——\
+             是的话，正解是往 `invoke::INHERITED_ENV_KEYS` 里加一条并写为什么。\n\
+             **少了的**：`.env_clear(` 掉了 ⇒ 那条暗路又开了（子进程重新继承整份环境）；\
+             白名单那一处 `.env(` 掉了 ⇒ 白名单成了摆设，子进程连 `PATH` 都没有。\n\
+             ⚠ 本条的采集面里**没有 `mod.rs`**（见本判据头注的射程段）。"
+        );
+
+        // ── ④ 阴性对照：普查的核**真的会咬人** ────────────────────────────
+        //    夹具的文件名取中性名，断言只认调用形（来自内容），不认路径〔`brief` `6g`〕。
+        for shape in ENV_CALL_SHAPES {
+            let planted = vec![("a/b.rs".to_string(), format!("    cmd{shape}x);\n"))];
+            assert!(
+                !env_call_census(&planted).is_empty(),
+                "有人在别处写了 `{shape}`，而普查的核没出声 —— 它此刻是空转的"
+            );
+        }
+        // 反向：只是**恰好含同一个前缀**的通用写法不许误命中（误伤会训练人绕过判据）。
+        let innocent = "    let env = envelope(&args);\n    cmd.args(&argv);\n";
+        assert!(
+            env_call_census(&[("a/b.rs".to_string(), innocent.to_string())]).is_empty(),
+            "把通用写法误判成了动环境的调用：{innocent}"
+        );
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
     // 形状那一族：**「把退出码翻成语义」这件事不许住在通用层**（`E6` 的硬核那一条）
     //
     // 它与上面那一族的分工，以及各自认不出什么，写在本模块头注那张表里。

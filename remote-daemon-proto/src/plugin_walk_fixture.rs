@@ -122,6 +122,20 @@ mod tests {
     const WORK_SUB: &str = "seal";
     /// 会卡住的子命令（只有期限那一格用它）。
     const NAP_SUB: &str = "nap";
+    /// **把自己拿到的整份环境的键打回来**的子命令（`K-R26` 加，环境继承那两格用它）。
+    ///
+    /// # 为什么读 `/proc/self/environ` 而不是跑 `env`
+    ///
+    /// 要量的是「**通用调用口交给子进程的那一份**」，而 `env` 印的是**壳自己那一刻的**环境
+    /// —— 壳（`/bin/sh`）会往里加自己的东西（POSIX 要求它导出 `PWD`），
+    /// 于是「子进程看到的键」里会混进**不是继承来的**几个，
+    /// 下面那条「子进程的键集 ⊆ 白名单 ∪ 显式喂的」就会红在一个与本题无关的原因上。
+    /// `/proc/self/environ` 是内核在 `execve` 那一刻放下的那份拷贝，
+    /// 壳之后 `setenv` 一律不写它 ⇒ 它**逐字节**就是 `Command` 交出去的那一份。
+    ///
+    /// ⚠ 拿不到 `/proc` 的机器上它会印出空的一份 —— 那时**不许静默过**：
+    /// 用它的那两格都先断言「键集非空且含 `PATH`」（否则「不含那两个键」是空真）。
+    const ROSTER_SUB: &str = "roster";
     /// 契约走 env 的那一样：作业域。**必需**（那边那一样是可选的身份覆盖）。
     const REALM_ENV: &str = "HEDRON_REALM";
     /// 夹具里用的作业域值。
@@ -180,6 +194,10 @@ mod tests {
             "    exit 0 ;;".to_string(),
             format!("  {NAP_SUB})"),
             "    sleep 3".to_string(),
+            "    exit 0 ;;".to_string(),
+            format!("  {ROSTER_SUB})"),
+            // 一行一个 `键=值`；调用方只取 `=` 左边那一半（值里可能有 `=`，右边不许再切）。
+            "    tr '\\0' '\\n' < /proc/self/environ".to_string(),
             "    exit 0 ;;".to_string(),
             "  *)".to_string(),
             "    printf 'unknown subcommand\\n' >&2".to_string(),
@@ -695,6 +713,7 @@ mod tests {
             (PROBE_SUB.to_string(), "假插件的探测子命令"),
             (WORK_SUB.to_string(), "假插件干活的子命令"),
             (NAP_SUB.to_string(), "假插件会卡住的子命令"),
+            (ROSTER_SUB.to_string(), "假插件报回整份环境键的子命令"),
             (REALM_ENV.to_string(), "假插件的环境变量名"),
             (REALM_VALUE.to_string(), "假插件夹具里的作业域值"),
         ];
@@ -1536,21 +1555,29 @@ mod tests {
     ///    是**零容忍** ⇒ 通用调用口在结构上**说不出**一条宿主命令的名字。
     ///    交给子进程的只有三样：argv · 额外 env · 关掉的 stdin —— 没有任何回程端点。
     ///
-    /// ② **暗路**（本格 ③ 段钉住）：`invoke::run` **不 `env_clear()`**
-    ///    ⇒ 子进程**继承 daemon 的整份环境**。而常驻监听口那两个变量
-    ///    （`listen::ENV_PORT` / `listen::ENV_TOKEN`）恰好就是「接上宿主 + 过鉴权」
-    ///    需要的两样 ⇒ 只要 daemon 是带着它们起的，**任何被它起的插件读一读自己的环境
-    ///    就能回连宿主、发全部基础命令**，而今天没有任何判据在看这件事。
-    ///    ⚠ 这不是「已经有了回调口」——它是**一条没有协议、没有权限模型、没有审计的**回程，
-    ///    也就是说它是**缺口的一种形状**，不是能力。
+    /// ② **暗路 —— 09-05 关掉了，这一段是它的病历**〔`K-R26`〕。
+    ///    09-04 夜本格逐字记着：`invoke::run` **不 `env_clear()`** ⇒ 子进程**继承 daemon 的
+    ///    整份环境**，而常驻监听口那两个变量（`listen::ENV_PORT` / `listen::ENV_TOKEN`）
+    ///    恰好就是「接上宿主 + 过鉴权」需要的两样 ⇒ 只要 daemon 是带着它们起的，
+    ///    **任何被它起的插件读一读自己的环境就能回连宿主、发全部基础命令**。
+    ///    那不是「已经有了回调口」—— 它是**一条没有协议、没有权限模型、没有审计的**回程，
+    ///    是**缺口的一种形状**，不是能力。
+    ///    ★ 当时的行为读数（devbox 沙箱现打）：父进程 38 个键 · 子进程 39 个
+    ///    （= 38 全继承 + 1 个显式交办的）· 那两个键**都在**。
     ///
-    /// ⇒ **最小形状建议（一段话，本波不做）**：真要给插件一条回调口，它该是
+    /// ⇒ 今天 `invoke::run` 先 `env_clear()` 再按 `invoke::INHERITED_ENV_KEYS` 喂。
+    ///    本格的 ③ 段因此**换了方向**：它此前断言「子进程的环境与宿主逐字相同」，
+    ///    今天断言「**它是白名单 ∪ 显式交办的那几项，不多一个**」——
+    ///    而「那两个键到底在不在子进程里」这条**行为**读数搬去了
+    ///    [`a_plugin_started_here_never_sees_the_listen_port_or_token`]
+    ///    （它要一个**父进程环境里真有那两个键**的进程，本格给不出）。
+    ///
+    /// ⇒ **正门仍然没开**（`KR26D4` 只写题面，不写代码）：真要给插件一条回调口，它该是
     ///    `invoke::run` 的**第五个入参**（一份「这次调用允许回调哪几条基础命令」的显式清单），
     ///    落地形态是把常驻口的地址与一枚**一次性、按调用发的、只授这几条命令**的短票
-    ///    显式塞进子进程环境；同轮要做的两件是 ⓐ `invoke::run` 改成先 `env_clear()`
-    ///    再显式喂（把今天这条暗路关掉，否则加了清单也是空的），
+    ///    显式塞进子进程环境；ⓐ（清环境）已经做掉了，剩下的是
     ///    ⓑ 那份清单的取值空间钉在 `inbound::COMMANDS` 上（同 `Hello.unavailable` 的口径，
-    ///    不许自造第二套词）。
+    ///    不许自造第二套词）。题面住计划仓 `features/K-R26-…md` 的 `§4`。
     #[test]
     fn nothing_here_hands_the_plugin_a_designed_way_back_into_the_host_commands() {
         // ① 通用调用口**说不出**宿主命令的名字。
@@ -1586,8 +1613,11 @@ mod tests {
             "argv 的形状变了 —— 本格据它说「argv 里没有回程端点」"
         );
 
-        // ③ 暗路的**行为读数**：子进程拿到的是宿主那一份环境（这里用 `PATH` 当证人 ——
-        //    它**不是** `invoke::run` 喂进去的那一项）。
+        // ③ 那条路今天的**行为读数** —— 换了方向〔`K-R26` 09-05〕：
+        //    此前断言「子进程的环境与宿主逐字相同」（暗路的证据），
+        //    今天断言「子进程的键集 = 白名单 ∩ 宿主 ∪ 显式交办的那几项，**不多一个**」。
+        //    `PATH` 仍然当证人：它在白名单里，所以**值**必须逐字相同 ——
+        //    这一半买的是「那一趟真的 fork/exec 了」，与清不清环境无关。
         let root = build_fixture("inherit");
         let name = plugin_name();
         let (fixed, hint) = discovery_of(&root, &name);
@@ -1612,15 +1642,20 @@ mod tests {
         );
         assert_eq!(
             child_path, host_path,
-            "子进程看到的环境与宿主不同 —— 那说明有人给 `invoke::run` 加了 `env_clear()` 之类，\
-             上面那段「暗路」的读数**变了**，本判据的头注要同轮改。"
+            "子进程看到的 `PATH` 与宿主不同 —— `PATH` 在 `invoke::INHERITED_ENV_KEYS` 里，\
+             它的值必须原样过去。要么那一趟没真起进程，要么有人把它从白名单里摘了\
+             （摘了它 `discover` 的兜底档就自相矛盾：找得到插件却跑不动）。"
         );
-        // ③ 的另一半：源码面 —— 没有任何人在清环境。
+        // ③ 的另一半：源码面 —— 清环境这个动作**在**，而且只有一处。
         let invoke_prod = crate::guard_support::production_code(include_str!("plugin/invoke.rs"));
-        assert!(
-            !invoke_prod.contains("env_clear"),
-            "`plugin/invoke.rs` 开始清环境了 —— 那是**好事**，但本判据头注里\
-             「插件继承 daemon 整份环境」那条读数从此不成立，同轮改它。"
+        assert_eq!(
+            invoke_prod.matches("env_clear").count(),
+            1,
+            "`plugin/invoke.rs` 的生产段里 `env_clear` 不是恰好一处。\n\
+             **没有** ⇒ 那条暗路又开了：子进程重新继承 daemon 的整份环境，\
+             常驻口的地址与令牌跟着漏过去（本格头注 ② 段就是它的病历）。\n\
+             **两处以上** ⇒ 先回答一句「哪一处是真的」—— 清两遍不会更干净，\
+             只会让「白名单只有一个家」这句话开始漂。"
         );
         // 那两个会随环境一起漂过去的变量名，点住住址（不复述它们的值）。
         assert!(
@@ -1629,6 +1664,216 @@ mod tests {
         );
         assert_ne!(crate::listen::ENV_PORT, crate::listen::ENV_TOKEN);
         let _ = std::fs::remove_dir_all(&root);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 六 · `K-R26`：那条暗路关掉了吗 —— **行为**读数，不是源码读数
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 内层那条判据的**全名**（外层用 `--exact` 按它把测试二进制自己重新拉起来）。
+    ///
+    /// 写错了会**红而不会静默变绿**：内层一条都不跑 ⇒ 读数行不出现 ⇒ 外层当场红。
+    const INHERIT_INNER_TEST: &str =
+        "plugin_walk_fixture::tests::a_plugin_started_here_never_sees_the_listen_port_or_token_inner";
+
+    /// 外层给内层打的记号。**没有它内层一条断言都不做** —— 那时它是被人手工
+    /// `--ignored` 捞起来跑的，父进程环境里没有那两个键，断言会是**空真**。
+    const INHERIT_MARK: &str = "PWF_ENV_INHERIT_CHILD";
+
+    /// 内层把读数打在这个前缀后面；外层据它判「内层真的跑到了那几行断言」。
+    const INHERIT_READING: &str = "PWF-ENV-READING";
+
+    /// 喂给「daemon 侧那个进程」的两个**值**。
+    ///
+    /// ⚠ 只有值住这里 —— **键名一律现取** `listen::ENV_PORT` / `listen::ENV_TOKEN`，
+    /// 手抄一份字面量的话，那两个常量改了名本格会**安静地**继续绿
+    ///（它量的就变成「一个没人用的键没漏过去」）。
+    const FAKE_PORT_VALUE: &str = "51999";
+    const FAKE_TOKEN_VALUE: &str = "0123456789abcdef0123456789abcdef";
+
+    /// `KR26D1`/`KR26D3` 正题：**被通用调用口起出来的插件，读不到常驻监听口的地址与令牌。**
+    ///
+    /// # 为什么要多一层进程（这一层不是排场）
+    ///
+    /// 要量的那件事是「**父进程环境里有的东西，会不会漏进子进程**」——
+    /// 那就必须有一个**父进程环境里真有那两个键**的进程去调 `invoke::run`。
+    /// 而本 crate 里三处头注逐字禁掉了另一条路：`std::env::set_var` 与并行跑的别的判据是**竞态**。
+    /// ⇒ 唯一干净的形状是**把测试二进制自己重新拉起来**，用 `Command::env` 把那两个键
+    ///    交给那个新进程（形状照 `relay::server::tests` 那台真子进程中转，同一条纪律）。
+    ///
+    /// ⇒ **分母说清楚**：内层那个进程**不是** `cargo test` 那个进程，
+    ///    它是一个由 `Command` 起、环境里带着 `listen::ENV_PORT`/`ENV_TOKEN` 的新进程 ——
+    ///    而**生产里 daemon 拿到那两个键的方式一模一样**（`listen.rs` 头注逐字：
+    ///    token「只能由宿主生成、当 env 传进来」，daemon 自己造不出它）。
+    ///    这就是它凭什么代表生产：**同一条投喂路，只是投喂的人换成了判据。**
+    ///
+    /// # ⚠ 本格量的是**行为**，不是「源码里有没有 `env_clear`」
+    ///
+    /// 源码面那一句（白名单只有一个家）另有一条判据。两条刻意分开：
+    /// 合成一条的话，「白名单里被人塞进了那两个键」这种坏法会从**行为**这一侧溜过去。
+    #[test]
+    fn a_plugin_started_here_never_sees_the_listen_port_or_token() {
+        let exe = std::env::current_exe().expect("测试二进制自己的路径");
+        let out = std::process::Command::new(exe)
+            .args([
+                INHERIT_INNER_TEST,
+                "--exact",
+                "--ignored",
+                // `--nocapture`：不给它，内层那行读数会被 libtest 收进自己的捕获，
+                // 外层在管道上一个字节都读不到 ⇒ 下面「读数行在不在」这一格成空真。
+                "--nocapture",
+                "--test-threads=1",
+            ])
+            .env(INHERIT_MARK, "1")
+            // ★ 键名现取，值是夹具的。
+            .env(crate::listen::ENV_PORT, FAKE_PORT_VALUE)
+            .env(crate::listen::ENV_TOKEN, FAKE_TOKEN_VALUE)
+            .stdin(std::process::Stdio::null())
+            .output()
+            .expect("起不来那个内层进程");
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        // 读数原样抬进外层的输出：门禁日志里要看得见它（`brief` 15：写在源码注释里等于埋掉）。
+        for line in text.lines().filter(|l| l.contains(INHERIT_READING)) {
+            println!("  ⤷ {line}");
+        }
+        // ★ 反空真放在成败断言**之前**：内层若一条都没跑，下面那句「它绿了」毫无意义。
+        assert!(
+            text.contains(INHERIT_READING),
+            "内层进程没打出那行读数 —— 它多半一条判据都没跑到\
+             （`{INHERIT_INNER_TEST}` 这个全名写错了？`--ignored` 没生效？）。\n\
+             内层的全部输出：\n{text}"
+        );
+        assert!(
+            out.status.success(),
+            "内层判据红了 —— **那正是这一格要报的读数**，原文照抄：\n{text}"
+        );
+    }
+
+    /// [`a_plugin_started_here_never_sees_the_listen_port_or_token`] 的**内层**。
+    ///
+    /// 标 `#[ignore]` 是刻意的（同 `relay::server::tests` 那个入口）：它在正常那一趟里
+    /// 一条断言都不跑，算成 `passed` 就是往门禁里塞一条恒绿的仪式 ⇒ 让它算 `ignored`。
+    #[test]
+    #[ignore = "内层入口：只在被外层用 PWF_ENV_INHERIT_CHILD 拉起时才做断言"]
+    fn a_plugin_started_here_never_sees_the_listen_port_or_token_inner() {
+        if std::env::var(INHERIT_MARK).is_err() {
+            // 手工 `--ignored` 捞起来跑的那一趟：父进程里没有那两个键 ⇒ 断言会是空真。
+            // 这里**不做断言也不打读数行** —— 「它到底跑没跑」由外层那条数读数行的断言看着。
+            return;
+        }
+        let port_key = crate::listen::ENV_PORT;
+        let token_key = crate::listen::ENV_TOKEN;
+
+        // ── 分母①：本进程（扮演 daemon）的环境键 ────────────────────────────
+        let parent: std::collections::BTreeSet<String> = std::env::vars_os()
+            .map(|(k, _)| k.to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            parent.contains(port_key) && parent.contains(token_key),
+            "扮演 daemon 的这个进程环境里没有那两个键 ⇒ 下面每一句都是空真。\
+             外层那两句 `.env(…)` 是不是掉了？本进程的键数={}",
+            parent.len()
+        );
+
+        // ── 分母②：子进程真正拿到的那一份 ───────────────────────────────────
+        let root = build_fixture("envroster");
+        let name = plugin_name();
+        let (fixed, hint) = discovery_of(&root, &name);
+        let bin = crate::plugin::discover::find(&name, &fixed, false, hint).expect("该找得到");
+        let out = crate::plugin::invoke::run(
+            &bin,
+            &[ROSTER_SUB],
+            DEADLINE_SECS,
+            // 调用方**显式**喂的那一项 —— 它照旧要活着（那不是继承，是交办）。
+            &[(REALM_ENV, REALM_VALUE)],
+        )
+        .unwrap_or_else(|e| panic!("那个假插件没跑起来：{}", why_not_run(e)));
+        let dumped = String::from_utf8_lossy(&out.stdout).into_owned();
+        let _ = std::fs::remove_dir_all(&root);
+        let child: std::collections::BTreeSet<String> = dumped
+            .lines()
+            .filter_map(|l| l.split_once('=').map(|(k, _)| k.to_string()))
+            .filter(|k| !k.is_empty())
+            .collect();
+
+        // ── 读数（两个分母 + 两个键在不在），一行打完 ────────────────────────
+        println!(
+            "{INHERIT_READING} 父进程键数={} · 子进程键数={} · 口在子进程里={} · \
+             令牌在子进程里={} · 子进程键集={:?}",
+            parent.len(),
+            child.len(),
+            child.contains(port_key),
+            child.contains(token_key),
+            child.iter().collect::<Vec<_>>()
+        );
+
+        // ── 反空真：子进程真的报回了一份非空的键集 ───────────────────────────
+        assert!(
+            child.contains("PATH"),
+            "子进程报回的键集里连 `PATH` 都没有 ⇒ 它要么没跑起来、要么读不到 `/proc` —— \
+             下面「那两个键不在里面」此刻是空真。报回来的原文：{dumped:?}"
+        );
+        assert!(
+            child.contains(REALM_ENV),
+            "调用方**显式**喂的那一项没到子进程手上 —— 那不是继承，是交办，\
+             关暗路不许把它一起关掉。子进程键集={:?}",
+            child.iter().collect::<Vec<_>>()
+        );
+
+        // ── 正题 ─────────────────────────────────────────────────────────────
+        assert!(
+            !child.contains(port_key),
+            "常驻监听口的**地址**漏进了插件进程：`{port_key}`。\n\
+             ⇒ 任何被 daemon 起的插件读一读自己的环境就能接上宿主 —— \
+             那是一条没有协议、没有权限模型、没有审计的回程。\n\
+             子进程键集={:?}",
+            child.iter().collect::<Vec<_>>()
+        );
+        assert!(
+            !child.contains(token_key),
+            "常驻监听口的**令牌**漏进了插件进程：`{token_key}`。\n\
+             ⇒ 接上之后连鉴权都过得去。子进程键集={:?}",
+            child.iter().collect::<Vec<_>>()
+        );
+
+        // ── ★ 比「那两个键不在」更强的一句：**子进程的键集 ⊆ 白名单 ∪ 显式交办** ──
+        //
+        // 只断言那两个键的话，本格买到的是「**这两个**秘密没漏」；
+        // 断言 ⊆ 之后买到的是「**任何**不在白名单里的键都漏不出去」——
+        // 而后者才是 `env_clear` 那一刀真正的性质（明天多一个秘密键，本格照样咬得住）。
+        let allowed: std::collections::BTreeSet<String> =
+            crate::plugin::invoke::INHERITED_ENV_KEYS
+                .iter()
+                .map(|(k, _)| (*k).to_string())
+                .chain(std::iter::once(REALM_ENV.to_string()))
+                .collect();
+        let leaked: Vec<&String> = child.difference(&allowed).collect();
+        assert!(
+            leaked.is_empty(),
+            "这些键既不在 `invoke::INHERITED_ENV_KEYS` 里、也不是这次调用显式交办的，\
+             却出现在插件进程的环境里：{leaked:?}\n\
+             ⇒ `env_clear()` 那一刀漏了，或者有人往白名单里加了东西而没写为什么。\n\
+             白名单今天 {} 个键（成员只住 `invoke.rs` 那一处，这里不复述）· \
+             子进程键集={:?}",
+            crate::plugin::invoke::INHERITED_ENV_KEYS.len(),
+            child.iter().collect::<Vec<_>>()
+        );
+        // 反空真：白名单不许是空的（空表 + 空子进程环境 ⇒ 上面那句是 `[] ⊆ {}`）。
+        assert!(
+            !crate::plugin::invoke::INHERITED_ENV_KEYS.is_empty(),
+            "白名单是空的 —— 上面那条 ⊆ 此刻在空转"
+        );
+        for (k, why) in crate::plugin::invoke::INHERITED_ENV_KEYS {
+            assert!(
+                !k.is_empty() && !why.is_empty(),
+                "白名单里有一条没写为什么（或键是空的）：`{k}` —— \
+                 `KR26D2` 逐字要求**逐键给论据，给不出的不进**"
+            );
+        }
     }
 
     /// `KW2E5`：**「加一个插件，宿主零改动」今天不成立 —— 差几处**（诚实差距读数）。
