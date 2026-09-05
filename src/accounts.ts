@@ -1079,7 +1079,13 @@ export async function fetchAccounts(origin: string, force = false): Promise<Acco
 /**
  * L3a（local-as-remote）：取**本机**的账号状态 —— `fetchAccounts` 的本地对侧。
  *
- * 后端 `list_local_accounts` 直接读 `$HOME/.claude-accts/accounts.json`（只读、不起进程），
+ * ⚠ `N-F1c`（09-05）之后这句话变了：`list_local_accounts` **不再直接读磁盘，而是问本机后端**
+ * （`local_query::run_query(…, &["--list-accounts"])`，与远端那条同一套解析、不同传输）——
+ * 裁定住 `first-run/DECISIONS.md` `NR2`〔用 09-05〕：**claude 进程真实跑在哪台机器，
+ * 账号就归那台机器的后端管**。⇒ 它**会起一个短命子进程**，而「后端不在」是一个
+ * 明写出来的档（`LocalAccountsOutcome::NoBackend`），**不许渲染成「你没有账号」**。
+ * 〔旧文逐字，留作来历：「后端 `list_local_accounts` 直接读 `$HOME/.claude-accts/accounts.json`
+ * （只读、不起进程）」——「直接读」与「不起进程」两句今天都不成立。〕
  * **返回类型与远端那条逐字段相同** ⇒ 上层拿到的 `AccountsState` 形状一致，
  * 这正是 §40「本地 = 不走 ssh 的远端」在这一格上的意思。
  *
