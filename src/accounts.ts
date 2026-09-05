@@ -1088,6 +1088,68 @@ export async function fetchAccounts(origin: string, force = false): Promise<Acco
  */
 export const LOCAL_ORIGIN = "__local__";
 
+/**
+ * `N-F1b` `NF1bD2`：**本机那条路上的界面文案，只此一家。**
+ *
+ * # 为什么它住在这儿而不住面板里
+ *
+ * 远端那套文案早就住在本模块（`deriveUi` 那几句、`accountStatusBadge` 那一族），
+ * 而面板只调。本机这一支要照同一个形状长，理由不是对称好看，是**它有一个真的对侧**：
+ * 只要本机那句话散在面板里，「这一句在讲哪台机器」就没有任何东西钉着 ——
+ * 而本仓已经有过一次教训，`accounts-section.ts` 那句
+ * 「账号功能在远端 Linux 上——先在「连接」组配一台远端」是**唯一**能说的话，
+ * 于是一台本来就有账号的机器上，用户看到的是「你先去买一台远端」。
+ *
+ * # 🔴 这里的每一句都不许出现「远端」两个字
+ *
+ * 判据住 `src/settings/accounts-section.vitest.ts` 里 `NF1bD2` 那一族：
+ * 一条量**这张表**（人群 = `Object.values` 现算，不写死条数），
+ * 一条量**真渲染出来的 DOM**（人群 = 本机那一支的叶子文本 + 全部 title）。
+ * 两条都在，是因为「表里干净」与「用户看到的干净」是两件事：
+ * 面板完全可以绕开这张表、就地写一句带「远端」的话，那时只有后一条会红。
+ *
+ * ⚠ **诚实边界**：判据管得住**这张表里的固定文案**；
+ * 面板往里插的**动态值**（后端回的错误串、manifest 路径）不在人群里 ——
+ * 它们不是本件写的字，本件也没有办法替后端保证措辞。
+ *
+ * ⚠ **尤其不许复用** `deriveUi` 那句「该远端尚未启用多账号」（本文件 `not-enabled` 那一支）：
+ * 对一台本机来说那句话有两个字是假的。
+ */
+export const LOCAL_ACCOUNTS_COPY = {
+  /** 这一节的题头 —— 先把「在讲哪台机器」说清楚。 */
+  heading: "这台机器上的账号",
+  /** 计数那一行的后半（前半是现算的数字）。 */
+  countSuffix: "个账号",
+  /** 清单路径那一格的前缀。 */
+  manifestPrefix: "清单",
+  /** 一个隔离账号都没有时的正题。 */
+  emptyTitle: "这台机还没有隔离账号",
+  /**
+   * 空态的下一步。
+   *
+   * ⚠ 逐字写着「先在终端里做」是因为**它今天真的只能在终端里做**：
+   * 定框 `N4` 现打 —— monitor 的三个部署口 `deploy_remote_acct_iso` /
+   * `check_remote_acct_iso` / `remote_acct_iso_shellinit` 名字里都带 `remote`，
+   * 本机那一侧的安装口**不存在**。写「点这里装」会是一句假话。
+   */
+  emptyNext:
+    "下一步：在这台机器上装好 cc-acct-iso 并跑一次初始化，把现在这个登录态收进第一个隔离账号。" +
+    "cc-monitor 今天还没有本机这一侧的安装口，先在终端里做。",
+  /** 读不出来时的正题 —— **不许**渲染成「你没有账号」。 */
+  loadFailed: "读不出这台机器的账号清单",
+  /** 后端连原因都没给时的兜底（`loadFailed` 后面那一格不许空着）。 */
+  unknownReason: "后端没有给出原因",
+  /** 当前账号那一行的标记。 */
+  currentMark: "当前",
+  /**
+   * 这一节的管辖范围。
+   *
+   * ⚠ 它只说**本件真做到的事**（把清单列出来），不替下一件许愿：
+   * 切号 / 加号 / 走后端都还没接上，写进来就是一句提前兑现的话。
+   */
+  scopeHint: "这一节只把这台机器上的账号清单列出来（只读）；在这里改不了它们。",
+} as const;
+
 export async function fetchLocalAccounts(force = false): Promise<AccountsState> {
   const now = Date.now();
   const cached = accountsCache.get(LOCAL_ORIGIN);
