@@ -339,6 +339,7 @@ jobs:
           shopt -s nullglob
           FILES=$(printf '%s\n' e2e/*.sh shared/cc-bus/scripts/* shared/ccm \
             e2e/fake-claude \
+            e2e/weak-net/*.sh \
             scripts/*.sh \
             src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso \
             src-tauri/vendor/cc-acct-iso/scripts/lib.sh \
@@ -397,7 +398,16 @@ jobs:
           # **当场逮住的**：文件建出来就没进这条表达式，而计数地板照旧绿 ——
           # 那条登记表的诊断逐字说中了「地板只会数它扫到的那些，数不出它没扫的那些」。
           # 实测构成：55 = 上一轮 54 + hooks/pre-commit 1。
-          [ "$N" -ge 56 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 56）"; exit 1; }
+          # **2026-09-05 `W-F1` 棘到 60**，同时补进 `e2e/weak-net/*.sh`。★ 这一次同样**不是事后补**：
+          # `e2e/weak-net/` 是个**新目录**，而上面 `e2e/*.sh` 那个 glob **不跨 `/`**
+          # ⇒ 弱网台架那 4 个脚本落在所有分组之外，一次都不会被 lint，而计数一个都不少。
+          # 与 `e2e/fake-claude` 那次（08-08）是**同一形**：人群漏了一个，不是地板落后。
+          # 落地路径也是 `shell_lint_registry` 的诊断逐字给的第 ① 条
+          #（「补进 `ci.yml` 的 `FILES=$(printf …)`（记得同步地板数）」）。
+          # 今天实测构成（**逐组现打，不倒推** —— 上一轮就是倒推凑出过一次假账）：
+          # **60 = e2e/*.sh 33 + e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14 + ccm 1
+          #        + scripts 2 + vendored 4 + hooks/pre-commit 1**。
+          [ "$N" -ge 60 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 60）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
@@ -743,6 +753,42 @@ jobs:
       # 它要的 debug daemon 上面那步已经编好了。
       - name: daemon 分叉（G2 `--fork-session`）
         run: bash e2e/assert-pass-floor.sh daemon-fork 10
+
+  # `W-F1`（weak-network 区第一件）：**弱网台架**。两个容器 + 一条自建 docker 网络，
+  # `tc/netem` 只打在容器 A 自己的 `eth0` 上，四维（延迟 · 丢包 · 带宽 · 断链）外加一条真
+  # SSH 连接，每一维都给**改前 / 改后**两个读数。
+  #
+  # 🔴 **为什么单开一个 job**：它要 docker + `--cap-add=NET_ADMIN`，与上面两个 e2e job
+  #    的依赖（tmux / node / Rust）一件都不重合；混进去只会让那两个 job 多背一个 docker 拉取。
+  #
+  # 🔴 **`--network host` 只出现在 build 那一步**（定框 `W3`）：跑的时候一律自建 docker 网络
+  #    + `--cap-add=NET_ADMIN`，**不给 `--privileged`**。台架自己带一条文本判据看着这件事
+  #    （`e2e/weak-net/guard-run-netns.sh`，它是台架开跑的第一个断言）。
+  #
+  # ⚠ **这一步的地板不走 `e2e/assert-pass-floor.sh`**，因此**不进**上面那张「23 套真机套件都
+  #    必须带断言数地板」的反向自检清单（那张清单只数 `assert-pass-floor.sh` 那种 `run:` 调用行
+  #    —— 这句刻意不把那条调用行原样抄进来：抄了就会被那一步自己的 `grep -c` 数进去，
+  #    而它数的是**整份文件**、不剔注释。⚠ 同一个坑那一步的注释里逐字警告过一次）。
+  #    原因是那个脚本的第一件事是 `npm run test:<套名>`，而给 `package.json`
+  #    加一条 `test:weak-net` **不在 `W-F1` 的写区里**。⇒ 本套件的地板今天**只有一处住址**
+  #    （下面那行调用行），没有反向自检替它兜底；`e2e/weak-net/assert-floor.sh` 的头注把这处
+  #    诚实边界与它的解锁条件写全了。**这是一处已登记的缺口，不是一处等价实现。**
+  #
+  # ⚠ **本步骤在 GitHub runner 上一次都没跑过**：本流水线的触发器只有 `push`(main/`v*`) 与
+  #    `pull_request`，而本仓红线是不 push ⇒ 与它旁边那 23 条调用行同一笔账。
+  #    落地读数全部量于开发机（09-05：`PASS=26 FAIL=0`，连跑两趟同值）。
+  weak-net:
+    name: E2E weak-net rig (docker + netem, no tmux/Rust)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 镜像定义进仓（`e2e/weak-net/Dockerfile`）。这一步幂等：镜像已在就跳过。
+      - name: 建弱网台架镜像（装包这一步，也只有这一步，用宿主 netns）
+        run: bash e2e/weak-net/build-image.sh
+
+      - name: 弱网台架四维 + SSH（改前/改后两个读数，带断言数地板）
+        run: bash e2e/weak-net/assert-floor.sh 26
 
 # 注：曾加过一个 `cargo audit` 信息性 job，但对 Windows-only Tauri 应用而言它**永久红**——
 # Cargo.lock 含大量 Tauri 的 Linux GTK 传递依赖（atk/gdk/gtk-rs，标记 unmaintained，且
