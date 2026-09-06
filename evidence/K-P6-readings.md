@@ -327,7 +327,41 @@ client::connect(:573) / client::connect_stream(:687)      ← §0a① 点的两�
   （`K-P6-russh-ruler.py` 尺子 · `K-P6-dial-census.py` 扼流点普查 ·
    `K-P6-lineno-pins.py` 行号校验位 · `K-P6-ruler-mutations.py` 死值验）
   ＋ 各自的 `.out` ＋ 本文。**`evidence/` 里零 `.sh`**。
-- **门禁**（`PB_WS=backend-consolidation .claude/devbox/gate <本树> k-p6`，沙箱，量于本文写作前）：
-  `cargo 1438 · generated ok · daemon 587 · npm 1590 · e2e 12/8/264/72 · pb FAIL=0 BROKEN=0 ⇒ GATE: OK`
-  —— **与 PM 给的基线九格逐格相同**（本轮没有源码改动，本该相同；贴出来是为了证明这棵树是干净的）。
+- **门禁跑了两趟**（`PB_WS=backend-consolidation .claude/devbox/gate <本树> k-p6`，沙箱）：
+
+  | 格 | 入场趟（写 `§8` 之前） | 交回趟（写 `§8` 之后） |
+  |---|---|---|
+  | cargo | 1438 passed | **1438** |
+  | generated | ok | **ok** |
+  | daemon | 587 passed | **587** |
+  | npm | 1590 passed | **1590** |
+  | e2e ×4 | 12 / 8 / 264 / 72 | **12 / 8 / 264 / 72** |
+  | pb check | FAIL=0 BROKEN=0 | 🔴 **FAIL=1 BROKEN=0** |
+  | 总判 | `GATE: OK` | `GATE: FAIL` |
+
+  **八格逐格相同、与 PM 给的基线也逐格相同**；红的只有第九格，而且只有一条：
+  `FAIL [J3 陈账] INDEX.md 比源文件旧 —— 重跑 pb index 落盘`。
+
+  🔴 **根因已定死，不是猜**：`J3-S1`（`bin/judges/j3.py::stale_gen`）是一次**纯 mtime 比较**——
+  `INDEX.md` 的 mtime < 工作区最新 `.md` 的 mtime − 1 就报陈账。现打：
+
+  ```
+  find . -name '*.md' -newer INDEX.md   ⇒  ./features/K-P6-拨号搬进本机后端.md   （**恰好一份**）
+  INDEX.md      mtime 1788677579  (2026-09-05 23:52:59)
+  K-P6 件文件   mtime 1788679120  (2026-09-06 00:18:40)
+  ```
+
+  ⇒ **是「我按件文件的要求写了 `§8`」这一下把它顶红的**，与代码零关系
+  （代码仓这一侧八格一个数没动）。**任何**实现方写 `§8` 都会顶红这一格。
+
+  🔴 **我不跑 `pb index`**：它是**生成命令**，`brief` 19 逐字「窗口开着期间一概不跑生成命令
+  （`pb index` / `pb doc` 这一族会重写冻结面上的生成区）；收窗口那一拍**先 `freeze --verify` 再跑**」，
+  而且那一条整段住在「**三之二 · 只给 PM 的**」。**请 PM 在收窗口那一拍跑**（先 `freeze --verify`）。
 - **主干可用性**：`track/k-p6` 与基点 `55c7fde` 在**所有源码文件上逐字节相同** ⇒ 主干**完全可用**。
+  逐文件 md5（`git ls-files -z` 的人群）：两边都有的 **847 份**，md5 不同 **0 份**（写区内 209 份 0 · 写区外 638 份 0）；
+  单边只有 HEAD 的 **9 份**全在写区 `evidence/` 内（单边文件按 `brief` 12 不进「逐字节相同」的分母）。
+  **非空对照**（`brief` 14w②：「差集为空」要附一个非空对照，否则「命令没跑」与「跑了是空」一模一样）：
+  同一把尺子比 `55c7fde~5`(`333fcde`) 与 `55c7fde` ⇒ 两边都有 826 份、md5 不同 **4 份**
+  （`scripts/gate.sh` · `src/main.ts` · `src/settings/accounts-section.ts` …）⇒ **尺子是活的**。
+  ⚠ 顺带记一条：先拿 `55c7fde^1`(`85cdf2d`) 与 `^2`(`0e43468`) 做对照，**两个都是 0** ——
+  那不是尺子坏了，是 `55c7fde` 那次合并两侧都只增文件、不改共有文件。**差点把一个空对照当成对照用了。**
