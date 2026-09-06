@@ -482,14 +482,33 @@ mod tests {
             )
         });
 
-        // ② daemon 侧的依赖清单：零命中（`C18` 红线的第一层）。
+        // ② daemon 侧的依赖清单：零命中（**第一层**；③ 是第二层，扫源码树）。
+        //    ⚠ 这两层守的是「**vendor 全景引擎不许进 daemon**」，**不是** `C18`「依赖树零 C」——
+        //    后者**已被推翻（08-29）**，盘上逐字「~~**C18** daemon 不引 C 生态链~~ 已被推翻（08-29）」
+        //    （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`）。
+        //    **规矩没变，换的是理由** —— 新理由（`C21` ＋ 实测代价）写在下面两条的失败文案里，
+        //    刻意各写一份：谁踩到哪一条，就只看得到哪一段字。
         let daemon_cargo =
             guard_core::strip_hash_comment_lines(&must_read("remote-daemon-proto/Cargo.toml", 500));
         assert!(
             !guard_core::contains_word(&daemon_cargo, "code-picture-core"),
-            "daemon 的依赖树里出现了 vendor 引擎 —— `C18` 是红线不是权衡项。\n\
-             实测代价已经量过：二进制 3.5 MB → 17.43 MB，且 aarch64 交叉编译当场失败\
-             （`rusqlite(bundled)` 是整份 SQLite C 源码 + 9 门 tree-sitter grammar）。"
+            "daemon 的**依赖树**里出现了 vendor 全景引擎（`code-picture-core`）——\
+             这一条今天仍是红线，不是权衡项。\n\
+             ⚠ **别拿 `C18` 当它的理由**：那条「daemon 不引 C 生态链」**已被推翻** ——\
+             盘上逐字「~~**C18** daemon 不引 C 生态链~~ **已被推翻（08-29）**」\
+             （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`）。\
+             **规矩没变，换的是理由**，而撑着它的两样就写在这里，不用去别处找：\n\
+             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（sidecar），\
+             不是第三方插件，**也不编进 daemon**」—— 这一条是主理由；\n\
+             ② 实测代价（`K-R2` 的 `§0b`，09-04 沙箱现打，量于 `e1944e8`，\
+             与发版同版本的 zig 0.14.0 + cargo-zigbuild 0.23.0，同一趟同一提交的基线）：\
+             daemon 二进制**每架构 +18.87～18.88 MB**（x86_64 4.55→23.43 · aarch64 4.07→22.94，×5.15–5.64），\
+             而安装包内嵌两个架构 ⇒ **+37.75 MB**（`rusqlite(bundled)` 是整份 SQLite C 源码 + 9 门 tree-sitter grammar）。\
+             而 `K30③`「体积在预算内」的**那个预算今天没有人定过** ⇒ 今天没有账能证明它在预算内。\n\
+             ⚠ **盘上流传的两个旧数别再抄**：「3.5 MB → 17.43 MB」**分母与增量都馊了**\
+             （旧增量 +13.93 MB，少算约 5 MB）；「aarch64 交叉编译当场失败」是**裸 `cargo build`** 在\
+             没装 `aarch64-linux-musl-gcc` 的机器上量的，换成发版真正在用的 zigbuild，\
+             `K-R2` 实测**两个架构都 EXIT=0** ⇒ **交叉编译今天不是拦路虎**，是尺子换了，不是结论翻了。"
         );
 
         // ③ daemon 侧**整棵源码树**：零命中（第二层 —— 这一层 `protocol_doc_guard` 够不到，
@@ -515,9 +534,21 @@ mod tests {
         }
         assert!(
             hits.is_empty(),
-            "daemon 的生产段里出现了全景引擎：{hits:?}\n\
-             ⇒ `C18` 逐字「daemon 的依赖树里不许出现 C」。要给 daemon 全景能力，\
-             `C21` 的答案是 **sidecar**（独立二进制，C 依赖跟着它走），不是内嵌。"
+            "daemon 的**源码树**（生产段）里出现了全景引擎：{hits:?}\n\
+             ⇒ 本条钉的是「**vendor 全景引擎不许进 daemon**」—— 上面 ② 钉依赖树，这一条钉源码树。\n\
+             ⚠ **别拿 `C18` 当它的理由**：那条「daemon 的依赖树里不许出现 C」**已被推翻** ——\
+             盘上逐字「~~**C18** daemon 不引 C 生态链~~ **已被推翻（08-29）**」\
+             （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`）。\
+             **规矩没变，换的是理由**，而撑着它的两样就写在这里，不用去别处找：\n\
+             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（sidecar），\
+             不是第三方插件，**也不编进 daemon**」⇒ 要给 daemon 全景能力，答案是 sidecar，不是内嵌\
+             （独立二进制，它自己那份 C 依赖跟着它走）；\n\
+             ② 实测代价（`K-R2` 的 `§0b`，09-04 沙箱现打，量于 `e1944e8`，与发版同版本的 zigbuild）：\
+             daemon 二进制**每架构 +18.87～18.88 MB**（×5.15–5.64），安装包内嵌两个架构 ⇒ **+37.75 MB**；\
+             而 `K30③`「体积在预算内」的**那个预算今天没有人定过** ⇒ 今天没有账能证明它在预算内。\n\
+             ⚠ **盘上流传的两个旧数别再抄**：「3.5 MB → 17.43 MB」**分母与增量都馊了**（旧增量少算约 5 MB）；\
+             「aarch64 交叉编译当场失败」是**裸 `cargo build`** 在没装 `aarch64-linux-musl-gcc` 的机器上量的，\
+             换成发版真正在用的 zigbuild，`K-R2` 实测**两个架构都 EXIT=0** ⇒ **交叉编译今天不是拦路虎**。"
         );
     }
 
