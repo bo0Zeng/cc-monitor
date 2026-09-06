@@ -13,7 +13,7 @@
 //!
 //! # 〔`K-R2` 09-04〕人群那三条「小」里的第一条：**依赖 crate 的写面，今天有人签字了**
 //!
-//! 上面那一行逐字承认人群「不含依赖 crate 的写」。本轮**不补人群**（那是 `K-G6` 的射程），
+//! 上面那一行逐字承认人群「不含依赖 crate 的写」。本轮**不补人群**（归 PM，按 `MASTERPLAN §2b` 逐条过），
 //! 而是把这一条从「判据看不见」变成「有人签过字」：清单上每一条依赖都要有一行登记
 //! （有没有写面 · 依据是什么 · 判档），**新加一条而没签字 ⇒ 当场红**。
 //! 表与判据住 [`g6_dependency_signoff`]。
@@ -1576,7 +1576,7 @@ mod g6_scope_pins {
 /// 它们今天进不了本 crate 的依赖树，靠的是**那个 feature 没开** ——
 /// 而在本模块之前，盘上没有任何东西钉着「那个 feature 不许开」。
 ///
-/// # 本模块**不补人群**（那是 `K-G6` 的射程），它买的是另一格
+/// # 本模块**不补人群**（归 PM，按 `MASTERPLAN §2b` 逐条过），它买的是另一格
 ///
 /// 补人群 = 去扫依赖 crate 的源码树，那是另一件事的规模。本模块只做一件机器判得了的事：
 /// **清单上每一条依赖都得有一行签字**，新加一条而没签字 ⇒ 当场红。
@@ -1630,8 +1630,12 @@ mod g6_dependency_signoff {
             MEASURED_CLEAN,
             "仓内 crate —— 整棵 `src` 按本护栏那两张模式表加起进程点现打，命中 0 处\
              （量具是 `evidence/` 下那份 `.py`，交回里给了住址与量于哪个提交）",
-            "它长出第一处写面那天。⚠ 如实写明：**没有任何判据会在那一刻自动红** —— \
-             这一档的尺子是签字那一刻现打的，不是常驻的。要常驻就得补人群，那是 `K-G6` 的射程",
+            "它长出第一处写面那天 —— 而那一刻**有一条常驻判据会自动红**：\
+             `the_clean_verdict_is_re_measured_on_the_tree_every_run`（`K-R29` 09-06 立）。\
+             它每一趟拿本护栏那两张模式表加起进程点，重扫本档里**仓内**那几棵 crate 的 `src`；\
+             那份清单**现算自 `SIGNED`**，不手抄第二份。\
+             ⚠ 它**扫不了**的：判档落在本档、而清单那一行没有 `path =`（源码不在树里）的那种 —— \
+             那时它**点名报红**，不静默跳过。`未量·靠用法签字` 整档也不在它的射程里",
         ),
         (
             UNMEASURED,
@@ -1845,6 +1849,150 @@ mod g6_dependency_signoff {
             .collect()
     }
 
+    // ══════ `K-R29`（09-06）：`已量·未见写面` 那一档的判决，从**一次性**改成**常驻** ══════
+    //
+    // # 它治的那一格
+    //
+    // `MEASURED_CLEAN` 那一档的解锁条件**自己写着**它没有守卫（逐字，改掉之前）：
+    // 「⚠ 如实写明：**没有任何判据会在那一刻自动红** —— 这一档的尺子是签字那一刻现打的，
+    //   不是常驻的」。⇒ 那个判决只在签字那一秒为真，之后无人再问。
+    // `D1②` 现打过一刀确认这条读数：给 `branch-core` 加一处货真价实的 `fs::write`，
+    // **门禁九格一格没红**（cargo 1450 · daemon 587 · npm 1590 · e2e 12/8/264/72 · pb check 0，
+    // 量于 `b4e289f` + 那一刀、未铺 `embedded-daemons`）。
+    //
+    // # 为什么这一档做得起来，而 `UNMEASURED` 那一档做不起来
+    //
+    // 本档今天 6 条**全是仓内 crate**（清单那一行带 `path =`）⇒ **源码就在树里**，
+    // 重扫是零边际成本。`UNMEASURED` 那一档的解锁条件是「有人真去读了它的源码」，
+    // 而那些是第三方 crate、源码不在树里 ⇒ **本件的做法对它们不适用**。
+    // 🔴 **本件覆盖 `MEASURED_CLEAN` 这一档，不覆盖 `UNMEASURED` 那一档**；
+    //    下面这几条判据绿了，说明的只是前者，**不许把后者也算进这个绿里**。
+    //
+    // # 它买不到什么（`§4` 诚实边界逐字，别读大一格）
+    //
+    // - 买到的是「**写面出现的那一刻会红**」，**不是**「那几棵 crate 永远干净」。两句不许压成一句。
+    // - **模式表本身有多准，本件不判** —— 它沿用护栏既有的那两张表（[`super::tests::FS_MUTATION_PATTERNS`]
+    //   与 [`super::tests::WHITELIST_STILL_FORBIDDEN`]）加起进程点；**那两张表漏掉的写法，本件一样漏**。
+    //   08-06 就实测过一次同族的漏：黑名单放过了 `os::unix::fs::symlink` 与 `fs::set_permissions`。
+    // - 口径是**整棵 `src`、不剥 `#[cfg(test)]`、连注释一起扫**（fail-closed，§41.4 第 1 条纪律）。
+    //   ⇒ 那几棵 crate 的**测试代码**里出现写面也会红。那是有意的：本档的签字逐字写的是
+    //   「整棵 `src` … 命中 0 处」，而剥掉测试段会让这个数比签字上的那个数**小**。
+
+    /// K-R29：那条常驻判据的**名字只有这一处住址**。
+    ///
+    /// 三处必须对得上，任一处漂了就红（[`the_clean_verdict_unlock_text_names_the_guard_that_now_watches_it`]）：
+    /// ① 本常量；② `VERDICTS` 里 `MEASURED_CLEAN` 那一档的解锁条件文字；③ 本文件里真有这么一条 `fn`。
+    const RESIDENT_GUARD: &str = "the_clean_verdict_is_re_measured_on_the_tree_every_run";
+
+    /// 本件那把尺子：**护栏自己那两张模式表 ∪ 起进程点**（现算，不手抄第二份）。
+    ///
+    /// ⚠ 起进程点那一项**运行时拼** —— 本文件里别再多一处那个字面量：
+    /// [`super::spawn_registry`] 那条判据靠**按文件名跳过本文件**才不自匹配，
+    /// 而跨文件数它的那些判据不一定跳。
+    fn resident_ruler() -> Vec<String> {
+        let mut v: Vec<String> = super::tests::FS_MUTATION_PATTERNS
+            .iter()
+            .chain(super::tests::WHITELIST_STILL_FORBIDDEN.iter())
+            .map(|p| (*p).to_string())
+            .collect();
+        v.push(format!("Command::{}(", "new"));
+        v.sort();
+        v.dedup();
+        v
+    }
+
+    /// 清单里那条依赖的 `path = "…"`（`None` = 它不是仓内 crate ⇒ 本尺子够不着它的源码）。
+    fn dep_path_of(manifest_text: &str, name: &str) -> Option<String> {
+        let line = dep_line(manifest_text, name)?;
+        let at = line.find("path")?;
+        let rest = line[at + "path".len()..].trim_start();
+        let rest = rest.strip_prefix('=')?.trim_start();
+        let rest = rest.strip_prefix('"')?;
+        let end = rest.find('"')?;
+        Some(rest[..end].to_string())
+    }
+
+    /// 判档为 `verdict` 的那几条 —— **现算自 [`SIGNED`]**，不手抄第二份（本仓 `E12`：
+    /// 手抄那份会在下一次加签字时漂，而漂了不会有人知道）。
+    fn crates_with_verdict(verdict: &str) -> Vec<&'static str> {
+        SIGNED
+            .iter()
+            .filter(|(_, _, v, _)| *v == verdict)
+            .map(|(n, ..)| *n)
+            .collect()
+    }
+
+    /// 一棵仓内 crate 的 `src` 绝对住址（相对本清单所在目录解析）。
+    fn crate_src_dir(rel: &str) -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join(rel)
+            .join("src")
+    }
+
+    /// 把某一档拆成「扫得了的」与「扫不了的」两半。
+    ///
+    /// 🔴 **扫不了的不许静默跳过** —— 那正是本件要治的病的同族形状（判决没人盯着）。
+    /// 返回 `(可扫: (crate 名, 清单里的 path, src 住址), 扫不了的诊断行)`。
+    #[allow(clippy::type_complexity)]
+    fn split_by_reachability(
+        names: &[&'static str],
+    ) -> (Vec<(&'static str, String, std::path::PathBuf)>, Vec<String>) {
+        let mut ok = Vec::new();
+        let mut out_of_reach = Vec::new();
+        for name in names {
+            match dep_path_of(MANIFEST, name) {
+                None => out_of_reach.push(format!(
+                    "  {name}：清单那一行没有 `path =` ⇒ 它不是仓内 crate，源码不在树里"
+                )),
+                Some(rel) => {
+                    let dir = crate_src_dir(&rel);
+                    if dir.is_dir() {
+                        ok.push((*name, rel, dir));
+                    } else {
+                        out_of_reach.push(format!(
+                            "  {name}：清单写着 `path = \"{rel}\"`，而 {} 不是个目录",
+                            dir.display()
+                        ));
+                    }
+                }
+            }
+        }
+        (ok, out_of_reach)
+    }
+
+    /// 拿尺子扫一棵 crate 的 `src`，**逐处**给住址（`文件:行号: 命中的模式 ▸ 那一行`）。
+    ///
+    /// ⚠ **整棵树、不剥 `#[cfg(test)]`、连注释一起数** —— 见本段头注的口径说明。
+    fn write_surface_hits(crate_src: &std::path::Path, ruler: &[String]) -> Vec<String> {
+        let mut hits = Vec::new();
+        for (path, src) in guard_core::scan_tree!(crate_src, &["rs"]) {
+            let rel = path
+                .strip_prefix(crate_src)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            for (n, line) in src.lines().enumerate() {
+                if let Some(pat) = ruler.iter().find(|p| line.contains(p.as_str())) {
+                    hits.push(format!("src/{rel}:{}: `{pat}` ▸ {}", n + 1, line.trim()));
+                }
+            }
+        }
+        hits.sort();
+        hits
+    }
+
+    /// 本文件自己的源码，**运行时读**（住址由 `file!()` 给，改名了它自己会说不出话）。
+    fn own_source() -> String {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(file!());
+        std::fs::read_to_string(&p).unwrap_or_else(|e| {
+            panic!(
+                "读不到本文件 {}：{e}\n\
+                 `file!()` 给的住址与真实布局对不上了 —— 先修这个，别把下面那条断言绕过去",
+                p.display()
+            )
+        })
+    }
+
     /// ★ 正题：**清单上每一条依赖都得有一行签字**，而带依赖的段本身也钉住。
     #[test]
     fn every_dependency_this_manifest_declares_carries_a_signature() {
@@ -2016,6 +2164,157 @@ mod g6_dependency_signoff {
             "★ 这一刀正是本件的形状：**引擎被编进 daemon** 那天，它会作为一条新依赖出现，\
              而它自己就是「在 vendor 里写盘、判据看不见」的那一个 —— 本条要求那时候当场点名它。\
              同时它反向证明另一半：已经签过字的 `serde` / `guard-core` 不许被误报成没签字。"
+        );
+    }
+
+    /// ★★ `K-R29` 正题：`已量·未见写面` 那一档的判决，**每一趟都重打一遍**。
+    ///
+    /// 在本条之前，那一档的判决只在**签字那一秒**为真（它的解锁条件自己写着这件事）。
+    /// 本条把同一把尺子做成常驻：那几棵 crate 长出第一处写面的那一趟，它就红。
+    ///
+    /// 覆盖面与买不到的东西，逐条写在本段上方那个头注里 —— 尤其是
+    /// **不覆盖 `UNMEASURED` 那一档**、以及**模式表漏掉的写法本条一样漏**。
+    #[test]
+    fn the_clean_verdict_is_re_measured_on_the_tree_every_run() {
+        let ruler = resident_ruler();
+        // 尺子自检：表被掏空了下面整条就是零命中地绿。
+        assert!(
+            ruler.len() >= 10,
+            "尺子只现算出 {} 项（09-06 现打 16 = 两张模式表并集 11 + 5 ＋ 起进程点 1）—— \
+             那两张模式表被掏空了，本条在空转：{ruler:?}",
+            ruler.len()
+        );
+        let clean = crates_with_verdict(MEASURED_CLEAN);
+        // 🔴 反空真①：清单现算出**空集**（选择器写错 ⇒ 扫 0 棵 ⇒ 恒绿）。
+        assert!(
+            !clean.is_empty(),
+            "签字表里判档为 `{MEASURED_CLEAN}` 的一条都没现算出来（`SIGNED` 共 {} 条）—— \
+             选择器写错了，本条此刻在扫 0 棵、恒绿。\n\
+             （判档闭集现算：{}）",
+            SIGNED.len(),
+            verdict_names().join(" / ")
+        );
+        let (scannable, out_of_reach) = split_by_reachability(&clean);
+        // 🔴 扫不了的**要出声**，不许静默跳过 —— 今天没有这种条目，将来会有。
+        assert!(
+            out_of_reach.is_empty(),
+            "`{MEASURED_CLEAN}` 这一档里有 {} 条**本判据扫不了**：\n{}\n\n\
+             ⇒ 本判据的做法是「源码就在树里 ⇒ 重扫一遍」，它只对**仓内 crate** 成立。\n\
+             回来做一个决定，别让它静默留在这一档里：\n\
+             ① 那一条降到 `{UNMEASURED}`（那一档的解锁条件本来就是「有人真去读了它的源码」）；\n\
+             ② 或者给这一档补一条够得着它的判据，并把解锁条件文字一起改掉。",
+            out_of_reach.len(),
+            out_of_reach.join("\n")
+        );
+        // 🔴 反空真②：**棵数 > 0，并把棵数印出来**（`KR29D2` 的 acceptor 失效口）。
+        assert!(
+            !scannable.is_empty(),
+            "本判据这一趟真扫了 0 棵 crate —— 零命中什么也不说明"
+        );
+        let names: Vec<&str> = scannable.iter().map(|(n, ..)| *n).collect();
+        println!(
+            "K-R29：本趟重扫 {} 棵仓内 crate（{}），尺子 {} 项",
+            scannable.len(),
+            names.join(" · "),
+            ruler.len()
+        );
+        let mut hits: Vec<String> = Vec::new();
+        for (name, rel, dir) in &scannable {
+            for h in write_surface_hits(dir, &ruler) {
+                hits.push(format!("  {name}（{rel}）{h}"));
+            }
+        }
+        assert!(
+            hits.is_empty(),
+            "签字表把这几棵判成 `{MEASURED_CLEAN}`，而今天它们身上有 {} 处写面 / 起进程点：\n{}\n\n\
+             ⇒ 这正是那一档的解锁条件说的那一刻：**那一条要回来重签**，判档多半该换成 \
+             `{MEASURED_WRITES}`，并在签字里回答「凭什么它进不了发布二进制」「那个前提谁钉着」。\n\
+             ⚠ **不许**为了让本条绿而把那几处从尺子里排除掉 —— 尺子是护栏自己那两张模式表，\
+             动它等于同时放宽 daemon 本体那两层判据。\n\
+             （本趟扫了 {} 棵：{}）",
+            hits.len(),
+            hits.join("\n"),
+            scannable.len(),
+            names.join(" · ")
+        );
+    }
+
+    /// ★★ `K-R29` 非空对照：**同一把尺子**必须在真有写面的那一条上亮。
+    ///
+    /// 上面那条断言的是「命中 0」，而**零命中既可能是干净、也可能是尺子瞎了** ——
+    /// 两者在终端上一模一样。本条把它们分开：同一把尺子扫 `{MEASURED_WRITES}` 那一档
+    /// （今天唯一成员 [`GATED_CRATE`]，它的签字里点名了 `perm.rs` 那两处写面），必须 > 0。
+    ///
+    /// ⚠ 哪天那一条也变干净了，本条会红 —— **那是对的**：回来重挑一个非空对照，
+    /// 不许把本条删掉了事（删掉之后上面那条就退回成一句空真）。
+    #[test]
+    fn the_same_ruler_still_lights_up_on_the_crate_that_really_writes() {
+        let ruler = resident_ruler();
+        let with_surface = crates_with_verdict(MEASURED_WRITES);
+        assert!(
+            !with_surface.is_empty(),
+            "`{MEASURED_WRITES}` 这一档今天一条成员都没有 —— 上面那条零命中断言从此没有对照，\
+             它是「真干净」还是「尺子瞎了」分不出来了。回来重挑对照。"
+        );
+        let (scannable, out_of_reach) = split_by_reachability(&with_surface);
+        assert!(
+            out_of_reach.is_empty(),
+            "对照那一档里有本尺子够不着的条目：\n{}",
+            out_of_reach.join("\n")
+        );
+        for (name, rel, dir) in &scannable {
+            let hits = write_surface_hits(dir, &ruler);
+            assert!(
+                !hits.is_empty(),
+                "同一把尺子在 `{name}`（`{rel}`）上命中 **0** —— 而它的判档是 `{MEASURED_WRITES}`。\n\
+                 两种可能，都得有人看一眼：\n\
+                 ① 尺子瞎了（模式表被掏空 / 扫描面画错 / 路径解析歪了）⇒ 那么上面那条\n\
+                 「六棵全 0」的绿**此刻什么也不说明**；\n\
+                 ② 它真的变干净了 ⇒ 回来重判它的判档，并**另挑一个非空对照**，别把本条删掉。\n\
+                 （本趟尺子 {} 项）",
+                ruler.len()
+            );
+        }
+    }
+
+    /// ★★ `K-R29`：那一档的解锁条件**不许再说自己没人盯着**，而且要点名盯着它的那一条。
+    ///
+    /// 本条钉的是一句**诚实边界的时效**。它原来逐字写着那一档没有任何常驻判据 ——
+    /// 那句话在 `K-R29` 落地的同一拍就变成了假话，而
+    /// **留着一句已经不成立的诚实边界，比没写还坏**：下一个人会照它做决定。
+    ///
+    /// 三处对拍（任一处漂了就红）：本模块的 [`RESIDENT_GUARD`] 常量 ·
+    /// 解锁条件文字里点的那个名 · 本文件里真有这么一条 `fn`。
+    #[test]
+    fn the_clean_verdict_unlock_text_names_the_guard_that_now_watches_it() {
+        let (_, _, unlock) = VERDICTS
+            .iter()
+            .find(|(v, ..)| *v == MEASURED_CLEAN)
+            .unwrap_or_else(|| panic!("`{MEASURED_CLEAN}` 这一档在判档表里没了 —— 回来重判"));
+        // 承重词**运行时拼**：免得本断言在自己的报错文案里找到它、变成恒真。
+        let retired = format!("没有任何{}会在那一刻自动红", "判据");
+        assert!(
+            !unlock.contains(retired.as_str()),
+            "`{MEASURED_CLEAN}` 的解锁条件里又出现了 `{retired}` —— 那是 `K-R29` **之前**的实况。\n\
+             今天盯着这一档的是 `{RESIDENT_GUARD}`。\n\
+             ⇒ 要么把那条判据真的删了（那时这句话才重新为真，而删之前先回答「为什么不要它了」），\n\
+             要么就别把这句话写回来。"
+        );
+        assert!(
+            unlock.contains(RESIDENT_GUARD),
+            "`{MEASURED_CLEAN}` 的解锁条件没有点名那条常驻判据 `{RESIDENT_GUARD}`。\n\
+             一张判档表的解锁条件是下一个人唯一会读的东西：它必须说得出\n\
+             「现在由哪条判据盯着 · 它扫的是哪几棵 · 它扫不了的是什么」。\n\
+             解锁条件现文：{unlock}"
+        );
+        // 反向那半：那个名字必须**真是本文件里的一条判据**，不是一句好听的话。
+        let own = own_source();
+        let def = format!("fn {RESIDENT_GUARD}(");
+        assert!(
+            own.contains(def.as_str()),
+            "解锁条件点名了 `{RESIDENT_GUARD}`，而本文件里根本没有 `{def}` —— \
+             那条判据被改名或删掉了，而解锁条件还挂在旧地址上。\n\
+             ⚠ 这正是本仓最高频那族的形状：**代码改了，写着它的那句话没跟着改**。"
         );
     }
 }
