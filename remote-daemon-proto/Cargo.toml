@@ -65,8 +65,19 @@ tokio = { version = "1", features = [
     # io-std gates tokio::io::stdout(); io-util alone is not enough.
     "io-std",
     # K-P1：常驻监听口（回环 TCP）。**只加 feature，不加依赖条目** ——
-    # `net` 带进来的 `socket2` 是纯 Rust（`C18`「依赖树零 C」不受影响），
-    # `mio` 本 crate 的 lock 里早就有（`signal`/`io-std` 都在用它）。
+    # `net` 带进来的 `socket2` **是纯 Rust**（本 crate 的 lock 现打 `socket2 0.6.3`，
+    # 它的 `dependencies` 只有 `libc` 与 `windows-sys` ⇒ 纯 FFI 绑定，没有 `cc` 构建脚本，
+    # **不新增一棵 C 构建树**），`mio` 本 crate 的 lock 里早就有（`signal`/`io-std` 都在用它）。
+    # ⚠ **这句话先前撑在一条已经作废的框架上，别再照抄**〔`K-R34` 09-06 换掉〕：
+    #   原文逐字「`net` 带进来的 `socket2` 是纯 Rust（`C18`「依赖树零 C」**不受影响**）」——
+    #   **事实那一半是真的、留着**；换掉的是括号里那条框架：
+    #   盘上逐字「~~**C18** daemon 不引 C 生态链~~ **已被推翻（08-29）**」
+    #   （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`
+    #    ——「装到任意 agent 机器就能跑」＝静态 musl · 两个架构都出得来 · 体积在预算内，
+    #    **不是**「零 C」）。
+    #   ⇒ 今天这一格要说的是「**多这一个 feature 不新增 C 构建树**」，
+    #     **不是**「零 C 没被破坏」—— 本 crate 的「零 C」本来就早不成立，
+    #     逐字同结论写在本表末尾 `russh` 那段的 `①`，两处说的是同一件事。
     # ⚠ 为什么不沿用 `relay/` 那份 `std::net::TcpListener`（blocking）：
     # 常驻这条路要把 socket 的读写两半**原样喂给今天 stdin/stdout 的位置**
     # （`inbound::spawn<R: AsyncRead>` · `writer_task<W: AsyncWrite>` 本来就是泛型），
@@ -113,6 +124,11 @@ webpki-roots = "1"
 #   ① **`C18`「依赖树零 C」这条本 crate 早就不成立**（`rustls`/`ring` 08-25 就进来了，
 #      `KG1` 成功标准② 已因此重写成「静态 musl 二进制」）。russh 走的是**同一棵 `ring`**
 #      ⇒ 它**不新增**一棵 C 构建树；但这句话是「不新增」，**不是**「零 C」。
+#      ⚠ 补一句〔`K-R34` 09-06〕：**那条框架本身后来也没了** —— 盘上逐字
+#      「~~**C18** daemon 不引 C 生态链~~ **已被推翻（08-29）**」（住址 backend-consolidation 的
+#      `MASTERPLAN.md:58`；现行版本是 `K30`）⇒ 今天**不是**「本 crate 破了一条还活着的规矩」，
+#      是**那条规矩已经不在了**。上面 tokio 那条 `net` feature 的注释同源同结论，
+#      **这份文件里关于 `C18` 的两处话从此不再打架**。
 #   ② 🔴 **musl 交叉编译本轮没验**。CI（`.github/workflows/release.yml` 的 `build-daemons`）
 #      要把本 crate `cargo zigbuild` 到 `x86_64-unknown-linux-musl` 与 `aarch64-unknown-linux-musl`，
 #      **而沙箱门禁只做本机 gnu 构建、不做交叉编译** ⇒ **门禁全绿也证不出这两个 target 编得过**。
@@ -131,6 +147,39 @@ webpki-roots = "1"
 # 把 monitor 那份里 `russh` 可达的包块搬过来，处境与 monitor 侧对齐。
 # 🔴 **代价写明**：本 crate 从此也钉在一个 **yanked** 的 `crypto-bigint 0.7.3` 上
 # （与 monitor 侧同一份）。哪天 `russh` 升到能用 `0.7.5` 的版本，两侧一起挪。
+#
+# ── 🔴 **今天的状态与后果**〔`K-R34` 09-06 补〕 ───────────────────────────────
+# 上面那三段讲的是 `K-P6b` **当时怎么绕过去的**（拿 monitor 那份 lock 播种）。这一段讲**今天**。
+#
+# ① **今天钉着哪个版本 —— 本轮现打**（09-06，量于 `97a4714`，两份 lock 各一把同样的尺子
+#    `grep -c '^name = "crypto-bigint"$' <lock>`）：`remote-daemon-proto/Cargo.lock` ⇒ **1** 处、
+#    版本 **`0.7.3`**；`../src-tauri/Cargo.lock` ⇒ **1** 处、版本也是 **`0.7.3`**。**两侧同一份。**
+#
+# ② 🔴 **后果一句话：「今天编得过」不等于「明天还编得过」。**
+#    今天编得过，**是因为 lock 里已经写着** —— `cargo` 只在**解析**那一步挡 yanked。
+#    凡是让 cargo **重走解析**的事：`cargo update` · 删掉 / 换掉 lock · 换一台没有这份 crate
+#    缓存的机器 · 加或改任何一条依赖 —— **都会撞上同一堵墙**。
+#    ⇒ 这**不是**「今天编不过」，是「**哪天要重解析就编不过**」。别把绿门禁读成这件事没了。
+#
+# ③ ⚠ **「那几个版本到底有没有被 yank」—— `K-R34` 本轮没核，判不了。**
+#    上面「`0.7.0 … 0.7.4` 全部 yanked」那句是 `K-P6b` 那一轮写下的，当时的依据是
+#    **解析期报错**（住址就在上面同一段）—— 那是**转述，不是本轮的读数**。
+#    要核它得**联网**查 crates.io，而门禁沙箱一律断网（`DEVBOX_NET=none`）
+#    ⇒ 本文件里关于 yank 的每一句（含上面「代价写明」那两行），读的时候都要带上这个口径。
+#
+# ④ 🔴 **两条出路 —— 这里只写「谁来决定」，不写「怎么做」；`K-R34` 不做决定**：
+#    · **升到 `crypto-bigint 0.7.5`**：它是跟着 `russh` 走的，而两侧的版本与 feature 集
+#      **必须同版同 feature**（理由见上面那段：一侧多开一个 feature 就是「界面拨得通、
+#      代理拨不通」）⇒ **本 crate 单方面决定不了**，是**一件同时动 monitor 与 daemon 两侧的活**。
+#      **谁来决定：PM 立件、用户拍板。**
+#    · **砍掉 `rsa` feature**（`crypto-bigint` 就是它拉进来的）：要**先量**
+#      「有没有只认 RSA host key 的远端」—— 那是一次对**真实远端**的摸底，**今天没人量过**。
+#      **谁来决定：用户**（只有他知道要连哪些机器）。
+#    ⚠ 这两条都压着 ③ 那一问（**要联网**）。
+#
+# ⑤ ⚠ **别把这一段读成「已知问题、可接受」—— 没有人裁过那句话。**
+#    它今天的状态是「**登记在案、等着谁来决定**」，不是「批过了」。
+# ─────────────────────────────────────────────────────────────────────────
 russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 notify = "6.1"
 notify-debouncer-mini = "0.4"
