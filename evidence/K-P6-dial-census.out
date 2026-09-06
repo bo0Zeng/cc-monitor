@@ -1,0 +1,89 @@
+============================================================================================
+K-P6 · 往外拨 SSH 的扼流点普查   树=/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-p6
+                                 HEAD=55c7fde151b54e1c59b23fc478f9b493c94f6fc7
+============================================================================================
+【人群】`git ls-files -z` 里 `src-tauri/src/**.rs` 共 106 份
+--------------------------------------------------------------------------------------------
+层0 `client::connect_stream` —— russh 原语（经跳板那条）
+     定义 0 · **调用 1** · 提及 0 · 调用散在 1 份文件
+       调用  src-tauri/src/ssh_source.rs:687   let session = client::connect_stream(config, stream, handler)
+--------------------------------------------------------------------------------------------
+层0 `client::connect` —— russh 原语（直连那条）—— 注意它是 `connect_stream` 的前缀，见下
+     定义 0 · **调用 1** · 提及 0 · 调用散在 1 份文件
+       调用  src-tauri/src/ssh_source.rs:573   match client::connect(config, (ep.host.as_str(), ep.port), handler).await {
+--------------------------------------------------------------------------------------------
+层1 `connect_session` —— 连+鉴权+host key 指纹校验，**唯一**一份
+     定义 1 · **调用 7** · 提及 1 · 调用散在 3 份文件
+       调用  src-tauri/src/port_forward.rs:91   let (session, _fp) = ssh_source::connect_session(&cfg, None, None)
+       提及  src-tauri/src/sftp.rs:36   use crate::ssh_source::{connect_session, ClientHandler, RemoteConfig};
+       调用  src-tauri/src/sftp.rs:48   let (session, _fp) = connect_session(cfg, None, None).await?;
+       调用  src-tauri/src/ssh_source.rs:665   let (jump_session, _jump_fp) = Box::pin(connect_session(&jump_cfg, None, None))
+       定义  src-tauri/src/ssh_source.rs:701   pub(crate) async fn connect_session(
+       调用  src-tauri/src/ssh_source.rs:2083   let (session, _fp) = connect_session(cfg, None, None).await?;
+       调用  src-tauri/src/ssh_source.rs:2257   let (session, _fp) = connect_session(cfg, None, None).await?;
+       调用  src-tauri/src/ssh_source.rs:4748   let (session, _fp) = connect_session(cfg, None, None).await?;
+       调用  src-tauri/src/ssh_source.rs:5755   match connect_session(&cfg, Some(Duration::from_secs(30)), Some(on_stage)).await {
+--------------------------------------------------------------------------------------------
+层2 `connect_and_exec_cmd` —— 一次性 exec 任意命令，全仓最宽的那条
+     定义 1 · **调用 18** · 提及 1 · 调用散在 11 份文件
+       调用  src-tauri/src/account_usage.rs:290   let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
+       提及  src-tauri/src/acct_iso_deploy.rs:15   use crate::ssh_source::{connect_and_exec_cmd, RemoteConfig};
+       调用  src-tauri/src/acct_iso_deploy.rs:64   let stream = connect_and_exec_cmd(cfg, cmd).await?;
+       调用  src-tauri/src/cc_bus.rs:185   let stream = crate::ssh_source::connect_and_exec_cmd(cfg, CC_BUS_CAT_CMD).await?;
+       调用  src-tauri/src/cc_bus.rs:286   let stream = crate::ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
+       调用  src-tauri/src/cc_bus.rs:513   let stream = crate::ssh_source::connect_and_exec_cmd(cfg, cmd).await?;
+       调用  src-tauri/src/ccm_probe.rs:191   let stream = ssh_source::connect_and_exec_cmd(&cfg, CCM_PROBE_CMD).await?;
+       调用  src-tauri/src/hooks_diag.rs:546   let stream = crate::ssh_source::connect_and_exec_cmd(&cfg, REMOTE_HOOKS_CMD).await?;
+       调用  src-tauri/src/mcp.rs:203   let stream = crate::ssh_source::connect_and_exec_cmd(cfg, CMD).await?;
+       调用  src-tauri/src/pubkey.rs:143   let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
+       调用  src-tauri/src/remote_history.rs:71   let stream = ssh_source::connect_and_exec_cmd(cfg, &cmd).await?;
+       调用  src-tauri/src/remote_history.rs:434   let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
+       调用  src-tauri/src/sftp.rs:497   let stream = crate::ssh_source::connect_and_exec_cmd(cfg, "uname -m").await?;
+       调用  src-tauri/src/ssh_source.rs:1321   connect_and_exec_cmd(cfg, &cmd).await
+       调用  src-tauri/src/ssh_source.rs:1946   let stream = connect_and_exec_cmd(cfg, &cmd).await?;
+       定义  src-tauri/src/ssh_source.rs:2078   pub async fn connect_and_exec_cmd(
+       调用  src-tauri/src/tmux.rs:244   let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
+       调用  src-tauri/src/tmux.rs:707   let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
+       调用  src-tauri/src/tmux.rs:782   let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
+       调用  src-tauri/src/tmux.rs:888   let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
+--------------------------------------------------------------------------------------------
+层2 `connect_and_exec_capture` —— 一次性 exec + 抓输出
+     定义 1 · **调用 1** · 提及 0 · 调用散在 1 份文件
+       调用  src-tauri/src/remote_branch.rs:161   ssh_source::connect_and_exec_capture(&cfg, &cmd, Some(HELLO_MARKER)),
+       定义  src-tauri/src/ssh_source.rs:2252   pub async fn connect_and_exec_capture(
+--------------------------------------------------------------------------------------------
+层2 `connect_and_exec` —— 长连接数据源（exec 远端 daemon 起流）
+     定义 1 · **调用 1** · 提及 0 · 调用散在 1 份文件
+       定义  src-tauri/src/ssh_source.rs:1304   pub async fn connect_and_exec(
+       调用  src-tauri/src/ssh_source.rs:3838   let stream = match connect_and_exec(cfg, with_bg, tail_only).await {
+--------------------------------------------------------------------------------------------
+层2 `connect_sftp` —— SFTP 会话（`sftp.rs`，§2.1 划在写区外）
+     定义 1 · **调用 14** · 提及 2 · 调用散在 4 份文件
+       提及  src-tauri/src/acct_iso_deploy.rs:12   connect_sftp, deploy_decision, ensure_dir_all, read_optional, upload_atomic,
+       调用  src-tauri/src/acct_iso_deploy.rs:181   let conn = connect_sftp(&cfg).await?;
+       调用  src-tauri/src/mcp.rs:450   let conn = crate::sftp::connect_sftp(&cfg).await?;
+       调用  src-tauri/src/mcp.rs:470   let conn = crate::sftp::connect_sftp(&cfg).await?;
+       调用  src-tauri/src/mcp.rs:487   let conn = crate::sftp::connect_sftp(&cfg).await?;
+       定义  src-tauri/src/sftp.rs:47   pub async fn connect_sftp(cfg: &RemoteConfig) -> Result<SftpConn, String> {
+       调用  src-tauri/src/sftp.rs:558   let conn = connect_sftp(cfg).await?;
+       调用  src-tauri/src/sftp.rs:693   let conn = connect_sftp(&cfg).await?;
+       调用  src-tauri/src/sftp.rs:738   let conn = connect_sftp(&cfg).await?;
+       调用  src-tauri/src/sftp.rs:811   let conn = connect_sftp(cfg).await?;
+       调用  src-tauri/src/sftp.rs:958   let conn = connect_sftp(&cfg).await?;
+       调用  src-tauri/src/sftp.rs:1036   let conn = connect_sftp(&cfg).await?;
+       提及  src-tauri/src/sftp_pool.rs:30   use crate::sftp::{connect_sftp, SftpConn};
+       调用  src-tauri/src/sftp_pool.rs:136   *guard = Some(connect_sftp(cfg).await?);
+       调用  src-tauri/src/sftp_pool.rs:143   *guard = Some(connect_sftp(cfg).await?);
+       调用  src-tauri/src/sftp_pool.rs:356   *guard = Some(connect_sftp(cfg).await?);
+       调用  src-tauri/src/sftp_pool.rs:464   *guard = Some(connect_sftp(cfg).await?);
+--------------------------------------------------------------------------------------------
+层2 `channel_open_session` —— russh 原语：在一条已连的会话上开 channel（层0 之后那一步）
+     定义 0 · **调用 5** · 提及 0 · 调用散在 2 份文件
+       调用  src-tauri/src/sftp.rs:50   .channel_open_session()
+       调用  src-tauri/src/ssh_source.rs:2086   .channel_open_session()
+       调用  src-tauri/src/ssh_source.rs:2259   .channel_open_session()
+       调用  src-tauri/src/ssh_source.rs:4547   .channel_open_session()
+       调用  src-tauri/src/ssh_source.rs:5838   .channel_open_session()
+--------------------------------------------------------------------------------------------
+【合计】层1+层2 的**调用点**散在 14 份文件里：account_usage.rs、acct_iso_deploy.rs、cc_bus.rs、ccm_probe.rs、hooks_diag.rs、mcp.rs、port_forward.rs、pubkey.rs、remote_branch.rs、remote_history.rs、sftp.rs、sftp_pool.rs、ssh_source.rs、tmux.rs
+============================================================================================

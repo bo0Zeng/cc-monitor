@@ -1,0 +1,65 @@
+============================================================================================
+K-P6 · russh 逐处分类尺子   树=/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-p6
+                            HEAD=55c7fde151b54e1c59b23fc478f9b493c94f6fc7   作用域=src-tauri
+============================================================================================
+【人群】`git ls-files -z` 里跟踪的 `.rs` 共 106 份（作用域 src-tauri）；其中含子串 `russh` 的 10 份
+--------------------------------------------------------------------------------------------
+【① 严格词 `russh` —— 逐处按词法状态分类】（单位=处）
+文件                                         code   行注    文档行   块注    文档块   串     代码行数
+src-tauri/src/ssh_source.rs                  19    4     12    0      0   0       19
+src-tauri/src/port_forward.rs                 1    1      5    0      0   0        1
+src-tauri/src/sftp.rs                         1    2      4    0      0   0        1
+src-tauri/src/account_usage.rs                0    1      0    0      0   0        0
+src-tauri/src/launch.rs                       0    1      0    0      0   0        0
+src-tauri/src/mcp.rs                          0    0      0    0      0   0        0
+src-tauri/src/remote_write_registry.rs        0    0      0    0      0   0        0
+src-tauri/src/sftp_pool.rs                    0    0      3    0      0   0        0
+src-tauri/src/structural_scan.rs              0    0      0    0      0   1        0
+src-tauri/src/tmux.rs                         0    0      2    0      0   0        0
+合计                                           21    9     26    0      0   1       21
+--------------------------------------------------------------------------------------------
+【② 另一个 crate `russh_sftp` —— 单列，别混进上表】（单位=处）
+src-tauri/src/sftp.rs                         2    0      0    0      0   0        2
+src-tauri/src/mcp.rs                          1    0      0    0      0   0        1
+src-tauri/src/remote_write_registry.rs        0    0      0    0      0   1        0
+src-tauri/src/sftp_pool.rs                    5    0      0    0      0   0        5
+合计                                            8    0      0    0      0   1
+--------------------------------------------------------------------------------------------
+【③ PM 那把粗尺子重打一遍（子串 + 只剔行首注释，单位=行）】
+文件                                              总命中行      粗·代码行       严格·代码行
+src-tauri/src/ssh_source.rs                       34         19           19
+src-tauri/src/port_forward.rs                      6          2            1
+src-tauri/src/sftp.rs                              8          3            1
+src-tauri/src/account_usage.rs                     1          0            0
+src-tauri/src/launch.rs                            1          0            0
+src-tauri/src/mcp.rs                               1          1            0
+src-tauri/src/remote_write_registry.rs             1          1            0
+src-tauri/src/sftp_pool.rs                         8          5            0
+src-tauri/src/structural_scan.rs                   1          1            0
+src-tauri/src/tmux.rs                              2          0            0
+合计                                                63         32           21
+--------------------------------------------------------------------------------------------
+【④ 差额逐处 —— 粗尺子算作「代码行」而严格尺子不算的 11 行】
+  src-tauri/src/mcp.rs:411  〔命中的是 `russh_sftp`（另一个 crate），不是 `russh`〕
+      sftp: &russh_sftp::client::SftpSession,
+  src-tauri/src/port_forward.rs:94  〔`russh` 落在**行尾注释**里（PM 自己点名的那个粗口径）〕
+      let session = Arc::new(session); // russh Handle 不 Clone → Arc 共享
+  src-tauri/src/remote_write_registry.rs:260  〔`russh` 落在**字符串字面量**里〕
+      || prod.contains("russh_sftp")
+  src-tauri/src/sftp.rs:32  〔命中的是 `russh_sftp`（另一个 crate），不是 `russh`〕
+      use russh_sftp::client::SftpSession;
+  src-tauri/src/sftp.rs:33  〔命中的是 `russh_sftp`（另一个 crate），不是 `russh`〕
+      use russh_sftp::protocol::{FileAttributes, OpenFlags};
+  src-tauri/src/sftp_pool.rs:131  〔命中的是 `russh_sftp`（另一个 crate），不是 `russh`〕
+      F: for<'a> Fn(&'a russh_sftp::client::SftpSession) -> SftpFut<'a, T>,
+  src-tauri/src/sftp_pool.rs:368  〔命中的是 `russh_sftp`（另一个 crate），不是 `russh`〕
+      russh_sftp::protocol::OpenFlags::READ,
+  src-tauri/src/sftp_pool.rs:472  〔命中的是 `russh_sftp`（另一个 crate），不是 `russh`〕
+      russh_sftp::protocol::OpenFlags::CREATE
+  src-tauri/src/sftp_pool.rs:473  〔命中的是 `russh_sftp`（另一个 crate），不是 `russh`〕
+      | russh_sftp::protocol::OpenFlags::TRUNCATE
+  src-tauri/src/sftp_pool.rs:474  〔命中的是 `russh_sftp`（另一个 crate），不是 `russh`〕
+      | russh_sftp::protocol::OpenFlags::WRITE,
+  src-tauri/src/structural_scan.rs:1449  〔`russh` 落在**字符串字面量**里〕
+      ("lib.rs", "russh-sftp-2.3.0/src/protocol/file_attrs.rs", 29),
+============================================================================================
