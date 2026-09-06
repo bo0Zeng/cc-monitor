@@ -386,7 +386,13 @@ pub enum SpawnFailure {
     TransientBusy {
         /// 试了几次（= [`SPAWN_ETXTBSY_TRIES`]，除非调用方另给）。
         tries: u32,
-        /// 最后一次撞上时的逐字错误 —— 不加工，供用户与日志各取所需。
+        /// 最后一次撞上时的**逐字错误**。
+        ///
+        /// ⚠ 它**只装那一句原话**，不许再把「撞了几次」揉进来 —— 那个数住 `tries`。
+        /// 〔本轮自查逮到的：初版把 `last` 写成 `format!("撞了 {n} 次，最后一次逐字：{e}")`，
+        /// 于是同一个事实有了两份表示，实打出来的那句话是
+        /// 「…最后一次逐字：撞了 8 次，最后一次逐字：Text file busy…」——
+        /// **本件在治的病，长在治它的代码里。**〕
         last: String,
     },
     /// **这台机器上它就是起不来**：路径错 / 没执行位 / 架构不对 / 被挡了。放弃。
@@ -434,7 +440,8 @@ pub fn spawn_retrying_etxtbsy<T>(
         match attempt() {
             Ok(v) => return Ok(v),
             Err(e) if spawn_error_is_etxtbsy(&e) => {
-                last = format!("撞了 {} 次，最后一次逐字：{e}", i + 1);
+                // ⚠ 只存那一句原话；「撞了几次」是 `TransientBusy::tries`，不在这里再存一份。
+                last = e;
                 if i + 1 < budget {
                     backoff(i);
                 }
@@ -1360,9 +1367,15 @@ mod tests {
             panic!("一直 ETXTBSY 却没读成「这一刻恰好撞上了」：{busy:?}");
         };
         assert_eq!(tries, 5);
-        assert!(
-            last.contains("os error 26"),
-            "最后一次的逐字没带回来 ⇒ 用户与日志都问不到成因：{last}"
+        // 逐字相等，不是 `contains`：
+        // ① 最后一次的原话必须带回来（不带回来，用户与日志都问不到成因）；
+        // ② 🔴 **它只许装那一句原话** —— 本轮自查逮到的正是这一处：初版把
+        //    「撞了几次」也揉进了 `last`，而那个数住 `tries` ⇒ 同一个事实两份表示，
+        //    实打出来是「…最后一次逐字：撞了 8 次，最后一次逐字：Text file busy…」。
+        //    **本件在治的那条病，长在治它的代码里。** 钉住它别回来。
+        assert_eq!(
+            last, "spawn 本地命令失败: Text file busy (os error 26)",
+            "`last` 不是那一句原话 —— 要么没带回来，要么被加工了（比如又把次数揉了进来）"
         );
 
         // 腿②（**反侧对照**）：一个真失败 —— 一次都不许重试。
