@@ -1,0 +1,43 @@
+==============================================================================
+K-P7 死值验台子（`P7M1` 非空对照 + `P7M3` 三口径）
+量具住址: <工作树>/evidence/K-P7-zero-diff-mutation.py
+被测工作树: /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-p7
+被测树 HEAD: ab56c7d674c42ad8f45c301ccf260fa0c8934a03 · 基点: ab56c7d
+==============================================================================
+
+---- P7M1 非空对照（尺子是不是活的）----
+  分母：`remote-daemon-proto/src/**/*.rs` 共 76 份，扣掉调用者自己 ⇒ 75 份
+  锚点 `mpsc::channel::<Frame>(` ⇒ observe/watcher.rs 内 1 处 · 全 crate 3 处   （登记的那一个（文件内 1 · 全 crate 3））
+  锚点 `mpsc::channel::<Frame2>(` ⇒ observe/watcher.rs 内 0 处 · 全 crate 0 处   （把锚点改一个字 —— 应当归零）
+  锚点 `mpsc::channel::<` ⇒ observe/watcher.rs 内 2 处 · 全 crate 6 处   （把锚点放宽 —— 应当变大）
+  ⇒ 三个锚点读出三个不同的数 ⇒ **尺子不是恒返回登记值**。
+
+---- P7M3 ----
+被切的那一份: remote-daemon-proto/src/wire.rs · 切前 md5 = 6b96f08d622674ba67d780ada7982abc
+
+---- 三口径 · 切之前（应当三格全空 / 0 份） ----
+① git diff ab56c7d -- src src-tauri e2e scripts remote-daemon-proto
+   退出码 0 · 输出 （空）
+② git status --porcelain -- <那五个路径>  退出码 0 · 输出 （空）
+③ 逐文件 md5（人群 `git ls-files -z`）：两边都有 856 份 · md5 不同 **0** 份 · 单边独有 0 份
+
+变异已落地：remote-daemon-proto/src/wire.rs 末尾追加 1 行 · 切后 md5 = 8ec36333574166572d752f0cd8e42fc2 · 与切前不同 ✅
+
+---- 三口径 · 切之后（三格都应当认得出） ----
+① git diff ab56c7d -- src src-tauri e2e scripts remote-daemon-proto
+   退出码 0 · 输出 
+   | remote-daemon-proto/src/wire.rs | 1 +
+   |  1 file changed, 1 insertion(+)
+② git status --porcelain -- <那五个路径>  退出码 0 · 输出 
+   | M remote-daemon-proto/src/wire.rs
+③ 逐文件 md5（人群 `git ls-files -z`）：两边都有 856 份 · md5 不同 **1** 份 · 单边独有 0 份
+
+复原：`git checkout -- remote-daemon-proto/src/wire.rs` 退出码 0 · 复原后 md5 = 6b96f08d622674ba67d780ada7982abc · 与切前逐字节相同 ✅
+
+---- 三口径 · 复原之后（应当回到三格全空 / 0 份） ----
+① git diff ab56c7d -- src src-tauri e2e scripts remote-daemon-proto
+   退出码 0 · 输出 （空）
+② git status --porcelain -- <那五个路径>  退出码 0 · 输出 （空）
+③ 逐文件 md5（人群 `git ls-files -z`）：两边都有 856 份 · md5 不同 **0** 份 · 单边独有 0 份
+
+==============================================================================
