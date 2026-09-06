@@ -2,7 +2,7 @@
 K-P7 协议面普查 —— `§0a` 四个读数 + 用户裁定三格，逐条重打
 量具住址: <工作树>/evidence/K-P7-protocol-census.py
 被测工作树: /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-p7
-被测树 HEAD: ab56c7d674c42ad8f45c301ccf260fa0c8934a03
+被测树 HEAD: 3b875d1cbb49cbe1f1b34f17a729b074095fb061
 ==============================================================================
 
 【1】`wire::Frame` 变体数 —— 两把尺子
@@ -75,5 +75,37 @@ K-P7 协议面普查 —— `§0a` 四个读数 + 用户裁定三格，逐条重
   `match kind` 的字面臂 = **11** 个：['hello', 'line', 'session_added', 'session_status', 'session_removed', 'overflow', 'tmux_session_closed', 'tmux_sessions', 'reply', 'cancelled', 'turn_end']
   其中**认识但刻意不消费**（`=> None`）= 1 个：['turn_end']
   与 daemon 侧 11 个变体对拍：daemon 有而 monitor 没有 = [] · monitor 有而 daemon 没有 = []
+
+【7】`no_timer_guard` 的禁用构件 × 界面侧拨号路径（搬家的一条硬代价）
+  daemon 侧禁用清单（取自 `no_timer_guard` 的 `BANNED`，逐条现读）：`thread::sleep` · `time::sleep` · `recv_timeout` · `time::interval` · `Instant::now` · `Duration::from_secs`
+  `REGISTERED_DURATION_USES` 现打 **3** 条（例外要逐条登记 + 写解锁条件）
+  src-tauri/src/ssh_source.rs 生产段命中 **21** 处：
+      [Duration::from_secs] const RECONNECT_MIN: Duration = Duration::from_secs(2);
+      [Duration::from_secs] const RECONNECT_MAX: Duration = Duration::from_secs(30);
+      [Duration::from_secs] const MIN_HEALTHY_UPTIME: Duration = Duration::from_secs(30);
+      [Duration::from_secs] const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(45);
+      [time::sleep] tokio::time::sleep(RACE_STAGGER * i as u32).await;
+      [Duration::from_secs] .then(|| Duration::from_secs(30));
+      [Instant::now] let t_handshake = std::time::Instant::now();
+      [Duration::from_secs] const SNAPSHOT_READ_TIMEOUT: std::time::Duration = std::time::Duration::
+      [time::sleep] tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+      [Duration::from_secs] tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+      [Instant::now] let conn_started = std::time::Instant::now();
+      [time::sleep] tokio::time::sleep(backoff).await;
+      [Instant::now] self.born = Some(std::time::Instant::now());
+      [Instant::now] let t_connect_start = std::time::Instant::now();
+      [Instant::now] let t_exec = std::time::Instant::now();
+      [Duration::from_secs] const DAEMONLESS_POLL_INTERVAL: Duration = Duration::from_secs(2);
+      [time::sleep] tokio::time::sleep(DAEMONLESS_POLL_INTERVAL).await;
+      [Duration::from_secs] match connect_session(&cfg, Some(Duration::from_secs(30)), Some(on_stage
+      [Duration::from_secs] Duration::from_secs(8),
+      [Duration::from_secs] const CONTROL_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+      [Instant::now] let t0 = std::time::Instant::now();
+  src-tauri/src/port_forward.rs 生产段命中 **1** 处：
+      [time::sleep] tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  src-tauri/src/sftp.rs 生产段命中 **0** 处：
+  src-tauri/src/sftp_pool.rs 生产段命中 **0** 处：
+  ⚠ 分母 = 上面四份文件的**生产段**（同 `production_code` 口径，测试段不算）；
+    尺子是**子串**，不是 `is_call_of` 那个带词边界的调用匹配器 ⇒ 这个数是**上界**。
 
 ==============================================================================
