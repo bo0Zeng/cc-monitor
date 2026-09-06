@@ -856,9 +856,16 @@ export class AccountsSection {
       "切换当前账号只改本机设置：不动远端、不碰凭据、不重启任何东西。未登录的账号可点它那行的「去登录」在终端里 /login。";
     this.body.appendChild(hint);
 
-    // F09 Phase D 审计（UX，建议）：本仓库没有任何 changelog/首次运行提示机制，批量对齐这个
-    // 能力随 F09 整体删除后没有任何地方告诉老用户它去哪了——用户在 Ctrl+K 里搜不到会以为是
-    // bug。加一行最低成本的静态提示，别为这一件事新建一整套提示基础设施。
+    // F09 Phase D 审计（UX，建议）：批量对齐这个能力随 F09 整体删除后，没有任何地方告诉
+    // 老用户它去哪了——用户在 Ctrl+K 里搜不到会以为是 bug。加一行最低成本的静态提示，
+    // 别为这一件事新建一整套提示基础设施。
+    //
+    // 🔴 `N-F3`（09-05）订正：这条原来的头一句逐字写着「**本仓库没有任何 changelog/首次运行
+    // 提示机制**」——**今天那是假话**，而且写下它的时候就已经不全对了。盘上现打两处：
+    //   ① `main.ts` 的命令 chip 首运行微高亮（`LS_KEYS.cmdkHintSeen`，非模态、见过即不再）；
+    //   ② `first-run-hint.ts`：主窗口那条「还差什么」指路（`N-F3` 本件加的）。
+    // ⚠ 但**这一行的结论不变**：那两处都不是 changelog，「某个能力去哪了」今天仍然没有住址，
+    //    所以下面这行静态提示照留。订正的是那句全称，不是这段的做法。
     const removedHint = document.createElement("div");
     removedHint.className = "accounts-hint";
     removedHint.textContent =
