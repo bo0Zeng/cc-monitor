@@ -86,6 +86,17 @@ mod spawn_sites {
           ⚠ **命令是参数**，但生产侧的三个实参各有来历：`CC_BUS_CAT_CMD`（常量）· `build_online_cmd` · \
           `build_inbox_cmd`（两个构造器都过 `is_valid_bus_id`），由 `exec_site_registry` 那条按源码钉住。\
           用 `-lc` 而不是 `-lic`：只要 `$HOME`/`$CC_BUS_HOME`，不需要交互式 rc"),
+        ("ssh_source.rs", "spawn_dial_proxy", "`<代理二进制> --dial`（子进程，常驻到某一头断开）",
+         "`K-P6b`：**daemon 那条长连接流的 SSH 握手交给这个子进程去跑**，界面只收字节。\
+          起的是什么：`cc-monitor-remote`（本仓 `remote-daemon-proto` 的产物）——\
+          发版包里它就在 `monitor.exe` 旁边（`externalBin` sidecar），\
+          解析口 `resolve_dial_proxy` 只认两处：环境变量 `CCM_DIAL_PROXY` 与 exe 旁那份。\
+          **argv 只有一个常量 flag，零插值**；主机名 / 用户名 / 私钥**路径**走环境变量 \
+          `CCM_DIAL_REQUEST`（`argv` 是世界可读的，`/proc/<pid>/environ` 不是）。\
+          为什么必须起进程：这正是本件的**目的** —— 让那一跳拨号不发生在界面进程的地址空间里。\
+          ⚠ 它 `kill_on_drop(true)`：界面退出 = 句柄 drop = 代理跟着走。\
+          🔴 **别把这一行读成「拨号搬出去了」**：`connect_session` 的 7 处生产调用点里\
+          这条只覆盖 1 处，逐处登记在 `ssh_source::dial_move_judge::DIAL_SITES`"),
         ("account_usage.rs", "run_local_probe", "`sh -c <载荷>`",
          "本机用量探针：载荷由 `probe_command_for` 构造并引用过（`exec_site_registry` 里那条 Builder 行管它）"),
         ("launch.rs", "launch_local_posix_via", "用户配置的终端 argv[0]",

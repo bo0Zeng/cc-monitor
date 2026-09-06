@@ -1726,6 +1726,20 @@ mod g6_dependency_signoff {
              本机不落盘、不建缓存目录",
         ),
         (
+            "russh",
+            DEPS,
+            UNMEASURED,
+            "`K-P6b`：`--dial` 那条代理臂的 SSH 客户端（传输层握手 · publickey 鉴权 · \
+             开 channel）。与 monitor 侧**同版本同 feature 集**（`0.61.1` / `ring` / \
+             `flate2` / `rsa`），provider 就是本表上面 `rustls` 那条已经在用的 `ring`。\
+             ⚠ **本档是「未量」不是「没写面」**：私钥由 `russh::keys::load_secret_key` \
+             **读**一个路径（读不是写），而它建不建缓存 / 写不写 known_hosts \
+             **我没有扫过它的源码** —— daemon 侧这条路不传 known_hosts 路径、\
+             host key 校验由 `dial::DialHandler` 自己在内存里比指纹，\
+             但那是**用法**上的签字，不是对它源码的读数。\
+             ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，本轮没做",
+        ),
+        (
             "serde",
             DEPS,
             UNMEASURED,

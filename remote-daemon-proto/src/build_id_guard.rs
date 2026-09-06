@@ -143,6 +143,24 @@ mod tests {
             "p2d-relay",
             "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--daemon-probe\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
+        // ★ p2e（`K-P6b`，09-06）：新增 `--dial` —— 把 **daemon 那条长连接流**的 SSH 握手
+        //   搬进一个由界面起的子进程（候选 E 的字节代理）。
+        //
+        // ⚠ **必须 bump**：又一个**新的进程形态**（常驻、一条管子进一条管子出、不进
+        //   `listen` 那条常驻路）。已部署的旧 daemon 没有这条臂，而 monitor 判 stale
+        //   只看 build_id ⇒ 不 bump 就不重装 ⇒ 整件能力在已部署的远端休眠。
+        //   —— 与 p2d 那条逐字同一个理由，这已经是本表第五次写它了。
+        // 🔴 **这一行不许被读成「拨号搬出去了」**：`connect_session` 的生产调用点
+        //   **7 处 / 3 份**，本件只覆盖 daemon 长连接流那 **1** 处；
+        //   SFTP · 端口转发 · 跳板 · 其余 exec 路径**界面仍然自己拨**。
+        // ★ 同 p2d：这一半是**源码半**，`main.rs::BUILD_ID` 头注警告的那个「半 bump」
+        //   （只 bump 源码不 re-embed）归发版那一拍（CI 交叉编译），本轮没做。
+        //   ⚠ 而且本轮**连 musl 交叉编译都没验**（沙箱门禁不做交叉编译）——
+        //   理由与读数住 `Cargo.toml` 里 `russh` 那条依赖的块头注。
+        (
+            "p2e-dial",
+            "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};
