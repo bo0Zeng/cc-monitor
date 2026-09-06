@@ -1472,9 +1472,31 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 //
 // - **中转能不能承受所有会话都走它**：`server.rs::INFLIGHT_CONNECTIONS` 有上界、超了回 503，
 //   那个数够不够**我没量**。（本件裁的是「只接 api-key 号」⇒ 今天的量级远小于「所有会话」。）
-// - **Windows 上这条路的运行时行为**：内嵌的那两份 sidecar 是 musl Linux 二进制，
-//   `start_local_backend` 里那条 `cfg!(target_os = "linux")` 闸对本函数**同样适用**
-//   —— 非 Linux 宿主上 `resolve_daemon_bin` 拿不到东西，本函数就不会被调到。
+// - **Windows 上这条路的运行时行为**：内嵌的那两份 sidecar 是 musl Linux 二进制。
+//   ⚠⚠ **原文这里写的是「`start_local_backend` 里那条 `cfg!(target_os = "linux")` 闸
+//   对本函数同样适用 ⇒ 非 Linux 宿主上 `resolve_daemon_bin` 拿不到东西，本函数就不会被
+//   调到」—— 两句都不成立**（`K-R31` `D5⑴`，09-06 现打订正）：
+//   · **前半是把一道闸的射程读大了**。那道闸逐字是
+//     `let embedded = if cfg!(target_os = "linux") {` —— 它置空的是 **`embedded`
+//     这一个变量（内嵌回落那一支）**，不是「解析」。
+//   · **后半是从前半推出来的**。`resolve_daemon_bin` 的**第一条路**逐字是
+//     `let beside = local_backend::resolve_beside_this_exe(env!("CCM_TARGET_TRIPLE"));`
+//     —— **与平台无关**，只有它返回 `Missing` 才轮到 `embedded`。
+//   ⇒ 发版的 Windows 包里那份 sidecar **就在 `monitor.exe` 旁边**
+//     （`src-tauri/tauri.sidecar.conf.json` 逐字声明 `"externalBin": ["binaries/cc-monitor-remote"]`；
+//     `.github/workflows/release.yml` 的 `build-windows` job 跑在 `windows-latest` 上，
+//     有 `Build local backend sidecar (native)` 与 `Stage sidecar for externalBin` 两步）
+//     ⇒ 头一条路**命中**，本机中转在 Windows 上**会**起。
+//   ★★ **它为什么能活这么久 —— 这比「写错了」值钱，别只改结论**：
+//     `local_accounts.rs` 里那条既有登记逐字写着「开发树里 `externalBin` 现打零命中
+//     ⇒ 那一档在本地是**恒真**的」。开发树上没有那份 sidecar，头一条路必 `Missing`、
+//     `embedded` 又被那道闸置空 ⇒ **在开发树上本函数确实调不到**。
+//     ⇒ 那句话**在开发环境里恒真、在用户手上恒假**，而**所有人只在开发树上读它**。
+//     下一个人在开发树上一验，又会把它验成对的。
+//   🔴 **仍然没验的是另一件事**：Windows 真机上这条路**起来之后行为对不对**，
+//     本区跑不了 Windows，**一次都没验过**。
+//     「那句注释写错了」与「那条路跑得通」**是两句话，不许压成一句**。
+//   ⚠ **本条只治文字，一条判据都没配** —— 把这几句改回原样**不会红**。
 
 /// `K-H2b`：本机中转的监护句柄。形状与 [`LOCAL_BACKEND`] 同族（`Mutex<Option<_>>`，
 /// 停了要能再起）。
