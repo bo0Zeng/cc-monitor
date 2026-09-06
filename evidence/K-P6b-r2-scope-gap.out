@@ -1,0 +1,135 @@
+树 = /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-p6b
+base = b4530d8  (b4530d8bff1d6dba790c8745fffcd6be72bc5f9d)
+head = HEAD  (c974f2e0236f7a05e24d54b3ae4e6d6d7959d7dc)
+工作树 git status --porcelain 行数 = 2
+
+==============================================================================
+① §0b 四条 —— 重打到 head
+==============================================================================
+[①-1 协议零改动] git diff b4530d8 HEAD -- wire.rs inbound.rs ⇒ 0 字节
+  ⇒ 成立（差集为空）
+  非空对照（同一把尺子量 dial/mod.rs）⇒ 2832 字节 —— 对照非空，尺子在动
+
+[①-2 六根针] `PINS` 现打 6 条（分母 = `single_stream_guard.rs` 里 `const PINS` 之后所有 `("f","n",N,M,` 形状的元组头）
+    main.rs / 'writer_task(' ⇒ file_want=2 crate_want=2
+    main.rs / 'inbound::spawn(' ⇒ file_want=2 crate_want=2
+    main.rs / 'busy.swap(true' ⇒ file_want=1 crate_want=1
+    observe/watcher.rs / 'mpsc::channel::<Frame>(' ⇒ file_want=1 crate_want=3
+    listen.rs / 'Admit::Stream' ⇒ file_want=1 crate_want=2
+    main.rs / 'REPLY_BURST' ⇒ file_want=2 crate_want=2
+    整文件 md5：b4530d8 = 8203b523d366 · head = 8203b523d366 ⇒ 一字未动
+
+[①-3 additive] git diff --numstat b4530d8 HEAD（分母 = 这一段 diff 里的**全部**文件）
+    +266   -0     evidence/K-P6b-readings.md   【在写区】
+    +117   -0     evidence/K-P6b-ruler-diff.out   【在写区】
+    +469   -0     evidence/K-P6b-ruler-diff.py   【在写区】
+    +40    -0     remote-daemon-proto/src/dial/mod.rs   【在写区】
+    合计 4 份 · +892 · -0
+    有删除行的文件 0 份 ⇒ **additive 成立**（一行都没删、一行都没改）
+    新增文件 4 份：['evidence/K-P6b-readings.md', 'evidence/K-P6b-ruler-diff.out', 'evidence/K-P6b-ruler-diff.py', 'remote-daemon-proto/src/dial/mod.rs']
+    改动已有文件 0 份：[]
+    ⚠ **这一格今天买得很便宜**：那唯一一份新文件参不参与编译，见 ②-G7。
+
+[①-4 Overflow.lost 不动]
+    remote-daemon-proto/src/wire.rs:387 逐字 ⇒ '        lost: Vec<LostFrame>,'
+    remote-daemon-proto/src/wire.rs:391 逐字 ⇒ '        lost_truncated: bool,'
+    git diff b4530d8 HEAD -- wire.rs ⇒ 0 字节 ⇒ 成立
+
+==============================================================================
+② E 落 `remote-daemon-proto/src/dial/mod.rs` 这条路撞到的文件，逐份标写区
+==============================================================================
+[②-G1] daemon crate 今天**一条 `russh` 依赖都没有**
+    remote-daemon-proto/Cargo.lock 包名 96 个（分母）⇒ `russh*` 0 个 []
+    对照 src-tauri/Cargo.lock 包名 677 个 ⇒ `russh*` 4 个 ['russh', 'russh-cryptovec', 'russh-sftp', 'russh-util'] —— 对照非空 ⇒ 这把尺子会数 `russh`，上面那个 0 不是尺子坏了
+    Cargo.toml 非注释行 37 行（分母）⇒ 含 `russh` 的 0 行（全文提到 `russh` 的 2 行**都是注释**）
+    ⇒ 要让 `dial/` 真的拨 SSH，得改 `remote-daemon-proto/Cargo.toml` 🔴【不在写区】
+
+[②-G1a] 「不动 `Cargo.toml` 也让 `dial/` 拨得动」我查了三条路
+    路① 复用 daemon 现有依赖：lock 里 96 个包（分母）中名字含 `ssh`/`sftp` 的 0 个 [] ⇒ 走不通
+    路② 借道那 7 个 path 依赖 crate（分母 = 7 个）：Cargo.toml 里提到 `ssh` 的 0 个 [] ⇒ 走不通
+    路③ 起一个外部 `ssh` 客户端进程：daemon 里起进程本身做得到（见 ④），但那要求目标机上**有**一个外部客户端，
+         并且把 **host key 指纹校验**与**凭据面**整个交出去 —— 与 `ssh_source` 今天自己校验指纹这件事直接冲突。
+         ⚠ **这条我没有量它可不可行**，只是说它不是「免费」的那种躲法。
+
+[②-G2] `connect_session` 交出去的是一个 **russh 的进程内句柄** —— 它跨不了进程边界
+    src-tauri/src/ssh_source.rs:34 逐字 ⇒ 'use russh::client;'
+    src-tauri/src/ssh_source.rs:701 逐字 ⇒ 'pub(crate) async fn connect_session('
+    src-tauri/src/ssh_source.rs:704 逐字 ⇒ '    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,'
+
+[②-G3] `connect_session` 的**生产段**调用点分布（分母 = 跟踪的 `.rs`，剥测试段）
+    跟踪 `.rs` 216 份（分母）⇒ 命中 3 份 / 7 处
+    1 处  src-tauri/src/port_forward.rs   🔴【不在写区】
+    1 处  src-tauri/src/sftp.rs   🔴【不在写区】
+    5 处  src-tauri/src/ssh_source.rs   【在写区】
+    ⇒ 其中 2 份在写区外：['src-tauri/src/port_forward.rs', 'src-tauri/src/sftp.rs']
+    ⚠ 这个数含**定义行本身**与 `connect_via_jump` 里那次递归调用；它数不到 `use` 别名与函数指针。
+
+[②-G4] 往 `SUBCOMMANDS` 加一条 ⇒ **两半判据**，而写区只给了其中一半
+    remote-daemon-proto/src/main.rs:1236 逐字 ⇒ '    // ⚠ **由环境决定，不由 argv 决定**：`SUBCOMMANDS` 那张表一动就要 bump `BUILD_ID`'
+    remote-daemon-proto/src/main.rs:1237 逐字 ⇒ '    // 并进 `IPC-PROTOCOL.md` 的对拍面（`build_id_guard` / `protocol_doc_guard` 各钉一半），'
+    doc/IPC-PROTOCOL.md §10 = 第 368..961 行（分母）⇒ `--relay` 在其中命中 2 处 ⇒ 先例走的就是这条路
+    判据：`protocol_doc_guard::every_dispatched_subcommand_appears_in_the_protocol_doc`
+    ⇒ 加一条子命令要改 `doc/IPC-PROTOCOL.md` 🔴【不在写区】
+
+[②-G5] `dial/mod.rs` 里只要出现一个 `"--` 字面量，它就得进 `DISPATCH_FILES`
+    现打 `DISPATCH_FILES` 7 份（分母 = 该常量块内 `"*.rs"` 字面量 14 个，每份登记两次）：['control/cc_bus.rs', 'control/cli_control.rs', 'control/tmux_hook.rs', 'main.rs', 'observe/accounts_query.rs', 'observe/history_query.rs', 'observe/search_query.rs']
+    判据：`protocol_doc_guard::…::dispatch_registry_is_complete`（扫全 crate 生产段找 `"--`，要求与登记表**相等**）
+    ⇒ 可能要改 `remote-daemon-proto/src/protocol_doc_guard.rs` 🔴【不在写区】
+
+[②-G6] 零定时器护栏的人群**递归覆盖** `src/` ⇒ `dial/` 一进来就在闸里
+    remote-daemon-proto/src/no_timer_guard.rs:6 逐字 ⇒ '//! - **它扫的人群是**：本 crate `src/` 递归全部 `.rs`（`SKIPPED_BY_NAME` 跳过自身）剥掉测试段之后的**源码文本**；依赖 crate 的源码、以及被起进程的行为，**都不在里面**。'
+    `REGISTERED_DURATION_USES` 住址：no_timer_guard.rs（现打 11 处提及）
+    而拨号那一段**头一句就带定时器**：
+    src-tauri/src/ssh_source.rs:712 逐字 ⇒ '    let keepalive_interval = inactivity_timeout'
+    src-tauri/src/ssh_source.rs:713 逐字 ⇒ '        .is_none()'
+    src-tauri/src/ssh_source.rs:714 逐字 ⇒ '        .then(|| Duration::from_secs(30));'
+    ⇒ 若代理要保住 keepalive/超时，要改 `remote-daemon-proto/src/no_timer_guard.rs` 🔴【不在写区】
+
+[②-G7] `dial/mod.rs` 今天**不参与编译**（`①-3` 那格 additive 便宜就便宜在这里）
+    main.rs 里 `mod dial;` 声明 0 处（分母 = main.rs 全文行）
+    dial/mod.rs 40 行 ⇒ 非注释非空 0 行 []
+
+==============================================================================
+③ 汇总：照 §0d 那条路走，要动而**写区里没有**的文件
+==============================================================================
+  🔴【不在写区】 remote-daemon-proto/Cargo.toml
+      G1 · 代理要拨 SSH 就要 `russh`（今天 daemon crate 零依赖）
+  🔴【不在写区】 doc/IPC-PROTOCOL.md
+      G4 · 加子命令必须进 §10 的代码跨度，否则 protocol_doc_guard 红
+  🔴【不在写区】 remote-daemon-proto/src/protocol_doc_guard.rs
+      G5 · 若 dial/mod.rs 里出现 `"--` 字面量
+  🔴【不在写区】 remote-daemon-proto/src/no_timer_guard.rs
+      G6 · 若代理保住 keepalive/超时
+  🔴【不在写区】 src-tauri/src/sftp.rs
+      G3 · connect_session 的生产调用点之一
+  🔴【不在写区】 src-tauri/src/port_forward.rs
+      G3 · connect_session 的生产调用点之一
+
+  ⚠ 这张表是**「照这条路走会撞到」**，不是「非改不可的最小集」——
+     后两份可以靠「不动 `connect_session` 的签名、只加一条并行的路」躲开（`§2.2` 也不许动它们）；
+     前四份躲不开：它们是判据/依赖，不是调用点。
+
+==============================================================================
+④ 顺手核：`relay/mod.rs` 头注那句「全 crate 唯一起进程口」
+==============================================================================
+  那句话逐字（现读）：
+    remote-daemon-proto/src/relay/mod.rs:112 逐字 ⇒ '//! | `crate::plugin::…` | 与调用口是**两条互不相干的基础设施**。中转认识它 = HTTP 线程上长出一条起进程的路（全 crate 唯一起进程口就在那儿） |'
+  现打（分母 = daemon crate `src/` 递归全部跟踪 `.rs`，**剥测试段**后数 `Command::new(` 与 `process::Command`）：
+    2 处  remote-daemon-proto/src/control/gate.rs
+    1 处  remote-daemon-proto/src/control/identity_tag.rs
+    1 处  remote-daemon-proto/src/control/kill.rs
+    2 处  remote-daemon-proto/src/control/launch.rs
+    1 处  remote-daemon-proto/src/control/tmux_hook.rs
+    2 处  remote-daemon-proto/src/main.rs
+    2 处  remote-daemon-proto/src/observe/watcher.rs
+    1 处  remote-daemon-proto/src/plugin/invoke.rs
+    合计 8 份 / 12 处
+  🔴 **上面这个数不许直接拿去断「唯一」** —— 它**剥了测试段、没剥注释、没剥字符串字面量**，而 `main.rs` 那 2 处现读全是散文/字面量（自查逮到的，头一版差点报出去）。
+  ⇒ 改用**逐处点名 + 校验位**：下面这几处是我逐行读过的**真调用**，只要有一处成立，那句「唯一」就已经是假的：
+    remote-daemon-proto/src/control/kill.rs:63 逐字 ⇒ '    let out = Command::new("tmux")'
+    remote-daemon-proto/src/control/launch.rs:356 逐字 ⇒ '    match Command::new("tmux")'
+    remote-daemon-proto/src/observe/watcher.rs:465 逐字 ⇒ '    match std::process::Command::new("sh")'
+    remote-daemon-proto/src/observe/watcher.rs:501 逐字 ⇒ '    let out = match std::process::Command::new("sh")'
+  ⇒ 🔴 `plugin/` **不是**全 crate 唯一起进程口，那句括号里的话今天是假的。
+  ⚠ 这一格**不挂 dod**，也**不在本轮写区**（`relay/mod.rs` 不在那 6 项里）⇒ 只报，不改。
+  ⚠ 诚实边界：我**没有**穷举全 crate 的起进程写法（`tokio::process`、全路径写法、间接封装都没数）⇒ 我给的是**点名的反例**，不是一个全集基数。
