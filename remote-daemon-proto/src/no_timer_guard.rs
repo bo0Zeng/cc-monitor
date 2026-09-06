@@ -273,6 +273,26 @@ mod tests {
         "收窄人群",
         "同上一条：中转那半搬走、或期限改由别处设定的那天一起摘。\
          ⚠ 「没有任何一层重试」这句同样是**登记理由里的话**，没被独立重打过。",
+    ),
+        (
+        "dial/mod.rs",
+        "Duration::from_millis(30_000)",
+        "`K-P6b` 的拨号代理交给 `russh` 的 **SSH 层 keepalive 间隔**（`client::Config`）。\
+         🔴 **这一条的理由与上面三条不同族，别照着上面读**：它**不是**「不是定时器」——\
+         `russh` 拿到这个值之后，它自己的任务**确实会周期性醒来**去发 keepalive。\
+         登记在这里的准确说法是：**醒来的那个东西不在本护栏的人群里**。\
+         人群按「本 crate `src/` 的源码文本」画，而那条节拍长在依赖 crate 的任务里 ——\
+         这与 `g6_reach` 那条反例（notify-debouncer 内部那条带超时的等待线程，同样由\
+         本 crate 生产段亲手拉起）**是同一族**，头注第三段已经把这一格如实登记过。\
+         为什么非要它：长连接的死链**只能**靠 keepalive 超时 + EOF 检出（界面侧\
+         `connect_session` 的 FIX 1 逐字同一条理由）；不设它，一条断掉的 SSH 会话会\
+         静默挂着不 EOF，界面那头永远等不到重连。\
+         ⇒ 这一条**不许被读成「这里没有定时器」**，它说的是「这里有一个，而它长在人群外面」。",
+        "收窄人群",
+        "`K-P6b` 那条代理路整个撤掉（候选 E 被否）、或 keepalive 改由别处（内核 TCP \
+         keepalive / 远端 sshd 的 ClientAlive）设定的那天。\
+         ⚠ 另一条更强的解锁：哪天本护栏的人群从「本 crate 源码文本」扩到「本进程」\
+         （那正是 `g6_reach` 说的那一格），这一条就该从「登记」改成「正面回答」。",
     )];
 
     use crate::guard_support::production_code;
@@ -702,9 +722,13 @@ mod g6_reach {
     #[test]
     fn the_duration_registry_is_an_equality_not_a_floor() {
         let registered = REGISTERED_DURATION_USES.len();
+        // 〔`K-P6b` 09-06〕3 → **4**：新增的那一条是 `dial/mod.rs` 的 SSH keepalive 间隔。
+        // ⚠ 那一条的登记理由**与前三条不同族** —— 它没说「这不是定时器」，
+        //   它说的是「有一个，而它长在依赖 crate 里、在本护栏的人群外面」。
+        //   ⇒ 这个分母涨了 1，而**护栏能拦住的形状一个都没多**。别把涨读成变强。
         assert_eq!(
-            registered, 3,
-            "登记表从 3 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
+            registered, 4,
+            "登记表从 4 条变成 {registered} 条了 —— 这个数就是那条相等断言的分母，\
              改它等于改判据的射程"
         );
     }
