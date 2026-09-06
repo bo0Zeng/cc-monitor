@@ -152,7 +152,56 @@ def main():
     print(f"  **非空对照**（同一把尺子量 dial/mod.rs）: {len(ctrl)} 字节")
     print("  ⇒ 上面那几个 0 是「跑了、结果是空」，不是「命令没跑」。")
 
+    # ── §⑥ 改动面：逐函数 md5（base ↔ 工作树）─────────────────────────────────
+    print("\n## §⑥ 改动面 · **顶层函数逐个 md5**")
+    print("  ⚠ **口径先说清**：`brief.md` 要的是「`ast` 逐函数 md5」，")
+    print("     而本仓与 skill 里**都没有**一个叫 `ast` 的量具（`~/.claude/skills/planned-build/bin/`")
+    print("     与 `scripts/` 都查过，零命中）⇒ 这里是**我自己按文本切**的顶层函数体再取 md5，")
+    print("     **不是 AST**：宏里生成的函数、`impl` 块里的方法都切不出来。别读成等价物。")
+    print("  分母 = 每份文件生产段里**列 0 起头**的 `fn` / `pub fn` / `pub(crate) fn` / `async fn`，")
+    print("        函数体到第一行**恰好是 `}`** 为止（与 `local_daemon.rs::body_of` 同一把尺子）。")
+    for rel in ["src-tauri/src/ssh_source.rs", "remote-daemon-proto/src/dial/mod.rs"]:
+        now = strip_test_mods((ROOT / rel).read_text(encoding="utf-8"))
+        old = strip_test_mods(git("show", f"{base}:{rel}"))
+        a, b = top_level_fns(old), top_level_fns(now)
+        added = sorted(set(b) - set(a))
+        removed = sorted(set(a) - set(b))
+        changed = sorted(k for k in set(a) & set(b) if a[k] != b[k])
+        same = len(set(a) & set(b)) - len(changed)
+        print(f"  {rel}: base {len(a)} 个 · 工作树 {len(b)} 个 · 新增 {len(added)} · 消失 {len(removed)} · 变了 {len(changed)} · 一字未动 {same}")
+        for k in added:
+            print(f"    新增 {k}  md5={b[k]}")
+        for k in removed:
+            print(f"    消失 {k}  md5(base)={a[k]}")
+        for k in changed:
+            print(f"    变了 {k}  {a[k]} → {b[k]}")
+
     return 0
+
+
+FN_HEAD = re.compile(r"^(?:pub(?:\([a-z]+\))? )?(?:async )?fn ([A-Za-z0-9_]+)")
+
+
+def top_level_fns(src: str) -> dict:
+    """列 0 起头的顶层函数 → 函数体 md5。**按文本切，不是 AST**（见 §⑥ 的口径行）。"""
+    import hashlib
+
+    out, lines, i = {}, src.splitlines(keepends=True), 0
+    while i < len(lines):
+        m = FN_HEAD.match(lines[i])
+        if not m:
+            i += 1
+            continue
+        j = i
+        body = []
+        while j < len(lines):
+            body.append(lines[j])
+            if lines[j].rstrip("\n") == "}":
+                break
+            j += 1
+        out[m.group(1)] = hashlib.md5("".join(body).encode()).hexdigest()[:12]
+        i = j + 1
+    return out
 
 
 if __name__ == "__main__":
