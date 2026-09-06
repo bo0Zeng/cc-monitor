@@ -482,14 +482,25 @@ mod tests {
             )
         });
 
-        // ② daemon 侧的依赖清单：零命中（`C18` 红线的第一层）。
+        // ② daemon 侧的依赖清单：零命中（**第一层**；③ 是第二层，扫源码树）。
+        //    ⚠ 这两层守的是「**vendor 全景引擎不许进 daemon**」，**不是** `C18`「依赖树零 C」——
+        //    后者 08-29 已被推翻，规矩没变、换的是理由，逐字与住址见下面两条的失败文案。
         let daemon_cargo =
             guard_core::strip_hash_comment_lines(&must_read("remote-daemon-proto/Cargo.toml", 500));
         assert!(
             !guard_core::contains_word(&daemon_cargo, "code-picture-core"),
-            "daemon 的依赖树里出现了 vendor 引擎 —— `C18` 是红线不是权衡项。\n\
-             实测代价已经量过：二进制 3.5 MB → 17.43 MB，且 aarch64 交叉编译当场失败\
-             （`rusqlite(bundled)` 是整份 SQLite C 源码 + 9 门 tree-sitter grammar）。"
+            "daemon 的**依赖树**里出现了 vendor 全景引擎（`code-picture-core`）——\
+             这一条今天仍是红线，不是权衡项。\n\
+             ⚠ **别拿 `C18` 当它的理由**：那条「daemon 不引 C 生态链」**已被推翻** ——\
+             盘上逐字「~~**C18** daemon 不引 C 生态链~~ **已被推翻（08-29）**」\
+             （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`）。\
+             **规矩没变，换的是理由**，而撑着它的两样就写在这里，不用去别处找：\n\
+             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（sidecar），\
+             不是第三方插件，**也不编进 daemon**」；\n\
+             ② 实测代价：编进去 3.5 MB → 17.43 MB，且 aarch64 交叉编译当场失败\
+             （`rusqlite(bundled)` 是整份 SQLite C 源码 + 9 门 tree-sitter grammar）。\
+             ⚠ 这两个数是 `plugin-split` 的 `E10` 当年量的，而 `K30`（08-29）已判\
+             「那个 `3.5 MB` 的分母馊了、增量要重测」⇒ 当**量级**读，别当今天的精确值。"
         );
 
         // ③ daemon 侧**整棵源码树**：零命中（第二层 —— 这一层 `protocol_doc_guard` 够不到，
@@ -515,9 +526,18 @@ mod tests {
         }
         assert!(
             hits.is_empty(),
-            "daemon 的生产段里出现了全景引擎：{hits:?}\n\
-             ⇒ `C18` 逐字「daemon 的依赖树里不许出现 C」。要给 daemon 全景能力，\
-             `C21` 的答案是 **sidecar**（独立二进制，C 依赖跟着它走），不是内嵌。"
+            "daemon 的**源码树**（生产段）里出现了全景引擎：{hits:?}\n\
+             ⇒ 本条钉的是「**vendor 全景引擎不许进 daemon**」—— 上面 ② 钉依赖树，这一条钉源码树。\n\
+             ⚠ **别拿 `C18` 当它的理由**：那条「daemon 的依赖树里不许出现 C」**已被推翻** ——\
+             盘上逐字「~~**C18** daemon 不引 C 生态链~~ **已被推翻（08-29）**」\
+             （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`）。\
+             **规矩没变，换的是理由**，而撑着它的两样就写在这里，不用去别处找：\n\
+             ① `C21`〔用户 08-14 当面裁〕逐字「code-picture 走『一等公民 + 独立二进制』（sidecar），\
+             不是第三方插件，**也不编进 daemon**」⇒ 要给 daemon 全景能力，答案是 sidecar，不是内嵌\
+             （独立二进制，它自己那份 C 依赖跟着它走）；\n\
+             ② 实测代价：编进去 3.5 MB → 17.43 MB，且 aarch64 交叉编译当场失败。\
+             ⚠ 这两个数是 `plugin-split` 的 `E10` 当年量的，而 `K30`（08-29）已判\
+             「那个 `3.5 MB` 的分母馊了、增量要重测」⇒ 当**量级**读，别当今天的精确值。"
         );
     }
 
