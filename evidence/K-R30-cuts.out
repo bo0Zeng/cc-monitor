@@ -1,0 +1,153 @@
+K-R30 · §3 变异复验 —— 逐刀真跑的输出（不是勾）
+================================================================================
+口径（每一刀都一样，写在这里不逐刀重复）：
+· 被测对象 = 工作树 /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r30，分支 track/k-r30，
+  改后基点 56c6560（`.rs` 只在这一拍动过）。**本树未铺 src-tauri/embedded-daemons/**。
+· 跑法一律在沙箱镜像 ccmon-devbox:latest 里，--network none，
+  CARGO_TARGET_DIR=/home/zbl/文档/claudecode-frontend/.claude/pm-targets/k-r30。
+· ⚠ 这几刀用的是**直接 cargo**（不是 .claude/devbox/gate），少了 gate 那句
+  `mkdir -p "$HOME/.claude/projects"` ⇒ `history::tests::the_delete_entry_point_actually_goes_through_the_fence`
+  在**未切刀的对照上也红**（见下方「对照」一节）。它是**存量**，不算任何一刀的账。
+· 每一刀切之前先数锚点命中数，切完先打「变异已落地」，跑完**还原**，还原后核 md5。
+  未切刀时 local_backend.rs 的 md5 = 8a30a86182f8dd66fdc0b3efbc11f84a（五刀跑完复核仍是它）。
+
+
+################################################################################
+R30M1 · 把 D1 的台架改成「写 fd 立刻关」
+################################################################################
+锚点：evidence/K-R30-etxtbsy-window.py 里臂 C 的构造，命中 1 处
+      （`arms` 字典中 `ARM_C: run_arm(target, args.long_n, long_hold, c_holder)` 那一行）
+切法：`--mutate fake-long-window` ⇒ 臂 C 一个持有者都不 fork、写 fd 立刻就关（窗口 ≡ 0）
+应当：那一臂答「够」而长窗口臂答「不够」；两臂同答 ⇒ 尺子瞎了
+
+—— 未切刀（K-R30-etxtbsy-window.out §5 逐字）——
+· [idle]   在预算内的比例：臂A 100.0% · 臂B 4.7%  · 臂C 0.0%
+· [idle]   尺子：臂A - 臂C = 100.0 个百分点 ⇒ 分得开
+· [loaded] 在预算内的比例：臂A 100.0% · 臂B 99.3% · 臂C 0.0%
+· [loaded] 尺子：臂A - 臂C = 100.0 个百分点 ⇒ 分得开
+
+—— 切刀之后（真实输出）——
+── §3 三臂 · 负载 idle ─────────────────────────────────────
+· 臂 C **被 R30M1 切成了假窗口**：一个持有者都不 fork、写 fd 立刻就关（窗口 ≡ 0）
+
+── §3 三臂 · 负载 loaded ─────────────────────────────────────
+· 臂 C **被 R30M1 切成了假窗口**：一个持有者都不 fork、写 fd 立刻就关（窗口 ≡ 0）
+
+── §5 摘要（每一行都只复述上面表里的数） ──────────────────────────
+· [idle] 打完 8 次 = p50 1011 µs / p99 1364 µs
+· [idle] 窗口上界（一次 posix_spawn 的墙钟）= p50 152 µs / p99 282 µs ⇒ 预算盖住它 3.6 倍
+· [idle] 在预算内的比例：臂A 100.0% · 臂B 3.3% · 臂B2 判不了（GIL 串行，见 §3b） · 臂C 100.0%
+· [idle] 尺子：臂A - 臂C = 0.0 个百分点 ⇒ 🔴 分不开（两臂同答 ⇒ 尺子瞎了）
+· [idle] 扫描拐点：hold 到 0 µs 时「在预算内」首次跌破 100%
+· [loaded] 打完 8 次 = p50 15664 µs / p99 22504 µs
+· [loaded] 窗口上界（一次 posix_spawn 的墙钟）= p50 2741 µs / p99 5002 µs ⇒ 预算盖住它 3.1 倍
+· [loaded] 在预算内的比例：臂A 100.0% · 臂B 98.7% · 臂B2 判不了（GIL 串行，见 §3b） · 臂C 100.0%
+· [loaded] 尺子：臂A - 臂C = 0.0 个百分点 ⇒ 🔴 分不开（两臂同答 ⇒ 尺子瞎了）
+· [loaded] 扫描拐点：hold 到 1000 µs 时「在预算内」首次跌破 100%
+
+判：**如预期** —— 台架一被切成假窗口，量具自己当场自报「尺子瞎了」，两个负载条件各一次。
+⚠ 这一刀的**初版切错过一次，如实记着**：初版只把臂 C 的 hold 归零、持有者照 fork
+   ⇒ 臂 C 退化成臂 B（还带着 CPython fork 那 1.2 ms），空闲那一趟仍然「分得开 98.0 个百分点」
+   ⇒ 那一刀没切到该切的地方（提交 f8d4dc6 修的就是它）。**「改前有红」不等于「有牙」，
+   这一次是反过来：「改后有绿」也不等于刀切对了。**
+
+
+################################################################################
+R30M2 · 把 D3 新加那条判据里的**出处段整节删掉**
+################################################################################
+锚点：`/// # 这个数的**出处**（…）` 那一节，切前命中 1 处（`grep -c '这个数的\*\*出处\*\*'` = 1）
+切法：Edit 删掉 local_backend.rs:423–455 整节（33 行），常量与其余头注一个字不动
+变异已落地：出处小节标题命中 = 0；`〔出处·K-R30〕` 全文只剩 1 处（在判据自己的串里）
+面：`1 file changed, 33 deletions(-)`
+应当：那条判据红
+
+—— 真实输出 ——
+test backend::control::local_backend::tests::the_retry_budget_number_has_a_measured_origin_pinned_to_it ... FAILED
+---- backend::control::local_backend::tests::the_retry_budget_number_has_a_measured_origin_pinned_to_it stdout ----
+thread '…the_retry_budget_number_has_a_measured_origin_pinned_to_it' (347) panicked at src/backend/control/local_backend.rs:1484:13:
+test result: FAILED. 33 passed; 1 failed; 3 ignored; 0 measured; 1310 filtered out; finished in 0.02s
+
+判：**如预期，且只有它一条**（分母：本模块 34 条，33 绿 1 红）。
+还原后 md5 = 8a30a86182f8dd66fdc0b3efbc11f84a，`git diff` 空。
+
+
+################################################################################
+R30M2-min · 只打最小面：出处段里**只**删掉量具的住址
+################################################################################
+（第 9 条要的「只打该盖的最小面」那一刀 —— R30M2 的射程是整节，这一刀只有一行。）
+锚点：`/// 量具 \`evidence/K-R30-etxtbsy-window.py\`（读数落在同名 \`.out\`）。`，切前命中 1 处
+切法：换成 `/// 量具住在 \`evidence/\` 下（读数落在同名 \`.out\`）。`
+变异已落地：头注（400–460 行窗口内）`K-R30-etxtbsy-window.py` 命中 = 0；`〔出处·K-R30〕` 仍在
+面：`1 file changed, 1 insertion(+), 1 deletion(-)`
+
+—— 真实输出 ——
+test backend::control::local_backend::tests::the_retry_budget_number_has_a_measured_origin_pinned_to_it ... FAILED
+出处段没给量具的住址（`K-R30-etxtbsy-window.py` 一处都找不到 —— 事实没了，或者抽取面画错了（本条此刻是空转的））—— 给不出住址的读数，下一轮没人复得出来
+test result: FAILED. 33 passed; 1 failed; 3 ignored; 0 measured; 1310 filtered out; finished in 0.02s
+
+判：**如预期**，而且**红在第 ③ 条断言上**（诊断逐字点名是「住址」那一条），①② 没被牵连
+⇒ 三条断言各有各的射程，不是一条粗刀。
+
+
+################################################################################
+R30M4（自加）· 把那个数改掉、出处不动 —— 「换成同族的另一种失败，还红不红」
+################################################################################
+（第 9 条那句：切完一刀先问「把这一刀换成同族的另一种失败，还红不红」。
+  R30M2 证的是「出处没了会红」；**这一刀证的才是这条判据真正买的那件事** ——
+  「数改了而出处没跟着改」会红。⚠ 是变异刀，**跑完立刻还原**，交回的盘上仍是 8。）
+锚点：`pub const SPAWN_ETXTBSY_TRIES: u32 = 8;`，切前命中 1 处
+切法：8 → 9（**只改值**，出处那一节一个字不动）
+变异已落地：`pub const SPAWN_ETXTBSY_TRIES: u32 = 9;`
+面：`1 file changed, 1 insertion(+), 1 deletion(-)`
+
+—— 真实输出 ——
+test backend::control::local_backend::tests::the_retry_budget_is_big_enough_to_retry_and_small_enough_to_wait_on ... ok
+test backend::control::local_backend::tests::the_retry_budget_number_has_a_measured_origin_pinned_to_it ... FAILED
+---- …the_retry_budget_number_has_a_measured_origin_pinned_to_it stdout ----
+出处段里没有一处逐字写着「9 次立即重试打完」（`9 次立即重试打完` 一处都找不到 —— 事实没了，或者抽取面画错了（本条此刻是空转的））。
+test result: FAILED. 33 passed; 1 failed; 3 ignored; 0 measured; 1310 filtered out; finished in 0.02s
+
+判：🔴 **这一格是本件最值钱的读数**：同一刀之下
+  · `K-R28` 那条夹着这个数的判据（`>= 2` · `<= 16`）**照绿** —— 9 落在区间里，它看不见；
+  · 本件新加的这条**当场红**，诊断逐字打出「9 次立即重试打完」找不着。
+⇒ 「这个数今天没有出处」这件事，在本件之前**没有任何判据看得见**；现在有了。
+还原：改回 8，md5 = 8a30a86182f8dd66fdc0b3efbc11f84a。
+
+
+################################################################################
+R30M3 · `K-R28` 那五条判据整组退回
+################################################################################
+读法：「整组退回」取「把 `K-R28` 那半实现退掉、让它那组判据齐红」。
+锚点：`pub fn spawn_error_is_etxtbsy`，切前命中 1 处
+切法：函数体换成恒答 `false`（**形状对、恒答其中一张脸** —— 不是 `return None` 那种类型炸台）
+变异已落地：`pub fn spawn_error_is_etxtbsy(err: &str) -> bool { let _ = err; false }`
+应当：红的只有它们自己，本件新加的不受影响
+
+—— 真实输出（全 lib，1337 条）——
+test backend::control::local_backend::tests::only_etxtbsy_is_retried_a_real_failure_gives_up_on_the_first_try ... FAILED
+test backend::control::local_backend::tests::the_etxtbsy_verdict_reads_the_errno_half_not_the_localised_half ... FAILED
+test backend::control::local_backend::tests::the_retry_budget_is_big_enough_to_retry_and_small_enough_to_wait_on ... FAILED
+test backend::control::local_backend::tests::the_two_verdicts_hand_the_user_two_different_sentences ... FAILED
+test history::tests::the_delete_entry_point_actually_goes_through_the_fence ... FAILED
+test result: FAILED. 1332 passed; 5 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.14s
+
+—— 对照：**同一条命令、未切刀** ——
+    history::tests::the_delete_entry_point_actually_goes_through_the_fence
+test result: FAILED. 1336 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.07s
+
+判：这一刀造成的红是 **4 条，全部是 `K-R28` 自己的**（判别 / 重试 / 上限 / 两句话）。
+  第 5 条 `history::…` 在**未切刀的对照上一样红** ⇒ 存量，不是这一刀的账
+  （成因：这几刀走的是直接 cargo，少了 `.claude/devbox/gate` 那句
+   `mkdir -p "$HOME/.claude/projects"`；gate 里那句的注释逐字解释过它）。
+  🔴 本件新加的 `the_retry_budget_number_has_a_measured_origin_pinned_to_it`
+  **不在红名单里** ⇒ 两件事没缠在一起（它是纯文本钉，够不着 `K-R28` 的实现）。
+还原后 md5 = 8a30a86182f8dd66fdc0b3efbc11f84a。
+
+
+################################################################################
+7u · 把本件的实现整个退掉，还有多少条新断言仍绿
+################################################################################
+本件的可判据实现只有一处（那段出处）。退掉它 = R30M2 ⇒ 唯一那条新判据**当场红**
+⇒ **仍绿的新断言：0 条**（分母：新增判据 1 条 / 其中断言 3 条 ①反向自检 ②数与出处同生共死 ③住址）。
+⚠ 另一半实现（按读数订正 `K-R28` 头注那句「跨过那个窗口一个数量级」）**没有判据在守**，
+   它是散文订正，靠的是读数本身 —— 如实登记，别读成「也钉住了」。
