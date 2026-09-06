@@ -484,7 +484,10 @@ mod tests {
 
         // ② daemon 侧的依赖清单：零命中（**第一层**；③ 是第二层，扫源码树）。
         //    ⚠ 这两层守的是「**vendor 全景引擎不许进 daemon**」，**不是** `C18`「依赖树零 C」——
-        //    后者 08-29 已被推翻，规矩没变、换的是理由，逐字与住址见下面两条的失败文案。
+        //    后者**已被推翻（08-29）**，盘上逐字「~~**C18** daemon 不引 C 生态链~~ 已被推翻（08-29）」
+        //    （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`）。
+        //    **规矩没变，换的是理由** —— 新理由（`C21` ＋ 实测代价）写在下面两条的失败文案里，
+        //    刻意各写一份：谁踩到哪一条，就只看得到哪一段字。
         let daemon_cargo =
             guard_core::strip_hash_comment_lines(&must_read("remote-daemon-proto/Cargo.toml", 500));
         assert!(
