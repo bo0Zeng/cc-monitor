@@ -2591,6 +2591,43 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   color: var(--text-2);
 }
 
+/* N-F3：「还差什么」那条指路 —— 状态栏最右、命令 chip 旁边。
+   **非模态、不抢焦点、不遮任何东西**：一条可点的小字 + 一个「这次先不看」的 ×。
+   刻意**不加动画**：上面那个 cmdk 首运行高亮是一次性的（脉冲 3 次就停），
+   而这一条是**状态**——它会反复出现，一个反复脉冲的东西就成了骚扰。 */
+.status-first-run {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+  border: 1px solid var(--border-strong, #55493c);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.status-first-run-open,
+.status-first-run-dismiss {
+  font-size: var(--font-size-small);
+  font-family: inherit;
+  color: var(--text-2);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 1px 7px;
+  transition:
+    color 0.12s,
+    background 0.12s;
+}
+.status-first-run-open:hover,
+.status-first-run-dismiss:hover {
+  color: var(--text, #d6cfc6);
+  background: var(--bg-1, #1e1a16);
+}
+.status-first-run-dismiss {
+  padding: 1px 6px;
+  border-left: 1px solid var(--border, #3a342e);
+  line-height: 1;
+}
+
 /* === 设置面板：PowerShell 集成区 (cc_integration.ts) === */
 .settings-cc-profiles {
   display: flex;
