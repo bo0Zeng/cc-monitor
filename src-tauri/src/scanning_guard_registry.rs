@@ -114,6 +114,54 @@
 //!   剔掉本文件自己）：那 138 条 `const X: &[` 里**逐条读过**，真的是「一条判据自带的登记表」
 //!   的有 63 条，而今天认得出的只有 8 条 —— 其中 20 条住在 daemon 树（射程之外，另一族病）。
 //!   **剩下的这一族本件刻意不治**，读数与逐条判词落在 `K-R33` 件文件里。
+//!
+//! # 🔴 `K-R36`（09-06）—— 上面那三条里的**第一条**，治掉了一半
+//!
+//! 上一节「⚠ 它没有买到什么」的第一条（粒度是「文件」不是「那条判据」）**已经不再是全称**。
+//! 本件把粒度收到判据级，**而只收了一档** —— 两档必须分开读，别压成一句：
+//!
+//! - ✅ **表声明在判据体内**（`const … :` 落在某个 `#[test] fn` 的花括号里）：
+//!   现在**逐条判**。删掉这条判据自己那半反向 ⇒ **它红、并点到它的名字**，
+//!   同一份文件里别的判据有多少 `assert_eq!(` 都接不住它。
+//!   `K-R31` 那条（表叫 `FORMS`、住 `local_backend.rs`）正是这一档 ——
+//!   `§0` 那句「另外 27 处随便哪一处都够它过」到此为止。
+//! - ❌ **表声明在模块级前言里**（`mod tests {` 里、所有 `#[test]` 之外）：
+//!   它今天**仍然只被文件级那条断言守着**。为什么不顺手做了，见下一小节。
+//!
+//! ⇒ **本条的名字对得上的是第一档。** 第二档的判据级射程**今天不存在**。
+//! 别把「本条逐条判」读成「每一张登记表都被逐条判了」。
+//! 两档各有几条、盖住哪几份文件，**每趟现算并印在 `--nocapture` 里**（不写死在这儿：`brief` 13b）。
+//!
+//! ## 为什么模块级那一档没顺手做 —— 是**实测**挡掉的，不是没想到
+//!
+//! 试过一版「模块级的表按**使用者**归属：哪条判据的体里出现那个表名，就算它带表」。
+//! 09-06 现打（量具 `evidence/K-R36-per-guard-census.py`，读数与逐条判词在
+//! `K-R36` 件文件 `§8`）：人群 2 → 22 条、红 1 → 7 条，而那 7 条**逐条读过**：
+//!
+//! - **3 条是误采** —— 表名只出现在**字符串字面量或注释**里：一处是
+//!   `contains_word(&body, "REGISTERED")`（指的是**另一份文件**的表名）、
+//!   一处是 panic 文案里反引号包着的表名、一处是一行 `//` 注释；
+//! - **3 条是「反向那半住在同一张表的兄弟判据里」** —— 那几条是纯粹的**表内容体检**
+//!   （每行字段填没填 · 理由够不够长），它们**根本没有扫描面**，
+//!   「登记了却已经不在」这一向对它们**不成立**；
+//! - **只有 1 条是真缺**（进了下面那张豁免表）。
+//!
+//! ⇒ 按名字归属**要么连着误采三条，要么再配一层遮罩**（剥掉字符串与注释再认名字）。
+//! 而遮罩在本仓的语料上**不可靠**：判据的测试段里满是**合成 Rust 源码串**，
+//! `structural_scan.rs` / `local_backend.rs` 还有 raw string，一次失步就整段跟着错，
+//! **而错的方向是静默的绿**。⇒ **宁可射程小而准**：多出来的三条假红，
+//! 换来的是「这条守卫谁都不信了、于是被关掉」——`D2③` 逐字警告的正是这一步。
+//!
+//! ## 落地走的是**乙（逐条豁免表）**，不是甲（棘轮）
+//!
+//! 两条路的代价件里都写着，这里只记**为什么选乙**：
+//! 甲（今天的 N 记成上限、只许降）**不点名** —— 今天那一条被补好、同时另一条烂掉，
+//! 数仍然是 N ⇒ **静默地绿**。那正是本模块从头到尾在治的形状。
+//! 乙按**住址**认，换一条就当场红。
+//!
+//! ⚠ **乙的代价是真的**：豁免表自己会腐（登记的那条补好了 / 改名了 / 删了，
+//! 而豁免仍留着，下一条同名判据一进来就自动带着一张免检章）。
+//! ⇒ 对价是它自己那半**反向**（幽灵检查）：豁免对不上一条**今天确实还缺**的判据 ⇒ 红。
 
 #[cfg(test)]
 mod tests {
@@ -184,6 +232,88 @@ mod tests {
     /// 那正是 `K-R33` 立件的那一格。
     fn declares_a_guard_table(regs: &str) -> bool {
         TABLE_DECLS.iter().any(|d| regs.contains(d))
+    }
+
+    /// 反向那半的合法形态。**闭集。**
+    ///
+    /// 🔴 **不许为了让新红变绿往里加成员**（`K-R36` `D2①` 明禁）：第一形 `assert_eq!(`
+    /// 几乎每一份测试段里都有 —— 闭集再宽一点，下面那两层判定就双双恒空，
+    /// 而输出与今天一模一样（绿）。真有第四种正当写法 ⇒ **单独论证 + 给读数**
+    /// （哪几条在用、为什么它也算「反向那半」），别顺手加。
+    ///
+    /// 〔`K-R36` 09-06 把它从 [`every_registry_guard_keeps_its_reverse_half`] 的函数体里
+    /// 提到模块级，**成员一个没加、一个没减**。提出来的唯一理由：新加的那条反向自检
+    /// 要拿**同一份**闭集去判合成文本，而一个闭集只许有一个住址（`brief` 13b）。
+    /// 顺带删掉了原先那句「反向那半的**两种**合法形态」—— 那个基数写死在散文里，
+    /// 而成员早已是三个：13b 治的正是这一形，而它就长在这条判据自己头上。〕
+    const REVERSE: &[&str] = &["assert_eq!(", "已经不在了", "已经没有"];
+
+    /// 一个 `#[test]` 块里**那个 fn 项本身** —— 从 `fn` 那一行到**同缩进**的收尾 `}`。
+    ///
+    /// # 为什么不能整块拿去判〔`K-R36` 09-06 现打的活体〕
+    ///
+    /// [`guard_core::test_attr_chunks`] 切出来的块是「这条 `#[test]` 到下一条 `#[test]`」，
+    /// 它**还带着这条判据之后、下一条判据之前的模块级代码**（辅助函数 · 常量 ·
+    /// 下一条判据的文档注释）。拿整块判「表声明在谁体内」会把一张**模块级**的表
+    /// 算成「它上面那条判据自带的」：`polling_registry.rs` 的 `SCHEDULING_SITES`
+    /// 声明在 `every_data_poll_names_its_event_source_and_owner` **之后**、
+    /// 真正用它的 `every_scheduling_call_site_is_classified` **之前**
+    /// ⇒ 按块判会把它记到前者头上，而前者没有反向那半 ⇒ **一条假红**。
+    ///
+    /// # 它认什么、认不出什么（认不出的是**漏判**，不是假绿）
+    ///
+    /// 认：跳过块首的空行 / 属性行 / 注释行之后，**紧接着就是 `fn <名字>`**。
+    /// 这一条顺带把 [`guard_core::test_attr_chunks`] 的**模块级前言**那一块挡在外面
+    /// （前言跳过属性之后是 `mod … {`，不是 `fn`），而且**不按块的下标跳** ——
+    /// 文本以 `#[test]` 打头时前言那一块根本不存在，按下标跳会跳掉第一条真判据。
+    ///
+    /// 认不出（整条跳过，不进人群）：`#[test]` 与 `fn` 之间夹着**折行**的属性
+    /// （`tmux.rs` 那个折行的 `#[cfg_attr(` 是这一形），以及 `pub fn` / `async fn`。
+    /// ⚠ **单行**的 `#[ignore = "…"]` / `#[cfg(…)]` **不是**漏判面 —— 块首的属性行会被跳过。
+    /// 09-06 现打：人群那几份文件里，本函数认不出的块 **0 块**
+    /// ⇒ 今天一条都没漏。分母与逐处住址在 `evidence/K-R36-per-guard-census.py` 的输出里
+    /// （分母只取人群那几份就够：块里真有登记表声明 ⇒ 那份文件必定在人群里）。
+    ///
+    /// 收尾靠**缩进配对**（`rustfmt` 的产物上成立），**不是花括号配平**：配平要解析字符串与
+    /// 字符字面量，而本仓的判据语料里满是**合成 Rust 源码串**（还有 raw string），
+    /// 一次失步就整段跟着错，而错的方向是**静默的绿**。宁可用一把粗而稳的尺子。
+    fn guard_fn_item(chunk: &str) -> Option<(String, String)> {
+        let lines: Vec<&str> = chunk.lines().collect();
+        let head = lines.iter().position(|l| {
+            let t = l.trim_start();
+            !(t.is_empty() || t.starts_with('#') || t.starts_with("//"))
+        })?;
+        let first = lines[head];
+        let indent = &first[..first.len() - first.trim_start().len()];
+        let name: String = first
+            .trim_start()
+            .strip_prefix("fn ")?
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            return None;
+        }
+        let close = format!("{indent}}}");
+        let end = lines[head..]
+            .iter()
+            .position(|l| *l == close)
+            .map_or(lines.len(), |k| head + k + 1);
+        Some((name, lines[head..end].join("\n")))
+    }
+
+    /// 一段**测试段**文本里，每一条**把登记表声明在自己体内**的判据 —— `(判据名, 判据体)`。
+    ///
+    /// 🔴 **单独成函数，与 [`declares_a_guard_table`] 同一个理由**：直接在真树上判的话，
+    /// 「每条判据各判各的」与「口径其实把整份文件的文本喂给了每一条」
+    /// 在输出上**一模一样**（都是绿）。
+    /// [`the_per_guard_split_does_not_hand_every_guard_the_whole_file`] 拿合成文本把这一格钉住。
+    fn guards_declaring_a_table(test_src: &str) -> Vec<(String, String)> {
+        guard_core::test_attr_chunks(test_src)
+            .iter()
+            .filter_map(|c| guard_fn_item(c))
+            .filter(|(_, item)| declares_a_guard_table(item))
+            .collect()
     }
 
     fn repo_root() -> PathBuf {
@@ -258,16 +388,25 @@ mod tests {
     #[test]
     fn every_registry_guard_keeps_its_reverse_half() {
         let root = repo_root();
-        /// 反向那半的两种合法形态。
-        const REVERSE: &[&str] = &["assert_eq!(", "已经不在了", "已经没有"];
         let mut population: Vec<String> = Vec::new();
         let mut missing: Vec<String> = Vec::new();
+        // 🔴 `K-R36`：**判据级**那一层。与文件级那层**各扫各的** —— 它刻意不挂在
+        // `declares_a_guard_table(&regs)` 那个 `continue` 后面：挂上去的话，
+        // 文件级采不到就把判据级一起带瞎，而两层同时瞎与两层都过**输出完全相同**。
+        let mut per_guard: Vec<String> = Vec::new();
+        let mut missing_guards: Vec<String> = Vec::new();
         for (f, src) in guard_core::scan_tree!(&root.join("src-tauri/src"), &["rs"]) {
             let rel = f
                 .strip_prefix(&root)
                 .unwrap_or(&f)
                 .to_string_lossy()
                 .replace('\\', "/");
+            for (name, item) in guards_declaring_a_table(&guard_core::test_source(&src)) {
+                per_guard.push(format!("{rel}::{name}"));
+                if !REVERSE.iter().any(|m| item.contains(m)) {
+                    missing_guards.push(format!("{rel}::{name}"));
+                }
+            }
             let regs = test_regions(&src);
             if !declares_a_guard_table(&regs) {
                 continue;
@@ -339,6 +478,101 @@ mod tests {
              ⇒ 删它之前先想清楚谁来接「扫描面悄悄不扫了」这件事。",
             missing.join("\n  ")
         );
+
+        // ── 🔴 `K-R36`：判据级那一层（上面那几条判的单位是**文件**）───────────────
+        //
+        // 只在 `--nocapture` 下可见。标签刻意**不写判据的函数名**，理由同上面那一处。
+        eprintln!(
+            "〔登记表判据 · 判据级射程〕{} 条（**表声明在判据体内**的那一档；\
+             模块级前言里的表仍在文件级那一档，见模块头注 `K-R36` 那一节）：\n  {}",
+            per_guard.len(),
+            per_guard.join("\n  ")
+        );
+        // 抽取器自检④（`K-R36`，**点名**）：切法一坏，这一层**采到 0 条**，
+        // 而 0 条时下面那两条断言**恒真地绿** —— 与 `K-R33` 那一格同形：
+        // 「没扫到你」与「判过你了」在输出上一模一样。⇒ 拿真实住址把**本件的题眼**钉住。
+        const MUST_BE_JUDGED_PER_GUARD: &[(&str, &str)] = &[(
+            "src/backend/control/local_backend.rs::nothing_in_the_production_path_runs_code_between_fork_and_exec",
+            "`K-R36` 的题眼：它的表叫 `FORMS`、声明在它自己体内，\
+             而同一份文件的测试段里另有几十处 `assert_eq!(` ——\
+             文件级那一层对它恒真，判据级这一层才判得到它",
+        )];
+        let unjudged: Vec<String> = MUST_BE_JUDGED_PER_GUARD
+            .iter()
+            .filter(|(p, _)| !per_guard.iter().any(|q| q.ends_with(p)))
+            .map(|(p, why)| format!("  {p} —— {why}"))
+            .collect();
+        assert!(
+            unjudged.is_empty(),
+            "这几条**应当**被判据级那一层判到，而本趟一条都没采到：\n{}\n\n\
+             本趟判据级采到的是这 {} 条：\n  {}\n\n\
+             🔴 别把这条读成「那条判据坏了」—— 它红的是**判据级那一层自己瞎了**：\n\
+             切法（`guard_fn_item` ＋ `guard_core::test_attr_chunks`）一坏，这一层采到 0 条，\n\
+             而 0 条时下面那两条断言恒真地绿。\n\
+             ⇒ 先看被点名那条判据是不是把表**挪出了函数体** —— 挪出去就掉回文件级那一档，\n\
+                模块头注 `K-R36` 那一节逐字写着这两档的分界。",
+            unjudged.join("\n"),
+            per_guard.len(),
+            per_guard.join("\n  ")
+        );
+
+        // `K-R36` `D2③` 在**甲（棘轮）**与**乙（逐条豁免表）**里选了**乙**，
+        // 两条路各自的代价与选它的理由写在模块头注 `K-R36` 那一节，这里不写第二遍。
+        /// 今天**确实缺**反向那半、而本件**不去补**的那几条（`D2②`：补是别人的活）。
+        ///
+        /// 三列：**住址**（`路径::判据名`）· 为什么今天不补 · **解锁条件**。
+        /// 起名 `REGISTERED` 是照本模块头注那条纪律（新写的「扫描面 ＋ 常量表」型判据，
+        /// 表要起成 `TABLE_DECLS` 里已有的名字之一）。
+        /// ⚠ **诚实边界**：本文件被 `scan_tree!` 按构造摘除 ⇒ 这条元判据**看不见自己这张表**，
+        /// 起对名字在这里买到的只是**纪律的一致性**，不是「它真被判到了」。
+        /// 真正接住这张表腐烂的是紧跟着的那条**幽灵检查**。
+        const REGISTERED: &[(&str, &str, &str)] = &[(
+            "src-tauri/src/structural_scan.rs::comment_stripping_has_exactly_one_shared_implementation",
+            "它自带扫描面（`scan_tree!`）与登记表，但只断了「扫到的里有没有没登记的」这一向；\
+             「登记了却已经不在」那一向没人接 —— 而那正是本条要治的族。\
+             本件按 `D2②` 只让它红出来，不代补",
+            "给它补上双向对拍（`assert_eq!(found, want)`），\
+             或一条「登记表里的 X 已经不在了」的诊断；补完把这一行删掉 —— \
+             不删的话下面那条幽灵检查会逼你删",
+        )];
+
+        // 这张豁免表自己那半**反向**：登记了却**已经不在了**的豁免，必须红。
+        // 没有它，豁免表就是一张只会长草的免检名单（`D2③乙` 逐字写着的那个代价）。
+        let stale: Vec<String> = REGISTERED
+            .iter()
+            .filter(|(addr, ..)| !missing_guards.iter().any(|m| m.as_str() == *addr))
+            .map(|(addr, ..)| format!("  {addr}"))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "豁免表里这几条**已经不在了** —— 它们要么补上了反向那半，要么改名/被删了：\n{}\n\
+             ⇒ 把这几行从上面那张 `REGISTERED` 里删掉。留着就是把这条守卫的余量白送出去：\n\
+             下一条同名的判据一进来，就自动带着一张谁也没签过的免检章。\n\
+             （本趟判据级实缺的是这 {} 条：{missing_guards:?}）",
+            stale.join("\n"),
+            missing_guards.len()
+        );
+
+        let unexcused: Vec<String> = missing_guards
+            .iter()
+            .filter(|m| !REGISTERED.iter().any(|(addr, ..)| *addr == m.as_str()))
+            .map(|m| format!("  {m}"))
+            .collect();
+        assert!(
+            unexcused.is_empty(),
+            "这几条判据**自带登记表、却没有自己那半反向**：\n{}\n\
+             ★ 单位是**这一条判据**，不是这份文件 —— 同一份文件里别的判据有多少\n\
+             `assert_eq!(` 都接不住它。`K-R36` 立件的正是这一格：在一份 28 处断言的文件上，\n\
+             「每条判据」与「这份文件」相差 27 条判据。\n\
+             ⇒ 处置**二选一**：\n\
+               ① 给它补上反向那半 —— 双向对拍（`assert_eq!`），\n\
+                  或一条「登记表里的 X 已经不在了」式的诊断；\n\
+               ② 真有理由今天不补 ⇒ 写进上面那张 `REGISTERED`，**三列都要填**\n\
+                  （住址 · 为什么不补 · 解锁条件），幽灵检查会盯着它别长草。\n\
+             🔴 **没有第三条路**：往 `REVERSE` 里加一个成员把它变绿 ——\n\
+                那是把一条本来就近乎空真的守卫弄得更空（`K-R36` `D2①` 明禁）。",
+            unexcused.join("\n")
+        );
     }
 
     /// ★ `K-R33` 的**反向那半**：识别器不许「什么表都算」。
@@ -395,6 +629,80 @@ mod tests {
                  逐字：{synthetic}"
             );
         }
+    }
+
+    /// ★ `K-R36` 的**反向那半**：判据级那一层不许**恒真地**采到反向那半。
+    ///
+    /// # 没有它，把「按判据判」悄悄写回「按文件判」看不出来
+    ///
+    /// [`guards_declaring_a_table`] 只要有一处把**整份文件**（或整块）的文本交给每一条判据，
+    /// 「逐条判」当场退回「按文件判」，而**真树上的输出与今天一模一样（绿）** ——
+    /// 那正是 `K-R36` 立件的那一格，也是 `K-R33` 那一格的同形：
+    /// **「判过了」与「压根没判到」在输出上不可区分。**
+    /// ⇒ 拿一份合成文本正反各喂一遍：前一条自带反向那半、后一条**确实没有**，
+    /// 断言**红且只红后一条**（`D2` 的 acceptor 逐字要的就是这一格）。
+    ///
+    /// ⚠ **夹具名取中性名，且断言不取自夹具的名字**（`brief` 12 的 `6g`）：
+    /// 两个判据名在这里是**变量** —— 喂进去的与断出来的是同一个值，
+    /// 改夹具名不会让这一格恒真，也不会让它假红。
+    #[test]
+    fn the_per_guard_split_does_not_hand_every_guard_the_whole_file() {
+        // 🔴 锚点**运行时拼**，而且夹具每一行都缩进 —— 两条都是承重的：
+        //   ① 写成字面量的话，这份夹具会变成**本文件源码里一个真的 `#[test]` 边界**
+        //      （`guard_core::test_attr_chunks` 按「整行 trim 之后逐字等于那条属性」认）；
+        //   ② 顶格的 `}` 会被 `guard_core` 的 `test_module_ranges` 当成本文件测试段的收尾，
+        //      把本文件自己的测试段**提前截断**，于是剥法把后半段当生产代码。
+        // ★ 本模块头注治的正是「判据在自己的源码里找到了自己」这一族 —— 这里不许复发。
+        let attr = concat!("#[te", "st]");
+        let (kept, lost) = ("keeps_its_reverse_half", "lost_its_reverse_half");
+        let synthetic = [
+            "    mod fixture {".to_string(),
+            "        const SITES: &[&str] = &[\"住在前言里，不算任何一条判据自带\"];".to_string(),
+            format!("        {attr}"),
+            format!("        fn {kept}() {{"),
+            "            const REGISTERED: &[&str] = &[\"甲\"];".to_string(),
+            "            assert_eq!(REGISTERED.len(), 1, \"双向对拍\");".to_string(),
+            "        }".to_string(),
+            format!("        {attr}"),
+            format!("        fn {lost}() {{"),
+            "            const REGISTERED: &[&str] = &[\"乙\"];".to_string(),
+            // ⚠ 阴性那一条**刻意一个断言都不写**〔`R36M3` 自查逮到，09-06〕：
+            // 第一版写的是 `assert!(!REGISTERED.is_empty(), …)`，于是**往 `REVERSE` 里加
+            // `assert!(` 这个成员会把本格弄红** —— 那等于本条顺手把一个不归它管的闭集钉死了
+            // （`R36M3` 逐字：那是 `KRF2` 那一族的形状，不是本件射程）。
+            // 阴性对照要的只是「这条判据没有反向那半」，写成**不含任何断言**最不易被牵连。
+            "            let _only_the_forward_half = REGISTERED.len();".to_string(),
+            "        }".to_string(),
+            "    }".to_string(),
+        ]
+        .join("\n");
+
+        let judged = guards_declaring_a_table(&synthetic);
+        let names: Vec<&str> = judged.iter().map(|(n, _)| n.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![kept, lost],
+            "判据级的切法采错了人群 —— 期望**恰好这两条**：\n\
+             前言里那张 `SITES` 不属于任何一条判据（它是模块级的，归文件级那一档），\n\
+             把它算进来就等于又退回「按文件判」。\n\
+             合成夹具逐字：\n{synthetic}"
+        );
+
+        let no_reverse: Vec<&str> = judged
+            .iter()
+            .filter(|(_, item)| !REVERSE.iter().any(|m| item.contains(m)))
+            .map(|(n, _)| n.as_str())
+            .collect();
+        assert_eq!(
+            no_reverse,
+            vec![lost],
+            "**红且只红它**这一格没买到。两个方向各说明一次：\n\
+             · **一条都没点**（后一条也算「有反向那半」）⇒ 口径把**整份文本喂给了每一条**：\n\
+               前一条的 `assert_eq!(` 漏进了后一条 ⇒ 「逐条判」退回「按文件判」，\n\
+               而那时真树上的输出与今天**一模一样（绿）**。这是本条存在的全部理由。\n\
+             · **多点了名**（把前一条也算缺）⇒ 切块把某一条自己那半反向切丢了。\n\
+             合成夹具逐字：\n{synthetic}"
+        );
     }
 
     /// 今天仍在裸遍历的文件（相对仓根）。
