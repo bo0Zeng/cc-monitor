@@ -1,0 +1,317 @@
+============================================================================================
+W-F1b · SSH 承载面普查    树=/home/zbl/文档/claudecode-frontend/.claude/worktrees/w-f1b    HEAD=d73ea461deacd57c850ab6a817db76344bd94391
+============================================================================================
+【① §0a② 那把 grep 的份数】
+  尺子甲 grep -rln（工作树上的文件）      ⇒ 12 份
+  尺子乙 python+git ls-files（跟踪的文件）⇒ 12 份（人群 186 份 .rs/其它跟踪文件）
+  两把尺子逐份一致：True   只在甲=无   只在乙=无
+--------------------------------------------------------------------------------------------
+【② 逐份分类（PM §0a⑤① 明说没逐份看的那一格）】
+  文件                                            档                     总命中   代码connect   代码russh   外部ssh
+  remote-daemon-proto/src/inbound.rs            D 只提了一句                 1           0         0       0
+  src-tauri/src/account_usage.rs                D 只提了一句                 1           0         0       0
+  src-tauri/src/launch.rs                       D 只提了一句                 1           0         0       0
+  src-tauri/src/mcp.rs                          B 用已有russh会话            1           0         1       0
+  src-tauri/src/port_forward.rs                 B 用已有russh会话            7           0         1       0
+  src-tauri/src/pubkey.rs                       D 只提了一句                 2           0         0       0
+  src-tauri/src/remote_write_registry.rs        D 只提了一句                 1           0         0       0
+  src-tauri/src/sftp.rs                         B 用已有russh会话           11           0         3       0
+  src-tauri/src/sftp_pool.rs                    B 用已有russh会话            8           0         5       0
+  src-tauri/src/ssh_source.rs                   A 发起SSH连接              40           2        19       1
+  src-tauri/src/structural_scan.rs              D 只提了一句                 1           0         0       0
+  src-tauri/src/tmux.rs                         D 只提了一句                 2           0         0       0
+  合计：{'D 只提了一句': 7, 'B 用已有russh会话': 4, 'A 发起SSH连接': 1}
+--------------------------------------------------------------------------------------------
+【③ cargo 目标分母（§0a③ / WF1bD2）】
+  Cargo.toml 清单 10 份
+  manifest                                    包名                   [[bin]]        自动发现的bin  tests/  examples/
+  remote-daemon-proto/Cargo.toml              cc-monitor-remote          1               —   False      False
+  src-tauri/Cargo.toml                        monitor                    0 ['src/main.rs']   False      False
+  src-tauri/crates/acct-core/Cargo.toml       acct-core                  0               —   False      False
+  src-tauri/crates/branch-core/Cargo.toml     branch-core                0               —   False      False
+  src-tauri/crates/creds-core/Cargo.toml      creds-core                 0               —   False      False
+  src-tauri/crates/gate-core/Cargo.toml       gate-core                  0               —   False      False
+  src-tauri/crates/guard-core/Cargo.toml      guard-core                 0               —   False      False
+  src-tauri/crates/shell-quote-core/Cargo.tomlshell-quote-core           0               —   False      False
+  src-tauri/crates/usage-core/Cargo.toml      usage-core                 0               —   False      False
+  src-tauri/vendor/code-picture-core/Cargo.tomlcode-picture-core          0               —   False      False
+  ⇒ [[bin]] 显式块合计 = 1 · 自动发现的 bin 合计 = 1（已扣掉被显式 path 点过名的，不重复计） · **真正的 bin 目标数 = 2**
+  ⇒ tests/ 目录 = 0 个 · examples/ 目录 = 0 个 · [[example]] 块 = 0 个
+--------------------------------------------------------------------------------------------
+【④ #[cfg(test)] 分母】扫了 186 份跟踪文件 ⇒ 163 份里有，共 415 处；其中 ssh_source.rs 一份就有 26 处
+============================================================================================
+{
+  "worktree": "/home/zbl/文档/claudecode-frontend/.claude/worktrees/w-f1b",
+  "head": "d73ea461deacd57c850ab6a817db76344bd94391",
+  "ruler_a_grep_rln": {
+    "count": 12,
+    "files": [
+      "remote-daemon-proto/src/inbound.rs",
+      "src-tauri/src/account_usage.rs",
+      "src-tauri/src/launch.rs",
+      "src-tauri/src/mcp.rs",
+      "src-tauri/src/port_forward.rs",
+      "src-tauri/src/pubkey.rs",
+      "src-tauri/src/remote_write_registry.rs",
+      "src-tauri/src/sftp.rs",
+      "src-tauri/src/sftp_pool.rs",
+      "src-tauri/src/ssh_source.rs",
+      "src-tauri/src/structural_scan.rs",
+      "src-tauri/src/tmux.rs"
+    ]
+  },
+  "ruler_b_python_over_git_ls_files": {
+    "count": 12,
+    "files": [
+      "remote-daemon-proto/src/inbound.rs",
+      "src-tauri/src/account_usage.rs",
+      "src-tauri/src/launch.rs",
+      "src-tauri/src/mcp.rs",
+      "src-tauri/src/port_forward.rs",
+      "src-tauri/src/pubkey.rs",
+      "src-tauri/src/remote_write_registry.rs",
+      "src-tauri/src/sftp.rs",
+      "src-tauri/src/sftp_pool.rs",
+      "src-tauri/src/ssh_source.rs",
+      "src-tauri/src/structural_scan.rs",
+      "src-tauri/src/tmux.rs"
+    ],
+    "population": 186
+  },
+  "two_rulers_agree_on_both_sides_population": true,
+  "only_in_a": [],
+  "only_in_b": [],
+  "classification": [
+    {
+      "file": "remote-daemon-proto/src/inbound.rs",
+      "class": "D 只提了一句",
+      "hits_all": 1,
+      "code_connect": 0,
+      "code_russh": 0,
+      "ext_ssh_cmd": 0
+    },
+    {
+      "file": "src-tauri/src/account_usage.rs",
+      "class": "D 只提了一句",
+      "hits_all": 1,
+      "code_connect": 0,
+      "code_russh": 0,
+      "ext_ssh_cmd": 0
+    },
+    {
+      "file": "src-tauri/src/launch.rs",
+      "class": "D 只提了一句",
+      "hits_all": 1,
+      "code_connect": 0,
+      "code_russh": 0,
+      "ext_ssh_cmd": 0
+    },
+    {
+      "file": "src-tauri/src/mcp.rs",
+      "class": "B 用已有russh会话",
+      "hits_all": 1,
+      "code_connect": 0,
+      "code_russh": 1,
+      "ext_ssh_cmd": 0
+    },
+    {
+      "file": "src-tauri/src/port_forward.rs",
+      "class": "B 用已有russh会话",
+      "hits_all": 7,
+      "code_connect": 0,
+      "code_russh": 1,
+      "ext_ssh_cmd": 0
+    },
+    {
+      "file": "src-tauri/src/pubkey.rs",
+      "class": "D 只提了一句",
+      "hits_all": 2,
+      "code_connect": 0,
+      "code_russh": 0,
+      "ext_ssh_cmd": 0
+    },
+    {
+      "file": "src-tauri/src/remote_write_registry.rs",
+      "class": "D 只提了一句",
+      "hits_all": 1,
+      "code_connect": 0,
+      "code_russh": 0,
+      "ext_ssh_cmd": 0
+    },
+    {
+      "file": "src-tauri/src/sftp.rs",
+      "class": "B 用已有russh会话",
+      "hits_all": 11,
+      "code_connect": 0,
+      "code_russh": 3,
+      "ext_ssh_cmd": 0
+    },
+    {
+      "file": "src-tauri/src/sftp_pool.rs",
+      "class": "B 用已有russh会话",
+      "hits_all": 8,
+      "code_connect": 0,
+      "code_russh": 5,
+      "ext_ssh_cmd": 0
+    },
+    {
+      "file": "src-tauri/src/ssh_source.rs",
+      "class": "A 发起SSH连接",
+      "hits_all": 40,
+      "code_connect": 2,
+      "code_russh": 19,
+      "ext_ssh_cmd": 1
+    },
+    {
+      "file": "src-tauri/src/structural_scan.rs",
+      "class": "D 只提了一句",
+      "hits_all": 1,
+      "code_connect": 0,
+      "code_russh": 0,
+      "ext_ssh_cmd": 0
+    },
+    {
+      "file": "src-tauri/src/tmux.rs",
+      "class": "D 只提了一句",
+      "hits_all": 2,
+      "code_connect": 0,
+      "code_russh": 0,
+      "ext_ssh_cmd": 0
+    }
+  ],
+  "cargo_targets": {
+    "manifests": 10,
+    "rows": [
+      {
+        "manifest": "remote-daemon-proto/Cargo.toml",
+        "package": "cc-monitor-remote",
+        "explicit_bin_blocks": 1,
+        "declared_target_paths": [
+          "src/main.rs"
+        ],
+        "explicit_example_blocks": 0,
+        "explicit_test_blocks": 0,
+        "auto_bins": [],
+        "has_tests_dir": false,
+        "has_examples_dir": false,
+        "has_benches_dir": false
+      },
+      {
+        "manifest": "src-tauri/Cargo.toml",
+        "package": "monitor",
+        "explicit_bin_blocks": 0,
+        "declared_target_paths": [],
+        "explicit_example_blocks": 0,
+        "explicit_test_blocks": 0,
+        "auto_bins": [
+          "src/main.rs"
+        ],
+        "has_tests_dir": false,
+        "has_examples_dir": false,
+        "has_benches_dir": false
+      },
+      {
+        "manifest": "src-tauri/crates/acct-core/Cargo.toml",
+        "package": "acct-core",
+        "explicit_bin_blocks": 0,
+        "declared_target_paths": [],
+        "explicit_example_blocks": 0,
+        "explicit_test_blocks": 0,
+        "auto_bins": [],
+        "has_tests_dir": false,
+        "has_examples_dir": false,
+        "has_benches_dir": false
+      },
+      {
+        "manifest": "src-tauri/crates/branch-core/Cargo.toml",
+        "package": "branch-core",
+        "explicit_bin_blocks": 0,
+        "declared_target_paths": [],
+        "explicit_example_blocks": 0,
+        "explicit_test_blocks": 0,
+        "auto_bins": [],
+        "has_tests_dir": false,
+        "has_examples_dir": false,
+        "has_benches_dir": false
+      },
+      {
+        "manifest": "src-tauri/crates/creds-core/Cargo.toml",
+        "package": "creds-core",
+        "explicit_bin_blocks": 0,
+        "declared_target_paths": [],
+        "explicit_example_blocks": 0,
+        "explicit_test_blocks": 0,
+        "auto_bins": [],
+        "has_tests_dir": false,
+        "has_examples_dir": false,
+        "has_benches_dir": false
+      },
+      {
+        "manifest": "src-tauri/crates/gate-core/Cargo.toml",
+        "package": "gate-core",
+        "explicit_bin_blocks": 0,
+        "declared_target_paths": [],
+        "explicit_example_blocks": 0,
+        "explicit_test_blocks": 0,
+        "auto_bins": [],
+        "has_tests_dir": false,
+        "has_examples_dir": false,
+        "has_benches_dir": false
+      },
+      {
+        "manifest": "src-tauri/crates/guard-core/Cargo.toml",
+        "package": "guard-core",
+        "explicit_bin_blocks": 0,
+        "declared_target_paths": [],
+        "explicit_example_blocks": 0,
+        "explicit_test_blocks": 0,
+        "auto_bins": [],
+        "has_tests_dir": false,
+        "has_examples_dir": false,
+        "has_benches_dir": false
+      },
+      {
+        "manifest": "src-tauri/crates/shell-quote-core/Cargo.toml",
+        "package": "shell-quote-core",
+        "explicit_bin_blocks": 0,
+        "declared_target_paths": [],
+        "explicit_example_blocks": 0,
+        "explicit_test_blocks": 0,
+        "auto_bins": [],
+        "has_tests_dir": false,
+        "has_examples_dir": false,
+        "has_benches_dir": false
+      },
+      {
+        "manifest": "src-tauri/crates/usage-core/Cargo.toml",
+        "package": "usage-core",
+        "explicit_bin_blocks": 0,
+        "declared_target_paths": [],
+        "explicit_example_blocks": 0,
+        "explicit_test_blocks": 0,
+        "auto_bins": [],
+        "has_tests_dir": false,
+        "has_examples_dir": false,
+        "has_benches_dir": false
+      },
+      {
+        "manifest": "src-tauri/vendor/code-picture-core/Cargo.toml",
+        "package": "code-picture-core",
+        "explicit_bin_blocks": 0,
+        "declared_target_paths": [],
+        "explicit_example_blocks": 0,
+        "explicit_test_blocks": 0,
+        "auto_bins": [],
+        "has_tests_dir": false,
+        "has_examples_dir": false,
+        "has_benches_dir": false
+      }
+    ]
+  },
+  "cfg_test": {
+    "files_scanned": 186,
+    "files_with_cfg_test": 163,
+    "cfg_test_attrs_total": 415,
+    "ssh_source_rs": 26
+  }
+}

@@ -1,0 +1,105 @@
+==============================================================================
+W-F1b · ingress(ifb) 方向摸底  载荷=1048576 字节  理论 2mbit 传输 ≈ 4194ms   B=172.20.0.2
+==============================================================================
+读数                                             下行 B→宿主(ms)       上行 宿主→B(ms)
+① 无规则（基线）                                              154               152
+② B ingress(ifb) tbf 2mbit                             153              4528
+③ 全拆掉（回得来吗）                                            152               151
+------------------------------------------------------------------------------
+装 ingress 五步全成功：True
+  rc=0  ip link add     
+  rc=0  ip link up      
+  rc=0  ingress qdisc   
+  rc=0  mirred filter   
+  rc=0  ifb tbf         
+🔴 宿主面 netem/tbf 恒零命中：True
+宿主内核模块 跑前={'ifb': True, 'act_mirred': False, 'cls_u32': False, 'sch_ingress': False}
+宿主内核模块 跑后={'ifb': True, 'act_mirred': True, 'cls_u32': True, 'sch_ingress': True}
+==============================================================================
+{
+  "payload_bytes": 1048576,
+  "theory_bw_ms": 4194,
+  "lsmod_before": {
+    "ifb": true,
+    "act_mirred": false,
+    "cls_u32": false,
+    "sch_ingress": false
+  },
+  "samples": [
+    {
+      "label": "① 无规则（基线）",
+      "down_ms": 154,
+      "up_ms": 152
+    },
+    {
+      "label": "② B ingress(ifb) tbf 2mbit",
+      "down_ms": 153,
+      "up_ms": 4528
+    },
+    {
+      "label": "③ 全拆掉（回得来吗）",
+      "down_ms": 152,
+      "up_ms": 151
+    }
+  ],
+  "redline": [
+    {
+      "step": "开跑前",
+      "host_netem_tbf": []
+    },
+    {
+      "step": "B 装好 ifb ingress",
+      "host_netem_tbf": []
+    },
+    {
+      "step": "收尾前",
+      "host_netem_tbf": []
+    },
+    {
+      "step": "收尾后",
+      "host_netem_tbf": []
+    }
+  ],
+  "b_ip": "172.20.0.2",
+  "setup": [
+    {
+      "step": "ip link add",
+      "cmd": "ip link add ifb0 type ifb",
+      "rc": 0,
+      "err": ""
+    },
+    {
+      "step": "ip link up",
+      "cmd": "ip link set ifb0 up",
+      "rc": 0,
+      "err": ""
+    },
+    {
+      "step": "ingress qdisc",
+      "cmd": "tc qdisc add dev eth0 handle ffff: ingress",
+      "rc": 0,
+      "err": ""
+    },
+    {
+      "step": "mirred filter",
+      "cmd": "tc filter add dev eth0 parent ffff: protocol ip u32 match u32 0 0 action mirred egress redirect dev ifb0",
+      "rc": 0,
+      "err": ""
+    },
+    {
+      "step": "ifb tbf",
+      "cmd": "tc qdisc add dev ifb0 root tbf rate 2mbit burst 32kbit latency 400ms",
+      "rc": 0,
+      "err": ""
+    }
+  ],
+  "setup_all_ok": true,
+  "qdisc_in_B": "qdisc noqueue 0: dev lo root refcnt 2 \nqdisc noqueue 0: dev eth0 root refcnt 2 \nqdisc ingress ffff: dev eth0 parent ffff:fff1 ---------------- \nqdisc tbf 8052: dev ifb0 root refcnt 2 rate 2Mbit burst 4Kb lat 400ms \n-- filter --\nfilter protocol ip pref 49152 u32 chain 0 \nfilter protocol ip pref 49152 u32 chain 0 fh 800: ht divisor 1 \nfilter protocol ip pref 49152 u32 chain 0 fh 800::800 order 2048 key ht 800 bkt 0 terminal flowid not_in_hw \n  match 00000000/00000000 at 0\n\taction order 1: mirred (Egress Redirect to device ifb0) stolen\n\tindex 1 ref 1 bind 1",
+  "lsmod_after": {
+    "ifb": true,
+    "act_mirred": true,
+    "cls_u32": true,
+    "sch_ingress": true
+  },
+  "redline_host_always_zero": true
+}

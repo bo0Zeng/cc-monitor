@@ -1,0 +1,106 @@
+==============================================================================
+W-F1b · monitor 侧 russh 代码的「无 GUI 承载」实测
+树：/home/zbl/文档/claudecode-frontend/.claude/worktrees/w-f1b
+==============================================================================
+【沙箱确实无 GUI】 DISPLAY=[<未设>] WAYLAND=[<未设>]
+ls: cannot access '/tmp/.X11-unix': No such file or directory
+net-ifaces: lo
+------------------------------------------------------------------------------
+【分母】`cargo test --lib -- --list` 解析到的测试名：1334 条（退出码 0）· harness 自己印的汇总行：1334 tests, 0 benchmarks
+【点名的那一族】ssh_source::tier1_tests::race_  ⇒ 9 条：
+    ssh_source::tier1_tests::race_all_dead_aggregates_errors
+    ssh_source::tier1_tests::race_emits_dialing_and_failed_for_dead_address
+    ssh_source::tier1_tests::race_emits_dialing_hostkey_won_for_live_server
+    ssh_source::tier1_tests::race_emitter_none_still_works
+    ssh_source::tier1_tests::race_empty_order_errors_cleanly
+    ssh_source::tier1_tests::race_live_server_wins_when_a_hung_peer_is_first
+    ssh_source::tier1_tests::race_live_server_wins_when_first
+    ssh_source::tier1_tests::race_single_endpoint_dead_reports_that_endpoint
+    ssh_source::tier1_tests::race_watchdog_times_out_on_a_silent_peer
+------------------------------------------------------------------------------
+【真跑】退出码=0
+  判定行：test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 1325 filtered out; finished in 1.13s
+  尾部输出：
+         |
+    2715 |                 stop_relay_on_exit as usize,
+         |                                    ^^^^^^^^
+         |
+    help: first cast to a pointer `as *const ()`
+         |
+    2715 |                 stop_relay_on_exit as *const () as usize,
+         |                                    ++++++++++++
+    
+    warning: `monitor` (lib test) generated 26 warnings (run `cargo fix --lib -p monitor --tests` to apply 6 suggestions)
+        Finished `test` profile [unoptimized + debuginfo] target(s) in 8.40s
+         Running unittests src/lib.rs (/home/zbl/文档/claudecode-frontend/.claude/pm-targets/w-f1b/debug/deps/monitor_lib-0538a6ca5b012001)
+    
+    running 9 tests
+    test ssh_source::tier1_tests::race_all_dead_aggregates_errors ... ok
+    test ssh_source::tier1_tests::race_emits_dialing_and_failed_for_dead_address ... ok
+    test ssh_source::tier1_tests::race_emits_dialing_hostkey_won_for_live_server ... ok
+    test ssh_source::tier1_tests::race_emitter_none_still_works ... ok
+    test ssh_source::tier1_tests::race_empty_order_errors_cleanly ... ok
+    test ssh_source::tier1_tests::race_live_server_wins_when_a_hung_peer_is_first ... ok
+    test ssh_source::tier1_tests::race_live_server_wins_when_first ... ok
+    test ssh_source::tier1_tests::race_single_endpoint_dead_reports_that_endpoint ... ok
+    test ssh_source::tier1_tests::race_watchdog_times_out_on_a_silent_peer ... ok
+    
+    test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 1325 filtered out; finished in 1.13s
+==============================================================================
+{
+  "worktree": "/home/zbl/文档/claudecode-frontend/.claude/worktrees/w-f1b",
+  "filter": "ssh_source::tier1_tests::race_",
+  "headless_env": {
+    "rc": 0,
+    "out": "DISPLAY=[<未设>] WAYLAND=[<未设>]\nls: cannot access '/tmp/.X11-unix': No such file or directory\nnet-ifaces: lo"
+  },
+  "list": {
+    "rc": 0,
+    "names_parsed": 1334,
+    "harness_summary_line": "1334 tests, 0 benchmarks",
+    "tier1_race": [
+      "ssh_source::tier1_tests::race_all_dead_aggregates_errors",
+      "ssh_source::tier1_tests::race_emits_dialing_and_failed_for_dead_address",
+      "ssh_source::tier1_tests::race_emits_dialing_hostkey_won_for_live_server",
+      "ssh_source::tier1_tests::race_emitter_none_still_works",
+      "ssh_source::tier1_tests::race_empty_order_errors_cleanly",
+      "ssh_source::tier1_tests::race_live_server_wins_when_a_hung_peer_is_first",
+      "ssh_source::tier1_tests::race_live_server_wins_when_first",
+      "ssh_source::tier1_tests::race_single_endpoint_dead_reports_that_endpoint",
+      "ssh_source::tier1_tests::race_watchdog_times_out_on_a_silent_peer"
+    ]
+  },
+  "run": {
+    "rc": 0,
+    "verdict_lines": [
+      "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 1325 filtered out; finished in 1.13s"
+    ],
+    "tail": [
+      "     |",
+      "2715 |                 stop_relay_on_exit as usize,",
+      "     |                                    ^^^^^^^^",
+      "     |",
+      "help: first cast to a pointer `as *const ()`",
+      "     |",
+      "2715 |                 stop_relay_on_exit as *const () as usize,",
+      "     |                                    ++++++++++++",
+      "",
+      "warning: `monitor` (lib test) generated 26 warnings (run `cargo fix --lib -p monitor --tests` to apply 6 suggestions)",
+      "    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.40s",
+      "     Running unittests src/lib.rs (/home/zbl/文档/claudecode-frontend/.claude/pm-targets/w-f1b/debug/deps/monitor_lib-0538a6ca5b012001)",
+      "",
+      "running 9 tests",
+      "test ssh_source::tier1_tests::race_all_dead_aggregates_errors ... ok",
+      "test ssh_source::tier1_tests::race_emits_dialing_and_failed_for_dead_address ... ok",
+      "test ssh_source::tier1_tests::race_emits_dialing_hostkey_won_for_live_server ... ok",
+      "test ssh_source::tier1_tests::race_emitter_none_still_works ... ok",
+      "test ssh_source::tier1_tests::race_empty_order_errors_cleanly ... ok",
+      "test ssh_source::tier1_tests::race_live_server_wins_when_a_hung_peer_is_first ... ok",
+      "test ssh_source::tier1_tests::race_live_server_wins_when_first ... ok",
+      "test ssh_source::tier1_tests::race_single_endpoint_dead_reports_that_endpoint ... ok",
+      "test ssh_source::tier1_tests::race_watchdog_times_out_on_a_silent_peer ... ok",
+      "",
+      "test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 1325 filtered out; finished in 1.13s"
+    ]
+  }
+}
