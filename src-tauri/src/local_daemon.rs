@@ -548,8 +548,19 @@ fn spawn_detached(
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .process_group(0);
-    cmd.spawn()
-        .map_err(|e| format!("起脱离的 daemon 失败（{}）：{e}", bin.display()))
+    // ★★ `K-R28`：与 `supervise_with_stdio` **同一份分类**（住 `local_backend`，不各写一份）。
+    //    这条路 exec 的正是 `resolve_daemon_bin` 刚用 `extract_embedded_to` 释放出来的那个文件
+    //    ⇒ 它是本仓两处「写了一个文件、随后 exec 它」的落点之一。
+    local_backend::spawn_with_etxtbsy_retry(&mut cmd).map_err(|f| match f {
+        // 这一刻恰好撞上了会自己过去的竞态 —— 那句话也是共用的那一份。
+        local_backend::SpawnFailure::TransientBusy { tries, last } => {
+            local_backend::etxtbsy_gave_up_reason(bin, tries, &last)
+        }
+        // 别的错 ⇒ **今天那句照旧，一个字不改**。
+        local_backend::SpawnFailure::Broken(e) => {
+            format!("起脱离的 daemon 失败（{}）：{e}", bin.display())
+        }
+    })
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -2995,6 +3006,78 @@ mod tests {
                 "{who}路把「释放内嵌那份」排在「找 exe 旁边」之前 —— 顺序反了。\n\
                  开发构建里 exe 旁边那个是**更新**的，内嵌那份是打包时的快照；\
                  顺序一反，两条路就会在同一台机上找到不同的二进制。"
+            );
+        }
+    }
+
+    /// ★★ `K-R28` **防空转**：两个生产落点**真的走了**那份共用的 `ETXTBSY` 分类。
+    ///
+    /// # 它买的是哪一格
+    ///
+    /// `local_backend` 那四条判据全长在**纯函数**上（判别 / 重试 / 上限 / 两句话）——
+    /// 实现只要不接到调用点就是死代码，而那四格照样绿。这一格钉的是**两个落点各自的
+    /// 函数体里真的走了那一份**，而且**没有各自留一条裸 `spawn()` 直接放弃的路**。
+    ///
+    /// 形状照 `sftp.rs::both_daemon_deploy_paths_ask_the_file_itself_not_only_the_marker`
+    /// （`K-W4b` 那一拍也照抄过它）—— **但切函数体那一步复用本文件的 `body_of`，
+    /// 不抄第三份切法**：本文件 `block_of` 的头注逐字写着「两种切法迟早在同一段代码上
+    /// 给出两个答案」。反向自检因此是**两层**：`body_of` 自带的「切出来的体不够长就红」，
+    /// 加下面那条**锚点自检**（取到的体里必须有它自己那句独有的话）——
+    /// 少了任一层，取不到体时下面几条都会在一段不相干的文本上恒真地绿。
+    ///
+    /// # ⚠ 射程：只到这两处
+    ///
+    /// `local_query::run_query` 那处起进程的落点**刻意不在分母里**：它 exec 的是
+    /// `resolve_beside_this_exe` 找到的 sidecar，**不是我们刚写出来的那个文件**
+    /// （`extract_embedded_to` 的产物它够不着）⇒ 那条路上不存在这个竞态的必要条件。
+    /// 全树起进程的落点现打 21 处、其中 monitor 侧 12 处（量具
+    /// `evidence/K-R28-spawn-site-census.py`，与 `write_site_registry::tests::SPAWNS` 对拍相同）——
+    /// 本条只管其中的 **2** 处。
+    #[test]
+    fn both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict() {
+        let daemon_side = guard_core::production_code(include_str!("local_daemon.rs"));
+        let backend_side =
+            guard_core::production_code(include_str!("backend/control/local_backend.rs"));
+        for (who, prod, head, min, anchor) in [
+            (
+                "local_backend.rs::supervise_with_stdio",
+                &backend_side,
+                "pub fn supervise_with_stdio(",
+                1200usize,
+                "SuperviseEvent::GaveUp",
+            ),
+            (
+                "local_daemon.rs::spawn_detached",
+                &daemon_side,
+                "fn spawn_detached(\n    bin: &std::path::Path,\n    port: u16,",
+                200usize,
+                "process_group(0)",
+            ),
+        ] {
+            let body = body_of(prod, head, min);
+            // 反向自检②：`body_of` 那条只保证「够长」，这条保证**切到的是那一段**。
+            assert!(
+                body.contains(anchor),
+                "{who}：切出来的体里没有它自己那句 `{anchor}` —— 切到别处去了，下面几条在空转"
+            );
+            assert!(
+                body.contains("spawn_with_etxtbsy_retry("),
+                "{who}：这个落点没走那份共用分类 ——\n\
+                 「这台机器上它就是起不来」与「这一刻恰好撞上了一个会自己过去的竞态」\n\
+                 又装回同一个值、同一句话、同一个结局里了（那正是 K-R28 的正题）"
+            );
+            assert!(
+                body.contains("TransientBusy"),
+                "{who}：没有「会自己过去的竞态」那一支 —— 认得出，可结局仍然只有一个"
+            );
+            assert!(
+                body.contains("Broken"),
+                "{who}：没有「这台机器上它就是起不来」那一支"
+            );
+            assert!(
+                !body.contains("cmd.spawn()"),
+                "{who}：还留着一条裸 `cmd.spawn()` 的放弃路 —— 两条并存迟早分叉，\n\
+                 而分叉的那一天，用户在哪条路上会看到哪句话没人说得准"
             );
         }
     }
