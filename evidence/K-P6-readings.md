@@ -225,7 +225,13 @@ client::connect(:573) / client::connect_stream(:687)      ← §0a① 点的两�
         └── sftp::connect_sftp(:47)          调用 14 处 /  4 份
 ```
 
-**层1 + 层2 的调用点散在 14 份文件里**：
+🔴 **这几个数不许相加**（`brief` 12「分母怎么数的都要写明」）—— 它们是**嵌套**的，不是并列的：
+`connect_and_exec_cmd` 那 18 处**全都经由** `ssh_source.rs:2083` 那**一处** `connect_session`；
+`connect_sftp` 那 14 处全都经由 `sftp.rs:48` 那一处；`connect_and_exec` 的 1 处调用者
+经由 `:1321`，而 `:1321` 本身就是那 18 处之一。**加起来的那个数是重复计数，本文不给它。**
+本文给的是**去重后能站住的那一个**：⬇
+
+**层1 + 层2 的调用点散在 14 份文件里**（文件按并集去重，这个数是干净的）：
 `account_usage.rs`、`acct_iso_deploy.rs`、`cc_bus.rs`、`ccm_probe.rs`、`hooks_diag.rs`、
 `mcp.rs`、`port_forward.rs`、`pubkey.rs`、`remote_branch.rs`、`remote_history.rs`、
 `sftp.rs`、`sftp_pool.rs`、`ssh_source.rs`、`tmux.rs`。
