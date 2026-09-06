@@ -5,9 +5,20 @@
  *
  * 「还差什么」这张清单**算得出来**：`settings/readiness.ts` 的 `computeGaps` /
  * `summarizeGaps` / `describeGap` 三个纯函数早就齐了，`N-F2` 之后本机那两格也进去了。
- * 而它的**生产消费者只有一个** —— `settings/remote-section.ts`（`:54` import ·
- * `:320` 算 · `:327` 摘要 · `:347` 逐条文案）⇒ 它只在「设置面板 → 远端那一节」渲染。
+ * 而它的**生产消费者只有一个** —— `settings/remote-section.ts`
+ * ⇒ 它只在「设置面板 → 远端那一节」渲染。
  * **一个刚装完、还没打开过设置的人，一个字都看不到。**
+ *
+ * ⚠ 「只有一个」是在报一个数 ⇒ **同句给分母**：分母 = `src/**\/*.ts` 去掉 `*.vitest.ts`
+ * 与 `readiness.ts` 自己（现打 220 个文件），搜那三个名字得 6 处命中、落在 2 个文件上；
+ * 其中 `accounts-section.ts` 那一处是**注释**不是调用 ⇒ 真消费者 1 个。
+ * 那 6 处在 `2afe176` 上的住址与逐字（行号钉在这个 sha 上，别裸引）：
+ *   `remote-section.ts:54`  `import { computeGaps, summarizeGaps, describeGap } from "./readiness";`
+ *   `remote-section.ts:311` （头注里提了一句 `computeGaps` 是纯函数）
+ *   `remote-section.ts:320` `const gaps = computeGaps({`
+ *   `remote-section.ts:327` `const summary = summarizeGaps(gaps);`
+ *   `remote-section.ts:347` `li.textContent = describeGap(g);`
+ *   `accounts-section.ts:301` （注释：`summarizeGaps` 恒非 null）
  *
  * 本模块只补这一跳：主窗口状态栏上一条**非模态**的指路。
  *
