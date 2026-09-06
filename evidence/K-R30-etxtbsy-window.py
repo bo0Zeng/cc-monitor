@@ -454,15 +454,16 @@ def main() -> int:
         long_hold = 0.0 if args.mutate == "fake-long-window" else min(0.120, max(0.010, c_n_p99 * 10.0))
         ratio = float("inf") if c_n_p99 <= 0 else long_hold / c_n_p99
         print(f"── §3 三臂 · 负载 {load_name} ─────────────────────────────────────")
+        c_holder = args.mutate != "fake-long-window"
         if args.mutate == "fake-long-window":
-            print("· 臂 C 的 hold = 0 —— **被 R30M1 切成了假窗口**")
+            print("· 臂 C **被 R30M1 切成了假窗口**：一个持有者都不 fork、写 fd 立刻就关（窗口 ≡ 0）")
         else:
             print(f"· 臂 C 的 hold = {fmt_us(long_hold)} µs = {ratio:.1f} × C_N(p99)"
                   f"（现算，上限 120000 µs；{'明显长于' if ratio >= 2 else '🔴 只有不到 2 倍，对照力度不足'}）")
         arms = {
             ARM_A: run_arm(target, args.n, 0.0, False),
             ARM_B: run_arm(target, args.n, 0.0, True),
-            ARM_C: run_arm(target, args.long_n, long_hold, True),
+            ARM_C: run_arm(target, args.long_n, long_hold, c_holder),
         }
         print()
         print("| 臂 | n | 撞上过 ETXTBSY | 在预算内 (tries<=N) | tries min/p50/p90/p99/max | "
