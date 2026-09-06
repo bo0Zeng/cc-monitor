@@ -1,0 +1,140 @@
+====================================================================================
+W-F1b · 零生产改动三口径    树=/home/zbl/文档/claudecode-frontend/.claude/worktrees/w-f1b
+HEAD=d73ea461deacd57c850ab6a817db76344bd94391    基点 d73ea46=d73ea461deacd57c850ab6a817db76344bd94391
+====================================================================================
+  【交回态（应当：三口径全绿）】
+    口径① git status  ：生产面命中 0 处 · 全树条目 10 条 ⇒ 生产面干净=True
+    口径② 逐文件 md5 ：人群 583 份 · 不同 0 份 · 缺 0 份 ⇒ 全同=True
+    口径③ git diff   ：退出码 0 · 0 字节 ⇒ 为空=True
+------------------------------------------------------------------------------------
+【死值验 W1bM3】往 src-tauri/src/pubkey.rs 尾部追加一行注释，不提交
+  【改了一行·未提交（应当：三口径全红）】
+    口径① git status  ：生产面命中 1 处（ M src-tauri/src/pubkey.rs） · 全树条目 11 条 ⇒ 生产面干净=False
+    口径② 逐文件 md5 ：人群 583 份 · 不同 1 份（src-tauri/src/pubkey.rs） · 缺 0 份 ⇒ 全同=False
+    口径③ git diff   ：退出码 0 · 275 字节 ⇒ 为空=False  src-tauri/src/pubkey.rs | 2 ++
+ 1 file changed, 2 insertions(+)
+  【已原样写回（应当：回到全绿）】
+    口径① git status  ：生产面命中 0 处 · 全树条目 10 条 ⇒ 生产面干净=True
+    口径② 逐文件 md5 ：人群 583 份 · 不同 0 份 · 缺 0 份 ⇒ 全同=True
+    口径③ git diff   ：退出码 0 · 0 字节 ⇒ 为空=True
+    写回核对：原 md5=94a9b191e062da3302d6d27ef507f707 现 md5=94a9b191e062da3302d6d27ef507f707 ⇒ 一致=True
+    三口径各认得出这一刀：{'口径① git status': True, '口径② 逐文件 md5': True, '口径③ git diff': True} ⇒ 全中=True
+====================================================================================
+{
+  "worktree": "/home/zbl/文档/claudecode-frontend/.claude/worktrees/w-f1b",
+  "head": "d73ea461deacd57c850ab6a817db76344bd94391",
+  "base": "d73ea461deacd57c850ab6a817db76344bd94391",
+  "prod_paths": [
+    "src",
+    "src-tauri/src",
+    "remote-daemon-proto/src",
+    "e2e"
+  ],
+  "clean": {
+    "tag": "交回态（应当：三口径全绿）",
+    "status": {
+      "rc": 0,
+      "entries": [
+        "?? evidence/W-F1b-headless-russh-carrier-probe.out",
+        "?? evidence/W-F1b-headless-russh-carrier-probe.py",
+        "?? evidence/W-F1b-netem-direction-probe.out",
+        "?? evidence/W-F1b-netem-direction-probe.py",
+        "?? evidence/W-F1b-netem-ingress-ifb-probe.out",
+        "?? evidence/W-F1b-netem-ingress-ifb-probe.py",
+        "?? evidence/W-F1b-ssh-carrier-census.out",
+        "?? evidence/W-F1b-ssh-carrier-census.py",
+        "?? evidence/W-F1b-zero-production-diff.out",
+        "?? evidence/W-F1b-zero-production-diff.py"
+      ],
+      "prod_hits": [],
+      "prod_clean": true
+    },
+    "md5": {
+      "population": 583,
+      "diffs": [],
+      "missing": [],
+      "all_same": true
+    },
+    "diff": {
+      "rc": 0,
+      "empty": true,
+      "bytes": 0,
+      "stat": ""
+    }
+  },
+  "mutated": {
+    "tag": "改了一行·未提交（应当：三口径全红）",
+    "status": {
+      "rc": 0,
+      "entries": [
+        " M src-tauri/src/pubkey.rs",
+        "?? evidence/W-F1b-headless-russh-carrier-probe.out",
+        "?? evidence/W-F1b-headless-russh-carrier-probe.py",
+        "?? evidence/W-F1b-netem-direction-probe.out",
+        "?? evidence/W-F1b-netem-direction-probe.py",
+        "?? evidence/W-F1b-netem-ingress-ifb-probe.out",
+        "?? evidence/W-F1b-netem-ingress-ifb-probe.py",
+        "?? evidence/W-F1b-ssh-carrier-census.out",
+        "?? evidence/W-F1b-ssh-carrier-census.py",
+        "?? evidence/W-F1b-zero-production-diff.out",
+        "?? evidence/W-F1b-zero-production-diff.py"
+      ],
+      "prod_hits": [
+        " M src-tauri/src/pubkey.rs"
+      ],
+      "prod_clean": false
+    },
+    "md5": {
+      "population": 583,
+      "diffs": [
+        {
+          "file": "src-tauri/src/pubkey.rs",
+          "base": "94a9b191e062da3302d6d27ef507f707",
+          "now": "f46e2902fc79e11a005ccb67f06fa741"
+        }
+      ],
+      "missing": [],
+      "all_same": false
+    },
+    "diff": {
+      "rc": 0,
+      "empty": false,
+      "bytes": 275,
+      "stat": "src-tauri/src/pubkey.rs | 2 ++\n 1 file changed, 2 insertions(+)"
+    }
+  },
+  "restored": {
+    "tag": "已原样写回（应当：回到全绿）",
+    "status": {
+      "rc": 0,
+      "entries": [
+        "?? evidence/W-F1b-headless-russh-carrier-probe.out",
+        "?? evidence/W-F1b-headless-russh-carrier-probe.py",
+        "?? evidence/W-F1b-netem-direction-probe.out",
+        "?? evidence/W-F1b-netem-direction-probe.py",
+        "?? evidence/W-F1b-netem-ingress-ifb-probe.out",
+        "?? evidence/W-F1b-netem-ingress-ifb-probe.py",
+        "?? evidence/W-F1b-ssh-carrier-census.out",
+        "?? evidence/W-F1b-ssh-carrier-census.py",
+        "?? evidence/W-F1b-zero-production-diff.out",
+        "?? evidence/W-F1b-zero-production-diff.py"
+      ],
+      "prod_hits": [],
+      "prod_clean": true
+    },
+    "md5": {
+      "population": 583,
+      "diffs": [],
+      "missing": [],
+      "all_same": true
+    },
+    "diff": {
+      "rc": 0,
+      "empty": true,
+      "bytes": 0,
+      "stat": ""
+    }
+  },
+  "restore_ok": true,
+  "W1bM3_all_three_caught": true
+}

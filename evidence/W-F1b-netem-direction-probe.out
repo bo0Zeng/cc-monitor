@@ -1,0 +1,174 @@
+==============================================================================
+W-F1b · netem 方向摸底  载荷=1048576 字节  理论 2mbit 传输 ≈ 4194ms
+B 的 IP=172.20.0.2  netns 分离=True（宿主 net:[4026531833] / B net:[4026533056]）
+==============================================================================
+读数                                   RTT(ms)       下行 B→宿主(ms)       上行 宿主→B(ms)
+① 无规则（基线）                              0.062               154               151
+② B egress tbf rate 2mbit              0.063              4521               152
+③ 删掉 tbf（回得来吗）                         0.072               153               151
+④ B egress netem delay 200ms         200.221              2063              2062
+⑤ 删掉 delay                             0.085               154               151
+⑥ B egress netem loss 100%                 断                 断                 断
+⑦ 删掉 loss（回得来吗）                        0.087                 3                 1
+------------------------------------------------------------------------------
+🔴 宿主面 netem/tbf 恒零命中：True（6 个检查点）
+宿主 ip link 前后一致=True · docker network 前后一致=True · tc qdisc md5 前后一致=True
+容器 netns 里建 ifb：rc=0 (成功)
+容器 CapEff：CapEff:	00000000a80435fb
+==============================================================================
+{
+  "payload_bytes": 1048576,
+  "theory_bw_ms": 4194,
+  "samples": [
+    {
+      "label": "① 无规则（基线）",
+      "rtt_ms": 0.062,
+      "down_ms": 154,
+      "up_ms": 151
+    },
+    {
+      "label": "② B egress tbf rate 2mbit",
+      "rtt_ms": 0.063,
+      "down_ms": 4521,
+      "up_ms": 152
+    },
+    {
+      "label": "③ 删掉 tbf（回得来吗）",
+      "rtt_ms": 0.072,
+      "down_ms": 153,
+      "up_ms": 151
+    },
+    {
+      "label": "④ B egress netem delay 200ms",
+      "rtt_ms": 200.221,
+      "down_ms": 2063,
+      "up_ms": 2062
+    },
+    {
+      "label": "⑤ 删掉 delay",
+      "rtt_ms": 0.085,
+      "down_ms": 154,
+      "up_ms": 151
+    },
+    {
+      "label": "⑥ B egress netem loss 100%",
+      "rtt_ms": null,
+      "down_ms": null,
+      "up_ms": null
+    },
+    {
+      "label": "⑦ 删掉 loss（回得来吗）",
+      "rtt_ms": 0.087,
+      "down_ms": 3,
+      "up_ms": 1
+    }
+  ],
+  "host_before": {
+    "qdisc_md5": "e768c62173324c018edc3758cf16118d",
+    "links": [
+      "Meta",
+      "br-5c45e8c5297c",
+      "br-6e8c57c1920a",
+      "docker0",
+      "easytier0",
+      "lo",
+      "tailscale0",
+      "vethd8ac1eb",
+      "virbr0",
+      "wlp2s0"
+    ],
+    "networks": [
+      "beszel_default",
+      "bridge",
+      "host",
+      "none",
+      "park-miniapp_default"
+    ]
+  },
+  "b_ip": "172.20.0.2",
+  "netns": {
+    "host": "net:[4026531833]",
+    "B": "net:[4026533056]",
+    "separated": true
+  },
+  "cap_probe": "CapEff:\t00000000a80435fb",
+  "tbf_added": {
+    "ok": true,
+    "err": "",
+    "qdisc": "qdisc tbf 804f: root refcnt 17 rate 2Mbit burst 4Kb lat 400ms"
+  },
+  "netem_delay_added": {
+    "ok": true,
+    "err": "",
+    "qdisc": "qdisc netem 8050: root refcnt 17 limit 1000 delay 200ms"
+  },
+  "netem_cut_added": {
+    "ok": true,
+    "err": "",
+    "qdisc": "qdisc netem 8051: root refcnt 17 limit 1000 loss 100%"
+  },
+  "ifb_in_ns": {
+    "rc": 0,
+    "err": ""
+  },
+  "host_after": {
+    "qdisc_md5": "e768c62173324c018edc3758cf16118d",
+    "links": [
+      "Meta",
+      "br-5c45e8c5297c",
+      "br-6e8c57c1920a",
+      "docker0",
+      "easytier0",
+      "lo",
+      "tailscale0",
+      "vethd8ac1eb",
+      "virbr0",
+      "wlp2s0"
+    ],
+    "networks": [
+      "beszel_default",
+      "bridge",
+      "host",
+      "none",
+      "park-miniapp_default"
+    ]
+  },
+  "host_unchanged": {
+    "links": true,
+    "networks": true,
+    "qdisc_md5": true
+  },
+  "redline_host_netem_tbf_always_zero": true,
+  "redline_log": [
+    {
+      "step": "开跑前",
+      "host_netem_tbf_hits": 0,
+      "lines": []
+    },
+    {
+      "step": "容器起好·未加规则",
+      "host_netem_tbf_hits": 0,
+      "lines": []
+    },
+    {
+      "step": "B 加了 tbf",
+      "host_netem_tbf_hits": 0,
+      "lines": []
+    },
+    {
+      "step": "B 加了 netem delay",
+      "host_netem_tbf_hits": 0,
+      "lines": []
+    },
+    {
+      "step": "B 加了 loss 100%",
+      "host_netem_tbf_hits": 0,
+      "lines": []
+    },
+    {
+      "step": "收尾后",
+      "host_netem_tbf_hits": 0,
+      "lines": []
+    }
+  ]
+}
