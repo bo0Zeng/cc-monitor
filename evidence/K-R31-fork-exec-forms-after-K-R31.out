@@ -1,0 +1,59 @@
+量具自检：过（阳性 1 · 阴性 6 · 假阴性对照 2 · 行数不变 · 测试段剥法 3）
+被测对象：/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r31
+形态表（枚举，**不是全称**，表外的写法本脚本看不见）：
+  - `pre_exec` —— std `CommandExt::pre_exec`：闭包在孩子里、`execve` 之前跑
+  - `before_exec` —— 同一件事的旧名（已弃用，仍编得过）
+  - `libc::fork` —— 手写 fork+exec ⇒ 中间那段全归调用方
+  - `libc::vfork` —— 同上，且它连地址空间都不换
+  - `command_fds` —— 那个 crate 装 fd 用的就是 `pre_exec`
+  - `CommandFdExt` —— 同上，trait 名那一半
+  - `libc::posix_spawn` —— 手写 file actions：同一段窗口，只是搬进了 libc
+
+## ① 剥前（整棵树，含测试段与注释）—— 这就是 `K-R30` 那把尺子的分母
+   扫描面：216 份 `.rs` · 5942889 字节（原文）
+   命中：**17 行** · **8 块** · **2 份文件**
+     src-tauri/src/scanning_guard_registry.rs:55  〔pre_exec〕 //! 为什么它非这么写不可：那条判据扫的是「生产段里有没有 `pre_exec`」，
+     src-tauri/src/backend/control/local_backend.rs:452  〔pre_exec〕 ///    那一档今天靠的是**本仓一处 `pre_exec` 都没有** ⇒ 孩子在 fork 与 exec 之间不干活，
+     src-tauri/src/backend/control/local_backend.rs:453  〔pre_exec〕 ///    **不是**靠这个数。口径写死（`K-R30` 09-06 现打，`grep -rn "pre_exec" --include=*.rs`，
+     src-tauri/src/backend/control/local_backend.rs:456  〔pre_exec〕 ///    ⚠ **这个前提今天没有判据守着**：有人加一处 `pre_exec` 不会红，而这个数就得重量。
+     src-tauri/src/backend/control/local_backend.rs:1557  〔pre_exec〕 /// 🔴 而在本条之前，**加一处 `pre_exec` 编得过、跑得过、门禁一个数都不动** ——
+     src-tauri/src/backend/control/local_backend.rs:1585  〔pre_exec〕 /// 立本条时逐条现打过一趟：除 `pre_exec` 那 3 行注释外，表里其余六种**全树零命中**
+     src-tauri/src/backend/control/local_backend.rs:1598  〔pre_exec〕 "pre_exec",          // std `CommandExt::pre_exec`：闭包在孩子里、`execve` 之前跑
+     src-tauri/src/backend/control/local_backend.rs:1599  〔before_exec〕 "before_exec",       // 同一件事的旧名（已弃用，仍编得过）
+     src-tauri/src/backend/control/local_backend.rs:1600  〔libc::fork〕 "libc::fork",        // 手写 fork+exec ⇒ 中间那段全归调用方
+     src-tauri/src/backend/control/local_backend.rs:1601  〔libc::vfork〕 "libc::vfork",       // 同上，且它连地址空间都不换
+     src-tauri/src/backend/control/local_backend.rs:1602  〔pre_exec〕 "command_fds",       // 那个 crate 装 fd 用的就是 `pre_exec`
+     src-tauri/src/backend/control/local_backend.rs:1603  〔CommandFdExt〕 "CommandFdExt",      // 同上，trait 名那一半
+     src-tauri/src/backend/control/local_backend.rs:1604  〔libc::posix_spawn〕 "libc::posix_spawn", // 手写 file actions：同一段窗口，只是搬进了 libc
+     src-tauri/src/backend/control/local_backend.rs:1634  〔pre_exec〕 let live = "    unsafe { cmd.pre_exec(|| Ok(())) };";
+     src-tauri/src/backend/control/local_backend.rs:1643  〔pre_exec〕 let commented = "// unsafe { cmd.pre_exec(|| Ok(())) };\n\
+     src-tauri/src/backend/control/local_backend.rs:1644  〔pre_exec〕 /* cmd.pre_exec(); */\n\
+     src-tauri/src/backend/control/local_backend.rs:1645  〔pre_exec〕 \x20   /// 那一档靠的是本仓一处 pre_exec 都没有\n";
+
+## ② 只剥注释（整棵树，仍含测试段）—— `D1②` 要的那一格
+   扫描面：216 份 `.rs` · 5942889 字节（剥注释后，等长抹空格 ⇒ 与原文同长）
+   命中：**11 行** · **3 块** · **1 份文件**
+     src-tauri/src/backend/control/local_backend.rs:1598  〔pre_exec〕 "pre_exec",
+     src-tauri/src/backend/control/local_backend.rs:1599  〔before_exec〕 "before_exec",
+     src-tauri/src/backend/control/local_backend.rs:1600  〔libc::fork〕 "libc::fork",
+     src-tauri/src/backend/control/local_backend.rs:1601  〔libc::vfork〕 "libc::vfork",
+     src-tauri/src/backend/control/local_backend.rs:1602  〔command_fds〕 "command_fds",
+     src-tauri/src/backend/control/local_backend.rs:1603  〔CommandFdExt〕 "CommandFdExt",
+     src-tauri/src/backend/control/local_backend.rs:1604  〔libc::posix_spawn〕 "libc::posix_spawn",
+     src-tauri/src/backend/control/local_backend.rs:1634  〔pre_exec〕 let live = "    unsafe { cmd.pre_exec(|| Ok(())) };";
+     src-tauri/src/backend/control/local_backend.rs:1643  〔pre_exec〕 let commented = "// unsafe { cmd.pre_exec(|| Ok(())) };\n\
+     src-tauri/src/backend/control/local_backend.rs:1644  〔pre_exec〕 /* cmd.pre_exec(); */\n\
+     src-tauri/src/backend/control/local_backend.rs:1645  〔pre_exec〕 \x20   /// 那一档靠的是本仓一处 pre_exec 都没有\n";
+
+## ③ 剥注释 + 剥测试段（= 生产段）—— Rust 那条判据的扫描面口径
+   扫描面：216 份 `.rs` · 2364255 字节（剥注释 + 剥测试段后）
+   命中：**0 行** · **0 块** · **0 份文件**
+
+## 一句话
+   剥前 17 行 · 只剥注释 11 行 · 生产段 0 行（分母：216 份 `.rs`，/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r31）
+   ⚠ 「行 / 块 / 处」是三个数，别混：本趟剥前那 17 行落在 **8** 个相邻块、**2** 份文件里，
+     而「一段文档注释算 1 处」是第三种读法 —— `K-R30` 写的「1 处」就是那一种。
+     ⇒ Rust 那条判据把单位钉死为**行**，并把三个数一起印。
+   ⚠ ② 与 ③ 的差（11 → 0）就是**测试段里的那些**：判据自己的形态表与
+     对照臂夹具都逐字写着这些词 ⇒ **只剥注释不够，必须连测试段一起剥**，
+     否则那条判据一写完就红自己（`scanning_guard_registry` 治的正是这一族）。
