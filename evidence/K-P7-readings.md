@@ -24,11 +24,18 @@
 落到代码上的那一份：`remote-daemon-proto/src/single_stream_guard.rs:1`
 逐字 `//! \`K-P1 KPY8\`：**「多客户端的流」本件明确不做 —— 留一个触发器，不留一句话。**`
 
-命令（可重跑）：
+命令（可重跑，**没有 `head`/`tail` 在替我截答案**）：
 ```
-grep -rn "KPY8" .claude/planned-build/backend-consolidation/    ⇒ 命中 11 行 / 5 份文件
+grep -rn  "KPY8" .claude/planned-build/backend-consolidation/ | wc -l   ⇒ 17 行
+grep -rln "KPY8" .claude/planned-build/backend-consolidation/ | wc -l   ⇒  6 份
+同两条，排除本轮我自己写进 K-P7 件文件 §8 的那几行            ⇒ 12 行 / 5 份
 sed -n '572,580p;588,594p' .../features/K-P1-后端常驻化.md
 ```
+⚠ **17 与 12 的差就是我自己刚写下去的 5 行** —— 报这个数之前**必须说清算不算自己**，
+否则下一趟复打会读成「涨了 5 处」。逐份（`grep -rc`，排除 0）：
+`K-P1 8 · K-P7 5 · K-P6 1 · INDEX.md 1 · audits/K-P6-PM.md 1 · audits/K-P1-D1.md 1`。
+⚠ 自查记一笔：**本条第一版写的是「11 行 / 5 份」，那是一条带 `head -50` 的命令目测出来的**
+（`brief` 12 那族 —— 今天现打的三条教训之一），**当轮自己抓到并改了**。
 
 ## 乙 · 三问逐条答死
 
@@ -239,9 +246,14 @@ PM 写「HTTP 中转**已经在后端那一侧了** …… 编在**同一个二�
 - **不动那五道已有的门的判定口径**（`run_gate_sum` 的「包数 ≠ N」与「0 passed 不是绿」两条自检**一个字不许改**）。
 ```
 它点名的 `run_gate_sum` 现打是 **`scripts/gate.sh` 里的一个 shell 函数**
-（`src-tauri/src/shared_crate_registry.rs:236` 逐字「`K-H2a` 给 `scripts/gate.sh` 加了 `run_gate_sum cargo <N>` —— `N` 是**包数相等断言**」；
-命令 `grep -rn "run_gate_sum" --include=*.rs --include=*.sh .` ⇒ 全在 `shared_crate_registry.rs` 与 `gate.sh` 上）
+（`src-tauri/src/shared_crate_registry.rs:236` 逐字「`K-H2a` 给 `scripts/gate.sh` 加了 `run_gate_sum cargo <N>` —— `N` 是**包数相等断言**」）。
+命令（**无 `head`**）`grep -rn "run_gate_sum" <本树> --include=*.rs --include=*.sh --include=*.ts | grep -v node_modules`
+⇒ 命中住 **3 份文件**：`scripts/gate.sh`（定义与调用）· `src-tauri/src/capability_registry.rs` ·
+`src-tauri/src/shared_crate_registry.rs`（后两份是**盯着 `gate.sh` 那个数**的判据）。
 ⇒ 🔴 **它守的是门禁那五道门，射程里没有 `single_stream_guard`。**
+⚠ 自查记一笔：本条第一版写「全在 `shared_crate_registry.rs` 与 `gate.sh` 上」，
+那是一条带 `head -6` 的命令目测出来的（漏了 `capability_registry.rs`），**当轮自己抓到并改了**。
+**结论不受影响** —— 三份全在门禁那一侧。
 
 **核它有没有漂**（`brief` 13c：行号要带校验位；`brief` 11：判「动没动」不许只靠一条 `grep`）：
 ```
@@ -258,10 +270,26 @@ git log --oneline -S "K-G3 §143" --all                        ⇒ 7 个提交�
 1. **它们自己的失败文案**（`single_stream_guard.rs`，逐字）：「真到了那天：先立件，把那本账重新定义清楚，
    **再回来改这张表**」⇒ **改表是它设计里的合法动作**，条件是先立件把账写清。
 2. `KPY7`「本件一行都不许放宽已有判据」—— 那是 **`K-P1` 那一件的** DoD，**射程是 `K-P1` 那一轮**。
-3. 机器那一档：`remote-daemon-proto/src/ratchet_guard.rs:65` 那张**同名 `PINS`**（**7 条**，四元组），
-   语料由 `source_of` 写死，逐字只有两支：`"readonly_guard.rs" => include_str!("readonly_guard.rs"),`
-   与 `"no_timer_guard.rs" => …`，**不含 `single_stream_guard.rs`**。
+3. 机器那一档：`remote-daemon-proto/src/ratchet_guard.rs:65` 那张**同名 `PINS`**
+   （逐字 `    const PINS: &[(&str, &str, usize, &str)] = &[`，四元组，现打 **7 条**），
+   语料由 `source_of` 写死，逐字只有两支 ——
+   `:135` `"readonly_guard.rs" => include_str!("readonly_guard.rs"),` ·
+   `:136` `"no_timer_guard.rs" => include_str!("no_timer_guard.rs"),`
+   （`grep -n "include_str!" ratchet_guard.rs` ⇒ **恰好这两行**）⇒ **不含 `single_stream_guard.rs`**。
+
 ⇒ 🔴 **今天没有任何机器禁止改 `single_stream_guard::PINS` 的那 6 条**；禁令只在纪律那一档。
+**我查了这几条路**（`brief` 14：说得出查了哪几条，说不出就只能写「我没查」）：
+① `grep -rn "const PINS" remote-daemon-proto/src/` ⇒ **恰好 2 处**
+   （`single_stream_guard.rs:166` 逐字 `    const PINS: &[(&str, &str, usize, usize, &str)] = &[`
+    与 `ratchet_guard.rs:65`），两张表**互不引用**；
+② `ratchet_guard` 的语料表（上面第 3 条），**逐支读完**；
+③ `single_stream_guard.rs` 全文（657 行）读过 —— 它对自己那张表的唯一约束是
+   `every_pin_is_a_live_anchor_not_a_zero`（`want > 0` 且 `crate_want >= want`），
+   **那是防「把 want 改成 0 蒙混」，不是防「按新事实改数」**；
+④ 计划仓 `grep -rn "K-G3 §143" .` ⇒ 现打 **8 行 / 4 份**，其中 **5 行是我本轮自己写进 `§8` 的**
+   ⇒ **本轮之前是 4 行 / 3 份**：`K-R22:98`（引对了）· `audits/K-R22-PM.md:56`（引对了）·
+   `K-P7:87` 与 `K-P7:112`（**引错了，就是本条报的这两处**）。四处**逐处读完**。
+⚠ **诚实边界**：以上是**四条路**，不是「所有路」的穷举 —— 那个分母我给不出。
 ⚠ **本件一根针都没动**（零生产改动）。要不要改、怎么改，归 PM —— `KP7D3` 明写本件不自批。
 
 ---
@@ -406,10 +434,23 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
   7. `src-tauri/src/inbound_client.rs` —— 今天 origin 靠 `register(origin, client)` /
      `client_for(origin)` / `LOCAL_ORIGIN`（`inbound_client.rs:684` 逐字
      `pub const LOCAL_ORIGIN: &str = "<local>";`）；改成「一条连接多 origin」之后这套要重写。
-  ⚙ **一个有利读数**：origin 这个概念在界面那一侧**已经是一等公民**
-  （`origin` 出现在 monitor Rust **49** 份 / 前端 TS **62** 份文件里），
-  而在 daemon 那一侧**几乎为零**（`remote-daemon-proto/src` 里 `origin` 只在
-  `platform/fallback_guard.rs:603` 一个测试名里出现）。**这条路是把界面的概念推进协议。**
+  ⚙ **一个有利读数（尺子是「子串 `origin`」，不是标识符 —— 别读大一格）**：
+  origin 在界面那一侧**已经是一等公民**，在 daemon 那一侧**一处代码态都没有**。
+
+  | 人群（`git ls-files -z` 去重） | 分母 | 含子串 `origin` 的份数 |
+  |---|---|---|
+  | `src-tauri/src/**.rs`（monitor Rust） | 106 | **49** |
+  | `src/**.ts`（前端） | 341 | **107** |
+  | `remote-daemon-proto/src/**.rs`（daemon） | 76 | **6** |
+
+  daemon 那 6 份**逐处看过，代码态 0 处**：`watcher.rs` 3 处 + `proc.rs` 1 处命中的其实是英文词
+  **`original`**（子串尺子的假阳，如实登记）；`fallback_guard.rs:603` 是测试名
+  （逐字 `fn counterexample_b_the_origin_mine_is_alive_outside_the_population() {`）；
+  `listen.rs:66` 与 `wire.rs:367` 是注释。
+  🔴 **最要紧的那一处**：`observe/usage_query.rs:141` 逐字
+  `// origin 不带——monitor 侧收到后盖主机 label。`
+  ⇒ **daemon 自己写着「origin 由 monitor 盖」** —— 这一格不是我推的，是它自陈的。
+  **候选 B 就是要把这句话反过来。**
 - ② **针**：🔴 **要碰第 4 根**。转发通道 = 第 4 处 `mpsc::channel::<Frame>(`
   ⇒ 登记的全 crate **3** 变 4 ⇒ 那条针红。
   **两边都说清**（`KP7D2②` 要求的）：
@@ -520,6 +561,7 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
 | 买到「独立跑」（Linux） | 是 | 是 | 是 | 🔴 **否** | 是（要走常驻那条路） |
 | 买到「独立跑」（Windows） | 🔴 **判不了 —— 见 `§⑤`** | 同左 | 同左 | 否 | 同左 |
 | 凭据面（`K11` 硬前置） | 挡着 | 挡着 | 挡着 | 不涉及 | 挡着（有中转的现成范式） |
+| 🔴 零定时器铁律（`§④-辛`，**`§0a` 没写的第四堵**） | 要付 | 要付 | 要付 | 不涉及 | 要付（**可能只落在「登记」那一档**） |
 
 ## 庚 · `KP7D3` 要的那半：**`K-P6` 第二阶段的题面该怎么写**
 
@@ -537,23 +579,69 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
 |---|---|---|
 | **B**（origin 维） | 「**给出方向的帧加一维 origin、给入方向的 `Request` 加一维 target，并把能力协商门控一起做完**；本阶段**不搬拨号**，只把协议面与文档面（`doc/IPC-PROTOCOL.md`）落地，并把 `PINS` 第 4 条从 3 改成 4 且同轮写清『这第 4 处是哪一种』」 | 「旧对端拿到带 origin 的帧**不会静默当成本机的**」——`P7M2` 那条反证就是它的死值验 |
 | **C**（第二条流） | 「**把 `listen` 的分档从『一条流』改成『一个 origin 一条流』**，`busy` 那张牌按 origin 发、`REPLY_BURST` 按连接算；协议本体一个字节不改。**同轮按 `KPY8` 的规定动作立件把 fan-in 的账写清楚**」 | 「两条流各记各的 `Overflow`，两本账不串」——要一个**活体**双流夹具，不能是空真 |
-| **E**（字节代理） | 「**在 `remote-daemon-proto` 加一条 `--ssh-…` 分派臂 + 一个新层**，拨号与远端 daemon 的字节都住那儿，界面改成连一条回环口；协议面零改动、`single_stream_guard` 一根针不碰（**新层不许复用 `listen::Admit`**），并给新层补 `layering_guard` 的登记」 | 「界面 crate 里 `russh` 的代码态命中归零」——尺子用 `K-P6` 那把严格尺子（`evidence/K-P6-russh-ruler.py`，它现打 **21 处 / 3 份文件**） |
+| **E**（字节代理） | 「**在 `remote-daemon-proto` 加一条 `--ssh-…` 分派臂 + 一个新层**，拨号与远端 daemon 的字节都住那儿，界面改成连一条回环口；协议面零改动、`single_stream_guard` 一根针不碰（**新层不许复用 `listen::Admit`**），并给新层补 `layering_guard` 的登记」 | 「界面 crate 里 `russh` 的代码态命中归零」——尺子直接用 `K-P6` 那把严格尺子 `evidence/K-P6-russh-ruler.py`。⚠ 它上一轮的读数是「21 处 / 3 份文件」，**这个数我本轮没重打，住址在 `evidence/K-P6-readings.md §③-乙`**（`brief` 13：转述一个读数要么自己重打、要么写明没重打 + 住址） |
 
 **三条共同的那一段（选哪条都要，建议直接写进第二阶段题面）**：
 1. 🔴 **凭据怎么交给拨号那一侧** —— `K-P1 §2` 逐字「**不碰凭据面** —— `K11` 那条硬前置未满足」。
-   中转已经付过一次这笔钱，范式在 `local_daemon.rs:1503-1509`：
-   端口与凭据路径**显式**当 env 交给子进程（`CCM_RELAY_PORT` / `CCM_RELAY_CREDENTIALS`），
-   头注逐字给了理由：「由**写那份文件的那一侧**把路径说出来，别让它从环境里猜」。
+   中转已经付过一次这笔钱，范式住 `src-tauri/src/local_daemon.rs:1501`
+   （逐字 `pub(crate) fn relay_child_envs() -> Vec<(String, String)> {`），
+   体内 `:1507` 逐字 `        envs.push(("CCM_RELAY_CREDENTIALS".into(), p.display().to_string()));`
+   ⇒ 端口与凭据路径**显式**当 env 交给子进程；头注逐字给了理由：
+   「由**写那份文件的那一侧**把路径说出来，别让它从环境里猜」。
    ⚠ **但 SSH 的凭据是私钥 / ssh-agent，不是一份 JSON**，这条范式**只能抄形状，抄不了内容**。
 2. 🔴 **`ConnectStage` 那 6 格怎么跨进程** —— `ssh_source.rs:422` 逐字 `pub enum ConnectStage {`，
    6 个变体经 Tauri Channel 流给前端做泳道日志，**只在 `test_remote_connection` 那条路上 emit**。
    它**不在「那条流」上**，所以不进 `KP7D2` 第一问的分母；
    但只要 `russh` 要彻底出界面，这 6 格就得跨进程，而**今天 11 个 `Frame` 变体没有一个装得下它**。
    ⇒ **这是全件唯一一类「界面要、而今天的协议帧装不下」的数据。别把它和会话数据混在一格里。**
-3. **Windows 那一格照 `§⑤` 端给用户**，别在第二阶段里假装它解决了。
+3. 🔴 **零定时器铁律那一格**（`§④-辛`）—— 题面里要逐条说清：哪几处是**超时上限**（登记就行，
+   照中转「写成毫秒 + 登记 + 写解锁条件」那条形状）、哪几处是**节拍**（竞发错开 · 重连退避 ·
+   `DAEMONLESS_POLL_INTERVAL` · 6 处 `Instant::now` 埋点 —— **这些搬进去就是把 `P0–P5` 的收益还回去**）。
+4. **Windows 那一格照 `§⑤` 端给用户**，别在第二阶段里假装它解决了。
 
 ⚠ **本节不选路**（`KP7D3` 明写「选路归 PM / 用户，本件只给代价表」）。
 上面三个骨架是**并列的三份草稿**，不是推荐。
+
+## 辛 · 🔴 **B / C / E 三条都要付、而 `§0a` 一个字没写的那笔钱：零定时器铁律**
+
+**病灶一句话**：**界面那一侧的拨号路径是靠定时器写的，而 daemon 那一侧明令禁定时器。**
+两条铁律在「把拨号搬进 daemon」这条边上**正面冲突**，而 `K-P6`/`K-P7` 的 `§0a` 都没提到它。
+
+- daemon 侧：`remote-daemon-proto/src/no_timer_guard.rs`，头注逐字
+  「它守的性质是：daemon **自己的生产代码**里不出现会让线程 / 任务自己醒来的构件」。
+  禁用清单（现读）：`thread::sleep` · `time::sleep` · `recv_timeout` · `time::interval` ·
+  `Instant::now` · `Duration::from_secs`。例外要**逐条登记**进 `REGISTERED_DURATION_USES`
+  （现打 **3 条**）并写解锁条件。
+- 界面侧：`src-tauri/src/ssh_source.rs:3583` 逐字
+  `// INVARIANT §10：唯一的等待是 tokio::time::sleep（async、非阻塞），绝不 std::thread::sleep。`
+  —— **它把 `tokio::time::sleep` 当成允许的那一个**。
+
+**现打**（量具 `【7】`，分母 = 各文件**生产段**，尺子是子串 ⇒ 这个数是**上界**）：
+
+| 文件 | 禁用构件命中 | 里面最扎眼的几处 |
+|---|---|---|
+| `ssh_source.rs` | **21** | `tokio::time::sleep(RACE_STAGGER * i as u32).await;`（happy-eyeballs 竞发的错开起拨）· `const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(45);` · `const DAEMONLESS_POLL_INTERVAL: Duration = Duration::from_secs(2);` ＋ `tokio::time::sleep(DAEMONLESS_POLL_INTERVAL).await;`（**一个真轮询**）· `tokio::time::sleep(backoff).await;`（重连退避）· `Instant::now` **6 处**（`[perf]` 埋点） |
+| `port_forward.rs` | 1 | `tokio::time::sleep(std::time::Duration::from_millis(100)).await;` |
+| `sftp.rs` / `sftp_pool.rs` | 0 / 0 | —— |
+
+**分档**（哪些是真障碍、哪些只是要登记）：
+1. **只要登记的**：纯超时上限那一类。⚙ **中转已经付过这笔钱、范式在树里** ——
+   `REGISTERED_DURATION_USES` 3 条里有 2 条就是它的，而且**刻意写成毫秒**
+   （`server.rs` 的 `Duration::from_millis(30_000)` · `upstream.rs` 的 `Duration::from_millis(600_000)`）
+   来避开被禁的 `Duration::from_secs`。**抄这条形状就行。**
+2. 🔴 **真障碍**：会**自己醒过来**的那几处 —— 竞发错开（`RACE_STAGGER`）· 重连退避（`backoff`）·
+   `DAEMONLESS_POLL_INTERVAL` 那个轮询 · `Instant::now` 的 6 处 `[perf]` 埋点。
+   这些**不是超时上限，是节拍**，而 `P0–P5` 那一整条工作线的全部目的就是把节拍从 daemon 里拔掉。
+   ⇒ **搬它们进 daemon = 把那条线的收益还回去。**
+
+**⇒ 对代价表的影响（逐条）**：
+- **D**（只搬拨号）：不涉及 —— 它什么都没搬进 daemon。
+- **B / C / E**：**三条一样要面对**。它**不推翻**任何一条，但它是一笔
+  `§0a` 那三堵墙**之外**的钱，**必须写进 `K-P6` 第二阶段的题面**，否则实现方会在中途撞上。
+- ⚙ **对 E 稍轻一格**：字节代理只需要「连上 + copy」，
+  竞发/退避/埋点**可以留在界面那一侧**（界面决定什么时候叫代理去拨、拨不通什么时候重试）
+  ⇒ 搬过去的只有「一次拨号 + 一个超时上限」，正好落在「只要登记」那一档。
+  ⚠ **这一句是我从两侧的职责边界推的，没有实现可切** —— 别把它当成量出来的。
 
 ---
 
@@ -564,6 +652,8 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
    ⇒ 上表「独立跑（Windows）」那一行，**五条路一样答不了**。
    ⚠ 这一格 `K-P6` 量过、PM 没复打，**本件也没复打**（要真 Windows 读数，`§2.4` 明禁起真 daemon）。
    **它是「判不了」，不是「不成立」。**
+1b. **零定时器那一格我量的是「有几处禁用构件」，不是「搬过去要花多少工」** ——
+   后者要一次真实现才知道（`§④-辛` 那句「对 E 稍轻一格」明标了是推的）。
 2. **`russh` 进 daemon 的代价没量**：现打依赖图 —— `russh` daemon **0** / monitor **1**；
    `ring` 两边**各 1**；`rustls` daemon **1** / monitor **0**；`aws-lc-rs` 两边 **0**
    （命令 `grep -c '^name = "<pkg>"$' <lock>`，两份 lock 分别在 `remote-daemon-proto/` 与 `src-tauri/`）。
@@ -613,10 +703,11 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
 ⇒ 旧 daemon 收到 `{"id":"x","cmd":"kill","args":{…},"target":"pi"}` 会**丢掉 `target` 在本机执行**
 —— 一次**静默的杀错机器**。
 ⚠ 对照组（证明这条反证不是空真）：本仓**确实有** `deny_unknown_fields` 的 wire 面 ——
-`src-tauri/src/backend/control/launch_wire.rs:29` 逐字 `#[serde(deny_unknown_fields, rename_all = "camelCase")]`
-（同族现打 **5 处** `#[serde(… deny_unknown_fields …)]`，命令
-`grep -rn "deny_unknown_fields" src-tauri/src --include=*.rs | grep '#\[serde'`）
-⇒ 「这套 wire 是宽容的」是**这一份**的性质，不是全仓的性质。
+`src-tauri/src/backend/control/launch_wire.rs:29` 逐字 `#[serde(deny_unknown_fields, rename_all = "camelCase")]`。
+同族现打 **14 处** `#[serde(… deny_unknown_fields …)]`，命令（**没有 `head` 截答案**）：
+`grep -rn "deny_unknown_fields" src-tauri/src --include=*.rs | grep '#\[serde' | wc -l` ⇒ 14。
+⇒ 「这套 wire 是宽容的」是**协议帧那一份**的性质，**不是全仓的性质**。
+⚠ 自查记一笔：本条第一版写「5 处」，那是一条带 `head -12` 的命令目测出来的，**当轮自己抓到并改了**。
 
 ⇒ **主张改成**：「**字节层面 additive（不 bump `PROTO_VERSION`，旧解析器不炸）；
 语义层面不 additive（忽略 origin/target 的旧对端会给出错答案）** ⇒ 必须走能力协商门控。」
@@ -633,11 +724,13 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
 |---|---|---|---|
 | ① `git diff ab56c7d -- src src-tauri e2e scripts remote-daemon-proto --stat` | 退出码 0 · 输出空 | 🔴 `remote-daemon-proto/src/wire.rs \| 1 +` / `1 file changed, 1 insertion(+)` | 退出码 0 · 输出空 |
 | ② `git status --porcelain -- <那五个路径>` | 退出码 0 · 输出空 | 🔴 ` M remote-daemon-proto/src/wire.rs` | 退出码 0 · 输出空 |
-| ③ 逐文件 md5（人群 `git ls-files -z`） | 两边都有 856 份 · **不同 0** · 单边独有 0 | 🔴 **不同 1** | **不同 0** |
+| ③ 逐文件 md5（人群 `git ls-files -z`） | 两边都有 856 份 · **不同 0** · 单边独有 5 | 🔴 **不同 1** | **不同 0** |
 
 **三刀三格全中 ⇒ `KP7D4` 不是空真。本轮零 CRASH**（三趟三口径的判定行都在，没有一趟是异常退出）。
-⚠ 分母 856 是**入场那一刻**的 `git ls-files` 人群（`evidence/` 那几份此刻还没进 git）；
-交回趟提交之后这个数会变，见 `§8`——**那是分母变了，不是漂移**。
+⚠ **分母说明（别把它读成漂移）**：`.out` 里第 ③ 格的「单边独有」在**入场那一趟是 0、交回那一趟是 5**
+—— 差的就是本轮新增并提交进 git 的那 5 份 `evidence/K-P7-*`。
+**那是分母变了，不是漂移**（`brief` 12：「两次分母不同的哈希读起来跟一次漂移一模一样」）。
+盘上现存的 `.out` 是**交回趟**那一份（单边独有 5）。
 
 ---
 
@@ -658,28 +751,81 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
 
 # ⑨ 盘上状态与门禁
 
-## 甲 · 门禁（沙箱，`PB_WS=backend-consolidation .claude/devbox/gate <本树> k-p7`）
+## 甲 · 门禁（沙箱，`PB_WS=backend-consolidation .claude/devbox/gate <本树> k-p7`，跑了两趟）
 
 | 格 | PM 给的基线 | 入场趟 | 交回趟 |
 |---|---|---|---|
-| cargo | 1438 | **1438 passed** | 见 `§8` 上报 |
-| generated | ok | **ok** | 见 `§8` |
-| daemon | 587 | **587 passed** | 见 `§8` |
-| npm | 1590 | **1590 passed** | 见 `§8` |
-| ccm e2e ×4 | 12 / 8 / 264 / 72 | **12 / 8 / 264 / 72** | 见 `§8` |
-| pb check | FAIL=0 BROKEN=0 | **FAIL=0 BROKEN=0** | 见 `§8` |
-| 总判 | `GATE: OK` | **`GATE: OK`** | 见 `§8` |
+| cargo | 1438 | **1438 passed** | **1438 passed** |
+| generated | ok | **ok** | **ok** |
+| daemon | 587 | **587 passed** | **587 passed** |
+| npm | 1590 | **1590 passed** | **1590 passed** |
+| ccm e2e ×4 | 12 / 8 / 264 / 72 | **12 / 8 / 264 / 72** | **12 / 8 / 264 / 72** |
+| pb check | FAIL=0 BROKEN=0 | **FAIL=0 BROKEN=0** | 🔴 **FAIL=1 BROKEN=0** |
+| 总判 | `GATE: OK` | **`GATE: OK`** | 🔴 **`GATE: FAIL`** |
+
+**八格逐格相同、与 PM 给的基线也逐格相同**；红的只有第九格，而且只有一条：
+`FAIL [J3 陈账] INDEX.md 比源文件旧 —— 重跑 pb index 落盘`。
+
+🔴 **根因已定死，不是猜**（与 `K-P6` 交回那一趟**同形同因**）：
+```
+find . -name '*.md' -newer INDEX.md   ⇒ ./features/K-P7-协议补第二条流与origin维.md（**恰好一份**）
+INDEX.md       mtime 1788680903  (2026-09-06 00:48:23)
+K-P7 件文件    mtime 1788683364  (2026-09-06 01:29:24)
+```
+⇒ **是「我按件文件的要求写了 `§8`」这一下把它顶红的**，与代码零关系
+（代码仓那一侧八格一个数没动）。**任何**实现方写 `§8` 都会顶红这一格。
+
+🔴 **我不跑 `pb index`**：它是**生成命令**，`brief` 19 逐字「窗口开着期间一概不跑生成命令
+（`pb index` / `pb doc` 这一族会重写冻结面上的生成区）；收窗口那一拍**先 `freeze --verify` 再跑**」，
+而且那整段住在「**三之二 · 只给 PM 的**」。**请 PM 在收窗口那一拍跑**（先 `freeze --verify`）。
 
 ⚠ **分母如实抄门禁自己印的那句**：cargo 那格「本树未铺 `src-tauri/embedded-daemons/`
 ⇒ `embedded_daemons` cfg 不置 ⇒ 上面那个合计里少了『本地后端真的能起来吗』那一族（4 条）」。
 
-## 乙 · 零改动三口径（交回趟的读数落 `§8`）
+## 乙 · 零改动三口径（交回趟现打）
 
-1. `git diff ab56c7d -- src src-tauri e2e scripts remote-daemon-proto`
-2. `git status --porcelain`（三处：计划仓 · 代码仓主树 · 本工作树）
-3. 逐文件 md5，人群用 `git ls-files -z`（本仓路径全是中文，别用换行分隔）
+**① `git diff ab56c7d -- src src-tauri e2e scripts remote-daemon-proto`**
+⇒ **输出空 · 退出码 0**。
+**非空对照**（`brief` 14w②）：同一条命令换基点 `ab56c7d~5`（= `5924b91`）
+⇒ `6 files changed, 704 insertions(+), 5 deletions(-)`（`scripts/gate.sh` · `src/first-run-hint.ts` …）
+⇒ **这条命令不是恒空的。**
+⚠ **差点又踩一次 `K-P6` 记过的那个坑**：先拿 `ab56c7d~1` / `~2` / `~3` 做对照，**三个都是空** ——
+那不是尺子坏了，是 `ab56c7d` 前后那几拍**只增 `evidence/`、不动源码**。
+**空对照不是对照**，往回退到 `~5` 才拿到真的那一个。
 
-## 丙 · 本轮新增的文件（全在写区 `evidence/`，**零 `.sh`**）
+**② 三处 `git status --porcelain`**（交回这一刻）：
+| 处 | 输出 |
+|---|---|
+| 本工作树 `.claude/worktrees/k-p7` | ` M evidence/K-P7-readings.md`（本文，交回前的最后一次落盘，随后提交） |
+| 代码仓主树 `cc-monitor` | **空** |
+| 计划仓 `.claude/planned-build` | ` M backend-consolidation/features/K-P7-协议补第二条流与origin维.md`（`§8` 上报）—— **按 `brief` 3 不提交，留给 PM** |
+
+**③ 逐文件 md5**（人群 `git ls-files -z`，本仓路径全是中文 ⇒ 不许用换行分隔）：
+**两边都有 856 份 · md5 不同 0 份 · 只在 HEAD 有 5 份**（全是本轮新增的 `evidence/K-P7-*`）·
+只在基点有 0 份。
+⚠ 单边文件按 `brief` 12 **不进「逐字节相同」的分母**。
+⇒ **主干完全可用**：`track/k-p7` 与基点 `ab56c7d` 在**所有源码文件上逐字节相同**。
+
+## 丙 · 🔴 收工前自查 —— 拿本轮的病理回头打自己（`brief` 15）
+
+本轮题面点名的三条教训里，头一条是「**报『有几处』前先看命令里有没有 `head`/`tail` 在替你截答案**」。
+收工前我拿它逐条回打自己写下的每一个数，**当轮自抓 4 处**，逐处已在原地改掉并留了「自查记一笔」：
+
+| # | 我先写的 | 现打（无截断） | 怎么栽的 | 结论受影响吗 |
+|---|---|---|---|---|
+| 1 | `KPY8` 命中「11 行 / 5 份」 | **17 行 / 6 份**（排除我自己写的 `§8` ⇒ **12 行 / 5 份**） | 命令带 `head -50`，目测 | 否（三处原文住址不变） |
+| 2 | `deny_unknown_fields` 同族「5 处」 | **14 处** | 命令带 `head -12` | 否（反证只需存在性） |
+| 3 | `run_gate_sum`「全在 2 份文件上」 | **3 份**（多一个 `capability_registry.rs`） | 命令带 `head -6` | 否（三份全在门禁那一侧） |
+| 4 | `origin` 前端 TS「62 份」 | **107 份**（分母 341）；daemon 侧「只在一个测试名里」应为**6 份含子串、代码态 0 处** | git pathspec 的 `**` 与 `*` 同义 ⇒ 人群重了/漏了；且没逐处看命中 | **反而更强**：逐处看之后逮到 `usage_query.rs:141` 那句自陈 |
+
+⚠ **第 4 处不只是数错** —— 它是「量具的作用域对不上事实」那一族：
+我用**子串** `origin` 当尺子，而 `watcher.rs`/`proc.rs` 那 4 处命中的是英文词 **`original`**。
+**逐处看过才发现**。⇒ 本文凡是用子串尺子的地方都写了「尺子是子串，不是标识符」。
+
+⚠ **还有一条不是数、是方法**：`§⑨-乙` 的非空对照，我头三次挑的基点（`~1`/`~2`/`~3`）**都是空的**——
+那正是 `K-P6` 上一轮末尾记下的那条（「差点把一个空对照当成对照用了」）。**同一个坑，同一个仓，第二次。**
+
+## 丁 · 本轮新增的文件（全在写区 `evidence/`，**零 `.sh`**）
 
 - `evidence/K-P7-protocol-census.py` —— 量具（`.py`，名带 `K-P7-`）
 - `evidence/K-P7-protocol-census.out` —— 它的输出

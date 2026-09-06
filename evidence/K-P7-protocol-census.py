@@ -25,6 +25,8 @@
   【5】`relay/` 的形状：文件数 · 行数 · `Frame::`|`wire::` 命中数（PM 说 11 份 / 8514 行 / 0 处）。
   【6】monitor 侧 `parse_frame` 认识的 kind 集（消费 / 认识但不消费），
        与 daemon 侧 `Frame` 变体逐个对拍 —— 「界面到底要哪几类」的分母就是它。
+  【7】`no_timer_guard` 的禁用构件 × 界面侧拨号路径的**生产段** ——
+       「把拨号搬进 daemon」要付、而 `§0a` 三堵墙里没有的那一笔（读数落 `readings §④-辛`）。
 
 ⚠ 本尺子**保证不了**什么（别读大一格）：
   · 它是**文本尺子**，不是编译器。`use` 别名、宏展开、`cfg` 分支它都不解析。
@@ -548,6 +550,41 @@ def main() -> int:
           f" · monitor 有而 daemon 没有 = {sorted(set(arms) - snake)}")
     R["monitor_kinds"] = arms
     R["monitor_kinds_not_consumed"] = none_arms
+
+    # 【7】零定时器铁律 × 拨号路径
+    P("\n【7】`no_timer_guard` 的禁用构件 × 界面侧拨号路径（搬家的一条硬代价）")
+    banned = ["thread::sleep", "time::sleep", "recv_timeout", "time::interval",
+              "Instant::now", "Duration::from_secs"]
+    P("  daemon 侧禁用清单（取自 `no_timer_guard` 的 `BANNED`，逐条现读）：" + " · ".join(f"`{b}`" for b in banned))
+    ntg = read(rp("remote-daemon-proto/src/no_timer_guard.rs"))
+    m = re.search(r"REGISTERED_DURATION_USES: &\[\(&str, &str, &str, &str, &str\)\] = &\[", ntg)
+    reg = 0
+    if m:
+        body = ntg[m.end():]
+        d, i = 1, 0
+        while i < len(body):
+            if body[i] == "[":
+                d += 1
+            elif body[i] == "]":
+                d -= 1
+                if d == 0:
+                    break
+            i += 1
+        reg = len(re.findall(r'\(\s*\n\s*"([^"]*)",\s*\n\s*"([^"]*)",\s*\n\s*"', body[:i]))
+    P(f"  `REGISTERED_DURATION_USES` 现打 **{reg}** 条（例外要逐条登记 + 写解锁条件）")
+    for rel in ["src-tauri/src/ssh_source.rs", "src-tauri/src/port_forward.rs",
+                "src-tauri/src/sftp.rs", "src-tauri/src/sftp_pool.rs"]:
+        prod_src = production_code(read(rp(rel)))
+        hits = []
+        for ln_no, ln in enumerate(prod_src.split("\n"), 1):
+            for b in banned:
+                if b in ln:
+                    hits.append((b, ln.strip()[:72]))
+        P(f"  {rel} 生产段命中 **{len(hits)}** 处：")
+        for b, txt in hits:
+            P(f"      [{b}] {txt}")
+    P("  ⚠ 分母 = 上面四份文件的**生产段**（同 `production_code` 口径，测试段不算）；")
+    P("    尺子是**子串**，不是 `is_call_of` 那个带词边界的调用匹配器 ⇒ 这个数是**上界**。")
 
     P("\n" + "=" * 78)
     if args.json:
