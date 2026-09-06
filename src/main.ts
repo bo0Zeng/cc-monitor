@@ -35,7 +35,12 @@ import { bindErrorToast, showActionFailureToast } from "./error-toast";
 import { bindRemoteHealthToast } from "./remote-health";
 // F83（#39）：顶栏 SFTP 入口——按远端主机数 0/1/N 分支打开现有 SFTP 模态。
 import { openSftpPanel } from "./sftp/panel";
-import { readRemoteConfig, sftpEligibleHosts } from "./remote-config";
+import { readRemoteConfig, sftpEligibleHosts, hostKey } from "./remote-config";
+// N-F3：主窗口那一条「还差什么」指路 —— 那张清单此前只在设置面板 → 远端那一节渲染，
+// 刚装完没打开过设置的人一个字都看不到。两个维度两个值，见 first-run-hint.ts 头注。
+import { FirstRunHint } from "./first-run-hint";
+import { LOCAL_MACHINE_KEY, readStatus } from "./settings/machine-status";
+import { hostOs } from "./settings/host-os";
 import {
   collectAccountRows,
   createGatedPoller,
@@ -343,6 +348,10 @@ window.addEventListener("DOMContentLoaded", async () => {
   // F84b-fix(batch18)：状态栏命令 chip 的键位刷新钩子——改键热应用后同步刷新 chip 显示的 kbd
   //（原实现只在 bootstrap 算一次，改键后 chip 教死键；chip 创建时把重建函数赋进来）。
   let refreshCmdkChord: () => void = () => {};
+  // N-F3：同一个钩子形状给「还差什么」那条指路用。**它必须在这里挂**——
+  // 用户去设置里补齐了一格，广播过来这一拍就是「状态维」该重算的那一刻；
+  // 不挂的话「补齐了 ⇒ 指路消失」要等下次启动才兑现（那就成了一句半真的话）。
+  let refreshFirstRunHint: () => void = () => {};
   void listen(SETTINGS_APPLIED_EVENT, () => {
     void loadTheme(); // 主题：loadTheme 内部 applyTheme
     void getBehavior().then((b) => tabs.applyBehavior(b)); // 行为
@@ -351,6 +360,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       refreshCmdkChord(); // 键位变 → 同步刷新命令 chip 的 kbd（兑现「改键即变」）
     });
     void accountChip.refresh(true); // A3：远端配置/默认账号可能变了，刷新账号 chip
+    refreshFirstRunHint(); // N-F3：账本/远端列表可能变了 → 「还差什么」现算一遍
   });
   // Batch11-F33：竖直 tab 栏——右缘拖拽调宽（localStorage 记忆）+ 窄窗折叠图标条。
   {
@@ -612,6 +622,43 @@ window.addEventListener("DOMContentLoaded", async () => {
       cmdkHint.classList.add("first-run");
       safeSet(LS_KEYS.cmdkHintSeen, "1");
     }
+  }
+
+  // N-F3：「还差什么」那条指路 —— 放在命令 chip 旁边（同一条状态栏、同一种克制），
+  // 但**语义与它相反**：命令 chip 是一次性知识（见过即不再），这一条是**状态**，
+  // 补齐了自己就消失、又缺了自己就回来。两者的值一个都不共用，见 first-run-hint.ts 头注。
+  //
+  // ⚠ 只在主窗口这条路上挂：`?viewer=` 与 `?settings=1` 两个精简 bootstrap 在上面就 return 了。
+  {
+    // `origins` / `isDaemonless` 要读远端配置（异步），所以先拿一份快照，
+    // 由 `reload()` 刷新；`FirstRunHint` 自己不碰 IO（照 readiness.ts 的注入范式）。
+    let origins: string[] = [LOCAL_MACHINE_KEY];
+    let daemonless = new Set<string>();
+    const firstRunHint = new FirstRunHint(status, {
+      origins: () => origins,
+      statusOf: readStatus,
+      isDaemonless: (o) => daemonless.has(o),
+      hostOs,
+      // 「点得进那张清单」= 打开设置窗口（清单住在它的「远端」那一节）。
+      // ⚠ 今天**只能到窗口这一格**：`open_settings_window` 不收参数，
+      //   直达那一节要动 `src-tauri` 与 `settings/panel.ts`，都在本件写区外。
+      openList: () => void commands.open_settings_window(),
+    });
+    const reload = async (): Promise<void> => {
+      try {
+        const cfg = await readRemoteConfig();
+        origins = [LOCAL_MACHINE_KEY, ...cfg.hosts.map(hostKey)];
+        daemonless = new Set(
+          cfg.hosts.filter((h) => h.daemonless).map(hostKey),
+        );
+      } catch (e) {
+        // 读不到远端配置不该让这条提示消失 —— 本机那几格照样算得出来。
+        console.warn(`[N-F3] 远端配置读失败，只按本机算「还差什么」：${String(e)}`);
+      }
+      firstRunHint.refresh();
+    };
+    refreshFirstRunHint = () => void reload();
+    void reload();
   }
 
   // 外链 + 代码块复制的全局 click 代理（主窗口 / 独立 viewer 窗口共用）
