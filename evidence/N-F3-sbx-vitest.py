@@ -49,7 +49,10 @@ def main() -> int:
     wt, tag = sys.argv[1], sys.argv[2]
     extra = " ".join(sys.argv[3:])
     net = os.environ.get("CCM_NET", "none")
-    inner = f"npx vitest run {extra} 2>&1 | tail -60"
+    # ⚠ `tail` 的行数要可调：死值验用 `--reporter=verbose` 时逐条测试名会把尾巴顶出去，
+    #   而「红了哪几条」正是这把尺子唯一要买的东西 —— 截掉了就只剩「红了」。
+    tail = os.environ.get("CCM_TAIL", "60")
+    inner = f"npx vitest run {extra} 2>&1 | tail -{tail}"
     cmd = [
         "docker", "run", "--rm", "--network", net,
         "-v", f"{PROJ}:{PROJ}",
