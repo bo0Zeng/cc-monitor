@@ -1,0 +1,117 @@
+================================================================================================
+K-P6b · `§0c` 两把尺子的正面对照     树=/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-p6b
+                                     被测 rev=HEAD  (b4530d8bff1d6dba790c8745fffcd6be72bc5f9d)
+================================================================================================
+【人群】`src-tauri/src/**.rs`（跟踪的）共 106 份 —— 两把尺子的人群**是同一个**，差额不在这里
+------------------------------------------------------------------------------------------------
+================================================================================================
+【自检】三条 —— 每条都要有一格是「不一样 / 非零」，否则本量具的读数不算数
+================================================================================================
+  自检 1 剥法（镜像 guard_core::assert_no_test_code —— 它**只断 `#[test]`**）
+     剥之前：#[test] = 109   ← 这一格必须**非零**（台子接上了）
+     剥之后：#[test] = 0  ← 这一格必须是 0
+     ⇒ PASS
+     ⚠ 同时点名（**不判红**，这是 `test_module_ranges` 的契约本身）：
+        `#[cfg(test)]` 剥之前 26 · 剥之后仍剩 1 —— 挂在非 `mod {}` item 上的那种不剥
+        本树活体：`#[cfg(test)] const KNOWN_FRAME_KINDS` —— 它连同它下面那一块常量数组，算在 `guard` 的「生产段」里
+  自检 2 `guard` 与 `cheap` 的差（复打 ssh_source.rs 的 `the_shared_stripper_keeps_the_part_this_guard_must_scan`）
+     `fn parse_frame          ` guard 里 在    · cheap 里 不在     ✓
+     `async fn stream_loop    ` guard 里 在    · cheap 里 不在     ✓
+     `async fn probe_daemon   ` guard 里 在    · cheap 里 不在     ✓
+     生产段体量：整份 318615 B · guard 留下 172703 B (54%) · cheap 留下 33987 B (10%)
+     ⇒ PASS
+  自检 3 三个被测符号在 `none/keep/any` 上的命中（必须都 > 0）
+     `connect_session       ` 23 处 / 6 份  ✓
+     `connect_and_exec_cmd  ` 47 处 / 16 份  ✓
+     `connect_sftp          ` 23 处 / 6 份  ✓
+     ⇒ PASS
+================================================================================================
+### `connect_session`
+     轴A测试段      轴B注释     轴C算法       生产 处/份         测试 处/份         命中盘上哪一组
+     none       keep     call       7 / 3          0 / 0           ← K-P6 §0-订正
+     none       keep     call+def   9 / 3          0 / 0         
+     none       keep     paren      8 / 3          0 / 0         
+     none       keep     any        23 / 6         0 / 0         
+     none       strip    call       7 / 3          0 / 0           ← K-P6 §0-订正
+     none       strip    call+def   8 / 3          0 / 0         
+     none       strip    paren      8 / 3          0 / 0         
+     none       strip    any        9 / 3          0 / 0         
+     cheap      keep     call       3 / 3          4 / 1           ← §0c 测试格
+     cheap      keep     call+def   4 / 3          5 / 1           ← K-P6b §0c 生产
+     cheap      keep     paren      4 / 3          4 / 1           ← K-P6b §0c 生产 ＋ §0c 测试格
+     cheap      keep     any        15 / 6         8 / 1         
+     cheap      strip    call       3 / 3          4 / 1           ← §0c 测试格
+     cheap      strip    call+def   4 / 3          4 / 1           ← K-P6b §0c 生产 ＋ §0c 测试格
+     cheap      strip    paren      4 / 3          4 / 1           ← K-P6b §0c 生产 ＋ §0c 测试格
+     cheap      strip    any        5 / 3          4 / 1           ← §0c 测试格
+     guard      keep     call       7 / 3          0 / 0           ← K-P6 §0-订正
+     guard      keep     call+def   8 / 3          1 / 1         
+     guard      keep     paren      8 / 3          0 / 0         
+     guard      keep     any        22 / 6         1 / 1         
+     guard      strip    call       7 / 3          0 / 0           ← K-P6 §0-订正
+     guard      strip    call+def   8 / 3          0 / 0         
+     guard      strip    paren      8 / 3          0 / 0         
+     guard      strip    any        9 / 3          0 / 0         
+------------------------------------------------------------------------------------------------
+### `connect_and_exec_cmd`
+     轴A测试段      轴B注释     轴C算法       生产 处/份         测试 处/份         命中盘上哪一组
+     none       keep     call       30 / 13        0 / 0         
+     none       keep     call+def   31 / 13        0 / 0         
+     none       keep     paren      31 / 13        0 / 0         
+     none       keep     any        47 / 16        0 / 0         
+     none       strip    call       18 / 11        0 / 0           ← K-P6 §0-订正 ＋ K-P6b §0c 生产
+     none       strip    call+def   19 / 11        0 / 0         
+     none       strip    paren      19 / 11        0 / 0         
+     none       strip    any        20 / 11        0 / 0         
+     cheap      keep     call       18 / 11        12 / 6          ← K-P6 §0-订正 ＋ K-P6b §0c 生产
+     cheap      keep     call+def   18 / 11        13 / 6          ← K-P6 §0-订正 ＋ K-P6b §0c 生产 ＋ §0c 测试格
+     cheap      keep     paren      18 / 11        13 / 6          ← K-P6 §0-订正 ＋ K-P6b §0c 生产 ＋ §0c 测试格
+     cheap      keep     any        24 / 12        23 / 8        
+     cheap      strip    call       16 / 10        2 / 1         
+     cheap      strip    call+def   16 / 10        3 / 1         
+     cheap      strip    paren      16 / 10        3 / 1         
+     cheap      strip    any        17 / 10        3 / 1         
+     guard      keep     call       20 / 12        10 / 5        
+     guard      keep     call+def   21 / 12        10 / 5        
+     guard      keep     paren      21 / 12        10 / 5        
+     guard      keep     any        30 / 13        17 / 7        
+     guard      strip    call       18 / 11        0 / 0           ← K-P6 §0-订正 ＋ K-P6b §0c 生产
+     guard      strip    call+def   19 / 11        0 / 0         
+     guard      strip    paren      19 / 11        0 / 0         
+     guard      strip    any        20 / 11        0 / 0         
+------------------------------------------------------------------------------------------------
+### `connect_sftp`
+     轴A测试段      轴B注释     轴C算法       生产 处/份         测试 处/份         命中盘上哪一组
+     none       keep     call       16 / 5         0 / 0         
+     none       keep     call+def   17 / 5         0 / 0         
+     none       keep     paren      17 / 5         0 / 0         
+     none       keep     any        23 / 6         0 / 0         
+     none       strip    call       14 / 4         0 / 0           ← K-P6 §0-订正
+     none       strip    call+def   15 / 4         0 / 0           ← K-P6b §0c 生产
+     none       strip    paren      15 / 4         0 / 0           ← K-P6b §0c 生产
+     none       strip    any        17 / 4         0 / 0         
+     cheap      keep     call       14 / 4         2 / 1           ← K-P6 §0-订正 ＋ §0c 测试格
+     cheap      keep     call+def   15 / 4         2 / 1           ← K-P6b §0c 生产 ＋ §0c 测试格
+     cheap      keep     paren      15 / 4         2 / 1           ← K-P6b §0c 生产 ＋ §0c 测试格
+     cheap      keep     any        19 / 5         4 / 2         
+     cheap      strip    call       14 / 4         0 / 0           ← K-P6 §0-订正
+     cheap      strip    call+def   15 / 4         0 / 0           ← K-P6b §0c 生产
+     cheap      strip    paren      15 / 4         0 / 0           ← K-P6b §0c 生产
+     cheap      strip    any        17 / 4         0 / 0         
+     guard      keep     call       14 / 4         2 / 1           ← K-P6 §0-订正 ＋ §0c 测试格
+     guard      keep     call+def   15 / 4         2 / 1           ← K-P6b §0c 生产 ＋ §0c 测试格
+     guard      keep     paren      15 / 4         2 / 1           ← K-P6b §0c 生产 ＋ §0c 测试格
+     guard      keep     any        19 / 5         4 / 2         
+     guard      strip    call       14 / 4         0 / 0           ← K-P6 §0-订正
+     guard      strip    call+def   15 / 4         0 / 0           ← K-P6b §0c 生产
+     guard      strip    paren      15 / 4         0 / 0           ← K-P6b §0c 生产
+     guard      strip    any        17 / 4         0 / 0         
+------------------------------------------------------------------------------------------------
+【认尺子】哪一格能把盘上那一组的**三个符号一起**打出来（只对上一个不算）
+  『K-P6 §0-订正』 生产三格全对的组合 2 个：
+        none/strip/call
+        guard/strip/call
+  『K-P6b §0c 生产』 生产三格全对的组合 2 个：
+        cheap/keep/call+def
+        cheap/keep/paren  ＋测试格也全对
+================================================================================================

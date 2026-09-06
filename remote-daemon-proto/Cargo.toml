@@ -101,6 +101,37 @@ libc = "0.2"
 # 复用它省掉 aws-lc-rs 那棵**另外**要现下载现编的 C 构建树。
 rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12", "logging"] }
 webpki-roots = "1"
+# ── `K-P6b`（候选 E）：`--dial` 那条代理臂的 SSH 客户端 ──────────────────────
+#
+# 🔴 **它只服务 `src/dial/`那一份**（`dial_locality` 那条判据把「谁许 `use russh`」钉在文件维上）。
+# 版本与 feature 集**逐字照抄** `../src-tauri/Cargo.toml`（`0.61.1` · `default-features = false`
+# · `["ring", "flate2", "rsa"]`）—— 理由不是省事：**两侧握出来的必须是同一套算法集**，
+# 一侧多开一个 feature 就意味着「界面拨得通、代理拨不通」这种只在某台远端上才现形的分叉。
+# `primefield` 那条 `=` 钉同理，逐字理由住 `../src-tauri/Cargo.toml`（p256/p521 的 rc.9/rc.10 不兼容）。
+#
+# ⚠⚠ **两条如实登记的代价，别读成「没问题」**：
+#   ① **`C18`「依赖树零 C」这条本 crate 早就不成立**（`rustls`/`ring` 08-25 就进来了，
+#      `KG1` 成功标准② 已因此重写成「静态 musl 二进制」）。russh 走的是**同一棵 `ring`**
+#      ⇒ 它**不新增**一棵 C 构建树；但这句话是「不新增」，**不是**「零 C」。
+#   ② 🔴 **musl 交叉编译本轮没验**。CI（`.github/workflows/release.yml` 的 `build-daemons`）
+#      要把本 crate `cargo zigbuild` 到 `x86_64-unknown-linux-musl` 与 `aarch64-unknown-linux-musl`，
+#      **而沙箱门禁只做本机 gnu 构建、不做交叉编译** ⇒ **门禁全绿也证不出这两个 target 编得过**。
+#      `ring` 在 musl 上要 `cc` 编汇编，zig 作 linker 这条路本 crate 已经走通过（`rustls` 那次），
+#      但**那次的依赖树里没有 russh**。**这一格是「没验」，不是「验过没事」。**
+#
+# ⚠⚠ **第三条如实登记：这一条今天离线解析不动，靠的是 lock 已经先播过种。**
+# `russh 0.61.1` 无条件依赖 `crypto-bigint ^0.7.1`，而现打：`crypto-bigint` 的
+# `0.7.0 … 0.7.4` **在 crates.io 上全部 yanked**（只有 `0.7.5` 没被 yank），
+# 而门禁那个断网沙箱的 crate 缓存里**只有** `crypto-bigint-0.7.3.crate` 一份
+# ⇒ `--offline` 把候选集限成「已下载的那几份」⇒ 唯一候选是 yanked 的那份
+# ⇒ **`cargo` 在解析这一步拒绝选它**（`=0.7.3` 硬钉也照拒），实打退 101。
+# `cargo` 只在**解析**时拒 yanked，不在「lock 里已经写着」时拒 ——
+# `../src-tauri/Cargo.lock` 今天就锁着 `crypto-bigint 0.7.3`（在 yank 之前锁进去的），
+# monitor 侧因此断网构建得动。⇒ 本 crate 的 lock 由 `evidence/K-P6b-r3-lock-prime.py`
+# 把 monitor 那份里 `russh` 可达的包块搬过来，处境与 monitor 侧对齐。
+# 🔴 **代价写明**：本 crate 从此也钉在一个 **yanked** 的 `crypto-bigint 0.7.3` 上
+# （与 monitor 侧同一份）。哪天 `russh` 升到能用 `0.7.5` 的版本，两侧一起挪。
+russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
 notify = "6.1"
 notify-debouncer-mini = "0.4"
 walkdir = "2.5"
