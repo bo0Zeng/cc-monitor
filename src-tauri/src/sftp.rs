@@ -468,27 +468,61 @@ fn marker_path(daemon_path: &str) -> String {
     }
 }
 
+/// [`probe_target_binary`] 那两次取样的**解释**（纯函数，可单测 —— K-W4b）。
+///
+/// 与 [`interpret_profile_read`] 同一形状：**吃两次调用各自的结果，不吃会话**。
+/// 拆出来的理由是一个具体缺陷，不是行数：解释这一半原先焊在 async 体里，
+/// 四个状态的映射规则因此一条判据都没有 —— 把那个体换成恒答 `Present`，
+/// 全量 cargo **0 红**（09-06 沙箱实测，`evidence/K-W4b-readings.md`），
+/// 而部署决策当场退回「只看 `.build_id`」的老病。
+///
+/// 入参就是两次调用**降解之后**的结果（与 [`read_profile_text`] 传给
+/// [`interpret_profile_read`] 的那几个入参同一路数）：
+/// - `metadata_size`：`None` = `metadata` 那次调用失败；`Some(inner)` = 成功，
+///   `inner` 是服务器给的 size —— ⚠ `Some(None)` 是**服务器没给 size**，不是 0 字节。
+/// - `exists`：`metadata` 失败时补问 `try_exists` 的结果（`None` = 它也答不出来）。
+///   `metadata` 成功那一路根本不问它（不为常见路径多加一次往返），那时它恒为 `None`
+///   而本函数在那一路也不看它。
+///
+/// 四态各自的含义住 [`TargetBinary`] 的成员注释，映射规则住下面这个 `match`
+/// —— 两处都不在散文里复述第二份。
+pub(crate) fn interpret_target_probe(
+    metadata_size: Option<Option<u64>>,
+    exists: Option<bool>,
+) -> TargetBinary {
+    match metadata_size {
+        Some(Some(0)) => TargetBinary::Empty,
+        // 服务器不给 size（`Some(None)`）≠ 0 字节：存在是确定的，别把「没说」读成「空」。
+        Some(_) => TargetBinary::Present,
+        None => match exists {
+            Some(false) => TargetBinary::Missing,
+            Some(true) => TargetBinary::Present,
+            None => TargetBinary::Unknown,
+        },
+    }
+}
+
 /// [`deploy_decision_at`] 的异步取样：**只问落点那个文件在不在 / 有没有字节**。
 ///
 /// 不 `read` 它 —— 那是 2.3 MB 的二进制，为判存在把它拉回来是白花带宽；
 /// `metadata` 一次往返就够。取样与判定分开（纯函数可单测）是本模块既有的形状，
-/// 见 [`read_profile_text`] / [`interpret_profile_read`]。
+/// 见 [`read_profile_text`] / [`interpret_profile_read`]；本函数只取样，
+/// 四态怎么映射住 [`interpret_target_probe`]。
 ///
 /// `metadata` 失败才补问 `try_exists`：要区分「明确不在」与「问不出来」，
 /// 而这两者在 `metadata` 的 `Err` 里长得一模一样。
 async fn probe_target_binary(sftp: &SftpSession, path: &str) -> TargetBinary {
-    match sftp.metadata(path.to_string()).await {
-        // 服务器不给 size（size=None）≠ 0 字节：存在是确定的，别把「没说」读成「空」。
-        Ok(attrs) => match attrs.size {
-            Some(0) => TargetBinary::Empty,
-            _ => TargetBinary::Present,
-        },
-        Err(_) => match sftp.try_exists(path.to_string()).await {
-            Ok(false) => TargetBinary::Missing,
-            Ok(true) => TargetBinary::Present,
-            Err(_) => TargetBinary::Unknown,
-        },
-    }
+    let metadata_size = sftp
+        .metadata(path.to_string())
+        .await
+        .ok()
+        .map(|attrs| attrs.size);
+    let exists = match metadata_size {
+        // `metadata` 成功就够判了，不多问一次。
+        Some(_) => None,
+        None => sftp.try_exists(path.to_string()).await.ok(),
+    };
+    interpret_target_probe(metadata_size, exists)
 }
 
 /// 探测远端 CPU 架构（`uname -m`）以选对应的内嵌 daemon 二进制（F08b）。一次性 exec。
@@ -1845,6 +1879,182 @@ mod tests {
                 "{sig}: 还留着裸 `deploy_decision(` 调用 —— 两条判定并存迟早分叉"
             );
         }
+    }
+
+    // ── K-W4b：取样层那四个状态的**映射规则**逐格各一条 ─────────────────────
+    // 上面那几格买的是「判定那一半」与「两条路真的去问了」；取样这一半（`metadata` /
+    // `try_exists` 的答案怎么变成 `TargetBinary`）09-06 之前一条判据都没有：
+    // 把 `probe_target_binary` 的体换成恒答 `Present`，全量 cargo **0 红**（沙箱实测）。
+    // 下面五格逐格钉一条规则，第六格是反向自检（证明它们不是恒真）。
+
+    /// 映射规则①：`metadata` 说它在、且**有字节** ⇒ `Present`。
+    #[test]
+    fn probe_metadata_with_bytes_maps_to_present() {
+        assert_eq!(
+            interpret_target_probe(Some(Some(2_300_000)), None),
+            TargetBinary::Present
+        );
+        assert_eq!(
+            interpret_target_probe(Some(Some(1)), None),
+            TargetBinary::Present,
+            "1 字节也是「有字节」—— 只有恰好 0 才是 Empty 那一格"
+        );
+    }
+
+    /// 映射规则②：`metadata` 说它在、size **恰好 0** ⇒ `Empty`，不是 `Present`。
+    /// 0 字节不是假想形态：`upload_atomic` 那条「绝不 set_metadata」注释记的就是
+    /// 真机 e2e 把 daemon 截成 0 字节、不可 exec 的那次事故，而 `try_exists` 会把它算成「在」。
+    #[test]
+    fn probe_metadata_saying_zero_bytes_maps_to_empty() {
+        assert_eq!(
+            interpret_target_probe(Some(Some(0)), None),
+            TargetBinary::Empty
+        );
+        assert_ne!(
+            interpret_target_probe(Some(Some(0)), None),
+            interpret_target_probe(Some(Some(1)), None),
+            "0 字节与有字节判成了同一格 ⇒ deploy_decision_at 的 Empty 那一臂永远走不到"
+        );
+    }
+
+    /// 映射规则③（本件的承重格）：`metadata` 成功而**服务器不给 size**（`Some(None)`）
+    /// ⇒ 仍是 `Present`。
+    /// `TargetBinary` 与取样壳的头注逐字：「服务器不给 size（size=None）≠ 0 字节」——
+    /// 把「没说」读成「空」，等于对着一台好机器每次连接都重传 2.3MB。
+    #[test]
+    fn probe_a_server_that_gives_no_size_is_not_the_empty_cell() {
+        assert_eq!(
+            interpret_target_probe(Some(None), None),
+            TargetBinary::Present
+        );
+        assert_ne!(
+            interpret_target_probe(Some(None), None),
+            TargetBinary::Empty,
+            "「服务器没给 size」被读成了「0 字节」"
+        );
+    }
+
+    /// 映射规则④：`metadata` 失败、补问 `try_exists` **明确答不在** ⇒ `Missing`。
+    #[test]
+    fn probe_stat_failed_and_try_exists_says_no_maps_to_missing() {
+        assert_eq!(
+            interpret_target_probe(None, Some(false)),
+            TargetBinary::Missing
+        );
+    }
+
+    /// 映射规则⑤：`metadata` 失败、`try_exists` **也答不出来** ⇒ `Unknown`。
+    /// 不许滑成 `Missing`（一次 stat 失败换一次全量重传，版本门控就废了），
+    /// 也不许滑成 `Present`（那正是本枚举要治的那个静默）。
+    #[test]
+    fn probe_stat_failed_and_try_exists_cannot_answer_maps_to_unknown() {
+        assert_eq!(interpret_target_probe(None, None), TargetBinary::Unknown);
+        assert_ne!(
+            interpret_target_probe(None, None),
+            interpret_target_probe(None, Some(false)),
+            "「问不出来」与「明确不在」判成了同一格 —— 这两者正是要分开的那两件事"
+        );
+    }
+
+    /// **反向自检**：上面五格每一条都可能是恒真的（函数恒答那一张脸，断言照样绿）。
+    /// 这一格喂**全部六种输入**，钉的是「每一格只由它自己那条规则命中」——
+    /// 任何一臂被改到别的状态，下面必有一行不等。
+    #[test]
+    fn probe_no_cell_answers_in_place_of_another() {
+        let table: [(Option<Option<u64>>, Option<bool>, TargetBinary, &str); 6] = [
+            (Some(Some(9)), None, TargetBinary::Present, "有字节"),
+            (Some(Some(0)), None, TargetBinary::Empty, "恰好 0 字节"),
+            (Some(None), None, TargetBinary::Present, "服务器不给 size"),
+            (
+                None,
+                Some(false),
+                TargetBinary::Missing,
+                "stat 失败 + try_exists 说不在",
+            ),
+            (
+                None,
+                Some(true),
+                TargetBinary::Present,
+                "stat 失败 + try_exists 说在",
+            ),
+            (
+                None,
+                None,
+                TargetBinary::Unknown,
+                "stat 失败 + try_exists 也答不出",
+            ),
+        ];
+        for (size, exists, want, what) in table {
+            assert_eq!(interpret_target_probe(size, exists), want, "{what}");
+        }
+        // 四个状态一个不少地被这张表喂到 —— 少一行就等于那一格没人看。
+        for want in [
+            TargetBinary::Present,
+            TargetBinary::Missing,
+            TargetBinary::Empty,
+            TargetBinary::Unknown,
+        ] {
+            assert!(
+                table.iter().any(|(_, _, w, _)| *w == want),
+                "{want:?} 这一格没有输入喂给它"
+            );
+        }
+        // 恒答任何一张脸都会被这三对逮住（不是「函数存在」那种空真）。
+        assert_ne!(
+            interpret_target_probe(Some(Some(0)), None),
+            interpret_target_probe(Some(Some(9)), None)
+        );
+        assert_ne!(
+            interpret_target_probe(Some(None), None),
+            interpret_target_probe(Some(Some(0)), None)
+        );
+        assert_ne!(
+            interpret_target_probe(None, Some(false)),
+            interpret_target_probe(None, None)
+        );
+    }
+
+    /// **防空转**（K-W4b）：上面六格全在纯函数上，取样壳只要不接到它就是死代码，
+    /// 而六格照样绿 —— 那正是 09-06 之前那个洞（`probe_target_binary` 体恒答 `Present`
+    /// ⇒ 全量 cargo 0 红）。这一格钉的是取样壳**真的走**那个纯解释函数、
+    /// 并且**没有**把状态直接写死在 async 体里。
+    ///
+    /// 形状照抄同文件的 `both_daemon_deploy_paths_ask_the_file_itself_not_only_the_marker`
+    /// （含它那种反向自检）。
+    ///
+    /// ⚠ 射程：它看的是**源码文本**，不是运行期。挡得住「体被换成常量 / 纯函数没接上」，
+    /// 挡不住「调了纯函数但把返回值扔了」——那一形由上面六格与类型系统一起管。
+    #[test]
+    fn the_probe_shell_really_goes_through_the_pure_interpreter() {
+        fn body<'a>(src: &'a str, sig: &str) -> &'a str {
+            let i = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
+            let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
+            &src[i..j]
+        }
+        const SIG: &str = "async fn probe_target_binary(";
+        let src = include_str!("sftp.rs");
+        let code = body(src, SIG)
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        // 反向自检：**真取到体了**。取不到（空串）时下面那条 `!contains` 会恒真地全绿，
+        // 这一格就从守卫变成假绿源 ⇒ 先用一条正向断言把空串挡在外面。
+        assert!(
+            code.contains(SIG) && code.contains("sftp"),
+            "取到的不是 probe_target_binary 的体（拿到 {} 字节）",
+            code.len()
+        );
+        assert!(
+            code.contains("interpret_target_probe("),
+            "取样壳没走那个纯解释函数 —— 四态映射的那几格全成了死代码，掏空它一条都不会红"
+        );
+        assert!(
+            !code.contains("TargetBinary::"),
+            "取样壳里直接写死了状态 —— 映射规则又回到了不可测的 async 体里"
+        );
     }
 
     #[test]
