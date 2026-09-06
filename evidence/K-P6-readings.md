@@ -230,9 +230,14 @@ client::connect(:573) / client::connect_stream(:687)      ← §0a① 点的两�
 `mcp.rs`、`port_forward.rs`、`pubkey.rs`、`remote_branch.rs`、`remote_history.rs`、
 `sftp.rs`、`sftp_pool.rs`、`ssh_source.rs`、`tmux.rs`。
 
-⚠ **这 14 份里有 11 份一个 `russh` 字都没有** —— 只看 `russh` 这个词的判据（`KP6D3①`）
-**看不见它们**，而它们每一个都在往外拨。这正是 `KP6D3` 自己写的
-「**判据要断拨号这件事，不是断一个词**」那句话的实测形状。
+⚠ **这 14 份里，`russh` 代码态命中是 0 的有 11 份**（`russh` 代码态 >0 的只有 3 份：
+`ssh_source.rs` / `port_forward.rs` / `sftp.rs`）；11 份里更有 **7 份连 `russh` 这个子串都没有**
+（`acct_iso_deploy.rs` · `cc_bus.rs` · `ccm_probe.rs` · `hooks_diag.rs` · `pubkey.rs` ·
+`remote_branch.rs` · `remote_history.rs`），另 4 份只在注释/字符串里提过
+（`account_usage.rs` · `mcp.rs` · `sftp_pool.rs` · `tmux.rs`）。
+⇒ 只看 `russh` 这个词的判据（`KP6D3①`）**看不见这 11 份**，而它们每一个都在往外拨。
+这正是 `KP6D3` 自己写的「**判据要断拨号这件事，不是断一个词**」那句话的实测形状。
+（分母 = 上面那 14 份；口径 = 量具② 的「调用」档 ∩ 量具① 的严格代码态，两把尺子的 `--json` 现打对拍。）
 
 ⇒ **`KP6D3①` 的判据面必须是「拨号扼流点的调用图」（本量具那张表），不是「`russh` 的词频」。**
 `russh` 归零可以靠把 `connect_session` 包一层实现（`KP6D3` 自己点名的第一条失效路径），
