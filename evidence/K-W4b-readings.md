@@ -26,8 +26,17 @@ PB_WS=backend-consolidation .claude/devbox/gate \
 | e2e ccm-rbind-title | ok 8 | ok 8 | ok 8 |
 | e2e ccm-cli | **FAIL PASS=259**（地板 264） | ok 264 | ok 264 |
 | e2e ccm-contract-parity | ok 72 | ok 72 | ok 72 |
-| pb check | ok FAIL=0 BROKEN=0 | ok FAIL=0 BROKEN=0 | 见 §8 上报 |
-| 裁决 | GATE: FAIL | **GATE: OK** | 见 §8 上报 |
+| pb check | ok FAIL=0 BROKEN=0 | ok FAIL=0 BROKEN=0 | **FAIL=1 BROKEN=0** `[J3 陈账]` |
+| 裁决 | GATE: FAIL | **GATE: OK** | GATE: FAIL（只此一格） |
+
+交回趟跑了两趟，前八格两趟逐格相同（cargo 1445 · generated ok · daemon 587 · npm 1590 ·
+e2e 12/8/264/72），差别只在第九格的**成因**：
+
+- 第一趟（03:0x，代码改完、件文件 `§8` **还没写**）：`FAIL   [J3 陈账] INDEX.md 比源文件旧` ——
+  那一刻 `INDEX.md` 比 PM 02:49 落的 `.dispatch.json` 旧，**不是本实现拍造成的**（PM 03:02 已重跑过一次）。
+- 第二趟（提交 `94a4540` 之后、`§8` 写完之后）：**同一条** `[J3 陈账]`，这一次是本节自己写进件文件造成的。
+
+⚠ `pb index` 归 PM（生成命令），**本实现拍一次都没跑**。这一格如实报红，不自行修。
 
 **入场趟① 那三格红与本件无关，是这棵树的环境缺件**：`k-w4b` 是 21 棵工作树里**唯一
 没有 `node_modules` 符号链接**的一棵（其余 20 棵都指向
@@ -121,3 +130,28 @@ python3 evidence/K-W4b-rs-fn-md5.py 77220e6 src-tauri/src/sftp.rs
 钉住的四块**逐个 md5 与基点相同**：
 `deploy_decision` `9e75e8266590` · `deploy_decision_at` `1f76c24fc233` ·
 `marker_path` `692023700ede` · `remote_parent` `747c66286e09`。
+
+另两把尺子（那个量具的射程只到顶层函数，`mod tests` 里的判据它看不见，所以补这两条）：
+
+- `git diff 77220e6 94a4540 -- src-tauri/src/sftp.rs | grep "^-"` ⇒ 删掉的行**全部落在
+  `probe_target_binary` 那一段**（12 行体 + 1 行头注），别处一行没删。
+- `:1811` 那条既有判据整块 md5（`awk` 从 `fn both_daemon_deploy_paths_…` 到它的收尾 `    }`）：
+  基点 `c933fdc7a70832580d474789db6120a9` = 交回 `c933fdc7a70832580d474789db6120a9`
+  ⇒ `§2.4`「不改那条既有判据的断言」有读数，不是口头保证。
+
+## 七 · 收工自查：治的是「这一处」还是「所有同职的地方」
+
+分母 = **这一份 `sftp.rs` 里吃 `&SftpSession` 的 6 个函数**（不是全仓）。逐个看「取样与解释
+有没有焊在一起」：
+
+| 函数 | 形状 | 还有没有同族的病 |
+|---|---|---|
+| `upload_atomic` | 动作（错误串向上传） | 没有；它的判定那一半早就住纯函数 `verify_uploaded_bytes` |
+| `upload_atomic_verified` | 三行组装 | 没有 |
+| `read_optional` | 一行 | 没有 |
+| `read_profile_text` | 取样壳 | 没有（它就是本件照抄的先例） |
+| `ensure_dir_all` | 动作，不映射任何状态 | 没有 |
+| `probe_target_binary` | 取样壳 | **本件治的就是它** |
+
+⇒ 在这个分母里**没有第二处漏网**。⚠ 这句话的分母只有 6 个函数、只在这一份文件里；
+别的模块有没有同族的病，本件判不了。
