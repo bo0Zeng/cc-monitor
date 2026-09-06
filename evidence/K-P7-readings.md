@@ -233,7 +233,7 @@ PM 写「HTTP 中转**已经在后端那一侧了** …… 编在**同一个二�
   → 体内调 `local_backend::supervise(bin, relay_child_args(), relay_child_envs(), …)`
   → `src-tauri/src/backend/control/local_backend.rs:376` 逐字 `let mut cmd = std::process::Command::new(&bin);`
   ⇒ **`fork/exec` 出来的另一个 OS 进程**，父进程是**界面**，不是本机 daemon。
-  `relay/mod.rs:56` 自陈逐字：「`--relay` 住**一次性子命令**分派臂（`main.rs`），是**独立进程**」。
+  `relay/mod.rs:46` 自陈逐字：「`--relay` 住**一次性子命令**分派臂（`main.rs`），是**独立进程**」。
 ⇒ **准确说法**：中转的形状是「**同一份代码 · 另一个进程 · 由界面监护 · 界面与它之间零协议**」，
 不是「住进本机 daemon 里」。这一格决定了「把 SSH 挪过去做**邻居**」——**邻居是谁的邻居**，
 而那正是 `§④` 那张代价表分岔的地方。
@@ -494,7 +494,14 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
 |---|---|
 | 拨号之后那个句柄是什么类型 | `ssh_source.rs:1308` 逐字 `) -> Result<russh::ChannelStream<client::Msg>, String> {` |
 | 谁接住它 | `ssh_source.rs:3838` 逐字 `let stream = match connect_and_exec(cfg, with_bg, tail_only).await {` —— **`stream_loop`，在界面进程里** |
-| 它之后被怎么用 | `ssh_source.rs:3858` 逐字 `let (stream, parked) = crate::inbound_client::split_and_park(stream);` —— **切成读写两半，两半都归界面**：读半边喂 reader task 解 NDJSON，写半边 `ParkedWriter` 收 hello 后变成能发命令的 `InboundClient` |
+| 它之后被怎么用 | `ssh_source.rs:3861` 逐字 `    let (stream, parked) = crate::inbound_client::split_and_park(stream);` —— **切成读写两半，两半都归界面**：读半边喂 reader task 解 NDJSON，写半边 `ParkedWriter` 收 hello 后变成能发命令的 `InboundClient` |
+
+⚠ **自查记一笔（第 5 处）**：上面这个行号我第一版写的是 `:3858`，**错了 3 行** ——
+那是拿 `sed -n '3838,…p'` 的输出**目测数出来的**，不是 `grep -n` 打出来的。
+`brief` 13c 那条「指进本树的行号要么带校验位要么不写」**当场兑现了一次**：
+旁边抄的那一行逐字内容让它**核得动**，于是这一处被逮住并改对。
+⚙ 顺带用同一把尺子钉死分母：`grep -rn "\bconnect_and_exec(" src-tauri/src --include=*.rs`
+⇒ **全仓 2 处**（`:1304` 定义 + `:3838` 唯一调用点），**没有第二个持有者**。
 
 ⇒ 🔴 **答案是「仍归界面」，而且是双工的两半都归界面。**
 `ChannelStream` 是 `russh` 的类型 ⇒ 只搬拨号动作，**`russh` 一行都出不了界面 crate**
@@ -541,7 +548,7 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
   - 🔴 **凭据这一格挡着**：拨号要私钥 / ssh-agent，而 `K-P1 §2` 逐字
     「**不碰凭据面** —— `K11` 那条硬前置未满足」。中转那边这一格是**已经付过的**
     （`relay_child_envs()` 用 `CCM_RELAY_CREDENTIALS` **显式把路径交给子进程**，
-    `local_daemon.rs:1503-1509`）⇒ **有现成范式，但那是 `K11`/`K-H2` 的账，不是本件能自批的。**
+    `local_daemon.rs:1501-1510`）⇒ **有现成范式，但那是 `K11`/`K-H2` 的账，不是本件能自批的。**
   - 🔴 **`ConnectStage` 那 6 个阶段过不去**：`ssh_source.rs:422` 逐字 `pub enum ConnectStage {`
     ——`Dialing`/`HostKey`/`Failed`/`Won`/`Auth`/`Established`，经 Tauri Channel 流给前端做泳道日志。
     它**只在 `test_remote_connection` 那条路上 emit**（daemon 流 / exec / SFTP 一律传 `None`，零事件）
@@ -701,7 +708,7 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
 **忽略未知字段在这里不是降级，是一个自信的错答案。**
 
 **反证二（入方向）**：`wire::Request` 现打**没有** `deny_unknown_fields`
-（`remote-daemon-proto/src/wire.rs:495-501`，逐字 `#[derive(Debug, Clone, Deserialize)]` / `pub struct Request {`）
+（`remote-daemon-proto/src/wire.rs:496-497`，逐字 `#[derive(Debug, Clone, Deserialize)]` / `pub struct Request {`）
 ⇒ 旧 daemon 收到 `{"id":"x","cmd":"kill","args":{…},"target":"pi"}` 会**丢掉 `target` 在本机执行**
 —— 一次**静默的杀错机器**。
 ⚠ 对照组（证明这条反证不是空真）：本仓**确实有** `deny_unknown_fields` 的 wire 面 ——
@@ -814,8 +821,10 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
 
 ## 丙 · 🔴 收工前自查 —— 拿本轮的病理回头打自己（`brief` 15）
 
-本轮题面点名的三条教训里，头一条是「**报『有几处』前先看命令里有没有 `head`/`tail` 在替你截答案**」。
-收工前我拿它逐条回打自己写下的每一个数，**当轮自抓 4 处**，逐处已在原地改掉并留了「自查记一笔」：
+本轮题面点名的三条教训里，头一条是「**报『有几处』前先看命令里有没有 `head`/`tail` 在替你截答案**」，
+第二条是「**指进本树的行号要么带校验位要么不写**」。
+收工前我拿这两条逐条回打自己写下的每一个数与每一个行号，**当轮自抓 5 处**，
+逐处已在原地改掉并留了「自查记一笔」：
 
 | # | 我先写的 | 现打（无截断） | 怎么栽的 | 结论受影响吗 |
 |---|---|---|---|---|
@@ -823,6 +832,7 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
 | 2 | `deny_unknown_fields` 同族「5 处」 | **14 处** | 命令带 `head -12` | 否（反证只需存在性） |
 | 3 | `run_gate_sum`「全在 2 份文件上」 | **3 份**（多一个 `capability_registry.rs`） | 命令带 `head -6` | 否（三份全在门禁那一侧） |
 | 4 | `origin` 前端 TS「62 份」 | **107 份**（分母 341）；daemon 侧「只在一个测试名里」应为**6 份含子串、代码态 0 处** | git pathspec 的 `**` 与 `*` 同义 ⇒ 人群重了/漏了；且没逐处看命中 | **反而更强**：逐处看之后逮到 `usage_query.rs:141` 那句自陈 |
+| 5 | `split_and_park` 那一行写 `ssh_source.rs:3858` | **`:3861`**（错 3 行） | 拿 `sed -n '3838,…p'` 的输出**目测**数行号，没用 `grep -n` | 否 —— **旁边抄了逐字内容 ⇒ 核得动 ⇒ 被逮住**（`brief` 13c 当场兑现一次） |
 
 ⚠ **第 4 处不只是数错** —— 它是「量具的作用域对不上事实」那一族：
 我用**子串** `origin` 当尺子，而 `watcher.rs`/`proc.rs` 那 4 处命中的是英文词 **`original`**。
@@ -830,6 +840,17 @@ PM 的题面写作「**界面完全不在字节路径上**」。它其实是两�
 
 ⚠ **还有一条不是数、是方法**：`§⑨-乙` 的非空对照，我头三次挑的基点（`~1`/`~2`/`~3`）**都是空的**——
 那正是 `K-P6` 上一轮末尾记下的那条（「差点把一个空对照当成对照用了」）。**同一个坑，同一个仓，第二次。**
+
+**行号校验位的全表复核**（`brief` 13c）：收工前我把本文里**所有**「`路径:行号`」形逐条拿去对盘 ——
+分母 = 从本文里采出、**解析得进本树**的那些（指向计划仓 / 别的树的一律不进分母）。
+第一趟逮到 **4 处错行号**（`split_and_park` `:3858`→`:3861` · `relay/mod.rs` `:56`→`:46` ·
+`wire::Request` `:495-501`→`:496-497` · `relay_child_envs` `:1503-1509`→`:1501-1510`），
+**四处全部因为「旁边抄了那一行的逐字内容」而核得动**，逐处已改。
+改后再对一趟：**去重后 32 处进本树，越界 0 处，逐处落在真行上**
+（那 4 处改完之后重号，所以这个 32 与第一趟的分母不是同一个数 —— **分母变了，不是漂移**）。
+⚠ **诚实边界**：复核脚本是**当场写的一次性检查**，没有落进 `evidence/`（它只做「行内容 vs 引文」对拍，
+换一份文档就得改）；**它证明的是「这 35 处此刻对得上」，不是「本文再也不会漂」** ——
+行号会随源码变，真正撑住的是旁边那段逐字内容。
 
 ## 丁 · 本轮新增的文件（全在写区 `evidence/`，**零 `.sh`**）
 
