@@ -1,0 +1,111 @@
+==============================================================================
+K-P7 协议面普查 —— `§0a` 四个读数 + 用户裁定三格，逐条重打
+量具住址: <工作树>/evidence/K-P7-protocol-census.py
+被测工作树: /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-p7
+被测树 HEAD: 3b875d1cbb49cbe1f1b34f17a729b074095fb061
+==============================================================================
+
+【1】`wire::Frame` 变体数 —— 两把尺子
+  被测文件 wire.rs md5[:8] = 6b96f08d  (1489 行)
+  尺子① 声明面（`pub enum Frame {` 内 depth==0 的变体名）：**11** 个
+      wire.rs:114  Hello
+      wire.rs:223  Line
+      wire.rs:246  SessionAdded
+      wire.rs:296  SessionStatus
+      wire.rs:307  SessionRemoved
+      wire.rs:335  TurnEnd
+      wire.rs:353  TmuxSessionClosed
+      wire.rs:359  TmuxSessions
+      wire.rs:382  Overflow
+      wire.rs:401  Reply
+      wire.rs:415  Cancelled
+  尺子② `loss_is_recoverable` 的穷尽 match 臂：**11** 个 -> Cancelled, Hello, Line, Overflow, Reply, SessionAdded, SessionRemoved, SessionStatus, TmuxSessionClosed, TmuxSessions, TurnEnd
+      ✅ 与声明面**逐个相同**（分母 = 两边的并集）
+  尺子② `loss_identity` 的穷尽 match 臂：**11** 个 -> Cancelled, Hello, Line, Overflow, Reply, SessionAdded, SessionRemoved, SessionStatus, TmuxSessionClosed, TmuxSessions, TurnEnd
+      ✅ 与声明面**逐个相同**（分母 = 两边的并集）
+
+【2】`inbound::COMMANDS`
+  住址 inbound.rs:78  ·  条数 = **8**
+  逐字: ["bus-kill", "bus-list", "bus-send", "cancel", "kill", "launch", "ping", "resolve"]
+  字典序? 是
+
+【3】`single_stream_guard::PINS`
+  🔴 **登记条数 = 6**（分母 = `PINS` 这张表的元组个数，表体由 brace/bracket 配对切出）
+  全 crate 人群：`remote-daemon-proto/src/**.rs` 共 76 份；**排除调用者自己** `single_stream_guard.rs`（`scan_tree_excluding_self`）⇒ 分母 75 份
+
+  | # | 文件 | 锚点 | 登记(文件内) | 重打 | 登记(全crate) | 重打 | 判 |
+  |---|---|---|---|---|---|---|---|
+  | 1 | `main.rs` | `writer_task(` | 2 | **2** | 2 | **2** | ✅ |
+  | 2 | `main.rs` | `inbound::spawn(` | 2 | **2** | 2 | **2** | ✅ |
+  | 3 | `main.rs` | `busy.swap(true` | 1 | **1** | 1 | **1** | ✅ |
+  | 4 | `observe/watcher.rs` | `mpsc::channel::<Frame>(` | 1 | **1** | 3 | **3** | ✅ |
+  | 5 | `listen.rs` | `Admit::Stream` | 1 | **1** | 2 | **2** | ✅ |
+  | 6 | `main.rs` | `REPLY_BURST` | 2 | **2** | 2 | **2** | ✅ |
+
+  ⚠ 上表的「重打」用的是**本尺子复刻的** `production_code`，不是 crate 自己那份 ——
+    两者若不同值，先怀疑复刻，别先怀疑盘上。crate 自己那份的判决在门禁 `daemon` 那一格。
+
+【4】`Overflow.lost` 的语义（第 4 个读数）
+  `Frame::Overflow` 的字段（分母 = 那个变体体内缩进 8 的 `名: 类型,` 行）：
+      dropped: u64
+      lost: Vec<LostFrame>
+      lost_truncated: bool
+  `LostFrame` 的字段：kind: &'static str, subject: Option<String>
+  `loss_is_recoverable`：可恢复 **3** 个 ['Line', 'TurnEnd', 'TmuxSessions']
+                        不可恢复 **8** 个 ['SessionAdded', 'SessionRemoved', 'TmuxSessionClosed', 'SessionStatus', 'Hello', 'Overflow', 'Reply', 'Cancelled']
+  ⇒ 那本账的记账单位 = **一条 watcher→writer 通道**（`CHANNEL_CAPACITY`），身份表上界 `LOST_IDENTITY_CAP`；`subject` 只有 sid / tmux 会话名，**没有任何一维说「哪台机」**。
+
+【5】`relay/` 的形状（PM 写：11 份 / 8514 行 / 引用协议帧 0 处）
+          71  relay/bind_guard.rs
+         416  relay/creds.rs
+         438  relay/creds_guard.rs
+         666  relay/http1.rs
+         155  relay/mod.rs
+          87  relay/nodelay_guard.rs
+         290  relay/route.rs
+        4155  relay/server.rs
+         740  relay/table.rs
+         411  relay/table_guard.rs
+         595  relay/tee.rs
+         490  relay/upstream.rs
+  文件数 = **12**（分母 = `relay/` 下 `*.rs`，子目录 0 个）· 行数合计 = **8514**
+  `Frame::` / `wire::` 命中 = **0** 处（分母 = 上面那 12 份的**全文**，注释也算）
+
+【6】monitor 侧 `parse_frame` 认识的 kind（界面到底要哪几类的分母）
+  `match kind` 的字面臂 = **11** 个：['hello', 'line', 'session_added', 'session_status', 'session_removed', 'overflow', 'tmux_session_closed', 'tmux_sessions', 'reply', 'cancelled', 'turn_end']
+  其中**认识但刻意不消费**（`=> None`）= 1 个：['turn_end']
+  与 daemon 侧 11 个变体对拍：daemon 有而 monitor 没有 = [] · monitor 有而 daemon 没有 = []
+
+【7】`no_timer_guard` 的禁用构件 × 界面侧拨号路径（搬家的一条硬代价）
+  daemon 侧禁用清单（取自 `no_timer_guard` 的 `BANNED`，逐条现读）：`thread::sleep` · `time::sleep` · `recv_timeout` · `time::interval` · `Instant::now` · `Duration::from_secs`
+  `REGISTERED_DURATION_USES` 现打 **3** 条（例外要逐条登记 + 写解锁条件）
+  src-tauri/src/ssh_source.rs 生产段命中 **21** 处：
+      [Duration::from_secs] const RECONNECT_MIN: Duration = Duration::from_secs(2);
+      [Duration::from_secs] const RECONNECT_MAX: Duration = Duration::from_secs(30);
+      [Duration::from_secs] const MIN_HEALTHY_UPTIME: Duration = Duration::from_secs(30);
+      [Duration::from_secs] const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(45);
+      [time::sleep] tokio::time::sleep(RACE_STAGGER * i as u32).await;
+      [Duration::from_secs] .then(|| Duration::from_secs(30));
+      [Instant::now] let t_handshake = std::time::Instant::now();
+      [Duration::from_secs] const SNAPSHOT_READ_TIMEOUT: std::time::Duration = std::time::Duration::
+      [time::sleep] tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+      [Duration::from_secs] tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+      [Instant::now] let conn_started = std::time::Instant::now();
+      [time::sleep] tokio::time::sleep(backoff).await;
+      [Instant::now] self.born = Some(std::time::Instant::now());
+      [Instant::now] let t_connect_start = std::time::Instant::now();
+      [Instant::now] let t_exec = std::time::Instant::now();
+      [Duration::from_secs] const DAEMONLESS_POLL_INTERVAL: Duration = Duration::from_secs(2);
+      [time::sleep] tokio::time::sleep(DAEMONLESS_POLL_INTERVAL).await;
+      [Duration::from_secs] match connect_session(&cfg, Some(Duration::from_secs(30)), Some(on_stage
+      [Duration::from_secs] Duration::from_secs(8),
+      [Duration::from_secs] const CONTROL_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+      [Instant::now] let t0 = std::time::Instant::now();
+  src-tauri/src/port_forward.rs 生产段命中 **1** 处：
+      [time::sleep] tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+  src-tauri/src/sftp.rs 生产段命中 **0** 处：
+  src-tauri/src/sftp_pool.rs 生产段命中 **0** 处：
+  ⚠ 分母 = 上面四份文件的**生产段**（同 `production_code` 口径，测试段不算）；
+    尺子是**子串**，不是 `is_call_of` 那个带词边界的调用匹配器 ⇒ 这个数是**上界**。
+
+==============================================================================
