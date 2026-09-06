@@ -334,6 +334,176 @@ pub type StdioSink = Arc<
     dyn Fn(std::process::ChildStdin, std::process::ChildStdout) -> ConsumerReport + Send + Sync,
 >;
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ★★ `K-R28`：起后端那一跳，**「这台机器上它就是起不来」与「这一刻恰好撞上了」
+//    先前装在同一个值里** —— 同一句话、同一个结局（放弃）。这一段把它们分开。
+//
+// # 为什么这两件事必须分开
+//
+// | 装进去的 | 该怎么办 |
+// |---|---|
+// | 这台机器上它就是起不来（路径错 / 没执行位 / 架构不对 / 被杀毒软件挡了） | 放弃，并说清是哪一种 |
+// | 这一刻恰好撞上了一个**会自己过去**的竞态（`ETXTBSY`） | 等一下再试；试够了再说话 |
+//
+// `ETXTBSY` 的定义是「execve 的目标文件此刻正被某个进程打开着写」。我们自己那把写句柄
+// 在 `extract_embedded_to` 里写完就关了，剩下的唯一来路是**别的线程**：起进程要么 fork
+// 要么 posix-spawn，两者都把父进程此刻打开的 fd 复制一份给子进程，而 close-on-exec 要到
+// 子进程 **execve 那一刻**才生效 ⇒ 「fork 之后、exec 之前」那段窗口里，那个子进程就是
+// 一个握着我们刚写这个文件的写 fd 的进程。此刻 execve 它 = `ETXTBSY`。
+//
+// ★ 同一个成因在别的工具链上是有名的：go 与 cargo 都是靠**对 `ETXTBSY` 有上限地重试**收的。
+//   本仓的**测试台**先前已经分开过一次（`launch.rs` 那一族），而生产段没有 ——
+//   这一段就是把那个分类**抬进生产段**，两个落点（`supervise_with_stdio` 与
+//   `local_daemon::spawn_detached`）共用这一份，不各写一份。
+//
+// ⚠ **诚实边界（`§4`）**：这一段买的是「撞上了认得出、说得对、会重试」，
+//   **不是**「它不会再发生」。真机上这个竞态多久撞一次，本层量不到。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// 一条 spawn 错误是不是 `ETXTBSY`。
+///
+/// 🔴 **认的是 `os error 26` 那一半，不是 `Text file busy` 那一半**：后半句由 C 库按
+/// `LC_MESSAGES` 打（glibc 有中文翻译），拿它当判据等于再挂一条**隐式的 locale 前提**。
+/// 前半句是 errno 的十进制，与 locale 无关。口径逐字取自 `launch.rs` 测试台那一处
+/// （`fn spawn_error_is_etxtbsy`），本件是把它**抬出来共用**，不是发明第二份。
+///
+/// ⚠ **本层不许有平台 `cfg`**（`the_backend_half_stays_platform_agnostic` 的禁针）
+/// ⇒ 这里不写 `#[cfg(not(windows))]`。代价是**已知的**、写在这儿别装作没有：
+/// Windows 上 `io::Error` 的 `os error 26` 是 Win32 的 `ERROR_NOT_DOS_DISK`，
+/// 不是 `ETXTBSY`。撞上它的后果只是**多试几次（上限 [`SPAWN_ETXTBSY_TRIES`]）再换一句话**，
+/// 不改结局；而 Windows 上根本不存在 `ETXTBSY`，所以这条在那边是**多余而无害**，不是错答案。
+pub fn spawn_error_is_etxtbsy(err: &str) -> bool {
+    err.contains("os error 26")
+}
+
+/// 起进程失败之后**分得开的那两件事**。
+///
+/// ⚠ 刻意不是 `Result<Child, String>` 加一个 `bool`：那样同一个事实就有了两份表示，
+/// 而两份表示会漂 —— 那正是本件在治的病。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SpawnFailure {
+    /// **这一刻恰好撞上了**：`ETXTBSY`，而且**试到了上限**。会自己过去，再开一次多半就好。
+    TransientBusy {
+        /// 试了几次（= [`SPAWN_ETXTBSY_TRIES`]，除非调用方另给）。
+        tries: u32,
+        /// 最后一次撞上时的**逐字错误**。
+        ///
+        /// ⚠ 它**只装那一句原话**，不许再把「撞了几次」揉进来 —— 那个数住 `tries`。
+        /// 〔本轮自查逮到的：初版把 `last` 写成 `format!("撞了 {n} 次，最后一次逐字：{e}")`，
+        /// 于是同一个事实有了两份表示，实打出来的那句话是
+        /// 「…最后一次逐字：撞了 8 次，最后一次逐字：Text file busy…」——
+        /// **本件在治的病，长在治它的代码里。**〕
+        last: String,
+    },
+    /// **这台机器上它就是起不来**：路径错 / 没执行位 / 架构不对 / 被挡了。放弃。
+    Broken(String),
+}
+
+/// 允许撞几次 `ETXTBSY` 才算「这一次是真等不到了」。
+///
+/// 🔴 **刻意不照抄 `launch.rs` 的 50** —— 那是**测试台**的口径（50 × 20ms ≈ 1s，
+/// 一条判据慢慢等没人有意见）。**生产段是用户在等一个窗口**，多等一秒是看得见的卡顿。
+///
+/// # 这个数怎么定的（`8`）
+///
+/// 要等的那个窗口是**别人的 fork 到 execve 之间**，`launch.rs` 那一段头注实测记着它是
+/// **亚毫秒级**。而每一次重试**自己就要花时间**：一次失败的 spawn 是一整趟
+/// fork + execve + 回错，在 Linux 上是几百微秒量级 ⇒ 8 次重试本身已经跨过那个窗口
+/// 一个数量级，而**总代价仍是几毫秒**，落在「用户感觉是瞬间」那一档（100ms 界）里，
+/// 而且**远远小于**测试台那条路的 1 秒。
+/// ⇒ 撞上一次几乎必然被头一两次重试吸收；连撞 8 次都没让开，那已经不是「等一下就好」，
+/// 该换一句话说给用户听。
+///
+/// 🔴 **上界的另一半理由是「不许把它变成一个定时器」**：见 [`spawn_with_etxtbsy_retry`]
+/// 头注那条 `C12` —— 本模块生产段一个 `sleep` 都不许有，所以这个数不能靠「睡久一点」兜底，
+/// 只能靠「次数够，但每次都是一次真的尝试」。
+pub const SPAWN_ETXTBSY_TRIES: u32 = 8;
+
+/// 有上限地重试，**只对 `ETXTBSY`**；别的错**一次都不重试**。
+///
+/// 重试一个真缺陷 = 把它变成偶尔绿的偶发红，那比今天更糟。
+///
+/// `attempt` 与 `backoff` 都是注入的：**这一层唯一的决策是「哪种错该再试一次」**，
+/// 而 spawn 本身与「两次之间做什么」没什么可判的 ⇒ 抽出来才能不起真进程就单测。
+/// 生产段的那一份接线是 [`spawn_with_etxtbsy_retry`]。
+///
+/// ⚠ **最后一次失败之后不叫 `backoff`** —— 那一次的等待没有任何人会用到，
+/// 而它是用户真的在等的时间。⇒ `backoff` 恰好被调用 `tries - 1` 次。
+pub fn spawn_retrying_etxtbsy<T>(
+    tries: u32,
+    mut attempt: impl FnMut() -> Result<T, String>,
+    mut backoff: impl FnMut(u32),
+) -> Result<T, SpawnFailure> {
+    let budget = tries.max(1);
+    let mut last = String::new();
+    for i in 0..budget {
+        match attempt() {
+            Ok(v) => return Ok(v),
+            Err(e) if spawn_error_is_etxtbsy(&e) => {
+                // ⚠ 只存那一句原话；「撞了几次」是 `TransientBusy::tries`，不在这里再存一份。
+                last = e;
+                if i + 1 < budget {
+                    backoff(i);
+                }
+            }
+            Err(e) => return Err(SpawnFailure::Broken(e)),
+        }
+    }
+    Err(SpawnFailure::TransientBusy { tries: budget, last })
+}
+
+/// 生产段两个落点共用的那一跳：起一个进程，并把两件事**分开交回**。
+///
+/// ⚠ 刻意**不**把配置那一半（`Command` 怎么建、env / stdio 怎么设）搬进来：
+/// 那两处的配置是各自的领地（一处要管子、一处要 `process_group`），
+/// 而且「谁会在用户机器上起进程」那张申报表
+/// （`write_site_registry::tests::SPAWNS`）按**外层函数名**认账 ——
+/// 把建 `Command` 那一行搬走，等于把两条申报从表上抹掉。
+///
+/// # 🔴 两次尝试之间**今天什么都不做**，而这不是疏忽 —— 写清楚，别让下一个人以为是
+///
+/// go / cargo 那条公认的解法是「**有上限地重试 + 每次之间睡一小会儿**」，而这里只有前半。
+/// 后半今天做不了，理由是**两道现成的闸**，两道都不在本件的写区里：
+/// - `nothing_in_the_production_path_wakes_itself_up`（本文件，`C12` 的源码钉）：
+///   **本模块生产段一个 `thread::sleep` 都不许有**；
+/// - `rust_timer_registry::every_periodic_wake_in_the_rust_tree_is_registered`：
+///   monitor Rust 树里**每一处** `sleep` 都要在那张登记表里有一条，
+///   而那张表住 `src/rust_timer_registry.rs`。
+///
+/// ⇒ 加一句退避 = 同时动那两处，其中第二处是**第三个文件**。**如实记为没做到，交回 PM 裁。**
+/// ⚠ **别读大**：没有退避买到的仍然是真的（重试本身要花几百微秒一趟、次数上限是真的、
+/// 两件事真的分开了），但它**比 go/cargo 那条路弱** —— 机器很忙、那个孩子迟迟排不上
+/// execve 时，8 趟连着打完可能仍在同一个窗口里。这一格**量不到**（要真机 + 真负载），
+/// 原样进诚实边界。
+///
+/// `backoff` 这个注入点是**特意留着的**：PM 裁定之后，接上去只改这一行。
+pub fn spawn_with_etxtbsy_retry(
+    cmd: &mut std::process::Command,
+) -> Result<std::process::Child, SpawnFailure> {
+    spawn_retrying_etxtbsy(
+        SPAWN_ETXTBSY_TRIES,
+        || cmd.spawn().map_err(|e| e.to_string()),
+        // 今天是空的 —— 理由见上方那一段，**不是忘了写**。
+        |_| {},
+    )
+}
+
+/// 撞上那个会自己过去的竞态、而且试到上限之后**该说的那句话**。
+///
+/// 🔴 **只此一份**：两个落点共用它。各写一份，两句话就会漂，
+/// 而「用户看到的那句话」正是本件唯一交付给用户的东西。
+///
+/// 它与「起不来」那句的分工：这一句必须让用户读得出**再开一次多半就好**，
+/// 那一句必须让用户读得出**这台机器上今天就是起不来**。
+pub fn etxtbsy_gave_up_reason(bin: &Path, tries: u32, last: &str) -> String {
+    format!(
+        "起 {} 时连着 {tries} 次撞上「这个文件正被谁打开着写」（ETXTBSY，os error 26）——\
+         这不是它起不来，是这一刻恰好有别的子进程还攥着我们刚写它时的那个写 fd。\
+         这个状态会自己过去，再开一次多半就好。最后一次逐字：{last}",
+        bin.display()
+    )
+}
+
 pub fn supervise(
     bin: PathBuf,
     args: Vec<String>,
@@ -397,9 +567,21 @@ pub fn supervise_with_stdio(
             for (k, v) in &envs {
                 cmd.env(k, v);
             }
-            let mut spawned = match cmd.spawn() {
+            // ★★ `K-R28`：这一跳**分得开两件事**（见 `spawn_error_is_etxtbsy` 上方那一段）。
+            //    先前这里是一句裸 `cmd.spawn()` + 一个桶装所有失败 + 当场 `return`，
+            //    于是「这台机器上它就是起不来」与「这一刻恰好撞上了一个会自己过去的竞态」
+            //    同一句话、同一个结局。**分类那一份是共用的，不在这里再写一遍。**
+            let mut spawned = match spawn_with_etxtbsy_retry(&mut cmd) {
                 Ok(c) => c,
-                Err(e) => {
+                // 这一刻恰好撞上了 —— 而且试到了上限。换一句话，别说成「起不来」。
+                Err(SpawnFailure::TransientBusy { tries, last }) => {
+                    on_event(SuperviseEvent::GaveUp {
+                        reason: etxtbsy_gave_up_reason(&bin, tries, &last),
+                    });
+                    return;
+                }
+                // 这台机器上它就是起不来 —— **今天那句照旧，一个字不改**。
+                Err(SpawnFailure::Broken(e)) => {
                     on_event(SuperviseEvent::GaveUp {
                         reason: format!("起不来 {}：{e}", bin.display()),
                     });
@@ -1119,6 +1301,209 @@ mod tests {
     /// （`the_startup_path_really_calls_this_module` 与 `the_production_entry_hands_the_stdio_consumer_down`）
     /// —— 各存一份迟早分叉：新增入口时只想得起改一处。
     const ENTRIES: &[&str] = &["start_if_present", "start_or_extract"];
+
+    // ── `K-R28`：起后端那一跳的两件事，各自一条判据 ────────────────────────
+    // 下面四条按「哪一半」分：①判别 ②重试 ③上限 ④两句话。
+    // 名字里说得出它断的是哪一半，坏了一条就知道坏在哪儿。
+    // ⚠ 一条都**不起真进程**：`spawn_retrying_etxtbsy` 把 spawn 与 sleep 都做成了注入点，
+    //   正是为了这个。
+
+    /// **判别那一半**：认的是 `os error 26`（errno），不是 `Text file busy`（locale 翻译）。
+    ///
+    /// 🔴 **含本半的反向自检**：判别器**不是恒真也不是恒假** —— 下面那个 `assert_ne!`
+    /// 就是那一格。没有它，把函数体换成 `true` 或 `false` 都能让上面几条里的一半照样绿。
+    #[test]
+    fn the_etxtbsy_verdict_reads_the_errno_half_not_the_localised_half() {
+        // 英文 locale 下 glibc 打出来的那一份（`launch.rs` 那条判据实测到的逐字）。
+        let english = "spawn 本地命令失败: Text file busy (os error 26)";
+        // 中文 locale 下同一个 errno —— 后半句被翻译了，前半句没有。
+        let chinese = "spawn 本地命令失败: 文本文件忙 (os error 26)";
+        // 只有被翻译的那半句、没有 errno ⇒ **不许认**（那才是「隐式的 locale 前提」）。
+        let only_the_prose = "spawn failed: Text file busy";
+        // 另一个真失败：这台机器上它就是起不来。
+        let real_failure = "spawn 本地命令失败: Permission denied (os error 13)";
+
+        assert!(spawn_error_is_etxtbsy(english), "英文 locale 的 ETXTBSY 没认出来");
+        assert!(
+            spawn_error_is_etxtbsy(chinese),
+            "换个 locale 就认不出来了 ⇒ 判据挂着一条隐式的 locale 前提，正是本件在治的病"
+        );
+        assert!(
+            !spawn_error_is_etxtbsy(only_the_prose),
+            "认了被翻译的那半句 —— 那半句由 C 库按 LC_MESSAGES 打，不是判据该抓的东西"
+        );
+        assert!(
+            !spawn_error_is_etxtbsy(real_failure),
+            "一个真失败被读成了「会自己过去的竞态」⇒ 它会被重试，偶发红比今天更糟"
+        );
+        // 反向自检：两张脸必须真的不同答案。恒真 / 恒假在这一格上当场红。
+        assert_ne!(
+            spawn_error_is_etxtbsy(english),
+            spawn_error_is_etxtbsy(real_failure),
+            "判别器对两种性质相反的错给了同一个答案 ⇒ 它是恒答的，一件事都没分开"
+        );
+    }
+
+    /// **重试那一半**：只对 `ETXTBSY` 重试；别的错**一次都不重试**。
+    ///
+    /// 三腿：①一直撞 ⇒ 试满并读成「这一刻恰好撞上了」；②真失败 ⇒ **第一次就放弃**
+    /// （这条是 `acceptor 怎么失效` 点名要的那个非 `ETXTBSY` 对照）；③中途成功 ⇒ 就此打住。
+    #[test]
+    fn only_etxtbsy_is_retried_a_real_failure_gives_up_on_the_first_try() {
+        use std::cell::Cell;
+
+        // 腿①：一直撞 ETXTBSY。
+        let tries_used = Cell::new(0u32);
+        let busy: Result<(), SpawnFailure> = spawn_retrying_etxtbsy(
+            5,
+            || {
+                tries_used.set(tries_used.get() + 1);
+                Err("spawn 本地命令失败: Text file busy (os error 26)".to_string())
+            },
+            |_| {},
+        );
+        assert_eq!(tries_used.get(), 5, "上限是 5，却没试满");
+        let Err(SpawnFailure::TransientBusy { tries, last }) = busy else {
+            panic!("一直 ETXTBSY 却没读成「这一刻恰好撞上了」：{busy:?}");
+        };
+        assert_eq!(tries, 5);
+        // 逐字相等，不是 `contains`：
+        // ① 最后一次的原话必须带回来（不带回来，用户与日志都问不到成因）；
+        // ② 🔴 **它只许装那一句原话** —— 本轮自查逮到的正是这一处：初版把
+        //    「撞了几次」也揉进了 `last`，而那个数住 `tries` ⇒ 同一个事实两份表示，
+        //    实打出来是「…最后一次逐字：撞了 8 次，最后一次逐字：Text file busy…」。
+        //    **本件在治的那条病，长在治它的代码里。** 钉住它别回来。
+        assert_eq!(
+            last, "spawn 本地命令失败: Text file busy (os error 26)",
+            "`last` 不是那一句原话 —— 要么没带回来，要么被加工了（比如又把次数揉了进来）"
+        );
+
+        // 腿②（**反侧对照**）：一个真失败 —— 一次都不许重试。
+        let real_calls = Cell::new(0u32);
+        let naps = Cell::new(0u32);
+        let broken: Result<(), SpawnFailure> = spawn_retrying_etxtbsy(
+            5,
+            || {
+                real_calls.set(real_calls.get() + 1);
+                Err("spawn 本地命令失败: Permission denied (os error 13)".to_string())
+            },
+            |_| naps.set(naps.get() + 1),
+        );
+        assert_eq!(
+            real_calls.get(),
+            1,
+            "一个真缺陷被重试了 —— 那是把它变成偶尔绿的偶发红，比今天更糟"
+        );
+        assert_eq!(naps.get(), 0, "真失败那一支还睡了一觉 —— 用户白等");
+        assert!(
+            matches!(broken, Err(SpawnFailure::Broken(_))),
+            "真失败没读成「这台机器上它就是起不来」：{broken:?}"
+        );
+
+        // 腿③：第 3 次成功 ⇒ 就此打住，不把剩下的额度也用掉。
+        let n = Cell::new(0u32);
+        let ok: Result<u32, SpawnFailure> = spawn_retrying_etxtbsy(
+            5,
+            || {
+                n.set(n.get() + 1);
+                if n.get() < 3 {
+                    Err("Text file busy (os error 26)".to_string())
+                } else {
+                    Ok(n.get())
+                }
+            },
+            |_| {},
+        );
+        assert_eq!(ok, Ok(3), "中途成功却没就此返回：{ok:?}");
+        assert_eq!(n.get(), 3);
+    }
+
+    /// **上限那一半**：生产段的额度必须够重试、又必须留在「用户还觉得是瞬间」那一档里。
+    ///
+    /// 🔴 这条刻意**不去核那个数等于 8** —— 那样它只是把常量抄了第二遍
+    /// （闭集只许有一个住址，那个住址是 `SPAWN_ETXTBSY_TRIES` 自己）。
+    /// 它核的是那个数**买到的两条性质**：够不够重试、会不会退化成测试台那种「慢慢等」。
+    #[test]
+    fn the_retry_budget_is_big_enough_to_retry_and_small_enough_to_wait_on() {
+        use std::cell::Cell;
+
+        assert!(
+            SPAWN_ETXTBSY_TRIES >= 2,
+            "上限是 {SPAWN_ETXTBSY_TRIES} —— 小于 2 = 认得出但从不重试，这一半等于没做"
+        );
+        // 生产段每一次重试都是一趟真的 fork+execve（几百微秒量级）⇒ 额度不许放成测试台那种。
+        // `launch.rs` 的 50 是**测试台**口径（它可以慢慢等），照抄进来就是让用户等。
+        assert!(
+            SPAWN_ETXTBSY_TRIES <= 16,
+            "上限放到了 {SPAWN_ETXTBSY_TRIES} —— 生产段是用户在等一个窗口，\
+             不是一条可以慢慢等的判据。`launch.rs` 那个 50 是测试台口径，别照抄进来"
+        );
+
+        // 最后一次失败之后不叫 `backoff` ⇒ 它恰好被调用 `tries - 1` 次。
+        // （那个注入点今天在生产段是空的，理由见 `spawn_with_etxtbsy_retry` 头注；
+        //   但「不在最后一次之后白等」这条性质要现在就钉住，接上去那天才不会带着一处白等。）
+        let naps = Cell::new(0u32);
+        let _: Result<(), SpawnFailure> = spawn_retrying_etxtbsy(
+            4,
+            || Err("Text file busy (os error 26)".to_string()),
+            |_| naps.set(naps.get() + 1),
+        );
+        assert_eq!(
+            naps.get(),
+            3,
+            "两次之间那一步被调了 {} 次而不是 3 次 —— 最后一次失败之后那一次没人会用到，\
+             而它是用户真的在等的时间",
+            naps.get()
+        );
+    }
+
+    /// **两句话那一半**：两种结局说给用户听的话**不许是同一句**，也不许互相串。
+    #[test]
+    fn the_two_verdicts_hand_the_user_two_different_sentences() {
+        // ⚠ 路径取中性名，且下面一条断言都不取自它 —— 免得「输出里含某句话」靠路径恒真。
+        let bin = std::path::Path::new("/tmp/ccm-backend-under-test");
+
+        let busy: Result<(), SpawnFailure> = spawn_retrying_etxtbsy(
+            3,
+            || Err("spawn 本地命令失败: Text file busy (os error 26)".to_string()),
+            |_| {},
+        );
+        let Err(SpawnFailure::TransientBusy { tries, last }) = busy else {
+            panic!("一直 ETXTBSY 却没读成「这一刻恰好撞上了」：{busy:?}");
+        };
+        let transient = etxtbsy_gave_up_reason(bin, tries, &last);
+        assert!(
+            transient.contains("再开一次多半就好"),
+            "撞上竞态那句话没告诉用户「再开一次多半就好」，他仍然不知道该不该重开：{transient}"
+        );
+        assert!(
+            transient.contains("连着 3 次"),
+            "没说清试了几次 ⇒ 这句话没法与「一次都没试」区分开：{transient}"
+        );
+
+        let broken: Result<(), SpawnFailure> = spawn_retrying_etxtbsy(
+            3,
+            || Err("spawn 本地命令失败: Permission denied (os error 13)".to_string()),
+            |_| {},
+        );
+        let Err(SpawnFailure::Broken(e)) = broken else {
+            panic!("一个真失败被读成了竞态：{broken:?}");
+        };
+        // 「今天那句照旧」靠的就是这一条：真失败的逐字**原封不动**地留在值里，
+        // 生产段那一支才有东西可以原样转给用户。
+        assert_eq!(
+            e, "spawn 本地命令失败: Permission denied (os error 13)",
+            "真失败的逐字被加工了 ⇒ 「别的错今天那句照旧」这句话就不成立了"
+        );
+        assert!(
+            !transient.contains(&e),
+            "两句话串了：竞态那句里带上了真失败的逐字：{transient}"
+        );
+        assert!(
+            !e.contains("再开一次"),
+            "「这台机器上就是起不来」那句里混进了「会自己过去」的说法：{e}"
+        );
+    }
 
     /// `P2t` 摸底交付的那一刀：**两个进程不写同一个 `.partial`**。
     ///

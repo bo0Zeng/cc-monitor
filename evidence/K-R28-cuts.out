@@ -1,0 +1,328 @@
+K-R28 逐刀的沙箱真输出（摘录：每一刀的 test result 行 + 整段 failures）
+被测树 /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r28
+跑法（每一刀都是这一条，容器内）：
+  cd src-tauri && cargo test --workspace --exclude code-picture-core --lib
+  docker run --rm --network none -v <项目>:<项目> -v ccmon-cargo-registry:/opt/rust/cargo/registry
+    -e CARGO_TARGET_DIR=<项目>/.claude/pm-targets/k-r28 -e HOME=/home/zbl -w <工作树> ccmon-devbox:latest
+⚠ 摘录不是全文：全文在实现方的 scratchpad 里，本文件留的是判定行与失败清单（承重的那两段）。
+
+================ 刀 D1③-a 恒 ETXTBSY（改前，量于 b1b1466） ================
+[日志] K-R28-cut-D1c-before.log
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  test result: FAILED. 1328 passed; 3 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.94s
+  ---- failures ----
+  failures:
+  
+  ---- backend::control::local_backend::tests::a_child_that_floods_stdout_and_exits_is_still_detected_as_dead stdout ----
+  
+  thread 'backend::control::local_backend::tests::a_child_that_floods_stdout_and_exits_is_still_detected_as_dead' (597) panicked at src/backend/control/local_backend.rs:2924:27:
+  20s 内没等到 `Exited` —— EOF 语义被改坏了：channel is empty and sending half is closed
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  ---- backend::control::local_backend::tests::stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on stdout ----
+  
+  thread 'backend::control::local_backend::tests::stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on' (609) panicked at src/backend/control/local_backend.rs:2960:22:
+  没等到 `Started`：Ok(GaveUp { reason: "起不来 sh：Text file busy (os error 26)" })
+  
+  ---- local_daemon::tests::three_fake_daemons_land_in_three_different_cells stdout ----
+  
+  thread 'local_daemon::tests::three_fake_daemons_land_in_three_different_cells' (1237) panicked at src/local_daemon.rs:5369:13:
+  10 秒内账上没等到「崩了」那一笔 —— 实得 Health { crashed: 0, refused: 0, never_started: 1, misread: 0, last: Some("[死亡账] origin=<local> 判定=从来没起来 退出状态=没有退出状态（进程从来没存在过） —— 从来没起来：那一份不在，旁边也没有 ⇒ 拒绝报「已起」（找过 2 处：/甲/乙 · /丙）。**下一步**在那句原因里，它是从起法那一侧原样转来的，本处不另写一份。") }
+  
+  
+  failures:
+      backend::control::local_backend::tests::a_child_that_floods_stdout_and_exits_is_still_detected_as_dead
+      backend::control::local_backend::tests::stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on
+      local_daemon::tests::three_fake_daemons_land_in_three_different_cells
+  
+  test result: FAILED. 1328 passed; 3 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.94s
+  
+  error: test failed, to rerun pass `-p monitor --lib`
+
+================ 刀 D1③-b 只把失败改名成 ETXTBSY（改前，量于 b1b1466） ================
+[日志] K-R28-cut-D1c-relabel.log
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  test result: ok. 1331 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.20s
+  test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  ---- failures ----
+
+================ 本件落定（改后，无变异） ================
+[日志] impl-3.log
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  test result: ok. 1336 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.31s
+  test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  ---- failures ----
+
+================ 刀 D1③-b（改后） ================
+[日志] K-R28-cut-D1c-relabel-after.log
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  test result: ok. 1336 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.26s
+  test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 11 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  ---- failures ----
+
+================ 刀 D1③-a（改后） ================
+[日志] K-R28-cut-D1c-force-after.log
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  test result: FAILED. 1333 passed; 3 failed; 10 ignored; 0 measured; 0 filtered out; finished in 11.01s
+  ---- failures ----
+  failures:
+  
+  ---- backend::control::local_backend::tests::a_child_that_floods_stdout_and_exits_is_still_detected_as_dead stdout ----
+  
+  thread 'backend::control::local_backend::tests::a_child_that_floods_stdout_and_exits_is_still_detected_as_dead' (597) panicked at src/backend/control/local_backend.rs:3297:27:
+  20s 内没等到 `Exited` —— EOF 语义被改坏了：channel is empty and sending half is closed
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  ---- backend::control::local_backend::tests::stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on stdout ----
+  
+  thread 'backend::control::local_backend::tests::stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on' (610) panicked at src/backend/control/local_backend.rs:3333:22:
+  没等到 `Started`：Ok(GaveUp { reason: "起 sh 时连着 8 次撞上「这个文件正被谁打开着写」（ETXTBSY，os error 26）——这不是它起不来，是这一刻恰好有别的子进程还攥着我们刚写它时的那个写 fd。这个状态会自己过去，再开一次多半就好。最后一次逐字：撞了 8 次，最后一次逐字：Text file busy (os error 26)" })
+  
+  ---- local_daemon::tests::three_fake_daemons_land_in_three_different_cells stdout ----
+  
+  thread 'local_daemon::tests::three_fake_daemons_land_in_three_different_cells' (1242) panicked at src/local_daemon.rs:5452:13:
+  10 秒内账上没等到「崩了」那一笔 —— 实得 Health { crashed: 0, refused: 0, never_started: 1, misread: 0, last: Some("[死亡账] origin=<local> 判定=从来没起来 退出状态=没有退出状态（进程从来没存在过） —— 从来没起来：那一份不在，旁边也没有 ⇒ 拒绝报「已起」（找过 2 处：/甲/乙 · /丙）。**下一步**在那句原因里，它是从起法那一侧原样转来的，本处不另写一份。") }
+  
+  
+  failures:
+      backend::control::local_backend::tests::a_child_that_floods_stdout_and_exits_is_still_detected_as_dead
+      backend::control::local_backend::tests::stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on
+      local_daemon::tests::three_fake_daemons_land_in_three_different_cells
+  
+  test result: FAILED. 1333 passed; 3 failed; 10 ignored; 0 measured; 0 filtered out; finished in 11.01s
+  
+  error: test failed, to rerun pass `-p monitor --lib`
+
+================ R28M1 判别函数恒答「不是竞态」 ================
+[日志] M1.log
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  test result: FAILED. 1332 passed; 4 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.22s
+  ---- failures ----
+  failures:
+  
+  ---- backend::control::local_backend::tests::only_etxtbsy_is_retried_a_real_failure_gives_up_on_the_first_try stdout ----
+  
+  thread 'backend::control::local_backend::tests::only_etxtbsy_is_retried_a_real_failure_gives_up_on_the_first_try' (610) panicked at src/backend/control/local_backend.rs:1359:9:
+  assertion `left == right` failed: 上限是 5，却没试满
+    left: 1
+   right: 5
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  ---- backend::control::local_backend::tests::the_etxtbsy_verdict_reads_the_errno_half_not_the_localised_half stdout ----
+  
+  thread 'backend::control::local_backend::tests::the_etxtbsy_verdict_reads_the_errno_half_not_the_localised_half' (618) panicked at src/backend/control/local_backend.rs:1320:9:
+  英文 locale 的 ETXTBSY 没认出来
+  
+  ---- backend::control::local_backend::tests::the_retry_budget_is_big_enough_to_retry_and_small_enough_to_wait_on stdout ----
+  
+  thread 'backend::control::local_backend::tests::the_retry_budget_is_big_enough_to_retry_and_small_enough_to_wait_on' (625) panicked at src/backend/control/local_backend.rs:1439:9:
+  assertion `left == right` failed: 两次之间那一步被调了 0 次而不是 3 次 —— 最后一次失败之后那一次没人会用到，而它是用户真的在等的时间
+    left: 0
+   right: 3
+  
+  ---- backend::control::local_backend::tests::the_two_verdicts_hand_the_user_two_different_sentences stdout ----
+  
+  thread 'backend::control::local_backend::tests::the_two_verdicts_hand_the_user_two_different_sentences' (629) panicked at src/backend/control/local_backend.rs:1460:13:
+  一直 ETXTBSY 却没读成「这一刻恰好撞上了」：Err(Broken("spawn 本地命令失败: Text file busy (os error 26)"))
+  
+  
+  failures:
+      backend::control::local_backend::tests::only_etxtbsy_is_retried_a_real_failure_gives_up_on_the_first_try
+      backend::control::local_backend::tests::the_etxtbsy_verdict_reads_the_errno_half_not_the_localised_half
+      backend::control::local_backend::tests::the_retry_budget_is_big_enough_to_retry_and_small_enough_to_wait_on
+      backend::control::local_backend::tests::the_two_verdicts_hand_the_user_two_different_sentences
+  
+  test result: FAILED. 1332 passed; 4 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.22s
+  
+  error: test failed, to rerun pass `-p monitor --lib`
+
+================ R28M2 重试上限改成 0 ================
+[日志] M2.log
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  test result: FAILED. 1335 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.17s
+  ---- failures ----
+  failures:
+  
+  ---- backend::control::local_backend::tests::the_retry_budget_is_big_enough_to_retry_and_small_enough_to_wait_on stdout ----
+  
+  thread 'backend::control::local_backend::tests::the_retry_budget_is_big_enough_to_retry_and_small_enough_to_wait_on' (625) panicked at src/backend/control/local_backend.rs:1417:9:
+  上限是 0 —— 小于 2 = 认得出但从不重试，这一半等于没做
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  
+  failures:
+      backend::control::local_backend::tests::the_retry_budget_is_big_enough_to_retry_and_small_enough_to_wait_on
+  
+  test result: FAILED. 1335 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.17s
+  
+  error: test failed, to rerun pass `-p monitor --lib`
+
+================ R28M3 判别函数恒答「是竞态」 ================
+[日志] M3.log
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  test result: FAILED. 1333 passed; 3 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.06s
+  ---- failures ----
+  failures:
+  
+  ---- backend::control::local_backend::tests::only_etxtbsy_is_retried_a_real_failure_gives_up_on_the_first_try stdout ----
+  
+  thread 'backend::control::local_backend::tests::only_etxtbsy_is_retried_a_real_failure_gives_up_on_the_first_try' (610) panicked at src/backend/control/local_backend.rs:1380:9:
+  assertion `left == right` failed: 一个真缺陷被重试了 —— 那是把它变成偶尔绿的偶发红，比今天更糟
+    left: 5
+   right: 1
+  note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+  
+  ---- backend::control::local_backend::tests::the_etxtbsy_verdict_reads_the_errno_half_not_the_localised_half stdout ----
+  
+  thread 'backend::control::local_backend::tests::the_etxtbsy_verdict_reads_the_errno_half_not_the_localised_half' (618) panicked at src/backend/control/local_backend.rs:1325:9:
+  认了被翻译的那半句 —— 那半句由 C 库按 LC_MESSAGES 打，不是判据该抓的东西
+  
+  ---- backend::control::local_backend::tests::the_two_verdicts_hand_the_user_two_different_sentences stdout ----
+  
+  thread 'backend::control::local_backend::tests::the_two_verdicts_hand_the_user_two_different_sentences' (629) panicked at src/backend/control/local_backend.rs:1478:13:
+  一个真失败被读成了竞态：Err(TransientBusy { tries: 3, last: "撞了 3 次，最后一次逐字：spawn 本地命令失败: Permission denied (os error 13)" })
+  
+  
+  failures:
+      backend::control::local_backend::tests::only_etxtbsy_is_retried_a_real_failure_gives_up_on_the_first_try
+      backend::control::local_backend::tests::the_etxtbsy_verdict_reads_the_errno_half_not_the_localised_half
+      backend::control::local_backend::tests::the_two_verdicts_hand_the_user_two_different_sentences
+  
+  test result: FAILED. 1333 passed; 3 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.06s
+  
+  error: test failed, to rerun pass `-p monitor --lib`
+
+================ R28M4 spawn_detached 绕过共用分类、留裸 cmd.spawn() 放弃路 ================
+[日志] M4.log
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  test result: FAILED. 1335 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.13s
+  ---- failures ----
+  failures:
+  
+  ---- local_daemon::tests::both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict stdout ----
+  
+  thread 'local_daemon::tests::both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict' (1220) panicked at src/local_daemon.rs:3055:13:
+  local_daemon.rs::spawn_detached：这个落点没走那份共用分类 ——
+  「这台机器上它就是起不来」与「这一刻恰好撞上了一个会自己过去的竞态」
+  又装回同一个值、同一句话、同一个结局里了（那正是 K-R28 的正题）
+  
+  
+  failures:
+      local_daemon::tests::both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict
+  
+  test result: FAILED. 1335 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.13s
+  
+  error: test failed, to rerun pass `-p monitor --lib`
+
+================ R28M5a 绕过 body_of，直接喂空串给反向自检 ================
+[日志] M5a.log
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  test result: FAILED. 1335 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.05s
+  ---- failures ----
+  failures:
+  
+  ---- local_daemon::tests::both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict stdout ----
+  
+  thread 'local_daemon::tests::both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict' (1220) panicked at src/local_daemon.rs:3062:13:
+  local_backend.rs::supervise_with_stdio：切出来的体里没有它自己那句 `SuperviseEvent::GaveUp` —— 切到别处去了，下面几条在空转
+  
+  
+  failures:
+      local_daemon::tests::both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict
+  
+  test result: FAILED. 1335 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.05s
+  
+  error: test failed, to rerun pass `-p monitor --lib`
+
+================ R28M5b 把空串喂给 body_of 本身 ================
+[日志] M5b.log
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  test result: FAILED. 1335 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.16s
+  ---- failures ----
+  failures:
+  
+  ---- local_daemon::tests::both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict stdout ----
+  
+  thread 'local_daemon::tests::both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict' (1219) panicked at src/local_daemon.rs:2421:33:
+  切不出 `pub fn supervise_with_stdio(`（`pub fn supervise_with_stdio(` 一处都找不到 —— 事实没了，或者抽取面画错了（本条此刻是空转的））—— 改了名就来改本条
+  
+  
+  failures:
+      local_daemon::tests::both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict
+  
+  test result: FAILED. 1335 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.16s
+  
+  error: test failed, to rerun pass `-p monitor --lib`
+
+================ 7u 两个落点的接线整个退掉（判据一条不删） ================
+[日志] 7u.log
+  test result: ok. 9 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+  test result: ok. 40 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+  test result: FAILED. 1335 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.20s
+  ---- failures ----
+  failures:
+  
+  ---- local_daemon::tests::both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict stdout ----
+  
+  thread 'local_daemon::tests::both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict' (1219) panicked at src/local_daemon.rs:3055:13:
+  local_backend.rs::supervise_with_stdio：这个落点没走那份共用分类 ——
+  「这台机器上它就是起不来」与「这一刻恰好撞上了一个会自己过去的竞态」
+  又装回同一个值、同一句话、同一个结局里了（那正是 K-R28 的正题）
+  
+  
+  failures:
+      local_daemon::tests::both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict
+  
+  test result: FAILED. 1335 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 5.20s
+  
+  error: test failed, to rerun pass `-p monitor --lib`
