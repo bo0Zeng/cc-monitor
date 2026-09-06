@@ -28,6 +28,7 @@ mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 
 mod cc_bus_boundary_guard; // P4f-Y2：daemon 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
 mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
+mod dial; // K-P6b：`--dial` 代理进程 —— daemon 那条长连接流的 SSH 握手住这里（**只此一处**，判据在它自己的测块）
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
 mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
@@ -160,7 +161,16 @@ const PROTO_VERSION: u32 = 1;
 ///   wire 一个字节没变（不 bump `PROTO_VERSION`），但**二进制行为变了** ⇒ 照上面的先例 bump。
 ///   ★ **必须 bump**：旧 daemon 在这条路上是**静默失效**的（活着、不吭声、不发 `session_added`），
 ///   报同一个 id 就不会被判 stale、不会自动重装 —— 用户会带着一个永远不宣告会话的 daemon 过日子。
-const BUILD_ID: &str = "p2d-relay";
+///
+/// - p2e-dial〔`K-P6b` 09-06〕：新增 `--dial` —— 把 **daemon 那条长连接流**的 SSH 握手
+///   搬进一个由界面起的子进程（候选 E 的字节代理）。
+///   ⚠ **必须 bump**：`--dial` 是**新的进程形态**（常驻、只有一条管子进一条管子出），
+///   已部署的旧 daemon 根本没有这条臂；而 monitor 判 stale 只看 build_id
+///   ⇒ 不 bump 就不重装（p1r / p1t / G2 / p2d 那四次的同一个形状）。
+///   🔴 **别把这条读成「拨号搬出去了」**：`connect_session` 的 7 处生产调用点里
+///   本件只覆盖 1 处，SFTP / 端口转发 / 跳板 / 其余 exec 路径**界面仍然自己拨**。
+///   ★ 与 `p2d-relay` 同一条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍。
+const BUILD_ID: &str = "p2e-dial";
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -1005,6 +1015,11 @@ const SUBCOMMANDS: &[&str] = &[
     "--bus-list",
     "--bus-send",
     "--daemon-probe",
+    // K-P6b：拨号代理。**常驻**（起来就一直搬字节，不返回），配置从 stdin 第一行进
+    // ——不走 argv，因为 argv 在同机任何用户的 `ps` 里都看得见。
+    // 它住这张表里的理由与 `--relay` 逐字相同：`is_query_mode` 那道闸门读的是本表，
+    // 不登记就会被当成未知 flag 静默进流模式。
+    "--dial",
     "--fork-session",
     "--kill",
     "--launch",
@@ -1195,6 +1210,10 @@ async fn main() {
             // K-H2a：多传一个 `agent_home` —— 中转要从 `<home>/claudecode-frontend/` 下
             // 读那份凭据文件。**不新开子命令、不动 `SUBCOMMANDS`** ⇒ 不逼出 BUILD_ID bump。
             Some("--relay") => relay::run(&agent_home, &args),
+            // K-P6b：拨号代理。**常驻**，起来就搬字节直到某一头断开。
+            // 它不认 `agent_home`（不读任何 agent 的东西），也不碰 `listen::Admit`
+            // —— `K-P7` 逐字写着 E 成立的条件就是「不复用 `listen::Admit`」。
+            Some("--dial") => dial::run(&args).await,
             // ★ 这几个字面量必须与 `observe::accounts_query::run` 自己认的子命令**完全一致**。
             // v3.4.0 出过一次事故：`--account-trust-zero` 在 accounts_query 里实现完整，
             // 但这里漏列 ⇒ 落进下面的 `_` 臂走历史查询 ⇒ `unknown argument` + exit 2，

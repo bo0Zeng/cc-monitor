@@ -932,6 +932,37 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 - ⚠ 本刀的 tee 行**不带 `t_ns`**，也**不设上游超时** —— 两处都受 daemon 零定时器护栏所限，
   理由与代价见 `remote-daemon-proto/src/relay/mod.rs` 头注。
 
+**`K-P6b` 追加一条**：`--dial` —— 起 **SSH 拨号代理**（候选 E 的字节代理）。它与 `--relay` 同族：
+不是一次性查询，而是一个**常驻**进程，起来就搬字节直到某一头断开。
+
+🔴 **先写死它买到了多少，别读大**：它搬走的是 **daemon 那条长连接流**的那一跳 SSH 握手 ——
+界面侧 `connect_session` 的生产调用点共 **7 处 / 3 份**，本条覆盖 **1 处**；
+**SFTP · 端口转发 · 跳板 · 其余一次性 exec 与测试连接，界面进程仍然自己拨号。**
+⇒ **任何地方都不许把它写成「拨号搬出去了」。**
+
+- **配置从 stdin 第一行进，不走 argv** —— argv 在同机任何用户的 `ps` 里都看得见，
+  而这一行里有主机名、用户名、私钥**路径**。
+- 线上形状（**不是** §10 上面那套 wire 协议，那份一个字节没动）：
+
+  ```text
+  界面 → 代理  stdin  第一行 JSON：{"host","port","user","key_path","host_key_fingerprint","command"}
+                      其后：原始字节 → SSH channel（远端 daemon 的 stdin）
+  代理 → 界面  stdout 第一行 JSON：{"ok":bool,"error":string|null,"fingerprint":string|null}
+                      其后：原始字节 ← SSH channel（远端 daemon 的 stdout）
+  ```
+
+  ⚠ **键名是蛇形**（`key_path`，不是配置面那套 camelCase 的 `keyPath`）：
+  这条管子两端都是我们自己，不该被前端的字段名契约拴住。
+- 退出码：`2` = 请求行读不懂；`3` = 请求读得懂但拨不通（TCP / 指纹 / 鉴权 / exec 任一步）。
+- **鉴权只支持 `key_path`（publickey）**：`ssh-agent` 那条界面侧只在 Windows 有实现（命名管道），
+  而本 crate 今天只出 Linux musl 二进制。缺 `key_path` 直接 `{"ok":false}`，**不静默回落**。
+- **不做多地址竞速（F45）、不做跳板（F56）**：那两样是界面侧 `connect_session` 的上游逻辑。
+- **host key 指纹**语义与界面侧逐条对齐：给了期望值就严格比（`trim` 之后），没给就 TOFU 接受 + `warn`。
+- ⚠ **`D3③`：它是界面起的子进程 —— 界面一关，`stdin` EOF，它跟着走。**
+  别读成「搬出去之后它独立跑着」。
+- ⚠ **默认装机今天走不到这条路**：界面侧只从环境变量与 exe 旁的 sidecar 解析代理二进制，
+  而安装包今天**没有 `externalBin`**（F05b）⇒ 两处都空 ⇒ 界面**回落到进程内拨号**。
+
 ⚠ 加一条 CLI 命令要动**两处**：`inbound::REGISTRY`（实现与分派臂）+ `main::SUBCOMMANDS`
 （`is_query_mode` 的闸门）。只动前者的后果是**静默的** —— daemon 把它当未知 flag、
 打一行 warn 之后照常进流模式，调用方拿到一堆 jsonl 行。08-13 实测撞到过，

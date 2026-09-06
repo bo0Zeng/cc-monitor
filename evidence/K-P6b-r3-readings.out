@@ -1,0 +1,39 @@
+# K-P6b r3 读数 · 量于 f10581c（对照 base f10581c）
+# 仓根 = /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-p6b
+
+## §① 界面侧 `connect_session` 的生产调用点
+  分母 = `src-tauri/src` 下这三份文件的生产段（剥测试段），剔掉定义行
+  ssh_source.rs: 5
+  sftp.rs: 1
+  port_forward.rs: 1
+  合计 = 7  ← 「7 处里搬走 1 处」那句话里的 7
+  ⚠ **本件一处都没删** —— 搬走的是「daemon 长连接流的入口还走不走到它」，
+     不是「这几处少了一处」。量名字量到的会是「什么都没变」。
+
+## §② 代理侧（daemon crate）的拨号锚点
+  锚点 = ['client::connect(', 'client::connect_stream(', 'channel_open_direct_tcpip(']
+  分母 = `remote-daemon-proto/src` 递归全部 `.rs` 的生产段
+  dial/mod.rs: 1
+  扫了 77 份 · 命中合计 1 · 住 `dial/` 外面的 0 份 []
+
+## §③ `--dial` 在 `main.rs` 生产段的落点（表 1 处 + 臂 1 处 = 2）
+  "--dial" 处数 = 2  （分母 = main.rs 生产段全文）
+  dial::run( 处数 = 1
+  ⚠ 摘掉臂那一处，daemon 侧 596 条判据**一条都不红**（本轮 7u 探针实打）——
+     那一格现由 `dial::tests::the_dial_arm_is_actually_wired_into_the_dispatch` 补上。
+
+## §④ 两份 `Cargo.lock`（分母 = 各自文件里全部 `^name = "…"` 行）
+  daemon: 包 264 个 · russh* 3 个 ['russh', 'russh-cryptovec', 'russh-util'] · crypto-bigint ['0.7.3']
+  monitor: 包 677 个 · russh* 4 个 ['russh', 'russh-cryptovec', 'russh-sftp', 'russh-util'] · crypto-bigint ['0.7.3']
+  daemon@f10581c: 包 96 个 · russh* 0 个
+  🔴 `crypto-bigint 0.7.3` 在 crates.io 上是 **yanked**（0.7.0…0.7.4 全 yanked，只 0.7.5 没被 yank）；
+     断网沙箱的缓存里只有 0.7.3 那一份 ⇒ `cargo` 解析时拒选 ⇒ lock 由
+     `evidence/K-P6b-r3-lock-prime.py` 从 monitor 那份播种。两侧从此钉在同一版上。
+
+## §⑤ `D5` 射程（`git diff f10581c -- <面>`，base ↔ **工作树**；分母 = 各面点名的那几份文件）
+  协议面: diff 0 字节 （空）  ← ['remote-daemon-proto/src/wire.rs', 'remote-daemon-proto/src/inbound.rs']
+  六根针: diff 0 字节 （空）  ← ['remote-daemon-proto/src/single_stream_guard.rs']
+  detach 闸: diff 0 字节 （空）  ← ['src-tauri/src/local_daemon.rs']
+  agent 局部性: diff 0 字节 （空）  ← ['remote-daemon-proto/src/agent_locality_guard.rs']
+  **非空对照**（同一把尺子量 dial/mod.rs）: 24901 字节
+  ⇒ 上面那几个 0 是「跑了、结果是空」，不是「命令没跑」。
