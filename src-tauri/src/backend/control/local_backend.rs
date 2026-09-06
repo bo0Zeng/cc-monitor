@@ -24,6 +24,7 @@
 //! 换成**窗口内计数上限**：崩溃时刻记进一个账，`window_ms` 内崩了 `max_crashes` 次
 //! ⇒ [`Decision::GiveUp`]，否则**立刻**重起。天花板是「`max_crashes` 次立即重试」，
 //! 不会无限自旋，而且**一个定时器都不需要**。
+//! ⇒ 🔴 **这一格有人量过**（`K-R30` 09-06，**沙箱读数、真机未验**）：读数与量具住址住下面 [`SPAWN_ETXTBSY_TRIES`] 头注的出处那一节 —— 它只买下「这条取舍在**这一格**上还有一个此前没写过的好处」，**不是**「`C12` 处处成立」。
 //!
 //! # ★ 等它死：读 stdout 到 EOF，不是 `wait()`、更不是 `try_wait()` 轮询
 //!
@@ -1542,6 +1543,189 @@ mod tests {
         guard_core::find_pinned(origin, "K-R30-etxtbsy-window.py").unwrap_or_else(|e| {
             panic!("出处段没给量具的住址（{e}）—— 给不出住址的读数，下一轮没人复得出来")
         });
+    }
+
+    /// ★★ `K-R31`（`KR31D2`，acceptor: 机检）：**撑着那个数的那条外部前提的判据**。
+    ///
+    /// # 上面那条钉「有出处」，本条钉「那个出处**还成立**」
+    ///
+    /// [`SPAWN_ETXTBSY_TRIES`] 那节读数量的是一个**特定形状的孩子**：`fork` 之后
+    /// **一步不干**、直接 `execve`。那一档窗口才停在几百微秒，上限才盖得住。
+    /// 孩子中间要干活时（量具的对照臂：一个 CPython 子进程），那个上限**当场盖不住** ——
+    /// 分子分母逐字写在那节出处里。
+    ///
+    /// 🔴 而在本条之前，**加一处 `pre_exec` 编得过、跑得过、门禁一个数都不动** ——
+    /// 改它的人**不会知道自己动了什么**。⇒ 本条把那句话变成会红的东西。
+    ///
+    /// ⚠ **它证的不是「那条前提永远成立」，是「它不成立的那一刻会有人知道」。**
+    /// 这两句不许压成一句。
+    ///
+    /// # 🔴 单位：**行**。不是「处」，也不是「块」
+    ///
+    /// 立本条时那句话在盘上是 **3 行**（同一段 `///` 里连着的三行）；按相邻块算是 **2**；
+    /// 按「一段文档注释」算是 **1** —— `K-R30` 头注写的「1 处」是第三种读法，
+    /// 而它**没写死是哪一种**。本条按**行**判，并把三个数一起印进失败文案，歧义到此为止。
+    ///
+    /// # 它扫的是什么、扫不到什么
+    ///
+    /// 扫描面 = `src-tauri/src` · `remote-daemon-proto/src` · `src-tauri/crates` 三棵树的
+    /// `.rs`，逐份过 [`guard_core::production_code`]（剥测试段 + 剥块注释 + 剥整行与行尾 `//`）。
+    /// ⇒ 本条那张形态表住 `#[cfg(test)]` 里、那几段前提住 `///` 里，**按构造都进不了扫描面**
+    /// —— `scanning_guard_registry` 头注四类里的第二类（「剥生产段（构造性摘除）」）。
+    /// ⚠ 那份登记治的正是「**判据在自己的注释 / 登记表 / 常量里找到了自己 ⇒ 恒绿**」，
+    /// 而本条是那一族的第 N 个：不剥注释的话，**本文件上面那段头注自己就是第一处命中**
+    /// （`K-R30` 自查逮到过一次，提交 `494ad4c`）。
+    ///
+    /// 🔴 `scan_tree!` 按构造**摘除调用者自己那一份**，而最可能长出这种写法的恰恰是本文件
+    /// （生产段起进程那一跳就在这儿）⇒ 本文件另走 `include_str!` **单独喂一遍**。
+    /// **别把那一份删了** —— 删了之后本条看起来和没删一模一样。
+    ///
+    /// ⚠ **形态表是枚举，不是全称**：表外的写法（自己 `clone(2)` · 换一个装 fd 的 crate ·
+    /// 走 `nix`）**本条一个都看不见**。这条边界也写进失败文案，别读成「这一族已经封死」。
+    /// 立本条时逐条现打过一趟：除 `pre_exec` 那 3 行注释外，表里其余六种**全树零命中**
+    /// （分母 216 份 `.rs`，量具 `evidence/K-R31-fork-exec-forms.py`）。
+    ///
+    /// # 反向那半（没有它，本条会在空串上恒真地绿）
+    ///
+    /// ① **阳性对照**：同一把探测器喂一段真写法 ⇒ 必须命中（形态表写错一个字母当场红）；
+    /// ② **阴性对照**：同一段包进行注释 / 块注释 ⇒ 必须**不**命中（剥注释那步真的在做）；
+    /// ③ **扫描面地板**：份数与字节数（遍历坏了 ⇒ 红，而不是静默变绿）；
+    /// ④ 本文件剥完**不许还残留测试属性**（剥法坏了 ⇒ 形态表自己就进了扫描面）。
+    #[test]
+    fn nothing_in_the_production_path_runs_code_between_fork_and_exec() {
+        // 「在 fork 与 exec 之间插一段代码」的写法。**枚举，不是全称**（见头注）。
+        const FORMS: &[&str] = &[
+            "pre_exec",          // std `CommandExt::pre_exec`：闭包在孩子里、`execve` 之前跑
+            "before_exec",       // 同一件事的旧名（已弃用，仍编得过）
+            "libc::fork",        // 手写 fork+exec ⇒ 中间那段全归调用方
+            "libc::vfork",       // 同上，且它连地址空间都不换
+            "command_fds",       // 那个 crate 装 fd 用的就是 `pre_exec`
+            "CommandFdExt",      // 同上，trait 名那一半
+            "libc::posix_spawn", // 手写 file actions：同一段窗口，只是搬进了 libc
+        ];
+
+        /// 相邻的命中行合成一块 —— 「处」那个单位的一种**可判定**读法。
+        fn count_blocks(h: &[(usize, String)]) -> usize {
+            let mut n = 0usize;
+            let mut prev: Option<usize> = None;
+            for (i, _) in h {
+                if !matches!(prev, Some(p) if *i == p + 1) {
+                    n += 1;
+                }
+                prev = Some(*i);
+            }
+            n
+        }
+
+        // 探测器：一份文本剥完之后仍命中的**行**。诊断带**逐字行内容**当校验位而不带行号 ——
+        // `production_code` 会删整行注释，剥后的序号**不是原文行号**，写出来就是一个假住址。
+        let probe = |rel: &str, src: &str| -> (usize, Vec<(usize, String)>) {
+            let prod = guard_core::production_code(src);
+            let mut out = Vec::new();
+            for (i, l) in prod.lines().enumerate() {
+                if let Some(f) = FORMS.iter().find(|f| l.contains(**f)) {
+                    out.push((i, format!("{rel}  〔{f}〕 {}", l.trim())));
+                }
+            }
+            (prod.len(), out)
+        };
+
+        // ① 阳性对照：形态表 + 剥法**有牙**。没有它，把 `FORMS` 写错一个字母也照样全绿。
+        let live = "    unsafe { cmd.pre_exec(|| Ok(())) };";
+        assert_eq!(
+            probe("〔阳性对照〕", live).1.len(),
+            1,
+            "阳性对照没被逮到 —— 形态表或剥法坏了，下面那条此刻是空转的"
+        );
+        // ② 阴性对照：注释里的同一段**不许**算命中。三种注释形态各一行
+        //    （整行 `//` · 块注释 · **缩进过的** `///` —— 最后这种正是 `§0b` 记的那个洞：
+        //    PM 立件时用的 `grep -v ':[0-9]*://'` 只剥顶格 `//`，缩进的剥不掉）。
+        let commented = "// unsafe { cmd.pre_exec(|| Ok(())) };\n\
+                         /* cmd.pre_exec(); */\n\
+                         \x20   /// 那一档靠的是本仓一处 pre_exec 都没有\n";
+        let in_comment = probe("〔阴性对照〕", commented).1;
+        assert!(
+            in_comment.is_empty(),
+            "注释里的写法被数成了命中 —— 剥注释那一步没在做：{in_comment:?}\n\
+             ⇒ 本条会被**它自己要守的那句话**喂饱（那段头注里逐字写着这些词），于是恒红或恒瞎。"
+        );
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级 = 仓根");
+        // 🔴 `scan_tree!` 摘掉调用者自己那份，而**最该被扫的就是本文件** ⇒ 单独喂一遍。
+        let self_rel = "src-tauri/src/backend/control/local_backend.rs";
+        let me = include_str!("local_backend.rs");
+        // ④ 剥法自检：剥完还残留测试属性 ⇒ 上面那张 `FORMS` 表自己就进了扫描面。
+        guard_core::assert_no_test_code(self_rel, &guard_core::production_code(me));
+        let mut corpus: Vec<(String, String)> = vec![(self_rel.to_string(), me.to_string())];
+        for sub in [
+            "src-tauri/src",
+            "remote-daemon-proto/src",
+            "src-tauri/crates",
+        ] {
+            for (f, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+                let rel = f
+                    .strip_prefix(root)
+                    .unwrap_or(&f)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                corpus.push((rel, src));
+            }
+        }
+
+        let (mut files, mut bytes) = (0usize, 0usize);
+        let (mut hit_files, mut hit_blocks) = (0usize, 0usize);
+        let mut hit_lines: Vec<String> = Vec::new();
+        for (rel, src) in &corpus {
+            let (n, h) = probe(rel.as_str(), src.as_str());
+            files += 1;
+            bytes += n;
+            if !h.is_empty() {
+                hit_files += 1;
+                hit_blocks += count_blocks(&h);
+                hit_lines.extend(h.into_iter().map(|(_, d)| d));
+            }
+        }
+
+        // ③ 扫描面地板：**先证明扫到了东西**，否则下面那条在空串上恒真。
+        assert!(
+            files >= 150 && bytes >= 600_000,
+            "扫描面只有 {files} 份 `.rs` / 剥完 {bytes} 字节 —— **遍历或剥法坏了**，\n\
+             本条此刻是在空串上恒真地绿（09-06 立本条时沙箱实测 **192 份 / 1137249 字节**，\n\
+             那是一个**带日期的快照**，不是一条性质）。\n\
+             地板刻意留了余量：它挡的是「**扫不到东西**」，不是「代码变少了」——\n\
+             收得太紧的地板会在正常删代码时变红，那是在挡住进步。\n\
+             ⚠ 变异实测（`R31M2`）：把扫描面的扩展名换成一个不存在的，本条当场红\n\
+             （读到「1 份 / 21937 字节」）—— 那 1 份是本文件自己那一份，它另走 `include_str`。"
+        );
+
+        assert!(
+            hit_lines.is_empty(),
+            "生产段出现了「在 fork 与 exec 之间插一段代码」的写法 —— \
+             **{} 行** · **{} 块**（剥后文本里相邻的命中行合成一块）· **{} 份文件**：\n  {}\n\n\
+             🔴 **本条判的单位是「行」**：有一行就红。三个数一起印，是因为 `K-R30` 写的\n\
+             「1 处」在盘上按行是 3、按相邻块是 2 —— 那个歧义在这里终结，别再用「处」。\n\n\
+             ★ 后果不是风格问题，是**一个读数的出处当场不再成立**：\n\
+               `{}` 那个上限的出处段量的是「孩子在 fork 与 execve 之间**不干活**」那一档；\n\
+               孩子中间还要干活时那个上限**盖不住**（对照臂的分子分母逐字写在那节出处里）。\n\
+             ⇒ 处置**二选一，没有第三条**：\n\
+               ① 撤掉这处写法；或\n\
+               ② **回去重量**（量具住址写在那节出处里），并把 `{}` 与那节出处**一起**改 ——\n\
+                  `the_retry_budget_number_has_a_measured_origin_pinned_to_it` 会逼你同改。\n\n\
+             （分母：本趟扫了 {} 份 `.rs`、剥完共 {} 字节，扫描面 = 三棵树的**生产段**。\n\
+               形态表是**枚举不是全称**：{:?}\n\
+               —— 表外的写法（自己 `clone(2)` · 别的装 fd 的 crate · `nix`）本条一个都看不见。）",
+            hit_lines.len(),
+            hit_blocks,
+            hit_files,
+            hit_lines.join("\n  "),
+            stringify!(SPAWN_ETXTBSY_TRIES),
+            stringify!(SPAWN_ETXTBSY_TRIES),
+            files,
+            bytes,
+            FORMS,
+        );
     }
 
     /// **两句话那一半**：两种结局说给用户听的话**不许是同一句**，也不许互相串。
