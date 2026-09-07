@@ -223,6 +223,70 @@
 //!（形状照 `MUST_BE_RECOGNISED`：**不是**把上面那份子树清单再抄一遍 ——
 //! 抄一份的话「清单少一棵」与「钉子少一条」会被同一次编辑一起改掉，那是恒真）。
 //! ⚠ 它钉住的只有**被点名那一棵**：将来再加第三棵而没同拍加见证，删掉它仍然是静默的。
+//!
+//! # 🔴 `K-R38`（09-06）—— 那个「只许降」的棘轮，**机器上原先一颗牙都没有**
+//!
+//! 上面那张存量清单 `PENDING` 的头注从 08-06 起就写着「**只许变短**」，
+//! 而守它的 [`the_pending_inventory_only_shrinks`] 断的是 `n <= PENDING_CEILING` ——
+//! **`PENDING_CEILING` 就是同一份文件里的一个常量** ⇒ **抬上限只会让它更容易过**。
+//! （`K-R33` 的 `R33M3` 实打：把上限抬 1，**不红**。）
+//! ⇒ 在本件之前，「只许变短」**只住在一行注释里的纪律上**。
+//!
+//! ## 🔴 它买的是「把一个**已经成立**的习惯钉住」，不是「止住一条正在漏的口子」
+//!
+//! 这一句必须写在最前面，因为两种说法对下一个读它的人意思完全不同。
+//! `D1②` 现打（量具 [`ratchet_history`] 与 `evidence/K-R38-ratchet-history-census.py`，
+//! 分母 = 触碰过本文件的**全部** 9 个提交）：这个上限从立起来到今天
+//! **降过 2 次、抬过 0 次**（`25ce345` 31 → `b4c3d1c` 30 → `3609470` 29），
+//! 而且**9 个提交上 `PENDING` 都恰好等于 `CEILING`** ⇒ **余量从 08-06 起就一直是 0**，
+//! 这一个月里没有任何人去抬它。**它没有在漏。**
+//!
+//! ⇒ 那本件凭什么还要做：因为**纪律这一档在本仓被证伪过**。铁律 21（只许点名文件
+//! `git add`）那条风险行 `7v` 逐字记着「**写下来这一档对 PM 无效**」——
+//! 那条规矩写下来之后，写它的人在**同一批提交**里自己又破了两次。
+//! ⇒ 一条只靠注释守着的性质，在这个仓里等于没守。**买的是留痕与阻力，不是止血。**
+//!
+//! ## 走的是**乙（对着 git 历史面比）**，不是甲（钉一个 sha）
+//!
+//! - **甲 · 把上限钉在一个 sha 上**：得有人维护那个 sha，**而它自己就是一条会腐的登记**
+//!   —— 本区 09-06 刚栽过「基线写死一个提交号，而主干在往前走」（`K-R34` 的 `D4`）。
+//!   ⚠ 更要命的是**它买不到棘轮**：钉住 `3609470` 上的 29 之后，清单降到 25 再涨回 29
+//!   **仍然过** —— 甲买的是「不超过那一天」，不是「只许降」。
+//! - **乙 · 对着历史面比**（今天这一条）：**没有第二张要维护的表**，也没有第二个会腐的数。
+//!   上限正当地降下去、提交之后，历史最低档**自动跟着降** ⇒ 棘轮往前咬一格；
+//!   而且**咬完不会松**：把它抬回去，即使提交了照样红（历史里那个更低的档还在）。
+//!
+//! 🔴 **乙的代价件里写着：它要一个历史面，而本仓的历史面判据吃过 packfile 的亏**
+//! （风险 `5i`：`pb accept` 曾在本机结构性判不了，551 条 BROKEN）。
+//! ⇒ **开工前先证明这条路在这台机器上跑得动**，09-06 两侧现打：宿主、以及门禁那个
+//! **断网**沙箱（`--network none`，容器内同 uid）里 `git log` 都给 **9** 个提交、
+//! `git show <sha>:<本文件>` 逐份取得出上限，两侧逐字同值。
+//! ★ 关键在于走的是**真 `git` 二进制**，不是自己去解 object ——
+//! `5i` 那次栽的正是「自己解 object，解不动打包过的」。packfile 那条路归 git 自己。
+//! 本仓已有先例在门禁里跑 git：`skill_host::git_common_dir`（`rev-parse`）·
+//! `doc_claim_registry`（`ls-files`）。
+//!
+//! ⚠ 反过来那条也记着：`ssh_source` 头注逐字写过「**为什么不在测试里跑 `git show`**
+//! —— 那会让判据依赖『测试跑在一棵有 `.git` 的树里』」。**那条在它那儿是对的**：
+//! 它要的是一段**已经被删掉的**历史文本，冻结下来就不会腐。
+//! 而本条要的恰恰**不能冻结** —— 冻下来的数就又是一个「同一份文件里的常量」，
+//! 也就是本件正在治的那个东西。⇒ 两处的取舍不同，不是谁推翻谁。
+//!
+//! ## ⚠ 它**没有**买到什么（别把名字读大）
+//!
+//! - **它守的是「这两个数不许比历史上出现过的最低档还高」，不是「清单真的在变短」。**
+//!   一年不动、`n` 一条没少，本条**照样绿**。这两句不许压成一句。
+//! - **它挡不住「把本条整个删掉」** —— 没有任何判据挡得住这个。它买的是**留痕**：
+//!   抬那个数字，从「改一个字符、零阻力零留痕」变成「还得动一条判据」，
+//!   而后者在 diff 里是看得见的。
+//! - **「删条目腾余量」不归本条** —— 接住它的是
+//!   [`no_new_guard_walks_the_tree_without_excluding_itself`]：删掉一行而那份文件
+//!   还在裸遍历 ⇒ 它当场以 `newcomers` 红（09-06 变异实打，读数在件文件 `§8`）。
+//!   本条只管那两个**数**。
+//! - 🔴 **它不管那张豁免表**（`REGISTERED`，`K-R36` 落的）。
+//!   盘上现在是**两张会腐的登记表，腐法不同、接住它们的东西也不同**：
+//!   那一张按**住址**认、由它自己那条幽灵检查接着；这一张是两个**数**、由历史面接着。
+//!   **别并成一件事，也别以为那条幽灵检查能顺带守住 `PENDING`。**
 
 #[cfg(test)]
 mod tests {
@@ -235,6 +299,23 @@ mod tests {
     ///
     /// ⚠ **只许变短。** 迁一个就从这里删一行并把 `PENDING_CEILING` 调下来。
     /// 不许往里加 —— 新写的扫描型判据必须走 `guard_core::scan_tree!`。
+    ///
+    /// # 🔴 「只许变短」今天**谁在守它**（`K-R38` 09-06，`D3①`）
+    ///
+    /// [`the_pending_ratchet_never_turns_backwards`] —— 它拿**git 历史**当权威，
+    /// 断「今天这个数不许比它在历史上出现过的**最低档**还高」。
+    /// ⇒ **在此之前这句话只是一行注释里的纪律**：守它的
+    /// [`the_pending_inventory_only_shrinks`] 断的是 `n <= PENDING_CEILING`，
+    /// 而那个上限就在下面几行 ⇒ 抬一下就过（`K-R33` 的 `R33M3` 实打不红）。
+    ///
+    /// ## ⚠ 它买到的比这句话的名字**小**，逐字写明没买到什么
+    ///
+    /// - 守的是**这个数不许涨回去**，**不是**「清单真的在变短」——
+    ///   一年一条没迁，本条照样绿。
+    /// - **删一行来腾余量**不归它管：接住那一形的是
+    ///   [`no_new_guard_walks_the_tree_without_excluding_itself`]
+    ///   （删掉的那份文件还在裸遍历 ⇒ 当场以 `newcomers` 红）。
+    /// - 它**挡不住把那条判据本身删掉** —— 买的是**留痕**，不是不可能。
     const PENDING: &[&str] = &[
         "src-tauri/src/account_usage.rs",
         "src-tauri/src/atomic_replace_registry.rs",
@@ -268,6 +349,12 @@ mod tests {
     ];
 
     /// 存量上限（**递减棘轮**）。
+    ///
+    /// 🔴 **只许往下调。** 守这句话的是 [`the_pending_ratchet_never_turns_backwards`]
+    /// （`K-R38` 09-06）：它对着 **git 历史**比，把这个数抬上去**当场红，而且提交了也不会绿**
+    /// —— 历史里那个更低的档还在。⇒ 别在这里试「先抬一格让今天好过」，那正是它挡的动作。
+    /// ⚠ 它守的是这个**数**；「删一行腾余量」那一形归
+    /// [`no_new_guard_walks_the_tree_without_excluding_itself`]。
     // 08-08：`daemon_route.rs` 的裸遍历迁到了 `guard_core::scan_tree!`（那一轮把它的
     // 发现面从一个目录扩到整棵树，顺带就该换掉手写遍历）⇒ 清单少一行，上限一起降。
     const PENDING_CEILING: usize = 29;
@@ -934,5 +1021,284 @@ mod tests {
             "存量清单里这些已经不裸遍历了（迁完了或文件没了）：{stale:?}\n\
              ⇒ 删掉它们并把 `PENDING_CEILING` 一起调下来 —— 留着就是把棘轮的余量白送出去。"
         );
+    }
+
+    // ── 🔴 `K-R38` 09-06：给那个「只许降」的棘轮装闸 ─────────────────────────
+    //
+    // 上面那条断的是 `n <= PENDING_CEILING`，而 `PENDING_CEILING` 就住在这份文件里
+    // ⇒ **抬上限只会让它更容易过**。选路（乙 · 对着 git 历史面比）、它的代价、
+    // 以及它**没有**买到什么，全写在模块头注 `K-R38` 那一节，这里不写第二遍。
+
+    /// 本文件在仓里的相对住址 —— 下面要拿它去问 git 历史。
+    const SELF_REL: &str = "src-tauri/src/scanning_guard_registry.rs";
+
+    /// 找 `PENDING_CEILING` 那行声明的针 —— 🔴 **运行时拼，别写成字面量**。
+    ///
+    /// 承重，理由是本模块头注治的那一族：下面两个解析器要跑在**本文件自己的历史版本**上，
+    /// 而针一旦写成字面量，每一份历史 blob 里它就有**两处**（真声明 ＋ 这行字面量），
+    /// 于是「解析到的是哪一处」由两者在文件里的先后决定 —— 一次挪动就能让它悄悄解析错，
+    /// **而错的方向是静默的绿**。★「判据在自己的常量里找到了自己」在这里不许复发。
+    /// ★ 拼法照本文件已有的那一处（`concat!("#[te", "st]")`）—— 同一个理由，别改回字面量。
+    fn ceiling_needle() -> &'static str {
+        concat!("const PENDING_", "CEILING", ": usize = ")
+    }
+
+    /// 找 `PENDING` 那张表表头的针 —— 同上，**拼出来的，不写字面量**。
+    /// ⚠ 必须带冒号：`const PENDING_CEILING` 也以 `const PENDING` 打头。
+    fn pending_needle() -> &'static str {
+        concat!("const ", "PENDING", ": &[&str] = &[")
+    }
+
+    /// 一份**本文件源码文本**里的 `PENDING_CEILING` 值。找不到 ⇒ `None`（不许默默当 0）。
+    fn ceiling_in(src: &str) -> Option<usize> {
+        let needle = ceiling_needle();
+        let at = src.find(needle)? + needle.len();
+        src[at..]
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect::<String>()
+            .parse()
+            .ok()
+    }
+
+    /// 一份**本文件源码文本**里 `PENDING` 的条数。找不到那张表 ⇒ `None`。
+    ///
+    /// 口径与判据自己数的那个对齐（`PENDING.iter().filter(|s| !s.is_empty()).count()`）：
+    /// 从表头那一行起、到同层 `];` 为止，数**以引号打头**的行。
+    fn pending_count_in(src: &str) -> Option<usize> {
+        let at = src.find(pending_needle())?;
+        let mut n = 0usize;
+        for line in src[at..].lines().skip(1) {
+            let t = line.trim_start();
+            if t.starts_with("];") {
+                return Some(n);
+            }
+            if t.starts_with('"') {
+                n += 1;
+            }
+        }
+        None
+    }
+
+    /// 跑一条**只读**的 git，回它的 stdout。
+    ///
+    /// 🔴 **两种「问不到」分开报**，它们在类型上不是一回事（照 `skill_host::git_common_dir`
+    /// 那条逐字记着的实测）：机器上没有 `git` 时 [`std::process::Command`] 给的是
+    /// `io::Error(NotFound)`，**不是**一个非零退出码。
+    ///
+    /// ⚠ 两支都 **fail-closed（panic）**，这是刻意的：读不到历史时必须红，不许静默地绿 ——
+    /// 「历史面是空的」与「棘轮没被倒着转」在输出上一模一样，那正是本条要治的形状。
+    fn git_read(root: &Path, args: &[&str]) -> String {
+        let out = std::process::Command::new("git")
+            .current_dir(root)
+            .args(args)
+            .output()
+            .unwrap_or_else(|e| {
+                panic!(
+                    "起不来 `git`（{e}）—— 本条拿 git 历史当权威，问不到就**不许猜一个出来**。\n\
+                     ⚠ 这一支不是「git 说不知道」，是**进程都没起来**（PATH 里没有它）。\n\
+                     ⇒ 本条刻意 fail-closed：读不到历史时红，而不是绿。"
+                )
+            });
+        assert!(
+            out.status.success(),
+            "`git {}` 在 {} 上退出码 {:?} —— 这一支是「git 起来了、但它说不行」。\n\
+             git 自己说：{}\n\
+             ⇒ 常见来路：这棵树不在版本控制里 · 浅克隆（`--depth`）把历史截掉了。\n\
+                两种都要修环境，**不许把本条改成读不到就跳过**（那等于把闸拆了）。",
+            args.join(" "),
+            root.display(),
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+        String::from_utf8_lossy(&out.stdout).into_owned()
+    }
+
+    /// 本文件在 git 历史上每一个版本的读数 —— `(短 sha, 上限, 条数)`，外加**没解析出来**的份数。
+    ///
+    /// ⚠ 解析不出来的**不静默丢掉**：份数一起回，由调用方连读数印出来。
+    /// （合法的一形：某个提交早于这两个常量存在。今天 9 份全解析得出，实测。）
+    fn ratchet_history(root: &Path) -> (Vec<(String, usize, usize)>, usize) {
+        let mut rows = Vec::new();
+        let mut unparsed = 0usize;
+        for sha in git_read(root, &["log", "--format=%h", "--", SELF_REL]).split_whitespace() {
+            let spec = format!("{sha}:{SELF_REL}");
+            let blob = git_read(root, &["show", &spec]);
+            match (ceiling_in(&blob), pending_count_in(&blob)) {
+                (Some(c), Some(p)) => rows.push((sha.to_string(), c, p)),
+                _ => unparsed += 1,
+            }
+        }
+        (rows, unparsed)
+    }
+
+    /// 纯算子：今天的读数 `today` 对着历史面 `hist`，棘轮有没有**被倒着转**。
+    ///
+    /// 回**历史上最低的那一档**当见证；没被倒转 ⇒ `None`。
+    ///
+    /// 🔴 **单独成函数**，与 [`declares_a_guard_table`] 同一个理由：真树上今天 `today`
+    /// 恰好**等于**历史最低档 ⇒ 把 `>` 写成 `<`、或者把 `hist` 传成空的，
+    /// **输出与判对了一模一样（绿）**。
+    /// [`the_ratchet_reader_can_tell_a_raise_from_a_drop`] 拿合成读数把这一格钉住。
+    ///
+    /// ⚠ **诚实边界**：`hist` 为空时它回 `None`（= 绿）。**空历史那一格不归它**，
+    /// 归 [`the_pending_ratchet_never_turns_backwards`] 里那条**地板**。
+    /// 两格刻意分开：并成一格的话，「历史读不到」与「棘轮没被倒转」又会同形。
+    fn ratchet_backslide(today: usize, hist: &[(String, usize)]) -> Option<(String, usize)> {
+        let low = hist.iter().min_by_key(|(_, v)| *v)?;
+        if today > low.1 {
+            Some(low.clone())
+        } else {
+            None
+        }
+    }
+
+    /// ★ `K-R38` 的正题：**那两个数不许比它们在历史上出现过的最低档还高。**
+    ///
+    /// 选路理由（乙，不是甲）· packfile 那条风险怎么证掉的 · 它**没有**买到什么，
+    /// 全在模块头注 `K-R38` 那一节，**这里不复述**（复述就会漂）。
+    #[test]
+    fn the_pending_ratchet_never_turns_backwards() {
+        let root = repo_root();
+        let n = PENDING.iter().filter(|s| !s.is_empty()).count();
+        let (hist, unparsed) = ratchet_history(&root);
+
+        // 抽取器自检①：**历史面不许是空的 / 短的**。
+        //
+        // 🔴 这一格是本条的地基：`ratchet_backslide` 拿到空历史时回 `None`（绿），
+        // 于是「git 读不到历史」与「棘轮没被倒着转」**输出完全相同** ——
+        // 那正是本模块从头到尾在治的形状，只是这次长在本条自己头上。
+        // 会把历史面弄空的真实来路：浅克隆（`--depth 1`）· 两个常量被改了名
+        //（针是按名字认的）· 本文件被挪了地方（`SELF_REL` 就馊了）。
+        const HISTORY_FLOOR: usize = 5;
+        assert!(
+            hist.len() >= HISTORY_FLOOR,
+            "只从 git 历史里读出 {} 份本文件的旧版本（地板 {HISTORY_FLOOR}，09-06 实测 9 份，\
+             另有 {unparsed} 份解析不出来）——\n\
+             ⇒ **本条此刻是空转的**：历史面一空，下面那两格恒真地绿。\n\
+             常见来路：① 浅克隆把历史截掉了（要 `fetch-depth: 0`）；\n\
+                       ② `PENDING` / `PENDING_CEILING` 被改了名（针是按名字认的）；\n\
+                       ③ 本文件挪了位置 ⇒ `SELF_REL`（`{SELF_REL}`）馊了。\n\
+             🔴 **不许靠调低地板让今天好过** —— 那是把闸拆了，而拆完输出还是绿的。",
+            hist.len()
+        );
+
+        // 抽取器自检②：**解析器与真常量对拍。**
+        //
+        // 上面那两个针是拿文本认的，而下面比的是**真常量**（`PENDING_CEILING` / `n`）。
+        // 解析器要是系统性偏了（比如总是多数一行、或总回一个大数），历史最低档跟着偏，
+        // 而**真树上照样绿**。⇒ 拿本文件此刻的源码喂一遍解析器，逼它复现那两个真值。
+        let me = include_str!("scanning_guard_registry.rs");
+        assert_eq!(
+            (ceiling_in(me), pending_count_in(me)),
+            (Some(PENDING_CEILING), Some(n)),
+            "解析器在**本文件此刻的源码**上复现不出那两个真常量 —— 它偏了。\n\
+             ⇒ 历史面上的读数跟着一起偏，而真树上本条**照样绿**（两边同向偏）。\n\
+             这一格就是为了不让那种偏法静默通过。"
+        );
+
+        // 只在 `--nocapture` 下可见 —— 射程与历史面本身也是读数（`brief` 13b：现算，别写死）。
+        eprintln!(
+            "〔存量棘轮 · 本趟的历史面〕{} 份旧版本（解析不出 {unparsed} 份）· \
+             今天 上限={PENDING_CEILING} 条数={n}\n  {}",
+            hist.len(),
+            hist.iter()
+                .map(|(s, c, p)| format!("{s} 上限={c} 条数={p}"))
+                .collect::<Vec<_>>()
+                .join("\n  ")
+        );
+
+        let ceilings: Vec<(String, usize)> =
+            hist.iter().map(|(s, c, _)| (s.clone(), *c)).collect();
+        let counts: Vec<(String, usize)> = hist.iter().map(|(s, _, p)| (s.clone(), *p)).collect();
+
+        if let Some((sha, was)) = ratchet_backslide(PENDING_CEILING, &ceilings) {
+            panic!(
+                "🔴 **棘轮被倒着转了**：`PENDING_CEILING` 今天是 {PENDING_CEILING}，\
+                 而它在 `{sha}` 上是 {was}。\n\
+                 上面那行头注写着「只许变短」——**这一条从今天起是机器在守，不再是纪律**。\n\
+                 ⇒ 处置：把上限调回 {was} 或更低。\n\
+                 ★ 想「先抬一格让今天好过」的话，本条正是来挡这个动作的：\n\
+                   在它之前，抬这个数是**改一个字符、零阻力、零留痕、零人知道**\n\
+                  （`n <= PENDING_CEILING` 里那个上限就在同一份文件里 ⇒ 抬它只会更容易过）。\n\
+                 ⚠ 提交了也不会变绿：本条比的是**历史上出现过的最低档**，那个更低的档还在。\n\
+                 ⚠ 真有一条新的非进 `PENDING` 不可 ⇒ 先答「为什么它不能走 `scan_tree!`」，\
+                   那是一次要被人看见的讨论，不是一个字符。"
+            );
+        }
+        if let Some((sha, was)) = ratchet_backslide(n, &counts) {
+            panic!(
+                "🔴 **存量清单涨回去了**：`PENDING` 今天 {n} 条，而它在 `{sha}` 上是 {was} 条。\n\
+                 头注逐字写着「**只许变短**」——今天守它的是本条。\n\
+                 ⇒ 处置：把新加的那几行拿掉，改走 `guard_core::scan_tree!`。\n\
+                 ⚠ 别去抬 `PENDING_CEILING` —— 上面那一格会当场逮住它。"
+            );
+        }
+    }
+
+    /// ★ `K-R38` 的**反向那半**：那把比较尺子，得真的分得开「抬上去」与「降下来」。
+    ///
+    /// # 没有它，本条是一场仪式
+    ///
+    /// 真树上今天 `PENDING_CEILING` 与 `n` **恰好等于**历史最低档（9 个提交上余量都是 0）。
+    /// ⇒ 把 [`ratchet_backslide`] 里的 `>` 写成 `<`、把 `min_by_key` 写成 `max_by_key`、
+    /// 或者让历史面传成空的 —— **真树上的输出与判对了一模一样（绿）**。
+    /// 那正是本模块从头到尾在治的形状：**「判过了」与「压根没判」不可区分。**
+    ///
+    /// ⚠ **夹具里的 sha 与数字都取中性值**，断言比的是**喂进去的那个值本身**
+    /// （`brief` 12 的 `6g`：别让断言取自夹具的名字）。
+    #[test]
+    fn the_ratchet_reader_can_tell_a_raise_from_a_drop() {
+        let hist: Vec<(String, usize)> = [("aaa", 31), ("bbb", 30), ("ccc", 29)]
+            .iter()
+            .map(|(s, v)| ((*s).to_string(), *v))
+            .collect();
+        let low = ("ccc".to_string(), 29);
+
+        // 正：抬上去 ⇒ 必须逮到，而且点的是**历史最低**那一档（不是最近那一档）。
+        // 🔴 「点最低那一档」是承重的：点最近那一档的话，抬上去之后只要**提交一次**，
+        // 最近那一档就变成抬过的值 ⇒ 下一趟当场变绿，棘轮咬完就松。
+        assert_eq!(
+            ratchet_backslide(30, &hist),
+            Some(low.clone()),
+            "比 30 高于历史最低档 29 —— 这一格没逮到，说明比较写反了或者点错了档"
+        );
+        assert_eq!(
+            ratchet_backslide(99, &hist),
+            Some(low),
+            "点的必须是**历史最低**那一档，不是最近的那一档"
+        );
+
+        // 平 / 降：棘轮正着转，一格都不许红。
+        assert_eq!(ratchet_backslide(29, &hist), None, "与历史最低档持平，不许红");
+        assert_eq!(ratchet_backslide(28, &hist), None, "降下去正是要买的动作，不许红");
+        assert_eq!(ratchet_backslide(0, &hist), None, "降到底，仍然不许红");
+
+        // 🔴 **空历史 ⇒ 它回 `None`（绿）**，这一格是**故意钉住的诚实边界**，不是缺陷：
+        // 接住「历史面读不到」的是 `the_pending_ratchet_never_turns_backwards` 里那条**地板**。
+        // 钉在这里，是为了不让谁把这一支改成 panic 之后顺手把那条地板删掉 ——
+        // 那样一来两格并成一格，而并完之后**没有任何输出会变**。
+        assert_eq!(
+            ratchet_backslide(usize::MAX, &[]),
+            None,
+            "空历史这一支归**地板**管，不归这把尺子管；两格刻意分开，别并"
+        );
+
+        // 解析器那一半：针是运行时拼的，拿它自己拼出来的文本正反各喂一遍。
+        let synthetic = format!("    {}{};\n", ceiling_needle(), 7);
+        assert_eq!(ceiling_in(&synthetic), Some(7), "解析器认不出自己那根针拼出来的声明");
+        assert_eq!(ceiling_in("没有这根针的一段文本"), None, "认不出就要回 None，不许默默当 0");
+
+        let table = format!(
+            "    {}\n        \"a.rs\",\n        \"b.rs\",\n    ];\n",
+            pending_needle()
+        );
+        assert_eq!(pending_count_in(&table), Some(2), "表里两行，数不出 2");
+        assert_eq!(
+            pending_count_in(&format!("    {}\n    ];\n", pending_needle())),
+            Some(0),
+            "空表要回 Some(0)，与「找不到那张表」（None）**不是一回事**"
+        );
+        assert_eq!(pending_count_in("没有那张表的一段文本"), None, "找不到表就回 None");
     }
 }
