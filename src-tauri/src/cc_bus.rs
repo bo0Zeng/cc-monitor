@@ -2328,7 +2328,10 @@ mod tests {
         //   那个 100% 占核的空转进程就会陪着它一起烧到作业被掐。
         let me = std::env::current_exe().expect("【格②】拿不到本测试进程自己的路径");
         let stem = me.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-        assert!(!stem.is_empty(), "【格②】本测试进程的文件名取不出来：{me:?}");
+        assert!(
+            !stem.is_empty(),
+            "【格②】本测试进程的文件名取不出来：{me:?}"
+        );
         let seen_self = count_live_processes(stem, 60, "格②·尺子自检").await;
         assert!(
             seen_self >= 1,
