@@ -2275,14 +2275,91 @@ mod tests {
     /// ⇒ 本条改成**逐格设限**：每一格自己带上限，超了带着**格号**炸。
     /// 病在哪当时没量到，所以这里**不猜**，只让下一趟能自己说出来。
     ///
-    /// ⚠ **这套上限盖不住什么（写下来，别读成比它强）**：`#[tokio::test]` 默认是
-    /// **current_thread** 运行时 ⇒ [`stage`] 那层 `tokio::time::timeout` 只能约束
-    /// **await 点**。某一格里若是一个**同步**调用卡住（比如 `Command::spawn` 自己），
-    /// 计时器根本没机会跑，本条照样挂死。⇒ **万一还挂，那本身就是一个读数**：
-    /// 说明卡的是同步调用，不是 await。数进程那一格已经因此挪到了裸线程上（见
-    /// [`count_live_processes`]），它是这条路上原先唯一无界的一格。
-    #[tokio::test]
-    async fn a_timed_out_local_read_does_not_leave_an_orphan_behind() {
+    /// ⚠ **逐格设限盖不住什么**：`tokio::time::timeout` 只约束 **await 点**。
+    /// 某一格里若是一个**同步**调用卡住（`Command::spawn` 自己 / `Path::exists`），
+    /// current_thread 运行时上的计时器根本没机会跑。
+    ///
+    /// # 🔴🔴 那句「万一还挂，那本身就是一个读数」**兑现了**〔第五拍〕
+    ///
+    /// 云端 run `34468962797`（`4016d6a`）：`fmt`/`clippy` 全过、同一个 binary 里
+    /// **别的测试 11:08:26 就全跑完了**，而本条 11:08:09 起、到 11:35:08 作业闸掐断 ——
+    /// **独自跑了 27 分钟，零输出，`【格N】` 一个都没印出来**。
+    /// ⇒ 没有任何一格的上限炸过 ⇒ **卡的是同步调用，不是 await**。
+    ///
+    /// ⇒ 本拍改成**整条跑在裸线程上、由主线程 `recv_timeout` 收一个结论**
+    /// （形状抄 [`bounded`] —— 那是这几趟里唯一没被卡住的形状，不是巧合）。
+    /// **主线程只等一个 `Result`，它不可能被子线程里的任何同步调用拖住** ⇒
+    /// 无论卡在哪，本条都会在有界时间内给出**一个读数**：绿、红、或者
+    /// 「整条超过 N 秒没回来」。
+    ///
+    /// ⚠ **为什么不是换 `flavor = "multi_thread"`**：那只能救「同步调用卡住」这一形，
+    /// 救不了**运行时析构**那一形 —— Windows 上子进程 stdio 走 tokio 的 blocking 池，
+    /// 而运行时 drop 时会等正在跑的 blocking 任务。裸线程这条把 `Runtime` 的**析构也包在
+    /// 上限里面**，两形一起兜住。
+    ///
+    /// ⚠ 一条挂死的测试**不只是自己没读数**：它把同一趟里其余所有读数一起吃掉
+    /// （那三趟里「生成物必须最新」与 vendor 那格 `cargo test` 一次都没跑到）。
+    #[test]
+    fn a_timed_out_local_read_does_not_leave_an_orphan_behind() {
+        // 🔴 **整条的硬上限**。四格各自的上限加起来最坏 ~130s，这里给 210s 的外框：
+        //    外框先炸就说明卡在四格**之外**（解析 bash / spawn / 运行时析构）。
+        const TOTAL_SECS: u64 = 210;
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::Builder::new()
+            .name("ccbus-orphan-judge".to_string())
+            .spawn(move || {
+                let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let rt = tokio::runtime::Builder::new_current_thread()
+                        .enable_all()
+                        .build()
+                        .expect("起不了 tokio 运行时");
+                    rt.block_on(orphan_judge_body());
+                    // ⚠ `rt` 在这一行之后才 drop —— Windows 上子进程 stdio 走 blocking 池，
+                    //    运行时析构会等正在跑的 blocking 任务，**析构本身也可能挂**。
+                    //    所以它必须留在这条上限**里面**。
+                    breadcrumb("四格全过，开始析构 tokio 运行时");
+                }));
+                breadcrumb("判据线程收尾（运行时已析构）");
+                let _ = tx.send(out);
+            })
+            .expect("起不了判据线程");
+        match rx.recv_timeout(std::time::Duration::from_secs(TOTAL_SECS)) {
+            Ok(Ok(())) => {}
+            // 子线程里的 panic 原样抬回来 —— 失败消息与从前逐字一致。
+            Ok(Err(payload)) => std::panic::resume_unwind(payload),
+            Err(e) => panic!(
+                "整条判据超过 {TOTAL_SECS}s 没回来（{e:?}）。\n\
+                 🔴 **这是硬上限炸的，不是被测性质失败** —— 别读成「超时漏了工作进程」。\n\
+                 ⇒ 去日志里找 `[ccbus-orphan]` 那几行面包屑：**最后印出来的那一行\n\
+                 就是它走到的最远处**，下一行要做的事就是卡住的那一步。\n\
+                 （面包屑绕开了 libtest 的输出捕获直接写 fd 2，正是为挂死这一形准备的。）"
+            ),
+        }
+    }
+
+    /// 面包屑：**绕开 libtest 的输出捕获**，直接写进程的 fd 2。
+    ///
+    /// 🔴 为什么不是 `eprintln!`〔第五拍〕：`eprintln!` 走 `std::io::_eprint`，
+    /// 它先看 libtest 装的那个**线程局部**捕获缓冲 ⇒ 只有**测试失败或成功**时才转印得出来。
+    /// 而 09-10 云端那三趟正是**挂死**：既不失败也不成功，捕获里的东西一个字都到不了日志
+    /// —— 那三趟合起来零输出，我们只能靠推。`std::io::stderr()` 的 `Write` 不经过那一层。
+    ///
+    /// ⇒ 这几行**不是给绿的时候看的**，是给「万一还挂」准备的：日志会停在
+    /// 最后一条面包屑上，下一步就是卡住的那一步。
+    ///
+    /// ⚠ 还有第二重保险，两重是刻意叠的：本判据的正文跑在**自己起的那条裸线程**上，
+    /// 而 libtest 的捕获是**线程局部**的 —— 那条线程上压根没装捕获。
+    /// 两重都指望不上的话，我们就又回到「零输出只能靠推」那一趟了。
+    fn breadcrumb(what: &str) {
+        use std::io::Write;
+        let mut err = std::io::stderr();
+        let _ = writeln!(err, "[ccbus-orphan] {what}");
+        let _ = err.flush();
+    }
+
+    /// 本判据的正文 —— 四格。被 [`a_timed_out_local_read_does_not_leave_an_orphan_behind`]
+    /// 放在裸线程上跑，好让整条有一个不可能被同步调用拖住的硬上限。
+    async fn orphan_judge_body() {
         // ★★ **阳性对照**：先证明这台机器的 `bash -lc` 真的跑了我们这段脚本、
         //    而且它的 stdout 真的回到了我们手上。**清一色内建**（`printf`），
         //    所以它量的是「壳活着吗」，不掺任何 PATH 的运气。
@@ -2292,21 +2369,30 @@ mod tests {
         //   ② 超时那一格真的失效了（本条要买的那一面）。
         const HELLO: &str = "CCBUS-SHELL-ALIVE";
         let probe = format!("printf %s {HELLO}");
+
+        // ★ **先把两个同步嫌疑点拆开**〔第五拍〕：`local_shell_read` 里同步的只有两处 ——
+        //   `resolve_bash()`（`env::var_os` + 最多 6 次 `Path::exists`）与 `Command::spawn()`。
+        //   在这里先单独跑一次 `resolve_bash()` 并前后各留一条面包屑，
+        //   下一趟即使还挂，日志也分得出是这两处里的哪一处。
+        breadcrumb("格①之前：开始 resolve_bash()（同步：env::var_os + Path::exists）");
+        let which = resolve_bash();
+        breadcrumb(&format!("格①之前：resolve_bash() 回来了 -> {which:?}"));
+
+        breadcrumb("进入格①·壳自检（下一步是同步的 Command::spawn）");
         // 内层 30s → 10s：一条 `printf` 回不来的话，多等 20 秒买不到任何东西。
         let alive = stage(
             "格①·壳自检",
-            30,
+            20,
             local_shell_read(&probe, 4096, 10, "壳自检", OnOverflow::Reject),
         )
         .await;
+        breadcrumb("格①·壳自检回来了");
         // ⚠ 用 `contains` 不用逐字相等：`-l` 会过 `/etc/profile`，有的机器的 rc 会往
         //   stdout 上垫东西。垫东西不影响本格要证的事（脚本跑了、stdout 回得来），
         //   而逐字相等会把「rc 话多」误报成「壳是死的」。产品那侧同理，见 `take_head`。
         let got = alive.as_deref().unwrap_or("");
-        // ★ 把**解析到的是哪一个 bash** 印进错误里〔ccbus-win 09-10 第二拍〕：
-        //   上一拍交回时「那台 runner 上 `bash` 到底是谁」还只是推断、没有读数。
-        //   这一格红的时候，下一趟云端日志里就有那条路径的**直读数**。
-        let which = resolve_bash();
+        // ★ `which` 在上面那条面包屑里已经拿到了 —— 它同时进错误消息，也同时进日志
+        //   〔第二拍立、第五拍改成面包屑：挂死的时候错误消息根本印不出来〕。
         assert!(
             got.contains(HELLO),
             "【格①】阳性对照没回来（跑的是 `bash -lc '{probe}'`，全是内建）。实得：{alive:?}\n\
@@ -2332,7 +2418,9 @@ mod tests {
             !stem.is_empty(),
             "【格②】本测试进程的文件名取不出来：{me:?}"
         );
-        let seen_self = count_live_processes(stem, 60, "格②·尺子自检").await;
+        breadcrumb("进入格②·尺子自检（数进程，跑在它自己的裸线程上）");
+        let seen_self = count_live_processes(stem, 45, "格②·尺子自检").await;
+        breadcrumb(&format!("格②·尺子自检回来了 -> {seen_self}"));
         assert!(
             seen_self >= 1,
             "【格②】尺子连**本测试进程自己**都数不到（针=`{stem}`，实得 {seen_self}）。\n\
@@ -2347,24 +2435,28 @@ mod tests {
         let marker = format!("ccbus-orphan-{}", std::process::id());
         let cmd = format!("while :; do : {marker}; done");
 
+        breadcrumb("进入格③·超时探针（下一步又是同步的 Command::spawn）");
         let r = stage(
             "格③·超时探针",
-            30,
+            20,
             local_shell_read(&cmd, 4096, 1, "超时探针", OnOverflow::Reject),
         )
         .await;
+        breadcrumb("格③·超时探针回来了");
         assert!(
             r.is_err(),
             "【格③】1 秒上限跑一个内建死循环竟然没超时 —— 本判据在空转。实得：{r:?}"
         );
         // 给 tokio 的收尸队一点时间。
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-        let n = count_live_processes(&marker, 60, "格④·数孤儿").await;
+        breadcrumb("进入格④·数孤儿");
+        let n = count_live_processes(&marker, 45, "格④·数孤儿").await;
+        breadcrumb(&format!("格④·数孤儿回来了 -> {n}"));
         // 只在**要红的时候**才多问一次：绿的那条路上一次都不问。
         let survivors = if n == 0 {
             String::new()
         } else {
-            describe_live_processes(&marker, 60, "格④·倒出").await
+            describe_live_processes(&marker, 45, "格④·倒出").await
         };
         assert_eq!(
             n, 0,
@@ -2388,10 +2480,12 @@ mod tests {
     /// 而当时 `ci.yml` 一条 `timeout-minutes` 都没有 ⇒ 不取消就烧到 GitHub 的 6 小时上限。
     /// **一条挂死的测试比一条红的更坏**：红的会说哪里坏了，挂死的什么都不说。
     ///
-    /// ⚠ **它约束的只有 await 点**（`#[tokio::test]` 默认 current_thread 运行时）：
-    /// 某一格里若是同步调用卡住，计时器压根没机会跑。⇒ 这一层**不是**万能的兜底，
-    /// 它是把「已知会 await 的那几格」变成有名有姓的红。真正无界的那一格
-    /// （数进程）另有办法，见 [`count_live_processes`]。
+    /// ⚠ **它约束的只有 await 点**（跑在 current_thread 运行时上）：某一格里若是
+    /// 同步调用卡住，计时器压根没机会跑 —— 09-10 云端那趟 27 分钟零输出，实测就是这一形。
+    /// ⇒ 这一层**不是**万能的兜底，它只是把「已知会 await 的那几格」变成有名有姓的红。
+    /// 真正的兜底在两处：数进程那一格自己的裸线程（[`count_live_processes`]），
+    /// 以及**整条判据外面那个硬上限**（见
+    /// [`a_timed_out_local_read_does_not_leave_an_orphan_behind`] 头一段）。
     async fn stage<T>(label: &str, secs: u64, f: impl std::future::Future<Output = T>) -> T {
         match tokio::time::timeout(std::time::Duration::from_secs(secs), f).await {
             Ok(v) => v,
