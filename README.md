@@ -159,7 +159,11 @@
 
 **Windows**
 - `*-setup.exe` — NSIS 安装器（推荐普通用户）
-- `*_zh-CN.msi` — MSI 包（适合企业 IT 部署）
+- `*_x64_en-US.msi` — MSI 包（适合企业 IT 部署）
+  > ⚠ **后缀是 `en-US`，不是 `zh-CN`** —— `tauri.conf.json` 没配 WiX 语言，走的是默认。
+  > 界面语言不受它影响。〔09-10 订正：本行先前写 `zh-CN`，而 v3.6.0 与 v3.7.0 的实际产物
+  > 逐字都是 `en-US` —— **照着找会找不到那个文件**。同一个事实 `doc/RELEASING.md` 早就写对了，
+  > 是本行与 `doc/BUILDING.md` 没跟。〕
 - `monitor.exe` — 裸 exe（需自管路径）
 
 双击运行；首次会提示 Windows SmartScreen "未知发布者"（未签名），选「更多信息 → 仍要运行」。
@@ -174,7 +178,11 @@
 ### 首次使用
 
 1. **启动程序**
-   - Windows：`cc-monitor.exe`
+   - Windows：开始菜单 / 桌面上的 **cc-monitor** 快捷方式
+     > ⚠ **可执行文件叫 `monitor.exe` 不是 `cc-monitor.exe`**（装在 `C:\Program Files\cc-monitor\`）——
+     > 与 Linux 那边同一个原因：可执行文件用的是 cargo 包名，快捷方式与窗口标题用 productName。
+     > 〔09-10 订正：本行先前写 `cc-monitor.exe`，而干净机上装完**盘上没有这个文件**（现打 0 处）；
+     > 快捷方式确实叫 `cc-monitor`，所以点它没事，但去目录里找会扑空。〕
    - Linux：应用菜单里的 **cc-monitor**，或命令行 **`monitor`**
      > ⚠ **命令名是 `monitor` 不是 `cc-monitor`** —— 可执行文件用的是 cargo 包名，
      > 而窗口标题/桌面项用 productName `cc-monitor`。两个名字不一致是既有事实，
