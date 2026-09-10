@@ -648,20 +648,54 @@ mod tests {
         let sh = std::fs::read_to_string(root.join("e2e/daemon-gate2-acceptance.sh"))
             .expect("e2e 脚本读不到");
         // ⚠ 刻意**不复用**上面那个 `at`（那是 ci.yml 里的偏移）—— 两个不同的量不共一个名字。
-        let w_at = sh.find("waiver_reason() {").expect(
-            "e2e 脚本里找不到 `waiver_reason()` —— 登记豁免那套机制没了。\n\
-             那不是「注释过期」：本条会按一个假的豁免数去夹地板，两侧都判错。",
-        );
+        //
+        // ★★ 用 `find_pinned` 而**不是** `str::find`〔`CI-J3` 收尾，F24 那一族〕。
+        //    `str::find` 取的是**第一处**：不查唯一性、不查边界。脚本里哪天多出第二个同名定义、
+        //    或注释里写了同一串，它会**静默切到别人身上** —— 然后下面那几条就按一个**假的豁免数**
+        //    去夹地板。那正是本文件下面自己写着的「**比不判更坏**」。
+        //    `find_pinned` 买的是两格：**恰好一处** ＋ 左侧有边界（needle 以 `w` 开头
+        //    ⇒ `my_waiver_reason() {` 不再命中）。两种走偏各红一条带上下文的诊断。
+        //    ⚠ 右侧边界这一格**是空的**：needle 末字符 `{` 不是标识符字符 ⇒ `ident_char` 判据不施加
+        //      —— 如实登记，别读成「两侧都钉住了」。
+        let w_at = guard_core::find_pinned(&sh, "waiver_reason() {").unwrap_or_else(|e| {
+            panic!(
+                "e2e 脚本里的 `waiver_reason()` 定义钉不住：{e}\n\
+                 ★ 那不是「注释过期」：登记豁免那套机制是本条的**输入** ——\n\
+                 切错地方 ⇒ 本条按一个假的豁免数去夹地板，两侧都判错。"
+            )
+        });
         let w_rel = sh[w_at..]
             .find("esac")
             .expect("`waiver_reason` 里找不到 `esac` —— 函数形状变了，切不出函数体");
         let body = &sh[w_at..w_at + w_rel];
         // ★ 抽取器自检：切错地方时下面两条会**按一个假的豁免数**判 —— 那比不判更坏。
+        //
+        // 原来这里是一条 `body.contains("case …") && body.contains("*)")`。拆成两格，
+        // 因为**它们根本不是同一件事**（而且第二件比「切对了」重得多）：
         assert!(
-            body.contains("case \"$1\" in") && body.contains("*)"),
-            "切出来的不是 `waiver_reason` 的函数体（{} 字节）—— 抽取器坏了，本条此刻在按假数判",
+            guard_core::contains_word(body, "case \"$1\" in"),
+            "切出来的不是 `waiver_reason` 的 `case` 块（{} 字节）—— 抽取器坏了，本条此刻在按假数判",
             body.len()
         );
+        // ★★ 兜底那一行必须**整行**还是 `*) echo "" ;;`。
+        //
+        // 这一格钉的不是「切对了」，是一条**承重的事实**：兜底一旦回**非空**串，
+        // `skipped()` 会把**每一条未登记的 skip** 都当成豁免 ⇒ 收尾那句
+        // `[ "$skip" -eq 0 ] || exit 1`（真正扛「skip 不是通过」的那道门，见本组头注）
+        // **当场静默失效**，而本条数出来的豁免数也一并变成假的。**一处改动，两道门一起塌。**
+        //
+        // ⇒ 用 `pin_line`（整行相等 + 恰好一行），**不用** `contains_word("*)")`：
+        //   后者首尾都不是标识符字符 ⇒ `ident_char` 那两条边界约束**全为空**，
+        //   与裸 `contains` **逐字等价** —— 换它只是让这一处退出某条棘轮的人群定义，
+        //   一格牙都不多买。**为了数字换写法**在本仓是要点名的，所以这里换的是**更硬**的那一个。
+        if let Err(e) = guard_core::pin_line(body, "*) echo \"\" ;;") {
+            panic!(
+                "`waiver_reason` 的兜底分支不再是整行 `*) echo \"\" ;;`：{e}\n\
+                 🔴 兜底回非空串 ⇒ 每一条**未登记**的 skip 都会被当成豁免 ⇒\n\
+                 `[ \"$skip\" -eq 0 ] || exit 1` 静默失效，且本条的豁免数一并变假。\n\
+                 真要改它的写法，先说清「未登记的 skip 仍然让整套 RC=1」由谁接。"
+            )
+        }
         // 一条登记 = 一条 `<case_id>) echo "<书面理由>" ;;`。兜底那条 `*)` 回空串，**不算登记**
         //（脚本 `:59` 逐字：「只豁免**登记在册**的：没登记的 skip 仍然让整套 RC=1」）。
         let waivers = body
