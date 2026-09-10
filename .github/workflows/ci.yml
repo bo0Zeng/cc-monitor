@@ -550,11 +550,49 @@ jobs:
           # 没有地板 ⇒ 断言被删空照样绿，正是这套机制立起来要防的那件事（我自己刚犯了一次）。
           [ "${N:-0}" -ge 23 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 23）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
-          for pair in "tmux-target 26" "ccm-cli 242" "ccm-print-parity 12" "ccm-acceptance 29" \
+          #
+          # 🔴🔴 **读这张清单之前先读这四行 —— 这里是本仓「同一个量不许两处各写一份」
+          #      那条病的活体，而且它长在守卫自己身上。**
+          #   · 这张清单**不是**地板的真相源。真相源只有一个：下面那些
+          #     `bash e2e/assert-pass-floor.sh <套件> <地板>` 的调用行
+          #     （`e2e-tmux` 里 `:646` 起 · `e2e-tmux-rust` 里 `:753` 起）。
+          #     这张清单是它们的**副本**，作用是「地板被人偷偷抹成 0 / 套件被删」时有人喊。
+          #   · 判法是**逐字符串命中**（下面那行 `grep -q`）：清单里的数与调用行上的数
+          #     **差 1 都不命中** ⇒ 第一条不命中就 `exit 1`，整个 `E2E scripts health` job 红。
+          #     ⇒ **副本漂了不是「注释过期」，是流水线直接红。**
+          #   · ⇒ **纪律（第三次写在这里了）：改任何一套的地板 = 同一拍改两处 ——
+          #     调用行 + 这张清单。** `ccm-print-parity` / `ccm-rbind-title` / `ccm-cli` /
+          #     `ccm-contract-parity` 这四套还有**第三处**（`scripts/gate.sh` 的 `run_e2e` 行，
+          #     见 `:521` 那段 `K-G8`）⇒ 那四套是**三处**一起改。
+          #
+          # ⚠ **2026-09-09 `CI-J2` 订正三处已漂的**（`ccm-cli 242→264` · `ccm-acceptance 29→31` ·
+          #   `ccm-contract-parity 68→72`，其余 20 条本来就一致）。
+          #   漂是 `e08db89`（09-05，`K-P2 F` 拍）留下的：它把这三条**调用行**从 242/29/68 抬到
+          #   264/31/72，**没动这张清单** —— 而 `:515` 那段在 09-03 就已经逐字写着这条纪律，
+          #   而且写它的那一拍订正的正是**同样三套**（当时是 53/19/61 对不上 59/26/62）。
+          #   ⇒ **同一个位置、同样三套、两个月内第二次。散文纪律拦不住它。**
+          #   云端首跑（run `34432595554`）逐字报的是本步骤自己那句
+          #   `::error::找不到调用行 '…sh ccm-cli <当时清单里的 242>'`。
+          # ⚠ **2026-09-09 `CI-J3` 又动了两条，两处都是同一拍改的**：
+          #   · `inbound-frames` 由 32 抬到 33 —— `track/e2e-sid-tag` 把「验 `@ccm_sid`」那一格
+          #     拆成了「意图键写对了」＋「此刻事实键必须为空」两格（`−1 +2`）；
+          #   · `daemon-gate2` 由 36 降到 35 —— 那是一条**从 `F20`（08-06）起就没成立过**的地板
+          #     （`meta_colon` 必然走登记豁免，可达上限一直是 35），新口径是
+          #     「总槽位 − 已登记豁免数」，由 `remote-daemon-proto/src/control/gate.rs` 两侧夹住。
+          #   两条的完整理由都写在**各自的调用行上方**，这里不重抄 —— 这张清单是副本，不是真相源。
+          #   ⚠⚠ **这几行注释刻意不把那句报错原样抄全**：下面那个 `grep -q` 搜的是**整份
+          #   `ci.yml`、不剔注释** ⇒ 注释里只要出现一次逐字的
+          #   「脚本名 + 空格 + 套件名 + 空格 + 数字」，那一对以后就**永远命中**，
+          #   这道守卫在那一套上当场变成空转。
+          #   （同一个坑 `weak-net` job 头上那段注释也逐字警告过一次，见 `:837`。）
+          #   ⇒ **往这个 job 里写注释时，别把任何一条调用行原样抄进来。**
+          #   ⇒ 想把它治根就得让这份副本**不必存在**（例如从调用行里现抽套件名+地板、
+          #   只对「套数」与「每条都带非零地板」立判据）；那不是本件的写区，已在交回里提给 PM。
+          for pair in "tmux-target 26" "ccm-cli 264" "ccm-print-parity 12" "ccm-acceptance 31" \
                       "ccm-pretrust 15" "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
-                      "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 32" \
-                      "ccm-contract-parity 68" "daemon-gate2 36" "local-backend 14" \
+                      "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 33" \
+                      "ccm-contract-parity 72" "daemon-gate2 35" "local-backend 14" \
                       "daemon-sessions-rewatch 5" "daemon-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "daemon-cc-bus 50"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
@@ -646,14 +684,21 @@ jobs:
       # 真的落到开发机的 ~/.cc-bus 上过，那道自检就是那次撞出来的）。
       - name: cc-send 滞留队列补投（cc-busd 死后消息不许没人管）
         run: bash e2e/assert-pass-floor.sh cc-bus-queue-drain 43
-      - name: e2e - daemon sessions 重挂（P0b-Y2，#60 台架九拍的根因）
-        run: bash e2e/assert-pass-floor.sh daemon-sessions-rewatch 5
-      - name: e2e - daemon 迟到的 tmux server（P0b-Y2，#60 根因）
-        run: bash e2e/assert-pass-floor.sh daemon-tmux-late-server 2
-      # P4f：daemon 的 cc-bus 基础命令。**要 debug daemon 二进制**（同下面 daemon-frames 三套），
-      # 但不要 tmux、不要真 claude —— 它跑的是一次性 CLI（`--bus-list` / `--bus-send`）。
-      - name: e2e - daemon 的 cc-bus 基础命令（P4f）
-        run: bash e2e/assert-pass-floor.sh daemon-cc-bus 50
+
+      # 🔴 **2026-09-09 `CI-J1`：`daemon-sessions-rewatch` · `daemon-tmux-late-server` ·
+      #    `daemon-cc-bus` 三套原先加在这里，已搬去 `e2e-tmux-rust`。**
+      #    它们每一套第一件事就是硬门一个**真 daemon 二进制**
+      #    （`e2e/daemon-sessions-rewatch.sh:29` · `daemon-tmux-late-server.sh:23` ·
+      #    `daemon-cc-bus.sh:31`，默认路径 `remote-daemon-proto/target/debug/cc-monitor-remote`），
+      #    而本 job 按上面那条拆法（`:623`「按『要不要 Rust 工具链』拆两个 job」）
+      #    **刻意不装 Rust 工具链、不编任何东西** ⇒ 它们在这里
+      #    **不可能绿**。云端首跑（run `34432595554`）三套逐字报
+      #    「需要 daemon 二进制：…/target/debug/cc-monitor-remote（先 cargo build -p cc-monitor-remote）」。
+      #    ⚠ **加错 job 这件事从 `a952b47` / `81c1bab`（08-13）起就在**，一个月没人发现 ——
+      #    因为本流水线只在 `push`/`pull_request` 上触发，而本仓当时不 push：
+      #    **一条没人在跑的判据，加错了地方也不会有人知道。**
+      #    留在这里的只有 `cc-bus-queue-drain`：它收发全走文件，不要二进制（所以它绿了）。
+      #    ⇒ 判「这一步该住哪个 job」的尺子只有一把：**它要不要 Rust 工具链的产物**。
 
       # G-C（解 E41）：这两套只要 node + tmux（经 tsx driver 驱真编排逻辑，不碰 daemon）。
       # 它们此前进不了 CI 的原因不是「需要什么」，而是**会踩开发者机器上的真实 tmux 会话**
@@ -699,10 +744,14 @@ jobs:
 
       # src-tauri 依赖 tauri v2；Linux 上编译它需要 webkit2gtk/soup 一套开发库
       # （Windows job 不需要，故只在这里装）。
-      - name: install tmux + Tauri Linux build deps
+      # ⚠ **`jq` 是 `CI-J1` 搬家带过来的真依赖**，不是顺手加的：`e2e/daemon-cc-bus.sh:33`
+      #   是 `command -v jq || exit 1` 的硬门（它整套断言都拿 `jq` 读回帧）。
+      #   `ubuntu-latest` 镜像今天确实预装了 `jq`，但那是**镜像的实现细节、不是契约** ——
+      #   隔壁 `e2e-tmux` 的 `install tmux + jq`（`:642`）从一开始就自己装，本 job 照同一口径写死。
+      - name: install tmux + jq + Tauri Linux build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y tmux \
+          sudo apt-get install -y tmux jq \
             libwebkit2gtk-4.1-dev libsoup-3.0-dev build-essential \
             curl wget file libxdo-dev libssl-dev librsvg2-dev \
             libayatana-appindicator3-dev
@@ -722,13 +771,49 @@ jobs:
 
       # U8a-2a：入方向（控制通道）的真进程端到端。此前那条通道**从没有真进程验证过**——
       # daemon 侧全是单测夹具，monitor 侧一个字节都没发过。
+      # ★★ **2026-09-09 `CI-J3`：地板 `32` → `33`**（`−1 +2`）。产品 `2a58237`（09-03，`K-P2` C5）
+      #    把建会话那一刻写的键从**事实**键 `@ccm_sid` 换成**意图**键 `@ccm_sid_expect`，
+      #    而那套夹具停在 `34d3209`（08-12）⇒ 云端 `run 34432595554` 逐字 `合计 PASS=27 FAIL=5`
+      #    （一因五果：会话名不是本工具形状、事实键又没设 ⇒ 下游 send-into / send-keys-raw
+      #    全被 §34 Gate 2 判 `wrong_owner`）。`track/e2e-sid-tag` 把那一格
+      #    **拆成了两格**：意图键必须写对 **＋ 此刻事实键必须为空**（后者钉的是那道分离本身，
+      #    只改个名字买不到）。⇒ 32 − 1 + 2 = **33**。
+      #    🔴 **这一行与 `track/e2e-sid-tag`（`b7a2c5a`）是 lockstep 的**：那一支不落先落这一行，
+      #      套件只吐 32 ⇒ 缩水判据当场红。两支必须同批合，或先合那一支。
+      #    ⚠ 不棘的话，新加的那两格明天能被删掉而 CI 照样绿 —— `assert-pass-floor.sh` 头注
+      #      写的那个失效模式：**不是变红，是静默缩水**。**先跑再棘**的「跑」这一次由 PM 在沙箱里做。
       - name: 入方向 daemon 帧（U8a-2a）
-        run: bash e2e/assert-pass-floor.sh inbound-frames 32
+        run: bash e2e/assert-pass-floor.sh inbound-frames 33
 
       # F03：§34 Gate 2 在 daemon 侧的真机验收。用例逐行来自那张唯一的判定表
       # `src-tauri/src/backend/control/fixtures/gate2-golden.tsv`（三条轨道同一份）。
+      # ★★ **2026-09-09 `CI-J3`：地板 `36` → `35`，而且这个数从此不再由人手写。**
+      #
+      #    这条地板**从 `58b1312`（F20，08-06）起就没有一次成立过**，而云端 08-05 之后
+      #    一次没跑 ⇒ 没人看见。事实链（都在盘上，逐条可复核）：
+      #      · 本套件的 PASS 槽位共 **36** 格（抽取器自检 1 + 判定表 25 行 + 目标不存在 1
+      #        + `send-keys-raw` 过同一道门 1 + 只设 `@ccm_sid_expect` 仍拒 1 + Gate 3 五条 5
+      #        + kill 目标不存在 1 + kill 形状门 1）；
+      #      · `F20` 给循环加了「建完用 `=name:` 复核，找不到就 skip」⇒ `meta_colon`（`cc-a:b`）
+      #        在**任何会把 `:` 改写成 `_` 的 tmux** 上必然走那一支（脚本 `:53-55` 逐字记着
+      #        本机 tmux 3.6 实测 `cc-a:b → cc-a_b`）⇒ 可达上限当场变成 **35**；
+      #      · `938635b`（08-13）把那一支从 `skip` 改成**登记豁免**，让套件退 0 —— 于是
+      #        地板第一次被**读到**，也第一次露出「够不到」。`e2e/README.md:64` 那份全量台账
+      #        逐字记着这套 **35 过 / 0 败**。
+      #    🔴 **一条够不到的地板不是判据，是路障**：它唯一的可观测效果，是把它后面所有步骤
+      #      整片挡成 skipped（本轮就是这么被发现的）。
+      #
+      #    ⚠ **`F20 §3` 那个决定（「skip 不是通过」）本轮一个字没翻**，只是把它的落点说清楚：
+      #      扛它的是套件收尾那句 `[ "$skip" -eq 0 ] || exit 1` —— 那比地板**更硬**
+      #      （套件非零退出时，地板那一步压根轮不到读数）。`meta_dollar`（根因至今未知）
+      #      照旧在那里疼。地板扛的是另一件事：**断言数缩水**。
+      #    ⇒ 新口径：**地板 = 总槽位 − 已登记豁免数**，由
+      #      `remote-daemon-proto/src/control/gate.rs` 的 `the_gate2_floor_still_makes_a_skip_hurt`
+      #      **两侧夹住**（低了＝有一格被静默不验；高了＝又造一条够不到的地板）。
+      #      ⇒ 想降这个数，唯一的路是**登记一条带书面理由的豁免**；想省掉一条豁免，
+      #      这个数就得涨回去。**两边都不再靠散文。**
       - name: Gate 2 daemon 真机验收（F03）
-        run: bash e2e/assert-pass-floor.sh daemon-gate2 36
+        run: bash e2e/assert-pass-floor.sh daemon-gate2 35
 
       # F05a：本机后端监护的真进程验收（起-杀-自愈 / 必崩即判死 / 缺 sidecar 诚实降级）。
       # 数字地板**只在这一行**（定框 §4：同一个数不许两侧各写一份）；脚本里只有导出式自检。
@@ -753,6 +838,33 @@ jobs:
       # 它要的 debug daemon 上面那步已经编好了。
       - name: daemon 分叉（G2 `--fork-session`）
         run: bash e2e/assert-pass-floor.sh daemon-fork 10
+
+      # 🔴 **2026-09-09 `CI-J1`：下面三套是从 `e2e-tmux` **搬**过来的，不是新增。**
+      #    三条调用行（套件名 + 地板值）**逐字未动**，只换了住的 job。它们要的
+      #    debug daemon 就是上面「build debug daemon」那一步的产物（云端首跑里那一步是**绿的**
+      #    —— 二进制本身没问题，问题只是这三套当时不在这个 job 里）。
+      #    `e2e/README.md` 的 job 表从这三套进网那天起（`81c1bab` / `a952b47`）就把它们记在
+      #    `e2e-tmux-rust` 名下 ⇒ **对不上的一直是 `ci.yml`，本次是让它跟上已记下来的意图。**
+      #    ⚠ **为什么这次搬家不用动上面那三处计数/清单**（去核过，不是假设）：
+      #      · `G-A/G-C 覆盖面地板`那一步里 `:547` 的 `grep -c` 与 `:591` 的逐条 `grep -q`
+      #        **都对整份 `ci.yml` 做**、不分 job；
+      #      · `doc_copy_registry::the_e2e_readme_suite_list_matches_ci` 取的是 README 里
+      #        以 `| ` + `e2e-tmux` 开头那**两行的并集**，对全文件调用行集合比**集合相等**。
+      #      ⇒ 搬家不改变「全文件调用行集合」这个量 ⇒ 三把尺子眼里都是**恒等变换**。
+      #      （反过来说：这三把尺子**都不看 job 归属** —— 所以它们一个月来一条都没逮到本缺陷。
+      #       「哪一套住哪个 job」今天仍然只有散文管着，是一处**已知无牙**的地方。）
+      - name: e2e - daemon sessions 重挂（P0b-Y2，#60 台架九拍的根因）
+        run: bash e2e/assert-pass-floor.sh daemon-sessions-rewatch 5
+      - name: e2e - daemon 迟到的 tmux server（P0b-Y2，#60 根因）
+        run: bash e2e/assert-pass-floor.sh daemon-tmux-late-server 2
+      # P4f：daemon 的 cc-bus 基础命令 —— 一次性 CLI（`--bus-list` / `--bus-send`），不起真 claude。
+      # ⚠ 搬家时顺手订正一处旧注：原文写「不要 tmux」，**今天不成立**。
+      #   `e2e/daemon-cc-bus.sh:35` 硬门 `command -v tmux`（`[10]` 的身份空间对账要它），
+      #   `:33` 硬门 `command -v jq` —— 脚本自己的头注（§20-24）记着「原来只在用到 tmux 的
+      #   那一格前面挂 shim、头注还写着本套件不用 tmux」是**一次事故换来的**订正。
+      #   本 job 的 apt 那步因此补了 `jq`（`tmux` 本来就装）。
+      - name: e2e - daemon 的 cc-bus 基础命令（P4f）
+        run: bash e2e/assert-pass-floor.sh daemon-cc-bus 50
 
   # `W-F1`（weak-network 区第一件）：**弱网台架**。两个容器 + 一条自建 docker 网络，
   # `tc/netem` 只打在容器 A 自己的 `eth0` 上，四维（延迟 · 丢包 · 带宽 · 断链）外加一条真
