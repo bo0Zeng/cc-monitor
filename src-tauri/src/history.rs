@@ -5148,9 +5148,22 @@ mod tests {
              那一格是个常量，Windows 上会往 PowerShell 串里塞一句 `export`。实得 = {ps:?}"
         );
         // 反空真：POSIX 那一趟本来就该拿不到这个形状（否则上面那条恒真）。
+        //
+        // ⚠ **09-09 订正（云端 windows-latest 首跑逮到）**：这里原写
+        //   `!first.contains("$env:")` —— 断的是**整串**。而 `launch_local` 里 `base`
+        //   那一格是 `#[cfg(windows)]` 选的（它**不走**这条缝），Windows 上它渲出
+        //   `$env:CLAUDE_CONFIG_DIR='…'; ` ⇒ 原断言在 Windows 上**恒假**，
+        //   量的根本不是身份那一段。
+        //   ⇒ 收窄到**只盯身份那一段**，并补一条**正**的：POSIX 那一趟必须真的渲出
+        //   `export <变量名>=`。两条合起来比原来那一条**更严** ——
+        //   原写法在「身份那一段整个不见了」时是绿的。
         assert!(
-            !first.contains("$env:"),
-            "POSIX 那一趟也渲出了 `$env:` —— 上面那条断言是恒真的"
+            first.contains(&format!("export {LAUNCH_ID_VAR}=")),
+            "POSIX 那一趟没渲出 `export {LAUNCH_ID_VAR}=` —— 上面那条断言是恒真的：{first:?}"
+        );
+        assert!(
+            !first.contains(&format!("$env:{LAUNCH_ID_VAR}=")),
+            "POSIX 那一趟把身份渲成了 `$env:` —— 上面那条断言是恒真的：{first:?}"
         );
     }
 
@@ -5356,7 +5369,11 @@ mod tests {
     // - **`launch_local` 以下的任何一格**：那是上面那条 `…_is_really_prepended_…` 的面。
     //   本族刻意**不**重复买它 —— 三条探针的反空真只断「不走中转那一趟长得像一条真拉起」。
     // - **Windows 那条腿**：`PRODUCTION_LAUNCH_SINK` 在 Windows 上是另一个送法，
-    //   而门禁跑在 Linux ⇒ 本族与本文件其余判据同样只驱动 POSIX 那一支（登记，不假装）。
+    //   而本族喂的是记账替身 ⇒ **送法**那一格三条探针一格都驱动不到（登记，不假装）。
+    //   〔09-09 订正：这里原写「而门禁跑在 Linux ⇒ 本族与本文件其余判据同样只驱动
+    //    POSIX 那一支」—— **那半句今天是假话**。云端 `Rust lint + test` 跑在
+    //    windows-latest，而 `launch_local` 里 `base` 那一格是 `#[cfg(windows)]` 选的
+    //    ⇒ 本族在 CI 上驱动的是 **PowerShell** 那一支，在开发机上才是 POSIX 那一支。〕
 
     thread_local! {
         /// `D8 阻-1` 三支探针共用的记账台：这一趟真正交出去的 `(命令串, cwd)`。
@@ -5461,9 +5478,21 @@ mod tests {
         // 逐字节：前缀 + 基准串。剥掉第一段之后剩下的**必须**逐字节等于 ① 那趟的基准串
         // —— 「多注入一个前缀」与「顺手把命令体也换了」在只断 `contains` 的判据上同形。
         let (head, tail) = routed.split_once("; ").expect("走中转那一趟没有前缀段");
+        // ⚠ **09-09 订正（云端 windows-latest 首跑逮到）**：`entry_stage` 的平台那一格
+        //   照**生产取值口**（真答案），所以在 Windows 上中转前缀**真的**渲成 PS 形态
+        //   `$env:ANTHROPIC_BASE_URL='…'`，而这里原来把 POSIX 那一种写死了。
+        //   ⇒ 按**这台机器**算出该有的那一种，各断各的。
+        //   🔴 **不是「两种都放行」** —— 那会把「渲错了平台形态」这一刀松掉
+        //   （`D6` 刀 `Xb` 的正主）。现在两个平台各自只放行一种：
+        //   Linux 上渲成 `$env:` 照样红，Windows 上渲成 `export` 也照样红。
+        let want_head = if platform_is_windows() {
+            "$env:ANTHROPIC_BASE_URL="
+        } else {
+            "export ANTHROPIC_BASE_URL="
+        };
         assert!(
-            head.starts_with("export ANTHROPIC_BASE_URL="),
-            "第一段不是中转注入：{head:?}"
+            head.starts_with(want_head),
+            "第一段不是中转注入（这台机器该渲成 {want_head:?}）：{head:?}"
         );
         assert_eq!(
             tail, bare,
