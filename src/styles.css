@@ -4662,6 +4662,43 @@ body.settings-window-mode .grid-monitor-trigger {
   text-overflow: ellipsis;
 }
 
+/* === K-R45 甲：「我说过的 N 句」清单面板 ===
+   上一轮 `src/styles.css` 在写区外，这两条规则写成了 `style.cssText`（**申报过的债**）。
+   本轮搬进来，**逐条属性逐字照搬、一个值都没改** —— 搬家不是改外观的时机。
+
+   🔴 `.session-viewer-inputs` **绝不许出现 `display`**：面板靠 `el.hidden` 收起，
+   而 `hidden` 是 UA 样式表里的 `display:none`，作者样式里任何一条 `display` 都会盖掉它
+   ⇒ 面板从此永远展开。原来的内联串里没有 `display`，这里也不许有。
+   （jsdom 不加载本文件 ⇒ 「面板默认收着」那格断的是 `.hidden` 属性，**盖不住这一形**。） */
+.session-viewer-inputs {
+  flex-shrink: 0;
+  max-height: 38vh;
+  overflow-y: auto;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--bg-2);
+}
+.session-viewer-input-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 4px 16px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 「这一条跳不过去」的变灰。原来住在 `jumpToUserInput` 里的 `row.style.opacity = "0.55"`。
+   搬到这里顺带修掉一个旧形：那一句只加不减，同一行后来跳得过去了也会一直灰着；
+   现在灰不灰只由 `data-unjumpable` 在不在决定，而那个标记是加也删也有的。 */
+.session-viewer-input-row[data-unjumpable] {
+  opacity: 0.55;
+}
+
 /* 复用 .stream 容器样式（滚动 + padding），但改 flex item 布局。
    关键：`.stream` 基类默认 `visibility: hidden`（多 Tab 机制：只有 `.active`
    的那个 tab stream 可见）。SessionViewer 是独立单一 stream，没有 `.active`
