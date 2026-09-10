@@ -1000,8 +1000,8 @@ mod tests {
             "夹具里那个旁邻文件不见了（{}）—— 这一格会零命中地绿",
             sibling.display()
         );
-        let err = resolve_editable(spec, cwd, &sibling)
-            .expect_err("同目录下不在白名单的文件竟然被放行");
+        let err =
+            resolve_editable(spec, cwd, &sibling).expect_err("同目录下不在白名单的文件竟然被放行");
         assert!(
             err.contains("不在") && err.contains(spec.id),
             "拒绝理由没说清是「不在可编辑集合里」以及是哪个 skill：{err}"
