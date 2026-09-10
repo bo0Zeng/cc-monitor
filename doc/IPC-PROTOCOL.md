@@ -940,20 +940,51 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 **SFTP · 端口转发 · 跳板 · 其余一次性 exec 与测试连接，界面进程仍然自己拨号。**
 ⇒ **任何地方都不许把它写成「拨号搬出去了」。**
 
-- **配置从 stdin 第一行进，不走 argv** —— argv 在同机任何用户的 `ps` 里都看得见，
-  而这一行里有主机名、用户名、私钥**路径**。
+- **配置走环境变量 `CCM_DIAL_REQUEST`，argv 与 stdin 都不走** —— argv 在同机任何用户的
+  `ps` 里都看得见，而这一份 JSON 里有主机名、用户名、私钥**路径**；
+  `/proc/<pid>/environ` 只有本人（与 root）读得到。
+
+  🔴 **订正 2026-09-10：这一格是文档漂移，不是同族的「前提翻了」。**
+
+  **墓碑（原话逐字，2026-09-10 之前）**：
+
+  > - **配置从 stdin 第一行进，不走 argv** —— argv 在同机任何用户的 `ps` 里都看得见，
+  >   而这一行里有主机名、用户名、私钥**路径**。
+  >
+  > ```text
+  > 界面 → 代理  stdin  第一行 JSON：{"host","port","user","key_path","host_key_fingerprint","command"}
+  > ```
+
+  它记的是**第一版**的形状。代码早就改掉了，这份文档没跟着走。
+
+  **证据（现打的读数，不是从代码推的）**：09-10 在本树拿 `--dial` 实跑两趟 ——
+  ① 不设 `CCM_DIAL_REQUEST`、stdin 给 `/dev/null` ⇒ **退出码 2**，stderr 逐字
+  `dial: 环境变量 CCM_DIAL_REQUEST 没设（或是空的）—— 界面没交请求`；
+  ② **把那份 JSON 原样喂进 stdin 第一行**、仍不设那个环境变量 ⇒ **还是退出码 2、还是同一句话**
+  ⇒ 「stdin 第一行」那条路今天**一个字节都不被读**。
+  ⚠ 两趟都是 **Linux gnu debug 构建**，**不是** Windows sidecar；stdout 两趟都空
+  （这一档连 `DialAck` 都不发 —— 界面还没交请求，没什么可回的）。
+
+  两侧代码各自自陈：`remote-daemon-proto/src/dial/mod.rs` 头注写着**为什么**改
+  （`ssh_source` 有一条判据**逐字禁止它自己往流里写** —— 写的能力在 `U8a-2a` 整个交给了
+  `ParkedWriter`；硬走 stdin 就得去放宽那条判据，代价不值），
+  `src-tauri/src/ssh_source.rs` 那一侧是 `.env(DIAL_REQUEST_ENV, …)`。
 - 线上形状（**不是** §10 上面那套 wire 协议，那份一个字节没动）：
 
   ```text
-  界面 → 代理  stdin  第一行 JSON：{"host","port","user","key_path","host_key_fingerprint","command"}
-                      其后：原始字节 → SSH channel（远端 daemon 的 stdin）
+  界面 → 代理  环境变量 CCM_DIAL_REQUEST：一份 JSON
+                      {"host","port","user","key_path","host_key_fingerprint","command"}
+              stdin   **全部**是原始字节 → SSH channel（远端 daemon 的 stdin）
   代理 → 界面  stdout 第一行 JSON：{"ok":bool,"error":string|null,"fingerprint":string|null}
                       其后：原始字节 ← SSH channel（远端 daemon 的 stdout）
   ```
 
   ⚠ **键名是蛇形**（`key_path`，不是配置面那套 camelCase 的 `keyPath`）：
   这条管子两端都是我们自己，不该被前端的字段名契约拴住。
-- 退出码：`2` = 请求行读不懂；`3` = 请求读得懂但拨不通（TCP / 指纹 / 鉴权 / exec 任一步）。
+- 退出码：`2` = **拿不到请求**（`CCM_DIAL_REQUEST` 没设 / 是空的 / 不是一份合法 `DialRequest`）；
+  `3` = 请求读得懂但拨不通（TCP / 指纹 / 鉴权 / exec 任一步）。
+  〔订正 2026-09-10：原话逐字「`2` = **请求行读不懂**」——「行」记的是 stdin 那一版，
+  同一次漂移。上面那两趟实跑的退出码都是 `2`。〕
 - **鉴权只支持 `key_path`（publickey）**：`ssh-agent` 那条界面侧只在 Windows 有实现（命名管道），
   而本 crate 今天只出 Linux musl 二进制。缺 `key_path` 直接 `{"ok":false}`，**不静默回落**。
 - **不做多地址竞速（F45）、不做跳板（F56）**：那两样是界面侧 `connect_session` 的上游逻辑。
