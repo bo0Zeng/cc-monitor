@@ -537,10 +537,6 @@ export class SessionViewer {
       // 清单行不是卡。两件事共用一个属性名，下一个写 `[data-uuid]` 选择器的人就会数错。
       // （本轮自抓：第一版真写成了 `data-uuid`，判据当场把卡和行混在一起数成 350。）
       row.dataset.inputUuid = entry.uuid;
-      row.style.cssText =
-        "display:block;width:100%;text-align:left;border:0;background:transparent;" +
-        "color:inherit;font:inherit;padding:4px 16px;cursor:pointer;" +
-        "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
       row.textContent = `${i + 1}. ${entry.excerpt}`;
       row.title = entry.excerpt;
       row.addEventListener("click", () => this.jumpToUserInput(entry.uuid, row));
@@ -568,8 +564,9 @@ export class SessionViewer {
       delete row.dataset.unjumpable;
       return;
     }
+    // 🔴 变灰**不在这里**：`styles.css` 的 `.session-viewer-input-row[data-unjumpable]`。
+    // 呈现跟着标记走 ⇒ 上面那句 `delete` 一执行，灰也自动没了（内联 opacity 只加不减）。
     row.dataset.unjumpable = "1";
-    row.style.opacity = "0.55";
     row.title = "这条在渲染时被剥成了空卡，跳不过去（已退到会话末尾）";
   }
 
@@ -652,14 +649,10 @@ export class SessionViewer {
     view.appendChild(this.statusEl);
 
     // K-R45 甲：清单面板。默认收着 ⇒ 不改任何既有布局。
-    // ⚠ 样式写成内联是**刻意的**：`src/styles.css` 本轮在写区外，不许碰。
-    //   这一笔是**申报过的债**，PM 要落 CSS 时把这段搬进 `.session-viewer-inputs` 即可。
+    // 样式住 `styles.css` 的 `.session-viewer-inputs`（上一轮内联那笔债本轮还了）。
     this.inputsPanel = document.createElement("div");
     this.inputsPanel.className = "session-viewer-inputs";
     this.inputsPanel.hidden = true;
-    this.inputsPanel.style.cssText =
-      "flex-shrink:0;max-height:38vh;overflow-y:auto;padding:6px 0;" +
-      "border-bottom:1px solid var(--border-strong);background:var(--bg-2);";
     view.appendChild(this.inputsPanel);
 
     // 消息流容器（与实时 Tab 用相同的 .stream 样式）
