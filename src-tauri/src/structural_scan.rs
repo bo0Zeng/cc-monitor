@@ -1069,8 +1069,16 @@ mod tests {
              E3：判据钉的是「权威源恰好一个」，不是「两份内容一不一样」——\n\
              后者在两份都改错时照样绿。"
         );
+        // ⚠ `homes[0]` 是 `strip_prefix(root)` 的产物 ⇒ **分隔符随平台**。
+        //   09-09 云端首跑（windows-latest）实得 `"src\\backend\\control\\payload.rs"`，
+        //   而针写的是正斜杠 ⇒ `ends_with` **恒 false**，本条在 Windows 上必红。
+        //   同一族今天已经逮到两条：覆盖率地板脚本的键写死正斜杠 · `guard-core` 的
+        //   `scan_tree!` 摘除 —— 三条都是**草垛归一了、针没归一**。⇒ 先归一分隔符再比。
+        //   ⚠ 顺手把 `ends_with` 收成**整条相对路径逐字相等**：原写法对
+        //   `src/x/backend/control/payload.rs` 也放行 —— 只严不松，不是换个写法。
+        let home = homes[0].replace('\\', "/");
         assert!(
-            homes[0].ends_with("backend/control/payload.rs"),
+            home == "src/backend/control/payload.rs",
             "权威源搬家了（现在在 {:?}）—— 搬可以，但请顺手把本条与两处头注的指向一起改。",
             homes[0]
         );

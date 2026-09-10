@@ -1734,7 +1734,8 @@ mod tests {
     /// **我自己留下的孤儿进程**把后面八轮实测全带偏了。那次的教训不是「以后小心」，
     /// 是「留一条判据去数它」。
     ///
-    /// 本条真起进程、真等超时（~1.3s）—— 起的是 `sleep`，不是任何会烧额度的东西。
+    /// 本条真起进程、真等超时（自检 ~2.5s ＋ 超时 ~1.3s）—— 起的是 `sleep`，
+    /// 不是任何会烧额度的东西。
     #[tokio::test]
     async fn a_timed_out_local_read_does_not_leave_an_orphan_behind() {
         // ⚠ marker **不能只写在注释里**：`bash -lc '<单条命令>'` 会 **exec 掉自己**，
@@ -1742,23 +1743,84 @@ mod tests {
         // （实测栽过一次）。⇒ 把 marker 放进那个必然存活的进程**自己的 argv** 里。
         let marker = format!("30.{}", std::process::id());
         let cmd = format!("sleep {marker}");
+
+        // ★★ **反空转自检**〔09-09 补，云端 windows-latest 首跑逼出来的〕：
+        //    先证明**这台机器的 `bash -lc` 里 `sleep` 真的会阻塞**。
+        //
+        // 没有这一格时，两件完全不同的事在输出上**一模一样**：
+        //   ① 这个 shell 里 `sleep` 根本跑不起来 ⇒ 它当场失败 ⇒ stdout 立刻 EOF
+        //      ⇒ `local_shell_read` 回 `Ok("")`；
+        //   ② 超时那一格真的失效了（本条要买的那一面）。
+        // 09-09 云端首跑红的正是下面那条，而它报的是「竟然没超时」——**真因当时判不出来**。
+        //
+        // ⚠ 这一格顺带盖住一件更贵的事：`CC_BUS_CAT_CMD` 里那个 `cat` 与这里的 `sleep`
+        //    归**同一个 PATH**。`sleep` 在这台机器上跑不了 ⇒ 本机 cc-bus 的读面也读不了，
+        //    那是**产品面**的事、不是本判据的事 —— 所以报错里要把它说出来。
+        let probe = format!("sleep 2.{}", std::process::id());
+        let t0 = std::time::Instant::now();
+        let ok = local_shell_read(&probe, 4096, 30, "阻塞自检", OnOverflow::Reject).await;
+        let blocked = t0.elapsed();
+        assert!(
+            ok.is_ok(),
+            "阻塞自检那一趟自己就失败了（`{probe}`）：{ok:?}\n\
+             ⇒ 要么 `bash` 起不来，要么 30s 上限都没等回来 —— 两者都不是「没有孤儿」。"
+        );
+        assert!(
+            blocked >= std::time::Duration::from_secs(2),
+            "`bash -lc '{probe}'` 只花了 {blocked:?} 就回来了 —— \
+             这台机器的 shell 里 `sleep` 根本没跑起来（PATH 里找不到它 / 不认小数秒）。\n\
+             ⇒ 本条的夹具在这个环境里不成立，下面那一格量的**不是**超时。\n\
+             ⚠ 同一个 PATH 也管着 `CC_BUS_CAT_CMD` 里的 `cat` —— 这一格红的时候，\
+             先去查本机 cc-bus 的读面是不是也读不了，那是产品面的事。"
+        );
+
         let r = local_shell_read(&cmd, 4096, 1, "超时探针", OnOverflow::Reject).await;
         assert!(r.is_err(), "1 秒上限跑 sleep 30 竟然没超时 —— 本判据在空转");
         // 给 tokio 的收尸队一点时间。
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-        let out = std::process::Command::new("pgrep")
-            .args(["-fc", &format!("sleep {marker}")])
-            .output()
-            .expect("pgrep 跑不起来");
-        let n: usize = String::from_utf8_lossy(&out.stdout)
-            .trim()
-            .parse()
-            .unwrap_or(0);
+        let n = live_processes_matching(&cmd);
         assert_eq!(
             n, 0,
             "超时之后还留着 {n} 个子进程（marker={marker}）—— 每超时一次漏一个。\n\
              显式 `start_kill()` 只在成功路径上；超时那条要靠 `kill_on_drop(true)`。"
         );
+    }
+
+    /// 数「cmdline 里含 `needle` 的活进程」有几个 —— **两个平台各一把尺子，量同一件事**。
+    ///
+    /// POSIX 用 `pgrep -fc`；Windows 上**根本没有 `pgrep`**（Git for Windows 不带
+    /// procps），那边问 WMI 的 `Win32_Process`。这不是把 Windows 那半关掉，
+    /// 是给同一个量换一把这台机器上真存在的尺子。
+    ///
+    /// 🔴 **数不出来一律红，绝不回 0**〔09-09 收紧〕：原写法是 `.unwrap_or(0)`，
+    /// 而「尺子坏了」与「一个孤儿都没有」在它下面**同形** —— 后者正是本判据要买的那一面。
+    /// （`pgrep -fc` 零命中时打印 `0`、退出码非零 ⇒ 这一形照旧解析得出，POSIX 行为逐字不变。）
+    ///
+    /// ⚠ 诚实边界：Windows 那把尺子在交回本件时**没有在任何机器上跑过**
+    /// （宿主是 Linux，且本件不许跑测试）。它坏掉的表现是**红**，不是绿。
+    fn live_processes_matching(needle: &str) -> usize {
+        let ps = format!(
+            "@(Get-CimInstance Win32_Process | \
+             Where-Object {{ $_.CommandLine -like '*{needle}*' }}).Count"
+        );
+        let (prog, argv): (&str, Vec<&str>) = if cfg!(windows) {
+            ("powershell", vec!["-NoProfile", "-Command", ps.as_str()])
+        } else {
+            ("pgrep", vec!["-fc", needle])
+        };
+        let out = std::process::Command::new(prog)
+            .args(&argv)
+            .output()
+            .expect("数进程那条命令起不来 —— 数不出来就不许当成绿");
+        let raw = String::from_utf8_lossy(&out.stdout);
+        let raw = raw.trim();
+        let parsed = raw.parse::<usize>();
+        assert!(
+            parsed.is_ok(),
+            "`{prog}` 没回出一个数（实得 {raw:?}）—— 数不出来就不许当成绿。\n\
+             ⚠ 原写法 `.unwrap_or(0)` 会把「尺子坏了」读成「一个孤儿都没有」。"
+        );
+        parsed.expect("上面那条断言已经保证它是 Ok")
     }
 
     /// ★ 在线灯**必须先问身份空间**，不能只有那条按名字的老探法。

@@ -690,15 +690,22 @@ mod tests {
     /// `p.canonicalize().is_ok()` —— **纯粹「盘上有」**。它同时透过这一个观测手段
     /// 守着三件互相独立的事：
     ///
-    /// | | 性质 | 工作树里还守不守 |
+    /// | | 性质 | 那两条判据守不守 |
     /// |---|---|---|
     /// | P1 | `editable` 的基准是 `artifacts.root` 不是实例目录（F02 那个原缺陷） | 守 |
-    /// | P2 | `artifacts.root` 的字面与真实盘上目录名对得上 | 守 |
+    /// | P2 | `artifacts.root` 的字面与真实盘上目录名对得上 | 🔴 **09-10 起不守了**，见下 |
     /// | P3 | `workspace_cwd()` **推得对** | **不守** |
     ///
     /// P3 出错之后盘上**仍然有**（08-26 有人在那个错落点上补了一个同名的东西）⇒
     /// 观测手段照旧满足，两条判据照旧绿。**判据没有坏，是它从来没有 P3 那一格。**
     /// 08-26 之前工作树里 P3 一错 P1 跟着红，那是**巧合的耦合**，不是有人在守。
+    ///
+    /// 🔴 **09-10 订正 P2 那一行**：那两条判据的语料换成了 [`ArtifactFixture`]
+    /// （tempdir 夹具），理由是它们原先依赖**不在版本控制里**的产物树、
+    /// 因而永远只在一个人的机器上跑得起来。**P2 因此丢了，今天没有人接** ——
+    /// 逐条交代在 [`the_editable_paths_point_at_real_files`] 的头注里。
+    /// ⚠ 这一行别再读成「P2 有人守」：它现在和 P3 一样是**没人守**的一格，
+    /// 区别只是 P3 另立了一条（就是本条），而 P2 还没有。
     ///
     /// ⇒ 换算法只是把今天这个答案改对；**只有这一格会在它下次算错时出声。**
     ///
@@ -816,6 +823,64 @@ mod tests {
         );
     }
 
+    /// 夹具里那个**实例目录**的名字。
+    ///
+    /// 它不是装饰：P1 那一刀（把 `editable` 的基准写成「实例目录」）只有在盘上真有一个
+    /// 实例目录时才落得下来 —— 没有它，那一刀算出来的路径根本不成形，P1 就买不到。
+    const INSTANCE_DIR: &str = "some-workspace";
+
+    /// **在 tempdir 里搭一份同形的产物树**〔09-10〕。
+    ///
+    /// # 🔴 布局用字面量写死，刻意**不**从 `SKILLS` 生成
+    ///
+    /// 从声明生成的夹具是**循环**的：改了 `artifacts.root`，夹具跟着改，判据永远绿。
+    /// 写死之后它是**两份副本对拍** —— 声明单方面改了而这里没改，当场红。
+    /// 同一条纪律在本仓已有先例：`local_accounts.rs` 的 `write_manifest` 刻意写死
+    /// `"accounts.json"` 而不用 `MANIFEST_NAME`（常量是**实现**，文件名是**契约**，
+    /// 判据该钉契约）。
+    ///
+    /// ⚠ 它买不到 P2（声明与**真实盘上**目录名对得上）—— 逐条交代写在
+    /// [`the_editable_paths_point_at_real_files`] 的头注里那张表。
+    struct ArtifactFixture(PathBuf);
+
+    impl ArtifactFixture {
+        fn new(tag: &str) -> Self {
+            let name = format!("ccm-skill-fx-{tag}-{}", std::process::id());
+            let root = std::env::temp_dir().join(name);
+            std::fs::remove_dir_all(&root).ok();
+
+            // ── planned-build ────────────────────────────────────────────────
+            // 收件箱住**计划目录根**，不住实例目录 —— F02 收工时错的正是这一格。
+            let pb = root.join(".claude").join("planned-build");
+            std::fs::create_dir_all(&pb).expect("造夹具失败 —— 本条会零命中地绿");
+            std::fs::write(pb.join("INBOX.txt"), b"").expect("造收件箱失败");
+            // 一个带标记的**实例目录**（见 `INSTANCE_DIR`）。
+            let inst = pb.join(INSTANCE_DIR);
+            std::fs::create_dir_all(&inst).expect("造实例目录失败");
+            std::fs::write(inst.join("STATUS.md"), b"").expect("造实例标记失败");
+            // 同目录下一个**真实存在、但不在白名单里**的文件（写面围栏第 ② 格的靶子）。
+            std::fs::write(pb.join("README.md"), b"").expect("造旁邻文件失败");
+
+            // ── cc-bus（`editable` 是空的，只把根搭出来，让两份声明都落得下来）──
+            let bus = root.join("cc-monitor").join("shared").join("cc-bus");
+            std::fs::create_dir_all(&bus).expect("造 cc-bus 夹具失败");
+            std::fs::write(bus.join("SKILL.md"), b"").expect("造 cc-bus 标记失败");
+
+            // ── 逃逸靶子：住在**产物根外面**、`../..` 够得着（写面围栏第 ③ 格）──
+            // 盘上真有它 ⇒ 那一格从「碰运气」变成**恒定跑得到**（先前写的是
+            // `/etc/hostname`，Windows 上永远不在 ⇒ 整格静默跳过）。
+            std::fs::write(root.join("outsider.txt"), b"").expect("造逃逸靶子失败");
+
+            ArtifactFixture(root)
+        }
+    }
+
+    impl Drop for ArtifactFixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
     /// ★★ **接线层判据：算出来的路径必须真的指向存在的文件。**
     ///
     /// # 它为什么存在（这条是被一次真缺陷逼出来的）
@@ -825,91 +890,134 @@ mod tests {
     /// 它们只验「集合来自声明」「大小对得上」，**没有一条去看那些路径指得对不对**。
     ///
     /// ⇒ 纯函数判据看不出「集合**整体**指错地方」。这条补的就是那一层：
-    /// 在**真实工作目录**上算一次，断言每条路径都能 `canonicalize`。
+    /// 算一次，断言每条路径都能 `canonicalize`。
     ///
-    /// ⚠ 它对**某个真实文件系统**有依赖 —— 这是**刻意的**。
+    /// # 🔴 09-10：语料从**真实工作目录**换成 [`ArtifactFixture`]，买卖逐条交代
     ///
-    /// ⚠⚠ **这句话原来的后半截是错的，09-01 现打推翻**〔`K-R13` `§0a` 四③〕。
-    /// 原文逐字：「它对文件系统有依赖……**也是它唯一有价值的原因**」。
-    /// 实测不成立：换成**夹具目录**（在 `tempdir` 里搭一份同形的产物树）之后，
-    /// 本条**照样守得住 P1**（`editable` 的基准写成实例目录，变异在夹具上照红）——
-    /// 丢掉的只是 P2（`artifacts.root` 的字面与真实盘上目录名对得上），
-    /// 而且只在「夹具从声明生成」那一版才丢。
-    /// ⇒ 「真实」这个词买到的是 P2，**不是**本条的全部价值。把它写成「唯一」，
-    /// 会让下一个想换夹具的人以为那等于把这条判据整个废掉。
+    /// **换的理由不是「CI 上跑不了」，是比它更根本的一条**：那套产物树
+    /// （`.claude/planned-build/`）住在**仓的上一级**、**不在版本控制里**
+    /// （本仓 `git ls-files` 对 `.claude/` 零命中）⇒ 本条**永远只在一个人的机器上跑得起来**。
+    /// 而「只有一个人跑得起来」正是这个仓这两天在治的病：云端那条 Rust 门禁从 08-05 起
+    /// 卡在更靠前的步骤上，1300+ 条判据整整一个月**没人知道自己坏没坏**。
+    /// 再留一条「只有开发机跑得动」的判据，就是在同一个坑里再挖一铲。
     ///
-    /// ⚠ 它**没有** P3（`workspace_cwd()` 推得对）那一格 —— 那一格另立在
-    /// [`the_workspace_cwd_is_derived_from_git_not_guessed_from_the_path`]，
-    /// 理由写在那条上：本条的断言正文是「盘上有」，而一个算错的路径完全可能指到
-    /// 一个真实存在的同名目录，那时「盘上有」照样满足。
+    /// | | 性质 | 换夹具之后 |
+    /// |---|---|---|
+    /// | P1 | `editable` 的基准是 `artifacts.root` 不是实例目录（F02 那个原缺陷） | **仍然守**：夹具里真有一个实例目录（`INSTANCE_DIR`），那一刀算出来的文件在夹具里不存在 ⇒ 照红 |
+    /// | P2 | 声明的字面与**真实盘上**目录名对得上 | 🔴 **丢了** |
+    /// | P2′ | 声明的字面与**判据里手写的那份副本**对得上 | 新买到的：夹具布局是字面量、不从声明生成 ⇒ 声明单方面改动当场红 |
+    /// | P3 | `workspace_cwd()` 推得对 | 从来没守过；另立在 [`the_workspace_cwd_is_derived_from_git_not_guessed_from_the_path`] |
+    ///
+    /// ## 🔴 P2 丢了什么、今天谁来接
+    ///
+    /// **今天没有人接。** 如实登记，别读成「换个说法还在」。
+    ///
+    /// 丢的**恰恰是这一形**：planned-build 那个工具**在外面**把产物目录改了名，
+    /// 而 `SKILLS` 里的声明没跟 —— 换夹具之前本条会红，**现在不会**。
+    /// P2′ 只接得住「声明改了而夹具那份副本没改」，接不住「外面改了而两份副本都没改」。
+    ///
+    /// ⚠ **接它的办法有，但不在本件**：另立一条**明确标注「本地专有」**的判据，
+    /// 对着真实工作目录跑同一组断言。⚠ 光加 `#[ignore]` **不算数** ——
+    /// 那是「靠人记得跑」，而本仓刚吃过「不跑伪装成跑了」的亏；
+    /// 要落就得同时把它接进一条**只在开发机跑**的门禁步骤里。那是另一件活。
+    ///
+    /// 🔴 **不许**为了保住 P2 而在 CI 上现造一份产物树 —— 那会让 P2 变成**自证**
+    /// （我们造什么，它就验到什么）。
     #[test]
     fn the_editable_paths_point_at_real_files() {
-        let cwd = workspace_cwd();
-        // 抽取器自检：至少有一个 skill 声明了可编辑文件，否则整条空转。
+        let fx = ArtifactFixture::new("editable");
+        // 抽取器自检①：至少有一个 skill 声明了可编辑文件，否则整条空转。
         let total: usize = SKILLS.iter().map(|s| s.editable.len()).sum();
         assert!(
             total >= 1,
             "没有任何 skill 声明 editable —— 本条会零命中地绿（F03 的写面就没有对象了）"
         );
+        let mut checked = 0usize;
         for spec in SKILLS {
-            for p in editable_paths(spec, &cwd) {
+            for p in editable_paths(spec, &fx.0) {
+                checked += 1;
                 assert!(
                     p.canonicalize().is_ok(),
-                    "`{}` 声明的可编辑文件算出来是 {}，但它不存在。\n\
-                     ⇒ 要么 `artifacts.root` 错了，要么 `editable` 的基准理解错了。\n\
-                     ★ F02 收工时正是这个错：基准写成「实例目录」，而收件箱是**项目级**的\n\
-                     （planned-build 明写「住计划目录根，不住工作区」）。\n\
-                     ⚠ 本条红**不代表算式错了** —— 算式对不对由\n\
-                     `the_workspace_cwd_is_derived_from_git_not_guessed_from_the_path` 单独判。\n\
-                     那一格绿而本条红 ⇒ 工作目录是对的，是声明或盘上的产物对不上；\n\
-                     两格一起红 ⇒ 先修那一格，本条多半是被它带红的。\n\
-                     〔09-01 订正：这里原写「若本条红先确认工作目录布局」，而 08-26 起\n\
-                     那句提醒被盘上一个同名目录消音了整整六天 —— 本条那时**没有红**。〕",
+                    "`{}` 声明的可编辑文件算出来是 {}，而夹具里没有它。\n\
+                     ⇒ 两种来路，都要看：\n\
+                     ① **P1**（本条的正题）：`editable` 的基准错了。F02 收工时正是这个错 ——\n\
+                     　　基准写成「实例目录」，而收件箱是**项目级**的（planned-build 明写\n\
+                     　　「住计划目录根，不住工作区」）。夹具里真有一个实例目录，那一刀在这里照红。\n\
+                     ② **P2′**：声明（`artifacts.root` / `editable`）单方面改了，而夹具里\n\
+                     　　那份**手写副本**没跟。两份副本对拍就是为了让这一形出声。\n\
+                     ⚠ 本条红**不代表算式错了**：`workspace_cwd()` 推得对不对由\n\
+                     `the_workspace_cwd_is_derived_from_git_not_guessed_from_the_path` 单独判，\n\
+                     而 09-10 起本条根本不走那条算式（语料是夹具，不是真实工作目录）。",
                     spec.id,
                     p.display()
                 );
             }
         }
+        // 抽取器自检②〔09-10 补〕：上面那个循环真的跑够了 `total` 次。
+        // `editable_paths` 回一个空 `Vec` 时循环体一次都不进 ⇒ 本条恒绿，
+        // 而自检① 只数**声明**，数不到**产出**。两格差的正是这一刀。
+        assert!(
+            checked == total,
+            "`editable_paths` 只产出了 {checked} 条路径，而声明里有 {total} 条 ——\n\
+             上面那个循环在空转（少产出一条就少验一条，而本条照样绿）。"
+        );
     }
 
     /// ★ **写面围栏：三道各自要能拦住东西。**
+    ///
+    /// 🔴 09-10：语料同上一条，换成 [`ArtifactFixture`]。换的理由与买卖那张表写在
+    /// [`the_editable_paths_point_at_real_files`] 的头注里，**这里不复述**（复述就会漂）。
+    ///
+    /// ⚠ 换夹具**顺带把两格从「碰运气」变成恒定跑得到**，那是白捡的：
+    /// ② 的旁邻文件与 ③ 的逃逸靶子先前都包在 `if …exists()` 里 —— 盘上没有就**整格静默跳过**，
+    /// 而 ③ 那个靶子写的是 `/etc/hostname`，**Windows 上永远跳过**。
+    /// 现在两个靶子都由夹具造出来，两格各加了一条「靶子在不在」的自检。
     #[test]
     fn the_write_fence_rejects_what_it_should() {
-        let cwd = workspace_cwd();
+        let fx = ArtifactFixture::new("fence");
+        let cwd = &fx.0;
         let spec = SKILLS
             .iter()
             .find(|s| !s.editable.is_empty())
             .expect("没有带 editable 的 skill —— 本条会零命中地绿");
+        let root = cwd.join(spec.artifacts.root);
 
         // ① 白名单内的真实文件：放行。
-        let ok_path = &editable_paths(spec, &cwd)[0];
+        let ok_path = &editable_paths(spec, cwd)[0];
+        let allowed = resolve_editable(spec, cwd, ok_path);
         assert!(
-            resolve_editable(spec, &cwd, ok_path).is_ok(),
-            "白名单里的真实文件被拒了 —— 围栏把该放的也拦了"
+            allowed.is_ok(),
+            "白名单里的真实文件被拒了 —— 围栏把该放的也拦了。\n\
+             靶子 = {}，围栏说：{allowed:?}",
+            ok_path.display()
         );
 
-        // ② 同目录下**没在白名单里**的文件：拒。
-        //    用 `STATUS.md` 之类肯定存在、但不在 editable 里的东西才说明问题
-        //    （拿一个不存在的文件去试，拦住的是「不存在」而不是「不在白名单」）。
-        let root = cwd.join(spec.artifacts.root);
+        // ② 同目录下**没在白名单里**的真实文件：拒。
+        //    拿一个**不存在**的文件去试是没用的：那时拦住的是「不存在」而不是「不在白名单」。
         let sibling = root.join("README.md");
-        if sibling.exists() {
-            let err = resolve_editable(spec, &cwd, &sibling)
-                .expect_err("同目录下不在白名单的文件竟然被放行");
-            assert!(
-                err.contains("不在") && err.contains(spec.id),
-                "拒绝理由没说清是「不在可编辑集合里」以及是哪个 skill：{err}"
-            );
-        }
+        assert!(
+            sibling.is_file(),
+            "夹具里那个旁邻文件不见了（{}）—— 这一格会零命中地绿",
+            sibling.display()
+        );
+        let err = resolve_editable(spec, cwd, &sibling)
+            .expect_err("同目录下不在白名单的文件竟然被放行");
+        assert!(
+            err.contains("不在") && err.contains(spec.id),
+            "拒绝理由没说清是「不在可编辑集合里」以及是哪个 skill：{err}"
+        );
 
-        // ③ 用 `..` 逃出去：拒。
-        let escape = root.join("../../etc/hostname");
-        if escape.canonicalize().is_ok() {
-            assert!(
-                resolve_editable(spec, &cwd, &escape).is_err(),
-                "`..` 逃逸没被拦住"
-            );
-        }
+        // ③ 用 `..` 逃出去：拒。靶子住在**产物根外面**，由夹具造。
+        let escape = root.join("..").join("..").join("outsider.txt");
+        assert!(
+            escape.canonicalize().is_ok(),
+            "逃逸靶子打不开（{}）—— 这一格会零命中地绿",
+            escape.display()
+        );
+        assert!(
+            resolve_editable(spec, cwd, &escape).is_err(),
+            "`..` 逃逸没被拦住"
+        );
 
         // ④ ★ **等价写法必须被接受** —— 这条才是「解析后判定」与「判字符串」的真分界。
         //
@@ -924,9 +1032,14 @@ mod tests {
         //                      ② 让第三道 `is_protected_claude_data_path` 看到**符号链接的真实目标**
         //                         而不是链接名
         //   · 第三道 = 纵深（即使声明写歪也不许碰 Claude 数据）
-        let equivalent = root.join("devbench").join("..").join(spec.editable[0]);
+        //
+        // ⚠ 09-10：绕的那个目录先前是 `devbench`（真实工作目录里的一个实例），
+        // 换夹具之后改成夹具自己那个实例目录 —— **形状一个字没变**：
+        // 「进一个真实存在的子目录再 `..` 回来」，`canonicalize` 要求每一段都真的在盘上。
+        let inst = root.join(INSTANCE_DIR);
+        let equivalent = inst.join("..").join(spec.editable[0]);
         assert!(
-            resolve_editable(spec, &cwd, &equivalent).is_ok(),
+            resolve_editable(spec, cwd, &equivalent).is_ok(),
             "等价写法 {} 被拒了 —— 围栏在判字符串而不是判解析后的真实路径",
             equivalent.display()
         );

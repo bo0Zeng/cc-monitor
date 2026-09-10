@@ -3431,6 +3431,13 @@ mod tests {
         );
     }
 
+    /// 下面那条判据的**子进程哨兵**。
+    ///
+    /// ⚠ 名字是本判据**专属的假变量**（同 `lib.rs` 里 `env_scrub_tests` 那条纪律）——
+    /// 真正的 `CLAUDE_CONFIG_DIR` 只经 `Command::env` 给**子进程**，
+    /// 本进程与宿主的环境都没有被动过。
+    const FENCE_CHILD: &str = "CCM_TEST_DELETE_FENCE_CHILD";
+
     /// ★★ **删除入口真的过了围栏吗**〔audit-0805 08-07，Phase G 第 47 件〕。
     ///
     /// 下面五条穿越防护判的都是 `validate_delete_target` **这个函数本身**。它们是实的，
@@ -3449,8 +3456,110 @@ mod tests {
     /// 这里能直接跑真路：造一个**在 `projects` 之外**的真临时文件，要求入口拒绝**且文件还在**。
     /// 围栏一旦被绕过，这条会把那个临时文件真删掉 —— 于是「文件还在」这半当场红。
     /// ⚠ 只碰自己造的临时目录；`~/.claude/` 一个字节都不写（红线）。
+    ///
+    /// # 🔴 09-10：**本条自己造出它要的前提** —— 而且是在**子进程**里
+    ///
+    /// 上一版依赖「这台机器上 `~/.claude/projects` 存在」。**那不是它要验的性质，
+    /// 是它没建立的前提**：`resolve_claude_dir()` 的第三级回落 `~/.claude`
+    /// **不检查存在性**，于是在一台干净机器上入口会在**围栏之前**就 `Err`，
+    /// 而「拒了」「文件还在」两格照样绿 —— 09-09 云端首跑红的正是最后那格，
+    /// 它报的是「围栏没接上 / 措辞改了」，**两条都是假话**。
+    ///
+    /// ## 为什么**不**在本进程里 `set_var("CLAUDE_CONFIG_DIR", …)`
+    ///
+    /// 本仓有一条写下来的纪律，逐字在 `lib.rs` 的 `env_scrub_tests` 里：
+    /// 「cargo test 多线程跑，进程级 env 是共享的，**绝不能在测试里 set/remove
+    /// 真实的 `CLAUDE_*` 变量**（会干扰并发测试与宿主环境）」。
+    /// [`RelayFactSources`] 头注 ㈠ 那一栏记着同族的第二条代价：这种判据
+    /// 「必须 `--test-threads=1` ⇒ 只能住 `#[ignore]` 的 e2e 那条道」——
+    /// 而那等于本条在 CI 上根本不跑。⇒ 两条路都堵死。
+    ///
+    /// ## 落法：把那一趟整个搬进子进程
+    ///
+    /// 父进程造一份**自己的** claude 目录，只经 `Command::env` 交给子进程
+    ///（子进程在起来那一刻就带着它，**谁的进程环境都没有被改过**），
+    /// 再拿本判据自己的可执行文件、以本判据的名字当过滤器跑一趟。
+    /// ⇒ 本进程环境一个字节没动 · 并发判据一格没被干扰 · Linux / Windows 上都跑得动。
+    ///
+    /// ⚠ **反空真**：过滤器一条都没命中时 libtest 的退出码**也是 0**（「0 passed」）——
+    /// 那会是一次干净的假绿。所以父进程除了看退出码，还断子进程真的报了 `1 passed`。
     #[test]
     fn the_delete_entry_point_actually_goes_through_the_fence() {
+        // ═══ 父进程那一半：造夹具 · 起子进程 · 把子进程的正文转发出来，然后 `return` ═══
+        //
+        // ⚠ 两半**刻意写在同一个 `#[test]` 里**〔09-10 第二拍〕。
+        //   上一版把子进程那一半拆成了一个单独的函数，被 `structural_scan` 里那条
+        //   「测试段里长得像判据、却没有 `#[test]`」的机检判红 ——
+        //   **那条红是对的，不是误报**：它认的是「**无参无返回**的 `fn 名()`」这个**形状**
+        //   （判别式看的是行首那个 `fn ` 与行尾那个 `() {`，**不看名字**
+        //   ⇒ 改名闭不了它的嘴），而那正是判据的形状 ——
+        //   读的人无从知道那一大段断言到底跑不跑。
+        //
+        // 🔴 处置**不是**给它随手加一个用不上的参数（或返回值）把判别式糊过去：
+        //   那是钻空子，而且**一个字都没治那个真问题** —— 读者照旧分不出它跑不跑。
+        // ⇒ 搬回**唯一那个 `#[test]`** 里。读者看见一个 `#[test]` 与一个 `return`，
+        //   就知道下面那一半在哪一趟跑；这个文件的测试段里再没有「长得像判据却不是判据」的东西。
+        if std::env::var_os(FENCE_CHILD).is_none() {
+            let name = format!("ccm-delete-fence-home-{}", std::process::id());
+            let claude_dir = std::env::temp_dir().join(name);
+            // 造的是**空的**记录目录 —— 围栏只 `canonicalize` 它，不读里面的东西。
+            // ⚠ 目录名走生产那一份 `records_dir`，**不在这里另抄一个 `"projects"`**：
+            //   本条要的是「入口会去 canonicalize 的那个目录真的在」，而它叫什么名字
+            //   归活跃适配器管 —— 抄一份就会漂。
+            let records = crate::adapter::records_dir(&claude_dir);
+            std::fs::create_dir_all(&records).expect("造 claude 目录夹具失败");
+
+            let exe = std::env::current_exe().expect("拿不到本判据自己的可执行文件");
+            let out = std::process::Command::new(&exe)
+                .arg("the_delete_entry_point_actually_goes_through_the_fence")
+                .arg("--nocapture")
+                .arg("--test-threads=1")
+                .env(FENCE_CHILD, "1")
+                .env("CLAUDE_CONFIG_DIR", &claude_dir)
+                .output()
+                .expect("起不来子进程 —— 本条判不了，不许当成绿");
+            let so = String::from_utf8_lossy(&out.stdout).into_owned();
+            let se = String::from_utf8_lossy(&out.stderr).into_owned();
+            let _ = std::fs::remove_dir_all(&claude_dir);
+
+            assert!(
+                out.status.success(),
+                "子进程里那一趟红了（退出码 {:?}）—— 正文在下面，别只看这一行。\n\
+                 ── 子进程 stdout ──\n{so}\n── 子进程 stderr ──\n{se}",
+                out.status.code()
+            );
+            // ★ 反空真：过滤器零命中时 libtest 报 `ok. 0 passed;` 而**退出码也是 0**。
+            //   ⚠ 针带上 `ok. ` 与 `;` 两侧边界：裸 `"1 passed"` 会被 `11 passed` 顺带满足。
+            assert!(
+                so.contains("ok. 1 passed;"),
+                "子进程没有恰好跑到本判据那一趟（过滤器命中数不是 1）—— 本条会假绿。\n\
+                 ── 子进程 stdout ──\n{so}\n── 子进程 stderr ──\n{se}"
+            );
+            return;
+        }
+
+        // ═══ 子进程那一半：真正那一趟（`CLAUDE_CONFIG_DIR` 已经在环境里）═══
+        //
+        // 前置条件仍然留着当兜底〔09-09 补的那一格，别删〕：注入万一没生效，
+        // 本条要说人话，而不是把「前提没建立」报成「围栏没接上」。
+        // 唯一会让它没生效的路：这台机器的 monitor config.json 里写了 `claudeDir`
+        // 且那个目录真在 —— 它在 `resolve_claude_dir` 里**优先于**环境变量。
+        let Some(claude_dir) = paths::resolve_claude_dir() else {
+            panic!("解析不出 claude 目录 —— 本条判不了")
+        };
+        let projects_dir = crate::adapter::records_dir(&claude_dir);
+        let canon_projects = projects_dir.canonicalize().unwrap_or_else(|e| {
+            panic!(
+                "本条的前置条件不成立：{} 打不开（{e}）——\n\
+                 入口会在**围栏之前**就失败，那时本条判的根本不是围栏。\n\
+                 ⇒ 父进程已经把 `CLAUDE_CONFIG_DIR` 指向一份自己造好的目录；\
+                 拿到别的说明这台机器的 monitor config.json 里写了 `claudeDir`\n\
+                 （它在 `resolve_claude_dir` 里优先于环境变量）。\n\
+                 🔴 不许把本条改成「读不到就跳过」—— 那是把闸拆了。",
+                projects_dir.display()
+            )
+        });
+
         let dir = std::env::temp_dir().join(format!(
             "ccm-delete-fence-probe-{}-{:?}",
             std::process::id(),
@@ -3460,10 +3569,23 @@ mod tests {
         let victim = dir.join("victim.jsonl");
         std::fs::write(&victim, "not yours").expect("造临时文件");
 
+        // ★ **反空真**〔09-10 补〕：本条全部的力气都押在「靶子在记录目录**之外**」上。
+        //   靶子要是落在里面，围栏**放行**才是对的，而下面那两格会把放行读成缺陷。
+        //   先前这一格是**假设**的（「临时目录当然不在 `~/.claude` 里」）——现在现算一次。
+        let canon_victim = victim.canonicalize().expect("靶子打不开");
+        let outside = !canon_victim.starts_with(&canon_projects);
+
         let r = delete_history_session("sid".into(), victim.to_string_lossy().into_owned());
         let still_there = victim.exists();
         let _ = std::fs::remove_dir_all(&dir);
 
+        assert!(
+            outside,
+            "靶子 {} 落在了记录目录 {} **里面** —— 本条的前提不成立，\
+             围栏在这一格**放行**才是对的。",
+            canon_victim.display(),
+            canon_projects.display()
+        );
         let err = r.expect_err(
             "`delete_history_session` 接受了一个 **`projects` 之外**的路径 —— \
              围栏没接上，前端传什么就删什么。",
@@ -5148,9 +5270,22 @@ mod tests {
              那一格是个常量，Windows 上会往 PowerShell 串里塞一句 `export`。实得 = {ps:?}"
         );
         // 反空真：POSIX 那一趟本来就该拿不到这个形状（否则上面那条恒真）。
+        //
+        // ⚠ **09-09 订正（云端 windows-latest 首跑逮到）**：这里原写
+        //   `!first.contains("$env:")` —— 断的是**整串**。而 `launch_local` 里 `base`
+        //   那一格是 `#[cfg(windows)]` 选的（它**不走**这条缝），Windows 上它渲出
+        //   `$env:CLAUDE_CONFIG_DIR='…'; ` ⇒ 原断言在 Windows 上**恒假**，
+        //   量的根本不是身份那一段。
+        //   ⇒ 收窄到**只盯身份那一段**，并补一条**正**的：POSIX 那一趟必须真的渲出
+        //   `export <变量名>=`。两条合起来比原来那一条**更严** ——
+        //   原写法在「身份那一段整个不见了」时是绿的。
         assert!(
-            !first.contains("$env:"),
-            "POSIX 那一趟也渲出了 `$env:` —— 上面那条断言是恒真的"
+            first.contains(&format!("export {LAUNCH_ID_VAR}=")),
+            "POSIX 那一趟没渲出 `export {LAUNCH_ID_VAR}=` —— 上面那条断言是恒真的：{first:?}"
+        );
+        assert!(
+            !first.contains(&format!("$env:{LAUNCH_ID_VAR}=")),
+            "POSIX 那一趟把身份渲成了 `$env:` —— 上面那条断言是恒真的：{first:?}"
         );
     }
 
@@ -5356,7 +5491,11 @@ mod tests {
     // - **`launch_local` 以下的任何一格**：那是上面那条 `…_is_really_prepended_…` 的面。
     //   本族刻意**不**重复买它 —— 三条探针的反空真只断「不走中转那一趟长得像一条真拉起」。
     // - **Windows 那条腿**：`PRODUCTION_LAUNCH_SINK` 在 Windows 上是另一个送法，
-    //   而门禁跑在 Linux ⇒ 本族与本文件其余判据同样只驱动 POSIX 那一支（登记，不假装）。
+    //   而本族喂的是记账替身 ⇒ **送法**那一格三条探针一格都驱动不到（登记，不假装）。
+    //   〔09-09 订正：这里原写「而门禁跑在 Linux ⇒ 本族与本文件其余判据同样只驱动
+    //    POSIX 那一支」—— **那半句今天是假话**。云端 `Rust lint + test` 跑在
+    //    windows-latest，而 `launch_local` 里 `base` 那一格是 `#[cfg(windows)]` 选的
+    //    ⇒ 本族在 CI 上驱动的是 **PowerShell** 那一支，在开发机上才是 POSIX 那一支。〕
 
     thread_local! {
         /// `D8 阻-1` 三支探针共用的记账台：这一趟真正交出去的 `(命令串, cwd)`。
@@ -5461,9 +5600,21 @@ mod tests {
         // 逐字节：前缀 + 基准串。剥掉第一段之后剩下的**必须**逐字节等于 ① 那趟的基准串
         // —— 「多注入一个前缀」与「顺手把命令体也换了」在只断 `contains` 的判据上同形。
         let (head, tail) = routed.split_once("; ").expect("走中转那一趟没有前缀段");
+        // ⚠ **09-09 订正（云端 windows-latest 首跑逮到）**：`entry_stage` 的平台那一格
+        //   照**生产取值口**（真答案），所以在 Windows 上中转前缀**真的**渲成 PS 形态
+        //   `$env:ANTHROPIC_BASE_URL='…'`，而这里原来把 POSIX 那一种写死了。
+        //   ⇒ 按**这台机器**算出该有的那一种，各断各的。
+        //   🔴 **不是「两种都放行」** —— 那会把「渲错了平台形态」这一刀松掉
+        //   （`D6` 刀 `Xb` 的正主）。现在两个平台各自只放行一种：
+        //   Linux 上渲成 `$env:` 照样红，Windows 上渲成 `export` 也照样红。
+        let want_head = if platform_is_windows() {
+            "$env:ANTHROPIC_BASE_URL="
+        } else {
+            "export ANTHROPIC_BASE_URL="
+        };
         assert!(
-            head.starts_with("export ANTHROPIC_BASE_URL="),
-            "第一段不是中转注入：{head:?}"
+            head.starts_with(want_head),
+            "第一段不是中转注入（这台机器该渲成 {want_head:?}）：{head:?}"
         );
         assert_eq!(
             tail, bare,
