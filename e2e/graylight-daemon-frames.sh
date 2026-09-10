@@ -155,7 +155,10 @@ TS_LIVE="$(wait_line 0 "\"kind\":\"tmux_sessions\".*$SID" 12 'tmux_sessions live
 #（旧 sid 的 tmux 格子还在，只是已改挂新 sid），且 P5 删掉 8s ticker 之后
 # `/branch` 不触发任何事件路径去刷新它 ⇒ 永久灰点。
 NEWSID="11111111-2222-3333-4444-555555555555"
-TAG_SID="$SID"
+# S0 **之前**那个 sid。留着它只有一个用途：给下面那格「标签漂了没」当**反向判据**
+#（证「老的已经不在快照里了」）。**它不是后面各节的比对目标** —— 拿它当比对目标正是
+# 本夹具 08-12～09-09 之间错在的地方，见 §1bis 末尾那块碑。
+OLD_SID="$SID"
 PIDFILE="$(ls "$CLAUDE_DIR"/sessions/*.json 2>/dev/null | head -1 || true)"
 if [ -z "$PIDFILE" ]; then
   bad "S0：找不到 fake-claude 写的 pidfile，无法复现 /branch"
@@ -184,13 +187,58 @@ else
     || bad "S0：原地换 sid 后 12s 内未见新 sid 的 session_added"
   # 对照组：**真死**那条路不能被误标成 superseded（下面第 2 节杀进程时验，见那里）。
   #
-  # 后续各节针对当前活着的那个 sid；但 **tmux 上那个 `@ccm_sid` 标签仍是老的**，
-  # 所以分成两个变量。**这与真机的差异要如实记**：真机上 `shared/ccm` 有个 1 秒 poller
-  # 会把标签改成新 sid（`shared/ccm:612` 注释自陈就是为了「随 /branch 漂移」），
-  # 本 fixture 没有那个 poller。这个差异**不影响本节要测的东西**——`cause` 完全由
-  # daemon 从 pidfile 视角判定，与标签无关；恰恰是「不依赖标签」才是 S0 的修法要点。
-  TAG_SID="$SID"   # tmux `@ccm_sid` 上挂着的（本 fixture 里恒为最初那个）
-  SID="$NEWSID"    # 当前活着的会话 sid
+  # ★★★ 〔09-09〕**这里原来立着一条今天两头都不成立的假设，留碑，别改回去。**
+  #
+  # 原文逐字是：「真机上 `shared/ccm` 有个 1 秒 poller 会把标签改成新 sid
+  #（`shared/ccm:612` 注释自陈就是为了「随 /branch 漂移」），**本 fixture 没有那个 poller**」
+  # ⇒ 据此把 `TAG_SID` 钉死在最初那个 sid 上，第 2、3 两节都拿它去 grep。**两头都塌了**：
+  #
+  #   · 那条 poller **08-14 被整条删掉** —— 提交 `0085d0d`（2026-08-14）标题逐字
+  #     「U-NP④：ccm 的 1s 身份轮询整条删掉，`@ccm_sid` 改由 daemon 打」。今天 `shared/ccm`
+  #     只写 `@ccm_sid_expect`（**意图**通道），`@ccm_sid`（**事实**通道）它一个字都不写；
+  #     `shared/ccm` 里还留着一条 `the_identity_poller_is_gone_for_good` 守卫钉这件事。
+  #   · 打标搬进了 **daemon 自己**，而**本夹具跑的就是那个 daemon**（上面 `$DAEMON`，
+  #     PATH 上挂着 `-L e2eGrayFrames` 的 tmux shim ⇒ 它的 `tmux` 打的正是本套件这台 server）：
+  #     `observe/watcher.rs::process_session_added` 在冒名检查之后调
+  #     `crate::control::identity_tag::tag(pid, &sid)`；`tag()` 经 `/proc/<pid>/environ` 的
+  #     `TMUX_PANE` 定位到会话（fake-claude 是 pane 里 `sh -c` 的子进程，`TMUX_PANE` 是继承来的、
+  #     `exec sleep` 也不丢），比对现值不同就 `set-option -t <session_id> @ccm_sid <新 sid>`。
+  #
+  # ⇒ **S0 之后 `@ccm_sid` 真的会漂到新 sid。** 云端 run `34441405591` 的红帧逐字印证：
+  #   `{"kind":"tmux_sessions","raw":"cc-<老 sid8>\t…\t11111111-2222-3333-4444-555555555555\n…"}`
+  #   —— 会话名还是老 sid8（tmux 不会改名），最后一列（`#{@ccm_sid}`）已经是新 sid。
+  #
+  # **产品行为是对的**：`@ccm_sid` 是破坏性动作（kill）唯一认的事实，标签停在旧 sid 才会杀错
+  # 会话。错的是夹具拿了旧 sid 那个变量去比。⇒ **后面两节断言的对象是「当前挂在 tmux 上的
+  # 那个 sid」= `$SID`（下面这行已经换成新的）**，`OLD_SID` 只用来做反向判据。
+  SID="$NEWSID"    # 当前活着的会话 sid ＝ tmux `@ccm_sid` 上现在挂着的那个
+
+  # ── S0-tag：把「标签确实漂到了新 sid」这件事**正面钉住**〔09-09 新增〕──────────────
+  #
+  # 为什么必须单独立一格：第 2、3 两节都拿「tmux 上现在挂的是新 sid」当**前提**，而在此之前
+  # **全套件没有任何一条断言碰过这个前提**。前提塌掉时两格的表现完全不同 ——
+  #   · 第 2 格以**红**的形式露出来（09-09 云端就是这么红的，看得见）；
+  #   · 第 3 格**以「恒真」的形式哑掉**（它拿完整老 UUID 去 grep，而会话名里只有前 8 位
+  #     ⇒ 永远不命中 ⇒ 永远走 PASS 分支）——**看不见，且地板数挡不住**（条数没变，掉的是牙口）。
+  # 把前提本身立成一格，两种形态就都堵住了；它同时是下面两格「能失败」的凭据来源。
+  #
+  # **这一格可以等新帧，第 2 格不可以 —— 两者不是一回事，别照抄**：
+  # 「pidfile 绑的 sid 变了」是 daemon **承诺**要重探 tmux 的事件（`watcher.rs`：
+  # `if state.sessions.get(&key).map(|e| e.sid.clone()) != sid_before { sid_drifted = true }`
+  # → `run_tmux_probe()`），且 `identity_tag::tag()` 是 `process_session_added` 里**同步**跑完的
+  # ⇒ 那次重探必然看见新标签。而第 2 格等不到新帧，是因为「杀 pane 里的 claude 进程」
+  # 不生不死不改名 ⇒ 不触发任何 tmux hook ⇒ P5 删掉 ticker 之后本来就不该有新帧。
+  #
+  # 三岔的第二支（新 sid 在、老 sid 也在）挡的是 `identity_tag` 目标解析打偏那一族
+  #（08-14 真事故：`display-message -t ''` 被静默解析成「某个会话」⇒ 标打错 ⇒ kill 杀错）。
+  TS_TAG="$(wait_line "$MARK_BRANCH" "\"kind\":\"tmux_sessions\".*$NEWSID" 12 'tmux frame carrying the drifted tag' || true)"
+  if [ -z "$TS_TAG" ]; then
+    bad "S0 前提：换 sid 后 12s 内没有任何一帧 tmux_sessions 带新 sid ⇒ 「@ccm_sid」没漂到新 sid（打标没跑，或 sid 漂移没触发重探）。下面两节的前提不成立，它们的结论不可信"
+  elif printf '%s' "$TS_TAG" | grep -q "$OLD_SID"; then
+    bad "S0 前提：新 sid 出现了，但**老 sid 也还在同一份快照里** ⇒ 标签打到了别的会话上（identity_tag 目标解析打偏）⇒ kill 会杀错会话:$TS_TAG"
+  else
+    ok "S0 前提：「@ccm_sid」已从老 sid 漂到新 sid，老 sid 不在快照里了:$(printf '%.160s' "$TS_TAG")"
+  fi
 fi
 
 # ── 2. GRAY:杀 fake-claude(留 tmux 会话)→ SessionRemoved + tmux 帧仍含 @ccm_sid ──
@@ -230,12 +278,20 @@ fi
 #
 # **这条是 P5 留下的真回归，被 P6 的 e2e 工作撞出来的**：P5 那轮只跑了 cargo/npm 门禁，
 # 而这 6 套是 CI-only、不在其中 ⇒ 没接住。教训已记进 P6 文档。
+# ★ 找的针是 **`$SID`** —— S0 之后它已经是新 sid，而 tmux 上的 `@ccm_sid` 也已经跟着漂到新 sid
+#（上一格「S0 前提」刚刚正面证过）。这正是灰灯要问的那个问题：**刚刚死掉的那个会话的 sid，
+# 在 monitor 手上这份快照里还找不找得到**。找得到 ⇒ Idle（灰）；找不到 ⇒ Archive。
+#
+#〔09-09 修〕原来拿的是 `TAG_SID` ＝ S0 **之前**那个 sid，依据是 §1bis 里那条
+# 「本 fixture 没有 ccm 的 1s poller 所以标签不动」的假设 —— 那条假设 08-14 起两头都不成立
+#（poller 已删；打标搬进了本夹具正在跑的这个 daemon）。云端 run `34441405591` 就是被它拦红的，
+# 而**红的是夹具、不是产品**：标签跟着 `/branch` 漂到新 sid 恰恰是对的，停在旧 sid 才会杀错会话。
 TS_GRAY="$(grep '"kind":"tmux_sessions"' "$FRAMES" | tail -1 || true)"
 if [ -n "$TS_GRAY" ]; then
-  if printf '%s' "$TS_GRAY" | grep -q "$TAG_SID"; then
-    ok "claude 死后最新 tmux 快照仍含 @ccm_sid ⇒ 灰(Idle 非 Archive):$(printf '%.160s' "$TS_GRAY")"
+  if printf '%s' "$TS_GRAY" | grep -q "$SID"; then
+    ok "claude 死后最新 tmux 快照仍含当前 sid 的 @ccm_sid ⇒ 灰(Idle 非 Archive):$(printf '%.160s' "$TS_GRAY")"
   else
-    bad "claude 死后最新 tmux 快照丢了 @ccm_sid(不该):$TS_GRAY"
+    bad "claude 死后最新 tmux 快照丢了当前 sid 的 @ccm_sid(不该):$TS_GRAY"
   fi
 else
   bad "至今一条 tmux_sessions 帧都没有（连起飞初探那拍都没到？）"
@@ -246,9 +302,26 @@ echo "-- tmux kill-session $SESSION(@ccm_sid 消失 → 归档触发)--"
 tmux kill-session -t "=$SESSION:" 2>/dev/null || true
 MARK_KS="$(wc -l <"$FRAMES")"
 TS_ARCH="$(wait_line "$MARK_KS" "\"kind\":\"tmux_sessions\"" 14 'tmux frame post-kill-session')"
+# ★ 与上一格**同一根针**（`$SID`），这是刻意的：上一格证「它在」，这一格证「它没了」。
+# 一根针被两格反向咬住 ⇒ 任何一格退化成恒真，另一格必红。这就是它们各自「能失败」的凭据。
+#
+# 🔴〔09-09 救活〕这一格此前和上一格一样拿的是 `TAG_SID` ＝ S0 **之前**那个完整 UUID。
+# 它**没红过，但已经没牙了 —— 是恒真的**：S0 之后那串完整老 UUID 在任何一帧里都不会再出现
+#（会话名是 `cc-<老 sid8>`，只含前 8 位；`@ccm_sid` 列已经是新 sid）⇒ `grep -q` 恒不命中
+# ⇒ **恒走下面的 PASS 分支**。也就是说它本来要挡的形状（kill-session 之后快照里还赖着那一行）
+# 今天一点都挡不住。**地板 12 看不见这件事**：条数没变，掉的是牙口 —— 恒真比红贵得多。
+#
+# 举证（产品若退化成「kill-session 之后那一行连同标签还留在快照里」，两种写法各判什么）：
+#   拿云端 34441405591 那份真 raw 当退化后的帧：
+#     raw = "cc-87503085\t…\t11111111-2222-3333-4444-555555555555\ncc-e2ekeep-22967\t…\t"
+#   · 旧写法 `grep -q "$TAG_SID"`（TAG_SID ＝ 老完整 UUID，例如 87503085-….…）：
+#     raw 里只有 `cc-87503085` 这个**前 8 位**，完整老 UUID 一次都不出现 ⇒ **不命中**
+#     ⇒ 走 else ⇒ `ok "kill-session 后 tmux 帧不再含 @ccm_sid"` ⇒ **假 PASS，退化溜过去**。
+#   · 新写法 `grep -q "$SID"`（SID ＝ 11111111-2222-3333-4444-555555555555）：
+#     raw 第一行末列逐字就是它 ⇒ **命中** ⇒ 走 then ⇒ `bad` ⇒ **FAIL，退化被逮住**。
 if [ -n "$TS_ARCH" ]; then
-  if printf '%s' "$TS_ARCH" | grep -q "$TAG_SID"; then
-    bad "kill-session 后 tmux 帧仍含 sid(不该):$TS_ARCH"
+  if printf '%s' "$TS_ARCH" | grep -q "$SID"; then
+    bad "kill-session 后 tmux 帧仍含当前 sid(不该):$TS_ARCH"
   else
     ok "kill-session 后 tmux 帧不再含 @ccm_sid ⇒ 归档触发边沿:$(printf '%.160s' "$TS_ARCH")"
   fi
