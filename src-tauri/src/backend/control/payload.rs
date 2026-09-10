@@ -2308,7 +2308,10 @@ mod tests {
         ];
         // 抽取器自检：登记 0 处等于给自己开后门（那一行永远命中不了、也永远不会红）。
         for (site, want, _) in PLATFORM_TAKE_SITES {
-            assert!(*want >= 1, "住址 {site} 登记了 0 处 —— 那是个后门，不是登记");
+            assert!(
+                *want >= 1,
+                "住址 {site} 登记了 0 处 —— 那是个后门，不是登记"
+            );
         }
         let mut platform_sites: Vec<(String, usize)> = Vec::new();
         let mut platform_bare = 0usize;
