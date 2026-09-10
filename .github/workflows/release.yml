@@ -273,6 +273,48 @@ jobs:
             "src-tauri/binaries/cc-monitor-remote-$triple.exe" -Force
           Get-ChildItem src-tauri/binaries | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
 
+      # ── K-R42：**同一份二进制再铺一处** —— 让**裸 `monitor.exe`** 也带得上本机后端 ──────
+      #
+      # 09-10 干净 win11 上现打：装出来那份 `cc-monitor-remote.exe` **2 个进程在跑**，
+      # 裸 `monitor.exe` **0 个**。上面那一步（`binaries/` → Tauri `externalBin`）只服务
+      # **安装包**：它把 sidecar 放进 msi/nsis，装完落在 exe 同目录。裸 exe 拿不到那个文件。
+      #
+      # ⚠ **这一步不动上面那一步**：安装包那条路 09-10 实测是好的（2 个进程），
+      # `externalBin` 仍然只住 `tauri.sidecar.conf.json`、仍然只在下面 `tauri build` 那行
+      # 用 `--config` 注入（进主配置会让 `cargo test` 也要求当前 target 的二进制存在，
+      # 那是 C2 反面钉住的）。本步**只是把同一个产物再拷一份到 `embedded-daemons/`**，
+      # 由 `src-tauri/build.rs::embed_native_daemon` `include_bytes!` 进 exe。
+      #
+      # ⚠ **落点刻意不是 `embedded-daemons/`**，理由住 `build.rs` 的 `NATIVE_DAEMON_DIR` 头注
+      # （一句话：那个目录名是另一条判据认「谁会起真 daemon」用的来历串，
+      #  消费侧那个**字面量** `include_bytes!` 写下它会误伤那条判据）。
+      #
+      # ⚠ 三个文件**缺一不可**，名字定死在 `build.rs::NATIVE_DAEMON_DIR`/`NATIVE_DAEMON_FILE`：
+      #   · `cc-monitor-native`           字节本身
+      #   · `cc-monitor-native.build_id`  它的身份（决定落到用户盘上叫什么名字）
+      #   · `cc-monitor-native.target`    它是给哪个 triple 编的（名字里没有 triple ⇒ 只能靠它）
+      # 三个里少任何一个，`build.rs` 要么打一条 `cargo:warning=没有本机内嵌 daemon（…）`
+      # 而构建照常绿（二进制缺席），要么当场 panic（清单缺席/对不上）。
+      # ⇒ 下面那几条 `Test-Path` 就是把前一种也变成硬失败。
+      #
+      # ⚠ **诚实边界**：本步买到的是「铺了 · 身份与 target 都对得上 · build.rs 没 panic」。
+      # 它**买不到**「裸 exe 在真 Windows 上真的起得来一个本机后端」—— 那要真机跑一趟。
+      - name: Stage native daemon for self-extract
+        shell: pwsh
+        run: |
+          $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
+          $dir = "src-tauri/native-daemon"
+          $dst = "$dir/cc-monitor-native"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          Copy-Item remote-daemon-proto/target/release/cc-monitor-remote.exe $dst -Force
+          $id = (Select-String -Path remote-daemon-proto/src/main.rs -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
+          Set-Content -Path "$dst.build_id" -Value $id
+          Set-Content -Path "$dst.target" -Value $triple
+          foreach ($f in $dst, "$dst.build_id", "$dst.target") {
+            if (-not (Test-Path $f)) { Write-Error "本机内嵌 daemon 没铺全（缺 $f）——裸 exe 会回到「0 个本机后端进程」那个读数"; exit 1 }
+          }
+          Write-Host ("native daemon staged: {0} ({1} bytes, build_id={2}, target={3})" -f $dst, (Get-Item $dst).Length, $id, $triple)
+
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
       #
       # ⚠ `--config src-tauri/tauri.sidecar.conf.json` 是 F05b 刻意选的形态：`externalBin`
