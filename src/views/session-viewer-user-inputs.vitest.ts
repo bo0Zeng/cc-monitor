@@ -10,94 +10,43 @@
  * 「**sidechain / 子 agent 里的用户消息算不算**」这一问，本件选的是**不算** ——
  * 这份清单回答的是「**我**在这个会话里说过什么」。这个选择写进了下面那条判据的名字。
  *
- * ## 台子的保真边界（同 `session-viewer-scroll.vitest.ts`，那边头注写得更细）
+ * ## 台子住哪儿
  *
- * 真渲染管线 + 真 `collectUserInputs`，只有 IPC 那一层是假的。
- * ⚠ **本文件的 mock 骨架与 `session-viewer-scroll.vitest.ts` 是两份**：
- *   写区（`src/views`）里没有放共用测试夹具的地方（`src/test-support/` 本轮在写区外）。
- *   ⇒ 这是一笔**申报过的债**，两份骨架漂了就会变成「两个套件量的不是同一个台子」。
- *   PM 若同意开 `src/test-support/session-viewer-rig.ts`，两边都该搬过去。
+ * IPC / `ResizeObserver` / `CSS` / `scrollIntoView` / rAF 那一套桩与
+ * `session-viewer-scroll.vitest.ts` **共用一份**，住 `session-viewer-rig.ts`
+ * （保真边界写在那份的头注里：真渲染管线 + 真 `collectUserInputs`，只有 IPC 那层是假的）。
+ * 本套件不叫 `flushRaf` ⇒ 双 rAF 那一格归 `KR45D0`，这里不重复量。
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-const rig = vi.hoisted(() => ({ chunk: [] as unknown[] }));
-
-vi.mock("@tauri-apps/api/core", () => ({
-  Channel: class {
-    onmessage: ((v: unknown) => void) | null = null;
-  },
-  invoke: vi.fn(async (cmd: string, args: Record<string, unknown>) => {
-    if (cmd === "stream_read_session_jsonl") {
-      const ch = args.onChunk as { onmessage?: ((v: unknown) => void) | null };
-      ch.onmessage?.(rig.chunk);
-      return rig.chunk.length;
-    }
-    return undefined;
-  }),
-}));
+// ⚠ 必须是**异步动态 import** 的工厂（理由见 rig 里 `tauriCoreMock` 的头注：`vi.mock` 提升 + TDZ）。
+vi.mock("@tauri-apps/api/core", async () => {
+  const rig = await import("../test-support/session-viewer-rig");
+  return rig.tauriCoreMock();
+});
 vi.mock("../fork-flow", () => ({ runForkFlow: vi.fn().mockResolvedValue(undefined) }));
 
+import {
+  installViewerRig,
+  expectLoaded,
+  assistantLine,
+  userLine,
+  viewerRig,
+  type RigPayload,
+  type ViewerRigHandles,
+} from "../test-support/session-viewer-rig";
 import { SessionViewer } from "./session-viewer";
 import { collectUserInputs } from "./user-input-index";
 
-type Payload = { session_id: string; cwd: null; path: string; seq: number; message: unknown };
+let rig: ViewerRigHandles;
 
-function line(seq: number, message: Record<string, unknown>): Payload {
-  return { session_id: "s1", cwd: null, path: "/p/s1.jsonl", seq, message };
-}
-
-function user(
-  seq: number,
-  uuid: string | null,
-  content: unknown,
-  over: Record<string, unknown> = {},
-): Payload {
-  return line(seq, {
-    type: "user",
-    uuid,
-    timestamp: `2026-09-10T00:00:${String(seq % 60).padStart(2, "0")}.000Z`,
-    message: { role: "user", content },
-    cwd: null,
-    sessionId: "s1",
-    isSidechain: false,
-    isMeta: false,
-    parentUuid: null,
-    forkedFrom: null,
-    ...over,
-  });
-}
-
-function assistant(seq: number, uuid: string, text: string): Payload {
-  return line(seq, {
-    type: "assistant",
-    uuid,
-    timestamp: `2026-09-10T00:00:${String(seq % 60).padStart(2, "0")}.000Z`,
-    message: { role: "assistant", content: [{ type: "text", text }] },
-    sessionId: "s1",
-    isSidechain: false,
-    requestId: null,
-    parentUuid: null,
-    forkedFrom: null,
-    isApiErrorMessage: false,
-    error: null,
-    apiErrorStatus: null,
-  });
-}
-
-let scrollIntoView: ReturnType<typeof vi.fn>;
-
-function expectLoaded(v: SessionViewer): void {
-  const status = v.element.querySelector(".history-status")!.textContent ?? "";
-  expect(status).not.toContain("加载失败");
-}
-
-async function mount(lines: Payload[]): Promise<SessionViewer> {
-  rig.chunk = lines;
+async function mount(lines: RigPayload[]): Promise<SessionViewer> {
+  viewerRig.chunk = lines;
   const v = new SessionViewer(() => {});
   document.body.appendChild(v.element);
   await v.load({ jsonlPath: "/p/s1.jsonl", displayTitle: "T", suppressBranch: true });
-  expectLoaded(v);
+  expectLoaded(v.element);
   return v;
 }
 
@@ -120,19 +69,7 @@ const cardOf = (v: SessionViewer, uuid: string): HTMLElement | null =>
   streamOf(v).querySelector<HTMLElement>(`[data-uuid="${uuid}"]`);
 
 beforeEach(() => {
-  document.body.replaceChildren();
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe(): void {}
-      unobserve(): void {}
-      disconnect(): void {}
-    },
-  );
-  vi.stubGlobal("requestAnimationFrame", () => 0); // 本套件不量双 rAF 那一格（它归 KR45D0）
-  vi.stubGlobal("CSS", { escape: (s: string) => s.replace(/["\\]/g, "\\$&") });
-  scrollIntoView = vi.fn();
-  Element.prototype.scrollIntoView = scrollIntoView as unknown as Element["scrollIntoView"];
+  rig = installViewerRig();
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -169,13 +106,13 @@ describe("KR45D1 挑句子这一半（collectUserInputs，纯函数）", () => {
 describe("KR45D1 清单挂进查看器：条数 = 主线用户输入条数（子 agent/sidechain 的不算）", () => {
   it("不多不少 —— 混进 assistant / isMeta / sidechain / tool_result / 无 uuid 也只列主线那些", async () => {
     const v = await mount([
-      user(1, "u1", "第一句"),
-      assistant(2, "a1", "回复"),
-      user(3, "u3", "skill 展开的 prompt", { isMeta: true }),
-      user(4, "u4", "子 agent 里说的", { isSidechain: true }),
-      user(5, "u5", [{ type: "tool_result", tool_use_id: "t1", content: "结果" }]),
-      user(6, null, "没有 uuid"),
-      user(7, "u7", "第二句"),
+      userLine(1, "u1", "第一句"),
+      assistantLine(2, "a1", "回复"),
+      userLine(3, "u3", "skill 展开的 prompt", { isMeta: true }),
+      userLine(4, "u4", "子 agent 里说的", { isSidechain: true }),
+      userLine(5, "u5", [{ type: "tool_result", tool_use_id: "t1", content: "结果" }]),
+      userLine(6, null, "没有 uuid"),
+      userLine(7, "u7", "第二句"),
     ]);
     const rows = rowsOf(v);
     expect(rows.length).toBe(2); // 分母 = 7 条记录里的 2 条主线用户输入
@@ -185,7 +122,7 @@ describe("KR45D1 清单挂进查看器：条数 = 主线用户输入条数（子
   });
 
   it("面板默认收着，点开关才展开（默认收着 ⇒ 对既有布局零影响）", async () => {
-    const v = await mount([user(1, "u1", "第一句")]);
+    const v = await mount([userLine(1, "u1", "第一句")]);
     expect(panelOf(v).hidden).toBe(true);
     expect(toggleOf(v).getAttribute("aria-expanded")).toBe("false");
     toggleOf(v).click();
@@ -194,7 +131,7 @@ describe("KR45D1 清单挂进查看器：条数 = 主线用户输入条数（子
   });
 
   it("一条用户输入都没有 ⇒ 开关禁用、清单为空（不给一个点了没反应的入口）", async () => {
-    const v = await mount([assistant(1, "a1", "只有回复")]);
+    const v = await mount([assistantLine(1, "a1", "只有回复")]);
     expect(rowsOf(v).length).toBe(0);
     expect(toggleOf(v).disabled).toBe(true);
     expect(toggleOf(v).textContent).toBe("我说过的 0 句");
@@ -203,11 +140,11 @@ describe("KR45D1 清单挂进查看器：条数 = 主线用户输入条数（子
 
 describe("KR45D1 点一下跳过去", () => {
   it("点某一行 ⇒ 滚到那条对应的卡上（走的就是搜索命中今天在用的那条路）", async () => {
-    const v = await mount([user(1, "u1", "第一句"), user(2, "u2", "第二句")]);
+    const v = await mount([userLine(1, "u1", "第一句"), userLine(2, "u2", "第二句")]);
     const target = cardOf(v, "u2")!;
     rowsOf(v)[1].click();
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(scrollIntoView.mock.instances[0]).toBe(target); // 点名滚给了谁
+    expect(rig.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(rig.scrollIntoView.mock.instances[0]).toBe(target); // 点名滚给了谁
     expect(target.classList.contains("search-hit-flash")).toBe(true);
     expect(rowsOf(v)[1].dataset.unjumpable).toBeUndefined();
   });
@@ -216,7 +153,7 @@ describe("KR45D1 点一下跳过去", () => {
   //    而「找不回自己刚才说过的那句话」说的恰恰是**已经滚没了**的那些。
   //    清单若跟着 DOM 走，最需要它的那一段正好一条都列不出来。
   it("长会话：清单是全量的（DOM 只渲染了尾段），点没渲染的那条也跳得过去", async () => {
-    const lines = Array.from({ length: 200 }, (_, i) => user(i + 1, `u${i + 1}`, `第 ${i + 1} 句`));
+    const lines = Array.from({ length: 200 }, (_, i) => userLine(i + 1, `u${i + 1}`, `第 ${i + 1} 句`));
     const v = await mount(lines);
 
     const inDom = streamOf(v).querySelectorAll("[data-uuid]").length;
@@ -229,7 +166,7 @@ describe("KR45D1 点一下跳过去", () => {
     rowsOf(v)[0].click();
     const target = cardOf(v, "u1");
     expect(target).not.toBeNull(); // 点下去把目标岛渲染出来了
-    expect(scrollIntoView.mock.instances[0]).toBe(target);
+    expect(rig.scrollIntoView.mock.instances[0]).toBe(target);
     expect(rowsOf(v)[0].dataset.unjumpable).toBeUndefined();
   });
 
@@ -239,8 +176,8 @@ describe("KR45D1 点一下跳过去", () => {
   //   `KR45D3` / `§0c` 的红线是「**不许静默产出那一形**」——这里断的就是「它没静默」。
   it("跳不过去的那一条不许静默：标出来（这条不等价是自陈的，这里给它一个活体）", async () => {
     const v = await mount([
-      user(1, "u1", "第一句"),
-      user(2, "u2", "[Request interrupted by user]"),
+      userLine(1, "u1", "第一句"),
+      userLine(2, "u2", "[Request interrupted by user]"),
     ]);
     // 先证明夹具真的落在那一形上：清单有它，DOM 没有它的卡
     expect(rowsOf(v).map((r) => r.dataset.inputUuid)).toEqual(["u1", "u2"]);
@@ -250,16 +187,16 @@ describe("KR45D1 点一下跳过去", () => {
 
     expect(rowsOf(v)[1].dataset.unjumpable).toBe("1"); // 看得出来
     expect(rowsOf(v)[1].title).toContain("跳不过去");
-    expect(scrollIntoView).not.toHaveBeenCalled();
+    expect(rig.scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("换一个会话 ⇒ 清单跟着换（旧会话的句子不许挂在新会话上）", async () => {
-    const v = await mount([user(1, "u1", "旧会话第一句"), user(2, "u2", "旧会话第二句")]);
+    const v = await mount([userLine(1, "u1", "旧会话第一句"), userLine(2, "u2", "旧会话第二句")]);
     expect(rowsOf(v).length).toBe(2);
 
-    rig.chunk = [user(1, "n1", "新会话唯一一句")];
+    viewerRig.chunk = [userLine(1, "n1", "新会话唯一一句")];
     await v.load({ jsonlPath: "/p/s2.jsonl", displayTitle: "T2", suppressBranch: true });
-    expectLoaded(v);
+    expectLoaded(v.element);
 
     expect(rowsOf(v).map((r) => r.dataset.inputUuid)).toEqual(["n1"]);
     expect(toggleOf(v).textContent).toBe("我说过的 1 句");
