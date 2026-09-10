@@ -2351,12 +2351,50 @@ mod tests {
     ///
     /// 把子进程那份 pidfile 删掉再跑一次，父那条**必须**带着 token 回来。
     /// 没有这一段，「全都 `null`」也会绿 —— 而那是本条最容易退化成的样子。
+    ///
+    /// # 🔴 前提：三个活体都得先 exec 完（本条从前那条「负载 flaky」就是这一格）
+    ///
+    /// 〔来历：`K-R24` 09-04 登记「`accounts_query.rs:2236` 负载 flaky **无主**」
+    ///  （那个行号当年指的就是本函数里 `sid-child` 那一格断言），`K-R27` 09-05 订正过一次
+    ///  行号；09-10 云端 `34441405591` 又红一次（596 过 1 红），panic 落在**对称的另一半**
+    ///  `sid-parent` 那一格上。**同一条判据、同一个成因**，只是哪一条落窗口不一样。〕
+    ///
+    /// 成因不在产品，在**这个夹具自己的前提没人建立**：`/proc/<pid>/environ` 在 `execve`
+    /// 进行**当中**会读回 0 字节（`platform/proc.rs` 那一支逐字：「exec 窗口，或进程已成
+    /// 僵尸」）⇒ `proc_env_var` 回 `EnvRead::Unreadable` ⇒ 生产段那一处 `.value()`
+    /// 把它压成 `None`（fail-closed，刻意的）⇒ **那一条的 token 当场不见**
+    /// ⇒ 两条撞不起来 ⇒ 另一条原样留着 token。谁落进那个窗口就红另一半：
+    /// 子落窗 ⇒ 父那条留着（09-10 云端那趟）；父落窗 ⇒ 子那条留着（09-04 那趟）。
+    /// CI 负载高把那个窗口拉宽 ⇒ 只在云端红、本地沙箱不红。
+    ///
+    /// ⇒ 本条**显式建立并断言**这个前提（下面 `probe` 那一段）。⚠ 判「exec 完了」
+    /// **不能只看 environ 读得出来** —— exec **之前**它也读得出来（fork 来的那份副本，
+    /// 里面同样有 TOKEN）。所以判据是 `/proc/<pid>/comm`：exec 前是 `sh`、exec 后是
+    /// `sleep`，而 `sleep` 不会再 exec ⇒ 一旦看见 `sleep` **且** environ 里有那个键值，
+    /// 这个窗口就**关死了、开不回来** ⇒ 它在下面那次 `session_accounts` 时仍然成立。
+    ///
+    /// ⚠ **这不是重试、不是放宽、不是靠睡过去**：`session_accounts` 仍然只跑一次，
+    /// 下面每一格断言一个字都没改；等不到就由 `settled` 那三格自检把本条**打红**
+    /// （「夹具没装上」）—— **永远不会因为等而变绿**。形状照本文件
+    /// `an_unreadable_environ_is_never_reported_as_the_zero_account` 的
+    /// 「等僵尸 + 反空真自检」，那一条同样在夹具前提上等、在断言上不等。
+    ///
+    /// ⚠ 顺带治掉一格**假绿**：从前子那条落窗时，`sid-child` 的 `launchId` 也是 `null`
+    /// （因为**读不到**，不是因为撞上了）⇒ 那一格会绿得毫无意义。现在它先过前提自检。
+    ///
+    /// ⚠ 如实登记一格边界：`sleep` 若不是外部可执行文件（某些 busybox 形态的 `sh` 把它
+    /// 做成内建），`comm` 就永远等不到 `sleep` ⇒ 本条**红**而不是假绿。方向是 fail-closed
+    /// 的，但那台机器上它量不到本件的东西。
     #[cfg(target_os = "linux")]
     #[test]
     fn an_inherited_launch_id_is_never_reported_as_the_childs_own_identity() {
         use std::io::{BufRead, BufReader};
 
         const TOKEN: &str = "kp5f-live-0198f0d2-1111-4222-8333";
+        // 形状那一格的值：空格 + `;` ⇒ 过不了 `launch_id_is_safe`。
+        // 提成常量是为了让下面那段前提自检也能逐字点名它（不然自检只能核「非空」，
+        // 那就核不出「起进程时到底把哪个值塞进去了」）。
+        const EVIL: &str = "not a token; rm -rf /";
         let root = tmpdir("inherit");
         let claude = root.join("claude");
         let sessions = claude.join("sessions");
@@ -2385,10 +2423,39 @@ mod tests {
         let mut evil = std::process::Command::new("sh")
             .arg("-c")
             .arg("exec sleep 60")
-            .env(LAUNCH_ID_ENV, "not a token; rm -rf /")
+            .env(LAUNCH_ID_ENV, EVIL)
             .spawn()
             .expect("起不来 sh（形状那一格的活体）");
         let epid = evil.id();
+
+        // ── 🔴 前提：三个活体都已经 exec 完、environ 定型（为什么非有不可见函数头注）──
+        //
+        // `probe` 一次读回两格事实：`comm`（exec 走到哪了）与「environ 里有没有那个键值」。
+        // 红时这两格原样印出来 ⇒ 一眼看得出是落在 exec 窗口里、还是压根没塞进去。
+        fn probe(pid: u32, want: &str) -> (String, bool) {
+            let comm = std::fs::read_to_string(format!("/proc/{pid}/comm")).unwrap_or_default();
+            let bytes = std::fs::read(format!("/proc/{pid}/environ")).unwrap_or_default();
+            let needle = format!("{LAUNCH_ID_ENV}={want}");
+            let hit = bytes.split(|b| *b == 0).any(|e| e == needle.as_bytes());
+            (comm.trim_end().to_string(), hit)
+        }
+        // exec 后是 `sleep` 且 environ 里有那个键值 ⇒ 窗口关死了、开不回来。
+        fn settled(p: &(String, bool)) -> bool {
+            p.0 == "sleep" && p.1
+        }
+        // ⚠ 这个循环等的是**夹具的前提**，不是把判据重试：等不到就往下走、由自检打红。
+        for _ in 0..2_000 {
+            let ok = settled(&probe(ppid, TOKEN))
+                && settled(&probe(cpid, TOKEN))
+                && settled(&probe(epid, EVIL));
+            if ok {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        let probe_parent = probe(ppid, TOKEN);
+        let probe_child = probe(cpid, TOKEN);
+        let probe_evil = probe(epid, EVIL);
 
         let write_pidfile = |pid: u32, sid: &str| {
             let ticks = proc_starttime(pid)
@@ -2419,6 +2486,25 @@ mod tests {
             .status();
         let _ = fs::remove_dir_all(&root);
 
+        // ── 前提自检先断（夹具没装上时，下面几格量的不是本件的东西）──────────
+        assert!(
+            settled(&probe_parent),
+            "父那条这一刻不是「exec 完的 `sleep` + environ 里带着 token」（实得 {probe_parent:?}）\
+             —— 夹具没装上，下面几格量的不是本件的东西"
+        );
+        assert!(
+            settled(&probe_child),
+            "子那条这一刻不是「exec 完的 `sleep` + environ 里带着继承来的 token」\
+             （实得 {probe_child:?}）—— 它八成还落在 `execve` 窗口里：\
+             那时 `/proc/<pid>/environ` 读回 0 字节 ⇒ 它的 token 当场不见 ⇒ **撞不起来**\n\
+             ⇒ 下面「子那条不许报成自己的」会绿得毫无意义、「父那条也不许留」会红在夹具身上。\n\
+             〔`K-R24` 09-04 登记的那条负载 flaky、09-10 云端 `34441405591` 那趟红，都是这一格。〕"
+        );
+        assert!(
+            settled(&probe_evil),
+            "形状那一格的活体这一刻不是「exec 完的 `sleep` + environ 里带着那个坏形状的值」\
+             （实得 {probe_evil:?}）—— 它那一格的 `null` 就说明不了是形状核干的"
+        );
         assert_eq!(
             both["sid-parent"]["alive"], true,
             "父那条没判活 —— 夹具没装上，下面几格量的不是本件的东西"
