@@ -576,8 +576,9 @@ jobs:
           # ⚠ **2026-09-09 `CI-J3` 又动了两条，两处都是同一拍改的**：
           #   · `inbound-frames` 由 32 抬到 33 —— `track/e2e-sid-tag` 把「验 `@ccm_sid`」那一格
           #     拆成了「意图键写对了」＋「此刻事实键必须为空」两格（`−1 +2`）；
-          #   · `daemon-gate2` 由 36 降到 35 —— 那是一条**从 `F20`（08-06）起就没成立过**的地板
-          #     （`meta_colon` 必然走登记豁免，可达上限一直是 35），新口径是
+          #   · `daemon-gate2` 由 36 降到 35，同日第二拍再由 35 降到 34 —— 那是一条**从 `F20`
+          #     （08-06）起就没成立过**的地板（`meta_colon` 必然走登记豁免，可达上限一直是 35；
+          #     `meta_dollar` 09-09 查穿根因后成为第二条登记豁免 ⇒ 34），新口径是
           #     「总槽位 − 已登记豁免数」，由 `remote-daemon-proto/src/control/gate.rs` 两侧夹住。
           #   两条的完整理由都写在**各自的调用行上方**，这里不重抄 —— 这张清单是副本，不是真相源。
           #   ⚠⚠ **这几行注释刻意不把那句报错原样抄全**：下面那个 `grep -q` 搜的是**整份
@@ -592,7 +593,7 @@ jobs:
                       "ccm-pretrust 15" "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 33" \
-                      "ccm-contract-parity 72" "daemon-gate2 35" "local-backend 14" \
+                      "ccm-contract-parity 72" "daemon-gate2 34" "local-backend 14" \
                       "daemon-sessions-rewatch 5" "daemon-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "daemon-cc-bus 50"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
@@ -812,8 +813,17 @@ jobs:
       #      **两侧夹住**（低了＝有一格被静默不验；高了＝又造一条够不到的地板）。
       #      ⇒ 想降这个数，唯一的路是**登记一条带书面理由的豁免**；想省掉一条豁免，
       #      这个数就得涨回去。**两边都不再靠散文。**
+      #    ⚠ **2026-09-09 同日第二拍：35 → 34。** `meta_dollar`（`cc-a$x`）的根因这一天查穿了
+      #      —— tmux **≤3.4** 会在会话名的 `$` 前插一个反斜杠（`utf8_stravis`，那条规则不看 flag），
+      #      上游 `692ce59bcef5`（2024-05-24）加了 `VIS_DQ` 门、首次随 **3.5** 出货，
+      #      而本 runner 的 ubuntu-24.04 装的是 **3.4**（日志逐字 `tmux 3.4-1ubuntu0.1`），
+      #      开发机是 3.6 ⇒ **这个病在本地物理上看不见**，「根因至今未知」挂了一个月。
+      #      ⇒ 它进 `waiver_reason` 成为**第二条登记豁免** ⇒ 登记数 2 ⇒ 可达上限 36−2 = **34**。
+      #      🔴 这条豁免**是环境相关的**：runner 升到 ≥3.5 之后它会真的过（PASS 35 / WAIVED 1），
+      #      而 `at-least` 不会因此红 —— 那一格如实登记在 `e2e/daemon-gate2-acceptance.sh`
+      #      的 `waiver_reason` 头注里（含为什么不装成红、以及解锁条件）。**没治，但写清楚了。**
       - name: Gate 2 daemon 真机验收（F03）
-        run: bash e2e/assert-pass-floor.sh daemon-gate2 35
+        run: bash e2e/assert-pass-floor.sh daemon-gate2 34
 
       # F05a：本机后端监护的真进程验收（起-杀-自愈 / 必崩即判死 / 缺 sidecar 诚实降级）。
       # 数字地板**只在这一行**（定框 §4：同一个数不许两侧各写一份）；脚本里只有导出式自检。
