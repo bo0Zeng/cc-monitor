@@ -134,6 +134,17 @@ Get the latest version from [Releases](https://github.com/bo0Zeng/cc-monitor/rel
   > falls back to the default. This does not affect the app's UI language.
   > (Corrected 09-10: this line used to say `zh-CN`; the actual artifacts for both v3.6.0 and
   > v3.7.0 are `en-US`, so anyone following this line would not find the file.)
+- `monitor.exe` — bare exe (you manage the path yourself)
+  > 🔴 **It is also missing a feature, not just "manage the path yourself"** (measured 09-10 on a
+  > clean Windows machine): **the local backend will not start.** That backend
+  > (`cc-monitor-remote.exe`) is a *separate file installed alongside the app*, and the bare exe
+  > has no such file next to it, so the "your own machine is also a machine" features are
+  > unavailable (**remote features are unaffected**). Measured: the installed build runs **2**
+  > backend processes, the bare exe runs **0**.
+  > ⚠ The app **does tell you** (the log says the local backend did not start and lists the two
+  > paths it looked at) — it does not fail silently.
+  > (This entry was missing from this file entirely until 09-10, while the release page and the
+  > Chinese README both listed it.)
 
 Double-click to run; Windows SmartScreen will show "unknown publisher" on first launch (we don't sign). Choose "More info → Run anyway".
 
