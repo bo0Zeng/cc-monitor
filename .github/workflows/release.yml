@@ -1,18 +1,119 @@
 name: Release
 
 # 推 v* tag 时触发：
+#  0. ci-gate：**同一个 commit 上的 CI 必须绿过**，否则后面一步都不起（R1，2026-09-09 加）。
 #  1. build-daemons (ubuntu)：用 cargo-zigbuild 交叉编译 aarch64 / x86_64 musl 远端 daemon，
 #     作为 artifact 传给 Windows 作业 —— 让发布安装包内嵌 daemon、自动部署 (#29) 可用。
 #  2. build-windows：下载 daemon 放进 src-tauri/embedded-daemons/ → cargo tauri build →
 #     把 NSIS / MSI bundle 作为 GitHub Release 附件上传。
+#  3. build-linux：同一批 daemon artifact → tauri build --bundles deb → 追加进同一个 Release。
 # 注意：默认 build 会尝试下载 WiX toolset 来打 MSI，若网络不稳定可临时改 --bundles nsis。
 on:
   push:
     tags: ['v*']
 
 jobs:
+  # ────────────────────────────────────────────────────────────────────────────
+  # R1：**发版的第一道门 —— 这棵树的 CI 必须绿过。**
+  #
+  # 在这个 job 之前，本文件里**一条测试门都没有**（`cargo test` / `cargo clippy` /
+  # `cargo fmt` / `npm test` / `npm run gate` / `tsc --noEmit` / `vitest` / `e2e`
+  # 在本文件里**全部零命中**）：它只做「交叉编译 daemon → 核版本号与 tag 一致 → npm ci →
+  # 打包 → 算校验和 → 上传」。而跑测试的是**另一条**流水线 `ci.yml`，两条互不相干
+  # ⇒ **推一个 tag，主干红成什么样都照发。**
+  #（2026-09-09 现打：`ci.yml` 最近一次 main 的 run 34432595554，8 个 job **红 6 个**。
+  #  而 release 会把这棵红树打成安装包发给新用户 —— 发版标准逐字是「新用户可以稳定装上」。）
+  #
+  # ## 为什么是「查同一个 commit 上的 CI 结论」，而不是把测试步骤抄一份进来
+  #
+  # 本仓有一条明纪律：**同一个量不许两处各写一份**（`README.md` 那句「条数刻意不写在这里」、
+  # `RELEASING.md` 里「测试数 / CI job 数不要求每版跟」都是它的实例）。把 `cargo test` /
+  # `npm test` 抄进本文件就是又立一份**会漂**的清单副本；而且抄的必然是**子集** ——
+  # 「Release 绿了」会被读成「测试过了」，实际只跑了 8 件里的两三件，**比没有门更坏**
+  #（没有门的时候没人会误以为测过）。
+  # ⇒ 这里存的不是清单，是**一条指针**：跑什么、跑几件，由 `ci.yml` 一处说了算；本门只问结论。
+  #
+  # ## 为什么不是 `workflow_run`
+  #
+  # `needs:` **跨不了 workflow**，GitHub 只留两条路：把本文件的触发器换成 `workflow_run`，
+  # 或者查 API。前者要连带重写 checkout 的 ref、`github.ref_name`（下面那道版本号检查正用着它）
+  # 和发布目标 —— 而本文件**只有推 tag 才会跑、本地一步都验不了**，那是拿整条发版路径
+  # 去换一个等价的结果。⇒ 选查 API。
+  #
+  # ## 可行性是现打验过的（2026-09-09，读 v3.6.0 那次的云端记录）
+  #
+  # · `ci.yml` 的触发器含 `tags: ['v*']` ⇒ 同一次 tag push **同时**起 CI 与 Release；
+  # · v3.6.0 那次 Release run 的 `head_sha` = `851d8a44…`，与 `head_commit.id` **逐字相同**
+  #  （**不是** tag 对象的 sha —— annotated tag 那个坑在这里不成立，是查过的，不是推的）；
+  #   按那个 sha 查回来三条 run：CI(tag) · Release(tag) · CI(main)，head_sha 全同 ⇒ 对得上；
+  # · CI 整条实测 3-6 分钟（v3.6.0 那次 3m18s；09-10 那次 5m43s），而 `build-windows`
+  #   一个人就 9m16s ⇒ 这道门加的等待**短于**它后面那一步。
+  #
+  # ⚠ **本门只认「结论」，不认「跑了几个 job」** —— 后者是 `ci.yml` 自己的事，本文件不存副本。
+  # ⚠ **认 CI 用两把尺子取或**（workflow 文件路径 **或** workflow 名）：另一路正在改 `ci.yml`，
+  #    只改其中一样仍会命中另一把；两把都不中 ⇒ **拦下**，不静默放行。
+  # ⚠ **fail-closed**：查不到 CI run · CI 不绿 · 等超时 · API 调不通，四种都拦。
+  #    要绕过它只能**改这个文件**（那会留在 git 历史上），不能靠「今天先不管」。
+  # ⚠ **它接受这个 commit 上任意一条绿的 CI run** —— 同一个 sha 上 main 那次与 tag 那次
+  #    跑的是同一棵树、同一份 `ci.yml`，所以先推 main 等它绿、再推 tag，这道门几乎不加等待。
+  ci-gate:
+    name: Gate on CI (same commit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      actions: read      # 读 workflow runs 要它；仓库默认 token 权限被收紧时这里显式要回来
+    steps:
+      - name: Require a green CI run on this exact commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          filter='.workflow_runs[]
+                  | select(.path == ".github/workflows/ci.yml" or .name == "CI")
+                  | "\(.status) \(.conclusion) \(.html_url)"'
+          find_deadline=$(( SECONDS + 600 ))    # 10 min：CI run 迟迟不出现 ⇒ 判「这个 commit 没跑过 CI」
+          wait_deadline=$(( SECONDS + 2700 ))   # 45 min：CI 实测 3-6 min，其余全是排队余量
+          while : ; do
+            # gh 调不通就让 set -e 当场把这一步弄红（fail-closed）。补救是重跑这一个 job。
+            runs=$(gh api "repos/$REPO/actions/runs?head_sha=$SHA&per_page=100" --jq "$filter")
+            if [ -z "$runs" ]; then
+              if [ "$SECONDS" -gt "$find_deadline" ]; then
+                echo "::error::commit $SHA 上查不到任何 CI run —— 发版拒绝：没有测试证据。"
+                echo "常见原因：ci.yml 的触发器不再含 tags 那一条；这个 commit 从没进过 main；或 CI 的文件名与 workflow 名同时变了。"
+                exit 1
+              fi
+              echo "还没看到 CI run（SHA=$SHA），20s 后再看…"
+              sleep 20
+              continue
+            fi
+            echo "$runs"
+            green=$(printf '%s\n' "$runs" | grep -c '^completed success ' || true)
+            pending=$(printf '%s\n' "$runs" | grep -cv '^completed ' || true)
+            if [ "$green" -gt 0 ]; then
+              echo "CI 在 commit $SHA 上绿过（$green 条）⇒ 放行。"
+              exit 0
+            fi
+            if [ "$pending" -gt 0 ]; then
+              if [ "$SECONDS" -gt "$wait_deadline" ]; then
+                echo "::error::等 CI 等超时（45 min）—— 发版拒绝：拿不到测试结论。"
+                exit 1
+              fi
+              echo "CI 还在跑（$pending 条未完），30s 后再看…"
+              sleep 30
+              continue
+            fi
+            echo "::error::commit $SHA 上的 CI 全部跑完、没有一条是绿的 —— 发版拒绝。"
+            echo "上面每行是 status / conclusion / run 链接。先把 CI 修绿再重跑这一个 job。"
+            exit 1
+          done
+
   build-daemons:
     name: Cross-compile remote daemons (musl)
+    needs: ci-gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -38,11 +139,21 @@ jobs:
 
       # cc-monitor-remote 是独立 crate（无 workspace），静态编译成 musl。
       # build_id 由源码 const BUILD_ID 决定（src-tauri/build.rs 同源解析），从源码编译天然版本一致。
+      #
+      # ⚠ **`--locked` 不是可选的**（2026-09-09 加）：两份 `Cargo.lock` 今天都钉着
+      # `crypto-bigint 0.7.3`，而 **`0.7.0…0.7.4` 在 crates.io 上全部 yanked、只有 `0.7.5` 没被 yank**
+      #（09-09 现打 crates.io API 核实过 —— `remote-daemon-proto/Cargo.toml` 里 `K-R34` 那段
+      #  留着的问号「本轮没核，判不了」，这次核了：`yanked=true`）。
+      # cargo **只在解析那一步**挡 yanked，lock 里已经写着的照用 ⇒ 今天编得过。
+      # 但凡有什么让它**重走解析**（换机器 / 改依赖 / lock 与 manifest 对不上），后果二选一，
+      # 两条都坏：① 联网时它会**悄悄挪到 `0.7.5`** ⇒ 发出去的安装包与 CI 测过的**不是同一棵依赖树**；
+      # ② 拿不到 `0.7.5`（离线 / 缓存里只有那份 yanked 的）时当场退 101。
+      # `--locked` 把这两种都变成**一条响亮的失败**：lock 要动就报错，绝不静默换依赖。
       - name: Cross-compile daemon for both musl targets
         working-directory: remote-daemon-proto
         run: |
-          cargo zigbuild --release --target x86_64-unknown-linux-musl
-          cargo zigbuild --release --target aarch64-unknown-linux-musl
+          cargo zigbuild --release --locked --target x86_64-unknown-linux-musl
+          cargo zigbuild --release --locked --target aarch64-unknown-linux-musl
 
       # 命名成 src-tauri/build.rs embed_daemons 期望的 cc-monitor-remote-<arch>。
       # Batch9：旁挂 .build_id 清单 = 字节真实身份（编译器可能把 BUILD_ID 优化成
@@ -148,9 +259,11 @@ jobs:
       # release 2.6 MB，且跑起来发完整 hello；tmux 那半诚实发 `observation:"unobservable"`）。
       # ⚠ 名字必须带 target triple —— Tauri 的 sidecar 约定是「构建期带 triple、打包时剥掉」，
       # 而消费侧 `local_backend::resolve_with` 正是先找带 triple 的、再找裸名。
+      # `--locked` 的理由与 build-daemons 那步同源（同一份 `remote-daemon-proto/Cargo.lock`、
+      # 同一个 yanked 的 `crypto-bigint 0.7.3`），逐字见那里的头注 —— 这里不抄第二份。
       - name: Build local backend sidecar (native)
         working-directory: remote-daemon-proto
-        run: cargo build --release
+        run: cargo build --release --locked
       - name: Stage sidecar for externalBin
         shell: pwsh
         run: |
@@ -192,8 +305,16 @@ jobs:
   # ────────────────────────────────────────────────────────────────────────────
   # L4（local-as-remote）：**Linux 产物**。
   #
-  # ⚠ **本 job 从未真正跑过**（它只在 tag 时触发，而本轮红线是不发版）。
-  # 下面每一处设计都是为了「万一它坏了，坏得可见且不伤及发版」：
+  # ⚠ **订正（2026-09-09 现打）**：原话「本 job 从未真正跑过」**今天不成立** ——
+  # v3.6.0 那次 Release run（`30679669587`，2026-08-01）里 `Build Linux artifacts (deb)`
+  # **成功跑完，5m36s**（02:27:39 → 02:33:15，读的是云端 jobs API）。
+  #
+  # ⚠ **仍然成立的那一半，别跟着一起删**：本 job 只在 tag 时触发 ⇒ **本地一步都验不了**。
+  # 而且**真正一次都没在 tag 上跑过的**是 v3.6.0 之后加进来的那些 —— 那之后本文件被改过两次、
+  # 期间**没有再发过版**：`ae18878`（08-02，裸二进制上传）与 `e39253e`（08-04，sidecar）。
+  # 具体是：两个 job 里的 `Build local backend sidecar (native)` + `Stage sidecar for externalBin`
+  # 共四步、两处 `tauri build` 上的 `--config tauri.sidecar.conf.json`、以及裸二进制那条上传。
+  # ⇒ 下面每一处设计都是为了「万一它坏了，坏得可见且不伤及发版」：
   #
   # 1. `needs: [build-daemons, build-windows]` —— **串在 Windows 之后**，两个理由：
   #    ① Release 是 `build-windows` 创建的；两个 job 同时 `action-gh-release` 会竞争同一个
@@ -267,9 +388,10 @@ jobs:
       # F05b：本机后端 sidecar（理由同 build-windows 那两步，见那里的头注）。
       # ⚠ Linux 侧同样必须做 —— `externalBin` 一旦注入，`tauri build` 就要求**当前 target**
       # 的那份二进制存在；少了它这一步会以 `resource path ... doesn't exist` 直接失败。
+      # `--locked` 同上：理由住 build-daemons 那步的头注，这里不抄第二份。
       - name: Build local backend sidecar (native)
         working-directory: remote-daemon-proto
-        run: cargo build --release
+        run: cargo build --release --locked
       - name: Stage sidecar for externalBin
         run: |
           set -euo pipefail
@@ -304,14 +426,20 @@ jobs:
       # `action-gh-release` 会①抢先创建 release，正是本文件上面那段注释要避开的竞态；
       # ②**绕过** build-windows 里「四处版本号与 tag 一致」那道检查。本 job
       # `needs: [build-daemons, build-windows]`，两条都天然继承。artifact 也已经下载好了。
+      #
+      # 🔴 **`files: |` 里 `#` 不是注释**（2026-09-09 订正）：那是 YAML 字面块，
+      # 整行会当成**文件 glob** 交给 `action-gh-release`。下面这三行原本就写在块里，
+      # 靠 `fail_on_unmatched_files` 默认 `false` 才只打 warning 没炸。
+      # ⚠ 它们与它们下面那条 `monitor` 一起是 `ae18878`（08-02）加的，而最后一次发版是
+      # v3.6.0（08-01）⇒ **这一段一次都没在 tag 上跑过**，那三条 warning 也就从没人看见。搬出来。
+      # U5-走查：**裸二进制此前算了 hash 却没上传** —— `SHA256SUMS-linux.txt` 里有它那一行，
+      # 而 Release 页上没有那个文件，用户照校验和逐个核就会卡在这儿。
+      # 补上传（与 Windows 侧 `monitor.exe` 对称：那边一直是「安装器 + 裸二进制」两样都给）。
       - name: Append Linux artifacts to the release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             src-tauri/target/release/bundle/deb/*.deb
-            # U5-走查：**裸二进制此前算了 hash 却没上传** —— `SHA256SUMS-linux.txt` 里有它那一行，
-            # 而 Release 页上没有那个文件，用户照校验和逐个核就会卡在这儿。
-            # 补上传（与 Windows 侧 `monitor.exe` 对称：那边一直是「安装器 + 裸二进制」两样都给）。
             src-tauri/target/release/monitor
             SHA256SUMS-linux.txt
             daemon-artifacts/cc-monitor-remote-x86_64
