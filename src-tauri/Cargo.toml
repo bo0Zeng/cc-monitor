@@ -138,6 +138,16 @@ windows = { version = "0.56", features = [
     "Win32_Storage_FileSystem",
     "Win32_System_Threading",
     "Win32_System_Diagnostics_ToolHelp",
+    # ccbus-win 09-10 第七拍：`cc_bus::reap_whole_tree_on_drop` 要 Job Object
+    # （`CreateJobObjectW` / `SetInformationJobObject` / `AssignProcessToJobObject`）。
+    # 起因是一条有云端读数的真缺陷：Windows 上 `Git\bin\bash.exe` 是外壳，起完真 bash
+    # 自己就退，`kill_on_drop` 的 `TerminateProcess` 打在一个已经死了的 pid 上 ⇒
+    # 每次本机读超时（以及「读够了就掐断」那条常规路径）都漏下一个真 shell 进程。
+    # ⚠ **不新增 crate**，只是把这个已在依赖里的 crate 的一个模块打开 ——
+    #   本机现打确认（`cargo check -p monitor --target x86_64-pc-windows-gnu`）：
+    #   不加这一行时 `windows::Win32::System::JobObjects` 是 `E0432 unresolved import`，
+    #   编译器自己指出「the item is gated behind the `Win32_System_JobObjects` feature」。
+    "Win32_System_JobObjects",
     "Win32_UI_WindowsAndMessaging",
     # v2.4.2 issue #2: keybd_event 模拟 Alt 按键让 OS 视当前进程为
     # "刚有用户输入"，配合 AttachThreadInput 突破 Win10/11 前台抢焦限制。
