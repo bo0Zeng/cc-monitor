@@ -484,8 +484,22 @@ pub fn run() {
         .setup(move |app| {
             // F05a（定框 C7：没有 daemonless）：起并看住**本机后端进程**。
             //
-            // ⚠ 今天恒走「诚实降级」那一支 —— 安装包里还没有 sidecar（`externalBin` 归 F05b）。
-            // 这**不是**「接线没做」：接线在这里，只是依赖还没到位，两者的区别就在那个
+            // ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10，v3.7.0〕。
+            //
+            // 〔墓碑 —— 本行原话逐字：「⚠ 今天恒走「诚实降级」那一支 —— 安装包里还没有
+            //  sidecar（`externalBin` 归 F05b）。」它记的是 F05b 之前的世界，**今天不成立**。〕
+            //
+            // 证伪它的读数：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）——
+            // **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe`
+            // **2 个进程在跑**；**裸 `monitor.exe`** 那份 **0 个**。
+            // F05b 已经做完并随 v3.7.0 发出去了：`externalBin` 配在
+            // `src-tauri/tauri.sidecar.conf.json`，发版那一步用
+            // `npx tauri build --config src-tauri/tauri.sidecar.conf.json` 注入。
+            // ⚠ 它**刻意不进基础 `tauri.conf.json`** —— 进了会让 `cargo test` 也要求当前
+            // target 的那份二进制存在。⇒ **「基础配置里没有」≠「没配」，别再把这两句写成一句。**
+            //
+            // ⇒ 降级那一支仍然在（裸 exe · 开发树走的就是它），只是**不再是常数**。
+            // 它**不是**「接线没做」：接线在这里，是**这一份产物里没带**，两者的区别就在那个
             // tagged 返回值上。它**刻意不扫仓库 dev 产物** —— daemon 一起来就无条件往
             // tmux server 装三条全局 hook 且没有开关，扫到 dev 产物就起它 = 去改用户真实
             // tmux 的状态（F05 摸底 §2.5）。
