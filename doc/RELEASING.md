@@ -4,11 +4,30 @@
 
 详 [CONTRIBUTING.md § 1.5](CONTRIBUTING.md#15-发版前)。摘要：
 
-- [ ] 改 **版本号三处对齐**（package.json + src-tauri/Cargo.toml + src-tauri/tauri.conf.json）
-- [ ] `Cargo.lock` 提交
+- [ ] 改 **版本号：`release.yml` 卡得住的四处**（`package.json` + `src-tauri/Cargo.toml` +
+      `src-tauri/tauri.conf.json` + `src-tauri/Cargo.lock` 里 `name = "monitor"` 紧跟的 version 行）
+      > ⚠ **原文写的是「三处」，漏了 `Cargo.lock`。** `release.yml` 的
+      > `Verify version consistency with tag` 卡的是**四处**（2026-09-09 现打，读的是
+      > 那一步的 PowerShell 本体）：漏一处 ⇒ 那一步 fail ⇒ **而 tag 已经推出去了**。
+- [ ] `Cargo.lock` 提交（上一条改的就是它；`cargo` 不会替你 `git add`）
+- [ ] **`package-lock.json` 顶上那两处 `"version"`（`:3` 与 `:9`）—— 没有任何东西卡它。**
+      2026-09-09 现打仍是 **3.2.0**，而 `package.json` 已经 3.6.0。
+      > **它不会炸，但别当它不存在**：`v3.6.0` 那次发版的 lock 顶上就写着 `3.2.0`，
+      > 而 release run 里 `npm ci` **照样过**（`git show v3.6.0:package-lock.json` +
+      > 那次 run 现打核过）⇒ 版本号这一格与 `npm ci` 的同步性检查无关。
+      > 修法是**跑一次 `npm install`**（bump 完 `package.json` 之后），它会顺手对齐；
+      > 纯手改版本号一定漏掉这一处。
 - [ ] [CHANGELOG.md](../CHANGELOG.md) 加新版本段（写法见 § 3）
-- [ ] **改 README 的版本号两处**：`README.md` 抬头那行 + 「项目当前状态」块的「版本」
-      （`README.en.md` 抬头同理）。
+- [ ] **改 README 的版本号**。⚠ **不是「两处」——2026-09-09 现打是 `README.md` 三处 +
+      `README.en.md` 一处**（尺子：`git grep -c '3\.6\.0' -- README.md README.en.md`，
+      量于 `04745b3`）。逐处：
+      `README.md` ① 抬头那行「当前版本: vX.Y.Z」· ② 「项目状态」那段里「当前发布 **vX.Y.Z**」·
+      ③ 「项目当前状态」块的「- **版本**：vX.Y.Z（Released）」；
+      `README.en.md` ④ 抬头那行 `Current: vX.Y.Z`。
+      > 🔴 **`README.en.md` 里 ② 的对侧今天就是漂的**：那句写着 `current release **v3.2.0**`，
+      > 而中文侧同一句已经是 v3.6.0 —— **落后四个版本，`v3.6.0` 那个 tag 上就已经是这样**
+      >（`git show v3.6.0:README.en.md` 现打核过）。原来那句「两处」少数的正是 ②，
+      > 于是英文侧的 ② 从来没人改。**本轮把它一起补上，别只改抬头那行。**
       > **这一条是补出来的，别删。** v3.1→v3.4 **连续四次**发版漏改 README，
       > 于是 README 的「当前版本」长期落后一个大版本；BACKLOG 早把「checklist 里没有
       > README 这一条」点名为**机制性根因**，而根因没修 ⇒ 第四次照样复发。
@@ -17,7 +36,7 @@
 - [ ] **README 的「平台」与功能列表**：本版若**新增了平台或用户可感知的大功能**，
       抬头那行的「平台」和状态段的一句话概述要跟上（例：v3.4.0 首发 `.deb`，
       而 README 到 v3.5.0 才补上「Linux」——用户读完会以为不支持）
-- [ ] `cargo fmt --all --check + cargo clippy --workspace --exclude code-picture-core --all-targets + cargo test --workspace --exclude code-picture-core + cargo test -p code-picture-core + npm test + npm run coverage + npm run build` 全绿（fmt 不过 CI 会红；`npm test` 含 16 组 node 纯函数 + vitest DOM = 前端 job）。⚠ **G2（2026-08-04）订正**：原来这里列的是 `cargo test --all` 外加 `-p code-picture-core` / `-p branch-core` 两条补丁，理由写着「两者都是 path 依赖非 workspace 成员，`--all` 测不到」。**那句对 `branch-core` 已经不成立** —— `src-tauri/Cargo.toml` 现在有 `[workspace]`，六个共享 crate 都是真成员（`--workspace` 覆盖，实测 922 = monitor 882 + 六 crate 40）。**只有 vendor 的 `code-picture-core` 仍要单列**（它是成员的 path 依赖，`exclude` 对 path 依赖不生效 ⇒ CI 用 `--exclude` 排除它、再单独 `-p` 跑，**不动 vendor 一个字节**）。远端 daemon `cargo test`（`remote-daemon-proto/`，含 `cargo fmt --check`）**仍是独立一处** —— 它刻意不入 workspace，那条隔离是真架构约束。+ Linux app 构建 + 三个 e2e job 都是**独立 CI job**，别漏跑；CI 共 **7** job）
+- [ ] `cargo fmt --all --check + cargo clippy --workspace --exclude code-picture-core --all-targets + cargo test --workspace --exclude code-picture-core + cargo test -p code-picture-core + npm test + npm run coverage + npm run build` 全绿（fmt 不过 CI 会红；`npm test` 含 16 组 node 纯函数 + vitest DOM = 前端 job）。⚠ **G2（2026-08-04）订正**：原来这里列的是 `cargo test --all` 外加 `-p code-picture-core` / `-p branch-core` 两条补丁，理由写着「两者都是 path 依赖非 workspace 成员，`--all` 测不到」。**那句对 `branch-core` 已经不成立** —— `src-tauri/Cargo.toml` 现在有 `[workspace]`，六个共享 crate 都是真成员（`--workspace` 覆盖，实测 922 = monitor 882 + 六 crate 40）。**只有 vendor 的 `code-picture-core` 仍要单列**（它是成员的 path 依赖，`exclude` 对 path 依赖不生效 ⇒ CI 用 `--exclude` 排除它、再单独 `-p` 跑，**不动 vendor 一个字节**）。远端 daemon `cargo test`（`remote-daemon-proto/`，含 `cargo fmt --check`）**仍是独立一处** —— 它刻意不入 workspace，那条隔离是真架构约束。+ Linux app 构建 + 那几个 e2e job 都是**独立 CI job**，别漏跑）。⚠ **CI 有几个 job 这里刻意不写死**（同上一条纪律：这个数在仓里已经漂过一次 —— 原文写着「共 **7** job」，而 2026-09-09 现打是 **8** 个：`rust` / `frontend` / `daemon` / `linux-app-build` / `e2e-smoke` / `e2e-tmux` / `e2e-tmux-rust` / `weak-net`，尺子 `sed -n '/^jobs:/,$p' .github/workflows/ci.yml | grep -cE '^  [a-z0-9-]+:$'`，量于 `04745b3`。⚠ **尺子必须先切到 `jobs:` 段**：不切的话 `on:` 底下的 `push:` 与 `defaults:` 底下的 `run:` 也会被数进去，得 10 —— 本仓最高频的那类错「量具的作用域对不上事实」）。**引用前现打，别抄这个数**；权威是 `.github/workflows/ci.yml` 本身
 - [ ] **若本版动过滚动/渲染管线**（stream/tabs/session-viewer/branch-fold/render-*）：跑一遍 `npm run test:f40`（= `e2e/f40-suite.sh`；Linux Xvfb + 一个正在跑的 `tauri dev`，前置见 e2e/README）+ Windows 真机把 e2e/README「人工场景」的 WebView2 复核过一遍（WebKitGTK 无 overflow-anchor，两端补批语义不同）
 - [ ] **若本版改过 daemon 源码**（BUILD_ID 应已随改动 bump）：走 tag 发版由 release.yml 的 build-daemons job 从源码重编内嵌二进制（官方渠道恒一致）；**本地手工打包分发**则必须先重编并**同步更新 `src-tauri/embedded-daemons/` 里的二进制和同名 `.build_id` 清单**——否则装出去的是旧 daemon，连接后无限重装循环。
       > **这一格 2026-08-01（U-1）从 warning 升成编译期 panic。** 原来只有一条比 mtime 的
@@ -45,16 +64,59 @@
 ```powershell
 git commit -m "release: vX.Y.Z"            # 不加 Claude coauthor
 git tag vX.Y.Z
-git push origin main
+git push origin main                       # ← 先推 main，等 CI 绿
 git push origin vX.Y.Z                     # tag push 触发 release.yml
 ```
 
-CI 跑 ~6-8 分钟，产物：
+### 2.1 发版的第一道门：CI 必须绿（2026-09-09 起）
 
-- `cc-monitor_X.Y.Z_x64-setup.exe`（NSIS）
-- `cc-monitor_X.Y.Z_x64_zh-CN.msi`（MSI）
-- `cc-monitor.exe`（裸 exe）
-- `SHA256SUMS`（校验和）
+`release.yml` 的第一个 job 是 **`ci-gate`**：它按 **`head_sha`** 查同一个 commit 上
+`ci.yml` 的 run，**没有一条绿的就不放行**，后面三个 job（daemon 交叉编译 / Windows 打包 /
+Linux 打包）全部不起。
+
+> **在这之前是零。** `release.yml` 里一条测试门都没有（`cargo test` / `npm test` /
+> `tsc --noEmit` / e2e 在那份文件里零命中），而跑测试的 `ci.yml` 与它互不相干
+> ⇒ **主干红成什么样，推个 tag 都照发**。发版标准逐字是「新用户可以稳定装上各种功能」，
+> 这道门是那句话在流水线上的最低形态。
+
+对发版流程的实际影响，三条：
+
+1. **先推 `main` 等它绿，再推 tag** —— 这道门接受这个 commit 上**任意一条**绿的 CI run，
+   而 main 那次与 tag 那次跑的是同一棵树、同一份 `ci.yml`。main 已经绿了的话它**立刻放行**。
+2. **CI 红 ⇒ 发不出去，这是设计意图，不是故障。** 修 CI，然后**重跑 `ci-gate` 这一个 job**
+  （GitHub Release run 页面的 Re-run failed jobs），不必重打 tag。
+3. **超时也拦**：查不到 CI run 等 10 分钟、CI 还在跑等 45 分钟，到点判红。
+   CI 整条实测 3-6 分钟（v3.6.0 那次 3m18s、09-10 那次 5m43s），余量全是排队用的。
+
+### 2.2 产物
+
+整条 release run 实测 **~17 分钟**（v3.6.0：`build-daemons` 1m50s → `build-windows` 9m16s →
+`build-linux` 5m36s；`ci-gate` 加在最前面，main 已绿时它几秒就过）。
+
+**Windows**（`build-windows`）：
+
+- `cc-monitor_X.Y.Z_x64-setup.exe` — NSIS 安装器
+- `cc-monitor_X.Y.Z_x64_en-US.msi` — MSI（⚠ 后缀是 **`en-US`**，不是 `zh-CN`：
+  `tauri.conf.json` 没配 WiX 语言 ⇒ 走默认。v3.6.0 实际产物逐字 `cc-monitor_3.6.0_x64_en-US.msi`）
+- `monitor.exe` — 裸 exe（⚠ 名字是 **cargo 包名 `monitor`**，不是 productName `cc-monitor`）
+- `SHA256SUMS.txt` — 校验和（⚠ **带 `.txt`**）
+
+**Linux**（`build-linux`，v3.4.0 起）：
+
+- `cc-monitor_X.Y.Z_amd64.deb`
+- `monitor` — 裸二进制（⚠ **v3.6.0 那次还没有它**：这条上传是 08-02 `ae18878` 补的，
+  之后一直没发过版 ⇒ **它第一次真的出现会是下一个 tag**）
+- `SHA256SUMS-linux.txt`
+- `cc-monitor-remote-x86_64` / `cc-monitor-remote-aarch64` + 各自的 `.build_id`
+  —— 远端 daemon 的 musl 静态二进制（DN-8：外部项目自部署要拿它）
+
+> ⚠ 上面这张表是 **2026-09-09 读 `v3.6.0` 那个 release 的真实资产清单**现打出来的
+>（`gh api repos/bo0Zeng/cc-monitor/releases/tags/v3.6.0 --jq '.assets[].name'`），
+> 不是照 `release.yml` 推的。**引用前重打一遍** —— 权威是 `release.yml` 里那两处
+> `files:`，这张表是它的快照。
+> **订正了什么**：原文写 `SHA256SUMS`（实际 `SHA256SUMS.txt`）、`cc-monitor.exe`
+>（实际 `monitor.exe`）、`_zh-CN.msi`（实际 `_en-US.msi`），并且整张表**只有 Windows**
+> —— 照它核校验和的新用户会当场卡住，Linux 用户则以为没有产物。
 
 发布到 https://github.com/bo0Zeng/cc-monitor/releases/tag/vX.Y.Z
 
@@ -157,8 +219,14 @@ GitHub Releases 描述用 [CHANGELOG.md](../CHANGELOG.md) 对应版本段的复�
 ```markdown
 **下载**
 - `cc-monitor_X.Y.Z_x64-setup.exe` — Windows 普通用户（NSIS）
-- `cc-monitor_X.Y.Z_x64_zh-CN.msi` — 企业 IT 部署（MSI）
-- `cc-monitor.exe` — 裸 exe（需 WebView2 + 自管路径）
+- `cc-monitor_X.Y.Z_x64_en-US.msi` — 企业 IT 部署（MSI）
+- `monitor.exe` — Windows 裸 exe（需 WebView2 + 自管路径）
+- `cc-monitor_X.Y.Z_amd64.deb` — Linux（Debian / Ubuntu 系）
+- `monitor` — Linux 裸二进制
+- `SHA256SUMS.txt` / `SHA256SUMS-linux.txt` — 校验和（Windows / Linux 各一份）
 
 完整 CHANGELOG 见 [CHANGELOG.md](https://github.com/bo0Zeng/cc-monitor/blob/main/CHANGELOG.md)
 ```
+
+⚠ 名字与 § 2.2 那张表**同源**（都是从真实 release 资产读出来的），改一处要两处一起改 ——
+这份模板存在的意义就是让 Release 页上的名字与用户下到的文件逐字相同。

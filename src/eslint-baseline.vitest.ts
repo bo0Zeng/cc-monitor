@@ -34,10 +34,20 @@
  *   的机制 ⇒ 只缺 ① 那半。**登记在此，不假装覆盖了。**
  * - ① 跑的是**真 eslint**，约数秒。这是本仓少数几条 spawn 外部进程的判据之一
  *   （先例：`node-suite-registry-guard.vitest.ts`）。慢的代价换的是「散文数字第一次有东西读它」。
+ * - **本条要在 Windows 上跑**（`ci.yml` 的 `Frontend typecheck + build` job 跑在 `windows-latest`）。
+ *   它既 spawn 外部进程、又拿外部进程报的绝对路径当人群 ⇒ **两处不可移植面**，各自记在实现处：
+ *   ① `npx` 在 Windows 上真身是 `npx.cmd`，而 Node 的 `execFile*` **不套 PATHEXT** ⇒ 恒 `ENOENT`
+ *      （见 `ESLINT_BIN`）。这条是 2026-09-09 云端 CI **实测**逮到的：`1588 passed / 2 failed`，
+ *      两条判据在 Windows 上**从来没执行过**——也就是说这个 job 上「eslint 的基线有人数着」一直是假的。
+ *   ② eslint 报的 `filePath` 是 `\` 分隔的绝对路径，而原先用 `` `${REPO_ROOT}/` `` 去截前缀
+ *      **在 Windows 上静默截不掉**（见 `repoRel`）。这条是修 ① 时**静态推出来的、没有实测过**：
+ *      ① 抛在它前面，② 那段代码在 Windows 上一次都还没跑到，属**潜伏**而非已观测。
+ *   ⇒ 两条同一族：**判据自己不可移植时，它守的东西在那个平台上等于没人守**。
  */
 import { execFileSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
+import { dirname, relative, resolve } from "node:path";
 import { describe, it, expect } from "vitest";
 import { REPO_ROOT } from "./test-support/repo-root.ts";
 
@@ -54,6 +64,54 @@ const ESLINT_ERROR_BASELINE = 7;
 const PROSE_CLAIM = /全仓(?:实测仍是)?\s*\*{0,2}(\d+)\s*(?:个|项)/g;
 
 type EslintJsonResult = { filePath: string; errorCount: number; warningCount: number };
+
+/**
+ * eslint 可执行入口的绝对路径。**刻意不经 `npx`、也不经 shell。**
+ *
+ * ⚠ 两条都不能走：
+ * - `execFileSync("npx", …)`：Windows 上 `npx` 的真身是 `npx.cmd`，而 `execFile*` 走的是
+ *   `CreateProcess`，**不套 PATHEXT** ⇒ 恒 `spawnSync npx ENOENT`（`errno -4058`）。
+ *   同一批调用里的 `git`（见 ②）没事，因为它是真 `git.exe`——**坏的只是 `.cmd`/`.bat` 这层包装器**。
+ * - `{ shell: true }`：能让它跑起来，但要把 argv 交回给 shell 去重新解析。本仓有一条一以贯之的
+ *   口径反对这件事——`doc/IPC-PROTOCOL.md`「**不过 shell。** …⇒ 引号 / 转义 / 注入这一整类问题
+ *   在这条路上**不存在**，不是『被挡住了』」，`control/launch.rs` 头注「★ argv，不过 shell」，
+ *   `doc/ARCHITECTURE.md:161`、`plugin/invoke.rs`、`control/cc_bus.rs` 同调。
+ *   ⚠ 如实登记：**这条口径的住址全在 Rust／远端执行面那侧**，TS 侧此前没有一句话写过它——
+ *   但它在这儿同样成立（本行的路径含 `REPO_ROOT`，即用户目录，可能有空格／非 ASCII／元字符，
+ *   正是那条口径要躲的形状），且全仓 `shell: true` **零命中**，走它等于开本仓第一例。
+ *
+ * ⇒ 走 `process.execPath` + eslint 的 `bin/eslint.js`，与本文件头注点名的先例
+ * `node-suite-registry-guard.vitest.ts`（`execFileSync(process.execPath, ["--check", f])`）同形。
+ *
+ * ⚠ 用 `createRequire().resolve("eslint/package.json")` 而不是拼 `REPO_ROOT/node_modules/…`：
+ * `./package.json` 是 eslint `exports` 里**明确导出**的子路径（`./bin/eslint.js` 不是，直接
+ * resolve 它会 `ERR_PACKAGE_PATH_NOT_EXPORTED`），而这条路对 npm 的扁平提升与 pnpm 的嵌套布局
+ * 都成立，不把「node_modules 长什么样」写死进判据。
+ */
+const ESLINT_BIN: string = (() => {
+  const pkg = createRequire(import.meta.url).resolve("eslint/package.json");
+  const bin = resolve(dirname(pkg), "bin/eslint.js");
+  // 抽取器自检：eslint 换了 bin 布局时说一句人话，而不是让 node 抛一条没有上下文的 MODULE_NOT_FOUND。
+  if (!existsSync(bin)) {
+    throw new Error(`找不到 eslint 的可执行入口：${bin}（eslint 的 bin 布局变了？本条的 spawn 要跟着改）`);
+  }
+  return bin;
+})();
+
+/**
+ * eslint 报的是**本机绝对路径**（Windows 上形如 `D:\a\cc-monitor\cc-monitor\scripts\x.mjs`），
+ * 而本条两处判据要的都是**仓相对、`/` 分隔**的路径：① 拿它印逐文件清单，
+ * ② 拿 `split("/")[0]` 取顶层目录、再去 `eslint.config.js` 里找 `"<目录>/**\/*.mjs"`。
+ *
+ * ⚠ 原先这里是 `` filePath.replace(`${REPO_ROOT}/`, "") ``：那个硬写的 `/` 与 Windows 真实路径里的
+ * `\` 对不上 ⇒ 替换**静默地什么都不做**（不报错、不空手），于是 ② 的 `topDir` 会变成整条绝对路径，
+ * 还要被拼进 `new RegExp(...)`——`\a`/`\s` 在那里会被当成正则转义 ⇒ **恒不认领、恒红**。
+ * 改用 `relative()`：它在 win32 上把 `/` 和 `\` **都**当分隔符，两边形状不一致也算得对；
+ * 末尾再统一成 `/`，让 `split("/")` 与配置里的 glob 是同一种分隔符。
+ */
+function repoRel(abs: string): string {
+  return relative(REPO_ROOT, abs).replace(/\\/g, "/");
+}
 
 /**
  * 跑一次真 eslint，返回它的 JSON 报告。非零退出是常态（有既有告警），不能当失败。
@@ -74,7 +132,7 @@ function runEslintCached(): EslintJsonResult[] {
 function runEslint(): EslintJsonResult[] {
   let out: string;
   try {
-    out = execFileSync("npx", ["eslint", ".", "-f", "json"], {
+    out = execFileSync(process.execPath, [ESLINT_BIN, ".", "-f", "json"], {
       cwd: REPO_ROOT,
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
@@ -105,7 +163,7 @@ describe("V7-3：eslint 基线与作用面", () => {
     const errors = results.reduce((n, r) => n + r.errorCount, 0);
     const offenders = results
       .filter((r) => r.errorCount > 0)
-      .map((r) => `${r.filePath.replace(`${REPO_ROOT}/`, "")}: ${r.errorCount}`)
+      .map((r) => `${repoRel(r.filePath)}: ${r.errorCount}`)
       .sort();
 
     expect(
@@ -152,7 +210,7 @@ describe("V7-3：eslint 基线与作用面", () => {
     // eslint 实际扫到了哪些 .mjs（`ignores` 已经生效过一遍）—— 只对这批要求认领。
     const linted = new Set(
       runEslintCached()
-        .map((r) => r.filePath.replace(`${REPO_ROOT}/`, ""))
+        .map((r) => repoRel(r.filePath))
         .filter((p) => p.endsWith(".mjs")),
     );
 

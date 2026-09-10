@@ -187,7 +187,16 @@ if [ -z "$missing" ]; then ok "三条并发命令各自拿到应答"; else bad "
 if ! command -v tmux >/dev/null 2>&1; then
   bad "没有 tmux —— launch 段无法验证（本套件依赖真 tmux，不接受跳过）"
 else
-  SESS="e2e-launch-$$"
+  # ⚠ **名字必须是本工具的命名形状**（`<X>-cc`）—— 与下面 `INBOUND_SEND_INTO_LINE` 那段是同一条理由。
+  #   F03 给 daemon 的 `send-into` / `send-keys-raw` 都装上了 §34 Gate 2（`gate.rs::admit`）：
+  #   `e2e-launch-<pid>`（旧名）**既不是本工具的命名形状、事实键 `@ccm_sid` 也没设** ⇒ `wrong_owner`。
+  #   ⚠ 那**不是缺陷，是这道门的正确行为**：旧夹具能过门，靠的是「建会话时顺手写了裸 `@ccm_sid`」，
+  #   而那条路 09-03（`2a58237`，`K-P2` C 第五拍）已经拆掉了（建会话只写**意图**键，见下面两格）。
+  #   ⇒ 换成**生产真会产生**的形状（`launch-requests.ts` 产的是 `<sid8>-cc`），下面那几条才走得到
+  #   它们真正要验的那条路（键入 / 幂等 / 不附回车），而不是全部停在身份门上。
+  # ⚠ 「非本工具会话必须被 Gate 2 拒」那一档**不在本套件**：`e2e/daemon-gate2-acceptance.sh`
+  #   逐行跑整张判定表，外加 `send-keys-raw` 与「只设了 `@ccm_sid_expect` 仍拒」两条。这里不重复。
+  SESS="e2e-launch-$$-cc"
   MARK="$WORK/launched.marker"
   # 载荷：写一个 marker 文件。它比「看进程名」可靠得多 —— 能证明**这一行真的被执行了**。
   send "{\"id\":\"e2e-launch-1\",\"cmd\":\"launch\",\"args\":{\"mode\":\"create-or-attach\",\"name\":\"$SESS\",\"payload\":\"touch '$MARK'\",\"ccm_sid\":\"e2e-sid-1\"}}"
@@ -206,9 +215,33 @@ else
   if tmux has-session -t "=$SESS:" 2>/dev/null; then ok "真 tmux 会话建出来了"; else
     bad "tmux 里找不到会话 $SESS"
   fi
+  # ★★ 09-03（`2a58237`，`K-P2` C 第五拍）之后，**这里是两格，不是一格** ——
+  #    「意图」与「事实」是两个 key、两个阶段，只改个名字只验得到前一半。
+  #
+  #    · 通道 A（**意图**）：`launch` 建会话那一刻写 `@ccm_sid_expect`
+  #      —— 与 `shared/ccm` 本地那条编排同一个顺序（`new-session` → `@ccm_agent` → `@ccm_sid_expect`）。
+  #    · 通道 B（**事实**）：`@ccm_sid` 只由 `control/identity_tag.rs` 在
+  #      「pidfile 出现 ＋ 过 `procStart` 冒名检查」之后才写。`launch.rs::run` 的头注逐字：
+  #      **「本处一个字都不写 `@ccm_sid`」**。
+  #
+  #    下面第二格（此刻事实键必须为空）钉的正是那道分离本身。只验意图键的话，
+  #    「哪天有人把它改回裸 `@ccm_sid`」会重新变成**静默**的 —— 那就是 F04 修掉的 `R10`：
+  #    一个「声明了 sid、而那个 claude 进程还没起（甚至永远起不来）」的空会话**当场取得事实身份**，
+  #    而事实身份是破坏性动作（`kill` → `gate::admit_destructive`）唯一认的东西。
+  # ⚠ 两处都 `2>/dev/null || true`：`show-options -v` 对**未设置**的 option 是 rc=1 + stderr
+  #   （`gate.rs` 头注登记的那条 tmux 行为），取回空串当「没设」。
+  #   ⚠ tmux 对 `@` 开头的**用户 option 不做前缀匹配**（`options_match` 见 `@` 就原样返回）
+  #     ⇒ 只设了 `@ccm_sid_expect` 时问 `@ccm_sid` 拿到的是「未设置」，不是那个值。
+  # ⚠ 第二格「必须为空」单看会是一个**免费的 PASS**（会话没了也是空串）——
+  #   兜它的是**第一格**：目标一旦不在，`@ccm_sid_expect` 那格拿不到 `e2e-sid-1`，当场红。
+  #   两格必须一起读，别把哪一格单独挪走。
+  GOT_EXPECT="$(tmux show-options -v -t "=$SESS:" @ccm_sid_expect 2>/dev/null || true)"
+  if [ "$GOT_EXPECT" = "e2e-sid-1" ]; then ok "意图键 @ccm_sid_expect 已写（$GOT_EXPECT）"; else
+    bad "@ccm_sid_expect 不对：${GOT_EXPECT:-<空>}"
+  fi
   GOT_SID="$(tmux show-options -v -t "=$SESS:" @ccm_sid 2>/dev/null || true)"
-  if [ "$GOT_SID" = "e2e-sid-1" ]; then ok "@ccm_sid 已设（$GOT_SID）"; else
-    bad "@ccm_sid 不对：${GOT_SID:-<空>}"
+  if [ -z "$GOT_SID" ]; then ok "事实键 @ccm_sid 此刻仍为空（建会话不许直接授予事实身份）"; else
+    bad "**建会话就写了事实键 @ccm_sid=$GOT_SID** —— 绕过 identity_tag 那道确认，正是 F04 修掉的 R10"
   fi
   got_marker=0
   for _ in $(seq 1 60); do [ -f "$MARK" ] && { got_marker=1; break; }; sleep 0.05; done
