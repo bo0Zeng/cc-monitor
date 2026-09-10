@@ -71,6 +71,15 @@
 //! 取决于**用户手里是哪一份产物**，不再是一个常数。
 //! **C7 由 F05a + F05b 两件共同满足**，ROADMAP §3 就是这么记的 —— 两件今天都在了。
 //!
+//! 🔴 **`K-R42`（09-10 同日，上面那次读数之后）：上面那句「取决于哪一份产物」被这一件改小了。**
+//! 那次读数**没有被推翻**（它量的是 v3.7.0 的产物，那一版的裸 exe 确实是 0 个）——
+//! 变的是**它之后的机制**：本模块这条路今天多了第二个二进制来源
+//! （[`native_embedded_daemon`]，`build.rs::embed_native_daemon` 按 `TARGET` 嵌进来的），
+//! 于是 [`resolve_with`] 的 `Missing` **不再等于「这台机器上没有本机后端」**，
+//! 它只等于「**旁边**没有」。裸 exe 那一支从此走的是「自己释放一份再起」。
+//! ⚠ 三句话别混：① 旁边有没有（[`resolve_with`]）· ② 这份产物带没带（[`native_embedded_daemon`]）
+//! · ③ 放不放得下来（[`extraction_failure_reason`]）。09-10 那一形的病根就是把三件事说成一件。
+//!
 //! 真进程行为由 `e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
 //! [`supervise`]，并强制私有 tmux 隔离，绝不碰用户真实 tmux server。
 //! ⚠ 〔`P0e` 08-12〕隔离**换过机制**：原来靠私有 `TMUX_TMPDIR`，而 `$TMUX` 一有值就压过它
@@ -151,11 +160,10 @@ pub fn resolve_with(
     Resolved::Missing {
         reason: format!(
             "这一份 monitor 旁边没有本机后端 sidecar（`{SIDECAR_STEM}`）。\
-             它**随安装包一起发**（`*-setup.exe` / `*.msi` 里都带，装完与 monitor 同目录）\
-             —— 没有它通常意味着：跑的是单独下载的**裸 `monitor.exe`**，\
-             或自己构建时没带上 `--config src-tauri/tauri.sidecar.conf.json`。\
-             ⇒ **要本机后端就装一次安装包**（Releases 页）。\
-             本机后端今天**未启动**；远端功能不受影响"
+             它**随安装包一起发**（`*-setup.exe` / `*.msi` 里都带，装完与 monitor 同目录）。\
+             ⚠ **「旁边没有」不等于「这台机器上没有本机后端」**：产物里内嵌了本机后端时，\
+             monitor 会自己释放一份再起它 —— 那一步走没走成由**它自己**报，不由本行断言。\
+             ⇒ 两条都没有时的下一步：**装一次安装包**（Releases 页）。远端功能不受影响"
         ),
         looked_at: cands,
     }
@@ -848,6 +856,20 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
 /// 今天没有任何清理逻辑，也没有判据钉它。
 /// ⇒ 刻意不做：按 mtime/版本回收要先定「谁还可能在跑旧的那份」，那是 `P2d`（认已有实例）的前提。
 ///
+/// 🔴 **`K-R42` 09-10 补一条：这笔账的分母变大了，而处置没变。**
+/// 本段写下时，这条路**只在 Linux 上真跑过**（宿主那侧压着 `cfg!(target_os = "linux")`），
+/// 而 Linux 上安装包与 dev 树旁边多半就有 sidecar ⇒ 释放这一支很少走到。
+/// 本件把 Windows 那一格接上之后，**裸 exe 每换一个 daemon 版本就在
+/// `%USERPROFILE%\.cc-monitor\bin\` 多留一份**（这一次是 14 MB 级，见 `K-R42` 交回的体积读数）。
+/// ⇒ **仍然不清理**，三条理由都还成立、且新添一条：
+/// ① 判「谁还在跑旧的那份」仍是 `P2d` 的前提，本件没做那件事；
+/// ② 真删要扩 `sweep_stale_partials` 的射程（它今天**只删自己那套 `.partial` 命名**），
+///    而那条射程逐字登记在 `write_site_registry::WRITE_SITES` 里 —— 那张表不在本件写区，
+///    改了代码不改登记 = 让一条登记变成假话，比多留一个文件贵；
+/// ③ 幂等这一半是好的：**同一个 build_id 不会重复写**（下面那个 size 相等就跳过的分支）
+///    ⇒ 留下的份数上界是「这台机上装过几个不同 daemon 版本」，不是「起过几次 monitor」。
+/// ⚠ **这是一笔如实记着的欠账，不是「已解决」** —— 建议作跟进件，与 `P2d` 同拍做。
+///
 /// P2z（`control-parity` 的定框 C10 —— 单 exe 那一条，不是 `backend-split` 那条平台原语）：**单 exe 自释放** —— 把 app 里**已经内嵌**的那份 musl daemon
 /// 写到 `dir` 下，文件名**带 build_id**，返回落点。
 ///
@@ -874,8 +896,71 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
 /// ⚠ 抽成函数不是为了好看：判据 `the_local_extract_path_is_build_id_scoped` 要断言这条命名规则，
 /// 而如果判据自己**抄一份** `format!` 就成了「测自己的副本」—— 改了这里判据照样绿。
 /// 本仓在别处栽过同族（`strip-comments` 那次两份手抄语义漂移）。⇒ 两边共用这一个。
+///
+/// # `K-R42`：名字尾巴上那个后缀
+///
+/// 释放出来的这份是要**被起成进程**的 ⇒ 在把扩展名当身份的平台上它得带着自己那个后缀。
+/// 🔴 **后缀不是在这里现算的** —— 算它要 `env::consts::EXE_SUFFIX`，那是**平台原语**，
+/// 而本文件在 `backend/mod.rs::PLATFORM_EXCEPTIONS` 里**只有一格例外额度**
+/// （那张表挂着递减棘轮 `len() <= 1`，今天正好占满，占的是 `resolve_beside_this_exe`）。
+/// ⇒ 由 `build.rs` 从 **`TARGET`** 算好、当编译期常量交进来
+/// （`CCM_TARGET_EXE_SUFFIX`，同 `CCM_TARGET_TRIPLE` 那条先例）。
+/// 顺带买到一件现算买不到的事：交叉编译时 `env::consts::` 给的是**构建机**的后缀，
+/// 而这里要的是**目标机**的。
+/// ⚠ 非 Windows 上这个常量是**空串** ⇒ 名字与本行改动之前**逐字相同**，盘上已有的那份照旧命中。
 pub fn local_extract_name(build_id: &str) -> String {
-    format!("cc-monitor-local-{build_id}")
+    format!(
+        "cc-monitor-local-{build_id}{}",
+        env!("CCM_TARGET_EXE_SUFFIX")
+    )
+}
+
+/// `K-R42`：**这一份产物自己带着的本机后端**（`build.rs::embed_native_daemon` 嵌进来的）。
+///
+/// # 它与「宿主注入的那份」是两件事，不是同一件的两个写法
+///
+/// `start_or_extract` 的 `embedded` 参数**是宿主知识**：`local_daemon.rs` 那侧按
+/// **运行期 arch** 从 `sftp::daemon_binary(ARCH)` 里挑，而那批是 **musl Linux** 二进制
+/// ⇒ 它那侧压着一道 `cfg!(target_os = "linux")` 的闸，非 Linux 一律给 `None`。
+/// **那道闸是对的**：往 Windows 上释放一个 Linux ELF 再报「已起」，是 08-11 补审逮到的
+/// 阻塞级缺陷。缺的从来不是「把闸拆掉」，是**一份 Windows 能跑的字节**。
+///
+/// 本函数就是那份字节，而它**不需要任何运行期判断**：`build.rs` 在编译期按 `TARGET`
+/// 选好了，选错的可能性结构上不存在 ⇒ 它不是宿主知识，是**这一份产物的自我认知**，
+/// 住在本层不违反「宿主知识留调用方」。
+/// 也因此本文件里**一处平台 `cfg` 都没有多**（`the_backend_half_stays_platform_agnostic` 照旧绿）。
+///
+/// # 返回 `None` 的含义
+///
+/// **这一份产物没内嵌本机后端**（开发构建、或发版那一步没铺）。诚实降级，不是错误。
+#[cfg(embedded_native_daemon)]
+pub fn native_embedded_daemon() -> Option<(&'static str, &'static [u8])> {
+    let id = env!("DAEMON_NATIVE_ID");
+    if id.is_empty() {
+        // 走不到（`build.rs` 缺清单时当场 panic），但**不假设它走不到**：
+        // 空 build_id 会拼出 `cc-monitor-local-` 这样一个不带版本的落点，
+        // 那正是 D1 段花一整段论证要避开的「与远端那份撞在同一个名字上」。
+        return None;
+    }
+    // 🔴 **这条路径必须是字面量，不许拼**（`concat!(env!(..), ..)` 那种写法编得过，但
+    // `cross_half_edge_registry::every_non_literal_include_is_registered_with_a_reason`
+    // 默认拒绝解析不出路径的 `include_*!`，而它的登记表不在本件写区 —— 实测当场红）。
+    // ⇒ 名字定死在两处：这一行，与 `build.rs` 的 `NATIVE_DAEMON_DIR`/`NATIVE_DAEMON_FILE`。
+    //   两处同一个串由 `the_native_daemon_path_is_spelled_the_same_on_both_sides` 对拍
+    //   （闭集本该只有一个住址，这一处是 `include_bytes!` 的语法逼出来的例外 ⇒ 用判据补上）。
+    // ⚠ 目录名**刻意不是** `embedded-daemons`：那个串是 `local_daemon.rs` 那条
+    //   「谁会起真 daemon」判据认来历用的，写进本文件的生产段会把整段代码拖进它的人群
+    //   （实测：多出一条 `local_backend.rs::default`，而它连测试都不是）。理由全文住 `build.rs`。
+    Some((
+        id,
+        include_bytes!("../../../native-daemon/cc-monitor-native"),
+    ))
+}
+
+/// 没内嵌那一份时的同名壳 —— 头注在上面那一份上。
+#[cfg(not(embedded_native_daemon))]
+pub fn native_embedded_daemon() -> Option<(&'static str, &'static [u8])> {
+    None
 }
 
 /// 陈旧 `.partial` 的年龄阈值。
@@ -957,6 +1042,46 @@ pub fn extract_embedded_to(
         format!("rename 到 {} 失败: {e}", dest.display())
     })?;
     Ok(dest)
+}
+
+/// 「带着后端但放不下来」这一形的**认路标记**。
+///
+/// ⚠ 它是给**判据**认的，不是给用户读的措辞规范：判据钉「这一句与『没带后端』那一句
+/// 分得开」，而分得开这件事得有个不靠措辞的抓手。
+/// 🔴 **刻意不取自任何路径 / 目录名 / 夹具名**（固定项 12 那条 `6g`：诊断把路径原样印进输出，
+/// 于是「输出里含某句话」会**靠路径恒真**，把整支实现换掉都不红）。
+const EXTRACTION_REFUSED_MARKER: &str = "放不下来";
+
+/// 🔴 `K-R42` 硬要求①：**权限写不进去时响亮失败，不许静默退回「没有后端」。**
+///
+/// # 为什么这不是「换个措辞」
+///
+/// 两件事今天共用一个返回形状（[`Resolved::Missing`]），而它们的**下一步完全不同**：
+///
+/// | 这一形 | 用户该干嘛 |
+/// |---|---|
+/// | 这份产物**没带**本机后端 | 去装一次安装包 |
+/// | 带了，但**这台机器不让放** | 去看那个目录的权限 / 杀毒软件；或者装安装包绕开它 |
+///
+/// 把后者说成前者，就是 09-10 一整天在治的那一形（读面把「读不到」说成「你没有」）。
+/// ⇒ 这一支自己拼一句**结构上分得开**的话（[`EXTRACTION_REFUSED_MARKER`]），
+/// 并由 [`start_or_extract`] 在返回之前 `tracing::error!` 吼一声 ——
+/// 光靠返回值不够：调用方可能只把它记进 `info`。
+///
+/// # 纯函数
+///
+/// 不碰文件系统、不碰时钟 ⇒ 两种输入的两句话都测得到（同本模块 [`decide`] 的理由）。
+pub fn extraction_failure_reason(dir: &Path, err: &str) -> String {
+    format!(
+        "这一份 monitor **自己带着**本机后端，但它{EXTRACTION_REFUSED_MARKER} —— \
+         往 `{}` 里写的时候失败了（{err}）。\n\
+         🔴 这**不是**「这份产物没有本机后端」：那是另一回事，下一步也不一样。\n\
+         ⇒ 下一步挑一条：① 看那个目录是不是只读、或者被杀毒软件挡着，给它写权限；\
+         ② 让 monitor 跑在一个家目录写得进去的账号下；\
+         ③ 不想动它就**装一次安装包**（Releases 页）—— 装出来的那份后端与 monitor 同目录，\
+         根本不用写这里。",
+        dir.display()
+    )
 }
 
 /// **生产入口**：找得到就起并看住；找不到就**诚实降级**（定框 §5）。
@@ -1312,6 +1437,15 @@ fn local_stdio_consumer_guarded(
 ///
 /// `embedded` 由调用方给（`sftp::daemon_binary(arch)` 的产物）—— 本模块不认识 `sftp`，
 /// 也不认识「当前是什么 arch」，那都是宿主知识。
+///
+/// # `K-R42`：`embedded` 给 `None` 时还有第二个来源
+///
+/// 宿主那侧只在 Linux 上给字节（它挑的是 **musl** 二进制，见 [`native_embedded_daemon`] 头注），
+/// 于是 09-10 干净 win11 上的读数是：**裸 `monitor.exe` 跑着 0 个本机后端进程**，
+/// 而同一个 exe 里那套「带着二进制、需要时落到盘上」的机制**一直都在，只服务远端**。
+/// ⇒ 这里补上 [`native_embedded_daemon`]：宿主给不出时，问这一份产物自己带没带。
+/// **次序刻意是「宿主优先」** —— 那条路今天在 Linux 上是活的（安装包那份也走它），
+/// 本件不许让它退化；本层这份只在它交白卷时才说话。
 pub fn start_or_extract(
     target_triple: &str,
     extract_dir: &Path,
@@ -1323,17 +1457,32 @@ pub fn start_or_extract(
     let bin = match &beside {
         Resolved::Found(p) => p.clone(),
         Resolved::Missing { .. } => {
-            let Some((build_id, bytes)) = embedded else {
-                // 没内嵌（`cfg(embedded_daemons)` 未置：某个 arch 的二进制缺席）⇒
+            // `K-R42`：宿主给不出就问这一份产物自己带没带（头注「第二个来源」那一段）。
+            // ⚠ 中间这个**带标注的局部**不是多余的：内嵌那份是 `&'static`，直接
+            // `embedded.or_else(native_embedded_daemon)` 会把两边的生存期**往 `'static` 上**统一，
+            // 于是编译器要求调用方那个借来的 `embedded` 也活到 `'static`（实测 `E0521`）。
+            // 标注一下就让它按**短的那个**统一（`'static` 往下兼容，反过来不行）。
+            let carried: Option<(&str, &[u8])> = native_embedded_daemon();
+            let Some((build_id, bytes)) = embedded.or(carried) else {
+                // 两个来源都空（`cfg(embedded_daemons)` 与 `cfg(embedded_native_daemon)` 都未置）⇒
                 // 诚实降级，把 `beside` 的 reason/looked_at 原样交回，别伪造一个新理由。
                 return (beside, None);
             };
             match extract_embedded_to(extract_dir, build_id, bytes, make_executable) {
                 Ok(p) => p,
                 Err(e) => {
+                    // 🔴 `K-R42` 硬要求①：**这一支不许被读成「这份产物没带后端」。**
+                    //    它是「带了，但这台机器不让我把它放下来」——两件事的下一步完全不同
+                    //    （前者去装安装包，后者去看那个目录的权限 / 杀毒软件）。
+                    //    09-10 一整天治的正是这一形：读面把「读不到」说成「你没有」。
+                    let reason = extraction_failure_reason(extract_dir, &e);
+                    // 光靠返回值不够响：调用方可能只把它记进 `tracing::info!`
+                    //（`local_daemon.rs` 那条自动起的路对没有记录的失败就是这么走的）。
+                    // ⇒ 这一支自己吼一声 error，日志里一定留得下。
+                    tracing::error!("{reason}");
                     return (
                         Resolved::Missing {
-                            reason: format!("exe 旁无 sidecar，且释放内嵌 daemon 失败: {e}"),
+                            reason,
                             looked_at: match beside {
                                 Resolved::Missing { looked_at, .. } => looked_at,
                                 Resolved::Found(_) => Vec::new(),
@@ -2570,6 +2719,27 @@ mod tests {
     /// [`resolve_beside_this_exe`] 拿不到自身路径那条、[`start_or_extract`] 释放失败那条，
     /// **本条一条都没盖**。头注 / `DECISIONS` / 模块注释里写件号**不受本条管**，
     /// 本条只管**发到用户面前的那一串**。
+    ///
+    /// # 🔴 `K-R42`（09-10 同日）：**换完靶之后一天，被测对象自己变了 —— 本条现在守什么**
+    ///
+    /// 本件给 [`start_or_extract`] 接上了「产物自己带着的那份」（[`native_embedded_daemon`]），
+    /// 于是要先回答一句：**「找不到 sidecar」这一形还存不存在？**
+    ///
+    /// **存在，而且一点没少。** [`resolve_with`] 的职责一个字没改 —— 它仍然只回答
+    /// 「**exe 旁边**有没有」，而裸 exe 旁边**仍然没有**（本件不往 exe 旁边放东西）。
+    /// 变的是**这个答案之后发生什么**：以前它就是终点，现在它是自释放那一支的**入口**。
+    /// ⇒ 本条守的东西**逐字未变**（那一串给不给得出下一步 · 有没有把件号甩给用户），
+    /// 而且它守的那一串**仍然到得了用户眼前** —— `start_or_extract` 在两个来源都空时
+    /// 把 `beside` 的 `reason` **原样**交回去，那条路今天照走。
+    ///
+    /// ⚠ **真正过期的是那一串里的两句话，本件同拍改掉了**（不改就又成了「判据替假话背书」）：
+    /// ① 「没有它通常意味着跑的是裸 `monitor.exe`」——今天裸 exe 会自己释放一份，这句不再成立；
+    /// ② 「本机后端今天**未启动**」——那是 `resolve_with` **答不了**的问题，它只看得见旁边。
+    /// 改完之后本条**照旧命中**（`装一次安装包` 仍在 [`A_STEP_THE_USER_CAN_TAKE`] 里）——
+    /// 🔴 而这正是要写下来的那一格：**本条没有变红，所以它也没有替本件的改动作证**。
+    /// 「释放失败」那一形由本条**射程之外**的
+    /// [`the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all`] 接住，
+    /// 那条正好落在上面那句「本条一条都没盖」点名的三格之一。
     #[test]
     fn the_missing_sidecar_diagnosis_hands_the_user_a_next_step() {
         let r = resolve_with(
@@ -2594,6 +2764,266 @@ mod tests {
              （`F05b` 就是这么过期的，见本条头注）。件号写头注，别写给用户。\n\
              逐字：{reason}",
             id.clone().unwrap_or_default()
+        );
+    }
+
+    /// 🔴 **`K-R42` 硬要求①的判据**：「带了但放不下来」与「压根没带」必须是**两句分得开的话**。
+    ///
+    /// # 它为什么值一条判据
+    ///
+    /// 两件事今天共用同一个返回形状（[`Resolved::Missing`]）⇒ **调用方分不开，只有那串字分得开**。
+    /// 而把后者说成前者，用户会去装一次安装包（没用 —— 他早就有后端了，是目录写不进去）。
+    /// 09-10 一整天治的就是这一形：读面把「读不到」说成「你没有」。
+    ///
+    /// # 反向锚点：这条断言**不是靠路径恒真的**
+    ///
+    /// 固定项 12 那条 `6g` 逐字：诊断常把路径原样印进输出，于是「输出里含某句话」会
+    /// **靠路径恒真**，把那一支实现整个换掉都不红。⇒ 夹具目录取**中性名**，
+    /// 并且**当场断言**那个名字里不含标记串（下面第一个 `assert!`）——
+    /// 少了它，哪天有人把夹具改成 `/tmp/放不下来/` 这条判据就变成了空判据。
+    ///
+    /// # 诚实边界（写死别读宽）
+    ///
+    /// · 它买的是「两句话**结构上**分得开」+「后者给得出下一步」，
+    ///   **买不到**「那句话是真的」，更买不到「读者看懂了」（同上一条的边界）。
+    /// · 底层错误串是**调用方给的**，本条只验它被**原样带出来**，
+    ///   不管那串字本身长什么样（真机上它来自 OS，本条够不着）。
+    #[test]
+    fn the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all() {
+        // 中性名：不含下面任何一个断言用的子串（`6g`）。
+        let dir = Path::new("/tmp/ccm-fixture-7/bin");
+        let os_err = "Permission denied (os error 13)";
+        let refused = extraction_failure_reason(dir, os_err);
+
+        // ── 反向锚点：标记串不许来自夹具的名字 ───────────────────────────
+        assert!(
+            !dir.to_string_lossy().contains(EXTRACTION_REFUSED_MARKER),
+            "夹具目录名里含着标记串 ⇒ 下面那条 `contains` 会靠路径恒真，本条当场作废"
+        );
+
+        // ── ① 两句话分得开 ──────────────────────────────────────────────
+        let Resolved::Missing { reason: absent, .. } = resolve_with(
+            Path::new("/opt/app"),
+            "x86_64-unknown-linux-gnu",
+            "",
+            &never,
+        ) else {
+            panic!("应当是 Missing");
+        };
+        assert!(
+            refused.contains(EXTRACTION_REFUSED_MARKER),
+            "「放不下来」那一句丢了它的标记 ⇒ 调用方与判据都再也分不出它和「没带后端」。\n逐字：{refused}"
+        );
+        assert!(
+            !absent.contains(EXTRACTION_REFUSED_MARKER),
+            "「压根没带」那一句也带上了标记 ⇒ 标记不再区分任何东西，两句话又合成一句。\n逐字：{absent}"
+        );
+
+        // ── ② 说得出「在哪儿」与「为什么」——否则「响亮」只是嗓门大 ────────
+        assert!(
+            refused.contains("/tmp/ccm-fixture-7/bin"),
+            "没说清写不进去的是**哪个目录** —— 用户拿它没法去改权限。\n逐字：{refused}"
+        );
+        assert!(
+            refused.contains(os_err),
+            "底层错误串没被原样带出来 —— `os error 13`（权限）与磁盘满是完全不同的下一步。\n逐字：{refused}"
+        );
+
+        // ── ③ 与兄弟那条同职：给得出下一步 · 不许甩件号 ──────────────────
+        //    〔铁律 15「我治的是这一处，还是所有同职的地方」：这两格是那一条判据
+        //      已经买过的性质，而它的射程逐字写着**盖不到本函数** ⇒ 在这里补齐。〕
+        assert!(
+            A_STEP_THE_USER_CAN_TAKE.iter().any(|m| refused.contains(m)),
+            "「放不下来」那一句没给读它的人任何一条做得到的下一步（找过 {A_STEP_THE_USER_CAN_TAKE:?}）。\n逐字：{refused}"
+        );
+        let id = internal_item_id_in(&refused);
+        assert!(
+            id.is_none(),
+            "诊断里出现了内部件号 `{}` —— 用户拿它什么也做不了，而且件号会过期。\n逐字：{refused}",
+            id.clone().unwrap_or_default()
+        );
+    }
+
+    /// 🔴 `K-R42` 硬要求①的**真文件系统那一半**：目标目录建不出来时，
+    /// [`extract_embedded_to`] **真的**走 `Err`，而那条 `Err` 被
+    /// [`extraction_failure_reason`] 变成一句与「没带后端」分得开的话。
+    ///
+    /// # 为什么不用 `chmod 0o555` 造这个失败
+    ///
+    /// 两条：① `chmod` 要 `std::os::unix`，那是平台原语（本模块的例外额度已经占满）；
+    /// ② **权限位对 root 不成立** —— 沙箱里跑的是哪个 uid 会改变读数，
+    /// 而「同一条判据在不同机器上给不同答案」正是本仓要躲的东西。
+    /// ⇒ 改用**一个普通文件占住父路径**：`create_dir_all` 在任何平台、任何 uid 下都必然失败。
+    ///
+    /// # 诚实边界（写死别读宽）
+    ///
+    /// 它证的是「**真有一条 `Err` 走得通，且那条 `Err` 被原样带进了那句话**」。
+    /// 它**不是**「Windows 上权限不足时的真机行为」—— 那一格今天**判不了**，
+    /// 要一台真 Windows 机（`%USERPROFILE%` 只读 / 杀毒软件挡写 exe）。别把这一条读成那一条。
+    #[test]
+    fn a_directory_it_cannot_create_really_takes_the_loud_path() {
+        let base = std::env::temp_dir().join(format!("ccm-kr42-loud-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("建夹具目录");
+        // 用一个**普通文件**占住父路径 —— 下面那个 `create_dir_all` 必然失败。
+        let blocker = base.join("occupied");
+        std::fs::write(&blocker, b"x").expect("写占位文件");
+        let dir = blocker.join("bin");
+
+        let err = extract_embedded_to(&dir, "p2e-dial", b"not-a-real-daemon", &|_| Ok(()))
+            .expect_err("目标目录的父路径是个普通文件，它居然报了成功");
+        let reason = extraction_failure_reason(&dir, &err);
+        assert!(
+            reason.contains(EXTRACTION_REFUSED_MARKER),
+            "真失败走出来的那句话没有标记 ⇒ 它与「这份产物没带后端」又分不开了。\n逐字：{reason}"
+        );
+        assert!(
+            reason.contains(&err),
+            "底层失败原文没被原样带出来 —— 「建不出目录」与「盘满」是不同的下一步。\n\
+             实得 err：{err}\n逐字：{reason}"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+        println!("KR42-OK 真写不进去时走的是 Err，逐字：{err}");
+    }
+
+    /// 🔴 **`K-R42` 防空转**：自释放那条路**真的问了**「这份产物自己带没带」。
+    ///
+    /// # 没有这一条会怎样
+    ///
+    /// [`native_embedded_daemon`] 是纯的、[`extraction_failure_reason`] 是纯的 ——
+    /// 两条都测得漂漂亮亮，而**只要没人在 [`start_or_extract`] 里接上它们，整件事就是死代码**，
+    /// 上面那几格照样全绿。本仓这一形有名字（`K-R28` 那条「防空转」逐字记着同一件事）。
+    ///
+    /// # 顺序那一半
+    ///
+    /// 「先找 exe 旁边、再动内嵌那份」是本模块头注花一整段论证过的取舍
+    /// （dev 构建里旁边那个更新），跨文件那一半由
+    /// `local_daemon::the_two_resolution_paths_still_agree_on_the_order` 钉着。
+    /// 本件新加的这个来源**同属「内嵌那一档」** ⇒ 它也必须排在「找旁边」之后。
+    ///
+    /// ⚠ **诚实边界**：这是**约定型守卫**（查源码形态，同 `the_backend_layer_stays_host_agnostic`
+    /// 那一族）—— 它挡得住「接线被删掉 / 顺序被写反」，挡不住「换个名字继续错」。
+    #[test]
+    fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
+        let body = start_or_extract_body();
+        // 反向自检：切出来的确实是那个函数体（切歪了下面几条会在一段不相干的文本上恒答）。
+        // ⚠ 三处都走 `find_pinned`（**恰好一处** + 两侧有边界），不用裸 `contains` ——
+        //   `needle_anchor_registry` 那条递减棘轮治的就是「匹配单位比事实小」。
+        guard_core::find_pinned(&body, "extract_embedded_to(").unwrap_or_else(|e| {
+            panic!("切出来的这段里 `extract_embedded_to(` 不是恰好一处（{e}）—— 切歪了，本条此刻无效。\n逐字：{body}")
+        });
+
+        // ★ **防空转的第二半**〔本轮 `7u` 那一刀逼出来的，逐字记下理由〕：
+        //   把实现整个退掉之后，`the_extraction_refusal_…` 那条**仍然绿** ——
+        //   它测的是一个**纯函数**，而纯函数不接调用点也照样对。
+        //   ⇒ 「那句响亮的话真的被用上了」得在这里钉，不能指望那一条。
+        guard_core::find_pinned(&body, "extraction_failure_reason(").unwrap_or_else(|e| {
+            panic!(
+                "`start_or_extract` 体内 `extraction_failure_reason(` 不是恰好一处（{e}）——\n\
+                 一处都没有 ⇒ 释放失败又退回那句**与「没带后端」分不开**的话，\n\
+                 而 `the_extraction_refusal_…` 这类纯函数判据**照样全绿**（本轮实测过）。\n逐字：{body}"
+            )
+        });
+        let asked = guard_core::find_pinned(&body, "native_embedded_daemon").unwrap_or_else(|e| {
+            panic!(
+                "`start_or_extract` 体内 `native_embedded_daemon` 不是恰好一处（{e}）——\n\
+                 一处都没有 ⇒「产物自己带着的那份」没有任何生产调用点：\n\
+                 裸 exe 回到 09-10 那个读数（0 个本机后端进程），而本模块每一条判据照样绿。\n\
+                 多于一处 ⇒ 有第二条取法，下面那条顺序断言就说不清它断的是哪一处。\n逐字：{body}"
+            )
+        });
+        let beside = guard_core::find_pinned(&body, "resolve_beside_this_exe(")
+            .expect("`start_or_extract` 体内 `resolve_beside_this_exe(` 不是恰好一处");
+        assert!(
+            beside < asked,
+            "「问产物自己带没带」排到了「找 exe 旁边」前面 —— 顺序反了。\n\
+             dev 构建里旁边那个是**更新**的，内嵌那份是打包时的快照；\
+             顺序一反，同一台机上两条路会找到不同的二进制。"
+        );
+    }
+
+    /// `K-R42`：释放出来那个文件名带**目标平台**的可执行后缀。
+    ///
+    /// # 两个断言各自在哪个平台上非空
+    ///
+    /// | | Linux / macOS（后缀 = 空串） | Windows（后缀 = `.exe`） |
+    /// |---|---|---|
+    /// | 「带后缀」那条 | **空真**（`ends_with("")` 恒真） | 真 |
+    /// | 「不带后缀时逐字不变」那条 | **真**（本件不许让 Linux 那条退化） | 空真 |
+    ///
+    /// ⇒ 两条**各有一个平台上是空真**，而本仓 CI 的 `rust` job 跑在 **windows-latest**、
+    /// 门禁跑在 Linux ⇒ **两侧合起来才有牙，单侧都不够**。这一格如实写在这里，别读成「验过了」。
+    /// 「编得过」那一半由门禁的 `winchk`（`cargo check --target x86_64-pc-windows-gnu`）买。
+    /// `K-R42`：内嵌那份的**落点路径**，两侧拼法必须一致。
+    ///
+    /// # 为什么会有两处
+    ///
+    /// 闭集本该只有一个住址（把名字 emit 成编译期 env 就够了）——**`include_bytes!` 的语法
+    /// 不许**：它只吃字面量，`concat!(env!(..), ..)` 那种写法会撞
+    /// `cross_half_edge_registry` 那条「非字面量 include 必须登记」的默认拒绝，
+    /// 而那张登记表不在本件写区。⇒ 两处字面量是**被语法逼出来的**，不是懒。
+    /// 逼出来的重复由**判据**补：这一条现读 `build.rs` 里那两个常量的**值**，
+    /// 再去生产段里找拼出来的那条路径 —— 任一侧改名，这里当场红。
+    ///
+    /// ⚠ 诚实边界：它对的是**拼法**，不是「那个文件真在那儿」——
+    /// 真不在时 `build.rs` 不置 cfg，`include_bytes!` 整个不参与编译（那一格由构建本身守）。
+    #[test]
+    fn the_native_daemon_path_is_spelled_the_same_on_both_sides() {
+        // 🔴 **必须是 `include_str!`，不许 `std::fs::read_to_string`** —— 后者是
+        //    `needle_anchor_registry::CORPUS_SEEDS` 的**种子**：写下它，这个函数里的局部
+        //    （`line` / `s` / `e` …）会被那条棘轮的传递闭包一路认成「语料变量」，
+        //    而单字母名字与本文件别处的局部**重名** ⇒ 一处**与本件毫无关系**的既有
+        //    `e.contains("再开一次")` 当场被算进欠账，棘轮 33 → 34 变红（实测）。
+        //    ⚠ 这正是那条棘轮自己头注里记着的「判据自己跑飞」，只是这次是我喂的种子。
+        //    局部也一并改成长名字，别再给传递闭包留同名的落脚点。
+        let build_rs = include_str!("../../../build.rs");
+        let spelled = |konst: &str| -> String {
+            let decl = build_rs
+                .lines()
+                .find(|l| l.contains(konst) && l.contains("&str ="))
+                .unwrap_or_else(|| panic!("`build.rs` 里找不到 `{konst}` 的声明 —— 改名了？"));
+            let open = decl.find('"').expect("常量声明里没有字面量") + 1;
+            let close = decl[open..].find('"').expect("字面量没闭合");
+            decl[open..open + close].to_string()
+        };
+        let dir = spelled("NATIVE_DAEMON_DIR");
+        let file = spelled("NATIVE_DAEMON_FILE");
+        let prod = guard_core::production_code(include_str!("local_backend.rs"));
+        let want = format!("\"../../../{dir}/{file}\"");
+        assert!(
+            prod.contains(&want),
+            "`build.rs` 铺的是 `src-tauri/{dir}/{file}`，而本文件的 `include_bytes!` \
+             没有一处拼成 {want} ⇒ 两侧对不上。\n\
+             对不上的表现**不是编译错**：`build.rs` 那侧照样置 cfg，而这一侧 include 到\
+             另一个路径 —— 要么编不过（好），要么嵌进一份别的东西（坏）。"
+        );
+    }
+
+    #[test]
+    fn the_extracted_name_carries_the_target_exe_suffix() {
+        let suffix = env!("CCM_TARGET_EXE_SUFFIX");
+        let name = local_extract_name("p2e-dial");
+        assert!(
+            name.ends_with(suffix),
+            "释放名 `{name}` 没带目标平台的可执行后缀 `{suffix}` —— \
+             在把扩展名当身份的平台上，那个文件起不起得来是碰运气"
+        );
+        assert!(
+            !suffix.is_empty() || name.ends_with("p2e-dial"),
+            "后缀是空串，而释放名 `{name}` 却不再以 build_id 收尾 —— \
+             本件在没有后缀的平台上**必须逐字不变**（盘上已有的那份要照旧命中）"
+        );
+        // 后缀是**编译期常量**、不是现算的平台原语 —— 现算要 `env::consts::`，
+        // 而本文件在 `PLATFORM_EXCEPTIONS` 里的例外额度已经占满（那张表挂着递减棘轮）。
+        // ⚠ 用 `contains_word`（两侧有边界）而不是裸 `contains` —— 后者被
+        //   `needle_anchor_registry` 那条递减棘轮数着，而这里也确实不该用子串匹配。
+        //   **不用 `find_pinned`**：这个名字在本文件里还出现在头注里，本条要的是
+        //   「生产段还引着它」，不是「只出现一次」。
+        let prod = guard_core::production_code(include_str!("local_backend.rs"));
+        assert!(
+            guard_core::contains_word(&prod, "CCM_TARGET_EXE_SUFFIX"),
+            "生产段里不再引用那个编译期常量 —— 后缀要么被写死成空串（Windows 上退化），\
+             要么被改成现算的平台原语（当场撞 `the_backend_half_stays_platform_agnostic`）"
         );
     }
 
@@ -3478,6 +3908,37 @@ mod tests {
     // ═══════════════════════════════════════════════════════════════════════
     // F16：三处失败模式（都是 F05a 我自己写的代码，F12 的 `/full-audit` 逐行核出来的）
     // ═══════════════════════════════════════════════════════════════════════
+
+    /// [`start_or_extract`] 的**生产段函数体**。
+    ///
+    /// ⚠ 切法照下面那个 `wait_section()`（`find` 一个锚点再往后取），**但多一个右界**：
+    /// `wait_section` 取到文件尾，那对「顺序」类断言没关系，对「体内有没有某个名字」
+    /// 却会把**后面所有函数**都算进来 ⇒ 恒真。右界取**列 0 的那个 `}`**
+    /// （函数体内的右花括号都是缩进的）。取歪了由调用方那条锚点自检当场逮住
+    /// （体里必须有 `extract_embedded_to(`）。
+    ///
+    /// 🔴 **它必须住在这里，不许挪到 `never()` 旁边** —— 那一块是
+    /// `e2e_a_missing_sidecar_degrades_honestly_against_the_real_filesystem` 与它之前那几个
+    /// e2e 块的地界，而 `local_daemon.rs::every_test_that_starts_the_real_daemon_demands_a_private_tmux`
+    /// 按 `#[te st]` 行切块、并把**含 `include_st r!(` 的块当守卫整块跳过**。
+    /// 一挪过去，`the_local_daemon_really_registers_an_inbound_client` 会**静默掉出那条判据的人群**
+    /// （实测：那条判据的地板当场红，报文逐字「它起真 daemon 的来历不见了」）。
+    fn start_or_extract_body() -> String {
+        let prod = guard_core::production_code(include_str!("local_backend.rs"));
+        let at = prod
+            .find("pub fn start_or_extract(")
+            .expect("找不到 `start_or_extract` —— 改名了就把引它的判据一起改");
+        let rest = &prod[at..];
+        let end = rest.find("\n}\n").map(|i| i + 2).unwrap_or(rest.len());
+        // ⚠ **整行 `//` 注释剥掉再交出去**：调用方用 `find_pinned`（恰好一处），
+        // 而函数体里那几段注释**逐字提到了它要找的那几个名字** ⇒ 不剥就恒判「多于一处」。
+        // 〔同族病历：`needle_anchor_registry` 那条棘轮逐字记着「判据把自己留下的病历当成了病」。〕
+        rest[..end]
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 
     /// 监护线程「等它死 + 收尸」那一段的生产源码。
     fn wait_section() -> String {
