@@ -2844,6 +2844,48 @@ mod tests {
         );
     }
 
+    /// 🔴 `K-R42` 硬要求①的**真文件系统那一半**：目标目录建不出来时，
+    /// [`extract_embedded_to`] **真的**走 `Err`，而那条 `Err` 被
+    /// [`extraction_failure_reason`] 变成一句与「没带后端」分得开的话。
+    ///
+    /// # 为什么不用 `chmod 0o555` 造这个失败
+    ///
+    /// 两条：① `chmod` 要 `std::os::unix`，那是平台原语（本模块的例外额度已经占满）；
+    /// ② **权限位对 root 不成立** —— 沙箱里跑的是哪个 uid 会改变读数，
+    /// 而「同一条判据在不同机器上给不同答案」正是本仓要躲的东西。
+    /// ⇒ 改用**一个普通文件占住父路径**：`create_dir_all` 在任何平台、任何 uid 下都必然失败。
+    ///
+    /// # 诚实边界（写死别读宽）
+    ///
+    /// 它证的是「**真有一条 `Err` 走得通，且那条 `Err` 被原样带进了那句话**」。
+    /// 它**不是**「Windows 上权限不足时的真机行为」—— 那一格今天**判不了**，
+    /// 要一台真 Windows 机（`%USERPROFILE%` 只读 / 杀毒软件挡写 exe）。别把这一条读成那一条。
+    #[test]
+    fn a_directory_it_cannot_create_really_takes_the_loud_path() {
+        let base = std::env::temp_dir().join(format!("ccm-kr42-loud-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("建夹具目录");
+        // 用一个**普通文件**占住父路径 —— 下面那个 `create_dir_all` 必然失败。
+        let blocker = base.join("occupied");
+        std::fs::write(&blocker, b"x").expect("写占位文件");
+        let dir = blocker.join("bin");
+
+        let err = extract_embedded_to(&dir, "p2e-dial", b"not-a-real-daemon", &|_| Ok(()))
+            .expect_err("目标目录的父路径是个普通文件，它居然报了成功");
+        let reason = extraction_failure_reason(&dir, &err);
+        assert!(
+            reason.contains(EXTRACTION_REFUSED_MARKER),
+            "真失败走出来的那句话没有标记 ⇒ 它与「这份产物没带后端」又分不开了。\n逐字：{reason}"
+        );
+        assert!(
+            reason.contains(&err),
+            "底层失败原文没被原样带出来 —— 「建不出目录」与「盘满」是不同的下一步。\n\
+             实得 err：{err}\n逐字：{reason}"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+        println!("KR42-OK 真写不进去时走的是 Err，逐字：{err}");
+    }
+
     /// 🔴 **`K-R42` 防空转**：自释放那条路**真的问了**「这份产物自己带没带」。
     ///
     /// # 没有这一条会怎样
