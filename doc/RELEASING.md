@@ -11,23 +11,34 @@
       > 那一步的 PowerShell 本体）：漏一处 ⇒ 那一步 fail ⇒ **而 tag 已经推出去了**。
 - [ ] `Cargo.lock` 提交（上一条改的就是它；`cargo` 不会替你 `git add`）
 - [ ] **`package-lock.json` 顶上那两处 `"version"`（`:3` 与 `:9`）—— 没有任何东西卡它。**
-      2026-09-09 现打仍是 **3.2.0**，而 `package.json` 已经 3.6.0。
+      2026-09-09 现打仍是 **3.2.0**，而 `package.json` 已经 3.7.0。
       > **它不会炸，但别当它不存在**：`v3.6.0` 那次发版的 lock 顶上就写着 `3.2.0`，
       > 而 release run 里 `npm ci` **照样过**（`git show v3.6.0:package-lock.json` +
       > 那次 run 现打核过）⇒ 版本号这一格与 `npm ci` 的同步性检查无关。
       > 修法是**跑一次 `npm install`**（bump 完 `package.json` 之后），它会顺手对齐；
       > 纯手改版本号一定漏掉这一处。
 - [ ] [CHANGELOG.md](../CHANGELOG.md) 加新版本段（写法见 § 3）
-- [ ] **改 README 的版本号**。⚠ **不是「两处」——2026-09-09 现打是 `README.md` 三处 +
-      `README.en.md` 一处**（尺子：`git grep -c '3\.6\.0' -- README.md README.en.md`，
-      量于 `04745b3`）。逐处：
+- [ ] **改 README 的版本号**。⚠ **不是「两处」，也不是「四处」——2026-09-09 现打是
+      `README.md` 三处 + `README.en.md` 两处，共五处。**逐处：
       `README.md` ① 抬头那行「当前版本: vX.Y.Z」· ② 「项目状态」那段里「当前发布 **vX.Y.Z**」·
       ③ 「项目当前状态」块的「- **版本**：vX.Y.Z（Released）」；
-      `README.en.md` ④ 抬头那行 `Current: vX.Y.Z`。
-      > 🔴 **`README.en.md` 里 ② 的对侧今天就是漂的**：那句写着 `current release **v3.2.0**`，
-      > 而中文侧同一句已经是 v3.6.0 —— **落后四个版本，`v3.6.0` 那个 tag 上就已经是这样**
-      >（`git show v3.6.0:README.en.md` 现打核过）。原来那句「两处」少数的正是 ②，
-      > 于是英文侧的 ② 从来没人改。**本轮把它一起补上，别只改抬头那行。**
+      `README.en.md` ④ 抬头那行 `Current: vX.Y.Z` ·
+      ⑤ 「Project status」那段里 `current release **vX.Y.Z**`。
+      > ⚠ **别拿 `git grep -c '<上一版版本号>' -- README.md README.en.md` 当尺子**
+      >（这一条原来就写着它，量于 `04745b3` 得 `README.md:3` + `README.en.md:1` = 四处）。
+      > 它**结构上数不到 ⑤**：⑤ 当时写的是 `3.2.0`，而尺子找的是 `3.6.0`
+      > —— **漂得越久，尺子越看不见它**。而且 `-c` 数的是**行数**不是**处数**
+      >（一行上写两处只算一处；README 那三处恰好各占一行，是巧合不是保证）。
+      > ⇒ 数**落点**（上面那张五处的表），别数某个字面量。
+      > ⚠ **这五处里只有 ①③④ 有判据守**：
+      > `doc_claim_registry.rs::the_release_version_is_the_same_in_all_six_places`
+      > 拿 `package.json` 当权威源，比对三份清单 + ① + ③ + ④ 共**六处**；
+      > **② 与 ⑤ 一个判据都没有**，只有上面这张表。
+      > 🔴 **`README.en.md` 的 ⑤ 曾经漂了整整四个版本**：它一度写着
+      > `current release **v3.2.0**`，而中文侧同一句已经是 v3.6.0 ——
+      > **`v3.6.0` 那个 tag 上就已经是这样**（`git show v3.6.0:README.en.md` 现打核过）。
+      > 根因正是原来那句「两处」少数的就是它，于是英文侧那一句从来没人改。
+      > **v3.7.0 这一轮已经补上**（上表 ⑤ 就是补出来的那一行），**别只改抬头那行。**
       > **这一条是补出来的，别删。** v3.1→v3.4 **连续四次**发版漏改 README，
       > 于是 README 的「当前版本」长期落后一个大版本；BACKLOG 早把「checklist 里没有
       > README 这一条」点名为**机制性根因**，而根因没修 ⇒ 第四次照样复发。

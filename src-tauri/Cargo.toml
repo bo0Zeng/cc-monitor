@@ -23,7 +23,7 @@ exclude = ["vendor/code-picture-core"]
 
 [package]
 name = "monitor"
-version = "3.6.0"
+version = "3.7.0"
 description = "cc-monitor — Claude Code 的开发工作台：只读渲染会话输出 + 本机/远端会话管理 + 代码全景 + skill 接入面（Tauri 2 + TypeScript，Windows / Linux）"
 authors = ["cc-monitor contributors"]
 edition = "2021"
