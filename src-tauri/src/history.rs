@@ -3431,6 +3431,13 @@ mod tests {
         );
     }
 
+    /// 下面那条判据的**子进程哨兵**。
+    ///
+    /// ⚠ 名字是本判据**专属的假变量**（同 `lib.rs` 里 `env_scrub_tests` 那条纪律）——
+    /// 真正的 `CLAUDE_CONFIG_DIR` 只经 `Command::env` 给**子进程**，
+    /// 本进程与宿主的环境都没有被动过。
+    const FENCE_CHILD: &str = "CCM_TEST_DELETE_FENCE_CHILD";
+
     /// ★★ **删除入口真的过了围栏吗**〔audit-0805 08-07，Phase G 第 47 件〕。
     ///
     /// 下面五条穿越防护判的都是 `validate_delete_target` **这个函数本身**。它们是实的，
@@ -3478,58 +3485,61 @@ mod tests {
     /// 那会是一次干净的假绿。所以父进程除了看退出码，还断子进程真的报了 `1 passed`。
     #[test]
     fn the_delete_entry_point_actually_goes_through_the_fence() {
-        // 子进程那一趟 = 真正的探针（`CLAUDE_CONFIG_DIR` 已经在环境里）。
-        if std::env::var_os(FENCE_CHILD).is_some() {
-            delete_fence_probe();
+        // ═══ 父进程那一半：造夹具 · 起子进程 · 把子进程的正文转发出来，然后 `return` ═══
+        //
+        // ⚠ 两半**刻意写在同一个 `#[test]` 里**〔09-10 第二拍〕。
+        //   上一版把子进程那一半拆成了一个单独的函数，被 `structural_scan` 里那条
+        //   「测试段里长得像判据、却没有 `#[test]`」的机检判红 ——
+        //   **那条红是对的，不是误报**：它认的是「**无参无返回**的 `fn 名()`」这个**形状**
+        //   （判别式看的是行首那个 `fn ` 与行尾那个 `() {`，**不看名字**
+        //   ⇒ 改名闭不了它的嘴），而那正是判据的形状 ——
+        //   读的人无从知道那一大段断言到底跑不跑。
+        //
+        // 🔴 处置**不是**给它随手加一个用不上的参数（或返回值）把判别式糊过去：
+        //   那是钻空子，而且**一个字都没治那个真问题** —— 读者照旧分不出它跑不跑。
+        // ⇒ 搬回**唯一那个 `#[test]`** 里。读者看见一个 `#[test]` 与一个 `return`，
+        //   就知道下面那一半在哪一趟跑；这个文件的测试段里再没有「长得像判据却不是判据」的东西。
+        if std::env::var_os(FENCE_CHILD).is_none() {
+            let name = format!("ccm-delete-fence-home-{}", std::process::id());
+            let claude_dir = std::env::temp_dir().join(name);
+            // 造的是**空的**记录目录 —— 围栏只 `canonicalize` 它，不读里面的东西。
+            // ⚠ 目录名走生产那一份 `records_dir`，**不在这里另抄一个 `"projects"`**：
+            //   本条要的是「入口会去 canonicalize 的那个目录真的在」，而它叫什么名字
+            //   归活跃适配器管 —— 抄一份就会漂。
+            let records = crate::adapter::records_dir(&claude_dir);
+            std::fs::create_dir_all(&records).expect("造 claude 目录夹具失败");
+
+            let exe = std::env::current_exe().expect("拿不到本判据自己的可执行文件");
+            let out = std::process::Command::new(&exe)
+                .arg("the_delete_entry_point_actually_goes_through_the_fence")
+                .arg("--nocapture")
+                .arg("--test-threads=1")
+                .env(FENCE_CHILD, "1")
+                .env("CLAUDE_CONFIG_DIR", &claude_dir)
+                .output()
+                .expect("起不来子进程 —— 本条判不了，不许当成绿");
+            let so = String::from_utf8_lossy(&out.stdout).into_owned();
+            let se = String::from_utf8_lossy(&out.stderr).into_owned();
+            let _ = std::fs::remove_dir_all(&claude_dir);
+
+            assert!(
+                out.status.success(),
+                "子进程里那一趟红了（退出码 {:?}）—— 正文在下面，别只看这一行。\n\
+                 ── 子进程 stdout ──\n{so}\n── 子进程 stderr ──\n{se}",
+                out.status.code()
+            );
+            // ★ 反空真：过滤器零命中时 libtest 报 `ok. 0 passed;` 而**退出码也是 0**。
+            //   ⚠ 针带上 `ok. ` 与 `;` 两侧边界：裸 `"1 passed"` 会被 `11 passed` 顺带满足。
+            assert!(
+                so.contains("ok. 1 passed;"),
+                "子进程没有恰好跑到本判据那一趟（过滤器命中数不是 1）—— 本条会假绿。\n\
+                 ── 子进程 stdout ──\n{so}\n── 子进程 stderr ──\n{se}"
+            );
             return;
         }
 
-        let name = format!("ccm-delete-fence-home-{}", std::process::id());
-        let claude_dir = std::env::temp_dir().join(name);
-        // 造的是**空的**记录目录 —— 围栏只 `canonicalize` 它，不读里面的东西。
-        // ⚠ 目录名走生产那一份 `records_dir`，**不在这里另抄一个 `"projects"`**：
-        //   本条要的是「入口会去 canonicalize 的那个目录真的在」，而它叫什么名字
-        //   归活跃适配器管 —— 抄一份就会漂。
-        let records = crate::adapter::records_dir(&claude_dir);
-        std::fs::create_dir_all(&records).expect("造 claude 目录夹具失败");
-
-        let exe = std::env::current_exe().expect("拿不到本判据自己的可执行文件");
-        let out = std::process::Command::new(&exe)
-            .arg("the_delete_entry_point_actually_goes_through_the_fence")
-            .arg("--nocapture")
-            .arg("--test-threads=1")
-            .env(FENCE_CHILD, "1")
-            .env("CLAUDE_CONFIG_DIR", &claude_dir)
-            .output()
-            .expect("起不来子进程 —— 本条判不了，不许当成绿");
-        let so = String::from_utf8_lossy(&out.stdout).into_owned();
-        let se = String::from_utf8_lossy(&out.stderr).into_owned();
-        let _ = std::fs::remove_dir_all(&claude_dir);
-
-        assert!(
-            out.status.success(),
-            "子进程里那一趟红了（退出码 {:?}）—— 正文在下面，别只看这一行。\n\
-             ── 子进程 stdout ──\n{so}\n── 子进程 stderr ──\n{se}",
-            out.status.code()
-        );
-        // ★ 反空真：过滤器零命中时 libtest 报 `ok. 0 passed;` 而**退出码也是 0**。
-        //   ⚠ 针带上 `ok. ` 与 `;` 两侧边界：裸 `"1 passed"` 会被 `11 passed` 顺带满足。
-        assert!(
-            so.contains("ok. 1 passed;"),
-            "子进程没有恰好跑到本判据那一趟（过滤器命中数不是 1）—— 本条会假绿。\n\
-             ── 子进程 stdout ──\n{so}\n── 子进程 stderr ──\n{se}"
-        );
-    }
-
-    /// 本判据的子进程哨兵。
-    ///
-    /// ⚠ 名字是本判据**专属的假变量**（同 `lib.rs` 里 `env_scrub_tests` 那条纪律）——
-    /// 真正的 `CLAUDE_CONFIG_DIR` 只经 `Command::env` 给**子进程**，
-    /// 本进程与宿主的环境都没有被动过。
-    const FENCE_CHILD: &str = "CCM_TEST_DELETE_FENCE_CHILD";
-
-    /// 真正那一趟。**只在子进程里跑**：`CLAUDE_CONFIG_DIR` 由父进程在起进程那一刻给好。
-    fn delete_fence_probe() {
+        // ═══ 子进程那一半：真正那一趟（`CLAUDE_CONFIG_DIR` 已经在环境里）═══
+        //
         // 前置条件仍然留着当兜底〔09-09 补的那一格，别删〕：注入万一没生效，
         // 本条要说人话，而不是把「前提没建立」报成「围栏没接上」。
         // 唯一会让它没生效的路：这台机器的 monitor config.json 里写了 `claudeDir`
