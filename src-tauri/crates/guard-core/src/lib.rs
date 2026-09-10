@@ -805,6 +805,26 @@ pub fn assert_tree_strips_clean(root: &std::path::Path, min_files: usize) {
     );
 }
 
+/// `hay` 是不是以 `needle` 结尾，**且断在路径分量的边界上**。
+///
+/// 两边都必须是**已经把 `\` 归一成 `/`** 的路径串 —— 归一化是调用方的事，
+/// 这里只管边界。
+///
+/// ⚠ **不许退回裸 `ends_with`**：那是**松匹配**，`/repo/x/a-src/lib.rs` 会被认成
+/// `src/lib.rs`。摘多了和摘少了对称地坏：多摘一份别人的源码 ⇒ 判据的人群悄悄小一份，
+/// 而它照样绿。〔09-09 本仓在覆盖率键那边刚吃过同族一次〕
+///
+/// ⇒ 命中的条件是「整串相等」**或**「匹配点前面恰好是 `/`」。
+/// 这一刀只会让摘除**更严**（少摘、绝不多摘）⇒ 各判据的人群只可能变大或不变。
+fn path_suffix_matches(hay: &str, needle: &str) -> bool {
+    if !hay.ends_with(needle) {
+        return false;
+    }
+    let at = hay.len() - needle.len();
+    // `at == 0` ⇒ 整串就是 `needle`；否则它前面那个字节必须是分隔符。
+    at == 0 || hay.as_bytes()[at - 1] == b'/'
+}
+
 /// 遍历源码树，**按构造摘除调用者自己那一份**。
 ///
 /// # 它防的是本 crate 头注那一族的**兄弟病**
@@ -844,12 +864,24 @@ pub fn scan_tree_excluding_self(
     exts: &[&str],
     caller_file: &str,
 ) -> Vec<(std::path::PathBuf, String)> {
-    // `file!()` 给的是相对编译单元根的路径（如 `src/byte_cap_registry.rs`）；
-    // 扫到的是绝对路径 ⇒ 用**后缀**比对。空串会退化成「摘除一切」，直接拒绝。
+    // `file!()` 给的是相对编译单元根的路径（如 `src/byte_cap_registry.rs`，
+    // workspace member 则是 `crates/guard-core/src/lib.rs`）；扫到的是绝对路径
+    // ⇒ 用**后缀**比对。空串会退化成「摘除一切」，直接拒绝。
     assert!(
         !caller_file.is_empty(),
         "caller_file 为空 —— 摘除会退化成把整棵树都摘掉，那比不摘更坏（静默空集）"
     );
+    // ★ **归一化要做在两边，不能只做在草垛那边**〔09-09 Windows CI 现打〕。
+    //
+    // Windows 上 `file!()` 给的是**反斜杠**形：云端 windows-latest 的 panic 位置
+    // 逐字是 `crates\guard-core\src\lib.rs`。而下面比对的草垛早就 `\` → `/` 归一过了
+    // ⇒ 针和草垛不同形，后缀比**恒不命中** ⇒ 摘除在 Windows 上整个是空转的。
+    //
+    // ⚠ 这正是本函数头注说的「关掉之后看起来和没关一模一样」那一形，
+    // 只不过关掉它的不是人、是平台：Linux 一路绿，Windows 上判据默默地
+    // 把自己那一份也读进了自己的语料。
+    // ⚠ 修法**不是**给 Windows 开特判：归一成同一种分隔符之后，两个平台走的是同一条路。
+    let caller_norm = caller_file.replace('\\', "/");
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(d) = stack.pop() {
@@ -881,11 +913,7 @@ pub fn scan_tree_excluding_self(
                     continue;
                 }
             }
-            if path
-                .to_string_lossy()
-                .replace('\\', "/")
-                .ends_with(caller_file)
-            {
+            if path_suffix_matches(&path.to_string_lossy().replace('\\', "/"), &caller_norm) {
                 continue; // ← 就是这一行：调用者自己那份进不来
             }
             let src =
@@ -1262,6 +1290,39 @@ mod tests {
             files.iter().any(|(p, _)| p.ends_with("lib.rs")),
             "换成匹配不上的摘除名之后 `lib.rs` **仍然**不在结果里 —— \
              说明遍历本来就坏了，上一条的「为空」是假信号（零命中地绿）"
+        );
+    }
+
+    /// ★ 回归钉〔09-09 Windows CI 现打〕：`file!()` 在 Windows 上给的是**反斜杠**形。
+    ///
+    /// 云端 windows-latest 的 panic 位置逐字是 `crates\guard-core\src\lib.rs`。
+    /// 归一化此前只做在扫出来的那一边 ⇒ 针和草垛不同形 ⇒ 后缀比恒不命中、摘除空转。
+    ///
+    /// ⚠ **为什么不能只靠上面那条**：上面那条只在 Windows 上红，而本仓的 `cargo test`
+    /// 在 Windows 上今天才第一次跑起来（此前先卡 fmt、再卡 clippy）——
+    /// 也就是说「Linux 全绿」这件事**证明不了摘除是活的**。这一条把那个平台差
+    /// 拉成一个**两个平台都跑**的输入：直接喂反斜杠形的 `caller_file`，摘除必须照样生效。
+    #[test]
+    fn a_windows_shaped_caller_file_still_excludes_the_caller() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let files = scan_tree_excluding_self(&root, &["rs"], r"crates\guard-core\src\lib.rs");
+        assert!(
+            files.is_empty(),
+            "反斜杠形的 `caller_file` 没摘掉调用者 —— 摘除在 Windows 上是空转的，实得 {:?}",
+            files.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        );
+    }
+
+    /// 摘除的后缀比**断在路径分量边界上**：`a-src/lib.rs` 不许被当成 `src/lib.rs`。
+    ///
+    /// 松匹配的后果是**摘多了**：多摘一份不是调用者的源码，判据的人群悄悄小一份而照样绿。
+    #[test]
+    fn the_exclusion_suffix_is_anchored_at_a_path_component_boundary() {
+        assert!(path_suffix_matches("/repo/x/src/lib.rs", "src/lib.rs"));
+        assert!(path_suffix_matches("src/lib.rs", "src/lib.rs"));
+        assert!(
+            !path_suffix_matches("/repo/x/a-src/lib.rs", "src/lib.rs"),
+            "松匹配把 `a-src/lib.rs` 也认成了 `src/lib.rs` —— 那会摘掉一份不是调用者的源码"
         );
     }
 
