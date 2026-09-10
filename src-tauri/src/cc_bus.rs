@@ -2363,7 +2363,11 @@ mod tests {
         static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
         let t0 = T0.get_or_init(std::time::Instant::now);
         let mut err = std::io::stderr();
-        let _ = writeln!(err, "[ccbus-orphan +{:.1}s] {what}", t0.elapsed().as_secs_f64());
+        let _ = writeln!(
+            err,
+            "[ccbus-orphan +{:.1}s] {what}",
+            t0.elapsed().as_secs_f64()
+        );
         let _ = err.flush();
     }
 
