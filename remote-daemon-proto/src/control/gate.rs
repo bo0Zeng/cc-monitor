@@ -326,8 +326,30 @@ mod tests {
     /// 位置这一维值得单独钉：`-u` 放到子命令**后面**是 `rc=1 + unknown flag -u`
     /// （实测），而本模块两处都**刻意不看退出码** ⇒ 那个响错在这里会退化成
     /// 「一个会话都没有」/「探不到」，**又变回一次静默失效**。
+    ///
+    /// # ★★ 09-09：这条判据原先把**排版**也一起断言了进去
+    ///
+    /// 原版的针是一整串跨元素的字面量：`.args([UTF8_CLIENT_FLAG, "<verb>"`。
+    /// 那串里有一个空格与一个逗号 —— 也就是说它顺带断言了
+    /// 「`-u` 与子命令必须在源码的**同一行**上」。而那一维**由 rustfmt 说了算**：
+    /// 09-09 那趟 `cargo fmt --all` 把 `probe` 里的 `.args([…])` 拆成每元素一行，
+    /// 本条当场红，判定行逐字「`display-message` 那一处没有把 `-u` 放在子命令**之前**
+    /// （找不到 `.args([UTF8_CLIENT_FLAG, "display-message"`）」——
+    /// **而 `-u` 一个字节都没挪过**。反向那两根针同时**静默失效**：
+    /// 它们也是带空格的跨元素字面量，拆行之后永远零命中，
+    /// 于是「有人把 `-u` 塞到子命令后面」这一格从此不会红。
+    ///
+    /// ⇒ 今天断言的是**次序关系本身**，与排版无关：
+    ///
+    /// - 正向：子命令那个字面量，与**它所属的那个 `.args([`** 之间，必须出现 `UTF8_CLIENT_FLAG`
+    ///   （中间不许隔着 `]` —— 隔着就说明它压根不在那个数组里，本条在空转）；
+    /// - 反向：把源码**全部空白删掉**之后，不许出现 `"<verb>",UTF8_CLIENT_FLAG`。
     #[test]
     fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
+        // 本条数的是**源码文本**，所以要的是那个常量的**名字**，不是它的值。
+        const FLAG_IDENT: &str = "UTF8_CLIENT_FLAG";
+        const ARGS_OPEN: &str = ".args([";
+
         let prod = crate::guard_support::production_code(include_str!("gate.rs"));
         crate::guard_support::assert_no_test_code("control/gate.rs", &prod);
 
@@ -337,20 +359,38 @@ mod tests {
             "本模块起 tmux 的处数变了（实得 {starts}，登记 2）—— 新增的那一处也要带 `-u`，\
              并把这条判据的数一起改。**这张表不是豁免清单。**"
         );
+        // 反向那一针用的人群：把排版这一维抹掉（`-u` 与子命令同不同行由 rustfmt 说了算）。
+        let flat: String = prod.chars().filter(|c| !c.is_whitespace()).collect();
         for verb in ["list-sessions", "display-message"] {
-            let want = format!(".args([UTF8_CLIENT_FLAG, \"{verb}\"");
+            let quoted = format!("\"{verb}\"");
+            // ── 正向：`-u` 排在子命令**之前** ──────────────────────────────
+            let at = guard_core::find_pinned(&prod, &quoted).unwrap_or_else(|e| {
+                panic!(
+                    "`{verb}` 这个子命令在本模块生产段里定不了位（{e}）。\n\
+                     ★ 起 tmux 那两处换了写法就来改本条 —— 别让它零命中地绿。"
+                )
+            });
+            let open = prod[..at].rfind(ARGS_OPEN).unwrap_or_else(|| {
+                panic!(
+                    "`{verb}` 前面一个 `{ARGS_OPEN}` 都没有 —— 它已经不是 argv 直传了。\n\
+                     ★ 换成别的传法（`arg()` 逐个加 / 拼 shell 串）本条就管不着了，回来改。"
+                )
+            });
+            let before = &prod[open + ARGS_OPEN.len()..at];
             assert!(
-                prod.contains(&want),
-                "`{verb}` 那一处没有把 `-u` 放在子命令**之前**（找不到 `{want}`）。\
+                !before.contains(']'),
+                "`{verb}` 与它前面那个 `{ARGS_OPEN}` 之间隔着一个右方括号 ——\n\
+                 它根本不在那个数组里，本条此刻断言的是**别人的 argv**。"
+            );
+            assert!(
+                before.contains(FLAG_IDENT),
+                "`{verb}` 那一处没有把 `-u` 放在子命令**之前**\
+                 （`{ARGS_OPEN}` 与它之间找不到 `{FLAG_IDENT}`）。\n\
                  放到后面是 rc=1 的响错，而本模块不看退出码 ⇒ 会退化成又一次静默失效。"
             );
-        }
-        // 反向：不许有人把 `-u` 塞到子命令后面（那是 rc=1，且本模块看不见）。
-        for bad in [
-            "\"list-sessions\", UTF8_CLIENT_FLAG",
-            "\"display-message\", UTF8_CLIENT_FLAG",
-        ] {
-            assert!(!prod.contains(bad), "`-u` 被放到了子命令后面：{bad}");
+            // ── 反向：也不许在子命令**后面**再塞一个（`tmux -u ls -u` 同样 rc=1）──
+            let bad = format!("{quoted},{FLAG_IDENT}");
+            assert!(!flat.contains(&bad), "`-u` 被放到了子命令后面：{bad}");
         }
     }
 
