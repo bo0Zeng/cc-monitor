@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 fn main() {
     emit_daemon_build_id();
@@ -6,7 +6,24 @@ fn main() {
     check_vendor_freshness();
     check_acct_iso_vendor_freshness();
     embed_daemons();
+    embed_native_daemon();
     tauri_build::build()
+}
+
+/// daemon 源码的住址 —— 本文件里**四处**要它（build_id · capabilities · mtime · 内嵌校验）。
+/// 抽出来的理由与 `local_extract_name` 同族：四份手抄的路径迟早有一份被漏改。
+fn daemon_main_rs() -> PathBuf {
+    Path::new("..")
+        .join("remote-daemon-proto")
+        .join("src")
+        .join("main.rs")
+}
+
+/// daemon 源码里那个 `const BUILD_ID`。**这是本机与远端两条内嵌路共用的期望值。**
+fn daemon_source_build_id() -> Option<String> {
+    std::fs::read_to_string(daemon_main_rs())
+        .ok()
+        .and_then(|s| extract_build_id(&s))
 }
 
 /// F5：vendored cc-acct-iso 过期软检查（SS-10「过期看得见」）。从 `VENDOR.md` 抠上游仓路径
@@ -159,10 +176,7 @@ fn extract_backtick_after(text: &str, label: &str) -> Option<String> {
 /// env `DAEMON_BUILD_ID`，让 monitor 的 `EXPECTED_DAEMON_BUILD_ID` 与内嵌二进制的 build_id
 /// **单一事实源**（SS-B：消除 F06 时的手工同步）。
 fn emit_daemon_build_id() {
-    let main_rs = Path::new("..")
-        .join("remote-daemon-proto")
-        .join("src")
-        .join("main.rs");
+    let main_rs = daemon_main_rs();
     println!("cargo:rerun-if-changed={}", main_rs.display());
     let build_id = std::fs::read_to_string(&main_rs)
         .ok()
@@ -190,10 +204,7 @@ fn extract_build_id(src: &str) -> Option<String> {
 /// daemon 声明的能力**单一事实源**——同 build_id 的 SS-B，杜绝手工同步债（审计 B1/S1：
 /// 否则两份手抄常量漂移时，乐观路径可能声明当前 daemon 不剥离的 flag → §26 死循环窄窗）。
 fn emit_daemon_capabilities() {
-    let main_rs = Path::new("..")
-        .join("remote-daemon-proto")
-        .join("src")
-        .join("main.rs");
+    let main_rs = daemon_main_rs();
     // rerun-if-changed 已由 emit_daemon_build_id 对同一文件登记，无需重复。
     let caps = std::fs::read_to_string(&main_rs)
         .ok()
@@ -235,23 +246,11 @@ fn embed_daemons() {
     let dir = Path::new("embedded-daemons");
     // staleness 安全网（审计 SUGGESTION-1）：daemon 源码 mtime，用于提示「bump BUILD_ID 后
     // 忘了 re-zigbuild」——否则内嵌旧二进制 build_id 与源码不符 → 永不收敛的重复部署。
-    let src_mtime = std::fs::metadata(
-        Path::new("..")
-            .join("remote-daemon-proto")
-            .join("src")
-            .join("main.rs"),
-    )
-    .and_then(|m| m.modified())
-    .ok();
+    let src_mtime = std::fs::metadata(daemon_main_rs())
+        .and_then(|m| m.modified())
+        .ok();
     // U-1：mtime 之外再取 **build_id 字符串本身**，用于下面那条硬校验（mtime 漏掉过一次真事故）。
-    let source_build_id = std::fs::read_to_string(
-        Path::new("..")
-            .join("remote-daemon-proto")
-            .join("src")
-            .join("main.rs"),
-    )
-    .ok()
-    .and_then(|s| extract_build_id(&s));
+    let source_build_id = daemon_source_build_id();
     let mut all = true;
     for arch in ["x86_64", "aarch64"] {
         let src = dir.join(format!("cc-monitor-remote-{arch}"));
@@ -375,4 +374,169 @@ fn embed_daemons() {
     if all {
         println!("cargo:rustc-cfg=embedded_daemons");
     }
+}
+
+/// 目标平台的可执行后缀。
+///
+/// 🔴 **由 `TARGET` 算，不许用 `std::env::consts::EXE_SUFFIX`** —— build script 跑在
+/// **构建机**上（交叉编译 Windows 产物时那台是 Linux）⇒ 那个常量给的是**宿主**的后缀，
+/// 而这里要的是**目标**的。同一个坑 `emit_daemon_build_id` 里那条 `CCM_TARGET_TRIPLE`
+/// 已经踩过一次（「std 里没有『当前 target triple』这个常量，只有 build script 拿得到 `TARGET`」）。
+fn target_exe_suffix(target: &str) -> &'static str {
+    if target.contains("windows") {
+        ".exe"
+    } else {
+        ""
+    }
+}
+
+/// 本机内嵌 daemon 的落点 —— `release.yml` 那一步按同一条路径铺，
+/// `local_backend::native_embedded_daemon` 用**同一条路径的字面量** `include_bytes!` 它。
+///
+/// # 🔴 为什么是**定死的名字**，而不是像 `embedded-daemons/` 那样把 triple 编进文件名
+///
+/// 因为消费侧那个 `include_bytes!` 的参数**必须是字面量**：
+/// `cross_half_edge_registry::every_non_literal_include_is_registered_with_a_reason` 默认拒绝
+/// 非字面量的 `include_*!`，而它的登记表**不在本件写区**。
+/// ⇒ 名字定死、**用一个旁挂清单把 triple 记下来再核**（`.target`，下面那条硬校验）。
+/// 这一换其实更强：文件名是**没人核的约定**，清单是**每次构建都核的断言**。
+///
+/// # 🔴 为什么不铺进已有的 `embedded-daemons/`
+///
+/// 那个目录名是 `local_daemon.rs::every_test_that_starts_the_real_daemon_demands_a_private_tmux`
+/// 认「谁会起真 daemon」的**来历串之一**。字面量路径写进 `local_backend.rs` 的生产段，
+/// 会把整段生产代码拖进那条判据的人群（实测：人群里多出一条 `local_backend.rs::default`，
+/// 而那条连测试都不是；同时 `the_local_daemon_really_registers_an_inbound_client`
+/// 因为切块规则一起掉出人群，那条判据的地板当场红）。
+/// ⇒ 换一个目录，两条判据都不被误伤，而且它本来也不是同一类东西
+/// （那边是**远端部署产物**，这边是**本机原生**）。
+/// ⚠ **一条如实记着的欠账**：`src-tauri/.gitignore` 里还没有这一行，而它**不在本件写区** ——
+/// 见 `K-R42` 件文件的上报口。
+const NATIVE_DAEMON_DIR: &str = "native-daemon";
+const NATIVE_DAEMON_FILE: &str = "cc-monitor-native";
+
+/// `K-R42`：**把「本机后端」也内嵌进 exe**，让裸 `monitor.exe` 自己带得上一份。
+///
+/// # 它与 `embed_daemons` 是两件事，别合并
+///
+/// | | `embed_daemons`（远端那条） | 本函数（本机这条） |
+/// |---|---|---|
+/// | 内嵌什么 | `cc-monitor-remote-{x86_64,aarch64}`，**musl Linux**，按 **arch** 分派 | `cc-monitor-native-<target triple>`，**当前 TARGET 的原生二进制** |
+/// | 给谁用 | SFTP 推到远端主机（远端就是 Linux ⇒ musl 是对的） | 本机自释放（`local_backend::start_or_extract`） |
+/// | 认不认 OS | **不认**（只看 arch） | **由 TARGET 定死**，编译期就选好了 |
+///
+/// 🔴 **「不认 OS」正是 09-10 那个真机读数的根因**：`local_daemon.rs` 里那道
+/// `if cfg!(target_os = "linux")` 的闸（D 阶段补审 08-11 加的）挡的就是
+/// 「往 Windows 上释放一个 Linux ELF、然后报告『已起』」——
+/// 那道闸**是对的**，它挡住的是**没有 Windows 版可嵌**这件事，不是「自释放这条路不该走」。
+/// ⇒ 本函数补的就是那个缺口：**给 Windows 一份能跑的字节**。
+/// 缺口本身一年前就登记在 `devbench/ROADMAP.md` 的 `5f⁗` 上（逐字：「要 release 流程产
+/// Windows daemon 并内嵌」）—— 今天才第一次有人在真机上撞到它。
+///
+/// # 为什么这里 panic 而不是 warning（与 `embed_daemons` 同一条理由，射程不同）
+///
+/// 远端那条怕的是「装上去永远判 stale ⇒ 无限重装」。本机这条**不会**无限重装
+/// （文件名带 build_id，见 `local_backend::local_extract_name`），但它会
+/// **把一份贴错标签的二进制留在用户机器上**：清单说它是 X，字节其实是 Y ⇒
+/// `DAEMON_CAPABILITIES` 那套乐观路径按 X 谈能力、跑起来的是 Y。
+/// ⇒ 半 bump 一样比不 bump 更糟，一样当场拦下。
+///
+/// # 缺席 = 不置 cfg + **可见的** warning
+///
+/// 沿用 `embed_daemons` 的 U-1 那条账：**静默不置 cfg 正是 v2.19–v2.22 那批安装包的事故形状**。
+/// 缺席时 `local_backend::native_embedded_daemon()` 返回 `None`，自释放这条路诚实关掉。
+fn embed_native_daemon() {
+    // 允许自定义 cfg（Rust 1.80+ unexpected_cfgs 检查）。
+    println!("cargo:rustc-check-cfg=cfg(embedded_native_daemon)");
+    let target = std::env::var("TARGET").unwrap_or_else(|_| "unknown-target".into());
+    // ⚠ **无条件 emit**：`local_backend::local_extract_name` 是**无条件**的生产代码，
+    // 它 `env!` 这个名字 —— 只在某些分支 emit 会让别的分支编不过。
+    println!(
+        "cargo:rustc-env=CCM_TARGET_EXE_SUFFIX={}",
+        target_exe_suffix(&target)
+    );
+
+    let dir = Path::new(NATIVE_DAEMON_DIR);
+    let src = dir.join(NATIVE_DAEMON_FILE);
+    let id_manifest = dir.join(format!("{NATIVE_DAEMON_FILE}.build_id"));
+    let target_manifest = dir.join(format!("{NATIVE_DAEMON_FILE}.target"));
+    for f in [&src, &id_manifest, &target_manifest] {
+        println!("cargo:rerun-if-changed={}", f.display());
+    }
+    let embedded_id = read_trimmed(&id_manifest);
+    // ⚠ **无条件 emit**（同上那条理由）。
+    println!("cargo:rustc-env=DAEMON_NATIVE_ID={embedded_id}");
+
+    if !src.exists() {
+        println!(
+            "cargo:warning=没有本机内嵌 daemon（src-tauri/{}）——**裸可执行文件起不了本机后端**，\
+             只有安装包那份带 sidecar 的能起。开发构建里这是正常的；\
+             发版构建里出现这一行 = 那一版的裸 exe 又回到 09-10 那个读数（0 个本机后端进程）。",
+            src.display()
+        );
+        return;
+    }
+    // ── ① 它是**给这个 target 编的**吗 ─────────────────────────────────────
+    //
+    // 名字定死（理由见 `NATIVE_DAEMON_DIR` 头注）⇒ 「这份字节属于哪个平台」**只能靠这个清单**。
+    // 缺清单 / 对不上都当场拦：放它过去等于把一个别的平台的二进制内嵌进来，
+    // 而那正是 08-11 补审逮到的那个阻塞级缺陷（往 Windows 上释放 Linux ELF 再报「已起」）。
+    let staged_target = read_trimmed(&target_manifest);
+    if staged_target != target {
+        panic!(
+            "本机内嵌 daemon（src-tauri/{}）是给 `{}` 编的，而这一趟的 TARGET 是 `{target}`。\n\
+             （清单读作 `{staged_target}`；空串 = 根本没有 `{}.target` 这个文件。）\n\
+             内嵌一个别的平台的二进制 = 释放到用户盘上再起，起不来 —— \
+             而 `Resolved::Found` 会先撒一次谎（它只证明文件落地了）。\n\
+             出路二选一：① 为这个 target 重编并重铺那三个文件；\
+             ② `rm -rf src-tauri/{}`：自释放诚实关闭，编译立刻恢复。",
+            src.display(),
+            staged_target,
+            NATIVE_DAEMON_FILE,
+            NATIVE_DAEMON_DIR
+        );
+    }
+    // ── ② 它的 build_id 与 daemon 源码对得上吗 ─────────────────────────────
+    let expected = daemon_source_build_id().unwrap_or_else(|| {
+        panic!(
+            "抠不到 daemon 源码的 `const BUILD_ID`（路径失效 / crate 改名 / const 写法变了）——\
+             内嵌进去的那份就没有可信身份了。先修 build.rs 的提取逻辑。"
+        )
+    });
+    if embedded_id.is_empty() {
+        panic!(
+            "本机内嵌 daemon（src-tauri/{}）有二进制但**缺 `.build_id` 清单**。\n\
+             清单是它落到用户盘上时的文件名来源（`cc-monitor-local-<build_id>`），\
+             缺了它这条自释放路根本拼不出落点。\n\
+             补：printf '%s\\n' '{expected}' > src-tauri/{}",
+            src.display(),
+            id_manifest.display()
+        );
+    }
+    if embedded_id != expected {
+        panic!(
+            "本机内嵌 daemon（src-tauri/{}）的清单是 `{embedded_id}`，而 daemon 源码是 `{expected}` \
+             —— **半 bump**。\n\
+             这一份会以 `cc-monitor-local-{embedded_id}` 之名落到用户盘上，而字节其实是别的版本：\
+             能力协商按清单谈、跑起来的是另一个。\n\
+             出路二选一：① 重编并同步清单（在 `remote-daemon-proto/` 下 `cargo build --release`，\
+             产物铺成 `src-tauri/{}` 那三个文件）；\
+             ② `rm -rf src-tauri/{}`：自释放诚实关闭，编译立刻恢复。",
+            src.display(),
+            src.display(),
+            NATIVE_DAEMON_DIR
+        );
+    }
+    // ⚠ **不往 `OUT_DIR` 拷一份**（`embed_daemons` 那条是拷的）——消费侧那个 `include_bytes!`
+    // 直接按**字面量相对路径**读得到，而拷贝会让本函数变成一个**写盘落点**，
+    // 那要在 `write_site_registry::WRITE_SITES` 里申报（`fs::copy(` 是它的 needle 之一），
+    // 而那张表**不在本件写区**。少一次拷贝同时也少一条要申报的写点 —— 两头都更干净。
+    println!("cargo:rustc-cfg=embedded_native_daemon");
+}
+
+/// 读一份单值清单，读不到就给空串（「没有这个文件」与「文件是空的」在这里同义：都不可信）。
+fn read_trimmed(p: &Path) -> String {
+    std::fs::read_to_string(p)
+        .map(|s| s.trim().to_string())
+        .unwrap_or_default()
 }
