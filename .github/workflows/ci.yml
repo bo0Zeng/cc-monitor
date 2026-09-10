@@ -646,14 +646,20 @@ jobs:
       # 真的落到开发机的 ~/.cc-bus 上过，那道自检就是那次撞出来的）。
       - name: cc-send 滞留队列补投（cc-busd 死后消息不许没人管）
         run: bash e2e/assert-pass-floor.sh cc-bus-queue-drain 43
-      - name: e2e - daemon sessions 重挂（P0b-Y2，#60 台架九拍的根因）
-        run: bash e2e/assert-pass-floor.sh daemon-sessions-rewatch 5
-      - name: e2e - daemon 迟到的 tmux server（P0b-Y2，#60 根因）
-        run: bash e2e/assert-pass-floor.sh daemon-tmux-late-server 2
-      # P4f：daemon 的 cc-bus 基础命令。**要 debug daemon 二进制**（同下面 daemon-frames 三套），
-      # 但不要 tmux、不要真 claude —— 它跑的是一次性 CLI（`--bus-list` / `--bus-send`）。
-      - name: e2e - daemon 的 cc-bus 基础命令（P4f）
-        run: bash e2e/assert-pass-floor.sh daemon-cc-bus 50
+
+      # 🔴 **2026-09-09 `CI-J1`：`daemon-sessions-rewatch` · `daemon-tmux-late-server` ·
+      #    `daemon-cc-bus` 三套原先加在这里，已搬去 `e2e-tmux-rust`。**
+      #    它们每一套第一件事就是硬门一个**真 daemon 二进制**
+      #    （`e2e/daemon-sessions-rewatch.sh:29` · `daemon-tmux-late-server.sh:23` ·
+      #    `daemon-cc-bus.sh:31`，默认路径 `remote-daemon-proto/target/debug/cc-monitor-remote`），
+      #    而本 job 按 `:592` 那条拆法**刻意不装 Rust 工具链、不编任何东西** ⇒ 它们在这里
+      #    **不可能绿**。云端首跑（run `34432595554`）三套逐字报
+      #    「需要 daemon 二进制：…/target/debug/cc-monitor-remote（先 cargo build -p cc-monitor-remote）」。
+      #    ⚠ **加错 job 这件事从 `a952b47` / `81c1bab`（08-13）起就在**，一个月没人发现 ——
+      #    因为本流水线只在 `push`/`pull_request` 上触发，而本仓当时不 push：
+      #    **一条没人在跑的判据，加错了地方也不会有人知道。**
+      #    留在这里的只有 `cc-bus-queue-drain`：它收发全走文件，不要二进制（所以它绿了）。
+      #    ⇒ 判「这一步该住哪个 job」的尺子只有一把：**它要不要 Rust 工具链的产物**。
 
       # G-C（解 E41）：这两套只要 node + tmux（经 tsx driver 驱真编排逻辑，不碰 daemon）。
       # 它们此前进不了 CI 的原因不是「需要什么」，而是**会踩开发者机器上的真实 tmux 会话**
@@ -699,10 +705,14 @@ jobs:
 
       # src-tauri 依赖 tauri v2；Linux 上编译它需要 webkit2gtk/soup 一套开发库
       # （Windows job 不需要，故只在这里装）。
-      - name: install tmux + Tauri Linux build deps
+      # ⚠ **`jq` 是 `CI-J1` 搬家带过来的真依赖**，不是顺手加的：`e2e/daemon-cc-bus.sh:33`
+      #   是 `command -v jq || exit 1` 的硬门（它整套断言都拿 `jq` 读回帧）。
+      #   `ubuntu-latest` 镜像今天确实预装了 `jq`，但那是**镜像的实现细节、不是契约** ——
+      #   隔壁 `e2e-tmux` 从一开始就自己装（`:611`），本 job 照同一个口径写死。
+      - name: install tmux + jq + Tauri Linux build deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y tmux \
+          sudo apt-get install -y tmux jq \
             libwebkit2gtk-4.1-dev libsoup-3.0-dev build-essential \
             curl wget file libxdo-dev libssl-dev librsvg2-dev \
             libayatana-appindicator3-dev
@@ -753,6 +763,32 @@ jobs:
       # 它要的 debug daemon 上面那步已经编好了。
       - name: daemon 分叉（G2 `--fork-session`）
         run: bash e2e/assert-pass-floor.sh daemon-fork 10
+
+      # 🔴 **2026-09-09 `CI-J1`：下面三套是从 `e2e-tmux` **搬**过来的，不是新增。**
+      #    三条调用行（套件名 + 地板值）**逐字未动**，只换了住的 job。它们要的
+      #    debug daemon 就是上面「build debug daemon」那一步的产物（云端首跑里那一步是**绿的**
+      #    —— 二进制本身没问题，问题只是这三套当时不在这个 job 里）。
+      #    `e2e/README.md` 的 job 表从这三套进网那天起（`81c1bab` / `a952b47`）就把它们记在
+      #    `e2e-tmux-rust` 名下 ⇒ **对不上的一直是 `ci.yml`，本次是让它跟上已记下来的意图。**
+      #    ⚠ **为什么这次搬家不用动上面那三处计数/清单**（去核过，不是假设）：
+      #      · `:547` 的 `grep -c` 与 `:560` 的逐条 `grep -q` **都对整份 `ci.yml` 做**、不分 job；
+      #      · `doc_copy_registry::the_e2e_readme_suite_list_matches_ci` 取的是 README 里
+      #        以 `| ` + `e2e-tmux` 开头那**两行的并集**，对全文件调用行集合比**集合相等**。
+      #      ⇒ 搬家不改变「全文件调用行集合」这个量 ⇒ 三把尺子眼里都是**恒等变换**。
+      #      （反过来说：这三把尺子**都不看 job 归属** —— 所以它们一个月来一条都没逮到本缺陷。
+      #       「哪一套住哪个 job」今天仍然只有散文管着，是一处**已知无牙**的地方。）
+      - name: e2e - daemon sessions 重挂（P0b-Y2，#60 台架九拍的根因）
+        run: bash e2e/assert-pass-floor.sh daemon-sessions-rewatch 5
+      - name: e2e - daemon 迟到的 tmux server（P0b-Y2，#60 根因）
+        run: bash e2e/assert-pass-floor.sh daemon-tmux-late-server 2
+      # P4f：daemon 的 cc-bus 基础命令 —— 一次性 CLI（`--bus-list` / `--bus-send`），不起真 claude。
+      # ⚠ 搬家时顺手订正一处旧注：原文写「不要 tmux」，**今天不成立**。
+      #   `e2e/daemon-cc-bus.sh:35` 硬门 `command -v tmux`（`[10]` 的身份空间对账要它），
+      #   `:33` 硬门 `command -v jq` —— 脚本自己的头注（§20-24）记着「原来只在用到 tmux 的
+      #   那一格前面挂 shim、头注还写着本套件不用 tmux」是**一次事故换来的**订正。
+      #   本 job 的 apt 那步因此补了 `jq`（`tmux` 本来就装）。
+      - name: e2e - daemon 的 cc-bus 基础命令（P4f）
+        run: bash e2e/assert-pass-floor.sh daemon-cc-bus 50
 
   # `W-F1`（weak-network 区第一件）：**弱网台架**。两个容器 + 一条自建 docker 网络，
   # `tc/netem` 只打在容器 A 自己的 `eth0` 上，四维（延迟 · 丢包 · 带宽 · 断链）外加一条真
