@@ -1636,7 +1636,13 @@ fn relay_prefix_for(
 /// `nobody_reaches_the_relay_take_points_without_going_through_the_seam`（**目录扫描**
 /// `src-tauri/src`，不是手写名单）。它钉的是**零调用点**：
 /// - `relay_rows()` / `relay_running()` 的**调用形**在生产段全树**各恰好 1 处**（就是它们自己的定义行）；
-/// - 裸标识符 `relay_rows` / `relay_running` / `platform_is_windows` 各恰好 **2** 处（定义 + 本结构这一处）。
+/// - 裸标识符 `relay_rows` / `relay_running` 各恰好 **2** 处（定义 + 本结构这一处）；
+/// - [`platform_is_windows`] **不再数总数**〔ccbus-win 09-10〕：它从今天起有了第二类消费方
+///   （`cc_bus::resolve_bash` 只要「是不是 Windows」，走缝要顺带付 `relay_rows()` 读文件
+///   与 `relay_running()` 问 daemon 两笔钱），⇒ 那一格换成**点名住址**（`PLATFORM_TAKE_SITES`），
+///   函数指针那一半改钉**差值**（裸标识符 − 调用形 == 1 = 只有本结构持有它）。
+///   ★ 换制的理由是数个数会**抵消**：「加一处绕缝」＋「删一处正当」总数不变 ⇒ 一声不吭。
+///   PM 09-10 在沙箱里现打过这一刀，住址制两条都逮得住（读数住 `audits/ccbus-win-PM.md`）。
 ///
 /// ⇒ 谁绕开这条缝直接调那三个取值口、或把它们的函数指针复制到第二个地方，**当场红**。
 /// 今天的两个生产消费方（起会话侧 [`relay_prefix_for_launch`] · 界面侧 `crate::relay_routing_for`）
