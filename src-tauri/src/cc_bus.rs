@@ -2260,6 +2260,27 @@ mod tests {
     /// 那时本条守的性质（超时不漏工作进程）**在这台机器上没人守** —— 这是事实，不是可以关掉的理由。
     ///
     /// ⚠ 空转循环会占满一个核约 1.4 秒。换来的是「阻塞性不再是环境的函数」，值这个价。
+    ///
+    /// # 🔴🔴 每一格自带上限，因为**挂死比红更坏**〔ccbus-win 09-10 第四拍〕
+    ///
+    /// 云端 run `34462442459`（`32d527c`，windows runner）逐字只留下两行有用的：
+    /// ```text
+    /// 09:52:09  test cc_bus::tests::a_timed_out_local_read_does_not_leave_an_orphan_behind
+    ///           has been running for over 60 seconds
+    /// 10:17:16  ##[error]The operation was canceled.
+    /// ```
+    /// **跑了 25 分钟没回来，是人工取消的**（同一台机器上一趟整个 `cargo test` 只用 4m26s）。
+    /// 一条红的测试会告诉你哪里坏了；一条挂死的测试**什么都不说**，还把后面全部拖住。
+    ///
+    /// ⇒ 本条改成**逐格设限**：每一格自己带上限，超了带着**格号**炸。
+    /// 病在哪当时没量到，所以这里**不猜**，只让下一趟能自己说出来。
+    ///
+    /// ⚠ **这套上限盖不住什么（写下来，别读成比它强）**：`#[tokio::test]` 默认是
+    /// **current_thread** 运行时 ⇒ [`stage`] 那层 `tokio::time::timeout` 只能约束
+    /// **await 点**。某一格里若是一个**同步**调用卡住（比如 `Command::spawn` 自己），
+    /// 计时器根本没机会跑，本条照样挂死。⇒ **万一还挂，那本身就是一个读数**：
+    /// 说明卡的是同步调用，不是 await。数进程那一格已经因此挪到了裸线程上（见
+    /// [`count_live_processes`]），它是这条路上原先唯一无界的一格。
     #[tokio::test]
     async fn a_timed_out_local_read_does_not_leave_an_orphan_behind() {
         // ★★ **阳性对照**：先证明这台机器的 `bash -lc` 真的跑了我们这段脚本、
@@ -2271,7 +2292,13 @@ mod tests {
         //   ② 超时那一格真的失效了（本条要买的那一面）。
         const HELLO: &str = "CCBUS-SHELL-ALIVE";
         let probe = format!("printf %s {HELLO}");
-        let alive = local_shell_read(&probe, 4096, 30, "壳自检", OnOverflow::Reject).await;
+        // 内层 30s → 10s：一条 `printf` 回不来的话，多等 20 秒买不到任何东西。
+        let alive = stage(
+            "格①·壳自检",
+            30,
+            local_shell_read(&probe, 4096, 10, "壳自检", OnOverflow::Reject),
+        )
+        .await;
         // ⚠ 用 `contains` 不用逐字相等：`-l` 会过 `/etc/profile`，有的机器的 rc 会往
         //   stdout 上垫东西。垫东西不影响本格要证的事（脚本跑了、stdout 回得来），
         //   而逐字相等会把「rc 话多」误报成「壳是死的」。产品那侧同理，见 `take_head`。
@@ -2282,7 +2309,7 @@ mod tests {
         let which = resolve_bash();
         assert!(
             got.contains(HELLO),
-            "阳性对照没回来（跑的是 `bash -lc '{probe}'`，全是内建）。实得：{alive:?}\n\
+            "【格①】阳性对照没回来（跑的是 `bash -lc '{probe}'`，全是内建）。实得：{alive:?}\n\
              解析到的 bash：{which:?}\n\
              ⇒ 这台机器上 `bash` 解析到的那个东西**根本没跑我们的脚本**\n\
              （Windows 上 `C:\\Windows\\System32\\bash.exe` 那个没装发行版的 WSL 存根\
@@ -2292,6 +2319,24 @@ mod tests {
              ⚠ 同时意味着本条守的性质（超时不漏工作进程）在这台机器上**没人守**。"
         );
 
+        // ★★ **格②：先量尺子本身，而且在起那个空转进程之前量**〔ccbus-win 09-10 第四拍〕。
+        //
+        // 拿一个**一定在**的针去问一次：本测试进程自己。它买两件事——
+        //   ① 尺子答得出一个数（Windows 那半 09-10 之前从没真跑过，见 `count_live_processes`）；
+        //   ② 它**答得及时**（那一趟 25 分钟没回来，而这条路上唯一无界的就是数进程那一格）。
+        // ⚠ 顺序是刻意的：先量尺子、再起空转进程。反过来的话，尺子一卡，
+        //   那个 100% 占核的空转进程就会陪着它一起烧到作业被掐。
+        let me = std::env::current_exe().expect("【格②】拿不到本测试进程自己的路径");
+        let stem = me.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        assert!(!stem.is_empty(), "【格②】本测试进程的文件名取不出来：{me:?}");
+        let seen_self = count_live_processes(stem, 60, "格②·尺子自检").await;
+        assert!(
+            seen_self >= 1,
+            "【格②】尺子连**本测试进程自己**都数不到（针=`{stem}`，实得 {seen_self}）。\n\
+             ⇒ 下面那格的「0 个孤儿」是**空真** —— 不是没有孤儿，是尺子看不见东西。\n\
+             （本仓最高频的那一类病：尺子的作用域对不上事实。）"
+        );
+
         // ⚠ marker **不能只写在注释里**：`bash -lc '<单条 simple command>'` 会 **exec 掉自己**，
         // 于是注释从任何 cmdline 上都消失，`pgrep` 数到 0 ⇒ **判据假绿**（09-09 实测栽过一次）。
         // ⇒ 把 marker 放进那个必然存活的进程**自己的 argv** 里。
@@ -2299,19 +2344,59 @@ mod tests {
         let marker = format!("ccbus-orphan-{}", std::process::id());
         let cmd = format!("while :; do : {marker}; done");
 
-        let r = local_shell_read(&cmd, 4096, 1, "超时探针", OnOverflow::Reject).await;
+        let r = stage(
+            "格③·超时探针",
+            30,
+            local_shell_read(&cmd, 4096, 1, "超时探针", OnOverflow::Reject),
+        )
+        .await;
         assert!(
             r.is_err(),
-            "1 秒上限跑一个内建死循环竟然没超时 —— 本判据在空转。实得：{r:?}"
+            "【格③】1 秒上限跑一个内建死循环竟然没超时 —— 本判据在空转。实得：{r:?}"
         );
         // 给 tokio 的收尸队一点时间。
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-        let n = live_processes_matching(&marker);
+        let n = count_live_processes(&marker, 60, "格④·数孤儿").await;
+        // 只在**要红的时候**才多问一次：绿的那条路上一次都不问。
+        let survivors = if n == 0 {
+            String::new()
+        } else {
+            describe_live_processes(&marker, 60, "格④·倒出").await
+        };
         assert_eq!(
             n, 0,
-            "超时之后还留着 {n} 个子进程（marker={marker}）—— 每超时一次漏一个。\n\
-             显式 `start_kill()` 只在成功路径上；超时那条要靠 `kill_on_drop(true)`。"
+            "【格④】超时之后还留着 {n} 个子进程（marker={marker}）—— 每超时一次漏一个。\n\
+             显式 `start_kill()` 只在成功路径上；超时那条要靠 `kill_on_drop(true)`。\n\
+             留下来的是：\n{survivors}\n\
+             ⚠ **这一格红有两种读法，别只挑顺手的那一种**〔ccbus-win 09-10 第四拍〕：\n\
+             ㈠ 真漏 —— `local_shell_read` 超时那条路没把工作进程收干净（那是产品面的事）；\n\
+             ㈡ **夹具的锅** —— Windows 上 `{which:?}` 若是个**外壳**（起完真 bash 自己就退），\n\
+                `kill_on_drop` 杀掉的是外壳，真 bash 还在转。\n\
+             ⚠ ㈡ **本轮没有任何读数**（宿主是 Linux，Windows 的进程树语义没人量过）。\n\
+                分辨法就在上面那份清单里：留下来那个的 cmdline 是不是 `bash -lc while …` 本身，\n\
+                它的 ppid 指向谁。**在量到之前别下结论。**"
         );
+    }
+
+    /// 给一格套一个自己的上限：超了带着**格号**炸，而不是把整条测试拖成挂死。
+    ///
+    /// 🔴 立项理由〔ccbus-win 09-10 第四拍〕：云端那趟本条**跑了 25 分钟没回来**，
+    /// 日志里只有一句 "has been running for over 60 seconds"，之后是人工取消 ——
+    /// 而当时 `ci.yml` 一条 `timeout-minutes` 都没有 ⇒ 不取消就烧到 GitHub 的 6 小时上限。
+    /// **一条挂死的测试比一条红的更坏**：红的会说哪里坏了，挂死的什么都不说。
+    ///
+    /// ⚠ **它约束的只有 await 点**（`#[tokio::test]` 默认 current_thread 运行时）：
+    /// 某一格里若是同步调用卡住，计时器压根没机会跑。⇒ 这一层**不是**万能的兜底，
+    /// 它是把「已知会 await 的那几格」变成有名有姓的红。真正无界的那一格
+    /// （数进程）另有办法，见 [`count_live_processes`]。
+    async fn stage<T>(label: &str, secs: u64, f: impl std::future::Future<Output = T>) -> T {
+        match tokio::time::timeout(std::time::Duration::from_secs(secs), f).await {
+            Ok(v) => v,
+            Err(_) => panic!(
+                "【{label}】超过 {secs}s 没回来 —— 本条就挂在这一格上。\n\
+                 ⚠ 这是**上限炸的**，不是被测性质失败 —— 别读成「性质不成立」。"
+            ),
+        }
     }
 
     /// 数「cmdline 里含 `needle` 的活进程」有几个 —— **两个平台各一把尺子，量同一件事**。
@@ -2327,11 +2412,35 @@ mod tests {
     /// ⚠ 诚实边界：Windows 那把尺子在交回本件时**没有在任何机器上跑过**
     /// （宿主是 Linux，且本件不许跑测试）。它坏掉的表现是**红**，不是绿。
     ///
-    /// ⚠⚠ **下一趟云端很可能是它的第一次读数**〔ccbus-win 09-10 第二拍〕：
-    /// 09-09/09-10 两趟都在上面那格阳性对照就红了，**根本没走到这里**。
-    /// [`resolve_bash`] 落地之后，前两格若过，这一行才第一次真在 Windows 上跑。
-    /// ⇒ 它这一趟红是**新读数**，不是回归；红了先看 `powershell` 那条命令本身。
-    fn live_processes_matching(needle: &str) -> usize {
+    /// ⚠⚠ **09-10 那趟是它的第一次真跑**〔ccbus-win 第二拍预言、第四拍兑现〕：
+    /// 09-09/09-10 前两趟都在阳性对照就红了，根本走不到这里；[`resolve_bash`] 落地之后
+    /// 前两格过了，这一行才第一次真在 Windows 上跑 —— **然后整条测试 25 分钟没回来**。
+    ///
+    /// # 🔴 上限是本函数的一部分，不是调用方的自觉〔第四拍〕
+    ///
+    /// 病在哪**没量到**，所以这里不猜。但有一件事是确定的：`Command::output()`
+    /// **没有超时形态**（`ccm_probe::probe_with` 的头注早就逐字记着这句），
+    /// 而它是这条测试路径上**原先唯一无界的一格**。⇒ 上限收进来。
+    ///
+    /// ⚠ **超时是「红」，不是「0 个孤儿」** —— 口径与 09-09 那次收紧一个字不差：
+    /// 「尺子答不上」与「一个孤儿都没有」在 `usize` 上同形，而后者正是本判据要买的那一面。
+    ///
+    /// ⚠ 为什么用**裸线程 + 轮询**，而不是 `spawn_blocking` + `timeout`：
+    /// tokio 的运行时在 **drop 时会等正在跑的 blocking 任务跑完** ——
+    /// 真卡住的话，我们 panic 完照样卡在运行时析构里，又变回一条挂死的测试。
+    /// 裸线程漏掉就漏掉，进程退出时一起走。
+    ///
+    /// ⚠ **诚实边界**：本函数**没有**验证「尺子看得见一个 `bash` 子进程的 cmdline」——
+    /// 它只验证「尺子答得出一个数」。调用点用「本测试进程自己」当针做了那一格自检
+    /// （格②），那覆盖的是「尺子整个坏了 / 卡住」，**不**覆盖「看得见 exe、看不见 bash」。
+    /// 要买那一格得有一台真 Windows，本轮宿主是 Linux。
+    async fn count_live_processes(needle: &str, secs: u64, label: &str) -> usize {
+        let n = needle.to_string();
+        bounded(label, secs, "数进程", move || count_now(&n)).await
+    }
+
+    /// [`count_live_processes`] 的同步半 —— 真正去问这台机器的那一下。
+    fn count_now(needle: &str) -> usize {
         let ps = format!(
             "@(Get-CimInstance Win32_Process | \
              Where-Object {{ $_.CommandLine -like '*{needle}*' }}).Count"
@@ -2354,6 +2463,86 @@ mod tests {
              ⚠ 原写法 `.unwrap_or(0)` 会把「尺子坏了」读成「一个孤儿都没有」。"
         );
         parsed.expect("上面那条断言已经保证它是 Ok")
+    }
+
+    /// **只在失败那条路上用**：把匹配到的进程原样倒出来（pid / ppid / cmdline）。
+    ///
+    /// # 它为什么值这几行〔ccbus-win 09-10 第四拍〕
+    ///
+    /// 「超时之后还留着 1 个」有**两种**读法（真漏 / 夹具的锅，见格④那条断言），
+    /// 而分辨它们只要一样东西：**留下来那个到底是谁**。没有它，下一趟的红仍然是
+    /// 「留了 1 个，自己去查」——而「自己去查」在云端等于再烧一趟 CI。
+    ///
+    /// ⚠ **它是诊断，不是尺子**：这里的失败一律降级成一句话塞进消息里，
+    /// **绝不 panic、绝不参与判定**。别把这份宽容读成 [`count_now`] 也可以宽容 ——
+    /// 那一个数不出来必须红，口径一个字没变。
+    async fn describe_live_processes(needle: &str, secs: u64, label: &str) -> String {
+        let n = needle.to_string();
+        bounded(label, secs, "倒出进程", move || {
+            let ps = format!(
+                "Get-CimInstance Win32_Process | \
+                 Where-Object {{ $_.CommandLine -like '*{n}*' }} | ForEach-Object {{ \
+                 ($_.ProcessId).ToString() + ' ppid=' + ($_.ParentProcessId).ToString() \
+                 + ' ' + $_.CommandLine }}"
+            );
+            let (prog, argv): (&str, Vec<&str>) = if cfg!(windows) {
+                ("powershell", vec!["-NoProfile", "-Command", ps.as_str()])
+            } else {
+                ("pgrep", vec!["-af", n.as_str()])
+            };
+            match std::process::Command::new(prog).args(&argv).output() {
+                Ok(o) => String::from_utf8_lossy(&o.stdout).trim().to_string(),
+                Err(e) => format!("（倒不出来：`{prog}` 起不来：{e}）"),
+            }
+        })
+        .await
+    }
+
+    /// 在**裸线程**上跑一件会阻塞的活，并给它一个上限；超了带着格号 panic。
+    ///
+    /// 🔴 上限收在这里，不靠调用方自觉：`Command::output()` **没有超时形态**
+    /// （`ccm_probe::probe_with` 头注早就逐字记着），而它是这条测试路径上
+    /// **原先唯一无界的一格** —— 09-10 云端那趟整条测试 25 分钟没回来。
+    ///
+    /// ⚠ 为什么是**裸线程**而不是 `spawn_blocking` + `timeout`：tokio 的运行时
+    /// **在 drop 时会等正在跑的 blocking 任务跑完** ⇒ 真卡住的话，我们 panic 完
+    /// 照样卡在运行时析构里，又变回一条挂死的测试。裸线程漏掉就漏掉，进程退出时一起走。
+    ///
+    /// ⚠ 上限炸出来的是「**答不上**」，调用方**不许**把它读成一个具体的答案
+    /// （数进程那处：超时 ≠「0 个孤儿」，两者在 `usize` 上同形，而后者正是判据要买的那一面）。
+    async fn bounded<T: Send + 'static>(
+        label: &str,
+        secs: u64,
+        what: &str,
+        job: impl FnOnce() -> T + Send + 'static,
+    ) -> T {
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let _ = tx.send(job());
+        });
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+        loop {
+            match rx.try_recv() {
+                Ok(v) => return v,
+                // 发送端没了 = 那条线程里 panic 了（`count_now` 自己会 panic）。
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => panic!(
+                    "【{label}】{what}那条线程没把结果送回来（多半是它自己 panic 了，\
+                     真因在它那条 panic 上）—— 答不上就不许当成绿。"
+                ),
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "【{label}】{what}超过 {secs}s 没回来。\n\
+                 🔴 **这是「答不上」，不是一个答案** —— 数进程那处尤其要紧：\n\
+                 「尺子答不上」与「一个孤儿都没有」在 `usize` 上同形，\n\
+                 而后者正是本判据要买的那一面，绝不许拿一次超时冒充它。\n\
+                 Windows 那半跑的是 `powershell -NoProfile -Command …Get-CimInstance…`，\n\
+                 而 `Command::output()` 从来没有超时形态 —— 本上限就是为它加的\n\
+                 （09-10 云端那趟整条测试 25 分钟没回来，这一格是当时唯一无界的一格）。"
+            );
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
     }
 
     /// ★ 在线灯**必须先问身份空间**，不能只有那条按名字的老探法。
