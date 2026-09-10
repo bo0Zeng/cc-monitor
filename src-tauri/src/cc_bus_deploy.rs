@@ -300,6 +300,14 @@ pub async fn cc_bus_install_state() -> Result<CcBusInstallState, String> {
 /// ccm 先、cc-bus 后，但反过来也只是中间有个窗口）。拦住一个合法流程比漏报更糟。
 /// ⚠ 放在**命令层**而不是 `deploy_into` 里：后者是纯函数、被一堆单测直接调，
 /// 塞个子进程进去会让那些测试依赖「本机有没有 ccm」——那正是本仓一路在治的环境依赖型假绿。
+///
+/// # ★★ 它有一个 **Windows 对侧**（紧接在下面）〔win-compile 09-09〕
+///
+/// 探测那一侧（`crate::ccm_probe::probe_local_ccm_uncached`）**整条**都带
+/// `#[cfg(not(windows))]` —— 它跑的是 `bash -lic`，是 POSIX 专有的原语。
+/// 先前本函数**没有对应的门** ⇒ Windows 上 `monitor` 的 lib 直接编不过（E0425）。
+/// ⇒ 两侧各写各的。**本函数的函数体一个字节没动**，非 Windows 上的行为按构造逐字节不变。
+#[cfg(not(windows))]
 fn local_ccm_too_old_warning() -> Option<String> {
     // ⚠ **不自己起进程探** —— `ccm_probe::probe_with` 就是「本机 ccm 的能力集探测」，
     //   已经在 `write_site_registry::SPAWNS` 里申报过、有超时、有 `name=ccm` 首行校验
@@ -325,6 +333,44 @@ fn local_ccm_too_old_warning() -> Option<String> {
     Some(format!(
         "本机 ccm 缺能力 {missing:?} ⇒ 装出去的 `cc-spawn` 会以「ccm 版本太旧」退出。\
          请把 `shared/ccm` 同步过去（顺序：ccm 先、cc-bus 后）。"
+    ))
+}
+
+/// 上一条的 **Windows 对侧** —— 它**不做**这一格预检，而且**把「没做」说出来**〔win-compile 09-09〕。
+///
+/// # 为什么不是「加个 cfg 静默 `return None`」
+///
+/// `None` 在这条链上有一个**确定**的含义：**探过了、够新**（调用方据此不给用户任何提示）。
+/// Windows 上根本没探 —— 返回 `None` 就是把「查不了」读成「没问题」。
+///
+/// 本仓对这件事有一条反复出现的明纪律，最短的落点是 `sftp.rs` 里那个四值枚举
+/// `TargetBinary`：它的「问不出来」那一态的注释逐字写着「**不许读成上面任何一个**」，
+/// 而那条注释同时说明了它为什么**不是 `bool`**。同一句话在 `CcBusDeployReport`
+/// 那个字段的头注里叫「**假成功比失败更坏**」——用户点一次按钮换来的结果，
+/// 没有提示他就当成纯成功，而日志他不会去翻。
+///
+/// # 落成什么形状
+///
+/// 装**照做**（`deploy_into` 与平台无关，那 17 个文件照样落盘、照样幂等、照样留备份），
+/// 但返回一句话，由 `deploy_local_cc_bus` 原样填进报告的 `warning`，
+/// 前端 `settings/cc-bus-section.ts` 把它接在成功文案后面显示。
+/// ⇒ 用户在 Windows 上读到的是「**这一格没做预检**」，而不是什么都没有。
+///
+/// ⚠ 它**不是错误**（与非 Windows 那条同一条纪律）：装本身做完了，命令仍回 `Ok`。
+/// ⚠ 清单从 [`CC_SPAWN_NEEDS`] **现取**，绝不在这里抄一份字面量 ——
+///   `the_deploy_precheck_lists_what_cc_spawn_negotiates` 钉的是「那个常量与 `cc-spawn`
+///   真正协商的一致」，抄一份就等于在它看不见的地方开了第二处。
+/// ⚠ **诚实边界**：这句话说的是「**本机**没有可查的 ccm」，不是「Windows 上没有 ccm 这种东西」。
+///   今天 monitor 在 Windows 上确实没有任何 ccm 探测形态（`probe_local_ccm` 那一族整族
+///   带 `#[cfg(not(windows))]`）；哪天有了，这条该换成真探测，而不是继续报「没做」。
+#[cfg(windows)]
+fn local_ccm_too_old_warning() -> Option<String> {
+    Some(format!(
+        "本机没有可查的 `ccm` —— **这一格没做预检**：能力探测要跑 `bash -lic`，\
+         这台机器上没有那条路，装出去的 `cc-spawn` 够不够新**问不出来**。\
+         ⚠ 「没有警告」在这里**不等于「没问题」**：`cc-spawn` 开头仍会协商 {CC_SPAWN_NEEDS:?}，\
+         缺一条就以「ccm 版本太旧」退出。请自行确认 `shared/ccm` 已同步到位\
+         （顺序：ccm 先、cc-bus 后）。"
     ))
 }
 
@@ -588,6 +634,36 @@ mod tests {
         );
     }
 
+    /// ★★ **Windows 上「这一格没做预检」必须说出口，不许静默**〔win-compile 09-09〕。
+    ///
+    /// `local_ccm_too_old_warning` 的 `None` 有一个**确定**含义：**探过了、够新**
+    /// （调用方据此不给用户任何提示）。而 Windows 上根本探不了（探测那一族整族
+    /// 带 `#[cfg(not(windows))]`，它跑的是 `bash -lic`）⇒ 返回 `None` 就是把
+    /// 「查不了」读成「没问题」，正是 `sftp.rs` 那个四值枚举 `TargetBinary` 治的病。
+    ///
+    /// ⚠ **它跑在本仓唯一跑 `cargo test` 的平台上**（云端 windows-latest）——
+    ///   与同一批补门的那四条判据恰好相反：那四条从此在那台机器上一次都不跑。
+    /// ⚠ 射程：只买「话说没说、说没说全」。**买不到**「用户真在界面上看见了」——
+    ///   那一跳在 `settings/cc-bus-section.ts`，由前端那侧的判据管。
+    #[cfg(windows)]
+    #[test]
+    fn windows_says_the_precheck_did_not_happen_instead_of_staying_silent() {
+        let w = local_ccm_too_old_warning().unwrap_or_default();
+        assert!(
+            !w.is_empty(),
+            "Windows 上回了 `None` —— 那是把「查不了」读成「没问题」：\
+             用户读到的是一个纯成功，而没有任何人告诉他这一格根本没检查"
+        );
+        assert!(
+            w.contains("没做预检"),
+            "这句话没把「**没做**」说出来 ⇒ 用户分不开它与「查过了、有问题」：{w}"
+        );
+        // 清单从常量现取（不许在那句话里抄一份字面量）⇒ 四条能力必须真的出现在话里。
+        for c in CC_SPAWN_NEEDS.iter().copied() {
+            assert!(w.contains(c), "警告里没提能力 {c:?}：{w}");
+        }
+    }
+
     /// ★ 三态的**计数**要精确，且「清单外的文件」**故意不算**〔08-13 复核〕。
     ///
     /// # 四态逐个钉
@@ -682,6 +758,16 @@ mod tests {
     ///
     /// ⚠ 必须是 `Err` 而不是「装了 0 个文件的 Ok」：后者会让 UI 报「已装到 …（写了 0 个）」，
     /// 又一次「假成功比失败更坏」。
+    ///
+    /// ⚠⚠ **补门的代价：本条从此在 Windows 上 0 次执行**〔win-compile 09-09〕。
+    /// 它靠 `std::os::unix::fs::PermissionsExt` 造「只读目录」这个可控替身，而先前
+    /// **漏了门** ⇒ 云端（windows-latest，本仓**唯一**跑 `cargo test` 的平台）上
+    /// 编译失败（E0433 ×1 + E0599 ×2）。门照本文件既有口径写成 `#[cfg(unix)]`
+    /// （同 `a_symlinked_skills_dir_is_refused` / `deployed_scripts_are_executable`
+    /// 那两条 —— 它们用的是同一个平台原语）。
+    /// ⚠ 于是「`skills/` 不可写时必须 `Err`、不许返回写了 0 个的 `Ok`」这条性质，
+    ///   在 Windows 上**没有任何东西守着**；替身要换成 Windows 的 ACL 才买得回来。
+    #[cfg(unix)]
     #[test]
     fn an_unwritable_skills_dir_fails_loudly() {
         use std::os::unix::fs::PermissionsExt;
