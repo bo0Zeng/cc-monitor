@@ -6,7 +6,9 @@ cc-monitor 的 SSH-远端功能后端 daemon（issue #15 起，已历 F14–F30+
 
 - **运行期 Linux-only。** inotify watcher 流式（`src/watcher.rs`）+ 一次性历史查询子命令（`src/history_query.rs`/`src/search_query.rs`）。
 - **交叉编译 + 内嵌部署。** 由 CI（`release.yml`）用 `cargo zigbuild` 交叉编译 x86_64/aarch64 musl 静态二进制，
-  **内嵌进 `cc-monitor.exe`**（`src-tauri/embedded-daemons/`），首次连远端时经 SFTP 自部署到 `~/.cc-monitor/bin/`
+  **内嵌进 `monitor.exe`**（`src-tauri/embedded-daemons/`；⚠ 09-10 订正：先前写 `cc-monitor.exe`，
+  而那是 productName、只用在快捷方式与窗口标题上，**盘上的可执行文件叫 `monitor.exe`**），
+  首次连远端时经 SFTP 自部署到 `~/.cc-monitor/bin/`
   （`sftp::ensure_daemon_deployed`，按 arch + `.build_id` 门控）。**不再需要在目标机上手动 build**。
 - **Standalone crate。** 故意 *不* 进 Cargo workspace、无根 `Cargo.toml` 引用它——避免 Windows/Tauri CI 去
   编译这个 Linux-only crate。CI 单独在 ubuntu 跑它的 `cargo fmt --check`/`clippy`/`test`（`.github/workflows/ci.yml` 的 daemon job）。

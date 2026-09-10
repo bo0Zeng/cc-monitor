@@ -21,7 +21,7 @@ src-tauri/target/release/
 ├── cc-monitor.exe                                       ← 主程序（需 WebView2）
 └── bundle/
     ├── msi/
-    │   └── cc-monitor_<version>_x64_zh-CN.msi           ← Windows Installer 包
+    │   └── cc-monitor_<version>_x64_en-US.msi           ← Windows Installer 包（⚠ 是 en-US 不是 zh-CN）
     └── nsis/
         └── cc-monitor_<version>_x64-setup.exe           ← NSIS Setup 安装器
 ```
@@ -56,8 +56,11 @@ src-tauri/target/release/
 通过 WiX 工具链生成。Tauri 首次构建会自动下载 WiX 到 `%LOCALAPPDATA%\tauri\WixTools3`，网络不通时手装。
 
 MSI **企业部署友好**：
-- 静默安装：`msiexec /i cc-monitor_<ver>_x64_zh-CN.msi /qn`
-- 卸载：`msiexec /x cc-monitor_<ver>_x64_zh-CN.msi /qn`
+- 静默安装：`msiexec /i cc-monitor_<ver>_x64_en-US.msi /qn`
+- 卸载：`msiexec /x cc-monitor_<ver>_x64_en-US.msi /qn`
+> ⚠ 〔09-10 订正〕本节先前三处都写 `zh-CN`，而实际产物逐字是 `en-US`（`tauri.conf.json`
+> 没配 WiX 语言 ⇒ 走默认）。**照着敲这两条命令会报「找不到文件」。**
+> 同一个事实 `doc/RELEASING.md` 早就写对了 —— 是本文件与 `README.md` 没跟。
 - 适合 Intune / SCCM / Group Policy
 
 ---

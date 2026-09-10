@@ -129,13 +129,21 @@ Five collapsible groups (only "Behavior" expanded by default):
 Get the latest version from [Releases](https://github.com/bo0Zeng/cc-monitor/releases). File names like `cc-monitor_<version>_x64-setup.exe`:
 
 - `*-setup.exe` — NSIS installer (recommended for regular users)
-- `*_zh-CN.msi` — MSI bundle (for enterprise IT deployment)
+- `*_x64_en-US.msi` — MSI bundle (for enterprise IT deployment)
+  > ⚠ The suffix is `en-US`, **not** `zh-CN` — `tauri.conf.json` sets no WiX language, so it
+  > falls back to the default. This does not affect the app's UI language.
+  > (Corrected 09-10: this line used to say `zh-CN`; the actual artifacts for both v3.6.0 and
+  > v3.7.0 are `en-US`, so anyone following this line would not find the file.)
 
 Double-click to run; Windows SmartScreen will show "unknown publisher" on first launch (we don't sign). Choose "More info → Run anyway".
 
 ### First use
 
-1. Launch `cc-monitor.exe`
+1. Launch the **cc-monitor** shortcut from the Start menu or Desktop
+   > ⚠ The executable is `monitor.exe`, **not** `cc-monitor.exe` (installed under
+   > `C:\Program Files\cc-monitor\`): the binary uses the cargo package name, while the
+   > shortcut and window title use the productName. (Corrected 09-10 — verified on a clean
+   > machine: there is no `cc-monitor.exe` on disk.)
 2. Run `claude` in any terminal (a tab will appear instantly in cc-monitor)
 3. Type in claude → user/assistant messages appear in cc-monitor within 200ms
 4. Want Tab ↗ focus-switch? See "PowerShell Integration" below
