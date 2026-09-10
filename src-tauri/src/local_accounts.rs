@@ -827,9 +827,19 @@ mod tests {
             }
         }
         std::fs::create_dir_all(sb.0.join("shared")).unwrap();
-        sb.write_manifest(&acct_core::auth_kind_parity_manifest(
-            &sb.0.to_string_lossy(),
-        ));
+        // ⚠ `auth_kind_parity_manifest` 是**手搓 JSON**：它把 `root` 直接 `push_str` 进一个
+        //   JSON 串字面量里，自己不做转义。Windows 上沙箱根长成
+        //   `C:\Users\…\AppData\Local\Temp\l3a-…` —— `\U` / `\A` / `\L` / `\T` 一个都不是
+        //   合法 JSON 转义 ⇒ **整份 manifest 解析失败** ⇒ `list_from_dir` 走
+        //   「manifest 不是合法 JSON」那条臂、回 0 个账号。
+        //   〔09-09 云端 windows-latest 首跑实得 `left: 0 / right: 6`，正是这一形。〕
+        //   ⇒ 这里按 JSON 的规矩把 `\` 转义掉。**刻意不改成正斜杠绕开**：
+        //   manifest 里仍然是原生 Windows 路径，而产品那一侧要认的就是带 `\` 的那一种
+        //   （`is_safe_config_dir` 明写反斜杠是 Windows 分隔符、不在拒绝集里）——
+        //   换成 `/` 等于让本条在 Windows 上不再驱动那一形。
+        //   Linux 上路径不含 `\` ⇒ 这一行是恒等变换，那一侧一个字节没变。
+        let root_json = sb.0.to_string_lossy().replace('\\', "\\\\");
+        sb.write_manifest(&acct_core::auth_kind_parity_manifest(&root_json));
         let r = list_from_dir(&sb.0);
         assert_eq!(
             r.accounts.len(),
