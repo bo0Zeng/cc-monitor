@@ -171,10 +171,15 @@
 #      09-10 给 `.claude/devbox/Dockerfile` 加了一层 `rustup component add rustfmt`，
 #      前提消失，门当天补上。历史读数：`b28464e` 上是 rc=1 / 78 处 / 18 个文件 / 1.09 秒。〕
 #
-#   ⚠ ① **今天仍然没买到**（原文那句「两条」现在只剩一条）：买法在写区外 ——
-#     要改 `.claude/devbox/Dockerfile`（55+ 棵树共用、且不在任何 git 仓里）装那个 target。
-#     ★ 当初那句「在它改之前，把这两维写成一道门 = 把 55 棵树的门禁一起打红」**仍然对**，
-#       ② 之所以能加，正是因为**前提被先改掉了**，不是因为那句话过时了。
+#   ① **Windows 那半编不编得过** —— ✅ **09-10 下午也买到了**，门在下面 `run_gate winchk` 那一行。
+#      〔本条同样留着不删，它记着两件事：**当初为什么没有**（沙箱镜像没装那个 target），
+#      以及**原本提议的买法射程错了** —— 那条 `-p creds-core …` 只盖 86 处 `cfg(windows)` 里的
+#      **2 处（2.3%）**，而 09-09 那 17 个编译错**全在 monitor 本体那 67 处里**。
+#      换成 `-p monitor --target x86_64-pc-windows-gnu`（`-msvc` 扩不到本体：C 依赖要 `lib.exe`）。〕
+#
+#   ★ 原文那句「在它改之前，把这两维写成一道门 = 把 55 棵树的门禁一起打红」**仍然对**：
+#     ①②两条能加，都是因为**前提被先改掉了**（`.claude/devbox/Dockerfile` 先装了
+#     `rustfmt` / `mingw-w64` + 那个 target），不是因为那句话过时了。
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 2
@@ -640,6 +645,48 @@ gate_selftest
 #     `remote-daemon-proto` 是**另一个 workspace**，本行盖不到它。
 run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src-tauri` 那个 workspace 的全部成员；`remote-daemon-proto` 是另一个 workspace，本行盖不到' \
          bash -c 'cd src-tauri && cargo fmt --all --check 2>&1 && echo "fmt: 1 passed"'
+
+# ── Windows 那半编不编得过 ──────────────────────────────────────────────────
+#
+# 🔴 **本文件头注那条「归 PM」的第 ① —— 09-10 买到了。**
+#
+# ## 它买的是这个项目今年最贵的那一课
+#
+# cc-monitor v1 是 **Windows 专供**，而 **Windows 上编不过这件事在 08-13 到 09-09 之间
+# 没有任何人发现**（云端 CI 自 08-05 起红在第一步，后面全部 `skipped`）——
+# 09-09 那一趟修出来 **17 个互不相同的编译错地址**。
+# 本机门禁跑在 Linux 上，那 `#[cfg(windows)]` 的 **67 处**（`src-tauri/src`，现打 09-10）
+# **根本不参与编译** ⇒ 它一次都没看见。
+#
+# ## 🔴 铁律 12 的刀（**这一格不是推的，是切出来的**）
+#
+# 在 `config.rs::atomic_replace`（`#[cfg(windows)]`）里放一行 `let _: u32 = "…";`：
+#   · `cargo check -p monitor`（Linux 原生，= 门禁其余各格看得见的那一面）⇒ **退出码 0，全绿**
+#   · `cargo check -p monitor --target x86_64-pc-windows-gnu`         ⇒ **退出码 101**，
+#     并逐字点名 `error[E0308]: mismatched types` 在哪一行
+# **两侧读数相反 —— 那正是这一格存在的全部理由。**
+#
+# ## 为什么是 `-gnu` 而不是 `-msvc`
+#
+# `-msvc` 扩不到 monitor 本体：`ring` · `libsqlite3-sys` · 四个 `tree-sitter-*` 都用 `cc-rs`
+# 编 C，而它在 msvc target 上找 `lib.exe` ⇒ Linux 上没有（实测
+# `error occurred in cc-rs: failed to find tool "lib.exe"`）。`-gnu` 走 mingw-w64，编得过。
+# ⚠ **`-gnu` 是不是忠实代理，是量过的**：两者唯一的分歧点是 `target_env`，
+# 而**全仓 `target_env` 命中 0 处** ⇒ 那 86 处一处都分辨不出这两者。
+#
+# ⚠ **本文件头注原本提议的窄买法（`-p creds-core --features harden --target …msvc`）
+#   只盖 86 处里的 2 处（2.3%）** —— 它跑得通（实测 5.65s，与那条注释预测的 5.67s 对得上），
+#   但 09-09 那 17 个编译错**全在 monitor 本体那 67 处里，它一个都逮不住**。⇒ 换成本行。
+#
+# ⚠⚠ **诚实边界，写死别读宽**：`cargo check` 买的是「**编得过**」——
+#   **买不到「行为对」**（要真 Windows 机），**也买不到「MSVC 上链接得起来」**（`check` 不链接）。
+#   真机行为那一格今天仍然是**判不了**，不是「通过」。
+#
+# ⚠ 依赖沙箱镜像装了 `mingw-w64` 与 `x86_64-pc-windows-gnu`（`.claude/devbox/Dockerfile`，
+#   仓外、不进版本控制）。没装的机器上这一格会红在「找不到 target」——**那是对的**：
+#   fail-closed 比静默跳过好。
+run_gate winchk '不是数出来的数：`cargo check --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 一个包（`src-tauri/src` 的 67 处 `cfg(windows)`）；`remote-daemon-proto` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
+         bash -c 'cd src-tauri && cargo check --locked -p monitor --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
 
 # 8 个包 = `monitor` + 7 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
 run_gate_sum cargo 8 bash -c 'cd src-tauri && cargo test --workspace --exclude code-picture-core --lib 2>&1'
