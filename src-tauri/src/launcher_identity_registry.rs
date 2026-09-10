@@ -49,7 +49,8 @@ mod tests {
     ///
     /// ⚠ 这一格买的只是「那条判据还在」，**不是**「那条判据有牙」。
     /// 有没有牙由它自己那五格与逐刀变异回答，本表不重复买。
-    const PLANTED_JUDGE: &str = "the_launcher_plants_the_session_identity_into_the_process_environment";
+    const PLANTED_JUDGE: &str =
+        "the_launcher_plants_the_session_identity_into_the_process_environment";
 
     /// 一处**起会话方**。
     ///

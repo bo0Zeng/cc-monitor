@@ -967,7 +967,10 @@ mod tests {
             .flat_map(|l| {
                 l.match_indices("exit ")
                     .filter_map(|(i, _)| {
-                        let t: String = l[i + 5..].chars().take_while(char::is_ascii_digit).collect();
+                        let t: String = l[i + 5..]
+                            .chars()
+                            .take_while(char::is_ascii_digit)
+                            .collect();
                         t.parse::<u32>().ok()
                     })
                     .collect::<Vec<u32>>()
@@ -989,9 +992,8 @@ mod tests {
         );
 
         // ③ 靶子自检：`backend_unreachable` 真的被调用（不是只定义了一个没人用的函数）。
-        guard_core::find_pinned(&prod, "backend_unreachable() {").unwrap_or_else(|e| {
-            panic!("{e}\n⇒ 唯一失败面的实现不是恰好一处。")
-        });
+        guard_core::find_pinned(&prod, "backend_unreachable() {")
+            .unwrap_or_else(|e| panic!("{e}\n⇒ 唯一失败面的实现不是恰好一处。"));
         let callers: Vec<&str> = prod
             .lines()
             .filter(|l| l.contains("backend_unreachable ") || l.contains("backend_unreachable \""))
@@ -1292,11 +1294,23 @@ mod tests {
         let prod = shell_production(ccm);
         // ① claude：必须是 temp → 校验 → 原子 mv。三件缺一不可。
         for (needle, why) in [
-            ("$tmpj", "没有临时文件 —— 那就是就地改用户的 claude.json，写坏了他起不来"),
-            ("jq -e . \"$tmpj\"", "写完没校验 —— jq 产出坏 JSON 时会把坏文件搬过去"),
-            ("mv \"$tmpj\" \"$cj\"", "不是原子替换 —— 中间态会被 claude 读到"),
+            (
+                "$tmpj",
+                "没有临时文件 —— 那就是就地改用户的 claude.json，写坏了他起不来",
+            ),
+            (
+                "jq -e . \"$tmpj\"",
+                "写完没校验 —— jq 产出坏 JSON 时会把坏文件搬过去",
+            ),
+            (
+                "mv \"$tmpj\" \"$cj\"",
+                "不是原子替换 —— 中间态会被 claude 读到",
+            ),
         ] {
-            assert!(prod.contains(needle), "claude 预信任那条：{why}（找不到 `{needle}`）");
+            assert!(
+                prod.contains(needle),
+                "claude 预信任那条：{why}（找不到 `{needle}`）"
+            );
         }
         // ② codex：追加之前必须先备份成功。
         guard_core::find_pinned(&prod, "if ! cp -p \"$ct\" \"$ct.bak-ccm.$$\"").unwrap_or_else(|e| {
@@ -1338,7 +1352,11 @@ mod tests {
             .map(str::trim)
             .filter(|c| !c.is_empty())
             .collect();
-        assert!(caps.len() >= 10, "只解析出 {} 个能力 —— 抽取器坏了（本条此刻是空转的）", caps.len());
+        assert!(
+            caps.len() >= 10,
+            "只解析出 {} 个能力 —— 抽取器坏了（本条此刻是空转的）",
+            caps.len()
+        );
         // 用法块 = 文件头那段 `#` 注释（`--help` 打的就是它）。
         let usage: String = ccm
             .lines()
@@ -1689,7 +1707,9 @@ mod tests {
         // ★ 夹具自检：那份夹具**真的**把每条都写进去了 —— 否则下面那两条是空真。
         assert!(
             REQUIRED_NEEDLES.iter().all(|n| comments_only.contains(*n))
-                && CHANNEL_A_LITERALS.iter().all(|c| comments_only.contains(*c)),
+                && CHANNEL_A_LITERALS
+                    .iter()
+                    .all(|c| comments_only.contains(*c)),
             "夹具没把全部要素写进去 —— 下面两条会因为「本来就没有」而绿"
         );
         let got = measure(&comments_only);
@@ -1760,7 +1780,10 @@ mod tests {
         let mut bad: Vec<String> = Vec::new();
         // `needles` 与 `channel_a` 的行形状相同 ⇒ **同一段逻辑**，别写两遍
         //（写两遍就是两份口径，而这正是本模块一路在收的那一族）。
-        for (which, homes) in [("要素", ledger.needles), ("通道 A 字面量", ledger.channel_a)] {
+        for (which, homes) in [
+            ("要素", ledger.needles),
+            ("通道 A 字面量", ledger.channel_a),
+        ] {
             for (n, home) in homes {
                 match home {
                     NeedleHome::Ccm => {
@@ -2020,7 +2043,8 @@ mod tests {
                 anchor: "\"@ccm_sid_expect\"",
             },
         )];
-        const CH_STAYS: &[(&str, NeedleHome)] = &[("tmux set-option -t $t @ccm_sid_expect", NeedleHome::Ccm)];
+        const CH_STAYS: &[(&str, NeedleHome)] =
+            &[("tmux set-option -t $t @ccm_sid_expect", NeedleHome::Ccm)];
         let ch = ledger_of_channel_a;
 
         // ① 真搬家：ccm 里没了、新住址那句 argv 有了。
@@ -2512,12 +2536,15 @@ mod tests {
                     // （现打：`shared/ccm` 那句 `printf` 与它的 `>&2` **不在同一行** ——
                     //  `printf '…' \` 续行，`>&2` 在下一行 ⇒ 同行断言会当场误红。窗口 3 是量出来的，不是猜的。）
                     let lines: Vec<&str> = prod.lines().collect();
-                    let at = lines.iter().position(|l| l.contains(line)).unwrap_or_else(|| {
-                        panic!(
+                    let at = lines
+                        .iter()
+                        .position(|l| l.contains(line))
+                        .unwrap_or_else(|| {
+                            panic!(
                             "`{cmd}` 登记为「降级出声」，而它的文案锚点 {line:?} 不在生产段里 —— \
                              出声那段被删了？（`K-C1` 的 `§0b` 裁定：**降级必须出声**）"
                         )
-                    });
+                        });
                     let window = &lines[at..(at + 4).min(lines.len())];
                     assert!(
                         window.iter().any(|l| l.contains(">&2")),

@@ -1564,8 +1564,8 @@ async fn spawn_dial_proxy(
     if n == 0 {
         return Err("拨号代理一个字节都没回就走了（它自己的 stderr 上有原因）".to_string());
     }
-    let v: serde_json::Value =
-        serde_json::from_str(ack.trim()).map_err(|e| format!("拨号代理的 ack 不是 JSON: {e}（原文 {ack:?}）"))?;
+    let v: serde_json::Value = serde_json::from_str(ack.trim())
+        .map_err(|e| format!("拨号代理的 ack 不是 JSON: {e}（原文 {ack:?}）"))?;
     if v.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
         let why = v
             .get("error")
@@ -1604,7 +1604,10 @@ pub async fn connect_and_exec(
     }
     // ★ `K-P6b`：两个条件都满足才把这一跳交出去；否则**出声**回落。
     //   两条路的差别只在「谁跑 SSH 握手」，交给上层的东西（一条双工字节流）一模一样。
-    let has_key = cfg.key_path.as_deref().is_some_and(|s| !s.trim().is_empty());
+    let has_key = cfg
+        .key_path
+        .as_deref()
+        .is_some_and(|s| !s.trim().is_empty());
     // ⚠ **只解析一次**：判据钉着「走不走代理这个判断只许有一个地方做」，
     //   而下面 `warn` 里要回显它 —— 再调一次就成了两次判断，两次之间还可能不一致。
     let proxy = resolve_dial_proxy();
@@ -1825,7 +1828,10 @@ mod dial_move_judge {
                  ≥2 处 ⇒ 回落不止一条，而这张表只认得一条。"
             ));
         }
-        let (Some(i_proxy), Some(i_inproc)) = (body.find("spawn_dial_proxy("), body.find("connect_and_exec_cmd(")) else {
+        let (Some(i_proxy), Some(i_inproc)) = (
+            body.find("spawn_dial_proxy("),
+            body.find("connect_and_exec_cmd("),
+        ) else {
             return Err("上面数到了，这里却找不到位置 —— 抽取器自相矛盾".to_string());
         };
         if i_proxy > i_inproc {
@@ -2003,8 +2009,8 @@ mod dial_move_judge {
             !before.contains("spawn_dial_proxy("),
             "冻结的反例语料里居然有代理调用 —— 那它就不是「改动之前」了"
         );
-        let e = daemon_stream_dial_verdict(&before)
-            .expect_err("旧形状（界面进程自己拨号）居然判绿了");
+        let e =
+            daemon_stream_dial_verdict(&before).expect_err("旧形状（界面进程自己拨号）居然判绿了");
         assert!(
             e.contains("spawn_dial_proxy("),
             "判据红了，但**没点名是哪一处** —— 只说「有问题」的诊断等于没有诊断。实得：{e}"
@@ -8310,14 +8316,7 @@ AAAEDRp5kloww4Jpr8K56RETPX0tLdId9XD8a+yNz5Tx0XOQFVxedWxKBYvdEBkTWvt5st
         let (ch, events) = collecting_channel();
         let order = vec![hung, live.clone()];
         let win = race_win(
-            race_connect(
-                test_config(),
-                None,
-                order,
-                Duration::from_secs(5),
-                Some(ch),
-            )
-            .await,
+            race_connect(test_config(), None, order, Duration::from_secs(5), Some(ch)).await,
         );
         let race_returned_at = std::time::Instant::now();
 
@@ -8416,7 +8415,11 @@ AAAEDRp5kloww4Jpr8K56RETPX0tLdId9XD8a+yNz5Tx0XOQFVxedWxKBYvdEBkTWvt5st
 
     /// 只要 kind 那一维（给那两条不关心是哪个地址的判据用）。
     fn stage_kinds(sink: &Arc<Mutex<Vec<(String, String)>>>) -> Vec<String> {
-        sink.lock().unwrap().iter().map(|(k, _)| k.clone()).collect()
+        sink.lock()
+            .unwrap()
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect()
     }
 
     #[tokio::test]
@@ -8981,7 +8984,6 @@ mod capped_line_tests {
              排在后面的话，转发卡住时就连「收到了」都没留下"
         );
     }
-
 
     #[test]
     fn the_frame_arm_logs_the_observation_kind() {

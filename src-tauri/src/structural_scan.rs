@@ -1213,7 +1213,11 @@ mod tests {
     fn addr_corpus() -> Vec<(std::path::PathBuf, String)> {
         let root = addr_repo_root();
         let mut out: Vec<(std::path::PathBuf, String)> = Vec::new();
-        for sub in ["src-tauri/src", "src-tauri/crates", "remote-daemon-proto/src"] {
+        for sub in [
+            "src-tauri/src",
+            "src-tauri/crates",
+            "remote-daemon-proto/src",
+        ] {
             out.extend(guard_core::scan_tree!(&root.join(sub), &["rs"]));
         }
         let br = root.join("src-tauri/build.rs");
@@ -1255,10 +1259,8 @@ mod tests {
         const KW: &[&str] = &[
             "fn", "struct", "enum", "const", "static", "trait", "mod", "type",
         ];
-        let mut decl: std::collections::BTreeMap<
-            String,
-            std::collections::BTreeSet<String>,
-        > = std::collections::BTreeMap::new();
+        let mut decl: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
+            std::collections::BTreeMap::new();
         for (p, raw) in corpus {
             let fname = addr_base(p);
             for line in guard_core::strip_comment_lines(raw).lines() {
@@ -1325,10 +1327,7 @@ mod tests {
                 "symbol",
                 "**示例占位符**：讲「地址长什么样」时写的假地址，本就不指向真符号",
             ),
-            (
-                "foo",
-                "**示例占位符**：同上，讲口径时举的例子",
-            ),
+            ("foo", "**示例占位符**：同上，讲口径时举的例子"),
         ];
 
         let corpus = addr_corpus();
@@ -1452,7 +1451,11 @@ mod tests {
             ("local_daemon.rs", "launch.rs", 196),
             ("local_daemon.rs", "launch.rs", 198),
             ("local_daemon.rs", "local_backend.rs", 336),
-            ("local_daemon.rs", "src-tauri/crates/guard-core/src/lib.rs", 141),
+            (
+                "local_daemon.rs",
+                "src-tauri/crates/guard-core/src/lib.rs",
+                141,
+            ),
             ("local_daemon.rs", "structural_scan.rs", 425),
             ("local_daemon.rs", "structural_scan.rs", 508),
             ("panorama.rs", "engine.rs", 42),
@@ -1586,7 +1589,8 @@ mod tests {
         );
 
         // ② 形 B：带墓碑标记的那一行整行不进人群。
-        let t = format!("这里先前点着 relay/server.rs{colon}97，今天不对了 {LINE_ADDRESS_TOMBSTONE}");
+        let t =
+            format!("这里先前点着 relay/server.rs{colon}97，今天不对了 {LINE_ADDRESS_TOMBSTONE}");
         assert!(
             line_addresses(&t).is_empty(),
             "带 {LINE_ADDRESS_TOMBSTONE} 的行不该进人群 —— 否则判据会去红「记录了这个病的那段话」本身"
@@ -1605,7 +1609,10 @@ mod tests {
         let t = format!("见 history.rs{dcolon}build_local_*_command");
         let syms = symbol_addresses(&t);
         assert_eq!(syms.len(), 1, "前缀形没抽到：{syms:?}");
-        assert!(syms[0].3, "以 `_` 收尾的符号必须标成前缀形，否则它会被误报成「找不到」");
+        assert!(
+            syms[0].3,
+            "以 `_` 收尾的符号必须标成前缀形，否则它会被误报成「找不到」"
+        );
 
         // ⑤ 中文文件名不进人群（本文件头注里的形状样例正是这么写的）。
         let t = format!("形如 文件.rs{colon}123 与 文件.rs{dcolon}符号");
@@ -2044,7 +2051,11 @@ mod tests {
                 1,
             ),
             ("src-tauri/src/bind.rs", "handle_await_files", 1),
-            ("src-tauri/src/byte_cap_registry.rs", "handle_alloc_error", 1),
+            (
+                "src-tauri/src/byte_cap_registry.rs",
+                "handle_alloc_error",
+                1,
+            ),
             (
                 "src-tauri/src/byte_cap_registry.rs",
                 "inline_literal_byte_caps_are_still_just_the_one",
@@ -2160,7 +2171,11 @@ mod tests {
                 "both_daemon_commands_use_this_one_router",
                 1,
             ),
-            ("src-tauri/src/tool_registry.rs", "inbox_id_from_filename", 1),
+            (
+                "src-tauri/src/tool_registry.rs",
+                "inbox_id_from_filename",
+                1,
+            ),
             (
                 "src-tauri/src/tool_registry.rs",
                 "locality_is_derivable_from_destination_today",
@@ -2331,7 +2346,10 @@ mod tests {
         // ① 形状：>=2 个下划线才算数；大写 / 少下划线 / 前后粘连一律不算。
         assert!(is_dead_name_shape(&n, min));
         assert!(!is_dead_name_shape("only_one", min), "1 个下划线不该进人群");
-        assert!(!is_dead_name_shape("Zz_alpha_beta", min), "带大写不该进人群");
+        assert!(
+            !is_dead_name_shape("Zz_alpha_beta", min),
+            "带大写不该进人群"
+        );
         let glued = format!("Xy{n}");
         assert_eq!(
             dead_name_idents(&glued, min),

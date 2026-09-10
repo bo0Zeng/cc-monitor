@@ -423,7 +423,8 @@ mod tests {
         // ★★ `K-H2c` `KH2C3`：人手写的**顶层那一把一个字节没动** ——
         //    「不许顺手删它」在**写这条路上**的兑现（读那条路由 `creds-core` 那两条钉）。
         assert_eq!(
-            back[store::KEY_FIELD], "OLD",
+            back[store::KEY_FIELD],
+            "OLD",
             "写侧把顶层那一把盖掉了 —— 那是老用户手上那份文件里唯一那把 key"
         );
         // 非空对照：界面那一份**确实**是旧的（不是「它碰巧一样」让上面恒真）。
@@ -437,7 +438,10 @@ mod tests {
         let ib = guard_core::find_pinned(&text, "accounts").expect("accounts 应当恰好出现一处");
         let ic = guard_core::find_pinned(&text, "brand_new").expect("brand_new 应当恰好出现一处");
         let id = guard_core::find_pinned(&text, "my_own").expect("my_own 应当恰好出现一处");
-        assert!(ia < ib && ib < ic && ic < id, "落盘不是按键名排序的：{text}");
+        assert!(
+            ia < ib && ib < ic && ic < id,
+            "落盘不是按键名排序的：{text}"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -477,11 +481,13 @@ mod tests {
         let row = &back["accounts"]["acct-x"];
         // ★★ 承重的两格排最前。
         assert_eq!(
-            row[store::AUTH_STYLE_FIELD], "x-api-key",
+            row[store::AUTH_STYLE_FIELD],
+            "x-api-key",
             "写侧把手编的 auth_style 吃掉了 —— 症状是鉴权头悄悄退回默认那一种：{back}"
         );
         assert_eq!(
-            row[store::BASE_URL_FIELD], "https://gw.example.com/anthropic",
+            row[store::BASE_URL_FIELD],
+            "https://gw.example.com/anthropic",
             "写侧把手编的 base_url 吃掉了 —— 症状是上游悄悄退回默认端点：{back}"
         );
         // key 真的换了（不然上面两格可能只是因为整份文件没被动过）。
@@ -491,7 +497,9 @@ mod tests {
         // ★ 非空对照：**别的那一条**一个字节没动。
         assert_eq!(back["accounts"]["acct-y"][store::KEY_FIELD], "Y");
         assert!(
-            back["accounts"]["acct-y"].get(store::AUTH_STYLE_FIELD).is_none(),
+            back["accounts"]["acct-y"]
+                .get(store::AUTH_STYLE_FIELD)
+                .is_none(),
             "写侧给没写过 auth_style 的那一条**凭空加**了一格：{back}"
         );
 
@@ -638,7 +646,10 @@ mod tests {
         // 盘上那一格逐字在 `accounts.<末段名>` 底下（形状那一维，与上面的行为那一维分开）。
         let back: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&p).expect("读回")).expect("解析");
-        assert_eq!(back[store::ACCOUNTS_FIELD]["acct-one"][store::KEY_FIELD], "KEY-FOR-ONE");
+        assert_eq!(
+            back[store::ACCOUNTS_FIELD]["acct-one"][store::KEY_FIELD],
+            "KEY-FOR-ONE"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -722,7 +733,10 @@ mod tests {
             "一份全新的文件被写出了顶层那一格：{back}"
         );
         // 非空对照：这一趟**确实**写进去了（不是整份空着让上面恒真）。
-        assert_eq!(back[store::ACCOUNTS_FIELD]["acct-fresh"][store::KEY_FIELD], "KEY-FRESH");
+        assert_eq!(
+            back[store::ACCOUNTS_FIELD]["acct-fresh"][store::KEY_FIELD],
+            "KEY-FRESH"
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1229,8 +1243,9 @@ mod tests {
                 .map(|(_, s)| *s)
                 .unwrap_or_else(|| panic!("登记表里的文件 {file} 没被采集 —— 取法坏了"));
             let src = guard_core::production_code(raw);
-            let at = guard_core::find_pinned(&src, anchor)
-                .unwrap_or_else(|e| panic!("切不出 {file} 的 `{anchor}`（{e}）—— 本条按红处理，不是绿"));
+            let at = guard_core::find_pinned(&src, anchor).unwrap_or_else(|e| {
+                panic!("切不出 {file} 的 `{anchor}`（{e}）—— 本条按红处理，不是绿")
+            });
             let body = brace_block(&src, at)
                 .unwrap_or_else(|| panic!("{file} 的 `{anchor}` 花括号没配平 —— 按红处理"));
 

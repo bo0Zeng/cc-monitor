@@ -479,7 +479,10 @@ mod g6_reach {
 
     /// 全表①：它今天**真能拦住**的形状。`(形状, 样本块体)`
     const CATCHABLE: &[(&str, &str)] = &[
-        ("块体里出现裸 `true`（全体扫，带词边界）", "{ let _ = pid; true }"),
+        (
+            "块体里出现裸 `true`（全体扫，带词边界）",
+            "{ let _ = pid; true }",
+        ),
         ("块的值是 `Some(..)`", "{\n    Some(0)\n}"),
         ("块的值是 `Ok(..)`", "{\n    Ok(())\n}"),
     ];
@@ -495,11 +498,7 @@ mod g6_reach {
             "判红条件是**字面** `true` / `Some(` / `Ok(`；任何恒真表达式都绕得过。\
              本模块头注逐字登记过：这条**刻意不追**，完备性在这里做不到。",
         ),
-        (
-            "恒真比较",
-            "{\n    1 == 1\n}",
-            "同上，等价改写那一族。",
-        ),
+        ("恒真比较", "{\n    1 == 1\n}", "同上，等价改写那一族。"),
         (
             "真实现返回计算值",
             "{\n    PathBuf::from(p.to_string_lossy().to_ascii_lowercase())\n}",
@@ -644,10 +643,7 @@ mod g6_scope_pins {
         (
             format!("//! - **它守的{}**", "性质是"),
             format!("//! - **它扫的{}**", "人群是"),
-            vec![
-                format!("必须{}", "只读"),
-                format!("绝不{}", "写"),
-            ],
+            vec![format!("必须{}", "只读"), format!("绝不{}", "写")],
         )
     }
 
@@ -657,7 +653,10 @@ mod g6_scope_pins {
         let src = include_str!("../readonly_guard.rs");
         let (prop, popu, _) = needles();
         for (what, mark) in [("性质行", &prop), ("人群行", &popu)] {
-            let hits: Vec<&str> = src.lines().filter(|l| l.starts_with(mark.as_str())).collect();
+            let hits: Vec<&str> = src
+                .lines()
+                .filter(|l| l.starts_with(mark.as_str()))
+                .collect();
             assert_eq!(
                 hits.len(),
                 1,

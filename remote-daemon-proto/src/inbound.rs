@@ -75,8 +75,9 @@ pub const REPLY_CHANNEL_CAPACITY: usize = 256;
 ///   这里原先写的是 `hello_commands_match_the_dispatch_table`，**那个符号全仓零定义**
 ///   （`U8a-2d` 换掉的），而同一份文件的 `mod tests` 里自己写着「上一版是 …」——
 ///   **一份文件里，一处当现状说，另一处说它是历史。**
-pub const COMMANDS: &[&str] =
-    &["bus-kill", "bus-list", "bus-send", "cancel", "kill", "launch", "ping", "resolve"];
+pub const COMMANDS: &[&str] = &[
+    "bus-kill", "bus-list", "bus-send", "cancel", "kill", "launch", "ping", "resolve",
+];
 
 /// 在跑的命令登记表：`id` → 取消句柄。
 ///
@@ -407,7 +408,14 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
     CommandSpec {
         name: "bus-send",
         doc_anchor: Some("#### `bus-send`"),
-        codes: &["invalid_args", "not_installed", "rejected", "timed_out", "too_long", "failed"],
+        codes: &[
+            "invalid_args",
+            "not_installed",
+            "rejected",
+            "timed_out",
+            "too_long",
+            "failed",
+        ],
         fields: &["from", "live", "registered", "sent", "to"],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::cc_bus::send_for_inbound(&r.args).map(Some)),
@@ -1329,8 +1337,10 @@ mod structure_guards {
         for spec in super::REGISTRY {
             // F04a：`kill` 也是阻塞档 —— 它要起 tmux 子进程（探测 + kill-session）。
             // P4f：`bus-list` / `bus-send` 同样是阻塞档 —— 它们要起 cc-bus 子进程并等它退出。
-            let expected_blocking =
-                matches!(spec.name, "launch" | "kill" | "bus-list" | "bus-send" | "bus-kill");
+            let expected_blocking = matches!(
+                spec.name,
+                "launch" | "kill" | "bus-list" | "bus-send" | "bus-kill"
+            );
             let is_blocking = matches!(spec.run, Run::Blocking(_));
             assert_eq!(
                 is_blocking, expected_blocking,

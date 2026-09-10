@@ -92,10 +92,7 @@ mod tests {
     ///
     /// 键是**仓根相对路径**；`Cargo.lock` 里列的是**整个依赖图**（含传递依赖）
     /// ⇒ 比读 manifest 严一档：有人经由第三个 crate 把引擎间接链进 daemon，这里也看得见。
-    const LOCKS: &[&str] = &[
-        "src-tauri/Cargo.lock",
-        "remote-daemon-proto/Cargo.lock",
-    ];
+    const LOCKS: &[&str] = &["src-tauri/Cargo.lock", "remote-daemon-proto/Cargo.lock"];
 
     /// **登记表②**：上面那几份里，**允许**含引擎那个包的是哪几份。
     ///
@@ -256,8 +253,7 @@ mod tests {
         let opens = open_sites(&root, &open_needle());
         let total: usize = opens.iter().map(|(_, n)| n).sum();
         assert_eq!(
-            total,
-            1,
+            total, 1,
             "monitor 树的生产段里打开引擎的处数是 {total}（该是 1）：{opens:?}\n\
              **多出来的**：第二处 = 第二条连接（`panorama.rs` 自己记着那条事故）；\
              而对 `KW2D3` 还多一层意思 —— 解析在本机侧多了一个入口，\
@@ -317,9 +313,7 @@ mod tests {
         let needle = open_needle();
 
         // ① 针一单断（链接面）：daemon 的 lock 里长出引擎那个包 ⇒ 认得出。
-        let synthetic_lock = format!(
-            "[[package]]\nname = \"{dashed}\"\nversion = \"0.1.0\"\n",
-        );
+        let synthetic_lock = format!("[[package]]\nname = \"{dashed}\"\nversion = \"0.1.0\"\n",);
         assert!(
             lock_has_engine(&synthetic_lock, &dashed),
             "针一瞎了：lock 里的引擎包没被认出来"
@@ -388,10 +382,7 @@ mod tests {
             "针四瞎了：引擎类型的导入没被认出来"
         );
         assert!(
-            !guard_core::contains_word(
-                &format!("let s = \"{underscored}x\";"),
-                &underscored
-            ),
+            !guard_core::contains_word(&format!("let s = \"{underscored}x\";"), &underscored),
             "针四把撑大了的词当成了导入 —— 匹配单位比事实小的那一族"
         );
 

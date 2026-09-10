@@ -72,8 +72,8 @@ mod ssh_source;
 // **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux 目标守卫、
 // `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；
 // 加 `cfg(test)` 就是把这件事写进类型系统，顺带消掉 5 条 dead_code 警告。
-mod arch_doc_shape_guard; // F19：顶层架构文档的结构性存在钉（必须覆盖 backend 边界 / 零轮询 / 两条链）+ 形状钉（逐文件模块表不许长回来）
 mod agent_dispatch_registry; // K-W1B D2：桌面侧「通用层认得出某个 adapter」的地方逐条登记 + 递减棘轮（整体 #[cfg(test)]；刻意不叫 agent_boundary_guard —— daemon 侧已有同名异职模块，来历见该模块头注）
+mod arch_doc_shape_guard; // F19：顶层架构文档的结构性存在钉（必须覆盖 backend 边界 / 零轮询 / 两条链）+ 形状钉（逐文件模块表不许长回来）
 /// U1a：`shared/ccm` 的强度契约（仅测试构建）。U9 迁移后由同一份 `measure()` 对拍新构造点。
 ///
 /// ⚠ **插在这里、不要插在上面那条注释与 `#[cfg(test)]` 之间。** U1a 初版就插错了位置，
@@ -106,9 +106,9 @@ mod lockfile_conflict_guard; // audit-0805 F16：两份 lock 的真冲突必须�
 mod needle_anchor_registry; // audit-0805 F24：匹配单位不许比事实小（F23 的兄弟族）
 #[cfg(test)]
 mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半；内部整体 cfg(test)）
-// EF01（plugin-split）：`E4` 的四候选 × 两轴分类表落成会红的登记表（整体 `#[cfg(test)]`）。
-// ⚠ 注释刻意写在上一行而不是行尾：本模块有一条判据要断言「生产段里没人消费这张表」，
-//   而 `lib.rs` 的这行声明是它存在的方式、不是消费 —— 那条判据按**整行相等**放行它。
+                   // EF01（plugin-split）：`E4` 的四候选 × 两轴分类表落成会红的登记表（整体 `#[cfg(test)]`）。
+                   // ⚠ 注释刻意写在上一行而不是行尾：本模块有一条判据要断言「生产段里没人消费这张表」，
+                   //   而 `lib.rs` 的这行声明是它存在的方式、不是消费 —— 那条判据按**整行相等**放行它。
 mod plugin_class_registry;
 mod polling_registry; // U7-P：前端 + shared/ccm 的周期唤醒清账（daemon 那条零定时器护栏点名要「单独论证」的那半）
 mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）

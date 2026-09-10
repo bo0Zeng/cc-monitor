@@ -852,7 +852,9 @@ pub(crate) const MONITOR_BUS_ID: &str = "cc-monitor";
 async fn send_via_local_daemon(id: &str, text: &str) -> Result<String, String> {
     use crate::inbound_client::{client_for, LOCAL_ORIGIN};
     let Some(client) = client_for(LOCAL_ORIGIN) else {
-        return Err("本机 daemon 通道没起来 —— 发消息要经它（设置里可以起/停本机 daemon）。".into());
+        return Err(
+            "本机 daemon 通道没起来 —— 发消息要经它（设置里可以起/停本机 daemon）。".into(),
+        );
     };
     // ★ **以谁的身份发**〔08-13 实测〕：不给 `from` 的话，daemon 跑 `cc-send` 时不在任何
     //   tmux pane 里，`cc-whoami` 解不出身份 ⇒ 收信人看到「来自 unknown」，
@@ -1806,14 +1808,18 @@ mod tests {
     #[test]
     fn adding_a_column_to_agents_tsv_does_not_break_the_reader() {
         // 老格式（3 列）——用户机器上那 86 行今天还是这个形状
-        let (old, bad_old) = parse_agents_tsv("a_cc	a_cc:0.0	2026-07-18T07:26:31-07:00
-");
+        let (old, bad_old) = parse_agents_tsv(
+            "a_cc	a_cc:0.0	2026-07-18T07:26:31-07:00
+",
+        );
         assert_eq!(old.len(), 1, "老三列行读不出来了");
         assert_eq!(bad_old, 0);
         assert_eq!(old[0].pane, "a_cc:0.0");
         // 新格式（4 列，第 4 列是 pane 根进程 pid）
-        let (new, bad_new) = parse_agents_tsv("b_cc	b_cc:0.0	2026-08-13T00:00:00-07:00	12345
-");
+        let (new, bad_new) = parse_agents_tsv(
+            "b_cc	b_cc:0.0	2026-08-13T00:00:00-07:00	12345
+",
+        );
         assert_eq!(new.len(), 1, "四列行被当成坏行了 —— 加一列就把驾驶舱清空了");
         assert_eq!(bad_new, 0);
         assert_eq!(new[0].id, "b_cc");
@@ -1830,8 +1836,10 @@ b_cc	b_cc:0.0	ts	12345
         assert_eq!(both.len(), 2, "新老混排时丢了行");
         assert_eq!(bad_both, 0);
         // 字段**不够**仍要算坏行（别把"宽容多列"做成"什么都收"）
-        let (short, bad_short) = parse_agents_tsv("c_cc	c_cc:0.0
-");
+        let (short, bad_short) = parse_agents_tsv(
+            "c_cc	c_cc:0.0
+",
+        );
         assert!(short.is_empty());
         assert_eq!(bad_short, 1, "两列行该算坏行");
     }
@@ -1850,9 +1858,21 @@ b_cc	b_cc:0.0	ts	12345
             json!({"id": "c_cc", "live": null}),
         ];
         assert_eq!(live_of(&agents, "a_cc"), Some(true));
-        assert_eq!(live_of(&agents, "b_cc"), Some(false), "确定不在线要答得出来");
-        assert_eq!(live_of(&agents, "c_cc"), None, "live=null 是「问不到」，不是「不在」");
-        assert_eq!(live_of(&agents, "nobody_cc"), None, "不在名单里也是「答不上」");
+        assert_eq!(
+            live_of(&agents, "b_cc"),
+            Some(false),
+            "确定不在线要答得出来"
+        );
+        assert_eq!(
+            live_of(&agents, "c_cc"),
+            None,
+            "live=null 是「问不到」，不是「不在」"
+        );
+        assert_eq!(
+            live_of(&agents, "nobody_cc"),
+            None,
+            "不在名单里也是「答不上」"
+        );
     }
 
     /// ★★ **广播不许再打进幽灵收件箱**〔P4f 08-13，用户机器上实测出来的〕。
@@ -1892,7 +1912,10 @@ b_cc	b_cc:0.0	ts	12345
         ];
         let plan = pick_broadcast_targets(&agents, MONITOR_BUS_ID);
         assert_eq!(plan.targets.len(), 2, "问不到时不许把人全滤掉");
-        assert!(plan.liveness_unknown, "而且要**标出来**是问不到，不是装作知道");
+        assert!(
+            plan.liveness_unknown,
+            "而且要**标出来**是问不到，不是装作知道"
+        );
         assert_eq!(plan.skipped_offline, 0);
         let said = describe_broadcast(&plan, 2, &[]);
         assert!(said.contains("问不到谁在线"), "话没说清：{said}");
@@ -1911,10 +1934,7 @@ b_cc	b_cc:0.0	ts	12345
         assert!(said.contains("跳过 78 个"), "跳过的没说：{said}");
         assert!(said.contains("1 个失败"), "失败的没说：{said}");
         // 老路那句话的形状（把所有人算成一个 N）不许回来
-        assert!(
-            !said.contains("已向 79"),
-            "又把跳过的算进总数了：{said}"
-        );
+        assert!(!said.contains("已向 79"), "又把跳过的算进总数了：{said}");
     }
 
     /// ★★ **三态在线不许在讲人话这一层被抹平**〔P4f 08-13，变异 M2 逼出来的〕。

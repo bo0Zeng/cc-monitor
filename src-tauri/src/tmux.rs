@@ -1468,9 +1468,8 @@ mod tests {
 
         // ── ① 本侧只有一个声明 ────────────────────────────────────────────
         let decl_prefix = format!("{}: &str =", "UTF8_CLIENT_FLAG");
-        guard_core::find_pinned(&prod, &decl_prefix).unwrap_or_else(|e| {
-            panic!("本文件生产段里 `{decl_prefix}` 不是恰好一处：{e}")
-        });
+        guard_core::find_pinned(&prod, &decl_prefix)
+            .unwrap_or_else(|e| panic!("本文件生产段里 `{decl_prefix}` 不是恰好一处：{e}"));
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("src-tauri 的上级 = 仓根");
@@ -1594,7 +1593,10 @@ mod tests {
     #[test]
     fn the_prevention_layer_and_the_door_layer_coexist_on_the_same_command() {
         let sk = build_send_keys_remote_cmd("e2e-custom", "CCMPROBE", true).unwrap();
-        assert!(sk.contains("tmux -u display-message"), "K-R12 那层不在了：{sk}");
+        assert!(
+            sk.contains("tmux -u display-message"),
+            "K-R12 那层不在了：{sk}"
+        );
         assert!(
             sk.contains("w=\"${info%%$tab*}\"") && sk.contains("sid=\"${info#*$tab}\""),
             "K-R23 的 shell 原生拆被动过了：{sk}"
@@ -1610,7 +1612,10 @@ mod tests {
         // `-u` 必须落在 `command -v tmux` 那道门**之后** ⇒ 「远端没装 tmux」那一档零变化。
         let gate_at = sk.find("command -v tmux").expect("门控没了");
         let u_at = sk.find("tmux -u").expect("K-R12 那层不在了");
-        assert!(gate_at < u_at, "`-u` 跑到了 `command -v tmux` 门控前面：{sk}");
+        assert!(
+            gate_at < u_at,
+            "`-u` 跑到了 `command -v tmux` 门控前面：{sk}"
+        );
     }
 
     /// ★★ **K-R12 `J1` 死值验（monitor 这一侧）：段数下溢必须被判废。**
@@ -1627,8 +1632,14 @@ mod tests {
         const CLEAN: &str = "kr12\t/tmp/kr12dv/文档/proj\tbash\t0\t1\tcc-deadval1";
         const OVERFLOW: &str = "kr12\t/tmp/a\tb\tbash\t0\t1\tcc-deadval1";
 
-        assert!(tmux_tab_underflow(DIRTY, TMUX_LS_FMT_FIELDS), "真脏字节必须判下溢");
-        assert!(!tmux_tab_underflow(CLEAN, TMUX_LS_FMT_FIELDS), "干净六段不许红");
+        assert!(
+            tmux_tab_underflow(DIRTY, TMUX_LS_FMT_FIELDS),
+            "真脏字节必须判下溢"
+        );
+        assert!(
+            !tmux_tab_underflow(CLEAN, TMUX_LS_FMT_FIELDS),
+            "干净六段不许红"
+        );
         assert!(
             !tmux_tab_underflow(OVERFLOW, TMUX_LS_FMT_FIELDS),
             "过溢是合法内容 ⇒ 判据不许红（这一格就是「下溢」而不是「不等于 6」的死值）"

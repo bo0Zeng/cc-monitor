@@ -920,8 +920,9 @@ mod spawn_registry {
                 if rel == "readonly_guard.rs" {
                     continue;
                 }
-                let prod =
-                    crate::guard_support::production_code(&std::fs::read_to_string(&path).expect("read rs"));
+                let prod = crate::guard_support::production_code(
+                    &std::fs::read_to_string(&path).expect("read rs"),
+                );
                 let mut from = 0usize;
                 while let Some(at) = prod[from..].find("Command::new(") {
                     let i = from + at + "Command::new(".len();
@@ -1099,7 +1100,10 @@ mod g6_doctrine {
         }
         // 反向：闭集里那四个名字必须**真的**被认出来，否则上面那条靠「什么都不是格」恒真。
         for (cell, ..) in CELLS {
-            assert!(is_cell(cell), "闭集自己的 `{cell}` 都认不出来 —— `is_cell` 坏了，上面那条在空转");
+            assert!(
+                is_cell(cell),
+                "闭集自己的 `{cell}` 都认不出来 —— `is_cell` 坏了，上面那条在空转"
+            );
         }
     }
 }
@@ -1512,7 +1516,10 @@ mod g6_scope_pins {
         let (prop, popu) = marks();
         for (rel, src, _forbidden, _why_empty) in pinned() {
             for (what, mark) in [("性质行", &prop), ("人群行", &popu)] {
-                let hits: Vec<&str> = src.lines().filter(|l| l.starts_with(mark.as_str())).collect();
+                let hits: Vec<&str> = src
+                    .lines()
+                    .filter(|l| l.starts_with(mark.as_str()))
+                    .collect();
                 assert_eq!(
                     hits.len(),
                     1,

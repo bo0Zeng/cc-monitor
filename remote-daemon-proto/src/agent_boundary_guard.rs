@@ -384,7 +384,9 @@ mod tests {
         let lines = production_lines(bad);
         let found = lines.iter().any(|(_, l)| {
             let low = l.to_lowercase();
-            needles().iter().any(|(n, _)| low.contains(&n.to_lowercase()))
+            needles()
+                .iter()
+                .any(|(n, _)| low.contains(&n.to_lowercase()))
         });
         assert!(found, "判定认不出合成的违规样本 —— 正题那条此刻是空转的");
         assert!(!needles().is_empty(), "针表空了 ⇒ 正题恒绿");
@@ -394,7 +396,9 @@ mod tests {
         let clean = production_lines(only_comment);
         let hit_in_comment = clean.iter().any(|(_, l)| {
             let low = l.to_lowercase();
-            needles().iter().any(|(n, _)| low.contains(&n.to_lowercase()))
+            needles()
+                .iter()
+                .any(|(n, _)| low.contains(&n.to_lowercase()))
         });
         assert!(!hit_in_comment, "注释里的写法被当成了真代码");
 
@@ -402,7 +406,9 @@ mod tests {
         let ours = "fn h() {\n    tmux(\"show-options\", \"@ccm_sid\");\n}\n";
         let ours_hit = production_lines(&ours.to_string()).iter().any(|(_, l)| {
             let low = l.to_lowercase();
-            needles().iter().any(|(n, _)| low.contains(&n.to_lowercase()))
+            needles()
+                .iter()
+                .any(|(n, _)| low.contains(&n.to_lowercase()))
         });
         assert!(
             !ours_hit,

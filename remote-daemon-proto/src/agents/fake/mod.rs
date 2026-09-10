@@ -178,7 +178,10 @@ pub(crate) fn usage_rows(home: &Path) -> Vec<String> {
                 };
                 if let Some(u) = v.pointer("/usage") {
                     total += u.get("in").and_then(serde_json::Value::as_i64).unwrap_or(0);
-                    total += u.get("out").and_then(serde_json::Value::as_i64).unwrap_or(0);
+                    total += u
+                        .get("out")
+                        .and_then(serde_json::Value::as_i64)
+                        .unwrap_or(0);
                 }
             }
             if total > 0 {
@@ -530,7 +533,6 @@ pub(crate) const FIXTURE_SESSION_ID: &str = "00000000-0000-4000-8000-0000000000f
 /// 夹具里那条会话的 cwd。
 pub(crate) const FIXTURE_CWD: &str = "/home/u/proj";
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -633,8 +635,14 @@ mod tests {
             !cc::records::is_session_file(&mine),
             "Claude 的判定认出了本层的记录 —— 两种布局同形，`S6` 的正题会变成粉饰的通过：{mine:?}"
         );
-        assert!(!is_session_file(&theirs), "本层认出了 Claude 的记录：{theirs:?}");
-        assert!(cc::records::is_session_file(&theirs), "对照坏了：Claude 认不出自己的记录");
+        assert!(
+            !is_session_file(&theirs),
+            "本层认出了 Claude 的记录：{theirs:?}"
+        );
+        assert!(
+            cc::records::is_session_file(&theirs),
+            "对照坏了：Claude 认不出自己的记录"
+        );
 
         // 3 会话文件命名
         assert_ne!(
@@ -679,7 +687,10 @@ mod tests {
 
         // 8 解析本机 home：Claude 那家**恒有值**（有默认），本层**没有默认**。
         // 这条差别让 `visible_among` 里 `None` 那条分支第一次由一家真实的适配层走过。
-        assert!(cc::home().is_some(), "Claude 那家不再恒 Some 了 —— 本条的对照失效");
+        assert!(
+            cc::home().is_some(),
+            "Claude 那家不再恒 Some 了 —— 本条的对照失效"
+        );
         if std::env::var_os(HOME_ENV).is_none() {
             // 正常状态：这个变量只有本夹具会用，机器上不会有人设它。
             assert!(home().is_none(), "本层在没有 {HOME_ENV} 时不该答得出 home");
@@ -691,7 +702,10 @@ mod tests {
         assert_ne!(DEFAULT_COMMAND, cx::resume::DEFAULT_COMMAND);
         assert_ne!(SESSION_NAME_PREFIX, cc::resume::SESSION_NAME_PREFIX);
         assert_ne!(SESSION_NAME_PREFIX, cx::resume::SESSION_NAME_PREFIX);
-        assert_ne!(resume_command("b", "s"), cc::resume::resume_command("b", "s"));
+        assert_ne!(
+            resume_command("b", "s"),
+            cc::resume::resume_command("b", "s")
+        );
         assert_ne!(
             resume_command("b", "s"),
             cx::resume::resume_command("b", "s"),
@@ -887,10 +901,8 @@ mod tests {
         );
 
         // ② 搜索：**静默**（rc=0）。
-        let rc = crate::observe::search_query::run(
-            &root,
-            &["--search".to_string(), "hi".to_string()],
-        );
+        let rc =
+            crate::observe::search_query::run(&root, &["--search".to_string(), "hi".to_string()]);
         assert_eq!(
             rc, 0,
             "`--search` 的反应变了 —— 本格记的是「今天它 rc=0 零输出」这个事实，\
@@ -912,9 +924,8 @@ mod tests {
         assert_eq!(rc, 0, "`--session-accounts` 的反应变了");
 
         // ④ resume：**静默按 Claude 跑** —— 本件实测到的最坏一种。
-        let spec = format!(
-            "{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}"
-        );
+        let spec =
+            format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}");
         let plan = crate::control::resolve_query::resolve_json_for_inbound(&spec)
             .expect("`--resolve` 对未知 agentKind 今天不报错（这正是本格要记的）");
         assert_eq!(

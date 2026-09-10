@@ -314,7 +314,9 @@ mod death_event_leg_tests {
             arms.iter()
                 .find(|(c, _)| *c == cfg)
                 .map(|(_, b)| b.trim().to_string())
-                .unwrap_or_else(|| panic!("找不到 `{cfg}` 那条臂 —— 两条臂的 cfg 被换过了：{arms:?}"))
+                .unwrap_or_else(|| {
+                    panic!("找不到 `{cfg}` 那条臂 —— 两条臂的 cfg 被换过了：{arms:?}")
+                })
         };
         assert_eq!(
             arm_of("#[cfg(not(target_os = \"linux\"))]"),

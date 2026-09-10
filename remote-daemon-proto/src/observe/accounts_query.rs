@@ -335,8 +335,8 @@ fn json_str(v: Option<&str>) -> serde_json::Value {
 // 与 `platform::proc::proc_starttime` 逐字同语义（都返回 boot 起的 jiffies，解析都是
 // `nth(22-3)`），只是这一份把解析内联了、那一份走 `parse_starttime_from_stat`。
 // 合并前**逐条核过单位**：单位不同的话它们就不是重复，合并就是引 bug。
-use crate::common::fs::read_regular_capped;
 use crate::agents::claudecode::accounts as cc_accounts;
+use crate::common::fs::read_regular_capped;
 use crate::platform::proc::{proc_env_var, proc_starttime, EnvRead};
 
 /// 从 pidfile 字节里取 `procStart`（CC 写的是 starttime ticks 的十进制字符串；容忍裸数字）。
@@ -1127,10 +1127,7 @@ mod tests {
             "「该拒」的人群只剩 {} 格 —— 分母塌了",
             refused.len()
         );
-        let leaked: Vec<&String> = refused
-            .iter()
-            .filter(|p| is_safe_config_dir(p))
-            .collect();
+        let leaked: Vec<&String> = refused.iter().filter(|p| is_safe_config_dir(p)).collect();
         assert!(
             leaked.is_empty(),
             "这些危险形状被放进来了（分母 {} 格，逐个点名）：{leaked:?}\n\
@@ -1754,8 +1751,7 @@ mod tests {
                  ⇒ 一条真跑在账号 Z 下的会话会被报成账号 0 的，而 `alive` 仍是 `true`、无声无息。"
             );
             assert_eq!(
-                by[sid]["bare"],
-                false,
+                by[sid]["bare"], false,
                 "\n🔴 {sid}：`bare:true` 的含义是「进程活着、**读到了**、就是没设那个变量」。\n\
                  这一刻根本没读到 ⇒ 它说不出这句话。"
             );
@@ -2010,10 +2006,16 @@ mod tests {
     #[test]
     fn the_auth_dimension_has_exactly_one_computation_path() {
         let me = include_str!("accounts_query.rs");
-        assert!(me.len() > 20_000, "include_str! 没读到源码，本条在空转（实得 {} 字节）", me.len());
+        assert!(
+            me.len() > 20_000,
+            "include_str! 没读到源码，本条在空转（实得 {} 字节）",
+            me.len()
+        );
         // 只看生产段：`#[cfg(test)]` 之前的那一半（本文件的测试段自己就会提到这些名字）。
         let marker = "#[cfg(test)]";
-        let cut = me.find(marker).expect("找不到 #[cfg(test)] 锚点 —— 切法失效了");
+        let cut = me
+            .find(marker)
+            .expect("找不到 #[cfg(test)] 锚点 —— 切法失效了");
         let prod_with_comments = &me[..cut];
         assert!(
             prod_with_comments.len() > 15_000,
@@ -2253,7 +2255,10 @@ mod tests {
             "头注只切出 {} 字节 —— 切法坏了，③ 那格会零命中地绿",
             header.len()
         );
-        for (what, hay) in [("doc/IPC-PROTOCOL.md 那一行", row), ("本文件头注", header.as_str())] {
+        for (what, hay) in [
+            ("doc/IPC-PROTOCOL.md 那一行", row),
+            ("本文件头注", header.as_str()),
+        ] {
             for key in ["CLAUDE_CONFIG_DIR", LAUNCH_ID_ENV] {
                 assert!(
                     hay.contains(key),

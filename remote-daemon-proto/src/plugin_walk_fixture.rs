@@ -171,7 +171,8 @@ mod tests {
     fn script_text(name: &str) -> String {
         let lines: Vec<String> = vec![
             "#!/bin/sh".to_string(),
-            "# 夹具用的假插件 —— 一个可执行文件 + 子命令。刻意与仓里那个真插件族不同形。".to_string(),
+            "# 夹具用的假插件 —— 一个可执行文件 + 子命令。刻意与仓里那个真插件族不同形。"
+                .to_string(),
             "case \"$1\" in".to_string(),
             format!("  {PROBE_SUB})"),
             format!("    printf 'name={name}\\n'"),
@@ -270,7 +271,10 @@ mod tests {
     /// `Some(false)`（**确证没装**）⇒ 列进表；`Some(true)` ⇒ 不列；
     /// `None`（**判不出来**）⇒ **不列**（「不知道」不许倒向「做不到」——
     /// 倒错那一侧会让能用的功能从界面上无声消失）。
-    fn unavailable_from_plugin(installed: Option<bool>, code: &str) -> Vec<crate::wire::Unavailable> {
+    fn unavailable_from_plugin(
+        installed: Option<bool>,
+        code: &str,
+    ) -> Vec<crate::wire::Unavailable> {
         let mut out = Vec::new();
         if installed == Some(false) {
             for spec in crate::inbound::REGISTRY {
@@ -547,11 +551,12 @@ mod tests {
         let text = String::from_utf8_lossy(&out.stdout).into_owned();
         // ★ `why` 原样带上通用口那句话：它会**点名缺的那一个 token**，
         //   而不是「缺能力」四个字，也不是「调用失败」（`probe` 那 8 条判据守的就是这个）。
-        let answer =
-            crate::plugin::probe::negotiate(&text, &name, required).map_err(|e| Stop::Rejected {
+        let answer = crate::plugin::probe::negotiate(&text, &name, required).map_err(|e| {
+            Stop::Rejected {
                 hop: HOPS[3],
                 why: e.message(),
-            })?;
+            }
+        })?;
         done.push(HOPS[3]);
 
         // ── 跳⑦ 拿码摘诊断：真活两趟（一趟被拒、一趟成事）─────────────────
@@ -560,12 +565,13 @@ mod tests {
             knowledge: KNOWLEDGE[4],
         })?;
         let (work_argv, work_env) = work();
-        let refused = crate::plugin::invoke::run(&bin, &work_argv, DEADLINE_SECS, &[]).map_err(
-            |e| Stop::CouldNotStart {
-                hop: HOPS[4],
-                why: why_not_run(e),
-            },
-        )?;
+        let refused =
+            crate::plugin::invoke::run(&bin, &work_argv, DEADLINE_SECS, &[]).map_err(|e| {
+                Stop::CouldNotStart {
+                    hop: HOPS[4],
+                    why: why_not_run(e),
+                }
+            })?;
         let sealed = crate::plugin::invoke::run(&bin, &work_argv, DEADLINE_SECS, &work_env)
             .map_err(|e| Stop::CouldNotStart {
                 hop: HOPS[4],
@@ -1041,7 +1047,10 @@ mod tests {
                     w.done
                 ),
                 Err(Stop::MissingKnowledge { hop, knowledge }) => {
-                    assert!(HOPS.contains(&hop), "停在一个不认识的跳 `{hop}`（挖的是「{k}」）");
+                    assert!(
+                        HOPS.contains(&hop),
+                        "停在一个不认识的跳 `{hop}`（挖的是「{k}」）"
+                    );
                     assert!(
                         KNOWLEDGE.contains(&knowledge),
                         "停下来时报的知识 `{knowledge}` 不在登记表里（挖的是「{k}」）"
@@ -1110,7 +1119,10 @@ mod tests {
             );
         }
         assert!(err.contains("刻意不兜"), "调用方那句尾巴丢了：{err}");
-        assert!(err.contains("PATH 上的 0 个目录"), "PATH 那一半说错了：{err}");
+        assert!(
+            err.contains("PATH 上的 0 个目录"),
+            "PATH 那一半说错了：{err}"
+        );
         assert!(
             !err.contains("失败"),
             "归因说成了「失败」—— 那正是这条判据要挡的笼统说法：{err}"
@@ -1178,7 +1190,10 @@ mod tests {
                         );
                     }
                     assert!(why.contains("刻意不兜"), "调用方那句尾巴丢了：{why}");
-                    assert!(why.contains("PATH 上的 0 个目录"), "PATH 那一半说错了：{why}");
+                    assert!(
+                        why.contains("PATH 上的 0 个目录"),
+                        "PATH 那一半说错了：{why}"
+                    );
                 }
                 other => panic!(
                     "去掉执行位之后没停在跳④ 的「找不到」上，而是：{other:?}\n\
@@ -1291,8 +1306,7 @@ mod tests {
             .map(|_| REGISTRY_OWNED_CODE.to_string())
             .expect("没装却说找到了");
         assert_eq!(
-            after,
-            missing[0].code,
+            after, missing[0].code,
             "事前说的与事后回的不是同一个词 —— `wire.rs` 那个字段的头注逐字要求\
              「事前与事后是同一句话，只是来得早」"
         );
@@ -1605,11 +1619,7 @@ mod tests {
         );
         assert_eq!(
             handed.1,
-            vec![
-                "5".to_string(),
-                "/opt/p/tool".to_string(),
-                "x".to_string()
-            ],
+            vec!["5".to_string(), "/opt/p/tool".to_string(), "x".to_string()],
             "argv 的形状变了 —— 本格据它说「argv 里没有回程端点」"
         );
 
@@ -1845,12 +1855,11 @@ mod tests {
         // 只断言那两个键的话，本格买到的是「**这两个**秘密没漏」；
         // 断言 ⊆ 之后买到的是「**任何**不在白名单里的键都漏不出去」——
         // 而后者才是 `env_clear` 那一刀真正的性质（明天多一个秘密键，本格照样咬得住）。
-        let allowed: std::collections::BTreeSet<String> =
-            crate::plugin::invoke::INHERITED_ENV_KEYS
-                .iter()
-                .map(|(k, _)| (*k).to_string())
-                .chain(std::iter::once(REALM_ENV.to_string()))
-                .collect();
+        let allowed: std::collections::BTreeSet<String> = crate::plugin::invoke::INHERITED_ENV_KEYS
+            .iter()
+            .map(|(k, _)| (*k).to_string())
+            .chain(std::iter::once(REALM_ENV.to_string()))
+            .collect();
         let leaked: Vec<&String> = child.difference(&allowed).collect();
         assert!(
             leaked.is_empty(),
@@ -1943,9 +1952,8 @@ mod tests {
         //
         // ⚠ 分母：`cc_bus_boundary_guard` 那 5 根针的**词**住它自己那份源码里，
         //   这里不复述成第二份字面量（`brief` 13b）—— 只断言「它的语料里一个本夹具的词都没有」。
-        let their_guard = crate::guard_support::production_code(include_str!(
-            "cc_bus_boundary_guard.rs"
-        ));
+        let their_guard =
+            crate::guard_support::production_code(include_str!("cc_bus_boundary_guard.rs"));
         let vocab = fixture_vocabulary();
         let covered: Vec<&str> = vocab
             .iter()

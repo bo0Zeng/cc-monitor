@@ -179,7 +179,10 @@ pub(crate) fn announce(
             .map(|s| s.field_value())
             .collect::<Vec<_>>()
             .join(" | ");
-        let _ = writeln!(out, "[relay] credentials: auth_style must be one of: {legal}");
+        let _ = writeln!(
+            out,
+            "[relay] credentials: auth_style must be one of: {legal}"
+        );
         n += 1;
     }
 
@@ -201,7 +204,10 @@ pub(crate) fn announce(
     //    掩码是给界面看的；日志是给运维看的，运维不需要认出是哪一把。
     //    ⚠ 行数印的是**进了表的**那个数，不是文件里写了几条 —— 两者不一样时上面已经逐条说过了。
     if rows > 0 {
-        let _ = writeln!(out, "[relay] credentials: configured, {rows} account(s) routable");
+        let _ = writeln!(
+            out,
+            "[relay] credentials: configured, {rows} account(s) routable"
+        );
     } else {
         let _ = writeln!(out, "[relay] credentials: not configured");
         // ⚠ 文件不在时**连模板一起印** —— 否则「导入」这条要靠猜（`KS9` 逐字）。
@@ -324,7 +330,10 @@ mod tests {
         let loaded = load(&p);
         assert!(loaded.accounts.is_empty());
         let problem = loaded.problem.expect("读坏了必须有说法");
-        assert!(problem.contains("手编"), "说法没告诉人这是手编的文件：{problem}");
+        assert!(
+            problem.contains("手编"),
+            "说法没告诉人这是手编的文件：{problem}"
+        );
 
         // 非空对照：文件**不存在**时 `problem` 是 `None`（「还没配」不是「坏了」）。
         let missing = load(&home.join("nope.json"));
@@ -366,7 +375,10 @@ mod tests {
         let mut buf2: Vec<u8> = Vec::new();
         announce_all(&load(&p), &mut buf2);
         let text2 = String::from_utf8(buf2).expect("utf8");
-        assert!(!text2.contains("permissions too wide"), "收紧后仍在出声：{text2}");
+        assert!(
+            !text2.contains("permissions too wide"),
+            "收紧后仍在出声：{text2}"
+        );
         let _ = std::fs::remove_dir_all(&home);
     }
 
@@ -407,7 +419,10 @@ mod tests {
         announce_all(&loaded, &mut buf);
         let text = String::from_utf8(buf).expect("utf8");
         assert!(text.contains("not configured"));
-        assert!(text.contains(store::KEY_FIELD), "模板里没点名那个字段：{text}");
+        assert!(
+            text.contains(store::KEY_FIELD),
+            "模板里没点名那个字段：{text}"
+        );
         assert!(text.contains("plain JSON"), "没说清它是明文 JSON：{text}");
         // 路径**总是**印（`KS9` 的「文档化」）。
         assert!(text.contains(store::FILE_NAME), "没印出路径：{text}");

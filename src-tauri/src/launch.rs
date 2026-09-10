@@ -1136,7 +1136,10 @@ mod tests {
         ];
         // 反空真：这三形本来就该是三个不同的串（否则下面三条里有两条是同一条）。
         assert_eq!(
-            payloads.iter().collect::<std::collections::BTreeSet<_>>().len(),
+            payloads
+                .iter()
+                .collect::<std::collections::BTreeSet<_>>()
+                .len(),
             3,
             "三个 payload 里有重复 —— 本条的输入域没有真的打开"
         );
@@ -1500,7 +1503,10 @@ mod tests {
             prefix.contains("ANTHROPIC_BASE_URL") && !prefix.is_empty(),
             "生产那一处渲染器没渲出中转注入 —— 本条按红处理：{prefix:?}"
         );
-        let payload = format!("{prefix}printf '%s' \"$ANTHROPIC_BASE_URL\" > {}", seen.display());
+        let payload = format!(
+            "{prefix}printf '%s' \"$ANTHROPIC_BASE_URL\" > {}",
+            seen.display()
+        );
         // 反空真②：观测点在**进程那一侧**，起手它必须不存在。
         assert!(!seen.exists(), "起手观测文件就在了 —— 本条会读到上一趟的痕");
 
@@ -1574,7 +1580,10 @@ mod tests {
         );
         let payload = format!("{prefix}printf ok");
         // 反空真②：观测点起手必须不存在。
-        assert!(!recorded.exists(), "起手观测文件就在了 —— 本条会读到上一趟的痕");
+        assert!(
+            !recorded.exists(),
+            "起手观测文件就在了 —— 本条会读到上一趟的痕"
+        );
 
         // ★★ `K-R24`：这一处先前是 `.expect("spawn 假终端应成功")` —— 一个读数装着
         //    「spawn 坏了」与「exec 那一刻撞上 `ETXTBSY`」两件事。现在两件各有各的话。
@@ -1615,7 +1624,10 @@ mod tests {
             Vec::new()
         };
         let _ = std::fs::remove_dir_all(&dir);
-        assert!(landed, "5s 内那个终端什么都没写下来 —— 开窗那一支的 spawn 没真跑");
+        assert!(
+            landed,
+            "5s 内那个终端什么都没写下来 —— 开窗那一支的 spawn 没真跑"
+        );
         assert_eq!(
             got,
             vec![
@@ -1697,7 +1709,10 @@ mod tests {
         //    而不是权限被拒 ⇒ **这条腿自己变成偶发红**。
         //    不存在的路径**不可能被谁开着写** ⇒ 这一腿的前提是恒成立的，不需要建立也不需要检查。
         let missing = dir.join("no-such-terminal-here");
-        assert!(!missing.exists(), "这条腿要一个**不存在**的路径，它却在：{missing:?}");
+        assert!(
+            !missing.exists(),
+            "这条腿要一个**不存在**的路径，它却在：{missing:?}"
+        );
         let refused = spawn_fake_terminal(payload, dir.to_str(), missing.to_str(), 2);
 
         let _ = std::fs::remove_dir_all(&dir);
@@ -1756,7 +1771,8 @@ mod tests {
     fn the_thin_wrapper_hands_the_command_straight_through_to_the_via_form() {
         let prod = guard_core::production_code(include_str!("launch.rs"));
         // 锚点必须**唯一**：Windows 那一份的形参带下划线前缀（`_cmd` / `_cwd`）⇒ 签名不同。
-        let head = "pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {";
+        let head =
+            "pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {";
         let at = guard_core::find_pinned(&prod, head)
             .unwrap_or_else(|e| panic!("`launch_local_posix` 的签名不是恰好一处 —— 先修锚点：{e}"));
         // 花括号配平切体（本文件唯一一处切块，刻意不另造第二种切法）。

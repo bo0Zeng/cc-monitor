@@ -117,7 +117,9 @@ fn search(agent_home: &Path, query: &str, opts: &SearchOpts) -> Result<(), Strin
         .max_depth(2)
         .into_iter()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file() && crate::agents::claudecode::records::is_session_file(e.path()))
+        .filter(|e| {
+            e.file_type().is_file() && crate::agents::claudecode::records::is_session_file(e.path())
+        })
         .map(|e| e.into_path())
         .collect();
 

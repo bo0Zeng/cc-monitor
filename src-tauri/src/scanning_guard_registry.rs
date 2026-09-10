@@ -1208,8 +1208,7 @@ mod tests {
                 .join("\n  ")
         );
 
-        let ceilings: Vec<(String, usize)> =
-            hist.iter().map(|(s, c, _)| (s.clone(), *c)).collect();
+        let ceilings: Vec<(String, usize)> = hist.iter().map(|(s, c, _)| (s.clone(), *c)).collect();
         let counts: Vec<(String, usize)> = hist.iter().map(|(s, _, p)| (s.clone(), *p)).collect();
 
         if let Some((sha, was)) = ratchet_backslide(PENDING_CEILING, &ceilings) {
@@ -1270,8 +1269,16 @@ mod tests {
         );
 
         // 平 / 降：棘轮正着转，一格都不许红。
-        assert_eq!(ratchet_backslide(29, &hist), None, "与历史最低档持平，不许红");
-        assert_eq!(ratchet_backslide(28, &hist), None, "降下去正是要买的动作，不许红");
+        assert_eq!(
+            ratchet_backslide(29, &hist),
+            None,
+            "与历史最低档持平，不许红"
+        );
+        assert_eq!(
+            ratchet_backslide(28, &hist),
+            None,
+            "降下去正是要买的动作，不许红"
+        );
         assert_eq!(ratchet_backslide(0, &hist), None, "降到底，仍然不许红");
 
         // 🔴 **空历史 ⇒ 它回 `None`（绿）**，这一格是**故意钉住的诚实边界**，不是缺陷：
@@ -1286,8 +1293,16 @@ mod tests {
 
         // 解析器那一半：针是运行时拼的，拿它自己拼出来的文本正反各喂一遍。
         let synthetic = format!("    {}{};\n", ceiling_needle(), 7);
-        assert_eq!(ceiling_in(&synthetic), Some(7), "解析器认不出自己那根针拼出来的声明");
-        assert_eq!(ceiling_in("没有这根针的一段文本"), None, "认不出就要回 None，不许默默当 0");
+        assert_eq!(
+            ceiling_in(&synthetic),
+            Some(7),
+            "解析器认不出自己那根针拼出来的声明"
+        );
+        assert_eq!(
+            ceiling_in("没有这根针的一段文本"),
+            None,
+            "认不出就要回 None，不许默默当 0"
+        );
 
         let table = format!(
             "    {}\n        \"a.rs\",\n        \"b.rs\",\n    ];\n",
@@ -1299,6 +1314,10 @@ mod tests {
             Some(0),
             "空表要回 Some(0)，与「找不到那张表」（None）**不是一回事**"
         );
-        assert_eq!(pending_count_in("没有那张表的一段文本"), None, "找不到表就回 None");
+        assert_eq!(
+            pending_count_in("没有那张表的一段文本"),
+            None,
+            "找不到表就回 None"
+        );
     }
 }

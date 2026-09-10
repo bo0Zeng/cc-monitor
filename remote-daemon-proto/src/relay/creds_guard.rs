@@ -95,26 +95,70 @@ mod tests {
     /// ⚠ **这是相等断言的另一半**：扫出来的处数必须等于本表行数。
     /// 加一处日志就要来加一行，那正是要的 —— 逼你说清「这一行记的是什么」。
     const LOG_SITES: &[(&str, &str, &str)] = &[
-        ("server.rs", "[relay] cannot set connection deadline", "装期限失败"),
+        (
+            "server.rs",
+            "[relay] cannot set connection deadline",
+            "装期限失败",
+        ),
         ("server.rs", "[relay] refusing", "在途连接顶满，回 503"),
-        ("server.rs", "[relay] connection ended", "一条连接以错误收尾"),
-        ("server.rs", "[relay] cannot spawn connection thread", "起线程失败"),
+        (
+            "server.rs",
+            "[relay] connection ended",
+            "一条连接以错误收尾",
+        ),
+        (
+            "server.rs",
+            "[relay] cannot spawn connection thread",
+            "起线程失败",
+        ),
         ("server.rs", "[relay] upstream connect failed", "连不上上游"),
-        ("server.rs", "[relay] bad upstream base url", "上游基址解析不了"),
-        ("server.rs", "[relay] cannot bind loopback port", "端口起不来"),
+        (
+            "server.rs",
+            "[relay] bad upstream base url",
+            "上游基址解析不了",
+        ),
+        (
+            "server.rs",
+            "[relay] cannot bind loopback port",
+            "端口起不来",
+        ),
         ("server.rs", "[relay] listening on", "起来了，监听在哪"),
-        ("server.rs", "[relay] listening (addr unknown", "起来了但问不到地址"),
+        (
+            "server.rs",
+            "[relay] listening (addr unknown",
+            "起来了但问不到地址",
+        ),
         (
             "server.rs",
             "[relay] 凭据文件读不成表，**保留上一张表不动**",
             "`D2 阻-2`：重载时解析失败 —— **不把表换成空**（空表 = 全部 404），\
              留住上一张能用的、只出声。这一形是「表可重载」之后新长出来的",
         ),
-        ("creds.rs", "[relay] credentials file:", "凭据文件在哪（`KS9` 路径文档化）"),
-        ("creds.rs", "[relay] credentials problem:", "文件读不动 / 解析不了"),
-        ("creds.rs", "[relay] credentials permissions too wide:", "权限过宽（`KS11`）"),
-        ("creds.rs", "[relay] how to fix:", "怎么修（`KS11` 要求两样都有）"),
-        ("creds.rs", "[relay] credentials permissions unknown:", "查不出权限，也要出声"),
+        (
+            "creds.rs",
+            "[relay] credentials file:",
+            "凭据文件在哪（`KS9` 路径文档化）",
+        ),
+        (
+            "creds.rs",
+            "[relay] credentials problem:",
+            "文件读不动 / 解析不了",
+        ),
+        (
+            "creds.rs",
+            "[relay] credentials permissions too wide:",
+            "权限过宽（`KS11`）",
+        ),
+        (
+            "creds.rs",
+            "[relay] how to fix:",
+            "怎么修（`KS11` 要求两样都有）",
+        ),
+        (
+            "creds.rs",
+            "[relay] credentials permissions unknown:",
+            "查不出权限，也要出声",
+        ),
         (
             "creds.rs",
             "[relay] credentials: this account cannot be used:",
@@ -140,7 +184,11 @@ mod tests {
              它错了的症状是上游的 404 / 401，与「上游挂了」同形，必须在启动时说出来",
         ),
         ("creds.rs", "[relay] credentials: not configured", "没配"),
-        ("creds.rs", "[relay] create that file to configure one", "没配时印模板"),
+        (
+            "creds.rs",
+            "[relay] create that file to configure one",
+            "没配时印模板",
+        ),
     ];
 
     fn relay_dir() -> std::path::PathBuf {
@@ -219,8 +267,7 @@ mod tests {
         // ★ 非空对照：同一把尺子量 monitor 那份 manifest，**必须数得到** `harden`。
         //   没有这一格，上面那个 0 可能只是因为尺子瞎了。
         let theirs = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .join("../src-tauri/Cargo.toml"),
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src-tauri/Cargo.toml"),
         )
         .expect("读不到 monitor 的 Cargo.toml");
         let theirs = guard_core::strip_hash_comment_lines(&theirs);
@@ -274,7 +321,6 @@ mod tests {
             0,
             "daemon 里出现了「把 key 写回文件」的出口：{persist_sites:?}\n\
              裁四逐字：daemon 只许读那份文件，不许写。",
-
         );
     }
 
@@ -389,7 +435,9 @@ mod tests {
                 while let Some(rel) = prod[from..].find(m) {
                     let at = from + rel;
                     from = at + m.len();
-                    let Some(args) = macro_args(&prod, at) else { continue };
+                    let Some(args) = macro_args(&prod, at) else {
+                        continue;
+                    };
                     let (fmt, items) = interpolated(args);
                     if fmt.is_empty() {
                         continue;

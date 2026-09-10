@@ -174,7 +174,14 @@ const PROBE_FMT_FIELDS: usize = 3;
 pub(crate) fn probe(target: &str) -> Result<Option<Probed>, CmdErr> {
     let out = Command::new("tmux")
         // K-R12：`-u` 必须在子命令**之前**（`display-message -u -p` 是 rc=1 的响错）。
-        .args([UTF8_CLIENT_FLAG, "display-message", "-p", "-t", target, PROBE_FMT])
+        .args([
+            UTF8_CLIENT_FLAG,
+            "display-message",
+            "-p",
+            "-t",
+            target,
+            PROBE_FMT,
+        ])
         .stdin(Stdio::null())
         .stderr(Stdio::null())
         .output()
@@ -339,7 +346,10 @@ mod tests {
             );
         }
         // 反向：不许有人把 `-u` 塞到子命令后面（那是 rc=1，且本模块看不见）。
-        for bad in ["\"list-sessions\", UTF8_CLIENT_FLAG", "\"display-message\", UTF8_CLIENT_FLAG"] {
+        for bad in [
+            "\"list-sessions\", UTF8_CLIENT_FLAG",
+            "\"display-message\", UTF8_CLIENT_FLAG",
+        ] {
             assert!(!prod.contains(bad), "`-u` 被放到了子命令后面：{bad}");
         }
     }
@@ -360,7 +370,10 @@ mod tests {
             "真 tmux 打出来的脏字节必须判下溢"
         );
         assert!(tab_underflow("$0_cc-deadval1_1", 3), "同上（probe 那一条）");
-        assert!(!tab_underflow("kr12\t$0\tcc-deadval1", 3), "干净的三段必须放行");
+        assert!(
+            !tab_underflow("kr12\t$0\tcc-deadval1", 3),
+            "干净的三段必须放行"
+        );
         assert!(
             !tab_underflow("$0\t\t1", 3),
             "🔴 `@ccm_sid` **没设**是合法的（中间那段是空串）—— 它与「拆不出」是两件事，不许判红"

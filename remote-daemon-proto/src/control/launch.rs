@@ -338,7 +338,10 @@ fn check_typed_payload(v: &str) -> Result<(), CmdErr> {
             format!("`payload` 过长（{} > {MAX_FIELD_BYTES}）", v.len()),
         ));
     }
-    if let Some(bad) = v.chars().find(|c| c.is_control() && *c != '\n' && *c != '\t') {
+    if let Some(bad) = v
+        .chars()
+        .find(|c| c.is_control() && *c != '\n' && *c != '\t')
+    {
         return Err((
             "invalid_args",
             format!(
@@ -631,21 +634,42 @@ mod tests {
         })))
         .expect("三个都合法时应当通过");
         assert_eq!(r.agent.as_deref(), Some("claude"));
-        assert_eq!((r.width.as_deref(), r.height.as_deref()), (Some("220"), Some("50")));
+        assert_eq!(
+            (r.width.as_deref(), r.height.as_deref()),
+            (Some("220"), Some("50"))
+        );
         // 三个都不给也合法（`send-into` 那两条 mode 从来不带它们）
         let bare = parse_request(&ok(serde_json::json!({}))).expect("都不给也该通过");
         assert_eq!((bare.agent, bare.width, bare.height), (None, None, None));
 
         for (extra, why) in [
-            (serde_json::json!({"agent":"a b"}), "agent 含空格（它进 tmux option 值）"),
+            (
+                serde_json::json!({"agent":"a b"}),
+                "agent 含空格（它进 tmux option 值）",
+            ),
             (serde_json::json!({"agent":""}), "agent 为空"),
             (serde_json::json!({"agent":"a\nb"}), "agent 含控制字符"),
-            (serde_json::json!({"width":"220"}), "★只给 width 不给 height"),
-            (serde_json::json!({"height":"50"}), "★只给 height 不给 width"),
-            (serde_json::json!({"width":"22a","height":"50"}), "width 不是纯数字"),
+            (
+                serde_json::json!({"width":"220"}),
+                "★只给 width 不给 height",
+            ),
+            (
+                serde_json::json!({"height":"50"}),
+                "★只给 height 不给 width",
+            ),
+            (
+                serde_json::json!({"width":"22a","height":"50"}),
+                "width 不是纯数字",
+            ),
             (serde_json::json!({"width":"","height":"50"}), "width 为空"),
-            (serde_json::json!({"width":"12345","height":"50"}), "width 超过 4 位"),
-            (serde_json::json!({"width":"220","height":"-5"}), "height 带负号"),
+            (
+                serde_json::json!({"width":"12345","height":"50"}),
+                "width 超过 4 位",
+            ),
+            (
+                serde_json::json!({"width":"220","height":"-5"}),
+                "height 带负号",
+            ),
         ] {
             match parse_request(&ok(extra)) {
                 Ok(_) => panic!("{why} 居然通过了"),

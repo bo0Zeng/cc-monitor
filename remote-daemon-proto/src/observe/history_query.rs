@@ -240,7 +240,8 @@ pub fn list_subagents(agent_home: &Path, args: &[String]) -> i32 {
         let Some(stem) = name.strip_suffix(".meta.json") else {
             continue;
         };
-        let jsonl = meta_path.with_file_name(crate::agents::claudecode::records::session_file_name(stem));
+        let jsonl =
+            meta_path.with_file_name(crate::agents::claudecode::records::session_file_name(stem));
         if !jsonl.is_file() {
             continue;
         }
@@ -852,7 +853,13 @@ mod f07_tests {
             .find("pub fn list_subagents(")
             .expect("找不到 list_subagents —— 判据在空转");
         let body: String = prod[at..].chars().take(2600).collect();
-        for banned in ["description ==", "sort_by", "sort_by_key", "parse_iso8601", ".abs()"] {
+        for banned in [
+            "description ==",
+            "sort_by",
+            "sort_by_key",
+            "parse_iso8601",
+            ".abs()",
+        ] {
             assert!(
                 !body.contains(banned),
                 "`list_subagents` 里出现了 {banned:?} —— 它开始自己**挑**了。\n\
@@ -877,7 +884,10 @@ mod f07_tests {
         std::fs::write(&outside, "{}\n").expect("写文件");
         let code = super::list_subagents(
             &tmp,
-            &["--list-subagents".to_string(), outside.to_string_lossy().into_owned()],
+            &[
+                "--list-subagents".to_string(),
+                outside.to_string_lossy().into_owned(),
+            ],
         );
         assert_eq!(code, 2, "projects/ 之外的路径必须被围栏拒绝");
         let _ = std::fs::remove_dir_all(&tmp);

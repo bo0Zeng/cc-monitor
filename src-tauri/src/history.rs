@@ -4071,7 +4071,9 @@ mod tests {
         //   锚点不唯一时下面切出来的臂可能是别人的。⇒ 按 `F19` 那条纪律
         //   「把 needle 扩到能唯一确定那个事实的大小」，而**不是**把断言放宽。
         let at = guard_core::find_pinned(&prod, "#[cfg(windows)]\n    let base = {")
-            .unwrap_or_else(|e| panic!("`launch_local` 的 Windows 臂锚点不是恰好一处，先修锚点：{e}"));
+            .unwrap_or_else(|e| {
+                panic!("`launch_local` 的 Windows 臂锚点不是恰好一处，先修锚点：{e}")
+            });
         let arm = {
             let b = prod.as_bytes();
             let open = (at..b.len()).find(|&i| b[i] == b'{').expect("找不到块起点");
@@ -4215,7 +4217,10 @@ mod tests {
         // ③ 账号 0 / 没表态 ⇒ 说不出 id ⇒ 空串。
         assert_eq!(relay_account_id(Some(&LaunchAccount::Base)), None);
         assert_eq!(relay_account_id(None), None);
-        assert_eq!(relay_prefix_for(None, &rows, true, None, false).unwrap(), "");
+        assert_eq!(
+            relay_prefix_for(None, &rows, true, None, false).unwrap(),
+            ""
+        );
         // ④ Windows 那一侧渲的是 PowerShell 形态（**只到「编得过」**，运行时没量过）。
         let ps = relay_prefix_for(id.as_deref(), &rows, true, Some("sid-1"), true).unwrap();
         assert_eq!(
@@ -4433,7 +4438,11 @@ mod tests {
         let resumed_2 =
             relay_prefix_for_launch(&LocalPsAction::Resume("sid-9".to_string()), Some(&acct_a))
                 .expect("不该报错");
-        assert_eq!(key_seg(&resumed_1), "sid-1", "路由键的 `<key>` 段不是这次的 sid");
+        assert_eq!(
+            key_seg(&resumed_1),
+            "sid-1",
+            "路由键的 `<key>` 段不是这次的 sid"
+        );
         assert_eq!(
             key_seg(&resumed_2),
             "sid-9",
@@ -4824,7 +4833,8 @@ mod tests {
             };
             // ① 表里没有这个号 ⇒ 逐字节旧路。这一趟同时是下面那条相等断言的**基准串**。
             answer(&[], true);
-            launch_local(&action, None, None, Some(&account), None).expect("不走中转这一趟不该失败");
+            launch_local(&action, None, None, Some(&account), None)
+                .expect("不走中转这一趟不该失败");
             let bare = last_sent();
             assert!(
                 !bare.is_empty() && bare.contains(dir),
@@ -5109,7 +5119,9 @@ mod tests {
             None,
         )
         .expect("这一趟不该失败");
-        let dirty = identity_segment(&last_sent()).expect("这一趟没有身份").to_string();
+        let dirty = identity_segment(&last_sent())
+            .expect("这一趟没有身份")
+            .to_string();
         assert!(
             !dirty.contains(bad),
             "\n★★ **本文件自己又铸了一份身份** —— 一个过不了白名单的 sid 被原样当成了身份。\n\

@@ -404,7 +404,11 @@ mod tests {
         let body = vec![b'x'; CAP];
         let mut r = std::io::Cursor::new(&body[..]);
         let got = read_exact_body(&mut r, CAP, CAP).expect("io");
-        assert_eq!(got.map(|v| v.len()), Some(CAP), "`n == cap` 必须收，边界是 `>`");
+        assert_eq!(
+            got.map(|v| v.len()),
+            Some(CAP),
+            "`n == cap` 必须收，边界是 `>`"
+        );
 
         // ㈢ 非空对照：**正常**的读真的会把高水位顶上去 —— 否则上面那条「峰值不涨」是空真。
         let body = vec![b'y'; 8 * 1024 * 1024];
@@ -435,8 +439,15 @@ mod tests {
             parse_request(format!("POST /x HTTP/1.1\r\n{h}\r\n\r\n").as_bytes()).expect("parse")
         };
         // 期望值全是手写字面量。
-        assert_eq!(head("Host: x").content_length(), BodyLen::Absent, "没有这个头");
-        assert_eq!(head("Content-Length: 7").content_length(), BodyLen::Exact(7));
+        assert_eq!(
+            head("Host: x").content_length(),
+            BodyLen::Absent,
+            "没有这个头"
+        );
+        assert_eq!(
+            head("Content-Length: 7").content_length(),
+            BodyLen::Exact(7)
+        );
         assert_eq!(
             head("Content-Length:   7  ").content_length(),
             BodyLen::Exact(7),
@@ -454,16 +465,20 @@ mod tests {
     /// ★ `重要-1(D3)` 的**判别器**那一格。分母 = 我列出的这 **9** 形。
     #[test]
     fn only_a_three_digit_1xx_status_counts_as_interim() {
-        for yes in ["HTTP/1.1 100 Continue", "HTTP/1.1 103 Early Hints", "HTTP/1.0 101"] {
+        for yes in [
+            "HTTP/1.1 100 Continue",
+            "HTTP/1.1 103 Early Hints",
+            "HTTP/1.0 101",
+        ] {
             assert!(is_interim_status(yes), "{yes} 该算 1xx 中间响应");
         }
         for no in [
             "HTTP/1.1 200 OK",
             "HTTP/1.1 500 Internal Server Error",
-            "HTTP/1.1 1",     // 不是三位
-            "HTTP/1.1 1000",  // 不是三位
-            "HTTP/1.1 1xx",   // 不是三位数字
-            "HTTP/1.1",       // 根本没有第二段
+            "HTTP/1.1 1",    // 不是三位
+            "HTTP/1.1 1000", // 不是三位
+            "HTTP/1.1 1xx",  // 不是三位数字
+            "HTTP/1.1",      // 根本没有第二段
         ] {
             assert!(!is_interim_status(no), "{no} 不该算 1xx 中间响应");
         }

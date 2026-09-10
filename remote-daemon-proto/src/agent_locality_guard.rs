@@ -263,12 +263,32 @@ mod tests {
             6,
             "resume 的默认命令与会话名前缀（**两家各三处** —— 它同时也是唯一登记的 kind 派发点）",
         ),
-        ("main.rs", 1, "解析本机 home（`resolve_agent_home` 里唯一那句）"),
-        ("observe/accounts_query.rs", 3, "pidfile 目录 + 账号环境变量名 + `.claude.json` 信任判定"),
-        ("observe/history_query.rs", 5, "会话记录根 + 「这个文件是不是会话记录」×4"),
+        (
+            "main.rs",
+            1,
+            "解析本机 home（`resolve_agent_home` 里唯一那句）",
+        ),
+        (
+            "observe/accounts_query.rs",
+            3,
+            "pidfile 目录 + 账号环境变量名 + `.claude.json` 信任判定",
+        ),
+        (
+            "observe/history_query.rs",
+            5,
+            "会话记录根 + 「这个文件是不是会话记录」×4",
+        ),
         ("observe/search_query.rs", 2, "会话记录根 + 会话文件判定"),
-        ("observe/usage_query.rs", 3, "会话记录根 + 会话文件判定 + codex 侧聚合的另一半"),
-        ("observe/watcher.rs", 4, "会话记录根 + pidfile 目录 + 判活 cmdline + 会话文件判定"),
+        (
+            "observe/usage_query.rs",
+            3,
+            "会话记录根 + 会话文件判定 + codex 侧聚合的另一半",
+        ),
+        (
+            "observe/watcher.rs",
+            4,
+            "会话记录根 + pidfile 目录 + 判活 cmdline + 会话文件判定",
+        ),
     ];
 
     /// 〔`S5`〕**适配层注册表**住哪几个文件（`文件`, 为什么它不该被压到零）。
@@ -489,8 +509,10 @@ mod tests {
             }
         }
         hits.sort();
-        let mut registered: Vec<String> =
-            KIND_DISPATCH_SITES.iter().map(|(f, _)| f.to_string()).collect();
+        let mut registered: Vec<String> = KIND_DISPATCH_SITES
+            .iter()
+            .map(|(f, _)| f.to_string())
+            .collect();
         registered.sort();
         assert_eq!(
             hits, registered,
@@ -579,13 +601,11 @@ mod tests {
                 }
             }
         }
-        let (known, unknown): (Vec<String>, Vec<String>) = hits
-            .into_iter()
-            .partition(|h| {
-                AGENT_NAMED_WIRE_FIELDS
-                    .iter()
-                    .any(|(f, frag, _, _)| h.starts_with(&format!("{f}:")) && h.contains(frag))
-            });
+        let (known, unknown): (Vec<String>, Vec<String>) = hits.into_iter().partition(|h| {
+            AGENT_NAMED_WIRE_FIELDS
+                .iter()
+                .any(|(f, frag, _, _)| h.starts_with(&format!("{f}:")) && h.contains(frag))
+        });
         assert!(
             unknown.is_empty(),
             "通用层的标识符里出现了 `<agent 名>_dir`（{} 处）：\n  {}\n\n\
@@ -601,7 +621,9 @@ mod tests {
         // 下一个人会以为这里还冻着、进而不敢动。
         for (f, frag, _, _) in AGENT_NAMED_WIRE_FIELDS {
             assert!(
-                known.iter().any(|h| h.starts_with(&format!("{f}:")) && h.contains(frag)),
+                known
+                    .iter()
+                    .any(|h| h.starts_with(&format!("{f}:")) && h.contains(frag)),
                 "`AGENT_NAMED_WIRE_FIELDS` 里登记的 `{f}`（片段 `{frag}`）已经不再命中 —— \
                  修好了就摘登记（这张表只许缩短）"
             );
@@ -703,9 +725,15 @@ mod tests {
     fn the_adapter_registry_is_one_line_per_agent() {
         let measured = adapter_call_sites_measured();
         let agents = crate::agents::REGISTRY.len();
-        assert!(agents >= HOMES_FLOOR, "注册表只剩 {agents} 家，下界 {HOMES_FLOOR}");
+        assert!(
+            agents >= HOMES_FLOOR,
+            "注册表只剩 {agents} 家，下界 {HOMES_FLOOR}"
+        );
         for (file, why) in AGENT_REGISTRY_SITES {
-            assert!(!why.trim().is_empty(), "{file} 没写「它为什么不该被压到零」");
+            assert!(
+                !why.trim().is_empty(),
+                "{file} 没写「它为什么不该被压到零」"
+            );
             let n = measured
                 .iter()
                 .find(|(rel, _)| rel == file)
@@ -847,8 +875,10 @@ mod tests {
         for (_, file, n, _) in NEW_AGENT_BLOCKERS {
             *by_file.entry(file).or_default() += n;
         }
-        let want: BTreeMap<&str, usize> =
-            ADAPTER_CALL_SITES.iter().map(|(f, n, _)| (*f, *n)).collect();
+        let want: BTreeMap<&str, usize> = ADAPTER_CALL_SITES
+            .iter()
+            .map(|(f, n, _)| (*f, *n))
+            .collect();
         assert_eq!(
             by_file, want,
             "\n两个方向数出来的差距对不上。\n\
@@ -898,21 +928,33 @@ mod tests {
     #[test]
     fn the_s4b_detectors_catch_synthetic_violations() {
         // ③ 正向：合成的违规签名必须被逮到。
-        let bad = format!("fn run(clau{}_dir: &Path, args: &[String]) -> i32 {{}}", "de");
+        let bad = format!(
+            "fn run(clau{}_dir: &Path, args: &[String]) -> i32 {{}}",
+            "de"
+        );
         assert!(
-            agent_named_dir_needles().iter().any(|n| bad.contains(n.as_str())),
+            agent_named_dir_needles()
+                .iter()
+                .any(|n| bad.contains(n.as_str())),
             "③ 的判定认不出合成的违规签名 —— 它此刻是空转的"
         );
         // ③ 反向：改名之后的正确写法**不许**被打中（假阳会训练人绕过判据）。
         let good = "fn run(agent_home: &Path, args: &[String]) -> i32 {}";
         assert!(
-            !agent_named_dir_needles().iter().any(|n| good.contains(n.as_str())),
+            !agent_named_dir_needles()
+                .iter()
+                .any(|n| good.contains(n.as_str())),
             "③ 把改名之后的正确写法判成了违规 —— 那是假阳"
         );
         // ④ 正向：适配层路径针认得出真调用。
-        let call = format!("crate::agents::clau{}code::records::is_session_file(p)", "de");
+        let call = format!(
+            "crate::agents::clau{}code::records::is_session_file(p)",
+            "de"
+        );
         assert!(
-            adapter_path_needles().iter().any(|n| call.contains(n.as_str())),
+            adapter_path_needles()
+                .iter()
+                .any(|n| call.contains(n.as_str())),
             "④ 的判定认不出适配层调用 —— 它此刻是空转的"
         );
         // ④ 反向：**值**上的派发（`D3` 明说合法）不许被④打中 —— 那是判据②的活。

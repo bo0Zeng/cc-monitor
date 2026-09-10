@@ -297,9 +297,10 @@ mod tests {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("src")
             .join(rel);
-        production_code(&std::fs::read_to_string(&p).unwrap_or_else(|e| {
-            panic!("读不到 {} —— 文件搬家了就来改本表：{e}", p.display())
-        }))
+        production_code(
+            &std::fs::read_to_string(&p)
+                .unwrap_or_else(|e| panic!("读不到 {} —— 文件搬家了就来改本表：{e}", p.display())),
+        )
     }
 
     /// ★★ `重-5`：**没有一个锚点在别处还有第二个家。**
@@ -616,7 +617,12 @@ mod tests {
         // ★★ 09-01 之前这里只有拼法 ① —— 而拼法 ② 是个**正常写法**，
         //    实测能塞进一个真的第二消费者（真 task、真 `recv`）而门禁 `489 passed` 静默过去。
         //    「只验一个拼法」正是那一版被打回的原因。
-        let caught = |probe: &str| (probe.matches(needle).count(), probe.matches(BARE_BIRTH).count());
+        let caught = |probe: &str| {
+            (
+                probe.matches(needle).count(),
+                probe.matches(BARE_BIRTH).count(),
+            )
+        };
         for (spelling, probe) in [
             (
                 "① turbofish：`mpsc::channel::<Frame>(8)`（由 `PINS` 那条数）",

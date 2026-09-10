@@ -246,7 +246,10 @@ mod tests {
             .iter()
             .map(|h| (h.agent_kind.as_str(), h.path.as_str()))
             .collect();
-        let want_path = synth_home_present().expect("夹具").to_string_lossy().into_owned();
+        let want_path = synth_home_present()
+            .expect("夹具")
+            .to_string_lossy()
+            .into_owned();
         assert_eq!(
             seen,
             vec![("alpha", want_path.as_str())],

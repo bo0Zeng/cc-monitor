@@ -114,7 +114,10 @@ mod tests {
         // ★ **非空对照排最前**〔`D1` 一并修，08-28〕：先证明这把尺子认得**合法**的那一形，
         //   否则下面整个循环可能只是因为 `parse` 恒返回 `None` 而全绿。
         //   （先前它排在循环之后 —— 循环一红，它就一次都没被求值。）
-        assert!(parse("/s/agentA/acctA/sid-AAA/v1").is_some(), "这把尺子是瞎的");
+        assert!(
+            parse("/s/agentA/acctA/sid-AAA/v1").is_some(),
+            "这把尺子是瞎的"
+        );
 
         // 分母 = 我列出的这 9 形；不是「所有不合法输入」。
         for bad in [
@@ -233,7 +236,10 @@ mod tests {
         // ⚠ 它们同时是「monitor 那边不许偷偷换段序」的那道闸：换了，下面三条里必有一条红。
         assert_eq!(r.agent, "claude-code", "第 2 段不是 agent 了 —— 两半漂开");
         assert_eq!(r.account, "acct-a", "账号段没落在第 3 段 —— 表就查错行了");
-        assert_eq!(r.key, "k-0123456789abcdef", "第 4 段不是 key 了 —— 两半漂开");
+        assert_eq!(
+            r.key, "k-0123456789abcdef",
+            "第 4 段不是 key 了 —— 两半漂开"
+        );
         assert_eq!(r.rest, "/v1/messages", "真路径没被原样透传");
 
         // ★ 同一条样例，把**账号段**换掉 ⇒ 切出来的 account 必须跟着变（它是自己一维）。

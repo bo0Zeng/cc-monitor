@@ -200,7 +200,8 @@ pub const AUTH_KIND_PARITY_CASES: [AuthKindParityCase; 6] = [
 /// 「三者读的不是同一份输入」。目录与凭据文件由调用方按同一张表创建（见
 /// [`AuthKindParityCase::credentials_present`]）。
 pub fn auth_kind_parity_manifest(root: &str) -> String {
-    let mut s = String::from("{\"version\":1,\"updatedAt\":\"2026-08-24T00:00:00Z\",\"sharedStore\":\"");
+    let mut s =
+        String::from("{\"version\":1,\"updatedAt\":\"2026-08-24T00:00:00Z\",\"sharedStore\":\"");
     s.push_str(root);
     s.push_str("/shared\",\"accounts\":[");
     for (i, c) in AUTH_KIND_PARITY_CASES.iter().enumerate() {
@@ -363,7 +364,11 @@ mod tests {
     /// 闭集里每一个字面量都要能被分类函数认出来 —— 否则「闭集」是装饰。
     #[test]
     fn every_declared_auth_kind_round_trips() {
-        assert_eq!(AUTH_KINDS.len(), 2, "加了第三档 ⇒ 先给它一条 auth_ready 规则");
+        assert_eq!(
+            AUTH_KINDS.len(),
+            2,
+            "加了第三档 ⇒ 先给它一条 auth_ready 规则"
+        );
         for k in AUTH_KINDS {
             assert_eq!(
                 auth_kind_from_manifest(Some(k)),
@@ -417,8 +422,14 @@ mod tests {
     fn the_parity_manifest_renders_absent_keys_as_absent() {
         let m = auth_kind_parity_manifest("/tmp/fixture-root");
         assert!(m.starts_with("{\"version\":1,"), "schema 版本得是 1：{m}");
-        assert!(m.contains("\"configDir\":\"/tmp/fixture-root/sub-cred\""), "{m}");
-        assert!(m.contains("\"sharedStore\":\"/tmp/fixture-root/shared\""), "{m}");
+        assert!(
+            m.contains("\"configDir\":\"/tmp/fixture-root/sub-cred\""),
+            "{m}"
+        );
+        assert!(
+            m.contains("\"sharedStore\":\"/tmp/fixture-root/shared\""),
+            "{m}"
+        );
         assert!(!m.contains("null"), "缺席的键不许渲染成 null：{m}");
         // 六格里有五格带 authKind（`legacy-nokind` 那格不带）。
         assert_eq!(m.matches("\"authKind\"").count(), 5, "{m}");

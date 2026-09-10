@@ -332,7 +332,6 @@ fn local_ccm_too_old_warning() -> Option<String> {
 /// 改那边就要改这里（`the_deploy_precheck_lists_what_cc_spawn_negotiates` 钉住两边一致）。
 const CC_SPAWN_NEEDS: &[&str] = &["detach", "tmux-size", "tmux-base", "bus-register"];
 
-
 /// `PS1`：把内嵌的 cc-bus 装到本机 `<claude_dir>/skills/cc-bus/`。
 ///
 /// ★ **用户显式动作**：本命令**只**由设置页那个按钮调用，绝不在启动/后台路径上跑
@@ -577,7 +576,10 @@ mod tests {
             .unwrap_or("")
             .split_whitespace()
             .collect();
-        assert!(!listed.is_empty(), "解析出空清单 —— 抽取器坏了（本条此刻是空转的）");
+        assert!(
+            !listed.is_empty(),
+            "解析出空清单 —— 抽取器坏了（本条此刻是空转的）"
+        );
         assert_eq!(
             listed, CC_SPAWN_NEEDS,
             "装前预检的清单与 `cc-spawn` 真正协商的对不上。\n             \
@@ -622,7 +624,10 @@ mod tests {
         std::fs::write(dest.join("scripts/cc-spawn"), b"tampered").unwrap();
         assert_eq!(
             install_state_in(&d.0).unwrap(),
-            CcBusInstallState::Drifted { differing: 2, missing: 0 },
+            CcBusInstallState::Drifted {
+                differing: 2,
+                missing: 0
+            },
             "改了两个文件就该报 2 —— 按钮上写的是「更新（差 N 个）」，N 错了跟状态错了一样骗人"
         );
 
@@ -637,7 +642,10 @@ mod tests {
         std::fs::remove_file(dest.join("scripts/cc-kill")).unwrap();
         assert_eq!(
             install_state_in(&d.0).unwrap(),
-            CcBusInstallState::Drifted { differing: 0, missing: 1 },
+            CcBusInstallState::Drifted {
+                differing: 0,
+                missing: 1
+            },
             "少一个就该报 missing:1，且不该把它算进 differing"
         );
     }
@@ -660,7 +668,9 @@ mod tests {
         );
         let r = deploy_into(&d.0).expect("装");
         assert!(r.written > 0, "该装的一个都没装");
-        let bak = r.backup.expect("覆盖用户那个文件之前**必须**留备份（不可逆动作的底线）");
+        let bak = r
+            .backup
+            .expect("覆盖用户那个文件之前**必须**留备份（不可逆动作的底线）");
         assert_eq!(
             std::fs::read_to_string(&bak).expect("备份读得回来"),
             "i am a file, not a dir",

@@ -263,7 +263,8 @@ mod tests {
             .expect("`run_gate_sum cargo` 后面那个数读不出来");
         let want = 1 + shared_crate_names().len();
         assert_eq!(
-            n, want,
+            n,
+            want,
             "`scripts/gate.sh` 里 `run_gate_sum cargo {n}`，而今天应当是 **{want}**\n\
              （1 个根包 `monitor` + {} 个共享 crate）。\n\
              ⚠ 加/删共享 crate 时**这个数要跟着改** —— 不改的话 `npm run gate` 会红，\n\

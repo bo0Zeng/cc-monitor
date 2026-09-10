@@ -386,10 +386,7 @@ mod tests {
              一条**不要**输入的命令若声明成收，它会**挂在那儿等 EOF** —— \n\
              CLI 面是给第三方 skill 调的，那是所有失败里最坏的一种（`--ping` 与 `--bus-list` 各栽过一次）。"
         );
-        assert!(
-            !declared.is_empty(),
-            "一条无输入命令都没有 —— 本断言在空转"
-        );
+        assert!(!declared.is_empty(), "一条无输入命令都没有 —— 本断言在空转");
         // `run` 必须用的就是这个决定，不是另写一份判断。
         let prod = crate::guard_support::production_code(include_str!("cli_control.rs"));
         assert!(

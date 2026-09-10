@@ -237,7 +237,9 @@ mod tests {
         let mut from = 0usize;
         while let Some(rel) = seg[from..].find(key.as_str()) {
             let at = from + rel + key.len();
-            let Some(end) = seg[at..].find('"') else { break };
+            let Some(end) = seg[at..].find('"') else {
+                break;
+            };
             out.push(seg[at..at + end].to_string());
             from = at + end;
         }
@@ -262,13 +264,17 @@ mod tests {
             let at = from + rel + 1;
             from = at + 1;
             let tail = &ccm[at..];
-            let Some(paren) = tail.find("()") else { continue };
+            let Some(paren) = tail.find("()") else {
+                continue;
+            };
             let name = tail[..paren].trim().to_string();
             // 「行首那个词就是函数名」—— 带空格说明这行不是函数定义（是调用或散文）。
             if name.contains(' ') {
                 continue;
             }
-            let Some(esac) = tail.find("esac") else { continue };
+            let Some(esac) = tail.find("esac") else {
+                continue;
+            };
             let block = &tail[..esac];
             out.push((name, case_arm(block, "claude"), case_arm(block, "codex")));
         }
@@ -334,7 +340,11 @@ mod tests {
              ⇒ **别直接改这里**：`E4` 那张表是定框条款（且今天还没获批），\
              多一个候选意味着先去那张表里答完两轴，再回来登记它今天的形态。"
         );
-        assert_eq!(ids.len(), REGISTERED.len(), "候选 id 有重复 —— 键不唯一，诊断会指不明");
+        assert_eq!(
+            ids.len(),
+            REGISTERED.len(),
+            "候选 id 有重复 —— 键不唯一，诊断会指不明"
+        );
 
         // ★ 反向那半：登记表**只许记真事**。住址没了 ⇒ 这一行已经烂了，不是「候选消失了」。
         let mut rotten: Vec<&str> = Vec::new();
@@ -469,7 +479,10 @@ mod tests {
     fn code_picture_is_compiled_into_the_monitor_and_absent_from_the_daemon() {
         // ① monitor 侧：那条 path 依赖**整行**在（`pin_line` 而不是子串 —— 事实就是「有这么一行」）。
         let cargo = must_read("src-tauri/Cargo.toml", 1_000);
-        let dep = format!("code-picture-core = {} path = \"vendor/code-picture-core\" {}", '{', '}');
+        let dep = format!(
+            "code-picture-core = {} path = \"vendor/code-picture-core\" {}",
+            '{', '}'
+        );
         guard_core::pin_line(&cargo, &dep).unwrap_or_else(|e| {
             panic!(
                 "monitor 的 `Cargo.toml` 里那条 vendor path 依赖不见了或变形了：{e}\n\
@@ -622,8 +635,7 @@ mod tests {
             }
         }
         assert_eq!(
-            diverging,
-            5,
+            diverging, 5,
             "5 个适配函数里只有 {diverging} 个两臂取值不同 —— \
              `E4b` 的前提（「codex 是 ccm 但其实是不同形态的」）在这个口径下不再成立。\n\
              逐条：{arms:?}"

@@ -184,7 +184,14 @@ mod sealed {
             for (id, base, key, auth_style) in entries {
                 // ⚠ 这一行**必须留在一行上**：`table_guard` 那条相等断言的针是逐行的
                 //   `Row { base` ⇒ 换行拆开会让它数出 0 处、当场红。〔现打确认过〕
-                rows.insert(id, Row { base, key, auth_style });
+                rows.insert(
+                    id,
+                    Row {
+                        base,
+                        key,
+                        auth_style,
+                    },
+                );
             }
             Self { rows }
         }
@@ -201,7 +208,7 @@ mod sealed {
     }
 }
 
-pub(crate) use sealed::{Row, RoutingTable};
+pub(crate) use sealed::{RoutingTable, Row};
 
 /// 一条**进不了表**的账号，以及它为什么进不了。
 ///
@@ -230,7 +237,8 @@ pub(crate) struct Note {
 }
 
 /// 账号 id 当不了路由段。
-pub(crate) const WHY_ID_UNUSABLE: &str = "账号 id 当不了路由段（只许字母数字与 - _，最长 128 字节）";
+pub(crate) const WHY_ID_UNUSABLE: &str =
+    "账号 id 当不了路由段（只许字母数字与 - _，最长 128 字节）";
 
 /// 🔴 **明文 http 只许连回环**〔`K-R1`；`裁-1` 08-25「只准 TLS」的那一格例外〕。
 ///
@@ -447,16 +455,10 @@ mod tests {
         );
         // 期望值全是**手写字面量**。
         assert_eq!(a.host_header(), "a.invalid");
-        assert_eq!(
-            a.key().expect("A 有 key").expose_for_auth_header(),
-            "KEY-A"
-        );
+        assert_eq!(a.key().expect("A 有 key").expose_for_auth_header(), "KEY-A");
         // 没写 `base_url` 的那条用**默认上游** —— 这不是回落，是这一行的字段取默认值。
         assert_eq!(b.host_header(), "default.invalid");
-        assert_eq!(
-            b.key().expect("B 有 key").expose_for_auth_header(),
-            "KEY-B"
-        );
+        assert_eq!(b.key().expect("B 有 key").expose_for_auth_header(), "KEY-B");
     }
 
     /// ★★★ **`KH2` 在这一层的那一半**：查不到就是查不到，**没有任何一行会被顶上来**。
@@ -525,7 +527,9 @@ mod tests {
         );
         assert!(bad.is_empty());
         assert_eq!(t.len(), 1);
-        let row = t.lookup(store::LEGACY_ACCOUNT_ID).expect("default 应当查得到");
+        let row = t
+            .lookup(store::LEGACY_ACCOUNT_ID)
+            .expect("default 应当查得到");
         assert_eq!(row.host_header(), "api.example.invalid");
         assert_eq!(
             row.key().expect("有 key").expose_for_auth_header(),
@@ -700,11 +704,19 @@ mod tests {
         assert_eq!(t.len(), 3);
 
         let of = |id: &str| -> Vec<&'static str> {
-            notes.iter().filter(|n| n.id == id).map(|n| n.what).collect()
+            notes
+                .iter()
+                .filter(|n| n.id == id)
+                .map(|n| n.what)
+                .collect()
         };
         // ★★ **反空真排最前**：什么都没配特别的那一行**一条 note 都不该有**
         //    —— 没有这一格，「出声了」可能只是因为它对每一行都出声。
-        assert!(of("plain").is_empty(), "默认那一行也出声了 ⇒ 全是噪音：{:?}", of("plain"));
+        assert!(
+            of("plain").is_empty(),
+            "默认那一行也出声了 ⇒ 全是噪音：{:?}",
+            of("plain")
+        );
         assert_eq!(of("prefixed"), vec![NOTE_PATH_PREFIX]);
         assert_eq!(of("xapikey"), vec![NOTE_AUTH_STYLE_X_API_KEY]);
         assert_eq!(notes.len(), 2, "note 的条数不对：{}", notes.len());

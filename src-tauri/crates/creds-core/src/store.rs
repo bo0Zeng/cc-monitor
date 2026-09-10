@@ -234,7 +234,8 @@ impl AuthStyle {
     pub const DEFAULT: AuthStyle = AuthStyle::Bearer;
 
     /// 这个闭集的**唯一住址**。判据与日志都从这里派生，不许再写第二份字面量。
-    pub const ALL: &'static [AuthStyle] = &[AuthStyle::Bearer, AuthStyle::XApiKey, AuthStyle::NoAuth];
+    pub const ALL: &'static [AuthStyle] =
+        &[AuthStyle::Bearer, AuthStyle::XApiKey, AuthStyle::NoAuth];
 
     /// 人在文件里写的那个词。**这是契约**（手编时写的就是它）。
     ///
@@ -353,7 +354,9 @@ pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
 
     if let Some(Value::Object(m)) = doc.get(ACCOUNTS_FIELD) {
         for id in ordered_keys(m.keys()) {
-            let Some(obj) = m[id].as_object() else { continue };
+            let Some(obj) = m[id].as_object() else {
+                continue;
+            };
             out.push(AccountEntry {
                 id: id.clone(),
                 base_url: read_base_url(obj),
@@ -790,12 +793,23 @@ mod tests {
         assert_eq!(table[0].id, "aaa-first");
         assert_eq!(table[1].id, "zzz-last");
         assert_eq!(
-            table[0].key.as_ref().expect("A 应当有 key").expose_for_auth_header(),
+            table[0]
+                .key
+                .as_ref()
+                .expect("A 应当有 key")
+                .expose_for_auth_header(),
             "KEY-A"
         );
-        assert_eq!(table[0].base_url.as_deref(), Some("https://api.example.invalid"));
         assert_eq!(
-            table[1].key.as_ref().expect("Z 应当有 key").expose_for_auth_header(),
+            table[0].base_url.as_deref(),
+            Some("https://api.example.invalid")
+        );
+        assert_eq!(
+            table[1]
+                .key
+                .as_ref()
+                .expect("Z 应当有 key")
+                .expose_for_auth_header(),
             "KEY-Z"
         );
         // 没写 `base_url` 的那条是 `None`（= 用默认上游），**不是空串**。
@@ -821,15 +835,18 @@ mod tests {
         assert_eq!(table.len(), 1, "旧文件应当读成**恰好一条**");
         assert_eq!(table[0].id, LEGACY_ACCOUNT_ID);
         assert_eq!(
-            table[0].key.as_ref().expect("应当有 key").expose_for_auth_header(),
+            table[0]
+                .key
+                .as_ref()
+                .expect("应当有 key")
+                .expose_for_auth_header(),
             "LEGACY-KEY"
         );
 
         // ★ `accounts` 里已经有同名的那一条 ⇒ **人写的那条赢**，顶层那半不再加。
-        let both = parse(
-            r#"{"api_key":"LEGACY-KEY","accounts":{"default":{"api_key":"HAND-WRITTEN"}}}"#,
-        )
-        .expect("两处都有");
+        let both =
+            parse(r#"{"api_key":"LEGACY-KEY","accounts":{"default":{"api_key":"HAND-WRITTEN"}}}"#)
+                .expect("两处都有");
         let t2 = read_accounts(&both);
         assert_eq!(t2.len(), 1, "同名的两处应当合成一条，不是两条");
         assert_eq!(
@@ -1126,7 +1143,11 @@ mod tests {
 
         // ★ **反空真排最前**〔`D1` 一并修〕：真的落到了嵌套那一层（不是整份被压成一行），
         //   且落盘的仍然是合法 JSON。先前这两条排在最后。
-        assert!(text.lines().count() >= 8, "输出只有 {} 行", text.lines().count());
+        assert!(
+            text.lines().count() >= 8,
+            "输出只有 {} 行",
+            text.lines().count()
+        );
         let back: Value = serde_json::from_str(&text).expect("落盘的东西必须是合法 JSON");
         assert_eq!(back["accounts"]["b"]["aaa"], 2);
 
@@ -1183,8 +1204,10 @@ mod tests {
         // 非空对照：落盘的仍是合法 JSON，而且数组那一层**还在**（不是被压没了）。
         let nested_back: Value = serde_json::from_str(&nested_text).expect("合法 JSON");
         assert_eq!(nested_back["list"][0]["aaa"], 2);
-        let iaaa = guard_core::find_pinned(&nested_text, "\"aaa\"").expect("`aaa` 应当恰好出现一处");
-        let izzz = guard_core::find_pinned(&nested_text, "\"zzz\"").expect("`zzz` 应当恰好出现一处");
+        let iaaa =
+            guard_core::find_pinned(&nested_text, "\"aaa\"").expect("`aaa` 应当恰好出现一处");
+        let izzz =
+            guard_core::find_pinned(&nested_text, "\"zzz\"").expect("`zzz` 应当恰好出现一处");
         assert!(
             iaaa < izzz,
             "数组里那个对象没被递归排序 —— `ordered_value` 的 `Value::Array` 那一支没有往下走：{nested_text}"

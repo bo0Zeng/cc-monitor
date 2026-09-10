@@ -3,7 +3,7 @@
 use super::creds;
 use super::http1::{self, BodyView, RequestHead};
 use super::route;
-use super::table::{self, Row, RoutingTable};
+use super::table::{self, RoutingTable, Row};
 use super::tee::{SseSplitter, TeeSink};
 use super::upstream::Base;
 use std::io::{BufReader, Read, Write};
@@ -186,7 +186,11 @@ impl Reload {
         upstream_default: Base,
         seen: Option<(std::time::SystemTime, u64)>,
     ) -> Self {
-        Self { path, upstream_default, seen: std::sync::Mutex::new(seen) }
+        Self {
+            path,
+            upstream_default,
+            seen: std::sync::Mutex::new(seen),
+        }
     }
 }
 
@@ -259,7 +263,9 @@ impl Relay {
     /// ⚠ 加上字节数**只是把那个窗口收窄，没有关掉它**：同一秒内改成**同样长**的另一份内容
     /// （比如把一把 key 换成等长的另一把）仍然看不见。**这一形我没量** —— 如实登记。
     fn refresh_if_changed(&self) {
-        let Some(r) = self.reload.as_ref() else { return };
+        let Some(r) = self.reload.as_ref() else {
+            return;
+        };
         let now = stamp_of(&r.path);
         {
             let seen = r.seen.lock().expect("lock");
@@ -279,9 +285,7 @@ impl Relay {
         // ⚠ 「一条都没配」与「读坏了」是两回事：前者 `problem` 是 `None`、accounts 空，
         //   那是一个**合法**状态（谁都不走中转），照换不误。
         if let Some(why) = loaded.problem.as_deref() {
-            eprintln!(
-                "[relay] 凭据文件读不成表，**保留上一张表不动**（不是换成空表）：{why}"
-            );
+            eprintln!("[relay] 凭据文件读不成表，**保留上一张表不动**（不是换成空表）：{why}");
             // 印记也**不更新** —— 下次请求进来还会再试一次，人把文件改回来就自动恢复。
             return;
         }
@@ -291,7 +295,13 @@ impl Relay {
         // ⚠ `K-R1`：`notes` 也要跟着走这一趟 —— 一次重载把某一行改成非默认行为
         //   （加了路径前缀 / 换了鉴权头形状）而**只有第一次启动才说**的话，
         //   那句话就成了「说过一次的历史」，而不是「现在盘上是这样」。
-        creds::announce(&loaded, table.len(), &rejected, &notes, &mut std::io::stderr());
+        creds::announce(
+            &loaded,
+            table.len(),
+            &rejected,
+            &notes,
+            &mut std::io::stderr(),
+        );
         *self.table.write().expect("lock") = table;
         *r.seen.lock().expect("lock") = now;
     }
@@ -712,12 +722,7 @@ fn pump<R: Read, W: Write>(
 /// 3. **这一行没有 key 时，一个字节都不动**（`Authorization` / `x-api-key` 全照旧转发）
 ///    —— 订阅登录那一档要的正是这条透传路。
 ///    ⚠ 例外是 `AuthStyle::NoAuth`：它逐字说的就是「一个鉴权头都不发」⇒ 客户端那份也不转发。
-fn render_upstream_request(
-    head: &RequestHead,
-    rest: &str,
-    row: &Row,
-    body_len: usize,
-) -> Vec<u8> {
+fn render_upstream_request(head: &RequestHead, rest: &str, row: &Row, body_len: usize) -> Vec<u8> {
     // ★★ **`K-H2`：签名从 `(&Base, Option<&SecretKey>)` 收成了一个 `&Row`。**
     //    先前那个签名让「A 的端点 + B 的 key」**写得出来** —— 调用方各取各的，
     //    没有任何东西说它俩必须同源。今天它们是同一个值的两个方法，
@@ -763,7 +768,10 @@ fn render_upstream_request(
     //      这个调用点**仍然恰好一处** —— 那条相等断言一个字节都没动。
     //      〔这是有意的设计约束：一种新鉴权头形状不该换来一个新的明文出口。〕
     if let (Some(k), Some((name, prefix))) = (key, auth_header_of(style)) {
-        out.push_str(&format!("{name}: {prefix}{}\r\n", k.expose_for_auth_header()));
+        out.push_str(&format!(
+            "{name}: {prefix}{}\r\n",
+            k.expose_for_auth_header()
+        ));
     }
     if body_len > 0 {
         out.push_str(&format!("Content-Length: {body_len}\r\n"));
@@ -914,11 +922,15 @@ fn run_with(
     }
     // ⚠ 顺序：**起监听之后、进接受循环之前**。放在起监听之前的话，
     //   端口起不来那条支会先把凭据路径印出来，而那时它还不相干。
-    let (table, creds_path, stamp) = load_credentials(creds_get, home, &base, &mut std::io::stderr());
+    let (table, creds_path, stamp) =
+        load_credentials(creds_get, home, &base, &mut std::io::stderr());
     // `D1 阻-2`：把重载源接上 —— 没有这一行，那张表就是一张**启动快照**，
     // 用户在界面上配完 key 必须重启中转才生效（而不重启的症状是一个静默的 404）。
-    let relay = Relay::new(table, TeeSink::to_stdout())
-        .reloading_from(Reload::new(creds_path, base.clone(), stamp));
+    let relay = Relay::new(table, TeeSink::to_stdout()).reloading_from(Reload::new(
+        creds_path,
+        base.clone(),
+        stamp,
+    ));
     serve(listener, Arc::new(relay));
     0
 }
@@ -933,12 +945,7 @@ fn run_with(
 /// **389 条判据全绿**（D2 `D2RUN`），而真机后果是 `--relay` **整个起不来**：
 /// 端口读不懂 ⇒ 回默认 8788、上游解析失败 ⇒ 退 2。
 /// 判据见 `each_env_var_name_goes_into_its_own_config_slot`。
-type RelayExec<'a> = dyn Fn(
-        Option<&str>,
-        Option<&str>,
-        &dyn Fn(&str) -> Option<String>,
-        &std::path::Path,
-    ) -> i32
+type RelayExec<'a> = dyn Fn(Option<&str>, Option<&str>, &dyn Fn(&str) -> Option<String>, &std::path::Path) -> i32
     + 'a;
 
 fn run_reading(
@@ -1002,14 +1009,10 @@ mod tests {
     fn table_of_styled(
         rows: &[(&str, &Base, Option<&str>, creds_core::store::AuthStyle)],
     ) -> RoutingTable {
-        RoutingTable::build(rows.iter().map(|(id, b, k, s)| {
-            (
-                (*id).to_string(),
-                (*b).clone(),
-                k.map(SecretKey::new),
-                *s,
-            )
-        }))
+        RoutingTable::build(
+            rows.iter()
+                .map(|(id, b, k, s)| ((*id).to_string(), (*b).clone(), k.map(SecretKey::new), *s)),
+        )
     }
 
     /// 判据里最常用的那张表：两个账号段，都指向同一个假上游，都不配 key
@@ -1350,10 +1353,18 @@ mod tests {
         let up = spawn_fake_upstream(None);
         // ★ **一个**中转实例，**一个**监听面 —— 两个键都从这里走（`K9` 裁定二第 1 条）。
         let (relay_addr, relay, tee) = spawn_relay(up.addr);
-        let mut c = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages?beta=true", "");
+        let mut c = send_request(
+            relay_addr,
+            "/s/agentA/acctA/sid-AAA/v1/messages?beta=true",
+            "",
+        );
         let mut got = Vec::new();
         c.read_to_end(&mut got).expect("read a");
-        let mut c2 = send_request(relay_addr, "/s/agentB/acctB/sid-BBB/v1/messages?beta=true", "");
+        let mut c2 = send_request(
+            relay_addr,
+            "/s/agentB/acctB/sid-BBB/v1/messages?beta=true",
+            "",
+        );
         let mut got2 = Vec::new();
         c2.read_to_end(&mut got2).expect("read b");
 
@@ -1508,7 +1519,11 @@ mod tests {
             String::from_utf8_lossy(&sink0).starts_with("HTTP/1.1 200"),
             "非空对照：一发正常请求必须拿到 200"
         );
-        assert_eq!(up.seen.lock().expect("lock").len(), 1, "非空对照：真打到上游");
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            1,
+            "非空对照：真打到上游"
+        );
 
         // 正题：一条 `Content-Length: 1e12`，其余**一个字节都不发**。
         let (got, clean) = send_raw(
@@ -1519,7 +1534,10 @@ mod tests {
             got.starts_with("HTTP/1.1 413"),
             "超 `BODY_CAP` 必须回 413（拿到的是：{got:?}）"
         );
-        assert!(clean, "413 要**送得到**：连接得干净收尾，不是被 RST 打断（拿到的是：{got:?}）");
+        assert!(
+            clean,
+            "413 要**送得到**：连接得干净收尾，不是被 RST 打断（拿到的是：{got:?}）"
+        );
         assert_eq!(
             up.seen.lock().expect("lock").len(),
             1,
@@ -1541,7 +1559,11 @@ mod tests {
         let mut warm = send_request(relay_addr, "/s/agentA/acctA/sid-AAA/v1/messages", "");
         let mut sink0 = Vec::new();
         warm.read_to_end(&mut sink0).expect("read warmup");
-        assert_eq!(up.seen.lock().expect("lock").len(), 1, "非空对照：真打到上游");
+        assert_eq!(
+            up.seen.lock().expect("lock").len(),
+            1,
+            "非空对照：真打到上游"
+        );
         assert_eq!(
             up.bodies.lock().expect("lock")[0],
             REQUEST_BODY.as_bytes(),
@@ -1556,7 +1578,10 @@ mod tests {
             got.starts_with("HTTP/1.1 400"),
             "读不懂的 Content-Length 必须回 400（拿到的是：{got:?}）"
         );
-        assert!(clean, "400 要**送得到**：连接得干净收尾，不是被 RST 打断（拿到的是：{got:?}）");
+        assert!(
+            clean,
+            "400 要**送得到**：连接得干净收尾，不是被 RST 打断（拿到的是：{got:?}）"
+        );
         assert_eq!(
             up.seen.lock().expect("lock").len(),
             1,
@@ -1800,13 +1825,19 @@ mod tests {
         }
         let writes = std::sync::Arc::new(AtomicU64::new(0));
         let up = spawn_fake_upstream(None);
-        let (relay_addr, _relay, _tee) =
-            spawn_relay_with_sink(up.addr, Some(Box::new(WedgedSink(std::sync::Arc::clone(&writes)))));
+        let (relay_addr, _relay, _tee) = spawn_relay_with_sink(
+            up.addr,
+            Some(Box::new(WedgedSink(std::sync::Arc::clone(&writes)))),
+        );
 
         let mut ms = Vec::new();
         for key in ["sid-AAA", "sid-BBB"] {
             let t0 = std::time::Instant::now();
-            let mut c = send_request(relay_addr, &format!("/s/agentA/acctA/{key}/v1/messages"), "");
+            let mut c = send_request(
+                relay_addr,
+                &format!("/s/agentA/acctA/{key}/v1/messages"),
+                "",
+            );
             let mut got = Vec::new();
             c.read_to_end(&mut got).expect("read");
             let el = t0.elapsed().as_millis() as u64;
@@ -1830,7 +1861,10 @@ mod tests {
             wait_until(|| writes.load(Ordering::SeqCst) >= 1),
             "非空对照：卡住的那个落点一次都没被写过 ⇒ 本条量的不是 tee 这条路"
         );
-        println!("[阻-2] tee 卡 3000ms 时：A 耗时 {} ms · B 耗时 {} ms", ms[0], ms[1]);
+        println!(
+            "[阻-2] tee 卡 3000ms 时：A 耗时 {} ms · B 耗时 {} ms",
+            ms[0], ms[1]
+        );
         assert!(
             ms[0] < 1500,
             "**同一条**连接被自己的 tee 拖停了：A 耗时 {} ms（tee 卡 3000ms）",
@@ -1971,10 +2005,7 @@ mod tests {
         // ⚠ home 走**生产段那条**解析（`resolve_home` 认 `CLAUDE_CONFIG_DIR`）——
         //   而凭据那份文件的位置由 `CCM_RELAY_CREDENTIALS` 覆盖，父进程一定会设它
         //   （见 `spawn_relay_child_with_creds`）。**绝不能让判据去读用户真实的那份凭据。**
-        std::process::exit(run(
-            &crate::agents::claudecode::paths::resolve_home(),
-            &[],
-        ));
+        std::process::exit(run(&crate::agents::claudecode::paths::resolve_home(), &[]));
     }
 
     /// 一个跑在**真子进程**里的中转，连同它 stdout / stderr 的全量收集面。
@@ -2041,7 +2072,10 @@ mod tests {
             ])
             .env(CHILD_MARK, "1")
             .env("CCM_RELAY_PORT", "0")
-            .env("CCM_RELAY_UPSTREAM", format!("http://127.0.0.1:{}", up.port()))
+            .env(
+                "CCM_RELAY_UPSTREAM",
+                format!("http://127.0.0.1:{}", up.port()),
+            )
             .env(creds::ENV_CREDENTIALS, creds_path)
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -2154,7 +2188,10 @@ mod tests {
         // 非空对照①：哨兵串真的经过了中转，上游那侧看见了 auth 头。
         let seen = up.seen.lock().expect("lock").clone();
         assert_eq!(seen.len(), 1, "上游必须收到那一发：{seen:?}");
-        assert!(seen[0].ends_with("auth=true"), "auth 头必须被转发：{seen:?}");
+        assert!(
+            seen[0].ends_with("auth=true"),
+            "auth 头必须被转发：{seen:?}"
+        );
         // 非空对照③：stdout（= tee）上真的出现了事件行 —— 等它到，等不到当红。
         assert!(
             wait_until(|| relay.out().contains("\"event\"")),
@@ -2171,8 +2208,14 @@ mod tests {
             "非空对照：子进程 stderr 一个字都没收到 —— 采集面是死的：{err:?}"
         );
         // ★ 正题：两条流上都不许出现哨兵串，也不许出现头名。
-        assert!(!err.contains(SENTINEL), "哨兵串泄漏进了中转的 stderr：{err:?}");
-        assert!(!out.contains(SENTINEL), "哨兵串泄漏进了中转的 stdout：{out:?}");
+        assert!(
+            !err.contains(SENTINEL),
+            "哨兵串泄漏进了中转的 stderr：{err:?}"
+        );
+        assert!(
+            !out.contains(SENTINEL),
+            "哨兵串泄漏进了中转的 stdout：{out:?}"
+        );
         assert!(
             !err.contains("Authorization"),
             "中转的 stderr 里出现了请求头名：{err:?}"
@@ -2295,12 +2338,18 @@ mod tests {
         );
 
         // ── 正题：四个出口，一个字节都不许有 ────────────────────────────
-        assert!(!out.contains(CANARY), "㈠ 标准输出（tee）里出现了 key：{out:?}");
+        assert!(
+            !out.contains(CANARY),
+            "㈠ 标准输出（tee）里出现了 key：{out:?}"
+        );
         assert!(
             !downstream.contains(CANARY),
             "㈡ 回给下游客户端的字节里出现了 key：{downstream:?}"
         );
-        assert!(!err.contains(CANARY), "㈢ stderr（含错误与 panic）里出现了 key：{err:?}");
+        assert!(
+            !err.contains(CANARY),
+            "㈢ stderr（含错误与 panic）里出现了 key：{err:?}"
+        );
         assert!(
             !not_found.contains(CANARY) && !bad_len.contains(CANARY),
             "㈢ 错误响应里出现了 key：404={not_found:?} / 400={bad_len:?}"
@@ -2603,12 +2652,18 @@ mod tests {
         //   `server.rs::the_substituted_key_never_shows_up_in_any_of_the_four_exits` 的 ㈢ 那条断言）。
         //   ⇒ **② 有牙，是被那一刀单独证过的，不是靠这里的排序证的。**
         for (who, canary) in [("A", CANARY_A), ("B", CANARY_B), ("dead", CANARY_DEAD)] {
-            assert!(!out.contains(canary), "㈠ 标准输出（tee）里出现了 {who} 的 key：{out:?}");
+            assert!(
+                !out.contains(canary),
+                "㈠ 标准输出（tee）里出现了 {who} 的 key：{out:?}"
+            );
             assert!(
                 !downstream.contains(canary),
                 "㈡ 回给下游客户端的字节里出现了 {who} 的 key：{downstream:?}"
             );
-            assert!(!err.contains(canary), "㈢ stderr 里出现了 {who} 的 key：{err:?}");
+            assert!(
+                !err.contains(canary),
+                "㈢ stderr 里出现了 {who} 的 key：{err:?}"
+            );
             assert!(
                 !not_found.contains(canary) && !bad_gateway.contains(canary),
                 "㈢ 错误响应里出现了 {who} 的 key：404={not_found:?} / 502={bad_gateway:?}"
@@ -2729,11 +2784,22 @@ mod tests {
         assert_ne!(x, n);
 
         // ㈠ Bearer 那一行：期望值是**手写字面量**。
-        assert!(b.contains(&format!("Authorization: Bearer {MINE}\r\n")), "{b:?}");
-        assert_eq!(b.matches("Authorization:").count(), 1, "同名鉴权头出现了两次：{b:?}");
+        assert!(
+            b.contains(&format!("Authorization: Bearer {MINE}\r\n")),
+            "{b:?}"
+        );
+        assert_eq!(
+            b.matches("Authorization:").count(),
+            1,
+            "同名鉴权头出现了两次：{b:?}"
+        );
         // ㈡ x-api-key 那一行：换的是**那个头**，而且**不许**顺手也写一个 Authorization。
         assert!(x.contains(&format!("x-api-key: {MINE}\r\n")), "{x:?}");
-        assert_eq!(x.matches("x-api-key:").count(), 1, "同名鉴权头出现了两次：{x:?}");
+        assert_eq!(
+            x.matches("x-api-key:").count(),
+            1,
+            "同名鉴权头出现了两次：{x:?}"
+        );
         assert!(
             !x.contains("Authorization"),
             "x-api-key 那一行还带了 Authorization —— 「拿 A 风格的行发 B 风格的头」正是本格要拦的：{x:?}"
@@ -2741,10 +2807,16 @@ mod tests {
         // ㈢ 无鉴权那一行：**一个鉴权头都没有**，客户端那两份也没转过去。
         assert!(!n.contains("Authorization"), "{n:?}");
         assert!(!n.contains("x-api-key"), "{n:?}");
-        assert!(!n.contains("THEIRS"), "客户端那份鉴权头被转给了本地端点：{n:?}");
+        assert!(
+            !n.contains("THEIRS"),
+            "客户端那份鉴权头被转给了本地端点：{n:?}"
+        );
         // ㈣ 三行都**没有**把客户端那两份带上（它们有自己的 key / 声明了不发）。
         for (id, r) in [("bearer", &b), ("xapikey", &x)] {
-            assert!(!r.contains("THEIRS"), "{id} 那一行把客户端的凭据一起送上去了：{r:?}");
+            assert!(
+                !r.contains("THEIRS"),
+                "{id} 那一行把客户端的凭据一起送上去了：{r:?}"
+            );
         }
         // ㈤ 非鉴权的头照旧原样转发（本条不许顺手变成一把大扫帚）。
         for r in [&b, &x, &n] {
@@ -2763,7 +2835,10 @@ mod tests {
         use creds_core::store::AuthStyle;
         // 反空真：`AUTH_HEADER_NAMES` 非空，而且**全是小写**
         //（比对走 `eq_ignore_ascii_case`，但表里混大小写会让读的人以为它区分大小写）。
-        assert!(!AUTH_HEADER_NAMES.is_empty(), "那个集合是空的 —— 本条在空转");
+        assert!(
+            !AUTH_HEADER_NAMES.is_empty(),
+            "那个集合是空的 —— 本条在空转"
+        );
         for n in AUTH_HEADER_NAMES {
             assert_eq!(*n, n.to_ascii_lowercase(), "表里这一项不是小写：{n}");
         }
@@ -3926,7 +4001,10 @@ head -n 1 <&3
         //   id 取中性名：断言里用的是 key 那个值，不是目录名（`brief` 12 那条）。
         std::fs::write(
             &creds,
-            creds_text_the_write_side_would_produce(&[("row-one", "KEY-ONE"), ("row-two", "KEY-TWO")]),
+            creds_text_the_write_side_would_produce(&[
+                ("row-one", "KEY-ONE"),
+                ("row-two", "KEY-TWO"),
+            ]),
         )
         .expect("写凭据夹具");
         // 采集面自检：写侧那两步**真的产出了一份能解析的、带那两行的文件**。
@@ -3980,7 +4058,10 @@ head -n 1 <&3
             "上游没收到两发 —— 「配完之后那条链真的通」这句话在这一趟里就是假的：{seen:?}"
         );
         for line in &seen {
-            assert_eq!(line, "POST /v1/messages HTTP/1.1 auth=true", "实得：{seen:?}");
+            assert_eq!(
+                line, "POST /v1/messages HTTP/1.1 auth=true",
+                "实得：{seen:?}"
+            );
         }
         // ★ 正题②：**两个账号各拿各的 key**。
         let auths = up.auth_values.lock().expect("lock").clone();
