@@ -19,6 +19,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { readFileSync } from "node:fs";
 
 // ⚠ 必须是**异步动态 import** 的工厂（理由见 rig 里 `tauriCoreMock` 的头注：`vi.mock` 提升 + TDZ）。
 vi.mock("@tauri-apps/api/core", async () => {
@@ -36,6 +37,7 @@ import {
   type RigPayload,
   type ViewerRigHandles,
 } from "../test-support/session-viewer-rig";
+import { REPO_ROOT } from "../test-support/repo-root";
 import { SessionViewer } from "./session-viewer";
 import { collectUserInputs } from "./user-input-index";
 
@@ -200,5 +202,63 @@ describe("KR45D1 点一下跳过去", () => {
 
     expect(rowsOf(v).map((r) => r.dataset.inputUuid)).toEqual(["n1"]);
     expect(toggleOf(v).textContent).toBe("我说过的 1 句");
+  });
+});
+
+/**
+ * 上一轮申报的第 4 笔债：面板样式内联（`style.cssText`），因为 `src/styles.css` 在写区外。
+ * 本轮搬进 `.session-viewer-inputs` / `.session-viewer-input-row`
+ * / `.session-viewer-input-row[data-unjumpable]`。下面**两格是一对**，各买各的：
+ * 第一格量的是「JS 这边不再拼样式」（行为，jsdom 量得到）；
+ * 第二格量的是「CSS 那边真有宿主」—— jsdom **不加载** `styles.css`，
+ * 把那三条规则整段删掉，第一格**一条都不会红**。
+ * （同形先例：`account-chip.vitest.ts` 的 `.account-picker-status.warn` 那一格。）
+ */
+describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
+  it("面板与清单行都不带内联 style（含「跳不过去」那一行 —— 变灰也不许退回内联）", async () => {
+    const v = await mount([
+      userLine(1, "u1", "第一句"),
+      userLine(2, "u2", "[Request interrupted by user]"),
+    ]);
+    expect(panelOf(v).getAttribute("style")).toBeNull();
+    expect(rowsOf(v).map((r) => r.getAttribute("style"))).toEqual([null, null]);
+
+    rowsOf(v)[1].click(); // 这一条落不到卡上 ⇒ 会被标出来
+
+    expect(rowsOf(v)[1].dataset.unjumpable).toBe("1"); // 标记还在（呈现的钩子就是它）
+    expect(rowsOf(v)[1].getAttribute("style")).toBeNull(); // 而灰**不是**拿内联 opacity 涂的
+  });
+
+  it("那三条规则在 styles.css 里真有宿主（jsdom 不加载 CSS ⇒ 上一格盖不住这一形）", () => {
+    // ⚠ 匹配单位是**一整行选择器**，不是子串 —— 子串比事实小，
+    //   有人写 `.session-viewer-input-row .x { … }` 也会命中，而那一行根本没上样式。
+    const cssLines = readFileSync(`${REPO_ROOT}/src/styles.css`, "utf8")
+      .split("\n")
+      .map((l) => l.trim());
+    // 抽取器自检：先确认这把尺子够得着那个文件（不然下面几条是空真）。
+    expect(cssLines.length, "读到的 styles.css 只有几行 —— 尺子坏了").toBeGreaterThan(1000);
+    expect(cssLines, "读到的不是 styles.css —— 连基准那条规则都没有").toContain(
+      ".session-viewer-bar {",
+    );
+
+    expect(cssLines, "面板没有 CSS 宿主 ⇒ 它退回一块没有高度上限、不滚动、无底边的裸 div").toContain(
+      ".session-viewer-inputs {",
+    );
+    expect(cssLines, "清单行没有 CSS 宿主 ⇒ 每一行退回浏览器默认按钮长相").toContain(
+      ".session-viewer-input-row {",
+    );
+    expect(cssLines, "「跳不过去那一条变灰」没有宿主 ⇒ 标记还在、但用户看不出来").toContain(
+      ".session-viewer-input-row[data-unjumpable] {",
+    );
+
+    // 🔴 面板规则里**绝不许出现 `display`**：面板靠 `el.hidden` 收起，而 `hidden` 就是
+    //    UA 样式表里的 `display:none`，作者样式里任何一条 `display` 都盖得掉它
+    //    ⇒ 面板从此永远展开，而「面板默认收着」那一格断的是 `.hidden` 属性，照样绿。
+    const open = cssLines.indexOf(".session-viewer-inputs {");
+    const body = cssLines.slice(open + 1, cssLines.indexOf("}", open));
+    expect(
+      body.filter((l) => /^display\s*:/.test(l)),
+      "`.session-viewer-inputs` 里出现了 display ⇒ 它会盖掉 hidden 的 display:none，面板再也收不起来",
+    ).toEqual([]);
   });
 });
