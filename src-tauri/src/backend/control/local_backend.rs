@@ -45,7 +45,7 @@
 //! 被监护的对象是我们自己的 daemon（`--tail-only` 持续往 stdout 写帧），不会这么干；
 //! 换成别的程序前要重新想。EOF 之后仍会 `wait()` 收尸（那时它已经死了，不阻塞）。
 //!
-//! # ⚠ 今天它在生产上**不会真起一个进程**，这是刻意的
+//! # ⚠ 它只认安装包里那一份，**绝不扫仓库 dev 产物** —— 这是刻意的
 //!
 //! 摸底量到一件安全相关的事：daemon 一启动就**无条件**往它能连到的 tmux server 上装三条
 //! 全局 hook（`observe/watcher.rs::install_tmux_hooks_best_effort` → `set-hook -g`），
@@ -53,9 +53,23 @@
 //! 就起它」会去改用户真实 tmux server 的状态。
 //!
 //! ⇒ [`resolve_with`] **只认打包进安装包的 sidecar**（exe 同目录、按 target triple 命名），
-//! **不扫仓库里的 dev 产物**。今天安装包里还没有那个文件（`externalBin` 是 **F05b**）
-//! ⇒ 生产路径恒走 [`Resolved::Missing`] 的**诚实降级**（定框 §5：tagged + `reason`，不是 `Err`），
-//! 零副作用。**C7 由 F05a + F05b 两件共同满足**，ROADMAP §3 就是这么记的。
+//! **不扫仓库里的 dev 产物**；找不到时是 [`Resolved::Missing`] 的**诚实降级**
+//! （定框 §5：tagged + `reason`，不是 `Err`），零副作用。
+//!
+//! 🔴 **订正（2026-09-10 现打，v3.7.0）**：本段原话「今天安装包里还没有那个文件
+//! （`externalBin` 是 **F05b**）⇒ 生产路径**恒走**降级」——**两句今天都不成立**。
+//! F05b 已经做完并随 v3.7.0 发出去了：`externalBin` 配在
+//! `src-tauri/tauri.sidecar.conf.json`，发版那一步用
+//! `npx tauri build --config src-tauri/tauri.sidecar.conf.json` 注入（`.github/workflows/release.yml`）。
+//! ⚠ 它**刻意不进基础 `tauri.conf.json`** —— 进了会让 `cargo test` 也要求当前 target
+//! 的那份二进制存在（那条头注住 `release.yml` 的 `tauri build` 那一步）。
+//! ⇒ **「基础配置里没有」≠「没配」，别再把这两句写成一句。**
+//!
+//! 干净 win11 虚拟机上现打（PM，09-10，真安装包 + 真裸 exe 各一趟）：
+//! **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe` **2 个进程在跑**；
+//! **裸 `monitor.exe`** 那份 **0 个**。⇒ 走 [`Resolved::Found`] 还是 [`Resolved::Missing`]，
+//! 取决于**用户手里是哪一份产物**，不再是一个常数。
+//! **C7 由 F05a + F05b 两件共同满足**，ROADMAP §3 就是这么记的 —— 两件今天都在了。
 //!
 //! 真进程行为由 `e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
 //! [`supervise`]，并强制私有 tmux 隔离，绝不碰用户真实 tmux server。
@@ -136,9 +150,12 @@ pub fn resolve_with(
     }
     Resolved::Missing {
         reason: format!(
-            "安装包里没有本机后端 sidecar（`{SIDECAR_STEM}`）—— \
-             `tauri.conf.json` 今天还没有 `externalBin`，那是 F05b。\
-             本机后端因此**未启动**；远端功能不受影响"
+            "这一份 monitor 旁边没有本机后端 sidecar（`{SIDECAR_STEM}`）。\
+             它**随安装包一起发**（`*-setup.exe` / `*.msi` 里都带，装完与 monitor 同目录）\
+             —— 没有它通常意味着：跑的是单独下载的**裸 `monitor.exe`**，\
+             或自己构建时没带上 `--config src-tauri/tauri.sidecar.conf.json`。\
+             ⇒ **要本机后端就装一次安装包**（Releases 页）。\
+             本机后端今天**未启动**；远端功能不受影响"
         ),
         looked_at: cands,
     }
@@ -669,9 +686,12 @@ pub fn supervise_with_stdio(
             // **全部 stdout 攒在一个永不释放的 `Vec` 里**，而它是**持续产帧**的
             // （那正是本模块头注用来论证「它不会关掉 stdout」的理由）⇒ 增长速度 =
             // 本机所有会话的 jsonl 产出速度，且没有任何消费者。
-            // 今天不咬人只因为 `resolve_beside_this_exe` 恒 `Missing`（`tauri.conf.json` 里没有
-            // `externalBin`）—— **离生效只差一个配置项**，而 `e2e/local-backend-supervise.sh`
-            // 那条真进程路径现在就在跑它。
+            // 〔订正 09-10：原话「今天不咬人只因为 `resolve_beside_this_exe` 恒 `Missing`
+            // （`tauri.conf.json` 里没有 `externalBin`）—— **离生效只差一个配置项**」**已过期**。
+            // F05b 随 v3.7.0 发出去了：装出来那份现打有 2 个后端进程在跑（读数住模块头注）
+            // ⇒ 这条路**在装了安装包的机器上已经生效**，不再是「差一个配置项」。
+            // 也就是说这个修不是预防性的，它今天就在挡真事。〕
+            // `e2e/local-backend-supervise.sh` 那条真进程路径也一直在跑它。
             // ⇒ `io::copy` 到 `io::sink()`：**EOF 语义完全不变**，但一个字节都不留。
             let report = match (&stdio, out, in_) {
                 // P2：消费者**负责把 stdout 读到底** —— 它返回就等于流结束。
@@ -941,8 +961,14 @@ pub fn extract_embedded_to(
 
 /// **生产入口**：找得到就起并看住；找不到就**诚实降级**（定框 §5）。
 ///
-/// ⚠ 今天恒走降级那一支 —— 安装包里还没有 sidecar（`externalBin` 是 F05b）。
-/// 这不是「接线没做」，是**接线做了、依赖还没到位**：两者的区别就在这个返回值上，
+/// ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10 现打，v3.7.0〕：
+/// 安装包（NSIS / MSI）里**带着** sidecar —— 干净 win11 虚拟机上装完现打，
+/// `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe` **2 个进程在跑**；
+/// 而**裸 `monitor.exe`** 那份 **0 个**，走的才是降级那一支。
+/// 〔本行原话「今天恒走降级那一支 —— 安装包里还没有 sidecar（`externalBin` 是 F05b）」
+/// 已被那次读数证伪。`externalBin` 配着，只是住 `src-tauri/tauri.sidecar.conf.json`
+/// 而不是基础 `tauri.conf.json` —— 分工见模块头注。〕
+/// 降级不是「接线没做」，是**接线做了、这一份产物里没带**：两者的区别就在这个返回值上，
 /// 调用方能把 `reason` 与 `looked_at` 原样记进日志。
 pub fn start_if_present(
     target_triple: &str,
@@ -2479,19 +2505,95 @@ mod tests {
             "",
             &never,
         );
-        let Resolved::Missing { reason, looked_at } = r else {
+        let Resolved::Missing { looked_at, .. } = r else {
             panic!("应当是 Missing");
         };
-        assert!(
-            reason.contains("F05b"),
-            "诊断要指出「谁负责补上它」：{reason}"
-        );
         assert_eq!(looked_at.len(), 2, "两个候选都要列出来：{looked_at:?}");
         assert!(
             looked_at
                 .iter()
                 .any(|p| p.to_string_lossy().contains("x86_64-unknown-linux-gnu")),
             "triple 形态那个候选丢了：{looked_at:?}"
+        );
+    }
+
+    /// 「像内部件号」的形状：一个 ASCII 大写字母紧跟两位数字（`F05b` · `K-R30` 的 `R30` 都算）。
+    /// 三个字节**全是 ASCII** 才算命中 ⇒ 切片必落在字符边界上，中文正文不会误伤。
+    fn internal_item_id_in(s: &str) -> Option<String> {
+        let b = s.as_bytes();
+        (0..b.len().saturating_sub(2)).find_map(|i| {
+            (b[i].is_ascii_uppercase() && b[i + 1].is_ascii_digit() && b[i + 2].is_ascii_digit())
+                .then(|| String::from_utf8_lossy(&b[i..i + 3]).into_owned())
+        })
+    }
+
+    /// **用户拿得到的下一步**的标记。任一命中即算数 —— 钉的是「有没有下一步」，
+    /// **不是「必须这么措辞」**：换个说法重写诊断不该把判据弄红。
+    ///
+    /// ⚠ 表里**刻意不放光秃秃的「安装包」三个字**：09-10 之前那版旧诊断第一句就是
+    /// 「安装包里没有本机后端 sidecar」—— 放进来这条判据对**那句假话恒绿**，
+    /// 那就又成了一条替假话背书的判据。表里这几个都是**用户点得动 / 做得出的东西**。
+    const A_STEP_THE_USER_CAN_TAKE: &[&str] = &["-setup.exe", ".msi", "装一次安装包", "装上安装包"];
+
+    /// 🔴 **这条判据换过一次靶子（09-10）** —— 换靶的理由比判据本身更该记下来。
+    ///
+    /// # 原来钉的是什么，为什么必须换
+    ///
+    /// 原文逐字：`assert!(reason.contains("F05b"), "诊断要指出「谁负责补上它」：{reason}")`。
+    /// 它**写的时候是对的**：那天 sidecar 确实还没做，诊断指出「谁来补」是有用的。
+    /// 而 09-10 F05b 随 v3.7.0 发出去之后，**没有人需要「补上它」了** ⇒
+    /// 这条判据就变成了钉住一个**目的已经过期**的字符串，
+    /// 让「安装包里还没有 `externalBin`」那句已经变假的话看起来**像有 judge 守着**。
+    /// **这正是本仓要治的那一形：一条判据替一句已经变假的话背书。**
+    ///
+    /// # 现在钉的是什么
+    ///
+    /// **诊断必须给读它的人一条做得到的下一步**（正向，主判据）——
+    /// 用户拿一个内部件号什么也做不了，他要的是「那我该干嘛」。
+    /// 外加一条负向：**不许再把内部件号甩到用户脸上**。
+    /// ⚠ 负向那条**单独不算数**：把件号删干净只是让判据闭嘴，消息可以照样没用 ⇒
+    /// 正向那条才是本条的立身之本，顺序上也先断它。
+    ///
+    /// # 它什么时候会红（09-10 造了三刀，**三刀都真红了**，逐字读数见交回件）
+    ///
+    /// · 刀 1：诊断被改写成只说「找不到」、不说怎么办（最像的一次退化）⇒ 正向那条红；
+    /// · 刀 2：诊断被改回 09-10 之前那一版（含 `F05b`）⇒ **正向那条先红** ——
+    ///   ⚠ `assert!` 按顺序短路，**负向那条根本没轮到说话**，所以不许写成「两条都红」；
+    /// · 刀 3：诊断留着「装一次安装包」但把件号加回去 ⇒ **负向那条红**（打出 `F05`）。
+    ///   刀 3 存在的唯一理由就是：没有它，负向那条**从没被证明过会红**。
+    ///
+    /// # 诚实边界（写死，别读宽）
+    ///
+    /// 它买的是「消息里有一条**看起来是**下一步的东西」，**买不到**「那句话是真的」，
+    /// 更买不到「读者真看懂了」—— 把标记词拼进一句废话里，它照样绿。
+    /// 射程也只有 [`resolve_with`] 这一条 `reason`：
+    /// [`resolve_beside_this_exe`] 拿不到自身路径那条、[`start_or_extract`] 释放失败那条，
+    /// **本条一条都没盖**。头注 / `DECISIONS` / 模块注释里写件号**不受本条管**，
+    /// 本条只管**发到用户面前的那一串**。
+    #[test]
+    fn the_missing_sidecar_diagnosis_hands_the_user_a_next_step() {
+        let r = resolve_with(
+            Path::new("/opt/app"),
+            "x86_64-unknown-linux-gnu",
+            "",
+            &never,
+        );
+        let Resolved::Missing { reason, .. } = r else {
+            panic!("应当是 Missing");
+        };
+        assert!(
+            A_STEP_THE_USER_CAN_TAKE.iter().any(|m| reason.contains(m)),
+            "诊断没给读它的人任何一条做得到的下一步（找过 {A_STEP_THE_USER_CAN_TAKE:?}）。\n\
+             「本机后端没有」本身**不是**下一步 —— 用户要的是「那我该干嘛」。\n\
+             逐字：{reason}"
+        );
+        let id = internal_item_id_in(&reason);
+        assert!(
+            id.is_none(),
+            "诊断里出现了内部件号 `{}` —— 用户拿它什么也做不了，而且件号会过期\n\
+             （`F05b` 就是这么过期的，见本条头注）。件号写头注，别写给用户。\n\
+             逐字：{reason}",
+            id.clone().unwrap_or_default()
         );
     }
 
