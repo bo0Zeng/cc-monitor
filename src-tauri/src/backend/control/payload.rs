@@ -2250,25 +2250,87 @@ mod tests {
 
         let mut prod_total = 0usize;
         // (裸标识符, 调用形恰好几处, 裸标识符恰好几处)
+        //
+        // ⚠ **这两格仍然是计数制，别顺手统一成下面那种住址制**〔ccbus-win 09-10〕：
+        //   它们今天**没有第二类消费者** —— 除了缝，谁都不该调 `relay_rows`（读文件）
+        //   / `relay_running`（问 daemon）。计数对它们仍然是对的答案。
         let mut counts = [
             // 定义 1 处（`history.rs`）+ 缝里 `rows: relay_rows,` 1 处。
             ("relay_rows", 1usize, 2usize, 0usize, 0usize),
             // 定义 1 处（`local_daemon.rs`）+ 缝里 `running: crate::local_daemon::relay_running,` 1 处。
             ("relay_running", 1, 2, 0, 0),
-            // 定义 1 处（`history.rs`）+ 缝里 `windows: platform_is_windows,` 1 处。
-            ("platform_is_windows", 1, 2, 0, 0),
         ];
+
+        // ═══ `platform_is_windows`：从**数个数**改成**点名住址**〔ccbus-win 09-10〕 ═══
+        //
+        // # 为什么这一格必须换制
+        //
+        // 这个取值口今天同时是两样东西，而这两句在**第一个非中转消费者出现之前**都为真：
+        // · 它自己的头注说「**只有这一处**说得出这句话」⇒ 生产段问平台都该走它；
+        // · 本条原来的计数说「恰好 1 处」⇒ 除了缝，谁都不许调。
+        // `cc_bus::resolve_bash` 就是那第一个：它要问「这台机是不是 Windows」，
+        // 好在 Windows 上按绝对路径定位 `bash`（裸名会被 `System32` 里的 WSL 存根抢走）。
+        // ⇒ 一个数在回答两个从今天起答案不同的问题。这正是本条原文写的出路 ②
+        //   「**重新裁定**并在这里说清为什么这一处可以不走」。
+        //
+        // ⚠ **走缝是错的出路**：为了问一句「是不是 Windows」而调 `history::relay_facts()`，
+        //   会顺带跑 `relay_rows()`（读文件）与 `relay_running()`（问 daemon）。
+        //
+        // # 换制之后它比原来强在哪（**有读数，不是设想**）
+        //
+        // 另一条路是「把那个 1 改成 2」放行。它有一个**互相抵消**的失效形态。
+        // 09-10 拿真树现打过（按本条同一套剥法离线模拟，两个方案喂同一刀）：
+        //
+        // | 树 | 住址制 | 「把数字改成 2」 |
+        // |---|---|---|
+        // | 干净 | 绿 | 绿 |
+        // | 刀①：`mcp.rs` 里加一处绕缝调用 | **红**（点名 `mcp.rs`） | 红（调用形 3/期望 2） |
+        // | 刀③：加那一处绕缝 **＋** 把 `cc_bus` 那处正当调用删掉 | **红**（两条都点名） | **绿** ← 抵消 |
+        //
+        // ⇒ 刀③ 那一格就是「一个数装两件事」最后的落点：总数没变，判据一声不吭。
+        // 住址制两边都逮：没登记的住址 ⇒ 红；登记了却零命中 ⇒ 也红。
+        const PLATFORM: &str = "platform_is_windows";
+        /// `(相对路径, 这个文件里的调用形处数, 凭什么这一处可以不走缝)`。
+        /// **默认拒绝**：人群从源码派生，没登记的住址当场红。
+        const PLATFORM_TAKE_SITES: &[(&str, usize, &str)] = &[
+            ("history.rs", 1, "取值口**自己的定义行** —— 它不是调用点"),
+            (
+                "cc_bus.rs",
+                1,
+                "`resolve_bash` 的平台那一格〔ccbus-win 09-10〕。它不走缝的理由是\
+                 **缝答的不是它要问的东西**：`RelayFactSources` 是「中转」那三件事的取值口，\
+                 而这里只要「是不是 Windows」，走缝要顺带付 `relay_rows()`（读文件）\
+                 与 `relay_running()`（问 daemon）两笔钱。\
+                 ⚠ 它**没有**因此自己写 `cfg!(windows)` —— 那句话仍然只有一个家，\
+                 由 `cc_bus::tests::the_bash_cc_bus_runs_is_resolved_in_exactly_one_place` \
+                 从另一头钉住（那条判据要求本文件里 `cfg!(windows)` 恰好 0 处）。",
+            ),
+        ];
+        // 抽取器自检：登记 0 处等于给自己开后门（那一行永远命中不了、也永远不会红）。
+        for (site, want, _) in PLATFORM_TAKE_SITES {
+            assert!(*want >= 1, "住址 {site} 登记了 0 处 —— 那是个后门，不是登记");
+        }
+        let mut platform_sites: Vec<(String, usize)> = Vec::new();
+        let mut platform_bare = 0usize;
         // 送法那一半：人群是**除 `launch.rs` 以外**的全树 —— 送法自己在那个文件里当然要被调。
         let mut sink_calls: Vec<String> = Vec::new();
 
         for (path, raw) in &files {
             let prod = guard_core::production_code(raw);
             prod_total += prod.len();
+            // ⚠ 草堆这一侧**在这里就归一了分隔符**；针那一侧在下面的 `ends_with` 里
+            //   也归一 —— **两侧都归一才作数**（本仓刚在 Windows 上栽过一次「只归一了
+            //   草堆没归一针」：`guard-core` 的 `scan_tree!` 自排除曾是静默 no-op）。
             let rel = path.to_string_lossy().replace('\\', "/");
             for c in counts.iter_mut() {
                 c.3 += prod.matches(&format!("{}(", c.0)).count();
                 c.4 += bare(&prod, c.0);
             }
+            let n = prod.matches(&format!("{PLATFORM}(")).count();
+            if n > 0 {
+                platform_sites.push((rel.clone(), n));
+            }
+            platform_bare += bare(&prod, PLATFORM);
             if !rel.ends_with("/launch.rs") {
                 for sink in ["launch_local_posix", "launch_powershell_window"] {
                     let n = prod.matches(&format!("{sink}(")).count();
@@ -2302,6 +2364,57 @@ mod tests {
                  那条缝就不再是唯一的入口了。"
             );
         }
+        // ═══ `platform_is_windows` 的两半：住址（调用形）+ 指针副本（裸标识符） ═══
+        let platform_calls: usize = platform_sites.iter().map(|(_, n)| *n).sum();
+        assert!(
+            platform_bare >= platform_calls,
+            "抽取器坏了：裸标识符 {platform_bare} 处 < 调用形 {platform_calls} 处 —— \
+             每一处调用形都必然也是一处裸标识符，反过来不成立"
+        );
+        // 「裸标识符 − 调用形」= **函数指针被复制到了几个地方**。今天只准有缝里那一处。
+        // ⚠ 这样写而不是钉一个裸标识符总数：总数会跟着「合法调用点多了一个」一起动，
+        //   于是又变回「一个数装两件事」——正是本格换制要治的那个病。
+        let copies = platform_bare - platform_calls;
+        assert_eq!(
+            copies, 1,
+            "\n★ `{PLATFORM}` 的**函数指针**在生产段里被复制到了 {copies} 个地方\
+             （期望 1 = `PRODUCTION_RELAY_FACTS` 里那一处）。\n\
+             ⇒ 多了：那条缝就不再是唯一入口；少了：缝上那一格不再由它答。"
+        );
+
+        let mut unregistered: Vec<String> = Vec::new();
+        let mut hit = vec![0usize; PLATFORM_TAKE_SITES.len()];
+        for (rel, n) in &platform_sites {
+            // 针这一侧也归一（见上面那段注释）。用 `/` 起头，免得 `bus.rs` 命中 `cc_bus.rs`。
+            let at = PLATFORM_TAKE_SITES
+                .iter()
+                .position(|(site, _, _)| rel.ends_with(&format!("/{}", site.replace('\\', "/"))));
+            match at {
+                Some(i) => hit[i] += n,
+                None => unregistered.push(format!("  {rel} × {n}")),
+            }
+        }
+        assert!(
+            unregistered.is_empty(),
+            "\n★★ 这些地方调了 `{PLATFORM}(` 却**没有登记住址**：\n{}\n\n\
+             ⇒ 有人绕开 `history::RelayFactSources` 那条缝直接问了平台，而 ① 没有判据数得出来\n\
+             ② 它「问没问 / 用没用答案」也没有任何判据。\n\
+             合法出路两条：**改成走缝**（`history::relay_facts()`），\n\
+             或**登记进 `PLATFORM_TAKE_SITES` 并写清为什么这一处可以不走**。",
+            unregistered.join("\n")
+        );
+        for (i, (site, want, why)) in PLATFORM_TAKE_SITES.iter().enumerate() {
+            assert_eq!(
+                hit[i], *want,
+                "\n★ 住址 `{site}` 登记了 {want} 处 `{PLATFORM}(`，实得 {} 处。\n\
+                 · 实得 0 ⇒ 那处正当调用被删/改名了，**登记要跟着退**\n\
+                 （登记了却零命中的行会让「有人删掉一处正当调用」悄悄溜过去）。\n\
+                 · 实得更多 ⇒ 同一个文件里多了一处，逐处过一遍再改数。\n\
+                 这一处当初凭什么可以不走缝：{why}",
+                hit[i]
+            );
+        }
+
         assert!(
             sink_calls.is_empty(),
             "\n★★ `launch.rs` 之外还有人直接调那两个送法：{sink_calls:?}\n\
