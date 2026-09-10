@@ -167,7 +167,9 @@ fn run_inner(agent_home: &Path, args: &[String]) -> Result<ForkResult, String> {
     let dir = source
         .parent()
         .ok_or("refuse fork: source has no parent dir")?;
-    let out_path = dir.join(crate::agents::claudecode::records::session_file_name(&new_sid));
+    let out_path = dir.join(crate::agents::claudecode::records::session_file_name(
+        &new_sid,
+    ));
     write_new_file(&out_path, &records)?;
 
     Ok(ForkResult {

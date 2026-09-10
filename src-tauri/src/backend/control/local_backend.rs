@@ -489,7 +489,10 @@ pub fn spawn_retrying_etxtbsy<T>(
             Err(e) => return Err(SpawnFailure::Broken(e)),
         }
     }
-    Err(SpawnFailure::TransientBusy { tries: budget, last })
+    Err(SpawnFailure::TransientBusy {
+        tries: budget,
+        last,
+    })
 }
 
 /// 生产段两个落点共用的那一跳：起一个进程，并把两件事**分开交回**。
@@ -1363,7 +1366,10 @@ mod tests {
         // 另一个真失败：这台机器上它就是起不来。
         let real_failure = "spawn 本地命令失败: Permission denied (os error 13)";
 
-        assert!(spawn_error_is_etxtbsy(english), "英文 locale 的 ETXTBSY 没认出来");
+        assert!(
+            spawn_error_is_etxtbsy(english),
+            "英文 locale 的 ETXTBSY 没认出来"
+        );
         assert!(
             spawn_error_is_etxtbsy(chinese),
             "换个 locale 就认不出来了 ⇒ 判据挂着一条隐式的 locale 前提，正是本件在治的病"

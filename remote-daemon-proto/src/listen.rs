@@ -356,7 +356,10 @@ mod tests {
     /// 就等于**用空串当口令**。
     #[test]
     fn empty_strings_count_as_unset() {
-        assert_eq!(mode_from(&env_of(&[(ENV_TOKEN, "  ")])).unwrap(), Mode::Stdio);
+        assert_eq!(
+            mode_from(&env_of(&[(ENV_TOKEN, "  ")])).unwrap(),
+            Mode::Stdio
+        );
         assert!(mode_from(&env_of(&[(ENV_PORT, "51000"), (ENV_TOKEN, " ")])).is_err());
     }
 
@@ -425,7 +428,10 @@ mod tests {
             Admit::Refuse(REFUSE_BUSY),
             "第二条要流的连接必须**出声地**拒（不是静默 FIN），否则客户端只能靠超时去猜"
         );
-        assert_eq!(admit(Verdict::WrongToken, false), Admit::Refuse(REFUSE_AUTH));
+        assert_eq!(
+            admit(Verdict::WrongToken, false),
+            Admit::Refuse(REFUSE_AUTH)
+        );
         assert_eq!(
             admit(Verdict::Malformed, true),
             Admit::Refuse(REFUSE_MALFORMED)
@@ -622,7 +628,10 @@ mod tests {
     #[tokio::test]
     async fn the_three_handshake_line_outcomes_are_each_reachable() {
         let mut eof = tokio::io::BufReader::new(&b""[..]);
-        assert_eq!(read_capped_line(&mut eof, 64).await.expect("读"), HandshakeLine::Eof);
+        assert_eq!(
+            read_capped_line(&mut eof, 64).await.expect("读"),
+            HandshakeLine::Eof
+        );
 
         let mut one = tokio::io::BufReader::new(&b"{\"attach\":\"t\"}\n"[..]);
         assert_eq!(

@@ -256,7 +256,11 @@ mod tests {
     #[test]
     fn the_only_place_that_opens_an_upstream_connection_is_a_table_row() {
         let files = crate_production();
-        assert!(files.len() >= 30, "只扫到 {} 个文件 —— 取法坏了", files.len());
+        assert!(
+            files.len() >= 30,
+            "只扫到 {} 个文件 —— 取法坏了",
+            files.len()
+        );
 
         let calls = sites(&files, "upstream::connect(");
         assert_eq!(

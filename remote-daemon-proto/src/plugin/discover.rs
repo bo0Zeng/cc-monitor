@@ -113,7 +113,10 @@ mod tests {
     /// 找不到时那句话要**逐条列出查过的位置**，并把调用方的那句尾巴带上。
     #[test]
     fn the_not_installed_message_names_every_place_it_looked() {
-        let fixed = vec![PathBuf::from("/opt/a/tool"), PathBuf::from("/home/u/bin/tool")];
+        let fixed = vec![
+            PathBuf::from("/opt/a/tool"),
+            PathBuf::from("/home/u/bin/tool"),
+        ];
         let msg = not_installed_message("tool", &fixed, 9, "装了吗？（用 TOOL_DIR 指过来）");
         assert!(msg.contains("/opt/a/tool"), "{msg}");
         assert!(msg.contains("/home/u/bin/tool"), "{msg}");

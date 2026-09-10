@@ -185,8 +185,7 @@ impl TeeSink {
                     //   投递方那一侧报不了 —— 它正是因为「投不进去」才在丢。
                     let (l, b) = (dl.swap(0, SeqCst), db.swap(0, SeqCst));
                     if l > 0 || b > 0 {
-                        let note =
-                            format!("{{\"__dropped__\":{{\"lines\":{l},\"bytes\":{b}}}}}\n");
+                        let note = format!("{{\"__dropped__\":{{\"lines\":{l},\"bytes\":{b}}}}}\n");
                         let _ = w.write_all(note.as_bytes());
                     }
                     let _ = w.flush();
@@ -259,7 +258,10 @@ impl TeeSink {
             return;
         }
         self.dropped_bytes.fetch_add(n, SeqCst);
-        let (l, b) = (self.dropped_lines.swap(0, SeqCst), self.dropped_bytes.swap(0, SeqCst));
+        let (l, b) = (
+            self.dropped_lines.swap(0, SeqCst),
+            self.dropped_bytes.swap(0, SeqCst),
+        );
         if l == 0 && b == 0 {
             return;
         }
@@ -341,7 +343,10 @@ mod tests {
         let mut s = SseSplitter::default();
 
         // ③ 非空对照先做：正常的行一个字节都不许丢。
-        assert_eq!(s.feed(b"data: {\"a\":1}\n", CAP), vec!["{\"a\":1}".to_string()]);
+        assert_eq!(
+            s.feed(b"data: {\"a\":1}\n", CAP),
+            vec!["{\"a\":1}".to_string()]
+        );
         assert_eq!(s.take_dropped(), 0, "正常的行不许丢");
 
         // ① 一条永不换行的超长行：吐不出东西，且**丢的字节数被记下来**。
@@ -550,10 +555,7 @@ mod tests {
         // 等到那行补报出来（等不到就红，不许把「还没写完」读成「没有报」）。
         // `__dropped__` 由**写线程**在写完一行之后补 ⇒ 放行之后它自己会出来。
         let mut text = String::new();
-        while rx
-            .recv_timeout(std::time::Duration::from_secs(4))
-            .is_ok()
-        {
+        while rx.recv_timeout(std::time::Duration::from_secs(4)).is_ok() {
             text = String::from_utf8_lossy(&buf.lock().expect("lock").clone()).to_string();
             if text.contains("__dropped__") {
                 break;
@@ -568,8 +570,8 @@ mod tests {
             .lines()
             .find(|l| l.contains("__dropped__"))
             .expect("那一行");
-        let v: serde_json::Value =
-            serde_json::from_str(note).unwrap_or_else(|e| panic!("`__dropped__` 行必须可解析（DoD-3㈠）：{note:?} ⇒ {e}"));
+        let v: serde_json::Value = serde_json::from_str(note)
+            .unwrap_or_else(|e| panic!("`__dropped__` 行必须可解析（DoD-3㈠）：{note:?} ⇒ {e}"));
         let lines = v["__dropped__"]["lines"].as_u64().expect("lines 是个数");
         assert!(lines > 0, "非空对照：报出来的丢行数必须 > 0：{note}");
     }

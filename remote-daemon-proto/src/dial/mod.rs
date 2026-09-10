@@ -164,7 +164,10 @@ struct DialHandler {
 impl client::Handler for DialHandler {
     type Error = russh::Error;
 
-    async fn check_server_key(&mut self, server_public_key: &PublicKey) -> Result<bool, Self::Error> {
+    async fn check_server_key(
+        &mut self,
+        server_public_key: &PublicKey,
+    ) -> Result<bool, Self::Error> {
         let actual = server_public_key.fingerprint(HashAlg::Sha256).to_string();
         // 接受与否都先把实际指纹写回共享格：界面要拿它做 TOFU 固化。
         if let Ok(mut slot) = self.observed_fingerprint.lock() {
@@ -199,7 +202,9 @@ impl client::Handler for DialHandler {
 ///
 /// 🔴 **这个函数是 `D2` 那条判据的被测对象**：它、以及它调的那几个 `russh` 入口，
 /// 是本 crate 里**唯一**允许出现拨号锚点的地方（判据 `tests::dial_locality`）。
-async fn dial(req: &DialRequest) -> Result<(russh::ChannelStream<client::Msg>, Option<String>), String> {
+async fn dial(
+    req: &DialRequest,
+) -> Result<(russh::ChannelStream<client::Msg>, Option<String>), String> {
     let observed: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let config = Arc::new(client::Config {
         // 长连接：**不靠 inactivity 拆链**（界面侧 `connect_session` 的 FIX 1 逐字同理由），
@@ -229,12 +234,17 @@ async fn dial(req: &DialRequest) -> Result<(russh::ChannelStream<client::Msg>, O
         .map_err(|e| format!("协商 rsa hash 失败: {e}"))?
         .flatten();
 
-    let key_path = req.key_path.as_deref().filter(|s| !s.trim().is_empty()).ok_or_else(|| {
-        "本代理只支持 publickey（keyPath）鉴权：ssh-agent 那条只在界面侧的 Windows 实现里有，\
+    let key_path = req
+        .key_path
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+        .ok_or_else(|| {
+            "本代理只支持 publickey（keyPath）鉴权：ssh-agent 那条只在界面侧的 Windows 实现里有，\
          本 crate 今天只出 Linux musl 二进制。**不静默回落**，请配 keyPath。"
-            .to_string()
-    })?;
-    let key_pair = load_secret_key(key_path, None).map_err(|e| format!("加载私钥 {key_path} 失败: {e}"))?;
+                .to_string()
+        })?;
+    let key_pair =
+        load_secret_key(key_path, None).map_err(|e| format!("加载私钥 {key_path} 失败: {e}"))?;
     let authenticated = session
         .authenticate_publickey(
             &req.user,
@@ -267,7 +277,10 @@ pub(crate) fn parse_request(raw: &str) -> Result<DialRequest, serde_json::Error>
 }
 
 /// 把一行 ack 写出去并 flush。**必须 flush** —— 界面在 `read_line` 上等着它。
-async fn write_ack<W: tokio::io::AsyncWrite + Unpin>(w: &mut W, ack: &DialAck) -> std::io::Result<()> {
+async fn write_ack<W: tokio::io::AsyncWrite + Unpin>(
+    w: &mut W,
+    ack: &DialAck,
+) -> std::io::Result<()> {
     let mut line = serde_json::to_string(ack).unwrap_or_else(|_| {
         // 序列化一个三字段结构不会失败；真失败了也要给对面一行读得懂的东西，
         // 而不是让它在 `read_line` 上挂死。
@@ -491,7 +504,10 @@ mod tests {
             corpus.len()
         );
         match dial_locality(&corpus) {
-            Ok(n) => assert!(n >= 1, "锚点数 {n} —— 不该走到这里，`dial_locality` 自己会拦"),
+            Ok(n) => assert!(
+                n >= 1,
+                "锚点数 {n} —— 不该走到这里，`dial_locality` 自己会拦"
+            ),
             Err(e) => panic!("{e}"),
         }
     }
@@ -554,7 +570,10 @@ mod tests {
     fn a_dial_anchor_outside_dial_home_is_caught_and_named() {
         let mut corpus = crate_sources();
         let victim = "observe/watcher.rs".to_string();
-        let injected = format!("fn f() {{ let _ = {}(a, b, c); }}\n", anchors()[2].trim_end_matches('('));
+        let injected = format!(
+            "fn f() {{ let _ = {}(a, b, c); }}\n",
+            anchors()[2].trim_end_matches('(')
+        );
         let slot = corpus
             .iter_mut()
             .find(|(n, _)| *n == victim)

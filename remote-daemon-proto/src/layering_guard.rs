@@ -487,7 +487,10 @@ mod tests {
     #[test]
     fn the_plugin_layer_scan_actually_bites() {
         assert_eq!(
-            refs_to_layer("let x = crate::plugin::invoke::run(&b, &[], 1, &[]);", "plugin"),
+            refs_to_layer(
+                "let x = crate::plugin::invoke::run(&b, &[], 1, &[]);",
+                "plugin"
+            ),
             vec!["crate::plugin::invoke::run"]
         );
         assert_eq!(

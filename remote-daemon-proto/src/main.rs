@@ -602,11 +602,13 @@ mod fourth_face_tests {
             "Windows 那一档又变回「不知道」了 —— 那正是上一拍的病：\n\
              tmux 结构上不存在于 Windows，「没有」这句话在编译期就成立，不需要探针去证。"
         );
-        let names: Vec<String> =
-            unavailable_from(tmux_present(TmuxPlatform::AbsentUnlessExeOnPath, Some(bare.as_os_str())))
-                .iter()
-                .map(|u| u.command.clone())
-                .collect();
+        let names: Vec<String> = unavailable_from(tmux_present(
+            TmuxPlatform::AbsentUnlessExeOnPath,
+            Some(bare.as_os_str()),
+        ))
+        .iter()
+        .map(|u| u.command.clone())
+        .collect();
         assert_eq!(
             names,
             vec!["kill".to_string(), "launch".to_string()],
@@ -687,8 +689,11 @@ mod fourth_face_tests {
             "「真不知道」这一档被合并掉了 —— 拆的是平台那一维，不是三态处置那条规则"
         );
         assert!(
-            unavailable_from(tmux_present(TmuxPlatform::NoOpinion, Some(bare.as_os_str())))
-                .is_empty(),
+            unavailable_from(tmux_present(
+                TmuxPlatform::NoOpinion,
+                Some(bare.as_os_str())
+            ))
+            .is_empty(),
             "「不知道」被压成了「做不到」—— 能用的功能会从界面上无声消失"
         );
 
@@ -755,7 +760,9 @@ mod fourth_face_tests {
             "TmuxPlatform::AbsentUnlessExeOnPath => Some(tmux_exe_in(path)),",
         )
         .unwrap_or_else(|why| {
-            panic!("windows 那一档不再给确定答案了：{why}\n它一旦回 `None`，表在 Windows 上就又空了。")
+            panic!(
+                "windows 那一档不再给确定答案了：{why}\n它一旦回 `None`，表在 Windows 上就又空了。"
+            )
         });
     }
 

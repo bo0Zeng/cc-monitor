@@ -440,9 +440,7 @@ pub fn deploy_decision_at(
         )),
         // 「在」与「问不出来」都退回版本门控 —— 后者刻意保守：宁可与今天同答，
         // 也不拿一次 stat 失败换一次全量重传。
-        TargetBinary::Present | TargetBinary::Unknown => {
-            deploy_decision(remote_build_id, expected)
-        }
+        TargetBinary::Present | TargetBinary::Unknown => deploy_decision(remote_build_id, expected),
     }
 }
 

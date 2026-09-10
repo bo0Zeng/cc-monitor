@@ -55,8 +55,7 @@ pub const EXIT_KILLS: &str = "monitor 退出时会结束它";
 pub const EXIT_UNATTENDED: &str =
     "monitor 退出后它继续跑，无人监护：崩了不会自动重起；下次开 monitor 会接上它，接不上才起一个新的";
 /// ③ 勾掉 + **没脱离**（平台不支持 / 被关掉了 / 脱离失败）⇒ **保持今天那句，一字不改**。
-pub const EXIT_SELF_DIES: &str =
-    "monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出";
+pub const EXIT_SELF_DIES: &str = "monitor 不主动结束它；它仍会在 monitor 退出后很快自行退出";
 
 /// 那三句的顺序**与 TS 那侧逐条对齐**。对拍判据按名字取、按内容比，条数也比。
 ///
@@ -525,7 +524,11 @@ pub const DEATH_RECORD_SITES: &[(&str, &str, &str)] = &[
 /// 2. **写落点**，拒收了**就地喊一声**（不许静默）；
 /// 3. **更新进程内那张表** —— ⚠ 这一步在第 2 步失败时**照样做**：
 ///    落点坏了不该把界面上的读数一起带走。
-pub fn record_death(origin: &str, ev: &DeathEvidence, sink: &mut dyn DeathSink) -> Option<Recorded> {
+pub fn record_death(
+    origin: &str,
+    ev: &DeathEvidence,
+    sink: &mut dyn DeathSink,
+) -> Option<Recorded> {
     let d = verdict(ev)?;
     let line = ledger_line(origin, &d);
     let sink_error = sink.write_line(&line).err();
@@ -620,7 +623,9 @@ mod tests {
                 .find(&head)
                 .unwrap_or_else(|| panic!("前端那份里找不到 `{head}` —— 名字改了就来改这条"));
             let decl = &ts[at..];
-            let end = decl.find(';').expect("那一行不是 `export const X = …;` 的形状");
+            let end = decl
+                .find(';')
+                .expect("那一行不是 `export const X = …;` 的形状");
             let lit = decl[..end]
                 .split('"')
                 .nth(1)
@@ -639,7 +644,11 @@ mod tests {
         let ts = include_str!("../../src/daemon-policy.ts");
         compare_one_table(ts, "退出行为", EXIT_COPY);
         // 抽取器自检：条数变了也要红（少一条 = 上面的循环少跑一圈，那正是「空转」）。
-        assert_eq!(EXIT_COPY.len(), 3, "退出行为的档数变了 —— 回来重判，别让本条在少数几档上绿着");
+        assert_eq!(
+            EXIT_COPY.len(),
+            3,
+            "退出行为的档数变了 —— 回来重判，别让本条在少数几档上绿着"
+        );
     }
 
     /// ★★ `K-P3 KP3C`：**每一张**跨语言表都有对拍 —— 人群从 [`CROSS_LANGUAGE_COPY`] 派生。
@@ -692,7 +701,10 @@ mod tests {
     #[test]
     fn the_health_copy_has_exactly_one_home() {
         const HOMES: &[(&str, &str)] = &[
-            ("src/daemon-policy.ts", include_str!("../../src/daemon-policy.ts")),
+            (
+                "src/daemon-policy.ts",
+                include_str!("../../src/daemon-policy.ts"),
+            ),
             (
                 "src/settings/daemon-section.ts",
                 include_str!("../../src/settings/daemon-section.ts"),
@@ -700,7 +712,11 @@ mod tests {
             ("daemon_control.rs", include_str!("daemon_control.rs")),
         ];
         for (name, src) in HOMES {
-            assert!(src.len() > 500, "{name} 只读到 {} 字节 —— 人群坏了", src.len());
+            assert!(
+                src.len() > 500,
+                "{name} 只读到 {} 字节 —— 人群坏了",
+                src.len()
+            );
         }
         for (name, lit) in HEALTH_COPY {
             let homes: Vec<&str> = HOMES
@@ -972,7 +988,10 @@ mod tests {
                 "「{what}」交给落点的行数是 {}（应恰好 1）",
                 sink.lines.len()
             );
-            assert_eq!(sink.lines[0], rec.line, "交给落点的那一行与回给调用方的不是同一行");
+            assert_eq!(
+                sink.lines[0], rec.line,
+                "交给落点的那一行与回给调用方的不是同一行"
+            );
             assert!(
                 rec.line.contains(status),
                 "「{what}」那一行里没有退出状态 `{status}`：{}\n\
@@ -984,7 +1003,11 @@ mod tests {
                 "那一行没说是哪台机：{}",
                 rec.line
             );
-            assert!(rec.sink_error.is_none(), "落点好着却报了错：{:?}", rec.sink_error);
+            assert!(
+                rec.sink_error.is_none(),
+                "落点好着却报了错：{:?}",
+                rec.sink_error
+            );
         }
     }
 
@@ -1062,10 +1085,7 @@ mod tests {
         );
         // 占位符必须真的被填掉（漏一个 `replace` 会把 `{crashed}` 原样端到用户眼前）。
         for ph in ["{crashed}", "{last}", "{misread}"] {
-            assert!(
-                !said.contains(ph),
-                "读数里还留着占位符 `{ph}`：{said}"
-            );
+            assert!(!said.contains(ph), "读数里还留着占位符 `{ph}`：{said}");
         }
     }
 
@@ -1126,7 +1146,11 @@ mod tests {
     #[test]
     fn the_health_reading_branches_are_wired_into_the_typescript() {
         let ts = include_str!("../../src/daemon-policy.ts");
-        assert!(ts.len() > 500, "那份文件只读到 {} 字节 —— 人群坏了", ts.len());
+        assert!(
+            ts.len() > 500,
+            "那份文件只读到 {} 字节 —— 人群坏了",
+            ts.len()
+        );
         for line in [
             "export function describeDaemonHealth(h: DaemonHealth): string {",
             "if (seen === 0) return HEALTH_UNKNOWN;",
@@ -1159,7 +1183,10 @@ mod tests {
         const HOMES: &[(&str, &str)] = &[
             ("daemon_policy.rs", include_str!("daemon_policy.rs")),
             ("daemon_control.rs", include_str!("daemon_control.rs")),
-            ("src/daemon-policy.ts", include_str!("../../src/daemon-policy.ts")),
+            (
+                "src/daemon-policy.ts",
+                include_str!("../../src/daemon-policy.ts"),
+            ),
             (
                 "src/settings/daemon-section.ts",
                 include_str!("../../src/settings/daemon-section.ts"),
@@ -1175,10 +1202,7 @@ mod tests {
         //   ★ 这就是「acceptor 必须先证明它会失败」买到的东西：它红之前，我以为它有牙。
         let needle = format!(
             "{}{}{}daemon 继续运行{}",
-            "不许",
-            "写",
-            '\u{300c}',
-            '\u{300d}'
+            "不许", "写", '\u{300c}', '\u{300d}'
         );
         // ⚠ `.rs` 那两份**只看 `#[cfg(test)]` 之前那一段** —— 判据自己的解释性散文
         //   （包括本条的头注）住在测试段里，不切掉的话本条会**命中它自己、恒红**。
@@ -1188,7 +1212,11 @@ mod tests {
         let mut left: Vec<&str> = Vec::new();
         for (name, src) in HOMES {
             // 抽取器自检：四份都得真读到，切完也不能只剩个壳。
-            assert!(src.len() > 500, "{name} 只读到 {} 字节 —— 人群坏了", src.len());
+            assert!(
+                src.len() > 500,
+                "{name} 只读到 {} 字节 —— 人群坏了",
+                src.len()
+            );
             let scan = if name.ends_with(".rs") {
                 before_tests(src)
             } else {

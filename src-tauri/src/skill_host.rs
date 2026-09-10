@@ -675,9 +675,11 @@ mod tests {
                 return Ok(PathBuf::from(rest));
             }
         }
-        Err("`git worktree list --porcelain` 里一条 `worktree ` 字段都没有 —— \
+        Err(
+            "`git worktree list --porcelain` 里一条 `worktree ` 字段都没有 —— \
              抽取器坏了，本条会零命中地绿"
-            .to_string())
+                .to_string(),
+        )
     }
 
     /// ★★ **P3：`workspace_cwd()` 算得**对**不对 —— 直接断言，不再借「盘上有」。**

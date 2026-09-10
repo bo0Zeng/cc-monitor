@@ -735,7 +735,10 @@ mod tests {
         // 中继不许「顺手修正」成 false。
         assert_eq!(accts[1].auth_kind, Some(AuthKind::ApiKey));
         assert_eq!(accts[1].auth_ready, Some(true));
-        assert!(!accts[1].logged_in, "loggedIn 也得原样透传，不许被 authReady 带着改");
+        assert!(
+            !accts[1].logged_in,
+            "loggedIn 也得原样透传，不许被 authReady 带着改"
+        );
     }
 
     /// ★ **旧 daemon（两个键都不出）⇒ 中继必须回 `None`，不许悄悄编一个值出来。**
@@ -759,7 +762,10 @@ mod tests {
         let json = serde_json::to_string(&accts[0]).unwrap();
         assert!(!json.contains("authKind"), "缺席被序列化出来了：{json}");
         assert!(!json.contains("authReady"), "缺席被序列化出来了：{json}");
-        assert!(json.contains("\"loggedIn\":true"), "别的字段不该跟着掉：{json}");
+        assert!(
+            json.contains("\"loggedIn\":true"),
+            "别的字段不该跟着掉：{json}"
+        );
     }
 
     /// 认不出的 `authKind` 值（写侧比读侧新）⇒ 整行**不许**被丢掉。
@@ -800,7 +806,11 @@ mod tests {
         ];
         let (_, accts) = parse_accounts_lines(&lines);
         assert_eq!(accts.len(), 2, "authReady 形状不对让整个账号消失了");
-        assert_eq!(accts[0].auth_kind, Some(AuthKind::ApiKey), "kind 该照样透传");
+        assert_eq!(
+            accts[0].auth_kind,
+            Some(AuthKind::ApiKey),
+            "kind 该照样透传"
+        );
         assert_eq!(
             accts[0].auth_ready, None,
             "形状不对 ⇒「对面没说」⇒ 前端回落 loggedIn，而不是硬错丢行"

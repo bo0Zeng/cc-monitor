@@ -628,14 +628,18 @@ pub fn assert_block_comment_model_holds(
     min_blocks: usize,
 ) {
     assert!(min_files > 0, "min_files 不得为 0 —— 那等于关掉计数自检");
-    assert!(min_blocks > 0, "min_blocks 不得为 0 —— 那等于关掉块级计数自检");
+    assert!(
+        min_blocks > 0,
+        "min_blocks 不得为 0 —— 那等于关掉块级计数自检"
+    );
     let mut n = 0usize;
     let mut blocks = 0usize;
     let mut bad: Vec<String> = Vec::new();
     let mut bad_blocks: Vec<String> = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(d) = stack.pop() {
-        for entry in std::fs::read_dir(&d).unwrap_or_else(|e| panic!("读目录 {d:?} 失败: {e}")) {
+        for entry in std::fs::read_dir(&d).unwrap_or_else(|e| panic!("读目录 {d:?} 失败: {e}"))
+        {
             let path = entry.expect("dir entry").path();
             if path.is_dir() {
                 stack.push(path);
@@ -1446,7 +1450,10 @@ mod tests {
         let src = "fn a() {\n    if c == '\"' { let _ = 0; } // 尾注释\n}\n";
         let prod = production_code(src);
         assert!(!prod.contains("尾注释"), "字符字面量把剥法带瞎了：{prod:?}");
-        assert!(prod.contains("if c == '\"'"), "字符字面量本身被砍了：{prod:?}");
+        assert!(
+            prod.contains("if c == '\"'"),
+            "字符字面量本身被砍了：{prod:?}"
+        );
     }
 
     /// 保守边界的**正面兑现**：raw string 与跨行字符串里的 `//` 一个字都不许动。
@@ -1539,7 +1546,10 @@ mod tests {
     fn nested_block_comments_are_consumed_to_the_outer_close() {
         let src = "fn a() {\n    /* 外 /* 内 */ 还在注释里 hidden_token */\n    keep_me();\n}\n";
         let prod = production_code(src);
-        assert!(!prod.contains("hidden_token"), "嵌套只吃到第一个 `*/`：{prod:?}");
+        assert!(
+            !prod.contains("hidden_token"),
+            "嵌套只吃到第一个 `*/`：{prod:?}"
+        );
         assert!(prod.contains("keep_me()"), "嵌套吃过头了：{prod:?}");
     }
 
@@ -1549,9 +1559,18 @@ mod tests {
     fn block_doc_comments_are_prose_and_two_degenerate_forms_close_exactly() {
         let doc = "/** 这里说明为什么不许 forbidden_token */\nfn a() { keep_me(); }\n";
         let prod = production_code(doc);
-        assert!(!prod.contains("forbidden_token"), "块文档注释没剥掉：{prod:?}");
-        assert!(prod.contains("keep_me()"), "块文档注释吃掉了真代码：{prod:?}");
-        for degenerate in ["fn a() { /**/ keep_me(); }\n", "fn a() { /***/ keep_me(); }\n"] {
+        assert!(
+            !prod.contains("forbidden_token"),
+            "块文档注释没剥掉：{prod:?}"
+        );
+        assert!(
+            prod.contains("keep_me()"),
+            "块文档注释吃掉了真代码：{prod:?}"
+        );
+        for degenerate in [
+            "fn a() { /**/ keep_me(); }\n",
+            "fn a() { /***/ keep_me(); }\n",
+        ] {
             assert!(
                 production_code(degenerate).contains("keep_me()"),
                 "`{degenerate}` 这个退化形没有恰好收口：{:?}",
@@ -1585,7 +1604,10 @@ mod tests {
             prod.contains("hostport=${rest%%/*}") && prod.contains("path=/${rest#*/}"),
             "跨行原始串里的 shell 被当块注释抹了：{prod:?}"
         );
-        assert!(prod.contains("keep_me()"), "原始串把后面的真代码吃了：{prod:?}");
+        assert!(
+            prod.contains("keep_me()"),
+            "原始串把后面的真代码吃了：{prod:?}"
+        );
     }
 
     /// 抹成**等长空格** ⇒ 行数与字节数都不变 ⇒ [`pin_line`] 的行号、
@@ -1594,7 +1616,11 @@ mod tests {
     fn stripping_block_comments_moves_neither_a_line_nor_a_byte() {
         let src = "fn a() {\n    /* 多字节也要\n       等长抹掉 */\n    keep_me();\n}\n";
         let out = strip_block_comments(src);
-        assert_eq!(out.len(), src.len(), "字节数变了 ⇒ `find_pinned` 的偏移全体漂");
+        assert_eq!(
+            out.len(),
+            src.len(),
+            "字节数变了 ⇒ `find_pinned` 的偏移全体漂"
+        );
         assert_eq!(
             out.split('\n').count(),
             src.split('\n').count(),

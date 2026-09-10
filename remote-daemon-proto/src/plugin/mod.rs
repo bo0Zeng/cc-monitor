@@ -228,7 +228,11 @@ mod layer_guard {
             for (no, line) in prod.lines().enumerate() {
                 for (w, why) in &words {
                     if line.contains(w.as_str()) {
-                        hits.push(format!("  plugin/{name}:{} [{why}] {}", no + 1, line.trim()));
+                        hits.push(format!(
+                            "  plugin/{name}:{} [{why}] {}",
+                            no + 1,
+                            line.trim()
+                        ));
                         break;
                     }
                 }
@@ -268,7 +272,10 @@ mod layer_guard {
         assert!(!concrete_plugin_words().is_empty(), "词表空了 ⇒ 正题恒绿");
         // 一族一个样本：总线那族 · 代码全景那族。**新加一族词就在这里加一行样本。**
         for (synthetic, whose) in [
-            (format!("    let bin = find(\"cc-{}\")?;", "list"), "总线那一族"),
+            (
+                format!("    let bin = find(\"cc-{}\")?;", "list"),
+                "总线那一族",
+            ),
             (
                 format!("    let bin = find(\"cod{}picture\")?;", "e"),
                 "代码全景那一族",
@@ -315,10 +322,8 @@ mod layer_guard {
     /// 🔴 **加第四处之前先回答一句**：它是在给「继承」这一侧再开一个口子吗？
     /// 是的话，正解是往 [`super::invoke::INHERITED_ENV_KEYS`] 里加一条并写为什么，
     /// **不是**在别处再写一段 `.env(`。
-    const ENV_CALL_SITES: &[(&str, &str, usize)] = &[
-        ("invoke.rs", ".env(", 2),
-        ("invoke.rs", ".env_clear(", 1),
-    ];
+    const ENV_CALL_SITES: &[(&str, &str, usize)] =
+        &[("invoke.rs", ".env(", 2), ("invoke.rs", ".env_clear(", 1)];
 
     /// 判据的**核**：数出本层每个文件里各种「动子进程环境」的调用形各几处。
     ///
@@ -538,7 +543,11 @@ mod layer_guard {
                 } else {
                     continue;
                 };
-                hits.push(format!("  plugin/{name}:{} [{why}] {}", no + 1, line.trim()));
+                hits.push(format!(
+                    "  plugin/{name}:{} [{why}] {}",
+                    no + 1,
+                    line.trim()
+                ));
             }
         }
         assert!(

@@ -189,7 +189,12 @@ mod tests {
         // ② 无论今天还是以后：**存储与 grammar 细节一个都不许上线**。
         //    今天这条是真的在跑（它扫的是现有协议面），不是等以后才生效。
         for leaked in [
-            "sqlite", "rusqlite", "tree_sitter", "grammar", "index.db", "CREATE TABLE",
+            "sqlite",
+            "rusqlite",
+            "tree_sitter",
+            "grammar",
+            "index.db",
+            "CREATE TABLE",
         ] {
             assert!(
                 !prod.to_lowercase().contains(&leaked.to_lowercase()),
@@ -554,9 +559,7 @@ mod tests {
             //
             // ⇒ **两种切法都收**（集合只增不减，原来能过的一条都不会变红）：
             // 先按「允许连字符」切一遍收整词，再把它拆成原来的碎片各收一份。
-            for whole in
-                seg.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
-            {
+            for whole in seg.split(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-')) {
                 if whole.is_empty() {
                     continue;
                 }

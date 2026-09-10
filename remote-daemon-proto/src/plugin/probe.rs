@@ -354,19 +354,27 @@ mod tests {
     #[test]
     fn a_stranger_that_happens_to_have_the_same_name_is_rejected() {
         let stranger = "usage: something-else [options]\n";
-        let err = parse(stranger, &plugin_name()).err().expect("陌生程序没被拒");
+        let err = parse(stranger, &plugin_name())
+            .err()
+            .expect("陌生程序没被拒");
         let msg = err.message();
         assert!(msg.contains("something-else"), "没说看到的是什么：{msg}");
         assert!(msg.contains("找错了程序"), "归因说反了：{msg}");
 
         // 键值成对、但名字不对的那种，也要拒。
-        let other = format!("name=some-other-tool\ncapabilities={}\n", required_today()[0]);
+        let other = format!(
+            "name=some-other-tool\ncapabilities={}\n",
+            required_today()[0]
+        );
         assert!(
             parse(&other, &plugin_name()).is_err(),
             "名字不对却认了 —— 身份行就白设了"
         );
         // 空输出也是「不是它」。
-        assert!(parse("", &plugin_name()).is_err(), "空输出被当成了合格的回答");
+        assert!(
+            parse("", &plugin_name()).is_err(),
+            "空输出被当成了合格的回答"
+        );
     }
 
     /// 版本号**不参与判断**：版本再老，只要能力齐就放行。
@@ -397,10 +405,7 @@ mod tests {
     /// 逗号列表的边角：多余空白、末尾逗号不许变出空 token。
     #[test]
     fn whitespace_and_trailing_commas_do_not_become_tokens() {
-        let text = format!(
-            "name={}\ncapabilities= a , b ,,c,\n",
-            plugin_name()
-        );
+        let text = format!("name={}\ncapabilities= a , b ,,c,\n", plugin_name());
         let a = parse(&text, &plugin_name()).ok().expect("该解析得出来");
         assert_eq!(a.capabilities, vec!["a", "b", "c"]);
         assert!(a.can("b"));

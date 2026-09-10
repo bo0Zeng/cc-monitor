@@ -246,7 +246,10 @@ mod tests {
             "is_record_file",
             "上面两个的合成 —— **它自己不调 `active()`**，靠两个门面间接抹除",
         ),
-        ("session_id_from_path", "从记录文件路径取 sid（Claude = file_stem）"),
+        (
+            "session_id_from_path",
+            "从记录文件路径取 sid（Claude = file_stem）",
+        ),
     ];
 
     /// 人群下界：`src-tauri/src` 今天 105 份 `.rs`（`scan_tree!` 摘掉本文件 ⇒ 104 进扫描）。
@@ -304,7 +307,8 @@ mod tests {
     /// 之后缩进仍在，所以要 `trim_start`）。
     fn face_of(line: &str) -> Option<Face> {
         let t = line.trim_start();
-        let is_def = t.starts_with("fn ") || t.starts_with("pub fn ") || t.starts_with("pub(crate) fn ");
+        let is_def =
+            t.starts_with("fn ") || t.starts_with("pub fn ") || t.starts_with("pub(crate) fn ");
         // ① `active()` 优先：`session_id_from_path_with(active().layout(), p)` 这种
         //    一行里两样都有的，算「说不出指哪个 agent」那张脸（更根本的那一层）。
         if !is_def && guard_core::contains_word(line, &needle_active()) {
@@ -312,7 +316,11 @@ mod tests {
         }
         // ② 门面。⚠ `records_dir_for(` / `session_id_from_path_with(` **不算** ——
         //    针带闭括号 + `contains_word` 的右边界让它们结构上打不中（那是好方向）。
-        if !is_def && facade_needles().iter().any(|n| guard_core::contains_word(line, n)) {
+        if !is_def
+            && facade_needles()
+                .iter()
+                .any(|n| guard_core::contains_word(line, n))
+        {
             return Some(Face::Facade);
         }
         // ③ 字面量实参。定义行不可能长这样，不必再判一次。
@@ -339,10 +347,7 @@ mod tests {
                 Face::KindLiteral,
                 Face::RuntimeDispatch,
             ] {
-                let n = prod
-                    .lines()
-                    .filter(|l| face_of(l) == Some(face))
-                    .count();
+                let n = prod.lines().filter(|l| face_of(l) == Some(face)).count();
                 if n > 0 {
                     got.push((rel.clone(), face, n));
                 }
@@ -534,7 +539,10 @@ mod tests {
         for form in [
             format!("    let agent = crate::adapter::acti{}();", "ve"),
             format!("    let agent = adapter::acti{}();", "ve"),
-            format!("    data_root.join(acti{}().layout().sessions_subdir)", "ve"),
+            format!(
+                "    data_root.join(acti{}().layout().sessions_subdir)",
+                "ve"
+            ),
         ] {
             assert_eq!(
                 face_of(&form),

@@ -144,7 +144,11 @@ mod tests {
         for (file, line, want, why) in PINS {
             let src = source_of(file);
             // 反空真：语料读不到就下面全空转。
-            assert!(src.len() > 2000, "{file} 只读到 {} 字节 —— 语料坏了", src.len());
+            assert!(
+                src.len() > 2000,
+                "{file} 只读到 {} 字节 —— 语料坏了",
+                src.len()
+            );
             let n = src.lines().filter(|l| l.trim() == *line).count();
             assert_eq!(
                 n, *want,
@@ -240,7 +244,11 @@ mod tests {
         //   被「回落**到**心跳刷新」一刀切过去，**464/0 一条不红**。这一格是那一刀换来的。〕
         let retreats: Vec<String> = ["退回", "回落", "退化", "回退"]
             .iter()
-            .flat_map(|r| ["", "到", "成", "为"].iter().map(move |j| format!("{r}{j}")))
+            .flat_map(|r| {
+                ["", "到", "成", "为"]
+                    .iter()
+                    .map(move |j| format!("{r}{j}"))
+            })
             .collect();
         let cadences = ["定时", "周期性", "周期", "轮询", "ticker", "心跳", "定期"];
         let means = ["探测", "轮询", "兜底", "兜住", "刷新", "扫描"];
@@ -293,15 +301,13 @@ mod tests {
     /// `ratchet_guard` / `single_stream_guard` / `listen` / `main`），
     /// **已上报 PM 立跟进件**。
     /// ⇒ 修掉一处就把这里的数改小；**改大 = 又新增了一句**，那正是本条要拦的。
-    const STALE_FALLBACK_BACKLOG: &[(&str, usize, &str)] = &[
-        (
-            "observe/watcher.rs",
-            2,
-            "两句 warn 串：`:223`「拿不到自身 exe/starttime ⇒ 跳过装 tmux hook（退回定时探测）」·\
+    const STALE_FALLBACK_BACKLOG: &[(&str, usize, &str)] = &[(
+        "observe/watcher.rs",
+        2,
+        "两句 warn 串：`:223`「拿不到自身 exe/starttime ⇒ 跳过装 tmux hook（退回定时探测）」·\
              `:1061`「监视 tmux socket 目录失败 …（复活仍由 ticker 兜）」。\
              两句都在承诺一条 `P5` 已经删掉的退路。**本轮写区之外，交 PM 立跟进件。**",
-        ),
-    ];
+    )];
 
     /// ★★ 正题（棘轮二）：**生产段里承诺「周期性退路」的话只许变少。**
     ///
@@ -412,7 +418,10 @@ mod tests {
     #[test]
     fn every_pin_points_at_a_line_that_exists_today() {
         for (file, line, want, _) in PINS {
-            assert!(*want > 0, "`{file}` / `{line}` 登记成 0 处 —— 零命中的锚点钉不住任何东西");
+            assert!(
+                *want > 0,
+                "`{file}` / `{line}` 登记成 0 处 —— 零命中的锚点钉不住任何东西"
+            );
             assert!(
                 source_of(file).lines().any(|l| l.trim() == *line),
                 "`{file}` 里一行都不等于 `{line}` —— 锚点腐烂了，本表在假绿"

@@ -634,7 +634,9 @@ mod tests {
 /// ⇒ 下面的反例既不是漏洞、也不需要放宽 —— 它是「**它本来就拦不住**」那一侧的活体。
 #[cfg(test)]
 mod g6_reach {
-    use super::tests::{daemon_sources, is_call_of, periodic_wake_patterns, REGISTERED_DURATION_USES};
+    use super::tests::{
+        daemon_sources, is_call_of, periodic_wake_patterns, REGISTERED_DURATION_USES,
+    };
 
     /// 按**调用形态**扫的那八个名字（与判据本体同一份清单，抄第二份必然漂开）。
     const CALL_FORMS: &[&str] = &[

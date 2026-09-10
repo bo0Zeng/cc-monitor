@@ -304,7 +304,8 @@ mod f07_main_path_tests {
     }
 
     fn read_ts(rel: &str) -> String {
-        std::fs::read_to_string(repo_root().join(rel)).unwrap_or_else(|e| panic!("读不到 {rel}: {e}"))
+        std::fs::read_to_string(repo_root().join(rel))
+            .unwrap_or_else(|e| panic!("读不到 {rel}: {e}"))
     }
 
     /// 剥 TS 的生产段：整行 `//` / `*` / `/*` 注释 + 行尾 `//`。
@@ -369,7 +370,11 @@ mod f07_main_path_tests {
         let mark = format!(":{}", "//");
         for f in TS_CORPUS {
             let src = read_ts(f);
-            assert!(src.len() > 3000, "{f} 只有 {} 字节 —— 语料读错了", src.len());
+            assert!(
+                src.len() > 3000,
+                "{f} 只有 {} 字节 —— 语料读错了",
+                src.len()
+            );
             assert!(
                 !src.contains(mark.as_str()),
                 "{f} 里出现了 `{mark}` 字面量 —— 行尾 `//` 截断会把它砍成半行、造出假阴性。\n\

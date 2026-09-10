@@ -88,7 +88,13 @@ pub(crate) fn fixed_candidates(
     }
     if let Some(h) = home {
         out.push(h.join(".local").join("bin").join(name));
-        out.push(h.join(".claude").join("skills").join("cc-bus").join("scripts").join(name));
+        out.push(
+            h.join(".claude")
+                .join("skills")
+                .join("cc-bus")
+                .join("scripts")
+                .join(name),
+        );
     }
     out
 }
@@ -279,7 +285,10 @@ pub(crate) fn classify_send(code: Option<i32>, detail: &str) -> Result<(), (Stri
             format!("被路由层拦下（见 bus.log）：{detail}"),
         )),
         Some(TIMED_OUT_CODE) => Err(timed_out_err()),
-        Some(c) => Err(("failed".to_string(), format!("cc-send 退出码 {c}：{detail}"))),
+        Some(c) => Err((
+            "failed".to_string(),
+            format!("cc-send 退出码 {c}：{detail}"),
+        )),
         None => Err((
             "failed".to_string(),
             format!("cc-send 被信号打断：{detail}"),
@@ -410,7 +419,10 @@ fn recipient_status(to: &str) -> (bool, serde_json::Value) {
     else {
         return (false, serde_json::Value::Null);
     };
-    let joined = join_identity(vec![row.clone()], super::gate::list_sessions().ok().as_deref());
+    let joined = join_identity(
+        vec![row.clone()],
+        super::gate::list_sessions().ok().as_deref(),
+    );
     let live = joined
         .first()
         .and_then(|r| r.get("live"))
@@ -467,12 +479,17 @@ pub(crate) fn kill_for_inbound(
                 format!("cc-kill 退出码 {c}：{detail}"),
             ))
         }
-        None => return Err(("failed".to_string(), format!("cc-kill 被信号打断：{detail}"))),
+        None => {
+            return Err((
+                "failed".to_string(),
+                format!("cc-kill 被信号打断：{detail}"),
+            ))
+        }
     }
     // ★ **回值要说清"到底动了什么"**：会话是被杀了，还是身份对不上只摘了登记？
     //   cc-kill 两种情况都 exit 0 —— 把它自己的说法读出来，别让调用方以为都一样。
-    let said = String::from_utf8_lossy(&out.stdout).to_string()
-        + &String::from_utf8_lossy(&out.stderr);
+    let said =
+        String::from_utf8_lossy(&out.stdout).to_string() + &String::from_utf8_lossy(&out.stderr);
     let killed = said.contains("已杀会话");
     let stale_only = said.contains("已摘掉");
     Ok(serde_json::json!({
@@ -569,8 +586,12 @@ mod tests {
         let home = PathBuf::from("/home/u");
         let fixed = fixed_candidates(None, Some(&home), "cc-list");
         assert_eq!(fixed.len(), 2, "固定位置应当是两处：{fixed:?}");
-        let msg =
-            crate::plugin::discover::not_installed_message("cc-list", &fixed, 9, NOT_INSTALLED_HINT);
+        let msg = crate::plugin::discover::not_installed_message(
+            "cc-list",
+            &fixed,
+            9,
+            NOT_INSTALLED_HINT,
+        );
         assert!(msg.contains("/home/u/.local/bin/cc-list"), "{msg}");
         assert!(
             msg.contains(".claude/skills/cc-bus/scripts/cc-list"),

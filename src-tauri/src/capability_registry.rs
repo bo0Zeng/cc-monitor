@@ -1229,8 +1229,7 @@ mod tests {
         // ⑦ **预处理这一维**的常驻探针〔`D2` 回修〕。三个样本的真键都是**明文 `runner`**，
         //    零反斜杠 ⇒ 上面那两层（解码 · 键位反斜杠）**一层都不会被触发**，
         //    唯一挡住它们的就是「剥注释看不懂 ⇒ 判红」。⚠ 这三条一旦变绿，本条就又瞎了。
-        let probe_ml_hash =
-            "target = { x = { ar = \"\"\"\n# \"\"\", runner = \"/bin/echo\" } }\n";
+        let probe_ml_hash = "target = { x = { ar = \"\"\"\n# \"\"\", runner = \"/bin/echo\" } }\n";
         let probe_ml_literal = "target = { x = { ar = '''\n# ''', runner = \"/bin/echo\" } }\n";
         let probe_ml_midline = "a = \"\"\"\nzz # \"\"\"\nrunner = \"/bin/echo\"\n";
         // ⚠ ⑦d 是**变异逼出来的**：把「行尾引号未闭合」那一支拆掉之后，上面三个样本
@@ -1241,7 +1240,10 @@ mod tests {
             (probe_ml_hash, "多行基本串 + `#` 起头的续行"),
             (probe_ml_literal, "多行字面串 `'''` 那一版"),
             (probe_ml_midline, "`#` 不在行首那一版"),
-            (probe_unterminated, "行尾引号未闭合（**只**由这一支信号挡住）"),
+            (
+                probe_unterminated,
+                "行尾引号未闭合（**只**由这一支信号挡住）",
+            ),
         ] {
             let (text, unmodeled) = strip_toml_comments(sample);
             assert!(
@@ -1300,7 +1302,8 @@ mod tests {
         //      ⇒ 这一条恰好是 6 条里唯一一条**在全 41 支上也只由它挡住**的。
         let why = probe_slot_verdict("a", &[0xff, 0xfe, 0x00, 0x80]);
         assert!(
-            why.as_deref().is_some_and(|w| w.contains("存在但读不出文本")),
+            why.as_deref()
+                .is_some_and(|w| w.contains("存在但读不出文本")),
             "探针⑩（`let Ok(raw) … else` 那道守卫；**装配层这 6 支里只由它挡住**）：\n\
              一格**存在、却读不出文本**时本条必须上报它 —— 那正是「本条看不了它的内容」。\n\
              改成 `return None` 就等于「读不出就当没事」。这一格实得 {why:?}。"
@@ -1428,7 +1431,10 @@ mod tests {
         //      挡住 `D4` 与它用到的那一类词字符；没有任何样本能「只」挡住 `D4`。
         //      两个样本各自把 `D1` / `D2` 单独挡住（换一类词字符，另一类拆掉照绿）。
         for (sample, cls) in [
-            ("[profile.dev.package.myrunner]\ndebug = false\n", "字母数字"),
+            (
+                "[profile.dev.package.myrunner]\ndebug = false\n",
+                "字母数字",
+            ),
             ("[profile.dev.package.my_runner]\ndebug = false\n", "下划线"),
         ] {
             assert!(

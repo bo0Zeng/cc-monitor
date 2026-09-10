@@ -487,12 +487,7 @@ pub fn relay_route_path(agent: &str, account: &str, key: &str) -> Result<String,
 
 /// 注入给 agent 进程的 base URL。**恒回环**（`§0e` 裁四：回环是自指的，
 /// 同一个字面串写进哪台机器就指哪台 ⇒ 「选机器」这件事已经由「这条命令在哪台机器上跑」做完了）。
-pub fn relay_base_url(
-    port: u16,
-    agent: &str,
-    account: &str,
-    key: &str,
-) -> Result<String, String> {
+pub fn relay_base_url(port: u16, agent: &str, account: &str, key: &str) -> Result<String, String> {
     Ok(format!(
         "http://127.0.0.1:{port}{}",
         relay_route_path(agent, account, key)?
@@ -1347,7 +1342,10 @@ mod tests {
         // 新开：铸一个 nonce —— 它必须过得了路由段白名单，否则整条 URL 拼不出来。
         let a = route_key_for_session(None);
         let b = route_key_for_session(None);
-        assert!(relay_segment_is_safe(&a), "铸出来的 nonce 当不了路由段：{a:?}");
+        assert!(
+            relay_segment_is_safe(&a),
+            "铸出来的 nonce 当不了路由段：{a:?}"
+        );
         assert_ne!(a, b, "两次铸出同一个值 —— 那不是 nonce");
         // sid 当不了路由段时也回落到 nonce（不为一段惰性的标签把起会话整个拒掉）。
         let c = route_key_for_session(Some("has/slash"));
@@ -1470,7 +1468,10 @@ mod tests {
         assert_eq!(run(None, None), "'claude' '--resume' 'S1'");
         // 正题：有 base URL ⇒ 它被写进载荷**内侧**。
         assert_eq!(
-            run(Some("http://127.0.0.1:8788/s/claude-code/acct-a/sid-1"), None),
+            run(
+                Some("http://127.0.0.1:8788/s/claude-code/acct-a/sid-1"),
+                None
+            ),
             "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; \
              'claude' '--resume' 'S1'"
         );
@@ -1480,8 +1481,9 @@ mod tests {
             Some("/home/u/.claude-accts/acct-a"),
         );
         assert!(
-            both.contains("export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; ")
-                && both.contains("export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/acct-a'; "),
+            both.contains(
+                "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; "
+            ) && both.contains("export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/acct-a'; "),
             "两条转发并存时有一条被吃掉了：{both}"
         );
     }
@@ -1684,7 +1686,10 @@ mod tests {
     fn fn_body(prod: &str, sig: &str) -> String {
         let at = guard_core::find_pinned(prod, sig)
             .unwrap_or_else(|e| panic!("锚点 `{sig}` 不是恰好一处 —— 形状变了，先修锚点：{e}"));
-        let open = at + prod[at..].find('{').unwrap_or_else(|| panic!("`{sig}` 之后找不到函数体的左花括号"));
+        let open = at
+            + prod[at..]
+                .find('{')
+                .unwrap_or_else(|| panic!("`{sig}` 之后找不到函数体的左花括号"));
         let mut depth = 0usize;
         for (i, c) in prod[open..].char_indices() {
             match c {
@@ -1792,7 +1797,10 @@ mod tests {
 
     /// 判据本体·**差集**：左集里没有被容器路转发的那些。空 ⇒ 这道闸今天成立。
     fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
-        left.iter().filter(|v| !right.contains(v)).cloned().collect()
+        left.iter()
+            .filter(|v| !right.contains(v))
+            .cloned()
+            .collect()
     }
 
     /// ★★★ `KP5ED1`：**拼在 `ccm` 外面 `export` 的变量 ⊆ 容器路转发的变量。**

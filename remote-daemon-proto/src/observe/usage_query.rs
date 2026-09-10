@@ -61,7 +61,9 @@ fn aggregate(agent_home: &Path) -> Result<(), String> {
         .max_depth(2)
         .into_iter()
         .filter_map(Result::ok)
-        .filter(|e| e.file_type().is_file() && crate::agents::claudecode::records::is_session_file(e.path()))
+        .filter(|e| {
+            e.file_type().is_file() && crate::agents::claudecode::records::is_session_file(e.path())
+        })
         .map(|e| e.into_path())
         .collect();
 
@@ -294,5 +296,4 @@ mod tests {
         assert_eq!(b[0]["totals"]["msgs"].as_u64(), Some(1));
         let _ = std::fs::remove_dir_all(&tmp);
     }
-
 }

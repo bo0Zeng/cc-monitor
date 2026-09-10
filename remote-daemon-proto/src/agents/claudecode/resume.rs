@@ -31,6 +31,9 @@ mod tests {
         let c = super::resume_command("claude", "sid_123");
         assert_eq!(c, "claude --resume sid_123");
         // 与 Codex 那半的差别就在这里：那边是 `codex resume <sid>`，没有 flag。
-        assert_ne!(c, crate::agents::codex::resume::resume_command("claude", "sid_123"));
+        assert_ne!(
+            c,
+            crate::agents::codex::resume::resume_command("claude", "sid_123")
+        );
     }
 }

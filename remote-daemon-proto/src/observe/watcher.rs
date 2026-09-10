@@ -432,7 +432,11 @@ fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
         // 🔴 这一档的处置差别是**要命的**：当成 `Sessions` 会让 [`session_names`] 把整行当
         // 会话名 ⇒ 下一轮差分把**所有活会话**报成消失（`diff_closed` 的 `Sessions` 分支）；
         // 归 `Unobservable` 则「什么都不结论、快照不动」，等下一次成功观测。
-        Some(0) if stdout.lines().any(|l| !l.trim().is_empty() && tab_underflow(l, TMUX_LS_FMT_FIELDS)) => {
+        Some(0)
+            if stdout
+                .lines()
+                .any(|l| !l.trim().is_empty() && tab_underflow(l, TMUX_LS_FMT_FIELDS)) =>
+        {
             tracing::warn!(
                 "CCM_TMUX_UNPARSABLE tmux ls 有行切出的段数 < {TMUX_LS_FMT_FIELDS} —— \
                  tmux 打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 与非 ASCII 变 `_`），\
@@ -616,7 +620,10 @@ fn watch_sock_dir_if_present(
     //    ⇒ `*watched` 必须跟着盘上的事实走，否则下面那个 `if *watched` 会永远短路。
     if !sock_dir.is_dir() {
         if *watched {
-            tracing::info!("tmux socket 目录消失了 {} —— 解除记账，等它回来再挂", sock_dir.display());
+            tracing::info!(
+                "tmux socket 目录消失了 {} —— 解除记账，等它回来再挂",
+                sock_dir.display()
+            );
             let _ = debouncer.watcher().unwatch(sock_dir);
             *watched = false;
         }
@@ -884,7 +891,12 @@ fn watch_loop(
     //    被换 inode 之后**行帧再也不来**（实测：删掉重建后写入，line 帧停在 1）。
     //    这是 `sessions/`（第十拍）与 socket 目录（第二十二拍）之后的**同族第三个**。
     let mut projects_watched = false;
-    rewatch_dir(&mut debouncer, &projects, &mut projects_watched, RecursiveMode::Recursive);
+    rewatch_dir(
+        &mut debouncer,
+        &projects,
+        &mut projects_watched,
+        RecursiveMode::Recursive,
+    );
     // ★★ `P0b-Y2` 第十六拍：**零 server 时也要有耳朵** —— 监视 tmux socket 目录本身。
     // 目录不在（本机从没起过 tmux）⇒ 退一层监视它的父，等目录被创建出来。
     // 两种情况都只当「该重新探一次」的触发器，绝不拿文件存在性判活（沿用 P3 的既定纪律）。
@@ -894,7 +906,10 @@ fn watch_loop(
     let mut sock_dir_watched = false;
     if let Some(parent) = sock_dir.parent() {
         if parent.is_dir() {
-            if let Err(e) = debouncer.watcher().watch(parent, RecursiveMode::NonRecursive) {
+            if let Err(e) = debouncer
+                .watcher()
+                .watch(parent, RecursiveMode::NonRecursive)
+            {
                 tracing::warn!("监视 {} 失败: {e}", parent.display());
             }
         }
@@ -1637,7 +1652,10 @@ fn rewatch_sessions(
         }
         Err(e) => {
             *watched = false;
-            tracing::warn!("重挂 sessions watch 失败 {}: {e}（下次事件再试）", sessions.display());
+            tracing::warn!(
+                "重挂 sessions watch 失败 {}: {e}（下次事件再试）",
+                sessions.display()
+            );
         }
     }
 }
@@ -3028,7 +3046,11 @@ mod tests {
         let first = "s1\t/p\tclaude\t1\t1\tsid-a\ns2\t/q\tbash\t0\t1\t\n";
         let closed = diff_closed(&mut prev, &classify_tmux_probe(Some(0), first));
         assert!(closed.is_empty(), "第一次观测不该报任何死亡");
-        assert_eq!(prev.as_ref().map(|s| s.len()), Some(2), "快照该记住两个会话");
+        assert_eq!(
+            prev.as_ref().map(|s| s.len()),
+            Some(2),
+            "快照该记住两个会话"
+        );
 
         let dirty_two = "s1_/p_claude_1_1_sid-a\ns2_/q_bash_0_1_\n";
         let closed = diff_closed(&mut prev, &classify_tmux_probe(Some(0), dirty_two));
@@ -3048,14 +3070,26 @@ mod tests {
     /// 与上一条分开写，是因为上一条量的是「处置对不对」，这一条量的是「那条不等号的方向」。
     #[test]
     fn the_underflow_predicate_only_fires_downward() {
-        assert!(tab_underflow("一段而已", TMUX_LS_FMT_FIELDS), "1 < 6 ⇒ 下溢");
-        assert!(tab_underflow("a\tb\tc\td\te", TMUX_LS_FMT_FIELDS), "5 < 6 ⇒ 下溢");
-        assert!(!tab_underflow("a\tb\tc\td\te\tf", TMUX_LS_FMT_FIELDS), "恰好 6 ⇒ 不红");
+        assert!(
+            tab_underflow("一段而已", TMUX_LS_FMT_FIELDS),
+            "1 < 6 ⇒ 下溢"
+        );
+        assert!(
+            tab_underflow("a\tb\tc\td\te", TMUX_LS_FMT_FIELDS),
+            "5 < 6 ⇒ 下溢"
+        );
+        assert!(
+            !tab_underflow("a\tb\tc\td\te\tf", TMUX_LS_FMT_FIELDS),
+            "恰好 6 ⇒ 不红"
+        );
         assert!(
             !tab_underflow("a\tb\tc\td\te\tf\tg", TMUX_LS_FMT_FIELDS),
             "7 段是合法内容（路径里有真 TAB）⇒ **不许红**，否则就成了 `!= 6` 那个误伤"
         );
-        assert!(tab_underflow("15_/tmp/x/sock", 2), "query_tmux_server 那条 N=2 的同理");
+        assert!(
+            tab_underflow("15_/tmp/x/sock", 2),
+            "query_tmux_server 那条 N=2 的同理"
+        );
         assert!(!tab_underflow("15\t/tmp/x/sock", 2));
     }
 
@@ -3102,10 +3136,7 @@ mod tests {
              新增的那一处也要挂 UTF-8 那个 env（家在 `common::tmux_utf8`），\
              并把这条判据的数一起改。**这张表不是豁免清单。**"
         );
-        let env_call = format!(
-            ".env({}.0, {}.1)",
-            "UTF8_CLIENT_ENV", "UTF8_CLIENT_ENV"
-        );
+        let env_call = format!(".env({}.0, {}.1)", "UTF8_CLIENT_ENV", "UTF8_CLIENT_ENV");
         // 逐处查：每个调用点到它那句 `.output()` 之间必须有那行 `.env(…)`。
         let mut checked = 0usize;
         for seg in prod.split("Command::new(\"sh\")").skip(1) {
@@ -3717,9 +3748,7 @@ mod tests {
         );
         // 重扫在：只重挂不重扫的话，「重建 → 挂上」之间写进去的文件永远捞不回来
         //（D 阶段变异 M23：只删这一步，前三组 e2e **全绿**，是第四组逼出来的）。
-        let body_start = prod
-            .find("fn rewatch_sessions(")
-            .expect("上面已确认存在");
+        let body_start = prod.find("fn rewatch_sessions(").expect("上面已确认存在");
         let body = &prod[body_start..(body_start + 2000).min(prod.len())];
         assert!(
             body.contains("WalkDir::new(sessions)"),
@@ -3762,9 +3791,9 @@ mod tests {
     fn every_watch_site_answers_the_inode_swap_question() {
         let src = include_str!("watcher.rs");
         // 生产段 = 测试模块之前（`guard_core::production_code` 在这里不能用：本条就住在测试模块里）。
-        let cut = src.find("\n#[cfg(test)]").map(|i| {
-            src[i..].find("\nmod ").map(|j| i + j).unwrap_or(i)
-        });
+        let cut = src
+            .find("\n#[cfg(test)]")
+            .map(|i| src[i..].find("\nmod ").map(|j| i + j).unwrap_or(i));
         let prod = match cut {
             Some(i) => &src[..i],
             None => src,
@@ -3779,8 +3808,15 @@ mod tests {
              「永不宣告会话」「看不见新 tmux server」「会话还在但内容不动了」。"
         );
         // 三个可重入挂法必须都在（删掉任一个，上面的计数会跟着变，但报错要说得准）。
-        for f in ["fn rewatch_dir(", "fn rewatch_sessions(", "fn watch_sock_dir_if_present("] {
-            assert!(prod.contains(f), "可重入挂法 {f} 不见了 —— 那一路的重挂就没人做了");
+        for f in [
+            "fn rewatch_dir(",
+            "fn rewatch_sessions(",
+            "fn watch_sock_dir_if_present(",
+        ] {
+            assert!(
+                prod.contains(f),
+                "可重入挂法 {f} 不见了 —— 那一路的重挂就没人做了"
+            );
         }
     }
 
@@ -3838,7 +3874,9 @@ mod tests {
             "`watch_sock_dir_if_present` 里 `unwatch(sock_dir)` 应恰好 2 处\n             \
              （① 目录没了 ⇒ 翻记账；② 重挂之前 ⇒ 换 inode 时挂得上新的），实得 {n_unwatch}"
         );
-        let watch_at = body.find("watch(sock_dir,").expect("没有 `watch` —— 那它什么都没挂");
+        let watch_at = body
+            .find("watch(sock_dir,")
+            .expect("没有 `watch` —— 那它什么都没挂");
         let last_unwatch = body.rfind("unwatch(sock_dir)").expect("上面已确认有两处");
         assert!(
             last_unwatch < watch_at,
