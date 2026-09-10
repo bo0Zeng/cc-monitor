@@ -3449,31 +3449,106 @@ mod tests {
     /// 这里能直接跑真路：造一个**在 `projects` 之外**的真临时文件，要求入口拒绝**且文件还在**。
     /// 围栏一旦被绕过，这条会把那个临时文件真删掉 —— 于是「文件还在」这半当场红。
     /// ⚠ 只碰自己造的临时目录；`~/.claude/` 一个字节都不写（红线）。
+    ///
+    /// # 🔴 09-10：**本条自己造出它要的前提** —— 而且是在**子进程**里
+    ///
+    /// 上一版依赖「这台机器上 `~/.claude/projects` 存在」。**那不是它要验的性质，
+    /// 是它没建立的前提**：`resolve_claude_dir()` 的第三级回落 `~/.claude`
+    /// **不检查存在性**，于是在一台干净机器上入口会在**围栏之前**就 `Err`，
+    /// 而「拒了」「文件还在」两格照样绿 —— 09-09 云端首跑红的正是最后那格，
+    /// 它报的是「围栏没接上 / 措辞改了」，**两条都是假话**。
+    ///
+    /// ## 为什么**不**在本进程里 `set_var("CLAUDE_CONFIG_DIR", …)`
+    ///
+    /// 本仓有一条写下来的纪律，逐字在 `lib.rs` 的 `env_scrub_tests` 里：
+    /// 「cargo test 多线程跑，进程级 env 是共享的，**绝不能在测试里 set/remove
+    /// 真实的 `CLAUDE_*` 变量**（会干扰并发测试与宿主环境）」。
+    /// [`RelayFactSources`] 头注 ㈠ 那一栏记着同族的第二条代价：这种判据
+    /// 「必须 `--test-threads=1` ⇒ 只能住 `#[ignore]` 的 e2e 那条道」——
+    /// 而那等于本条在 CI 上根本不跑。⇒ 两条路都堵死。
+    ///
+    /// ## 落法：把那一趟整个搬进子进程
+    ///
+    /// 父进程造一份**自己的** claude 目录，只经 `Command::env` 交给子进程
+    ///（子进程在起来那一刻就带着它，**谁的进程环境都没有被改过**），
+    /// 再拿本判据自己的可执行文件、以本判据的名字当过滤器跑一趟。
+    /// ⇒ 本进程环境一个字节没动 · 并发判据一格没被干扰 · Linux / Windows 上都跑得动。
+    ///
+    /// ⚠ **反空真**：过滤器一条都没命中时 libtest 的退出码**也是 0**（「0 passed」）——
+    /// 那会是一次干净的假绿。所以父进程除了看退出码，还断子进程真的报了 `1 passed`。
     #[test]
     fn the_delete_entry_point_actually_goes_through_the_fence() {
-        // ★ **前置条件**〔09-09 补，云端 windows-latest 首跑逼出来的〕。
-        //
-        // 本条要判的是**围栏**，而围栏在 `canonicalize(<claude 目录>/projects)` **之后**
-        // 才跑。那个目录在这台机器上不存在时，入口在**更早**一步就回了 `Err` ——
-        // 于是「拒了」与「文件还在」两格照样绿，只有最后那格红，
-        // 而它报的两条（围栏没接上 / 围栏措辞改了）**都是假话**。
-        // 〔09-09 实得：runner 上 `canonicalize C:\Users\runneradmin\.claude\projects`
-        //  报 os error 3 —— 那台机器上根本没有这个目录。〕
-        //
-        // ⚠ 判据**不许自己去建那个目录** —— 「`~/.claude/` 一个字节都不写」是本条的红线。
-        // ⇒ 这一格只把**真因**说出来，红照旧红：跳过就是把「没跑」伪装成「跑了」。
+        // 子进程那一趟 = 真正的探针（`CLAUDE_CONFIG_DIR` 已经在环境里）。
+        if std::env::var_os(FENCE_CHILD).is_some() {
+            delete_fence_probe();
+            return;
+        }
+
+        let name = format!("ccm-delete-fence-home-{}", std::process::id());
+        let claude_dir = std::env::temp_dir().join(name);
+        // 造的是**空的**记录目录 —— 围栏只 `canonicalize` 它，不读里面的东西。
+        // ⚠ 目录名走生产那一份 `records_dir`，**不在这里另抄一个 `"projects"`**：
+        //   本条要的是「入口会去 canonicalize 的那个目录真的在」，而它叫什么名字
+        //   归活跃适配器管 —— 抄一份就会漂。
+        let records = crate::adapter::records_dir(&claude_dir);
+        std::fs::create_dir_all(&records).expect("造 claude 目录夹具失败");
+
+        let exe = std::env::current_exe().expect("拿不到本判据自己的可执行文件");
+        let out = std::process::Command::new(&exe)
+            .arg("the_delete_entry_point_actually_goes_through_the_fence")
+            .arg("--nocapture")
+            .arg("--test-threads=1")
+            .env(FENCE_CHILD, "1")
+            .env("CLAUDE_CONFIG_DIR", &claude_dir)
+            .output()
+            .expect("起不来子进程 —— 本条判不了，不许当成绿");
+        let so = String::from_utf8_lossy(&out.stdout).into_owned();
+        let se = String::from_utf8_lossy(&out.stderr).into_owned();
+        let _ = std::fs::remove_dir_all(&claude_dir);
+
+        assert!(
+            out.status.success(),
+            "子进程里那一趟红了（退出码 {:?}）—— 正文在下面，别只看这一行。\n\
+             ── 子进程 stdout ──\n{so}\n── 子进程 stderr ──\n{se}",
+            out.status.code()
+        );
+        // ★ 反空真：过滤器零命中时 libtest 报 `ok. 0 passed;` 而**退出码也是 0**。
+        //   ⚠ 针带上 `ok. ` 与 `;` 两侧边界：裸 `"1 passed"` 会被 `11 passed` 顺带满足。
+        assert!(
+            so.contains("ok. 1 passed;"),
+            "子进程没有恰好跑到本判据那一趟（过滤器命中数不是 1）—— 本条会假绿。\n\
+             ── 子进程 stdout ──\n{so}\n── 子进程 stderr ──\n{se}"
+        );
+    }
+
+    /// 本判据的子进程哨兵。
+    ///
+    /// ⚠ 名字是本判据**专属的假变量**（同 `lib.rs` 里 `env_scrub_tests` 那条纪律）——
+    /// 真正的 `CLAUDE_CONFIG_DIR` 只经 `Command::env` 给**子进程**，
+    /// 本进程与宿主的环境都没有被动过。
+    const FENCE_CHILD: &str = "CCM_TEST_DELETE_FENCE_CHILD";
+
+    /// 真正那一趟。**只在子进程里跑**：`CLAUDE_CONFIG_DIR` 由父进程在起进程那一刻给好。
+    fn delete_fence_probe() {
+        // 前置条件仍然留着当兜底〔09-09 补的那一格，别删〕：注入万一没生效，
+        // 本条要说人话，而不是把「前提没建立」报成「围栏没接上」。
+        // 唯一会让它没生效的路：这台机器的 monitor config.json 里写了 `claudeDir`
+        // 且那个目录真在 —— 它在 `resolve_claude_dir` 里**优先于**环境变量。
         let Some(claude_dir) = paths::resolve_claude_dir() else {
             panic!("解析不出 claude 目录 —— 本条判不了")
         };
         let projects_dir = crate::adapter::records_dir(&claude_dir);
-        assert!(
-            projects_dir.canonicalize().is_ok(),
-            "本条的前置条件不成立：{} 在这台机器上不存在 ——\n\
-             入口会在**围栏之前**就失败，那时本条判的根本不是围栏。\n\
-             ⇒ 要让本条判得了，环境里先得有这个目录（空目录就够：围栏只 canonicalize 它）。\n\
-             🔴 不许把本条改成「读不到就跳过」—— 那是把闸拆了。",
-            projects_dir.display()
-        );
+        let canon_projects = projects_dir.canonicalize().unwrap_or_else(|e| {
+            panic!(
+                "本条的前置条件不成立：{} 打不开（{e}）——\n\
+                 入口会在**围栏之前**就失败，那时本条判的根本不是围栏。\n\
+                 ⇒ 父进程已经把 `CLAUDE_CONFIG_DIR` 指向一份自己造好的目录；\
+                 拿到别的说明这台机器的 monitor config.json 里写了 `claudeDir`\n\
+                 （它在 `resolve_claude_dir` 里优先于环境变量）。\n\
+                 🔴 不许把本条改成「读不到就跳过」—— 那是把闸拆了。",
+                projects_dir.display()
+            )
+        });
 
         let dir = std::env::temp_dir().join(format!(
             "ccm-delete-fence-probe-{}-{:?}",
@@ -3484,10 +3559,23 @@ mod tests {
         let victim = dir.join("victim.jsonl");
         std::fs::write(&victim, "not yours").expect("造临时文件");
 
+        // ★ **反空真**〔09-10 补〕：本条全部的力气都押在「靶子在记录目录**之外**」上。
+        //   靶子要是落在里面，围栏**放行**才是对的，而下面那两格会把放行读成缺陷。
+        //   先前这一格是**假设**的（「临时目录当然不在 `~/.claude` 里」）——现在现算一次。
+        let canon_victim = victim.canonicalize().expect("靶子打不开");
+        let outside = !canon_victim.starts_with(&canon_projects);
+
         let r = delete_history_session("sid".into(), victim.to_string_lossy().into_owned());
         let still_there = victim.exists();
         let _ = std::fs::remove_dir_all(&dir);
 
+        assert!(
+            outside,
+            "靶子 {} 落在了记录目录 {} **里面** —— 本条的前提不成立，\
+             围栏在这一格**放行**才是对的。",
+            canon_victim.display(),
+            canon_projects.display()
+        );
         let err = r.expect_err(
             "`delete_history_session` 接受了一个 **`projects` 之外**的路径 —— \
              围栏没接上，前端传什么就删什么。",
