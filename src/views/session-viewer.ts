@@ -30,6 +30,8 @@ import { UnrenderedRanges } from "../render-window";
 import { attachBranchButton } from "../branch-button";
 import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "../generated/BranchResult";
+// K-R45 甲：挑「用户说过的每一句」那一半住在这里（纯函数，乙那条路要共用，别复制）
+import { collectUserInputs, type UserInputEntry } from "./user-input-index";
 
 /**
  * 历史会话的 jsonl 文件名**就是** sid（口径同 `remote_history::jsonl_stem`）。
@@ -110,6 +112,10 @@ export class SessionViewer {
   private titleEl!: HTMLElement;
   private subtitleEl!: HTMLElement;
   private statusEl!: HTMLElement;
+  // K-R45 甲：用户输入清单（开关在顶栏，面板夹在状态栏与消息流之间）
+  private inputsToggle!: HTMLButtonElement;
+  private inputsPanel!: HTMLElement;
+  private userInputs: UserInputEntry[] = [];
   /** 用户点"返回历史"时调用 */
   private onBack: () => void;
 
@@ -265,6 +271,9 @@ export class SessionViewer {
       this.rebuildFold();
       this.lastFirstScreenMs = Math.round(performance.now() - t0);
       this.updateStatus(total);
+      // K-R45 甲：清单建在这里。面板默认收着 ⇒ 对下面的定位/贴底**零布局影响**
+      // （建完就滚，滚之前插一块可见的东西会把落点顶歪）。
+      this.rebuildUserInputs();
       // issue #6：从搜索结果跳进来 → 定位到命中消息；否则默认贴底。
       if (opts.scrollToUuid) {
         this.scrollToMessage(opts.scrollToUuid);
@@ -497,6 +506,73 @@ export class SessionViewer {
     window.setTimeout(() => el.classList.remove("search-hit-flash"), 2200);
   }
 
+  // ==== K-R45 甲 · 用户输入清单 ====
+
+  /**
+   * `KR45D1`：扫出这个会话里**主线**的用户输入，列成一条可点的清单。
+   *
+   * 🔴 **数据源是 `payloads`，不是 DOM**。件里写的是「扫已有 `data-uuid` 的卡」，
+   * 而那样只扫得到**已渲染**的那些 —— 首屏只渲染末尾 `TAIL_INITIAL` 条（150），
+   * 于是长会话里清单会缺掉绝大部分，而**长会话恰恰是这件活唯一的用处**。
+   * ⇒ 走 `payloads`（收集阶段是全量的），条数才做得到「不多不少」。
+   * 挑的口径（含 sidechain 算不算）只有一个住址：`user-input-index.ts::collectUserInputs`。
+   */
+  /** 开关清单面板。`hidden` 而不是 `display` —— 与本仓其余处一致，也让判据好断。 */
+  private toggleUserInputs(): void {
+    const open = this.inputsPanel.hidden;
+    this.inputsPanel.hidden = !open;
+    this.inputsToggle.setAttribute("aria-expanded", String(open));
+  }
+
+  private rebuildUserInputs(): void {
+    this.userInputs = collectUserInputs(this.payloads.map((p) => p.message));
+    this.inputsToggle.textContent = `我说过的 ${this.userInputs.length} 句`;
+    this.inputsToggle.disabled = this.userInputs.length === 0;
+    const rows = this.userInputs.map((entry, i) => {
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = "session-viewer-input-row";
+      // 🔴 **刻意不叫 `data-uuid`**：那个名字在本仓有且只有一个意思 ——
+      // 「这是一张渲染出来的消息卡」，`branch-fold.ts:236` 就是照它扫主线的。
+      // 清单行不是卡。两件事共用一个属性名，下一个写 `[data-uuid]` 选择器的人就会数错。
+      // （本轮自抓：第一版真写成了 `data-uuid`，判据当场把卡和行混在一起数成 350。）
+      row.dataset.inputUuid = entry.uuid;
+      row.style.cssText =
+        "display:block;width:100%;text-align:left;border:0;background:transparent;" +
+        "color:inherit;font:inherit;padding:4px 16px;cursor:pointer;" +
+        "white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+      row.textContent = `${i + 1}. ${entry.excerpt}`;
+      row.title = entry.excerpt;
+      row.addEventListener("click", () => this.jumpToUserInput(entry.uuid, row));
+      return row;
+    });
+    this.inputsPanel.replaceChildren(...rows);
+  }
+
+  /**
+   * 点清单里的一条 → 跳过去。**跳转本身一行都没新写**：调的就是搜索命中今天在用的
+   * 那个 `scrollToMessage`（`KR45D0` 已给它立了哨）。展开折叠是它自带的，白送
+   * —— 这就是 `§0c` 的「甲」，也是 `KR45D3` 说的「这一格自动满足」。
+   *
+   * 🔴 **唯一新写的是「跳不过去时不许静默」那一支**：
+   * `user-input-index.ts` 的头注登记了一条已知不等价 —— 渲染那边会再剥一层
+   * `stripInternalNoise`，被剥空的记录**不建卡** ⇒ 清单里可能有极少数条目落不到卡上。
+   * 那一形正是这个仓一整天在治的「静默做了个没用的动作」：`scrollToMessage` 找不到卡
+   * 会退到底部，用户看见的是「点了一下，跳到了会话最后」，而没有任何东西说一句话。
+   * ⇒ 这里跳完回头核一次，落空就把那一行**标出来**（`data-unjumpable` + 一句人话）。
+   */
+  private jumpToUserInput(uuid: string, row: HTMLElement): void {
+    this.scrollToMessage(uuid);
+    const landed = this.streamEl.querySelector(`[data-uuid="${CSS.escape(uuid)}"]`);
+    if (landed) {
+      delete row.dataset.unjumpable;
+      return;
+    }
+    row.dataset.unjumpable = "1";
+    row.style.opacity = "0.55";
+    row.title = "这条在渲染时被剥成了空卡，跳不过去（已退到会话末尾）";
+  }
+
   /** 主动释放（HistoryView 卸载本组件时调） */
   dispose(): void {
     this.disposeStream();
@@ -518,6 +594,16 @@ export class SessionViewer {
     this.branchRecords = [];
     this.renderingBatch = false;
     this.lastFirstScreenMs = null;
+    // K-R45 甲：清单也要跟着释放 —— 留着就是上一个会话的句子挂在下一个会话上，
+    // 点下去按 uuid 找不到卡，正好落进「静默跳到看不见的东西上」那一形。
+    this.userInputs = [];
+    this.inputsPanel?.replaceChildren();
+    if (this.inputsPanel) this.inputsPanel.hidden = true;
+    if (this.inputsToggle) {
+      this.inputsToggle.textContent = "我说过的 0 句";
+      this.inputsToggle.disabled = true;
+      this.inputsToggle.setAttribute("aria-expanded", "false");
+    }
   }
 
   // (旧的 renderAll 被流式 load 替代，删了 —— v2.2 issue #12)
@@ -539,6 +625,15 @@ export class SessionViewer {
     backBtn.addEventListener("click", () => this.onBack());
     bar.appendChild(backBtn);
 
+    // K-R45 甲：清单开关。`flex-shrink:0` 的顶栏里塞在标题右边（标题那块 flex:1 会吃掉余量）。
+    this.inputsToggle = document.createElement("button");
+    this.inputsToggle.type = "button";
+    this.inputsToggle.className = "session-viewer-inputs-toggle";
+    this.inputsToggle.textContent = "我说过的 0 句";
+    this.inputsToggle.disabled = true;
+    this.inputsToggle.setAttribute("aria-expanded", "false");
+    this.inputsToggle.addEventListener("click", () => this.toggleUserInputs());
+
     const titles = document.createElement("div");
     titles.className = "session-viewer-titles";
     this.titleEl = document.createElement("div");
@@ -548,12 +643,24 @@ export class SessionViewer {
     this.subtitleEl.className = "session-viewer-subtitle";
     titles.appendChild(this.subtitleEl);
     bar.appendChild(titles);
+    bar.appendChild(this.inputsToggle);
 
     view.appendChild(bar);
 
     this.statusEl = document.createElement("div");
     this.statusEl.className = "history-status";
     view.appendChild(this.statusEl);
+
+    // K-R45 甲：清单面板。默认收着 ⇒ 不改任何既有布局。
+    // ⚠ 样式写成内联是**刻意的**：`src/styles.css` 本轮在写区外，不许碰。
+    //   这一笔是**申报过的债**，PM 要落 CSS 时把这段搬进 `.session-viewer-inputs` 即可。
+    this.inputsPanel = document.createElement("div");
+    this.inputsPanel.className = "session-viewer-inputs";
+    this.inputsPanel.hidden = true;
+    this.inputsPanel.style.cssText =
+      "flex-shrink:0;max-height:38vh;overflow-y:auto;padding:6px 0;" +
+      "border-bottom:1px solid var(--border-strong);background:var(--bg-2);";
+    view.appendChild(this.inputsPanel);
 
     // 消息流容器（与实时 Tab 用相同的 .stream 样式）
     this.streamEl = document.createElement("div");
