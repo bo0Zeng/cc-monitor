@@ -13,17 +13,72 @@
 //! 「后端 = 一份代码、两种宿主（本机进程 / 远端进程）」。**这个目录是本机那种宿主**；
 //! `remote-daemon-proto/` 是远端那种。两边**同一套分解**：读（observe）与控制（control）。
 //!
-//! ⚠ **`observe/` 今天刻意还没建**：monitor 侧的读面（`local_accounts.rs` 30KB +
-//! `history_query.rs` 一族）正是 **U7 要退役的那批** —— 现在把它们搬进来、再由 U7 删掉
-//! 是纯搬运；只建一个空目录则是装饰。⇒ 先建 `control/`，`observe/` 等那批读面退役。
-//! 这条**不是遗漏**，下面 `every_file_under_backend_lives_on_a_capability_line` 那条判据
-//! 认 `observe/`，它一建出来就自动纳入。
+//! # `observe/` 那个决定：🔴 **它已经被叫醒了，只是没人听见**〔订正 2026-09-10〕
 //!
-//! ⚠⚠ **谁来叫醒这个决定**〔F18 补〕：上面只说了「等 U7」——那是个**没有触发器的等待**，
-//! 而 U7 的正题被「安装包里真有本机 daemon」挡着（F05b，要真 Windows 机）。
-//! 真正会叫醒它的是 `local_read_surface_registry` 里那条**前提触发器**：
-//! `tauri.conf.json` 一出现 `externalBin`，它就红 —— 那一刻本机才真有个后端可切，
-//! 「把读面搬进 `observe/` 再退役」才不是纯搬运。**别再把这句读成「等某个人想起来」。**
+//! 〔墓碑 —— 原话逐字（两段，先后写于 P4a 与 F18）：
+//!
+//!  「⚠ **`observe/` 今天刻意还没建**：monitor 侧的读面（`local_accounts.rs` 30KB +
+//!  `history_query.rs` 一族）正是 **U7 要退役的那批** —— 现在把它们搬进来、再由 U7 删掉
+//!  是纯搬运；只建一个空目录则是装饰。⇒ 先建 `control/`，`observe/` 等那批读面退役。」
+//!
+//!  「⚠⚠ **谁来叫醒这个决定**〔F18 补〕：上面只说了「等 U7」——那是个**没有触发器的等待**，
+//!  而 U7 的正题被「安装包里真有本机 daemon」挡着（F05b，要真 Windows 机）。
+//!  真正会叫醒它的是 `local_read_surface_registry` 里那条**前提触发器**：
+//!  `tauri.conf.json` 一出现 `externalBin`，它就红 —— 那一刻本机才真有个后端可切，
+//!  「把读面搬进 `observe/` 再退役」才不是纯搬运。**别再把这句读成「等某个人想起来」。**」〕
+//!
+//! ## 为什么说它已经被叫醒了（三条，逐条有出处）
+//!
+//! ① **前提翻了**：F05b 已落地并随 v3.7.0 发出去。09-10 干净 win11 上现打（PM 的读数）——
+//!    装出来那份 `cc-monitor-remote.exe` **2 个进程在跑**、裸 `monitor.exe` **0 个**。
+//! ② **不只是「有后端可切」，是已经切过两次**：`local_read_surface_registry` 的棘轮史逐字
+//!    记着 `11 → 10`（F10b 第一批，`usage.rs` 改走本机后端的 `--usage`）→ `9`
+//!    → `8`（F10b 第二批·下半，`local_accounts.rs` 改走 sidecar 的 `--session-accounts`）
+//!    → `7` → `8`（`P8a` 新增）。接线点今天就在生产段上：`usage.rs::aggregate_usage_all`
+//!    （一个 `#[tauri::command]`）直接调 `backend::control::local_query::run_query(…, ["--usage"])`。
+//! ③ 🔴 **`backend/` 里今天已经住着读面代码，只是挂在 `control` 线上** ——
+//!    `control/local_query.rs` 头注第一句逐字是「daemon 的**读面**是 14 条一次性查询子命令」。
+//!    ⇒ 「只建一个空目录是装饰」那条反对理由**今天不成立**：`observe/` 一建出来就有真住户，
+//!    而那个住户此刻住在**错的能力线**上 —— 那正是这条边界当初要防的事。
+//!
+//! ⚠ 墓碑第一段里另有三处已经不成立的事实，一并记下（同族，S11「描述当下的字段最易腐」）：
+//! `local_accounts.rs` 的读面**已经退役了**，它不再是「U7 要退役的那批」；
+//! `history_query.rs` **不在 monitor 侧** —— 它住 `remote-daemon-proto/src/observe/history_query.rs`，
+//! 是 daemon 的文件，monitor 从来没有过这个文件（`git log --all` 对该路径零提交）；
+//! 「30KB」今天是 62KB。
+//!
+//! ## 下一步是什么（有形状的一件活，不是「等某个人想起来」）
+//!
+//! **建 `observe/`，把 `control/local_query.rs` 挪成 `observe/local_query.rs`**，
+//! 连 `BACKEND_FILES` 那条登记的能力线一起改成 `observe`。那是**真搬运**不是装饰：
+//! 它本来就是读面的传输，挂在 `control` 上只是因为当初没有第二个地方可挂。
+//! ⚠ **本拍没做这一步**（写区不含 `control/mod.rs` 与那批 `use`）。挪的时候有两条判据看着：
+//! 下面的 `every_file_under_backend_is_registered_with_a_reason`（目录与登记表两个方向都查）
+//! 与 `every_file_under_backend_lives_on_a_capability_line`（它**认** `observe/`，
+//! 也只认 `control` / `observe` 两条线）。这条**不是遗漏**，`observe/` 一建出来就自动纳入。
+//!
+//! ## 🔴 但原句的后半（「把**那批读面**搬进来再退役」）没有被叫醒 —— 今天没有触发器
+//!
+//! 挡着它的是两样有名有姓的东西，**F05b 一条都没动**：
+//!
+//! - **daemon 侧的查询集缺口**：剩下 8 条 `reader` 每一条的退役条件写的都是 daemon 侧一个
+//!   具体缺口（`--list-projects` 缺会话 sid 清单 · daemon 侧没有 codex 的项目枚举 ·
+//!   `--search` 没索引 · 缺 `--list-marketplaces` · 删会话 daemon 侧无对侧）。
+//!   `local_read_surface_registry` 头注逐字：「至此本机读面**在现有 daemon 查询集下已无可退**」。
+//! - **宿主耦合**：`backend/` 有一道宿主无关守卫（下面 `the_backend_layer_stays_host_agnostic`，
+//!   禁 `AppHandle` / `tauri::Window` / `WebviewWindow` / `State<` / `.emit(` / `Emitter` / `Manager`）。
+//!   8 条 `reader` 里**有 2 条今天就带着这些把手**（09-10 现打：`tasks.rs` 有
+//!   `use tauri::{AppHandle, Emitter}` 与一处 `app.emit(`；`search.rs` 有三处 `tauri::State<`）
+//!   ⇒ 它们**原样搬不进来**，得先把宿主耦合剥掉。
+//!
+//! ⇒ **今天没有触发器**：仓里没有任何一条判据会在「那 8 条能退役了」的那一刻红。
+//! 🔴 **不许再在这里编一个** —— 上面墓碑第二段就是那么来的：一个不会响的闹钟比一句过期的话更贵，
+//! 因为它让人以为有人在看着。
+//! ⚠ 尤其**别**把 `local_read_surface_registry` 那条 sidecar 判据当成它的闹钟：那条 2026-08-04
+//! 就换过靶（它自陈「已经触发过一次，这是它的后继形态」），今天盯的是**配置文件的形状**
+//! （`externalBin` 不在 `tauri.conf.json` · 在 `tauri.sidecar.conf.json` · stem 与 `SIDECAR_STEM`
+//! 一致），**一格都不读「本机后端起没起来」**；而且「`tauri.conf.json` 一出现 `externalBin`
+//! 就红」这句今天**语义是反的** —— 它红是「有人把它搬回主配置了」（回归），不是「那一刻到了」。
 
 pub mod control;
 
@@ -92,8 +147,15 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "F10a：**本机一次性查询的传输** —— 「本地 = 不走 ssh 的远端」那一跳的本地版。\
          daemon 的读面是 14 条一次性子命令，**不在常驻通道上**（hello 的 `commands` 里\
          一条读命令都没有）⇒ 切读面 = exec 一次 sidecar 拿 stdout。协议一个字不改。\
-         ⚠ 今天**零生产调用方**（F10b 接线），由它自己那条前提触发器盯着 —— \
-         一有调用方就红，逼 `local_read_surface_registry` 的棘轮跟着往下拧",
+         ★ **它是本目录里唯一的读面文件** —— 挂在 `control` 线上只因为 `observe/` 还没建，\
+         见本文件头注「下一步是什么」那一节。\
+         〔订正 2026-09-10 —— 本格原话逐字：「⚠ 今天**零生产调用方**（F10b 接线），\
+         由它自己那条前提触发器盯着 —— 一有调用方就红，逼 `local_read_surface_registry` \
+         的棘轮跟着往下拧」。**两句今天都不成立**：那条触发器 2026-08-04 就已经响过一次并\
+         换成了后继形态（`every_caller_of_this_transport_is_already_off_the_read_surface_ledger`，\
+         改成「每个调用方都必须已经从棘轮账上下来」）；而生产调用方 09-10 现打**不是零** —— \
+         `usage.rs::aggregate_usage_all` 与 `local_accounts.rs::list_local_session_accounts` \
+         都在调它。⇒ 这里不再写「有几个调用方」这种会腐的数，那个数的家在那条判据里〕",
     ),
     (
         "control/launch_wire.rs",
