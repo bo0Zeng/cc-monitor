@@ -14,6 +14,18 @@
 # 但用途不同：embedded-daemons 是**远端 SFTP 部署**用的 musl 二进制（build.rs 的
 # `include_bytes!` 内嵌），binaries/ 是 **本机** sidecar（Tauri `externalBin` 打包）。
 /binaries/
+# K-R42（09-10 合入）：**裸 exe 自己带着的那份本机后端**，构建期产物，不进 git。
+# 谁产的：`.github/workflows/release.yml` 的 “Stage native daemon for self-extract” 那一步
+# （Windows job），把 `remote-daemon-proto/target/release/cc-monitor-remote.exe` 拷成三个文件 ——
+# `cc-monitor-native`（字节本身）· `cc-monitor-native.build_id`（身份）· `cc-monitor-native.target`
+# （给哪个 triple 编的）；名字定死在 `src-tauri/build.rs` 的 NATIVE_DAEMON_DIR/NATIVE_DAEMON_FILE。
+# 谁吃的：`build.rs::embed_native_daemon` 用**字面量路径** `include_bytes!` 嵌进 exe，
+# 缺席时不置 `cfg(embedded_native_daemon)` 并打 cargo:warning（自释放这条路诚实关掉）。
+# 为什么不铺进上面的 embedded-daemons/：那个目录名是 local_daemon.rs 认「谁会起真 daemon」的
+# 来历串之一，字面量写进生产段会误伤那条判据（理由住 build.rs 的 NATIVE_DAEMON_DIR 头注）。
+# ⚠ 本行是 K-R42 交回时点名的写区外欠账（后果是卫生不是功能：CI 从不 git add，
+# 但谁在本机铺过一次，那十几 MB 的二进制就以未跟踪状态挂在 git status 里）。
+/native-daemon/
 
 # 本机个人构建配置（dev 瘦身），不进 git —— 08-27 从 Cargo.toml 搬来
 .cargo/
