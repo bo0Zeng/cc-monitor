@@ -717,32 +717,9 @@ fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
         .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))
 }
 
-/// P4a-Y1：**本机跑同一条串** —— [`exec_read`] 的孪生兄弟，差别只有「谁来跑它」。
+/// 🔴🔴 **本机那个 `bash` 到底是哪一个** —— 09-10 云端那条红的根因就住在这里〔ccbus-win〕。
 ///
-/// # 为什么不是在这里重写一遍 cc-bus 的文件布局
-///
-/// `CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样。本机要是自己去 `read_to_string`
-/// 那两个文件，仓里就有了**两份**同一件事的表示，而它们会各自漂 ——
-/// 这个仓管这叫「一段逻辑、两种表示」，`ccm` 的 `resolve_from_daemon`/`resolve_recipe`
-/// 那对孪生函数专门为此立了一条 e2e 对拍。
-///
-/// ⇒ 照 `P3t-Y2` 的先例办（`exec_site_registry` 逐字记着「起本机探针与它**共用同一个常量**」）：
-/// **同一条命令串，远端包进 ssh，本机交给 `bash -lc`。** 这就是 `C1`〔用 08-11〕
-/// 「本地要和远端一样，只是远端走 ssh，本地不走」在这一族上的落点。
-///
-/// # 三件套一件都不许少
-///
-/// 远端那条有**上限 + 超时 + 溢出处置**。本机看着「自家文件、能出什么事」——
-/// 但 `agents.tsv` 是只增文件、`inbox` 更是，而 monitor 与它跑在同一台机器上，
-/// 撑爆的是**用户正在用的那个进程**。⇒ 逐件对称，由
-/// `the_local_cc_bus_read_keeps_every_guard_the_remote_one_has` 钉住。
-///
-/// ⚠ 用 `bash -lc` 而不是 `-lic`：这里只要 `$HOME` / `$CC_BUS_HOME`，不需要交互式 rc
-/// （`ccm_probe` 那条要 `-lic` 是因为它得到用户 PATH 里找 `ccm`，需求不同，别互抄）。
-///
-/// # 🔴🔴 `Command::new("bash")` 在 Windows 上**未必是你想的那个 bash**〔ccbus-win 09-10〕
-///
-/// 这是 09-10 云端那条红的**根因**，也是本文件唯一没修掉的那个洞，写在这里别让它再匿名。
+/// # `Command::new("bash")` 在 Windows 上**未必是你想的那个 bash**
 ///
 /// **机制（三条都有出处）**：
 /// 1. Windows 上 `CreateProcess`（`lpApplicationName` 为 NULL 时）的查找顺序里，
@@ -762,12 +739,199 @@ fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
 ///   `$HOME/.cc-bus` 指的是 Linux 家目录 ⇒ 自述头回 `home=0`，本文件据此报「没装」，
 ///   而 Windows 那侧的 `~/.cc-bus` 可能是满的。**这一形本轮没修**。
 ///
-/// ⚠ **为什么本轮不修**：修法是「在 Windows 上按绝对路径定位 Git for Windows 的 bash」，
-/// 而 `Command::new("bash")` 在本仓有**三处**（本处 · `ccm_probe::probe_with` ·
-/// `launch.rs` 那条 `-lic` 的 argv），`exec_site_registry` 盯着它们 ——
-/// 只修一处就是「一段逻辑、两种表示」，
-/// 而三处一起改要动本件写区之外的文件。**解锁条件**：立一件跨这三处的活，
-/// 并且要有一台真 Windows（本轮宿主是 Linux，改了也验不了）。
+/// ⇒ 修法见 [`resolve_bash`]：**不再按裸名让操作系统替我们猜**。
+///
+/// ⚠ **只修了这一处，而且这是对的**〔ccbus-win 09-10 第二拍，逐处量过〕。
+/// 全仓起 `bash` 的生产点只有三处，而**另外两处在 Windows 上根本不编译**：
+/// · `ccm_probe::probe_with` —— 整族带 `#[cfg(not(windows))]`；
+/// · `launch.rs::build_local_posix_argv` 那条 `bash -lic` —— 它的下游
+///   `launch_local_posix` 在 Windows 上是个 `#[cfg(windows)]` 的诚实拒绝桩
+///   （「POSIX 本地拉起不适用于 Windows 宿主」），argv 永远走不到 spawn。
+/// ⇒ 给它们加 Windows 定位是**给一条不存在的路铺砖**；而在 POSIX 上裸名恰恰是**对的**
+///   （`execvp` 只查 `PATH`，没有「系统目录优先于 `PATH`」这一条）。**逐处判，别一刀切。**
+///
+/// ⚠ **本轮仍然没修的那一形**：用户机器上 WSL **装了发行版**时，`bash` 若被指到 WSL，
+/// 它跑在**另一个文件系统**里，`$HOME/.cc-bus` 是 Linux 家目录而不是这台机器的。
+/// 本处的候选表只列 Git for Windows / MSYS2 的绝对路径、并显式挡掉系统目录那个门牌
+/// ⇒ **默认不会**选中 WSL；但用户把 [`BASH_OVERRIDE_VAR`] 指过去仍然做得到，
+/// 那时我们只挡得住存根（路径在系统目录里），挡不住一个装好发行版的真 WSL 入口。
+/// **解锁条件**：要有一台真 Windows 去量「WSL 里的 `$HOME` 长什么样」，本轮宿主是 Linux。
+///
+/// # 本常量：逃生口 —— 用户显式指定要用哪个 `bash`
+///
+/// **为什么非有不可**：候选表覆盖不到的装法总会有（scoop / 自己编的 / 装在别的盘）。
+/// 「找不到就响亮失败」若没有逃生口，就从「诚实」变成了「装了也用不了」。
+const BASH_OVERRIDE_VAR: &str = "CC_MONITOR_BASH";
+
+/// Windows 上 `bash` 的候选位置 —— **顺序即优先级，全是绝对路径，一个裸名都没有**。
+///
+/// ⚠ 拼接刻意用 `OsString::push` 拼字面的 `\`，不用 `PathBuf::push`：后者在 Linux 上
+/// 会把 `Git\bin\bash.exe` 当成**一个**文件名（反斜杠在 POSIX 语义里不是分隔符），
+/// 于是同一份代码在两个平台上拼出**不同的串**，判据在 Linux 上就量不到真的那一份。
+/// 本函数只在 Windows 上有生产人群，写死 `\` 是**对的**，而且它让判据两边都跑得到。
+///
+/// ⚠ `C:\Program Files\Git\bin\bash.exe` 这条是**有读数的**：09-10 那趟云端 run 的日志里，
+/// runner 自己给每个 bash 步骤的 shell 逐字就是 `C:\Program Files\Git\bin\bash.EXE`。
+/// `C:\msys64\usr\bin\bash.exe` 那条是**推的**（windows-2025 镜像预装 MSYS2 但不进 PATH，
+/// 装在哪没核过）—— 排在最后，找不到也只是少一条候选。
+fn windows_bash_candidates(
+    env: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+) -> Vec<std::path::PathBuf> {
+    const FROM_ENV: &[(&str, &str)] = &[
+        ("ProgramFiles", r"Git\bin\bash.exe"),
+        ("ProgramW6432", r"Git\bin\bash.exe"),
+        ("ProgramFiles(x86)", r"Git\bin\bash.exe"),
+        ("LOCALAPPDATA", r"Programs\Git\bin\bash.exe"),
+    ];
+    const FIXED: &[&str] = &[
+        r"C:\Program Files\Git\bin\bash.exe",
+        r"C:\msys64\usr\bin\bash.exe",
+    ];
+    // ⚠ 去重不是洁癖：`%ProgramFiles%` 展开出来的多半**就是**下面那条写死的，
+    //    留着重复会让「找过了哪些」那份清单当着用户的面说两遍同一句话。
+    fn add(out: &mut Vec<std::path::PathBuf>, p: std::path::PathBuf) {
+        if !out.contains(&p) {
+            out.push(p);
+        }
+    }
+    let mut out: Vec<std::path::PathBuf> = Vec::new();
+    for &(var, tail) in FROM_ENV {
+        if let Some(base) = env(var) {
+            let mut p = base;
+            p.push("\\");
+            p.push(tail);
+            add(&mut out, std::path::PathBuf::from(p));
+        }
+    }
+    for fixed in FIXED {
+        add(&mut out, std::path::PathBuf::from(*fixed));
+    }
+    out
+}
+
+/// 这条路径是不是系统目录里那个**WSL 存根**。
+///
+/// 不是「Windows 目录底下的一概不要」，是**逐字挡住 `actions/runner-images` #12646 说的那个**：
+/// WSL 功能开着但没装发行版时，`C:\Windows\System32\bash.exe` 是个 placeholder，
+/// 跑起来只说 "Windows Subsystem for Linux has no installed distributions." 就退。
+/// `Sysnative` / `SysWOW64` 是同一个目录的另外两个门牌，一起挡。
+fn is_system_dir_bash(p: &std::path::Path) -> bool {
+    let s = p.to_string_lossy().to_ascii_lowercase().replace('/', "\\");
+    s.contains(r"\windows\system32\")
+        || s.contains(r"\windows\sysnative\")
+        || s.contains(r"\windows\syswow64\")
+}
+
+/// 一条候选都没命中时说的话。**抽成纯函数**是为了让判据能逐字咬它
+/// （错误文案本身就是本件要买的东西：它必须说得出「这不是没有 agent」）。
+fn no_bash_error(tried: &[std::path::PathBuf]) -> String {
+    let list = tried
+        .iter()
+        .map(|p| format!("  · {}", p.display()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "这台机器上找不到可用的 `bash` —— cc-bus 的本机读面**跑不起来**。\n\
+         ⚠ 这**不是**「一个 agent 都没有」：清单根本没去读，有没有是**不知道**。\n\
+         已经找过（顺序即优先级）：\n{list}\n\
+         ⚠ **刻意不去 `PATH` 上碰运气**：Windows 的进程创建把 `C:\\Windows\\System32`\
+         排在 `PATH` 之前，而 WSL 功能开着却没装发行版时那里有一个 `bash.exe` 存根 ——\
+         按裸名找到的多半正是它，跑起来什么都不做就退（那正是本件的病根）。\n\
+         装一份 Git for Windows，或把 `{BASH_OVERRIDE_VAR}` 指向你要用的那个 `bash.exe`。"
+    )
+}
+
+/// 本机那个 `bash` 到底是哪一个 —— **纯函数半**：平台 / 环境 / 盘上有没有，三样全是入参。
+///
+/// # 为什么平台要当参数传，而不是在函数体里写 `cfg!(windows)`
+///
+/// 本仓对这件事有逐字的先例：`history.rs::platform_is_windows` 的头注写着
+/// 「`cfg!(windows)` 写在调用点上时它是个**常量表达式**，判据没有任何办法让它变」，
+/// 那次实测的刀是「`cfg!(windows)` → `false`」⇒ **全绿**，而生产后果是渲染整个失效。
+/// ⇒ 收成入参之后它成了**可翻的一维**：Linux 上也量得到 Windows 那一侧的判断。
+/// 同理 `exists` 也是入参 —— 否则「找不到」这一形要靠跑测试的机器上恰好没有 Git 才试得出来。
+///
+/// ⚠ 生产取值口是 [`resolve_bash`]，它把这三样接到真的上面（平台那格**复用**
+/// `history::platform_is_windows`，不在这里写第二份 `cfg!`）。
+fn resolve_bash_with(
+    windows: bool,
+    env: &dyn Fn(&str) -> Option<std::ffi::OsString>,
+    exists: &dyn Fn(&std::path::Path) -> bool,
+) -> Result<std::ffi::OsString, String> {
+    if let Some(raw) = env(BASH_OVERRIDE_VAR) {
+        let p = std::path::PathBuf::from(&raw);
+        if is_system_dir_bash(&p) {
+            return Err(format!(
+                "`{BASH_OVERRIDE_VAR}` 指的是系统目录里那个 `bash.exe` —— 那是 WSL 的存根，\
+                 没装发行版时它什么都不做就退，装了发行版则跑在**另一个文件系统**里\
+                 （`$HOME` 是 Linux 家目录，不是这台机器的）。**拒绝用它。**\n\
+                 实得：{}",
+                p.display()
+            ));
+        }
+        // **不回落到候选表**：用户显式指了一个路径却指错，回落会让他以为自己那条生效了。
+        if !exists(&p) {
+            return Err(format!(
+                "`{BASH_OVERRIDE_VAR}` 指的路径不存在：{}\n\
+                 ⚠ 显式指定过就不再去猜 —— 回落到候选表会让你以为自己这条生效了。",
+                p.display()
+            ));
+        }
+        return Ok(raw);
+    }
+    if !windows {
+        // POSIX：`execvp` 只查 `PATH`，没有「系统目录优先」那一条 ⇒ 裸名是**对的**，
+        // 而且写死 `/bin/bash` 会在 NixOS / Homebrew 这类装法上当场坏掉。
+        return Ok("bash".into());
+    }
+    let tried = windows_bash_candidates(env);
+    for c in &tried {
+        if !is_system_dir_bash(c) && exists(c) {
+            return Ok(c.clone().into_os_string());
+        }
+    }
+    Err(no_bash_error(&tried))
+}
+
+/// 生产取值口。**全仓解析 `bash` 只有这一处**，由
+/// `the_bash_cc_bus_runs_is_resolved_in_exactly_one_place` 钉住。
+fn resolve_bash() -> Result<std::ffi::OsString, String> {
+    resolve_bash_with(
+        crate::history::platform_is_windows(),
+        &|k: &str| std::env::var_os(k),
+        &|p: &std::path::Path| p.exists(),
+    )
+}
+
+/// P4a-Y1：**本机跑同一条串** —— [`exec_read`] 的孪生兄弟，差别只有「谁来跑它」。
+///
+/// # 为什么不是在这里重写一遍 cc-bus 的文件布局
+///
+/// `CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样。本机要是自己去 `read_to_string`
+/// 那两个文件，仓里就有了**两份**同一件事的表示，而它们会各自漂 ——
+/// 这个仓管这叫「一段逻辑、两种表示」，`ccm` 的 `resolve_from_daemon`/`resolve_recipe`
+/// 那对孪生函数专门为此立了一条 e2e 对拍。
+///
+/// ⇒ 照 `P3t-Y2` 的先例办（`exec_site_registry` 逐字记着「起本机探针与它**共用同一个常量**」）：
+/// **同一条命令串，远端包进 ssh，本机交给 `bash -lc`。** 这就是 `C1`〔用 08-11〕
+/// 「本地要和远端一样，只是远端走 ssh，本地不走」在这一族上的落点。
+///
+/// ⚠ **这条论证管的是「跑什么」，不管「用谁跑」**〔ccbus-win 09-10 第二拍〕。
+/// 「一条命令串两条传输路」买到的是**一处文件布局知识**；它从来没有说过
+/// 「那个 `bash` 可以按裸名让操作系统替我们猜」。后者是 [`resolve_bash`] 的活。
+///
+/// # 三件套一件都不许少
+///
+/// 远端那条有**上限 + 超时 + 溢出处置**。本机看着「自家文件、能出什么事」——
+/// 但 `agents.tsv` 是只增文件、`inbox` 更是，而 monitor 与它跑在同一台机器上，
+/// 撑爆的是**用户正在用的那个进程**。⇒ 逐件对称，由
+/// `the_local_cc_bus_read_keeps_every_guard_the_remote_one_has` 钉住。
+///
+/// ⚠ 用 `bash -lc` 而不是 `-lic`：这里只要 `$HOME` / `$CC_BUS_HOME`，不需要交互式 rc
+/// （`ccm_probe` 那条要 `-lic` 是因为它得到用户 PATH 里找 `ccm`，需求不同，别互抄）。
+///
+/// ⚠ 解析放在**超时之外**：解析失败是「这台机器上没有 bash」，
+/// 把它算进那 30 秒里、再报成「超时」是又一次拿错误的名字说话。
 async fn local_shell_read(
     cmd: &str,
     cap: u64,
@@ -776,8 +940,9 @@ async fn local_shell_read(
     on_overflow: OnOverflow,
 ) -> Result<String, String> {
     use tokio::io::AsyncReadExt;
+    let shell = resolve_bash()?;
     let read = async {
-        let mut child = tokio::process::Command::new("bash")
+        let mut child = tokio::process::Command::new(&shell)
             .args(["-lc", cmd])
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::piped())
@@ -2111,9 +2276,14 @@ mod tests {
         //   stdout 上垫东西。垫东西不影响本格要证的事（脚本跑了、stdout 回得来），
         //   而逐字相等会把「rc 话多」误报成「壳是死的」。产品那侧同理，见 `take_head`。
         let got = alive.as_deref().unwrap_or("");
+        // ★ 把**解析到的是哪一个 bash** 印进错误里〔ccbus-win 09-10 第二拍〕：
+        //   上一拍交回时「那台 runner 上 `bash` 到底是谁」还只是推断、没有读数。
+        //   这一格红的时候，下一趟云端日志里就有那条路径的**直读数**。
+        let which = resolve_bash();
         assert!(
             got.contains(HELLO),
             "阳性对照没回来（跑的是 `bash -lc '{probe}'`，全是内建）。实得：{alive:?}\n\
+             解析到的 bash：{which:?}\n\
              ⇒ 这台机器上 `bash` 解析到的那个东西**根本没跑我们的脚本**\n\
              （Windows 上 `C:\\Windows\\System32\\bash.exe` 那个没装发行版的 WSL 存根\
              就是这一形）。\n\
@@ -2156,6 +2326,11 @@ mod tests {
     ///
     /// ⚠ 诚实边界：Windows 那把尺子在交回本件时**没有在任何机器上跑过**
     /// （宿主是 Linux，且本件不许跑测试）。它坏掉的表现是**红**，不是绿。
+    ///
+    /// ⚠⚠ **下一趟云端很可能是它的第一次读数**〔ccbus-win 09-10 第二拍〕：
+    /// 09-09/09-10 两趟都在上面那格阳性对照就红了，**根本没走到这里**。
+    /// [`resolve_bash`] 落地之后，前两格若过，这一行才第一次真在 Windows 上跑。
+    /// ⇒ 它这一趟红是**新读数**，不是回归；红了先看 `powershell` 那条命令本身。
     fn live_processes_matching(needle: &str) -> usize {
         let ps = format!(
             "@(Get-CimInstance Win32_Process | \
@@ -2543,6 +2718,180 @@ b_cc	b_cc:0.0	ts	12345
                 "{name} 的本机分支没说清它在做什么（应含 {what:?}）"
             );
         }
+    }
+
+    /// ★★ **解析 `bash` 的地方恰好一处，而且那一处不是「按裸名让操作系统猜」**〔ccbus-win 09-10〕。
+    ///
+    /// # 它买的是什么
+    ///
+    /// 09-10 云端那条红的根因是 `Command::new("bash")`：Windows 的进程创建把
+    /// `C:\Windows\System32` 排在 `PATH` 之前，而那里有一个 WSL 存根
+    /// （`actions/runner-images` #12646）。⇒ **裸名这一形本身就是缺陷**，
+    /// 不是「今天恰好没配好」。本条把它从生产段里彻底赶出去。
+    ///
+    /// 第二半治的是「一段逻辑三种表示」：解析点一多，就会有人在第二处写个略有不同的候选表，
+    /// 而两份候选表会各自漂 —— 与 `local_shell_read` 头注里那条「一段逻辑、两种表示」同族。
+    ///
+    /// # 🔴 铁律 12：修之前它一定红（静态推演，跑不了测试所以逐条推）
+    ///
+    /// 本件之前，`local_shell_read` 的函数体逐字含
+    /// `let mut child = tokio::process::Command::new("bash")`，而生产段里
+    /// **没有任何** `fn resolve_bash` ⇒
+    /// · 第一条（`Command::new("bash")` 计数为 0）实得 1 ⇒ **红**；
+    /// · 第二条（`fn resolve_bash(` 恰好 1 处）实得 0 ⇒ **红**；
+    /// · 第四条（`local_shell_read` 窗口里有 `resolve_bash()?`）实得没有 ⇒ **红**。
+    ///
+    /// # ⚠ 它的射程（写下来，别读成比它强）
+    ///
+    /// 本条只看**本文件**。全仓另外两处 `bash` 起进程（`ccm_probe::probe_with`、
+    /// `launch.rs` 那条 `-lic` 的下游）**在 Windows 上根本不编译**，裸名在 POSIX 上是对的
+    /// ⇒ 本轮刻意不动它们。但「全仓不许有 Windows 够得到的裸名 bash」这条**仓级**判据
+    /// 今天**没有人立** —— 它的正确落点是 `write_site_registry::spawn_sites`
+    /// （那张表已经按 `Command::new(` 派生人群），不在本件写区。**已上报，别当它有。**
+    #[test]
+    fn the_bash_cc_bus_runs_is_resolved_in_exactly_one_place() {
+        let code = non_test_code();
+        assert_eq!(
+            code.matches(concat!("Command::", "new(\"bash\")")).count(),
+            0,
+            "生产段又出现了按裸名起 bash —— Windows 上那会拿到 System32 里的 WSL 存根\n\
+             （进程创建把系统目录排在 PATH 之前，PATH 怎么排都没用）。走 `resolve_bash()`。"
+        );
+        assert_eq!(
+            code.matches("fn resolve_bash(").count(),
+            1,
+            "解析 `bash` 的生产取值口不是恰好一处 —— 两份候选表会各自漂"
+        );
+        assert_eq!(
+            code.matches("fn resolve_bash_with(").count(),
+            1,
+            "纯函数半不是恰好一处"
+        );
+        // 平台那一格必须**复用**既有的唯一真相源，不许在本文件里再写一份 `cfg!(windows)`
+        // —— `history::platform_is_windows` 的头注逐字写着「只有这一处说得出这句话」，
+        // 而写在调用点上的 `cfg!(windows)` 是常量表达式、判据翻不动它（那次的刀实测全绿）。
+        assert!(
+            code.contains("crate::history::platform_is_windows()"),
+            "平台那一格没走 `history::platform_is_windows` —— 本文件自己写 `cfg!(windows)` \n\
+             会让判据翻不动它，而且那句话就有了第二个家。"
+        );
+        assert_eq!(
+            code.matches(concat!("cfg!(", "windows)")).count(),
+            0,
+            "本文件自己写了 `cfg!(windows)` —— 那句话只准有一个家"
+        );
+        let at = code
+            .find("async fn local_shell_read(")
+            .expect("生产段找不到本机执行口 —— 判据在空转");
+        let body: String = code[at..].chars().take(1200).collect();
+        assert!(
+            body.contains("resolve_bash()?"),
+            "本机执行口没有先解析 `bash` —— 判据的参照物没了。实得窗口：{body}"
+        );
+    }
+
+    /// ★★ **找不到 `bash` 要响亮地失败，不许退化成「读到空」**〔ccbus-win 09-10〕。
+    ///
+    /// 那正是本件上半场那个缺陷换个地方重演：一次读不到，被渲染成「一个 agent 都没有」。
+    ///
+    /// # 为什么这条在 Linux 上也跑得到（这是刻意设计的）
+    ///
+    /// `resolve_bash_with` 把**平台 / 环境 / 盘上有没有**三样全收成入参。若写成
+    /// `#[cfg(windows)]`，本条在 Linux 上就一格都量不到，而本仓 `launch.rs` 头注逐字记着
+    /// 那次教训：`cfg!(windows)` 是常量表达式，刀「`cfg!(windows)` → `false`」实测**全绿**。
+    ///
+    /// # 🔴 铁律 12：修之前它一定红
+    ///
+    /// 本件之前 `resolve_bash_with` **根本不存在** ⇒ 编译不过 ⇒ 红。
+    /// 而更要紧的是**行为**：那时 `local_shell_read` 拿到的是裸 `"bash"`，
+    /// 「这台机器上没有可用的 bash」这一形**根本没有任何代码路径会回 `Err`**
+    /// —— 它会成功起一个存根，然后回 `Ok("")`。⇒ 第一格要的那个 `Err` 当时造不出来。
+    ///
+    /// # 反向：不许恒错
+    ///
+    /// 第二格（候选表里有一条真在盘上）与第四格（POSIX）都要求 `Ok` ——
+    /// 一个「一律报错」的糊涂修法在那两格当场红。
+    #[test]
+    fn a_bash_that_cannot_be_found_is_a_loud_error_not_a_silent_empty_read() {
+        use std::ffi::OsString;
+        use std::path::{Path, PathBuf};
+        let no_env = |_: &str| -> Option<OsString> { None };
+        let nothing_exists = |_: &Path| false;
+
+        // ① Windows + 一条候选都不在盘上 ⇒ **响亮失败**，且说得出「不是没有 agent」。
+        let e = resolve_bash_with(true, &no_env, &nothing_exists)
+            .expect_err("找不到 bash 必须是错，不是一个能跑的裸名");
+        assert!(e.contains("找不到可用的 `bash`"), "{e}");
+        assert!(
+            e.contains("不是"),
+            "错误没写明它不是「一个 agent 都没有」—— 那就是上半场那个缺陷换个地方重演：{e}"
+        );
+        assert!(
+            e.contains(BASH_OVERRIDE_VAR),
+            "响亮失败没给逃生口 —— 那就从「诚实」变成了「装了也用不了」：{e}"
+        );
+
+        // ② **非空对照**：候选表里那条有读数的路径真在盘上 ⇒ 挑中它（证明本条不恒错）。
+        let git_bash = r"C:\Program Files\Git\bin\bash.exe";
+        let only_git = |p: &Path| p.to_string_lossy() == git_bash;
+        let picked = resolve_bash_with(true, &no_env, &only_git).expect("盘上有就该挑中");
+        assert_eq!(picked, OsString::from(git_bash));
+
+        // ③ 逃生口指到系统目录里那个存根 ⇒ **拒绝**（那正是根因本身）。
+        let stub = r"C:\Windows\System32\bash.exe";
+        let env_stub = |k: &str| (k == BASH_OVERRIDE_VAR).then(|| OsString::from(stub));
+        let all_exist = |_: &Path| true;
+        let e3 = resolve_bash_with(true, &env_stub, &all_exist).expect_err("存根必须被拒");
+        assert!(e3.contains("WSL"), "拒了但没说清拒的是什么：{e3}");
+        // 候选表里若混进同一个门牌，也一样挡住（不只逃生口那一条路）。
+        assert!(is_system_dir_bash(&PathBuf::from(stub)));
+        // 大小写与正斜杠都要认（`SysWOW64` / `Sysnative` 是同一个目录的另外两个门牌）。
+        let syswow = PathBuf::from(r"C:/WINDOWS/SysWOW64/bash.exe");
+        assert!(is_system_dir_bash(&syswow));
+        assert!(!is_system_dir_bash(&PathBuf::from(git_bash)));
+
+        // ④ **非空对照**：POSIX 上裸名是对的，不许被这条改坏
+        //    （`execvp` 只查 PATH；写死 `/bin/bash` 会在 NixOS/Homebrew 上当场坏掉）。
+        let posix = resolve_bash_with(false, &no_env, &nothing_exists).expect("POSIX 不该失败");
+        assert_eq!(posix, OsString::from("bash"));
+
+        // ⑤ 逃生口指了一个不存在的路径 ⇒ 报错，**不许悄悄回落到候选表**
+        //    （回落会让用户以为自己指的那条生效了）。
+        let missing = r"D:\nope\bash.exe";
+        let env_missing = |k: &str| (k == BASH_OVERRIDE_VAR).then(|| OsString::from(missing));
+        let e5 = resolve_bash_with(true, &env_missing, &only_git).expect_err("指错了要说");
+        assert!(e5.contains(missing), "{e5}");
+
+        // ⑥ 候选表**每一条都是绝对路径**——一个裸名都不许有。
+        //    ⚠ 不能用 `Path::is_absolute()`：它在 Linux 上按 POSIX 判，
+        //    会把 `C:\…` 判成相对路径，于是这一格在 Linux 上恒真、等于没测。
+        let env_win = |k: &str| match k {
+            "ProgramFiles" => Some(OsString::from(r"C:\Program Files")),
+            "LOCALAPPDATA" => Some(OsString::from(r"C:\Users\u\AppData\Local")),
+            _ => None,
+        };
+        let cands = windows_bash_candidates(&env_win);
+        let n = cands.len();
+        assert!(n >= 3, "候选表只剩 {n} 条 —— 抽取器坏了");
+        // 去重真的发生了：`%ProgramFiles%` 展开出来的与写死那条**就是**同一个，
+        // 留着重复会让「找过了哪些」那份清单当着用户的面说两遍同一句话。
+        let mut uniq = cands.clone();
+        uniq.sort();
+        uniq.dedup();
+        assert_eq!(uniq.len(), n, "候选表里有重复项");
+        for c in &cands {
+            let s = c.to_string_lossy().into_owned();
+            assert!(
+                s.contains(":\\") || s.starts_with("\\\\"),
+                "候选 {s:?} 不是绝对路径 —— 裸名会被系统目录抢走，那正是本件的病根"
+            );
+            assert!(s.ends_with("bash.exe"), "候选 {s:?} 指的不是 bash.exe");
+        }
+        assert!(
+            cands.iter().any(|c| c.to_string_lossy() == git_bash),
+            "候选表里没有 `{git_bash}` —— 那是唯一一条有读数的路径\n\
+             （09-10 云端 run 的日志里 runner 自己给 bash 步骤的 shell 逐字就是它）"
+        );
     }
 
     /// ★ P4a-Y3：**本机那条执行口，远端有的守卫一件都不许少。**
