@@ -2871,6 +2871,17 @@ mod tests {
             panic!("切出来的这段里 `extract_embedded_to(` 不是恰好一处（{e}）—— 切歪了，本条此刻无效。\n逐字：{body}")
         });
 
+        // ★ **防空转的第二半**〔本轮 `7u` 那一刀逼出来的，逐字记下理由〕：
+        //   把实现整个退掉之后，`the_extraction_refusal_…` 那条**仍然绿** ——
+        //   它测的是一个**纯函数**，而纯函数不接调用点也照样对。
+        //   ⇒ 「那句响亮的话真的被用上了」得在这里钉，不能指望那一条。
+        guard_core::find_pinned(&body, "extraction_failure_reason(").unwrap_or_else(|e| {
+            panic!(
+                "`start_or_extract` 体内 `extraction_failure_reason(` 不是恰好一处（{e}）——\n\
+                 一处都没有 ⇒ 释放失败又退回那句**与「没带后端」分不开**的话，\n\
+                 而 `the_extraction_refusal_…` 这类纯函数判据**照样全绿**（本轮实测过）。\n逐字：{body}"
+            )
+        });
         let asked = guard_core::find_pinned(&body, "native_embedded_daemon").unwrap_or_else(|e| {
             panic!(
                 "`start_or_extract` 体内 `native_embedded_daemon` 不是恰好一处（{e}）——\n\
