@@ -930,6 +930,14 @@ mod tests {
     }
 
     /// ★ P5L-Y1/Y3：**候选表有序，且第一个存在的胜出**。
+    ///
+    /// ⚠⚠ **补门的代价：本条从此在 Windows 上 0 次执行**〔win-compile 09-09〕。
+    /// 被测的 `TERMINAL_EXITS` 与 `pick_terminal_exit_from` 都带 `#[cfg(not(windows))]`，
+    /// 而本条**漏了对应的门** ⇒ 云端（windows-latest，本仓**唯一**跑 `cargo test` 的平台）
+    /// 上 `--all-targets` 直接**编译失败**（E0425 ×7），不是警告。
+    /// 补门只买回「编得过」，**买不回覆盖**：它今天只在开发者的 POSIX 盘上跑，
+    /// CI 上没有任何东西证明它是绿的。**别把「CI 全绿」读成「这条跑过了」。**
+    #[cfg(not(windows))]
     #[test]
     fn the_terminal_exit_is_picked_in_declared_order() {
         // 都在 ⇒ 取第一个（`xdg-terminal-exec` 优先，见 `TERMINAL_EXITS` 头注）。
@@ -962,6 +970,13 @@ mod tests {
     /// 而真正跑起来的 `bash -lic` 里没有中转注入。
     /// ⇒ 那一跳抽成了纯函数 [`build_local_posix_spawn`]，本条改成**读它产出来的东西**。
     /// 「分流真的看 `term`」那一格也跟着变成行为：两个入参各喂一次，答案必须不同。
+    ///
+    /// ⚠⚠ **补门的代价：本条从此在 Windows 上 0 次执行**〔win-compile 09-09〕。
+    /// [`build_local_posix_spawn`] 带 `#[cfg(not(windows))]` 而本条**漏了对应的门**
+    /// ⇒ 云端（windows-latest，本仓**唯一**跑 `cargo test` 的平台）上编译失败（E0425 ×4）。
+    /// ⚠ 连坐的还有本条**末尾那一格源码守卫**（「降级的说明得是一条真日志」）——
+    /// 它本身与平台无关，却跟着这道门一起在 Windows 上不跑了。
+    #[cfg(not(windows))]
     #[test]
     fn opening_a_window_does_not_touch_the_payload() {
         let prod = guard_core::production_code(include_str!("launch.rs"));
@@ -1122,6 +1137,16 @@ mod tests {
     /// `the_spawned_process_really_gets_the_relay_prefix_without_a_terminal`（`term = None`）
     /// 与 `the_terminal_we_hand_the_command_to_really_gets_the_relay_prefix`（`term = Some(假终端)`），
     /// **两条都不开窗**。
+    ///
+    /// ⚠⚠ **补门的代价 —— 这一条最贵，逐字写清**〔win-compile 09-09〕。
+    /// 本条自述钉的是**第八层**那一整跳（命令串 → 真正要 spawn 的 `(program, args)`），
+    /// 而它用的 `local_posix_spawn_plan` 带 `#[cfg(not(windows))]`、本条**漏了对应的门**
+    /// ⇒ 云端（windows-latest，本仓**唯一**跑 `cargo test` 的平台）上编译失败（E0425 ×2）。
+    /// 补门之后**本条在 CI 上 0 次执行** —— 也就是说「第八层被堵住了」这句话，
+    /// 今天**只有开发者的 POSIX 盘证明得了**，云端一次都没证明过。
+    /// ★ 这不是新缺陷（Windows 上本来就没有 POSIX 那条送法），但**它也不是没有代价**：
+    ///   把「补门」读成「修好了」是错的，红消掉了、覆盖没回来。
+    #[cfg(not(windows))]
     #[test]
     fn the_local_argv_hands_the_command_through_byte_for_byte_prefix_and_all() {
         let payloads = [

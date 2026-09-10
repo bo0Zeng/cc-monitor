@@ -682,6 +682,16 @@ mod tests {
     ///
     /// ⚠ 必须是 `Err` 而不是「装了 0 个文件的 Ok」：后者会让 UI 报「已装到 …（写了 0 个）」，
     /// 又一次「假成功比失败更坏」。
+    ///
+    /// ⚠⚠ **补门的代价：本条从此在 Windows 上 0 次执行**〔win-compile 09-09〕。
+    /// 它靠 `std::os::unix::fs::PermissionsExt` 造「只读目录」这个可控替身，而先前
+    /// **漏了门** ⇒ 云端（windows-latest，本仓**唯一**跑 `cargo test` 的平台）上
+    /// 编译失败（E0433 ×1 + E0599 ×2）。门照本文件既有口径写成 `#[cfg(unix)]`
+    /// （同 `a_symlinked_skills_dir_is_refused` / `deployed_scripts_are_executable`
+    /// 那两条 —— 它们用的是同一个平台原语）。
+    /// ⚠ 于是「`skills/` 不可写时必须 `Err`、不许返回写了 0 个的 `Ok`」这条性质，
+    ///   在 Windows 上**没有任何东西守着**；替身要换成 Windows 的 ACL 才买得回来。
+    #[cfg(unix)]
     #[test]
     fn an_unwritable_skills_dir_fails_loudly() {
         use std::os::unix::fs::PermissionsExt;
