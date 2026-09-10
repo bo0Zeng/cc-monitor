@@ -293,7 +293,15 @@ async fn write_ack<W: tokio::io::AsyncWrite + Unpin>(
 
 /// `--dial` 那条分派臂的实现。
 ///
-/// **不读 argv**（配置全在 stdin 那一行）—— 参数只用来在诊断里回显。
+/// **不读 argv** —— 参数只用来在诊断里回显。配置走**环境变量** `CCM_DIAL_REQUEST`
+/// （下面第三行就是它），**argv 与 stdin 都不走**；理由住本文件模块头注「为什么也不走 stdin 第一行」那一段。
+/// 〔墓碑 —— 本行原话逐字：「**不读 argv**（配置全在 stdin 那一行）—— 参数只用来在诊断里回显。」
+///  09-10 订正：那是**第一版**的形状，改掉了。这是同一次漂移的**第四份副本**
+///  （前三份：`doc/IPC-PROTOCOL.md` §10 两处 + `remote-daemon-proto/src/main.rs` 的 `SUBCOMMANDS` 表）。
+///  ⚠ **它与本文件 84-87 行对着干了一个多月** —— 那几行写的就是订正后的说法。
+///  实测（09-10 现打两趟）：不设该变量 ⇒ 退出码 2、stdout 0 字节；
+///  把 JSON 原样喂进 stdin 第一行、仍不设变量 ⇒ **还是退出码 2、还是同一句话**
+///  ⇒ 「stdin 第一行」今天**一个字节不被读**。〕
 pub async fn run(args: &[String]) -> i32 {
     tracing::info!("dial: 代理进程起来了（argv={args:?}）");
     let mut input = tokio::io::stdin();
