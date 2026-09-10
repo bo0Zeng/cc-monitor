@@ -852,6 +852,27 @@ mod tests {
             "没有任何 skill 声明 editable —— 本条会零命中地绿（F03 的写面就没有对象了）"
         );
         for spec in SKILLS {
+            // ★ **前置条件**〔09-09 补，云端首跑逼出来的〕：这几套产物树**不在版本控制里**
+            //   —— `.claude/planned-build/` 住在**仓的上一级**（工作目录），
+            //   仓里 `git ls-files` 对 `.claude/` 零命中 ⇒ **任何 checkout 上都没有它**。
+            //   而本条原来的报错会把这一形说成「`artifacts.root` 错了 / `editable` 的基准
+            //   理解错了」——**两条都是假话**，正是本条头注里记着的那种误诊。
+            //   ⚠ 不许改成「不存在就跳过」：那是把「没跑」伪装成「跑了」。
+            //   ⇒ 这一格只把**真因**说出来，红照旧红。
+            if spec.editable.is_empty() {
+                continue;
+            }
+            let root = cwd.join(spec.artifacts.root);
+            assert!(
+                root.is_dir(),
+                "本条的前置条件不成立：`{}` 的产物根算出来是 {}，而它不存在。\n\
+                 ⇒ 这套产物**不在版本控制里**（`.claude/planned-build/` 住在仓的上一级），\
+                 所以任何 checkout 上都没有它 —— 本条在那种环境里**判不了**。\n\
+                 ⚠ 它与「路径算错了」长得一样，只有这句话分得开。\n\
+                 🔴 不许改成「不存在就跳过」。",
+                spec.id,
+                root.display()
+            );
             for p in editable_paths(spec, &cwd) {
                 assert!(
                     p.canonicalize().is_ok(),
@@ -881,6 +902,19 @@ mod tests {
             .find(|s| !s.editable.is_empty())
             .expect("没有带 editable 的 skill —— 本条会零命中地绿");
 
+        // ★ **前置条件**（同上一条，09-09 补）：这套产物树不在版本控制里
+        //   ⇒ 任何 checkout 上都没有它，本条在那种环境里**判不了**。
+        //   ⚠ 不许改成「不存在就跳过」：那是把「没跑」伪装成「跑了」。
+        let root = cwd.join(spec.artifacts.root);
+        assert!(
+            root.is_dir(),
+            "本条的前置条件不成立：`{}` 的产物根算出来是 {}，而它不存在 ——\n\
+             这套产物不在版本控制里（`.claude/planned-build/` 住在仓的上一级），\n\
+             本条在这个环境里判不了。🔴 不许改成「不存在就跳过」。",
+            spec.id,
+            root.display()
+        );
+
         // ① 白名单内的真实文件：放行。
         let ok_path = &editable_paths(spec, &cwd)[0];
         assert!(
@@ -891,7 +925,7 @@ mod tests {
         // ② 同目录下**没在白名单里**的文件：拒。
         //    用 `STATUS.md` 之类肯定存在、但不在 editable 里的东西才说明问题
         //    （拿一个不存在的文件去试，拦住的是「不存在」而不是「不在白名单」）。
-        let root = cwd.join(spec.artifacts.root);
+        //    ⚠ `root` 在上面那条前置条件里已经算过一次，这里直接用。
         let sibling = root.join("README.md");
         if sibling.exists() {
             let err = resolve_editable(spec, &cwd, &sibling)

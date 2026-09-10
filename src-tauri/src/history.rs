@@ -3451,6 +3451,30 @@ mod tests {
     /// ⚠ 只碰自己造的临时目录；`~/.claude/` 一个字节都不写（红线）。
     #[test]
     fn the_delete_entry_point_actually_goes_through_the_fence() {
+        // ★ **前置条件**〔09-09 补，云端 windows-latest 首跑逼出来的〕。
+        //
+        // 本条要判的是**围栏**，而围栏在 `canonicalize(<claude 目录>/projects)` **之后**
+        // 才跑。那个目录在这台机器上不存在时，入口在**更早**一步就回了 `Err` ——
+        // 于是「拒了」与「文件还在」两格照样绿，只有最后那格红，
+        // 而它报的两条（围栏没接上 / 围栏措辞改了）**都是假话**。
+        // 〔09-09 实得：runner 上 `canonicalize C:\Users\runneradmin\.claude\projects`
+        //  报 os error 3 —— 那台机器上根本没有这个目录。〕
+        //
+        // ⚠ 判据**不许自己去建那个目录** —— 「`~/.claude/` 一个字节都不写」是本条的红线。
+        // ⇒ 这一格只把**真因**说出来，红照旧红：跳过就是把「没跑」伪装成「跑了」。
+        let Some(claude_dir) = paths::resolve_claude_dir() else {
+            panic!("解析不出 claude 目录 —— 本条判不了")
+        };
+        let projects_dir = crate::adapter::records_dir(&claude_dir);
+        assert!(
+            projects_dir.canonicalize().is_ok(),
+            "本条的前置条件不成立：{} 在这台机器上不存在 ——\n\
+             入口会在**围栏之前**就失败，那时本条判的根本不是围栏。\n\
+             ⇒ 要让本条判得了，环境里先得有这个目录（空目录就够：围栏只 canonicalize 它）。\n\
+             🔴 不许把本条改成「读不到就跳过」—— 那是把闸拆了。",
+            projects_dir.display()
+        );
+
         let dir = std::env::temp_dir().join(format!(
             "ccm-delete-fence-probe-{}-{:?}",
             std::process::id(),
