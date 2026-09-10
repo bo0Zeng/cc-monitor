@@ -573,6 +573,13 @@ jobs:
           #   ⇒ **同一个位置、同样三套、两个月内第二次。散文纪律拦不住它。**
           #   云端首跑（run `34432595554`）逐字报的是本步骤自己那句
           #   `::error::找不到调用行 '…sh ccm-cli <当时清单里的 242>'`。
+          # ⚠ **2026-09-09 `CI-J3` 又动了两条，两处都是同一拍改的**：
+          #   · `inbound-frames` 由 32 抬到 33 —— `track/e2e-sid-tag` 把「验 `@ccm_sid`」那一格
+          #     拆成了「意图键写对了」＋「此刻事实键必须为空」两格（`−1 +2`）；
+          #   · `daemon-gate2` 由 36 降到 35 —— 那是一条**从 `F20`（08-06）起就没成立过**的地板
+          #     （`meta_colon` 必然走登记豁免，可达上限一直是 35），新口径是
+          #     「总槽位 − 已登记豁免数」，由 `remote-daemon-proto/src/control/gate.rs` 两侧夹住。
+          #   两条的完整理由都写在**各自的调用行上方**，这里不重抄 —— 这张清单是副本，不是真相源。
           #   ⚠⚠ **这几行注释刻意不把那句报错原样抄全**：下面那个 `grep -q` 搜的是**整份
           #   `ci.yml`、不剔注释** ⇒ 注释里只要出现一次逐字的
           #   「脚本名 + 空格 + 套件名 + 空格 + 数字」，那一对以后就**永远命中**，
@@ -584,8 +591,8 @@ jobs:
           for pair in "tmux-target 26" "ccm-cli 264" "ccm-print-parity 12" "ccm-acceptance 31" \
                       "ccm-pretrust 15" "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
-                      "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 32" \
-                      "ccm-contract-parity 72" "daemon-gate2 36" "local-backend 14" \
+                      "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 33" \
+                      "ccm-contract-parity 72" "daemon-gate2 35" "local-backend 14" \
                       "daemon-sessions-rewatch 5" "daemon-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "daemon-cc-bus 50"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
@@ -764,13 +771,49 @@ jobs:
 
       # U8a-2a：入方向（控制通道）的真进程端到端。此前那条通道**从没有真进程验证过**——
       # daemon 侧全是单测夹具，monitor 侧一个字节都没发过。
+      # ★★ **2026-09-09 `CI-J3`：地板 `32` → `33`**（`−1 +2`）。产品 `2a58237`（09-03，`K-P2` C5）
+      #    把建会话那一刻写的键从**事实**键 `@ccm_sid` 换成**意图**键 `@ccm_sid_expect`，
+      #    而那套夹具停在 `34d3209`（08-12）⇒ 云端 `run 34432595554` 逐字 `合计 PASS=27 FAIL=5`
+      #    （一因五果：会话名不是本工具形状、事实键又没设 ⇒ 下游 send-into / send-keys-raw
+      #    全被 §34 Gate 2 判 `wrong_owner`）。`track/e2e-sid-tag` 把那一格
+      #    **拆成了两格**：意图键必须写对 **＋ 此刻事实键必须为空**（后者钉的是那道分离本身，
+      #    只改个名字买不到）。⇒ 32 − 1 + 2 = **33**。
+      #    🔴 **这一行与 `track/e2e-sid-tag`（`b7a2c5a`）是 lockstep 的**：那一支不落先落这一行，
+      #      套件只吐 32 ⇒ 缩水判据当场红。两支必须同批合，或先合那一支。
+      #    ⚠ 不棘的话，新加的那两格明天能被删掉而 CI 照样绿 —— `assert-pass-floor.sh` 头注
+      #      写的那个失效模式：**不是变红，是静默缩水**。**先跑再棘**的「跑」这一次由 PM 在沙箱里做。
       - name: 入方向 daemon 帧（U8a-2a）
-        run: bash e2e/assert-pass-floor.sh inbound-frames 32
+        run: bash e2e/assert-pass-floor.sh inbound-frames 33
 
       # F03：§34 Gate 2 在 daemon 侧的真机验收。用例逐行来自那张唯一的判定表
       # `src-tauri/src/backend/control/fixtures/gate2-golden.tsv`（三条轨道同一份）。
+      # ★★ **2026-09-09 `CI-J3`：地板 `36` → `35`，而且这个数从此不再由人手写。**
+      #
+      #    这条地板**从 `58b1312`（F20，08-06）起就没有一次成立过**，而云端 08-05 之后
+      #    一次没跑 ⇒ 没人看见。事实链（都在盘上，逐条可复核）：
+      #      · 本套件的 PASS 槽位共 **36** 格（抽取器自检 1 + 判定表 25 行 + 目标不存在 1
+      #        + `send-keys-raw` 过同一道门 1 + 只设 `@ccm_sid_expect` 仍拒 1 + Gate 3 五条 5
+      #        + kill 目标不存在 1 + kill 形状门 1）；
+      #      · `F20` 给循环加了「建完用 `=name:` 复核，找不到就 skip」⇒ `meta_colon`（`cc-a:b`）
+      #        在**任何会把 `:` 改写成 `_` 的 tmux** 上必然走那一支（脚本 `:53-55` 逐字记着
+      #        本机 tmux 3.6 实测 `cc-a:b → cc-a_b`）⇒ 可达上限当场变成 **35**；
+      #      · `938635b`（08-13）把那一支从 `skip` 改成**登记豁免**，让套件退 0 —— 于是
+      #        地板第一次被**读到**，也第一次露出「够不到」。`e2e/README.md:64` 那份全量台账
+      #        逐字记着这套 **35 过 / 0 败**。
+      #    🔴 **一条够不到的地板不是判据，是路障**：它唯一的可观测效果，是把它后面所有步骤
+      #      整片挡成 skipped（本轮就是这么被发现的）。
+      #
+      #    ⚠ **`F20 §3` 那个决定（「skip 不是通过」）本轮一个字没翻**，只是把它的落点说清楚：
+      #      扛它的是套件收尾那句 `[ "$skip" -eq 0 ] || exit 1` —— 那比地板**更硬**
+      #      （套件非零退出时，地板那一步压根轮不到读数）。`meta_dollar`（根因至今未知）
+      #      照旧在那里疼。地板扛的是另一件事：**断言数缩水**。
+      #    ⇒ 新口径：**地板 = 总槽位 − 已登记豁免数**，由
+      #      `remote-daemon-proto/src/control/gate.rs` 的 `the_gate2_floor_still_makes_a_skip_hurt`
+      #      **两侧夹住**（低了＝有一格被静默不验；高了＝又造一条够不到的地板）。
+      #      ⇒ 想降这个数，唯一的路是**登记一条带书面理由的豁免**；想省掉一条豁免，
+      #      这个数就得涨回去。**两边都不再靠散文。**
       - name: Gate 2 daemon 真机验收（F03）
-        run: bash e2e/assert-pass-floor.sh daemon-gate2 36
+        run: bash e2e/assert-pass-floor.sh daemon-gate2 35
 
       # F05a：本机后端监护的真进程验收（起-杀-自愈 / 必崩即判死 / 缺 sidecar 诚实降级）。
       # 数字地板**只在这一行**（定框 §4：同一个数不许两侧各写一份）；脚本里只有导出式自检。
