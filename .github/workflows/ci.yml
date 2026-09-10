@@ -550,11 +550,42 @@ jobs:
           # 没有地板 ⇒ 断言被删空照样绿，正是这套机制立起来要防的那件事（我自己刚犯了一次）。
           [ "${N:-0}" -ge 23 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 23）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
-          for pair in "tmux-target 26" "ccm-cli 242" "ccm-print-parity 12" "ccm-acceptance 29" \
+          #
+          # 🔴🔴 **读这张清单之前先读这四行 —— 这里是本仓「同一个量不许两处各写一份」
+          #      那条病的活体，而且它长在守卫自己身上。**
+          #   · 这张清单**不是**地板的真相源。真相源只有一个：下面那些
+          #     `bash e2e/assert-pass-floor.sh <套件> <地板>` 的调用行
+          #     （`e2e-tmux` 里 `:646` 起 · `e2e-tmux-rust` 里 `:753` 起）。
+          #     这张清单是它们的**副本**，作用是「地板被人偷偷抹成 0 / 套件被删」时有人喊。
+          #   · 判法是**逐字符串命中**（下面那行 `grep -q`）：清单里的数与调用行上的数
+          #     **差 1 都不命中** ⇒ 第一条不命中就 `exit 1`，整个 `E2E scripts health` job 红。
+          #     ⇒ **副本漂了不是「注释过期」，是流水线直接红。**
+          #   · ⇒ **纪律（第三次写在这里了）：改任何一套的地板 = 同一拍改两处 ——
+          #     调用行 + 这张清单。** `ccm-print-parity` / `ccm-rbind-title` / `ccm-cli` /
+          #     `ccm-contract-parity` 这四套还有**第三处**（`scripts/gate.sh` 的 `run_e2e` 行，
+          #     见 `:521` 那段 `K-G8`）⇒ 那四套是**三处**一起改。
+          #
+          # ⚠ **2026-09-09 `CI-J2` 订正三处已漂的**（`ccm-cli 242→264` · `ccm-acceptance 29→31` ·
+          #   `ccm-contract-parity 68→72`，其余 20 条本来就一致）。
+          #   漂是 `e08db89`（09-05，`K-P2 F` 拍）留下的：它把这三条**调用行**从 242/29/68 抬到
+          #   264/31/72，**没动这张清单** —— 而 `:515` 那段在 09-03 就已经逐字写着这条纪律，
+          #   而且写它的那一拍订正的正是**同样三套**（当时是 53/19/61 对不上 59/26/62）。
+          #   ⇒ **同一个位置、同样三套、两个月内第二次。散文纪律拦不住它。**
+          #   云端首跑（run `34432595554`）逐字报的是本步骤自己那句
+          #   `::error::找不到调用行 '…sh ccm-cli <当时清单里的 242>'`。
+          #   ⚠⚠ **这几行注释刻意不把那句报错原样抄全**：下面那个 `grep -q` 搜的是**整份
+          #   `ci.yml`、不剔注释** ⇒ 注释里只要出现一次逐字的
+          #   「脚本名 + 空格 + 套件名 + 空格 + 数字」，那一对以后就**永远命中**，
+          #   这道守卫在那一套上当场变成空转。
+          #   （同一个坑 `weak-net` job 头上那段注释也逐字警告过一次，见 `:837`。）
+          #   ⇒ **往这个 job 里写注释时，别把任何一条调用行原样抄进来。**
+          #   ⇒ 想把它治根就得让这份副本**不必存在**（例如从调用行里现抽套件名+地板、
+          #   只对「套数」与「每条都带非零地板」立判据）；那不是本件的写区，已在交回里提给 PM。
+          for pair in "tmux-target 26" "ccm-cli 264" "ccm-print-parity 12" "ccm-acceptance 31" \
                       "ccm-pretrust 15" "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 32" \
-                      "ccm-contract-parity 68" "daemon-gate2 36" "local-backend 14" \
+                      "ccm-contract-parity 72" "daemon-gate2 36" "local-backend 14" \
                       "daemon-sessions-rewatch 5" "daemon-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "daemon-cc-bus 50"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
@@ -652,7 +683,8 @@ jobs:
       #    它们每一套第一件事就是硬门一个**真 daemon 二进制**
       #    （`e2e/daemon-sessions-rewatch.sh:29` · `daemon-tmux-late-server.sh:23` ·
       #    `daemon-cc-bus.sh:31`，默认路径 `remote-daemon-proto/target/debug/cc-monitor-remote`），
-      #    而本 job 按 `:592` 那条拆法**刻意不装 Rust 工具链、不编任何东西** ⇒ 它们在这里
+      #    而本 job 按上面那条拆法（`:623`「按『要不要 Rust 工具链』拆两个 job」）
+      #    **刻意不装 Rust 工具链、不编任何东西** ⇒ 它们在这里
       #    **不可能绿**。云端首跑（run `34432595554`）三套逐字报
       #    「需要 daemon 二进制：…/target/debug/cc-monitor-remote（先 cargo build -p cc-monitor-remote）」。
       #    ⚠ **加错 job 这件事从 `a952b47` / `81c1bab`（08-13）起就在**，一个月没人发现 ——
@@ -708,7 +740,7 @@ jobs:
       # ⚠ **`jq` 是 `CI-J1` 搬家带过来的真依赖**，不是顺手加的：`e2e/daemon-cc-bus.sh:33`
       #   是 `command -v jq || exit 1` 的硬门（它整套断言都拿 `jq` 读回帧）。
       #   `ubuntu-latest` 镜像今天确实预装了 `jq`，但那是**镜像的实现细节、不是契约** ——
-      #   隔壁 `e2e-tmux` 从一开始就自己装（`:611`），本 job 照同一个口径写死。
+      #   隔壁 `e2e-tmux` 的 `install tmux + jq`（`:642`）从一开始就自己装，本 job 照同一口径写死。
       - name: install tmux + jq + Tauri Linux build deps
         run: |
           sudo apt-get update
@@ -771,7 +803,8 @@ jobs:
       #    `e2e/README.md` 的 job 表从这三套进网那天起（`81c1bab` / `a952b47`）就把它们记在
       #    `e2e-tmux-rust` 名下 ⇒ **对不上的一直是 `ci.yml`，本次是让它跟上已记下来的意图。**
       #    ⚠ **为什么这次搬家不用动上面那三处计数/清单**（去核过，不是假设）：
-      #      · `:547` 的 `grep -c` 与 `:560` 的逐条 `grep -q` **都对整份 `ci.yml` 做**、不分 job；
+      #      · `G-A/G-C 覆盖面地板`那一步里 `:547` 的 `grep -c` 与 `:591` 的逐条 `grep -q`
+      #        **都对整份 `ci.yml` 做**、不分 job；
       #      · `doc_copy_registry::the_e2e_readme_suite_list_matches_ci` 取的是 README 里
       #        以 `| ` + `e2e-tmux` 开头那**两行的并集**，对全文件调用行集合比**集合相等**。
       #      ⇒ 搬家不改变「全文件调用行集合」这个量 ⇒ 三把尺子眼里都是**恒等变换**。
