@@ -2457,22 +2457,52 @@ mod tests {
 
     /// 按**行**切一个函数体：从 `fn <name>(` 那行起，到第一行**恰好是 `}`** 为止。
     /// （与本文件既有那几条判据同一个切法 —— 别造第二种。）
-    /// `min` = 这个体最少该有多少字节。**逐条给**而不是写死一个数：
-    /// `is_detached` 只有三行，拿一个统一的地板量它必然假红，而假红的判据最后会被人删掉。
-    fn body_of(prod: &str, head: &str, min: usize) -> String {
+    ///
+    /// # ★★ 反空真自检：这里为什么**没有**一个字节数地板〔09-09 换掉〕
+    ///
+    /// 原先第三个参数是 `min: usize`（「这个体最少该有多少字节」，逐条给，
+    /// `is_detached` 那条给的是 60）。**09-09 那趟 `cargo fmt --all` 当场把它打红**：
+    /// rustfmt 把 `DETACHED` 那四行链式调用压回一行，体从 84 字节变成 **57 字节 < 60**，
+    /// 判定行逐字「`pub fn is_detached(` 切出来的体只有 57 字节（下限 60）——
+    /// 切错了，调用方那条判据在空转」。
+    ///
+    /// ★ **那是一句假诊断**：切法一个字都没错，是**这把尺子把排版当成了性质的一部分**。
+    /// 本文件 [`braced_block`] 的头注逐字写着「假诊断比不红更贵：它把人引到错的地方」。
+    ///
+    /// ⇒ 处置**不是**把 60 调到 50 —— 那是把闸往下调，本仓对此有明纪律。
+    /// 是把这把尺子换成**真正表达那个性质**的两条，两条都与排版无关：
+    ///
+    /// | 要守的性质 | 今天的判据 | 旧地板买到过没有 |
+    /// |---|---|---|
+    /// | 窗口**有界**：切法停在了列 0 那一行收尾上，不是一路吞到文件尾 | 收尾那一行**找得到** | ❌ **一格都没买** —— 它只有下界，吞得越多越绿 |
+    /// | 窗口**非空**：切出来的体里有代码 | 至少一行非空白 | ✅（但顺带把排版也断言了进去） |
+    /// | 切到的**是那一段**、不是别人的体 | **调用方自己那根锚** | ❌ 从来不是它买的 |
+    ///
+    /// 第三行那条今天**每一个调用点都已经有**（`contains(..)` / `matches(..) == 1` /
+    /// `find(..).unwrap_or_else(panic)`），下面 `both_production_spawn_paths_..`
+    /// 那条更是把它逐字叫作「反向自检②」。
+    ///
+    /// ★ 「字节数地板 → 语义锚点」这个换法**本仓已有判例**：
+    /// `guard_support.rs::main_production_section_keeps_its_load_bearing_items` 的头注逐字写着
+    /// 「字节数地板挡不住『单个文件被剥空/剥过头』…… 这条用**语义锚点**直接钉住那一类失效」。
+    fn body_of(prod: &str, head: &str) -> String {
         let at = guard_core::find_pinned(prod, head)
             .unwrap_or_else(|e| panic!("切不出 `{head}`（{e}）—— 改了名就来改本条"));
-        let body: String = prod[at..]
-            .lines()
-            .skip(1)
-            .take_while(|l| *l != "\u{7d}")
-            .collect::<Vec<_>>()
-            .join("\n");
-        // ★ 反空真自检：切不出函数体 ⇒ 红（`KP4` 第四轮买牙的两个价钱之一）。
+        let rest: Vec<&str> = prod[at..].lines().skip(1).collect();
+        // ★ 反空真自检①（**有界**）：列 0 那一行收尾找不到 ⇒ 窗口一路吞到了文件尾。
+        let Some(end) = rest.iter().position(|l| *l == "\u{7d}") else {
+            panic!(
+                "`{head}` 一路切到文件末尾都没遇上列 0 那一行收尾 —— 这个窗口**无界**：\n\
+                 它把后面所有 item 都吞了进来，调用方每一条 `contains` 都会在**别人的代码**上恒真。\n\
+                 ★ 这一格是旧那个字节数下限**从来没买到过**的：下界只嫌少，不嫌多。"
+            )
+        };
+        let body = rest[..end].join("\n");
+        // ★ 反空真自检②（**非空**）：体里一行代码都没有 ⇒ 下面那些否定式恒真地绿。
         assert!(
-            body.len() >= min,
-            "`{head}` 切出来的体只有 {} 字节（下限 {min}）—— 切错了，调用方那条判据在空转",
-            body.len()
+            body.lines().any(|l| !l.trim().is_empty()),
+            "`{head}` 切出来的体里一行代码都没有 —— 切错了，调用方那条判据在空转。\n\
+             ★ 这一格挡的是「切法退化成空串」：`!contains(..)` 那一族在空串上全都恒真。"
         );
         body
     }
@@ -2601,7 +2631,7 @@ mod tests {
 
         // ── ② 位置性 ────────────────────────────────────────────────────
         let me = guard_core::production_code(include_str!("local_daemon.rs"));
-        let start = body_of(&me, "pub fn start_local_backend(", 400);
+        let start = body_of(&me, "pub fn start_local_backend(");
         assert_eq!(
             start.matches("start_detached(").count(),
             1,
@@ -2623,7 +2653,7 @@ mod tests {
         //   （`#[cfg(target_os = "linux")]` 那个 + 非 Linux 的诚实降级壳）。
         //   `F19` 逐字栽过同一形：「把 needle 扩到能唯一确定那个事实的大小」。
         //   Linux 那份的参数**不带下划线前缀**（另一份是 `_port`/`_token`）⇒ 用它分辨。
-        let spawn = body_of(&me, "    port: u16,\n    token: &str,", 300);
+        let spawn = body_of(&me, "    port: u16,\n    token: &str,");
         // ⚠ 后两个针是**常量名**不是那两个串：串本身住在常量声明里，
         //   而它与 daemon 那侧逐字一致由 `the_listen_env_names_are_the_same_string_on_both_sides` 管。
         //   钉「这里用的是那个常量」而不是「这里出现了那个串」，正好挡住「顺手在这里写死一个串」。
@@ -2856,7 +2886,7 @@ mod tests {
     #[test]
     fn detached_reads_the_path_that_was_taken_not_a_guess() {
         let me = guard_core::production_code(include_str!("local_daemon.rs"));
-        let is_det = body_of(&me, "pub fn is_detached(", 60);
+        let is_det = body_of(&me, "pub fn is_detached(");
         assert!(
             is_det.contains("DETACHED"),
             "`is_detached` 不再读那条「真的走过脱离路」的记录 —— 它现在读的是什么？"
@@ -2869,7 +2899,7 @@ mod tests {
             );
         }
         let dc = guard_core::production_code(include_str!("daemon_control.rs"));
-        let status = body_of(&dc, "pub fn daemon_status(origin: String)", 300);
+        let status = body_of(&dc, "pub fn daemon_status(origin: String)");
         assert_eq!(
             status.matches("local_daemon::is_detached()").count(),
             1,
@@ -3033,12 +3063,10 @@ mod tests {
         let mine = body_of(
             &guard_core::production_code(include_str!("local_daemon.rs")),
             "fn resolve_daemon_bin(",
-            300,
         );
         let theirs = body_of(
             &guard_core::production_code(include_str!("backend/control/local_backend.rs")),
             "pub fn start_or_extract(",
-            300,
         );
         for (who, body) in [("常驻这条", &mine), ("今天那条", &theirs)] {
             let beside = body
@@ -3067,9 +3095,11 @@ mod tests {
     /// 形状照 `sftp.rs::both_daemon_deploy_paths_ask_the_file_itself_not_only_the_marker`
     /// （`K-W4b` 那一拍也照抄过它）—— **但切函数体那一步复用本文件的 `body_of`，
     /// 不抄第三份切法**：本文件 `block_of` 的头注逐字写着「两种切法迟早在同一段代码上
-    /// 给出两个答案」。反向自检因此是**两层**：`body_of` 自带的「切出来的体不够长就红」，
+    /// 给出两个答案」。反向自检因此是**两层**：`body_of` 自带的「窗口有界 + 非空」，
     /// 加下面那条**锚点自检**（取到的体里必须有它自己那句独有的话）——
     /// 少了任一层，取不到体时下面几条都会在一段不相干的文本上恒真地绿。
+    /// 〔09-09：上一层原先写的是「切出来的体不够长就红」，那把尺子按**字节数**量，
+    /// rustfmt 一压行就假红 ⇒ 换成了与排版无关的两条，见 `body_of` 头注。〕
     ///
     /// # ⚠ 射程：只到这两处
     ///
@@ -3084,24 +3114,22 @@ mod tests {
         let daemon_side = guard_core::production_code(include_str!("local_daemon.rs"));
         let backend_side =
             guard_core::production_code(include_str!("backend/control/local_backend.rs"));
-        for (who, prod, head, min, anchor) in [
+        for (who, prod, head, anchor) in [
             (
                 "local_backend.rs::supervise_with_stdio",
                 &backend_side,
                 "pub fn supervise_with_stdio(",
-                1200usize,
                 "SuperviseEvent::GaveUp",
             ),
             (
                 "local_daemon.rs::spawn_detached",
                 &daemon_side,
                 "fn spawn_detached(\n    bin: &std::path::Path,\n    port: u16,",
-                200usize,
                 "process_group(0)",
             ),
         ] {
-            let body = body_of(prod, head, min);
-            // 反向自检②：`body_of` 那条只保证「够长」，这条保证**切到的是那一段**。
+            let body = body_of(prod, head);
+            // 反向自检②：`body_of` 那条只保证「窗口有界且非空」，这条保证**切到的是那一段**。
             assert!(
                 body.contains(anchor),
                 "{who}：切出来的体里没有它自己那句 `{anchor}` —— 切到别处去了，下面几条在空转"
@@ -4710,7 +4738,7 @@ mod tests {
             token_lane.contains("looked_at: vec![token_path(&dir)]"),
             "拿 token 失败那一格不再把 token 文件放进 `looked_at`"
         );
-        let ensure = body_of(&prod, "fn ensure_listen_token(", 400);
+        let ensure = body_of(&prod, "fn ensure_listen_token(");
         assert!(
             ensure.contains("**下一步：删掉这个文件再起一次**"),
             "`ensure_listen_token` 空文件支那句话不再说「下一步」——\n\
@@ -4916,7 +4944,7 @@ mod tests {
 
         // ── ④ 诊断的另一半：生产调用点真的把 `token_path` 放进 `looked_at` ──
         let prod = guard_core::production_code(include_str!("local_daemon.rs"));
-        let start = body_of(&prod, "fn start_detached(", 800);
+        let start = body_of(&prod, "fn start_detached(");
         assert!(
             start.contains("looked_at: vec![token_path(&dir)]"),
             "`start_detached` 里 `ensure_listen_token` 的 `Err` 那一支不再把 token 文件\
@@ -4928,7 +4956,7 @@ mod tests {
         // ⚠ 射程如实记：行为上「第二次拿到同一个串」有**两条**独立的路
         //   （第一支的提前 `return` + 竞态支的读回）⇒ 单改一处杀不掉上面 ② 那一格。
         //   而「覆盖」这件事本身是**一个方法名**的事，所以这里拿它当锚点。
-        let ensure = body_of(&prod, "fn ensure_listen_token(", 400);
+        let ensure = body_of(&prod, "fn ensure_listen_token(");
         assert_eq!(
             ensure.matches("create_new(true)").count(),
             1,
