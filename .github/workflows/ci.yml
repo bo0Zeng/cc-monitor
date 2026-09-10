@@ -26,6 +26,17 @@ jobs:
         working-directory: src-tauri
     steps:
       - uses: actions/checkout@v4
+        # 🔴 `fetch-depth: 0` 在这个 job 上是**判据的输入**，不是习惯问题。
+        # `scanning_guard_registry::the_pending_ratchet_never_turns_backwards` 有一格
+        # 走 `git log --format=%h -- <path>` 数本文件的历史版本（地板 5，09-06 实测 9 份）。
+        # checkout 默认 depth 1 ⇒ 只回得出 1 个 sha ⇒ 那一格红 —— 09-09 云端实测就是它，
+        # 而它的诊断第一条自己就点名「浅克隆把历史截掉了（要 fetch-depth: 0）」。
+        # ⚠ 判据自己明写「不许靠调低地板让今天好过」⇒ 要修的是这里，不是那个 5。
+        # ⚠ 只加在本 job：另外两处 checkout 的 job 里没有读 git 历史的判据（09-09 现打），
+        #    全仓加上去只是让每次 clone 更大而买不到东西。真有新的历史面判据落到别的 job，
+        #    那一格会红并点名这一条，到时候再加。
+        with:
+          fetch-depth: 0
 
       - uses: dtolnay/rust-toolchain@stable
         with:
