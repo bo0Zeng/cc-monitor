@@ -29,7 +29,7 @@
  * CI 里紧跟在 `coverage floor` 那步之后（那步**无 `|| true`**，是真阻断门禁）。
  */
 import { readFileSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -109,14 +109,63 @@ try {
   process.exit(2);
 }
 
-const files = Object.entries(summary).filter(([k]) => k !== "total");
-// 抽取器自检：解析不出文件时下面每条都会零命中地绿。
+/**
+ * 把 summary 的键归一成**仓根相对 + 正斜杠**（`src/tabs.ts`）—— 下面每一处比对都吃归一化后的键。
+ *
+ * # 为什么必须归一（09-09，本脚本第一次在 windows-latest 上执行时逐条打出来的）
+ *
+ * 键是 `getFileCoverage().path`（`istanbul-reports/lib/json-summary/index.js:onDetail`），
+ * 即**该平台的原生绝对路径**：Linux 上是 `/home/…/cc-monitor/src/tabs.ts`，
+ * Windows 上是 `D:\a\cc-monitor\cc-monitor\src\tabs.ts`。
+ * 而本文件里那两张清单（`PER_FILE_FLOORS` · `ZERO_TODAY`）写的全是**正斜杠相对路径**。
+ * ⇒ 原来那套 `k.endsWith("/" + rel)` 在 Windows 上**恒 false**：
+ *   12 条逐文件地板**一条不漏**地报「在覆盖率报告里找不到」（那 12 个文件全在盘上），
+ *   6 个登记在册的 0% 文件**全部**被误判成「新掉进 0%」。
+ *   ⚠ 这是**量具坏了**，不是判据在说话 —— 而当时没有任何东西说得出这句话。
+ *
+ * # 为什么用 `relative(REPO, k)` 而不是「切掉 `/cc-monitor/` 之前那截」
+ *
+ * 原来 `zeroNow` 那行靠 `k.split("/cc-monitor/").pop()`，它有两处赌：赌分隔符是正斜杠、
+ * 赌仓目录恰好叫 `cc-monitor` 且**只出现一次**。GitHub Actions 的 checkout 路径逐字是
+ * `D:\a\cc-monitor\cc-monitor\`（owner 名与仓名同名 ⇒ **同名目录套两层**），两处赌全输。
+ * `relative()` 一处赌都不用：`REPO` 是从本文件位置算出来的（`<repo>/scripts/..`），
+ * 与目录叫什么、嵌几层无关；`sep` 让「拆分隔符」也不用赌平台
+ * （POSIX 下 `sep` 是 `/`，所以不会去动文件名里合法的反斜杠）。
+ *
+ * # 非文件键
+ *
+ * `json-summary` 只写两种键：根节点那一条字面量 `total`（`onSummary` 里 `node.isRoot()` 才写，
+ * 所以**没有**目录级条目）+ 每个文件一条绝对路径。⇒ 滤掉 `total` 就够，且必须**滤在归一化之前**
+ * （`relative(REPO, "total")` 会算出一串 `../..`，那才是真的乱）。
+ */
+const normKey = (k) => relative(REPO, k).split(sep).join("/");
+
+const files = Object.entries(summary)
+  .filter(([k]) => k !== "total")
+  .map(([k, v]) => [normKey(k), v]);
+// 抽取器自检①：解析不出文件时下面每条都会零命中地绿。
 if (files.length < 150) {
   console.error(`只解析出 ${files.length} 个文件（08-06 实测 187）—— 抽取器坏了`);
   process.exit(2);
 }
+// 抽取器自检②〔09-09〕：归一化之后必须真的落回 `src/…` 这个形状。
+// 上面那段说的病**当时没有任何东西认得出来** —— 它长得跟「12 个文件同时被删了」一模一样。
+// `vitest.config.ts` 的 `coverage.include` 逐字是 `src/**/*.ts` ⇒ 一条都不落在 `src/` 下时，
+// 唯一的解释是归一化的基准错了（键不在 `REPO` 之下）。**这时候要说「量具坏了」，不许往下判。**
+if (!files.some(([k]) => k.startsWith("src/"))) {
+  console.error(
+    `归一化之后没有一个键落在 src/ 下 —— 抽取器坏了（不是那些文件没了）。\n` +
+      `  仓根 REPO = ${REPO}\n` +
+      `  头 3 个原始键 = ${Object.keys(summary)
+        .filter((k) => k !== "total")
+        .slice(0, 3)
+        .join("、")}\n` +
+      "⇒ summary 的键不在仓根之下（换了 CI 布局？跑在别的目录里？）。往下判会得到一串假红。",
+  );
+  process.exit(2);
+}
 
-const entryOf = (rel) => files.find(([k]) => k.endsWith(`/${rel}`) || k === rel)?.[1] ?? null;
+const entryOf = (rel) => files.find(([k]) => k === rel)?.[1] ?? null;
 
 const problems = [];
 
@@ -145,16 +194,15 @@ for (const [rel, floor, measured, bFloor, bMeasured] of PER_FILE_FLOORS) {
   }
 }
 
-const zeroNow = files
-  .filter(([, v]) => v.statements.pct === 0)
-  .map(([k]) => k.split("/cc-monitor/").pop());
+// 键已经是仓根相对正斜杠（见上面 `normKey`）⇒ 这里不再切、不再猜。
+const zeroNow = files.filter(([, v]) => v.statements.pct === 0).map(([k]) => k);
 
-const newZero = zeroNow.filter(
-  (f) => !ZERO_TODAY.includes(f) && !ZERO_TODAY.some((z) => f.endsWith(z)),
-);
+// ⚠ 三处都改成**等号**，不再用 `endsWith`：两边现在是同一种形状（仓根相对 + 正斜杠），
+//   而 `endsWith` 会把 `src/a/src/tabs.ts` 也认成 `src/tabs.ts` —— 松匹配在这里只会掩盖问题。
+const newZero = zeroNow.filter((f) => !ZERO_TODAY.includes(f));
 // 只有语句数够大的新 0% 才算回归；小工具文件天然可能没测。
 const newZeroBig = newZero.filter((f) => {
-  const hit = files.find(([k]) => k.endsWith(f));
+  const hit = files.find(([k]) => k === f);
   return hit && hit[1].statements.total >= 100;
 });
 if (newZeroBig.length > 0) {
