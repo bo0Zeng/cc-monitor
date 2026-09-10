@@ -2313,13 +2313,17 @@ mod tests {
                         .enable_all()
                         .build()
                         .expect("起不了 tokio 运行时");
+                    // ★★ **声明在 `rt` 之后**〔第六拍〕：局部变量逆序析构 ⇒ 它正好在
+                    //    `rt` 析构的**前一刻**跑，而且**正常返回与 unwind 两条路都会走到**。
+                    //    上一拍那句显式面包屑只在正常返回那条路上 —— 09-10 那趟走的是 panic 路，
+                    //    于是「断言之后花了多久」整段无从判读。
+                    // ⚠ `rt` 的析构必须留在这条硬上限**里面**：Windows 上子进程 stdio 走
+                    //    tokio 的 blocking 池，而运行时 drop 会等正在跑的 blocking 任务。
+                    let _crumb = DropCrumb;
                     rt.block_on(orphan_judge_body());
-                    // ⚠ `rt` 在这一行之后才 drop —— Windows 上子进程 stdio 走 blocking 池，
-                    //    运行时析构会等正在跑的 blocking 任务，**析构本身也可能挂**。
-                    //    所以它必须留在这条上限**里面**。
-                    breadcrumb("四格全过，开始析构 tokio 运行时");
+                    breadcrumb("四格全过（正文没有 panic）");
                 }));
-                breadcrumb("判据线程收尾（运行时已析构）");
+                breadcrumb("判据线程收尾（运行时已析构完）");
                 let _ = tx.send(out);
             })
             .expect("起不了判据线程");
@@ -2350,11 +2354,34 @@ mod tests {
     /// ⚠ 还有第二重保险，两重是刻意叠的：本判据的正文跑在**自己起的那条裸线程**上，
     /// 而 libtest 的捕获是**线程局部**的 —— 那条线程上压根没装捕获。
     /// 两重都指望不上的话，我们就又回到「零输出只能靠推」那一趟了。
+    ///
+    /// ⚠ 每一条都带**自测起点起的秒数**〔第六拍〕：09-10 那趟的四格全在 4.5 秒内返回，
+    /// 而整条炸了 210s 硬上限 —— 中间那 205 秒**只能靠云端日志的行时间戳去推**。
+    /// 把耗时印进行里，下一趟这笔账就不用再借外面的钟。
     fn breadcrumb(what: &str) {
         use std::io::Write;
+        static T0: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
+        let t0 = T0.get_or_init(std::time::Instant::now);
         let mut err = std::io::stderr();
-        let _ = writeln!(err, "[ccbus-orphan] {what}");
+        let _ = writeln!(
+            err,
+            "[ccbus-orphan +{:.1}s] {what}",
+            t0.elapsed().as_secs_f64()
+        );
         let _ = err.flush();
+    }
+
+    /// 落在**析构那一刻**的面包屑 —— 它的全部本事就是「在 `Runtime` 被 drop 之前喊一声」。
+    ///
+    /// 🔴 为什么非要一个 `Drop` 而不是一句显式调用〔第六拍〕：09-10 那趟走的是
+    /// **panic 那条路**，上一拍那句写在 `block_on` 之后的显式面包屑**压根没执行到**，
+    /// 于是「断言之后那 205 秒花在哪」整段无从判读。`Drop` 正常返回与 unwind 两条路都走得到。
+    struct DropCrumb;
+
+    impl Drop for DropCrumb {
+        fn drop(&mut self) {
+            breadcrumb("正文结束，开始析构 tokio 运行时（正常与 unwind 两条路都走这里）");
+        }
     }
 
     /// 本判据的正文 —— 四格。被 [`a_timed_out_local_read_does_not_leave_an_orphan_behind`]
@@ -2453,11 +2480,20 @@ mod tests {
         let n = count_live_processes(&marker, 45, "格④·数孤儿").await;
         breadcrumb(&format!("格④·数孤儿回来了 -> {n}"));
         // 只在**要红的时候**才多问一次：绿的那条路上一次都不问。
+        //
+        // ★★ **这两条面包屑是为那 205 秒留的**〔第六拍〕：09-10 那趟四格全在 4.5s 内返回
+        //    （最后一条面包屑 `格④·数孤儿回来了 -> 2`），而【格④】那条 panic 直到 205 秒
+        //    之后才印出来。这中间**只有下面这一次 `describe`**，可它自己带着 45s 上限
+        //    —— 两边对不上，**说明还有一件我没看见的事**。⇒ 不猜，把它夹在两条面包屑中间。
         let survivors = if n == 0 {
             String::new()
         } else {
-            describe_live_processes(&marker, 45, "格④·倒出").await
+            breadcrumb("格④·要红了，开始倒出 survivors（下一步 describe_live_processes）");
+            let s = describe_live_processes(&marker, 45, "格④·倒出").await;
+            breadcrumb("格④·倒出回来了");
+            s
         };
+        breadcrumb("格④·即将断言（若红，下一步是 panic → unwind → Runtime 析构）");
         assert_eq!(
             n, 0,
             "【格④】超时之后还留着 {n} 个子进程（marker={marker}）—— 每超时一次漏一个。\n\
@@ -2536,11 +2572,37 @@ mod tests {
         bounded(label, secs, "数进程", move || count_now(&n)).await
     }
 
+    /// 两条 PS 命令**共用的那把筛子**：匹配 `needle`，且**排除发起查询的那个进程自己**。
+    ///
+    /// # 🔴 它是 09-10 云端一个真读数逼出来的〔第六拍〕
+    ///
+    /// run `34473562660` 实测：查询进程自己的 `CommandLine` 里就带着 needle
+    /// （`-like '*<needle>*'` 那个字面量本身），于是 `Get-CimInstance Win32_Process`
+    /// **把发起查询的那个 `powershell` 也数了进去** ——
+    /// 格④ 实得 2，逐条倒出来看，其中一条逐字是
+    /// `944 ppid=2768 "powershell" -NoProfile -Command "Get-CimInstance …'*ccbus-orphan-2768*'…"`；
+    /// 格② 用 exe stem 当针同样虚高 1。⇒ **那两格的读数都被抬高了 1。**
+    /// 这正是本仓最高频的那一族：**量具的作用域对不上事实**。
+    ///
+    /// ⚠ **按 pid 排自己，不按名字排 `powershell`**：一刀切排掉所有 powershell，
+    /// 会把「泄漏的那个恰好是 powershell」一起吞掉 —— 那是拿一个更大的空真去补一个小的。
+    /// `$PID` 是 PowerShell 的自动变量、恒指当前这个进程 ⇒ 它**只**排掉一个进程，
+    /// 而那个进程是我们**自己为了这次查询起的、查完就退**，构造上不可能是被测的泄漏。
+    ///
+    /// ⚠ **POSIX 那半不需要同样的处理，而理由不是「大概没事」**：`pgrep` 自己
+    /// 从不把自己算作匹配（man 页逐字：the running pgrep or pkill process will never
+    /// report itself as a match）。本机现打验过两格：针**只**出现在 `pgrep` 自己的 argv 上时
+    /// 回 `0`（不是 1）；真有一个带针的进程时回 `1`（不是 2）。
+    /// 且我们是 `Command::new("pgrep")` 直起、**不经过 shell** ⇒ 中间没有第二个带着针的进程。
+    fn ps_same_needle_filter(needle: &str) -> String {
+        format!("Where-Object {{ $_.ProcessId -ne $PID -and $_.CommandLine -like '*{needle}*' }}")
+    }
+
     /// [`count_live_processes`] 的同步半 —— 真正去问这台机器的那一下。
     fn count_now(needle: &str) -> usize {
         let ps = format!(
-            "@(Get-CimInstance Win32_Process | \
-             Where-Object {{ $_.CommandLine -like '*{needle}*' }}).Count"
+            "@(Get-CimInstance Win32_Process | {}).Count",
+            ps_same_needle_filter(needle)
         );
         let (prog, argv): (&str, Vec<&str>) = if cfg!(windows) {
             ("powershell", vec!["-NoProfile", "-Command", ps.as_str()])
@@ -2576,11 +2638,12 @@ mod tests {
     async fn describe_live_processes(needle: &str, secs: u64, label: &str) -> String {
         let n = needle.to_string();
         bounded(label, secs, "倒出进程", move || {
+            // 与 `count_now` **共用同一把筛子** —— 两处各写一份，下一次就只有一处记得排自己。
             let ps = format!(
-                "Get-CimInstance Win32_Process | \
-                 Where-Object {{ $_.CommandLine -like '*{n}*' }} | ForEach-Object {{ \
+                "Get-CimInstance Win32_Process | {} | ForEach-Object {{ \
                  ($_.ProcessId).ToString() + ' ppid=' + ($_.ParentProcessId).ToString() \
-                 + ' ' + $_.CommandLine }}"
+                 + ' ' + $_.CommandLine }}",
+                ps_same_needle_filter(&n)
             );
             let (prog, argv): (&str, Vec<&str>) = if cfg!(windows) {
                 ("powershell", vec!["-NoProfile", "-Command", ps.as_str()])
@@ -2627,6 +2690,10 @@ mod tests {
                      真因在它那条 panic 上）—— 答不上就不许当成绿。"
                 ),
                 Err(std::sync::mpsc::TryRecvError::Empty) => {}
+            }
+            if std::time::Instant::now() >= deadline {
+                // 上限自己也留一条 —— 否则「它到底炸没炸」只能从 panic 文案倒推。
+                breadcrumb(&format!("{label}：{what}的 {secs}s 上限到了，即将 panic"));
             }
             assert!(
                 std::time::Instant::now() < deadline,
