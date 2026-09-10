@@ -165,14 +165,16 @@
 #      ⚠ 诚实边界：那一行买的是「**编得过**」，**买不到「行为对」** —— 行为要真 Windows 机器，
 #      那一格今天是**判不了**，不是「通过」。
 #
-#   ② **格式漂移**：`grep -c fmt` 本文件 = **0**。
-#      `cargo fmt --all --check` 在 `b28464e` 上是 **rc=1 / 78 处 / 18 个文件 / 1.09 秒**
-#      （存量最重的是 `local_daemon.rs` 28 处）。**卡在沙箱镜像没装 `rustfmt` 组件**
-#      （`cargo fmt --version` 报 `'cargo-fmt' is not installed`）⇒ 归 PM。
+#   ② **格式漂移** —— ✅ **09-10 已买**，那一道门就在下面 `run_gate fmt` 那一行。
+#      〔本条留着不删，因为它记着为什么当初没有：**卡在沙箱镜像没装 `rustfmt` 组件**
+#      （`cargo fmt --version` 报 `'cargo-fmt' is not installed`）。
+#      09-10 给 `.claude/devbox/Dockerfile` 加了一层 `rustup component add rustfmt`，
+#      前提消失，门当天补上。历史读数：`b28464e` 上是 rc=1 / 78 处 / 18 个文件 / 1.09 秒。〕
 #
-#   ⚠ 这两条**不是「以后再说」**，是「买法在写区外」：两条都要改
-#     `.claude/devbox/Dockerfile`（55+ 棵树共用、且不在任何 git 仓里）。
-#     在它改之前，把这两维写成一道门 = 把 55 棵树的门禁一起打红。
+#   ⚠ ① **今天仍然没买到**（原文那句「两条」现在只剩一条）：买法在写区外 ——
+#     要改 `.claude/devbox/Dockerfile`（55+ 棵树共用、且不在任何 git 仓里）装那个 target。
+#     ★ 当初那句「在它改之前，把这两维写成一道门 = 把 55 棵树的门禁一起打红」**仍然对**，
+#       ② 之所以能加，正是因为**前提被先改掉了**，不是因为那句话过时了。
 set -uo pipefail
 
 cd "$(dirname "$0")/.." || exit 2
@@ -208,6 +210,13 @@ fails=()
 #        `^npm error` `^npm ERR!` npm 两代前缀
 #        `^::error::`          `e2e/assert-pass-floor.sh` 自己的诊断
 #        `^ *(FAIL|BROKEN|×|✗)` 本仓 bash e2e 与 `pb check` 自己的失败行
+#        `^Diff in `           `cargo fmt --check` 指哪个文件哪一行不合排版
+#                              〔09-10 补：fmt 那道门第一次被刀切红时，模式表**一条都没匹配上**
+#                              （终端逐字「fmt 关键行：一条都没匹配上（共 72 行）」）——
+#                              它自己那条兜底（原文尾部恒印）救了场，但「红的那一格必须
+#                              自带为什么红」这句话当时只兑现了一半。⇒ 补这一形。
+#                              ★ 它同时是 ① 这张表「天生会漏」那句话的**又一个实例**：
+#                              加一道新门就可能带来一种新形状，**加门那一拍要顺手切一刀看诊断印不印得出来**〕
 #   ② **原文尾部** `GATE_DIAG_TAIL` 行：**恒印**。
 #   ③ 输出短于 `GATE_DIAG_WHOLE` 行 ⇒ 不摘要，**全印**（那一形上摘要的收益是负的）。
 #
@@ -226,7 +235,7 @@ fails=()
 GATE_DIAG_KEY="${GATE_DIAG_KEY:-40}"
 GATE_DIAG_TAIL="${GATE_DIAG_TAIL:-30}"
 GATE_DIAG_WHOLE="${GATE_DIAG_WHOLE:-60}"
-GATE_DIAG_PAT='^(error|npm error|npm ERR!|thread .+ panicked|failures:|test result: FAILED|::error::)|^[[:space:]]*(FAIL|BROKEN|Running|×|✗)'
+GATE_DIAG_PAT='^(error|npm error|npm ERR!|thread .+ panicked|failures:|test result: FAILED|::error::|Diff in )|^[[:space:]]*(FAIL|BROKEN|Running|×|✗)'
 
 # ── `N-G1`（09-05）：**①段匹配之前先去一次色。同样一个字都没碰任何一条判定。** ────
 #
@@ -602,6 +611,35 @@ N-G1 治的正是这一形：vitest 在非 TTY 下照样上色，ESC 不是 [[:s
   gate_assert_judged 自检⑨ "$probe" NG2-PROBE-I "run_gate_sum 的「0 passed 不是绿」"
 }
 gate_selftest
+
+# ── 格式漂移 ────────────────────────────────────────────────────────────────
+#
+# 🔴 **这一格补的是本文件头注里那条「归 PM」的第 ②**（09-10 落，PM）。
+#   那条注释当时写着**不能加的理由**，逐字：「卡在沙箱镜像没装 `rustfmt` 组件」
+#   ＋「在它改之前，把这两维写成一道门 = 把 55 棵树的门禁一起打红」。
+#   **那个前提 09-10 被改掉了**：`.claude/devbox/Dockerfile` 加了一层
+#   `rustup component add rustfmt`（仓外文件，不进版本控制）。
+#
+# ## 为什么它值一道门 —— 同一天付了两次学费
+#
+# 09-10 云端 Windows 那一格**连红两趟，两趟都红在 `cargo fmt --check`**
+# （run `34460879900` @ `payload.rs:2308` · run `34467490069` @ `cc_bus.rs:2328`），
+# 而两趟之前**本机沙箱门禁都是 `GATE: OK`**。
+# 🔴 更贵的是它的位置：**`fmt` 是那一格的第一步** ⇒ 它红了之后
+# `clippy` / `cargo test` / 生成物检查**全部 `skipped`**
+# ⇒ 那两趟真正想验的东西（Windows 上 cc-bus 那条修复）**一次都没跑到**。
+#
+# ★ 定性：**本机门禁不是云端的超集，而「绿」这个字在两边长得一模一样。**
+#   这一行就是把那句话变成假的。
+#
+# ⚠ **诚实边界，别读宽**：
+#   · 它买的是「**排版与 rustfmt 一致**」，**买不到**「代码对」。
+#   · 头注那条 ① （Windows 那半编不编得过，要 `--target x86_64-pc-windows-msvc`）
+#     **今天仍然没买到** —— 沙箱镜像仍没装那个 target。**别把这一格读成两条都补上了。**
+#   · 它跑在 `src-tauri` 上（`--all` = 那个 workspace 的全部成员）；
+#     `remote-daemon-proto` 是**另一个 workspace**，本行盖不到它。
+run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src-tauri` 那个 workspace 的全部成员；`remote-daemon-proto` 是另一个 workspace，本行盖不到' \
+         bash -c 'cd src-tauri && cargo fmt --all --check 2>&1 && echo "fmt: 1 passed"'
 
 # 8 个包 = `monitor` + 7 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
 run_gate_sum cargo 8 bash -c 'cd src-tauri && cargo test --workspace --exclude code-picture-core --lib 2>&1'
