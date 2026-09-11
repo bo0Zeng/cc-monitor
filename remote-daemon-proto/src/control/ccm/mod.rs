@@ -293,7 +293,24 @@ fn execute(plan: Plan) -> i32 {
         // attach / 容器路的收尾都是一条**已经渲好的命令串** ⇒ 交给 `sh -c`。
         // 它与 `--print` 吐的是**同一个渲染函数的产物**，两条路结构上不可能分叉。
         Plan::Attach { .. } => exec_shell(&plan::render(&plan, None)),
-        Plan::Container(c) => {
+        Plan::Container(c0) => {
+            // 🔴 **退让只发生在真跑这条路上**（`--print` 不查实时状态）。
+            //   那一问走 `gate::list_sessions` —— 它是**已登记的只读 tmux 探测点**，
+            //   不新开第二个起进程点（`readonly_guard::spawn_registry` 的数因此不动）。
+            let mut cc = c0.clone();
+            if cc.avoid_collision {
+                match crate::control::gate::list_sessions() {
+                    Ok(rows) => {
+                        let taken: Vec<String> = rows.into_iter().map(|(n, _, _)| n).collect();
+                        cc.name = plan::next_free_name(&cc.name, &taken);
+                    }
+                    // 问不到就**不退让** —— 与 `shared/ccm` 那句
+                    // `tmux has-session … 2>/dev/null` 同义（问不出来当没占）。
+                    // 真撞上了还有 `created:false` ⇒ rc=3 那条响亮失败兜底。
+                    Err(_) => {}
+                }
+            }
+            let c = &cc;
             // 🔴 **走 `parse_request` 这道门，不许自己直接造 `LaunchRequest`。**
             //
             // 那道门上挂着字段校验（`check_field` 拒控制字符 · `check_size` 收窄宽高），
@@ -623,6 +640,7 @@ mod tests {
             detach: true,
             payload: "'/usr/local/bin/ccm' '--cwd' '/p'".into(),
             trust_poll: true,
+            avoid_collision: false,
             bus: None,
         };
         let req = crate::control::launch::parse_request(&launch_args(&c)).expect("该过得了门");

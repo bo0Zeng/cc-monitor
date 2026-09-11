@@ -206,6 +206,17 @@ pub(crate) struct Container {
     pub(crate) payload: String,
     /// 要不要挂那段「抓信任框、自动按 Enter」的兜底轮询。
     pub(crate) trust_poll: bool,
+    /// 这个名字**撞了要不要退让**。
+    ///
+    /// 三条取名路的态度**不一样，别合并**：
+    /// - 显式 `--tmux=<名>` ⇒ **不退让**（调用方说的就是要这个名；撞了走 `C14` 响亮失败）；
+    /// - `--tmux-base=<基名>` ⇒ **退让**（`C15` 给 cc-spawn 的那条路，它随后要读回真名字）；
+    /// - 不给名、从 cwd 派生 ⇒ **退让**（幂等接回同一目录的会话，撞了说明有别人占了）。
+    ///
+    /// ⚠ 它**只在真跑那条路上生效**：`--print` 不查实时 tmux 状态（那是它「纯」的全部含义），
+    /// 所以 `--print` 吐的是**没退让过的**名字 —— `shared/ccm::avoid_name_collision`
+    /// 那句 `[ "$do_print" != 1 ] && tmux has-session …` 逐字就是这个意思。
+    pub(crate) avoid_collision: bool,
     /// `--bus-register` 要的登记；找不到 cc-bus 脚本就是 `None`（并出一句声）。
     pub(crate) bus: Option<BusRegister>,
 }
@@ -290,6 +301,24 @@ pub(crate) fn derive_tmux_name(cwd: &str) -> String {
         "session-cc".to_string()
     } else {
         format!("{s}-cc")
+    }
+}
+
+/// 基名撞了就退让：`<基名>` → `<基名>-2` → `<基名>-3` … 取第一个没被占的。
+///
+/// 纯函数（已占用的名字由调用方给）—— 这样「退让规则」测得了，而**查实时 tmux 状态**
+/// 那一步留在真跑那条路上（`--print` 不查，见 [`Container::avoid_collision`]）。
+pub(crate) fn next_free_name(base: &str, taken: &[String]) -> String {
+    if !taken.iter().any(|t| t == base) {
+        return base.to_string();
+    }
+    let mut k = 2usize;
+    loop {
+        let cand = format!("{base}-{k}");
+        if !taken.iter().any(|t| *t == cand) {
+            return cand;
+        }
+        k += 1;
     }
 }
 
@@ -441,14 +470,14 @@ pub(crate) fn build(o: &Opts, env: &Env, table: &AccountTable) -> Result<Plan, D
     }
 
     if use_tmux {
-        let name = if !o.tmux_base.is_empty() {
+        let (name, avoid_collision) = if !o.tmux_base.is_empty() {
             validate_tmux_name(&o.tmux_base)?;
-            o.tmux_base.clone()
+            (o.tmux_base.clone(), true)
         } else if !o.tmux_name.is_empty() {
             validate_tmux_name(&o.tmux_name)?;
-            o.tmux_name.clone()
+            (o.tmux_name.clone(), false)
         } else {
-            derive_tmux_name(&cwd)
+            (derive_tmux_name(&cwd), true)
         };
         // 内层：同一条命令去掉 `--tmux`，并把**继承来的**那几个变量显式化。
         let mut inner: Vec<String> = vec![env.self_path.clone()];
@@ -521,6 +550,7 @@ pub(crate) fn build(o: &Opts, env: &Env, table: &AccountTable) -> Result<Plan, D
             detach: o.detach,
             payload,
             trust_poll: o.agent == "claude" && !env.no_pretrust,
+            avoid_collision,
             bus,
         }));
     }
@@ -847,6 +877,34 @@ mod tests {
         assert_eq!(derive_tmux_name("/home/pi/.hidden.dir"), "hidden-dir-cc");
         // 截 32 之后再剥首尾 `-`（顺序承重：先剥后截会留下一个尾 `-`）
         assert_eq!(derive_tmux_name(&format!("/x/{}", "a".repeat(40))), format!("{}-cc", "a".repeat(32)));
+    }
+
+    /// 〔搬自 `ccm-cli` / `cc-spawn-uplift` 的取名那一族〕**三条取名路的退让态度不一样。**
+    ///
+    /// 🔴 这一条是**自查逮到的**（铁律 15 那一拍）：头一版原生实现**整个没有退让**，
+    /// 于是 `--tmux-base=<基名>`（`C15` 给 cc-spawn 的那条路，它的全部意义就是「撞了就退让」）
+    /// **静默退化成了 `--tmux=<名>`** —— 写了个修饰、看起来生效了、实际被吃掉。
+    #[test]
+    fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
+        let e = env();
+        let t = AccountTable::default();
+        let path = |args: &[&str]| match plan_of(args, &e, &t) {
+            Plan::Container(c) => (c.name, c.avoid_collision),
+            other => panic!("该是容器路：{other:?}"),
+        };
+        // 显式名：**不退让** —— 调用方说的就是要这个名，撞了走 C14 响亮失败
+        assert_eq!(path(&["--tmux=n1", "--cwd", "/p"]), ("n1".into(), false));
+        // 基名：退让（cc-spawn 随后要读回真名字）
+        assert_eq!(path(&["--tmux-base", "n1", "--cwd", "/p"]), ("n1".into(), true));
+        // 不给名、从 cwd 派生：退让
+        assert_eq!(path(&["--tmux", "--cwd", "/x/proj"]), ("proj-cc".into(), true));
+        // 退让规则本身
+        assert_eq!(next_free_name("n1", &[]), "n1");
+        assert_eq!(next_free_name("n1", &["other".into()]), "n1");
+        assert_eq!(next_free_name("n1", &["n1".into()]), "n1-2");
+        assert_eq!(next_free_name("n1", &["n1".into(), "n1-2".into()]), "n1-3");
+        // 只撞中间那个不影响：2 空着就取 2
+        assert_eq!(next_free_name("n1", &["n1".into(), "n1-3".into()]), "n1-2");
     }
 
     /// 〔搬自 `ccm-cli` 名字校验那一族〕—— 会话名会被拼进 tmux 目标语法，是一条注入面。
