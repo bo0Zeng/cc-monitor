@@ -758,6 +758,29 @@ mod spawn_registry {
     /// 归**被起的那个程序**。这不是巧合，是这张表存在的理由。
     pub(super) const ALLOWED: &[(&str, &str, &str, &str, &str)] = &[
         (
+            "control/ccm/mod.rs",
+            "sh",
+            "`K-R48`：一次性 `ccm` 模式把**一条已经渲好的命令串**交给 POSIX shell 并 `exec` 掉自己\
+             （attach 那条、容器路的收尾那条、以及带 `CCM_ENV` / cc-bus 配方的那条）。\
+             这与用户在自己终端里手敲同一条命令**没有区别** —— 它跑在用户的进程里、\
+             做的是用户这一趟本来就要做的事（D1 裁决的正例，同 `control/launch.rs` 那条）。\
+             ⚠ **daemon 常驻那条路走不到这里**：入口在 `main()` 最前面按 `argv[0]` / 子命令词分出去，\
+             常驻模式一个字节都不经过本模块。",
+            "缩性质",
+            "把收尾那几段（兜底轮询 / attach / cc-bus 登记）逐条做成原生动作、不再经 shell 的那天。\
+             ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二种用途。",
+        ),
+        (
+            "control/ccm/mod.rs",
+            "<非字面量>",
+            "`K-R48`：一次性 `ccm` 模式最后那一下 —— `exec` 用户要起的那个 agent\
+             （`claude` / `codex` / `--launcher` 指定的任意命令），argv 直传**不过 shell**。\
+             被起的程序名来自用户这一趟的参数，**按设计就不是字面量**。\
+             它就是「用户敲 `cc` 想要发生的那件事」本身。",
+            "缩性质",
+            "同上那条：一次性模式整个搬走、或起 agent 不再由本进程 `exec` 的那天。",
+        ),
+        (
             "control/tmux_hook.rs",
             "tmux",
             "装 tmux hook（`set-hook -g`）。改的是 **tmux server 的运行期状态**，\
@@ -933,7 +956,10 @@ mod spawn_registry {
         // 在报错文案里再抄一遍就是下一处会腐的散文（定框 E12）。
         // `U-NP④`（08-14）：8 → 9，新增 `control/identity_tag.rs` 的 `set-option @ccm_sid`。
         // 探测那半复用 `control/gate.rs` 已有的 `display-message` ⇒ 只 +1 不是 +2。
-        const SPAWN_SITES_TODAY: usize = 9;
+        // `K-R48`（09-11）：9 → 11，新增 `control/ccm/mod.rs` 两处
+        //（`sh -c <渲好的命令串>` 与 `exec <用户要起的 agent>`）——
+        // 那是 `shared/ccm` 那个 bash 脚本被删掉之后，它那两处 `exec` 的新住址。
+        const SPAWN_SITES_TODAY: usize = 11;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,

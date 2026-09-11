@@ -92,6 +92,14 @@ pub(crate) struct Adapter {
     /// wire 上的 `agent_kind` 值。**由适配层自己提供** —— 通用层里一个 agent 名的
     /// 字面量都不该有（`D3`）。
     pub(crate) kind: &'static str,
+    /// **账号维度在这一家上的载体** —— 切账号靠改哪个环境变量。`None` = 这一家没有账号维度。
+    ///
+    /// 〔`K-R48` 09-11〕加这一格的理由：终端 `ccm` 面（`control/ccm/`）要设 / 清 / 读它，
+    /// 而那个名字**是某一家的知识**。让通用层直接 `use agents::claudecode::paths::…`
+    /// 会在 `agent_locality_guard` 的「④ 通用层直呼适配层」上凭空多出 5 处 ——
+    /// 而那个数是 `G1` 成功标准②的头条数字、**只许降**。
+    /// ⇒ 把它收进注册表：**加一个 agent 本来就该改的那一行**，正是这一格该在的地方。
+    pub(crate) account_env: Option<&'static str>,
     /// 这个 agent 在本机的 home 目录候选。`None` = 连候选都说不出（⇒ 一定看不见）。
     ///
     /// ⚠ 它**只答"该在哪"**。"在不在"由 [`home_is_visible`] 统一判 ——
@@ -110,9 +118,21 @@ pub(crate) struct Adapter {
 /// 一家拆成四行会让那个读数变成排版的函数。
 #[rustfmt::skip]
 pub(crate) const REGISTRY: &[Adapter] = &[
-    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home },
-    Adapter { kind: codex::AGENT_KIND,      home: codex::home },
+    Adapter { kind: claudecode::AGENT_KIND, home: claudecode::home, account_env: Some(claudecode::paths::CONFIG_DIR_ENV) },
+    // ⚠ codex 那一格**今天借用同一个载体，这是如实登记的耦合、不是设计**：
+    //   账号维度来自 `cc-acct-iso`（机器上只有一套账号库），而那套库切的就是这个变量。
+    //   `ccm --agent codex --account b` 从来就是这个行为（`shared/ccm` 那侧也是无条件 export）。
+    //   codex 自己并不读它 ⇒ 哪天账号维度按家拆开，改的就是这一行。
+    Adapter { kind: codex::AGENT_KIND,      home: codex::home,      account_env: Some(claudecode::paths::CONFIG_DIR_ENV) },
 ];
+
+/// 某一家的账号载体（环境变量名）。认不出这家 ⇒ `None`。
+///
+/// ⚠ **它是通用层拿这个名字的唯一入口** —— 直接 `use agents::<名>::…` 会让
+/// `agent_locality_guard` 判据④的读数凭空上涨，而那个数只许降（见 [`Adapter::account_env`]）。
+pub(crate) fn account_env_of(kind: &str) -> Option<&'static str> {
+    REGISTRY.iter().find(|a| a.kind == kind).and_then(|a| a.account_env)
+}
 
 /// **这台机器上看得见哪些 agent** —— 直接产出 `hello.homes` 的那张表〔`S5`，`G1` 成功标准③〕。
 ///
@@ -218,10 +238,10 @@ mod tests {
 
     #[rustfmt::skip]
     const SYNTH_REGISTRY: &[Adapter] = &[
-        Adapter { kind: "alpha",   home: synth_home_present },
-        Adapter { kind: "ghost",   home: synth_home_absent },
-        Adapter { kind: "nameless", home: synth_home_unknown },
-        Adapter { kind: "filey",   home: synth_home_is_a_file },
+        Adapter { kind: "alpha",   home: synth_home_present, account_env: None },
+        Adapter { kind: "ghost",   home: synth_home_absent, account_env: None },
+        Adapter { kind: "nameless", home: synth_home_unknown, account_env: None },
+        Adapter { kind: "filey",   home: synth_home_is_a_file, account_env: None },
     ];
 
     /// `S5-Y1`：**看得见 = home 目录存在**。整条链喂合成注册表，一次验四种形态。

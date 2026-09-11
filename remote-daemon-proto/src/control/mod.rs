@@ -39,6 +39,7 @@
 //! 反向边自然消失。铁律 6：改结构让问题不存在。
 
 pub(crate) mod cc_bus;
+pub(crate) mod ccm;
 pub(crate) mod cli_control;
 pub(crate) mod fork_write;
 pub(crate) mod gate;
