@@ -72,8 +72,12 @@ pub(crate) const CAPABILITIES: &[&str] = &[
 ];
 
 /// 撞名时那句话的**唯一格式串**。
+/// ⚠ 结尾那两个字符是**反斜杠 + n**，不是一个真换行 —— 它是一条 **`printf` 格式串**：
+/// 要被原样拼进 `--print` 吐的那条 shell 里（`printf '<本串>' '<名字>'`），
+/// 由**那个 shell 里的 printf** 去解释它。写成真换行的话，`--print` 吐出来的命令会断成两行。
+/// 自己要打这句话时（`execute` 的撞名出口）记得把它译回真换行。
 pub(crate) const NAME_TAKEN_FMT: &str =
-    "ccm: tmux 会话名 %s 已被占用 —— 拒绝静默接回别人的会话（C14：spawn 就是起）\n";
+    "ccm: tmux 会话名 %s 已被占用 —— 拒绝静默接回别人的会话（C14：spawn 就是起）\\n";
 
 /// 窗口标题的合成式 —— **让 tmux 自己从 `@ccm_sid` 合成**，与 pane 标题彻底分开。
 ///
@@ -116,7 +120,7 @@ pub(crate) const USAGE: &str = "\
   --print            不跑，吐出等价的一行 shell（平价预言机）
   --ccm-probe        吐出 name= / version= / capabilities= / agents= 四行
   --version          印版本号
-  -h, --help         这一段
+  --help, -h         这一段
 ";
 
 /// 这个 agent 的默认启动器。
@@ -280,21 +284,24 @@ fn execute(plan: Plan) -> i32 {
         // 它与 `--print` 吐的是**同一个渲染函数的产物**，两条路结构上不可能分叉。
         Plan::Attach { .. } => exec_shell(&plan::render(&plan, None)),
         Plan::Container(c) => {
-            let req = crate::control::launch::LaunchRequest {
-                mode: crate::control::launch::Mode::CreateOrAttach,
-                name: c.name.clone(),
-                payload: c.payload.clone(),
-                cwd: Some(c.cwd.clone()).filter(|s| !s.is_empty()),
-                ccm_sid: Some(c.ccm_sid.clone()).filter(|s| !s.is_empty()),
-                agent: Some(c.agent.clone()),
-                width: c.size.as_ref().map(|(w, _)| w.clone()),
-                height: c.size.as_ref().map(|(_, h)| h.clone()),
+            // 🔴 **走 `parse_request` 这道门，不许自己直接造 `LaunchRequest`。**
+            //
+            // 那道门上挂着字段校验（`check_field` 拒控制字符 · `check_size` 收窄宽高），
+            // 而**校验只长在它身上** —— 直接构造结构体等于绕过去。
+            // 从前 `shared/ccm` 也是把这一坨编成 JSON 发给后端的，走的就是同一道门；
+            // 搬进同一个进程之后**别把门丢了**（迁移是强度悄悄下降的经典时机）。
+            let req = match crate::control::launch::parse_request(&launch_args(c)) {
+                Ok(r) => r,
+                Err((code, msg)) => return die(&format!("{code}: {msg}")),
             };
             match crate::control::launch::run(&req) {
                 Ok(out) if out.created => {}
                 Ok(_) => {
                     // 撞名 ⇒ **响亮失败**，绝不静默接回别人的会话。
-                    eprint!("{}", NAME_TAKEN_FMT.replacen("%s", &c.name, 1));
+                    eprint!(
+                        "{}",
+                        NAME_TAKEN_FMT.replacen("%s", &c.name, 1).replace("\\n", "\n")
+                    );
                     return 3;
                 }
                 Err((code, msg)) => {
@@ -317,6 +324,29 @@ fn execute(plan: Plan) -> i32 {
         }
         Plan::Direct(d) => exec_direct(d, resolved(&plan).as_deref()),
     }
+}
+
+/// 容器路 ⇒ `launch` 那道门认得的那份 `args`。
+///
+/// ⚠ **键名与 `launch::parse_request` 取的那几个逐字对应** —— 少一个键不会报错，
+/// 只会**静默丢掉**那一件（`@ccm_agent` 就这么丢过一次）。
+fn launch_args(c: &plan::Container) -> serde_json::Value {
+    let mut m = serde_json::Map::new();
+    m.insert("mode".into(), "create-or-attach".into());
+    m.insert("name".into(), c.name.clone().into());
+    m.insert("payload".into(), c.payload.clone().into());
+    m.insert("agent".into(), c.agent.clone().into());
+    if !c.cwd.is_empty() {
+        m.insert("cwd".into(), c.cwd.clone().into());
+    }
+    if !c.ccm_sid.is_empty() {
+        m.insert("ccm_sid".into(), c.ccm_sid.clone().into());
+    }
+    if let Some((w, h)) = &c.size {
+        m.insert("width".into(), w.clone().into());
+        m.insert("height".into(), h.clone().into());
+    }
+    serde_json::Value::Object(m)
 }
 
 /// 把一条渲好的命令串交给 `sh -c` 并**替换掉自己**。
@@ -479,11 +509,29 @@ mod tests {
             "只抽到 {} 个旗标 —— 抽取坏了，本断言在空转：{flags:?}",
             flags.len()
         );
-        let missing: Vec<&String> = flags.iter().filter(|f| !USAGE.contains(f.as_str())).collect();
+        // 🔴 **匹配单位是「有没有属于它自己的那一行」，不是 `USAGE.contains(旗标)`。**
+        //
+        // 〔本轮变异台自查逮到，08-xx 那一族的又一形〕`contains` 那一版**是空转的**：
+        // 把 `--detach` 自己那一行整行删掉，判据**照样绿** ——
+        // 因为 `--bus-register` 那一行的括注里逐字写着「（需要 `--detach`）」。
+        // 匹配单位（全文）比事实（它有没有自己的条目）**大**了一格，
+        // 于是「顺带被别人提到一句」被读成了「说明了它」。
+        let has_own_line = |flag: &str| {
+            USAGE.lines().any(|l| {
+                let t = l.trim_start();
+                t.starts_with(flag)
+                    && t[flag.len()..]
+                        .chars()
+                        .next()
+                        .is_none_or(|c| c == ' ' || c == '[' || c == '=' || c == ',')
+            })
+        };
+        let missing: Vec<&String> = flags.iter().filter(|f| !has_own_line(f)).collect();
         assert!(
             missing.is_empty(),
-            "这些旗标认得、但 `--help` 里一个字都没说：{missing:?}\n\
-             （用户看得见的唯一一份说明就是 USAGE；认一个不说一个 = 隐藏开关。）"
+            "这些旗标认得、但 `--help` 里**没有属于它自己的那一行**：{missing:?}\n\
+             （用户看得见的唯一一份说明就是 USAGE；认一个不说一个 = 隐藏开关。\n\
+              ⚠ 在别的行的括注里被提一句**不算** —— 那一版实测是空转的。）"
         );
     }
 
@@ -524,12 +572,63 @@ mod tests {
         );
     }
 
+    /// 〔搬自 `ccm-cli` WIRE/launch「发对了①–⑤」「缺省尺寸①②」「控制字符①–④」那几族〕
+    ///
+    /// 从前那几条测的是「`ccm` 编出来的那段 JSON 上线之后逐字节对不对」。同一个进程之下
+    /// 没有「上线」这回事了 —— 剩下的真契约是**那几件事一件都不许丢**，
+    /// 而且**必须经过 `parse_request` 那道门**（字段校验只长在它身上）。
+    #[test]
+    fn the_container_launch_goes_through_the_one_door_with_every_field_intact() {
+        let c = plan::Container {
+            name: "n1".into(),
+            cwd: "/p".into(),
+            agent: "claude".into(),
+            ccm_sid: "p1".into(),
+            size: Some(("220".into(), "50".into())),
+            detach: true,
+            payload: "'/usr/local/bin/ccm' '--cwd' '/p'".into(),
+            trust_poll: true,
+            bus: None,
+        };
+        let req = crate::control::launch::parse_request(&launch_args(&c)).expect("该过得了门");
+        assert_eq!(req.name, "n1");
+        assert_eq!(req.payload, c.payload, "载荷不许被改一个字节");
+        assert_eq!(req.cwd.as_deref(), Some("/p"));
+        assert_eq!(req.ccm_sid.as_deref(), Some("p1"), "意图标不许丢");
+        assert_eq!(req.agent.as_deref(), Some("claude"), "@ccm_agent 不许丢（它丢过一次）");
+        assert_eq!(req.width.as_deref(), Some("220"));
+        assert_eq!(req.height.as_deref(), Some("50"));
+        assert!(matches!(req.mode, crate::control::launch::Mode::CreateOrAttach));
+        // 不给尺寸 ⇒ 请求里**没有** width/height（不是空串、不是 0）
+        let mut c2 = c.clone();
+        c2.size = None;
+        let r2 = crate::control::launch::parse_request(&launch_args(&c2)).expect("该过得了门");
+        assert!(r2.width.is_none() && r2.height.is_none());
+        // 🔴 那道门真的在判：载荷里塞一个 ESC ⇒ 被**挡在这一侧**，不是发出去被拒
+        let mut c3 = c.clone();
+        c3.name = "n\u{1b}1".into();
+        assert!(
+            crate::control::launch::parse_request(&launch_args(&c3)).is_err(),
+            "控制字符没被挡住 —— 那道门被绕过去了（直接造 LaunchRequest 就是这个后果）"
+        );
+    }
+
     /// 〔搬自 `ccm-cli` WIRE/launch 撞名那一族〕—— 撞名的那句话必须带上是哪个名字。
     #[test]
     fn the_name_taken_message_says_which_name() {
         let msg = NAME_TAKEN_FMT.replacen("%s", "cc-proj", 1);
         assert!(msg.contains("cc-proj"), "不带名字的报错等于没报：{msg}");
-        assert!(msg.ends_with('\n'));
         assert_eq!(NAME_TAKEN_FMT.matches("%s").count(), 1, "格式串只许有一个占位");
+        // 🔴 结尾必须是**字面的两个字符** `\` + `n`，不是一个真换行 —— 见常量头注。
+        //   写成真换行 ⇒ `--print` 吐的那条命令会在这里断成两行。
+        assert!(
+            NAME_TAKEN_FMT.ends_with("\\n") && !NAME_TAKEN_FMT.ends_with('\n'),
+            "它是 printf 的格式串，结尾要是字面 \\n：{NAME_TAKEN_FMT:?}"
+        );
+        assert_eq!(
+            msg.replace("\\n", "\n").lines().count(),
+            1,
+            "译回真换行之后它是**一行**（末尾一个换行），不是两行"
+        );
     }
 }

@@ -86,7 +86,11 @@ impl Env {
             // 继承值与载体名一样，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
             inherited_config_dir: None,
             account_env: String::new(),
-            self_path: std::env::args().next().unwrap_or_default(),
+            // 🔴 `CCM_SELF` 优先于 `argv[0]`：内层载荷要用**「我是被当作什么叫的」**那个名字。
+            //   `argv[0]` 在「一个二进制多个名字」下拿到的可能是真身路径，而内层要的是
+            //   用户 `PATH` 上那个入口 —— 两者在软链 / 别名下不是同一个东西。
+            self_path: get("CCM_SELF")
+                .unwrap_or_else(|| std::env::args().next().unwrap_or_default()),
             no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
             bus_scripts: discover_bus_scripts(),
             home,
@@ -687,13 +691,21 @@ fn render_direct(d: &Direct, resolved: Option<&str>) -> String {
     match resolved {
         Some(cmd) if !cmd.is_empty() && d.resolve_sid.is_some() => {
             // 后端答得出「这个会话该怎么起」⇒ 用它那条，透传参数接在后面。
+            //
+            // 🔴 **`set -f` 不许省。** 后端回的是**一整条命令串**，它要被 shell 拆成词才跑得了
+            // （`exec $cmd` 而不是 `exec "$cmd"`）—— 拆词那一步同时会**做路径展开**：
+            // 命令里一个 `*` 会被当前目录的文件名改写掉。`set -f` 关掉的正是这一步。
+            // ⚠ 它**不**关命令替换：`$(…)` 靠的是「这条串没有再经过 `eval`」，
+            // 而这里也确实没有 —— 两条各守一半，别把其中一条读成两条都买到了。
+            //〔搬自 `e2e/ccm-contract-parity.sh` A′g 那两条；那套 e2e 的 `shared/ccm` 侧
+            //  逐字也是 `set -f; exec $_ccm_c`。〕
             let pt = d
                 .passthru
                 .iter()
                 .map(|a| qarg(a))
                 .collect::<Vec<_>>()
                 .join(" ");
-            line.push_str("exec ");
+            line.push_str("set -f; exec ");
             line.push_str(cmd);
             if !pt.is_empty() {
                 line.push(' ');
@@ -892,6 +904,15 @@ mod tests {
         assert!(c.payload.contains("'resume' 'p1'"), "resume 没进内层：{}", c.payload);
         assert!(c.payload.contains("'--base'"), "--base 没进内层（账号维度恒显式表态）：{}", c.payload);
         assert!(c.payload.contains("'--ccm-sid' 'p1'"), "{}", c.payload);
+        // 〔搬自 `ccm-print-parity` 场景 newTmuxCustomLauncher / resumeTmuxWithModel〕
+        let p4 = plan_of(
+            &["--tmux=n4", "--cwd", "/p", "--launcher", "CCMPROBE", "--model", "opus"],
+            &env(),
+            &AccountTable::default(),
+        );
+        let Plan::Container(c4) = &p4 else { panic!("该是容器路") };
+        assert!(c4.payload.contains("'--launcher' 'CCMPROBE'"), "{}", c4.payload);
+        assert!(c4.payload.contains("'--model' 'opus'"), "{}", c4.payload);
         // 继承账号那条路：内层必须显式 export 继承来的那个目录
         let p2 = plan_of(&["--tmux=n1", "--cwd", "/p"], &e, &t);
         let Plan::Container(c2) = &p2 else { panic!("该是容器路") };
@@ -957,6 +978,41 @@ mod tests {
             Parsed::Opts(o) => resolve_cwd(&o, e),
             other => panic!("{other:?}"),
         }
+    }
+
+    /// 〔搬自 `ccm-contract-parity` B 组「CCM_ENV 被 eval / --print 里也在 / 早于会话级 env」〕
+    ///
+    /// `CCM_ENV` 是**机器级** env（代理等，旧 `CC_ENV` 的搬家）：它必须排在会话级 env
+    /// **之前**，否则 `--account` 想覆盖它时反而被它盖回去。差分对顺序失明 ⇒ 单钉。
+    #[test]
+    fn the_machine_level_env_comes_first_and_the_session_level_one_wins() {
+        let dz = tempdir();
+        let t = table(&[("z", Some(dz.as_str()), true)]);
+        let mut e = env();
+        e.ccm_env = "export CCM_ENV_PROBE=from-ccm-env".into();
+        let line = render(&plan_of(&["--cwd", "/p", "--account", "z"], &e, &t), None);
+        assert!(line.starts_with("export CCM_ENV_PROBE=from-ccm-env; "), "{line}");
+        let i_env = line.find("CCM_ENV_PROBE").expect("该有机器级 env");
+        let i_acct = line.find("CLAUDE_CONFIG_DIR").expect("该有账号目录");
+        assert!(i_env < i_acct, "机器级 env 必须排在会话级之前：{line}");
+    }
+
+    /// 🔴 〔搬自 `ccm-contract-parity` A′g 那两条〕**后端回的那条命令串不许被 shell 改写。**
+    ///
+    /// 它要被拆成词才跑得了（`exec $cmd`），而拆词那一步会做路径展开 ——
+    /// 命令里一个 `*` 会被当前目录的文件名顶掉。`set -f` 关掉的正是这一步。
+    #[test]
+    fn a_command_from_the_backend_is_never_rewritten_by_the_shell() {
+        let p = plan_of(&["resume", "abc-123", "--cwd", "/p"], &env(), &AccountTable::default());
+        let line = render(&p, Some("claude --resume abc-123 --glob *"));
+        assert!(
+            line.contains("set -f; exec claude --resume abc-123 --glob *"),
+            "少了 `set -f` ⇒ 那个 `*` 会被 cwd 的文件名改写：{line}"
+        );
+        // 反向：没有后端答案时走本地那条，argv 逐个 quote，本来就不经拆词
+        let local = render(&p, None);
+        assert!(!local.contains("set -f"), "本地那条不需要 set -f：{local}");
+        assert!(local.ends_with("exec claude --resume abc-123"), "{local}");
     }
 
     /// 〔搬自 `ccm-contract-parity` A / A′ 两组「print↔exec 一致」〕
