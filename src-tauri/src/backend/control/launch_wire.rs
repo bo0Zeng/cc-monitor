@@ -465,7 +465,7 @@ mod f07_main_path_tests {
     /// **结论仍然只有一条**：「起会话那格有没有切过去」——变的是它够得到哪几棵树。
     ///
     /// ⚠ **本条不管「ccm 发了哪几条一次性子命令」**（那是 `ccm_cli_contract` 的
-    /// `ccm_reaches_the_backend_through_one_shot_subcommands`，`K-P2 KP2A②`）：
+    /// `ccm_reaches_the_backend_through_one_shot_subcommands` 〔散文墓碑〕（`K-R48` 第二拍随 `shared/ccm` 删），`K-P2 KP2A②`）：
     /// 一条判据一件事。本条只回答 F07/U8c-3 要的那一句——**起会话那格切了没有**。
     #[test]
     fn the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold() {
@@ -553,7 +553,7 @@ mod f07_main_path_tests {
         //
         // 它原来与 Rust 那棵树同判：「**两棵树都不许**出现 `create-or-attach`」。
         // `K-P2` `D3` 把 `shared/ccm` 的 `--tmux` 接到了后端那条一次性口上
-        //（`launch_via_daemon` 发 `mode=create-or-attach`）⇒ **这一半当场红了，红得对**。
+        //（旧 bash 的 `launch_via_daemon` 〔散文墓碑〕 发 `mode=create-or-attach`）⇒ **这一半当场红了，红得对**。
         //
         // ⇒ 翻成正向：`shared/ccm` 从「不许有」变成「**必须有**」。
         // **别把它删掉**：删掉之后「起会话又退回本机 tmux 直起」就没有任何东西会说话。

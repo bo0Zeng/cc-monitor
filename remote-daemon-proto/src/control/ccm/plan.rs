@@ -250,7 +250,7 @@ pub(crate) struct Container {
     /// - 不给名、从 cwd 派生 ⇒ **退让**（幂等接回同一目录的会话，撞了说明有别人占了）。
     ///
     /// ⚠ 它**只在真跑那条路上生效**：`--print` 不查实时 tmux 状态（那是它「纯」的全部含义），
-    /// 所以 `--print` 吐的是**没退让过的**名字 —— `shared/ccm::avoid_name_collision`
+    /// 所以 `--print` 吐的是**没退让过的**名字 —— 旧 `shared/ccm::avoid_name_collision` 〔散文墓碑〕（`K-R48` 已删）
     /// 那句 `[ "$do_print" != 1 ] && tmux has-session …` 逐字就是这个意思。
     pub(crate) avoid_collision: bool,
     /// `--bus-register` 要的登记；找不到 cc-bus 脚本就是 `None`（并出一句声）。

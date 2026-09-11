@@ -110,7 +110,7 @@ pub const SIDECAR_STEM: &str = "cc-monitor-remote";
 /// ⚠ **这个名字只有一个家** —— `shared/ccm` 读的必须是同一个字面量，
 /// 由 `the_daemon_bin_env_name_has_exactly_one_home` 钉住（定框 §4）。
 ///
-/// ⚠ **ccm 那一半已接**〔F06b-1c〕：`shared/ccm` 的 `resolve_from_daemon`（函数，exec 路用）
+/// ⚠ **ccm 那一半已接**〔F06b-1c〕：旧 `shared/ccm` 的 `resolve_from_daemon` 〔散文墓碑〕（函数，exec 路用）
 /// 与 `resolve_recipe`（文本，print 路用），照该文件里 `derive_bus_id`/`BUS_ID_RECIPE` 的先例写；
 /// 一致性由 `e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
 ///

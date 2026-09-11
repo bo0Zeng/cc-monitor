@@ -141,7 +141,12 @@ mod tests {
              此前任何地方都没登记过。",
         ),
         (
-            "shared/ccm",
+            // 🔴 〔`K-R48` 第二拍 09-11〕住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕
+            //    那个 bash 脚本删了，容器路那段 shell **由这份 Rust 渲出来**（`render_container`
+            //    里那句 `for _i in 1 2 3 4 5 6; do sleep 0.5; …`）。
+            //    ⇒ 扫描面也跟着加了它一份（见 `scan()`）：**产出那段 shell 的人换了，
+            //    那个节拍本身一个字没变**。
+            "remote-daemon-proto/src/control/ccm/plan.rs",
             "wait-for-condition",
             "**只剩一处**：预信任对话框等待（6 × 0.5s，**§1.3 登记在案的例外** —— 那个对话框\
              没有内核事件源，只能看屏）。\
@@ -382,6 +387,13 @@ mod tests {
         let mut shells = collect_shell(&root.join("shared"));
         shells.sort();
         files.extend(shells);
+        // 🔴 〔`K-R48` 第二拍 09-11〕**容器路那段 shell 今天由 Rust 渲出来** ——
+        //    `shared/ccm` 删了，而那个 6×0.5s 的预信任等待一个字没变，只是换了产出方。
+        //    不把它收进人群的话，本表会读成「那个节拍退役了」⇒ 下一条判据当场说
+        //    「登记表里的 xx 已经没有周期唤醒了」，而那是**假读数**。
+        //    ⚠ 它按 `is_shell` 那条针认（`contains("sleep ")`）—— 那正对：
+        //    本表要认的是**那段 shell 里的 sleep**，不是 Rust 自己的节拍。
+        files.push(root.join("remote-daemon-proto/src/control/ccm/plan.rs"));
         let mut out = Vec::new();
         for f in files {
             let rel = f
@@ -444,11 +456,11 @@ mod tests {
             ts.len()
         );
         assert!(
-            fs::read_to_string(root.join("shared/ccm"))
+            fs::read_to_string(root.join("remote-daemon-proto/src/control/ccm/plan.rs"))
                 .map(|s| s.len())
                 .unwrap_or(0)
                 > 10_000,
-            "shared/ccm 读不到或太短 —— 路径变了？"
+            "`control/ccm/plan.rs` 读不到或太短 —— 路径变了？"
         );
         // 剥注释不能把整份文件剥空。
         //
@@ -461,13 +473,14 @@ mod tests {
         //   都不剥 ⇒ 这里**不许**断言「它剥掉了东西」（那不是它对 shell 语料的契约）。
         //   今天被抹掉的 9 行全是 shell 的 `*)` case 分支 —— 那是 `scan()` 在 ccm 上的
         //   真实行为，是另一件事，不是本条该钉的性质。
-        let ccm = fs::read_to_string(root.join("shared/ccm")).unwrap_or_default();
+        let ccm =
+            fs::read_to_string(root.join("remote-daemon-proto/src/control/ccm/plan.rs"))
+                .unwrap_or_default();
         assert!(
             !guard_core::strip_comment_lines(&ccm).trim().is_empty(),
-            "剥注释后 shared/ccm 一个非空白字节都不剩（原文 {} 字节）。两个可能的真因：\n\
+            "剥注释后 `control/ccm/plan.rs` 一个非空白字节都不剩（原文 {} 字节）。两个可能的真因：\n\
              ① 剥法太狠（`strip_comment_lines` 坏了）⇒ `scan()` 此刻在扫空字符串；\n\
-             ② `shared/ccm` 整份都成了以 `//` / `*` / `/*` 开头的行 —— 对一个 shell 脚本\n\
-                来说那基本不可能，但真发生了就说明文件换了个东西，本条要重新裁定。",
+             ② 那份文件整份都成了注释行 —— 真发生了就说明文件换了个东西，本条要重新裁定。",
             ccm.len()
         );
     }
@@ -738,66 +751,46 @@ mod tests {
     /// 下面第二段断言正是靠它证明抽取器没有空转。
     #[test]
     fn the_identity_poller_is_gone_for_good() {
-        let raw = fs::read_to_string(repo_root().join("shared/ccm"))
-            .expect("shared/ccm 读不到 —— 路径变了就把这条一起改");
-        // 剥 **shell** 整行注释：用共享原语 `strip_hash_comment_lines`，**不自己写第二份**
-        // （`structural_scan::every_comment_stripping_transformer_is_registered` 当场逮过我
-        // 一次：本条第一版内联了一个同款剥法）。⚠ 别拿 `strip_comment_lines` 代替 ——
-        // 那个认的是 `//` / `*` / `/*`（Rust/TS 那套），对 `#` 一个字都不剥。
-        //
-        // ⚠〔K-R14 09-01 订正〕这里原文写着「要剥是因为本文件的散文里逐字写着下面那些
-        //   形态（在解释它们为什么没了）」—— **那句话今天是假的**。现打（量于 `018b134`）：
-        //   `shared/ccm` **全文含注释**里 `kill -0` 命中 0 次、`_ccm_sid_from_file` 命中 0 次。
-        //   ⇒ 剥不剥都不改变下面任何一条的判定：实测把剥法换成「一个字都不剥」的 no-op，
-        //   整条测试仍**全绿**。留着剥法是**防**那几句解释哪天写回来，不是它今天在起作用。
-        //   （这条订正本身就是本仓那句「世界变了、文本没动」的活体。）
-        let prod = guard_core::strip_hash_comment_lines(&raw);
-        // ★ 反空真自检 —— 它钉的是**剥法本身的两个失效方向**，**不是** ccm 的注释占比。
-        //
-        //   〔K-R14〕上一版是一行 `prod.len() * 4 > raw.len()`，报文逐字
-        //   「剥注释后只剩 {} / {} 字节 —— 剥法坏了，本条在空转」。三个毛病：
-        //   ① **它量的是注释占比，而那是一个会随写作漂移的量**。现打（`018b134`）：
-        //      `prod` 22849 字节 · `raw` 91299 字节 ⇒ 注释占 74.97%，离 3/4 那条线
-        //      只剩 **97 字节**。往 ccm 的注释里加一行 32 个汉字就翻红 ——
-        //      而 ccm 恰恰是一个散文很多、经常有人回来补说明的文件。
-        //   ② **翻红时它说的是假话**。实证（在**副本**上做，没动 ccm 本身）：
-        //      加 96 字节注释仍绿、加 97 字节翻红，而两趟的 `prod` **逐字节相同**
-        //      （都是 22849）—— 剥法一个字节都没变，报文却说「剥法坏了」。
-        //      踩到的人会照着报文去查剥法，而剥法好好的。
-        //   ③ 它还**守不住它自称守的东西**：剥法退化成 no-op 时 `raw * 4 > raw` 恒真
-        //      ⇒ 本条**绿**（实测）。它只在「剥法把文件吃光」那一侧会响，
-        //      而那一侧下面的**反向锚点 ②** 也会响，且报的是真因 ⇒ 它的独占覆盖面是 0。
-        //   ⇒ 换成下面两条：一条一个失效方向，**都不随注释占比漂移**。
-        //      余量（量于 `018b134`，口径 = Rust `str::lines()`）：ccm 共 1258 行，
-        //      其中 `#` 整行注释 723 行、剥完剩 535 行（非空白的 486 行）。
-        //      ⇒ 第一条要**那 723 行注释一行不剩**才假红；第二条要**那 486 行非空白内容
-        //      一行不剩**才假红。两个都不是「有人回来补一段说明」够得着的量。
-        //
-        // ★★ 收工自查逮到的（本件治的正是这个病，别在治它的代码里复发一遍）：
-        //    这两条各有**两个**可能的真因，报文**必须把两个都说出来**。
-        //    只写「剥法坏了」就又是一次「因果整个说错」—— 那是本件的原病。
+        // 🔴 〔`K-R48` 第二拍 09-11〕**语料换了：`shared/ccm` → `control/ccm/{mod,plan}.rs`。**
+        //    〔用@09-11 `K33`〕那个 bash 脚本删了，而它渲出来的那段 shell（容器路的 send-keys
+        //    载荷与预信任等待）今天由这两份 Rust 产出 ⇒ 「与会话同寿的循环不许回来」
+        //    这件事要盯的是**产出方**。剥注释也跟着换成 Rust 那套（`strip_comment_lines`）。
+        let root = repo_root();
+        let raw: String = ["mod.rs", "plan.rs"]
+            .iter()
+            .map(|f| {
+                fs::read_to_string(root.join("remote-daemon-proto/src/control/ccm").join(f))
+                    .unwrap_or_else(|e| panic!("control/ccm/{f} 读不到 —— 路径变了就把这条一起改：{e}"))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        // ⚠ 剥法用 `production_code`（Rust 那套：`//` 行 + 文档注释），**不是**
+        //    `strip_comment_lines` —— 后者把注释行换成空行、行数不变，
+        //    于是「剥掉了没有」这条自检按行数比会恒假（第一版就是这么红的，自己逮到）。
+        let prod = guard_core::production_code(&raw);
+        // ★ 反空真自检 —— 两个失效方向各一条，**都不随注释占比漂移**（口径沿用上一版）。
         assert!(
-            prod.lines().count() < raw.lines().count(),
-            "剥法一行都没剥掉（进 {} 行、出 {} 行）。两个可能的真因，**别只查第一个**：\n\
-             ① `strip_hash_comment_lines` 没生效 ⇒ 下面几条会被 ccm 的散文喂饱；\n\
-             ② `shared/ccm` 里一行 `#` 整行注释都没有了（`018b134` 时有 723 行）\n\
-                ⇒ 那剥这一步已经没有意义，该连着下面几条一起重新裁定。",
-            raw.lines().count(),
-            prod.lines().count()
+            prod.len() < raw.len(),
+            "剥法一个字节都没剥掉（进 {} 字节、出 {} 字节）。两个可能的真因，**别只查第一个**：\n\
+             ① `production_code` 没生效 ⇒ 下面几条会被那两份文件的散文喂饱；\n\
+             ② `control/ccm/` 里一行注释都没有了 ⇒ 剥这一步已经没有意义，\n\
+                该连着下面几条一起重新裁定。",
+            raw.len(),
+            prod.len()
         );
         assert!(
             !prod.trim().is_empty(),
-            "剥完 shared/ccm 一个非空白字节都不剩（原文 {} 字节）。两个可能的真因：\n\
+            "剥完 `control/ccm/` 一个非空白字节都不剩（原文 {} 字节）。两个可能的真因：\n\
              ① 剥法把整份文件吃掉了 ⇒ 下面几条此刻在扫空字符串，会零命中地绿；\n\
-             ② `shared/ccm` 整份都成了 `#` 注释与空行（`018b134` 时非空白正文有 486 行）\n\
-                ⇒ 那这个文件已经不是原来那个东西，本组判据要重新裁定。",
+             ② 那两份文件整份都成了注释与空行 ⇒ 已经不是原来那个东西，本组判据要重新裁定。",
             raw.len()
         );
         // ★ 与会话同寿的循环，唯一写得出的形态就是「盯着一个 PID 活不活」。
+        //   ⚠ 它今天要在**渲出去的 shell 串**里找 —— 产出方换了语言，那条循环的形态没变。
         for shape in ["while kill -0", "until kill -0", "while ! kill -0"] {
             assert!(
                 !prod.contains(shape),
-                "`shared/ccm` 生产段里又出现了 `{shape}` —— 那是一条**与会话同寿**的循环。\n\
+                "`control/ccm/` 渲出去的 shell 里又出现了 `{shape}` —— 那是一条**与会话同寿**的循环。\n\
                  `U-NP④` 把身份通道 B 整条搬去了 daemon（`control/identity_tag.rs`），\n\
                  用户裁定逐字：「不要轮询」「ccm 做到必须走 daemon」。\n\
                  ⚠ 别把它当成「加个 sleep 兜一下更稳」——那正是本件要根除的东西：\n\
@@ -810,90 +803,27 @@ mod tests {
             !prod.contains("_ccm_sid_from_file"),
             "`_ccm_sid_from_file` 还在 —— 它只服务那条已删的 poller，留着就是死代码"
         );
-        // 反向锚点 ②：**抽取器没有空转** —— 同文件里那处登记在案的 `sleep` 必须还看得见。
+        // 反向锚点 ②：**抽取器没有空转** —— 那处登记在案的预信任 `sleep` 必须还看得见。
         assert!(
             prod.contains("sleep 0.5"),
             "连预信任那处 `sleep 0.5` 都扫不到 —— 剥法或路径坏了，上面那几条是零命中地绿"
         );
     }
 
-    /// ★ **没有 daemon 就必须响亮地失败** —— `U-NP④` 的第二条硬要求。
-    ///
-    /// # 为什么这条要单独钉
-    ///
-    /// 删掉 poller 之后，「这台机器没装 daemon」的后果从「少一个锦上添花」变成
-    /// 「用户开了会话、monitor 绑不上、点 ↗ 弹『未绑定窗口』**而没人知道为什么**」。
-    /// 静默降级在这里是最坏的失败模式（本仓反复吃过这个亏：假成功比失败更贵）。
-    ///
-    /// ⚠ **本条只钉形状**（三件事在源码里存在且顺序对），行为那半由
-    /// `e2e/ccm-cli.test.sh` 的「daemon 前置检查」一节真跑一遍 ccm 去验
-    ///（rc=2 · 不 exec launcher · 逃生口放行）。**两条都要**：形状挡改写，行为挡「写了但不生效」。
-    #[test]
-    fn ccm_fails_loudly_when_no_daemon_can_be_found() {
-        let raw = fs::read_to_string(repo_root().join("shared/ccm")).expect("读不到 shared/ccm");
-        let prod = guard_core::strip_hash_comment_lines(&raw);
-        // ① 身份那一段真的去查了 daemon（共用同一份查找配方，不是第二套规则）。
-        let block = prod
-            .split("agent_has_identity \"$agent\"")
-            .nth(1)
-            .expect("找不到身份分支 —— 它被改写或搬走了，本条会零命中地绿");
-        assert!(
-            block.contains("eval \"$DAEMON_BIN_RECIPE\""),
-            "身份分支里没有 `eval \"$DAEMON_BIN_RECIPE\"` —— 前置检查没了，或者它另起了\n\
-             第二套查找规则（那正是 P4e 花力气收成一份的东西）"
-        );
-        // ② 找不到就 `die`（exit≠0），不是打一行日志继续。
-        let after = block
-            .split("eval \"$DAEMON_BIN_RECIPE\"")
-            .nth(1)
-            .expect("刚断言过它在");
-        assert!(
-            after.contains("die \"找不到 daemon"),
-            "找不到 daemon 之后没有 `die` —— 静默降级正是本条要挡的。\n\
-             实得（前 400 字节）：{}",
-            &after[..after.len().min(400)]
-        );
-        // ③ 逃生口存在**且会说话**：`CCM_NO_DAEMON=1` 放行，但往 stderr 说一句。
-        assert!(
-            after.contains("CCM_NO_DAEMON") && after.contains(">&2"),
-            "逃生口不见了、或它闷声放行 —— 明示放弃身份也要说一句"
-        );
-        // ④ **头注第 4 条必须跟着改**（用户 08-14 的硬要求之一）。
-        //   它原文逐字写着「身份注册用**运行时自适应**而非编译期门控：装了就用，
-        //   **没装逐字节退化成裸 launcher**」——走档 2 之后那句话是**假的**（没装 = 响亮失败）。
-        //   留着它就是本仓反复吃亏的「停滞式腐坏」：世界变了、文本没动，照它做的人会走错。
-        //   ⚠ 这是零命中守卫，但**有反向锚点**（下一条断言新话在），不会零命中地绿。
-        //
-        // ★ 针为什么一个是 `const` + `contains`、一个是 `find_pinned`（两种写法不是随手挑的）：
-        //   `needle_anchor_registry` 的递减棘轮治的是「**匹配单位比事实小** ⇒ 把事实撑大的改动
-        //   会溜过去而判据照样绿」。那条推理只对**正向**断言成立 ——
-        //   对**「这句话不许存在」**的断言，子串是**强的那一侧**（子串不在 ⇒ 整句必不在），
-        //   撑大事实反而更容易被逮到。⇒ 负向这条用具名 `const`（针成了一条可复核的事实，
-        //   不是行内字面量），正向那条用 `find_pinned`（恰好一处 + 两侧有边界，严格强于 `contains`）。
-        const BANNED_OLD_CLAIM: &str = "逐字节退化成裸 launcher";
-        assert!(
-            !raw.contains(BANNED_OLD_CLAIM),
-            "`shared/ccm` 头注里那句「（没装就）{BANNED_OLD_CLAIM}」回来了 —— 它今天是假的：\n\
-             身份只由 daemon 打，没有 daemon 就 `die`。散文与代码说的必须是同一件事。\n\
-             ⚠ 想在注释里**引用**那句旧话也会打红本条（本护栏连注释一起扫，fail-closed）——\n\
-             处置是改措辞，别把护栏改成剥注释（同 `tmux_hook.rs` 头注那条纪律）。"
-        );
-        guard_core::find_pinned(&raw, "身份（`@ccm_sid`）必须走 daemon").unwrap_or_else(|e| {
-            panic!(
-                "头注第 4 条不再声明「身份必须走 daemon」（{e}）—— 要么被改回去了，要么措辞漂了。\n\
-                 上一条（禁旧话）是零命中守卫，靠本条当反向锚点才不会零命中地绿。"
-            )
-        });
-        // ★ **顺序**也是判据：前置检查必须排在任何 `tmux` 调用之前，
-        //   否则「没有 daemon」这条路上还会去碰 tmux（e2e 正是在没有 tmux 的 PATH 下跑的）。
-        let die_at = block.find("die \"找不到 daemon").expect("刚断言过它在");
-        let tmux_at = block.find("tmux ").unwrap_or(usize::MAX);
-        assert!(
-            die_at < tmux_at,
-            "前置检查排在了 tmux 调用之后 —— 失败路径上会先去碰 tmux。\n\
-             这个顺序不是洁癖：`e2e` 那几条正是靠「PATH 里根本没有 tmux」来证明它没被碰的。"
-        );
-    }
+    // 🔴 〔`K-R48` 第二拍 09-11〕**这里原来有 `ccm_fails_loudly_when_no_daemon_can_be_found` 〔散文墓碑〕，
+    //   随 `shared/ccm` 一起删了 —— 而且它是「被测对象消失」，不是「判据放宽」。**
+    //
+    //   它钉的是 `U-NP④`（08-14）那条：**在 tmux 里找不到 daemon ⇒ 响亮失败（rc=2）**，
+    //   形状面四格（身份分支真去查 daemon · 找不到就 `die` · 逃生口会说话 · 前置检查排在
+    //   任何 `tmux` 调用之前）。〔用@09-11 `K33`〕「后端只有一个」之后，
+    //   **「找不到 daemon」这个概念不存在了**：敲的那个命令就是后端。
+    //   `evidence/K-R48-356-verdicts.tsv` 第 67–81 行那 15 条 e2e 判的是同一件事，判词同为 `N`。
+    //
+    // ⚠ **如实边界，别读成「这条风险没了」**：`K-R48` 第一拍逐字登记着一格**没裁**的 ——
+    //   「一次性模式在 tmux 内由谁去打 `@ccm_sid`」。今天一次性模式**一个字都不说**
+    //   （那 356 条里唯一两条判 `K` 的就是它，见 verdicts 第 77–78 行）。
+    //   ⇒ 「没人打身份」这件事今天**没有任何判据盯着**，归 `K-R48` 下一拍。
+
 
     /// ★ 把两处**散文纪律**变成机检：这两个文件里一处周期唤醒都不许有。
     #[test]

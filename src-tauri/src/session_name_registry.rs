@@ -55,11 +55,20 @@ mod tests {
             "分叉会话名 `<base>-fork-cc`（G6 加的第三种形态）。退役归 **U11 本体**。",
         ),
         (
-            "shared/ccm",
+            // 🔴 〔`K-R48` 第二拍 09-11〕住址从 `shared/ccm` 换到这里：〔用@09-11 `K33`〕
+            //    那个 bash 脚本删了，`derive_tmux_name` 搬进了后端本体。
+            //    ⚠ **这不是退役**：那份副本仍然存在（与 TS 的 `deriveTmuxName` 同义、
+            //    由 `e2e/ccm-cli.test.sh` 的 5 条跨语言对拍钉着两边逐字相同）——
+            //    只是换了语言与住址。⇒ 本行**照旧算一处产名点**，`== 2` 仍然钉不上。
+            //    ⚠ **处数从 1 变 2，那不是多了一个产出点**：bash 那版把「空名回落」与
+            //    「正常派生」写在同一行（`printf '%s-cc'` 一处），Rust 版拆成了
+            //    `"session-cc"`（空名回落）与 `format!("{s}-cc")` 两行 —— **同一个函数体内**，
+            //    尺子是按**行**数的。两行都在 `derive_tmux_name` 里，自检段界钉着这一点。
+            "remote-daemon-proto/src/control/ccm/plan.rs",
             "producer-duplicate",
-            1,
-            "`derive_tmux_name` 的 shell 副本（与 `deriveTmuxName` 同义）。\
-             退役归 **U9b**（thin ccm 变零决策执行臂）—— 而 U9b 今天 ⛔ 阻塞，\
+            2,
+            "`derive_tmux_name` 的原生副本（与前端 `deriveTmuxName` 同义），**一个函数体内两行**。\
+             退役归 **U9b** —— 而 U9b 今天 ⛔ 阻塞，\
              **这就是 `== 2` 今天钉不上的直接原因**。",
         ),
         (
@@ -133,7 +142,12 @@ mod tests {
         files.sort();
         collect_rs(&root.join("src-tauri/src"), &mut files);
         collect_rs(&root.join("src-tauri/crates"), &mut files);
-        for extra in ["shared/ccm", "shared/cc-bus/scripts/cc-spawn"] {
+        // 🔴 〔`K-R48` 第二拍 09-11〕`shared/ccm` 删了 ⇒ 换成后端那份原生实现。
+        //    `collect_rs` 只扫 `src-tauri/`，够不着 `remote-daemon-proto/` ⇒ 仍按 extra 点名。
+        for extra in [
+            "remote-daemon-proto/src/control/ccm/plan.rs",
+            "shared/cc-bus/scripts/cc-spawn",
+        ] {
             files.push(root.join(extra));
         }
         files
@@ -228,7 +242,7 @@ mod tests {
         for f in [
             "src-tauri/src/tmux.rs",
             "src-tauri/crates/gate-core/src/lib.rs",
-            "shared/ccm",
+            "remote-daemon-proto/src/control/ccm/plan.rs",
             "shared/cc-bus/scripts/cc-spawn",
         ] {
             let n = fs::read_to_string(root.join(f))

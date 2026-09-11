@@ -687,7 +687,7 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 ⚠ **一格如实登记**：`ccm --tmux --print` 吐的**仍然是本机那条 tmux 编排的配方** ——
 那是「`--print` 该描述什么」这个**接口问题**还没裁（件计划 `§6-5 上报③`），
 **不是留了一条退路**：exec 路上那段编排一步都走不到
-（钉住它的是 `ccm_cli_contract::the_local_launch_recipe_is_reachable_only_from_print`）。
+（钉住它的那条判据 `ccm_cli_contract::the_local_launch_recipe_is_reachable_only_from_print` 〔散文墓碑〕 已随 `shared/ccm` 于 `K-R48` 删除；今天 `--print` 与真跑读同一个 `Plan`，由 `control::ccm::plan::tests::print_and_exec_cannot_drift_because_they_read_the_same_plan` 接住）。
 ⇒ 读 `--print` 的输出时别把它当成「真跑时会发生什么」的描述，这一格今天**对不上**。
 
 ##### ★ `send-keys-raw`（F04c）：发裸键、**不附尾 `Enter`**

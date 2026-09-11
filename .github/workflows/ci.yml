@@ -381,7 +381,7 @@ jobs:
           # `scripts` 那组今天只有 1 个文件 ⇒ 归零就是整组消失，正是地板该挡的场景。
           # （Phase D 审计实测：`shellcheck 'scripts/*.sh'` → openBinaryFile does not exist, RC=2）
           shopt -s nullglob
-          FILES=$(printf '%s\n' e2e/*.sh shared/cc-bus/scripts/* shared/ccm \
+          FILES=$(printf '%s\n' e2e/*.sh shared/cc-bus/scripts/* \
             e2e/fake-claude \
             e2e/weak-net/*.sh \
             scripts/*.sh \
@@ -451,7 +451,18 @@ jobs:
           # 今天实测构成（**逐组现打，不倒推** —— 上一轮就是倒推凑出过一次假账）：
           # **60 = e2e/*.sh 33 + e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14 + ccm 1
           #        + scripts 2 + vendored 4 + hooks/pre-commit 1**。
-          [ "$N" -ge 60 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 60）"; exit 1; }
+          # 🔴 **2026-09-11 `K-R48` 第二拍：60 → 57，这是本仓第一次**往下**拧这个地板，
+          #    所以理由要比往上棘时写得更清楚**：
+          #    〔用@09-11 `K33`〕逐字「后端只有一个…**不要有什么 bash 脚本**」⇒ 本轮删了
+          #    **三个 shell 文件**：`shared/ccm`（那 1592 行 bash 启动器）·
+          #    `e2e/ccm-acceptance.sh` · `e2e/ccm-pretrust-acceptance.sh`。
+          #    ⇒ `shared/ccm` 那一项也从上面的 `FILES=` 表达式里摘了（留着它
+          #    `shellcheck` 会报「文件不存在」rc=2，而那条诊断与「覆盖面缩水」完全对不上）。
+          #    实测构成：**57 = e2e/*.sh 31 + e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14
+          #             + scripts 2 + vendored 4 + hooks/pre-commit 1**（ccm 那 1 个没了）。
+          #    ⚠ **别把这一次当先例**：往下拧的合法理由只有「那几个文件真的不在了」，
+          #    不是「今天数不够」。`shell_lint_registry` 那条恒等判据会替你分辨这两件事。
+          [ "$N" -ge 57 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 57）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 

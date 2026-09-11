@@ -8,7 +8,7 @@
 //! ⇒ **那份脚本删了，这些读数没有被测对象了**。
 //!
 //! 删掉的 22 条判据与三张表（`REQUIRED_NEEDLES` / `LEDGER` / `BACKEND_BACKED_PATHS`、
-//! `measure` / `scan_t_targets` / `pin_t_def` / `BASELINE`）逐条判词住
+//! `measure` / `scan_t_targets` / `pin_t_def` 〔散文墓碑〕 / `BASELINE`）逐条判词住
 //! `evidence/K-R48-356-verdicts.tsv` 的同族条目；它们守的**性质**去了哪里，逐条写在
 //! 件文件 `features/K-R48-…md` 的 `§8c`。
 //!
@@ -82,7 +82,8 @@ mod tests {
         // ② 命名避让必须还在（不复用 ≠ 不避让）—— 但 `C15`〔用@08-13〕之后它**搬进 ccm 了**。
         //    ⚠ 这条判据 08-12 原本钉 `cc-spawn` 里那句 `while tmux has-session`。
         //    搬家之后**不能只是删掉它**：那样「避让还在不在」就没人钉了。改钉两件 ——
-        //    （a）cc-spawn 把基名交出去；（b）避让在 ccm 那边（另一条判据 `the_avoidance_lives_in_ccm_now`）。
+        //    （a）cc-spawn 把基名交出去；（b）避让在 ccm 那边（旧判据 `the_avoidance_lives_in_ccm_now` 〔散文墓碑〕，
+        //    `K-R48` 第二拍随 `shared/ccm` 删；今天由 `control::ccm::plan::tests::only_two_of_the_three_naming_paths_step_aside_on_a_collision` 钉）。
         // ⚠ 下面两条都判**剥掉 `#` 注释之后**的正文。首版没剥，当场被自己写的那句
         //   「原来这里是 `while tmux has-session …`」（记录搬走了什么的**诚实注释**）判红。
         //   ★ 这是本拍第二次撞上同一族：**匹配单位比事实大** —— 判据要判的是「代码里有没有」，
@@ -165,28 +166,44 @@ mod tests {
             "`cc-spawn` 只剩 {} 行 —— 读法坏了或文件被掏空",
             src.lines().count()
         );
+        // 🔴 〔`K-R48` 第二拍 09-11〕**针换了一次，性质一个字没变。**
+        //    从前 `cc-spawn` 找的是 `$SELFDIR/../../ccm`（仓内那个 bash 脚本，部署形态下落在
+        //    `~/.claude/skills/ccm`）。〔用@09-11 `K33`〕那个文件删了，查找次序整条换成找后端
+        //    （`$CCM_BIN` → `~/.cc-monitor/bin/` → PATH）。
+        //    ⚠ **那个坑没有变小，反而更宽**：查找次序里每一档都可能撞上**同名目录**
+        //    （`~/.cc-monitor/bin/` 下、`PATH` 上都一样），而 `[ -x <目录> ]` 为真。
+        //    ⇒ 本条仍然要求**同一处判断里 `-f` 与 `-x` 同时在**，只是落点从那两个字面量
+        //    换成了循环体里的 `$_x`。
         // ⚠ **钉性质不钉拼法**〔第一版是 `pin_line` 整行相等，变异当场暴露它过严〕：
-        // 把顺序换成 `[ -x X ] && [ -f X ]` 语义完全一样、同样安全，而整行相等会误红。
-        // 本会话立过的标准是「合法微调不许误红」（bash 折叠阈值那条），这里照它办：
-        // 只要求**两个测试都落在解析那一行上**，先后随意。
-        for probe in ["-f \"$SELFDIR/../../ccm\"", "-x \"$SELFDIR/../../ccm\""] {
+        //    把顺序换成 `[ -x X ] && [ -f X ]` 语义完全一样，而整行相等会误红。
+        for probe in ["-f \"$_x\"", "-x \"$_x\""] {
             guard_core::find_pinned(&src, probe).unwrap_or_else(|e| {
                 panic!(
                     "{e}\n\
                      ⇒ `cc-spawn` 解析 `ccm` 时缺了 `{probe}` 这一半。**只 `-x` 不够**：\n\
-                     `[ -x <目录> ]` 为真，而它找的 `../../ccm` 落在 `~/.claude/skills/` 下、那里全是目录，\n\
-                     装一个名叫 `ccm` 的 skill 就会劫持解析（脚本头注记着实测：报「是一个目录」后整体失败）。\n\
+                     `[ -x <目录> ]` 为真，而查找次序里那几档都可能是目录\n\
+                     （历史实测：`~/.claude/skills/` 下全是目录，装个名叫 `ccm` 的 skill 就会劫持解析，\n\
+                     报「是一个目录」后整体失败）。\n\
                      这一处**没有本地回落分支**，所以失败是硬的，不是诚实降级。"
                 )
             });
         }
         // 两个测试必须在**同一行**：分散到两处会让「其中一处被删」看起来仍然合规。
-        let same_line = src.lines().any(|l| {
-            l.contains("-f \"$SELFDIR/../../ccm\"") && l.contains("-x \"$SELFDIR/../../ccm\"")
-        });
+        let same_line = src
+            .lines()
+            .any(|l| l.contains("-f \"$_x\"") && l.contains("-x \"$_x\""));
         assert!(
             same_line,
             "`-f` 与 `-x` 不在同一行了 —— 解析分支被拆开，其中一半可能已经不在那条判断上。"
+        );
+        // 🔴 反向：那条**已经不存在的**旧路径不许再出现（留着它 = 又去找一个不存在的脚本，
+        //    而失败是静默的：`[ -f ]` 不成立就默默往下一档走）。
+        // ⚠ 只看**生产段**：脚本头注里那句「原来这里找的是 `$SELFDIR/../../ccm`」是**来历**，
+        //    不是代码。不剥注释的话这一条会把自己的墓碑读成复发（本仓最高频那类假红）。
+        assert!(
+            !shell_production(&src).contains("$SELFDIR/../../ccm"),
+            "`cc-spawn` 的生产段又去找 `$SELFDIR/../../ccm` 了 —— 那个 bash 脚本 `K-R48` 已经删了，\n\
+             找一个不存在的东西不会报错，只会**静默地落到下一档**。"
         );
     }
 

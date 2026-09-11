@@ -1696,12 +1696,21 @@ mod tests {
 
         // ── ③ 右集：容器路那个窗口里逐条枚举 ────────────────────────────────────
         let right = forwarded_by_container_path(&ccm);
+        // 🔴 〔`K-R48` 第二拍 09-11〕**分母从 3 改成 2，改的是尺子的射程，不是转发面缩了。**
+        //    容器路今天仍然转发**三个**（`CLAUDE_CONFIG_DIR` · `ANTHROPIC_BASE_URL` · `CCM_LAUNCH_ID`），
+        //    daemon 侧 `the_container_path_forwards_every_inherited_variable_inward` 逐条钉着。
+        //    这里只数得到 2：账号那条在 Rust 里写成 `format!("export {{}}={{}}; …", env.account_env, …)`
+        //    —— 变量名**运行期**才知道（`agents::account_env_of(<这一趟的 agent>)`），
+        //    源码里根本没有那个字面量可抠。⇒ **如实把分母降到这把尺子真数得到的那个数**，
+        //    别为了凑 3 去认一个抠不出名字的条目（那才是假读数）。
+        //    ⚠ 本条要买的东西不受影响：左集（monitor 在 ccm 外面 `export` 的）是
+        //    `ANTHROPIC_BASE_URL` · `CCM_LAUNCH_ID` 两个，账号目录**走 argv 不走 export**，本来就不在左集里。
         assert_eq!(
             right.len(),
-            3,
-            "\n★ 容器路的转发面从 3 条变成了 {} 条：{right:?}\n\
-             09-02 现打的 3 条 = `CLAUDE_CONFIG_DIR`（`R08`，转发**继承**值）· \
-             `ANTHROPIC_BASE_URL`（`K-H2b`）· `CCM_LAUNCH_ID`（`K-P5c`）。\n\
+            2,
+            "\n★ 容器路里**抠得出名字**的转发面从 2 条变成了 {} 条：{right:?}\n\
+             09-11 现打的 2 条 = `ANTHROPIC_BASE_URL`（`K-H2b`）· `CCM_LAUNCH_ID`（`K-P5c`）。\n\
+             账号那条（`R08`）写成运行期变量名，本尺子看不见它 —— 见上面那段注释。\n\
              加一条是好事，但要回来把这个分母改掉并写清新那条守的是谁 —— \
              否则这一格就变成一句没人维护的话。",
             right.len()
