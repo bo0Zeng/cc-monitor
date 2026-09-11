@@ -52,7 +52,9 @@ import {
 import {
   diagnoseRemoteLauncher,
   buildAliasGeneratorSection,
+  buildAccountAliasBlock, // K-R49：按账号一次给齐 `zcc` / `bcc`，而且真落盘
 } from "../launcher-diagnostics";
+import { fetchLocalAccounts } from "../accounts"; // K-R49：别名是给**这台机器**的 shell 用的
 import { dispatcher } from "../keybindings/registry";
 import { KeybindingsEditor } from "../keybindings/editor";
 // F82a：独立设置窗口——保存后广播 `settings-applied`，主窗口 listen 后重读并应用主题/行为
@@ -1021,6 +1023,15 @@ export class SettingsPanel {
     // F08 Phase D 审计（重要项修复）：别名生成器紧挨着诊断放在同一处——此前生成器藏在
     // "远端 (SSH)"每台主机卡片的三层折叠里、且按主机重复渲染（内容与选中哪台机器无关），
     // 诊断提示也从未指向它。两者是同一段用户旅程的两半，理应彼此相邻。
+    // K-R49：先「按账号一次给齐」，再是「我要拼一条自定义的」——**顺序是有意的**：
+    // 用户 09-10 逐字说的是「添加账号后添加对应命令」，那条路该在手工拼之前被看见。
+    // ⚠ 账号读口取**本机**那条（`fetchLocalAccounts`）：这几条命令是给这台机器上的
+    //   shell 用的，`ccm --account <名>` 也在这台机器上跑。
+    group.appendChild(
+      buildAccountAliasBlock(async () =>
+        (await fetchLocalAccounts()).accounts.map((a) => a.name),
+      ),
+    );
     group.appendChild(buildAliasGeneratorSection());
 
     return group;

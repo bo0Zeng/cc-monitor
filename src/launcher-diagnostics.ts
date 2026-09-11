@@ -5,9 +5,27 @@
  * 渲染的"远端 (SSH)"每台机器卡片里）会让用户看到诊断提示后无路可循——已合并成同一处设置分组
  * 里紧邻的两块，不再按主机重复（生成器内容本来就与选中哪台机器无关）。
  *
- * MASTERPLAN 设计原则#7：越层启动器只诊断 + 引导迁移，绝不自动降级、绝不偷改用户配置。
+ * MASTERPLAN 设计原则#7：越层启动器只诊断 + 引导迁移，绝不自动降级、**绝不在用户没要求时
+ * 改他的配置**。
+ *
+ * 🔴 `K-R49`（09-10）**把这一句收窄了一格，别再按旧的读法撤掉下面那块活**。
+ * 原句逐字是「绝不**偷改**用户配置」，而「偷改」与「用户按了一个写着『写入』的按钮」
+ * 是两件事 —— 原则禁的是**自动、静默**：
+ *
+ * - **仍然禁**：任何在启动 / 后台 / 探测路径上，不经用户当次手势就写盘的动作；
+ *   把用户填的启动器命令**自动**改掉、**自动**降级到另一个启动器；
+ *   猜一份 shell 配置（`.bashrc`? `.zshrc`?）然后往里写。
+ * - **不禁**：用户在界面上点了一个写明「写到哪、写什么」的按钮之后，把那件事做掉。
+ *
+ * 用户 09-10 逐字：「**我现在添加了一个账号但是没法直接添加命令, 还得手动去改**」——
+ * 他要的正是「帮我改」。⇒ [`buildAccountAliasBlock`] 那一块**是这条原则的例外，
+ * 而且是写在原则旁边的那一条**，不是对它的违反。它同时把代价压到最小：
+ * 真正被重写的是 **cc-monitor 自己那份文件**（`~/.cc-monitor/account-aliases.sh`），
+ * 用户的 shell 配置最多多**一行** `source`，而且那份 rc 由他自己在下拉里选。
  */
 import { buildPasteBlock } from "./paste-block"; // T03：待贴文本统一组件
+import { commands } from "./ipc/commands"; // K-R49：真落盘那一跳（后端围栏在 `account_aliases.rs`）
+import type { AccountAliasReport } from "./generated/AccountAliasReport";
 
 /** 该远端命令看起来是不是绕开了 `ccm`（越层启动器）——启发式：非空、不含 "ccm"、且不是
  *  裸 `claude`（显式写 claude 是有意选择基座行为，不算"看起来像旧式包装"）。命中不代表
@@ -58,6 +76,171 @@ export function buildAliasLine(
   if (launcher) parts.push("--launcher", q(launcher));
   const flagStr = parts.join(" ");
   return `${trimmedName}() { ccm${flagStr ? ` ${flagStr}` : ""} "$@"; }`;
+}
+
+/**
+ * `K-R49`：一个账号叫什么名字，它那条命令就该叫什么。
+ *
+ * 规则与 `cc-acct-iso shellinit` 生成的那一族**逐字同形**（`<名>cc`），
+ * 这样从两条路进来的人看到的是同一套命令名，不是两套。
+ *
+ * ⚠ 两处收窄，都是 `buildAliasLine` 那条校验逼出来的（非法名字粘进 shell 配置会当场弄坏它）：
+ * ① 账号名里的非法字符**丢掉**而不是替换成下划线 —— `a.b` 与 `a_b` 换成下划线之后会撞成同一个名字；
+ * ② 结果若以数字开头（账号 0 那种）就前缀一个 `_`，因为 shell 函数名不许数字打头。
+ */
+export function suggestAliasName(account: string): string {
+  const cleaned = account.replace(/[^A-Za-z0-9_]/g, "");
+  if (!cleaned) return "";
+  return /^[0-9]/.test(cleaned) ? `_${cleaned}cc` : `${cleaned}cc`;
+}
+
+/**
+ * `K-R49` 的正主：**加了账号，那条命令也该跟着有 —— 而且真的落盘。**
+ *
+ * # 它与上面那个手工生成器的分工
+ *
+ * [`buildAliasGeneratorSection`] 是「我要拼一条**自定义**组合」；这一块是
+ * 「**把我这几个账号的命令一次给齐**」。两者共用同一个 [`buildAliasLine`]（唯一那份生成器），
+ * 本块一个字节的别名内容都不自己拼。
+ *
+ * # 🔴 落点刻意**不是** `~/.bashrc`
+ *
+ * 真正被重写的是 `~/.cc-monitor/account-aliases.sh`（cc-monitor 自己的文件），
+ * **按账号表整份重写** ⇒ 幂等、删了账号它那条当场消失、删掉整份文件也只是少几个命令。
+ * 往 rc 里追加的那条路有三条病（重复追加 · 删不掉 · 弄坏了 shell 起不来），
+ * 逐条记在 `account_aliases.rs` 的模块头注里。
+ *
+ * # 用户的 shell 配置最多多**一行**，而且多数人连这一行都不用管
+ *
+ * `shared/ccm-aliases.sh` 自带一行 `if [ -r … ]; then . …; fi` 指向那份生成文件 ⇒
+ * 装过 ccm 别名块的人**什么都不用做**。没装的人可以在下拉里**自己选**一份 rc，
+ * 由后端把那一行 `source` 装进围栏里（备份 + 原子替换 + 写后回读 + 幂等）。
+ * ⚠ 下拉的默认项是「**不动我的 shell 配置**」—— 界面不替人选那份文件。
+ *
+ * @param loadAccounts 取账号名的那一跳。**由调用方给**，因为这一块两处挂载
+ *   （设置面板的「行为」组 · 账号那一节），而它们手里的账号读口不是同一个。
+ */
+export function buildAccountAliasBlock(
+  loadAccounts: () => Promise<string[]>,
+): HTMLElement {
+  const wrap = document.createElement("details");
+  wrap.className = "ccm-acct-alias";
+  const summary = document.createElement("summary");
+  summary.textContent = "按账号生成命令（zcc / bcc 这一族）";
+  wrap.appendChild(summary);
+
+  const hint = document.createElement("p");
+  hint.className = "ccm-acct-alias-hint";
+  hint.textContent =
+    "给这台机器（cc-monitor 跑着的这台）的 shell 用：每个账号一条命令，" +
+    "写进 cc-monitor 自己管的那份别名文件，不是你的 ~/.bashrc。" +
+    "它按账号表整份重写：加了账号就多一条，删了账号那条就没了。";
+  wrap.appendChild(hint);
+
+  const list = document.createElement("div");
+  list.className = "ccm-acct-alias-list";
+  wrap.appendChild(list);
+
+  // rc 选择器。**默认那一项是「不动」** —— 猜一份 shell 配置写进去是最坏的那条路
+  // （`.bashrc` / `.zshrc` / fish 的 `config.fish` 写法各不相同）。
+  const rcSel = document.createElement("select");
+  rcSel.className = "ccm-acct-alias-rc";
+  const rcRow = document.createElement("label");
+  rcRow.className = "ccm-acct-alias-rcrow";
+  rcRow.append("顺便把那一行 source 加进：", rcSel);
+  wrap.appendChild(rcRow);
+
+  const out = document.createElement("pre");
+  out.className = "ccm-acct-alias-out";
+  wrap.appendChild(out);
+
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "ccm-acct-alias-write";
+  btn.textContent = "写入";
+  wrap.appendChild(btn);
+
+  let lines: string[] = [];
+
+  const renderReport = (r: AccountAliasReport): void => {
+    const rows: string[] = [`别名文件：${r.aliasPath}`];
+    rows.push(
+      r.names.length
+        ? `这份文件里会有 ${r.names.length} 条：${r.names.join(" · ")}`
+        : "这份文件里一条命令都没有（这台机器上还没有账号）",
+    );
+    // 🔴 名字撞了**只出声、不拦**：`cc` 在多数机器上是 C 编译器，用户有权自己决定盖不盖。
+    for (const c of r.collisions) rows.push(`⚠ ${c}`);
+    for (const n of r.notes) rows.push(n);
+    if (r.wroteAliasFile) rows.push("已写入。");
+    if (r.wroteRc) rows.push("shell 配置里那一行也加好了。");
+    out.textContent = rows.join("\n");
+
+    // 选项每次按最新的报告重建：装完之后那一项要变成「已经 source 过了」。
+    const keep = rcSel.value;
+    rcSel.textContent = "";
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "不动我的 shell 配置";
+    rcSel.appendChild(none);
+    for (const c of r.rcCandidates) {
+      const o = document.createElement("option");
+      o.value = c.path;
+      o.textContent = c.sourced ? `${c.path}（已经 source 过了）` : c.path;
+      rcSel.appendChild(o);
+    }
+    if ([...rcSel.options].some((o) => o.value === keep)) rcSel.value = keep;
+  };
+
+  const call = async (dryRun: boolean): Promise<void> => {
+    try {
+      const r = await commands.write_account_aliases({
+        lines,
+        rcPath: rcSel.value || null,
+        dryRun,
+      });
+      renderReport(r);
+    } catch (e) {
+      out.textContent = `${dryRun ? "预览" : "写入"}失败：${String(e)}`;
+    }
+  };
+
+  const refresh = async (): Promise<void> => {
+    let names: string[];
+    try {
+      names = await loadAccounts();
+    } catch (e) {
+      out.textContent = `读不到这台机器上的账号：${String(e)}`;
+      return;
+    }
+    // 生成**全部**交给 `buildAliasLine`——本块不自己拼一个字节。
+    // ⚠ 先配对再过滤：先 `filter` 再按下标回头取账号名，下标会错位 ——
+    //   那一形会给账号 A 生成一条指向账号 B 的命令，而两行看起来都对。
+    lines = names
+      .map((account) => ({ account, alias: suggestAliasName(account) }))
+      .filter((p) => p.alias)
+      .map((p) => buildAliasLine(p.alias, { account: p.account }));
+    list.textContent = "";
+    for (const l of lines) {
+      const row = document.createElement("code");
+      row.className = "ccm-acct-alias-row";
+      row.textContent = l;
+      list.appendChild(row);
+    }
+    await call(true); // 预览：后端一个字节都不写
+  };
+
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    void call(false).finally(() => {
+      btn.disabled = false;
+    });
+  });
+  wrap.addEventListener("toggle", () => {
+    if (wrap.open) void refresh();
+  });
+  void refresh();
+  return wrap;
 }
 
 /** F08：别名生成器的 DOM——MASTERPLAN §0 推论③「自定义在组合层」的落点。只生成文本，

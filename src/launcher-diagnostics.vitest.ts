@@ -1,7 +1,11 @@
 // F08：越层启动器诊断 + 别名生成器——纯函数单测。只诊断+引导，本文件也锁死"不代改配置"
 // 这条边界（`diagnoseRemoteLauncher` 只返回文案，从不修改输入）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { diagnoseRemoteLauncher, buildAliasLine } from "./launcher-diagnostics";
+import {
+  diagnoseRemoteLauncher,
+  buildAliasLine,
+  suggestAliasName,
+} from "./launcher-diagnostics";
 
 describe("diagnoseRemoteLauncher", () => {
   it("空/纯空白 → 不诊断（走默认 claude，不算绕过）", () => {
@@ -188,5 +192,177 @@ describe("T03 迁移后：别名生成器的门与三句话", () => {
     expect(el.querySelector(".paste-block-activation")?.textContent).toContain(
       "新终端",
     );
+  });
+});
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-R49`：**加了账号，那条命令也该跟着有**
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("K-R49 suggestAliasName", () => {
+  it("账号名 → `<名>cc`（与 `cc-acct-iso shellinit` 那一族逐字同形）", () => {
+    expect(suggestAliasName("z")).toBe("zcc");
+    expect(suggestAliasName("b")).toBe("bcc");
+    expect(suggestAliasName("work")).toBe("workcc");
+  });
+  it("非法字符**丢掉**而不是换成下划线 —— 换成下划线会让 `a.b` 与 `a_b` 撞成同一个名字", () => {
+    expect(suggestAliasName("a.b")).toBe("abcc");
+    expect(suggestAliasName("a_b")).toBe("a_bcc");
+    expect(suggestAliasName("a.b")).not.toBe(suggestAliasName("a_b"));
+  });
+  it("数字打头 → 前缀 `_`（shell 函数名不许数字打头，而账号 0 正是那一形）", () => {
+    expect(suggestAliasName("0")).toBe("_0cc");
+    // 生成出来的名字必须**自己过得了** `buildAliasLine` 那道校验，否则界面上会出现
+    // 一条永远写不进去的命令。
+    expect(buildAliasLine(suggestAliasName("0"), { account: "0" })).toBe(
+      "_0cc() { ccm --account '0' \"$@\"; }",
+    );
+  });
+  it("整个名字都是非法字符 → 空串（调用方据此把它整条滤掉，而不是生成一个坏名字）", () => {
+    expect(suggestAliasName("...")).toBe("");
+    expect(suggestAliasName("")).toBe("");
+  });
+});
+
+describe("K-R49 buildAccountAliasBlock：每个账号一条命令，而且真落盘", () => {
+  let calls: { lines: string[]; rcPath: string | null; dryRun: boolean }[];
+
+  const report = (over: Record<string, unknown> = {}) => ({
+    aliasPath: "/h/.cc-monitor/account-aliases.sh",
+    names: ["zcc", "bcc"],
+    collisions: [],
+    rcCandidates: [{ path: "/h/.bashrc", sourced: false }],
+    wroteAliasFile: false,
+    aliasFileUnchanged: false,
+    wroteRc: false,
+    notes: ["这是预览：盘上一个字节都没动。"],
+    ...over,
+  });
+
+  beforeEach(async () => {
+    calls = [];
+    vi.resetModules();
+    vi.doMock("./ipc/commands", () => ({
+      commands: {
+        write_account_aliases: (a: {
+          lines: string[];
+          rcPath: string | null;
+          dryRun: boolean;
+        }) => {
+          calls.push(a);
+          return Promise.resolve(
+            report(a.dryRun ? {} : { wroteAliasFile: true, notes: ["已落盘"] }),
+          );
+        },
+      },
+    }));
+  });
+
+  async function mountBlock(
+    names: string[] = ["z", "b"],
+  ): Promise<HTMLElement> {
+    const mod = await import("./launcher-diagnostics");
+    const el = mod.buildAccountAliasBlock(async () => names);
+    document.body.appendChild(el);
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    return el;
+  }
+
+  it("每个账号一行，内容来自 `buildAliasLine`（本块一个字节都不自己拼）", async () => {
+    const el = await mountBlock();
+    const rows = [...el.querySelectorAll(".ccm-acct-alias-row")].map(
+      (r) => r.textContent,
+    );
+    expect(rows).toEqual([
+      "zcc() { ccm --account 'z' \"$@\"; }",
+      "bcc() { ccm --account 'b' \"$@\"; }",
+    ]);
+  });
+
+  it("★ 账号名与命令名**不许错位**：过滤掉不合法的名字之后，剩下的仍各配各的账号", async () => {
+    // `...` 生成不出名字会被滤掉；若实现先 filter 再按下标回头取账号名，
+    // `y` 这条就会拿到 `x` 的账号 —— 两行看起来都对，而其中一条指向了别的号。
+    const el = await mountBlock(["x", "...", "y"]);
+    const rows = [...el.querySelectorAll(".ccm-acct-alias-row")].map(
+      (r) => r.textContent,
+    );
+    expect(rows).toEqual([
+      "xcc() { ccm --account 'x' \"$@\"; }",
+      "ycc() { ccm --account 'y' \"$@\"; }",
+    ]);
+  });
+
+  it("挂上去就先**预览**（dryRun=true），且默认 `rcPath` 是 null —— 界面不替人选 shell 配置", async () => {
+    await mountBlock();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].dryRun).toBe(true);
+    expect(calls[0].rcPath).toBeNull();
+  });
+
+  it("rc 下拉的**默认项是「不动我的 shell 配置」**，候选来自后端报的那几份", async () => {
+    const el = await mountBlock();
+    const sel = el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!;
+    expect(sel.value).toBe("");
+    expect(sel.options[0].textContent).toContain("不动我的 shell 配置");
+    expect([...sel.options].map((o) => o.value)).toEqual(["", "/h/.bashrc"]);
+  });
+
+  it("按「写入」才真写（dryRun=false），而且带上当时选中的那份 rc", async () => {
+    const el = await mountBlock();
+    const sel = el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!;
+    sel.value = "/h/.bashrc";
+    el.querySelector<HTMLButtonElement>(".ccm-acct-alias-write")!.click();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(calls).toHaveLength(2);
+    expect(calls[1].dryRun).toBe(false);
+    expect(calls[1].rcPath).toBe("/h/.bashrc");
+    expect(calls[1].lines).toEqual([
+      "zcc() { ccm --account 'z' \"$@\"; }",
+      "bcc() { ccm --account 'b' \"$@\"; }",
+    ]);
+  });
+
+  it("🔴 `§0c 问三`：名字撞了要**在屏幕上出声**（后端报的那几条一条都不许吞）", async () => {
+    vi.resetModules();
+    vi.doMock("./ipc/commands", () => ({
+      commands: {
+        write_account_aliases: () =>
+          Promise.resolve(
+            report({
+              names: ["cc"],
+              collisions: ["`cc`：PATH 上已经有一个同名程序（/usr/bin/cc）"],
+            }),
+          ),
+      },
+    }));
+    const el = await mountBlock(["c"]);
+    expect(el.querySelector(".ccm-acct-alias-out")!.textContent).toContain(
+      "/usr/bin/cc",
+    );
+  });
+
+  it("落盘失败**不许静默** —— 屏幕上要说出是哪一步失败、以及为什么", async () => {
+    vi.resetModules();
+    vi.doMock("./ipc/commands", () => ({
+      commands: {
+        write_account_aliases: () => Promise.reject(new Error("盘满了")),
+      },
+    }));
+    const el = await mountBlock();
+    expect(el.querySelector(".ccm-acct-alias-out")!.textContent).toContain(
+      "盘满了",
+    );
+  });
+
+  it("文案说清落点**不是** `~/.bashrc`，而且说了「整份重写」这件事", async () => {
+    const el = await mountBlock();
+    const hint = el.querySelector(".ccm-acct-alias-hint")!.textContent ?? "";
+    expect(hint).toContain("不是你的 ~/.bashrc");
+    expect(hint).toContain("整份重写");
+    expect(hint).toContain("删了账号那条就没了");
   });
 });

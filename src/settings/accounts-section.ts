@@ -36,6 +36,8 @@ import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
+// `K-R49`：加了账号就把 `zcc` / `bcc` 那条命令也给出来（并真落盘到 cc-monitor 自己那份文件）。
+import { buildAccountAliasBlock, suggestAliasName } from "../launcher-diagnostics";
 import { SETTINGS_APPLIED_EVENT } from "./events";
 // Phase G：这两格此前**没有任何生产者**，见下面 `note()` 的注释。
 // `N-F2`：本机那条路也要写进同一本账 ⇒ 连本机那个 key 一起取，别在这儿长第二个名字。
@@ -494,6 +496,18 @@ export class AccountsSection {
     }
     box.appendChild(table);
     AccountsSection.line(box, "accounts-hint accounts-local-hint", LOCAL_ACCOUNTS_COPY.scopeHint);
+    // 🔴 `K-R49` 那两跳里的第一跳：**加了账号，这一节要提一句那条命令。**
+    // 此前这里渲染完就完了 —— 生成器住在设置面板另一个分组里，与这条流程互不相识，
+    // 用户 09-10 逐字「我现在添加了一个账号但是没法直接添加命令, 还得手动去改」。
+    // ⚠ 账号名**从这一支手上这份清单来**，不重新拉一遍：这一支刚刚读到的就是本机那份。
+    //
+    // ⚠⚠ **挂在 `this.body` 上，不是挂在 `box`（`.accounts-local`）里面** —— 这不是排版口味：
+    //   `NF1bD2` 那条判据断的是「`.accounts-local` 子树里的汉字全部来自 `LOCAL_ACCOUNTS_COPY`」，
+    //   而这一块的文案有**自己的家**（它同时挂在设置面板的「行为」组里，两处同一份）。
+    //   塞进那棵子树等于宣称它的文案归账号文案表管，那是把一份文案说成两个主人。
+    this.body.appendChild(
+      buildAccountAliasBlock(async () => state.accounts.map((a) => a.name)),
+    );
   }
 
   /**
@@ -1002,6 +1016,20 @@ export class AccountsSection {
     });
     addForm.append(nameIn, credIn, addBtn, addErr);
     box.appendChild(addForm);
+    // 🔴 `K-R49` 第一跳的另一半：**「加账号」那个按钮旁边要说出下一步。**
+    // 那条终端跑完之后用户回到这里点「刷新」，而在此之前没有任何东西告诉他
+    //「命令」这件事存在。这一行随名字实时变，说的是**他这次要加的那个号**。
+    const nextCmd = document.createElement("div");
+    nextCmd.className = "accounts-maint-nextcmd";
+    const syncNextCmd = (): void => {
+      const alias = suggestAliasName(nameIn.value.trim());
+      nextCmd.textContent = alias
+        ? `加完之后到「设置 → 行为 → 按账号生成命令」里一键写入 —— 这个号的命令会叫 ${alias}。`
+        : "加完之后到「设置 → 行为 → 按账号生成命令」里给每个号一键生成对应命令。";
+    };
+    nameIn.addEventListener("input", syncNextCmd);
+    syncNextCmd();
+    box.appendChild(nextCmd);
     syncAdd();
 
     // 自检 / 补链。
@@ -1026,6 +1054,12 @@ export class AccountsSection {
     ops.append(verifyBtn, syncBtn, rcBtn);
     box.appendChild(ops);
     box.appendChild(rcBox);
+    // 🔴 `K-R49`：**这一条路上刻意只给一句指路话，不把那一块搬过来。**
+    // 这张表显的是**远端那台**的账号，而别名是给**本机 shell** 用的
+    // （`ccm --account <名>` 在这台机器上跑）⇒ 在这里挂那一块就得去读本机账号，
+    // 而 `NF1bD3` 那条判据逐字断的正是「配了远端时，本机那条读口一次都不该被调」。
+    // 它守的是「远端页上不许渲染本机的账号」，那条性质是对的 —— 所以这里让路，
+    // 改成把人指到它真正的家（设置 → 行为）。
     wrap.appendChild(box);
     return wrap;
   }
@@ -1036,8 +1070,19 @@ export class AccountsSection {
    * **单一来源留在 bash**：片段由远端 `cc-acct-iso shellinit` 产出，本文件**不重新生成一份**
    * ——那会多一个跨语言双写点（本工作区反复在治的病）。抓到什么贴什么。
    *
-   * **绝不代写**：只产出文本 + 复制按钮，写 `~/.bashrc` 是用户明令的红线（`paste-block.ts`
-   * 的模块头也写死了「本文件没有、也不得有任何写入路径」）。
+   * **这一块绝不代写**：只产出文本 + 复制按钮（`paste-block.ts` 的模块头也写死了
+   * 「本文件没有、也不得有任何写入路径」）。
+   *
+   * 🔴 `K-R49`（09-10）订正这一段原先那句全称 —— 它逐字写着「**写 `~/.bashrc` 是用户明令
+   * 的红线**」，而那句话今天只对**这一块**成立，别拿它去撤别处的活：
+   * - 仍然成立的是「**不问自取**」那一半：没有用户当次手势就写他的 shell 配置，禁。
+   * - 用户 09-10 逐字要的是反过来的事：「**我现在添加了一个账号但是没法直接添加命令,
+   *   还得手动去改**」⇒ 按账号生成命令那一块（`buildAccountAliasBlock`）**会真落盘**，
+   *   而它把代价压到最小：重写的是 cc-monitor 自己那份文件，用户的 rc 最多多一行 `source`，
+   *   且那份 rc 由他在下拉里自己选。整条推理住 `launcher-diagnostics.ts` 的模块头注。
+   * - **这一块为什么仍然不代写**：它抓的是**远端** `cc-acct-iso shellinit` 的输出，
+   *   而落盘那一侧今天在远端没有主人（`parity_ledger` 的 `alias.account-commands` 那行
+   *   逐条记着欠什么）—— 是**还没做**，不是「不许做」。
    */
   private async renderRcSnippet(btn: HTMLButtonElement, box: HTMLElement): Promise<void> {
     const host = this.currentHost();

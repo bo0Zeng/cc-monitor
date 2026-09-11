@@ -879,7 +879,10 @@ const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// **F02 起本块只剩「别名层」**：唯一实现搬进 [`CCM_CLI_SCRIPT`]（部署为可执行文件）。
 /// 理由：shell 函数**优先于 PATH**，装成函数则与用户已有同名函数硬冲突且必然被遮蔽（实测）；
 /// 且远端是 zsh/fish 时 `.bashrc` 根本不被 source，函数形态拿不到（审计 D2）。
-const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-aliases.sh");
+/// ⚠ `K-R49` 起它是 `pub(crate)`：`account_aliases::collision_note` 要问
+/// 「`cc` / `cch` / `cct` 这几个名字是不是已经被自带的别名块占了」，
+/// 而那个答案**只有这份文件说了算** —— 在那边抄一份名字清单就是第二个住址。
+pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-aliases.sh");
 
 /// F02：统一启动 CLI 本体，部署为远端 `~/.local/bin/ccm`（0755 可执行文件）。
 /// 它独占 L1 容器 / L2 环境 / L5 身份的实现——**环境必须在最终 exec 的那个 shell 里设**，
