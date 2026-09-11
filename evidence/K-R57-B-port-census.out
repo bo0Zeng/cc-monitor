@@ -1,0 +1,115 @@
+==============================================================================
+K-R57 摸底量具 B · 装的口 / 查的口 / 卸的口 —— 代码侧普查
+==============================================================================
+量具住址 ：evidence/K-R57-B-port-census.py
+被测对象 ：/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r57
+           分支 track/k-r57 · sha d4b18a9b2404b293839c5c575d3b32bbb1c6ab68
+分母①   ：`generate_handler![...]` 解析出 **146** 个 IPC 命令
+分母②   ：`parity_ledger::LEDGER` 解析出 **146** 条 (命令, 能力, Side)
+
+──────────────────────────────────────────────────────────────────────────────
+【0】两张表先对拍 —— 差集非空时，下面按 Side 分的数**不可信**
+──────────────────────────────────────────────────────────────────────────────
+  只在 generate_handler 里、不在 LEDGER 里：0 个 []
+  只在 LEDGER 里、不在 generate_handler 里：0 个 []
+  ⇒ 两表一致，下面的 Side 数可信
+
+──────────────────────────────────────────────────────────────────────────────
+【1】按动词分档（分类规则住 `VERBS`，逐条可核）
+──────────────────────────────────────────────────────────────────────────────
+  【装】共 10 个 / 分母 146
+      Local        cc_integration_install
+      Local        deploy_local_cc_bus
+      Remote       deploy_remote_acct_iso
+      Remote       deploy_remote_daemon
+      Remote       install_remote_ccm_helper
+      Local        write_account_aliases
+      Local        write_project_mcp_server
+      Local        write_relay_credentials_key
+      Remote       write_remote_mcp_server
+      Local        write_skill_file
+
+  【卸】共 5 个 / 分母 146
+      Local        cc_integration_uninstall
+      Local        remove_project_mcp_server
+      Remote       remove_remote_mcp_server
+      Remote       uninstall_remote_ccm_helper
+      Remote       uninstall_remote_daemon
+
+  【生成待贴】共 4 个 / 分母 146
+      Local        cc_integration_preview
+      Remote       remote_acct_iso_shellinit
+      Remote       render_ccm_launch
+      Remote       render_launch_payload
+
+  【查】共 14 个 / 分母 146
+      Local        cc_bus_install_state
+      Local        cc_integration_scan_path
+      Local        cc_integration_status
+      Remote       check_account_trust
+      Both         check_cc_bus_agent_online
+      Remote       check_remote_acct_iso
+      Both         daemon_status
+      Local        diagnose_local_cc_bus_hooks
+      Remote       diagnose_remote_cc_bus_hooks
+      Local        get_search_index_status
+      Local        panorama_status
+      Remote       probe_ccm_cli
+      Both         read_cc_bus_state
+      Local        read_relay_credentials_status
+
+  【其它】113 个 —— **整份印出来**，让读者自己核有没有漏分：
+      account_usage  account_usage_local  aggregate_remote_usage_all  aggregate_usage_all  bring_monitor_to_front  bring_remote_terminal_to_front  bring_terminal_to_front  capture_remote_pane  cc_bus_broadcast  cc_bus_kill  cc_bus_send  cc_bus_spawn  cc_get_auto_launch  cc_set_auto_launch  config_surface_report  create_branch_session  create_remote_branch_session  daemon_machines  daemon_send_into  daemon_start  daemon_stop  delete_history_session  delete_remote_history_session  drift_ledger_report  forget_session  frontend_perf_log  get_data_paths  get_diagnostics_config  get_log_file_info  get_session_tasks  import_ssh_hosts  kill_remote_tmux  launch_remote_terminal  list_active_sessions  list_forwards  list_history_projects  list_last_accounts  list_local_accounts  list_local_session_accounts  list_local_tmux  list_mcp_project_dirs  list_plugin_marketplaces  list_remote_accounts  list_remote_history_projects  list_remote_mcp_origins  list_remote_mcp_project_dirs  list_remote_session_accounts  list_remote_tmux  list_session_activity  list_skills  list_ssh_host_aliases  load_config  load_subagent  new_local_session  open_log_dir  open_log_file  open_session_in_new_window  open_settings_window  panorama_add_annotation  panorama_approve_annotation  panorama_callees  panorama_callers  panorama_docs_for  panorama_drift  panorama_impact  panorama_index  panorama_list_annotations  panorama_node  panorama_overview  panorama_propose_annotation  panorama_reindex  panorama_remove_annotation  panorama_remove_doc_link  panorama_search  panorama_subgraph  panorama_symbols_in_file  panorama_touching  panorama_write_doc_link  push_public_key  read_cc_bus_inbox  read_mcp_servers  read_remote_mcp_servers  read_remote_project_mcp  read_skill_file  rebuild_search_index  relay_routing_for  replay_session_to_window  resolve_ssh_host  resume_history_session  save_config  search_history  set_daemon_kill_on_exit  set_diagnostics_config  sftp_cancel_transfer  sftp_delete  sftp_download  sftp_list_dir  sftp_mkdir  sftp_read_text_for_edit  sftp_realpath  sftp_rename  sftp_stat  sftp_upload  sftp_write_text  start_forward  stop_forward  stream_history_sessions_in_project  stream_read_remote_session  stream_read_session_jsonl  stream_remote_history_sessions  test_remote_connection  tmux_send_keys  update_history_metadata
+
+──────────────────────────────────────────────────────────────────────────────
+【2】🔴 正题所在 —— 装 / 卸 / 查 三档各自的**本机侧 : 远端侧**
+──────────────────────────────────────────────────────────────────────────────
+  档     Local  Remote   Both     缺登记   本机 : 远端
+  装         6       4      0       0   6 : 4
+       Local ：['cc_integration_install', 'deploy_local_cc_bus', 'write_account_aliases', 'write_project_mcp_server', 'write_relay_credentials_key', 'write_skill_file']
+       Remote：['deploy_remote_acct_iso', 'deploy_remote_daemon', 'install_remote_ccm_helper', 'write_remote_mcp_server']
+  卸         2       3      0       0   2 : 3
+       Local ：['cc_integration_uninstall', 'remove_project_mcp_server']
+       Remote：['remove_remote_mcp_server', 'uninstall_remote_ccm_helper', 'uninstall_remote_daemon']
+  生成待贴      1       3      0       0   1 : 3
+       Local ：['cc_integration_preview']
+       Remote：['remote_acct_iso_shellinit', 'render_ccm_launch', 'render_launch_payload']
+  查         7       4      3       0   7 : 4
+       Local ：['cc_bus_install_state', 'cc_integration_scan_path', 'cc_integration_status', 'diagnose_local_cc_bus_hooks', 'get_search_index_status', 'panorama_status', 'read_relay_credentials_status']
+       Remote：['check_account_trust', 'check_remote_acct_iso', 'diagnose_remote_cc_bus_hooks', 'probe_ccm_cli']
+       Both  ：['check_cc_bus_agent_online', 'daemon_status', 'read_cc_bus_state']
+
+  ⚠ 口径：这几个数的人群是「**IPC 口**」，不是「**装得上的东西**」。
+    一个东西可能有 0 个 IPC 口而照样在盘上（用户自己装的），也可能有口而装不上。
+    ⇒ 拿这张表答「环境齐了没有」是**分母对不上**；它只答「app 今天伸出了几只手」。
+
+──────────────────────────────────────────────────────────────────────────────
+【3】`tool_registry::TOOLS` —— 仓里**唯一一张**「受管工具」声明表，现打
+──────────────────────────────────────────────────────────────────────────────
+  分母：6 条
+  id                   installable  uninstallable
+  ccm                  true         true
+  cc-bus               false        false
+  cc-acct-iso          true         false
+  remote-daemon        true         false
+  project-mcp          true         true
+  powershell-profile   true         true
+
+  反向表 `NOT_MANAGED`（刻意不收的）：解析出 2 条 ['code-picture', 'planned-build']
+
+  ⚠ 这张表**自己的头注**逐字写着它守不住什么：
+    「新增一个『会在用户机器上留下东西』的写点，**没有任何东西逼它申报**」
+    ⇒ 它是「**人现在记得**的清单」，不是「**真实发生的安装动作**」的清单。
+    ⇒ 拿它当「环境清单」用之前，必须先与【1】那张口表对拍（见下一节）。
+
+──────────────────────────────────────────────────────────────────────────────
+【4】🔴 表与口对拍 —— 「表里说装不了」而「口真的在」的，逐条点名
+──────────────────────────────────────────────────────────────────────────────
+  映射住本量具的 `PORT_OF_TOOL`（**人手写的**，不是盘上登记 —— 如实记）
+  ccm                  installable=true   盘上真有的口：['install_remote_ccm_helper', 'uninstall_remote_ccm_helper']
+  cc-bus               installable=false  盘上真有的口：['deploy_local_cc_bus', 'cc_bus_install_state']  🔴 表说 installable:false，而口真的在
+  cc-acct-iso          installable=true   盘上真有的口：['deploy_remote_acct_iso', 'check_remote_acct_iso']
+  remote-daemon        installable=true   盘上真有的口：['deploy_remote_daemon', 'uninstall_remote_daemon']
+  project-mcp          installable=true   盘上真有的口：['write_project_mcp_server', 'remove_project_mcp_server']
+  powershell-profile   installable=true   盘上真有的口：['cc_integration_install', 'cc_integration_uninstall']
+

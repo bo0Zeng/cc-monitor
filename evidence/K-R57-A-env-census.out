@@ -1,0 +1,219 @@
+==============================================================================
+K-R57 摸底量具 A · 这台机器上 app 要的环境齐了没有 —— 只读普查
+==============================================================================
+量于          ：2026-09-11 15:09:36 -0700
+量具住址      ：evidence/K-R57-A-env-census.py（工作树 .claude/worktrees/k-r57）
+被测对象      ：用户这台机器的真实盘面（HOME=/home/zbl）
+python        ：3.14.4
+写口           ：**零** —— 本量具不 open('w')、不执行用户机器上的任何程序
+分档           ：在 / 不在 / 判不了（三值，第三档不许写成前两档）
+
+──────────────────────────────────────────────────────────────────────────────
+【一】app 要用到的**外部命令** —— 现打 PATH 解析（`shutil.which`，不执行）
+──────────────────────────────────────────────────────────────────────────────
+PATH 分母：18 段
+
+  在    claude           /home/zbl/.local/bin/claude
+        └ 符号链接 -> /home/zbl/.local/share/claude/versions/2.1.269（realpath /home/zbl/.local/share/claude/versions/2.1.269）；mtime 2026-09-11 12:39    [Claude Code CLI 本体]
+  在    tmux             /usr/bin/tmux
+        └ 普通文件 1213112 字节；可执行；mtime 2026-06-13 16:25    [会话托管]
+  在    git              /usr/bin/git
+        └ 普通文件 4547768 字节；可执行；mtime 2026-03-02 09:55    [skill_host / history]
+  在    ssh              /usr/bin/ssh
+        └ 普通文件 924800 字节；可执行；mtime 2026-08-31 11:36    [远端那一侧]
+  在    bash             /usr/bin/bash
+        └ 普通文件 1540520 字节；可执行；mtime 2026-02-13 04:16    [cc-bus / ccm_probe]
+  在    sh               /usr/bin/sh
+        └ 符号链接 -> dash（realpath /usr/bin/dash）；mtime 2026-02-02 12:26    [tmux.rs / account_usage]
+  在    pgrep            /usr/bin/pgrep
+        └ 普通文件 39544 字节；可执行；mtime 2025-12-01 11:50    [cc_bus.rs:2778]
+  在    xdg-terminal-exec /usr/bin/xdg-terminal-exec
+        └ 普通文件 43659 字节；可执行；mtime 2025-11-16 11:06    [launch.rs::TERMINAL_EXITS]
+  在    x-terminal-emulator /usr/bin/x-terminal-emulator
+        └ 符号链接 -> /etc/alternatives/x-terminal-emulator（realpath /usr/bin/ptyxis）；mtime 2026-04-15 01:52    [曾在候选表里、D 阶段撤掉]
+  不在  gnome-terminal   （PATH 里解析不到）    [对照项]
+  不在  kitty            （PATH 里解析不到）    [对照项]
+  不在  alacritty        （PATH 里解析不到）    [对照项]
+  在    xdg-open         /usr/bin/xdg-open
+        └ 普通文件 32285 字节；可执行；mtime 2025-12-06 03:08    [lib.rs:2329]
+  不在  icacls           （PATH 里解析不到）    [profile_installer.rs]
+  不在  wt.exe           （PATH 里解析不到）    [launch.rs:533]
+  不在  powershell.exe   （PATH 里解析不到）    [launch.rs:544]
+  在    ccm              /home/zbl/.local/bin/ccm
+        └ 普通文件 31364 字节；可执行；mtime 2026-07-27 17:36    [旧那份（第 4 问）]
+  在    node             /usr/bin/node
+        └ 普通文件 26856 字节；可执行；mtime 2026-03-12 01:05    [MCP server 常见宿主]
+  在    npx              /usr/bin/npx
+        └ 符号链接 -> ../share/nodejs/npm/bin/npx-cli.js（realpath /usr/share/nodejs/npm/bin/npx-cli.js）；mtime 2026-03-01 10:23    [MCP server 常见宿主]
+  不在  rg               （PATH 里解析不到）    [ripgrep]
+
+  ⚠ 版本一栏**判不了（没敢执行）** —— 红线是「一个字节都不许写用户机器」，
+    而本量具判不了 `claude --version` / `ccm --ccm-probe` 会不会顺手写 `~/.claude`。
+    要判得了，缺的是：在沙箱里各跑一次带 strace/inotify 的写面观测。
+
+──────────────────────────────────────────────────────────────────────────────
+【二】`claude_dir` 解析 —— 照 `paths.rs::resolve_claude_dir` 的三级顺序现打
+──────────────────────────────────────────────────────────────────────────────
+  ① 用户配置覆盖（monitor settings）：本量具**判不了**（要读 monitor 的 user-data，
+     而那份路径由 `resolve_monitor_data_dir` 算 ⇒ `~/.claude/claudecode-frontend/`）
+     在  /home/zbl/.claude/claudecode-frontend  —— 目录；mtime 2026-07-26 04:47
+  ② 环境变量 CLAUDE_CONFIG_DIR：/home/zbl/.claude-accts/b
+     在  目录；mtime 2026-09-11 15:06
+  ③ 默认 `~/.claude`：
+     在  /home/zbl/.claude  —— 目录；mtime 2026-09-11 15:00
+  ⇒ 本量具按 `/home/zbl/.claude-accts/b` 往下量（与 app 的②③两级同口径；①那级判不了，如实记）
+
+──────────────────────────────────────────────────────────────────────────────
+【三】skill 面 —— `<claude_dir>/skills/`
+──────────────────────────────────────────────────────────────────────────────
+  目录在，共 11 项
+  逐条：cc-acct-iso, cc-bus, code-picture, controversy-analysis, full-audit, handover, planned-build, progress, quality-gates, research-method, video-read
+  在  skills/cc-bus  —— 目录；mtime 2026-07-18 19:52
+  在  skills/planned-build  —— 目录；mtime 2026-09-10 08:50
+  在  skills/cc-acct-iso  —— 目录；mtime 2026-07-23 18:59
+      cc-bus 目录下文件数现打 45（`cc_bus_deploy::FILES` 内嵌 17 个 —— 两数不等不必然是病：装法可能另有产物）
+      备份目录（`cc-bus.bak-*`，`deploy_local_cc_bus` 留的）：目录在，共 11 项（分母）；匹配 `cc-bus\.bak-` 的 0 项
+
+──────────────────────────────────────────────────────────────────────────────
+【四】cc-bus 钩子 —— `<claude_dir>/settings.json`（`hooks_diag` 的口径，只读）
+──────────────────────────────────────────────────────────────────────────────
+  在  /home/zbl/.claude-accts/b/settings.json  —— 符号链接 -> /home/zbl/.claude/settings.json（realpath /home/zbl/.claude/settings.json）；mtime 2026-07-26 17:41
+  hooks 段事件分母：3 个（PreToolUse, SessionStart, Stop）
+  在  hooks.SessionStart 里提到 `cc-register`：True
+  在  hooks.Stop 里提到 `cc-bus-stop-hook`：True
+
+──────────────────────────────────────────────────────────────────────────────
+【五】`~/.local/bin/` —— 旧那份 `ccm` 与 cc-bus 的 11 条软链都住这儿
+──────────────────────────────────────────────────────────────────────────────
+  目录在，共 42 项
+  `cc-*` 现打 12 条（`tool_registry` 那条 touch 的注释写着「11 条 + cc-acct-iso ⇒ 计数偏大 1」）：
+      在  cc-acct-iso            符号链接 -> /home/zbl/.claude/skills/cc-acct-iso/scripts/cc-acct-iso（realpath /home/zbl/.claude/skills/cc-acct-iso/scripts/cc-acct-iso）；mtime 2026-07-26 17:30
+      在  cc-agents              符号链接 -> /home/zbl/.claude/skills/cc-bus/scripts/cc-agents（realpath /home/zbl/.claude/skills/cc-bus/scripts/cc-agents）；mtime 2026-07-17 21:13
+      在  cc-broadcast           符号链接 -> /home/zbl/.claude/skills/cc-bus/scripts/cc-broadcast（realpath /home/zbl/.claude/skills/cc-bus/scripts/cc-broadcast）；mtime 2026-07-17 21:13
+      在  cc-bus-stop-hook       符号链接 -> /home/zbl/.claude/skills/cc-bus/scripts/cc-bus-stop-hook（realpath /home/zbl/.claude/skills/cc-bus/scripts/cc-bus-stop-hook）；mtime 2026-07-17 21:13
+      在  cc-busd                符号链接 -> /home/zbl/.claude/skills/cc-bus/scripts/cc-busd（realpath /home/zbl/.claude/skills/cc-bus/scripts/cc-busd）；mtime 2026-07-17 21:13
+      在  cc-kill                符号链接 -> /home/zbl/.claude/skills/cc-bus/scripts/cc-kill（realpath /home/zbl/.claude/skills/cc-bus/scripts/cc-kill）；mtime 2026-07-17 21:13
+      在  cc-list                符号链接 -> /home/zbl/.claude/skills/cc-bus/scripts/cc-list（realpath /home/zbl/.claude/skills/cc-bus/scripts/cc-list）；mtime 2026-07-17 21:13
+      在  cc-recv                符号链接 -> /home/zbl/.claude/skills/cc-bus/scripts/cc-recv（realpath /home/zbl/.claude/skills/cc-bus/scripts/cc-recv）；mtime 2026-07-17 21:13
+      在  cc-register            符号链接 -> /home/zbl/.claude/skills/cc-bus/scripts/cc-register（realpath /home/zbl/.claude/skills/cc-bus/scripts/cc-register）；mtime 2026-07-17 21:13
+      在  cc-send                符号链接 -> /home/zbl/.claude/skills/cc-bus/scripts/cc-send（realpath /home/zbl/.claude/skills/cc-bus/scripts/cc-send）；mtime 2026-07-17 21:13
+      在  cc-spawn               符号链接 -> /home/zbl/.claude/skills/cc-bus/scripts/cc-spawn（realpath /home/zbl/.claude/skills/cc-bus/scripts/cc-spawn）；mtime 2026-07-17 21:13
+      在  cc-whoami              符号链接 -> /home/zbl/.claude/skills/cc-bus/scripts/cc-whoami（realpath /home/zbl/.claude/skills/cc-bus/scripts/cc-whoami）；mtime 2026-07-17 21:13
+  在  ~/.local/bin/ccm  —— 普通文件 31364 字节；可执行；mtime 2026-07-27 17:36
+  不在  ~/.local/bin/cc-monitor  —— 不存在
+  在  ~/.local/bin/claude  —— 符号链接 -> /home/zbl/.local/share/claude/versions/2.1.269（realpath /home/zbl/.local/share/claude/versions/2.1.269）；mtime 2026-09-11 12:39
+
+──────────────────────────────────────────────────────────────────────────────
+【六】`~/.cc-monitor/` —— app **自己的**目录（后端自释放 + 账号别名文件）
+──────────────────────────────────────────────────────────────────────────────
+  目录在，共 2 项
+  逐条：bin, e2e
+  bin/：目录在，共 3 项
+      在  .build_id                                普通文件 16 字节；mtime 2026-09-11 10:12
+      在  cc-monitor-remote                        普通文件 2416192 字节；可执行；mtime 2026-09-11 10:12
+      在  wrap.log                                 普通文件 99 字节；mtime 2026-07-08 21:14
+      ⇒ 本机自释放件（`cc-monitor-local-<build_id>`）现打 0 份；远端自部署件 1 份
+  不在  ~/.cc-monitor/account-aliases.sh  —— 不存在
+
+──────────────────────────────────────────────────────────────────────────────
+【七】运行期目录与账号库
+──────────────────────────────────────────────────────────────────────────────
+  在  /home/zbl/.cc-bus  —— 目录；mtime 2026-09-11 09:14   [cc-bus 运行期状态（inbox/名册/队列/日志）]
+        目录在，共 11 项
+        逐条：agents.tsv, agents.tsv.lock, config.example, inbox, log, policy.tsv.example, queue, spawned.tsv, spawned.tsv.lock, state, whoami-debug.log
+  在  /home/zbl/.claude-accts  —— 目录；mtime 2026-09-11 13:16   [cc-acct-iso 账号库]
+        目录在，共 13 项
+        逐条：.backup-20260726-173951, .backup-20260726-174102, .backup-20260730-221128, .backup-20260906-071630, .backup-20260909-194215, .lock, accounts.json, b, haoyang, hn, hn-u, q, z
+
+──────────────────────────────────────────────────────────────────────────────
+【八】rc 文件 —— 🔴 `K34` 裁定三：**写可以给按钮，删要用户自己来** ⇒ 两栏分开量
+──────────────────────────────────────────────────────────────────────────────
+  在  ~/.bashrc  —— 普通文件 6457 字节；mtime 2026-09-08 05:22
+        分母：159 行
+        不在  围栏 `# === cc-monitor BEGIN`：零命中   [app 自己的 PowerShell/cc 块围栏（`profile_installer`）]
+        不在  围栏 `# === cc-monitor aliases BEGIN`：零命中   [app 自己的账号别名 source 行围栏（`account_aliases`）]
+        不在  围栏 `# === ccm BEGIN`：零命中   [远端那侧 `sftp::CCM_PROFILE_BEGIN` 形状（本机对照）]
+        在  提到 `ccm` 的行：14 行 [120, 133, 134, 137, 140, 141, 142, 143, 144, 145, 147, 148]
+        在  提到 `.local/bin` 的行：3 行 [120, 121, 133]
+        不在  提到 `cc-acct-iso` 的行：0 行 []
+        不在  提到 `account-aliases` 的行：0 行 []
+            L120: # 确保 ~/.local/bin 在 PATH (claude 与 ccm 都装在这)
+            L133: # 唯一实现 = ~/.local/bin/ccm (可执行文件, 不是函数 -> zsh/fish 也能用)
+            L134: #   ccm [动作] [修饰...] [-- 透传给 agent]
+            L137: #   代理/工作区/账号库路径 -> ~/.config/ccm/config     (`ccm --help` 看全部)
+            L140: cc()   { ccm "$@"; }                              # 智能选目录 (原 cc)
+            L141: cch()  { ccm --cwd . "$@"; }                      # 当前目录直起 (原 ccm 的语义)
+            L142: cct()  { ccm --tmux "$@"; }                       # tmux 里起 (原 cct)
+            L143: oo()   { ccm --agent codex "$@"; }                # 原 oo
+            L144: ooh()  { ccm --agent codex --cwd . "$@"; }        # 原 oom
+            L145: oot()  { ccm --tmux --agent codex "$@"; }         # 原 oot
+            L147: zcc()  { ccm --account z "$@"; }
+            L148: zcct() { ccm --tmux --account z "$@"; }
+            L149: bcc()  { ccm --account b "$@"; }
+            L150: bcct() { ccm --tmux --account b "$@"; }
+  不在  ~/.zshrc  —— 不存在
+  不在  ~/.bash_profile  —— 不存在
+  在  ~/.profile  —— 普通文件 852 字节；mtime 2026-07-10 05:56
+        分母：29 行
+        不在  围栏 `# === cc-monitor BEGIN`：零命中   [app 自己的 PowerShell/cc 块围栏（`profile_installer`）]
+        不在  围栏 `# === cc-monitor aliases BEGIN`：零命中   [app 自己的账号别名 source 行围栏（`account_aliases`）]
+        不在  围栏 `# === ccm BEGIN`：零命中   [远端那侧 `sftp::CCM_PROFILE_BEGIN` 形状（本机对照）]
+        不在  提到 `ccm` 的行：0 行 []
+        在  提到 `.local/bin` 的行：2 行 [25, 26]
+        不在  提到 `cc-acct-iso` 的行：0 行 []
+        不在  提到 `account-aliases` 的行：0 行 []
+
+  ⚠ 本节只量「rc 里今天有什么」。「谁能写进去 / 谁能删掉」是**代码侧**的读数，
+    住 `evidence/K-R57-B-port-census.out`，两者别混成一栏。
+
+──────────────────────────────────────────────────────────────────────────────
+【九】🔴 第 4 问 —— **还有谁在用 `~/.local/bin/ccm`**（现打，只读 grep）
+──────────────────────────────────────────────────────────────────────────────
+  被找的那个：在  /home/zbl/.local/bin/ccm  —— 普通文件 31364 字节；可执行；mtime 2026-07-27 17:36
+  头 6 行逐字：
+      L1: #!/usr/bin/env bash
+      L2: # ccm — cc-monitor 统一启动器（unify-launch F02）
+      L3: #
+      L4: # 核心思想（MASTERPLAN §0）：把「起一个会话」从一堆写死的命令，变成
+      L5: # **一个动作 + 若干正交修饰**；并让这个模型在 IR、CLI、UI 三处是同一个。
+      L6: # 本文件是它在 shell 侧的投影，也是 app 与终端的**唯一共同实现**。
+
+  在下面这几片**只读**扫「提到 ccm 的文件」。每片先给分母（扫了几个文件）：
+  [用户 PATH 上的脚本] /home/zbl/.local/bin
+      分母：读得动的普通文件 8 个（软链跳过、>2MB 跳过）
+      命中 `\bccm\b` 的文件 1 个
+        · ~/.local/bin/ccm  （42 行：[2, 8, 13, 22, 25, 29, 30, 31]）
+  [已装的 skill（cc-bus 的 cc-spawn 就调 ccm）] /home/zbl/.claude-accts/b/skills
+      分母：读得动的普通文件 296 个（软链跳过、>2MB 跳过）
+      命中 `\bccm\b` 的文件 0 个
+  [app 自己的目录] /home/zbl/.cc-monitor
+      分母：读得动的普通文件 3 个（软链跳过、>2MB 跳过）
+      命中 `\bccm\b` 的文件 0 个
+
+──────────────────────────────────────────────────────────────────────────────
+【十】app 本体今天在这台机器上装没装（决定「自释放」那条路走不走得到）
+──────────────────────────────────────────────────────────────────────────────
+  不在  /usr/bin/cc-monitor  —— 不存在
+  不在  /usr/local/bin/cc-monitor  —— 不存在
+  不在  /opt/cc-monitor  —— 不存在
+  不在  /home/zbl/.local/bin/cc-monitor  —— 不存在
+  不在  /usr/lib/cc-monitor  —— 不存在
+  PATH 解析 `cc-monitor`：解析不到
+
+──────────────────────────────────────────────────────────────────────────────
+【十一】🔴 `K34` 点名的「装 skill」—— 盘上装着的 vs app 认识的 vs app 装得了的
+──────────────────────────────────────────────────────────────────────────────
+  app **认识**的 skill（`skill_host::SKILLS`）：2 条 ['planned-build', 'cc-bus']
+      各自的 install 档：[('planned-build', 'NotSupported'), ('cc-bus', 'ManagedTool')]
+      ⇒ 其中 `ManagedTool`（真装得了的）1 条；`NotSupported` 1 条
+  盘上**装着**的 skill：11 条（分母 = `/home/zbl/.claude-accts/b/skills` 的目录项数）
+  ⇒ 装着而 app **不认识**的：['cc-acct-iso', 'code-picture', 'controversy-analysis', 'full-audit', 'handover', 'progress', 'quality-gates', 'research-method', 'video-read']
+  ⇒ app 认识而盘上**没有**的：[]
+
+  ⚠ 口径：「app 认识」= 它在 `SKILLS` 里有一条声明（于是界面能列它、能编它那个收件箱）。
+    「app 装得了」= 那条声明是 `ManagedTool(id)` 且 `TOOLS` 里那条真有落点。
+    两者都**不等于**「这个 skill 在这台机器上能跑」——那还要它自己的依赖齐。
+
+==============================================================================
+读数完。三值分档，凡写「判不了」的都在同一行写了缺什么才判得了。
+==============================================================================
