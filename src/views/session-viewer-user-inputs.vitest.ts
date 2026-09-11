@@ -53,12 +53,12 @@ async function mount(lines: RigPayload[]): Promise<SessionViewer> {
 }
 
 const rowsOf = (v: SessionViewer): HTMLButtonElement[] => [
-  ...v.element.querySelectorAll<HTMLButtonElement>(".session-viewer-input-row"),
+  ...v.element.querySelectorAll<HTMLButtonElement>(".user-input-row"),
 ];
 const toggleOf = (v: SessionViewer): HTMLButtonElement =>
-  v.element.querySelector<HTMLButtonElement>(".session-viewer-inputs-toggle")!;
+  v.element.querySelector<HTMLButtonElement>(".user-inputs-toggle")!;
 const panelOf = (v: SessionViewer): HTMLElement =>
-  v.element.querySelector<HTMLElement>(".session-viewer-inputs")!;
+  v.element.querySelector<HTMLElement>(".user-inputs")!;
 /**
  * 🔴 **找卡一律限定在消息流容器里**。`[data-uuid]` 在本仓只有一个意思（渲染出来的消息卡），
  * 而清单行是另一种东西 —— 早期一版把行也写成 `data-uuid`，这个判据当场把两者混在一起
@@ -192,6 +192,30 @@ describe("KR45D1 点一下跳过去", () => {
     expect(rig.scrollIntoView).not.toHaveBeenCalled();
   });
 
+  // ★★ 顶了 PM 一句话，这一格就是那句话的读数（件 `§5.5`）。
+  //    PM 给「跳成功时标记要删掉」的可达性理由是「**查看器**分批渲染，T 没渲染、T+1 渲染出来」。
+  //    实测**对查看器不成立**：`scrollToMessage` 跳之前会先把目标那一段渲出来，
+  //    所以查看器里一行被标上 `unjumpable`，当且仅当那条记录**渲染出来就是空的** ——
+  //    而那是永久的。下面这一格把「永久」钉住：整个会话一条不剩地渲染完了，它照样没有卡，
+  //    再点一次还是标着。⇒「不可跳 → 可跳」这条转移的**真住址是实时窗口**
+  //    （`live-user-inputs.vitest.ts` 那条「上翻补批之后再点」是它的活体）。
+  it("查看器这一侧：跳空是**永久**的（全渲染完照样不建卡）⇒ 转移的真住址不在这里", async () => {
+    const v = await mount([
+      userLine(1, "u1", "第一句"),
+      userLine(2, "u2", "[Request interrupted by user]"),
+    ]);
+    // 先证明「没有任何未渲染的段留着」——否则下面那句「永久」是空真
+    const status = v.element.querySelector(".history-status")!.textContent ?? "";
+    expect(status, "还有未渲染的段 ⇒ 这一格证不了「永久」").toContain("条记录");
+    expect(status).not.toContain("已显示");
+
+    rowsOf(v)[1].click();
+    expect(rowsOf(v)[1].dataset.unjumpable).toBe("1");
+    rowsOf(v)[1].click(); // 再点一次：查看器里没有任何东西能让这张卡长出来
+    expect(cardOf(v, "u2")).toBeNull();
+    expect(rowsOf(v)[1].dataset.unjumpable).toBe("1");
+  });
+
   it("换一个会话 ⇒ 清单跟着换（旧会话的句子不许挂在新会话上）", async () => {
     const v = await mount([userLine(1, "u1", "旧会话第一句"), userLine(2, "u2", "旧会话第二句")]);
     expect(rowsOf(v).length).toBe(2);
@@ -207,8 +231,10 @@ describe("KR45D1 点一下跳过去", () => {
 
 /**
  * 上一轮申报的第 4 笔债：面板样式内联（`style.cssText`），因为 `src/styles.css` 在写区外。
- * 本轮搬进 `.session-viewer-inputs` / `.session-viewer-input-row`
- * / `.session-viewer-input-row[data-unjumpable]`。下面**两格是一对**，各买各的：
+ * 已搬进 `.user-inputs` / `.user-input-row` / `.user-input-row[data-unjumpable]`
+ * （第三轮把类名从 `.session-viewer-*` 改成中性名 —— 这块界面现在两条路共用，
+ * 而一个会出现在实时 tab 里的元素叫「session-viewer-…」是名字在说谎）。
+ * 下面**两格是一对**，各买各的：
  * 第一格量的是「JS 这边不再拼样式」（行为，jsdom 量得到）；
  * 第二格量的是「CSS 那边真有宿主」—— jsdom **不加载** `styles.css`，
  * 把那三条规则整段删掉，第一格**一条都不会红**。
@@ -231,7 +257,7 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
 
   it("那三条规则在 styles.css 里真有宿主（jsdom 不加载 CSS ⇒ 上一格盖不住这一形）", () => {
     // ⚠ 匹配单位是**一整行选择器**，不是子串 —— 子串比事实小，
-    //   有人写 `.session-viewer-input-row .x { … }` 也会命中，而那一行根本没上样式。
+    //   有人写 `.user-input-row .x { … }` 也会命中，而那一行根本没上样式。
     const cssLines = readFileSync(`${REPO_ROOT}/src/styles.css`, "utf8")
       .split("\n")
       .map((l) => l.trim());
@@ -242,23 +268,23 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
     );
 
     expect(cssLines, "面板没有 CSS 宿主 ⇒ 它退回一块没有高度上限、不滚动、无底边的裸 div").toContain(
-      ".session-viewer-inputs {",
+      ".user-inputs {",
     );
     expect(cssLines, "清单行没有 CSS 宿主 ⇒ 每一行退回浏览器默认按钮长相").toContain(
-      ".session-viewer-input-row {",
+      ".user-input-row {",
     );
     expect(cssLines, "「跳不过去那一条变灰」没有宿主 ⇒ 标记还在、但用户看不出来").toContain(
-      ".session-viewer-input-row[data-unjumpable] {",
+      ".user-input-row[data-unjumpable] {",
     );
 
     // 🔴 面板规则里**绝不许出现 `display`**：面板靠 `el.hidden` 收起，而 `hidden` 就是
     //    UA 样式表里的 `display:none`，作者样式里任何一条 `display` 都盖得掉它
     //    ⇒ 面板从此永远展开，而「面板默认收着」那一格断的是 `.hidden` 属性，照样绿。
-    const open = cssLines.indexOf(".session-viewer-inputs {");
+    const open = cssLines.indexOf(".user-inputs {");
     const body = cssLines.slice(open + 1, cssLines.indexOf("}", open));
     expect(
       body.filter((l) => /^display\s*:/.test(l)),
-      "`.session-viewer-inputs` 里出现了 display ⇒ 它会盖掉 hidden 的 display:none，面板再也收不起来",
+      "`.user-inputs` 里出现了 display ⇒ 它会盖掉 hidden 的 display:none，面板再也收不起来",
     ).toEqual([]);
   });
 });
