@@ -24,6 +24,12 @@ if ! declare -f cct >/dev/null 2>&1; then
 cct() { ccm --tmux "$@"; }                 # 在 tmux 里起（断线可 attach 回来）
 fi
 
-# 每账号别名按需自己加，例如（账号名来自 ~/.claude-accts/accounts.json）：
-#   zcc()  { ccm --account z "$@"; }
+# 每账号别名 —— K-R49 起**不用再自己加了**：在 cc-monitor 的「账号」里点一下「生成命令」，
+# 它会按账号表整份重写下面这份文件（加了账号就多一条，删了账号那条就没了）。
+#   zcc()  { ccm --account z "$@"; }      ← 它生成的就是这一形
 #   zcct() { ccm --tmux --account z "$@"; }
+#
+# 这一行让那份文件自动接上：**它是 cc-monitor 自己的文件**（不在你的 rc 里、随时可删），
+# 没生成过就什么都不做。所以你这份 shell 配置**只会被写这一次**。
+# 写成 if/fi 而不是 `[ -r … ] && . …`：后者在文件不存在时整行返回 1，而这是本片段的最后一行。
+if [ -r "$HOME/.cc-monitor/account-aliases.sh" ]; then . "$HOME/.cc-monitor/account-aliases.sh"; fi

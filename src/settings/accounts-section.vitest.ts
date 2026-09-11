@@ -35,6 +35,8 @@ import type { RelayCredentialsStatus } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 import * as accounts from "../accounts";
 import type { AccountsState, Account } from "../accounts";
+// `K-R49`：命令名的规则只有一个住址 —— 断言里不许再手抄一份 `<名>cc`。
+import { suggestAliasName } from "../launcher-diagnostics";
 
 function acct(p: Partial<Account>): Account {
   return {
@@ -102,7 +104,25 @@ async function mount(): Promise<HTMLElement> {
 beforeEach(() => {
   vi.restoreAllMocks();
   readRemoteConfigMock.mockReset().mockResolvedValue({ enabled: true, hosts: [host()] });
-  invokeMock.mockReset().mockResolvedValue(undefined);
+  // `K-R49`：本机那一支现在会挂一块「按账号生成命令」，它**挂上去就先预览一次**
+  // （`write_account_aliases` + `dryRun`）。默认回 `undefined` 会让它当场 TypeError，
+  // 而那种红长得像「面板坏了」—— 给这一条命令一个形状对的最小答案，其余命令照旧回 `undefined`。
+  invokeMock.mockReset().mockImplementation((cmd: unknown) =>
+    Promise.resolve(
+      cmd === "write_account_aliases"
+        ? {
+            aliasPath: "/h/.cc-monitor/account-aliases.sh",
+            names: [],
+            collisions: [],
+            rcCandidates: [],
+            wroteAliasFile: false,
+            aliasFileUnchanged: false,
+            wroteRc: false,
+            notes: [],
+          }
+        : undefined,
+    ),
+  );
   fetchAccountsMock.mockReset();
   // `N-F1b`：默认给「这台机一个隔离账号都没有」——最保守的一档，
   // 想量别的态的用例自己在里面覆盖掉它。
@@ -929,6 +949,39 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     expect(el.querySelector(".accounts-local-row.current .accounts-local-row-name")?.textContent).toBe(
       L1,
     );
+  });
+
+  // ---- `K-R49` 第一跳：**加了账号，这一节要提一句那条命令** ----
+
+  /**
+   * 🔴 `K-R49`：这一条买的是「**接线还在**」。
+   *
+   * 本件之前，别名生成器住在设置面板另一个分组里，与账号这一节**互不相识** ——
+   * 用户 09-10 逐字「我现在添加了一个账号但是没法直接添加命令, 还得手动去改」。
+   * ⚠ 它断的是「那一块在本机这一支里长出来了」，**不是**「它写对了文件」——
+   * 后者归 `account_aliases.rs` 那一族（真跑一趟落盘，拿临时目录当 home）。
+   */
+  it("★ K-R49：本机有账号时，这一节里长出「按账号生成命令」那一块", async () => {
+    noRemotes();
+    fetchLocalAccountsMock.mockResolvedValue(three());
+    const el = await mount();
+    const block = el.querySelector(".ccm-acct-alias");
+    expect(block, "加了账号，这一节仍然一句都没提那条命令 —— 那正是 K-R49 的题面").not.toBeNull();
+    // 行数与账号数对得上（三个号 ⇒ 三条命令），而且命令名是 `<名>cc`。
+    const rows = [...el.querySelectorAll(".ccm-acct-alias-row")].map((r) => r.textContent ?? "");
+    expect(rows.length, "块出来了但一条命令都没有").toBe(3);
+    expect(rows[0]).toContain(`${suggestAliasName(L1)}() { ccm --account`);
+  });
+
+  /**
+   * ⚠ 反面：**一个账号都没有**的那一档不要摆这块。
+   * 那一屏该说的是「先建一个号」，塞一块「给你的账号生成命令」是对着空清单说话。
+   */
+  it("★ K-R49 反面：一个本机账号都没有时，不摆那一块（那一屏该说的是先建一个号）", async () => {
+    noRemotes();
+    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [] }));
+    const el = await mount();
+    expect(el.querySelector(".ccm-acct-alias")).toBeNull();
   });
 
   // ---- `NF1bD1` 反面：旧那句话一个字都不许留 ----

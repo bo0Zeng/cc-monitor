@@ -107,10 +107,10 @@ function tsDerivingSources(): string[] {
 const TS_DERIVING_SOURCES = tsDerivingSources();
 
 describe("C01 边界生成物", () => {
-  it("派生 ts_rs::TS 的 Rust 源文件恰好 30 个（自动发现的范围自检）", () => { // ⚠ 标题里这个数腐过：曾写 27 而断言是 28
+  it("派生 ts_rs::TS 的 Rust 源文件恰好 31 个（自动发现的范围自检）", () => { // ⚠ 标题里这个数腐过：曾写 27 而断言是 28
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(30); // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(31); // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -123,6 +123,9 @@ describe("C01 边界生成物", () => {
     expect(files, "生成目录内容变了——把新文件纳入本守卫再更新这个期望").toEqual([
       // **按字母序**（本条是 readdir + sort 的逐项对拍，不许按功能分组打乱顺序）。
       // 每项后面标它属于哪个功能，便于回溯。
+      // K-R49：按账号生成命令并落盘那一条命令的返回形状（报告 + 候选 rc）。
+      "AccountAliasRc.ts",
+      "AccountAliasReport.ts",
       "AccountUsageProbeResult.ts", // C04d 批2
       // P8a：marketplace 只读枚举的两个载荷。
       // ⚠ 顺序按目录名排序，别按加入时间摆。

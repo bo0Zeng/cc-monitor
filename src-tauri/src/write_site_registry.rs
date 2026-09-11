@@ -353,6 +353,26 @@ mod tests {
           写本身走 `verified_write::verify_and_rollback`（备份 → 写 → 读回逐字节比对 →\
           不符即回滚），**没有自造第四份写入实现** —— 那个模块头注记着本仓曾有 4 处\
           独立实现且校验强度不一致（两处只比长度）。"),
+        // ── `K-R49`：加了账号就把 `zcc` / `bcc` 那条命令落下来。**两个落点性质完全不同，分两行记。**
+        ("account_aliases.rs", "write_alias_file", None,
+         "整份重写 `~/.cc-monitor/account-aliases.sh`。**不是安装动作** —— 写的是 monitor \
+          自己的目录（与 `local_backend` 的 `bin/`、`local_daemon` 的 `listen-token` 同一个），\
+          用户的 shell 配置一个字节都不碰。\
+          ★ 为什么是「整份重写」而不是往 `~/.bashrc` 追加：追加那条路上，加三个账号就追三次、\
+          删了账号那一行还留着指向一个不存在的号，而**弄坏的代价是 shell 起不来**。\
+          整份重写换来三条：幂等（内容一致时一个字节都不写）· 删了账号它那条当场消失 · \
+          删掉整份文件也只是少几个命令。落盘借 `profile_installer::atomic_write_string`，\
+          写完回读逐字比对，不符就把这份**我们自己的**文件删掉（半截的它比没有它更坏）。"),
+        ("account_aliases.rs", "ensure_rc_source_line", None,
+         "往用户**自己指定**的那份 rc 里装**一行** `source`（BEGIN/END 围栏内）。\
+          ⚠ 它确实写用户既有的环境，但**不是安装动作**：它不装任何 `TOOLS` 里的工具，\
+          只是让上面那份生成文件被 source 到 —— 真正的内容一个字节都不在这里。\
+          🔴 四道：① 路径过 `profile_installer::fence_profile_path`（只许落在 home 之内，\
+          而且那份 rc 由界面上的人**选**，代码不猜）；② 已经 source 过就一个字节都不写（幂等）；\
+          ③ 围栏损坏（有 BEGIN 没 END）**中止**，绝不用后面那个 END 去配对吃掉用户代码；\
+          ④ 先 `fs::copy` 备份、写完回读逐字比对、不符从备份回滚。\
+          ★ 多数人根本走不到这一行：`shared/ccm-aliases.sh` 自带那行 `[ -r … ] && . …`，\
+          装过 ccm 别名块的人加账号之后什么都不用做。"),
         // ── 安装动作：写的是**用户既有的环境/配置**，且对应声明表里的一个工具
         ("profile_installer.rs", "install_to_profile", Some("ccm"),
          "往用户 shell profile 的 BEGIN/END 块里装 ccm 启动器（写前先备份）"),
