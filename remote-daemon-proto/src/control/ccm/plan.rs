@@ -34,8 +34,10 @@ pub(crate) struct Env {
     pub(crate) ccm_launch_id: Option<String>,
     /// 起 agent 前要 eval 的机器级 env 串。
     pub(crate) ccm_env: String,
-    /// `$HOME` 下裸敲时的落点。
-    pub(crate) workspace: String,
+    // 🔴 `K-R58`：这里原来有一个 `workspace: String`（`$CCM_WORKSPACE`，`$HOME` 下裸敲时
+    //    的落点）。它**唯一的消费者**就是 [`resolve_cwd`] 里那一档「站在 $HOME 就跳工作区」，
+    //    那一档按 `K37` 删了 ⇒ 这个字段跟着删，`CCM_WORKSPACE` 这个环境变量**不再被读**。
+    //    留着它会变成「猜」的一个待命开关，而 `KR58D3` 的失效方向逐字就是「把猜挪进别处」。
     /// 账号库 manifest 的**完整路径**。
     pub(crate) accts_manifest: String,
     /// **账号维度的载体**：切账号靠改哪个环境变量。由 `mod.rs` 从
@@ -73,7 +75,7 @@ impl Env {
             get("CCM_CONFIG").unwrap_or_else(|| format!("{home}/{}", Defaults::CONFIG_REL));
         if std::path::Path::new(&cfg_path).is_file() {
             eprintln!(
-                "ccm: {cfg_path} 在，但本实现**不读它**（旧版是 source 一段 bash，原生实现没有等价物）。\n                 里面那三个值请改成环境变量：CCM_WORKSPACE / CCM_ACCTS_MANIFEST / CCM_ENV。"
+                "ccm: {cfg_path} 在，但本实现**不读它**（旧版是 source 一段 bash，原生实现没有等价物）。\n                 里面那两个值请改成环境变量：CCM_ACCTS_MANIFEST / CCM_ENV。\n                 （`CCM_WORKSPACE` 不用改了：`K-R58` 起 ccm 不再替你跳目录，不给 --cwd 就是当前目录。）"
             );
         }
         let pick = |k: &str, fallback: String| -> String { get(k).unwrap_or(fallback) };
@@ -85,10 +87,6 @@ impl Env {
             anthropic_base_url: get("ANTHROPIC_BASE_URL"),
             ccm_launch_id: get("CCM_LAUNCH_ID"),
             ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
-            workspace: pick(
-                "CCM_WORKSPACE",
-                format!("{home}/{}", Defaults::WORKSPACE_REL),
-            ),
             accts_manifest: pick(
                 "CCM_ACCTS_MANIFEST",
                 format!("{home}/{}", Defaults::ACCTS_MANIFEST_REL),
@@ -382,41 +380,35 @@ pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
     Ok(())
 }
 
-/// `auto` 的三条分支。逐字复刻旧 `_cc_resolve_target`。
+/// 不给 `--cwd` 时的落点。**今天它是恒等**：调用方站在哪儿，会话就起在哪儿。
 ///
-/// ⚠ **auto 只对 `new` 生效**：`resume`/`attach` 的目标目录由 sid / 会话决定、
-/// 调用方已经定位好了；再 auto 解析一次会把工作目录换成 git 仓的**父目录**
-/// ⇒ claude 按 `projects/<enc(cwd)>/<sid>.jsonl` 找不到会话（实测踩过）。
+/// 🔴 **`K-R58` / `KR58D3`（`K37` 第三条）：这里原来有两档「替用户挑一个目录」，删了。**
 ///
-/// ⚠ **与 bash 那版的一处如实差别**：那版调 `git rev-parse --show-toplevel`（起一个进程）；
-/// 这里改成**自己往上走找 `.git`**。少一次 `fork`，也少一条外部依赖；
-/// 代价是 `GIT_DIR` / `GIT_WORK_TREE` / `GIT_CEILING_DIRECTORIES` 这几个环境变量它不认
-/// —— 那几条在「用户在自己的仓里敲 `cc`」这个人群里没有出现过，但**这是一格差别，不是等价**。
+/// 删掉的逐字是这两档（留在这里当墓碑，别再长回来）：
+/// - `pwd == $HOME` ⇒ 跳 `$CCM_WORKSPACE`（默认 `$HOME/claude-conversation`）；
+/// - 往上找得到 `.git` ⇒ 跳**那个仓的父目录**（你在仓里敲，会话起在仓外）。
+///
+/// 〔用@09-11 逐字〕「`cc` 默认就起会话就行，**跳目录是我自己的设置，不要搞进 app**。」
+/// `K37` 的判据：**把这个行为去掉，用户还做不做得到同一件事**？——写 `--cwd <目录>` 照样
+/// 起得了会话 ⇒ 它是**偏好**，不是机制，该出去。而 `K37` 第三条给了新默认的形状：
+/// **诚实的默认 = 恒等 / 不作为 / 沿用调用者已有状态** —— `cwd` 本来就是进程的属性，
+/// 不是从一张表里编出来的。★ **省的是书写，不是语义。**
+///
+/// ⚠ **`resume`/`attach` 那一支一个字都没动，而它今天与 `new` 同值**：
+/// 那两个动作的目标目录由 sid / 会话决定、调用方已经定位好了，再解析一次会把工作目录
+/// 换掉 ⇒ claude 按 `projects/<enc(cwd)>/<sid>.jsonl` **找不到会话**（实测踩过）。
+/// 🔴 **谁要是哪天再往这里加一档非恒等的分支，它必须只对 [`Action::New`] 生效** ——
+/// 今天不留那个 `if`，是因为恒等之下它是死代码，而不是因为那条约束过期了。
+///
+/// 〔一并作废的旧注：从前这里逐字复刻旧 bash `_cc_resolve_target`，并登记着
+/// 「自己往上走找 `.git`」与 `git rev-parse --show-toplevel` 在 `GIT_DIR` /
+/// `GIT_WORK_TREE` / `GIT_CEILING_DIRECTORIES` 上的那一格不等价 —— 那整条路没了，
+/// 那格不等价也跟着没了。〕
 pub(crate) fn resolve_cwd(o: &Opts, env: &Env) -> String {
     match &o.cwd_spec {
-        CwdSpec::Explicit(d) => return d.clone(),
-        CwdSpec::Auto => {}
+        CwdSpec::Explicit(d) => d.clone(),
+        CwdSpec::Auto => env.pwd.clone(),
     }
-    if o.action != Action::New {
-        return env.pwd.clone();
-    }
-    if env.pwd == env.home {
-        return env.workspace.clone();
-    }
-    let mut p = std::path::Path::new(&env.pwd);
-    loop {
-        if p.join(".git").exists() {
-            return p
-                .parent()
-                .map(|x| x.to_string_lossy().to_string())
-                .unwrap_or_else(|| env.pwd.clone());
-        }
-        match p.parent() {
-            Some(up) if up != p => p = up,
-            _ => break,
-        }
-    }
-    env.pwd.clone()
 }
 
 /// 账号解析。三态，**一个字都没改**（这是从 `shared/ccm:996-1015` 搬过来的语义）：
@@ -806,7 +798,6 @@ mod tests {
         Env {
             home: "/home/pi".into(),
             pwd: "/p".into(),
-            workspace: "/home/pi/claude-conversation".into(),
             accts_manifest: "/nonexistent/accounts.json".into(),
             account_env: "CLAUDE_CONFIG_DIR".into(),
             self_path: "/usr/local/bin/ccm".into(),
@@ -1292,27 +1283,39 @@ mod tests {
         assert_eq!(printed(&["attach", "cc-p1"]), "tmux attach -t '=cc-p1:'");
     }
 
-    /// 〔搬自 `ccm-cli`「布局 1–5」〕—— `auto` 的三条分支。
+    /// 🔴 `KR58D3` —— 不给 `--cwd` 的默认是**恒等**：就是调用方自己的 cwd，一层都不跳。
+    ///
+    /// 〔用@09-11 逐字〕「`cc` 默认就起会话就行，**跳目录是我自己的设置，不要搞进 app**。」
+    /// `K37` 第三条：**诚实的默认 = 恒等 / 不作为 / 沿用调用者已有状态**；
+    /// 从一张表里替他挑一个具体值（工作区 / 仓的父目录）**不诚实**。
+    ///
+    /// 〔本条是上一版那条「auto 有几条分支」的**翻面**，不是它的替补：那一版搬自
+    /// `ccm-cli`「布局 1–5」，断的正是今天被裁掉的那两档。同样那几种布局留在这里，
+    /// 从「证明会跳」变成「证明不跳」—— **射程一格没少**。〕
     #[test]
-    fn auto_cwd_has_exactly_three_branches() {
+    fn the_default_cwd_is_the_identity_in_every_layout() {
         let mut e = env();
-        // 布局1：在 $HOME ⇒ 工作区
-        e.pwd = e.home.clone();
-        assert_eq!(cwd_of(&["new"], &e), e.workspace);
-        // 布局4：非 git 目录 ⇒ 目录自己（用一个真实存在但没有 .git 的临时目录）
         let d = tempdir();
-        e.pwd = d.clone();
-        assert_eq!(cwd_of(&["new"], &e), d);
-        // 布局2/3：git 仓（根 / 子目录）⇒ 仓的**父目录**
+        // 布局1：站在 $HOME —— 从前跳 `$CCM_WORKSPACE`，今天就是 $HOME。
+        e.pwd = e.home.clone();
+        assert_eq!(cwd_of(&["new"], &e), e.home, "在 $HOME 裸敲不许再跳工作区");
+        // 布局2/3：git 仓根 / 仓的子目录 —— 从前跳**仓的父目录**，今天就是站着的那个目录。
         std::fs::create_dir_all(format!("{d}/repo/sub")).expect("造夹具");
         std::fs::write(format!("{d}/repo/.git"), "gitdir: /elsewhere").expect("造夹具");
-        e.pwd = format!("{d}/repo");
+        for p in [format!("{d}/repo"), format!("{d}/repo/sub")] {
+            e.pwd = p.clone();
+            assert_eq!(cwd_of(&["new"], &e), p, "在 git 仓里敲不许再跳到仓外");
+        }
+        // 布局4：非 git 目录 —— 一直是它自己（这一档本来就诚实，留着当对照）。
+        e.pwd = d.clone();
         assert_eq!(cwd_of(&["new"], &e), d);
-        e.pwd = format!("{d}/repo/sub");
-        assert_eq!(cwd_of(&["new"], &e), d);
-        // resume/attach **不做 auto 解析**（cc-monitor 已经 cd 到会话目录了）
+        // `resume`/`attach` 那一支**一个字都没动**：它本来就不走 auto，
+        // 再解析一次会让 claude 按 `projects/<enc(cwd)>/<sid>.jsonl` 找不到会话（实测踩过）。
         e.pwd = format!("{d}/repo");
         assert_eq!(cwd_of(&["resume", "s"], &e), format!("{d}/repo"));
+        assert_eq!(cwd_of(&["attach", "n"], &e), format!("{d}/repo"));
+        // 显式 `--cwd` 仍然赢 —— 拿掉的是「替用户挑」，不是「用户自己挑」。
+        assert_eq!(cwd_of(&["--cwd", "/x/y"], &e), "/x/y");
     }
 
     fn cwd_of(args: &[&str], e: &Env) -> String {

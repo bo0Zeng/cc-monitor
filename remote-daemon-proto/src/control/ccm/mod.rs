@@ -14,7 +14,7 @@
 //!
 //! 两条，**都只经 [`intercept`] 这一处**：
 //! ① `argv[0]` 的 basename 是 `ccm`（别名 / 软链 / 改名拷贝指过来；`shared/ccm-aliases.sh`
-//!    里 `cc` / `cch` / `cct` 三个别名调的就是它）；
+//!    里 `cc` / `cct` 那几个别名调的就是它）；
 //! ② 显式子命令 `cc-monitor-remote ccm <argv…>`（给「二进制没改名」的场合，
 //!    也给判据一个不依赖文件名的入口）。
 //!
@@ -112,7 +112,7 @@ pub(crate) const USAGE: &str = "\
   --bus-note <备注>  给上面那条登记带一行备注
   --account <名>     用这个账号的 configDir（与 --base 互斥）
   --base             显式不注入账号（issue #75 的逃生口）
-  --cwd <目录>       工作目录；不给则 auto（在 $HOME 用工作区 / 在 git 仓用其父目录 / 否则当前目录）
+  --cwd <目录>       工作目录；不给就是**当前目录**（ccm 不替你挑，想跳自己写这个参数或自己写别名）
   --agent <名>       claude | codex
   --model <名>       export ANTHROPIC_MODEL
   --launcher <命令>  覆盖默认启动器

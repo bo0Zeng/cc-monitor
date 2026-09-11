@@ -78,7 +78,8 @@ impl Defaults {
     pub(crate) const ACTION: Action = Action::New;
     /// 不给 `--agent` ⇒ `claude`。
     pub(crate) const AGENT: &'static str = "claude";
-    /// 不给 `--cwd` ⇒ `auto`（见 `plan::resolve_cwd` 的三条分支）。
+    /// 不给 `--cwd` ⇒ `auto`，而 `K-R58` 起 **`auto` 就是恒等**：调用方自己的 cwd。
+    /// 见 `plan::resolve_cwd`（`K37` 第三条：诚实的默认 = 恒等 / 不作为 / 沿用调用者状态）。
     pub(crate) const CWD: CwdSpec = CwdSpec::Auto;
     /// 不给 `--tmux` ⇒ 不进容器路。
     pub(crate) const USE_TMUX: bool = false;
@@ -90,8 +91,9 @@ impl Defaults {
     pub(crate) const PRINT: bool = false;
     /// 不给 `--bus-register` ⇒ 不登记 cc-bus。
     pub(crate) const BUS_REGISTER: bool = false;
-    /// `$HOME` 下裸敲时的落点（相对 `$HOME`）。
-    pub(crate) const WORKSPACE_REL: &'static str = "claude-conversation";
+    // 🔴 `K-R58`：这里原来有 `WORKSPACE_REL = "claude-conversation"`（`$HOME` 下裸敲时
+    //    的落点）。它是**一张表里替用户挑的那个具体值**，`K37` 第三条判它「不诚实」⇒ 删了，
+    //    连同读它的 `CCM_WORKSPACE`。默认值表里少一格，是因为那一格的默认现在是恒等。
     /// 账号库 manifest（相对 `$HOME`）。
     ///
     /// ⚠ 这是 **cc-acct-iso 这个工具**的账号库门牌号，**不是 Claude 的目录布局** ——

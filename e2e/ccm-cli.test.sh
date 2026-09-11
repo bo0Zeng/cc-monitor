@@ -265,7 +265,7 @@ ck "R08：容器路径 + 裸终端（无继承）→ 内层仍落默认号 z（�
 rm -rf "$ACCTMP"
 
 echo
-echo "===== --cwd auto 与旧 _cc_resolve_target 对拍（5 种布局）====="
+echo "===== 不给 --cwd = 站在哪儿起在哪儿（5 种布局，一格都不许跳）====="
 TMPROOT="$(mktemp -d)"
 trap 'rm -rf "$TMPROOT"' EXIT
 export CC_WORKSPACE="$TMPROOT/workspace"; mkdir -p "$CC_WORKSPACE"
@@ -273,29 +273,36 @@ mkdir -p "$TMPROOT/plain" "$TMPROOT/repo/sub/deep"
 ( cd "$TMPROOT/repo" && git init -q . 2>/dev/null )
 FAKEHOME="$TMPROOT/home"; mkdir -p "$FAKEHOME"
 
-# ⚠ 〔`K-R48` 第二拍 09-11〕**工作区的给法换了，换的是给法不是对照口径**：
-#   原来是写一份 `CCM_CONFIG` 临时文件（旧实现真 `. "$CCM_CONFIG"` source 一段 bash）。
-#   原生实现**不读那份文件**（它没有 source 一段 bash 的等价物；发现它存在会往 stderr
-#   说一句然后照常跑 —— 登记在 `plan::Env::from_process` 里）⇒ 改成直接给 `CCM_WORKSPACE`
-#   环境变量，那正是原生实现今天认的那一个。
-#   🔴 **对照值 `want` 那一半一个字没动** —— 它仍是这里现写的那段旧 `_cc_resolve_target`
-#   逐字复刻，所以这 5 条仍然是「新实现 vs 旧语义」的**跨实现对拍**，不是同义反复。
+# 🔴 〔`K-R58` 09-11 · `KR58D3` · `K37` 第三条〕**这一组被翻过来了，不是被删掉。**
+#
+#   上一版这里逐字写着「`--cwd auto` 与旧 `_cc_resolve_target` 对拍」，`want` 那一半是
+#   那段旧 bash 的逐字复刻：**在 $HOME 跳工作区 · 在 git 仓跳仓的父目录**。
+#   〔用@09-11 逐字〕「`cc` 默认就起会话就行，**跳目录是我自己的设置，不要搞进 app**。」
+#   ⇒ 那两档按 `K37`（「把这个行为去掉，用户还做不做得到同一件事」= 做得到 ⇒ 偏好，出去）
+#   删了，于是**把旧语义钉死的正是这 5 条判据本身** —— 本件不删它们，改成钉新语义：
+#   同样这 5 种布局，今天一律该停在原地。布局 1/2/3 就是那两档旧分支的现场，
+#   它们从「证明会跳」变成「证明不跳」，**射程一格没少**。
+#
+# 🔴 **`CCM_WORKSPACE` 这里是故意还在导出的**：`KR58D3` 的失效方向逐字是
+#   「把猜挪进别处（比如挪成一个默认开着的开关）」。设着它、站在 $HOME、答案仍必须是
+#   $HOME —— 那一档要是哪天悄悄回来，这一条当场红。（后端今天**根本不读**这个变量了：
+#   `Env` 里那个 `workspace` 字段跟着删了。）
+#
+# ⚠ `want` 取 `pwd -P`（物理路径）而不是 `$PWD`：`mktemp -d` 在有符号链接的 `/tmp` 上
+#   两者不同值，而 Rust 的 `current_dir()` 给的是物理路径 —— 那会是一次跟本题无关的假红。
 cmp_cwd() {
   local desc="$1" dir="$2" home="${3:-$HOME}" got want
-  want="$( cd "$dir" && HOME="$home" CC_WORKSPACE="$CC_WORKSPACE" bash -c '
-      if [ "$PWD" = "$HOME" ]; then REPLY="$CC_WORKSPACE"
-      else g="$(git rev-parse --show-toplevel 2>/dev/null)"; [ -n "$g" ] && REPLY="$(dirname "$g")" || REPLY="$PWD"; fi
-      printf "%s" "$REPLY"' )"
+  want="$( cd "$dir" && pwd -P )"
   got="$( cd "$dir" && HOME="$home" CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
       CCM_WORKSPACE="$CC_WORKSPACE" \
       CCM_ACCTS_MANIFEST=/nonexistent/accounts.json "$CCM" --print 2>&1 | sed -n "s/.*cd '\\([^']*\\)' && .*/\\1/p" )"
   ck "$desc" "$want" "$got"
 }
-cmp_cwd "布局1：在 \$HOME → 工作区"        "$FAKEHOME" "$FAKEHOME"
-cmp_cwd "布局2：git 仓根 → 仓的父目录"      "$TMPROOT/repo"
-cmp_cwd "布局3：git 仓子目录 → 仓的父目录"  "$TMPROOT/repo/sub/deep"
-cmp_cwd "布局4：非 git 目录 → 目录自己"     "$TMPROOT/plain"
-cmp_cwd "布局5：工作区自身（非 git）→ 自己" "$CC_WORKSPACE"
+cmp_cwd "布局1：在 \$HOME（设着 CCM_WORKSPACE）→ 仍是 \$HOME，不跳工作区" "$FAKEHOME" "$FAKEHOME"
+cmp_cwd "布局2：git 仓根 → 仍是仓根，不跳仓的父目录"     "$TMPROOT/repo"
+cmp_cwd "布局3：git 仓子目录 → 仍是那个子目录"          "$TMPROOT/repo/sub/deep"
+cmp_cwd "布局4：非 git 目录 → 目录自己"                 "$TMPROOT/plain"
+cmp_cwd "布局5：工作区自身（非 git）→ 自己"             "$CC_WORKSPACE"
 
 echo
 echo "===== 会话名派生：与前端 deriveTmuxName **真值对拍**（跨语言漂移守卫）====="

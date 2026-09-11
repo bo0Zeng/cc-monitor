@@ -14,11 +14,12 @@
 case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH";; esac
 
 # 便捷别名 —— **不覆盖你已有的同名函数**（有自己启动器的用户在自己的函数里调 ccm 即可）
+#
+# 〔用@09-11〕`cch` 删了：它当初的意思是「别猜目录，就在当前目录起」，
+# 而**不给 --cwd 现在本来就是当前目录**（ccm 不再替你跳工作区 / 跳 git 仓的父目录）
+# ⇒ 它和 cc 一模一样。**`cch` 这个名字从此是你自己的**，想怎么定义都行。
 if ! declare -f cc >/dev/null 2>&1; then
-cc()  { ccm "$@"; }                        # 智能选目录起会话
-fi
-if ! declare -f cch >/dev/null 2>&1; then
-cch() { ccm --cwd . "$@"; }                # 当前目录直起
+cc()  { ccm "$@"; }                        # 在当前目录起会话
 fi
 if ! declare -f cct >/dev/null 2>&1; then
 cct() { ccm --tmux "$@"; }                 # 在 tmux 里起（断线可 attach 回来）

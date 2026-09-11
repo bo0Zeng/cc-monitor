@@ -1108,8 +1108,18 @@ arch 取值与 release 上挂的那两份一致）。⚠ **没有「取最新那
 文件系统，注册信道改走**终端窗口标题**（OSC 转义经 tmux/ssh 透传到本地），monitor
 按标题扫窗口。全部代码：远端 **`shared/ccm`**（部署为 `~/.local/bin/ccm`，字节源是
 `sftp.rs` 的 `CCM_CLI_SCRIPT`）—— **不是** `remote-section.ts::CCM_WRAPPER_SNIPPET`，
-那个其实是 `shared/ccm-aliases.sh`，**29 行、只有 `cc`/`cch`/`cct` 三个别名**，
+那个其实是 `shared/ccm-aliases.sh`，**36 行、别名只有 `cc`/`cct` 这 2 个**，
 无任何 rbind / 标题 / poller 逻辑（`sftp.rs` 的守卫①明令该块不得含实现）+ 本地 `bind.rs::RemoteHwndCache` + `lib.rs::bring_remote_terminal_to_front`。
+
+> ⚠ **上面那句里的「N 行」与那份名单由机器对账**（`KR58D2`，判据住
+> `src-tauri/src/sftp.rs::tests::the_protocol_doc_sentence_about_the_alias_block_matches_the_file`）：
+> 两样都现算自 `shared/ccm-aliases.sh` 自己，**改一半会当场红**。本区最高频的那条病
+> 就是「数与名单同句、只改一半」，09-11 现打逮到的活体正是这一句 ——
+> 它当时写着「29 行」而文件已经 35 行。
+>
+> ⚠ **本节其余部分是 `K-R48` 第二拍之后的存量馊话，上面那条对账够不着**：
+> `shared/ccm` 这个文件已经删了，`sftp.rs` 的 `CCM_CLI_SCRIPT` 也已经没了
+> （那里现在是一块墓碑）。`K-R58` 不动它 —— 写在这里，免得被读成「这一节核过了」。
 
 ### 注册流程（远端 shell → 本地 HWND 缓存）
 
