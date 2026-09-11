@@ -388,17 +388,48 @@ pub fn read_landed(path: &Path, pinned_sha256: &str) -> Checked {
 ///
 /// ⚠ 可执行位在**新建那一刻**给（`mode`），不是事后改：事后改要另一个动词，
 /// 而那个动词在只读白名单里根本不存在 —— 让它写不出来，比事后检测强一档。
+///
+/// # 🔴 `K-R52`（09-11）：这一跳**是一条 unix 原语**，而它此前一个 cfg 都没有
+///
+/// 「新建那一刻就给可执行位」的唯一入口是 `OpenOptionsExt::mode` —— 它住在
+/// `std::os::unix` 里，**在 Windows target 上这个名字根本不存在**。09-10 `K-W2D`
+/// 接线那一拍把它**无门**写在这里 ⇒ daemon 从那一刻起在 Windows 上名字解析就过不了
+/// （死码也救不了：`allow(dead_code)` 挡不住名字解析）。
+/// 而当天**门禁全绿** —— 沙箱门禁的 `winchk` 射程是 `-p monitor`，**不含 daemon**。
+/// ⇒ 判据从今天起住 [`crate::platform::cfgless_guard`]（`K33` 裁定二：平台差异只许住适配层）。
+///
+/// ⚠ **为什么不把这一跳搬进 `platform/`**（那才是 `K33` 的终局形状）：
+/// `readonly_guard` 的写面白名单**按文件认**，而 `OpenOptions` / `OpenOptionsExt`
+/// 这两个动词只许出现在签过字的那几个模块里 —— 本文件是其中之一，`platform/` 不是。
+/// 搬过去要同拍改 `readonly_guard.rs`（`K-R52` 写区之外）⇒ **本件不搬，已走上报口**。
+///
+/// # 非 unix 那一臂：**诚实地说落不下来**，不许假装设过执行位
+///
+/// Windows 上没有执行位这个概念，而落点的文件名（[`super::fetch::landing_name`]）
+/// **也不带 `.exe`** ⇒ 就算把字节原样写下去，那一份**也 exec 不起来**。
+/// ⇒ 这一臂**不写盘**，直接出声。
+/// 🔴 刻意**不**写成「照写并回 [`Landing::Landed`]」—— 那就是
+/// 「假装设置了可执行位」，正是 `platform/fallback_guard.rs` 头注里
+/// `pid_alive` 那个地雷的同一形：给一个答不上来的问题编一个看起来无害的答案。
 pub fn land(path: &Path, bytes: &[u8]) -> Landing {
-    use std::os::unix::fs::OpenOptionsExt;
-    let mut opts = std::fs::OpenOptions::new();
-    opts.write(true).create_new(true).mode(0o755);
-    let mut f = match opts.open(path) {
-        Ok(f) => f,
-        Err(e) => return classify_write_error(e.kind()),
-    };
-    match f.write_all(bytes) {
-        Ok(()) => Landing::Landed,
-        Err(e) => classify_write_error(e.kind()),
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut opts = std::fs::OpenOptions::new();
+        opts.write(true).create_new(true).mode(0o755);
+        let mut f = match opts.open(path) {
+            Ok(f) => f,
+            Err(e) => return classify_write_error(e.kind()),
+        };
+        match f.write_all(bytes) {
+            Ok(()) => Landing::Landed,
+            Err(e) => classify_write_error(e.kind()),
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = (path, bytes);
+        Landing::Io
     }
 }
 
