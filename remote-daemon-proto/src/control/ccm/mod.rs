@@ -166,6 +166,16 @@ pub(crate) fn has_identity(agent: &str) -> bool {
     agent == "claude"
 }
 
+/// 本文件自己的源码，给别的护栏对账用。
+///
+/// ⚠ 刻意由本模块**自己**提供，而不是让调用方写 `include_str!("control/ccm/mod.rs")`：
+/// 那种多段相对路径 `cross_half_edge_registry` 的抽取器解析不动，
+/// 而它**跳过的时候是静默的** —— 一条跨界边就这么从扫描面里消失。
+#[cfg(test)]
+pub(crate) fn own_source() -> &'static str {
+    include_str!("mod.rs")
+}
+
 /// 显式子命令形（`cc-monitor-remote ccm …`）的那个词。
 ///
 /// ⚠ 刻意**不是** `--ccm`：那样它会长得像一条 wire 子命令，而它不是。
@@ -445,7 +455,8 @@ mod tests {
 
     /// 〔搬自 `ccm-contract-parity` 的 `--ccm-probe` 那 5 条〕
     ///
-    /// 这份输出是**外部契约**：`ccm_probe.rs:29-44` 按行解析 `version=` / `capabilities=`。
+    /// 这份输出是**外部契约**：`ccm_probe.rs::parse_probe_output` 按行解析
+    /// `version=` / `capabilities=`。
     #[test]
     fn the_probe_output_is_the_shape_its_parser_expects() {
         let out = probe_output("/usr/local/bin/ccm");
@@ -569,6 +580,30 @@ mod tests {
         assert!(
             RBIND_TITLE_FORMAT.ends_with(",#T}"),
             "sid 还没回填时要回退 pane 标题，而不是产出一个空的 `ccm-rbind-`"
+        );
+    }
+
+    /// 🔴 这个格式串**盘上有两份**（本常量 ＋ `control/launch.rs` 那一行的字面量），
+    /// 而两份不许漂开。
+    ///
+    /// # 为什么不干脆收口成一份
+    ///
+    /// 试过。收口之后 monitor 侧
+    /// `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
+    /// 当场红：那条判据数的是 `control/launch.rs` **生产段里**「事实标记读点」的处数
+    /// （登记 2 处 = 这一行里的条件头 `@ccm_sid` 与取值 `#{@ccm_sid}`），
+    /// 收口成一个标识符之后它读到 **0**，而 0 的含义逐字是「标题回填没了」。
+    /// ⇒ 收口会把一条真判据变瞎。**留两份 + 本条钉住它们逐字相同**，买到的比收口多。
+    #[test]
+    fn the_window_title_format_has_the_same_text_on_both_sides() {
+        let launch = crate::guard_support::production_code(include_str!("../launch.rs"));
+        assert!(
+            launch.contains(RBIND_TITLE_FORMAT),
+            "`control/launch.rs` 的生产段里找不到这个格式串的逐字副本：\n  {RBIND_TITLE_FORMAT}\n             两份已经漂开了（或者那一行被收口成了标识符 —— 别那么做，理由见本条头注）。"
+        );
+        assert!(
+            launch.contains("set-titles-string"),
+            "`launch.rs` 不再设 `set-titles-string` 了 —— 那是标题回填的落点"
         );
     }
 

@@ -62,14 +62,21 @@ impl Env {
         use super::argv::Defaults;
         let home = std::env::var("HOME").unwrap_or_default();
         let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+        // 🔴 **`$CCM_CONFIG` 这一层本实现不认，而且不许静默不认。**
+        //
+        // 旧实现是 `. "$CCM_CONFIG"` —— 真 source 一段 bash，里面可以写任意 shell。
+        // 在原生实现里没有等价物：要么退化成「只认 `KEY=value`」（那是**换了一套语义**
+        // 而用户不会知道），要么起一个 shell 去 source 它（那就把刚删掉的 bash 请回来了）。
+        // ⇒ 选第三条：**发现它存在就说一句，然后照常跑**。
+        // 静默忽略正是本工作区反复消灭的那类病（写了个配置、看起来生效了、其实被吃掉）。
         let cfg_path = get("CCM_CONFIG")
             .unwrap_or_else(|| format!("{home}/{}", Defaults::CONFIG_REL));
-        let cfg = read_config_file(&cfg_path);
-        let pick = |k: &str, fallback: String| -> String {
-            get(k)
-                .or_else(|| cfg.iter().find(|(n, _)| n == k).map(|(_, v)| v.clone()))
-                .unwrap_or(fallback)
-        };
+        if std::path::Path::new(&cfg_path).is_file() {
+            eprintln!(
+                "ccm: {cfg_path} 在，但本实现**不读它**（旧版是 source 一段 bash，原生实现没有等价物）。\n                 里面那三个值请改成环境变量：CCM_WORKSPACE / CCM_ACCTS_MANIFEST / CCM_ENV。"
+            );
+        }
+        let pick = |k: &str, fallback: String| -> String { get(k).unwrap_or(fallback) };
         Env {
             pwd: std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
@@ -96,31 +103,6 @@ impl Env {
             home,
         }
     }
-}
-
-/// `KEY=value` 一行一条。`#` 开头与空行跳过；值两侧的成对 `'` / `"` 剥掉。
-fn read_config_file(path: &str) -> Vec<(String, String)> {
-    let Ok(raw) = std::fs::read_to_string(path) else {
-        return Vec::new();
-    };
-    raw.lines()
-        .filter_map(|l| {
-            let l = l.trim();
-            if l.is_empty() || l.starts_with('#') {
-                return None;
-            }
-            let (k, v) = l.split_once('=')?;
-            let k = k.trim().trim_start_matches("export ").trim();
-            let v = v.trim();
-            let v = match (v.chars().next(), v.chars().last()) {
-                (Some(a), Some(b)) if a == b && (a == '\'' || a == '"') && v.len() >= 2 => {
-                    &v[1..v.len() - 1]
-                }
-                _ => v,
-            };
-            Some((k.to_string(), v.to_string()))
-        })
-        .collect()
 }
 
 /// cc-bus 的脚本目录：`CC_BUS_SCRIPTS` → 本二进制旁边的 `cc-bus/scripts` → `PATH`。
