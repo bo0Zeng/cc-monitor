@@ -1,0 +1,347 @@
+   Compiling monitor v3.7.0 (/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r60/src-tauri)
+warning: monitor@3.7.0: 缺少内嵌 daemon x86_64（embedded-daemons/cc-monitor-remote-x86_64）——远端自动部署将关闭（embedded_daemons cfg 不置）
+warning: monitor@3.7.0: 缺少内嵌 daemon aarch64（embedded-daemons/cc-monitor-remote-aarch64）——远端自动部署将关闭（embedded_daemons cfg 不置）
+warning: monitor@3.7.0: 没有本机内嵌 daemon（src-tauri/native-daemon/cc-monitor-native）——**裸可执行文件起不了本机后端**，只有安装包那份带 sidecar 的能起。开发构建里这是正常的；发版构建里出现这一行 = 那一版的裸 exe 又回到 09-10 那个读数（0 个本机后端进程）。
+warning: whitespace symbol '\u{3000}' is not skipped
+   --> src/skill_host.rs:943:72
+    |
+943 |                        ① **P1**（本条的正题）：`editable` 的基准错了。F02 收工时正是这个错 ——\n\
+    |  ______________________________________________________________________________________________^
+944 | |                      　　基准写成「实例目录」，而收件箱是**项目级**的（planned-build 明写\n\
+    | |______________________-^
+    |                        |
+    |                        whitespace symbol '\u{3000}' is not skipped
+
+warning: whitespace symbol '\u{3000}' is not skipped
+   --> src/skill_host.rs:944:67
+    |
+944 |                        　　基准写成「实例目录」，而收件箱是**项目级**的（planned-build 明写\n\
+    |  ____________________________________________________________________________________________^
+945 | |                      　　「住计划目录根，不住工作区」）。夹具里真有一个实例目录，那一刀在这里照红。\n\
+    | |______________________-^
+    |                        |
+    |                        whitespace symbol '\u{3000}' is not skipped
+
+warning: whitespace symbol '\u{3000}' is not skipped
+   --> src/skill_host.rs:946:77
+    |
+946 |                        ② **P2′**：声明（`artifacts.root` / `editable`）单方面改了，而夹具里\n\
+    |  ____________________________________________________________________________________________^
+947 | |                      　　那份**手写副本**没跟。两份副本对拍就是为了让这一形出声。\n\
+    | |______________________-^
+    |                        |
+    |                        whitespace symbol '\u{3000}' is not skipped
+
+warning: failed to parse serde attribute
+  | 
+  | deserialize_with =
+  | 
+  = note: ts-rs failed to parse this attribute. It will be ignored.
+warning: failed to parse serde attribute
+  | 
+  | deserialize_with =
+  | 
+  = note: ts-rs failed to parse this attribute. It will be ignored.
+warning: failed to parse serde attribute
+  | 
+  | alias = "custom_title"
+  | 
+  = note: ts-rs failed to parse this attribute. It will be ignored.
+warning: failed to parse serde attribute
+  | 
+  | alias = "updated_at"
+  | 
+  = note: ts-rs failed to parse this attribute. It will be ignored.
+warning: failed to parse serde attribute
+  | 
+  | alias = "last_account"
+  | 
+  = note: ts-rs failed to parse this attribute. It will be ignored.
+warning: failed to parse serde attribute
+  | 
+  | other 
+  | 
+  = note: ts-rs failed to parse this attribute. It will be ignored.
+warning: unused import: `std::io::BufRead`
+    --> src/backend/control/local_backend.rs:1268:9
+     |
+1268 |     use std::io::BufRead;
+     |         ^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `crate::ccm_cli_contract as contract`
+    --> src/sftp.rs:1473:13
+     |
+1473 |         use crate::ccm_cli_contract as contract;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::path::PathBuf`
+   --> src/lib.rs:147:5
+    |
+147 | use std::path::PathBuf;
+    |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `backend::control::local_backend::Resolved`
+   --> src/lib.rs:520:21
+    |
+520 |                 use backend::control::local_backend::Resolved;
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `AsyncBufReadExt`
+  --> src/remote_history.rs:19:17
+   |
+19 | use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+   |                 ^^^^^^^^^^^^^^^
+
+warning: value assigned to `overflowed` is never read
+   --> src/cc_bus.rs:656:26
+    |
+656 |     let mut overflowed = false;
+    |                          ^^^^^ this value is reassigned later and never used
+...
+690 |     overflowed = over;
+    |     ----------------- `overflowed` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `wide`
+   --> src/backend/control/daemon_kill.rs:283:13
+    |
+283 |         let wide = format!("tmux {verb}");
+    |             ^^^^ help: if this is intentional, prefix it with an underscore: `_wide`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `find_window_by_marker_substr` is never used
+   --> src/bind.rs:364:4
+    |
+364 | fn find_window_by_marker_substr(_marker: &str) -> Option<MarkerHit> {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: struct `MarkerHit` is never constructed
+   --> src/bind.rs:369:12
+    |
+369 | pub struct MarkerHit {
+    |            ^^^^^^^^^
+
+warning: function `process_creation_filetime` is never used
+   --> src/bind.rs:430:4
+    |
+430 | fn process_creation_filetime(_pid: u32) -> Option<crate::utils::FileTime> {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `start_if_present` is never used
+    --> src/backend/control/local_backend.rs:1100:8
+     |
+1100 | pub fn start_if_present(
+     |        ^^^^^^^^^^^^^^^^
+
+warning: variant `CwdPath` is never constructed
+  --> src/skill_host.rs:92:5
+   |
+78 | pub enum Discover {
+   |          -------- variant in this enum
+...
+92 |     CwdPath { path: &'static str },
+   |     ^^^^^^^
+
+warning: constant `ERROR_COMBINATORS` is never used
+   --> src/exec_site_registry.rs:140:11
+    |
+140 |     const ERROR_COMBINATORS: &[&str] =
+    |           ^^^^^^^^^^^^^^^^^
+
+warning: function `non_error_lines` is never used
+   --> src/exec_site_registry.rs:143:8
+    |
+143 |     fn non_error_lines(body: &str) -> String {
+    |        ^^^^^^^^^^^^^^^
+
+warning: field `0` is never read
+   --> src/tool_registry.rs:642:13
+    |
+642 |     Managed(&'static ToolSpec),
+    |     ------- ^^^^^^^^^^^^^^^^^
+    |     |
+    |     field in this variant
+    |
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+    |
+642 -     Managed(&'static ToolSpec),
+642 +     Managed(()),
+    |
+
+warning: fields `named` and `host` are never read
+   --> src/tool_registry.rs:645:9
+    |
+644 |     Named {
+    |     ----- fields in this variant
+645 |         named: &'static str,
+    |         ^^^^^
+646 |         host: HostScope,
+    |         ^^^^
+
+warning: fields `display_name`, `why`, and `backing` are never read
+   --> src/tool_registry.rs:653:9
+    |
+651 | pub struct EnvEntry {
+    |            -------- fields in this struct
+652 |     pub id: &'static str,
+653 |     pub display_name: &'static str,
+    |         ^^^^^^^^^^^^
+654 |     pub tier: EnvTier,
+655 |     pub why: &'static str,
+    |         ^^^
+656 |     pub backing: EnvBacking,
+    |         ^^^^^^^
+
+warning: function `analyze_codex_usage` is never used
+   --> src/usage.rs:192:4
+    |
+192 | fn analyze_codex_usage(info: &crate::history::CodexSessionInfo) -> Option<SessionUsageRow> {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: function `analyze_usage_in_session` is never used
+   --> src/usage.rs:219:4
+    |
+219 | fn analyze_usage_in_session(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `NetTicks` is never constructed
+   --> src/utils.rs:122:12
+    |
+122 | pub struct NetTicks(pub u64);
+    |            ^^^^^^^^
+
+warning: associated items `parse_str` and `abs_diff` are never used
+   --> src/utils.rs:178:12
+    |
+176 | impl NetTicks {
+    | ------------- associated items in this implementation
+177 |     /// 从字符串解析（Claude Code procStart 字段形式）。失败返 None。
+178 |     pub fn parse_str(s: &str) -> Option<Self> {
+    |            ^^^^^^^^^
+...
+182 |     pub fn abs_diff(self, other: Self) -> u64 {
+    |            ^^^^^^^^
+
+warning: unused `Recorded` that must be used
+   --> src/daemon_policy.rs:856:9
+    |
+856 |         record_death(origin, &ev, &mut sink).expect("要记一笔");
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+    |
+856 |         let _ = record_death(origin, &ev, &mut sink).expect("要记一笔");
+    |         +++++++
+
+warning: unused `Recorded` that must be used
+    --> src/daemon_policy.rs:1075:9
+     |
+1075 |         record_death(origin, &ev, &mut sink).expect("要记一笔");
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: use `let _ = ...` to ignore the resulting value
+     |
+1075 |         let _ = record_death(origin, &ev, &mut sink).expect("要记一笔");
+     |         +++++++
+
+warning: unused `Recorded` that must be used
+    --> src/daemon_policy.rs:1076:9
+     |
+1076 |         record_death(origin, &ev, &mut sink).expect("要记第二笔");
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: use `let _ = ...` to ignore the resulting value
+     |
+1076 |         let _ = record_death(origin, &ev, &mut sink).expect("要记第二笔");
+     |         +++++++
+
+warning: direct cast of function item into an integer
+    --> src/local_daemon.rs:2811:47
+     |
+2811 |                 stop_detached_backend_on_exit as usize,
+     |                                               ^^^^^^^^
+     |
+     = note: `#[warn(function_casts_as_integer)]` on by default
+help: first cast to a pointer `as *const ()`
+     |
+2811 |                 stop_detached_backend_on_exit as *const () as usize,
+     |                                               ++++++++++++
+
+warning: direct cast of function item into an integer
+    --> src/local_daemon.rs:2816:36
+     |
+2816 |                 stop_relay_on_exit as usize,
+     |                                    ^^^^^^^^
+     |
+help: first cast to a pointer `as *const ()`
+     |
+2816 |                 stop_relay_on_exit as *const () as usize,
+     |                                    ++++++++++++
+
+warning: `monitor` (lib test) generated 29 warnings (run `cargo fix --lib -p monitor --tests` to apply 7 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.54s
+     Running unittests src/lib.rs (/home/zbl/文档/claudecode-frontend/.claude/pm-targets/k-r60/debug/deps/monitor_lib-56a423a44fdc3213)
+
+running 35 tests
+test config_surface::tests::all_host_scopes_are_really_used ... ok
+test config_surface::tests::claude_paths_honor_config_dir_and_fall_back ... ok
+test config_surface::tests::all_registry_paths_are_machine_resolvable ... ok
+test config_surface::tests::declaration_inconsistency_is_an_error_not_a_guess ... ok
+test config_surface::tests::either_host_keeps_the_glob_count ... ok
+test config_surface::tests::destination_checks_still_run_under_every_host ... ok
+test config_surface::tests::either_host_never_says_absent ... ok
+test config_surface::tests::either_host_reports_present_when_found_locally ... ok
+test config_surface::tests::every_host_declaration_is_pinned ... ok
+test config_surface::tests::generate_only_wording_says_we_do_not_write ... ok
+test config_surface::tests::glob_counts_only_real_matches ... ok
+test config_surface::tests::host_projection_preserves_the_richer_resolution ... ok
+test config_surface::tests::host_labels_are_distinct_and_truthful ... ok
+test config_surface::tests::host_is_not_a_function_of_destination ... ok
+test config_surface::tests::present_absent_and_dir_listing ... ok
+test config_surface::tests::remote_host_never_resolves_to_a_local_path ... ok
+test config_surface::tests::remote_project_and_profile_are_not_local ... ok
+test config_surface::tests::resolves_local_home_paths ... ok
+test config_surface::tests::resolves_one_level_glob ... ok
+test config_surface::tests::settings_scopes_include_local_and_admit_project_is_unchecked ... ok
+test config_surface::tests::rows_cover_every_touched_file_and_use_all_spec_fields ... ok
+test config_surface::tests::rows_carry_the_host_label ... ok
+test config_surface::tests::undetermined_always_carries_a_reason ... ok
+test config_surface::tests::unlistable_dir_is_undetermined_not_empty ... ok
+test config_surface::tests::user_configured_destinations_declare_a_placeholder_not_a_guess ... ok
+test config_surface::tests::unreadable_settings_does_not_claim_absence_of_hooks ... ok
+test config_surface::export_bindings_surfacestate ... ok
+test config_surface::tests::prose_paths_are_rejected ... ok
+test config_surface::tests::the_view_population_is_exactly_the_closed_set ... FAILED
+test config_surface::tests::the_path_resolution_dispatch_has_no_catch_all_arm ... ok
+test config_surface::tests::declared_destinations_are_pinned_to_the_real_writers ... ok
+test config_surface::export_bindings_settingsscope ... ok
+test config_surface::export_bindings_surfacerow ... ok
+test config_surface::export_bindings_configsurfacereport ... ok
+test config_surface::tests::this_module_only_reads ... ok
+
+failures:
+
+---- config_surface::tests::the_view_population_is_exactly_the_closed_set stdout ----
+
+thread 'config_surface::tests::the_view_population_is_exactly_the_closed_set' (348) panicked at src/config_surface.rs:1444:9:
+assertion `left == right` failed: 这一页的人群与环境清单的闭集对不上 —— 少掉的那几项，
+用户在这一页上**看不见**，而这一页正是他问「齐了没有」时唯一能看的地方。
+（闭集住 `tool_registry::environment`，它是唯一一份；这里不许再抄一张名单。）
+  left: {"cc-acct-iso", "cc-bus", "ccm", "powershell-profile", "project-mcp", "remote-daemon"}
+ right: {"cc-acct-iso", "cc-acct-iso-local", "cc-bus", "ccm", "claude-cli", "git", "login-shell", "mcp-server", "pgrep", "posix-rc-aliases", "powershell-profile", "project-mcp", "remote-daemon", "ssh", "terminal-exit", "tmux", "xdg-open"}
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    config_surface::tests::the_view_population_is_exactly_the_closed_set
+
+test result: FAILED. 34 passed; 1 failed; 0 ignored; 0 measured; 1341 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--lib`
