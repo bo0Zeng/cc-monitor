@@ -31,7 +31,60 @@ import { attachBranchButton } from "../branch-button";
 import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起来（E78 起连反馈也在里面）
 import type { BranchResult } from "../generated/BranchResult";
 // K-R45 甲：挑「用户说过的每一句」那一半住在这里（纯函数，乙那条路要共用，别复制）
-import { collectUserInputs, type UserInputEntry } from "./user-input-index";
+import { collectUserInputs } from "./user-input-index";
+// K-R45：清单界面两条路共用一份，只有一个住址
+import { UserInputPanel } from "./user-input-panel";
+
+/**
+ * **在一条消息流里按 uuid 找到那张卡、展开挡着它的折叠、滚过去并闪一下。**
+ * 找不到返回 `null` 且**什么都不做**（怎么兜底由调用方决定）。
+ *
+ * # 为什么它是导出的（K-R45 第三轮）
+ *
+ * 它本轮起有**两个**调用方：本文件的 `scrollToMessage`（搜索命中 + 「我说过的 N 句」）
+ * 与 `tabs.ts` 的实时窗口（`KR45D2`）。件 `§5.2` 的 B 段现打核过这一段**真能共用**：
+ * 两条路的卡由**同一个** `renderStreamRecord` 建，`data-uuid` 由**唯一一份**
+ * `markCardUuid` 写。照抄一份到 `tabs.ts` 的代价是从此两处要一起改。
+ *
+ * 🔴 **它为什么还住在这个文件里，而不是一个中立的 `views/card-jump.ts`** ——
+ * 这是一处**登记在案的将就，不是设计**：本仓有一条 Rust 侧判据
+ * （`src-tauri/src/polling_registry.rs::every_scheduling_call_site_is_classified`）
+ * 按「文件 × API × 处数」精确对账**全部** `requestAnimationFrame` / `setTimeout` 调用点。
+ * 把下面这 2 处 rAF + 1 处 setTimeout 搬进新文件，就必须同时改那张表 ——
+ * 而 `src-tauri/` 不在本轮写区。**实测过**：搬进 `views/card-jump.ts` 后全量门禁
+ * cargo 那格当场红（逐字读数在件 `§5.6`）。
+ * ⇒ 照 `brief` 第 2 / 17 条：不越界、不糊过去，**抬上来请裁**。
+ *
+ * ⚠ 代价是 `tabs.ts` 要 `import` 本文件（实时窗口 import 历史查看器，方向是别扭的）。
+ * 它**不成环**（本文件不 import `tabs.ts`），打包面也没变（两者本来都在包里），
+ * 但这是一句「今天这样是因为写区，不是因为对」——**别把它读成本仓的惯例**。
+ */
+export function revealCard(container: HTMLElement, uuid: string): HTMLElement | null {
+  // CSS.escape 防 uuid 里有特殊字符破坏选择器
+  const sel = `[data-uuid="${CSS.escape(uuid)}"]`;
+  const el = container.querySelector<HTMLElement>(sel);
+  if (!el) return null;
+  // 展开所有折叠祖先，确保目标可见。注:ESC 回退段是 div.branch-fold-wrap
+  // + .expanded 类(非 <details>)——此前只开 details,命中折叠段内的卡会被
+  // 0fr 裁剪、flash 不可见(Batch13 D 审计发现的既有 bug)
+  let p: HTMLElement | null = el.parentElement;
+  while (p && p !== container) {
+    if (p instanceof HTMLDetailsElement) p.open = true;
+    if (p.classList.contains("branch-fold-wrap") && !p.classList.contains("expanded")) {
+      p.classList.add("expanded");
+      p.querySelector(".branch-fold-header")?.setAttribute("aria-expanded", "true");
+    }
+    p = p.parentElement;
+  }
+  el.scrollIntoView({ block: "center" });
+  // Batch13-F38:首次落点基于 content-visibility 估值几何;双 rAF 后周边已
+  // 材料化(真实尺寸),幂等重发一次让 block:center 落点精确
+  requestAnimationFrame(() => requestAnimationFrame(() => el.scrollIntoView({ block: "center" })));
+  el.classList.add("search-hit-flash");
+  // 动画结束后移除 class（再次跳同一条还能重放）
+  window.setTimeout(() => el.classList.remove("search-hit-flash"), 2200);
+  return el;
+}
 
 /**
  * 历史会话的 jsonl 文件名**就是** sid（口径同 `remote_history::jsonl_stem`）。
@@ -112,10 +165,9 @@ export class SessionViewer {
   private titleEl!: HTMLElement;
   private subtitleEl!: HTMLElement;
   private statusEl!: HTMLElement;
-  // K-R45 甲：用户输入清单（开关在顶栏，面板夹在状态栏与消息流之间）
-  private inputsToggle!: HTMLButtonElement;
-  private inputsPanel!: HTMLElement;
-  private userInputs: UserInputEntry[] = [];
+  // K-R45 甲：用户输入清单（开关在顶栏，面板夹在状态栏与消息流之间）。
+  // 界面本体住 `user-input-panel.ts` —— 实时窗口那条路用的是**同一份**。
+  private inputs!: UserInputPanel;
   /** 用户点"返回历史"时调用 */
   private onBack: () => void;
 
@@ -467,8 +519,19 @@ export class SessionViewer {
    * issue #6：滚动定位到指定 uuid 的卡片并临时高亮。
    * 命中卡片可能被折叠在 ESC 回退段（`<details>`）里 → 先展开所有祖先 details 再滚。
    * 找不到（极少：该 uuid 未渲染成带 data-uuid 的卡）则退化为贴底。
+   *
+   * 🔴 **本轮（K-R45 第三轮）改了两处形状，逐字记下来**（`KR45D0` 的告诫要求写明）：
+   * ① 「找卡 → 展开折叠 → 滚 → 闪」那一段提成了本文件里导出的 `revealCard`
+   *    —— 它本轮起有**两个**调用方（这里 + `tabs.ts` 的实时窗口），照抄一份的代价是
+   *    从此两处要一起改。提的是**整段、逐字**，一个分支都没改。
+   *    （它为什么没搬去一个中立文件，见 `revealCard` 的头注 —— 写区的将就，已请裁。）
+   * ② 返回值从 `void` 变成「落到的那张卡 / `null`」—— 调用方本来就要知道跳没跳到
+   *    （`user-input-panel.ts` 此前是自己再 `querySelector` 一遍**猜**的）。
+   * **留在这里没搬的**是两条路结构上不同的那两段：「没渲染就先渲出来」（`uuidToIdx`
+   * + `UnrenderedRanges`，实时窗口没有）与「找不到就退到底部」（实时窗口本来就贴底）。
+   * 改之前那一版过不过：`KR45D0` 那 6 格在改前改后都是绿的（读数在件 `§5.5`）。
    */
-  private scrollToMessage(uuid: string): void {
+  private scrollToMessage(uuid: string): HTMLElement | null {
     // F39:目标还没渲染(非首屏路径调进来,如未来的重复定位)→ 先渲染目标岛
     const idx = this.uuidToIdx.get(uuid);
     if (idx !== undefined && this.unrendered?.contains(idx)) {
@@ -476,98 +539,29 @@ export class SessionViewer {
       this.rebuildFold();
       this.updateStatus(this.payloads.length);
     }
-    // CSS.escape 防 uuid 里有特殊字符破坏选择器
-    const sel = `[data-uuid="${CSS.escape(uuid)}"]`;
-    const el = this.streamEl.querySelector<HTMLElement>(sel);
+    const el = revealCard(this.streamEl, uuid);
     if (!el) {
       this.stream?.scrollToBottom();
-      return;
+      return null;
     }
-    // 展开所有折叠祖先，确保目标可见。注:ESC 回退段是 div.branch-fold-wrap
-    // + .expanded 类(非 <details>)——此前只开 details,命中折叠段内的卡会被
-    // 0fr 裁剪、flash 不可见(Batch13 D 审计发现的既有 bug)
-    let p: HTMLElement | null = el.parentElement;
-    while (p && p !== this.streamEl) {
-      if (p instanceof HTMLDetailsElement) p.open = true;
-      if (p.classList.contains("branch-fold-wrap") && !p.classList.contains("expanded")) {
-        p.classList.add("expanded");
-        p.querySelector(".branch-fold-header")?.setAttribute("aria-expanded", "true");
-      }
-      p = p.parentElement;
-    }
-    el.scrollIntoView({ block: "center" });
-    // Batch13-F38:首次落点基于 content-visibility 估值几何;双 rAF 后周边已
-    // 材料化(真实尺寸),幂等重发一次让 block:center 落点精确
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => el.scrollIntoView({ block: "center" })),
-    );
-    el.classList.add("search-hit-flash");
-    // 动画结束后移除 class（再次跳同一条还能重放）
-    window.setTimeout(() => el.classList.remove("search-hit-flash"), 2200);
+    return el;
   }
 
   // ==== K-R45 甲 · 用户输入清单 ====
 
   /**
-   * `KR45D1`：扫出这个会话里**主线**的用户输入，列成一条可点的清单。
+   * `KR45D1`：扫出这个会话里**主线**的用户输入，喂给清单面板。
    *
    * 🔴 **数据源是 `payloads`，不是 DOM**。件里写的是「扫已有 `data-uuid` 的卡」，
    * 而那样只扫得到**已渲染**的那些 —— 首屏只渲染末尾 `TAIL_INITIAL` 条（150），
    * 于是长会话里清单会缺掉绝大部分，而**长会话恰恰是这件活唯一的用处**。
    * ⇒ 走 `payloads`（收集阶段是全量的），条数才做得到「不多不少」。
    * 挑的口径（含 sidechain 算不算）只有一个住址：`user-input-index.ts::collectUserInputs`。
-   */
-  /** 开关清单面板。`hidden` 而不是 `display` —— 与本仓其余处一致，也让判据好断。 */
-  private toggleUserInputs(): void {
-    const open = this.inputsPanel.hidden;
-    this.inputsPanel.hidden = !open;
-    this.inputsToggle.setAttribute("aria-expanded", String(open));
-  }
-
-  private rebuildUserInputs(): void {
-    this.userInputs = collectUserInputs(this.payloads.map((p) => p.message));
-    this.inputsToggle.textContent = `我说过的 ${this.userInputs.length} 句`;
-    this.inputsToggle.disabled = this.userInputs.length === 0;
-    const rows = this.userInputs.map((entry, i) => {
-      const row = document.createElement("button");
-      row.type = "button";
-      row.className = "session-viewer-input-row";
-      // 🔴 **刻意不叫 `data-uuid`**：那个名字在本仓有且只有一个意思 ——
-      // 「这是一张渲染出来的消息卡」，`branch-fold.ts:236` 就是照它扫主线的。
-      // 清单行不是卡。两件事共用一个属性名，下一个写 `[data-uuid]` 选择器的人就会数错。
-      // （本轮自抓：第一版真写成了 `data-uuid`，判据当场把卡和行混在一起数成 350。）
-      row.dataset.inputUuid = entry.uuid;
-      row.textContent = `${i + 1}. ${entry.excerpt}`;
-      row.title = entry.excerpt;
-      row.addEventListener("click", () => this.jumpToUserInput(entry.uuid, row));
-      return row;
-    });
-    this.inputsPanel.replaceChildren(...rows);
-  }
-
-  /**
-   * 点清单里的一条 → 跳过去。**跳转本身一行都没新写**：调的就是搜索命中今天在用的
-   * 那个 `scrollToMessage`（`KR45D0` 已给它立了哨）。展开折叠是它自带的，白送
-   * —— 这就是 `§0c` 的「甲」，也是 `KR45D3` 说的「这一格自动满足」。
    *
-   * 🔴 **唯一新写的是「跳不过去时不许静默」那一支**：
-   * `user-input-index.ts` 的头注登记了一条已知不等价 —— 渲染那边会再剥一层
-   * `stripInternalNoise`，被剥空的记录**不建卡** ⇒ 清单里可能有极少数条目落不到卡上。
-   * 那一形正是这个仓一整天在治的「静默做了个没用的动作」：`scrollToMessage` 找不到卡
-   * 会退到底部，用户看见的是「点了一下，跳到了会话最后」，而没有任何东西说一句话。
-   * ⇒ 这里跳完回头核一次，落空就把那一行**标出来**（`data-unjumpable` + 一句人话）。
+   * 界面与「跳完回头核一次落点」那一段住 `user-input-panel.ts`（实时窗口同一份）。
    */
-  private jumpToUserInput(uuid: string, row: HTMLElement): void {
-    this.scrollToMessage(uuid);
-    const landed = this.streamEl.querySelector(`[data-uuid="${CSS.escape(uuid)}"]`);
-    if (landed) {
-      delete row.dataset.unjumpable;
-      return;
-    }
-    // 🔴 变灰**不在这里**：`styles.css` 的 `.session-viewer-input-row[data-unjumpable]`。
-    // 呈现跟着标记走 ⇒ 上面那句 `delete` 一执行，灰也自动没了（内联 opacity 只加不减）。
-    row.dataset.unjumpable = "1";
-    row.title = "这条在渲染时被剥成了空卡，跳不过去（已退到会话末尾）";
+  private rebuildUserInputs(): void {
+    this.inputs.setEntries(collectUserInputs(this.payloads.map((p) => p.message)));
   }
 
   /** 主动释放（HistoryView 卸载本组件时调） */
@@ -593,14 +587,7 @@ export class SessionViewer {
     this.lastFirstScreenMs = null;
     // K-R45 甲：清单也要跟着释放 —— 留着就是上一个会话的句子挂在下一个会话上，
     // 点下去按 uuid 找不到卡，正好落进「静默跳到看不见的东西上」那一形。
-    this.userInputs = [];
-    this.inputsPanel?.replaceChildren();
-    if (this.inputsPanel) this.inputsPanel.hidden = true;
-    if (this.inputsToggle) {
-      this.inputsToggle.textContent = "我说过的 0 句";
-      this.inputsToggle.disabled = true;
-      this.inputsToggle.setAttribute("aria-expanded", "false");
-    }
+    this.inputs?.clear();
   }
 
   // (旧的 renderAll 被流式 load 替代，删了 —— v2.2 issue #12)
@@ -622,14 +609,15 @@ export class SessionViewer {
     backBtn.addEventListener("click", () => this.onBack());
     bar.appendChild(backBtn);
 
-    // K-R45 甲：清单开关。`flex-shrink:0` 的顶栏里塞在标题右边（标题那块 flex:1 会吃掉余量）。
-    this.inputsToggle = document.createElement("button");
-    this.inputsToggle.type = "button";
-    this.inputsToggle.className = "session-viewer-inputs-toggle";
-    this.inputsToggle.textContent = "我说过的 0 句";
-    this.inputsToggle.disabled = true;
-    this.inputsToggle.setAttribute("aria-expanded", "false");
-    this.inputsToggle.addEventListener("click", () => this.toggleUserInputs());
+    // K-R45：清单面板（与实时窗口共用一份实现）。
+    // 「怎么跳」与「跳空了怎么解释」是两条路唯一不同的地方，所以只有这两件传进去。
+    this.inputs = new UserInputPanel({
+      jumpTo: (uuid) => this.scrollToMessage(uuid),
+      // 查看器这一侧落空的成因是自陈的那条不等价：渲染会再剥一层 `stripInternalNoise`，
+      // 剥空了**不建卡**（`user-input-index.ts` 头注）。`scrollToMessage` 会退到底部。
+      unjumpableHint: "这条在渲染时被剥成了空卡，跳不过去（已退到会话末尾）",
+    });
+    // 开关塞在顶栏标题右边（标题那块 flex:1 会吃掉余量）。
 
     const titles = document.createElement("div");
     titles.className = "session-viewer-titles";
@@ -640,7 +628,7 @@ export class SessionViewer {
     this.subtitleEl.className = "session-viewer-subtitle";
     titles.appendChild(this.subtitleEl);
     bar.appendChild(titles);
-    bar.appendChild(this.inputsToggle);
+    bar.appendChild(this.inputs.toggle);
 
     view.appendChild(bar);
 
@@ -648,12 +636,9 @@ export class SessionViewer {
     this.statusEl.className = "history-status";
     view.appendChild(this.statusEl);
 
-    // K-R45 甲：清单面板。默认收着 ⇒ 不改任何既有布局。
-    // 样式住 `styles.css` 的 `.session-viewer-inputs`（上一轮内联那笔债本轮还了）。
-    this.inputsPanel = document.createElement("div");
-    this.inputsPanel.className = "session-viewer-inputs";
-    this.inputsPanel.hidden = true;
-    view.appendChild(this.inputsPanel);
+    // K-R45：清单面板。默认收着 ⇒ 不改任何既有布局。
+    // 样式住 `styles.css` 的 `.user-inputs`（内联那笔债上一轮还了）。
+    view.appendChild(this.inputs.panel);
 
     // 消息流容器（与实时 Tab 用相同的 .stream 样式）
     this.streamEl = document.createElement("div");

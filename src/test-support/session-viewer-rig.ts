@@ -1,5 +1,16 @@
 /**
- * `SessionViewer` 两个套件共用的**台子**（K-R45 第二轮，还的是上一轮申报的第 1 笔债）。
+ * K-R45 判据共用的**台子**（第二轮建，还的是第一轮申报的第 1 笔债；第三轮**扩了它**）。
+ *
+ * # 🔴 第三轮：住户从两个变成三个，名字没跟着改 —— 这一句是说明，不是借口
+ *
+ * 新住户是 `views/live-user-inputs.vitest.ts`（实时窗口那条路，被测对象是
+ * `TabManager` 不是 `SessionViewer`）。它用的是本文件里**与 viewer 无关**的那几样：
+ * 补 jsdom 缺的四样（`installViewerRig`）＋ 造记录行（`line` / `userLine` /
+ * `assistantLine` / `withSession`）。真正 viewer-only 的只有 `tauriCoreMock`
+ * （灌 `Channel`）与 `expectLoaded`（核 viewer 的状态栏），实时那侧一个都不用。
+ * ⇒ **没有开第二份台子**（第二轮刚把两份并成一份，当轮长回两份是老债复发）。
+ * 文件名没改是因为改名要动三个套件的 import 与两处文档住址，而收益只有「名字更准」；
+ * **登记在这里，别当没看见**。
  *
  * # 为什么要有这一份
  *
@@ -97,6 +108,14 @@ export function userLine(
     forkedFrom: null,
     ...over,
   });
+}
+
+/**
+ * 把一行改挂到另一个会话上（多 tab 的判据要造两个 sid；`line()` 把 `s1` 写死了）。
+ * `path` 跟着换 —— 两个 tab 的 `parentPath` 相同在真实里不会发生，别让夹具自带一处假。
+ */
+export function withSession(p: RigPayload, sessionId: string): RigPayload {
+  return { ...p, session_id: sessionId, path: `/p/${sessionId}.jsonl` };
 }
 
 /** 一条 assistant 记录（清单口径里它必须被排掉，判据要拿它当反例）。 */
