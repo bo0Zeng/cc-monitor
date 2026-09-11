@@ -484,12 +484,15 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
             if let Some(sid) = &req.ccm_sid {
                 let _ = tmux(&["set-option", "-t", &t, "@ccm_sid_expect", sid]);
                 let _ = tmux(&["set-option", "-t", &t, "set-titles", "on"]);
+                // 🔴 `K-R48` 09-11：这个格式串**原来在这里手抄了一份**，而另一份住在
+                // `shared/ccm` 里 —— 两份同步靠的是记性。删掉那个脚本的同一拍，
+                // 把住址收到 `ccm::RBIND_TITLE_FORMAT` 一处（它头注写着这一行为什么长这样）。
                 let _ = tmux(&[
                     "set-option",
                     "-t",
                     &t,
                     "set-titles-string",
-                    "#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}",
+                    super::ccm::RBIND_TITLE_FORMAT,
                 ]);
             }
             type_payload(&t, &req.payload)?;

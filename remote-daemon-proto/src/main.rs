@@ -1203,6 +1203,25 @@ mod stream_flag_tests {
 
 #[tokio::main]
 async fn main() {
+    // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
+    //
+    // 〔用@09-11 `K33`〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
+    // ⇒ 终端里敲的 `ccm` 就是本二进制（别名 / 软链指过来，或 `cc-monitor-remote ccm …`）。
+    //
+    // 🔴 **三个「必须排在前面」，一个都不是排版**：
+    //   ① 排在 `tracing_subscriber` 之前 —— 一次性模式的 stderr 是给人看的，
+    //      混进 daemon 的日志行就把「正常路径一个字都不说」这条契约破了；
+    //   ② 排在 `split_stream_flags` 之前 —— 那一步会把 `--with-bg` / `--tail-only`
+    //      从 argv **任意位置**剥掉，而 `ccm -- --tail-only` 里那个要原样透传给 agent；
+    //   ③ 排在 `resolve_agent_home()` 之前 —— 一次性模式不必去解析 agent 家目录。
+    {
+        let argv0 = std::env::args().next().unwrap_or_default();
+        let rest: Vec<String> = std::env::args().skip(1).collect();
+        if let Some(ccm_args) = control::ccm::intercept(&argv0, &rest) {
+            std::process::exit(control::ccm::run(&ccm_args));
+        }
+    }
+
     // Log to stderr so it never corrupts the stdout wire stream.
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
