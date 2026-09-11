@@ -582,13 +582,16 @@ mod tests {
             "这张表空了 —— 要么真的没有终端命令面了（那就连同 `found.retain` 一起摘掉），\n             要么是被人掏空了。空表让 `retain` 变成 no-op，本条因此在空转。"
         );
         // 今天的接盘判据：`control::ccm` 的用法行判据。它必须①存在 ②扫的是同一份文件。
-        let ccm_mod = include_str!("control/ccm/mod.rs");
+        let ccm_mod = crate::control::ccm::own_source();
         assert!(
             ccm_mod.contains("fn every_flag_we_accept_has_a_usage_line"),
             "接盘判据 `every_flag_we_accept_has_a_usage_line` 不在 `control/ccm/mod.rs` 里了 —— \n             `TERMINAL_SURFACE_FILES` 那一格从此没人接，把那份文件放回 `DISPATCH_FILES`，\n             或者给它另找一条判据并把这里改掉。"
         );
+        // ⚠ 针**运行时拼**：写成字面量的话本文件就多出一处「解析不出路径的 `include_*!`」，
+        //   而 `cross_half_edge_registry` 的抽取器按文本数调用数 —— 那是一次现打逮到的假阳。
+        let needle = format!("include_str{}(\"argv.rs\")", "!");
         assert!(
-            ccm_mod.contains("include_str!(\"argv.rs\")"),
+            ccm_mod.contains(&needle),
             "接盘判据不再扫 `argv.rs` 了 —— 它声称覆盖的那份文件与它实际扫的对不上。"
         );
         for (f, why) in TERMINAL_SURFACE_FILES {

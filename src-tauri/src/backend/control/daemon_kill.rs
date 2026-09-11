@@ -181,6 +181,18 @@ mod tests {
             "名字来自入方向 `parse_request`，它自己就拒 `:`/`=`（那正是本判据的字符集来源）",
         ),
         (
+            // 〔`K-R48` 09-11〕**`shared/ccm` 那条路的原生副本**：`ccm` 变成后端二进制
+            // 自己的命令之后，`--print` 吐的那条 tmux 编排住在这里。
+            // ⚠ 它与上面 `shared/ccm` 那条是**同一条路的两个实现**，今天并存
+            //（脚本还没删）⇒ 这张表在过渡期是 5 条；脚本删掉那天连带删上面那条。
+            "remote-daemon-proto/src/control/ccm/plan.rs",
+            CreationVerdict::ValidatesItself,
+            "显式 `--tmux=<名>` / `--tmux-base=<基名>` 两条都先过 `validate_tmux_name`，\
+             它逐字拒 `* ? . : =` 与控制字符（禁字集与 `shared/ccm` 那条 `case` 同源）；\
+             派生名那条走 `derive_tmux_name`，它的字符集只放行 `[A-Za-z0-9_-]`，\
+             **构造上产不出禁字**。三条入口都由              `control::ccm::plan::tests::a_session_name_that_would_confuse_tmux_is_refused` 钉住",
+        ),
+        (
             "src-tauri/src/account_usage.rs",
             CreationVerdict::UpstreamValidated,
             "探针会话名是 `ccm-usage-<slug>`，`slug` 由账号名 sanitize 而来、**不是用户自由输入**；\
@@ -229,6 +241,14 @@ mod tests {
             "shared/ccm",
             "*[*?.:=]*)",
             "显式 `--tmux=<名>` 的 `case` 校验（**F15 给它加的 `=`**）—— 它既创建也自校验，两张表都在",
+        ),
+        (
+            // 〔`K-R48` 09-11〕上面那条的**原生副本**：同一条校验，换了语言。
+            "remote-daemon-proto/src/control/ccm/plan.rs",
+            "\"*?.:=\"",
+            "`validate_tmux_name` 的禁字集 —— 与上面那条 bash `case` **逐字同一串字符**，\
+             刻意写成一个字符串字面量而不是 `matches!(c, '*' | '?' | …)`，\
+             就是为了让本判据的第二列钉得住它（钉表达式本身、不钉「文件里有没有那个字符」）",
         ),
     ];
 
