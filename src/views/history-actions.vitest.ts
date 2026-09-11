@@ -296,3 +296,120 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
     confirmSpy.mockRestore();
   });
 });
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-R46`：**历史页 resume 要把 tmux 会话名铸出来传下去**（行为，不是文本）
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// 病（09-10 现打）：后端**故意**拒绝自己铸名 —— `history.rs` 的 `NO_TMUX_NAME` 注释逐字
+// 「在这里补一个铸造口 = 第三次犯同一个错」⇒ 名字只能由前端传下去。
+// `tabs.ts` 那条 tab 栏 resume 早就传了，**历史页这条（与搜索卡片共用同一个 `runResume`）
+// 一个字都没传** ⇒ `render_local_ccm` 早退 ⇒ 后端如实降级回旧路 ⇒ 起出来的会话
+// **不在具名 tmux 容器里**，右键那两条（「杀死会话（kill tmux …）」「就地 resume（复用空 tmux …）」）
+// 对它一条都给不出来。
+//
+// ⚠ **为什么非要行为判据**：`ipc/commands.vitest.ts` 那条同族判据量的是
+//   「`tmuxName` 那行字在不在」—— 把值换成恒 `null` 它照绿（`D4` 两刀已经证过这一形）。
+//   本组量的是**那一发 `invoke` 载荷里真正的那个值**。
+//
+// ⚠ **本组买不到什么**：它止于「monitor 发出去的载荷里有这个名字」。
+//   「后端真的用它建了一个 tmux 容器」要真 tmux（POSIX，且账号那一格还得是显式「账号 0」
+//   —— 具名账号与「没表态」都 §35 降级），归 e2e；
+//   「`↗ 调出终端` 按钮真的能用」更远：本机那一支走的是 Win32 HWND 缓存
+//   （`bind::activate` 在非 Windows 上逐字回 `only supported on Windows`），**与这个名字无关**。
+//   别把本组的绿读成「按钮好了」。
+describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
+  /** 那一发 `resume_history_session` 的载荷。 */
+  function resumePayload(): Record<string, unknown> {
+    const call = invokeMock.mock.calls.find((c) => c[0] === "resume_history_session");
+    expect(call, "一次 `resume_history_session` 都没发出去 —— 主路没走到，下面在空转").toBeTruthy();
+    return call![1] as Record<string, unknown>;
+  }
+
+  /** 让 `list_local_tmux` 回一份本机 tmux 快照（`null` = 不知道）。 */
+  function serveLocalTmux(names: string[] | null): void {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_local_tmux") {
+        return Promise.resolve(
+          names === null
+            ? null
+            : names.map((name) => ({
+                name,
+                path: "/p",
+                command: "claude",
+                attached: false,
+                windows: 1,
+                sid: null,
+              })),
+        );
+      }
+      return Promise.resolve(undefined);
+    });
+  }
+
+  async function clickResume(): Promise<void> {
+    const view = new HistoryView();
+    const row = buildRow(view, entry(), proj());
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    const btn = menuItem("在新终端 resume");
+    expect(btn, "右键菜单里没有「在新终端 resume」—— 文案改了，下面整条在空转").toBeTruthy();
+    btn!.click();
+    await new Promise((r) => setTimeout(r, 0));
+  }
+
+  beforeEach(() => {
+    invokeMock.mockReset();
+    invokeMock.mockResolvedValue(undefined);
+    __resetLocalLaunchSnapshotForTests();
+    invalidateAccountsCache(); // 模块级缓存，别让上面几组的 hostA 快照漏进来
+    document.body.replaceChildren();
+  });
+
+  it("★★ 基名被占 ⇒ 载荷里的 `tmuxName` **让到了 `-2`**（证明它真过了铸造口，不是拼出来的）", async () => {
+    // 判别格：基名 `s1-cc`（`sid.slice(0,8)` + `-cc`）已经被占着。
+    // 恒回一个常量、或自己拼一份基名规则（那正是 F13 修掉的坑），这一格都过不了。
+    serveLocalTmux(["s1-cc", "别人的-cc"]);
+    await clickResume();
+    expect(
+      resumePayload().tmuxName,
+      "历史页 resume 的载荷里没有让过位的 tmux 名 ——\n" +
+        "要么名字压根没传（后端 `NO_TMUX_NAME` 早退 ⇒ 会话不进具名容器），\n" +
+        "要么没过 `remote-launch.ts::mintTmuxName`（全仓唯一带撞名避让的铸造口）：\n" +
+        "另一处精心让出 `-2`，你直接撞上去 —— 那就是 issue #76 的形状。",
+    ).toBe("s1-cc-2");
+  });
+
+  it("★ 没被占 ⇒ 就是基名本身（反过来钉住：它不是**恒**加后缀）", async () => {
+    serveLocalTmux(["别人的-cc"]);
+    await clickResume();
+    expect(resumePayload().tmuxName).toBe("s1-cc");
+  });
+
+  it("★★ 本机 tmux 快照是 `null`（**不知道**）⇒ `tmuxName` 传 `null`，**绝不硬铸**", async () => {
+    // `list_local_tmux` 回 `null` = 本机 daemon 通道没起 / 还没推过帧 = 不知道，
+    // **不是**「一个名字都没占」。此时硬铸就是「不避让」⇒ issue #76
+    //「静默接进第一个会话，而用户以为开了新的」。诚实的做法是不传，让后端降级回旧路。
+    serveLocalTmux(null);
+    await clickResume();
+    expect(
+      resumePayload().tmuxName,
+      "不知道本机占了哪些名字时铸了一个 —— 那是把「不知道」当成了「空集」",
+    ).toBeNull();
+    // 反空真：这一趟主路**真的走到了**（否则上面那条是「什么都没发生」的空真）。
+    expect(invokeMock.mock.calls.some((c) => c[0] === "resume_history_session")).toBe(true);
+  });
+
+  it("★ 远端那条路**不受影响**：不查本机 tmux、也不发本机 resume", async () => {
+    serveLocalTmux(["s1-cc"]);
+    const view = new HistoryView();
+    const row = buildRow(view, entry({ origin: "hostA" }), proj({ origin: "hostA" }));
+    row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }));
+    menuItem("在新终端 resume")!.click();
+    await new Promise((r) => setTimeout(r, 0));
+    expect(invokeMock.mock.calls.some((c) => c[0] === "resume_history_session")).toBe(false);
+    expect(
+      invokeMock.mock.calls.some((c) => c[0] === "list_local_tmux"),
+      "远端 resume 去查了本机的 tmux 名 —— 那是拿本机的事实去铸远端的名字",
+    ).toBe(false);
+  });
+});

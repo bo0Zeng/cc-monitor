@@ -471,6 +471,69 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     ).toEqual([]);
   });
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // `K-R46`：**每一条 `resume_history_session` 都要把 tmux 名说出来**
+  //
+  // 病（09-10 现打，分母在下面）：后端**故意**拒绝自己铸名
+  // （`history.rs` 的 `NO_TMUX_NAME`）⇒ 前端不传 = 会话不进具名容器。
+  // 三个 `resume_history_session` 调用点里**只有 `tabs.ts` 那一处传了**，
+  // `views/history.ts`（历史页 + 搜索卡片）与 `fork-flow.ts`（分叉本机起）都没传。
+  //
+  // ⚠ **`new_local_session` 不在这个分母里，而那不是漏掉**：Rust 侧
+  //   `history.rs::new_local_session` 的签名里**根本没有 `tmux_name` 这一格**
+  //   （函数体给 `launch_local` 的第五个实参硬写 `None`）⇒ 前端传了也没人收。
+  //   补它要同一拍改 `src-tauri/`，**不在 `K-R46` 写区**，已随本件上报。
+  //   ⇒ 本条的分母是**带得了这个参数的那几处**，不是「全部起会话的路」。
+  //
+  // 🔴 **本条只买「那一行字在不在 + 人群」**（与上一条同病，`D4` 两刀证过）：
+  //   把值换成恒 `null`、或把铸名口掏空，本条**照绿**。
+  //   值真的被铸出来、且真的避让了，由 `views/history-actions.vitest.ts` 与
+  //   `fork-flow.vitest.ts` 那两组**行为**判据买。两段合起来才是那条性质。
+  it("★ 每一处 `resume_history_session` 都带 `tmuxName`（分母 = 带得了这个参数的那几处）", () => {
+    const sites = localLaunchCallSites();
+    const resumeSites = sites.filter((s) => s.text.includes("resume_history_session"));
+    // 抽取器自检：分成两族之后任一族空掉 = 上面那个正则坏了，下面在空转。
+    expect(
+      resumeSites.length,
+      `\`resume_history_session\` 的调用点从 3 变成了 ${resumeSites.length}：\n` +
+        resumeSites.map((s) => s.file).join("\n"),
+    ).toBe(3);
+    expect(
+      sites.length - resumeSites.length,
+      "`new_local_session` 的调用点数变了 —— 它今天没有 `tmux_name` 参数位（Rust 侧签名里就没有），" +
+        "变了要回来看是不是后端也开了那一格",
+    ).toBe(1);
+    const missing = resumeSites.filter((s) => !/\btmuxName\b/.test(s.text)).map((s) => s.file);
+    expect(
+      missing,
+      "这些路没把 tmux 会话名传下去 ⇒ 后端 `render_local_ccm` 早退（`NO_TMUX_NAME`）⇒\n" +
+        "如实降级回旧路 ⇒ 起出来的会话**不在具名 tmux 容器里**，于是 `list_local_tmux`\n" +
+        "那一族（右键「杀死会话（kill tmux …）」/「就地 resume（复用空 tmux …）」）对它\n" +
+        "一条都给不出来。名字只许过 `remote-launch.ts::mintTmuxName`（全仓唯一铸造口），\n" +
+        "算法口住 `ipc/local-tmux-name.ts`。",
+    ).toEqual([]);
+  });
+
+  it("★ 铸名只有一个算法口（不许哪条路自己现查一遍 `list_local_tmux` 再拼）", () => {
+    // ⚠ **分母 3，今天 2/3 走口、1/3 内联** —— `src/tabs.ts` 那条 tab 栏 resume 自己
+    //   写着同样的六行，而 `src/tabs.ts` 不在 `K-R46` 的写区 ⇒ 收不进来，如实钉住现状。
+    //   这个 1 只许变小、不许变大：多一条内联的就红。
+    const inline: string[] = [];
+    for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+      if (f.includes(".test.") || f.includes(".vitest.")) continue;
+      if (f.endsWith("/ipc/local-tmux-name.ts")) continue; // 算法口本体
+      if (f.endsWith("/remote-launch.ts")) continue; // `pickFreshTmuxName` 的定义处
+      const code = stripComments(readFileSync(f, "utf8"), "ts");
+      if (code.includes("pickFreshTmuxName(")) inline.push(f.slice(REPO_ROOT.length + 1));
+    }
+    inline.sort();
+    expect(
+      inline,
+      "本机铸名自己写了一遍的地方变了。算法口是 `src/ipc/local-tmux-name.ts`；\n" +
+        "`src/tabs.ts` 是 `K-R46` 收不进来的那一处（写区外），收掉它要另立一件。",
+    ).toEqual(["src/tabs.ts"]);
+  });
+
   it("★★ 本机 resume 那两条也往 pin 里写（`D3 阻-2`：写入口先前结构上只走远端）", () => {
     // 现打（`D3`，PM 复核属实）：`recordLastAccount` 的生产调用点**恰好 2**，
     // 而两处**结构上只走远端** —— `withAccount(` 的 6 个生产调用点 6/6 在 `origin` 分支内；
