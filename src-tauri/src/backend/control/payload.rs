@@ -1353,311 +1353,16 @@ mod tests {
         assert_ne!(c, "has/slash");
     }
 
-    /// ★★★ `K-H2b` 裁三的第三条路：**ccm 的容器路要把中转 base URL 转发过 tmux 边界。**
-    ///
-    /// # 它治的是什么（与 `R08` 逐字同型）
-    ///
-    /// 注入发生在 `ccm` **外侧**（`relay_env_prefix_posix`，本文件唯一发射点）。
-    /// 走容器路时，载荷是经 `send-keys` 打进 **tmux server fork 出来的新 shell** 的，
-    /// 而 `update-environment` 的默认列表**不含**这个变量 ⇒ 外侧那句 export
-    /// 在 tmux 边界被整个吃掉。症状：**中转明明接上了，走 tmux 的会话却全是官方直连**
-    /// —— 「看起来生效了，只是没走中转」，与 `R08`（账号被静默换掉）同型、同样隐蔽。
-    ///
-    /// ⚠ **这不是把 ccm 当注入点**（`§0e` 裁三禁的是那个）：注入仍在本文件，
-    /// ccm 只是**别把已经注入好的变量吃掉**。「不当收口点」≠「不许碰它」。
-    ///
-    /// # 本条量两件事，第二件是**真跑**的
-    ///
-    /// ㈠ **位置**：那段转发落在容器路那个窗口里（载荷拼完之后、`tmux new-session` 之前）；
-    ///    非空对照 = 同一个窗口里必须还看得见 `R08` 那条既有的转发。
-    /// ㈡ **行为**：把那个窗口**原样抠出来交给 `bash` 跑**（`sq` 用一个桩），
-    ///    断言产出的载荷逐字节是什么。⇒ 条件写反、顺序写反、变量名打错，这里都会红。
-    ///
-    /// # ⚠ 它买不到什么
-    ///
-    /// **「变量真的穿过了一次真 tmux 边界」没量** —— 那要真 tmux（红线：本轮不起真 daemon、
-    /// 也不在门禁里起 tmux），归真机 e2e。本条买的是「那段转发在、条件对、拼出来的串对」。
-    ///
-    /// # 🔴🔴 **诚实边界（`D4 阻-3`）：本条量的是一条今天生产上到不了的路。**
-    ///
-    /// 本条**不是假的**（那段 shell 真的会按条件转发，`M12b` 把条件写反就红），
-    /// 但**本机中转这条路上没有任何生产输入能走到它**：
-    /// 能推出中转 id 的只有 `LaunchAccount::Named`，而 ccm 渲染器对 `Named` **必然** §35 短路
-    /// （只有 configDir、没有名字）⇒ **带中转前缀的拉起必然落回没有 tmux 容器的旧路，
-    /// 走 ccm 容器路的中转前缀必然是空串。两条路今天不相交。**
-    /// 那个事实由 `history::tests::a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`
-    /// 逐格钉住（三种账号形状各喂一次）。
-    ///
-    /// ⇒ **本条是「为将来那条路预备的」**：等 `LaunchAccount::Named` 补上名字、
-    /// 具名账号能走进 ccm 的那天，它才开始有生产人群。**别把它的绿读成
-    /// 「走中转的会话拿到了 tmux 容器」** —— 那正是 `K-H2b` 这一件在治的那条病
-    /// （「代码里有这个形状」≠「这条线接上了」）。
-    /// ⚠ 那一天还要**同一拍**给 `shared/ccm` 的 `capabilities=` 串加上对应 token
-    /// （现打 17 个 token 里含 `relay`/`base-url`/`anthropic` 的 **0** 个，而 `ccm_probe`
-    /// 探的是 PATH 上那个 ccm ⇒ 不加的话装了旧 ccm 的机器会**静默吃掉**这个变量）。
-    #[cfg(unix)]
-    #[test]
-    fn the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary() {
-        const CCM: &str = include_str!("../../../../shared/ccm");
-        // 窗口 = 容器路里「载荷拼好 → 起 tmux」之间那一段。
-        const START: &str = "\n  payload=\"\"\n";
-        const END: &str = "\n  t=\"$(sq \"=$tmux_name:\")\"";
-        // ① 两个锚点**全树各恰好一处** —— 先断这个，下面的 `find` 才是「那一处」而不是「第一处」。
-        //
-        // 🔴〔`K-P5e` `KP5ED3`〕**这三行是补上来的。** 在此之前这里只有一句注释逐字写着
-        //    「两个锚点全树各恰好一处」，而本函数体里 `.matches(` / `.count()` **各 0 处**
-        //    （`K-P5c` 与 `K-P5d` 两拍各现打一次，读数一致）⇒ **那是一句没有牙的注释**：
-        //    真长出第二处锚点时 `find` 会静默地取「第一处」，窗口整个取错、下面全是空真。
-        //    补法**逐格照抄**下面那条 `…_forwards_the_launch_identity_…`（`K-P5c` 那条真断言），
-        //    **没发明第二种写法**。
-        assert_eq!(
-            CCM.matches(START).count(),
-            1,
-            "载荷拼装那个起点锚点在 `shared/ccm` 里不是恰好一处 —— \
-             `find` 取的就成了「第一处」，窗口可能整个取错"
-        );
-        assert_eq!(
-            CCM.matches(END).count(),
-            1,
-            "起 tmux 那个终点锚点在 `shared/ccm` 里不是恰好一处 —— 同上"
-        );
-        let start = CCM.find(START).expect("找不到载荷拼装的起点锚点");
-        let end = CCM.find(END).expect("找不到起 tmux 那个锚点");
-        assert!(start < end, "两个锚点的先后反了 —— 窗口取错了");
-        let window = &CCM[start..end];
-        // 抽取器自检 + 非空对照：`R08` 那条既有转发必须在同一个窗口里。
-        assert!(
-            window.contains("export CLAUDE_CONFIG_DIR=$(sq \"$CLAUDE_CONFIG_DIR\"); $payload"),
-            "窗口里看不见 R08 那条既有转发 —— 窗口取错了，下面整条是空真。实得：{window}"
-        );
-        // ㈠ 位置：新那条转发在同一个窗口里。
-        assert!(
-            window.contains("export ANTHROPIC_BASE_URL=$(sq \"$ANTHROPIC_BASE_URL\"); $payload"),
-            "容器路里没有把 `ANTHROPIC_BASE_URL` 转发进载荷内侧 ——\n\
-             走 tmux 的那些会话会静默地不走中转（外侧那句 export 在 tmux 边界被吃掉），\n\
-             而症状是「中转接上了、可它没生效」，指不向这里。实得窗口：{window}"
-        );
-
-        // ㈡ 行为：把窗口原样交给 bash 跑一遍。`sq` 用桩（真的那份住 ccm 上面，不在窗口里）。
-        let script = format!(
-            "sq() {{ printf \"'%s'\" \"$1\"; }}\n\
-             inner=(claude --resume S1)\n\
-             {window}\n\
-             printf '%s' \"$payload\"\n"
-        );
-        let run = |base: Option<&str>, cfg: Option<&str>| -> String {
-            let mut c = std::process::Command::new("bash");
-            c.arg("-c").arg(&script);
-            c.env_remove("ANTHROPIC_BASE_URL");
-            c.env_remove("CLAUDE_CONFIG_DIR");
-            if let Some(b) = base {
-                c.env("ANTHROPIC_BASE_URL", b);
-            }
-            if let Some(d) = cfg {
-                c.env("CLAUDE_CONFIG_DIR", d);
-            }
-            let out = c.output().expect("跑那段窗口");
-            assert!(
-                out.status.success(),
-                "那段窗口自己跑不起来：{}",
-                String::from_utf8_lossy(&out.stderr)
-            );
-            String::from_utf8_lossy(&out.stdout).to_string()
-        };
-        // 非空对照：两个变量都没有 ⇒ 载荷就是裸 argv（证明这把尺子不是恒带前缀）。
-        assert_eq!(run(None, None), "'claude' '--resume' 'S1'");
-        // 正题：有 base URL ⇒ 它被写进载荷**内侧**。
-        assert_eq!(
-            run(
-                Some("http://127.0.0.1:8788/s/claude-code/acct-a/sid-1"),
-                None
-            ),
-            "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; \
-             'claude' '--resume' 'S1'"
-        );
-        // 两条转发并存时**互不吃掉对方**（R08 那条是既有行为，本件不许改它）。
-        let both = run(
-            Some("http://127.0.0.1:8788/s/claude-code/acct-a/sid-1"),
-            Some("/home/u/.claude-accts/acct-a"),
-        );
-        assert!(
-            both.contains(
-                "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; "
-            ) && both.contains("export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/acct-a'; "),
-            "两条转发并存时有一条被吃掉了：{both}"
-        );
-    }
-
-    /// ★★★ `KP5CD2`：**容器路把起会话方铸的身份 token 转发过 tmux 边界。**
-    ///
-    /// 形状**逐格照抄**上面那条
-    /// [`the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary`]
-    /// —— 同一个窗口、同一个抽取法、同一套四样（① 锚点唯一 · ② 抽取器自检 + 非空对照 ·
-    /// ㈠ 位置 · ㈡ 行为）。**一格新方法都没发明。**
-    ///
-    /// # 它买的是什么
-    ///
-    /// `K-P5b` 把身份塞进的是**起会话方那一侧**的进程环境（`history.rs` 里
-    /// `let identity = launch_identity(action);` + `let cmd = relay + &identity.prefix + &base;`
-    /// 那两行）。走 ccm 容器那一支时，
-    /// 那句 `export` 落在**外层 shell** 上，而 `send-keys` 打进的是 tmux server fork 出来的
-    /// 新 shell —— `update-environment` 的默认列表不含它 ⇒ **整个被吃掉，到不了 agent 进程。**
-    /// 这与 `R08`（`CLAUDE_CONFIG_DIR`）· `K-H2b`（`ANTHROPIC_BASE_URL`）**是同一个坑的第三次**。
-    /// 本条买的是「那段转发在、条件对、拼出来的串对」。
-    ///
-    /// 🔴〔`K-P5e` `§8 一`〕**上面那句引用是订正过的，别把它读成一直如此。**
-    /// 它先前逐字写着 `relay + launch_identity_prefix(action) + base`，而 `K-P5h`（09-02 晚）
-    /// 把那个函数**改名成了 `launch_identity`** ⇒ 主干 `4cf4301` 之后这一句指向一个
-    /// **不存在的符号**。人群现打（09-02，尺子 = 全仓 731 个跟踪文件里出现旧符号名的**行**）：
-    /// **5 行** —— `history.rs` 里 `launch_local` 拼装那一段的注释、与
-    /// [`crate::history`] 那个身份结构的头注，两处都是 `K-P5h` 自己写的**历史引用**
-    /// （逐字「上一版是…」「本拍已改名为」）⇒ **它们是对的，别动**；
-    /// 另两行在 `evidence/K-P5d-C-ccm-negotiation-probe.py`（`§8 二`，同拍收）；
-    /// **本行是唯一那句真陈账。**
-    /// ⚠ 订正之后它**不再只是一句散文**：`let identity = launch_identity(action);` 与
-    /// `let cmd = relay + &identity.prefix + &base;` 两行现在都被
-    /// [`tests::every_variable_exported_outside_ccm_is_forwarded_by_the_container_path`]
-    /// 用 `find_pinned` 钉在 `history.rs` 的**生产段**上（各恰好一处）
-    /// ⇒ 那边再改名，本行当场有人红。
-    /// 🔴 但**别把这一格读成「陈账这一族被治住了」** —— 那张网归 `K-R18`，
-    /// 本件只收这一句（`K-P5e §8 三` 逐字裁的）。
-    ///
-    /// # 🔴 它与上面那条先例**有一格不同**（别把两条读成同一句话）
-    ///
-    /// 那条先例的头注逐字写着自己「量的是一条今天生产上到不了的路」（能推出中转 id 的只有
-    /// `LaunchAccount::Named`，而 ccm 渲染器对 `Named` 必然 §35 短路）。
-    /// **本条不是**：身份前缀是**无条件**拼上去的（不看账号形状），而 `LaunchAccount::Base`
-    /// 正是 `render_local_ccm_with` 唯一渲得出容器的那一格
-    /// ⇒ **「Base 账号 + 有 tmux 名」这条今天就走得到的输入，直接落在本条守的那段 shell 上。**
-    /// ⇒ 别把本条读成「又一条为将来预备的」。
-    ///
-    /// # ⚠ 它买不到什么（如实写）
-    ///
-    /// - **「变量真的穿过了一次真 tmux 边界」没量** —— 那要真 tmux（红线：门禁里不起 tmux），归 e2e。
-    ///   本条把那段窗口原样交给 `bash` 跑，量的是**拼出来的载荷串**。
-    /// - **PATH 上装的那个 `ccm` 是旧版时会静默吃掉它**：`capabilities=` 里没有对应 token
-    ///   （现打 17 个 token 里含 `launch-id`/`identity` 的 **0** 个），而 `ccm_probe` 探的是
-    ///   PATH 上那个 `ccm`，不是本仓这份 ⇒ **调用方无从协商**。本拍照 `K-H2b` 的先例
-    ///   没加 token（加了就要同拍补一行用法块，`every_advertised_capability_has_a_usage_line`
-    ///   数着），**挂在件文件的上报口里等 PM 裁** —— 而它与那条先例的债不同：
-    ///   那一条今天生产不可达，**这一条可达**。
-    /// - `sq` 用的是**桩**（`printf "'%s'"`），真的那份住 `ccm` 上面、不在窗口里
-    ///   ⇒ 本条**不量引法的正确性**，只量「引了、拼在内侧」。
-    #[cfg(unix)]
-    #[test]
-    fn the_ccm_container_path_forwards_the_launch_identity_across_the_tmux_boundary() {
-        const CCM: &str = include_str!("../../../../shared/ccm");
-        // 窗口 = 容器路里「载荷拼好 → 起 tmux」之间那一段。
-        const START: &str = "\n  payload=\"\"\n";
-        const END: &str = "\n  t=\"$(sq \"=$tmux_name:\")\"";
-        // ① 两个锚点**全树各恰好一处** —— 先断这个，下面的 `find` 才是「那一处」而不是「第一处」。
-        assert_eq!(
-            CCM.matches(START).count(),
-            1,
-            "载荷拼装那个起点锚点在 `shared/ccm` 里不是恰好一处 —— \
-             `find` 取的就成了「第一处」，窗口可能整个取错"
-        );
-        assert_eq!(
-            CCM.matches(END).count(),
-            1,
-            "起 tmux 那个终点锚点在 `shared/ccm` 里不是恰好一处 —— 同上"
-        );
-        let start = CCM.find(START).expect("找不到载荷拼装的起点锚点");
-        let end = CCM.find(END).expect("找不到起 tmux 那个锚点");
-        assert!(start < end, "两个锚点的先后反了 —— 窗口取错了");
-        let window = &CCM[start..end];
-        // ② 抽取器自检 + 非空对照：**既有那两条转发都必须在同一个窗口里**。
-        //    少了这一格，窗口取歪了下面整条恒绿 —— 那是先例报文里逐字写着的空真形状。
-        for (who, needle) in [
-            (
-                "R08 · CLAUDE_CONFIG_DIR",
-                "export CLAUDE_CONFIG_DIR=$(sq \"$CLAUDE_CONFIG_DIR\"); $payload",
-            ),
-            (
-                "K-H2b · ANTHROPIC_BASE_URL",
-                "export ANTHROPIC_BASE_URL=$(sq \"$ANTHROPIC_BASE_URL\"); $payload",
-            ),
-        ] {
-            assert!(
-                window.contains(needle),
-                "窗口里看不见既有转发 `{who}` —— 窗口取错了，下面整条是空真。实得：{window}"
-            );
-        }
-
-        // ㈠ 位置：新那条转发在同一个窗口里。
-        // 🔴 针**从 `history.rs` 那个常量现拼**，不写死字面量：
-        //    改了那边的变量名而没改 `ccm` ⇒ 本条当场红（漂开在结构上被逮住，
-        //    而不是靠两处各写一份字面量再指望有人记得同时改）。
-        let var = crate::history::LAUNCH_ID_VAR;
-        let forward = format!("export {var}=$(sq \"${var}\"); $payload");
-        assert!(
-            window.contains(&forward),
-            "容器路里没有把 `{var}` 转发进载荷内侧 ——\n\
-             走 tmux 的那些会话，agent 进程环境里根本没有身份（外侧那句 export 在 tmux \
-             边界被吃掉），\n\
-             而症状是「起会话方以为交下去了」，指不向这里。要找的那一句：{forward}\n\
-             实得窗口：{window}"
-        );
-
-        // ㈡ 行为：把窗口原样交给 bash 跑一遍。`sq` 用桩（真的那份住 ccm 上面，不在窗口里）。
-        let script = format!(
-            "sq() {{ printf \"'%s'\" \"$1\"; }}\n\
-             inner=(claude --resume S1)\n\
-             {window}\n\
-             printf '%s' \"$payload\"\n"
-        );
-        let run = |id: Option<&str>, base: Option<&str>, cfg: Option<&str>| -> String {
-            let mut c = std::process::Command::new("bash");
-            c.arg("-c").arg(&script);
-            c.env_remove(var);
-            c.env_remove("ANTHROPIC_BASE_URL");
-            c.env_remove("CLAUDE_CONFIG_DIR");
-            if let Some(v) = id {
-                c.env(var, v);
-            }
-            if let Some(b) = base {
-                c.env("ANTHROPIC_BASE_URL", b);
-            }
-            if let Some(d) = cfg {
-                c.env("CLAUDE_CONFIG_DIR", d);
-            }
-            let out = c.output().expect("跑那段窗口");
-            assert!(
-                out.status.success(),
-                "那段窗口自己跑不起来：{}",
-                String::from_utf8_lossy(&out.stderr)
-            );
-            String::from_utf8_lossy(&out.stdout).to_string()
-        };
-        // 非空对照：三个变量都没有 ⇒ 载荷就是裸 argv（证明这把尺子不是恒带前缀）。
-        assert_eq!(run(None, None, None), "'claude' '--resume' 'S1'");
-        // 正题：有身份 ⇒ 它被写进载荷**内侧**。
-        assert_eq!(
-            run(Some("tok-1"), None, None),
-            format!("export {var}='tok-1'; 'claude' '--resume' 'S1'")
-        );
-        // 三条转发并存时**互不吃掉对方**（上面两条是既有行为，本件不许改它们）。
-        let all = run(
-            Some("tok-1"),
-            Some("http://127.0.0.1:8788/s/claude-code/acct-a/sid-1"),
-            Some("/home/u/.claude-accts/acct-a"),
-        );
-        for expect in [
-            format!("export {var}='tok-1'; "),
-            "export ANTHROPIC_BASE_URL='http://127.0.0.1:8788/s/claude-code/acct-a/sid-1'; "
-                .to_string(),
-            "export CLAUDE_CONFIG_DIR='/home/u/.claude-accts/acct-a'; ".to_string(),
-        ] {
-            assert!(
-                all.contains(&expect),
-                "三条转发并存时有一条被吃掉了（缺 `{expect}`）：{all}"
-            );
-        }
-        assert!(
-            all.ends_with("'claude' '--resume' 'S1'"),
-            "转发把 argv 顶掉了：{all}"
-        );
-    }
+    // 🔴 〔`K-R48` 第二拍 09-11〕**这里原来是那条中转转发的判据**
+    //   （`the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary`），
+    //   做法是把 `shared/ccm` 那段 bash 窗口交给 `bash` 跑一遍。脚本删了 ⇒ 连同它上面那整段
+    //   诚实边界一起摘掉。新家：`remote-daemon-proto/src/control/ccm/plan.rs` 的
+    //   `tests::the_container_path_forwards_every_inherited_variable_inward`。
+    // ⚠ 那段诚实边界里有一句**今天仍然成立、而且没有别处写着**，抬到这里别丢：
+    //   本机中转这条路上**没有任何生产输入能走到它** —— 能推出中转 id 的只有
+    //   `LaunchAccount::Named`，而 ccm 渲染器对 `Named` 必然 §35 短路（只有 configDir、没有名字）
+    //   ⇒ 两条路今天不相交。那个事实由 `history::tests::
+    //   a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container` 逐格钉住。
 
     // ═════════════════════════════════════════════════════════════════════════
     // 🔴 `K-P5e`：**拼在 `ccm` 外面 `export` 的变量 ⊆ 容器路转发的变量**
@@ -1747,50 +1452,74 @@ mod tests {
         out
     }
 
-    /// 判据本体·**右半**：容器路那个窗口里，**逐条枚举**出来的转发面。
+    /// 容器路那份**源码**的住址：`remote-daemon-proto/src/control/ccm/plan.rs`。
     ///
-    /// 枚举法（分母就是它）：窗口里形如
-    /// `payload="export <VAR>=$(sq "$<VAR>"); $payload"` 的**行**，逐行抠出 `<VAR>`，
-    /// 并把这一行剩下那半**逐字节**核一遍（写成 `$(sq "$别的变量")` 也算跑偏 ⇒ 红）。
-    /// **不是手写名单** —— `shared/ccm` 里加一条转发，本函数下一趟就多回一个名字。
+    /// 🔴 〔`K-R48` 第二拍 09-11〕从前这里是 `include_str!("../../../../shared/ccm")`。
+    /// 那个 bash 脚本删了（`K33`：「不要有什么 bash 脚本」），容器路整条搬进了 daemon 那个 crate。
+    /// ⇒ 改成**运行期读**那份 Rust 源码：`include_str!` 会在 monitor 与 daemon 之间
+    /// 造一条**编译期**跨 crate 边（`cross_half_edge_registry` 那族要单独登记），
+    /// 而本条要的只是「读一份文本」。
+    fn container_path_source() -> String {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级")
+            .join("remote-daemon-proto/src/control/ccm/plan.rs");
+        std::fs::read_to_string(&p)
+            .unwrap_or_else(|e| panic!("读不到容器路那份源码 {}：{e}", p.display()))
+    }
+
+    /// 判据本体·**右半**：容器路那段里，**逐条枚举**出来的转发面。
+    ///
+    /// 枚举法（分母就是它）：`plan.rs` 里 `build()` 的容器分支，形如
+    /// `payload = format!("export <VAR>={}; {payload}", sq(v));` 的**行**，逐行抠出 `<VAR>`。
+    /// **不是手写名单** —— 那边加一条转发，本函数下一趟就多回一个名字。
+    ///
+    /// ⚠ **账号那一条抠不到，而且不该抠**：它写的是
+    /// `format!("export {}={}; {payload}", env.account_env, sq(v))` —— 变量名是**运行期**才知道的
+    /// （`agents::account_env_of(<这一趟的 agent>)`）。左集里也没有它（左集是 monitor 在
+    /// **ccm 外面** export 的那些，账号目录走的是 argv 不是 export）⇒ 抠不到它不影响这道闸。
+    /// **它由 daemon 侧那条 `the_container_path_forwards_every_inherited_variable_inward` 钉着。**
     ///
     /// 🔴 窗口取不到 / 一条都数不到就 **panic**，不许回空表冒充「零条」：
     /// 回空表会把下面的 ⊆ 从「今天成立」翻成「今天全违规」—— 方向相反，但同样是假读数。
-    fn forwarded_by_container_path(ccm: &str) -> Vec<String> {
-        const START: &str = "\n  payload=\"\"\n";
-        const END: &str = "\n  t=\"$(sq \"=$tmux_name:\")\"";
+    fn forwarded_by_container_path(plan_rs: &str) -> Vec<String> {
+        const START: &str = "        let mut payload = inner.iter()";
+        const END: &str = "\n        // 🔴 **要了登记而登记不成，必须出声**";
         assert_eq!(
-            ccm.matches(START).count(),
+            plan_rs.matches(START).count(),
             1,
-            "载荷拼装那个起点锚点不是恰好一处 —— 窗口可能整个取错"
+            "载荷拼装那个起点锚点在 `control/ccm/plan.rs` 里不是恰好一处 —— 窗口可能整个取错"
         );
         assert_eq!(
-            ccm.matches(END).count(),
+            plan_rs.matches(END).count(),
             1,
-            "起 tmux 那个终点锚点不是恰好一处 —— 同上"
+            "转发段那个终点锚点不是恰好一处 —— 同上"
         );
-        let (s, e) = (ccm.find(START).unwrap(), ccm.find(END).unwrap());
+        let (s, e) = (plan_rs.find(START).unwrap(), plan_rs.find(END).unwrap());
         assert!(s < e, "两个锚点的先后反了 —— 窗口取错了");
         let mut out = Vec::new();
-        for line in ccm[s..e].lines() {
-            let Some(rest) = line.trim().strip_prefix("payload=\"export ") else {
+        for line in plan_rs[s..e].lines() {
+            let Some(rest) = line.trim().strip_prefix("payload = format!(\"export ") else {
                 continue;
             };
-            let (name, tail) = rest
-                .split_once('=')
-                .unwrap_or_else(|| panic!("这一行像转发却没有 `=`：{line:?}"));
+            let Some((name, tail)) = rest.split_once('=') else {
+                panic!("这一行像转发却没有 `=`：{line:?}");
+            };
+            // 名字里带 `{` ⇒ 那是运行期才定的（账号那条），按头注说明跳过。
+            if name.contains('{') {
+                continue;
+            }
             assert_eq!(
-                tail,
-                format!("$(sq \"${name}\"); $payload\""),
+                tail, "{}; {payload}\", sq(v));",
                 "\n★ 容器路那条转发的形状跑偏了：{line:?}\n\
-                 要的是 `payload=\"export <VAR>=$(sq \"$<VAR>\"); $payload\"` —— \
-                 转发的必须是**同一个变量**，且拼在载荷**内侧**。"
+                 要的是 `payload = format!(\"export <VAR>={{}}; {{payload}}\", sq(v));` —— \
+                 值必须经 `sq`，且拼在载荷**内侧**（前缀，不是后缀）。"
             );
             out.push(name.to_string());
         }
         assert!(
             !out.is_empty(),
-            "容器路窗口里一条转发都数不到 —— 窗口取错了或认法坏了，本条此刻是空转的"
+            "容器路那段里一条转发都数不到 —— 窗口取错了或认法坏了，本条此刻是空转的"
         );
         out
     }
@@ -1860,9 +1589,25 @@ mod tests {
     /// - **「变量真的穿过了一次真 tmux 边界」没量** —— 那要真 tmux，归真机 e2e。
     /// - 有人在**别的文件**里另起一条拼装路，本条一个字节都不会动
     ///   （它只从那一句 `let cmd = relay + …;` 出发）。⇒ 这是**诚实边界**，不是「今天恰好没有」。
+    // 🔴 〔`K-R48` 第二拍 09-11〕**这里原来有两条判据，随 `shared/ccm` 一起删了**：
+    //   `the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` ·
+    //   `…_forwards_the_launch_identity_…`。它们的做法是把 `shared/ccm` 里那段 bash
+    //   窗口**原样交给 `bash` 跑一遍**再读载荷 —— 那个脚本删了，连被测对象都没有了。
+    //
+    // ⚠ **它们守的那件事没丢，新家点名**：
+    //   `remote-daemon-proto/src/control/ccm/plan.rs` 的
+    //   `tests::the_container_path_forwards_every_inherited_variable_inward`
+    //   —— 三条转发（`CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID`）
+    //   逐条钉 ＋ 一条**非空对照**（三个都没设 ⇒ 载荷不许带任何 `export`）。
+    //   本拍是**补上去的**：搬过去时只有账号那条被钉着，另两个一个字都没提。
+    //
+    // ⚠ 而「monitor 在外面 export 了什么 ⇒ 容器路必须转发它」这条**跨侧**性质仍住本文件，
+    //   见下面 `every_variable_exported_outside_ccm_is_forwarded_by_the_container_path`
+    //   （它的右半今天读的是那份 Rust 源码，不再是 bash）。
+
     #[test]
     fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
-        const CCM: &str = include_str!("../../../../shared/ccm");
+        let ccm = container_path_source();
         let hist = guard_core::production_code(include_str!("../../history.rs"));
         let pay = guard_core::production_code(include_str!("payload.rs"));
         // 抽取器自检：剥完还得看得见东西（否则下面整条是空真）。
@@ -1950,13 +1695,22 @@ mod tests {
         );
 
         // ── ③ 右集：容器路那个窗口里逐条枚举 ────────────────────────────────────
-        let right = forwarded_by_container_path(CCM);
+        let right = forwarded_by_container_path(&ccm);
+        // 🔴 〔`K-R48` 第二拍 09-11〕**分母从 3 改成 2，改的是尺子的射程，不是转发面缩了。**
+        //    容器路今天仍然转发**三个**（`CLAUDE_CONFIG_DIR` · `ANTHROPIC_BASE_URL` · `CCM_LAUNCH_ID`），
+        //    daemon 侧 `the_container_path_forwards_every_inherited_variable_inward` 逐条钉着。
+        //    这里只数得到 2：账号那条在 Rust 里写成 `format!("export {{}}={{}}; …", env.account_env, …)`
+        //    —— 变量名**运行期**才知道（`agents::account_env_of(<这一趟的 agent>)`），
+        //    源码里根本没有那个字面量可抠。⇒ **如实把分母降到这把尺子真数得到的那个数**，
+        //    别为了凑 3 去认一个抠不出名字的条目（那才是假读数）。
+        //    ⚠ 本条要买的东西不受影响：左集（monitor 在 ccm 外面 `export` 的）是
+        //    `ANTHROPIC_BASE_URL` · `CCM_LAUNCH_ID` 两个，账号目录**走 argv 不走 export**，本来就不在左集里。
         assert_eq!(
             right.len(),
-            3,
-            "\n★ 容器路的转发面从 3 条变成了 {} 条：{right:?}\n\
-             09-02 现打的 3 条 = `CLAUDE_CONFIG_DIR`（`R08`，转发**继承**值）· \
-             `ANTHROPIC_BASE_URL`（`K-H2b`）· `CCM_LAUNCH_ID`（`K-P5c`）。\n\
+            2,
+            "\n★ 容器路里**抠得出名字**的转发面从 2 条变成了 {} 条：{right:?}\n\
+             09-11 现打的 2 条 = `ANTHROPIC_BASE_URL`（`K-H2b`）· `CCM_LAUNCH_ID`（`K-P5c`）。\n\
+             账号那条（`R08`）写成运行期变量名，本尺子看不见它 —— 见上面那段注释。\n\
              加一条是好事，但要回来把这个分母改掉并写清新那条守的是谁 —— \
              否则这一格就变成一句没人维护的话。",
             right.len()
@@ -2004,14 +1758,14 @@ mod tests {
     /// 后者由上面那条在真树上跑。两格各买各的，别合并读。
     #[test]
     fn the_outside_export_gate_really_reddens_on_a_live_breach() {
-        const CCM: &str = include_str!("../../../../shared/ccm");
+        let ccm = container_path_source();
         let hist = guard_core::production_code(include_str!("../../history.rs"));
         let pay = guard_core::production_code(include_str!("payload.rs"));
         let body_relay = fn_body(&pay, "pub fn relay_env_prefix_posix(");
         let body_id = fn_body(&hist, "fn launch_identity_env_prefix(")
             .replace("{LAUNCH_ID_VAR}", crate::history::LAUNCH_ID_VAR);
         let left = exported_var_names(&[body_relay, body_id]);
-        let right = forwarded_by_container_path(CCM);
+        let right = forwarded_by_container_path(&ccm);
         // 非空对照：干净树上差集是空的 —— 证明下面两格的红不是「本来就红」。
         assert!(
             not_forwarded(&left, &right).is_empty(),
@@ -2021,16 +1775,20 @@ mod tests {
         );
 
         // ── 活体甲：容器路那一条转发被抽掉 ──────────────────────────────────────
+        // 🔴 〔`K-R48` 第二拍 09-11〕**活体的形状跟着实现换了一次，买的东西一个字没变。**
+        //    从前抠的是 bash 那行 `payload="export CCM_LAUNCH_ID=$(sq "$CCM_LAUNCH_ID"); $payload"`；
+        //    今天抠的是 Rust 那行 `payload = format!("export CCM_LAUNCH_ID={}; {payload}", sq(v));`。
+        //    造的仍是**同一个坑的复发形**（`R08` · `K-H2b` · `K-P5c` 三次同坑）。
         let var = crate::history::LAUNCH_ID_VAR;
-        let line = format!("    payload=\"export {var}=$(sq \"${var}\"); $payload\"\n");
+        let line = format!("payload = format!(\"export {var}={{}}; {{payload}}\", sq(v));");
         assert_eq!(
-            CCM.matches(line.as_str()).count(),
+            ccm.matches(line.as_str()).count(),
             1,
-            "要抠掉的那一行在 `shared/ccm` 里不是恰好一处 —— 夹具的地基变了，先修夹具。要找的：{line:?}"
+            "要抠掉的那一行在 `control/ccm/plan.rs` 里不是恰好一处 —— 夹具的地基变了，先修夹具。要找的：{line:?}"
         );
-        let holed = CCM.replace(line.as_str(), "");
+        let holed = ccm.replace(line.as_str(), "");
         assert!(
-            holed.len() < CCM.len(),
+            holed.len() < ccm.len(),
             "夹具什么都没抠掉 —— 下面那一格是空真"
         );
         assert_eq!(
@@ -2094,9 +1852,9 @@ mod tests {
     #[test]
     fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated() {
         // 每一格：住址 · 认它的针 · 生产段里该有几处 · 接没接上（接不上给理由）。
-        struct Site {
+        struct Site<'a> {
             what: &'static str,
-            src: &'static str,
+            src: &'a str,
             needle: &'static str,
             want: usize,
             wired: Option<&'static str>,
@@ -2116,6 +1874,7 @@ mod tests {
             "开窗那一跳给的是**终端进程**的 env（`daemon_bin_env_for_window`），\
              而 agent 进程的 env 由它里面那条命令串自己带 ⇒ 同一件事在 A/B 两处已经做了，\
              在这里再做一遍是第二个决定点。";
+        let plan_rs = container_path_source();
         let sites = [
             Site {
                 what: "A · payload.rs（POSIX 串级）",
@@ -2131,12 +1890,17 @@ mod tests {
                 want: 2,
                 wired: None,
             },
+            // 🔴 〔`K-R48` 第二拍 09-11〕原来这一格是 `C · shared/ccm`（`include_str!` 那个 bash 脚本，
+            //    针 `export CLAUDE_CONFIG_DIR=`、该有 3 处）。脚本删了，容器路整条搬进了 daemon 那个 crate
+            //    ⇒ 换住址、换针形（Rust 那侧账号那条写的是 `export {}=`，变量名运行期才定），
+            //    **该有几处、接没接上、理由，三样一个字没改**。
             Site {
-                what: "C · shared/ccm",
-                src: include_str!("../../../../shared/ccm"),
-                // 3 处：`--print` 配方行 · 容器路把继承值写进载荷内侧 · 真 exec 前那一句。
-                needle: "export CLAUDE_CONFIG_DIR=",
-                want: 3,
+                what: "C · control/ccm/plan.rs（容器路，daemon crate）",
+                src: &plan_rs,
+                // 3 处：`--print`/真跑共用的那条渲染（`render_direct` 的账号段）· 容器路把继承值
+                // 写进载荷内侧 · `--base` 那条 `unset` 的对侧。
+                needle: "export {cfg_env}=",
+                want: 1,
                 wired: Some(NOT_WIRED_CCM),
             },
             Site {

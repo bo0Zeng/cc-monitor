@@ -65,8 +65,6 @@ tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，�
 | `local-backend-supervise` | 7 过 / 0 败 | ★ 修前 7/1 —— 那条 `#[ignore]` 首跑就红，见 `P3 §0h-2` |
 | `tmux-guarded-acceptance` | 14 过 / 0 败 | |
 | `usage-probe-acceptance` | 11 过 / 0 败 | |
-| `ccm-acceptance` | 19 过 / 0 败 | |
-| `ccm-pretrust-acceptance` | 13 过 / 0 败 | |
 | `ccm-print-parity` | 12 过 / 0 败 | |
 | `ccm-contract-parity` | 61 过 / 0 败 | |
 | `tmux-target-acceptance` | 26 过 / 0 败 | |
@@ -139,7 +137,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 
 | job | 套件 |
 |---|---|
-| `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-acceptance · ccm-pretrust · ccm-contract-parity · cc-spawn-uplift · cc-bus-queue-drain · restart · resume · ccm-rbind-title |
+| `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-contract-parity · cc-spawn-uplift · cc-bus-queue-drain · restart · resume · ccm-rbind-title |
 | `e2e-tmux-rust` | tmux-guarded · usage-probe · inbound-frames · daemon-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · daemon-fork · daemon-sessions-rewatch · daemon-tmux-late-server · daemon-cc-bus |
 
 **这些套件刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：

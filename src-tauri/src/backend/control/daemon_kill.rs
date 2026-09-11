@@ -170,25 +170,22 @@ mod tests {
     /// 每个都必须在下表里表态：要么**自己校验**禁字集，要么**名字来自已校验的上游**并说清是谁。
     #[cfg(test)]
     const CREATION_PATHS: &[(&str, CreationVerdict, &str)] = &[
-        (
-            "shared/ccm",
-            CreationVerdict::ValidatesItself,
-            "显式 `--tmux=<名>` 那条创建路径的 `case` 校验 —— **F15 给它加的 `=`**",
-        ),
+        // 🔴 〔`K-R48` 第二拍 09-11〕原来这里第一条是 `shared/ccm`（bash 的 `case` 校验，
+        //    `F15` 给它加的 `=`）。〔用@09-11 `K33`〕那个脚本删了 ⇒ **这条路没有第二个实现了**，
+        //    它的原生副本就是下面那条 `control/ccm/plan.rs`。表从 5 条回到 4 条。
         (
             "remote-daemon-proto/src/control/launch.rs",
             CreationVerdict::UpstreamValidated,
             "名字来自入方向 `parse_request`，它自己就拒 `:`/`=`（那正是本判据的字符集来源）",
         ),
         (
-            // 〔`K-R48` 09-11〕**`shared/ccm` 那条路的原生副本**：`ccm` 变成后端二进制
-            // 自己的命令之后，`--print` 吐的那条 tmux 编排住在这里。
-            // ⚠ 它与上面 `shared/ccm` 那条是**同一条路的两个实现**，今天并存
-            //（脚本还没删）⇒ 这张表在过渡期是 5 条；脚本删掉那天连带删上面那条。
+            // 〔`K-R48` 09-11〕**`ccm` 那条创建路径今天唯一的实现**：`ccm` 变成后端二进制
+            // 自己的命令之后，`--print` 吐的那条 tmux 编排与真跑读的是同一个 `Plan`。
+            //（第一拍它与 `shared/ccm` 并存、表是 5 条；第二拍脚本删了，回到 4 条。）
             "remote-daemon-proto/src/control/ccm/plan.rs",
             CreationVerdict::ValidatesItself,
             "显式 `--tmux=<名>` / `--tmux-base=<基名>` 两条都先过 `validate_tmux_name`，\
-             它逐字拒 `* ? . : =` 与控制字符（禁字集与 `shared/ccm` 那条 `case` 同源）；\
+             它逐字拒 `* ? . : =` 与控制字符（禁字集自 `shared/ccm` 那条 bash `case` 逐字承接）；\
              派生名那条走 `derive_tmux_name`，它的字符集只放行 `[A-Za-z0-9_-]`，\
              **构造上产不出禁字**。三条入口都由              `control::ccm::plan::tests::a_session_name_that_would_confuse_tmux_is_refused` 钉住",
         ),
@@ -237,13 +234,10 @@ mod tests {
             "`isValidNewTmuxName` 的 glob/目标语法禁字集（F04b 给它加的 `=`）；\
              `:` 由它调的 `isValidTmuxName` 那条字符类禁，本判据单独查",
         ),
+        // 🔴 〔`K-R48` 第二拍 09-11〕原来这里有一条 `shared/ccm` 的 `*[*?.:=]*)`
+        //    （bash `case` 校验，`F15` 给它加的 `=`）。脚本删了 ⇒ 只剩下面那条原生的。
         (
-            "shared/ccm",
-            "*[*?.:=]*)",
-            "显式 `--tmux=<名>` 的 `case` 校验（**F15 给它加的 `=`**）—— 它既创建也自校验，两张表都在",
-        ),
-        (
-            // 〔`K-R48` 09-11〕上面那条的**原生副本**：同一条校验，换了语言。
+            // 〔`K-R48` 09-11〕原 `shared/ccm` 那条校验的**原生副本**：同一串禁字，换了语言。
             "remote-daemon-proto/src/control/ccm/plan.rs",
             "\"*?.:=\"",
             "`validate_tmux_name` 的禁字集 —— 与上面那条 bash `case` **逐字同一串字符**，\

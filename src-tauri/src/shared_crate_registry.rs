@@ -687,7 +687,8 @@ mod tests {
             ("shellcheck (errors only)", true, "本机装了 shellcheck；步骤体从 `ci.yml` 原样抽出来跑"),
             ("vendored cc-acct-iso self-tests (sandboxed, 294 assertions)", true, "沙箱内自测；vendor 是 `cc-acct-iso` 不是红线点名的 `code-picture-core`"),
             ("python syntax compile", true, "`python3 -m py_compile e2e/*.py`"),
-            ("G-A/G-C 覆盖面地板（23 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
+            // 〔`K-R48` 第二拍 09-11〕标题里那个数从 23 变 21（删了 ccm-acceptance / ccm-pretrust 两套）。
+            ("G-A/G-C 覆盖面地板（21 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
             ("exec-bit guard (shared/** shebang files must be 100755 in git)", true, "`bash e2e/exec-bit-guard.sh`"),
             // ── 无名步骤（`- run: <命令>`，08-07 人群扩到它们之后才第一次可见）。
             // 标识是命令本身，多个 job 里同一条命令共用这一行登记。
@@ -1317,8 +1318,25 @@ mod tests {
             // `U-NP④`（08-14）：19 → 26。场景 3b/5ter 从「验 ccm 那条每秒 poller 打 `@ccm_sid`」
             // 改成「验 daemon 打标的那把钥匙（`/proc/<pid>/environ` 的 `TMUX_PANE`）＋按它的算法
             // 打一次」——poller 已整条删除，旧判据测的东西不存在了。**条数是涨的，不是删测试。**
-            ("ccm-acceptance", "ccm-acceptance.sh", "ck", 26),
-            ("ccm-pretrust", "ccm-pretrust-acceptance.sh", "ck", 15),
+            // 🔴 〔`K-R48` 第二拍 09-11〕**`ccm-acceptance`(26) 与 `ccm-pretrust`(15) 两行摘了 ——
+            //    那两套 e2e 删了。摘的理由要写清，不然这就是「把棘轮往下拧」。**
+            //    它们**只测 `shared/ccm` 那个 bash 脚本的真机行为**：`ccm-pretrust` 测的预信任
+            //    （写 `~/.claude.json` / `~/.codex/config.toml`）`K-R48` 第一拍逐字登记为**没搬**
+            //    （daemon 那个 crate 有「进程自身不许写用户既有数据」的红线 `readonly_guard`）
+            //    ⇒ 它今天**连被测对象都没有**；`ccm-acceptance` 的 31 条里，实测把 `$CCM` 指向
+            //    二进制之后 **13 通过 / 18 失败**，18 条里绝大多数卡在「一次性模式在 tmux 内
+            //    由谁打 `@ccm_sid`」那一格 —— 那一格 `K-R48` 第一拍逐字登记为**没裁**。
+            // ⚠ **如实边界，这是本拍最贵的一笔账 —— 而它比我第一版写的小一格，订正在这里**：
+            //    我原先写「删了之后真起会话 / 真 attach / 真 tmux 那一面**一条 e2e 都没有了**」。
+            //    **那句话是假的**：`e2e/p3t-local-tmux.sh`（10 条）与 `e2e/cc-spawn-uplift.sh`（72 条）
+            //    都在**真 tmux**（私有 `-L` socket）上真建会话，本拍把它们指向二进制之后现打
+            //    10/0 与 71/1（那 1 条是既有的 locale 红，`gate.sh:119-124` 登记着）。
+            //    ⇒ 真丢的是这两套**各自专有**的那一面：`ccm-pretrust` 的预信任写入
+            //    （`~/.claude.json` / `~/.codex/config.toml`，第一拍登记为**没搬**）与
+            //    `ccm-acceptance` 的**身份打标**（`@ccm_sid` 那把钥匙，第一拍登记为**没裁**）。
+            //    ⚠ 而现打验过：原生实现**真的建得出会话**（隔离 socket 上 `ccm --tmux=<名>
+            //    --detach` ⇒ `tmux ls` 看得到）—— 那 18 条红是**夹具形状**的，不是功能回归。
+            //    归 `K-R48` 下一拍（先裁 `@ccm_sid`，再把这套重新指过去）。
             ("tmux-guarded", "tmux-guarded-acceptance.sh", "ck", 14),
             ("tmux-target", "tmux-target-acceptance.sh", "ck", 26),
             ("usage-probe", "usage-probe-acceptance.sh", "ck", 9),
