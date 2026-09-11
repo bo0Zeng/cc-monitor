@@ -105,19 +105,55 @@ impl Env {
     }
 }
 
+/// 这个文件在不在、而且**跑得起来**吗。
+///
+/// 🔴 **`is_file()` 不够**〔`K-R48` 第二拍 09-11 实测逮到〕：旧 bash 实现这三处判的全是
+/// `-x`，而首版原生实现写的是 `is_file()` ——「脚本在、但没有执行位」于是被读成「它能用」，
+/// 拼进 seq 里执行时静默失败（整段是 `|| true`）。`e2e/cc-spawn-uplift.sh` 的
+/// 「台账脚本不可执行 ⇒ 明说『不进 spawn 台账』」那两格钉的正是它。
+fn is_exec(p: &std::path::Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        return std::fs::metadata(p)
+            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false);
+    }
+    #[cfg(not(unix))]
+    {
+        p.is_file()
+    }
+}
+
 /// cc-bus 的脚本目录：`CC_BUS_SCRIPTS` → 本二进制旁边的 `cc-bus/scripts` → `PATH`。
+///
+/// 🔴 **第三档（`PATH`）是 `K-R48` 第二拍补回来的，别再删**：旧 bash `ccm` 住在
+/// `shared/`（部署形态下 `~/.claude/skills/ccm`），它的**兄弟目录**正好就是
+/// `cc-bus/scripts` ⇒ 第二档几乎总是命中。今天 `ccm` 是后端二进制、住
+/// `~/.cc-monitor/bin/` —— **它旁边永远没有 `cc-bus/`** ⇒ 第二档在真实部署里**恒不命中**，
+/// 而 `PATH` 那一档是唯一还够得着的。首版漏了它（docstring 写着、实现里没有），
+/// 后果是「`--bus-register` 要了登记，却谁也没登记」。
 fn discover_bus_scripts() -> Option<String> {
     if let Ok(d) = std::env::var("CC_BUS_SCRIPTS") {
-        if !d.is_empty() && std::path::Path::new(&d).join("cc-register").is_file() {
+        if !d.is_empty() && is_exec(&std::path::Path::new(&d).join("cc-register")) {
             return Some(d);
         }
     }
-    let me = std::env::current_exe().ok()?;
-    let sibling = me.parent()?.join("cc-bus").join("scripts");
-    sibling
-        .join("cc-register")
-        .is_file()
-        .then(|| sibling.to_string_lossy().to_string())
+    if let Some(sibling) = std::env::current_exe()
+        .ok()
+        .and_then(|me| me.parent().map(|p| p.join("cc-bus").join("scripts")))
+    {
+        if is_exec(&sibling.join("cc-register")) {
+            return Some(sibling.to_string_lossy().to_string());
+        }
+    }
+    // `PATH` 上的 `cc-register`（旧实现逐字：`command -v cc-register` 再取 `dirname`）。
+    for dir in std::env::split_paths(&std::env::var_os("PATH")?) {
+        if is_exec(&dir.join("cc-register")) {
+            return Some(dir.to_string_lossy().to_string());
+        }
+    }
+    None
 }
 
 /// 一个账号。manifest 里 `configDir` **键缺席** = 账号 0（不设 `CLAUDE_CONFIG_DIR`）。
@@ -531,12 +567,35 @@ pub(crate) fn build(o: &Opts, env: &Env, table: &AccountTable) -> Result<Plan, D
             payload = format!("export CCM_LAUNCH_ID={}; {payload}", sq(v));
         }
 
+        // 🔴 **要了登记而登记不成，必须出声**〔`K-R48` 第二拍 09-11 补回〕。
+        //
+        // 旧 bash 实现这两处各有一句 stderr：找不到 cc-bus 脚本目录 ⇒「**没有登记**」；
+        // 找得到目录但 `cc-spawned-record` 不可执行 ⇒「**不进 spawn 台账**」。
+        // 首版原生实现把这两句**整个丢了** —— `--bus-register` 于是变成一个
+        // 「要了、没做、也不说」的旗标，而那正是本工作区反复消灭的那类静默降级。
+        // 〔`e2e/cc-spawn-uplift.sh` 的「且没有一声不吭」「明说『不进 spawn 台账』」两组钉着它。〕
         let bus = if o.bus_register {
-            env.bus_scripts.as_ref().map(|d| BusRegister {
-                scripts_dir: d.clone(),
-                note: o.bus_note.clone(),
-                has_spawned_record: std::path::Path::new(d).join("cc-spawned-record").is_file(),
-            })
+            match env.bus_scripts.as_ref() {
+                None => {
+                    eprintln!(
+                        "ccm: --bus-register 要了登记，但找不到 cc-bus 的脚本（CC_BUS_SCRIPTS / <本程序目录>/cc-bus/scripts / PATH）——**没有登记**"
+                    );
+                    None
+                }
+                Some(d) => {
+                    let has_spawned_record = is_exec(&std::path::Path::new(d).join("cc-spawned-record"));
+                    if !has_spawned_record {
+                        eprintln!(
+                            "ccm: {d}/cc-spawned-record 不可执行 —— 会话照建、也会登记，但**不进 spawn 台账**（孤儿检测看不到它）"
+                        );
+                    }
+                    Some(BusRegister {
+                        scripts_dir: d.clone(),
+                        note: o.bus_note.clone(),
+                        has_spawned_record,
+                    })
+                }
+            }
         } else {
             None
         };

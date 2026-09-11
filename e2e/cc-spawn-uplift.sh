@@ -52,8 +52,29 @@ export CCM_CODEXTOML="$SANDBOX/codex-config.toml"
 # `FAKE_DAEMON_TMUX_SOCK` 与本套件的 `-L $SOCK` **给同一个名字**（理由同上：那份假后端
 # 自带选择器且 fail-closed；shim 会再插一个，tmux 取最后一个）。
 export FAKE_DAEMON_TMUX_SOCK="$SOCK"
-export CCM_DAEMON_BIN="$REPO/e2e/fake-daemon.sh"
 export CCM_ACCTS_MANIFEST="$SANDBOX/no-accts/accounts.json"
+
+# ★★ 🔴 `K-R48` 第二拍（09-11）：**`ccm` 就是后端二进制本体，`shared/ccm` 那个脚本删了。**
+#   〔用@09-11 `K33`〕逐字「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」。
+#   ⇒ 上一行原来的 `export CCM_DAEMON_BIN="$REPO/e2e/fake-daemon.sh"`（给 bash `ccm` 一个
+#   跨进程问得到的后端）**整条删了**：今天没有那一跳，账号表由 `CCM_ACCTS_MANIFEST` 直接读。
+#   ⇒ `cc-spawn` 的查找次序刻意**不认** `$CCM_DAEMON_BIN`（它在仓里指的是假 daemon），
+#   所以这里用 `CCM_BIN` 显式钉住本工作树刚 build 出来的那一份。
+# 🔴 **fail-closed**：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份。
+CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/remote-daemon-proto/target}/debug/cc-monitor-remote"
+[ -x "$CCM_NATIVE" ] || {
+  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd remote-daemon-proto && cargo build --bin cc-monitor-remote\`" >&2
+  exit 2; }
+CCMDIR="$(mktemp -d)"
+ln -s "$CCM_NATIVE" "$CCMDIR/ccm"
+export CCM_BIN="$CCMDIR/ccm"
+# cc-bus 脚本目录：后端二进制住在 target/ 下，**它旁边没有 `cc-bus/`** ⇒ 第二档不命中；
+# PATH 上也没有（本套件的 PATH 前缀只放 tmux shim 与假 agent）。⇒ 显式给第一档。
+# ⚠ 这不是把判据改绿：本套件测的是「cc-spawn 有没有把活交给 ccm」，
+#   「这台机器上 cc-bus 装在哪」从来不是它的变量（与 tmux shim / 假 launcher 同一条纪律）。
+#   查找次序本身由下面 [13]（`CC_BUS_SCRIPTS=/nonexistent` ⇒ 明说「没有登记」）钉着。
+export CC_BUS_SCRIPTS="$REPO/shared/cc-bus/scripts"
+CCM="$CCMDIR/ccm"     # 本套件里那几处**直接叫 ccm**（不经 cc-spawn）的调用点
 
 # ⚠⚠ **`set +e` 是这里的第一条**〔08-13 实测〕：本套件在 `:338` 之后 `set -e` 是**开着**的，
 # 而清理里 `kill-server` 打在**可能不存在**的 socket 上（`${SOCK}b` 只在某一格才建 server）
@@ -67,7 +88,7 @@ cleanup() {
   set +e
   "$REALTMUX" -L "$SOCK" kill-server 2>/dev/null
   "$REALTMUX" -L "${SOCK}b" kill-server 2>/dev/null
-  rm -rf "$BIN" "$SANDBOX" "$WORK"
+  rm -rf "$BIN" "$SANDBOX" "$WORK" "${CCMDIR:-}"
 }
 trap cleanup EXIT
 
@@ -261,7 +282,7 @@ chk "地址簿恰好一条" "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -cx 'onc
 chk "台账第 4 列是初始任务" \
   "$(awk -F'\t' '$1=="once_cc"{print $4}' "$CC_BUS_HOME/spawned.tsv")" "任务O"
 # 没装 cc-bus 的人不该被总线脚本挡住起会话 —— ccm 静默 no-op，但**要吭一声**。
-CC_BUS_SCRIPTS=/nonexistent CCM_NO_PRETRUST=1 timeout 30 "$REPO/shared/ccm" \
+CC_BUS_SCRIPTS=/nonexistent CCM_NO_PRETRUST=1 timeout 30 "$CCM" \
   --tmux-base=nobus --detach --bus-register --cwd "$WORK/once" \
   --launcher "$BIN/FAKEAGENT" > "$WORK/out-nobus.txt" 2>&1 || true
 chk "找不到 cc-bus 时会话照样建出来" \
@@ -355,11 +376,11 @@ TB="$(mktemp -d)"
 cp "$REPO/shared/cc-bus/scripts/cc-register" "$REPO/shared/cc-bus/scripts/cc-spawned-record" "$TB/"
 chmod -x "$TB/cc-spawned-record"
 chk "台账脚本不可执行 ⇒ 明说「不进 spawn 台账」" \
-  "$(CC_BUS_SCRIPTS="$TB" bash "$REPO/shared/ccm" new --tmux-base=q --detach --bus-register \
+  "$(CC_BUS_SCRIPTS="$TB" "$CCM" new --tmux-base=q --detach --bus-register \
       --print --cwd /tmp 2>&1 >/dev/null | grep -c '不进 spawn 台账')" "1"
 chmod -x "$TB/cc-register"
 chk "连定位用的 cc-register 也不可执行 ⇒ 明说「没有登记」" \
-  "$(CC_BUS_SCRIPTS="$TB" bash "$REPO/shared/ccm" new --tmux-base=q --detach --bus-register \
+  "$(CC_BUS_SCRIPTS="$TB" "$CCM" new --tmux-base=q --detach --bus-register \
       --print --cwd /tmp 2>&1 >/dev/null | grep -c '没有登记')" "1"
 rm -rf "$TB"
 # 超长任务：**干净失败**（rc≠0、零会话、零台账），不是假成功。
