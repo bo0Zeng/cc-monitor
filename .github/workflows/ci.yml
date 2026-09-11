@@ -644,17 +644,19 @@ jobs:
           #   ⇒ **往这个 job 里写注释时，别把任何一条调用行原样抄进来。**
           #   ⇒ 想把它治根就得让这份副本**不必存在**（例如从调用行里现抽套件名+地板、
           #   只对「套数」与「每条都带非零地板」立判据）；那不是本件的写区，已在交回里提给 PM。
-          for pair in "tmux-target 26" "ccm-cli 264" "ccm-print-parity 12" "ccm-acceptance 31" \
-                      "ccm-pretrust 15" "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
+          # 🔴 〔`K-R48` 第二拍 09-11〕`ccm-cli 264→46` · `ccm-contract-parity 72→39`；
+          #    `ccm-acceptance` / `ccm-pretrust` 两套删了 ⇒ 两条从清单里摘掉。
+          for pair in "tmux-target 26" "ccm-cli 46" "ccm-print-parity 12" \
+                      "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 33" \
-                      "ccm-contract-parity 72" "daemon-gate2 34" "local-backend 14" \
+                      "ccm-contract-parity 39" "daemon-gate2 34" "local-backend 14" \
                       "daemon-sessions-rewatch 5" "daemon-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "daemon-cc-bus 50"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
               || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
           done
-          echo "23 套逐个对上（套件名 + 地板值）"
+          echo "21 套逐个对上（套件名 + 地板值）"  # 〔`K-R48` 第二拍〕23 → 21：删了 ccm-acceptance / ccm-pretrust
 
       - name: exec-bit guard (shared/** shebang files must be 100755 in git)
         run: bash e2e/exec-bit-guard.sh
@@ -709,23 +711,27 @@ jobs:
       - name: tmux 目标精确匹配（F01）
         run: bash e2e/assert-pass-floor.sh tmux-target 26
 
+      # 🔴 〔`K-R48` 第二拍 09-11〕264 → 46：`shared/ccm` 删了，本套件的被测对象换成后端二进制。
+      #    逐条判词住 `evidence/K-R48-356-verdicts.tsv`；构成与理由写在 `scripts/gate.sh`
+      #    那两行 `run_e2e` 上方（那是「三处一起改」里说理最全的一处，别在这儿再抄一份）。
+      # ⚠ **跑之前要先 build 后端二进制**（`cargo build --bin cc-monitor-remote`）——
+      #    套件顶上那道 `[ -x ]` 是 fail-closed 的，不 build 就红。
       - name: ccm CLI 契约（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-cli 264
+        run: bash e2e/assert-pass-floor.sh ccm-cli 46
 
       - name: ccm --print 平价预言机（F03）
         run: bash e2e/assert-pass-floor.sh ccm-print-parity 12
 
-      - name: ccm 端到端验收（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-acceptance 31
-
-      - name: ccm 预信任（F11）
-        run: bash e2e/assert-pass-floor.sh ccm-pretrust 15
+      # 🔴 〔`K-R48` 第二拍 09-11〕原来这里有 `ccm-acceptance 31` 与 `ccm-pretrust 15` 两步，
+      #    两套 e2e 本拍删了（它们只测那个 bash 脚本的真机行为，理由逐条写在
+      #    `src-tauri/src/shared_crate_registry.rs` 那张棘轮表被摘掉的那两行旁边）。
 
       # U9a：`--print` 说的 == 真跑做的（S10「保住清单」差分对拍）。
       # 与上面两套的分工：`ccm-cli` 只跑 `--print`（全 `env -u TMUX`）、`ccm-print-parity`
       # 验渲染器意图能被接住 —— **都不比对真 exec 路**，而那正是 U9b 搬决策时会漏的地方。
+      # 🔴 〔`K-R48` 第二拍 09-11〕72 → 39，同上。
       - name: ccm 契约差分对拍（U9a · S10 保住清单）
-        run: bash e2e/assert-pass-floor.sh ccm-contract-parity 72
+        run: bash e2e/assert-pass-floor.sh ccm-contract-parity 39
 
       # B02：`cc-spawn` 收编进 `ccm` 的行为等价验收。**本套件自带起飞前自检**——
       # 它经 PATH 上的 tmux shim 强制 `-L <隔离socket>`（cc-spawn/ccm/cc-register 内部都是

@@ -859,6 +859,21 @@ gate_selftest_e2e() {
 }
 gate_selftest_e2e
 
+# ★★ 🔴 `K-R48` 第二拍（09-11）：**这四套的被测对象换成了后端二进制，所以先把它 build 出来。**
+#
+# 〔用@09-11 `K33`〕逐字「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
+# ⇒ `shared/ccm` 删了，四套 e2e 的 `$CCM` 指向 `$CARGO_TARGET_DIR/debug/cc-monitor-remote`。
+#
+# 🔴 **为什么要单独 build，不能指望上面 `daemon` 那格顺手带出来**：现打实测过 ——
+#   `cargo test`（那一格跑的就是它）**只编 `src/main.rs` 的 test 版**
+#   （`deps/cc_monitor_remote-<hash>`），**不产 `debug/cc-monitor-remote`**。
+#   不加这一步的话，四套 e2e 会在 fail-closed 那道 `[ -x ]` 上一起红，
+#   而诊断说的是「先 cargo build」——对，但那件事该由门禁自己做。
+# ⚠ 它**不进判定面**：build 失败时下面四格会各自红并说清原因（fail-closed），
+#   这里再加一层判定只会让同一件事报两遍。
+printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（四套 ccm e2e 的被测对象）"
+( cd remote-daemon-proto && cargo build --bin cc-monitor-remote >/dev/null 2>&1 ) || true
+
 run_e2e ccm-print-parity 12
 run_e2e ccm-rbind-title  8
 # ── `K-G7`（09-03）新挂的两套 ─────────────────────────────────────────────────
@@ -894,8 +909,36 @@ run_e2e ccm-rbind-title  8
 #       ＋「线上那份请求里那个换行是**转义**过去的」。
 #   量于 `ccmon-devbox:latest`，`PASS=264 FAIL=0` / `PASS=72 FAIL=0`。
 #   ⚠ **`ci.yml` 那两行不在本件写区** ⇒ 逐字 diff 交回 PM 落（头注那条「三处一起改」的纪律照旧）。
-run_e2e ccm-cli               264
-run_e2e ccm-contract-parity   72
+# ★★ 🔴 **`K-R48` 第二拍（09-11）：`ccm-cli` 264 → 46 · `ccm-contract-parity` 72 → 39。**
+#   **这是本门第一次往下拧地板，所以理由要比往上棘时写得更细。**
+#
+# 用户 09-11 逐字：「那就把这个门禁删了，**bash 脚本直接删**」。PM 第一拍的对拍读数
+#（`evidence/K-R48-native-vs-bash-parity.py`，SAME=27 / DIFF=2）买到的结论是
+#「那四套多半不必重写，只要把 `$CCM` 指向二进制」⇒ 本拍**没有删套件**，是
+#**逐条判了那 356 条断言**（`evidence/K-R48-356-verdicts.tsv`）再把没有指称对象的删掉。
+#
+# 四格实测（本拍现打，沙箱 `ccmon-devbox:latest`）：
+#   · `ccm-print-parity`   12 → **12**（0 删；断言一个字没改，只把 PATH 上那个 `ccm` 换成软链）
+#   · `ccm-rbind-title`     8 → **8**（0 删；格式串取值点从 `sed shared/ccm` 换成 `sed` 那个 Rust `const`）
+#   · `ccm-cli`           264 → **46**（删 218）
+#   · `ccm-contract-parity` 72 → **39**（删 33）
+#
+# **删掉的那 251 条按族**（逐条判词在 TSV 第 6 列）：
+#   · `JSONENC` 47 —— 手写的 bash JSON 编码器与 `jq -Rs .` 对拍。Rust 侧是 `serde_json`。
+#   · `WIRE` 85 —— 「发了 / 发对了 / 不可达 / 撞名」。同一个进程之下没有「上线字节」这回事；
+#     其中「那几件事一件都不许丢」已落成 Rust 判据
+#     `the_container_launch_goes_through_the_one_door_with_every_field_intact`。
+#   · 账号解析走 daemon 一节 69 + 身份 daemon 前置检查 15 —— 「找不到 daemon」这个概念没了。
+#   · `A″`/`A′d`/`A′e`/`A′f`/`A′h` 31 —— 全是「ccm 去问另一个进程」这件事的形状。
+#   · `A′g` 2 —— **搬进了 Rust**（`a_command_from_the_backend_is_never_rewritten_by_the_shell`）。
+#
+# 🔴 **两族是本拍实测推翻第一拍判词的**（第一拍判「搬得过去」，指过去之后发现没有指称对象）：
+#   ccm-cli 第 82–83（`--print` 不受身份前置检查影响 ＋ **非空对照断的正是已删的 rc=2**）·
+#   第 281–284（`--print` 纯性，第 281 数「假 daemon 被调几次」⇒ 原生实现恒 0，**空真**）。
+#
+# ⚠ **新增判据落在别处，不在这四格里**：daemon 那格 676 → 677（容器路三条转发那条）。
+run_e2e ccm-cli               46
+run_e2e ccm-contract-parity   39
 
 # pb check 不打「passed」，单独判：它自己会打 `FAIL=<n> BROKEN=<n>`。
 #
