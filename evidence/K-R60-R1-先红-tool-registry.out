@@ -1,0 +1,345 @@
+   Compiling monitor v3.7.0 (/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r60/src-tauri)
+warning: monitor@3.7.0: 缺少内嵌 daemon x86_64（embedded-daemons/cc-monitor-remote-x86_64）——远端自动部署将关闭（embedded_daemons cfg 不置）
+warning: monitor@3.7.0: 缺少内嵌 daemon aarch64（embedded-daemons/cc-monitor-remote-aarch64）——远端自动部署将关闭（embedded_daemons cfg 不置）
+warning: monitor@3.7.0: 没有本机内嵌 daemon（src-tauri/native-daemon/cc-monitor-native）——**裸可执行文件起不了本机后端**，只有安装包那份带 sidecar 的能起。开发构建里这是正常的；发版构建里出现这一行 = 那一版的裸 exe 又回到 09-10 那个读数（0 个本机后端进程）。
+warning: whitespace symbol '\u{3000}' is not skipped
+   --> src/skill_host.rs:943:72
+    |
+943 |                        ① **P1**（本条的正题）：`editable` 的基准错了。F02 收工时正是这个错 ——\n\
+    |  ______________________________________________________________________________________________^
+944 | |                      　　基准写成「实例目录」，而收件箱是**项目级**的（planned-build 明写\n\
+    | |______________________-^
+    |                        |
+    |                        whitespace symbol '\u{3000}' is not skipped
+
+warning: whitespace symbol '\u{3000}' is not skipped
+   --> src/skill_host.rs:944:67
+    |
+944 |                        　　基准写成「实例目录」，而收件箱是**项目级**的（planned-build 明写\n\
+    |  ____________________________________________________________________________________________^
+945 | |                      　　「住计划目录根，不住工作区」）。夹具里真有一个实例目录，那一刀在这里照红。\n\
+    | |______________________-^
+    |                        |
+    |                        whitespace symbol '\u{3000}' is not skipped
+
+warning: whitespace symbol '\u{3000}' is not skipped
+   --> src/skill_host.rs:946:77
+    |
+946 |                        ② **P2′**：声明（`artifacts.root` / `editable`）单方面改了，而夹具里\n\
+    |  ____________________________________________________________________________________________^
+947 | |                      　　那份**手写副本**没跟。两份副本对拍就是为了让这一形出声。\n\
+    | |______________________-^
+    |                        |
+    |                        whitespace symbol '\u{3000}' is not skipped
+
+warning: failed to parse serde attribute
+  | 
+  | deserialize_with =
+  | 
+  = note: ts-rs failed to parse this attribute. It will be ignored.
+warning: failed to parse serde attribute
+  | 
+  | deserialize_with =
+  | 
+  = note: ts-rs failed to parse this attribute. It will be ignored.
+warning: failed to parse serde attribute
+  | 
+  | alias = "custom_title"
+  | 
+  = note: ts-rs failed to parse this attribute. It will be ignored.
+warning: failed to parse serde attribute
+  | 
+  | alias = "updated_at"
+  | 
+  = note: ts-rs failed to parse this attribute. It will be ignored.
+warning: failed to parse serde attribute
+  | 
+  | alias = "last_account"
+  | 
+  = note: ts-rs failed to parse this attribute. It will be ignored.
+warning: failed to parse serde attribute
+  | 
+  | other 
+  | 
+  = note: ts-rs failed to parse this attribute. It will be ignored.
+warning: unused import: `std::io::BufRead`
+    --> src/backend/control/local_backend.rs:1268:9
+     |
+1268 |     use std::io::BufRead;
+     |         ^^^^^^^^^^^^^^^^
+     |
+     = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `crate::ccm_cli_contract as contract`
+    --> src/sftp.rs:1473:13
+     |
+1473 |         use crate::ccm_cli_contract as contract;
+     |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `std::path::PathBuf`
+   --> src/lib.rs:147:5
+    |
+147 | use std::path::PathBuf;
+    |     ^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `backend::control::local_backend::Resolved`
+   --> src/lib.rs:520:21
+    |
+520 |                 use backend::control::local_backend::Resolved;
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `AsyncBufReadExt`
+  --> src/remote_history.rs:19:17
+   |
+19 | use tokio::io::{AsyncBufReadExt, AsyncReadExt, BufReader};
+   |                 ^^^^^^^^^^^^^^^
+
+warning: value assigned to `overflowed` is never read
+   --> src/cc_bus.rs:656:26
+    |
+656 |     let mut overflowed = false;
+    |                          ^^^^^ this value is reassigned later and never used
+...
+690 |     overflowed = over;
+    |     ----------------- `overflowed` is overwritten here before the previous value is read
+    |
+    = note: `#[warn(unused_assignments)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `wide`
+   --> src/backend/control/daemon_kill.rs:283:13
+    |
+283 |         let wide = format!("tmux {verb}");
+    |             ^^^^ help: if this is intentional, prefix it with an underscore: `_wide`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `find_window_by_marker_substr` is never used
+   --> src/bind.rs:364:4
+    |
+364 | fn find_window_by_marker_substr(_marker: &str) -> Option<MarkerHit> {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: struct `MarkerHit` is never constructed
+   --> src/bind.rs:369:12
+    |
+369 | pub struct MarkerHit {
+    |            ^^^^^^^^^
+
+warning: function `process_creation_filetime` is never used
+   --> src/bind.rs:430:4
+    |
+430 | fn process_creation_filetime(_pid: u32) -> Option<crate::utils::FileTime> {
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `start_if_present` is never used
+    --> src/backend/control/local_backend.rs:1100:8
+     |
+1100 | pub fn start_if_present(
+     |        ^^^^^^^^^^^^^^^^
+
+warning: variant `CwdPath` is never constructed
+  --> src/skill_host.rs:92:5
+   |
+78 | pub enum Discover {
+   |          -------- variant in this enum
+...
+92 |     CwdPath { path: &'static str },
+   |     ^^^^^^^
+
+warning: constant `ERROR_COMBINATORS` is never used
+   --> src/exec_site_registry.rs:140:11
+    |
+140 |     const ERROR_COMBINATORS: &[&str] =
+    |           ^^^^^^^^^^^^^^^^^
+
+warning: function `non_error_lines` is never used
+   --> src/exec_site_registry.rs:143:8
+    |
+143 |     fn non_error_lines(body: &str) -> String {
+    |        ^^^^^^^^^^^^^^^
+
+warning: field `0` is never read
+   --> src/tool_registry.rs:642:13
+    |
+642 |     Managed(&'static ToolSpec),
+    |     ------- ^^^^^^^^^^^^^^^^^
+    |     |
+    |     field in this variant
+    |
+help: consider changing the field to be of unit type to suppress this warning while preserving the field numbering, or remove the field
+    |
+642 -     Managed(&'static ToolSpec),
+642 +     Managed(()),
+    |
+
+warning: fields `named` and `host` are never read
+   --> src/tool_registry.rs:645:9
+    |
+644 |     Named {
+    |     ----- fields in this variant
+645 |         named: &'static str,
+    |         ^^^^^
+646 |         host: HostScope,
+    |         ^^^^
+
+warning: fields `display_name`, `why`, and `backing` are never read
+   --> src/tool_registry.rs:653:9
+    |
+651 | pub struct EnvEntry {
+    |            -------- fields in this struct
+652 |     pub id: &'static str,
+653 |     pub display_name: &'static str,
+    |         ^^^^^^^^^^^^
+654 |     pub tier: EnvTier,
+655 |     pub why: &'static str,
+    |         ^^^
+656 |     pub backing: EnvBacking,
+    |         ^^^^^^^
+
+warning: function `analyze_codex_usage` is never used
+   --> src/usage.rs:192:4
+    |
+192 | fn analyze_codex_usage(info: &crate::history::CodexSessionInfo) -> Option<SessionUsageRow> {
+    |    ^^^^^^^^^^^^^^^^^^^
+
+warning: function `analyze_usage_in_session` is never used
+   --> src/usage.rs:219:4
+    |
+219 | fn analyze_usage_in_session(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `NetTicks` is never constructed
+   --> src/utils.rs:122:12
+    |
+122 | pub struct NetTicks(pub u64);
+    |            ^^^^^^^^
+
+warning: associated items `parse_str` and `abs_diff` are never used
+   --> src/utils.rs:178:12
+    |
+176 | impl NetTicks {
+    | ------------- associated items in this implementation
+177 |     /// 从字符串解析（Claude Code procStart 字段形式）。失败返 None。
+178 |     pub fn parse_str(s: &str) -> Option<Self> {
+    |            ^^^^^^^^^
+...
+182 |     pub fn abs_diff(self, other: Self) -> u64 {
+    |            ^^^^^^^^
+
+warning: unused `Recorded` that must be used
+   --> src/daemon_policy.rs:856:9
+    |
+856 |         record_death(origin, &ev, &mut sink).expect("要记一笔");
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(unused_must_use)]` (part of `#[warn(unused)]`) on by default
+help: use `let _ = ...` to ignore the resulting value
+    |
+856 |         let _ = record_death(origin, &ev, &mut sink).expect("要记一笔");
+    |         +++++++
+
+warning: unused `Recorded` that must be used
+    --> src/daemon_policy.rs:1075:9
+     |
+1075 |         record_death(origin, &ev, &mut sink).expect("要记一笔");
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: use `let _ = ...` to ignore the resulting value
+     |
+1075 |         let _ = record_death(origin, &ev, &mut sink).expect("要记一笔");
+     |         +++++++
+
+warning: unused `Recorded` that must be used
+    --> src/daemon_policy.rs:1076:9
+     |
+1076 |         record_death(origin, &ev, &mut sink).expect("要记第二笔");
+     |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+     |
+help: use `let _ = ...` to ignore the resulting value
+     |
+1076 |         let _ = record_death(origin, &ev, &mut sink).expect("要记第二笔");
+     |         +++++++
+
+warning: direct cast of function item into an integer
+    --> src/local_daemon.rs:2811:47
+     |
+2811 |                 stop_detached_backend_on_exit as usize,
+     |                                               ^^^^^^^^
+     |
+     = note: `#[warn(function_casts_as_integer)]` on by default
+help: first cast to a pointer `as *const ()`
+     |
+2811 |                 stop_detached_backend_on_exit as *const () as usize,
+     |                                               ++++++++++++
+
+warning: direct cast of function item into an integer
+    --> src/local_daemon.rs:2816:36
+     |
+2816 |                 stop_relay_on_exit as usize,
+     |                                    ^^^^^^^^
+     |
+help: first cast to a pointer `as *const ()`
+     |
+2816 |                 stop_relay_on_exit as *const () as usize,
+     |                                    ++++++++++++
+
+warning: `monitor` (lib test) generated 29 warnings (run `cargo fix --lib -p monitor --tests` to apply 7 suggestions)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 8.87s
+     Running unittests src/lib.rs (/home/zbl/文档/claudecode-frontend/.claude/pm-targets/k-r60/debug/deps/monitor_lib-56a423a44fdc3213)
+
+running 24 tests
+test tool_registry::environment_tests::a_hand_written_entry_is_never_app_installs ... ok
+test tool_registry::environment_tests::every_tier_has_members_so_absence_never_encodes_a_judgement ... ok
+test tool_registry::environment_tests::the_environment_is_one_closed_list ... ok
+test tool_registry::environment_tests::the_tier_of_a_managed_item_is_read_off_the_installable_field ... ok
+test tool_registry::not_managed_tests::every_not_managed_entry_argues_why_it_is_out_of_scope ... ok
+test tool_registry::tests::declarations_match_reality_not_intent ... ok
+test tool_registry::not_managed_tests::not_managed_never_overlaps_the_managed_table ... ok
+test tool_registry::tests::fenced_block_implies_uninstallable ... ok
+test tool_registry::tests::a_renamed_probe_mechanism_is_still_caught ... ok
+test tool_registry::tests::ids_are_unique_and_stable ... ok
+test tool_registry::tests::installable_tools_declare_where_they_land ... ok
+test tool_registry::tests::owned_file_implies_installable ... ok
+test tool_registry::tests::prose_mentioning_the_test_attribute_does_not_truncate_the_scan ... ok
+test tool_registry::environment_tests::cc_bus_installable_matches_whether_the_deploy_really_exists ... FAILED
+test tool_registry::tests::cc_bus_says_why_it_is_not_installable_at_the_real_depth ... ok
+test tool_registry::tests::touch_effects_are_all_really_used ... ok
+test tool_registry::tests::the_scan_catches_the_audits_own_single_use_field ... FAILED
+test tool_registry::tests::tool_spec_is_declarative_data_not_behavior ... ok
+test tool_registry::tests::parser_actually_sees_the_real_source ... ok
+test tool_registry::tests::every_declared_field_has_at_least_two_instantiations ... ok
+test tool_registry::tests::the_scan_also_catches_a_field_degraded_to_neutral ... ok
+test tool_registry::tests::touched_file_fields_follow_the_same_discipline ... ok
+test tool_registry::tests::the_scan_catches_a_single_use_field_on_touched_file_too ... ok
+test tool_registry::environment_tests::every_unmanaged_entry_points_at_real_code ... ok
+
+failures:
+
+---- tool_registry::environment_tests::cc_bus_installable_matches_whether_the_deploy_really_exists stdout ----
+
+thread 'tool_registry::environment_tests::cc_bus_installable_matches_whether_the_deploy_really_exists' (320) panicked at src/tool_registry.rs:1624:9:
+assertion `left == right` failed: cc-bus 的 `installable` 申报为 false，而 `cc_bus_deploy.rs` 里那个部署实现在。
+这两句话必须一致 —— 那张表的「能否装/撤」列直接印到用户眼前，
+申报错了用户看到的就是一句假话。
+⚠ 只改注释没有用：本条读的是**字段值**，不是注释里的词频。
+  left: false
+ right: true
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- tool_registry::tests::the_scan_catches_the_audits_own_single_use_field stdout ----
+
+thread 'tool_registry::tests::the_scan_catches_the_audits_own_single_use_field' (339) panicked at src/tool_registry.rs:1170:9:
+assertion `left == right` failed: 变异没落到位：声明 1 处 + 每个字面量 1 处
+  left: 18
+ right: 7
+
+
+failures:
+    tool_registry::environment_tests::cc_bus_installable_matches_whether_the_deploy_really_exists
+    tool_registry::tests::the_scan_catches_the_audits_own_single_use_field
+
+test result: FAILED. 22 passed; 2 failed; 0 ignored; 0 measured; 1352 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `--lib`

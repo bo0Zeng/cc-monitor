@@ -10,8 +10,16 @@
 //!
 //! **但它不守一件事：新增一个「会在用户机器上留下东西」的写点，没有任何东西逼它申报。**
 //! 人群是「**声明了的**工具」，不是「**真实发生的**安装动作」——
-//! 表里今天 6 条（含 `remote-daemon` / `project-mcp`）看着是全的，
-//! 而那是**人现在记得**，不是有东西钉着。
+//! 表里那几条看着是全的，而那是**人现在记得**，不是有东西钉着。
+//! （**基数不写在散文里**〔`13b`〕：要数就 `TOOLS.len()`，那是唯一一份。）
+//!
+//! ## 〔`K-R60` 09-11〕**这张表的语义扩了一格：从「装到别处的受管工具」到「app 会碰的环境项」**
+//!
+//! 原先只收「我们装到别处的东西」，于是 app **装不了、却离不开**的那些
+//! （最吃重的一项是 Claude Code 自己写的会话记录）只能靠**不进表**来表示。
+//! 用缺席表达一个判断 —— 那正是 `K-R60` 在治的病。⇒ 现在 `installable: false`
+//! 的条目是这张表的一等公民，它们与 [`UNMANAGED_ENV`] 一起被 [`environment`]
+//! 汇成**唯一一份**环境清单。`NOT_MANAGED`（**刻意不收**的）语义不变。
 //!
 //! ## 为什么今天不把它做成机检（量过才这么写）
 //!
@@ -85,7 +93,7 @@
 //! 的文档正在痛批固定 needle。现在审计那条手法被钉成了常驻测试
 //! （`the_scan_catches_the_audits_own_single_use_field`，直接变异**真文件**）。
 
-/// 内容的来源。**6 个实例化**（五套工具 + cc-bus）。
+/// 内容的来源。**每个变体的使用者数现算**（`TOOLS` 是唯一一份），不写死在这里〔`13b`〕。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum ToolSource {
     /// 仓内文件，编译期 `include_str!` 进二进制（`ccm`）。
@@ -101,9 +109,15 @@ pub enum ToolSource {
     EmbeddedBinary { repo_path: &'static str },
     /// 由 cc-monitor 现场生成的文本片段（PowerShell profile 块、shell 别名块、钩子片段）。
     Generated,
+    /// **不是我们提供的** —— 内容由别人放在那儿，我们只读它。`who` 说清是谁放的。
+    ///
+    /// 〔`K-R60` 09-11 加〕上面五个变体都预设「这东西的内容出自本仓」，
+    /// 而 app 最吃重的那一项（Claude Code 自己写的会话记录）根本不出自本仓。
+    /// 没有这一格，它就只能靠**不进表**来表示 —— 而那正是本件在治的病。
+    NotOurs { who: &'static str },
 }
 
-/// 装到哪。**5 个实例化**。
+/// 装到哪。**变体数与使用者数现算**，不写死在这里〔`13b`〕。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum ToolDestination {
     /// 远端家目录下的相对路径（`~/.local/bin/ccm`）。
@@ -133,6 +147,14 @@ pub enum ToolDestination {
         token: &'static str,
         what: &'static str,
     },
+    /// **我们不装它** —— 这一格回答的不是「装到哪」，而是「它本来在哪」。
+    ///
+    /// 〔`K-R60` 09-11 加〕别的五个变体都在回答「我们把它放到哪儿去」。
+    /// 一个我们**从不安装、只去读**的东西（`~/.claude/projects/`）填任何一个都是在说假话，
+    /// 而「声明一个不存在的落点比不声明更坏」这句话本模块自己写过。
+    /// ⇒ 显式承认「这不是我们的落点」。
+    /// 判据 `installable_tools_declare_where_they_land` 钉住：用了这一格就不许 `installable: true`。
+    NotInstalledByUs { whose: &'static str },
 }
 
 /// 这个文件在**哪台机器**上。
@@ -189,7 +211,7 @@ pub enum HostScope {
 }
 
 /// 这个工具会碰用户的哪个文件，以及**碰它意味着什么**。
-/// **6 个实例化** —— 这是本结构里最扎实的一项，也是 T02 审计视图的直接输入。
+/// 本结构是 T02 审计视图的直接输入（使用者数现算，不写死在这里〔`13b`〕）。
 ///
 /// ## `path` 与 `note` 为什么拆开（T02 一上手就撞到的计划≠现实）
 ///
@@ -263,9 +285,15 @@ pub struct ToolSpec {
     pub display_name: &'static str,
     pub source: ToolSource,
     pub destination: ToolDestination,
-    /// 能不能装/升。**5 个实例化**（cc-bus 的部署尚未做 → false）。
+    /// 能不能装/升。
+    ///
+    /// 🔴 **这一格是「app 装的」与「app 只查」两档的分界线**（`K-R60`）：
+    /// [`environment`] 就是读它算出每条 `ToolSpec` 属于哪一档的。
+    /// ⇒ 它填错了，用户在配置面上读到的「能否装/撤」与清单上的档**同时**是假的。
+    /// 守它的是 `cc_bus_installable_matches_whether_the_deploy_really_exists`（读**字段值**，
+    /// 不是注释里的词频 —— 这一格上一次就是被词频守卫放过去的）。
     pub installable: bool,
-    /// 能不能卸。**3 个实例化**（ccm / MCP / PowerShell 有；其余无）。
+    /// 能不能卸。
     pub uninstallable: bool,
     pub touches: &'static [TouchedFile],
 }
@@ -331,9 +359,33 @@ pub const TOOLS: &[ToolSpec] = &[
         //
         // ⚠ 这堵墙今天已经在收账：`P4b` 改的是仓内那份 `cc-spawn`，而 `~/.local/bin/cc-*`
         // 指向的是 `~/.claude/skills/cc-bus/`（实测两份差 167 行）—— **改动到不了本机**。
-        installable: false,
+        //
+        // 🔴 **09-11 `K-R60`：上面那句「翻成 true」到今天才真的落到字段上。**
+        // `K-R57` 摸底逮到：字段一直是 `false`，而同一个注释块逐字写着要翻成 `true`，
+        // 实现（`deploy_local_cc_bus`）**一直在**。⇒ 那张表对「cc-bus 装不装得了」的申报
+        // 假了一个月，而 `config_surface` 的「能否装/撤」列**正是读这个字段的**。
+        // 🔴 **为什么一个月没红**：守这一格的 `cc_bus_says_why_it_is_not_installable_at_the_real_depth`
+        // 是**必需词守卫** —— 它数注释里两个词的出现次数，**看不见字段的值**。
+        // ⇒ 本轮补了 `cc_bus_installable_matches_whether_the_deploy_really_exists`：
+        // 它左边读这个字段、右边钉 `cc_bus_deploy.rs` 的函数签名，两边必须相等。
+        installable: true,
         uninstallable: false,
         touches: &[
+            TouchedFile {
+                // 🔴 **这一条是 `K-R60` 补的，而它是被上面那次翻字段逼出来的。**
+                // `installable_tools_declare_where_they_land` 要求「装得了就必须申报装到哪」；
+                // 字段一直是 `false` ⇒ 这条判据一直**跳过** cc-bus ⇒ 部署真正写的那个目录
+                // （`deploy_local_cc_bus` 往 `<claude_dir>/skills/cc-bus/` 铺 17 个文件）
+                // **在这一页上一行都没有**。翻成 `true` 的当场它就红了。
+                // ⇒ 一处假申报盖住的不止它自己那一格。
+                path: "~/.claude/skills/cc-bus",
+                host: HostScope::Either,
+                note: Some(
+                    "部署真正写的那个目录（整目录铺、覆盖前改名备份）；\
+                     装的口只有本机那一个（deploy_local_cc_bus），而 cc-bus 本身跟着 Claude Code 走",
+                ),
+                effect: TouchEffect::OwnedFile,
+            },
             TouchedFile {
                 path: "~/.claude/settings.json",
                 host: HostScope::Either,
@@ -465,14 +517,287 @@ pub const TOOLS: &[ToolSpec] = &[
             effect: TouchEffect::FencedBlock,
         }],
     },
+    // ═══ 〔`K-R60` 09-11 加〕**这一条我们装不了，而它是这张表最吃重的一项。** ═══
+    //
+    // 来历：`K-R57` 摸底现打 —— 这一页「根本看不见」的 9 项里，`<claude_dir>/projects/*.jsonl`
+    // 是**历史面与搜索索引的全部输入**。app 是 Claude Code 的监视器，
+    // 被监视对象自己写的那份记录不在表里，这一页就答不了「你要的东西齐了没有」。
+    //
+    // 🔴 **这一条同时把 `installable` 的区分力带了回来，理由如实写在这里，别让它看起来很巧**：
+    // cc-bus 翻成 `true` 之后，`installable` 在**全部 6 条**上都为真 ⇒
+    // `every_declared_field_has_at_least_two_instantiations` **对地**报「没有区分力」
+    // （`K-R60` 实打过那一趟红）。按本仓准则那时该**删字段**，
+    // 而删掉它，「cc-bus 装不装得了」就再没有任何字段可以申报、也没有任何判据读得到 ——
+    // 那恰好是本件要治的病的反面。
+    // ⇒ 处置不是删字段，是**让这张表收进本来就该收的那一档**：
+    //   app 会去碰 / 去读、但**装不了**的东西。`installable` 于是重新分得开两类人。
+    // ⚠ 代价如实记：这张表的语义从「装到别处的受管工具」扩到了「app 会碰的环境项」，
+    //   模块头注那句话本轮已改。`NOT_MANAGED`（刻意不收的）语义不变。
+    ToolSpec {
+        id: "claude-code",
+        display_name: "Claude Code 的会话记录",
+        source: ToolSource::NotOurs {
+            who: "Claude Code 自己建、自己写",
+        },
+        destination: ToolDestination::NotInstalledByUs {
+            whose: "Claude Code 的数据根（`adapter/claude_code.rs` 的 CLAUDE_LAYOUT.sessions_subdir）",
+        },
+        installable: false,
+        uninstallable: false,
+        touches: &[TouchedFile {
+            path: "~/.claude/projects/",
+            host: HostScope::Either,
+            note: Some(
+                "历史面与搜索索引的全部输入（每个项目一个目录、每个会话一份 jsonl）——\
+                 我们只读；装不了，也不该我们装",
+            ),
+            effect: TouchEffect::ReadOnly,
+        }],
+    },
 ];
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-R60`：**环境清单的闭集** —— 「app 要的东西齐了没有」这个问题的人群
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// app 与一个环境项的关系。**三档穷举。**
+///
+/// 🔴 **第三档必须在清单里有一格，不许靠「没列出来」表示。**
+/// 〔`K-R57` 摸底现打：`TOOLS` 只有 6 条，而 app 用的时候直接假设在的至少 9 项
+/// （`claude` · `tmux` · 终端出口 · `git` · `ssh` · `pgrep` · `xdg-open` · `bash` ·
+/// MCP server 本体）—— 它们一条都没进任何一张表。于是「app 依赖本机环境」这个判断
+/// **在代码里没有住址**，只能从「表里没有」倒推 —— 用缺席表达一个判断，
+/// 正是本工作区一整天在治的那族病。〕
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+pub enum EnvTier {
+    /// **app 装的** —— 产品自己有安装动作。
+    AppInstalls,
+    /// **app 只查** —— 查得到它在不在，装不了。
+    AppOnlyChecks,
+    /// **app 假设它在** —— 既不装也不查，用的时候直接假设它已经在。
+    AppAssumesPresent,
+}
+
+impl EnvTier {
+    /// 三档的**闭集**本身。现算用（`len()` 就是「几档」，不许在别处写死一个基数）。
+    pub const ALL: &'static [EnvTier] = &[
+        EnvTier::AppInstalls,
+        EnvTier::AppOnlyChecks,
+        EnvTier::AppAssumesPresent,
+    ];
+
+    /// 给人看的档名。措辞定在这里，UI 与诊断文本不再各写一遍。
+    pub fn label(self) -> &'static str {
+        match self {
+            EnvTier::AppInstalls => "app 装的",
+            EnvTier::AppOnlyChecks => "app 只查",
+            EnvTier::AppAssumesPresent => "app 假设它在",
+        }
+    }
+}
+
+/// 闭集里**派生不出来**的那一半：`TOOLS` 里没有对应条目的环境项。
+///
+/// # 为什么只有这一半是手写的
+///
+/// 有 [`ToolSpec`] 的那一半**能派生**：它的 `touches` 一定会被 `config_surface` 逐条解析并观测
+/// 一次（⇒ 至少是「只查」），再读它的 `installable` 就分得出「装」还是「只查」。
+/// 而这一半派生不出来 —— 盘上**没有任何字段**能把「只查」与「假设它在」分开，
+/// 那是一个**设计判断**，不是读数。⇒ 判断必须有住址，这张表就是它的住址。
+///
+/// ⚠ **别把「今天这台机器上恰好有」写成「app 假设它在」** —— 前者是读数（`K-R57` 量具 A 量的那种），
+/// 后者是设计判断。本表只收后者，所以每一条的 `why` 要给**代码里的住址**，不是一句形容。
+pub struct UnmanagedEnv {
+    pub id: &'static str,
+    pub display_name: &'static str,
+    /// 这一项属于哪一档。**必须写出来** —— 第三档就是靠这一格存在的。
+    pub tier: EnvTier,
+    /// 用什么名字指认它：PATH 上的命令名、一条 `~/` 路径、或一个 `$占位符`。
+    pub named: &'static str,
+    /// 它在哪台机器上（与 [`TouchedFile::host`] 同一套语义）。
+    pub host: HostScope,
+    /// **app 在哪儿用到它** —— 结尾必须是一个 `<相对 src 的路径>.rs::<符号>` 形态的住址。
+    /// 判据只判「**有没有**住址」；那个住址今天解析不解析得到，由 `structural_scan` 里
+    /// 那条扫全仓代码住址的判据管（它会报「找不到这个符号 / 符号搬家了」）。
+    pub why: &'static str,
+}
+
+/// 闭集里手写的那一半。**今天全是第三档** —— 这不是巧合：
+/// 「只查」那一档今天唯一的成员是 `TOOLS` 里 `installable: false` 的 `claude-code`，
+/// 由 [`environment`] 从字段派生出来，不在这张表里。
+pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
+    UnmanagedEnv {
+        id: "claude-cli",
+        display_name: "Claude Code 的可执行文件",
+        tier: EnvTier::AppAssumesPresent,
+        named: "claude",
+        host: HostScope::Either,
+        why: "起会话时拿它当启动器直接用；装不装、在哪个版本，app 一概不问 —— \
+              adapter/claude_code.rs::default_launcher",
+    },
+    UnmanagedEnv {
+        id: "tmux",
+        display_name: "tmux（会话容器）",
+        tier: EnvTier::AppAssumesPresent,
+        named: "tmux",
+        host: HostScope::Either,
+        why: "tmux 容器那条起法要它；缺了只在回绝里报一句能力名 —— \
+              backend/control/ccm_invocation.rs::Refusal",
+    },
+    UnmanagedEnv {
+        id: "terminal-exit",
+        display_name: "POSIX 终端出口",
+        tier: EnvTier::AppAssumesPresent,
+        named: "xdg-terminal-exec",
+        host: HostScope::Client,
+        why: "POSIX 上开一个会话窗口只认这一个规范化出口，表里今天就它一项 —— \
+              launch.rs::TERMINAL_EXITS",
+    },
+    UnmanagedEnv {
+        id: "git",
+        display_name: "git",
+        tier: EnvTier::AppAssumesPresent,
+        named: "git",
+        host: HostScope::Client,
+        why: "认 skill 所在的工作树与主检出要跑它 —— skill_host.rs::git_common_dir",
+    },
+    UnmanagedEnv {
+        id: "ssh",
+        display_name: "ssh 客户端（含密钥与主机配置）",
+        tier: EnvTier::AppAssumesPresent,
+        named: "ssh",
+        host: HostScope::Client,
+        why: "远端一整侧都经它；app 只探它在不在 PATH 上，装不了 —— \
+              launch.rs::ssh_client_available",
+    },
+    UnmanagedEnv {
+        id: "pgrep",
+        display_name: "pgrep",
+        tier: EnvTier::AppAssumesPresent,
+        named: "pgrep",
+        host: HostScope::Either,
+        why: "数 cc-bus 的 agent 在不在用它 —— cc_bus.rs::count_now",
+    },
+    UnmanagedEnv {
+        id: "xdg-open",
+        display_name: "xdg-open",
+        tier: EnvTier::AppAssumesPresent,
+        named: "xdg-open",
+        host: HostScope::Client,
+        why: "开链接 / 开日志目录走它 —— lib.rs::open_with_os",
+    },
+    UnmanagedEnv {
+        id: "login-shell",
+        display_name: "bash 登录 shell",
+        tier: EnvTier::AppAssumesPresent,
+        named: "bash",
+        host: HostScope::Either,
+        why: "探 ccm 能力时要一个登录 shell 把用户的 rc 读进来 —— ccm_probe.rs::probe_with",
+    },
+    UnmanagedEnv {
+        id: "mcp-server",
+        display_name: "MCP server 本体（`.mcp.json` 里那个 command）",
+        tier: EnvTier::AppAssumesPresent,
+        named: "$MCP_COMMAND",
+        host: HostScope::ProjectDir,
+        why: "我们写得了那份配置，**被它指到的可执行本体不装也不查** —— \
+              mcp.rs::write_project_mcp_server",
+    },
+    UnmanagedEnv {
+        id: "cc-acct-iso-local",
+        display_name: "cc-acct-iso 本机那份",
+        tier: EnvTier::AppAssumesPresent,
+        named: "~/.local/bin/cc-acct-iso",
+        host: HostScope::Client,
+        why: "本机侧零装口、零查口；有口的只有远端那半 —— \
+              acct_iso_deploy.rs::check_remote_acct_iso",
+    },
+    UnmanagedEnv {
+        id: "posix-rc-aliases",
+        display_name: "POSIX rc 里的 ccm 别名块（cc / cct / zcc …）",
+        tier: EnvTier::AppAssumesPresent,
+        named: "~/.bashrc",
+        host: HostScope::Client,
+        why: "加与删两侧都只造 PowerShell 那两条 profile 路径，POSIX rc 一条都不扫 —— \
+              profile_installer.rs::discover_profiles",
+    },
+];
+
+/// 闭集里一项的**来路**。两态，没有第三种 —— 一项要么有 [`ToolSpec`]，要么没有。
+///
+/// 做成枚举而不是两个 `Option`：两个 `Option` 有四种组合，其中两种是不该存在的状态
+/// （都有 / 都没有），而那两种状态一旦能被构造出来，早晚有人构造。
+pub enum EnvBacking {
+    /// 有 `ToolSpec` —— **路径 · effect · host 只住 `TOOLS` 那一份**，这里不复述。
+    Managed(&'static ToolSpec),
+    /// 没有 —— 只有一个名字和它在哪台机器上。
+    Named {
+        named: &'static str,
+        host: HostScope,
+    },
+}
+
+/// 闭集里的一项。
+pub struct EnvEntry {
+    pub id: &'static str,
+    pub display_name: &'static str,
+    pub tier: EnvTier,
+    pub why: &'static str,
+    pub backing: EnvBacking,
+}
+
+/// 🔴 **环境清单的闭集 —— 唯一一份，现算。**
+///
+/// 「app 要的东西这台机器上齐了没有」这个问题的**人群**就是它。
+/// `config_surface` 的那张表照它建（`the_view_population_is_exactly_the_closed_set` 钉住），
+/// 别处要这份名单一律调它，**不许再手抄一张**〔`13b`：闭集只许有一个住址〕。
+///
+/// # 能派生的就派生，手写的只有派生不出来的那一半
+///
+/// - `TOOLS` 里每一条自动进来一项，**档读它的 `installable` 字段算出来**：
+///   `true ⇒ AppInstalls`；`false ⇒ AppOnlyChecks`（有 `ToolSpec` ⇒ 它的每条 `touches`
+///   都会被 `config_surface` 解析并观测一次 ⇒ 至少查得到）。
+/// - `TOOLS` 里没有的那一半住 [`UNMANAGED_ENV`]，档只能显式声明 —— 盘上没有任何字段
+///   能把「只查」与「假设它在」分开，那是设计判断不是读数。
+///
+/// ⚠ **这个派生的已知上限，写在这里别被读大一格**：`installable: false ⇒ 只查` 买到的是
+/// 「本页会去解析并观测它申报的每条路径」。远端那几条观测出来是 `Undetermined`
+/// （本页不连 SSH）—— 那仍是「查了、只是查不动」，不是「没查」，但它**不等于**
+/// 「app 有一个真能回答它在不在的口」。要那一格得另立判据。
+pub fn environment() -> Vec<EnvEntry> {
+    let mut out: Vec<EnvEntry> = TOOLS
+        .iter()
+        .map(|t| EnvEntry {
+            id: t.id,
+            display_name: t.display_name,
+            tier: if t.installable {
+                EnvTier::AppInstalls
+            } else {
+                EnvTier::AppOnlyChecks
+            },
+            why: "有 ToolSpec ⇒ 档由它的 installable 字段派生 —— tool_registry.rs::environment",
+            backing: EnvBacking::Managed(t),
+        })
+        .collect();
+    out.extend(UNMANAGED_ENV.iter().map(|u| EnvEntry {
+        id: u.id,
+        display_name: u.display_name,
+        tier: u.tier,
+        why: u.why,
+        backing: EnvBacking::Named {
+            named: u.named,
+            host: u.host,
+        },
+    }));
+    out
+}
 
 /// ★ **反向登记：考虑过、但刻意不收进 [`TOOLS`] 的东西**〔devbench F06, 08-10〕。
 ///
 /// # 为什么要有这张表
 ///
-/// [`TOOLS`] 是「**装到别处**的受管工具」（看它的字段就知道：`source` / `destination` /
-/// `installable` / `touches`）。而「某个东西不在表里」有两种截然不同的原因：
+/// [`TOOLS`] 收的是「**app 会碰的东西**」——装得了的、以及装不了但我们要去读/去查的
+/// （`K-R60` 起，见模块头注那一节）。而「某个东西不在表里」有两种截然不同的原因：
 ///
 /// | 原因 | 该怎么办 |
 /// |---|---|
@@ -922,9 +1247,16 @@ mod tests {
                 "    pub touches: &'static [TouchedFile],",
                 "    pub touches: &'static [TouchedFile],\n    pub needs_elevation: bool,",
             )
+            // 🔴 **锚点必须只认 `ToolSpec` 那一族的 `id:`**〔`K-R60` 09-11 现打〕：
+            // 上一版的锚点是裸的 `"        id: \""` —— 它认的是「本文件里任何 8 空格缩进的
+            // `id:` 行」，而那时**本文件只有 `TOOLS` 一张表**，所以它看起来是对的。
+            // `K-R60` 往本文件加了第二张表（`UNMANAGED_ENV`，同样的缩进）之后，
+            // 这一刀当场打到 17 处、计数自检红在「变异没落到位」。
+            // ⇒ 收窄成 `ToolSpec {` + 下一行的 `id:`，只认该打的那一族。
+            // ⚠ 这不是放水：命中数**仍然**由下面那条 `1 + TOOLS.len()` 的等号自检守着。
             .replace(
-                "        id: \"",
-                "        needs_elevation: false,\n        id: \"",
+                "    ToolSpec {\n        id: \"",
+                "    ToolSpec {\n        needs_elevation: false,\n        id: \"",
             )
             .replacen(
                 "        needs_elevation: false,\n        id: \"ccm\"",
@@ -1061,9 +1393,17 @@ mod tests {
         // ⇒ 本件**不顺手做那次重构**（`PS1` 的正题是部署，不是字段治理），
         // 声明位暂留 `false`，代价如实登记在这里：**声明表比代码晚一格**。
         // ★ 解锁条件：删掉 `installable` 字段（或给它找回区分力）之后，把这条断言反过来。
+        //
+        // 🔴 **09-11 `K-R60`：上面那个解锁条件兑现了，本条按它自己写的话反过来。**
+        // 走的是「**给它找回区分力**」那一支，不是删字段 —— 删了就再没有任何字段能申报
+        // 「cc-bus 装不装得了」，而这一格恰恰是本件在治的。
+        // 区分力从哪儿回来的：`claude-code` 那条（装不了、只读）进表，
+        // 理由写在它自己那个字面量上头。
+        // ⚠ 那一整段「暂留 false」的理由**留着不删**：它是这处假申报活了一个月的来路，
+        //   而本条的名字（「声明要配现实」）说的正是那件事。
         assert!(
-            !ccbus.installable,
-            "字段治理未做前，声明位暂留 false（理由见上）"
+            ccbus.installable,
+            "cc-bus 的部署 08-13 就实现了（`cc_bus_deploy.rs`），声明位必须跟上"
         );
         assert!(!ccbus.uninstallable, "卸载没做，不得声明可卸");
         // settings.json 只生成待贴文本，绝不写
@@ -1148,6 +1488,12 @@ mod tests {
                 ToolDestination::ProjectRelative(p) => (*p).to_string(),
                 ToolDestination::UserShellProfile => "$PROFILE".to_string(),
                 ToolDestination::UserConfiguredPath { token, .. } => (*token).to_string(),
+                // 〔`K-R60`〕跨字段：「这不是我们的落点」与「装得了」不许同时成立。
+                ToolDestination::NotInstalledByUs { whose } => panic!(
+                    "{} 声明 installable: true，落点却写着「不是我们装的」（{whose}）——\
+                     两句话有一句是假的",
+                    t.id
+                ),
             };
             assert!(
                 t.touches.iter().any(|f| f.path == want),
@@ -1173,5 +1519,197 @@ mod tests {
                 );
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod environment_tests {
+    use super::*;
+    use std::collections::BTreeSet;
+
+    /// `KR60D1` ③ 用的抽取器 —— **直接用盘上已有那一把**，不自己再写一个。
+    ///
+    /// 〔`K-R60` 09-11 自抓〕本条第一版手写了一个同形的抠取器（找 `.rs::`、向前吃路径、
+    /// 向后吃符号），写完才发现 `structural_scan::symbol_addresses` 逐字就是这件事，
+    /// 而且它那一侧**更强**：还会去全仓解析那个符号今天在不在、有没有搬家。
+    /// 抄一份被测逻辑正是本仓反复判过的那族病 ⇒ 删掉自己那份，改调它。
+    fn addresses_in(why: &str) -> Vec<(usize, String, String, bool)> {
+        crate::structural_scan::symbol_addresses(why)
+    }
+
+    /// `KR60D1` ①：**清单是一个闭集，而且只有一份。**
+    ///
+    /// 两半（`TOOLS` 派生的 + [`UNMANAGED_ENV`] 手写的）**不许重叠**，id 不许重名 ——
+    /// 重了就等于同一个环境项有两个住址，而那正是本件要治的病。
+    #[test]
+    fn the_environment_is_one_closed_list() {
+        let env = environment();
+        let ids: BTreeSet<&str> = env.iter().map(|e| e.id).collect();
+        assert_eq!(
+            ids.len(),
+            env.len(),
+            "闭集里有重名的 id —— 同一个环境项两个住址，实得 {:?}",
+            env.iter().map(|e| e.id).collect::<Vec<_>>()
+        );
+        assert_eq!(
+            env.len(),
+            TOOLS.len() + UNMANAGED_ENV.len(),
+            "闭集的人数 ≠ 两半之和 —— environment() 漏了一半还是加了第三份"
+        );
+        for u in UNMANAGED_ENV {
+            assert!(
+                !TOOLS.iter().any(|t| t.id == u.id),
+                "`{}` 同时在 TOOLS 与 UNMANAGED_ENV 里 —— 有 ToolSpec 的不许再手写一条",
+                u.id
+            );
+        }
+    }
+
+    /// 🔴 `KR60D1` ②：**三档都必须有人 —— 第三档不许靠「没列出来」表示。**
+    ///
+    /// 这一条就是本件的正题的门禁：把 `AppAssumesPresent` 那几项从 [`UNMANAGED_ENV`]
+    /// 里删光（回到本件之前那个「不写进去就算第三档」的盘面）⇒ 本条红。
+    ///
+    /// 分母现算（`EnvTier::ALL`），不写死一个基数〔`13b`：报一个基数也是复述〕。
+    #[test]
+    fn every_tier_has_members_so_absence_never_encodes_a_judgement() {
+        let env = environment();
+        for tier in EnvTier::ALL {
+            let n = env.iter().filter(|e| e.tier == *tier).count();
+            assert!(
+                n > 0,
+                "「{}」这一档在闭集里一个成员都没有（共 {} 档 · 闭集 {} 项）——\n\
+                 空的那一档等于**用缺席表达一个判断**，而读者分不出「没有这种东西」\n\
+                 与「有人忘了写」。要么给它一个成员，要么把这一档从 EnvTier 里删掉。",
+                tier.label(),
+                EnvTier::ALL.len(),
+                env.len()
+            );
+        }
+    }
+
+    /// `KR60D1` ③：**「标了档」与「随手填的档」要分得开。**
+    ///
+    /// 手写那一半的每一条，`why` 里**必须有**一个 `<路径>.rs::<符号>` 形态的代码住址 ——
+    /// 「app 假设它在」是一个**设计判断**，判断得指得出它长在哪段代码上；
+    /// 一句形容词（「常用工具」「一般都有」）过不去这一格。
+    ///
+    /// **分工写清，别让人以为这一条买到了两件事**：
+    /// - 本条只判「**有没有**住址」（缺席这件事只有本条看得见 —— 下面那一条对
+    ///   「一个住址都没写」的条目是**静默放过**的）；
+    /// - 「那个住址今天**解析不解析得到**」由 `structural_scan` 里那条扫全仓代码住址的
+    ///   判据管，它会报「找不到这个符号 / 符号搬家了」。本轮它真的逮到过一条
+    ///   （第一版把 `tmux` 那条指到了一个枚举**变体**上）。
+    ///
+    /// ⚠ **诚实边界**：两条加起来买到的是「这条住址指得到一处真代码」，
+    /// **判不了「这处代码真的就是这一项该指的那处」** —— 那要读语义，机器读不了。
+    #[test]
+    fn every_unmanaged_entry_names_a_code_address() {
+        // 反向自检（要件 3）：抽取器不是恒真的
+        assert!(
+            addresses_in("常用工具，一般机器上都有").is_empty(),
+            "抽取器把散文当住址了"
+        );
+        assert!(
+            !addresses_in("launch.rs::TERMINAL_EXITS").is_empty(),
+            "抽取器连一个真住址都抠不出来 —— 先查抽取器，别改断言"
+        );
+
+        let mut checked = 0usize;
+        for u in UNMANAGED_ENV {
+            let addrs = addresses_in(u.why);
+            assert!(
+                !addrs.is_empty(),
+                "`{}` 的 why 里没有 `<路径>.rs::<符号>` 形态的住址 —— \
+                 「app 假设它在」是一个**设计判断**（不是「这台机器上恰好有」这个读数），\
+                 判断必须指得出它长在哪段代码上。\n实得：{}",
+                u.id,
+                u.why
+            );
+            checked += 1;
+        }
+        assert!(
+            checked >= 5 && checked == UNMANAGED_ENV.len(),
+            "计数自检：扫到 {checked} 条，而表里 {} 条",
+            UNMANAGED_ENV.len()
+        );
+    }
+
+    /// 手写那一半**不许声明「app 装的」** —— 装得了就该有一条 [`ToolSpec`]
+    /// 说清源 / 落点 / 碰哪些文件，不能只留一个名字。
+    #[test]
+    fn a_hand_written_entry_is_never_app_installs() {
+        for u in UNMANAGED_ENV {
+            assert_ne!(
+                u.tier,
+                EnvTier::AppInstalls,
+                "`{}` 声明「app 装的」却没有 ToolSpec —— 装得了就得申报装到哪、碰哪些文件",
+                u.id
+            );
+        }
+    }
+
+    /// 派生那一半：**`TOOLS` 的每一条都必须进闭集**，一条都不许漏。
+    ///
+    /// 🔴 **本条上一版还断言了「档 == `if installable {…} else {…}`」，那是同义反复，已删。**
+    /// 〔`K-R60` 09-11 自抓，是本轮 `7u` 那一刀逼出来的：把实现整个退掉之后它**仍然绿**——
+    /// 因为 `environment()` 的档就是那个表达式算的，判据再算一遍等于拿它自己核它自己。〕
+    /// 本仓删过一颗同形的钉子（`config_surface` 那条按 `destination` 推 locality 的），
+    /// 理由逐字：「不留永远不会红的钉子」。
+    /// ⇒ 留下的是**够得着的那一半**：覆盖。漏掉一条 `TOOLS` ⇒ 本条红。
+    /// 而「字段填错了」那一格**不由本条守**，由读字段的那条（它右边钉的是实现，不是同一个表达式）。
+    #[test]
+    fn every_managed_tool_reaches_the_closed_set() {
+        let env = environment();
+        for t in TOOLS {
+            let n = env.iter().filter(|e| e.id == t.id).count();
+            assert_eq!(
+                n, 1,
+                "`{}` 在 TOOLS 里，而闭集里出现 {n} 次（应为 1）——\
+                 闭集漏了它，这一页上就看不见它",
+                t.id
+            );
+        }
+    }
+
+    /// 🔴 `KR60D3`：**`cc-bus` 的 `installable` 与实现一致，而本条真的读那个字段。**
+    ///
+    /// 〔`K-R57` 摸底逮到的假申报：字段现打 `false`，而**同一注释块**逐字写着
+    /// 「08-13 用户裁：开 ⇒ `installable` 从 `false` 翻成 `true`，实现在 `cc_bus_deploy.rs`」，
+    /// 而那个实现**真的在**。一条用户裁定落在注释里、没落到字段上。〕
+    ///
+    /// 🔴 **为什么补这一条**：守它的老判据 `cc_bus_says_why_it_is_not_installable_at_the_real_depth`
+    /// 是**必需词守卫** —— 它数的是注释里两个词的出现次数，**看不见字段的值**。
+    /// 字段翻成任何值它都绿，于是字段与注释各说各话了一个月，一格都没红。
+    ///
+    /// 本条两边都是**现读**的，不抄一份被测逻辑：
+    /// - 左边读 `TOOLS` 里那条的 `installable` 字段；
+    /// - 右边用 `pin_definition` 去 `cc_bus_deploy.rs` 里钉那个部署函数的签名
+    ///   （它同时守住「只被定义一次」，改成别的名字或删掉都会让右边变 `false`）。
+    ///
+    /// ⇒ 两边**必须相等**。把字段翻回 `false` ⇒ 本条红；把实现删掉而不改字段 ⇒ 也红。
+    #[test]
+    fn cc_bus_installable_matches_whether_the_deploy_really_exists() {
+        let deploy_impl_exists = crate::structural_scan::pin_definition(
+            include_str!("cc_bus_deploy.rs"),
+            "pub async fn deploy_local_cc_bus() -> Result<CcBusDeployReport, String> {",
+            "pub async fn deploy_local_cc_bus",
+            "cc-bus 本机部署的实现",
+        )
+        .is_ok();
+        let ccbus = TOOLS
+            .iter()
+            .find(|t| t.id == "cc-bus")
+            .expect("TOOLS 里应有 cc-bus");
+        assert_eq!(
+            ccbus.installable,
+            deploy_impl_exists,
+            "cc-bus 的 `installable` 申报为 {}，而 `cc_bus_deploy.rs` 里那个部署实现{}。\n\
+             这两句话必须一致 —— 那张表的「能否装/撤」列直接印到用户眼前，\n\
+             申报错了用户看到的就是一句假话。\n\
+             ⚠ 只改注释没有用：本条读的是**字段值**，不是注释里的词频。",
+            ccbus.installable,
+            if deploy_impl_exists { "在" } else { "不在" }
+        );
     }
 }

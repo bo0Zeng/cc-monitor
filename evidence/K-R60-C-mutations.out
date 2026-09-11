@@ -1,0 +1,82 @@
+被测对象：/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r60  HEAD=d6bb5ff
+
+===== 基线（不切刀）=====
+  判定行：test result: ok. 1366 passed; 0 failed   编译错：False   红：无
+
+===== M1 · KR60D3：把 cc-bus 的 installable 翻回错的值（false） =====
+  · [M1] 变异已落地：src-tauri/src/tool_registry.rs（锚点命中 1 次，逐字核过）
+  判定行：test result: FAILED. 1362 passed; 4 failed
+  编译错：False
+  红 → config_surface::tests::rows_cover_every_touched_file_and_use_all_spec_fields
+  红 → tool_registry::environment_tests::cc_bus_installable_matches_whether_the_deploy_really_exists
+  红 → tool_registry::tests::declarations_match_reality_not_intent
+  红 → tool_registry::tests::owned_file_implies_installable
+  绿 → tool_registry::tests::cc_bus_says_why_it_is_not_installable_at_the_real_depth（必需词守卫：它对这一刀是瞎的）
+  复原：工作树已回到干净
+
+===== M2 · KR60D2：把建表的人群退回 TOOLS（视图与清单又是两份） =====
+  · [M2] 变异已落地：src-tauri/src/config_surface.rs（锚点命中 1 次，逐字核过）
+  判定行：test result: FAILED. 1364 passed; 2 failed
+  编译错：False
+  红 → config_surface::tests::rows_cover_every_touched_file_and_use_all_spec_fields
+  红 → config_surface::tests::the_view_population_is_exactly_the_closed_set
+  绿 → tool_registry::tests::cc_bus_says_why_it_is_not_installable_at_the_real_depth（必需词守卫：它对这一刀是瞎的）
+  复原：工作树已回到干净
+
+===== M3 · KR60D1②：把第三档整档搬空（回到「不写进去就算第三档」那个盘面） =====
+  · [M3] 变异已落地：src-tauri/src/tool_registry.rs（锚点命中 1 次，逐字核过）
+  判定行：test result: FAILED. 1364 passed; 2 failed
+  编译错：False
+  红 → tool_registry::environment_tests::every_tier_has_members_so_absence_never_encodes_a_judgement
+  红 → tool_registry::environment_tests::every_unmanaged_entry_names_a_code_address
+  绿 → tool_registry::tests::cc_bus_says_why_it_is_not_installable_at_the_real_depth（必需词守卫：它对这一刀是瞎的）
+  复原：工作树已回到干净
+
+===== M4 · KR60D1③：把一项的档改成「随手填的」（why 里不给代码住址） =====
+  · [M4] 变异已落地：src-tauri/src/tool_registry.rs（锚点命中 1 次，逐字核过）
+  判定行：test result: FAILED. 1365 passed; 1 failed
+  编译错：False
+  红 → tool_registry::environment_tests::every_unmanaged_entry_names_a_code_address
+  绿 → tool_registry::tests::cc_bus_says_why_it_is_not_installable_at_the_real_depth（必需词守卫：它对这一刀是瞎的）
+  复原：工作树已回到干净
+
+===== M6 · a_hand_written_entry_is_never_app_installs：给一条手写项声明「app 装的」 =====
+  · [M6] 变异已落地：src-tauri/src/tool_registry.rs（锚点命中 1 次，逐字核过）
+  判定行：test result: FAILED. 1365 passed; 1 failed
+  编译错：False
+  红 → tool_registry::environment_tests::a_hand_written_entry_is_never_app_installs
+  绿 → tool_registry::tests::cc_bus_says_why_it_is_not_installable_at_the_real_depth（必需词守卫：它对这一刀是瞎的）
+  复原：工作树已回到干净
+
+===== M7 · every_managed_tool_reaches_the_closed_set：让闭集漏掉 TOOLS 里的一条 =====
+  · [M7] 变异已落地：src-tauri/src/config_surface.rs（锚点命中 1 次，逐字核过）
+  判定行：test result: FAILED. 1363 passed; 3 failed
+  编译错：False
+  红 → config_surface::tests::rows_carry_the_host_label
+  红 → config_surface::tests::rows_cover_every_touched_file_and_use_all_spec_fields
+  红 → config_surface::tests::the_view_population_is_exactly_the_closed_set
+  绿 → tool_registry::tests::cc_bus_says_why_it_is_not_installable_at_the_real_depth（必需词守卫：它对这一刀是瞎的）
+  复原：工作树已回到干净
+
+===== M8 · the_environment_is_one_closed_list：让闭集里出现两个同名 id =====
+  · [M8] 变异已落地：src-tauri/src/tool_registry.rs（锚点命中 1 次，逐字核过）
+  判定行：test result: FAILED. 1365 passed; 1 failed
+  编译错：False
+  红 → tool_registry::environment_tests::the_environment_is_one_closed_list
+  绿 → tool_registry::tests::cc_bus_says_why_it_is_not_installable_at_the_real_depth（必需词守卫：它对这一刀是瞎的）
+  复原：工作树已回到干净
+
+===== M5 · 7u：把本件的实现整个退掉（人群退回 TOOLS + 第三档搬空 + 字段翻回错值） =====
+  · [M1] 变异已落地：src-tauri/src/tool_registry.rs（锚点命中 1 次，逐字核过）
+  · [M2] 变异已落地：src-tauri/src/config_surface.rs（锚点命中 1 次，逐字核过）
+  · [M3] 变异已落地：src-tauri/src/tool_registry.rs（锚点命中 1 次，逐字核过）
+  判定行：test result: FAILED. 1360 passed; 6 failed
+  编译错：False
+  红 → config_surface::tests::rows_cover_every_touched_file_and_use_all_spec_fields
+  红 → tool_registry::environment_tests::cc_bus_installable_matches_whether_the_deploy_really_exists
+  红 → tool_registry::environment_tests::every_tier_has_members_so_absence_never_encodes_a_judgement
+  红 → tool_registry::environment_tests::every_unmanaged_entry_names_a_code_address
+  红 → tool_registry::tests::declarations_match_reality_not_intent
+  红 → tool_registry::tests::owned_file_implies_installable
+  绿 → tool_registry::tests::cc_bus_says_why_it_is_not_installable_at_the_real_depth（必需词守卫：它对这一刀是瞎的）
+  复原：工作树已回到干净
