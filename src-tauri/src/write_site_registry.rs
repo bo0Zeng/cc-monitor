@@ -118,8 +118,14 @@ mod spawn_sites {
         // ── `K-P1`：常驻那条路 ──────────────────────────────────────────────
         ("local_daemon.rs", "spawn_detached", "被脱离起来的 daemon 二进制",
          "本机后端**脱离宿主**起：`process_group(0)` + stdio 全 null + 协议改走回环监听口。\
-          二进制路径来自 `resolve_daemon_bin`（exe 旁的 sidecar 或释放出来的内嵌那份，\
-          与 `local_backend::start_or_extract` 同一个顺序，由一条对拍判据钉着）。\
+          二进制路径来自 `resolve_daemon_bin`，而**它今天只是个适配器** —— 真正的答案\
+          （exe 旁的 sidecar → 这份产物自己带的那份 → 释放出来）出自\
+          `local_backend::resolve_or_extract` 那**一份共用的解析**，\
+          `local_backend::start_or_extract` 走的也是同一份。\
+          〔`K-R43` 订正：本行原先写「与 `start_or_extract` 同一个顺序，由一条对拍判据钉着」——\
+           那时是**两份手写实现**，而那条判据只对拍顺序，`K-R42` 在它眼皮底下漂过一次仍全程绿。\
+           今天钉的不是「两份同序」，是「**两条路都走那一份，且旁边不许再长出第二份取法**」\
+           （`local_daemon::the_two_resolution_paths_still_agree_on_the_order`，名字没改、机制换了）。〕\
           ⚠ 它必须住在**宿主知识层**而不是 `backend/`：`process_group` 来自 \
           `std::os::unix::process::CommandExt`，而 `std::os::unix` 在 \
           `backend/mod.rs::the_backend_half_stays_platform_agnostic` 的禁针里 —— 写进去当场红，\
@@ -302,8 +308,12 @@ mod tests {
         // ── P2z：单 exe 自释放内嵌 daemon。**不是安装动作** —— 它写的是 monitor 自己的缓存。
         ("local_backend.rs", "extract_embedded_to", None,
          "把内嵌的 daemon 二进制释放到 `~/.cc-monitor/bin/cc-monitor-local-<build_id>`，\
-          供 `start_or_extract` 在 exe 旁没有 sidecar 时起进程。写的是 monitor 自己的目录，\
-          不碰用户既有环境、不注册到任何用户配置里；按 build_id 命名 ⇒ 幂等、不覆盖别的版本"),
+          供 exe 旁没有 sidecar 时起进程。写的是 monitor 自己的目录，\
+          不碰用户既有环境、不注册到任何用户配置里；按 build_id 命名 ⇒ 幂等、不覆盖别的版本。\
+          ⚠ **唯一调用点是 `local_backend::resolve_or_extract`**〔`K-R43` 改：本行原先写\
+          「供 `start_or_extract` …」，那时它是唯一调用点；今天 `start_or_extract` 与\
+          `local_daemon::resolve_daemon_bin` **都经那一份共用的解析**走到这里 ⇒ 写盘这一跳\
+          仍然只有一处，而**吃它的路从一条变成两条**〕"),
         // ── P2t：收掉自己留下的 `.partial` 残骸。**不是安装动作** —— 它只**删**，且只删自己那套命名。
         ("local_backend.rs", "sweep_stale_partials", None,
          "删 `~/.cc-monitor/bin/.<释放名>.<pid>.partial` 里**够老**（≥24h）的残骸 —— \
