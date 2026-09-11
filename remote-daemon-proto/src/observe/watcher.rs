@@ -466,9 +466,14 @@ fn classify_tmux_probe(code: Option<i32>, stdout: &str) -> TmuxObservation {
 /// 故**只能在一次性后台线程里调用**（见 `watch_loop` 的 `tmux_inflight`），**绝不可**直接跑在 watch_loop
 /// 线程上——否则会冻结整个 reader（Line/notify/判活全停）。
 fn run_tmux_ls() -> TmuxObservation {
-    match std::process::Command::new("sh")
-        .arg("-c")
-        .arg(tmux_probe_script())
+    // 🔴 `K-R55`（09-11）：起 shell 这一跳住适配层（`K33` 裁定二）。
+    //    先前这里是裸 `Command::new("sh")` —— `K-R52` 的 A2「真漏」堆头一条。
+    //    非 unix 上 `None` ⇒ 与搬之前逐字同一个落点（那时是 `output()` 返 `Err`）。
+    let Some(mut cmd) = crate::platform::shell::posix_shell(&tmux_probe_script()) else {
+        tracing::warn!("本平台没有 POSIX shell ⇒ tmux ls 这一跳没有实现，整趟观测判为无效");
+        return TmuxObservation::Unobservable;
+    };
+    match cmd
         // K-R12：**一行盖住脚本里两条 `exec` 分支**（有/没有 `timeout`）。家在 `common::tmux_utf8`。
         .env(UTF8_CLIENT_ENV.0, UTF8_CLIENT_ENV.1)
         .output()
@@ -502,9 +507,12 @@ struct TmuxProbe {
 fn query_tmux_server() -> (Option<u32>, Option<PathBuf>) {
     // 一行两列（TAB 分隔），避免两次 subprocess。
     let script = "if command -v tmux >/dev/null 2>&1; then exec tmux display-message -p '#{pid}\t#{socket_path}' 2>/dev/null; else exit 97; fi";
-    let out = match std::process::Command::new("sh")
-        .arg("-c")
-        .arg(script)
+    // 🔴 `K-R55`（09-11）：同上，起 shell 这一跳住适配层。
+    let Some(mut cmd) = crate::platform::shell::posix_shell(script) else {
+        tracing::warn!("本平台没有 POSIX shell ⇒ 问不出 tmux server 的 pid 与 socket 路径");
+        return (None, None);
+    };
+    let out = match cmd
         // K-R12：挂 env 而不是往 `script` 里插旗 —— 那条脚本在测试里有一份**逐字复制**
         // （`tests::tmux_server_query_yields_nothing_without_a_server`），改串会让两份漂开。
         .env(UTF8_CLIENT_ENV.0, UTF8_CLIENT_ENV.1)
@@ -649,22 +657,18 @@ fn watch_sock_dir_if_present(
     }
 }
 
+/// tmux socket 目录 = 「本平台的临时根」＋ tmux 自己那条 `tmux-<uid>` 约定。
+///
+/// 🔴 `K-R55`（09-11）：**两个平台原语搬进了 [`crate::platform::paths`]**，这里只剩组合。
+/// 先前这一段是「只修一半」的活体：`uid` 那半有两条 `#[cfg]` 臂，而兜底根目录那半
+/// 是一句裸 `PathBuf::from("/tmp")`（`K-R52` 的 A2「真漏」堆第二条）。
+/// ⇒ 两半现在住在一起，本函数留下的是 **tmux 的约定**（读 `TMUX_TMPDIR`、拼 `tmux-<uid>`），
+/// 那不是平台语义，不该进适配层。
 fn tmux_socket_dir() -> PathBuf {
     let base = std::env::var_os("TMUX_TMPDIR")
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/tmp"));
-    // ⚠⚠ **`libc::getuid` 只在 unix 存在** —— daemon 是**跨平台编**的（`scripts/verify-committed-state.sh`
-    //   会对 `x86_64-pc-windows-msvc` 跑一次 `cargo check --all-targets`）。
-    //   首版直接 `unsafe { libc::getuid() }`，**本机 cargo test 全绿、Windows 侧编不过**
-    //   —— 而那道门量的是**提交状态**，本会话所有工作树读数都看不见它。
-    // ⚠ Windows 上没有 tmux，这条路本来就走不到；给个哑值只为**让它编得过**，
-    //   而不是假装那里有个 socket 目录。
-    #[cfg(unix)]
-    // SAFETY: getuid 无副作用、不会失败。
-    let uid = unsafe { libc::getuid() };
-    #[cfg(not(unix))]
-    let uid: u32 = 0;
-    base.join(format!("tmux-{uid}"))
+        .unwrap_or_else(crate::platform::paths::temp_root);
+    base.join(format!("tmux-{}", crate::platform::paths::current_uid()))
 }
 /// P3：一次完整探测（跑在一次性后台线程里）。
 ///
@@ -3119,8 +3123,19 @@ mod tests {
     ///
     /// # 它守的是「每一处」，不是「有没有」
     ///
-    /// 逐处查（不只比总数）：从每一个 `Command::new("sh")` 到它那句 `.output()` 之间
+    /// 逐处查（不只比总数）：从每一个起 `sh` 的地方到它那句 `.output()` 之间
     /// 必须出现那行 `.env(…)`。只比总数的话，「一处挂了两遍、另一处零」照样绿。
+    ///
+    /// # 🔴 `K-R55`（09-11）：**锚点换了** —— 起 `sh` 这一跳搬进了适配层
+    ///
+    /// 上一版的锚点是本模块里的裸 `Command::new("sh")`。那两处今天住在
+    /// [`crate::platform::shell::posix_shell`]（`K33` 裁定二：平台差异只许住适配层），
+    /// 本模块留下的是**调用点** ⇒ 锚点跟着换成 `posix_shell(`。
+    /// ⚠ **换锚点不是把红的那条删掉了事**（`guard_support` 那条纪律）：
+    /// 本条要守的性质一个字没变 —— 「本模块每一处起 `sh` 的地方都挂了那个 env」，
+    /// 而挂 env 的仍然是**这一侧**（适配层只负责备命令，不碰 env）。
+    /// 🔴 它因此**没有**跟着搬走：`posix_shell` 有第二个使用者的那天，
+    /// 那一处的 env 归那一处自己管，本条**看不见它** —— 如实登记，别读宽。
     ///
     /// 🔴 **本条守的是「别漏」，不是「它真的生效了」**（「盘上有 ≠ 被走到」）。
     /// 行为那一半的死值在 `evidence/K-R12-deathvalue.md`：同样这两条脚本对真 tmux 3.4
@@ -3139,7 +3154,7 @@ mod tests {
         /// 本模块起 `sh` 的处数 —— **登记值**。这张表不是豁免清单：
         /// 新增一处 ⇒ 它也要挂 env，并把这个数一起改。
         const SH_CALL_SITES: usize = 2;
-        let starts = prod.matches("Command::new(\"sh\")").count();
+        let starts = prod.matches("posix_shell(").count();
         assert_eq!(
             starts, SH_CALL_SITES,
             "本模块起 `sh` 的处数变了（实得 {starts}，登记 {SH_CALL_SITES}）—— \
@@ -3149,7 +3164,7 @@ mod tests {
         let env_call = format!(".env({}.0, {}.1)", "UTF8_CLIENT_ENV", "UTF8_CLIENT_ENV");
         // 逐处查：每个调用点到它那句 `.output()` 之间必须有那行 `.env(…)`。
         let mut checked = 0usize;
-        for seg in prod.split("Command::new(\"sh\")").skip(1) {
+        for seg in prod.split("posix_shell(").skip(1) {
             let head = seg.split(".output()").next().unwrap_or(seg);
             assert!(
                 head.contains(&env_call),

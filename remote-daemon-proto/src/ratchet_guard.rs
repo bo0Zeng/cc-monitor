@@ -65,7 +65,7 @@ mod tests {
     const PINS: &[(&str, &str, usize, &str)] = &[
         (
             "readonly_guard.rs",
-            "const SPAWN_SITES_TODAY: usize = 11;",
+            "const SPAWN_SITES_TODAY: usize = 10;",
             1,
             "daemon 侧起进程登记表的**相等断言**（不是地板）。\
              ⚠⚠ **这条针钉的是「那一行长什么样」，不是那个数字本身** —— 它挡的是\
@@ -76,6 +76,14 @@ mod tests {
               它那两处 `exec`（`sh -c <渲好的命令串>` 与 `exec <用户要起的 agent>`）\
               搬进了 `control/ccm/mod.rs` —— 这是**同一件事换了住址**，不是新开一个写面：\
               两条都已在 `ALLOWED` 里逐条写明「做什么、为什么不违反收窄后的铁律」。〕\
+             〔🔴 `K-R55` 09-11：`11` → **10**，本表**第一次往下走**，逐条写清为什么它不是放宽：\
+              ① `observe/watcher.rs` 那**两处**起 `sh` 搬进了 `platform/shell.rs`，\
+                 而适配层那边**合成一处**（两跳共用同一条口）⇒ 净 −1。\
+              ② **扫描面一个字节没缩**：那条判据递归扫 `src/`，`platform/shell.rs` 就在里面\
+                 （`ALLOWED` 里那一条今天点的正是它，`the_registry_has_no_ghost_entries` 现核）。\
+              ③ 「变少多半是抽取坏了」这一格**真去核过**：搬之后全 crate `Command::new(`\
+                 的生产段命中逐文件数得出来，`platform/shell.rs` 是新住址、`observe/watcher.rs` 归零。\
+              ⇒ 本针记新值。**下一次再往下走，仍然要像这样逐条写，不许只改数。**〕\
              ⚠ 这一行**只挡「不动断言、只把数调小」**；「把断言原地调松」由下面两条实参针挡。",
         ),
         (

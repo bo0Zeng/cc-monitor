@@ -42,8 +42,13 @@
 //! - [`liveness`]：判活的**纯判定表**（`is_same_live_process`）—— U4a 从 `proc` 上提，
 //!   因为它是 Windows 侧要复用的那一半（读事实的方式不同，判定规则相同）
 //! - [`paths`]：`path_key`（NTFS 大小写折叠 —— **路径**语义，不是 `/proc`）
+//!   ＋ `temp_root` / `current_uid`（`K-R55` 09-11 从 `observe/watcher.rs` 下沉）
 //! - [`pidwatch`]：`pidfd_open` + [`pidwatch::watch_pid_until_exit`]
 //! - [`signal`]：`send_sigusr1`（U3 从 `control/tmux_hook.rs` 下沉）
+//! - [`shell`]：`posix_shell`（`K-R55` 09-11 从 `observe/watcher.rs` 下沉 ——
+//!   那两处 `Command::new("sh")` 正是 `K-R52` 立表时挂在 A2「真漏」堆上的头两条）
+//! - [`landing`]：`land`（`K-R55` 09-11 从 `sidecars/codepicture/acquire.rs` 下沉 ——
+//!   `O_EXCL` 新建 + **新建那一刻**给可执行位，那个 `mode(…)` 是 unix 专有的名字）
 //!
 //! **前三个是从 `watcher.rs` 逐字搬来的**（U2 纯重构，行为逐字不变）。
 //! [`signal`] 不是 —— 它是**重写**：原实现内联在 `tmux_hook` 里、失败时 `return 0`；
@@ -52,8 +57,10 @@
 
 mod cfgless_guard;
 mod fallback_guard;
+pub(crate) mod landing;
 pub(crate) mod liveness;
 pub(crate) mod paths;
 pub(crate) mod pidwatch;
 pub(crate) mod proc;
+pub(crate) mod shell;
 pub(crate) mod signal;
