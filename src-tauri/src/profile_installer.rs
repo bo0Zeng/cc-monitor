@@ -87,6 +87,17 @@ pub struct ProfileScan {
 pub fn fence_profile_path(raw: &str) -> Result<PathBuf, String> {
     let home =
         dirs::home_dir().ok_or_else(|| "找不到 home 目录 —— 拒绝写任何 profile".to_string())?;
+    fence_path_under(&home, raw)
+}
+
+/// 同一道围栏，**home 由调用方给**。
+///
+/// ⚠ `K-R49` 起抽出这一层，理由是**可测性**而不是通用性：调用方拿一个临时目录当 home，
+/// 围栏的四条规则就能在**碰不到真实家目录**的前提下被真跑一遍
+/// （〔用 08-29〕「你只能做产品, 不能动机器」）。上面那个入口一个字节的语义都没变 ——
+/// 它只是把 `dirs::home_dir()` 填进来。
+pub fn fence_path_under(home: &std::path::Path, raw: &str) -> Result<PathBuf, String> {
+    let home = home.to_path_buf();
     let expanded: PathBuf = if raw == "~" {
         home.clone()
     } else if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {

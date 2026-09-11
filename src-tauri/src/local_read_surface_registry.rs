@@ -468,6 +468,21 @@ mod tests {
             "只读诊断；本文件另有 `this_module_never_writes` 守着不写",
         ),
         (
+            "lib.rs",
+            "write_account_aliases",
+            "`~/.cc-monitor/account-aliases.sh`，以及**用户自己选的**那份 rc（`K-R49`）",
+            "**两个落点，性质不同，别混成一格**：\
+             ① 生成的那份别名文件在 `~/.cc-monitor` 下 —— 与 `local_daemon.rs::cc_monitor_dir` \
+             同一个目录、同一个理由：monitor 自己的东西，用 `home_dir()` 只为「每个用户各一份」；\
+             ② 那一行 `source` 会写**用户既有的** shell 配置 —— 那一处**有围栏**：\
+             `profile_installer::fence_path_under`（只许落在 home 之内），而且路径由界面上的人\
+             从「盘上真实存在的那几份」里选，代码不猜。\
+             写侧两条登记在 `write_site_registry` 的 `account_aliases.rs::write_alias_file` 与 \
+             `account_aliases.rs::ensure_rc_source_line`。\
+             ⚠ `home_dir()` 出现在**这一处**而不是 `account_aliases.rs` 里，是刻意的：\
+             那个模块把 `home` 当参数收，于是它的测试拿临时目录当 home，结构上碰不到真实家目录。",
+        ),
+        (
             "local_daemon.rs",
             "cc_monitor_dir",
             "`~/.cc-monitor`（`K-P1` 的 attach token 与「谁在听那个口」）",
