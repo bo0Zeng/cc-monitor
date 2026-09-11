@@ -1629,6 +1629,40 @@ mod tests {
     /// 生产上后者不会发生（真 claude 进程至少有 `PATH`/`HOME`），且两者都落到**保守**的
     /// 那一侧（报「不知道」而不是报「账号 0」）⇒ `K-R21` **刻意不拆它**，登记在 `§7`。
     /// **别把本条读成「daemon 分得清这两件事」—— 它分不清。**
+    ///
+    /// # 🔴🔴 `K-R55`（09-11）：补了一个**真实存在的前提缺口**；
+    /// #    而「它是不是那条 flaky 的根因」—— **判不了，如实写**
+    ///
+    /// `K-R52` 交回时把本条登记成「一条 flaky，没定位」（16 趟全量 `cargo test` 红 1 次，
+    /// 随后单跑 12 趟全绿）。`K-R55` 去查了，结果分成**两半**，别把后一半读进前一半：
+    ///
+    /// ## ① 缺口是真的（现打读数）
+    ///
+    /// 本条的**丙**（对照活体）前提逐字是「环境读得到、**非空**」，而 `Command::spawn`
+    /// 只保证 fork 完了、**不保证 exec 完了**；`/proc/<pid>/environ` 在 `execve` 进行
+    /// **当中**读回 **0 字节**（`platform/proc.rs` 那一支逐字记着它）。
+    /// 也就是说：**窗口没关就读 ⇒ `c_ok` 为假 ⇒ 本条红在夹具上，不是红在产品上。**
+    /// 同族的前例住 [`an_inherited_launch_id_is_never_reported_as_the_childs_own_identity`]
+    /// （它的整段论证在它自己的头注里，这里不复述）。
+    ///
+    /// 发生率**现打**〔09-11，沙箱 `ccmon-devbox:latest`；量具
+    /// `.claude/pm-targets/k-r55/kr55-fixture-shape.py` —— 照本条的夹具形状复刻一遍、
+    /// 只量丙那一格，不跑 Rust〕：**空载 200 趟 0 次 · 加载（`nproc`×4 条忙循环）200 趟 2 次**。
+    /// ⇒ 这个窗口**确实开着**，且确实只在有负载时开。
+    ///
+    /// ## ② 而「它就是那 1/16」—— **没复现出来，所以判不了**
+    ///
+    /// 把下面那段屏障**整段摘掉**（`K-R55` 刀 D），在同一个沙箱里现打：
+    /// · 点名单跑 + 满载忙循环，**400 趟红 0 趟**；
+    /// · 照门禁的真实条件（全量并行的那个测试二进制）**连跑 32 趟，红 0 趟**。
+    /// ⇒ 缺口补上了，**但我没有把那条 flaky 复现出来一次** ⇒ 不许写成「根因找到了」。
+    ///
+    /// 🔴 **差什么才判得了**：那一趟红的 **panic 原文**（哪一格断言先红）。
+    /// `K-R52` 的交回与 `audits/K-R52-PM.md` 里都只记了「红过 1 次」，没有留那段输出
+    /// ⇒ 今天没有任何办法把那一次归到某一格上。**下次登记 flaky 要连原文一起留。**
+    ///
+    /// ⇒ 处置：屏障照加（它关的是一个**量得到**的缺口，且对产品零影响），
+    /// 判据本体仍然只跑一次，一个断言都没放宽。**但这不叫「治好了那条 flaky」。**
     #[cfg(target_os = "linux")]
     #[test]
     fn an_unreadable_environ_is_never_reported_as_the_zero_account() {
@@ -1674,6 +1708,40 @@ mod tests {
         };
         for _ in 0..2_000 {
             if state_of(zpid) == Some('Z') {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+
+        // ── 🔴 `K-R55`：**等 exec 窗口关死** —— 本条那条 flaky 的根因就在这里 ──────
+        //
+        // `Command::spawn` 只保证 fork 完了，**不保证 exec 完了**；而 `execve` 进行当中
+        // `/proc/<pid>/environ` 读回 **0 字节**（`platform/proc.rs` 那一支逐字记着它）。
+        // ⇒ 丙那一格的前提（「读得到、**非空**」）在负载下会偶尔不成立 ⇒ 判据红在夹具上。
+        //
+        // ⚠ **这不是重试、不是放宽、不是睡过去**（同本文件那条同族判据的纪律）：
+        //   判「exec 完了」不能只看 environ 读不读得出来 —— exec **之前**也读得出来
+        //   （fork 来的那份副本）。所以看 `/proc/<pid>/comm`：exec 前是别的名字，
+        //   exec 后是 `sleep`，而 `sleep` **不会再 exec** ⇒ 一旦看见它，窗口**关死了、
+        //   开不回来** ⇒ 它在下面那几次读与那一次 `session_accounts` 时仍然成立。
+        // ⚠ 等不到也**不许静默通过**：这里只是等，成没成由下面那三格自检说了算。
+        let comm_of = |pid: u32| {
+            std::fs::read_to_string(format!("/proc/{pid}/comm"))
+                .ok()
+                .map(|s| s.trim().to_string())
+        };
+        let env_has_path = |pid: u32| {
+            matches!(std::fs::read(format!("/proc/{pid}/environ")),
+                Ok(b) if b.windows(5).any(|w| w == b"PATH="))
+        };
+        for _ in 0..2_000 {
+            // 乙也等：它要的 0 字节今天有两种来路（空环境 / exec 窗口），
+            // 等一下让它落在**前者**上 —— 那格重合本身仍在（头注里登记着），
+            // 但至少夹具是它自称的那个夹具。
+            if comm_of(epid).as_deref() == Some("sleep")
+                && comm_of(ppid).as_deref() == Some("sleep")
+                && env_has_path(ppid)
+            {
                 break;
             }
             std::thread::sleep(std::time::Duration::from_millis(1));

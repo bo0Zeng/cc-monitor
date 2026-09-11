@@ -66,17 +66,33 @@ ck "无输出（kill-session 成功）" "" "$OUT"
 ck "会话已不存在" "" "$(sessions)"
 
 echo
-echo "===== 场景 5：目标根本不存在 → CCM_NO_SESSION（kill 两种形态都测）====="
+# ★★ K-R55（09-11）：本场景从**两格**扩到**四格** —— send-keys 那两形先前一格都没有。
+#    `send_keys_owned` 那一格是 K-R56 真正开出来的那一格：在它之前，`cc-*` 前缀命中
+#    ⇒ 两道门都不需要 ⇒ 那条串**零探测直接动手**，对着一个不存在的会话也照发，
+#    拿回来的是 tmux 自己那句 `can't find session`（经 `2>&1` 捕获）而**不是** `CCM_NO_SESSION`。
+#    K-R56 把它改成「恒先探一次存在性」⇒ 本格就是那一改在真 tmux 上的读数。
+#    ⚠ 它同时是场景 6 那句说明的**反面**：那条路今天**有**一次 round trip，别再说它零探测。
+echo "===== 场景 5：目标根本不存在 → CCM_NO_SESSION（kill 两形 + send-keys 两形，共四格）====="
 reset
 ck "kill_owned 对不存在目标 → CCM_NO_SESSION" "CCM_NO_SESSION" "$(bash -c "$(CMD kill_owned)")"
 ck "kill_custom 对不存在目标 → CCM_NO_SESSION" "CCM_NO_SESSION" "$(bash -c "$(CMD kill_custom)")"
+ck "send_keys_owned 对不存在目标 → CCM_NO_SESSION（K-R56 开的那一格）" \
+   "CCM_NO_SESSION" "$(bash -c "$(CMD send_keys_owned)")"
+ck "send_keys_custom 对不存在目标 → CCM_NO_SESSION" \
+   "CCM_NO_SESSION" "$(bash -c "$(CMD send_keys_custom)")"
 
 echo
-echo "===== 场景 6：send-keys —— cc-* 前缀命中，零 Gate 退化路径，正常送达 ====="
+# ★★ K-R55（09-11）：**本场景的说明文字馊了，这一拍订正。**
+#    先前逐字写着「零 Gate 退化路径」「零额外 round trip 的退化形态仍工作」——
+#    那是 K-R56 之前的事实。今天 `cc-*` 前缀命中那一支**仍然不装 Gate 2/3**（这半没变），
+#    但它**恒先探一次存在性**（`display-message` 取一格，空 ⇒ `CCM_NO_SESSION`）
+#    ⇒ **「零额外 round trip」这句话今天是假的**，而本格断的从来只是「载荷真的送到了」。
+#    ⇒ 说明改成今天的实情；「探一次」那一半由场景 5 新增的那一格反面钉住。
+echo "===== 场景 6：send-keys —— cc-* 前缀命中，不装 Gate 2/3（但先探存在性），正常送达 ====="
 reset; T new-session -d -s cc-e2e-owned; sleep 0.3
 bash -c "$(CMD send_keys_owned)" >/dev/null 2>&1
 sleep 0.5
-ck "载荷送达（零额外 round trip 的退化形态仍工作）" "HIT" "$(pane cc-e2e-owned | grep -q CCMPROBE && echo HIT || echo MISS)"
+ck "载荷送达（探到会话在 ⇒ 照发）" "HIT" "$(pane cc-e2e-owned | grep -q CCMPROBE && echo HIT || echo MISS)"
 
 echo
 echo "===== 场景 7：send-keys —— 非前缀名、未设 @ccm_sid → 拒绝，pane 不被污染 ====="
