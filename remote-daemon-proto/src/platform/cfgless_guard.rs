@@ -593,6 +593,17 @@ mod tests {
              ⚠ `K-R52` 的写区不含 `observe/` ⇒ **本件不改，已走上报口交回 PM**。",
         ),
         (
+            "control/ccm/mod.rs",
+            "Command::new(\"sh\")",
+            "真漏",
+            "`K-R48`：一次性 `ccm` 模式把渲好的命令串交给 POSIX shell。\
+             `ccm` 这套命令面今天**只有 POSIX 一支**（`C12`「windows不要tmux」；\
+             `payload.rs` 逐字「Windows 那条腿不在人群里」），而件文件 `§0-Bx-7` 第 6 条\
+             已经把「一次性模式在 Windows 上是什么形状」登记成**判不了**。\
+             ⇒ 这里不假装它跨平台：`exec_or_spawn` 里那条 `#[cfg(unix)]` 是真门，\
+             而这一处**没有门**，归 PM（要么进适配层，要么随那一格一起裁）。",
+        ),
+        (
             "agents/fake/mod.rs",
             "cmdline(\"/usr/bin/vim\")",
             "合法线外",

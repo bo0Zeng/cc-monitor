@@ -1,0 +1,356 @@
+ccm-print-parity	resume 动作被内层 ccm 收到（positional，非 flag——shared/ccm 内部约定）
+ccm-print-parity	sid p1 出现在内层调用里
+ccm-print-parity	tmux 名 cc-p1 出现在 new-session
+ccm-print-parity	cwd /tmp 出现在 -c
+ccm-print-parity	@ccm_sid_expect 打标用了 p1（F04：通道A写意图，非事实 @ccm_sid）
+ccm-print-parity	--base 真的传进了内层调用（F05：账号维度恒显式表态）
+ccm-print-parity	自定义 launcher CCMPROBE 传给了内层调用
+ccm-print-parity	含空格 cwd 正确带引号
+ccm-print-parity	会话名 cc-proj 正确出现
+ccm-print-parity	attach 到 cc-p1
+ccm-print-parity	--model flag 真的传进了内层调用
+ccm-print-parity	opus 值真的传进了内层调用
+ccm-rbind-title	从 shared/ccm 读到 format：#{?@ccm_sid,ccm-rbind-#{@ccm_sid},#T}
+ccm-rbind-title	回退到 #T
+ccm-rbind-title	没有产出空 marker
+ccm-rbind-title	pane 标题=[⠐ 理解re-vendor的含义] 时窗口标题仍是 marker
+ccm-rbind-title	pane 标题=[✳ Thinking…] 时窗口标题仍是 marker
+ccm-rbind-title	pane 标题=[bash] 时窗口标题仍是 marker
+ccm-rbind-title	pane 标题=[<空>] 时窗口标题仍是 marker
+ccm-rbind-title	用 #T 时确实拿不到 marker（判据有牙）
+ccm-cli.test	零修饰（--cwd .）：最终 exec 与今天 ccm() 逐字节一致
+ccm-cli.test	resume <sid>
+ccm-cli.test	--resume <sid> 与 resume <sid> **等价**（cc-monitor 今天的拼法，零改动即正确）
+ccm-cli.test	--resume=<sid> 等号形式
+ccm-cli.test	--agent codex：换启动器 + 无嵌套 env + cc-bus 身份配方
+ccm-cli.test	--agent codex 不支持 resume → 报错
+ccm-cli.test	--launcher 覆盖默认启动器
+ccm-cli.test	--base：显式 unset CLAUDE_CONFIG_DIR（#75 逃生口）
+ccm-cli.test	--model：export ANTHROPIC_MODEL（F08，闭合 R14）
+ccm-cli.test	--model=<名> 等号形式
+ccm-cli.test	-- 之后透传给 agent，含特殊字符正确 quote
+ccm-cli.test	resume 走 daemon 配方时，-- 透传不许被整条换掉（I-11）
+ccm-cli.test	resume 不带 -- 时配方里不许多出任何参数
+ccm-cli.test	--account 与 --base 互斥
+ccm-cli.test	未知 agent 报错
+ccm-cli.test	未知选项报错
+ccm-cli.test	attach 动作
+ccm-cli.test	显式 --account 注入其 configDir
+ccm-cli.test	账号不存在 → 中止（rc≠0，且不得吐出 exec）
+ccm-cli.test	账号不存在 → rc=2
+ccm-cli.test	不传 --account → 落 manifest 的 isDefault（复刻旧 _cc_acct_last 粘滞）
+ccm-cli.test	--base → 显式不注入（#75 逃生口，压过默认号）
+ccm-cli.test	无账号库 → 退化为基座（不报错）
+ccm-cli.test	--account 与 --model 组合：账号目录先、模型偏好次（顺序即契约，见 launch-dimensions.ts order）
+ccm-cli.test	resume 不做 auto 解析（cc-monitor 已 cd 到会话目录，再解析会跑到 git 仓父目录）
+ccm-cli.test	resume 后跟 flag → 报错（别把 --tmux 当 sid）
+ccm-cli.test	attach 后跟 flag → 报错
+ccm-cli.test	外层已继承账号 b（无 --account/--base）→ 保留 b，不被默认号 z 静默覆盖
+ccm-cli.test	裸终端（无继承）仍落 manifest 默认号 z
+ccm-cli.test	--base 显式清空，不受继承影响
+ccm-cli.test	--account 显式指定，优先级最高（覆盖继承的 b）
+ccm-cli.test	R08：容器路径 + 继承账号 b → 内层载荷必须显式带上 b（不能靠继承穿 tmux 边界）
+ccm-cli.test	R08：容器路径 + 继承账号 b → 内层绝不能落到默认号 z
+ccm-cli.test	R08：容器路径 + --base → 内层显式 --base（不受继承影响，issue #75 逃生口不被削弱）
+ccm-cli.test	R08：容器路径 + 显式 --account z → 内层带 --account z（优先级不变）
+ccm-cli.test	R08：容器路径 + 裸终端（无继承）→ 内层仍落默认号 z（粘滞体验不回退）
+ccm-cli.test	布局1：在 $HOME → 工作区
+ccm-cli.test	布局2：git 仓根 → 仓的父目录
+ccm-cli.test	布局3：git 仓子目录 → 仓的父目录
+ccm-cli.test	布局4：非 git 目录 → 目录自己
+ccm-cli.test	布局5：工作区自身（非 git）→ 自己
+ccm-cli.test	deriveTmuxName 对拍: /home/pi/proj
+ccm-cli.test	deriveTmuxName 对拍: /home/pi/a  b
+ccm-cli.test	deriveTmuxName 对拍: /home/pi/proj///
+ccm-cli.test	deriveTmuxName 对拍: /
+ccm-cli.test	deriveTmuxName 对拍: /home/pi/.hidden.dir
+ccm-cli.test	★ 在 tmux 里 + 找不到 daemon ⇒ **响亮失败**（rc=2，不是静默降级）
+ccm-cli.test	★ 失败时**没有** exec launcher（会话不许在没有身份的情况下起来）
+ccm-cli.test	失败信息里说得出是缺什么
+ccm-cli.test	失败信息里说得出**这一格的后果**（认不出这个会话 ≠ 笼统一句「找不到」）
+ccm-cli.test	失败信息里说得出**怎么办**（查找顺序 / 三选一）
+ccm-cli.test	找得到后端 ⇒ 照常起（rc=0）
+ccm-cli.test	找得到后端 ⇒ launcher 真被 exec 了
+ccm-cli.test	★ 找得到后端 ⇒ stderr **一个字都没有**（别把正常路径变吵）
+ccm-cli.test	CCM_NO_DAEMON=1 ⇒ 放行（rc=0）—— 明示放弃身份是一个安全的放弃态
+ccm-cli.test	★ 明示放弃**照样说一句**（放弃 ≠ 闷声降级）
+ccm-cli.test	不在 tmux 里 ⇒ 不拦（rc=0）—— 那里根本没有地方放 @ccm_sid，拦了也换不来身份
+ccm-cli.test	★ 不在 tmux 里也**说一句**（旧版这里有窗口标题，随轮询一起没了，不许闷声）
+ccm-cli.test	codex 没有身份面（agent_has_identity 为假）⇒ 不要求后端、不吵
+ccm-cli.test	★ 反向对照 · 不给 --base ⇒ **账号那条腿先报**，而且它的码是 **4**（身份那条是 2 —— 分得开）
+ccm-cli.test	★ 反向对照 · 而且说的是**账号那一格**（不是身份那一格 —— 两条腿的文案也分得开）
+ccm-cli.test	★ --print 不受**身份前置检查**影响（那道检查在同样的环境下是 rc=4，见上面第一条）
+ccm-cli.test	★ 非空对照 · 同一趟去掉 --print ⇒ 那道检查真的拦（rc=2）⇒ 上一条不是恒真
+ccm-cli.test	夹具自检：无 daemon 那条环境里**真的一个 daemon 都找不到**
+ccm-cli.test	夹具自检：daemon **实际答的** z 的 configDir 与 manifest 里那个刻意不同（KCM1 的靶子）
+ccm-cli.test	夹具自检：账号 f 的目录**真实存在**（不是坏账号；否则末块那条会红成「目录不存在」，射程跑偏）
+ccm-cli.test	★ KCY1 · 显式 --account：daemon 在位 ⇒ configDir 来自 **daemon**（不是文件）
+ccm-cli.test	KCY1 · 反向：同一夹具、**换一份后端** ⇒ 值跟着换（成对才有区分力：只有上一条时「值恒是那个」也能绿）
+ccm-cli.test	★ KCY1 · 默认号那条路**也**走 daemon（文件说默认号是 z、daemon 说是 d ⇒ 拿到 d 的目录）
+ccm-cli.test	KCY1 · 反向：换一份后端 ⇒ **默认号**也跟着换（它同样只由后端说了算）
+ccm-cli.test	★ KCY1 · **一趟**往返答完全部问题（默认号那条路要答两个问题，daemon 仍只被调 1 次）
+ccm-cli.test	KCY1 · --base ⇒ 压根不问 daemon（0 次；那条路不需要账号表，问了就是白付一次往返）
+ccm-cli.test	KCY1 · 已继承 CLAUDE_CONFIG_DIR ⇒ 压根不问 daemon（0 次）
+ccm-cli.test	★ KCY1 · daemon 说的目录**不存在** ⇒ 照旧 die（目录存在性由 ccm 自己 -d 判，不吃 daemon 的 exists）
+ccm-cli.test	KCY1 · die 消息里那个列表**以 daemon 那份 z d 开头**（子串判 ⇒ provenance 由下一条钉，不是这条）
+ccm-cli.test	★ KCY1 · 可用列表**就是 daemon 那一份**：文件里那个 daemon 没有的 f 一个字都不许漏进来
+ccm-cli.test	KCY1 · 夹具自检：那份 manifest 里**确实**有一个 daemon 没有的 f ⇒ 上一条不是恒真
+ccm-cli.test	★ 自检：外层 PATH 的 jq 与 /usr/bin:/bin 上的 jq 是**同一个文件**（那 7 处继承外层 PATH 的调用才与 shim 同源）
+ccm-cli.test	KCY1 · 尺子自检：记账 jq 对**路径当 argv**与**stdin 直连**两种读法都看得见（各 1 次 ⇒ 2）
+ccm-cli.test	★ KCY1 · daemon 在位 ⇒ 那份 manifest **一次都没被解析**（不校对、不合并、不「读了不用」）
+ccm-cli.test	KCY1 · 上一条的前提自检：这一跑确实走了 daemon（拿到的是 daemon 那个目录）
+ccm-cli.test	KCY1 · 尺子自检：拿它去量一次**真的**解析 ⇒ 读得到 1 次（上面那条 0 次因此不是空真）
+ccm-cli.test	★ KCY2 · 没后端 ⇒ **响亮失败**（rc=4 唯一失败面，不是降级 rc=0）
+ccm-cli.test	★ KCY2 · 没后端 ⇒ stderr **有那句话**（失败不许闷声）
+ccm-cli.test	★ KCY2 · 那句话说得出**怎么办**（查找顺序 / 三选一 —— 诊断得能落到动作上）
+ccm-cli.test	★ KCY2 · 那句话说得出**为什么**（这一格：找不到 daemon）
+ccm-cli.test	★ KCY2 · 四种原因**互斥**：这一格只许命中一格（不许合并成一句「daemon 不可用」）
+ccm-cli.test	★ KCY2 · 那句话说清了**性质**（本地那条退路已经不在了，不是「暂时用不了」）
+ccm-cli.test	★ KCY2 · daemon 在位 ⇒ stderr **一个字都没有**（别把正常路径变吵）
+ccm-cli.test	KCY2 · CCM_NO_DAEMON=1 ⇒ 也失败、也说话，且说的是**那一格**（明示整条关掉）
+ccm-cli.test	KCY2 · 四种原因**互斥**：CCM_NO_DAEMON=1 这一格只许命中一格
+ccm-cli.test	★ KCY2 · CCM_NO_DAEMON=1 **不是逃生口**：关掉之后照样 rc=4（它只是把原因换了一格）
+ccm-cli.test	KCY2 · manifest 叫别的名字 ⇒ 说的是**那一格**（--accts-dir 表达不了它），不是含糊的「daemon 不可用」
+ccm-cli.test	★ KCY2 · 而且它的码是 **2**（用法错），不是 4（后端不可达）—— 两类分得开
+ccm-cli.test	KCY2 · 四种原因**互斥**：--accts-dir 表达不了 这一格只许命中一格
+ccm-cli.test	KCY2 · 那一格**不许悄悄去问 daemon**（问了就是读了另一个文件）：调用次数 0
+ccm-cli.test	KCY2 · daemon 在位但**答不出** ⇒ 说的是那一格
+ccm-cli.test	KCY2 · 四种原因**互斥**：答不出 这一格只许命中一格
+ccm-cli.test	★ KCY2 · daemon 答不出 ⇒ **也是 rc=4**（同一个失败面 —— 不再落回文件）
+ccm-cli.test	★ KCY2 · **无账号库 ⇒ 一个字都不说**（空表是合法答案，不是失败）
+ccm-cli.test	★ KCY2 · 无账号库 ⇒ rc=0 且退化为基座启动器（没有 CLAUDE_CONFIG_DIR 注入）
+ccm-cli.test	★ KCY3 · daemon 输出里多一个**未知字段** ⇒ 照样解析对（前向兼容；照 aterm 那条 golden 的形状）
+ccm-cli.test	KCY3 · 多字段那次也不吵
+ccm-cli.test	★ KCY3/KC6g · 帧形状变了（账号行改键名）⇒ 今天拿到的是**空表**，照旧 die
+ccm-cli.test	KCY3/KC6g · …而且**一声不吭**：不算「答不出」⇒ 不降级、不提示（今天的空档，见件文件 §4）
+ccm-cli.test	★ KCY4 · capabilities= 里有 account-via-daemon（消费者据此分辨新旧 ccm）
+ccm-cli.test	KCY4 · 行为/capabilities 变了 ⇒ 版本号跟着走（既有纪律：不能只改后者）
+ccm-cli.test	KCY4 · 用法块里有那一行（`--help` 找得到它；Rust 侧 every_advertised_capability_has_a_usage_line 也查这个）
+ccm-cli.test	自检：nojq PATH 里**真的没有 jq**（不然下面两条测的还是 jq 那条）
+ccm-cli.test	尺子自检① 裸名字 fork（PATH 上找不着 ⇒ 半 a 记）
+ccm-cli.test	尺子自检② 裸名字 ＋ **stderr 被重定向**（半 a 不吃重定向）
+ccm-cli.test	尺子自检③ **绝对路径 ENOENT**（半 c 记）
+ccm-cli.test	尺子自检④ **绝对路径 ENOENT ＋ 重定向** ⇒ 照样记〔08-25 新钉：旧尺子在这一形读 **0**〕
+ccm-cli.test	尺子自检⑤ **绝对路径 ＋ 真存在的二进制** ⇒ 照样记〔08-25 新钉：旧尺子读 **0**，而它是真依赖〕
+ccm-cli.test	尺子自检⑥ **非 bash 子 shell**（dash 没有 handler、前缀也不是 $0:）〔08-25 新钉：旧尺子读 **0**〕
+ccm-cli.test	尺子自检⑦ 名字**恰好在瘦 PATH 上**的外部进程 ⇒ 照样记〔08-25 新钉：旧尺子登记过的瞎点 ①〕
+ccm-cli.test	尺子自检⑧ 三形同跑 ⇒ 恰好 3（两半相加、互不重叠；中文 locale 下量的）
+ccm-cli.test	尺子自检⑨ **命令字是变量**（`$to "$db" …` —— ccm 调 daemon 就是这一形）⇒ 就地取值
+ccm-cli.test	尺子自检⑩ **反向对照**：纯内建 ＋ 重定向失败 **不许**算成外部依赖（旧半 b 在这一形假红 2）
+ccm-cli.test	尺子自检⑪ **反向对照**：**射程之外**的外部进程不算（射程 = 那三个解析函数的栈内）
+ccm-cli.test	尺子自检⑫ **活体对照**：整趟那本账不是空真（射程外起一个清单外的进程 ⇒ 差集里必须有它）
+ccm-cli.test	尺子自检⑬ **数组元素当命令字**（`exec "${argv[@]}"` —— `shared/ccm` 自己就有 1 处）⇒ 就地取值
+ccm-cli.test	尺子自检⑭ **`${VAR:-默认}` 当命令字**（`shared/ccm` **生产段** 22 处 `${VAR:-…}`）⇒ 就地取值
+ccm-cli.test	尺子自检⑮ **计数口径**：`VAR="$(<空变量> cmd …)"` 同一次 exec 只算 **1**（`shared/ccm:acct_table_load` 就是这一形）
+ccm-cli.test	★ KCM6 · 无 jq + daemon 在位 ⇒ 仍然拿 daemon 那份
+ccm-cli.test	★ KC6d/热路径 · 无 jq + **daemon 那条**解析路（daemon_out_to_table 的 else）上零外部依赖
+ccm-cli.test	★ KC6d/整趟 · 无 jq + daemon 在位 ⇒ 整趟没有**声明清单之外**的外部命令（清单：sed · 那一次 daemon 往返）
+ccm-cli.test	KCM6 · 无 jq + daemon 输出**首个**账号行 ⇒ 纯 bash 解析路真的解析出来了（首块 z）
+ccm-cli.test	★ KCM6 · 无 jq + daemon 输出**末行没有结尾换行** ⇒ 末行那个账号 f 也解析得出来（"|| [ -n $l ]" 那道守卫的靶子）
+ccm-cli.test	★ KC6d/热路径 · 无 jq + **纯 bash** 那条解析路（daemon_out_to_table 的 else + acct_row_from_slice）上零外部依赖
+ccm-cli.test	★ KC6d/整趟 · 无 jq ⇒ 同上；清单里除 sed 外只有**那一次** daemon 往返
+ccm-cli.test	★ KCM6 · 无 jq + daemon 输出**键序反转**（configDir 在 name 前）⇒ 照样解析对（旧兜底在这一格静默失灵）
+ccm-cli.test	JSONENC/抽取器自检① · 抽到的那一段行数 ≥ 20（防「抽到一行也照样绿」）
+ccm-cli.test	JSONENC/抽取器自检② · 里面真有 json_str 的函数定义（不是抽到一堆注释）
+ccm-cli.test	JSONENC/抽取器自检③ · 里面真有控制字符表 _CCM_JSON_CTRL
+ccm-cli.test	JSONENC/oracle · 空串（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 双引号（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 反斜杠（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 结尾反斜杠（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 字面反斜杠n（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 换行（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 制表（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 回车（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 退格（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 换页（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 垂直制表（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · SOH01（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · BEL07（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · SO0E（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · ESC1B（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · US1F（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · DEL7F（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 中文（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · emoji（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 像JSON（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 单引号（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 正斜杠（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 美元反引号（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 真payload（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/oracle · 全控制字符（与 jq -Rs . 逐字节相等）
+ccm-cli.test	JSONENC/手算 · 空串
+ccm-cli.test	JSONENC/手算 · 双引号
+ccm-cli.test	JSONENC/手算 · 反斜杠
+ccm-cli.test	JSONENC/手算 · 结尾反斜杠（不许把收尾那个 " 吃掉）
+ccm-cli.test	JSONENC/手算 · 字面 \n 两个字符，不许被当成换行
+ccm-cli.test	JSONENC/手算 · 真换行 ⇒ 短名 \n
+ccm-cli.test	JSONENC/手算 · 制表 ⇒ 短名 \t
+ccm-cli.test	JSONENC/手算 · 无短名的控制字符 ⇒ 反斜杠u0001（小写十六进制）
+ccm-cli.test	JSONENC/手算 · U+007F 也转（RFC 说可选，本编码器不留可选项）
+ccm-cli.test	JSONENC/手算 · 已经像 JSON 的串要被当成**数据**
+ccm-cli.test	JSONENC/手算 · 中文原样透传（不转 \uXXXX、不动字节）
+ccm-cli.test	JSONENC/手算 · 单引号/正斜杠/$/反引号**一个都不许动**（过度转义与转义不足同族）
+ccm-cli.test	JSONENC/往返（弱判据·旁证）· 引号反斜杠
+ccm-cli.test	JSONENC/往返（弱判据·旁证）· 控制字符
+ccm-cli.test	JSONENC/往返（弱判据·旁证）· 多字节
+ccm-cli.test	JSONENC/尺子自检 · 被换掉的那个**模板**在这 25 条输入上与 jq 分歧的条数（一绿才说明上面那族有牙）
+ccm-cli.test	JSONENC/接线 · --print 的 resume 配方里，含双引号的 sid 被真编码了（不是模板拼进去）
+ccm-cli.test	JSONENC/接线 · 含单引号的 sid：json_str 不转它、sq 转它，两层各司其职
+ccm-cli.test	JSONENC/接线 · 含制表符的 sid 变成短名 \t（旧模板会塞一个生 TAB 进 JSON）
+ccm-cli.test	WIRE/夹具自检① · 落盘式假 daemon 在位 ⇒ 它真的被调用了（calls 恰好 1 行）
+ccm-cli.test	WIRE/夹具自检② · 那份 stdin 真的落下来了（字节数 > 0，不是「文件都没有也照样绿」）
+ccm-cli.test	WIRE/夹具自检③ · **没有 daemon 时 calls 是 0** ⇒ ①那条不是恒真（少了这条，①测不出任何东西）
+ccm-cli.test	WIRE/夹具自检④ · 没有后端 ⇒ **本地兜底不再存在**：一个字都没 exec 出来
+ccm-cli.test	WIRE/夹具自检④a · 而且 rc=4（唯一失败面，不是「降级 rc=0」）
+ccm-cli.test	WIRE/夹具自检④b · 后端在、只是答不出 --resolve ⇒ **本地那条 exec 照常跑**（登记在案的静默退路）
+ccm-cli.test	WIRE/夹具自检④c · 而且 rc=0（那一条是**建议**级的降级，不是失败）
+ccm-cli.test	WIRE/夹具自检④d · 而且**那笔欠账**一个字都不说（ 拿不到 ⇒ 静默走本地，棘轮登记着它）
+ccm-cli.test	WIRE/发了① · daemon 被调用**恰好一次**（不是 0，也不是「每问一次一趟」）
+ccm-cli.test	WIRE/发了② · 调用时的 argv 逐字是 --resolve（不是别的子命令、不是空）
+ccm-cli.test	WIRE/发了③ · daemon 回的那条 command **真的被 exec 了** ⇒ 这是一次真往返，不是「调用了但没用回帧」
+ccm-cli.test	WIRE/发对了① · 纯 sid：落盘 stdin 逐字节 = 手写的那个 JSON
+ccm-cli.test	WIRE/发对了② · 纯 sid：落盘 stdin **恰好 23 字节**（不多一个换行、不少一截）
+ccm-cli.test	WIRE/发对了·预言机 · 纯sid：落盘 stdin = {"sessionId":<jq -Rs . 的编码>}（逐字节）
+ccm-cli.test	WIRE/发对了·预言机 · 双引号：落盘 stdin = {"sessionId":<jq -Rs . 的编码>}（逐字节）
+ccm-cli.test	WIRE/发对了·预言机 · 制表：落盘 stdin = {"sessionId":<jq -Rs . 的编码>}（逐字节）
+ccm-cli.test	WIRE/发对了·预言机 · 反斜杠：落盘 stdin = {"sessionId":<jq -Rs . 的编码>}（逐字节）
+ccm-cli.test	WIRE/发对了·预言机 · 换行：落盘 stdin = {"sessionId":<jq -Rs . 的编码>}（逐字节）
+ccm-cli.test	WIRE/发对了·预言机 · 多字节：落盘 stdin = {"sessionId":<jq -Rs . 的编码>}（逐字节）
+ccm-cli.test	WIRE/发对了·预言机 · 真payload：落盘 stdin = {"sessionId":<jq -Rs . 的编码>}（逐字节）
+ccm-cli.test	WIRE/发对了·手算 · 含制表符的 sid ⇒ 线上是短名（旧模板会把一个**生 TAB** 塞进 JSON 串 = 非法 JSON）
+ccm-cli.test	WIRE/发对了·手算 · 含双引号的 sid ⇒ 线上是转义过的（旧模板会把一个值劈成两个）
+ccm-cli.test	WIRE/往返（弱判据·旁证）· 落盘那份 stdin 自己是合法 JSON，且 .sessionId 取回来 = 原 sid
+ccm-cli.test	WIRE/分得开① · 改了字节的 daemon 底下，「**发了**」照样绿：calls 仍是 1
+ccm-cli.test	WIRE/分得开② · 改了字节的 daemon 底下，「**发了**」照样绿：argv 仍是 --resolve
+ccm-cli.test	WIRE/分得开③ · 而「**发对了**」当场分歧（落盘 stdin ≠ 它该发的那个 JSON）
+ccm-cli.test	WIRE/分得开④ · 分歧**只有一个字节** ⇒ 钉住「改一个字节就够红」，不是靠改一大片才红
+ccm-cli.test	WIRE/配方路 · 纯sid：--print 那行真跑一遍，上线字节 = 该发的那个 JSON（逐字节）
+ccm-cli.test	WIRE/配方路 · 双引号：--print 那行真跑一遍，上线字节 = 该发的那个 JSON（逐字节）
+ccm-cli.test	WIRE/配方路 · 制表：--print 那行真跑一遍，上线字节 = 该发的那个 JSON（逐字节）
+ccm-cli.test	WIRE/配方路 · 反斜杠：--print 那行真跑一遍，上线字节 = 该发的那个 JSON（逐字节）
+ccm-cli.test	WIRE/配方路 · 换行：--print 那行真跑一遍，上线字节 = 该发的那个 JSON（逐字节）
+ccm-cli.test	WIRE/配方路 · 配方跑出来那一趟的 argv 也是 --resolve（配方里那份 --resolve 是**另一处字面**）
+ccm-cli.test	WIRE/配方路 · 配方跑出来也真的 exec 了 daemon 回的那条 command（两条路同一个终点）
+ccm-cli.test	WIRE/launch/夹具自检① · 有 daemon ⇒ 它真的被调用了（calls 恰好 1 行）
+ccm-cli.test	WIRE/launch/发了① · 调用时的 argv 逐字是 --launch（不是 --resolve、不是空）
+ccm-cli.test	WIRE/launch/发了② · rc=0（后端答了 created:true ⇒ 不再走本地那条）
+ccm-cli.test	WIRE/launch/发了③ · ★**建会话真的不在本机做了**：整趟一条 tmux 都没起
+ccm-cli.test	WIRE/launch/发了④ · 会话名照旧报回 stdout（--detach 的既有契约没被接线改掉）
+ccm-cli.test	WIRE/launch/发了⑤ · 走后端那一趟**不说降级**（它没降级）
+ccm-cli.test	WIRE/launch/不可达① · 没后端 ⇒ calls 是 0（上面①不是恒真）
+ccm-cli.test	WIRE/launch/不可达② · ★没后端 ⇒ 本机**一条会话都没建**（腿②：退路真的没了）
+ccm-cli.test	WIRE/launch/不可达②b · 整趟**一条 tmux 都没起**（比上一条更宽：连 attach/轮询都没有）
+ccm-cli.test	WIRE/launch/不可达③ · 而且**出声**（唯一失败面那一句人话）
+ccm-cli.test	WIRE/launch/不可达④ · 出声要说清是**哪一格**（六种原因不许糊成一句「不可达」）
+ccm-cli.test	WIRE/launch/不可达⑤ · ★rc=4（唯一退出码；与 die 的 2、撞名的 3 分得开）
+ccm-cli.test	WIRE/launch/不可达⑤b · 而且**不再说「降级」**（那句话的主句已经作废，留着就是假话）
+ccm-cli.test	WIRE/launch/不可达⑤c · 失败面里说得出**怎么办**（查找顺序 / 三选一）
+ccm-cli.test	WIRE/launch/不可达⑥ · CCM_NO_DAEMON=1 ⇒ **整条关掉**：daemon 在也不发（calls 0）
+ccm-cli.test	WIRE/launch/不可达⑦ · 而且说的是那一格（明示关掉 ≠ 找不到）
+ccm-cli.test	WIRE/launch/不可达⑦b · ★明示关掉**也是 rc=4** —— 它不是逃生口（关掉之后照样起不来）
+ccm-cli.test	WIRE/launch/腿分开① · 账号那条腿过得去（走到了建会话，不是死在账号上）
+ccm-cli.test	WIRE/launch/腿分开② · ★而建会话那条腿**没有退路**：一条 tmux 都没起
+ccm-cli.test	WIRE/launch/腿分开③ · 同一个失败面（rc=4，同一句文案）
+ccm-cli.test	WIRE/launch/发对了① · 落盘 stdin **逐字节** = 手算的那整条请求（mode/name/payload/agent/cwd/width/height）
+ccm-cli.test	WIRE/launch/发对了② · **不多一个换行**（生产那句 printf 是不带换行的）
+ccm-cli.test	WIRE/launch/发对了③ · `--tmux-size` 没被吃掉：线上真有 width/height（旧路是 `-x/-y`）
+ccm-cli.test	WIRE/launch/发对了④ · `@ccm_agent` 没被吃掉：线上真有 agent（这一格是本拍给 daemon 加字段的理由）
+ccm-cli.test	WIRE/launch/发对了⑤ · mode 逐字是 create-or-attach（不是 send-into —— 那条不许新建会话）
+ccm-cli.test	WIRE/launch/缺省尺寸① · 不给 --tmux-size ⇒ 请求体里**没有** width/height（不是空串、不是 0）
+ccm-cli.test	WIRE/launch/缺省尺寸② · 而这一趟照样发得出去（①不是靠「整条没发」凑出来的）
+ccm-cli.test	WIRE/launch/发对了·预言机 · 会咬人的 cwd：线上 "cwd": 那一段 = jq -Rs . 的编码（逐字节）
+ccm-cli.test	WIRE/launch/发对了·手算 · 含双引号的 cwd ⇒ 线上是**转义过的**（旧模板会把一个值劈成两个）
+ccm-cli.test	WIRE/launch/发对了·往返（弱判据·旁证）· 落盘那份自己是合法 JSON，且 .cwd 取回来 = 原值
+ccm-cli.test	WIRE/launch/同一件事① · 后端那条的 .payload **逐字节等于**本机配方跑出来的 send-keys 那条
+ccm-cli.test	WIRE/launch/同一件事② · 后端那条的 .cwd 等于本机配方跑出来的 new-session 的 `-c`
+ccm-cli.test	WIRE/launch/同一件事③ · 本机那条也真的带 `-x 220 -y 50`（不带的话上面那条 width/height 判据就是单边的）
+ccm-cli.test	WIRE/launch/同一件事④ · 本机那条也真的写 @ccm_agent claude（同上：单边判据不算判据）
+ccm-cli.test	WIRE/launch/同一件事⑤ · ★抽取器自检：那条配方**真的跑出东西来了**（空比空是空真）
+ccm-cli.test	WIRE/launch/控制字符/换行① · ★载荷含**换行** ⇒ 照发（它是「键」，不是畸形字节）
+ccm-cli.test	WIRE/launch/控制字符/换行② · 而且 rc=0（会话真的建出来了 —— 多行任务这个能力还在）
+ccm-cli.test	WIRE/launch/控制字符/换行③ · 线上那份请求里那个换行是**转义**过去的（ 在、真换行 0 个）
+ccm-cli.test	WIRE/launch/控制字符① · ★载荷含 ESC ⇒ daemon **一次都没被调用**（挡在 ccm 这侧，不是发了被拒）
+ccm-cli.test	WIRE/launch/控制字符② · 而且说清命中的是**这一格**（不是笼统一句「不可达」）
+ccm-cli.test	WIRE/launch/控制字符③ · 一条会话都没建（退路删了 ⇒ 挡住新路**就是**挡住这次调用）
+ccm-cli.test	WIRE/launch/控制字符③b · ★而且 rc=4 —— 把「这次调用真的失败了」钉成读数（不是只钉 tmux.log 是空的）
+ccm-cli.test	WIRE/launch/控制字符④ · 反向对照：**同一条命令去掉那个 ESC** 就发得出去（③不是恒真）
+ccm-cli.test	WIRE/launch/撞名① · 后端说 created:false ⇒ **不静默接回**：rc=3（C14「spawn 就是起」）
+ccm-cli.test	WIRE/launch/撞名② · 报错带上是哪个名字（不带名字的报错等于没报）
+ccm-cli.test	WIRE/launch/撞名③ · ★撞名**不说降级** —— 它不是降级，说了就是把两件事糊成一句
+ccm-cli.test	WIRE/launch/撞名④ · daemon 仍然被问过（不是「没问就报占用」）
+ccm-cli.test	WIRE/launch/--print① · ★`--print` 一个请求都不发（纯：不起进程、不查状态）
+ccm-cli.test	WIRE/launch/--print② · `--print` 吐的仍是**本机 tmux 编排**（含 new-session）
+ccm-cli.test	WIRE/launch/--print③ · **登记的分家**：`--print` 那条串里没有 --launch（真 exec 路有）
+ccm-cli.test	WIRE/launch/--print④ · `--print` 那一趟 stderr **一个字都没有**（它没走后端那条路）
+ccm-contract-parity	A · 真跑确实产出了环境（差分自检）：codex（CC_BUS_ID 派生）
+ccm-contract-parity	A · print↔exec 环境一致：codex（CC_BUS_ID 派生）
+ccm-contract-parity	A · 真跑确实产出了环境（差分自检）：claude（嵌套 env 清理）
+ccm-contract-parity	A · print↔exec 环境一致：claude（嵌套 env 清理）
+ccm-contract-parity	A · 真跑确实产出了环境（差分自检）：claude + --account b
+ccm-contract-parity	A · print↔exec 环境一致：claude + --account b
+ccm-contract-parity	A · 真跑确实产出了环境（差分自检）：claude + --model opus
+ccm-contract-parity	A · print↔exec 环境一致：claude + --model opus
+ccm-contract-parity	A · 真跑确实产出了环境（差分自检）：codex + --account b + --model opus
+ccm-contract-parity	A · print↔exec 环境一致：codex + --account b + --model opus
+ccm-contract-parity	A · 真跑确实产出了环境（差分自检）：claude + --base + --model（#75 逃生口）
+ccm-contract-parity	A · print↔exec 环境一致：claude + --base + --model（#75 逃生口）
+ccm-contract-parity	A″ · 夹具自检：daemon **实际答的** b 的 configDir 与 manifest 里那个刻意不同
+ccm-contract-parity	★ A″ · **exec 路**：--account b 的 configDir 来自 daemon（不是 manifest）
+ccm-contract-parity	★ A″ · **print 路**跑出来的是同一个值（两条路同源；只钉 exec 路时「print 退回读文件」会存活）
+ccm-contract-parity	A″ · 反向（exec 路）：**换一份后端** ⇒ 值跟着换
+ccm-contract-parity	A″ · 反向（print 路）：同样跟着换（两条路同源）
+ccm-contract-parity	A″ · CCM_NO_DAEMON=1 ⇒ **响亮失败**（rc=4 唯一失败面，不再落回 manifest）
+ccm-contract-parity	A″ · 而且说的是**那一格**（明示整条关掉 ≠ 找不到）
+ccm-contract-parity	A′ · 真跑确实产出了 argv（差分自检）：resume（本组的正题：F06b 要接 --resolve 的就是这条）
+ccm-contract-parity	A′ · print↔exec argv 一致：resume（本组的正题：F06b 要接 --resolve 的就是这条）
+ccm-contract-parity	A′ · 真跑确实产出了 argv（差分自检）：resume + --model（修饰不许只落一边）
+ccm-contract-parity	A′ · print↔exec argv 一致：resume + --model（修饰不许只落一边）
+ccm-contract-parity	A′ · 真跑确实产出了 argv（差分自检）：new（对照组：证明差分不是只对 resume 有效）
+ccm-contract-parity	A′ · print↔exec argv 一致：new（对照组：证明差分不是只对 resume 有效）
+ccm-contract-parity	A′d · 真跑确实产出了 argv（差分自检）
+ccm-contract-parity	A′d · print↔exec argv 一致（daemon 在位）
+ccm-contract-parity	A′d · daemon 在位时 argv 必须来自 daemon（不是本地那条）
+ccm-contract-parity	A′d · 降级观察面自检：不给 --launcher 时确实观察得到 argv
+ccm-contract-parity	A′d · daemon 答不出命令时必须落回本地（诚实降级，不是报错）
+ccm-contract-parity	A′d · 显式 --launcher 优先于 daemon 建议
+ccm-contract-parity	A′e · 不给 CCM_DAEMON_BIN 也能找到 daemon（部署落点）
+ccm-contract-parity	A′e · print↔exec 一致（靠 discovery 找到的 daemon）
+ccm-contract-parity	A′e · 后端在、只是答不出 --resolve ⇒ argv 落回本地那条（登记在案的静默退路）
+ccm-contract-parity	A′e · CCM_NO_DAEMON=1 ⇒ **响亮失败**（rc=4，不再落回本地）
+ccm-contract-parity	A′e · 而且 argv 一个都没产出（不是「跑了本地那条」）
+ccm-contract-parity	A′e · --print 的**命令串**不因后端答不答得出 --resolve 而变（配方不是查找结果）
+ccm-contract-parity	A′e · 而且两趟 stderr **都是空的**（ 是纯的：它一个请求都不发，也没什么可降级的）
+ccm-contract-parity	A′ · resume 真跑的 argv 必须逐字带 --resume <sid>
+ccm-contract-parity	A′ · resume 的 --print 串也必须说出同一句
+ccm-contract-parity	codex 在 tmux 内：真跑必须 export CC_BUS_ID=<会话名>
+ccm-contract-parity	codex 在 tmux 内：--print 也必须说出这一句（U9a 修复点）
+ccm-contract-parity	claude 不得被注入 CC_BUS_ID（会盖掉 @cc_id 细分）
+ccm-contract-parity	--account b 真跑注入其 configDir
+ccm-contract-parity	--model opus 真跑 export ANTHROPIC_MODEL
+ccm-contract-parity	--base 真跑把继承来的 CLAUDE_CONFIG_DIR 清干净（#75 逃生口）
+ccm-contract-parity	同一继承环境下不带 --base 时它必须还在（上一条的反面 + R11 继承优先）
+ccm-contract-parity	claude 的四个嵌套标记真跑后一个不剩
+ccm-contract-parity	codex **不清** claude 的嵌套标记（agent_nested_env 逐 agent 不同）
+ccm-contract-parity	真跑：CCM_ENV 被 eval 掉（不是原样透传、不是丢弃）
+ccm-contract-parity	--print：CCM_ENV 也在预言里
+ccm-contract-parity	B · print↔exec 环境一致（带 CCM_ENV）
+ccm-contract-parity	CCM_ENV 早于会话级 env：真跑时 --account 仍然赢
+ccm-contract-parity	CCM_ENV 早于会话级 env：--print 侧同样（差分对顺序失明，必须单钉）
+ccm-contract-parity	首行逐字 name=ccm（ccm_probe.rs::parse_probe_output 的判活依据）
+ccm-contract-parity	有 version= 行
+ccm-contract-parity	抽取器自检：CLI_REQUIRED_CAPS 抽到 ≥5 项（实得 7）
+ccm-contract-parity	capabilities= 覆盖 TS 侧全部 CLI_REQUIRED_CAPS（⊇，不是 ==）
+ccm-contract-parity	agents= 行列出 claude 与 codex
+ccm-contract-parity	A′f · daemon 坏成 hang ⇒ 仍落回本地那条
+ccm-contract-parity	A′f · daemon 坏成 hang ⇒ 不永远转圈（3s < 10s）
+ccm-contract-parity	A′f · daemon 坏成 garbage ⇒ 仍落回本地那条
+ccm-contract-parity	A′f · daemon 坏成 garbage ⇒ 不永远转圈（0s < 10s）
+ccm-contract-parity	A′f · daemon 坏成 broken ⇒ 仍落回本地那条
+ccm-contract-parity	A′f · daemon 坏成 broken ⇒ 不永远转圈（0s < 10s）
+ccm-contract-parity	A′g · daemon 命令里的 `*` **不许**被 cwd 的文件名改写
+ccm-contract-parity	A′g · daemon 命令里的 `$(…)` **不许**被执行（别改成 eval）
+ccm-contract-parity	A′h · 三者齐全 ⇒ 用 $CCM_DAEMON_BIN
+ccm-contract-parity	A′h · 无 env ⇒ 用部署落点 ~/.cc-monitor/bin/
+ccm-contract-parity	A′h · 只剩 PATH ⇒ 用 PATH 上那份
+ccm-contract-parity	A′h · 一个都没有 ⇒ **响亮失败**（rc=4 唯一失败面，不是悄悄没有身份）
+ccm-contract-parity	A′h · 一个都没有 + CCM_NO_DAEMON=1 ⇒ **照样 rc=4**（它不是逃生口，只是换了一格原因）

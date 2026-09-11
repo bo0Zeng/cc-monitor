@@ -373,6 +373,8 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     // `Adapter.home` 是裸函数指针，所以"加一个 agent"在这一层真的只是多一条记录。
     let adapter = crate::agents::Adapter {
         kind: AGENT_KIND,
+        // 最小假 agent 没有账号维度 —— 它要证的是「通用层零改动」，不是账号。
+        account_env: None,
         home: home_fn,
     };
     let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));
@@ -739,6 +741,7 @@ mod tests {
         let root = build_fixture("announce");
         let adapter = crate::agents::Adapter {
             kind: AGENT_KIND,
+            account_env: None,
             home: home_of_announce,
         };
         let discovered = crate::agents::visible_among(std::slice::from_ref(&adapter));
