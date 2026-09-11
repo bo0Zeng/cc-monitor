@@ -32,9 +32,59 @@ import { runForkFlow } from "../fork-flow"; // G6：分叉完把新会话起起�
 import type { BranchResult } from "../generated/BranchResult";
 // K-R45 甲：挑「用户说过的每一句」那一半住在这里（纯函数，乙那条路要共用，别复制）
 import { collectUserInputs } from "./user-input-index";
-// K-R45：清单界面与「找卡→展开→滚」两段都是两条路共用的，各自只有一个住址
+// K-R45：清单界面两条路共用一份，只有一个住址
 import { UserInputPanel } from "./user-input-panel";
-import { revealCard } from "./card-jump";
+
+/**
+ * **在一条消息流里按 uuid 找到那张卡、展开挡着它的折叠、滚过去并闪一下。**
+ * 找不到返回 `null` 且**什么都不做**（怎么兜底由调用方决定）。
+ *
+ * # 为什么它是导出的（K-R45 第三轮）
+ *
+ * 它本轮起有**两个**调用方：本文件的 `scrollToMessage`（搜索命中 + 「我说过的 N 句」）
+ * 与 `tabs.ts` 的实时窗口（`KR45D2`）。件 `§5.2` 的 B 段现打核过这一段**真能共用**：
+ * 两条路的卡由**同一个** `renderStreamRecord` 建，`data-uuid` 由**唯一一份**
+ * `markCardUuid` 写。照抄一份到 `tabs.ts` 的代价是从此两处要一起改。
+ *
+ * 🔴 **它为什么还住在这个文件里，而不是一个中立的 `views/card-jump.ts`** ——
+ * 这是一处**登记在案的将就，不是设计**：本仓有一条 Rust 侧判据
+ * （`src-tauri/src/polling_registry.rs::every_scheduling_call_site_is_classified`）
+ * 按「文件 × API × 处数」精确对账**全部** `requestAnimationFrame` / `setTimeout` 调用点。
+ * 把下面这 2 处 rAF + 1 处 setTimeout 搬进新文件，就必须同时改那张表 ——
+ * 而 `src-tauri/` 不在本轮写区。**实测过**：搬进 `views/card-jump.ts` 后全量门禁
+ * cargo 那格当场红（逐字读数在件 `§5.6`）。
+ * ⇒ 照 `brief` 第 2 / 17 条：不越界、不糊过去，**抬上来请裁**。
+ *
+ * ⚠ 代价是 `tabs.ts` 要 `import` 本文件（实时窗口 import 历史查看器，方向是别扭的）。
+ * 它**不成环**（本文件不 import `tabs.ts`），打包面也没变（两者本来都在包里），
+ * 但这是一句「今天这样是因为写区，不是因为对」——**别把它读成本仓的惯例**。
+ */
+export function revealCard(container: HTMLElement, uuid: string): HTMLElement | null {
+  // CSS.escape 防 uuid 里有特殊字符破坏选择器
+  const sel = `[data-uuid="${CSS.escape(uuid)}"]`;
+  const el = container.querySelector<HTMLElement>(sel);
+  if (!el) return null;
+  // 展开所有折叠祖先，确保目标可见。注:ESC 回退段是 div.branch-fold-wrap
+  // + .expanded 类(非 <details>)——此前只开 details,命中折叠段内的卡会被
+  // 0fr 裁剪、flash 不可见(Batch13 D 审计发现的既有 bug)
+  let p: HTMLElement | null = el.parentElement;
+  while (p && p !== container) {
+    if (p instanceof HTMLDetailsElement) p.open = true;
+    if (p.classList.contains("branch-fold-wrap") && !p.classList.contains("expanded")) {
+      p.classList.add("expanded");
+      p.querySelector(".branch-fold-header")?.setAttribute("aria-expanded", "true");
+    }
+    p = p.parentElement;
+  }
+  el.scrollIntoView({ block: "center" });
+  // Batch13-F38:首次落点基于 content-visibility 估值几何;双 rAF 后周边已
+  // 材料化(真实尺寸),幂等重发一次让 block:center 落点精确
+  requestAnimationFrame(() => requestAnimationFrame(() => el.scrollIntoView({ block: "center" })));
+  el.classList.add("search-hit-flash");
+  // 动画结束后移除 class（再次跳同一条还能重放）
+  window.setTimeout(() => el.classList.remove("search-hit-flash"), 2200);
+  return el;
+}
 
 /**
  * 历史会话的 jsonl 文件名**就是** sid（口径同 `remote_history::jsonl_stem`）。
@@ -471,9 +521,10 @@ export class SessionViewer {
    * 找不到（极少：该 uuid 未渲染成带 data-uuid 的卡）则退化为贴底。
    *
    * 🔴 **本轮（K-R45 第三轮）改了两处形状，逐字记下来**（`KR45D0` 的告诫要求写明）：
-   * ① 「找卡 → 展开折叠 → 滚 → 闪」那一段搬进了 `card-jump.ts::revealCard`
+   * ① 「找卡 → 展开折叠 → 滚 → 闪」那一段提成了本文件里导出的 `revealCard`
    *    —— 它本轮起有**两个**调用方（这里 + `tabs.ts` 的实时窗口），照抄一份的代价是
-   *    从此两处要一起改。搬的是**整段、逐字**，一个分支都没改。
+   *    从此两处要一起改。提的是**整段、逐字**，一个分支都没改。
+   *    （它为什么没搬去一个中立文件，见 `revealCard` 的头注 —— 写区的将就，已请裁。）
    * ② 返回值从 `void` 变成「落到的那张卡 / `null`」—— 调用方本来就要知道跳没跳到
    *    （`user-input-panel.ts` 此前是自己再 `querySelector` 一遍**猜**的）。
    * **留在这里没搬的**是两条路结构上不同的那两段：「没渲染就先渲出来」（`uuidToIdx`
