@@ -246,7 +246,7 @@ pub fn render_file(lines: &[String]) -> String {
 /// 这个名字是不是已经被占了。**只出声、不拦** —— 见 `§0c 问三`。
 ///
 /// 两条路各查一次，报出来的话里带住址，用户才知道自己在盖掉什么：
-/// ① `shared/ccm-aliases.sh` 里自带的那几个（`cc` / `cch` / `cct`）——
+/// ① `shared/ccm-aliases.sh` 里自带的那几个（今天是 `cc` / `cct`；`K-R58` 删掉了 `cch`）——
 ///    **问的是那份文件本身**（`sftp::CCM_WRAPPER_SNIPPET` 就是它 `include_str!` 进来的），
 ///    不在这里抄一份名字清单；
 /// ② `PATH` 上真有一个同名程序 —— 🔴 `cc` 在多数机器上是 C 编译器
@@ -762,18 +762,50 @@ mod tests {
     /// 🔴 `§0c 问三`：`cc` 在多数机器上是 C 编译器 —— 撞了要**出声**。
     ///
     /// ⚠ 这一条断的是「自带别名块里那几个名字会被认出来」，人群取自
-    /// `sftp::CCM_WRAPPER_SNIPPET`（= `shared/ccm-aliases.sh` 本身），**不抄第二份名单**。
+    /// `sftp::CCM_WRAPPER_SNIPPET`（= `shared/ccm-aliases.sh` 本身），**不抄第二份名单** ——
+    /// `KR58D1` 起这句话**真的兑现了**：人群由 `sftp::builtin_alias_names()` 现算，
+    /// 上一版这里手写着 `["cc", "cch", "cct"]`，那就是第二个住址。
     #[test]
     fn a_name_that_is_already_taken_gets_a_note() {
-        for taken in ["cc", "cch", "cct"] {
-            let note = collision_note(taken)
-                .unwrap_or_else(|| panic!("`{taken}` 在自带别名块里就有，却一声不吭"));
-            assert!(note.contains(taken), "{note}");
+        let taken = crate::sftp::builtin_alias_names();
+        assert!(
+            !taken.is_empty(),
+            "自带别名块里一个函数都没解析出来 —— 这一条会变成空真，先修人群"
+        );
+        for t in &taken {
+            let note =
+                collision_note(t).unwrap_or_else(|| panic!("`{t}` 在自带别名块里就有，却一声不吭"));
+            assert!(note.contains(t), "{note}");
         }
         assert!(
             collision_note("zzz_no_such_command_anywhere").is_none(),
             "没撞的名字不该报警 —— 一句假警报会让人把所有警报都当噪音"
         );
+    }
+
+    /// 🔴 `KR58D1` 的**正面**：`cch` 从自带块里删掉之后，它变成**用户可以自己用的名字**。
+    ///
+    /// 〔用@09-11 逐字〕「`cch` = 不让它猜目录，就在你当前这个目录起。**这个不要。删掉。**」
+    /// `K37` 第一条的判据：把 `cch` 去掉，用户自己写一行就有了 ⇒ **偏好，该出去**。
+    ///
+    /// ⚠ **这不是回归，是多一格自由** —— 所以这里断的是「不再报『自带块里已经有』」，
+    /// 而**不是**「`collision_note` 返回 `None`」：`PATH` 上真有个叫 `cch` 的程序时它**该**出声，
+    /// 那条支路一个字都没动（断成 `is_none()` 会让这条判据在那种机器上假红）。
+    ///
+    /// **失效方向**（DoD 逐字）：只删了 sh 文件那两行、而别处还把它当「已被占用」
+    /// ⇒ 用户仍然用不了这个名字。
+    #[test]
+    fn cch_is_gone_and_the_name_is_free_for_the_user() {
+        assert!(
+            !crate::sftp::builtin_alias_names().contains(&"cch"),
+            "`cch` 还定义在 shared/ccm-aliases.sh 里 —— 用户逐字说的是「这个不要。删掉。」"
+        );
+        if let Some(note) = collision_note("cch") {
+            assert!(
+                !note.contains("ccm-aliases.sh"),
+                "`cch` 已经不在自带别名块里了，却仍被报成「自带块占了」：{note}"
+            );
+        }
     }
 
     /// 生成文件里**没有时间戳** —— 有了就永远比不出「内容没变」。
