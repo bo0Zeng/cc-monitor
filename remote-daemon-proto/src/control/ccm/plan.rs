@@ -1030,6 +1030,72 @@ mod tests {
         assert!(c3.payload.contains("'--account' 'z'"), "裸终端该落默认号：{}", c3.payload);
     }
 
+    /// 🔴 **三个变量必须被显式化到载荷内侧** —— tmux 的进程边界会吃掉外层那句 `export`。
+    ///
+    /// # 这一条是 `K-R48` 第二拍补的，补的是**别人家的判据搬过来时空出来的那一格**
+    ///
+    /// 从前盯这件事的是 monitor 侧 `backend/control/payload.rs` 的两条：
+    /// `the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` 与
+    /// `…_forwards_the_launch_identity_…`。它们的做法是**把 `shared/ccm` 里那段 bash
+    /// 窗口原样交给 `bash` 跑一遍**再读载荷 —— 脚本删了，那两条连被测对象都没有了。
+    ///
+    /// ⚠ **[`the_container_path_carries_every_intent_inward`] 顶不了这一格**：
+    /// 它只钉了 `CLAUDE_CONFIG_DIR`（账号那条），另两个**一个字都没提**。
+    /// 差点就这么丢了 —— 而丢掉的后果逐字住 `K-R48` `§0c`：
+    /// 「`CCM_LAUNCH_ID` 被吃掉 ⇒ 身份 token 丢」（**今天真有生产人群**）。
+    ///
+    /// # 为什么三条一起钉、且要**非空对照**
+    ///
+    /// 「没设那个变量 ⇒ 不加前缀」与「设了 ⇒ 加前缀」必须成对：只钉后者的话，
+    /// 「无条件加一个空 export」也能全绿，而那会把内层的值**清空**（比不转发更坏）。
+    #[test]
+    fn the_container_path_forwards_every_inherited_variable_inward() {
+        let db = tempdir();
+        let base = |e: &Env| -> String {
+            let p = plan_of(&["--tmux=n1", "--cwd", "/p"], e, &AccountTable::default());
+            let Plan::Container(c) = p else { panic!("该是容器路") };
+            c.payload
+        };
+        // 非空对照：三个都没有 ⇒ 载荷就是裸 argv（证明这把尺子不是恒带前缀）。
+        let clean = base(&env());
+        assert!(
+            !clean.contains("export "),
+            "三个变量都没设，载荷却带了 export —— 那会把内层的值清空：{clean}"
+        );
+        // ① 继承来的账号目录（`R08` 07-28，真机复现过的静默换号）。
+        let mut e1 = env();
+        e1.inherited_config_dir = Some(db.clone());
+        assert!(
+            base(&e1).starts_with(&format!("export CLAUDE_CONFIG_DIR={}; ", sq(&db))),
+            "继承来的账号没被显式化：{}",
+            base(&e1)
+        );
+        // ② 中转地址（`K-H2b` 08-28）。
+        let mut e2 = env();
+        e2.anthropic_base_url = Some("https://relay.example/v1".into());
+        assert!(
+            base(&e2).starts_with("export ANTHROPIC_BASE_URL='https://relay.example/v1'; "),
+            "中转地址没被显式化 ⇒ 走 tmux 的会话静默不走中转：{}",
+            base(&e2)
+        );
+        // ③ 身份 token（`K-P5c` 09-02）—— 三个里**今天真有生产人群**的那一个。
+        let mut e3 = env();
+        e3.ccm_launch_id = Some("L-42".into());
+        assert!(
+            base(&e3).starts_with("export CCM_LAUNCH_ID='L-42'; "),
+            "身份 token 没被显式化 ⇒ cc-monitor 认不出这个会话：{}",
+            base(&e3)
+        );
+        // ④ 值必须经 `sq`（带引号 / 空格的值不许把载荷拆断）。
+        let mut e4 = env();
+        e4.ccm_launch_id = Some("it's here".into());
+        assert!(
+            base(&e4).starts_with(&format!("export CCM_LAUNCH_ID={}; ", sq("it's here"))),
+            "转发的值没经 quote：{}",
+            base(&e4)
+        );
+    }
+
     /// 〔搬自 `ccm-print-parity`「含空格 cwd 正确带引号」与 `ccm-cli` 的 quote 那族〕
     #[test]
     fn every_value_that_reaches_a_shell_is_quoted() {

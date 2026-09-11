@@ -3213,70 +3213,23 @@ mod tests {
 
     /// ★★ **那个 env 名只有一个家**〔F06b-1 立，F06b-1c 起转为实断言〕。
     ///
-    /// # 两条断言，各管一件
+    /// # 🔴 `K-R48` 第二拍（09-11）：**射程砍掉一半，写清楚砍的是哪一半**
     ///
-    /// ① **同名**：`shared/ccm` 里**若**出现这个 env 名，必须与 Rust 侧的
-    ///    [`super::DAEMON_BIN_ENV`] **逐字相同** —— 名字打错的后果是
-    ///    「ccm 永远读不到 ⇒ 永远走本地那条」，而那**看起来完全正常**（诚实降级本来就是它的兜底）。
-    ///    ⇒ 这种错**不会自己暴露**，只能靠钉。
-    /// ② **原先是前提触发器**（「今天 ccm 还没用它」），它**如期红过一次** ——
-    ///    F06b-1c 接线时 `shared/ccm` 一出现这个名字，本条当场红，提醒把一致性一并做完。
-    ///    做完后它转成**实断言**：名字必须真出现在 `shared/ccm` 里（≥7 处，按实测）。
-    ///    ⚠ 一致性那件事**理由不是「会撞红黄金串」**〔订正 F06b-1b·实测〕：
-    ///    真把答案烤进打印串时，`ccm-print-parity`(12) 与 `ccm-contract-parity`(31)
-    ///    **两套全绿** —— 前者的 resume 场景全走 `--tmux`（碰不到非容器打印路），
-    ///    后者的 A 组比的是**环境键**、六格又全是 `new`。**当时根本没有网。**
-    ///    （「44 条黄金串」是 `ccm-cli` 的地板，不是 `ccm-print-parity` 的 —— 那句混了套件。）
-    ///    ⇒ 网已在 F06b-1b 补上：`ccm-contract-parity` 的 **A′ 组**比 print↔exec 的 **argv**。
-    ///    正解仍是 ccm 头注那句「**打印的是配方，不是值**」。
+    /// 原来它有两条腿：① 本文件生产段里那个字面量只许出现 1 次；
+    /// ② `shared/ccm` 里出现的每一处「像那个名字」的拼写都必须与 Rust 侧**逐字相同**
+    ///（名字打错的后果是「ccm 永远读不到 ⇒ 永远走本地那条」，而那看起来完全正常）。
     ///
-    /// ⚠ 判据**不存那个名字的副本**：它从 Rust 的 `const` 读，再去 `shared/ccm` 里找（定框 §4）。
+    /// 〔用@09-11 `K33`〕「**不要有什么 bash 脚本**」⇒ `shared/ccm` 删了，
+    /// **第②条腿没有被测对象了**：今天不存在「另一个进程按名字去读这个 env」这回事，
+    /// 敲的那个命令就是后端。⇒ 只留①。
+    ///
+    /// ⚠ **如实边界**：①**买不到**②买的那件事（「两处拼写一致」）。今天那个风险不存在，
+    /// 是因为**对侧没了**，不是因为有判据盯着 —— 哪天再出现一个按名字读它的消费者，
+    /// 这条判据**不会**替你盯着它。
     #[test]
     fn the_daemon_bin_env_name_has_exactly_one_home() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src-tauri 的上级");
-        let ccm = root.join("shared/ccm");
-        let src = std::fs::read_to_string(&ccm).expect("读不到 shared/ccm");
-        // 中间量自检：读到的必须是那个真文件（它是 696 行的大脚本，不是空串）。
-        assert!(
-            src.len() > 10_000 && src.contains("ccm"),
-            "shared/ccm 只读到 {} 字节 —— 读错文件了，本条会零命中地绿",
-            src.len()
-        );
-        let name = super::DAEMON_BIN_ENV;
-        // ① 每一处「像那个名字」的拼写都必须逐字相同 —— **逐处查，不是只查第一处**：
-        //    ccm 里现在有好几处（函数、配方、头注），打错任何一处都是静默失败。
-        let looks_like = "CCM_DAEMON";
-        let mut seen = 0usize;
-        for (at, _) in src.match_indices(looks_like) {
-            seen += 1;
-            // ⚠ **不许 `&src[at..at + 40]`** —— 那是**按字节切**，而这后面紧跟中文注释，
-            //   会切在字符中间直接 panic（第一版就是这么炸的）。切片必须落在字符边界上。
-            let after = &src[at..];
-            // ⚠ 光 `starts_with` 不够：`CCM_DAEMON_BINARY` **也**以 `CCM_DAEMON_BIN` 开头。
-            //   变异 Z1 就是这么活下来的 ⇒ 必须查名字后面那个字符是不是标识符字符。
-            let exact = after.strip_prefix(name).is_some_and(|rest| {
-                !rest.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
-            });
-            let tail: String = after.chars().take(40).collect();
-            assert!(
-                exact,
-                "`shared/ccm` 里那个 env 名与 Rust 侧对不上：ccm 写的是 {tail:?}，\n\
-                 而唯一的家是 `DAEMON_BIN_ENV` = {name:?}。\n\
-                 ⚠ 名字打错**不会自己暴露** —— ccm 读不到就静静走本地那条（诚实降级是它的兜底）。"
-            );
-        }
-        // ② **接线已发生**〔F06b-1c〕：F06b-1 时这里是「今天还没接线」的前提触发器，
-        //    ccm 一用它就红。它**如期红过一次**，本轮把接线做完，于是它转成一条实断言：
-        //    名字必须真出现在 `shared/ccm` 里 —— 接线要是被谁整段删了，本条红。
-        //    ⚠ **地板按实测写**：当时 7 处（第一版顺手写了 4，是猜的 —— 实测 7）。
-        // ★★ **「唯一的家」只能用源码扫描钉，值比较钉不住**〔W3 存活教的，F06b-1d〕：
-        //    判据原先只有 `assert_eq!(k, DAEMON_BIN_ENV)`，而**副本的值按定义就相等** ——
-        //    把 `DAEMON_BIN_ENV` 换成字面量 `"CCM_DAEMON_BIN"`，那条断言照样绿。
-        //    ⇒ **「同一个值」与「同一个来源」是两回事**；要钉来源，就得去源码里数它出现几次。
         let me = guard_core::production_code(include_str!("local_backend.rs"));
-        let lit = format!("\"{name}\"");
+        let lit = format!("\"{}\"", super::DAEMON_BIN_ENV);
         let n_lit = me.matches(lit.as_str()).count();
         assert_eq!(
             n_lit, 1,
@@ -3284,26 +3237,6 @@ mod tests {
              唯一的家是那个 `const`，其余一律引用它。\n\
              ⚠ 值相等的断言**看不见副本**（副本的值按定义就相等），只有数源码才看得见。"
         );
-        // ★★ **地板 7 → 1**〔`P4e` 08-13〕：接线**没有缩水，是被去重了**。
-        //
-        // 原来查找规则在两处各写一遍（`resolve_from_daemon` 与 `resolve_recipe`，
-        // 「逐行同构、改一边必须改另一边」），env 名因此出现 7 次。`P4e` 把规则收成
-        // **同一个字面量** `DAEMON_BIN_RECIPE`，真跑那侧 `eval` 它 ⇒ 生产段里只剩 1 处。
-        //
-        // ⚠ **「数字降下来」在本仓通常是坏消息**（棘轮一律只许降是因为那个数是欠账）。
-        //   这里方向相反：这个数是「接线在不在」的代理，而**代理变了** ——
-        //   ⇒ 不是把地板调低让今天好过，是**把钉子挪到新家上**：下面第二条钉配方本身。
-        assert!(
-            seen >= 1,
-            "`shared/ccm` 里一处 `{looks_like}` 都没有（实得 {seen}）—— \n\
-             F06b-1c 的接线（`resolve_from_daemon` + `resolve_recipe`）是不是被删了？"
-        );
-        // 新家：查找规则本身。删掉它 = 接线没了，而上面那条**看不见**（env 名还在注释里）。
-        let ccm_src = include_str!("../../../../shared/ccm");
-        guard_core::find_pinned(&guard_core::strip_hash_comment_lines(ccm_src), "DAEMON_BIN_RECIPE=")
-            .unwrap_or_else(|e| {
-                panic!("{e}\n⇒ `P4e` 的查找规则不在了（或有两份）。它是 `ccm → daemon` 这条路的**唯一**入口：\n   没有它，只有 cc-monitor 亲自注入 env 时才够得着 daemon，而 skill 跑在普通 shell 里。")
-            });
     }
 
     /// ★★ **F05b 接线钉：每一个打包 job 都必须给 sidecar 备好料。**
