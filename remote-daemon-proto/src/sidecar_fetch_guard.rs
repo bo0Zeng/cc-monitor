@@ -18,9 +18,16 @@
 //!
 //! # 二 · 🔴 这几格的尺子是**代码**，不是整份文件
 //!
-//! 量的是 `production_code` 再 `strip_comment_lines` 之后的文本 ⇒ **注释里可以（而且必须）
-//! 把这几个词写出来**，写不出来就没人知道躲的是什么。⇒ 本条**认不出**「有人把禁词
-//! 藏进注释里当文档」这一形 —— 那本来就不是它要管的事。
+//! 量的是 `production_code` 的产物，而**它自己就把注释剥掉了**（块注释 · 整行 `//` ·
+//! 行尾 `//`，剥法与它剥不干净的那三种情形全部住 `guard_core`，这里不复述）
+//! ⇒ **注释里可以（而且必须）把这几个词写出来**，写不出来就没人知道躲的是什么。
+//! ⇒ 本条**认不出**「有人把禁词藏进注释里当文档」这一形 —— 那本来就不是它要管的事。
+//!
+//! ⚠ 〔本轮自查订正〕头一版在 `production_code` 后面**又串了一道** `strip_comment_lines`，
+//! 并把「尺子是代码」这件事记在那一道上。实测（切刀 M19）：那一道是**空转的** ——
+//! 把它整把换成恒等，这几格一个都不红。真正在剥注释的是 `production_code`。
+//! ⇒ 删掉那一道。留着的话，这份文件里就有**两份关于「注释怎么剥」的说法**，
+//! 而其中一份是假的。
 //!
 //! ⚠ 同理它**认不出语义等价物**：换个名字写一个目录级标记、或用 `unwrap_or_else`
 //! 的别名，它一个字都不会说。这几格买的是「**这四种已经栽过的写法回不来**」，
@@ -39,7 +46,6 @@
 #[cfg(test)]
 mod tests {
     use crate::guard_support::production_code;
-    use guard_core::strip_comment_lines;
     use std::path::{Path, PathBuf};
 
     /// 本 crate 的 `src/`。
@@ -52,7 +58,7 @@ mod tests {
         src_dir().join("sidecars")
     }
 
-    /// 那一层每份文件的**代码文本**（剥掉测试段、再剥掉注释）。
+    /// 那一层每份文件的**代码文本**（`production_code`：剥测试段 + 剥注释，一次做完）。
     fn sidecar_code() -> Vec<(String, String)> {
         guard_core::scan_tree!(&sidecars_dir(), &["rs"])
             .into_iter()
@@ -62,7 +68,7 @@ mod tests {
                     .unwrap_or(&p)
                     .to_string_lossy()
                     .replace('\\', "/");
-                (rel, strip_comment_lines(&production_code(&src)))
+                (rel, production_code(&src))
             })
             .collect()
     }
@@ -136,7 +142,7 @@ mod tests {
     fn each_forbidden_shape_is_really_detected_on_its_own() {
         for (needle, _) in FORBIDDEN {
             let synthetic = format!("fn f() {{ let _ = \"{needle}\"; }}\n");
-            let hit = offenders(&strip_comment_lines(&production_code(&synthetic)));
+            let hit = offenders(&production_code(&synthetic));
             assert_eq!(
                 hit,
                 vec![*needle],
@@ -157,7 +163,7 @@ mod tests {
             FORBIDDEN[0].0
         );
         assert!(
-            offenders(&strip_comment_lines(&production_code(&prose))).is_empty(),
+            offenders(&production_code(&prose)).is_empty(),
             "注释里提到禁词被判成了违规 —— 那会逼着人删掉解释，而解释正是这几格的价值所在"
         );
     }
