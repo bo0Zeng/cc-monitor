@@ -283,7 +283,9 @@ mod tests {
             .split(',')
             .filter_map(|s| {
                 let s = s.trim();
-                s.strip_prefix('"').and_then(|s| s.strip_suffix('"')).map(str::to_string)
+                s.strip_prefix('"')
+                    .and_then(|s| s.strip_suffix('"'))
+                    .map(str::to_string)
             })
             .collect();
         assert!(!out.is_empty(), "`{name}` 抠出来是空表 —— 本条此刻是空转的");
@@ -314,7 +316,10 @@ mod tests {
                 out.push(format!("mod.rs::{name}"));
             }
         }
-        assert!(!out.is_empty(), "一个 per-agent 适配函数都抠不到 —— 抠法坏了");
+        assert!(
+            !out.is_empty(),
+            "一个 per-agent 适配函数都抠不到 —— 抠法坏了"
+        );
         out
     }
 
@@ -751,10 +756,15 @@ mod tests {
         //（吃过头的话两张表会合并，而「17 个 token」那一格会静默地变成另一个数）。
         let caps = ccm_const_list("CAPABILITIES");
         assert!(
-            !agents.iter().any(|a| caps.contains(a) && a != "claude" && a != "codex"),
+            !agents
+                .iter()
+                .any(|a| caps.contains(a) && a != "claude" && a != "codex"),
             "`AGENTS` 抠过头了 —— 吃到了下一个常量：{agents:?}"
         );
-        assert!(caps.len() > agents.len(), "两张表抠成了同一份 —— 锚点没起作用");
+        assert!(
+            caps.len() > agents.len(),
+            "两张表抠成了同一份 —— 锚点没起作用"
+        );
         // per-agent 函数那一格：抠出来的每一项都要带住址前缀（免得两份同名函数被数成一个）。
         let fns = ccm_per_agent_fns();
         for f in &fns {

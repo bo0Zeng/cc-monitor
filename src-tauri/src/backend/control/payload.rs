@@ -1483,7 +1483,7 @@ mod tests {
     /// 🔴 窗口取不到 / 一条都数不到就 **panic**，不许回空表冒充「零条」：
     /// 回空表会把下面的 ⊆ 从「今天成立」翻成「今天全违规」—— 方向相反，但同样是假读数。
     fn forwarded_by_container_path(plan_rs: &str) -> Vec<String> {
-        const START: &str = "        let mut payload = inner\n";
+        const START: &str = "        let mut payload = inner.iter()";
         const END: &str = "\n        // 🔴 **要了登记而登记不成，必须出声**";
         assert_eq!(
             plan_rs.matches(START).count(),
