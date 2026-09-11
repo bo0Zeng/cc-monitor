@@ -245,7 +245,11 @@ mod tests {
             })
             .collect::<Vec<_>>()
             .join("\n");
-        assert!(s.len() > 5000, "control/ccm 三份只有 {} 字节，抽错了？", s.len());
+        assert!(
+            s.len() > 5000,
+            "control/ccm 三份只有 {} 字节，抽错了？",
+            s.len()
+        );
         s
     }
 

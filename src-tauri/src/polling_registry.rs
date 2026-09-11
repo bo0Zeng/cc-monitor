@@ -473,9 +473,8 @@ mod tests {
         //   都不剥 ⇒ 这里**不许**断言「它剥掉了东西」（那不是它对 shell 语料的契约）。
         //   今天被抹掉的 9 行全是 shell 的 `*)` case 分支 —— 那是 `scan()` 在 ccm 上的
         //   真实行为，是另一件事，不是本条该钉的性质。
-        let ccm =
-            fs::read_to_string(root.join("remote-daemon-proto/src/control/ccm/plan.rs"))
-                .unwrap_or_default();
+        let ccm = fs::read_to_string(root.join("remote-daemon-proto/src/control/ccm/plan.rs"))
+            .unwrap_or_default();
         assert!(
             !guard_core::strip_comment_lines(&ccm).trim().is_empty(),
             "剥注释后 `control/ccm/plan.rs` 一个非空白字节都不剩（原文 {} 字节）。两个可能的真因：\n\
@@ -760,7 +759,9 @@ mod tests {
             .iter()
             .map(|f| {
                 fs::read_to_string(root.join("remote-daemon-proto/src/control/ccm").join(f))
-                    .unwrap_or_else(|e| panic!("control/ccm/{f} 读不到 —— 路径变了就把这条一起改：{e}"))
+                    .unwrap_or_else(|e| {
+                        panic!("control/ccm/{f} 读不到 —— 路径变了就把这条一起改：{e}")
+                    })
             })
             .collect::<Vec<_>>()
             .join("\n");
@@ -823,7 +824,6 @@ mod tests {
     //   「一次性模式在 tmux 内由谁去打 `@ccm_sid`」。今天一次性模式**一个字都不说**
     //   （那 356 条里唯一两条判 `K` 的就是它，见 verdicts 第 77–78 行）。
     //   ⇒ 「没人打身份」这件事今天**没有任何判据盯着**，归 `K-R48` 下一拍。
-
 
     /// ★ 把两处**散文纪律**变成机检：这两个文件里一处周期唤醒都不许有。
     #[test]

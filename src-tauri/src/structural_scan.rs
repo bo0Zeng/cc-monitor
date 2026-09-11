@@ -2236,8 +2236,16 @@ mod tests {
                 1,
             ),
             ("src-tauri/src/launch.rs", "resolve_from_daemon", 1),
-            ("src-tauri/src/plugin_class_registry.rs", "ccm_agent_arms", 1),
-            ("src-tauri/src/plugin_class_registry.rs", "ccm_probe_values", 1),
+            (
+                "src-tauri/src/plugin_class_registry.rs",
+                "ccm_agent_arms",
+                1,
+            ),
+            (
+                "src-tauri/src/plugin_class_registry.rs",
+                "ccm_probe_values",
+                1,
+            ),
             (
                 "src-tauri/src/polling_registry.rs",
                 "ccm_fails_loudly_when_no_daemon_can_be_found",
@@ -2259,7 +2267,11 @@ mod tests {
                 "ccm_reaches_the_backend_through_one_shot_subcommands",
                 1,
             ),
-            ("src-tauri/src/backend/control/launch_wire.rs", "launch_via_daemon", 1),
+            (
+                "src-tauri/src/backend/control/launch_wire.rs",
+                "launch_via_daemon",
+                1,
+            ),
             (
                 "src-tauri/src/backend/control/local_backend.rs",
                 "resolve_from_daemon",
