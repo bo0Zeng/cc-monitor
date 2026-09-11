@@ -4706,6 +4706,36 @@ body.settings-window-mode .grid-monitor-trigger {
   opacity: 0.55;
 }
 
+/* === K-R45 乙：实时窗口那一侧的**位置**（只有位置，长相还是上面那三条共用规则） ===
+   实时 tab 没有查看器那样的顶栏可以塞开关 —— 每个 tab 只有一个 `.stream`
+   （`position:absolute; inset:0`，叠在 `#message-stream` 里）。⇒ 开关 + 面板做成一块
+   与 `.stream` **平级**的悬浮层，`.active` 跟着 tab 一起翻，切 tab 时不会串台。
+   🔴 `visibility` 而不是 `display`：与 `.stream` 同一套机制（切 tab 0 reflow，见上面那段注释）。
+   ⚠ **长相在沙箱里验不了**（jsdom 无布局、无真渲染）—— 与上一轮
+   `.session-viewer-inputs-toggle` 同一条诚实边界，登记在件 `§5.6`。 */
+.live-user-inputs {
+  position: absolute;
+  top: 8px;
+  right: 24px;
+  z-index: 3;
+  max-width: min(420px, 60%);
+  visibility: hidden;
+  pointer-events: none;
+}
+.live-user-inputs.active {
+  visibility: visible;
+  pointer-events: auto;
+}
+/* 悬浮层里的面板要自己撑出宽度与边框（查看器那侧靠流内布局，用不着）。
+   ⚠ 这一条只加**位置/边框**，不碰 `.user-inputs` 的任何一条声明 ——
+   共用规则只有一个住址，宿主差异不许倒灌回去。 */
+.live-user-inputs .user-inputs {
+  min-width: 240px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 35%);
+}
+
 /* 复用 .stream 容器样式（滚动 + padding），但改 flex item 布局。
    关键：`.stream` 基类默认 `visibility: hidden`（多 Tab 机制：只有 `.active`
    的那个 tab stream 可见）。SessionViewer 是独立单一 stream，没有 `.active`
