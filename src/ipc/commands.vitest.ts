@@ -452,6 +452,85 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     return out;
   }
 
+  /**
+   * `K-R50`：从一处调用的正文里取**顶层**参数键（按花括号深度切，不是按行）。
+   *
+   * ⚠ 按行取会把嵌套对象的键一起算进来（`account: { kind: "named", configDir }`
+   *   会多出 `kind`/`configDir` 两个）—— 那会让「两处不一样」变成一句假话。
+   */
+  function topLevelKeys(text: string): string[] {
+    const open = text.indexOf("{");
+    if (open < 0) return [];
+    const keys: string[] = [];
+    let depth = 0;
+    for (let i = open; i < text.length; i++) {
+      const c = text[i];
+      if (c === "{" || c === "[") depth++;
+      else if (c === "}" || c === "]") {
+        depth--;
+        if (depth === 0) break;
+      } else if (depth === 1 && /[A-Za-z_]/.test(c)) {
+        const m = /^([A-Za-z_]\w*)\s*([:,}])/.exec(text.slice(i));
+        if (!m) continue;
+        keys.push(m[1]);
+        i += m[0].length - 1;
+        // 🔴 `key: value` 的 **value 不是键** —— 不跳过它，`sessionId: sid,` 里的
+        //   `sid` 会被当成第二个键（本轮实测：它让本条报出两处假的「少传 sid」）。
+        //   ⇒ 命中 `:` 就一路跳到同深度的下一个逗号。
+        if (m[2] === ":") {
+          let d = depth;
+          while (++i < text.length) {
+            const v = text[i];
+            if (v === "{" || v === "[") d++;
+            else if (v === "}" || v === "]") {
+              d--;
+              if (d < depth) break;
+            } else if (v === "," && d === depth) break;
+          }
+          i--;
+        }
+      }
+    }
+    return [...new Set(keys)].sort();
+  }
+
+  it("★★ `K-R50` 同一条命令的每个调用点，传的参数**键集合要一样**", () => {
+    const sites = localLaunchCallSites();
+    // 抽取器自检：一处都没扫到 = 上面那个正则坏了，本条在空转。
+    expect(sites.length, "起本机会话的调用点扫到 0 处 —— 采集器坏了").toBeGreaterThan(0);
+
+    const byCmd = new Map<string, Array<{ file: string; keys: string[] }>>();
+    for (const s of sites) {
+      const cmd = /resume_history_session/.test(s.text)
+        ? "resume_history_session"
+        : "new_local_session";
+      const keys = topLevelKeys(s.text);
+      // 自检二：键一个都取不出 = `topLevelKeys` 坏了。
+      expect(keys.length, `${s.file} 取不出任何参数键 —— topLevelKeys 坏了`).toBeGreaterThan(0);
+      if (!byCmd.has(cmd)) byCmd.set(cmd, []);
+      byCmd.get(cmd)!.push({ file: s.file, keys });
+    }
+
+    const drift: string[] = [];
+    for (const [cmd, list] of byCmd) {
+      const union = [...new Set(list.flatMap((x) => x.keys))].sort();
+      for (const x of list) {
+        const missing = union.filter((k) => !x.keys.includes(k));
+        if (missing.length) drift.push(`${cmd} @ ${x.file} 少传：${missing.join(" · ")}`);
+      }
+    }
+    expect(
+      drift,
+      "同一条命令的调用点之间参数键不一致 —— 少传的那一格在两侧都是可选的，\n" +
+        "所以编译器、类型系统、运行时**没有一个会说话**；后端拿到 `None` 只会静默降级。\n" +
+        "⇒ 「我不需要」与「我忘了」在这里同形，本条就是把它们分开的唯一一格。\n" +
+        "读数：\n" +
+        [...byCmd]
+          .map(([c, l]) => `  ${c}\n` + l.map((x) => `    ${x.file}: ${x.keys.join(",")}`).join("\n"))
+          .join("\n"),
+    ).toEqual([]);
+  });
+
   it("★ 每一处起本机会话的调用都带 `account`（人群 = 现打出来的那几处）", () => {
     const sites = localLaunchCallSites();
     // 抽取器自检：一处都没扫到 = 正则坏了，下面整条在空转。
