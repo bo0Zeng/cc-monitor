@@ -186,13 +186,20 @@ mod tests {
              jsonl，不改、不覆盖、不删任何既有文件 —— 这正是 `D1` 收窄后那条铁律的误差项",
         ),
         (
-            "sidecars/codepicture/acquire.rs",
+            "platform/landing.rs",
             "`K-W2D` 接线：把按需拉回来的代码全景 sidecar 用 `O_EXCL` 新建到落点目录里，\
              并在**新建那一刻**给可执行位（事后改权限那个动词在只读白名单里根本不存在）。\
              ★ 身份进**文件名**（`fetch::landing_name` 带 `build_id`），\
              **一个目录级标记文件都不写** —— 那个目录已经有两个写入方，\
              第三份标记会互相覆盖（`R3` 记的 08-11 那次无限重装循环）。\
-             ⇒ 它落在「只准新增」之内：撞上同名既有文件就失败并出声，不覆盖。",
+             ⇒ 它落在「只准新增」之内：撞上同名既有文件就失败并出声，不覆盖。\
+             ⚠⚠ **`K-R55`（09-11）：这一条从 `sidecars/codepicture/acquire.rs` 改钉到这里。**\
+             搬的是**平台原语**（给可执行位那个动词是 unix 专有的名字），\
+             `K-R52` 当时在 `acquire.rs::land` 的头注里逐字登记过「搬要同拍改本文件，\
+             那不在它写区」——本件就是那一拍。\
+             🔴 **仍然按文件认**：`KR55D2` 点名的失效方向就是「为了搬得动而放宽成按目录认」，\
+             一放宽，`platform/` 底下**每一份**文件都白拿写盘能力。\
+             ⇒ 写盘那一跳今天全 crate 只有这一份，`acquire.rs` 剩下的是纯映射（零 fs 动词）。",
         ),
     ];
 
@@ -870,13 +877,25 @@ mod spawn_registry {
              `control/cc_bus.rs` 今天经它转调**恰好三条**，加第四条会红。",
         ),
         (
-            "observe/watcher.rs",
+            "platform/shell.rs",
             "sh",
-            "跑 `command -v tmux && tmux ls`（两处：探测 + 取观测）。**只读**，\
-             `sh -c` 是为了让 `command -v` 解析 PATH",
+            "`K-R55`（09-11）：**全 crate 唯一一处把命令串交给 POSIX shell 的适配层口**。\
+             今天经它送出去的是 `observe/watcher.rs` 那两跳（`command -v tmux && tmux ls` \
+             与 `tmux display-message -p`）—— 两处都**只读**，`sh -c` 是为了让 \
+             `command -v` 解析 PATH。\
+             ⚠ **这一条从 `observe/watcher.rs` 搬来**：先前那两跳各自裸写 `Command::new(\"sh\")`，\
+             是 `K-R52` 挂在 `cfgless_guard` A2「真漏」堆上的头两条（签字栏逐字写着\
+             「该进适配层（`K33` 裁定二），今天没进」）。\
+             ⚠⚠ **这一处口从此是通用的**，而这条键**分不出**是谁在用它 —— \
+             与 `plugin/invoke.rs` 那条 `<非字面量>` 同一族病：\
+             将来经它起的每一条脚本，写面都落在这条理由底下，而加一个新用户**不会红**。\
+             ⇒ 加新用户时必须回来重读这一段，没有任何机检会替你想起。\
+             今天经它送出去的**恰好两处**，两处都在 `observe/watcher.rs`。",
             "缩性质",
-            "同 `control/gate.rs` 那条：这一条也是只读，\
-             等有判据能机检「这个起进程点只读」时就该摘出受管例外。",
+            "同 `control/gate.rs` 那条：今天经它送的两处都是只读，\
+             等有判据能机检「这个起进程点只读」时就该摘出受管例外。\
+             ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第三种用途 —— \
+             要加就先回来把这一栏的「恰好两处」重新数一遍。",
         ),
     ];
 
@@ -959,7 +978,11 @@ mod spawn_registry {
         // `K-R48`（09-11）：9 → 11，新增 `control/ccm/mod.rs` 两处
         //（`sh -c <渲好的命令串>` 与 `exec <用户要起的 agent>`）——
         // 那是 `shared/ccm` 那个 bash 脚本被删掉之后，它那两处 `exec` 的新住址。
-        const SPAWN_SITES_TODAY: usize = 11;
+        // `K-R55`（09-11）：11 → 10。`observe/watcher.rs` 那**两处** `Command::new("sh")`
+        // 搬进了 `platform/shell.rs`，而那里**合成一处**（两跳共用同一条口）⇒ 净 −1。
+        // ⚠ 这个数变小**不一定**是好事（它也可能是抽取坏了），所以顺带写清怎么复核：
+        // `grep -c 'Command::new(' `，逐文件看，`platform/shell.rs` 那份是新住址。
+        const SPAWN_SITES_TODAY: usize = 10;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,
@@ -1012,14 +1035,17 @@ mod spawn_registry {
             );
         }
         let hook = crate::guard_support::production_code(include_str!("control/tmux_hook.rs"));
-        let watcher = crate::guard_support::production_code(include_str!("observe/watcher.rs"));
+        // 🔴 `K-R55`（09-11）：这一处的住址从 `observe/watcher.rs` 换成了
+        //    `platform/shell.rs` —— 起 shell 那一跳搬进适配层（`K33` 裁定二）。
+        //    ⚠ 换的是**住址**，不是判据：核的仍是「登记的那一条在生产段里真的找得到」。
+        let shell = crate::guard_support::production_code(include_str!("platform/shell.rs"));
         assert!(
             hook.contains("Command::new(\"tmux\")"),
             "清单登记了 tmux_hook 起 tmux，但生产段里找不到了 —— 幽灵条目"
         );
         assert!(
-            watcher.contains("Command::new(\"sh\")"),
-            "清单登记了 watcher 起 sh，但生产段里找不到了 —— 幽灵条目"
+            shell.contains("Command::new(\"sh\")"),
+            "清单登记了 platform/shell.rs 起 sh，但生产段里找不到了 —— 幽灵条目"
         );
     }
 

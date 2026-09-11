@@ -327,15 +327,18 @@ pub enum Transport {
 /// 这是「daemon 不许改动用户既有数据」这条性质的**直接代价**，不是缺陷；
 /// 那一句话把这一种也说出来了。
 ///
-/// ⚠ 〔`K-R52` 09-11 补〕[`Landing::Io`] 那一格今天还装着**第四种**，一并写明：
-/// **非 unix 平台上这一跳没有实现**（[`super::acquire::land`] 的 `#[cfg(not(unix))]` 那一臂）。
-/// 理由住在那个函数的头注里：可执行位是 unix 原语，而 [`landing_name`] 也不带 `.exe`
-/// ⇒ 写下去也 exec 不起来，所以那一臂**不写盘、直接出声**。
-/// 🔴 **如实登记这一格没买到什么**：[`Face::LandingIo`] 那一句用户文案今天**没有**
-/// 把这第四种说出来（它说的是磁盘满 / 目录不存在 / 残骸）。给 [`Landing`] 加一个成员
-/// 要同拍改 `doc/IPC-PROTOCOL.md`（`sidecar_fetch_guard` 双向对账钉着），
-/// 而那份文件不在 `K-R52` 的写区 ⇒ **本件不加成员，已走上报口交回 PM**。
-/// ⇒ 今天的状态是「**不撒谎，但说得不够准**」，不是「说清楚了」。
+/// # 🔴 〔`K-R55` 09-11〕第四种从 [`Landing::Io`] 里**拆出来了** —— [`Landing::Unsupported`]
+///
+/// `K-R52` 那一拍在这里逐字登记过一笔债：「非 unix 平台上这一跳没有实现」当时并进了
+/// [`Landing::Io`]，而 [`Face::LandingIo`] 那一句用户文案说的是磁盘满 / 目录不存在 / 残骸，
+/// **一个字都没提这第四种** ⇒ 它自己把状态写成「**不撒谎，但说得不够准**」。
+/// 加成员要同拍改 `doc/IPC-PROTOCOL.md`（[`crate::sidecar_fetch_guard`] 双向对账钉着），
+/// 而那份文件不在 `K-R52` 的写区。
+///
+/// ⇒ `K-R55` 把它开成独立成员，**不是把那一句文案改宽**：
+/// 把一个可判别的状态压进笼统状态，是本区最贵的那条病 ——
+/// 用户看到「磁盘满 / 去把残骸拿走」会去做一件**在这台机器上永远不会有用**的事。
+/// 新那一格的话逐字说「这台机器上这条路没有实现」，处置也不同（不是清盘，是换台机器 / 等实现）。
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Landing {
     /// 落住了。
@@ -344,6 +347,12 @@ pub enum Landing {
     Denied,
     /// 别的 IO 错（磁盘满也落这一格）。
     Io,
+    /// 🔴 **这台机器上这一跳没有实现** —— 与「去写了、写失败了」不是一件事。
+    ///
+    /// 今天唯一的来路是非 unix 平台（[`crate::platform::landing::LandFailed::Unsupported`]）：
+    /// 那里没有「可执行位」这个概念，而 [`landing_name`] 也不带 `.exe`
+    /// ⇒ 就算把字节原样写下去，那一份**也 exec 不起来** ⇒ 那一臂不写盘、直接说没有。
+    Unsupported,
 }
 
 /// `std::io` 那一侧的错怎么翻成 [`Landing`] —— 纯映射，不碰世界。
@@ -382,6 +391,10 @@ pub enum Face {
     LandingIo,
     /// 落点那个文件问不出来。
     LandingUnreadable,
+    /// 🔴 `K-R55`：**这台机器上落盘那一跳没有实现**（[`Landing::Unsupported`]）。
+    /// 与 [`Face::LandingIo`] 刻意分开：那一格说的是「去写了、撞上 IO 错」，
+    /// 处置是清盘 / 腾地方；这一格说的是「这条路在这台机器上根本没修好」，清盘没有用。
+    LandingUnsupported,
 }
 
 impl Face {
@@ -398,6 +411,7 @@ impl Face {
             Face::LandingDenied => "sidecar_landing_denied",
             Face::LandingIo => "sidecar_landing_io",
             Face::LandingUnreadable => "sidecar_landing_unreadable",
+            Face::LandingUnsupported => "sidecar_landing_unsupported",
         }
     }
 
@@ -414,6 +428,7 @@ impl Face {
             Face::LandingDenied => "代码全景 sidecar 写不进落点目录：那个目录没有写权限，或挂在只读文件系统上。".to_string(),
             Face::LandingIo => "代码全景 sidecar 落盘时撞上 IO 错：磁盘满、落点目录不存在、或者那个落点上已经躺着一份同名文件——最后那种多半是上次写到一半留下的残骸，而这一层只许新增、删不掉它，要人去把它拿走。".to_string(),
             Face::LandingUnreadable => "问不出落点上那份代码全景 sidecar 在不在（stat 失败）——这一格刻意不猜：既不当它在，也不当它不在。".to_string(),
+            Face::LandingUnsupported => "这台机器上还没有实现「把代码全景 sidecar 落到盘上」这一跳：那一步要在新建文件的同时给它可执行位，而这个平台上没有这个概念，落点的文件名也不带 .exe——写下去也跑不起来，所以一个字节都没写。这不是磁盘或权限的问题，腾地方、改权限都没有用。".to_string(),
         }
     }
 }
@@ -490,6 +505,7 @@ pub fn landing_verdict(l: Landing) -> Result<(), Face> {
         Landing::Landed => Ok(()),
         Landing::Denied => Err(Face::LandingDenied),
         Landing::Io => Err(Face::LandingIo),
+        Landing::Unsupported => Err(Face::LandingUnsupported),
     }
 }
 

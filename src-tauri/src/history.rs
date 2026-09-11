@@ -1256,6 +1256,75 @@ fn build_local_posix_command(
 #[cfg(not(windows))]
 const NO_TMUX_NAME: &str = "没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸";
 
+/// 🔴 `K-R55`（09-11）：**本机 ccm 探测的取值口** —— 与 [`RelayFactSources`] 是同一条缝的形状。
+///
+/// # 它为什么非有不可（不是「为了好看」，是一条判据今天买不到它要的东西）
+///
+/// `a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container` 要证的是
+/// **[`launch_local`] 那一行 `relay.is_empty()` 真的在挡**。要证它，判据必须真的驱动
+/// [`launch_local`]，而 [`launch_local`] 在 POSIX 上一定会经过 [`render_local_ccm`]
+/// ⇒ 一定会问「这台机器装没装 ccm」。
+///
+/// 没有这条缝时，那个问题的答案**由跑判据的那台机器给** ——
+/// 沙箱里没装 ⇒ [`render_local_ccm`] 恒 `Err(NotInstalled)` ⇒ **每一格都回落到旧路**
+/// ⇒ 把生产那道闸翻成恒真也看不出区别。于是判据只剩一条出路：**自己再抄一份那道闸**
+///（先算前缀、自己判空），而那正是本仓判过三次的那一形 —— **证的是它自己那份拷贝**。
+/// PM 09-11 现打：把 `if relay.is_empty()` 换成 `if true`，
+/// 点名单跑 **1 passed**、全量 `cargo --lib` **1472 passed / 0 failed**，一个字都不响。
+///
+/// ⇒ 把「装没装 / 有哪些能力」收进一个可替换的取值口，判据喂一份**确定的** ccm 事实进去，
+/// 于是「走不走得进容器」这件事重新变成由**生产那一行**决定的一维。
+///
+/// # 它买不到什么（如实写）
+///
+/// - **探测自己答得对不对**：那是 `ccm_probe` 自己那几条判据的事（本缝只管「问不问」）。
+/// - **生产上插进这条缝的是不是它**：由
+///   `the_local_launch_really_asks_the_production_ccm_probe` 按**函数地址**对拍，
+///   不是按文本 —— 理由与 [`PRODUCTION_RELAY_FACTS`] 那一条相同。
+/// - **谁绕开这条缝直接调 [`crate::ccm_probe::probe_local_ccm`]**：今天没有人群闸数它
+///   （`RelayFactSources` 那三个取值口有一道，住 `payload.rs`）。**登记，不假装钉住了。**
+#[cfg(not(windows))]
+#[derive(Clone, Copy)]
+pub(crate) struct CcmProbeSource(pub(crate) fn() -> crate::ccm_probe::CcmProbeResult);
+
+/// 生产上这条缝里插的那个取值口。**只有这一处**，判据按地址对拍它。
+#[cfg(not(windows))]
+pub(crate) const PRODUCTION_CCM_PROBE: CcmProbeSource =
+    CcmProbeSource(crate::ccm_probe::probe_local_ccm);
+
+#[cfg(all(test, not(windows)))]
+thread_local! {
+    /// 判据装进来的替身。**线程局部** ⇒ 同进程别的判据不受影响（`cargo test` 是多线程跑的）。
+    static CCM_PROBE_OVERRIDE: std::cell::Cell<Option<CcmProbeSource>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// 装替身，离开作用域自动还原（`assert!` 炸了也还原）。
+#[cfg(all(test, not(windows)))]
+pub(crate) struct CcmProbeGuard(Option<CcmProbeSource>);
+
+#[cfg(all(test, not(windows)))]
+impl Drop for CcmProbeGuard {
+    fn drop(&mut self) {
+        CCM_PROBE_OVERRIDE.with(|c| c.set(self.0));
+    }
+}
+
+#[cfg(all(test, not(windows)))]
+pub(crate) fn override_ccm_probe(src: CcmProbeSource) -> CcmProbeGuard {
+    CcmProbeGuard(CCM_PROBE_OVERRIDE.with(|c| c.replace(Some(src))))
+}
+
+/// 这一跳要用的那个取值口。生产上恒是 [`PRODUCTION_CCM_PROBE`]。
+#[cfg(not(windows))]
+fn ccm_probe_source() -> CcmProbeSource {
+    #[cfg(test)]
+    if let Some(s) = CCM_PROBE_OVERRIDE.with(|c| c.get()) {
+        return s;
+    }
+    PRODUCTION_CCM_PROBE
+}
+
 #[cfg(not(windows))]
 fn render_local_ccm(
     action: &LocalPsAction,
@@ -1275,7 +1344,10 @@ fn render_local_ccm(
     // ★ 探测与渲染**分家**（P3t-Y3）：探测是这台机器的事实，渲染是纯函数。
     // 合在一起时，判据的结论会跟着「跑测试的机器装没装 ccm」变 —— 而「本机恰好没装
     // ⇒ 判据静默 return ⇒ 报绿」与「真的测过了」在输出上完全一样，那是「0 passed 不是绿」同族。
-    let probe = crate::ccm_probe::probe_local_ccm();
+    // ⚠ 走 [`ccm_probe_source`] 而不是直接调 —— 直接调时「这台机器装没装 ccm」是判据
+    //   够不着的一维，于是任何想驱动 [`launch_local`] 的判据都只能自己再抄一份闸
+    //   （理由与失效读数住 [`CcmProbeSource`] 头注）。
+    let probe = (ccm_probe_source().0)();
     let caps: std::collections::BTreeSet<String> = probe.capabilities.iter().cloned().collect();
     render_local_ccm_with(action, launcher, account, tmux_name, &caps, probe.installed)
 }
@@ -3011,18 +3083,42 @@ mod tests {
     /// ⇒ **这一条从「成因是说不出名字」改成「成因是探不到那个能力」。**
     /// 前者是结构性的（只能等改 `LaunchAccount`），后者**有可执行的退役条件**。
     ///
+    /// # 🔴🔴🔴 `K-R55` 09-11：**上一版自己抄了一份被测逻辑** —— 换成量真正送出去的那一串
+    ///
+    /// 上一版的循环体逐字是：
+    /// ```text
+    /// let prefix = relay_prefix_for_launch(&act, acct).expect(…);
+    /// if !prefix.is_empty() { relayed.push(label); }
+    /// if prefix.is_empty() && renders(acct) { containered.push(label); }
+    /// ```
+    /// —— 那个 `prefix.is_empty() &&` **就是 [`launch_local`] 里那道闸的一份拷贝**。
+    /// ⇒ 它证的是自己那份拷贝，生产那一行翻不翻它都不知道。
+    /// PM 09-11 现打：把生产那行换成 `if true`，**点名单跑 1 passed**；
+    /// 实现方 09-11 在沙箱里复打了同一刀，**全量 `cargo --lib` 1472 passed / 0 failed**
+    /// （量于 `07e4e72` + 那一刀，镜像 `ccmon-devbox:latest`，`CARGO_TARGET_DIR=pm-targets/k-r55`）
+    /// —— 全仓**没有任何一条**判据对那一刀出声。
+    ///
+    /// ⇒ 本条现在**真的驱动 [`launch_local`]**，两个集合都从
+    /// **[`LaunchSink`] 那条缝上收到的那个字符串**里读出来，一个字节的判断逻辑都不自带：
+    /// - 「走中转」= 那一串里有 `ANTHROPIC_BASE_URL`（中转前缀唯一的形状）；
+    /// - 「有容器」= 那一串里有 `--tmux=`（`render_ccm_invocation` 唯一产出它的地方；
+    ///   回落路 `build_local_posix_command` 从不说 tmux）。
+    ///
+    /// 「装没装 ccm」由 [`CcmProbeSource`] 那条缝喂进来（**不问跑判据的这台机器** ——
+    /// 沙箱里没装 ccm，不喂的话四格会一起落到回落路，那时本条又变成空真）。
+    ///
     /// # 今天的成因（本条逐格量出来，不是推的）
     ///
     /// 分母 = [`LaunchAccount`] 的**全部形状**加上「参数缺席」，并且**具名那一格喂两个号**
     /// （一个在中转表里、一个不在 —— 只喂一个的话「中转在不在场」这一维的取值域是 1，
     /// 那正是 `D6 阻-2` 逮到过的形状）：
     ///
-    /// | 形状 | [`relay_prefix_for_launch`] | 走不走 ccm 容器（= [`launch_local`] 的判据） |
+    /// | 形状 | 送出去那一串带不带中转前缀 | 带不带 `--tmux=`（= [`launch_local`] 的判据） |
     /// |---|---|---|
-    /// | 缺席（`None`） | 空串（不走中转） | 否 —— 渲染器说不出「继承」 |
-    /// | `Base`（账号 0） | 空串（不走中转） | **是** |
-    /// | `Named{acct-a}`（**在中转表里**） | 非空 | 否 —— `relay.is_empty()` 那一行挡住 |
-    /// | `Named{acct-b}`（不在表里） | 空串 | **是**（本件开的就是这一格） |
+    /// | 缺席（`None`） | 不带（不走中转） | 否 —— 渲染器说不出「继承」 |
+    /// | `Base`（账号 0） | 不带（不走中转） | **是** |
+    /// | `Named{acct-a}`（**在中转表里**） | 带 | 否 —— `relay.is_empty()` 那一行挡住 |
+    /// | `Named{acct-b}`（不在表里） | 不带 | **是**（`K-R53` 开的就是这一格） |
     ///
     /// # ⚠ 它连带说明了一件别处的事（别让那条判据被读宽）
     ///
@@ -3073,23 +3169,39 @@ mod tests {
             windows: not_windows,
         });
 
-        let renders = |acct: Option<&LaunchAccount>| {
-            render_local_ccm_with(
-                &act,
-                None,
-                acct,
-                Some("s1abcdef-cc"),
-                &caps_of_a_current_ccm(),
-                true,
-            )
-            .is_ok()
-        };
+        // 「这台机器装没装 ccm」也由替身给 —— 本条**不问跑它的那台机器**
+        //（沙箱里没装，不喂的话四格一起落到回落路 ⇒ 本条变成空真）。
+        fn a_current_ccm() -> crate::ccm_probe::CcmProbeResult {
+            crate::ccm_probe::CcmProbeResult {
+                installed: true,
+                version: Some("0.0.0-判据替身".to_string()),
+                capabilities: caps_of_a_current_ccm().into_iter().collect(),
+            }
+        }
+        let _probe = override_ccm_probe(CcmProbeSource(a_current_ccm));
+
+        // 送法替身：本条量的是 [`launch_local`] **真正交出去的那一串**，不是源码、
+        // 也不是本条自己再算一遍的什么东西。
+        thread_local! {
+            static SENT: std::cell::RefCell<Vec<String>> =
+                const { std::cell::RefCell::new(Vec::new()) };
+        }
+        fn recorder(cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
+            SENT.with(|v| v.borrow_mut().push(cmd.to_string()));
+            Ok(())
+        }
+        let _sink = override_launch_sink(LaunchSink(recorder));
+
+        // 容器名由调用方给（`mintTmuxName` 那一侧的事），这里只要一个合法的名字。
+        const TMUX: &str = "s1abcdef-cc";
 
         // ⓪ **重新裁定的那一格**：渲染器**单独看**已经不再互斥了 ——
         //    在中转表里的那个号，渲染器今天渲得出来。互斥不再由它保。
         //    （这一格红 = `K-R53` 那一刀被退掉了，那时下面几格的理由也就不成立。）
+        //    ⚠ 走的是**生产那个渲染器** [`render_local_ccm`]（探测经缝喂），
+        //    不是它的纯函数半 —— 后者会把「生产上探测这一跳还在不在」漏在射程外。
         assert!(
-            renders(Some(&acct_a)),
+            render_local_ccm(&act, None, Some(&acct_a), Some(TMUX)).is_ok(),
             "渲染器又对具名账号短路了 —— 那是 `K-R53` 之前的形状，\n\
              本条头注里那段「成因换成探不到能力」就不再成立，回去重新裁定。"
         );
@@ -3103,12 +3215,22 @@ mod tests {
             ("Named{acct-b·不在表里}", Some(&acct_b)),
         ];
         for (label, acct) in shapes {
-            // 与 `launch_local` **同一条判据**：先算前缀，非空就根本不问渲染器。
-            let prefix = relay_prefix_for_launch(&act, acct).expect("这组输入下前缀算得出来");
-            if !prefix.is_empty() {
+            // 🔴 **真去走生产那条路** —— 上一版在这里自己抄了一份 `launch_local` 的闸
+            //    （见头注 `K-R55` 那一节），于是把生产那一行翻掉一个字都不响。
+            launch_local(&act, None, None, acct, Some(TMUX))
+                .unwrap_or_else(|e| panic!("形状 {label} 这一趟拉起本身就失败了：{e}"));
+            let sent = SENT.with(|v| {
+                v.borrow()
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| panic!("形状 {label} 这一趟什么都没送出去"))
+            });
+            // 两个判定都只看**那一串**：`ANTHROPIC_BASE_URL` 只可能来自中转前缀，
+            // `--tmux=` 只可能来自 `render_ccm_invocation`（回落路从不说 tmux）。
+            if sent.contains("ANTHROPIC_BASE_URL") {
                 relayed.push(label);
             }
-            if prefix.is_empty() && renders(acct) {
+            if sent.contains("--tmux=") {
                 containered.push(label);
             }
         }
@@ -5044,6 +5166,51 @@ mod tests {
             "没装替身时最后送出去的那一步不是 `launch::launch_local_posix` / \
              `launch::launch_powershell_window` ——\n\
              生产那一跳被换掉了，而驱动 `launch_local` 的那条行为判据装了替身、看不见这件事"
+        );
+    }
+
+    /// ★★★ `K-R55`（09-11）：**本机 ccm 探测那条新缝，生产上插的就是那个真取值口。**
+    ///
+    /// 上一条对拍的是中转那三格与送法；这一条是同一个形状的第四处 ——
+    /// [`CcmProbeSource`] 是本拍为了让
+    /// `a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`
+    /// 真去走生产那条路才开的，而**开一条缝就欠一条地址对拍**：
+    /// 缝一旦在生产上也指着一份写死的答案（比如「恒装着、能力全有」），
+    /// 那条行为判据**照绿**（它本来就装替身），而生产上「没装 ccm 要诚实降级」整条没了。
+    ///
+    /// 两跳都拍，理由与上一条第二半逐字同一条：只拍 `const` 时，
+    /// 有人把 [`ccm_probe_source`] 改成「不装替身也回一份写死的」就绕过去了。
+    #[test]
+    #[cfg(not(windows))]
+    fn the_local_launch_really_asks_the_production_ccm_probe() {
+        // 反空真排最前：这把尺子分得出「不是那个函数」，否则下面两条恒真。
+        fn not_it() -> crate::ccm_probe::CcmProbeResult {
+            crate::ccm_probe::CcmProbeResult {
+                installed: false,
+                version: None,
+                capabilities: vec![],
+            }
+        }
+        assert!(
+            !std::ptr::fn_addr_eq(
+                PRODUCTION_CCM_PROBE.0,
+                not_it as fn() -> crate::ccm_probe::CcmProbeResult
+            ),
+            "这把尺子对任何同型函数都说「是」—— 它恒真，本条按红处理"
+        );
+        let production =
+            crate::ccm_probe::probe_local_ccm as fn() -> crate::ccm_probe::CcmProbeResult;
+        // ⚠ **刻意不装替身**（替身住 thread-local ⇒ 别的判据装的那份影响不到这里）。
+        assert!(
+            std::ptr::fn_addr_eq(ccm_probe_source().0, production),
+            "没装替身时 `ccm_probe_source()` 交出来的不是 `ccm_probe::probe_local_ccm` ——\n\
+             生产那一跳被换掉了，而只对拍那个 `const` 的判据看不见（第六层的形状）"
+        );
+        assert!(
+            std::ptr::fn_addr_eq(PRODUCTION_CCM_PROBE.0, production),
+            "生产上「这台机装没装 ccm、有哪些能力」不再由 `ccm_probe::probe_local_ccm` 答 ——\n\
+             换成一份写死的「装着且能力全有」，没装 ccm 的机器会渲出一条带未知 flag 的命令，\n\
+             而那时回落分支已经不在了（`render_local_ccm` 头注里那个 fail-open）"
         );
     }
 
