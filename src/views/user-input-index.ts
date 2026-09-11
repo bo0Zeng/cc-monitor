@@ -64,7 +64,12 @@ export interface UserInputEntry {
   /** 摘要文本（已截断），列表上显示的就是它 */
   excerpt: string;
   timestamp: string;
-  /** 在传进来的那个数组里的下标 */
+  /**
+   * 它在**来源那个数组**里的下标。
+   * 查看器 = `payloads` 的下标（那份是全量的）；
+   * 实时窗口 = 本 tab 账本里的位置（它是一条一条攒起来的，没有「全量数组」可言）。
+   * ⚠ 两条路的分母不同 —— 这个字段只说「第几个」，不是跨路可比的坐标。
+   */
   payloadIndex: number;
 }
 
@@ -106,6 +111,22 @@ function toExcerpt(text: string): string {
  * 口径见头注 §「口径」。**没有 uuid 的一律不要**：没有 uuid 就跳不过去，
  * 列出来就是一条点了没反应的项。
  */
+/**
+ * 流式那条路的入口：**一条一条**喂。不算用户输入 ⇒ 返回 `null`。
+ *
+ * 实时窗口（`tabs.ts::onLine`）手上一次只有一条 payload，而且**过完就没了**
+ * （已渲染的记录文本在前端零处留存 —— 读数与分母在件 `§5.2`）。
+ * ⇒ 它只能一条一条判、攒进自己的账本。
+ *
+ * 🔴 **口径不在这里复述一份**：本函数**直接调** `collectUserInputs`，
+ * 所以「一条用户输入算不算」永远只有头注那**一个**住址。
+ * 只有 `payloadIndex` 是本函数补的 —— 它在账本里的位置，喂它的人才知道。
+ */
+export function toUserInputEntry(message: unknown, index: number): UserInputEntry | null {
+  const [e] = collectUserInputs([message]);
+  return e ? { ...e, payloadIndex: index } : null;
+}
+
 export function collectUserInputs(records: readonly unknown[]): UserInputEntry[] {
   const out: UserInputEntry[] = [];
   for (let i = 0; i < records.length; i++) {
