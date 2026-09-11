@@ -1,5 +1,5 @@
 # K-R55 实现方自用量具：量「spawn 之后立刻读 /proc/<pid>/environ 读回 0 字节」的发生率。
-# 住址：本文件（仓内 evidence/）。被测对象 = .claude/worktrees/k-r55 那棵树；跑法见 evidence/K-R55-sandbox-run.sh。
+# 住址：本文件（仓内 evidence/）。被测对象 = .claude/worktrees/k-r55 那棵树；跑法见 evidence/K-R55-sandbox-run.py。
 # 被测对象不是本仓代码，是内核那个 exec 窗口本身（判据的前提）。
 import os, subprocess, sys, time
 N = int(sys.argv[1]) if len(sys.argv) > 1 else 400

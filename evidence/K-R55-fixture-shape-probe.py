@@ -1,5 +1,5 @@
 # K-R55 实现方自用量具②：**照那条 flaky 判据的形状**复现一遍，量「丙（对照活体）的
-# 住址：本文件（仓内 evidence/）。被测对象 = .claude/worktrees/k-r55 那棵树；跑法见 evidence/K-R55-sandbox-run.sh。
+# 住址：本文件（仓内 evidence/）。被测对象 = .claude/worktrees/k-r55 那棵树；跑法见 evidence/K-R55-sandbox-run.py。
 # /proc/<pid>/environ 在该读的那一刻是 0 字节」的发生率。
 # 被测对象 = 判据的夹具形状本身（不是仓里的 Rust 代码）。
 import os, subprocess, sys, time
