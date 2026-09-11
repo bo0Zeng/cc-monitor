@@ -2893,39 +2893,62 @@ mod tests {
         };
         let base = LaunchAccount::Base;
 
-        // 分母 = `LaunchAccount` 的全部形状 + 「参数缺席」。**穷尽性由下面这个 `match` 买**：
-        // 加一个变体而不回来加一行 ⇒ 编译不过。
-        let denominator: [&str; 4] = ["缺席", "Base", "Named{有名字}", "Named{只有目录}"];
-        let shapes: [(&str, Option<&LaunchAccount>); 4] = [
-            ("缺席", None),
-            ("Base", Some(&base)),
-            ("Named{有名字}", Some(&named_with_name)),
-            ("Named{只有目录}", Some(&named_dir_only)),
-        ];
-        // 穷尽性守卫：把每一格映回自己的标签，加变体时这里编译不过。
-        for (label, acct) in shapes {
-            let mapped = match acct {
+        // 分母 = `LaunchAccount` 的全部形状 + 「参数缺席」。
+        //
+        // ⚠ 标签**只有一处住址**（`label_of` 里那个 `match`）—— 本条第一版在它旁边另写了一份
+        //   `denominator: [&str; 4]` 字面量，那正是 `brief` 第 13b 条禁的「闭集重抄一份」：
+        //   两份字面量迟早漂开，而漂开的那天两边看起来都没错。⇒ 标签一律现算。
+        //
+        // **穷尽性由 `label_of` 那个 `match` 买**：加一个变体而不回来加一行 ⇒ 编译不过，
+        // 不是静默漏一格。这正是 `KR53D1` 的失效方向逐字
+        //（「再加一个入口而它复用了那个缺一态的旧函数」）在 Rust 这一侧的落点。
+        fn label_of(acct: Option<&LaunchAccount>) -> &'static str {
+            match acct {
                 None => "缺席",
                 Some(LaunchAccount::Base) => "Base",
                 Some(LaunchAccount::Named { name: Some(_), .. }) => "Named{有名字}",
                 Some(LaunchAccount::Named { name: None, .. }) => "Named{只有目录}",
-            };
-            assert_eq!(mapped, label, "分母这张表与 `LaunchAccount` 的形状对不上了");
+            }
         }
+        let shapes: [Option<&LaunchAccount>; 4] = [
+            None,
+            Some(&base),
+            Some(&named_with_name),
+            Some(&named_dir_only),
+        ];
+        // 反重复：四格必须**互不相同**，否则「四格都喂过了」是假的
+        //（例：两格都是 `Named{只有目录}` ⇒ 有一种形状根本没被喂过，而条数照样是 4）。
+        let labels: Vec<&str> = shapes.iter().map(|a| label_of(*a)).collect();
+        let mut uniq = labels.clone();
+        uniq.sort_unstable();
+        uniq.dedup();
         assert_eq!(
-            denominator.len(),
-            shapes.len(),
-            "分母写死了两份，且两份不一样"
+            uniq.len(),
+            labels.len(),
+            "分母这张表里有两格是同一种形状 ⇒ 有一种形状没被喂过。实得：{labels:?}"
         );
 
-        let mut verdicts = Vec::new();
-        for (label, acct) in shapes {
-            let r = render_local_ccm_with(&act, None, acct, Some("s1abcdef-cc"), &caps, true);
-            verdicts.push((label, r));
-        }
+        // 结果**按标签取**，不按下标取 —— 下标取法在 `shapes` 顺序一变时会悄悄换一格来断，
+        // 那是一次静默的假读数（本区最贵的那族）。取不到就 `panic`，不会空转。
+        let verdicts: Vec<(&str, Result<String, String>)> = shapes
+            .iter()
+            .map(|acct| {
+                (
+                    label_of(*acct),
+                    render_local_ccm_with(&act, None, *acct, Some("s1abcdef-cc"), &caps, true),
+                )
+            })
+            .collect();
+        let verdict = |label: &str| -> &Result<String, String> {
+            &verdicts
+                .iter()
+                .find(|(l, _)| *l == label)
+                .unwrap_or_else(|| panic!("分母里没有 `{label}` 这一格 —— 下面那条断言在空转"))
+                .1
+        };
 
         // ① 缺席 —— `Err`，且理由必须仍然点着「继承」（见头注那张三说法对照表）。
-        let (_, r) = &verdicts[0];
+        let r = verdict("缺席");
         assert!(
             r.as_ref().is_err_and(|e| e.contains("继承")),
             "「参数缺席」= 继承环境。它今天必须 `Err` 且理由点着「继承」——\n\
@@ -2934,15 +2957,15 @@ mod tests {
         );
 
         // ② Base —— `Ok`，而且渲染出来的那条真的带 `--base`。
-        let (_, r) = &verdicts[1];
-        let cmd = r.as_ref().expect("账号 0 是本机唯一一直渲染得出来的那一格");
+        let r = verdict("Base");
+        let cmd = r.as_ref().expect("账号 0 是本机一直渲染得出来的那一格");
         assert!(
             cmd.contains("--base"),
             "账号 0 必须显式 `--base`，实得：{cmd}"
         );
 
         // ③ Named{有名字} —— **本件要开的就是这一格**：`Ok`，且带 `--account z`。
-        let (_, r) = &verdicts[2];
+        let r = verdict("Named{有名字}");
         let cmd = r.as_ref().unwrap_or_else(|e| {
             panic!(
                 "具名账号**说得出名字**时必须渲染得出来 —— 说不出来就意味着盘上四个本机拉起入口里\n\
@@ -2958,7 +2981,7 @@ mod tests {
         // ④ Named{只有目录} —— 仍然 `Err`：**不许从目录名推一个 `--account` 出来**。
         //    推错的失效方向是 `shared/ccm` 当场 `die`（退出码 2）= 一次能起的会话变成报错，
         //    与 `relay_account_id_of_dir` 那条「推错就回落」的保守方向**相反**。
-        let (_, r) = &verdicts[3];
+        let r = verdict("Named{只有目录}");
         assert!(
             r.as_ref().is_err_and(|e| e.contains("account")),
             "只有目录没有名字时必须诚实短路（§35），**不许拿目录名当 `--account`**。实得：{r:?}"
