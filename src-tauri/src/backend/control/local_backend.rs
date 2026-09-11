@@ -1065,7 +1065,9 @@ const EXTRACTION_REFUSED_MARKER: &str = "放不下来";
 ///
 /// 把后者说成前者，就是 09-10 一整天在治的那一形（读面把「读不到」说成「你没有」）。
 /// ⇒ 这一支自己拼一句**结构上分得开**的话（[`EXTRACTION_REFUSED_MARKER`]），
-/// 并由 [`start_or_extract`] 在返回之前 `tracing::error!` 吼一声 ——
+/// 并由 [`resolve_or_extract`] 在返回之前 `tracing::error!` 吼一声 ——
+/// 〔`K-R43` 订正住址：那一声原先在 [`start_or_extract`] 体内，抽进共用那份之后
+///  **两条生产路共用这一声** —— 常驻那条（`local_daemon.rs`）从此也吼得出来〕
 /// 光靠返回值不够：调用方可能只把它记进 `info`。
 ///
 /// # 纯函数
@@ -1426,8 +1428,7 @@ fn local_stdio_consumer_guarded(
     }
 }
 
-/// P2z（`control-parity` 的定框 C10）：**生产入口的自释放版** —— exe 旁边找不到 sidecar 时，
-/// 把内嵌的那份释放到 `extract_dir` 再起。这就是「单 exe 也能起 daemon 进程」那句话的落点。
+/// P2z（`control-parity` 的定框 C10）：**「那个 daemon 二进制在哪」的唯一一份答案。**
 ///
 /// 顺序刻意是 **先找旁边、再释放**：开发构建里 `target/debug/` 旁边就有一个**更新**的二进制，
 /// 那条路径优先于内嵌那份（内嵌的是打包时的快照）。
@@ -1436,7 +1437,7 @@ fn local_stdio_consumer_guarded(
 /// 测到的是旧路径，而读数看起来和「释放成功」一模一样。
 ///
 /// `embedded` 由调用方给（`sftp::daemon_binary(arch)` 的产物）—— 本模块不认识 `sftp`，
-/// 也不认识「当前是什么 arch」，那都是宿主知识。
+/// 也不认识「当前是什么 arch」，那都是宿主知识。`make_executable` 同理（`C10`）。
 ///
 /// # `K-R42`：`embedded` 给 `None` 时还有第二个来源
 ///
@@ -1446,6 +1447,74 @@ fn local_stdio_consumer_guarded(
 /// ⇒ 这里补上 [`native_embedded_daemon`]：宿主给不出时，问这一份产物自己带没带。
 /// **次序刻意是「宿主优先」** —— 那条路今天在 Linux 上是活的（安装包那份也走它），
 /// 本件不许让它退化；本层这份只在它交白卷时才说话。
+///
+/// # 🔴 `K-R43`：本函数**为什么是从 [`start_or_extract`] 里抽出来的**
+///
+/// 抽出来之前，「找那个二进制」有**两份手写实现**：本模块的 [`start_or_extract`]
+/// 与 `local_daemon.rs::resolve_daemon_bin`（常驻那条路不要监护那半，用不了前者）。
+/// 两份之间只有一条 `the_two_resolution_paths_still_agree_on_the_order` 盯着，而它**只对拍顺序**。
+///
+/// ⚠ **那条判据眼皮底下真的漂了一次，而它全程绿**〔`K-R43` 现打，读数住件文件 `§9`〕：
+/// `K-R42` 只给 [`start_or_extract`] 接上了上面那两段（问产物带没带 · 释放失败说一句分得开的话），
+/// `resolve_daemon_bin` 一个字没动 —— 顺序仍是「先旁边、再释放」⇒ 那条判据**照样绿**。
+/// 于是同一台机器上，两条路对**同一个失败**给出的是两句性质不同的话。
+/// ⇒ 处置**不是**再加一条「两边内容也要一样」的对拍（那是「测自己的副本」的近亲，
+/// 本模块 [`local_extract_name`] 的头注逐字论证过同一件事），是**只留一份**。
+///
+/// # 它不做什么
+///
+/// **不监护**。监护是 [`start_or_extract`] 那一半 —— 常驻那条路（`local_daemon.rs`）
+/// 起完就脱离，它要的只是这个答案。**「找」与「监护」焊在一起，正是当初逼出第二份实现的那颗钉子。**
+pub fn resolve_or_extract(
+    target_triple: &str,
+    extract_dir: &Path,
+    embedded: Option<(&str, &[u8])>,
+    make_executable: &dyn Fn(&Path) -> Result<(), String>,
+) -> Resolved {
+    let beside = resolve_beside_this_exe(target_triple);
+    if matches!(beside, Resolved::Found(_)) {
+        return beside;
+    }
+    // `K-R42`：宿主给不出就问这一份产物自己带没带（头注「第二个来源」那一段）。
+    // ⚠ 中间这个**带标注的局部**不是多余的：内嵌那份是 `&'static`，直接
+    // `embedded.or_else(native_embedded_daemon)` 会把两边的生存期**往 `'static` 上**统一，
+    // 于是编译器要求调用方那个借来的 `embedded` 也活到 `'static`（实测 `E0521`）。
+    // 标注一下就让它按**短的那个**统一（`'static` 往下兼容，反过来不行）。
+    let carried: Option<(&str, &[u8])> = native_embedded_daemon();
+    let Some((build_id, bytes)) = embedded.or(carried) else {
+        // 两个来源都空（`cfg(embedded_daemons)` 与 `cfg(embedded_native_daemon)` 都未置）⇒
+        // 诚实降级，把 `beside` 的 reason/looked_at 原样交回，别伪造一个新理由。
+        return beside;
+    };
+    match extract_embedded_to(extract_dir, build_id, bytes, make_executable) {
+        Ok(p) => Resolved::Found(p),
+        Err(e) => {
+            // 🔴 `K-R42` 硬要求①：**这一支不许被读成「这份产物没带后端」。**
+            //    它是「带了，但这台机器不让我把它放下来」——两件事的下一步完全不同
+            //    （前者去装安装包，后者去看那个目录的权限 / 杀毒软件）。
+            //    09-10 一整天治的正是这一形：读面把「读不到」说成「你没有」。
+            let reason = extraction_failure_reason(extract_dir, &e);
+            // 光靠返回值不够响：调用方可能只把它记进 `tracing::info!`
+            //（`K-R43` 之前，`local_daemon.rs` 那条自动起的路对没有记录的失败就是这么走的
+            //  —— 而它当时**根本走不到这里**，那条路自己拼了一句分不开的话）。
+            // ⇒ 这一支自己吼一声 error，日志里一定留得下。**两条路今天共用这一声。**
+            tracing::error!("{reason}");
+            Resolved::Missing {
+                reason,
+                looked_at: match beside {
+                    Resolved::Missing { looked_at, .. } => looked_at,
+                    Resolved::Found(_) => Vec::new(),
+                },
+            }
+        }
+    }
+}
+
+/// P2z：**生产入口的自释放版** —— [`resolve_or_extract`] 找到就起并看住它。
+/// 这就是「单 exe 也能起 daemon 进程」那句话的落点。
+///
+/// ⚠ 本函数 = **那一份共用的解析 + 监护**。「在哪找、找不到说什么」一个字都不住这里
+/// （`K-R43` 抽走了，理由住 [`resolve_or_extract`] 的头注）。
 pub fn start_or_extract(
     target_triple: &str,
     extract_dir: &Path,
@@ -1453,46 +1522,10 @@ pub fn start_or_extract(
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
 ) -> (Resolved, Option<SuperviseHandle>) {
-    let beside = resolve_beside_this_exe(target_triple);
-    let bin = match &beside {
-        Resolved::Found(p) => p.clone(),
-        Resolved::Missing { .. } => {
-            // `K-R42`：宿主给不出就问这一份产物自己带没带（头注「第二个来源」那一段）。
-            // ⚠ 中间这个**带标注的局部**不是多余的：内嵌那份是 `&'static`，直接
-            // `embedded.or_else(native_embedded_daemon)` 会把两边的生存期**往 `'static` 上**统一，
-            // 于是编译器要求调用方那个借来的 `embedded` 也活到 `'static`（实测 `E0521`）。
-            // 标注一下就让它按**短的那个**统一（`'static` 往下兼容，反过来不行）。
-            let carried: Option<(&str, &[u8])> = native_embedded_daemon();
-            let Some((build_id, bytes)) = embedded.or(carried) else {
-                // 两个来源都空（`cfg(embedded_daemons)` 与 `cfg(embedded_native_daemon)` 都未置）⇒
-                // 诚实降级，把 `beside` 的 reason/looked_at 原样交回，别伪造一个新理由。
-                return (beside, None);
-            };
-            match extract_embedded_to(extract_dir, build_id, bytes, make_executable) {
-                Ok(p) => p,
-                Err(e) => {
-                    // 🔴 `K-R42` 硬要求①：**这一支不许被读成「这份产物没带后端」。**
-                    //    它是「带了，但这台机器不让我把它放下来」——两件事的下一步完全不同
-                    //    （前者去装安装包，后者去看那个目录的权限 / 杀毒软件）。
-                    //    09-10 一整天治的正是这一形：读面把「读不到」说成「你没有」。
-                    let reason = extraction_failure_reason(extract_dir, &e);
-                    // 光靠返回值不够响：调用方可能只把它记进 `tracing::info!`
-                    //（`local_daemon.rs` 那条自动起的路对没有记录的失败就是这么走的）。
-                    // ⇒ 这一支自己吼一声 error，日志里一定留得下。
-                    tracing::error!("{reason}");
-                    return (
-                        Resolved::Missing {
-                            reason,
-                            looked_at: match beside {
-                                Resolved::Missing { looked_at, .. } => looked_at,
-                                Resolved::Found(_) => Vec::new(),
-                            },
-                        },
-                        None,
-                    );
-                }
-            }
-        }
+    let resolved = resolve_or_extract(target_triple, extract_dir, embedded, make_executable);
+    let Resolved::Found(bin) = resolved else {
+        // 诚实降级：`reason` / `looked_at` 原样交回，这一层不再包一句自己的话。
+        return (resolved, None);
     };
     // P2：本机后端**起来就带入方向通道** —— 不是可选项，也不由宿主决定。
     // 「本机 = 不走 ssh 的远端」（`INVARIANTS §40`）：远端一连上就 attach 通道，本机同理。
@@ -2716,20 +2749,21 @@ mod tests {
     /// 它买的是「消息里有一条**看起来是**下一步的东西」，**买不到**「那句话是真的」，
     /// 更买不到「读者真看懂了」—— 把标记词拼进一句废话里，它照样绿。
     /// 射程也只有 [`resolve_with`] 这一条 `reason`：
-    /// [`resolve_beside_this_exe`] 拿不到自身路径那条、[`start_or_extract`] 释放失败那条，
+    /// [`resolve_beside_this_exe`] 拿不到自身路径那条、[`resolve_or_extract`] 释放失败那条，
     /// **本条一条都没盖**。头注 / `DECISIONS` / 模块注释里写件号**不受本条管**，
     /// 本条只管**发到用户面前的那一串**。
     ///
     /// # 🔴 `K-R42`（09-10 同日）：**换完靶之后一天，被测对象自己变了 —— 本条现在守什么**
     ///
-    /// 本件给 [`start_or_extract`] 接上了「产物自己带着的那份」（[`native_embedded_daemon`]），
+    /// 本件给自释放那条路接上了「产物自己带着的那份」（[`native_embedded_daemon`]），
+    /// 〔那条路 `K-R42` 时住 [`start_or_extract`] 体内，`K-R43` 抽进了 [`resolve_or_extract`]〕
     /// 于是要先回答一句：**「找不到 sidecar」这一形还存不存在？**
     ///
     /// **存在，而且一点没少。** [`resolve_with`] 的职责一个字没改 —— 它仍然只回答
     /// 「**exe 旁边**有没有」，而裸 exe 旁边**仍然没有**（本件不往 exe 旁边放东西）。
     /// 变的是**这个答案之后发生什么**：以前它就是终点，现在它是自释放那一支的**入口**。
     /// ⇒ 本条守的东西**逐字未变**（那一串给不给得出下一步 · 有没有把件号甩给用户），
-    /// 而且它守的那一串**仍然到得了用户眼前** —— `start_or_extract` 在两个来源都空时
+    /// 而且它守的那一串**仍然到得了用户眼前** —— `resolve_or_extract` 在两个来源都空时
     /// 把 `beside` 的 `reason` **原样**交回去，那条路今天照走。
     ///
     /// ⚠ **真正过期的是那一串里的两句话，本件同拍改掉了**（不改就又成了「判据替假话背书」）：
@@ -2891,21 +2925,36 @@ mod tests {
     /// # 没有这一条会怎样
     ///
     /// [`native_embedded_daemon`] 是纯的、[`extraction_failure_reason`] 是纯的 ——
-    /// 两条都测得漂漂亮亮，而**只要没人在 [`start_or_extract`] 里接上它们，整件事就是死代码**，
+    /// 两条都测得漂漂亮亮，而**只要没人在生产段里接上它们，整件事就是死代码**，
     /// 上面那几格照样全绿。本仓这一形有名字（`K-R28` 那条「防空转」逐字记着同一件事）。
+    ///
+    /// # 🔴 `K-R43`：**靶搬了家，它守的是什么、还守不守得住**
+    ///
+    /// 〔`K-R42` 立本条时，那三问住 [`start_or_extract`] 体内，本条切的就是那个体。
+    ///  `K-R43` 把那三问整段抽进 [`resolve_or_extract`] ⇒ 靶跟着搬到共用那份上。〕
+    ///
+    /// **它守的东西逐字未变**：自释放那条路上，「问产物自己带没带」与「释放失败说那句分得开的话」
+    /// 必须**真的有生产调用点**，而且「问产物」必须排在「找 exe 旁边」之后。
+    ///
+    /// **还守得住，而且盖的面变大了**：`K-R43` 之后**只有一条自释放路**，
+    /// 两个生产入口（[`start_or_extract`] · `local_daemon.rs::resolve_daemon_bin`）都走它
+    /// ⇒ 同一条断言从盖 1 处变成盖 **2** 处。
+    /// ⚠ **但「都走了它」这一半不在本条射程里** —— 靶搬家之后，谁把 `start_or_extract`
+    /// 里那行调用删掉、自己再写一遍，本条**照样绿**（它只看共用那份的体）。
+    /// 那一半由 `local_daemon::the_two_resolution_paths_still_agree_on_the_order` 钉
+    /// （`K-R43` 同拍换了它的机制，理由住那条的头注）。**两条合起来才是原来那一格，单条都不够。**
     ///
     /// # 顺序那一半
     ///
     /// 「先找 exe 旁边、再动内嵌那份」是本模块头注花一整段论证过的取舍
-    /// （dev 构建里旁边那个更新），跨文件那一半由
-    /// `local_daemon::the_two_resolution_paths_still_agree_on_the_order` 钉着。
-    /// 本件新加的这个来源**同属「内嵌那一档」** ⇒ 它也必须排在「找旁边」之后。
+    /// （dev 构建里旁边那个更新）。`K-R42` 新加的那个来源**同属「内嵌那一档」**
+    /// ⇒ 它也必须排在「找旁边」之后。
     ///
     /// ⚠ **诚实边界**：这是**约定型守卫**（查源码形态，同 `the_backend_layer_stays_host_agnostic`
     /// 那一族）—— 它挡得住「接线被删掉 / 顺序被写反」，挡不住「换个名字继续错」。
     #[test]
     fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
-        let body = start_or_extract_body();
+        let body = shared_resolution_body();
         // 反向自检：切出来的确实是那个函数体（切歪了下面几条会在一段不相干的文本上恒答）。
         // ⚠ 三处都走 `find_pinned`（**恰好一处** + 两侧有边界），不用裸 `contains` ——
         //   `needle_anchor_registry` 那条递减棘轮治的就是「匹配单位比事实小」。
@@ -2919,21 +2968,21 @@ mod tests {
         //   ⇒ 「那句响亮的话真的被用上了」得在这里钉，不能指望那一条。
         guard_core::find_pinned(&body, "extraction_failure_reason(").unwrap_or_else(|e| {
             panic!(
-                "`start_or_extract` 体内 `extraction_failure_reason(` 不是恰好一处（{e}）——\n\
+                "那份共用的解析体内 `extraction_failure_reason(` 不是恰好一处（{e}）——\n\
                  一处都没有 ⇒ 释放失败又退回那句**与「没带后端」分不开**的话，\n\
                  而 `the_extraction_refusal_…` 这类纯函数判据**照样全绿**（本轮实测过）。\n逐字：{body}"
             )
         });
         let asked = guard_core::find_pinned(&body, "native_embedded_daemon").unwrap_or_else(|e| {
             panic!(
-                "`start_or_extract` 体内 `native_embedded_daemon` 不是恰好一处（{e}）——\n\
+                "那份共用的解析体内 `native_embedded_daemon` 不是恰好一处（{e}）——\n\
                  一处都没有 ⇒「产物自己带着的那份」没有任何生产调用点：\n\
                  裸 exe 回到 09-10 那个读数（0 个本机后端进程），而本模块每一条判据照样绿。\n\
                  多于一处 ⇒ 有第二条取法，下面那条顺序断言就说不清它断的是哪一处。\n逐字：{body}"
             )
         });
         let beside = guard_core::find_pinned(&body, "resolve_beside_this_exe(")
-            .expect("`start_or_extract` 体内 `resolve_beside_this_exe(` 不是恰好一处");
+            .expect("那份共用的解析体内 `resolve_beside_this_exe(` 不是恰好一处");
         assert!(
             beside < asked,
             "「问产物自己带没带」排到了「找 exe 旁边」前面 —— 顺序反了。\n\
@@ -3909,7 +3958,14 @@ mod tests {
     // F16：三处失败模式（都是 F05a 我自己写的代码，F12 的 `/full-audit` 逐行核出来的）
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// [`start_or_extract`] 的**生产段函数体**。
+    /// [`resolve_or_extract`] 的**生产段函数体** —— 那份**共用的**「找那个二进制」。
+    ///
+    /// 〔`K-R43` 改：原来切的是 [`start_or_extract`]（当时那三问就住在它体内）。
+    ///  今天三问住共用那份，`start_or_extract` 体内只剩「调它 + 监护」⇒ 靶跟着搬。
+    ///  **切法一个字没动**，动的只是切哪个函数。
+    ///  搬完之后这把尺子买到的比原来多一格：`local_daemon.rs` 那条路今天也走这一份，
+    ///  ⇒ 同一条断言同时盖住**两个**生产落点（「都走了它」那半由
+    ///  `local_daemon::the_two_resolution_paths_still_agree_on_the_order` 钉）。〕
     ///
     /// ⚠ 切法照下面那个 `wait_section()`（`find` 一个锚点再往后取），**但多一个右界**：
     /// `wait_section` 取到文件尾，那对「顺序」类断言没关系，对「体内有没有某个名字」
@@ -3923,11 +3979,11 @@ mod tests {
     /// 按 `#[te st]` 行切块、并把**含 `include_st r!(` 的块当守卫整块跳过**。
     /// 一挪过去，`the_local_daemon_really_registers_an_inbound_client` 会**静默掉出那条判据的人群**
     /// （实测：那条判据的地板当场红，报文逐字「它起真 daemon 的来历不见了」）。
-    fn start_or_extract_body() -> String {
+    fn shared_resolution_body() -> String {
         let prod = guard_core::production_code(include_str!("local_backend.rs"));
         let at = prod
-            .find("pub fn start_or_extract(")
-            .expect("找不到 `start_or_extract` —— 改名了就把引它的判据一起改");
+            .find("pub fn resolve_or_extract(")
+            .expect("找不到 `resolve_or_extract` —— 改名了就把引它的判据一起改");
         let rest = &prod[at..];
         let end = rest.find("\n}\n").map(|i| i + 2).unwrap_or(rest.len());
         // ⚠ **整行 `//` 注释剥掉再交出去**：调用方用 `find_pinned`（恰好一处），
