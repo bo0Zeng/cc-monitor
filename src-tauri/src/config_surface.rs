@@ -23,7 +23,8 @@
 //! 本模块不写任何用户文件（红线），也**不新增轮询**（红线）——一次按需扫完就返回。
 
 use crate::tool_registry::{
-    HostScope, ToolDestination, ToolSource, ToolSpec, TouchEffect, TouchedFile, TOOLS,
+    EnvBacking, EnvEntry, EnvTier, HostScope, ToolDestination, ToolSource, ToolSpec, TouchEffect,
+    TouchedFile, TOOLS,
 };
 use std::path::{Path, PathBuf};
 
@@ -212,6 +213,13 @@ fn resolve_by_destination(
         ToolDestination::LocalHomeRelative(_) => {
             resolve_local_home(declared, home, cfg_dir_env, is_dir)
         }
+        // 〔`K-R60`〕「不是我们装的」**不等于「查不了」** —— 恰恰相反：
+        // 这一档的全部意义就是「我们查得到它在不在，但装不了」。
+        // ⇒ 照本机路径解析（`host` 是 `Either` 时 `project_onto_host` 会再包一层，
+        //    于是「本机没找到」照样不会被说成「不存在」）。
+        ToolDestination::NotInstalledByUs { .. } => {
+            resolve_local_home(declared, home, cfg_dir_env, is_dir)
+        }
     }
 }
 
@@ -386,6 +394,9 @@ pub fn source_label(s: &ToolSource) -> String {
         } => format!("vendored + 指纹：{repo_path}（{fingerprint_file}）"),
         ToolSource::EmbeddedBinary { repo_path } => format!("交叉编译内嵌的二进制：{repo_path}"),
         ToolSource::Generated => "由 cc-monitor 现场生成的文本".to_string(),
+        // 〔`K-R60`〕装不了的那一档：措辞必须**先说清不是我们的**，
+        // 否则用户会以为这一行也是 cc-monitor 放上去的。
+        ToolSource::NotOurs { who } => format!("不由 cc-monitor 提供：{who}"),
     }
 }
 
@@ -494,19 +505,79 @@ fn row(
     }
 }
 
-/// 遍历注册表建表。纯函数（`is_dir` / `fs` 注入）。
+/// 清单里**没有 `ToolSpec`** 的那一项，在这一页上长什么样。
+///
+/// 它没有「我们碰的文件」，所以四列的措辞都由**档**决定：
+/// - `source_label` 先说清「不是我们提供的」；
+/// - `effect_label` 说清我们对它做什么（第三档就是**什么都不做**）；
+/// - `state` 一律 `Undetermined` **并说明为什么没查** —— 这一页的硬纪律是
+///   「查不了就说查不了，绝不显示成缺失」，而「我们压根没去查」比「查不动」还要更早一步，
+///   写成「不存在」会是对一台好好的机器报假警报。
+fn unmanaged_row(e: &EnvEntry, named: &'static str, host: HostScope) -> SurfaceRow {
+    // **三条措辞都按档分**，且**没有兜底臂**：EnvTier 加第四档会编译失败，
+    // 逼人回答它在这一页上该显示什么（同本模块 `PathResolution` 那条既定做法）。
+    let (source_label, effect_label, why) = match e.tier {
+        EnvTier::AppInstalls => (
+            "申报自相矛盾：声明「app 装的」，却没有一条 ToolSpec 说得出装到哪".to_string(),
+            "装得了就该有落点与 touches —— 这一行的申报是坏的",
+            "这一项的申报自相矛盾，本页不替它猜".to_string(),
+        ),
+        EnvTier::AppOnlyChecks => (
+            "不由 cc-monitor 提供".to_string(),
+            "我们查得到它在不在，但装不了",
+            format!(
+                "查它的口不在本页（见这一行的说明）；本页只列人群，不替别的口作答：{}",
+                e.why
+            ),
+        ),
+        EnvTier::AppAssumesPresent => (
+            "不由 cc-monitor 提供".to_string(),
+            "我们既不装它、也不查它 —— app 用的时候假设它已经在",
+            "本页没查这一项：app 对它的关系就是「假设它在」。\
+             要它变成「查得到」，得先给它一个查的口 —— 那是另一件事，不是这一页漏了"
+                .to_string(),
+        ),
+    };
+    SurfaceRow {
+        tool_id: e.id,
+        tool_name: e.display_name,
+        source_label,
+        path_declared: named,
+        // **不解析** —— 解析了就等于查了，而这一档申报的是「我们不查」。
+        path_resolved: None,
+        note: Some(e.why),
+        host_label: host_label(host),
+        effect_label,
+        state: SurfaceState::Undetermined { why },
+        installable: false,
+        uninstallable: false,
+    }
+}
+
+/// 遍历**环境清单的闭集**建表。纯函数（`is_dir` / `fs` 注入）。
+///
+/// 🔴 〔`K-R60`〕**人群从 `TOOLS` 换成了 [`environment`]。**
+/// 原来它只遍历 `TOOLS` 的 `touches`，于是这一页能答的是模块头注那句
+/// 「cc-monitor 动过你哪些文件」，而**答不了**「app 要的东西齐了没有」——
+/// 后者的人群里有一整档是 app 装不了也不查的东西，它们一条都不在 `TOOLS` 里。
+/// 拿前者当后者用是**分母对不上**。
+/// 钉住它的是 `the_view_population_is_exactly_the_closed_set`。
 pub fn build_rows(
     home: &Path,
     cfg_dir_env: Option<&Path>,
     is_dir: &dyn Fn(&Path) -> bool,
     fs: &FsProbe,
 ) -> Vec<SurfaceRow> {
-    TOOLS
+    crate::tool_registry::environment()
         .iter()
-        .flat_map(|t| {
-            t.touches
+        .flat_map(|e| match e.backing {
+            // 有 ToolSpec ⇒ 路径 / effect / host 全从那一份读，这里一个字都不复述
+            EnvBacking::Managed(t) => t
+                .touches
                 .iter()
-                .map(move |f| row(t, f, home, cfg_dir_env, is_dir, fs))
+                .map(|f| row(t, f, home, cfg_dir_env, is_dir, fs))
+                .collect::<Vec<_>>(),
+            EnvBacking::Named { named, host } => vec![unmanaged_row(e, named, host)],
         })
         .collect()
 }
@@ -1153,6 +1224,11 @@ mod tests {
         let want: &[(&str, &str, HostScope)] = &[
             ("ccm", "~/.local/bin/ccm", Remote),
             ("ccm", "~/.bashrc", Remote),
+            // 〔`K-R60` 09-11〕cc-bus 的 `installable` 翻成 true 之后，
+            // 「装得了就必须申报装到哪」当场要它 —— 部署真正写的就是这个目录。
+            // `Either`：装的口只有本机一个，但 cc-bus 本身跟着 Claude Code 走
+            // （与下面三条同一条理由，别只因为「装口在本机」就标 Client）。
+            ("cc-bus", "~/.claude/skills/cc-bus", Either),
             // 钩子诊断真有本机+远端两条路径（`diagnose_local_/remote_cc_bus_hooks`）
             ("cc-bus", "~/.claude/settings.json", Either),
             ("cc-bus", "~/.local/bin/cc-*", Either),
@@ -1166,6 +1242,10 @@ mod tests {
             ("remote-daemon", "$DAEMON_PATH", Remote),
             ("project-mcp", ".mcp.json", ProjectDir),
             ("powershell-profile", "$PROFILE", Client),
+            // 〔`K-R60` 09-11〕装不了、只读的那一档。`Either` 的理由与 cc-bus 那几条同源：
+            // Claude Code 跑在哪台，这份记录就在哪台（`remote_history.rs` 真的从远端读它），
+            // 标 `Client` 会让远端会话的用户在这一页上看到一句假话。
+            ("claude-code", "~/.claude/projects/", Either),
         ];
         let mut actual: Vec<(&str, &str, HostScope)> = TOOLS
             .iter()
@@ -1204,6 +1284,7 @@ mod tests {
                 ToolDestination::UserShellProfile => "UserShellProfile",
                 ToolDestination::ProjectRelative(_) => "ProjectRelative",
                 ToolDestination::UserConfiguredPath { .. } => "UserConfiguredPath",
+                ToolDestination::NotInstalledByUs { .. } => "NotInstalledByUs",
             };
             for f in t.touches {
                 by_dest.entry(key.to_string()).or_default().insert(f.host);
@@ -1425,14 +1506,48 @@ mod tests {
         );
     }
 
+    /// 🔴 `KR60D2`：**这个视图的人群 = 环境清单的闭集**，一项不多、一项不少。
+    ///
+    /// 〔`K-R57` 摸底：它今天只看 `TOOLS` 的 `touches` —— **10 条路径 / 6 个工具**，
+    /// 而 app 真正要的环境项现打 **17** 项。于是「齐了没有」这个问题它答不了，
+    /// 而用户读到的是一张看起来很干净的表（模块头注自己写的是
+    /// 「cc-monitor 到底动过你哪些文件」—— 拿它当「环境齐了没有」用是**分母对不上**）。〕
+    ///
+    /// **死值验**：往闭集里加一项而不动这个视图（或把建表退回 `TOOLS.iter()`）⇒ 本条红。
+    #[test]
+    fn the_view_population_is_exactly_the_closed_set() {
+        use crate::tool_registry::environment;
+        use std::collections::BTreeSet;
+        let rows = build_rows(&home(), None, &no_dir, &empty_probe());
+        let shown: BTreeSet<&str> = rows.iter().map(|r| r.tool_id).collect();
+        let want: BTreeSet<&str> = environment().iter().map(|e| e.id).collect();
+        assert!(
+            !want.is_empty(),
+            "闭集是空的 —— 先查 environment()，别改断言"
+        );
+        assert_eq!(
+            shown, want,
+            "这一页的人群与环境清单的闭集对不上 —— 少掉的那几项，\n\
+             用户在这一页上**看不见**，而这一页正是他问「齐了没有」时唯一能看的地方。\n\
+             （闭集住 `tool_registry::environment`，它是唯一一份；这里不许再抄一张名单。）"
+        );
+    }
+
     // ===== 建表：七个字段都真被用上（T01 审计 I2 的验收点） =====
 
     #[test]
     fn rows_cover_every_touched_file_and_use_all_spec_fields() {
         let f = empty_probe();
         let rows = build_rows(&home(), None, &no_dir, &f);
-        let expected: usize = TOOLS.iter().map(|t| t.touches.len()).sum();
-        assert_eq!(rows.len(), expected, "每条 touches 都要有一行");
+        // 〔`K-R60`〕人群换成闭集之后，行数 = 有 ToolSpec 那一半的 touches 数
+        //   + 手写那一半每项一行。**两半都现算**，不写死一个数〔`13b`〕。
+        let expected: usize = TOOLS.iter().map(|t| t.touches.len()).sum::<usize>()
+            + crate::tool_registry::UNMANAGED_ENV.len();
+        assert_eq!(
+            rows.len(),
+            expected,
+            "有 ToolSpec 的每条 touches 一行、手写的每项一行"
+        );
         for r in &rows {
             assert!(!r.tool_id.is_empty() && !r.tool_name.is_empty()); // id / display_name
             assert!(!r.source_label.is_empty()); // source
@@ -1442,11 +1557,16 @@ mod tests {
         // destination：远端那条必须解析不出本机路径
         let daemon = rows.iter().find(|r| r.tool_id == "remote-daemon").unwrap();
         assert!(daemon.path_resolved.is_none());
-        // installable / uninstallable：cc-bus 两者都 false，ccm 两者都 true
+        // installable / uninstallable：三种组合都真出现在表里 —— 两个字段都得有区分力
+        // 〔`K-R60` 订正：cc-bus 原先在这里被当成「两者都 false」的样本，
+        //  而那个 false 是一处**假申报**（部署 08-13 就实现了）。样本换成 `claude-code`
+        //  —— 它是真的装不了（Claude Code 不该由 cc-monitor 装）。〕
         let ccbus = rows.iter().find(|r| r.tool_id == "cc-bus").unwrap();
-        assert!(!ccbus.installable && !ccbus.uninstallable);
+        assert!(ccbus.installable && !ccbus.uninstallable, "装得了、卸不了");
         let ccm = rows.iter().find(|r| r.tool_id == "ccm").unwrap();
         assert!(ccm.installable && ccm.uninstallable);
+        let cc = rows.iter().find(|r| r.tool_id == "claude-code").unwrap();
+        assert!(!cc.installable && !cc.uninstallable, "装不了、也就无所谓卸");
         // note：至少两个工具用上了
         let with_note: std::collections::HashSet<_> = rows
             .iter()
