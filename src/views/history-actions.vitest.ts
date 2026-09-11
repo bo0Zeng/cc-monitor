@@ -313,8 +313,12 @@ describe("HistoryView 共享动作表 + 右键菜单 (F96 #62)", () => {
 //   本组量的是**那一发 `invoke` 载荷里真正的那个值**。
 //
 // ⚠ **本组买不到什么**：它止于「monitor 发出去的载荷里有这个名字」。
-//   「后端真的用它建了一个 tmux 容器」要真 tmux（POSIX，且账号那一格还得是显式「账号 0」
-//   —— 具名账号与「没表态」都 §35 降级），归 e2e；
+//   「后端真的用它建了一个 tmux 容器」要真 tmux（POSIX，且账号那一格还得说得出话来），归 e2e；
+//   〔`K-R53` 09-11 订正这一句的现在时：原文写「还得是显式『账号 0』—— 具名账号与『没表态』
+//    都 §35 降级」。**具名那一半今天不成立了** —— 具名账号带上名字之后渲染得出来
+//    （`LaunchAccount::Named::name`）。今天仍然降级的是：只说得出目录 · 没表态（继承）·
+//    这个号走中转 · 没装 ccm · Windows。逐格表住 `history.rs::tests::
+//    every_local_account_shape_gets_a_named_verdict_from_the_backend_path`。〕
 //   「`↗ 调出终端` 按钮真的能用」更远：本机那一支走的是 Win32 HWND 缓存
 //   （`bind::activate` 在非 Windows 上逐字回 `only supported on Windows`），**与这个名字无关**。
 //   别把本组的绿读成「按钮好了」。

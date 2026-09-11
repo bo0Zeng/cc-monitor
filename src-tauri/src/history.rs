@@ -981,6 +981,30 @@ pub enum LaunchAccount {
     Named {
         #[serde(rename = "configDir")]
         config_dir: String,
+        /// `K-R53`：这个账号的**名字**。
+        ///
+        /// # 它为什么要存在（在此之前这一格是空的，而空着的代价是可量的）
+        ///
+        /// CLI 只会 `--account <名字>`。本变体先前**只有目录**
+        /// ⇒ [`render_local_ccm_with`] 对它必然 §35 短路 ⇒ **本机具名账号一条都进不了
+        /// ccm 容器路**。而盘上四个本机拉起入口里有三个只说得出具名账号
+        /// （`src/accounts.ts::localLaunchAccountSync`），⇒ 那三条**在类型上**走不到后端那条路。
+        ///
+        /// # ⚠ 它**不是**从 `config_dir` 推出来的
+        ///
+        /// 推得出一个像样的名字（`cc-acct-iso` 的布局是 `~/.claude-accts/<名字>`，
+        /// [`relay_account_id_of_dir`] 就是那么推的），**但那两处的失效方向相反**：
+        /// 推错一个中转 id ⇒ 表里查不到 ⇒ 逐字节走旧路（保守）；推错一个 `--account`
+        /// ⇒ `shared/ccm` 当场 `die`（那份脚本第 57 行逐字「`--account` 打错名字」= 退出码 2）
+        /// ⇒ **一次本来能起的会话变成一条报错**。⇒ 这一格只收**调用方说得出**的名字。
+        ///
+        /// 前端那一侧的取值口与 `configDir` 那半**同源**
+        /// （`accounts.ts::localLaunchAccountNameSync`，两半是同一条规则的两侧）。
+        ///
+        /// `None` = **调用方只说得出目录**（例：分叉时源会话是活的，继承的是它的目录、
+        /// 没有名字）⇒ CLI 仍然说不出 `--account` ⇒ 照旧 §35 短路，与本字段加进来之前逐字同。
+        #[serde(default)]
+        name: Option<String>,
     },
 }
 
@@ -1084,7 +1108,7 @@ fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, St
         Some(LaunchAccount::Base) => crate::backend::control::payload::config_dir_prefix_posix(
             Some(&crate::backend::control::payload::Account::Base),
         ),
-        Some(LaunchAccount::Named { config_dir }) => {
+        Some(LaunchAccount::Named { config_dir, .. }) => {
             let d = config_dir.trim();
             // 空串**不是**账号 0，是坏数据（空值 ≠ 未设 —— Z01 起整套设计的支点）。
             if d.is_empty() {
@@ -1108,7 +1132,7 @@ fn config_dir_prefix_ps(account: Option<&LaunchAccount>) -> Result<String, Strin
         None => Ok(String::new()),
         // PS 里把环境变量置 `$null` 就是删掉它（等价于 POSIX 的 `unset`）。
         Some(LaunchAccount::Base) => Ok("$env:CLAUDE_CONFIG_DIR=$null; ".to_string()),
-        Some(LaunchAccount::Named { config_dir }) => {
+        Some(LaunchAccount::Named { config_dir, .. }) => {
             let d = config_dir.trim();
             if d.is_empty() {
                 return Err(
@@ -1280,27 +1304,43 @@ fn render_local_ccm_with(
     };
     let act = cli_action.unwrap_or(ci::Action::Resume { sid: &sid_owned });
 
-    // ★★ 账号那格是本件真正的边界，把它写清楚（P3t-Y2 摸底）。
+    // ★★ 账号那格是本件真正的边界，把它写清楚（P3t-Y2 摸底 · `K-R53` 09-11 重量）。
     //
     // 本机账号是**三态**，而 CLI 的 `account` 维度**恒真**（F05：沉默 = 意外身份切换）
     // ⇒ 每一态都得说得出话来。逐态对：
     //
     // ① `Some(Base)` —— 旧路发 `unset CLAUDE_CONFIG_DIR;`，CLI 发 `--base`。**同义**，可渲染。
-    // ② `Some(Named{config_dir})` —— CLI 只会 `--account <名字>`，而 Rust 这一侧
-    //    **只有 configDir、没有名字**（`LaunchAccount::Named` 就一个字段）。
-    //    ⇒ 说不出 ⇒ §35 短路 ⇒ 降级回旧路（旧路发 `export CLAUDE_CONFIG_DIR='<dir>'`）。
+    // ② `Some(Named{config_dir, name: Some(n)})` —— CLI 发 `--account <n>`。**可渲染**。
+    //    〔`K-R53` 09-11 开的就是这一格〕名字由**调用方**说（`LaunchAccount::Named::name`
+    //    的头注写着为什么不从目录推），前端那一侧与 `configDir` 同源
+    //    （`accounts.ts::localLaunchAccountNameSync`）。
+    //    在这之前本变体只有目录 ⇒ 本机具名账号**一条都进不了容器**，而盘上四个本机拉起
+    //    入口里有三个只说得出具名账号 ⇒ 那三条在类型上到不了后端那条路。
+    // ②′ `Some(Named{name: None})` —— 调用方只说得出目录（例：分叉时源会话是活的，
+    //    继承的是它的目录、没有名字）⇒ 仍然说不出 ⇒ §35 短路 ⇒ 降级回旧路
+    //    （旧路发 `export CLAUDE_CONFIG_DIR='<dir>'`）。
     // ③ `None` —— 旧路发**空前缀**，语义是「继承环境里现有的 `CLAUDE_CONFIG_DIR`」。
     //    ⚠⚠ **这一态绝不能映射成 `Base`**：`--base` 是「显式不注入」，与「继承」不是一回事。
     //    映过去 = 把用户 shell 里已有的账号悄悄清掉 —— 那正是 **#75「resume 在错数据目录
-    //    找不到会话」** 的病灶形状。CLI 语法里**没有「继承」这一态**，所以同样短路。
+    //    找不到会话」** 的病灶形状。
+    //    ⚠⚠ **也不能靠「省略 `--account`」兑现**，尽管 `K33` 逐字要「能省就省、能默认就默认」：
+    //    `shared/ccm:1001-1012` 现打（09-11）——既没 `--account` 也没 `--base`、而
+    //    `CLAUDE_CONFIG_DIR` **为空**时，ccm **落 manifest 的默认号**（那一段自己第 1190 行
+    //    逐字：「『空的 CLAUDE_CONFIG_DIR + 没有账号 flag』→ 落 manifest 默认号，
+    //    把调用方选中的号静默换掉」）。⇒ 省略也是一次静默换号，方向与 `--base` 相反而已。
+    //    **CLI 语法里今天真的没有「继承」这一态**，所以照旧短路。逐格对照表住
+    //    `tests::every_local_account_shape_gets_a_named_verdict_from_the_backend_path` 的头注。
     //
-    // ⇒ 今天只有 ① 渲染得出来。这不是接线没接完，是 **CLI 语法在本机账号上真的窄一格**
-    //    （②可补：从 `accounts.json` 反查名字；③是结构性的）。见 ROADMAP `U10`。
+    // ⇒ 今天 ① 与 ② 渲染得出来，②′ 与 ③ 不行。③ 那一格要动的是 **ccm 省略时的默认语义**
+    //    （产品决定 ＋ `shared/ccm`，两样都不在本件写区）。见 ROADMAP `U10`。
     let acct =
         match account {
             Some(LaunchAccount::Base) => ci::CliAccount::Base,
-            // ②：有 configDir 没名字 —— 正是 `CliAccount::Named{name:None}` 这一格存在的理由。
-            Some(LaunchAccount::Named { .. }) => ci::CliAccount::Named { name: None },
+            // ② / ②′：名字说得出就说，说不出就老实短路 —— `CliAccount::Named{name:None}`
+            //         这一格存在的理由就是后者。
+            Some(LaunchAccount::Named { name, .. }) => ci::CliAccount::Named {
+                name: name.as_deref(),
+            },
             // ③：`None` 走同一条短路，但**理由不同**（不是「没名字」，是「CLI 说不出继承」）。
             None => return Err(
                 "本机未表态账号（继承环境）—— CLI 的 account 维度恒真且无「继承」语法，诚实降级"
@@ -1372,6 +1412,21 @@ fn render_local_ccm_with(
 /// 拿它反查 sid 是**下一跳**的事（前端 `accounts.ts::sidOfLaunch` 与它旁边那张待回填表），
 /// 而那一跳必然要**等进程真的跑起来**才问得到 —— 时序那一格归 `KP5HD3`。
 ///
+/// `K-R53`：**中转在场时，本机拉起照旧走旧路**的那句降级理由。
+///
+/// 它是一条**降级理由**而不是一个 `bool` 分支，理由与 `render_local_ccm` 的每一条 `Err`
+/// 相同：这条路上「为什么这台机没进 tmux」只有一个线索，就是 `launch_local` 里那行
+/// `tracing::debug!`。把原因写成一个分支条件 ⇒ 那行日志只会说「渲染器降级」而不说是谁降的。
+///
+/// 退役条件**可执行**（不是「等有人想起来」）：`shared/ccm` 的 `capabilities=` 串
+/// （`shared/ccm:624`）加上一个声明「我会把 `ANTHROPIC_BASE_URL` 转发过 tmux 边界」的 token，
+/// 这里改成「探到那个 token 才放行」。今天那 18 个 token 里含
+/// `relay`/`base-url`/`anthropic` 的**0 个**（现打 09-11）。
+#[cfg(not(windows))]
+const RELAY_KEEPS_THE_OLD_PATH: &str =
+    "这个号走中转，而 ccm 的 `capabilities=` 里没有「转发 ANTHROPIC_BASE_URL 过 tmux 边界」\
+     这个 token（`shared/ccm:624`）—— 放行会让装旧 ccm 的机器静默吃掉它，诚实降级";
+
 /// ⚠ **`Err` 那一支不回 token**：拉起没成功就没有「刚起的那条」可言，
 /// 回一个 token 会让调用方去等一条根本不存在的会话。
 fn launch_local(
@@ -1414,31 +1469,45 @@ fn launch_local(
         // 🔴🔴 **订正（`D4 阻-3`）：这里先前逐字写着「于是『走中转』与『有 tmux 容器』
         // 不再互斥」—— 那是假话，今天仍然互斥，只是成因换了。**
         //
-        // 成因不再是「变量在 tmux 边界被吃掉」，而是**具名账号根本进不了 ccm**：
-        // 能推出中转 id 的只有 `LaunchAccount::Named`（`relay_account_id`：`Base` 与缺席
-        // 一律 `None`），而 `render_local_ccm` 对 `Named` **必然** §35 短路
-        //（`Named` 只有 configDir、没有名字，CLI 只会 `--account <名字>`）
-        // ⇒ **带中转前缀的本机拉起，必然落到下面那条 `build_local_posix_command`，
-        // 而那条路没有 tmux 容器；走 ccm 容器路的，`relay` 必然是空串。**
+        // 🔴🔴🔴 **二次订正（`K-R53` 09-11）：成因又换了一次，而互斥**仍然**成立。**
         //
-        // ⇒ 这个事实由 `tests::a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`
-        // **逐格钉住**（三种形状各喂一次）。消掉它要给 `LaunchAccount::Named` 补名字
-        //（改 `LaunchAccount` 与它的前端调用点，都不在本件写区）——**那一天要同一拍改四处**，
-        // 清单写在那条判据的头注里，别只改一处。
+        // `D4` 那一拍的成因是「具名账号根本进不了 ccm」（`Named` 只有目录没有名字）。
+        // **本件把那一格开了** —— `LaunchAccount::Named` 现在带名字，`render_local_ccm`
+        // 对它渲染得出 `--account <名字>`。⇒ 那个成因**今天不成立了**。
         //
-        // ⚠ **`shared/ccm` 那条转发因此今天在本条路上生产不可达**：那段 shell 真的会转发
-        //（`the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` 量的是它），
-        // 但**没有任何生产输入能同时走到中转与容器** ⇒ 它是**为将来那条路预备的**。
-        // 那条判据的头注里也写了这句话，两处别只改一处。
+        // 而互斥没有跟着消失，因为下面这一行**显式**把它保住了。为什么要显式保住：
+        //
+        // `shared/ccm` 里那条 `ANTHROPIC_BASE_URL` 转发（第 1208-1209 行）是**有的**，
+        // 但 `--ccm-probe` 吐的 `capabilities=` 串里**没有任何 token 声明它**
+        //（现打 09-11，`shared/ccm:624` 那 18 个 token 里含 `relay`/`base-url`/`anthropic` 的
+        // **0 个**；而 `ccm_probe` 探的是 **PATH 上那个 ccm**，不是仓里这份）。
+        // ⇒ 若这里直接放行，**装着旧 ccm 的机器会静默吃掉这个变量**：
+        //   中转前缀在 ccm 外侧 export，ccm 起 tmux、经 `send-keys` 送载荷进去，
+        //   而 tmux 的 `update-environment` 默认列表不含它 ⇒ 会话起来了、中转没生效、
+        //   **没有任何东西会出声**。那正是本区最贵的那族病。
+        //
+        // ⇒ **中转在场就不走 ccm 容器路**，逐字节维持 `K-H2b` 那一拍的行为。
+        //   这一格的退役条件是**可执行的**、不是一句话：`shared/ccm` 的 `capabilities=`
+        //   加上那个 token，这里改成「探到那个 token 才放行」。清单住
+        //   `tests::a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`。
         //
         // ⚠ **这一格没买到的**：「变量真的穿过了一次**真** tmux 边界」要真机 tmux，
-        // 本轮没量 ⇒ 归 e2e；而按上面那条，**今天在本机中转这条路上根本走不到**
+        // 本轮没量 ⇒ 归 e2e；而按上面那条，**今天在本机中转这条路上仍然走不到**
         // —— 不只是「没量」，是「今天量不到」。
         //
         // ⚠ 写法上刻意让 `render_local_ccm(` 与 `build_local_posix_command(` 在本函数体里
         // **各恰好一处** —— `the_local_launch_tries_the_renderer_before_the_old_path`
         // 用它们的相对位置钉「渲染器在前」，两处就管不住顺序了（第一拍被它逮过一次）。
-        match render_local_ccm(action, launcher, account, tmux_name) {
+        //
+        // ⚠ 中转那一格（上面那段）**在渲染器之前**短路，而不是在它之后再判一次：
+        //   在后面判等于「渲染器说了算，我再推翻一次」——两个决定点、两套判据，
+        //   正是 `session-backend.ts` 头注里 #76 那条病的形状。
+        let rendered = if relay.is_empty() {
+            render_local_ccm(action, launcher, account, tmux_name)
+        } else {
+            Err(RELAY_KEEPS_THE_OLD_PATH.to_string())
+        };
+        match rendered {
             Ok(rendered) => rendered,
             Err(why) => {
                 // 与远端那条降级**同一种说法**：走回落是正常且预期的路径（没装 ccm 的机器
@@ -1498,7 +1567,7 @@ fn launch_local(
 /// - 参数缺席（调用方没表态）⇒ `None`，同上。
 fn relay_account_id(account: Option<&LaunchAccount>) -> Option<String> {
     match account {
-        Some(LaunchAccount::Named { config_dir }) => relay_account_id_of_dir(config_dir),
+        Some(LaunchAccount::Named { config_dir, .. }) => relay_account_id_of_dir(config_dir),
         _ => None,
     }
 }
@@ -2702,12 +2771,24 @@ mod tests {
     /// 本条不是重复它，是把「窄了多少」写成可执行的：今天 `render_local_ccm` 的**三格纯逻辑拒绝**
     /// 决定了生产上谁能进容器。三格全拒 ⇒ 生产行为与 P3t 之前逐字节相同（Y2 是零行为改动的接线）。
     /// Y2b 前端接线之后，第一格会开，那时上面那条的自陈就该改了。
+    ///
+    /// # 🔴 `K-R53` 09-11：**本条的名字今天已经比它测的东西宽了一格，别照名字读它**
+    ///
+    /// 函数名逐字是「前端今天送得出的**每一形**都被拒」——**那句话现在是假的**：
+    /// 具名账号带上名字之后渲染得出来（那正是本件开的那一格）。本条测的仍然都成立，
+    /// 但它的人群已经缩到「**说不出名字的**那几形」：没有会话名 · 未表态账号 · 只有目录。
+    ///
+    /// ⚠ **刻意不改名**：改判据的名字要同拍跑 `pb doc`（生成区会连带打红），
+    /// 而本件的写区里没有那份生成区。⇒ 如实登记在这里，并把**全人群**那一条交给继任者
+    /// [`every_local_account_shape_gets_a_named_verdict_from_the_backend_path`]
+    /// （它逐格点名、加变体编译不过）。**两条一起读才是今天的分母。**
     #[test]
     #[cfg(not(windows))]
     fn the_local_renderer_refuses_every_shape_the_front_end_can_send_today() {
         let base = LaunchAccount::Base;
         let named = LaunchAccount::Named {
             config_dir: "/home/u/.claude-accts/z".into(),
+            name: None,
         };
         let act = LocalPsAction::Resume("s1".into());
 
@@ -2764,6 +2845,126 @@ mod tests {
         );
     }
 
+    /// ★★★ `K-R53` `KR53D1`：**本机账号的每一形，后端那条路渲染得出来吗** —— 逐格点名。
+    ///
+    /// # 它判的是**分母**，不是可达性
+    ///
+    /// 上面那条 (`the_local_renderer_refuses_every_shape_the_front_end_can_send_today`)
+    /// 钉的是 P3t-Y2 那一刻的事实「**全拒**」。本条是它的继任者：把
+    /// [`LaunchAccount`] 的全部形状加上「参数缺席」逐格喂一次，
+    /// **每一格都要说得出自己该是 `Ok` 还是 `Err`、以及 `Err` 的理由指向哪**。
+    ///
+    /// 失效方向逐字（`KR53D1`）：「再加一个入口而它复用了那个缺一态的旧函数」——
+    /// 加一个变体 ⇒ 下面这张表的 `match` 不穷尽 ⇒ **编译不过**，不是静默漏一格。
+    ///
+    /// # 🔴 缺席那一格**今天是红的，而红的原因不在本仓的 Rust 里**（如实登记，别读成「做漏了」）
+    ///
+    /// 「参数缺席」的语义是**继承环境**（旧路发空前缀）。`K33` 逐字要的是
+    /// 「能省就省、能默认就默认」⇒ 直觉上「不给 `--account`」就该是它。**现打证伪**：
+    /// `shared/ccm` 第 1001-1012 行（`elif [ "$use_base" != 1 ] && [ -z "${CLAUDE_CONFIG_DIR:-}" ]`）
+    /// 逐字写着，既没 `--account` 也没 `--base` 而 `CLAUDE_CONFIG_DIR` **为空**时，
+    /// ccm **落 manifest 的默认号**（那一段自己的注释第 1190 行逐字：
+    /// 「『空的 CLAUDE_CONFIG_DIR + 没有账号 flag』→ 落 manifest 默认号，把调用方选中的号静默换掉」）。
+    ///
+    /// ⇒ 三种说法逐格对：
+    ///
+    /// | rc 里有没有 `CLAUDE_CONFIG_DIR` | 旧路（空前缀） | ccm 省略 `--account` | ccm `--base` |
+    /// |---|---|---|---|
+    /// | 有，= X | 用 X | 尊重 X（1001 的 `-z` 闸不触发）✅ | `unset` ⇒ 用 `~/.claude` ❌ |
+    /// | 没有 | 用 `~/.claude` | **落 manifest 默认号** ❌ | 用 `~/.claude` ✅ |
+    ///
+    /// **三格里没有一格逐字等于「继承」** ⇒ 账本 `parity_ledger.rs` 那句
+    /// 「CLI 语法里没有这一态」**是真的**，而且是**产品决定**（ccm 省略时的默认该不该改）
+    /// ＋ `shared/ccm` 的改动，两样都不在本件写区。**本条把它钉成一格红以外的东西：
+    /// 一格 `Err`，且理由必须仍然指向「继承」** —— 谁哪天把它映成 `--base`，这里当场红，
+    /// 而那一刀正是 `#75`（账本逐字：「把继承偷换成显式清空 = #75」）。
+    #[test]
+    #[cfg(not(windows))]
+    fn every_local_account_shape_gets_a_named_verdict_from_the_backend_path() {
+        let act = LocalPsAction::Resume("s1".into());
+        let caps = caps_of_a_current_ccm();
+        let named_with_name = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/z".into(),
+            name: Some("z".into()),
+        };
+        let named_dir_only = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/z".into(),
+            name: None,
+        };
+        let base = LaunchAccount::Base;
+
+        // 分母 = `LaunchAccount` 的全部形状 + 「参数缺席」。**穷尽性由下面这个 `match` 买**：
+        // 加一个变体而不回来加一行 ⇒ 编译不过。
+        let denominator: [&str; 4] = ["缺席", "Base", "Named{有名字}", "Named{只有目录}"];
+        let shapes: [(&str, Option<&LaunchAccount>); 4] = [
+            ("缺席", None),
+            ("Base", Some(&base)),
+            ("Named{有名字}", Some(&named_with_name)),
+            ("Named{只有目录}", Some(&named_dir_only)),
+        ];
+        // 穷尽性守卫：把每一格映回自己的标签，加变体时这里编译不过。
+        for (label, acct) in shapes {
+            let mapped = match acct {
+                None => "缺席",
+                Some(LaunchAccount::Base) => "Base",
+                Some(LaunchAccount::Named { name: Some(_), .. }) => "Named{有名字}",
+                Some(LaunchAccount::Named { name: None, .. }) => "Named{只有目录}",
+            };
+            assert_eq!(mapped, label, "分母这张表与 `LaunchAccount` 的形状对不上了");
+        }
+        assert_eq!(
+            denominator.len(),
+            shapes.len(),
+            "分母写死了两份，且两份不一样"
+        );
+
+        let mut verdicts = Vec::new();
+        for (label, acct) in shapes {
+            let r = render_local_ccm_with(&act, None, acct, Some("s1abcdef-cc"), &caps, true);
+            verdicts.push((label, r));
+        }
+
+        // ① 缺席 —— `Err`，且理由必须仍然点着「继承」（见头注那张三说法对照表）。
+        let (_, r) = &verdicts[0];
+        assert!(
+            r.as_ref().is_err_and(|e| e.contains("继承")),
+            "「参数缺席」= 继承环境。它今天必须 `Err` 且理由点着「继承」——\n\
+             映成 `--base` 是把继承偷换成显式清空（#75）；\n\
+             省略 `--account` 是落 manifest 默认号（`shared/ccm:1001-1012`，同样是静默换号）。实得：{r:?}"
+        );
+
+        // ② Base —— `Ok`，而且渲染出来的那条真的带 `--base`。
+        let (_, r) = &verdicts[1];
+        let cmd = r.as_ref().expect("账号 0 是本机唯一一直渲染得出来的那一格");
+        assert!(
+            cmd.contains("--base"),
+            "账号 0 必须显式 `--base`，实得：{cmd}"
+        );
+
+        // ③ Named{有名字} —— **本件要开的就是这一格**：`Ok`，且带 `--account z`。
+        let (_, r) = &verdicts[2];
+        let cmd = r.as_ref().unwrap_or_else(|e| {
+            panic!(
+                "具名账号**说得出名字**时必须渲染得出来 —— 说不出来就意味着盘上四个本机拉起入口里\n\
+                 那三个（`src/tabs.ts` · `src/views/history.ts` 两处）在类型上到不了后端那条路。\n\
+                 实得降级理由：{e}"
+            )
+        });
+        assert!(
+            cmd.contains("--account z"),
+            "具名账号该渲染成 `--account <名字>`，实得：{cmd}"
+        );
+
+        // ④ Named{只有目录} —— 仍然 `Err`：**不许从目录名推一个 `--account` 出来**。
+        //    推错的失效方向是 `shared/ccm` 当场 `die`（退出码 2）= 一次能起的会话变成报错，
+        //    与 `relay_account_id_of_dir` 那条「推错就回落」的保守方向**相反**。
+        let (_, r) = &verdicts[3];
+        assert!(
+            r.as_ref().is_err_and(|e| e.contains("account")),
+            "只有目录没有名字时必须诚实短路（§35），**不许拿目录名当 `--account`**。实得：{r:?}"
+        );
+    }
+
     /// ★★★ `D4 阻-3`：**「走中转」与「有 tmux 容器」今天仍然互斥** —— 把这个事实钉住。
     ///
     /// # 它为什么存在：盘上写着「已消掉」，而其实没消掉
@@ -2773,19 +2974,32 @@ mod tests {
     /// 与 [`launch_local`] 的头注都写上了**「不再互斥」**。
     /// 🔴 `D4` 现打证伪：**代价原样还在，只是成因换了。**
     ///
+    /// # 🔴🔴 `K-R53` 09-11 **重新裁定**：成因**第二次**换了，而互斥仍然成立
+    ///
+    /// `D4` 那一拍的成因是「具名账号根本进不了 ccm」（`Named` 只有目录、说不出 `--account`）。
+    /// **本件把那一格开了**（[`LaunchAccount::Named::name`]）⇒ **那个成因今天不成立了**：
+    /// 下面第 ⓪ 格现打断言的正是这件事 —— 渲染器**单独看已经不再互斥**。
+    ///
+    /// 今天互斥是由 [`launch_local`] 里那一行 `relay.is_empty()` **显式保住**的
+    /// （理由与退役条件住 [`RELAY_KEEPS_THE_OLD_PATH`]）：`shared/ccm` 的转发**有**
+    /// （第 1208-1209 行），而 `capabilities=`（第 624 行，18 个 token）里**没有任何 token
+    /// 声明它** ⇒ 放行会让装旧 ccm 的机器**静默吃掉** `ANTHROPIC_BASE_URL`。
+    ///
+    /// ⇒ **这一条从「成因是说不出名字」改成「成因是探不到那个能力」。**
+    /// 前者是结构性的（只能等改 `LaunchAccount`），后者**有可执行的退役条件**。
+    ///
     /// # 今天的成因（本条逐格量出来，不是推的）
     ///
-    /// 分母 = [`LaunchAccount`] 的**全部形状**加上「参数缺席」，共三格：
+    /// 分母 = [`LaunchAccount`] 的**全部形状**加上「参数缺席」，并且**具名那一格喂两个号**
+    /// （一个在中转表里、一个不在 —— 只喂一个的话「中转在不在场」这一维的取值域是 1，
+    /// 那正是 `D6 阻-2` 逮到过的形状）：
     ///
-    /// | 形状 | [`relay_account_id`] | [`render_local_ccm_with`] |
+    /// | 形状 | [`relay_prefix_for_launch`] | 走不走 ccm 容器（= [`launch_local`] 的判据） |
     /// |---|---|---|
-    /// | 缺席（`None`） | `None`（不走中转） | `Err`（CLI 说不出「继承」） |
-    /// | `Base`（账号 0） | `None`（不走中转） | `Ok`（**唯一渲得出容器的那一格**） |
-    /// | `Named{config_dir}` | `Some(id)`（**唯一走得了中转的那一格**） | `Err`（§35 短路：有 configDir 没名字） |
-    ///
-    /// ⇒ **能推出中转 id 的那一格，正是 ccm 渲染器拒掉的那一格。**
-    /// 凡是带中转前缀的本机拉起，必然落 [`build_local_posix_command`]（那条路没有 tmux 容器）；
-    /// 凡是走 ccm 容器路的，中转前缀必然是空串。**两条路今天不相交。**
+    /// | 缺席（`None`） | 空串（不走中转） | 否 —— 渲染器说不出「继承」 |
+    /// | `Base`（账号 0） | 空串（不走中转） | **是** |
+    /// | `Named{acct-a}`（**在中转表里**） | 非空 | 否 —— `relay.is_empty()` 那一行挡住 |
+    /// | `Named{acct-b}`（不在表里） | 空串 | **是**（本件开的就是这一格） |
     ///
     /// # ⚠ 它连带说明了一件别处的事（别让那条判据被读宽）
     ///
@@ -2795,37 +3009,49 @@ mod tests {
     /// 那段 shell 真的会转发，而**没有任何生产输入能同时走到中转与容器**。
     /// 它不是假的，它买不到本件要的那一格。**那条判据的头注里也写了这句话，两处别只改一处。**
     ///
-    /// # 🔴 这条前提**本来就该变** —— 变的那天去哪里重新裁定（`testing.md` 三.11 要的那一栏）
+    /// # 🔴 这条前提**还会再变一次** —— 变的那天去哪里重新裁定（`testing.md` 三.11 要的那一栏）
     ///
-    /// 消掉互斥要给 [`LaunchAccount::Named`] 补上**名字**（要改 `LaunchAccount` 与它的前端
-    /// 调用点，都不在 `K-H2b` 的写区）。真做那一天，**同一拍**要做完这四样，缺一样就是又一次
-    /// 「盘上写着已解而其实没解」：
-    ///   ① 本条会红 —— **在这里重新裁定**（改成「不再互斥」并说清新的人群）；
-    ///   ② [`launch_local`] 的头注里那段「互不互斥」跟着改；
-    ///   ③ 件计划 `K-H2b §4` 那条登记跟着改；
-    ///   ④ **`shared/ccm` 的 `capabilities=` 串要加上那个 token** —— 现打 17 个 token 里
-    ///      含 `relay`/`base-url`/`anthropic` 的 **0** 个，而 `ccm_probe` 探的是 PATH 上那个 ccm
-    ///      ⇒ 不加的话，装了旧 ccm 的机器会**静默吃掉**这个变量。
+    /// 退役条件今天是**一行 shell**：`shared/ccm:624` 的 `capabilities=` 加一个声明转发的 token，
+    /// 而 [`launch_local`] 那一行改成「探到那个 token 才放行」。真做那一天，**同一拍**四样：
+    ///   ① 本条会红 —— **在这里重新裁定**；
+    ///   ② [`launch_local`] 的头注与 [`RELAY_KEEPS_THE_OLD_PATH`] 跟着改；
+    ///   ③ 件计划 `K-H2b §4` 那条登记跟着改
+    ///      〔`K-R53` 09-11：**这一样本轮没做，它不在本件写区** —— 已在 `K-R53 §8` 报回 PM〕；
+    ///   ④ `shared/ccm` 那一行本身（**也不在本件写区**，同上报回）。
     #[test]
     #[cfg(not(windows))]
     fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
         let act = LocalPsAction::Resume("s1".into());
-        let named = LaunchAccount::Named {
-            config_dir: "/home/u/.claude-accts/acct-a".into(),
-        };
         let base = LaunchAccount::Base;
-        // 分母就是这三格 —— `LaunchAccount` 今天只有两个变体，加上「参数缺席」。
-        let shapes: [(&str, Option<&LaunchAccount>); 3] = [
-            ("缺席", None),
-            ("Base", Some(&base)),
-            ("Named", Some(&named)),
-        ];
+        // 在中转表里的那个号 —— 名字说得出（本件之后前端就是这么传的）。
+        let acct_a = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/acct-a".into(),
+            name: Some("acct-a".into()),
+        };
+        // 不在中转表里的那个号 —— 「哪个号」这一维的取值域因此是 2，不是 1（`D6 阻-2`）。
+        let acct_b = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/acct-b".into(),
+            name: Some("acct-b".into()),
+        };
 
-        let mut relayed = Vec::new();
-        let mut containered = Vec::new();
-        for (label, acct) in shapes {
-            let relay_id = relay_account_id(acct);
-            let renders = render_local_ccm_with(
+        // 中转事实由替身给：表里只有 acct-a、中转在跑、不是 Windows。
+        fn rows_with_only_acct_a() -> Vec<String> {
+            vec!["acct-a".to_string()]
+        }
+        fn relay_is_running() -> bool {
+            true
+        }
+        fn not_windows() -> bool {
+            false
+        }
+        let _guard = override_relay_facts(RelayFactSources {
+            rows: rows_with_only_acct_a,
+            running: relay_is_running,
+            windows: not_windows,
+        });
+
+        let renders = |acct: Option<&LaunchAccount>| {
+            render_local_ccm_with(
                 &act,
                 None,
                 acct,
@@ -2833,31 +3059,54 @@ mod tests {
                 &caps_of_a_current_ccm(),
                 true,
             )
-            .is_ok();
-            if relay_id.is_some() {
+            .is_ok()
+        };
+
+        // ⓪ **重新裁定的那一格**：渲染器**单独看**已经不再互斥了 ——
+        //    在中转表里的那个号，渲染器今天渲得出来。互斥不再由它保。
+        //    （这一格红 = `K-R53` 那一刀被退掉了，那时下面几格的理由也就不成立。）
+        assert!(
+            renders(Some(&acct_a)),
+            "渲染器又对具名账号短路了 —— 那是 `K-R53` 之前的形状，\n\
+             本条头注里那段「成因换成探不到能力」就不再成立，回去重新裁定。"
+        );
+
+        let mut relayed = Vec::new();
+        let mut containered = Vec::new();
+        let shapes: [(&str, Option<&LaunchAccount>); 4] = [
+            ("缺席", None),
+            ("Base", Some(&base)),
+            ("Named{acct-a·在表里}", Some(&acct_a)),
+            ("Named{acct-b·不在表里}", Some(&acct_b)),
+        ];
+        for (label, acct) in shapes {
+            // 与 `launch_local` **同一条判据**：先算前缀，非空就根本不问渲染器。
+            let prefix = relay_prefix_for_launch(&act, acct).expect("这组输入下前缀算得出来");
+            if !prefix.is_empty() {
                 relayed.push(label);
             }
-            if renders {
+            if prefix.is_empty() && renders(acct) {
                 containered.push(label);
             }
         }
         // 反空真：两边**都非空**（都空的话下面那条不相交是空真）。
         assert_eq!(
             relayed,
-            ["Named"],
-            "能推出中转 id 的形状变了 —— 本条的结论要重新裁定（见头注最后一节）"
+            ["Named{acct-a·在表里}"],
+            "真拿到中转前缀的形状变了 —— 本条的结论要重新裁定（见头注最后一节）"
         );
         assert_eq!(
             containered,
-            ["Base"],
-            "能渲染出 ccm 容器的形状变了 —— 本条的结论要重新裁定（见头注最后一节）"
+            ["Base", "Named{acct-b·不在表里}"],
+            "能走进 ccm 容器的形状变了 —— 本条的结论要重新裁定（见头注最后一节）"
         );
         // 正题：两个集合不相交 ⇒ 今天没有任何一次本机拉起同时拿到中转前缀与 tmux 容器。
         assert!(
             relayed.iter().all(|l| !containered.contains(l)),
             "「走中转」与「有 tmux 容器」不再互斥了 —— 那是**好事**，但盘上有四处话要跟着改：\n\
-             ① 本条（重新裁定）② `launch_local` 头注 ③ 件计划 `K-H2b §4` 那条登记\n\
-             ④ `shared/ccm` 的 `capabilities=` 串要加 token（否则装了旧 ccm 的机器静默吃掉那个变量）。\n\
+             ① 本条（重新裁定）② `launch_local` 头注与 `RELAY_KEEPS_THE_OLD_PATH`\n\
+             ③ 件计划 `K-H2b §4` 那条登记 ④ `shared/ccm:624` 的 `capabilities=` 串要加 token\n\
+             （否则装了旧 ccm 的机器静默吃掉那个变量）。\n\
              实得：走中转的 {relayed:?} · 有容器的 {containered:?}"
         );
     }
@@ -3140,6 +3389,7 @@ mod tests {
     fn named(d: &str) -> LaunchAccount {
         LaunchAccount::Named {
             config_dir: d.to_string(),
+            name: None,
         }
     }
 
@@ -4167,6 +4417,7 @@ mod tests {
         let sid = "01998f2a-1234-7abc-9def-0123456789ab";
         let named = LaunchAccount::Named {
             config_dir: "C:\\Users\\z\\.claude-accts\\z".into(),
+            name: None,
         };
         let accounts: [Option<&LaunchAccount>; 3] =
             [None, Some(&LaunchAccount::Base), Some(&named)];
@@ -4326,6 +4577,7 @@ mod tests {
         let rows = vec!["acct-a".to_string()];
         let named = |d: &str| LaunchAccount::Named {
             config_dir: d.to_string(),
+            name: None,
         };
         // ① 表里有行 ⇒ 前缀在（非空对照：证明这把尺子不是恒空串）。
         let id = relay_account_id(Some(&named("/home/u/.claude-accts/acct-a")));
@@ -4442,10 +4694,12 @@ mod tests {
 
         let acct_a = LaunchAccount::Named {
             config_dir: "/h/.claude-accts/acct-a".to_string(),
+            name: None,
         };
         // 🔴 `D6 阻-2`：**第二个号**。「哪个号」这一维的输入域从 1 变成 2。
         let acct_b = LaunchAccount::Named {
             config_dir: "/h/.claude-accts/acct-b".to_string(),
+            name: None,
         };
         let action = LocalPsAction::Resume("sid-1".to_string());
         let _guard = override_relay_facts(RelayFactSources {
@@ -4845,6 +5099,7 @@ mod tests {
         // ★ 与起会话那一侧**同一个规则**：同一个目录，两条路推出同一个 id。
         let named = LaunchAccount::Named {
             config_dir: "/home/u/.claude-accts/acct-a".to_string(),
+            name: None,
         };
         assert_eq!(
             relay_account_id(Some(&named)),
@@ -4958,6 +5213,7 @@ mod tests {
         for (id, dir) in accounts {
             let account = LaunchAccount::Named {
                 config_dir: dir.to_string(),
+                name: None,
             };
             // ① 表里没有这个号 ⇒ 逐字节旧路。这一趟同时是下面那条相等断言的**基准串**。
             answer(&[], true);
@@ -5022,6 +5278,7 @@ mod tests {
         answer(&["acct-a"], false);
         let account = LaunchAccount::Named {
             config_dir: "/h/.claude-accts/acct-a".to_string(),
+            name: None,
         };
         assert!(
             launch_local(&action, None, None, Some(&account), None).is_err(),
@@ -5043,6 +5300,7 @@ mod tests {
         answer(&["acct-a"], true);
         let acct = LaunchAccount::Named {
             config_dir: "/h/.claude-accts/acct-a".to_string(),
+            name: None,
         };
 
         // ⑤ **`New` 那一支**：送出去的那一串必须也带中转注入，且账号段是这次的号。
@@ -5156,6 +5414,7 @@ mod tests {
         });
         let account = LaunchAccount::Named {
             config_dir: "/h/.claude-accts/acct-a".to_string(),
+            name: None,
         };
 
         // ① resume：身份就是这条会话的 sid，逐字节。
@@ -5365,6 +5624,7 @@ mod tests {
         });
         let account = LaunchAccount::Named {
             config_dir: "/h/.claude-accts/acct-a".to_string(),
+            name: None,
         };
 
         // ① **新开**那一支：回的那个串就是命令里那个值。
@@ -5560,6 +5820,7 @@ mod tests {
         let dir = "/h/.claude-accts/acct-r1";
         let account = LaunchAccount::Named {
             config_dir: dir.to_string(),
+            name: None,
         };
         // 中性名（`brief` 12：断言用的子串不许取自夹具名字里带含义的那半）。
         let cwd = "/p/one";
@@ -5652,6 +5913,7 @@ mod tests {
             Some("cc".to_string()),
             Some(LaunchAccount::Named {
                 config_dir: dir.to_string(),
+                name: None,
             }),
             None,
         )
@@ -5673,6 +5935,7 @@ mod tests {
         //    ⇒ 这一跳换掉五个入参里的**任何一个**（不只是 `account`），本格都红。
         let account = LaunchAccount::Named {
             config_dir: dir.to_string(),
+            name: None,
         };
         resume_impl("sid-r2", cwd, Some("cc"), Some(&account), None).expect("这一趟不该失败");
         let (from_impl, impl_cwd) = entry_last();
@@ -5707,6 +5970,7 @@ mod tests {
             None,
             Some(LaunchAccount::Named {
                 config_dir: dir.to_string(),
+                name: None,
             }),
         )
         .expect("不走中转这一趟不该失败");
@@ -5732,6 +5996,7 @@ mod tests {
             None,
             Some(LaunchAccount::Named {
                 config_dir: dir.to_string(),
+                name: None,
             }),
         )
         .expect("走中转这一趟不该失败");

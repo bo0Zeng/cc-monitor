@@ -188,8 +188,15 @@ export function askForkLaunch(opts: ForkAskOptions): Promise<ForkChoices | null>
     ok.addEventListener("click", () => {
       const choices: ForkChoices = {};
       if (accountSel) {
-        choices.configDir =
-          accountSel.value === ACCOUNT_ZERO_VALUE ? null : accountSel.value;
+        const zero = accountSel.value === ACCOUNT_ZERO_VALUE;
+        choices.configDir = zero ? null : accountSel.value;
+        // `K-R53`：名字与目录**一起交出去**（后端那条 ccm 路只会 `--account <名字>`）。
+        // ⚠ 从 `opts.accounts` 里查，**不是**读 `<option>` 的显示文本：显示文本是给人看的，
+        //   哪天加个后缀（「acct-a（默认）」）就会把一个查不到的名字传下去，
+        //   而 `shared/ccm` 对打错的 `--account` 是当场 `die`。
+        choices.accountName = zero
+          ? null
+          : (opts.accounts.find((a) => a.configDir === accountSel!.value)?.name ?? null);
       }
       if (tmuxBox) choices.useTmux = tmuxBox.checked;
       if (cwdInput && cwdInput.value.trim()) choices.cwd = cwdInput.value.trim();

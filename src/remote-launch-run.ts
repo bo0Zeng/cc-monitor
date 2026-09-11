@@ -140,7 +140,11 @@ export function buildCliRenderRequest(
 ): CliRenderRequest {
   return {
     isSsh: plan.transport.kind === "ssh",
-    caps: probe.installed ? [...probe.capabilities] : null,
+    // `K-R53` `KR53D3`：**肯定式** —— `null` 的两种来历（真没装 · 没探出来）在这条 wire 上
+    // 本来就同形（都是「拿不到能力集」⇒ Rust 侧 `installed = caps.is_some()` 为 false ⇒ 降级），
+    // 而**值**那一侧已经分得开了（`ccm-probe.ts` 的三态）。这里刻意不把 `unknown` 写成
+    // `installed:false` 再传下去 —— 降级是处置，不是事实。
+    caps: probe.state === "installed" ? [...probe.capabilities] : null,
     action:
       plan.action.kind === "resume"
         ? { kind: "resume", sid: plan.action.sid }

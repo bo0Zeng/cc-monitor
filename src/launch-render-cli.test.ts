@@ -26,11 +26,13 @@ function eq(a: unknown, b: unknown, msg?: string): void {
 console.log("launch-render-cli.test.ts");
 
 const FULL_CAPS: CcmProbeResult = {
-  installed: true,
+  state: "installed",
   version: "1",
   capabilities: new Set(["new", "resume", "attach", "tmux", "account", "model", "cwd", "agent", "launcher", "ccm-sid", "print"]),
 };
-const NOT_INSTALLED: CcmProbeResult = { installed: false, version: null, capabilities: new Set() };
+const NOT_INSTALLED: CcmProbeResult = { state: "not-installed" };
+/** `K-R53` `KR53D3`：**没探出来** —— 与上面那个是两件事，本文件末尾那条判据断的就是这一点。 */
+const PROBE_FAILED: CcmProbeResult = { state: "unknown", error: "ssh: 连接超时" };
 
 function ctxOf(overrides: Partial<LaunchContext>): LaunchContext {
   return {
@@ -59,6 +61,26 @@ test("canRenderCli：未探测到 ccm → false", () => {
   const ctx = ctxOf({});
   eq(canRenderCli(buildLaunchPlan(ctx), ctx, NOT_INSTALLED), false);
 });
+// `K-R53` `KR53D3`：**处置一样，说法不许一样。**
+// 两态都降级（那是对的，见 `ccm-probe.ts` 头注），但**降级理由**是生产侧唯一的线索 ——
+// 把一次 ssh 抖动写成「远端未装 ccm」，用户会去装一个已经装着的东西。
+test("KR53D3：探测没得出答案 → 照旧降级，但理由**不许**说成「未装」", () => {
+  const ctx = ctxOf({});
+  const failed = tryRenderCli(buildLaunchPlan(ctx), ctx, PROBE_FAILED);
+  eq(failed.ok, false, "没探出来时仍然要降级（探测是可用性判断，不是安全边界）");
+  const notInstalled = tryRenderCli(buildLaunchPlan(ctx), ctx, NOT_INSTALLED);
+  eq(notInstalled.ok, false);
+  eq(
+    failed.ok === false && notInstalled.ok === false && failed.reason === notInstalled.reason,
+    false,
+    "「没探出来」与「真的没装」给了同一句降级理由 —— 那是把两件事压成一个值（本区最贵的病）",
+  );
+  eq(
+    failed.ok === false && /连接超时/.test(failed.reason),
+    true,
+    `出错那一刻唯一的线索就是原始错误，它必须留在理由里: ${JSON.stringify(failed)}`,
+  );
+});
 test("canRenderCli：装了 + create-or-attach + 无账号 → true", () => {
   const ctx = ctxOf({});
   eq(canRenderCli(buildLaunchPlan(ctx), ctx, FULL_CAPS), true);
@@ -75,7 +97,7 @@ test("canRenderCli：账号维度存在（具名账号）+ ccm 支持 account �
 });
 test("canRenderCli：ccm 不支持 account 能力（旧版本）→ false，即便只是 base 态也强制降级", () => {
   const noAccountCap: CcmProbeResult = {
-    installed: true,
+    state: "installed",
     version: "0.9",
     capabilities: new Set(["new", "resume", "attach", "tmux", "cwd", "agent", "launcher", "ccm-sid", "print"]),
   };
@@ -92,7 +114,7 @@ test("canRenderCli：配了 modelOverride 且 ccm 支持 model 能力 → true",
 });
 test("canRenderCli：配了 modelOverride 但 ccm 不支持 model 能力（旧版本）→ false", () => {
   const noModelCap: CcmProbeResult = {
-    installed: true,
+    state: "installed",
     version: "1",
     capabilities: new Set(["new", "resume", "attach", "tmux", "account", "cwd", "agent", "launcher", "ccm-sid", "print"]),
   };
@@ -101,7 +123,7 @@ test("canRenderCli：配了 modelOverride 但 ccm 不支持 model 能力（旧�
 });
 test("canRenderCli：未配 modelOverride → 不受影响，仍 true（即便 ccm 不支持 model 能力）", () => {
   const noModelCap: CcmProbeResult = {
-    installed: true,
+    state: "installed",
     version: "1",
     capabilities: new Set(["new", "resume", "attach", "tmux", "account", "cwd", "agent", "launcher", "ccm-sid", "print"]),
   };
@@ -213,7 +235,7 @@ test("R04①：ok:false 时 reason 说得出为什么（此前这个信息是丢
 test("R04②：account 能力从静态列表移进维度后，缺它仍强制降级（语义未松）", () => {
   const ctx = ctxOf({ account: { kind: "account", name: "z", configDir: "/h/z" } });
   const noAccountCap: CcmProbeResult = {
-    installed: true,
+    state: "installed",
     version: "1",
     capabilities: new Set(["new", "resume", "attach", "tmux", "cwd", "launcher", "ccm-sid", "model"]),
   };
@@ -239,7 +261,7 @@ test("attach 豁免①：ccm 不支持 account 能力，attach 仍走 CLI（不�
     account: { kind: "account", name: "z", configDir: "/h/z" },
   });
   const noAccountCap: CcmProbeResult = {
-    installed: true,
+    state: "installed",
     version: "1",
     capabilities: new Set(["new", "resume", "attach", "tmux", "cwd", "launcher", "ccm-sid"]),
   };
@@ -255,7 +277,7 @@ test("attach 豁免②：配了 modelOverride 但 ccm 太旧不支持 model，at
     modelOverride: "opus",
   });
   const noModelCap: CcmProbeResult = {
-    installed: true,
+    state: "installed",
     version: "1",
     capabilities: new Set(["new", "resume", "attach", "tmux", "account", "cwd", "launcher", "ccm-sid"]),
   };
