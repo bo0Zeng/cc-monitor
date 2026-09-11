@@ -556,7 +556,8 @@ fn spawn_detached(
         .stderr(std::process::Stdio::null())
         .process_group(0);
     // ★★ `K-R28`：与 `supervise_with_stdio` **同一份分类**（住 `local_backend`，不各写一份）。
-    //    这条路 exec 的正是 `resolve_daemon_bin` 刚用 `extract_embedded_to` 释放出来的那个文件
+    //    这条路 exec 的正是 `resolve_daemon_bin` 刚拿到的那个文件 —— 而它可能是
+    //    `extract_embedded_to` 刚写出来的那一份（`K-R43` 之后经 `resolve_or_extract` 走）
     //    ⇒ 它是本仓两处「写了一个文件、随后 exec 它」的落点之一。
     local_backend::spawn_with_etxtbsy_retry(&mut cmd).map_err(|f| match f {
         // 这一刻恰好撞上了会自己过去的竞态 —— 那句话也是共用的那一份。
@@ -1125,36 +1126,35 @@ fn adopt_with(port: u16, home: &str, token: &str, wait_for_bind: bool) -> Adopt 
     ))
 }
 
-/// 找那个二进制：**先找 exe 旁边，再释放内嵌的那份**。
+/// 找那个二进制 —— **这一层只做适配，答案取自那一份共用的解析**
+/// （`local_backend::resolve_or_extract`：先找 exe 旁边、再问产物自己带没带、再释放）。
 ///
-/// ⚠⚠ **这个顺序与 `local_backend::start_or_extract` 的必须一样**，
-/// 而它们是两份实现（那一份把「找」与「监护」焊在一起，常驻这条路不要监护那半）。
-/// 两份实现就会漂 ⇒ 由 `the_two_resolution_paths_still_agree_on_the_order` 逐字对拍。
+/// # 🔴 `K-R43`：本函数**曾经是第二份手写实现**，今天不是了
+///
+/// 原来这里自己走一遍「找旁边 → 释放内嵌」，与 `local_backend::start_or_extract` 并列两份，
+/// 中间只有 `the_two_resolution_paths_still_agree_on_the_order` **对拍顺序**。
+/// ⚠ **那条判据眼皮底下真的漂过一次，而它全程绿**：`K-R42` 只给那一份接上了
+/// 「问产物自己带没带」与「释放失败说一句分得开的话」，本函数一个字没动 ——
+/// 顺序没变 ⇒ 判据没红，而同一台机上两条路对同一个失败给出了两句性质不同的话
+/// （本函数那一句逐字是 `K-R42` 从对面删掉的那一句）。读数住件文件 `K-R43 §9`。
+/// ⇒ 处置是**只留一份**，本函数降为适配器：把 `Resolved` 换成这条路要的 `Result`，
+/// 并补上两样**宿主知识**（目标三元组常量 · `make_executable`）。
+///
+/// ⚠ **本层不许再自己拼失败串** —— 拼了就是第二份说法。由
+/// `the_two_resolution_paths_still_agree_on_the_order` 钉着（它今天钉的是「两条路都走那一份」）。
 fn resolve_daemon_bin(
     extract_dir: &std::path::Path,
     embedded: Option<(&str, &[u8])>,
 ) -> Result<std::path::PathBuf, (String, Vec<std::path::PathBuf>)> {
-    let beside = local_backend::resolve_beside_this_exe(env!("CCM_TARGET_TRIPLE"));
-    match beside {
+    match local_backend::resolve_or_extract(
+        env!("CCM_TARGET_TRIPLE"),
+        extract_dir,
+        embedded,
+        // `backend-split` 的 C10：平台知识由宿主注入。
+        &crate::platform_fs::make_executable,
+    ) {
         Resolved::Found(p) => Ok(p),
-        Resolved::Missing { reason, looked_at } => {
-            let Some((build_id, bytes)) = embedded else {
-                return Err((reason, looked_at));
-            };
-            local_backend::extract_embedded_to(
-                extract_dir,
-                build_id,
-                bytes,
-                // `backend-split` 的 C10：平台知识由宿主注入。
-                &crate::platform_fs::make_executable,
-            )
-            .map_err(|e| {
-                (
-                    format!("exe 旁无 sidecar，且释放内嵌 daemon 失败: {e}"),
-                    looked_at,
-                )
-            })
-        }
+        Resolved::Missing { reason, looked_at } => Err((reason, looked_at)),
     }
 }
 
@@ -1507,9 +1507,15 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 //   · **前半是把一道闸的射程读大了**。那道闸逐字是
 //     `let embedded = if cfg!(target_os = "linux") {` —— 它置空的是 **`embedded`
 //     这一个变量（内嵌回落那一支）**，不是「解析」。
-//   · **后半是从前半推出来的**。`resolve_daemon_bin` 的**第一条路**逐字是
-//     `let beside = local_backend::resolve_beside_this_exe(env!("CCM_TARGET_TRIPLE"));`
-//     —— **与平台无关**，只有它返回 `Missing` 才轮到 `embedded`。
+//   · **后半是从前半推出来的**。`resolve_daemon_bin` 的**第一条路**是
+//     `local_backend::resolve_beside_this_exe` —— **与平台无关**，
+//     只有它返回 `Missing` 才轮到 `embedded`。
+//     〔`K-R43` 订正**这一行的形式，不是它的结论**：那一句原先逐字抄在这里
+//      （`let beside = local_backend::resolve_beside_this_exe(env!("CCM_TARGET_TRIPLE"));`），
+//      而 `K-R43` 把解析抽进了 `local_backend::resolve_or_extract` ⇒ 那份逐字抄件当场馊了。
+//      **结论一格没动**：第一条路仍是「找 exe 旁边」、仍与平台无关，只是它今天住共用那份里。
+//      ⚠ 留下这条订正是有意的：本段自己就是「一句注释在开发树上恒真、在用户手上恒假」的病历，
+//      而**抄逐字**正是让它馊得更快的那一手。〕
 //   ⇒ 发版的 Windows 包里那份 sidecar **就在 `monitor.exe` 旁边**
 //     （`src-tauri/tauri.sidecar.conf.json` 逐字声明 `"externalBin": ["binaries/cc-monitor-remote"]`；
 //     `.github/workflows/release.yml` 的 `build-windows` job 跑在 `windows-latest` 上，
@@ -3062,36 +3068,79 @@ mod tests {
         }
     }
 
-    /// ★★ **两份「找那个二进制」的实现必须同序**。
+    /// ★★ **两条「找那个二进制」的路必须给同一个答案** —— 今天靠的是「只有一份实现」。
     ///
-    /// 常驻这条路不要监护那半，所以它没法直接用 `start_or_extract`
-    /// （那一份把「找」与「监护」焊在一起）⇒ 今天是**两份实现**。
-    /// 两份就会漂，而漂的后果是「同一台机上两条路找到不同的二进制」——
-    /// 那正是「每台机 N 个 daemon」的另一个入口。
-    /// ⇒ 逐字对拍**顺序**这一件事：两边都必须**先 `resolve_beside_this_exe`、再释放内嵌那份**。
+    /// # 🔴 `K-R43` 换了机制，**名字刻意没改**（引它的地方不用跟着动）
+    ///
+    /// 墓碑，原文逐字：「常驻这条路不要监护那半，所以它没法直接用 `start_or_extract`
+    /// （那一份把「找」与「监护」焊在一起）⇒ 今天是**两份实现**。两份就会漂 …… ⇒ 逐字对拍**顺序**
+    /// 这一件事：两边都必须先 `resolve_beside_this_exe`、再释放内嵌那份。」
+    ///
+    /// ⚠ **它守的那件事一个字没变** —— 仍是「同一台机上两条路不许找到不同的二进制」
+    /// （那正是「每台机 N 个 daemon」的另一个入口）。变的是**拿什么去守**，而换机制的理由是
+    /// **一次实打的失效**：`K-R42` 只改了 `start_or_extract`（接上「问产物自己带没带」、
+    /// 释放失败改说一句分得开的话），`resolve_daemon_bin` 一个字没动 —— **顺序两边都没动**
+    /// ⇒ 上面那版**全程绿**，而两条路对同一个失败已经在说两句性质不同的话。
+    /// ⇒ 「两份手写实现 + 一条只对拍顺序的判据」这一档**被证伪了**，
+    /// 换成「**抽一份共用的，再钉住两条路都真的走它**」（`K-R28` 那条防空转的形状）。
+    ///
+    /// # 它今天钉四件
+    ///
+    /// ① 那份共用的解析**存在**（切得出体，且体里那三问俱在 —— 反空真）；
+    /// ②③ 两条路**各自恰好一处**调它；
+    /// ④ 两条路体内**都不再有**自己那套取法（`extract_embedded_to(` /
+    ///    `native_embedded_daemon` / `resolve_beside_this_exe(` 一处都不许剩）——
+    ///    少了④，谁在旁边**再写一份**并列的取法，②③ 照样绿。
+    ///
+    /// ⚠ **诚实边界**：它是**约定型守卫**（查源码形态）——
+    /// 挡得住「接线被删 / 旁边又长出第二份取法」，挡不住「把共用那份自己改坏」。
+    /// 共用那份的内容由 `local_backend` 那侧的
+    /// `the_self_extract_path_really_asks_the_product_whether_it_carries_one` 钉。
     #[test]
     fn the_two_resolution_paths_still_agree_on_the_order() {
-        let mine = body_of(
-            &guard_core::production_code(include_str!("local_daemon.rs")),
-            "fn resolve_daemon_bin(",
-        );
-        let theirs = body_of(
-            &guard_core::production_code(include_str!("backend/control/local_backend.rs")),
-            "pub fn start_or_extract(",
-        );
-        for (who, body) in [("常驻这条", &mine), ("今天那条", &theirs)] {
-            let beside = body
-                .find("resolve_beside_this_exe(")
-                .unwrap_or_else(|| panic!("{who}路里找不到 `resolve_beside_this_exe(`"));
-            let extract = body
-                .find("extract_embedded_to(")
-                .unwrap_or_else(|| panic!("{who}路里找不到 `extract_embedded_to(`"));
-            assert!(
-                beside < extract,
-                "{who}路把「释放内嵌那份」排在「找 exe 旁边」之前 —— 顺序反了。\n\
-                 开发构建里 exe 旁边那个是**更新**的，内嵌那份是打包时的快照；\
-                 顺序一反，两条路就会在同一台机上找到不同的二进制。"
-            );
+        let theirs = guard_core::production_code(include_str!("backend/control/local_backend.rs"));
+        // ① 那份共用的解析真的在，而且三问俱在 —— 它是下面三条的地板。
+        let shared = body_of(&theirs, "pub fn resolve_or_extract(");
+        for needle in [
+            "resolve_beside_this_exe(",
+            "native_embedded_daemon",
+            "extract_embedded_to(",
+            "extraction_failure_reason(",
+        ] {
+            guard_core::find_pinned(&shared, needle).unwrap_or_else(|e| {
+                panic!(
+                    "那份共用的解析体内 `{needle}` 不是恰好一处（{e}）——\n\
+                     它是本条的地板：共用那份自己塌了，下面「都走了它」这几条\n\
+                     买到的就只是「都走了一个空壳」。\n逐字：{shared}"
+                )
+            });
+        }
+        let mine = guard_core::production_code(include_str!("local_daemon.rs"));
+        for (who, prod, head) in [
+            ("常驻这条", &mine, "fn resolve_daemon_bin("),
+            ("今天那条", &theirs, "pub fn start_or_extract("),
+        ] {
+            let body = body_of(prod, head);
+            // ②③ 恰好一处调用 —— 两处就说不清哪一处才是它的答案。
+            guard_core::find_pinned(&body, "resolve_or_extract(").unwrap_or_else(|e| {
+                panic!(
+                    "{who}路体内 `resolve_or_extract(` 不是恰好一处（{e}）——\n\
+                     一处都没有 ⇒ 它又自己找去了，而「自己找」正是 `K-R42` 那次漂的形状：\n\
+                     同一台机上两条路对同一个失败说两句性质不同的话。\n逐字：{body}"
+                )
+            });
+            // ④ 自己那套取法一处都不许剩。
+            for own in [
+                "extract_embedded_to(",
+                "native_embedded_daemon",
+                "resolve_beside_this_exe(",
+            ] {
+                assert!(
+                    !body.contains(own),
+                    "{who}路体内又出现了 `{own}` —— 旁边长出了第二份取法。\n\
+                     ★ 少了本条，「都调了那份共用的」照样绿，而真正跑起来的是哪一份没人说得准。\n逐字：{body}"
+                );
+            }
         }
     }
 
@@ -4748,7 +4797,12 @@ mod tests {
         //  ★ 「诚实降级」这一档今天还有真人群，一批都不靠 F05b 有没有做：
         //  ① **裸 exe**（PM 那一趟实测 0 个后端进程）· ② **开发树**（`externalBin` 刻意不进基础
         //  `tauri.conf.json` ⇒ exe 旁恒空）· ③ **释放内嵌那一份也失败**
-        //  （`resolve_daemon_bin` 里那条 `exe 旁无 sidecar，且释放内嵌 daemon 失败`）。
+        //  （走 `local_backend::extraction_failure_reason` 那句话）。
+        //  〔`K-R43` 订正 ③ 的**住址**：它原先写的是「`resolve_daemon_bin` 里那条
+        //   `exe 旁无 sidecar，且释放内嵌 daemon 失败`」—— 那一句是 `K-R42` 从
+        //   `start_or_extract` 删掉的**同一句**，`K-R43` 把它从这条路上也删了。
+        //   ⚠ **这一档的人群没变**（释放失败仍走诚实降级），变的只是它今天说哪一句话：
+        //   从「把两件事说成一件」换成「带了，但这台机器不让我放下来」。〕
         //  ⇒ 人群从「所有人」缩成这三批，**性质没变**，所以这条不换靶。
         //  与 `local_backend.rs` 那条「换靶」不同形：那条的**目的**随 F05b 过期，必须换；
         //  本条改的只是红了之后说给人听的那句话。〕
