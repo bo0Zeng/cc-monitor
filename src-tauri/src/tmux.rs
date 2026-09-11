@@ -530,8 +530,32 @@ fn build_capture_pane_cmd(target: &str) -> Result<String, String> {
 /// `display-message` 连这个字段都取不到、整条捕获串为空；目标存在但 `@ccm_sid` 未设时，
 /// 捕获串因为 `session_windows` 非空而不为空，两种情况因此被同一个 `[ -z "$info" ]` 干净分开。
 ///
-/// `need_sid=false && need_windows=false` 时退化成今天的精确原样一行（零改动、零额外 round
-/// trip）——覆盖 100% 的现有真实流量（`cc-*` 命名的 send-keys）。
+/// ★★ **K-R56（09-11）：`need_sid=false && need_windows=false` 那一支翻了面。**
+///
+/// 这一段原先逐字写着「退化成今天的精确原样一行（零改动、**零额外 round trip**）——
+/// 覆盖 100% 的现有真实流量（`cc-*` 命名的 send-keys）」。**那句话描述的正是一条缺陷**：
+/// 它是今天全仓唯一一条**一次探测都没有**的 tmux 写路径 —— `command -v tmux` 之后
+/// 直接 `tmux send-keys`，不探会话、不判存在性。而 daemon 那条对等的路
+/// （`control/gate.rs::admit`）**恒先 `probe`**，探不到就 `no_such_session`。
+/// ⇒ 同一条命令，两条路的门不等价（`K-R54` 逐处裁定表第 1 处点名）。
+///
+/// 现在这一支也**恒先探一次存在性**：取 [`PROBE_ONLY_FMT`]，空回包 ⇒ `CCM_NO_SESSION`，
+/// 非空才把动作发出去。两条路的「探了没有」这一维因此对齐。
+///
+/// ⚠ **对齐的只是「探了」这一维，不是全部**：daemon 那条探回 `#{session_id}`
+/// **句柄**、之后一律对句柄下命令（TOCTOU 窗口关掉了）；本处仍然对 `=name:` 下命令
+/// （`exact_target` 精确形态），探测与动作之间在**同一条远端 shell 里**仍有一个极窄的
+/// 窗口。把这一半也搬过来要动 `build_action` 的契约（目标从「调用方给的精确串」变成
+/// 「探回来的句柄」），那会牵到 `every_target_placeholder_comes_from_exact_target` 与
+/// `tmux_targets_use_exact_match` 两条判据 —— **另立，本件不做**。
+///
+/// ⚠ **代价如实写**：`cc-*` 名的 send-keys 从此在远端多起一次 `tmux` 进程
+/// （仍是**同一条 SSH 往返**里的一句，不是多一次 round trip）。
+/// 换来的是「远端会话已不存在」这一档从「`tmux send-keys` 自己的 stderr 原样透出」
+/// 变成与另外三种形态同族的 `CCM_NO_SESSION`。
+///
+/// ⚠ **这一支仍然没有 Gate 2 的远端半支**（名字前缀已经把 Gate 2 的本地半支满足了）——
+/// **「跳过 Gate 2 远端半支」与「跳过存在性探测」是两件事**，改之前它们被压成了一件。
 /// ★★ **Gate 2 的 shell 表示** —— 抽成独立函数是为了它**可被真跑一遍**〔G2-1〕。
 ///
 /// # 它与 `gate_core::gate2` 的关系（Phase G 审计那句话要精确一格）
@@ -556,6 +580,20 @@ fn gate_guard_expr(need_sid: bool, need_windows: bool) -> &'static str {
         (false, false) => unreachable!("已在上面的退化分支处理"),
     }
 }
+
+/// 「**只探存在性**」那一格的格式串 —— 也是两条 `need_sid=false` 路径共用的那一份。
+///
+/// 单字段、**不含 TAB**，所以 `K-R23` 那条「拆不出字段」判据在这条路上不存在
+/// （没有「拆」这一步）；通道被改写（`K-R12`：TAB 变 `_`）对单字段没有影响。
+///
+/// 判「在不在」靠的是**回包为空**，不是退出码 —— 目标不存在时 `display-message`
+/// 连这个字段都取不到、整条捕获串为空，而 rc 仍是 0（daemon 侧 `control/gate.rs`
+/// 的模块头注记着同一条实测，两侧刻意同判据）。
+/// `#{session_windows}` 对一个存在的会话恒为正整数 ⇒ 非空。
+///
+/// ⚠ 写成一个具名常量是为了**它只有一份**：`K-R56` 之前这个字面量在本函数里出现两次
+/// （退化分支没有它、`fmt` 那支有一份），现在三条路径都指这里。
+const PROBE_ONLY_FMT: &str = "#{session_windows}";
 
 /// ★★ **K-R23（09-04）：取值那一步 —— 「拆不出字段」不许长得像「字段是空的」。**
 ///
@@ -634,14 +672,22 @@ fn build_guarded_tmux_cmd(
     let t = exact_target(target)?;
     let action = build_action(&t);
     if !need_sid && !need_windows {
+        // ★★ **K-R56（09-11）：这一支从「零探测直接动手」改成「恒先探一次存在性」。**
+        // 两条门都不需要（名字前缀已满足 Gate 2 的本地半支，Gate 3 不适用）**不等于**
+        // 「不用知道那个会话在不在」—— daemon 的 `admit` 恒先 `probe` 才是对的形状。
+        // 判据：`tests::the_ssh_fallback_always_probes_before_it_acts`（真 `/bin/sh` 跑生产串）。
+        // 理由与代价逐条见函数头注 `K-R56` 那一节。
         return Ok(format!(
-            "if command -v tmux >/dev/null 2>&1; then {action}; else printf 'NO_TMUX\\n'; fi"
+            "if command -v tmux >/dev/null 2>&1; then \
+info=\"$(tmux {UTF8_CLIENT_FLAG} display-message -p -t {t} '{PROBE_ONLY_FMT}' 2>/dev/null)\"; \
+if [ -z \"$info\" ]; then printf 'CCM_NO_SESSION\\n'; else {action}; fi; \
+else printf 'NO_TMUX\\n'; fi"
         ));
     }
     let fmt = if need_sid {
         "#{session_windows}\t#{@ccm_sid}"
     } else {
-        "#{session_windows}"
+        PROBE_ONLY_FMT
     };
     // K-R23：shell 原生拆，不再走 `cut`（理由见函数头注三格）。`$tab` 求值失败成空串时
     // `${info#*}` 原样返回 ⇒ 落进下面那条「拆不出」⇒ fail-closed。
@@ -819,9 +865,14 @@ pub async fn kill_remote_tmux(origin: String, target: String) -> Result<(), Stri
 /// （如 `/compact`、`/exit` 这类要回车提交的）；`enter=false` 只发裸键（如 `Escape` 打断当前回合，
 /// **不能**带尾回车，否则可能误提交输入框里的队列文本）。target/keys 均经 `shell_quote`。
 ///
-/// F04：Gate 2 远端半支——`is_ccm_tmux_name` 本地命中时跳过（零额外 round trip，覆盖今天 100%
+/// F04：Gate 2 远端半支——`is_ccm_tmux_name` 本地命中时跳过（覆盖今天 100%
 /// 的真实流量：`cc-*` 命名目标）；未命中时原子核验远端 `@ccm_sid` 已设才发送。无 Gate 3——
 /// send-keys 不删除任何东西，`windows` 数量与它无关。
+///
+/// ⚠ **K-R56（09-11）改掉了这一段原先的「零额外 round trip」**：本地命中时跳过的是
+/// **Gate 2 的远端半支**，**不是存在性探测** —— 那两件事改之前被压成了一件，于是
+/// `cc-*` 名的 send-keys 成了全仓唯一一条不探会话就动手的写路径。今天两种形态都
+/// **恒先探一次**（理由与代价见 [`build_guarded_tmux_cmd`] 头注的 `K-R56` 那一节）。
 fn build_send_keys_remote_cmd(target: &str, keys: &str, enter: bool) -> Result<String, String> {
     let tail = if enter { " Enter" } else { "" };
     let keys_q = ssh_source::shell_quote(keys);
@@ -879,7 +930,29 @@ pub async fn tmux_send_keys(
     {
         crate::backend::control::daemon_route::Routed::Done => return Ok(()),
         crate::backend::control::daemon_route::Routed::Refused(why) => return Err(why),
+        // 证明没发出去 ⇒ 过渡期回落（C7）。`why` 只做诊断，不参与分流。
         crate::backend::control::daemon_route::Routed::NoChannel(why) => {
+            // ★★ **本机没有「回落到一次性 SSH」这条路** —— 逐字抄 [`kill_remote_tmux`]
+            // 那条先例（`K-R56`，09-11；`K-R54` 的裁定表第 1 处点名「**kill 那条有的
+            // 「本机不许回落」保护，send-keys 这条没有**」）。
+            //
+            // `daemon_send_keys` 本身完全传输无关（只 `client_for(origin)`），所以本机走
+            // daemon 那半今天就通。但下面那条回落是 **SSH 专属**：对 `<local>` 它会去
+            // `load_remote_config_by_label("<local>")` 拿不到东西，然后报
+            // **「未找到远端配置: "<local>"」** —— 一句与真实原因毫无关系的错。
+            //
+            // 真实原因只有一个：**本机 daemon 的入方向通道不在**。就这么说。
+            //
+            // ⚠ **这道保护的射程**：它比的是 **origin**（逐字节等于哨兵串），
+            // **不是 target 会话名**。一台 label 起成 `localhost` / 本机主机名的**远端**
+            // 拦不住，仍走 SSH 回落 —— 那是对的，它确实是一条远端传输。
+            // 射程逐条写在 `tests::the_local_send_keys_never_falls_back_to_ssh` 的头注里。
+            if origin == crate::inbound_client::LOCAL_ORIGIN {
+                return Err(format!(
+                    "本机 daemon 通道不在，送不了按键给 `{target}`：{why}\n\
+                     （本机没有 SSH 回落那条路 —— 那条是远端专属的过渡期兜底）"
+                ));
+            }
             tracing::debug!("[{origin}] send-keys 回落到一次性 SSH：{why}");
         }
     }
@@ -1307,20 +1380,56 @@ mod tests {
         );
         let sk_owned = build_send_keys_remote_cmd("cc-abc12345", "/exit", true).unwrap();
         assert!(
-            !sk_owned.contains("@ccm_sid") && !sk_owned.contains("display-message"),
-            "cc-* 前缀命中的 send-keys 应退化成今天的一行、零额外 round trip: {sk_owned}"
+            !sk_owned.contains("@ccm_sid"),
+            "cc-* 前缀命中不该再问远端 @ccm_sid（Gate 2 的本地半支已经过了）: {sk_owned}"
+        );
+        // ★★ **K-R56（09-11）：这一句翻了面。**
+        // 原版逐字是 `!sk_owned.contains("display-message")`，注释写「零额外 round trip」——
+        // 那正是 `K-R54#§8` 第 1 处点名的那条退化分支：**不探会话、不判存在性**，
+        // 而 daemon 的 `control/gate.rs::admit` 恒先 `probe`。两条路的门因此不等价。
+        // ⚠ **跳过的只是 Gate 2 的远端半支，不是存在性探测** —— 两件事，别再压成一件。
+        // 性质那一半由 `the_ssh_fallback_always_probes_before_it_acts` 真跑一遍来钉。
+        assert!(
+            sk_owned.contains("display-message"),
+            "cc-* 前缀命中的 send-keys 又变回「不探会话直接送键」了（K-R56 翻的正是这一格）: {sk_owned}"
         );
     }
 
-    /// F04：Gate 3（仅 kill）——`windows` 门槛只出现在 kill 的命令构造里，send-keys 恒不含。
+    /// F04：Gate 3（仅 kill）——`windows` **门槛**只出现在 kill 的命令构造里，send-keys 恒不含。
+    ///
+    /// # ★★ K-R56（09-11）：这条判据原先断的是一个**代理**，而那个代理今天失效了
+    ///
+    /// 原版逐字是 `!sk.contains("windows")` —— 拿「串里有没有 `windows` 这个词」
+    /// 代替「有没有 Gate 3 那道门」。K-R56 给 send-keys 那条补上存在性探测之后，
+    /// 它的格式串里出现了 [`PROBE_ONLY_FMT`]（`#{session_windows}`）⇒ 本条**当场红**，
+    /// 而 **Gate 3 一个字节都没进来**。那是一次教科书式的代理失效：
+    /// 判据红了，可它红的不是它自称要守的那件事。
+    ///
+    /// ⇒ 收紧成断言 **Gate 3 那条守卫表达式本身**，而且那条表达式是从生产函数
+    /// [`gate_guard_expr`] **现取**的、不是在这里手抄一份（手抄就是第二份判定，
+    /// 翻掉生产那一行本条会一个字不响）。
+    /// 正向那格同时留着：kill 必须含它 —— 否则把 `gate_guard_expr` 整个改成空串，
+    /// 单靠反向那格照样全绿。
     #[test]
     fn gate3_only_applies_to_kill_not_send_keys() {
+        // 从生产那条路现取，**不手抄**：`(need_sid=false, need_windows=true)` 正是
+        // `cc-*` 名 kill 的那一格。
+        let gate3 = gate_guard_expr(false, true);
         let kill = build_kill_session_cmd("cc-abc12345").unwrap();
-        assert!(kill.contains("windows"), "kill 必须核验 windows: {kill}");
+        assert!(
+            kill.contains(gate3),
+            "kill 必须带 Gate 3 守卫表达式 {gate3:?}: {kill}"
+        );
         let sk = build_send_keys_remote_cmd("cc-abc12345", "/exit", true).unwrap();
         assert!(
-            !sk.contains("windows"),
-            "send-keys 不删东西，不该有 Gate 3: {sk}"
+            !sk.contains(gate3),
+            "send-keys 不删东西，不该有 Gate 3（守卫表达式 {gate3:?}）: {sk}"
+        );
+        // ⚠ 反向自检：别让 `gate3` 退化成空串 —— 空串 `contains` 恒真 + `!contains` 恒假，
+        //   上面两句会同时变成「一句恒绿、一句恒红」，而恒红最省事的消法是把本条删掉。
+        assert!(
+            !gate3.is_empty() && gate3.contains("$w"),
+            "Gate 3 的守卫表达式取到的是 {gate3:?} —— 本条此刻量不到东西"
         );
     }
 
@@ -1759,8 +1868,12 @@ mod tests {
     }
 
     /// A5+：send-keys 命令构造（补 R1）——enter=true 尾附 ` Enter`，false 不附；target/keys 经 shell_quote。
-    /// F01：target 形态为 `'=<名>:'`（精确匹配，见 `exact_target`）。用 cc-* 名走零 Gate 的退化路径，
-    /// 命令形状与今天逐字节相同（F04 对 100% 真实流量零改动的验证点）。
+    /// F01：target 形态为 `'=<名>:'`（精确匹配，见 `exact_target`）。
+    ///
+    /// ⚠ **K-R56（09-11）**：这里原先逐字写着「用 cc-* 名走**零 Gate 的退化路径**，
+    /// 命令形状与今天逐字节相同」。**后半句今天不成立了** —— 那条路现在也恒先探一次
+    /// 存在性。本条断言的是 `send-keys` 那一句**本身**的形状（`Enter` 尾巴与引号化），
+    /// 用 `contains` 而不是整串相等 ⇒ 它对外层多出来的那层 `if` 不敏感，判的还是原来那件事。
     #[test]
     fn send_keys_cmd_construction() {
         let with_enter = build_send_keys_remote_cmd("cc-abc12345", "/compact", true).unwrap();
@@ -1901,6 +2014,179 @@ mod tests {
         assert!(
             local_at < ssh_at,
             "本机早退跑到 SSH 回落**之后**去了 —— 那就等于没有早退。"
+        );
+    }
+
+    /// ★★ **K-R56（09-11）：`send-keys` 这条路上，本机也不许悄悄回落到一次性 SSH。**
+    ///
+    /// # 它补的洞
+    ///
+    /// 隔壁 [`the_local_kill_never_falls_back_to_ssh`] 钉的是 `kill` 那条。
+    /// **`send-keys` 这条一直没有那道早退** —— `K-R54` 的逐处裁定表第 1 处逐字点名
+    /// （住 `features/K-R54-同一件事盘上有两份实现共16处.md#§8`）。
+    /// 缺了它，对 `<local>` 这条路会掉进 `load_remote_config_by_label("<local>")`，报
+    /// **「未找到远端配置: `"<local>"`」** —— 一句与真实原因（本机 daemon 通道不在）
+    /// 毫无关系的话。**错的诊断比没有诊断更贵。**
+    ///
+    /// # 它怎么走**生产那条路**（而不是自己抄一遍分流）
+    ///
+    /// 直接调生产入口 [`tmux_send_keys`] 本体。测试进程里 `<local>` 这个键上没有登记过
+    /// 入方向通道 ⇒ `daemon_send_keys` 的第一句 `client_for(origin)` 回 `None`
+    /// ⇒ `Routed::NoChannel` ⇒ 正好落在那条早退上。**把那条早退删掉，本条当场红**
+    /// （死值验读数住 `evidence/K-R56-deathvalue.md`）。
+    /// ⇒ 与隔壁那条**不重复**：那条扫源码（位置），本条走行为（它到底报了哪句话）。
+    ///
+    /// # ⚠ 射程，逐条说清（`brief` 12：报一个性质就要说清尺子）
+    ///
+    /// - 钉的是「那条 SSH 回落之前有本机的早退，而且说的是真实原因」。
+    ///   **不证明**本机 send-keys 真的送得到 —— 那要 daemon 在 + 一个真 tmux 会话，
+    ///   而真 tmux 本轮口径禁（`K-R56#§0d`）。
+    /// - 🔴 **那道保护比的是 `origin`，不是 `target` 会话名**：判据逐字是
+    ///   `origin == LOCAL_ORIGIN`（**逐字节相等**）。⇒
+    ///   · **拦得住**：唯一那个前端/后端约定的哨兵串（`inbound_client::LOCAL_ORIGIN`，
+    ///     由 `inbound_client.rs::the_local_origin_is_the_same_string_on_both_sides`
+    ///     钉着它与前端 `daemon-policy.ts` 那份逐字相同）。
+    ///     ⚠ **09-11 自查回打（K-R56）**：这一行第一版点的是一个**我编出来的**判据名
+    ///     （盘上零处），被 `structural_scan.rs` 里那条「散文点名的名字必须在代码里」的
+    ///     机检当场逮住 —— 那一趟**全量门禁 `GATE: FAIL`**，而定向 cargo 的 46 格
+    ///     **一个都没响**。**病复发在治它的代码里**：本件通篇在治「散文与盘上现状对不上」。
+    ///     🔴 那个假名字与两趟判定行**逐字抄在 `evidence/K-R56-deathvalue.md`** ——
+    ///     刻意不抄在这里：抄回来就又是一处「散文点名一个不存在的名字」，
+    ///     而 `evidence/` 不在那条机检的语料面里，正是放这种墓碑的地方。
+    ///   · **拦不住**：一台 label 起成 `localhost` / `127.0.0.1` / 本机主机名的**远端**
+    ///     （即便它就是这台机器）—— 仍走 SSH 回落。⚠ 那**是对的**：它确实是一条
+    ///     远端传输，报「未找到远端配置」也不会是假话（它真的没配）。
+    ///   · **也拦不住**：大小写 / 前后空白不同的写法（`<LOCAL>`、`" <local>"`）——
+    ///     但那些今天进不来，`LOCAL_ORIGIN` 是常量、不是用户输入。
+    ///     真正的撞名口子是 `LOCAL_ORIGIN` 自己头注逐字承认的那条：
+    ///     「用户理论上可以把某台远端机器的 label 起成这个名字，两者就撞了……**不做防御**」。
+    #[test]
+    fn the_local_send_keys_never_falls_back_to_ssh() {
+        // 登记表是**进程内全局**的 ⇒ 与别的会在 `<local>` 键上登记通道的用例串起来跑。
+        let _guard = crate::inbound_client::local_origin_test_lock();
+        // 前提自检：本条靠「`<local>` 上没有通道」才走得到 `NoChannel` 那一臂。
+        // 前提不成立就会走 daemon 那条路而**空转**，那时绿不作数。
+        assert!(
+            crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_none(),
+            "测试进程里 `<local>` 上居然有入方向通道 —— 本条的前提不成立，下面那句会空转"
+        );
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .expect("建不出 runtime —— 本条无从判断，别读成绿");
+        let err = rt
+            .block_on(tmux_send_keys(
+                crate::inbound_client::LOCAL_ORIGIN.to_string(),
+                "cc-abc12345".to_string(),
+                "/compact".to_string(),
+                Some(true),
+            ))
+            .expect_err("本机 daemon 通道不在，这一趟不该报成功");
+        assert!(
+            !err.contains("未找到远端配置"),
+            "本机 send-keys 掉进了 SSH 回落 —— 它报的是「未找到远端配置」，\n\
+             而真实原因是本机 daemon 通道不在。**错的诊断比没有诊断更贵。**\n\
+             实得：{err}"
+        );
+        assert!(
+            err.contains("本机 daemon 通道不在"),
+            "本机那条早退在，但它没说出真实原因。实得：{err}"
+        );
+    }
+
+    /// ★★ **K-R56（09-11）：回落那条路**恒先探会话**，四种形态一个不漏。**
+    ///
+    /// # 它补的洞
+    ///
+    /// `send-keys` ＋ `cc-*` 形状名 ⇒ `(need_sid, need_windows)` **双 false**
+    /// ⇒ 改之前落进 [`build_guarded_tmux_cmd`] 的退化分支，而那一支里**一次探测都没有**：
+    /// `command -v tmux` 之后直接 `tmux send-keys`。
+    /// 而 daemon 的 `control/gate.rs::admit` **恒先 `probe`**，探不到就 `no_such_session`。
+    /// ⇒ 同一条命令，两条路的门不等价（`K-R54#§8` 第 1 处）。
+    ///
+    /// # 它怎么走**生产那条路**
+    ///
+    /// 断言的对象是 **builder 吐出来的那条生产命令串本身**，而且交给真 `/bin/sh` 跑一遍
+    /// （[`run_door_with_info`]，假 tmux 是个 shell 函数 ⇒ **零真 tmux、零 socket、
+    /// 不动这台机器任何状态**）。「动作到底跑没跑」是个可断言的读数（`ACTION_RAN:<动词>`），
+    /// **不是我自己再判一遍**。⇒ 翻掉生产那道闸，本条必红。
+    ///
+    /// ⚠ **判的是「探了」，不是「探对了」**：后者要真 tmux（`K-R56#§0d` 口径禁）。
+    /// 本条买到的是「**探不到就不动手**」这条性质，外加反向那格「探得到就照样动手」
+    /// （少了它，把四条全改成恒报 `CCM_NO_SESSION` 也能骗过本条）。
+    ///
+    /// ⚠ 分母 = `tmux.rs` 今天**全部**四种守护形态（两个动词 × 名字命中/未命中）。
+    /// 逐格收集再一次性断言，**不是**遇红即停 —— 那样只看得见第一格。
+    #[test]
+    #[cfg_attr(
+        windows,
+        ignore = "要真 /bin/sh；被测性质属远端 POSIX 机器，Linux 侧照跑"
+    )]
+    fn the_ssh_fallback_always_probes_before_it_acts() {
+        // `present` = 一份「会话在、而且门也过得了」的回包，形状按各自的格式串来：
+        // 名字命中 ⇒ 单字段（`#{session_windows}`）；未命中 ⇒ 两字段、真 TAB 分隔。
+        let rows: [(&str, &str, String, &str); 4] = [
+            (
+                "send-keys/名字命中",
+                "send-keys",
+                build_send_keys_remote_cmd("cc-e2e-owned", "CCMPROBE", true).unwrap(),
+                "1",
+            ),
+            (
+                "send-keys/名字未命中",
+                "send-keys",
+                build_send_keys_remote_cmd("e2e-custom", "CCMPROBE", true).unwrap(),
+                "1\tabc123",
+            ),
+            (
+                "kill/名字命中",
+                "kill-session",
+                build_kill_session_cmd("cc-e2e-owned").unwrap(),
+                "1",
+            ),
+            (
+                "kill/名字未命中",
+                "kill-session",
+                build_kill_session_cmd("e2e-custom").unwrap(),
+                "1\tabc123",
+            ),
+        ];
+        let mut problems: Vec<String> = Vec::new();
+        for (label, verb, cmd, present) in &rows {
+            let ran = format!("ACTION_RAN:{verb}");
+            // ① 串里必须真的有一次取值 —— 没有就谈不上「探了」。
+            if !cmd.contains("display-message") {
+                problems.push(format!(
+                    "  {label}：命令串里**一次探测都没有**（没有 `display-message`）—— \
+                     它会对一个可能不存在的会话直接动手，而 daemon 的 `admit` 恒先 probe。\n\
+                     实得：{cmd}"
+                ));
+            }
+            // ② 探不到（回包为空）⇒ 报 `CCM_NO_SESSION`，而且**动作不许跑**。
+            let miss = run_door_with_info(cmd, "");
+            if !miss.contains("CCM_NO_SESSION") {
+                problems.push(format!(
+                    "  {label}：探不到时没报 `CCM_NO_SESSION`。实得 {miss:?}"
+                ));
+            }
+            if miss.contains(&ran) {
+                problems.push(format!(
+                    "  {label}：🔴 **探不到却把动作跑了** —— 这正是本件要关掉的那条退化分支。\
+                     实得 {miss:?}"
+                ));
+            }
+            // ③ 反向那格：会话在、门也过了 ⇒ 动作照样要跑（探测不许把功能挡死）。
+            let hit = run_door_with_info(cmd, present);
+            if !hit.contains(&ran) {
+                problems.push(format!(
+                    "  {label}：会话在、门也过了，动作却没跑 —— 探测把功能挡死了。实得 {hit:?}"
+                ));
+            }
+        }
+        assert!(
+            problems.is_empty(),
+            "回落那条路上「恒先探会话」这条性质有 {} 格不成立：\n{}",
+            problems.len(),
+            problems.join("\n")
         );
     }
 
@@ -2080,7 +2366,7 @@ mod tests {
         emit("kill_owned", build_kill_session_cmd("cc-e2e-owned"));
         // kill：非前缀但字符安全 → 远端核验 @ccm_sid（Gate 2 远端半支）+ windows（Gate 3）。
         emit("kill_custom", build_kill_session_cmd("e2e-custom"));
-        // send-keys：cc-* 前缀命中 → 退化成今天的零 Gate 一行。
+        // send-keys：cc-* 前缀命中 → 跳过 Gate 2 远端半支，但 **K-R56 起仍恒先探一次存在性**。
         emit(
             "send_keys_owned",
             build_send_keys_remote_cmd("cc-e2e-owned", "CCMPROBE", true),
