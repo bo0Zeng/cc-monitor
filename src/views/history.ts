@@ -25,6 +25,8 @@
 import { resolveResumeCommand } from "../remote-config";
 import { Channel } from "@tauri-apps/api/core";
 import { commands } from "../ipc/commands";
+// `K-R46`：本机 tmux 名的唯一算法口（铸名过 `mintTmuxName` + 「不知道就不铸」）。
+import { mintLocalTmuxName } from "../ipc/local-tmux-name";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
@@ -1657,6 +1659,14 @@ export class HistoryView {
       try {
         // F34：用户自定义本地 resume 命令（如 cct）；空 = 后端默认（cc 检测→默认）
         const behavior = await getBehavior();
+        // ★★ `K-R46`：**这条路先前一个 tmux 名都不传** —— 而后端**故意**拒绝自己铸名
+        //    （`history.rs` 的 `NO_TMUX_NAME`）⇒ 名字为 `None` ⇒ 渲染器早退 ⇒ 后端如实
+        //    降级回旧路 ⇒ 起出来的会话**不在一个具名 tmux 容器里**，于是 `list_local_tmux`
+        //    那一族（右键「杀死会话（kill tmux …）」/「就地 resume（复用空 tmux …）」）
+        //    对它一个都给不出来。tab 栏那条 resume 早就传了，历史页这条没有 ——
+        //    **架构上一条路、行为上两条**，本件补的就是这个。
+        //    ⚠ 铸名与「不知道就不铸」两格住 `ipc/local-tmux-name.ts`，别在这里重写。
+        const tmuxName = await mintLocalTmuxName(ctx.sessionId);
         // ★★ `K-H2b` `D1 阻-1`：账号这一格先前是空的（历史页 resume 那条主路）。
         //    取值口只有一个（`resolveLocalLaunchAccount`），resume 走那条会话上次的 pin ——
         //    与上面远端那条 `withAccount(..., {follow:{lastAccount}})` **同形**。
@@ -1664,6 +1674,7 @@ export class HistoryView {
           sessionId: ctx.sessionId,
           cwd: ctx.cwd,
           launcher: behavior.resumeCommandLocal || null,
+          tmuxName,
           account: localLaunchAccountSync(ctx.sessionId),
         });
         // `D3 阻-2`：本机这条路也要往 pin 里写（同 `tabs.ts` 那处，理由见取值口头注）。
