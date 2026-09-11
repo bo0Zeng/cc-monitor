@@ -3,7 +3,7 @@ K-R57 摸底量具 B · 装的口 / 查的口 / 卸的口 —— 代码侧普查
 ==============================================================================
 量具住址 ：evidence/K-R57-B-port-census.py
 被测对象 ：/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r57
-           分支 track/k-r57 · sha d4b18a9b2404b293839c5c575d3b32bbb1c6ab68
+           分支 track/k-r57 · sha 54ae7ce4b5f118216e95bbb21816ccdfba43009f
 分母①   ：`generate_handler![...]` 解析出 **146** 个 IPC 命令
 分母②   ：`parity_ledger::LEDGER` 解析出 **146** 条 (命令, 能力, Side)
 
@@ -112,4 +112,37 @@ K-R57 摸底量具 B · 装的口 / 查的口 / 卸的口 —— 代码侧普查
   remote-daemon        installable=true   盘上真有的口：['deploy_remote_daemon', 'uninstall_remote_daemon']
   project-mcp          installable=true   盘上真有的口：['write_project_mcp_server', 'remove_project_mcp_server']
   powershell-profile   installable=true   盘上真有的口：['cc_integration_install', 'cc_integration_uninstall']
+
+──────────────────────────────────────────────────────────────────────────────
+【5】🔴 `config_surface_report` —— 今天**最接近**「齐了没有」的那一个口，它能看见几格
+──────────────────────────────────────────────────────────────────────────────
+  ⚠ 起点里说「查的口全是逐个问，没有一个回答『齐了没有』」——**这句要订正**：
+    `config_surface_report` 是聚合的（一次扫完、返回一张 rows 表，设置面板里真有消费者
+    `src/settings/config-surface-section.ts:168`）。本量具第一版把它漏进了「其它」档，
+    因为它名字里没有 status/check/diagnose —— **按名字分类的量具就是会这样漏**，如实记。
+  ⇒ 该问的不是「有没有聚合口」，而是「**它的人群是什么**」。
+
+  它的人群（读 `config_surface.rs` 的 `use ... TOOLS` 与 `for t in TOOLS`）= `tool_registry::TOOLS` 的 `touches`。
+  工具 id                  touches 条数
+  ccm                    2
+  cc-bus                 3
+  cc-acct-iso            2
+  remote-daemon          1
+  project-mcp            1
+  powershell-profile     1
+  ⇒ **人群合计 10 条申报路径**（分母 = TOOLS 的 6 条 × 各自的 touches）
+
+  🔴 与第 1 问那张环境清单对拍 —— **这个视图根本看不见**的（它们不在 TOOLS 里）：
+      · Claude Code CLI 本体（`claude`）
+      · tmux
+      · 终端出口（`xdg-terminal-exec`）
+      · git
+      · ssh 客户端 / 密钥 / 主机配置
+      · 本机后端自释放件（`~/.cc-monitor/bin/cc-monitor-local-*`）
+      · 账号别名文件（`~/.cc-monitor/account-aliases.sh`）
+      · MCP server **本体**（配置指向的那个 command）
+      · POSIX rc 里的 ccm 别名块（TOOLS 只有 `powershell-profile` 这一条 `UserShellProfile`）
+  ⇒ 它答的是「**cc-monitor 动过你哪些文件**」（模块头注逐字），
+    **不是**「app 要的环境齐了没有」。两个问题的人群不是同一个 ——
+    拿它当后者用是**分母对不上**（本工作区最高频的那一类）。
 
