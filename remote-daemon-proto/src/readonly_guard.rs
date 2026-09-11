@@ -147,10 +147,12 @@ mod tests {
         "OpenOptions",
     ];
 
-    /// ★ **唯一**被允许写文件系统的模块（G2，branch-anywhere）。
+    /// ★ 被允许写文件系统的模块，**逐条登记**（G2，branch-anywhere）。
     ///
-    /// 收窄而非放开：见下面 `daemon_write_capability_is_confined_to_one_module` 的头注。
-    /// 唯一被允许写文件系统的模块 —— **按仓库相对路径钉，不是按裸文件名**。
+    /// `(仓库相对路径, why —— 它写什么、为什么落在「只准新增、不许改动既有数据」之内)`
+    ///
+    /// 收窄而非放开：见下面 [`daemon_write_capability_is_confined_to_the_registered_modules`]
+    /// 的头注。**按仓库相对路径钉，不是按裸文件名。**
     ///
     /// # U3（2026-08-01）从裸文件名改成路径，理由是一次「该红没红」
     ///
@@ -163,7 +165,50 @@ mod tests {
     /// 放行错文件 = 给写盘能力开一个没人知道的第二个洞。U2 的 Phase D 审计已经点名过这条。
     ///
     /// 改成路径之后，**再搬一次家就会红**，而那正是应该有人看一眼的时刻。
-    const WRITE_WHITELIST_MODULE: &str = "control/fork_write.rs";
+    ///
+    /// # `K-W2D`（2026-09-10）从**一个 `&str`** 变成**一张表** —— 接线那一拍真的来了
+    ///
+    /// 件文件 `KW2D5` 逐字预言过这一刻：sidecar 落地当天这条判据「**必然红，红得对** ——
+    /// 那一红就是**有人在这张表上签了字**」。签的字就是下面第二条。
+    ///
+    /// ⚠ **表不是豁免清单，三条性质一条没松**：
+    /// ① 它仍然是**相等断言**（扫到的白名单模块数 == 本表条数），多一个没登记的照样红；
+    /// ② 每一条都得写清它写什么（`why` 有长度地板）；
+    /// ③ 每一条都得**真的在盘上、真的在写** —— 幽灵条目由
+    ///    [`every_registered_write_module_is_really_on_the_tree_and_really_writes`] 逮。
+    ///
+    /// ⚠ **它仍然不检查那行 `why` 说得对不对** —— 同 [`spawn_registry`] 那条登记过的边界：
+    /// 它钉的是「说得出来」，不是「真的想过」。
+    const WRITE_WHITELIST_MODULES: &[(&str, &str)] = &[
+        (
+            "control/fork_write.rs",
+            "G2 / `--fork-session`：用 `O_EXCL` 在 projects 目录里新建一份**此前不存在**的 \
+             jsonl，不改、不覆盖、不删任何既有文件 —— 这正是 `D1` 收窄后那条铁律的误差项",
+        ),
+        (
+            "sidecars/codepicture/acquire.rs",
+            "`K-W2D` 接线：把按需拉回来的代码全景 sidecar 用 `O_EXCL` 新建到落点目录里，\
+             并在**新建那一刻**给可执行位（事后改权限那个动词在只读白名单里根本不存在）。\
+             ★ 身份进**文件名**（`fetch::landing_name` 带 `build_id`），\
+             **一个目录级标记文件都不写** —— 那个目录已经有两个写入方，\
+             第三份标记会互相覆盖（`R3` 记的 08-11 那次无限重装循环）。\
+             ⇒ 它落在「只准新增」之内：撞上同名既有文件就失败并出声，不覆盖。",
+        ),
+    ];
+
+    /// 这个路径在白名单上吗。
+    fn is_write_whitelisted(rel: &str) -> bool {
+        WRITE_WHITELIST_MODULES.iter().any(|(p, _)| *p == rel)
+    }
+
+    /// 白名单模块的名字，拼给报错文案用（**现算，不写第二份字面量**）。
+    fn write_whitelist_names() -> String {
+        WRITE_WHITELIST_MODULES
+            .iter()
+            .map(|(p, _)| *p)
+            .collect::<Vec<_>>()
+            .join(" / ")
+    }
 
     /// 白名单模块**仍然不许**出现的东西 —— 这一层比默认层**更严**。
     ///
@@ -195,6 +240,20 @@ mod tests {
     /// 实测过（N5）：把代码换成 `.create(true)` 之后本条**照样通过**，只有行为测试红。
     /// 带上点就只能由**调用**满足。
     const WHITELIST_REQUIRED: &str = ".create_new(true)";
+
+    /// `fs::` / `File::` 那套白名单里，**只准出现在登记过的白名单模块里**的那几个动词。
+    ///
+    /// # 为什么这里是个表，而不是一个 `OpenOptions`〔`K-W2D` 09-10〕
+    ///
+    /// `OpenOptionsExt` 是「**新建那一刻就把权限给对**」的唯一入口（`.mode(…)`）。
+    /// 它**不能**进 `READ_ONLY`（那是只读动词表，它是货真价实的写能力），
+    /// 也**不能**放任它出现在别处 —— 于是它与 `OpenOptions` 落在同一档：
+    /// **能力本身不否认，但它只许住在签过字的那几个模块里。**
+    ///
+    /// ⚠ 反过来说清：这一档**没有**放宽任何东西。事后改权限那个动词
+    /// （`set_permissions`）仍然**一个模块都不许有** —— 它不在这张表上，
+    /// 也不在 `READ_ONLY` 上，任何地方出现都红。**让它写不出来，比事后检测强一档。**
+    const WRITE_ONLY_IN_WHITELIST: &[&str] = &["OpenOptions", "OpenOptionsExt"];
 
     /// ★ Phase G 审计补的一条：**`.open(` 出现几次，`.create_new(true)` 就必须出现几次。**
     ///
@@ -260,7 +319,7 @@ mod tests {
             if name == "readonly_guard.rs" {
                 continue;
             }
-            // U3：白名单按**仓库相对路径**判（见 `WRITE_WHITELIST_MODULE` 头注）。
+            // U3：白名单按**仓库相对路径**判（见 `WRITE_WHITELIST_MODULES` 头注）。
             let rel = path
                 .strip_prefix(src_dir)
                 .unwrap_or(&path)
@@ -269,7 +328,7 @@ mod tests {
             let src = std::fs::read_to_string(&path).expect("read rs file");
             let prod = strip_cfg_test(&src);
 
-            if rel == WRITE_WHITELIST_MODULE {
+            if is_write_whitelisted(&rel) {
                 whitelisted += 1;
                 assert!(
                     prod.contains(WHITELIST_REQUIRED),
@@ -295,9 +354,10 @@ mod tests {
             if let Some(pat) = violates_default_layer(&prod) {
                 panic!(
                     "daemon 写盘护栏违规（红线 I7 默认层）：生产代码 {} 含 `{pat}`。\n\
-                     daemon 只有 {WRITE_WHITELIST_MODULE} 一个模块可以写，且只准 O_EXCL 新建；\n\
+                     daemon 今天只有这几个模块可以写，且只准 O_EXCL 新建：{}；\n\
                      如确需临时文件，放进 #[cfg(test)] 块内。",
-                    path.display()
+                    path.display(),
+                    write_whitelist_names()
                 );
             }
             default_scanned += 1;
@@ -317,10 +377,14 @@ mod tests {
     /// **用 `O_EXCL` 新建一个此前不存在的文件**，不修改、不覆盖、不删除任何既有文件。
     ///
     /// ⇒ 拆成两层，而且**整体比原来更强**：原来对「daemon 将来要写盘」没有任何设计，
-    /// 一旦有人要写就只能整条删掉护栏；现在写的能力被钉死在**一个**可审计的洞里，
+    /// 一旦有人要写就只能整条删掉护栏；现在写的能力被钉死在**逐条登记**的几个可审计的洞里，
     /// 洞口还额外挡住了截断 / 追加 / 改名 / 删除。
+    ///
+    /// ⚠ **名字里那个「一个」是 `K-W2D` 09-10 改掉的**：接线那一拍来了，
+    /// 白名单从一个模块变成一张表（理由整段住 [`WRITE_WHITELIST_MODULES`] 头注）。
+    /// 承重的性质**一个字没松** —— 它仍然是相等断言，只是分母改成现算的表长。
     #[test]
-    fn daemon_write_capability_is_confined_to_one_module() {
+    fn daemon_write_capability_is_confined_to_the_registered_modules() {
         let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let (default_scanned, whitelisted) = scan(&src_dir);
         assert!(
@@ -328,10 +392,54 @@ mod tests {
             "扫描到的 daemon 源文件过少（{default_scanned}），护栏可能没生效"
         );
         assert_eq!(
-            whitelisted, 1,
-            "白名单模块必须**恰好一个**（找到 {whitelisted} 个）。\n\
-             多一个 = 写盘能力扩散；零个 = {WRITE_WHITELIST_MODULE} 被改名/删除而护栏没跟上。"
+            whitelisted,
+            WRITE_WHITELIST_MODULES.len(),
+            "白名单模块必须**恰好**是登记的那几个（登记 {} 个，扫到 {whitelisted} 个）：{}。\n\
+             多一个 = 写盘能力扩散到了没签字的地方；\n\
+             少一个 = 某一条被改名 / 删除而这张表没跟上。\n\
+             ★ **相等断言，不许改回地板** —— 地板在「变多」这个方向上是瞎的。",
+            WRITE_WHITELIST_MODULES.len(),
+            write_whitelist_names()
         );
+    }
+
+    /// ★★ 反向那半：**表里每一条都得对得上一份真的在写的文件**（幽灵检查）。
+    ///
+    /// # 它补的是上面那条的哪个洞（形状照 [`spawn_registry`] 那对双向对账）
+    ///
+    /// 上面那条只比**数**。一条登记指到一个**不存在**的路径、而恰好另一处冒出一个
+    /// 没签字的白名单模块 —— 两边数相等，**上面那条一声不吭**。
+    /// ⇒ 本条逐条问：这个路径今天在盘上吗、它的生产段里**真的有那个唯一的写口**吗。
+    ///
+    /// ⚠ 它**不检查**那条 `why` 说得对不对（同 `spawn_registry` 那条边界）。
+    #[test]
+    fn every_registered_write_module_is_really_on_the_tree_and_really_writes() {
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        assert!(
+            !WRITE_WHITELIST_MODULES.is_empty(),
+            "白名单表空了 —— 那会让上面那条相等断言变成「0 == 0」，恒绿"
+        );
+        for (rel, why) in WRITE_WHITELIST_MODULES {
+            assert!(
+                why.trim().chars().count() >= 20,
+                "`{rel}` 没写清它写什么（实得 {} 字）—— 一条没有理由的白名单就是永久豁免的好听说法",
+                why.trim().chars().count()
+            );
+            let path = src_dir.join(rel);
+            let src = match std::fs::read_to_string(&path) {
+                Ok(s) => s,
+                Err(e) => panic!(
+                    "白名单登记了 `{rel}`，而它今天不在盘上（{e}）—— \
+                     搬走 / 删掉就**同轮把这一条摘掉**，别留幽灵账"
+                ),
+            };
+            let prod = strip_cfg_test(&src);
+            assert!(
+                prod.contains(WHITELIST_REQUIRED),
+                "白名单登记了 `{rel}`，而它的生产段里找不到 `{WHITELIST_REQUIRED}` —— \
+                 它今天根本不写盘（那这条登记该摘），或者写盘方式被换掉了（那更要有人看一眼）"
+            );
+        }
     }
 
     /// U-1（2026-08-01）：**剥法的欠剥方向也要机器钉住。**
@@ -450,7 +558,7 @@ mod tests {
     ///
     /// 允许集合来自实测：`File` / `File::open` / `metadata` / `read` / `read_dir` /
     /// `read_to_string`（纯只读）+ 两个仓内 helper（`mtime_ms` / `read_regular_capped`），
-    /// 以及**只准出现在 [`WRITE_WHITELIST_MODULE`] 里**的 `OpenOptions`。
+    /// 以及**只准出现在 [`WRITE_WHITELIST_MODULES`] 那几个模块里**的 [`WRITE_ONLY_IN_WHITELIST`]。
     #[test]
     fn every_fs_call_in_daemon_production_is_read_only() {
         /// 只读动词 + 仓内只读 helper。**新增写 API 不在这里 ⇒ 自动红。**
@@ -576,8 +684,10 @@ mod tests {
                         if READ_ONLY.contains(&full.as_str()) {
                             continue;
                         }
-                        // 唯一的写口，且只准住在那一个模块里。
-                        if full == "OpenOptions" && rel == WRITE_WHITELIST_MODULE {
+                        // 那几个写口，且只准住在登记过的白名单模块里。
+                        if WRITE_ONLY_IN_WHITELIST.contains(&full.as_str())
+                            && is_write_whitelisted(&rel)
+                        {
                             continue;
                         }
                         bad.push(format!("  {rel}: {pat}{verb}"));
@@ -601,9 +711,9 @@ mod tests {
              08-06 实测，上面那条黑名单放过了 `os::unix::fs::symlink` 与 `fs::set_permissions`\n\
              （表里写的是早已废弃的 `soft_link`，而 `set_permissions` 根本没列）。\n\
              要新增只读调用就把动词加进 `READ_ONLY`；要写盘只有一条路：\n\
-             进 `{}`（那条路自己另有护栏）。",
+             进已登记的白名单模块 `{}`（那条路自己另有护栏），并**同轮在那张表上签字**。",
             bad.join("\n"),
-            WRITE_WHITELIST_MODULE
+            write_whitelist_names()
         );
     }
 }
@@ -720,7 +830,17 @@ mod spawn_registry {
              不写用户既有数据）。\
              ⚠ 这一处口从此是**通用**的：将来经它起的每一个插件，写面都落在这一条理由底下，\
              而这条键**分不出**是哪个插件 —— 加一种新的被调命令时必须回来重读这一段，\
-             没有任何机检会替你想起（`K6b` 那一族，本条就是它的活体标本）",
+             没有任何机检会替你想起（`K6b` 那一族，本条就是它的活体标本）。\
+             ★★ **`K-W2D` 09-10：那句话点名的第二个使用者到了，逐条记在这里** —— \
+             `sidecars/codepicture/acquire.rs::ask` 经这一处口起**按需拉回来的代码全景 sidecar**。\
+             写面：那个 sidecar 是**我们自己出、我们自己校验哈希之后落盘**的二进制，\
+             它今天只被问查询语义（`KR24`「命令面只暴露查询语义」没被放宽）\
+             ⇒ **就本层调它的这条路而言写面是「只读」**；\
+             ⚠ 而「它自己会不会在用户机器上落一个索引库」**是另一件事、归 PM/用户**\
+             （`K-R2` PM 审计 §六㈡ 已端上去），本条**不替它回答**。\
+             ⚠⚠ 而这正是这条键的病在**第二个使用者**身上复发：\
+             键仍是 `<非字面量>`、仍分不出是哪个插件 ⇒ **加这一条不会红**，\
+             是人回来读了这一段才写下的。下一个使用者同理。",
             "缩性质",
             "键能分得出「哪个插件、哪条被调命令」的那天（今天是 `<非字面量>`，三条命令共用一个键）。\
              ⚠ 在那之前，本条的覆盖面由 [`super::g6_reach`] 的反例表钉着：\
