@@ -42,8 +42,6 @@
     "test:tmux-target": "bash e2e/tmux-target-acceptance.sh",
     "test:tmux-guarded": "bash e2e/tmux-guarded-acceptance.sh",
     "test:ccm-cli": "bash e2e/ccm-cli.test.sh",
-    "test:ccm-acceptance": "bash e2e/ccm-acceptance.sh",
-    "test:ccm-pretrust": "bash e2e/ccm-pretrust-acceptance.sh",
     "test:ccm-contract-parity": "bash e2e/ccm-contract-parity.sh",
     "test:cc-spawn-uplift": "bash e2e/cc-spawn-uplift.sh",
     "test:cc-bus-queue-drain": "bash e2e/cc-bus-queue-drain.sh",

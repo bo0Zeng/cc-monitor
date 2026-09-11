@@ -2,8 +2,22 @@
  * Z02（account-zero）：**跨语言双写点守卫** —— monitor 侧「基座 = 不注入」这套语义，
  * 全部压在一个**没有任何东西钉住**的假设上：
  *
- * > `ACCOUNT_DIMENSION.cliFlags` 对非 `account` 态吐 `--base`，而 `shared/ccm` 收到
+ * > `ACCOUNT_DIMENSION.cliFlags` 对非 `account` 态吐 `--base`，而 `ccm` 收到
  * > `--base` 会 **`unset CLAUDE_CONFIG_DIR`**。
+ *
+ * ## 🔴 `K-R48` 第二拍（2026-09-11）：另一侧换了语言
+ *
+ * 〔用@09-11 `K33`〕逐字「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
+ * ⇒ `shared/ccm` 那个 1592 行的 bash 删了，`ccm` 今天是后端二进制的一次性模式。
+ * **本文件钉的那条跨语言契约一个字没变**（monitor 发 `--base` ⇒ 另一侧必须 unset），
+ * 变的是「另一侧的源文件」住在哪、锚点长什么样：
+ * `shared/ccm` → `remote-daemon-proto/src/control/ccm/{argv,plan}.rs`。
+ *
+ * ⚠ **两处落点合并成一处了，这不是判据放宽**：bash 那版 send-keys 载荷与进程自身 env
+ * 是**两段手写副本**（所以要钉两处，缺一处就漏）；原生实现里 `--print` 与真跑
+ * **读同一个 `Plan`**（daemon 侧 `print_and_exec_cannot_drift_because_they_read_the_same_plan`
+ * 钉着这条结构事实）⇒ 那两段不可能分家。「两处都要有」这个要求**被结构吃掉了**，
+ * 不是被删掉了。本文件下面因此只钉一处，并单独钉住容器路那一侧。
  *
  * 今天 `launch-dimensions.test.ts:107` 只断言 monitor **发**了 `--base`；
  * **没有任何东西断言 ccm 会照它 unset**。这条契约一旦漂（比如 ccm 哪天把 `--base` 改成
@@ -29,15 +43,20 @@ import { ACCOUNT_DIMENSION } from "./launch-dimensions";
 import type { LaunchContext } from "./launch-plan";
 
 const ROOT = resolve(__dirname, "..");
-const ccm = readFileSync(resolve(ROOT, "shared/ccm"), "utf8");
+/** 另一侧的源文件 —— `K-R48` 第二拍起是 Rust，不再是 bash。**只读，不改**。 */
+const CCM_DIR = resolve(ROOT, "remote-daemon-proto/src/control/ccm");
+const ccmArgv = readFileSync(resolve(CCM_DIR, "argv.rs"), "utf8");
+const ccmPlan = readFileSync(resolve(CCM_DIR, "plan.rs"), "utf8");
+const ccm = `${ccmArgv}\n${ccmPlan}`;
 
 /** monitor 侧对非 `account` 态吐的那个 flag。改这里就要改下面的 ccm 锚点。 */
 const BASE_FLAG = "--base";
 
 describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
-  it("反向自检：真读到了 shared/ccm（否则下面全是空转）", () => {
+  it("反向自检：真读到了另一侧那两份源码（否则下面全是空转）", () => {
     expect(ccm.length).toBeGreaterThan(1000);
-    expect(ccm).toContain("#!/");
+    expect(ccmArgv).toContain("pub(crate) fn parse(");
+    expect(ccmPlan).toContain("pub(crate) fn build(");
   });
 
   it(`monitor 对「非选中账号」态吐 ${BASE_FLAG}`, () => {
@@ -46,26 +65,27 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
   });
 
   it(`ccm 认识 ${BASE_FLAG} 这个参数`, () => {
-    expect(ccm).toContain(`    ${BASE_FLAG})        use_base=1 ;;`);
+    // 旗标字面量在原生实现里只有一处住址（`argv::flag`，`KR48D2` 钉着）。
+    expect(ccmArgv).toContain(`pub(crate) const BASE: &str = "${BASE_FLAG}";`);
+    expect(ccmArgv).toContain("flag::BASE => o.use_base = true,");
   });
 
-  it("落点 1：send-keys 载荷行会 unset CLAUDE_CONFIG_DIR", () => {
-    expect(ccm).toContain(
-      `[ "$use_base" = 1 ] && line="\${line}unset CLAUDE_CONFIG_DIR; "`,
-    );
+  it("落点：`--base` 真的渲成 `unset <账号载体>`（不是被吞掉）", () => {
+    // `cfg_env` = `agents::account_env_of(<这一趟的 agent>)`，claude 那边就是
+    // `CLAUDE_CONFIG_DIR` —— 判据刻意钉**那条渲染**，不钉变量名的字面量：
+    // 变量名今天有唯一住址（`agents/mod.rs`），在这里再抄一份就是第三个双写点。
+    expect(ccmPlan).toContain("unset_config_dir: o.use_base,");
+    expect(ccmPlan).toContain('line.push_str(&format!("unset {cfg_env}; "));');
   });
 
-  it("落点 2：ccm 自身的会话级 env 也会 unset CLAUDE_CONFIG_DIR", () => {
-    expect(ccm).toContain(`[ "$use_base" = 1 ] && unset CLAUDE_CONFIG_DIR`);
-  });
-
-  it("★ 两处必须都在——只剩一处时另一条路会静默漏掉 unset", () => {
-    const hits = ccm.split("\n").filter((l) => /use_base.*=.*1.*unset CLAUDE_CONFIG_DIR/.test(l));
-    expect(hits).toHaveLength(2);
+  it("★ 容器路那一侧也要显式表态（内层载荷带 `--base`，不靠继承穿 tmux 边界）", () => {
+    // 这一条接的是 bash 那版「两处落点」里的第二处：从前是两段手写副本各 unset 一次，
+    // 今天是「容器路把 `--base` 原样传进内层，内层再走同一条渲染」。
+    expect(ccmPlan).toContain("inner.push(flag::BASE.into());");
   });
 
   it("`--account` 与 `--base` 互斥仍在 ccm 里（否则可能同时 export + unset，顺序决定结果）", () => {
-    expect(ccm).toContain(`[ -n "$account" ] && [ "$use_base" = 1 ] && die`);
+    expect(ccmArgv).toContain("--account 与 --base 互斥");
   });
 
   /**
@@ -88,7 +108,7 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
  * # 它是被一次变异抽样逼出来的
  *
  * Phase G 的全局抽样覆盖了 monitor Rust / daemon / 前端 / bash 四面，**没抽 e2e 那一面**。
- * 08-06 补抽时造了一条 E10 点名的 argv 变异：把 `shared/ccm` 里
+ * 08-06 补抽时造了一条 E10 点名的 argv 变异：把当时那份 `shared/ccm` 里
  * `tmux new-session -d -s …` 的 **`-d` 去掉**。结果 —— **红线内跑得动的四层一条都没红**：
  * `ccm-print-parity` 12/0 · monitor cargo 991/0 · vitest 1272/1272 ·
  * node `session-backend` exit 0（它断言的是 **TS 侧**构造的命令串，不是 ccm 本体）。
@@ -103,26 +123,25 @@ describe("Z02：`--base` 跨语言契约（monitor ↔ shared/ccm）", () => {
  *
  * # 形态与边界
  *
- * 与本文件其余几条同一套做法：**只读另一侧的源文件**（`shared/ccm` 是红线，不改本体）。
+ * 与本文件其余几条同一套做法：**只读另一侧的源文件**（`K-R48` 第二拍起是
+ * `control/ccm/plan.rs`，不是 `shared/ccm` —— 那个 bash 脚本已经删了）。
  * ⚠ 它钉的是**命令串的形态**，不是「真跑起来确实 detached」—— 后者要真 tmux。
  */
 it("★ ccm 建会话必须是 detached（`new-session -d`）—— 08-06 抽样发现它此前无人看守", () => {
-  // ⚠ **只认真正构造命令的那一行**：ccm 里有好几处**注释**也提到 `tmux new-session`，
+  // ⚠ **只认真正构造命令的那一行**：那份源码里有好几处**注释**也提到 `tmux new-session`，
   //   第一版用 `includes` 直接 find，命中的是注释行 ⇒ 判据在未变异的源码上就红了。
   //   （F24 那一族：匹配单位比事实小 —— 这次是「行的选择」而不是「串的长度」。）
-  const line = ccm
+  // ⚠ 〔`K-R48` 第二拍 09-11〕抽取口径跟着另一侧换语言改了一次：从前认的是 bash 里
+  //   `seq="{ tmux new-session …` 那一行（不是 `#` 注释 + 同时含 `seq="` 与 `tmux new-session`），
+  //   今天认的是 Rust 里那个 `format!` 模板行（不是 `//` 注释 + 含 `tmux new-session`）。
+  //   **钉的性质一个字没变**：那条真正构造命令的行必须带 `-d`。
+  const line = ccmPlan
     .split("\n")
-    // ⚠ 〔`P3sc` 08-13〕抽取口径跟着 ccm 改了一次：那一行从 `seq="tmux new-session …`
-    //   变成 `seq="{ tmux new-session …`（撞名要响亮失败 ⇒ 用 `{ … || { err; exit 3; }; }`
-    //   把它包起来）。**钉的性质一个字没变**（还是「那条真正构造命令的行必须带 `-d`」），
-    //   变的只是怎么把那一行捞出来。⇒ 改成不认 `seq="` 后面紧跟什么，只认「不是注释 +
-    //   同时含 `seq="` 与 `tmux new-session`」。
     .find(
-      (l) =>
-        !l.trim().startsWith("#") && l.includes('seq="') && l.includes("tmux new-session"),
+      (l) => !l.trim().startsWith("//") && l.includes("tmux new-session"),
     );
   // 抽取器自检：连那一行都找不到 ⇒ ccm 换了写法，下面的断言会零命中地绿。
-  expect(line, "在 `shared/ccm` 里找不到 `tmux new-session` 那一行 —— 抽取器坏了或 ccm 改了形态").toBeTruthy();
+  expect(line, "在 `control/ccm/plan.rs` 里找不到 `tmux new-session` 那一行 —— 抽取器坏了或形态改了").toBeTruthy();
   expect(
     line,
     "`tmux new-session` 没带 `-d` —— 建会话会**在当前终端 attach**，而 ccm 那条串的整个顺序\n" +
