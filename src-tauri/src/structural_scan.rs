@@ -2127,11 +2127,11 @@ mod tests {
                 "unknown_type_falls_through_to_unknown_variant",
                 1,
             ),
-            (
-                "src-tauri/src/polling_registry.rs",
-                "every_comment_stripping_transformer_is_registered",
-                1,
-            ),
+            // 🔴 〔`K-R48` 第二拍 09-11〕原来这里登记着 `polling_registry.rs` 里那句提到
+            //    `every_comment_stripping_transformer_is_registered` 的散文。那句话住在
+            //    `the_identity_poller_is_gone_for_good` 的注释里，而本拍把那条判据的语料
+            //    从 `shared/ccm`（bash，剥 `#`）换成了 `control/ccm/`（Rust，剥 `//`）
+            //    ⇒ 那段解释连同它一起重写了，名字不再出现。**账跟着删，别留成僵尸行。**
             (
                 "src-tauri/src/polling_registry.rs",
                 "the_per_second_identity_poller_spawns_nothing_per_tick",
@@ -2226,6 +2226,65 @@ mod tests {
         /// 这 6 处全是 `K-R20` 本轮真的改过的**订正段** —— 订正段逐字引用旧名字，
         /// 那正是 `K-R19` 实测到「订正落盘之后尺子读数一动没动」的原因。
         const TOMBSTONED: &[(&str, &str, usize)] = &[
+            // 🔴 〔`K-R48` 第二拍 09-11〕下面这 9 行全是同一件事的账：`shared/ccm` 那个 bash
+            //    脚本与它那一族判据删了（`K33`：「不要有什么 bash 脚本」），而**散文里那几处
+            //    点名它们的句子留着是有用的**（它们说的正是「这个东西为什么不在了」）
+            //    ⇒ 按第②条出路走：加 `PROSE_NAME_TOMBSTONE` 标记 ＋ 在这里记一笔账。
+            (
+                "doc/IPC-PROTOCOL.md",
+                "the_local_launch_recipe_is_reachable_only_from_print",
+                1,
+            ),
+            ("src-tauri/src/launch.rs", "resolve_from_daemon", 1),
+            (
+                "src-tauri/src/plugin_class_registry.rs",
+                "ccm_agent_arms",
+                1,
+            ),
+            (
+                "src-tauri/src/plugin_class_registry.rs",
+                "ccm_probe_values",
+                1,
+            ),
+            (
+                "src-tauri/src/polling_registry.rs",
+                "ccm_fails_loudly_when_no_daemon_can_be_found",
+                1,
+            ),
+            (
+                "src-tauri/src/sftp.rs",
+                "ccm_cli_strength_is_at_or_above_baseline",
+                1,
+            ),
+            ("src-tauri/src/sftp.rs", "pin_t_def", 1),
+            (
+                "remote-daemon-proto/src/control/ccm/plan.rs",
+                "avoid_name_collision",
+                1,
+            ),
+            (
+                "src-tauri/src/backend/control/launch_wire.rs",
+                "ccm_reaches_the_backend_through_one_shot_subcommands",
+                1,
+            ),
+            (
+                "src-tauri/src/backend/control/launch_wire.rs",
+                "launch_via_daemon",
+                1,
+            ),
+            (
+                "src-tauri/src/backend/control/local_backend.rs",
+                "resolve_from_daemon",
+                1,
+            ),
+            ("src-tauri/src/cc_bus.rs", "resolve_from_daemon", 1),
+            ("src-tauri/src/ccm_cli_contract.rs", "pin_t_def", 1),
+            ("src-tauri/src/ccm_cli_contract.rs", "scan_t_targets", 1),
+            (
+                "src-tauri/src/ccm_cli_contract.rs",
+                "the_avoidance_lives_in_ccm_now",
+                1,
+            ),
             (
                 "doc/IPC-PROTOCOL.md",
                 "handlers_never_run_on_the_reader_task",

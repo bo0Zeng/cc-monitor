@@ -482,8 +482,14 @@ mod tests {
                     .unwrap_or(false),
             ),
             (
-                "shared/ccm（用户终端那条路）",
-                root.join("shared/ccm").is_file(),
+                // 🔴 〔`K-R48` 第二拍 09-11〕住址换了，**产出方本身没退役**：
+                //    〔用@09-11 `K33`〕那个 bash 脚本删了，「用户终端那条路」今天由
+                //    后端本体的一次性模式渲（`control::ccm::plan::render_container`）。
+                //    ⇒ `INVARIANTS §33b` 那句「四个产出方，一个都没退役」**仍然成立**，
+                //    只是第四个的住址从 `shared/ccm` 变成了 `control/ccm/plan.rs`。
+                "control/ccm/plan.rs（用户终端那条路）",
+                root.join("remote-daemon-proto/src/control/ccm/plan.rs")
+                    .is_file(),
             ),
         ];
         let missing: Vec<&str> = checks

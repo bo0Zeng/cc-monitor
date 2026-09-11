@@ -381,7 +381,7 @@ jobs:
           # `scripts` 那组今天只有 1 个文件 ⇒ 归零就是整组消失，正是地板该挡的场景。
           # （Phase D 审计实测：`shellcheck 'scripts/*.sh'` → openBinaryFile does not exist, RC=2）
           shopt -s nullglob
-          FILES=$(printf '%s\n' e2e/*.sh shared/cc-bus/scripts/* shared/ccm \
+          FILES=$(printf '%s\n' e2e/*.sh shared/cc-bus/scripts/* \
             e2e/fake-claude \
             e2e/weak-net/*.sh \
             scripts/*.sh \
@@ -451,7 +451,18 @@ jobs:
           # 今天实测构成（**逐组现打，不倒推** —— 上一轮就是倒推凑出过一次假账）：
           # **60 = e2e/*.sh 33 + e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14 + ccm 1
           #        + scripts 2 + vendored 4 + hooks/pre-commit 1**。
-          [ "$N" -ge 60 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 60）"; exit 1; }
+          # 🔴 **2026-09-11 `K-R48` 第二拍：60 → 57，这是本仓第一次**往下**拧这个地板，
+          #    所以理由要比往上棘时写得更清楚**：
+          #    〔用@09-11 `K33`〕逐字「后端只有一个…**不要有什么 bash 脚本**」⇒ 本轮删了
+          #    **三个 shell 文件**：`shared/ccm`（那 1592 行 bash 启动器）·
+          #    `e2e/ccm-acceptance.sh` · `e2e/ccm-pretrust-acceptance.sh`。
+          #    ⇒ `shared/ccm` 那一项也从上面的 `FILES=` 表达式里摘了（留着它
+          #    `shellcheck` 会报「文件不存在」rc=2，而那条诊断与「覆盖面缩水」完全对不上）。
+          #    实测构成：**57 = e2e/*.sh 31 + e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14
+          #             + scripts 2 + vendored 4 + hooks/pre-commit 1**（ccm 那 1 个没了）。
+          #    ⚠ **别把这一次当先例**：往下拧的合法理由只有「那几个文件真的不在了」，
+          #    不是「今天数不够」。`shell_lint_registry` 那条恒等判据会替你分辨这两件事。
+          [ "$N" -ge 57 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 57）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
@@ -487,7 +498,11 @@ jobs:
       # 在本地**永远看不出来**（本地跑的是盘上那份），只有干净 checkout 才炸。已踩过两次：
       # R00 的 `shared/ccm`（CI 上 Permission denied，e2e 连红三轮）与 B01 的 13 个 cc-bus 脚本。
       # 直接 bash 调用：本 job 没有 setup-node 步骤，不该为一条纯 shell 检查引入 npm 依赖。
-      # G-A **覆盖面地板**：23 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
+      # 🔴 〔`K-R48` 第二拍 09-11〕**23 → 21**：本轮删了 `ccm-acceptance` 与 `ccm-pretrust`
+      #    两套（它们只测 `shared/ccm` 那个 bash 脚本的真机行为，而那个脚本按 `K33` 删了）。
+      #    这个数在本文件里存着**四份**，四处一起改（本行 · 下面那条 `-ge` · 它的报错文案 ·
+      #    `pair` 清单那行 `echo`）—— 那张登记表逐字说这四份漂过一次。
+      # G-A **覆盖面地板**：21 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
       # （U0 2026-08-01 订正：本行与下面 `:313` 原写「8」，是 E82 订正下方散文时漏跟的两处，
       #  与紧邻的步骤名和 `-ge N` 自相矛盾。真值以本步骤的 grep 计数为准。
       #  U8a-2a 2026-08-02：新增 inbound-frames ⇒ 15 → 16，三处一起改。
@@ -583,7 +598,7 @@ jobs:
       #      那一格同一笔账：**先得有人在跑这把尺子，地板定多少才谈得上是不是判据。**
       #    ⚠ 那次「涨了而地板没跟」的活体就在上面几行（`D1` 实得 173 / 地板 126，绿着挂了一整拍）
       #      —— `exact` 治的正是它，但**只在 `gate.sh` 那 4 条上治住了**。**4/23。**
-      - name: G-A/G-C 覆盖面地板（23 套真机套件都必须带断言数地板）
+      - name: G-A/G-C 覆盖面地板（21 套真机套件都必须带断言数地板）
         run: |
           set -euo pipefail
           # 只数**真正的调用行**（`run: bash e2e/…`）——本步骤自己那几行 grep 也含这个脚本名，
@@ -592,7 +607,7 @@ jobs:
           echo "带地板的 e2e 步骤数 = ${N:-0}"
           # **2026-08-13 P0b-Y2 棘到 21**：两套新增的全链前置套件此前是**裸 `run:`**——
           # 没有地板 ⇒ 断言被删空照样绿，正是这套机制立起来要防的那件事（我自己刚犯了一次）。
-          [ "${N:-0}" -ge 23 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 23）——有套件被改回裸 npm run 或被删掉"; exit 1; }
+          [ "${N:-0}" -ge 21 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 21）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
           #
           # 🔴🔴 **读这张清单之前先读这四行 —— 这里是本仓「同一个量不许两处各写一份」
@@ -633,17 +648,19 @@ jobs:
           #   ⇒ **往这个 job 里写注释时，别把任何一条调用行原样抄进来。**
           #   ⇒ 想把它治根就得让这份副本**不必存在**（例如从调用行里现抽套件名+地板、
           #   只对「套数」与「每条都带非零地板」立判据）；那不是本件的写区，已在交回里提给 PM。
-          for pair in "tmux-target 26" "ccm-cli 264" "ccm-print-parity 12" "ccm-acceptance 31" \
-                      "ccm-pretrust 15" "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
+          # 🔴 〔`K-R48` 第二拍 09-11〕`ccm-cli 264→46` · `ccm-contract-parity 72→39`；
+          #    `ccm-acceptance` / `ccm-pretrust` 两套删了 ⇒ 两条从清单里摘掉。
+          for pair in "tmux-target 26" "ccm-cli 46" "ccm-print-parity 12" \
+                      "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 33" \
-                      "ccm-contract-parity 72" "daemon-gate2 34" "local-backend 14" \
+                      "ccm-contract-parity 39" "daemon-gate2 34" "local-backend 14" \
                       "daemon-sessions-rewatch 5" "daemon-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "daemon-cc-bus 50"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
               || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
           done
-          echo "23 套逐个对上（套件名 + 地板值）"
+          echo "21 套逐个对上（套件名 + 地板值）"  # 〔`K-R48` 第二拍〕23 → 21：删了 ccm-acceptance / ccm-pretrust
 
       - name: exec-bit guard (shared/** shebang files must be 100755 in git)
         run: bash e2e/exec-bit-guard.sh
@@ -698,23 +715,27 @@ jobs:
       - name: tmux 目标精确匹配（F01）
         run: bash e2e/assert-pass-floor.sh tmux-target 26
 
+      # 🔴 〔`K-R48` 第二拍 09-11〕264 → 46：`shared/ccm` 删了，本套件的被测对象换成后端二进制。
+      #    逐条判词住 `evidence/K-R48-356-verdicts.tsv`；构成与理由写在 `scripts/gate.sh`
+      #    那两行 `run_e2e` 上方（那是「三处一起改」里说理最全的一处，别在这儿再抄一份）。
+      # ⚠ **跑之前要先 build 后端二进制**（`cargo build --bin cc-monitor-remote`）——
+      #    套件顶上那道 `[ -x ]` 是 fail-closed 的，不 build 就红。
       - name: ccm CLI 契约（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-cli 264
+        run: bash e2e/assert-pass-floor.sh ccm-cli 46
 
       - name: ccm --print 平价预言机（F03）
         run: bash e2e/assert-pass-floor.sh ccm-print-parity 12
 
-      - name: ccm 端到端验收（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-acceptance 31
-
-      - name: ccm 预信任（F11）
-        run: bash e2e/assert-pass-floor.sh ccm-pretrust 15
+      # 🔴 〔`K-R48` 第二拍 09-11〕原来这里有 `ccm-acceptance 31` 与 `ccm-pretrust 15` 两步，
+      #    两套 e2e 本拍删了（它们只测那个 bash 脚本的真机行为，理由逐条写在
+      #    `src-tauri/src/shared_crate_registry.rs` 那张棘轮表被摘掉的那两行旁边）。
 
       # U9a：`--print` 说的 == 真跑做的（S10「保住清单」差分对拍）。
       # 与上面两套的分工：`ccm-cli` 只跑 `--print`（全 `env -u TMUX`）、`ccm-print-parity`
       # 验渲染器意图能被接住 —— **都不比对真 exec 路**，而那正是 U9b 搬决策时会漏的地方。
+      # 🔴 〔`K-R48` 第二拍 09-11〕72 → 39，同上。
       - name: ccm 契约差分对拍（U9a · S10 保住清单）
-        run: bash e2e/assert-pass-floor.sh ccm-contract-parity 72
+        run: bash e2e/assert-pass-floor.sh ccm-contract-parity 39
 
       # B02：`cc-spawn` 收编进 `ccm` 的行为等价验收。**本套件自带起飞前自检**——
       # 它经 PATH 上的 tmux shim 强制 `-L <隔离socket>`（cc-spawn/ccm/cc-register 内部都是

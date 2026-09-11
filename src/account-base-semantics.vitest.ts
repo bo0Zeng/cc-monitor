@@ -120,15 +120,30 @@ describe("「不指定账号」的文案必须与 --base 的真实语义对上�
     }
   });
 
-  it("★ 文案赖以成立的那个事实还在：ccm 收到 --base 会 unset（两处）", () => {
-    const ccm = read("shared/ccm");
-    const unsets = [...ccm.matchAll(/use_base"?\]?\s*=\s*1\s*\]\s*&&[^\n]*unset CLAUDE_CONFIG_DIR/g)];
+  it("★ 文案赖以成立的那个事实还在：ccm 收到 --base 会 unset 账号载体", () => {
+    // 🔴 〔`K-R48` 第二拍 2026-09-11〕`shared/ccm` 那个 bash 脚本删了
+    //（〔用@09-11 `K33`〕「不要有什么 bash 脚本」），`--base` 的落点搬进了后端本体。
+    // ⚠ **「两处」变「一处」不是判据放宽**：bash 那版 send-keys 载荷与进程自身 env 是
+    //   **两段手写副本**（所以要数 2，缺一处就漏）；原生实现里 `--print` 与真跑
+    //   **读同一个 `Plan`** ⇒ 那两段不可能分家。那条结构事实由 daemon 侧
+    //   `print_and_exec_cannot_drift_because_they_read_the_same_plan` 钉着。
+    // ⚠ **按「整行」认，不用裸 `.includes("…")`**：后者的匹配单位（子串）比事实
+    //   （那一行代码）小，把事实撑大的改动（`unset_config_dir: o.use_base && never()`）
+    //   会从缝里溜过去而判据照样绿。`scanning-guard-registry.vitest.ts` 的递减棘轮
+    //   盯的正是这一形 —— 本条第一版就是裸 `.includes`，被它当场逮住。
+    const planLines = read("remote-daemon-proto/src/control/ccm/plan.rs")
+      .split("\n")
+      .map((l) => l.trim());
     expect(
-      unsets.length,
-      "在 `shared/ccm` 里找不到「`--base` ⇒ unset CLAUDE_CONFIG_DIR」那两处 —— " +
-        "本文件整套文案论证都建立在它上面。它一变，上面几条要求的文案就成了新的假话。\n" +
+      planLines.filter((l) => l === "unset_config_dir: o.use_base,").length,
+      "`--base` 不再逐字落到 `Plan.unset_config_dir` 上（要恰好一处）—— " +
+        "本文件整套文案论证都建立在「它会清掉账号载体」上。它一变，上面几条要求的文案就成了新的假话。",
+    ).toBe(1);
+    expect(
+      planLines.filter((l) => l === 'line.push_str(&format!("unset {cfg_env}; "));').length,
+      "那条 `unset <账号载体>` 的渲染没了（要恰好一处）—— 同上。\n" +
         "（另有 `base-flag-contract-guard.vitest.ts` 从跨语言双写点那一面钉同一个事实。）",
-    ).toBe(2);
+    ).toBe(1);
   });
 });
 

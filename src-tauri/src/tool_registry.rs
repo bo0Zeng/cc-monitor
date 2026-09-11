@@ -275,9 +275,17 @@ pub struct ToolSpec {
 pub const TOOLS: &[ToolSpec] = &[
     ToolSpec {
         id: "ccm",
-        display_name: "ccm 统一启动器",
+        display_name: "ccm 统一启动器（后端本体的一次性模式）",
+        // 🔴 〔`K-R48` 第二拍 09-11〕`repo_path` 原来指 `shared/ccm`（那份 1592 行 bash）。
+        //    〔用@09-11 `K33`〕「不要有什么 bash 脚本，不要有什么单独的 ccm」⇒ 那个文件删了。
+        //    ⇒ 指到远端那个**入口**的来源：`sftp::ccm_entry_shim` 现造的三行 `exec` 串
+        //    （零实现，把 argv 转给已经部署好的后端）。
+        //    ⚠ **它今天不是一份「仓里的文件」** —— `EmbeddedText { repo_path }` 这个形状
+        //    在这一条上已经不合身了（值是**算出来的**，路径取自用户填的 `daemon_path`）。
+        //    本模块头注自己写着「零生产消费者、T02 接不上就该删掉本模块」⇒ **不为它改类型**，
+        //    如实指到那个函数的住址，并把这一格的形状问题登记在这里。
         source: ToolSource::EmbeddedText {
-            repo_path: "shared/ccm",
+            repo_path: "src-tauri/src/sftp.rs::ccm_entry_shim",
         },
         destination: ToolDestination::RemoteHomeRelative(".local/bin/ccm"),
         installable: true,

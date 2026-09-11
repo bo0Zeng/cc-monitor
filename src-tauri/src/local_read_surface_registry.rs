@@ -311,12 +311,10 @@ mod tests {
              而**真正读盘的那几行**（`~/.claude/settings.json` 的三条失败诊断文案 · \
              `home.join(\".claude\")` 兜底路径 · 远端探测串 · 来源标签）全在针外。",
         ),
-        (
-            "src/ccm_cli_contract.rs",
-            "non-read",
-            1,
-            "只在契约清单里出现 `CLAUDE_CONFIG_DIR` 这个**变量名**，不读文件 ⇒ **不属**读面。",
-        ),
+        // 🔴 〔`K-R48` 第二拍 09-11〕原来这里有一行 `src/ccm_cli_contract.rs`（`non-read` 1 处：
+        //    契约清单里出现过 `CLAUDE_CONFIG_DIR` 这个变量名）。本拍把那个模块从 2773 行砍到
+        //    只剩 7 条 cc-spawn 判据，那张清单随 `shared/ccm` 一起删了 ⇒ 那个变量名不再出现。
+        //    **账跟着删**（登记表腐烂比没有登记更糟）。
         (
             "src/tool_registry.rs",
             "non-read",

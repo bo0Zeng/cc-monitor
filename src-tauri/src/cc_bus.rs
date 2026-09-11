@@ -1037,7 +1037,7 @@ fn reap_whole_tree_on_drop(_child: &tokio::process::Child, _what: &str) -> KillT
 ///
 /// `CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样。本机要是自己去 `read_to_string`
 /// 那两个文件，仓里就有了**两份**同一件事的表示，而它们会各自漂 ——
-/// 这个仓管这叫「一段逻辑、两种表示」，`ccm` 的 `resolve_from_daemon`/`resolve_recipe`
+/// 这个仓管这叫「一段逻辑、两种表示」，旧 `ccm` 的 `resolve_from_daemon` 〔散文墓碑〕/`resolve_recipe`
 /// 那对孪生函数专门为此立了一条 e2e 对拍。
 ///
 /// ⇒ 照 `P3t-Y2` 的先例办（`exec_site_registry` 逐字记着「起本机探针与它**共用同一个常量**」）：
