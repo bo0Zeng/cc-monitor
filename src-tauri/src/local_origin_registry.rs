@@ -48,7 +48,9 @@ const CALL: &str = "load_remote_config_by_label(";
 #[cfg(test)]
 const REMOTE_ONLY: &[(&str, &str, &str)] = &[];
 
-/// ★★ **本轮没有逐条量过的存量**（`P4d-Y5` 08-12 立表 19 条；`P4a` 08-12 还掉 3 条 ⇒ 16）。
+/// ★★ **本轮没有逐条量过的存量**（`P4d-Y5` 08-12 立表 19 条；`P4a` 08-12 还掉 3 条 ⇒ 16；
+/// `K-R56` 09-11 还掉 1 条 —— `tmux.rs::tmux_send_keys`，它是 `K-R54` 逐处裁定表第 1 处
+/// 点名的那一条「`kill` 有的『本机不许回落』保护，`send-keys` 没有」⇒ **15**）。
 ///
 /// # 为什么它不是 [`REMOTE_ONLY`] 的一部分
 ///
@@ -79,7 +81,9 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     ("remote_history.rs", "require_cfg_by_label"),
     ("ssh_source.rs", "connect_via_jump"),
     ("tmux.rs", "list_remote_tmux"),
-    ("tmux.rs", "tmux_send_keys"),
+    // `K-R56`（09-11）：`tmux.rs::tmux_send_keys` 从这里**还掉了** —— 它现在在
+    // `load_remote_config_by_label` 之前分本机（`Routed::NoChannel` 那一臂的早退）。
+    // 行为那一半由 `tmux::tests::the_local_send_keys_never_falls_back_to_ssh` 钉着。
 ];
 
 #[cfg(test)]
@@ -225,7 +229,8 @@ mod tests {
         // ★ 存量表**只许变短**：等号不是地板。
         // 地板在「变大」这个方向上是瞎的 —— 这个仓因为这件事栽过三次
         // （`shell_lint_registry` 的账逐字：「`≥` 正是它落后三次的成因」）。
-        const TRIAGE_DEBT_TODAY: usize = 16;
+        // K-R56（09-11）：16 → 15，`tmux.rs::tmux_send_keys` 真去分了本机。
+        const TRIAGE_DEBT_TODAY: usize = 15;
         assert_eq!(
             TRIAGE_DEBT.len(),
             TRIAGE_DEBT_TODAY,
