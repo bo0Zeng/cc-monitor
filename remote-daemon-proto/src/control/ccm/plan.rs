@@ -1182,6 +1182,91 @@ mod tests {
         );
     }
 
+    /// 🔴 **`--bus-register` 要了登记而登记不成，必须出声；而「脚本在」不等于「跑得起来」。**
+    ///
+    /// # 这一条是 `K-R48` 第二拍补的，补的是**三处一起丢掉的东西**
+    ///
+    /// 把 `e2e/cc-spawn-uplift.sh` 的 `$CCM` 指向二进制之后现打：**48 过 / 24 败**。
+    /// 24 条里 22 条是同一族，逐条追下去是首版原生实现丢了三样旧 bash 实现有的东西：
+    ///   ① `discover_bus_scripts` 的**第三档 `PATH`** —— docstring 写着、实现里没有。
+    ///      旧 `ccm` 住 `shared/`（部署形态 `~/.claude/skills/ccm`），**兄弟目录**正好是
+    ///      `cc-bus/scripts` ⇒ 第二档几乎总命中；今天后端住 `~/.cc-monitor/bin/`，
+    ///      **旁边永远没有 `cc-bus/`** ⇒ 第二档在真实部署里**恒不命中**。
+    ///   ② 三处判「这个脚本能不能用」写成 `is_file()`，而旧 bash 判的是 `-x`
+    ///      ⇒「在、但没有执行位」被读成「它能用」，拼进 seq 执行时静默失败（整段是 `|| true`）。
+    ///   ③ 两句 stderr 整个没了：找不到 cc-bus ⇒「**没有登记**」；`cc-spawned-record`
+    ///      不可执行 ⇒「**不进 spawn 台账**」。`--bus-register` 于是成了一个
+    ///      「**要了、没做、也不说**」的旗标 —— 那正是本工作区反复消灭的那类静默降级。
+    ///
+    /// # 它买不到什么
+    ///
+    /// **那两句 stderr 只钉「生产段里有这一句」，没钉「真跑时它真的印出来了」** ——
+    /// 后者要捕获进程的 stderr，而 `build()` 是纯函数、`eprintln!` 直接写 fd 2。
+    /// 行为那一半住 `e2e/cc-spawn-uplift.sh`（**而那套不在出货门禁里**，如实登记）。
+    #[test]
+    fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
+        // ① `is_exec`：**行为**判据 —— 造两个真文件，一个有执行位一个没有。
+        let d = tempdir();
+        let ok = std::path::Path::new(&d).join("cc-register");
+        let bad = std::path::Path::new(&d).join("cc-spawned-record");
+        std::fs::write(&ok, "#!/bin/sh\n").expect("写夹具");
+        std::fs::write(&bad, "#!/bin/sh\n").expect("写夹具");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&ok, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+            std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+            assert!(is_exec(&ok), "有执行位的判成不可执行");
+            assert!(
+                !is_exec(&bad),
+                "**在、但没有执行位**被判成「它能用」—— 那正是首版 `is_file()` 的病：\n\
+                 拼进 seq 之后执行时静默失败（整段是 `|| true`），而调用方以为登记好了"
+            );
+        }
+        assert!(
+            !is_exec(&std::path::Path::new(&d).join("根本不存在")),
+            "不存在的文件被判成可执行"
+        );
+        assert!(!is_exec(std::path::Path::new(&d)), "目录被判成可执行文件");
+        let _ = std::fs::remove_dir_all(&d);
+
+        // ② 查找次序**三档都在**：`PATH` 那一档是本拍补回来的，别再删。
+        let me = crate::guard_support::production_code(include_str!("plan.rs"));
+        for anchor in [
+            "std::env::var(\"CC_BUS_SCRIPTS\")",
+            "join(\"cc-bus\").join(\"scripts\")",
+            "std::env::split_paths(&std::env::var_os(\"PATH\")?)",
+        ] {
+            assert!(
+                me.contains(anchor),
+                "`discover_bus_scripts` 少了一档：{anchor}\n\
+                 三档是 `CC_BUS_SCRIPTS` → 本程序目录旁的 `cc-bus/scripts` → `PATH`。\n\
+                 ⚠ 第二档在真实部署里**恒不命中**（后端住 `~/.cc-monitor/bin/`，旁边没有 `cc-bus/`）\n\
+                 ⇒ 删掉 `PATH` 那一档 = `--bus-register` 在生产上永远登记不成。"
+            );
+        }
+
+        // ③ 两句诊断在生产段里（**这一格只钉形状，行为归 e2e**，见头注）。
+        for say in ["**没有登记**", "**不进 spawn 台账**"] {
+            assert!(
+                me.contains(say),
+                "`--bus-register` 登记不成时那句「{say}」不见了 —— \n\
+                 旗标于是变成「要了、没做、也不说」。整段是 `|| true`，**不会有别的东西替它出声**。"
+            );
+        }
+        // 反向锚点：那两句必须在**同一个函数**里（`build()` 的容器分支），
+        // 搬到别处等于「说是说了，但那条路上说不到」。
+        let bus_block = me
+            .split("let bus = if o.bus_register {")
+            .nth(1)
+            .expect("找不到 `--bus-register` 那一段 —— 抽取器坏了，本条会零命中地绿");
+        let head = &bus_block[..bus_block.len().min(1200)];
+        assert!(
+            head.contains("**没有登记**") && head.contains("**不进 spawn 台账**"),
+            "那两句不在 `--bus-register` 那一段里了 —— 它们要在**决定登记不成的那一刻**说出来"
+        );
+    }
+
     /// 〔搬自 `ccm-print-parity`「含空格 cwd 正确带引号」与 `ccm-cli` 的 quote 那族〕
     #[test]
     fn every_value_that_reaches_a_shell_is_quoted() {
