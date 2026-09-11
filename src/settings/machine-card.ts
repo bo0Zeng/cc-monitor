@@ -479,7 +479,7 @@ export class MachineCard {
       "下面按钮供手动装 / 卸。② ccm 启动器（可选）→ 两部分：CLI 本体装到远端 " +
       "~/.local/bin/ccm（可执行文件），别名块写进 ~/.bashrc 的 cc-monitor BEGIN/END 标记块" +
       "（先备份原文件、只动标记块内）。装好后终端可用：ccm（起会话）/ ccm --tmux（tmux 里起）/ " +
-      "ccm --account <名>（指定账号），`ccm --help` 看全部修饰。别名（cc / cct / cch）不覆盖你" +
+      "ccm --account <名>（指定账号），`ccm --help` 看全部修饰。别名（cc / cct）不覆盖你" +
       "已有的同名函数。这条路径与 cc-monitor 自己起会话**是同一套实现**——终端起的会话 app 认得出、" +
       "能 attach、能换号重启。";
     body.appendChild(installInfo);
