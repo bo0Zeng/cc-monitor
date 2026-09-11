@@ -5,6 +5,7 @@
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
 //! State 注册矩阵见 doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
+mod account_aliases; // K-R49：加了账号就给那条命令落盘——写的是 monitor 自己那份别名文件，不是用户的 rc
 mod account_usage; // F10：per-account Claude 订阅计划用量窗口%（一次性探针会话 + capture-pane）
 mod accounts; // A2：多账号（cc-acct-iso）只读查询——账号=一个 CLAUDE_CONFIG_DIR
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
@@ -1201,6 +1202,10 @@ pub fn run() {
             // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走中转」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
             relay_routing_for,
+            // K-R49：加了账号就把那条命令也落下来。写的是 monitor 自己那份别名文件
+            // （`~/.cc-monitor/account-aliases.sh`，整份重写）；用户的 rc 最多多一行 `source`，
+            // 而且那份 rc 由界面上的人**选**，本条不猜。
+            write_account_aliases,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
             cc_bus::read_cc_bus_state,
@@ -1738,6 +1743,27 @@ fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
 #[tauri::command]
 fn write_relay_credentials_key(key: String, config_dir: String) -> Result<(), String> {
     creds_store::write_key(&config_dir, &key)
+}
+
+/// `K-R49`：**加了账号，那条命令也该跟着有。**
+///
+/// 前端递过来的是 `buildAliasLine`（全仓唯一那份别名生成器）吐出来的那几行，
+/// 本条只负责**落盘**：整份重写 `~/.cc-monitor/account-aliases.sh`，
+/// 可选地把**一行** `source` 装进用户**自己指定**的那份 rc。
+///
+/// 🔴 三件事在 `account_aliases` 那一侧，别在这里重写：
+/// ① 每一行都要过形状围栏（写进去的是会被 shell 执行的代码）；
+/// ② `dry_run` 时一个字节都不写 —— 界面拿它做预览；
+/// ③ home 由这里解析、由那边当参数收 —— 那边的测试用临时目录当 home，
+///    结构上碰不到真实家目录。
+#[tauri::command]
+fn write_account_aliases(
+    lines: Vec<String>,
+    rc_path: Option<String>,
+    dry_run: bool,
+) -> Result<account_aliases::AccountAliasReport, String> {
+    let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录 —— 拒绝写任何文件".to_string())?;
+    account_aliases::apply(&home, &lines, rc_path.as_deref(), dry_run)
 }
 
 #[tauri::command]

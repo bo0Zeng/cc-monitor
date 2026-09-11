@@ -220,6 +220,35 @@ describe("S2 设置面板分页结构", () => {
     ).toBeNull();
   });
 
+  /**
+   * 🔴 `K-R49`：**「按账号生成命令」那一块真的挂在「行为」页上。**
+   *
+   * ⚠ 它买的是**接线**，不是那一块的行为（后者归 `launcher-diagnostics.vitest.ts`）——
+   * 这一格此前是真空：把 `panel.ts` 里那一行 `appendChild` 整个删掉，
+   * 别的判据一条都不红（那一块的单测直接 `buildAccountAliasBlock()`，
+   * **结构上绕过了「它有没有被挂上去」**）。而删掉它的后果正是用户 09-10 抱怨的原样：
+   * 加了账号之后界面上没有任何地方能一键生成那条命令。
+   *
+   * ⚠ 顺序也断：它要排在手工别名生成器**之前** —— 用户说的是「添加账号后添加对应命令」，
+   * 那条路该先被看见。
+   */
+  it("★ K-R49：「行为」页上挂着「按账号生成命令」，且排在手工别名生成器之前", async () => {
+    document.body.replaceChildren();
+    new SettingsPanel({ windowMode: true });
+    await tick();
+    const page = document.querySelector<HTMLElement>(
+      '.settings-page[data-route-id="app"]',
+    );
+    const acct = page!.querySelector(".ccm-acct-alias");
+    expect(acct, "「行为」页上找不到「按账号生成命令」那一块").toBeTruthy();
+    const manual = page!.querySelector(".ccm-alias-gen");
+    expect(manual, "手工别名生成器也不在了 —— 那说明这条断言量错了地方").toBeTruthy();
+    expect(
+      acct!.compareDocumentPosition(manual!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      "手工生成器排到了「按账号生成命令」前面",
+    ).toBeTruthy();
+  });
+
   it("「账号」块真的挂着 AccountsSection（不是只有个标题）", async () => {
     document.body.replaceChildren();
     new SettingsPanel({ windowMode: true });
