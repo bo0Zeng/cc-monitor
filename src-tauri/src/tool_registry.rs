@@ -1649,22 +1649,26 @@ mod environment_tests {
         }
     }
 
-    /// 🔴 派生那一半：**每条 `TOOLS` 的档都由它的 `installable` 字段算出来**，
-    /// 一条不多一条不少。这一条**真的在读那个字段**（下一条是它的活体）。
+    /// 派生那一半：**`TOOLS` 的每一条都必须进闭集**，一条都不许漏。
+    ///
+    /// 🔴 **本条上一版还断言了「档 == `if installable {…} else {…}`」，那是同义反复，已删。**
+    /// 〔`K-R60` 09-11 自抓，是本轮 `7u` 那一刀逼出来的：把实现整个退掉之后它**仍然绿**——
+    /// 因为 `environment()` 的档就是那个表达式算的，判据再算一遍等于拿它自己核它自己。〕
+    /// 本仓删过一颗同形的钉子（`config_surface` 那条按 `destination` 推 locality 的），
+    /// 理由逐字：「不留永远不会红的钉子」。
+    /// ⇒ 留下的是**够得着的那一半**：覆盖。漏掉一条 `TOOLS` ⇒ 本条红。
+    /// 而「字段填错了」那一格**不由本条守**，由读字段的那条（它右边钉的是实现，不是同一个表达式）。
     #[test]
-    fn the_tier_of_a_managed_item_is_read_off_the_installable_field() {
+    fn every_managed_tool_reaches_the_closed_set() {
         let env = environment();
         for t in TOOLS {
-            let e = env
-                .iter()
-                .find(|e| e.id == t.id)
-                .unwrap_or_else(|| panic!("`{}` 在 TOOLS 里却没进闭集", t.id));
-            let want = if t.installable {
-                EnvTier::AppInstalls
-            } else {
-                EnvTier::AppOnlyChecks
-            };
-            assert_eq!(e.tier, want, "`{}` 的档与它的 installable 字段对不上", t.id);
+            let n = env.iter().filter(|e| e.id == t.id).count();
+            assert_eq!(
+                n, 1,
+                "`{}` 在 TOOLS 里，而闭集里出现 {n} 次（应为 1）——\
+                 闭集漏了它，这一页上就看不见它",
+                t.id
+            );
         }
     }
 
