@@ -243,6 +243,52 @@ for tid, ins, uni in tools:
     w(f"  {tid:<20} installable={ins:<6} 盘上真有的口：{live}{flag}")
 w("")
 
+# ------------------------------------------------------------------ 【5】最接近「齐了没有」的那个视图
+
+w("─" * 78)
+w("【5】🔴 `config_surface_report` —— 今天**最接近**「齐了没有」的那一个口，它能看见几格")
+w("─" * 78)
+w("  ⚠ 起点里说「查的口全是逐个问，没有一个回答『齐了没有』」——**这句要订正**：")
+w("    `config_surface_report` 是聚合的（一次扫完、返回一张 rows 表，设置面板里真有消费者")
+w("    `src/settings/config-surface-section.ts:168`）。本量具第一版把它漏进了「其它」档，")
+w("    因为它名字里没有 status/check/diagnose —— **按名字分类的量具就是会这样漏**，如实记。")
+w("  ⇒ 该问的不是「有没有聚合口」，而是「**它的人群是什么**」。")
+w("")
+cs = (ROOT / "src-tauri" / "src" / "config_surface.rs").read_text(encoding="utf-8")
+if "TOOLS" not in cs:
+    w("  判不了 —— `config_surface.rs` 里找不到 TOOLS，人群推不出来")
+else:
+    w("  它的人群（读 `config_surface.rs` 的 `use ... TOOLS` 与 `for t in TOOLS`）= `tool_registry::TOOLS` 的 `touches`。")
+    # 逐个工具数 touches：以 id 为界切块，数块内的 TouchedFile {
+    blocks = re.split(r'\n        id: "', tr_src)
+    total = 0
+    w(f"  {'工具 id':<22} touches 条数")
+    for b in blocks[1:]:
+        tid = b.split('"')[0]
+        body = b.split("ToolSpec {")[0]
+        n = body.count("TouchedFile {")
+        total += n
+        w(f"  {tid:<22} {n}")
+    w(f"  ⇒ **人群合计 {total} 条申报路径**（分母 = TOOLS 的 6 条 × 各自的 touches）")
+w("")
+w("  🔴 与第 1 问那张环境清单对拍 —— **这个视图根本看不见**的（它们不在 TOOLS 里）：")
+for item in [
+    "Claude Code CLI 本体（`claude`）",
+    "tmux",
+    "终端出口（`xdg-terminal-exec`）",
+    "git",
+    "ssh 客户端 / 密钥 / 主机配置",
+    "本机后端自释放件（`~/.cc-monitor/bin/cc-monitor-local-*`）",
+    "账号别名文件（`~/.cc-monitor/account-aliases.sh`）",
+    "MCP server **本体**（配置指向的那个 command）",
+    "POSIX rc 里的 ccm 别名块（TOOLS 只有 `powershell-profile` 这一条 `UserShellProfile`）",
+]:
+    w(f"      · {item}")
+w("  ⇒ 它答的是「**cc-monitor 动过你哪些文件**」（模块头注逐字），")
+w("    **不是**「app 要的环境齐了没有」。两个问题的人群不是同一个 ——")
+w("    拿它当后者用是**分母对不上**（本工作区最高频的那一类）。")
+w("")
+
 text = "\n".join(OUT) + "\n"
 Path(__file__).with_suffix(".out").write_text(text, encoding="utf-8")
 print(text)
