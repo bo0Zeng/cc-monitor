@@ -19,6 +19,8 @@
  */
 
 import { commands } from "./ipc/commands";
+// `K-R46`：本机 tmux 名的唯一算法口（铸名过 `mintTmuxName` + 「不知道就不铸」）。
+import { mintLocalTmuxName } from "./ipc/local-tmux-name";
 import { showActionFailureToast } from "./error-toast";
 import { getBehavior } from "./behavior";
 import { resolveResumeCommand } from "./remote-config";
@@ -170,10 +172,22 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
       // IPC 往返**。抛出去由 `runForkFlow` 的 catch 变成 toast，绝不拿一个残缺 sid 去拉终端。
       validateLocalLaunch({ kind: "resume", sid: a.sessionId }, a.cwd);
       const behavior = await getBehavior();
+      // ★★ `K-R46`：**名字要算出来传下去** —— 后端故意拒绝自己铸名
+      //    （`history.rs` 的 `NO_TMUX_NAME`），不传 ⇒ 渲染器早退 ⇒ 降级回旧路 ⇒
+      //    分叉出来的会话不在具名容器里。这条路上**这一格尤其贵**：
+      //    分叉是唯一说得出「账号 0」（`{ kind: "base" }`，就在下面几行）的生产路，
+      //    而 POSIX 后端只有那一态渲染得出容器（具名账号与「没表态」都 §35 降级）
+      //    ⇒ 名字没传的时候，这里是**全仓唯一一条本来能建出容器却建不成的路**。
+      //    ⚠ 铸名规则住 `ipc/local-tmux-name.ts`，别在这里重写基名。
+      //    ⚠ 它与远端那条的 `tmuxName` **不是一回事**：远端那个是「避开源会话的名字」
+      //      （`fork-start.ts::forkTmuxName`，本机那条路已被摘掉这一格）；
+      //      这里铸的是**新会话自己**的 `<sid8>-cc`，避让的是本机现有的 tmux 名。
+      const tmuxName = await mintLocalTmuxName(a.sessionId);
       await commands.resume_history_session({
         sessionId: a.sessionId,
         cwd: a.cwd,
         launcher: behavior.resumeCommandLocal || null,
+        tmuxName,
         // ★ 这条路上「账号 0」是**用户显式选的**（追问小窗的默认位就摆在那儿），
         //   所以要走 `base` 让后端产出 `unset CLAUDE_CONFIG_DIR` —— **不是省略参数**。
         //   省略 = 「没表态」= 一个字都不注入，会被 shell rc 里的默认账号顶掉
