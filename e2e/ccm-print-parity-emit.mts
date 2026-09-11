@@ -13,8 +13,13 @@ import { tryRenderCli } from "../src/launch-render-cli.ts";
 import type { LaunchContext } from "../src/launch-plan.ts";
 import type { CcmProbeResult } from "../src/ccm-probe.ts";
 
+// `K-R53` `KR53D3`：`CcmProbeResult` 从「`installed` 布尔 + 两个恒在的字段」换成**三态判别联合**
+// （「探测出错」与「远端没装」不许压成同一个值，理由住 `src/ccm-probe.ts` 头注）。
+// ⚠ 本文件头注那条警告**当场兑现了一次**：`e2e/` 不在 `tsconfig.json` 的 `include: ["src"]` 里
+//   ⇒ tsc 抓不到这里，`npm test` 也全绿，只有真跑本套件才炸（`PASS=0 FAIL=12`，
+//   症状是 `bash: line 1: --print: command not found` —— 本脚本抛了、TSV 是空的）。
 const FULL_CAPS: CcmProbeResult = {
-  installed: true,
+  state: "installed",
   version: "1",
   capabilities: new Set([
     "new", "resume", "attach", "tmux", "account", "model", "cwd", "agent", "launcher", "ccm-sid", "print",

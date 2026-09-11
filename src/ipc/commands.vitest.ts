@@ -741,8 +741,10 @@ describe("K-H2b D4 阻-2：主路的账号与 pin 是**行为**判据（驱动�
       payloadOf("resume_history_session").account,
       "resume 的载荷里没有那条会话上次用的账号 ——\n" +
         "① 起会话落到 shell rc 那个默认号上（静默串号）；② 中转那一格拼不出路由键。\n" +
-        "⚠ 这一条是**行为**：`account:` 那行字还在、值是 `undefined` 时它必须红。",
-    ).toEqual({ kind: "named", configDir: DIR_A });
+        "⚠ 这一条是**行为**：`account:` 那行字还在、值是 `undefined` 时它必须红。\n" +
+        "🔴 `K-R53`：**名字也必须在里面** —— 后端那条 ccm 路只会 `--account <名字>`，\n" +
+        "   只给目录 = 这条主路结构上到不了后端那条路，必然落第二实现。",
+    ).toEqual({ kind: "named", configDir: DIR_A, name: "acct-a" });
   });
 
   it("★★ 新开主路：载荷里的 `account` 是**当前账号**（与上一条取到不同的值 ⇒ 不是常量）", async () => {
@@ -752,8 +754,9 @@ describe("K-H2b D4 阻-2：主路的账号与 pin 是**行为**判据（驱动�
     expect(
       payloadOf("new_local_session").account,
       "起新会话的载荷里没有当前账号 —— `D4` 刀 `D2k6` 正是把这一行的值换成 `undefined`，\n" +
-        "而当时全仓 `1502 passed` 全绿。",
-    ).toEqual({ kind: "named", configDir: DIR_B });
+        "而当时全仓 `1502 passed` 全绿。\n" +
+        "🔴 `K-R53`：名字也必须在里面（理由同上一条）。",
+    ).toEqual({ kind: "named", configDir: DIR_B, name: "acct-b" });
   });
 
   it("★★ resume 之后 pin **真的被写进去**（`update_history_metadata` 带那个 sid 与那个名字）", async () => {
@@ -885,8 +888,9 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
       "tab 栏那条本机 resume 没把**这条会话上次的账号**传下去 ——\n" +
         "`D5` 刀 `X3b` 正是把这一处换成 `localLaunchAccountSync(null)`（用当前号顶替 pin），\n" +
         "当时全仓 `1509 passed` 全绿。后果是**静默串号**：切过号之后 resume 落到当前号上，\n" +
-        "中转再按那个错的 id 换上**别人那一行的 key**。",
-    ).toEqual({ kind: "named", configDir: DIR_A });
+        "中转再按那个错的 id 换上**别人那一行的 key**。\n" +
+        "🔴 `K-R53`：名字也必须在里面 —— 后端那条 ccm 路只会 `--account <名字>`。",
+    ).toEqual({ kind: "named", configDir: DIR_A, name: "acct-a" });
   });
 
   it("★★ tab 栏 resume 之后 pin **真的被写进去**（带那个 sid 与那个名字）", async () => {

@@ -78,9 +78,11 @@ export const CLI_GOLDEN_CASES: readonly CliGoldenCase[] = [
 ];
 
 function probeOf(caps: string[] | null): CcmProbeResult {
+  // `K-R53`：`caps === null` 在这份夹具里逐字是「**未装**」（见 `CliGoldenCase.caps` 的注释），
+  // 不是「没探出来」——夹具喂的是确定的输入，`unknown` 那一态在这里没有位置。
   return caps === null
-    ? { installed: false, version: null, capabilities: new Set() }
-    : { installed: true, version: "2", capabilities: new Set(caps) };
+    ? { state: "not-installed" }
+    : { state: "installed", version: "2", capabilities: new Set(caps) };
 }
 
 export function renderCliGoldenFixture(): string {

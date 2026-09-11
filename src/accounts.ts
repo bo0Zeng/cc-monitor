@@ -336,14 +336,32 @@ export function localLaunchAccountNameSync(sid: string | null): string | null {
   return cur && isSelectable(cur) ? cur.name : null;
 }
 
+/**
+ * 上面那条的**载荷半** —— 把「哪个号」摊成后端收得下的形状。
+ *
+ * # 🔴 `K-R53`（09-11）：**名字也要交出去，不只是目录**
+ *
+ * 后端那条 ccm 路只会 `--account <名字>`（`shared/ccm:606`）。本函数先前只回
+ * `{kind:"named", configDir}` ⇒ Rust 那侧的 `LaunchAccount::Named` 手上**没有名字**
+ * ⇒ `history.rs::render_local_ccm_with` 对它必然 §35 短路 ⇒ **本机具名账号一条都进不了
+ * ccm 容器**。而盘上四个本机拉起入口里有三个只说得出具名账号（`tabs.ts` 一处 +
+ * `views/history.ts` 两处，人群由 `ipc/commands.vitest.ts` 那条「恰好 4 处」钉着）
+ * ⇒ 那三条**在类型上**就到不了后端那条路，100% 落第二实现。
+ *
+ * ⚠ 名字这一半**本来就在手上**（[`localLaunchAccountNameSync`]，与取目录那半同源）——
+ * 缺的从来不是数据，是**没往下传**。所以这里是把同一条规则的两半一起交出去，
+ * **不是**在后端那侧从目录名反推一个名字：反推错的失效方向是 `shared/ccm` 当场 `die`
+ *（退出码 2 = 一次本来能起的会话变成一条报错），与 `relay_account_id_of_dir`
+ * 那条「推错就回落」的保守方向相反。理由逐字住 `history.rs` 的 `LaunchAccount::Named::name`。
+ */
 export function localLaunchAccountSync(
   sid: string | null,
-): { kind: "named"; configDir: string } | undefined {
+): { kind: "named"; configDir: string; name: string } | undefined {
   const snap = localLaunchSnapshot;
   const name = localLaunchAccountNameSync(sid);
   if (!snap || !name) return undefined;
   const picked = snap.state.accounts.find((a) => a.name === name);
-  return picked?.configDir ? { kind: "named", configDir: picked.configDir } : undefined;
+  return picked?.configDir ? { kind: "named", configDir: picked.configDir, name } : undefined;
 }
 
 /**

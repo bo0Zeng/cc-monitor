@@ -192,8 +192,18 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
         //   所以要走 `base` 让后端产出 `unset CLAUDE_CONFIG_DIR` —— **不是省略参数**。
         //   省略 = 「没表态」= 一个字都不注入，会被 shell rc 里的默认账号顶掉
         //   （Phase G 抓出的静默串号；远端那条路一直是 unset，本地此前不是）。
+        // ★ `K-R53`：具名那一态**把名字也带上** —— 不带 = 后端说不出 `--account`
+        //   ⇒ 这条路结构上到不了 ccm 那条路（而它是全仓唯一说得出「账号 0」的生产路，
+        //   那一格本来就是通的，具名这一格先前不是）。`accountName` 为 `null` 时
+        //   **原样不传**（`undefined`）：空值 ≠ 未设，见 `accounts.ts` 的 Z01。
         account:
-          a.configDir === null ? { kind: "base" } : { kind: "named", configDir: a.configDir },
+          a.configDir === null
+            ? { kind: "base" }
+            : {
+                kind: "named",
+                configDir: a.configDir,
+                ...(a.accountName === null ? {} : { name: a.accountName }),
+              },
       });
     },
 
