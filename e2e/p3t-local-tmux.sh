@@ -70,10 +70,22 @@ exec "$HERE/fake-claude" "\$@"
 SHIM
 chmod +x "$BIN/$LAUNCHER"
 # ③ ccm 本体上 PATH（渲染出来的串以 `ccm` 开头）。
-ln -sf "$REPO/shared/ccm" "$BIN/ccm"
+# ★ `K-R48` 第二拍（09-11）：`ccm` 从**仓内 bash 脚本**换成**后端二进制本体**
+#   （〔用@09-11 `K33`〕「后端只有一个…不要有什么 bash 脚本，不要有什么单独的 ccm」）。
+#   软链的**名字仍是 `ccm`** —— `control::ccm::intercept` 认的就是 `argv[0]` 的 basename。
+# 🔴 fail-closed：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份。
+CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/remote-daemon-proto/target}/debug/cc-monitor-remote"
+[ -x "$CCM_NATIVE" ] || {
+  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd remote-daemon-proto && cargo build --bin cc-monitor-remote\`" >&2
+  exit 2
+}
+ln -sf "$CCM_NATIVE" "$BIN/ccm"
 
 export PATH="$BIN:$PATH"
-export CCM_SELF="$REPO/shared/ccm"
+export CCM_SELF="$BIN/ccm"
+# ⚠ 〔`K-R48` 第二拍〕下面那份 `$TMP/ccm-config` **原生实现不读**（旧版是 source 一段 bash，
+#   没有等价物；它发现那个文件在会往 stderr 说一句然后照常跑）⇒ 那两个值改走环境变量。
+#   留着 `CCM_CONFIG` 指过去是有意的：它同时验「发现它存在会出声」这条行为没丢。
 # 隔离账号库 / 工作区 / 预信任写入点，绝不碰用户真实文件（同 ccm-acceptance.sh 的手法）
 ACCTS="$TMP/accts"; mkdir -p "$ACCTS/z"
 cat > "$ACCTS/accounts.json" <<JSON
@@ -83,6 +95,8 @@ JSON
 printf 'CCM_ACCTS_MANIFEST=%s\nCCM_WORKSPACE=%s\n' "$ACCTS/accounts.json" "$TMP/ws" > "$TMP/ccm-config"
 mkdir -p "$TMP/ws" "$TMP/proj"
 export CCM_CONFIG="$TMP/ccm-config"
+export CCM_ACCTS_MANIFEST="$ACCTS/accounts.json"
+export CCM_WORKSPACE="$TMP/ws"
 export CCM_CLAUDEJSON="$TMP/claude.json" CCM_CODEXTOML="$TMP/config.toml"
 export CLAUDE_CONFIG_DIR="$TMP/fakehome"
 export CCM_FAKE_CWD="$TMP/proj" CCM_FAKE_SLEEP=120
