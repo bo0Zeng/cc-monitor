@@ -520,18 +520,33 @@ mod f07_main_path_tests {
             scanned >= 50,
             "只扫到 {scanned} 个 .rs —— 遍历坏了，下面那条断言会零命中地绿"
         );
-        // ★★ 第二棵树：`shared/ccm`〔`K-P2` 08-29〕。理由见本条头注「第四次」那一节 ——
-        //    `§0d` 裁定的接线路（㈠）落在这份 shell 脚本里，而上面那棵树够不到它。
-        //    ⚠ needle 也要换个形状：Rust 那边是字面量 `"create-or-attach"`（带引号），
-        //    shell 里它会长在 JSON 串或 argv 里 ⇒ 用**带边界的词**匹配，两种形态都收得到。
+        // ★★ 第二棵树〔`K-P2` 08-29 立，`K-R48` 第二拍 09-11 换住址〕。
+        //    它原来是 `shared/ccm`（那份 bash 脚本），理由是「`§0d` 裁定的接线路落在那里，
+        //    而上面那棵树够不到它」。〔用@09-11 `K33`〕脚本删了 ⇒ 换成
+        //    `remote-daemon-proto/src/control/ccm/`：**接线路还在那条边上，只是换了语言**。
+        //    ⚠ needle 仍用**带边界的词**（不是 Rust 那边的带引号字面量）：
+        //    它在两侧可能长在字面量里、也可能长在 JSON 串里，带边界两种形态都收得到。
         let word = format!("create-or-{}", "attach");
-        let ccm = guard_core::strip_hash_comment_lines(crate::sftp::CCM_CLI_SCRIPT);
+        let ccm_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级")
+            .join("remote-daemon-proto/src/control/ccm");
+        let ccm: String = ["mod.rs", "argv.rs", "plan.rs"]
+            .iter()
+            .map(|f| {
+                guard_core::production_code(
+                    &std::fs::read_to_string(ccm_dir.join(f))
+                        .unwrap_or_else(|e| panic!("读不到 control/ccm/{f}：{e}")),
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
         // ★ 抽取器自检（这一棵树自己的）：剥注释器没把代码一起剥掉。
-        //   建条当天 `shared/ccm` 生产段 536 行 / 全文 1258 行；地板取 300 与
-        //   `ccm_cli_contract` 那几条同口径。
+        //   地板 300 行是从 `shared/ccm` 那一版逐字沿用的（那边生产段 536 行 / 全文 1258）；
+        //   现打这三份剥完远在其上。
         assert!(
             ccm.lines().count() >= 300,
-            "`shared/ccm` 的生产段只剩 {} 行 —— 剥注释器把代码也剥了？下面那条会零命中地绿",
+            "`control/ccm/` 三份的生产段只剩 {} 行 —— 剥注释器把代码也剥了？下面那条会零命中地绿",
             ccm.lines().count()
         );
         // ★★ 〔`K-P2` `D` 阶段第三拍 09-03〕**这一半本拍翻了面。**
@@ -562,14 +577,16 @@ mod f07_main_path_tests {
              回 F07/U8c-3 重裁「删 TS 渲染器」的前置。\n\
              ⚠ 同轮还要回 `K-P2`：`KP2A②` 的棘轮要抬、`KP2C` 的退路要登记、\n\
              `KP2D` 的通道 A/B 冲突必须已经解掉。\n\
-             ⚠ `shared/ccm` **不在本断言的人群里**（它在下面单判，`K-P2` `D3` 已经切过去了）。"
+             ⚠ `control/ccm/` **不在本断言的人群里**（它在下面单判，`K-P2` `D3` 已经切过去了）。"
         );
         assert!(
             guard_core::contains_word(&ccm, &word),
-            "`shared/ccm` 的生产段**不再发** `create-or-attach` 了 —— 起会话退回本机 tmux 直起？\n\
-             `K-P2` `D3`（09-03）把它接到了后端那条一次性口上（`launch_via_daemon`）。\n\
-             ⇒ 真要退回来，请连同 `ccm_cli_contract::BACKEND_BACKED_PATHS` 的登记、\n\
-             那条 2→3 的棘轮、与 e2e `WIRE/launch` 一节一起撤，并回 `K-P2` 说明为什么。"
+            "`control/ccm/` 的生产段**不再发** `create-or-attach` 了 —— 起会话退回本机 tmux 直起？\n\
+             `K-P2` `D3`（09-03）把它接到了后端那条一次性口上；`K-R48`（09-11）之后\n\
+             那条口住进了同一个进程（`control::launch::parse_request` 那道门）。\n\
+             ⇒ 真要退回来，请连同 daemon 侧那条\n\
+             `the_container_launch_goes_through_the_one_door_with_every_field_intact`\n\
+             一起撤，并回 `K-P2` 说明为什么。"
         );
     }
 

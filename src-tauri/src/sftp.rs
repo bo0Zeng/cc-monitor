@@ -876,7 +876,8 @@ const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// **单一来源**：`shared/ccm-aliases.sh`——前端 `remote-section.ts` 经 `?raw` import
 /// 同一文件（修复历史漂移：Batch7 重构时只改了前端展示版，装进远端的还是老版）。
 ///
-/// **F02 起本块只剩「别名层」**：唯一实现搬进 [`CCM_CLI_SCRIPT`]（部署为可执行文件）。
+/// **F02 起本块只剩「别名层」**；`K-R48` 第二拍起它指向的那个 `ccm` 是 [`ccm_entry_shim`]
+/// （三行入口，转给后端本体），不再是一份 bash 实现。
 /// 理由：shell 函数**优先于 PATH**，装成函数则与用户已有同名函数硬冲突且必然被遮蔽（实测）；
 /// 且远端是 zsh/fish 时 `.bashrc` 根本不被 source，函数形态拿不到（审计 D2）。
 /// ⚠ `K-R49` 起它是 `pub(crate)`：`account_aliases::collision_note` 要问
@@ -884,11 +885,36 @@ const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// 而那个答案**只有这份文件说了算** —— 在那边抄一份名字清单就是第二个住址。
 pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-aliases.sh");
 
-/// F02：统一启动 CLI 本体，部署为远端 `~/.local/bin/ccm`（0755 可执行文件）。
-/// 它独占 L1 容器 / L2 环境 / L5 身份的实现——**环境必须在最终 exec 的那个 shell 里设**，
-/// 否则会像旧 `cct` 那样被 tmux 的进程边界吃掉（`update-environment` 默认列表不含
-/// `CLAUDE_CONFIG_DIR`，实测有对照组：`e2e/ccm-acceptance.sh`）。
-pub(crate) const CCM_CLI_SCRIPT: &str = include_str!("../../shared/ccm");
+/// 🔴 **`K-R48` 第二拍（09-11）：`CCM_CLI_SCRIPT` 没了，这里是它的墓碑。**
+///
+/// 原来这一行是 `pub(crate) const CCM_CLI_SCRIPT: &str = include_str!("../../shared/ccm");`
+/// —— 把那个 1592 行的 bash 启动器整份编进产物，再 SFTP 推到远端 `~/.local/bin/ccm`。
+/// 〔用@09-11 `K33`〕逐字：「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。
+/// **所有命令只许有一处**，其他都是**根据传参来调用**」⇒ 那个文件删了。
+///
+/// **`KR48D1` 盯的就是这一行**：那句 `include_str!` 在 = 脚本仍是产品的一部分。今天 0。
+///
+/// 远端那份 `~/.local/bin/ccm` 换成 [`ccm_entry_shim`] —— **三行、零实现**，
+/// 只把 argv 原样转给已经部署好的后端（`intercept` 的第二条入口 `<bin> ccm <argv…>`）。
+fn _kr48d1_tombstone() {}
+
+/// 远端 `~/.local/bin/ccm` 的内容：**一个入口，不是一份实现**。
+///
+/// 🔴 **它里面不许有第二个 `case` / `if` / 任何行为** —— 一旦有，`K33` 那句
+/// 「所有命令只许有一处」就又破了，而这正是 `K-R48` 这一整件要根除的东西。
+/// 它做且只做一件事：把 argv 原样交给后端。
+///
+/// **为什么不是软链**：软链更干净（`intercept` 头一条入口逐字写着「别名 / 软链指过来」），
+/// 但本仓的 SFTP 客户端今天**一处都没用过 `symlink`**（现打 `grep -rn symlink src-tauri/src/sftp.rs`
+/// 只命中注释），而这条路**没有任何一台真远端机器可以验**（`K-R48` `§0-Bx-7` 同族）。
+/// ⇒ 用已经被 12 条 print-parity + 真机验收盯过的 `upload_atomic` 那条路，
+/// **把「没验过的新机制」这个变量拿掉**。换软链是一件独立的活，别搭在这一拍上。
+fn ccm_entry_shim(daemon_path: &str) -> String {
+    format!(
+        "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec {} ccm \"$@\"\n",
+        shell_quote_core::posix_quote(daemon_path)
+    )
+}
 
 /// CLI 在远端的落点（SFTP 相对路径 = home 相对）。
 const CCM_CLI_REMOTE_PATH: &str = ".local/bin/ccm";
@@ -1095,9 +1121,15 @@ pub async fn install_remote_ccm_helper(
             let _ = sftp.create_dir(cur.clone()).await;
         }
     }
-    upload_atomic(sftp, CCM_CLI_REMOTE_PATH, CCM_CLI_SCRIPT.as_bytes(), 0o755)
+    // 🔴 `K-R48` 第二拍：推的不再是那个 1592 行的 bash 启动器，是 [`ccm_entry_shim`]
+    //    —— 三行、零实现，只把 argv 转给**已经部署好的后端**（`ensure_daemon_deployed`
+    //    把它推到 `cfg.daemon_path`，默认约定 `~/.cc-monitor/bin/cc-monitor-remote`）。
+    // ⚠ **入口与后端本体的部署是两条路，这里刻意不合并**：本函数是「装 shell 便捷层」，
+    //   后端本体由连接流程自己保证；合并就等于在这条路上再造一次部署逻辑（第二处实现）。
+    let shim = ccm_entry_shim(&cfg.daemon_path);
+    upload_atomic(sftp, CCM_CLI_REMOTE_PATH, shim.as_bytes(), 0o755)
         .await
-        .map_err(|e| format!("部署 ccm CLI 到远端 ~/{CCM_CLI_REMOTE_PATH} 失败: {e}"))?;
+        .map_err(|e| format!("部署 ccm 入口到远端 ~/{CCM_CLI_REMOTE_PATH} 失败: {e}"))?;
     // 读回精确比对（兼防传输损坏）——CLI 是可执行文件，写坏比 profile 写坏更危险。
     let cli_back = read_optional(sftp, CCM_CLI_REMOTE_PATH)
         .await
@@ -1112,10 +1144,10 @@ pub async fn install_remote_ccm_helper(
     // 而它被 12 条 print-parity + 15 条 acceptance 真机断言盯着，风险/收益不划算。
     // 但要如实说清后果——见下方错误措辞：**损坏的 CLI 会留在远端**。
     if let crate::verified_write::WriteVerdict::Mismatch { detail } =
-        crate::verified_write::verify_readback(CCM_CLI_SCRIPT, &cli_back)
+        crate::verified_write::verify_readback(&shim, &cli_back)
     {
         return Err(format!(
-            "ccm CLI 写后校验失败：{detail} 未改动 {profile}；\
+            "ccm 入口写后校验失败：{detail} 未改动 {profile}；\
              但 ~/{CCM_CLI_REMOTE_PATH} 已被写入且内容不对，请手动删除或重新部署。"
         ));
     }
@@ -1292,7 +1324,8 @@ mod tests {
     use super::*;
 
     /// 单一来源漂移守卫①：写进远端 profile 的**别名块**。
-    /// F02 起本块只剩组合层别名——实现搬进 `CCM_CLI_SCRIPT`（见守卫②）。
+    /// F02 起本块只剩组合层别名；`K-R48` 第二拍起实现住后端本体
+    /// （远端那个 `~/.local/bin/ccm` 是 [`ccm_entry_shim`]，见下一条判据）。
     #[test]
     fn ccm_aliases_snippet_has_required_elements() {
         for needle in [
@@ -1357,76 +1390,58 @@ mod tests {
         // `ccm_cli_strength_is_at_or_above_baseline`。
         use crate::ccm_cli_contract as contract;
 
-        // ★★ 〔`K-P2` C 第五拍，09-03；PM `§13 裁五` **窄授权**〕**这两条循环认住址账本了。**
+        // 🔴 〔`K-R48` 第二拍 09-11〕**这里原来还有五段断言，全部打在 `CCM_CLI_SCRIPT` 上，
+        //    随 `shared/ccm` 一起删了**：住址账本两条循环（`ledger.needles` / `ledger.channel_a`）·
+        //    `pin_t_def`（`$t` 只许被赋值一次）· `scan_t_targets(...).require(floor, …)`
+        //    （tmux 目标必须是 `=名:` 形态，`INVARIANTS §31a`）。
+        //    它们量的全是「**那个 bash 脚本怎么写的**」，被测对象没了就没了。
         //
-        // # 它修的是什么：同一条性质**两份实现，而它们不知道对方在**
-        //
-        // `ccm_cli_contract` 那边 C 第四拍已经把「少一条要素」拆成了**流失**（红）与
-        // **搬家**（记了账、新住址真有它 ⇒ 绿）。**本函数这一份没跟着换** ——
-        // 它只问「这个串在不在这份文件里」，于是「搬家照样绿」**只在半个仓里成立**：
-        // 同一个提交，`ccm_cli_contract` 说搬家 OK，这里说少了一条要素。
-        // C 第四拍的 `M3`（真搬家）实测过：唯一剩下的那条红就是本函数。
-        //
-        // # 认账本 ≠ 放水
-        //
-        // 跳过的**只有**登记为 `Backend` 的那些，而每一条 `Backend` 都要付两条断言
-        //（`every_needle_that_moved_is_actually_at_its_new_home`：新住址真有锚点 ＋
-        //  旧住址真没了）。**把某条改成 `Backend` 换不来免检**，只是把举证换了个地方。
-        // ⚠ 那条判据在**门①**、与本条同一道门 ⇒ 不存在「那边没跑而这边放行」的窗口。
-        let ledger = contract::LEDGER;
-        for (needle, home) in ledger.needles {
-            if matches!(home, contract::NeedleHome::Backend { .. }) {
-                continue; // 记了账的搬家，举证在 `every_needle_that_moved_is_actually_at_its_new_home`
-            }
-            assert!(
-                CCM_CLI_SCRIPT.contains(needle),
-                "ccm CLI 缺关键要素: {needle}\n\
-                 （它在住址账本里登记为仍住 `shared/ccm`。真搬走了就**同拍改那张账本**，\
-                 别在这里删一行 —— 那样两份实现又会各说各话。）"
-            );
-        }
-        for (needle, home) in ledger.channel_a {
-            if matches!(home, contract::NeedleHome::Backend { .. }) {
-                continue;
-            }
-            assert!(
-                CCM_CLI_SCRIPT.contains(needle),
-                "通道A（意图声明）必须写 @ccm_sid_expect（而非裸 @ccm_sid），缺: {needle}"
-            );
-        }
-        // 钉死逃生口。**除「逐字存在」还要断言只被赋值一次**（T01 审计 S3，已独立复现：
-        // 在它后面再加一行 `t="$tmux_name"`，旧的 contains 版本照样通过而 `$t` 已成裸值）。
-        contract::pin_t_def(CCM_CLI_SCRIPT)
-            .expect("$t 的定义被改动或被二次赋值 —— 它是 tmux 序列里所有 -t 的来源");
+        // ⚠ **它们守的性质没有一条被丢掉，逐条给新住址**：
+        //    · `=名:` 精确目标 ⇒ `control::ccm::plan` 的渲染判据（`--print` 黄金串里每个
+        //      `-t` 都是 `'=名:'`，变异刀 #8「attach 目标退回裸名字」当场红）;
+        //    · 通道A 写**意图**标记 `@ccm_sid_expect` ⇒ 变异刀 #7「写事实标记而非意图标记」;
+        //    · `$t` 不许二次赋值 ⇒ 那是 bash 变量的病，Rust 里没有那个形状（`Plan` 里是字段）。
+        //    ⚠ 「跨语言那一半」（TS 侧 `deriveTmuxName` 对拍 · `capabilities ⊇ CLI_REQUIRED_CAPS`）
+        //      仍**只**住 e2e（`ccm-cli.test.sh` 5 条 · `ccm-contract-parity.sh` 5 条），别当 Rust 判据能顶。
+    }
 
-        // tmux 目标精确形态（INVARIANTS §31a）：**结构性扫描**——扫出 CLI 里每一个 `-t ` 的
-        // 目标 token，逐个断言含 `=` 且以 `:`（或 `:` + 引号）收尾。
-        //
-        // 刻意不用固定 needle：D 审计实测过，固定 needle 版本是**空转的**——把 CLI 里的
-        // `=名:` 全改回裸目标，`cargo test` 依旧全绿（正向 needle 恰好都还命中，反向 needle
-        // 引用的是 CLI 里根本不存在的代码）。而这正是 F01 修掉的「杀错/打错兄弟会话」生产事故。
-        // 结构性扫描对**新增**的 `-t` 也自动生效，这是固定 needle 永远做不到的。
-        //
-        // ⚠ **阈值余量已经没了**（U1a 实测订正）：本注释此前写「真实脚本 checked=11 ……
-        // 往下留 1 的余量以免正常增删命令时误红」，而实测 checked = **10** == 阈值。
-        // 追溯到 `666cc14`（无名 `--tmux` 改为无条件新建会话）：删两处 `display-message -p -t`、
-        // 加一处 `has-session -t`，净 −1，是正当的行为变更。**不下调阈值** —— 下调等于把
-        // 「少一处 tmux 命令」重新变成无声的。读数本身由 `ccm_cli_contract::BASELINE` 单独盯着。
-        //
-        // ★★ 〔C 第五拍；PM `§13 裁五`〕**这条下限也认住址账本** —— 理由同上面那两条循环。
-        // `--tmux` 那一块里有 3 处 `-t`，搬走之后现扫读数从 11 掉到 8，而
-        // `MIN_CHECKED_T_TARGETS` 是 `KP2B` 🔴 逐字禁止 agent 下调的两个数之一
-        // ⇒ 不认账本的话，`§11 丙`（守恒）在这一维上买不到，只能去动那个数。
-        //
-        // ⚠ **减的是「已经登记搬走了几处」，不是「允许少几处」**：`MOVED_T_TARGETS` 每一行都要付
-        // 「新住址真有锚点 ＋ ccm 那处真没了」两条断言。
-        // ⚠ 兜底在 `require` 自己身上：它对 `min_checked == 0` 是**硬失败**
-        //（逐字「那等于关掉计数自检」）⇒ 有人把 10 处全登记成「搬走了」时这里当场红，
-        //  而不是静默地变成一条永远通过的判据。
-        let floor = contract::MIN_CHECKED_T_TARGETS.saturating_sub(contract::MOVED_T_TARGETS.len());
-        contract::scan_t_targets(CCM_CLI_SCRIPT)
-            .require(floor, "CLI 的 tmux 目标（INVARIANTS §31a）")
-            .expect("结构性扫描不通过");
+    /// `K-R48` 第二拍：远端 `~/.local/bin/ccm` 今天是**入口**，不是实现。
+    ///
+    /// 🔴 **这一条的岗位是「别让它长回去」**：`K33` 逐字「所有命令只许有一处，其他都是
+    /// 根据传参来调用」。一个 shim 里只要出现第二个分支，那句话就又破了 ——
+    /// 而破的时候没有任何别的判据会出声（它不进任何 e2e，没有一台真远端可跑）。
+    #[test]
+    fn the_remote_ccm_entry_is_an_entry_not_an_implementation() {
+        let shim = ccm_entry_shim("/home/pi/.cc-monitor/bin/cc-monitor-remote");
+        // ① 真的把 argv 转给后端，且走的是 `intercept` 的第二条入口（子命令形）。
+        assert!(
+            shim.contains("exec '/home/pi/.cc-monitor/bin/cc-monitor-remote' ccm \"$@\"")
+                || shim.contains("exec /home/pi/.cc-monitor/bin/cc-monitor-remote ccm \"$@\""),
+            "shim 没把 argv 原样转给后端的 `ccm` 子命令：\n{shim}"
+        );
+        // ② **零实现**：除了 shebang、一行注释、一行 exec，不许有别的可执行行。
+        let code: Vec<&str> = shim
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect();
+        assert_eq!(
+            code.len(),
+            1,
+            "远端 ccm 入口里出现了第二条可执行语句 —— 那就是第二处实现了（K33）。\n\
+             它只许有一行 `exec <后端> ccm \"$@\"`。现打：{code:?}"
+        );
+        assert!(
+            code[0].starts_with("exec "),
+            "唯一那一行必须是 `exec`（不许起子进程再包一层：那会吃掉退出码与信号）。现打：{}",
+            code[0]
+        );
+        // ③ 路径必须经 POSIX quote（daemon_path 是用户填的，可能带空格 / 引号）。
+        let tricky = ccm_entry_shim("/home/用户/带 空格/it's");
+        assert!(
+            tricky.contains(&shell_quote_core::posix_quote("/home/用户/带 空格/it's")),
+            "daemon_path 没经 `shell_quote_core::posix_quote` —— 带空格的路径会被拆成两个词。\n{tricky}"
+        );
     }
 
     #[test]
