@@ -881,9 +881,41 @@ const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// 理由：shell 函数**优先于 PATH**，装成函数则与用户已有同名函数硬冲突且必然被遮蔽（实测）；
 /// 且远端是 zsh/fish 时 `.bashrc` 根本不被 source，函数形态拿不到（审计 D2）。
 /// ⚠ `K-R49` 起它是 `pub(crate)`：`account_aliases::collision_note` 要问
-/// 「`cc` / `cch` / `cct` 这几个名字是不是已经被自带的别名块占了」，
+/// 「`cc` / `cct` 这几个名字是不是已经被自带的别名块占了」，
 /// 而那个答案**只有这份文件说了算** —— 在那边抄一份名字清单就是第二个住址。
+/// 〔`K-R58` 09-11：`cch` 从这份文件里删了 ⇒ 它**不再**被当作「已被占用」，
+/// 用户可以自己定义一个 `cch`。**多一格自由，不是回归。**〕
 pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-aliases.sh");
+
+/// 自带别名块里**今天定义了哪几个名字** —— 现算，不写死（`13b`：闭集只许有一个住址，
+/// 那个住址就是 `shared/ccm-aliases.sh` 自己）。
+///
+/// 只在测试里用：`account_aliases` 的撞名判据与本文件的文档对账判据都拿它当人群，
+/// 于是「删/加一个别名」这件事**不需要同时去改两份名单**（改漏一份正是 `KR58D1`
+/// 的失效方向）。
+///
+/// ⚠ **它认的形状写死在这里**：`<名>() {`（`()` 与 `{` 之间允许空白）。
+/// 注释行里那两条示例（`#   zcc()  { … }`）靠「名字只许 `[A-Za-z0-9_]`」被剔掉 ——
+/// 换一种写法（`function cc {`）它会**漏**，而漏出来的形状是「人群变空」，
+/// 调用处一律先断 `!is_empty()`，不让它静默变成空真。
+#[cfg(test)]
+pub(crate) fn builtin_alias_names() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = CCM_WRAPPER_SNIPPET
+        .lines()
+        .filter_map(|l| {
+            let (name, rest) = l.split_once("()")?;
+            if !rest.trim_start().starts_with('{') {
+                return None;
+            }
+            let name = name.trim();
+            (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+                .then_some(name)
+        })
+        .collect();
+    v.sort_unstable();
+    v.dedup();
+    v
+}
 
 /// 🔴 **`K-R48` 第二拍（09-11）：`CCM_CLI_SCRIPT` 没了，这里是它的墓碑。**
 ///
@@ -1330,7 +1362,7 @@ mod tests {
     fn ccm_aliases_snippet_has_required_elements() {
         for needle in [
             ".local/bin", // CLI 落点必须进 PATH，否则别名全指向不存在的命令
-            "cc()",       // 智能选目录
+            "cc()",       // 裸起（`K-R58` 起 = 就在当前目录，ccm 不再替用户挑）
             "cct()",      // tmux 版
             "ccm --tmux", // 别名只做组合，不自己建容器
             "declare -f", // 防覆盖用户已有同名函数
@@ -1347,6 +1379,56 @@ mod tests {
                 "别名块不该含实现细节 {forbidden}——实现属于 ~/.local/bin/ccm"
             );
         }
+    }
+
+    /// `KR58D2` —— `doc/IPC-PROTOCOL.md` §11 里描述别名块的那一句，**行数与名单同句**。
+    ///
+    /// 本区最高频的那条病就是「数与名单同句、只改一半」⇒ 这里**两样一起对**，
+    /// 而且两样都**现算**自真相源 [`CCM_WRAPPER_SNIPPET`]（= `shared/ccm-aliases.sh` 本身），
+    /// 判据里不抄第二份名单、不写死行数。
+    ///
+    /// ⚠ **它买到的射程只有这一句**：§11 其余部分（`shared/ccm` · `CCM_CLI_SCRIPT`）
+    /// 在 `K-R48` 第二拍之后已经是**存量馊话**，本判据够不着，也不假装够得着。
+    ///
+    /// ⚠ 判据够不着被测对象时必须**响亮地红**，不许变成空真 ⇒ 找不到那一句就 panic。
+    #[test]
+    fn the_protocol_doc_sentence_about_the_alias_block_matches_the_file() {
+        const IPC_DOC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
+        let want_names = crate::sftp::builtin_alias_names();
+        assert!(
+            !want_names.is_empty(),
+            "从 shared/ccm-aliases.sh 里一个别名都没解析出来 —— 判据够不着被测对象了，先修判据"
+        );
+        let want_lines = CCM_WRAPPER_SNIPPET.lines().count();
+
+        let sent = IPC_DOC
+            .lines()
+            .find(|l| l.contains("shared/ccm-aliases.sh`，**"))
+            .expect(
+                "doc/IPC-PROTOCOL.md 里描述别名块的那一句找不到了 —— \
+                 要么它被改写了、要么被删了；无论哪种，这条对账现在是瞎的",
+            );
+        let bold = sent
+            .split("**")
+            .nth(1)
+            .expect("那一句里的粗体段没了 —— 对账抓不到数与名单");
+
+        assert!(
+            bold.contains(&format!("{want_lines} 行")),
+            "行数对不上：shared/ccm-aliases.sh 现在 {want_lines} 行，而文档那句写的是「{bold}」"
+        );
+        assert!(
+            bold.contains(&format!("这 {} 个", want_names.len())),
+            "别名个数对不上：现在 {} 个（{}），而文档那句写的是「{bold}」",
+            want_names.len(),
+            want_names.join(" / ")
+        );
+        let mut doc_names: Vec<&str> = bold.split('`').skip(1).step_by(2).collect();
+        doc_names.sort_unstable();
+        assert_eq!(
+            doc_names, want_names,
+            "名单对不上：文档那句列的是 {doc_names:?}，盘上真有的是 {want_names:?}"
+        );
     }
 
     /// 单一来源漂移守卫②：部署为远端 `~/.local/bin/ccm` 的 **CLI 本体**。
