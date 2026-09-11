@@ -4662,15 +4662,22 @@ body.settings-window-mode .grid-monitor-trigger {
   text-overflow: ellipsis;
 }
 
-/* === K-R45 甲：「我说过的 N 句」清单面板 ===
+/* === K-R45：「我说过的 N 句」清单面板 ===
    上一轮 `src/styles.css` 在写区外，这两条规则写成了 `style.cssText`（**申报过的债**）。
-   本轮搬进来，**逐条属性逐字照搬、一个值都没改** —— 搬家不是改外观的时机。
+   已搬进来，**逐条属性逐字照搬、一个值都没改** —— 搬家不是改外观的时机。
 
-   🔴 `.session-viewer-inputs` **绝不许出现 `display`**：面板靠 `el.hidden` 收起，
+   🔴 **第三轮改的只有类名**（`.session-viewer-*` → `.user-*`），声明**一条没动**：
+   这块界面本轮起由历史查看器与实时窗口**共用一份实现**（`views/user-input-panel.ts`），
+   而一个会出现在实时 tab 里的元素叫「session-viewer-…」就是名字在说谎 ——
+   本仓最贵的那族病里，「名字与它实际住的地方对不上」是复发最多的一种。
+   位置差异（查看器是流内一块、实时是悬浮在流上）落在**宿主自己的**
+   `.live-user-inputs` 上，不落在这三条共用规则里。
+
+   🔴 `.user-inputs` **绝不许出现 `display`**：面板靠 `el.hidden` 收起，
    而 `hidden` 是 UA 样式表里的 `display:none`，作者样式里任何一条 `display` 都会盖掉它
    ⇒ 面板从此永远展开。原来的内联串里没有 `display`，这里也不许有。
    （jsdom 不加载本文件 ⇒ 「面板默认收着」那格断的是 `.hidden` 属性，**盖不住这一形**。） */
-.session-viewer-inputs {
+.user-inputs {
   flex-shrink: 0;
   max-height: 38vh;
   overflow-y: auto;
@@ -4678,7 +4685,7 @@ body.settings-window-mode .grid-monitor-trigger {
   border-bottom: 1px solid var(--border-strong);
   background: var(--bg-2);
 }
-.session-viewer-input-row {
+.user-input-row {
   display: block;
   width: 100%;
   text-align: left;
@@ -4695,7 +4702,7 @@ body.settings-window-mode .grid-monitor-trigger {
 /* 「这一条跳不过去」的变灰。原来住在 `jumpToUserInput` 里的 `row.style.opacity = "0.55"`。
    搬到这里顺带修掉一个旧形：那一句只加不减，同一行后来跳得过去了也会一直灰着；
    现在灰不灰只由 `data-unjumpable` 在不在决定，而那个标记是加也删也有的。 */
-.session-viewer-input-row[data-unjumpable] {
+.user-input-row[data-unjumpable] {
   opacity: 0.55;
 }
 
