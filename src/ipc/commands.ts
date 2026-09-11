@@ -653,13 +653,20 @@ export const commands = {
      *
      * - 参数缺席 = 调用方**没表态** ⇒ 一个字都不注入（既有调用点逐字节等价旧行为）
      * - `{ kind: "base" }` = 用户**显式**选了账号 0 ⇒ 后端产出 `unset CLAUDE_CONFIG_DIR`
-     * - `{ kind: "named", configDir }` = 具名账号 ⇒ `export CLAUDE_CONFIG_DIR='…'`
+     * - `{ kind: "named", configDir, name? }` = 具名账号 ⇒ `export CLAUDE_CONFIG_DIR='…'`
      *
      * **「账号 0」不等于「什么都不加」**：本地拉起故意加载 shell rc，而 rc 里很可能有
      * `export CLAUDE_CONFIG_DIR=<默认账号>`（`cc-acct-iso shellinit` 生成的就是它）⇒
      * 什么都不加会静默落到别的账号上。远端那条路一直渲染成 `unset`，本地此前不是（Phase G 修）。
+     *
+     * 🔴 `K-R53`（09-11）：`named` 那一态**说得出名字就一起传**。后端那条 ccm 路只会
+     * `--account <名字>`（`shared/ccm:606`）⇒ 不传名字 = 那次拉起**结构上到不了后端那条路**，
+     * 必然落回第二实现（`history.rs::build_local_posix_command`，没有 tmux 容器）。
+     * 取值口只有一个：`accounts.ts::localLaunchAccountSync`（名字与目录同源）。
+     * `name` 缺席是**合法的**（例：分叉时继承的是源会话的目录、没有名字）—— 那时后端诚实短路，
+     * **绝不从目录名反推**（推错 ⇒ `shared/ccm` 当场 `die`，一次能起的会话变成一条报错）。
      */
-    account?: { kind: "base" } | { kind: "named"; configDir: string };
+    account?: { kind: "base" } | { kind: "named"; configDir: string; name?: string };
     /**
      * P3t（`C12`）：**POSIX 本机**把会话建进 tmux 时的会话名。
      *
@@ -909,7 +916,7 @@ export const commands = {
   new_local_session: (args: {
     cwd: string;
     launcher: string | null;
-    account?: { kind: "base" } | { kind: "named"; configDir: string };
+    account?: { kind: "base" } | { kind: "named"; configDir: string; name?: string };
   }) => invoke<string>("new_local_session", args),
 
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */

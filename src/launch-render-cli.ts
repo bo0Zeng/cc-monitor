@@ -81,7 +81,19 @@ export function tryRenderCli(
   probe: CcmProbeResult,
   ccmPath = "ccm",
 ): CliRenderResult {
-  if (!probe.installed) return { ok: false, reason: "远端未装 ccm" };
+  // `K-R53` `KR53D3`：**肯定式**的问法 —— 只有真探到「装了」才走这条渲染器。
+  // 先前写的是 `!probe.installed`，那把「没探出来」和「它真的没装」读成了同一件事，
+  // 而拒绝理由也就跟着撒谎（一次 ssh 抖动被说成「远端未装 ccm」）。
+  // 三态的理由与代价住 `ccm-probe.ts` 的头注。
+  if (probe.state !== "installed") {
+    return {
+      ok: false,
+      reason:
+        probe.state === "not-installed"
+          ? "远端未装 ccm"
+          : `探测没得出答案（不等于没装）：${probe.error}`,
+    };
+  }
   // local 恒不走这条渲染器（F06 落地）：不是"未实现"，是设计上的分工——本地路径有自己独立的
   // Rust 侧 renderer（history.rs::build_local_ps_command），因为它要问的问题（本机是否有 `cc`
   // PowerShell 函数）只能在目标机器上现场探测，TS 无法预先渲染好交给它。

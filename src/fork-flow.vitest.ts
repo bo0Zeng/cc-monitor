@@ -200,11 +200,19 @@ describe("E79：本机只有账号那一半时的推断", () => {
 // 前端不传 = 会话不进具名 tmux 容器。三条 `resume_history_session` 的调用点里，
 // 本条与 `views/history.ts` 那条先前都没传（只有 `tabs.ts` 传了）。
 //
-// 🔴 **这条路上这一格尤其贵**：POSIX 后端只有「显式账号 0」那一态渲染得出容器
+// 🔴 **这条路上这一格先前尤其贵**：POSIX 后端当时只有「显式账号 0」那一态渲染得出容器
 // （`render_local_ccm_with`：具名账号说不出 `--account <名字>` ⇒ §35 降级；
 //  「没表态」⇒ 直接拒），而**分叉是全仓唯一说得出 `{ kind: "base" }` 的生产路**
 // （`localLaunchAccountSync` 只回 `named` / `undefined`，回不出 `base`）。
 // ⇒ 名字没传的时候，这里是本来最有机会建出容器、却建不成的那一条。
+//
+// 🔴 `K-R53` 09-11 **订正这一段的现在时**：上面那句「只有账号 0 那一态渲染得出容器」
+// **今天已经不成立** —— 具名账号带上名字之后也渲染得出来
+// （`LaunchAccount::Named::name`；逐格表住 `history.rs::tests::
+//  every_local_account_shape_gets_a_named_verdict_from_the_backend_path`）。
+// ⇒ 「分叉是唯一说得出 base 的生产路」仍然是真的，**「唯一进得了容器的路」不再是**。
+// 下面那条断 `{ kind: "base" }` 的判据**照旧有效**（它断的是这条路说得出账号 0），
+// 只是它不再顺带证明「别处都进不去」。
 //
 // ⚠ **本组买不到什么**：同 `views/history-actions.vitest.ts` 那组 —— 止于
 //   「monitor 发出去的载荷里有这个名字」。后端真的建了容器、以及「`↗ 调出终端` 能用」

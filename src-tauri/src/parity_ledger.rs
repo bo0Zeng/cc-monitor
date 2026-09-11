@@ -426,8 +426,8 @@ mod tests {
         ("cc-bus.cockpit", Asym::ParityDebt, "★ **P4c 订正（08-12）：原理由已经过期，而过期的正是 `P4a` 那一刀造成的。** 原文写「cc_bus.rs 的 **5 个 IPC** 全走 origin+ssh、**零本机读取路径**」——`P4a`（08-12）把**读面三条**（`read_cc_bus_state` / `check_cc_bus_agent_online` / `read_cc_bus_inbox`）做成了本机可用（同一条命令串，只是不包进 ssh；本机 `~/.cc-bus/agents.tsv` 实测 86 行），它们今天是 `Both`。⇒ 「零本机读取路径」是假的，「5 个」也变成了 7 个（`P4c` 加了 `cc_bus_broadcast` / `cc_bus_kill`）。**今天真正的欠账只剩写面**：`cc_bus_send` / `cc_bus_spawn` / `cc_bus_broadcast` / `cc_bus_kill` 四条对 `<local>` 走 `refuse_local_write`，本机没有对侧（`P4a §0c` 量过代价：本机写面归 `P4b`，而 `P4b` 签收的是 cc-spawn 的复用那一刀，没交付写面）。★ 这条订正本身是 `P3b §0b` 的 **A 类（过期）**活样本，而制造它的是 `P4a` —— **改了行为没回来改理由，账本当天就开始撒谎**，本轮第二次（第一次是 `P4d-Y5` 改 `capture_remote_pane` 那次）。"),
         ("ccm.install-ui", Asym::Undecided, "本机安装向导有「扫 PATH 选装到哪」+「预览要写的文本」两步；远端 `install_remote_ccm_helper(cfg, profile)` 一步到位、没有这两步。**是欠账还是刻意简化，需要产品判断**——本表不替它裁定。"),
         ("daemon.deploy", Asym::NaturallyAsymmetric, "★★ **P3b 结清（08-12）：理由整个换掉 —— 原来那句是假的。** 原文写「§40 天然不对称白名单第 3 条：本地会话由 `watcher.rs` 直接读 jsonl，**根本不需要 daemon**」，被 P2z + P2 + P2s 三件直接证伪：本机**需要** daemon（入方向通道、每台机开关、tmux 帧都靠它），而且**已经会自部署** —— `local_backend.rs::extract_embedded_to`（exe 旁没有 sidecar 就把内嵌那份释放到 `~/.cc-monitor/bin`）。真正的不对称只剩一格：**本机那次释放不经一条 IPC 命令**，是宿主启动时自己做的（`lib.rs` 的启动段），所以命令面上没有本机对侧。⇒ 记 `natural` 记的是「不需要一条命令」，不是「不需要 daemon」。"),
-        ("launch.render-payload", Asym::NaturallyAsymmetric, "兜底那支（`container:\"none\"`）的载荷渲染。本机走 `history.rs::build_local_*_command` —— P3t 之后那是**渲染器拒了才走的回落**，不是并列的第二条路。⚠ P3t-Y4 订正：原文引 §36 当依据，那是把一条讲 **Windows**、逐字禁「本地渲染器读 `plan.env`」的窄铁律读宽了。"),
-        ("launch.render-cli", Asym::NaturallyAsymmetric, "`ccm 调用行`的渲染。★★ **P3t-Y4 把这条的理由整个换了 —— 原来那个已被实测证伪。** 原文说这条不对称是「本地渲染必须在目标机器上做（要现场探 `command -v cc`，TS 无法预先渲染好交给它）」造成的。**本机就在本机**：P3t-Y2 的 `ccm_probe::probe_local_ccm()` 直接跑一次 `bash -lic` 就拿到了版本与完整能力集，比远端那条 ssh 往返还便宜 ⇒ 那个理由不成立。真正的不对称是**本机账号三态里有两态 CLI 说不出**：`Named{config_dir}` 只有目录没有名字（CLI 只会 `--account <名字>`），`None` 是「继承环境」而 CLI 语法里没有这一态（映成 `--base` 就是把继承偷换成显式清空 = #75 病灶）。那两态诚实降级回旧路。⇒ 本行仍 `natural`，但它记的是**语法窄一格**，不是「渲染必须在目标机器上做」。补不补见 ROADMAP `U10`。"),
+        ("launch.render-payload", Asym::NaturallyAsymmetric, "兜底那支（`container:\"none\"`）的载荷渲染。**记 `natural` 记的是命令面这一格**：远端那侧要一条 IPC（`render_launch_payload`）才问得到宿主，而本机**自己就是宿主** —— `history.rs::launch_local` 直接在进程内调 `build_local_*_command`，没有「绕一圈问自己」这一步（同形的话 `launch_wire.rs` 的头注里逐字写着）。⚠⚠ **`K-R53`（09-11）撤掉原文那半句**：原文写「P3t 之后那是**渲染器拒了才走的回落**」——**按调用点分母那是假的**：盘上四个本机拉起入口里有三个（`src/tabs.ts` 一处 + `src/views/history.ts` 两处，人群由 `src/ipc/commands.vitest.ts` 那条「恰好 4 处」钉着）只说得出**具名账号**，而具名账号在 `K-R53` 之前必然 §35 短路 ⇒ **那三条只能走它**。一条 3/4 的分母不叫回落。`K-R53` 把具名那一格接上之后（`LaunchAccount::Named::name`），今天真正还会落到它的是：账号未表态（继承 —— 见下一行）· 只说得出目录没有名字 · 没有 tmux 名 · 这个号走中转（`history.rs::RELAY_KEEPS_THE_OLD_PATH`）· 这台机没装 ccm · Windows。逐格读数住 `history.rs::tests::every_local_account_shape_gets_a_named_verdict_from_the_backend_path`。⚠ P3t-Y4 订正保留：原文引 §36 当依据，那是把一条讲 **Windows**、逐字禁「本地渲染器读 `plan.env`」的窄铁律读宽了。"),
+        ("launch.render-cli", Asym::NaturallyAsymmetric, "`ccm 调用行`的渲染。★★ **P3t-Y4 把这条的理由整个换了 —— 原来那个已被实测证伪。** 原文说这条不对称是「本地渲染必须在目标机器上做（要现场探 `command -v cc`，TS 无法预先渲染好交给它）」造成的。**本机就在本机**：P3t-Y2 的 `ccm_probe::probe_local_ccm()` 直接跑一次 `bash -lic` 就拿到了版本与完整能力集，比远端那条 ssh 往返还便宜 ⇒ 那个理由不成立。真正的不对称是**本机账号三态里有两态 CLI 说不出**：`Named{config_dir}` 只有目录没有名字（CLI 只会 `--account <名字>`），`None` 是「继承环境」而 CLI 语法里没有这一态（映成 `--base` 就是把继承偷换成显式清空 = #75 病灶）。★★ **`K-R53`（09-11）改的是它的分量，不是它的机制**：原文那半句把这两态回旧路说成一次边角的「降级」，而**按调用点分母它是主路**（四个本机拉起入口里三个只说得出具名账号）。⇒ `K-R53` 把具名那一态接上了（`LaunchAccount::Named` 现在带名字，由前端那个唯一取值口 `accounts.ts::localLaunchAccountSync` 与 `localLaunchAccountNameSync` 同源给出），**说不出的只剩「继承」一态**。而那一态**今天仍然说不出，而且省略参数也兑现不了**：`shared/ccm:1001-1012` 现打 —— 既没 `--account` 也没 `--base`、且 `CLAUDE_CONFIG_DIR` 为空时 ccm **落 manifest 默认号**（那段自己第 1190 行逐字「把调用方选中的号静默换掉」）⇒ 省略是另一个方向的静默换号，与 `--base` 一样不是「继承」。⇒ 本行仍 `natural`，它记的仍是**语法窄一格**，只是那一格从两态收成一态。补它要动的是 **ccm 省略时的默认语义**（产品决定 ＋ `shared/ccm`），见 ROADMAP `U10`。"),
         ("mcp.list-origins", Asym::NaturallyAsymmetric, "`list_remote_mcp_origins` 答的是「哪几台远端有 MCP 配置」——「有哪些 origin」这个问题在本机侧退化成一台，没有可列的集合。⚠ 注意它与 `daemon_machines` 不同：那条**包含**本机（`LOCAL_ORIGIN`），因为它答的是「哪几台有 daemon」而本机也有。"),
         ("panorama.code-graph", Asym::Undecided, "**本表交出的最大一处新发现**：21 条命令全部只吃本机 `repo` 路径。远端 repo 的代码图谱既没做、也没在任何计划里登记过。**不擅自判它是天然不对称**——那需要产品判断（远端开发是不是本工具的场景）。登记待裁定。"),
         ("creds.relay-key", Asym::ParityDebt, "`K-H2a`：中转那把第三方 API key 今天**只有本机这一侧**能配。⚠ 欠的是什么要写准：**不是**「远端不需要」——远端跑的中转读的是**远端那台机器上**的同一份文件（相对路径由 `creds_core::store::FILE_NAME` 两侧共用），它一样要有人把 key 放进去。欠的是**一条把它送到远端的路**。★ 而这条路**不能照抄现成的 SFTP 上传**：`K-H2a §0c 二` 现打（08-27）—— `sftp::upload_atomic` 的 mode 参数只以 SFTP v3 的 `PERMISSIONS` 属性搭在 `SSH_FXP_OPEN` 上（服务端可以忽略、协议不回执），`sftp.rs:141-147` 头注**逐字禁掉**了兜底 `set_metadata`，而 `upload_atomic_verified` 只比**字节与长度**、全仓**没有一处回读权限**，再加上全仓唯一那条 OS 判定 `src/settings/host-os.ts` 量的是 **monitor 自己**跑在哪、**不是远端** ⇒ 对面是 Windows 时那个 `0o600` **不是「不生效」，是「静默地不生效」**。⇒ 补这条路的时候，机密性必须由**拿着那份文件的那台机器自己检查**（`creds_core::perm`，daemon 侧已在 `relay::creds::announce` 里出声），不能由写它的那一跳「设一下就当保住了」。归 `K-H2`。"),
@@ -821,6 +821,75 @@ mod tests {
              从头到尾没人量过，直到 P3t 顺手跑了一次 `bash -lic` 才发现它比远端还便宜。",
             bare.join("\n")
         );
+    }
+
+    /// ★★★ `K-R53` `KR53D4`：**拉起那两行理由里，被证伪的那两句话不许再在盘上。**
+    ///
+    /// # 它为什么只能长成这个形状（诚实边界写在最前，别把它读大）
+    ///
+    /// 「这句话是不是真的」机器判不了。本条能判的只有两样，**两样都不是「真假」**：
+    ///   ① **那两行还在**（`KR53D4` 逐字：「两行都不许靠删掉记录兑现 —— 删掉等于把一处
+    ///      已知的不对称从视野里拿走」）；
+    ///   ② **被证伪的那两句逐字串不在了**（`launch.render-payload` 的「不是并列的第二条路」·
+    ///      `launch.render-cli` 的「诚实降级」）。
+    ///
+    /// ⇒ 本条买的是「**改过了，而且没靠删兑现**」，**不买**「新写上去的那句是真的」。
+    /// 新那句真不真，由 `history.rs::every_local_account_shape_gets_a_named_verdict_from_the_backend_path`
+    /// 那张逐格表**行为上**钉着 —— 那才是分母的牙，本条只是不让老尸体留在盘上。
+    ///
+    /// # 两句各自为什么是假的（`K-R53 §0b`，PM 派工前现打）
+    ///
+    /// · `launch.render-payload` 写「P3t 之后那是**渲染器拒了才走的回落**，不是并列的第二条路」——
+    ///   **按调用点分母是假的**：四个本机拉起入口里三个（`tabs.ts` 一处 + `views/history.ts` 两处）
+    ///   只说得出具名账号，而具名账号在 `K-R53` 之前**必然** §35 短路 ⇒ 那三条**只能**走它。
+    ///   一条 3/4 的分母不叫「回落」。
+    /// · `launch.render-cli` 的**机制那一半本来就写对了**（两态说不出 —— 而且现打仍然对，
+    ///   见那条 Rust 判据头注里的三说法对照表）。错的只有「那两态**诚实降级**回旧路」
+    ///   那四个字：读起来像边角情形，而按分母它是主路。
+    #[test]
+    fn the_two_launch_rows_no_longer_carry_the_two_falsified_clauses() {
+        let find = |cap: &str| -> &str {
+            ASYMMETRY_REASONS
+                .iter()
+                .find(|(c, _, _)| *c == cap)
+                .map(|(_, _, why)| *why)
+                .unwrap_or_else(|| {
+                    panic!(
+                        "`{cap}` 这一行不在账本里了 —— `KR53D4` 逐字禁「靠删掉记录兑现」：\n\
+                         删掉等于把一处已知的不对称从视野里拿走，而那正是这张表存在的理由。"
+                    )
+                })
+        };
+
+        let payload = find("launch.render-payload");
+        assert!(
+            !payload.contains("不是并列的第二条路"),
+            "`launch.render-payload` 还写着「渲染器拒了才走的回落，不是并列的第二条路」——\n\
+             按调用点分母那是假的（本机四个入口里三个只能走它）。实得：{payload}"
+        );
+        // 反面：改完之后它必须**说得出分母**，不是换一句同样无从复核的话。
+        assert!(
+            payload.contains("K-R53"),
+            "改了措辞却没留下「按谁的分母、哪一拍量的」——\n\
+             那就是把一句无从复核的话换成另一句无从复核的话。实得：{payload}"
+        );
+
+        let cli = find("launch.render-cli");
+        assert!(
+            !cli.contains("诚实降级"),
+            "`launch.render-cli` 还写着「那两态**诚实降级**回旧路」——\n\
+             「降级」读起来像边角情形，而按分母它是主路。机制那一半是对的、不用动，\n\
+             要改的只有这四个字的分量。实得：{cli}"
+        );
+        // 机制那一半**必须留着**（`KR53D4` 逐字：`:430` 的机制那半不用改）——
+        // 顺手把它一起重写掉，就把一条今天仍然成立、而且刚被重新量过的事实弄丢了。
+        for keep in ["#75", "继承"] {
+            assert!(
+                cli.contains(keep),
+                "`launch.render-cli` 把机制那一半（`{keep}`）也改掉了 —— 那一半今天仍然成立，\n\
+                 `KR53D4` 逐字写着「机制那半**不用改**」。实得：{cli}"
+            );
+        }
     }
 
     #[test]

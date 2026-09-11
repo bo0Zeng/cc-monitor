@@ -84,7 +84,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:session-backend", "src/session-backend.test.ts", 10], // P3s-Y2 +1（新造名字必须过铸造口）
   ["test:panorama-session-files", "src/panorama/session-files.test.ts", 7],
   ["test:launch-dimensions", "src/launch-dimensions.test.ts", 28],
-  ["test:launch-render-cli", "src/launch-render-cli.test.ts", 26],
+  ["test:launch-render-cli", "src/launch-render-cli.test.ts", 27], // `K-R53` +1（`KR53D3`：「没探出来」与「真的没装」不许给同一句降级理由）
 ];
 
 /**
