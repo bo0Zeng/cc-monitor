@@ -164,10 +164,13 @@ mod tests {
         },
         Candidate {
             id: "ccm",
-            home: "shared/ccm",
+            // 🔴 〔`K-R48` 第二拍 09-11〕住址从 `shared/ccm` 换到这里：那个 bash 脚本删了，
+            //    `ccm` 今天是后端二进制的一次性模式（`K33`：「不要有什么单独的 ccm」）。
+            home: "remote-daemon-proto/src/control/ccm",
             semantics: Semantics::BuiltIn,
             shape: Shape::ManagedTool,
-            today: "一套通用骨架 + 一张 per-agent 适配表（`E4b`），能力靠 `--ccm-probe` 报",
+            today: "一套通用骨架 + 一张 per-agent 适配表（`E4b`），能力靠 `--ccm-probe` 报。\
+                    〔`K-R48` 09-11〕它**就是后端本体**的一种跑法，不再是一个独立脚本",
             gap: "无差 —— 本区只借它的协商形状（`E7`），不改它。\
                   ⚠ 但轴二那一格**落不进 `C21` 的三档**：它是受管工具，这件事本身就是读数",
         },
@@ -247,7 +250,7 @@ mod tests {
     }
 
     /// 🔴 〔`K-R48` 第二拍 09-11〕**这里原来有三个从 `shared/ccm` 里抠 bash 的取法**
-    /// （`ccm_agent_arms` 逐个切 `agent_*` 函数的 `case` 臂 · `case_arm` · `ccm_probe_values`）。
+    /// （`ccm_agent_arms` 〔散文墓碑〕 逐个切 `agent_*` 函数的 `case` 臂 · `case_arm` · `ccm_probe_values` 〔散文墓碑〕）。
     /// 〔用@09-11 `K33`〕那个脚本删了，per-agent 适配表与 probe 那一行搬进了
     /// `remote-daemon-proto/src/control/ccm/`（Rust）⇒ 取法整块换成读那份源码的 `const`。
     ///
@@ -289,34 +292,26 @@ mod tests {
 
     /// per-agent 适配函数的名字：`control/ccm/mod.rs` 里**按 agent 分支**的那几个。
     ///
-    /// 取法：行首 `pub(crate) fn <名>(agent: &str)` / `(kind: &str)` —— 它们的共同形状是
-    /// 「吃一个 agent 名，回这个 agent 的那一份」。⚠ 抠不到就 panic（同上）。
+    /// 取法：行首 `pub(crate) fn <名>(agent: &str)` —— 它们的共同形状是
+    /// 「吃一个 agent 名，回这个 agent 的那一份」。⚠ 抠不到就 panic（免得零命中地绿）。
+    ///
+    /// 🔴 **人群只到 `control/ccm/mod.rs` 为止，`agents/mod.rs::account_env_of` 刻意不算**：
+    /// 后者是 daemon **早就有**的东西（「切账号靠改哪个环境变量」），`ccm` 只是**问它要**
+    /// （`mod.rs` 头注逐字「本文件不认识任何 agent 的名字」）。把它数进来，
+    /// 这个数就从「`ccm` 的 per-agent 表有多大」变成「全仓有几个吃 agent 名的函数」——
+    /// **那是另一个量**，而 `E4b` 裁的是前者。〔本拍现打时它真的混进来过一次，读数 6 vs 5。〕
     fn ccm_per_agent_fns() -> Vec<String> {
         let mut out: Vec<String> = Vec::new();
-        for (file, src) in [
-            ("mod.rs", ccm_module_source("mod.rs")),
-            (
-                "agents/mod.rs",
-                std::fs::read_to_string(
-                    std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                        .parent()
-                        .expect("src-tauri 的上级")
-                        .join("remote-daemon-proto/src/agents/mod.rs"),
-                )
-                .expect("读不到 agents/mod.rs"),
-            ),
-        ] {
-            for line in guard_core::production_code(&src).lines() {
-                let l = line.trim();
-                let Some(rest) = l.strip_prefix("pub(crate) fn ") else {
-                    continue;
-                };
-                let Some((name, args)) = rest.split_once('(') else {
-                    continue;
-                };
-                if args.starts_with("agent: &str)") || args.starts_with("kind: &str)") {
-                    out.push(format!("{file}::{name}"));
-                }
+        for line in guard_core::production_code(&ccm_module_source("mod.rs")).lines() {
+            let l = line.trim();
+            let Some(rest) = l.strip_prefix("pub(crate) fn ") else {
+                continue;
+            };
+            let Some((name, args)) = rest.split_once('(') else {
+                continue;
+            };
+            if args.starts_with("agent: &str)") {
+                out.push(format!("mod.rs::{name}"));
             }
         }
         assert!(!out.is_empty(), "一个 per-agent 适配函数都抠不到 —— 抠法坏了");
@@ -640,7 +635,7 @@ mod tests {
             "per-agent 适配函数从 5 个变成 {} 个：{fns:?}\n\
              ⇒ `E4b` 裁的是「通用骨架不动，加一张表的一行」。多一个函数 = 分叉面变大，\
              那正是该有人过一眼的时刻；少一个 = 要么收敛了（好事，改这个数），\
-             要么抽取器坏了（`pub(crate) fn <名>(agent: &str)` / `(kind: &str)`）。",
+             要么抽取器坏了（`pub(crate) fn <名>(agent: &str)`，只扫 `control/ccm/mod.rs`）。",
             fns.len()
         );
 
@@ -761,8 +756,15 @@ mod tests {
         );
         assert!(caps.len() > agents.len(), "两张表抠成了同一份 —— 锚点没起作用");
         // per-agent 函数那一格：抠出来的每一项都要带住址前缀（免得两份同名函数被数成一个）。
-        for f in ccm_per_agent_fns() {
-            assert!(f.contains("::"), "per-agent 函数名没带住址：{f}");
+        let fns = ccm_per_agent_fns();
+        for f in &fns {
+            assert!(f.starts_with("mod.rs::"), "per-agent 函数名没带住址：{f}");
         }
+        // 段界自检：人群刻意**只到 `control/ccm/mod.rs`** —— `agents/mod.rs::account_env_of`
+        // 是 daemon 早有的东西，混进来这个数就变成另一个量（见 `ccm_per_agent_fns` 头注）。
+        assert!(
+            !fns.iter().any(|f| f.contains("account_env_of")),
+            "人群扩到 `agents/mod.rs` 了：{fns:?} —— 那个数不再是「`ccm` 的 per-agent 表有多大」"
+        );
     }
 }

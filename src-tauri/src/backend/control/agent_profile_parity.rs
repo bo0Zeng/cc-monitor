@@ -213,26 +213,39 @@ mod tests {
     fn ccm_still_refuses_codex_resume_so_the_gap_is_still_real() {
         let ccm = read_ccm();
         // ccm 用「空 resume flag」当不支持的哨兵 —— 两处都要在，缺一处这个前提就变了。
+        // 🔴 〔`K-R48` 第二拍〕哨兵的**字面**跟着实现换了一次（bash 的 `codex) printf '' ;;`
+        //    → Rust 的 `resume_flag` 对非 claude 回 `None`），**语义一个字没变**：
+        //    「没有 resume flag」= 这个 agent 不支持 resume。
         assert!(
-            ccm.contains(r#"codex) printf '' ;;"#),
-            "`agent_resume_flag` 对 codex 不再返回空 —— **这多半是好事**：\n\
+            ccm.contains("pub(crate) fn resume_flag(") && ccm.contains("_ => None,"),
+            "`resume_flag` 对 codex 不再返回空 —— **这多半是好事**：\n\
              ccm 可能支持了 codex 的 subcommand 形 resume ⇒ 回 F06 把夹具的 ccm 那一轨补上真对拍。"
         );
         assert!(
             ccm.contains("不支持 resume"),
-            "`ccm` 里那句「不支持 resume」的 die 不见了 —— 同上，前提变了，回 F06 重裁。"
+            "`control/ccm/` 里那句「不支持 resume」的 die 不见了 —— 同上，前提变了，回 F06 重裁。"
         );
     }
 
+    /// 🔴 〔`K-R48` 第二拍 09-11〕**住址换了：`shared/ccm` → `control/ccm/`（daemon crate）。**
+    ///
+    /// 〔用@09-11 `K33`〕「不要有什么 bash 脚本」⇒ 那个脚本删了，它那几个 `agent_*` 决策
+    /// 整条搬进了 `remote-daemon-proto/src/control/ccm/`（Rust）。
+    /// 本文件那两条判据问的是「**那两个决策今天住在哪一侧**」—— 问题没变，读的文本换了语言。
     fn read_ccm() -> String {
-        let s = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .expect("src-tauri 的上级")
-                .join("shared/ccm"),
-        )
-        .expect("读不到 shared/ccm");
-        assert!(s.len() > 5000, "shared/ccm 只有 {} 字节，抽错了？", s.len());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级")
+            .join("remote-daemon-proto/src/control/ccm");
+        let s: String = ["mod.rs", "argv.rs", "plan.rs"]
+            .iter()
+            .map(|f| {
+                std::fs::read_to_string(dir.join(f))
+                    .unwrap_or_else(|e| panic!("读不到 control/ccm/{f}：{e}"))
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(s.len() > 5000, "control/ccm 三份只有 {} 字节，抽错了？", s.len());
         s
     }
 
@@ -260,9 +273,13 @@ mod tests {
         // 反向锚点：ccm 里**确实**还有这两个决策 —— 否则本条在断言「谁都没有」。
         let ccm = read_ccm();
         for (name, _) in THE_TWO_CCM_ONLY_DECISIONS {
+            // 🔴 〔`K-R48` 第二拍〕搬进 Rust 之后名字掉了 `agent_` 前缀
+            //    （`agent_has_identity` → `has_identity`）——**登记表那两个名字刻意不改**：
+            //    它们是 `F06` 那笔账的原文，改了就对不上账。这里按前缀差异找。
+            let in_ccm = name.trim_start_matches("agent_");
             assert!(
-                ccm.contains(name),
-                "`shared/ccm` 里找不到 `{name}` —— 它被改名或删了，\
+                ccm.contains(&format!("fn {in_ccm}(")),
+                "`control/ccm/` 里找不到 `{in_ccm}()`（登记表里叫 `{name}`）—— 它被改名或删了，\
                  那上面那条就退化成「谁都没有这个决策」了"
             );
         }

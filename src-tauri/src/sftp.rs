@@ -1387,12 +1387,12 @@ mod tests {
         // **判据一条没改、没加、没减** —— 搬出去只是为了让 U9 迁到 `control/` 时
         // 改的是「喂哪份脚本文本」，而不是把这些断言重写一遍（账本 S11：迁移是强度
         // 悄悄下降的经典时机）。强度读数的基线对拍在那个模块的
-        // `ccm_cli_strength_is_at_or_above_baseline`。
+        // `ccm_cli_strength_is_at_or_above_baseline` 〔散文墓碑〕。
         use crate::ccm_cli_contract as contract;
 
         // 🔴 〔`K-R48` 第二拍 09-11〕**这里原来还有五段断言，全部打在 `CCM_CLI_SCRIPT` 上，
         //    随 `shared/ccm` 一起删了**：住址账本两条循环（`ledger.needles` / `ledger.channel_a`）·
-        //    `pin_t_def`（`$t` 只许被赋值一次）· `scan_t_targets(...).require(floor, …)`
+        //    `pin_t_def` 〔散文墓碑〕（`$t` 只许被赋值一次）· `scan_t_targets(...).require(floor, …)`
         //    （tmux 目标必须是 `=名:` 形态，`INVARIANTS §31a`）。
         //    它们量的全是「**那个 bash 脚本怎么写的**」，被测对象没了就没了。
         //

@@ -92,9 +92,11 @@ mod tests {
                   ⚠ **它有一个今天补不上的洞，别读成全覆盖**：走 ccm 容器那一支时，\
                   外侧这句 `export` 会在 tmux 边界被吃掉（tmux server 的 `update-environment` \
                   默认列表不含它）—— 与 `K-H2b` 给 `ANTHROPIC_BASE_URL` 踩过的**同一个坑**，\
-                  那一次的修法是在 `shared/ccm` 的容器载荷**内侧**补一句转发。\
-                  `shared/ccm` 是 `K-P5b` 逐字点名的红线文件 ⇒ 那一句**本拍没补**，\
-                  归 PM 解掉红线之后的那一拍。",
+                  那一次的修法是在容器载荷**内侧**补一句转发。\
+                  ★〔`K-R48` 第二拍 09-11 订正〕**那个洞今天补上了**：容器路三条转发\
+                  （`CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID`）都在，\
+                  由 `control::ccm::plan::tests::the_container_path_forwards_every_inherited_variable_inward` \
+                  逐条钉。⚠ 补的是**转发**那一格，不是本行的 `plants` —— 塞不塞进环境与转不转发是两件事。",
         },
         Launcher {
             label: "L2 · 开窗（`launch.rs::launch_remote_terminal`，远端与本机开窗共用）",
@@ -120,19 +122,26 @@ mod tests {
                   而那正是本族要消灭的东西。**归 `L2` 那一拍一起想**（同一条前端漏斗）。",
         },
         Launcher {
-            label: "T1 · POSIX 终端里的那一下（`shared/ccm` 的 `exec`）",
+            label: "T1 · POSIX 终端里的那一下（`control/ccm` 的 `exec`）",
             ledger_cmds: &[],
+            // 🔴 〔`K-R48` 第二拍 09-11〕**住址换了：`shared/ccm` → `control/ccm/mod.rs`。**
+            //    〔用@09-11 `K33`〕那个 bash 脚本删了，`exec` 那一下搬进了后端二进制的
+            //    一次性模式（`exec_or_spawn`：POSIX 上 `CommandExt::exec`，非 unix 退成
+            //    「起它 + 等它 + 透传退出码」）。**这一处今天仍然没落身份**，理由见 `why`。
             anchors: &[
-                ("shared/ccm", "exec \"${argv[@]}\"", 1),
-                ("shared/ccm", "exec bash -c \"$seq\"", 1),
+                ("remote-daemon-proto/src/control/ccm/mod.rs", "fn exec_or_spawn(", 1),
+                ("remote-daemon-proto/src/control/ccm/mod.rs", ".exec()", 1),
             ],
             plants: false,
-            why: "今天没落，理由是 `shared/ccm` 是 `K-P5b` 派工单逐字点名的**红线文件**\
-                  （本拍不许碰）。⚠ 它同时是 5 处里**最便宜的一处**：同一个文件里\
-                  已经有一份一模一样的形状 —— `derive_bus_id` / `CC_BUS_ID`\
-                  （起会话方在 `exec` 前 `export`、**无条件覆盖继承值**、函数与配方两种表示、\
-                  由 `e2e/ccm-contract-parity.sh` A 组差分钉住）⇒ 照抄即可。\
-                  **归 PM 解掉红线之后的那一拍。**",
+            why: "今天没落，理由**换了一条，而且比原来那条硬**。原来写的是「`shared/ccm` 是 \
+                  `K-P5b` 派工单逐字点名的红线文件（本拍不许碰）」——那是**流程**理由，\
+                  而那个文件 `K-R48`（09-11）已经删了，理由随它作废。\
+                  今天的理由是**没裁**：一次性模式在 tmux 内由谁去打 `@ccm_sid` 这件事\
+                  `K-R48` 第一拍逐字登记为「没裁」（直接后果是那 356 条判词里的 2 条 `K`）。\
+                  身份今天只由常驻那份打，而一次性模式跑在用户终端里、不是常驻那份。\
+                  ⚠ **别照抄 `CC_BUS_ID` 那个形状**：那一个是「起会话方 `export` 给自己起的 agent」，\
+                  而身份要的是「让 cc-monitor 认得出这条会话」—— 两件事的载体不同（env vs tmux option）。\
+                  **归 `K-R48` 的下一拍**（先裁「一次性模式在 tmux 内由谁打 `@ccm_sid`」，再接线）。",
         },
         Launcher {
             label: "T2 · Windows 终端里的那一下（`profile_installer.rs` 生成的 `function cc`）",
