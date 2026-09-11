@@ -380,56 +380,32 @@ pub fn read_landed(path: &Path, pinned_sha256: &str) -> Checked {
     }
 }
 
-/// **写盘那一跳**：`O_EXCL` 新建 + 可执行位，一次写完。
+/// **写盘那一跳** —— 只剩「那一跳没成时跟人怎么说」这一半。
 ///
-/// 🔴 **只准新增**：不截断、不追加、不覆盖、不改名、不删除 —— 那是只读护栏白名单层
-/// 逐字要求的形状，也是 daemon 能在用户机器上写东西的**唯一**一条路。
-/// 撞上一份同名的既有文件 ⇒ 失败并出声（模块头注第三节第 3 条那一格）。
+/// 🔴 `K-R55`（09-11）：**平台原语搬进了 [`crate::platform::landing`]**（`K33` 裁定二）。
+/// `K-R52` 给这一跳补 cfg 门时在这里逐字登记过为什么当时不搬 ——
+/// 只读护栏的写面**按文件认**，那两个写动词只准住在签过字的模块里，而适配层不在那张表上
+/// ⇒ 搬要同拍改 `readonly_guard.rs`，那份文件在它写区之外。**本件就是那一拍**：
+/// 白名单从本文件改钉 `platform/landing.rs`，**仍然按文件认**
+///（`KR55D2` 点名的失效方向正是「为了搬得动而放宽成按目录认」）。
 ///
-/// ⚠ 可执行位在**新建那一刻**给（`mode`），不是事后改：事后改要另一个动词，
-/// 而那个动词在只读白名单里根本不存在 —— 让它写不出来，比事后检测强一档。
+/// ⇒ 本函数今天是**纯映射**：适配层那三种结果 → 本层这个闭集。没有 fs 动词、没有平台 cfg。
 ///
-/// # 🔴 `K-R52`（09-11）：这一跳**是一条 unix 原语**，而它此前一个 cfg 都没有
+/// # 三格逐条，别合并
 ///
-/// 「新建那一刻就给可执行位」的唯一入口是 `OpenOptionsExt::mode` —— 它住在
-/// `std::os::unix` 里，**在 Windows target 上这个名字根本不存在**。09-10 `K-W2D`
-/// 接线那一拍把它**无门**写在这里 ⇒ daemon 从那一刻起在 Windows 上名字解析就过不了
-/// （死码也救不了：`allow(dead_code)` 挡不住名字解析）。
-/// 而当天**门禁全绿** —— 沙箱门禁的 `winchk` 射程是 `-p monitor`，**不含 daemon**。
-/// ⇒ 判据从今天起住 [`crate::platform::cfgless_guard`]（`K33` 裁定二：平台差异只许住适配层）。
-///
-/// ⚠ **为什么不把这一跳搬进 `platform/`**（那才是 `K33` 的终局形状）：
-/// `readonly_guard` 的写面白名单**按文件认**，而 `OpenOptions` / `OpenOptionsExt`
-/// 这两个动词只许出现在签过字的那几个模块里 —— 本文件是其中之一，`platform/` 不是。
-/// 搬过去要同拍改 `readonly_guard.rs`（`K-R52` 写区之外）⇒ **本件不搬，已走上报口**。
-///
-/// # 非 unix 那一臂：**诚实地说落不下来**，不许假装设过执行位
-///
-/// Windows 上没有执行位这个概念，而落点的文件名（[`super::fetch::landing_name`]）
-/// **也不带 `.exe`** ⇒ 就算把字节原样写下去，那一份**也 exec 不起来**。
-/// ⇒ 这一臂**不写盘**，直接出声。
-/// 🔴 刻意**不**写成「照写并回 [`Landing::Landed`]」—— 那就是
-/// 「假装设置了可执行位」，正是 `platform/fallback_guard.rs` 头注里
-/// `pid_alive` 那个地雷的同一形：给一个答不上来的问题编一个看起来无害的答案。
+/// - `Ok(())` ⇒ [`Landing::Landed`]。
+/// - 真去写了、撞上 IO 错 ⇒ 交给 [`classify_write_error`]（权限那一类单独一格）。
+/// - 🔴 **这台机器上这一跳没有实现** ⇒ [`Landing::Unsupported`]。
+///   `K-R52` 那一拍把它并进了 [`Landing::Io`]，并在 [`Landing`] 的头注里逐字登记了
+///   那笔债（「不撒谎，但说得不够准」）：那一句用户文案说的是磁盘满 / 目录不存在 / 残骸，
+///   **一个字都没提「本平台没实现」**。`K-R55` 把那一格开成独立成员 ——
+///   把一个可判别的状态压进笼统状态，是本区最贵的那条病。
 pub fn land(path: &Path, bytes: &[u8]) -> Landing {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        let mut opts = std::fs::OpenOptions::new();
-        opts.write(true).create_new(true).mode(0o755);
-        let mut f = match opts.open(path) {
-            Ok(f) => f,
-            Err(e) => return classify_write_error(e.kind()),
-        };
-        match f.write_all(bytes) {
-            Ok(()) => Landing::Landed,
-            Err(e) => classify_write_error(e.kind()),
-        }
-    }
-    #[cfg(not(unix))]
-    {
-        let _ = (path, bytes);
-        Landing::Io
+    use crate::platform::landing::LandFailed;
+    match crate::platform::landing::land_executable(path, bytes) {
+        Ok(()) => Landing::Landed,
+        Err(LandFailed::Unsupported) => Landing::Unsupported,
+        Err(LandFailed::Io(kind)) => classify_write_error(kind),
     }
 }
 

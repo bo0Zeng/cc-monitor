@@ -1,0 +1,54 @@
+doc/IPC-PROTOCOL.md                                  (整份文件)                                                             旧=27510cda 新=a57b7c30
+e2e/tmux-guarded-acceptance.sh                       (整份文件)                                                             旧=82aa8dc2 新=14c06781
+remote-daemon-proto/src/observe/accounts_query.rs    fn an_unreadable_environ_is_never_reported_as_the_zero_account     旧=75aa1701 新=cea6c4b9
+remote-daemon-proto/src/observe/watcher.rs           fn run_tmux_ls                                                     旧=f994d01a 新=42215c38
+remote-daemon-proto/src/observe/watcher.rs           fn query_tmux_server                                               旧=1d128520 新=669fade6
+remote-daemon-proto/src/observe/watcher.rs           fn tmux_socket_dir                                                 旧=b9d0e7fd 新=3c4049ca
+remote-daemon-proto/src/observe/watcher.rs           fn every_sh_call_site_in_this_module_carries_the_utf8_env          旧=dcfc530d 新=80c58871
+remote-daemon-proto/src/platform/cfgless_guard.rs    fn platform_gates                                                  旧=04d315d0 新=ec60c4ba
+remote-daemon-proto/src/platform/cfgless_guard.rs    const REGISTERED                                                   旧=383cecf4 新=65b4e2bf
+remote-daemon-proto/src/platform/cfgless_guard.rs    const CLOSED_FOR_GOOD                                              旧=新增       新=bed1313d
+remote-daemon-proto/src/platform/cfgless_guard.rs    fn the_files_that_were_moved_into_the_adapter_layer_stay_clean     旧=新增       新=84949b57
+remote-daemon-proto/src/platform/cfgless_guard.rs    fn naked_a1                                                        旧=新增       新=d8103293
+remote-daemon-proto/src/platform/cfgless_guard.rs    fn the_detector_bites_on_synthetic_defects_and_not_on_prose        旧=120e4aa1 新=82ec2baa
+remote-daemon-proto/src/platform/cfgless_guard.rs    fn a_rewrite_only_escapes_when_it_dodges_every_needle_that_lands_on_it 旧=新增       新=8c55a52e
+remote-daemon-proto/src/platform/cfgless_guard.rs    const ESCAPE                                                       旧=新增       新=d39da989
+remote-daemon-proto/src/platform/landing.rs          enum LandFailed                                                    旧=新增       新=05ed5aa1
+remote-daemon-proto/src/platform/landing.rs          fn land_executable                                                 旧=新增       新=fc269b64
+remote-daemon-proto/src/platform/landing.rs          fn off_unix_the_landing_says_it_is_not_implemented_and_writes_nothing 旧=新增       新=fb38057d
+remote-daemon-proto/src/platform/shell.rs            fn posix_shell                                                     旧=新增       新=486992e6
+remote-daemon-proto/src/platform/shell.rs            fn the_posix_shell_carries_the_script_it_was_given                 旧=新增       新=b7a356c8
+remote-daemon-proto/src/platform/shell.rs            fn there_is_no_posix_shell_off_unix                                旧=新增       新=786ec545
+remote-daemon-proto/src/ratchet_guard.rs             const PINS                                                         旧=6a853dd1 新=5385af89
+remote-daemon-proto/src/readonly_guard.rs            fn strip_cfg_test                                                  旧=708a6279 新=2317b48e
+remote-daemon-proto/src/readonly_guard.rs            const WRITE_WHITELIST_MODULES                                      旧=76c6482d 新=f95bb0eb
+remote-daemon-proto/src/readonly_guard.rs            const ALLOWED                                                      旧=48e8687c 新=b07d00d5
+remote-daemon-proto/src/readonly_guard.rs            const SPAWN_SITES_TODAY                                            旧=343e251a 新=22ba792f
+remote-daemon-proto/src/readonly_guard.rs            fn the_registry_has_no_ghost_entries                               旧=26071c06 新=5f10ab81
+remote-daemon-proto/src/sidecars/codepicture/acquire.rs fn land                                                            旧=3222b3db 新=7418d1b7
+remote-daemon-proto/src/sidecars/codepicture/fetch.rs enum Landing                                                       旧=06faced3 新=6064a447
+remote-daemon-proto/src/sidecars/codepicture/fetch.rs enum Face                                                          旧=e5215662 新=4f11a7b7
+remote-daemon-proto/src/sidecars/codepicture/fetch.rs fn code                                                            旧=aef1614c 新=5c6c72d7
+remote-daemon-proto/src/sidecars/codepicture/fetch.rs fn sentence                                                        旧=78303ad6 新=262066ea
+remote-daemon-proto/src/sidecars/codepicture/fetch.rs fn landing_verdict                                                 旧=b2078ff5 新=b6ab8a46
+src-tauri/src/history.rs                             fn the_windows_local_path_never_grows_a_session_container          旧=4e546390 新=d6e1f4dd
+src-tauri/src/history.rs                             fn the_local_launch_really_asks_the_production_ccm_probe           旧=新增       新=8a1f37cf
+
+合计 35 个 item 变了。
+口径：① 先把字符串字面量内容抹空再找 item（否则合成夹具里的 `pub fn land()` 会被数进来，第一版真数进来过）；
+      ② 只收**同一文件内名字唯一**的 item，按名字配对比 md5（前 8 位）；
+      ③ 同名多处的**一律不进分母**（本仓 `fn drop` / `fn recorder` / `fn spy_rows` 这类每文件多份，按名字配不起来）——逐条列在下面：
+      · remote-daemon-proto/src/observe/watcher.rs :: fn new
+      · remote-daemon-proto/src/platform/paths.rs :: fn current_uid
+      · remote-daemon-proto/src/platform/paths.rs :: fn path_key
+      · remote-daemon-proto/src/platform/paths.rs :: fn temp_root
+      · remote-daemon-proto/src/sidecars/codepicture/acquire.rs :: fn get
+      · src-tauri/src/history.rs :: fn answer
+      · src-tauri/src/history.rs :: fn last_sent
+      · src-tauri/src/history.rs :: fn no_rows
+      · src-tauri/src/history.rs :: fn not_it
+      · src-tauri/src/history.rs :: fn recorder
+      · src-tauri/src/history.rs :: fn relay_up
+      · src-tauri/src/history.rs :: fn spy_rows
+      · src-tauri/src/history.rs :: fn spy_running
+      · src-tauri/src/history.rs :: fn spy_windows

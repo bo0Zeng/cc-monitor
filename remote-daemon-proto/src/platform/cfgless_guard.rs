@@ -41,9 +41,19 @@
 //! - **信号表是黑名单**，列不全。本仓的偏好是白名单，但「枚举式白名单要求人群同质」这条前提
 //!   在这里不成立（`fallback_guard` 头注 08-06 已经量过同一件事）：平台原语没有一个可枚举的全集。
 //!   ⇒ 表里每一条都带**为什么它算平台**，新增要连理由一起加。
-//! - **等价改写绕得过**：把 `std::os::unix::fs::…` 那一串写成 `use std::os as o;`
-//!   再 `o::unix::…`，本模块看不见。这条**刻意不追** —— 完备性在这里做不到，
-//!   而本模块挡的是「顺手写一行平台代码」这个真实且高频的形态。
+//! - **等价改写绕得过 —— 但门槛比上一版说的高一格**〔`K-R55` 09-11 订正，别再引旧说法〕。
+//!   上一版逐字写着「把 `std::os::unix::fs::…` 那一串写成 `use std::os as o;` 再
+//!   `o::unix::…`，本模块看不见」。🔴 **PM 09-11 切刀现打证伪：那个例子逃不掉** ——
+//!   它被 [`SIGNALS`] 里**扩展 trait 名**那一族（`unix-ext-*`）接住，当场红。
+//!   ⇒ 真实的说法是：本模块认的是**一组字面 needle**，一份改写要逃掉，得**同时**避开
+//!   落在同一处代码上的**每一条** —— 路径（`std-os-*`）· 扩展 trait 名（`unix-ext-*`）·
+//!   以及那几个字面量信号（`unix-mode-bits` 的 `.mode(0o` 那一族）。
+//!   避开一条不够，避开两条也不够。
+//!   ★ 这个说法**自己切过一刀验**：一份三样全避开的样本逐字住
+//!   [`tests::a_rewrite_only_escapes_when_it_dodges_every_needle_that_lands_on_it`]，
+//!   而同一份样本**只要把其中任意一样放回去就被逮住** —— 三格逐格断在那一条里。
+//!   这条仍然**刻意不追**：完备性在这里做不到，而本模块挡的是
+//!   「顺手写一行平台代码」这个真实且高频的形态。
 //! - **不认空白变体**：`#[cfg(` 与 `std :: os :: unix` 这类插了空格的写法认不出来。
 //!   本 crate 全量过 `cargo fmt --check`（CI 与沙箱门禁各一道）⇒ 今天不会出现；
 //!   哪天 fmt 那道门没了，这一条同时失效。
@@ -571,27 +581,19 @@ mod tests {
     /// 一处没登记的 A2 ⇒ 当场红；一条登记了却**再也匹配不上**的 ⇒ 也当场红
     /// （不许留过期条目 —— 那会让这张表慢慢变成一张谁也不敢动的免检名单）。
     ///
-    /// ⚠ **它买到的是「下不为例」，不是「今天干净」** —— 表里那三条 `真漏` 今天还在门外。
+    /// ⚠ **它买到的是「下不为例」，不是「今天干净」** —— 表里剩下的 `真漏` 今天还在门外。
+    ///
+    /// # 🔴 `K-R55`（09-11）：`observe/watcher.rs` 那两条**不是删掉，是搬走了**
+    ///
+    /// 两条 `真漏`（`Command::new("sh")` ×2 · `PathBuf::from("/tmp")`）今天住进了
+    /// [`super::shell::posix_shell`] 与 [`super::paths::temp_root`] / [`super::paths::current_uid`]。
+    /// ⇒ 它们在门外的命中降到 0，本表里那两行随之成为**过期条目**（留着会被
+    /// [`platform_assumptions_outside_a_gate_are_each_signed_for`] 的第二个方向判红）⇒ 删。
+    /// 🔴 而「搬走」与「签个字了事」在这张表上长得一模一样（两种做法这张表都会变绿）
+    /// ⇒ 分得开它们的是 [`CLOSED_FOR_GOOD`] 那道棘轮，不是本表。
     ///
     /// 形状 = `(文件相对路径, 那一行的逐字锚点, 堆, 理由)`
     const REGISTERED: &[(&str, &str, &str, &str)] = &[
-        (
-            "observe/watcher.rs",
-            "Command::new(\"sh\")",
-            "真漏",
-            "`run_tmux_ls` / `run_tmux_probe` 那两跳起的是 POSIX shell。\
-             该进适配层（`K33` 裁定二），今天没进。\
-             ⚠ `K-R52` 的写区不含 `observe/` ⇒ **本件不改，已走上报口交回 PM**。",
-        ),
-        (
-            "observe/watcher.rs",
-            "PathBuf::from(\"/tmp\")",
-            "真漏",
-            "`tmux_socket_dir` 的兜底根目录写死成 POSIX 的 `/tmp`。同一行上方的 `uid` \
-             那半**已经**有两条 `#[cfg]` 臂了，而这一半没有 —— 典型的「只修一半」。\
-             该和 `platform/paths.rs` 住一起。\
-             ⚠ `K-R52` 的写区不含 `observe/` ⇒ **本件不改，已走上报口交回 PM**。",
-        ),
         (
             "control/ccm/mod.rs",
             "Command::new(\"sh\")",
@@ -611,6 +613,33 @@ mod tests {
              不是本机要去走的路 ⇒ 在任何平台上行为相同，不是平台代码。",
         ),
     ];
+
+    /// 🔴 `K-R55`（09-11）：**搬走过一次的文件，不许再靠签字回到这张表上。**
+    ///
+    /// # 它治的是一个「两种做法长得一样」的口子
+    ///
+    /// [`REGISTERED`] 那两个方向（没登记 ⇒ 红 · 登记了匹配不上 ⇒ 红）买到的是
+    /// 「每一处门外的 A2 都有人签过字」。它**分不出**这两件事：
+    /// ① 把那条平台原语搬进 `platform/`（`K33` 裁定二要的那件事）；
+    /// ② 在 [`REGISTERED`] 上补一行字（那张表自己写着，它买的是「下不为例」）。
+    /// 两种做法它都会变绿，而 `KR55D1` 逐字要的是**前者**
+    /// （「且**不是**靠把它们塞进 `REGISTERED` 签字表兑现的」）。
+    ///
+    /// ⇒ 这张表记「已经搬完、从此不许再签字」的那几个文件。一处回到门外 ⇒ 当场红，
+    /// 而且红的是**这一条**（诊断直接说「它又回来了」），不是那条泛泛的「没签字」。
+    ///
+    /// ⚠ **它买不到什么（如实写）**：
+    /// - 它按**文件**认，不按那一处认 ⇒ 同一个文件里长出**别的**平台原语，
+    ///   报出来的诊断仍然是这一条（措辞会误导一格）。今天这个分母是 1，不值得再切细。
+    /// - 它**不**保证那条原语搬进 `platform/` 之后写对了 —— 那归行为判据
+    ///   （[`super::shell`] / [`super::paths`] 各自的单测）与跨 target 编译。
+    /// - **只许变长**：一处修好了就把它的文件加进来；**从这张表里删名字**等于允许回退，
+    ///   要删得先说清那条平台原语今天住在哪儿。
+    const CLOSED_FOR_GOOD: &[(&str, &str)] = &[(
+        "observe/watcher.rs",
+        "`K-R55` 09-11：两跳 `sh -c` 搬进 `platform/shell.rs`，\
+         `/tmp` 与 `uid` 搬进 `platform/paths.rs` ⇒ 门外命中 0",
+    )];
 
     // ══════════════════════════ 扫 ══════════════════════════
 
@@ -817,6 +846,52 @@ mod tests {
         );
     }
 
+    /// ★★★ `KR55D1`：**搬完的那几个文件，门外的 A2 保持 0，而且不许靠签字回来。**
+    ///
+    /// 上一条只买到「每一处都有人签过字」—— 而「搬进适配层」与「在表上补一行」
+    /// 在它眼里一模一样（整段理由住 [`CLOSED_FOR_GOOD`] 头注）。本条把那一格补上，
+    /// 两个方向都断：
+    /// · 那个文件在门外又有 A2 命中 ⇒ 红（回退了）；
+    /// · 那个文件又出现在 [`REGISTERED`] 上 ⇒ 红（**签字了事**，正是 `KR55D1` 排除的那条路）。
+    #[test]
+    fn the_files_that_were_moved_into_the_adapter_layer_stay_clean() {
+        assert!(
+            !CLOSED_FOR_GOOD.is_empty(),
+            "`CLOSED_FOR_GOOD` 空了 —— 本条会变成「对空集全称成立」，恒绿"
+        );
+        let (all, _) = scan_tree();
+        // 反空真：整棵树上 A2 命中本来就该是非空的（门里门外都算）。
+        // 全空时下面那条「这几个文件没有命中」是空真 —— 那多半是扫坏了，不是干净了。
+        assert!(
+            all.iter().any(|f| f.tier == "A2"),
+            "整棵树一处 A2 都没扫到 —— 扫坏了，本条在空转"
+        );
+        let mut bad: Vec<String> = Vec::new();
+        for (rel, _why) in CLOSED_FOR_GOOD {
+            for f in all
+                .iter()
+                .filter(|f| f.rel == *rel && f.tier == "A2" && f.gated_by.is_none())
+            {
+                bad.push(format!("  回到门外：{} [{}]  {}", f.rel, f.signal, f.line));
+            }
+            for (p, anchor, ..) in REGISTERED {
+                if p == rel {
+                    bad.push(format!("  又签了字：{p} :: {anchor}"));
+                }
+            }
+        }
+        assert_eq!(
+            bad,
+            Vec::<String>::new(),
+            "这几处破了 `KR55D1` 的棘轮：\n{}\n\
+             `CLOSED_FOR_GOOD` 里的文件已经把平台原语搬进 `platform/` 了 ——\n\
+             回退的出路只有一条：把那条原语**再搬进适配层**，\n\
+             **不是**在 `REGISTERED` 上补一行字（那张表买的是「下不为例」，不是「今天干净」）。\n\
+             真要让某个文件退出这张表，先说清它那条平台原语今天住在哪儿。",
+            bad.join("\n")
+        );
+    }
+
     /// ★ B 族补人群：`platform/` **之外**的回退臂，不许凭空返回一个「成功」值。
     ///
     /// 判红条件与 [`super::super::fallback_guard`] 同源，本条只补它够不着的那部分人群 ——
@@ -886,6 +961,27 @@ mod tests {
         );
     }
 
+    /// 一份合成源码里**门外的 A1** 有几处 —— 判据本体喂字符串的那一半。
+    ///
+    /// ⚠ 它是从 [`the_detector_bites_on_synthetic_defects_and_not_on_prose`] 里**抬出来的
+    /// 同一份**，不是复刻：两条判据（那一条与
+    /// [`a_rewrite_only_escapes_when_it_dodges_every_needle_that_lands_on_it`]）必须量同一把尺子，
+    /// 否则副本一分叉，红灯就开始骗人（`fallback_guard` 头注里逐字记过这一形）。
+    fn naked_a1(src: &str) -> usize {
+        let prod = production_code(src);
+        let code = mask_strings(&prod);
+        let gates = platform_gates(&prod);
+        SIGNALS
+            .iter()
+            .filter(|(_, tier, ..)| *tier == "A1")
+            .flat_map(|(_, _, wh, word, needle, _)| {
+                let hay = if *wh == Where::Code { &code } else { &prod };
+                hits(hay, needle, *word)
+            })
+            .filter(|at| !gates.iter().any(|g| g.span.0 <= *at && *at < g.span.1))
+            .count()
+    }
+
     /// ★★ 反空真②：**拿合成夹具证明这把尺子真有牙** —— 不靠真树上碰巧有没有病灶。
     ///
     /// 四刀，两正两反。反的那两刀是本模块最容易坏的两处：
@@ -893,20 +989,6 @@ mod tests {
     /// 抹字符串坏掉 ⇒ 日志文案被数成平台符号（`watcher.rs` 那句 `SIGUSR1` 实打命中过一次）。
     #[test]
     fn the_detector_bites_on_synthetic_defects_and_not_on_prose() {
-        let naked_a1 = |src: &str| {
-            let prod = production_code(src);
-            let code = mask_strings(&prod);
-            let gates = platform_gates(&prod);
-            SIGNALS
-                .iter()
-                .filter(|(_, tier, ..)| *tier == "A1")
-                .flat_map(|(_, _, wh, word, needle, _)| {
-                    let hay = if *wh == Where::Code { &code } else { &prod };
-                    hits(hay, needle, *word)
-                })
-                .filter(|at| !gates.iter().any(|g| g.span.0 <= *at && *at < g.span.1))
-                .count()
-        };
         // ① 无门的平台原语 ⇒ 逮到。这一形就是 09-10 真漏进来的那一处。
         let naked = "pub fn land() {\n    use std::os::unix::fs::OpenOptionsExt;\n}\n";
         assert_eq!(naked_a1(naked), 2, "无门的 `std::os::unix` 竟然没被逮到");
@@ -931,6 +1013,88 @@ mod tests {
         assert_eq!(fabricated_success(&production_code(fab)).len(), 1);
         let honest = fab.replace("true", "false");
         assert_eq!(fabricated_success(&production_code(&honest)).len(), 0);
+    }
+
+    /// ★★★ `KR55D3`：**头注那句「挡不住等价改写」说的是哪一种改写** —— 逐格切一刀。
+    ///
+    /// # 它治的是一句**说窄了**的话
+    ///
+    /// 上一版头注逐字举了个例子：「把 `std::os::unix::fs::…` 写成 `use std::os as o;`
+    /// 再 `o::unix::…`，本模块看不见」。🔴 PM 09-11 切刀现打：**那个例子逃不掉** ——
+    /// 路径躲开了，而**扩展 trait 的名字还在**，`unix-ext-*` 那一族当场接住它。
+    /// ⇒ 一句「它挡不住 X」如果举的 X 其实挡得住，那句话就是**自陈比实情弱**，
+    /// 而自陈弱的判据下一轮会被人当成「反正它不管用」而绕开。
+    ///
+    /// # 本条断的四格（三个单断 + 一个全断，`brief` 第 9 条那个形状）
+    ///
+    /// 同一段代码的四个版本，只差「避开了哪几条 needle」：
+    /// ① 路径 · ② 扩展 trait 名 · ③ `.mode(0o` 那个字面量 —— 各**只**放回一条 ⇒ 必须被逮到；
+    /// 三条全避开 ⇒ **逃得掉**（那就是头注那句话今天的准确射程）。
+    ///
+    /// ⚠ **它不是在教人怎么绕过本模块**：这四格钉的是「头注那句话说得准不准」。
+    /// 真判据一直是跨 target 编译（头注最后一条），本模块从来只是它够不着时的那一声。
+    #[test]
+    fn a_rewrite_only_escapes_when_it_dodges_every_needle_that_lands_on_it() {
+        // 三样各自的「避开写法」与「原样写法」，其余字节逐字相同。
+        const ESCAPE: &str = "use std::os as o;\n\
+                              use self::o::unix::prelude::*;\n\
+                              pub fn land(p: &std::path::Path) {\n    \
+                              let mut opts = std::fs::OpenOptions::new();\n    \
+                              opts.write(true).create_new(true).mode(493);\n    \
+                              let _ = opts.open(p);\n}\n";
+        // ① 只把**路径**放回去（trait 名与字面量仍然避开着）。
+        let with_path = ESCAPE.replace(
+            "use self::o::unix::prelude::*;",
+            "use std::os::unix::prelude::*;",
+        );
+        // ② 只把**扩展 trait 名**放回去。
+        let with_trait = ESCAPE.replace(
+            "use self::o::unix::prelude::*;",
+            "use self::o::unix::fs::OpenOptionsExt;",
+        );
+        // ③ 只把**那个字面量**放回去（八进制权限位）。
+        let with_mode = ESCAPE.replace(".mode(493)", ".mode(0o755)");
+
+        // 反空真排最前：三份「只放回一条」的样本必须**互不相同**，也都不等于 ESCAPE，
+        // 否则下面三条单断里有的是拿同一份文本断了三遍。
+        for (name, s) in [
+            ("路径", &with_path),
+            ("trait 名", &with_trait),
+            ("字面量", &with_mode),
+        ] {
+            assert_ne!(
+                *s, ESCAPE,
+                "「只放回{name}」那一份与全避开那一份逐字相同 —— 替换没落地"
+            );
+        }
+
+        // 单断三格：每一格都**只**放回一条，仍然被逮到 ⇒ 那一条 needle 各自真有牙。
+        assert_eq!(
+            naked_a1(&with_path),
+            1,
+            "只把**路径**写回去就逃掉了 —— `std-os-*` 那一族没牙"
+        );
+        assert_eq!(
+            naked_a1(&with_trait),
+            1,
+            "只把**扩展 trait 名**写回去就逃掉了 —— 而 PM 09-11 现打的正是这一格：\n\
+             上一版头注举的那个「`use std::os as o;`」例子就是被它接住的"
+        );
+        assert_eq!(
+            naked_a1(&with_mode),
+            1,
+            "只把 `.mode(0o…)` 那个字面量写回去就逃掉了 —— `unix-mode-bits` 没牙"
+        );
+
+        // 全断那一格：三样同时避开 ⇒ **真的逃得掉**。
+        // 🔴 这一格红（数不是 0）= 头注那句话**又说窄了一次**：它列的三样不是全部，
+        //    还有第四条 needle 落在这段代码上 ⇒ 回去把那一条也写进头注，别把本条改宽。
+        assert_eq!(
+            naked_a1(ESCAPE),
+            0,
+            "三样全避开的那份样本竟然被逮到了 —— 头注那句「挡不住同时避开这三样的改写」\n\
+             说窄了一次：本模块今天比它自陈的更严。回去把接住它的那条 needle 一起写进头注。"
+        );
     }
 
     /// ★ [`SIGNALS`] 的每一条都要说得出「为什么它算平台」，且 needle 不许是空串。
