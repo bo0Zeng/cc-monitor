@@ -142,10 +142,21 @@ mod tests {
     ///
     /// ⚠ 这不是白名单：**表里有几条，就意味着"加一个 agent 要动几处"**。
     /// 它长了就是设计在退化，短不了才说明适配层真的兜住了。
-    const KIND_DISPATCH_SITES: &[(&str, &str)] = &[(
-        "control/resolve_query.rs",
-        "wire 上的 `agentKind` 是个字符串，派发必须在最接近入口处做；两条分支之后共用 CommandPlan 骨架",
-    )];
+    const KIND_DISPATCH_SITES: &[(&str, &str)] = &[
+        (
+            "control/resolve_query.rs",
+            "wire 上的 `agentKind` 是个字符串，派发必须在最接近入口处做；两条分支之后共用 CommandPlan 骨架",
+        ),
+        (
+            "control/ccm/mod.rs",
+            "`K-R48`：`--agent <名>` 是**用户在终端里敲进来的一个字符串**，\
+             派发同样必须在最接近入口处做（五个问题一次问完：默认启动器 / resume 旗标 / \
+             要清的嵌套标记 / 要不要 cc-bus 身份 / 有没有身份面），派完两条分支共用整条计划面。\
+             ⚠ 它是从 `shared/ccm` 那五个 `case \"$1\" in claude|codex)` 搬过来的 —— \
+             **搬家没有让它变多，是让它从一个没人数得着的地方变成这张表里的一行**。\
+             ⇒ 接第三个 agent 时这一处必须跟着改，而这张表就是那份清单。",
+        ),
+    ];
 
     /// 针：**agent 的目录布局与文件格式**，运行时拼（本文件的散文里就有这些词）。
     ///
@@ -178,13 +189,24 @@ mod tests {
     /// 那张是「欠账，将来要清零」；**这张是「判据看走眼了，永远留着」**。
     /// 把假阳塞进欠账表的后果是它**永远清不掉**，于是"只会缩短"的那张表里
     /// 长出永久居民 —— 递减棘轮就此失去意义（`S3-Y3`）。
-    const NOT_AGENT_KNOWLEDGE: &[(&str, &str, &str)] = &[(
-        "control/cc_bus.rs",
-        ".claude",
-        "这是 **cc-bus 的门牌号**（`~/.claude/skills/cc-bus/scripts`），不是 agent 知识 —— \
-         cc-bus 恰好装在那个目录下而已。`cc_bus_boundary_guard` 的头注逐字写着这条分界：\
-         「允许**命令的地址**，禁**数据布局**」。同 `S1` 的 `@ccm_sid`、`S2` 的 `sessions/` 那一族。",
-    )];
+    const NOT_AGENT_KNOWLEDGE: &[(&str, &str, &str)] = &[
+        (
+            "control/cc_bus.rs",
+            ".claude",
+            "这是 **cc-bus 的门牌号**（`~/.claude/skills/cc-bus/scripts`），不是 agent 知识 —— \
+             cc-bus 恰好装在那个目录下而已。`cc_bus_boundary_guard` 的头注逐字写着这条分界：\
+             「允许**命令的地址**，禁**数据布局**」。同 `S1` 的 `@ccm_sid`、`S2` 的 `sessions/` 那一族。",
+        ),
+        (
+            "control/ccm/argv.rs",
+            ".claude",
+            "这是 **cc-acct-iso 这个工具**的账号库门牌号（`~/.claude-accts/accounts.json`），\
+             不是 Claude 的目录布局 —— `agents/claudecode/accounts.rs` 的头注**逐字**写着\
+             「账号清单（manifest）与配置目录白名单不在这里 —— 那是 `cc-acct-iso` 的格式，\
+             属工具而非 agent」。同上一条（允许**库的地址**，禁**数据布局**）：\
+             这里只有一个路径，账号对象的形状由 `serde` 的字段名说了算，不在这张针底下。",
+        ),
+    ];
 
     /// kind 值判别的形状：带引号的 `"codex"`。
     ///

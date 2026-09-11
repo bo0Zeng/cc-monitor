@@ -1212,8 +1212,8 @@ mod tests {
         }
         #[rustfmt::skip]
         let synth: &[crate::agents::Adapter] = &[
-            crate::agents::Adapter { kind: "synthetic", home: synth_present },
-            crate::agents::Adapter { kind: "ghost",     home: synth_absent },
+            crate::agents::Adapter { kind: "synthetic", home: synth_present, account_env: None },
+            crate::agents::Adapter { kind: "ghost",     home: synth_absent, account_env: None },
         ];
         let discovered = crate::agents::visible_among(synth);
         assert_eq!(
