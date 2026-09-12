@@ -1242,6 +1242,11 @@ mod tests {
             ("remote-daemon", "$DAEMON_PATH", Remote),
             ("project-mcp", ".mcp.json", ProjectDir),
             ("powershell-profile", "$PROFILE", Client),
+            // 〔`K-R62` 09-11〕本机 POSIX 那一格补上之后升进 `TOOLS` 的那一条。
+            // `Client`：它写的是 **cc-monitor 跑着的这台**的 rc（远端那份 rc 归 `ccm` 那两行）。
+            // 路径是占位符而不是 `~/.bashrc`：那份 rc 由界面上的人从盘上真实存在的几份里选，
+            // 申报一个我们其实没在用的常量，这一页会拿它去查一个没人写的路径再报「缺失」。
+            ("posix-rc-aliases", "$POSIX_RC", Client),
             // 〔`K-R60` 09-11〕装不了、只读的那一档。`Either` 的理由与 cc-bus 那几条同源：
             // Claude Code 跑在哪台，这份记录就在哪台（`remote_history.rs` 真的从远端读它），
             // 标 `Client` 会让远端会话的用户在这一页上看到一句假话。

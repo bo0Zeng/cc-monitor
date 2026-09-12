@@ -658,6 +658,15 @@ mod tests {
             ("shared_crate_registry.rs::job_block", "不是剥法：抽某个 job 的段落"),
             ("ssh_source.rs::parse_host_aliases", "不是剥法：解析 ssh config 的 Host 别名"),
             ("tool_registry.rs::declared_fields_of", "不是剥法：解析结构体字段声明"),
+            // 〔`K-R62` 09-11〕**方向恰好相反的一条**：它不剥注释，它**把注释留下来并指名**。
+            // 那一格的正题是「你 rc 里这几行是旧的」——`#` 打头的行照样进结果，只是分类成
+            // `LegacyRcKind::Comment`（`K-R57` 现打用户 `~/.bashrc`：14 行里 4 行是注释，
+            // 那 4 行也该让用户看见）。⇒ 共享原语在这里不是「不够」，是**用了就把活做反了**。
+            (
+                "profile_installer.rs::scan_legacy_rc_lines",
+                "不是剥法，是**反过来**：它逐行指名 rc 里提到 `ccm` 的行（含注释行），\
+                 一个字节都不删也不丢 —— 用 `strip_comment_lines` 会把该指名的那几行吃掉",
+            ),
             // 〔U8c-3-r2 08-14〕**这一格是本条判据当场逮出来的**：08-04 那份剥法是**内联**的
             // （一串 `.lines().filter().map()`），本条看不见；把它抽成具名函数给两处共用时，
             // 本条立刻说「你有第二份剥法」。⇒ 收口的动作反而暴露了此前没被登记的欠账。

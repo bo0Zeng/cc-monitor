@@ -13,4 +13,16 @@ ccm_block_version: string | null,
 /**
  * 已有同名 function（非 ccm 块内的）
  */
-conflicting_functions: Array<string>, size_bytes: number, };
+conflicting_functions: Array<string>, 
+/**
+ * 🔴 〔`K-R62`〕**「你 rc 里这几行是旧的」那段话。** 空串 = 没有要清的。
+ *
+ * 它是 [`render_manual_cleanup_hint`] 的产物：**逐行指名**（行号 + 原文）
+ * 加一段给用户自己动手的说明。**产品一个字节都不删**（`K31` + 用户逐字
+ * 「原本的配置要手动删除」）—— 那些行没有围栏，边界只有人知道。
+ *
+ * ⚠ **只对 [`ProfileFlavor::PosixRc`] 有内容**；PowerShell 那一侧的遗留由
+ * [`scan_legacy_profiles`] 按**围栏**答（那是另一件事：它找的是**装错位置的整块**，
+ * 这一格找的是**根本没有围栏的裸行**）。
+ */
+manual_cleanup_hint: string, size_bytes: number, };
