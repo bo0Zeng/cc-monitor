@@ -749,10 +749,20 @@ mod f07_main_path_tests {
             "只读到 {} 字节的本文件 —— 本条在空转",
             me.len()
         );
-        for needle in [
-            "fn the_ts_fallback_renderer_now_stands_on_its_own_consumers",
-            "TS_FALLBACK_KEEPERS",
-        ] {
+        // 🔴🔴 **针一律现拼，一个都不许写成整串字面量 —— 这一条本轮实测栽过两次。**
+        //
+        // ① 第一版把墓碑那个函数名连着 `fn ` 前缀写成一整串字面量，
+        //    而**那串字面量自己就住在本文件里** ⇒ `me.contains(needle)` **恒真**：
+        //    死值验把那条判据整条改名，读数是「新红 0」——判据在自己身上空转。
+        // ② 改成现拼之后，我又把那串完整字面量抄进了**解释它的注释**里，同一条当场又恒真一次。
+        // ⇒ 所以这段解释里也不写完整串（要提就断开写：`fn the_ts_fallback_renderer_now_` ＋ 后半）。
+        // 与 `6g` 那族「断言用的子串取自夹具自己的名字」是同一个病。
+        let tomb_fn = format!(
+            "fn the_ts_fallback_renderer_now_{}",
+            "stands_on_its_own_consumers"
+        );
+        let keepers = format!("TS_FALLBACK_{}", "KEEPERS");
+        for needle in [tomb_fn.as_str(), keepers.as_str()] {
             assert!(
                 me.contains(needle),
                 "`{needle}` 不在本文件里了 —— **`U8c-3` 的那份换人手续被撕掉了。**\n\
@@ -763,6 +773,26 @@ mod f07_main_path_tests {
                  真要删，先回 `U8c-3` 答出「那条路今天还删不删得」，再连本条一起删。"
             );
         }
+        // 🔴 **手续在，不等于手续还在干活。**〔本轮死值验 `M10` 逼出来的：把那半的比对
+        //    换成 `.iter().take(0)`，六格全绿 —— 那半当时没有任何东西看着。〕
+        //    ⇒ 再断一句：墓碑那个函数体里**真的在整表迭代**那张登记。
+        //    ⚠ 射程如实写：它认的是「整表迭代」这一个**形状**（`in <表> {`）。
+        //      换一种写法（先 `collect` 再比、或换个循环变量顺序）它就认不出 —— **不声称堵住**。
+        let at = me.find(tomb_fn.as_str()).expect("上面刚断过它在");
+        let body_end = me[at..].find("\n    }\n").map_or(me.len() - at, |k| k + 6);
+        let body = &me[at..at + body_end];
+        assert!(
+            body.len() > 800,
+            "切出来的墓碑函数体只有 {} 字节 —— 本条在空转（「体里没有」与「压根没切出体」同形）",
+            body.len()
+        );
+        let iterating = format!("in {keepers} {{");
+        assert!(
+            body.contains(iterating.as_str()),
+            "墓碑还在，但它**不再逐条比对**那张消费者登记（找不到 `{iterating}`）——\n\
+             表留着而比对掏空 = 「兜底渲染器还有 3 + 2 个消费者」这句话从此没人核。\n\
+             真要换写法，请连本条一起改（并说明新的形状怎么认）。"
+        );
         // 阴性对照：这把尺子不是恒真的。
         // ⚠ **针要现拼**：写成字面量的话它自己就在本文件里，这一条当场自相矛盾
         //   （本轮实测红过一次 —— 与 `daemon-section` 那条「别让路径混进断言」同族）。
