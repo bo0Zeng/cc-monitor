@@ -131,7 +131,10 @@ pub(crate) const REGISTRY: &[Adapter] = &[
 /// ⚠ **它是通用层拿这个名字的唯一入口** —— 直接 `use agents::<名>::…` 会让
 /// `agent_locality_guard` 判据④的读数凭空上涨，而那个数只许降（见 [`Adapter::account_env`]）。
 pub(crate) fn account_env_of(kind: &str) -> Option<&'static str> {
-    REGISTRY.iter().find(|a| a.kind == kind).and_then(|a| a.account_env)
+    REGISTRY
+        .iter()
+        .find(|a| a.kind == kind)
+        .and_then(|a| a.account_env)
 }
 
 /// **这台机器上看得见哪些 agent** —— 直接产出 `hello.homes` 的那张表〔`S5`，`G1` 成功标准③〕。
