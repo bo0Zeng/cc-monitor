@@ -24,8 +24,9 @@
 //! 在别处加一个无关依赖的时候乱跳。
 //!
 //! ⇒ **终点用二值旗，过程用一个已经有人数的数**：
-//! [`crate::ssh_source::DIAL_SITES`]（`ssh_source::dial_move_judge` 那张表，
-//! 在 `ssh_source.rs` 顶层再导出一次 —— 为什么不写成 `pub(crate) mod`，那一行旁边有 09-12 的实打读数）
+//! [`crate::ssh_source::dial_move_judge::DIAL_SITES`]（住 `ssh_source.rs` 的那张表；
+//! 〔`K-R76` 09-12〕它原先还在文件顶层再导出一次，那道绕道已经拆了 ——
+//! 模块本身就写成 `pub(crate) mod`，理由与实打读数在那一行旁边）
 //! 里 `moved == false` 的**处数合计**。
 //! 它已经是机检、已经有判据在核（`six_of_the_seven_dial_sites_are_still_in_this_process`），
 //! 而且**归零那一刻正好就是 `russh` 能离开 monitor 的那一刻** —— 两样东西咬在一起。
@@ -488,7 +489,7 @@ mod tests {
     /// 🔴 它与 [`unmoved_dial_sites_in`] 是本模块的**两条腿**：
     /// 解析器偏了 / 被改成恒 0 ⇒ 两条腿对不上 ⇒ 当场红。
     fn unmoved_from_constant() -> usize {
-        crate::ssh_source::DIAL_SITES
+        crate::ssh_source::dial_move_judge::DIAL_SITES
             .iter()
             .filter(|(_, _, moved, ..)| !*moved)
             .map(|(_, n, ..)| *n)
