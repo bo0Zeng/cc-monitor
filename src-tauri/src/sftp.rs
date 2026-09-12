@@ -943,21 +943,13 @@ fn _kr48d1_tombstone() {}
 
 /// 远端 `~/.local/bin/ccm` 的内容：**一个入口，不是一份实现**。
 ///
-/// 🔴 **它里面不许有第二个 `case` / `if` / 任何行为** —— 一旦有，`K33` 那句
-/// 「所有命令只许有一处」就又破了，而这正是 `K-R48` 这一整件要根除的东西。
-/// 它做且只做一件事：把 argv 原样交给后端。
-///
-/// **为什么不是软链**：软链更干净（`intercept` 头一条入口逐字写着「别名 / 软链指过来」），
-/// 但本仓的 SFTP 客户端今天**一处都没用过 `symlink`**（现打 `grep -rn symlink src-tauri/src/sftp.rs`
-/// 只命中注释），而这条路**没有任何一台真远端机器可以验**（`K-R48` `§0-Bx-7` 同族）。
-/// ⇒ 用已经被 12 条 print-parity + 真机验收盯过的 `upload_atomic` 那条路，
-/// **把「没验过的新机制」这个变量拿掉**。换软链是一件独立的活，别搭在这一拍上。
-fn ccm_entry_shim(daemon_path: &str) -> String {
-    format!(
-        "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec {} ccm \"$@\"\n",
-        shell_quote_core::posix_quote(daemon_path)
-    )
-}
+/// 🔴 **`K-R69` 09-12：这个生成器搬到了 `backend/control/local_backend.rs`。**
+/// 理由是它有了**第二个读者** —— 本机也要一条 `ccm` 入口，而「本机那条与远端那条同源」
+/// 这句话只有在两边取自**同一处**时才是结构性的（各写一份就只是巧合，而巧合会漂）。
+/// ⇒ 本文件不再自己拼那三行，改成调它；`ccm` 这个词的唯一住址是
+/// [`crate::backend::control::local_backend::CCM_ENTRY_WORD`]。
+/// 头注（不许有第二个 `case` / 为什么不是软链）逐字跟着搬过去了，别在这里再写一份。
+use crate::backend::control::local_backend::ccm_entry_shim;
 
 /// CLI 在远端的落点（SFTP 相对路径 = home 相对）。
 const CCM_CLI_REMOTE_PATH: &str = ".local/bin/ccm";

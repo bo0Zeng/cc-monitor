@@ -219,6 +219,11 @@ mod tests {
         ("new_local_session", "session.launch", Side::Local),
         ("launch_remote_terminal", "session.launch", Side::Remote),
         ("cc_integration_status", "ccm.status", Side::Local),
+        // 🔴 〔`K-R69` 09-12〕本机那条 `ccm` 入口的**身份**（不是「在不在」）。
+        //    它归 `ccm.status` 而不是自成一格：远端那一侧**已经有对侧**（下一行的
+        //    `probe_ccm_cli` 问的就是远端那个 `ccm` 的 `--ccm-probe` 名片）。
+        //    ⇒ 这一条补的是「本机也问得出同一张名片」，不是一条新的单侧能力。
+        ("local_ccm_entry_status", "ccm.status", Side::Local),
         ("probe_ccm_cli", "ccm.status", Side::Remote),
         ("cc_integration_install", "ccm.install", Side::Local),
         ("install_remote_ccm_helper", "ccm.install", Side::Remote),
@@ -764,7 +769,9 @@ mod tests {
         //   真值以 `EXPECTED_LOCAL_OR_BOTH` 与失败时印出来的 `Local {n} + Both {m}` 为准。
         // - K-R49 **+1**（`write_account_aliases`，`Local`）—— 加了账号就把那条命令落盘；
         //   新能力 `alias.account-commands`，远端那半欠什么见 `ASYMMETRY_REASONS` 里那一行。
-        const EXPECTED_LOCAL_OR_BOTH: usize = 90;
+        // - K-R69 **+1**（`local_ccm_entry_status`，`Local`）—— 归**已有**能力 `ccm.status`
+        //   （远端那一侧的对侧是 `probe_ccm_cli`），所以只涨命令数、不涨能力数。
+        const EXPECTED_LOCAL_OR_BOTH: usize = 91;
         assert_eq!(
             checked, EXPECTED_LOCAL_OR_BOTH,
             "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\
@@ -898,7 +905,7 @@ mod tests {
         // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
         // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
         // 归属错了就不如没有。**
-        assert_eq!(LEDGER.len(), 146, "命令总数变了"); // **K-R49 +1（write_account_aliases，Local-only；新能力 `alias.account-commands`，`ParityDebt`）** // **K-H2a +2（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）** // **P8a +1（list_plugin_marketplaces，#70）** // **PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）** // **K-H2b +1（relay_routing_for，Local-only；新能力 `relay.routing`，`NaturallyAsymmetric`）**
+        assert_eq!(LEDGER.len(), 147, "命令总数变了"); // **K-R69 +1（local_ccm_entry_status，Local；归已有能力 `ccm.status` ⇒ 能力数与不对称数都不动）** // **K-R49 +1（write_account_aliases，Local-only；新能力 `alias.account-commands`，`ParityDebt`）** // **K-H2a +2（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）** // **P8a +1（list_plugin_marketplaces，#70）** // **PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）** // **K-H2b +1（relay_routing_for，Local-only；新能力 `relay.routing`，`NaturallyAsymmetric`）**
         let sides = capability_sides();
         assert_eq!(sides.len(), 65, "能力总数变了"); // **K-R49 +1（alias.account-commands，Local-only）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy）**；**PS2 +1（cc-bus.install-state）**；**K-H2b +1（relay.routing，Local-only）**
         let asym = asymmetric_capabilities();
