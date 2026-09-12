@@ -304,6 +304,27 @@ ck "capabilities= 覆盖 TS 侧全部 CLI_REQUIRED_CAPS（⊇，不是 ==）" ""
 ck "agents= 行列出 claude 与 codex" "1" \
    "$(printf '%s\n' "$PROBE" | grep -c '^agents=claude,codex$')"
 
+# ── 🔴 〔`K-R70` 09-12〕**问一份真的二进制「你是哪一次构建」** ────────────────
+#
+# 这三格是本件唯一**真跑一份编出来的二进制**的判据（上面 Rust 侧那几条跑的是测试壳）。
+# 题面（`K-R68` 摸底 · `DECISIONS.md#R26` 裁定零）：在此之前，后端的身份只能去读它
+# **旁边**那个 `.build_id` 文本文件，而那是 `release.yml` 从源码常量抠出来写的标签
+# —— 三个载体的标签恒等 ⇒ 一格证据都不提供。
+#
+# ⚠ **左值取自源码那一处唯一住址，不手抄** —— 手抄一个 `p2f-…` 进来，
+#   下次 bump 时这一格会以「假红」的形式提醒错人（而且它测的会变成「我抄对了没有」）。
+SRC_BUILD_ID="$(sed -n 's/^const BUILD_ID: &str = "\([^"]*\)";$/\1/p' \
+                 "$REPO/remote-daemon-proto/src/main.rs")"
+ck "抽取器自检：从 daemon 源码抠得到 BUILD_ID（空 ⇒ 下面两格会零命中地绿）" "yes" \
+   "$([ -n "$SRC_BUILD_ID" ] && echo yes || echo no)"
+ck "build= 行报的就是这一份二进制自己的 BUILD_ID（不看它旁边任何文件）" "$SRC_BUILD_ID" \
+   "$(printf '%s\n' "$PROBE" | sed -n 's/^build=//p')"
+# ⚠ **它与 `version=` 是两个问题**：后者是 CLI 的契约版本（`5`），答不出「你是哪一份」。
+#   这一格钉住两者**不是同一个值**，免得哪天有人把 `build=` 接到 `CCM_VERSION` 上去。
+ck "build= 与 version= 不是同一个值（前者答『你是谁』，后者答『你认得哪些参数』）" "no" \
+   "$([ "$(printf '%s\n' "$PROBE" | sed -n 's/^build=//p')" = \
+       "$(printf '%s\n' "$PROBE" | sed -n 's/^version=//p')" ] && echo yes || echo no)"
+
 # ── 〔`K-R61` 09-11〕**申报与兑现要一起量** ──────────────────────────────────
 # monitor 侧 `history.rs::RELAY_KEEPS_THE_OLD_PATH` 的退役条件点名的就是这个 token。
 # 它先前的形状是「能力在、声明不在」：容器路真的转发 `ANTHROPIC_BASE_URL`，
