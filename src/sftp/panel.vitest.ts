@@ -32,7 +32,6 @@ const CFG = {
   hostKeyFingerprint: "",
   addresses: [],
   jump: "",
-  daemonless: false,
   resumeCommand: "",
 };
 

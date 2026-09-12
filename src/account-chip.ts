@@ -38,9 +38,10 @@ import { showActionFailureToast } from "./error-toast";
 
 // ------------------------------------------------------------ 纯函数（可测）
 
-/** 选 chip 绑定的"主远端"：第一台非 daemonless 的已配置远端。无 → null（chip 隐藏）。 */
+/** 选 chip 绑定的"主远端"：第一台已配置远端。无 → null（chip 隐藏）。
+ *  ⚠ `K-R59` 之前这里还排掉 `daemonless` 的主机 —— 那一档没了，不再有可排的。 */
 export function pickPrimaryOrigin(hosts: RemoteHostConfig[]): string | null {
-  const h = hosts.find((x) => !x.daemonless && (x.label || x.host));
+  const h = hosts.find((x) => x.label || x.host);
   return h ? h.label || h.host : null;
 }
 
@@ -74,8 +75,6 @@ export function chipLabel(state: AccountsState | null): string {
   if (!state) return "未连远端";
   const ui = deriveUi(state);
   switch (ui.kind) {
-    case "hidden":
-      return ""; // 调用方据空串隐藏
     case "needs-update":
       return "daemon 需更新";
     case "not-enabled":
@@ -184,7 +183,7 @@ export class AccountChip {
     }
     const text = chipLabel(this.state);
     if (!text) {
-      this.element.style.display = "none"; // daemonless 等 → 完全不显示
+      this.element.style.display = "none"; // 文本为空 → 完全不显示
       return;
     }
     this.labelSpan.textContent = text;
@@ -202,7 +201,7 @@ export class AccountChip {
 
   /** account-ux U8：给快捷键用的显式入口。合成 `element.click()` 在 chip 隐藏时照样会派发，
    *  能开出一个 getBoundingClientRect() 全 0、飘到视口外的菜单（看不见却吞点击）——
-   *  今天靠 pickPrimaryOrigin 过滤 daemonless 才碰不到，那是巧合不是设计。这里显式挡住。 */
+   *  今天靠 chipLabel 恒非空才碰不到，那是巧合不是设计。这里显式挡住。 */
   async openMenu(): Promise<void> {
     if (this.element.style.display === "none") return;
     await this.toggleMenu();

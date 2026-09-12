@@ -4,8 +4,8 @@
 //! Tauri command，**不做任何注入、不落任何盘**（注入是 A4、UI 是 A3）。
 //!
 //! # 「不可用」不是错误
-//! 旧 daemon 不认这三个命令（`unknown argument` → exit 2 / 无输出），`daemonless`
-//! 主机压根没 daemon。这两种情况一律回 `available:false + error:<人话>`，
+//! 旧 daemon 不认这三个命令（`unknown argument` → exit 2 / 无输出）。
+//! 这种情况一律回 `available:false + error:<人话>`，
 //! **而不是** `Err`——前端据此把账号功能整体降级隐藏，不弹错误（设计文档 §7 降级矩阵）。
 //! 只有「这台远端根本没配」才回 `Err`（那是调用方的 bug）。
 //!
@@ -191,7 +191,7 @@ impl AuthKind {
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsResult {
-    /// false = 该台拿不到账号能力（daemon 旧 / daemonless / 查询失败）→ 前端降级隐藏。
+    /// false = 该台拿不到账号能力（daemon 旧 / 查询失败）→ 前端降级隐藏。
     pub available: bool,
     pub error: Option<String>,
     pub meta: Option<AccountsMeta>,
@@ -362,15 +362,14 @@ impl HasAvailability for AccountTrustResult {
     }
 }
 
-/// 取某台远端的配置；`daemonless` 台直接判为"无账号能力"。
+/// 取某台远端的配置。
+///
+/// 🔴 `K-R59`（定框 `K35`）：这里原来还有一个早返回 —— `cfg.daemonless` 为真时直接判
+/// 「无账号能力」。那一档没了（**没有「没有后端」这回事**）⇒ 早返回一起走，
+/// 前端 `deriveUi` 里那一支 `kind: "hidden"` 也随之下岗（它只由这条串产出）。
 fn cfg_for(origin: &str) -> Result<Result<ssh_source::RemoteConfig, String>, String> {
     let cfg = crate::load_remote_config_by_label(origin)
         .ok_or_else(|| format!("远端 '{origin}' 未配置或未启用"))?;
-    if cfg.daemonless {
-        return Ok(Err(
-            "该主机配置为 daemonless（无 daemon），账号功能不可用".into()
-        ));
-    }
     Ok(Ok(cfg))
 }
 

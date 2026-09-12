@@ -33,17 +33,16 @@ function mk(over: Partial<RemoteHostConfig> = {}): RemoteHostConfig {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    daemonless: false,
     resumeCommand: "",
     ...over,
   };
 }
 
 const A = mk({ label: "alpha", host: "10.0.0.1", user: "ua", jump: "gw" });
-const B = mk({ label: "beta", host: "10.0.0.2", user: "ub", daemonless: true });
+const B = mk({ label: "beta", host: "10.0.0.2", user: "ub", jump: "gw2" });
 const C = mk({ label: "", host: "10.0.0.3", user: "uc" }); // label 空 ⇒ key = host
 
-const base: RemoteConfig = { enabled: true, hosts: [A, B, C] };
+const base: RemoteConfig = { enabled: true, hosts: [A, B, C], legacyNoBackend: [] };
 
 describe("hostKey", () => {
   it("label 非空取 label，否则取 host（与 findHostByOrigin 同口径）", () => {
@@ -121,7 +120,7 @@ describe("applyRemoteHostsPatch", () => {
     const d1 = mk({ label: "dup", host: "1.1.1.1", user: "one" });
     const d2 = mk({ label: "dup", host: "2.2.2.2", user: "two" });
     const out = applyRemoteHostsPatch(
-      { enabled: true, hosts: [d1, d2] },
+      { enabled: true, hosts: [d1, d2], legacyNoBackend: [] },
       {
         upsert: [
           { key: "dup", value: { ...d1, user: "one-edited" } },
@@ -137,7 +136,10 @@ describe("applyRemoteHostsPatch", () => {
     expect(applyRemoteHostsPatch(base, {}).enabled).toBe(true);
     expect(applyRemoteHostsPatch(base, { enabled: false }).enabled).toBe(false);
     expect(
-      applyRemoteHostsPatch({ enabled: false, hosts: [] }, { enabled: true })
+      applyRemoteHostsPatch(
+        { enabled: false, hosts: [], legacyNoBackend: [] },
+        { enabled: true },
+      )
         .enabled,
     ).toBe(true);
   });
@@ -191,8 +193,10 @@ describe("S1 patchRemoteConfig（走完整 read → 合并 → 序列化 → 落
       // 但盘上确实会多出一个用户没填过的 label，这里把这个事实钉住而不是假装没有。
       expect(remote.hosts[2]).toEqual({ ...C, label: C.host });
       expect(remote.hosts[1]?.user).toBe("changed");
-      // 被改的那台其余字段也不能丢（`daemonless: true` 是 B 独有的非默认值）。
-      expect(remote.hosts[1]?.daemonless).toBe(true);
+      // 被改的那台其余字段也不能丢（`jump: "gw2"` 是 B 独有的非默认值）。
+      // 〔`K-R59` 09-11：这里原来用的是 `daemonless: true`，那个字段整格退役了 ——
+      //  换一个仍然「非默认、只有 B 有」的字段，本条钉的性质一字不变。〕
+      expect(remote.hosts[1]?.jump).toBe("gw2");
     });
   });
 

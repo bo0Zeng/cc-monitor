@@ -167,7 +167,7 @@ pub async fn list_mcp_project_dirs() -> Result<Vec<String>, String> {
 }
 
 /// F87b③：跨机读远端 MCP。**只读**（守 §1：SSH exec `cat` 远端**用户自己**的 `~/.claude.json`，
-/// 不写、不驱动远端 agent；同 daemonless `find`/`tail` 读法）。**不依赖未建的 daemon**。
+/// 不写、不驱动远端 agent）。**不依赖未建的 daemon**。
 /// 命令是**定值、无用户输入插值**（origin 只用于解析 cfg）→ 零注入面；远端 shell 展开变量。
 /// 复用纯核心 `collect_entries` 取 **user scope**（顶层 mcpServers = 机器全局 MCP）。local/project scope 是
 /// per-项目、跨机无稳定映射，**不取**（见 F87b 计划）。带 30s 超时 + 32MB 上限（config 重度用户可数 MB）。

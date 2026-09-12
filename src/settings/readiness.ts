@@ -43,7 +43,26 @@ export interface Gap {
    * `optional` = 补了更好用（终端起会话、多账号…）。
    */
   severity: "blocking" | "optional";
+  /**
+   * `K-R59`：**这条缺口的名字**。绝大多数缺口没有名字（它们由 `origin`+`facet` 唯一确定），
+   * 只有需要用户**认得出、说得出**的那种迁移告知才配一个 —— 形状抄 `K-P2`
+   * 那天落成的唯一失败面 `CCM_RC_NO_BACKEND=4`。今天只有一个：[`NO_BACKEND_GAP_CODE`]。
+   */
+  code?: string;
 }
+
+/**
+ * `K-R59` / `KR59D3`：**旧配置里那个 `true` 的唯一失败面**，有名字。
+ *
+ * 它进 DOM（`remote-section.ts` 把它写成 `data-code`），所以用户与判据看见的是同一个串。
+ * ⚠ **不许把这条降成一句 `console.warn`** —— 日志不是失败面，用户看不见的告知等于没有。
+ */
+export const NO_BACKEND_GAP_CODE = "REMOTE_NO_BACKEND";
+
+/** [`NO_BACKEND_GAP_CODE`] 的人话：**为什么** + **下一步**，两半缺一不可。 */
+export const NO_BACKEND_CONSEQUENCE =
+  "这台机器此前是按「不装后端」配的（旧的 daemonless 开关），而今天没有那一档了 —— " +
+  "打开它的机器卡片装上后端；装完保存一次，这条就消失";
 
 /** 每个 facet 缺席时的后果与轻重。**写在一处**，别散到 UI 里各说各话。 */
 const FACET_MEANING: Record<
@@ -75,7 +94,14 @@ const FACET_MEANING: Record<
 /**
  * 某台机器上**不适用**的项 —— 不适用不是缺。
  *
- * 1. 本机不需要 daemon（`watcher.rs` 直读 jsonl，主计划 §2.4 那张表逐字写着「不需要」）。
+ * 1. 🔴 **这里此前排掉的第一项是「本机的 `daemon`」，`K-R59`（09-11）把它撤了。**
+ *    当年的理由逐字是「本机不需要 daemon（`watcher.rs` 直读 jsonl，主计划 §2.4
+ *    那张表逐字写着「不需要」）」—— 那句话在 `C7`〔用 08-03〕之后就**不成立**了：
+ *    `C7` 逐字「没有 daemonless，使用软件就要有后端 ⇒ **本机**也要有后端进程」，
+ *    `backend/control/local_backend.rs` 就是它的产物。
+ *    ⇒ 本机后端**今天真的存在**，而这张「还差什么」的清单当时永远不会告诉用户它没起来。
+ *    ⚠ **这一条一个 `daemonless` 字样都不含，却与它同一档** —— 换个说法留着同一条退路，
+ *    数名字的判据一格都不会红（`KR59D1` 的失效方向逐字写着这件事）。
  * 2. **本机不需要「连接」**（`INVARIANTS §40`：本地 = **不走 ssh** 的远端）。
  *    **Phase G 逮到的真 bug**：漏了这一条，于是每台新装的机器落地页顶上永久挂着一条
  *    **blocking** 的「本机 · 连接：未测过 —— **连不上这台机器，它上面的会话都看不到**」。
@@ -93,7 +119,7 @@ function notApplicable(
   hostOs: HostOs,
 ): boolean {
   if (origin !== LOCAL_MACHINE_KEY) return false;
-  if (facet === "daemon" || facet === "connection") return true;
+  if (facet === "connection") return true;
   return facet === "ccm" && hostOs === "windows";
 }
 
@@ -102,11 +128,18 @@ export interface ReadinessInput {
   origins: string[];
   /** 读账本。注入进来而不是直接 import，纯函数才好测。 */
   statusOf: (origin: string) => MachineStatus;
-  /** daemonless 的机器不需要 daemon —— 那是用户显式选的降级，不是缺件。 */
-  isDaemonless?: (origin: string) => boolean;
+  /**
+   * `K-R59` / `KR59D3`：盘上**仍写着旧「不装后端」开关**的主机
+   * （`remote-config.ts` 的 `legacyNoBackend`，口径 `hostKey`）。
+   *
+   * ⚠ **它不是那个开关的替身** —— 它不改变任何数据源路径，只让这台机器的
+   * `daemon` 那一格换成一条**指名的**告知（[`NO_BACKEND_GAP_CODE`]），
+   * 而不是通用的「没测过」。省略 = 盘上没有旧配置。
+   */
+  legacyNoBackend?: (origin: string) => boolean;
   /**
    * S9：monitor 跑在哪个 OS 上。**注入而不是直接调 `hostOs()`** ——
-   * 这个模块的卖点就是纯函数，`isDaemonless` 当初也是为同一个理由注入的。
+   * 这个模块的卖点就是纯函数（`K-R59` 之前那个 `isDaemonless` 当初也是为同一个理由注入的）。
    * 省略 = 按非 Windows 处理（`ccm` 照常算数）。
    */
   hostOs?: HostOs;
@@ -126,7 +159,20 @@ export function computeGaps(input: ReadinessInput): Gap[] {
     const st = input.statusOf(origin);
     for (const facet of MACHINE_FACETS) {
       if (notApplicable(origin, facet, os)) continue;
-      if (facet === "daemon" && input.isDaemonless?.(origin)) continue;
+      // `KR59D3`：旧配置里那个 `true` **不许被静默吞掉**。它压过账本 ——
+      // 账本里那一格今天多半是 `na`（旧路径把「用户选了降级」记成不适用），
+      // 而那正是要被撤掉的那句话。**这条告知有名字**，见 `NO_BACKEND_GAP_CODE`。
+      if (facet === "daemon" && input.legacyNoBackend?.(origin)) {
+        blocking.push({
+          origin,
+          facet,
+          kind: "missing",
+          code: NO_BACKEND_GAP_CODE,
+          consequence: NO_BACKEND_CONSEQUENCE,
+          severity: "blocking",
+        });
+        continue;
+      }
       const cur = st[facet];
       // `na` = 不适用，不是缺（账本里也可能显式记成 na）。
       if (cur?.kind === "ok" || cur?.kind === "na") continue;

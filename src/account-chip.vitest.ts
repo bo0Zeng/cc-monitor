@@ -57,7 +57,6 @@ function host(p: Partial<RemoteHostConfig>): RemoteHostConfig {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    daemonless: false,
     resumeCommand: "",
     ...p,
   };
@@ -96,17 +95,16 @@ function state(p: Partial<AccountsState>): AccountsState {
 }
 
 describe("pickPrimaryOrigin", () => {
-  it("取第一台非 daemonless", () => {
+  // 🔴 `K-R59`：这一组此前有两条断「跳过 daemonless 的主机」/「全 daemonless → null」。
+  //    定框 `K35` 把那一档删了 ⇒ **今天一台都不跳**，两条一起下岗。
+  it("取第一台", () => {
     expect(pickPrimaryOrigin([host({ label: "a" }), host({ label: "b" })])).toBe("a");
-  });
-  it("跳过 daemonless", () => {
-    expect(pickPrimaryOrigin([host({ label: "a", daemonless: true }), host({ label: "b" })])).toBe("b");
   });
   it("label 空 → 用 host", () => {
     expect(pickPrimaryOrigin([host({ label: "", host: "aya.local" })])).toBe("aya.local");
   });
-  it("全 daemonless → null", () => {
-    expect(pickPrimaryOrigin([host({ daemonless: true })])).toBeNull();
+  it("label 与 host 都空 → null（那台机器没有身份）", () => {
+    expect(pickPrimaryOrigin([host({ label: "", host: "" })])).toBeNull();
   });
   it("空列表 → null", () => {
     expect(pickPrimaryOrigin([])).toBeNull();
@@ -116,9 +114,6 @@ describe("pickPrimaryOrigin", () => {
 describe("chipLabel", () => {
   it("无 state → 未连远端", () => {
     expect(chipLabel(null)).toBe("未连远端");
-  });
-  it("daemonless（hidden）→ 空串（调用方隐藏）", () => {
-    expect(chipLabel(state({ available: false, error: "该主机 daemonless" }))).toBe("");
   });
   it("旧 daemon → daemon 需更新", () => {
     expect(chipLabel(state({ available: false, error: "版本过旧" }))).toBe("daemon 需更新");
