@@ -131,6 +131,8 @@ mod rust_timer_registry; // F09：monitor **Rust 侧**周期唤醒清账（`poll
 mod scanning_guard_registry; // audit-0805 F23：扫描型判据不许裸遍历（自匹配这一族的收口）
 mod session_name_registry; // U11 摸底：会话名产出点清账 + 递减棘轮（账本 S12 的落地形态）
 #[cfg(test)]
+mod sftp_move_ledger; // K-R78：那 14 处 SFTP 拨号今天各自卡在哪（乙为什么没搬 + 甲现打的四条挡路石；整体 cfg(test)）
+#[cfg(test)]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
 mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免
 #[cfg(test)]
