@@ -134,7 +134,7 @@
 test result: ok. 1397 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out
 ```
 
-## 🔴 **仍绿：全部。0 红。**
+## 🔴 第一趟（PM 裁定一之前）**仍绿：全部。0 红。**
 
 「本件新增的断言」这一栏的分母是 **0**（本件一条判据都没新写，`cargo` 四格数字一格没涨），
 所以按字面口径「新断言里还有几条仍绿」= **0/0**。
@@ -162,19 +162,66 @@ test result: ok. 1397 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out
 而**紧挨着的 `observe/` 那格量的是裸 `is_dir()`** ——
 **同一段代码里，写下那条警告的人在下一行就犯了它警告的那件事。**
 
-**这一格归 PM 裁，本轮没动** —— 理由是硬的：`src-tauri/src/doc_claim_registry.rs` **不在本件写区**
-（写区 10 项里没有它）。一句话的修法已经现成（照 `control/` 那格的形）：
+### 🔴 PM 裁定一（09-12，同拍回来）：**这一格现在就改，写区扩到 `doc_claim_registry.rs`**
+
+上一版这一节逐字写着「**这一格归 PM 裁，本轮没动** —— 理由是硬的：`src-tauri/src/doc_claim_registry.rs`
+**不在本件写区**」。PM 复核后**扩了写区**并裁「由实现方同拍做掉」，理由逐字：
+「它正好补上你 `7u` 露出来的那个洞，而**验它需要你手上的变异台**」。⇒ 下面 §三之二 是改完之后重跑的那一趟。
+
+**改的是一行量法，不是加判据**（`monitor-backend-observe-landed`）：
 
 ```rust
-"monitor-backend-observe-landed" => (
-    root.join("src-tauri/src/backend/observe/local_query.rs").is_file(),
-    "monitor 侧 `backend/observe/` 在，且那个唯一的读面传输住在里面",
-),
+// 改前
+root.join("src-tauri/src/backend/observe").is_dir(),
+"monitor 侧 `backend/observe/` 目录存在",
+// 改后
+root.join("src-tauri/src/backend/observe/local_query.rs").is_file(),
+"monitor 侧 `backend/observe/` 在，且那个唯一的读面传输住在里面",
 ```
 
-⚠ 同族还有两格**没量过**：`monitor-backend-platform-landed` / `monitor-backend-common-landed`
-也都是裸 `is_dir()`。它们今天都是 `false`（目录不存在）⇒ **今天不会说假话**，
-但**建目录的那一刻就会**，与 `observe/` 这一格 09-12 的遭遇逐字同形。
+⚠ **同族另两格 `monitor-backend-platform-landed` / `monitor-backend-common-landed` 这一拍不改**
+（PM 裁定二 ⇒ 另立 `K-R73`）：它们**没有「那个唯一的住户」可钉**（两个目录都还不存在），
+硬指一个文件就是替未来的人做决定。它们今天 `false` ⇒ **不说假话**；
+**建目录那一刻就会**，与 `observe/` 这一格 09-12 的遭遇逐字同形。
+🔴 **今天没有触发器，也没有在代码里编一个** —— PM 逐字「我不给它们编闹钟，**它今天不会响，我认这一点**，
+靠排期不靠判据」。这句话已原样落在那两格上方的注释里。
+
+---
+
+## 三之二 · `7u` 第二趟（PM 裁定一落地之后，**同一套掏空动作，逐条一字不改**）
+
+掏空动作与 §三那张表**逐行相同**（`os.rename` ＋ 7 处逐字锚点，每处 `count()==1` 实打命中 1 次；
+`usage.rs` 4 / `local_accounts.rs` 2；`doc/ARCHITECTURE.md` 的「已交付」照旧不退 = 签名）。
+**唯一的差别是被测代码里那一行量法**。
+
+| | 判定行 | 红 |
+|---|---|---|
+| 第一趟（裸 `is_dir()`） | `test result: ok. 1397 passed; 0 failed; 10 ignored` | **0** |
+| 第二趟（钉住唯一住户） | `test result: FAILED. 1396 passed; 1 failed; 10 ignored` | **1** |
+
+**最小面 1**，逐字 `doc_claim_registry::tests::each_registered_status_still_matches_reality`。
+它的报错原文（沙箱现打，逐字）：
+
+```
+assertion `left == right` failed: ``observe/``：文档那一格说「已交付 = true」（状态列原文 "**已交付**〔2026-09-12 `K-R71`〕—— 目录建起来了，住户只有传输那一跳，见 2.2"），
+而现场量法说「monitor 侧 `backend/observe/` 在，且那个唯一的读面传输住在里面」= false。
+  left: false
+ right: true
+```
+
+⇒ **它红在该红的地方**：文档宣称已交付，而那条能力线上**没有住户**。
+`KR71D1` 逐字点名的失效方向（「建一个空的 `observe/` 目录、文件不动」）**从今天起有闸了**。
+
+### ⚠ 这一格**买到了什么、没买到什么**（别写宽一格）
+
+  · **买到**：`observe/` 这条线上「文档说交付了」与「真有住户」之间那一跳，**有东西会红**。
+  · **没买到**：它钉的是**那一个具体文件名**（`observe/local_query.rs`）。哪天那个住户改名或再搬走、
+    而 `observe/` 下换了别的住户，这一格会**假红**（红得对不对要人判，报错文案第二支
+    「或者本条量法本身选错了标的」写的就是这一形）。这是与 `control/` 那格**同一个代价**，
+    本轮**不比它更差、也不比它更好**。
+  · **没买到**：`platform/` / `common/` 两格照旧是裸 `is_dir()`，见上面 PM 裁定二。
+  · 交付态复跑：改完量法之后、掏空之前，`cargo test -p monitor --lib` 实打
+    `test result: ok. 1397 passed; 0 failed` —— **判据条数一格没涨**（收窄不是新增）。
 
 ---
 
