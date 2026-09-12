@@ -125,7 +125,41 @@ pub enum ToolSource {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum ToolDestination {
     /// 远端家目录下的相对路径（`~/.local/bin/ccm`）。
+    ///
+    /// 🔴 **`K-R69` 09-12 起它零使用者，而那条 `never constructed` 警告就是这笔债的存根**
+    /// —— 同本模块头注给 `TOOLS` 那 6 条警告的处置（「那 6 条警告就是这笔债的存根」）。
+    /// 唯一用过它的是 `ccm`，而 `ccm` 今天两台机器上各有一个落点 ⇒ 换成了
+    /// [`Self::BothHomeRelative`]。
+    /// ⚠ **不许拿一句 `#[allow(dead_code)]` 把它按下去** —— 那就把「今天没人用它」
+    /// 这个读数从编译器嘴里拿掉了。**退役条件写死在这里**：下一件活里若仍没有
+    /// 「只落在远端」的工具进来，就连着它在 `config_surface::resolve_by_destination`
+    /// 的那一臂一起删（那一臂是今天**唯一**一处「不看 `host` 就断定远端」的地方，
+    /// 删掉之后「在哪台机器上」就只剩 `host` 一个住址）。
     RemoteHomeRelative(&'static str),
+    /// 🔴 `K-R69`：**两台机器上各有一个落点**，家目录相对，两边路径不同。
+    ///
+    /// # 为什么非有这一格不可（不是「让表好看一点」）
+    ///
+    /// `ccm` 立件时申报的是 `RemoteHomeRelative(".local/bin/ccm")` ——
+    /// 那句话**当时是真的**（app 只在远端装过 `ccm`），而它同时也是 `K34` 那一格
+    /// 卡住的原因：**本机压根没有那一份**。`K-R69` 把本机那条建出来之后，
+    /// 一个 `destination` 就装不下两个事实了，而这张表的全部价值是可信告知
+    /// （模块头注：「声明一个不存在的常量比不声明更坏」—— 少声明一个**存在**的落点，
+    /// 后果同族：审计页上那一行根本不出现，读者分不出「没有」与「有人忘了写」）。
+    ///
+    /// # 为什么不是拆成两条 `ToolSpec`
+    ///
+    /// `K33` 逐字「后端**只有一个**……**不要有什么单独的 ccm**」。
+    /// 拆两条就是在这张**声明表**上把一个东西说成两个 —— 而它今天两边同源
+    /// （同一份后端、同一处 argv 解析，见 `local_backend::CCM_ENTRY_WORD`）。
+    /// ⇒ 一条 `ToolSpec`、一个落点字段、两台机器。
+    ///
+    /// ⚠ 两个串**都不带 `~/` 前缀**（同上面两个变体的写法）；`touches` 里那两条要写成
+    /// `~/{local}` 与 `~/{remote}`，由 `installable_tools_declare_where_they_land` 对拍。
+    BothHomeRelative {
+        local: &'static str,
+        remote: &'static str,
+    },
     /// 本机家目录下的相对路径（`~/.claude/skills/...`）。
     LocalHomeRelative(&'static str),
     /// 用户的 shell profile（`$PROFILE` / `~/.bashrc`）——路径由用户选。
@@ -318,16 +352,35 @@ pub const TOOLS: &[ToolSpec] = &[
         display_name: "ccm 统一启动器（后端本体的一次性模式）",
         // 🔴 〔`K-R48` 第二拍 09-11〕`repo_path` 原来指 `shared/ccm`（那份 1592 行 bash）。
         //    〔用@09-11 `K33`〕「不要有什么 bash 脚本，不要有什么单独的 ccm」⇒ 那个文件删了。
-        //    ⇒ 指到远端那个**入口**的来源：`sftp::ccm_entry_shim` 现造的三行 `exec` 串
+        //    ⇒ 指到那个**入口**的来源：`local_backend::ccm_entry_shim` 现造的三行 `exec` 串
         //    （零实现，把 argv 转给已经部署好的后端）。
+        //    〔`K-R69` 09-12 订正住址：这句话原先写 `sftp::ccm_entry_shim`，而那个生成器
+        //     本轮**搬进了后端层** —— 本机也要一条 `ccm` 入口，两条落点要取自同一处。
+        //     逮到它的是 `structural_scan` 那条「源码里点名的符号今天还对不对」的判据
+        //     （报文逐字「符号还在，但**搬家了**」），不是人。〕
         //    ⚠ **它今天不是一份「仓里的文件」** —— `EmbeddedText { repo_path }` 这个形状
         //    在这一条上已经不合身了（值是**算出来的**，路径取自用户填的 `daemon_path`）。
         //    本模块头注自己写着「零生产消费者、T02 接不上就该删掉本模块」⇒ **不为它改类型**，
         //    如实指到那个函数的住址，并把这一格的形状问题登记在这里。
+        //    🔴 **本机那一半的来源不是这个 shim** —— 是后端二进制自己的改名副本
+        //    （`local_backend::install_local_ccm_entry`）。`ToolSource` 一个字段同样装不下
+        //    两个来源，而这一格的形状问题上面已经登记过一次 ⇒ **不为它再开一个变体**，
+        //    在这里如实写清：远端是 shim，本机是那份二进制本身，两条都进
+        //    `control::ccm::intercept` 那一处解析。
         source: ToolSource::EmbeddedText {
-            repo_path: "src-tauri/src/sftp.rs::ccm_entry_shim",
+            repo_path: "src-tauri/src/backend/control/local_backend.rs::ccm_entry_shim",
         },
-        destination: ToolDestination::RemoteHomeRelative(".local/bin/ccm"),
+        // 🔴 〔`K-R69` 09-12〕落点从「只有远端」改成**两边各一个**。
+        //    立件时现打：闭集里落点是 `…/ccm` 的只有这一条，而它是远端 ⇒ **本机 0 条**。
+        //    于是用户 `K34` 逐字「装了新版后 `~/.local/bin/ccm` 可以干净退役」
+        //    **没有承接方** —— 不是没验过，是本机压根没有新的那一份。
+        //    本机那条今天由 `local_backend::install_local_ccm_entry` 真的放下去
+        //    （后端二进制的改名副本，零新增实现），落点刻意**不是** `~/.local/bin`：
+        //    那是用户那份旧的住的地方，`K34` 逐字「原本的配置**要手动删除**」。
+        destination: ToolDestination::BothHomeRelative {
+            local: ".cc-monitor/bin/ccm*",
+            remote: ".local/bin/ccm",
+        },
         installable: true,
         uninstallable: true,
         touches: &[
@@ -335,6 +388,23 @@ pub const TOOLS: &[ToolSpec] = &[
                 path: "~/.local/bin/ccm",
                 note: None,
                 host: HostScope::Remote,
+                effect: TouchEffect::OwnedFile,
+            },
+            TouchedFile {
+                // ⚠ **末段是 glob 而不是 `ccm`**，而且这不是偷懒：本机那份是要**被起成进程**的，
+                // 在把扩展名当身份的平台上它叫 `ccm.exe`（名字的唯一真相源是
+                // `local_backend::local_ccm_entry_name`，后缀由 `build.rs` 按 `TARGET` 算）。
+                // 写死 `ccm` 会让这一行在 Windows 上**恒显示「缺失」** —— 那正是本页
+                // 头注禁的「对能用的安装报假警报」。两边由
+                // `the_declared_local_ccm_path_really_matches_the_name_we_install` 对拍。
+                path: "~/.cc-monitor/bin/ccm*",
+                note: Some(
+                    "🔴 `K-R69`：**本机那条 `ccm` 入口** —— 后端二进制自己的改名副本\
+                     （不是壳、不是第二份实现：`control::ccm::intercept` 认 `argv[0]` 的 basename）。\
+                     放在 monitor 自己的目录里，**刻意不碰你 `~/.local/bin` 下那份旧的** —— \
+                     那一份要不要删由你自己定（`K34` 逐字：原本的配置要手动删除）",
+                ),
+                host: HostScope::Client,
                 effect: TouchEffect::OwnedFile,
             },
             TouchedFile {
@@ -1785,13 +1855,19 @@ mod tests {
             if !t.installable {
                 continue;
             }
-            let want: String = match &t.destination {
+            // 🔴 〔`K-R69` 09-12〕从「一个落点」改成**一串** —— `BothHomeRelative`
+            //    有两个，而「少申报一个**存在**的落点」与「申报一个不存在的」同族：
+            //    审计页上那一行根本不出现，读者分不出「没有」与「有人忘了写」。
+            let wants: Vec<String> = match &t.destination {
                 ToolDestination::RemoteHomeRelative(p) | ToolDestination::LocalHomeRelative(p) => {
-                    format!("~/{p}")
+                    vec![format!("~/{p}")]
                 }
-                ToolDestination::ProjectRelative(p) => (*p).to_string(),
-                ToolDestination::UserShellProfile => "$PROFILE".to_string(),
-                ToolDestination::UserConfiguredPath { token, .. } => (*token).to_string(),
+                ToolDestination::BothHomeRelative { local, remote } => {
+                    vec![format!("~/{local}"), format!("~/{remote}")]
+                }
+                ToolDestination::ProjectRelative(p) => vec![(*p).to_string()],
+                ToolDestination::UserShellProfile => vec!["$PROFILE".to_string()],
+                ToolDestination::UserConfiguredPath { token, .. } => vec![(*token).to_string()],
                 // 〔`K-R60`〕跨字段：「这不是我们的落点」与「装得了」不许同时成立。
                 ToolDestination::NotInstalledByUs { whose } => panic!(
                     "{} 声明 installable: true，落点却写着「不是我们装的」（{whose}）——\
@@ -1799,13 +1875,140 @@ mod tests {
                     t.id
                 ),
             };
+            for want in &wants {
+                assert!(
+                    t.touches.iter().any(|f| f.path == *want),
+                    "{} 可安装，但 touches 里没有它的落点 {want:?}（实得 {:?}）",
+                    t.id,
+                    t.touches.iter().map(|f| f.path).collect::<Vec<_>>()
+                );
+            }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🔴 `K-R69` / `KR69D1`：**本机有一条 `ccm` 落点，而且它与远端那条同源**
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 闭集里所有**末段是 `ccm` 那个词**的落点，按「在哪台机器上」分。
+    ///
+    /// ⚠ 人群**现算**、不写死一个名单〔`13b`〕：`TOOLS` 是唯一一份，
+    /// 而 `ccm` 那个词的唯一住址是 `local_backend::CCM_ENTRY_WORD`。
+    /// 末段允许带一个尾 `*`（本机那条要盖住 Windows 上的 `.exe`，见它自己的 note）。
+    fn ccm_landing_sites() -> Vec<(&'static str, HostScope)> {
+        let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
+        TOOLS
+            .iter()
+            .flat_map(|t| t.touches.iter())
+            .filter(|f| {
+                let last = f.path.rsplit('/').next().unwrap_or(f.path);
+                last == word || last == format!("{word}*")
+            })
+            .map(|f| (f.path, f.host))
+            .collect()
+    }
+
+    /// `KR69D1` 正面：**本机侧有落点，远端侧也有，而且它们不是同一条。**
+    ///
+    /// # 立件时这一条是红的（那正是本件的题面）
+    ///
+    /// 09-12 现打（量于 `79bf97d`）：闭集里末段是 `ccm` 的落点**恰好 1 条** ——
+    /// `TOOLS` 里 id 为 `ccm` 那条声明的 `~/.local/bin/ccm`，`host: Remote` ⇒ **本机侧 0 条**。
+    /// 而别名生成器（`launcher-diagnostics.ts::buildAliasLine`）吐的是**裸 `ccm`**，
+    /// 靠 PATH 解析 ⇒ 用户贴上去之后解析到的仍是他自己那份旧的。
+    /// ⇒ 用户 `K34` 逐字「装了新版后 `~/.local/bin/ccm` 可以干净退役」
+    /// **在结构上做不到**：退役没有承接方。
+    ///
+    /// # 死值验（`KR69D1` 逐字要的第一向）
+    ///
+    /// 把本机那条 `TouchedFile` 摘掉 ⇒ 本条**必须红**。
+    ///
+    /// # ⚠ 它守什么、**不守什么**
+    ///
+    /// 守的是**申报**（这张表里有没有这条落点、在哪台机器上）。
+    /// 「那个文件真的被放下去了吗」「放下去的是不是后端本体」由
+    /// `local_backend` 那两条管（`the_local_ccm_entry_is_a_copy_of_the_backend_itself`
+    /// 与 `the_resolution_path_really_puts_the_local_ccm_entry_down`）。
+    /// **三条合起来才是那一格，单独任何一条都不够。**
+    #[test]
+    fn the_closed_set_declares_a_ccm_landing_site_on_this_machine_too() {
+        let sites = ccm_landing_sites();
+        let local: Vec<&str> = sites
+            .iter()
+            .filter(|(_, h)| matches!(h, HostScope::Client | HostScope::Either))
+            .map(|(p, _)| *p)
+            .collect();
+        let remote: Vec<&str> = sites
+            .iter()
+            .filter(|(_, h)| matches!(h, HostScope::Remote))
+            .map(|(p, _)| *p)
+            .collect();
+        // 反向自检：人群塌了（没有任何 `ccm` 落点）时下面两条会**零命中地**分别红/绿，
+        // 先把「尺子还够得着被测对象」这件事断出来。
+        assert!(
+            sites.len() >= 2,
+            "闭集里末段是 `ccm` 的落点只有 {} 条（分母 = `TOOLS` 全部 touches，现算）——\n\
+             本条要的是**两条**：本机一条、远端一条。实得 {sites:?}",
+            sites.len()
+        );
+        assert!(
+            !local.is_empty(),
+            "闭集里**本机侧一条 `ccm` 落点都没有**（远端侧 {remote:?}）。\n\
+             这正是 `K-R69` 立件时的读数：app 从来没有在本机装过 `ccm`，\n\
+             于是用户 `K34` 逐字「装了新版后 `~/.local/bin/ccm` 可以干净退役」\n\
+             **没有承接方** —— 缺的不是一次真机读数，是这个入口本身。"
+        );
+        assert!(
+            !remote.is_empty(),
+            "远端那条 `ccm` 落点没了 —— 那是 `sftp::install_remote_ccm_helper` 推过去的那份，\n\
+             本件只**加**本机那条，不许把远端那条顺手弄丢（实得本机 {local:?}）"
+        );
+        // 两条不许是同一个路径：同一个串出现两次说明有人把 host 抄错了，
+        // 而那时「本机有一条」是**靠一条远端的记录冒充的**。
+        for l in &local {
             assert!(
-                t.touches.iter().any(|f| f.path == want),
-                "{} 可安装，但 touches 里没有它的落点 {want:?}（实得 {:?}）",
-                t.id,
-                t.touches.iter().map(|f| f.path).collect::<Vec<_>>()
+                !remote.contains(l),
+                "本机那条与远端那条是同一个路径 {l:?} —— 落点撞在一起，\n\
+                 而本机那份**不许**写进 `~/.local/bin`：那是用户旧 `ccm` 住的地方，\n\
+                 `K34` 逐字「原本的配置**要手动删除**」，产品一个字节都不动它。"
             );
         }
+    }
+
+    /// `KR69D1` 的**同源那一半（申报侧）**：申报的那条本机路径，
+    /// 真的能盖住我们生产上放下去的那个文件名。
+    ///
+    /// # 没有这一条会怎样
+    ///
+    /// 名字的唯一真相源是 `local_backend::local_ccm_entry_name()`（后缀由 `build.rs`
+    /// 按 `TARGET` 算，Windows 上是 `ccm.exe`）。这张表里写的是一个**常量串**。
+    /// 两边一漂，审计页会在 Windows 上对着一个**我们真的装了**的东西显示「缺失」——
+    /// 那正是本模块头注禁的「对能用的安装报假警报」。
+    #[test]
+    fn the_declared_local_ccm_path_really_matches_the_name_we_install() {
+        let name = crate::backend::control::local_backend::local_ccm_entry_name();
+        let declared: Vec<&str> = ccm_landing_sites()
+            .into_iter()
+            .filter(|(_, h)| matches!(h, HostScope::Client | HostScope::Either))
+            .map(|(p, _)| p)
+            .collect();
+        assert_eq!(
+            declared.len(),
+            1,
+            "本机侧的 `ccm` 落点不是恰好一条（实得 {declared:?}）——\
+             多一条就是多一份要跟着改的东西（`K33`：所有命令只许有一处）"
+        );
+        let last = declared[0].rsplit('/').next().unwrap_or(declared[0]);
+        let ok = match last.strip_suffix('*') {
+            Some(prefix) => name.starts_with(prefix),
+            None => last == name,
+        };
+        assert!(
+            ok,
+            "闭集里申报的本机落点末段是 {last:?}，而生产上真放下去的名字是 {name:?} —— \n\
+             两边漂了。名字的唯一真相源是 `local_backend::local_ccm_entry_name()`；\n\
+             这一格漂开的后果不是编译错，是审计页在**装得好好的**机器上显示「缺失」。"
+        );
     }
 
     /// 有围栏的块必须可卸载——否则用户没法干净地退出。

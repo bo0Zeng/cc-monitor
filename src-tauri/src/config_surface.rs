@@ -210,6 +210,16 @@ fn resolve_by_destination(
             }
         }
         ToolDestination::RemoteHomeRelative(_) => Ok(PathResolution::Remote(declared.to_string())),
+        // 🔴 〔`K-R69` 09-12〕**两台机器上各一个落点** ⇒ 这一臂**不自己判在哪台机器上**，
+        //    一律按本机路径解析，再由 `project_onto_host` 用那条 touch 的 `host` 投影
+        //    （`Remote` 的照旧变成 `Remote(declared)`，`Client` 的留在本机）。
+        //    这么写有意买两件事：
+        //    ① 「本机还是远端」仍然只有 `host` 一个住址 —— 不在这里再判一次；
+        //    ② 上面那段「顺序要紧」的校验（必须以 `~/` 开头 · glob 只许在最后一段且只许一个 `*`）
+        //       对这个工具的**每一条** touch 都跑得到，不会被 host 短路掉。
+        ToolDestination::BothHomeRelative { .. } => {
+            resolve_local_home(declared, home, cfg_dir_env, is_dir)
+        }
         ToolDestination::LocalHomeRelative(_) => {
             resolve_local_home(declared, home, cfg_dir_env, is_dir)
         }
@@ -1358,6 +1368,12 @@ mod tests {
         use HostScope::*;
         let want: &[(&str, &str, HostScope)] = &[
             ("ccm", "~/.local/bin/ccm", Remote),
+            // 🔴 〔`K-R69` 09-12〕**本机那条** —— `Client` 是刻意的、也是本件的正题：
+            //    在它之前，闭集里落点是 `…/ccm` 的只有上面那一条（远端）⇒ 本机 0 条，
+            //    而用户 `K34` 逐字要的「旧的干净退役」就此没有承接方。
+            //    ⚠ 标 `Either` 会**说假话**：这一份是 monitor 自己在**它跑着的那台**上
+            //    放下去的（`local_backend::install_local_ccm_entry`），远端那台上没有它。
+            ("ccm", "~/.cc-monitor/bin/ccm*", Client),
             ("ccm", "~/.bashrc", Remote),
             // 〔`K-R60` 09-11〕cc-bus 的 `installable` 翻成 true 之后，
             // 「装得了就必须申报装到哪」当场要它 —— 部署真正写的就是这个目录。
@@ -1425,6 +1441,7 @@ mod tests {
                 ToolDestination::ProjectRelative(_) => "ProjectRelative",
                 ToolDestination::UserConfiguredPath { .. } => "UserConfiguredPath",
                 ToolDestination::NotInstalledByUs { .. } => "NotInstalledByUs",
+                ToolDestination::BothHomeRelative { .. } => "BothHomeRelative",
             };
             for f in t.touches {
                 by_dest.entry(key.to_string()).or_default().insert(f.host);
@@ -1606,10 +1623,19 @@ mod tests {
         )
         .unwrap();
         let ccm = TOOLS.iter().find(|t| t.id == "ccm").unwrap();
+        // 🔴 〔`K-R69` 09-12〕`ccm` 现在**两台机器上各一个落点** ⇒ 这一格从
+        //    「与 `CCM_CLI_REMOTE_PATH` 相等」变成「**远端那一半**与它相等」。
+        //    本机那一半钉在别处（`tool_registry` 的
+        //    `the_declared_local_ccm_path_really_matches_the_name_we_install`：
+        //    申报的那个串要盖得住 `local_backend::local_ccm_entry_name()` 真放下去的名字）——
+        //    两处钉的是两个真落点，别在这里再抄一份本机那个名字（`13b`：闭集只许一个住址）。
         assert_eq!(
             ccm.destination,
-            ToolDestination::RemoteHomeRelative(".local/bin/ccm"),
-            "注册表声明的 ccm 落点与 sftp.rs 的 CCM_CLI_REMOTE_PATH 不一致"
+            ToolDestination::BothHomeRelative {
+                local: ".cc-monitor/bin/ccm*",
+                remote: ".local/bin/ccm",
+            },
+            "注册表声明的 ccm 远端落点与 sftp.rs 的 CCM_CLI_REMOTE_PATH 不一致"
         );
 
         // ② 项目 MCP：`mcp.rs` 真正 join 的就是这个文件名

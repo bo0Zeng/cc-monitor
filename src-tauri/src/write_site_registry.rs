@@ -78,6 +78,15 @@ mod spawn_sites {
           `bash -lic` 那层与远端同语义（PATH/别名/函数按交互终端解析），`ccm` 正是靠它才被找到。\
           ⚠ **命令是参数**（D 阶段补审为了能测「挂住」而开）——生产侧唯一实参是 `CCM_PROBE_CMD`，\
           由 `the_only_production_probe_command_is_the_constant` 按源码钉住，别读成「这里能跑任意命令」"),
+        // ── 🔴 `K-R69`：**直接问我们自己放下去的那一份**「你是谁」。
+        ("ccm_probe.rs", "probe_binary_uncached", "`<我们那份 ccm> --ccm-probe`（不经 shell）",
+         "`KR69D2`：本机那条 `ccm` 入口的**身份**。必须起进程的理由与上一行不同 ——\
+          上一行问的是「你 PATH 上那个是谁」（非走登录 shell 不可，PATH 就是 rc 决定的），\
+          这一行问的是「**我们放下去的那一份是谁**」，路径我们自己知道 ⇒ 一个 shell 都不起，\
+          也就不吃用户 rc 的任何影响。两张名片一比才判得出「你 PATH 上那个是旧的」，\
+          而**只比路径认不出同名不同物** —— 那正是本件的题面（用户 `~/.local/bin/ccm` 那份旧 bash）。\
+          ⚠ 参数是**路径**，来自 `local_backend::local_ccm_entry_name()` 拼出来的落点，\
+          不吃任何用户输入；等待 / 读 / 解析与上一行**共用** `probe_spawned`（抄第二份必漂）"),
         ("cc_bus.rs", "local_shell_read", "`bash -lc <cc-bus 的读串>`",
          "P4a-Y1：本机 cc-bus 的**读**面（清单 / 在线 / inbox）。必须起进程的理由是\
           **不许有第二份文件布局知识** —— `CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样，\
@@ -324,6 +333,18 @@ mod tests {
           ③ 删不掉就算了，**清扫失败绝不挡住释放**。\
           ★ 为什么会有残骸：临时名从固定名改成**带 pid**（防两个 monitor 写同一个 `.partial`）之后，\
           崩掉的那些不会再被下一次覆盖 ⇒ 得自己收。"),
+        // ── 🔴 `K-R69`：**本机那条 `ccm` 入口**。这是安装动作（`ccm` 这个工具的本机那一半）。
+        ("local_backend.rs", "install_local_ccm_entry", Some("ccm"),
+         "把**后端二进制自己的改名副本**放到 `~/.cc-monitor/bin/ccm`（Windows 上带 `.exe`，\
+          名字的唯一真相源是 `local_backend::local_ccm_entry_name`）。\
+          ⚠ **不是第二份实现**：`control::ccm::intercept` 认 `argv[0]` 的 basename ⇒ \
+          改个名字就是那条入口，零新增 argv 解析（`K33`：所有命令只许有一处）。\
+          🔴 **落点刻意不是 `~/.local/bin/ccm`** —— 那是用户那份旧 `ccm` 住的地方，\
+          `K34` 逐字「原本的配置**要手动删除**」、`K31`「不许动用户机器」\
+          ⇒ 产品一个字节都不动它，只在自己的目录里放一份，并**说得出**\
+          「你 PATH 上那个不是我们装的这一份」（`ccm_probe::classify_path_ccm`）。\
+          写法与 `extract_embedded_to` 同一套（`.partial` + 置可执行位 + `rename`），\
+          唯一调用点是 `local_backend::resolve_or_extract` ⇒ 两条生产路共用这一处。"),
         // ── PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。**这是安装动作**。
         ("cc_bus_deploy.rs", "deploy_into", Some("cc-bus"),
          "写 `<claude_dir>/skills/cc-bus/` 的 17 个文件（内嵌自 `shared/cc-bus/`）。\
