@@ -163,3 +163,52 @@ KR69D3 别名生成器吐的那句 `ccm`，指得到我们装的那一份
      而 ①~⑦ 没有一处动它。要红它得切那一支（本轮**没切**，如实登记）。
   ⇒ 真有牙、且不是阴性对照的仍绿条目：**1 / 2 / 3 三条，各自的刀在上面点了名**；
     4/5/6 是阴性对照（成对才算数）；7 缺一刀，登记为未验。
+
+════════════════════════════════════════════════════════════════════════
+补记（09-12，收窗口前）：PM 的刀 T —— **两条判据之间那道缝**，以及补上它的两格
+════════════════════════════════════════════════════════════════════════
+【缝在哪】我用两条判据夹「本机入口」，而**两条都诚实地标了自己的边界**：
+  · `the_local_ccm_entry_is_a_copy_of_the_backend_itself`      —— 喂夹具测**那个函数**；
+  · `the_resolution_path_really_puts_the_local_ccm_entry_down` —— 查源码形态，自标
+    「约定型守卫：挡得住『接线被删掉』，挡不住『换个名字继续错』」。
+⇒ 缝在中间：**接线还在、函数没改，而调用点喂进去的可以不是后端本体。**
+★ 这一刀能切中，靠的是那两句边界话 —— PM 逐字：「边界写得越诚实，缝越好找」。
+
+刀 T（PM 现打）把生产调用点第二个实参 `bin` 换成 `&extract_dir.join("pm-knife-not-the-backend")`
+  判定行：test result: ok. **1393 passed; 0 failed** —— **一条都没红**
+  后果不是编译错，是**静默放下一份不是后端的文件**；而 `--ccm-probe` 探它会失败，
+  **失败长得像「没装」**（那句话正是我自己在另一条判据里写的）。
+
+【补上的两格】（都在 `local_backend.rs`，同一拍改对了那句不完整的边界描述 —— 纪律 ⑲）
+  ① 形态那一半：`the_resolution_path_really_puts_the_local_ccm_entry_down` 多钉一对 —— 
+     `if let Resolved::Found(bin) = &resolved {` 恰好一处 ＋
+     `install_local_ccm_entry(extract_dir, bin, make_executable)` 恰好一处。
+     ⚠ **钉的是这一对，不是两个孤立的串**：分开钉的话，绑定留着、实参换掉照样过。
+  ② 不看拼法那一半（**新判据**）：`the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved`
+     —— 真跑一趟 `resolve_or_extract`（`target_triple` 取盘上必不存在的中性串 ⇒ 必走
+     「释放内嵌那份」那一支），比的是**落下来那份 `ccm` 的字节 == 刚解析出来的那份后端**。
+     三条反向自检：真的 `Found` 了 · 释放出来那份就是喂进去的字节 · 那两个文件不是同一个。
+
+【补完之后重打，基线】test result: ok. **1394 passed; 0 failed; 10 ignored**（＋1 = 新判据 ②）
+
+【刀 T 三形，逐个复打】分母同上（`cargo test -p monitor --lib`，沙箱内）
+  刀 T   实参换成一个**不存在**的路径（rustfmt 会把调用拆成多行）
+         判定行：test result: FAILED. **1392 passed; 2 failed**
+         红：the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved（行为，
+             逐字「解析出后端之后，本机那条 `ccm` 入口**没被放下来**」）
+           · the_resolution_path_really_puts_the_local_ccm_entry_down（形态）
+  刀 T′  **留在同一行**换实参（`&knife_t()`）—— 存在的意义是**排除「红是因为换行了」这个混淆**
+         判定行：test result: FAILED. **1392 passed; 2 failed** —— 同样两条
+         ⇒ 形态那一格红的是**实参**，不是排版。
+  刀 T″  喂一份**真的存在**的别的文件（`decoy`，内容 `not the backend`）——
+         这一形**复制会成功**，是三形里最危险的那个：盘上真有一个叫 `ccm` 的可执行文件，
+         而它不是后端 ⇒ 「没装」与「装错了」在用户那边长得一模一样。
+         判定行：test result: FAILED. **1391 passed; 3 failed**
+         红：上面两条（行为那条红在**逐字节比较**上）
+           · write_site_registry::every_write_site_is_declared_and_installers_name_a_real_tool
+             ⚠ **第三条是我这把刀自己的脚手架招来的**（`decoy` 里那句 `fs::write` 没登记），
+             **不算本格的牙** —— 如实标出来，别把它读成「这一格有三条判据盯着」。
+
+【射程 · 最小面】三刀都是 **2 条**（T″ 那条脚手架红不计）。**这一格的最小面下界就是 2**，
+  而且是刻意的：形态那一条挡「源码上被换掉」、行为那一条挡「不论怎么拼都放错了」，
+  **两条合起来才是那道缝，单独任何一条都不够**（这句话写进了判据的头注）。
