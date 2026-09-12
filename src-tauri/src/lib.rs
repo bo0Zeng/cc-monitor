@@ -95,6 +95,8 @@ mod bus_identity_registry; // cc-bus：拿 id 点名 tmux 前必须核身份（�
 mod byte_cap_registry; // audit-0805 F06：字节上限登记表（管什么量 + 超限怎么办 + 跨 crate 对拍）
 mod capability_registry;
 #[cfg(test)]
+mod dial_home_registry; // K-R74：「解耦干净」改述成三样可判的东西 —— 终点二值旗（russh 在不在界面 manifest 里）+ 过程递减棘轮（还没搬走的拨号处数）+ 拨号锚点的唯一住址（整体 #[cfg(test)]）
+#[cfg(test)]
 mod doc_copy_registry; // audit-0805 F18：散文里的数字副本清账（E12 的第二条路变成机检）
 mod e2e_gate_registry; // audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进
 mod exec_site_registry;
