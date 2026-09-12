@@ -2351,7 +2351,7 @@ mod tests {
         use std::time::Duration;
 
         // ★★ **fail closed，排在一切之前**（`K-R7`）。
-        let shim = crate::local_daemon::demand_tmux_shim("本条起真 daemon 且起真 tmux");
+        let shim = crate::local_daemon::tests::demand_tmux_shim("本条起真 daemon 且起真 tmux");
         let _guard = crate::inbound_client::local_origin_test_lock();
 
         // ★★★ 「用户真实的 tmux」这一问**必须绕开 PATH 上的 shim**〔`K-R7` 08-31，实测逼出来的〕。
@@ -2672,7 +2672,7 @@ mod tests {
     #[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 e2e/local-backend-supervise.sh 那条带 shim 的路"]
     fn the_local_daemon_really_registers_an_inbound_client() {
         // ★★ **fail closed，而且排在一切之前** —— 见上面头注第三段。
-        let shim = crate::local_daemon::demand_tmux_shim(
+        let shim = crate::local_daemon::tests::demand_tmux_shim(
             "本条起真 daemon，而 daemon 一上来就往它连得到的 tmux server 装全局 hook",
         );
         let _guard = crate::inbound_client::local_origin_test_lock();
@@ -4334,7 +4334,7 @@ mod tests {
     #[ignore]
     fn e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed() {
         let bin = std::env::var("CCM_E2E_DAEMON").expect("要 CCM_E2E_DAEMON");
-        let shim = crate::local_daemon::demand_tmux_shim("本条起真 daemon");
+        let shim = crate::local_daemon::tests::demand_tmux_shim("本条起真 daemon");
         let claude = std::env::var("CCM_E2E_CLAUDE_DIR").expect("要 CCM_E2E_CLAUDE_DIR");
         let events: Arc<Mutex<Vec<SuperviseEvent>>> = Arc::new(Mutex::new(Vec::new()));
         let ev = events.clone();
