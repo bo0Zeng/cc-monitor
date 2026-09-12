@@ -51,6 +51,44 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 
 /// 能力 token。消费者（`ccm_invocation.rs::CLI_REQUIRED_CAPS` / 前端）据此判断
 /// 「这条命令渲出来对面认不认」。
+///
+/// # 🔴 加 / 删一个 token 之前：**谁在数它**（`K-R61` 09-11 现打**五处**）
+///
+/// ⚠ **这张表就是给下一个加 token 的人看的** ⇒ 它漏一行，下一个人就会被那一处打红一次。
+/// 〔`K-R61` 09-11 现打过一次：初版这里只写了四处，漏的正是 `plugin/probe.rs` 那一行 ——
+/// 而那一处本轮**真改过、也报过 PM**，就是没落进表里。PM 的刀 `P` 逮到它。〕
+///
+/// - `src-tauri/src/plugin_class_registry.rs` —— 数**个数**（那条断言里逐字写着
+///   「这个数变了要顺手看一眼它们」）。加 token ⇒ **那个数要跟着改**，否则当场红。
+/// - `remote-daemon-proto/src/plugin/probe.rs` 的
+///   [`crate::plugin::probe::tests::the_required_list_is_checked_against_what_the_real_plugin_declares`]
+///   —— 它拿 [`probe_output`] **真吐出来的那一行** `capabilities=` 当活体语料，再数**个数**。
+///   加 token ⇒ **那个数要跟着改**（与上一行同形，是本树内的第二处计数）。
+///   〔依据：PM 刀 `P`（09-11）往本常量再加一个 token、别处一字不改，daemon 套
+///   `682 → 681 passed / 1 failed`，**只红这一条**；monitor 套同刀 `1381 → 1380 / 1`，
+///   只红上一行那条。⇒ 两处**各自最小面 1 条**，而它们是仅有的两处「数个数」的。〕
+/// - `src-tauri/src/backend/control/ccm_invocation.rs` —— `CLI_REQUIRED_CAPS`
+///   与判据自带的 `STATIC_CAPS_EXPECTED`，两处都是**子集检查** ⇒ 加 token 安全。
+/// - `e2e/ccm-contract-parity.sh` —— 数 `capabilities=` 覆不覆盖 TS 那一份，同样是**⊇**。
+/// - `src-tauri/build.rs` 的 `extract_capabilities` —— ⚠ **它盖不到这里**：
+///   它按 `const CAPABILITIES` 这一行去 `remote-daemon-proto/src/main.rs` 里抠，
+///   抠的是 daemon **流模式**那个同名常量（`bg` / `tail-only`），与本常量无关。
+///   〔这句话是本轮实测的，不是推的：加了下面那个 token 之后 `DAEMON_CAPABILITIES` 逐字不变。〕
+///
+/// ⇒ 归一句：**「数个数」的两处必须跟着改（前两行）· 「子集检查」的两处加 token 安全，
+/// 删 / 改名才危险 · `build.rs` 那一处与本常量无关。**
+///
+/// # `base-url-across-tmux` 是怎么来的〔`K-R61` 09-11〕
+///
+/// 它声明的是「**我会把 `ANTHROPIC_BASE_URL` 带过 tmux 的进程边界**」——
+/// tmux server 的 `update-environment` 默认列表不含它，外层那句 `export`
+/// 在边界上会被整个吃掉（`plan.rs` 那段注释逐字「账号注入 100% 失效，**实测过**」）。
+///
+/// 🔴 **这件事我们早就做到了，只是一直没说**：`plan.rs` 的容器分支把它显式化进载荷内侧。
+/// 于是 monitor 那边 `history.rs::RELAY_KEEPS_THE_OLD_PATH` 按「探不到就不放行」照旧挡着，
+/// **挡的却是一件我们自己已经做到的事** —— 「实现与申报不一致，而守它的东西看不见那个字段」。
+/// 本 token 补的就是**申报**那一半；驱动它的判据是
+/// [`tests::the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it`]。
 pub(crate) const CAPABILITIES: &[&str] = &[
     "new",
     "resume",
@@ -69,6 +107,7 @@ pub(crate) const CAPABILITIES: &[&str] = &[
     "bus-register",
     "daemon-discover",
     "account-via-daemon",
+    "base-url-across-tmux",
 ];
 
 /// 撞名时那句话的**唯一格式串**。
@@ -304,7 +343,7 @@ fn execute(plan: Plan) -> i32 {
                         let taken: Vec<String> = rows.into_iter().map(|(n, _, _)| n).collect();
                         cc.name = plan::next_free_name(&cc.name, &taken);
                     }
-                    // 问不到就**不退让** —— 与 `shared/ccm` 那句
+                    // 问不到就**不退让** —— 与那份已删的 bash `ccm`（`07e4e72` 删）那句
                     // `tmux has-session … 2>/dev/null` 同义（问不出来当没占）。
                     // 真撞上了还有 `created:false` ⇒ rc=3 那条响亮失败兜底。
                     Err(_) => {}
@@ -315,7 +354,7 @@ fn execute(plan: Plan) -> i32 {
             //
             // 那道门上挂着字段校验（`check_field` 拒控制字符 · `check_size` 收窄宽高），
             // 而**校验只长在它身上** —— 直接构造结构体等于绕过去。
-            // 从前 `shared/ccm` 也是把这一坨编成 JSON 发给后端的，走的就是同一道门；
+            // 那份已删的 bash `ccm` 从前也是把这一坨编成 JSON 发给后端的，走的就是同一道门；
             // 搬进同一个进程之后**别把门丢了**（迁移是强度悄悄下降的经典时机）。
             let req = match crate::control::launch::parse_request(&launch_args(c)) {
                 Ok(r) => r,
@@ -560,6 +599,70 @@ mod tests {
             "这些旗标认得、但 `--help` 里**没有属于它自己的那一行**：{missing:?}\n\
              （用户看得见的唯一一份说明就是 USAGE；认一个不说一个 = 隐藏开关。\n\
               ⚠ 在别的行的括注里被提一句**不算** —— 那一版实测是空转的。）"
+        );
+    }
+
+    /// 🔴 `K-R61` 09-11：**`base-url-across-tmux` 这个 token 不是一句自称。**
+    ///
+    /// 它声明的那件事（把 `ANTHROPIC_BASE_URL` 带过 tmux 的进程边界）由本条
+    /// **真去算一遍容器路的计划**来兑现 —— 量的是 [`plan::build`] 交出来的那一串载荷，
+    /// 不是源码文本，也不是本条自己再写一遍的什么规则。
+    ///
+    /// ⇒ 两个方向都有牙：
+    /// - 把 token 从 [`CAPABILITIES`] 里删掉 ⇒ 第一格红（**说了才算数**）；
+    /// - 把 `plan.rs` 那句 `export ANTHROPIC_BASE_URL=…` 掏掉 ⇒ 第二格红（**做到了才许说**）。
+    ///
+    /// ⚠ **本条没买到的**：「变量真的穿过了一次**真** tmux 边界」要真机 tmux，本条量的是
+    /// 载荷字符串。那一半归 e2e，别把本条读成「实测过了」。
+    #[test]
+    fn the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it() {
+        // ① 申报这一半。
+        assert!(
+            CAPABILITIES.contains(&"base-url-across-tmux"),
+            "`base-url-across-tmux` 不在 CAPABILITIES 里了 —— 那么 monitor 侧\n\
+             `history.rs::RELAY_KEEPS_THE_OLD_PATH` 的退役条件就**又没有落点了**，\n\
+             而它正是 `K-R61` 立件的原因（前提指着一个已经被删掉的文件）。"
+        );
+
+        // ② 实现这一半 —— 真算一遍，只喂替身环境，一个字节不碰这台机器（`K31`）。
+        let base_env = || Env {
+            home: "/home/pi".into(),
+            pwd: "/p".into(),
+            accts_manifest: "/nonexistent/accounts.json".into(),
+            account_env: "CLAUDE_CONFIG_DIR".into(),
+            self_path: "/usr/local/bin/ccm".into(),
+            ..Default::default()
+        };
+        let payload_of = |env: &Env| -> String {
+            let args: Vec<String> = ["--tmux=n1", "--cwd", "/p"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect();
+            let Parsed::Opts(o) = argv::parse(&args).expect("该解析得动") else {
+                panic!("`--tmux=n1` 不该被解析成 Early")
+            };
+            match plan::build(&o, env, &AccountTable::default()).expect("该算得出计划") {
+                Plan::Container(c) => c.payload,
+                other => panic!("`--tmux=` 该走容器路，实得 {other:?}"),
+            }
+        };
+
+        let mut with_relay = base_env();
+        with_relay.anthropic_base_url = Some("https://relay.example/v1".into());
+        let sent = payload_of(&with_relay);
+        assert!(
+            sent.contains("export ANTHROPIC_BASE_URL='https://relay.example/v1'"),
+            "容器路的载荷里没有把中转地址显式化 ⇒ 它在 tmux 边界上会被吃掉，\n\
+             而 CAPABILITIES 里那个 `base-url-across-tmux` 就成了一句**假申报**。\n\
+             实得载荷：{sent}"
+        );
+
+        // ③ 反空真对照：不给这个变量，那一串里不许出现它。
+        //    （没有这一格，上面那句 `contains` 可能是靠载荷恒带某段文本过的。）
+        let clean = payload_of(&base_env());
+        assert!(
+            !clean.contains("ANTHROPIC_BASE_URL"),
+            "没设中转地址，载荷却带上了它 —— 上面那一格此刻是恒真的：{clean}"
         );
     }
 

@@ -2,7 +2,7 @@
 # U9a「保住清单差分对拍」：把主计划 S10 里那七条散文式的「U9 之后必须保住」，
 # 变成会红的判据。跑的是**真 `ccm`**（= 后端二进制本体），不是 shim、不是手搓字符串。
 #
-# ★★ `K-R48` 第二拍（09-11）：被测对象从 `shared/ccm`（bash）换成**后端二进制**。
+# ★★ `K-R48` 第二拍（09-11）：被测对象从那份 bash `ccm` 换成**后端二进制**。
 #   〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」。
 #   本轮对本套件做了两件事，**分开记**：
 #     ① **repoint** —— `CCM` 指向 `cc-monitor-remote`（`argv[0]` basename 为 `ccm` 即进一次性模式），
@@ -24,7 +24,7 @@
 # `ccm-print-parity` 验「渲染器的意图能被 ccm 接住」、`ccm-acceptance` 验真 tmux 行为、
 # `ccm-pretrust` 验信任写入、`cc-spawn-uplift` 验 cc-spawn 那条路。
 # **没有一套比对「`--print` 说的」与「真跑做的」**——而那正是 U9b 搬决策时最容易漏的地方：
-# `--print` 那段与真 exec 那段（`shared/ccm` 里 `do_print` 分支 vs 其后的「非容器路径」段）
+# `--print` 那段与真 exec 那段（那份已删的 bash `ccm` 里 `do_print` 分支 vs 其后的「非容器路径」段）
 # 是两份手写副本，搬一份漏一份，今天不会红。**行号刻意不写** —— 它们本轮就漂了三次。
 #
 # ## 三组
@@ -39,7 +39,7 @@
 #   判「装没装」，`src/launch-render-cli.ts::CLI_REQUIRED_CAPS` 靠 `capabilities=` 决定
 #   走 CLI 渲染器还是兜底。两处都只对**手写 fixture** 测过。
 #   ⚠ 精确说法（审计订正）：真脚本的 probe 输出**并非全无覆盖** —— `cc-spawn-uplift` 主流程
-#   不设 `CCM_BIN`，于是 `cc-spawn` 解析到真 `shared/ccm` 并对 `detach`/`tmux-size` 两项
+#   不设 `CCM_BIN`，于是 `cc-spawn` 解析到真 `ccm` 并对 `detach`/`tmux-size` 两项
 #   fail-closed，那 21 条间接盖住了这两项。**零覆盖的是**：首行 `name=ccm` · `version=` ·
 #   `agents=` · TS 侧那 7 项 `CLI_REQUIRED_CAPS`。少一项能力 ⇒ app 静默退到兜底渲染器
 #   （丢账号保真度），用户看不见。
@@ -303,6 +303,24 @@ done
 ck "capabilities= 覆盖 TS 侧全部 CLI_REQUIRED_CAPS（⊇，不是 ==）" "" "$MISSING"
 ck "agents= 行列出 claude 与 codex" "1" \
    "$(printf '%s\n' "$PROBE" | grep -c '^agents=claude,codex$')"
+
+# ── 〔`K-R61` 09-11〕**申报与兑现要一起量** ──────────────────────────────────
+# monitor 侧 `history.rs::RELAY_KEEPS_THE_OLD_PATH` 的退役条件点名的就是这个 token。
+# 它先前的形状是「能力在、声明不在」：容器路真的转发 `ANTHROPIC_BASE_URL`，
+# 而 `capabilities=` 里一个 token 都没声明它 ⇒ 那条降级理由挡的是我们自己做到的事。
+# ⇒ 这里**两半一起钉**：说了（① ），而且真做了（② ），外加一条反空真（③ ）。
+ck "capabilities= 声明 base-url-across-tmux（monitor 侧退役条件点名的那个 token）" "1" \
+   "$(printf '%s\n' "$CAPS" | grep -cx 'base-url-across-tmux')"
+RELAY_PRINT="$(base_env ANTHROPIC_BASE_URL=https://relay.example/v1 \
+                 "$CCM" --print --tmux=r61-caps --cwd "$CWD" 2>&1)"
+# ⚠ 只 grep `export ANTHROPIC_BASE_URL=` 这个头：值那一半在载荷里是**被 quote 过的**
+#   （`send-keys` 那一层把内层单引号转义成 `'\''`），照原样 grep 整条值必然零命中 —— 那会是假红。
+#   「值真的带对了」那一格由 daemon 侧那条 Rust 判据逐字钉（它量的是 quote 之前那一串）。
+ck "兑现：--tmux 的载荷内侧真带 export ANTHROPIC_BASE_URL=（否则上面那个 token 是假申报）" "1" \
+   "$(printf '%s\n' "$RELAY_PRINT" | grep -c 'export ANTHROPIC_BASE_URL=')"
+NORELAY_PRINT="$(base_env "$CCM" --print --tmux=r61-caps --cwd "$CWD" 2>&1)"
+ck "反空真：不设中转地址时那一串里没有 ANTHROPIC_BASE_URL" "0" \
+   "$(printf '%s\n' "$NORELAY_PRINT" | grep -c 'ANTHROPIC_BASE_URL')"
 
 # ⚠ 〔`K-R48` 第二拍 09-11〕**`A′f`(6) · `A′g`(2) · `A′h`(5) 共 13 条整组删了**
 #   （verdicts 第 344–356 行；`A′g` 判 `M/rust`，其余判 `N`）。

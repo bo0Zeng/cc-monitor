@@ -9,11 +9,12 @@
  *  - 任一已触发维度的 `cliFlags(ctx)` 返回 `null` → 强制走兜底。F05 前 `account` 维度恒如此
  *    （调用方只有 `configDir` 没有账号「名字」）；F05 后账号名已线通，`cliFlags` 对 `account`/
  *    `base` 两态都吐实际 flag、不再返回 `null`——这条规则本身留给未来任何"半成品"维度当安全网。
- *  - `container.mode === "send-into"` → 强制走兜底。**这条是防 #76 复发的关键**：`shared/ccm`
+ *  - `container.mode === "send-into"` → 强制走兜底。**这条是防 #76 复发的关键**：`ccm`
  *    的 `--tmux` 只有一种容器形态，没有「就地复用已存在 idle tmux、不新建」
  *    的模式；硬套会让 #76（claude 已退出但 tmux 还在时短路跳过 send-keys、把用户 attach 进空
  *    shell）以 CLI 路径的新形式复发。**诚实放弃，不近似**。
- *    **`attach-only` 不在此列**——`ccm attach <名>` 与 `shared/ccm` 源码核对，就是
+ *    **`attach-only` 不在此列**——`ccm attach <名>` 与 `ccm` 源码核对（今天住
+ *    `remote-daemon-proto/src/control/ccm/`），就是
  *    `exec tmux attach -t "=$名:"`，与兜底渲染器的 `SESSION_BACKEND.attach()` 逐字同构，没有
  *    #76 那种「建还是接」的歧义，可以安全走 CLI 渲染器（F03 Phase D
  *    架构审计发现：早期实现把这两种模式并入同一把闸门，导致 `renderCli` 的 attach 分支和
@@ -44,7 +45,10 @@ function argv(token: string): string {
   return /^[A-Za-z0-9_@%+=:,./-]+$/.test(token) ? token : `'${token.replace(/'/g, `'\\''`)}'`;
 }
 
-/** CLI 语法覆盖面（对齐 `shared/ccm` 的 `--ccm-probe` 输出 `capabilities=`）——
+/** CLI 语法覆盖面（对齐 `remote-daemon-proto/src/control/ccm/mod.rs` 的 `CAPABILITIES`，
+ *  也就是 `--ccm-probe` 吐的那行 `capabilities=`）——
+ *  〔`K-R61` 09-11：这里原先点的是那份 bash `ccm` 脚本，它 `07e4e72` 就删了。
+ *   本列表是**子集检查** ⇒ 对面加 token（09-11 加了 `base-url-across-tmux`）不影响这里。〕
  *  **只放"与具体维度无关的动作/容器语法"**。
  *
  *  R04② 后 `account` 与 `model` **已从这里移出**，改由各自维度的 `requiredCaps` 声明
@@ -53,7 +57,7 @@ function argv(token: string): string {
  *  不进维度注册表的东西。**残留的双机制是有边界的、不是没解决**（R04 Phase D 审计建议 7）：
  *  `new`/`resume`/`attach` 三个动作能力今天被**全部**要求，而一次调用只用其中一个——
  *  这是已知的过度收紧，代价是"装了只支持部分动作的 ccm"会整体降级；
- *  因 `shared/ccm` 从 F02 首版就三个动作齐全，实际不可达，故不额外收窄。 */
+ *  因 `ccm` 从 F02 首版就三个动作齐全，实际不可达，故不额外收窄。 */
 const CLI_REQUIRED_CAPS = ["new", "resume", "attach", "tmux", "cwd", "launcher", "ccm-sid"] as const;
 
 /** R04①：把"能不能渲染"与"渲染出什么"合成一次遍历、一个返回值。
