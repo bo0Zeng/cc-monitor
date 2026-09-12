@@ -35,11 +35,14 @@
 //!    记着 `11 → 10`（F10b 第一批，`usage.rs` 改走本机后端的 `--usage`）→ `9`
 //!    → `8`（F10b 第二批·下半，`local_accounts.rs` 改走 sidecar 的 `--session-accounts`）
 //!    → `7` → `8`（`P8a` 新增）。接线点今天就在生产段上：`usage.rs::aggregate_usage_all`
-//!    （一个 `#[tauri::command]`）直接调 `backend::control::local_query::run_query(…, ["--usage"])`。
-//! ③ 🔴 **`backend/` 里今天已经住着读面代码，只是挂在 `control` 线上** ——
-//!    `control/local_query.rs` 头注第一句逐字是「daemon 的**读面**是 14 条一次性查询子命令」。
-//!    ⇒ 「只建一个空目录是装饰」那条反对理由**今天不成立**：`observe/` 一建出来就有真住户，
-//!    而那个住户此刻住在**错的能力线**上 —— 那正是这条边界当初要防的事。
+//!    （一个 `#[tauri::command]`）直接调 `backend::observe::local_query::run_query(…, ["--usage"])`。
+//! ③ 🔴 **`backend/` 里已经住着读面代码，而它当时挂在 `control` 线上** ——
+//!    那个住户头注第一句逐字是「daemon 的**读面**是 14 条一次性查询子命令」。
+//!    ⇒ 「只建一个空目录是装饰」那条反对理由**不成立**：`observe/` 一建出来就有真住户。
+//!    〔`K-R71` 09-12 **办掉了**：它今天住 `observe/local_query.rs`。
+//!    本条原话逐字是「**只是挂在 `control` 线上**」「而那个住户**此刻**住在**错的能力线**上」
+//!    —— 那两句描述的是 09-12 之前的盘面，留着是因为它是下面那一节的**理由**，
+//!    不是因为它还成立。〕
 //!
 //! ⚠ 墓碑第一段里另有三处已经不成立的事实，一并记下（同族，S11「描述当下的字段最易腐」）：
 //! `local_accounts.rs` 的读面**已经退役了**，它不再是「U7 要退役的那批」；
@@ -47,15 +50,30 @@
 //! 是 daemon 的文件，monitor 从来没有过这个文件（`git log --all` 对该路径零提交）；
 //! 「30KB」今天是 62KB。
 //!
-//! ## 下一步是什么（有形状的一件活，不是「等某个人想起来」）
+//! ## 下一步是什么 —— 🔴 **09-12 做掉了**（`K-R71`，4a）
 //!
-//! **建 `observe/`，把 `control/local_query.rs` 挪成 `observe/local_query.rs`**，
-//! 连 `BACKEND_FILES` 那条登记的能力线一起改成 `observe`。那是**真搬运**不是装饰：
-//! 它本来就是读面的传输，挂在 `control` 上只是因为当初没有第二个地方可挂。
-//! ⚠ **本拍没做这一步**（写区不含 `control/mod.rs` 与那批 `use`）。挪的时候有两条判据看着：
-//! 下面的 `every_file_under_backend_is_registered_with_a_reason`（目录与登记表两个方向都查）
-//! 与 `every_file_under_backend_lives_on_a_capability_line`（它**认** `observe/`，
-//! 也只认 `control` / `observe` 两条线）。这条**不是遗漏**，`observe/` 一建出来就自动纳入。
+//! 〔原话逐字：「**建 `observe/`，把 `control/local_query.rs` 挪成 `observe/local_query.rs`**，
+//! 连 `BACKEND_FILES` 那条登记的能力线一起改成 `observe`」「⚠ **本拍没做这一步**（写区不含
+//! `control/mod.rs` 与那批 `use`）」「这条**不是遗漏**，`observe/` 一建出来就自动纳入」。〕
+//!
+//! 落地形态就是那一句：`observe/local_query.rs` ＋ `BACKEND_FILES` 里那一行的能力线是
+//! `observe` ＋ `control/mod.rs` 不再 `pub mod` 它 ＋ 两个真调用方（`usage.rs`、
+//! `local_accounts.rs`）改走 `backend::observe::local_query`。
+//!
+//! ## 🔴 「两条判据已经在那儿等着」这句话，`K-R71` **真去验了**（此前没有人验过）
+//!
+//! 那两条是下面的 `every_file_under_backend_is_registered_with_a_reason`（自陈「目录与登记表
+//! **两个方向都查**」）与 `every_file_under_backend_lives_on_a_capability_line`
+//! （它**认** `observe/`，也只认 `control` / `observe` 两条线）。
+//! 09-12 的实测读数（每一刀最小面、逐条住 `evidence/K-R71-observe归位.md`）：
+//!
+//! - 往 `observe/` 下多放一份不登记的文件 ⇒ 前者**红**（方向：盘上多、表上无）；
+//! - `BACKEND_FILES` 里留一条指向不存在文件的条目 ⇒ 前者**也红**（方向：表上有、盘上无）
+//!   —— 「两个方向都查」这句**自陈**至此有了实测，不再只是代码自己说的话；
+//! - 把那一行的能力线改回 `"control"` ⇒ 后者**红**（路径前缀与能力线对不上那一断言）。
+//!
+//! ⚠ 三刀都**只红该红的那一条**（另加编译期就该炸的不算读数）。⇒ 「一建出来就自动纳入」
+//! 也**不再是**一句没人验过的话。
 //!
 //! ## 🔴 但原句的后半（「把**那批读面**搬进来再退役」）没有被叫醒 —— 今天没有触发器
 //!
@@ -81,6 +99,7 @@
 //! 就红」这句今天**语义是反的** —— 它红是「有人把它搬回主配置了」（回归），不是「那一刻到了」。
 
 pub mod control;
+pub mod observe;
 
 /// 本目录下每个文件的**归属登记**：`(相对 `backend/` 的路径, 能力线, 一句为什么在这里)`。
 ///
@@ -142,13 +161,20 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
          往 tmux server 装全局 hook 且没有开关（F05 摸底 §2.5）",
     ),
     (
-        "control/local_query.rs",
+        "control/launch_wire.rs",
         "control",
+        "前端结构化请求 → wire 适配 → ccm 调用行 / 裸载荷（两个 tauri 命令）",
+    ),
+    ("observe/mod.rs", "observe", "读面的说明 + 什么该进来的判准"),
+    (
+        "observe/local_query.rs",
+        "observe",
         "F10a：**本机一次性查询的传输** —— 「本地 = 不走 ssh 的远端」那一跳的本地版。\
          daemon 的读面是 14 条一次性子命令，**不在常驻通道上**（hello 的 `commands` 里\
          一条读命令都没有）⇒ 切读面 = exec 一次 sidecar 拿 stdout。协议一个字不改。\
-         ★ **它是本目录里唯一的读面文件** —— 挂在 `control` 线上只因为 `observe/` 还没建，\
-         见本文件头注「下一步是什么」那一节。\
+         ★ **它是本条能力线上今天唯一的住户** —— 〔`K-R71` 09-12 归位；本格原话逐字：\
+         「★ **它是本目录里唯一的读面文件** —— 挂在 `control` 线上只因为 `observe/` 还没建，\
+         见本文件头注「下一步是什么」那一节」，`observe/` 建起来之后那句话失效〕。\
          〔订正 2026-09-10 —— 本格原话逐字：「⚠ 今天**零生产调用方**（F10b 接线），\
          由它自己那条前提触发器盯着 —— 一有调用方就红，逼 `local_read_surface_registry` \
          的棘轮跟着往下拧」。**两句今天都不成立**：那条触发器 2026-08-04 就已经响过一次并\
@@ -156,11 +182,6 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
          改成「每个调用方都必须已经从棘轮账上下来」）；而生产调用方 09-10 现打**不是零** —— \
          `usage.rs::aggregate_usage_all` 与 `local_accounts.rs::list_local_session_accounts` \
          都在调它。⇒ 这里不再写「有几个调用方」这种会腐的数，那个数的家在那条判据里〕",
-    ),
-    (
-        "control/launch_wire.rs",
-        "control",
-        "前端结构化请求 → wire 适配 → ccm 调用行 / 裸载荷（两个 tauri 命令）",
     ),
     (
         "control/agent_profile_parity.rs",
