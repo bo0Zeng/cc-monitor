@@ -1,0 +1,210 @@
+K-R68 载体普查 —— 量具住址 evidence/K-R68-carrier-census.py
+量于（本机时钟）：2026-09-12T01:54:38-07:00
+tree-a = /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r68
+tree-b = /home/zbl/文档/claudecode-frontend/cc-monitor
+home   = /home/zbl/.cc-monitor
+
+==============================================================================
+§1 三种载体的住址（源码面，量于 tree-a）
+==============================================================================
+tree-a = /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r68  HEAD = acd1ba2d24bcfa3612e0703fdbf415b000bfa213
+tree-a git status --porcelain 行数 = 2
+
+  ①内嵌·供本机  目录 src-tauri/native-daemon/
+    期望文件：cc-monitor-native, cc-monitor-native.build_id, cc-monitor-native.target
+    消费侧：src-tauri/src/backend/control/local_backend.rs 的 include_bytes!（`native_embedded_daemon`）；名字定死在 build.rs::NATIVE_DAEMON_DIR/FILE
+
+  ②内嵌·供推远端  目录 src-tauri/embedded-daemons/
+    期望文件：cc-monitor-remote-x86_64, cc-monitor-remote-x86_64.build_id, cc-monitor-remote-aarch64, cc-monitor-remote-aarch64.build_id
+    消费侧：src-tauri/build.rs::embed_daemons 拷进 OUT_DIR → src-tauri/src/sftp.rs 的 include_bytes!(concat!(env!("OUT_DIR"), …))
+
+  ③安装包那份  目录 src-tauri/binaries/
+    期望文件：cc-monitor-remote-<triple>[.exe]
+    消费侧：src-tauri/tauri.sidecar.conf.json 的 externalBin → 装完落在 monitor 旁边；消费侧 local_backend::resolve_beside_this_exe / resolve_with
+
+  分母 = PM 在 R24 裁定一那张表里点的 3 格；下面 §6 是我自己在盘上重扫的那一遍。
+
+==============================================================================
+§2 三种载体在 git 里吗（分母 = 上面 3 个目录，量于 tree-a）
+==============================================================================
+  ①内嵌·供本机  src-tauri/native-daemon/ 被 git 跟踪的文件数 = 0  
+  ②内嵌·供推远端  src-tauri/embedded-daemons/ 被 git 跟踪的文件数 = 0  
+  ③安装包那份  src-tauri/binaries/ 被 git 跟踪的文件数 = 0  
+  ①内嵌·供本机  `/native-daemon/` 在 src-tauri/.gitignore 里出现 1 次
+  ②内嵌·供推远端  `/embedded-daemons/` 在 src-tauri/.gitignore 里出现 1 次
+  ③安装包那份  `/binaries/` 在 src-tauri/.gitignore 里出现 1 次
+
+==============================================================================
+§3 三种载体今天真的铺着吗（量于 tree-a 与 tree-b 各一遍）
+==============================================================================
+
+  ── tree-a k-r68 = /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r68  HEAD=acd1ba2d24bcfa3612e0703fdbf415b000bfa213 ──
+    ①内嵌·供本机  src-tauri/native-daemon/  **不存在**（0 个文件）
+    ②内嵌·供推远端  src-tauri/embedded-daemons/  **不存在**（0 个文件）
+    ③安装包那份  src-tauri/binaries/  **不存在**（0 个文件）
+
+  ── tree-b main = /home/zbl/文档/claudecode-frontend/cc-monitor  HEAD=acd1ba2d24bcfa3612e0703fdbf415b000bfa213 ──
+    ①内嵌·供本机  src-tauri/native-daemon/  **不存在**（0 个文件）
+    ②内嵌·供推远端  src-tauri/embedded-daemons/  4 个文件
+        6932fd7f00a6e4097c05f07ad1c6bef0    5561624  cc-monitor-remote-aarch64
+        86bd81d810656f2e874e071de5110833         10  cc-monitor-remote-aarch64.build_id
+        59a10f8057abc7ecd5b2fa4eb487a07a    5750504  cc-monitor-remote-x86_64
+        86bd81d810656f2e874e071de5110833         10  cc-monitor-remote-x86_64.build_id
+    ③安装包那份  src-tauri/binaries/  **不存在**（0 个文件）
+
+==============================================================================
+§4 🔴 身份读数 —— 「它们是不是同一次构建的产物」买在这一节
+==============================================================================
+  分母 = 「这台机器上今天能拿到的、后端二进制的身份串」的全部住址，逐个点名：
+    tree-a k-r68 源码      = p2e-dial
+                           住 remote-daemon-proto/src/main.rs:175  逐字 `const BUILD_ID: &str = "p2e-dial";`
+    tree-b main 源码       = p2e-dial
+                           住 remote-daemon-proto/src/main.rs:175  逐字 `const BUILD_ID: &str = "p2e-dial";`
+    ①内嵌·供本机 @tree-a 清单   = （目录不存在）
+                           住 src-tauri/native-daemon/
+    ①内嵌·供本机 @tree-b 清单   = （目录不存在）
+                           住 src-tauri/native-daemon/
+    ②内嵌·供推远端 @tree-a 清单  = （目录不存在）
+                           住 src-tauri/embedded-daemons/
+    ②内嵌·供推远端 @tree-b 清单  = p2d-relay
+                           住 src-tauri/embedded-daemons/cc-monitor-remote-aarch64.build_id
+    ②内嵌·供推远端 @tree-b 清单  = p2d-relay
+                           住 src-tauri/embedded-daemons/cc-monitor-remote-x86_64.build_id
+    ③安装包那份 @tree-a 清单    = （目录不存在）
+                           住 src-tauri/binaries/
+    ③安装包那份 @tree-b 清单    = （目录不存在）
+                           住 src-tauri/binaries/
+    本机已部署那一份             = p1u-fork-session
+                           住 /home/zbl/.cc-monitor/bin/.build_id
+    本机已部署那一份·字节          = 2923225601ac6c19ad15a3cf12bd2de2  2416192 B
+                           住 /home/zbl/.cc-monitor/bin/cc-monitor-remote
+
+  ⇒ 不同取值 3 个：['p1u-fork-session', 'p2d-relay', 'p2e-dial']
+  ⚠ 口径：这一节量的是**身份串**，不是字节。同串不蕴含同字节（见 §5）。
+
+==============================================================================
+§5 BUILD_ID 是**手 bump 的常量**，不是派生的（量于 tree-b 的 git 历史）
+==============================================================================
+  改过 `remote-daemon-proto/src/` 的提交数 = 318
+    分母怎么数的：`git log --format=%H -- remote-daemon-proto/src | wc -l`（全历史，含只改注释 / 只改测试的）
+  diff 里动过 `^const BUILD_ID` 那一行的提交数 = 32
+    分母怎么数的：`git log -G '^const BUILD_ID' -- remote-daemon-proto/src/main.rs`
+  🔴 **诚实边界**：两个数**不能相减当成「漏 bump 次数」** —— 只改注释 / 只改测试的提交本来就不该 bump。
+     这两个数买到的只有一件事：**BUILD_ID 不是派生的**，「同一个 BUILD_ID」不蕴含「同一份字节」。
+  ⇒ 而**自陈漏过 bump** 的提交（提交信息里逐字承认的），逐条点名：
+       · 05b0e79 2026-08-05 fix(F02): 指纹此前只覆盖一半命令面 —— 补上通道那半并结清一笔欠了三天的 bump（audit-0805 E4/E11）
+       · 93b0f7a 2026-07-30 P7 文档收口 + E34 结案 + 补上 P5 漏掉的 BUILD_ID bump（zero-poll-liveness 收官）
+     计数 2（分母 = 上面那 32 条 bump 提交的**提交信息**，人读判定，不是脚本语义）
+
+==============================================================================
+§6 🔴 我自己在盘上重扫一遍「随产品分发的可执行字节」（不照 PM 的名单数）
+==============================================================================
+  人群定义（分母怎么数的）：**会以可执行字节的形态落到用户机器上的东西**，四条产出路各扫一遍——
+    (a) Tauri 打包面：tauri.conf.json / tauri.sidecar.conf.json 的 externalBin + resources
+    (b) 编译期内嵌：产品面 .rs 里的 include_bytes!（逐处看它嵌的是不是可执行体）
+    (c) 运行期拉取：我们自己去网上取一个二进制下来跑
+    (d) 运行期再落一份：把已经落下的二进制**再拷 / 再改名**一份
+
+  (a) tauri.conf.json: externalBin=无  resources=无
+  (a) tauri.sidecar.conf.json: externalBin=['\n      "binaries/cc-monitor-remote"\n    ']  resources=无
+
+  (b) 产品面 include_bytes! 真调用处 = 28（分母 = src-tauri/src + build.rs 下、剥掉整行注释后仍含 `include_bytes!(` 的行）
+      src-tauri/src/acct_iso_deploy.rs  6 处
+          const SCRIPT_MAIN: &[u8] = include_bytes!("../vendor/cc-acct-iso/scripts/cc-acct-iso");
+          const SCRIPT_LIB: &[u8] = include_bytes!("../vendor/cc-acct-iso/scripts/lib.sh");
+          include_bytes!("../vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh");
+          const SCRIPT_TEST: &[u8] = include_bytes!("../vendor/cc-acct-iso/scripts/test/run-tests.sh");
+          const SKILL_MD: &[u8] = include_bytes!("../vendor/cc-acct-iso/SKILL.md");
+          const EXAMPLE_CONFIG: &[u8] = include_bytes!("../vendor/cc-acct-iso/examples/config");
+      src-tauri/src/backend/control/local_backend.rs  1 处
+          include_bytes!("../../../native-daemon/cc-monitor-native"),
+      src-tauri/src/cc_bus_deploy.rs  18 处
+          ("SKILL.md", include_bytes!("../../shared/cc-bus/SKILL.md")),
+          include_bytes!("../../shared/cc-bus/examples/cc-busd.service"),
+          include_bytes!("../../shared/cc-bus/examples/config"),
+          include_bytes!("../../shared/cc-bus/examples/policy.tsv"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-agents"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-broadcast"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-bus-install.sh"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-bus-lib.sh"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-bus-stop-hook"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-busd"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-kill"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-list"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-recv"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-register"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-send"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-spawned-record"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-spawn"),
+          include_bytes!("../../shared/cc-bus/scripts/cc-whoami"),
+      src-tauri/src/cross_half_edge_registry.rs  1 处
+          "`include_bytes!(concat!(env!(\"OUT_DIR\"), \"/daemon-<arch>\"))` —— 读的是 \
+      src-tauri/src/sftp.rs  2 处
+          bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-x86_64")),
+          bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-aarch64")),
+
+  (c) 运行期拉取：remote-daemon-proto/src 下提到 codepicture 的文件 8 份
+      remote-daemon-proto/src/plugin_walk_fixture.rs
+      remote-daemon-proto/src/sidecar_fetch_guard.rs
+      remote-daemon-proto/src/sidecars/codepicture/acquire.rs
+      remote-daemon-proto/src/sidecars/mod.rs
+      remote-daemon-proto/src/readonly_guard.rs
+      remote-daemon-proto/src/platform/landing.rs
+      remote-daemon-proto/src/platform/cfgless_guard.rs
+      remote-daemon-proto/src/platform/mod.rs
+
+  (d) local_backend.rs 里的 fs::copy( 调用处 = 1
+      1160:    std::fs::copy(backend_bin, &tmp).map_err(|e| {
+
+==============================================================================
+§7 闭集今天怎么说（量于 tree-a 的 src-tauri/src/tool_registry.rs）
+==============================================================================
+  TOOLS 成员 8 条（分母 = `pub const TOOLS` 那个字面量块里缩进 8 空格的 `id:` 行）：
+      · ccm
+      · cc-bus
+      · cc-acct-iso
+      · remote-daemon
+      · project-mcp
+      · posix-rc-aliases
+      · powershell-profile
+      · claude-code
+
+  UNMANAGED_ENV 成员 11 条：
+      · claude-cli
+      · tmux
+      · terminal-exit
+      · git
+      · ssh
+      · pgrep
+      · xdg-open
+      · login-shell
+      · mcp-server
+      · cc-acct-iso-local
+      · code-picture-sidecar
+
+  ToolDestination 变体 7 个：['RemoteHomeRelative', 'BothHomeRelative', 'LocalHomeRelative', 'UserShellProfile', 'ProjectRelative', 'UserConfiguredPath', 'NotInstalledByUs']
+  ⚠ 现算，不写死〔13b〕。
+
+==============================================================================
+§8 三条产出路在 release.yml 上的住址（量于 tree-a 的 .github/workflows/release.yml）
+==============================================================================
+  release.yml:59   ── job ci-gate:
+  release.yml:114  ── job build-daemons:
+  release.yml:152  - name: Cross-compile daemon for both musl targets
+  release.yml:162  - name: Stage binaries
+  release.yml:180  ── job build-windows:
+  release.yml:211  - name: Place + verify embedded daemons
+  release.yml:264  - name: Build local backend sidecar (native)
+  release.yml:267  - name: Stage sidecar for externalBin
+  release.yml:302  - name: Stage native daemon for self-extract
+  release.yml:325  - name: tauri build
+  release.yml:375  ── job build-linux:
+  release.yml:414  - name: Place embedded daemons
+  release.yml:434  - name: Build local backend sidecar (native)
+  release.yml:437  - name: Stage sidecar for externalBin
+  release.yml:446  - name: tauri build (deb)
+
+  ⇒ ①与③ 在 build-windows 里**从同一个文件拷两份**，中间没有任何重编步骤；
+    ② 在另一个 job（ubuntu，cargo zigbuild，musl target）里产。逐字见那几步的 run:。
+
+===== 普查完 =====
