@@ -599,7 +599,10 @@ mod tests {
                 f.starts_with("control/ccm/"),
                 "`{f}` 不在 `control/ccm/` 下 —— 今天那条接盘判据只扫得到那一族，\n                 别的文件放进这张表等于没人管它。"
             );
-            assert!(why.len() > 40, "`{f}` 那行理由太短，说不清它为什么不是 wire 面");
+            assert!(
+                why.len() > 40,
+                "`{f}` 那行理由太短，说不清它为什么不是 wire 面"
+            );
         }
     }
 

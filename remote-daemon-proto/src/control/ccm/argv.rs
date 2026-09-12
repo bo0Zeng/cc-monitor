@@ -327,7 +327,9 @@ fn validate(o: &Opts) -> Result<(), Die> {
         );
     }
     if o.bus_register && !o.detach {
-        return die("--bus-register 需要配合 --detach（不 detach 那条随后 exec 进 attach，登记做不成）");
+        return die(
+            "--bus-register 需要配合 --detach（不 detach 那条随后 exec 进 attach，登记做不成）",
+        );
     }
     if !o.bus_note.is_empty() && !o.bus_register {
         return die("--bus-note 需要配合 --bus-register（不登记的话这行备注没有去处）");
@@ -412,7 +414,10 @@ mod tests {
     fn the_combination_rules_all_fail_loudly() {
         assert!(err(&["--nope"]).starts_with("未知选项: --nope"));
         assert!(err(&["--agent", "gemini"]).starts_with("未知 agent: gemini"));
-        assert_eq!(err(&["--account", "z", "--base"]), "--account 与 --base 互斥");
+        assert_eq!(
+            err(&["--account", "z", "--base"]),
+            "--account 与 --base 互斥"
+        );
         assert!(err(&["--detach"]).starts_with("--detach 需要配合 --tmux"));
         assert!(err(&["--tmux-size", "1x1"]).starts_with("--tmux-size 需要配合 --tmux"));
         assert!(err(&["--tmux=a", "--tmux-base", "b"]).starts_with("--tmux=<名> 与 --tmux-base"));
@@ -431,7 +436,9 @@ mod tests {
     #[test]
     fn the_size_is_two_plain_decimals_or_it_is_refused() {
         assert_eq!(parse_size("220x50"), Some(("220".into(), "50".into())));
-        for bad in ["x50", "220x", "1x2x3", "", "22 0x50", "220X50", "-1x2", "a x b"] {
+        for bad in [
+            "x50", "220x", "1x2x3", "", "22 0x50", "220X50", "-1x2", "a x b",
+        ] {
             assert!(parse_size(bad).is_none(), "'{bad}' 不该被当成合法尺寸");
         }
         assert!(err(&["--tmux", "--tmux-size", "x50"]).starts_with("非法 --tmux-size"));
@@ -442,7 +449,10 @@ mod tests {
     fn everything_after_the_terminator_goes_to_the_agent_untouched() {
         let o = ok(&["--", "-p", "hi there", "--tmux"]);
         assert_eq!(o.passthru, v(&["-p", "hi there", "--tmux"]));
-        assert!(o.use_tmux == Defaults::USE_TMUX, "`--` 之后的 --tmux 不许被本层认走");
+        assert!(
+            o.use_tmux == Defaults::USE_TMUX,
+            "`--` 之后的 --tmux 不许被本层认走"
+        );
         assert!(ok(&["resume", "s"]).passthru.is_empty());
     }
 
