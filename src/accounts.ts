@@ -1099,7 +1099,8 @@ export async function fetchAccounts(origin: string, force = false): Promise<Acco
  * L3a（local-as-remote）：取**本机**的账号状态 —— `fetchAccounts` 的本地对侧。
  *
  * ⚠ `N-F1c`（09-05）之后这句话变了：`list_local_accounts` **不再直接读磁盘，而是问本机后端**
- * （`local_query::run_query(…, &["--list-accounts"])`，与远端那条同一套解析、不同传输）——
+ * （`backend::observe::local_query::run_query(…, &["--list-accounts"])`，与远端那条同一套解析、
+ * 不同传输；`K-R71` 09-12 之前它住 `backend::control::`）——
  * 裁定住 `first-run/DECISIONS.md` `NR2`〔用 09-05〕：**claude 进程真实跑在哪台机器，
  * 账号就归那台机器的后端管**。⇒ 它**会起一个短命子进程**，而「后端不在」是一个
  * 明写出来的档（`LocalAccountsOutcome::NoBackend`），**不许渲染成「你没有账号」**。
