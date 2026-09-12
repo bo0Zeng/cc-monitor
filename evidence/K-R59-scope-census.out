@@ -1,0 +1,9 @@
+# 量于工作树 /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r59
+3c3bc1ca5a1952851c586cb6efcc94ef08720f94
+   10  russh 数据源：`connect_session(` 的生产+测试处数   〔grep -rn 'connect_session(' src-tauri/src/ssh_source.rs〕
+    5  `ssh -G` 导入：`resolve_ssh_host`   〔grep -rn 'resolve_ssh_host' src-tauri/src/ssh_source.rs〕
+    6  `ssh -G` 导入：`list_ssh_host_aliases`   〔grep -rn 'list_ssh_host_aliases' src-tauri/src/ssh_source.rs〕
+    6  测试连接：`test_remote_connection`   〔grep -rn 'test_remote_connection' src-tauri/src〕
+   36  `connect_and_exec_cmd(` 全树调用点（含定义行）   〔grep -rn 'connect_and_exec_cmd(' src-tauri/src〕
+   44  `shell_quote(` 全树处数   〔grep -rn 'shell_quote(' src-tauri/src〕
+    2  `connect_and_exec_capture(` 全树处数   〔grep -rn 'connect_and_exec_capture(' src-tauri/src〕

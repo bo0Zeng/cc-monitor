@@ -1,0 +1,25 @@
+锚点命中 1 次 · ① `readiness.notApplicable`：本机 daemon 那条豁免塞回（`KR59D1⑤` 的正题）
+锚点命中 1 次 · ② `readiness.computeGaps`：那条指名告知掏空（`KR59D3` 的正题）
+锚点命中 1 次 · ③ `remote-config.legacyNoBackendHosts`：认旧配置那一步掏空（签名留着，返回同型空值）
+锚点命中 1 次 · ④ `remote-section.noteLocalBackend`：本机 daemon 的唯一写点掏空（签名留着）
+锚点命中 1 次 · ⑤ `remote-section.buildLocalRow`：那个写死的 `na` 覆盖值塞回（同一档的第 ⑥ 处载体）
+锚点命中 1 次 · ⑥ `remote-section.renderGaps`：那条告知的**名字**不再进 DOM
+**变异已落地**：6 处生产行为一次全掏空（签名一处没动）
+已还原
+⎯⎯⎯⎯⎯⎯ Failed Tests 14 ⎯⎯⎯⎯⎯⎯⎯
+ FAIL  src/settings/accounts-section.vitest.ts > N-F2 本机那两格真的被写进账本 > ★ NF2D2 地板：本机那条路**跑之前**，账本里本机那一栏是空的（这一族不是空真）
+ FAIL  src/settings/accounts-section.vitest.ts > N-F2 本机那两格真的被写进账本 > ★ NF2D2 本机侧总账：三档跑完，本分节那两格**没有一档**还停在「没测过」
+ FAIL  src/settings/accounts-section.vitest.ts > N-F2 本机那两格真的被写进账本 > ★ NF2D3 先证会红：把那几格改回「没测过」⇒ 清单又出现，且逐字写着「没测过」
+ FAIL  src/settings/readiness.vitest.ts > computeGaps > 🔴 KR59D1⑤：本机的 daemon **算一格** —— 没起来这件事清单必须说得出来
+ FAIL  src/settings/readiness.vitest.ts > computeGaps > ★ 本机的「连接」不算缺 —— 本地 = 不走 ssh 的远端（INVARIANTS §40）
+ FAIL  src/settings/readiness.vitest.ts > computeGaps > 🔴 KR59D3：盘上还带着旧「不装后端」开关的主机 ⇒ 一条**指名的**告知
+ FAIL  src/settings/readiness.vitest.ts > N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消失 > ★ Windows 本机：适用格恰好是那三格，写绿之后 summarizeGaps 返回 null
+ FAIL  src/settings/readiness.vitest.ts > N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消失 > ★ 先证会红：把那几格改回「没测过」⇒ 清单又出现，且写的是「还没测过」
+ FAIL  src/settings/remote-section.vitest.ts > KR59D3 旧配置里那个 `true`：读得出来、写不回去 > 🔴 旧 config 里的 `daemonless: true` ⇒ `legacyNoBackend` 点得出那台机器的名字
+ FAIL  src/settings/remote-section.vitest.ts > S1 RemoteSection：保存走局部合并 > ★ NF2D3 最后那一跳：本机全绿 + 零远端 ⇒ 「还差什么」整块不出现
+ FAIL  src/settings/remote-section.vitest.ts > S1 RemoteSection：保存走局部合并 > ★ NF2D3 先证会红：把本机那几格改回「没测过」⇒ 那一块又出现
+ FAIL  src/settings/remote-section.vitest.ts > S1 RemoteSection：保存走局部合并 > 🔴 KR59D3：喂一份带旧开关的 config ⇒ 清单上真有一条**带名字**的告知
+ FAIL  src/settings/remote-section.vitest.ts > S1 RemoteSection：保存走局部合并 > 🔴 KR59D1⑤：本机的 daemon 格照实画账本 —— 不再写死一个「不需要」
+ FAIL  src/settings/remote-section.vitest.ts > S1 RemoteSection：保存走局部合并 > 🔴 K-R59：本机后端起没起来，`noteLocalBackend` 真写进账本（两个方向都断）
+ Test Files  3 failed | 4 passed (7)
+      Tests  14 failed | 353 passed (367)
