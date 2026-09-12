@@ -259,10 +259,13 @@ mod tests {
         let caps = declared_capabilities();
         assert_eq!(
             caps.len(),
-            17,
-            "对拍语料里的能力 token 从 17 个变成 {}：{caps:?}\n\
+            18,
+            "对拍语料里的能力 token 从 18 个变成 {}：{caps:?}\n\
              加 token 是好事（消费者全是子集检查）；**删/改名才危险** —— \
-             那会让下面那份必需清单里的某一条对不上。这个数变了就顺手看一眼消费者。",
+             那会让下面那份必需清单里的某一条对不上。这个数变了就顺手看一眼消费者。\n\
+             〔`K-R61` 09-11：17 → 18，加的是 `base-url-across-tmux`。\
+             **本条是『谁在数它』那张表上的第五处**，而 `K-R61` 派工时那张表只登记了四处 —— \
+             已点名交回 PM。〕",
             caps.len()
         );
         for want in required_today() {
