@@ -1,0 +1,118 @@
+被测对象：/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r65
+分支尖：ac90e661cbef73439f5292ed09d4a94263dc9121
+开跑前 git status --porcelain：?? evidence/k-r65-tier-and-provisioning-cuts.py
+
+== 基线（不落任何刀）==
+  | test result: ok. 1384 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.84s
+  | Tests  43 passed (43)
+
+== [M1 KR65D1：把「查了、确认没有」抹成「查不动」（最小面）]
+  | 红: config_surface::tests::the_prompt_tier_really_looks_before_it_speaks
+  | 红: config_surface::tests::the_same_name_under_three_probes_gives_three_different_cells
+  | test result: FAILED. 1382 passed; 2 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.83s
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [M2 KR65D1：`observe_unmanaged` 整支掏空（＝退回 K-R60 那一版「我们压根没去查」）]
+  | 红: config_surface::tests::the_prompt_tier_really_looks_before_it_speaks
+  | 红: config_surface::tests::the_same_name_under_three_probes_gives_three_different_cells
+  | test result: FAILED. 1382 passed; 2 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.88s
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [M3 KR65D1 失效方向：8 处探测全掐掉（＝把「不查」换个名字回来）]
+  | 红: config_surface::tests::the_prompt_tier_really_looks_before_it_speaks
+  | 红: tool_registry::environment_tests::the_prompt_tier_declares_how_it_will_look
+  | test result: FAILED. 1382 passed; 2 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.82s
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [M4 KR65D2：把 `cc-acct-iso-local` 标成「不该我们装」⇒ 必须红]
+  | 红: tool_registry::environment_tests::everything_the_charter_named_as_ours_is_in_the_shipped_population
+  | test result: FAILED. 1383 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.85s
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [M5 KR65D2：两格合回去（没装口 ⇒ 直接当成「不该我们装」）]
+  | 红: config_surface::tests::every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours
+  | 红: tool_registry::environment_tests::every_tier_has_members_so_absence_never_encodes_a_judgement
+  | 红: tool_registry::environment_tests::the_tier_for_owed_installers_is_countable_and_not_empty
+  | test result: FAILED. 1381 passed; 3 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.86s
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [M6 KR65D3 死值验一：把 `cc-bus` 从「app 自带」里摘掉，别处不动]
+  | 红: tool_registry::environment_tests::everything_the_charter_named_as_ours_is_in_the_shipped_population
+  | test result: FAILED. 1383 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.86s
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [M7a KR65D3 死值验二：动 daemon 那一层的签名（编译不受影响）]
+  | 红: tool_registry::environment_tests::the_layer_we_ship_binaries_from_is_pinned_to_the_population
+  | test result: FAILED. 1383 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.82s
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [M7b KR65D3：闭集里 `code-picture-sidecar` 那一条整体换掉 `who`]
+  | 红: tool_registry::environment_tests::everything_the_charter_named_as_ours_is_in_the_shipped_population
+  | 红: tool_registry::environment_tests::the_layer_we_ship_binaries_from_is_pinned_to_the_population
+  | test result: FAILED. 1382 passed; 2 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.84s
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [M7c 【射程自查，不是死值验】签名逐字不动、`obtain` 的函数体掏空]
+  | test result: ok. 1384 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.84s
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [M8 让 `Provisioning::UserProvides` 没有任何使用者]
+  | 红: config_surface::tests::the_prompt_tier_really_looks_before_it_speaks
+  | 红: tool_registry::environment_tests::every_provisioning_value_is_really_used
+  | 红: tool_registry::environment_tests::every_tier_has_members_so_absence_never_encodes_a_judgement
+  | 红: tool_registry::environment_tests::the_prompt_tier_declares_how_it_will_look
+  | test result: FAILED. 1380 passed; 4 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.86s
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [F1 KR65D1：`promptToInstall` 掏空（恒答 null ⇒ 缺席时不出声）]
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > 🔴 缺席时说得出「你缺这个，去装」；查不动时**改口**，不许也说「缺」
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > 🔴 那句话必须**真进 DOM**（纯函数被断言 ≠ 它上了屏 —— T02 审计重要 5）
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > 那句话也要进可复制的诊断文本（贴出去的那一份不含它就等于没说）
+  | Tests  3 failed | 40 passed (43)
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [F2 KR65D1：把「缺」与「查不动」合成一格]
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > 三态各归各的缺口种类 —— 而且这一对词只从 readiness.ts 取
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > 🔴 缺席时说得出「你缺这个，去装」；查不动时**改口**，不许也说「缺」
+  | Tests  2 failed | 41 passed (43)
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [F3 KR65D2：把「欠装口」那一格的计数掏空（恒答 null）]
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > KR65D2：「app 该自带而还没有装口」那一格**在屏幕上数得出来**
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > 那句话也要进可复制的诊断文本（贴出去的那一份不含它就等于没说）
+  | Tests  2 failed | 41 passed (43)
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [F4 「缺」/「未测过」不再只有一个住址（describeGap 自抄一份 ＋ GAP_HEAD 改字）]
+  | 红: × src/settings/readiness.vitest.ts > describeGap > 「缺」/「未测过」这两个字只有一个住址（GAP_HEAD）
+  | Tests  1 failed | 42 passed (43)
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [F5 KR65D1：把「只有那一档才劝人去装」那条闸拆掉]
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > 别的档缺了**不许**劝用户去装 —— 我们欠的实现不许甩给用户
+  | Tests  1 failed | 42 passed (43)
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）
+
+== [7u：把本件实现整处掏空（签名留着、恒答一张脸）—— 不是死值验，是「还有多少条新断言仍绿」]
+  | 红: config_surface::tests::every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours
+  | 红: config_surface::tests::the_prompt_tier_really_looks_before_it_speaks
+  | 红: config_surface::tests::the_same_name_under_three_probes_gives_three_different_cells
+  | 红: tool_registry::environment_tests::every_tier_has_members_so_absence_never_encodes_a_judgement
+  | 红: tool_registry::environment_tests::everything_the_charter_named_as_ours_is_in_the_shipped_population
+  | 红: tool_registry::environment_tests::nobody_declares_an_installer_for_something_we_should_not_install
+  | 红: tool_registry::environment_tests::posix_rc_aliases_sits_in_the_first_tier_now
+  | 红: tool_registry::environment_tests::the_prompt_tier_declares_how_it_will_look
+  | 红: tool_registry::environment_tests::the_tier_for_owed_installers_is_countable_and_not_empty
+  | 红: tool_registry::environment_tests::who_should_install_is_not_a_function_of_whether_we_can_install_today
+  | test result: FAILED. 1374 passed; 10 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.83s
+  | 红: × src/settings/config-surface-section.vitest.ts > describeUndo > 不可卸载的工具不得暗示可以撤
+  | 红: × src/settings/config-surface-section.vitest.ts > describeUndo > 按档给撤销说法：四档各不相同，且「欠的实现」不许被说成「不该我们装」
+  | 红: × src/settings/config-surface-section.vitest.ts > describeUndo > 后端加了第五档也不许炸，且不假装认识它
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > 三态各归各的缺口种类 —— 而且这一对词只从 readiness.ts 取
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > 🔴 缺席时说得出「你缺这个，去装」；查不动时**改口**，不许也说「缺」
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > 🔴 那句话必须**真进 DOM**（纯函数被断言 ≠ 它上了屏 —— T02 审计重要 5）
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > KR65D2：「app 该自带而还没有装口」那一格**在屏幕上数得出来**
+  | 红: × src/settings/config-surface-section.vitest.ts > K-R65：「提示用户装」那一档真的会出声 > 那句话也要进可复制的诊断文本（贴出去的那一份不含它就等于没说）
+  | 红: × src/settings/config-surface-section.vitest.ts > ConfigSurfaceSection > 「我们做什么」和「能否撤」必须真上屏（不是只有纯函数被断言）
+  | Tests  9 failed | 34 passed (43)
+   已还原（逐字节回原文 True · git 树回到开跑那一刻 True）

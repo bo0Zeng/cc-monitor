@@ -31,6 +31,25 @@ import type { HostOs } from "./host-os";
 
 export type GapKind = "missing" | "unknown";
 
+/**
+ * 🔴 **「缺」与「不知道」这两个字的唯一住址。**
+ *
+ * 〔`K-R65` 09-11 抽出来〕在此之前它是 [`describeGap`] 里的一句三目表达式。
+ * 抽出来的理由是**它有了第二个读者**：配置面审计那一页（`config-surface-section.ts`）
+ * 也要把 `absent`（查了、确认没有）与 `undetermined`（查不动）**显示成两回事**，
+ * 而件计划 `KR65D1` 逐字写着「`readiness.ts` 那条 `missing` vs `unknown` 的分法
+ * **是现成的，别再造一套**」。
+ *
+ * ⇒ 两页用同一对词。改这里，两页一起改；在别处再写一句 `? "缺" : "未测过"`
+ * 就是第二个住址。
+ */
+export const GAP_HEAD: Record<GapKind, string> = {
+  /** **测过、确认没有** —— 可以理直气壮说「缺」。 */
+  missing: "缺",
+  /** **从没测过 / 查不动** —— 说「缺」就是替用户下一个他没做过的结论。 */
+  unknown: "未测过",
+};
+
 export interface Gap {
   /** 哪台机器（`LOCAL_MACHINE_KEY` = 本机）。 */
   origin: string;
@@ -206,6 +225,7 @@ export function summarizeGaps(gaps: Gap[]): string | null {
 export function describeGap(g: Gap): string {
   const who = g.origin === LOCAL_MACHINE_KEY ? "本机" : g.origin;
   const what = FACET_LABELS[g.facet];
-  const head = g.kind === "missing" ? "缺" : "未测过";
+  // 措辞取自 [`GAP_HEAD`]，**不在这里再写一遍**（`K-R65`：那一对词有两个读者了）。
+  const head = GAP_HEAD[g.kind];
   return `${who} · ${what}：${head} —— ${g.consequence}`;
 }

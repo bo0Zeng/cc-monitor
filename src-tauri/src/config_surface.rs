@@ -23,8 +23,8 @@
 //! 本模块不写任何用户文件（红线），也**不新增轮询**（红线）——一次按需扫完就返回。
 
 use crate::tool_registry::{
-    EnvBacking, EnvEntry, EnvTier, HostScope, ToolDestination, ToolSource, ToolSpec, TouchEffect,
-    TouchedFile, TOOLS,
+    EnvBacking, EnvEntry, EnvProbe, EnvTier, HostScope, ToolDestination, ToolSource, ToolSpec,
+    TouchEffect, TouchedFile, TOOLS,
 };
 use std::path::{Path, PathBuf};
 
@@ -439,6 +439,13 @@ pub fn effect_label(e: TouchEffect) -> &'static str {
 pub struct SurfaceRow {
     pub tool_id: &'static str,
     pub tool_name: &'static str,
+    /// 🔴 〔`K-R65`〕**档进线上形状了。**
+    ///
+    /// 上一版 `config-surface-section.ts` 的 `describeUndo` 逐字写着
+    /// 「⚠ 两类**今天在行上分不开**：`SurfaceRow` 的线上形状里没有档这一格」——
+    /// 于是「不该由我们装」与「该我们装而还没写」在前端只能靠一句和稀泥的措辞盖过去。
+    /// 今天档在行上，前端按**值**分档，不按措辞猜。
+    pub tier: EnvTier,
     pub source_label: String,
     pub path_declared: &'static str,
     /// 解析出的本机路径（远端 / 项目相对 / `$PROFILE` 一律 `None`）。
@@ -452,13 +459,18 @@ pub struct SurfaceRow {
 }
 
 fn row(
+    e: &EnvEntry,
     t: &'static ToolSpec,
     f: &'static TouchedFile,
-    home: &Path,
-    cfg_dir_env: Option<&Path>,
-    is_dir: &dyn Fn(&Path) -> bool,
-    fs: &FsProbe,
+    env: &SurfaceEnv,
 ) -> SurfaceRow {
+    let SurfaceEnv {
+        home,
+        cfg_dir_env,
+        is_dir,
+        fs,
+        ..
+    } = *env;
     let resolved = resolve_touched_path(f.path, &t.destination, f.host, home, cfg_dir_env, is_dir);
     let (path_resolved, state) = match &resolved {
         Ok(r) => {
@@ -493,6 +505,7 @@ fn row(
     SurfaceRow {
         tool_id: t.id,
         tool_name: t.display_name,
+        tier: e.tier,
         source_label: source_label(&t.source),
         path_declared: f.path,
         path_resolved,
@@ -505,56 +518,154 @@ fn row(
     }
 }
 
+/// 建一次表要用的那一套基准与探针。**全部注入** —— 本模块不自己去摸环境，
+/// 那是它从第一天起就可纯测的原因。
+///
+/// 〔`K-R65` 09-11 抽出来〕在此之前这四样是 `build_rows` 的四个位置参数，
+/// 而本件要再加一个（`path_env`）⇒ 五个位置参数往下传两层，谁也读不出哪个是哪个。
+/// 收成一个具名结构之后，加第六样不会再让每个调用点都改一遍。
+pub struct SurfaceEnv<'a> {
+    pub home: &'a Path,
+    pub cfg_dir_env: Option<&'a Path>,
+    pub is_dir: &'a dyn Fn(&Path) -> bool,
+    pub fs: &'a FsProbe<'a>,
+    /// `$PATH` 原样。
+    ///
+    /// 🔴 **`None` = 取不到，不是「空的」** —— 那时 [`EnvProbe::OnPath`] 那一族一律
+    /// 「查不动」（`Undetermined`），**绝不说成「不存在」**。
+    /// 这条纪律不是新写的：`hooks_diag::resolves_on_path` 的头注记着它在生产平台上
+    /// 曾经「既没取到、又给了一个确定的否定答案」。
+    pub path_env: Option<&'a str>,
+}
+
 /// 清单里**没有 `ToolSpec`** 的那一项，在这一页上长什么样。
 ///
-/// 它没有「我们碰的文件」，所以四列的措辞都由**档**决定：
-/// - `source_label` 先说清「不是我们提供的」；
-/// - `effect_label` 说清我们对它做什么（第三档就是**什么都不做**）；
-/// - `state` 一律 `Undetermined` **并说明为什么没查** —— 这一页的硬纪律是
-///   「查不了就说查不了，绝不显示成缺失」，而「我们压根没去查」比「查不动」还要更早一步，
-///   写成「不存在」会是对一台好好的机器报假警报。
-fn unmanaged_row(e: &EnvEntry, named: &'static str, host: HostScope) -> SurfaceRow {
-    // **三条措辞都按档分**，且**没有兜底臂**：EnvTier 加第四档会编译失败，
+/// # 🔴 〔`K-R65`〕这个函数的正题变了：从「不查」变成「查」
+///
+/// 上一版这里逐字写着：
+///
+/// > `state` 一律 `Undetermined` **并说明为什么没查** …… 而「我们压根没去查」
+/// > 比「查不动」还要更早一步
+///
+/// 以及 `path_resolved: None` 旁边那句「**不解析** —— 解析了就等于查了」。
+/// `K38` 把那一档判掉了：通用工具是「**你自己装，而我会看、缺了我要说**」
+/// ⇒ 这里**真去查**，而查出来的三种答案在这一页上是三回事：
+///
+/// | 探针答什么 | 这一行显示成 | 前端 `readiness.ts` 里的同一条分法 |
+/// |---|---|---|
+/// | 在 | `Present` | —— |
+/// | **查了、确认没有** | `Absent` | `missing`（可以理直气壮说「缺」） |
+/// | **查不动** | `Undetermined { why }` | `unknown`（说「缺」就是替用户下一个他没做过的结论） |
+///
+/// ⚠ 中间那一行是本件买到的东西：在此之前它和最后一行**长得一模一样**。
+fn unmanaged_row(
+    e: &EnvEntry,
+    named: &'static str,
+    host: HostScope,
+    probe: EnvProbe,
+    env: &SurfaceEnv,
+) -> SurfaceRow {
+    // **措辞按档分**，且**没有兜底臂**：`EnvTier` 加一档会编译失败，
     // 逼人回答它在这一页上该显示什么（同本模块 `PathResolution` 那条既定做法）。
-    let (source_label, effect_label, why) = match e.tier {
+    let (source_label, effect_label) = match e.tier {
         EnvTier::AppInstalls => (
             "申报自相矛盾：声明「app 装的」，却没有一条 ToolSpec 说得出装到哪".to_string(),
             "装得了就该有落点与 touches —— 这一行的申报是坏的",
-            "这一项的申报自相矛盾，本页不替它猜".to_string(),
+        ),
+        // 🔴 `K38` 裁的那一档：**我们不装，但我们看；缺了我们说。**
+        EnvTier::UserInstallsWePrompt => (
+            "不由 cc-monitor 提供 —— 这是通用工具，请你自己装".to_string(),
+            "我们不装它，只查它在不在；缺了这一行会告诉你，去装上就好",
+        ),
+        // 🔴 `KR65D2` 的那一格：**该我们装，而装口还欠着。** 措辞必须两半都说 ——
+        // 只说「装不了」会被读成「不该我们装」，那正是 `K38` 反对的那句话。
+        EnvTier::AppShipsNoInstallerYet => (
+            "该由 cc-monitor 自带（K38：app 独有的东西）—— 而今天还没有装口".to_string(),
+            "这一项该我们装，但安装入口还没写；本页照样去查它在不在，缺了也别当成「不该我们装」",
         ),
         EnvTier::AppOnlyChecks => (
             "不由 cc-monitor 提供".to_string(),
             "我们查得到它在不在，但装不了",
-            format!(
-                "查它的口不在本页（见这一行的说明）；本页只列人群，不替别的口作答：{}",
-                e.why
-            ),
-        ),
-        EnvTier::AppAssumesPresent => (
-            "不由 cc-monitor 提供".to_string(),
-            "我们既不装它、也不查它 —— app 用的时候假设它已经在",
-            "本页没查这一项：app 对它的关系就是「假设它在」。\
-             要它变成「查得到」，得先给它一个查的口 —— 那是另一件事，不是这一页漏了"
-                .to_string(),
         ),
     };
+    let (path_resolved, state) = observe_unmanaged(named, probe, env);
     SurfaceRow {
         tool_id: e.id,
         tool_name: e.display_name,
+        tier: e.tier,
         source_label,
         path_declared: named,
-        // **不解析** —— 解析了就等于查了，而这一档申报的是「我们不查」。
-        path_resolved: None,
+        path_resolved,
         note: Some(e.why),
         host_label: host_label(host),
         effect_label,
-        state: SurfaceState::Undetermined { why },
+        state,
         installable: false,
         uninstallable: false,
     }
 }
 
-/// 遍历**环境清单的闭集**建表。纯函数（`is_dir` / `fs` 注入）。
+/// 手写那一半**真去查**的那一步。抽出来是因为它是 `KR65D1` 的死值验落点：
+/// 同一个名字换一种 [`EnvProbe`]，出来的必须是不同的一格。
+///
+/// 返回 `(解析出来的东西, 现状)`。
+fn observe_unmanaged(
+    named: &'static str,
+    probe: EnvProbe,
+    env: &SurfaceEnv,
+) -> (Option<String>, SurfaceState) {
+    match probe {
+        // `PATH` 上的裸命令。**复用 `hooks_diag::resolves_on_path`，不新写一个 `which`** ——
+        // 它已经把「切分必须走 `split_paths`」与「取不到 PATH 就不猜」两条填好了。
+        EnvProbe::OnPath => {
+            let exists = |p: &str| (env.fs.meta)(Path::new(p)).is_some();
+            match crate::hooks_diag::resolves_on_path(named, env.path_env, &exists) {
+                // 🔴 **查不动**：`PATH` 读不到。绝不说成「不存在」——
+                // 那会对一台装得好好的机器报假警报（本模块头注那条硬纪律）。
+                None => (
+                    None,
+                    SurfaceState::Undetermined {
+                        why: format!(
+                            "查不动：读不到 PATH（或它是空的），没法回答 `{named}` 在不在。\
+                             这**不是**说它不存在"
+                        ),
+                    },
+                ),
+                // **查了、确认没有** —— 这一格才是「缺」，前端据此劝人去装。
+                Some(false) => (None, SurfaceState::Absent),
+                Some(true) => (
+                    Some(format!("PATH 上找得到 `{named}`")),
+                    SurfaceState::Present {
+                        detail: format!("PATH 上有 `{named}`"),
+                    },
+                ),
+            }
+        }
+        // 一条 `~/` 路径 —— 走既有的本机解析 + 观测，一个字都不另写。
+        // `host` 的投影也照旧（`Either` 那一族仍然「本机没找到 ≠ 不存在」）。
+        EnvProbe::HomePath => {
+            match resolve_local_home(named, env.home, env.cfg_dir_env, env.is_dir) {
+                Ok(r) => (Some(describe_target(&r)), observe(&r, env.fs)),
+                // 申报的名字根本不是一条 `~/` 路径 ⇒ **如实报错**，不静默显示成空。
+                Err(msg) => (
+                    None,
+                    SurfaceState::Undetermined {
+                        why: format!("申报的名字解析不成本机路径：{msg}"),
+                    },
+                ),
+            }
+        }
+        // 查不动，理由由申报方给。⚠ 这一支**不是**「不查」—— 见 `EnvProbe` 的头注。
+        EnvProbe::CannotProbe { why } => (
+            None,
+            SurfaceState::Undetermined {
+                why: format!("查不动：{why}"),
+            },
+        ),
+    }
+}
+
+/// 遍历**环境清单的闭集**建表。纯函数（探针全从 [`SurfaceEnv`] 注入）。
 ///
 /// 🔴 〔`K-R60`〕**人群从 `TOOLS` 换成了 [`environment`]。**
 /// 原来它只遍历 `TOOLS` 的 `touches`，于是这一页能答的是模块头注那句
@@ -562,12 +673,7 @@ fn unmanaged_row(e: &EnvEntry, named: &'static str, host: HostScope) -> SurfaceR
 /// 后者的人群里有一整档是 app 装不了也不查的东西，它们一条都不在 `TOOLS` 里。
 /// 拿前者当后者用是**分母对不上**。
 /// 钉住它的是 `the_view_population_is_exactly_the_closed_set`。
-pub fn build_rows(
-    home: &Path,
-    cfg_dir_env: Option<&Path>,
-    is_dir: &dyn Fn(&Path) -> bool,
-    fs: &FsProbe,
-) -> Vec<SurfaceRow> {
+pub fn build_rows(env: &SurfaceEnv) -> Vec<SurfaceRow> {
     crate::tool_registry::environment()
         .iter()
         .flat_map(|e| match e.backing {
@@ -575,9 +681,11 @@ pub fn build_rows(
             EnvBacking::Managed(t) => t
                 .touches
                 .iter()
-                .map(|f| row(t, f, home, cfg_dir_env, is_dir, fs))
+                .map(|f| row(e, t, f, env))
                 .collect::<Vec<_>>(),
-            EnvBacking::Named { named, host } => vec![unmanaged_row(e, named, host)],
+            EnvBacking::Named { named, host, probe } => {
+                vec![unmanaged_row(e, named, host, probe, env)]
+            }
         })
         .collect()
 }
@@ -703,9 +811,19 @@ pub async fn config_surface_report() -> Result<ConfigSurfaceReport, String> {
             meta: &meta,
             list: &list,
         };
+        // 🔴 〔`K-R65`〕`PATH` 也是一件**注入**进去的东西 —— 读不到就是 `None`，
+        // 那一族显示成「查不动」而不是「不存在」（`SurfaceEnv::path_env` 的头注）。
+        let path_env = std::env::var("PATH").ok();
+        let surface_env = SurfaceEnv {
+            home: &home,
+            cfg_dir_env: cfg_env.as_deref(),
+            is_dir: &is_dir,
+            fs: &fs,
+            path_env: path_env.as_deref(),
+        };
         let cfg_dir = crate::hooks_diag::claude_config_dir(cfg_env.as_deref(), &home, &is_dir);
         Ok(ConfigSurfaceReport {
-            rows: build_rows(&home, cfg_env.as_deref(), &is_dir, &fs),
+            rows: build_rows(&surface_env),
             settings_scopes: build_settings_scopes(&home, cfg_env.as_deref(), &is_dir, &read, &fs),
             claude_config_dir: cfg_dir.to_string_lossy().into_owned(),
             home: home.to_string_lossy().into_owned(),
@@ -735,6 +853,23 @@ mod tests {
         FsProbe {
             meta: &|_| None,
             list: &|_| None,
+        }
+    }
+
+    /// 建表用的一套基准。**`path_env` 默认给一个非空值** —— 给 `None` 的话
+    /// `EnvProbe::OnPath` 那一族一律「查不动」，那是**另一个盘面**，
+    /// 要它就显式写出来（`the_prompt_tier_really_looks_before_it_speaks` 两边都跑）。
+    fn env_with<'a>(
+        home: &'a Path,
+        fs: &'a FsProbe<'a>,
+        path_env: Option<&'a str>,
+    ) -> SurfaceEnv<'a> {
+        SurfaceEnv {
+            home,
+            cfg_dir_env: None,
+            is_dir: &no_dir,
+            fs,
+            path_env,
         }
     }
 
@@ -1538,7 +1673,9 @@ mod tests {
     fn the_view_population_is_exactly_the_closed_set() {
         use crate::tool_registry::environment;
         use std::collections::BTreeSet;
-        let rows = build_rows(&home(), None, &no_dir, &empty_probe());
+        let h = home();
+        let fs = empty_probe();
+        let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")));
         let shown: BTreeSet<&str> = rows.iter().map(|r| r.tool_id).collect();
         let want: BTreeSet<&str> = environment().iter().map(|e| e.id).collect();
         assert!(
@@ -1553,12 +1690,225 @@ mod tests {
         );
     }
 
+    // ===== `K-R65`：「提示用户装」那一档**真的会出声** =====
+
+    /// 一台**假机器**：`PATH` 上只有 `/usr/bin`，那里只放着 `present` 里列的那几个名字，
+    /// 家目录下只放着 `home_files` 里那几条绝对路径。
+    ///
+    /// ⚠ 名字刻意取**中性**的（`present` / `home_files`），不含被断言的任何子串
+    /// 〔`6g`：断言用的子串别取自夹具的名字〕。
+    fn machine_with<'a>(
+        present: &'a [&'a str],
+        home_files: &'a [&'a str],
+    ) -> impl Fn(&Path) -> Option<(bool, u64)> + 'a {
+        move |p: &Path| {
+            let s = p.to_string_lossy().into_owned();
+            let on_path = present.iter().any(|n| s == format!("/usr/bin/{n}"));
+            if on_path || home_files.contains(&s.as_str()) {
+                Some((false, 42))
+            } else {
+                None
+            }
+        }
+    }
+
+    /// 🔴 `KR65D1` 的正题：**这一档真去查，而且「缺了」与「查不动」是两回事。**
+    ///
+    /// 上一版这一档的行为逐字是「`state` 一律 `Undetermined`、`path_resolved` **故意不解析**」
+    /// ⇒ 一台缺了 `tmux` 的机器和一台查不动的机器，在这一页上**长得一模一样**。
+    ///
+    /// 本条三格一起断（缺一格都能装样子）：
+    ///   ① 装着的 ⇒ `Present`，而且 `path_resolved` **真解析出来了**（不再是 `None`）；
+    ///   ② 没装的 ⇒ `Absent` —— **查了、确认没有**，前端据此劝人去装；
+    ///   ③ 读不到 `PATH` ⇒ `Undetermined { why }` —— **查不动**，绝不说成「不存在」。
+    ///
+    /// **失效方向**（件计划逐字）：「把 9 项的 `tier` 改个名就收工」⇒ ①②③ 全红。
+    /// **死值验**：把 `observe_unmanaged` 的 `OnPath` 那一支退回 `(None, Undetermined{..})`
+    /// ⇒ ①② 红；把 `Some(false)` 那一臂也答成 `Undetermined` ⇒ ② 红（而 ③ 仍绿，
+    /// 那正说明 ② 与 ③ 是分开的两格）。
+    #[test]
+    fn the_prompt_tier_really_looks_before_it_speaks() {
+        use crate::tool_registry::{environment, EnvTier};
+        let h = home();
+        // `git` 装着、`tmux` 没装 —— 两条都在「你自己装」那一档里。
+        let meta = machine_with(&["git"], &[]);
+        let fs = FsProbe {
+            meta: &meta,
+            list: &|_| None,
+        };
+
+        let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")));
+        let pick = |id: &str| {
+            rows.iter()
+                .find(|r| r.tool_id == id)
+                .unwrap_or_else(|| panic!("这一页上没有 `{id}` 这一行"))
+        };
+
+        // 反向自检：这两条**确实在那一档**（不然下面断的是别人）。
+        for id in ["git", "tmux"] {
+            let e = environment().into_iter().find(|e| e.id == id).unwrap();
+            assert_eq!(
+                e.tier,
+                EnvTier::UserInstallsWePrompt,
+                "`{id}` 不在「{}」那一档 —— 先查闭集，别改断言",
+                EnvTier::UserInstallsWePrompt.label()
+            );
+        }
+
+        // ① 装着的：真解析出来了 + Present
+        let ok = pick("git");
+        assert!(
+            matches!(ok.state, SurfaceState::Present { .. }),
+            "PATH 上有它，这一行却不是 Present —— 实得 {:?}",
+            ok.state
+        );
+        assert!(
+            ok.path_resolved.is_some(),
+            "这一档上一版**故意不解析**（「解析了就等于查了」）—— \
+             今天它必须解析，否则「真去查」这句话是假的"
+        );
+
+        // ② 没装的：**Absent**，不是 Undetermined —— 这一格就是本件买到的东西
+        let gone = pick("tmux");
+        assert_eq!(
+            gone.state,
+            SurfaceState::Absent,
+            "PATH 上查过、确认没有，这一行却没说「缺」——\n\
+             那正是 `K-R60` 那一版的行为（一片 Undetermined），用户读不出自己缺了什么。"
+        );
+
+        // ③ 读不到 PATH：查不动 —— 与 ② **必须是两回事**
+        let blind_rows = build_rows(&env_with(&h, &fs, None));
+        let blind = blind_rows.iter().find(|r| r.tool_id == "tmux").unwrap();
+        match &blind.state {
+            SurfaceState::Undetermined { why } => assert!(
+                !why.is_empty(),
+                "「查不动」必须带理由，否则它和「缺失」在观感上没区别"
+            ),
+            other => panic!("读不到 PATH 时必须是「查不动」，实得 {other:?}"),
+        }
+        assert_ne!(
+            gone.state, blind.state,
+            "「查了、确认没有」与「查不动」显示成了同一格 —— \
+             件计划 `KR65D1` 的死值验逐字要求它们是两回事"
+        );
+    }
+
+    /// `KR65D1` 的死值验落点：**同一个名字，换一种查法，出来的是不同的一格。**
+    ///
+    /// 「把某一项的探测掐掉、让它变成『查不动』」这个动作在这里可以直接做出来 ——
+    /// 三种 [`EnvProbe`] 各喂一次，三格互不相同。
+    ///
+    /// ⚠ 断言用的是 `SurfaceState` 的**变体**，不是措辞里的子串
+    /// 〔`6g`：断言用的子串别取自夹具的名字，也别靠一句话恒真〕。
+    #[test]
+    fn the_same_name_under_three_probes_gives_three_different_cells() {
+        let h = home();
+        let meta = machine_with(&[], &[]);
+        let fs = FsProbe {
+            meta: &meta,
+            list: &|_| None,
+        };
+        let env = env_with(&h, &fs, Some("/usr/bin"));
+
+        // 查得动、确认没有 ⇒ 缺
+        let (_, missing) = observe_unmanaged("tmux", EnvProbe::OnPath, &env);
+        assert_eq!(missing, SurfaceState::Absent);
+
+        // 探测掐掉 ⇒ 查不动（**同一个名字、同一台机器**，只换了查法）
+        let (_, blind) = observe_unmanaged(
+            "tmux",
+            EnvProbe::CannotProbe {
+                why: "这一支是死值验用的：把探测掐掉，看它会不会被显示成「缺」",
+            },
+            &env,
+        );
+        assert!(matches!(blind, SurfaceState::Undetermined { .. }));
+        assert_ne!(
+            missing, blind,
+            "掐掉探测之后这一行仍然说「缺」—— 那是替用户下了一个他没做过的结论"
+        );
+
+        // 第三种查法：`~/` 路径。同一台空机器上它也该是「缺」，而不是「查不动」——
+        // 否则「查不动」就成了万能挡箭牌。
+        let (_, home_missing) = observe_unmanaged("~/.local/bin/x-probe", EnvProbe::HomePath, &env);
+        assert_eq!(home_missing, SurfaceState::Absent);
+        // 而申报了一个根本不是路径的名字 ⇒ 如实说查不动，不静默显示成空
+        let (shown, bad) = observe_unmanaged("$SOMETHING", EnvProbe::HomePath, &env);
+        assert!(shown.is_none());
+        assert!(matches!(bad, SurfaceState::Undetermined { .. }));
+    }
+
+    /// 🔴 `KR65D2` 的上屏那一半：**「档」进了线上形状，而且欠装口那一档不许被读成
+    /// 「不该我们装」。**
+    ///
+    /// **死值验**：把 `SurfaceRow::tier` 摘掉 ⇒ 编译不过；
+    /// 把 `unmanaged_row` 里 `AppShipsNoInstallerYet` 那一支的措辞换成
+    /// 「不由 cc-monitor 提供」（也就是与「你自己装」那一支同文）⇒ 本条红。
+    #[test]
+    fn every_row_carries_its_tier_and_the_owed_one_never_reads_as_not_ours() {
+        use crate::tool_registry::{environment, EnvTier};
+        use std::collections::BTreeSet;
+        let h = home();
+        let fs = empty_probe();
+        let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")));
+
+        // ① 每一行的档 = 闭集里那一项的档（不是这一页自己算的第二份）
+        let want: std::collections::HashMap<&str, EnvTier> =
+            environment().iter().map(|e| (e.id, e.tier)).collect();
+        for r in &rows {
+            assert_eq!(
+                Some(&r.tier),
+                want.get(r.tool_id),
+                "`{}` 这一行的档与闭集对不上",
+                r.tool_id
+            );
+        }
+        // ② 档在这一页上真有区分力（一档一色的表等于没有档）
+        let seen: BTreeSet<EnvTier> = rows.iter().map(|r| r.tier).collect();
+        assert!(
+            seen.len() >= 3,
+            "这一页上只出现了 {} 档（{:?}）—— 分母是 {} 档",
+            seen.len(),
+            seen.iter().map(|t| t.label()).collect::<Vec<_>>(),
+            EnvTier::ALL.len()
+        );
+
+        // ③ 欠装口那一档：两半都要说到，且**不许**说成「不由 cc-monitor 提供」
+        let owed: Vec<&SurfaceRow> = rows
+            .iter()
+            .filter(|r| r.tier == EnvTier::AppShipsNoInstallerYet)
+            .collect();
+        assert!(!owed.is_empty(), "这一页上一行「欠装口」都没有 —— 先查闭集");
+        for r in &owed {
+            assert!(
+                r.source_label.contains("该由 cc-monitor 自带"),
+                "`{}` 的「从哪来」没说清这是我们该自带的东西，实得 {:?}",
+                r.tool_id,
+                r.source_label
+            );
+            assert!(
+                !r.source_label.contains("不由 cc-monitor 提供"),
+                "`{}` 的措辞把「欠的实现」说成了「不是我们提供的」—— \
+                 那与 `K38` 矛盾（`KR65D2` 逐字：不会被读成「不该我们装」）",
+                r.tool_id
+            );
+            assert!(
+                r.effect_label.contains("还没写") || r.effect_label.contains("没写"),
+                "`{}` 的「我们做什么」没说清装口是欠着的，实得 {:?}",
+                r.tool_id,
+                r.effect_label
+            );
+        }
+    }
+
     // ===== 建表：七个字段都真被用上（T01 审计 I2 的验收点） =====
 
     #[test]
     fn rows_cover_every_touched_file_and_use_all_spec_fields() {
         let f = empty_probe();
-        let rows = build_rows(&home(), None, &no_dir, &f);
+        let h = home();
+        let rows = build_rows(&env_with(&h, &f, Some("/usr/bin")));
         // 〔`K-R60`〕人群换成闭集之后，行数 = 有 ToolSpec 那一半的 touches 数
         //   + 手写那一半每项一行。**两半都现算**，不写死一个数〔`13b`〕。
         let expected: usize = TOOLS.iter().map(|t| t.touches.len()).sum::<usize>()
@@ -1602,7 +1952,9 @@ mod tests {
     /// `host` 必须进到行里（T04）——不上屏的话用户分不出说的是哪台机器。
     #[test]
     fn rows_carry_the_host_label() {
-        let rows = build_rows(&home(), None, &no_dir, &empty_probe());
+        let h = home();
+        let fs = empty_probe();
+        let rows = build_rows(&env_with(&h, &fs, Some("/usr/bin")));
         for r in &rows {
             assert!(!r.host_label.is_empty(), "{} 缺 host 标签", r.path_declared);
         }
