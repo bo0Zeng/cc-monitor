@@ -1,0 +1,54 @@
+量于 2026-09-11 23:55:38 -0700 · 被测对象 /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r67
+  HEAD=5be9737979e9976d6c147861fc732a1d92b5ccd3  HEAD^{tree}=52ed3a92c9db3332582fbf0773f18fb9133c4af1
+  工作树：5 项未提交（其中 evidence/ 下 5 项 —— 本件的产出就住那里）
+      ?? evidence/K-R67-census.out
+      ?? evidence/K-R67-census.py
+      ?? evidence/K-R67-code-readings.out
+      ?? evidence/K-R67-code-readings.py
+      ?? "evidence/K-R67-\344\276\235\350\265\226\350\204\212\346\237\261\344\270\216\351\241\272\345\272\217.md"
+
+【本机后端边界 src-tauri/src/backend/】子目录 ['control'] · 文件 19 项 · observe/ 🔴 不在
+    分母/量法：os.walk 全部文件（含 fixtures）；子目录 = 一层 isdir
+【后端本体 remote-daemon-proto/src/】能力线 ['agents', 'common', 'control', 'dial', 'observe', 'platform', 'plugin', 'relay', 'sidecars']
+    分母/量法：一层 isdir
+【scripts/gate.sh 行数】1023
+    分母/量法：wc -l 口径；停车理由 parked_全文.K-R22 写 478→627，09-05 订正 891
+【项目里 pb.py 命中】0
+    分母/量法：find -name pb.py，排 node_modules；**跑于项目根** /home/zbl/文档/claudecode-frontend
+【闭集 TOOLS 里的 destination 声明】共 8 条；其中落点是 `…/ccm` 的 1 条；其中**本机**的 0 条
+    分母/量法：grep 'destination: ToolDestination::' src-tauri/src/tool_registry.rs 逐行；分母 = 那张闭集表里显式写了 destination 的行。⇒ `ccm` 只有远端一个落点，本机零个
+      · 330:        destination: ToolDestination::RemoteHomeRelative(".local/bin/ccm"),
+【远端 ccm 的落点常量】963:const CCM_CLI_REMOTE_PATH: &str = ".local/bin/ccm";
+    分母/量法：grep 'CCM_CLI_REMOTE_PATH: ' src-tauri/src/sftp.rs
+【远端 ccm 入口 shim（三行、零实现）】957:        "#!/bin/sh\n# cc-monitor: ccm = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec {} ccm \"$@\"\n",
+    分母/量法：grep 'exec {} ccm' src-tauri/src/sftp.rs::ccm_entry_shim
+【别名生成器吐的行】63:  // shell 代码（实测复现：`bash -n <<< 'my alias() { ccm "$@"; }'` 真的报语法错误），而 UI
+81:  return `${trimmedName}() { ccm${flagStr ? ` ${flagStr}` : ""} "$@"; }`;
+    分母/量法：grep '() { ccm' src/launcher-diagnostics.ts::buildAliasLine
+【record_death 生产调用点登记表】500:pub const DEATH_RECORD_SITES: &[(&str, &str, &str)] = &[
+1261:            panic!("切不出 `{head}`（{e}）—— 它改名或搬家了，来改 `DEATH_RECORD_SITES`")
+1271:    /// ★★ `KP3W3` 的「数」那一格：[`record_death`] 的生产调用点 == [`DEATH_RECORD_SITES`]。
+    分母/量法：grep DEATH_RECORD_SITES src-tauri/src/daemon_policy.rs
+【本机 daemon 脱离那条路】95:// `process_group(0)` 来自 `std::os::unix::process::CommandExt`，而 `std::os::unix`
+526:/// - **`process_group(0)`** —— 否则终端里 Ctrl-C 的 SIGINT 会打到整个前台进程组，
+536:fn spawn_detached(
+557:        .process_group(0);
+575:fn spawn_detached(
+715:fn reap_detached(
+1419:    // 它认识 `process_group(0)` / `/proc` / `~/.cc-monitor`，而 `backend/` 那半一样都不许认识
+2611:    ///    · `spawn_detached` 体内真的有 `process_group(0)` 与 stdio 全 null。
+2669:        // ⚠ needle 要**唯一确定那一个事实**：`fn spawn_detached(` 命中 2 处
+2678:            "process_group(0)",
+2686:                 三样一起才叫脱离：`process_group(0)`（否则 Ctrl-C 的 SIGINT 打到整个前台进程组）\
+3187:                "fn spawn_detached(\n    bin: &std::path::Path,\n    port: u16,",
+3188:                "process_group(0)",
+    分母/量法：grep 'fn spawn_detached|process_group(0)|fn reap_detached' src-tauri/src/local_daemon.rs；P2d〔control-parity〕当年判「结构性做不到」的依据是这几个词命中 0
+【hello 帧 commands 的取值空间】102:    /// 哪条命令 —— 取值空间与 `Hello.commands` **同一套**（`inbound::COMMANDS`）。
+    分母/量法：grep inbound::COMMANDS remote-daemon-proto/src/wire.rs
+【local_read_surface_registry 里 `reader` 条数】8
+    分母/量法：正则 ^\s*"reader",\s*$ 逐行数（登记表里每条工具占一行）；`hub`/`payload`/`remote`/`non-read` 不进这个分母
+【设置面板「终端集成」的宿主闸】215:  private static readonly CC_INTEGRATION_HOST_OS: readonly HostOs[] = [
+216-    "windows",
+217-  ];
+218-  /** S4b-3b-2：pageId → 该页「账号 / 工具」两栏的容器。 */
+    分母/量法：grep CC_INTEGRATION_HOST_OS src/settings/panel.ts
