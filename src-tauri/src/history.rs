@@ -995,7 +995,7 @@ pub enum LaunchAccount {
         /// 推得出一个像样的名字（`cc-acct-iso` 的布局是 `~/.claude-accts/<名字>`，
         /// [`relay_account_id_of_dir`] 就是那么推的），**但那两处的失效方向相反**：
         /// 推错一个中转 id ⇒ 表里查不到 ⇒ 逐字节走旧路（保守）；推错一个 `--account`
-        /// ⇒ `shared/ccm` 当场 `die`（那份脚本第 57 行逐字「`--account` 打错名字」= 退出码 2）
+        /// ⇒ `ccm` 当场 `die`（`remote-daemon-proto/src/control/ccm/argv.rs` 认不出这个名字 = 退出码 2）
         /// ⇒ **一次本来能起的会话变成一条报错**。⇒ 这一格只收**调用方说得出**的名字。
         ///
         /// 前端那一侧的取值口与 `configDir` 那半**同源**
@@ -1396,15 +1396,16 @@ fn render_local_ccm_with(
     //    映过去 = 把用户 shell 里已有的账号悄悄清掉 —— 那正是 **#75「resume 在错数据目录
     //    找不到会话」** 的病灶形状。
     //    ⚠⚠ **也不能靠「省略 `--account`」兑现**，尽管 `K33` 逐字要「能省就省、能默认就默认」：
-    //    `shared/ccm:1001-1012` 现打（09-11）——既没 `--account` 也没 `--base`、而
-    //    `CLAUDE_CONFIG_DIR` **为空**时，ccm **落 manifest 的默认号**（那一段自己第 1190 行
-    //    逐字：「『空的 CLAUDE_CONFIG_DIR + 没有账号 flag』→ 落 manifest 默认号，
+    //    〔现打 09-11，量于那份已删的 bash `ccm` 的第 1001-1012 行；`K-R48` 之后
+    //    同一档语义住 `remote-daemon-proto/src/control/ccm/plan.rs`〕——既没 `--account`
+    //    也没 `--base`、而 `CLAUDE_CONFIG_DIR` **为空**时，ccm **落 manifest 的默认号**
+    //    （「『空的 CLAUDE_CONFIG_DIR + 没有账号 flag』→ 落 manifest 默认号，
     //    把调用方选中的号静默换掉」）。⇒ 省略也是一次静默换号，方向与 `--base` 相反而已。
     //    **CLI 语法里今天真的没有「继承」这一态**，所以照旧短路。逐格对照表住
     //    `tests::every_local_account_shape_gets_a_named_verdict_from_the_backend_path` 的头注。
     //
     // ⇒ 今天 ① 与 ② 渲染得出来，②′ 与 ③ 不行。③ 那一格要动的是 **ccm 省略时的默认语义**
-    //    （产品决定 ＋ `shared/ccm`，两样都不在本件写区）。见 ROADMAP `U10`。
+    //    （产品决定 ＋ `remote-daemon-proto/src/control/ccm/plan.rs`）。见 ROADMAP `U10`。
     let acct =
         match account {
             Some(LaunchAccount::Base) => ci::CliAccount::Base,
@@ -1490,14 +1491,35 @@ fn render_local_ccm_with(
 /// 相同：这条路上「为什么这台机没进 tmux」只有一个线索，就是 `launch_local` 里那行
 /// `tracing::debug!`。把原因写成一个分支条件 ⇒ 那行日志只会说「渲染器降级」而不说是谁降的。
 ///
-/// 退役条件**可执行**（不是「等有人想起来」）：`shared/ccm` 的 `capabilities=` 串
-/// （`shared/ccm:624`）加上一个声明「我会把 `ANTHROPIC_BASE_URL` 转发过 tmux 边界」的 token，
-/// 这里改成「探到那个 token 才放行」。今天那 18 个 token 里含
-/// `relay`/`base-url`/`anthropic` 的**0 个**（现打 09-11）。
+/// # 🔴 退役条件〔`K-R61` 09-11 重裁 —— **挡的已经不是同一件事了**〕
+///
+/// 上一版这里点的退役条件是「往那份 bash `ccm` 的 `capabilities=` 串里加一个 token」，
+/// 而**那份脚本 `07e4e72` 就删了** ⇒ 判据活着、前提死了，中间没有任何东西会响。
+/// 那正是 `K-R61` 立件的原因。而重裁之后变的**不只是住址，是前提本身**：
+///
+/// - 旧话逐字是「放行会让**装旧 ccm 的机器**静默吃掉它」。`K34`/`K35` 之后
+///   app 自带并自管环境、后端只有一个 ⇒「对面装了**别的** `ccm`」这个概念本身正在退场，
+///   **不许再拿它当理由**；
+/// - 我们自己这份 `ccm` 的容器路**本来就转发** `ANTHROPIC_BASE_URL`
+///   （`remote-daemon-proto/src/control/ccm/plan.rs`，daemon 侧有判据真去驱动它）。
+///
+/// ⇒ 今天的形状是：**转发做到了、也声明了** —— `K-R61` 把 `base-url-across-tmux`
+/// 补进了 `remote-daemon-proto/src/control/ccm/mod.rs` 的 `CAPABILITIES`，
+/// **差的只是下面那一行还没改成探它**。
+///
+/// ⇒ 退役条件因此是**一行 Rust**（不是「等用户升级」）：把 [`launch_local`] 里那句
+/// `relay.is_empty()` 换成「探到 `base-url-across-tmux` 才放行」。
+/// 〔`K-R61 §0e` 逐字裁「**本件不动中转的行为**」⇒ 那一行本轮一个字节不动。〕
+///
+/// ⚠ **为什么本轮不顺手翻掉那一行**（这是一条**可证伪**的条件，不是「以后再说」）：
+/// `ccm_probe` 探的是 **PATH 上那个 `ccm`**，不是仓里这份 ⇒ 翻之前得先有人守住
+/// 「用户机器上跑的就是 app 自己推的那一份」。那一格今天没人守；
+/// 有人守住的那天，这一段与 [`launch_local`] 体内那段一起退役。
 #[cfg(not(windows))]
 const RELAY_KEEPS_THE_OLD_PATH: &str =
-    "这个号走中转，而 ccm 的 `capabilities=` 里没有「转发 ANTHROPIC_BASE_URL 过 tmux 边界」\
-     这个 token（`shared/ccm:624`）—— 放行会让装旧 ccm 的机器静默吃掉它，诚实降级";
+    "这个号走中转，而这一行还没改成「探到 `base-url-across-tmux` 才放行」——\
+     转发做到了、也声明了（`remote-daemon-proto/src/control/ccm/mod.rs`），\
+     差的只是这一行；`K-R61` 只重裁理由，不动行为";
 
 /// ⚠ **`Err` 那一支不回 token**：拉起没成功就没有「刚起的那条」可言，
 /// 回一个 token 会让调用方去等一条根本不存在的会话。
@@ -1529,7 +1551,7 @@ fn launch_local(
         // ⇒ 在 `ccm` 外侧 export 的东西**在 tmux 边界被吃掉** ⇒ 照旧走 ccm
         // = **静默地没注入**。于是它两害相权选了「注入成功但没有容器」。
         //
-        // 那个坑是真的，但**处置选窄了**：`shared/ccm` 里本来就有一段**同形的转发**
+        // 那个坑是真的，但**处置选窄了**：那份已删的 bash `ccm` 里本来就有一段**同形的转发**
         //（R08 那条：把继承来的 `CLAUDE_CONFIG_DIR` 写进载荷**内侧**）。
         // 第二拍照它加了一条 `ANTHROPIC_BASE_URL` 的转发 ⇒ **tmux 边界那一格不再是拦路的那格**。
         //
@@ -1549,19 +1571,25 @@ fn launch_local(
         //
         // 而互斥没有跟着消失，因为下面这一行**显式**把它保住了。为什么要显式保住：
         //
-        // `shared/ccm` 里那条 `ANTHROPIC_BASE_URL` 转发（第 1208-1209 行）是**有的**，
-        // 但 `--ccm-probe` 吐的 `capabilities=` 串里**没有任何 token 声明它**
-        //（现打 09-11，`shared/ccm:624` 那 18 个 token 里含 `relay`/`base-url`/`anthropic` 的
-        // **0 个**；而 `ccm_probe` 探的是 **PATH 上那个 ccm**，不是仓里这份）。
-        // ⇒ 若这里直接放行，**装着旧 ccm 的机器会静默吃掉这个变量**：
-        //   中转前缀在 ccm 外侧 export，ccm 起 tmux、经 `send-keys` 送载荷进去，
-        //   而 tmux 的 `update-environment` 默认列表不含它 ⇒ 会话起来了、中转没生效、
-        //   **没有任何东西会出声**。那正是本区最贵的那族病。
+        // 我们自己这份 `ccm`（`remote-daemon-proto/src/control/ccm/plan.rs`）的容器路
+        // 那条 `ANTHROPIC_BASE_URL` 转发是**有的**，而先前 `--ccm-probe` 吐的
+        // `capabilities=` 串里**没有任何 token 声明它** —— **能力在、声明不在**。
         //
-        // ⇒ **中转在场就不走 ccm 容器路**，逐字节维持 `K-H2b` 那一拍的行为。
-        //   这一格的退役条件是**可执行的**、不是一句话：`shared/ccm` 的 `capabilities=`
-        //   加上那个 token，这里改成「探到那个 token 才放行」。清单住
+        // 🔴🔴🔴 **三次订正（`K-R61` 09-11）：声明那一半本件补上了，理由跟着重裁。**
+        //   上一版这里的理由逐字是「放行会让**装着旧 ccm 的机器**静默吃掉这个变量」，
+        //   而 `K34`/`K35` 之后那类机器正在退场 ⇒ **那句话不许再当理由用**。
+        //   `base-url-across-tmux` 已进 `remote-daemon-proto/src/control/ccm/mod.rs`
+        //   的 `CAPABILITIES` ⇒ **转发做到了、也声明了**。
+        //
+        // ⇒ **中转在场就不走 ccm 容器路**，逐字节维持 `K-H2b` 那一拍的行为
+        //   —— `K-R61 §0e` 逐字裁「本件不动中转的行为」，这一行本轮一个字节不动。
+        //   这一格的退役条件因此收成**一行 Rust**：把下面那句 `relay.is_empty()`
+        //   换成「探到 `base-url-across-tmux` 才放行」。清单住
         //   `tests::a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`。
+        //
+        // ⚠ **为什么本轮不顺手翻**（可证伪，不是「以后再说」）：`ccm_probe` 探的是
+        //   **PATH 上那个 `ccm`**，不是仓里这份 ⇒ 翻之前要先有人守住
+        //   「用户机器上跑的就是 app 自己推的那一份」。那一格今天没人守。
         //
         // ⚠ **这一格没买到的**：「变量真的穿过了一次**真** tmux 边界」要真机 tmux，
         // 本轮没量 ⇒ 归 e2e；而按上面那条，**今天在本机中转这条路上仍然走不到**
@@ -2933,10 +2961,13 @@ mod tests {
     ///
     /// 「参数缺席」的语义是**继承环境**（旧路发空前缀）。`K33` 逐字要的是
     /// 「能省就省、能默认就默认」⇒ 直觉上「不给 `--account`」就该是它。**现打证伪**：
-    /// `shared/ccm` 第 1001-1012 行（`elif [ "$use_base" != 1 ] && [ -z "${CLAUDE_CONFIG_DIR:-}" ]`）
+    /// 那份已删的 bash `ccm` 第 1001-1012 行（`elif [ "$use_base" != 1 ] && [ -z "${CLAUDE_CONFIG_DIR:-}" ]`）
     /// 逐字写着，既没 `--account` 也没 `--base` 而 `CLAUDE_CONFIG_DIR` **为空**时，
     /// ccm **落 manifest 的默认号**（那一段自己的注释第 1190 行逐字：
     /// 「『空的 CLAUDE_CONFIG_DIR + 没有账号 flag』→ 落 manifest 默认号，把调用方选中的号静默换掉」）。
+    /// 〔`K-R61` 09-11：这个读数**量于一份已经不在盘上的文件**（`07e4e72` 删）。
+    /// 同一档语义今天住 `remote-daemon-proto/src/control/ccm/plan.rs`，
+    /// **本轮没有重打它** —— 别把上面那张表读成「今天现打过」。〕
     ///
     /// ⇒ 三种说法逐格对：
     ///
@@ -2947,7 +2978,7 @@ mod tests {
     ///
     /// **三格里没有一格逐字等于「继承」** ⇒ 账本 `parity_ledger.rs` 那句
     /// 「CLI 语法里没有这一态」**是真的**，而且是**产品决定**（ccm 省略时的默认该不该改）
-    /// ＋ `shared/ccm` 的改动，两样都不在本件写区。**本条把它钉成一格红以外的东西：
+    /// ＋ 改 `remote-daemon-proto/src/control/ccm/plan.rs`。**本条把它钉成一格红以外的东西：
     /// 一格 `Err`，且理由必须仍然指向「继承」** —— 谁哪天把它映成 `--base`，这里当场红，
     /// 而那一刀正是 `#75`（账本逐字：「把继承偷换成显式清空 = #75」）。
     #[test]
@@ -3025,7 +3056,7 @@ mod tests {
             r.as_ref().is_err_and(|e| e.contains("继承")),
             "「参数缺席」= 继承环境。它今天必须 `Err` 且理由点着「继承」——\n\
              映成 `--base` 是把继承偷换成显式清空（#75）；\n\
-             省略 `--account` 是落 manifest 默认号（`shared/ccm:1001-1012`，同样是静默换号）。实得：{r:?}"
+             省略 `--account` 是落 manifest 默认号（`remote-daemon-proto/src/control/ccm/plan.rs`，同样是静默换号）。实得：{r:?}"
         );
 
         // ② Base —— `Ok`，而且渲染出来的那条真的带 `--base`。
@@ -3051,7 +3082,7 @@ mod tests {
         );
 
         // ④ Named{只有目录} —— 仍然 `Err`：**不许从目录名推一个 `--account` 出来**。
-        //    推错的失效方向是 `shared/ccm` 当场 `die`（退出码 2）= 一次能起的会话变成报错，
+        //    推错的失效方向是 `ccm` 当场 `die`（退出码 2）= 一次能起的会话变成报错，
         //    与 `relay_account_id_of_dir` 那条「推错就回落」的保守方向**相反**。
         let r = verdict("Named{只有目录}");
         assert!(
@@ -3065,7 +3096,7 @@ mod tests {
     /// # 它为什么存在：盘上写着「已消掉」，而其实没消掉
     ///
     /// 第一拍报过一条代价「走中转的号拿不到 tmux 容器」（当时的成因：外侧那句 export
-    /// 在 tmux 边界被吃掉）。第二拍照 `R08` 在 `shared/ccm` 里加了一条转发，于是件文件
+    /// 在 tmux 边界被吃掉）。第二拍照 `R08` 在那份已删的 bash `ccm` 里加了一条转发，于是件文件
     /// 与 [`launch_local`] 的头注都写上了**「不再互斥」**。
     /// 🔴 `D4` 现打证伪：**代价原样还在，只是成因换了。**
     ///
@@ -3076,11 +3107,14 @@ mod tests {
     /// 下面第 ⓪ 格现打断言的正是这件事 —— 渲染器**单独看已经不再互斥**。
     ///
     /// 今天互斥是由 [`launch_local`] 里那一行 `relay.is_empty()` **显式保住**的
-    /// （理由与退役条件住 [`RELAY_KEEPS_THE_OLD_PATH`]）：`shared/ccm` 的转发**有**
-    /// （第 1208-1209 行），而 `capabilities=`（第 624 行，18 个 token）里**没有任何 token
-    /// 声明它** ⇒ 放行会让装旧 ccm 的机器**静默吃掉** `ANTHROPIC_BASE_URL`。
+    /// （理由与退役条件住 [`RELAY_KEEPS_THE_OLD_PATH`]）。
     ///
-    /// ⇒ **这一条从「成因是说不出名字」改成「成因是探不到那个能力」。**
+    /// ⚠ 〔`K-R61` 09-11〕这一段先前逐字写着「`capabilities=`（第 624 行，18 个 token）里
+    /// 没有任何 token 声明它 ⇒ 放行会让**装旧 ccm 的机器**静默吃掉」——
+    /// **那个住址与那个理由今天都不成立了**，重裁后的两句都住
+    /// [`RELAY_KEEPS_THE_OLD_PATH`] 的头注，本条不复述第二份。
+    ///
+    /// ⇒ **这一条从「成因是说不出名字」改成「成因是那一行还没改成探那个能力」。**
     /// 前者是结构性的（只能等改 `LaunchAccount`），后者**有可执行的退役条件**。
     ///
     /// # 🔴🔴🔴 `K-R55` 09-11：**上一版自己抄了一份被测逻辑** —— 换成量真正送出去的那一串
@@ -3122,7 +3156,7 @@ mod tests {
     ///
     /// # ⚠ 它连带说明了一件别处的事（别让那条判据被读宽）
     ///
-    /// `shared/ccm` 那条 `ANTHROPIC_BASE_URL` 转发（连同钉它的
+    /// 我们自己这份 `ccm` 的容器路那条 `ANTHROPIC_BASE_URL` 转发（连同钉它的
     /// `payload::tests::the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary`
     /// 与件文件里的 `M12`/`M12b`）量的是一条**在本机中转这条路上今天生产不可达**的路：
     /// 那段 shell 真的会转发，而**没有任何生产输入能同时走到中转与容器**。
@@ -3130,13 +3164,20 @@ mod tests {
     ///
     /// # 🔴 这条前提**还会再变一次** —— 变的那天去哪里重新裁定（`testing.md` 三.11 要的那一栏）
     ///
-    /// 退役条件今天是**一行 shell**：`shared/ccm:624` 的 `capabilities=` 加一个声明转发的 token，
-    /// 而 [`launch_local`] 那一行改成「探到那个 token 才放行」。真做那一天，**同一拍**四样：
+    /// 〔`K-R61` 09-11 **重裁**〕上一版这里写的是「退役条件今天是**一行 shell**」，
+    /// 点的是那份 bash `ccm` 的第 624 行 —— 而它 `07e4e72` 就删了。
+    /// 今天的前提是：**转发做到了、也声明了**（`base-url-across-tmux` 已在
+    /// `remote-daemon-proto/src/control/ccm/mod.rs` 的 `CAPABILITIES` 里，
+    /// 由那棵树的 `the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it`
+    /// 真去驱动一遍），**差的只是 [`launch_local`] 那一行还没改成探它**。
+    ///
+    /// ⇒ 退役条件收成**一行 Rust**：[`launch_local`] 里那句 `relay.is_empty()`
+    /// 换成「探到 `base-url-across-tmux` 才放行」。真做那一天，**同一拍**这几样：
     ///   ① 本条会红 —— **在这里重新裁定**；
     ///   ② [`launch_local`] 的头注与 [`RELAY_KEEPS_THE_OLD_PATH`] 跟着改；
     ///   ③ 件计划 `K-H2b §4` 那条登记跟着改
-    ///      〔`K-R53` 09-11：**这一样本轮没做，它不在本件写区** —— 已在 `K-R53 §8` 报回 PM〕；
-    ///   ④ `shared/ccm` 那一行本身（**也不在本件写区**，同上报回）。
+    ///      〔`K-R53` 09-11 报回 PM，**`K-R61` 仍未做**：`K-R61 §0e` 逐字裁「不碰它」〕；
+    ///   ④ `CAPABILITIES` 那个 token —— **`K-R61` 已做**，这一样从此不再是待办。
     #[test]
     #[cfg(not(windows))]
     fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
@@ -3248,11 +3289,302 @@ mod tests {
         // 正题：两个集合不相交 ⇒ 今天没有任何一次本机拉起同时拿到中转前缀与 tmux 容器。
         assert!(
             relayed.iter().all(|l| !containered.contains(l)),
-            "「走中转」与「有 tmux 容器」不再互斥了 —— 那是**好事**，但盘上有四处话要跟着改：\n\
+            "「走中转」与「有 tmux 容器」不再互斥了 —— 那是**好事**，但盘上有三处话要跟着改：\n\
              ① 本条（重新裁定）② `launch_local` 头注与 `RELAY_KEEPS_THE_OLD_PATH`\n\
-             ③ 件计划 `K-H2b §4` 那条登记 ④ `shared/ccm:624` 的 `capabilities=` 串要加 token\n\
-             （否则装了旧 ccm 的机器静默吃掉那个变量）。\n\
+             ③ 件计划 `K-H2b §4` 那条登记。\n\
+             （第四样 —— `remote-daemon-proto/src/control/ccm/mod.rs` 的 `CAPABILITIES` 加\n\
+             `base-url-across-tmux` —— `K-R61` 已经做了：转发做到了、也声明了。）\n\
              实得：走中转的 {relayed:?} · 有容器的 {containered:?}"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R61`：退役条件那句话 —— **几处说的是同一件事**，而且**它点名的住址真的在盘上**
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 本组判据的**自剪线**。见 [`r61_hay`]。
+    ///
+    /// ⚠ 这个串在本文件里**必须只出现在这一行**（下面两条判据都靠它切被测面）。
+    const R61_SELF_CUT: &str = "〔K-R61 判据组自剪线〕";
+
+    /// 本组的被测面 = `history.rs` 全文**截到自剪线为止**。
+    ///
+    /// 🔴 为什么要剪：本组的锚点是**逐字串**，而它们在下面两条判据里各有一份字面量副本
+    /// （判据自带清单，与 `ccm_invocation.rs` 那两处「刻意的重复」同一个理由）。
+    /// 不剪的话 [`guard_core::find_pinned`] 会看到两处、当场报「指不明是哪一处」——
+    /// 那是**量具把自己也算进了被测面**。
+    ///
+    /// ⚠ **它买不到的**：自剪线**之后**的文本一律不进射程。有人把同一段话复制到本文件
+    /// 更后面去，本组看不见。射程边界就写在这里，别读宽。
+    fn r61_hay() -> &'static str {
+        let src = include_str!("history.rs");
+        let cut = src
+            .find(R61_SELF_CUT)
+            .expect("自剪线不见了 —— 本组判据此刻在量它自己，读数作废");
+        &src[..cut]
+    }
+
+    /// 「退役条件那句话」在本文件里的**住址表 —— 只有这一处**。
+    ///
+    /// 每一处给一对**逐字锚点**（起 / 止）。两个锚点都由 [`guard_core::find_pinned`]
+    /// 断言**恰好命中一次**，取「起 → 止」之间那一段 ⇒ 窗口**不可能跨到下一条**：
+    /// 止锚点就是紧挨着它的下一个结构物本身。
+    ///
+    /// ⚠ `K-R61 §0a` 那张表登记的是**四处**；本轮现打**五处**。多出来的两处是
+    /// ③（[`launch_local`] 体内那段「为什么要显式保住」）与
+    /// ⑤（互斥判据末尾那条 `assert!` 的诊断文案）—— 它们也在说同一件事，`§0a` 漏了。
+    /// 数字与名单同住这里（纪律 ⑭）：分母 = 本表的长度，成员 = 本表逐行。
+    fn r61_sites() -> Vec<(&'static str, &'static str, &'static str)> {
+        vec![
+            (
+                "① 常量本体 RELAY_KEEPS_THE_OLD_PATH",
+                "const RELAY_KEEPS_THE_OLD_PATH: &str =",
+                "/// ⚠ **`Err` 那一支不回 token**",
+            ),
+            (
+                "② 常量头注的『退役条件』一节",
+                "# 🔴 退役条件〔`K-R61` 09-11 重裁",
+                "const RELAY_KEEPS_THE_OLD_PATH: &str =",
+            ),
+            (
+                "③ launch_local 体内『为什么要显式保住』",
+                "🔴🔴🔴 **三次订正（`K-R61` 09-11）",
+                "let rendered = if relay.is_empty() {",
+            ),
+            (
+                "④ 互斥判据头注『这条前提还会再变一次』",
+                "# 🔴 这条前提**还会再变一次**",
+                "fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {",
+            ),
+            (
+                "⑤ 互斥判据末尾那条 assert! 的诊断文案",
+                "「走中转」与「有 tmux 容器」不再互斥了",
+                "实得：走中转的 {relayed:?}",
+            ),
+        ]
+    }
+
+    /// 按住址表切出那几段。锚点唯一性在这里当场核（切之前，不是切之后）。
+    fn r61_segments() -> Vec<(&'static str, &'static str)> {
+        let hay = r61_hay();
+        r61_sites()
+            .into_iter()
+            .map(|(name, start, end)| {
+                let a = guard_core::find_pinned(hay, start).unwrap_or_else(|e| {
+                    panic!("{name}：起锚点不是恰好一处 —— 形状变了，先修锚点：{e}")
+                });
+                let b = guard_core::find_pinned(hay, end).unwrap_or_else(|e| {
+                    panic!("{name}：止锚点不是恰好一处 —— 形状变了，先修锚点：{e}")
+                });
+                assert!(
+                    a < b && b - a < 4000,
+                    "{name}：切出来的窗口不成形（起 {a} 止 {b}）—— 两个锚点的相对位置变了，\n\
+                     照原样切会切到别人身上，本条此刻的读数一律作废。"
+                );
+                (name, &hay[a..b])
+            })
+            .collect()
+    }
+
+    /// 从一段文本里抽出「反引号括起来、像**仓内路径**的那些串」。
+    ///
+    /// 🔴 **刻意不要求后缀**：`K-R61 §0d` 那把尺子的 `EXT` 白名单正是把**无后缀**的那一形
+    /// 整个滤掉了，于是它一处都数不到本件正在治的那个样本 ——「量一个人群之前，
+    /// 先确认尺子逮得到那个已知的样本」。这里只要求：带 `/` · 不是 URL · 不带空格 ·
+    /// 只由路径字符组成 · 不是绝对路径。行号后缀（`:123` / `:12-34`）当场剥掉。
+    fn r61_paths_in(seg: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut rest = seg;
+        while let Some(a) = rest.find('`') {
+            let after = &rest[a + 1..];
+            let Some(b) = after.find('`') else { break };
+            let raw = after[..b].trim();
+            rest = &after[b + 1..];
+            let tok = match raw.rsplit_once(':') {
+                Some((head, tail))
+                    if !tail.is_empty() && tail.chars().all(|c| c.is_ascii_digit() || c == '-') =>
+                {
+                    head
+                }
+                _ => raw,
+            };
+            if !tok.contains('/') || tok.contains("://") || tok.contains(' ') {
+                continue;
+            }
+            if tok.starts_with('/') || tok.starts_with('~') || tok.starts_with("./") {
+                continue;
+            }
+            if !tok
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "._/+-".contains(c))
+            {
+                continue;
+            }
+            out.push(tok.to_string());
+        }
+        out
+    }
+
+    /// `KR61D1`：**那几处说的是同一件事** —— 同一个前提、同一个住址、同一个 token。
+    ///
+    /// # 它为什么存在
+    ///
+    /// 上一版这几处逐字点着一份 `07e4e72` 就删掉的 bash 脚本，而互斥那条判据一直是绿的
+    /// ⇒ **判据活着、前提死了，中间没有任何东西会响**。本条就是那个「会响的东西」。
+    ///
+    /// # 判的是什么（三条，缺一不可）
+    ///
+    /// 1. **同一个前提**：每一处都要有那句承重话（`转发做到了、也声明了`）。
+    ///    ⇒ 只把住址换新、把理由留在旧版本上（`K-R61 KR61D1` 逐字点名的失效方向
+    ///    「**换地址不换前提**」）在这里当场红。
+    /// 2. **同一个住址**：每一处点的都是 [`R61_ADDR`]，而它**在盘上真的存在**
+    ///    （存在性那一半由 [`every_address_the_retirement_condition_names_is_still_on_disk`] 守）。
+    /// 3. **旧住址一处都不许留**：那份已删的 bash 脚本的旧路径，五段里出现一次就红。
+    ///    ⇒ `KR61D1` 那条死值验（「四处中任意一处改回旧住址 ⇒ 必须红」）由这一条兑现。
+    ///
+    /// # ⚠ 边界（别读宽）
+    ///
+    /// - 本条判的是**这几段文本互相一致**，**不判**「这段话是真的」。
+    ///   「那个文件里真的有那个 token」由 daemon 那棵树的
+    ///   `control::ccm::tests::the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it` 守。
+    /// - 住址表本身（哪几处算「同职」）是**人写的**。有人在别处再写一段同职的话而不登记，
+    ///   本条看不见 —— 那正是 `§0a` 漏掉 ③⑤ 两处的形状。
+    #[test]
+    fn the_retirement_condition_says_the_same_thing_in_every_place_that_states_it() {
+        // 判据自带清单（**不复用生产常量**）：复用的话，谁把生产那一份改了，
+        // 循环跟着改，两边一起漂而没有一格红。
+        const PREMISE: &str = "转发做到了、也声明了";
+        const TOKEN: &str = "base-url-across-tmux";
+
+        let segs = r61_segments();
+        assert_eq!(
+            segs.len(),
+            5,
+            "住址表的长度变了 —— 分母变了就要重新裁定，别让它悄悄变"
+        );
+        // 旧住址：**现搭**，不写成字面量。写成字面量的话本文件里就又多了一处
+        // 「那个已删文件的路径」，而本条自己就是来消灭它的。
+        let retired = format!("shared/{}", "ccm");
+
+        for (name, seg) in &segs {
+            assert!(
+                seg.contains(PREMISE),
+                "{name} 里没有那句承重话「{PREMISE}」。\n\
+                 ⇒ 这正是 `KR61D1` 点名的失效方向：**换地址不换前提**。\n\
+                 今天的前提是「我们自己这份 ccm 转发得了、也声明了，差的只是那一行还没改成探它」，\n\
+                 不是旧话「对面可能是装了别的 ccm 的机器」（`K34`/`K35` 之后那类机器正在退场）。\n\
+                 实得这一段：\n{seg}"
+            );
+            assert!(
+                seg.contains(R61_ADDR),
+                "{name} 点的住址不是 `{R61_ADDR}` —— 几处不再指同一个地方。\n\
+                 实得这一段：\n{seg}"
+            );
+            assert!(
+                seg.contains(TOKEN),
+                "{name} 里没点名那个 token `{TOKEN}` —— 退役条件说不清要探什么。\n\
+                 实得这一段：\n{seg}"
+            );
+            // 旧住址一处都不许留（`-aliases.sh` 那个**还在盘上**，不算）。
+            let stale = seg
+                .match_indices(retired.as_str())
+                .filter(|(i, _)| {
+                    seg[i + retired.len()..]
+                        .chars()
+                        .next()
+                        .is_none_or(|c| c != '-')
+                })
+                .count();
+            assert_eq!(
+                stale, 0,
+                "{name} 里还点着那份已删脚本的旧住址（{stale} 处）—— 那是 `K-R61` 要治的病本身：\n\
+                 它 `07e4e72` 就删了，指着它的话不会有任何东西出声。\n\
+                 实得这一段：\n{seg}"
+            );
+        }
+
+        // 整份文件那一格：不只这五段，全文都不许再点那个旧住址。
+        // （少了这一格，把旧住址挪出这五段的窗口就能躲过去。）
+        let whole = include_str!("history.rs");
+        let left: Vec<&str> = whole
+            .lines()
+            .filter(|l| {
+                l.match_indices(retired.as_str()).any(|(i, _)| {
+                    l[i + retired.len()..]
+                        .chars()
+                        .next()
+                        .is_none_or(|c| c != '-')
+                })
+            })
+            .collect();
+        assert!(
+            left.is_empty(),
+            "本文件里还有 {} 行点着那份已删脚本：\n  {}",
+            left.len(),
+            left.join("\n  ")
+        );
+    }
+
+    /// 退役条件点名的那个住址 —— **本文件里的字面量只有这一处**（`brief` 13b）。
+    const R61_ADDR: &str = "remote-daemon-proto/src/control/ccm/mod.rs";
+
+    /// `KR61D2`：**退役条件点名的仓内住址，不在了就得响。**
+    ///
+    /// 存在性由本条负责，**不由谁记得**。这一条不是给某一个旧名字写的补丁：
+    /// 它把那几段里**每一个**看起来像仓内路径的串都拿去盘上核一次 ⇒
+    /// 下一个被删掉的文件同样会当场红。
+    ///
+    /// # ⚠⚠ 反向本条**不主张**（这一句是 `KR61D2` 点名要写进头注的）
+    ///
+    /// 把住址改成一个**存在但不相干**的文件（比如把 `…/ccm/mod.rs` 换成 `…/ccm/argv.rs`），
+    /// **本条逮不到** —— 它只判「在不在」，不判「这个住址讲的是不是那件事」。
+    /// 别把它读成「住址对不对有人管」。
+    ///
+    /// 那半格今天由**别的东西**兜，而且兜得不全，如实写清：
+    /// - [`the_retirement_condition_says_the_same_thing_in_every_place_that_states_it`]
+    ///   钉着 [`R61_ADDR`] 这**一个**串 ⇒ 换成 `argv.rs` 它会红。但那是**钉死一个字面量**，
+    ///   只护得住这一个住址，护不住下一条退役条件点的下一个住址。
+    /// - 「那个文件里真的有那个 token」由 daemon 那棵树的
+    ///   `the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it` 守。
+    /// - 「这段话说的是不是真的」**没有任何东西守**。
+    ///
+    /// # ⚠ 射程
+    ///
+    /// 只到 [`r61_sites`] 登记的那几段。**本条不是全仓 doc-link 检查器**
+    /// （`K-R61 §0e` 逐字禁的就是顺手做那个）—— 全仓那个人群多大，读数住件文件 `§8`。
+    #[test]
+    fn every_address_the_retirement_condition_names_is_still_on_disk() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级 = 仓根")
+            .to_path_buf();
+
+        let mut checked: Vec<String> = Vec::new();
+        let mut missing: Vec<String> = Vec::new();
+        for (name, seg) in r61_segments() {
+            for p in r61_paths_in(seg) {
+                checked.push(format!("{name} → {p}"));
+                if !root.join(&p).exists() {
+                    missing.push(format!("{name} → `{p}`"));
+                }
+            }
+        }
+        // 反空真：抽不到路径的话下面那条 `is_empty()` 是白过的。
+        assert!(
+            checked.len() >= 4,
+            "只从那几段里抽到 {} 个住址 —— 抽取器坏了，本条此刻在空转。抽到的：{checked:?}",
+            checked.len()
+        );
+        assert!(
+            missing.is_empty(),
+            "退役条件点着 {} 个**盘上没有**的住址：\n  {}\n\
+             ⇒ 这就是 `K-R61` 立件的那个形状：判据活着、前提指着一个已经被删掉的文件，\n\
+             中间没有任何东西会响。**改住址的同时把那句理由也重读一遍** ——\n\
+             `K-R61` 那一轮变的不是住址，是前提本身。\n\
+             本轮核过的全部住址（分母 {}）：{checked:?}",
+            missing.len(),
+            missing.join("\n  "),
+            checked.len()
         );
     }
 
@@ -5564,9 +5896,12 @@ mod tests {
     /// - **走 ccm 容器那一支身份到不到得了 agent 进程**：到不了。本条喂 `tmux_name = None`
     ///   ⇒ 走的是回落那条路（渲染器早退，见 [`NO_TMUX_NAME`]）。容器那一支上外侧这句 `export`
     ///   会在 tmux 边界被吃掉（与 `K-H2b` 给 `ANTHROPIC_BASE_URL` 踩过的**同一个坑**，
-    ///   那一次的修法是在 `shared/ccm` 的容器载荷内侧补一句转发）——
-    ///   `shared/ccm` **本拍是红线文件**，那一句没补 ⇒ 这一格**今天是个洞**，
-    ///   登记在 `launcher_identity_registry` 的 `L1` 那一行里，别读成「已经全覆盖」。
+    ///   那一次的修法是在容器载荷内侧补一句转发）—— 当时那份 bash `ccm` 是红线文件，
+    ///   那一句没补 ⇒ 这一格当时是个洞，登记在 `launcher_identity_registry` 的 `L1` 那一行里。
+    ///   🔴 〔`K-R61` 09-11 现打〕`remote-daemon-proto/src/control/ccm/plan.rs` 的容器路
+    ///   **今天有** `export CCM_LAUNCH_ID=…` 那一句 ⇒ **那个洞的成因很可能已经不在了**。
+    ///   但「洞补没补上」的落点是 `launcher_identity_registry` 的 `L1`，**不在 `K-R61` 写区**，
+    ///   本轮**没有**去重裁它 —— 已报回 PM。在有人重裁之前，别把这一段读成「已经全覆盖」。
     /// - **读的那一侧**：daemon 从 `/proc/<pid>/environ` 读回来、经 wire 帧发出去 —— 本拍**没有做**
     ///   （面在 `remote-daemon-proto/`，不在本拍写区）。⇒ 今天这个变量**有人写、没人读**。
     /// - **Windows 上的运行时行为**：一行都没量（这台机器是 Linux）。⑤ 买到的只是
