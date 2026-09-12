@@ -643,8 +643,57 @@ gate_selftest
 #     **今天仍然没买到** —— 沙箱镜像仍没装那个 target。**别把这一格读成两条都补上了。**
 #   · 它跑在 `src-tauri` 上（`--all` = 那个 workspace 的全部成员）；
 #     `remote-daemon-proto` 是**另一个 workspace**，本行盖不到它。
-run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src-tauri` 那个 workspace 的全部成员；`remote-daemon-proto` 是另一个 workspace，本行盖不到' \
+#     🔴 **`K-R80`（09-12）：那句话一个字没改，改的是它后面缺的那一格** ——
+#     那棵树今天由下面 `fmt-daemon` 那一行盖。**别再把这一句读成处置。**
+run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src-tauri` 那个 workspace 的全部成员；`remote-daemon-proto` 是另一个 workspace，本行盖不到（那一棵由下面 fmt-daemon 那一格盖）' \
          bash -c 'cd src-tauri && cargo fmt --all --check 2>&1 && echo "fmt: 1 passed"'
+
+# ── daemon 那棵树的格式漂移（`K-R80` 09-12）──────────────────────────────────
+#
+# 🔴 **本格买的是上面那句诚实注释的处置。**
+#
+# ## 病不是「没人知道」，是「知道了而没人补」
+#
+# 上面那一格的分母里逐字写着「`remote-daemon-proto` 是另一个 workspace，本行盖不到」，
+# 而那句话**每趟门禁都印在终端上** —— 它不是静默失效，是**一格「我盖不到那儿」的注释
+# 被当成了处置**。`K-R79` 交回时报出：daemon 那棵树 `cargo fmt --check` **在基点上就是红的**，
+# PM 现打复核 **6 处 / 3 文件**（`agents/mod.rs` 1 · `control/ccm/argv.rs` 4 · `protocol_doc_guard.rs` 1）。
+# ⇒ **说清了射程 ≠ 射程够。** 本仓反复抓这一形，这一次长在门禁自己身上。
+#
+# ## 为什么是**多一格**，不是**并成一棵**
+#
+# 把 `remote-daemon-proto` 塞进 `src-tauri` 那个 workspace 就能「顺便盖到」——
+# **不许**。`K25` 裁的是「一份代码、每平台一份原生二进制」，而那棵树的 standalone
+# 是**真架构约束**（它自己的 `Cargo.toml` 头注逐字：一个 workspace 会把这个 Linux-only 的
+# daemon 拖进 Windows CI 的 `cargo test --all`）。为一格排版去动两棵树的依赖关系，
+# **代价远大于本格**。⇒ 多一行，各跑各的。
+#
+# ## 🔴 为什么是 `cargo fmt --check` 而**不是** `cargo fmt --all --check`
+#
+# **这一条是现打出来的，别顺手加 `--all` 去「对齐上面那一格」**（`K-R80` 09-12，
+# 沙箱 `ccmon-devbox:latest`，`cargo fmt --all --check -v` 读它真喂给 rustfmt 的那串文件）：
+# 在 `remote-daemon-proto` 下加 `--all`，rustfmt 实收 **12 个 crate 根**，其中 **11 个不在这棵树里** ——
+# `src-tauri/build.rs` · `src-tauri/src/lib.rs` · `src-tauri/src/main.rs` ·
+# `crates/{acct,branch,creds,gate,guard,shell-quote,usage}-core/src/lib.rs`，
+# 以及 🔴 **`src-tauri/vendor/code-picture-core/src/lib.rs`**。
+#（成因：那棵树的 path 依赖指进 `../src-tauri/`，`cargo fmt --all` 顺着它们走出去；
+#  `cargo metadata --no-deps` 的 `workspace_members` 现打**只有 1 个**，两者不是一回事。）
+# ⇒ 加 `--all` 会把 vendor 那棵**我们无权修**的树拉进出货门禁 —— 与下面 `cargo` 那一格
+#   `--exclude code-picture-core` 要避开的是同一件事（`C7` 逐字「vendor `code-picture-core` **不动**」）：
+#   **一道我们满足不了的闸，比没有闸更坏。**
+# ⚠ 不加 `--all` 时 `cargo metadata` 那 11 个一个都不进来（同一趟 `-v` 现打：rustfmt 只收
+#   `remote-daemon-proto/src/main.rs` 一个根），读数 6 处不变 ⇒ **少的只有别人家那棵树。**
+#
+# ## ⚠ 诚实边界，别读宽
+#   · 它买的是「**排版与 rustfmt 一致**」，**买不到**「代码对」——与上面那一格同一句话。
+#   · 分母是**一个包** `cc-monitor-remote`，射程 = 从 `src/main.rs` 顺 `mod` 走得到的那些文件；
+#     那棵树里**走不到的 `.rs` 文件本格看不见**（今天没有这样的文件，但那是事实不是判据）。
+#   · `.github/workflows/ci.yml` 的 `daemon` job **早就有这一步**（逐字同一条命令
+#     `cargo fmt --check`，`working-directory: remote-daemon-proto`）⇒ 本行**不是新买一条判据**，
+#     是把「本机门禁不是云端的超集」这个已知缺口在这一维上补平。⚠ 因此 `ci.yml` **不用改**，
+#     上面那条「三处一起改」的纪律与本行无关。
+run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `remote-daemon-proto` 那个 workspace 的唯一成员 `cc-monitor-remote`；`src-tauri` 与 `vendor/code-picture-core` 由上面 fmt 那一格与它自己的 exclude 管，本行盖不到（刻意不加 --all，理由见上方注释）' \
+         bash -c 'cd remote-daemon-proto && cargo fmt --check 2>&1 && echo "fmt-daemon: 1 passed"'
 
 # ── Windows 那半编不编得过 ──────────────────────────────────────────────────
 #
@@ -1013,7 +1062,13 @@ fi
 
 echo
 if [ "${#fails[@]}" -eq 0 ]; then
-  echo "GATE: OK —— 三道门 + 生成物漂移 + pb check + 四套 ccm e2e 全绿，可以出货"
+  # 🔴 `K-R80`（09-12）：**这一行原来逐字是「三道门 + 生成物漂移 + pb check + 四套 ccm e2e」
+  #   —— 那是 09-10 加 `fmt`/`winchk` 之前的点名，盘上现打 11 格时它只点得出 9 格。**
+  #   本拍加了第 12 格（`fmt-daemon`），顺手把它订正到今天，并且**不让它再自己烂下去**：
+  #   下面这个 `12` 与「本文件里到底有几格判定」由 `evidence/K-R80-gate-cell-coverage.py`
+  #   三方对拍（本行的数 · 本文件真有的判定格 · 那份覆盖登记的条数），对不上就红。
+  #   ⚠ 那把尺子**不在本脚本里跑** —— 它是登记的机检，不是出货闸的一格。
+  echo "GATE: OK —— 12 格全绿（fmt · fmt-daemon · winchk · cargo · generated · daemon · npm · 四套 ccm e2e · pb check），可以出货"
   exit 0
 fi
 # ★ `K-G3`（09-01）：分隔符**不能**走 `IFS='；'` —— `IFS` 是按**字节**认的，
