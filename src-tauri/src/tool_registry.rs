@@ -623,38 +623,139 @@ pub const TOOLS: &[ToolSpec] = &[
 // `K-R60`：**环境清单的闭集** —— 「app 要的东西齐了没有」这个问题的人群
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// app 与一个环境项的关系。**三档穷举。**
+/// 🔴 〔`K38` / `KR65D2`〕**「谁该装」** —— 与「今天装得了吗」是两个问题，两格分开装。
 ///
-/// 🔴 **第三档必须在清单里有一格，不许靠「没列出来」表示。**
+/// # 为什么非拆不可
+///
+/// 拆之前只有一个 `ToolSpec::installable`，而它同时被当成两句话读：
+///   · 「**今天盘上有没有一个装口**」—— 读的是**实现**，`K-R63` 那条对拍表钉死了它；
+///   · 「**这东西该不该由我们装**」—— 读的是**判断**，`K38` 裁的正是它。
+///
+/// 于是 `cc-acct-iso-local` 那种「**该由 app 装（`K38`），而实现还没有**」的状态
+/// **一格都申报不了**：写 `true` 是假申报（`K-R63` 当场逮到），
+/// 写 `false` 等于说「不该我们装」（与 `K38` 矛盾）。⇒ 两句话各给一格。
+///
+/// # 🔴 「app 自带的是哪几样」这个人群的**唯一住址**就是 [`Provisioning::AppShips`]
+///
+/// `KR65D3`：要人数就 [`environment`] 里现算（`filter(who == AppShips)`），
+/// **别处不许再手抄一张自带清单** —— 那是第二个住址〔`13b`〕。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+pub enum Provisioning {
+    /// **app 自带** —— 「和这个 app 相关的东西、独特的东西」（`K38` 逐字）。
+    AppShips,
+    /// **用户自己装** —— 通用工具（`K38` 逐字点名 `claude` / `tmux` / `git` / `ssh`）。
+    /// app **不装**，但**要去查**；缺了要出声（`KR65D1`）——「提示」不是「假设它在」。
+    UserProvides,
+    /// **谁都不「装」它** —— 别人的产物（Claude Code 自己建自己写的那份会话记录）。
+    /// 与 `UserProvides` 的差别是真的：那一档缺了该劝人去装，这一档缺了没人装得出来。
+    NotAnInstall,
+}
+
+impl Provisioning {
+    /// 三值的**闭集**本身。现算用〔`13b`：报一个基数也是复述〕。
+    pub const ALL: &'static [Provisioning] = &[
+        Provisioning::AppShips,
+        Provisioning::UserProvides,
+        Provisioning::NotAnInstall,
+    ];
+
+    /// 给人看的措辞。定在这里，UI 与诊断文本不再各写一遍。
+    pub fn label(self) -> &'static str {
+        match self {
+            Provisioning::AppShips => "app 自带",
+            Provisioning::UserProvides => "你自己装",
+            Provisioning::NotAnInstall => "不是装出来的",
+        }
+    }
+
+    /// `TOOLS` 那一半 —— **派生，不手填**：落点是 [`ToolDestination::NotInstalledByUs`]
+    /// 就是「不是装出来的」，其余一律「app 自带」（`TOOLS` 收的本来就是
+    /// **app 自己往别处放的东西**）。
+    ///
+    /// ⚠ 这一格与 `installable` **读的不是同一个东西**：这里读 `destination`（判断），
+    /// 那里读实现（`K-R63` 的对拍表）。`claude-code` 两格恰好同向，那是巧合不是同义。
+    pub fn of_tool(t: &ToolSpec) -> Provisioning {
+        match t.destination {
+            ToolDestination::NotInstalledByUs { .. } => Provisioning::NotAnInstall,
+            _ => Provisioning::AppShips,
+        }
+    }
+}
+
+/// app 与一个环境项的关系。**四档穷举，而且是从两格派生出来的，不是手填的。**
+///
+/// | | 今天有装口 | 今天没有装口 |
+/// |---|---|---|
+/// | [`Provisioning::AppShips`] | [`EnvTier::AppInstalls`] | [`EnvTier::AppShipsNoInstallerYet`] |
+/// | [`Provisioning::UserProvides`] | —— | [`EnvTier::UserInstallsWePrompt`] |
+/// | [`Provisioning::NotAnInstall`] | —— | [`EnvTier::AppOnlyChecks`] |
+///
+/// 🔴 **每一档都必须在清单里有一格，不许靠「没列出来」表示。**
 /// 〔`K-R57` 摸底现打：`TOOLS` 只有 6 条，而 app 用的时候直接假设在的至少 9 项
 /// （`claude` · `tmux` · 终端出口 · `git` · `ssh` · `pgrep` · `xdg-open` · `bash` ·
 /// MCP server 本体）—— 它们一条都没进任何一张表。于是「app 依赖本机环境」这个判断
 /// **在代码里没有住址**，只能从「表里没有」倒推 —— 用缺席表达一个判断，
 /// 正是本工作区一整天在治的那族病。〕
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
+///
+/// # 🔴 〔`K-R65` 09-11〕`AppAssumesPresent` 那一档**删了 —— 这是它的墓碑**
+///
+/// 原文逐字：「**app 假设它在** —— 既不装也不查，用的时候直接假设它已经在。」
+/// 而 `config_surface::unmanaged_row` 把这句话实现成了「`state` 恒 `Undetermined`、
+/// `path_resolved` **故意不解析**（解析了就等于查了）」。
+///
+/// `K38` 把这一档判掉了：通用工具**不是**「我不看」，是「**你自己装，而我会看、缺了我要说**」
+/// ⇒ 原来住在那一档的 10 项一项不剩（9 项去 [`EnvTier::UserInstallsWePrompt`]、
+/// `cc-acct-iso-local` 去 [`EnvTier::AppShipsNoInstallerYet`]），
+/// 而 `every_tier_has_members_so_absence_never_encodes_a_judgement` 自己的报错逐字写着
+/// 「要么给它一个成员，**要么把这一档从 EnvTier 里删掉**」⇒ 删。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 pub enum EnvTier {
-    /// **app 装的** —— 产品自己有安装动作。
+    /// **app 装的** —— 该我们装，而且今天真有装口。
     AppInstalls,
-    /// **app 只查** —— 查得到它在不在，装不了。
+    /// **app 该自带，而今天还没有装口** —— `KR65D2` 要的那一格。
+    ///
+    /// ⚠ 它**不许被读成「不该我们装」**：那是 `UserProvides` / `NotAnInstall` 的意思。
+    /// 这一格是**欠的实现**，看得见、数得出来。
+    AppShipsNoInstallerYet,
+    /// **你自己装，缺了我们提示你** —— app 不装，但**真去查**（`KR65D1`）。
+    UserInstallsWePrompt,
+    /// **app 只查** —— 谁都不「装」它，我们查得到它在不在。
     AppOnlyChecks,
-    /// **app 假设它在** —— 既不装也不查，用的时候直接假设它已经在。
-    AppAssumesPresent,
 }
 
 impl EnvTier {
-    /// 三档的**闭集**本身。现算用（`len()` 就是「几档」，不许在别处写死一个基数）。
+    /// 四档的**闭集**本身。现算用（`len()` 就是「几档」，不许在别处写死一个基数）。
     pub const ALL: &'static [EnvTier] = &[
         EnvTier::AppInstalls,
+        EnvTier::AppShipsNoInstallerYet,
+        EnvTier::UserInstallsWePrompt,
         EnvTier::AppOnlyChecks,
-        EnvTier::AppAssumesPresent,
     ];
 
     /// 给人看的档名。措辞定在这里，UI 与诊断文本不再各写一遍。
     pub fn label(self) -> &'static str {
         match self {
             EnvTier::AppInstalls => "app 装的",
+            EnvTier::AppShipsNoInstallerYet => "app 该自带 —— 今天还没有装口",
+            EnvTier::UserInstallsWePrompt => "你自己装 —— 缺了我们提示你",
             EnvTier::AppOnlyChecks => "app 只查",
-            EnvTier::AppAssumesPresent => "app 假设它在",
+        }
+    }
+
+    /// 🔴 **档由两格派生**：「谁该装」× 「今天有没有装口」。**没有兜底臂** ——
+    /// 任何一侧加变体都会编译失败，逼人回答那一格该落哪一档。
+    pub fn of(who: Provisioning, has_installer_today: bool) -> EnvTier {
+        match (who, has_installer_today) {
+            (Provisioning::AppShips, true) => EnvTier::AppInstalls,
+            (Provisioning::AppShips, false) => EnvTier::AppShipsNoInstallerYet,
+            // 这两支的 `_` 是**有意的**：`K38` 裁了「不该我们装」，那么有没有装口都不改变档。
+            // 而「不该我们装却真有装口」是自相矛盾，由
+            // `nobody_declares_an_installer_for_something_we_should_not_install` 单独判红 ——
+            // 不在这里悄悄吸收掉。
+            (Provisioning::UserProvides, _) => EnvTier::UserInstallsWePrompt,
+            (Provisioning::NotAnInstall, _) => EnvTier::AppOnlyChecks,
         }
     }
 }
@@ -663,18 +764,26 @@ impl EnvTier {
 ///
 /// # 为什么只有这一半是手写的
 ///
-/// 有 [`ToolSpec`] 的那一半**能派生**：它的 `touches` 一定会被 `config_surface` 逐条解析并观测
-/// 一次（⇒ 至少是「只查」），再读它的 `installable` 就分得出「装」还是「只查」。
-/// 而这一半派生不出来 —— 盘上**没有任何字段**能把「只查」与「假设它在」分开，
-/// 那是一个**设计判断**，不是读数。⇒ 判断必须有住址，这张表就是它的住址。
+/// 有 [`ToolSpec`] 的那一半**能派生**：它的落点（`destination`）说得出「谁该装」，
+/// 它的 `installable`（`K-R63` 钉在真实现上）说得出「今天有没有装口」。
+/// 而这一半派生不出来 —— 盘上**没有任何字段**能把「这东西该由我们装」与
+/// 「该用户自己装」分开，那是一个**设计判断**，不是读数。
+/// ⇒ 判断必须有住址，这张表就是它的住址。
 ///
-/// ⚠ **别把「今天这台机器上恰好有」写成「app 假设它在」** —— 前者是读数（`K-R57` 量具 A 量的那种），
+/// ⚠ **别把「今天这台机器上恰好有」写成一个 `who`** —— 前者是读数（`K-R57` 量具 A 量的那种），
 /// 后者是设计判断。本表只收后者，所以每一条的 `why` 要给**代码里的住址**，不是一句形容。
 pub struct UnmanagedEnv {
     pub id: &'static str,
     pub display_name: &'static str,
-    /// 这一项属于哪一档。**必须写出来** —— 第三档就是靠这一格存在的。
-    pub tier: EnvTier,
+    /// 🔴 〔`K-R65`〕**「谁该装」** —— 这一格取代了原来那个手填的 `tier`。
+    ///
+    /// 原文逐字：「`tier: EnvTier`／这一项属于哪一档。**必须写出来** —— 第三档就是靠这一格
+    /// 存在的。」那时档是**手填**的，于是「档」这一个字段同时装着「谁该装」与
+    /// 「今天装得了吗」两件事。今天档由 [`EnvTier::of`] 从这一格 ＋「有没有 `ToolSpec`」
+    /// 派生出来，**手填不了**。
+    pub who: Provisioning,
+    /// **怎么查它在不在。** `KR65D1` 的正题住这一格 —— 见 [`EnvProbe`]。
+    pub probe: EnvProbe,
     /// 用什么名字指认它：PATH 上的命令名、一条 `~/` 路径、或一个 `$占位符`。
     pub named: &'static str,
     /// 它在哪台机器上（与 [`TouchedFile::host`] 同一套语义）。
@@ -685,14 +794,48 @@ pub struct UnmanagedEnv {
     pub why: &'static str,
 }
 
-/// 闭集里手写的那一半。**今天全是第三档** —— 这不是巧合：
-/// 「只查」那一档今天唯一的成员是 `TOOLS` 里 `installable: false` 的 `claude-code`，
-/// 由 [`environment`] 从字段派生出来，不在这张表里。
+/// 手写那一半**怎么查**。
+///
+/// # 🔴 `KR65D1` 的正题住这里：「提示」= **我看，而且缺了我要说**
+///
+/// `K-R60` 把第三档的语义写死成「**我们压根没去查**」（`state` 恒 `Undetermined`、
+/// `path_resolved` **故意不解析**，理由逐字「解析了就等于查了」）。
+/// `K38` 之后那一档不存在了 ⇒ 这一格申报的是**查法**，不是「查不查」。
+///
+/// # ⚠ [`EnvProbe::CannotProbe`] **不是「不查」**
+///
+/// 它是「**查了，查不动**」。两者在这一页上显示成两回事：
+/// 「查了、确认没有」= `SurfaceState::Absent`；「查不动」= `SurfaceState::Undetermined { why }`。
+/// 这条分法**是现成的** —— 前端 `readiness.ts` 的 `missing` / `unknown` 就是它，
+/// **不许再造一套**。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnvProbe {
+    /// `PATH` 上的一个裸命令 —— 走 `hooks_diag.rs::resolves_on_path`。
+    ///
+    /// **用已有那一把，不新写一个 `which`**：它已经把两条坑填了 ——
+    /// 切分必须走 `std::env::split_paths`（Windows 的 `;` 与盘符冒号），
+    /// 以及「取不到 `PATH` 就返回 `None`（**不猜**）」。
+    OnPath,
+    /// 一条 `~/` 路径 —— 走 `config_surface.rs::resolve_touched_path` 那条既有的本机解析。
+    HomePath,
+    /// 查不动，**理由必填**：值由别处决定（占位符 / 用户配置），本页不猜。
+    ///
+    /// ⚠ 填这一支之前先问一遍：是真的查不动，还是**懒得查**？后者写在这里就是
+    /// 拿「查不动」当「不查」的遮羞布 —— 那正是本件在治的病。
+    CannotProbe { why: &'static str },
+}
+
+/// 闭集里手写的那一半。
+///
+/// 🔴 〔`K-R65` 09-11〕**这张表原来「全是第三档」，今天一条都不是** ——
+/// `K38` 之后它分成了两群：9 项通用工具是 [`Provisioning::UserProvides`]，
+/// `cc-acct-iso-local` 是 [`Provisioning::AppShips`]（app 独有、该我们装，而装口还欠着）。
 pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     UnmanagedEnv {
         id: "claude-cli",
         display_name: "Claude Code 的可执行文件",
-        tier: EnvTier::AppAssumesPresent,
+        who: Provisioning::UserProvides,
+        probe: EnvProbe::OnPath,
         named: "claude",
         host: HostScope::Either,
         why: "起会话时拿它当启动器直接用；装不装、在哪个版本，app 一概不问 —— \
@@ -701,7 +844,8 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     UnmanagedEnv {
         id: "tmux",
         display_name: "tmux（会话容器）",
-        tier: EnvTier::AppAssumesPresent,
+        who: Provisioning::UserProvides,
+        probe: EnvProbe::OnPath,
         named: "tmux",
         host: HostScope::Either,
         why: "tmux 容器那条起法要它；缺了只在回绝里报一句能力名 —— \
@@ -710,7 +854,8 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     UnmanagedEnv {
         id: "terminal-exit",
         display_name: "POSIX 终端出口",
-        tier: EnvTier::AppAssumesPresent,
+        who: Provisioning::UserProvides,
+        probe: EnvProbe::OnPath,
         named: "xdg-terminal-exec",
         host: HostScope::Client,
         why: "POSIX 上开一个会话窗口只认这一个规范化出口，表里今天就它一项 —— \
@@ -719,7 +864,8 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     UnmanagedEnv {
         id: "git",
         display_name: "git",
-        tier: EnvTier::AppAssumesPresent,
+        who: Provisioning::UserProvides,
+        probe: EnvProbe::OnPath,
         named: "git",
         host: HostScope::Client,
         why: "认 skill 所在的工作树与主检出要跑它 —— skill_host.rs::git_common_dir",
@@ -727,7 +873,8 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     UnmanagedEnv {
         id: "ssh",
         display_name: "ssh 客户端（含密钥与主机配置）",
-        tier: EnvTier::AppAssumesPresent,
+        who: Provisioning::UserProvides,
+        probe: EnvProbe::OnPath,
         named: "ssh",
         host: HostScope::Client,
         why: "远端一整侧都经它；app 只探它在不在 PATH 上，装不了 —— \
@@ -736,7 +883,8 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     UnmanagedEnv {
         id: "pgrep",
         display_name: "pgrep",
-        tier: EnvTier::AppAssumesPresent,
+        who: Provisioning::UserProvides,
+        probe: EnvProbe::OnPath,
         named: "pgrep",
         host: HostScope::Either,
         why: "数 cc-bus 的 agent 在不在用它 —— cc_bus.rs::count_now",
@@ -744,7 +892,8 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     UnmanagedEnv {
         id: "xdg-open",
         display_name: "xdg-open",
-        tier: EnvTier::AppAssumesPresent,
+        who: Provisioning::UserProvides,
+        probe: EnvProbe::OnPath,
         named: "xdg-open",
         host: HostScope::Client,
         why: "开链接 / 开日志目录走它 —— lib.rs::open_with_os",
@@ -752,7 +901,8 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     UnmanagedEnv {
         id: "login-shell",
         display_name: "bash 登录 shell",
-        tier: EnvTier::AppAssumesPresent,
+        who: Provisioning::UserProvides,
+        probe: EnvProbe::OnPath,
         named: "bash",
         host: HostScope::Either,
         why: "探 ccm 能力时要一个登录 shell 把用户的 rc 读进来 —— ccm_probe.rs::probe_with",
@@ -760,22 +910,79 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     UnmanagedEnv {
         id: "mcp-server",
         display_name: "MCP server 本体（`.mcp.json` 里那个 command）",
-        tier: EnvTier::AppAssumesPresent,
+        who: Provisioning::UserProvides,
+        // 🔴 **这一条是「查不动」而不是「不查」的活体** —— 它不是懒：
+        // 那个 command 是**用户在 `.mcp.json` 里写的一行**，本页连是哪个项目都不知道
+        // （`project-mcp` 的落点是 `ProjectRelative`）⇒ 名字本身就是个占位符，
+        // 拿 `$MCP_COMMAND` 去 `PATH` 上找只会恒答「没有」，那是一句**自信的错答案**。
+        probe: EnvProbe::CannotProbe {
+            why: "这个名字由你项目里的 `.mcp.json` 那行 command 决定，而本页不猜是哪个项目 —— \
+                  要查得先选定项目再读那份配置",
+        },
         named: "$MCP_COMMAND",
         host: HostScope::ProjectDir,
         why: "我们写得了那份配置，**被它指到的可执行本体不装也不查** —— \
               mcp.rs::write_project_mcp_server",
     },
+    // ═══ 🔴 〔`K-R65` 09-11〕**这一条是 `KR65D2` 的题面本身** ═══
+    //
+    // 它是 app 独有的东西（`K38` 逐字点名的「account」的**本机那半**）⇒ `AppShips`。
+    // 而它今天**零装口** ⇒ [`EnvTier::of`] 把它派生成 [`EnvTier::AppShipsNoInstallerYet`]。
+    //
+    // ⚠ **`who` 与「有没有装口」是两格，别合回去**：写 `AppShips` 不等于说「装得了」，
+    // 也不许被读成「不该我们装」。本件**不补那个装口**（`§0d`）—— 本件治的是
+    // 「这个状态申报不出来」。
     UnmanagedEnv {
         id: "cc-acct-iso-local",
         display_name: "cc-acct-iso 本机那份",
-        tier: EnvTier::AppAssumesPresent,
+        who: Provisioning::AppShips,
+        // 零装口**不等于**零查口 —— 它是一条实打实的 `~/` 路径，查得动。
+        // 〔`K-R60` 那句「本机侧零装口、零查口」里的后半句，正是本件要改掉的行为。〕
+        probe: EnvProbe::HomePath,
         named: "~/.local/bin/cc-acct-iso",
         host: HostScope::Client,
-        why: "本机侧零装口、零查口；有口的只有远端那半 —— \
+        why: "本机侧零装口（`K38` 裁了该由 app 装，实现还欠着）；有装口的只有远端那半 —— \
               acct_iso_deploy.rs::check_remote_acct_iso",
     },
+    // ═══ 🔴 〔`K-R65` 09-11〕**第三样「随产品分发的东西」—— 它此前一张表都没进** ═══
+    //
+    // 来历如实记：`K38` 逐字只举了两样（`account` · `cc-bus`），PM 拟 `KR65D3` 时也只
+    // 数出这两样，**这一项是用户当拍凭记忆点出来的**（「不是还有 code picture 吗」）。
+    // ⇒ 「app 自带的是哪几样」这个人群此前**真的没有住址**，这一条就是那句话的证据。
+    //
+    // 它的身份来自 `remote-daemon-proto/src/sidecars/` 那一层的头注逐字：
+    // 「**我们自己出、我们自己装、我们自己调**的那几个独立进程……
+    //   这一层装的是**我们随产品分发**的东西」⇒ 这就是 `Provisioning::AppShips` 的定义。
+    //
+    // ⚠ **别读成「该给它接线」**：那一层今天零生产调用方，而那是一次**有代价的发布决策**
+    // （`sidecar_fetch_guard` 那条「今天恰好 0 个生产调用点」的判据红的那一刻就是接线那一刻）。
+    // 本条只申报「它属于自带那一群，而 app 里今天没有装口」，**不动那一层**。
+    //
+    // ⚠ 与 [`NOT_MANAGED`] 里那条 `code-picture` **不是同一个东西**：那条说的是
+    // **vendored 进 monitor 二进制的 crate**（没有落点、卸载它等于重新编译）。
+    // 这一条说的是**独立进程那一份**。同名三身份，那条反向表已补记。
+    UnmanagedEnv {
+        id: "code-picture-sidecar",
+        display_name: "代码全景 sidecar（独立进程那一份）",
+        who: Provisioning::AppShips,
+        // 落点由调用方给（那一层头注逐字：「`dir` 是入参，本层不知道「落点在哪」」），
+        // 而今天**没有调用方** ⇒ 连「往哪儿查」都还没有答案。
+        // 🔴 这是「查不动」的第二个活体，而且它**查不动的理由与 `$MCP_COMMAND` 那条不同**：
+        //    那条是「值住在用户的配置里」，这条是「值住在一段还没写的接线里」。
+        probe: EnvProbe::CannotProbe {
+            why: "落点由调用方给（那一层刻意不知道落点在哪），而今天它零生产调用方 —— \
+                  接线那天才会有一个可查的路径",
+        },
+        named: "$CODEPICTURE_LANDING",
+        host: HostScope::Either,
+        why: "我们自己出、自己装、自己调的独立进程，随产品分发；取件那一跳已经写好、\
+              只是还没接线 —— sidecars/codepicture/acquire.rs::obtain",
+    },
     // 🔴 〔`K-R62` 09-11〕**`posix-rc-aliases` 从这里搬走了 —— 这是它的墓碑。**
+    //
+    // ⚠ 〔`K-R65` 09-11 补一句〕下面这段原文里那个档名**今天已经不存在了**（`K38` 删了
+    // 「app 假设它在」那一档，墓碑在 `EnvTier` 的头注上）。原文照留，别改成今天的写法 ——
+    // 这段墓碑记的就是「它当初住在哪一档」。
     //
     // 原文逐字：`tier: EnvTier::AppAssumesPresent` · `named: "~/.bashrc"` ·
     // `why: "加与删两侧都只造 PowerShell 那两条 profile 路径，POSIX rc 一条都不扫 ——
@@ -800,10 +1007,13 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
 pub enum EnvBacking {
     /// 有 `ToolSpec` —— **路径 · effect · host 只住 `TOOLS` 那一份**，这里不复述。
     Managed(&'static ToolSpec),
-    /// 没有 —— 只有一个名字和它在哪台机器上。
+    /// 没有 —— 只有一个名字、它在哪台机器上、以及**怎么查它**。
     Named {
         named: &'static str,
         host: HostScope,
+        /// 〔`K-R65`〕查法从 [`UnmanagedEnv::probe`] 原样带过来 ——
+        /// 这一档从此**真去查**，不再是「我们压根没去查」。
+        probe: EnvProbe,
     },
 }
 
@@ -811,6 +1021,9 @@ pub enum EnvBacking {
 pub struct EnvEntry {
     pub id: &'static str,
     pub display_name: &'static str,
+    /// **谁该装**（`K38`）。「app 自带」这个人群就是 `who == AppShips` 的那几项。
+    pub who: Provisioning,
+    /// **档** —— 由 `who` ×「今天有没有装口」两格**派生**（[`EnvTier::of`]），不是手填的。
     pub tier: EnvTier,
     pub why: &'static str,
     pub backing: EnvBacking,
@@ -824,39 +1037,46 @@ pub struct EnvEntry {
 ///
 /// # 能派生的就派生，手写的只有派生不出来的那一半
 ///
-/// - `TOOLS` 里每一条自动进来一项，**档读它的 `installable` 字段算出来**：
-///   `true ⇒ AppInstalls`；`false ⇒ AppOnlyChecks`（有 `ToolSpec` ⇒ 它的每条 `touches`
-///   都会被 `config_surface` 解析并观测一次 ⇒ 至少查得到）。
-/// - `TOOLS` 里没有的那一半住 [`UNMANAGED_ENV`]，档只能显式声明 —— 盘上没有任何字段
-///   能把「只查」与「假设它在」分开，那是设计判断不是读数。
+/// - `TOOLS` 里每一条自动进来一项，**两格都派生**：
+///   「谁该装」读 `destination`（[`Provisioning::of_tool`]）、「今天有没有装口」读
+///   `installable`（`K-R63` 那条对拍表把它钉在真实现上）⇒ 档由 [`EnvTier::of`] 算出来。
+/// - `TOOLS` 里没有的那一半住 [`UNMANAGED_ENV`]：**「谁该装」只能显式声明**
+///   （盘上没有任何字段能把它算出来，那是设计判断不是读数），
+///   而「今天有没有装口」**不用声明** —— 没有 `ToolSpec` 就是没有装口，恒 `false`。
 ///
-/// ⚠ **这个派生的已知上限，写在这里别被读大一格**：`installable: false ⇒ 只查` 买到的是
+/// ⚠ **这个派生的已知上限，写在这里别被读大一格**：`installable: false` 买到的是
 /// 「本页会去解析并观测它申报的每条路径」。远端那几条观测出来是 `Undetermined`
 /// （本页不连 SSH）—— 那仍是「查了、只是查不动」，不是「没查」，但它**不等于**
 /// 「app 有一个真能回答它在不在的口」。要那一格得另立判据。
 pub fn environment() -> Vec<EnvEntry> {
     let mut out: Vec<EnvEntry> = TOOLS
         .iter()
-        .map(|t| EnvEntry {
-            id: t.id,
-            display_name: t.display_name,
-            tier: if t.installable {
-                EnvTier::AppInstalls
-            } else {
-                EnvTier::AppOnlyChecks
-            },
-            why: "有 ToolSpec ⇒ 档由它的 installable 字段派生 —— tool_registry.rs::environment",
-            backing: EnvBacking::Managed(t),
+        .map(|t| {
+            let who = Provisioning::of_tool(t);
+            EnvEntry {
+                id: t.id,
+                display_name: t.display_name,
+                who,
+                tier: EnvTier::of(who, t.installable),
+                why: "有 ToolSpec ⇒ 「谁该装」由 destination 派生、「今天有没有装口」读 \
+                      installable —— tool_registry.rs::environment",
+                backing: EnvBacking::Managed(t),
+            }
         })
         .collect();
     out.extend(UNMANAGED_ENV.iter().map(|u| EnvEntry {
         id: u.id,
         display_name: u.display_name,
-        tier: u.tier,
+        who: u.who,
+        // 🔴 **第二格是 `false` 而不是一个字段** —— 手写那一半没有 `ToolSpec`，
+        // 也就没有落点、没有 `touches`、没有装 / 卸实现可对拍 ⇒ 「今天有没有装口」
+        // 这个问题在这一半上**有唯一答案**，不该再开一个能填错的格子。
+        tier: EnvTier::of(u.who, false),
         why: u.why,
         backing: EnvBacking::Named {
             named: u.named,
             host: u.host,
+            probe: u.probe,
         },
     }));
     out
@@ -892,7 +1112,14 @@ pub const NOT_MANAGED: &[(&str, &str)] = &[
          server 条目），是**用法**不是新工具。仓里今天对那个 MCP head 零实现（`mcp.rs` / \
          `config_surface.rs` 里 `code-picture` 零命中）。\n\
          ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\
-         用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。",
+         用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。\n\
+         🔴 **〔`K-R65` 09-11 补〕这个名字今天有第三个身份，本条此前一个字都没提**：\
+         `remote-daemon-proto/src/sidecars/codepicture/` 那一层的**独立进程**——\
+         那一层头注逐字「我们自己出、我们自己装、我们自己调……随产品分发」。\
+         它**是** app 自带的东西，已经进环境闭集（id `code-picture-sidecar`，\
+         `Provisioning::AppShips`）。⇒ 本条那句「不是「装到别处的工具」」\
+         **只对 vendored 那一份成立**，别拿它读那一份独立进程。\
+         〔纪律 ⑲：写下「表上没有它」的同一拍，把那张表改对。〕",
     ),
     (
         "planned-build",
@@ -2014,10 +2241,15 @@ mod environment_tests {
         }
     }
 
-    /// 🔴 `KR60D1` ②：**三档都必须有人 —— 第三档不许靠「没列出来」表示。**
+    /// 🔴 `KR60D1` ②：**每一档都必须有人 —— 一档不许靠「没列出来」表示。**
     ///
-    /// 这一条就是本件的正题的门禁：把 `AppAssumesPresent` 那几项从 [`UNMANAGED_ENV`]
-    /// 里删光（回到本件之前那个「不写进去就算第三档」的盘面）⇒ 本条红。
+    /// 这一条就是 `K-R60` 那件正题的门禁：把手写那一半从 [`UNMANAGED_ENV`]
+    /// 里删光（回到那件之前「不写进去就算另一档」的盘面）⇒ 本条红。
+    ///
+    /// 🔴 〔`K-R65` 09-11〕**本条自己的报错逐字兑现过一次**：`K38` 把 10 项从
+    /// 「app 假设它在」搬空之后那一档空了，而报错逐字写着「要么给它一个成员，
+    /// **要么把这一档从 EnvTier 里删掉**」⇒ 删掉了那一档，档数从三变四（新增两档）。
+    /// 一条判据把自己的两条出路都写出来，走的是哪一条**有记录**，这就是那次记录。
     ///
     /// 分母现算（`EnvTier::ALL`），不写死一个基数〔`13b`：报一个基数也是复述〕。
     #[test]
@@ -2040,7 +2272,7 @@ mod environment_tests {
     /// `KR60D1` ③：**「标了档」与「随手填的档」要分得开。**
     ///
     /// 手写那一半的每一条，`why` 里**必须有**一个 `<路径>.rs::<符号>` 形态的代码住址 ——
-    /// 「app 假设它在」是一个**设计判断**，判断得指得出它长在哪段代码上；
+    /// 「这东西该由谁装」是一个**设计判断**，判断得指得出它长在哪段代码上；
     /// 一句形容词（「常用工具」「一般都有」）过不去这一格。
     ///
     /// **分工写清，别让人以为这一条买到了两件事**：
@@ -2070,7 +2302,7 @@ mod environment_tests {
             assert!(
                 !addrs.is_empty(),
                 "`{}` 的 why 里没有 `<路径>.rs::<符号>` 形态的住址 —— \
-                 「app 假设它在」是一个**设计判断**（不是「这台机器上恰好有」这个读数），\
+                 「这东西该由谁装」是一个**设计判断**（不是「这台机器上恰好有」这个读数），\
                  判断必须指得出它长在哪段代码上。\n实得：{}",
                 u.id,
                 u.why
@@ -2087,7 +2319,7 @@ mod environment_tests {
     /// ★★ `KR62D1` 的第二条死值验：**`posix-rc-aliases` 升到了第一档，而且是真升。**
     ///
     /// 「档没升 = 活没做完」这句话本身可验 —— 这一条就是它。三格一起断，缺一格都能装样子：
-    ///   ① 它**不在** [`UNMANAGED_ENV`] 里了（留在那儿就还是「app 假设它在」）；
+    ///   ① 它**不在** [`UNMANAGED_ENV`] 里了（留在那儿就没有 `ToolSpec`，也就永远升不到第一档）；
     ///   ② 它在 [`TOOLS`] 里且 `installable` / `uninstallable` **都为真**（装得了也卸得掉）；
     ///   ③ [`environment`] 把它算成 [`EnvTier::AppInstalls`]（档是**派生**出来的，不是手填的）。
     ///
@@ -2099,7 +2331,7 @@ mod environment_tests {
         assert!(
             !UNMANAGED_ENV.iter().any(|u| u.id == ID),
             "`{ID}` 还留在 UNMANAGED_ENV 里 —— `K-R62` 之后它有装口也有卸口了，\
-             留在「app 假设它在」那一档就是盘上写着一句假话"
+             留在手写那一半（没有 ToolSpec ⇒ 永远算作「今天没有装口」）就是盘上写着一句假话"
         );
         let t = TOOLS
             .iter()
@@ -2124,18 +2356,336 @@ mod environment_tests {
         );
     }
 
-    /// 手写那一半**不许声明「app 装的」** —— 装得了就该有一条 [`ToolSpec`]
-    /// 说清源 / 落点 / 碰哪些文件，不能只留一个名字。
+    // 🔴 〔`K-R65` 09-11〕〔散文墓碑〕**`a_hand_written_entry_is_never_app_installs` 删了。**
+    //
+    // 它逐字断言 `UNMANAGED_ENV` 每一条的 `tier != EnvTier::AppInstalls`，
+    // 理由是「装得了就该有一条 `ToolSpec`」。那时 `tier` 是**手填**的 ⇒ 它真有牙。
+    //
+    // 今天 `tier` 由 [`EnvTier::of`] 派生，而手写那一半的第二格在 [`environment`] 里
+    // **恒 `false`** ⇒ `EnvTier::of(_, false)` 一辈子返回不了 `AppInstalls`
+    // ⇒ 本条**在算术上不可能红**。留着就是一颗「永远不会红的钉子」——
+    // `K-R60` 09-11 刚以同一条理由删过一颗（那条断言「档 == `if installable {…}`」，
+    // 是拿实现自己核自己），本仓更早还删过一颗按 `destination` 推 locality 的。
+    // ⇒ 同一把尺子，删。
+    //
+    // ⚠ **它守的那件事没有丢，只是换了守法**：从「断言一个手填格不许是某个值」
+    // 变成「那个格子根本不存在」——`UnmanagedEnv` 上今天**没有** `tier` 字段可填。
+
+    /// 🔴 `KR65D2` ①：**「谁该装」与「今天装得了吗」不是同一个字段** —— 两格都有区分力，
+    /// 而且**互不函数**（知道一格答不出另一格）。
+    ///
+    /// 形抄本仓已有的 `config_surface::host_is_not_a_function_of_destination`：
+    /// 两个字段合成一个的病，靠「找得到两对反例」证伪。
+    ///
+    /// **死值验**：把 `who` 改成 `if has_installer { AppShips } else { UserProvides }`
+    /// 那种派生（也就是把两格又合回去）⇒ 下面两组反例必有一组空 ⇒ 红。
     #[test]
-    fn a_hand_written_entry_is_never_app_installs() {
-        for u in UNMANAGED_ENV {
-            assert_ne!(
-                u.tier,
-                EnvTier::AppInstalls,
-                "`{}` 声明「app 装的」却没有 ToolSpec —— 装得了就得申报装到哪、碰哪些文件",
-                u.id
+    fn who_should_install_is_not_a_function_of_whether_we_can_install_today() {
+        let env = environment();
+        // 「今天有没有装口」这一格在闭集里的读法：只有 `AppInstalls` 那一档是「有」。
+        let has_installer = |e: &EnvEntry| e.tier == EnvTier::AppInstalls;
+
+        // ① 同一个 `who`，两种「有没有装口」—— 否则 `who` 就是那一格的同义词。
+        let ships: Vec<&EnvEntry> = env
+            .iter()
+            .filter(|e| e.who == Provisioning::AppShips)
+            .collect();
+        assert!(
+            ships.iter().any(|e| has_installer(e)) && ships.iter().any(|e| !has_installer(e)),
+            "「app 自带」这一群里，「今天有装口」与「今天没有装口」**没有同时出现** ——\n\
+             那说明这两格今天是同一个字段的两个名字，而 `KR65D2` 的题面正是它们不是。\n\
+             实得：{:?}",
+            ships
+                .iter()
+                .map(|e| (e.id, e.tier.label()))
+                .collect::<Vec<_>>()
+        );
+
+        // ② 同一种「没有装口」，两个不同的 `who` —— 否则「没装口」就唯一决定了「谁该装」，
+        //    那正是本件之前的盘面（没装口 ⇒ 只能写成「不该我们装」）。
+        let no_installer: BTreeSet<Provisioning> = env
+            .iter()
+            .filter(|e| !has_installer(e))
+            .map(|e| e.who)
+            .collect();
+        assert!(
+            no_installer.len() >= 2,
+            "「今天没有装口」的那一群里，「谁该装」只有一个取值（{:?}）——\n\
+             那就等于说「没装口」= 「不该我们装」，而 `K38` 裁的恰恰相反：\n\
+             `cc-acct-iso-local` **该由 app 装**，只是实现还欠着。",
+            no_installer.iter().map(|w| w.label()).collect::<Vec<_>>()
+        );
+    }
+
+    /// 🔴 `KR65D2` ②：**「app 该自带、而今天还没有装口」那一格数得出来，且不是空的。**
+    ///
+    /// 死值验的两侧（件计划 `KR65D2` 逐字）：
+    ///   · 把 `cc-acct-iso-local` 标成「app 该装」而不给实现 ⇒ **能被数出来**（就是本条）；
+    ///   · 把它标成「不该我们装」⇒ **必须红**（那一格由
+    ///     `everything_the_charter_named_as_ours_is_in_the_shipped_population` 判）。
+    ///
+    /// ⚠ 本条**不判「这一格里该有几项」** —— 那要读语义。它判的是这一格**存在、非空、
+    /// 且每一项都答得出「欠的是什么」**（`why` 里那个代码住址由另一条判据管）。
+    #[test]
+    fn the_tier_for_owed_installers_is_countable_and_not_empty() {
+        let env = environment();
+        let owed: Vec<&EnvEntry> = env
+            .iter()
+            .filter(|e| e.tier == EnvTier::AppShipsNoInstallerYet)
+            .collect();
+        assert!(
+            !owed.is_empty(),
+            "「{}」这一档一个成员都没有 —— 要么本件的活退回去了（`cc-acct-iso-local` \
+             又被写成「不该我们装」），要么装口真补上了（那它该升到「{}」，\
+             同轮把这一条改成新的下界）",
+            EnvTier::AppShipsNoInstallerYet.label(),
+            EnvTier::AppInstalls.label()
+        );
+        for e in &owed {
+            assert_eq!(
+                e.who,
+                Provisioning::AppShips,
+                "`{}` 落在「欠装口」那一档，而它的 `who` 不是「{}」—— 派生坏了",
+                e.id,
+                Provisioning::AppShips.label()
+            );
+            // 「有名字、看得见」：档名本身必须说清是**欠的实现**，不是「不该我们装」。
+            assert!(
+                e.tier.label().contains("该自带") && e.tier.label().contains("还没有装口"),
+                "这一档的档名读不出「该我们装、而今天还没有装口」两半，实得 {:?} —— \
+                 用户会把它读成「不该我们装」",
+                e.tier.label()
             );
         }
+    }
+
+    /// 🔴 `KR65D3`：**「app 自带的是哪几样」是一个数出来的人群，不是写死的一张单子。**
+    ///
+    /// # 人群住哪儿
+    ///
+    /// 唯一住址是 [`Provisioning::AppShips`]，**现算**：`environment()` 里 `who` 是它的那几项。
+    /// `TOOLS` 那一半由 `destination` 派生，手写那一半显式声明 —— 两侧都不在这条判据里。
+    ///
+    /// # 下面这张 `NAMED_AS_OURS` **不是自带清单**，别读错
+    ///
+    /// 它收的是**定框与用户逐字点过名的那几样**，用途是**下界对拍**：
+    /// 点了名的，派生出来的人群里必须有。它不会变成人群的第二个住址 ——
+    /// 下面第 ④ 条自检就是钉这件事的：**人群必须严格大于这张表**，
+    /// 否则「派生」这句话是假的。
+    ///
+    /// ⚠ 〔来历，别删 —— 这张表自己就是「点名清单不等于人群」的证据〕
+    /// - `pb skill` 曾经在这张表上（`K38` 初版逐字点了它的名）——**用户当拍改口撤掉了**：
+    ///   它不自带，它在 `skill_host.rs::SKILLS`（app 的 skill 仓库）那条线上。
+    ///   ⇒ 那条线本件不碰，两张表**本来就是不同人群**，不许拿相等去守。
+    /// - `code-picture-sidecar` **不在 `K38` 的举例里**，是用户当拍凭记忆追问出来的
+    ///   （PM 拟这条 dod 时只数出两样）⇒ **点名清单本身就会漏**，
+    ///   这正是「人群必须是数出来的」那句话的来历。
+    ///
+    /// **死值验**：把 `cc-bus` 从「自带」里摘掉（例如在 [`environment`] 里给它硬写
+    /// `Provisioning::NotAnInstall`）⇒ 本条红。
+    /// 第二条死值验（`sidecars/` 那一层）住
+    /// `the_layer_we_ship_binaries_from_is_pinned_to_the_population`。
+    #[test]
+    fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
+        /// `(闭集里的 id, 谁在什么时候点的名)`。**只收逐字点过名的**，不收推断出来的。
+        const NAMED_AS_OURS: &[(&str, &str)] = &[
+            ("cc-bus", "K38 逐字：「cc-bus」"),
+            ("cc-acct-iso", "K38 逐字：「account」—— 远端那半"),
+            (
+                "cc-acct-iso-local",
+                "K38 逐字：「account」—— 本机那半（件计划 §0c 明裁它是 app 独有的）",
+            ),
+            (
+                "code-picture-sidecar",
+                "用户 09-11 当拍追问：「不是还有 code picture 吗」—— \
+                 现打落在 sidecars/ 那一层（「我们自己出、我们自己装、我们自己调」）",
+            ),
+        ];
+        let env = environment();
+        // ① 人群**现算**，不抄名单。
+        let shipped: BTreeSet<&str> = env
+            .iter()
+            .filter(|e| e.who == Provisioning::AppShips)
+            .map(|e| e.id)
+            .collect();
+        assert!(
+            !shipped.is_empty(),
+            "「app 自带」这个人群是空的 —— 先查 `Provisioning::of_tool` 与 `environment`，别改断言"
+        );
+
+        // ② 保鲜自检：定框点过名的 id 必须还在闭集里（改了名 / 删了 ⇒ 本表当场腐）。
+        let all: BTreeSet<&str> = env.iter().map(|e| e.id).collect();
+        for (id, src) in NAMED_AS_OURS {
+            assert!(
+                all.contains(id),
+                "`{id}` 在闭集里已经找不到了（它当初的来历：{src}）—— \
+                 要么它改名了（这张表跟着改），要么它真没了（那 `K38` 那一格要重裁）"
+            );
+        }
+
+        // ③ 下界对拍：定框点了名的，必须在派生出来的人群里。
+        let missing: Vec<&str> = NAMED_AS_OURS
+            .iter()
+            .filter(|(id, _)| !shipped.contains(id))
+            .map(|(id, _)| *id)
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "`K38` 逐字点名要自带的东西，在「app 自带」这个人群里**找不到**：{missing:?}\n\
+             人群现算于 `environment()` 的 `who == AppShips`，今天是 {shipped:?}。\n\
+             ⇒ 要么那几项的申报错了（改申报），要么 `K38` 那一格要重裁（改定框，不是改这里）。"
+        );
+
+        // ④ **人群不许退化成这张表** —— 严格大于，才说明它是派生出来的。
+        assert!(
+            shipped.len() > NAMED_AS_OURS.len(),
+            "「app 自带」这个人群（{} 项）没有比定框举的例子（{} 项）更大 —— \
+             那说明它其实是照这张表抄的，而不是数出来的。人群实得 {shipped:?}",
+            shipped.len(),
+            NAMED_AS_OURS.len()
+        );
+    }
+
+    /// 🔴 `KR65D3` 的**第二条死值验**：**我们随产品分发二进制的那一层，在人群里数得到。**
+    ///
+    /// # 为什么非得钉盘上那一层，光在闭集里加一行不够
+    ///
+    /// 闭集里那一行是**申报**。申报可以在那一层被掏空之后照样绿着 ——
+    /// 那正是本仓治过的「声明缺口」那一族（`remote-daemon` 的 `uninstallable: false`
+    /// 假申报活了一个月）。⇒ 右边去钉**盘上那一层真有那一跳**，两边一起断。
+    ///
+    /// **死值验**：把 `sidecars/codepicture/acquire.rs` 那一层掏空（`obtain` 那一跳删掉
+    /// 或改签名）⇒ 本条红。
+    /// ⚠ **如实写明它的边界**：把整个文件**删掉**是 `include_str!` 编译失败，
+    /// 那是 **CRASH 不是红** —— 两件事别混着报。
+    ///
+    /// ⚠ 它**判不了**「这一层今天接没接线」（那一格由 daemon 那侧的
+    /// `sidecar_fetch_guard` 管，红的那一刻就是接线那一刻）。本条只判
+    /// 「这一层还在盘上，而闭集里申报了它」。
+    #[test]
+    fn the_layer_we_ship_binaries_from_is_pinned_to_the_population() {
+        use crate::structural_scan::pin_definition;
+
+        /// 那一层的取件实现。**跨 crate 读源码在本仓有先例**
+        /// （`usage.rs` / `polling_registry.rs` 都这么钉 `remote-daemon-proto` 那侧）。
+        const SIDECAR_ACQUIRE: &str =
+            include_str!("../../remote-daemon-proto/src/sidecars/codepicture/acquire.rs");
+
+        // 反向自检：`pin_definition` 真的会说「不在」（否则下面是空真）。
+        assert!(pin_definition("fn a() {}\n", "fn b() {}", "fn b", "自检").is_err());
+
+        // 右边：盘上那一层真有「把它拿到这台机器上来」的那一跳，且只有一处。
+        pin_definition(
+            SIDECAR_ACQUIRE,
+            "pub fn obtain<O: Origin>(",
+            "pub fn obtain",
+            "代码全景 sidecar 的取件实现",
+        )
+        .expect("sidecars/ 那一层被掏空了 —— 而闭集里仍申报着它是「app 自带」的一员");
+
+        // 左边：闭集里那一项，而且它算在「app 自带」那个人群里。
+        const ID: &str = "code-picture-sidecar";
+        let e = environment()
+            .into_iter()
+            .find(|e| e.id == ID)
+            .unwrap_or_else(|| {
+                panic!(
+                    "`{ID}` 不在环境闭集里 —— 盘上有一层专门用来「随产品分发二进制」，\
+                     而「app 自带的是哪几样」这个人群里数不到它"
+                )
+            });
+        assert_eq!(
+            e.who,
+            Provisioning::AppShips,
+            "`{ID}` 没算在「{}」那一群里 —— 那一层的头注逐字写着「我们自己出、\
+             我们自己装、我们自己调……随产品分发」",
+            Provisioning::AppShips.label()
+        );
+    }
+
+    /// 「谁该装」三值**都真有人用** —— 一个只有一个取值的字段没有区分力。
+    /// 形抄 `config_surface::all_host_scopes_are_really_used`。
+    #[test]
+    fn every_provisioning_value_is_really_used() {
+        let env = environment();
+        for w in Provisioning::ALL {
+            assert!(
+                env.iter().any(|e| e.who == *w),
+                "「{}」这个取值在闭集里一项都没有（共 {} 值 · 闭集 {} 项）—— \
+                 没人用的取值要么删掉，要么它就是漏了",
+                w.label(),
+                Provisioning::ALL.len(),
+                env.len()
+            );
+        }
+    }
+
+    /// **「不该我们装」的东西不许有装口** —— [`EnvTier::of`] 里那两支 `_` 会把这种
+    /// 自相矛盾**吸收成一个正常档**，所以矛盾本身要在这里单独判红，不能靠那个 `match`。
+    #[test]
+    fn nobody_declares_an_installer_for_something_we_should_not_install() {
+        for t in TOOLS {
+            let who = Provisioning::of_tool(t);
+            if who != Provisioning::AppShips {
+                assert!(
+                    !t.installable,
+                    "`{}` 的落点说它「{}」，而 `installable: true` 说我们装得了 —— \
+                     两句话有一句是假的",
+                    t.id,
+                    who.label()
+                );
+            }
+        }
+    }
+
+    /// `KR65D1` 的申报侧：**「你自己装」那一档的每一项都要说得出「怎么查」** ——
+    /// 而且**不许整档都是「查不动」**（那就等于把「不查」换了个名字，正是失效方向）。
+    ///
+    /// ⚠ 行为那一半（真去查、缺了显示成 `Absent` 而不是 `Undetermined`）**不在这里** ——
+    /// 在 `config_surface::the_prompt_tier_really_looks_before_it_speaks`。
+    /// 本条只判申报，别把两条读成一条。
+    #[test]
+    fn the_prompt_tier_declares_how_it_will_look() {
+        let env = environment();
+        let mut probeable = 0usize;
+        let mut blind = 0usize;
+        for e in env
+            .iter()
+            .filter(|e| e.tier == EnvTier::UserInstallsWePrompt)
+        {
+            let EnvBacking::Named { probe, .. } = e.backing else {
+                panic!(
+                    "`{}` 在「{}」这一档，却有 ToolSpec —— 那一档今天只该住手写那一半",
+                    e.id,
+                    EnvTier::UserInstallsWePrompt.label()
+                )
+            };
+            match probe {
+                EnvProbe::OnPath | EnvProbe::HomePath => probeable += 1,
+                EnvProbe::CannotProbe { why } => {
+                    blind += 1;
+                    assert!(
+                        why.len() > 30,
+                        "`{}` 申报「查不动」而理由只有 {} 字节 —— \
+                         「查不动」与「懒得查」在表上长得一模一样，理由是唯一分得开的东西",
+                        e.id,
+                        why.len()
+                    );
+                }
+            }
+        }
+        assert!(
+            probeable + blind > 0,
+            "「{}」这一档一个成员都没有 —— 那 9 项没搬过来",
+            EnvTier::UserInstallsWePrompt.label()
+        );
+        assert!(
+            probeable > blind,
+            "「{}」这一档里查得动的 {probeable} 项、查不动的 {blind} 项 —— \
+             查不动的过半就等于这一档只是「app 假设它在」换了个名字，\
+             而那正是 `KR65D1` 写死的失效方向",
+            EnvTier::UserInstallsWePrompt.label()
+        );
     }
 
     /// 派生那一半：**`TOOLS` 的每一条都必须进闭集**，一条都不许漏。

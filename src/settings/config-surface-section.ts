@@ -2,7 +2,13 @@
 //
 // 这一页**只读**，而且是**按需读一次**（无轮询，红线）。它把
 // `src-tauri/src/tool_registry.rs` 的**环境清单闭集**遍历成一张表：每一项 app 对它是什么
-// 关系（装 / 只查 / 假设它在）、碰哪些文件、对它做什么、现在是什么状态、还能不能撤。
+// 关系（自带并装 / 该自带而还没装口 / 你自己装我提示 / 只查）、碰哪些文件、对它做什么、
+// 现在是什么状态、还能不能撤。
+//
+// 🔴 〔`K-R65` 09-11〕**「app 假设它在」那一档没有了。** 上一行原文逐字是
+// 「装 / 只查 / **假设它在**」——`K38` 裁掉了最后那一档：通用工具不是「我不看」，
+// 是「**你自己装，而我会看、缺了我要说**」。⇒ 这一页对那一族**真去查**，
+// 而「查了、确认没有」与「查不动」在屏幕上是两句不同的话（`promptToInstall`）。
 //
 // 🔴 〔`K-R60` 09-11〕**人群从 `TOOLS` 换成了那个闭集。** 原来只遍历 `TOOLS`，
 // 于是 app **装不了却离不开**的那一整档（`claude` / `tmux` / 终端出口 / `git` / `ssh` …）
@@ -22,11 +28,59 @@ import { showActionFailureToast } from "../error-toast";
 // 本文件内部与 `.vitest.ts` 都用这些名字，所以 **import + 单独 re-export 都要有**：
 // 只写 `export type { … } from` 不会把名字带进本地作用域（C02 栽两次、C04c 第三次）。
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
+import type { EnvTier } from "../generated/EnvTier";
 import type { SettingsScope } from "../generated/SettingsScope";
 import type { SurfaceRow } from "../generated/SurfaceRow";
 import type { SurfaceState } from "../generated/SurfaceState";
 
-export type { ConfigSurfaceReport, SettingsScope, SurfaceRow, SurfaceState };
+export type { ConfigSurfaceReport, EnvTier, SettingsScope, SurfaceRow, SurfaceState };
+
+// 🔴 〔`K-R65`〕**「缺」与「未测过」这两个字从 `readiness.ts` 来，本文件不另写一对。**
+// 件计划 `KR65D1` 逐字：「`readiness.ts` 那条 `missing` vs `unknown` 的分法**是现成的，
+// 别再造一套**」。⇒ 这一页把 `absent`／`undetermined` 映到那两个 kind 上，措辞跟着它走。
+import { GAP_HEAD, type GapKind } from "./readiness";
+
+/**
+ * 一态 → 它在「还差什么」那套口径里算哪一种缺口。`present` 不是缺口 ⇒ `null`。
+ *
+ * 这是**两页之间唯一的翻译点**：后端的三态（`present` / `absent` / `undetermined`）
+ * 与前端那套两值（`missing` / `unknown`）说的是同一件事 ——
+ * 「查了、确认没有」对 `missing`，「查不动 / 没测过」对 `unknown`。
+ */
+export function gapKindOfState(st: SurfaceState): GapKind | null {
+  switch (st?.kind) {
+    case "present":
+      return null;
+    case "absent":
+      return "missing";
+    case "undetermined":
+      return "unknown";
+    default:
+      // 后端加第四态时**不许当成「没缺」** —— 不知道就是不知道。
+      return "unknown";
+  }
+}
+
+/**
+ * 🔴 `KR65D1`：**「你缺这个，去装」这句话在这里被说出来。**
+ *
+ * 只有「你自己装」那一档需要它 —— 别的档缺了不该劝用户去装：
+ * `AppInstalls` 有按钮、`AppShipsNoInstallerYet` 是**我们欠的实现**（劝他去装是甩锅）、
+ * `AppOnlyChecks` 压根没人装得出来。
+ *
+ * 返回 `null` = 这一行不出这句话。
+ */
+export function promptToInstall(row: SurfaceRow): string | null {
+  if (row.tier !== "UserInstallsWePrompt") return null;
+  const kind = gapKindOfState(row.state);
+  if (kind === null) return null;
+  if (kind === "missing") {
+    // **测过、确认没有** —— 这一句就是本件的正题：产品说得出「你缺这个，去装」。
+    return `${GAP_HEAD.missing} —— cc-monitor 不装这一项，请你自己装上 \`${row.path_declared}\``;
+  }
+  // **查不动**：说「缺」就是替用户下一个他没做过的结论（`readiness.ts` 头注逐字）。
+  return `${GAP_HEAD.unknown} —— 这一项本机查不动（见上面的原因），别当成它不在`;
+}
 
 /** 一态 → 文案 + 三档语气。**`undetermined` 必须中性且带出理由**，不能借"缺失"的红。 */
 export function describeSurfaceState(st: SurfaceState): {
@@ -56,15 +110,48 @@ export function describeSurfaceState(st: SurfaceState): {
  * `installable=false` 里**多了一类本来就不该由 cc-monitor 装的东西**
  * （`claude` / `tmux` / Claude Code 的会话记录…）。原文逐字是「尚未支持部署」——
  * 对那一类是句**误导**（「尚未」听起来像排期问题，而那是设计判断）。
- * ⚠ 两类**今天在行上分不开**：`SurfaceRow` 的线上形状里没有档这一格，
- * 而那份形状是 `ts-rs` 生成物、不在本轮写区里。⇒ 措辞把两类都涵盖住，
- * 真正把档说清的是「我们做什么」那一列（措辞由后端按档给）。
+ *
+ * 🔴 〔`K-R65` 09-11〕**上一版那条 ⚠ 兑现了，删掉它的前提今天成立。**
+ * 原文逐字：「⚠ 两类**今天在行上分不开**：`SurfaceRow` 的线上形状里没有档这一格，
+ * 而那份形状是 `ts-rs` 生成物、不在本轮写区里。⇒ 措辞把两类都涵盖住」——
+ * 那句「涵盖住」的措辞（「尚未支持部署，**或**本来就不该由它装」）是一句
+ * **两头下注**的话：读者读不出自己这一行是哪一种。
+ * 档进线上形状之后，这里按**值**分档，不再和稀泥。
  */
 export function describeUndo(row: SurfaceRow): string {
   if (row.uninstallable) return "可按围栏/整文件撤销（在对应工具的部署入口里）";
-  if (!row.installable)
-    return "cc-monitor 不装这一项（尚未支持部署，或本来就不该由它装），也就无所谓撤销";
-  return "暂无自动撤销；如需清理请按上面的路径手动处理";
+  switch (row.tier) {
+    case "AppInstalls":
+      return "暂无自动撤销；如需清理请按上面的路径手动处理";
+    // **我们欠的实现** —— 不许说成「不该由它装」（`KR65D2` 逐字）。
+    case "AppShipsNoInstallerYet":
+      return "这一项该由 cc-monitor 自带，而安装入口还没写 —— 撤销也一样还没有";
+    // `K38` 裁的那一档：不该我们装，所以也无所谓撤。
+    case "UserInstallsWePrompt":
+      return "cc-monitor 不装这一项（通用工具，请你自己装），也就无所谓撤销";
+    case "AppOnlyChecks":
+      return "cc-monitor 本来就不该装这一项（它不是我们的东西），也就无所谓撤销";
+    default:
+      // 后端加第五档时**不许整页炸掉**，也不许假装认识它。
+      return "这一项的档本前端还不认识 —— 撤销请按上面的路径手动处理";
+  }
+}
+
+/**
+ * 🔴 `KR65D2` 的**「数得出来」那一半上屏**：这一页上有几项是「app 该自带、
+ * 而今天还没有装口」。
+ *
+ * 件计划逐字：「把 `cc-acct-iso-local` 标成「app 该装」而不给实现 ⇒
+ * **必须能被数出来**（不是红，是**能报出来**）」——**报出来的地方就是这里**，
+ * 用户在这一页上看得见这个数，不用去读判据。
+ *
+ * 返回 `null` = 一项都没有（那时整句不渲染，不写「0 项」）。
+ */
+export function summarizeOwedInstallers(rows: SurfaceRow[]): string | null {
+  const owed = rows.filter((r) => r.tier === "AppShipsNoInstallerYet");
+  if (owed.length === 0) return null;
+  const names = [...new Set(owed.map((r) => r.tool_name))];
+  return `其中 ${names.length} 项该由 cc-monitor 自带、而安装入口还没写：${names.join("、")}`;
 }
 
 /** 生成一段可复制的纯文本诊断，便于用户贴给我或存档。 */
@@ -86,6 +173,15 @@ export function formatReportText(r: ConfigSurfaceReport): string {
     if (row.path_resolved) lines.push(`    解析为: ${row.path_resolved}`);
     lines.push(`    我们做什么: ${row.effect_label}`);
     lines.push(`    现状: ${st.text}`);
+    // `KR65D1`：那句话**也要进这份可复制的诊断文本** —— 用户贴出来的那一份
+    // 如果不含它，「产品说得出「你缺这个，去装」」就只在屏幕上成立。
+    const prompt = promptToInstall(row);
+    if (prompt) lines.push(`    ${prompt}`);
+  }
+  const owed = summarizeOwedInstallers(r.rows);
+  if (owed) {
+    lines.push("");
+    lines.push(`  ${owed}`);
   }
   lines.push("");
   lines.push("== settings.json 的各作用域（会影响钩子诊断结论）==");
@@ -108,6 +204,8 @@ export class ConfigSurfaceSection {
   private body!: HTMLElement;
   private scopesBox!: HTMLElement;
   private meta!: HTMLElement;
+  /** `KR65D2`：「app 该自带而还没有装口」那一格的计数行。空时整行不显示。 */
+  private owed!: HTMLElement;
   private copyBtn!: HTMLButtonElement;
   private last: ConfigSurfaceReport | null = null;
 
@@ -157,6 +255,11 @@ export class ConfigSurfaceSection {
     this.meta.className = "settings-hint config-surface-meta";
     root.appendChild(this.meta);
 
+    this.owed = document.createElement("div");
+    this.owed.className = "settings-hint config-surface-owed";
+    this.owed.hidden = true;
+    root.appendChild(this.owed);
+
     this.body = document.createElement("div");
     this.body.className = "config-surface-body";
     root.appendChild(this.body);
@@ -202,6 +305,9 @@ export class ConfigSurfaceSection {
 
   private render(r: ConfigSurfaceReport): void {
     this.meta.textContent = `HOME=${r.home} · ~/.claude 解析为 ${r.claude_config_dir}`;
+    // `KR65D2`：「app 该自带而还没有装口」那一格**在屏幕上数得出来**。
+    this.owed.textContent = summarizeOwedInstallers(r.rows) ?? "";
+    this.owed.hidden = this.owed.textContent === "";
     this.body.textContent = "";
     let lastTool = "";
     for (const row of r.rows) {
@@ -249,6 +355,8 @@ export class ConfigSurfaceSection {
     const el = document.createElement("div");
     el.className = `config-surface-row tone-${st.tone}`;
     el.dataset.path = row.path_declared;
+    // 档进 DOM：判据与用户看的是同一份值，不靠措辞猜（`K-R65`）。
+    el.dataset.tier = row.tier;
 
     const p = document.createElement("div");
     p.className = "config-surface-path";
@@ -283,6 +391,18 @@ export class ConfigSurfaceSection {
     state.className = "config-surface-state";
     state.textContent = st.text;
     el.appendChild(state);
+
+    // 🔴 `KR65D1`：**缺席时这一页真的出声。**
+    // ⚠ 它是独立一个元素、带 `data-gap` —— 「这句话上没上屏」这件事因此判得了
+    //（T02 审计重要 5 那条教训：纯函数被断言 ≠ 它进了 DOM）。
+    const prompt = promptToInstall(row);
+    if (prompt) {
+      const p = document.createElement("div");
+      p.className = "config-surface-prompt";
+      p.dataset.gap = gapKindOfState(row.state) ?? "";
+      p.textContent = prompt;
+      el.appendChild(p);
+    }
 
     const undo = document.createElement("div");
     undo.className = "config-surface-undo";
