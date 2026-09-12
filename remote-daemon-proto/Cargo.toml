@@ -1,5 +1,21 @@
 [package]
 name = "cc-monitor-remote"
+# 🔴 K-R70（09-12）：本 crate 刻意不用 Cargo.toml 的版本 —— 真身份住 src/main.rs 的 BUILD_ID
+#
+# 这一行**不是忘了填**，也**不许**顺手换成一个「像样」的数字。
+#
+# · 它不参加 `release.yml` 那道「四处版本号与 tag 一致」的检查（那四处是
+#   `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml` /
+#   `src-tauri/Cargo.lock` 的 `monitor` 包）—— 后端**不随 app 的 tag 走**：
+#   `K25`/`K36` 裁的是「一份代码、每平台一份原生二进制」，而它换不换由**行为变没变**决定
+#   （`BUILD_ID` 的 bump 纪律），不由发版节奏决定。给它一个跟 tag 走的版本号 = 给后端
+#   造**第二个身份**，那正是 `K33`「后端只有一个」在身份这一维要避开的事。
+# · 那条「不参加」不是靠这段散文守着：`build_id_guard` 的
+#   `the_crate_version_is_deliberately_zero_and_the_real_identity_has_a_home`
+#   **在数它** —— 这一行一动、或真身份那一处住址坏掉，当场红。
+# · 真身份的住址（判据逐条核）：`src/main.rs` 的 `const BUILD_ID`
+#   ＋ 由它编译期拼出来、扫得进二进制字节的 `CC_MONITOR_BUILD_STAMP`
+#   ＋ `--ccm-probe` 吐的 `build=` 那一行。
 version = "0.0.0"
 edition = "2021"
 
