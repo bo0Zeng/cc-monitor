@@ -2348,6 +2348,18 @@ mod tests {
                 1,
             ),
             ("src-tauri/src/sftp.rs", "pin_t_def", 1),
+            // 🔴 〔`K-R70` 09-12〕又一形同族的账：那个「见证型布尔」`id_from_manifest`
+            //    与守着它的判据一起删了 —— 它见证的是**一份旁挂清单在不在**，而清单是
+            //    `release.yml` 从源码常量抠出来写的标签（三个载体恒等 ⇒ 零证据，
+            //    `K-R68` · `DECISIONS.md#R26` 裁定零）。守的动作对、守的东西错。
+            //    接替它的是 `the_embedded_identity_comes_from_the_bytes_not_from_a_label`
+            //    ＋ 部署路上无条件跑的 `bytes_carry_build_stamp`。
+            //    散文里那一句留着才说得清「为什么换掉它，而不是把它写得更严」。
+            (
+                "src-tauri/src/sftp.rs",
+                "the_identity_witness_is_derived_from_the_manifest_not_written_by_hand",
+                1,
+            ),
             // 🔴 〔`K-R59` 09-11〕同一形，另一件事的账：`daemonless` 那一档整格删了
             //    （定框 `K35`：「不要有 daemonless。没有没有后端的情况。」），
             //    而 08-14 立的那条前提触发器 `the_daemonless_remote_still_needs_the_ts_fallback_renderer`

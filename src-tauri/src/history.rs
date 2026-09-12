@@ -3217,6 +3217,7 @@ mod tests {
                 installed: true,
                 version: Some("0.0.0-判据替身".to_string()),
                 capabilities: caps_of_a_current_ccm().into_iter().collect(),
+                build: None,
             }
         }
         let _probe = override_ccm_probe(CcmProbeSource(a_current_ccm));
@@ -5521,6 +5522,7 @@ mod tests {
                 installed: false,
                 version: None,
                 capabilities: vec![],
+                build: None,
             }
         }
         assert!(
