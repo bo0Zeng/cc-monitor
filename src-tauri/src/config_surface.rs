@@ -1442,6 +1442,21 @@ mod tests {
     /// 前端传的 `dest_dir`、`cc-bus` 的落点是未实现的愿景。
     /// 前两条已改成 `ToolDestination::UserConfiguredPath`（承认"这是配置项"），
     /// 剩下**真有常量**的两条在这里用 `pin_definition` 钉死。
+    ///
+    /// 🔴 **〔`K-R63` 09-11 登记，本轮没治它〕本条与那一族是同一个病，而它今天仍是专名的。**
+    ///
+    /// 「申报 ↔ 现实」这条性质在 `tool_registry` 的两个 `bool`（`installable` / `uninstallable`）
+    /// 上已经收成**一条覆盖全表**的判据了
+    /// （`tool_registry.rs::every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
+    /// ：对拍表与 `TOOLS` 的 id 集合逐字相等，多一条少一条都红）。
+    /// **本条守的是同一族的第三格 `destination`，而它逐个工具手写、只钉了 `TOOLS` 里的两条**
+    /// （`ccm` 与 `project-mcp`；这个「两条」是下面那段代码自己数得出来的，不写死在这里）。
+    /// ⇒ 别的工具的 `destination` 申报错了，**这一格今天不会红** ——
+    /// 与 `K-R63` 之前 `uninstallable` 的处境逐字同形。
+    ///
+    /// 为什么 `K-R63` 没顺手收它：那一件的两条 dod 逐字只说 `installable` / `uninstallable`
+    /// 两格，多做一格是「比该做的宽了一格」（`brief` 第 17 条）。⇒ **登记在这里，等 PM 裁**，
+    /// 不靠人记得。
     #[test]
     fn declared_destinations_are_pinned_to_the_real_writers() {
         use crate::structural_scan::pin_definition;
