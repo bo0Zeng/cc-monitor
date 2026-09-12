@@ -654,7 +654,7 @@ jobs:
                       "cc-spawn-uplift 72" "tmux-guarded 14" "usage-probe 11" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 33" \
-                      "ccm-contract-parity 39" "daemon-gate2 34" "local-backend 14" \
+                      "ccm-contract-parity 42" "daemon-gate2 34" "local-backend 14" \
                       "daemon-sessions-rewatch 5" "daemon-tmux-late-server 2" \
                       "cc-bus-queue-drain 43" "daemon-cc-bus 50"; do
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
@@ -735,7 +735,10 @@ jobs:
       # 验渲染器意图能被接住 —— **都不比对真 exec 路**，而那正是 U9b 搬决策时会漏的地方。
       # 🔴 〔`K-R48` 第二拍 09-11〕72 → 39，同上。
       - name: ccm 契约差分对拍（U9a · S10 保住清单）
-        run: bash e2e/assert-pass-floor.sh ccm-contract-parity 39
+        # 🔴 〔`K-R61` 09-11〕39 → 42：C 组加了三格 —— `capabilities=` 里声明
+        #    `base-url-across-tmux`（monitor 侧那条降级理由的退役条件点名的 token）·
+        #    容器载荷内侧真带 `export ANTHROPIC_BASE_URL=`（申报与兑现一起量）· 一格反空真。
+        run: bash e2e/assert-pass-floor.sh ccm-contract-parity 42
 
       # B02：`cc-spawn` 收编进 `ccm` 的行为等价验收。**本套件自带起飞前自检**——
       # 它经 PATH 上的 tmux shim 强制 `-L <隔离socket>`（cc-spawn/ccm/cc-register 内部都是
