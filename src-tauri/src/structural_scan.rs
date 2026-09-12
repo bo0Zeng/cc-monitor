@@ -533,7 +533,16 @@ mod tests {
             let lines: Vec<&str> = src.lines().collect();
             let Some(start) = lines.iter().position(|l| {
                 let t = l.trim();
-                t.starts_with("mod ") && t.contains("test") && t.ends_with('{')
+                // 🔴 〔`K-R75` 09-12〕这里原先也是 `t.starts_with("mod ")` ——
+                //    **同一族病的第二个住址**，而它的失效方向比剥法那处更阴：
+                //    一份文件的测试模块若写成 `pub(crate) mod tests {`，`position` 返回 `None`
+                //    ⇒ 那份文件**整份掉出本条的人群**，而本条照样绿（人群缩水，静默）。
+                //    ⇒ 走同一份权威的形状判定，不再各写一份近似的（`E3`）。
+                //    ⚠ 现打：今天全仓「带可见性且名字含 test 的 `mod`」**0 处**
+                //       ⇒ 这一改在今天的盘上是 **no-op**，买的是「下一处这么写时不会静默」。
+                guard_core::strip_visibility(t).starts_with("mod ")
+                    && t.contains("test")
+                    && t.ends_with('{')
             }) else {
                 continue;
             };
