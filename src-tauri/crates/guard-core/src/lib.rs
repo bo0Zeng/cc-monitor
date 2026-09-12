@@ -161,7 +161,16 @@ pub fn production_source(src: &str) -> String {
 ///
 /// ⚠ **不认的一律原样退回**（宁可不剥，不许乱切）：`pub` 后面紧跟标识符字符
 /// （`pubsub`）、括号不配平（`pub(crate mod x {`）都当作「这里没有可见性修饰」。
-fn strip_visibility(line: &str) -> &str {
+///
+/// # 为什么是 `pub`（＝这一族**只许有一个权威源**，本仓 `E3`）
+///
+/// 「一行 item 声明前面那截可见性修饰」在本仓不止一个消费者：除了本 crate 的剥法，
+/// monitor 侧还有判据靠「哪一行是测试模块的开头」来划自己的人群
+/// （`structural_scan.rs` 里那条「每个测试 `fn` 都得真的带属性」）。
+/// 那一处原先也写着 `starts_with("mod ")` —— **同一个病的第二个住址**，
+/// 而它的失效方向更阴：认不出 ⇒ 那份文件**整份掉出人群**，判据照样绿。
+/// ⇒ 09-12 一并接到这一份上来，别再各写一份近似的。
+pub fn strip_visibility(line: &str) -> &str {
     let Some(rest) = line.strip_prefix("pub") else {
         return line;
     };
