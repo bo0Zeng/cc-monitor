@@ -1647,6 +1647,20 @@ pub async fn connect_and_exec(
     }
 }
 
+// 🔴 **这一行是 `K-R74` 的承重件，别顺手删**〔09-12〕：`dial_home_registry` 那条递减棘轮
+// 拿 `DIAL_SITES` 里 `moved == false` 的**处数合计**当今天的读数。
+//
+// ⚠ **为什么是「再导出一次」而不是把 `mod` 写成 `pub(crate) mod`** —— 09-12 实打，
+// 不是品味：`guard_core::test_module_ranges` 认测试段的判据逐字是「属性行的**下一行**
+// `starts_with("mod ")`」⇒ 写成 `pub(crate) mod` 那一刻，`ssh_source.rs` 整个测试段
+// **不再被剥掉** —— `cargo test -p monitor --lib` 当场从 `1403 passed; 0 failed`
+// 变成 `1399 passed; 10 failed`：本文件的 `six_of_the_seven_dial_sites_are_still_in_this_process`
+// 与 `write_half_guard` 三条，外加 `structural_scan` · `cross_half_edge_registry` ·
+// `exec_site_registry` · `local_read_surface_registry` · `byte_cap_registry`
+// 那几份里「扫生产段」的判据 —— 它们那一刻扫的是测试代码。
+#[cfg(test)]
+pub(crate) use dial_move_judge::DIAL_SITES;
+
 #[cfg(test)]
 mod dial_move_judge {
     //! `K-P6b` `D2` 判据的**甲半**（界面这一侧）＋ 它的反向自检。
@@ -1679,10 +1693,15 @@ mod dial_move_judge {
     ///
     /// `(文件, 生产段里的调用点处数, 这一处的拨号搬走了没有, 它是什么, 解锁条件)`
     ///
+    /// 🔴 **`pub(crate)` 是承重的，别顺手收回去**〔`K-R74` 09-12〕：
+    /// `dial_home_registry` 那条递减棘轮拿本表 `moved == false` 的**处数合计**当今天的读数，
+    /// 再对着 `ssh_source.rs` 的 git 历史比「历史上出现过的最低档」。
+    /// 收回成私有 ⇒ 那条棘轮编不过；改成在那边抄一份数字 ⇒ 同一个值两个家，本区最贵的那条病。
+    ///
     /// 🔴 **这张表就是「7 处里搬走 1 处」那句话的机器形态。** 第三栏 `false` 的每一行
     /// 都是一句「本件**没有**买到这里」——散文里那句话可以腐烂，这张表不行：
     /// 处数由下面的判据**从源码派生**再逐格比对，多一处少一处都红。
-    const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
+    pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
         (
             "ssh_source.rs",
             4,
