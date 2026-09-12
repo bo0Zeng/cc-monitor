@@ -1,0 +1,63 @@
+被测对象：/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r63
+== 基线（不落任何刀）==
+  | test result: ok. 1384 passed; 0 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.84s
+
+== [M1 刀 C 重打：cc-acct-iso uninstallable false→true（多报方向 = 本件正题）]
+   文件 src-tauri/src/tool_registry.rs · 锚点命中 1 次（应为 1）
+   变异已落地： True
+  | 红: tool_registry::tests::every_tool_declares_install_and_uninstall_as_the_implementations_really_are
+  | test result: FAILED. 1383 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.81s
+   已还原（逐字节回原文）: True
+
+== [M2 remote-daemon uninstallable true→false（少报方向；这一刀同时证明本件改的那一格原先是红的）]
+   文件 src-tauri/src/tool_registry.rs · 锚点命中 1 次（应为 1）
+   变异已落地： True
+  | 红: tool_registry::tests::every_tool_declares_install_and_uninstall_as_the_implementations_really_are
+  | test result: FAILED. 1383 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.79s
+   已还原（逐字节回原文）: True
+
+== [M3 KR63D2：powershell-profile installable true→false（**不是 cc-bus** 的另一个工具）]
+   文件 src-tauri/src/tool_registry.rs · 锚点命中 1 次（应为 1）
+   变异已落地： True
+  | 红: tool_registry::tests::every_tool_declares_install_and_uninstall_as_the_implementations_really_are
+  | test result: FAILED. 1383 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.81s
+   已还原（逐字节回原文）: True
+
+== [M4 掏空 structural_scan::fn_names_starting_with 的读（签名留着，恒答空）]
+   文件 src-tauri/src/structural_scan.rs · 锚点命中 1 次（应为 1）
+   变异已落地： True
+  | 红: fenced_block::tests::a_shape_that_declares_no_uninstall_really_has_none
+  | 红: structural_scan::tests::the_verb_scan_reads_production_only_and_is_not_vacuous
+  | 红: tool_registry::tests::every_tool_declares_install_and_uninstall_as_the_implementations_really_are
+  | test result: FAILED. 1381 passed; 3 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.80s
+   已还原（逐字节回原文）: True
+
+== [M5 FENCE_SHAPES 负向：account_aliases 里长出一个没人认领的卸口]
+   文件 src-tauri/src/account_aliases.rs · 锚点命中 1 次（应为 1）
+   变异已落地： True
+  | 红: fenced_block::tests::a_shape_that_declares_no_uninstall_really_has_none
+  | test result: FAILED. 1383 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.82s
+   已还原（逐字节回原文）: True
+
+== [M6b TOOLS 负向：cc_bus_deploy 里长出一个没人认领的卸口（⚠ 锚点必须含 `#[tauri::command]` 那一行 —— M6 没含，把属性与它的 fn 劈开了，那一趟是 CRASH 不是读数）]
+   文件 src-tauri/src/cc_bus_deploy.rs · 锚点命中 1 次（应为 1）
+   变异已落地： True
+  | 红: tool_registry::tests::every_tool_declares_install_and_uninstall_as_the_implementations_really_are
+  | test result: FAILED. 1383 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.79s
+   已还原（逐字节回原文）: True
+
+== [M7 被收掉那条专名判据的覆盖还在不在：cc-bus installable true→false]
+   文件 src-tauri/src/tool_registry.rs · 锚点命中 1 次（应为 1）
+   变异已落地： True
+  | 红: config_surface::tests::rows_cover_every_touched_file_and_use_all_spec_fields
+  | 红: tool_registry::tests::every_tool_declares_install_and_uninstall_as_the_implementations_really_are
+  | 红: tool_registry::tests::owned_file_implies_installable
+  | test result: FAILED. 1381 passed; 3 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.80s
+   已还原（逐字节回原文）: True
+
+== [M8 失效方向：把那条性质改成名字里带工具 id `ccm`（全文逐字换名，定义与自守里的 NAME 一起换）]
+   文件 src-tauri/src/tool_registry.rs · 锚点命中 7 次（应为 7）
+   变异已落地： True
+  | 红: tool_registry::tests::the_property_that_pins_both_declarations_is_not_named_after_any_tool
+  | test result: FAILED. 1383 passed; 1 failed; 10 ignored; 0 measured; 0 filtered out; finished in 10.80s
+   已还原（逐字节回原文）: True
