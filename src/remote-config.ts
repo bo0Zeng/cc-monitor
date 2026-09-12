@@ -27,12 +27,6 @@ export interface RemoteHostConfig {
    */
   jump: string;
   /**
-   * Batch14-F59：daemonless 降级读取——true 时该主机**不部署/不连 daemon**，走纯 SSH exec
-   * `find`+`tail -c +offset` 轮询读会话 jsonl（能力子集：无 bg kind / 无运行状态灯 / 无拥塞信号 /
-   * 仅显示最近活跃会话）。false（默认）= 正常 daemon 数据源路径。
-   */
-  daemonless: boolean;
-  /**
    * S4b-3（主计划 §5-1）：**这台机器**的 resume 启动命令。空 = 用全局默认
    *（`behavior.resumeCommandRemote`）。
    *
@@ -54,10 +48,31 @@ export function parseAddressLines(text: string): string[] {
     .filter((l) => l.length > 0);
 }
 
+/**
+ * `K-R59`〔定框 `K35`〕：**旧配置里那个开关在盘上的键名 —— 全仓唯一一处字面量。**
+ *
+ * 这个开关本身已经**退役**（`K35` 逐字：「不要有 daemonless。没有没有后端的情况。」），
+ * 它不再是 [`RemoteHostConfig`] 的字段、不再有界面、不再有数据源分支。
+ * 但**用户机器上那份 `config.json` 里的 `true` 是一份存在的状态** ——
+ * 字段一删，`coerceHost` 会把它当未知键丢掉，那台主机明天开始连后端，
+ * 连不上时用户看见的是「连不上」，而不是「你这台机器本来就是按不装后端配的，去装」。
+ *
+ * ⇒ 键名留一处，**只用来认出旧配置**（[`legacyNoBackendHosts`]），不用来决定任何行为。
+ */
+export const LEGACY_NO_BACKEND_KEY = "daemonless";
+
 /** config.json `remote` 段：全局 enabled + 机器列表。 */
 export interface RemoteConfig {
   enabled: boolean;
   hosts: RemoteHostConfig[];
+  /**
+   * `K-R59`：盘上**仍写着旧开关为 `true`** 的主机 origin（[`hostKey`] 口径）。
+   *
+   * 它**不是**一个新开关：没有任何代码按它改变数据源路径。它只驱动
+   * `settings/readiness.ts` 那张「还差什么」清单上的**一条指名告知**
+   * （`NO_BACKEND_GAP_CODE`）。空数组 = 盘上没有旧配置。
+   */
+  legacyNoBackend: string[];
 }
 
 /**
@@ -79,7 +94,6 @@ export const HOST_DEFAULTS: RemoteHostConfig = {
   hostKeyFingerprint: "",
   addresses: [],
   jump: "",
-  daemonless: false,
   resumeCommand: "",
 };
 
@@ -93,6 +107,20 @@ function coerceAddresses(v: unknown): string[] {
   }
   if (typeof v === "string") return parseAddressLines(v);
   return [];
+}
+
+/**
+ * `K-R59`（纯函数）：从**原始**（未 coerce 的）主机对象数组里认出还带着旧开关的那几台。
+ *
+ * ⚠ 必须在 `coerceHost` **之前**取 —— `coerceHost` 只挑白名单字段，
+ * 旧键走到它手上就已经没了。这正是 `KR59D3` 说的「静默吞掉」。
+ */
+export function legacyNoBackendHosts(
+  raw: Record<string, unknown>[],
+): string[] {
+  return raw
+    .filter((h) => h[LEGACY_NO_BACKEND_KEY] === true)
+    .map((h) => hostKey(coerceHost(h)));
 }
 
 function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
@@ -112,8 +140,6 @@ function coerceHost(obj: Record<string, unknown>): RemoteHostConfig {
     hostKeyFingerprint: str("hostKeyFingerprint", HOST_DEFAULTS.hostKeyFingerprint),
     addresses: coerceAddresses(obj.addresses),
     jump: str("jump", HOST_DEFAULTS.jump),
-    daemonless:
-      typeof obj.daemonless === "boolean" ? obj.daemonless : HOST_DEFAULTS.daemonless,
     resumeCommand: str("resumeCommand", HOST_DEFAULTS.resumeCommand),
   };
 }
@@ -126,23 +152,30 @@ export async function readRemoteConfig(): Promise<RemoteConfig> {
   try {
     const cfg = (await loadConfig()) as Record<string, unknown>;
     const r = cfg.remote;
-    if (r === null || typeof r !== "object") return { enabled: false, hosts: [] };
+    if (r === null || typeof r !== "object") {
+      return { enabled: false, hosts: [], legacyNoBackend: [] };
+    }
     const obj = r as Record<string, unknown>;
     const enabled = typeof obj.enabled === "boolean" ? obj.enabled : false;
 
-    let hosts: RemoteHostConfig[] = [];
+    let raw: Record<string, unknown>[] = [];
     if (Array.isArray(obj.hosts)) {
-      hosts = obj.hosts
-        .filter((h): h is Record<string, unknown> => h !== null && typeof h === "object")
-        .map(coerceHost);
+      raw = obj.hosts.filter(
+        (h): h is Record<string, unknown> => h !== null && typeof h === "object",
+      );
     } else if (typeof obj.host === "string" && obj.host) {
       // 旧单对象形态：把 remote 自身当一台。
-      hosts = [coerceHost(obj)];
+      raw = [obj];
     }
-    return { enabled, hosts };
+    return {
+      enabled,
+      hosts: raw.map(coerceHost),
+      // K-R59：**在 coerce 之前**认旧开关，见 `legacyNoBackendHosts` 头注。
+      legacyNoBackend: legacyNoBackendHosts(raw),
+    };
   } catch (e) {
     console.warn("readRemoteConfig failed:", e);
-    return { enabled: false, hosts: [] };
+    return { enabled: false, hosts: [], legacyNoBackend: [] };
   }
 }
 
@@ -175,7 +208,10 @@ export async function resolveRemoteConfigByOrigin(
  * 而**手抄清单已经咬过两次**，两次都是「`RemoteHostConfig` 加了字段、这里没跟上
  * ⇒ 每次保存都静默丢掉它」：
  * - `jump`（F56 D-B1）：「设置卡填的跳板被静默丢弃」——用户填了，存不下来。
- * - `daemonless`（F59）：补的时候注释里写着「同 D-B1 教训：枚举字段必逐个写全」。
+ * - `daemonless`（F59，**已于 `K-R59` 整格退役**）：补的时候注释里写着
+ *   「同 D-B1 教训：枚举字段必逐个写全」。今天这个键**不在清单里**是有意的 ——
+ *   一次保存就把用户盘上那份旧值写没，而写没之前由 [`LEGACY_NO_BACKEND_KEY`] 认出来、
+ *   在「还差什么」清单上指名告知一次。
  *
  * 两次都是**事后**补的。下面那个 `MissingField` 检查把它变成**编译期**问题：
  * 加字段而漏改这里，`tsc` 直接红，且错误信息里点名缺的是哪个字段。
@@ -191,7 +227,6 @@ const REMOTE_HOST_FIELDS = [
   "hostKeyFingerprint",
   "addresses",
   "jump",
-  "daemonless",
   "resumeCommand",
 ] as const satisfies readonly (keyof RemoteHostConfig)[];
 
@@ -318,6 +353,10 @@ export function applyRemoteHostsPatch(
   return {
     enabled: patch.enabled ?? cur.enabled,
     hosts,
+    // K-R59：这条名单说的是**盘上那份 JSON 现在长什么样**，不是这次 patch 的产物 ——
+    // 原样带过去。真正把它清空的是 `writeRemoteConfig`（`REMOTE_HOST_FIELDS` 里
+    // 已经没有那个键 ⇒ 一次保存就把旧键写没了）。
+    legacyNoBackend: cur.legacyNoBackend,
   };
 }
 

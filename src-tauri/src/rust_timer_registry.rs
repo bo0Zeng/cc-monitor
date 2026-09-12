@@ -35,6 +35,9 @@
 //! 1. `bind.rs::run_heartbeat` = `loop { sleep(10s); cleanup_dead(); }` —— 无限、周期、无上限。
 //! 2. ★★ `ssh_source.rs` 的 **daemonless 数据轮询**（`DAEMONLESS_POLL_INTERVAL = 2s`）——
 //!    **它与定框 C7（没有 daemonless）和 C8（不许轮询）直接冲突**，而且是本工作区的正题。
+//!    〔`K-R59` 09-11：**这一条已经退役** —— 定框 `K35` 把那一档整个取消。本段记的是
+//!     「它一上岗抓到了什么」，不是今天的清单；今天的清单以 `REGISTERED` 与
+//!     `every_ticker_names_its_event_source_and_owner` 里那个 `tickers` 数为准。〕
 //!
 //! **两个都此前完全没有被任何账本记过**：`polling_registry` 按设计不管 Rust 侧，
 //! `no_timer_guard` 只管 daemon crate ⇒ 它们正落在「两个护栏各自划了范围、中间那块没人管」里。
@@ -134,29 +137,15 @@ mod tests {
              **避免忙等**用的。本地已 bound 的 listener 没有「永久失败」态，故不 break。\
              它等的条件是「下一个连接」，由 `accept()` 本身阻塞驱动，sleep 只在错误分支。",
         ),
-        (
-            "src/ssh_source.rs",
-            "ticker",
-            1,
-            "★★ **本表抓到的第二个真节拍器，而且是关键的那个**：\
-             `DAEMONLESS_POLL_INTERVAL = 2s` 的 `loop { …; sleep(2s) }` —— \
-             **daemonless 回落路径的数据轮询**（没有 daemon 时靠自己每 2s 读一遍）。\
-             ⚠ 它与**定框 C7 直接冲突**（「没有 daemonless —— 使用软件就要有后端」，\
-             回落路径是**过渡期**的、不是永久形态），也与 **C8**（不许轮询）冲突。\
-             **事件源**：daemon 在场时那条路本来就是事件驱动的（帧）—— 这 2s 补的正是\
-             「那台主机没有 daemon」那个过渡态。\
-             ⚠⚠ **F10 摸底订正了 F09 在这里写的退役归属**（原写「归 F05a+F05b，F10 收尾」，\
-             那是**错的**）：实测 `cfg.daemonless` 是 **每台远端主机的一个用户配置开关**\
-             （`remote-config.ts` 的 `daemonless: boolean`，默认 false —— 用户主动勾「这台不装 daemon」），\
-             与「本机后端进程」和「本机读面」**都无关**。\
-             ⇒ 真正的退役条件是「**远端自动部署可靠到可以删掉这个开关**」\
-             （`embedded_daemons` + SFTP 自动部署已存在），而那是一个**产品决策**\
-             （有些主机可能装不上 daemon）。**今天无人认领，如实记未排期。**\
-             ⚠ 记这一条的教训：F09 自己那条判据要求 `ticker` 必须写 owner，\
-             而我写了一个**似是而非**的 —— 正是同一条登记里写着「不编假 owner」的反面。\
-             ⚠ **它此前从未被任何账本记过** —— `polling_registry` 按设计不管 Rust 侧，\
-             `no_timer_guard` 只管 daemon crate。两个护栏各自划了范围，它就落在中间那块。",
-        ),
+        // ★★ 🔴 `K-R59`（09-11）：**这里原来是本表抓到的第二个真节拍器，那一条今天退役了。**
+        //    它是 `src/ssh_source.rs` 的 `DAEMONLESS_POLL_INTERVAL = 2s`（`loop { …; sleep(2s) }`），
+        //    登记里逐字写着它「与**定框 C7 直接冲突**」「也与 **C8**（不许轮询）冲突」，
+        //    而退役条件当时写的是「**远端自动部署可靠到可以删掉这个开关**……今天无人认领，
+        //    如实记未排期」。
+        //    ⇒ 09-11 用户裁 `K35`（「不要有 daemonless。没有没有后端的情况。」）—— **认领人来了，
+        //      而且不是走「自动部署可靠了」那条路，是直接取消那一档。**
+        //    ★ 这一条与 `watcher.rs` 那条（F11）同形：**退役的验收证据就是本表先红在
+        //      「少一处 = 退役了」上，删掉登记才绿。** 不是靠人说「我改好了」。
         (
             "src/ssh_source.rs",
             "throttle",
@@ -424,11 +413,11 @@ mod tests {
         }
         // 抽取器自检：一条 ticker 都没认出来时上面的断言全空转。
         assert_eq!(
-            tickers, 3,
-            "登记表里的 ticker 条数变了（实测 3 条：`bind.rs::run_heartbeat` 10s · \
-             `ssh_source.rs` 的 daemonless 2s · **`session_map.rs` 的 2s**）。\n\
+            tickers, 2,
+            "登记表里的 ticker 条数变了（实测 2 条：`bind.rs::run_heartbeat` 10s · \
+             **`session_map.rs` 的 2s**）。\n\
              多一条 ⇒ 新增了真节拍器，必须单独论证；少一条 ⇒ 退役了，把账拧下来。\n\
-             ⚠ **这个数最近走过 2 → 4 → 3，三次都不是回归**，值得一并读懂：\n\
+             ⚠ **这个数最近走过 2 → 4 → 3 → 2，四次都不是回归**，值得一并读懂：\n\
              · 2 → 4（08-10 devbench **F07**）：把 `recv_timeout` 收进针时 `watcher.rs` 的 100ms \
              与 `session_map.rs` 的 2s **第一次上账**。它们在那之前一直在跑，只是针看不见它们 \
              ⇒ **可见性变了，不是新增了轮询**。\n\
@@ -436,6 +425,10 @@ mod tests {
              （文件事件 + rescan 请求）合成一个 `WatchEvent` enum，主循环改无超时 `recv()`。\
              ★ **本条判据就是那次退役的验收证据**：改完代码后它先红在「少一处 = 退役了」上，\
              删掉登记才绿 —— 退役不是靠人说「我改好了」。\n\
+             · 3 → 2（09-11 `K-R59`）：`ssh_source.rs` 的 **daemonless 2s 真退役了** —— \
+             用户裁 `K35`「不要有 daemonless。没有没有后端的情况。」，那一整段轮询读随之删除。\
+             ⚠ **别把它读成「自动部署终于可靠了」**（那是这条登记当年自己写的退役条件）：\
+             实际走的是另一条路 —— **那一档整个取消**。\n\
              · 剩下的 `session_map.rs` 那条退役归 **F12**，被 `unified-backend` 的 **U4b** 挡着\
              （daemon 侧 Windows 判活是诚实空壳，而本条治的 bug 恰恰是 Windows 场景）。"
         );

@@ -273,7 +273,7 @@ export class AccountsSection {
     } catch {
       this.hosts = [];
     }
-    // 填远端下拉（含 daemonless，但标注）
+    // 填远端下拉
     // E59：初值仍取「主 origin」作为**兜底落点**（`RemoteSection` 抛异常时这几块会留在
     // 列表页上，那儿没有页上下文）。正常路径上，`subscribeMachine` 立刻会把它改成页头那台。
     this.origin =
@@ -364,12 +364,8 @@ export class AccountsSection {
     }
     const ui = deriveUi(state);
     switch (ui.kind) {
-      case "hidden":
-        // daemonless **不是缺**：用户显式选的降级，读不到账号是它的定义而非故障。
-        this.note("accounts", { kind: "na", detail: "daemonless" });
-        this.note("acctIso", { kind: "na", detail: "daemonless" });
-        this.info("该远端配置为 daemonless，无法读取账号。");
-        return;
+      // 🔴 `K-R59`：这里原来还有一支 `case "hidden"`，把 `accounts`/`acctIso` 两格
+      //    记成 `na`、理由「用户显式选的降级」。那一档（`daemonless`）整格没了 ⇒ 支也没了。
       case "needs-update":
         this.note("accounts", { kind: "fail", detail: "daemon 需更新" });
         this.info(`远端 daemon 需要更新才能用多账号：${ui.reason}`);

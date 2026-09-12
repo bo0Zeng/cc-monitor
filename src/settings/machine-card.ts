@@ -17,7 +17,6 @@ import { commands } from "../ipc/commands";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { openSftpPanel } from "../sftp/panel";
-import { makeInfoIcon } from "./info-icon";
 import { invalidateCcmProbeCache } from "../ccm-probe";
 import { recordFacet, type MachineFacet } from "./machine-status";
 import { hostKey, type RemoteHostConfig } from "../remote-config";
@@ -191,8 +190,6 @@ export class MachineCard {
   private fingerprintInput!: HTMLInputElement;
   private addressesInput!: HTMLTextAreaElement;
   private jumpInput!: HTMLInputElement;
-  /** F59：daemonless 降级读取开关（无 daemon 时纯 tail 轮询读）。 */
-  private daemonlessInput!: HTMLInputElement;
   /** S4b-3（§5-1）：这台机器的 resume 启动命令（空 = 用全局默认）。 */
   private resumeCmdInput!: HTMLInputElement;
   /** 依当前指纹值显隐「重置为 TOFU」按钮（load / 重置后调用）。 */
@@ -249,7 +246,6 @@ export class MachineCard {
       addresses: parseAddressLines(this.addressesInput.value),
       jump: this.jumpInput.value.trim(),
       resumeCommand: this.resumeCmdInput.value.trim(),
-      daemonless: this.daemonlessInput.checked,
     };
   }
 
@@ -313,10 +309,10 @@ export class MachineCard {
 
     // ★ S4b-3b-2：body 内部再分成**两块**，供机器详情页拆成「连接 / 组件」两栏
     //（主计划 §2.3 / §2.4）。分界就在 resume 命令那一行：
-    //   连接 = 怎么连上这台机（host/port/user/密钥/指纹/地址/跳板/daemonless…）
+    //   连接 = 怎么连上这台机（host/port/user/密钥/指纹/地址/跳板…）
     //   组件 = 这台机上装了什么、怎么起（resume 命令 + 装卸 daemon/ccm + 测试）
     //
-    // **顺带把 S4b-3a 摆错的位置纠正了**：那轮我把 resume 命令插在 daemonless 之后，
+    // **顺带把 S4b-3a 摆错的位置纠正了**：那轮我把 resume 命令插在那个降级开关之后，
     // commit 里却说它「放在装/卸 ccm 按钮紧邻处」—— 实际隔着 installInfo 等约 120 行。
     // §5-1 要的正是这两者相邻（装完 ccm 就该顺手改 resume 命令），现在真的相邻了。
     this.connectionPart = document.createElement("div");
@@ -432,13 +428,12 @@ export class MachineCard {
       onChange,
     );
 
-    // F59：daemonless 降级读取——该机不部署/不连 daemon，纯 SSH exec tail 轮询读会话 jsonl。
-    const dlRow = document.createElement("label");
-    dlRow.className = "settings-row settings-row-checkbox";
-    this.daemonlessInput = document.createElement("input");
-    this.daemonlessInput.type = "checkbox";
-    this.daemonlessInput.className = "settings-checkbox";
-    this.daemonlessInput.addEventListener("change", onChange);
+    // 🔴 `K-R59`（09-11，定框 `K35`）：**这里原来是那个 `daemonless` 降级开关**
+    //    （checkbox 逐字「daemonless 降级读取（无需 daemon）」→ `RemoteHostConfig.daemonless`）。
+    //    `K35` 逐字：「不要有 daemonless。没有没有后端的情况。前端应该就是去调用远程后端的。」
+    //    ⇒ 整格删掉：字段 · 顶层二选一 · 轮询段 · 这一格界面 · 那条本机豁免，五处一起走。
+    //    用户盘上那份旧 `true` 由 `remote-config.ts` 的 `LEGACY_NO_BACKEND_KEY` 认出来，
+    //    在「还差什么」清单上指名告知（`NO_BACKEND_GAP_CODE`），不静默吞掉。
 
     // ★ S4b-3（主计划 §5-1）：**这台机器**的 resume 启动命令。
     //
@@ -455,20 +450,6 @@ export class MachineCard {
       "留空 = 用全局默认",
       onChange,
     );
-    dlRow.appendChild(this.daemonlessInput);
-    const dlLabel = document.createElement("span");
-    dlLabel.className = "settings-checkbox-label";
-    dlLabel.textContent = "daemonless 降级读取（无需 daemon）";
-    dlRow.appendChild(dlLabel);
-    dlRow.appendChild(
-      makeInfoIcon(
-        "勾选后该机**不部署 / 不连 daemon**，改用纯 SSH exec `find`+`tail` 轮询读会话 jsonl。\n" +
-          "适合装不了 daemon 的主机（异构架构 / 无权限 / BSD·macOS）。\n" +
-          "⚠ 能力子集（降级）：无后台会话跟踪 / 无运行状态灯 / 无拥塞信号 / 仅显示最近 30 分钟活跃的会话。\n" +
-          "会话内容照常可读。需重启 monitor 才生效。",
-      ),
-    );
-    body.appendChild(dlRow);
 
     // 安装位置提示：明确告诉用户「在哪里装什么」。
     const installInfo = document.createElement("div");
@@ -615,7 +596,6 @@ export class MachineCard {
     this.fingerprintInput.value = cfg.hostKeyFingerprint;
     this.addressesInput.value = cfg.addresses.join("\n");
     this.jumpInput.value = cfg.jump ?? "";
-    this.daemonlessInput.checked = cfg.daemonless ?? false;
     this.syncResetFpVisibility();
   }
 
@@ -873,7 +853,7 @@ export class MachineCard {
         : "留空则按工作目录名自动生成";
     });
 
-    // A4：账号下拉。异步填充——账号库不可用（daemonless / 旧 / 未启用）则整行不显 → 不注入
+    // A4：账号下拉。异步填充——账号库不可用（旧 daemon / 未启用）则整行不显 → 不注入
     // configDir → 行为与旧版逐字节一致（§7 降级）。选中某账号 = 起会话时注入其 CLAUDE_CONFIG_DIR。
     const acctRow = document.createElement("label");
     acctRow.className = "launcher-field";

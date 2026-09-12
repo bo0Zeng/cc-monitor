@@ -209,7 +209,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   void tabs.loadCollections();
 
   // A3：状态栏「当前账号」chip（多账号 cc-acct-iso）。绑第一台可用远端的默认账号；
-  // 未连远端 / 未启用多账号 / daemonless 各自安静降级（不报错）。点击弹选单切默认账号。
+  // 未连远端 / 未启用多账号 各自安静降级（不报错）。点击弹选单切默认账号。
   // **构造在 `refreshSessionAccounts` 定义之前**（D 审计）：`onDefaultChanged` 回调间接调用
   // `refreshSessionAccounts`（下方 `const` 声明，函数体里会调 `tabs.setSessionAccounts`）——
   // 回调本身只在用户切号时才真正执行，届时 `refreshSessionAccounts` 早已初始化完毕，不会踩
@@ -226,7 +226,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // A3：账号徽章数据管道——定期对每台远端拉 session-accounts（哪条会话属于哪个号）+ 账号邮箱，
   // 聚合喂 tabs（tabs 已在上方构造）。走 accounts store 的 8s TTL 缓存 + available:false 降级，
-  // 未迁移 / 旧 daemon / daemonless 零副作用。
+  // 未迁移 / 旧 daemon 零副作用。
   // audit-fixes I4：refreshSessionAccounts 无重入/顺序保护 → 慢的旧快照可覆盖新快照（把切号后刚
   // 关上的"反向窗口"从并发侧重开）。加 in-flight 递增序号门：每次进入 ++refreshSeq 取本地 mySeq，
   // 写 setSessionAccounts 前若 refreshSeq 已被更晚一次进入推大（mySeq !== refreshSeq）→ 丢弃本次。
@@ -630,14 +630,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   //
   // ⚠ 只在主窗口这条路上挂：`?viewer=` 与 `?settings=1` 两个精简 bootstrap 在上面就 return 了。
   {
-    // `origins` / `isDaemonless` 要读远端配置（异步），所以先拿一份快照，
+    // `origins` / `legacyNoBackend` 要读远端配置（异步），所以先拿一份快照，
     // 由 `reload()` 刷新；`FirstRunHint` 自己不碰 IO（照 readiness.ts 的注入范式）。
     let origins: string[] = [LOCAL_MACHINE_KEY];
-    let daemonless = new Set<string>();
+    let legacyNoBackend = new Set<string>();
     const firstRunHint = new FirstRunHint(status, {
       origins: () => origins,
       statusOf: readStatus,
-      isDaemonless: (o) => daemonless.has(o),
+      legacyNoBackend: (o) => legacyNoBackend.has(o),
       hostOs,
       // 「点得进那张清单」= 打开设置窗口（清单住在它的「远端」那一节）。
       // ⚠ 今天**只能到窗口这一格**：`open_settings_window` 不收参数，
@@ -648,9 +648,8 @@ window.addEventListener("DOMContentLoaded", async () => {
       try {
         const cfg = await readRemoteConfig();
         origins = [LOCAL_MACHINE_KEY, ...cfg.hosts.map(hostKey)];
-        daemonless = new Set(
-          cfg.hosts.filter((h) => h.daemonless).map(hostKey),
-        );
+        // `KR59D3`：盘上那份旧 `true` —— 主窗口这条指路与设置页那张清单**同一个源**。
+        legacyNoBackend = new Set(cfg.legacyNoBackend);
       } catch (e) {
         // 读不到远端配置不该让这条提示消失 —— 本机那几格照样算得出来。
         console.warn(`[N-F3] 远端配置读失败，只按本机算「还差什么」：${String(e)}`);

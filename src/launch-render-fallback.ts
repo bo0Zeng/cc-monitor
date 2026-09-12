@@ -26,10 +26,16 @@
  * - daemon 的 `control/launch.rs` 头注逐字「本模块**不 attach**，一次都不」（attach 必须落在
  *   用户自己的终端里，§1.3）；生产段发 `create-or-attach` 的处数今天是 **0**；
  * - Rust 的 `ccm_invocation` 那条只对**装了 ccm** 的主机成立；
- * - 而 `daemonless`（每台远端主机的用户开关）今天仍在 ⇒ 没有 daemon 可问的主机**存在**。
+ * - ~~而 `daemonless`（每台远端主机的用户开关）今天仍在 ⇒ 没有 daemon 可问的主机**存在**。~~
+ *   🔴 **09-11 `K-R59` 起这一条退役了**：用户定框 `K35` 逐字「不要有 daemonless。
+ *   没有没有后端的情况。前端应该就是去调用远程后端的。」⇒ 那一类主机不再存在。
  *
- * ⇒ 删本文件 = 把「没装 ccm 的远端」与「daemonless 的远端」两类主机的 `↗` 直接删掉。
- * 三条依据各有一条会红的判据，住 `src-tauri/src/backend/control/launch_wire.rs` 的
+ * ⇒ 删本文件 = 把「没装 ccm 的远端」那类主机的 `↗` 直接删掉。
+ * 🔴 **而「本文件还删不删得」今天不靠上面这几条依据答** —— `K-R59` 现打：
+ * `renderFallback` 有 **3 个**生产消费者、`SESSION_BACKEND` 有 **2 个**，
+ * 逐处住址在 `launch_wire.rs` 的 `TS_FALLBACK_KEEPERS`（处数从源码派生，少一处就红）。
+ * **前提退役了，这条路没退役 —— 它另有消费者。**
+ * 两条依据各有一条会红的判据，住 `src-tauri/src/backend/control/launch_wire.rs` 的
  * `f07_main_path_tests` —— **哪天它们红了，就是本文件可以删的那天**，别靠读注释判断。
  *
  * ⚠ `container: "none"` 那一格（下面 `renderEnvOps + cd + argv` 那支）**生产已不可达**
