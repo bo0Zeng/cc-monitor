@@ -3163,7 +3163,8 @@ mod tests {
     ///
     /// # ⚠ 射程：只到这两处
     ///
-    /// `local_query::run_query` 那处起进程的落点**刻意不在分母里**：它 exec 的是
+    /// `backend::observe::local_query::run_query`（`K-R71` 09-12 之前住 `backend::control::`）
+    /// 那处起进程的落点**刻意不在分母里**：它 exec 的是
     /// `resolve_beside_this_exe` 找到的 sidecar，**不是我们刚写出来的那个文件**
     /// （`extract_embedded_to` 的产物它够不着）⇒ 那条路上不存在这个竞态的必要条件。
     /// 全树起进程的落点现打 21 处、其中 monitor 侧 12 处（量具

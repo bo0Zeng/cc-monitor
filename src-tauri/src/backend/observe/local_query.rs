@@ -65,12 +65,18 @@ pub(crate) fn classify(code: Option<i32>, stdout: String, stderr: String) -> Que
 /// 而在这一层写死会让两种调用方之一必然错。如实记为诚实边界。
 // F10b 第一批起有生产调用方（`usage.rs`），不再需要 `allow(dead_code)`。
 pub(crate) fn run_query(target_triple: &str, args: &[&str]) -> QueryOutcome {
-    let bin: PathBuf = match super::local_backend::resolve_beside_this_exe(target_triple) {
-        super::local_backend::Resolved::Found(p) => p,
-        super::local_backend::Resolved::Missing { reason, looked_at } => {
-            return QueryOutcome::NoBackend(format!("{reason}；找过 {looked_at:?}"));
-        }
-    };
+    // 🔴 这是本文件唯一一条**跨能力线**的引用（`observe → control`），`K-R71` 归位时才显形 ——
+    // 先前它写成 `super::local_backend::…`，因为两个文件当时同住 `control/`。
+    // 方向是对的（daemon 侧 `layering_guard` 逐字：`observe → control` 许、反向一条都不许），
+    // ⚠ 但**monitor 侧今天没有任何判据在数这条边**：daemon 那侧要求「接口面显式列举、条数钉住」
+    // （`ALLOWED_OBSERVE_TO_CONTROL`），monitor 侧的对应物**不存在**。如实记，不假装钉住了。
+    let bin: PathBuf =
+        match crate::backend::control::local_backend::resolve_beside_this_exe(target_triple) {
+            crate::backend::control::local_backend::Resolved::Found(p) => p,
+            crate::backend::control::local_backend::Resolved::Missing { reason, looked_at } => {
+                return QueryOutcome::NoBackend(format!("{reason}；找过 {looked_at:?}"));
+            }
+        };
     match std::process::Command::new(&bin).args(args).output() {
         Ok(out) => classify(
             out.status.code(),

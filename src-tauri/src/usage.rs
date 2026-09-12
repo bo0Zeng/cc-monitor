@@ -279,17 +279,17 @@ fn analyze_usage_in_session(
 pub async fn aggregate_usage_all(on_row: Channel<SessionUsageRow>) -> Result<u32, String> {
     tokio::task::spawn_blocking(move || {
         let started = std::time::Instant::now();
-        let outcome = crate::backend::control::local_query::run_query(
+        let outcome = crate::backend::observe::local_query::run_query(
             env!("CCM_TARGET_TRIPLE"),
             &["--usage"],
         );
         let stdout = match outcome {
-            crate::backend::control::local_query::QueryOutcome::Ok(s) => s,
+            crate::backend::observe::local_query::QueryOutcome::Ok(s) => s,
             // 诚实降级：把「后端不在」原样交给用户（定框 §5），不假装 0 个会话。
-            crate::backend::control::local_query::QueryOutcome::NoBackend(reason) => {
+            crate::backend::observe::local_query::QueryOutcome::NoBackend(reason) => {
                 return Err(format!("本机后端不在，拿不到用量：{reason}"));
             }
-            crate::backend::control::local_query::QueryOutcome::Failed { code, stderr } => {
+            crate::backend::observe::local_query::QueryOutcome::Failed { code, stderr } => {
                 return Err(format!(
                     "本机后端的用量查询失败（退出码 {code:?}）：{}",
                     stderr.trim()
