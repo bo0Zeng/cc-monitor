@@ -462,7 +462,14 @@ jobs:
           #             + scripts 2 + vendored 4 + hooks/pre-commit 1**（ccm 那 1 个没了）。
           #    ⚠ **别把这一次当先例**：往下拧的合法理由只有「那几个文件真的不在了」，
           #    不是「今天数不够」。`shell_lint_registry` 那条恒等判据会替你分辨这两件事。
-          [ "$N" -ge 57 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 57）"; exit 1; }
+          # **2026-09-12 `K-R82` 棘到 58**：新增 `scripts/hooks-are-runnable.sh`
+          #（门禁第 13 格 `hooks` 的判据本体）。★ 与 08-11 那次同形，**不是事后补**：
+          # 文件建出来的同一拍 `shell_lint_registry` 那条恒等判据当场红，诊断逐字给出「该写几」。
+          # ⚠ 它落在 `scripts/*.sh` 那个 glob 里 ⇒ **人群没漏**，只是计数要跟。
+          # 今天实测构成（**逐组现打，不倒推**，量于工作树 `k-r82`）：
+          # **58 = e2e/*.sh 31 + e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14
+          #        + scripts 3 + vendored 4 + hooks/pre-commit 1**。
+          [ "$N" -ge 58 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 58）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
