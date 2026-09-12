@@ -9,6 +9,7 @@ import {
   computeGaps,
   summarizeGaps,
   describeGap,
+  GAP_HEAD,
   NO_BACKEND_GAP_CODE,
   NO_BACKEND_CONSEQUENCE,
   type Gap,
@@ -352,5 +353,23 @@ describe("describeGap", () => {
     });
     expect(t).toContain("未测过");
     expect(t).not.toContain("缺");
+  });
+
+  // 🔴 〔`K-R65`〕这一对词今天**有第二个读者**（配置面审计那一页）⇒ 它必须只有一个住址。
+  // 上面两条断的是字面「缺」/「未测过」；本条断的是**那两个字面真的来自 `GAP_HEAD`** ——
+  // 把 `GAP_HEAD` 改掉而 `describeGap` 里又抄了一份，上面两条照绿，本条红。
+  it("「缺」/「未测过」这两个字只有一个住址（GAP_HEAD）", () => {
+    const mk = (kind: Gap["kind"]): Gap => ({
+      origin: "aya",
+      facet: "daemon",
+      kind,
+      consequence: "c",
+      severity: "blocking",
+    });
+    // 反向自检：两个头词不一样（一样的话下面等于空真）
+    expect(GAP_HEAD.missing).not.toBe(GAP_HEAD.unknown);
+    for (const kind of ["missing", "unknown"] as const) {
+      expect(describeGap(mk(kind))).toContain(`${GAP_HEAD[kind]} ——`);
+    }
   });
 });

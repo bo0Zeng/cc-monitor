@@ -2319,6 +2319,14 @@ mod tests {
                 1,
             ),
             ("src-tauri/src/launch.rs", "resolve_from_daemon", 1),
+            // 🔴 〔`K-R65` 09-11〕`tier` 从手填改成派生之后，那条断言「手写那一半的档
+            //    不许是 `AppInstalls`」在算术上不可能再红 ⇒ 删掉判据、留下墓碑说清
+            //    「它守的那件事没丢，只是那个能填错的格子没有了」。
+            (
+                "src-tauri/src/tool_registry.rs",
+                "a_hand_written_entry_is_never_app_installs",
+                1,
+            ),
             (
                 "src-tauri/src/plugin_class_registry.rs",
                 "ccm_agent_arms",

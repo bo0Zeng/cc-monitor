@@ -20,9 +20,13 @@ import {
   describeSurfaceState,
   describeUndo,
   formatReportText,
+  gapKindOfState,
+  promptToInstall,
+  summarizeOwedInstallers,
   type ConfigSurfaceReport,
   type SurfaceRow,
 } from "./config-surface-section";
+import { GAP_HEAD } from "./readiness";
 
 function row(over: Partial<SurfaceRow> = {}): SurfaceRow {
   return {
@@ -37,6 +41,9 @@ function row(over: Partial<SurfaceRow> = {}): SurfaceRow {
     state: { kind: "present", detail: "文件，1024 字节" },
     installable: true,
     uninstallable: true,
+    // 〔`K-R65`〕档进了线上形状 ⇒ 夹具也得有它。默认给「app 装的」——
+    // 那是 `ccm` 这一行真实的档，不是随手挑的。
+    tier: "AppInstalls",
     ...over,
   };
 }
@@ -113,13 +120,144 @@ describe("describeUndo", () => {
     expect(t).not.toContain("可按围栏");
     expect(t).toContain("手动");
   });
-  it("连部署都没实现的，直说无所谓撤销", () => {
-    expect(
-      describeUndo(row({ uninstallable: false, installable: false })),
-    ).toContain("尚未支持部署");
+  // 🔴 〔`K-R65`〕上一版这一条逐字断的是「尚未支持部署」，而那句话是**两头下注**的
+  // （原文「尚未支持部署，**或**本来就不该由它装」）—— 读者读不出自己这一行是哪一种。
+  // 档进线上形状之后，四档各说各的话，这一条跟着按档断。
+  it("按档给撤销说法：四档各不相同，且「欠的实现」不许被说成「不该我们装」", () => {
+    const say = (tier: SurfaceRow["tier"]) =>
+      describeUndo(row({ uninstallable: false, installable: false, tier }));
+    const owed = say("AppShipsNoInstallerYet");
+    const theirs = say("UserInstallsWePrompt");
+    const notOurs = say("AppOnlyChecks");
+    // 「我们欠的」必须说「该由 cc-monitor 自带」，且**不许**说成「不该由它装」
+    expect(owed).toContain("该由 cc-monitor 自带");
+    expect(owed).toContain("还没写");
+    expect(owed).not.toContain("不该");
+    // 「你自己装」那一档要说清是你自己装
+    expect(theirs).toContain("你自己装");
+    // 三档措辞两两不同 —— 一句话涵盖三档就等于没有档
+    expect(new Set([owed, theirs, notOurs]).size).toBe(3);
+  });
+  it("后端加了第五档也不许炸，且不假装认识它", () => {
+    const t = describeUndo(
+      row({ uninstallable: false, tier: "BrandNewTier" as never }),
+    );
+    expect(t).toContain("还不认识");
   });
   it("可卸载的才给撤销说法", () => {
     expect(describeUndo(row({ uninstallable: true }))).toContain("可按围栏");
+  });
+});
+
+describe("K-R65：「提示用户装」那一档真的会出声", () => {
+  /** 「你自己装」那一档的一行。名字取中性，不含被断言的任何子串。 */
+  const prompted = (over: Partial<SurfaceRow> = {}) =>
+    row({
+      tool_id: "tmux",
+      tool_name: "tmux（会话容器）",
+      path_declared: "tmux",
+      path_resolved: null,
+      installable: false,
+      uninstallable: false,
+      tier: "UserInstallsWePrompt",
+      ...over,
+    });
+
+  it("三态各归各的缺口种类 —— 而且这一对词只从 readiness.ts 取", () => {
+    expect(gapKindOfState({ kind: "present", detail: "x" })).toBeNull();
+    expect(gapKindOfState({ kind: "absent" })).toBe("missing");
+    expect(gapKindOfState({ kind: "undetermined", why: "x" })).toBe("unknown");
+    // 后端加第四态：不知道就是不知道，不许算成「没缺」
+    expect(gapKindOfState({ kind: "brand-new" } as never)).toBe("unknown");
+    // 反向自检：那两个词真的不一样（同一个词的话下面两条断言都是空真）
+    expect(GAP_HEAD.missing).not.toBe(GAP_HEAD.unknown);
+  });
+
+  it("🔴 缺席时说得出「你缺这个，去装」；查不动时**改口**，不许也说「缺」", () => {
+    const missing = promptToInstall(prompted({ state: { kind: "absent" } }))!;
+    const blind = promptToInstall(
+      prompted({ state: { kind: "undetermined", why: "读不到 PATH" } }),
+    )!;
+    expect(missing).not.toBeNull();
+    // 「去装」这句话真的在
+    expect(missing).toContain(GAP_HEAD.missing);
+    expect(missing).toContain("自己装");
+    // 查不动那一句：**不许**出现「缺」那个头词，否则两格又合成一格
+    expect(blind).toContain(GAP_HEAD.unknown);
+    expect(blind.startsWith(GAP_HEAD.missing)).toBe(false);
+    expect(missing).not.toBe(blind);
+    // 装着的那一行不出这句话（不给「已经好了」的东西塞一条待办）
+    expect(
+      promptToInstall(prompted({ state: { kind: "present", detail: "x" } })),
+    ).toBeNull();
+  });
+
+  it("别的档缺了**不许**劝用户去装 —— 我们欠的实现不许甩给用户", () => {
+    for (const tier of [
+      "AppInstalls",
+      "AppShipsNoInstallerYet",
+      "AppOnlyChecks",
+    ] as const) {
+      expect(
+        promptToInstall(prompted({ tier, state: { kind: "absent" } })),
+        `${tier} 这一档不该出「去装」那句话`,
+      ).toBeNull();
+    }
+  });
+
+  it("🔴 那句话必须**真进 DOM**（纯函数被断言 ≠ 它上了屏 —— T02 审计重要 5）", async () => {
+    invokeMock.mockResolvedValue(
+      report({ rows: [prompted({ state: { kind: "absent" } })] }),
+    );
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    const r = s.element.querySelector(".config-surface-row")!;
+    expect((r as HTMLElement).dataset.tier).toBe("UserInstallsWePrompt");
+    const p = r.querySelector(".config-surface-prompt");
+    expect(p, "「去装」那句话必须在 DOM 里").not.toBeNull();
+    expect((p as HTMLElement).dataset.gap).toBe("missing");
+    expect(p!.textContent).toContain("自己装");
+  });
+
+  it("KR65D2：「app 该自带而还没有装口」那一格**在屏幕上数得出来**", async () => {
+    const owed = prompted({
+      tool_id: "cc-acct-iso-local",
+      tool_name: "cc-acct-iso 本机那份",
+      tier: "AppShipsNoInstallerYet",
+      state: { kind: "absent" },
+    });
+    // 一项都没有时整行不渲染，不写「0 项」
+    expect(summarizeOwedInstallers([prompted()])).toBeNull();
+    const txt = summarizeOwedInstallers([owed])!;
+    expect(txt).toContain("1 项");
+    expect(txt).toContain("cc-acct-iso 本机那份");
+    expect(txt).toContain("该由 cc-monitor 自带");
+
+    invokeMock.mockResolvedValue(report({ rows: [owed] }));
+    const s = new ConfigSurfaceSection();
+    await s.refresh();
+    const el = s.element.querySelector(".config-surface-owed") as HTMLElement;
+    expect(el, "计数行必须在 DOM 里").not.toBeNull();
+    expect(el.hidden).toBe(false);
+    expect(el.textContent).toContain("cc-acct-iso 本机那份");
+  });
+
+  it("那句话也要进可复制的诊断文本（贴出去的那一份不含它就等于没说）", () => {
+    const txt = formatReportText(
+      report({
+        rows: [
+          prompted({ state: { kind: "absent" } }),
+          prompted({
+            tool_id: "cc-acct-iso-local",
+            tool_name: "cc-acct-iso 本机那份",
+            tier: "AppShipsNoInstallerYet",
+            state: { kind: "absent" },
+          }),
+        ],
+      }),
+    );
+    expect(txt).toContain("自己装");
+    expect(txt).toContain("该由 cc-monitor 自带");
   });
 });
 
@@ -269,7 +407,9 @@ describe("ConfigSurfaceSection", () => {
     expect(hostEl, "位置徽章必须在 DOM 里").not.toBeNull();
     expect(hostEl!.textContent).toBe("远端");
     expect(eff!.textContent).toBe("整个文件由 cc-monitor 拥有，部署时整体覆盖");
-    expect(undo!.textContent).toContain("尚未支持部署");
+    // 〔`K-R65`〕这一行的夹具是 `tier: "AppInstalls"`（`row()` 的默认）⇒ 撤销那一列
+    // 说的是「手动处理」。上一版这里断的是「尚未支持部署」，那句两头下注的话已删。
+    expect(undo!.textContent).toContain("手动处理");
   });
 
   it("只读：本 section 不得出现任何写入用的 invoke", async () => {
