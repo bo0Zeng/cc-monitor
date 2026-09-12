@@ -1,0 +1,50 @@
+# K-R61 变异表 —— 逐行真实输出
+#
+# 量具住址   evidence/K-R61-mutations.py（M1–M11）· evidence/K-R61-7u-hollow-out.py（M12）
+#            M13 是手写的一刀，逐字写在下面「切法」列里
+# 被测对象   /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r61 @ 53853b4（三个提交之后）
+# 跑法       沙箱 ccmon-devbox:latest · CARGO_TARGET_DIR=.claude/pm-targets/k-r61 · --network none
+# 分母       monitor = `cd src-tauri && cargo test --lib`，基线判定行 1381 passed / 0 failed / 10 ignored
+#            daemon  = `cd remote-daemon-proto && cargo test --bin cc-monitor-remote`，基线 682 / 0 / 2
+#            e2e     = `bash e2e/ccm-contract-parity.sh`，基线 PASS=42 FAIL=0
+# 锚点       每一刀切之前都断言**恰好命中 1 次**（读数在 kr61-mutate.py 的输出里，全部 1）
+#
+刀	切在哪（文件 · 处）	锚点命中	被测套	判定行	红了哪几条（= 最小面）	该不该红
+M1	history.rs · 处① 常量本体：住址换回旧的	1	monitor	FAILED. 1379 passed; 2 failed; 10 ignored	KR61D1 · KR61D2	该（D2 也红是对的：旧住址盘上没有）
+M2	history.rs · 处② 常量头注：住址换回旧的	1	monitor	FAILED. 1379 passed; 2 failed; 10 ignored	KR61D1 · KR61D2	该
+M3	history.rs · 处③ launch_local 体内：住址换回旧的	1	monitor	FAILED. 1379 passed; 2 failed; 10 ignored	KR61D1 · KR61D2	该
+M4	history.rs · 处④ 互斥判据头注：住址换回旧的	1	monitor	FAILED. 1379 passed; 2 failed; 10 ignored	KR61D1 · KR61D2	该
+M5	history.rs · 处⑤ 末尾诊断文案：住址换回旧的	1	monitor	FAILED. 1379 passed; 2 failed; 10 ignored	KR61D1 · KR61D2	该
+M6	history.rs · 处①：**住址原样留着**，只把承重话换回旧措辞（=「换地址不换前提」）	1	monitor	FAILED. 1380 passed; 1 failed; 10 ignored	KR61D1（**只有它**）	该 —— 这正是 KR61D1 逐字点名的失效方向
+M7	history.rs · 处①：原住址不动，**多加一个盘上没有的住址**	1	monitor	FAILED. 1380 passed; 1 failed; 10 ignored	KR61D2（**只有它**）	该 —— KR61D2 那条死值验，最小面 1
+M8	history.rs · 处①：原住址不动，**多加一个存在但不相干的住址**（src-tauri/src/lib.rs）	1	monitor	ok. 1381 passed; 0 failed; 10 ignored	（一条都没红）	**不该红** —— KR61D2 头注逐字写着它不主张这一格；如实兑现
+M9	（未单列：M1–M5 的「全断」形；M12 就是它加上前提与 token 一起退，见下）	—	—	—	—	—
+M10	ccm/mod.rs · CAPABILITIES 删掉 base-url-across-tmux	1	daemon	FAILED. 680 passed; 2 failed; 2 ignored	daemon 新判据 · plugin::probe 那条 18 计数	该（「说了才算数」那一半）
+M10′	同上一刀，换跑 monitor 套	1	monitor	FAILED. 1380 passed; 1 failed; 10 ignored	plugin_class_registry::ccm_is_one_skeleton…	该（那是「谁在数它」的第一处）
+M11	plan.rs · **掏空**那句 export 转发（if let / 变量 / 类型契约全留着）	1	daemon	FAILED. 680 passed; 2 failed; 2 ignored	daemon 新判据 · plan.rs 既有那条转发判据	该（「做到了才许说」那一半）
+M11e	同上一刀，换跑 e2e	1	e2e	PASS=41 FAIL=1	e2e「兑现」那格	该
+M13	plan.rs · 让那句 export **恒拼**（形状对、恒答其中一张脸）	1	daemon	FAILED. 679 passed; 3 failed; 2 ignored	daemon 新判据的③ · plan.rs 既有两条	该（反空真那一格的牙在这里）
+M13e	同上一刀，换跑 e2e	1	e2e	PASS=41 FAIL=1	e2e「反空真」那格	该
+M12	`7u`：**把实现整个掏空**（五处措辞退回旧版 + token 从 CAPABILITIES 删掉；判据体一个字节没动）	5+4+7+1	monitor	FAILED. 1378 passed; 3 failed; 10 ignored	KR61D1 · KR61D2 · plugin_class_registry	该
+M12	同上	同上	daemon	FAILED. 680 passed; 2 failed; 2 ignored	daemon 新判据 · plugin::probe 那条	该
+M12	同上	同上	e2e	PASS=41 FAIL=1	e2e「申报」那格（另两格仍绿）	见下「仍绿」栏
+#
+# ── `7u`：M12 之后**仍绿**的新断言，逐条给出它在哪一刀上会红 ──────────────
+# 1. e2e「兑现：--tmux 的载荷内侧真带 export ANTHROPIC_BASE_URL=」
+#    仍绿的理由：M12 只退了**申报**（token）与那五段话，**没动 plan.rs 的转发行为**。
+#    它的牙在 M11（实测 PASS=41 FAIL=1，红的正是它）。
+# 2. e2e「反空真：不设中转地址时那一串里没有 ANTHROPIC_BASE_URL」
+#    仍绿的理由：同上，而且它本来就是**控制格**，不是事实断言。
+#    它的牙在 M13（实测 PASS=41 FAIL=1，红的正是它）。
+# ⇒ 仍绿 2 条，**两条都不是仪式** —— 各自的牙都实测过一刀。
+#
+# ── 「判据体没动」的证明（纪律 ⑱：不许 `git checkout <基线> -- <生产文件>`）──
+# M12 只作用到 history.rs 的**自剪线之前**。自剪线及其之后（= 两条新判据的全部文本）
+# 变异后 md5 = aa5a50aa2496f7029403ab729fe6803c，HEAD 同段 md5 = aa5a50aa2496f7029403ab729fe6803c
+# ⇒ 逐字节相同。
+#
+# ── 一次自查逮到的坏读数（登记，别让它悄悄过去）───────────────────────────
+# 驱动脚本 kr61-run-cuts.sh 第一版的 case 次序把 `M1*` 写在 `M10*` 前面 ⇒ shell glob
+# 让 M10 / M11 落进了 monitor 那一支：跑的是 monitor 套、撤刀撤的是 history.rs，
+# 于是 M11 那一行是**带着没撤干净的 M10 一起跑的**。那两行读数当场作废、次序修好后重跑。
+# 兜住它的是驱动里那句「撤刀后 git status 必须干净」——**它是这张表里唯一一次真出声的自检**。

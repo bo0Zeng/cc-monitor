@@ -1,0 +1,51 @@
+# 被测对象：/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r61
+# 提交：53853b45e0ceca0423c2a5bcd705b3320cb31441
+# 树：['src-tauri/src', 'remote-daemon-proto/src'] · 全局根 8 个（含 src-tauri/crates）+ 每处 2 个模块相对根
+
+总命中（反引号里带 `/` 的串）      420 值 / 1503 处   ← 分母
+├ 占位（xxx / x / ... 这一形）      6 值 / 7 处
+├ 不是路径声称（if/else 这一族）   29 值 / 35 处
+├ 目录形（以 `/` 收尾）             89 值 / 573 处
+├ 计划目录 / scratchpad             20 值 / 25 处
+├ 路径声称·解得开                   247 值 / 721 处
+└ ★ 路径声称·**解不开 = 真悬空**    29 值 / 142 处
+
+== ★ 真悬空 · 完整名单（值 ⇥ 处数 ⇥ 逐处住址）==
+shared/ccm	101	src-tauri/src/rust_timer_registry.rs:7 , src-tauri/src/rust_timer_registry.rs:545 , src-tauri/src/launcher_identity_registry.rs:127 , src-tauri/src/structural_scan.rs:80 , src-tauri/src/structural_scan.rs:157 , src-tauri/src/structural_scan.rs:929 , src-tauri/src/structural_scan.rs:2142 , src-tauri/src/structural_scan.rs:2238 , src-tauri/src/session_name_registry.rs:58 , src-tauri/src/session_name_registry.rs:145 , src-tauri/src/session_name_registry.rs:308 , src-tauri/src/shared_crate_registry.rs:1323 , src-tauri/src/local_daemon.rs:141 , src-tauri/src/polling_registry.rs:4 , src-tauri/src/polling_registry.rs:5 , src-tauri/src/polling_registry.rs:20 , src-tauri/src/polling_registry.rs:48 , src-tauri/src/polling_registry.rs:144 , src-tauri/src/polling_registry.rs:161 , src-tauri/src/polling_registry.rs:373 , src-tauri/src/polling_registry.rs:391 , src-tauri/src/polling_registry.rs:728 , src-tauri/src/polling_registry.rs:753 , src-tauri/src/polling_registry.rs:815 , src-tauri/src/local_read_surface_registry.rs:316 , src-tauri/src/ccm_cli_contract.rs:5 , src-tauri/src/ccm_cli_contract.rs:86 , src-tauri/src/launch.rs:244 , src-tauri/src/tmux.rs:527 , src-tauri/src/doc_claim_registry.rs:489 , src-tauri/src/sftp.rs:1401 , src-tauri/src/sftp.rs:1459 , src-tauri/src/sftp.rs:1470 , src-tauri/src/sftp.rs:1473 , src-tauri/src/sftp.rs:1487 , src-tauri/src/tool_registry.rs:307 , src-tauri/src/account_usage.rs:46 , src-tauri/src/lib.rs:78 , src-tauri/src/cc_bus.rs:20 , src-tauri/src/shell_lint_registry.rs:6 , src-tauri/src/backend/control/launch_wire.rs:293 , src-tauri/src/backend/control/launch_wire.rs:456 , src-tauri/src/backend/control/launch_wire.rs:460 , src-tauri/src/backend/control/launch_wire.rs:463 , src-tauri/src/backend/control/launch_wire.rs:468 , src-tauri/src/backend/control/launch_wire.rs:524 , src-tauri/src/backend/control/launch_wire.rs:545 , src-tauri/src/backend/control/launch_wire.rs:555 , src-tauri/src/backend/control/launch_wire.rs:558 , src-tauri/src/backend/control/launch_wire.rs:562 , src-tauri/src/backend/control/local_backend.rs:20 , src-tauri/src/backend/control/local_backend.rs:110 , src-tauri/src/backend/control/local_backend.rs:113 , src-tauri/src/backend/control/local_backend.rs:3219 , src-tauri/src/backend/control/local_backend.rs:3222 , src-tauri/src/backend/control/agent_profile_parity.rs:36 , src-tauri/src/backend/control/agent_profile_parity.rs:68 , src-tauri/src/backend/control/agent_profile_parity.rs:78 , src-tauri/src/backend/control/agent_profile_parity.rs:199 , src-tauri/src/backend/control/agent_profile_parity.rs:230 , src-tauri/src/backend/control/daemon_kill.rs:161 , src-tauri/src/backend/control/daemon_kill.rs:173 , src-tauri/src/backend/control/daemon_kill.rs:184 , src-tauri/src/backend/control/daemon_kill.rs:223 , src-tauri/src/backend/control/daemon_kill.rs:237 , src-tauri/src/backend/control/daemon_kill.rs:240 , src-tauri/src/backend/control/payload.rs:1358 , src-tauri/src/backend/control/payload.rs:1577 , src-tauri/src/backend/control/payload.rs:1592 , src-tauri/src/backend/control/payload.rs:1594 , src-tauri/src/backend/control/payload.rs:1747 , src-tauri/src/backend/control/payload.rs:1831 , remote-daemon-proto/src/no_timer_guard.rs:60 , remote-daemon-proto/src/listen.rs:66 , remote-daemon-proto/src/layering_guard.rs:41 , remote-daemon-proto/src/main.rs:1563 , remote-daemon-proto/src/main.rs:1655 , remote-daemon-proto/src/readonly_guard.rs:980 , remote-daemon-proto/src/wire.rs:315 , remote-daemon-proto/src/control/gate.rs:67 , remote-daemon-proto/src/control/launch.rs:44 , remote-daemon-proto/src/control/launch.rs:103 , remote-daemon-proto/src/control/launch.rs:193 , remote-daemon-proto/src/control/launch.rs:414 , remote-daemon-proto/src/control/launch.rs:474 , remote-daemon-proto/src/control/launch.rs:478 , remote-daemon-proto/src/control/launch.rs:480 , remote-daemon-proto/src/control/identity_tag.rs:1 , remote-daemon-proto/src/control/identity_tag.rs:5 , remote-daemon-proto/src/control/identity_tag.rs:52 , remote-daemon-proto/src/control/identity_tag.rs:58 , remote-daemon-proto/src/control/mod.rs:13 , remote-daemon-proto/src/control/ccm/plan.rs:176 , remote-daemon-proto/src/control/ccm/plan.rs:414 , remote-daemon-proto/src/control/ccm/plan.rs:772 , remote-daemon-proto/src/control/ccm/plan.rs:1114 , remote-daemon-proto/src/control/ccm/argv.rs:70 , remote-daemon-proto/src/observe/watcher.rs:1061 , remote-daemon-proto/src/observe/watcher.rs:1808 , remote-daemon-proto/src/observe/accounts_query.rs:449 , remote-daemon-proto/src/agents/mod.rs:124
+src-tauri/.cargo/config.toml	6	src-tauri/src/capability_registry.rs:328 , src-tauri/src/capability_registry.rs:450 , src-tauri/src/capability_registry.rs:594 , src-tauri/src/capability_registry.rs:797 , src-tauri/src/capability_registry.rs:925 , src-tauri/src/capability_registry.rs:1016
+platform/fallback_guard	3	src-tauri/src/local_accounts.rs:1147 , src-tauri/src/launch.rs:768 , remote-daemon-proto/src/main.rs:819
+platform/pidwatch.rs	3	remote-daemon-proto/src/listen.rs:513 , remote-daemon-proto/src/observe/watcher.rs:203 , remote-daemon-proto/src/platform/pidwatch/linux.rs:1
+common/paths.rs	2	remote-daemon-proto/src/agent_boundary_guard.rs:61 , remote-daemon-proto/src/agents/claudecode/paths.rs:34
+control/focus.rs	2	remote-daemon-proto/src/main.rs:827 , remote-daemon-proto/src/main.rs:908
+observe/codex.rs	2	remote-daemon-proto/src/agent_locality_guard.rs:6 , remote-daemon-proto/src/agents/codex/mod.rs:5
+tauri-2.11.2/src/ipc/mod.rs	2	src-tauri/src/bridge.rs:89 , src-tauri/src/data_paths.rs:70
+agents/fake/walk	1	remote-daemon-proto/src/plugin_walk_fixture.rs:46
+bin/pb.py	1	src-tauri/src/skill_host.rs:128
+channels/io/mod.rs	1	src-tauri/src/ssh_source.rs:2958
+claudecode-frontend/relay-credentials.json	1	src-tauri/src/creds_store.rs:292
+common/fs	1	src-tauri/src/arch_doc_shape_guard.rs:268
+control/gate	1	src-tauri/src/backend/control/daemon_kill.rs:17
+doc/README.md	1	src-tauri/src/doc_claim_registry.rs:827
+observe/local_query.rs	1	src-tauri/src/backend/mod.rs:52
+observe/watcher	1	src-tauri/src/arch_doc_shape_guard.rs:268
+plugin/fake/mod.rs	1	remote-daemon-proto/src/plugin_walk_fixture.rs:16
+plugins/known_marketplaces.json	1	src-tauri/src/plugins.rs:6
+relay/bind_guard	1	remote-daemon-proto/src/layering_guard.rs:541
+relay/nodelay_guard	1	remote-daemon-proto/src/layering_guard.rs:541
+relay/table_guard	1	remote-daemon-proto/src/sidecars/codepicture/acquire.rs:45
+remote-daemon-proto/.cargo/config	1	src-tauri/src/capability_registry.rs:596
+remote-daemon-proto/.cargo/config.toml	1	src-tauri/src/capability_registry.rs:1121
+remote-daemon-proto/src/accounts_query.rs	1	src-tauri/src/doc_claim_registry.rs:923
+remote-daemon-proto/src/death_ledger.rs	1	src-tauri/src/daemon_policy.rs:151
+scripts/cc-spawn	1	src-tauri/src/cc_bus_deploy.rs:22
+src-tauri/src/shell_quote.rs	1	src-tauri/src/doc_claim_registry.rs:542
+src/agent-profile.vitest.ts	1	src-tauri/src/backend/control/agent_profile_parity.rs:43
+
+== 尺子自检：已知样本 `shared/ccm` 在不在 ★ 名单里 ==
+命中 ✓
+
+== 参考：被判「不是路径声称」的全部值（复核用，别当结论）==
+.cargo/config · .codepicture/index.db · .local/bin · .local/bin/ccm-daemon · .local/bin/ccm-x · 1208/0/10 · 1210/1/12 · 1211/0/11 · 127.0.0.0/8 · HTTP/1. · actions/runner-images · audit-0805/LEDGER · bin/rustdoc · cc-bus/scripts · diagnose_local_/remote_cc_bus_hooks · e.screenX/screenY · embedded-daemons/cc-monitor-remote-x86_64 · if/else · if/then/fi · origin/main · session-created/closed/renamed · session_id/path/seq/raw · skills/cc-bus/scripts · sub/target · target/debug/cc-monitor-remote · track/k-g2 · track/k-r7 · u64/usize · worktrees/k-g4/remote-daemon-proto/src
+
+== 参考：被判「目录形」的全部值（复核用）==
+../ · ../../ · ../../src/generated/ · ../src/generated/ · .cargo/ · .claude/ · .claude/planned-build/ · .claude/pm-targets/ · .codepicture/ · .git/ · Documents/PowerShell/ · adapter/ · agents/ · agents/claudecode/ · agents/codex/ · agents/fake/ · backend/ · backend/control/ · backend/platform/ · bindings/ · cc-bus/ · cc-monitor/ · claudecode/ · codepicture/ · codex/ · common/ · control/ · control/ccm/ · convos/ · crates/ · dial/ · doc/ · doc/design/ · e2e/ · e2e/weak-net/ · embedded-daemons/ · evidence/ · examples/ · generated/ · hooks/ · inbox/ · libexec/ · live/ · node_modules/ · observe/ · panorama/ · platform/ · platform/pidwatch/ · plugin/ · plugins/ · projects/ · relay/ · remote-daemon-proto/ · remote-daemon-proto/src/control/ccm/ · scripts/ · sessions/ · settings/ · shared/ · shared/cc-bus/ · shared/cc-bus/scripts/ · sidecars/ · sidecars/codepicture/ · skills/ · snapshots/ · src-tauri/ · src-tauri/crates/ · src-tauri/embedded-daemons/ · src-tauri/src/ · src-tauri/src/generated/ · src-tauri/vendor/ · src-tauri/vendor/cc-acct-iso/ · src-tauri/vendor/code-picture-core/ · src/ · src/adapter/ · src/backend/ · src/backend/control/ · src/control/ · src/generated/ · src/platform/ · src/plugin/ · src/settings/ · src/wire/ · target/ · target/debug/ · tasks/ · testdata/ · vendor/ · views/ · wire/
