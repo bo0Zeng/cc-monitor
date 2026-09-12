@@ -330,10 +330,16 @@ pub(crate) async fn ensure_dir_all(sftp: &SftpSession, dir: &str) {
 /// 内嵌的 daemon 二进制（F08b 由 `include_bytes!` 填充）。`build_id` 与
 /// `ssh_source::EXPECTED_DAEMON_BUILD_ID` 同源（SS-B）。
 pub struct DaemonBinary {
+    /// 🔴 `K-R70`：**这份字节自报的身份**（`build.rs` 从二进制里扫 `CC_MONITOR_BUILD_STAMP`
+    /// 得来，不是从旁边那个 `.build_id` 文本文件抄的）。
+    ///
+    /// 〔墓碑 —— 本结构此前还有一格 `id_from_manifest: bool`，逐字注释是
+    ///  「build_id 是否来自 .build_id 清单（true=字节真实身份可信）」。那句话把**标签**
+    ///  说成了**真实身份**：清单是 `release.yml` 从源码常量抠出来写的，三个载体恒等
+    ///  ⇒ 一格证据都不提供（`K-R68` · `DECISIONS.md#R26` 裁定零）。
+    ///  今天身份**只有一条来路**（字节），于是那个见证布尔没有了对立面，删掉；
+    ///  它守的那件事换成了 [`bytes_carry_build_stamp`] 在部署路上**无条件**跑一遍。〕
     pub build_id: &'static str,
-    /// Batch9：build_id 是否来自 .build_id 清单（true=字节真实身份可信；
-    /// false=源码回退，需 bytes_contain 启发式兜底且可能误拒——见 daemon_binary doc）。
-    pub id_from_manifest: bool,
     pub bytes: &'static [u8],
 }
 
@@ -574,15 +580,21 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>
         tracing::debug!("无 {arch} 的内嵌 daemon 二进制（F08b 未嵌入该 arch?），跳过自动部署");
         return Ok(None);
     };
-    // Batch8 stale 防御（Batch9 修订）：首选 .build_id 清单（bin.build_id 即
-    // 字节真实身份，与源码期望的比对在 ssh_source 的 confirmed 判定处自然完成）。
-    // 无清单（旧产物）时才用 bytes_contain 启发式兜底——注意它可能误拒正品
-    // （Batch9 E2E 实证：编译器可把 BUILD_ID 优化成立即数、字节不连续），故仅
-    // 在"启发式也找不到源码 id"且**无清单**时拒。
-    if !bin.id_from_manifest && !bytes_contain(bin.bytes, bin.build_id.as_bytes()) {
-        // 无清单（旧产物）且字节内搜不到源码 id → 无法确认字节身份
+    // 🔴 `K-R70`：**把这几 MB 字节推到别人机器上之前，先让它自己说一遍它是谁。**
+    //
+    // 〔墓碑 —— 原来这里逐字写着：「首选 .build_id 清单（bin.build_id 即字节真实身份）……
+    //  无清单（旧产物）时才用 bytes_contain 启发式兜底——注意它可能误拒正品」，
+    //  条件是 `!bin.id_from_manifest && !bytes_contain(bin.bytes, bin.build_id.as_bytes())`。
+    //  两处病：① 括号里那句「清单即字节真实身份」是假的（清单从源码常量抄，见 `K-R68`）；
+    //  ② 有清单时这道闸**整个跳过** ⇒ 真正会出事的那一形（有人手工塞了别的字节、
+    //  清单照旧）恰恰不检查。〕
+    //
+    // 今天判据**无条件**跑，而且不再是启发式：戳是一段 `#[used] static [u8; N]`，
+    // 连续、拆不成立即数（daemon 侧 `CC_MONITOR_BUILD_STAMP`）。
+    if !bytes_carry_build_stamp(bin.bytes, bin.build_id) {
         tracing::warn!(
-            "内嵌 daemon 无 .build_id 清单且字节内搜不到 {}——按身份未知跳过自动部署             （请在 embedded-daemons/ 旁写 <bin>.build_id 清单，或重跑 zigbuild）",
+            "内嵌 daemon 的字节里问不出 `{}` 这个身份戳——按身份未知跳过自动部署\
+             （这份字节不是这套源码编出来的，或它太旧、还没有身份戳；重跑 zigbuild 重铺）",
             bin.build_id
         );
         return Ok(None);
@@ -629,34 +641,59 @@ fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
     !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
 }
 
+/// 🔴 `K-R70`：**这份字节自己说得出它是 `build_id` 吗** —— 不看它旁边任何文件。
+///
+/// 找的是 daemon 那侧那段 `#[used] static CC_MONITOR_BUILD_STAMP`：
+/// `<开>` ＋ `BUILD_ID` ＋ `<关>`，两个界标的**唯一住址**在
+/// `remote-daemon-proto/src/main.rs`（`BUILD_STAMP_OPEN` / `BUILD_STAMP_CLOSE`），
+/// 由 `build.rs` 抠出来经 `DAEMON_STAMP_OPEN` / `DAEMON_STAMP_CLOSE` 交到这里
+/// ⇒ 本文件里**不许出现那两个字面量**
+/// （`the_embedded_identity_comes_from_the_bytes_not_from_a_label` 在数它）。
+///
+/// # 它买到的与买不到的
+///
+/// ✅ 买到：「这份字节是不是 `build_id` 那一次构建的产物」——**戳与字节同生共死**，
+///    改一份旁文件、换一张清单都动不了它。
+/// ⚠ 买不到：**防篡改**。谁都能往一段字节里塞一个假戳。它防的是漂移与手滑
+///    （拿错文件 / 铺了旧产物 / 只 bump 源码没重编），不防恶意 —— 那要签名，不是戳。
+pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
+    if build_id.is_empty() {
+        return false;
+    }
+    let stamp = format!(
+        "{}{build_id}{}",
+        env!("DAEMON_STAMP_OPEN"),
+        env!("DAEMON_STAMP_CLOSE")
+    );
+    bytes_contain(bytes, stamp.as_bytes())
+}
+
 /// 按远端 arch 选内嵌的 daemon 二进制（F08b）。build.rs 把交叉编译的 musl 二进制复制进
 /// OUT_DIR 并置 `embedded_daemons` cfg 时，这里 `include_bytes!` 内嵌并按 arch 返回；二进制
 /// 未就位（无 cfg）→ 返回 None（ensure_daemon_deployed 优雅跳过，沿用手动部署）。
-/// `build_id` 取编译期 env（来自 daemon 源码，SS-B 单源）。
+/// `build_id` 取编译期 env —— 🔴 `K-R70` 起那个 env 由 `build.rs` **从二进制字节里扫出来**。
 pub fn daemon_binary(arch: &str) -> Option<&'static DaemonBinary> {
     #[cfg(embedded_daemons)]
     {
-        // Batch9：build_id = 字节的**真实身份**——优先 .build_id 清单（构建时
-        // 与二进制一并写入）；清单缺失（旧产物）→ 退回源码 id + 运行时
-        // bytes_contain 启发式兜底（见 ensure_daemon_deployed）。
-        // 身份与期望（EXPECTED_DAEMON_BUILD_ID = 源码）分离后：陈旧内嵌 =
+        // 🔴 `K-R70`：`DAEMON_EMBEDDED_ID_<ARCH>` = `build.rs` 从**这份字节**里扫出的身份戳。
+        //
+        // 〔墓碑 —— 原来这里有一个 `pick()`：清单为空就退回 `env!("DAEMON_BUILD_ID")`（源码 id）。
+        //  那是「问不出来就拿源码的答案顶上」——把一个失败面换成一个假答案（`brief` 里
+        //  `sidecar_fetch_guard` 那张禁词表逐字点名的第三条）。今天它不需要了：
+        //  `build.rs` 在**任一 arch 的字节里扫不出身份时当场 panic**，扫得出才置
+        //  `embedded_daemons` cfg ⇒ 走到这里的路径上，这两个 env 结构上不可能是空串。
+        //  「结构上不可能」不许当成不检查的理由 ⇒ 下面 `deploy_embedded_daemon` 出门前
+        //  仍无条件跑一遍 `bytes_carry_build_stamp`，本文件的判据也钉住这两处取值口。〕
+        //
+        // 身份与期望（`EXPECTED_DAEMON_BUILD_ID` = 源码）**仍然分离**：陈旧内嵌 =
         // 身份 p1f ≠ 期望 p1g → 部署照做（远端至少拿到 p1f）但 confirmed=p1f
-        // → 降级不传新 flag——比"拒部署"更平滑且永不误拒正品。
-        const fn pick(manifest: &'static str) -> &'static str {
-            if manifest.is_empty() {
-                env!("DAEMON_BUILD_ID")
-            } else {
-                manifest
-            }
-        }
+        // → 降级不传新 flag，比「拒部署」更平滑。
         static X86: DaemonBinary = DaemonBinary {
-            build_id: pick(env!("DAEMON_EMBEDDED_ID_X86_64")),
-            id_from_manifest: !env!("DAEMON_EMBEDDED_ID_X86_64").is_empty(),
+            build_id: env!("DAEMON_EMBEDDED_ID_X86_64"),
             bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-x86_64")),
         };
         static ARM: DaemonBinary = DaemonBinary {
-            build_id: pick(env!("DAEMON_EMBEDDED_ID_AARCH64")),
-            id_from_manifest: !env!("DAEMON_EMBEDDED_ID_AARCH64").is_empty(),
+            build_id: env!("DAEMON_EMBEDDED_ID_AARCH64"),
             bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-aarch64")),
         };
         match arch {
@@ -1605,62 +1642,126 @@ mod tests {
         assert!(daemon_binary("riscv64").is_none(), "未知 arch → None");
     }
 
-    /// ★★ **「字节身份可信」这个见证不许写死**〔audit-0805 08-08，Phase G 第 78 件〕。
+    /// 🔴 `K-R70`：**那道身份见证真的会咬人** —— 四格（纯函数，不依赖内嵌产物在不在）。
     ///
-    /// # 它是本仓第二个（也是最后一个）「见证型布尔」
+    /// ⚠ 这一条与上面那条判据分工：那条钉**接线**（有没有无条件跑），这条钉**行为**
+    /// （跑了会不会说真话）。少任何一条，另一条都能被一个恒答 `true` 的实现骗过去。
+    #[test]
+    fn the_build_stamp_witness_actually_bites() {
+        let (o, c) = (env!("DAEMON_STAMP_OPEN"), env!("DAEMON_STAMP_CLOSE"));
+        let real = format!("头部随便什么{o}p9-sample{c}尾部随便什么");
+        assert!(
+            super::bytes_carry_build_stamp(real.as_bytes(), "p9-sample"),
+            "带着自己那个戳的字节被判「问不出身份」—— 见证会误拒正品"
+        );
+        assert!(
+            !super::bytes_carry_build_stamp(real.as_bytes(), "p9-other"),
+            "戳写着 `p9-sample` 而问它是不是 `p9-other`，它答了「是」—— 见证形同虚设"
+        );
+        assert!(
+            !super::bytes_carry_build_stamp(b"no stamp at all", "p9-sample"),
+            "一段没有戳的字节被判「身份可信」—— 那正是老启发式的失效面"
+        );
+        assert!(
+            !super::bytes_carry_build_stamp(real.as_bytes(), ""),
+            "空身份必须判假：空串会让「戳」退化成两个界标挨着，而那一形是噪音不是身份"
+        );
+        // ⚠ 反向自检：**戳不是随便一处提到 build_id 就算**。
+        //   旧启发式 `bytes_contain(bytes, build_id)` 会被裸出现的 id 喂饱 —— 而 daemon
+        //   的 hello 帧里本来就带着这个串 ⇒ 那条判据在任何一份 daemon 上都恒真。
+        assert!(
+            !super::bytes_carry_build_stamp(b"...p9-sample...", "p9-sample"),
+            "裸出现一次 id 就被当成身份戳 —— 那退回了 `K-R70` 之前那条恒真的启发式"
+        );
+    }
+
+    /// ★★ 🔴 `K-R70`（09-12）：**内嵌那份的身份只许来自它自己的字节。**
     ///
-    /// 08-08 沿「保证压在构造面」这条透镜横扫，人群定义是**文档自称证明了什么、
-    /// 且真被分支读**的布尔 —— 全仓（monitor + daemon 生产段）**恰好两个**：
-    /// `daemon_launch::may_fall_back`（上一件做了）与这里的 `id_from_manifest`。
-    /// ⇒ 人群这么窄，不建登记表，直接把这一个钉住。
+    /// # 它取代了什么，以及为什么不是「换个写法」
     ///
-    /// # 写死它会关掉什么
+    /// 〔散文墓碑〕〔本条原名 `the_identity_witness_is_derived_from_the_manifest_not_written_by_hand`，
+    ///  钉的是那个见证布尔 `id_from_manifest` 只能由「那份清单在不在」推出来、不许写死 `true`
+    ///  （写死会让 `deploy_embedded_daemon` 里那道 `bytes_contain` 兜底整个跳过；
+    ///   08-08 实测写死 x86_64 那处，monitor 1004 一条都不红）。
+    ///  **它守的动作是对的，守的东西是错的**：那个「见证」见证的是**一份旁挂清单在不在**，
+    ///  而清单是 `release.yml` 从源码常量 `const BUILD_ID` 抠出来写的 ——
+    ///  三个载体的清单**恒等**，恒等的东西一格证据都不提供
+    ///  （`K-R68` 摸底 · `DECISIONS.md#R26` 裁定零：那是把标签当成了指纹）。〕
     ///
-    /// `id_from_manifest: true` 的意思是「`build_id` 来自旁挂的 `.build_id` 清单，
-    /// 字节真实身份可信」⇒ `deploy_embedded_daemon` 里那道
-    /// `!bin.id_from_manifest && !bytes_contain(…)` 的兜底**整个跳过**，
-    /// 于是身份未确认的字节会被**部署到用户的远端机器**。
+    /// 今天身份**只有一条来路**：`build.rs` 从二进制字节里扫 `CC_MONITOR_BUILD_STAMP`。
+    /// 于是本条钉三件事：
     ///
-    /// ★ 而这不是一个假想的手滑：它旁边的注释逐字写着那道启发式
-    /// 「**可能误拒正品**（编译器可把 BUILD_ID 优化成立即数、字节不连续）」——
-    /// 被误拒过一次的人，最省事的修法就是把这行改成 `true`。
-    /// 实测：把 x86_64 那处写死成 `true`，**monitor 1004 一条都不红**。
-    ///
-    /// ⇒ 钉的是**来源**而不是值：这一格只能由「那份清单在不在」推出来
-    /// （`!env!("DAEMON_EMBEDDED_ID_<ARCH>").is_empty()`），不许出现字面量。
+    /// 1. 两个 `DaemonBinary` 的 `build_id` **只许**是 `env!("DAEMON_EMBEDDED_ID_<ARCH>")`
+    ///    —— 出现字面量、或退回源码 id（老 `pick()` 那条「问不出就拿源码顶上」的路）都红；
+    /// 2. 部署路上**真的**跑了 [`bytes_carry_build_stamp`]，而且**不带前置条件**
+    ///    （老写法 `!bin.id_from_manifest && …` 正是「有清单就整个跳过」）；
+    /// 3. 界标那两个字面量**不许**在本文件里出现第二份（闭集唯一住址在 daemon 源码）。
     ///
     /// 顺带钉住 arch 那条跨文件契约的**另一半**：`build.rs` 期待的每个 arch，
     /// 这里都必须真有一份 `DaemonBinary`（漏一个 ⇒ `daemon_binary()` 对它返回 `None`，
     /// 远端自动部署对那个 arch **悄悄关闭** —— 与上一条判据守的是同一个事故形状的两端）。
     #[test]
-    fn the_identity_witness_is_derived_from_the_manifest_not_written_by_hand() {
+    fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let src = std::fs::read_to_string(root.join("src/sftp.rs")).expect("读不到 sftp.rs");
         let prod = guard_core::production_code(&src);
         // 运行时拼，免得命中本条自己的说明文字。
-        let field = format!("{}_from_manifest:", "id");
+        let field = format!("{}_id:", "build");
         let inits: Vec<&str> = prod
             .lines()
             .map(str::trim)
-            .filter(|l| l.starts_with(&field))
+            .filter(|l| l.starts_with(&field) && l.contains("env!"))
             .collect();
-        assert!(
-            inits.len() >= 2,
-            "生产段里只找到 {} 处 `{field}` 初始化（08-08 实测 2：X86 / ARM）—— \
-             抽取器坏了或那两个 static 被改写了，本条会零命中地绿",
+        assert_eq!(
+            inits.len(),
+            2,
+            "生产段里找到 {} 处 `{field}` 的 env 取值（应当 2：X86 / ARM）—— \
+             抽取器坏了或那两个 static 被改写了，本条会零命中地绿：{inits:?}",
             inits.len()
         );
         for l in &inits {
             assert!(
-                l.contains("env!(\"DAEMON_EMBEDDED_ID_") && l.contains("is_empty()"),
-                "这一格没有从清单推出来：{l}\n\
-                 ★ 它的意思是「字节真实身份可信」，写死 `true` 会让 \n\
-                 `deploy_embedded_daemon` 里那道 `bytes_contain` 兜底**整个跳过** ⇒ \n\
-                 身份未确认的字节被部署到**用户的远端机器**。\n\
-                 ⚠ 而这正是最省事的错法：旁边的注释逐字写着那道启发式「可能误拒正品」，\n\
-                 被误拒过一次的人第一反应就是把这行改成 `true`。\n\
-                 真要处理误拒，改的是**清单为什么没生成**（`release.yml` 的 Stage binaries \n\
-                 或本机 build.rs 那段），不是把见证写死。"
+                l.contains("env!(\"DAEMON_EMBEDDED_ID_"),
+                "这一格的身份不是从**字节**来的：{l}\n\
+                 ★ 只有 `DAEMON_EMBEDDED_ID_<ARCH>` 是 `build.rs` 从这份二进制的字节里\n\
+                 扫出来的（`CC_MONITOR_BUILD_STAMP`）。退回 `DAEMON_BUILD_ID`（源码 id）\n\
+                 就是「问不出就拿源码的答案顶上」—— 把一个失败面换成一个假答案；\n\
+                 写一份 `.build_id` 旁文件再读它，是把标签换个地方抄（`KR70D1` 逐字点名的失效方向）。"
+            );
+        }
+        // ② 部署路真的跑了那道见证，而且**不带前置条件**。
+        let witness = format!("{}_carry_build_stamp(", "bytes");
+        let calls: Vec<&str> = prod
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.contains(&witness) && !l.starts_with("pub fn"))
+            .collect();
+        assert_eq!(
+            calls.len(),
+            1,
+            "生产段里 `{witness}` 的调用处有 {} 个（应当恰好 1：`deploy_embedded_daemon` 出门前那一道）：{calls:?}",
+            calls.len()
+        );
+        assert_eq!(
+            calls[0], "if !bytes_carry_build_stamp(bin.bytes, bin.build_id) {",
+            "那道见证被加了前置条件或换了形状：{}\n\
+             ★ 老写法 `!bin.id_from_manifest && !bytes_contain(…)` 的病就在前半句：\n\
+             **有清单时整道闸跳过**，而会出事的那一形（有人塞了别的字节、清单照旧）\n\
+             恰恰在那一支里。⇒ 它必须无条件跑。",
+            calls[0]
+        );
+        // ③ 界标闭集只有一个住址（在 daemon 源码里），本文件只许 `env!` 取。
+        for mark in [env!("DAEMON_STAMP_OPEN"), env!("DAEMON_STAMP_CLOSE")] {
+            assert!(
+                !mark.is_empty(),
+                "`DAEMON_STAMP_OPEN/CLOSE` 是空串 —— `build.rs` 从 daemon 源码抠界标失败了，\n\
+                 而空界标会让 `bytes_carry_build_stamp` 恒答 false ⇒ 自动部署整个静默关闭。"
+            );
+            assert!(
+                !prod.contains(&format!("\"{mark}\"")),
+                "本文件生产段里出现了界标字面量 `{mark}` —— 闭集唯一住址在\n\
+                 `remote-daemon-proto/src/main.rs`（`BUILD_STAMP_OPEN`/`CLOSE`），\n\
+                 这里只许 `env!(\"DAEMON_STAMP_OPEN\")` / `env!(\"DAEMON_STAMP_CLOSE\")` 取。"
             );
         }
 
@@ -1775,9 +1876,16 @@ mod tests {
                     format!("staged/cc-monitor-remote-{arch}"),
                     "编了但没按 `build.rs` 期待的名字放进 staged/",
                 ),
+                // 🔴 〔`K-R70` 09-12〕这里原来还有第三条：`staged/cc-monitor-remote-<arch>.build_id`，
+                //    理由逐字「少了旁挂的 .build_id 清单（没有它，运行时只能回退到会误拒正品的启发式）」。
+                //    **那条清单没有了**（它是从源码常量抠出来的标签，不是指纹 ——
+                //    `K-R68` · `DECISIONS.md#R26` 裁定零），身份改从字节里扫。
+                //    ⇒ 接替它的不是一条**按 arch** 的判据（校验那一步是 `foreach ($a in …)`，
+                //      路径里带的是变量不是字面 arch，按 arch 去 grep 只会零命中地红），
+                //      而是这个 arch 出现在那个 `foreach` 的清单里 ＋ 循环外那两条（见下）。
                 (
-                    format!("staged/cc-monitor-remote-{arch}.build_id"),
-                    "少了旁挂的 .build_id 清单（没有它，运行时只能回退到会误拒正品的启发式）",
+                    format!("\"{arch}\""),
+                    "这个 arch 不在校验那一步的 `foreach` 清单里 ⇒ 它的字节**没有人问过身份**",
                 ),
             ] {
                 assert!(
@@ -1790,6 +1898,33 @@ mod tests {
                      要么先把那一行改掉（改它会逼你想清楚「不再支持这个 arch」这件事）。"
                 );
             }
+        }
+
+        // ── 🔴 〔`K-R70` 09-12〕**流水线真的去问过那份字节** ─────────────────────
+        //
+        // 上面那条按 arch 的清单只买到「它在校验的名单里」；这两条买的是**校验本身还在**。
+        // 两个锚各自不可替代：
+        //   · `ReadAllBytes` —— 它**真的把那份二进制读进来了**（不是 stat、不是读旁边的谁）；
+        //   · `const BUILD_STAMP_OPEN` —— 界标是**从 daemon 源码抠的**，不是在 yml 里手抄一份
+        //     （手抄那一份哪天与源码漂开，校验会以「假红」的形式提醒错人）。
+        for (needle, why) in [
+            (
+                "ReadAllBytes",
+                "校验那一步没有把二进制的字节读进来 —— 那它验的就不是这份字节，\
+                 而是它旁边的某个文件（`K-R70` 整件治的就是这个）",
+            ),
+            (
+                "const BUILD_STAMP_OPEN",
+                "身份戳的界标不是从 daemon 源码抠的 —— 手抄一份就多一个会漂的住址；\
+                 漂开那天校验会红，而红的原因与真病无关",
+            ),
+        ] {
+            assert!(
+                rel.contains(needle),
+                "`release.yml` 里找不到 `{needle}` —— {why}。\n\
+                 ⚠ 后果与下面 `if-no-files-found` 那条同族：**静默** —— \n\
+                 安装包照出，只是内嵌的那份没人问过它是谁。"
+            );
         }
 
         // fail-closed 那一半：一个都没 stage 到时，上传步骤必须当场失败而不是传个空包。
