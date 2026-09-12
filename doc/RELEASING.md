@@ -49,7 +49,11 @@
       而 README 到 v3.5.0 才补上「Linux」——用户读完会以为不支持）
 - [ ] `cargo fmt --all --check + cargo clippy --workspace --exclude code-picture-core --all-targets + cargo test --workspace --exclude code-picture-core + cargo test -p code-picture-core + npm test + npm run coverage + npm run build` 全绿（fmt 不过 CI 会红；`npm test` 含 16 组 node 纯函数 + vitest DOM = 前端 job）。⚠ **G2（2026-08-04）订正**：原来这里列的是 `cargo test --all` 外加 `-p code-picture-core` / `-p branch-core` 两条补丁，理由写着「两者都是 path 依赖非 workspace 成员，`--all` 测不到」。**那句对 `branch-core` 已经不成立** —— `src-tauri/Cargo.toml` 现在有 `[workspace]`，六个共享 crate 都是真成员（`--workspace` 覆盖，实测 922 = monitor 882 + 六 crate 40）。**只有 vendor 的 `code-picture-core` 仍要单列**（它是成员的 path 依赖，`exclude` 对 path 依赖不生效 ⇒ CI 用 `--exclude` 排除它、再单独 `-p` 跑，**不动 vendor 一个字节**）。远端 daemon `cargo test`（`remote-daemon-proto/`，含 `cargo fmt --check`）**仍是独立一处** —— 它刻意不入 workspace，那条隔离是真架构约束。+ Linux app 构建 + 那几个 e2e job 都是**独立 CI job**，别漏跑）。⚠ **CI 有几个 job 这里刻意不写死**（同上一条纪律：这个数在仓里已经漂过一次 —— 原文写着「共 **7** job」，而 2026-09-09 现打是 **8** 个：`rust` / `frontend` / `daemon` / `linux-app-build` / `e2e-smoke` / `e2e-tmux` / `e2e-tmux-rust` / `weak-net`，尺子 `sed -n '/^jobs:/,$p' .github/workflows/ci.yml | grep -cE '^  [a-z0-9-]+:$'`，量于 `04745b3`。⚠ **尺子必须先切到 `jobs:` 段**：不切的话 `on:` 底下的 `push:` 与 `defaults:` 底下的 `run:` 也会被数进去，得 10 —— 本仓最高频的那类错「量具的作用域对不上事实」）。**引用前现打，别抄这个数**；权威是 `.github/workflows/ci.yml` 本身
 - [ ] **若本版动过滚动/渲染管线**（stream/tabs/session-viewer/branch-fold/render-*）：跑一遍 `npm run test:f40`（= `e2e/f40-suite.sh`；Linux Xvfb + 一个正在跑的 `tauri dev`，前置见 e2e/README）+ Windows 真机把 e2e/README「人工场景」的 WebView2 复核过一遍（WebKitGTK 无 overflow-anchor，两端补批语义不同）
-- [ ] **若本版改过 daemon 源码**（BUILD_ID 应已随改动 bump）：走 tag 发版由 release.yml 的 build-daemons job 从源码重编内嵌二进制（官方渠道恒一致）；**本地手工打包分发**则必须先重编并**同步更新 `src-tauri/embedded-daemons/` 里的二进制和同名 `.build_id` 清单**——否则装出去的是旧 daemon，连接后无限重装循环。
+- [ ] **若本版改过 daemon 源码**（BUILD_ID 应已随改动 bump）：走 tag 发版由 release.yml 的 build-daemons job 从源码重编内嵌二进制（官方渠道恒一致）；**本地手工打包分发**则必须先重编并**换掉 `src-tauri/embedded-daemons/` 里的二进制**——否则装出去的是旧 daemon，连接后无限重装循环。
+      > 🔴 **`K-R70`（09-12）：旁挂 `.build_id` 清单这一步没有了。** 身份现在住在二进制**自己的字节**里
+      > （`main.rs::CC_MONITOR_BUILD_STAMP`，一段 `#[used] static`），`build.rs` 直接扫它。
+      > 那份清单是从**源码常量**抠出来的一张标签 —— 三个载体的标签永远一致，
+      > 而「永远一致」证不了任何事（`K-R68` 摸底 · `DECISIONS.md#R26` 裁定零）。
       > **这一格 2026-08-01（U-1）从 warning 升成编译期 panic。** 原来只有一条比 mtime 的
       > `cargo:warning`，而真实事故是**半 bump**：源码已 `p1v-`、清单还是 `p1u-`，二进制 mtime 反而更新
       > ⇒ mtime 判据完全不响。现在 `build.rs` 直接 panic 的有三种：抠不到源码 `const BUILD_ID`、
@@ -118,8 +122,12 @@ Linux 打包）全部不起。
 - `monitor` — 裸二进制（⚠ **v3.6.0 那次还没有它**：这条上传是 08-02 `ae18878` 补的，
   之后一直没发过版 ⇒ **它第一次真的出现会是下一个 tag**）
 - `SHA256SUMS-linux.txt`
-- `cc-monitor-remote-x86_64` / `cc-monitor-remote-aarch64` + 各自的 `.build_id`
+- `cc-monitor-remote-x86_64` / `cc-monitor-remote-aarch64`
   —— 远端 daemon 的 musl 静态二进制（DN-8：外部项目自部署要拿它）
+  ⚠ 🔴 **`K-R70`（09-12）起不再附 `.build_id`**：身份在二进制自己的字节里
+  （`<<ccm-build-id:…:ccm-build-id>>`），要问它是谁就 `grep -a` 那个串，或直接跑
+  `./cc-monitor-remote --ccm-probe` 读 `build=` 那一行。
+  ⚠ **上面那张资产表量于 `v3.6.0`，本行改的是「下一个 tag 会长什么样」** —— 别把它读成已发生的读数。
 
 > ⚠ 上面这张表是 **2026-09-09 读 `v3.6.0` 那个 release 的真实资产清单**现打出来的
 >（`gh api repos/bo0Zeng/cc-monitor/releases/tags/v3.6.0 --jq '.assets[].name'`），

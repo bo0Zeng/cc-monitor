@@ -156,18 +156,19 @@ jobs:
           cargo zigbuild --release --locked --target aarch64-unknown-linux-musl
 
       # 命名成 src-tauri/build.rs embed_daemons 期望的 cc-monitor-remote-<arch>。
-      # Batch9：旁挂 .build_id 清单 = 字节真实身份（编译器可能把 BUILD_ID 优化成
-      # 立即数、字节内搜不到明文——运行时启发式会误拒正品；清单从源码同一提取点
-      # 生成，与刚编出的字节天然同源）。
+      #
+      # 🔴 **K-R70（09-12）：不再旁挂 `.build_id` 清单 —— 身份跟着字节走。**
+      # 〔墓碑，本步原话逐字：「Batch9：旁挂 .build_id 清单 = 字节真实身份（编译器可能把
+      #  BUILD_ID 优化成立即数、字节内搜不到明文——运行时启发式会误拒正品；清单从源码同一
+      #  提取点生成，与刚编出的字节天然同源）」。**最后半句正是病灶**：清单从**源码**抠，
+      #  所以三个载体的清单**恒等**，而恒等的东西一格证据都不提供（K-R68 · DECISIONS#R26 裁定零）。〕
+      # 今天 daemon 自己带着一段 `#[used] static` 的身份戳（main.rs::CC_MONITOR_BUILD_STAMP），
+      # 连续、拆不成立即数 ⇒ 下游（src-tauri/build.rs）直接从字节里扫，不需要任何旁文件。
       - name: Stage binaries
         run: |
           mkdir -p staged
           cp remote-daemon-proto/target/x86_64-unknown-linux-musl/release/cc-monitor-remote staged/cc-monitor-remote-x86_64
           cp remote-daemon-proto/target/aarch64-unknown-linux-musl/release/cc-monitor-remote staged/cc-monitor-remote-aarch64
-          BUILD_ID=$(grep -oP 'const BUILD_ID: &str = "\K[^"]+' remote-daemon-proto/src/main.rs)
-          echo "$BUILD_ID" > staged/cc-monitor-remote-x86_64.build_id
-          echo "$BUILD_ID" > staged/cc-monitor-remote-aarch64.build_id
-          cat staged/*.build_id
           file staged/* || true
 
       - uses: actions/upload-artifact@v4
@@ -175,7 +176,6 @@ jobs:
           name: embedded-daemons
           path: staged/cc-monitor-remote-*
           if-no-files-found: error
-        # ↑ glob 同时带上 .build_id 清单（cc-monitor-remote-* 前缀匹配）
 
   build-windows:
     name: Build Windows artifacts
@@ -204,10 +204,19 @@ jobs:
           path: daemon-artifacts
 
       # 放进 build.rs 期望的位置；缺任一 arch 就 fail——绝不静默发出「自动部署被关」的安装包。
-      # v2.22.1 修复：**必须连 .build_id 清单一起拷**。此前只拷二进制不拷清单 →
-      # build.rs 拿不到内嵌身份 → 运行时字节启发式又搜不到被优化的 BUILD_ID 明文 →
-      # 「身份未知跳过自动部署」→ v2.19-v2.22 全部 CI 安装包的远端流模式静默降级
-      # （bg 会话不可见 + 全量推流拥塞）。清单内容再与源码 BUILD_ID 对拍，嵌错比没嵌更糟。
+      #
+      # 🔴 **K-R70（09-12）：校验从「比清单」换成「问字节」。**
+      # 〔墓碑，本步原话逐字：「v2.22.1 修复：**必须连 .build_id 清单一起拷**。此前只拷
+      #  二进制不拷清单 → build.rs 拿不到内嵌身份 → 运行时字节启发式又搜不到被优化的
+      #  BUILD_ID 明文 → 「身份未知跳过自动部署」→ v2.19-v2.22 全部 CI 安装包的远端流模式
+      #  静默降级（bg 会话不可见 + 全量推流拥塞）。清单内容再与源码 BUILD_ID 对拍」。
+      #  那次事故与那次修复都是真的；今天换掉的是**修法**：清单是从源码抠的**标签**，
+      #  它与刚编出来那份字节之间没有任何因果 —— 三个载体的清单永远一致，
+      #  而「永远一致」证不了任何事（K-R68 · DECISIONS#R26 裁定零）。〕
+      # 今天问的是**这份字节自己**：daemon 里那段 `#[used] static CC_MONITOR_BUILD_STAMP`
+      # 逐字是 `<<ccm-build-id:$src:ccm-build-id>>`，界标的唯一住址在 main.rs 的
+      # BUILD_STAMP_OPEN / BUILD_STAMP_CLOSE（这里按同一条既有机制从源码抠，不手抄）。
+      # ⚠ 用 Latin1 解字节流：只是把每个字节映成一个字符好做子串搜索，不是在解码文本。
       - name: Place + verify embedded daemons
         shell: pwsh
         run: |
@@ -216,16 +225,20 @@ jobs:
             $f = Get-ChildItem -Recurse daemon-artifacts -Filter "cc-monitor-remote-$a" | Select-Object -First 1
             if (-not $f) { Write-Error "daemon artifact cc-monitor-remote-$a 缺失——内嵌失败，自动部署会被禁用"; exit 1 }
             Copy-Item $f.FullName "src-tauri/embedded-daemons/cc-monitor-remote-$a" -Force
-            $m = Get-ChildItem -Recurse daemon-artifacts -Filter "cc-monitor-remote-$a.build_id" | Select-Object -First 1
-            if (-not $m) { Write-Error ".build_id 清单缺失（$a）——身份未知的内嵌会被运行时拒绝，流模式将降级"; exit 1 }
-            Copy-Item $m.FullName "src-tauri/embedded-daemons/cc-monitor-remote-$a.build_id" -Force
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
           }
-          $src = (Select-String -Path remote-daemon-proto/src/main.rs -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
+          $main = "remote-daemon-proto/src/main.rs"
+          $src   = (Select-String -Path $main -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
+          $open  = (Select-String -Path $main -Pattern 'const BUILD_STAMP_OPEN: &str = "([^"]+)"').Matches[0].Groups[1].Value
+          $close = (Select-String -Path $main -Pattern 'const BUILD_STAMP_CLOSE: &str = "([^"]+)"').Matches[0].Groups[1].Value
+          if (-not $src -or -not $open -or -not $close) { Write-Error "从 $main 抠不出 BUILD_ID / 身份戳界标——本步此刻是无效的，先修抽取"; exit 1 }
+          $want = "$open$src$close"
+          Write-Host "expecting stamp: $want"
           foreach ($a in "x86_64","aarch64") {
-            $id = (Get-Content "src-tauri/embedded-daemons/cc-monitor-remote-$a.build_id" -Raw).Trim()
-            if ($id -ne $src) { Write-Error "清单（$a）=$id ≠ 源码 BUILD_ID=$src"; exit 1 }
-            Write-Host "manifest $a = $id (匹配源码)"
+            $bytes = [System.IO.File]::ReadAllBytes("src-tauri/embedded-daemons/cc-monitor-remote-$a")
+            $text  = [System.Text.Encoding]::Latin1.GetString($bytes)
+            if ($text.IndexOf($want) -lt 0) { Write-Error "内嵌 daemon $a 的字节里问不出身份戳 $want —— 它不是这套源码编出来的"; exit 1 }
+            Write-Host "stamp $a = $src (从字节里扫出来的，不是从旁边抄的)"
           }
 
       - name: npm install
@@ -248,6 +261,26 @@ jobs:
             exit 1
           }
           Write-Host "Version OK: $tag (package.json / tauri.conf / Cargo.toml / Cargo.lock all agree)"
+          # ── 🔴 K-R70（09-12）：**第五处刻意不参加，而它从此被点名核过。** ──────────
+          #
+          # `remote-daemon-proto/Cargo.toml` 的 version 逐字是 `0.0.0`，**故意的** ——
+          # 后端换不换由行为变没变决定（BUILD_ID 的 bump 纪律），不由发版节奏决定；
+          # 给它一个跟 tag 走的版本号 = 给后端造第二个身份（K33「后端只有一个」在身份这一维）。
+          # 理由全文住那一行上方的注释，机检住 build_id_guard 的
+          # the_crate_version_is_deliberately_zero_and_the_real_identity_has_a_home。
+          # ⇒ 这里不比它与 tag，而是**盯住它别被人顺手改成一个假数字**，
+          #   并确认真身份（BUILD_ID）在这一版里是**说得出**的。
+          $dv = (Select-String -Path remote-daemon-proto/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          $did = (Select-String -Path remote-daemon-proto/src/main.rs -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
+          if ($dv -ne '0.0.0') {
+            Write-Error "remote-daemon-proto 的 version 现在是 $dv —— 它刻意是 0.0.0（真身份是 BUILD_ID）。改它之前先答：谁在数这个新数字？"
+            exit 1
+          }
+          if (-not $did) {
+            Write-Error "抠不到 daemon 的 const BUILD_ID —— 后端这一版说不出自己是谁，不许发出去"
+            exit 1
+          }
+          Write-Host "Backend identity OK: remote-daemon-proto version=0.0.0 (deliberate), BUILD_ID=$did"
 
       # F05b：**本机后端 sidecar**（C7「没有 daemonless，本机也要有后端进程」）。
       #
@@ -289,15 +322,23 @@ jobs:
       # （一句话：那个目录名是另一条判据认「谁会起真 daemon」用的来历串，
       #  消费侧那个**字面量** `include_bytes!` 写下它会误伤那条判据）。
       #
-      # ⚠ 三个文件**缺一不可**，名字定死在 `build.rs::NATIVE_DAEMON_DIR`/`NATIVE_DAEMON_FILE`：
-      #   · `cc-monitor-native`           字节本身
-      #   · `cc-monitor-native.build_id`  它的身份（决定落到用户盘上叫什么名字）
+      # ⚠ 两个文件**缺一不可**，名字定死在 `build.rs::NATIVE_DAEMON_DIR`/`NATIVE_DAEMON_FILE`：
+      #   · `cc-monitor-native`           字节本身（**身份就在它里面**，见下）
       #   · `cc-monitor-native.target`    它是给哪个 triple 编的（名字里没有 triple ⇒ 只能靠它）
-      # 三个里少任何一个，`build.rs` 要么打一条 `cargo:warning=没有本机内嵌 daemon（…）`
-      # 而构建照常绿（二进制缺席），要么当场 panic（清单缺席/对不上）。
+      # 少任何一个，`build.rs` 要么打一条 `cargo:warning=没有本机内嵌 daemon（…）`
+      # 而构建照常绿（二进制缺席），要么当场 panic（问不出身份 / target 对不上）。
       # ⇒ 下面那几条 `Test-Path` 就是把前一种也变成硬失败。
       #
-      # ⚠ **诚实边界**：本步买到的是「铺了 · 身份与 target 都对得上 · build.rs 没 panic」。
+      # 🔴 **K-R70（09-12）：`cc-monitor-native.build_id` 那一份不写了。**
+      # 〔墓碑：本步原来写三个文件，第三个是 `.build_id`，注释逐字「它的身份（决定落到
+      #  用户盘上叫什么名字）」。**它不是身份，是标签** —— 从源码常量抠出来的一行字，
+      #  与旁边那份字节之间没有因果（K-R68 · DECISIONS#R26 裁定零）。今天 `build.rs`
+      #  直接从字节里扫 `CC_MONITOR_BUILD_STAMP`，落点名字仍是 `cc-monitor-local-<id>`，
+      #  只是那个 `<id>` 换成了**这份字节自己说的**。〕
+      # ⚠ `.target` **留着**：它答的是「给哪个平台编的」，不是「你是谁」——
+      #   那个事实今天确实只能靠旁边这一份（名字里没有 triple）。如实登记为同族剩余。
+      #
+      # ⚠ **诚实边界**：本步买到的是「铺了 · target 对得上 · build.rs 没 panic」。
       # 它**买不到**「裸 exe 在真 Windows 上真的起得来一个本机后端」—— 那要真机跑一趟。
       - name: Stage native daemon for self-extract
         shell: pwsh
@@ -307,13 +348,11 @@ jobs:
           $dst = "$dir/cc-monitor-native"
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item remote-daemon-proto/target/release/cc-monitor-remote.exe $dst -Force
-          $id = (Select-String -Path remote-daemon-proto/src/main.rs -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
-          Set-Content -Path "$dst.build_id" -Value $id
           Set-Content -Path "$dst.target" -Value $triple
-          foreach ($f in $dst, "$dst.build_id", "$dst.target") {
+          foreach ($f in $dst, "$dst.target") {
             if (-not (Test-Path $f)) { Write-Error "本机内嵌 daemon 没铺全（缺 $f）——裸 exe 会回到「0 个本机后端进程」那个读数"; exit 1 }
           }
-          Write-Host ("native daemon staged: {0} ({1} bytes, build_id={2}, target={3})" -f $dst, (Get-Item $dst).Length, $id, $triple)
+          Write-Host ("native daemon staged: {0} ({1} bytes, target={2})" -f $dst, (Get-Item $dst).Length, $triple)
 
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
       #
@@ -409,19 +448,19 @@ jobs:
           path: daemon-artifacts
 
       # 只做**放置**，不重做校验：`build-windows` 已经对**同一批 artifact** verify 过
-      #（清单存在 + 清单内容 == 源码 BUILD_ID），而本 job `needs` 它 ⇒ 那道检查已经过了。
+      #（🔴 `K-R70` 09-12 起那道 verify 是「从字节里扫出身份戳」，不再是「比清单」），
+      # 而本 job `needs` 它 ⇒ 那道检查已经过了。
       # 重写一份 bash 版校验只会多一个会漂的副本。缺文件仍然 fail（`cp` 会失败）。
+      # ⚠ 清单那两行跟着一起没了（`K-R70`：那是标签不是指纹，见 build-daemons 那步的墓碑）。
       - name: Place embedded daemons
         run: |
           set -euo pipefail
           mkdir -p src-tauri/embedded-daemons
           for a in x86_64 aarch64; do
             bin=$(find daemon-artifacts -name "cc-monitor-remote-$a" -type f | head -1)
-            man=$(find daemon-artifacts -name "cc-monitor-remote-$a.build_id" -type f | head -1)
-            [ -n "$bin" ] && [ -n "$man" ] || { echo "daemon artifact 或清单缺失（$a）"; exit 1; }
+            [ -n "$bin" ] || { echo "daemon artifact 缺失（$a）"; exit 1; }
             cp "$bin" "src-tauri/embedded-daemons/cc-monitor-remote-$a"
-            cp "$man" "src-tauri/embedded-daemons/cc-monitor-remote-$a.build_id"
-            echo "embedded $a = $(cat "$man")"
+            echo "embedded $a placed"
           done
 
       - name: npm ci
@@ -486,5 +525,3 @@ jobs:
             SHA256SUMS-linux.txt
             daemon-artifacts/cc-monitor-remote-x86_64
             daemon-artifacts/cc-monitor-remote-aarch64
-            daemon-artifacts/cc-monitor-remote-x86_64.build_id
-            daemon-artifacts/cc-monitor-remote-aarch64.build_id

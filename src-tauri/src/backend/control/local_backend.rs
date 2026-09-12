@@ -3730,6 +3730,145 @@ mod tests {
         );
     }
 
+    /// ★★ 🔴 `KR70D3`（09-12）：**载体①与载体③是同一次构建 —— 这件事从此有人守。**
+    ///
+    /// # 题面（`K-R68` 现打，`DECISIONS.md#R26` 裁定一）
+    ///
+    /// 发版流水线里同一个文件被拷了两次：
+    /// `remote-daemon-proto/target/release/cc-monitor-remote.exe`
+    /// → `src-tauri/binaries/…`（载体③，Tauri `externalBin`，装机那份）
+    /// → `src-tauri/native-daemon/cc-monitor-native`（载体①，自释放那份）。
+    /// 两步之间**一条 `cargo` 都没有** ⇒ 它们逐字节相同，是最强的那种同源。
+    /// 🔴 **而这件事此前没有任何断言守着**：中间插一条 `cargo build`（换个 feature、
+    /// 换个 profile、甚至只是重编一次）就不再是同一份字节，**没人会红**。
+    /// 而两份字节不同、身份戳却相同（同一个 `BUILD_ID`）时，产品**分不出它们** ——
+    /// 那正是 `K-R70` 这一件的题面本身。
+    ///
+    /// # ⚠ 本条**不主张**「载体②也要同字节」
+    ///
+    /// ② 是另一个 job（ubuntu / `cargo zigbuild` / musl），**结构上不可能**逐字节相同 ——
+    /// 那正是 `K25` 裁的形状（「一份代码、每个平台编出自己那一份原生二进制」），不是缺陷。
+    /// ⇒ 本条的射程只到「同一个 job 里、拷同一个路径的那两步」。
+    ///
+    /// # 量法与它的边界
+    ///
+    /// 人群 = `release.yml` 里**拷贝那个原生产物**的所有行（锚是那条产物路径，不是步骤名 ——
+    /// 步骤名是散文，路径是事实），**按 job 分组**。断言：**同一个 job 内**，第一处与
+    /// 最后一处拷贝之间没有非注释的构建命令。
+    ///
+    /// ⚠ **为什么按 job 分组，而不是拿全仓那几处一起比** —— 这一格是本条第一次跑就
+    /// 逮出来的（写它的时候以为是 2 处，实得 **3** 处）：第三处在 `build-linux` 里，
+    /// 它同样把那个原生产物拷成载体③，而 **Linux 那条路根本没有载体①**
+    /// （`K-R68` 现打：`native-daemon` 那三个字只出现在 `build-windows` 一个 job 里 ——
+    /// 已立成待决 `KU26` 问用户）。跨 job 比是**分母错**：两个 job 各自 `checkout` 各自编，
+    /// 它们之间当然有构建动作，那不是缺陷。
+    ///
+    /// ⚠ 它**看不见**「构建命令写在别的文件里、由这里 `run:` 一个脚本触发」那一形；
+    /// 今天 `release.yml` 里这一段没有那种写法（人群里每一行都是内联的 `Copy-Item`/`cp`），
+    /// 真出现那一形要另加一条判据。**这是登记的射程，不是穷举过的全称。**
+    #[test]
+    fn the_two_carriers_are_copies_of_one_build_with_nothing_rebuilt_between() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级");
+        let wf = root.join(".github/workflows/release.yml");
+        let src = std::fs::read_to_string(&wf).expect("读不到 release.yml");
+        let lines: Vec<&str> = src.lines().collect();
+        // 锚：那个**原生产物**的路径。运行时拼，免得命中本条自己的说明文字。
+        let artifact = format!("remote-daemon-proto/target/release/{}", super::SIDECAR_STEM);
+        // job 边界：`jobs:` 下**两空格缩进**的那一层键。
+        let job_at = |i: usize| -> &str {
+            lines[..=i]
+                .iter()
+                .rev()
+                .find(|l| {
+                    l.len() > 2
+                        && l.starts_with("  ")
+                        && !l.starts_with("   ")
+                        && l.trim_end().ends_with(':')
+                })
+                .map(|l| l.trim().trim_end_matches(':'))
+                .unwrap_or("<不在任何 job 里>")
+        };
+        let is_copy = |l: &str| {
+            let t = l.trim_start();
+            !t.starts_with('#')
+                && l.contains(&artifact)
+                && (t.starts_with("Copy-Item") || t.starts_with("cp "))
+        };
+        let copies: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| is_copy(l))
+            .map(|(i, _)| i)
+            .collect();
+        // 中间量自检：找不到 = 抽取器坏了 / 流水线变形，本条会零命中地绿。
+        assert!(
+            copies.len() >= 2,
+            "在 release.yml 里只找到 {} 处「拷 `{artifact}`」（09-12 实测 3：\n\
+             `build-windows` 两处（载体③ ＋ 载体①）· `build-linux` 一处（只有载体③））—— \n\
+             抽取器坏了或那几步被改名/挪走，**本条此刻是无效的**。",
+            copies.len()
+        );
+        // 词表如实登记：它是「已经栽过 + 想得到」的那几个，不是全称。
+        const BUILD_VERBS: [&str; 3] = ["cargo build", "cargo zigbuild", "cargo run"];
+        // 🔴 `rustc` 要分「编」与「问」—— **这一格是本条第一次跑就被它自己逮到的**：
+        //    `Stage native daemon for self-extract` 头一行是 `rustc -vV | …` 取 target triple，
+        //    那是一次**查询**，一个字节都没编。把它读成构建就是一条自信的假报警
+        //    （`C17`：诊断不许比它证得出的说得更死）。
+        const RUSTC_QUERIES: [&str; 4] =
+            ["rustc -vV", "rustc -V", "rustc --version", "rustc --print"];
+        let is_build_action = |t: &str| -> bool {
+            if t.starts_with('#') {
+                return false;
+            }
+            if BUILD_VERBS.iter().any(|v| t.contains(v)) {
+                return true;
+            }
+            t.contains("rustc ") && !RUSTC_QUERIES.iter().any(|q| t.contains(q))
+        };
+        let mut jobs_with_a_pair = 0usize;
+        for job in {
+            let mut js: Vec<&str> = copies.iter().map(|i| job_at(*i)).collect();
+            js.dedup();
+            js
+        } {
+            let mine: Vec<usize> = copies
+                .iter()
+                .copied()
+                .filter(|i| job_at(*i) == job)
+                .collect();
+            let (a, b) = (mine[0], *mine.last().expect("非空"));
+            if b <= a + 1 {
+                continue; // 这个 job 只拷一次（或两次挨着）⇒ 没有「之间」可查
+            }
+            jobs_with_a_pair += 1;
+            let offenders: Vec<String> = lines[a + 1..b]
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| is_build_action(l.trim_start()))
+                .map(|(k, l)| format!("release.yml:{} 逐字 `{}`", a + 2 + k, l.trim()))
+                .collect();
+            assert!(
+                offenders.is_empty(),
+                "job `{job}` 里，那个原生产物被拷去两个载体，而**两次拷贝之间出现了构建动作**：\n  {}\n\
+                 ⇒ 它们**不再是同一份字节**，而两份字节会带着**同一个 `BUILD_ID`** 出货\n\
+                 （身份戳取自源码常量）⇒ 产品分不出它们，`K33`「后端只有一个」在身份这一维当场破。\n\
+                 真要在中间重编，得先答一个问题：**那两份字节凭什么还叫同一个身份？**\n\
+                 （`DECISIONS.md#R26` 裁定一 · 本条的射程与边界见头注 —— 载体②不在里面，\n\
+                  它是另一个 job / musl，结构上不可能同字节，那是 `K25` 裁的形状。）",
+                offenders.join("\n  ")
+            );
+        }
+        // 反空真：至少有一个 job 真的拷了两次，否则上面整段是空转的。
+        assert!(
+            jobs_with_a_pair >= 1,
+            "没有任何一个 job 把那个原生产物拷去两个载体 —— 上面那段检查此刻**一格都没跑**。\n\
+             （09-12 实测 `build-windows` 是那一个：`Stage sidecar for externalBin` → 载体③、\n\
+              `Stage native daemon for self-extract` → 载体①。）"
+        );
+    }
+
     #[test]
     fn candidates_never_point_into_a_build_tree() {
         let c = sidecar_candidates(Path::new("/opt/app"), "x86_64-unknown-linux-gnu", "");

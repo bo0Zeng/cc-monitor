@@ -942,7 +942,13 @@ run_e2e ccm-cli               46
 #    `base-url-across-tmux` · 容器载荷真带 `export ANTHROPIC_BASE_URL=` · 反空真）。
 #    判法是 `exact` ⇒ 这个数不改，涨了照样红。**同一拍要改三处**（本行 + `ci.yml` 的
 #    调用行 + 那个 job 里的清单副本），三处都不在 `K-R61` 写区，已点名交回 PM。
-run_e2e ccm-contract-parity   42
+# 🔴 〔`K-R70` 09-12〕42 → **45**：C 组再加三格，问的是**一份真编出来的二进制**
+#    「你是哪一次构建」——① 抽取器自检（从 daemon 源码抠得到 `BUILD_ID`）·
+#    ② `--ccm-probe` 的 `build=` 行 == 那个 `BUILD_ID` · ③ `build=` 与 `version=` 不同值
+#    （后者是 CLI 契约版本，答不出身份）。**它是本件唯一跑真二进制的判据**，
+#    Rust 侧那几条跑的是测试壳。⚠ `ci.yml` 那两处（调用行 + 清单副本）**不在本件写区**，
+#    逐字 diff 已交回 PM（头注那条「三处一起改」的纪律照旧）。
+run_e2e ccm-contract-parity   45
 
 # pb check 不打「passed」，单独判：它自己会打 `FAIL=<n> BROKEN=<n>`。
 #
