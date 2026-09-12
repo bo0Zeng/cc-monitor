@@ -56,6 +56,154 @@ const STATUS_CELLS: &[(&str, &str)] = &[
 ];
 
 // ═════════════════════════════════════════════════════════════════════════════
+// `K-R73` `KR73D3`：**「量法与它声称的性质对不上」在本模块里数一遍**
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// # 为什么要在这里数
+//
+// 本模块头注自己记着这个病的三次发作（F01 的四处「每 ~8s」· F07 漏同节 11 行前那格 ·
+// `K-P5f` 漏 `INVARIANTS.md` 并新写第五份副本）。`DECISIONS.md#R29` **裁定零**是第四次，
+// 而且犯在「量法」上：`control/` 那格上方逐字警告「刻意不是裸 `is_dir`」，
+// 而**紧接着的三格全是裸 `is_dir()`** —— 写下警告的人在下面三行里连犯三次。
+//
+// ⇒ 这张表是那次裁定要的**普查**：`STATUS_CELLS` 每一格的现场量法，
+// 与它那格声称的话**对不对得上**，对不上的**逐条点名**。
+// 🔴 **不要求本件全修**（改一条量法就是动一条判据的射程，那要各自论证）——
+// 要求的是**数得出、点得名**，并且这张表**不许悄悄少一行**。
+//
+// # 两条穿过全表的读数（分母都是 `STATUS_CELLS` 的 10 格）
+//
+// ① **5 条**量法是「读一份文件、在里面找一根针」。**只有 1 条断言了那份文件存在**
+//    （`posix-quote-has-one-home`，F12 那次 `/full-audit` 逮到之后补的）。
+//    另外 4 条读不到文件时只会**静默返回空串** —— 那正是 F12 那条订正注释里逐字写的形。
+//    ⚠ 说清它今天为什么还不是假绿：那 4 格的文档状态都是「已交付」⇒ 文件没了 ⇒ 量法 `false`
+//    ⇒ 与「已交付」对不上 ⇒ **红**。它们**fail closed**，但报错文案会把人指向
+//    「事实前进了而文档没跟」，而真相是「量法读的那份文件不见了」。
+//    **哪天某一格翻成「待做」，这一支就从「诊断误导」变成「静默同意」。**
+// ② **那 5 条针全是裸子串**（`contains("fn render_payload")` 这一形）——
+//    `needle_anchor_registry` 头注治的正是这个族（「匹配单位比事实小」，本仓实测四次
+//    都是把 needle 撑大就照样绿）。⇒ **F12 的教训补在了 1/5 处，F24 的教训一处都没补。**
+//
+// # 这张表**不是**要求一个总数
+//
+// 「报一个总数而不逐条点名」是本区反复抓的那一形。⇒ 下面 10 行，一格一行，
+// 每行自带「它到底量了什么、与那句话差在哪」。棘轮只是**别再长**，不是这张表的正题。
+
+/// 一条现场量法的**形状**。
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum MeasureShape {
+    /// 钉住**那个唯一的住户**：那份文件在不在。
+    PinsTheOneResident,
+    /// 读**剥过注释的生产段**、在里面找一根裸子串针。
+    ProdNeedle,
+    /// 读**没剥过注释的原文**（TS / MD）找针 ⇒ 把那句话注释掉，它照样命中。
+    RawTextNeedle,
+    /// 反向：那样东西**不在**才算交付。
+    AbsenceIsTheClaim,
+    /// 这条能力线里**真有住户**（`K-R73` 把两格裸 `is_dir()` 收窄成的形）。
+    LineHasResidents,
+}
+
+/// 这条量法与它那格声称的话**对不对得上**。
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Verdict {
+    /// 对得上：量的就是那句话说的那件事（可能仍有登记在案的代价，但代价不是「量错了东西」）。
+    Holds,
+    /// **对不上**：量到的比那句话说的**宽**（或**窄**），下面那一栏逐条写清差在哪。
+    FallsShort,
+}
+
+/// **普查表**：`STATUS_CELLS` 每一格的现场量法 → `(量法键, 形状, 判定, 差在哪 / 代价是什么)`。
+///
+/// 🔴 **一格一行，两个方向都对拍**（见 [`tests::every_status_cell_measure_is_in_the_census`]）：
+/// `STATUS_CELLS` 新加一格而这里没跟 ⇒ 红；这里留着一行而那边没了 ⇒ 也红。
+/// 少了这一条，这张表会跟本模块治的那些文档副本一样腐。
+#[cfg(test)]
+const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
+    (
+        "payload-kernel-exists",
+        MeasureShape::ProdNeedle,
+        Verdict::FallsShort,
+        "声称「载荷内核在 `backend/control/payload.rs`」，量的是生产段里有没有子串          `fn render_payload` ⇒ **`fn render_payload_v2` 之类以它打头的名字照样命中**         （`needle_anchor_registry` 治的那一族）。另**没有断言那份文件存在** ——          读不到只会静默返回空串",
+    ),
+    (
+        "usage-probe-uses-the-kernel",
+        MeasureShape::ProdNeedle,
+        Verdict::FallsShort,
+        "声称「用量探针在调 `usage_probe_payload` 入口」，量的是裸子串 ⇒ 入口改名成         以它打头的另一个名字时照样绿。⚠ 这一格已经**被自己红过一次**并改对了标的         （原先量 `render_payload`），改的是「量哪一个」，没改「用什么单位量」。         另无存在性断言",
+    ),
+    (
+        "posix-quote-has-one-home",
+        MeasureShape::ProdNeedle,
+        Verdict::FallsShort,
+        "本模块**唯一**断言了「量法读的那份文件存在」的一格（F12 那次 `/full-audit`          逮到左支读一个不存在的文件、恒 `false` 之后补的）。⇒ F12 那半的教训补上了；         **F24 那半没有** —— 针仍是裸子串 `shell_quote_core::posix_quote`",
+    ),
+    (
+        "ccm-invocation-kernel-exists",
+        MeasureShape::ProdNeedle,
+        Verdict::FallsShort,
+        "与 `payload-kernel-exists` 逐字同形：裸子串 `fn render_ccm_invocation` ＋          无存在性断言。**同一个形状在本表里出现三次**，说明它不是某一格的疏忽",
+    ),
+    (
+        "production-ts-calls-the-rust-renderers",
+        MeasureShape::RawTextNeedle,
+        Verdict::FallsShort,
+        "🔴 **本表唯一一条今天就用一刀验过的**：它声称「**生产** TS 主路在调那两条 Rust \
+         渲染命令」，而量法用的是 `read()` 而不是 `prod()` ⇒ **没剥注释**。\
+         09-12 现打：把 `src/remote-launch-run.ts` 里那 3 行调用**整行注释掉**，\
+         本模块 19 条判据 **一条不红**。\
+         ⚠ **别把这条读成「那个性质没人守」** —— 真正接住它的是 \
+         `backend/control/launch_wire.rs` 里那条生产接线钉（同一刀下它**当场红**，\
+         最小面 1）：那一条走 `production_ts()`，行首与行尾注释都剥，\
+         头注逐字写着「行尾注释里的提及不算数」。\
+         ⇒ 本模块这一格是**同一个事实的第二份、而且更弱的那一份**，\
+         它的害处不是漏守，是**让人以为这一格自己有牙**。\
+         ⚠ 修法不是「TS 也走 `production_code`」（那份剥法是按 Rust 的 `#[cfg(test)]` 写的），\
+         要么复用那条已有的 TS 剥法，要么把这一格摘掉、指向那条判据 —— 两条都要论证，另开一件",
+    ),
+    (
+        "ts-renderer-still-there",
+        MeasureShape::AbsenceIsTheClaim,
+        Verdict::Holds,
+        "反向量法：`src/session-backend.ts` **不在**才算交付，与那格声称的话对得上。         ⚠ 登记一处**可读性陷阱**（不是洞）：键名逐字是「still-there」，而它为 `true` 时         的意思是「**已经删了**」—— 键名与布尔方向相反，读的人容易读反",
+    ),
+    (
+        "monitor-backend-control-landed",
+        MeasureShape::PinsTheOneResident,
+        Verdict::Holds,
+        "钉住那个唯一的回落分流器在不在。**代价登记在案**：它钉的是那**一个文件名** ⇒          住户改名或再搬家时会**假红**（红得对不对要人判）。这与 `observe/` 那格是同一个代价",
+    ),
+    (
+        "monitor-backend-observe-landed",
+        MeasureShape::PinsTheOneResident,
+        Verdict::Holds,
+        "〔`K-R71` 09-12 按 `R29` 裁定一从裸 `is_dir()` 收窄成钉住那个唯一的读面传输〕。         代价与 `control/` 那格逐字相同。⚠ **`K-R73` 一个字都没动它**",
+    ),
+    (
+        "monitor-backend-platform-landed",
+        MeasureShape::LineHasResidents,
+        Verdict::Holds,
+        "〔`K-R73` 09-12 按 `R29` 裁定二从裸 `is_dir()` 收窄〕。**不许硬指住户**：         这条线今天没有那个唯一的住户，指一个就是替未来的人做决定 ⇒ 量的是         「目录在 ∧ 里面真有住户」，空壳目录直接红。代价见那份量法的头注",
+    ),
+    (
+        "monitor-backend-common-landed",
+        MeasureShape::LineHasResidents,
+        Verdict::Holds,
+        "与 `platform/` 那格逐字同形。⚠ 这条线的文档那一格逐字写着「**刻意不建**：         monitor 侧的共用面住 `src-tauri/crates/*`」⇒ 它大概率**永远**停在这一支，         而空壳目录那条红正是为它准备的",
+    ),
+];
+
+/// **对不上那一栏的递减棘轮**（09-12 现打 **5** 条，全部是「读文件找针」那一支）。
+///
+/// 🔴 **只许降。** 修好一条就把这个数调下来，**不许调上去让今天好过**。
+/// ⚠ 它只挡「别再长」，**不代表这 5 条已经排期** —— 排期是另一件事，
+/// 而把「已知的欠账」和「有人在还」混成一句话，正是本模块治的那个病。
+#[cfg(test)]
+const FALLS_SHORT_CEILING: usize = 5;
+
+// ═════════════════════════════════════════════════════════════════════════════
 // `K-P5g` `KP5GD3`：**一句话散在好几处** —— 本模块头注那个病的第三次发作
 // ═════════════════════════════════════════════════════════════════════════════
 //
@@ -199,7 +347,10 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
 
 #[cfg(test)]
 mod tests {
-    use super::{EnvKeyClaim, ENV_KEY_CLAIM_SITES, STATUS_CELLS};
+    use super::{
+        EnvKeyClaim, Verdict, ENV_KEY_CLAIM_SITES, FALLS_SHORT_CEILING, MEASURE_CENSUS,
+        STATUS_CELLS,
+    };
     use std::path::{Path, PathBuf};
 
     const INVARIANTS: &str = include_str!("../../doc/INVARIANTS.md");
@@ -505,6 +656,186 @@ mod tests {
         );
     }
 
+    /// ★★ `K-R73` `KR73D3`：**普查表与 `STATUS_CELLS` 两个方向对拍**，外加那条递减棘轮。
+    ///
+    /// # 没有这一条，那张普查表会跟本模块治的那些文档副本一样腐
+    ///
+    /// 新加一格量法而普查表没跟 ⇒ 那一格**没人判过它量的是不是它声称的那件事**，
+    /// 而这正是 `R29` 裁定零那次的形状（`observe`/`platform`/`common` 三格是**跟着**
+    /// `control/` 那格一起写下去的，没有一格被单独问过「你量的是落地还是有个目录」）。
+    /// 反方向也要：普查表留着一行而 `STATUS_CELLS` 那边没了 ⇒ 那一行在描述一个不存在的量法。
+    #[test]
+    fn every_status_cell_measure_is_in_the_census() {
+        let mut cells: Vec<&str> = STATUS_CELLS.iter().map(|(_, how)| *how).collect();
+        cells.sort();
+        cells.dedup();
+        let mut census: Vec<&str> = MEASURE_CENSUS.iter().map(|(k, ..)| *k).collect();
+        census.sort();
+        // 同一个量法键不许在普查表里出现两次 —— 两行说法不一致时谁也不知道哪行算数。
+        let mut uniq = census.clone();
+        uniq.dedup();
+        assert_eq!(
+            census, uniq,
+            "普查表里有重复的量法键 —— 一个事实恰好一个住址"
+        );
+        assert_eq!(
+            cells, census,
+            "`STATUS_CELLS` 的量法键与 `MEASURE_CENSUS` 对不上。\n\
+             **`STATUS_CELLS` 多出来的**：新加了一格量法却没判过「它量的是不是它声称的那件事」——\n\
+             那正是 `DECISIONS.md#R29` 裁定零那次的形状（三格裸 `is_dir()` 是跟着上一格一起写下去的）。\n\
+             **普查表多出来的**：那一行在描述一个已经不存在的量法，摘掉它。"
+        );
+        // 分母自检：表空了上面那个等号会退化成「空 == 空」。
+        assert!(
+            MEASURE_CENSUS.len() >= 10,
+            "普查表只剩 {} 行（09-12 现打 10 行）—— 少于分母说明有人在偷偷删行",
+            MEASURE_CENSUS.len()
+        );
+        for (k, _, _, why) in MEASURE_CENSUS {
+            assert!(
+                why.trim().chars().count() >= 30,
+                "`{k}` 那一行没写清「它到底量了什么、与那句话差在哪」（只有 {} 字）",
+                why.trim().chars().count()
+            );
+        }
+        // ★ 递减棘轮：**对不上**那一栏只许比今天少。
+        let falls_short = MEASURE_CENSUS
+            .iter()
+            .filter(|(_, _, v, _)| *v == Verdict::FallsShort)
+            .map(|(k, ..)| *k)
+            .collect::<Vec<_>>();
+        assert!(
+            falls_short.len() <= FALLS_SHORT_CEILING,
+            "「量法与它声称的性质对不上」涨到 {} 条了 > 棘轮上限 {FALLS_SHORT_CEILING}（09-12 现打 5）。\n\
+             逐条：{falls_short:?}\n\
+             ⚠ **不许把上限调上去让今天好过** —— 这是递减棘轮。",
+            falls_short.len()
+        );
+    }
+
+    /// `K-R73` `KR73D2`：`backend/` 下一条能力线**落地了没有**。
+    ///
+    /// # 量的必须是**落地**，不是**有个目录**（`DECISIONS.md#R29` 裁定零）
+    ///
+    /// 这一格原本是裸 `is_dir()`。而**紧挨着上面那几行**的 `control/` 那格逐字警告过：
+    /// 「目录空着也算「有目录」，而这一格要主张的是控制面真的住进来了」——
+    /// 写下那条警告的人在下面三行里连犯三次它警告的那件事（`observe/` 已由 `K-R71` 收窄，
+    /// 这两格归本件）。
+    ///
+    /// # 为什么不像 `control/` / `observe/` 那两格那样钉住一个住户的**文件名**
+    ///
+    /// 那两条线各有「那个唯一的住户」可钉。`platform/` 与 `common/` **今天没有**（目录都还不在）
+    /// ⇒ 随手指一个文件名就是**替未来的人做决定**。这里量的是一个说得出口的形：
+    /// **目录在 ∧ 里面至少有一个不是 `mod.rs` 的 `.rs`**。
+    ///
+    /// ⚠ **代价写明，别读宽**：这个形分不清「真住户」与「一份占位的 `.rs`」，
+    /// 也不像 `control/` 那格那样钉住**是谁**在里面。等这条线真有那个唯一住户的那天，
+    /// 换成与 `control/` 同形（钉住住户名）是**更紧**的一格 —— 那是那个人的活，不是本件的。
+    ///
+    /// # 🔴 空目录的答案不是 `false`，是**红**
+    ///
+    /// 目录不存在 ⇒ `false`（今天两格都在这一支，与文档那两格的「待做」对得上）。
+    /// 目录**在**、里面却没有住户 ⇒ 直接 panic：那是一份**装饰**，
+    /// 而装饰的危险不在它今天算 `true` 还是 `false`，在于**它让下一个人只要顺手改一下文档
+    /// 那一格就能把它洗成「已交付」**（`K-R71` 的 `7u` 逮到的正是这一形：
+    /// 空的 `observe/` ＋ 文档说「已交付」，monitor lib 1397 条一条不红）。
+    fn a_capability_line_has_landed(root: &Path, line: &str) -> bool {
+        layer_has_landed_at(&root.join("src-tauri/src/backend").join(line))
+    }
+
+    /// [`a_capability_line_has_landed`] 的**根可注入**版本。
+    ///
+    /// 抽出这一层只为一件事：下面那条反向自检要让**这一份量法本身**（不是它的复刻）
+    /// 跑在真目录上 —— 自检若另写一份判断，它证明的是那一份、不是量法。
+    fn layer_has_landed_at(dir: &Path) -> bool {
+        if !dir.is_dir() {
+            return false;
+        }
+        let mut residents: Vec<String> = Vec::new();
+        let mut stack = vec![dir.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            for entry in std::fs::read_dir(&d).expect("读能力线目录") {
+                let p = entry.expect("目录项").path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().and_then(|x| x.to_str()) == Some("rs")
+                    && p.file_name().and_then(|x| x.to_str()) != Some("mod.rs")
+                {
+                    residents.push(p.to_string_lossy().into_owned());
+                }
+            }
+        }
+        assert!(
+            !residents.is_empty(),
+            "`{}` 建出来了，可里面一个住户都没有（只有 `mod.rs` 也算没有）。\n\
+             ⚠ 一个空的能力线目录是**装饰**：它自己不说假话，但它让下一个人\n\
+             只要顺手把 `doc/ARCHITECTURE.md` 那一格改成「已交付」就全绿。\n\
+             两条出路，别默认第一条：① 把那个住户真的搬进来；\n\
+             ② 这一层其实还不需要 ⇒ 把目录删掉，让「待做」继续是真的。",
+            dir.display()
+        );
+        true
+    }
+
+    /// ★ 反向自检：上面那份量法**真的在量**，两个方向都验。
+    ///
+    /// # 没有这一格会怎样
+    ///
+    /// 把 [`layer_has_landed_at`] 改成恒 `false`，那两格就**永远说「没落地」** ——
+    /// 与文档今天的「待做」一直对得上，真落地那天同样没人红。
+    /// 反过来改成恒 `true`，今天当场红（那一支由 ② 接住）。
+    /// **两个方向都要有刀**，所以这里既有非空对照、也有空对照。
+    #[test]
+    fn the_capability_line_landing_probe_actually_bites() {
+        let root = repo_root();
+        // ① **非空对照，而且是活体**：`control/` 这条线盘上确实有住户 ⇒ 必须 `true`。
+        //    量法一旦被改成恒 `false`，这一格当场红。
+        //    ⚠ 刻意用 `control/` 而不是 `observe/`：`observe/` 那一格 09-12 刚被 `K-R71`
+        //    按 `R29` 裁定一动过，本件一个字都不碰它。
+        assert!(
+            layer_has_landed_at(&root.join("src-tauri/src/backend/control")),
+            "`backend/control/` 这条线明明住满了人，量法却说它没落地 —— \
+             那说明这份量法此刻是恒 `false`，而恒 `false` 让那两格永远说「没落地」"
+        );
+        // ② 目录不存在 ⇒ `false`（今天 `platform/` 与 `common/` 就在这一支）。
+        //    量法一旦被改成恒 `true`，这一格当场红。
+        let gone = std::env::temp_dir().join(format!("ccm-cl-gone-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&gone);
+        assert!(
+            !layer_has_landed_at(&gone),
+            "一个根本不存在的目录被量成「落地了」"
+        );
+        // ③ 目录在、只有 `mod.rs` ⇒ **装饰，必须红**。
+        //    🔴 这就是件计划那条死值验（「建一个空的 `backend/platform/` 目录」）的活体版：
+        //    真判据跑在真目录上，而不是靠喂字符串。
+        let sham = std::env::temp_dir().join(format!("ccm-cl-sham-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&sham);
+        std::fs::create_dir_all(&sham).expect("造夹具目录");
+        std::fs::write(sham.join("mod.rs"), "//! 什么都不声明\n").expect("写夹具");
+        let r = std::panic::catch_unwind(|| layer_has_landed_at(&sham));
+        assert!(
+            r.is_err(),
+            "只有一份 `mod.rs` 的空壳目录被量成了「没落地」而不是红 —— \
+             那让「建个目录 + 顺手改一下文档」重新变成一条全绿的路"
+        );
+        // ④ 目录在、有一个真住户 ⇒ `true`。这一格与 ③ 一起把「有住户」这个形钉住：
+        //    少了它，量法可以退化成「目录里有 `mod.rs` 就红」这种谁都过不去的东西。
+        let real = std::env::temp_dir().join(format!("ccm-cl-real-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&real);
+        std::fs::create_dir_all(&real).expect("造夹具目录");
+        std::fs::write(real.join("mod.rs"), "//! 说明\n").expect("写夹具");
+        std::fs::write(real.join("one.rs"), "pub fn ok() -> usize { 0 }\n").expect("写夹具");
+        assert!(
+            layer_has_landed_at(&real),
+            "目录里有一个真住户，量法却说它没落地"
+        );
+        for d in [gone, sham, real] {
+            let _ = std::fs::remove_dir_all(&d);
+        }
+    }
+
     /// ★★ 逐格跑「现场量法」：**文档里那一格**记的状态今天还对不对。
     ///
     /// ⚠ 状态**从文档读**，不从登记表读 —— 见 `STATUS_CELLS` 的头注：
@@ -597,18 +928,21 @@ mod tests {
                         .is_file(),
                     "monitor 侧 `backend/observe/` 在，且那个唯一的读面传输住在里面",
                 ),
-                // ⚠ 下面两格**今天仍是裸 `is_dir`，这是排期不是疏忽**〔`K-R71` PM 裁定二 ⇒ `K-R73`〕：
-                //   它们没有「那个唯一的住户」可钉（目录都还不存在），硬指一个文件就是替未来的人
-                //   做决定。⇒ 今天它们**不说假话**（两个目录都不在，`false` 是真的），
-                //   **建目录那一刻就会**，与 `observe/` 这一格 09-12 的遭遇逐字同形。
-                //   🔴 **今天没有触发器，也不许在这里编一个** —— 靠 `K-R73` 排期，不靠一个不会响的闹钟。
+                // 🔴 〔`K-R73` 09-12，PM 裁定二排期到本件〕**这两格原本是裸 `is_dir`** —— 原文逐字：
+                //   `root.join("src-tauri/src/backend/platform").is_dir()` ＋ 说明串
+                //   「monitor 侧 `backend/platform/` 目录存在」（`common/` 同形）。
+                //   它们**今天不说假话**（两个目录都不在，`false` 是真的），**建目录那一刻才会** ——
+                //   与 `observe/` 那一格 09-12 的遭遇逐字同形。
+                // ⚠ **本件不许硬指一个住户**：这两条线今天没有「那个唯一的住户」可钉，
+                //   随手指一个文件名就是替未来的人做决定。⇒ 收窄成一个**说得出口的形**，
+                //   见 [`a_capability_line_has_landed`]：目录在 ∧ 里面真有住户。
                 "monitor-backend-platform-landed" => (
-                    root.join("src-tauri/src/backend/platform").is_dir(),
-                    "monitor 侧 `backend/platform/` 目录存在",
+                    a_capability_line_has_landed(&root, "platform"),
+                    "monitor 侧 `backend/platform/` 在，且里面**真有住户**（至少一个不是 `mod.rs` 的 `.rs`）",
                 ),
                 "monitor-backend-common-landed" => (
-                    root.join("src-tauri/src/backend/common").is_dir(),
-                    "monitor 侧 `backend/common/` 目录存在",
+                    a_capability_line_has_landed(&root, "common"),
+                    "monitor 侧 `backend/common/` 在，且里面**真有住户**（至少一个不是 `mod.rs` 的 `.rs`）",
                 ),
                 other => panic!("`{item}` 的量法键 {other:?} 没有实现 —— 登记表与实现漂了"),
             };

@@ -22,6 +22,11 @@
 //! 会被判给 `observe/`，而它唯一的调用方在 `control/` ⇒ **凭空造出一条
 //! `control → observe` 的边**，而 daemon 侧的 `layering_guard` 逐字禁止反向依赖。
 //!
+//! ★〔`K-R73` 09-12〕**这句话在 monitor 侧从今天起也有机器在管**：`backend/mod.rs` 的
+//! `layering` 模块照 daemon 的形立了两条 —— 反向（`control → observe`）零容忍，
+//! 正向（`observe → control`）许有但逐条列举、条数被等号钉住。
+//! ⇒ 上面那条「按读写分会凭空造出反向边」的反面，现在会**当场红**，不再只是一句叮嘱。
+//!
 //! # 🔴 本目录**今天只住着传输那一跳**，不许读成「本机读面已经搬完了」
 //!
 //! monitor 侧那 8 条还没退役的 `reader`（`config_surface.rs` · `search.rs` · `tasks.rs` …）
