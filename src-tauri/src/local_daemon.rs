@@ -1739,9 +1739,76 @@ pub fn stop_local_backend() -> Result<String, String> {
     }
 }
 
+// ══ 取 shim 那个唯一入口的**跨文件出口**〔`K-R7` 09-01，`§0q` 裁一 · 出路乙〕════
+//
+// `backend/control/local_backend.rs` 的三个落点也要走这个口 ⇒ 这个测试模块必须 `pub(crate)`，
+// 它们按 `crate::local_daemon::tests::demand_tmux_shim(..)` 取。
+//
+// 〔`K-R76` 09-12〕**这里原先多一道绕道，现在拆掉了**：模块写成私有 `mod tests`，再在
+// 文件末尾补一行 `pub(crate) use tests::demand_tmux_shim;` 重导出一次。那道绕道**不是随手写的**，
+// 它当时有一个真理由 —— 09-01 实打，直接写成 `pub(crate) mod tests` **当场打红 17 条**
+// （`cargo test -p monitor --lib`：`1194 passed; 17 failed; 13 ignored`；`guard-core` 的反向
+// 自检逐字「剥完仍残留 23 个测试属性 —— 剥法坏了」）：当时 `guard_core::test_module_ranges`
+// 按**字面前缀**认 `mod `，`pub(crate) mod tests {` 过不了那一关 ⇒ 整段测试代码被当成
+// 生产段，各条扫生产段的守卫跟着去扫测试代码。
+// `K-R75`（09-12）把那一步换成**按形状**剥可见性修饰（`guard_core::strip_visibility`）之后
+// **那个理由不再成立** ⇒ 绕道拆掉，模块写回它本来的样子。
+//
+// 🔴 **上一版这里指的是一个裸行号**（`guard-core/src/lib.rs` 加一个数字）——
+//   那份文件 09-12 一动那个数就漂了，而**漂了没有任何东西会说话**（本区 `[J5 审计正文]` 那一族）。
+//   ⇒ 今天指的是**函数名 ＋ 一段机检着的逐字校验位**，不是行号：剥法住
+//   `src-tauri/crates/guard-core/src/lib.rs` 的 `test_module_ranges`；校验位（那一行的原文）
+//   **只有一个家** —— 下面 [`tests::the_strip_rule_this_file_leans_on_is_still_on_disk`]
+//   里那个 `PIN`，它在盘上找不着就当场红。
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// 〔`K-R76` `KR76D2`，09-12〕**上面那个 `pub(crate) mod tests` 靠的那条剥法，今天还在盘上。**
+    ///
+    /// # 它治的是一处**裸行号**
+    ///
+    /// 09-01 到 09-12 之间，上面那段说明指的是 `guard-core/src/lib.rs` 的**某一行行号**。
+    /// 那份文件 09-12 被 `K-R75` 改过 ⇒ **那个数当场就漂了**，而漂了**没有任何东西会说话**
+    /// （本区 `[J5 审计正文]` 一直在治这一族）。⇒ 换成**逐字校验位**：把剥法那一行的原文抄进
+    /// `PIN`，由本条去核它还在不在、且**恰好一处**。
+    ///
+    /// # 买到什么 · 买不到什么（写死，别读大）
+    ///
+    /// - **买到**：上面那段散文**指得着** —— 剥法那一行被改写 / 退回旧写法 / 搬走，本条当场红。
+    /// - **买不到**：剥法**对不对**。那是 `guard-core` 自己那几条的事
+    ///   （`a_test_module_is_recognised_whatever_its_visibility` 那一族），不归本条。
+    /// - **也买不到**「本文件的测试段真的被剥干净了」—— 那归 `structural_scan.rs` 里那条
+    ///   走 `guard_core::assert_tree_strips_clean` 的树级反向自检。
+    /// - ⚠ 这条 `include_str!` **不是跨半边的边**：`cross_half_edge_registry` 那张表管的是
+    ///   monitor ↔ daemon，而 `src-tauri/crates/` 与 `src-tauri/src/` 同属这一半。
+    ///   同形先例：`dial_home_registry::INTERFACE_MANIFEST` · `usage.rs` 读 `usage-core`。
+    #[test]
+    fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
+        // 校验位：`guard_core::test_module_ranges` 里认「这一行是不是测试模块的开头」的那一句，**逐字**。
+        //
+        // 🔴 **这一族只许有一个家**（`brief` 13b）：别在上面那段注释里、也别在别的判据里再抄一份
+        //   —— 抄一份就有两个家，而漂开的那一天两边看起来一模一样。
+        const PIN: &str = r#"strip_visibility(mod_line).starts_with("mod ")"#;
+        const GUARD_CORE: &str = include_str!("../crates/guard-core/src/lib.rs");
+        // 反空真：先证 `include_str!` 真读到了东西，否则「找不到就红」是空转。
+        assert!(
+            GUARD_CORE.len() > 10_000,
+            "只读到 {} 字节的 `crates/guard-core/src/lib.rs` —— `include_str!` 没读到东西，本条在空转",
+            GUARD_CORE.len()
+        );
+        assert_eq!(
+            GUARD_CORE.matches(PIN).count(),
+            1,
+            "在 `src-tauri/crates/guard-core/src/lib.rs` 里没有恰好一处剥法那一行的逐字校验位：\n\
+             逐字 `{PIN}`\n\
+             ⇒ 两种来路，都要人来看：\n\
+             ① **剥法被改了**（退回按字面前缀认 `mod ` 那一版？）—— 那么本文件上面那个\n\
+                `pub(crate) mod tests` 会让整段测试代码留在生产段里。**这不是改注释能修的。**\n\
+             ② 只是那一行被重写 / 搬家了 —— 那么把 `PIN` 换成新的原文，\
+                **别换回一个行号**（那正是本条 09-12 治掉的那个病）。"
+        );
+    }
 
     /// ★★★ `D1 阻-6` 刀 B 的反面：**`relay_running()` 真的在看那张表，不是一个常量。**
     ///
@@ -5749,24 +5816,3 @@ mod tests {
         );
     }
 }
-
-// ══ 取 shim 那个唯一入口的**跨文件出口**〔`K-R7` 09-01，`§0q` 裁一 · 出路乙〕════
-//
-// `backend/control/local_backend.rs` 的三个落点也要走这个口，而 `mod tests` 是私有的
-// ⇒ 在这里 `pub(crate)` 重导出一次。
-//
-// 🔴 **为什么不是直接把 `mod tests` 改成 `pub(crate) mod tests`** —— 09-01 实打，
-//   那一改**当场打红 17 条**（`cargo test -p monitor --lib`：`1194 passed; 17 failed`）。
-//   机制现打自 `src-tauri/crates/guard-core/src/lib.rs:141`：`test_module_ranges` 认测试模块的条件是
-//   「`#[cfg(test)]` 的下一行 `trim()` 后 **`starts_with("mod ")`** 且以 `{` 收尾」——
-//   `pub(crate) mod tests {` 过不了这一关 ⇒ 整个测试段被当成**生产段**，
-//   于是走 `production_source` / `production_code` 的守卫跟着去扫测试代码
-//   —— **那一趟实打 17 条红**（分母 = `cargo test -p monitor --lib` 的判定行：
-//   `1194 passed; 17 failed; 13 ignored`；**我没有逐条去数「全仓有多少条这样的守卫」**），
-//   `guard-core` 的反向自检逐字：「剥完仍残留 **23** 个测试属性 —— 剥法坏了」。
-//   ⇒ **本行这种写法是被那次实测选出来的，不是随手写的**：`#[cfg(test)]` 底下不是
-//     `mod X {` 的东西，剥法会原样跳过（`i = attr_end; continue;`），一个字节都不影响剥法。
-//   ⚠ 它也**排在 `mod tests` 之后** ⇒ 「文件里首个 `#[cfg(test)]` 之前那一段」逐字节没变
-//     （本件四拍守着的「生产段零改动」按的就是那个切法）。
-#[cfg(test)]
-pub(crate) use tests::demand_tmux_shim;

@@ -1132,12 +1132,24 @@ mod spawn_registry {
     }
 }
 
-// ⚠⚠ 这条再导出**不是为了好看**：`g6_doctrine` 的声明行必须逐字是 `mod g6_doctrine {`，
-// 不许写成 `pub(crate) mod` —— `guard_core::test_module_ranges` 认「测试模块」的判据是
-// 「属性的下一行以 `mod ` 打头、以 `{` 收尾」，写成 `pub(crate) mod` 就**认不出来**，
-// 整段测试代码会留在生产段里被别的守卫扫。
-// 〔本轮现打：写成 `pub(crate) mod` 时 `every_daemon_file_strips_clean` 当场红，
-//  逐字「剥完仍残留 2 个测试属性」。〕⇒ 跨模块可见性只能走这条再导出。
+// 〔`K-R76` 09-12〕**这段话原先给的那个理由，今天已经不成立了**。原文逐字留档
+// （它下过一次结论、被引过，所以留着）：
+//   「这条再导出**不是为了好看**：`g6_doctrine` 的声明行必须逐字是 `mod g6_doctrine {`，
+//    不许写成 `pub(crate) mod` —— `guard_core::test_module_ranges` 认「测试模块」的判据是
+//    「属性的下一行以 `mod ` 打头、以 `{` 收尾」，写成 `pub(crate) mod` 就**认不出来**，
+//    整段测试代码会留在生产段里被别的守卫扫。〔本轮现打：写成 `pub(crate) mod` 时
+//    `every_daemon_file_strips_clean` 当场红，逐字「剥完仍残留 2 个测试属性」。〕
+//    ⇒ 跨模块可见性只能走这条再导出。」
+//
+// **那个前提被 `K-R75`（09-12）拆掉了**：剥法不再按字面前缀认 `mod `，改成**按形状**
+// 先剥可见性修饰（`guard_core::strip_visibility`）⇒ `pub(crate) mod` 今天认得出来，
+// 上面那句「只能走这条再导出」**是假的**。
+// ⇒ 今天这条再导出**不是被逼出来的**，它只是一个写法；`mod g6_doctrine {` 那一行
+//   **也不再必须逐字长成那样**。
+//
+// 🔴 **`K-R76` 刻意没有顺手把这道绕道拆掉**：本件的 `§0d` 写死「daemon 这一处只改那段过期的话，
+//   不动它守的任何一条性质」，死值验就是 daemon 那一格读数逐格不动。
+//   ⇒ 要不要拆归后续件，**别在这里自批**。
 #[cfg(test)]
 pub(crate) use g6_doctrine::{cell_names, is_cell};
 
