@@ -2340,6 +2340,21 @@ mod tests {
                 1,
             ),
             ("src-tauri/src/sftp.rs", "pin_t_def", 1),
+            // 🔴 〔`K-R59` 09-11〕同一形，另一件事的账：`daemonless` 那一档整格删了
+            //    （定框 `K35`：「不要有 daemonless。没有没有后端的情况。」），
+            //    而 08-14 立的那条前提触发器 `the_daemonless_remote_still_needs_the_ts_fallback_renderer`
+            //    **是设计好要在这一天主动红的** ⇒ 散文里那几处点名它的句子留着才说得清
+            //    「它红过、红完之后换了谁」。按第②条出路：贴墓碑 ＋ 在这里记一笔账。
+            (
+                "doc/INVARIANTS.md",
+                "the_daemonless_remote_still_needs_the_ts_fallback_renderer",
+                1,
+            ),
+            (
+                "src-tauri/src/backend/control/launch_wire.rs",
+                "the_daemonless_remote_still_needs_the_ts_fallback_renderer",
+                2,
+            ),
             (
                 "remote-daemon-proto/src/control/ccm/plan.rs",
                 "avoid_name_collision",

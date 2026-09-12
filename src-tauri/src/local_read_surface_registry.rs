@@ -169,10 +169,12 @@ mod tests {
         (
             "src/ssh_source.rs",
             "remote",
-            10,
-            "★ **说的全是远端主机的 claude 目录**：daemon `hello` 帧的 `claude_dir` 字段 · \
-             daemonless 那条远端 shell 串里的 `\\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects`。\
+            9,
+            "★ **说的全是远端主机的 claude 目录**：daemon `hello` 帧的 `claude_dir` 字段。\
              **根本不是本机读面** ⇒ 不属 F10。\
+             〔`K-R59` 09-11：**10 → 9**。退役的那 1 行是原先并列写在这里的第二样 —— \
+             `daemonless` 那条远端 shell 串里的 `\\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects`，\
+             随定框 `K35` 整段删除。⚠ **口径没变，仍是远端**：拧下来的不是「本机读面少了一行」。〕\
              ⚠ 我摸底时差点把它算成本机的 8 行 —— 同名最便宜的误导。\
              〔daemon-split `S4` 08-14〕**8 → 10**：additive 迁移在消费侧多了一个解析点 —— \
              `claude_home_from_hello`（优先 `hello.homes`、回退 `claude_dir`）加上它的两处调用。\

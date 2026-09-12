@@ -352,6 +352,59 @@ mod f07_main_path_tests {
         "src/launch-render-fallback.ts",
         "src/remote-config.ts",
         "src/settings/machine-card.ts",
+        // `K-R59`：那条 TS 兜底路的消费者，逐处登记在 `TS_FALLBACK_KEEPERS`。
+        "src/remote-launch.ts",
+        "src/launch-payload-golden.ts",
+    ];
+
+    /// 🔴 **那条 TS 兜底路今天靠谁站着** —— `U8c-3` 的**新**存续理由，逐处点名。
+    ///
+    /// `(被引的符号, 消费者文件, 生产段处数, 它是什么, 它什么时候能走)`
+    ///
+    /// 现打于 `4d298c4`（`src` 下，去掉 `*.test.ts` / `*.vitest.ts`）。
+    /// ⚠ **处数由判据从源码派生再逐格比对** —— 散文里那句「3 个消费者」会腐烂，这张表不行。
+    /// ⚠ 尺子的射程如实写：它数的是**剥完注释的源码里那个标识符出现几次**
+    /// （`import` 那一行算一处）。别名 import、动态取属性它都数不到，**不声称堵住**。
+    const TS_FALLBACK_KEEPERS: &[(&str, &str, usize, &str, &str)] = &[
+        (
+            "renderFallback",
+            "src/launch-payload-golden.ts",
+            2,
+            "金样本发生器：`import` 一处 + `payload: renderFallback(planOf(c))` 一处。\
+             它产的是 `backend/control/fixtures/payload-golden.json` —— Rust 侧那条\
+             「两边逐字节同构」的对拍拿它当**左边**。",
+            "Rust 侧不再拿 TS 的输出当金样本的那天（那要先有另一个真相源）。",
+        ),
+        (
+            "renderFallback",
+            "src/remote-launch.ts",
+            6,
+            "五个 builder（resume 直起 / resume 进 tmux / 送进已有 tmux / 起 launcher / attach）\
+             各调一次 + `import` 一处。",
+            "这五条各自都改走后端渲染的那天。",
+        ),
+        (
+            "renderFallback",
+            "src/remote-launch-run.ts",
+            2,
+            "生产主路的**回落**：`renderCliViaBackend` 不成时兜底（`import` 一处 + 调用一处）。",
+            "`renderCliViaBackend` 覆盖到全部三格、回落变成死代码的那天。",
+        ),
+        (
+            "SESSION_BACKEND",
+            "src/launch-render-fallback.ts",
+            4,
+            "座本身：`import` 一处 + `attach` / `createRunAttach` / `runInExistingAttach` 各一处。",
+            "外层 tmux 命令改由后端产出的那天（`control/launch.rs` 头注逐字「本模块**不 attach**」）。",
+        ),
+        (
+            "SESSION_BACKEND",
+            "src/remote-launch-run.ts",
+            2,
+            "`import` 一处 + `attachCmd` 那一处（把 `↗` 交给用户自己的终端那一跳）。",
+            "同上；⚠ `attach` 那一跳由 `K-R59` `§0c` 明写**不做** —— \
+             后端在远端开不了你面前的窗，那是结构不是退路。",
+        ),
     ];
 
     /// ★ 量具自检：`production_ts` 真的在剥，而不是原样返回；且行尾截断在本组语料上安全。
@@ -565,8 +618,11 @@ mod f07_main_path_tests {
         // ① b：`launch-render-fallback.ts` 仍问 `SESSION_BACKEND.` 要外层 tmux 命令。
         // 那两条说的是 **monitor 自己那条 `↗` 路**（TS 渲染 → `ssh -t bash -lic '<串>'`），
         // 它与「ccm 在远端自己起会话时问不问 daemon」**是两条路，别压成一句**。
-        // 再加上 `the_daemonless_remote_still_needs_the_ts_fallback_renderer` 那条**硬**障碍
-        // （daemonless 主机今天仍是产品提供的开关）⇒ **删 TS 渲染器的前置仍然不成立。**
+        // 〔散文墓碑〕这里原来还写着「再加上 `the_daemonless_remote_still_needs_the_ts_fallback_renderer`
+        // 那条**硬**障碍（daemonless 主机今天仍是产品提供的开关）」——
+        // 🔴 `K-R59`（09-11，定框 `K35`）把那一档整格删了，那条判据也随之换人。
+        // ⇒ **删 TS 渲染器的前置仍然不成立**，但今天的理由换成了
+        //   `the_ts_fallback_renderer_now_stands_on_its_own_consumers`（3 + 2 个生产消费者）。
         // ⚠ 而 **Rust 那棵树仍然必须是零** —— monitor 侧那条 `.call("launch")` 至今只发
         //   `send-into` / `send-keys-raw`（`daemon_launch::the_only_mode_this_channel_can_speak_is_send_into`
         //   钉着它）。**两棵树本拍起口径不同，这不是疏漏，是两件不同的事。**
@@ -590,58 +646,161 @@ mod f07_main_path_tests {
         );
     }
 
-    /// ★★ **前提触发器（08-14 新立）：三问的答案③ 今天是「要」，而此前没有任何东西量它。**
+    /// 🔴🔴 **`U8c-3` 的前提换人了 —— 这是那份换人手续。**〔`K-R59` `KR59D2` 09-11〕
     ///
-    /// # 它补的是哪一个洞
+    /// # 被换掉的那条是什么
     ///
-    /// `U12`（daemonless 处置）这个**件**已被 `C7`〔用 08-03〕关掉，于是 08-14 的跨区对账
-    /// 把三问的③ 读成了「已被裁掉 ⇒ 不再挡着」。**那是把「件关了」读成「约束消失了」**。
+    /// 〔散文墓碑〕这里此前住着 `the_daemonless_remote_still_needs_the_ts_fallback_renderer`（08-14 立）。
+    /// 它主张两件事：① `daemonless` 这个每机开关还在（字段 + 界面那一格，两处都要）；
+    /// ② **所以** `src/launch-render-fallback.ts` 与 `src/session-backend.ts` 删不得 ——
+    /// 没装 ccm 的 daemonless 远端，它的 `↗` 命令就是这两个文件产的。
     ///
-    /// `C7` 逐字是「**没有 daemonless —— 使用软件就要有后端** ⇒ **本机**也要有后端进程」，
-    /// 它裁的是**本机**那一格（`local_backend.rs` 头注「F05a（定框 C7）」就是它的产物）。
-    /// 而 `daemonless` 今天仍是**每台远端主机的用户开关**：
-    /// `settings/machine-card.ts` 里那个 checkbox 逐字「daemonless 降级读取（无需 daemon）」，
-    /// 落进 `RemoteHostConfig.daemonless`。
+    /// 它自己逐字写着：「哪天 `daemonless` 这个开关真被取消了（那才是 `C7` 覆盖到远端的那一天），
+    /// **本条主动红**，提醒回来重裁 `U8c-3` —— 那时兜底渲染器少了一类必须服务的主机。」
     ///
-    /// ⇒ 那种主机**存在**，而它的 `↗` 走的是纯 SSH（`launch_remote_terminal` 不经 daemon），
-    /// 没装 ccm 时命令只能由 monitor 自己渲染 ⇒ **`renderFallback` + `session-backend.ts`
-    /// 就是那条路**。三问③ 因此从「未决」变成「**已决：要**」——
-    /// 从软障碍变成硬障碍，比 08-04 更删不得。
+    /// **那一天就是 09-11**（用户定框 `K35`：「不要有 daemonless。没有没有后端的情况。
+    /// 前端应该就是去调用远程后端的。」）⇒ 那条判据**红了，而且红得对**。
     ///
-    /// # 本条什么时候该红
+    /// # 🔴 而它红完之后的答案，不是它自己那句话
     ///
-    /// 哪天 `daemonless` 这个开关真被取消了（那才是 `C7` 覆盖到远端的那一天），本条主动红，
-    /// 提醒回来重裁 U8c-3 —— 那时兜底渲染器少了一类必须服务的主机。
+    /// 它预写的结论是「那时兜底渲染器**少了一类必须服务的主机**」——
+    /// 听起来像「可以删了」。**现打（`4d298c4`，`src` 下、去掉 `*.test.ts` / `*.vitest.ts`）不是这样**：
+    /// `renderFallback` 有 **3 个**生产消费者、`SESSION_BACKEND` 有 **2 个**（逐处见 [`TS_FALLBACK_KEEPERS`]）。
     ///
-    /// ⚠ 它**不**主张「daemonless 主机今天真的在跑」（那要真远端，见 `ROADMAP §5`），
-    /// 只主张「产品今天仍然提供这个开关」。两件事，别混。
+    /// ⇒ **前提退役，但那条路不退役 —— 它另有消费者。**
+    /// 08-14 那条把「daemonless 主机需要它」当成了「它删不得」的**理由**，
+    /// 而那不是唯一的理由。**换人手续办完了，不是把它抹掉。**
+    ///
+    /// ⚠ **本条只答「那条路还有没有别的消费者」，不答「那 3 个消费者今天还该不该存在」** ——
+    /// 后者要读 `U8c-3` 的原意，不在 `K-R59` 射程（件文件 `§0b-3` 逐字）。
+    ///
+    /// # 本条什么时候该红（新的触发条件，逐条写死）
+    ///
+    /// - **那一档回潮**：`daemonless` 又变回一个用户开关（字段清单 / 界面 / 数据源分支任一处）
+    ///   ⇒ 红。`K35` 是用户定框，回潮要先回去改定框，不是悄悄加回来。
+    /// - **消费者少一个**：[`TS_FALLBACK_KEEPERS`] 与源码对不上 ⇒ 红。**掉到 0 那天**
+    ///   就是这两个文件真能删的那天 —— 那时回 `U8c-3`，而不是靠读注释判断。
     #[test]
-    fn the_daemonless_remote_still_needs_the_ts_fallback_renderer() {
-        // ① 开关还在：类型上的字段 + 界面上的那一格，两处都要 —— 只留字段的话，
-        //    「字段还在但界面已经不给了」会被读成「开关还在」。
+    fn the_ts_fallback_renderer_now_stands_on_its_own_consumers() {
+        // ① **前提确实退役了**（不是「名字没了」，是那一档没了）。
+        //    🔴 刻意**不**用 `!contains("daemonless")` —— `remote-config.ts` 里还剩**一处**
+        //    该词的字面量（`LEGACY_NO_BACKEND_KEY`，认旧配置用的墓碑），数名字会把它读成回潮。
+        //    ⇒ 断的是**载体**：落盘字段清单里那一项 · 界面那个 input · 数据源那条分支。
         let cfg = production_ts(&read_ts("src/remote-config.ts"));
         assert!(
-            cfg.contains("daemonless"),
-            "`RemoteHostConfig` 的生产段里没有 `daemonless` 了 —— **这多半是好事**：\n\
-             `C7`（没有 daemonless）可能终于覆盖到远端主机了 ⇒ 三问③ 的答案从「要」变了，\n\
-             回 U8c-3 重裁：兜底渲染器少了一类必须服务的主机。"
+            !cfg.contains(r#""daemonless","#),
+            "`REMOTE_HOST_FIELDS` 里又有 `daemonless` 了 —— 那一档回潮了。\n\
+             `K35`〔用 09-11〕逐字：「不要有 daemonless。没有没有后端的情况。」\n\
+             要加回来先回去改定框，并同轮重裁 `U8c-3`（本条的存续理由会跟着变）。"
         );
         let card = production_ts(&read_ts("src/settings/machine-card.ts"));
         assert!(
-            card.contains("daemonlessInput"),
-            "机器卡片的生产段里没有 daemonless 那个开关了 —— 同上，回 U8c-3 重裁。\n\
-             （字段还在而界面没了，也是「用户不再能造出 daemonless 主机」，前提照样动了。）"
+            !card.contains("daemonlessInput"),
+            "机器卡片的生产段里又有那个开关了 —— 用户又能造出「不装后端」的主机。同上。"
         );
-        // ② 而承接它的那条路仍在 TS：兜底渲染器 + 座，两个文件都得在。
+        let src = guard_core::production_code(include_str!("../../ssh_source.rs"));
+        assert!(
+            !src.contains("daemonless_stream_loop"),
+            "`ssh_source.rs` 生产段里那条轮询回落又回来了 —— \n\
+             **开关没了而路还在**，那是最坏的一种：没有任何界面造得出它，却仍有一条代码路等着。"
+        );
+        // ② **新的存续理由**：那条路今天靠自己的消费者站着，逐处点名、处数从源码派生。
+        for (symbol, file, want, what, unlock) in TS_FALLBACK_KEEPERS {
+            let code = production_ts(&read_ts(file));
+            let got = code.matches(symbol).count();
+            assert_eq!(
+                got, *want,
+                "`{file}` 里 `{symbol}` 的生产处数是 {got}，登记的是 {want}。\n\
+                 那一处是什么：{what}\n\
+                 **少一处** ⇒ 一个消费者走了，把登记拧下来；\n\
+                 **掉到一个都不剩** ⇒ 那才是「这条路可以退役」，回 `U8c-3` 重裁，别自批。\n\
+                 它什么时候能走：{unlock}"
+            );
+        }
+        // ③ 承接方那两个文件本身还在（`U8c-3` 的顺序是「先有承接方，再删旧的」）。
         for f in ["src/launch-render-fallback.ts", "src/session-backend.ts"] {
             assert!(
                 repo_root().join(f).is_file(),
-                "`{f}` 没了，而 `daemonless` 开关还在 ——\n\
-                 **这一条红说明有人先删了承接方**：没装 ccm 的 daemonless 远端\n\
-                 今天的起会话命令就是这两个文件产的，删掉它们那类主机的 `↗` 直接哑掉。\n\
-                 U8c-3 的顺序是「先有承接方，再删旧的」，不是反过来。"
+                "`{f}` 没了，而 ② 那几个消费者还在 —— **有人先删了承接方**。"
             );
         }
+    }
+
+    /// 🔴 **`KR59D2` 的死值验落点：那份换人手续不许被悄悄撕掉。**
+    ///
+    /// # 它为什么是一条独立的判据
+    ///
+    /// `KR59D2` 逐字要的是：「把那条判据整条删掉、别的都不动 ⇒ **必须有东西红**
+    /// （若没有，说明「前提没了」这件事在盘上真的没有任何痕迹 —— 那正是本条要治的）」。
+    ///
+    /// 上面那条墓碑自己做不到这件事：删掉它，它就不再运行，也就不再说话。
+    /// ⇒ 由**本条**在旁边看着它。**两条一起删**才能静默 —— 而那已经不是「别的都不动」了。
+    ///
+    /// # 它防的那个活体
+    ///
+    /// `RELAY_KEEPS_THE_OLD_PATH` 犯过同形的病：退役条件悬空指向一个**已经被删掉的东西**
+    /// （`shared/ccm`），没人发现。本条断的正是「指着的那几样今天都还在盘上」。
+    #[test]
+    fn the_retired_premise_left_a_tombstone_that_is_still_on_the_board() {
+        let me = include_str!("launch_wire.rs");
+        // 地板：切不到语料时下面几条会零命中地绿。
+        assert!(
+            me.len() > 20_000,
+            "只读到 {} 字节的本文件 —— 本条在空转",
+            me.len()
+        );
+        // 🔴🔴 **针一律现拼，一个都不许写成整串字面量 —— 这一条本轮实测栽过两次。**
+        //
+        // ① 第一版把墓碑那个函数名连着 `fn ` 前缀写成一整串字面量，
+        //    而**那串字面量自己就住在本文件里** ⇒ `me.contains(needle)` **恒真**：
+        //    死值验把那条判据整条改名，读数是「新红 0」——判据在自己身上空转。
+        // ② 改成现拼之后，我又把那串完整字面量抄进了**解释它的注释**里，同一条当场又恒真一次。
+        // ⇒ 所以这段解释里也不写完整串（要提就断开写：`fn the_ts_fallback_renderer_now_` ＋ 后半）。
+        // 与 `6g` 那族「断言用的子串取自夹具自己的名字」是同一个病。
+        let tomb_fn = format!(
+            "fn the_ts_fallback_renderer_now_{}",
+            "stands_on_its_own_consumers"
+        );
+        let keepers = format!("TS_FALLBACK_{}", "KEEPERS");
+        for needle in [tomb_fn.as_str(), keepers.as_str()] {
+            assert!(
+                me.contains(needle),
+                "`{needle}` 不在本文件里了 —— **`U8c-3` 的那份换人手续被撕掉了。**\n\
+                 08-14 那条前提触发器（`daemonless` 主机需要兜底渲染器）在 09-11 `K-R59` 红了，\n\
+                 而它红完之后留下的东西就是那条墓碑 + 那张消费者登记。\n\
+                 删掉它们 = 「一个前提没了」这件事在盘上再没有任何痕迹，\n\
+                 下一个人读到的会是「兜底渲染器没有存续理由」——**而那是假的**。\n\
+                 真要删，先回 `U8c-3` 答出「那条路今天还删不删得」，再连本条一起删。"
+            );
+        }
+        // 🔴 **手续在，不等于手续还在干活。**〔本轮死值验 `M10` 逼出来的：把那半的比对
+        //    换成 `.iter().take(0)`，六格全绿 —— 那半当时没有任何东西看着。〕
+        //    ⇒ 再断一句：墓碑那个函数体里**真的在整表迭代**那张登记。
+        //    ⚠ 射程如实写：它认的是「整表迭代」这一个**形状**（`in <表> {`）。
+        //      换一种写法（先 `collect` 再比、或换个循环变量顺序）它就认不出 —— **不声称堵住**。
+        let at = me.find(tomb_fn.as_str()).expect("上面刚断过它在");
+        let body_end = me[at..].find("\n    }\n").map_or(me.len() - at, |k| k + 6);
+        let body = &me[at..at + body_end];
+        assert!(
+            body.len() > 800,
+            "切出来的墓碑函数体只有 {} 字节 —— 本条在空转（「体里没有」与「压根没切出体」同形）",
+            body.len()
+        );
+        let iterating = format!("in {keepers} {{");
+        assert!(
+            body.contains(iterating.as_str()),
+            "墓碑还在，但它**不再逐条比对**那张消费者登记（找不到 `{iterating}`）——\n\
+             表留着而比对掏空 = 「兜底渲染器还有 3 + 2 个消费者」这句话从此没人核。\n\
+             真要换写法，请连本条一起改（并说明新的形状怎么认）。"
+        );
+        // 阴性对照：这把尺子不是恒真的。
+        // ⚠ **针要现拼**：写成字面量的话它自己就在本文件里，这一条当场自相矛盾
+        //   （本轮实测红过一次 —— 与 `daemon-section` 那条「别让路径混进断言」同族）。
+        let absent = format!("fn {}", "a_judgement_that_was_never_written");
+        assert!(
+            !me.contains(absent.as_str()),
+            "扫描器恒真 —— 上面几条在空转"
+        );
     }
 
     /// ★ **F04c 补：`send-keys` 那两个 mode 只许从一个地方发出去。**

@@ -98,9 +98,12 @@ beforeEach(() => {
 });
 
 describe("deriveUi 降级矩阵（DESIGN §7）", () => {
-  it("daemonless → hidden", () => {
+  // 🔴 `K-R59`：这里此前有一条「daemonless → hidden」。定框 `K35` 之后
+  //    `accounts.rs::cfg_for` 不再产出那条错误串 ⇒ `AccountsUi` 的 `hidden` 那一档
+  //    **再也到不了**，连档带测一起下岗。
+  it("🔴 K-R59：任何 `available:false` 都落到 needs-update —— 不再有「安静隐藏」那一档", () => {
     const ui = deriveUi(state({ available: false, error: "该主机配置为 daemonless（无 daemon），账号功能不可用" }));
-    expect(ui.kind).toBe("hidden");
+    expect(ui.kind).toBe("needs-update");
   });
   it("旧 daemon → needs-update", () => {
     const ui = deriveUi(state({ available: false, error: "远端 daemon 不支持账号查询（版本过旧）——请更新 daemon" }));
@@ -583,7 +586,7 @@ describe("shouldShowAccountBadge（A4/§7 徽章门控）", () => {
   it("ready 远端 → 显", () => {
     expect(shouldShowAccountBadge("aya", new Set(["aya"]))).toBe(true);
   });
-  it("非 ready 远端（daemonless/未迁移/旧）→ 不显（避免满屏 —）", () => {
+  it("非 ready 远端（未迁移/旧）→ 不显（避免满屏 —）", () => {
     expect(shouldShowAccountBadge("aya", new Set())).toBe(false);
     expect(shouldShowAccountBadge("box2", new Set(["aya"]))).toBe(false);
   });

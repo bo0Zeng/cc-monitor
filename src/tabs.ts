@@ -388,7 +388,7 @@ export class TabManager {
   private accountEmailByName = new Map<string, string>();
   /** A4：sid → lastAccount（history-metadata）。徽章源②：live 探测不到时兜底。main.ts 定期喂。 */
   private accountLastByS = new Map<string, string>();
-  /** A4/§7：账号可查询的远端 origin 集（available 且非 daemonless）。只有这些 origin 的会话才显徽章。 */
+  /** A4/§7：账号可查询的远端 origin 集（available）。只有这些 origin 的会话才显徽章。 */
   private accountReadyOrigins = new Set<string>();
   /** account-ux U5：origin → 当前账号名。徽章「信息才显」比对：会话账号==它 → 不挂徽章。main.ts 定期喂。
    *  **只放 isSelectable 的账号**（main.ts 侧过滤）：不可选的当前账号对齐必失败，指着它说"你不一致"
@@ -2767,7 +2767,7 @@ export class TabManager {
    *  submenu（补基座+具名账号入口）；活 tab → 账号数 ≥2 时追加一个「Restart」一级项 + flyout
    *  （旧版从不给活会话基座逃生口，见 buildRestartSubmenu）。复用 F51 代次守卫（gen !==
    *  tabMenuGeneration 则菜单已换/已关，整体 no-op，防 R-1 跨 tab 串味）。账号库不可用（§7
-   *  daemonless/旧/未启用）→ `enumerateAccountModifiers` 内部已容错返回空数组，本方法
+   *  旧/未启用）→ `enumerateAccountModifiers` 内部已容错返回空数组，本方法
    *  据此自然不追加任何东西（默认 Resume 仍在）。异步 fetch 用新鲜值，无冷缓存分裂。 */
   private async appendAccountMenuItems(
     origin: string,

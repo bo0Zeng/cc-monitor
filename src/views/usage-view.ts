@@ -312,7 +312,7 @@ export class UsageView {
         }
       })
       .catch((e) => {
-        // 远端用量失败只 warn、不弹 toast、不阻本地（daemonless/旧 daemon/断线均属正常降级）。
+        // 远端用量失败只 warn、不弹 toast、不阻本地（旧 daemon / 断线均属正常降级）。
         if (seq === this.loadSeq) console.warn("远端用量聚合失败（跳过）:", e);
       });
     try {

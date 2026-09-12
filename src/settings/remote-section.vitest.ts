@@ -56,6 +56,9 @@ import {
   LOCAL_MACHINE_KEY,
 } from "./machine-status";
 import { __setHostOsForTests } from "./host-os";
+// `KR59D3`：那条**有名字**的告知 —— 名字的家只有一个（`readiness.ts`），
+// 判据与 DOM 上那个 `data-code` 断的是同一个串，不在这里另抄一份字面量。
+import { NO_BACKEND_GAP_CODE } from "./readiness";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { stripComments } from "../test-support/strip-comments";
@@ -100,7 +103,6 @@ describe("F54 findHostByOrigin", () => {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    daemonless: false,
     resumeCommand: "",
       });
   const hosts = [mkHost("aya", "10.0.0.2"), mkHost("", "pi.local")];
@@ -142,7 +144,6 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
     hostKeyFingerprint: "",
     addresses: [],
     jump,
-    daemonless: false,
     resumeCommand: "",
       });
 
@@ -176,7 +177,7 @@ describe("F56 jump write→read 往返（D-B1 回归）", () => {
 });
 
 describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字段不丢）", () => {
-  // `jump` 与 `daemonless` 都曾因为「加了字段但序列化清单没跟上」被静默丢掉。
+  // `jump` 与那个已退役的 `daemonless` 都曾因为「加了字段但序列化清单没跟上」被静默丢掉。
   // S1 的编译期穷尽检查挡住了「漏写清单」，但挡不住「读盘那侧忘了解析」——
   // 这条往返把另一半也钉住。
   const host = (resumeCommand: string): RemoteHostConfig => ({
@@ -189,7 +190,6 @@ describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字�
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    daemonless: false,
     resumeCommand,
   });
 
@@ -219,47 +219,55 @@ describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字�
   });
 });
 
-describe("F59 daemonless write→read 往返（D-B1 同源回归：布尔字段不丢）", () => {
-  const host = (daemonless: boolean): RemoteHostConfig => ({
-    label: "aya",
-    host: "10.0.0.2",
-    port: 22,
-    user: "u",
-    keyPath: "",
-    daemonPath: "/d",
-    hostKeyFingerprint: "",
-    addresses: [],
-    jump: "",
-    daemonless,
-    resumeCommand: "",
+/**
+ * 🔴 `KR59D3`：**旧配置里那个 `true` 不许被静默吞掉。**
+ *
+ * 这一组此前叫「F59 daemonless write→read 往返」，钉的是那个布尔字段**存得下、读得回**。
+ * 定框 `K35`（「不要有 daemonless。没有没有后端的情况。」）之后那个字段没了 ——
+ * 于是这一组要钉的性质**翻了面**：
+ *   ① 那个键**不再写出去**（下次保存就把用户盘上那份旧值清掉，这是迁移本身）；
+ *   ② 而**清掉之前**，读盘那一趟必须把它认出来，落在 `legacyNoBackend` 上 ——
+ *      不认出来，那台主机明天开始连后端，连不上时用户看见的只是「连不上」。
+ */
+describe("KR59D3 旧配置里那个 `true`：读得出来、写不回去", () => {
+  it("🔴 旧 config 里的 `daemonless: true` ⇒ `legacyNoBackend` 点得出那台机器的名字", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      remote: {
+        enabled: true,
+        hosts: [
+          { label: "aya", host: "10.0.0.2", user: "u", daemonPath: "/d", daemonless: true },
+          { label: "nano", host: "10.0.0.3", user: "u", daemonPath: "/d" },
+        ],
+      },
+    });
+    const back = await readRemoteConfig();
+    expect(
+      back.legacyNoBackend,
+      "旧配置里那个 `true` 被 `coerceHost` 当未知键**静默吞掉**了 —— " +
+        "那正是 `KR59D3` 要治的那一形",
+    ).toEqual(["aya"]);
+    // 阴性对照：没写过那个键的机器不进名单（不是恒挂）。
+    expect(back.legacyNoBackend).not.toContain("nano");
+    // 而字段本身**真的没了**：hosts 上不该再冒出这个属性。
+    expect(Object.keys(back.hosts[0]!)).not.toContain("daemonless");
   });
 
-  it("daemonless=true 写入 config 并读回不丢", async () => {
-    vi.mocked(loadConfig).mockResolvedValue({});
+  it("保存一次就把盘上那个旧键写没（迁移本体）", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      remote: {
+        enabled: true,
+        hosts: [{ label: "aya", host: "10.0.0.2", user: "u", daemonPath: "/d", daemonless: true }],
+      },
+    });
     let saved: Record<string, unknown> = {};
     vi.mocked(saveConfig).mockImplementation(async (c: unknown) => {
       saved = c as Record<string, unknown>;
     });
-    await patchRemoteConfig({ enabled: true, upsert: [{ key: null, value: host(true) }] });
-    // 写入的 config 里 hosts[0] 含 daemonless（漏写 → undefined，测试红，同 F56 D-B1）
-    const written = (saved.remote as { hosts: Array<{ daemonless?: boolean }> }).hosts[0];
-    expect(written.daemonless).toBe(true);
-    // 读回:coerceHost 保留布尔
-    vi.mocked(loadConfig).mockResolvedValue(saved);
-    const back = await readRemoteConfig();
-    expect(back.hosts[0].daemonless).toBe(true);
-  });
-
-  it("缺省 daemonless → false（旧配置零迁移）", async () => {
-    // 旧 config：hosts[0] 无 daemonless 键 → coerceHost 回退 false。
-    vi.mocked(loadConfig).mockResolvedValue({
-      remote: {
-        enabled: true,
-        hosts: [{ host: "10.0.0.2", user: "u", daemonPath: "/d" }],
-      },
-    });
-    const back = await readRemoteConfig();
-    expect(back.hosts[0].daemonless).toBe(false);
+    await patchRemoteConfig({});
+    const written = (saved.remote as { hosts: Array<Record<string, unknown>> }).hosts[0]!;
+    expect(Object.keys(written)).not.toContain("daemonless");
+    // 阴性对照：这一趟**真的写了东西**（不是「什么都没写」恒真）。
+    expect(written.label).toBe("aya");
   });
 });
 
@@ -274,11 +282,14 @@ describe("F83 sftpEligibleHosts", () => {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    daemonless: false,
     resumeCommand: "",
     ...over,
   });
-  const cfg = (hosts: RemoteHostConfig[]): RemoteConfig => ({ enabled: false, hosts });
+  const cfg = (hosts: RemoteHostConfig[]): RemoteConfig => ({
+    enabled: false,
+    hosts,
+    legacyNoBackend: [],
+  });
 
   it("空 hosts → []", () => {
     expect(sftpEligibleHosts(cfg([]))).toEqual([]);
@@ -301,7 +312,7 @@ describe("F83 sftpEligibleHosts", () => {
   });
   it("不看 enabled（禁用远端也能纯浏览文件）", () => {
     const hosts = [mk({ host: "h", user: "u" })];
-    expect(sftpEligibleHosts({ enabled: false, hosts })).toHaveLength(1);
+    expect(sftpEligibleHosts({ enabled: false, hosts, legacyNoBackend: [] })).toHaveLength(1);
   });
 });
 
@@ -323,7 +334,6 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    daemonless: false,
     resumeCommand: "",
       });
 
@@ -610,8 +620,14 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   // 且逐项等于本机那两格，那一屏就是分母本身。
   // ───────────────────────────────────────────────────────────────────────────
 
-  /** 本机那两格写绿 —— 值取 `accounts-section` 在「读出来了·有号」那一档写的那对。 */
+  /**
+   * 本机那几格写绿 —— 值取各自生产写点真会写的那些。
+   *
+   * ⚠ `K-R59`（09-11）**从两格变成三格**：`daemon` 那条「本机不适用」的豁免撤了
+   *（`C7` 之后本机也有后端进程），写点是本文件被测对象自己的 `noteLocalBackend`。
+   */
   function greenLocalTwo(): void {
+    recordFacet(LOCAL_MACHINE_KEY, "daemon", { kind: "ok", detail: "已连上" });
     recordFacet(LOCAL_MACHINE_KEY, "acctIso", { kind: "ok", detail: "已启用" });
     recordFacet(LOCAL_MACHINE_KEY, "accounts", { kind: "ok", detail: "3 个" });
   }
@@ -626,8 +642,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   it("★ NF2D3 最后那一跳：本机全绿 + 零远端 ⇒ 「还差什么」整块不出现", async () => {
     // 分母先钉死，别让「一台机器都没有」蒙混过去：
     //   · 远端 **0** 台，而清单的入参是 `[LOCAL_MACHINE_KEY, ...hosts]` ⇒ 机器数 **1**；
-    //   · monitor 跑在 Windows 上 ⇒ 本机的适用格**恰好**是 `acctIso` / `accounts` 两格
-    //     （`daemon`/`connection` 不适用；`ccm` 的对应物是「终端集成」那块）。
+    //   · monitor 跑在 Windows 上 ⇒ 本机的适用格**恰好**是 `daemon` / `acctIso` / `accounts`
+    //     三格（`connection` 不适用；`ccm` 的对应物是「终端集成」那块）。
+    //     ⚠ `K-R59`：`daemon` 是这一拍新算进来的那一格。
     // 下面这一屏是那个分母的**真实渲染**：它必须先真的出现、且逐项等于这两格。
     localStorage.clear();
     __setHostOsForTests("windows");
@@ -637,11 +654,12 @@ describe("S1 RemoteSection：保存走局部合并", () => {
       "分母塌了：这一块本来就没出现（或 renderGaps 没跑）⇒ 下面那条 none 是空真",
     ).not.toBe("none");
     expect(gapKeysOf(before)).toEqual([
+      `${LOCAL_MACHINE_KEY}/daemon:unknown`,
       `${LOCAL_MACHINE_KEY}/acctIso:unknown`,
       `${LOCAL_MACHINE_KEY}/accounts:unknown`,
     ]);
 
-    // 把那两格写绿 —— 这正是 `N-F2` 给本机那条路补上的写点会写进去的东西。
+    // 把那几格写绿 —— 这正是各自的写点会写进去的东西。
     greenLocalTwo();
     const after = gapsBoxOf(await mount([], fakePages().host));
     expect(
@@ -652,22 +670,73 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(gapKeysOf(after)).toEqual([]);
   });
 
-  it("★ NF2D3 先证会红：把本机那两格改回「没测过」⇒ 那一块又出现", async () => {
+  it("★ NF2D3 先证会红：把本机那几格改回「没测过」⇒ 那一块又出现", async () => {
     localStorage.clear();
     __setHostOsForTests("windows");
     greenLocalTwo();
     expect(gapsBoxOf(await mount([], fakePages().host)).style.display).toBe("none");
 
-    // 只抹掉本机那一栏 = 回到 `N-F2` 之前的行为（那两格从来没人写）。
+    // 只抹掉本机那一栏 = 回到 `N-F2` 之前的行为（那几格从来没人写）。
     forgetMachine(LOCAL_MACHINE_KEY);
     expect(readStatus(LOCAL_MACHINE_KEY), "账本没被抹干净，下面那条不算数").toEqual({});
     const back = gapsBoxOf(await mount([], fakePages().host));
     expect(back.style.display, "回到旧行为时那一块该又出现").not.toBe("none");
     expect(back.textContent).toContain("还没测过");
     expect(gapKeysOf(back)).toEqual([
+      `${LOCAL_MACHINE_KEY}/daemon:unknown`,
       `${LOCAL_MACHINE_KEY}/acctIso:unknown`,
       `${LOCAL_MACHINE_KEY}/accounts:unknown`,
     ]);
+  });
+
+  /**
+   * 🔴 `KR59D3` 的**产品面**落点：「喂一份 `daemonless: true` 的旧 config ⇒
+   * 必须能从产品里**拿到一条指名的告知**」。
+   *
+   * ⚠ 纯函数那一侧由 `readiness.vitest.ts` 断（`computeGaps` 产不产得出那条 gap）；
+   * **本条断的是它有没有真的走到屏上** —— 两件事，件文件逐字禁的失效方向是
+   * 「把它做成「日志里 warn 一句」。日志不是失败面 —— 用户看不见的告知等于没有」。
+   */
+  it("🔴 KR59D3：喂一份带旧开关的 config ⇒ 清单上真有一条**带名字**的告知", async () => {
+    localStorage.clear();
+    __setHostOsForTests("windows");
+    vi.mocked(loadConfig).mockResolvedValue({
+      remote: {
+        enabled: true,
+        // ⚠ 这一台**盘上就是这么写的**（旧版本留下的），不是我们造的新字段。
+        hosts: [{ label: "aya", host: "10.0.0.2", user: "u", daemonPath: "/d", daemonless: true }],
+      },
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    const sec = new RemoteSection({ headless: true, pages: fakePages().host });
+    await new Promise((r) => setTimeout(r, 0));
+    const box = gapsBoxOf(sec);
+    expect(box.style.display, "那一块整块没出现 ⇒ 下面几条是空真").not.toBe("none");
+    const named = [...box.querySelectorAll<HTMLElement>(".remote-gap")].filter(
+      (i) => i.dataset.code === NO_BACKEND_GAP_CODE,
+    );
+    expect(
+      named.length,
+      "旧配置里那个 `true` 被静默吞掉了 —— 用户看见的只会是「连不上」",
+    ).toBe(1);
+    expect(named[0]!.dataset.origin).toBe("aya");
+    expect(named[0]!.dataset.facet).toBe("daemon");
+    expect(named[0]!.dataset.kind).toBe("missing");
+    expect(named[0]!.classList.contains("remote-gap-blocking")).toBe(true);
+    // **一句下一步** —— 光有名字不算，用户得知道去干什么。
+    expect(named[0]!.textContent).toContain("装上后端");
+    // 阴性对照：同一屏上**别的**主机不带这个名字（不是恒挂一条）。
+    vi.mocked(loadConfig).mockResolvedValue({
+      remote: { enabled: true, hosts: [{ label: "nano", host: "10.0.0.3", user: "u", daemonPath: "/d" }] },
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    const clean = new RemoteSection({ headless: true, pages: fakePages().host });
+    await new Promise((r) => setTimeout(r, 0));
+    const box2 = gapsBoxOf(clean);
+    expect(box2.style.display, "分母塌了：干净那一屏本来就没出现").not.toBe("none");
+    expect(
+      [...box2.querySelectorAll<HTMLElement>(".remote-gap")].some(
+        (i) => i.dataset.code === NO_BACKEND_GAP_CODE,
+      ),
+    ).toBe(false);
   });
 
   it("★ 渲染「还差什么」不发任何后端请求（只读账本）", async () => {
@@ -728,16 +797,62 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     expect(got.some((h) => h.label === "本机")).toBe(false);
   });
 
-  it("本机的 daemon 格是「不需要」，不是「缺组件」", async () => {
+  /**
+   * 🔴 `KR59D1` 第 ⑤ 处载体在**界面这一侧**的落点（`K-R59` 09-11）。
+   *
+   * 这一条此前逐字叫「本机的 daemon 格是「不需要」，不是「缺组件」」——
+   * `buildLocalRow` 那时给 `renderStatusCells` 硬塞一个 `{ daemon: { kind: "na",
+   * detail: "不需要" } }` 覆盖值，理由是「`watcher.rs` 直读 jsonl，本机压根不需要 daemon」。
+   *
+   * 🔴 **那句话在 `C7`〔用 08-03〕之后就不成立了**（`local_backend.rs` 是 `C7` 的产物），
+   * 而这一处**一个 `daemonless` 字样都不含** —— 与 `readiness.notApplicable` 那一支同一档。
+   * ⇒ 撤掉写死值：本机那一格照实画账本。
+   */
+  it("🔴 KR59D1⑤：本机的 daemon 格照实画账本 —— 不再写死一个「不需要」", async () => {
+    localStorage.clear();
     const sec = await mount([]);
     const local = sec.element.querySelector<HTMLElement>(".remote-machine-local")!;
     const cell = local.querySelector<HTMLElement>('[data-facet="daemon"]')!;
-    expect(cell.classList.contains("remote-status-na")).toBe(true);
-    expect(cell.title).toContain("不需要");
-    // 对照：没测过的格子是 unknown，不是 na —— 两者混同会让用户以为本机缺组件。
+    expect(
+      cell.classList.contains("remote-status-na"),
+      "本机的 daemon 又被写死成「不适用」了 —— 那台机器上的后端没起来，用户永远看不见",
+    ).toBe(false);
+    expect(cell.title).not.toContain("不需要");
+    // 账本空着 ⇒ 它该说「未测过」，与本机的「连接」那格同形。
+    expect(cell.classList.contains("remote-status-unknown")).toBe(true);
+    // 对照：本机的「连接」仍然是不适用（`INVARIANTS §40`：本地 = 不走 ssh 的远端）——
+    // 本条撤的只有 daemon 那一格，不是把整条豁免都掀了。
     const conn = local.querySelector<HTMLElement>('[data-facet="connection"]')!;
     expect(conn.classList.contains("remote-status-unknown")).toBe(true);
     expect(conn.title).toContain("未测过");
+  });
+
+  /**
+   * 🔴 `K-R59`：本机 `daemon` 那一格的**写点**真的在写。
+   *
+   * 撤掉豁免之后它是一格适用的格子，而全仓对 `LOCAL_MACHINE_KEY` 的 `recordFacet` 写点
+   * 此前只有 `accounts-section.note()`（只写 `acctIso`/`accounts`）⇒ 没有本条的话
+   * 它会**恒 `unknown`**，「还差什么」那张清单对任何人都清不空。
+   */
+  it("🔴 K-R59：本机后端起没起来，`noteLocalBackend` 真写进账本（两个方向都断）", async () => {
+    for (const [reply, want] of [
+      [{ channel: true, pid: 42 }, "ok"],
+      [{ channel: false }, "fail"],
+    ] as const) {
+      localStorage.clear();
+      ipcReplies.set("daemon_status", reply);
+      await mount([], fakePages().host);
+      expect(
+        readStatus(LOCAL_MACHINE_KEY).daemon?.kind,
+        `本机后端 channel=${String(reply.channel)} 时账本没写对`,
+      ).toBe(want);
+    }
+    // 🔴 第三个方向：**查不到就不写**。「答不出来」不是「没有」——
+    //    替用户下一个他没做过的结论，正是本模块头注最贵的那条区分。
+    localStorage.clear();
+    ipcReplies.delete("daemon_status");
+    await mount([], fakePages().host);
+    expect(readStatus(LOCAL_MACHINE_KEY).daemon).toBeUndefined();
   });
 
   it("★ 状态条读的是账本，且带年龄（不是伪装成实时）", async () => {
@@ -769,7 +884,7 @@ describe("S1 RemoteSection：保存走局部合并", () => {
   });
 
   it("★ 卡片交出「连接 / 组件」两块，且 resume 命令归组件（§5-1 要它挨着装 ccm）", async () => {
-    // S4b-3a 那轮我把 resume 命令插在 daemonless 之后，commit 却说它「紧邻装/卸 ccm」——
+    // S4b-3a 那轮我把 resume 命令插在那个已退役的降级开关之后，commit 却说它「紧邻装/卸 ccm」——
     // 实际隔着约 120 行。这条把它钉在**组件**那一半里，不让它漂回字段区。
     const p = fakePages();
     await mount([mkH("a", "1.1.1.1")], p.host);

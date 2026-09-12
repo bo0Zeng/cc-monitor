@@ -30,6 +30,7 @@ import {
   FACET_LABELS,
   MACHINE_FACETS,
   readStatus,
+  recordFacet,
   LOCAL_MACHINE_KEY,
   forgetMachine,
   renameMachine,
@@ -52,6 +53,9 @@ import {
 } from "./machine-card";
 import { markRestartNeeded } from "./restart-notice";
 import { computeGaps, summarizeGaps, describeGap } from "./readiness";
+// K-P1/P2s：本机后端那条把手的 origin。**与 `LOCAL_MACHINE_KEY` 不是同一个串** ——
+// 前者是后端注册表里的键（`inbound_client::LOCAL_ORIGIN`），后者是这本 UI 账本的键。
+import { LOCAL_ORIGIN } from "../daemon-policy";
 import { hostOs } from "./host-os"; // S9：本机 OS 决定哪些组件适用
 // 旧调用点从本模块 import 这两个（测试也是）——搬家后原样再导出，不制造无谓的改动面。
 export { shouldShowResetFingerprint };
@@ -198,7 +202,11 @@ export class RemoteSection {
   private gapsBox!: HTMLElement;
 
   /** 打开面板时从 config 拉到的快照，用于判断是否变化（变了就提示重启）。 */
-  private original: RemoteConfig = { enabled: false, hosts: [] };
+  private original: RemoteConfig = {
+    enabled: false,
+    hosts: [],
+    legacyNoBackend: [],
+  };
 
   /**
    * S1：本编辑器**加载时**看到的机器 key 列表。保存时 `remove = loadedKeys − 现存卡片的 key`。
@@ -268,13 +276,54 @@ export class RemoteSection {
     const strip = document.createElement("span");
     strip.className = "remote-machine-status";
     legend.appendChild(strip);
-    // daemon 那格对本机是**不适用**，不是「缺组件」：`watcher.rs` 直读 jsonl，
-    // 本机压根不需要 daemon（主计划 §2.4 那张表逐字写着「不需要」）。
-    renderStatusCells(strip, readStatus(LOCAL_MACHINE_KEY), {
-      daemon: { kind: "na", detail: "不需要", at: 0 },
-    });
+    // 🔴 `K-R59`（09-11）：**这里原来写死了一格 `na`** ——
+    //    「daemon 那格对本机是不适用，不是「缺组件」：`watcher.rs` 直读 jsonl，
+    //      本机压根不需要 daemon（主计划 §2.4 那张表逐字写着「不需要」）」。
+    //    那句话在 `C7`〔用 08-03〕之后就不成立了（`local_backend.rs` 就是它的产物），
+    //    而它**一个 `daemonless` 字样都不含** —— 与 `readiness.notApplicable` 那一支同一档。
+    //    ⇒ 撤掉写死值，照实画账本。
+    renderStatusCells(strip, readStatus(LOCAL_MACHINE_KEY));
+    void this.noteLocalBackend();
     // **没有删除按钮** —— 本机删不掉，这不是「暂未实现」，是它本来就不该能删。
     return row;
+  }
+
+  /**
+   * `K-R59`：**本机 `daemon` 那一格的写点。**
+   *
+   * # 为什么非有不可
+   *
+   * 撤掉 `readiness.notApplicable` 里那条豁免之后，本机的 `daemon` 变成一格**适用**的格子。
+   * 而全仓对 `LOCAL_MACHINE_KEY` 的 `recordFacet` 写点此前只有一个
+   *（`accounts-section.ts::note`，只写 `acctIso`/`accounts`）⇒ 少了这一行，
+   * 本机 daemon 会**恒 `unknown`**，「还差什么」那张清单对任何人都清不空 ——
+   * 那正是 `facet-producer-guard.vitest.ts` 与 `N-F2` 各治过一遍的同一个洞
+   *（⚠ 两者都**看不见**这一格：前者按 facet 扫源码，后者管的是另外两格）。
+   *
+   * # 它不是轮询
+   *
+   * 一次性、只问**本机**那一把手（不走 ssh、不扇出 N 台），只在打开设置面板重建列表时发一次
+   * —— 与 `machine-status.ts` 头注那条红线（「打开设置页时顺便把 N 台机器都探一遍」）
+   * 不是同一件事；`daemon-section` 在同一个面板上早就在问同一个命令了。
+   * 查不到 ⇒ **不写账本**（「答不出来」不是「没有」，那是本模块最贵的一条区分）。
+   */
+  private async noteLocalBackend(): Promise<void> {
+    try {
+      const st = await commands.daemon_status({ origin: LOCAL_ORIGIN });
+      const on = st.channel === true;
+      recordFacet(LOCAL_MACHINE_KEY, "daemon", {
+        kind: on ? "ok" : "fail",
+        detail: on ? "已连上" : "没起来",
+      });
+    } catch {
+      // 见头注：查不到就不写。**不许在这里补一个 `fail`** —— 那是替用户下一个没做过的结论。
+      return;
+    }
+    const strip = this.machinesContainer.querySelector<HTMLElement>(
+      ".remote-machine-local .remote-machine-status",
+    );
+    if (strip) renderStatusCells(strip, readStatus(LOCAL_MACHINE_KEY));
+    this.renderGaps(this.original.hosts);
   }
 
   /** 用 config 里的机器列表重建卡片。 */
@@ -314,13 +363,12 @@ export class RemoteSection {
    * 后果写出来（不只是一个 ✗），让他自己判断值不值得补。
    */
   private renderGaps(hosts: RemoteHostConfig[]): void {
-    const daemonless = new Set(
-      hosts.filter((h) => h.daemonless).map((h) => hostKey(h)),
-    );
+    // `KR59D3`：盘上还带着旧「不装后端」开关的主机 ⇒ 那一格换成一条**指名的**告知。
+    const legacy = new Set(this.original.legacyNoBackend);
     const gaps = computeGaps({
       origins: [LOCAL_MACHINE_KEY, ...hosts.map(hostKey)],
       statusOf: readStatus,
-      isDaemonless: (o) => daemonless.has(o),
+      legacyNoBackend: (o) => legacy.has(o),
       // S9：Windows 本机的启动器是「终端集成」那块，不是 POSIX 的 ccm。
       hostOs: hostOs(),
     });
@@ -344,6 +392,9 @@ export class RemoteSection {
       li.dataset.origin = g.origin;
       li.dataset.facet = g.facet;
       li.dataset.kind = g.kind;
+      // `KR59D3`：有名字的那条告知，**名字要进 DOM** —— 用户看得见的那一条与判据
+      // 断的那一条是同一个串，不是「日志里 warn 一句」。
+      if (g.code) li.dataset.code = g.code;
       li.textContent = describeGap(g);
       list.appendChild(li);
     }
@@ -748,7 +799,6 @@ export class RemoteSection {
       hostKeyFingerprint: "",
       addresses: g.addresses,
       jump: g.jump ?? "",
-      daemonless: false, // F59：从 ssh config 导入的主机默认走 daemon 路径
       resumeCommand: "", // S4b-3：空 = 沿用全局默认（导入时无从得知这台该用什么）
     };
   }
@@ -765,7 +815,6 @@ export class RemoteSection {
       hostKeyFingerprint: "",
       addresses: [],
       jump: m.proxyJump ?? "",
-      daemonless: false, // F59：从 ssh config 导入的主机默认走 daemon 路径
       resumeCommand: "", // S4b-3：空 = 沿用全局默认（导入时无从得知这台该用什么）
     };
   }
@@ -978,6 +1027,9 @@ export class RemoteSection {
     return {
       enabled: this.enabledCheckbox.checked,
       hosts: this.cards.map((c) => c.collect()),
+      // K-R59：这一格说的是**盘上那份 JSON**，卡片上表示不出来 ⇒ 原样带过来。
+      // 它只喂那条迁移告知；`writeRemoteConfig` 根本不读它（保存那一刻旧键就没了）。
+      legacyNoBackend: this.original.legacyNoBackend,
     };
   }
 
@@ -1092,8 +1144,7 @@ function sameHost(a: RemoteHostConfig, b: RemoteHostConfig): boolean {
     a.daemonPath === b.daemonPath &&
     a.hostKeyFingerprint === b.hostKeyFingerprint &&
     a.jump === b.jump && // F56（D-I3）:仅改跳板也算变更，触发「需重启生效」提示
-    a.daemonless === b.daemonless && // F59:仅改 daemonless 开关也算变更（触发「需重启生效」）
-    // F45（Phase G 补）:仅改「备用地址」也算变更。此前独漏 addresses（jump/daemonless 都比了）
+    // F45（Phase G 补）:仅改「备用地址」也算变更。此前独漏 addresses（jump 比了）
     // → 只改多地址、其它不动时「需重启生效」横幅被静默抑制，用户可能不重启、新地址不生效。
     a.addresses.length === b.addresses.length &&
     a.addresses.every((x, i) => x === b.addresses[i])

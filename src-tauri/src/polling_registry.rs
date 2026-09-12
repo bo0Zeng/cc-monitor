@@ -75,7 +75,9 @@
 //! `rust_timer_registry` 一旦消失，这段指针立刻变红。
 //!
 //! ⚠ 那半一上岗就抓到**两个真节拍器**（`bind.rs::run_heartbeat` 10s ·
-//! `ssh_source.rs` daemonless 2s），两个都**如实记为未排期** —— 别读成「已经清干净了」。
+//! `ssh_source.rs` 的 daemonless 2s），两个都**如实记为未排期** —— 别读成「已经清干净了」。
+//! 〔`K-R59` 09-11：后者**退役**了（那一整段随 `K35` 删掉），账拧在 `rust_timer_registry`
+//!  自己那张表上；这里保留原话是因为它记的是「那半一上岗时抓到了什么」，不是今天的清单。〕
 //!
 //! ⚠⚠ **08-10 订正：那个数今天是 4，不是 2。** devbench F07 把 `recv_timeout` 收进那张表的针
 //! 之后，又上账两条：`watcher.rs` 的 **100ms（10Hz，全仓最快的一处）** 与 `session_map.rs` 的 2s。

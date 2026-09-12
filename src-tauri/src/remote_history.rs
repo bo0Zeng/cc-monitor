@@ -173,18 +173,16 @@ pub async fn search_remote_all(
     out
 }
 
-/// F88a-remote（#52）：远端用量聚合 fan-out。对所有**非 daemonless** 已配置远端各 exec 一次
+/// F88a-remote（#52）：远端用量聚合 fan-out。对**所有**已配置远端各 exec 一次
 /// `<daemon> --usage`（daemon 在远端 CPU 服务端按 requestId 逐字段 MAX 聚合，避免拉整库回本地），
 /// 把每行 camelCase `SessionUsageRow` JSON 反序列化、补 `origin = 该台 label`。无远端 → 空；
-/// **daemonless 台跳过**（无 daemon 服务端聚合，其 usage 该批不出）；逐台失败 warn+跳过（不拖垮其余台）。
+/// 〔`K-R59` 09-11：原先这里还写着「**daemonless 台跳过**」并真的 `filter` 掉了它们 ——
+/// 那一档整个没了（定框 `K35`）⇒ 今天一台都不排。〕逐台失败 warn+跳过（不拖垮其余台）。
 /// 复用 `run_list_query`（连接/超时/旧 daemon hello 检测——旧 daemon 不认 `--usage` → 优雅降级空）。
 /// **口径与本地 `usage::accumulate_usage` 一字对齐**（daemon `usage_query.rs` 移植，改口径须同步两处）。
 #[tauri::command]
 pub async fn aggregate_remote_usage_all() -> Vec<crate::usage::SessionUsageRow> {
-    let cfgs: Vec<RemoteConfig> = crate::load_remote_configs()
-        .into_iter()
-        .filter(|c| !c.daemonless) // daemonless 主机无 daemon → 无 --usage 服务端聚合
-        .collect();
+    let cfgs: Vec<RemoteConfig> = crate::load_remote_configs();
     if cfgs.is_empty() {
         return Vec::new();
     }

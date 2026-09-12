@@ -496,6 +496,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
             // F05a（定框 C7：没有 daemonless）：起并看住**本机后端进程**。
+            // 〔`K-R59` 09-11：`C7` 的第二格今天补上了 —— 远端那个 `daemonless`
+            //  每机开关整格删除（定框 `K35`），从此**没有「没有后端」这回事**。〕
             //
             // ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10，v3.7.0〕。
             //
@@ -1288,7 +1290,7 @@ pub fn run() {
             history::new_local_session,
             usage::aggregate_usage_all,
             remote_history::aggregate_remote_usage_all, // F88a-remote：远端 daemon 用量 fan-out
-            // A2：多账号只读查询（账号=一个 CLAUDE_CONFIG_DIR）。旧 daemon/daemonless
+            // A2：多账号只读查询（账号=一个 CLAUDE_CONFIG_DIR）。旧 daemon
             // 台一律回 available:false，前端降级隐藏账号功能而不是弹错。
             accounts::list_remote_accounts,
             local_accounts::list_local_accounts,
@@ -1565,11 +1567,10 @@ fn parse_host_obj(
     let host_key_fingerprint = str_field("hostKeyFingerprint").map(str::to_string);
     // Batch14-F56：跳板 label（指向另一台已配置主机的 origin_label）。
     let jump = str_field("jump").map(str::to_string);
-    // Batch14-F59：daemonless 降级读取开关（per-host，缺省 false = 走 daemon 流路径）。
-    let daemonless = obj
-        .get("daemonless")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    // 🔴 `K-R59`（定框 `K35`）：这里原来读 `daemonless`（per-host 降级开关）。
+    //    那个键今天**故意不读** —— 盘上还留着 `true` 的旧配置由界面侧
+    //    （`src/remote-config.ts` 的 `LEGACY_NO_BACKEND_KEY`）认出来、指名告知一次，
+    //    后端这一侧一律按「有后端」走，不再有第二条路。
     // Batch14-F45：备用地址。前端下发数组（addresses: string[]）；也容忍换行文本（历史/手填）。
     let addresses: Vec<String> = match obj.get("addresses") {
         Some(serde_json::Value::Array(arr)) => arr
@@ -1598,7 +1599,6 @@ fn parse_host_obj(
         host_key_fingerprint,
         addresses,
         jump,
-        daemonless,
     })
 }
 
