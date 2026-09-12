@@ -938,7 +938,11 @@ run_e2e ccm-rbind-title  8
 #
 # ⚠ **新增判据落在别处，不在这四格里**：daemon 那格 676 → 677（容器路三条转发那条）。
 run_e2e ccm-cli               46
-run_e2e ccm-contract-parity   39
+# 🔴 〔`K-R61` 09-11〕39 → **42**：C 组加了三格（`capabilities=` 声明
+#    `base-url-across-tmux` · 容器载荷真带 `export ANTHROPIC_BASE_URL=` · 反空真）。
+#    判法是 `exact` ⇒ 这个数不改，涨了照样红。**同一拍要改三处**（本行 + `ci.yml` 的
+#    调用行 + 那个 job 里的清单副本），三处都不在 `K-R61` 写区，已点名交回 PM。
+run_e2e ccm-contract-parity   42
 
 # pb check 不打「passed」，单独判：它自己会打 `FAIL=<n> BROKEN=<n>`。
 #
