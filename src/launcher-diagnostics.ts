@@ -29,6 +29,50 @@ import type { AccountAliasReport } from "./generated/AccountAliasReport";
 // `K-R62`：本机 POSIX 那一格（装别名块 / 查裸行）走的是 `cc_integration_*` 那三条命令，
 // 它们的返回形状就是这一个生成物（源 `profile_installer.rs::ProfileScan`）。
 import type { ProfileScan } from "./generated/ProfileScan";
+// `K-R69` / `KR69D2`+`KR69D3`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词）。
+import type { LocalCcmEntry } from "./generated/LocalCcmEntry";
+
+/**
+ * 🔴 `K-R69` / `KR69D3`：**生成出来的那一行，该调哪一份 `ccm`。**
+ *
+ * # 立件时这里是什么样
+ *
+ * [`buildAliasLine`] 一直吐**裸 `ccm`**，靠 PATH 解析 —— 而 `K-R69` 现打：
+ * app **从来没有在本机装过 `ccm`** ⇒ 用户把这行贴进 rc 之后，解析到的仍然是他自己那份
+ * 旧的（`~/.local/bin/ccm`，2026-07-27 的 bash）。**「靠 PATH 撞运气」不是修辞，是当时的机制。**
+ *
+ * # 现在的形状，以及为什么**不是**写死绝对路径
+ *
+ * 用户 09-11 明裁「这些命令都是可以自定义的」（`R19`）⇒ 写死会把自定义堵死，
+ * 换台机器 / 换个用户也当场失效。⇒ 三档：
+ *
+ * | PATH 上那个是谁 | 吐什么 | 为什么 |
+ * |---|---|---|
+ * | **就是我们这一份**（`ours`） | 裸 `ccm` | 已经指得到了，没必要把路径塞进用户的 rc |
+ * | **不是我们这一份 / PATH 上没有** | `"${CCM:-<我们那一份>}"` | 显式指向它，**同时留一个 `CCM` 环境变量的口子**给自定义 |
+ * | **说不出**（我们那份没装 / 探不到） | 裸 `ccm` | 没资格替用户指路；这一格由 [`LocalCcmEntry.message`] 说成「查不了」 |
+ *
+ * ⚠ **它不是「猜」**：三档全由后端那次 `--ccm-probe` 握手的判词决定
+ * （`ccm_probe::classify_path_ccm`，比的是身份不是路径）。
+ */
+export function ccmInvocation(status: LocalCcmEntry | null): string {
+  // 没问到、我们那份没装下来、或者它自己都答不出 `--ccm-probe` ⇒ 不替用户指路。
+  if (!status || !status.entry || !status.ours.installed) return "ccm";
+  if (status.verdict === "ours") return "ccm";
+  return `"\${CCM:-${status.entry}}"`;
+}
+
+/** 问一次本机 `ccm` 这一格。**问不到不许静默**：回一句话，由调用方原样上屏。 */
+async function loadCcmEntry(): Promise<{
+  status: LocalCcmEntry | null;
+  error: string | null;
+}> {
+  try {
+    return { status: await commands.local_ccm_entry_status(), error: null };
+  } catch (e) {
+    return { status: null, error: `问不到本机 ccm 这一格：${String(e)}` };
+  }
+}
 
 /** 该远端命令看起来是不是绕开了 `ccm`（越层启动器）——启发式：非空、不含 "ccm"、且不是
  *  裸 `claude`（显式写 claude 是有意选择基座行为，不算"看起来像旧式包装"）。命中不代表
@@ -46,6 +90,15 @@ export function diagnoseRemoteLauncher(cmd: string): string | null {
  *  `account`/`base` 由调用方保证互斥（UI 层做的是主动互斥——填一个会清掉另一个，见
  *  `buildAliasGeneratorSection`——不是本函数需要处理的"两者都传"情形，但仍保留 account
  *  优先的兜底，防御性处理调用方万一没做互斥的情况）。 */
+/**
+ * 🔴 `K-R69` / `KR69D3`：第三个参数是**这条命令该调哪一份 `ccm`**。
+ *
+ * 默认值刻意仍是裸 `ccm` —— 那是「说不出 / 已经指得到」两档的答案，
+ * 而**不是**「懒得管」：三档由 [`ccmInvocation`] 从后端那次身份握手算出来，
+ * 调用方把算出来的那个串传进来。
+ * ⚠ 它原样拼进 shell，所以只许收 [`ccmInvocation`] 的产物（要么是裸名，
+ * 要么是它自己拼好、已经带双引号的 `"${CCM:-…}"`），别在别处现攒一个。
+ */
 export function buildAliasLine(
   name: string,
   flags: {
@@ -56,6 +109,7 @@ export function buildAliasLine(
     model?: string;
     launcher?: string;
   },
+  invocation: string = "ccm",
 ): string {
   const trimmedName = name.trim();
   if (!trimmedName) return "（先填个别名名字）";
@@ -78,7 +132,7 @@ export function buildAliasLine(
   const launcher = flags.launcher?.trim();
   if (launcher) parts.push("--launcher", q(launcher));
   const flagStr = parts.join(" ");
-  return `${trimmedName}() { ccm${flagStr ? ` ${flagStr}` : ""} "$@"; }`;
+  return `${trimmedName}() { ${invocation}${flagStr ? ` ${flagStr}` : ""} "$@"; }`;
 }
 
 /**
@@ -157,6 +211,15 @@ export function buildAccountAliasBlock(
     "它按账号表整份重写：加了账号就多一条，删了账号那条就没了。";
   wrap.appendChild(hint);
 
+  // 🔴 `K-R69` / `KR69D2`：「**你 PATH 上那个 `ccm` 是旧的**」那句话的落点。
+  // 后端**逐字**给（`ccm_probe::render_path_ccm_hint`），这里原样上屏，前端不改一个字。
+  // 产品**不删**用户任何东西（`K31` ＋ 用户逐字「原本的配置要手动删除」）——
+  // 这一块只是把「终端里敲 `ccm` 走到的其实是哪一份」说出来。
+  const pathCcm = document.createElement("pre");
+  pathCcm.className = "ccm-path-ccm";
+  pathCcm.hidden = true;
+  wrap.appendChild(pathCcm);
+
   const list = document.createElement("div");
   list.className = "ccm-acct-alias-list";
   wrap.appendChild(list);
@@ -222,6 +285,8 @@ export function buildAccountAliasBlock(
   wrap.appendChild(rcBlock);
 
   let lines: string[] = [];
+  /** `K-R69`：本机 `ccm` 这一格。`null` = 还没问到 / 问不出（那时别名回落到裸名）。 */
+  let ccmStatus: LocalCcmEntry | null = null;
 
   const renderReport = (r: AccountAliasReport): void => {
     const rows: string[] = [`别名文件：${r.aliasPath}`];
@@ -314,6 +379,14 @@ export function buildAccountAliasBlock(
   };
 
   const refresh = async (): Promise<void> => {
+    // 🔴 `K-R69`：**先问本机那条 `ccm` 入口**，再生成 —— 生成出来的那一行该指哪儿
+    // 取决于这个答案（`KR69D3`）。问不到**不许静默**：那句话原样上屏。
+    const got = await loadCcmEntry();
+    ccmStatus = got.status;
+    const say = got.error ?? got.status?.message ?? "";
+    pathCcm.hidden = say === "";
+    pathCcm.textContent = say;
+
     let names: string[];
     try {
       names = await loadAccounts();
@@ -324,10 +397,11 @@ export function buildAccountAliasBlock(
     // 生成**全部**交给 `buildAliasLine`——本块不自己拼一个字节。
     // ⚠ 先配对再过滤：先 `filter` 再按下标回头取账号名，下标会错位 ——
     //   那一形会给账号 A 生成一条指向账号 B 的命令，而两行看起来都对。
+    const invocation = ccmInvocation(ccmStatus);
     lines = names
       .map((account) => ({ account, alias: suggestAliasName(account) }))
       .filter((p) => p.alias)
-      .map((p) => buildAliasLine(p.alias, { account: p.account }));
+      .map((p) => buildAliasLine(p.alias, { account: p.account }, invocation));
     list.textContent = "";
     for (const l of lines) {
       const row = document.createElement("code");
@@ -383,6 +457,15 @@ export function buildAliasGeneratorSection(): HTMLElement {
   hint.textContent =
     "拼一条 ccm 组合，生成可以直接粘进 ~/.bashrc（或对应 shell 配置文件）的别名函数。";
   wrap.appendChild(hint);
+
+  // 🔴 `K-R69` / `KR69D3`：手工生成器与上面那一块**同职** —— 它吐的那句 `ccm` 一样
+  // 靠 PATH 撞运气。⇒ 同一个来源、同一个 [`ccmInvocation`]，别在这里另写一套。
+  // 〔纪律：治的是「所有同职的地方」，不是「我这一处」。〕
+  const genPathCcm = document.createElement("pre");
+  genPathCcm.className = "ccm-path-ccm";
+  genPathCcm.hidden = true;
+  wrap.appendChild(genPathCcm);
+  let genStatus: LocalCcmEntry | null = null;
 
   const grid = document.createElement("div");
   grid.className = "ccm-alias-gen-grid";
@@ -441,14 +524,18 @@ export function buildAliasGeneratorSection(): HTMLElement {
   // （7 个控件是这一处独有的，上提就是把三件不相干的事装进一个盒子）。
   const paste = buildPasteBlock({
     text: () =>
-      buildAliasLine(nameIn.value, {
-        tmux: tmuxCk.checked,
-        account: acctIn.value,
-        base: baseCk.checked,
-        agent: agentSel.value || undefined,
-        model: modelIn.value,
-        launcher: launcherIn.value,
-      }),
+      buildAliasLine(
+        nameIn.value,
+        {
+          tmux: tmuxCk.checked,
+          account: acctIn.value,
+          base: baseCk.checked,
+          agent: agentSel.value || undefined,
+          model: modelIn.value,
+          launcher: launcherIn.value,
+        },
+        ccmInvocation(genStatus),
+      ),
     target: "~/.bashrc（或你实际用的 shell 配置文件）",
     mergeNote: "追加一行函数定义即可，不影响文件里已有的内容。",
     activation:
@@ -485,5 +572,14 @@ export function buildAliasGeneratorSection(): HTMLElement {
   );
   wrap.appendChild(grid);
   wrap.appendChild(paste.element);
+  // `K-R69`：问一次本机那条 `ccm` 入口，问到了就重算一次输出（那句话也一起上屏）。
+  // ⚠ **不阻塞挂载**：问不到时上面那个默认值（裸 `ccm`）就是答案，界面照常可用。
+  void loadCcmEntry().then((got) => {
+    genStatus = got.status;
+    const say = got.error ?? got.status?.message ?? "";
+    genPathCcm.hidden = say === "";
+    genPathCcm.textContent = say;
+    paste.refresh();
+  });
   return wrap;
 }

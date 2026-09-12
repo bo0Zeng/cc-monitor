@@ -529,3 +529,176 @@ describe("K-R62 本机 POSIX 那一格：装 ccm 别名块 + 逐行指名旧的�
     ]);
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔴 `K-R69` / `KR69D3`：**生成出来的那句 `ccm`，指得到我们装的那一份**
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// 立件时现打：`buildAliasLine` 吐**裸 `ccm`**，靠 PATH 解析 —— 而 app **从来没有在
+// 本机装过 `ccm`** ⇒ 用户贴上去之后解析到的仍是他自己那份旧的。
+// 「今天靠撞运气」这件事，下面这几条就是它被判据看见的地方。
+
+describe("K-R69 ccmInvocation：这条别名该调哪一份 ccm", () => {
+  const card = (over: Record<string, unknown> = {}) => ({
+    installed: true,
+    version: "5",
+    capabilities: ["new", "resume"],
+    ...over,
+  });
+  const status = (over: Record<string, unknown> = {}) =>
+    ({
+      entry: "$HOME/.cc-monitor/bin/ccm",
+      ours: card(),
+      on_path: card(),
+      verdict: "ours",
+      message: "",
+      ...over,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    }) as any;
+
+  it("PATH 上那个就是我们这一份 → 裸 `ccm`（没必要把路径塞进用户的 rc）", async () => {
+    const { ccmInvocation } = await import("./launcher-diagnostics");
+    expect(ccmInvocation(status({ verdict: "ours" }))).toBe("ccm");
+  });
+
+  it("🔴 PATH 上那个**不是**我们这一份 → 显式指向我们那一份，而且**留一个 `CCM` 的口子**", async () => {
+    const { ccmInvocation, buildAliasLine } = await import(
+      "./launcher-diagnostics"
+    );
+    const inv = ccmInvocation(status({ verdict: "not_ours" }));
+    // ① 不许还是裸名 —— 那就是「靠 PATH 撞运气」原封不动。
+    expect(inv).not.toBe("ccm");
+    // ② 指得到我们那一份。
+    expect(inv).toContain("$HOME/.cc-monitor/bin/ccm");
+    // ③ ⚠ **不许写死绝对路径** —— 用户 09-11 明裁「这些命令都是可以自定义的」（`R19`）。
+    //    形状上：家目录相对 ＋ 一个环境变量覆盖口。
+    expect(inv).toContain("${CCM:-");
+    expect(inv.startsWith("/")).toBe(false);
+    // ④ 拼出来那一行仍然是合法的 shell 函数（名字校验那道门照旧在）。
+    expect(buildAliasLine("zcc", { account: "z" }, inv)).toBe(
+      "zcc() { \"${CCM:-$HOME/.cc-monitor/bin/ccm}\" --account 'z' \"$@\"; }",
+    );
+  });
+
+  it("PATH 上根本没有 `ccm` → 同样显式指向我们那一份（否则这条命令压根跑不起来）", async () => {
+    const { ccmInvocation } = await import("./launcher-diagnostics");
+    expect(
+      ccmInvocation(status({ verdict: "absent", on_path: card({ installed: false }) })),
+    ).toContain("${CCM:-");
+  });
+
+  it("我们那一份没装 / 探不到 → 回落裸名，**不替用户指一条我们自己都没验过的路**", async () => {
+    const { ccmInvocation } = await import("./launcher-diagnostics");
+    expect(ccmInvocation(null)).toBe("ccm");
+    expect(ccmInvocation(status({ entry: null, verdict: "undetermined" }))).toBe(
+      "ccm",
+    );
+    expect(
+      ccmInvocation(
+        status({ ours: card({ installed: false }), verdict: "undetermined" }),
+      ),
+    ).toBe("ccm");
+  });
+});
+
+describe("K-R69 buildAccountAliasBlock：那句话上屏 + 生成的命令跟着指对", () => {
+  const report = () => ({
+    aliasPath: "/h/.cc-monitor/account-aliases.sh",
+    names: ["zcc"],
+    collisions: [],
+    rcCandidates: [],
+    wroteAliasFile: false,
+    aliasFileUnchanged: false,
+    wroteRc: false,
+    notes: [],
+  });
+  const card = (over: Record<string, unknown> = {}) => ({
+    installed: true,
+    version: "5",
+    capabilities: ["new"],
+    ...over,
+  });
+
+  async function mount(entryStatus: unknown): Promise<{
+    el: HTMLElement;
+    calls: { lines: string[] }[];
+  }> {
+    const calls: { lines: string[] }[] = [];
+    vi.resetModules();
+    vi.doMock("./ipc/commands", () => ({
+      commands: {
+        write_account_aliases: (a: { lines: string[] }) => {
+          calls.push(a);
+          return Promise.resolve(report());
+        },
+        local_ccm_entry_status: () => Promise.resolve(entryStatus),
+      },
+    }));
+    const mod = await import("./launcher-diagnostics");
+    const el = mod.buildAccountAliasBlock(async () => ["z"]);
+    document.body.appendChild(el);
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    return { el, calls };
+  }
+
+  it("🔴 PATH 上那个是旧的 → 那句话**原样上屏**，而且落盘的那几行指的是我们那一份", async () => {
+    const { el, calls } = await mount({
+      entry: "$HOME/.cc-monitor/bin/ccm",
+      ours: card({ version: "5" }),
+      on_path: card({ version: "4" }),
+      verdict: "not_ours",
+      message: "🔴 你 PATH 上那个 `ccm` **不是** cc-monitor 装的这一份。",
+    });
+    // ① 那句话上屏 —— 后端逐字给，前端不改一个字。
+    const said = el.querySelector<HTMLElement>(".ccm-path-ccm")!;
+    expect(said.hidden).toBe(false);
+    expect(said.textContent).toContain("不是");
+    // ② 生成的命令跟着指对（**这才是 `KR69D3` 那一格**：说出来还不够，得指得到）。
+    const rows = [...el.querySelectorAll(".ccm-acct-alias-row")].map(
+      (r) => r.textContent,
+    );
+    expect(rows).toEqual([
+      "zcc() { \"${CCM:-$HOME/.cc-monitor/bin/ccm}\" --account 'z' \"$@\"; }",
+    ]);
+    // ③ 真落盘的那几行与屏幕上是同一批（不许屏幕一套、写盘一套）。
+    expect(calls[0].lines).toEqual(rows);
+  });
+
+  it("PATH 上那个就是我们这一份 → **一句话都不说**，命令也保持裸名（别没事吓用户）", async () => {
+    const { el } = await mount({
+      entry: "$HOME/.cc-monitor/bin/ccm",
+      ours: card(),
+      on_path: card(),
+      verdict: "ours",
+      message: "",
+    });
+    expect(el.querySelector<HTMLElement>(".ccm-path-ccm")!.hidden).toBe(true);
+    expect(
+      [...el.querySelectorAll(".ccm-acct-alias-row")].map((r) => r.textContent),
+    ).toEqual(["zcc() { ccm --account 'z' \"$@\"; }"]);
+  });
+
+  it("问不出这一格 → **不许静默**：屏幕上要说「问不到」，命令回落裸名", async () => {
+    const calls: unknown[] = [];
+    vi.resetModules();
+    vi.doMock("./ipc/commands", () => ({
+      commands: {
+        write_account_aliases: (a: unknown) => {
+          calls.push(a);
+          return Promise.resolve(report());
+        },
+        local_ccm_entry_status: () => Promise.reject(new Error("后端没起来")),
+      },
+    }));
+    const mod = await import("./launcher-diagnostics");
+    const el = mod.buildAccountAliasBlock(async () => ["z"]);
+    document.body.appendChild(el);
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    const said = el.querySelector<HTMLElement>(".ccm-path-ccm")!;
+    expect(said.hidden).toBe(false);
+    expect(said.textContent).toContain("问不到本机 ccm");
+    expect(
+      [...el.querySelectorAll(".ccm-acct-alias-row")].map((r) => r.textContent),
+    ).toEqual(["zcc() { ccm --account 'z' \"$@\"; }"]);
+  });
+});
