@@ -49,7 +49,7 @@
 
 use crate::accounts::{AccountsMeta, AccountsResult, AuthKind, RemoteAccount};
 // `N-F1c`：本机读口那一跳的传输。**只做调用方**，一个字都不改它的语义。
-use crate::backend::control::local_query::{run_query, QueryOutcome};
+use crate::backend::observe::local_query::{run_query, QueryOutcome};
 use acct_core::{
     auth_ready, is_deceptive_char, ACCTS_DIR_NAME, CREDENTIALS_NAME, MANIFEST_NAME,
     SUPPORTED_SCHEMA,
@@ -1164,7 +1164,7 @@ mod tests {
 #[tauri::command]
 pub async fn list_local_session_accounts() -> Result<crate::accounts::SessionAccountsResult, String>
 {
-    use crate::backend::control::local_query::{run_query, QueryOutcome};
+    use crate::backend::observe::local_query::{run_query, QueryOutcome};
     tokio::task::spawn_blocking(|| {
         let unavailable = |msg: String| crate::accounts::SessionAccountsResult {
             available: false,

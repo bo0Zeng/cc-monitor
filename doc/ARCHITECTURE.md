@@ -137,7 +137,8 @@
 **远端进程** = `remote-daemon-proto/`（独立 crate，**不是 workspace 成员**，见 2.6）·
 **本机进程** = `src-tauri/src/backend/`。
 
-两侧都该有 `platform/` `observe/` `control/` `common/` 四层。**远端四层齐全；本机只有一层** ——
+两侧都该有 `platform/` `observe/` `control/` `common/` 四层。**远端四层齐全；本机今天两层**
+〔原话逐字：「本机**只有一层**」—— 2026-09-12 `K-R71` 建了 `observe/` 之后不成立〕——
 下表是**今天真实的落地进度**，且**每一格都由判据现场量**
 （`doc_claim_registry::each_registered_status_still_matches_reality`；
 ⚠ 判据**不存这一列的副本**，它从本文件读这一列、再去代码里量，两边不一致就红）：
@@ -145,7 +146,7 @@
 | backend 分层（定框 §5） | 远端（daemon）有吗 | monitor 侧今天的状态 |
 |---|---|---|
 | `control/` | 有 | **已交付** —— 两条改状态的远端 tmux 命令都走它（见 2.3） |
-| `observe/` | 有 | **待做** —— **刻意未建**，谁来叫醒见 2.2 |
+| `observe/` | 有 | **已交付**〔2026-09-12 `K-R71`〕—— 目录建起来了，住户只有传输那一跳，见 2.2 |
 | `platform/` | 有 | **待做** —— 但 backend 那一半今天**零平台面**，所以还不需要它（见 2.4） |
 | `common/` | 有 | **待做** —— **刻意不建**：monitor 侧的共用面住 `src-tauri/crates/*`（见 2.6） |
 
@@ -182,12 +183,23 @@
 而它唯一的调用方在 `control/` ⇒ **凭空造出一条 `control → observe` 的边**，
 而 `layering_guard` 逐字禁止反向依赖（实测：照做时它当场红）。
 
-⚠ **monitor 侧的 `observe/` 今天刻意未建**：那批读面（`config_surface.rs` 1596 行 ·
-`search.rs` 1171 …）正是要**退役**的那批 —— **有几个 reader 刻意不写在这里**，
-以 `local_read_surface_registry` 的机检为准（那条曾写 13，而机器数是 7；点名的
-`local_accounts.rs` 早已不是 reader，它 `:564-565` 自陈「现在问本机后端」）——
-先搬进来再删掉是纯搬运。**谁来叫醒这个决定**：`local_read_surface_registry` 里那条前提触发器
-（`tauri.conf.json` 一出现 `externalBin` 就红）。
+⚠ **monitor 侧的 `observe/` 2026-09-12 建起来了**（`K-R71`，第 4 波 4a）：它今天的**唯一住户**
+是本机一次性查询的传输 `backend/observe/local_query.rs` —— 那份文件从 F10a 起就是读面代码，
+只是先前挂在 `control/` 线上（它自己的头注第一句逐字写着「daemon 的**读面**是 14 条一次性
+查询子命令」）。⇒ 建这个目录是**把走错门的住户领回家**，不是新起一层。
+
+🔴 **但那批要退役的读面一条都没搬进来**：`config_surface.rs` 1596 行 · `search.rs` 1171 …
+以 `local_read_surface_registry` 的机检为准（**有几个 reader 刻意不写在这里** ——
+那条散文曾写 13，而机器数是 7；点名的 `local_accounts.rs` 早已不是 reader，
+它 `:564-565` 自陈「现在问本机后端」）。挡着它们的是两样有名有姓的东西：daemon 侧的查询集缺口，
+以及 `tasks.rs` / `search.rs` 今天带着的宿主耦合（`backend/` 有一道宿主无关守卫）。
+⇒ **今天没有触发器**，逐条理由住 `src-tauri/src/backend/mod.rs` 头注最后一节。
+
+〔原话逐字，留作来历：「⚠ **monitor 侧的 `observe/` 今天刻意未建**……先搬进来再删掉是纯搬运。
+**谁来叫醒这个决定**：`local_read_surface_registry` 里那条前提触发器
+（`tauri.conf.json` 一出现 `externalBin` 就红）。」——「未建」今天不成立；
+而那条前提触发器 2026-08-04 就换过靶，今天盯的是**配置文件的形状**，
+`backend/mod.rs` 头注逐字警告过**别**把它当成那批读面退役的闹钟。〕
 
 ### 2.3 控制面今天真的在 backend 了
 

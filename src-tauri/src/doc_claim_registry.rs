@@ -582,10 +582,26 @@ mod tests {
                         .is_file(),
                     "monitor 侧 `backend/control/` 在，且那个唯一的回落分流器住在里面",
                 ),
+                // 🔴 〔`K-R71` 09-12，PM 裁定一〕**这一格原本是裸 `is_dir`** —— 原文逐字：
+                // `root.join("src-tauri/src/backend/observe").is_dir()` ＋ 说明串
+                // 「monitor 侧 `backend/observe/` 目录存在」。
+                // ★ 它犯的正是**紧挨着上面那三行警告**说的那件事：目录空着也算「有目录」。
+                //   ⇒ 同一段代码里，写下那条警告的人在下一格就犯了它警告的事（`K-R71` 的 `7u` 逮到：
+                //   把整次搬运掏空、只留一个空的 `observe/` 与一份什么都不声明的 `mod.rs`，
+                //   而文档继续宣称「已交付」—— monitor lib **1397 条一条不红**）。
+                // ⇒ 收窄成与 `control/` 那格同形：钉住那个**唯一的住户**。
+                // ⚠ **这不是新判据，是把一条已有判据收窄到它自己声称守的性质** ——
+                //   本格改动不加任何 `#[test]`，判据条数一格没涨。
                 "monitor-backend-observe-landed" => (
-                    root.join("src-tauri/src/backend/observe").is_dir(),
-                    "monitor 侧 `backend/observe/` 目录存在",
+                    root.join("src-tauri/src/backend/observe/local_query.rs")
+                        .is_file(),
+                    "monitor 侧 `backend/observe/` 在，且那个唯一的读面传输住在里面",
                 ),
+                // ⚠ 下面两格**今天仍是裸 `is_dir`，这是排期不是疏忽**〔`K-R71` PM 裁定二 ⇒ `K-R73`〕：
+                //   它们没有「那个唯一的住户」可钉（目录都还不存在），硬指一个文件就是替未来的人
+                //   做决定。⇒ 今天它们**不说假话**（两个目录都不在，`false` 是真的），
+                //   **建目录那一刻就会**，与 `observe/` 这一格 09-12 的遭遇逐字同形。
+                //   🔴 **今天没有触发器，也不许在这里编一个** —— 靠 `K-R73` 排期，不靠一个不会响的闹钟。
                 "monitor-backend-platform-landed" => (
                     root.join("src-tauri/src/backend/platform").is_dir(),
                     "monitor 侧 `backend/platform/` 目录存在",
