@@ -1,7 +1,8 @@
 // account-ux U7：设置「账号」组的 IA / 渲染分支测试（vitest + jsdom）。
 //
 // 重点不是"长得好不好看"，而是两件会真伤人的事：
-//   ① 四条**降级分支**（无远端 / daemonless / 老 daemon / 未启用）的 DOM 与文案不能被 IA 重排改掉；
+//   ① 三条**降级分支**（无远端 / 老 daemon / 未启用）的 DOM 与文案不能被 IA 重排改掉；
+//     〔`K-R59` 09-11：原先是四条 —— `daemonless` 那一支随定框 `K35` 整档删除。〕
 //   ② 维护区（加账号 / 补链，都会动远端目录）**必须默认折叠**，不能常驻摊在手边。
 // U6 的教训：断言要锚在真契约上，并对关键属性做变异验证（故意改坏看会不会红）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -29,7 +30,12 @@ import { readFileSync } from "node:fs";
 import { AccountsSection, renderRelayKeyBlock } from "./accounts-section";
 // `N-F2`：账本与那张清单 —— 本文件末尾那一族要断的正是「面板跑完之后账本里是什么」，
 // 所以取的是**真的** `readStatus` / `computeGaps`，一个桩都不架。
-import { readStatus, LOCAL_MACHINE_KEY, type MachineStatus } from "./machine-status";
+import {
+  readStatus,
+  recordFacet,
+  LOCAL_MACHINE_KEY,
+  type MachineStatus,
+} from "./machine-status";
 import { computeGaps, summarizeGaps } from "./readiness";
 import type { RelayCredentialsStatus } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
@@ -87,7 +93,6 @@ const host = (p: Record<string, unknown> = {}) => ({
   hostKeyFingerprint: "",
   addresses: [],
   jump: "",
-  daemonless: false,
   ...p,
 });
 
@@ -169,15 +174,6 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
       el.querySelector(".accounts-local"),
       "本机那一支整块没渲染 —— 上面三条会在一屏空白上恒真",
     ).not.toBeNull();
-  });
-
-  it("daemonless 远端 → 安静说明，不渲染表", async () => {
-    fetchAccountsMock.mockResolvedValue(
-      state({ available: false, error: "该远端配置为 daemonless" }),
-    );
-    const el = await mount();
-    expect(el.querySelector(".accounts-info")?.textContent).toContain("daemonless");
-    expectNoReadyChrome(el);
   });
 
   it("老 daemon（不支持账号）→ 提示需更新，不渲染表", async () => {
@@ -1065,7 +1061,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     expect(harvested.filter((s) => s.includes("该远端尚未启用多账号"))).toEqual([]);
     // 阴性对照：同一把尺子在**远端**那一支上**认得出**「远端」——它不是恒空。
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
-    fetchAccountsMock.mockResolvedValue(state({ available: false, error: "该远端配置为 daemonless" }));
+    fetchAccountsMock.mockResolvedValue(state({ available: false, error: "daemon 过旧" }));
     const remoteEl = await mount();
     expect(
       (remoteEl.textContent ?? "").includes("远端"),
@@ -1228,7 +1224,10 @@ describe("N-F2 本机那两格真的被写进账本", () => {
   it("★ NF2D2 地板：本机那条路**跑之前**，账本里本机那一栏是空的（这一族不是空真）", () => {
     // 这条是分母自检。没有它，下面每一条「写进去了」都可能是在断一本本来就有内容的账。
     expect(readStatus(LOCAL_MACHINE_KEY)).toEqual({});
-    // 而那两格是**适用**的：`notApplicable` 只排掉本机的 daemon / connection。
+    // 那两格是**适用**的：`notApplicable` 今天只排掉本机的 connection（Windows 上另加 ccm）。
+    // ⚠ `K-R59`（09-11）**多出第三格 `daemon`**：那条「本机不需要 daemon」的豁免撤了
+    //（`C7` 之后本机也有后端进程）。它**不归本分节写** —— 写点住
+    // `remote-section.ts::noteLocalBackend`，由 `remote-section.vitest.ts` 那一族接。
     const before = computeGaps({
       origins: [LOCAL_MACHINE_KEY],
       statusOf: readStatus,
@@ -1236,8 +1235,8 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     });
     expect(
       before.map((g) => `${g.facet}:${g.kind}`),
-      "本机在 Windows 上的适用格不是恰好这两格 —— 下面几条的题面就得重写",
-    ).toEqual(["acctIso:unknown", "accounts:unknown"]);
+      "本机在 Windows 上的适用格不是恰好这三格 —— 下面几条的题面就得重写",
+    ).toEqual(["daemon:unknown", "acctIso:unknown", "accounts:unknown"]);
   });
 
   // ---- 三档各写各的 ----
@@ -1302,7 +1301,13 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     ).toBe(3);
   });
 
-  it("★ NF2D2 本机侧总账：三档跑完，那两格**没有一档**还停在「没测过」", async () => {
+  /**
+   * ⚠ 射程逐字写清（`K-R59` 09-11 收窄）：本条只管**本分节负责的那两格**
+   * （`acctIso` / `accounts`）。本机的 `daemon` 从 09-11 起也是一格适用的，
+   * 但它的写点在 `remote-section.ts::noteLocalBackend` —— 这一族**一次都没跑过它**，
+   * 把它算进来只会得到一条恒红，而且红的是别人的账。
+   */
+  it("★ NF2D2 本机侧总账：三档跑完，本分节那两格**没有一档**还停在「没测过」", async () => {
     for (const st of [
       threeLocal(),
       localState({ accounts: [] }),
@@ -1316,10 +1321,16 @@ describe("N-F2 本机那两格真的被写进账本", () => {
         hostOs: "windows",
       });
       // 「没测过」= `unknown`。测过了但确认缺（`missing`）是另一回事，这条不管那个。
+      const mine = new Set(["acctIso", "accounts"]);
       expect(
-        gaps.filter((g) => g.kind === "unknown").map((g) => g.facet),
+        gaps
+          .filter((g) => g.kind === "unknown" && mine.has(g.facet))
+          .map((g) => g.facet),
         `跑完之后本机还有格子停在「没测过」（账本：${JSON.stringify(shape(led))}）`,
       ).toEqual([]);
+      // 阴性对照：这把尺子不是恒空 —— 射程外那一格今天确实停在「没测过」，
+      // 而那正是**另一个写点**的活（`remote-section.ts::noteLocalBackend`）。
+      expect(gaps.map((g) => g.facet)).toContain("daemon");
     }
   });
 
@@ -1346,18 +1357,6 @@ describe("N-F2 本机那两格真的被写进账本", () => {
       await remote(() => fetchAccountsMock.mockRejectedValue(new Error("net"))),
       "拉取失败那一支",
     ).toEqual({ accounts: { kind: "fail", detail: "拉取失败" } });
-
-    expect(
-      await remote(() =>
-        fetchAccountsMock.mockResolvedValue(
-          state({ available: false, error: "该主机配置为 daemonless", accounts: [] }),
-        ),
-      ),
-      "daemonless 那一支",
-    ).toEqual({
-      accounts: { kind: "na", detail: "daemonless" },
-      acctIso: { kind: "na", detail: "daemonless" },
-    });
 
     expect(
       await remote(() =>
@@ -1394,14 +1393,19 @@ describe("N-F2 本机那两格真的被写进账本", () => {
   it("★ NF2D3：本机全绿 + 一台远端都没有 ⇒ summarizeGaps 返回 null（那一块整块不出现的前提）", async () => {
     // 分母写清（`NF2D3` 的 acceptor 逐字要求，防「一台机器都没有」蒙混）：
     //   · 机器数 = 1（本机），**不是空清单**；
-    //   · 这台机在 Windows 上的适用格 = { acctIso, accounts }（daemon / connection 不适用、
+    //   · 这台机在 Windows 上的适用格 = { daemon, acctIso, accounts }（connection 不适用、
     //     ccm 的对应物是「终端集成」那块）—— 上面那条「地板」用例已把这个集合逐项断过；
-    //   · 这两格由**真的一次面板运行**写绿，账本不是手工摆出来的。
+    //   · `acctIso` / `accounts` 两格由**真的一次面板运行**写绿，账本不是手工摆出来的。
     const led = await localLedgerAfter(threeLocal());
     expect(shape(led), "前提没成立：这一次面板运行没把两格写绿").toEqual({
       accounts: { kind: "ok", detail: "3 个" },
       acctIso: { kind: "ok", detail: "已启用" },
     });
+    // ⚠ 第三格（`K-R59` 新算数的 `daemon`）**不归本分节写**：它的生产写点是
+    //   `remote-section.ts::noteLocalBackend`，由 `remote-section.vitest.ts` 用真的一次
+    //   面板运行钉着。这里手工补上它，**只是为了让「整块该不该出现」这一跳还量得动** ——
+    //   如实说明：这一格是摆出来的，不是本族跑出来的。
+    recordFacet(LOCAL_MACHINE_KEY, "daemon", { kind: "ok", detail: "已连上" });
     const origins = [LOCAL_MACHINE_KEY];
     expect(origins.length, "分母是空的 —— 下面那条 null 是空真").toBe(1);
     const gaps = computeGaps({ origins, statusOf: readStatus, hostOs: "windows" });
@@ -1412,9 +1416,9 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     ).toBeNull();
   });
 
-  it("★ NF2D3 先证会红：把那两格改回「没测过」⇒ 清单又出现，且逐字写着「没测过」", async () => {
+  it("★ NF2D3 先证会红：把那几格改回「没测过」⇒ 清单又出现，且逐字写着「没测过」", async () => {
     await localLedgerAfter(threeLocal());
-    // 只把本机那一栏抹掉 = 回到本件之前的行为（那两格从来没人写）。
+    // 只把本机那一栏抹掉 = 回到本件之前的行为（那几格从来没人写）。
     localStorage.clear();
     expect(readStatus(LOCAL_MACHINE_KEY)).toEqual({});
     const gaps = computeGaps({
@@ -1422,7 +1426,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
       statusOf: readStatus,
       hostOs: "windows",
     });
-    expect(gaps.map((g) => g.facet)).toEqual(["acctIso", "accounts"]);
+    expect(gaps.map((g) => g.facet)).toEqual(["daemon", "acctIso", "accounts"]);
     const s = summarizeGaps(gaps);
     expect(s).not.toBeNull();
     expect(s, "回到旧行为时它该说「还没测过」").toContain("还没测过");

@@ -189,7 +189,6 @@ mod tests {
             host_key_fingerprint: None,
             addresses: Vec::new(),
             jump: None,
-            daemonless: false,
         };
         let r = push_public_key(cfg, Some(empty.to_string_lossy().into_owned())).await;
         let _ = std::fs::remove_dir_all(&dir);

@@ -1853,7 +1853,7 @@ export class HistoryView {
 
   /**
    * A4：给远端会话菜单追加「用账号 X resume」项（每个可选账号一条）。**异步**——不阻塞菜单弹出。
-   * 只在 ≥2 个可选账号时出（<2 无可切换意义）；账号库不可用（daemonless/旧/未启用）安静不加（§7 降级）。
+   * 只在 ≥2 个可选账号时出（<2 无可切换意义）；账号库不可用（旧/未启用）安静不加（§7 降级）。
    * 追加前校验菜单仍是当前打开的那个（防 fetch 期间已换/已关，避免挂到陈旧 DOM）。
    */
   private async appendAccountResumeItems(menu: HTMLElement, ctx: RowActionCtx): Promise<void> {
@@ -1864,7 +1864,7 @@ export class HistoryView {
     } catch {
       return; // fetch 失败 → 就不加账号项，默认 resume 仍可用
     }
-    if (!state.available) return; // daemonless / 旧 daemon / 未启用 → 安静降级
+    if (!state.available) return; // 旧 daemon / 未启用 → 安静降级
     const selectable = state.accounts.filter(isSelectable);
     if (selectable.length < 2) return; // 无可切换选择就不加噪
     if (this.openEntryMenu !== menu) return; // fetch 期间菜单已变/已关

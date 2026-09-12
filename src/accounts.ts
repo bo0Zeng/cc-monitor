@@ -7,7 +7,7 @@
 //   3. 提供纯函数（降级判定 / 会话徽章映射）供 UI 与 vitest。
 //
 // **不注入 env（A4）、不重启会话（A5）、不碰本地账号（A7）**。全程走 A2 的
-// available:false 降级：未迁移 / 旧 daemon / daemonless 一律安静隐藏账号 UI，不报错。
+// available:false 降级：未迁移 / 旧 daemon 一律安静隐藏账号 UI，不报错。
 import { invoke } from "@tauri-apps/api/core";
 import { commands } from "./ipc/commands";
 import type { AuthKind } from "./generated/AuthKind";
@@ -98,8 +98,10 @@ export interface AccountsState {
 }
 
 /** chip / 设置组据此决定怎么显示。纯派生自 AccountsState。 */
+// 🔴 `K-R59`（09-11）：这里原来还有一档 `{ kind: "hidden" }` —— 它**只由**
+// 「该主机配置为 daemonless（无 daemon）」那条错误串产出，而 `K35` 把那一档整个删了
+//（`accounts.rs::cfg_for` 那个早返回一起走）⇒ 留着就是一档**再也到不了**的 UI 状态。
 export type AccountsUi =
-  | { kind: "hidden"; reason: string } // daemonless：完全不显示账号 UI
   | { kind: "needs-update"; reason: string } // 旧 daemon
   | { kind: "not-enabled"; manifestPath: string | null; reason: string } // 未迁移/无账号
   | { kind: "ready"; accounts: Account[]; defaultName: string | null; notice: string | null };
@@ -110,7 +112,6 @@ export type AccountsUi =
 export function deriveUi(state: AccountsState): AccountsUi {
   if (!state.available) {
     const e = state.error ?? "";
-    if (e.includes("daemonless")) return { kind: "hidden", reason: e };
     if (e.includes("过旧") || e.includes("不支持账号")) {
       return { kind: "needs-update", reason: e || "远端 daemon 需要更新" };
     }
@@ -701,9 +702,9 @@ export function sessionBadge(
 }
 
 /**
- * A4/§7 降级：某会话是否**该显**账号徽章。只有「账号可查询」的远端才显（即 available 且非
- * daemonless 的 origin,由 main.ts 收进 readyOrigins）。本地会话（origin null）与不可查询的远端
- * （daemonless / 未迁移 / 旧 daemon）一律不显——否则满屏 `—` 是噪音、违反 §7「不可用即安静隐藏」。
+ * A4/§7 降级：某会话是否**该显**账号徽章。只有「账号可查询」的远端才显（即 available 的
+ * origin,由 main.ts 收进 readyOrigins）。本地会话（origin null）与不可查询的远端
+ * （未迁移 / 旧 daemon）一律不显——否则满屏 `—` 是噪音、违反 §7「不可用即安静隐藏」。
  */
 export function shouldShowAccountBadge(
   origin: string | null,

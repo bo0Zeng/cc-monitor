@@ -10,8 +10,8 @@ import type { RemoteHostConfig } from "./remote-config";
 import type { AccountsState, SessionAccount } from "./accounts";
 
 /** 一台远端的最小配置（只有被测代码读到的字段是真的）。 */
-function host(label: string, daemonless = false): RemoteHostConfig {
-  return { label, host: `${label}.example`, daemonless } as unknown as RemoteHostConfig;
+function host(label: string): RemoteHostConfig {
+  return { label, host: `${label}.example` } as unknown as RemoteHostConfig;
 }
 
 function state(origin: string, available = true): AccountsState {
@@ -121,7 +121,12 @@ describe("collectAccountRows —— 扇出", () => {
     expect(out.rows.map((r) => r.account)).toEqual(["h0", "h1", "h2"]);
   });
 
-  it("daemonless 的机器一条查询都不发", async () => {
+  /**
+   * 🔴 `K-R59`：这一条此前逐字叫「daemonless 的机器一条查询都不发」，
+   * 断的是 `collectAccountRows` 先 `filter(h => !h.daemonless)`。
+   * 定框 `K35`（「没有没有后端的情况」）把那一档删了 ⇒ **翻面**：一台都不排。
+   */
+  it("🔴 K-R59：**一台都不排** —— 每台已配置远端都发查询（那个降级开关没了）", () => {
     const seen: string[] = [];
     const f: HostFetchers = {
       async fetchSessionAccounts(origin) {
@@ -133,8 +138,9 @@ describe("collectAccountRows —— 扇出", () => {
       },
       currentAccountForBadge: () => null,
     };
-    await collectAccountRows([host("a"), host("b", true), host("c")], f);
-    expect(seen).toEqual(["a", "c"]);
+    return collectAccountRows([host("a"), host("b"), host("c")], f).then(() => {
+      expect(seen).toEqual(["a", "b", "c"]);
+    });
   });
 
   it("available:false 的 origin 不进 readyOrigins", async () => {
