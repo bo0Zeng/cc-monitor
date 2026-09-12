@@ -2,8 +2,12 @@
 //!
 //! # ⚠ 它守什么、**不守什么**〔audit-0805 08-06 抽样补记〕
 //!
-//! 本模块 15 条判据**全部是声明表内部的自洽检查**：字段有没有区分力 · 落点在不在
+//! 本模块的判据**多数是声明表内部的自洽检查**：字段有没有区分力 · 落点在不在
 //! `touches` 里 · 拥有就必须装得了 · 有围栏就必须卸得掉 · 解析器有没有真看见源码。
+//! 〔`K-R63` 09-11 订正两处：① 原文写死了一个基数（「15 条」），而判据条数只有一份
+//!  住址 —— 本文件里的 `#[test]`，要数就现数〔`13b`〕；② 「**全部**是表内部自洽」
+//!  今天不成立 —— `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
+//!  一边读字段值、一边去别的文件里钉那个装 / 卸实现的签名，它跨出了这张表。〕
 //! 两条探针实测它**确实有牙**（把 `ccm` 的落点改成 `.local/bin/ccm-x` ⇒
 //! `installable_tools_declare_where_they_land` 点名；把 `installable` 全改成 `true` ⇒
 //! 三条同时红，含「在全部 6 个 ToolSpec 上都为真，没有区分力」）。
@@ -290,10 +294,18 @@ pub struct ToolSpec {
     /// 🔴 **这一格是「app 装的」与「app 只查」两档的分界线**（`K-R60`）：
     /// [`environment`] 就是读它算出每条 `ToolSpec` 属于哪一档的。
     /// ⇒ 它填错了，用户在配置面上读到的「能否装/撤」与清单上的档**同时**是假的。
-    /// 守它的是 `cc_bus_installable_matches_whether_the_deploy_really_exists`（读**字段值**，
-    /// 不是注释里的词频 —— 这一格上一次就是被词频守卫放过去的）。
+    /// 守它的是 `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
+    /// （读**字段值**，不是注释里的词频 —— 这一格上一次就是被词频守卫放过去的）。
+    /// 〔`K-R63` 09-11〕上一版守它的那条只服务 `cc-bus` 一个工具，**名字里带工具名**；
+    /// 今天这条是**覆盖全表**的性质，两格一起对拍，两个方向都判。
     pub installable: bool,
     /// 能不能卸。
+    ///
+    /// 🔴 **它与 `installable` 是同一枚硬币，而它先前只有半边被守**〔`K-R63` 09-11〕：
+    /// `fenced_block_implies_uninstallable` 守的是「有围栏 ⇒ 必须声明可卸」（少报那一向），
+    /// **多报**（声明可卸而盘上根本没有卸载实现）一条都不红 —— PM 的刀 C 把
+    /// `cc-acct-iso` 由 `false` 翻成 `true`，全表 1379 条一条没响。
+    /// ⇒ 今天与 `installable` 同走上面那条性质：字段值 ⇔ 盘上那个符号在不在。
     pub uninstallable: bool,
     pub touches: &'static [TouchedFile],
 }
@@ -366,8 +378,11 @@ pub const TOOLS: &[ToolSpec] = &[
         // 假了一个月，而 `config_surface` 的「能否装/撤」列**正是读这个字段的**。
         // 🔴 **为什么一个月没红**：守这一格的 `cc_bus_says_why_it_is_not_installable_at_the_real_depth`
         // 是**必需词守卫** —— 它数注释里两个词的出现次数，**看不见字段的值**。
-        // ⇒ 本轮补了 `cc_bus_installable_matches_whether_the_deploy_really_exists`：
-        // 它左边读这个字段、右边钉 `cc_bus_deploy.rs` 的函数签名，两边必须相等。
+        // ⇒ `K-R60` 那一轮补了一条真读字段值的判据：左边读这个字段、右边钉
+        // `cc_bus_deploy.rs` 的函数签名，两边必须相等。
+        // 🔴 **09-11 `K-R63`：那一条是专名的（名字里带工具名），本轮把它收成了覆盖全表的
+        // 一条性质** —— `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`。
+        // 理由：专名判据只把静默从 1 个工具挪走，下一个工具照样静默（件文件 `§0c`）。
         installable: true,
         uninstallable: false,
         touches: &[
@@ -479,7 +494,14 @@ pub const TOOLS: &[ToolSpec] = &[
             what: "每个远端连接的「daemon 路径」配置项",
         },
         installable: true,
-        uninstallable: false,
+        // 🔴 〔`K-R63` 09-11〕**这一格原先是 `false`，而它是一处假申报** —— 本件那条新性质
+        // 落地的当场把它逮出来的（不是人看出来的）。卸载实现一直在：
+        // `sftp.rs::uninstall_remote_daemon` 是**设置面板「卸载 daemon」按钮**背后那条命令
+        // （删 daemon 二进制 + 同目录 `.build_id`，`is_safe_remote_daemon_path` 守着）。
+        // ⇒ 少报一格的后果与多报同向：配置面那一列「能否装/撤」直接印给用户看，
+        //   写着「卸不掉」而按钮就在旁边。这正是 `K-R60` 在 `installable` 上治过的同一族病，
+        //   只是这一次错在**少报**那一边（`K-R60` 那次是多报）。
+        uninstallable: true,
         touches: &[TouchedFile {
             path: "$DAEMON_PATH",
             host: HostScope::Remote,
@@ -1449,11 +1471,18 @@ mod tests {
         // 理由写在它自己那个字面量上头。
         // ⚠ 那一整段「暂留 false」的理由**留着不删**：它是这处假申报活了一个月的来路，
         //   而本条的名字（「声明要配现实」）说的正是那件事。
-        assert!(
-            ccbus.installable,
-            "cc-bus 的部署 08-13 就实现了（`cc_bus_deploy.rs`），声明位必须跟上"
-        );
-        assert!(!ccbus.uninstallable, "卸载没做，不得声明可卸");
+        //
+        // 🔴 **09-11 `K-R63`：本条原先在这里有两条专名断言，已经收走了。**
+        // 原文逐字是 `assert!(ccbus.installable, …)` 与 `assert!(!ccbus.uninstallable, "卸载没做，不得声明可卸")`。
+        // 它们判的正是「申报 ↔ 现实」，而那件事今天由一条**覆盖全表**的性质判
+        // （`every_tool_declares_install_and_uninstall_as_the_implementations_really_are`）。
+        // 留着它们不是双保险，是两个坏处：
+        //   ① 专名钉子只把静默从一个工具挪走，下一个工具照样静默（件文件 `§0c` 的正题）；
+        //   ② 第二条会**在事情变好的那天错红** —— 真给 cc-bus 补上卸载实现并如实把字段翻成
+        //      `true`，它会拦一次，而那时它拦的是一句真话。
+        // ⇒ 本条今天只剩下**不属于那条性质**的那一格：`settings.json` 的 effect。
+        // ⚠ 如实登记：本条的**名字**因此比它现在做的事宽了一格（改名要连带跑生成命令，
+        //   PM 的窗口开着时不许跑）⇒ 改名的事走上报口交回 PM，不在这一拍自批。
         // settings.json 只生成待贴文本，绝不写
         let hooks = ccbus
             .touches
@@ -1566,6 +1595,376 @@ mod tests {
                     t.id
                 );
             }
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R63`：**申报 ↔ 现实** —— 覆盖全表的一条性质，不是逐工具一条 `assert`
+    //
+    // # 病理（件文件 `§0b`）
+    //
+    // 这张表上两个 `bool`，先前**各只有半边被守**：
+    //   · `installable` —— 一条**专名**判据（只服务 `cc-bus` 一个工具）；
+    //   · `uninstallable` —— 上面那条 `fenced_block_implies_uninstallable` 只守
+    //     「有围栏 ⇒ 必须声明可卸」（**少报**那一向），**多报**（声明可卸而盘上
+    //     根本没有卸载实现）一条判据都没有。
+    // PM 09-11 的刀 C 实打：把 `cc-acct-iso` 的 `uninstallable` 由 `false` 翻成 `true`
+    // ⇒ 全表 **1379 条一条没红**。
+    //
+    // # 为什么处方不是「再补一条专名 `assert`」
+    //
+    // 那只是把静默从 1 个工具挪到下一个工具（`§0c` 逐字写死的失效方向）。
+    // ⇒ 做成**一条性质**：左边现读字段值，右边现钉盘上那个符号，两边 `assert_eq!`。
+    // ⚠ 失效方向也写死在判据的**名字**上：名字里出现任何一个工具 id ⇒ 不算兑现。
+    //    这一条自己也有判据（见下面那条自守）。
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 一处**实现的住址**：给人读的 `<文件>.rs::<符号>` ＋ 给机器钉的**逐字签名**。
+    ///
+    /// 两格互相校验（下面那条性质会断言符号名与签名里那个 `fn` 名逐字相等）：
+    /// 只留住址是一句没人核的话；只留签名，改了名没人读得出它指哪儿。
+    /// 而 `addr` 这一格**同时**被全仓那条符号地址判据盯着
+    /// （`structural_scan.rs::symbol_addresses` 抽、全仓解析）—— 实现改名 / 删掉，那一条先红。
+    struct ImplSite {
+        addr: &'static str,
+        definition: &'static str,
+    }
+
+    /// 一个工具的装 / 卸实现**住在哪份文件**。
+    ///
+    /// `text` 是 `include_str!` 现取的整份内容，**不是一个路径串** —— 路径串会烂，
+    /// 而 `include_str!` 指错了地方**编都编不过**。
+    struct ImplHome {
+        addr: &'static str,
+        text: &'static str,
+    }
+
+    /// `TOOLS` 每一条的两格申报，各自该去盘上哪儿对拍。
+    ///
+    /// `None` = **今天盘上根本没有这么一处**（形状抄 `fenced_block.rs::FENCE_SHAPES`
+    /// 的 `uninstall_site`）。
+    ///
+    /// ⚠ **为什么缺口只能写 `None`，不能写一个「它将来会住哪」的地址**：一个不存在的
+    /// 符号一旦写成 `<文件>.rs::<符号>`，全仓那条符号地址判据当场把它判成
+    /// 「找不到这个符号」。⇒ 缺口用 `None` 表示，而「`None` 今天还成不成立」
+    /// 由下面那道**负向扫描**守着，不靠人记得 —— `remote-daemon` 正是栽在这一格上。
+    struct Claim {
+        tool: &'static str,
+        home: Option<ImplHome>,
+        install: Option<ImplSite>,
+        uninstall: Option<ImplSite>,
+    }
+
+    /// **唯一一份**对拍表。覆盖由下面那条性质的第 ① 步钉死（多一条少一条都红）。
+    fn claims() -> Vec<Claim> {
+        const SFTP: &str = include_str!("sftp.rs");
+        const PROFILE_INSTALLER: &str = include_str!("profile_installer.rs");
+        const MCP: &str = include_str!("mcp.rs");
+        const CC_BUS_DEPLOY: &str = include_str!("cc_bus_deploy.rs");
+        const ACCT_ISO_DEPLOY: &str = include_str!("acct_iso_deploy.rs");
+        let sftp = || ImplHome {
+            addr: "sftp.rs",
+            text: SFTP,
+        };
+        let profile = || ImplHome {
+            addr: "profile_installer.rs",
+            text: PROFILE_INSTALLER,
+        };
+        // 两条 profile 系工具走的是**同一台安装器**（分岔在 `plan_install` / `plan_uninstall`，
+        // 落盘那一整套共用）—— 与 `fenced_block.rs::FENCE_SHAPES` 里那两行同源。
+        let profile_install = || {
+            ImplSite {
+            addr: "profile_installer.rs::install_to_profile",
+            definition: "pub fn install_to_profile(\n    path: &PathBuf,\n    command_name: &str,\n    include_cc_function: bool,\n) -> Result<(), String> {",
+        }
+        };
+        let profile_uninstall = || ImplSite {
+            addr: "profile_installer.rs::uninstall_from_profile",
+            definition: "pub fn uninstall_from_profile(path: &PathBuf) -> Result<(), String> {",
+        };
+        vec![
+            Claim {
+                tool: "ccm",
+                home: Some(sftp()),
+                install: Some(ImplSite {
+                    addr: "sftp.rs::install_remote_ccm_helper",
+                    definition: "pub async fn install_remote_ccm_helper(\n    cfg: RemoteConfig,\n    profile: String,\n) -> Result<String, String> {",
+                }),
+                uninstall: Some(ImplSite {
+                    addr: "sftp.rs::uninstall_remote_ccm_helper",
+                    definition: "pub async fn uninstall_remote_ccm_helper(\n    cfg: RemoteConfig,\n    profile: String,\n) -> Result<String, String> {",
+                }),
+            },
+            Claim {
+                tool: "cc-bus",
+                home: Some(ImplHome {
+                    addr: "cc_bus_deploy.rs",
+                    text: CC_BUS_DEPLOY,
+                }),
+                install: Some(ImplSite {
+                    addr: "cc_bus_deploy.rs::deploy_local_cc_bus",
+                    definition: "pub async fn deploy_local_cc_bus() -> Result<CcBusDeployReport, String> {",
+                }),
+                uninstall: None,
+            },
+            Claim {
+                tool: "cc-acct-iso",
+                home: Some(ImplHome {
+                    addr: "acct_iso_deploy.rs",
+                    text: ACCT_ISO_DEPLOY,
+                }),
+                install: Some(ImplSite {
+                    addr: "acct_iso_deploy.rs::deploy_remote_acct_iso",
+                    definition: "pub async fn deploy_remote_acct_iso(cfg: RemoteConfig, dest_dir: String) -> Result<String, String> {",
+                }),
+                uninstall: None,
+            },
+            Claim {
+                tool: "remote-daemon",
+                home: Some(sftp()),
+                install: Some(ImplSite {
+                    addr: "sftp.rs::deploy_remote_daemon",
+                    definition: "pub async fn deploy_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {",
+                }),
+                uninstall: Some(ImplSite {
+                    addr: "sftp.rs::uninstall_remote_daemon",
+                    definition: "pub async fn uninstall_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {",
+                }),
+            },
+            Claim {
+                tool: "project-mcp",
+                home: Some(ImplHome {
+                    addr: "mcp.rs",
+                    text: MCP,
+                }),
+                install: Some(ImplSite {
+                    addr: "mcp.rs::write_project_mcp_server",
+                    definition: "pub async fn write_project_mcp_server(\n    project_dir: String,\n    name: String,\n    server: Value,\n) -> Result<(), String> {",
+                }),
+                uninstall: Some(ImplSite {
+                    addr: "mcp.rs::remove_project_mcp_server",
+                    definition: "pub async fn remove_project_mcp_server(project_dir: String, name: String) -> Result<(), String> {",
+                }),
+            },
+            Claim {
+                tool: "posix-rc-aliases",
+                home: Some(profile()),
+                install: Some(profile_install()),
+                uninstall: Some(profile_uninstall()),
+            },
+            Claim {
+                tool: "powershell-profile",
+                home: Some(profile()),
+                install: Some(profile_install()),
+                uninstall: Some(profile_uninstall()),
+            },
+            // **我们从不装它** ⇒ 没有「它的实现该住哪」这回事。这一行的 `home: None`
+            // 不是手写的豁免：下面那条性质断言 `home.is_none()` **当且仅当**
+            // `destination` 是 `NotInstalledByUs` —— 换句话说这一格由类型系统里那个
+            // 变体说了算，不由填表的人说了算。
+            Claim {
+                tool: "claude-code",
+                home: None,
+                install: None,
+                uninstall: None,
+            },
+        ]
+    }
+
+    /// 从逐字签名里抠出 `pin_definition` 要的**赋值前缀**（签名到第一个 `(` 为止）。
+    /// **算出来的，不再写第二份字面量**〔`13b`〕。
+    fn assign_prefix_of(definition: &str) -> &str {
+        definition
+            .split('(')
+            .next()
+            .unwrap_or(definition)
+            .trim_end()
+    }
+
+    /// 从逐字签名里抠出那个 `fn` 名。
+    fn fn_name_of(definition: &str) -> &str {
+        assign_prefix_of(definition)
+            .rsplit(' ')
+            .next()
+            .unwrap_or_default()
+    }
+
+    /// ★★ `KR63D1` ＋ `KR63D2`：**`TOOLS` 每一条的两格申报，都必须与盘上真有没有那个实现一致。**
+    ///
+    /// 左边现读字段值（`installable` / `uninstallable`），右边用
+    /// `structural_scan.rs::pin_definition` 去钉那个装 / 卸实现的**逐字签名**
+    /// （它同时守住「只被定义一次」：追加一个同名定义也会红）。两边 `assert_eq!`。
+    ///
+    /// **两个方向都判**：
+    ///   · 多报（声明可装 / 可卸而实现不在）⇒ 右边 `false`、左边 `true` ⇒ 红；
+    ///   · 少报（实现在而字段写着不行）⇒ 反过来 ⇒ 红。
+    ///     少报**不是假想** —— 本条落地当场逮到 `remote-daemon`：`uninstall_remote_daemon`
+    ///     是设置面板上的按钮，而字段写着 `uninstallable: false`。
+    ///
+    /// **`None` 那一侧靠负向扫描兜底**（不然「今天没有卸口」这句话永远没人核）：
+    /// 那个工具的家里出现一个**没人认领**的 `fn uninstall… / remove… / strip… / purge…`
+    /// ⇒ 红。动词表的分母如实写在这里：**登记过的就这四个**，不是穷举 ——
+    /// 一个叫别的名字的卸载实现今天扫不到，那一格判不了，不假装覆盖。
+    ///
+    /// ⚠ **装那一侧今天没有负向扫描，而这不是漏写**：`install: None` 的行今天只有
+    /// `claude-code` 一条，它连家都没有（`NotInstalledByUs`）⇒ 人群是空的，
+    /// 写一条扫不到任何东西的扫描买不到牙。真出现「有家而声明装不了」的行，
+    /// 下面那一支会 `panic!` 点名，**不会静默放过**。
+    #[test]
+    fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are() {
+        use crate::structural_scan::pin_definition;
+
+        let claims = claims();
+
+        // ① 覆盖：与 `TOOLS` 一一对应，多一条少一条都红（这一步买的是「全表」二字）。
+        let mut got: Vec<&str> = claims.iter().map(|c| c.tool).collect();
+        let mut want: Vec<&str> = TOOLS.iter().map(|t| t.id).collect();
+        got.sort_unstable();
+        want.sort_unstable();
+        assert_eq!(
+            got, want,
+            "对拍表与 TOOLS 对不上 —— 加了工具却没登记它的装 / 卸实现住哪，\
+             那一条就悄悄不在这条性质的射程里了"
+        );
+
+        // ② 反向自检：`pin_definition` 真的会说「不在」（否则下面全是空真）。
+        assert!(pin_definition("fn a() {}\n", "fn b() {}", "fn b", "自检").is_err());
+        assert!(pin_definition("fn a() {}\n", "fn a() {}", "fn a", "自检").is_ok());
+        // ②b 反向自检：负向扫描在**真树**上不是零命中的（零命中 ⇒ 那一半是空真）。
+        assert!(
+            crate::structural_scan::fn_names_starting_with(include_str!("sftp.rs"), &["uninstall"])
+                .contains(&"uninstall_remote_daemon".to_string()),
+            "负向扫描在真树上零命中 —— 它此刻无效，先查剥法别改断言"
+        );
+
+        // 认领集：哪些实现符号已经被某一行认走了（负向扫描要用）。
+        let claimed: HashSet<&str> = claims
+            .iter()
+            .flat_map(|c| [c.install.as_ref(), c.uninstall.as_ref()])
+            .flatten()
+            .map(|s| fn_name_of(s.definition))
+            .collect();
+
+        let mut checked = 0usize;
+        for t in TOOLS {
+            let c = claims.iter().find(|c| c.tool == t.id).expect("① 已经钉过");
+
+            // ③ 「有没有家」不由填表的人说了算，由 `destination` 那个变体说了算。
+            assert_eq!(
+                c.home.is_none(),
+                matches!(t.destination, ToolDestination::NotInstalledByUs { .. }),
+                "`{}`：`home` 那一格与 `destination` 打架 —— 「我们不装它」与\
+                 「它的装 / 卸实现住在某份文件里」有一句是假的",
+                t.id
+            );
+
+            for (field, declared, site, verbs) in [
+                ("installable", t.installable, c.install.as_ref(), &[][..]),
+                (
+                    "uninstallable",
+                    t.uninstallable,
+                    c.uninstall.as_ref(),
+                    &["uninstall", "remove", "strip", "purge"][..],
+                ),
+            ] {
+                checked += 1;
+                let real = match (c.home.as_ref(), site) {
+                    (Some(home), Some(s)) => {
+                        // 住址与签名互相校验：符号名必须逐字相等，文件必须就是那个家。
+                        assert_eq!(
+                            s.addr,
+                            format!("{}::{}", home.addr, fn_name_of(s.definition)),
+                            "`{}` 的 `{field}` 那一格：住址与逐字签名对不上 —— \
+                             其中一格是摆设",
+                            t.id
+                        );
+                        pin_definition(
+                            home.text,
+                            s.definition,
+                            assign_prefix_of(s.definition),
+                            &format!("`{}` 的 `{field}` 背后那个实现", t.id),
+                        )
+                        .is_ok()
+                    }
+                    (_, None) => {
+                        // 负向扫描：家里躺着一个没人认领的同族实现 ⇒ 「今天没有」这句话是假的。
+                        if let Some(home) = c.home.as_ref() {
+                            if verbs.is_empty() {
+                                panic!(
+                                    "`{}` 声明 `{field}: {declared}` 而没有登记实现住址，\
+                                     它却有家（{}）—— 这一形今天没有负向扫描，\
+                                     写一条再走（别静默放过）",
+                                    t.id, home.addr
+                                );
+                            }
+                            let stray: Vec<String> =
+                                crate::structural_scan::fn_names_starting_with(home.text, verbs)
+                                    .into_iter()
+                                    .filter(|n| !claimed.contains(n.as_str()))
+                                    .collect();
+                            assert!(
+                                stray.is_empty(),
+                                "`{}` 的 `{field}` 登记着「今天盘上没有这么一处」，\
+                                 而它家（{}）里躺着没人认领的 {stray:?} —— \
+                                 要么它就是那个实现（那就登记进对拍表并把字段翻过来），\
+                                 要么它不是（那就说清它是什么）。\n\
+                                 ⚠ `remote-daemon` 就是这么假申报了一个月的。",
+                                t.id,
+                                home.addr
+                            );
+                        }
+                        false
+                    }
+                    (None, Some(s)) => panic!(
+                        "`{}` 没有家，却给 `{field}` 登记了实现住址 {:?}",
+                        t.id, s.addr
+                    ),
+                };
+                assert_eq!(
+                    declared,
+                    real,
+                    "`{}` 的 `{field}` 申报为 {declared}，而盘上那个实现{}。\n\
+                     这两句话必须一致 —— 配置面那一列「能否装/撤」直接印到用户眼前：\n\
+                     多报 = 一个点了没反应的按钮；少报 = 按钮就在旁边而页面写着做不到。\n\
+                     ⚠ 只改注释没有用：本条读的是**字段值**，不是注释里的词频。",
+                    t.id,
+                    if real { "在" } else { "不在" }
+                );
+            }
+        }
+        // 计数自检：两格 × 全表，一格都没跳过。
+        assert_eq!(
+            checked,
+            2 * TOOLS.len(),
+            "只对拍了 {checked} 格，而全表应有 {} 格",
+            2 * TOOLS.len()
+        );
+    }
+
+    /// ★★ `KR63D1` / `KR63D2` 把**失效方向**写死在名字上：
+    /// **判据的名字里出现任何一个工具 id ⇒ 本件不算兑现。**
+    ///
+    /// 一条名字里带工具名的判据，读的人会以为「那一格有人守」，而它守的只有那一个工具 ——
+    /// `K-R60` 留下的就是这样一颗钉子，`K-R63` 把它收掉了。这一条让那件事**别再回来**。
+    #[test]
+    fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
+        const NAME: &str =
+            "every_tool_declares_install_and_uninstall_as_the_implementations_really_are";
+        let me = include_str!("tool_registry.rs");
+        // 反向自检：那条判据真的叫这个名字（改了名而没改这里 ⇒ 本条先红）。
+        assert_eq!(
+            me.matches(&format!("fn {NAME}(")).count(),
+            1,
+            "本文件里找不到（或不止一个）`{NAME}` —— 它改名了，本条此刻在空转"
+        );
+        for t in TOOLS {
+            let snake = t.id.replace('-', "_");
+            assert!(
+                !NAME.contains(t.id) && !NAME.contains(&snake),
+                "判据名 `{NAME}` 里出现了工具 id `{}`（或它的 snake 形 `{snake}`）—— \
+                 那就又是一颗只服务一个工具的钉子",
+                t.id
+            );
         }
     }
 }
@@ -1760,44 +2159,16 @@ mod environment_tests {
         }
     }
 
-    /// 🔴 `KR60D3`：**`cc-bus` 的 `installable` 与实现一致，而本条真的读那个字段。**
-    ///
-    /// 〔`K-R57` 摸底逮到的假申报：字段现打 `false`，而**同一注释块**逐字写着
-    /// 「08-13 用户裁：开 ⇒ `installable` 从 `false` 翻成 `true`，实现在 `cc_bus_deploy.rs`」，
-    /// 而那个实现**真的在**。一条用户裁定落在注释里、没落到字段上。〕
-    ///
-    /// 🔴 **为什么补这一条**：守它的老判据 `cc_bus_says_why_it_is_not_installable_at_the_real_depth`
-    /// 是**必需词守卫** —— 它数的是注释里两个词的出现次数，**看不见字段的值**。
-    /// 字段翻成任何值它都绿，于是字段与注释各说各话了一个月，一格都没红。
-    ///
-    /// 本条两边都是**现读**的，不抄一份被测逻辑：
-    /// - 左边读 `TOOLS` 里那条的 `installable` 字段；
-    /// - 右边用 `pin_definition` 去 `cc_bus_deploy.rs` 里钉那个部署函数的签名
-    ///   （它同时守住「只被定义一次」，改成别的名字或删掉都会让右边变 `false`）。
-    ///
-    /// ⇒ 两边**必须相等**。把字段翻回 `false` ⇒ 本条红；把实现删掉而不改字段 ⇒ 也红。
-    #[test]
-    fn cc_bus_installable_matches_whether_the_deploy_really_exists() {
-        let deploy_impl_exists = crate::structural_scan::pin_definition(
-            include_str!("cc_bus_deploy.rs"),
-            "pub async fn deploy_local_cc_bus() -> Result<CcBusDeployReport, String> {",
-            "pub async fn deploy_local_cc_bus",
-            "cc-bus 本机部署的实现",
-        )
-        .is_ok();
-        let ccbus = TOOLS
-            .iter()
-            .find(|t| t.id == "cc-bus")
-            .expect("TOOLS 里应有 cc-bus");
-        assert_eq!(
-            ccbus.installable,
-            deploy_impl_exists,
-            "cc-bus 的 `installable` 申报为 {}，而 `cc_bus_deploy.rs` 里那个部署实现{}。\n\
-             这两句话必须一致 —— 那张表的「能否装/撤」列直接印到用户眼前，\n\
-             申报错了用户看到的就是一句假话。\n\
-             ⚠ 只改注释没有用：本条读的是**字段值**，不是注释里的词频。",
-            ccbus.installable,
-            if deploy_impl_exists { "在" } else { "不在" }
-        );
-    }
+    // 🔴 〔`K-R63` 09-11〕**`KR60D3` 那条判据从这里搬走了，而不是删掉。**
+    //
+    // 它做的事（左边读 `cc-bus` 的 `installable` 字段、右边用 `pin_definition` 钉
+    // `cc_bus_deploy.rs` 里那个部署函数的签名、两边 `assert_eq!`）今天由
+    // `every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
+    // 做，而那一条**对全表每一条的两格都做**。
+    //
+    // 为什么非搬不可（`KR63D2` 的正题）：那一条的**名字里带工具名** ——
+    // 读的人会以为「申报与实现对不对得上」这一格有人守，而它只守 `cc-bus` 一个工具。
+    // `K-R60` 收窗口时 PM 的刀 γ 就现打过同一件事的另一半；`K-R63` 的刀 C 更直接：
+    // 翻 `cc-acct-iso` 的 `uninstallable` ⇒ 全表 1379 条一条没红。
+    // ⇒ **别再在这里加第二颗专名钉子**；要加就加进那张对拍表。
 }

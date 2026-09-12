@@ -368,4 +368,116 @@ mod tests {
             "「装得进去卸不掉」的那一批变了 —— 它是这张账里最贵的一格，别让它静默增减"
         );
     }
+
+    /// 每一份被 [`FENCE_SHAPES`] 点到名的源文件。覆盖由下面那条判据钉死。
+    const SHAPE_FILES: &[(&str, &str)] = &[
+        ("sftp.rs", include_str!("sftp.rs")),
+        ("profile_installer.rs", include_str!("profile_installer.rs")),
+        ("account_aliases.rs", include_str!("account_aliases.rs")),
+        ("fenced_block.rs", include_str!("fenced_block.rs")),
+    ];
+
+    /// ★★ 〔`K-R63` 09-11〕**这张账的「卸」那一格也是一句申报，而申报要对得上现实。**
+    ///
+    /// # 它补的是哪半边
+    ///
+    /// `uninstall_site` 先前只有 `Some` 那半边被守：形状（`every_fence_shape_names_code_addresses`）
+    /// ＋ 全仓那条符号地址判据（改名 / 删了会红）。
+    /// **`None` 那半边一条判据都没有** —— 「今天没有卸口」这句话，盘上真长出一个卸口
+    /// 也不会有人回来改它。那正是 `tool_registry.rs::TOOLS` 上 `remote-daemon` 栽的坑
+    /// （`sftp.rs::uninstall_remote_daemon` 是设置面板上的按钮，而字段写着卸不掉）。
+    ///
+    /// # 🔴 本条同时是 `K-R63 §0c-2` 要的那个**射程读数**
+    ///
+    /// 件文件写着：`K-R63` 落地之后要回头看 `local-posix-source-line`
+    /// （唯一 `uninstall_site: None` 的一套）红没红，**没红先查射程是不是漏了它**。
+    /// ⇒ 本条就是那道射程：它**逐行**走 [`FENCE_SHAPES`]，那一行进了分母
+    /// （下面的计数自检钉死「一行都不许跳过」）。
+    ///
+    /// 它今天**绿**，而绿的理由写清楚：本条判的是「**申报 ↔ 现实一致**」，
+    /// 而那一行的申报（`None`）与现实（`account_aliases.rs` 生产段里
+    /// 一个 `fn uninstall… / remove… / strip… / purge…` 都没有）**是一致的** ——
+    /// 它是**缺实现**，不是**假申报**。要它红需要的是另一条性质
+    /// （「装得进去就必须卸得掉」，即 `tool_registry.rs::fenced_block_implies_uninstallable`
+    /// 在这张账上的对应物），而那一条今天立起来就是一道**永远红**的闸
+    /// （补卸口是 `§0d` 明写本件不做的事）—— 立不立由 PM 裁，本条不替它裁。
+    #[test]
+    fn a_shape_that_declares_no_uninstall_really_has_none() {
+        // ① 语料覆盖：账里点到的每一份文件都在 SHAPE_FILES 里（少一份 ⇒ 那一行悄悄出局）。
+        let file_of = |addr: &str| -> &'static str {
+            let base = addr.split("::").next().unwrap_or(addr);
+            SHAPE_FILES
+                .iter()
+                .find(|(n, _)| *n == base)
+                .unwrap_or_else(|| {
+                    panic!("`{base}` 不在 SHAPE_FILES 里 —— 账里点了它，而本条读不到它")
+                })
+                .1
+        };
+        // ①b 覆盖是**逐列**查的，不是等用到才查：三列住址点到的每一份文件都要读得到。
+        for s in FENCE_SHAPES {
+            for addr in [Some(s.install_site), Some(s.pairing), s.uninstall_site]
+                .into_iter()
+                .flatten()
+            {
+                let _ = file_of(addr);
+            }
+        }
+        // ② 反向自检：扫描器在真树上认得出一个真的卸载实现（零命中 ⇒ 下面全是空真）。
+        assert!(
+            crate::structural_scan::fn_names_starting_with(file_of("sftp.rs"), &["uninstall"])
+                .contains(&"uninstall_remote_ccm_helper".to_string()),
+            "扫描器在真树上零命中 —— 本条此刻无效，先查剥法别改断言"
+        );
+
+        // 认领集：账上已经被某一行认走的卸载符号。
+        let claimed: Vec<&str> = FENCE_SHAPES
+            .iter()
+            .filter_map(|s| s.uninstall_site)
+            .filter_map(|a| a.split("::").nth(1))
+            .collect();
+
+        let mut checked = 0usize;
+        for s in FENCE_SHAPES {
+            checked += 1;
+            match s.uninstall_site {
+                // 申报「有卸口」⇒ 那个符号必须真在它说的那份文件里。
+                Some(addr) => {
+                    let sym = addr.split("::").nth(1).unwrap_or_default();
+                    assert!(
+                        crate::structural_scan::fn_names_starting_with(file_of(addr), &[sym])
+                            .contains(&sym.to_string()),
+                        "`{}` 申报卸口住 {addr:?}，而那份文件的生产段里没有这个 `fn`",
+                        s.id
+                    );
+                }
+                // 申报「今天没有卸口」⇒ 它家里不许躺着一个没人认领的同族实现。
+                // ⚠ 动词表的分母如实写在这里：**登记过的就这四个**，不是穷举。
+                None => {
+                    let home = s.install_site;
+                    let stray: Vec<String> = crate::structural_scan::fn_names_starting_with(
+                        file_of(home),
+                        &["uninstall", "remove", "strip", "purge"],
+                    )
+                    .into_iter()
+                    .filter(|n| !claimed.contains(&n.as_str()))
+                    .collect();
+                    assert!(
+                        stray.is_empty(),
+                        "`{}` 登记着「今天没有卸口」，而 {home} 那份文件里躺着没人认领的 \
+                         {stray:?} —— 要么它就是卸口（那就把 `uninstall_site` 填上），\
+                         要么它不是（那就说清它是什么）",
+                        s.id
+                    );
+                }
+            }
+        }
+        // ③ 计数自检：一行都没跳过（`§0c-2` 要的那个「射程有没有漏掉它」的读数就是它）。
+        assert_eq!(
+            checked,
+            FENCE_SHAPES.len(),
+            "只走了 {checked} 行，而账上有 {} 行",
+            FENCE_SHAPES.len()
+        );
+    }
 }
