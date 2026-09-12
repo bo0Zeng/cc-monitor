@@ -404,6 +404,52 @@ pub fn line_addresses(text: &str) -> Vec<LineAddress> {
     out
 }
 
+/// 枚举 `text` 的**生产段**里所有以 `verbs` 任一动词打头的 `fn` 名（去重、有序）。
+///
+/// # 它服务的是哪一族判据〔`K-R63` 09-11〕
+///
+/// 一族「**声明缺口**」：某张表上写着「这一格今天盘上没有实现」（`None` / `false`），
+/// 而那句话**没有任何东西核**。本仓的活体是 `tool_registry.rs::TOOLS` 的 `remote-daemon`：
+/// 字段写着 `uninstallable: false`，而 `sftp.rs::uninstall_remote_daemon` 是设置面板上
+/// 那个「卸载 daemon」按钮背后的实现，**一直都在** —— 假申报活了一个月，一格没红。
+///
+/// ⇒ 处方：申报「没有」的那一格，**去它家里扫一眼有没有一个没人认领的同族实现**。
+///
+/// # 🔴 射程写死，别读大一格
+///
+/// 它按**名字**认，一个字的语义都不读：
+///   · 动词表由调用方给，**不是穷举** —— 叫别的名字的实现它一个都看不见；
+///   · 它只说「那份文件的生产段里有一个这么打头的 `fn`」，
+///     **说不出**那个 `fn` 是不是真在做那件事（反过来也一样）。
+/// ⇒ 它买到的是「那句『没有』有人在核」，**不是**「那句『没有』一定是真的」。
+///
+/// 剥法走**共享原语** `guard_core::production_code`（剥注释 + 剥测试段）——
+/// 本文件那条 `every_comment_stripping_transformer_is_registered` 逐字要求
+/// 「先问共享原语为什么不够」，这里够。
+pub fn fn_names_starting_with(text: &str, verbs: &[&str]) -> Vec<String> {
+    let prod = guard_core::production_code(text);
+    let mut out = Vec::new();
+    for line in prod.lines() {
+        let mut it = line.split_whitespace().peekable();
+        while let Some(tok) = it.next() {
+            if tok != "fn" {
+                continue;
+            }
+            let Some(next) = it.peek() else { continue };
+            let name: String = next
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() && verbs.iter().any(|v| name.starts_with(v)) {
+                out.push(name);
+            }
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1648,6 +1694,34 @@ mod tests {
         assert!(
             addr[0].2 > len,
             "越界那一格必须是「被引行号 > 文件行数」，否则上面那条的越界半边是空转的"
+        );
+    }
+
+    /// 〔`K-R63`〕[`fn_names_starting_with`] 的反向自检：**既不恒空也不恒满**，
+    /// 而且它**看不见注释与测试段** —— 那两处的名字不是实现，认进去就会误红。
+    #[test]
+    fn the_verb_scan_reads_production_only_and_is_not_vacuous() {
+        let src = concat!(
+            "pub fn uninstall_thing() {}\n",
+            "fn keep_this() {}\n",
+            "// fn uninstall_that_is_only_a_comment() {}\n",
+            "\n#[cfg",
+            "(test)]\nmod tests {\n    fn uninstall_that_is_only_a_test() {}\n}\n"
+        );
+        assert_eq!(
+            fn_names_starting_with(src, &["uninstall"]),
+            vec!["uninstall_thing".to_string()],
+            "生产段那一个要认出来，注释与测试段那两个都不许认"
+        );
+        assert!(
+            fn_names_starting_with(src, &["nobody_writes_a_name_like_this"]).is_empty(),
+            "动词对不上还回东西 ⇒ 它是恒满的，用它的判据全是空真"
+        );
+        // 真树上打一发：这个动词在真文件里确实有命中（恒空的扫描买不到任何东西）。
+        assert!(
+            fn_names_starting_with(include_str!("sftp.rs"), &["uninstall"])
+                .contains(&"uninstall_remote_daemon".to_string()),
+            "真树上扫不到 `uninstall_remote_daemon` —— 剥法或遍历坏了"
         );
     }
 
