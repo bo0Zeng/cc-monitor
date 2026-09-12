@@ -533,7 +533,16 @@ mod tests {
             let lines: Vec<&str> = src.lines().collect();
             let Some(start) = lines.iter().position(|l| {
                 let t = l.trim();
-                t.starts_with("mod ") && t.contains("test") && t.ends_with('{')
+                // 🔴 〔`K-R75` 09-12〕这里原先也是 `t.starts_with("mod ")` ——
+                //    **同一族病的第二个住址**，而它的失效方向比剥法那处更阴：
+                //    一份文件的测试模块若写成 `pub(crate) mod tests {`，`position` 返回 `None`
+                //    ⇒ 那份文件**整份掉出本条的人群**，而本条照样绿（人群缩水，静默）。
+                //    ⇒ 走同一份权威的形状判定，不再各写一份近似的（`E3`）。
+                //    ⚠ 现打：今天全仓「带可见性且名字含 test 的 `mod`」**0 处**
+                //       ⇒ 这一改在今天的盘上是 **no-op**，买的是「下一处这么写时不会静默」。
+                guard_core::strip_visibility(t).starts_with("mod ")
+                    && t.contains("test")
+                    && t.ends_with('{')
             }) else {
                 continue;
             };
@@ -606,6 +615,67 @@ mod tests {
             // 而「扫描面缩水」正是这条地板存在的全部理由。
             // ⚠ 棘轮纪律：只许升不许降；要降必须带「副本真退役」的证据。
             80,
+        );
+    }
+
+    /// 🔴 `K-R75` `KR75D2` 的**点名**这一半：上一条红的时候，必须说得出**是哪一份** `mod.rs`。
+    ///
+    /// # 它买的是什么
+    ///
+    /// 两棵真树里 `mod.rs` 各有十几份（`backend/mod.rs` · `backend/control/mod.rs` · …）。
+    /// `K-R75` 之前 `assert_tree_strips_clean` 传给断言的 `who` 是 `path.file_name()`
+    /// ⇒ 报错逐字「`mod.rs`：剥完仍残留 1 个测试属性」，**指不出是哪一份**。
+    /// 而「点名那份文件」正是这条反向自检的产出，不是附赠 ——
+    /// 一条说不出住址的红，下一个人要拿全树重新找一遍。
+    ///
+    /// # 为什么住在这里而不是 `guard-core` 里
+    ///
+    /// 它要一棵**真目录**才测得了，而造目录要写盘 —— 而 `guard-core`
+    /// **一处写盘都不许有，连 `cfg(test)` 里也不许**（daemon 侧
+    /// `readonly_guard::g6_dependency_signoff::…::the_clean_verdict_is_re_measured_on_the_tree_every_run`
+    /// 按**原文行**重扫那几棵仓内 crate，不走 `production_code`）。
+    /// 〔09-12 现打：先写在 `guard-core` 里，门禁 `daemon` 那格当场 `685 passed; 1 failed`，
+    ///  逐字点名 `guard-core（../src-tauri/crates/guard-core）src/lib.rs:2219: \`fs::create_dir\``〔行号墓碑〕
+    ///  —— 那个行号是**当时那一趟**的读数，那段代码已经搬走 ⇒ 它必然腐；留着是为了说清
+    ///  「那把尺子按原文行数、连测试夹具都算」，不是给人拿去定位。
+    ///  处置是**搬家**，不是去动那把尺子 —— 那把尺子同时守着 daemon 本体两层判据。〕
+    ///
+    /// **死值验**：把 `guard_core::assert_tree_strips_clean` 里的 `strip_prefix(root)`
+    /// 退回 `path.file_name()` ⇒ 本条必须红（读数落 `evidence/K-R75-剥法认形状与真静默读数.md`）。
+    #[test]
+    fn the_tree_walk_names_the_file_by_path_not_by_basename() {
+        let root = std::env::temp_dir().join(format!(
+            "kr75-naming-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let deep = root.join("alpha").join("beta");
+        std::fs::create_dir_all(&deep).expect("建夹具目录");
+        std::fs::write(root.join("mod.rs"), "fn clean() {}\n").expect("写干净的那份");
+        // 属性与 `mod` 之间夹一行文档注释 ⇒ 剥法认不出（这正是本条要点名的那一族）。
+        let cfg = format!("#[{}({})]", "cfg", "test");
+        std::fs::write(
+            deep.join("mod.rs"),
+            format!("fn a() {{}}\n{cfg}\n/// 说明\npub(crate) mod probe {{\n    fn z() {{}}\n}}\n"),
+        )
+        .expect("写带违规写法的那份");
+        let r = std::panic::catch_unwind({
+            let root = root.clone();
+            move || guard_core::assert_tree_strips_clean(&root, 1)
+        });
+        let _ = std::fs::remove_dir_all(&root);
+        let e = r.expect_err("带违规写法的那份没红 —— 树遍历这一层的第二半没接上");
+        let msg = e
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| e.downcast_ref::<&str>().map(|s| (*s).to_string()))
+            .unwrap_or_default();
+        assert!(
+            msg.contains("alpha/beta/mod.rs"),
+            "报错里没有带目录的相对路径 —— 两份 `mod.rs` 分不开：{msg}"
         );
     }
 
