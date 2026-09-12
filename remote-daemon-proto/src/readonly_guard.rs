@@ -1147,11 +1147,14 @@ mod spawn_registry {
 // ⇒ 今天这条再导出**不是被逼出来的**，它只是一个写法；`mod g6_doctrine {` 那一行
 //   **也不再必须逐字长成那样**。
 //
-// 🔴 **`K-R76` 刻意没有顺手把这道绕道拆掉**：本件的 `§0d` 写死「daemon 这一处只改那段过期的话，
-//   不动它守的任何一条性质」，死值验就是 daemon 那一格读数逐格不动。
-//   ⇒ 要不要拆归后续件，**别在这里自批**。
-#[cfg(test)]
-pub(crate) use g6_doctrine::{cell_names, is_cell};
+// 🔴 **`K-R77`（09-12）把那道再导出拆了**（裁定住 `DECISIONS.md#R36` 裁定一 ——
+//   `K-R76` 当时刻意不自批，`§0d` 写死「只改那段过期的话」）。
+//   今天盘上：`g6_doctrine` 直接写成 `pub(crate) mod`，跨模块的取名走
+//   `crate::readonly_guard::g6_doctrine::{cell_names, is_cell}`（唯一的跨模块消费者是
+//   `no_timer_guard::registered_uses_all_have_reasons`），**顶层那一行再导出没有了**。
+//   ⚠ **别再写回来**：这一族今天有闸了 —— monitor 侧
+//   `structural_scan.rs::the_cfg_test_reexport_detour_stays_extinct` 是一条**恒零棘轮**，
+//   语料面含本文件所在的这棵树，写回一行当场红并点名这份文件。
 
 /// 〔`K-G6` `KG64`〕**`§0a` 四情形表的代码形态** —— 一条护栏的人群与性质对不上时该怎么处置。
 ///
@@ -1177,7 +1180,7 @@ pub(crate) use g6_doctrine::{cell_names, is_cell};
 ///   `<非字面量>` 键覆盖三条命令、第三条漏登 13 天而三条判据全绿 —— 本条逮不到它，
 ///   逮它的是 [`g6_reach`] 的反例表（那一格钉的是「恰好三条」）。
 #[cfg(test)]
-mod g6_doctrine {
+pub(crate) mod g6_doctrine {
     /// 四情形**闭集**。五元组：
     /// `(格, 什么时候落在这一格, 正确处置, why——为什么是这个处置, unlock——这一格自己什么时候要被重新裁定)`
     pub(crate) const CELLS: &[(&str, &str, &str, &str, &str)] = &[
