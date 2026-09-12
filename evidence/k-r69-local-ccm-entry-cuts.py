@@ -8,7 +8,30 @@
 import subprocess, sys, pathlib, json
 
 WT = pathlib.Path("/home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r69")
-SANDBOX = "/tmp/claude-1000/-home-zbl----claudecode-frontend/f80a7aea-0ccf-4854-9b7a-12961a9c55aa/scratchpad/kr69-sandbox.sh"
+PROJ = "/home/zbl/文档/claudecode-frontend"
+SKILL = "/home/zbl/.claude-accts/z/skills/planned-build"
+
+# 🔴 判据一律进沙箱（`DECISIONS.md#R21`）。下面这段与 `.claude/devbox/gate` 的
+# `docker run` **逐字同一段**，只把末尾那条命令换成参数 —— 挂什么 / 不挂什么、
+# 为什么不挂 `/tmp/tmux-1000` 与 `~/.cc-monitor`，理由全文住那个脚本，这里不复述。
+#
+# ⚠ **登记一处「量具在读数之后动过」**：跑那九刀时，这段是 scratchpad 里一个 8 行的
+#   shell 包装（`bash -o pipefail -c`），本文件调它。收工时把它内联到这里 ——
+#   理由是 `shell_lint_registry` 当场逮到「仓里多了一个从没被 lint 过的 .sh」，
+#   而给 evidence 里的一次性量具开一条 lint 豁免会把那张只有一条的表变成垃圾桶。
+#   **命令内容逐字未变**（同一个镜像、同一组 -v/-e、同一句 mkdir + 同一条 `bash -o pipefail -c`）；
+#   变的只有「谁来起 docker」。读数不重跑就照旧成立，重跑也会得到同一份。
+def sandbox(cmd: str):
+    return subprocess.run(
+        ["docker", "run", "--rm", "--network", "none",
+         "-v", f"{PROJ}:{PROJ}", "-v", f"{SKILL}:{SKILL}:ro",
+         "-v", "ccmon-cargo-registry:/opt/rust/cargo/registry",
+         "-e", f"CARGO_TARGET_DIR={PROJ}/.claude/pm-targets/k-r69",
+         "-e", "HOME=/home/zbl", "-e", "PB_WS=backend-consolidation",
+         "-w", str(WT), "ccmon-devbox:latest",
+         "bash", "-o", "pipefail", "-c",
+         f'mkdir -p "$HOME/.claude/projects" && {cmd}'],
+        capture_output=True, text=True, timeout=3600)
 
 def run_cut(name, edits, cmd):
     """edits: [(相对路径, 锚点, 替换)]；cmd: 在沙箱里跑的那条命令。"""
@@ -32,7 +55,7 @@ def run_cut(name, edits, cmd):
         p.write_text(p.read_text().replace(anchor, new, 1))
     print(f"[{name}] 变异已落地，锚点命中 {hits}", flush=True)
     try:
-        r = subprocess.run([SANDBOX, cmd], capture_output=True, text=True, timeout=3600)
+        r = sandbox(cmd)
         out = r.stdout + r.stderr
     finally:
         for p, s in snaps.items():

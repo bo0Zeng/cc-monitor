@@ -1,7 +1,11 @@
 K-R69 · 本机的 `ccm` 入口 —— 死值验读数
 量于：2026-09-12 · 工作树 /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r69（分支 track/k-r69，基线 79bf97d）
-量具住址：evidence/k-r69-local-ccm-entry-cuts.py（变异台）· evidence/k-r69-sandbox.sh（沙箱一次性执行器）
+量具住址：evidence/k-r69-local-ccm-entry-cuts.py（变异台 ＋ 沙箱执行器，收工时合成了一份）
         · evidence/k-r69-fn-md5.py（逐函数 md5）
+⚠ 登记一处「量具在读数之后动过」：跑这九刀时沙箱那一段是 scratchpad 里一个 8 行的 shell 包装，
+  收工时内联进了变异台（理由：`shell_lint_registry` 当场逮到「仓里多了一个从没被 lint 过的 .sh」，
+  而给 evidence 里的一次性量具开 lint 豁免会把那张只有一条的表变成垃圾桶）。
+  **命令内容逐字未变**，变的只有「谁来起 docker」——理由与逐字比对写在变异台的注释里。
 被测对象：上面那棵工作树本身（**不是**主树 cc-monitor/，也不是别的工作树）。
 跑法：一律进沙箱（镜像 ccmon-devbox:latest，与 .claude/devbox/gate 逐字同一段 docker run，
      只把末尾那条命令换成参数）⇒ 判别住 DECISIONS.md#R21。
