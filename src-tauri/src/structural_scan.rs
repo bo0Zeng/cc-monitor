@@ -1584,11 +1584,6 @@ mod tests {
             ("local_daemon.rs", "launch.rs", 196),
             ("local_daemon.rs", "launch.rs", 198),
             ("local_daemon.rs", "local_backend.rs", 336),
-            (
-                "local_daemon.rs",
-                "src-tauri/crates/guard-core/src/lib.rs",
-                141,
-            ),
             ("local_daemon.rs", "structural_scan.rs", 425),
             ("local_daemon.rs", "structural_scan.rs", 508),
             ("panorama.rs", "engine.rs", 42),
