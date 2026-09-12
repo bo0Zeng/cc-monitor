@@ -14,10 +14,13 @@
 
 ## 发版构建：交叉编译 + 内嵌 daemon 二进制（F08b）
 
-打包 cc-monitor.exe 前，需把 daemon 交叉编译成两份 musl 二进制放进 `src-tauri/embedded-daemons/`，
-**每份二进制旁边还要有一个同名 `.build_id` 清单文件**（内容 = 那个二进制的 `BUILD_ID` 字符串）。
+打包 cc-monitor.exe 前，需把 daemon 交叉编译成两份 musl 二进制放进 `src-tauri/embedded-daemons/`。
+🔴 **`K-R70`（09-12）：旁边那份同名 `.build_id` 清单不要了。** 身份住在二进制**自己的字节**里
+（`main.rs::CC_MONITOR_BUILD_STAMP`，一段 `#[used] static [u8; N]`，形如 `<<ccm-build-id:<id>:ccm-build-id>>`），
+`build.rs` 直接扫它。〔为什么换：清单是从**源码常量**抠出来写的一张标签，三个载体的清单**恒等**，
+而恒等的东西一格证据都不提供 —— `K-R68` 摸底 · `DECISIONS.md#R26` 裁定零。〕
 该目录已 gitignore——是构建产物；**整个目录缺失**时 `build.rs` 优雅降级（`cargo:warning` + 自动部署变
-no-op，dev/CI 仍可编译），但**有二进制却缺清单是编译期 panic**，见下面的纪律。
+no-op，dev/CI 仍可编译），但**有二进制却问不出身份是编译期 panic**，见下面的纪律。
 
 ```powershell
 # 一次性装工具链（Windows 主机；cross+Docker 在 Windows+Scoop-rustup 下踩坑，用 cargo-zigbuild）
@@ -35,12 +38,10 @@ mkdir ..\src-tauri\embedded-daemons
 copy target\x86_64-unknown-linux-musl\release\cc-monitor-remote   ..\src-tauri\embedded-daemons\cc-monitor-remote-x86_64
 copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src-tauri\embedded-daemons\cc-monitor-remote-aarch64
 
-# ★ 必做：写 .build_id 清单（内容 = remote-daemon-proto/src/main.rs::BUILD_ID 的值）
-#   缺清单 = 编译期 panic；写错内容 = 装出去无限重装。
-#   **从源码抠、别手打**（手打的值下次 bump 就过期；这段与 release.yml:113 同款）：
-$id = (Select-String -Path src\main.rs -Pattern 'const BUILD_ID: &str = "(.+?)"').Matches[0].Groups[1].Value
-$id | Out-File -Encoding ascii -NoNewline ..\src-tauri\embedded-daemons\cc-monitor-remote-x86_64.build_id
-$id | Out-File -Encoding ascii -NoNewline ..\src-tauri\embedded-daemons\cc-monitor-remote-aarch64.build_id
+# 🔴 K-R70（09-12）：**没有第三步了** —— 不必再写 .build_id 清单，身份跟着字节走。
+#   想自己核一眼这两份是谁（不看它旁边任何文件）：
+#     Select-String -Path ..\src-tauri\embedded-daemons\cc-monitor-remote-x86_64 -Pattern 'ccm-build-id' -Encoding ascii
+#   Linux/macOS 上：grep -ao '<<ccm-build-id:[^>]*>>' ../src-tauri/embedded-daemons/cc-monitor-remote-x86_64
 ```
 
 > **不想装 zig 也行（U-1 实测，零安装）**：`rust-lld` 随 rustc 自带，两个 musl target 都能链：
@@ -64,8 +65,8 @@ $id | Out-File -Encoding ascii -NoNewline ..\src-tauri\embedded-daemons\cc-monit
 > | 情况 | 为什么必须 fail 而不是 warn |
 > |---|---|
 > | 抠不到源码 `const BUILD_ID` | 单源链条断了，`DAEMON_BUILD_ID` 会静默退化成 `"unknown"`，每台远端都判 StaleBuild |
-> | **有二进制但缺 `.build_id` 清单** | 清单是二进制在运行期的**唯一**身份来源（`BUILD_ID` 被编译器优化成立即数，字节里搜不到连续明文，`sftp.rs` 的字节启发式会**误拒正品**）；缺清单还会把下面那条一致性校验静默跳过 |
-> | 清单与源码 `BUILD_ID` 不符（**半 bump**） | monitor 判过期的唯一判据就是这个字符串不等 ⇒ 装上去**永远判 StaleBuild、无限重装** |
+> | **有二进制但字节里问不出身份戳** | 🔴 `K-R70` 换掉的就是这一格。〔原话逐字：「清单是二进制在运行期的**唯一**身份来源（`BUILD_ID` 被编译器优化成立即数，字节里搜不到连续明文，`sftp.rs` 的字节启发式会**误拒正品**）」—— 那句对**当时那个被测对象**是真的；今天 daemon 带着一段 `#[used] static` 的戳，有地址、进 `.rodata`、字节按定义连续，拆不成立即数。〕问不出身份 = 这份字节不是这套源码编出来的（或太旧），放它进去等于内嵌一份没人认得的二进制 |
+> | 字节自报的身份与源码 `BUILD_ID` 不符（**半 bump**） | monitor 判过期的唯一判据就是这个字符串不等 ⇒ 装上去**永远判 StaleBuild、无限重装** |
 >
 > 原来只有一条比 mtime 的 `cargo:warning`。它漏掉了真实发生过的那次：源码已 bump 到
 > `p1v-attachable`、清单还是 `p1u-fork-session`，而二进制 mtime **更新**——mtime 判据完全不响。
