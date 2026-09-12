@@ -1,0 +1,67 @@
+K-R69 改动面 · 逐函数 md5（基线 79bf97d ↔ 工作树 .claude/worktrees/k-r69）
+量于 2026-09-12 · 量具 evidence/k-r69-fn-md5.py（md5 取前 12 位）
+⚠ 射程：按**大括号配平**切函数体 ⇒ 认不出宏体 / 表 / 常量 / 注释的改动，
+  也会在「函数后面紧跟的东西被删掉」时把相邻函数误报成变了。
+  下面用【误报】标出我逐处核过、实际一个字节没动的那几个；
+  另有一处它**漏了**：src/launcher-diagnostics.ts::buildAliasLine 真的变了（多了第三个参数 + 返回串换成 ${invocation}），
+  而它的第一个 { 落在参数里的对象类型上 ⇒ 切出来的只有签名前半段，两版逐字相同 ⇒ 没被报出来。
+  ⇒ 「改动面就这些」这句话本文件**说不出**；那一层由 git diff --stat 与提交里的逐个点名管。
+
+
+== src-tauri/src/backend/control/local_backend.rs
+   both_ccm_entries_spell_the_word_from_the_same_place            （新增） → aa8eb63b6bd0
+   ccm_entry_shim                                                 （新增） → 28a19df0b71e
+   filetime_bump                                                  （新增） → 2cd4cf695b60
+   install_local_ccm_entry                                        （新增） → 5a408b7fa602
+   local_ccm_entry_name                                           （新增） → 7535edafcc8a
+   older_than                                                     （新增） → f2e135b3f198
+   resolve_or_extract                                             33b9b088288f → e10b1b89aa95
+   the_local_ccm_entry_is_a_copy_of_the_backend_itself            （新增） → bb16d52745b5
+   the_resolution_path_really_puts_the_local_ccm_entry_down       （新增） → abe0d1396201
+   two_processes_do_not_share_one_partial_file                    ae6b3b23c8af → e47b70c8dad0
+
+== src-tauri/src/ccm_probe.rs
+   a_stale_ccm_on_path_is_named_out_loud                          （新增） → cb5f76176590
+   classify_path_ccm                                              （新增） → f84b3b5dd8a3
+   describe_card                                                  （新增） → 4ca4dfac9a19
+   local_ccm_entry_status                                         （新增） → 8036b30a4aa2
+   probe_binary_uncached                                          （新增） → 18e0a9b73068
+   probe_path_ccm                                                 （新增） → 27c5d13bb972
+   probe_spawned                                                  （新增） → 0eda624ab4cc
+   probe_with                                                     52663718324d → f6d7673fc036
+   render_path_ccm_hint                                           （新增） → eca6ad8ca1f4
+   the_verdict_cannot_be_reached_by_comparing_paths               （新增） → ea51ece30b2b
+
+== src-tauri/src/config_surface.rs
+   declared_destinations_are_pinned_to_the_real_writers           2ca3c834d8b6 → 308bb9025456
+   every_host_declaration_is_pinned                               0160e1db80f8 → 6050ff11805c
+   host_is_not_a_function_of_destination                          b840f2c43355 → 24bbea7193c8
+   resolve_by_destination                                         9bffa0fc4dfc → 30c82634d225
+
+== src-tauri/src/lib.rs
+   run                                                            4ee13d472716 → 3fad46c5f19c
+
+== src-tauri/src/parity_ledger.rs
+   command_signatures                                             f6f1f5e4041d → 7a3522931684
+
+== src-tauri/src/sftp.rs
+   builtin_alias_names                                            72513193dbdf → ff104b5c699d
+
+== src-tauri/src/tool_registry.rs
+   declared_fields_of                                             b83c767b88d8 → 68315126c4d5
+
+== src/launcher-diagnostics.ts
+   buildAccountAliasBlock                                         1c0e5e075c31 → dadb3974c228
+   buildAliasGeneratorSection                                     6fc708b48140 → 860578056558
+   ccmInvocation                                                  （新增） → fc243ba1464c
+   loadCcmEntry                                                   （新增） → aff2a38edce7
+
+== src/launcher-diagnostics.vitest.ts
+   mount                                                          816c1cd7f12c → 43befa7e45fd
+
+【逐处核过的误报（切歪，不是真改）】
+  src-tauri/src/sftp.rs::builtin_alias_names          —— 它后面那个 ccm_entry_shim 搬走了，切界跟着漂
+  src-tauri/src/tool_registry.rs::declared_fields_of  —— 同族（它后面的表体变了）
+  src-tauri/src/parity_ledger.rs::command_signatures  —— 同族（LEDGER 表里多了一行）
+  src/launcher-diagnostics.vitest.ts::mount           —— 本轮**新增**了一个同名 mount 助手，两个同名函数被合起来算了
+【真改的】src-tauri/src/lib.rs::run（generate_handler! 里多注册一条命令）
