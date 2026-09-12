@@ -217,6 +217,17 @@ fn emit_daemon_capabilities() {
 /// （`a,b`）。**取 `=` 右侧再抠数组**——否则 `line.find('[')` 会命中类型标注 `&[&str]`
 /// 的 `[`（里面 `&str` 无引号 → 抠成空，此坑由 `embedded_capabilities_single_source_wired`
 /// 测试抓出）。
+///
+/// 🔴 **射程写清楚，别让下一个人读宽**〔`K-R61` 09-11 现打〕：本函数只喂
+/// [`daemon_main_rs`] 那一个文件，抠的是 daemon **流模式**那个 `CAPABILITIES`
+/// （现打逐字 `const CAPABILITIES: &[&str] = &["bg", "tail-only"];`，`main.rs` 里
+/// 含这个串的行**恰好 1 行**）。
+///
+/// ⚠ 仓里**还有两个同名常量**，本函数一个都盖不到：
+/// `remote-daemon-proto/src/control/ccm/mod.rs`（`ccm` 的能力 token）与
+/// `remote-daemon-proto/src/agents/fake/mod.rs`（假 agent 的）。
+/// `K-R61` 往前者加了一个 token，实测 `DAEMON_CAPABILITIES` **逐字不变**（仍是 `bg,tail-only`）
+/// —— 这是量出来的，不是推的。谁在数 `ccm` 那一份，清单住它自己的头注。
 fn extract_capabilities(src: &str) -> Option<String> {
     let line = src.lines().find(|l| l.contains("const CAPABILITIES"))?;
     let rhs = &line[line.find('=')? + 1..]; // 跳过 `: &[&str]` 类型标注里的 `[`

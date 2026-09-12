@@ -529,7 +529,11 @@ mod tests {
         assert_eq!(
             CLI_REQUIRED_CAPS, STATIC_CAPS_EXPECTED,
             "静态能力清单变了。改它是改「装了哪种 ccm 才肯走 CLI 形态」的门槛，\
-             要同步 TS 的 CLI_REQUIRED_CAPS 与 shared/ccm 的 --ccm-probe capabilities="
+             要同步 TS 的 CLI_REQUIRED_CAPS 与 \
+             remote-daemon-proto/src/control/ccm/mod.rs 的 CAPABILITIES\n\
+             〔`K-R61` 09-11：这里原先点的是那份 bash `ccm` 的 `--ccm-probe` —— \
+             那个文件 `07e4e72` 就删了，与 `K-R61` 治的是同一种悬空引用。\
+             本清单是**子集检查** ⇒ 对面加 token 不影响本条；删/改名才影响。〕"
         );
         for missing in STATIC_CAPS_EXPECTED {
             let got = render_ccm_invocation(&base_spec(), &caps_without(missing), true);
