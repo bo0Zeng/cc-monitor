@@ -489,6 +489,17 @@ mod tests {
              那个模块把 `home` 当参数收，于是它的测试拿临时目录当 home，结构上碰不到真实家目录。",
         ),
         (
+            "ccm_probe.rs",
+            "local_ccm_entry_status",
+            "`~/.cc-monitor/bin/<本机 ccm 入口名>`（`K-R69`：在不在 + 它自报的身份）",
+            "**不是伸手拿用户的东西**：这是 monitor 自己的目录，那一份也是我们自己放下去的\
+             （写侧登记在 `write_site_registry` 的 `local_backend.rs::install_local_ccm_entry`）。\
+             `home_dir()` 只为「每个用户各一份」。\
+             🔴 **它刻意够不到 `~/.local/bin/ccm`** —— 用户那份旧的由产品**一个字节都不碰**\
+             （`K34` 逐字：原本的配置要手动删除）；那一份的存在与否是靠**跑一次 `--ccm-probe`**\
+             问出来的，不是靠 stat 一个路径（比路径认不出同名不同物）。",
+        ),
+        (
             "local_daemon.rs",
             "cc_monitor_dir",
             "`~/.cc-monitor`（`K-P1` 的 attach token 与「谁在听那个口」）",
