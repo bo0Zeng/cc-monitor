@@ -45,8 +45,10 @@ pub const ALIAS_FILE_REL: &str = ".cc-monitor/account-aliases.sh";
 /// 写进用户 rc 的那一行所在的围栏。**刻意与 `profile_installer` 的
 /// `# === cc-monitor BEGIN` 不同前缀** —— 后者装的是 PowerShell 的 `cc` 块，
 /// 两者若共用标记，装一个就会把另一个整块替换掉。
-const RC_BEGIN: &str = "# === cc-monitor aliases BEGIN v1 ===";
-const RC_END: &str = "# === cc-monitor aliases END ===";
+/// ⚠ `K-R62` 起是 `pub(crate)`：同 `profile_installer::BEGIN_MARKER` 那条理由 ——
+/// `fenced_block::FENCE_SHAPES` 指它，不抄它。
+pub(crate) const RC_BEGIN: &str = "# === cc-monitor aliases BEGIN v1 ===";
+pub(crate) const RC_END: &str = "# === cc-monitor aliases END ===";
 
 /// 生成文件自己的围栏（整份重写，所以它只是给人看的边界）。
 const FILE_BEGIN: &str = "# === cc-monitor account aliases BEGIN v1 ===";
