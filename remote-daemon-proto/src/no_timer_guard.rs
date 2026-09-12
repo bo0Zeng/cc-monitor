@@ -608,11 +608,11 @@ mod tests {
                 "{file} / `{snippet}` 的登记理由太短，说不清它为什么不是定时器"
             );
             assert!(
-                crate::readonly_guard::is_cell(cell),
+                crate::readonly_guard::g6_doctrine::is_cell(cell),
                 "{file} / `{snippet}` 的第四栏是 `{cell}` —— 它不在 `§0a` 四情形表的闭集里（`{}`）。\n\
                  往这张表里加一条**必须说得出它走的是哪一格** —— \n\
                  ★★ 「加白名单」不是那四格里的任何一格：**放宽 ≠ 加白名单**。",
-                crate::readonly_guard::cell_names().join(" / ")
+                crate::readonly_guard::g6_doctrine::cell_names().join(" / ")
             );
             assert!(
                 unlock.trim().chars().count() >= 20,
