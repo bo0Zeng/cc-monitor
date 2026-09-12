@@ -2943,7 +2943,21 @@ mod tests {
     /// 而**只要没人在生产段里调它，本机就还是一条 `ccm` 都没有**，
     /// 也就是 `K-R69` 立件时那个读数原封不动。本仓这一形有名字（`K-R28` 那条「防空转」）。
     ///
-    /// ⚠ **约定型守卫**（查源码形态）：挡得住「接线被删掉」，挡不住「换个名字继续错」。
+    /// # ⚠ 它守什么、**不守什么**〔`K-R69` 收窗口前订正 —— 原话不完整，PM 一刀切中〕
+    ///
+    /// **约定型守卫**（查源码形态）。原话只写「挡得住『接线被删掉』，挡不住『换个名字继续错』」，
+    /// 而 PM 09-12 的**刀 T** 实测出第三样它当时也挡不住：**接线还在、名字没改、
+    /// 而调用点喂进去的可以不是后端本体** —— 把第二个实参从 `bin` 换成
+    /// `&extract_dir.join("<随便一个不存在的名字>")`，别处一字不动，
+    /// 判定行逐字 `test result: ok. 1393 passed; 0 failed` —— **一条都没红**。
+    /// 后果不是编译错，是**静默放下一份不是后端的文件**，而 `--ccm-probe` 探它会失败，
+    /// **失败长得像「没装」**（那句话正是本模块另一条判据自己写的）。
+    ///
+    /// ⇒ 本条今天多钉一格：**那唯一一处调用喂进去的，就是 `Resolved::Found` 解开的那个绑定**。
+    /// ⚠ 这一格仍是**形态**（换个变量名照样能骗过它）—— 真正不看拼法的那一半在
+    /// [`tests::the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved`]：
+    /// 它真跑一趟 `resolve_or_extract`，比的是**落下来那份的字节**。
+    /// **两条合起来才是那道缝，单独任何一条都不够。**
     #[test]
     fn the_resolution_path_really_puts_the_local_ccm_entry_down() {
         let sect = shared_resolution_body();
@@ -2962,6 +2976,90 @@ mod tests {
             "「放本机 ccm 入口」排到了「把后端释放出来」前面 —— 顺序反了：\n\
              那时它复制的是一份还不存在（或还是上一版）的二进制。"
         );
+        // 🔴 **PM 刀 T 逼出来的那一格**：喂进去的**是解析出来的那份后端**，不是别的什么路径。
+        // ⚠ 钉的是**这一对**，不是两个孤立的串：一头是 `Resolved::Found` 解开的那个绑定，
+        //   另一头是那唯一一处调用的实参表。分开钉的话，把绑定留着、实参换掉照样过。
+        guard_core::find_pinned(&sect, "if let Resolved::Found(bin) = &resolved {").unwrap_or_else(
+            |e| {
+                panic!(
+                    "那份共用的解析体内「解开 `Resolved::Found`」不是恰好一处（{e}）——\n\
+                     下面那条断言指不明它说的是哪一个 `bin`，本条此刻无效。\n逐字：{sect}"
+                )
+            },
+        );
+        guard_core::find_pinned(&sect, "install_local_ccm_entry(extract_dir, bin, make_executable)")
+            .unwrap_or_else(|e| {
+                panic!(
+                    "那一处调用喂进去的不是解析出来的那份后端（{e}）。\n\
+                     🔴 这正是 PM 09-12 刀 T 切中的那道缝：接线还在、函数没改，\n\
+                     而实参换成别的路径 ⇒ **静默放下一份不是后端的文件**，\n\
+                     `--ccm-probe` 探它会失败，而**失败长得像「没装」**。\n\
+                     期望逐字：`install_local_ccm_entry(extract_dir, bin, make_executable)`\n逐字：{sect}"
+                )
+            });
+    }
+
+    /// 🔴 **刀 T 那道缝的另一半，而且这一半不看拼法**：真跑一趟 `resolve_or_extract`，
+    /// 断言落下来那条 `ccm` 入口**与它刚解析出来的那份后端逐字节相同**。
+    ///
+    /// # 为什么非要行为判据不可
+    ///
+    /// 上面那条是**形态**判据：换个变量名、换个等价写法都能绕过去。
+    /// 本条不读一个字源码 —— 它只问「盘上那两份字节一样吗」，
+    /// 于是「喂进去的不是后端本体」这一形**不论怎么拼**都会在这里现原形。
+    ///
+    /// # 夹具怎么保证走的是我要盯的那一支
+    ///
+    /// `target_triple` 取一个**盘上必不存在**的中性串 ⇒ `resolve_beside_this_exe` 必回
+    /// `Missing` ⇒ 走「释放内嵌那份」那一支，而本条盯的正是那一支之后那一跳。
+    /// 三条反向自检（缺一条这里就会零命中地绿）：① 真的 `Found` 了；
+    /// ② 释放出来那份就是我喂进去的字节；③ 那两个文件**不是同一个**
+    /// （否则「两份相同」靠自反恒真）。
+    #[test]
+    fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
+        let base = std::env::temp_dir().join(format!("ccm-kr69-wire-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("建夹具目录");
+        // 内容唯一、夹具名中性：断言比的是这串字节，不是任何路径 / 目录名〔固定项 12 的 `6g`〕。
+        let bytes: Vec<u8> = (0u8..=255).cycle().skip(3).take(3072).collect();
+        let mark = |_: &Path| Ok(());
+
+        let r = resolve_or_extract(
+            "no-such-target-triple",
+            &base,
+            Some(("kr69wire", &bytes)),
+            &mark,
+        );
+        // ① 反向自检：真的走到了「释放出来并 Found」那一支。
+        let Resolved::Found(bin) = r.clone() else {
+            panic!("夹具塌了：内嵌那份没释放出来 ⇒ 本条此刻无效。实得 {r:?}");
+        };
+        // ② 反向自检：释放出来那份就是我喂进去的字节。
+        assert_eq!(
+            std::fs::read(&bin).expect("读回释放出来那份"),
+            bytes,
+            "夹具塌了：释放出来那份不是我喂进去的字节"
+        );
+        let entry = base.join(local_ccm_entry_name());
+        // ③ 反向自检：两个文件不是同一个（否则下面那条比较靠自反恒真）。
+        assert_ne!(
+            entry, bin,
+            "夹具塌了：本机 `ccm` 入口与释放出来那份是同一个文件 ⇒ 下面那条比较恒真"
+        );
+        assert!(
+            entry.is_file(),
+            "解析出后端之后，本机那条 `ccm` 入口**没被放下来**：{}\n\
+             要么那一跳没接上，要么它拿到的路径根本不存在（PM 刀 T 那一形）。",
+            entry.display()
+        );
+        assert_eq!(
+            std::fs::read(&entry).expect("读回本机 ccm 入口"),
+            bytes,
+            "本机那条 `ccm` 入口的字节**不是刚解析出来的那份后端** ——\n\
+             🔴 静默放下一份不是后端的文件，而 `--ccm-probe` 探它会失败，\n\
+             **失败长得像「没装」**：用户看到的是「你没装」，而真相是「我们放错了东西」。"
+        );
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// `KR69D1` 的**同源那一半（拼写侧）**：两条落点里那个 `ccm`，取自**同一处**。
