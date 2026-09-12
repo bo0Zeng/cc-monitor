@@ -503,6 +503,47 @@ pub const TOOLS: &[ToolSpec] = &[
             effect: TouchEffect::OwnedFile,
         }],
     },
+    // ═══ 〔`K-R62` 09-11〕**从第三档升上来的第一项** ═══
+    //
+    // 它昨天还住在 [`UNMANAGED_ENV`]（`app 假设它在`），`why` 那一格逐字写着
+    // 「加与删两侧都只造 PowerShell 那两条 profile 路径，POSIX rc 一条都不扫」。
+    // 本件把那句话变成了假的：`profile_installer::plan_install` 的 `PosixRc` 臂把那个
+    // 别名块装进用户**选定**的 rc（内容与远端那个口来自同一个常量 `sftp::CCM_WRAPPER_SNIPPET`，
+    // 合块与剥块都借 `sftp::merge_profile_block` / `sftp::strip_profile_block`），
+    // `profile_installer::plan_uninstall` 卸得掉，`profile_installer::scan_profile` 查得出。
+    //
+    // 🔴 **升档本身是一条可验的性质**，不是一句话：`installable: true` ⇒ [`environment`]
+    // 把它算成 [`EnvTier::AppInstalls`]，判据是 `posix_rc_aliases_sits_in_the_first_tier_now`。
+    // 档没升 = 活没做完 —— 这一格从此有人数着。
+    ToolSpec {
+        id: "posix-rc-aliases",
+        display_name: "POSIX rc 里的 ccm 别名块（cc / cct / zcc …）",
+        // 装进去的内容**就是仓里那份文件**（`sftp::CCM_WRAPPER_SNIPPET` 是它的
+        // `include_str!`）。远端那条 `ccm` 用的是同一份 —— 那正是本件不许出现第二份的东西。
+        source: ToolSource::EmbeddedText {
+            repo_path: "shared/ccm-aliases.sh",
+        },
+        // 🔴 **路径由人选，产品不猜** —— 这一格用占位符而不是 `~/.bashrc`，
+        // 理由与 `remote-daemon` 的 `$DAEMON_PATH` 逐字同源：申报一个我们其实没在用的常量，
+        // 审计页会拿它去查一个没人写的路径然后言之凿凿地报「缺失」。
+        // `.bashrc` / `.zshrc` / `config.fish` 写法不同，替人选一份是最坏的那条路
+        // （`account_aliases` 的 `§0e`）。
+        destination: ToolDestination::UserConfiguredPath {
+            token: "$POSIX_RC",
+            what: "「按账号生成命令」那一块里那个 rc 下拉 —— 从盘上真实存在的 .bashrc / .zshrc / .bash_profile / .profile 里由你自己选",
+        },
+        installable: true,
+        uninstallable: true,
+        touches: &[TouchedFile {
+            path: "$POSIX_RC",
+            host: HostScope::Client,
+            note: Some(
+                "本机（cc-monitor 跑着的这台）的那份 shell rc，具体哪一份由界面上的人选。\
+                 围栏与内容都与远端那个口共用一份 —— 本机与远端装进 rc 的是同一个东西（K15 / K36）",
+            ),
+            effect: TouchEffect::FencedBlock,
+        }],
+    },
     ToolSpec {
         id: "powershell-profile",
         display_name: "PowerShell 集成",
@@ -712,15 +753,22 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         why: "本机侧零装口、零查口；有口的只有远端那半 —— \
               acct_iso_deploy.rs::check_remote_acct_iso",
     },
-    UnmanagedEnv {
-        id: "posix-rc-aliases",
-        display_name: "POSIX rc 里的 ccm 别名块（cc / cct / zcc …）",
-        tier: EnvTier::AppAssumesPresent,
-        named: "~/.bashrc",
-        host: HostScope::Client,
-        why: "加与删两侧都只造 PowerShell 那两条 profile 路径，POSIX rc 一条都不扫 —— \
-              profile_installer.rs::discover_profiles",
-    },
+    // 🔴 〔`K-R62` 09-11〕**`posix-rc-aliases` 从这里搬走了 —— 这是它的墓碑。**
+    //
+    // 原文逐字：`tier: EnvTier::AppAssumesPresent` · `named: "~/.bashrc"` ·
+    // `why: "加与删两侧都只造 PowerShell 那两条 profile 路径，POSIX rc 一条都不扫 ——
+    //        profile_installer.rs::discover_profiles"`。
+    //
+    // 那句话今天是假的：`profile_installer::plan_install` 的 `PosixRc` 臂真装、
+    // `profile_installer::plan_uninstall` 真卸、`profile_installer::scan_legacy_rc_lines`
+    // 真查（而且够得着裸行 —— 围栏那条路够不着，那正是 `KR62D2` 的题面）。
+    // ⇒ 它上面有了 `ToolSpec` ⇒ 档由 [`environment`] 读 `installable` 派生成
+    // [`EnvTier::AppInstalls`]，**不再手写**。留这段墓碑是因为「它曾经在第三档」
+    // 是这张表存在理由的最好例子：一个判断当初只能靠「进这张表」表达，
+    // 做完之后它自己会从这张表里消失。
+    //
+    // ★ 同一档里 `cc-acct-iso-local` 仍在（「本机侧零装口、零查口」）——
+    // 那是**二进制**不是 rc 行，不在 `K-R62` 射程（`§0e`）。
 ];
 
 /// 闭集里一项的**来路**。两态，没有第三种 —— 一项要么有 [`ToolSpec`]，要么没有。
@@ -1632,6 +1680,46 @@ mod environment_tests {
             checked >= 5 && checked == UNMANAGED_ENV.len(),
             "计数自检：扫到 {checked} 条，而表里 {} 条",
             UNMANAGED_ENV.len()
+        );
+    }
+
+    /// ★★ `KR62D1` 的第二条死值验：**`posix-rc-aliases` 升到了第一档，而且是真升。**
+    ///
+    /// 「档没升 = 活没做完」这句话本身可验 —— 这一条就是它。三格一起断，缺一格都能装样子：
+    ///   ① 它**不在** [`UNMANAGED_ENV`] 里了（留在那儿就还是「app 假设它在」）；
+    ///   ② 它在 [`TOOLS`] 里且 `installable` / `uninstallable` **都为真**（装得了也卸得掉）；
+    ///   ③ [`environment`] 把它算成 [`EnvTier::AppInstalls`]（档是**派生**出来的，不是手填的）。
+    ///
+    /// **死值验**：把 `installable` 翻回 `false` ⇒ ②③ 双双红；
+    /// 把这一条搬回 `UNMANAGED_ENV` ⇒ ① 红。
+    #[test]
+    fn posix_rc_aliases_sits_in_the_first_tier_now() {
+        const ID: &str = "posix-rc-aliases";
+        assert!(
+            !UNMANAGED_ENV.iter().any(|u| u.id == ID),
+            "`{ID}` 还留在 UNMANAGED_ENV 里 —— `K-R62` 之后它有装口也有卸口了，\
+             留在「app 假设它在」那一档就是盘上写着一句假话"
+        );
+        let t = TOOLS
+            .iter()
+            .find(|t| t.id == ID)
+            .unwrap_or_else(|| panic!("`{ID}` 不在 TOOLS 里 —— 本机 POSIX 那一格没人申报"));
+        assert!(
+            t.installable,
+            "`{ID}` 申报成装不了 —— 那 `environment()` 会把它算进「app 只查」"
+        );
+        assert!(t.uninstallable, "`{ID}` 申报成卸不掉 —— 有围栏就必须卸得掉");
+        assert!(!t.touches.is_empty(), "`{ID}` 装得了却没申报落点");
+        let tier = environment()
+            .into_iter()
+            .find(|e| e.id == ID)
+            .map(|e| e.tier)
+            .expect("闭集里找不到它");
+        assert_eq!(
+            tier,
+            EnvTier::AppInstalls,
+            "`{ID}` 在闭集里的档不是「{}」—— `K-R62` 那一格没做完",
+            EnvTier::AppInstalls.label()
         );
     }
 

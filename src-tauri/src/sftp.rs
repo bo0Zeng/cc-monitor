@@ -866,8 +866,14 @@ pub async fn remove_remote_file(cfg: &RemoteConfig, remote_path: &str) -> Result
 
 /// 远端 ccm 块的 BEGIN/END 标记（镜像本地 profile_installer 的 `# === cc-monitor BEGIN/END`）。
 /// 重装时整块替换、卸载时整块删；用户在块外的内容绝不动。
-const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN ===";
-const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
+///
+/// ⚠ `K-R62` 起是 `pub(crate)`：**本机 POSIX 那条路装的是同一个块**
+/// （`profile_installer::plan_install` 的 `PosixRc` 臂走 [`merge_profile_block`]）。
+/// 在那边抄一对同样的字符串就是第二个住址 —— 而「同一件事有两个住址」正是
+/// `KR62D1` 那条「不许变成第四套」要挡的东西。名字里的 `remote` 是历史，
+/// 今天它的意思是「**POSIX rc 里那一对围栏**」，本机远端共用。
+pub(crate) const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN ===";
+pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 
 /// 远端 ↗ 拉前用的 `ccm` wrapper（**后端拥有**，install 写它而非前端传入——见审计 S-1：
 /// 写进 ~/.bashrc 的是被 shell **执行**的代码，绝不能让前端注入任意 bash）。
@@ -890,15 +896,20 @@ pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-alia
 /// 自带别名块里**今天定义了哪几个名字** —— 现算，不写死（`13b`：闭集只许有一个住址，
 /// 那个住址就是 `shared/ccm-aliases.sh` 自己）。
 ///
-/// 只在测试里用：`account_aliases` 的撞名判据与本文件的文档对账判据都拿它当人群，
+/// `account_aliases` 的撞名判据与本文件的文档对账判据都拿它当人群，
 /// 于是「删/加一个别名」这件事**不需要同时去改两份名单**（改漏一份正是 `KR58D1`
 /// 的失效方向）。
+///
+/// 🔴 〔`K-R62` 09-11〕**它从 `#[cfg(test)]` 转正了**，因为多了一个生产使用者：
+/// `profile_installer::render_manual_cleanup_hint` 要回答「你 rc 里那几行裸的
+/// `cc()` / `cct()`，会不会把我们装的那一块遮蔽掉」—— 那个答案**只有这份文件说了算**，
+/// 在提示文案里抄一份名字清单就是第二个住址。转正**没有放宽任何东西**：
+/// 它仍然现算自 [`CCM_WRAPPER_SNIPPET`]，一个字节的名单都没写死。
 ///
 /// ⚠ **它认的形状写死在这里**：`<名>() {`（`()` 与 `{` 之间允许空白）。
 /// 注释行里那两条示例（`#   zcc()  { … }`）靠「名字只许 `[A-Za-z0-9_]`」被剔掉 ——
 /// 换一种写法（`function cc {`）它会**漏**，而漏出来的形状是「人群变空」，
 /// 调用处一律先断 `!is_empty()`，不让它静默变成空真。
-#[cfg(test)]
 pub(crate) fn builtin_alias_names() -> Vec<&'static str> {
     let mut v: Vec<&'static str> = CCM_WRAPPER_SNIPPET
         .lines()

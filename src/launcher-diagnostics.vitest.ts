@@ -366,3 +366,166 @@ describe("K-R49 buildAccountAliasBlock：每个账号一条命令，而且真落
     expect(hint).toContain("删了账号那条就没了");
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-R62`：本机 POSIX 那一格 —— 装口在界面上够得着，「这几行是旧的」也说得出
+// ═══════════════════════════════════════════════════════════════════════════
+describe("K-R62 本机 POSIX 那一格：装 ccm 别名块 + 逐行指名旧的那几行", () => {
+  /** 后端 `profile_installer::scan_profile` 的返回形状（生成物 `ProfileScan`）。 */
+  const scan = (over: Record<string, unknown> = {}) => ({
+    kind: "Custom",
+    path: "/h/.bashrc",
+    exists: true,
+    has_ccm_block: false,
+    ccm_block_version: null,
+    conflicting_functions: [],
+    manual_cleanup_hint: "",
+    size_bytes: 12,
+    ...over,
+  });
+
+  const aliasReport = () => ({
+    aliasPath: "/h/.cc-monitor/account-aliases.sh",
+    names: ["zcc"],
+    collisions: [],
+    rcCandidates: [{ path: "/h/.bashrc", sourced: false }],
+    wroteAliasFile: false,
+    aliasFileUnchanged: false,
+    wroteRc: false,
+    notes: [],
+  });
+
+  /** 每条用例自己决定后端怎么答；`seen` 记下真发过哪些 IPC。 */
+  async function mount(opts: {
+    scans?: Record<string, unknown>[];
+    installErr?: string;
+    seen: string[];
+  }): Promise<HTMLElement> {
+    const scans = opts.scans ?? [scan()];
+    let n = 0;
+    vi.resetModules();
+    vi.doMock("./ipc/commands", () => ({
+      commands: {
+        write_account_aliases: () => Promise.resolve(aliasReport()),
+        cc_integration_scan_path: (a: { path: string }) => {
+          opts.seen.push(`scan:${a.path}`);
+          const s = scans[Math.min(n, scans.length - 1)];
+          n += 1;
+          return Promise.resolve(s);
+        },
+        cc_integration_install: (a: { path: string; includeCcFunction: boolean }) => {
+          opts.seen.push(`install:${a.path}:${a.includeCcFunction}`);
+          return opts.installErr
+            ? Promise.reject(new Error(opts.installErr))
+            : Promise.resolve();
+        },
+        cc_integration_uninstall: (a: { path: string }) => {
+          opts.seen.push(`uninstall:${a.path}`);
+          return Promise.resolve();
+        },
+      },
+    }));
+    const mod = await import("./launcher-diagnostics");
+    const el = mod.buildAccountAliasBlock(async () => ["z"]);
+    document.body.appendChild(el);
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+    return el;
+  }
+
+  const pick = async (el: HTMLElement, path: string): Promise<void> => {
+    const sel = el.querySelector<HTMLSelectElement>(".ccm-acct-alias-rc")!;
+    sel.value = path;
+    sel.dispatchEvent(new Event("change"));
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  };
+
+  it("★ 默认那一档**一条 IPC 都不发**：没选 rc 时整块藏着，连读都不读", async () => {
+    const seen: string[] = [];
+    const el = await mount({ seen });
+    expect(el.querySelector<HTMLElement>(".ccm-rc-block")!.hidden).toBe(true);
+    expect(seen).toEqual([]);
+  });
+
+  it("★★ 选了那份 rc 才扫，而且**扫的就是人选的那一份**（产品不猜）", async () => {
+    const seen: string[] = [];
+    const el = await mount({ seen });
+    await pick(el, "/h/.bashrc");
+    expect(seen).toEqual(["scan:/h/.bashrc"]);
+    expect(el.querySelector<HTMLElement>(".ccm-rc-block")!.hidden).toBe(false);
+    expect(el.querySelector(".ccm-rc-block-status")!.textContent).toContain(
+      "还没有 ccm 别名块",
+    );
+  });
+
+  it("★★ 「装 ccm 别名块」真的把那条 IPC 发出去了，装完重扫、状态跟着变", async () => {
+    const seen: string[] = [];
+    const el = await mount({
+      seen,
+      scans: [scan(), scan({ has_ccm_block: true })],
+    });
+    await pick(el, "/h/.bashrc");
+    el.querySelector<HTMLButtonElement>(".ccm-rc-block-install")!.click();
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    expect(seen).toEqual([
+      "scan:/h/.bashrc",
+      // `includeCcFunction: false` —— POSIX 那一块的名字住在 shared/ccm-aliases.sh 里，
+      // 不由界面这个参数说了算。
+      "install:/h/.bashrc:false",
+      "scan:/h/.bashrc",
+    ]);
+    expect(el.querySelector(".ccm-rc-block-status")!.textContent).toContain(
+      "已经装了",
+    );
+    expect(el.querySelector<HTMLElement>(".ccm-rc-block-uninstall")!.hidden).toBe(
+      false,
+    );
+  });
+
+  it("★★ 「你 rc 里这几行是旧的」**原样上屏**（后端逐行指名的那段话，前端不改写）", async () => {
+    const hint =
+      "/h/.bashrc 里有 2 行提到 ccm，而它们都在 cc-monitor 的围栏之外。\n" +
+      "  第 5 行  cc()   { ccm \"$@\"; }     ← 会赢过我们那一块\n" +
+      "  第 6 行  cct()  { ccm --tmux \"$@\"; }\n";
+    const seen: string[] = [];
+    const el = await mount({ seen, scans: [scan({ manual_cleanup_hint: hint })] });
+    await pick(el, "/h/.bashrc");
+    const box = el.querySelector<HTMLElement>(".ccm-rc-block-legacy")!;
+    expect(box.hidden).toBe(false);
+    // 逐行等号比，不用子串：截掉半行、少一行，子串比法照样绿。
+    expect((box.textContent ?? "").split("\n")).toEqual(hint.split("\n"));
+  });
+
+  it("★ 没有旧行时那一块**不出现**（空的提示框比没有更吵）", async () => {
+    const seen: string[] = [];
+    const el = await mount({ seen });
+    await pick(el, "/h/.bashrc");
+    expect(el.querySelector<HTMLElement>(".ccm-rc-block-legacy")!.hidden).toBe(true);
+  });
+
+  it("★ 装失败**不许静默** —— 屏幕上要说出是哪一步、为什么", async () => {
+    const seen: string[] = [];
+    const el = await mount({ seen, installErr: "围栏损坏，已中止" });
+    await pick(el, "/h/.bashrc");
+    el.querySelector<HTMLButtonElement>(".ccm-rc-block-install")!.click();
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    const s = el.querySelector(".ccm-rc-block-status")!.textContent ?? "";
+    expect(s).toContain("装失败");
+    expect(s).toContain("围栏损坏，已中止");
+  });
+
+  it("★ 「卸载别名块」走的是卸那条 IPC，而且只在装了的时候露出来", async () => {
+    const seen: string[] = [];
+    const el = await mount({ seen, scans: [scan({ has_ccm_block: true })] });
+    await pick(el, "/h/.bashrc");
+    expect(el.querySelector<HTMLElement>(".ccm-rc-block-uninstall")!.hidden).toBe(
+      false,
+    );
+    el.querySelector<HTMLButtonElement>(".ccm-rc-block-uninstall")!.click();
+    for (let i = 0; i < 8; i += 1) await Promise.resolve();
+    expect(seen).toEqual([
+      "scan:/h/.bashrc",
+      "uninstall:/h/.bashrc",
+      "scan:/h/.bashrc",
+    ]);
+  });
+});

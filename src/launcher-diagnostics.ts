@@ -26,6 +26,9 @@
 import { buildPasteBlock } from "./paste-block"; // T03：待贴文本统一组件
 import { commands } from "./ipc/commands"; // K-R49：真落盘那一跳（后端围栏在 `account_aliases.rs`）
 import type { AccountAliasReport } from "./generated/AccountAliasReport";
+// `K-R62`：本机 POSIX 那一格（装别名块 / 查裸行）走的是 `cc_integration_*` 那三条命令，
+// 它们的返回形状就是这一个生成物（源 `profile_installer.rs::ProfileScan`）。
+import type { ProfileScan } from "./generated/ProfileScan";
 
 /** 该远端命令看起来是不是绕开了 `ccm`（越层启动器）——启发式：非空、不含 "ccm"、且不是
  *  裸 `claude`（显式写 claude 是有意选择基座行为，不算"看起来像旧式包装"）。命中不代表
@@ -117,6 +120,23 @@ export function suggestAliasName(account: string): string {
  * 由后端把那一行 `source` 装进围栏里（备份 + 原子替换 + 写后回读 + 幂等）。
  * ⚠ 下拉的默认项是「**不动我的 shell 配置**」—— 界面不替人选那份文件。
  *
+ * # 🔴 `K-R62`（09-11）：**同一个下拉下面多了「装 ccm 别名块」与「你 rc 里这几行是旧的」**
+ *
+ * 立件时现打的账：本机 POSIX 侧**装与查都没有口** —— 「终端集成」那一块整篇是 PowerShell，
+ * 而 `panel.ts` 用 `hostOsAllows` 把它只留给 Windows ⇒ Linux 上用 cc-monitor 的人
+ * 在界面上**一个装口都够不着**，别名块只能自己贴。
+ *
+ * 补在这里而不是另起一块，理由是它们本来就是同一段话的两半：上面那一行 `source`
+ * 之所以「多数人连这一行都不用加」，正是因为 `shared/ccm-aliases.sh` 里自带它 ——
+ * 那份文件就是这两个按钮装的东西，而且**与远端「装 ccm 助手」推过去的是同一个常量**
+ * （`sftp::CCM_WRAPPER_SNIPPET`，本机与远端同一份实现、同一对围栏）。
+ *
+ * ⚠ 两条边界，一条都不省：
+ * · **默认什么都不做** —— 下拉停在「不动我的 shell 配置」时整块 `hidden`，一条 IPC 都不发；
+ * · **产品一个字节都不删用户的行**（`K31` + 用户逐字「原本的配置要手动删除」）。
+ *   那段「这几行是旧的」是后端**逐行指名**之后生成的提示，动手的是用户 ——
+ *   因为那些行没有围栏，边界只有他自己知道。
+ *
  * @param loadAccounts 取账号名的那一跳。**由调用方给**，因为这一块两处挂载
  *   （设置面板的「行为」组 · 账号那一节），而它们手里的账号读口不是同一个。
  */
@@ -147,7 +167,7 @@ export function buildAccountAliasBlock(
   rcSel.className = "ccm-acct-alias-rc";
   const rcRow = document.createElement("label");
   rcRow.className = "ccm-acct-alias-rcrow";
-  rcRow.append("顺便把那一行 source 加进：", rcSel);
+  rcRow.append("这台机器的 shell 配置（那一行 source 加进哪份）：", rcSel);
   wrap.appendChild(rcRow);
 
   const out = document.createElement("pre");
@@ -159,6 +179,47 @@ export function buildAccountAliasBlock(
   btn.className = "ccm-acct-alias-write";
   btn.textContent = "写入";
   wrap.appendChild(btn);
+
+  // ── 🔴 `K-R62`：**选定那份 rc 之后，这台机器上的 ccm 别名块也在这里装 / 查** ──────
+  //
+  // 为什么挂在这一块下面而不是「终端集成」那一块：后者整篇是 PowerShell，
+  // 而且 `panel.ts` 用 `hostOsAllows` 把它**只留给 Windows**（Linux 上换成一行说明）。
+  // 于是本机 POSIX 用户在界面上**一个装口都够不着** —— 那正是 `K-R62 §0b` 那个 🔴。
+  // 这一块本来就在问「你要不要把 cc-monitor 的东西加进这份 rc」，而 `shared/ccm-aliases.sh`
+  // 自带那行 source **正是**上面那份生成文件被接上的方式 ⇒ 同一个旅程的两半，挨着放。
+  //
+  // ⚠ **默认什么都不做**：下拉停在「不动我的 shell 配置」时整块 `hidden`，
+  //   一条 IPC 都不发（连**读**都不读）。选了具体那份 rc 才扫，扫是只读的。
+  const rcBlock = document.createElement("div");
+  rcBlock.className = "ccm-rc-block";
+  rcBlock.hidden = true;
+  const rcStatus = document.createElement("div");
+  rcStatus.className = "ccm-rc-block-status";
+  rcBlock.appendChild(rcStatus);
+  const rcBtns = document.createElement("div");
+  rcBtns.className = "ccm-rc-block-buttons";
+  const installBtn = document.createElement("button");
+  installBtn.type = "button";
+  installBtn.className = "ccm-rc-block-install";
+  installBtn.textContent = "装 ccm 别名块";
+  installBtn.title =
+    "把 cc / cct 那一块（shared/ccm-aliases.sh，与「装 ccm 助手」推给远端的是同一份）" +
+    "装进你选的那份 rc：BEGIN/END 围栏内，写前先备份、写后回读比对、不符回滚，" +
+    "块外一个字节都不动。";
+  const uninstallBtn = document.createElement("button");
+  uninstallBtn.type = "button";
+  uninstallBtn.className = "ccm-rc-block-uninstall";
+  uninstallBtn.textContent = "卸载别名块";
+  uninstallBtn.title = "只删我们自己那个围栏块，你写的任何一行都不动。";
+  rcBtns.append(installBtn, uninstallBtn);
+  rcBlock.appendChild(rcBtns);
+  // 「你 rc 里这几行是旧的」—— 后端逐行指名之后生成的那段话，**原样上屏**。
+  // 🔴 产品自己一个字节都不删（`K31` + 用户逐字「原本的配置要手动删除」）。
+  const rcLegacy = document.createElement("pre");
+  rcLegacy.className = "ccm-rc-block-legacy";
+  rcLegacy.hidden = true;
+  rcBlock.appendChild(rcLegacy);
+  wrap.appendChild(rcBlock);
 
   let lines: string[] = [];
 
@@ -205,6 +266,53 @@ export function buildAccountAliasBlock(
     }
   };
 
+  /** `K-R62`：把选中那份 rc 的现状扫一遍并上屏。**只读**，一个字节都不写。 */
+  const renderScan = (scan: ProfileScan): void => {
+    rcStatus.textContent = scan.has_ccm_block
+      ? `✓ ${scan.path}：ccm 别名块已经装了`
+      : `✗ ${scan.path}：还没有 ccm 别名块（cc / cct 这一族）`;
+    installBtn.textContent = scan.has_ccm_block ? "重装别名块" : "装 ccm 别名块";
+    uninstallBtn.hidden = !scan.has_ccm_block;
+    // 🔴 「你 rc 里这几行是旧的」：后端**逐行指名**，产品自己不动手。
+    rcLegacy.hidden = !scan.manual_cleanup_hint;
+    rcLegacy.textContent = scan.manual_cleanup_hint;
+  };
+
+  const refreshRc = async (): Promise<void> => {
+    const path = rcSel.value;
+    rcBlock.hidden = !path;
+    if (!path) return;
+    try {
+      renderScan(
+        await commands.cc_integration_scan_path({ path, commandName: "cc" }),
+      );
+    } catch (e) {
+      // 扫不动**不许静默**：静默的后果是屏幕上停着上一份 rc 的读数，而它现在是假的。
+      rcStatus.textContent = `扫不动 ${path}：${String(e)}`;
+      rcLegacy.hidden = true;
+    }
+  };
+
+  /** 装 / 卸都走 `profile_installer`（围栏 + 备份 + 回读比对 + 回滚），前端不拼一个字节。 */
+  const runRc = async (verb: "装" | "卸", act: (path: string) => Promise<void>): Promise<void> => {
+    const path = rcSel.value;
+    if (!path) return;
+    installBtn.disabled = true;
+    uninstallBtn.disabled = true;
+    rcStatus.textContent = `${verb}别名块中…`;
+    try {
+      await act(path);
+    } catch (e) {
+      rcStatus.textContent = `${verb}失败：${String(e)}`;
+      installBtn.disabled = false;
+      uninstallBtn.disabled = false;
+      return;
+    }
+    installBtn.disabled = false;
+    uninstallBtn.disabled = false;
+    await refreshRc();
+  };
+
   const refresh = async (): Promise<void> => {
     let names: string[];
     try {
@@ -235,6 +343,23 @@ export function buildAccountAliasBlock(
     void call(false).finally(() => {
       btn.disabled = false;
     });
+  });
+  // `K-R62`：换了那份 rc 就重扫一遍。**只在人真的换了下拉时发 IPC** ——
+  // `renderReport` 重建选项那一下是程序改值，不触发 `change`，也就不会自己去读用户的文件。
+  rcSel.addEventListener("change", () => void refreshRc());
+  installBtn.addEventListener("click", () => {
+    void runRc("装", (path) =>
+      // `commandName` / `includeCcFunction` 只对 PowerShell 那一臂有意义；
+      // POSIX 那一块的名字住在 `shared/ccm-aliases.sh` 里，由它说了算。
+      commands.cc_integration_install({
+        path,
+        commandName: "cc",
+        includeCcFunction: false,
+      }),
+    );
+  });
+  uninstallBtn.addEventListener("click", () => {
+    void runRc("卸", (path) => commands.cc_integration_uninstall({ path }));
   });
   wrap.addEventListener("toggle", () => {
     if (wrap.open) void refresh();
