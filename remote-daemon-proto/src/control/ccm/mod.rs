@@ -157,7 +157,7 @@ pub(crate) const USAGE: &str = "\
   --launcher <命令>  覆盖默认启动器
   --ccm-sid <sid>    给这个会话打上意图标 @ccm_sid_expect
   --print            不跑，吐出等价的一行 shell（平价预言机）
-  --ccm-probe        吐出 name= / version= / capabilities= / agents= 四行
+  --ccm-probe        吐出 name= / version= / self= / capabilities= / agents= / build= 六行
   --version          印版本号
   --help, -h         这一段
 ";
@@ -269,7 +269,11 @@ pub(crate) fn run(args: &[String]) -> i32 {
                 .unwrap_or_default()
                 .to_string();
             env.inherited_config_dir = (!env.account_env.is_empty())
-                .then(|| std::env::var(&env.account_env).ok().filter(|v| !v.is_empty()))
+                .then(|| {
+                    std::env::var(&env.account_env)
+                        .ok()
+                        .filter(|v| !v.is_empty())
+                })
                 .flatten();
             let table = if needs_account_table(&o, &env) {
                 AccountTable::load(&env.accts_manifest)
@@ -301,13 +305,24 @@ fn needs_account_table(o: &argv::Opts, env: &Env) -> bool {
     env.inherited_config_dir.is_none()
 }
 
-/// `--ccm-probe` 的四行。**首行逐字 `name=ccm`** —— `ccm_probe.rs::parse_probe_output`
+/// `--ccm-probe` 那几行。**首行逐字 `name=ccm`** —— `ccm_probe.rs::parse_probe_output`
 /// 拿它当判活依据，改它等于把「装没装」这件事判瞎。
+///
+/// # 🔴 `K-R70`：`build=` 那一行答的是「**你是哪一份**」，与 `version=` 不是同一个问题
+///
+/// `version=` 是**这套 CLI 的契约版本**（[`CCM_VERSION`]：`4` 是最后一版 bash，`5` 起是
+/// 后端本体）—— 它答「你认得哪些参数」，**答不出**「你是哪一次构建」。
+/// 在此之前，「这份后端是谁」只能去读它**旁边**那个 `.build_id` 文本文件；
+/// 而 `K-R68` 现打：三个载体的 `.build_id` 全从同一处源码常量抠出来 ⇒ 恒等 ⇒ 零证据。
+/// ⇒ 本行把身份接到**这个进程自己**身上：能跑它的人直接问它，不看它旁边任何文件。
+/// 〔另一半给「跑不了它的人」——交叉编译出来的 musl 二进制在 Windows 上没法执行 ——
+///  那一半是 `crate::CC_MONITOR_BUILD_STAMP`（扫字节）。两半同源于 `crate::BUILD_ID`。〕
 pub(crate) fn probe_output(self_path: &str) -> String {
     format!(
-        "name=ccm\nversion={CCM_VERSION}\nself={self_path}\ncapabilities={}\nagents={}\n",
+        "name=ccm\nversion={CCM_VERSION}\nself={self_path}\ncapabilities={}\nagents={}\nbuild={}\n",
         CAPABILITIES.join(","),
-        AGENTS.join(",")
+        AGENTS.join(","),
+        crate::BUILD_ID
     )
 }
 
@@ -366,7 +381,9 @@ fn execute(plan: Plan) -> i32 {
                     // 撞名 ⇒ **响亮失败**，绝不静默接回别人的会话。
                     eprint!(
                         "{}",
-                        NAME_TAKEN_FMT.replacen("%s", &c.name, 1).replace("\\n", "\n")
+                        NAME_TAKEN_FMT
+                            .replacen("%s", &c.name, 1)
+                            .replace("\\n", "\n")
                     );
                     return 3;
                 }
@@ -431,10 +448,7 @@ fn exec_shell(line: &str) -> i32 {
 fn exec_direct(d: &plan::Direct, resolved: Option<&str>) -> i32 {
     // 机器级 env（代理等）：它是一段 shell，只有 shell 解释得了 ⇒ 有它就整条走 `sh -c`。
     if !d.ccm_env.is_empty() || d.bus_id_recipe || resolved.is_some() {
-        return exec_shell(&plan::render(
-            &Plan::Direct(d.clone()),
-            resolved,
-        ));
+        return exec_shell(&plan::render(&Plan::Direct(d.clone()), resolved));
     }
     for k in &d.nested {
         std::env::remove_var(k);
@@ -522,6 +536,11 @@ mod tests {
         assert_eq!(lines[2], "self=/usr/local/bin/ccm");
         assert!(lines[3].starts_with("capabilities="));
         assert_eq!(lines[4], "agents=claude,codex");
+        // 🔴 `K-R70`：**身份那一行，取自这个进程自己编进来的常量**。
+        //   它与 `version=` 分开问是刻意的（前者「你是哪一份」、后者「你认得哪些参数」），
+        //   理由全文住 `probe_output` 的头注。
+        assert_eq!(lines[5], format!("build={}", crate::BUILD_ID));
+        assert_eq!(lines.len(), 6, "多一行少一行都是契约变更，实得 {lines:?}");
         assert!(out.ends_with('\n'), "最后一行也要有换行");
         // 消费者今天要的那 8 个（`ccm_invocation.rs::CLI_REQUIRED_CAPS` ＋ account 维度）
         for c in [
@@ -676,7 +695,10 @@ mod tests {
         assert_eq!(resume_flag("claude"), Some("--resume"));
         assert_eq!(resume_flag("codex"), None, "codex 没有 resume flag");
         assert_eq!(nested_env("claude").len(), 4);
-        assert!(nested_env("codex").is_empty(), "codex 不清 claude 的嵌套标记");
+        assert!(
+            nested_env("codex").is_empty(),
+            "codex 不清 claude 的嵌套标记"
+        );
         assert!(needs_bus_id("codex") && !needs_bus_id("claude"));
         assert!(has_identity("claude") && !has_identity("codex"));
     }
@@ -751,10 +773,17 @@ mod tests {
         assert_eq!(req.payload, c.payload, "载荷不许被改一个字节");
         assert_eq!(req.cwd.as_deref(), Some("/p"));
         assert_eq!(req.ccm_sid.as_deref(), Some("p1"), "意图标不许丢");
-        assert_eq!(req.agent.as_deref(), Some("claude"), "@ccm_agent 不许丢（它丢过一次）");
+        assert_eq!(
+            req.agent.as_deref(),
+            Some("claude"),
+            "@ccm_agent 不许丢（它丢过一次）"
+        );
         assert_eq!(req.width.as_deref(), Some("220"));
         assert_eq!(req.height.as_deref(), Some("50"));
-        assert!(matches!(req.mode, crate::control::launch::Mode::CreateOrAttach));
+        assert!(matches!(
+            req.mode,
+            crate::control::launch::Mode::CreateOrAttach
+        ));
         // 不给尺寸 ⇒ 请求里**没有** width/height（不是空串、不是 0）
         let mut c2 = c.clone();
         c2.size = None;
@@ -774,7 +803,11 @@ mod tests {
     fn the_name_taken_message_says_which_name() {
         let msg = NAME_TAKEN_FMT.replacen("%s", "cc-proj", 1);
         assert!(msg.contains("cc-proj"), "不带名字的报错等于没报：{msg}");
-        assert_eq!(NAME_TAKEN_FMT.matches("%s").count(), 1, "格式串只许有一个占位");
+        assert_eq!(
+            NAME_TAKEN_FMT.matches("%s").count(),
+            1,
+            "格式串只许有一个占位"
+        );
         // 🔴 结尾必须是**字面的两个字符** `\` + `n`，不是一个真换行 —— 见常量头注。
         //   写成真换行 ⇒ `--print` 吐的那条命令会在这里断成两行。
         assert!(

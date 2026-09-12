@@ -172,7 +172,77 @@ const PROTO_VERSION: u32 = 1;
 ///   🔴 **别把这条读成「拨号搬出去了」**：`connect_session` 的 7 处生产调用点里
 ///   本件只覆盖 1 处，SFTP / 端口转发 / 跳板 / 其余 exec 路径**界面仍然自己拨**。
 ///   ★ 与 `p2d-relay` 同一条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍。
-const BUILD_ID: &str = "p2e-dial";
+///
+/// - p2f-build-stamp〔`K-R70` 09-12〕：**这一份二进制第一次说得出自己是谁。**
+///   两件事同拍落：① 下面那个 [`CC_MONITOR_BUILD_STAMP`] —— 一段**保证连续**的
+///   `<<ccm-build-id:…:ccm-build-id>>`，谁拿到字节都扫得出来；
+///   ② `--ccm-probe` 多吐一行 `build=<BUILD_ID>`（**能跑它的人直接问**）。
+///   ⚠ **必须 bump**：在此之前，「这份二进制是谁」只能去读它**旁边**那个 `.build_id`
+///   文本文件，而那个文件与二进制是两回事（`K-R68` 现打：三个载体的 `.build_id`
+///   全部从同一处源码常量抠出来 ⇒ 恒等 ⇒ 一格证据都不提供）。
+///   已部署的旧 daemon **既没有戳、也答不出 `build=`** ⇒ 它必须被判 stale 换掉，
+///   否则「问得出它是谁」这条性质在已部署的机器上永远为假。
+const BUILD_ID: &str = "p2f-build-stamp";
+
+/// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
+/// `src-tauri/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
+/// 再经 `DAEMON_STAMP_OPEN` / `DAEMON_STAMP_CLOSE` 交给 monitor 生产段。
+/// **别在第二处写这两个字面量。**
+pub(crate) const BUILD_STAMP_OPEN: &str = "<<ccm-build-id:";
+/// 见 [`BUILD_STAMP_OPEN`]。
+pub(crate) const BUILD_STAMP_CLOSE: &str = ":ccm-build-id>>";
+
+const BUILD_STAMP_LEN: usize = BUILD_STAMP_OPEN.len() + BUILD_ID.len() + BUILD_STAMP_CLOSE.len();
+
+/// 编译期把 `<开>` ＋ `BUILD_ID` ＋ `<关>` 拼成一段**定长字节**。
+///
+/// 🔴 **为什么必须是 `static [u8; N]` 而不是一个 `&str` 常量** —— 这一条是本件的支点，
+/// 它治的是 `build.rs` 里逐字记着的那次失败（`embed_daemons` 头注）：
+/// 「编译器可把 BUILD_ID 优化成立即数指令（字符串在字节里**不连续**），
+///  运行时 `bytes_contain` 启发式会误拒正品二进制」⇒ 当时的出路是**旁挂一份清单**，
+/// 也就是「把标签抄到旁边」。
+/// 一个带地址、被 `#[used]` 钉住的 `static` 数组**不可能**被拆成立即数：它有地址、要进
+/// `.rodata`、字节按定义连续。⇒ 「扫字节问身份」从一条启发式变成一条**结构性成立**的事。
+/// 〔实测：release + `lto` + `strip` 与 debug 测试壳两侧都扫得出，且**恰好一处**。〕
+const fn build_stamp() -> [u8; BUILD_STAMP_LEN] {
+    let mut out = [0u8; BUILD_STAMP_LEN];
+    let mut i = 0usize;
+    let open = BUILD_STAMP_OPEN.as_bytes();
+    let mut j = 0usize;
+    while j < open.len() {
+        out[i] = open[j];
+        i += 1;
+        j += 1;
+    }
+    let id = BUILD_ID.as_bytes();
+    let mut j = 0usize;
+    while j < id.len() {
+        out[i] = id[j];
+        i += 1;
+        j += 1;
+    }
+    let close = BUILD_STAMP_CLOSE.as_bytes();
+    let mut j = 0usize;
+    while j < close.len() {
+        out[i] = close[j];
+        i += 1;
+        j += 1;
+    }
+    out
+}
+
+/// 🔴 `K-R70`：**这一份后端二进制自己带着的身份**。
+///
+/// 拿到一份字节（内嵌的 / 装出来的 / 推到远端的那份都算），**不看它旁边任何文件**，
+/// 搜 [`BUILD_STAMP_OPEN`] 就问得出它是谁。消费者：
+/// `src-tauri/build.rs`（内嵌两条路的构建期校验）· `src-tauri/src/sftp.rs`
+/// （推远端之前的运行期见证）· 本 crate `build_id_guard` 的自扫判据。
+///
+/// `#[used]` ＋ `#[no_mangle]`：前者挡「没人读它就优化掉」，后者让它在符号表里也留个名
+/// （`strip` 之后符号没了，**数据还在** —— 判据扫的是数据不是符号）。
+#[used]
+#[no_mangle]
+pub static CC_MONITOR_BUILD_STAMP: [u8; BUILD_STAMP_LEN] = build_stamp();
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
