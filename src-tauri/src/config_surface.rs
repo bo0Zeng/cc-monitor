@@ -23,8 +23,8 @@
 //! 本模块不写任何用户文件（红线），也**不新增轮询**（红线）——一次按需扫完就返回。
 
 use crate::tool_registry::{
-    EnvBacking, EnvEntry, EnvProbe, EnvTier, HostScope, ToolDestination, ToolSource, ToolSpec,
-    TouchEffect, TouchedFile, TOOLS,
+    Carrier, EnvBacking, EnvEntry, EnvProbe, EnvTier, HostScope, ToolDestination, ToolSource,
+    ToolSpec, TouchEffect, TouchedFile, TOOLS,
 };
 use std::path::{Path, PathBuf};
 
@@ -210,16 +210,10 @@ fn resolve_by_destination(
             }
         }
         ToolDestination::RemoteHomeRelative(_) => Ok(PathResolution::Remote(declared.to_string())),
-        // 🔴 〔`K-R69` 09-12〕**两台机器上各一个落点** ⇒ 这一臂**不自己判在哪台机器上**，
-        //    一律按本机路径解析，再由 `project_onto_host` 用那条 touch 的 `host` 投影
-        //    （`Remote` 的照旧变成 `Remote(declared)`，`Client` 的留在本机）。
-        //    这么写有意买两件事：
-        //    ① 「本机还是远端」仍然只有 `host` 一个住址 —— 不在这里再判一次；
-        //    ② 上面那段「顺序要紧」的校验（必须以 `~/` 开头 · glob 只许在最后一段且只许一个 `*`）
-        //       对这个工具的**每一条** touch 都跑得到，不会被 host 短路掉。
-        ToolDestination::BothHomeRelative { .. } => {
-            resolve_local_home(declared, home, cfg_dir_env, is_dir)
-        }
+        // 🔴 〔`K-R81` 09-12〕`BothHomeRelative` 那一臂删了 —— 墓碑住 `tool_registry::Carrier`
+        //    的头注。一句话：那个变体是为「一个 `destination` 装不下两个落点」造的，
+        //    而载体这一维立起来之后那个前提没了（`ccm` 现在是两个载体，
+        //    远端那个 `RemoteHomeRelative`、本机那个 `LocalHomeRelative`，各带各的 touch）。
         ToolDestination::LocalHomeRelative(_) => {
             resolve_local_home(declared, home, cfg_dir_env, is_dir)
         }
@@ -468,9 +462,17 @@ pub struct SurfaceRow {
     pub uninstallable: bool,
 }
 
+/// 🔴 〔`K-R81` 09-12〕**多收一个 `c`（载体），而那正是本件买到的东西。**
+///
+/// 先前这里拿的是 `t.destination` 与 `t.source` —— 一个工具一份。
+/// 于是「同一个后端的三个落点」这件事**在这一行里根本表达不出来**：
+/// 每条 touch 都被配上同一个 `destination`（1:N，不需要 key），
+/// 而真相是 M 个落点 × N 条 touch。今天 touch 挂在载体下 ⇒ **配对是天然的**，
+/// 这个函数拿到的 `(c, f)` 一定是同一份产物的落点与它碰的文件。
 fn row(
     e: &EnvEntry,
     t: &'static ToolSpec,
+    c: &'static Carrier,
     f: &'static TouchedFile,
     env: &SurfaceEnv,
 ) -> SurfaceRow {
@@ -481,7 +483,7 @@ fn row(
         fs,
         ..
     } = *env;
-    let resolved = resolve_touched_path(f.path, &t.destination, f.host, home, cfg_dir_env, is_dir);
+    let resolved = resolve_touched_path(f.path, &c.destination, f.host, home, cfg_dir_env, is_dir);
     let (path_resolved, state) = match &resolved {
         Ok(r) => {
             let shown = match r {
@@ -516,7 +518,9 @@ fn row(
         tool_id: t.id,
         tool_name: t.display_name,
         tier: e.tier,
-        source_label: source_label(&t.source),
+        // 🔴 〔`K-R81`〕读的是**这一份载体**的来源，不是「这个工具的来源」——
+        //    `ccm` 那一行先前只能填一个，而它的注释自己承认「本机那一半的来源不是这个」。
+        source_label: source_label(&c.source),
         path_declared: f.path,
         path_resolved,
         note: f.note,
@@ -688,10 +692,11 @@ pub fn build_rows(env: &SurfaceEnv) -> Vec<SurfaceRow> {
         .iter()
         .flat_map(|e| match e.backing {
             // 有 ToolSpec ⇒ 路径 / effect / host 全从那一份读，这里一个字都不复述
+            // 🔴 〔`K-R81`〕人群从「工具 × touch」变成「工具 × **载体** × touch」——
+            //    行数不变（touch 总数没变过），变的是**每一行知道自己属于哪一份产物**。
             EnvBacking::Managed(t) => t
-                .touches
-                .iter()
-                .map(|f| row(e, t, f, env))
+                .carrier_touches()
+                .map(|(c, f)| row(e, t, c, f, env))
                 .collect::<Vec<_>>(),
             EnvBacking::Named { named, host, probe } => {
                 vec![unmanaged_row(e, named, host, probe, env)]
@@ -1135,10 +1140,10 @@ mod tests {
             violations: Vec::new(),
         };
         for t in TOOLS {
-            for f in t.touches {
+            for (c, f) in t.carrier_touches() {
                 r.checked += 1;
                 if let Err(e) =
-                    resolve_touched_path(f.path, &t.destination, f.host, &home(), None, &no_dir)
+                    resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir)
                 {
                     r.violations.push(format!("{}/{:?}：{e}", t.id, f.path));
                 }
@@ -1225,10 +1230,10 @@ mod tests {
         let nothing = probe;
         for f in TOOLS
             .iter()
-            .flat_map(|t| t.touches.iter().map(move |f| (t, f)))
+            .flat_map(|t| t.carrier_touches())
             .filter(|(_, f)| f.host == HostScope::Either)
-            .map(|(t, f)| {
-                resolve_touched_path(f.path, &t.destination, f.host, &home(), None, &no_dir)
+            .map(|(c, f)| {
+                resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir)
                     .unwrap()
             })
         {
@@ -1285,15 +1290,14 @@ mod tests {
             list: &|_| Some(names.clone()),
         };
         let ccbus = TOOLS.iter().find(|t| t.id == "cc-bus").unwrap();
-        let glob = ccbus
-            .touches
-            .iter()
-            .find(|f| f.path.contains('*'))
+        let (carrier, glob) = ccbus
+            .carrier_touches()
+            .find(|(_, f)| f.path.contains('*'))
             .expect("cc-bus 应有一条 glob touch");
         assert_eq!(glob.host, HostScope::Either, "前提：这条是 Either");
         let r = resolve_touched_path(
             glob.path,
-            &ccbus.destination,
+            &carrier.destination,
             glob.host,
             &home(),
             None,
@@ -1318,9 +1322,9 @@ mod tests {
     fn remote_host_never_resolves_to_a_local_path() {
         let mut checked = 0;
         for t in TOOLS {
-            for f in t.touches {
+            for (c, f) in t.carrier_touches() {
                 let r =
-                    resolve_touched_path(f.path, &t.destination, f.host, &home(), None, &no_dir)
+                    resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir)
                         .unwrap();
                 let local = matches!(
                     r,
@@ -1390,7 +1394,15 @@ mod tests {
             ("cc-acct-iso", "$ACCT_ISO_DEST", Remote),
             // 列举走远端 ssh，但本机 CLAUDE_CONFIG_DIR 会指进来 → 两端皆可
             ("cc-acct-iso", "~/.claude-accts/", Either),
-            ("remote-daemon", "$DAEMON_PATH", Remote),
+            // 🔴 〔`K-R81` 09-12〕`remote-daemon` → `backend`，而它今天有**三行**：
+            //    同一份后端的三种载体（`K-R68` 现打）。三行的 `host` 逐条不同源：
+            //    ① 安装包旁边那份与 ② 自释放那份都落在 monitor 跑着的**这台**（`Client`）；
+            //    ③ 推给远端那台的那份是 `Remote` —— 而「远端」说的是「相对这台 monitor」，
+            //    **不是它的身份**：在那台机器上它就是那台机器的本地后端（`K36`）。
+            //    ⚠ 标 `Either` 会说假话：①② 那两份远端那台上没有。
+            ("backend", "$APP_DIR", Client),
+            ("backend", "~/.cc-monitor/bin/cc-monitor-local-*", Client),
+            ("backend", "$DAEMON_PATH", Remote),
             ("project-mcp", ".mcp.json", ProjectDir),
             ("powershell-profile", "$PROFILE", Client),
             // 〔`K-R62` 09-11〕本机 POSIX 那一格补上之后升进 `TOOLS` 的那一条。
@@ -1405,7 +1417,7 @@ mod tests {
         ];
         let mut actual: Vec<(&str, &str, HostScope)> = TOOLS
             .iter()
-            .flat_map(|t| t.touches.iter().map(move |f| (t.id, f.path, f.host)))
+            .flat_map(|t| t.touches().map(move |f| (t.id, f.path, f.host)))
             .collect();
         let mut expect = want.to_vec();
         actual.sort_by_key(|(a, b, _)| (*a, *b));
@@ -1434,17 +1446,21 @@ mod tests {
         use std::collections::HashMap;
         let mut by_dest: HashMap<String, std::collections::HashSet<HostScope>> = HashMap::new();
         for t in TOOLS {
-            let key = match &t.destination {
-                ToolDestination::RemoteHomeRelative(_) => "RemoteHomeRelative",
-                ToolDestination::LocalHomeRelative(_) => "LocalHomeRelative",
-                ToolDestination::UserShellProfile => "UserShellProfile",
-                ToolDestination::ProjectRelative(_) => "ProjectRelative",
-                ToolDestination::UserConfiguredPath { .. } => "UserConfiguredPath",
-                ToolDestination::NotInstalledByUs { .. } => "NotInstalledByUs",
-                ToolDestination::BothHomeRelative { .. } => "BothHomeRelative",
-            };
-            for f in t.touches {
-                by_dest.entry(key.to_string()).or_default().insert(f.host);
+            // 🔴 〔`K-R81`〕`destination` 现在住在**载体**上 ⇒ 这条性质也按载体走。
+            //    那不是顺手改写：它买到的东西比先前**多一格** —— 先前一个工具只有一个
+            //    destination，`ccm` 那两条落点被同一个 key 盖住；今天两个载体各自入表。
+            for c in t.carriers {
+                let key = match &c.destination {
+                    ToolDestination::RemoteHomeRelative(_) => "RemoteHomeRelative",
+                    ToolDestination::LocalHomeRelative(_) => "LocalHomeRelative",
+                    ToolDestination::UserShellProfile => "UserShellProfile",
+                    ToolDestination::ProjectRelative(_) => "ProjectRelative",
+                    ToolDestination::UserConfiguredPath { .. } => "UserConfiguredPath",
+                    ToolDestination::NotInstalledByUs { .. } => "NotInstalledByUs",
+                };
+                for f in c.touches {
+                    by_dest.entry(key.to_string()).or_default().insert(f.host);
+                }
             }
         }
         let multi: Vec<_> = by_dest
@@ -1520,7 +1536,7 @@ mod tests {
     fn all_host_scopes_are_really_used() {
         let used: std::collections::HashSet<_> = TOOLS
             .iter()
-            .flat_map(|t| t.touches.iter().map(|f| f.host))
+            .flat_map(|t| t.touches().map(|f| f.host))
             .collect();
         for want in [
             HostScope::Client,
@@ -1539,11 +1555,15 @@ mod tests {
     /// （它告诉用户去哪儿看那个值），覆盖掉是降级。
     #[test]
     fn host_projection_preserves_the_richer_resolution() {
-        let daemon = TOOLS.iter().find(|t| t.id == "remote-daemon").unwrap();
-        let f = &daemon.touches[0];
-        assert_eq!(f.host, HostScope::Remote);
-        let r = resolve_touched_path(f.path, &daemon.destination, f.host, &home(), None, &no_dir)
-            .unwrap();
+        // 🔴 〔`K-R81` 09-12〕`remote-daemon` 改名成 `backend`；而它今天有**三个载体**
+        //    ⇒ 这里不许再拿 `touches[0]` 碰运气，要**点名那一份**（推给远端的那份）。
+        let daemon = TOOLS.iter().find(|t| t.id == "backend").unwrap();
+        let (c, f) = daemon
+            .carrier_touches()
+            .find(|(_, f)| f.host == HostScope::Remote)
+            .expect("后端必须有一份是推给远端那台机器的");
+        let r =
+            resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir).unwrap();
         match r {
             PathResolution::NeedsUserConfig { what } => {
                 assert!(what.contains("daemon"), "实得 {what}");
@@ -1629,12 +1649,20 @@ mod tests {
         //    `the_declared_local_ccm_path_really_matches_the_name_we_install`：
         //    申报的那个串要盖得住 `local_backend::local_ccm_entry_name()` 真放下去的名字）——
         //    两处钉的是两个真落点，别在这里再抄一份本机那个名字（`13b`：闭集只许一个住址）。
+        // 🔴 〔`K-R81` 09-12〕`ccm` 现在是**两个载体**（远端 shim / 本机那份改名副本）
+        //    ⇒ 这一格从「那个双值变体逐字相等」改成「**远端那个载体**的落点相等」。
+        //    本机那一半仍钉在别处（`tool_registry` 的
+        //    `the_declared_local_ccm_path_really_matches_the_name_we_install`）——
+        //    两处钉的是两个真落点，别在这里再抄一份本机那个名字（`13b`：闭集只许一个住址）。
+        let remote_dests: Vec<&ToolDestination> = ccm
+            .carriers
+            .iter()
+            .map(|c| &c.destination)
+            .filter(|d| matches!(d, ToolDestination::RemoteHomeRelative(_)))
+            .collect();
         assert_eq!(
-            ccm.destination,
-            ToolDestination::BothHomeRelative {
-                local: ".cc-monitor/bin/ccm*",
-                remote: ".local/bin/ccm",
-            },
+            remote_dests,
+            vec![&ToolDestination::RemoteHomeRelative(".local/bin/ccm")],
             "注册表声明的 ccm 远端落点与 sftp.rs 的 CCM_CLI_REMOTE_PATH 不一致"
         );
 
@@ -1647,8 +1675,11 @@ mod tests {
         );
         let pm = TOOLS.iter().find(|t| t.id == "project-mcp").unwrap();
         assert_eq!(
-            pm.destination,
-            ToolDestination::ProjectRelative(".mcp.json")
+            pm.carriers
+                .iter()
+                .map(|c| &c.destination)
+                .collect::<Vec<_>>(),
+            vec![&ToolDestination::ProjectRelative(".mcp.json")]
         );
 
         // ③ 反向自检：确认上面读到的是真源码，不是空串
@@ -1664,20 +1695,25 @@ mod tests {
     fn user_configured_destinations_declare_a_placeholder_not_a_guess() {
         let mut n = 0;
         for t in TOOLS {
-            if let ToolDestination::UserConfiguredPath { token, what } = &t.destination {
-                n += 1;
-                assert!(token.starts_with('$'), "{}: {token:?} 不像占位符", t.id);
-                assert!(
-                    !what.trim().is_empty(),
-                    "{}: 得告诉用户去哪儿看这个值",
-                    t.id
-                );
-                // 这个占位符必须真出现在 touches 里，否则表格上那一行会显示别的东西
-                assert!(
-                    t.touches.iter().any(|f| f.path == *token),
-                    "{}: touches 里没有 {token:?}",
-                    t.id
-                );
+            // 🔴 〔`K-R81`〕按**载体**判：占位符要出现在**它自己那个载体**的 touches 里，
+            //    不是「这个工具的某一条 touch 里」—— 后者在多载体下会**静默配错对**。
+            for c in t.carriers {
+                if let ToolDestination::UserConfiguredPath { token, what } = &c.destination {
+                    n += 1;
+                    assert!(token.starts_with('$'), "{}: {token:?} 不像占位符", t.id);
+                    assert!(
+                        !what.trim().is_empty(),
+                        "{}: 得告诉用户去哪儿看这个值",
+                        t.id
+                    );
+                    // 这个占位符必须真出现在 touches 里，否则表格上那一行会显示别的东西
+                    assert!(
+                        c.touches.iter().any(|f| f.path == *token),
+                        "{}: 载体「{}」的 touches 里没有 {token:?}",
+                        t.id,
+                        c.what
+                    );
+                }
             }
         }
         // 计数自检：≥2 个使用者才配有这个变体（本工作区的 ≥2 判据）
@@ -1937,7 +1973,7 @@ mod tests {
         let rows = build_rows(&env_with(&h, &f, Some("/usr/bin")));
         // 〔`K-R60`〕人群换成闭集之后，行数 = 有 ToolSpec 那一半的 touches 数
         //   + 手写那一半每项一行。**两半都现算**，不写死一个数〔`13b`〕。
-        let expected: usize = TOOLS.iter().map(|t| t.touches.len()).sum::<usize>()
+        let expected: usize = TOOLS.iter().map(|t| t.touches().count()).sum::<usize>()
             + crate::tool_registry::UNMANAGED_ENV.len();
         assert_eq!(
             rows.len(),
@@ -1951,7 +1987,11 @@ mod tests {
             assert!(!r.path_declared.is_empty()); // touches[].path
         }
         // destination：远端那条必须解析不出本机路径
-        let daemon = rows.iter().find(|r| r.tool_id == "remote-daemon").unwrap();
+        // 🔴 〔`K-R81`〕`remote-daemon` → `backend`，而它今天有三行 ⇒ 点名远端那一行。
+        let daemon = rows
+            .iter()
+            .find(|r| r.tool_id == "backend" && r.host_label == host_label(HostScope::Remote))
+            .unwrap();
         assert!(daemon.path_resolved.is_none());
         // installable / uninstallable：三种组合都真出现在表里 —— 两个字段都得有区分力
         // 〔`K-R60` 订正：cc-bus 原先在这里被当成「两者都 false」的样本，

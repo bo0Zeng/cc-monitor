@@ -140,9 +140,12 @@ pub const SKILLS: &[SkillSpec] = &[
         // ⚠ 这里**刻意只有一个文件名**：写面越窄越好论证。
         editable: &["INBOX.txt"],
         install: Install::NotSupported(
-            "planned-build 今天不在 tool_registry 那张表里（那 6 条是 ccm / cc-bus / \
-             cc-acct-iso / remote-daemon / project-mcp / powershell-profile）。\
-             把它变成可装归 devbench F06。",
+            // 🔴 〔`K-R81` 09-12〕原文在这里**手抄了一份闭集**（「那 6 条是 …」）——
+            //    两处同时馊了：`remote-daemon` 改名成了 `backend`，而条数早就不是 6。
+            //    ⇒ 按〔`13b`〕只给住址、不复述成员（这一句是**用户看得见的**文案，
+            //    在它里面留一个会烂的基数比不写更坏）。
+            "planned-build 今天不在 tool_registry 那张表里（那张表收哪几条，\
+             唯一住址是 `tool_registry::TOOLS`）。把它变成可装归 devbench F06。",
         ),
     },
     // ★★ **第二份声明的作用是验 schema 装不装得下，不是实现它的 UI**（devbench F02 DoD）。
@@ -1052,8 +1055,8 @@ mod tests {
     /// [`SKILLS`]（接入的 skill：cc-monitor 显示它的产物、编辑它的注入文件）与
     /// `tool_registry::TOOLS`（受管工具：**装到别处**的东西）是**两个不同集合，有交集**。
     /// 今天交集只有 `cc-bus` 一个：`planned-build` 在这边不在那边（它不由 cc-monitor 装），
-    /// 而 `ccm`/`cc-acct-iso`/`remote-daemon`/`project-mcp`/`powershell-profile`
-    /// 在那边不在这边（它们不是 skill）。
+    /// 而 `ccm`/`cc-acct-iso`/`backend`（〔`K-R81` 09-12〕原先叫 `remote-daemon`）/
+    /// `project-mcp`/`powershell-profile` 在那边不在这边（它们不是 skill）。
     ///
     /// ⚠ **反方向刻意不钉**（「TOOLS 里的每个工具都该是一个 skill」）—— 那句话是假的，
     /// 钉它等于把一个错误的概念做成判据。devbench 的账本 L4 原写「同一张表的两个视图」

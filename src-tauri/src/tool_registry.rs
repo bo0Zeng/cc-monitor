@@ -126,40 +126,21 @@ pub enum ToolSource {
 pub enum ToolDestination {
     /// 远端家目录下的相对路径（`~/.local/bin/ccm`）。
     ///
-    /// 🔴 **`K-R69` 09-12 起它零使用者，而那条 `never constructed` 警告就是这笔债的存根**
-    /// —— 同本模块头注给 `TOOLS` 那 6 条警告的处置（「那 6 条警告就是这笔债的存根」）。
-    /// 唯一用过它的是 `ccm`，而 `ccm` 今天两台机器上各有一个落点 ⇒ 换成了
-    /// [`Self::BothHomeRelative`]。
-    /// ⚠ **不许拿一句 `#[allow(dead_code)]` 把它按下去** —— 那就把「今天没人用它」
-    /// 这个读数从编译器嘴里拿掉了。**退役条件写死在这里**：下一件活里若仍没有
-    /// 「只落在远端」的工具进来，就连着它在 `config_surface::resolve_by_destination`
-    /// 的那一臂一起删（那一臂是今天**唯一**一处「不看 `host` 就断定远端」的地方，
+    /// # 🔴 〔`K-R81` 09-12〕**它 09-12 下午重新有使用者了，而那不是回退**
+    ///
+    /// `K-R69`（09-12 上午）写过一段「它零使用者、`never constructed` 就是这笔债的存根」，
+    /// 并把退役条件写死成「**下一件活里若仍没有「只落在远端」的工具进来**就删」。
+    /// 本件把 [`Carrier`] 这一层立起来之后，那个条件**不成立了**：
+    /// `ccm` 的**远端那一份**（shim，`~/.local/bin/ccm`）就是一个只落在远端的载体，
+    /// 它与本机那一份不再需要挤在同一个 `destination` 里 ——
+    /// 「一个东西两个落点」这件事今天由**载体这一维**表达，不由一个双值变体表达。
+    /// ⇒ `BothHomeRelative` 那个变体同拍**删掉**（墓碑写在 [`Carrier`] 的头注里）。
+    ///
+    /// ⚠ **退役条件仍然有效，只是今天不满足**：哪天连 `ccm` 远端那条也没了，
+    /// 就连着它在 `config_surface::resolve_by_destination` 的那一臂一起删
+    /// （那一臂是今天**唯一**一处「不看 `host` 就断定远端」的地方，
     /// 删掉之后「在哪台机器上」就只剩 `host` 一个住址）。
     RemoteHomeRelative(&'static str),
-    /// 🔴 `K-R69`：**两台机器上各有一个落点**，家目录相对，两边路径不同。
-    ///
-    /// # 为什么非有这一格不可（不是「让表好看一点」）
-    ///
-    /// `ccm` 立件时申报的是 `RemoteHomeRelative(".local/bin/ccm")` ——
-    /// 那句话**当时是真的**（app 只在远端装过 `ccm`），而它同时也是 `K34` 那一格
-    /// 卡住的原因：**本机压根没有那一份**。`K-R69` 把本机那条建出来之后，
-    /// 一个 `destination` 就装不下两个事实了，而这张表的全部价值是可信告知
-    /// （模块头注：「声明一个不存在的常量比不声明更坏」—— 少声明一个**存在**的落点，
-    /// 后果同族：审计页上那一行根本不出现，读者分不出「没有」与「有人忘了写」）。
-    ///
-    /// # 为什么不是拆成两条 `ToolSpec`
-    ///
-    /// `K33` 逐字「后端**只有一个**……**不要有什么单独的 ccm**」。
-    /// 拆两条就是在这张**声明表**上把一个东西说成两个 —— 而它今天两边同源
-    /// （同一份后端、同一处 argv 解析，见 `local_backend::CCM_ENTRY_WORD`）。
-    /// ⇒ 一条 `ToolSpec`、一个落点字段、两台机器。
-    ///
-    /// ⚠ 两个串**都不带 `~/` 前缀**（同上面两个变体的写法）；`touches` 里那两条要写成
-    /// `~/{local}` 与 `~/{remote}`，由 `installable_tools_declare_where_they_land` 对拍。
-    BothHomeRelative {
-        local: &'static str,
-        remote: &'static str,
-    },
     /// 本机家目录下的相对路径（`~/.claude/skills/...`）。
     LocalHomeRelative(&'static str),
     /// 用户的 shell profile（`$PROFILE` / `~/.bashrc`）——路径由用户选。
@@ -313,6 +294,59 @@ pub enum TouchEffect {
     IndirectWrite,
 }
 
+/// **同一个东西的一种载体** —— 「它这一份怎么产出来、落到哪、碰哪些文件」。
+///
+/// # 🔴 〔`K-R81` 09-12〕这一层为什么非有不可（用户 09-12 逐字逼出来的）
+///
+/// 用户逐字：「**一个后端要两处使用 / 即远程 daemon 就是远程本地机器的后端**」。
+/// 也就是说：**远端那台机器上跑的那一份，是「那台机器的本地后端」**，
+/// 不是「远端的 daemon」——「本机 / 远端」这个二分本身就是从错的名字里长出来的。
+///
+/// 而在这一层立起来之前，[`ToolSpec`] 是「一个源 + 一个落点 + 一串 touch」：
+/// **同一个后端有三种载体、四个落点，而闭集只表达得了一个半**（`K-R68` 现打）。
+/// 三种载体逐条是：① 这一份产物自己带着、要用时自释放的那份（`native-daemon/`，
+/// `local_backend::native_embedded_daemon` 的 `include_bytes!`）·
+/// ② 内嵌、推给远端那台机器的那份（`embedded-daemons/`）·
+/// ③ 安装包放在 app 可执行文件旁边的那份（`tauri.sidecar.conf.json` 的 `externalBin`）。
+///
+/// # 为什么不是「`destination` 改成多值」
+///
+/// 那条路（`K-R68` 摸底的「甲」）有一个**配对问题**：`destination` 是每工具一个、
+/// `host` 是每 touch 一个 ⇒ M 个落点 × N 条 touch，**「哪条 touch 归哪个落点」
+/// 没有任何东西表达得出来**。出路要么给 `TouchedFile` 加一个回指字段
+/// （那就是在 touch 上重新发明「载体」这个维度），要么让解析对每条 touch
+/// 试遍所有落点（**那会静默地选一个** —— 本模块头注禁的「言之凿凿」的另一面）。
+/// ⇒ touch 挂在载体下，**key 天然就有**。
+///
+/// # 它同时治掉 `ToolSource` 那一半（`R26` 裁定二：两者是同一个形状问题的两半）
+///
+/// `ccm` 那一行的 `source` 先前**自己的注释逐字承认是假的**：远端那一份的来源是
+/// `local_backend::ccm_entry_shim` 现造的 shim，而**本机那一份的来源是后端二进制
+/// 自己的改名副本**（`local_backend::install_local_ccm_entry`）——
+/// 一个 `source` 字段装不下两个来源，于是那条注释只能写「不为它再开一个变体，
+/// 在这里如实写清」。载体这一维立起来之后，两个来源各归各的载体，**注释里那句
+/// 「这一格是假的」不再需要**。
+///
+/// # 🪦 `ToolDestination::BothHomeRelative` 的墓碑（`K-R69` 09-12 上午 → `K-R81` 09-12 下午）
+///
+/// 那个变体是为「一个 `destination` 装不下两个落点」造的，逐字理由是
+/// 「`ccm` 立件时申报的是 `RemoteHomeRelative(…)`……一个 `destination`
+/// 就装不下两个事实了」。**本件把「装不下」这个前提本身拆掉了** ⇒ 它同拍删除：
+/// `ccm` 现在是两个载体，远端那个 `RemoteHomeRelative`、本机那个 `LocalHomeRelative`，
+/// 各自带各自的 touch。⚠ 这不是把 `K-R69` 退回去 —— 它买到的那件事
+/// （**闭集里本机侧真有一条 `ccm` 落点**）一个字节没动，钉它的判据也没动。
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct Carrier {
+    /// 这一份**是哪一份** —— 给人读的一句话，同一个工具的几个载体靠它区分。
+    ///
+    /// ⚠ 它不是 `note`：`note` 说的是「这个**文件**是怎么回事」，
+    /// 这一格说的是「这**一份产物**是怎么回事」。
+    pub what: &'static str,
+    pub source: ToolSource,
+    pub destination: ToolDestination,
+    pub touches: &'static [TouchedFile],
+}
+
 /// 一个受管工具的完整声明。
 ///
 /// **所有字段必须是 `const`-可构造的声明式数据**（无函数指针、无 `dyn`、无 `String`）。
@@ -321,8 +355,6 @@ pub enum TouchEffect {
 pub struct ToolSpec {
     pub id: &'static str,
     pub display_name: &'static str,
-    pub source: ToolSource,
-    pub destination: ToolDestination,
     /// 能不能装/升。
     ///
     /// 🔴 **这一格是「app 装的」与「app 只查」两档的分界线**（`K-R60`）：
@@ -341,7 +373,31 @@ pub struct ToolSpec {
     /// `cc-acct-iso` 由 `false` 翻成 `true`，全表 1379 条一条没响。
     /// ⇒ 今天与 `installable` 同走上面那条性质：字段值 ⇔ 盘上那个符号在不在。
     pub uninstallable: bool,
-    pub touches: &'static [TouchedFile],
+    /// 🔴 〔`K-R81` 09-12〕**同一个东西的几种载体**，头注住 [`Carrier`]。
+    ///
+    /// 先前这里是 `source` / `destination` / `touches` 三个平铺字段 ——
+    /// 那个形状说得出「这个工具落在**一个**地方」，说不出
+    /// 「**同一个后端**落在哪几处」。今天说得出。
+    pub carriers: &'static [Carrier],
+}
+
+impl ToolSpec {
+    /// 这个工具碰的**全部**文件（跨载体铺平）。
+    ///
+    /// ⚠ 只在「不关心是哪个载体」时用它；关心的时候用 [`Self::carrier_touches`] ——
+    /// 铺平会把本件刚立起来的那个 key 又丢掉一次。
+    pub fn touches(&self) -> impl Iterator<Item = &'static TouchedFile> {
+        self.carriers.iter().flat_map(|c| c.touches.iter())
+    }
+
+    /// `(载体, 它碰的文件)` —— **配对问题的答案就是这个迭代器**。
+    pub fn carrier_touches(
+        &self,
+    ) -> impl Iterator<Item = (&'static Carrier, &'static TouchedFile)> {
+        self.carriers
+            .iter()
+            .flat_map(|c| c.touches.iter().map(move |f| (c, f)))
+    }
 }
 
 /// 五套既有机制 + cc-bus 的声明。**本轮只声明，不改它们任何行为**
@@ -362,66 +418,74 @@ pub const TOOLS: &[ToolSpec] = &[
         //    在这一条上已经不合身了（值是**算出来的**，路径取自用户填的 `daemon_path`）。
         //    本模块头注自己写着「零生产消费者、T02 接不上就该删掉本模块」⇒ **不为它改类型**，
         //    如实指到那个函数的住址，并把这一格的形状问题登记在这里。
-        //    🔴 **本机那一半的来源不是这个 shim** —— 是后端二进制自己的改名副本
-        //    （`local_backend::install_local_ccm_entry`）。`ToolSource` 一个字段同样装不下
-        //    两个来源，而这一格的形状问题上面已经登记过一次 ⇒ **不为它再开一个变体**，
-        //    在这里如实写清：远端是 shim，本机是那份二进制本身，两条都进
-        //    `control::ccm::intercept` 那一处解析。
-        source: ToolSource::EmbeddedText {
-            repo_path: "src-tauri/src/backend/control/local_backend.rs::ccm_entry_shim",
-        },
-        // 🔴 〔`K-R69` 09-12〕落点从「只有远端」改成**两边各一个**。
-        //    立件时现打：闭集里落点是 `…/ccm` 的只有这一条，而它是远端 ⇒ **本机 0 条**。
-        //    于是用户 `K34` 逐字「装了新版后 `~/.local/bin/ccm` 可以干净退役」
-        //    **没有承接方** —— 不是没验过，是本机压根没有新的那一份。
-        //    本机那条今天由 `local_backend::install_local_ccm_entry` 真的放下去
-        //    （后端二进制的改名副本，零新增实现），落点刻意**不是** `~/.local/bin`：
-        //    那是用户那份旧的住的地方，`K34` 逐字「原本的配置**要手动删除**」。
-        destination: ToolDestination::BothHomeRelative {
-            local: ".cc-monitor/bin/ccm*",
-            remote: ".local/bin/ccm",
-        },
+        // 🔴 〔`K-R81` 09-12〕**上面那段话里「一个 `source` 装不下两个来源」那一格，今天没了。**
+        //    `K-R69` 当时逐字写的是：「本机那一半的来源不是这个 shim —— 是后端二进制自己的
+        //    改名副本（`local_backend::install_local_ccm_entry`）。`ToolSource` 一个字段
+        //    同样装不下两个来源……**不为它再开一个变体**，在这里如实写清」。
+        //    ⇒ 那句「在注释里如实写清」是**用散文顶替一个字段**。载体这一维立起来之后，
+        //    两个来源各归各的载体，注释不再承重（`R26` 裁定二：`ToolSource` 与
+        //    `destination` 是同一个形状问题的两半，本件同拍治）。
+        //    ⚠ 两条载体仍是**同一个东西**：`control::ccm::intercept` 认 `argv[0]` 的 basename，
+        //    两边都进那一处解析（`K33` 逐字「所有命令只许有一处」）。
         installable: true,
         uninstallable: true,
-        touches: &[
-            TouchedFile {
-                path: "~/.local/bin/ccm",
-                note: None,
-                host: HostScope::Remote,
-                effect: TouchEffect::OwnedFile,
+        carriers: &[
+            Carrier {
+                what: "远端那台机器上的那条 `ccm` —— 三行 `exec` 的 shim，把 argv 转给那台机器上已经部署好的后端",
+                source: ToolSource::EmbeddedText {
+                    repo_path: "src-tauri/src/backend/control/local_backend.rs::ccm_entry_shim",
+                },
+                destination: ToolDestination::RemoteHomeRelative(".local/bin/ccm"),
+                touches: &[
+                    TouchedFile {
+                        path: "~/.local/bin/ccm",
+                        note: None,
+                        host: HostScope::Remote,
+                        effect: TouchEffect::OwnedFile,
+                    },
+                    TouchedFile {
+                        path: "~/.bashrc",
+                        note: Some("或用户在部署向导里选的其它 profile"),
+                        host: HostScope::Remote,
+                        effect: TouchEffect::FencedBlock,
+                    },
+                ],
             },
-            TouchedFile {
-                // ⚠ **末段是 glob 而不是 `ccm`**，而且这不是偷懒：本机那份是要**被起成进程**的，
-                // 在把扩展名当身份的平台上它叫 `ccm.exe`（名字的唯一真相源是
-                // `local_backend::local_ccm_entry_name`，后缀由 `build.rs` 按 `TARGET` 算）。
-                // 写死 `ccm` 会让这一行在 Windows 上**恒显示「缺失」** —— 那正是本页
-                // 头注禁的「对能用的安装报假警报」。两边由
-                // `the_declared_local_ccm_path_really_matches_the_name_we_install` 对拍。
-                path: "~/.cc-monitor/bin/ccm*",
-                note: Some(
-                    "🔴 `K-R69`：**本机那条 `ccm` 入口** —— 后端二进制自己的改名副本\
-                     （不是壳、不是第二份实现：`control::ccm::intercept` 认 `argv[0]` 的 basename）。\
-                     放在 monitor 自己的目录里，**刻意不碰你 `~/.local/bin` 下那份旧的** —— \
-                     那一份要不要删由你自己定（`K34` 逐字：原本的配置要手动删除）",
-                ),
-                host: HostScope::Client,
-                effect: TouchEffect::OwnedFile,
-            },
-            TouchedFile {
-                path: "~/.bashrc",
-                note: Some("或用户在部署向导里选的其它 profile"),
-                host: HostScope::Remote,
-                effect: TouchEffect::FencedBlock,
+            // 🔴 〔`K-R69` 09-12〕本机那条落点是这一件建出来的。
+            //    立件时现打：闭集里落点是 `…/ccm` 的只有远端那一条 ⇒ **本机 0 条**，
+            //    于是用户 `K34` 逐字「装了新版后 `~/.local/bin/ccm` 可以干净退役」
+            //    **没有承接方** —— 不是没验过，是本机压根没有新的那一份。
+            //    落点刻意**不是** `~/.local/bin`：那是用户那份旧的住的地方，
+            //    `K34` 逐字「原本的配置**要手动删除**」。
+            Carrier {
+                what: "本机（monitor 跑着的这台）上的那条 `ccm` —— **后端二进制自己的改名副本**，不是壳、不是第二份实现",
+                source: ToolSource::EmbeddedBinary {
+                    repo_path: "src-tauri/src/backend/control/local_backend.rs::install_local_ccm_entry",
+                },
+                destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/ccm*"),
+                touches: &[TouchedFile {
+                    // ⚠ **末段是 glob 而不是 `ccm`**，而且这不是偷懒：本机那份是要**被起成进程**的，
+                    // 在把扩展名当身份的平台上它叫 `ccm.exe`（名字的唯一真相源是
+                    // `local_backend::local_ccm_entry_name`，后缀由 `build.rs` 按 `TARGET` 算）。
+                    // 写死 `ccm` 会让这一行在 Windows 上**恒显示「缺失」** —— 那正是本页
+                    // 头注禁的「对能用的安装报假警报」。两边由
+                    // `the_declared_local_ccm_path_really_matches_the_name_we_install` 对拍。
+                    path: "~/.cc-monitor/bin/ccm*",
+                    note: Some(
+                        "🔴 `K-R69`：**本机那条 `ccm` 入口** —— 后端二进制自己的改名副本\
+                         （`control::ccm::intercept` 认 `argv[0]` 的 basename）。\
+                         放在 monitor 自己的目录里，**刻意不碰你 `~/.local/bin` 下那份旧的** —— \
+                         那一份要不要删由你自己定（`K34` 逐字：原本的配置要手动删除）",
+                    ),
+                    host: HostScope::Client,
+                    effect: TouchEffect::OwnedFile,
+                }],
             },
         ],
     },
     ToolSpec {
         id: "cc-bus",
         display_name: "cc-bus 多实例消息总线",
-        source: ToolSource::RepoDir {
-            repo_path: "shared/cc-bus",
-        },
-        destination: ToolDestination::LocalHomeRelative(".claude/skills/cc-bus"),
         // ★★ **不是「实现一下就能翻 true」——落点被只读铁律排除**〔PS1 重摸底 08-12〕。
         //
         // 原注释只写「部署尚未实现（B01 只做了"搬进仓固化为基线"）」，那是**浅一层**的理由，
@@ -455,7 +519,15 @@ pub const TOOLS: &[ToolSpec] = &[
         // 理由：专名判据只把静默从 1 个工具挪走，下一个工具照样静默（件文件 `§0c`）。
         installable: true,
         uninstallable: false,
-        touches: &[
+        // 一个载体（仓内目录整份铺过去）—— `cc-bus` 不是「同一份字节两处使用」那一族，
+        // 这里一条 `Carrier` 就够；载体这一维只在真有几份的那几条上才多。
+        carriers: &[Carrier {
+            what: "仓里那份 `shared/cc-bus`（整目录），装到 Claude Code 那台机器的 skills 下",
+            source: ToolSource::RepoDir {
+                repo_path: "shared/cc-bus",
+            },
+            destination: ToolDestination::LocalHomeRelative(".claude/skills/cc-bus"),
+            touches: &[
             TouchedFile {
                 // 🔴 **这一条是 `K-R60` 补的，而它是被上面那次翻字段逼出来的。**
                 // `installable_tools_declare_where_they_land` 要求「装得了就必须申报装到哪」；
@@ -508,22 +580,25 @@ pub const TOOLS: &[ToolSpec] = &[
                 ),
                 effect: TouchEffect::IndirectWrite,
             },
-        ],
+            ],
+        }],
     },
     ToolSpec {
         id: "cc-acct-iso",
         display_name: "cc-acct-iso 多账号隔离",
-        source: ToolSource::Vendored {
-            repo_path: "src-tauri/vendor/cc-acct-iso",
-            fingerprint_file: ".vendor_id",
-        },
-        destination: ToolDestination::UserConfiguredPath {
-            token: "$ACCT_ISO_DEST",
-            what: "部署时在账号页填的「部署目录」",
-        },
         installable: true,
         uninstallable: false,
-        touches: &[
+        carriers: &[Carrier {
+            what: "vendored 那一份（带 `.vendor_id` 指纹），部署到远端你自己填的那个目录",
+            source: ToolSource::Vendored {
+                repo_path: "src-tauri/vendor/cc-acct-iso",
+                fingerprint_file: ".vendor_id",
+            },
+            destination: ToolDestination::UserConfiguredPath {
+                token: "$ACCT_ISO_DEST",
+                what: "部署时在账号页填的「部署目录」",
+            },
+            touches: &[
             TouchedFile {
                 path: "$ACCT_ISO_DEST",
                 host: HostScope::Remote,
@@ -551,18 +626,23 @@ pub const TOOLS: &[ToolSpec] = &[
                 ),
                 effect: TouchEffect::ReadOnly,
             },
-        ],
+            ],
+        }],
     },
+    // ═══ 🔴 〔`K-R81` 09-12〕**这一条改名了，而改名不是清洁工作** ═══
+    //
+    // 用户 09-12 逐字：「**一个后端要两处使用 / 即远程 daemon 就是远程本地机器的后端**」。
+    // 这一条先前叫 `remote-daemon` / 「远端 daemon」，而它说的是**假的**：
+    // 那一份不是「远端的 daemon」，是**那台机器的本地后端**（`K36` 逐字
+    // 「两份后端应该要一样的」·`K33` 逐字「后端只有一个」）。
+    //
+    // 🔴 **这个名字已经花过一次真钱**：`build-linux` 没有 `Stage native daemon for
+    // self-extract` 那一步而 `build-windows` 有 ⇒ **Linux 裸 exe 装出来没有本机后端**
+    // （`ROADMAP#KU26`，用户已裁「那肯定带」）。★ 那正是「把它当成『远端』产物」的直接后果 ——
+    // **名字塑造了发版流水线的形状**。⚠ 发版那一步归 `K-R42`，本件只把名字与闭集说对。
     ToolSpec {
-        id: "remote-daemon",
-        display_name: "远端 daemon",
-        source: ToolSource::EmbeddedBinary {
-            repo_path: "embedded-daemons",
-        },
-        destination: ToolDestination::UserConfiguredPath {
-            token: "$DAEMON_PATH",
-            what: "每个远端连接的「daemon 路径」配置项",
-        },
+        id: "backend",
+        display_name: "cc-monitor 后端（一份实现，本机与远端各跑一份）",
         installable: true,
         // 🔴 〔`K-R63` 09-11〕**这一格原先是 `false`，而它是一处假申报** —— 本件那条新性质
         // 落地的当场把它逮出来的（不是人看出来的）。卸载实现一直在：
@@ -572,27 +652,92 @@ pub const TOOLS: &[ToolSpec] = &[
         //   写着「卸不掉」而按钮就在旁边。这正是 `K-R60` 在 `installable` 上治过的同一族病，
         //   只是这一次错在**少报**那一边（`K-R60` 那次是多报）。
         uninstallable: true,
-        touches: &[TouchedFile {
-            path: "$DAEMON_PATH",
-            host: HostScope::Remote,
-            note: Some(
-                "远端，路径由该连接的「daemon 路径」配置项决定——**不是**固定的 ~/.local/bin/ccm-daemon",
-            ),
-            effect: TouchEffect::OwnedFile,
-        }],
+        // 🔴 〔`K-R81` 09-12〕**同一份后端，三种载体、三个落点** —— `K-R68` 摸底现打
+        // （`evidence/K-R68-三种载体摸底.md#§B`）。在本件之前闭集里只有中间那一条，
+        // 另外两条**一格都没有**：读者分不出「没有」与「有人忘了写」。
+        // ⚠ 三者是**同一份代码**的三种载体，不是三个工具（`R24` 裁定一 / `K25` / `K33` / `K36`）；
+        //   ①③ 是同一次 `cargo build` 的同一个文件拷两份，② 结构上不可能同字节
+        //   （另一个 job / musl target）—— **那正是 `K25` 裁的形状，不是缺陷**。
+        carriers: &[
+            Carrier {
+                what: "安装包放在 app 可执行文件旁边的那一份（`tauri.sidecar.conf.json` 的 `externalBin`）—— 解析次序里**第一个**被采用的就是它（`local_backend::resolve_beside_this_exe`）",
+                source: ToolSource::EmbeddedBinary {
+                    repo_path: "src-tauri/binaries/cc-monitor-remote",
+                },
+                // **路径不是常量，也不是家目录相对** —— 它跟着 app 装到哪儿走，
+                // 而那个目录是装机时由人选的。同 `$DAEMON_PATH` 那一格的理由：
+                // 申报一个我们其实没在用的常量，审计页会拿它去查一个没人写的路径
+                // 然后言之凿凿地报「缺失」。
+                destination: ToolDestination::UserConfiguredPath {
+                    token: "$APP_DIR",
+                    what: "装机时安装向导里选的那个安装目录（sidecar 与 cc-monitor 主程序同目录）",
+                },
+                touches: &[TouchedFile {
+                    path: "$APP_DIR",
+                    host: HostScope::Client,
+                    note: Some(
+                        "本机，随安装包落盘；文件名带 target triple（`cc-monitor-remote-<triple>`，\
+                         Windows 上再带 `.exe`）—— 名字的真相源是 `local_backend::resolve_with`",
+                    ),
+                    effect: TouchEffect::OwnedFile,
+                }],
+            },
+            Carrier {
+                what: "这一份产物**自己带着**、旁边没有 sidecar 时自释放出来的那一份（`build.rs::embed_native_daemon` ⇒ `local_backend::native_embedded_daemon` 的 `include_bytes!`）",
+                source: ToolSource::EmbeddedBinary {
+                    repo_path: "src-tauri/native-daemon/cc-monitor-native",
+                },
+                // 落点带 build_id（`local_backend::local_extract_name`）—— 那不是命名品味：
+                // 远端自部署落的也是这个目录，两边对同一个文件名有不同期望就会互判 stale、
+                // 无限重装。glob 只在末段、只有一个 `*`（`resolve_local_home` 的两条校验）。
+                destination: ToolDestination::LocalHomeRelative(".cc-monitor/bin/cc-monitor-local-*"),
+                touches: &[TouchedFile {
+                    path: "~/.cc-monitor/bin/cc-monitor-local-*",
+                    host: HostScope::Client,
+                    note: Some(
+                        "本机自释放出来的那份后端，文件名带 build_id（`local_extract_name`）——\
+                         同一个 build_id 不会重复写；**旧版本不回收**，那笔债记在 `local_extract_name` 头注",
+                    ),
+                    effect: TouchEffect::OwnedFile,
+                }],
+            },
+            Carrier {
+                what: "推给远端那台机器、在**那台机器上当本地后端**跑的那一份（`embedded-daemons/`，交叉编译的 musl 二进制）",
+                source: ToolSource::EmbeddedBinary {
+                    repo_path: "embedded-daemons",
+                },
+                destination: ToolDestination::UserConfiguredPath {
+                    token: "$DAEMON_PATH",
+                    what: "每个远端连接的「daemon 路径」配置项",
+                },
+                touches: &[TouchedFile {
+                    path: "$DAEMON_PATH",
+                    host: HostScope::Remote,
+                    note: Some(
+                        "路径由该连接的「daemon 路径」配置项决定——**不是**固定的 ~/.local/bin/ccm-daemon。\
+                         ⚠ 它在那台机器上就是**那台机器的本地后端**（`K36`），\
+                         「远端」说的是「相对这台 monitor」，不是它的身份",
+                    ),
+                    effect: TouchEffect::OwnedFile,
+                }],
+            },
+        ],
     },
     ToolSpec {
         id: "project-mcp",
         display_name: "项目 MCP 配置",
-        source: ToolSource::Generated,
-        destination: ToolDestination::ProjectRelative(".mcp.json"),
         installable: true,
         uninstallable: true,
-        touches: &[TouchedFile {
-            path: ".mcp.json",
-            host: HostScope::ProjectDir,
-            note: Some("相对你选定的项目目录"),
-            effect: TouchEffect::OwnedFile,
+        carriers: &[Carrier {
+            what: "现场生成的一段 JSON，写进你选定的那个项目目录",
+            source: ToolSource::Generated,
+            destination: ToolDestination::ProjectRelative(".mcp.json"),
+            touches: &[TouchedFile {
+                path: ".mcp.json",
+                host: HostScope::ProjectDir,
+                note: Some("相对你选定的项目目录"),
+                effect: TouchEffect::OwnedFile,
+            }],
         }],
     },
     // ═══ 〔`K-R62` 09-11〕**从第三档升上来的第一项** ═══
@@ -610,44 +755,50 @@ pub const TOOLS: &[ToolSpec] = &[
     ToolSpec {
         id: "posix-rc-aliases",
         display_name: "POSIX rc 里的 ccm 别名块（cc / cct / zcc …）",
-        // 装进去的内容**就是仓里那份文件**（`sftp::CCM_WRAPPER_SNIPPET` 是它的
-        // `include_str!`）。远端那条 `ccm` 用的是同一份 —— 那正是本件不许出现第二份的东西。
-        source: ToolSource::EmbeddedText {
-            repo_path: "shared/ccm-aliases.sh",
-        },
-        // 🔴 **路径由人选，产品不猜** —— 这一格用占位符而不是 `~/.bashrc`，
-        // 理由与 `remote-daemon` 的 `$DAEMON_PATH` 逐字同源：申报一个我们其实没在用的常量，
-        // 审计页会拿它去查一个没人写的路径然后言之凿凿地报「缺失」。
-        // `.bashrc` / `.zshrc` / `config.fish` 写法不同，替人选一份是最坏的那条路
-        // （`account_aliases` 的 `§0e`）。
-        destination: ToolDestination::UserConfiguredPath {
-            token: "$POSIX_RC",
-            what: "「按账号生成命令」那一块里那个 rc 下拉 —— 从盘上真实存在的 .bashrc / .zshrc / .bash_profile / .profile 里由你自己选",
-        },
         installable: true,
         uninstallable: true,
-        touches: &[TouchedFile {
-            path: "$POSIX_RC",
-            host: HostScope::Client,
-            note: Some(
-                "本机（cc-monitor 跑着的这台）的那份 shell rc，具体哪一份由界面上的人选。\
-                 围栏与内容都与远端那个口共用一份 —— 本机与远端装进 rc 的是同一个东西（K15 / K36）",
-            ),
-            effect: TouchEffect::FencedBlock,
+        carriers: &[Carrier {
+            what: "仓里那份别名脚本（`shared/ccm-aliases.sh`），合进你自己选的那份 rc",
+            // 装进去的内容**就是仓里那份文件**（`sftp::CCM_WRAPPER_SNIPPET` 是它的
+            // `include_str!`）。远端那条 `ccm` 用的是同一份 —— 那正是本件不许出现第二份的东西。
+            source: ToolSource::EmbeddedText {
+                repo_path: "shared/ccm-aliases.sh",
+            },
+            // 🔴 **路径由人选，产品不猜** —— 这一格用占位符而不是 `~/.bashrc`，
+            // 理由与后端那条 `$DAEMON_PATH` 逐字同源：申报一个我们其实没在用的常量，
+            // 审计页会拿它去查一个没人写的路径然后言之凿凿地报「缺失」。
+            // `.bashrc` / `.zshrc` / `config.fish` 写法不同，替人选一份是最坏的那条路
+            // （`account_aliases` 的 `§0e`）。
+            destination: ToolDestination::UserConfiguredPath {
+                token: "$POSIX_RC",
+                what: "「按账号生成命令」那一块里那个 rc 下拉 —— 从盘上真实存在的 .bashrc / .zshrc / .bash_profile / .profile 里由你自己选",
+            },
+            touches: &[TouchedFile {
+                path: "$POSIX_RC",
+                host: HostScope::Client,
+                note: Some(
+                    "本机（cc-monitor 跑着的这台）的那份 shell rc，具体哪一份由界面上的人选。\
+                     围栏与内容都与远端那个口共用一份 —— 本机与远端装进 rc 的是同一个东西（K15 / K36）",
+                ),
+                effect: TouchEffect::FencedBlock,
+            }],
         }],
     },
     ToolSpec {
         id: "powershell-profile",
         display_name: "PowerShell 集成",
-        source: ToolSource::Generated,
-        destination: ToolDestination::UserShellProfile,
         installable: true,
         uninstallable: true,
-        touches: &[TouchedFile {
-            path: "$PROFILE",
-            host: HostScope::Client,
-            note: Some("Windows 客户端侧，具体路径由 PowerShell 决定"),
-            effect: TouchEffect::FencedBlock,
+        carriers: &[Carrier {
+            what: "现场生成的那段 PowerShell 围栏块，合进用户的 `$PROFILE`",
+            source: ToolSource::Generated,
+            destination: ToolDestination::UserShellProfile,
+            touches: &[TouchedFile {
+                path: "$PROFILE",
+                host: HostScope::Client,
+                note: Some("Windows 客户端侧，具体路径由 PowerShell 决定"),
+                effect: TouchEffect::FencedBlock,
+            }],
         }],
     },
     // ═══ 〔`K-R60` 09-11 加〕**这一条我们装不了，而它是这张表最吃重的一项。** ═══
@@ -669,22 +820,25 @@ pub const TOOLS: &[ToolSpec] = &[
     ToolSpec {
         id: "claude-code",
         display_name: "Claude Code 的会话记录",
-        source: ToolSource::NotOurs {
-            who: "Claude Code 自己建、自己写",
-        },
-        destination: ToolDestination::NotInstalledByUs {
-            whose: "Claude Code 的数据根（`adapter/claude_code.rs` 的 CLAUDE_LAYOUT.sessions_subdir）",
-        },
         installable: false,
         uninstallable: false,
-        touches: &[TouchedFile {
-            path: "~/.claude/projects/",
-            host: HostScope::Either,
-            note: Some(
-                "历史面与搜索索引的全部输入（每个项目一个目录、每个会话一份 jsonl）——\
-                 我们只读；装不了，也不该我们装",
-            ),
-            effect: TouchEffect::ReadOnly,
+        carriers: &[Carrier {
+            what: "别人的产物 —— Claude Code 自己建、自己写的那份会话记录，我们只读",
+            source: ToolSource::NotOurs {
+                who: "Claude Code 自己建、自己写",
+            },
+            destination: ToolDestination::NotInstalledByUs {
+                whose: "Claude Code 的数据根（`adapter/claude_code.rs` 的 CLAUDE_LAYOUT.sessions_subdir）",
+            },
+            touches: &[TouchedFile {
+                path: "~/.claude/projects/",
+                host: HostScope::Either,
+                note: Some(
+                    "历史面与搜索索引的全部输入（每个项目一个目录、每个会话一份 jsonl）——\
+                     我们只读；装不了，也不该我们装",
+                ),
+                effect: TouchEffect::ReadOnly,
+            }],
         }],
     },
 ];
@@ -744,10 +898,27 @@ impl Provisioning {
     ///
     /// ⚠ 这一格与 `installable` **读的不是同一个东西**：这里读 `destination`（判断），
     /// 那里读实现（`K-R63` 的对拍表）。`claude-code` 两格恰好同向，那是巧合不是同义。
+    ///
+    /// # 🔴 〔`K-R81` 09-12〕多载体之后的**聚合规则**，写在这里而不是靠人记得
+    ///
+    /// 一个工具现在有**一串**载体（[`Carrier`]）⇒ 「它是不是我们装的」要从一串
+    /// `destination` 聚合出来。**规则：全部载体都是 `NotInstalledByUs` 才算「不是装出来的」。**
+    /// 理由：只要有**一份**是我们放下去的，这东西对用户就是「app 装的」——
+    /// 把它算成「别人的产物」会让配置面那一列直接说假话。
+    ///
+    /// ⚠ **混合的那一形今天盘上不存在**（判据 `carriers_do_not_mix_ours_and_not_ours`
+    /// 钉着，两向都判）。它**本来就该变的时候去哪儿重裁**：真出现一个「一半我们装、
+    /// 一半别人的」的工具，那条判据会当场红并点名 —— 那时重裁的是这条聚合规则本身，
+    /// 不是把判据放宽（`references/testing.md` 硬规则 11 / 12）。
     pub fn of_tool(t: &ToolSpec) -> Provisioning {
-        match t.destination {
-            ToolDestination::NotInstalledByUs { .. } => Provisioning::NotAnInstall,
-            _ => Provisioning::AppShips,
+        let all_not_ours = t
+            .carriers
+            .iter()
+            .all(|c| matches!(c.destination, ToolDestination::NotInstalledByUs { .. }));
+        if all_not_ours {
+            Provisioning::NotAnInstall
+        } else {
+            Provisioning::AppShips
         }
     }
 }
@@ -1500,11 +1671,9 @@ mod tests {
             vec![
                 "id",
                 "display_name",
-                "source",
-                "destination",
                 "installable",
                 "uninstallable",
-                "touches"
+                "carriers"
             ],
             "解析出的字段集合与源码不符——先查解析器，别改断言"
         );
@@ -1611,8 +1780,8 @@ mod tests {
         let code = production_code(include_str!("tool_registry.rs"));
         let mutated = code
             .replace(
-                "    pub touches: &'static [TouchedFile],",
-                "    pub touches: &'static [TouchedFile],\n    pub needs_elevation: bool,",
+                "    pub carriers: &'static [Carrier],",
+                "    pub carriers: &'static [Carrier],\n    pub needs_elevation: bool,",
             )
             // 🔴 **锚点必须只认 `ToolSpec` 那一族的 `id:`**〔`K-R60` 09-11 现打〕：
             // 上一版的锚点是裸的 `"        id: \""` —— 它认的是「本文件里任何 8 空格缩进的
@@ -1730,7 +1899,7 @@ mod tests {
     fn touch_effects_are_all_really_used() {
         let effects: HashSet<_> = TOOLS
             .iter()
-            .flat_map(|t| t.touches.iter().map(|f| f.effect))
+            .flat_map(|t| t.touches().map(|f| f.effect))
             .collect();
         assert!(
             effects.len() >= 3,
@@ -1782,8 +1951,7 @@ mod tests {
         //   PM 的窗口开着时不许跑）⇒ 改名的事走上报口交回 PM，不在这一拍自批。
         // settings.json 只生成待贴文本，绝不写
         let hooks = ccbus
-            .touches
-            .iter()
+            .touches()
             .find(|f| f.path.contains("settings.json"))
             .expect("cc-bus 应声明它需要 settings.json 的钩子");
         assert_eq!(
@@ -1803,7 +1971,7 @@ mod tests {
     #[test]
     fn owned_file_implies_installable() {
         for t in TOOLS {
-            if t.touches.iter().any(|f| f.effect == TouchEffect::OwnedFile) {
+            if t.touches().any(|f| f.effect == TouchEffect::OwnedFile) {
                 assert!(
                     t.installable,
                     "{} 声称拥有某个文件却装不了它——那这个「拥有」是假的",
@@ -1849,41 +2017,665 @@ mod tests {
         }
     }
 
+    /// 一个载体的**申报落点**（`destination` ⇒ 那条 touch 该写成什么）。
+    ///
+    /// **唯一一份口径**〔`13b`〕：下面三条判据（落点在不在 touches 里 · 同一个东西有几个
+    /// 落点 · 那几个落点逐条钉死）都从这里取，别在第二处再写一份 `match`。
+    /// `None` = 这一格回答的不是「装到哪」（[`ToolDestination::NotInstalledByUs`]）。
+    fn landing_path_of(d: &ToolDestination) -> Option<String> {
+        match d {
+            ToolDestination::RemoteHomeRelative(p) | ToolDestination::LocalHomeRelative(p) => {
+                Some(format!("~/{p}"))
+            }
+            ToolDestination::ProjectRelative(p) => Some((*p).to_string()),
+            ToolDestination::UserShellProfile => Some("$PROFILE".to_string()),
+            ToolDestination::UserConfiguredPath { token, .. } => Some((*token).to_string()),
+            ToolDestination::NotInstalledByUs { .. } => None,
+        }
+    }
+
+    /// **这个工具说得出几个落点** —— 就是本件那条 dod 判的那个「关系」。
+    ///
+    /// 🔴 **为什么数的是载体而不是枚举值**（`KR81D1` 逐字写死的失效方向）：
+    /// `destination` 是单值的时候这个数**恒等于 1**，往 `ToolDestination` 里
+    /// **加多少个枚举值它都还是 1** —— 那只是「值多了一个」，不是
+    /// 「一个东西对多个落点」。这个数 >1 当且仅当**载体这一维真的存在**。
+    fn landing_sites_of(t: &ToolSpec) -> Vec<String> {
+        t.carriers
+            .iter()
+            .filter_map(|c| landing_path_of(&c.destination))
+            .collect()
+    }
+
     #[test]
     fn installable_tools_declare_where_they_land() {
         for t in TOOLS {
             if !t.installable {
                 continue;
             }
-            // 🔴 〔`K-R69` 09-12〕从「一个落点」改成**一串** —— `BothHomeRelative`
-            //    有两个，而「少申报一个**存在**的落点」与「申报一个不存在的」同族：
-            //    审计页上那一行根本不出现，读者分不出「没有」与「有人忘了写」。
-            let wants: Vec<String> = match &t.destination {
-                ToolDestination::RemoteHomeRelative(p) | ToolDestination::LocalHomeRelative(p) => {
-                    vec![format!("~/{p}")]
-                }
-                ToolDestination::BothHomeRelative { local, remote } => {
-                    vec![format!("~/{local}"), format!("~/{remote}")]
-                }
-                ToolDestination::ProjectRelative(p) => vec![(*p).to_string()],
-                ToolDestination::UserShellProfile => vec!["$PROFILE".to_string()],
-                ToolDestination::UserConfiguredPath { token, .. } => vec![(*token).to_string()],
+            // 🔴 〔`K-R81` 09-12〕**逐载体判，而这一步比先前严**。
+            //    `K-R69` 那一版是「一个工具一个 `destination`、一串期望落点、去这个工具的
+            //    **全部** touches 里找」—— 那时 M 个落点 × N 条 touch **没有 key**，
+            //    一个落点被另一个载体的 touch「凑巧接住」也照样绿。
+            //    今天落点与 touch 都挂在同一个载体下 ⇒ 接住它的必须是**它自己那一份**。
+            for c in t.carriers {
                 // 〔`K-R60`〕跨字段：「这不是我们的落点」与「装得了」不许同时成立。
-                ToolDestination::NotInstalledByUs { whose } => panic!(
-                    "{} 声明 installable: true，落点却写着「不是我们装的」（{whose}）——\
-                     两句话有一句是假的",
-                    t.id
-                ),
-            };
-            for want in &wants {
+                let Some(want) = landing_path_of(&c.destination) else {
+                    panic!(
+                        "{} 声明 installable: true，而载体「{}」的落点写着「不是我们装的」——\
+                         两句话有一句是假的",
+                        t.id, c.what
+                    )
+                };
                 assert!(
-                    t.touches.iter().any(|f| f.path == *want),
-                    "{} 可安装，但 touches 里没有它的落点 {want:?}（实得 {:?}）",
+                    c.touches.iter().any(|f| f.path == want),
+                    "{} 的载体「{}」可安装，但它自己的 touches 里没有它的落点 {want:?}（实得 {:?}）",
                     t.id,
-                    t.touches.iter().map(|f| f.path).collect::<Vec<_>>()
+                    c.what,
+                    c.touches.iter().map(|f| f.path).collect::<Vec<_>>()
                 );
             }
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🔴 `K-R81` / `KR81D1` ＋ `KR81D3`：**一个后端，几处使用**
+    //
+    // 用户 09-12 逐字：「一个后端要两处使用 / 即远程 daemon 就是远程本地机器的后端」。
+    // 下面四条判的是**这句话在闭集里说得出来**，不是「表好看一点」。
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 后端那条 `ToolSpec` 的 id —— **只许有一个住址**〔`13b`〕，
+    /// 下面几条判据与别处引用它的地方都从这里取。
+    const BACKEND_ID: &str = "backend";
+
+    fn backend() -> &'static ToolSpec {
+        TOOLS
+            .iter()
+            .find(|t| t.id == BACKEND_ID)
+            .unwrap_or_else(|| panic!("闭集里找不到 id 为 `{BACKEND_ID}` 的那一条"))
+    }
+
+    /// ★ `KR81D1` **正面**：闭集说得出「**同一个后端**落在哪几处」。
+    ///
+    /// # 死值验（`KR81D1` 逐字要的那一向）
+    ///
+    /// 把三个落点里**任意一个**从闭集里摘掉 ⇒ 本条红，**并点名是哪一个没了**。
+    ///
+    /// # 🔴 失效方向写死在这里（`KR81D1` 逐字）
+    ///
+    /// 「给 `destination` 加第二个枚举值就算多落点」——**不算**。
+    /// [`landing_sites_of`] 数的是**载体**：`destination` 单值时它恒等于 1，
+    /// 往 `ToolDestination` 里加多少个变体它都还是 1。
+    /// 本条要的是那个数 **> 1**，也就是「一个东西对多个落点」这个**关系**存在。
+    ///
+    /// # 它守什么、**不守什么**
+    ///
+    /// 守的是**申报**（这张表说不说得出那三份）。「那三份是不是同一次构建出来的」
+    /// **本条不判，而且今天没有任何东西判得了** —— `.build_id` 三者从同一处源码常量抠，
+    /// 恒等，那句恒等一格证据都不提供（`DECISIONS.md#R26` 裁定零）。
+    #[test]
+    fn the_backend_is_one_thing_landing_in_several_places() {
+        let t = backend();
+
+        // ① 关系存在：不是「一个落点」，也不是「一个值多了几个枚举变体」。
+        let sites = landing_sites_of(t);
+        assert!(
+            sites.len() > 1,
+            "`{BACKEND_ID}` 只说得出 {} 个落点（实得 {sites:?}）——\n\
+             用户 09-12 逐字「一个后端要两处使用」，而闭集里它还是一处。\n\
+             ⚠ 往 `ToolDestination` 里加枚举值买不到这一格：这个数数的是**载体**。",
+            sites.len()
+        );
+
+        // ②b 反向自检：这把尺子在**单载体**的工具上真的给 1（否则上面那条是空真）。
+        let single: Vec<usize> = TOOLS
+            .iter()
+            .filter(|t| t.carriers.len() == 1)
+            .map(landing_sites_of)
+            .map(|v| v.len())
+            .collect();
+        assert!(
+            single.iter().any(|n| *n <= 1),
+            "尺子失准：单载体的工具也数出 >1 个落点（实得 {single:?}）——\n\
+             那说明它数的不是载体，上面那条 `>1` 于是恒真"
+        );
+
+        // ② 逐条钉死：`(这一份是从哪来的, 它落到哪, 在哪台机器上)`。
+        //    改 `TOOLS` 就要来改这张表 —— 这是**有意的摩擦**（同
+        //    `config_surface::every_host_declaration_is_pinned` 那张表的理由）。
+        let mut got: Vec<(String, String, HostScope)> = t
+            .carriers
+            .iter()
+            .map(|c| {
+                let src = match &c.source {
+                    ToolSource::EmbeddedBinary { repo_path } => (*repo_path).to_string(),
+                    other => panic!(
+                        "后端的载体来源不该是 {other:?} —— 三份都是**二进制**（`K25`：\
+                         一份代码、每个平台一份原生产物）"
+                    ),
+                };
+                let dst = landing_path_of(&c.destination)
+                    .unwrap_or_else(|| panic!("后端的载体「{}」没有落点", c.what));
+                let host = c
+                    .touches
+                    .iter()
+                    .find(|f| f.path == dst)
+                    .unwrap_or_else(|| panic!("载体「{}」的落点不在它自己的 touches 里", c.what))
+                    .host;
+                (src, dst, host)
+            })
+            .collect();
+        let mut want: Vec<(String, String, HostScope)> = vec![
+            // ③ 安装包放在 app 可执行文件旁边的那份（`tauri.sidecar.conf.json` 的 `externalBin`）
+            (
+                "src-tauri/binaries/cc-monitor-remote".into(),
+                "$APP_DIR".into(),
+                HostScope::Client,
+            ),
+            // ① 这一份产物自己带着、旁边没有 sidecar 时自释放的那份
+            (
+                "src-tauri/native-daemon/cc-monitor-native".into(),
+                "~/.cc-monitor/bin/cc-monitor-local-*".into(),
+                HostScope::Client,
+            ),
+            // ② 推给远端那台机器、在那台机器上当**它的本地后端**跑的那份
+            (
+                "embedded-daemons".into(),
+                "$DAEMON_PATH".into(),
+                HostScope::Remote,
+            ),
+        ];
+        // `HostScope` 没有 `Ord`（它是描述型 enum），按前两栏排 —— 同
+        // `config_surface::every_host_declaration_is_pinned` 那张表的写法。
+        got.sort_by(|x, y| (&x.0, &x.1).cmp(&(&y.0, &y.1)));
+        want.sort_by(|x, y| (&x.0, &x.1).cmp(&(&y.0, &y.1)));
+        assert_eq!(
+            got, want,
+            "\n后端的载体清单与钉死的表对不上 —— 少一份就是「闭集说不出它」，\n\
+             而那正是 `K-R68` 立件时的读数（3 种载体 4 个落点，闭集表达 1 个半）。\n\
+             改 `TOOLS` 就要来改这张表，并说清为什么。"
+        );
+    }
+
+    /// ★ `KR81D3`：**`ccm` 那两份的来源不是同一个，而闭集今天说得出来。**
+    ///
+    /// # 立件时这一条是红的（那正是这半格的题面）
+    ///
+    /// `R26` 裁定二逐字：`ToolSource` 与 `destination` 是**同一个形状问题的两半**。
+    /// 在载体这一维立起来之前，`ccm` 只有一个 `source`，而它的注释**自己承认是假的**
+    /// （逐字：「本机那一半的来源不是这个 shim —— 是后端二进制自己的改名副本……
+    /// `ToolSource` 一个字段同样装不下两个来源」）—— **用散文顶替一个字段**。
+    ///
+    /// # 死值验（`KR81D3` 逐字要的那一向）
+    ///
+    /// 把本机那份的 `source` 改回今天那个假值（＝ 与远端那份同一个 `ccm_entry_shim`）
+    /// ⇒ 本条红。
+    #[test]
+    fn the_two_ccm_carriers_do_not_share_one_false_source() {
+        let ccm = TOOLS
+            .iter()
+            .find(|t| t.id == "ccm")
+            .expect("闭集里没有 `ccm` 那一条");
+        assert_eq!(
+            ccm.carriers.len(),
+            2,
+            "`ccm` 今天是**两份**：远端那条 shim + 本机那份后端二进制的改名副本"
+        );
+        let srcs: Vec<&ToolSource> = ccm.carriers.iter().map(|c| &c.source).collect();
+        assert_ne!(
+            srcs[0], srcs[1],
+            "`ccm` 两个载体的 `source` 逐字相同 —— 那正是本件治的那句假话：\n\
+             远端那条是 `local_backend::ccm_entry_shim` 现造的三行 `exec` 串，\n\
+             本机那条是**后端二进制自己的改名副本**（`install_local_ccm_entry`）。\n\
+             一个 `source` 装不下两个来源，而「在注释里如实写清」不是一个字段。"
+        );
+        // 本机那一份的来源必须指到那个**放二进制**的符号，不是那个造 shim 的符号。
+        let local = ccm
+            .carriers
+            .iter()
+            .find(|c| matches!(c.destination, ToolDestination::LocalHomeRelative(_)))
+            .expect("`ccm` 本机那个载体不见了（`K-R69` 建的那条）");
+        match &local.source {
+            ToolSource::EmbeddedBinary { repo_path } => assert!(
+                repo_path.ends_with("::install_local_ccm_entry"),
+                "本机那条 `ccm` 的来源指到了 {repo_path:?} —— 它该指到真把那份字节\
+                 放下去的那个符号（`local_backend::install_local_ccm_entry`）"
+            ),
+            other => {
+                panic!("本机那条 `ccm` 是**一份二进制**（后端本体的改名副本），不是 {other:?}")
+            }
+        }
+    }
+
+    /// **一个工具的几个载体，不许一半是我们的、一半是别人的。**
+    ///
+    /// 这一条是 [`Provisioning::of_tool`] 那条聚合规则（「全部载体都是
+    /// `NotInstalledByUs` 才算不是装出来的」）的门禁：混合的那一形一出现，
+    /// 那条规则就得**重裁**，而不是让它静默地选一边
+    /// （`references/testing.md` 硬规则 11：钉「今天恰好如此」的判据要写清去哪儿重裁）。
+    #[test]
+    fn carriers_do_not_mix_ours_and_not_ours() {
+        for t in TOOLS {
+            let n = t
+                .carriers
+                .iter()
+                .filter(|c| matches!(c.destination, ToolDestination::NotInstalledByUs { .. }))
+                .count();
+            assert!(
+                n == 0 || n == t.carriers.len(),
+                "`{}` 的 {} 个载体里有 {n} 个写着「不是我们装的」——\n\
+                 `Provisioning::of_tool` 那条聚合规则（全是才算）此刻在**替你选一边**。\n\
+                 ⇒ 去 `Provisioning::of_tool` 的头注重裁那条规则，别把这条判据放宽。",
+                t.id,
+                t.carriers.len()
+            );
+        }
+        // 反向自检：混合的那一形真的判得出来（合成一条，不动真表）。
+        const MIXED: &[Carrier] = &[
+            Carrier {
+                what: "自检：我们装的那一份",
+                source: ToolSource::Generated,
+                destination: ToolDestination::LocalHomeRelative(".x/y"),
+                touches: &[],
+            },
+            Carrier {
+                what: "自检：别人的那一份",
+                source: ToolSource::NotOurs { who: "自检" },
+                destination: ToolDestination::NotInstalledByUs { whose: "自检" },
+                touches: &[],
+            },
+        ];
+        let n = MIXED
+            .iter()
+            .filter(|c| matches!(c.destination, ToolDestination::NotInstalledByUs { .. }))
+            .count();
+        assert!(
+            n != 0 && n != MIXED.len(),
+            "自检夹具没造出混合那一形 —— 上面那条断言此刻是空真"
+        );
+    }
+
+    /// **每个载体都说得出自己是哪一份**，而同一个工具里两份不许说同一句话。
+    ///
+    /// 没有这一格，多载体的工具在配置面上就是几行长得一样的字 ——
+    /// 「说得出几个落点」于是退化成「表里多了几行」。
+    #[test]
+    fn every_carrier_says_which_one_it_is() {
+        let mut n_multi = 0;
+        for t in TOOLS {
+            let mut seen: HashSet<&str> = HashSet::new();
+            for c in t.carriers {
+                assert!(
+                    !c.what.trim().is_empty(),
+                    "`{}` 有一个载体没说自己是哪一份",
+                    t.id
+                );
+                assert!(
+                    seen.insert(c.what),
+                    "`{}` 有两个载体说着同一句话（{:?}）—— 那就分不出是哪一份了",
+                    t.id,
+                    c.what
+                );
+            }
+            if t.carriers.len() > 1 {
+                n_multi += 1;
+            }
+        }
+        // 地板反向自检：真表里得有**多载体**的工具，否则上面那条唯一性是空真。
+        assert!(
+            n_multi >= 2,
+            "闭集里多载体的工具只有 {n_multi} 个 —— 唯一性那半此刻几乎是空真。\n\
+             今天该有两个：`ccm`（远端 shim / 本机改名副本）与 `{BACKEND_ID}`（三种载体）"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🔴 `K-R81` / `KR81D2`：**那个名字改到哪儿了 —— 一张可核的账**
+    //
+    // dod 逐字：「**不要求一次全改**，但**要求给出「改了哪些、没改哪些、为什么」的
+    // 可核读数**」，失效方向逐字：「**只改闭集那个 id，而 70 份 `.rs` 照旧** ——
+    // 那是把账做平，不是把名字改对」。
+    // ⇒ 下面两条各买一半：
+    //   · 第一条是**零命中守卫**，射程 = 闭集那张表的**数据**本身（改回旧 id ⇒ 当场红）；
+    //   · 第二条是**登记 ＋ 递减棘轮**，射程 = `src-tauri/src` ＋ `src-tauri/crates` 两棵树 ——
+    //     没登记就不许带旧名，登记了就只许变少。**那张表就是那份读数**，不是一句话。
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 旧名字今天还留在哪儿，**按「改它要动什么」分档**。闭集。
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    enum Why {
+        /// **符号名**（那几个 `*_daemon` 的 `pub async fn`、以及对它们的逐字引用）。
+        /// 改它要与 `structural_scan` 的逐字签名钉、`sftp_move_ledger`、
+        /// `parity_ledger`、`remote_write_registry` 那几张登记表**同拍**改 ——
+        /// 那是一件纯符号改名件，与本件的正题（名字说错了「它**是什么**」）不同轴。
+        /// **解锁条件**：另立一件「符号改名」，把那几张表一起带上。
+        SymbolName,
+        /// **措辞**（注释 / 文档 / 印给用户的串里那句「远端的那个后台进程」）。
+        /// 🔴 **这些句子今天多数不假** —— 那确实是远端那台上的那一份；
+        /// 用户裁的是它的**身份**（那是**那台机器的本地后端**，`K36`）。
+        /// 订正措辞要连**前端那一面**一起过（`src/**/*.ts` 现打 30 余处），
+        /// 只改 Rust 半边会让两边说两种话。**解锁条件**：另立一件「文案面」，两侧同拍。
+        Wording,
+        /// **逐字引用旧的闭集 id** —— 全部是订正段 / 墓碑 / 病史
+        /// （「本条落地当场逮到 `<旧 id>`」这一族）。
+        /// 🔴 **刻意保留，不改**：一句话写下时真、后来被别的裁定推翻，
+        /// **那是历史，不是错误**（同 `MASTERPLAN#K25` 对 `C18` 三处的处置）。
+        /// 改掉它等于抹掉推翻的过程。**没有解锁条件 —— 它本来就不该被改。**
+        OldId,
+    }
+
+    /// **旧名字的存量账。闭集。**
+    ///
+    /// `(相对 `src-tauri/` 的路径, 哪一档, 今天的处数)`
+    ///
+    /// 🔴 表名叫 `SITES` 不是随手起的：`scanning_guard_registry::TABLE_DECLS`
+    /// 那条纪律逐字「新写一条『扫描面 ＋ 常量表』型的判据，那张表要起成
+    /// `TABLE_DECLS` 里已有的名字之一」——起别的名字，那条元判据**看不见本文件**，
+    /// 而看不见与「合规」在输出上一模一样。
+    ///
+    /// ⚠ **这张表不是愿望清单，是读数**：每一行都由下面那条判据在**真树**上对拍，
+    /// 多一处红、少一处也红（少 ⇒ 那一行该删了，账不许挂着空号）。
+    const SITES: &[(&str, Why, usize)] = &[
+        ("crates/acct-core/src/lib.rs", Why::Wording, 1),
+        ("crates/branch-core/src/lib.rs", Why::Wording, 1),
+        ("crates/creds-core/src/lib.rs", Why::Wording, 1),
+        ("src/accounts.rs", Why::Wording, 8),
+        ("src/acct_iso_deploy.rs", Why::SymbolName, 3),
+        ("src/backend/control/daemon_route.rs", Why::Wording, 1),
+        ("src/config_surface.rs", Why::OldId, 4),
+        ("src/cross_half_edge_registry.rs", Why::OldId, 1),
+        ("src/daemon_control.rs", Why::Wording, 3),
+        ("src/doc_copy_registry.rs", Why::Wording, 1),
+        ("src/drift_ledger.rs", Why::Wording, 2),
+        ("src/fenced_block.rs", Why::OldId, 1),
+        ("src/fenced_block.rs", Why::SymbolName, 1),
+        ("src/history.rs", Why::Wording, 1),
+        ("src/inbound_client.rs", Why::Wording, 2),
+        ("src/lib.rs", Why::SymbolName, 2),
+        ("src/lib.rs", Why::Wording, 3),
+        ("src/local_accounts.rs", Why::Wording, 1),
+        ("src/local_read_surface_registry.rs", Why::Wording, 1),
+        ("src/parity_ledger.rs", Why::SymbolName, 2),
+        ("src/parity_ledger.rs", Why::Wording, 2),
+        ("src/remote_branch.rs", Why::Wording, 1),
+        ("src/remote_history.rs", Why::Wording, 2),
+        ("src/remote_write_registry.rs", Why::SymbolName, 3),
+        ("src/remote_write_registry.rs", Why::Wording, 1),
+        ("src/session_map.rs", Why::Wording, 1),
+        ("src/sftp.rs", Why::SymbolName, 22),
+        ("src/sftp.rs", Why::Wording, 6),
+        ("src/sftp_move_ledger.rs", Why::SymbolName, 2),
+        ("src/sftp_move_ledger.rs", Why::Wording, 1),
+        ("src/skill_host.rs", Why::OldId, 2),
+        ("src/ssh_source.rs", Why::Wording, 6),
+        ("src/structural_scan.rs", Why::OldId, 1),
+        ("src/structural_scan.rs", Why::SymbolName, 3),
+        ("src/tool_registry.rs", Why::OldId, 6),
+        ("src/tool_registry.rs", Why::SymbolName, 8),
+        ("src/tool_registry.rs", Why::Wording, 1),
+        ("src/usage.rs", Why::Wording, 2),
+    ];
+
+    /// 三档各自的处数。**针全部运行期拼**〔同 `scanning_guard_registry` 头注里
+    /// `attr` 那一处的写法〕—— 本文件自己在扫描面里（见下），字面量写在这儿
+    /// 会把量具自己算进被测量。
+    ///
+    /// **顺序即口径**：先把「crate 目录 / 包名的那个拼写」整个剥掉再数 ——
+    /// 那是**住址**，不是名字（本拍刻意不碰，理由在下面那条判据的头注里）。
+    fn old_name_counts(text: &str) -> [usize; 3] {
+        let d = "-";
+        let u = "_";
+        let stem_id = format!("remote{d}daemon");
+        let stem_sym = format!("remote{u}daemon");
+        // 住址拼写：crate 目录 `…-proto` 与它的 Rust 模块名 `…_proto`
+        let rest = text
+            .replace(&format!("{stem_id}{d}proto"), "")
+            .replace(&format!("{stem_sym}{u}proto"), "");
+        let sym =
+            rest.matches(&stem_sym).count() + rest.matches(&format!("Remote{}aemon", "D")).count();
+        let old_id = rest.matches(&stem_id).count();
+        let wording = rest.matches(&format!("远端 {}", "daemon")).count()
+            + rest.matches(&format!("远端{}", "daemon")).count();
+        [sym, old_id, wording]
+    }
+
+    fn count_of(text: &str, w: Why) -> usize {
+        let [sym, old_id, wording] = old_name_counts(text);
+        match w {
+            Why::SymbolName => sym,
+            Why::OldId => old_id,
+            Why::Wording => wording,
+        }
+    }
+
+    /// `pub const TOOLS` 那个常量的**体**（配对方括号之间那一段），注释已剥掉。
+    ///
+    /// ⚠ 剥注释是**有意的**：闭集的**数据**不许再叫旧名字，而注释里的墓碑与病史
+    /// （`Why::OldId` 那一档）**刻意保留**。两件事分开判。
+    ///
+    /// 🔴 剥法**借共享原语** [`guard_core::strip_comment_lines`]，不自己写第二份 ——
+    /// `structural_scan.rs` 那张 `TRANSFORMERS` 登记表背后的判据逐字
+    /// 「换个名字的同一份剥法仍然是第二份剥法」，**本函数第一版就是那样，当场被它逮到**。
+    /// 顺序也照它的纪律：**先剥整份，再切块**（`strip_comment_lines` 头注的 `K-R25` 那一段）。
+    fn tools_literal_data() -> String {
+        let me = guard_core::strip_comment_lines(include_str!("tool_registry.rs"));
+        let opener = "pub const TOOLS: &[ToolSpec] = &[";
+        let at = me.find(opener).expect("取不到 TOOLS 常量 —— 扫描器失效了");
+        let start = at + opener.len();
+        let mut depth = 1i32;
+        let mut end = start;
+        for (i, c) in me[start..].char_indices() {
+            match c {
+                '[' => depth += 1,
+                ']' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        end = start + i;
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        assert!(end > start, "配对没找到收尾的 `]`");
+        me[start..end].to_string()
+    }
+
+    /// ★ `KR81D2` **正面（零命中守卫）**：闭集那张表的**数据里**，旧名字一处都没有。
+    ///
+    /// # 死值验（`KR81D2` 逐字要的那一向）
+    ///
+    /// 把改过的任意一处改回旧名（`id:` 那一格、或 `display_name:` 那一格）⇒ 本条红。
+    ///
+    /// # 它守什么、**不守什么**
+    ///
+    /// 守的是**闭集的数据**。注释里的墓碑、别处 `.rs` 里的存量，本条一概不管 ——
+    /// 那一半归下面那条登记 ＋ 棘轮。**两条合起来才是那一格，单独任何一条都不够。**
+    #[test]
+    fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
+        let data = tools_literal_data();
+        // 反向自检①：尺子够得着 —— 取到的真是那张表，不是一段空串或半截。
+        assert!(
+            data.len() > 8_000 && data.matches("ToolSpec {").count() == TOOLS.len(),
+            "取到的 `TOOLS` 体不对：{} 字节 / {} 个 `ToolSpec {{`（应为 {} 个）——\
+             先查提取器，别改断言",
+            data.len(),
+            data.matches("ToolSpec {").count(),
+            TOOLS.len()
+        );
+        // 反向自检②：阳性对照 —— 把旧名字塞回一份副本里，量具必须数得出来。
+        let poisoned = data.replace(
+            &format!("id: \"{BACKEND_ID}\""),
+            &format!("id: \"remote{}daemon\"", "-"),
+        );
+        assert_ne!(
+            poisoned, data,
+            "变异没落地：`id: \"{BACKEND_ID}\"` 没在那段里"
+        );
+        assert_eq!(
+            old_name_counts(&poisoned)[1],
+            1,
+            "量具在阳性对照上数不出来 —— 它此刻无效，下面那条断言是空真"
+        );
+        // 正题
+        assert_eq!(
+            old_name_counts(&data),
+            [0, 0, 0],
+            "\n闭集那张表的**数据**里还留着旧名字（[符号名, 旧 id, 措辞]）。\n\
+             用户 09-12 逐字：「一个后端要两处使用 / 即远程 daemon 就是远程本地机器的后端」——\n\
+             远端那台上跑的那一份是**那台机器的本地后端**，不是「远端的 daemon」。\n\
+             ⚠ 这一格已经花过一次真钱（`ROADMAP#KU26`：Linux 裸 exe 装出来没有本机后端）。"
+        );
+    }
+
+    /// ★ `KR81D2` **另一半（登记 ＋ 递减棘轮）**：还没改的每一处都登记着，而且只许变少。
+    ///
+    /// # 它买的是「改了哪些 / 没改哪些 / 为什么」这句话**有分母**
+    ///
+    /// 人群 = `src-tauri/src` ＋ `src-tauri/crates` 两棵树的 `.rs`（**现算**，不写死份数）。
+    /// 三向都判：
+    ///   ① 盘上带旧名而 [`SITES`] 里没有 ⇒ 红（**别再往盘上加旧名**）；
+    ///   ② `SITES` 里有而盘上已经没有 ⇒ 红（**账不许挂空号**）；
+    ///   ③ 盘上比登记的多 ⇒ 红（棘轮只许降）。
+    ///
+    /// # 🔴 射程与**刻意不管**的两样，写死在这里
+    ///
+    /// - **crate 目录（`…-proto`）与包名（`cc-monitor-remote`）本拍不碰**，
+    ///   而且它们**根本不进这把尺子**（`old_name_counts` 第一步就把那个拼写剥掉了）。
+    ///   理由不是嫌麻烦：改那两样要**同拍**改发版流水线的产物名、`embedded-daemons/`
+    ///   的文件名约定、`tauri.sidecar.conf.json` 的 `externalBin`、`build.rs` 的清单
+    ///   与 CI —— 而件文件 `§0d` 逐字「**不改发版流水线**（`KU26` 那一步归 `K-R42`）」。
+    ///   ⇒ 它是**住址**，不是名字；名字改对了，住址跟着搬是另一件事。
+    /// - **`remote-daemon-proto/` 那棵树**（另一个 workspace）与**前端 `src/**.ts`**
+    ///   不在本尺子的面里。⚠ 这是**判不了**，不是「那边干净」——
+    ///   现打：前端 30 余处、daemon 树 26 处，逐条读数落在 `evidence/K-R81-….md`。
+    ///
+    /// # ⚠ 本文件自己在面里（`K-R31` 那一形，`scanning_guard_registry` 登记为「第五形」）
+    ///
+    /// `scan_tree!` 按构造摘掉调用者那一份 —— 而调用者恰恰是**闭集的家**，
+    /// 摘掉等于在最该看的那一份上瞎掉 ⇒ 用 `include_str!` 把自己显式加回来。
+    /// 对价是本文件的针**全部运行期拼**（见 [`old_name_counts`]），
+    /// 否则量具自己会被自己数进去。
+    #[test]
+    fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
+        use std::collections::BTreeMap;
+        use std::path::{Path, PathBuf};
+
+        let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let src_root = manifest.join("src");
+        let crates_root = manifest.join("crates");
+        let mut files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_root, &["rs"]);
+        files.extend(guard_core::scan_tree!(&crates_root, &["rs"]));
+        // 把自己那一份加回来（上面头注那一段说的就是这里）。
+        files.push((
+            manifest.join("src").join("tool_registry.rs"),
+            include_str!("tool_registry.rs").to_string(),
+        ));
+        // 地板：尺子真的够得着一棵树（空集会让下面三向全部空真）。
+        assert!(
+            files.len() > 100,
+            "扫描面只有 {} 份 `.rs` —— 剥法坏了，下面三向都是空真",
+            files.len()
+        );
+
+        let mut got: BTreeMap<(String, Why), usize> = BTreeMap::new();
+        for (p, text) in &files {
+            let rel = p
+                .strip_prefix(manifest)
+                .unwrap_or(p)
+                .to_string_lossy()
+                .replace('\\', "/");
+            for w in [Why::SymbolName, Why::OldId, Why::Wording] {
+                let n = count_of(text, w);
+                if n > 0 {
+                    got.insert((rel.clone(), w), n);
+                }
+            }
+        }
+        let want: BTreeMap<(String, Why), usize> = SITES
+            .iter()
+            .map(|(p, w, n)| (((*p).to_string(), *w), *n))
+            .collect();
+
+        let mut unregistered = Vec::new();
+        let mut grown = Vec::new();
+        for (k, n) in &got {
+            match want.get(k) {
+                None => unregistered.push(format!("{} · {:?} × {n}", k.0, k.1)),
+                // 🔴 **逐格等号，不是 `<=`** —— 只判「涨了」的话，
+                //    「把上限调上去让今天好过」这一手是**静默通过**的
+                //    （`references/testing.md` 硬规则 12 明禁那一手，而纪律这一档
+                //     在本仓已经被证伪过）。等号让那一手当场红。
+                Some(cap) if n != cap => grown.push(format!(
+                    "{} · {:?}：登记 {cap}，盘上 {n}（{}）",
+                    k.0,
+                    k.1,
+                    if n > cap { "涨了" } else { "少了" }
+                )),
+                Some(_) => {}
+            }
+        }
+        let stale: Vec<String> = want
+            .keys()
+            .filter(|k| !got.contains_key(*k))
+            .map(|k| format!("{} · {:?}", k.0, k.1))
+            .collect();
+
+        assert!(
+            unregistered.is_empty(),
+            "\n这几处带着后端的**旧名字**而 `SITES` 里没有登记：\n  {}\n\n\
+             ⇒ 两条出路：**把名字改对**（它是「后端」，在两台机器上各跑一份），\n\
+             或者往 `SITES` 里加一行、并在 `Why` 那个闭集里说清**为什么这一拍改不动**。\n\
+             ⚠ 不许为了变绿就往表里塞一行了事 —— 那正是这条账要防的。",
+            unregistered.join("\n  ")
+        );
+        assert!(
+            stale.is_empty(),
+            "\n`SITES` 里这几行在盘上已经没有对应物了：\n  {}\n\n\
+             ⇒ 那一处已经改完了，**把这一行删掉**（账不许挂空号：\n\
+             一张挂着空号的表会让人以为债还在那儿，而它其实早还了）。",
+            stale.join("\n  ")
+        );
+        assert!(
+            grown.is_empty(),
+            "\n旧名字的处数与登记对不上（这张账逐格按**等号**认）：\n  {}\n\n\
+             ⇒ **涨了**：别再往盘上加旧名，也别把上限调上去让今天好过\n\
+             （`references/testing.md` 硬规则 12 逐字：把上限调上去不是出路）。\n\
+             ⇒ **少了**：好事 —— 把那一行的数**改小**，让这张账继续说真话。",
+            grown.join("\n  ")
+        );
+
+        // 读数印出来 —— 「改了哪些 / 没改哪些」这句话要有一个**数**（现算，不写死）。
+        let total: usize = got.values().sum();
+        let by_kind: Vec<String> = [Why::SymbolName, Why::OldId, Why::Wording]
+            .iter()
+            .map(|w| {
+                let n: usize = got.iter().filter(|(k, _)| k.1 == *w).map(|(_, v)| v).sum();
+                format!("{w:?} {n}")
+            })
+            .collect();
+        println!(
+            "【KR81D2 存量读数】面 = `src-tauri/src` ＋ `src-tauri/crates` 共 {} 份 `.rs`（现算）· \
+             还带旧名的 {} 份 / {total} 处（{}）· 登记 {} 行 · \
+             ⚠ 面外判不了：`remote{}daemon{}proto/` 那棵树与前端 `src/**/*.ts`",
+            files.len(),
+            got.keys().map(|k| k.0.clone()).collect::<std::collections::HashSet<_>>().len(),
+            by_kind.join(" · "),
+            SITES.len(),
+            "-",
+            "-"
+        );
+    }
+
+    /// **同一条纪律也管 [`Carrier`]** —— 同 `TouchedFile` 那条的理由：
+    /// 字段纪律只扫上面两层，审计那条手法**再下移一层仍然有效**。
+    #[test]
+    fn carrier_fields_follow_the_same_discipline() {
+        let code = production_code(include_str!("tool_registry.rs"));
+        field_discipline_of(&code, "Carrier", "Carrier")
+            .require(4, "Carrier 字段纪律")
+            .unwrap();
     }
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -1899,7 +2691,7 @@ mod tests {
         let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
         TOOLS
             .iter()
-            .flat_map(|t| t.touches.iter())
+            .flat_map(|t| t.touches())
             .filter(|f| {
                 let last = f.path.rsplit('/').next().unwrap_or(f.path);
                 last == word || last == format!("{word}*")
@@ -2015,10 +2807,7 @@ mod tests {
     #[test]
     fn fenced_block_implies_uninstallable() {
         for t in TOOLS {
-            if t.touches
-                .iter()
-                .any(|f| f.effect == TouchEffect::FencedBlock)
-            {
+            if t.touches().any(|f| f.effect == TouchEffect::FencedBlock) {
                 assert!(
                     t.uninstallable,
                     "{} 往用户文件里插了围栏块，就必须能按围栏剥离",
@@ -2152,7 +2941,7 @@ mod tests {
                 uninstall: None,
             },
             Claim {
-                tool: "remote-daemon",
+                tool: "backend",
                 home: Some(sftp()),
                 install: Some(ImplSite {
                     addr: "sftp.rs::deploy_remote_daemon",
@@ -2282,9 +3071,12 @@ mod tests {
             let c = claims.iter().find(|c| c.tool == t.id).expect("① 已经钉过");
 
             // ③ 「有没有家」不由填表的人说了算，由 `destination` 那个变体说了算。
+            //    🔴 〔`K-R81`〕多载体之后走 `Provisioning::of_tool` 的**聚合规则**
+            //    （全部载体都是 `NotInstalledByUs` 才算「不是装出来的」）——
+            //    那条规则只许有一个住址，这里不再手写第二份 `matches!`〔`13b`〕。
             assert_eq!(
                 c.home.is_none(),
-                matches!(t.destination, ToolDestination::NotInstalledByUs { .. }),
+                Provisioning::of_tool(t) == Provisioning::NotAnInstall,
                 "`{}`：`home` 那一格与 `destination` 打架 —— 「我们不装它」与\
                  「它的装 / 卸实现住在某份文件里」有一句是假的",
                 t.id
@@ -2545,7 +3337,7 @@ mod environment_tests {
             "`{ID}` 申报成装不了 —— 那 `environment()` 会把它算进「app 只查」"
         );
         assert!(t.uninstallable, "`{ID}` 申报成卸不掉 —— 有围栏就必须卸得掉");
-        assert!(!t.touches.is_empty(), "`{ID}` 装得了却没申报落点");
+        assert!(t.touches().next().is_some(), "`{ID}` 装得了却没申报落点");
         let tier = environment()
             .into_iter()
             .find(|e| e.id == ID)
