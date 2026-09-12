@@ -1608,8 +1608,10 @@ mod tests {
     //   · `uninstallable` —— 上面那条 `fenced_block_implies_uninstallable` 只守
     //     「有围栏 ⇒ 必须声明可卸」（**少报**那一向），**多报**（声明可卸而盘上
     //     根本没有卸载实现）一条判据都没有。
-    // PM 09-11 的刀 C 实打：把 `cc-acct-iso` 的 `uninstallable` 由 `false` 翻成 `true`
-    // ⇒ 全表 **1379 条一条没红**。
+    // PM 09-11 的刀 C 实打（量于 `cd26954`）：把 `cc-acct-iso` 的 `uninstallable`
+    // 由 `false` 翻成 `true` ⇒ 全表 **1379 条一条没红**。
+    // 〔`K-R63` 实现方 09-11 在本件分支尖上复打同一刀：**红 1 条，就是下面这一条**
+    //  （`-p monitor` 基线 1384 → 1383 passed / 1 failed）。〕
     //
     // # 为什么处方不是「再补一条专名 `assert`」
     //
@@ -2169,6 +2171,7 @@ mod environment_tests {
     // 为什么非搬不可（`KR63D2` 的正题）：那一条的**名字里带工具名** ——
     // 读的人会以为「申报与实现对不对得上」这一格有人守，而它只守 `cc-bus` 一个工具。
     // `K-R60` 收窗口时 PM 的刀 γ 就现打过同一件事的另一半；`K-R63` 的刀 C 更直接：
-    // 翻 `cc-acct-iso` 的 `uninstallable` ⇒ 全表 1379 条一条没红。
+    // 〔PM 09-11 现打，量于 `cd26954`〕翻 `cc-acct-iso` 的 `uninstallable`
+    // ⇒ 全表 1379 条一条没红。
     // ⇒ **别再在这里加第二颗专名钉子**；要加就加进那张对拍表。
 }
