@@ -679,6 +679,394 @@ mod tests {
         );
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R77`（09-12）：**「`#[cfg(test)]` 顶层再导出自己的测试模块」那道绕道** ——
+    // 拆掉最后一处的同一拍给它上棘轮。裁定住 `DECISIONS.md#R36` 裁定二。
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 顶层 = **列 0**（不带前导空白）且非空行。
+    fn detour_top_level(line: &str) -> bool {
+        !line.is_empty() && !line.starts_with(' ') && !line.starts_with('\t')
+    }
+
+    /// `from` 那一行之后**第一行有内容的顶层行**：`(0 起的下标, trim 后的原文)`。
+    ///
+    /// 空行与整行注释跳过（属性与它修饰的 item 之间夹一行 `//` 是合法 Rust，
+    /// 跳过它是**只严不松**）；遇到缩进行就停 —— 那说明这个属性挂在别人的块里。
+    fn detour_next_item<'a>(lines: &[&'a str], from: usize) -> Option<(usize, &'a str)> {
+        for (k, line) in lines.iter().enumerate().skip(from + 1) {
+            let t = line.trim();
+            if t.is_empty() || t.starts_with("//") {
+                continue;
+            }
+            if !detour_top_level(line) {
+                return None;
+            }
+            return Some((k, t));
+        }
+        None
+    }
+
+    /// 本文件里由 `#[cfg(test)]` 修饰的**顶层模块**名 —— **可见性一律不看**。
+    ///
+    /// 🔴 这一句就是 `K-R75` 治过的那个病的复发点：那一版剥法只认字面 `mod `，
+    /// 一个 `pub(crate)` 前缀就让整份文件**静默掉出人群**。⇒ 走同一份权威的形状判定
+    /// `guard_core::strip_visibility`，**不再各写一份近似的**（本仓 `E3`）。
+    fn cfg_test_module_names(src: &str) -> std::collections::BTreeSet<&str> {
+        let lines: Vec<&str> = src.lines().collect();
+        let mut out = std::collections::BTreeSet::new();
+        for (i, l) in lines.iter().enumerate() {
+            if l.trim() != "#[cfg(test)]" || !detour_top_level(l) {
+                continue;
+            }
+            let Some((_, next)) = detour_next_item(&lines, i) else {
+                continue;
+            };
+            let Some(decl) = guard_core::strip_visibility(next).strip_prefix("mod ") else {
+                continue;
+            };
+            let name = decl
+                .split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .trim_end_matches('{')
+                .trim_end_matches(';');
+            if !name.is_empty() {
+                out.insert(name);
+            }
+        }
+        out
+    }
+
+    /// 这道绕道在 `src` 里的每一处：`(1 起的行号, 那一行 trim 后的原文)`。
+    ///
+    /// **人群逐字**：顶层一行恰好是 `#[cfg(test)]`，其后第一行有内容的顶层行是
+    /// `<任意可见性> use <本文件的某个 cfg(test) 模块>::…`。
+    fn cfg_test_reexport_sites(src: &str) -> Vec<(usize, String)> {
+        let mods = cfg_test_module_names(src);
+        let lines: Vec<&str> = src.lines().collect();
+        let mut out = Vec::new();
+        for (i, l) in lines.iter().enumerate() {
+            if l.trim() != "#[cfg(test)]" || !detour_top_level(l) {
+                continue;
+            }
+            let Some((k, next)) = detour_next_item(&lines, i) else {
+                continue;
+            };
+            let Some(path) = guard_core::strip_visibility(next).strip_prefix("use ") else {
+                continue;
+            };
+            let seg = path.trim().split("::").next().unwrap_or_default().trim();
+            if mods.contains(seg) {
+                out.push((k + 1, next.to_string()));
+            }
+        }
+        out
+    }
+
+    /// 住址：仓根相对路径（够不着仓根就退回原样）。
+    ///
+    /// `K-R75` 那条逐字：**点名要给住址，不是基名** —— 两棵树里同名文件是常态。
+    fn detour_addr(p: &std::path::Path) -> String {
+        p.strip_prefix(addr_repo_root())
+            .unwrap_or(p)
+            .to_string_lossy()
+            .replace('\\', "/")
+    }
+
+    /// 这道绕道的**存量上限**。🔴 **今天是 0，而且它有资格恒零** ——
+    /// 三条理由写在 [`the_cfg_test_reexport_detour_stays_extinct`] 头注，别在这里抬它。
+    const DETOUR_CEILING: usize = 0;
+
+    /// 纯算子：今天的处数 `today` 有没有**越过**上限 `ceiling`；越了就回超出多少。
+    ///
+    /// 🔴 **单独成函数的理由与 `scanning_guard_registry::ratchet_backslide` 逐字同源**：
+    /// 真树上今天 `today` 与 `ceiling` **都是 0** ⇒ 把 `>` 写成 `<` / `>=` / `!=`，
+    /// **输出与判对了一模一样（绿）**。
+    /// [`the_detour_reader_can_tell_a_new_one_from_none`] 拿**合成读数**把这一格钉住。
+    fn detour_over_ceiling(today: usize, ceiling: usize) -> Option<usize> {
+        if today > ceiling {
+            Some(today - ceiling)
+        } else {
+            None
+        }
+    }
+
+    /// 🔴 `K-R77` `KR77D2`：**那道 `#[cfg(test)]` 顶层再导出的绕道，恒零。**
+    ///
+    /// # 它治的是什么
+    ///
+    /// 绕道的形状：测试模块写成私有 `mod X`，再在文件顶层补一行
+    /// `#[cfg(test)] pub(crate) use X::…`，把要跨模块用的东西导出去。
+    /// 它**曾经有一个真理由** —— `guard_core::test_module_ranges` 那时按字面前缀认
+    /// `mod `，模块一带可见性前缀就认不出来，那份文件**整段测试代码留在生产段里**被别的
+    /// 守卫扫。`K-R75`（09-12）把那一步换成按形状剥可见性
+    /// （`guard_core::strip_visibility`）之后，**那个理由没了**，而盘上那三处还在。
+    ///
+    /// # 🔴 在本条落地之前，这一族**一颗牙都没有**
+    ///
+    /// `K-R76` 现打（它的刀 `M3`）：把已经拆掉的那道绕道**整个装回去**，全量门禁 **0 红**。
+    /// ⇒ 本条不是「再加一层保险」，它是这一族的**第一道闸**。
+    ///
+    /// # 凭什么可以恒零（而不是「比历史最低档低」）
+    ///
+    /// `K-R38` 亲手证过「**钉一个固定上限买不到棘轮**」—— 降到低点再涨回来仍然过。
+    /// 这里选**恒零**，三条理由缺一条都不该恒零：
+    /// ① **今天真的是 0**：本条自己就是那个读数（两棵树 · 现打，见
+    ///    [`the_detour_ratchet_reaches_both_trees`] 的分母）；
+    /// ② **它没有合法用途了**：这道绕道存在的唯一理由是剥法那个缺陷，缺陷已修；
+    ///    今天要跨模块就把模块写成 `pub(crate) mod` —— 那正是三处拆完之后的写法；
+    /// ③ **0 是这个量的下界** ⇒ 「必须比历史最低档低」在这里退化成「等于 0」，
+    ///    再拿 git 历史算一遍最低档只是把同一句话说贵一点。
+    /// ⇒ 恒零比「历史最低档」**更强**：后者允许「降下去再涨回来」的那一格，前者不允许。
+    ///
+    /// ⚠ **这条前提本来就该变的时候，去哪里重新裁定**（判据纪律 11）：
+    /// 只有一种情形该动它 —— 剥法**又**认不出某种可见性写法。那时先修
+    /// `guard_core::strip_visibility`，**不是**回来抬这个 0。
+    /// 真要给这道绕道开一个正当口子，走 `DECISIONS.md` 立一条裁定。
+    ///
+    /// # 它买不到什么（如实登记，别读成证明）
+    ///
+    /// · 只认**顶层**那一形：把再导出塞进另一个 `mod` 里包一层，它看不见。
+    /// · 只认属性行**逐字** `#[cfg(test)]`：写成 `#[cfg(all(test, unix))]` 躲得过
+    ///   （这一格由 [`the_detour_scanner_sees_every_visibility`] 的反面那半**钉着读数**，
+    ///   哪天扩了人群就来改那一行）。
+    /// · 它是**文本**扫描：不问那个再导出有没有人用，也不问拆了之后编不编得过。
+    #[test]
+    fn the_cfg_test_reexport_detour_stays_extinct() {
+        let corpus = addr_corpus();
+
+        // ── 地板① **人群的第一步**：认得出多少个 `#[cfg(test)]` 顶层模块。
+        //    这一步塌了 ⇒ 任何再导出都匹配不上，而输出与「盘上真的没有」一模一样（静默空真）。
+        let mods: usize = corpus
+            .iter()
+            .map(|(_, s)| cfg_test_module_names(s).len())
+            .sum();
+        assert!(
+            mods >= 200,
+            "只认出 {mods} 个 `#[cfg(test)]` 顶层模块（语料 {} 份）—— 人群的第一步塌了，\
+             本条在空转。09-12 现打 250 个 / 207 份（两棵树）。",
+            corpus.len()
+        );
+
+        // ── 地板② **扫描器真的会说话**：同一个纯算子喂一份合成语料，必须恰好逮到 1 处。
+        //    「断某个对账今天该是空的」是空真形（闸死了 `[] == []` 照样绿）⇒ 活体正控在这里。
+        let attr = format!("#[{}({})]", "cfg", "test");
+        let probe = format!(
+            "fn prod() {{}}\n{attr}\npub(crate) use tests::HELPER;\n\n\
+             {attr}\nmod tests {{\n    pub(crate) const HELPER: usize = 1;\n}}\n"
+        );
+        assert_eq!(
+            cfg_test_reexport_sites(&probe).len(),
+            1,
+            "合成语料里那一处绕道都逮不到 —— 扫描器坏了，下面那句「盘上 0 处」不算数"
+        );
+
+        // ── 正题：两棵树上现打。
+        let mut sites: Vec<String> = Vec::new();
+        for (p, src) in &corpus {
+            for (ln, text) in cfg_test_reexport_sites(src) {
+                sites.push(format!("  {}（第 {ln} 行）—— `{text}`", detour_addr(p)));
+            }
+        }
+        if let Some(over) = detour_over_ceiling(sites.len(), DETOUR_CEILING) {
+            panic!(
+                "这里有 {} 处「`#[cfg(test)]` 顶层再导出自己的测试模块」，比上限 \
+                 {DETOUR_CEILING} 多 {over} 处：\n{}\n\n\
+                 ⇒ **这道绕道今天没有理由了**：`guard_core::test_module_ranges` 自 `K-R75`\n\
+                 起按形状剥可见性修饰，测试模块直接写成 `pub(crate) mod X` 就认得出来，\n\
+                 跨模块的取名走 `crate::<文件>::X::…`，不需要在顶层再导出一次。\n\
+                 修法：把 `mod X` 写成 `pub(crate) mod X`，删掉这一行，引用者改走全路径。\n\
+                 （盘上三处的先例：`ssh_source.rs` 的 `dial_move_judge` · `local_daemon.rs` 的\n\
+                  `tests` · `readonly_guard.rs` 的 `g6_doctrine`，`K-R76`/`K-R77` 各拆过。）\n\
+                 ⚠ 真有正当理由要开口子 ⇒ 走 `DECISIONS.md` 立裁定，**不许**在这里抬 \
+                 `DETOUR_CEILING`。",
+                sites.len(),
+                sites.join("\n")
+            );
+        }
+    }
+
+    /// 🔴 `K-R77` `KR77D3`：上面那条棘轮的语料面**跨两棵树** —— 少一棵当场红。
+    ///
+    /// # 为什么要单独一条
+    ///
+    /// 这道绕道**两棵树上都长过**（monitor 侧 `ssh_source.rs` 与 `local_daemon.rs`，
+    /// daemon 侧 `readonly_guard.rs`）。而它的失效方向是**分母悄悄缩到一棵树** ——
+    /// 那时上面那条照样绿，读起来却像「两棵树都守住了」。
+    /// ⇒ 这一条把「够得到」本身变成判据：**逐棵树各有地板**，并且**点名**那三份
+    /// 真长过绕道的文件必须在语料里。
+    ///
+    /// # ⚠ 它买不到什么 —— `KR77D3` 要的那个诚实读数，写在这里
+    ///
+    /// 闸**住在 monitor 这棵树上**（门禁 `cargo` 那一格 = `cargo test --workspace --lib`），
+    /// 靠**读盘上的 `remote-daemon-proto/src`** 够到 daemon。
+    /// ⇒ 🔴 **daemon 自己那一格（门禁 `daemon` = `cd remote-daemon-proto && cargo test`）
+    /// 今天没有这道闸**：只跑 daemon 那一格的人新写一道绕道，**不会红**。
+    /// 两棵树是两个 workspace（`remote-daemon-proto/Cargo.toml` 头注逐字写着 standalone），
+    /// 而「daemon 那一格要不要也跑一条同形的判据」不是本件能决定的事 —— 交回 PM。
+    #[test]
+    fn the_detour_ratchet_reaches_both_trees() {
+        let corpus = addr_corpus();
+        let mut monitor = 0usize;
+        let mut daemon = 0usize;
+        for (p, _) in &corpus {
+            let rel = detour_addr(p);
+            if rel.starts_with("remote-daemon-proto/") {
+                daemon += 1;
+            } else if rel.starts_with("src-tauri/") {
+                monitor += 1;
+            }
+        }
+        // 地板逐棵树各一条 —— 合起来一条挡不住「一棵塌了另一棵涨了」。
+        // 09-12 现打：monitor 118（`src-tauri/src` 108 ＋ `src-tauri/crates` 9 ＋ `build.rs` 1；
+        //   `scan_tree!` 按构造摘掉本文件自己，它由 `addr_corpus` 用相对住址补回来）· daemon 88。
+        assert!(
+            monitor >= 100,
+            "monitor 那棵树只收到 {monitor} 份 .rs（09-12 现打 118）—— 分母缩水了"
+        );
+        assert!(
+            daemon >= 80,
+            "🔴 daemon 那棵树只收到 {daemon} 份 .rs（09-12 现打 88）—— \
+             `remote-daemon-proto/src` 掉出语料面了。\n\
+             那一刻上面那条棘轮照样绿，而它只守着一棵树 —— \
+             **报「已守住」而分母只有一棵树**，正是本条要挡的形状。"
+        );
+        // 点名：三份真长过绕道的文件必须都在语料里（地板是数，这一条是**住址**）。
+        let names: std::collections::BTreeSet<String> =
+            corpus.iter().map(|(p, _)| detour_addr(p)).collect();
+        for want in [
+            "remote-daemon-proto/src/readonly_guard.rs",
+            "src-tauri/src/ssh_source.rs",
+            "src-tauri/src/local_daemon.rs",
+        ] {
+            assert!(
+                names.contains(want),
+                "`{want}` 不在语料面里 —— 它是这道绕道真长过的三处之一，\
+                 够不着它就等于这一处从此没人守（monitor {monitor} 份 · daemon {daemon} 份）"
+            );
+        }
+    }
+
+    /// 🔴 `K-R77` `KR77D2` 的**反向那半** —— 照 `K-R38` 那条的形。
+    ///
+    /// 真树上今天处数与 `DETOUR_CEILING` **都是 0** ⇒ 把 [`detour_over_ceiling`] 里的
+    /// `>` 写成 `<`（或 `>=`、`!=`），**正题照样绿**。`K-R38` 那次实打逐字：
+    /// 「正题照样绿、只有反向红 ⇒ 反向那半承重」。
+    /// ⇒ 这里拿**合成读数**把方向钉死，一格都不靠真树。
+    #[test]
+    fn the_detour_reader_can_tell_a_new_one_from_none() {
+        assert_eq!(
+            detour_over_ceiling(1, 0),
+            Some(1),
+            "新长出来 1 处而它说没事 —— 比较写反了，棘轮一颗牙都没有"
+        );
+        assert_eq!(detour_over_ceiling(3, 0), Some(3), "超出的处数报错了");
+        assert_eq!(
+            detour_over_ceiling(0, 0),
+            None,
+            "0 处而它报违规 —— 恒红的闸，下一个人第一件事就是把它关掉"
+        );
+        assert_eq!(detour_over_ceiling(0, 1), None, "低于上限却报违规");
+        assert_eq!(detour_over_ceiling(2, 5), None, "低于上限却报违规");
+        assert_eq!(detour_over_ceiling(6, 5), Some(1), "刚越线那一格没逮住");
+    }
+
+    /// 🔴 `K-R77` `KR77D2` 的**失效方向**那半：人群**不许只认一种可见性**。
+    ///
+    /// 那正是 `K-R75` 治过的病换个地方再犯 —— 前一版剥法只认字面 `mod `，
+    /// 一个 `pub(crate)` 前缀就让整份文件掉出人群，**而判据照样绿**。
+    /// Rust 的 `Visibility` 文法是语言定死的闭集，而 `pub(in <路径>)` 的路径**任意长**
+    /// ⇒ **前缀表穷举不了、形状认得出**。这一条逐形喂一遍，外加反面五形。
+    #[test]
+    fn the_detour_scanner_sees_every_visibility() {
+        let attr = format!("#[{}({})]", "cfg", "test");
+        let with_vis = |vis: &str| {
+            format!(
+                "fn prod() {{}}\n{attr}\n{vis}use tests::HELPER;\n\n\
+                 {attr}\nmod tests {{\n    pub(crate) const HELPER: usize = 1;\n}}\n"
+            )
+        };
+        for vis in [
+            "",
+            "pub ",
+            "pub(crate) ",
+            "pub(super) ",
+            "pub(self) ",
+            "pub(in crate::alpha::beta::gamma) ",
+        ] {
+            let src = with_vis(vis);
+            let hits = cfg_test_reexport_sites(&src);
+            assert_eq!(
+                hits.len(),
+                1,
+                "可见性写成 `{vis}` 时逮不到（实得 {hits:?}）—— 人群只认一种拼法，\
+                 那是 `K-R75` 治过的病换个地方再犯"
+            );
+            assert!(
+                hits[0].1.ends_with("use tests::HELPER;"),
+                "逮到了但报的不是那一行：{:?}",
+                hits[0]
+            );
+            assert_eq!(
+                hits[0].0, 3,
+                "行号指错了（应当是 `use` 那一行，不是属性那一行）"
+            );
+        }
+        // 属性与 item 之间夹一行注释 —— 合法 Rust，躲不过去。
+        let commented = format!(
+            "{attr}\n// 说明\npub(crate) use tests::HELPER;\n\n\
+             {attr}\nmod tests {{\n    pub(crate) const HELPER: usize = 1;\n}}\n"
+        );
+        assert_eq!(
+            cfg_test_reexport_sites(&commented).len(),
+            1,
+            "中间夹一行注释就躲过去了"
+        );
+
+        // ── 反面：这五形一个都不许算进来（前四条是**正当写法**，第五条是**已登记的盲区**）。
+        let mod_only = format!("{attr}\nmod tests {{\n    fn a() {{}}\n}}\n");
+        let foreign = format!(
+            "{attr}\npub(crate) use guard_core::production_code;\n\n\
+             {attr}\nmod tests {{\n    fn a() {{}}\n}}\n"
+        );
+        let from_super = format!(
+            "{attr}\npub(crate) use super::HELPER;\n\n\
+             {attr}\nmod tests {{\n    fn a() {{}}\n}}\n"
+        );
+        let nested = format!(
+            "mod outer {{\n    {attr}\n    pub(crate) use tests::HELPER;\n}}\n\
+             {attr}\nmod tests {{\n    pub(crate) const HELPER: usize = 1;\n}}\n"
+        );
+        let wider_cfg = format!(
+            "#[{}(all({}, unix))]\npub(crate) use tests::HELPER;\n\n\
+             {attr}\nmod tests {{\n    pub(crate) const HELPER: usize = 1;\n}}\n",
+            "cfg", "test"
+        );
+        for (what, src) in [
+            ("`#[cfg(test)]` 修饰的是模块声明，不是再导出", &mod_only),
+            (
+                "再导出的是**别的 crate** 的东西（`guard_support.rs` 就是这一形）",
+                &foreign,
+            ),
+            ("再导出的是 `super::`，不是本文件的测试模块", &from_super),
+            (
+                "再导出包在另一个 `mod` 里 —— **已登记的盲区**，不是正当写法",
+                &nested,
+            ),
+            (
+                "属性不是逐字 `#[cfg(test)]` —— **已登记的盲区**，扩了人群就来改这一行",
+                &wider_cfg,
+            ),
+        ] {
+            assert_eq!(
+                cfg_test_reexport_sites(src).len(),
+                0,
+                "这一形被算进人群了：{what}"
+            );
+        }
+    }
+
     /// ★ **剥注释只许有一个权威实现**〔audit-0805 §5 3h，08-06〕。
     ///
     /// # 它挡的是什么
@@ -2149,6 +2537,21 @@ mod tests {
             (
                 "remote-daemon-proto/src/protocol_doc_guard.rs",
                 "hello_commands_match_the_dispatch_table",
+                1,
+            ),
+            // 🔴 `K-R77` 09-12 加这一行 —— **它不是一处「判不了真伪」，是本条的一个结构性盲区**，
+            // 与下面 `guard-core/src/lib.rs` 那两行、`doc/INVARIANTS.md` 那一行**同一形**：
+            // 名字住在**本文件**里，而 `dead_name_corpus` 按构造摘掉调用者自己
+            // ⇒ 凡是别处散文点名住在这里的判据，本条一律读成「代码里根本不存在」。
+            // ⚠ 那句话**真的有人核**：它在 `readonly_guard.rs` 里写成
+            // `structural_scan·rs::<判据名>` 的**住址形**，由本文件的
+            // `every_symbol_address_in_the_sources_still_resolves` 真的判得了（那条的语料
+            // 用 `include_str!` 把本文件补了回来）。⇒ 这一行买的是「本条别再报这处假阳」，
+            // **不是**「这句话没人守」。根因怎么治（要不要把本文件的**声明**单独补进 `in_code`）
+            // 归 PM，本件不自批。
+            (
+                "remote-daemon-proto/src/readonly_guard.rs",
+                "the_cfg_test_reexport_detour_stays_extinct",
                 1,
             ),
             (
