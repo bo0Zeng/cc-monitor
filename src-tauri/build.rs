@@ -183,6 +183,11 @@ fn emit_daemon_build_id() {
         .and_then(|s| extract_build_id(&s))
         .unwrap_or_else(|| "unknown".to_string());
     println!("cargo:rustc-env=DAEMON_BUILD_ID={build_id}");
+    // 🔴 `K-R70`：身份戳的两个界标，**闭集的唯一住址在 daemon 源码里** —— 这里只是把它
+    // 搬过来（同上面那条 `BUILD_ID` 的既有机制），monitor 生产段一律 `env!` 取，不许再抄字面量。
+    let (open, close) = daemon_stamp_marks();
+    println!("cargo:rustc-env=DAEMON_STAMP_OPEN={open}");
+    println!("cargo:rustc-env=DAEMON_STAMP_CLOSE={close}");
     // F05a：本机 sidecar 的文件名是 `<stem>-<target-triple>`（Tauri `externalBin` 的规矩），
     // 而 std 里没有「当前 target triple」这个常量 —— 只有 build script 拿得到 `TARGET`。
     println!(
@@ -193,10 +198,94 @@ fn emit_daemon_build_id() {
 
 /// 从源码里抠出 `const BUILD_ID: &str = "<x>";` 的 `<x>`。
 fn extract_build_id(src: &str) -> Option<String> {
-    let line = src.lines().find(|l| l.contains("const BUILD_ID"))?;
+    extract_str_const(src, "BUILD_ID")
+}
+
+/// 从源码里抠出 `const <名>: &str = "<x>";` 的 `<x>`（`extract_build_id` 的推广）。
+fn extract_str_const(src: &str, name: &str) -> Option<String> {
+    let needle = format!("const {name}");
+    let line = src.lines().find(|l| l.contains(&needle))?;
     let start = line.find('"')? + 1;
     let rel_end = line[start..].find('"')?;
     Some(line[start..start + rel_end].to_string())
+}
+
+/// 🔴 `K-R70`：身份戳的两个界标 —— 从 daemon 源码抠出来。
+///
+/// # 为什么不在这里写死这两个字面量
+///
+/// 闭集只许有一个住址（`brief` 13b）。两处手抄的界标，哪天 daemon 那侧改了一个字符，
+/// 这边**扫不到戳**⇒ 下面那两条内嵌路会以「这份二进制没有身份」panic ——
+/// 那是一次响亮的假报警，而真病是量具与被测对象脱钩。抠源码则结构上不会脱钩。
+///
+/// 抠不到时给一对**空串**：`bytes_build_id` 见空串直接答 `None`，于是内嵌路走
+/// 「扫不出身份」那一支并把这里的失败逐字印进 panic 文案（比静默用一个错界标去扫好）。
+fn daemon_stamp_marks() -> (String, String) {
+    let src = std::fs::read_to_string(daemon_main_rs()).unwrap_or_default();
+    (
+        extract_str_const(&src, "BUILD_STAMP_OPEN").unwrap_or_default(),
+        extract_str_const(&src, "BUILD_STAMP_CLOSE").unwrap_or_default(),
+    )
+}
+
+/// 🔴 `K-R70`：**从一份二进制的字节里问出它是谁** —— 不看它旁边任何文件。
+///
+/// 返回去重后的全部取值：**恰好一个**才是可用的身份；0 个 = 这份字节没有戳
+/// （不是我们编的 / 太旧 / 被改过），多个 = 身份不唯一，两种都不许当成答案。
+///
+/// # 它取代了什么（这一段是本函数存在的全部理由）
+///
+/// 在它之前，三个载体的身份来自**旁边那个 `.build_id` 文本文件**。而那个文件是
+/// `release.yml` 用 `Select-String … 'const BUILD_ID'` 从**源码**抠出来写的
+/// ⇒ 三个载体的清单**恒等**，而恒等的东西一格证据都不提供（`K-R68` 摸底 ·
+/// `DECISIONS.md#R26` 裁定零：「PM 那句『有 build_id 就不用靠推，可以直接比』是错的，
+/// 它把标签当成了指纹」）。
+///
+/// 旧代码的头注逐字记着为什么当初选了旁挂清单：「编译器可把 BUILD_ID 优化成立即数指令
+/// （字符串在字节里**不连续**），运行时 `bytes_contain` 启发式会误拒正品二进制」。
+/// 那句话对**当时那个被测对象**是真的。今天不成立的原因是 daemon 那侧换了东西：
+/// `CC_MONITOR_BUILD_STAMP` 是一个 `#[used]` 的 `static [u8; N]` ——
+/// **有地址、进 `.rodata`、字节按定义连续**，拆不成立即数。
+fn bytes_build_id(bytes: &[u8], open: &str, close: &str) -> Option<String> {
+    if open.is_empty() || close.is_empty() {
+        return None;
+    }
+    let (o, c) = (open.as_bytes(), close.as_bytes());
+    let mut found: Vec<String> = Vec::new();
+    let mut i = 0usize;
+    while i + o.len() <= bytes.len() {
+        if &bytes[i..i + o.len()] == o {
+            let rest = &bytes[i + o.len()..];
+            let win = &rest[..rest.len().min(96)];
+            if let Some(e) = win.windows(c.len()).position(|w| w == c) {
+                if let Ok(s) = std::str::from_utf8(&win[..e]) {
+                    // 空串 / 怪字符一律不收：两个界标挨着放在 `.rodata` 里就是空串那一形，
+                    // 收它会把「有几个身份」这个读数变假（daemon 侧同一条纪律）。
+                    if !s.is_empty()
+                        && s.bytes()
+                            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_'))
+                    {
+                        found.push(s.to_string());
+                    }
+                }
+            }
+            i += o.len();
+        } else {
+            i += 1;
+        }
+    }
+    found.sort();
+    found.dedup();
+    match found.len() {
+        1 => Some(found.remove(0)),
+        _ => None,
+    }
+}
+
+/// 读一份二进制并问它是谁。读不到 / 扫不出都给 `None`（调用方各自决定怎么说）。
+fn file_build_id(p: &Path, open: &str, close: &str) -> Option<String> {
+    let bytes = std::fs::read(p).ok()?;
+    bytes_build_id(&bytes, open, close)
 }
 
 /// F66（#58③）：从 daemon 源码提取 `const CAPABILITIES`，emit 成编译期 env
@@ -262,19 +351,26 @@ fn embed_daemons() {
         .ok();
     // U-1：mtime 之外再取 **build_id 字符串本身**，用于下面那条硬校验（mtime 漏掉过一次真事故）。
     let source_build_id = daemon_source_build_id();
+    let (stamp_open, stamp_close) = daemon_stamp_marks();
     let mut all = true;
     for arch in ["x86_64", "aarch64"] {
         let src = dir.join(format!("cc-monitor-remote-{arch}"));
         println!("cargo:rerun-if-changed={}", src.display());
-        // Batch9 E2E 发现：编译器可把 BUILD_ID 优化成立即数指令（字符串在字节里
-        // **不连续**），运行时 bytes_contain 启发式会误拒正品二进制。根治 = 旁挂
-        // `.build_id` 清单文件（构建放置二进制时一并写入，= 字节的真实身份）：
-        // 有清单 → env DAEMON_EMBEDDED_ID_<arch>；无 → 空串（运行时回退启发式）。
-        let manifest = dir.join(format!("cc-monitor-remote-{arch}.build_id"));
-        println!("cargo:rerun-if-changed={}", manifest.display());
-        let embedded_id = std::fs::read_to_string(&manifest)
-            .map(|s| s.trim().to_string())
-            .unwrap_or_default();
+        // 🔴 **`K-R70`（09-12）：身份改从这份字节自己里读，旁边那个 `.build_id` 不再有话语权。**
+        //
+        // 〔墓碑 —— 本处原话逐字：「Batch9 E2E 发现：编译器可把 BUILD_ID 优化成立即数指令
+        //  （字符串在字节里**不连续**），运行时 bytes_contain 启发式会误拒正品二进制。
+        //  根治 = 旁挂 `.build_id` 清单文件（构建放置二进制时一并写入，= 字节的真实身份）」。
+        //  **那段话对当时那个被测对象是真的**，它错在最后半句：旁挂清单**不是**字节的真实身份，
+        //  它是 `release.yml` 从**源码常量**抠出来写的一张标签 ⇒ 三个载体的清单恒等，
+        //  而恒等的东西一格证据都不提供（`K-R68` 摸底 · `DECISIONS.md#R26` 裁定零）。〕
+        //
+        // 今天「扫字节」不再是启发式：daemon 侧的 `CC_MONITOR_BUILD_STAMP` 是一个 `#[used]`
+        // 的 `static [u8; N]`，有地址、进 `.rodata`、字节按定义连续，拆不成立即数。
+        // ⇒ 这里问的是**这份二进制**，不是它旁边的谁。
+        // ⚠ 顺带没了一条 `rerun-if-changed`：清单不再是输入 ⇒ 动它不会重建，也不会改身份。
+        //   **那正是 `KR70D1` 的死值验**（改旁文件而二进制不动 ⇒ 产品给的身份不许跟着变）。
+        let embedded_id = file_build_id(&src, &stamp_open, &stamp_close).unwrap_or_default();
         println!(
             "cargo:rustc-env=DAEMON_EMBEDDED_ID_{}={embedded_id}",
             arch.to_uppercase()
@@ -301,10 +397,10 @@ fn embed_daemons() {
             // p1v ⇒ 装上去之后**永远判 stale** ⇒ **无限重装循环**。这不是「慢一点」，是坏的。
             // 出路只有两条：重跑 zigbuild 生成对得上的二进制，或删掉 embedded-daemons/
             // （那样自动部署诚实地关掉，不会装一个注定被判过期的东西）。
-            // ★ Phase D 审计 I3：**缺清单不能只是 warning** —— 那正是本轮硬校验的静默旁路，
-            // 而且是最危险的场景（有人手工塞了个陈旧二进制、没写清单）恰好绕开校验。
-            // 顺带：`sftp.rs` 运行时对 x86_64 的身份识别**只能靠清单**
-            //（编译器把 BUILD_ID 优化成立即数，字节里搜不到连续明文，`bytes_contain` 会误拒正品）。
+            // ★ Phase D 审计 I3：**问不出身份不能只是 warning** —— 那正是本轮硬校验的静默旁路，
+            // 而且是最危险的场景（有人手工塞了个陈旧二进制）恰好绕开校验。
+            // 〔`K-R70` 订正这一段的后半句：原话是「`sftp.rs` 运行时对 x86_64 的身份识别
+            //  **只能靠清单**」——今天不是了，运行期那一侧同样扫字节（`sftp::bytes_carry_build_stamp`）。〕
             let expected = source_build_id.as_deref().unwrap_or_else(|| {
                 // 抠不到源码 build_id ⇒ 单源链条已断，`DAEMON_BUILD_ID` 此刻是 "unknown"，
                 // 装出去每台远端都会被判 StaleBuild。比 mismatch 更该拦。
@@ -316,11 +412,17 @@ fn embed_daemons() {
             });
             if embedded_id.is_empty() {
                 panic!(
-                    "内嵌 daemon {arch} 有二进制但**缺 .build_id 清单**。\n\
-                     清单是它在运行期的唯一身份来源（BUILD_ID 常被优化成立即数，字节里搜不到明文），\
-                     缺了它 ⇒ 运行时回退字节启发式会**误拒正品**，且本轮的一致性校验被静默跳过。\n\
-                     补：printf '%s\\n' '{expected}' > src-tauri/embedded-daemons/cc-monitor-remote-{arch}.build_id\n\
-                     （前提是那个二进制**真的**是 {expected} 编出来的；不确定就删掉整个目录重来。）"
+                    "内嵌 daemon {arch}（src-tauri/{}）**问不出身份** —— \
+                     在它的字节里找不到恰好一个 `{stamp_open}…{stamp_close}` 身份戳。\n\
+                     可能是：① 它不是这套源码编出来的（太旧 —— `p2f-build-stamp` 之前的\
+                     daemon 根本没有戳）；② 它被改过 / 截断了；③ 界标抠错了\
+                     （现打读到 open=`{stamp_open}` close=`{stamp_close}`，空串 = 从\
+                     `remote-daemon-proto/src/main.rs` 抠失败，先修 `build.rs` 那一处）。\n\
+                     🔴 **别去写一个 `.build_id` 旁文件来糊它** —— `K-R70` 之后没有任何东西\
+                     读那个文件了，写一份只是把标签换个地方抄。\n\
+                     出路：重跑 `cargo zigbuild --target {arch}-unknown-linux-musl` 重编，\
+                     或 `rm -rf src-tauri/embedded-daemons/`（自动部署诚实关闭，编译立刻恢复）。",
+                    src.display()
                 );
             }
             // ★ 08-25（`K-H1` / 风险 `5v`）：**引 TLS 之后这条自救路分 arch 了。**
@@ -350,15 +452,14 @@ fn embed_daemons() {
                     "内嵌 daemon {arch} 的 build_id 是 `{embedded_id}`，而 daemon 源码是 `{expected}` —— \
                      **半 bump**。装上去会被 monitor 永远判 StaleBuild 并无限重装。\n\
                      出路二选一：\n\
-                     ① 重编并同步清单。三步都要做，\n\
-                        **前两步在 `remote-daemon-proto/` 目录下跑**：\n\
+                     ① 重编。两步都在 `remote-daemon-proto/` 目录下跑：\n\
                         cd remote-daemon-proto\n\
                         cargo build --release --target {arch}-unknown-linux-musl \\\n\
                           --config 'target.{arch}-unknown-linux-musl.linker=\"rust-lld\"'\n\
                         cp target/{arch}-unknown-linux-musl/release/cc-monitor-remote \\\n\
                            ../src-tauri/embedded-daemons/cc-monitor-remote-{arch}\n\
-                        printf '%s\\n' '{expected}' \\\n\
-                           > ../src-tauri/embedded-daemons/cc-monitor-remote-{arch}.build_id\n\
+                        〔`K-R70` 起**没有第三步了**：身份随字节走（`CC_MONITOR_BUILD_STAMP`），\n\
+                         再写一份 `.build_id` 旁文件没有任何人读它。〕\n\
                         （x86_64 上不加 --config 也能链；aarch64 必须加，否则会挂在系统 ld 上。\n\
                          注意：这样编出来的形态与发版 CI 的 zigbuild 产物**不同**\n\
                          —— static-pie / 未 strip / 不同 rustc，只适合本机打包。）\n\
@@ -473,12 +574,16 @@ fn embed_native_daemon() {
 
     let dir = Path::new(NATIVE_DAEMON_DIR);
     let src = dir.join(NATIVE_DAEMON_FILE);
-    let id_manifest = dir.join(format!("{NATIVE_DAEMON_FILE}.build_id"));
     let target_manifest = dir.join(format!("{NATIVE_DAEMON_FILE}.target"));
-    for f in [&src, &id_manifest, &target_manifest] {
+    for f in [&src, &target_manifest] {
         println!("cargo:rerun-if-changed={}", f.display());
     }
-    let embedded_id = read_trimmed(&id_manifest);
+    // 🔴 **`K-R70`：身份从这份字节自己里读**（同 `embed_daemons` 那条，理由全文住
+    // `bytes_build_id` 的头注）。原来读的是旁边那个 `cc-monitor-native.build_id` 文本文件 ——
+    // 那是标签不是指纹。⚠ 旁边那个 `.target` **留着**：它答的是「给哪个平台编的」，
+    // 不是「你是谁」，本件不碰（如实登记为同族剩余，见件文件 `§8`）。
+    let (stamp_open, stamp_close) = daemon_stamp_marks();
+    let embedded_id = file_build_id(&src, &stamp_open, &stamp_close).unwrap_or_default();
     // ⚠ **无条件 emit**（同上那条理由）。
     println!("cargo:rustc-env=DAEMON_NATIVE_ID={embedded_id}");
 
@@ -520,22 +625,27 @@ fn embed_native_daemon() {
     });
     if embedded_id.is_empty() {
         panic!(
-            "本机内嵌 daemon（src-tauri/{}）有二进制但**缺 `.build_id` 清单**。\n\
-             清单是它落到用户盘上时的文件名来源（`cc-monitor-local-<build_id>`），\
-             缺了它这条自释放路根本拼不出落点。\n\
-             补：printf '%s\\n' '{expected}' > src-tauri/{}",
+            "本机内嵌 daemon（src-tauri/{}）**问不出身份** —— \
+             在它的字节里找不到恰好一个 `{stamp_open}…{stamp_close}` 身份戳。\n\
+             身份是它落到用户盘上时的文件名来源（`cc-monitor-local-<build_id>`），\
+             问不出就拼不出落点。\n\
+             可能是：① 它不是这套源码编出来的（`p2f-build-stamp` 之前的 daemon 没有戳）；\
+             ② 被改过 / 截断；③ 界标抠失败（现打 open=`{stamp_open}` close=`{stamp_close}`）。\n\
+             🔴 **别去补一个 `.build_id` 旁文件** —— `K-R70` 之后没人读它，那只是把标签换个地方抄。\n\
+             出路：在 `remote-daemon-proto/` 下 `cargo build --release` 重编并重铺，\
+             或 `rm -rf src-tauri/{}`：自释放诚实关闭，编译立刻恢复。",
             src.display(),
-            id_manifest.display()
+            NATIVE_DAEMON_DIR
         );
     }
     if embedded_id != expected {
         panic!(
-            "本机内嵌 daemon（src-tauri/{}）的清单是 `{embedded_id}`，而 daemon 源码是 `{expected}` \
+            "本机内嵌 daemon（src-tauri/{}）**的字节自报** `{embedded_id}`，而 daemon 源码是 `{expected}` \
              —— **半 bump**。\n\
-             这一份会以 `cc-monitor-local-{embedded_id}` 之名落到用户盘上，而字节其实是别的版本：\
-             能力协商按清单谈、跑起来的是另一个。\n\
-             出路二选一：① 重编并同步清单（在 `remote-daemon-proto/` 下 `cargo build --release`，\
-             产物铺成 `src-tauri/{}` 那三个文件）；\
+             这一份会以 `cc-monitor-local-{embedded_id}` 之名落到用户盘上，而 monitor 这一侧\
+             按 `{expected}` 谈能力：能力协商按源码谈、跑起来的是另一个。\n\
+             出路二选一：① 重编并重铺（在 `remote-daemon-proto/` 下 `cargo build --release`，\
+             产物铺成 `src-tauri/{}` 那两个文件：二进制 ＋ `.target`）；\
              ② `rm -rf src-tauri/{}`：自释放诚实关闭，编译立刻恢复。",
             src.display(),
             src.display(),

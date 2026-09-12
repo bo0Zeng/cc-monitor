@@ -13,6 +13,24 @@ pub struct CcmProbeResult {
     pub installed: bool,
     pub version: Option<String>,
     pub capabilities: Vec<String>,
+    /// 🔴 `K-R70`：对面**那一份二进制**自报的构建身份（`--ccm-probe` 的 `build=` 那一行）。
+    ///
+    /// # 它与 `version` 不是同一个问题，别合并
+    ///
+    /// `version` 是**CLI 的契约版本**（`control::ccm::CCM_VERSION`：`4` 是最后一版 bash、
+    /// `5` 起是后端本体）—— 它答「你认得哪些参数」。`build` 答「**你是哪一次构建**」。
+    /// 在 `K-R70` 之前，后者只能去读那份二进制**旁边**的 `.build_id` 文本文件，
+    /// 而那是一张从源码常量抄来的标签（三个载体恒等 ⇒ 零证据，`K-R68` · `R26` 裁定零）。
+    ///
+    /// ⚠ **`None` 有两种来历，这里分不开**：对面没装 / 对面是 `p2f-build-stamp` 之前的
+    /// 旧后端（它根本不吐这一行）。要分开得再问一次别的东西 —— 本件不做，如实登记。
+    ///
+    /// ⚠ **它刻意不进 [`classify_path_ccm`] 的判据**：那一格问的是「PATH 上那个是不是
+    /// 我们这一份」，而**同一份后端的两个构建仍然是「我们这一份」**。拿 `build` 去判
+    /// 会把「我们装的比 PATH 上那个新」误报成「PATH 上那个不是我们的」。
+    #[cfg_attr(test, ts(optional))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build: Option<String>,
 }
 
 /// 解析 `ccm --ccm-probe` 的输出。首行非字面 `name=ccm` → 判定未装/不兼容——防止 PATH 里
@@ -24,12 +42,17 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
             installed: false,
             version: None,
             capabilities: vec![],
+            build: None,
         };
     }
-    let (mut version, mut capabilities) = (None, vec![]);
+    let (mut version, mut capabilities, mut build) = (None, vec![], None);
     for line in lines {
         if let Some(v) = line.strip_prefix("version=") {
             version = Some(v.to_string());
+        } else if let Some(b) = line.strip_prefix("build=") {
+            // 🔴 `K-R70`：**这一行来自那个进程自己**（`control::ccm::probe_output` 里
+            // 直接读 `crate::BUILD_ID`），不是我们去读它旁边的哪个文件。
+            build = Some(b.to_string());
         } else if let Some(c) = line.strip_prefix("capabilities=") {
             capabilities = c
                 .split(',')
@@ -42,6 +65,7 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
         installed: true,
         version,
         capabilities,
+        build,
     }
 }
 
@@ -445,6 +469,7 @@ mod tests {
             installed: true,
             version: Some("5".into()),
             capabilities: vec!["new".into(), "resume".into(), "detach".into()],
+            build: None,
         };
         // 用户机器上那份 2026-07-27 的旧 bash：答得出 `--ccm-probe`（所以「在不在」判不了它），
         // 但版本与能力集都是上一代。
@@ -452,6 +477,7 @@ mod tests {
             installed: true,
             version: Some("4".into()),
             capabilities: vec!["new".into(), "resume".into()],
+            build: None,
         };
         let v = classify_path_ccm(&ours, &legacy);
         assert_eq!(v, PathCcmVerdict::NotOurs, "旧的没被认出来");
@@ -494,11 +520,13 @@ mod tests {
             installed: true,
             version: Some("5".into()),
             capabilities: vec!["new".into()],
+            build: None,
         };
         let b = CcmProbeResult {
             installed: true,
             version: Some("5".into()),
             capabilities: vec!["new".into(), "detach".into()],
+            build: None,
         };
         // 同版本、能力集差一项 ⇒ 仍判「不是我们那一份」。**路径在这里根本不存在。**
         assert_eq!(classify_path_ccm(&a, &b), PathCcmVerdict::NotOurs);
@@ -507,11 +535,13 @@ mod tests {
             installed: true,
             version: Some("5".into()),
             capabilities: vec!["detach".into(), "new".into()],
+            build: None,
         };
         let a2 = CcmProbeResult {
             installed: true,
             version: Some("5".into()),
             capabilities: vec!["new".into(), "detach".into()],
+            build: None,
         };
         assert_eq!(
             classify_path_ccm(&a2, &b2),
@@ -528,6 +558,58 @@ mod tests {
         assert_eq!(r.version.as_deref(), Some("1"));
         assert!(r.capabilities.contains(&"tmux".to_string()));
         assert!(r.capabilities.contains(&"ccm-sid".to_string()));
+    }
+
+    /// ★★ 🔴 `KR70D1`（09-12）：**产品从「那个进程自己」手里拿到构建身份。**
+    ///
+    /// # 它买的是哪一格
+    ///
+    /// `K-R68` 摸底的结论逐字：后端二进制的身份今天只能去读它**旁边**那个 `.build_id`
+    /// 文本文件，而那是 `release.yml` 从源码常量抠出来写的一张标签 ——
+    /// 三个载体的标签恒等 ⇒ 一格证据都不提供（`DECISIONS.md#R26` 裁定零）。
+    /// [`probe_binary_uncached`] 这条路是**直接问那个二进制**（`<bin> --ccm-probe`，
+    /// 不经 shell、不读它旁边任何文件），本条钉住那条握手**答得出身份**。
+    ///
+    /// # 三格
+    ///
+    /// ① 有 `build=` ⇒ 拿得到；② 旧后端（没有那一行）⇒ `None`，**不许猜**；
+    /// ③ 它**不参与** [`classify_path_ccm`] 的判词（理由住 `CcmProbeResult::build` 的头注：
+    /// 同一份后端的两个构建仍然是「我们这一份」）。
+    #[test]
+    fn the_probe_carries_the_build_identity_of_the_binary_itself() {
+        let with = parse_probe_output(
+            "name=ccm\nversion=5\nself=/x/ccm\ncapabilities=new\nagents=claude\nbuild=p9-sample\n",
+        );
+        assert_eq!(
+            with.build.as_deref(),
+            Some("p9-sample"),
+            "对面自报了身份而我们没接住 —— 「问一份二进制它是谁」这条路断在解析这一跳"
+        );
+        // ② 旧后端不吐这一行 ⇒ 只许答「不知道」，不许拿别处的值顶上。
+        let without = parse_probe_output(
+            "name=ccm\nversion=5\nself=/x/ccm\ncapabilities=new\nagents=claude\n",
+        );
+        assert_eq!(
+            without.build, None,
+            "对面没说，我们替它编了一个 —— 那正是「把失败面换成假答案」那一族"
+        );
+        // ③ 身份不参与「是不是我们那一份」的判词。
+        let a = CcmProbeResult {
+            installed: true,
+            version: Some("5".into()),
+            capabilities: vec!["new".into()],
+            build: Some("p9-old".into()),
+        };
+        let b = CcmProbeResult {
+            build: Some("p9-new".into()),
+            ..a.clone()
+        };
+        assert_eq!(
+            classify_path_ccm(&a, &b),
+            PathCcmVerdict::Ours,
+            "两个构建的同一份后端被判成「不是我们那一份」—— \n\
+             那会让用户每次打开都看到一句假警报（`CcmProbeResult::build` 头注逐字写着这条边界）"
+        );
     }
 
     /// ★★ **超时那条路真的会返回**〔D 阶段补审 08-12〕。

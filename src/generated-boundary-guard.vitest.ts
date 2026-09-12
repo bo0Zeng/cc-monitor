@@ -327,7 +327,11 @@ describe("C01 边界生成物", () => {
     // **K-A1：10 → 12。** `RemoteAccount.auth_kind` / `RemoteAccount.auth_ready`
     // ——两者都是 `Option`，而**缺席与 `null` 在这里语义不同**：缺席 = 旧 daemon 压根没说
     // （前端据此回落到逐字节旧行为），`null` 会让那个 `??` 回落判据失效。⇒ 必须 `ts(optional)`。
-    expect(checked, `期望恰好 12 处 skip_serializing_if，实得 ${checked}`).toBe(12);
+    // **`K-R70`（09-12）：12 → 13。** `ccm_probe.rs::CcmProbeResult.build`
+    // ——对面那份二进制自报的构建身份（`--ccm-probe` 的 `build=` 行）。同一条理由：
+    // **缺席与 `null` 语义不同** —— 缺席 = 那份后端是 `p2f-build-stamp` 之前的旧版、
+    // 它压根不吐这一行；写成 `| null` 会把「它没说」与「它说了个空」混成一格。
+    expect(checked, `期望恰好 13 处 skip_serializing_if，实得 ${checked}`).toBe(13);
   });
 
   it("每一个 u64/i64 字段都配了 ts(type = …)——C03 的大整数策略，打在源上", () => {

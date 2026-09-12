@@ -370,7 +370,9 @@ mod tests {
         ("build.rs", "embed_daemons", None,
          "把 `embedded-daemons/cc-monitor-remote-<arch>` 复制进 `OUT_DIR`，\
           供 `include_bytes!` 内嵌。写的是 cargo 自己的构建目录，不碰用户环境；\
-          ⚠ 它读的那份清单由 `sftp.rs` 的身份见证判据守着（`id_from_manifest` 不许写死）"),
+          ⚠ 〔`K-R70` 09-12 订正本行后半句〕它**不再读旁边那份 `.build_id` 清单** —— \
+          身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\
+          由 `sftp.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
         // ── devbench F03：skill 接入面的收件箱写入。**不是安装动作**。
         ("skill_host.rs", "write_skill_file", None,
          "写用户**自己项目里**的 `.claude/planned-build/INBOX.txt`（planned-build skill 的\
