@@ -28,7 +28,7 @@ import { fetchAccounts, currentWorkingAccount } from "../accounts";
 import { pickPrimaryOrigin } from "../account-chip";
 import {
   fetchAccountUsage,
-  OK_USAGE_UNVERIFIED_CAVEAT,
+  usageScreenEl,
   type AccountUsageOutcome,
 } from "../account-usage";
 
@@ -214,6 +214,13 @@ export class UsageView {
     this.planEl.appendChild(msg);
   }
 
+  /**
+   * `R58`〔用 09-13〕裁定一 ＋ `R59`：**点用量 ⇒ 直接把那一屏原文摆出来。**
+   *
+   * 🔴 `captured=true` 只有一个结局：`screen` —— 屏上是什么就摆什么，
+   * **包括空屏**（`KR101D1` ③：把空屏判成失败是本条明令禁止的那一形）。
+   * `captured=false` 才是错误态。这里**没有任何解析**（`R59`）。
+   */
   private renderPlanOutcome(
     origin: string,
     account: string,
@@ -227,42 +234,23 @@ export class UsageView {
     who.textContent = `${origin} · 账号 ${account}`;
     box.appendChild(who);
 
-    if (outcome.status === "ok") {
-      for (const b of outcome.buckets) {
-        const row = document.createElement("div");
-        row.className = "usage-plan-row";
-        row.textContent = `${b.label}：${b.usedPercent}% 已用${b.resetIn ? ` · ${b.resetIn}` : ""}`;
-        row.title = OK_USAGE_UNVERIFIED_CAVEAT;
-        box.appendChild(row);
-      }
+    if (outcome.status === "screen") {
+      // 原文渲染只有一个住址（`account-usage.ts::usageScreenEl`）—— 三个消费者共用。
+      const screen = usageScreenEl(outcome.raw);
+      screen.classList.add("usage-plan-raw");
+      box.appendChild(screen);
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "settings-btn settings-btn-secondary";
+      copy.textContent = "复制这一屏";
+      copy.addEventListener("click", () => void navigator.clipboard?.writeText(outcome.raw));
+      box.appendChild(copy);
     } else {
-      // ★ 可见失败：说清是什么状态，并把原始屏带回来。
+      // ★ 可见失败：**探不到**才是错误态（不是「认不出格式」——那个态已经不存在了）。
       const msg = document.createElement("div");
       msg.className = "usage-plan-fail";
-      msg.textContent =
-        outcome.status === "probe-failed"
-          ? `探测失败：${outcome.error}`
-          : outcome.status === "not-logged-in"
-            ? "这个账号还没登录。"
-            : outcome.status === "cli-missing"
-              ? "远端找不到 claude 命令。"
-              : `认不出 /usage 的格式（${outcome.reason}）—— 下面是抓到的原始屏。`;
+      msg.textContent = `探测失败：${outcome.error}`;
       box.appendChild(msg);
-      const raw = "raw" in outcome ? outcome.raw : undefined;
-      if (raw) {
-        const pre = document.createElement("textarea");
-        pre.className = "settings-input usage-plan-raw";
-        pre.readOnly = true;
-        pre.rows = 6;
-        pre.value = raw;
-        box.appendChild(pre);
-        const copy = document.createElement("button");
-        copy.type = "button";
-        copy.className = "settings-btn settings-btn-secondary";
-        copy.textContent = "复制诊断文本";
-        copy.addEventListener("click", () => void navigator.clipboard?.writeText(raw));
-        box.appendChild(copy);
-      }
     }
     this.planEl.appendChild(box);
   }
