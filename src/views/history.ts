@@ -28,6 +28,9 @@ import { commands } from "../ipc/commands";
 // `K-R46`：本机 tmux 名的唯一算法口（铸名过 `mintTmuxName` + 「不知道就不铸」）。
 import { mintLocalTmuxName } from "../ipc/local-tmux-name";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
+// `K-R92`：那三格是三态（`null` = 不知道，不是 0）。排序档与加减都只许从这里走 ——
+// JS 会安静地把 `null` 当 0（`Number(null)` / `null > 0` / `null + 1`），那正是本件在治的病。
+import { liveRank, starRank, bumpCounted, isKnown } from "./counted";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
@@ -1039,12 +1042,13 @@ export class HistoryView {
     );
 
     // 项目排序：live > starred > last_activity desc（与后端默认一致，前端不改）
+    // `K-R92`：`Number(b.hasLive)` 在 `hasLive` 是 `null`（不知道）时得 0 —— 与
+    // 「查过了，没有活会话」一模一样。改走三态档位：确定有 > 不知道 > 确定没有。
     const sorted = filteredProjects.slice().sort((a, b) => {
-      if (a.hasLive !== b.hasLive)
-        return Number(b.hasLive) - Number(a.hasLive);
-      const aStar = a.starredCount > 0;
-      const bStar = b.starredCount > 0;
-      if (aStar !== bStar) return Number(bStar) - Number(aStar);
+      const live = liveRank(b.hasLive) - liveRank(a.hasLive);
+      if (live !== 0) return live;
+      const star = starRank(b.starredCount) - starRank(a.starredCount);
+      if (star !== 0) return star;
       return b.lastActivity - a.lastActivity;
     });
 
@@ -1292,9 +1296,13 @@ export class HistoryView {
     const stats = document.createElement("span");
     stats.className = "history-group-stats";
     const chips: string[] = [`${proj.sessionCount} 个会话`];
-    if (proj.hasLive) chips.push("● live");
-    if (proj.starredCount > 0) chips.push(`★ ${proj.starredCount}`);
-    if (this.showHidden && proj.hiddenCount > 0)
+    // `K-R92`：只在**算过了**的时候才说话。「不知道」这一档不出 chip ——
+    // ⚠ 界面怎么把「不知道」显示出来（例如一个 `?` 徽标）是 `K-R66` 的面，本件不做；
+    // 本件只保证这里不会拿一个没人查过的值去说「没有星标」「没有活会话」。
+    if (isKnown(proj.hasLive) && proj.hasLive) chips.push("● live");
+    if (isKnown(proj.starredCount) && proj.starredCount > 0)
+      chips.push(`★ ${proj.starredCount}`);
+    if (this.showHidden && isKnown(proj.hiddenCount) && proj.hiddenCount > 0)
       chips.push(`隐藏 ${proj.hiddenCount}`);
     chips.push(formatTimestampSmart(proj.lastActivity));
     stats.textContent = chips.join(" · ");
@@ -1555,9 +1563,12 @@ export class HistoryView {
       const wasStarred = e.starred;
       e.starred = next.starred;
       // 同步 project 的 starred_count
-      if (!wasStarred && next.starred) proj.starredCount += 1;
+      // `K-R92`：`null + 1 === 1` —— 一次 star 操作能把「不知道」变成一个看起来是真值的数，
+      // 而且从此回不去。`bumpCounted` 让「不知道」加减之后**还是不知道**。
+      if (!wasStarred && next.starred)
+        proj.starredCount = bumpCounted(proj.starredCount, +1);
       else if (wasStarred && !next.starred)
-        proj.starredCount = Math.max(0, proj.starredCount - 1);
+        proj.starredCount = bumpCounted(proj.starredCount, -1);
       this.renderList();
     } catch (err) {
       console.warn("star update failed:", err);
@@ -1593,9 +1604,10 @@ export class HistoryView {
       });
       const wasHidden = e.hidden;
       e.hidden = updated.hidden;
-      if (!wasHidden && updated.hidden) proj.hiddenCount += 1;
+      if (!wasHidden && updated.hidden)
+        proj.hiddenCount = bumpCounted(proj.hiddenCount, +1);
       else if (wasHidden && !updated.hidden)
-        proj.hiddenCount = Math.max(0, proj.hiddenCount - 1);
+        proj.hiddenCount = bumpCounted(proj.hiddenCount, -1);
       this.renderList();
     } catch (err) {
       console.warn("hide toggle failed:", err);
@@ -1790,8 +1802,8 @@ export class HistoryView {
       if (idx >= 0) arr.splice(idx, 1);
     }
     proj.sessionCount = Math.max(0, proj.sessionCount - 1);
-    if (e.starred) proj.starredCount = Math.max(0, proj.starredCount - 1);
-    if (e.hidden) proj.hiddenCount = Math.max(0, proj.hiddenCount - 1);
+    if (e.starred) proj.starredCount = bumpCounted(proj.starredCount, -1);
+    if (e.hidden) proj.hiddenCount = bumpCounted(proj.hiddenCount, -1);
     // 项目内全部删完了 → 也从 projects 列表移除
     if (proj.sessionCount === 0) {
       this.projects = this.projects.filter(
@@ -2028,6 +2040,10 @@ export class HistoryView {
     const meta = document.createElement("div");
     meta.className = "history-meta";
     meta.append(
+      // ⚠ `K-R92` 现打如实记：`isLive` 是三态（`null` = 这条路答不出），而这一格仍旧
+      // 把「不知道」显示成 `archived`。**这是本件刻意没做的那一半** —— 界面怎么把
+      // 「不知道」显示出来是 `K-R66` 的面（件文件 `§0b` 逐字：本件只到数据层）。
+      // 判据只判**排序与加减**不许把它当 0，显示这一格不在射程里；写在这里免得它变成暗账。
       makeChip(e.isLive ? "live" : "archived", e.isLive ? "history-live" : ""),
       makeChip(`${e.messageCountApprox} 条消息`),
       makeChip(formatTimestampSmart(e.updatedAt)),

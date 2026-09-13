@@ -53,14 +53,19 @@ pub struct HistoryProject {
     /// `stream_history_sessions_in_project` 时传回来作 key
     pub project_dir: String,
     pub session_count: u32,
-    pub starred_count: u32,
-    pub hidden_count: u32,
+    /// `K-R92`：**`None` = 不知道**（没查 / 查不了），`Some(0)` = 查过了，真的一个都没有。
+    /// 这两件事在 09-12 之前是同一个 `0` —— 病灶与全部论证见本文件
+    /// [`the_three_counts_can_say_i_do_not_know`] 与 `remote_history::Counted`。
+    pub starred_count: Option<u32>,
+    /// 同上：`None` = 不知道，`Some(0)` = 查过了是 0。
+    pub hidden_count: Option<u32>,
     /// 该项目下任意 jsonl 文件的最大 mtime（ms）
     // **C03 大整数策略**：量纲是**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年**。
     #[cfg_attr(test, ts(type = "number"))]
     pub last_activity: i64,
-    /// 该项目下是否有 session 当前 PID 还活着
-    pub has_live: bool,
+    /// 该项目下是否有 session 当前还活着。**`None` = 这条路上答不了**
+    /// （远端没有判活真相源 · Codex 无 pidfile），**不是**「没有活会话」。
+    pub has_live: Option<bool>,
     /// issue #16：数据来源。None=本地；Some(host)=远端（前端组头显示 [host] 徽标，
     /// 展开时改调 stream_remote_history_sessions）。
     #[cfg_attr(test, ts(optional))]
@@ -85,7 +90,8 @@ pub struct HistorySessionEntry {
     #[cfg_attr(test, ts(type = "number"))]
     pub updated_at: i64,
     pub jsonl_path: String,
-    pub is_live: bool,
+    /// `K-R92`：**`None` = 这条路上答不了活状态**（远端 / Codex），`Some(false)` = 查过了，没活。
+    pub is_live: Option<bool>,
     pub message_count_approx: u32,
     /// Batch11-F32：CC 后台分身会话（⚙ 徽标——防 resume 误选克隆）。
     pub is_bg: bool,
@@ -106,6 +112,35 @@ pub struct HistorySessionEntry {
     #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
+}
+
+/// `K-R92`：三态排序档 —— **确定有(2) > 不知道(1) > 确定没有(0)**。
+///
+/// # 🔴 为什么不直接 `Option` 的派生序
+///
+/// `Option<bool>` 的派生序是 `None < Some(false) < Some(true)`，按它降序排，
+/// 「不知道」会被排到「确定没有活会话」**后面** —— 那是一句断言：
+/// 「这个项目比一个已经确定没活的项目更不像活着」。**说不出口的话不许说。**
+/// 「不知道」既不许冒充「活着」抢到最前，也不许被当成「确定没活」压到最后 ⇒ 它自成一档，在中间。
+///
+/// ⚠ 这一层与前端 `src/views/counted.ts` 的 `liveRank` / `starRank` **是同一套档位**，
+/// 两侧各有判据钉着（本文件 `unknown_is_its_own_bucket_when_sorting` ·
+/// `src/views/counted.vitest.ts`）。
+pub(crate) fn live_rank(v: Option<bool>) -> u8 {
+    match v {
+        Some(true) => 2,
+        None => 1,
+        Some(false) => 0,
+    }
+}
+
+/// 同 [`live_rank`]：**有星标(2) > 不知道(1) > 查过了一个都没有(0)**。
+pub(crate) fn star_rank(v: Option<u32>) -> u8 {
+    match v {
+        Some(n) if n > 0 => 2,
+        None => 1,
+        Some(_) => 0,
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
@@ -193,9 +228,9 @@ pub async fn list_history_projects(
 
         // live → starred → last_activity desc（同 UI 顺序，前端可再排但默认就是这个）
         out.sort_by(|a, b| {
-            b.has_live
-                .cmp(&a.has_live)
-                .then_with(|| (b.starred_count > 0).cmp(&(a.starred_count > 0)))
+            live_rank(b.has_live)
+                .cmp(&live_rank(a.has_live))
+                .then_with(|| star_rank(b.starred_count).cmp(&star_rank(a.starred_count)))
                 .then(b.last_activity.cmp(&a.last_activity))
         });
 
@@ -314,11 +349,14 @@ fn codex_projects_from(sessions: Vec<CodexSessionInfo>) -> Vec<HistoryProject> {
                 project_name,
                 project_dir: format!("codex:{cwd}"),
                 session_count: count,
-                starred_count: 0,
-                hidden_count: 0,
+                // `K-R92`：Codex 这条路**没有去数** star/hide（分组只带了 count 与 mtime）——
+                // 那是「不知道」，不是「查过了是 0」。写 `Some(0)` 就是把没查说成查过了。
+                starred_count: None,
+                hidden_count: None,
                 last_activity: last,
-                // Codex 无 pidfile 判活 = F4；F1a 先 false（会话仍可读，只是不显示「活着」）。
-                has_live: false,
+                // Codex 无 pidfile 判活 = F4 ⇒ **答不了**（`K-R92` 之前这里写死 `false`，
+                // 那是一句「这个项目没有活会话」的断言，而根本没人查过）。
+                has_live: None,
                 origin: None,
             }
         })
@@ -347,7 +385,8 @@ fn codex_session_entry(s: &CodexSessionInfo, metadata: &HistoryMetadata) -> Hist
         started_at: s.mtime_ms,
         updated_at: s.mtime_ms,
         jsonl_path: s.path.to_string_lossy().into_owned(),
-        is_live: false, // Codex 判活 = F4（无 pidfile）
+        // `K-R92`：Codex 判活 = F4（无 pidfile）⇒ **答不了**，不是「没活着」。
+        is_live: None,
         message_count_approx: 0,
         is_bg: false,
         starred: meta.starred,
@@ -2292,6 +2331,8 @@ fn analyze_project_dir(
 
     let session_count = jsonls.len() as u32;
     let last_activity = jsonls.iter().map(|(_, _, m)| *m).max().unwrap_or(0);
+    // 本机这条路**有**真相源（`SessionMap` 认本机 pid）⇒ 这三个数一律是 `Some`，
+    // 「不知道」那一档在这里恒不出现（`K-R92`：分得开之后，本地那一侧要如实说「查过了」）。
     let has_live = jsonls.iter().any(|(_, sid, _)| map.is_session_active(sid));
     let mut starred_count = 0u32;
     let mut hidden_count = 0u32;
@@ -2311,10 +2352,10 @@ fn analyze_project_dir(
         project_name,
         project_dir,
         session_count,
-        starred_count,
-        hidden_count,
+        starred_count: Some(starred_count),
+        hidden_count: Some(hidden_count),
         last_activity,
-        has_live,
+        has_live: Some(has_live),
         origin: None, // 本地扫描路径恒为本地
     })
 }
@@ -2475,7 +2516,8 @@ fn analyze_jsonl(
         started_at,
         updated_at,
         jsonl_path: path.to_string_lossy().into_owned(),
-        is_live: map.is_session_active(&session_id),
+        // 本机这条路有真相源 ⇒ `Some`（`K-R92`：远端那条路答不了时给 `None`）。
+        is_live: Some(map.is_session_active(&session_id)),
         message_count_approx: message_count,
         starred: entry_meta.starred,
         custom_title: entry_meta.custom_title.clone(),
@@ -4085,7 +4127,11 @@ mod tests {
         assert_eq!(proj.last_activity, 300, "组内 max mtime");
         assert_eq!(proj.project_name, "proj", "cwd 末段");
         assert_eq!(proj.project_dir, "codex:/home/u/proj", "键带 codex: 前缀");
-        assert!(!proj.has_live, "Codex 判活=F4，F1a 先 false");
+        assert_eq!(
+            proj.has_live, None,
+            "★ `K-R92`：Codex 判活 = F4（无 pidfile）⇒ 这一格是**不知道**。\n\
+             上一版这里断言的是 `false` —— 那是「查过了，没有活会话」，而根本没人查过。"
+        );
         let unknown = projects
             .iter()
             .find(|p| p.project_path.is_empty())
@@ -4545,6 +4591,111 @@ mod tests {
         std::fs::remove_dir_all(projects.parent().unwrap()).ok();
     }
 
+    // ─────────────────── `KR92D1`：线上那一格分得开「不知道」和「真的是 0」 ───────────────────
+
+    /// 造一个线上项目行，三格全是**「查过了，真的是 0」**；要哪一格变成「不知道」，
+    /// 调用方用 `..` 语法覆盖那一格（这样「只动了一格」在源码上一眼可见）。
+    fn wire_project_all_known_zero() -> HistoryProject {
+        HistoryProject {
+            project_path: "/x/y".into(),
+            project_name: "y".into(),
+            project_dir: "y-enc".into(),
+            session_count: 3,
+            starred_count: Some(0),
+            hidden_count: Some(0),
+            last_activity: 1,
+            has_live: Some(false),
+            origin: Some("pi".into()),
+        }
+    }
+
+    /// ★★ `KR92D1`：**过线之后，下游分得出这三个数是「算过的」还是「不知道」。**
+    ///
+    /// # 判的是性质，不是形状
+    ///
+    /// 本条**逐字不判**那三格长什么样（`null` / tagged union / 并列一个 `*_known` 布尔都行）——
+    /// 它判的是**两份只在「不知道 vs 真的是 0」上不同的行，过线之后字节不同**。
+    /// ⇒ 换一种等价表示（第 ② 刀）本条照常绿；把 `Unknown` 压成 `0`/`false`（第 ① 刀）当场红。
+    ///
+    /// 🔴 **三格逐格分开断**（第 ③ 刀：只修 star/hide 不修 `has_live` ⇒ 必须红）：
+    /// 一次只把一格换成「不知道」，三次都要与「真的是 0」那一份可分。
+    /// 合起来断一次是接不住的 —— 只要有一格治了，整行就已经不同。
+    #[test]
+    fn the_three_counts_can_say_i_do_not_know() {
+        let wire = |p: &HistoryProject| serde_json::to_string(p).expect("序列化");
+        let all_zero = wire(&wire_project_all_known_zero());
+
+        for (格, unknown_row) in [
+            (
+                "starred_count",
+                HistoryProject {
+                    starred_count: None,
+                    ..wire_project_all_known_zero()
+                },
+            ),
+            (
+                "hidden_count",
+                HistoryProject {
+                    hidden_count: None,
+                    ..wire_project_all_known_zero()
+                },
+            ),
+            (
+                "has_live",
+                HistoryProject {
+                    has_live: None,
+                    ..wire_project_all_known_zero()
+                },
+            ),
+        ] {
+            assert_ne!(
+                wire(&unknown_row),
+                all_zero,
+                "🔴 `{格}` 这一格：「不知道」与「查过了，真的是 0」过线之后**长得一模一样**。\n\
+                 那正是 `K-R92` 的题面 —— 后端已经分得开，线上这一格又把它压回去了。\n\
+                 ⚠ 三格是一族：只治 star/hide 不治 `has_live`，本条在 `has_live` 那一轮红。\n\
+                 现打这一行：{}",
+                wire(&unknown_row)
+            );
+        }
+
+        // 对照组：**真的是 0** 与 **真的是 0** 恒同 —— 上面那三条不是靠「随便变点什么」绿的。
+        assert_eq!(
+            all_zero,
+            wire(&wire_project_all_known_zero()),
+            "★ 对照组：同一份输入序列化两次应当逐字节相同"
+        );
+    }
+
+    /// ★★ `KR92D1` 的排序侧：**「不知道」自成一档**，既不冒充「有」，也不被当成「没有」。
+    ///
+    /// 失效方向（本条存在的理由）：`Option` 的派生序是 `None < Some(false) < Some(true)`，
+    /// 谁哪天把 [`live_rank`] 换回 `b.has_live.cmp(&a.has_live)`，「不知道」就被排到
+    /// 「确定没活」后面 —— 那是一句没人查过的断言。
+    #[test]
+    fn unknown_is_its_own_bucket_when_sorting() {
+        assert!(
+            live_rank(Some(true)) > live_rank(None) && live_rank(None) > live_rank(Some(false)),
+            "★ 活：确定有 > 不知道 > 确定没有（现打 {} / {} / {}）",
+            live_rank(Some(true)),
+            live_rank(None),
+            live_rank(Some(false))
+        );
+        assert!(
+            star_rank(Some(2)) > star_rank(None) && star_rank(None) > star_rank(Some(0)),
+            "★ 星标：有 > 不知道 > 查过了一个都没有（现打 {} / {} / {}）",
+            star_rank(Some(2)),
+            star_rank(None),
+            star_rank(Some(0))
+        );
+        assert_ne!(
+            live_rank(None),
+            live_rank(Some(false)),
+            "🔴 把「不知道」和「确定没有活会话」排进同一档 = 排序这一端仍然分不开"
+        );
+        assert_ne!(star_rank(None), star_rank(Some(0)), "🔴 同上，星标那一格");
+    }
+
     /// P1.2 contract test：守护后端 wire 跟前端 TS interface 字段名一致。
     /// 改字段名必须同步改前端 views/history.ts 的 HistoryProject / HistorySessionEntry interface。
     /// 若本测试失败 = 后端 wire 漂移；若 tsc 编译错 = 前端 access 漂移。两边都受保护。
@@ -4555,10 +4706,10 @@ mod tests {
             project_name: "y".into(),
             project_dir: "/y-encoded".into(),
             session_count: 1,
-            starred_count: 2,
-            hidden_count: 3,
+            starred_count: Some(2),
+            hidden_count: Some(3),
             last_activity: 1700_000_000_000,
-            has_live: true,
+            has_live: Some(true),
             origin: Some("pi-host".into()), // issue #16：远端来源也走同一 wire 契约
         };
         let j = serde_json::to_string(&p).unwrap();
@@ -4606,7 +4757,7 @@ mod tests {
             started_at: 1,
             updated_at: 2,
             jsonl_path: "/a.jsonl".into(),
-            is_live: true,
+            is_live: Some(true),
             message_count_approx: 5,
             is_bg: true,
             starred: false,

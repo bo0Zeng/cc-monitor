@@ -112,32 +112,27 @@ mod tests {
         // ⚠ 四条的**处数之和仍是 15**，与实测那一侧的口径一致（比较逻辑已改成「按文件求和」）。
         (
             "src/history.rs",
-            "no-counterpart",
+            "reader",
             2,
-            "`list_history_projects`(168/169) 遍历 records 根列项目。\
-             🔴 **〔`K-R83` 09-12〕原先那条退役条件已经兑现了，这一格因此重写过一次。**\
-             改前逐字：「daemon `--list-projects` 每行只给 `dirName` / `projectPath` / \
-             `sessionCount` / `lastActivityMs` **四个字段**……⇒ 要么 daemon 补「每项目的会话 \
-             sid 清单」，要么每个项目再来一次 `--list-sessions`（N 次进程 spawn，而这是用户\
-             常开的界面）。★ **退役条件：daemon 的 `--list-projects` 每行带上会话 sid 清单**\
-             （或等价字段）。」\
-             **现打（`K-R83` 落地后）**：那一行是 **5 个字段** —— 多的那个是 `sessionIds`\
-             （住址 `remote-daemon-proto/src/observe/history_query.rs::project_row`，\
-             与 `sessionCount` 恒等长、同一趟 `read_dir` 零额外 I/O）。\
-             ⇒ `starred_count` / `hidden_count`（本机 metadata，**按会话 sid 查**）与 \
-             `has_live`（`SessionMap`，**也按 sid 查**）三个数**今天都算得出**，\
-             而且是**一次调用**（`remote_history::fanout_list_projects` 已经这么做了，\
-             判据 `KR83D3` 数着它的 exec 次数）。\
-             ⚠ **所以这一格今天欠的不再是「后端缺字段」，是「本机这条路还没改走后端」** ——\
-             那是另一件事的体量（`list_history_projects` 整条改调后端 + codex 变体，\
-             见下面那条 codex 的登记），**别把它读成「还在等后端补东西」**。\
-             ⚠ **分类今天有争议，`K-R83` 不擅自动它**：`no-counterpart` 的字面含义是\
-             「daemon 侧没有对侧」，而字段这一侧已经有了 ⇒ 严格说它该转成 `reader`，\
-             而那会把本文件那条 `readers` 断言从 8 顶到 9、动棘轮的账。\
-             **改分类属「谁去改本机这条路」那一件的射程，不属本件** —— 本件只兑现字段那一侧，\
-             已在件文件 `§8` 报 PM 裁。\
-             ★ **退役条件（重写）：`list_history_projects` 改走后端那条 `--list-projects`**\
-             —— 字段这一侧的前置**已经不欠了**。",
+            "`list_history_projects`(168/169) 遍历 records 根列项目 —— **真的去读目录内容**。\
+             🔴 **〔`K-R92` 09-12〕这一条从 `no-counterpart` 转成 `reader`，`readers` 8 → 9。**\
+             ⚠ **这不是又加了一处直读点，是把一处误分类改对**（与 `accounts.rs` 那次同形、\
+             方向相反：那次是 `reader` → `remote` 减一，这次是加一）。**F10 的工作面一点没变大，\
+             变真的是账。** 别把这个 9 读成「本机读面又长了一处」。\
+             为什么现在才转：`no-counterpart` 的字面含义是「**daemon 侧没有对侧**」，\
+             而 `K-R83`（09-12）已经把对侧补齐了 —— daemon `--list-projects` 那一行现在是 \
+             **5 个字段**，多的那个是 `sessionIds`（住址 \
+             `remote-daemon-proto/src/observe/history_query.rs::project_row`，与 `sessionCount` \
+             恒等长、同一趟 `read_dir` 零额外 I/O）。⇒ `starred_count` / `hidden_count`\
+             （本机 metadata，按会话 sid 查）与 `has_live` 三个数**今天都算得出**，且是**一次调用**\
+             （`remote_history::fanout_list_projects` 已经这么做了，判据 `KR83D3` 数着它的 exec 次数）。\
+             `K-R83` 收窗口时 `〔R83b〕` 裁定**当时不转**（本机那条路还没改走后端，改分类属另一件的射程）；\
+             `K-R92` 是 PM 定的「真该转的时刻」。\
+             ★ **退役归**：F10 本体 —— `list_history_projects` 改走后端那条 `--list-projects`\
+             （字段这一侧的前置**已经不欠了**；欠的是「谁去改本机这条路」，那是另一件事的体量，\
+             含 codex 变体，见下面那条 codex 的登记）。\
+             ⚠ **现打如实写（`K-R92` 实现方 09-12）**：本机这条路**今天仍然直读 records 根**，\
+             一行没改 —— 本条转的是**分类**，不是「已经迁走了」。",
         ),
         (
             "src/history.rs",
@@ -726,8 +721,8 @@ mod tests {
         }
         // 抽取器自检：一条 reader 都没认出来时上面全空转。
         assert_eq!(
-            readers, 8,
-            "`reader` 条数变了（**实测 8 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
+            readers, 9,
+            "`reader` 条数变了（**实测 9 条** —— ⚠ 这句话本身腐过一次：数字从 11 一路走到 7，\
              而这段文案一直写着「实测 10 条」，是 S11 那族出现在**判据自己的报错文案**里）。这个数就是 **F10 的真实工作面** —— \
              多一条要说明为什么又加了直读点，少一条说明退役了一处（把棘轮往下拧）。\n\
              ⚠ 棘轮史：11 → **10**（F10b 第一批，`usage.rs` 退役 —— 它改走本机后端的 `--usage`）\n\
@@ -749,7 +744,14 @@ mod tests {
              BUILD_ID + 协议文档 + 内嵌重编，是另一件事的体量，而本件是梯队 5 的只读面）；\n\
              ② 不做（`U10d` 已裁「marketplace 面的只读枚举**可做**」）。\n\
              ⇒ 记账不记功：退役条件写在那条登记里，且它与远端那半是**同一条**\n\
-             （daemon 补 `--list-marketplaces` 一次清两笔）。"
+             （daemon 补 `--list-marketplaces` 一次清两笔）。\n\
+             → **9**〔`K-R92` 09-12〕`history.rs` 的 `list_history_projects` 那条\n\
+             **从 `no-counterpart` 转回 `reader`**。⚠ **第三次「往上走」，而三次来历各不相同**：\n\
+             `P8a` 那次是真加了直读点，这次是**把一处误分类改对**（同 `accounts.rs` 那次的形状、\n\
+             方向相反）。理由：`no-counterpart` 的字面含义是「daemon 侧没有对侧」，\n\
+             而 `K-R83` 已经把 `--list-projects` 那一行的 `sessionIds` 补齐了 ⇒ 对侧有了。\n\
+             **F10 的工作面没变大，变真的是账** —— 那一处本来就要迁，只是从前记在\n\
+             「等后端补东西」那一栏里，看起来不像工作量。"
         );
     }
 
