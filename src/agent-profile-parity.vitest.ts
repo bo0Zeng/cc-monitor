@@ -47,10 +47,46 @@
  *    它的 `case "$1" in claude) …` 形状在注释里不会出现，暂时安全，但这是**运气不是设计**。
  * 4. 只覆盖 `claude` 与 `codex` 两个 agent。加第三个时本条**不会自动扩** ——
  *    `AGENTS` 那个常量会与 golden 的行数对不上而红，那就是提醒。
+ *
+ * # 🔴 `K-R93`（09-12）：**第四份没有了，前端那一份改成从后端取值**
+ *
+ * 上面那张表说的是「同一个事实住在三个地方」。**前端 `src/agent-profile.ts` 是第四个地方**
+ * —— 而它只认 claude（`K-R54` 表第 11 行）。本件把它的**取值来源**改成后端：
+ *
+ * ```text
+ * src-tauri/src/adapter.rs::agent_profile_facts
+ *   └─（cargo test --lib export_bindings ＝ npm run gen:types）→
+ *      src/generated/agent-profile-table.ts  →  src/agent-profile.ts
+ * ```
+ *
+ * ⇒ **前端那一份不再是副本**，它是那条链的末端。下面第二个 `describe` 钉的就是这条链：
+ * 值真的跟着后端走（`KR93D1`）· codex 那一格不再是漏的（`KR93D2`）·
+ * 问不到时说得出「不知道」而不是偷偷用 claude（`KR93D3`）。
+ *
+ * ⚠ **两道门各盖一半，别只报一边**（同 `C05` 那个拆法）：
+ * · 「已提交的生成物 == Rust 源」由**门禁第六格 `generated`** 盖
+ *   （`git diff --exit-code -- src/generated/`，跑在 `cargo test --lib` 之后）；
+ * · 「TS 消费方 == 已提交的生成物」＋「生成物 == `adapter.rs` 里那几张表」由**本文件**盖，
+ *   它在**没有 Rust 的那一侧**（CI 的 frontend job）也成立。
+ * 🔴 在**整趟门禁**里跑时，`cargo` 那一格会先把生成物重写一遍 ⇒ 本文件那条对拍
+ *   看到的已经是修好的文件。**那一格的牙在 `generated`，不在这里** —— 别把本条读成
+ *   「它能逮住改了 Rust 不重跑生成」。
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import {
+  ACTIVE_AGENT,
+  AGENT_PROFILE,
+  fullAgentProfile,
+  listAgents,
+  lookupAgentProfile,
+} from "./agent-profile";
+import {
+  AGENT_PROFILE_TABLE,
+  type AgentProfileRow,
+} from "./generated/agent-profile-table";
+import { stripComments } from "./test-support/strip-comments";
 
 const REPO = resolve(__dirname, "..");
 const GOLDEN = "src-tauri/src/backend/control/fixtures/agent-profile-golden.tsv";
@@ -245,5 +281,205 @@ describe("agent 适配表的三写点对拍（plugin-split E4c / EL6）", () => 
       /SESSION_NAME_PREFIX:\s*&str\s*=\s*"[^"]+"/.test(daemonSrc("claude")),
       "daemon 里没有 SESSION_NAME_PREFIX 的声明",
     ).toBe(true);
+  });
+});
+
+// ── `K-R93`（09-12）：前端那一份的**值来自后端** ──────────────────────────────
+
+const ADAPTER_RS = "src-tauri/src/adapter.rs";
+const TABLE_TS = "src/generated/agent-profile-table.ts";
+const PROFILE_TS = "src/agent-profile.ts";
+
+/**
+ * 从 `adapter.rs` 抠一张**一行写完**的 `static X: &[&str] = &[…];` 表。
+ *
+ * ⚠ 抠不到就红（不是回空数组）—— 有人给这几张表换行/改名/搬家时，
+ * 下面那条对拍会**当场红**而不是零命中地绿。
+ */
+function rustStaticList(name: string): string[] {
+  const src = read(ADAPTER_RS);
+  const decl = new RegExp(String.raw`^static ${name}: &\[&str\] = &\[(.*)\];$`, "m");
+  const m = decl.exec(src);
+  expect(
+    m,
+    `在 ${ADAPTER_RS} 里抠不到 \`static ${name}: &[&str] = &[…];\` —— ` +
+      "它被改名 / 被 rustfmt 换行 / 搬走了，本条会零命中地绿",
+  ).toBeTruthy();
+  return [...(m?.[1] ?? "").matchAll(/"([^"]*)"/g)].map((x) => x[1]);
+}
+
+/** claude 那五格在 `adapter.rs` 里的住址（`K-R93` 从 TS 搬过去的那五张表）。 */
+const CLAUDE_TABLES: ReadonlyArray<[keyof AgentProfileRow, string]> = [
+  ["agentTools", "CLAUDE_AGENT_TOOLS"],
+  ["interactiveTools", "CLAUDE_INTERACTIVE_TOOLS"],
+  ["diffTools", "CLAUDE_DIFF_TOOLS"],
+  ["mdTools", "CLAUDE_MD_TOOLS"],
+  ["livenessProcessNames", "CLAUDE_LIVENESS_PROCESS_NAMES"],
+];
+
+/** 生成物里某个 agent 那一行（没有就红，不回 `undefined` 让下面静默通过）。 */
+function row(agent: string): AgentProfileRow {
+  const got = AGENT_PROFILE_TABLE.find((r) => r.agent === agent);
+  expect(got, `生成物 ${TABLE_TS} 里没有 agent \`${agent}\``).toBeTruthy();
+  return got as AgentProfileRow;
+}
+
+/** 金表里那一格（`<empty>` 是「空串」的写法，别当成字面值）。 */
+function goldenCell(agent: string, key: string): string {
+  const v = golden()[agent]?.[key];
+  expect(v, `金表里缺 ${agent}.${key}`).toBeTruthy();
+  return v === "<empty>" ? "" : (v ?? "");
+}
+
+/**
+ * 生成物里**所有的「值」**（用来判「前端有没有把它们抄回去」）。
+ *
+ * ⚠ 刻意**不含 `resumeKind`**：`flag` / `subcommand` 是那一格的**类型**（一个封闭的两值域），
+ * TS 侧要给它写类型就绕不开这两个词。本文件对它的处置是：`agent-profile.ts` 里
+ * `resumeKind` 的类型**从生成物借**（`AgentProfileRow["resumeKind"]`），
+ * 于是那两个词一次都不用出现 —— 但这是「借类型」不是「抄值」，两者别混为一谈。
+ */
+function tableValues(): string[] {
+  const out: string[] = [];
+  for (const r of AGENT_PROFILE_TABLE) {
+    out.push(r.agent, r.adapterId, r.defaultLauncher, r.resumeToken);
+    if (r.launcherAlias !== null) out.push(r.launcherAlias);
+    out.push(...r.nestedEnvVars);
+    const cells = [r.agentTools, r.interactiveTools, r.diffTools, r.mdTools, r.livenessProcessNames];
+    for (const cell of cells) if (cell !== null) out.push(...cell);
+  }
+  return out;
+}
+
+/** 一份 TS 源码里的**串字面量**（先剥注释 —— 否则判据会被自己的散文喂饱）。 */
+function stringLiterals(src: string): string[] {
+  const code = stripComments(src, "ts");
+  const lit = /"([^"\n]*)"|'([^'\n]*)'|`([^`\n]*)`/g;
+  return [...code.matchAll(lit)].map((m) => m[1] ?? m[2] ?? m[3]);
+}
+
+describe("K-R93 前端那份 agent 画像：值来自后端", () => {
+  it("★ 抽取器自检：三边都真的抠到了东西（否则下面全是零命中地绿）", () => {
+    expect(AGENT_PROFILE_TABLE.length, "生成物是空表").toBeGreaterThan(0);
+    for (const [, rustName] of CLAUDE_TABLES) {
+      expect(rustStaticList(rustName).length, `${rustName} 抠出来是空的`).toBeGreaterThan(0);
+    }
+    // 反向对照：同一把「串字面量」尺子在**生成物**上必须量到一大把值 ——
+    // 量不到就说明剥注释/抠字面量那一步坏了，下面那条「前端没抄」会假绿。
+    const inArtifact = new Set(stringLiterals(read(TABLE_TS)));
+    const hits = [...new Set(tableValues())].filter((v) => inArtifact.has(v));
+    expect(
+      hits.length,
+      "同一把尺子在生成物上一个值都没量到 ⇒ 尺子坏了，「前端没抄」那条会假绿",
+    ).toBeGreaterThan(10);
+  });
+
+  it("★ 生成物是生成物：头上写明谁生成的、且写着不许手改", () => {
+    const src = read(TABLE_TS);
+    expect(src, "生成物头上没写它是谁生成的").toMatch(
+      /^\/\/ 本文件由 `src-tauri\/src\/adapter\.rs` 的 `export_bindings_agent_profile_table` 生成$/m,
+    );
+    expect(src, "生成物头上缺「不许手改」那句").toMatch(/Do not edit this file manually/);
+  });
+
+  it("★ `KR93D1`：claude 那五张表 —— 生成物 == `adapter.rs` 源", () => {
+    // 🔴 覆盖面如实说：12 格里这条盖 5 格，下一条（金表）盖 4 格，
+    //    `agent` / `adapterId` / `launcherAlias` 这 3 格**今天没有第二个真相源可对**，
+    //    它们只由「Rust → 生成物」那条链保证（门禁第六格 `generated`）。别报成「12 格全盖」。
+    const claude = row("claude");
+    for (const [key, rustName] of CLAUDE_TABLES) {
+      expect(
+        claude[key],
+        `生成物的 ${key} 与 ${ADAPTER_RS} 的 ${rustName} 不一致 ——\n` +
+          "  改了后端那张表就得跑 `npm run gen:types` 并把 `src/generated/` 一起提交。",
+      ).toEqual(rustStaticList(rustName));
+    }
+  });
+
+  it("★ `KR93D1`：生成物与金表 `agent-profile-golden.tsv` 对得上（4 个 key × 2 个 agent）", () => {
+    for (const a of AGENTS) {
+      const r = row(a);
+      expect(r.defaultLauncher, `${a}.default_launcher`).toBe(goldenCell(a, "default_launcher"));
+      expect(r.resumeKind, `${a}.resume_kind`).toBe(goldenCell(a, "resume_kind"));
+      expect(r.resumeToken, `${a}.resume_token`).toBe(goldenCell(a, "resume_token"));
+      expect(r.nestedEnvVars.join(" "), `${a}.nested_env`).toBe(goldenCell(a, "nested_env"));
+    }
+  });
+
+  it("★ `KR93D1`：`AGENT_PROFILE` 就是后端那张表里 `ACTIVE_AGENT` 那一行，不是另抄的一份", () => {
+    const r = row(ACTIVE_AGENT);
+    expect([...AGENT_PROFILE.agentTools]).toEqual(r.agentTools);
+    expect([...AGENT_PROFILE.interactiveTools]).toEqual(r.interactiveTools);
+    expect([...AGENT_PROFILE.diffTools]).toEqual(r.diffTools);
+    expect([...AGENT_PROFILE.mdTools]).toEqual(r.mdTools);
+    expect([...AGENT_PROFILE.livenessProcessNames]).toEqual(r.livenessProcessNames);
+    // 同序，不是同集合：这几个键的顺序直接决定送到远端那条 `unset` 命令的字节。
+    expect(AGENT_PROFILE.nestedEnvVars).toEqual(r.nestedEnvVars);
+    expect(AGENT_PROFILE.defaultLauncher).toBe(r.defaultLauncher);
+    expect(AGENT_PROFILE.launcherAlias).toBe(r.launcherAlias);
+    expect(AGENT_PROFILE.resumeKind).toBe(r.resumeKind);
+    expect(AGENT_PROFILE.resumeFlag).toBe(r.resumeToken);
+  });
+
+  it("★ `KR93D1` 第三刀：`agent-profile.ts` 的生产段里不许出现后端表里的任何一个值", () => {
+    const literals = new Set(stringLiterals(read(PROFILE_TS)));
+    const leaked = [...new Set(tableValues())].filter((v) => literals.has(v));
+    expect(
+      leaked,
+      "这几个值被写死回前端了 —— 那就退回了「前端自己一份常量」，" +
+        "`KR93D1` 判的是**值从哪来**，不是有没有 import 那个模块。",
+    ).toEqual([]);
+  });
+
+  it("★ 前端那份认几个 agent：现打（`f1f89f5`）1 个 ⇒ 做完 2 个", () => {
+    expect(listAgents().slice().sort(), "与金表认的 agent 集合不一致").toEqual(
+      Object.keys(golden()).sort(),
+    );
+    expect(
+      listAgents().length,
+      "前端认得的 agent 数变了 —— 这是本件单独给的那一格读数，改了要回件文件把数一起改",
+    ).toBe(2);
+  });
+
+  it("★ `KR93D2`：codex 那一格不再是漏的 —— codex 的画像 ≠ claude 那一份", () => {
+    const claude = row("claude");
+    const codex = row("codex");
+    expect(codex, "两个 agent 拿到的是同一份画像").not.toEqual(claude);
+    const keys = Object.keys(claude) as Array<keyof AgentProfileRow>;
+    const same = keys.filter((k) => JSON.stringify(claude[k]) === JSON.stringify(codex[k]));
+    expect(
+      same,
+      "这几格两个 agent 拿到的**是同一个值** —— 要么是真巧合（那就在这里点名说清），" +
+        "要么是 codex 那一格又被 claude 那份顶上了",
+    ).toEqual([]);
+  });
+
+  it("★ `KR93D3`：问不到就说不知道，**不许悄悄回落到 claude**", () => {
+    const miss = lookupAgentProfile("no-such-agent");
+    expect(miss.known, "表里没有的 agent 竟然查得到 —— 那多半是回落到别人那一份了").toBe(false);
+    expect(miss, "「问不到」那一档里竟然带着一份画像 —— 那就是偷偷顶上了").not.toHaveProperty(
+      "facts",
+    );
+    if (!miss.known) {
+      expect(miss.message, "问不到时那句话得说得出口").toMatch(/问不到/);
+      expect(miss.message).toContain("no-such-agent");
+    }
+    // 抛，而不是给一份「看起来像 claude」的默认画像。
+    expect(() => fullAgentProfile("no-such-agent")).toThrow(/问不到/);
+    // 连 `ACTIVE_AGENT` 自己都问不到时（空表）也是抛 —— 不留「反正是 claude」的暗门。
+    expect(() => fullAgentProfile(ACTIVE_AGENT, [])).toThrow(/问不到/);
+  });
+
+  it("★ `KR93D3`：`null` 那一格是「没人考据过」，不许被读成空集", () => {
+    // codex 的五格今天是 `null`（后端 `None`）。要一份**考据齐全**的画像 ⇒ 当场抛，
+    // 并且话里点名是哪一格；给个空 `Set` 就是「一个值装了两件事」。
+    expect(() => fullAgentProfile("codex")).toThrow(/agentTools/);
+    expect(() => fullAgentProfile("codex")).toThrow(/没人考据过/);
+    // 反向：这一档确实还在（哪天 codex 那五格被考据出来了，本条红一次，
+    // 提醒回来把「认几个 agent / 哪几格是空的」那两个读数一起改）。
+    expect(
+      [row("codex").agentTools, row("codex").livenessProcessNames],
+      "codex 那几格有值了 —— **这多半是好事**：回 `K-R93` 把这条与件文件的读数一起更新",
+    ).toEqual([null, null]);
   });
 });

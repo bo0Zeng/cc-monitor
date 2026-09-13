@@ -204,8 +204,11 @@ mod tests {
         (
             "adapter.rs",
             Face::RuntimeDispatch,
-            2,
-            "`records_dir_for` 与 `records_roots` —— per-kind 那一半，**接口正在被正确使用**",
+            3,
+            "`records_dir_for` 与 `records_roots` —— per-kind 那一半，**接口正在被正确使用**。\
+             `K-R93`（09-12）**+1**：`agent_profile_facts(kind)` 里那一句 `for_kind(kind)` ——\
+             前端那份 agent 画像的取数口，它收 kind、按 kind 取适配器，**没有 `active()`**。\
+             ⇒ 这一处进的是第四张脸而不是前三张，`COUPLING_BASELINE` 一动没动",
         ),
         (
             "history.rs",
