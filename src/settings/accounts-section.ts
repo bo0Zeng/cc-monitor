@@ -30,7 +30,7 @@ import {
   type AccountsState,
   type Account,
 } from "../accounts";
-import { fetchAccountUsage, OK_USAGE_UNVERIFIED_CAVEAT, type AccountUsageOutcome } from "../account-usage";
+import { fetchAccountUsage, usageScreenEl, type AccountUsageOutcome } from "../account-usage";
 import { pickPrimaryOrigin } from "../account-chip";
 import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
@@ -1291,65 +1291,45 @@ export class AccountsSection {
     });
   }
 
-  /** F10：把 `AccountUsageOutcome` 渲染成一个短句 span（+ 未识别态附一个"复制诊断文本"链接，
-   *  方便用户报告；+ 一个"刷新"小按钮，复用 `renderUsageCell(force=true)`）。 */
+  /**
+   * `R58` 裁定一 ＋ `R59`：把结局渲染成一个块。
+   *
+   * 🔴 **两态**：`screen` ⇒ 那一屏**原文**（等宽 · 保留空白，`usageScreenEl` 唯一住址）
+   * ＋「复制这一屏」＋「刷新」；`probe-failed` ⇒ 失败原文 ＋「刷新」。
+   * 「认不出格式 / 未登录 / 无 claude」那三个态**都没有了** —— 它们全部来自解析器，
+   * 而解析层已退役（墓碑住 `src/account-usage-parse.ts` 头部）。
+   * 那三件事今天由**用户自己在那一屏上看出来**：`R58` 逐字「把屏幕预览给我看」。
+   */
   private buildUsageOutcomeEl(a: Account, outcome: AccountUsageOutcome): HTMLElement {
     const wrap = document.createElement("span");
     wrap.className = "accounts-usage-outcome";
-    const text = document.createElement("span");
-    switch (outcome.status) {
-      case "ok":
-        text.textContent = outcome.buckets
-          .map((b) => `${b.label} ${b.usedPercent}%${b.resetIn ? ` · 重置${b.resetIn}` : ""}`)
-          .join("；");
-        // F10 Phase D 审计（后端架构+UX 均指出，重要）：解析成功≠格式已验证——这条 UI 分支是
-        // "parse 成功但语义假设未验证"的隐蔽伪装成功（跟 unrecognized/not-logged-in 等诚实
-        // 降级分支不是一回事）：真机验证前，"已用%"这个方向本身也是训练知识猜测，可能整体
-        // 颠倒。hover 提示这一点，不新增视觉噪音（不影响默认可读性），真机验证完成后可摘掉。
-        text.title = OK_USAGE_UNVERIFIED_CAVEAT;
-        break;
-      case "unrecognized":
-        text.textContent = `暂时读不到（${outcome.reason}）`;
-        text.title = outcome.raw ?? "";
-        break;
-      case "not-logged-in":
-        text.textContent = "该账号未登录，无法读取用量";
-        break;
-      case "cli-missing":
-        text.textContent = "该账号环境里没有 claude 命令";
-        break;
-      case "probe-failed":
-        text.textContent = outcome.error;
-        break;
-    }
-    wrap.appendChild(text);
-    // F10 Phase D 审计（UX，重要）：此前只有 unrecognized 分支给"复制诊断文本"，但
-    // not-logged-in/cli-missing 的判定同样基于训练知识猜测的正则（`NOT_LOGGED_IN_RE`/
-    // `CLI_MISSING_RE`），误判风险不比 unrecognized 低——真机上完全可能出现"其实已登录，但
-    // 屏幕上恰好有个欢迎语含 sign in 字样"这类误判，用户应该有办法把当时抓到的原始文本导出
-    // 来自证/求助。放宽成"任意分支只要带 raw 就给"，不再局限于 unrecognized 这一支。
-    if ("raw" in outcome && outcome.raw) {
+    if (outcome.status === "screen") {
+      const screen = usageScreenEl(outcome.raw);
+      screen.classList.add("accounts-usage-raw");
+      wrap.appendChild(screen);
       const copyBtn = document.createElement("button");
       copyBtn.type = "button";
       copyBtn.className = "accounts-usage-copy-raw";
-      copyBtn.textContent = "复制诊断文本";
+      copyBtn.textContent = "复制这一屏";
       copyBtn.title =
-        "复制这次抓到的原始屏幕文字（可能含界面画框符号，不好看但对排查有用）——如果这个功能" +
-        "读不出你的用量，可以把这段贴到项目的 GitHub issue 里帮忙定位。";
+        "复制这次抓到的原始屏幕文字（可能含界面画框符号，不好看但对排查有用）——如果这一屏上" +
+        "读不出你的用量，可以把它贴到 cc-monitor 的 GitHub issue 里，帮忙定位。";
       copyBtn.addEventListener("click", () => {
-        void navigator.clipboard?.writeText(outcome.raw ?? "").then(
+        void navigator.clipboard?.writeText(outcome.raw).then(
           () =>
             showActionFailureToast(
-              "已复制诊断文本",
-              "这是探测抓到的原始屏幕内容（非隐私信息，只是终端画面文字）。如果这个功能一直读不出" +
-                "用量，可以把它贴到 cc-monitor 的 GitHub issue 里，帮助定位是不是 Claude Code 改了" +
-                " /usage 的显示格式。",
+              "已复制这一屏",
+              "这是探测抓到的原始屏幕内容（非隐私信息，只是终端画面文字）。",
               { level: "info", durationMs: 4000 },
             ),
           () => showActionFailureToast("复制失败", "剪贴板不可用", { level: "error" }),
         );
       });
       wrap.appendChild(copyBtn);
+    } else {
+      const text = document.createElement("span");
+      text.textContent = outcome.error;
+      wrap.appendChild(text);
     }
     const refreshBtn = document.createElement("button");
     refreshBtn.type = "button";

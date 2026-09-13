@@ -180,7 +180,10 @@ import type { TaskEntry } from "../generated/TaskEntry";
 export const commands = {
   /**
    * 起一个 tmux 会话跑 `/usage` 并 capture-pane 抓屏。返回值字段被真消费 ⇒ 生成物（桶③）。
-   * **解析是 TS 侧纯函数 `parseUsageCapture` 的职责**——`captured=true` 只代表拿到了文本。
+   * `captured=true` 只代表**拿到了文本**（包括空屏）。
+   * 🔴 〔`K-R101`/`R59` 09-13 订正〕原话接着写「解析是 TS 侧纯函数 `parseUsageCapture`
+   * 的职责」——**那半句今天是假的**：解析层功能已退役（墓碑住 `src/account-usage-parse.ts`
+   * 头部），生产路上抓到的那一屏**原样**交给界面。
    */
   // U8c-2a：收**结构化账号表态**，不再收渲染好的载荷串。
   // `configDir: null` = 账号 0（Rust 侧产出 `unset CLAUDE_CONFIG_DIR; `），不是「不表态」。

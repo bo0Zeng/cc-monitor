@@ -407,7 +407,16 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
   });
 });
 
-describe("F10：账号行用量单元格（懒加载 + 五种状态）", () => {
+/**
+ * F10：账号行用量单元格（懒加载）。
+ *
+ * 🔴 **`K-R101`/`R59`（09-13）把「五种状态」压成两种**：`screen`（抓到了那一屏，
+ * **空屏也算**）与 `probe-failed`（`captured=false`）。
+ * `ok` / `not-logged-in` / `cli-missing` / `unrecognized` 那四种**全部来自解析器**，
+ * 而解析层功能已退役（`R59` 逐字「解析层代码保留, 但是功能先退役」）。
+ * ⇒ 那四条用例改成断 `KR101D1`「原文到得了界面」。
+ */
+describe("F10/K-R101：账号行用量单元格（懒加载 + 两种状态）", () => {
   const ready = (): AccountsState =>
     state({ accounts: [acct({ name: "z" })], defaultName: "z" });
 
@@ -434,46 +443,54 @@ describe("F10：账号行用量单元格（懒加载 + 五种状态）", () => {
     expect(invokeMock.mock.calls.some(([cmd]) => cmd === "account_usage")).toBe(false);
   });
 
-  it("点击后：查询中 → ok（含百分比+重置文案）", async () => {
+  /**
+   * 🔴 **`KR101D1`（`R58` 裁定一）在设置面板这一面的判据。**
+   *
+   * ⚠ 失效方向（件文件点名）：判「`raw` 字段还在类型里」。这里断的是 **DOM 上那个 `<pre>`
+   * 的 `textContent` 逐字等于抓回来的那一屏** —— 中途被 `trim` / 截断 / 只塞进 `title`，
+   * 本条都会红。
+   */
+  it("★ KR101D1：点击后 查询中 → 那一屏**原文逐字**摆在单元格里（等宽 · 保留空白）", async () => {
+    const screen = "Current session\n  38% used\nResets in 2h 14m\n  尾部空白  ";
     fetchAccountsMock.mockResolvedValue(ready());
-    mockUsageInvoke({ captured: true, raw: "Current session\n  38%\nResets in 2h 14m" });
+    mockUsageInvoke({ captured: true, raw: screen });
     const el = await mount();
     usageBtn(el)?.click();
     expect(el.querySelector(".accounts-usage-pending")?.textContent).toBe("查询中…");
     await flush();
-    const outcome = el.querySelector(".accounts-usage-outcome");
-    expect(outcome?.textContent).toContain("38%");
-    expect(outcome?.textContent).toContain("重置");
-  });
-
-  it("not-logged-in → 明确短句 + 复制诊断文本按钮（判定基于猜测正则，可能误判）", async () => {
-    fetchAccountsMock.mockResolvedValue(ready());
-    mockUsageInvoke({ captured: true, raw: "Please sign in at console.anthropic.com" });
-    const el = await mount();
-    usageBtn(el)?.click();
-    await flush();
-    expect(el.querySelector(".accounts-usage-outcome")?.textContent).toContain("未登录");
+    const pre = el.querySelector<HTMLElement>(".usage-screen-raw");
+    expect(pre, "单元格里没有那一屏原文 —— 原文在中途被丢了").not.toBeNull();
+    expect(pre!.tagName).toBe("PRE");
+    expect(pre!.style.whiteSpace).toBe("pre-wrap");
+    expect(pre!.textContent).toBe(screen);
     expect(el.querySelector(".accounts-usage-copy-raw")).not.toBeNull();
   });
 
-  it("cli-missing → 明确短句 + 复制诊断文本按钮（判定基于猜测正则，可能误判）", async () => {
+  it("★ KR101D1 ③：抓到空屏也算成功 —— 照样渲染，并明说是空屏（不是失败）", async () => {
     fetchAccountsMock.mockResolvedValue(ready());
-    mockUsageInvoke({ captured: true, raw: "bash: claude: command not found" });
+    mockUsageInvoke({ captured: true, raw: "" });
     const el = await mount();
     usageBtn(el)?.click();
     await flush();
-    expect(el.querySelector(".accounts-usage-outcome")?.textContent).toContain("没有 claude 命令");
+    expect(el.querySelector(".usage-screen-raw")?.textContent).toBe("");
+    expect(el.querySelector(".usage-screen-empty")?.textContent).toContain("空屏");
+    // 「复制这一屏」照给（空屏也可以复制，用户拿它去开 issue）
     expect(el.querySelector(".accounts-usage-copy-raw")).not.toBeNull();
   });
 
-  it("unrecognized → 短句 + 复制诊断文本按钮（不是空白）", async () => {
-    fetchAccountsMock.mockResolvedValue(ready());
-    mockUsageInvoke({ captured: true, raw: "╭─ 全新界面 ─╮" });
-    const el = await mount();
-    usageBtn(el)?.click();
-    await flush();
-    expect(el.querySelector(".accounts-usage-outcome")?.textContent).toContain("暂时读不到");
-    expect(el.querySelector(".accounts-usage-copy-raw")).not.toBeNull();
+  it("★ 生产路零解析：屏上写着 `sign in` / `command not found` 也不再被判成一个态", async () => {
+    for (const raw of ["Please sign in at console.anthropic.com", "bash: claude: command not found"]) {
+      fetchAccountsMock.mockResolvedValue(ready());
+      mockUsageInvoke({ captured: true, raw });
+      const el = await mount();
+      usageBtn(el)?.click();
+      await flush();
+      const outcome = el.querySelector(".accounts-usage-outcome")!;
+      expect(outcome.textContent).not.toContain("未登录");
+      expect(outcome.textContent).not.toContain("没有 claude 命令");
+      // 屏上原文原样给用户，让人自己看出来 —— 这正是 `R58` 买到的那个「人眼兜底」。
+      expect(el.querySelector(".usage-screen-raw")!.textContent).toBe(raw);
+    }
   });
 
   it("probe-failed（Rust 层报错，如无 tmux）→ 显示原始错误文案", async () => {
