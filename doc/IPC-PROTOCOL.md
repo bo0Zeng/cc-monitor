@@ -841,6 +841,32 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 
 错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：`--accts-dir <p>` 解析到 `~/.cc-acct-iso/config` 或 `$HOME/.claude-accts`；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧 daemon 兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
 
+**`K-R86` 追加一条（09-13）**：`--capture-pane <会话名>` —— **只读**地抓一次某个 tmux 会话
+**此刻**那一屏的文本。它是上面读面那一族的邻居，但读的不是文件而是屏幕，所以单列在这里。
+
+- **入参只有一个位置参数**：tmux 会话名（**不读 stdin**）。名字的形状与 `kill` 那条逐字同一套
+  （非空、无控制字符、不含 `:` / `=` —— 后两个是 tmux 目标语法的一部分），
+  daemon 侧自己拼成精确目标 `=名:`（`F01`：裸 `-t <名>` 会按「精确名 → 名字开头 → glob」
+  解析，只有 `sib-2` 在时 `-t sib` 抓的是 `sib-2`）。
+- **成功**：那一屏**原样**写 stdout（同 `--read-session` 的透传口径，不包 JSON），exit 0。
+  ⚠ **空屏是合法的成功**：一个刚建起来、什么都没打印的 pane 抓回来就是空串 + exit 0。
+  ⇒ 客户端判「抓没抓到」**看退出码**，不看输出是不是空。
+- **失败**：stderr 一行 `{code, message}` + exit 2（同 `--resolve` 那套信封）。四个码
+  **刻意分得开**，别在客户端把它们压成一句：
+  - `no_tmux` —— 这台机上 `tmux` 这个程序起不来（没装 / 不在 PATH）；
+  - `no_server` —— tmux 在，但一个 server 都没有 ⇒ 无屏可抓；
+  - `no_such_session` —— server 在，而这个会话不存在；
+  - `capture_failed` —— 上面三档都不是，**tmux 的原话原样带回**（认不出来时不猜一个具体原因）；
+  - `invalid_args` —— 会话名的形状过不了，**在起进程之前**就拒了。
+- **只读**：`tmux -u capture-pane -p -t '=名:'`，argv 直传不过 shell；不 attach、
+  不落 tmux buffer、不写任何文件。这一处起进程在 daemon 侧登记于
+  `readonly_guard::spawn_registry::ALLOWED`，而「它只读」由
+  `readonly_guard::capture_is_read_only` 逐元素钉住 argv（那张登记表的键分不出被调的子命令）。
+- 🔴 **它只抓一次**：「抓几次 / 隔多久再抓」由**调用方**决定 —— daemon 侧那条零定时器铁律
+  （`no_timer_guard`）不许它自己长出节拍。
+- ⚠ **`--ping` 那族的「不读 stdin」纪律同样适用**：声明无输入的命令必须秒回，
+  不许挂住等一个永远不来的输入（`P4f` 实测过 `bus-list` 那次 6 秒被掐死）。
+
 **P4f 追加三条**：`--bus-list` / `--bus-send` / `--bus-kill`（cc-bus 的基础命令，见上面各自的小节）。
 它们与帧面走**同一个 `run`**，CLI 面这一层不写第二份实现。
 

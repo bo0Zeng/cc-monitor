@@ -65,7 +65,7 @@ mod tests {
     const PINS: &[(&str, &str, usize, &str)] = &[
         (
             "readonly_guard.rs",
-            "const SPAWN_SITES_TODAY: usize = 10;",
+            "const SPAWN_SITES_TODAY: usize = 11;",
             1,
             "daemon 侧起进程登记表的**相等断言**（不是地板）。\
              ⚠⚠ **这条针钉的是「那一行长什么样」，不是那个数字本身** —— 它挡的是\
@@ -84,6 +84,14 @@ mod tests {
               ③ 「变少多半是抽取坏了」这一格**真去核过**：搬之后全 crate `Command::new(`\
                  的生产段命中逐文件数得出来，`platform/shell.rs` 是新住址、`observe/watcher.rs` 归零。\
               ⇒ 本针记新值。**下一次再往下走，仍然要像这样逐条写，不许只改数。**〕\
+             〔`K-R86` 09-13：`10` → **11**，往**上**走一格。\
+              新增的是 `control/capture_pane.rs` 那一处 `tmux -u capture-pane -p -t '=名:'` ——\
+              **真的新面，不是搬家**（抓屏这件事此前 daemon 侧一处都没有），\
+              `ALLOWED` 里已逐条写明它做什么、为什么不违反收窄后的铁律。\
+              ⚠ 往上走这一格**不是本针在放宽**：`readonly_guard` 那条 `assert_eq!` 自己先红了，\
+              本针跟着记新值 —— 这正是本条来历栏第一段写的那个流程。\
+              ⚠ 而「它只读」这件事**不是这个数买的**（那张表的键分不出被调的子命令）：\
+              买它的是 `readonly_guard::capture_is_read_only`，本针不替它作证。〕\
              ⚠ 这一行**只挡「不动断言、只把数调小」**；「把断言原地调松」由下面两条实参针挡。",
         ),
         (
