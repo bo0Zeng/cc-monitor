@@ -226,11 +226,22 @@ describe("C01 边界生成物", () => {
       // 照样被门禁第六格 `generated` 的 `git diff --exit-code` 盖住。
       // ⚠ 排在最后不是分组：`files.sort()` 是默认排序，小写字母排在大写之后。
       "agent-profile-table.ts",
+      // 🔴 `K-R95`（09-12）：**第二份值表**，源是
+      // `src-tauri/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`。
+      // 三格：`ccm` 调用行每次无条件要求的能力集 · 八句降级理由的措辞 ·
+      // 本机拉起载荷里「哪个号」那一格的 wire 键名。三格此前都在前端各写一份
+      //（定框 `K28`：前端不许自己发明对外行为）。
+      "launch-render-facts.ts",
     ]);
-    // `K-R93`：「谁生成的」这一格从此认**两种**标记（ts-rs / 上面那个值表生成器）——
+    // `K-R93`：「谁生成的」这一格从此认**多种**标记（ts-rs / 上面那两个值表生成器）——
     // 让一个非 ts-rs 的生成物顶着 ts-rs 的头，那是往生成物里写一句假话。
     // ⚠ 「不许手改」那一格**一个字没放松**：两种生成物都必须带。
-    const GENERATED_BY = [TS_RS_HEADER, "src-tauri/src/adapter.rs"];
+    // `K-R95`：第三种标记 —— 值表生成器不止 `adapter.rs` 一个了。
+    const GENERATED_BY = [
+      TS_RS_HEADER,
+      "src-tauri/src/adapter.rs",
+      "src-tauri/src/backend/control/launch_wire.rs",
+    ];
     for (const f of files) {
       const src = read(`src/generated/${f}`);
       expect(src.length, `${f} 是空的`).toBeGreaterThan(100);
