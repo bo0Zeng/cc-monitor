@@ -280,7 +280,17 @@ pub(crate) fn run(args: &[String]) -> i32 {
             } else {
                 AccountTable::default()
             };
-            let plan = match plan::build(&o, &env, &table) {
+            // ★★ `K-R96`（09-12）：**铸名避让在这里就问那张唯一的会话快照**。
+            //
+            // 用户 `R52` 裁定二逐字：「不就是先校验冲突然后取名吗? **搞个 hash 表**不就好了」。
+            // 那张表就是 `common::session_snapshot`（`TakenNames` 的字段模块私有 ⇒
+            // 本文件造不出第二份）。⇒ `--print` 与真跑从此**吐同一个名字**，
+            // 而「纯」的口径改成**相对于快照**（`§0c`）。
+            //
+            // 问不到就 `None` ⇒ **不退让**（诚实降级，见 `plan::build` 头注）。
+            // ⚠ 探测点仍然只有一个（快照那处），`readonly_guard::spawn_registry` 的数不变。
+            let taken = crate::common::session_snapshot::global().taken_names().ok();
+            let plan = match plan::build(&o, &env, &table, taken.as_ref()) {
                 Ok(p) => p,
                 Err(Die(msg)) => return die(&msg),
             };
@@ -347,24 +357,13 @@ fn execute(plan: Plan) -> i32 {
         // attach / 容器路的收尾都是一条**已经渲好的命令串** ⇒ 交给 `sh -c`。
         // 它与 `--print` 吐的是**同一个渲染函数的产物**，两条路结构上不可能分叉。
         Plan::Attach { .. } => exec_shell(&plan::render(&plan, None)),
-        Plan::Container(c0) => {
-            // 🔴 **退让只发生在真跑这条路上**（`--print` 不查实时状态）。
-            //   那一问走 `gate::list_sessions` —— 它是**已登记的只读 tmux 探测点**，
-            //   不新开第二个起进程点（`readonly_guard::spawn_registry` 的数因此不动）。
-            let mut cc = c0.clone();
-            if cc.avoid_collision {
-                match crate::control::gate::list_sessions() {
-                    Ok(rows) => {
-                        let taken: Vec<String> = rows.into_iter().map(|(n, _, _)| n).collect();
-                        cc.name = plan::next_free_name(&cc.name, &taken);
-                    }
-                    // 问不到就**不退让** —— 与那份已删的 bash `ccm`（`07e4e72` 删）那句
-                    // `tmux has-session … 2>/dev/null` 同义（问不出来当没占）。
-                    // 真撞上了还有 `created:false` ⇒ rc=3 那条响亮失败兜底。
-                    Err(_) => {}
-                }
-            }
-            let c = &cc;
+        Plan::Container(c) => {
+            // 🔴 〔`K-R96` 09-12〕**这里从前有一段退让** —— 它只发生在真跑这条路上，
+            //    于是 `--print` 吐的名字与真跑起出来的名字**可以不一样**。
+            //    用户 `R52` 裁定二之后退让搬进了 `plan::build`（问同一张快照），
+            //    计划里的 `name` 就是最终名 ⇒ **这里一个字都不许再改它**。
+            //    往回加 = 「产名」与「避让」又变回两个人干的两件事，
+            //    而那正是前端 `mintTmuxName` 那条纪律（F13）在后端这一侧的对侧。
             // 🔴 **走 `parse_request` 这道门，不许自己直接造 `LaunchRequest`。**
             //
             // 那道门上挂着字段校验（`check_field` 拒控制字符 · `check_size` 收窄宽高），
@@ -501,6 +500,51 @@ fn exec_or_spawn(mut cmd: std::process::Command) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ★★ **`KR96D2` 死值验第一刀：铸名避让只许问那一张快照，且算完就定死。**
+    ///
+    /// 「另起一份名字集合」有两种长法，这里各钉一条：
+    ///
+    /// | 长法 | 挡它的是什么 |
+    /// |---|---|
+    /// | 在这里自己去列一遍 tmux、拼一个 `Vec<String>` 喂给 `build` | **类型**：`plan::build` 只收 `TakenNames`，而它的字段是 `common::session_snapshot` 模块私有的 ⇒ **编译不过** |
+    /// | 让 `build` 拿到名字之后，在 `execute` 里再退让一次（本文件从前正是这样） | **本条**：算完的名字一个字都不许再改 |
+    ///
+    /// 🔴 第二种是本件之前的真实形状 —— 后果不是「名字错了」，是
+    /// **`--print` 与真跑吐的名字可以不一样**，而 `--print` 的全部意义就是当平价预言机。
+    #[test]
+    fn the_name_avoidance_has_exactly_one_source_and_the_plan_settles_it() {
+        let prod = crate::guard_support::production_code(include_str!("mod.rs"));
+        crate::guard_support::assert_no_test_code("control/ccm/mod.rs", &prod);
+
+        let builds = prod.matches("plan::build(").count();
+        assert_eq!(
+            builds, 1,
+            "本文件算了 {builds} 次计划（登记 1）—— `--print` 与真跑必须共用**同一次** \
+             `plan::build` 的产物，算两次就是两条路各自铸一次名。"
+        );
+        assert!(
+            prod.contains("session_snapshot::global().taken_names()"),
+            "喂给 `plan::build` 的那份「已占用的名字」不是从会话快照来的。\n\
+             ★ `R52` 裁定二：那张 hash 表只有一处住址（`common::session_snapshot`）。"
+        );
+        assert!(
+            !prod.contains("next_free_name"),
+            "本文件生产段里又出现了 `next_free_name` —— 退让回到了计划之外。\n\
+             ★ 算完的名字就是最终名；在这里再退让一次 = `--print` 与真跑又分叉了。"
+        );
+        assert!(
+            !prod.contains("gate::list_sessions"),
+            "本文件又直接去问 `gate::list_sessions` 了 —— 那是判活那条投影，\n\
+             铸名要的是 `TakenNames`（同一张快照，但过的是那个造不出第二份的类型）。"
+        );
+        // 反向自检：这几针不是靠「本文件恰好不含那些词」空转的。
+        assert!(
+            crate::guard_support::production_code(include_str!("plan.rs"))
+                .contains("fn next_free_name"),
+            "`plan.rs` 里找不到 `next_free_name` —— 退让规则搬家/改名了，本条在空转"
+        );
+    }
 
     /// 两条进入路都只经 [`intercept`]，而**别的写法一律进不来**。
     #[test]
@@ -660,7 +704,8 @@ mod tests {
             let Parsed::Opts(o) = argv::parse(&args).expect("该解析得动") else {
                 panic!("`--tmux=n1` 不该被解析成 Early")
             };
-            match plan::build(&o, env, &AccountTable::default()).expect("该算得出计划") {
+            match plan::build(&o, env, &AccountTable::default(), None).expect("该算得出计划")
+            {
                 Plan::Container(c) => c.payload,
                 other => panic!("`--tmux=` 该走容器路，实得 {other:?}"),
             }
@@ -765,7 +810,6 @@ mod tests {
             detach: true,
             payload: "'/usr/local/bin/ccm' '--cwd' '/p'".into(),
             trust_poll: true,
-            avoid_collision: false,
             bus: None,
         };
         let req = crate::control::launch::parse_request(&launch_args(&c)).expect("该过得了门");

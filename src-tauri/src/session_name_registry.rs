@@ -41,12 +41,18 @@ mod tests {
         (
             "src/remote-launch.ts",
             "producer-target",
-            2,
-            "两族本体：`pickFreshTmuxName`（sid 派生）· `deriveTmuxName`（cwd 派生**基名建议**）。\
-             **这两条是真的两族**（一个从 sid 来、一个从 cwd 来），不是副本 —— 目标就是只剩这两个。\
-             ⚠ **F13 起，撞名避让不在它们里面** —— 收进了 `mintTmuxName`（全仓唯一铸名口，\
+            1,
+            "本体：`deriveTmuxName`（cwd 派生 `<项目名>-cc`）。\
+             ⚠ **F13 起，撞名避让不在它里面** —— 收进了 `mintTmuxName`（全仓唯一铸名口，\
              `existing` 必填、无默认值，少传被 `tsc` 挡住）。它本身不含 `-cc` 字面量，\
-             故不出现在本表里；本表数的是「谁在产 `-cc` 基名」。",
+             故不出现在本表里；本表数的是「谁在产 `-cc` 基名」。\
+             ★★ **`K-R96`（09-12）把这一格从 2 拧到了 1 —— 棘轮真的往下走了一格。**\
+             退役的是 `pickFreshTmuxName`（`` `${sid.slice(0,8)}-cc` ``，**sid 派生**那一族）。\
+             用户 09-12 逐字（`R55` 裁定一）：「**要是可读的名字 / 不要id**」\
+             ⇒ 起会话的名字统一从 cwd 派生，替它的是 `mintSessionTmuxName`\
+             （= `mintTmuxName(deriveTmuxName(cwd), existing)`，**自己不含 `-cc` 字面量**\
+             ⇒ 不进本表）。⚠ 这不是「少扫了一处」：`S12` 说的「两族」今天**真的只剩一族**了，\
+             因为「从 sid 来」那一族**整条不存在了**。sid 没丢，它骑在 `@ccm_sid` 上。",
         ),
         (
             "src/fork-launch.ts",
@@ -276,7 +282,8 @@ mod tests {
             "\n会话名产出点与登记表对不上。\n\
              **多一处** = 又开了一个产出点（S12 要收敛到 2 个，别往回走）；\n\
              **少一处** = 退役了一份 —— 把登记表那条删掉，并回 S12 把「计数守卫 == 2」的进度更新。\n\
-             （今天是 5 个产出点 + 1 个消费点；`== 2` 钉不上的直接原因是 ccm 那份要等 U9b，而 U9b ⛔。）"
+             （〔`K-R96` 09-12〕今天是 **4** 个产出点 + 1 个消费点 —— `remote-launch.ts` 那格 2→1，\n\
+             退役的是 sid 派生的 `pickFreshTmuxName`；`== 2` 钉不上的直接原因仍是 ccm 那份要等 U9b，而 U9b ⛔。）"
         );
     }
 
@@ -301,7 +308,9 @@ mod tests {
         }
         assert_eq!(
             targets, 1,
-            "S12 的两族应当同住一个文件（`remote-launch.ts`）"
+            "S12 的两族应当同住一个文件（`remote-launch.ts`）——\
+             〔`K-R96` 09-12〕而它今天只剩**一族**（cwd 派生）：\
+             sid 派生那一族随 `R55`「要是可读的名字 / 不要id」整条退役了。"
         );
         // F13（2026-08-04）：4 → 3。退役的是 `src/launch-requests.ts` 那个 `<sid8>-cc` 默认值
         // （与 `pickFreshTmuxName` 基名逐字相同却不做撞名避让 —— 用户问的「为什么会撞名」的根因之一）。

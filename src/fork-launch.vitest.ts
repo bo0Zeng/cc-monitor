@@ -130,7 +130,7 @@ describe("forkTmuxName", () => {
   });
 
   it("撞名再往后排，且每个候选都仍与原名不同", () => {
-    // Phase G：数字**追加在最后**（`…-cc-2`），与 `remote-launch.ts::pickFreshTmuxName`
+    // Phase G：数字**追加在最后**（`…-cc-2`），与 `remote-launch.ts::mintSessionTmuxName`
     // 白纸黑字的同一条规则对齐：「让『第几个』始终是名字的末段」。原来是 `-fork2-cc`（数字在中间）。
     const taken = ["myproj-fork-cc", "myproj-fork-cc-2"];
     const n = forkTmuxName("myproj-cc", taken);

@@ -370,9 +370,9 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
   });
 
   it("★★ 基名被占 ⇒ 载荷里的 `tmuxName` **让到了 `-2`**（证明它真过了铸造口，不是拼出来的）", async () => {
-    // 判别格：基名 `s1-cc`（`sid.slice(0,8)` + `-cc`）已经被占着。
+    // 判别格：基名 `p-cc`（`K-R96`：`basename(cwd)` + `-cc`，`cwd` 夹具是 `/p`）已经被占着。
     // 恒回一个常量、或自己拼一份基名规则（那正是 F13 修掉的坑），这一格都过不了。
-    serveLocalTmux(["s1-cc", "别人的-cc"]);
+    serveLocalTmux(["p-cc", "别人的-cc"]);
     await clickResume();
     expect(
       resumePayload().tmuxName,
@@ -380,13 +380,29 @@ describe("K-R46：历史页 resume 的 tmux 名（行为）", () => {
         "要么名字压根没传（后端 `NO_TMUX_NAME` 早退 ⇒ 会话不进具名容器），\n" +
         "要么没过 `remote-launch.ts::mintTmuxName`（全仓唯一带撞名避让的铸造口）：\n" +
         "另一处精心让出 `-2`，你直接撞上去 —— 那就是 issue #76 的形状。",
-    ).toBe("s1-cc-2");
+    ).toBe("p-cc-2");
   });
 
   it("★ 没被占 ⇒ 就是基名本身（反过来钉住：它不是**恒**加后缀）", async () => {
     serveLocalTmux(["别人的-cc"]);
     await clickResume();
-    expect(resumePayload().tmuxName).toBe("s1-cc");
+    expect(resumePayload().tmuxName).toBe("p-cc");
+  });
+
+  it("★★ KR96D3：名字读得出是哪个项目，且**一个 sid 片段都没有**", async () => {
+    // 夹具的 sid 是 `s1`、cwd 是 `/p` ⇒ 名字该是 `p-cc`（从 cwd 来），不是 `s1-cc`。
+    // 用户 `R55` 裁定一逐字：「**要是可读的名字 / 不要id**」。
+    serveLocalTmux([]);
+    await clickResume();
+    const name = String(resumePayload().tmuxName);
+    expect(name).toBe("p-cc");
+    expect(
+      name.includes("s1"),
+      "会话名里还带着 sid —— sid 的载体是 tmux 的 `@ccm_sid`，不是名字",
+    ).toBe(false);
+    // 而 sid **必须还在载荷里**（后端拿它去 `set-option @ccm_sid`）：
+    // 把它一起去掉 ⇒ 这一行当场红。
+    expect(resumePayload().sessionId).toBe("s1");
   });
 
   it("★★ 本机 tmux 快照是 `null`（**不知道**）⇒ `tmuxName` 传 `null`，**绝不硬铸**", async () => {

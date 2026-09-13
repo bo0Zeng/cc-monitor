@@ -181,8 +181,9 @@ function productionDeps(input: ForkFlowInput): ForkStartDeps {
       //    ⚠ 铸名规则住 `ipc/local-tmux-name.ts`，别在这里重写基名。
       //    ⚠ 它与远端那条的 `tmuxName` **不是一回事**：远端那个是「避开源会话的名字」
       //      （`fork-start.ts::forkTmuxName`，本机那条路已被摘掉这一格）；
-      //      这里铸的是**新会话自己**的 `<sid8>-cc`，避让的是本机现有的 tmux 名。
-      const tmuxName = await mintLocalTmuxName(a.sessionId);
+      //      这里铸的是**新会话自己**的 `<项目名>-cc`，避让的是本机现有的 tmux 名。
+      //      〔`K-R96` 09-12〕基名从 cwd 派生（用户 `R55`：「要是可读的名字 / 不要id」）。
+      const tmuxName = await mintLocalTmuxName(a.cwd ?? "");
       await commands.resume_history_session({
         sessionId: a.sessionId,
         cwd: a.cwd,
