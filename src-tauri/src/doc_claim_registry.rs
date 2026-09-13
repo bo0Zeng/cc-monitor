@@ -195,6 +195,57 @@ const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
     ),
 ];
 
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-R105` `KR105D1`：**`INVARIANTS §33b` 那三问的答案，也是「描述当下」的字段**
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// # 为什么它非补不可：本模块头注点名的那次事故，就是这三问
+//
+// 头注逐字记着「**F07 自己就是这个病的受害者**：它订正了 §33b 三问的答案 ①，
+// 却漏了同一节里 11 行之前那一格」。⇒ 那一拍之后，本模块给**那一格**配了机检
+//（[`tests::the_doc_number_for_production_launch_calls_matches_reality`]），
+// **却始终没给三问的答案本身配一条** —— 于是它们又腐了两轮：
+//
+// - **③**：`K-R59`（09-11，定框 `K35`）把 `daemonless` 整档删了 ⇒ 第三问的前提不存在了。
+//   那一拍的订正**只落在 08-14 那张复裁表的 ③ 行里**，08-04 三问表里的 ③ 行原封不动。
+// - **①**：`K-P2` `D3`（09-03）把 `ccm` 那条路接到了后端的一次性口上 ⇒
+//   「起会话这一格」在**那棵树上**切过去了。`launch_wire.rs` 里逐字记了这件事
+//   （「三问的答案① 变了」），而 §33b 的表**一个字没动**。
+//
+// ⇒ 两次都不是「没人知道」，是「**知道的人写在别处**」。本组判据买的就是这一件事：
+//   **改一问所依赖的行为而不改那问的答案 ⇒ 当场红。**
+//
+// # 手法：与 `STATUS_CELLS` 逐字同形 —— 表里**不存答案**，只存「怎么量」
+//
+// 答案是一整段散文，机器比不了。⇒ 每一问在文档里必须带一个**判词**
+//（`〔现打…〕` 那一族），判词的**闭集**写在下面这张表里，**由机器挑一个**，
+// 再断言文档里出现的正是它、且**别的判词一个都不许出现**。
+// 散文怎么写不管（不做语义审查），但那个判词必须与现场一致。
+//
+// ⚠ 诚实边界，写出来别读大：它钉的是**判词**，不是那段散文。
+// 一段与判词相符、其余全说反了的答案，本条静默。它买到的是
+// 「三问的答案**不会静默地过期**」，不是「答案写得对」。
+
+/// §33b 三问 → `(问号, 那一问的判词闭集)`。**判词由机器挑，本表不存答案。**
+///
+/// 闭集第一个元素是「什么都没发生」那一档，最后一个是「这一问可以放行了」那一档 ——
+/// 顺序**不承重**（判据按相等比），写成这样只是给读的人一个方向感。
+#[cfg(test)]
+const THIRTY_THREE_B_QUESTIONS: &[(&str, &[&str])] = &[
+    (
+        "① 生产切到 daemon 的 launch 了吗",
+        &["〔现打①〕一格没切", "〔现打①〕部分切", "〔现打①〕全切"],
+    ),
+    (
+        "② attach 那条串归谁产",
+        &["〔现打②〕前端仍产 attach", "〔现打②〕后端全产 attach"],
+    ),
+    (
+        "③ daemonless 的远端还要不要能起会话",
+        &["〔现打③〕那一档还在", "〔现打③〕已退役"],
+    ),
+];
+
 /// **对不上那一栏的递减棘轮**（09-12 现打 **5** 条，全部是「读文件找针」那一支）。
 ///
 /// 🔴 **只许降。** 修好一条就把这个数调下来，**不许调上去让今天好过**。
@@ -349,7 +400,7 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
 mod tests {
     use super::{
         EnvKeyClaim, Verdict, ENV_KEY_CLAIM_SITES, FALLS_SHORT_CEILING, MEASURE_CENSUS,
-        STATUS_CELLS,
+        STATUS_CELLS, THIRTY_THREE_B_QUESTIONS,
     };
     use std::path::{Path, PathBuf};
 
@@ -672,6 +723,201 @@ mod tests {
              · 已退役的那条**又回来了** ⇒ 那是有人重新在 monitor 里拼一条 tmux 编排串\n\
                （`K-R104` 刚把它整条搬上后端帧面）—— 回去看 `account_usage.rs` 的头注。"
         );
+    }
+
+    /// 🔴🔴 **`K-R105` `KR105D1`：`§33b` 三问的答案，逐问与现场对拍。**
+    ///
+    /// 立项理由与手法住 [`THIRTY_THREE_B_QUESTIONS`] 上方那一段（本条不复述）。
+    /// 一句话：**改一问所依赖的行为而不改那问的答案 ⇒ 当场红。**
+    ///
+    /// # 三条量法，逐条写清它量的是什么
+    ///
+    /// - **①「生产切到 daemon 的 `launch` 了吗」** —— 量「哪几棵树的生产段真的发
+    ///   `create-or-attach`」。**两棵树各算一格**：monitor 自己那条 `↗` 路
+    ///   （`src-tauri/src/**.rs`）与后端自带的 CLI 面（`control/ccm/`）。
+    ///   🔴 08-14 那一版只量了前一棵 ⇒ `K-P2` `D3`（09-03）把后一棵翻正之后，
+    ///   那个读数**在它自己的尺子上仍然是对的**，而它答的那一问已经不是原来那一问了。
+    ///   ⇒ 本条把两棵树都收进来，`部分切` 与 `全切` 因此分得开。
+    /// - **②「attach 那条串归谁产」** —— 量「生产 TS 里还有没有人问座要 attach」。
+    ///   daemon **结构上不产 attach**（`control/launch.rs` 头注逐字「本模块不 attach，一次都不」，
+    ///   `parse_request` 的错文案逐字「attach 是平面 ③，不归 daemon」）⇒
+    ///   前端不产的那天，就是这一问有第二个答案的那天。
+    /// - **③「daemonless 的远端还要不要能起会话」** —— 量那一档的**三个载体**
+    ///   （落盘字段 · 界面那个 input · 数据源那条轮询回落）。
+    ///   刻意**不数 `daemonless` 这个词**：`remote-config.ts` 里还留着一处认旧配置的墓碑，
+    ///   数名字会把它读成回潮（口径与 `launch_wire.rs` 那条同源）。
+    ///
+    /// # ⚠ 剥法用的是哪一份
+    ///
+    /// TS 用 [`guard_core::strip_comment_lines`]（块注释 + 整行 + 行尾），**不是**
+    /// `production_code` —— 后者按 Rust 的 `#[cfg(test)]` 写，喂 TS 会多剥或少剥。
+    /// Rust 侧照旧 `production_code`。⇒ 注释里怎么解释这三问都不算数，只看生产段。
+    #[test]
+    fn the_three_questions_in_33b_have_todays_answers() {
+        let root = repo_root();
+        let read = |rel: &str| std::fs::read_to_string(root.join(rel)).unwrap_or_default();
+        let prod_rs = |rel: &str| guard_core::production_code(&read(rel));
+        let prod_ts = |rel: &str| guard_core::strip_comment_lines(&read(rel));
+
+        // ── 量法 ① ────────────────────────────────────────────────────────────
+        // 运行时拼，免得命中本文件自己的说明。
+        let mode = format!("\"create-or-{}\"", "attach");
+        let word = format!("create-or-{}", "attach");
+        let mut monitor_emits = false;
+        let mut scanned_rs = 0usize;
+        for (p, raw) in guard_core::scan_tree!(&root.join("src-tauri/src"), &["rs"]) {
+            // `launch_wire.rs` 的说明里逐字写着那个串（F07 立的例外，本条沿用同一条）。
+            if p.file_name().is_some_and(|n| n == "launch_wire.rs") {
+                continue;
+            }
+            scanned_rs += 1;
+            if guard_core::production_code(&raw).contains(mode.as_str()) {
+                monitor_emits = true;
+            }
+        }
+        // ★ 抽取器自检：人群没缩水（否则 `monitor_emits` 恒 false ⇒ ① 永远读成「部分切」）。
+        assert!(
+            scanned_rs >= 50,
+            "只扫到 {scanned_rs} 个 monitor 侧 `.rs` —— 遍历坏了，量法 ① 会零命中地绿"
+        );
+        let ccm: String = ["mod.rs", "argv.rs", "plan.rs"]
+            .iter()
+            .map(|f| prod_rs(&format!("remote-daemon-proto/src/control/ccm/{f}")))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            ccm.lines().count() >= 300,
+            "`control/ccm/` 三份的生产段只剩 {} 行 —— 读错了或剥法把代码也剥了，量法 ① 会零命中地绿",
+            ccm.lines().count()
+        );
+        let ccm_emits = guard_core::contains_word(&ccm, &word);
+        let a1 = match (monitor_emits, ccm_emits) {
+            (false, false) => "〔现打①〕一格没切",
+            (true, true) => "〔现打①〕全切",
+            _ => "〔现打①〕部分切",
+        };
+
+        // ── 量法 ② ────────────────────────────────────────────────────────────
+        // 座本身（`session-backend.ts`）不算 —— 它是被问的那一层，不是问的人。
+        let seat_attach = format!("SESSION_BACKEND.{}", "attach");
+        let mut askers: Vec<String> = Vec::new();
+        let mut scanned_ts = 0usize;
+        for (p, raw) in guard_core::scan_tree!(&root.join("src"), &["ts"]) {
+            let name = p
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            // 座本身不算 —— 它是被问的那一层，不是问的人。
+            if name.ends_with(".test.ts")
+                || name.ends_with(".vitest.ts")
+                || name == "session-backend.ts"
+            {
+                continue;
+            }
+            scanned_ts += 1;
+            let code = guard_core::strip_comment_lines(&raw);
+            // 整词，不是裸子串：`…attachFoo` 不算（与 `launch_wire` 那把尺子同口径）。
+            if guard_core::contains_word(&code, seat_attach.as_str()) {
+                askers.push(name);
+            }
+        }
+        assert!(
+            scanned_ts >= 100,
+            "只扫到 {scanned_ts} 份生产 TS —— 遍历坏了，量法 ② 会零命中地绿"
+        );
+        let a2 = if askers.is_empty() {
+            "〔现打②〕后端全产 attach"
+        } else {
+            "〔现打②〕前端仍产 attach"
+        };
+        // ★ 反向锚点：daemon 那条「不 attach」的结构事实还在。它没了，② 的两档都说不清。
+        // 🔴 **钉整行，不是子串**（`needle_anchor_registry` 治的那一族：匹配单位比事实小）。
+        let launch_rs = read("remote-daemon-proto/src/control/launch.rs");
+        let no_attach = "//! 开不了你面前的窗）。所以本模块**不 attach**，一次都不。";
+        assert!(
+            guard_core::pin_line(&launch_rs, no_attach).is_ok(),
+            "`control/launch.rs` 头注里那一行「本模块不 attach，一次都不」不在了 ——\n\
+             ② 这一问的整个形状建立在它上面（后端结构上开不了你面前的窗）。\n\
+             真要改，回 `INVARIANTS §33b` 与 `U8c-3` 重裁，别只改头注。"
+        );
+
+        // ── 量法 ③ ────────────────────────────────────────────────────────────
+        // 断的是**载体**不是名字（口径与 `launch_wire.rs` 那条同源，理由见本条头注）。
+        let carriers: [(&str, bool); 3] = [
+            (
+                "落盘字段 `REMOTE_HOST_FIELDS`",
+                prod_ts("src/remote-config.ts").contains(r#""daemonless","#),
+            ),
+            (
+                "机器卡片那个 input",
+                prod_ts("src/settings/machine-card.ts").contains("daemonlessInput"),
+            ),
+            (
+                "数据源那条轮询回落",
+                prod_rs("src-tauri/src/ssh_source.rs").contains("daemonless_stream_loop"),
+            ),
+        ];
+        // ★ 抽取器自检：三份语料都真的读到了（读不到只会静默返回空串 ⇒ 三格全 false ⇒ 假「已退役」）。
+        for rel in [
+            "src/remote-config.ts",
+            "src/settings/machine-card.ts",
+            "src-tauri/src/ssh_source.rs",
+        ] {
+            assert!(
+                read(rel).len() > 3000,
+                "量法 ③ 读的 {rel} 只有 {} 字节 —— 读不到的文件只会静默返回空串",
+                read(rel).len()
+            );
+        }
+        let back: Vec<&str> = carriers
+            .iter()
+            .filter(|(_, on)| *on)
+            .map(|(n, _)| *n)
+            .collect();
+        let a3 = if back.is_empty() {
+            "〔现打③〕已退役"
+        } else {
+            "〔现打③〕那一档还在"
+        };
+
+        // ── 逐问与文档对拍 ────────────────────────────────────────────────────
+        let derived = [a1, a2, a3];
+        assert_eq!(
+            THIRTY_THREE_B_QUESTIONS.len(),
+            derived.len(),
+            "三问表的行数与量法条数对不上 —— 加一问要同时加一条量法"
+        );
+        for ((q, verdicts), got) in THIRTY_THREE_B_QUESTIONS.iter().zip(derived) {
+            assert!(
+                verdicts.contains(&got),
+                "`{q}` 量出来的判词 {got:?} 不在它自己的闭集里 —— 量法与表对不上"
+            );
+            let present: Vec<&&str> = verdicts
+                .iter()
+                .filter(|v| INVARIANTS.contains(**v))
+                .collect();
+            assert_eq!(
+                present.len(),
+                1,
+                "`{q}`：`INVARIANTS.md` 里出现的判词是 {present:?} —— 必须**恰好一个**。\n\
+                 · 一个都没有 ⇒ 那一问的答案没带判词（改措辞就把本条变成零命中地绿，\n\
+                   所以宁可让它红）；\n\
+                 · 出现两个以上 ⇒ 同一问在文档里有两份互相矛盾的答案。\n\
+                 闭集：{verdicts:?}"
+            );
+            assert_eq!(
+                *present[0], got,
+                "🔴 **`{q}` 的答案过期了。**\n\
+                 文档里写着 {:?}，现打是 {got:?}。\n\
+                 · **事实前进了而答案没跟**（这一族在本节犯过至少三次：F07 · `K-R59` · `K-P2 D3`）\n\
+                   ⇒ 改文档那一格，并同轮问一句：这一问挡着的那件事，今天还挡不挡得住？\n\
+                 · **答案改了而事实没动** ⇒ 那是有人在文档里许了一个还没兑现的愿。\n\
+                 ⚠ 现场读数：① monitor 树发 `create-or-…`={monitor_emits} · `control/ccm/` 发={ccm_emits}；\n\
+                 ② 生产 TS 里还问座要 attach 的：{askers:?}；③ 那一档还在场的载体：{back:?}。",
+                present[0]
+            );
+        }
     }
 
     /// ★★ `K-R73` `KR73D3`：**普查表与 `STATUS_CELLS` 两个方向对拍**，外加那条递减棘轮。
