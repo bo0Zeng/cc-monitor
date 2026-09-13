@@ -195,7 +195,21 @@ const PROTO_VERSION: u32 = 1;
 ///   本轮**没做**（本工作树也没铺 `src-tauri/embedded-daemons/`）。
 ///   🔴 **别把它读成「远端画面预览通了」**：本件只出 daemon 这一侧的原语，
 ///   monitor 那条 `capture_remote_pane` 一个字节没动 —— 欠账换了个名字，没有被结掉。
-const BUILD_ID: &str = "p2g-capture-pane";
+///
+/// - p2h-oneshot-session〔`K-R87` 09-13〕：新增 `--oneshot-session` —— **一次性会话**，
+///   起一个到点**自己会死**的 tmux 会话（`new-session -d -P -F '#{session_id}'` ＋
+///   一条 `setsid sh -c 'sleep N; tmux kill-session -t $N'` 的**外部**看门狗）。
+///   `K-R86` 出的是「看得见」那一半（抓一屏），这一条是「有寿命」那一半 ——
+///   在它之前 daemon 建得出会话、杀得掉会话，**唯独没有「建出来的这个到点自己没」**。
+///   ⚠ **必须 bump**：又一条**新增的子命令**，已部署的旧 daemon 上它落进
+///   `unknown argument` + exit 2，而调用方判「这台机有没有这条能力」看的是 build_id
+///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
+///   （p1r / p1t / G2 / p2d / p2e / p2g 那六次的同一个形状）。
+///   ★ 同 p2d / p2e / p2g 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
+///   归发版那一拍，本轮**没做**（本工作树也没铺 `src-tauri/embedded-daemons/`）。
+///   🔴 **别把它读成「用量探针搬进后端了」**：本件只出 daemon 这一侧的原语，
+///   monitor 的 `account_usage` 那条 shell 串编排**一个字节没动**。
+const BUILD_ID: &str = "p2h-oneshot-session";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src-tauri/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -1144,6 +1158,10 @@ const SUBCOMMANDS: &[&str] = &[
     "--list-subagents",
     "--list-projects",
     "--list-sessions",
+    // `K-R87`：带看门狗的一次性会话。登记在这里的理由与上面那几条逐字相同 ——
+    // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
+    // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那个会话名。
+    "--oneshot-session",
     "--ping",
     "--read-session",
     "--read-session-from-offset",
@@ -1322,6 +1340,42 @@ mod stream_flag_tests {
             )
         });
     }
+
+    /// ★★ `KR87D1` 的**接线那一半**：`--oneshot-session` 真的**够得到**那条原语。
+    ///
+    /// # 失效方向（件文件逐字点名的那个）：**别判「串里有 `setsid` / `sleep` 字面量」**
+    ///
+    /// `control/ccm/plan.rs` 今天就有一条同形的串（信任框那条兜底），按字面量判会**恒绿**。
+    /// 本条断的是两处**承重点**，两处都不是「某个字面量出现过」：
+    ///
+    /// 1. **闸门**：`is_query_mode` 认它。不认 ⇒ 被当未知 flag ⇒ 打一行 warn 之后
+    ///    **照常进流模式**，CLI 面看上去「存在」却永远调不到（`p2b` 08-13 实测过这个形状）。
+    /// 2. **分派臂**：生产段里那一行**整行**就是「把它交给原语本体」。
+    ///    整行相等（`pin_line`）比 `contains` 强一格：撑大成别的表达式时那一行就不见了。
+    ///
+    /// ⚠ 「那个会话到点真的不在了」不在本条射程内 —— 那一格由
+    /// `control::oneshot_session::tests::the_session_is_gone_at_its_deadline_while_its_neighbour_stays`
+    /// 在**真 tmux**（隔离 socket）上断，且带一个同台 server 的阴性对照。两条合起来才是 `KR87D1`。
+    #[test]
+    fn the_oneshot_session_subcommand_is_actually_reachable() {
+        let flag = "--oneshot-session".to_string();
+        assert!(
+            super::is_query_mode(std::slice::from_ref(&flag)),
+            "`--oneshot-session` 没进 `is_query_mode` 的闸门 —— 它会静默变成「起了个流」"
+        );
+        let prod = crate::guard_support::production_code(include_str!("main.rs"));
+        guard_core::pin_line(
+            &prod,
+            "Some(\"--oneshot-session\") => control::oneshot_session::run(&args),",
+        )
+        .unwrap_or_else(|e| {
+            panic!(
+                "一次性查询的分派里没有那条把 `--oneshot-session` 交给原语本体的臂：{e}\n\
+                 ⇒ 闸门放它进查询模式，而下面没人接 ⇒ 它落进 `_` 臂走历史查询、\n\
+                 报 `unknown argument` + exit 2。"
+            )
+        });
+    }
 }
 
 #[tokio::main]
@@ -1373,6 +1427,9 @@ async fn main() {
             // `K-R86`：只读抓屏原语。**抓一次、立刻返回** —— 轮询归 `K-R87`，
             // 零定时器铁律（`no_timer_guard`）看着本 crate 的每一份生产段。
             Some("--capture-pane") => control::capture_pane::run(&args),
+            // `K-R87`：起一个到点自己会死的一次性会话。看门狗是**外部进程**，
+            // 不在本 crate 的源码文本里 —— 零定时器铁律的人群逐字排除「被起进程的行为」。
+            Some("--oneshot-session") => control::oneshot_session::run(&args),
             Some("--search") => observe::search_query::run(&agent_home, &args),
             // P7c-1：列一个父会话的 subagent 候选。**只列不挑**（匹配与排序留在 monitor）。
             Some("--list-subagents") => observe::history_query::list_subagents(&agent_home, &args),

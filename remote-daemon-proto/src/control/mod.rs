@@ -20,6 +20,15 @@
 //!   （它只记「起什么程序」），所以另有 `readonly_guard::capture_is_read_only` 逐元素钉 argv。
 //!   ⚠ 它**只抓一次就返回** —— 轮询归 `K-R87`，别在这里顺手做掉（`KR86D3`）。
 //!   ⚠ 它归本层的理由**不是** `gate` 那条「有决策权」（定框 C13），逐条写在它自己的头注里。
+//! - [`oneshot_session`]（`K-R87`，09-13）：**起一个到点自己会死的 tmux 会话**
+//!   （`new-session -d` ＋ 一条 `setsid sh -c 'sleep N; tmux kill-session …'` 的外部看门狗）。
+//!   起进程**两处**（`tmux` 一处、看门狗那个 launcher 一处），都已登记进
+//!   `readonly_guard::spawn_registry::ALLOWED`。
+//!   🔴 **看门狗不许搬进 daemon 代码**：零定时器铁律的人群是「本 crate `src/` 的源码文本」，
+//!   而**被起进程的行为不在里面** —— 把那个「等 N 秒」写进本层当场撞铁律（`KR87D1`）。
+//!   ⚠ 名字**前缀专属**（`ccm-oneshot-`）：撞名**拒绝**，绝不像 [`launch`] 的
+//!   `create-or-attach` 那样静默接回（接回等于替别人的会话定了死期，`KR87D2`）。
+//!   ⚠ 它**只起一个有寿命的会话** —— 「隔多久看一眼画面」归 `K-R101`，别在这里顺手做掉。
 //! - [`kill`]（F04a）：**杀一个 tmux 会话**。过 §34 三道门（Gate 3 = `windows==1` 只给它），
 //!   对 `#{session_id}` 句柄下手而不是名字。⚠ 本模块落地 ≠ monitor 那条路已切过来（那是 F04b，C6 顺序）。
 //! - [`launch`]（U8a-2b）：**起 tmux 会话 / 往已有会话键入载荷**（U8a 分解里的「平面 ②」）。
@@ -53,5 +62,6 @@ pub(crate) mod gate;
 pub(crate) mod identity_tag;
 pub(crate) mod kill;
 pub(crate) mod launch;
+pub(crate) mod oneshot_session;
 pub(crate) mod resolve_query;
 pub(crate) mod tmux_hook;
