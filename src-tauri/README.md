@@ -133,7 +133,7 @@ src-tauri/
 | `stream_history_sessions_in_project` | `{ projectDir, onEntry }` | `u32` (count) | 项目组展开（流式 Channel；v2.2 取代非流式版） |
 | `stream_read_session_jsonl` | `{ jsonlPath, onChunk }` | `u32` (count) | 点击历史会话进入只读视图（流式 Channel） |
 | `delete_history_session` | `{ sessionId, jsonlPath }` | `()` | 物理删除会话（二次确认后） |
-| `create_branch_session` (F62) | `{ sourceJsonlPath, messageUuid }` | `BranchResult{ sessionId, jsonlPath }` | 从历史某轮建分支：复制 `[根…该消息]` 前缀成新 `<new-sid>.jsonl`（原生 `forkedFrom` 格式，原会话不改，只写新 sid、已存在则拒）。守卫 `validate_branch_source`（canonicalize+starts_with(projects)+.jsonl）。§1 正交澄清 |
+| `create_branch_session` (F62) | `{ sourceSessionId, messageUuid }` | `BranchResult{ sessionId, jsonlPath }` | 从历史某轮建分支：复制 `[根…该消息]` 前缀成新 `<new-sid>.jsonl`（原生 `forkedFrom` 格式，原会话不改，只写新 sid、已存在则拒）。〔`K-R88`〕入参与远端那条同形（都收 sid）；找那份源文件走两侧共用的 `branch_core::find_session_file`。§1 正交澄清 |
 | `update_history_metadata` | `{ sessionId, patch }` | `EntryMetadata` | star / 重命名 / 隐藏 |
 | `resume_history_session` | `{ sessionId, cwd, launcher? }` | `()` | ↺ 按钮（v2.8.1：拉起 wt.exe / powershell.exe，读 profile + `cc` 优先回退 `claude`；F34 起 `launcher` 自定义启动命令）。F62 建分支后一键 resume 复用此命令 |
 | `aggregate_usage_all` (F88a #52) | `{ onRow }` (Channel) | `u32` (count) | 用量视图打开：全扫本地会话，按 requestId 逐字段 MAX 聚合 token，逐会话经 Channel 流式回 `SessionUsageRow` |
