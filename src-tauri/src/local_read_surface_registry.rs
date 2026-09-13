@@ -115,14 +115,29 @@ mod tests {
             "no-counterpart",
             2,
             "`list_history_projects`(168/169) 遍历 records 根列项目。\
-             ⚠ **今天的查询集下迁不了、不属能退役的范围** —— 逐字段量过：\
-             daemon `--list-projects` 每行只给 `dirName` / `projectPath` / `sessionCount` / \
-             `lastActivityMs` **四个字段**，而本函数还要 `starred_count` / `hidden_count`（本机\
-             metadata，**按会话 sid 查**）与 `has_live`（`SessionMap` 活状态）—— \
-             `analyze_project_dir` 正是靠 `read_dir` + 从文件名推 sid 才算得出它们。\
-             ⇒ 要么 daemon 补「每项目的会话 sid 清单」，要么每个项目再来一次 `--list-sessions`\
-             （N 次进程 spawn，而这是用户常开的界面）。\
-             ★ **退役条件：daemon 的 `--list-projects` 每行带上会话 sid 清单**（或等价字段）。",
+             🔴 **〔`K-R83` 09-12〕原先那条退役条件已经兑现了，这一格因此重写过一次。**\
+             改前逐字：「daemon `--list-projects` 每行只给 `dirName` / `projectPath` / \
+             `sessionCount` / `lastActivityMs` **四个字段**……⇒ 要么 daemon 补「每项目的会话 \
+             sid 清单」，要么每个项目再来一次 `--list-sessions`（N 次进程 spawn，而这是用户\
+             常开的界面）。★ **退役条件：daemon 的 `--list-projects` 每行带上会话 sid 清单**\
+             （或等价字段）。」\
+             **现打（`K-R83` 落地后）**：那一行是 **5 个字段** —— 多的那个是 `sessionIds`\
+             （住址 `remote-daemon-proto/src/observe/history_query.rs::project_row`，\
+             与 `sessionCount` 恒等长、同一趟 `read_dir` 零额外 I/O）。\
+             ⇒ `starred_count` / `hidden_count`（本机 metadata，**按会话 sid 查**）与 \
+             `has_live`（`SessionMap`，**也按 sid 查**）三个数**今天都算得出**，\
+             而且是**一次调用**（`remote_history::fanout_list_projects` 已经这么做了，\
+             判据 `KR83D3` 数着它的 exec 次数）。\
+             ⚠ **所以这一格今天欠的不再是「后端缺字段」，是「本机这条路还没改走后端」** ——\
+             那是另一件事的体量（`list_history_projects` 整条改调后端 + codex 变体，\
+             见下面那条 codex 的登记），**别把它读成「还在等后端补东西」**。\
+             ⚠ **分类今天有争议，`K-R83` 不擅自动它**：`no-counterpart` 的字面含义是\
+             「daemon 侧没有对侧」，而字段这一侧已经有了 ⇒ 严格说它该转成 `reader`，\
+             而那会把本文件那条 `readers` 断言从 8 顶到 9、动棘轮的账。\
+             **改分类属「谁去改本机这条路」那一件的射程，不属本件** —— 本件只兑现字段那一侧，\
+             已在件文件 `§8` 报 PM 裁。\
+             ★ **退役条件（重写）：`list_history_projects` 改走后端那条 `--list-projects`**\
+             —— 字段这一侧的前置**已经不欠了**。",
         ),
         (
             "src/history.rs",
