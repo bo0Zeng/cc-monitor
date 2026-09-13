@@ -398,9 +398,9 @@ export class SessionViewer {
     if (!uuid) return;
     attachBranchButton(cardEl, {
       uuid,
-      jsonlPath,
-      // 远端那条路只认 sid。查看器手上没有独立的 sid 字段，但历史会话的文件名**就是** sid
-      // （`remote_history::jsonl_stem` 是同一口径），所以从路径取。
+      // 两条路都只认 sid（〔`K-R88` 09-13〕本机那条也收成 sid 了）。查看器手上没有独立的
+      // sid 字段，但历史会话的文件名**就是** sid（`remote_history::jsonl_stem` 是同一口径），
+      // 所以从路径取。
       sourceSessionId: sidFromJsonlPath(jsonlPath),
       origin,
       cwd,

@@ -2991,6 +2991,13 @@ mod tests {
                 "the_remote_path_actually_asks_the_daemon",
                 1,
             ),
+            // 🔴 〔`K-R88` 09-13〕同一形，第三件：**「按 sid 找那份会话文件」收成一份之后，
+            //    monitor 侧那个收路径的源守卫 `validate_branch_source` 整个不在了**
+            //    （入参从路径收成 sid，找那一步走 `branch_core::find_session_file`，两侧同一份）。
+            //    这两句散文说的正是**「那道门原先长什么样、为什么今天不需要它了」** ——
+            //    删掉的是线索不是病 ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+            ("doc/ARCHITECTURE.md", "validate_branch_source", 1),
+            ("doc/INVARIANTS.md", "validate_branch_source", 1),
         ];
 
         let corpus = dead_name_corpus();

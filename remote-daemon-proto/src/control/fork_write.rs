@@ -26,11 +26,20 @@
 //! # 变换逻辑不在这里
 //!
 //! 记录变换走共享 crate `branch-core`（monitor 与 daemon **同一份实现**，G1）。
-//! 本模块只负责：定位源文件 → 路径守卫 → 调变换 → `O_EXCL` 落盘。
+//!
+//! # ★〔`K-R88` 09-13〕**「找文件」也不在这里了**
+//!
+//! 定位源文件那一步先前本模块自己有一份，monitor 侧另有一份、而且**收的入参形状都不一样**
+//! （那边收路径、这边收 sid）。`K-R88` 把它收进同一个共享 crate：
+//! `branch_core::find_session_file`，两侧都调它，入参形状统一成 sid。
+//!
+//! ⇒ 本模块今天只剩：**读 → 调变换 → `O_EXCL` 落盘**。
+//! 🔴 **写那一半刻意留在这里**（`K-R88` 的射程逐字：本件在收「找」，不搬「写」）——
+//! 它是本 crate 只读白名单上那一条，搬它要动的是白名单，那是另一件事。
 
 // U2：合并去重（原来这里各有一份逐字相同的副本）；`S3` 把它搬去了 agent 适配层。
 use crate::agents::claudecode::paths::projects_root;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// 成功时 stdout 输出的一行 JSON（camelCase，与 monitor 侧 `BranchResult` 同形）。
 #[derive(Debug, serde::Serialize)]
@@ -38,36 +47,6 @@ use std::path::{Path, PathBuf};
 struct ForkResult {
     session_id: String,
     jsonl_path: String,
-}
-
-/// 在 `<claude_dir>/projects/**/` 里按 sid 找那份 `<sid>.jsonl`。
-///
-/// **不接受调用方传路径**（monitor 侧那个 `validate_branch_source` 收的是路径，
-/// 这里刻意只收 sid）：daemon 是被 ssh 远程调起来的，少一个可被构造的路径入参，
-/// 就少一条路径穿越的攻击面。sid 先过格式校验，再只在 projects 下按文件名匹配。
-fn find_session_file(agent_home: &Path, sid: &str) -> Result<PathBuf, String> {
-    if !is_plain_sid(sid) {
-        return Err(format!("refuse fork: invalid session id {sid:?}"));
-    }
-    let root = projects_root(agent_home);
-    let want = crate::agents::claudecode::records::session_file_name(sid);
-    for entry in walkdir::WalkDir::new(&root)
-        .max_depth(2)
-        .into_iter()
-        .filter_map(Result::ok)
-    {
-        if entry.file_type().is_file() && entry.file_name().to_str() == Some(want.as_str()) {
-            return Ok(entry.into_path());
-        }
-    }
-    Err(format!(
-        "refuse fork: session {sid} not found under the session tree"
-    ))
-}
-
-/// sid 只许 `[A-Za-z0-9-]`。挡掉 `..`、`/`、`\` 与任何能拼出别处路径的字符。
-fn is_plain_sid(s: &str) -> bool {
-    !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }
 
 /// 单份会话 jsonl 的读取上限。
@@ -158,7 +137,9 @@ fn run_inner(agent_home: &Path, args: &[String]) -> Result<ForkResult, String> {
         .get(2)
         .ok_or("usage: --fork-session <source-sid> <message-uuid>")?;
 
-    let source = find_session_file(agent_home, source_sid)?;
+    // 🔴 「找文件」**这一句就是全部** —— 本模块只填「记录树的根在哪」这一格
+    //（那是 agent 适配层的知识），找本身两侧同一份（`K-R88`）。
+    let source = branch_core::find_session_file(&projects_root(agent_home), source_sid)?;
     let lines = read_jsonl(&source)?;
     let new_sid = new_session_id(source_sid);
     let records = branch_core::build_branch_records(&lines, message_uuid, source_sid, &new_sid)?;
@@ -203,6 +184,7 @@ fn write_new_file(out_path: &Path, records: &[serde_json::Value]) -> Result<(), 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     fn tmp(tag: &str) -> PathBuf {
         let p = std::env::temp_dir().join(format!("ccm-fork-{tag}-{}", std::process::id()));
@@ -276,11 +258,16 @@ mod tests {
         std::fs::remove_dir_all(&root).ok();
     }
 
+    /// 找那一份走的是共享 crate —— 这里钉的是**这条路真的经过它**。
+    fn find_here(root: &Path, sid: &str) -> Result<PathBuf, String> {
+        branch_core::find_session_file(&projects_root(root), sid)
+    }
+
     #[test]
     fn rejects_path_traversal_sid() {
         let root = tmp("trav");
         for bad in ["../../etc/passwd", "a/b", "..", "a\\b", ""] {
-            assert!(find_session_file(&root, bad).is_err(), "sid {bad:?} 应被拒");
+            assert!(find_here(&root, bad).is_err(), "sid {bad:?} 应被拒");
         }
         std::fs::remove_dir_all(&root).ok();
     }
@@ -288,8 +275,48 @@ mod tests {
     #[test]
     fn missing_session_is_an_error_not_a_panic() {
         let root = tmp("missing");
-        let err = find_session_file(&root, "nope").unwrap_err();
+        let err = find_here(&root, "nope").unwrap_err();
         assert!(err.contains("not found"), "got: {err}");
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// ★★ `KR88D2` 第三刀（daemon 这一侧）：**给一个查不到的 sid，处置是报错，
+    /// 不是「树上有什么就拿什么」。**
+    ///
+    /// 树上**真的有两份**别的会话 —— 少了这一步，下面那条断言在空树上也绿，
+    /// 而「静默取第一个」正是它要逮的那一形。
+    /// monitor 侧的同形判据是 `history·rs::an_unknown_session_id_is_refused_not_silently_substituted`，
+    /// 两条读的是同一份实现。
+    #[test]
+    fn an_unknown_session_id_is_refused_not_silently_substituted() {
+        let root = tmp("unknown");
+        seed(&root, "aaa");
+        seed(&root, "bbb");
+        // 反向自检：树上真有东西可被「随手挑」。
+        assert!(find_here(&root, "aaa").is_ok(), "夹具没造出可被挑中的会话");
+        let err = run_inner(&root, &sargs(&["--fork-session", "ccc", "u2"])).unwrap_err();
+        assert!(
+            err.contains("not found") && err.contains("ccc"),
+            "查不到的 sid 应当报错并点名，实得：{err}"
+        );
+        std::fs::remove_dir_all(&root).ok();
+    }
+
+    /// ★ 符号链接不算命中 —— 记录树里一条指向界外的链接，**分叉不到它**。
+    ///
+    /// 这一半原先只有 monitor 那条路有（靠 canonicalize 两边比前缀）；
+    /// 收成一份之后两侧同时拿到。
+    #[cfg(unix)]
+    #[test]
+    fn a_symlink_inside_the_tree_is_not_a_hit() {
+        let root = tmp("symlink");
+        let outside = root.join("secret.jsonl");
+        std::fs::write(&outside, "{}\n").unwrap();
+        let link = root.join("projects").join("proj").join("linked.jsonl");
+        std::os::unix::fs::symlink(&outside, &link).unwrap();
+        let err = find_here(&root, "linked").unwrap_err();
+        assert!(err.contains("not found"), "got: {err}");
+        assert!(outside.exists(), "界外那份被动过了");
         std::fs::remove_dir_all(&root).ok();
     }
 

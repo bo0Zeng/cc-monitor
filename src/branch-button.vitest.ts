@@ -46,26 +46,25 @@ describe("attachBranchButton", () => {
 
   it("挂上按钮并给宿主加定位类", () => {
     const el = card();
-    attachBranchButton(el, { uuid: "u1", jsonlPath: "/p/s.jsonl", sourceSessionId: "src-sid", onForked: () => {} });
+    attachBranchButton(el, { uuid: "u1", sourceSessionId: "src-sid", onForked: () => {} });
     expect(btnOf(el)).not.toBeNull();
     expect(el.classList.contains("has-branch-btn")).toBe(true);
   });
 
   it("★ 幂等：增量重渲会重复调，不能长出第二个按钮", () => {
     const el = card();
-    const o = { uuid: "u1", jsonlPath: "/p/s.jsonl", sourceSessionId: "src-sid", onForked: () => {} };
+    const o = { uuid: "u1", sourceSessionId: "src-sid", onForked: () => {} };
     attachBranchButton(el, o);
     attachBranchButton(el, o);
     attachBranchButton(el, o);
     expect(el.querySelectorAll(".viewer-branch-btn")).toHaveLength(1);
   });
 
-  it("点击 → 带上 uuid 与源路径调后端，成功后回调拿到新 sid", async () => {
+  it("点击 → 带上 uuid 与源 sid 调后端，成功后回调拿到新 sid", async () => {
     const el = card();
     let got: string | null = null;
     attachBranchButton(el, {
       uuid: "u7",
-      jsonlPath: "/p/src.jsonl",
       sourceSessionId: "src-sid",
       onForked: (r) => (got = r.sessionId),
     });
@@ -73,7 +72,7 @@ describe("attachBranchButton", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(created.args[0]).toEqual({
-      sourceJsonlPath: "/p/src.jsonl",
+      sourceSessionId: "src-sid",
       messageUuid: "u7",
     });
     expect(got).toBe("new-sid-1234");
@@ -103,7 +102,7 @@ describe("G5：off-main 的判据与呈现", () => {
     document.body.appendChild(wrap);
     const el = document.createElement("div");
     wrap.appendChild(el);
-    attachBranchButton(el, { uuid: "u1", jsonlPath: "/p/s.jsonl", sourceSessionId: "src-sid", onForked: () => {} });
+    attachBranchButton(el, { uuid: "u1", sourceSessionId: "src-sid", onForked: () => {} });
     const b = btnOf(el)!;
     b.dispatchEvent(new Event("mouseenter"));
     expect(b.title).toContain("ESC 回退");
@@ -113,7 +112,7 @@ describe("G5：off-main 的判据与呈现", () => {
 
   it("★ on-main 的 tooltip 不许提「回退」（否则每条消息都在吓唬人）", () => {
     const el = card();
-    attachBranchButton(el, { uuid: "u1", jsonlPath: "/p/s.jsonl", sourceSessionId: "src-sid", onForked: () => {} });
+    attachBranchButton(el, { uuid: "u1", sourceSessionId: "src-sid", onForked: () => {} });
     const b = btnOf(el)!;
     b.dispatchEvent(new Event("mouseenter"));
     expect(b.title).not.toContain("ESC 回退");
@@ -123,7 +122,7 @@ describe("G5：off-main 的判据与呈现", () => {
   it("★ tooltip 在指上去那一刻才定 —— 一条消息会从 on-main 变成 off-main", () => {
     // attach 时定死就会说谎：ESC 回退会把原本主线的一段甩进折叠块。
     const el = card();
-    attachBranchButton(el, { uuid: "u1", jsonlPath: "/p/s.jsonl", sourceSessionId: "src-sid", onForked: () => {} });
+    attachBranchButton(el, { uuid: "u1", sourceSessionId: "src-sid", onForked: () => {} });
     const b = btnOf(el)!;
     b.dispatchEvent(new Event("mouseenter"));
     expect(b.title).not.toContain("ESC 回退");
@@ -146,11 +145,15 @@ describe("G6：本机 / 远端走两条不同的 IPC", () => {
     created.which.length = 0;
   });
 
-  it("★ 没有 origin → 本机命令，带的是**路径**", async () => {
+  /**
+   * ★★〔`K-R88` 09-13〕本机那条**也只带 sid** —— 两条命令的入参形状从此一致。
+   * 原文逐字留着：本条原来叫「带的是**路径**」，断言的是 `sourceJsonlPath`。
+   * 那不是笔误，是当时的事实；收成一份「按 sid 找那份文件」之后它才不成立。
+   */
+  it("★ 没有 origin → 本机命令，带的也是 **sid**，且一个路径字段都没有", async () => {
     const el = card();
     attachBranchButton(el, {
       uuid: "u1",
-      jsonlPath: "/p/src.jsonl",
       sourceSessionId: "src-sid",
       onForked: () => {},
     });
@@ -158,7 +161,11 @@ describe("G6：本机 / 远端走两条不同的 IPC", () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(created.which).toEqual(["local"]);
-    expect(created.args[0]).toEqual({ sourceJsonlPath: "/p/src.jsonl", messageUuid: "u1" });
+    expect(created.args[0]).toEqual({ sourceSessionId: "src-sid", messageUuid: "u1" });
+    expect(
+      JSON.stringify(created.args[0]),
+      "本机命令里也不该再出现路径字段",
+    ).not.toContain("Path");
   });
 
   /**
@@ -170,7 +177,6 @@ describe("G6：本机 / 远端走两条不同的 IPC", () => {
     const el = card();
     attachBranchButton(el, {
       uuid: "u9",
-      jsonlPath: "/本机/看到的/路径.jsonl",
       sourceSessionId: "remote-src-sid",
       origin: "aya",
       onForked: () => {},
@@ -193,7 +199,6 @@ describe("G6：本机 / 远端走两条不同的 IPC", () => {
     const el = card();
     attachBranchButton(el, {
       uuid: "u1",
-      jsonlPath: "/p/s.jsonl",
       sourceSessionId: "s",
       origin: null,
       onForked: () => {},
