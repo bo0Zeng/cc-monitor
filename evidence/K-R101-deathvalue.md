@@ -228,3 +228,20 @@ vite 报 `TransformPluginContext.error`）：
 
 逐条与「仍绿的为什么仍绿」写在件文件 `§3-5`。
 
+## 收尾那趟 —— 量于 `5f2425f`（交回时的分支尖）
+
+```
+GATE: FAIL —— pb check[backend-consolidation]（===== pb check: FAIL=1 BROKEN=0 =====）
+  ok  hooks 11 · fmt 1 · fmt-daemon 1 · winchk 1 · cargo 1598（9 个包合计）
+  ok  generated 与 Rust 源一致 · daemon 742 · npm 1722
+  ok  e2e 12/8/46/45
+  FAIL pb check —— [J3 陈账] INDEX.md 比源文件旧 —— 重跑 `pb index` 落盘
+```
+
+🔴 **前 12 格与 `M1c`（`353b69a`）逐个相同** —— `5f2425f` 只加了 `evidence/` 两份留档，
+代码面一个字节没动。
+
+🔴 **第 13 格那条红是我写件文件 `§3`/`§8` 造成的计划仓陈账**，与代码面无关：
+它读的是**计划工作区**，前 12 格读的是**代码工作树**；那趟跑的全程我只写计划仓、
+没碰过工作树。`pb index` 是生成命令，窗口开着不许跑（`brief` 第 19 条）⇒ **归 PM 收窗口那一拍**
+（先 `freeze --verify` 再跑）。
