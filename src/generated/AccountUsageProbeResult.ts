@@ -2,7 +2,11 @@
 
 export type AccountUsageProbeResult = { 
 /**
- * true = 拿到了屏幕文本（不代表内容可解析——解析是 TS 侧纯函数 `parseUsageCapture` 的职责）。
+ * true = 拿到了屏幕文本。
+ *
+ * ⚠ **它不说那屏上是什么** —— `R59` 之后生产路上没有解析层，
+ * `captured=true` 的唯一含义是「抓到了」，**包括抓到一片空白**
+ * （`KR101D1` ③：空屏是成功，把它判成失败是明令禁止的那一形）。
  */
 captured: boolean, 
 /**

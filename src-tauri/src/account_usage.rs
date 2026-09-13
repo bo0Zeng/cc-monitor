@@ -4,7 +4,14 @@
 //! 必须真的起一个已登录的 claude 会话跑 `/usage` 斜杠命令、capture-pane 抓屏解析。
 //!
 //! **本模块只负责编排一次性探针会话本身**（建/等/送键/抓屏/清理），完全不理解 `/usage`
-//! 输出的语义——那是 TS 侧 `src/account-usage-parse.ts` 纯函数的职责。
+//! 输出的语义。
+//!
+//! 🔴 **〔`K-R101`/`R59` 09-13 订正〕上面那句话后半截原写「——那是 TS 侧
+//! `src/account-usage-parse.ts` 纯函数的职责」，今天它是假的**：`R59`〔用 09-13〕逐字
+//! 「解析层代码保留, 但是功能先退役」⇒ **生产路上没有解析这一层了**。抓回去的那一屏
+//! 由 `src/account-usage.ts` **原样**交给界面（`usageScreenEl`），用户自己看。
+//! 解析器与它的 vitest、冻结夹具仍在盘上（退役≠删除），墓碑住那份文件头部。
+//! ⇒ 本模块的产出从此**只有一个消费者语义**：那一屏字节。
 //!
 //! ⚠ **U8c-2a 起载荷不再由 TS 传进来** —— IPC 收的是**结构化账号表态**
 //! （`config_dir: Option<String>`），载荷由 `backend::control::payload::usage_probe_payload` 编译
@@ -75,8 +82,12 @@ const QUIESCENCE_POLL_INTERVAL_MS: u32 = 500;
 /// 3s 是**预算，不是测量值**：本仓库不允许起真实已认证的 claude 去测真实渲染耗时
 /// （消耗真实订阅额度、且与用户当前会话交互不可控）。取 3s 的依据是它显著大于回显与
 /// TUI 重绘的时间尺度（~10ms 级），又装得进下面的时间预算。**残余风险如实说**：真 claude
-/// 若在渲染途中静止超过 3s（如网络请求卡顿），仍会抓早 —— 那种情况下解析器返回
-/// `unrecognized` 并把原始屏带回 UI（"复制诊断文本"），是**可见失败，不是静默错值**。
+/// 若在渲染途中静止超过 3s（如网络请求卡顿），仍会抓早 —— 🔴 **〔`K-R101`/`R58` 09-13
+/// 订正〕原话接着写「那种情况下解析器返回 `unrecognized` 并把原始屏带回 UI」，
+/// 那半句今天不成立（生产路零解析）。今天的兜底更硬：抓早了 ⇒ **用户直接看见那半截屏**，
+/// 按刷新再抓一次。★ `R58` 真正买到的是这个 —— 把一个**证不了**的判据（解析得出）
+/// 换成一个**能证**的判据（画面两次抓一样）＋ 一个**看得见**的兜底（人）。
+/// 仍然是**可见失败，不是静默错值**。
 const QUIESCENCE_STILL_POLLS: u32 = 6;
 /// 两段等待的轮询上限**分开给**——它们等的不是一回事，预算也不该平摊。
 ///
@@ -94,7 +105,11 @@ const EXEC_TIMEOUT_SECS: u64 = 25;
 #[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct AccountUsageProbeResult {
-    /// true = 拿到了屏幕文本（不代表内容可解析——解析是 TS 侧纯函数 `parseUsageCapture` 的职责）。
+    /// true = 拿到了屏幕文本。
+    ///
+    /// ⚠ **它不说那屏上是什么** —— `R59` 之后生产路上没有解析层，
+    /// `captured=true` 的唯一含义是「抓到了」，**包括抓到一片空白**
+    /// （`KR101D1` ③：空屏是成功，把它判成失败是明令禁止的那一形）。
     pub captured: bool,
     /// `captured=true` 时的 capture-pane 原始文本。
     pub raw: Option<String>,
@@ -131,7 +146,9 @@ fn poll_interval_secs() -> String {
 ///
 /// ★ 2026-07-31（E42）重做。原判据是「连续两次一致且非空」，间隔 0.5s ⇒ send-keys
 /// `/usage` 之后 t=0.5s / t=1.0s 抓到的都还是渲染前的画面，两次相等 ⇒ 立刻 break ⇒
-/// 抓回去的屏上根本没有 /usage 面板。用户实测症状正是「抓到了屏幕但认不出格式」。
+/// 抓回去的屏上根本没有 /usage 面板。用户实测症状正是「抓到了屏幕但认不出格式」
+/// （⚠ 那句症状是 `R59` **之前**的说法 —— 那时有解析层，抓早了才会说「认不出格式」；
+/// 今天同样的抓早会直接把半截屏摆给用户看。**这一段是来历，不是现状描述。**）。
 ///
 /// 判据两半，**证据强度不同，别当成一回事**：
 ///
@@ -446,6 +463,64 @@ async fn run_local_probe(_cmd: String) -> Result<AccountUsageProbeResult, String
         ),
     })
 }
+
+/// 🔴 **`KR101D4`（`K33` 逐字「所有命令只许有一处，其他都是根据传参来调用」）的登记表。**
+///
+/// 一行 = 探针编排里的**一步**：`(这一步干什么, 今天由谁渲染, daemon 上已经拥有这个动词的那条命令)`。
+///
+/// # 它买到什么、买不到什么 —— **两句都要读**
+///
+/// **买到的**（由 [`tests::the_probe_is_a_composition_of_commands_the_daemon_already_has`] 钉）：
+/// ① 表里点名的每一条 daemon 命令**今天真的在 daemon 的命令面上**（现打 `SUBCOMMANDS`，
+///    不是抄一份名单）；② daemon 的命令面上**没有一条「整条探针」式的大动作**
+///    —— `§0c` 逐字点名的那个失效方向（新开 `--usage-probe`，把一份 shell 串换成一份
+///    Rust 串，命令是少了一处，**编排仍然只有一份实现在替调用方做决定**）；
+/// ③ 这一步是**组合**：owner 列至少四条互不相同的命令，塌成一条就红。
+///
+/// 🔴 **买不到的（如实登记，别读大）**：「谁渲染」那一列今天**全是 `monitor`** ——
+/// 也就是说 **编排还没有搬走**。本表是那笔欠账的**住址**，不是它的兑现。
+/// 为什么本轮没搬、三条候选各自的实测代价、以及搬它需要的落点在哪几个写区外的文件里，
+/// 逐条写在 `features/K-R101-用量探针的tmux编排整条搬进daemon.md#§8`。
+/// ⚠ **别把本表的绿读成「第 7 行清了」。**
+const PROBE_ORCHESTRATION_STEPS: &[(&str, &str, &str)] = &[
+    (
+        "清掉同名残留",
+        "monitor（build_usage_probe_cmd 渲染 `tmux kill-session`）",
+        "--kill",
+    ),
+    (
+        "建会话（固定几何 -x/-y）",
+        "monitor（build_usage_probe_cmd 渲染 `tmux new-session -d -x -y`）",
+        "--launch",
+    ),
+    (
+        "挂自毁看门狗（到点自己死）",
+        "monitor（build_usage_probe_cmd 渲染 `setsid sh -c` 那条自毁看门狗）",
+        "--oneshot-session",
+    ),
+    (
+        "送启动载荷 / 送 `/usage`",
+        "monitor（build_usage_probe_cmd 渲染两次 `tmux send-keys`）",
+        "--launch",
+    ),
+    (
+        "抓一屏",
+        "monitor（quiescence_wait ＋ 收尾各渲染一次 `tmux capture-pane -p`）",
+        "--capture-pane",
+    ),
+    (
+        "收尾杀会话",
+        "monitor（build_usage_probe_cmd 渲染 `tmux kill-session`）",
+        "--kill",
+    ),
+];
+
+/// 「一条命令吃下整条探针」长什么样 —— **`§0c` 点名的失效方向的针**。
+///
+/// 判据不是「名字里有 usage」（`--usage` 今天就在 daemon 上，那是读本地 token 累计的，
+/// 与探针无关），而是「**探针**」这件事本身被做成一条子命令。
+const WHOLE_PROBE_SUBCOMMAND_NEEDLES: &[&str] =
+    &["--usage-probe", "--probe-usage", "--account-usage"];
 
 #[cfg(test)]
 mod tests {
@@ -1048,6 +1123,196 @@ mod tests {
             println!(
                 "{name}\t{}",
                 build_usage_probe_cmd(name, payload, watchdog).unwrap()
+            );
+        }
+    }
+
+    // ── `KR101D4`：编排只用既有命令组合，不新开一条「大动作」子命令 ──────────────
+
+    /// daemon 那棵树的 `main.rs` 原文（现打，不抄名单）。
+    fn daemon_main_rs() -> String {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根")
+            .join("remote-daemon-proto/src/main.rs");
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}: {e}", p.display()))
+    }
+
+    /// 从 daemon `main.rs` 的 `SUBCOMMANDS` 那个数组里**现算**出它今天认哪些子命令。
+    ///
+    /// ⚠ 只取那个 `const` 的**数组体**（`&[` … `];`），不扫整份文件 ——
+    /// 整份文件里到处是 `"--xxx"` 字面量（分派臂 · 自检夹具 · 注释），
+    /// 拿整份文件当人群会让下面「没有整条探针那条命令」恒绿。
+    fn daemon_subcommands() -> Vec<String> {
+        let src = daemon_main_rs();
+        let head = "const SUBCOMMANDS: &[&str] = &[";
+        let at = src
+            .find(head)
+            .expect("daemon main.rs 里找不到 SUBCOMMANDS —— 尺子的作用域没了");
+        let body_start = at + head.len();
+        let body_len = src[body_start..]
+            .find("];")
+            .expect("SUBCOMMANDS 数组没有收尾 `];`");
+        let body = &src[body_start..body_start + body_len];
+        let mut out = Vec::new();
+        // ⚠ 只收「整行就是一个字面量」的行 —— 注释行以 `//` 打头，天然进不来。
+        //   刻意**不**在这里再写一份剥注释（`structural_scan::TRANSFORMERS` 数着那件事，
+        //   本轮实测：写了那一句当场被它逮住，第 19 份剥法）。
+        for line in body.lines() {
+            let t = line.trim();
+            if let Some(rest) = t.strip_prefix('"') {
+                if let Some(end) = rest.find('"') {
+                    out.push(rest[..end].to_string());
+                }
+            }
+        }
+        out
+    }
+
+    /// ★ **`KR101D4`：探针编排是既有命令的组合，而 daemon 上没有一条「整条探针」。**
+    ///
+    /// 🔴 **本条不声称编排已经搬走** —— 那一半的读数与理由住
+    /// [`super::PROBE_ORCHESTRATION_STEPS`] 的头注（「买不到什么」那一段）。
+    /// 本条钉的是**另外两件事**，两件都是今天就能证的：
+    ///   ① 表里点名的每条 daemon 命令**真的存在**（少一条 ⇒ 那一步无处可搬，红）；
+    ///   ② daemon 命令面上**没有**「整条探针」式的大动作（`§0c` 的失效方向，红）。
+    #[test]
+    fn the_probe_is_a_composition_of_commands_the_daemon_already_has() {
+        let subs = daemon_subcommands();
+        // 抽取器自检：取不到就拒跑，别零命中地绿（`K-R87` 那轮 `cut.sh` 静默跳过的同族）。
+        assert!(
+            subs.len() > 10,
+            "只从 daemon `SUBCOMMANDS` 里取到 {} 条（现打参照：09-13 主干 27 条上下）—— \
+             取数坏了，下面两条会零命中地绿。取到的：{subs:?}",
+            subs.len()
+        );
+        assert!(
+            subs.iter().any(|s| s == "--kill") && subs.iter().any(|s| s == "--launch"),
+            "取到的子命令里连 `--kill`/`--launch` 都没有 —— 取数落在了别的数组上：{subs:?}"
+        );
+
+        // ① 每一步点名的 owner 命令都得在 daemon 的命令面上。
+        for (step, renderer, owner) in super::PROBE_ORCHESTRATION_STEPS {
+            assert!(
+                subs.iter().any(|s| s == owner),
+                "探针这一步「{step}」（今天由 {renderer} 渲染）点名的 daemon 命令 `{owner}` \
+                 不在 daemon 的 `SUBCOMMANDS` 上 —— 要么它被删/改名了（那这一步就无处可搬），\
+                 要么本表抄错了。daemon 今天认的：{subs:?}"
+            );
+        }
+
+        // ② 组合，不是一个大动作。
+        let mut owners: Vec<&str> = super::PROBE_ORCHESTRATION_STEPS
+            .iter()
+            .map(|(_, _, o)| *o)
+            .collect();
+        owners.sort_unstable();
+        owners.dedup();
+        assert!(
+            owners.len() >= 4,
+            "探针编排塌成了 {n} 条命令（应 ≥4：起会话 · 看门狗 · 送键 · 抓屏 · 杀会话）—— \
+             `K33` 逐字「所有命令只许有一处，其他都是根据传参来调用」，\
+             一条命令吃下整条编排就是 `§0c` 点名的那个失效方向。今天的 owner：{owners:?}",
+            n = owners.len()
+        );
+
+        // ③ daemon 上不许长出一条「整条探针」。
+        for needle in super::WHOLE_PROBE_SUBCOMMAND_NEEDLES {
+            assert!(
+                !subs.iter().any(|s| s == needle),
+                "daemon 的 `SUBCOMMANDS` 上出现了 `{needle}` —— 那是把一份 shell 串换成一份 \
+                 Rust 串：命令是少了一处，**编排仍然只有一份实现在替调用方做决定**，\
+                 而且连带 bump `BUILD_ID`、动 `SUBCOMMANDS` 条数、动层间接口面条数。\
+                 `K-R101#§0c` 逐字点名了这个方向。要新增**小原语**没问题，\
+                 要新增「一条命令吃下整条编排」得回 `K33` 重裁。"
+            );
+        }
+    }
+
+    /// ★ 反向自检：上面那条真的逮得住 —— 合成一份长出 `--usage-probe` 的 `SUBCOMMANDS` 必须被认出来。
+    ///
+    /// ⚠ 没有这一条，`③` 那个循环在「取数坏了 ⇒ `subs` 为空」时同样全过（空真）。
+    #[test]
+    fn the_whole_probe_needle_actually_catches_one() {
+        let synthetic: Vec<String> = ["--kill", "--launch", "--usage-probe"]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        assert!(
+            super::WHOLE_PROBE_SUBCOMMAND_NEEDLES
+                .iter()
+                .any(|n| synthetic.iter().any(|s| s == n)),
+            "针认不出一条摆在面前的 `--usage-probe` —— 那条判据是摆设"
+        );
+        // 反方向：今天这几条正当的小原语不许被这几根针误伤。
+        for ok in [
+            "--capture-pane",
+            "--oneshot-session",
+            "--kill",
+            "--launch",
+            "--usage",
+        ] {
+            assert!(
+                !super::WHOLE_PROBE_SUBCOMMAND_NEEDLES.contains(&ok),
+                "`{ok}` 被针误伤了 —— 它是既有的小原语，本条不禁止小原语"
+            );
+        }
+    }
+
+    /// ★ **登记表不许长草**：表里描述的「今天由谁渲染」得对得上这份文件的现状。
+    ///
+    /// 编排真的搬走的那一天，这条会红 —— **那正是要的**：那时回来把「谁渲染」那一列改掉，
+    /// 顺手把 `PROBE_ORCHESTRATION_STEPS` 头注里那段「买不到什么」一起结掉。
+    #[test]
+    fn the_orchestration_registry_still_describes_what_this_file_does() {
+        let whole = guard_core::production_code(include_str!("account_usage.rs"));
+        // 🔴 **先把登记表自己那一段挖掉再扫** —— 本轮**收工前自查**逮到的：
+        //    `PROBE_ORCHESTRATION_STEPS` 的「今天由谁渲染」那一列里逐字写着
+        //    `tmux kill-session` / `tmux new-session` / `setsid sh -c` / `tmux send-keys` /
+        //    `tmux capture-pane` **五个动词全在**（那正是它要描述的东西）
+        //    ⇒ 不挖掉的话，**这条判据被自己的登记表喂饱**：编排真搬走了它照样绿。
+        //    那是 `F23` 那一族（判据在自己的登记表里找到自己），本件在别的判据上已经栽过两次。
+        let head = "const PROBE_ORCHESTRATION_STEPS";
+        let at = whole.find(head).expect(
+            "生产段里找不到 `PROBE_ORCHESTRATION_STEPS` —— 挖除的锚点漂了，本条会被自己喂饱",
+        );
+        let end = whole[at..]
+            .find("\n];")
+            .map(|i| at + i + 3)
+            .expect("`PROBE_ORCHESTRATION_STEPS` 没有收尾 `];`");
+        let mut prod = String::with_capacity(whole.len());
+        prod.push_str(&whole[..at]);
+        prod.push_str(&whole[end..]);
+        // 抽取器自检：真的挖走了一段，而且挖走的那段里确实含那几个动词（否则挖除是死规则）。
+        assert!(
+            whole.len() - prod.len() > 400,
+            "挖走的那一段只有 {} 字节 —— 锚点取错了段落",
+            whole.len() - prod.len()
+        );
+        assert!(
+            whole[at..end].contains("tmux kill-session"),
+            "挖走的那段里没有那几个动词 —— 那这条挖除是死规则，删掉它并把本条一起重写"
+        );
+        // 表里说这六步今天都由 monitor 渲染 ⇒ 那这份文件的生产段（**扣掉登记表本身**）里
+        // 就该找得到那几个 tmux 动词。
+        for verb in [
+            "tmux kill-session",
+            "tmux new-session",
+            "setsid sh -c",
+            "tmux send-keys",
+            "tmux capture-pane",
+        ] {
+            assert!(
+                prod.contains(verb),
+                "`{verb}` 在本文件生产段里已经没有了 —— 编排可能真的搬走了。\
+                 那是好事，但 `PROBE_ORCHESTRATION_STEPS` 的「今天由谁渲染」那一列\
+                 与它头注里那段「买不到什么」的欠账登记**同拍要改**，别让它继续说昨天的话。"
+            );
+        }
+        for (_, renderer, _) in super::PROBE_ORCHESTRATION_STEPS {
+            assert!(
+                renderer.starts_with("monitor"),
+                "有一步的渲染方已经不是 monitor 了（`{renderer}`）—— 见上一条断言的说明"
             );
         }
     }
