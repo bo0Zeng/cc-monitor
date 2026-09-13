@@ -187,6 +187,20 @@ mod tests {
             "p2g-capture-pane",
             "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--capture-pane\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
+        // ★ p2h（`K-R87`，09-13）：新增 `--oneshot-session` —— **带看门狗的一次性会话**。
+        //
+        // ⚠ **必须 bump**：又一条新增的子命令 ⇒ 已部署的旧 daemon 上它落进
+        //   `unknown argument` + exit 2，而调用方判 stale 只看 build_id
+        //   ⇒ 不 bump 就不重装，这条能力在已部署的远端休眠
+        //   （p1r / p1t / G2 / p2d / p2e / p2g 同形，这已经是本表第七次写这个理由）。
+        // ★ 通道面（`inbound::COMMANDS`）**一条没动**：本件只出 CLI 那一面，
+        //   帧面要不要有它是另一件事（今天没有需求，不先造）。
+        // ★ 同 p2d / p2e / p2g 那条如实登记：这一半是**源码半**，re-embed 归发版那一拍，
+        //   本轮**没做**；本护栏对「半 bump」是瞎的。
+        (
+            "p2h-oneshot-session",
+            "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--capture-pane\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--oneshot-session\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};
