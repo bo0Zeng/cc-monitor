@@ -333,7 +333,16 @@ mod tests {
             let key = format!("\"src/{c}\"");
             if let Some(at) = ledger.find(key.as_str()) {
                 // 该条目的类别就在文件名之后不远处；只要它还标着 reader 就算「未退役」。
-                let window = &ledger[at..(at + 120).min(ledger.len())];
+                // 🔴 〔`K-R97` 09-12 实测〕**按字节切窗口之前要先落到字符边界上**：
+                // 登记表里全是中文说明，`at + 120` 十有八九落在一个汉字中间，
+                // 那时切片当场 panic（逐字 `end byte index … is not a char boundary`）。
+                // ⚠ 这不是本件改坏的，是本条**一直**踩在一颗只由字节偏移决定的雷上 ——
+                // 上一处 `"src/…"` 的位置一变，雷就换个地方埋，而它此前从没被踩到过。
+                let mut end = (at + 120).min(ledger.len());
+                while !ledger.is_char_boundary(end) {
+                    end -= 1;
+                }
+                let window = &ledger[at..end];
                 if window.contains("\"reader\"") {
                     still_on_ledger.push(c);
                 }

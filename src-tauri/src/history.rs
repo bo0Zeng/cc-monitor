@@ -24,9 +24,13 @@
 //! 用户明确选了"物理删除 .jsonl 文件"。前端二次确认后调 `delete_history_session`，
 //! 直接 `std::fs::remove_file`。Claude Code 自己也不再能 resume 这个会话。
 
+use crate::backend::observe::local_query::{self, QueryOutcome};
 use crate::messages::{ApiMessage, JsonlRecord};
 use crate::parser::parse_line;
 use crate::paths;
+use crate::remote_history::{
+    history_project_from_row, log_unknown_reasons, Counted, LivenessOracle, ProjectCounts,
+};
 use crate::session_map::SessionMap;
 use crate::utils::{now_ms, systime_to_ms};
 use serde::{Deserialize, Serialize};
@@ -188,11 +192,105 @@ pub struct MetadataPatch {
 
 // === IPC 命令 ===
 
-/// 项目级元数据列表 —— **不读 jsonl 内容**。首次打开历史浏览器时调。
-/// 每个项目仅 1 个 1-line read（拿 cwd） + N 个文件 stat（拿 mtime / count）。
+/// 本机这条路的**判活真相源**：`SessionMap` 认本机进程的 pid ⇒ 它**答得出真值**。
 ///
-/// v2.2 (issue #12)：改 async + spawn_blocking，避免 sync IO 阻塞 Tauri IPC
-/// 派发线程 —— 加载期间其他 IPC（拉前 / 切设置）能正常响应。
+/// 与远端那个绑定（`remote_history::NoLivenessOracleYet`，恒答「不知道」）是同一个接口的
+/// 两个实现 —— 「谁答得出、谁答不出」因此在类型上说得清，而不是散在两条路的函数体里。
+pub(crate) struct SessionMapLiveness(pub(crate) Arc<SessionMap>);
+
+impl LivenessOracle for SessionMapLiveness {
+    fn is_live(&self, _origin: &str, sid: &str) -> Counted<bool> {
+        // 本机有真相源 ⇒ 一律 `Known`。「不知道」那一档在这个绑定里恒不出现。
+        Counted::Known(self.0.is_session_active(sid))
+    }
+}
+
+/// 本机项目列表的**本体**；「去问本机后端」这件事**是参数**。
+///
+/// # 🔴 为什么查询要作为参数传进来 —— `KR97D3` 判的那个可数的事实
+///
+/// 同 `KR83D3` 的口径：**别判「代码里有没有 for 循环」**（那判的是写法），
+/// 要判**「一次调用里 spawn 了几次」**。真 sidecar 在红线内跑不了 ⇒ 把 spawn 那一步做成入参，
+/// 判据就能拿一个**会计数的假查询**喂进来，直接数出「N 个项目 ⇒ 查询被调了几次」。
+///
+/// 失效方向（本函数存在的理由）：一旦有人为了拿 star/hide 而在下面那个循环里补一句
+/// `--list-sessions`，计数当场从 `1` 涨成 `1 + 项目数`，判据红。
+///
+/// # 三态怎么落地（定框 §5）
+///
+/// 「后端不在」与「后端在但这条查询失败了」**分开报**：前者是今天这台机器上没有对侧
+/// （该提示装 / 该回落），后者是有对侧但它说了不），压成一个 `Err` 就是让上层猜。
+/// 本函数把两者都折成 `Err(带身份的一句话)` 交给前端 toast，**但话不一样** ——
+/// 与 `usage::aggregate_usage_all` 那条路同形。
+pub(crate) fn local_projects_via<Q>(
+    query: Q,
+    metadata: &HistoryMetadata,
+    liveness: &dyn LivenessOracle,
+) -> Result<Vec<(HistoryProject, ProjectCounts)>, String>
+where
+    Q: Fn(&[&str]) -> QueryOutcome,
+{
+    let stdout = match query(&["--list-projects"]) {
+        QueryOutcome::Ok(s) => s,
+        // 诚实降级：把「后端不在」原样交给用户（定框 §5），不假装 0 个项目 ——
+        // 「一个历史项目都没有」与「今天这台机器上没有对侧」是完全不同的处境。
+        QueryOutcome::NoBackend(reason) => {
+            return Err(format!("本机后端不在，拿不到历史项目列表：{reason}"));
+        }
+        QueryOutcome::Failed { code, stderr } => {
+            return Err(format!(
+                "本机后端的项目列表查询失败（退出码 {code:?}）：{}",
+                stderr.trim()
+            ));
+        }
+    };
+    let mut rows = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let v: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            // 单行坏了不该毁掉整张列表（同远端那条路，逐行跳过）。
+            Err(e) => {
+                tracing::warn!("本机 --list-projects 行解析失败（跳过）: {e}: {line}");
+                continue;
+            }
+        };
+        // ★ 与远端 fan-out **同一份**「行 → 项目」的解释（`K-R97` 收成一处）。
+        //   `origin = None` ⇒ 前端看到的仍是「本地项目」。
+        if let Some(row) = history_project_from_row(&v, metadata, None, liveness) {
+            rows.push(row);
+        }
+    }
+    log_unknown_reasons("本机项目列表", &rows);
+    Ok(rows)
+}
+
+/// 项目级元数据列表 —— **不读 jsonl 内容**。首次打开历史浏览器时调。
+///
+/// # 🔴〔`K-R97` 09-12〕它**不再自己遍历 records 根**，改问本机后端
+///
+/// 从前这里 `resolve_claude_dir()` + `records_dir()` + 逐项目 `read_dir`（`analyze_project_dir`，〔散文墓碑〕已删），
+/// 而远端那条路早就是「问那台机器的后端要 `--list-projects`」。⇒ 同一个问题两份实现
+/// （`K-R54` 表第 12 行），且本机那份必然与后端那份漂移。
+/// 今天两条路**吃同一条查询、同一份解释**（`remote_history::history_project_from_row`），
+/// 差别只剩传输：远端多一跳 SSH，本机 exec 一次 sidecar（`backend::observe::local_query`）。
+///
+/// ⚠ **如实记诚实边界，别读成「完全等价」**：
+/// - **`project_dir` 的形状变了**：从前是**绝对路径**，现在是后端给的**编码目录名**
+///   （与远端那条路逐字同形）。前端只把它原样传回，
+///   而 `stream_history_sessions_in_project` 那侧已经跟着改成「按名字在 records 根下解析 + 围栏」。
+/// - **cwd 提取窗口从 30 行变成 40 行、且不再只认 `user` 记录** —— 那是后端那份的口径。
+///   两份实现从前**故意不一致**并被一条判据钉着（`ROADMAP §5`）；本件把 monitor 那份删了，
+///   分歧随之消失（不是「对齐」，是**只剩一处**）。
+/// - **`CLAUDE_CONFIG_DIR` 指向不存在的路径时**：monitor 从前会回落到 `~/.claude`，
+///   sidecar 不会。极少见，但不是零（同 `usage.rs` 那条路记着的差异）。
+/// - **Codex 那半没动**：后端侧今天没有 codex 的项目枚举（`--list-projects` 只服务 claude），
+///   本机仍自己合成（`codex_projects`）—— 那条登记还挂在 `local_read_surface_registry` 上。
+///
+/// v2.2 (issue #12)：async + spawn_blocking，避免 sync IO 阻塞 Tauri IPC 派发线程。
 #[tauri::command]
 pub async fn list_history_projects(
     map: tauri::State<'_, Arc<SessionMap>>,
@@ -200,28 +298,14 @@ pub async fn list_history_projects(
     let map = map.inner().clone();
     tokio::task::spawn_blocking(move || {
         let started = std::time::Instant::now();
-        let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-        let projects_dir = crate::adapter::records_dir(&claude_dir);
-        if !projects_dir.exists() {
-            return Ok(Vec::new());
-        }
         let metadata = load_metadata().unwrap_or_default();
-
-        let mut out: Vec<HistoryProject> = Vec::new();
-        let proj_iter = match std::fs::read_dir(&projects_dir) {
-            Ok(d) => d,
-            Err(e) => return Err(format!("read {}: {e}", projects_dir.display())),
-        };
-
-        for proj in proj_iter.flatten() {
-            let proj_path = proj.path();
-            if !proj_path.is_dir() {
-                continue;
-            }
-            if let Some(hp) = analyze_project_dir(&proj_path, &metadata, &map) {
-                out.push(hp);
-            }
-        }
+        let liveness = SessionMapLiveness(map);
+        let rows = local_projects_via(
+            |args| local_query::run_query(env!("CCM_TARGET_TRIPLE"), args),
+            &metadata,
+            &liveness,
+        )?;
+        let mut out: Vec<HistoryProject> = rows.into_iter().map(|(p, _)| p).collect();
 
         // Phase 2 F1a-3：追加 Codex 合成项目（按 session_meta.cwd 内存分组；Codex 未启用 → 空、零回归）。
         out.extend(codex_projects());
@@ -235,7 +319,7 @@ pub async fn list_history_projects(
         });
 
         tracing::info!(
-            "list_history_projects: {} projects in {}ms",
+            "list_history_projects: {} projects in {}ms（经本机后端）",
             out.len(),
             started.elapsed().as_millis()
         );
@@ -441,6 +525,10 @@ fn codex_first_user_excerpt(path: &Path) -> String {
 /// 因为本 IPC 在 spawn_blocking 里跑同步 IO，立刻终止下次 send 即可释放资源。
 ///
 /// 返回总计 emit 的 entry 数（前端可拿来对账 / 显示进度终值）。
+///
+/// 〔`K-R97` 09-12〕`project_dir` 的形状变了：**编码目录名**（`codex:<cwd>` 那支除外），
+/// 不再是绝对路径 —— 列表那条路改问本机后端之后，`HistoryProject::project_dir`
+/// 带回来的就是名字，与远端那条路（`stream_remote_history_sessions`）逐字同形。
 #[tauri::command]
 pub async fn stream_history_sessions_in_project(
     project_dir: String,
@@ -466,9 +554,19 @@ pub async fn stream_history_sessions_in_project(
             }
             return Ok(count);
         }
+        // 〔`K-R97` 09-12〕`project_dir` 现在是**编码目录名**，不再是绝对路径 ——
+        // 列表那条路改问后端要 `--list-projects` 之后，它带回来的就是名字（与远端那条逐字同形）。
+        // 🔴 名字里不许有分隔符 / 上跳：`Path::starts_with` 是**按段比**、不做规范化，
+        // `<根>/../etc` 照样 `starts_with(<根>)` ⇒ 只靠下面那道围栏挡不住穿越。
+        // 这道拒绝与后端侧 `observe/history_query.rs::list_sessions` 的第一道检查逐字同形。
+        if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
+            return Err(format!("refuse: invalid project dir name: {project_dir}"));
+        }
         let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
         let projects_dir = crate::adapter::records_dir(&claude_dir);
-        let target = PathBuf::from(&project_dir);
+        let target = projects_dir.join(&project_dir);
+        // ⚠ **围栏刻意留着**（纵深防御，同本文件 `stream_read_session_jsonl` 那道）：
+        // 上面拒了分隔符，这里再核一次「解析出来的落点真的在根之内」。
         if !target.starts_with(&projects_dir) {
             return Err(format!(
                 "refuse: {} outside {}",
@@ -2275,111 +2373,12 @@ pub fn new_local_session(
     Ok(launch_id)
 }
 
-// === 内部：项目级 / jsonl 级扫描 ===
-
-/// 项目级元数据 —— 只扫文件 stat + 读单一 jsonl 的第 1 行 cwd，**不读消息内容**。
-/// 用于初次打开历史浏览器（"只读几条就好"）。
-fn analyze_project_dir(
-    dir: &Path,
-    metadata: &HistoryMetadata,
-    map: &SessionMap,
-) -> Option<HistoryProject> {
-    let project_dir = dir.to_string_lossy().into_owned();
-
-    let entries = std::fs::read_dir(dir).ok()?;
-    let mut jsonls: Vec<(PathBuf, String, i64)> = Vec::new(); // (path, session_id, mtime_ms)
-    for e in entries.flatten() {
-        let p = e.path();
-        // F-MA：记录扩展名走 adapter（此处原不排 subagent，故用 has_record_ext 而非 is_record_file，
-        // 保行为零变化）；sid 从路径按 adapter 约定取。
-        if crate::adapter::has_record_ext(&p) {
-            let sid = match crate::adapter::session_id_from_path(&p) {
-                Some(s) => s,
-                None => continue,
-            };
-            let mtime = p
-                .metadata()
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .map(systime_to_ms)
-                .unwrap_or(0);
-            jsonls.push((p, sid, mtime));
-        }
-    }
-    if jsonls.is_empty() {
-        return None;
-    }
-
-    // 项目 cwd：从任意 jsonl 的首条 user 消息取（按 mtime 最大那个最快有结果）
-    jsonls.sort_by(|a, b| b.2.cmp(&a.2));
-    let cwd = jsonls
-        .iter()
-        .find_map(|(p, _, _)| quick_extract_cwd(p))
-        .unwrap_or_default();
-
-    let project_name = Path::new(&cwd)
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(str::to_string)
-        .unwrap_or_else(|| {
-            // 实在拿不到就用 dir 名兜底（编码后的）
-            dir.file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("(未知项目)")
-                .to_string()
-        });
-
-    let session_count = jsonls.len() as u32;
-    let last_activity = jsonls.iter().map(|(_, _, m)| *m).max().unwrap_or(0);
-    // 本机这条路**有**真相源（`SessionMap` 认本机 pid）⇒ 这三个数一律是 `Some`，
-    // 「不知道」那一档在这里恒不出现（`K-R92`：分得开之后，本地那一侧要如实说「查过了」）。
-    let has_live = jsonls.iter().any(|(_, sid, _)| map.is_session_active(sid));
-    let mut starred_count = 0u32;
-    let mut hidden_count = 0u32;
-    for (_, sid, _) in &jsonls {
-        if let Some(em) = metadata.entries.get(sid) {
-            if em.starred {
-                starred_count += 1;
-            }
-            if em.hidden {
-                hidden_count += 1;
-            }
-        }
-    }
-
-    Some(HistoryProject {
-        project_path: cwd,
-        project_name,
-        project_dir,
-        session_count,
-        starred_count: Some(starred_count),
-        hidden_count: Some(hidden_count),
-        last_activity,
-        has_live: Some(has_live),
-        origin: None, // 本地扫描路径恒为本地
-    })
-}
-
-/// 只读首条带 cwd 的 user 记录的 cwd 字段，不解析其它行（早返回省 IO）。
-/// jsonl 第 1 行通常就是 user（Claude Code 的固定写入顺序），最多扫 30 行兜底。
-fn quick_extract_cwd(path: &Path) -> Option<String> {
-    let file = File::open(path).ok()?;
-    let reader = BufReader::new(file);
-    for line in reader.lines().map_while(Result::ok).take(30) {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if let Ok(Some(rec)) = parse_line(trimmed) {
-            if let JsonlRecord::User { cwd: Some(c), .. } = rec {
-                if !c.is_empty() {
-                    return Some(c);
-                }
-            }
-        }
-    }
-    None
-}
+// === 内部：jsonl 级扫描 ===
+//
+// 〔`K-R97` 09-12〕项目级那一段（遍历 records 根 + 从头部抠 cwd）**不在这里了** ——
+// 本机的项目列表改问后端要 `--list-projects`，那两件事今天由后端一趟做完。
+// 从头部抠 cwd 这件事从此**全仓只剩一处**（后端那一份）；两份实现之间那道
+// 「窗口 30 vs 40 行、认不认非 user 记录」的登记分歧随之消失。
 
 fn analyze_jsonl(
     path: &Path,
@@ -3736,13 +3735,6 @@ mod tests {
         }
     }
 
-    /// 一行合法的 user 记录（形状照 `messages.rs` 的黄金样本）。
-    fn user_line(cwd: &str) -> String {
-        format!(
-            r#"{{"type":"user","uuid":"u-1","timestamp":"2026-05-20T01:23:45.678Z","cwd":"{cwd}","message":{{"role":"user","content":"hi"}}}}"#
-        )
-    }
-
     /// 〔audit-0805 08-06〕**`read_jsonl_values` 的两个无声决定**：剥 BOM · 静默丢弃坏行。
     ///
     /// 它全仓出现 2 次、所在文件测试段 0 次（先验：只被一处调用的生产函数）。
@@ -3781,126 +3773,312 @@ mod tests {
         assert_eq!(got[2].get("c").and_then(|v| v.as_i64()), Some(3));
     }
 
-    /// 〔audit-0805 08-06〕**同一个问题，本地与远端给两个答案**（E3 + §40）。
+    /// ★★〔`K-R97` 09-12 后继形态〕**「从 jsonl 头部抠 cwd」这件事，全仓只剩一处了。**
     ///
-    /// # 实测到的两处分歧
+    /// # 原形是什么、为什么换
     ///
-    /// 「从 jsonl 头部取 cwd」这件事有两处实现：
-    /// - monitor：`quick_extract_cwd` —— 窗口 **30** 行，且**只认 `JsonlRecord::User`** 且 cwd 非空；
-    /// - daemon：`observe/history_query.rs::extract_cwd_from_head` —— 窗口 **40** 行，
-    ///   且认**任何**带非空 `cwd` 字段的记录。
+    /// 原形叫「两个提取器仍旧照登记的样子不一致」〔audit-0805 08-06〕：同一个问题两处实现 ——
+    /// monitor 窗口 **30** 行且只认 `JsonlRecord::User`，后端窗口 **40** 行且认任何带非空 cwd
+    /// 的记录。后果具体：首个带 cwd 的记录落在第 31–40 行时，**两边给两个答案**。
+    /// 那一版**只钉不改**（走档①：登记 + 钉住），因为「取 30 还是 40」是会改行为的设计决定。
     ///
-    /// 后果是具体的：**首个带 cwd 的记录落在第 31–40 行时，远端报得出 cwd、本地报不出**；
-    /// 若那条记录不是 `user` 类型，差别还要更大。同一份文件、同一个问题、两个答案。
+    /// `K-R97` 把本机项目列表改走后端那条 `--list-projects` ⇒ monitor 那一份**连同它唯一的
+    /// 调用点一起没了**。⚠ **这不是「对齐到 40」**，是那个设计决定**不再需要有人做** ——
+    /// 问题只剩一个实现，也就无从不一致。
     ///
-    /// ⚠ daemon 那边的头注**已经在做这个对照**了 —— 但它只对照了「流式 vs 整读」，
-    /// **没提窗口和记录类型不一样**。⇒ 又一次「订正手头那一处，不等于订正那句话」。
-    ///
-    /// # 为什么本轮只钉不改
-    ///
-    /// §40 是〔用 2026-07-29〕拍的方向（「把本地当成不走 ssh 的远端」），照它推**本地该对齐远端**。
-    /// 但「窗口取 30 还是 40」「要不要放宽到任意记录类型」是**会改变行为**的设计决定
-    /// （放宽后 cwd 可能来自非 user 记录），不该由我顺手定。⇒ 走档①：**登记 + 钉住，不擅自对齐**。
-    /// 差异与解锁条件记在 `ROADMAP §5`；本条保证它**不会再悄悄变宽或变窄**。
+    /// ⇒ 本条换成后继形态：**钉住 monitor 侧不许再长出第二份**，并核后端那一份还在。
+    /// ⚠ **这不是降强度**：原形钉的是两个数的差（谁改了都红），后继钉的是「只剩一处」
+    /// （谁把第二份写回来都红），而后者恰恰是 `K33`「所有命令只许有一处」的形状。
     #[test]
-    fn the_two_cwd_extractors_still_disagree_exactly_as_registered() {
-        // 本地那一侧：从自己的生产段里抽，不写死。
+    fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
+        // ① monitor 生产段：**一个头部窗口读法都不许有**。
         let own = guard_core::production_code(include_str!("history.rs"));
-        let local = own
+        let local: Vec<&str> = own
             .lines()
-            .find(|l| l.contains("reader.lines().map_while(Result::ok).take("))
-            .and_then(|l| l.split(".take(").nth(1))
-            .and_then(|s| s.split(')').next())
-            .and_then(|s| s.trim().parse::<usize>().ok())
-            .expect("抽不到本地那侧的窗口 —— 读法坏了，本条会零命中地绿");
+            .filter(|l| l.contains("reader.lines().map_while(Result::ok).take("))
+            .collect();
+        assert!(
+            local.is_empty(),
+            "monitor 侧又长出了一份 jsonl 头部读法：\n{}\n\n\
+             ⇒ `K-R97` 之后这件事的家在后端（`observe/history_query.rs`）。\n\
+             真要在 monitor 侧读，先回答「为什么这条路问不了后端」，再连同本条一起改。",
+            local.join("\n")
+        );
 
-        // 远端那一侧：读 daemon 源码（同 `agent_profile_parity` 的既有做法）。
+        // ② 后端那一份还在，且窗口是个说得出的数 —— 否则上面那条会零命中地绿
+        //    （「两边都没有」与「只剩一处」在断言上长得一样，这一格就是分开它们的那个）。
         let daemon_src = std::fs::read_to_string(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .parent()
                 .expect("仓根")
                 .join("remote-daemon-proto/src/observe/history_query.rs"),
         )
-        .expect("读不到 daemon 的 history_query.rs");
-        let remote = guard_core::production_code(&daemon_src)
+        .expect("读不到后端的 history_query.rs");
+        let remote: Vec<usize> = guard_core::production_code(&daemon_src)
             .lines()
-            .find(|l| l.contains("reader.lines().map_while(Result::ok).take("))
-            .and_then(|l| l.split(".take(").nth(1))
-            .and_then(|s| s.split(')').next())
-            .and_then(|s| s.trim().parse::<usize>().ok())
-            .expect("抽不到远端那侧的窗口 —— daemon 那边改形了，读法要跟着改");
-
-        // ★ 登记今天的实况。**这不是「应该这样」，是「今天就是这样」** ——
-        //   两边一旦有任何一侧动了，本条就红，逼人做那个被推迟的设计决定。
+            .filter(|l| l.contains("reader.lines().map_while(Result::ok).take("))
+            .filter_map(|l| l.split(".take(").nth(1))
+            .filter_map(|s| s.split(')').next())
+            .filter_map(|s| s.trim().parse::<usize>().ok())
+            .collect();
         assert_eq!(
-            (local, remote),
-            (30, 40),
-            "本地/远端的 cwd 提取窗口变了（实得 本地={local} 远端={remote}）。\n\
-             ⚠ 这两个数今天**故意不一致**且已登记（`ROADMAP §5`）：\n\
-             首个带 cwd 的记录落在第 31–40 行时，远端报得出、本地报不出。\n\
-             §40〔用 2026-07-29〕的方向是「把本地当成不走 ssh 的远端」⇒ 该对齐，\n\
-             但选哪个数、要不要同时放宽记录类型，是会改行为的设计决定。\n\
-             ⇒ 改之前先把那个决定做掉并更新本条，别让它无声地漂到第三个值。"
-        );
-
-        // 记录类型那一半也钉住：本地限定 `User`，远端不限定。
-        assert!(
-            own.contains("JsonlRecord::User { cwd: Some(c), .. }"),
-            "本地那侧不再限定 `JsonlRecord::User` 了 —— 那正是与远端的第二处分歧，\n\
-             它变了就说明有人在对齐（好事），请连同上面那条一起更新。"
+            remote,
+            vec![40],
+            "后端那一份不是「恰好一处、窗口 40 行」了（实得 {remote:?}）。\n\
+             ① 变成 0 处 ⇒ 那件事没人做了，而 monitor 这侧已经不做了；\n\
+             ② 变成 2 处 ⇒ 两份实现在后端里面又长了一次。"
         );
     }
 
-    /// 〔audit-0805 08-06〕**`quick_extract_cwd` 只看前 30 行 —— 这个上限此前无声也无判据。**
+    // ═══════════════════════════════════════════════════════════════════
+    // `K-R97`：本机项目列表改走后端那条 `--list-projects`
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// 一行后端产出（形状照 `observe/history_query.rs::project_row`：5 个字段）。
+    fn r97_row(dir: &str, path: &str, sids: &[&str], last_ms: i64) -> serde_json::Value {
+        serde_json::json!({
+            "dirName": dir,
+            "projectPath": path,
+            "sessionCount": sids.len(),
+            "lastActivityMs": last_ms,
+            "sessionIds": sids,
+        })
+    }
+
+    /// 把几行折成后端的 stdout（逐行 JSON）。
+    fn r97_stdout(rows: &[serde_json::Value]) -> QueryOutcome {
+        QueryOutcome::Ok(
+            rows.iter()
+                .map(|r| r.to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n",
+        )
+    }
+
+    /// 会答话的假真相源（同 `remote_history` 测试段那两个夹具的形状）。
+    /// ⚠ 它是**夹具**，不是第二份实现：生产那份是 [`SessionMapLiveness`]。
+    struct R97Oracle(&'static [&'static str]);
+    impl LivenessOracle for R97Oracle {
+        fn is_live(&self, _origin: &str, sid: &str) -> Counted<bool> {
+            Counted::Known(self.0.contains(&sid))
+        }
+    }
+
+    /// ★★ `KR97D1`：**本机那条路的数据来自后端** —— 判的是性质，不是写法。
     ///
-    /// 它是「列历史项目时快速拿到 cwd」的探针，`take(30)` 是**成本与命中率的折中**：
-    /// 超出 30 行就放弃、返回 `None`（调用方另有兜底）。
-    /// 问题是这个数**没有任何东西读它** —— 改成 3 或改成 300 都不会红，
-    /// 前者让一批会话拿不到 cwd（表现为「项目名不对」，不是报错），后者让列表变慢。
-    /// ⇒ 钉住边界本身：**第 30 行还在窗口内、第 31 行不在**。
+    /// 第 ① 刀「后端产出变了而本机不跟 ⇒ 红」＋ 第 ② 刀「跟了 ⇒ 绿」都在这里：
+    /// 同一条路喂**两份不同的后端产出**，逐字段看它跟不跟。
+    ///
+    /// ⚠ 逐字**不判**「代码里还有没有 `read_dir`」（那判的是写法，改个写法就瞎）。
+    /// 第 ③ 刀「本机退回自己遍历 records 根 ⇒ 红」由**另一处**接住，而且它更硬：
+    /// `local_read_surface_registry` 的递减棘轮按「文件 → 命中行数」逐行对账，
+    /// 谁把 `resolve_claude_dir()` / `records_dir()` 写回 `history.rs`，那条当场红
+    ///（`K-R97` 之后 `src/history.rs` 登记的处数之和是 **13**，写回去就是 15）。
     #[test]
-    fn quick_extract_cwd_stops_after_the_thirtieth_line() {
+    fn the_local_project_list_is_whatever_the_backend_said() {
+        let md = HistoryMetadata::default();
+        let live = R97Oracle(&[]);
+
+        let a = local_projects_via(
+            |_| r97_stdout(&[r97_row("-w-alpha", "/w/alpha", &["s1", "s2"], 111)]),
+            &md,
+            &live,
+        )
+        .expect("后端答了，这一趟该成");
+        assert_eq!(a.len(), 1, "后端只说了一个项目，本机却给出 {} 个", a.len());
+        assert_eq!(a[0].0.project_name, "alpha");
+        assert_eq!(a[0].0.project_path, "/w/alpha");
+        assert_eq!(a[0].0.session_count, 2);
+        assert_eq!(a[0].0.last_activity, 111);
+        assert_eq!(
+            a[0].0.project_dir, "-w-alpha",
+            "懒加载键要原样带回后端给的名字"
+        );
+        assert_eq!(a[0].0.origin, None, "本机那条路 origin 恒为 None");
+
+        // ★ 换一份后端产出：**同一个项目键**，其余全变。本机的返回必须跟着变。
+        let b = local_projects_via(
+            |_| r97_stdout(&[r97_row("-w-alpha", "/w/beta", &["s1", "s2", "s3"], 222)]),
+            &md,
+            &live,
+        )
+        .expect("后端答了，这一趟该成");
+        assert_eq!(
+            (
+                b[0].0.project_name.as_str(),
+                b[0].0.project_path.as_str(),
+                b[0].0.session_count,
+                b[0].0.last_activity
+            ),
+            ("beta", "/w/beta", 3, 222),
+            "🔴 后端那一行变了，本机的返回没跟着变 —— 那说明这条路的数据**不是**后端给的。\n\
+             这正是本条第 ① 刀：改后端那条的产出，本机跟不跟。"
+        );
+
+        // ★ 后端没说的项目不许冒出来（「数据只来自后端」的另一半）。
+        let none = local_projects_via(|_| QueryOutcome::Ok(String::new()), &md, &live)
+            .expect("空答复也是答复");
+        assert!(
+            none.is_empty(),
+            "后端一行都没说，本机却端出了 {} 个项目",
+            none.len()
+        );
+    }
+
+    /// ★★ `KR97D2`：**「不知道」一路带到本机这条，不被压平。**
+    ///
+    /// `K-R92` 那一形的预防：后端那一行**没带 sid 清单**（旧版后端）时，
+    /// star / hide / 活状态三个数**算不出来** —— 那不是 0、不是「没有星标」、
+    /// 更不是「这个项目没有活会话」。
+    ///
+    /// 第 ① 刀「压平 ⇒ 红」用 `assert_ne!` 逐格钉：`Some(0)` / `Some(false)` 与 `None`
+    /// 在类型上分得开，压平当场红。第 ② 刀「带得过去 ⇒ 绿」是那三个 `None`。
+    #[test]
+    fn an_unknown_from_the_backend_row_is_not_flattened_on_the_local_path() {
+        let md = HistoryMetadata::default();
+        // 旧版后端那一行：**只有 4 个字段**，没有 `sessionIds`。
+        let old_row = serde_json::json!({
+            "dirName": "-w-alpha",
+            "projectPath": "/w/alpha",
+            "sessionCount": 2,
+            "lastActivityMs": 111,
+        });
+        let out = local_projects_via(|_| r97_stdout(&[old_row.clone()]), &md, &R97Oracle(&["s1"]))
+            .expect("行是好的，只是少了一个字段");
+        let p = &out[0].0;
+        assert_eq!(
+            p.starred_count, None,
+            "🔴 算不出来的星标数被说成了一个数 —— 「不知道」在这一段被压平了"
+        );
+        assert_ne!(
+            p.starred_count,
+            Some(0),
+            "🔴 `Some(0)` 是同一句谎话换了个类型说一遍：它读作「查过了，一个星标都没有」"
+        );
+        assert_eq!(p.hidden_count, None, "同上，hidden 那一格");
+        assert_ne!(p.hidden_count, Some(0), "同上，hidden 那一格");
+        assert_eq!(p.has_live, None, "同上，活状态那一格");
+        assert_ne!(
+            p.has_live,
+            Some(false),
+            "🔴 `Some(false)` 读作「查过了，这个项目没有活会话」—— 而根本没人查过"
+        );
+
+        // ★ 反面：带了清单就该**算得出真值**，否则上面三条会变成「反正都是 None」的空转。
+        let md2 = {
+            let mut m = HistoryMetadata::default();
+            m.entries.insert(
+                "s1".to_string(),
+                EntryMetadata {
+                    starred: true,
+                    ..Default::default()
+                },
+            );
+            m
+        };
+        let good = local_projects_via(
+            |_| r97_stdout(&[r97_row("-w-alpha", "/w/alpha", &["s1", "s2"], 111)]),
+            &md2,
+            &R97Oracle(&["s2"]),
+        )
+        .expect("这一行是全的");
+        assert_eq!(
+            good[0].0.starred_count,
+            Some(1),
+            "★ 真值端得动（本机 metadata 按 sid 合）"
+        );
+        assert_eq!(
+            good[0].0.hidden_count,
+            Some(0),
+            "★ 「查过了，是 0」也是一个真值"
+        );
+        assert_eq!(good[0].0.has_live, Some(true), "★ 活状态端得动");
+    }
+
+    /// ★ `KR97D2` 的另一半：**本机这条路的判活真相源答得出真值**，不许跟着远端一起「不知道」。
+    ///
+    /// 远端那个绑定（`NoLivenessOracleYet`）答不出是有理由的（`SessionMap` 只认本机 pid）；
+    /// 本机这个绑定**没有那个理由** —— 它要是也答「不知道」，那就是把一处能查的事说成查不了。
+    #[test]
+    fn the_local_liveness_oracle_answers_known_not_unknown() {
         let tmp = TmpDir::new();
-
-        // ① 正路：靠前的 user 记录能拿到 cwd。
-        let f = tmp.write("early.jsonl", &format!("{}\n", user_line("/w/early")));
+        let (map, _rx) = SessionMap::load_with_changes(tmp.0.clone(), true);
+        let oracle = SessionMapLiveness(map);
         assert_eq!(
-            quick_extract_cwd(&f),
-            Some("/w/early".to_string()),
-            "靠前的记录都拿不到 —— 夹具或解析坏了，下面两条会变成空转"
+            oracle.is_live("", "没有这个会话"),
+            Counted::Known(false),
+            "🔴 本机答得出「查过了，没活」—— 答成 `Unknown` 就是把能查的事说成查不了"
         );
+    }
 
-        // ② 边界：**正好第 30 行**仍在窗口内。
-        let at30 = format!("{}{}\n", "\n".repeat(29), user_line("/w/at30"));
-        let f30 = tmp.write("at30.jsonl", &at30);
+    /// ★★ `KR97D3`：**一次调用里问了后端几次** —— 判的是这个可数的事实，不是有没有 for 循环。
+    ///
+    /// 同 `KR83D3` 的口径。失效方向具体得很：一旦有人为了拿 star/hide 而在那个循环里
+    /// 补一句 `--list-sessions`，计数当场从 `1` 涨成 `1 + 项目数`。
+    #[test]
+    fn one_call_asks_the_backend_exactly_once_no_matter_how_many_projects() {
+        let md = HistoryMetadata::default();
+        let calls = std::cell::Cell::new(0usize);
+        let rows = [
+            r97_row("-p1", "/w/p1", &["a1"], 1),
+            r97_row("-p2", "/w/p2", &["b1", "b2"], 2),
+            r97_row("-p3", "/w/p3", &["c1", "c2", "c3"], 3),
+        ];
+        let out = local_projects_via(
+            |args| {
+                calls.set(calls.get() + 1);
+                assert_eq!(args, &["--list-projects"], "问的不是这条子命令");
+                r97_stdout(&rows)
+            },
+            &md,
+            &R97Oracle(&[]),
+        )
+        .expect("后端答了");
+        assert_eq!(out.len(), 3, "夹具没喂进 3 个项目，下面那条计数就没有意义");
         assert_eq!(
-            at30.lines().count(),
-            30,
-            "夹具没把记录放在第 30 行，边界这条在测别的位置"
+            calls.get(),
+            1,
+            "🔴 3 个项目问了后端 {} 次。一次调用只许问一次 —— \n\
+             逐项目再问一次的话，项目列表这个常开界面会变成 N 次进程 spawn。",
+            calls.get()
         );
-        assert_eq!(
-            quick_extract_cwd(&f30),
-            Some("/w/at30".to_string()),
-            "第 30 行被排除了 —— 窗口比 `take(30)` 小"
-        );
+    }
 
-        // ③ 边界外：第 31 行拿不到（这正是 `take(30)` 的语义）。
-        let at31 = format!("{}{}\n", "\n".repeat(30), user_line("/w/at31"));
-        let f31 = tmp.write("at31.jsonl", &at31);
-        assert_eq!(at31.lines().count(), 31, "夹具没把记录放在第 31 行");
-        assert_eq!(
-            quick_extract_cwd(&f31),
-            None,
-            "第 31 行也被读了 —— 窗口比 `take(30)` 大，列历史会变慢而没人知道"
+    /// ★ 三态诚实降级（定框 §5）：**「后端不在」不是「一个历史项目都没有」。**
+    ///
+    /// 这两件事对用户是完全不同的处境：前者该提示装 / 该修，后者是真的空。
+    /// 压成一个空列表就是 F14 那次「静默回落」的形状。
+    #[test]
+    fn a_missing_backend_is_not_an_empty_project_list() {
+        let md = HistoryMetadata::default();
+        let no_backend = local_projects_via(
+            |_| QueryOutcome::NoBackend("找过 [\"…/cc-monitor-remote\"]".into()),
+            &md,
+            &R97Oracle(&[]),
+        )
+        .expect_err("后端不在时不许返回一个空列表");
+        assert!(
+            no_backend.contains("本机后端不在"),
+            "报错没说清是「后端不在」：{no_backend}"
         );
-
-        // ④ 空 cwd 不算命中，要继续往后找。
-        let mixed = format!("{}\n{}\n", user_line(""), user_line("/w/real"));
-        let fm = tmp.write("mixed.jsonl", &mixed);
-        assert_eq!(
-            quick_extract_cwd(&fm),
-            Some("/w/real".to_string()),
-            "空 cwd 被当成了命中 —— 调用方会拿到空串当项目路径"
+        let failed = local_projects_via(
+            |_| QueryOutcome::Failed {
+                code: Some(2),
+                stderr: "read_dir failed\n".into(),
+            },
+            &md,
+            &R97Oracle(&[]),
+        )
+        .expect_err("查询失败时不许返回一个空列表");
+        assert!(
+            failed.contains("查询失败") && failed.contains("read_dir failed"),
+            "报错没带上后端说的原因：{failed}"
+        );
+        assert_ne!(
+            no_backend, failed,
+            "🔴 「后端不在」与「后端在但这条查询失败了」被说成了同一句话 —— \n\
+             那正是让上层猜的那一形（定框 §5）。"
         );
     }
 
