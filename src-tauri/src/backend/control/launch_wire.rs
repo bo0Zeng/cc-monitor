@@ -6,9 +6,13 @@
 //! `tryRenderCli`（装了 ccm 时走，产 `ccm …`）与 `renderFallback`（没装时走，产裸载荷）。
 //!
 //! - **CLI 那支是真在跑的那支**（U8c-2b-0 摸底：装了 ccm 就直接 return，兜底根本不执行）；
-//! - **兜底那支切不动**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`，151 行），
-//!   而 `doc/INVARIANTS.md` §33b 写死了「删/搬 `session-backend.ts` 前必须先回答三件事」
-//!   （生产切到 daemon 没有 · attach 那条串归谁产 · daemonless 要不要能起会话）。
+//! - **兜底那支切不动**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
+//!   而 `doc/INVARIANTS.md` §33b 写死了「删/搬 `session-backend.ts` 前必须先回答三件事」。
+//!   🔴 **那三问今天不是当年那三问了**（`K-R105` 09-13 第四次复裁）：第三问
+//!   （daemonless 的远端要不要能起会话）**已随定框 `K35` / `K-R59` 退役**，
+//!   第一问的答案也在 `K-P2 D3`（09-03）之后变过一次。**三问的今天版只有一个家**：
+//!   `doc/INVARIANTS.md §33b` 那张表，由 `doc_claim_registry` 逐问与现场对拍
+//!   —— 别在这里复述它们，复述就会漂（这一行原来就复述着一份，已撤）。
 //!
 //! ⇒ 本件切 CLI 支，兜底支原样留在 TS。**两支的判据都还在**（各自的黄金串夹具）。
 //!
@@ -197,7 +201,8 @@ pub fn render_ccm_launch(req: CliRenderRequest) -> CliRenderResponse {
 ///
 /// `renderFallback` 分两格：`container:"none"` 是 `env → cd → argv`（就是
 /// [`super::payload::render_payload`]）；`container:"tmux"` 还要外层 tmux 命令
-/// （`session-backend.ts`）——那半归 U8c-3，且 §33b 有三个未答问题。
+/// （`session-backend.ts`）——那半归 U8c-3。⚠ §33b 那三问**今天不是三问全未答**
+/// （`K-R105` 09-13：③ 已退役、① 变过一次）；今天版逐问住 §33b 那张表，别在这儿复述。
 ///
 /// ⇒ 本命令**只收 none 那一格**。容器形态由调用方判断后决定调不调它。
 #[derive(Debug, Deserialize)]
@@ -393,9 +398,23 @@ mod f07_main_path_tests {
     /// `(被引的符号, 消费者文件, 生产段处数, 它是什么, 它什么时候能走)`
     ///
     /// 现打于 `4d298c4`（`src` 下，去掉 `*.test.ts` / `*.vitest.ts`）。
-    /// ⚠ **处数由判据从源码派生再逐格比对** —— 散文里那句「3 个消费者」会腐烂，这张表不行。
+    /// ⚠ **处数由判据从源码派生再逐格比对** —— 散文里那个数会腐烂，这张表不行。
     /// ⚠ 尺子的射程如实写：它数的是**剥完注释的源码里那个标识符出现几次**
     /// （`import` 那一行算一处）。别名 import、动态取属性它都数不到，**不声称堵住**。
+    ///
+    /// # 🔴 `K-R105`（09-13）：**这张表只是尺子A，而散文抄的是它、读的却是尺子B**
+    ///
+    /// 本表数的是「**盘上还有谁提到它**」（标识符出现处数）。而「**这条路今天还站不站在
+    /// 生产上**」是另一个问题，两把尺子的读数差着一个数量级：09-13 现打，尺子A 说
+    /// `renderFallback` 有三个消费者文件，尺子B 说**有生产调用方的只有一个**
+    /// （`remote-launch.ts` 那五个 builder 的生产调用方是 0；`launch-payload-golden.ts`
+    /// 只被 `npm run gen:payload-golden` 那条链走到）。
+    ///
+    /// ⚠ 那句「N 个生产消费者」在**尺子A 上一直是对的**，所以 08-14 到 09-13 之间
+    /// 没有人去核它 —— 而它被读成了尺子B 的读数，还传抄了好几份。
+    /// **一个数不写清它的尺子，就是半句假话**（`K-R89` 的 PM 审计逐字纠过同一处：
+    /// 「那 5 个 builder 是生产消费者」—— 生产调用方 0）。
+    /// ⇒ 尺子B 落成 [`TS_FALLBACK_REACH`]，同样**从源码派生**；散文里两个数都不许再写。
     const TS_FALLBACK_KEEPERS: &[(&str, &str, usize, &str, &str)] = &[
         (
             "renderFallback",
@@ -435,6 +454,90 @@ mod f07_main_path_tests {
             "`import` 一处 + `attachCmd` 那一处（把 `↗` 交给用户自己的终端那一跳）。",
             "同上；⚠ `attach` 那一跳由 `K-R59` `§0c` 明写**不做** —— \
              后端在远端开不了你面前的窗，那是结构不是退路。",
+        ),
+    ];
+
+    /// 🔴 **尺子B**〔`K-R105` 09-13〕：[`TS_FALLBACK_KEEPERS`] 里那个消费者文件
+    /// **今天还站不站在生产路上**。
+    ///
+    /// 与尺子A（标识符出现处数）**问的不是同一件事**，读数也不同 ——
+    /// 这张表存在的全部理由就是让两把尺子各有一个家，别再有人拿其中一个的数
+    /// 去说另一个的话（那正是 08-14 那句散文的形状）。
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Reach {
+        /// **有生产调用方**：它导出的那几个符号，在 `src/**` 的生产段里（本文件之外）
+        /// 至少被引一次 ⇒ 这条路真的走得到。
+        OnProductionPath,
+        /// **生产调用方 0**：只剩测试 / e2e / `npm run …` 那条链在调。
+        /// ⚠ 这**不等于**「可以删」—— 第四列写清它今天靠谁跑。
+        OffProductionPath,
+    }
+
+    /// `(消费者文件, 把这条路接出去的导出符号, 判定, 它今天靠谁跑)`。
+    ///
+    /// # 为什么导出符号是手写的，而判定是派生的
+    ///
+    /// 「这个文件的哪几个导出把兜底那条路接出去」是**语义选择**，机器判不了：
+    /// `remote-launch.ts` 同时还导出 `mintTmuxName` / `deriveTmuxName` /
+    /// `buildOpenTerminalCmd` 三个**真在生产跑**的符号，照「文件有没有生产调用方」量，
+    /// 它会被读成 `OnProductionPath` —— 而那不是本表要答的问题。
+    /// ⇒ 符号由人挑（挑错了 `7u` 会看见），**判定由机器从源码数出来**。
+    ///
+    /// ⚠ 尺子B 自己的射程也如实写，三条：
+    ///
+    /// 1. 它数的是「剥完注释的生产段里那个标识符**以整词形态**出现过没有」
+    ///    （[`guard_core::contains_word`]，与尺子A 同一份剥法 [`production_ts`]）
+    ///    ⇒ **别名 import 与动态取属性它数不到**。
+    ///    🔴 **整词是必需的，不是讲究**：建这张表当天用裸子串量过一趟，
+    ///    `launch-cli-golden.ts` 的 `CLI_GOLDEN_CASES` 把 `GOLDEN_CASES` 命中了
+    ///    ⇒ 一个夹具发生器被读成「生产调用方」，判定当场从 `Off` 翻成 `On`。
+    /// 2. **只走一跳，但会跳过已登记为 `Off` 的那几家**：`launch-render-fallback.ts`
+    ///    被三个文件引，其中两个自己就是 `Off` ⇒ 真正撑着它的只有 `remote-launch-run.ts`。
+    ///    不做这一步的话，「一群互相引用的死代码」会集体读成 `On`。
+    /// 3. ⚠ 而它**仍然不是可达性分析**：若两个 `Off` 文件互相引用之外还有第三条边，
+    ///    或者某个 `On` 的家其实自己走不到生产入口，本条看不出来。
+    ///    ⇒ 它买的是「**这条路少了/多了一个真正的生产家，会有东西说话**」，
+    ///    不是「这几行代码今天真的在跑」。后者要真机，不在本条射程。
+    const TS_FALLBACK_REACH: &[(&str, &[&str], Reach, &str)] = &[
+        (
+            "src/launch-payload-golden.ts",
+            &["renderGoldenFixture", "GOLDEN_CASES"],
+            Reach::OffProductionPath,
+            "`npm run gen:payload-golden`（`e2e/launch-payload-golden-emit.mts`）\
+             与它自己那份 vitest。**生产运行时零调用**，但它产的入库夹具是 Rust 那条\
+             逐字节对拍的**左边** ⇒ 删它要先给那条对拍换一个真相源。",
+        ),
+        (
+            "src/remote-launch.ts",
+            &[
+                "buildResumeDirectCmd",
+                "buildResumeTmuxCmd",
+                "buildResumeIntoExistingTmuxCmd",
+                "buildLauncherCmd",
+                "buildAttachCmd",
+            ],
+            Reach::OffProductionPath,
+            "只有 `remote-launch.test.ts` · `e2e/resume-cmd-driver.ts` · \
+             `e2e/tmux-target-emit.mts` 在调（`K-R89` 的 PM 审计现打核过：生产调用方 0）。\
+             ⚠ 同一份文件里 `mintTmuxName` / `deriveTmuxName` / `buildOpenTerminalCmd` \
+             **是生产在跑的** —— 本行判的是上面那五个 builder，不是这个文件。",
+        ),
+        (
+            "src/remote-launch-run.ts",
+            &[
+                "runRemoteResume",
+                "runRemoteResumeTmux",
+                "runRemoteLauncher",
+            ],
+            Reach::OnProductionPath,
+            "`tabs.ts` / `views/history.ts` / `account-restart.ts` 那条 `↗` 主路。\
+             **这是兜底渲染器今天唯一的生产入口。**",
+        ),
+        (
+            "src/launch-render-fallback.ts",
+            &["renderFallback"],
+            Reach::OnProductionPath,
+            "被上面那个生产入口引（`remote-launch-run.ts` 的回落那一行）。",
         ),
     ];
 
@@ -653,7 +756,9 @@ mod f07_main_path_tests {
         // 那条**硬**障碍（daemonless 主机今天仍是产品提供的开关）」——
         // 🔴 `K-R59`（09-11，定框 `K35`）把那一档整格删了，那条判据也随之换人。
         // ⇒ **删 TS 渲染器的前置仍然不成立**，但今天的理由换成了
-        //   `the_ts_fallback_renderer_now_stands_on_its_own_consumers`（3 + 2 个生产消费者）。
+        //   `the_ts_fallback_renderer_now_stands_on_its_own_consumers`（消费者逐处见
+        //   `TS_FALLBACK_KEEPERS`；**处数与「站不站在生产路上」都从源码派生，这里不写死**
+        //   —— `K-R105` 09-13 把那两个字面量从全部散文副本里撤了，理由见那张表的头注）。
         // ⚠ 而 **Rust 那棵树仍然必须是零** —— monitor 侧那条 `.call("launch")` 至今只发
         //   `send-into` / `send-keys-raw`（`daemon_launch::the_only_mode_this_channel_can_speak_is_send_into`
         //   钉着它）。**两棵树本拍起口径不同，这不是疏漏，是两件不同的事。**
@@ -695,14 +800,19 @@ mod f07_main_path_tests {
     /// # 🔴 而它红完之后的答案，不是它自己那句话
     ///
     /// 它预写的结论是「那时兜底渲染器**少了一类必须服务的主机**」——
-    /// 听起来像「可以删了」。**现打（`4d298c4`，`src` 下、去掉 `*.test.ts` / `*.vitest.ts`）不是这样**：
-    /// `renderFallback` 有 **3 个**生产消费者、`SESSION_BACKEND` 有 **2 个**（逐处见 [`TS_FALLBACK_KEEPERS`]）。
+    /// 听起来像「可以删了」。**现打不是这样**：那条路**另有消费者**，
+    /// 逐处与处数见 [`TS_FALLBACK_KEEPERS`]（**处数从源码派生，这里不写一个字面量**）。
+    ///
+    /// 🔴 **`K-R105` 09-13：这一段原来在这儿写着两个数（「3 个」「2 个」），撤了。**
+    /// 那两个数是**尺子A**（标识符出现处数）的读数，而读它的人（连同散文里那几份副本）
+    /// 一律把它读成**尺子B**（有没有生产调用方）。两把尺子今天各有一个家：
+    /// 尺子A = [`TS_FALLBACK_KEEPERS`]，尺子B = [`TS_FALLBACK_REACH`]，**两张都从源码派生**。
     ///
     /// ⇒ **前提退役，但那条路不退役 —— 它另有消费者。**
     /// 08-14 那条把「daemonless 主机需要它」当成了「它删不得」的**理由**，
     /// 而那不是唯一的理由。**换人手续办完了，不是把它抹掉。**
     ///
-    /// ⚠ **本条只答「那条路还有没有别的消费者」，不答「那 3 个消费者今天还该不该存在」** ——
+    /// ⚠ **本条只答「那条路还有没有别的消费者」，不答「那几个消费者今天还该不该存在」** ——
     /// 后者要读 `U8c-3` 的原意，不在 `K-R59` 射程（件文件 `§0b-3` 逐字）。
     ///
     /// # 本条什么时候该红（新的触发条件，逐条写死）
@@ -748,7 +858,98 @@ mod f07_main_path_tests {
                  它什么时候能走：{unlock}"
             );
         }
-        // ③ 承接方那两个文件本身还在（`U8c-3` 的顺序是「先有承接方，再删旧的」）。
+        // ③ 🔴 **尺子B 也从源码派生**〔`K-R105` 09-13〕：每个消费者文件今天还站不站在生产路上。
+        //    两向对拍：`TS_FALLBACK_KEEPERS` 里出现过的文件必须在 `TS_FALLBACK_REACH` 里恰好一行，
+        //    反之亦然 —— 少一行，那个文件的「生产可达吗」就没人判过。
+        {
+            let mut keeper_files: Vec<&str> =
+                TS_FALLBACK_KEEPERS.iter().map(|(_, f, ..)| *f).collect();
+            // 座本身那一格：`SESSION_BACKEND` 的消费者里有 `launch-render-fallback.ts`，
+            // 而 `renderFallback` 的定义也住在它里面 ⇒ 它两种身份都算，只登记一次。
+            keeper_files.sort_unstable();
+            keeper_files.dedup();
+            let mut reach_files: Vec<&str> = TS_FALLBACK_REACH.iter().map(|(f, ..)| *f).collect();
+            reach_files.sort_unstable();
+            let mut reach_uniq = reach_files.clone();
+            reach_uniq.dedup();
+            assert_eq!(
+                reach_files, reach_uniq,
+                "`TS_FALLBACK_REACH` 里有重复的文件 —— 一个事实恰好一个住址"
+            );
+            assert_eq!(
+                keeper_files, reach_files,
+                "尺子A 的人群与尺子B 的人群对不上。\n\
+                 **尺子A 多出来的** ⇒ 那个消费者文件没人判过「它今天还站不站在生产路上」；\n\
+                 **尺子B 多出来的** ⇒ 那一行在描述一个已经不在尺子A 人群里的文件。\n\
+                 ⚠ 两把尺子问的不是同一件事，所以**两张表都要有它** —— \
+                 08-14 那句散文之所以能带着一个尺子A 的数说尺子B 的话，就是因为尺子B 没有家。"
+            );
+            // 射程第 2 条：已登记为 `Off` 的那几家不算「生产调用方」（见 `TS_FALLBACK_REACH` 头注）。
+            let off_files: Vec<&str> = TS_FALLBACK_REACH
+                .iter()
+                .filter(|(_, _, r, _)| *r == Reach::OffProductionPath)
+                .map(|(f, ..)| *f)
+                .collect();
+            // 生产 TS 语料**只取一次**（剥完注释），下面逐格复用。
+            let mut corpus: Vec<(String, String)> = Vec::new();
+            for (p, raw) in guard_core::scan_tree!(&repo_root().join("src"), &["ts"]) {
+                let rel = p
+                    .strip_prefix(repo_root())
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if rel.ends_with(".test.ts") || rel.ends_with(".vitest.ts") {
+                    continue;
+                }
+                corpus.push((rel, production_ts(&raw)));
+            }
+            // ★ 抽取器自检：人群没缩水（否则 `OffProductionPath` 那几格零命中地绿）。
+            assert!(
+                corpus.len() >= 100,
+                "只扫到 {} 份生产 TS —— 遍历坏了，下面那几条会零命中地绿",
+                corpus.len()
+            );
+            for (file, exports, want, who) in TS_FALLBACK_REACH {
+                assert!(!who.trim().is_empty(), "`{file}` 没写它今天靠谁跑");
+                assert!(
+                    !exports.is_empty(),
+                    "`{file}` 一个导出符号都没挑 —— 下面那条会零命中地绿"
+                );
+                let mut callers: Vec<&str> = Vec::new();
+                let mut off_callers: Vec<&str> = Vec::new();
+                for (rel, code) in &corpus {
+                    if rel.as_str() == *file {
+                        continue; // 定义处不算调用方
+                    }
+                    // 🔴 整词，不是裸子串 —— 理由（`CLI_GOLDEN_CASES` 那次）见本表头注。
+                    if !exports.iter().any(|s| guard_core::contains_word(code, s)) {
+                        continue;
+                    }
+                    if off_files.contains(&rel.as_str()) {
+                        off_callers.push(rel.as_str());
+                    } else {
+                        callers.push(rel.as_str());
+                    }
+                }
+                let got = if callers.is_empty() {
+                    Reach::OffProductionPath
+                } else {
+                    Reach::OnProductionPath
+                };
+                assert_eq!(
+                    got, *want,
+                    "`{file}` 的**尺子B** 读数是 {got:?}，登记的是 {want:?}\n\
+                     （生产调用方：{callers:?}；已登记为 Off、因而不计入的调用方：{off_callers:?}）。\n\
+                     **从 Off 变成 On** ⇒ 有人把它接进生产了 ⇒ 改登记，并回 `U8c-3` 想一想\
+                     「删它」的代价是不是又涨了一格；\n\
+                     **从 On 变成 Off** ⇒ 🔴 **这多半是好事**：那条路少了一个真正的生产入口，\
+                     回 `U8c-3` 重裁 —— 别只改这张表。\n\
+                     ⚠ 它今天靠谁跑：{who}\n\
+                     ⚠ 本条**不做可达性分析**，只数「那几个导出符号在别的生产 TS 里出现过没有」。"
+                );
+            }
+        }
+        // ④ 承接方那两个文件本身还在（`U8c-3` 的顺序是「先有承接方，再删旧的」）。
         for f in ["src/launch-render-fallback.ts", "src/session-backend.ts"] {
             assert!(
                 repo_root().join(f).is_file(),
@@ -793,9 +994,18 @@ mod f07_main_path_tests {
             "stands_on_its_own_consumers"
         );
         let keepers = format!("TS_FALLBACK_{}", "KEEPERS");
-        for needle in [tomb_fn.as_str(), keepers.as_str()] {
+        // 🔴〔`K-R105` 09-13〕**尺子B 那张表也进人群** —— 它与 `KEEPERS` 是同一份手续的两半
+        // （一把量「还有谁提到它」，一把量「还站不站在生产路上」），少了任一把，
+        // 那句「N 个生产消费者」就又能带着一个尺子的数去说另一个尺子的话。
+        let reach = format!("TS_FALLBACK_{}", "REACH");
+        for needle in [tomb_fn.as_str(), keepers.as_str(), reach.as_str()] {
+            // 🔴〔`K-R105` 09-13〕**整词，不是裸子串。** 本轮死值验实测：给那张表的名字
+            // **加一个后缀**（= 把它从人群里拿走最省事的写法），裸 `contains` **照样命中**
+            // —— needle 被撑大就溜过去了，正是 `needle_anchor_registry` 头注那张表里
+            // F16 那一行的形状。⚠ 这段解释里**不写那个改过的名字**：写了它就成了本文件里
+            // 一处「以 needle 打头的更长的串」，恰好把这一条重新变瞎（`6g` 那族）。
             assert!(
-                me.contains(needle),
+                guard_core::contains_word(me, needle),
                 "`{needle}` 不在本文件里了 —— **`U8c-3` 的那份换人手续被撕掉了。**\n\
                  08-14 那条前提触发器（`daemonless` 主机需要兜底渲染器）在 09-11 `K-R59` 红了，\n\
                  而它红完之后留下的东西就是那条墓碑 + 那张消费者登记。\n\
@@ -956,6 +1166,36 @@ mod f07_main_path_tests {
              若它改成了「Rust 现场再渲染一次」，这条对拍就成了自洽夹具（`U7-4` 的病根），\n\
              逐字禁令住 `src/launch-payload-golden.ts` 的头注。"
         );
+        // 🔴🔴 **`K-R105` 09-13：上面那两条「那一行还在」挡不住「再绑一次同名的」。**
+        //
+        // 现打逮到的活体（`D4-selffix` 那一刀）：在 `if got != want {` **前面插一行**
+        // `let want = got.clone();` —— 原来那一行**原样留着**，上面那条 `contains` 照样绿，
+        // 而比较已经变成 `got != got` ⇒ **对拍死了，13 格全绿一声不吭。**
+        //
+        // ★ 这正是本文件治的那一族（`needle_anchor_registry`：**匹配单位比事实小**）
+        //   在这条判据自己身上的发作：事实是「`want` 只许被绑一次」，
+        //   而它量的是「有没有出现过那一行」。**遮蔽是顺手，不是决心** ——
+        //   头注那句「防顺手不防决心」的诚实边界，把这一形放在了错的一边。
+        // ⇒ 匹配单位从「有没有」换成「有几处」，两边各数一次。
+        let rest = &PARITY_SRC[at..];
+        let end = rest.find("\n    }\n").map(|k| k + 6).unwrap_or(rest.len());
+        let body = &rest[..end];
+        assert!(
+            body.len() > 300,
+            "取到的对拍函数体只有 {} 字节 —— 切法坏了，下面两条会零命中地绿",
+            body.len()
+        );
+        for side in ["let want", "let got"] {
+            let n = body.matches(side).count();
+            assert_eq!(
+                n, 1,
+                "对拍函数体里 `{side}` 出现了 {n} 次（只许 1 次）。\n\
+                 **两次 = 有人用同名遮蔽把这条对拍的一边换掉了** —— 上面那两条\n\
+                 「那一行还在」的断言对这一形是瞎的（原来那一行还在，而它已经不参与比较了）。\n\
+                 ⚠ 真要重构变量名，把本条一起改；但先想清楚：改完之后，\n\
+                 「左边取自入库夹具、右边跑生产命令」这两件事还有谁在看着。"
+            );
+        }
         assert!(
             PARITY_SRC.contains("render_launch_payload(c.req)"),
             "对拍的**右边**不再跑生产命令 `render_launch_payload` 了 ——\n\
