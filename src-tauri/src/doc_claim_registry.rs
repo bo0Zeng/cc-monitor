@@ -609,12 +609,25 @@ mod tests {
         );
     }
 
-    /// ★ 「外层载荷有四个产出方，一个都没退役」—— 逐个存在性复核。
+    /// ★ 「外层载荷那几个产出方」—— 逐个**按文档说的状态**复核。
     ///
-    /// 这条是「可数的实测断言」里第二条能钉的。⚠ 它**只钉住「四个都还在」**，
+    /// 这条是「可数的实测断言」里第二条能钉的。⚠ 它**只钉住「在不在」**，
     /// 钉不住「它们各自还是不是生产在跑」—— 那需要真远端/真安装包（ROADMAP §5）。
+    ///
+    /// # 🔴 `K-R104`（09-13）：它从「四个都还在」变成「各自是不是文档说的那个状态」
+    ///
+    /// 上一版逐字叫 `the_four_outer_layer_producers_are_all_still_there`，〔散文墓碑〕
+    /// 断的是**四条存在性**。而 `K-R104` 让其中一条**真的退役了** ——
+    /// `account_usage.rs::build_usage_probe_cmd`（用量探针那条 shell 串）
+    /// 随编排搬上后端帧面而整个不存在了。
+    ///
+    /// ⇒ 按它自己报错文案里那句话办：「**这多半是好事** …… 回去把它和 `INVARIANTS §33b`
+    /// 那句『四个产出方，一个都没退役』一起重裁」。**重裁的结果不是删掉本条**，
+    /// 是把那一格从「必须在」翻成「**必须不在**」——
+    /// 退役了却又长回来（有人重新在 monitor 里拼一条 tmux 编排串）同样要红。
+    /// 剩下三条照旧钉存在性。
     #[test]
-    fn the_four_outer_layer_producers_are_all_still_there() {
+    fn the_outer_layer_producers_are_in_the_state_the_doc_claims() {
         let root = repo_root();
         let checks: &[(&str, bool)] = &[
             (
@@ -627,9 +640,12 @@ mod tests {
                     .is_file(),
             ),
             (
-                "account_usage.rs::build_usage_probe_cmd（用量探针 shell 串）",
+                // 🔴 **翻面**（`K-R104` 09-13）：这一条**退役了**，所以这里断的是「它不在」。
+                //    读得到文件是前提（读不到会静默变成 `unwrap_or(false)` ⇒ 恒 true 的假绿），
+                //    所以两半都写出来：文件必须在 ＋ 那个函数必须不在。
+                "account_usage.rs::build_usage_probe_cmd（用量探针 shell 串，`K-R104` 已退役 —— 这一格断的是它**不许回来**）",
                 std::fs::read_to_string(root.join("src-tauri/src/account_usage.rs"))
-                    .map(|s| s.contains("fn build_usage_probe_cmd"))
+                    .map(|s| !s.contains("fn build_usage_probe_cmd"))
                     .unwrap_or(false),
             ),
             (
@@ -650,9 +666,11 @@ mod tests {
             .collect();
         assert!(
             missing.is_empty(),
-            "「外层四个产出方」里这些已经没了：{missing:?} —— **这多半是好事**：\n\
-             有产出方退役了 ⇒ `INVARIANTS §33b` 那句「四个产出方，一个都没退役」过期了，\n\
-             回去把它和 U8c-3 的前置一起重裁。"
+            "「外层产出方」里这几格与文档说的状态对不上：{missing:?}\n\
+             · 还没退役的那几条**不在了** ⇒ **这多半是好事**：有产出方退役了 ⇒\n\
+               `INVARIANTS §33b` 那张表过期了，回去把它和 U8c-3 的前置一起重裁。\n\
+             · 已退役的那条**又回来了** ⇒ 那是有人重新在 monitor 里拼一条 tmux 编排串\n\
+               （`K-R104` 刚把它整条搬上后端帧面）—— 回去看 `account_usage.rs` 的头注。"
         );
     }
 
@@ -1092,6 +1110,15 @@ mod tests {
                 "run_tmux_reconcile_poller",
                 "`INVARIANTS.md` 那句逐字写着它**已删**（audit-fixes F03.2）—— 历史句，\
                  删掉反而丢掉「为什么今天没有 poller」的解释",
+            ),
+            (
+                "build_usage_probe_cmd",
+                "★〔`K-R104` 09-13〕`INVARIANTS.md` §33b 那两处逐字写着它**已退役** \
+                 —— 用量探针的整条编排搬上后端帧面之后，monitor 一个 shell 字符都不渲染。\
+                 那两句正是「外层四个产出方里退役了哪一个、为什么」的解释，\
+                 **删掉这个地址反而丢掉线索**（同上面 `run_tmux_reconcile_poller` 那条）。\
+                 ⚠ 它今天不是无人看管的：`the_outer_layer_producers_are_in_the_state_the_doc_claims` \
+                 把那一格**翻面**钉着 —— 这个函数要是回来了，那条会红。",
             ),
         ];
         const KW: &[&str] = &[

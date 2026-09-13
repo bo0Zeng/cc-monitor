@@ -969,13 +969,22 @@ U8c-1 摸底后拆成三步：
 一条完整命令分两层：外层 tmux（`new-session … ; send-keys … ; attach`）+ 内层载荷
 （`env 前缀 → cd → argv`）。U8c-1 只搬内层，**理由是「先做被依赖的」，不是「外层已经不需要了」**。
 
-⚠ **实测：外层今天有四个产出方，一个都没退役**（2026-08-02 逐条核过）：
+⚠ **实测：外层当时有四个产出方，一个都没退役**（2026-08-02 逐条核过）。
+🔴 **2026-09-13（`K-R104`）订正：这句话今天假了 —— 四个里退役了一个。**
+用量探针那条（`account_usage.rs::build_usage_probe_cmd`）随「探针编排整条搬上后端帧面」
+而**整个不存在了**：今天 monitor 一个 shell 字符都不渲染，那几步各发一条帧命令
+（`oneshot-session` / `launch send-into` / `capture-pane` / `kill`）。
+⇒ 今天是**三个产出方 ＋ 一个已退役的墓碑**；那一格由
+`doc_claim_registry::the_outer_layer_producers_are_in_the_state_the_doc_claims`
+**翻面**钉着（从「必须在」变成「必须不在」—— 退役了又长回来同样红）。
+⚠ **它不改本节的结论**：U8c-3 的两条硬障碍（`create-or-attach` 与 attach 两格未切）
+与用量探针无关，一个字都没动。
 
 | 产出方 | 实况 |
 |---|---|
 | `session-backend.ts`（TS） | **生产远端主路**，天天在跑 |
 | `control/launch.rs`（Rust argv，U8a-2b 建的） | ⚠ **F11 2026-08-04 订正：这一格原写「零生产调用方 —— 全仓 `.call("launch", …)` 只有一处且在 `#[cfg(test)]` 里」，那句已经假了。**〔机检〕生产段 `.call("launch")` 处数：2 处（`backend/control/daemon_launch.rs` 的 `send-into` = U8a-2c-1 · `backend/control/daemon_send_keys.rs` 的 send-keys = F04c）。⚠ **这两处都不是「又切了一格起会话」**——`create-or-attach` 与 attach 两格仍未切。⚠ `ssh_source.rs:2208` 那条 `!client.accepts("launch")` 仍在，但它断言的是「某个 hello 没声明 launch」，**不是「生产不调 launch」**（F07 已订正过同一句话在三问表里的那一份 —— **这一格当时漏了**）。⚠ 那个「2」**只有这一个家**：`doc_claim_registry::the_doc_number_for_production_launch_calls_matches_reality` 从这里把它读出来与现场数比，多一处调用而不改这里就红 |
-| `account_usage.rs::build_usage_probe_cmd`（Rust shell 串） | 用量探针，**生产在跑**（`tmux kill-session … new-session … send-keys … capture-pane`） |
+| ~~`account_usage.rs::build_usage_probe_cmd`（Rust shell 串）~~ | 🔴 **`K-R104` 2026-09-13 退役** —— 用量探针的整条编排搬上后端帧面（`oneshot-session` / `launch send-into` / `capture-pane` / `kill`，一条连接上多次往返）。**这一格今天断的是「它不许回来」**，量法住 `doc_claim_registry`。退役的**结构性理由**：走 CLI 面每抓一屏一次 SSH 握手 ⇒ 最多 36 次 vs 25s 硬超时 ⇒ 结构上超时 |
 | `shared/ccm` | 用户终端那条路 |
 
 且 `control/launch.rs` **结构上不覆盖 attach** —— 它的模块头注逐字写着「本模块**不 attach**」（平面 ③）。

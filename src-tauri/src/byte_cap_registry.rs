@@ -1081,12 +1081,12 @@ mod tests {
     /// ⚠ **这不是豁免清单**：第三格必须写「退役归」（下面 `every_uncapped_stream_read_has_an_owner`
     /// 钉着），照 `polling_registry` 的先例。
     const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
-        (
-            "src-tauri/src/account_usage.rs",
-            "远端 `ccm` 用量探针的 stdout",
-            "远端 SSH exec 输出，无 e2e 覆盖 ⇒ 改完无法验。正确修法是抽一个 \
-             `exec_read_capped` 共享助手而不是撒八个 `.take()`，那是重构。**退役归 F10d**。",
-        ),
+        // 🔴 **`K-R104`（09-13）：`src-tauri/src/account_usage.rs` 这一行删了，欠账真的没了。**
+        //    它欠的是「整读一条远端 SSH exec 的 stdout，没有上限」。
+        //    编排搬上后端帧面之后，本模块**不再读任何流** —— 抓回来的那一屏是一条
+        //    `capture-pane` 帧应答的 `screen` 字段，而**帧那一层自己有单行上限**
+        //    （daemon 侧 `inbound.rs` 的超长行处理 + monitor 侧收帧那一层）。
+        //    ⇒ 这一处不再属于「异步流整读」那个人群，留着就是幽灵条目。
         (
             "src-tauri/src/acct_iso_deploy.rs",
             "远端 `cc-acct-iso` 部署脚本的 stdout",
@@ -1332,9 +1332,17 @@ mod tests {
                 }
             }
         }
+        // 🔴 `K-R104`（09-13）：地板 14 → **13**，而这一格必须写清**为什么不是抽取器坏了**：
+        //    `src-tauri/src/account_usage.rs` 那一处 `read_to_end`（远端探针的 stdout）
+        //    随整条编排搬上后端帧面而**不存在了** —— 探针今天读的是一条帧应答的字段，
+        //    不再整读一条流。⇒ 人群**恰好少一处**，而那一处同时从 `UNCAPPED_STREAM_READS`
+        //    里删掉了（两侧同拍，不然那一行会变成幽灵条目）。
+        //    ⚠ **这不是「挡路就放宽」**：地板守的是「抽取器还够得到东西」，
+        //    而人群真的少了一个成员时，不跟着改这个数才是让它继续替真判据挡枪（`K-G8`）。
         assert!(
-            population >= 14,
-            "只扫到 {population} 处异步流读（08-10 G 审计后实测 18）—— 抽取器坏了，本条此刻是空转的"
+            population >= 13,
+            "只扫到 {population} 处异步流读（08-10 G 审计后实测 18，`K-R104` 09-13 现打 13）\
+             —— 抽取器坏了，本条此刻是空转的"
         );
         assert!(
             orphans.is_empty(),

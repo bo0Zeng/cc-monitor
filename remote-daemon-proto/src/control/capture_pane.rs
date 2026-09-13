@@ -248,6 +248,24 @@ fn checked_name(raw: &str) -> Result<String, CmdErr> {
     super::kill::parse_name(&serde_json::json!({ "name": raw }))
 }
 
+/// 帧面入口（`K-R104`）：`capture-pane`。
+///
+/// `args`：`{name}`。回 `{name, screen}` —— `screen` 是那一屏的**原文**
+/// （`R58`〔用 09-13〕逐字「直接抓屏给我看」：这一层一个字都不解析、不裁剪、不归一）。
+///
+/// 🔴 **与 CLI 面 [`run`] 共用同一个本体 [`capture`]**：`K33` 逐字「所有命令只许有一处，
+/// 其他都是根据传参来调用」。两个面**只差取参数与包信封的方式**。
+///
+/// ⚠ **空屏是合法的成功**（模块头注那一段）—— 这里照样回 `ok:true` ＋ 空 `screen`，
+/// 不许把它压成一条错误：那是 `KR101D1` ③ 明令禁止的那一形。
+pub(crate) fn capture_for_inbound(
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, (String, String)> {
+    let name = super::kill::parse_name(args).map_err(|(c, m)| (c.to_string(), m))?;
+    let screen = capture(&name).map_err(|(c, m)| (c.to_string(), m))?;
+    Ok(serde_json::json!({ "name": name, "screen": screen }))
+}
+
 /// 一次性 CLI 入口：`--capture-pane <会话名>`。
 ///
 /// 成功 ⇒ 那一屏**原样**写 stdout（同 `--read-session` 的透传口径）＋ exit 0；

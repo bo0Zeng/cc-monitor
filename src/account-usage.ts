@@ -125,9 +125,13 @@ export async function fetchAccountUsage(
       throw new Error(`非法 CLAUDE_CONFIG_DIR（拒绝发起探测）: ${JSON.stringify(configDir)}`);
     }
     // F08：**本机走本机那条**（补平后两侧都有了）。
-    // 两条路的载荷逐字相同（Rust 侧同一个 `probe_command_for`，由
-    // `the_local_and_remote_probes_use_the_very_same_command` 钉住）——
-    // 这里分的只是「谁去执行」：本机 `sh -c`，远端 SSH exec。
+    // 🔴 `K-R104`（09-13）订正：上一版这里写「两条路的载荷逐字相同（Rust 侧同一个
+    // `probe_command_for`……）—— 这里分的只是『谁去执行』：本机 `sh -c`，远端 SSH exec」。〔散文墓碑〕
+    // **那两句今天都假了**：探针编排整条搬上后端帧面之后，Rust 侧两条命令**是同一个函数**，
+    // 只差一个 origin（`<local>` 也是一个 origin），而**没有任何一侧再 `sh -c` 或起 SSH exec**。
+    // ⇒ 这里分的只剩「IPC 名字」这一格，留着它是因为两条 tauri 命令的签名不同
+    // （本机那条不收 origin）。同源那件事由 Rust 侧
+    // `account_usage::tests::the_local_and_remote_probes_are_the_same_code_path` 钉住。
     const result =
       origin === LOCAL_ORIGIN
         ? await commands.account_usage_local({ accountName, configDir })

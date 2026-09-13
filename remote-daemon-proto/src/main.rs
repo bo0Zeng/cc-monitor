@@ -209,7 +209,20 @@ const PROTO_VERSION: u32 = 1;
 ///   归发版那一拍，本轮**没做**（本工作树也没铺 `src-tauri/embedded-daemons/`）。
 ///   🔴 **别把它读成「用量探针搬进后端了」**：本件只出 daemon 这一侧的原语，
 ///   monitor 的 `account_usage` 那条 shell 串编排**一个字节没动**。
-const BUILD_ID: &str = "p2h-oneshot-session";
+///
+/// - p2i-frame-tmux-primitives〔`K-R104` 09-13〕：**`capture-pane` 与 `oneshot-session`
+///   上了帧面** —— `inbound::REGISTRY` 8 → 10。CLI 那一面（`SUBCOMMANDS`）**一个字没动**，
+///   这是本谱系里第一次**只有通道面**变。
+///   为什么非搬不可：那两条此前只有 CLI 面，而 CLI 面**每调一次一次 SSH 握手** ——
+///   用量探针两段轮询上限 12+20 轮 ⇒ 单次探测最多 **36** 次握手，
+///   撑破 monitor 侧的 `EXEC_TIMEOUT_SECS = 25` ⇒ **结构上超时**，不是慢。
+///   帧面是一条长连接上多次往返，握手恒 1 次。
+///   ⚠ **必须 bump**，而这一次的形状与前七次不同：旧 daemon 不是「`exit 2`」，
+///   是它的 `hello.commands` 里**根本没有这两条** ⇒ monitor 的 `InboundClient::accepts`
+///   当场判 `CallError::Unsupported`、一个字节都不发（`bus-send` 是现成先例）。
+///   ⇒ 探针在已部署的旧远端上整条不可用，而判 stale 只看 build_id。
+///   ★ 同 p2d / p2e / p2g / p2h：这一半是**源码半**，re-embed 归发版那一拍，本轮**没做**。
+const BUILD_ID: &str = "p2i-frame-tmux-primitives";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src-tauri/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -582,9 +595,14 @@ mod fourth_face_tests {
         );
         let missing = unavailable_from(Some(false));
         let names: Vec<&str> = missing.iter().map(|u| u.command.as_str()).collect();
+        // 🔴 `K-R104`（09-13）：2 → **4**。`capture-pane` / `oneshot-session` 上帧面时
+        //    各自登记了 `no_tmux`（它们都要起 tmux），**这张表是从 `codes` 派生的**
+        //    ⇒ 它们自动进表。这正是本条报错文案里逐字预言的那一形：
+        //    「本条红未必是错……那就把这里的期望值补上」。
+        //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
         assert_eq!(
             names,
-            vec!["kill", "launch"],
+            vec!["capture-pane", "oneshot-session", "kill", "launch"],
             "没有 tmux 的那台机器上，做不到的恰好是 `REGISTRY` 里登记了 `{NO_TMUX}` 的那几条。\n\
              ⚠ 本条红**未必是错**：你要是新加了一条会回 `{NO_TMUX}` 的命令，它已经自动进表了\n\
              （这张表是从 `codes` 派生的，不是手写的）—— 那就把这里的期望值补上。\n\
@@ -634,10 +652,15 @@ mod fourth_face_tests {
 
             // ★ 合起来：**同一份代码，两台不同的机器，两个不同的答案。**
             //   这一步才是「不是编译期常量」的正面证据 —— 上面两组各自都只证了一半。
+            // 🔴 `K-R104`：`2` → **4**（`capture-pane` / `oneshot-session` 也登记了
+            //    `no_tmux`，这张表从 `codes` 派生 ⇒ 自动进表）。
+            //    ⚠ 这个数**不许写成地板** —— 「有 tmux 的机器上一条都不报」那一半是
+            //    `is_empty()`，而这一半要的是「恰好是登记了 `no_tmux` 的那几条」。
+            let today = unavailable_from(Some(false)).len();
             assert!(
-                unavailable_from(tmux_in(Some(without.as_os_str()))).len() == 2
+                unavailable_from(tmux_in(Some(without.as_os_str()))).len() == today
                     && unavailable_from(tmux_in(Some(with.as_os_str()))).is_empty(),
-                "端到端：没有 tmux 的机器上要报出两条做不到，有 tmux 的机器上一条都不报"
+                "端到端：没有 tmux 的机器上要报出 {today} 条做不到，有 tmux 的机器上一条都不报"
             );
         }
         #[cfg(not(unix))]
@@ -708,9 +731,15 @@ mod fourth_face_tests {
         .iter()
         .map(|u| u.command.clone())
         .collect();
+        // 🔴 `K-R104`：同上一条，2 → **4**（`capture-pane` / `oneshot-session` 自动进表）。
         assert_eq!(
             names,
-            vec!["kill".to_string(), "launch".to_string()],
+            vec![
+                "capture-pane".to_string(),
+                "oneshot-session".to_string(),
+                "kill".to_string(),
+                "launch".to_string()
+            ],
             "🔴 **Windows 上这张表又空了** —— 这一格就是本拍的正题。\n\
              握手帧第四条面在动机平台上不说话 = 这一拍什么都没买到。\n\
              ⚠ 本条红未必是错：新加了一条会回 `no_tmux` 的命令，它会自动进表 —— 那就补期望值。\n\
