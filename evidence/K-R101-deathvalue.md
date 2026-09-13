@@ -228,6 +228,39 @@ vite 报 `TransformPluginContext.error`）：
 
 逐条与「仍绿的为什么仍绿」写在件文件 `§3-5`。
 
+### `M14` · `KR101D4` —— **收工前自查逮到的那条自喂判据，补的「先红」**
+
+🔴 **它为什么存在**（`brief` 第 15 条那一步真抓到了东西）：
+`the_orchestration_registry_still_describes_what_this_file_does` 初版扫的是
+`production_code(include_str!("account_usage.rs"))` **整份生产段**，
+而 `PROBE_ORCHESTRATION_STEPS` 的「今天由谁渲染」那一列里**逐字写着那五个动词**
+（`tmux kill-session` / `tmux new-session` / `setsid sh -c` / `tmux send-keys` / `tmux capture-pane`）
+⇒ **它被自己的登记表喂饱**：编排真搬走了它照样绿。
+**那正是 `F23` 那一族**（判据在自己的登记表里找到自己），本件在别的判据上已经栽过两次。
+⇒ 修法：扫之前把 `PROBE_ORCHESTRATION_STEPS` 那一段**挖掉**，并配两条抽取器自检
+（挖走的字节数 > 400 · 挖走的那段里确实含那几个动词，否则挖除是死规则）。
+
+刀口：`tmux new-session -d -s {session_q}` → `printf '' {session_q}`（命中 1/1）。
+⚠ **刀口挑 `tmux new-session` 是现打之后挑的**：`tmux kill-session` 在**表外**有 3 处
+（看门狗那句里还有一份），切掉两处照样剩一处 ⇒ **第一版 `M14` 切它，我的判据没红**
+（红的是既有的 `probe_cmd_kills_stale_session_before_creating`）。逐个动词的表内/表外分布：
+
+| 动词 | 表外 | 表内 |
+|---|---|---|
+| `tmux kill-session` | 3 | 2 |
+| `tmux new-session` | **1** | 1 |
+| `setsid sh -c` | 2 | 1 |
+| `tmux send-keys` | 2 | 1 |
+| `tmux capture-pane` | 7 | 1 |
+
+**红 2 条**（cargo 1464 passed / 2 failed）：
+`account_usage::tests::the_orchestration_registry_still_describes_what_this_file_does`（**正题**）
+· `account_usage::tests::probe_cmd_kills_stale_session_before_creating`（既有判据，连带）。
+
+⚙ **修之前的阴性对照就是第一版那一趟**：同一把尺子、同一份文件，
+`the_orchestration_registry_…` **绿**。两趟原文都在 `…/cuts3/M14.out`
+（第二趟覆盖了第一趟 —— 第一趟的读数逐字记在上面那段里）。
+
 ## 收尾那趟 —— 量于 `5f2425f`（交回时的分支尖）
 
 ```

@@ -1265,8 +1265,36 @@ mod tests {
     /// 顺手把 `PROBE_ORCHESTRATION_STEPS` 头注里那段「买不到什么」一起结掉。
     #[test]
     fn the_orchestration_registry_still_describes_what_this_file_does() {
-        let prod = guard_core::production_code(include_str!("account_usage.rs"));
-        // 表里说这六步今天都由 monitor 渲染 ⇒ 那这份文件的生产段里就该找得到那几个 tmux 动词。
+        let whole = guard_core::production_code(include_str!("account_usage.rs"));
+        // 🔴 **先把登记表自己那一段挖掉再扫** —— 本轮**收工前自查**逮到的：
+        //    `PROBE_ORCHESTRATION_STEPS` 的「今天由谁渲染」那一列里逐字写着
+        //    `tmux kill-session` / `tmux new-session` / `setsid sh -c` / `tmux send-keys` /
+        //    `tmux capture-pane` **五个动词全在**（那正是它要描述的东西）
+        //    ⇒ 不挖掉的话，**这条判据被自己的登记表喂饱**：编排真搬走了它照样绿。
+        //    那是 `F23` 那一族（判据在自己的登记表里找到自己），本件在别的判据上已经栽过两次。
+        let head = "const PROBE_ORCHESTRATION_STEPS";
+        let at = whole.find(head).expect(
+            "生产段里找不到 `PROBE_ORCHESTRATION_STEPS` —— 挖除的锚点漂了，本条会被自己喂饱",
+        );
+        let end = whole[at..]
+            .find("\n];")
+            .map(|i| at + i + 3)
+            .expect("`PROBE_ORCHESTRATION_STEPS` 没有收尾 `];`");
+        let mut prod = String::with_capacity(whole.len());
+        prod.push_str(&whole[..at]);
+        prod.push_str(&whole[end..]);
+        // 抽取器自检：真的挖走了一段，而且挖走的那段里确实含那几个动词（否则挖除是死规则）。
+        assert!(
+            whole.len() - prod.len() > 400,
+            "挖走的那一段只有 {} 字节 —— 锚点取错了段落",
+            whole.len() - prod.len()
+        );
+        assert!(
+            whole[at..end].contains("tmux kill-session"),
+            "挖走的那段里没有那几个动词 —— 那这条挖除是死规则，删掉它并把本条一起重写"
+        );
+        // 表里说这六步今天都由 monitor 渲染 ⇒ 那这份文件的生产段（**扣掉登记表本身**）里
+        // 就该找得到那几个 tmux 动词。
         for verb in [
             "tmux kill-session",
             "tmux new-session",
