@@ -706,6 +706,36 @@ fn session_names(raw: &str) -> std::collections::BTreeSet<String> {
         .collect()
 }
 
+/// `K-R96`：把这一份观测切成**那张唯一的会话快照**认的行
+/// （`crate::common::session_snapshot::SessionRow` = 会话名 ＋ `@ccm_sid`）。
+///
+/// 列的位置由 `TMUX_LS_FMT` 定（**红线：不改它**）：名字在第 0 列、`@ccm_sid` 在**末**列。
+/// 这里刻意**按 `TMUX_LS_FMT_FIELDS` 取那一列**而不是写死 `5`，也不是 `last()`：
+/// - 写死 `5` 是第二处「列数」常量，与格式串漂开了不会红；
+/// - `last()` 在段数**过溢**（有人把 `@ccm_sid` 设成含 TAB 的值）时会取到半截。
+///
+/// 段数下溢的行**整行丢掉** —— 与 [`session_names`] 的旁邻 `classify_tmux_probe` 同一条
+/// 处置（`K-R12 J1`：通道被改写就不当好数据）。这里再挡一次是因为本函数也被
+/// 「raw 从别处来」的路径调得到，不许假设上游已经筛过。
+fn session_rows(raw: &str) -> Vec<crate::common::session_snapshot::SessionRow> {
+    raw.lines()
+        .filter_map(|line| {
+            let cols: Vec<&str> = line.split('\t').collect();
+            if cols.len() != TMUX_LS_FMT_FIELDS {
+                return None;
+            }
+            let name = cols[0].trim();
+            if name.is_empty() || name == "NO_TMUX" {
+                return None;
+            }
+            Some(crate::common::session_snapshot::SessionRow {
+                name: name.to_string(),
+                ccm_sid: cols[TMUX_LS_FMT_FIELDS - 1].trim().to_string(),
+            })
+        })
+        .collect()
+}
+
 /// P5：与上一份快照差分，返回**这一轮消失了的会话名**（升序，`BTreeSet` 保证稳定）。
 ///
 /// **差分而不是逐事件**，因为 SIGUSR1 会合并：一串 hook 同时打进来可能只醒一次，
@@ -720,9 +750,36 @@ fn diff_closed(
     prev: &mut Option<std::collections::BTreeSet<String>>,
     obs: &TmuxObservation,
 ) -> Vec<String> {
+    diff_closed_into(prev, obs, crate::common::session_snapshot::global())
+}
+
+/// [`diff_closed`] 的本体，**快照由调用方给**。
+///
+/// 分出这一层只为一件事：让「发布进去的到底是什么」测得了，而**不去碰进程内那一份**
+/// （测试是并行跑的，往全局那份里写会让别的判据随机红 —— 那是最贵的一种假红）。
+fn diff_closed_into(
+    prev: &mut Option<std::collections::BTreeSet<String>>,
+    obs: &TmuxObservation,
+    snapshot: &crate::common::session_snapshot::SessionSnapshot,
+) -> Vec<String> {
+    // ★★ `K-R96`（09-12）：观测到什么，就**往那张唯一的会话快照里焐一份**。
+    //
+    // `R52` 裁定一之后，「谁还活着」在本 crate 里只有一个数据结构
+    //（`common::session_snapshot`）：control 侧的 Gate 判活与 `ccm` 铸名避让向它要，
+    // observe 这边把每一轮观测发布进去。
+    // ⚠ **焐热不等于「问过了」**：那边的 `query()` 一定重探（那是 `R52` 允许 Gate
+    //   读快照的前提）。这里发布买的是「同一张表」，不是「省一次探测」。
+    // ⚠ 三态的处置与下面 `now` 那三支**逐字同源**，刻意写在一起：
+    //   观测无效那一支**什么都不发布**（快照不动），绝不把「不知道」写成「都没了」。
     let now = match obs {
-        TmuxObservation::Sessions(raw) => session_names(raw),
-        TmuxObservation::ServerEmpty | TmuxObservation::NoServer => Default::default(),
+        TmuxObservation::Sessions(raw) => {
+            snapshot.publish(session_rows(raw));
+            session_names(raw)
+        }
+        TmuxObservation::ServerEmpty | TmuxObservation::NoServer => {
+            snapshot.publish(Vec::new());
+            Default::default()
+        }
         // 观测无效 ⇒ 什么都不结论，快照不动。
         TmuxObservation::NoTmux | TmuxObservation::Unobservable => return Vec::new(),
     };
@@ -2558,6 +2615,75 @@ mod tests {
 
     fn names(v: &[&str]) -> Option<BTreeSet<String>> {
         Some(v.iter().map(|s| s.to_string()).collect())
+    }
+
+    /// ★ `K-R96`：切给那张唯一会话快照的行 —— 名字取第 0 列、`@ccm_sid` 取**末**列。
+    ///
+    /// 顺带钉住两条：段数不等于 `TMUX_LS_FMT_FIELDS` 的行**整行丢掉**（下溢是通道被改写、
+    /// 过溢是有人往 `@ccm_sid` 里塞了 TAB —— 两种都不许当好数据）；`NO_TMUX` 哨兵不是会话。
+    #[test]
+    fn session_rows_carry_the_name_and_the_ccm_sid_and_nothing_else() {
+        use crate::common::session_snapshot::SessionRow;
+        let raw = "s1\t/p\tclaude\t1\t2\tsid-a\ns2\t/q\tbash\t0\t1\t\n";
+        assert_eq!(
+            session_rows(raw),
+            vec![
+                SessionRow {
+                    name: "s1".into(),
+                    ccm_sid: "sid-a".into()
+                },
+                SessionRow {
+                    name: "s2".into(),
+                    ccm_sid: String::new()
+                },
+            ]
+        );
+        assert!(session_rows("NO_TMUX\n").is_empty(), "哨兵不是会话");
+        assert!(session_rows("只有一段\n").is_empty(), "下溢的行不当好数据");
+        assert!(
+            session_rows("s\t/p\tc\t1\t2\tsid\t多出来一段\n").is_empty(),
+            "过溢的行不当好数据（`last()` 那种写法会在这里取到半截）"
+        );
+    }
+
+    /// ★★ `K-R96` 死值验（observe 这一侧）：**观测无效时快照一个字都不许动。**
+    ///
+    /// 把 `NoTmux`/`Unobservable` 那一支改成 `publish(Vec::new())`（= 「都没了」），
+    /// 本条当场红 —— 那正是「观测失败被读成零会话，把活会话全部误 retire」的那一下，
+    /// 只不过这一回它会顺着快照传染到 control 侧的判活。
+    #[test]
+    fn an_invalid_observation_leaves_the_shared_snapshot_untouched() {
+        let snap = crate::common::session_snapshot::SessionSnapshot::with_prober(|| {
+            panic!("本条一次都不该去探 —— 它量的是 `publish` 那一侧")
+        });
+        let mut prev: Option<BTreeSet<String>> = None;
+        // 先让快照里有点东西（走 `Sessions` 那一支发布）。
+        let _ = diff_closed_into(
+            &mut prev,
+            &TmuxObservation::Sessions("keep-cc\t/p\tclaude\t1\t1\tsid-k\n".into()),
+            &snap,
+        );
+        let warmed = snap.peek();
+        assert!(
+            warmed.iter().any(|r| r.name == "keep-cc"),
+            "`Sessions` 那一支没往快照里发布（实得 {warmed:?}）—— 本条此刻在空转"
+        );
+        for obs in [TmuxObservation::NoTmux, TmuxObservation::Unobservable] {
+            let mut p = prev.clone();
+            assert!(diff_closed_into(&mut p, &obs, &snap).is_empty());
+            assert_eq!(
+                snap.peek(),
+                warmed,
+                "观测无效那一支动了共享快照 —— 「不知道」被写成了「都没了」"
+            );
+        }
+        // 而「server 没了」是**有效观测**：那一支必须把表清空（不是「不知道」）。
+        let mut p = prev.clone();
+        let _ = diff_closed_into(&mut p, &TmuxObservation::NoServer, &snap);
+        assert!(
+            snap.peek().is_empty(),
+            "server 没了却还在表里留着会话 —— 判活会把它们报成活的"
+        );
     }
 
     #[test]

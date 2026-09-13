@@ -49,11 +49,14 @@ pub(crate) type CmdErr = (&'static str, String);
 //
 // 只留本调用点专属的两句：
 //
-// ① 本模块这两处是**本机 argv 直传** ⇒ 按那张表用**旗**，而且必须排在子命令**之前**。
-// ② 🔴 **那条「放错位置是响的」在本模块要打个折**：这两处**刻意不看退出码**
+// ① 本模块这一处是**本机 argv 直传** ⇒ 按那张表用**旗**，而且必须排在子命令**之前**。
+//    〔`K-R96` 09-12：原本是两处，「列全部会话」那一处随 `R52` 裁定一搬去了
+//     `common/session_snapshot.rs`，同一条纪律与判据一起搬。〕
+// ② 🔴 **那条「放错位置是响的」在本模块要打个折**：这一处**刻意不看退出码**
 //    （没有任何会话时 `tmux ls` 就是非零 + 空输出），于是 `rc=1 + unknown flag -u`
 //    会被压成「一个会话都没有」/「探不到」—— **又变回一次静默失效**。
 //    ⇒ 下面那条判据钉的是**位置**，不只是「有没有」，并带一句反向断言。
+use crate::common::session_snapshot::SessionSnapshot;
 use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_FLAG};
 
 /// 探测回来的两样东西。
@@ -75,7 +78,7 @@ pub(crate) struct Probed {
     pub(crate) windows: u32,
 }
 
-/// 列出本机所有 tmux 会话的**身份三元组**：`(会话名, session_id, @ccm_sid)`。
+/// 列出本机所有 tmux 会话的**身份二元组**：`(会话名, @ccm_sid)`。
 ///
 /// # 它是给「谁是真的」用的〔P4f 续刀 08-13，用户提的架构点〕
 ///
@@ -85,59 +88,37 @@ pub(crate) struct Probed {
 /// 而那个地址**会过期**（会话名被重用是常态 —— `cc-spawn` 就按目录基名取名；
 /// 用户盘上那份有 86 行、最早 07-18）。08-13 实测过它的后果：敲门文字被打进**陌生占用者**的屏幕。
 ///
-/// ⇒ 正确的从属关系是：**总线成员 ⊆ 活着的 tmux 会话**。谁活着由**这里**说了算，
+/// ⇒ 正确的从属关系是：**总线成员 ⊆ 活着的 tmux 会话**。谁活着由**身份空间**说了算，
 /// `agents.tsv` 只回答「谁登记过 + 邮箱里还有几条没读」。
 ///
-/// ⚠ **一次调用列全部**，不是每个成员探一次：用户那台的总线有 86 行，
-/// 逐个探就是 86 次起进程。
+/// # ★★ `K-R96`（09-12）：**这里不再自己起 tmux 了，改成问那张快照**
+///
+/// 用户逐字（`R52` 裁定一）：「**Gate 能不能改成直接读那份快照. 可以 /
+/// 改为向快照发一次询问, 快照更新一次**」。
+///
+/// ⇒ 本函数今天是 [`crate::common::session_snapshot`] 的一层**投影**：
+/// 问它一次、它更新一次、交出来的恒是**这一刻**的名单。
+/// 🔴 **别在这里加缓存、也别退回自己起一条「列全部会话」的 tmux 命令** ——
+/// （那个子命令的字面量今天在本文件的生产段里是**零命中**，由判据
+/// `tests::listing_every_session_is_no_longer_this_modules_job` 钉着）
+/// 判活拿陈值 = 把一个刚死的会话报成活的（`bus-list` 会把敲门文字打进陌生占用者的屏幕）。
+///
+/// ⚠ **`session_id` 那一列没了**：本函数的两个消费者（`cc_bus::join_identity` 与
+/// `ccm` 的铸名避让）一个都不问它，而快照的另一个发布者（`observe/watcher`）的
+/// `TMUX_LS_FMT` 里根本没有它。要句柄的人走 [`probe`]（那才是关 TOCTOU 窗口的那条路）。
 ///
 /// `@ccm_sid` 空 = 那个会话不是 `ccm` 起的（或还没绑 sid）—— 如实回空串，不猜。
-pub(crate) fn list_sessions() -> Result<Vec<(String, String, String)>, CmdErr> {
-    const LIST_FMT: &str = "#{session_name}\t#{session_id}\t#{@ccm_sid}";
-    /// `LIST_FMT` 的列数 —— [`tab_underflow`] 的 N。三列都不可能含真 TAB
-    /// （会话名被 tmux 转义成字面 `\t`；`session_id` 恒是 `$<数字>`；
-    /// `@ccm_sid` 的字符集在 `launch::parse_request` 里收到了 `[A-Za-z0-9_-]`）
-    /// ⇒ 这里**下溢与过溢都不会由合法内容触发**，下溢只可能是通道被改写。
-    const LIST_FMT_FIELDS: usize = 3;
-    let out = Command::new("tmux")
-        // K-R12：`-u` 必须在子命令**之前**（放后面是 rc=1 的响错，见 `UTF8_CLIENT_FLAG`）。
-        .args([UTF8_CLIENT_FLAG, "list-sessions", "-F", LIST_FMT])
-        .stdin(Stdio::null())
-        .stderr(Stdio::null())
-        .output()
-        .map_err(|e| {
-            (
-                "no_tmux",
-                format!("起不来 tmux（远端装了吗？PATH 里有吗？）：{e}"),
-            )
-        })?;
-    // ⚠ **不看退出码**（同本模块 `probe`）：没有任何会话时 `tmux ls` 是非零 + 空输出，
-    //   那不是错误，是「一个都没有」。
-    Ok(String::from_utf8_lossy(&out.stdout)
-        .lines()
-        .filter_map(|line| {
-            // K-R12 `J1`：段数下溢 ⇒ 通道被改写 ⇒ **出声 + 整行不当好数据**。
-            // 空行不算下溢（它本来就该被下面那句 `name.is_empty()` 丢掉，不是病）。
-            if !line.trim().is_empty() && tab_underflow(line, LIST_FMT_FIELDS) {
-                tracing::warn!(
-                    "CCM_TMUX_UNPARSABLE list-sessions 切出 {} 段 < {LIST_FMT_FIELDS} —— \
-                     tmux 打印通道被改写（K-R12：客户端不是 UTF-8 ⇒ TAB 变 `_`），\
-                     整行不当好数据。原样回包：{line:?}",
-                    line.split('\t').count()
-                );
-                return None;
-            }
-            let mut it = line.split('\t');
-            let name = it.next()?.trim();
-            if name.is_empty() {
-                return None;
-            }
-            Some((
-                name.to_string(),
-                it.next().unwrap_or_default().trim().to_string(),
-                it.next().unwrap_or_default().trim().to_string(),
-            ))
-        })
+pub(crate) fn list_sessions() -> Result<Vec<(String, String)>, CmdErr> {
+    list_sessions_from(crate::common::session_snapshot::global())
+}
+
+/// [`list_sessions`] 的本体，**快照由调用方给** —— 这样「拿到的值是不是这一刻的」
+/// 才有得测（判据喂一个会变的假快照进来，见本模块测试段那条）。
+fn list_sessions_from(snap: &SessionSnapshot) -> Result<Vec<(String, String)>, CmdErr> {
+    Ok(snap
+        .query()?
+        .into_iter()
+        .map(|r| (r.name, r.ccm_sid))
         .collect())
 }
 
@@ -315,7 +296,84 @@ pub(crate) fn admit_destructive(name: &str, target: &str) -> Result<String, CmdE
 mod tests {
     use super::*;
 
-    /// ★★ **K-R12：本模块两处起 tmux 的地方，`-u` 必须在子命令之前 —— 一处都不许漏。**
+    /// ★★ **`KR96D1` 死值验第一刀：Gate 判活不许自己起 `tmux list-sessions`。**
+    ///
+    /// 「列全部会话」这件事**只剩快照那一处**（`common/session_snapshot.rs`）。
+    /// 本模块回潮（把那条 argv 抄回来）时这一条要红。
+    ///
+    /// 🔴 **它守的是「面没变大」，不是「快照真被走到」** —— 后面那条由
+    /// `the_liveness_answer_comes_from_this_moment_not_from_a_cache` 的行为夹具钉。
+    /// 两条缺一不可：只有结构那条，「读快照但读的是陈值」照样绿；
+    /// 只有行为那条，「另起一条 argv 自己去问」在没有真 tmux 的沙箱里也可能碰巧绿。
+    #[test]
+    fn listing_every_session_is_no_longer_this_modules_job() {
+        let prod = crate::guard_support::production_code(include_str!("gate.rs"));
+        crate::guard_support::assert_no_test_code("control/gate.rs", &prod);
+        assert!(
+            !prod.contains("list-sessions"),
+            "本模块生产段里又出现了 `list-sessions` —— 判活回去自己起 tmux 了。\n\
+             ★ `R52` 裁定一：Gate 判活**读那份快照**（`common/session_snapshot`），\n\
+               而且「向快照发一次询问，快照更新一次」。"
+        );
+        // 反向自检：这一条不是靠「本文件恰好不含那个词」空转的 —— 快照那边必须有。
+        let owner = include_str!("../common/session_snapshot.rs");
+        assert!(
+            crate::guard_support::production_code(owner).contains("\"list-sessions\""),
+            "`common/session_snapshot.rs` 的生产段里找不到 `list-sessions` ——\n\
+             那处调用点搬走/改名了，本条此刻在空转（它只会证明「谁都没有」）。"
+        );
+    }
+
+    /// ★★ **`KR96D1` 死值验第二刀（Gate 这一侧）：判活拿到的值必须是「这一刻的」。**
+    ///
+    /// 🔴 **失效方向（件文件逐字）：只判「有没有调那个快照函数」。**
+    /// ⇒ 夹具是一个**会变的世界**（探测器第 1 次回 A、第 2 次回 B），
+    /// 判的是 `list_sessions_from` 第二次交出来的是 **B**。
+    /// 把 `SessionSnapshot::query` 改成「先看缓存」⇒ 这里当场红。
+    #[test]
+    fn the_liveness_answer_comes_from_this_moment_not_from_a_cache() {
+        use crate::common::session_snapshot::SessionRow;
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        let snap = SessionSnapshot::with_prober(move || {
+            let n = calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(if n == 0 {
+                vec![
+                    SessionRow {
+                        name: "alive-cc".into(),
+                        ccm_sid: "sid-a".into(),
+                    },
+                    SessionRow {
+                        name: "doomed-cc".into(),
+                        ccm_sid: "sid-d".into(),
+                    },
+                ]
+            } else {
+                // `doomed-cc` 这一刻死了。
+                vec![SessionRow {
+                    name: "alive-cc".into(),
+                    ccm_sid: "sid-a".into(),
+                }]
+            })
+        });
+
+        let before = list_sessions_from(&snap).expect("问得到");
+        assert_eq!(
+            before,
+            vec![
+                ("alive-cc".to_string(), "sid-a".to_string()),
+                ("doomed-cc".to_string(), "sid-d".to_string()),
+            ]
+        );
+        let after = list_sessions_from(&snap).expect("问得到");
+        assert_eq!(
+            after,
+            vec![("alive-cc".to_string(), "sid-a".to_string())],
+            "`doomed-cc` 已经死了，判活却还把它报成活的 —— 拿的是陈值。\n\
+             ★ 这就是 08-13 实测过的那个后果：敲门文字被打进**陌生占用者**的屏幕。"
+        );
+    }
+
+    /// ★★ **K-R12：本模块起 tmux 的地方，`-u` 必须在子命令之前 —— 一处都不许漏。**
     ///
     /// # 为什么这一条只能是「扫源码」，以及它守不住什么
     ///
@@ -358,13 +416,15 @@ mod tests {
 
         let starts = prod.matches("Command::new(\"tmux\")").count();
         assert_eq!(
-            starts, 2,
-            "本模块起 tmux 的处数变了（实得 {starts}，登记 2）—— 新增的那一处也要带 `-u`，\
-             并把这条判据的数一起改。**这张表不是豁免清单。**"
+            starts, 1,
+            "本模块起 tmux 的处数变了（实得 {starts}，登记 1）—— 新增的那一处也要带 `-u`，\
+             并把这条判据的数一起改。**这张表不是豁免清单。**\n\
+             〔`K-R96` 09-12：2 → 1。`list-sessions` 那一处搬进了 `common/session_snapshot.rs`\
+             （Gate 判活改成问那张快照，`R52` 裁定一），判据也随调用点搬了过去。〕"
         );
         // 反向那一针用的人群：把排版这一维抹掉（`-u` 与子命令同不同行由 rustfmt 说了算）。
         let flat: String = prod.chars().filter(|c| !c.is_whitespace()).collect();
-        for verb in ["list-sessions", "display-message"] {
+        for verb in ["display-message"] {
             let quoted = format!("\"{verb}\"");
             // ── 正向：`-u` 排在子命令**之前** ──────────────────────────────
             let at = guard_core::find_pinned(&prod, &quoted).unwrap_or_else(|e| {

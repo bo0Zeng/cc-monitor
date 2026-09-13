@@ -1678,7 +1678,8 @@ export class HistoryView {
         //    对它一个都给不出来。tab 栏那条 resume 早就传了，历史页这条没有 ——
         //    **架构上一条路、行为上两条**，本件补的就是这个。
         //    ⚠ 铸名与「不知道就不铸」两格住 `ipc/local-tmux-name.ts`，别在这里重写。
-        const tmuxName = await mintLocalTmuxName(ctx.sessionId);
+        //    〔`K-R96` 09-12〕名字从 cwd 派生（`<项目名>-cc`，用户 `R55` 裁定一）。
+        const tmuxName = await mintLocalTmuxName(ctx.cwd);
         // ★★ `K-H2b` `D1 阻-1`：账号这一格先前是空的（历史页 resume 那条主路）。
         //    取值口只有一个（`resolveLocalLaunchAccount`），resume 走那条会话上次的 pin ——
         //    与上面远端那条 `withAccount(..., {follow:{lastAccount}})` **同形**。

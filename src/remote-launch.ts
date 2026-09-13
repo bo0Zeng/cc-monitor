@@ -128,12 +128,6 @@ export function buildResumeIntoExistingTmuxCmd(
 }
 
 /**
- * F74：给灰会话 resume 挑一个**不撞现有 tmux 名**的会话名。基名 `<sid8>-cc`;被占(多半是
- * 被 `/branch` 漂移后仍占着原名的会话)→ 加数字后缀 `<sid8>-cc-2/-3/…` 取第一个空位。保证
- * resume 一定新建自己的 tmux 跑 `--resume <sid>` → 落进原会话,绝不 attach 进漂移的别人。
- * (纯函数,`existing` = 当前 tmux 会话名集合;sid 合法性由 `buildResumeTmuxCmd` 兜底校验。)
- */
-/**
  * F13（用户 2026-08-03：「为什么会撞名? 要撞名检查」「所有的东西都要集成整合成一条路径」）：
  * **tmux 会话名的唯一铸造口** —— 给一个基名，回一个**不撞现有名**的最终名。
  *
@@ -160,10 +154,41 @@ export function mintTmuxName(base: string, existing: ReadonlySet<string>): strin
   return `${base}-${i}`;
 }
 
-export function pickFreshTmuxName(sid: string, existing: Set<string>): string {
-  // S4b-3b：命名从 `cc-<X>` 反转成 `<X>-cc`（用户 2026-07-31）。
-  // F13：避让那一半搬进 `mintTmuxName` —— **全仓唯一的铸造口**，别在这里重写一遍。
-  return mintTmuxName(`${sid.slice(0, 8)}-cc`, existing);
+/**
+ * `K-R96`（用户 2026-09-12，`R55` 裁定一逐字：「**要是可读的名字 / 不要id**」）：
+ * **起会话时那个 tmux 会话名 —— `<项目名>-cc`，撞了往后排。**
+ *
+ * # 🔴 它替掉了 `pickFreshTmuxName`，而且**换的不是名字，是入参**
+ *
+ * 从前那个函数的签名是 `(sid, existing)`，基名 `` `${sid.slice(0,8)}-cc` ``。
+ * 那个名字在 tmux 列表里长成 `cb3230f3-cc` —— 用户看着一屏这种东西**认不出哪个是哪个**。
+ *
+ * ⇒ 基名改从 **cwd** 来（[`deriveTmuxName`]，与后端 `ccm::plan::derive_tmux_name`
+ * 逐字同规则的那一份），于是同一件事在前后端读起来是同一个名字。
+ * **入参从 `sid` 换成 `cwd`** 是刻意的：两个都是 `string`，只改函数体不改签名的话
+ * 调用方会**静默**把 sid 当 cwd 传进来（派生出 `cb3230f3-dead-beef-cc` 这种四不像）。
+ * 换了名字 ⇒ `tsc` 逼每一个调用点都被人看过一遍。
+ *
+ * # sid 去哪了 —— **它一直就不在名字里**
+ *
+ * sid 真正的载体是 tmux 的 **`@ccm_sid`** 选项（`ccm` 建会话时 `set-option` 写上去）。
+ * 「按 `<sid8>-cc` 前缀认会话」这件事**本仓从来没有人做**：杀会话的菜单与身份判定
+ * 都只问 `@ccm_sid`（`src-tauri/src/tmux.rs` 那段逐字：「本条的两个消费者都不问那个」）。
+ * ⇒ 名字里去掉 sid **不会**弄坏任何认领逻辑；而 `@ccm_sid` **一格都不许动**
+ * （`KR96D3` 第四刀：把它一起去掉必须红）。
+ *
+ * # 避让仍然只有一个家
+ *
+ * 撞名后缀走 [`mintTmuxName`]（全仓唯一带避让的铸造口，`existing` 必填、没有默认值）。
+ * ⇒ 产出 `<项目名>-cc` / 撞了 `<项目名>-cc-2` / 再撞 `-3`。
+ * 这与后端 `ccm` 那条路（`plan::build` 拿 `TakenNames` 退让）**是同一条规则**。
+ *
+ * @param cwd  这条会话的工作目录；空 / 派生不出东西 ⇒ 回落 `session-cc`（同 `deriveTmuxName`）。
+ * @param existing 当前已占用的 tmux 会话名集合。**「不知道」的时候别调本函数** ——
+ *                 传空集 = 「一个都没占」，那是 issue #76 的形状（见 `ipc/local-tmux-name.ts`）。
+ */
+export function mintSessionTmuxName(cwd: string, existing: ReadonlySet<string>): string {
+  return mintTmuxName(deriveTmuxName(cwd), existing);
 }
 
 /**

@@ -197,11 +197,11 @@ N6="$(grep -cE "sid=$SID6 .*argv=--resume" "$ACCT_A/argv.log" 2>/dev/null || tru
 echo "   argv resume 行数=$N6  orphan($S6-N)=$(orphan_count "$S6")  session=$(session_exists "$S6")"
 [ "$N6" = 1 ] && [ "$(orphan_count "$S6")" = 0 ] && ok "B6a 幂等:仅 1 次 resume(第二次被 create-gate 短路)、0 孤儿" || bad "B6a 非幂等(resume 行数=$N6 或有孤儿)"
 
-# ── B6b:tmux 已消失 → 回退新建(pickFreshTmuxName base 空 → 复用 base 名新建)────────────────
+# ── B6b:tmux 已消失 → 回退新建(铸名口 base 空 → 复用 base 名新建)────────────────
 #
 # **E67③（2026-07-31）：这里是全套件唯一断言「生产侧 tmux 命名形状」的地方，也正是它把
 # CI 红了两个版本。** S4b-3b（用户 2026-07-31）把命名从 `cc-<X>` 反转成 `<X>-cc`，
-# 前端（`pickFreshTmuxName`/`deriveTmuxName`）与 Rust（`tmux::is_ccm_tmux_name`，
+# 前端（`mintSessionTmuxName`/`deriveTmuxName`）与 Rust（`tmux::is_ccm_tmux_name`，
 # 新旧两种都认）都同步了，**只有这条 e2e 的期望值没跟上** ⇒ 断言恒假，
 # 而且连带下一条（拿老名字去 `session_exists`）也必然失败。
 #
@@ -210,9 +210,13 @@ echo "   argv resume 行数=$N6  orphan($S6-N)=$(orphan_count "$S6")  session=$(
 # `is_ccm_tmux_name` 刻意保留老前缀正是为了它们，所以那份夹具是**有效覆盖**，别顺手改掉。
 echo "-- B6b tmux 已消失 → 回退新建 --"
 SID7="$(cat /proc/sys/kernel/random/uuid)"
-EXPECT7="${SID7:0:8}-cc"   # S4b-3b 之后的形状；撞名时才追加 `-2/-3`
-FRESH="$(drv pick-fresh "$SID7" "cc-unrelated,cc-other")"
-[ "$FRESH" = "$EXPECT7" ] && ok "B6b 无撞名 → pickFreshTmuxName 复用 base 名 $EXPECT7" || bad "B6b pick-fresh=$FRESH(期望 $EXPECT7)"
+# 🔴 `K-R96`（用户 2026-09-12 `R55` 裁定一：「**要是可读的名字 / 不要id**」）：
+#    名字不再是 `<sid8>-cc`，改成从 **cwd** 派生的 `<项目名>-cc`。
+#    这条 e2e 是全套件唯一断言「生产侧 tmux 命名形状」的地方（见上面 E67③ 那段），
+#    所以它**必须跟着改** —— 上一次没跟上时它红了两个版本。
+EXPECT7="e2e-remote-cc"   # basename("/tmp/e2e-remote") + `-cc`；撞名时才追加 `-2/-3`
+FRESH="$(drv mint-name "/tmp/e2e-remote" "cc-unrelated,cc-other")"
+[ "$FRESH" = "$EXPECT7" ] && ok "B6b 无撞名 → 铸名口复用 base 名 $EXPECT7" || bad "B6b mint-name=$FRESH(期望 $EXPECT7)"
 CMD7="$(drv tmux-new "$SID7" "/tmp/e2e-remote" "$FAKE" "$FRESH" -)"
 # 后面两条查的是**真被建出来的那个**（`$FRESH`），不是我们期望的那个 —— 否则命名断言
 # 一旦失败，这里会跟着报一条误导性的「没建会话」，把一个错误放大成两个。
