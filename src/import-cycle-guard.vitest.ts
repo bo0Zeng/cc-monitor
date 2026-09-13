@@ -41,6 +41,8 @@ const SRC = join(REPO_ROOT, "src");
  * 🔴 `K-R93`（09-12）：原句写的是「生成物是叶子**类型**」—— 那半句今天过期了。
  * `src/generated/agent-profile-table.ts` 是一份**值**表（agent 画像，源在
  * `src-tauri/src/adapter.rs`），于是生成物第一次成为**运行期** import 的目标。
+ * `K-R95`（09-12）又加了一份（`launch-render-facts.ts`，源在
+ * `src-tauri/src/backend/control/launch_wire.rs`）——下面那条自检的数因此是 2 不是 1。
  * 「不会成环」那一半**仍然成立且现在被机检**：见下面自检里那条「生成物真的是叶子」。
  */
 function productionTsFiles(dir: string, out: string[] = []): string[] {
@@ -156,9 +158,10 @@ describe("E80：生产代码不许有运行期 import 环", () => {
     const generatedTargets = [...new Set([...graph.values()].flat())].filter(isGenerated);
     expect(
       generatedTargets.length,
-      "今天只有 1 份生成物被**运行期** import（`agent-profile-table`，K-R93）—— " +
+      "今天有 2 份生成物被**运行期** import（`agent-profile-table`，K-R93；" +
+        "`launch-render-facts`，K-R95）—— " +
         "这个数变了就在这里红一次，好让新的那一份也过一遍「它是不是叶子」",
-    ).toBe(1);
+    ).toBe(2);
     for (const g of generatedTargets) {
       expect(runtimeDeps(g), `${rel(g)} 不再是叶子 —— 它开始 import 别人了，可能成环`).toEqual([]);
     }
