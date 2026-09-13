@@ -170,6 +170,23 @@ mod tests {
             "p2e-dial",
             "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
+        // ★ p2g（`K-R86`，09-13）：新增 `--capture-pane` —— **一条只读的一次性抓屏原语**。
+        //
+        // ⚠ **没有 p2f 行**，而这**不是漏**：`p2f-build-stamp`（`K-R70` 09-12）动的是
+        //   「这份二进制说不说得出自己是谁」，**子命令集一条没动** ⇒ 它的指纹与 `p2e-dial`
+        //   逐字相同，按本表的口径（「当前指纹在不在表里」，不是「等于最后一行」）**不该追加**。
+        //   头注那段逐字写着为什么不是「等于最后一行」：因为别的原因 bump 也被逼着改这张表，
+        //   而改表恰恰是本护栏最不想诱导的动作。
+        //
+        // ⚠ **必须 bump**：新增子命令 ⇒ 已部署的旧 daemon 上 `--capture-pane` 落进
+        //   `unknown argument` + exit 2，而调用方判 stale 只看 build_id
+        //   ⇒ 不 bump 就不重装，这条能力在已部署的远端休眠（p1r / p1t / G2 / p2d / p2e 同形）。
+        // ★ 同 p2d / p2e 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
+        //   本轮**没做**；本护栏对「半 bump」是瞎的。
+        (
+            "p2g-capture-pane",
+            "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--capture-pane\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};
