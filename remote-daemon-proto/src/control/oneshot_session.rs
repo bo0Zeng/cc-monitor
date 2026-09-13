@@ -85,6 +85,32 @@ pub(crate) type CmdErr = (&'static str, String);
 /// 名字下手。改它等于把整个名字空间搬家，届时「谁是一次性会话」这个问题的答案全部改写。
 pub(crate) const ONESHOT_PREFIX: &str = "ccm-oneshot-";
 
+/// 铸名的**尾巴**。🔴 它不是装饰，是 `K-R104` 现打撞出来的一条硬约束。
+///
+/// # 病：daemon 自己铸的会话，被 daemon 自己的门拒之门外
+///
+/// `K-R87` 那一拍本模块**零调用方**，所以没人发现：`§34 Gate 2` 的名字半支
+/// （`gate_core::is_ccm_tmux_name`）今天只认两种形状 —— `cc-<X>` 与 `<X>-cc[-<N>]`。
+/// 而 `ccm-oneshot-<slug>` **两种都不命中**（`ccm-` 的第三个字符是 `m` 不是 `-`）
+/// ⇒ 一旦有人想往这个会话里 [`super::launch`] `send-into`（那是本 crate 唯一的送键口，
+/// 它 `admit` 一次身份门），当场 `wrong_owner`；`kill` 同理。
+/// **也就是说：这条原语铸出来的会话，本 crate 自己一个字都送不进去。**
+///
+/// # 两条出路，选了不放宽门的那条
+///
+/// ① 放宽 `gate_core::is_ccm_tmux_name` 让它认 `ccm-oneshot-` —— 那是**跨仓共享**的判定
+///    （monitor 与 daemon 同一份，定框 `C1`），而放宽一道安全门**不可逆**；
+/// ② 让铸出来的名字**落进既有形状里**。
+///
+/// 选 ②。理由不是省事：一次性会话是 **daemon 自己铸、自己管、到点自己杀**的会话，
+/// 按 `§34 Gate 2` 的定义它**本来就是**「本工具管理的会话」——
+/// `<X>-cc` 这个后缀形状说的正是这句话。
+///
+/// ⚠ **它买不到「安全」**，别读大：Gate 2 从来就是名字 union 远端 `@ccm_sid`，
+/// 而名字这一半本来就是**约定**。本常量只是让 daemon 铸的名字诚实地落进那个约定里。
+/// 由 [`tests::every_name_this_module_mints_passes_gate2_by_construction`] 钉住。
+pub(crate) const ONESHOT_GATE_SUFFIX: &str = "-cc";
+
 /// slug 的长度上界（字符数）。
 ///
 /// 同 [`super::launch`] 的 `MAX_FIELD_BYTES`：这是「一个人读得懂的名字」的宽松上界，
@@ -152,7 +178,7 @@ pub(crate) const SESSION_ID_FMT: &str = "#{session_id}";
 /// 一次性会话的**结局**：铸出来的名字 ＋ 它的句柄 ＋ 它还能活多久。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Oneshot {
-    /// 铸出来的完整会话名（[`ONESHOT_PREFIX`] ＋ slug）。
+    /// 铸出来的完整会话名（[`ONESHOT_PREFIX`] ＋ slug ＋ [`ONESHOT_GATE_SUFFIX`]）。
     pub(crate) name: String,
     /// `#{session_id}`，形如 `$3`。
     pub(crate) handle: String,
@@ -179,6 +205,9 @@ fn slug_char_ok(c: char) -> bool {
 }
 
 /// slug → 完整会话名。**唯一铸名处。**
+///
+/// 形状 = [`ONESHOT_PREFIX`] ＋ slug ＋ [`ONESHOT_GATE_SUFFIX`]。那条尾巴为什么必须在，
+/// 整段理由住 [`ONESHOT_GATE_SUFFIX`]（一条规矩只许有一个住址）。
 pub(crate) fn mint_name(slug: &str) -> Result<String, CmdErr> {
     if slug.is_empty() {
         return Err((
@@ -201,7 +230,7 @@ pub(crate) fn mint_name(slug: &str) -> Result<String, CmdErr> {
             ),
         ));
     }
-    Ok(format!("{ONESHOT_PREFIX}{slug}"))
+    Ok(format!("{ONESHOT_PREFIX}{slug}{ONESHOT_GATE_SUFFIX}"))
 }
 
 /// 存活秒数的形状校验。
@@ -249,8 +278,22 @@ fn tmux_unavailable(e: &std::io::Error) -> CmdErr {
 ///
 /// 🔴 [`UTF8_CLIENT_FLAG`] **必须排在子命令之前**（`K-R12`：放后面是
 /// `rc=1 + unknown flag -u`，而这里要读它的 stdout 拿句柄，那个响错会被读成「建不出来」）。
-pub(crate) fn new_session_argv(name: &str) -> [&str; 8] {
-    [
+///
+/// `geom` = `Some((宽, 高))` ⇒ 追加 `-x <宽> -y <高>`。
+///
+/// # 为什么几何住**建会话**这一处，而不是让调用方事后 resize〔`K-R104` 09-13〕
+///
+/// detached 会话默认 80×24（`control/launch.rs` 的 `create-or-attach` 那条同款注释逐字记着
+/// 「太窄会把 agent 输出折行」）。而本原语的第一个调用方是用量探针 —— 它抓的是一张**表格**，
+/// 80 列会把它折断，抓回去的那一屏用户读不了。
+/// ⚠ **只对新建生效**：tmux 的 `-x/-y` 只在 `new-session` 上有意义，
+/// 而本模块**只**建自己刚铸名的会话（撞名当场拒），所以这里不存在
+/// 「改了别人会话的尺寸」那一档。
+pub(crate) fn new_session_argv<'a>(
+    name: &'a str,
+    geom: Option<(&'a str, &'a str)>,
+) -> Vec<&'a str> {
+    let mut v = vec![
         UTF8_CLIENT_FLAG,
         "new-session",
         "-d",
@@ -259,7 +302,29 @@ pub(crate) fn new_session_argv(name: &str) -> [&str; 8] {
         SESSION_ID_FMT,
         "-s",
         name,
-    ]
+    ];
+    if let Some((w, h)) = geom {
+        v.extend(["-x", w, "-y", h]);
+    }
+    v
+}
+
+/// 几何那两个值的形状校验：**十进制、放得进 `u32`、非零**。
+///
+/// 上界就是 `u32` 本身 —— 同 [`MIN_TTL_SECS`] 头注那条：「多宽算太宽」是**偏好**，
+/// 而 `K37` 逐字裁了「后端只给机制，不给偏好」。零列/零行是**形状**错（tmux 会拒），
+/// 在这里拦住比让 tmux 打回一句看不懂的话强。
+pub(crate) fn checked_dim(what: &str, raw: &str) -> Result<u32, CmdErr> {
+    let n: u32 = raw.parse().map_err(|_| {
+        (
+            "invalid_args",
+            format!("{what} 不是一个放得进 32 位无符号整数的十进制整数：{raw:?}"),
+        )
+    })?;
+    if n == 0 {
+        return Err(("invalid_args", format!("{what} 是 0 —— 那不是一个尺寸")));
+    }
+    Ok(n)
 }
 
 /// 「这个目标在不在」那一次调用的 argv。
@@ -312,9 +377,13 @@ fn checked_handle(raw: &str) -> Result<String, CmdErr> {
 }
 
 /// 起那个会话（**还没挂看门狗**）。撞名 ⇒ `name_taken`，绝不接回。
-fn create_session(socket: Option<&str>, name: &str) -> Result<String, CmdErr> {
+fn create_session(
+    socket: Option<&str>,
+    name: &str,
+    geom: Option<(&str, &str)>,
+) -> Result<String, CmdErr> {
     let out = tmux_cmd(socket)
-        .args(new_session_argv(name))
+        .args(new_session_argv(name, geom))
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()
@@ -397,9 +466,10 @@ pub(crate) fn start_on(
     launcher: &str,
     slug: &str,
     ttl_secs: u32,
+    geom: Option<(&str, &str)>,
 ) -> Result<Oneshot, CmdErr> {
     let name = mint_name(slug)?;
-    let handle = create_session(socket, &name)?;
+    let handle = create_session(socket, &name, geom)?;
     if let Err((code, why)) = spawn_watchdog(launcher, socket, ttl_secs, &handle) {
         // 🔴 **不留孤儿**：会话已经建出来了，而它没有到点自己会死的保证 ⇒ 现在就杀掉。
         //    回滚成没成**要说出来** —— 说不出来的那一档正是「假装成功」的近亲。
@@ -427,14 +497,66 @@ pub(crate) fn start_on(
 /// 「往一个**不是本工具管理的**会话下手」，而本模块从头到尾只碰自己刚铸出来的名字
 /// —— 撞名那一档在 [`create_session`] 里**拒掉**，根本走不到下手那一步。
 /// **别顺手给它加门，也别顺手把那三道门搬过来。**
-pub(crate) fn start(slug: &str, ttl_secs: u32) -> Result<Oneshot, CmdErr> {
-    start_on(None, WATCHDOG_LAUNCHER, slug, ttl_secs)
+pub(crate) fn start(
+    slug: &str,
+    ttl_secs: u32,
+    geom: Option<(&str, &str)>,
+) -> Result<Oneshot, CmdErr> {
+    start_on(None, WATCHDOG_LAUNCHER, slug, ttl_secs, geom)
 }
 
-/// 一次性 CLI 入口：`<slug> <存活秒数>`。
+/// 帧面入口（`K-R104`）：`oneshot-session`。
+///
+/// `args`：`{slug, ttlSecs, width?, height?}`。`ttlSecs` / `width` / `height`
+/// **收字符串**，与 `launch` 那条的 `width` / `height` 逐字同型
+/// （`inbound_client::launch_args` 那一侧也是字符串）—— 一条规矩不写第二种表示。
+///
+/// 🔴 **与 CLI 面 [`run`] 共用同一个本体 [`start`]**：`K33` 逐字「所有命令只许有一处，
+/// 其他都是根据传参来调用」。两个面**只差取参数的方式**，一个字节的编排都不许各写一份。
+pub(crate) fn start_for_inbound(
+    args: &serde_json::Value,
+) -> Result<serde_json::Value, (String, String)> {
+    start_for_inbound_inner(args).map_err(|(c, m)| (c.to_string(), m))
+}
+
+fn start_for_inbound_inner(args: &serde_json::Value) -> Result<serde_json::Value, CmdErr> {
+    let get = |k: &str| args.get(k).and_then(|v| v.as_str());
+    let slug = get("slug").ok_or(("invalid_args", "缺 `slug`".to_string()))?;
+    let ttl = get("ttlSecs").ok_or((
+        "invalid_args",
+        "缺 `ttlSecs` —— 秒数没有默认值（后端只给机制不给偏好，见 `MIN_TTL_SECS`）".to_string(),
+    ))?;
+    let secs = checked_ttl(ttl)?;
+    // ★ 宽高**成对**：只给一半就当没给 —— 与 `inbound_client::LaunchExtras::width`
+    //   那条逐字同一条纪律（让「半个尺寸」在发出去之前就不存在）。
+    let geom = match (get("width"), get("height")) {
+        (Some(w), Some(h)) => {
+            checked_dim("`width`", w)?;
+            checked_dim("`height`", h)?;
+            Some((w, h))
+        }
+        (None, None) => None,
+        _ => {
+            return Err((
+                "invalid_args",
+                "`width` 与 `height` 必须成对给 —— 半个尺寸不是尺寸".to_string(),
+            ))
+        }
+    };
+    let o = start(slug, secs, geom)?;
+    Ok(serde_json::json!({
+        "session": o.name,
+        "handle": o.handle,
+        "ttlSecs": o.ttl_secs.to_string(),
+    }))
+}
+
+/// 一次性 CLI 入口：`<slug> <存活秒数> [<宽> <高>]`。
 ///
 /// 成功 ⇒ stdout 一行紧凑 JSON `{session, handle, ttlSecs}` ＋ exit 0；
 /// 失败 ⇒ stderr 一行 `{code, message}` ＋ exit 2（同 `--resolve` 那套信封）。
+///
+/// ⚠ 宽高**可省**（`K33` 逐字「能省就尽量省」）；省了就是 tmux 自己的 detached 默认。
 ///
 /// ⚠ **子命令那个 `--` 字面量刻意留在 `main.rs`，本文件一个都没有**：
 /// `protocol_doc_guard::dispatch_registry_is_complete` 按「生产段里出现 `"--` 字面量」
@@ -444,21 +566,39 @@ pub(crate) fn run(args: &[String]) -> i32 {
         return emit_err((
             "invalid_args",
             "这条子命令收两个位置参数：会话名后缀 ＋ 存活秒数（秒数没有默认值，\
-             后端只给机制不给偏好）"
+             后端只给机制不给偏好），可选再加两个：宽 ＋ 高"
                 .to_string(),
         ));
     };
-    if args.len() > 3 {
+    if args.len() == 4 {
         return emit_err((
             "invalid_args",
-            format!("多余参数 {:?} —— 这条子命令只收两个位置参数", &args[3..]),
+            "宽与高必须成对给 —— 半个尺寸不是尺寸".to_string(),
+        ));
+    }
+    if args.len() > 5 {
+        return emit_err((
+            "invalid_args",
+            format!("多余参数 {:?} —— 这条子命令最多收四个位置参数", &args[5..]),
         ));
     }
     let secs = match checked_ttl(ttl) {
         Ok(s) => s,
         Err(e) => return emit_err(e),
     };
-    match start(slug, secs) {
+    let geom = match (args.get(3), args.get(4)) {
+        (Some(w), Some(h)) => {
+            if let Err(e) = checked_dim("`width`", w) {
+                return emit_err(e);
+            }
+            if let Err(e) = checked_dim("`height`", h) {
+                return emit_err(e);
+            }
+            Some((w.as_str(), h.as_str()))
+        }
+        _ => None,
+    };
+    match start(slug, secs, geom) {
         Ok(o) => {
             let line = serde_json::json!({
                 "session": o.name,
@@ -559,9 +699,9 @@ mod tests {
             String::from_utf8_lossy(&out.stderr)
         );
 
-        let o = start_on(Some(&s), WATCHDOG_LAUNCHER, "live", 1)
+        let o = start_on(Some(&s), WATCHDOG_LAUNCHER, "live", 1, None)
             .expect("一次性会话必须起得起来，起不来说明这条原语根本没通");
-        assert_eq!(o.name, format!("{ONESHOT_PREFIX}live"));
+        assert_eq!(o.name, format!("{ONESHOT_PREFIX}live{ONESHOT_GATE_SUFFIX}"));
         assert!(o.handle.starts_with('$'), "句柄形状不对：{:?}", o.handle);
         assert!(
             alive(&sock, &o.name),
@@ -687,7 +827,7 @@ mod tests {
     fn a_taken_name_is_refused_and_the_other_session_is_left_untouched() {
         let sock = iso_socket("taken");
         let s = sock.to_string_lossy().into_owned();
-        let squatted = format!("{ONESHOT_PREFIX}taken");
+        let squatted = format!("{ONESHOT_PREFIX}taken{ONESHOT_GATE_SUFFIX}");
         let out = tmux_on(
             &sock,
             &["-f", "/dev/null", "new-session", "-d", "-s", &squatted],
@@ -698,7 +838,7 @@ mod tests {
             String::from_utf8_lossy(&out.stderr)
         );
 
-        let e = start_on(Some(&s), WATCHDOG_LAUNCHER, "taken", 1)
+        let e = start_on(Some(&s), WATCHDOG_LAUNCHER, "taken", 1, None)
             .expect_err("撞名不许回成功 —— 那就是静默接回");
         assert_eq!(
             e.0, "name_taken",
@@ -732,7 +872,8 @@ mod tests {
                 .success(),
             "建用户会话失败"
         );
-        let o = start_on(Some(&s), WATCHDOG_LAUNCHER, "census", 60).expect("一次性会话起得起来");
+        let o =
+            start_on(Some(&s), WATCHDOG_LAUNCHER, "census", 60, None).expect("一次性会话起得起来");
 
         let out = tmux_on(&sock, &["list-sessions", "-F", "#{session_name}"]);
         assert!(out.status.success(), "列不出会话");
@@ -754,6 +895,94 @@ mod tests {
 
         let _ = tmux_on(&sock, &["kill-session", "-t", &format!("={}:", o.name)]);
         let _ = tmux_on(&sock, &["kill-session", "-t", &format!("={user}:")]);
+    }
+
+    // ══════════════════════════ `KR104D1`（本原语上帧面之后新长出来的两格）══════
+
+    /// ★★ **daemon 铸出来的名字，必须过得了 daemon 自己那道 Gate 2。**
+    ///
+    /// # 它逮的是一条真发生过的病，不是假想
+    ///
+    /// `K-R87` 那一拍本模块零调用方 ⇒ 没人发现铸出来的 `ccm-oneshot-<slug>`
+    /// **既不是 `cc-<X>` 也不是 `<X>-cc`** ⇒ `gate_core::gate2` 判 `Rejected`
+    /// ⇒ 本 crate 唯一的送键口（`launch` 的 `send-into`，它 `admit` 一次身份门）
+    /// 和 `kill` **都进不去自己刚建的那个会话**。`K-R104` 接第一个调用方时当场撞上。
+    ///
+    /// # 判的是**结果**，不是「代码里有那个后缀常量」
+    ///
+    /// 走真的 [`mint_name`] 铸一批名字，再把它们喂给**真的** `gate_core::gate2`
+    /// （与 `control/gate.rs::admit` 调的是同一个函数）。
+    /// ⇒ 后缀被改成别的字符串、或者 `gate_core` 那一侧收窄了形状，本条都会红。
+    ///
+    /// ⚠ 反向对照不可省：没有它，「gate2 恒 allow」这种坏法会让上面那半空真地绿。
+    #[test]
+    fn every_name_this_module_mints_passes_gate2_by_construction() {
+        // 覆盖面：一个字母 · 带连字符 · 带下划线 · 数字尾 · 本身就含 `-cc` 的 slug。
+        for slug in ["x", "usage-acct1", "a_b", "n7", "weird-cc-1"] {
+            let name = mint_name(slug).unwrap_or_else(|e| panic!("`{slug}` 该铸得出来：{e:?}"));
+            assert!(
+                gate_core::gate2(&name, None).allowed(),
+                "铸出来的 `{name}` 过不了 §34 Gate 2 的名字半支 —— \
+                 daemon 自己建的会话，daemon 自己的 `launch send-into` / `kill` 都进不去。\
+                 理由与两条出路的比价住 `ONESHOT_GATE_SUFFIX` 的头注。"
+            );
+            assert!(
+                is_oneshot_name(&name),
+                "为了过门把前缀弄丢了：`{name}` 不在一次性名字空间里了"
+            );
+        }
+        // ★ 反向：这把尺子真的会说「不行」—— 不然上面那一批是空真。
+        assert!(
+            !gate_core::gate2(&format!("{ONESHOT_PREFIX}nogate"), None).allowed(),
+            "没有尾巴的那个形状居然也过了 Gate 2 —— 那本条上面那一批证不了任何事"
+        );
+    }
+
+    /// ★ 几何走**建会话那一次调用**，而且只在给了的时候才出现。
+    ///
+    /// 逐元素比（不是 `contains`）：`-x`/`-y` 的**位置**与**成对**都在这一格里。
+    #[test]
+    fn the_geometry_rides_on_the_new_session_call_and_only_when_asked() {
+        assert_eq!(
+            new_session_argv("n", None),
+            vec![
+                "-u",
+                "new-session",
+                "-d",
+                "-P",
+                "-F",
+                "#{session_id}",
+                "-s",
+                "n"
+            ],
+            "不给几何时那条 argv 不该多出任何一格"
+        );
+        assert_eq!(
+            new_session_argv("n", Some(("200", "50"))),
+            vec![
+                "-u",
+                "new-session",
+                "-d",
+                "-P",
+                "-F",
+                "#{session_id}",
+                "-s",
+                "n",
+                "-x",
+                "200",
+                "-y",
+                "50"
+            ],
+            "几何那两格的形状 / 位置变了"
+        );
+        for (what, bad) in [("`width`", "0"), ("`width`", "-1"), ("`width`", "x")] {
+            assert_eq!(
+                checked_dim(what, bad).expect_err("坏尺寸不许放行").0,
+                "invalid_args",
+                "坏尺寸 {bad:?} 的码不对"
+            );
+        }
+        assert_eq!(checked_dim("`width`", "200").expect("正常值要过"), 200);
     }
 
     /// ★ 名字空间的边界：**只有前缀底下的才算我们的**，形近的一律不算。
@@ -781,7 +1010,7 @@ mod tests {
         }
         assert_eq!(
             mint_name("usage-acct1").expect("正常 slug 要过"),
-            format!("{ONESHOT_PREFIX}usage-acct1")
+            format!("{ONESHOT_PREFIX}usage-acct1{ONESHOT_GATE_SUFFIX}")
         );
         let long: String = "a".repeat(MAX_SLUG_CHARS + 1);
         assert!(mint_name(&long).is_err(), "超长 slug 该被拒");
@@ -818,7 +1047,7 @@ mod tests {
         let sock = iso_socket("nodog");
         let s = sock.to_string_lossy().into_owned();
         // 一个**一定起不来**的 launcher。名字取中性，且不取自本夹具的目录名（`6g`）。
-        let e = start_on(Some(&s), "kr87-no-such-program", "nodog", 60)
+        let e = start_on(Some(&s), "kr87-no-such-program", "nodog", 60, None)
             .expect_err("看门狗起不来时不许回成功 —— 那就是「凭空返回一个成功值」");
         assert_eq!(
             e.0, "watchdog_failed",
@@ -827,7 +1056,10 @@ mod tests {
             e.0
         );
         assert!(
-            !alive(&sock, &format!("{ONESHOT_PREFIX}nodog")),
+            !alive(
+                &sock,
+                &format!("{ONESHOT_PREFIX}nodog{ONESHOT_GATE_SUFFIX}")
+            ),
             "看门狗没起来，而那个会话还留在盘上 —— 那是一个**没有死期的孤儿**，\
              正是 `KR87D3` 标题里那半句"
         );
@@ -842,7 +1074,7 @@ mod tests {
     fn the_success_arm_really_carries_a_name_and_a_handle() {
         let sock = iso_socket("ok");
         let s = sock.to_string_lossy().into_owned();
-        let o = start_on(Some(&s), WATCHDOG_LAUNCHER, "ok", 60).expect("这一趟必须成功");
+        let o = start_on(Some(&s), WATCHDOG_LAUNCHER, "ok", 60, None).expect("这一趟必须成功");
         assert!(is_oneshot_name(&o.name), "回的名字不在专属前缀底下：{o:?}");
         assert!(
             o.handle.len() >= 2 && o.handle.starts_with('$'),

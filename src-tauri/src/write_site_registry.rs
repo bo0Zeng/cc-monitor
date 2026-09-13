@@ -106,8 +106,10 @@ mod spawn_sites {
           ⚠ 它 `kill_on_drop(true)`：界面退出 = 句柄 drop = 代理跟着走。\
           🔴 **别把这一行读成「拨号搬出去了」**：`connect_session` 的 7 处生产调用点里\
           这条只覆盖 1 处，逐处登记在 `ssh_source::dial_move_judge::DIAL_SITES`"),
-        ("account_usage.rs", "run_local_probe", "`sh -c <载荷>`",
-         "本机用量探针：载荷由 `probe_command_for` 构造并引用过（`exec_site_registry` 里那条 Builder 行管它）"),
+        // 🔴 **`K-R104`（09-13）：`account_usage.rs` 那一行（本机执行面）删了。**
+        //    那个函数不存在了 —— 本机用量探针不再在界面进程里 `sh -c <载荷>`，
+        //    它与远端那条**是同一条路**：往那台机器的后端发几条帧命令。
+        //    ⇒ 界面进程这一侧起进程的面**净少一处**（这是好事，也是本表存在的理由）。
         ("launch.rs", "launch_local_posix_via", "用户配置的终端 argv[0]",
          "在用户的终端里起会话 —— 承接 C13「最后那次 exec 在用户终端里」，这是本产品的主用途"),
         ("launch.rs", "launch_powershell_window", "`wt.exe` / `powershell.exe`",

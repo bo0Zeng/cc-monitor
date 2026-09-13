@@ -76,7 +76,16 @@ pub const REPLY_CHANNEL_CAPACITY: usize = 256;
 ///   （`U8a-2d` 换掉的），而同一份文件的 `mod tests` 里自己写着「上一版是 …」——
 ///   **一份文件里，一处当现状说，另一处说它是历史。**
 pub const COMMANDS: &[&str] = &[
-    "bus-kill", "bus-list", "bus-send", "cancel", "kill", "launch", "ping", "resolve",
+    "bus-kill",
+    "bus-list",
+    "bus-send",
+    "cancel",
+    "capture-pane",
+    "kill",
+    "launch",
+    "oneshot-session",
+    "ping",
+    "resolve",
 ];
 
 /// 在跑的命令登记表：`id` → 取消句柄。
@@ -427,6 +436,49 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         fields: &["target"],
         takes_input: true,
         run: Run::Builtin,
+    },
+    // `K-R104`（09-13）：**把 `K-R86` / `K-R87` 那两条原语搬上帧面。**
+    //
+    // 🔴 为什么非搬不可（这是**结构**，不是性能取舍）：那两条此前**只有 CLI 面**，
+    // 而 CLI 面每调一次就是一次 SSH 握手 —— 用量探针两段轮询上限 12+20 轮
+    // ⇒ 单次探测最多 **36** 次握手，撑破 `EXEC_TIMEOUT_SECS = 25`。
+    // 帧面是**一条长连接上多次往返**，握手恒 1 次。读数与三条候选的比价住
+    // `.claude/planned-build/backend-consolidation/features/K-R101-…#§8`。
+    //
+    // ⚠ 两条都**只做一次**：抓一屏就返回、起一个会话就返回。
+    // 「隔多久再抓一次」留在调用方（`K37`：后端只给机制，不给偏好），
+    // daemon 侧由 `no_timer_guard` 零容忍地钉着。
+    CommandSpec {
+        name: "capture-pane",
+        doc_anchor: Some("#### `capture-pane`"),
+        codes: &[
+            "invalid_args",
+            "no_tmux",
+            "no_server",
+            "no_such_session",
+            "capture_failed",
+        ],
+        fields: &["name", "screen"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::capture_pane::capture_for_inbound(&r.args).map(Some)
+        }),
+    },
+    CommandSpec {
+        name: "oneshot-session",
+        doc_anchor: Some("#### `oneshot-session`"),
+        codes: &[
+            "invalid_args",
+            "no_tmux",
+            "name_taken",
+            "create_failed",
+            "watchdog_failed",
+        ],
+        fields: &["handle", "height", "session", "slug", "ttlSecs", "width"],
+        takes_input: true,
+        run: Run::Blocking(|r| {
+            crate::control::oneshot_session::start_for_inbound(&r.args).map(Some)
+        }),
     },
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
     // 对句柄下手不对名字。⚠ monitor 侧改走这条路是 **F04b**（定框 C6 的顺序）。
@@ -1000,22 +1052,93 @@ mod tests {
         assert!(matches!(d("nope"), Disposition::Reply(..)));
 
         // P4f：两条 cc-bus 命令**要起子进程并等它退出** ⇒ 与 `launch`/`kill` 同档。
-        for c in ["bus-list", "bus-send", "bus-kill"] {
+        // `K-R104`：那两条 tmux 原语同理（抓一屏 / 建会话都要起 tmux 并等它退出）。
+        for c in [
+            "bus-list",
+            "bus-send",
+            "bus-kill",
+            "capture-pane",
+            "oneshot-session",
+        ] {
             assert!(
                 matches!(d(c), Disposition::SpawnBlocking(..)),
-                "`{c}` 不在阻塞档上 —— 它要起 cc-bus 子进程并等它退出，会占住 tokio worker"
+                "`{c}` 不在阻塞档上 —— 它要起子进程并等它退出，会占住 tokio worker"
             );
         }
 
         // 计数自检：每条已声明的命令都被上面覆盖到了（新增命令必须来这里表态）。
         let covered = [
-            "launch", "kill", "ping", "resolve", "cancel", "bus-list", "bus-send", "bus-kill",
+            "launch",
+            "kill",
+            "ping",
+            "resolve",
+            "cancel",
+            "bus-list",
+            "bus-send",
+            "bus-kill",
+            "capture-pane",
+            "oneshot-session",
         ];
         let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
         assert!(
             missing.is_empty(),
             "这些命令没在本条里表态「阻塞还是不阻塞」：{missing:?}\n\
              新增命令时必须回答这个问题 —— 放错档的代价是「占住 worker」或「假装能取消」。"
+        );
+    }
+
+    /// ★★ `KR104D1` ③ 的**总伞**：注册表里每一条命令，走**真的 `dispatch`**
+    /// 都必须落到它自己的处理器上 —— 一条都不许落进 `unknown_command`。
+    ///
+    /// # 它买到什么，而上面那条买不到
+    ///
+    /// 上面那条按**手写清单**（`covered`）逐条表态，清单漏一条它就漏一条；
+    /// 本条的发现机制是**遍历 `REGISTRY`** ⇒ 加一条命令，本条**自动**盖到它，
+    /// 不需要任何人来这里写名字。这正是 `K-R102` 问的那句「要不要有一把总的」——
+    /// 在帧面上答案是**要，而且很便宜**：注册表是数据，遍历一遍就是全集。
+    ///
+    /// # 它逮的那一形（`K-R102` 记的那个盲区）
+    ///
+    /// 「表里有、分派到不了」。CLI 那面之所以逮不住，是因为它的判据**数字面量**，
+    /// 而表自己就住在生产段里 ⇒ 同一次扫描里「表里有」与「源码里有」同时成立。
+    /// 本条不数字面量：它**真的调一次 `dispatch`**，按返回的 `Disposition` 判。
+    ///
+    /// ⚠ **它不证明处理器做得对** —— 只证明「够得到」。做得对是各命令自己的判据。
+    #[test]
+    fn every_registered_command_is_reachable_through_the_real_dispatch() {
+        let (tx, _rx) = mpsc::channel::<Frame>(4);
+        let running: Running = Arc::new(Mutex::new(HashMap::new()));
+        assert!(
+            REGISTRY.len() >= 4,
+            "注册表只有 {} 条 —— 本条在空转",
+            REGISTRY.len()
+        );
+        let unreachable: Vec<&str> = REGISTRY
+            .iter()
+            .map(|spec| spec.name)
+            .filter(|name| {
+                matches!(
+                    dispatch(req("x", name), &tx, &running),
+                    Disposition::Reply(Frame::Reply { code: Some(ref c), .. })
+                        if c == "unknown_command"
+                )
+            })
+            .collect();
+        assert!(
+            unreachable.is_empty(),
+            "这些命令在注册表里，而 `dispatch` 到不了它们的处理器：{unreachable:?}\n\
+             ⇒ `hello.commands` 会把它们报给客户端，客户端照报的发过来，收到的是 \
+             `unknown_command` —— 两边各自看都「对」。\n\
+             今天这一形只有两种成因：① 有人给它写了 `Run::Builtin` 却没在 `dispatch` 里\n\
+             加那条硬臂；② 有人收窄了 `lookup`。两种都得回来重判，别改本条。"
+        );
+        // ★ 反向自检：这把尺子真的会说「够不到」—— 不然上面那一批是空真。
+        assert!(
+            matches!(
+                dispatch(req("x", "no-such-command-kr104"), &tx, &running),
+                Disposition::Reply(Frame::Reply { code: Some(ref c), .. }) if c == "unknown_command"
+            ),
+            "喂一个根本不存在的命令进去，本条居然认为它够得到 —— 那上面那一批证不了任何事"
         );
     }
 
@@ -1337,9 +1460,16 @@ mod structure_guards {
         for spec in super::REGISTRY {
             // F04a：`kill` 也是阻塞档 —— 它要起 tmux 子进程（探测 + kill-session）。
             // P4f：`bus-list` / `bus-send` 同样是阻塞档 —— 它们要起 cc-bus 子进程并等它退出。
+            // `K-R104`：`capture-pane` / `oneshot-session` 起 tmux 子进程并等它退出。
             let expected_blocking = matches!(
                 spec.name,
-                "launch" | "kill" | "bus-list" | "bus-send" | "bus-kill"
+                "launch"
+                    | "kill"
+                    | "bus-list"
+                    | "bus-send"
+                    | "bus-kill"
+                    | "capture-pane"
+                    | "oneshot-session"
             );
             let is_blocking = matches!(spec.run, Run::Blocking(_));
             assert_eq!(
@@ -1359,7 +1489,16 @@ mod structure_guards {
         // 于是真加了一条阻塞命令却没登记时会红。这里再加一条显式的覆盖面断言。
         // P4f：`bus-list` / `bus-send` 起 cc-bus 子进程并等它退出 ⇒ 与 `launch`/`kill` 同为阻塞档。
         let known = [
-            "cancel", "kill", "launch", "ping", "resolve", "bus-list", "bus-send", "bus-kill",
+            "cancel",
+            "kill",
+            "launch",
+            "ping",
+            "resolve",
+            "bus-list",
+            "bus-send",
+            "bus-kill",
+            "capture-pane",
+            "oneshot-session",
         ];
         let missing: Vec<&str> = super::REGISTRY
             .iter()

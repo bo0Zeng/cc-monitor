@@ -133,6 +133,18 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→daemon",
+        "src-tauri/src/tmux.rs",
+        "remote-daemon-proto/src/control/oneshot_session.rs",
+        "★〔`K-R104` 09-13〕**一次性会话的名字前缀两侧必须是同一个串。** \
+         用量探针的会话从此由 daemon 铸名（前缀 `ccm-oneshot-` ＋ slug ＋ 过 Gate 2 的那截尾巴），\
+         而 monitor 这一侧\
+         要把它挡在用户的会话列表之外（`is_usage_probe_session`）。\
+         🔴 **漂开不会有任何东西报错** —— daemon 照旧铸它的名字，monitor 照旧过滤它以为的\
+         那个前缀，症状是探针会话开始在列表里闪现。⇒ 只能读对面的源码逐字比\
+         （`tests::the_oneshot_prefix_matches_the_daemon_side`，形状照 `LOCAL_ORIGIN` 那条）。",
+    ),
+    (
+        "monitor→daemon",
         "src-tauri/src/polling_registry.rs",
         "remote-daemon-proto/src/control/tmux_hook.rs",
         "C14 那条登记在案的例外（预信任的等信任框以 shell 字符串形态产出）真实存在的证据 —— \
