@@ -27,11 +27,23 @@ workspace，本行盖不到」——**一格「我盖不到那儿」的诚实注
         （留档里的逐字串 / 它点名的那一格 / 它点名的那几份仓根文件 / `package.json` 里那个 key）；
         钉子没了或陈了 ⇒ 红。🔴 **「不需要」与「没查」在输出上一模一样，这一条要求写死是前者。**
         ⚠ 编号是 `C6b` 而**不是 `C7`**：本仓的 `C7` 是宪章那条「vendor 不动」，同名会互相冒充。
+  · `C5b`（`K-R91` 09-12）**门禁自述射程** —— `gate.sh` 头注里「自己说自己跑几格 /
+        跑哪些东西」那几句话，与**盘上现打的那些格**、**盘上现打的那些文件**对不上 ⇒ 红。
+        🔴 **两半都判**：① 自述的格数（自述节 · 裁决行 · 现打格数，三方对拍）；
+        ② **点名的东西在不在盘上** —— 头注 `:22–25` 那一形**一个数字都没有**，烂的是
+        「点名了两个 09-11 就删掉的脚本」，**只认数字的判据认不出它**。
+  · `C6c`（`K-R91` 09-12）**0 覆盖那棵树的理由，每一份成员都归到一档** ——
+        分母是**那棵树的现打成员**（`git ls-files` 现打），**不是登记里写死的清单**；
+        罩在一句全称句下而没被逐份归档的 ⇒ 红，且**逐字点名是哪几份**。
+        ⚠ 它**不判归得对不对**（要读语义），只判**有没有归** —— 与 `C6b` 同一条边界。
 
 **买不到**（同样是判据，只是方向相反 —— 别把绿读成这个）：
   · 它**不判裁词对不对**。`fmt` 那一格到底盖没盖住 `src-tauri`，机器在这里问不出来；
     它只保证**每一格都被表过态、锚点指得到真东西、格数对得上**。
     ⇒ 一条**写错的**裁词能骗过本尺子。**这是登记的机检，不是覆盖率的判据。**
+  · `C6c` **不判「归得对不对」**，只判「有没有归」：把 `index.html` 归进「文档」那一档
+    它照样绿。⇒ 它买的是**枚举盖住了那棵树**，不是**分档分对了**。
+  · `C5b` **骗得过的那一形写死**：一句标着 `〔量于` 而内容其实是今天的自述 —— 那要读语义。
   · 它**不补任何盲区**（`K-R80 §0d` 逐字：数出来归数出来，补是另一件）。
     ⚠ `K-R82`（09-12）**补了其中一棵**：`hooks/` 从 0 格变成 1 格（`gate.sh` 里新的 `hooks` 格）。
     但那是**在 `gate.sh` 里加了一道真门**，本文件仍然只登记、只对拍 —— 这条边界一个字没变。
@@ -44,6 +56,7 @@ workspace，本行盖不到」——**一格「我盖不到那儿」的诚实注
 给参数是为了**对着变异过的副本跑**（死值验），不必去动真文件。
 """
 
+import fnmatch
 import json
 import os
 import re
@@ -280,6 +293,23 @@ cell(
 #   都拴着一个**盘上查得到的钉子**，`C6b` 逐条验：钉子没了 / 陈了，当场红。
 #
 # ⚠ 理由**逐条给，不许写「不重要」** —— `C6b` 里有一条黑名单专门挡那种写法。
+#
+# ── `K-R91`（09-12）：每一条底下多了一份 `archive`，那是 `C6c` 的分档表 ────────────
+#
+# 🔴 **上一版这里栽的是「一句全称句罩着一群没数过的文件」**（`DECISIONS.md#R46` 裁定三，
+#   PM 现打于 `cba446b`）：仓根被跟踪文件 **16** 份，而 `ROOTFILES` 的 `why` 里逐字点名 6 份、
+#   被 `README*.md` 通配罩 2 份、散文里指得出 1 份 ⇒ **7 份只被「其余的……是文档与仓库元数据」
+#   那一句罩着**，而那句话**对其中至少 5 份是假的**（`index.html` 是应用入口 ·
+#   `vite.config.ts` 是构建配置 · `tsconfig.json` / `eslint.config.js` / `.stylelintrc.json` 都是配置）。
+# ⚠ **`C6b` 逮不到，而那不是它的 bug** —— 它 docstring 逐字写着边界：买的是「这句话还站得住」，
+#   不买「这句话对不对」。它查理由在不在 / 敷不敷衍 / 钉子指不指得到，
+#   **不查「理由的枚举盖没盖全那棵树」**。⇒ `C6c` 补的正是这一维。
+#
+# 🔴 **判词是两个，不是一个**：`不需要门` 与 `未裁` 在上一版的输出里长得一模一样
+#   （都印成「0 覆盖 + 一句理由」）。`K-R91 §0b` 逐字禁本件给那几份加门 ⇒ 那几份的诚实判词
+#   就是**未裁**：**「已被逐份数到」不等于「不需要门」**，这张表不许把后者写成前者。
+NEED_NONE, UNJUDGED = "不需要门", "未裁"
+
 NO_GATE_NEEDED = {
     "evidence/": {
         "why": "它是**读数落点**，不是产品行为：本目录下的文件没有任何一个进构建、"
@@ -290,16 +320,40 @@ NO_GATE_NEEDED = {
         # 钉子：`K-R80` 真的那样用过 —— 那份留档没了/改了措辞，这条「不需要」就失去依据 ⇒ 红。
         "witness_file": "evidence/K-R80-gate-daemon-fmt.md",
         "witness_text": "改它不动任何一格读数",
+        # `C6c`：分母是 `git ls-files evidence/` 现打的每一份成员，逐份落进下面某一档。
+        # ⚠ 这一档分得粗（按文件类型），刻意的：这棵树的性质**是齐的**（都是读数落点），
+        #   分细了只会变成一张跟着件号长的清单，而那种清单每加一件就陈一次。
+        "archive": [
+            {"档": "量具（可复算的读数脚本）", "判": NEED_NONE, "成员": ["*.py"],
+             "why": "它们只在有人手动跑时才执行，不进构建、不进运行时、不被产品代码 import；"
+                    "跑坏了当场看得见（脚本自己 rc≠0），不需要一道出货闸替它守"},
+            {"档": "留档（那一拍的读数与判词）", "判": NEED_NONE, "成员": ["*.md"],
+             "why": "纯文字记录，谁都不读它做决定以外的事；改坏它损失的是可追溯性，不是产品行为"},
+            {"档": "跑出来的原始输出", "判": NEED_NONE, "成员": ["*.out", "*.txt"],
+             "why": "某一趟命令的 stdout/stderr 原样落盘，是证据不是代码；重跑一次就能再产一份"},
+            {"档": "结构化读数", "判": NEED_NONE, "成员": ["*.tsv", "*.json", "*.jsonl", "*.snapshot"],
+             "why": "逐条判词与快照的落点（如 `K-R48-356-verdicts.tsv`），同样是证据；"
+                    "没有任何一份被产品代码或构建读进去"},
+        ],
     },
     ROOTFILES: {
-        "why": "这些仓根文件（`git ls-files` 里不含 `/` 的那些，现打 **16** 份，量于 `880b864`）"
-               "里**跑得到的那几份不是没人管，是没人「覆盖」它们** —— 两件事："
-               "① `npm` 那一格的命令本体就**住在 `package.json` 的 `scripts.test` 里**，"
+        # 🔴 `K-R91`（09-12）**这一段整段重写过**，上一版逐字是：
+        #   「② 其余的（`README*.md` / `CHANGELOG.md` / `LICENSE` / `PHASE-G-REPORT.md` /
+        #     `.gitattributes` / 那份审阅报告）是**文档与仓库元数据**，改坏它们不改变任何产品行为」
+        #   —— 那是一句**罩住整棵树**的全称句，而它对 `index.html` / `vite.config.ts` /
+        #   `tsconfig.json` / `eslint.config.js` / `.stylelintrc.json` **是假的**。
+        #   ⚠ 上一版那句话本身**没删**，它下移进了「文档」那一档 —— 那一档里它是真的。
+        "why": "这些仓根文件（`git ls-files` 里不含 `/` 的那些）**逐份归到下面 `archive` 那几档**，"
+               "**分母是现打的**、不是这里写死的一张清单（`C6c` 每趟重数）。"
+               "🔴 **每一档带自己的判词，`不需要门` 与 `未裁` 分开写**："
+               "① `npm` 那一格的命令本体住在 `package.json` 的 `scripts.test` 里、"
                "`vitest.config.ts` 给它 `include` —— 这两份坏了那一格根本起不来 ⇒ 它们是那格的"
                "**依赖**，不是那格的**分母**；登记只记分母，所以这里仍判 0，不是漏登。"
-               "② 其余的（`README*.md` / `CHANGELOG.md` / `LICENSE` / `PHASE-G-REPORT.md` / "
-               "`.gitattributes` / 那份审阅报告）是**文档与仓库元数据**，改坏它们不改变任何产品行为，"
-               "**不值一道出货闸**。⚠ 与 `hooks/` 的区别就在这句：那棵树里的东西**会被执行**。",
+               "② 文档与仓库元数据那两档，改坏它们不改变任何产品行为，**不值一道出货闸**。"
+               "③ **应用入口与构建 / 工具链配置那两档今天 0 格覆盖，而它们既不是文档也不是仓库元数据** ——"
+               "判词写死是 `未裁`：该不该给它们加门是另一次裁定（`K-R91` `§0b` 逐字禁本件加门），"
+               "本条只买「**已被逐份数到**」。"
+               "⚠ 与 `hooks/` 的区别仍在那一句：那棵树里的东西**会被执行**。",
         # 钉子①：说「npm 那格靠它起来」，那格就得真在登记里（改名/删格 ⇒ 红）。
         "witness_cell": "npm",
         # 钉子②：那两份仓根文件得真在盘上的仓根文件集合里（挪走 ⇒ 红）。
@@ -307,6 +361,33 @@ NO_GATE_NEEDED = {
         # 钉子③：`npm test` 那条命令得真住在 `package.json` 的 `scripts.test` 里
         #        —— 它哪天搬走了，上面「① 是依赖不是分母」这句话就不成立了 ⇒ 红。
         "witness_json_key": ("package.json", ["scripts", "test"]),
+        # `C6c`：分母 = `git ls-files` 里不含 `/` 的那些，**每趟现打**。
+        # ⚠ 通配串刻意写得**指得住**：`C6c` 有一张全域通配黑名单（`*` / `**` / `*.*`），
+        #   拿一条 `*` 把整棵树罩住 = 换个写法的全称句，那正是本条要治的那一形。
+        "archive": [
+            {"档": "`npm` 那一格的依赖（不是它的分母）", "判": NEED_NONE,
+             "成员": ["package.json", "vitest.config.ts"],
+             "why": "那一格的命令本体住 `scripts.test`、`include` 住 `vitest.config.ts`；"
+                    "它们坏了那一格根本起不来 ⇒ 是**依赖**不是**分母**，登记只记分母"},
+            {"档": "应用入口与构建 / 工具链配置", "判": UNJUDGED,
+             "成员": ["index.html", "vite.config.ts", "tsconfig.json",
+                     "eslint.config.js", ".stylelintrc.json"],
+             "why": "🔴 **这一档今天 0 格覆盖，而「文档与仓库元数据」那顶帽子对它们是假的**："
+                    "`index.html` 是应用入口 · `vite.config.ts` 决定构建产物 · "
+                    "`tsconfig.json` / `eslint.config.js` / `.stylelintrc.json` 决定类型与 lint 的口径。"
+                    "⇒ 本条**不声称它们不需要门**，只声称**它们已被逐份数到**"},
+            {"档": "依赖锁", "判": UNJUDGED, "成员": ["package-lock.json"],
+             "why": "它决定 `npm ci` 装出来的是哪一棵依赖树 —— 同样既不是文档也不是仓库元数据。"
+                    "0 格覆盖，加不加门另裁"},
+            {"档": "仓库元数据", "判": NEED_NONE, "成员": [".gitignore", ".gitattributes"],
+             "why": "它们只对 git 自己说话（哪些文件不跟踪 / 换行与 diff 怎么处理），"
+                    "不进构建、不进运行时、不被产品代码读"},
+            {"档": "文档", "判": NEED_NONE,
+             "成员": ["README*.md", "CHANGELOG.md", "LICENSE", "PHASE-G-REPORT.md",
+                     "项目审阅报告-*.md"],
+             "why": "改坏它们不改变任何产品行为 —— **这一句对这一档是真的**；"
+                    "上一版把同一句话当成罩住整棵树的全称句用，那正是 `K-R91` 立案的那一形"},
+        ],
     },
 }
 
@@ -314,6 +395,13 @@ NO_GATE_NEEDED = {
 # —— 给得出分母的才写数：这里的分母就是下面这个列表本身。
 VAGUE = ["不重要", "无所谓", "没必要", "TODO", "待定", "暂时", "以后再说", "略"]
 MIN_WHY = 60   # 字符。60 是「一句能读的理由」的量级，不是精确阈值。
+
+# ── `C6c`（`K-R91` 09-12）的三张小表 ────────────────────────────────────────
+# ⚠ 与 `VAGUE` 同一条诚实边界：它们只挡**已知的**那几种写法，不声称能识别所有全称句。
+#   给得出分母的数才写 —— 这里的分母就是这三张表本身。
+SWEEPING = ["其余的", "其余那些", "剩下的都", "诸如此类", "之类的都"]   # 全称句黑名单（挡「一句话罩一片」）
+CATCH_ALL = {"*", "**", "*.*", "?*", "*?", "*/*"}                      # 全域通配黑名单（挡「换个写法的全称句」）
+MIN_BUCKET_WHY = 24   # 一档的理由比整棵树的短，量级不同，阈值也不同
 
 
 # ── 现打：`git ls-files` ────────────────────────────────────────────────────
@@ -400,6 +488,155 @@ def found_cells(text):
     return cells
 
 
+# ── `C5b`（`K-R91` `KR91D1`）：门禁**自述射程**那几句话，腐了有人说话 ────────────
+#
+# 🔴 题面（`DECISIONS.md#R46` 裁定三，PM 现打于 `cba446b`）—— `gate.sh` 头注里两处自述已腐：
+#   · `:19–20` 逐字「三道门 + 一道生成物漂移检查 + `pb check` + 四套 `ccm` e2e」
+#     ⇒ 3+1+1+4 = **9**，而当天盘上是 **13** 格。
+#     🔴 **那个算式与 `R42 裁定零` 里被 PM 传播了 46 次的错数是同一个算式、同一份文件。**
+#   · `:22–25` 逐字点名 `ccm-acceptance` / `ccm-pretrust` —— 那两个文件 09-11 `K-R48`
+#     第二拍就删了（现打 `ls` 双 `No such file`）。
+#   `C5` 只对拍**裁决行**那一句（那行的数 vs 现打格数），**钉不到头注**。
+#
+# 🔴 **失效方向写死：只认「格数」这个数字，就认不出第二处** —— 那句话里**一个数字都没有**，
+#   烂的是「点名了两个不存在的文件」。⇒ 本条**两半都判**。
+#
+# ★ 取法：**自述句只许住在一段带围栏的「自述节」里**，围栏之外的头注不许再有第二份自述。
+#   围栏**内**：① 格数三方对拍（自述节的数 · 裁决行的数 · 现打格数）
+#              ② 逐格点名与现打格**集合相等**（少点一格 / 多点一格都红）
+#              ③ 节里点名的每一条盘上住址**现打存在**。
+#   围栏**外**（头注）：④ 带自我指称词又带「N 格 / N 道门」的行 ⇒ 红
+#              ⑤ 点名了 `e2e/` 下**没有那份文件**的套件名的段落 ⇒ 红。
+#
+# ⚠ **豁免只有一种（逐字 `〔量于`），粒度刻意不同** —— 自述与历史读数在散文里长得一模一样：
+#   · ④ 按**行**豁免：一句就是一条声称；
+#   · ⑤ 按**段落首行**豁免：一段账里点名十次是同一笔账，逐行贴标记会把段落读碎。
+# ⚠ **买不到**：一句标着 `〔量于` 而内容其实是今天的自述，骗得过它（那要读语义）；
+#   围栏**之内**的散文它也只判上面那三样，不判每一句话对不对。
+# ⚠ **射程 = 头注**（文件开头到第一行非注释代码）。正文里的注释不在本条射程里 ——
+#   本件的两处腐都在头注，扩到全文要另量一次分母，`K-R91` 不自批。
+SELF_OPEN = "〔自述·射程〕本脚本此刻跑哪几格"
+SELF_CLOSE = "〔自述·射程〕完"
+SELF_COUNT = re.compile(r"〔自述·格数〕\s*(\d+)\s*格")
+SELF_ROLL = "〔自述·点名〕"
+SELF_REF = re.compile(r"本脚本|本文件|本门|它跑的是")
+SELF_NUM = re.compile(r"(?:[0-9]+|[一二两三四五六七八九十]+)\s*(?:格|道门)")
+HIST_MARK = "〔量于"
+BACKTICK = re.compile(r"`([^`]+)`")
+SUITE_TOK = re.compile(r"^(?:ccm|cc)-[a-z0-9][a-z0-9-]*$")
+PATHISH = re.compile(r"^[\w\-./@]+$")
+
+
+def header_lines(text):
+    """头注 = 文件开头到第一行非注释代码（`set -uo pipefail`）。返回 1 基行号 + 原文。"""
+    out = []
+    for i, ln in enumerate(text.split("\n"), 1):
+        if ln.strip() and not ln.lstrip().startswith("#"):
+            break
+        out.append((i, ln))
+    return out
+
+
+def header_paragraphs(hdr):
+    """连续的注释行算一段；空行或只有一个 `#` 的行断段。"""
+    paras, cur = [], []
+    for i, ln in hdr:
+        if ln.strip() in ("#", ""):
+            if cur:
+                paras.append(cur)
+                cur = []
+            continue
+        cur.append((i, ln))
+    if cur:
+        paras.append(cur)
+    return paras
+
+
+def suite_on_disk(tok):
+    return any((ROOT / f"e2e/{tok}{ext}").exists() for ext in (".sh", ".test.sh", ""))
+
+
+def check_self_description(text, cells, rollcall):
+    out = []
+    hdr = header_lines(text)
+    opens = [i for i, ln in hdr if SELF_OPEN in ln]
+    closes = [i for i, ln in hdr if SELF_CLOSE in ln]
+    if len(opens) != 1 or len(closes) != 1 or closes[0] <= opens[0]:
+        out.append(f"C5b 头注里找不到**恰好一段**自述节（开围栏 {len(opens)} 处 · "
+                   f"收围栏 {len(closes)} 处，应当各 1 处且开在前）—— "
+                   f"自述句散在散文里没有任何东西对得上它，正是 `K-R91` 立案的那一形")
+        inside, block = set(), []
+    else:
+        inside = set(range(opens[0], closes[0] + 1))
+        block = [(i, ln) for i, ln in hdr if i in inside]
+
+    if block:
+        btxt = "\n".join(ln for _, ln in block)
+        ms = SELF_COUNT.findall(btxt)
+        if len(ms) != 1:
+            out.append(f"C5b 自述节里 `〔自述·格数〕N 格` 命中 {len(ms)} 处（应当恰好 1 处）")
+        else:
+            n = int(ms[0])
+            if n != len(cells):
+                out.append(f"C5b 自述节自称 **{n} 格**，而 `gate.sh` 里现打是 **{len(cells)} 格** "
+                           f"—— 头注的自述腐了（`C5` 只对拍裁决行，钉不到这里）")
+            if rollcall is not None and n != rollcall:
+                out.append(f"C5b 自述节自称 {n} 格，而裁决行那句自称 {rollcall} 格 —— "
+                           f"同一份文件里两处自述互相对不上")
+        roll = [i for i, ln in block if SELF_ROLL in ln]
+        if len(roll) != 1:
+            out.append(f"C5b 自述节里 `{SELF_ROLL}` 命中 {len(roll)} 处（应当恰好 1 处）")
+        else:
+            start = roll[0]
+            payload = []
+            for i, ln in block:
+                if i < start:
+                    continue
+                if i > start and "〔自述·" in ln:
+                    break
+                payload.append(ln.split(SELF_ROLL, 1)[-1] if i == start else ln)
+            # 逐格点名切开：行首的 `#`、围栏竖线、空白与反引号都不是名字的一部分。
+            named = {x.strip().lstrip("#│ \t").strip().strip("`").strip()
+                     for chunk in payload for x in chunk.split("·")}
+            named = {x for x in named if x and "〔" not in x and "─" not in x}
+            got = set(cells)
+            if named != got:
+                out.append(f"C5b 自述节逐格点名与现打的格**对不上**："
+                           f"点了而盘上没有 {sorted(named - got)} · "
+                           f"盘上有而没点 {sorted(got - named)}")
+        for i, ln in block:
+            for tok in BACKTICK.findall(ln):
+                if PATHISH.match(tok) and ("/" in tok or "." in tok) and not (ROOT / tok).exists():
+                    out.append(f"C5b 自述节 `gate.sh:{i}` 点名的 `{tok}` **盘上不存在** —— "
+                               f"自述里点名的东西必须现打找得到（`:22–25` 那一形一个数字都没有，"
+                               f"烂的正是这一维）")
+
+    for i, ln in hdr:
+        if i in inside or HIST_MARK in ln:
+            continue
+        if SELF_REF.search(ln) and SELF_NUM.search(ln):
+            out.append(f"C5b `gate.sh:{i}` 在自述节**之外**又说了一遍自己跑几格："
+                       f"{ln.strip()[:70]!r} —— 自述句只许住在自述节里；"
+                       f"若这是历史读数，就在**这一行**逐字带上 `{HIST_MARK} …〕`")
+
+    for para in header_paragraphs(hdr):
+        if para[0][0] in inside:
+            continue
+        if HIST_MARK in para[0][1]:
+            continue
+        bad = {}
+        for i, ln in para:
+            for tok in BACKTICK.findall(ln):
+                if SUITE_TOK.match(tok) and not suite_on_disk(tok):
+                    bad.setdefault(tok, i)
+        if bad:
+            out.append(f"C5b `gate.sh:{para[0][0]}–{para[-1][0]}` 这一段点名了 `e2e/` 下"
+                       f"**没有那份文件**的套件："
+                       + " · ".join(f"`{t}`（首见 :{n}）" for t, n in sorted(bad.items()))
+                       + f" —— 若这一段是历史账，就在**段落首行**逐字带上 `{HIST_MARK} …〕`")
+    return out
+
+
 def check_no_gate_needed(orphans):
     """`C6b`（`K-R82` `KR82D3`）：0 格覆盖的树必须**明写「不需要门」**，且那句话本身被钉住。
 
@@ -456,6 +693,80 @@ def check_no_gate_needed(orphans):
             except Exception as exc:
                 out.append(f"C6b `{t}` 的理由说 `{'.'.join(path)}` 住在 `{f}` 里，"
                            f"而现打取不到（{type(exc).__name__}: {exc}）—— 那句话不成立了")
+    return out
+
+
+# ── `C6c`（`K-R91` `KR91D2`）：0 覆盖那棵树的理由，**每一份成员都归到一档** ──────
+#
+# 🔴 **分母是那棵树的现打成员**（`git ls-files` 每趟重数），**不是登记里写死的清单** ——
+#   写死清单那条路的失效方向逐字写在件计划里：那样往仓根加一份文件**永远不会红**，
+#   与 `R42 裁定零` 那个「数的是那句话，不是那些格」是同一形。
+#
+# ⚠ 它**不判归得对不对**（把 `index.html` 归进「文档」它照样绿 —— 那要读语义，`T126`
+#   关掉了那条路），只判**有没有归**。这与 `C6b` 是同一条边界，方向不同：
+#   `C6b` 查「这句话还站不站得住」，`C6c` 查「这句话的枚举盖没盖全那棵树」。
+def tree_members(tree, files):
+    """那棵树**现打**的成员。`<仓根文件>` = `git ls-files` 里不含 `/` 的那些。"""
+    if tree == ROOTFILES:
+        return sorted(p for p in files if "/" not in p)
+    return sorted(p for p in files if p.startswith(tree))
+
+
+def bucket_hits(pattern, tree, members):
+    """一条通配串在**现打成员**里命中哪几份。树内成员按「树相对名」也匹配一次。"""
+    hits = []
+    for m in members:
+        rel = m[len(tree):] if tree != ROOTFILES and m.startswith(tree) else m
+        if fnmatch.fnmatchcase(m, pattern) or fnmatch.fnmatchcase(rel, pattern):
+            hits.append(m)
+    return hits
+
+
+def check_archive(orphans, files):
+    out = []
+    for t in orphans:
+        ent = NO_GATE_NEEDED.get(t)
+        if not ent:
+            continue          # 那一形归 `C6b`（「登记里一条说明都没有」），这里不重复报
+        members = tree_members(t, files)
+        arch = ent.get("archive") or []
+        if not arch:
+            out.append(f"C6c `{t}` 的理由**没有分档表** —— 它现打 {len(members)} 份成员，"
+                       f"而理由只是一段散文 ⇒ 那是「一句全称句罩着一群没数过的文件」，"
+                       f"正是 `K-R91` 立案的那一形")
+        covered = set()
+        for b in arch:
+            name = b.get("档") or "<无名档>"
+            verdict = b.get("判")
+            if verdict not in (NEED_NONE, UNJUDGED):
+                out.append(f"C6c `{t}` / 档「{name}」的判词 {verdict!r} 不在闭集 "
+                           f"{NEED_NONE}/{UNJUDGED} 里 —— 「已被数到」与「不需要门」不许混成一个词")
+            why = (b.get("why") or "").strip()
+            if len(why) < MIN_BUCKET_WHY:
+                out.append(f"C6c `{t}` / 档「{name}」的理由只有 {len(why)} 字"
+                           f"（下限 {MIN_BUCKET_WHY}）—— 读不出理由的一句话等于没写")
+            for w in VAGUE + SWEEPING:
+                if w in why:
+                    out.append(f"C6c `{t}` / 档「{name}」的理由里出现了 {w!r} —— "
+                               f"敷衍词与全称句都挡：一档的理由要说的是**这一档**")
+            pats = b.get("成员") or []
+            if not pats:
+                out.append(f"C6c `{t}` / 档「{name}」一条通配串都没有 —— 空档归不了任何一份")
+            for pat in pats:
+                if pat in CATCH_ALL:
+                    out.append(f"C6c `{t}` / 档「{name}」用了全域通配 {pat!r} —— "
+                               f"拿一条通配把整棵树罩住就是换个写法的全称句，本条不收")
+                    continue
+                hits = bucket_hits(pat, t, members)
+                if not hits:
+                    out.append(f"C6c `{t}` / 档「{name}」的通配串 {pat!r} 今天**一份都匹配不到** —— "
+                               f"这一条档标陈了（分母是现打的，登记要跟着盘走）")
+                covered.update(hits)
+        missing = [m for m in members if m not in covered]
+        if missing:
+            out.append(f"C6c 🔴 `{t}` 现打 **{len(members)}** 份成员里 **{len(missing)}** 份"
+                       f"**没有归到任何一档**（分母 = `git ls-files` 现打，不是登记里的清单）"
+                       f"—— 逐字点名：" + " · ".join(f"`{m}`" for m in missing))
     return out
 
 
@@ -516,6 +827,9 @@ def main():
         fails.append("C5 `gate.sh` 末尾找不到 `GATE: OK —— <n> 格全绿` 那一行 —— 那行点名没了，本条按红处理")
     elif int(m.group(1)) != len(cells):
         fails.append(f"C5 `GATE: OK` 那行自称 {m.group(1)} 格，而现打是 {len(cells)} 格 —— 加了格而点名没跟")
+    # `C5b`（`K-R91`）：**扩 `C5` 的射程，一个字没动它上面那三方对拍** ——
+    # 它买的是裁决行，本条买的是**头注里的自述**（那儿的腐 `C5` 钉不到）。
+    fails += check_self_description(text, cells, int(m.group(1)) if m else None)
 
     print(f"# `K-R80` `KR80D3` 门禁分格覆盖登记 —— 量于 `{GATE}`")
     print()
@@ -564,10 +878,43 @@ def main():
             ent = NO_GATE_NEEDED.get(t)
             print()
             print(f"- **`{t}`** —— " + (ent["why"] if ent else "**登记里没有这一条** —— 见下面 `C6b`"))
+        print()
+        print("### 逐份归档（`C6c`：**分母是那棵树的现打成员**，不是登记里写死的清单）")
+        print()
+        print("🔴 **`不需要门` 与 `未裁` 是两件事** —— 上一版这两种在输出上长得一模一样。")
+        files_now = ls_files()
+        for t in orphans:
+            ent = NO_GATE_NEEDED.get(t)
+            members = tree_members(t, files_now)
+            arch = (ent or {}).get("archive") or []
+            print()
+            print(f"- **`{t}`** 现打 **{len(members)}** 份成员 · **{len(arch)}** 档")
+            covered = set()
+            for b in arch:
+                hits = []
+                for pat in b.get("成员") or []:
+                    if pat not in CATCH_ALL:
+                        hits += bucket_hits(pat, t, members)
+                hits = sorted(set(hits))
+                covered.update(hits)
+                shown = " · ".join(f"`{x}`" for x in hits[:8]) + (" …" if len(hits) > 8 else "")
+                print(f"  - 〔{b.get('判')}〕**{b.get('档')}** —— 通配 "
+                      + " · ".join(f"`{x}`" for x in b.get("成员") or [])
+                      + f" ⇒ 现打命中 **{len(hits)}** 份"
+                      + (f"（前 8 份：{shown}）" if len(hits) > 8 else (f"：{shown}" if hits else ""))) 
+                print(f"    - {b.get('why')}")
+            missing = [x for x in members if x not in covered]
+            if missing:
+                print(f"  - 🔴 **没归到任何一档的 {len(missing)} 份（逐字点名）**："
+                      + " · ".join(f"`{x}`" for x in missing))
+            else:
+                print(f"  - ✅ **{len(members)} 份全部归到了档**（分母现打；往这棵树新增一份"
+                      f"落不进任何一档的文件 ⇒ `C6c` 当场红）")
     else:
         print("每一棵树至少被一格盖到。")
     print()
     fails += check_no_gate_needed(orphans)
+    fails += check_archive(orphans, ls_files())
     print("## 逐格的理由（`C6`：一格都不许空）")
     for name in order:
         ent = REGISTRY[name]
@@ -586,8 +933,9 @@ def main():
         for f in fails:
             print(f"  ✗ {f}")
         return 1
-    print("KR80D3: OK —— C1..C6 全过；C6b 全过（那一条归 `K-R82` `KR82D3`）"
-          "（⚠ 它只判「登记完整且指得到真东西」，不判裁词对不对）")
+    print("KR80D3: OK —— C1..C6 全过；C5b 全过（`K-R91` `KR91D1`）；"
+          "C6b 全过（`K-R82` `KR82D3`）；C6c 全过（`K-R91` `KR91D2`）"
+          "（⚠ 它只判「登记完整且指得到真东西」，不判裁词对不对、不判归得对不对）")
     return 0
 
 
