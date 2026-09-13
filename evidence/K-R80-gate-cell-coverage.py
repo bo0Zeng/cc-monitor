@@ -22,12 +22,19 @@ workspace，本行盖不到」——**一格「我盖不到那儿」的诚实注
         ⇒ 加了一格而那行点名没跟 ⇒ 红（那一行 09-10 起就馊过一次：加了 `fmt`/`winchk`
           而它还写着「三道门 + 生成物漂移 + pb check + 四套 ccm e2e」= 9 格，盘上已是 11 格）
   · `C6` 每一个裁词都带一句**非空**的理由（`无` 也要写为什么盖不到）
+  · `C6b`（`K-R82` 09-12 加）**0 格覆盖的那几棵树，要明写「为什么不需要门」，而那句话本身被钉住**
+        —— 理由不许敷衍（黑名单 + 字数下限），且每条都拴一个盘上查得到的钉子
+        （留档里的逐字串 / 它点名的那一格 / 它点名的那几份仓根文件 / `package.json` 里那个 key）；
+        钉子没了或陈了 ⇒ 红。🔴 **「不需要」与「没查」在输出上一模一样，这一条要求写死是前者。**
+        ⚠ 编号是 `C6b` 而**不是 `C7`**：本仓的 `C7` 是宪章那条「vendor 不动」，同名会互相冒充。
 
 **买不到**（同样是判据，只是方向相反 —— 别把绿读成这个）：
   · 它**不判裁词对不对**。`fmt` 那一格到底盖没盖住 `src-tauri`，机器在这里问不出来；
     它只保证**每一格都被表过态、锚点指得到真东西、格数对得上**。
     ⇒ 一条**写错的**裁词能骗过本尺子。**这是登记的机检，不是覆盖率的判据。**
   · 它**不补任何盲区**（`K-R80 §0d` 逐字：数出来归数出来，补是另一件）。
+    ⚠ `K-R82`（09-12）**补了其中一棵**：`hooks/` 从 0 格变成 1 格（`gate.sh` 里新的 `hooks` 格）。
+    但那是**在 `gate.sh` 里加了一道真门**，本文件仍然只登记、只对拍 —— 这条边界一个字没变。
 
 ## 跑法
 
@@ -37,6 +44,7 @@ workspace，本行盖不到」——**一格「我盖不到那儿」的诚实注
 给参数是为了**对着变异过的副本跑**（死值验），不必去动真文件。
 """
 
+import json
 import os
 import re
 import subprocess
@@ -100,6 +108,29 @@ def cell(name, anchor, cwd, cmd, **verdicts):
     c.update(verdicts)
     REGISTRY[name] = {"anchor": anchor, "cwd": cwd, "cmd": cmd, "cover": c}
 
+
+# ── `K-R82`（09-12）：第 13 格 `hooks` ────────────────────────────────────────
+# 它治的正是本文件下面那张转置表印出来的一行：`hooks/` 一格都盖不到，
+# 而它是**会被 git 执行、跑在每一次提交上、能改仓**的东西（`DECISIONS.md#R42` 裁定四）。
+# ⚠ **不另起一份「hooks 覆盖登记」** —— 两份账必漂（`KR82D2` 逐字点名的失效方向）。
+#   这一格由本文件自己的 `C1`（名字对得上）· `C2`（锚点唯一）· `C3`/`C6`（12 棵树逐棵表态带理由）
+#   · `C5`（裁决行 13 格）接住，一条新判据都没另立。
+cell(
+    "hooks",
+    anchor="run_gate hooks '每个被跟踪的 hook 文件 3 条",
+    cwd="仓根",
+    cmd="bash scripts/hooks-are-runnable.sh",
+    **{
+        "hooks/": (FULL, "`git ls-files hooks/` 下**每一个**被跟踪的文件，各 3 条："
+                         "盘上可执行（`test -x`）· 库里记着可执行位（index mode `100755`）· "
+                         "语法过得了它自己 shebang 声明的解释器。⚠ 买的是「**跑得起来**」这一层，"
+                         "**不买「它拦得对」**——`pre-commit` 那条 `[profile.dev]` 正则判得准不准，"
+                         "本格一个字都问不出来"),
+        "scripts/": blind("本格的**尺子**住在 `scripts/hooks-are-runnable.sh` —— "
+                          "但尺子不是分母。把量具算进它自己的覆盖，正是本区最高频那族病"
+                          "（量具的作用域对不上事实）⇒ 这里刻意判「无」"),
+    },
+)
 
 cell(
     "fmt",
@@ -238,6 +269,53 @@ cell(
 )
 
 
+# ── `K-R82` `KR82D3`：0 格覆盖的那几棵树，**明写「不需要门」** ────────────────
+#
+# 🔴 **「不需要」与「没查」在输出上一模一样** —— 上面那张转置表印出 `0` 的时候，
+#   它一个字都没说这个 `0` 是哪一种。`DECISIONS.md#R42` 裁定四拍的就是这件事：
+#   `hooks/` 立件（今天成了第 13 格），另两棵**写进登记，不留成「没查」**。
+#
+# 🔴 **而「明写」如果只是一句注释，它会腐** —— 本区已有 46 次那样的先例
+#   （`R42` 裁定零：PM 把「门禁九格」当读数用了 46 次）。⇒ 下面每一条「不需要」
+#   都拴着一个**盘上查得到的钉子**，`C6b` 逐条验：钉子没了 / 陈了，当场红。
+#
+# ⚠ 理由**逐条给，不许写「不重要」** —— `C6b` 里有一条黑名单专门挡那种写法。
+NO_GATE_NEEDED = {
+    "evidence/": {
+        "why": "它是**读数落点**，不是产品行为：本目录下的文件没有任何一个进构建、"
+               "进运行时、或被产品代码读。★ 而 `0 格覆盖`**正是它的用途，不是它的缺陷** —— "
+               "`K-R80` 收官那趟就利用了这一点：`[J3 陈账]` 判 mtime 造成「改一行件文件"
+               "就赔掉一个 GATE: OK」的死锁，它把订正落在这棵树上，正因为改它**不动任何一格读数**。"
+               "给这棵树加一道门 = 把那条唯一的泄压口焊死。",
+        # 钉子：`K-R80` 真的那样用过 —— 那份留档没了/改了措辞，这条「不需要」就失去依据 ⇒ 红。
+        "witness_file": "evidence/K-R80-gate-daemon-fmt.md",
+        "witness_text": "改它不动任何一格读数",
+    },
+    ROOTFILES: {
+        "why": "这些仓根文件（`git ls-files` 里不含 `/` 的那些，现打 **16** 份，量于 `880b864`）"
+               "里**跑得到的那几份不是没人管，是没人「覆盖」它们** —— 两件事："
+               "① `npm` 那一格的命令本体就**住在 `package.json` 的 `scripts.test` 里**，"
+               "`vitest.config.ts` 给它 `include` —— 这两份坏了那一格根本起不来 ⇒ 它们是那格的"
+               "**依赖**，不是那格的**分母**；登记只记分母，所以这里仍判 0，不是漏登。"
+               "② 其余的（`README*.md` / `CHANGELOG.md` / `LICENSE` / `PHASE-G-REPORT.md` / "
+               "`.gitattributes` / 那份审阅报告）是**文档与仓库元数据**，改坏它们不改变任何产品行为，"
+               "**不值一道出货闸**。⚠ 与 `hooks/` 的区别就在这句：那棵树里的东西**会被执行**。",
+        # 钉子①：说「npm 那格靠它起来」，那格就得真在登记里（改名/删格 ⇒ 红）。
+        "witness_cell": "npm",
+        # 钉子②：那两份仓根文件得真在盘上的仓根文件集合里（挪走 ⇒ 红）。
+        "witness_rootfiles": ["package.json", "vitest.config.ts"],
+        # 钉子③：`npm test` 那条命令得真住在 `package.json` 的 `scripts.test` 里
+        #        —— 它哪天搬走了，上面「① 是依赖不是分母」这句话就不成立了 ⇒ 红。
+        "witness_json_key": ("package.json", ["scripts", "test"]),
+    },
+}
+
+# 挡「写了等于没写」的那几种写法。⚠ 它只挡**已知的**那几个词，不声称能识别所有敷衍
+# —— 给得出分母的才写数：这里的分母就是下面这个列表本身。
+VAGUE = ["不重要", "无所谓", "没必要", "TODO", "待定", "暂时", "以后再说", "略"]
+MIN_WHY = 60   # 字符。60 是「一句能读的理由」的量级，不是精确阈值。
+
+
 # ── 现打：`git ls-files` ────────────────────────────────────────────────────
 # 🔴 **必须走 `-z`。** 第一版用的是裸 `ls-files` + 按换行切，而本仓有中文文件名 ——
 #   git 默认会把它们**加引号并转义**（`"doc/\350\256\241…"`），于是顶层目录被切成 `"doc/`
@@ -322,6 +400,65 @@ def found_cells(text):
     return cells
 
 
+def check_no_gate_needed(orphans):
+    """`C6b`（`K-R82` `KR82D3`）：0 格覆盖的树必须**明写「不需要门」**，且那句话本身被钉住。
+
+    ⚠ 它是 `C6`（「一格的裁词都不许空」）同一条道理换了个方向：`C6` 管**裁词**的理由，
+      本条管**整棵树 0 覆盖**的理由。⇒ 编号刻意是 `C6b` 而**不是 `C7`**：
+      本仓的 `C7` 是宪章那条「vendor 不动」，同名会让两处互相冒充。
+    ⚠ 它买的是「**这句话还站得住**」，**不买「这句话对不对**」—— 与 `C1`–`C6` 同一个边界：
+      一条写错的理由能骗过它。它只保证理由**在**、**不敷衍**、**指得到的东西还在盘上**。
+    """
+    out = []
+    rootfiles = {p for p in ls_files() if "/" not in p}
+    got, want = set(orphans), set(NO_GATE_NEEDED)
+    for t in sorted(got - want):
+        out.append(f"C6b `{t}` 今天 0 格覆盖，而登记里**一条说明都没有** —— "
+                   f"「不需要」与「没查」在输出上一模一样，这一条要求写死是前者")
+    for t in sorted(want - got):
+        out.append(f"C6b 登记说 `{t}` 不需要门，而它今天**已经被格盖到了** —— 这条说明陈了，回来删")
+    for t in sorted(got & want):
+        ent = NO_GATE_NEEDED[t]
+        why = (ent.get("why") or "").strip()
+        if len(why) < MIN_WHY:
+            out.append(f"C6b `{t}` 的「不需要门」只有 {len(why)} 字（下限 {MIN_WHY}）—— "
+                       f"读不出理由的一句话等于没写")
+        hit = [w for w in VAGUE if w in why]
+        if hit:
+            out.append(f"C6b `{t}` 的理由里出现了敷衍词 {hit} —— "
+                       f"件计划 `KR82D3` 逐字：理由要逐条给，不许写「不重要」")
+        wf, wt = ent.get("witness_file"), ent.get("witness_text")
+        if wf:
+            fp = ROOT / wf
+            if not fp.exists():
+                out.append(f"C6b `{t}` 的钉子 `{wf}` 盘上不存在 —— 那句「不需要」失去依据")
+            else:
+                n = fp.read_text(encoding="utf-8", errors="replace").count(wt)
+                if n != 1:
+                    out.append(f"C6b `{t}` 的钉子 `{wf}` 里逐字 {wt!r} 命中 {n} 次（应当恰好 1 次）"
+                               f"—— 那份留档改了措辞或没了，理由指空了")
+        wc = ent.get("witness_cell")
+        if wc and wc not in REGISTRY:
+            out.append(f"C6b `{t}` 的理由点名了 `{wc}` 那一格，而登记里没有这一格 —— 理由指空了")
+        for f in ent.get("witness_rootfiles", []):
+            if f not in rootfiles:
+                out.append(f"C6b `{t}` 的理由点名的仓根文件 `{f}` 今天不在 `git ls-files` 的"
+                           f"仓根文件里 —— 理由指空了")
+        wj = ent.get("witness_json_key")
+        if wj:
+            f, path = wj
+            try:
+                cur = json.loads((ROOT / f).read_text(encoding="utf-8"))
+                for k in path:
+                    cur = cur[k]
+                if not str(cur).strip():
+                    raise ValueError("空值")
+            except Exception as exc:
+                out.append(f"C6b `{t}` 的理由说 `{'.'.join(path)}` 住在 `{f}` 里，"
+                           f"而现打取不到（{type(exc).__name__}: {exc}）—— 那句话不成立了")
+    return out
+
+
 def verdict_of(ent, tree):
     """取一格对一棵树的裁词；登记漏了就回 `?`（不崩，让 `C3` 那句话印得出来）。"""
     v = ent["cover"].get(tree)
@@ -387,7 +524,7 @@ def main():
     print()
     print("| 格 | cwd | 命令 | 全 | 部 | 🔴 盖不到（逐棵点名） |")
     print("|---|---|---|---|---|---|")
-    order = [c for c in ("fmt", "fmt-daemon", "winchk", "cargo", "generated", "daemon", "npm")
+    order = [c for c in ("hooks", "fmt", "fmt-daemon", "winchk", "cargo", "generated", "daemon", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm e2e/")) + ["pb check"]
     for name in order:
         ent = REGISTRY[name]
@@ -414,12 +551,23 @@ def main():
         print(f"| `{t}` | {fs} | {ps} | {len(f) + len(p)} |")
     print()
     if orphans:
-        print(f"🔴 **这 {len(orphans)} 棵树今天 12 格里一格都盖不到**："
+        # ⚠ 格数**现算**。上一版这里写死着 `12` —— 那正是 `R42 裁定零` 那个被传播了 46 次的
+        #   错数的同一形状（数的是那句话，不是那些格）。`K-R82` 改成 `len(cells)`。
+        print(f"🔴 **这 {len(orphans)} 棵树今天 {len(cells)} 格里一格都盖不到**："
               + " · ".join(f"`{t}`" for t in orphans))
-        print("⚠ `K-R80` **只数不补**（件计划 `§0d` 逐字）—— 补是另一件。")
+        print()
+        print("### 它们各自**为什么不需要门**（`K-R82` `KR82D3`，由 `C6b` 逐条钉住）")
+        print()
+        print("🔴 **「不需要」与「没查」在输出上一模一样** —— 上面那个 `0` 本身分不开这两种，"
+              "下面这几条写死是前者。")
+        for t in orphans:
+            ent = NO_GATE_NEEDED.get(t)
+            print()
+            print(f"- **`{t}`** —— " + (ent["why"] if ent else "**登记里没有这一条** —— 见下面 `C6b`"))
     else:
         print("每一棵树至少被一格盖到。")
     print()
+    fails += check_no_gate_needed(orphans)
     print("## 逐格的理由（`C6`：一格都不许空）")
     for name in order:
         ent = REGISTRY[name]
@@ -438,7 +586,8 @@ def main():
         for f in fails:
             print(f"  ✗ {f}")
         return 1
-    print("KR80D3: OK —— C1..C6 全过（⚠ 它只判「登记完整且指得到真东西」，不判裁词对不对）")
+    print("KR80D3: OK —— C1..C6 全过；C6b 全过（那一条归 `K-R82` `KR82D3`）"
+          "（⚠ 它只判「登记完整且指得到真东西」，不判裁词对不对）")
     return 0
 
 
