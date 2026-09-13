@@ -449,7 +449,7 @@ mod tests {
         ("sftp.file-panel", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 1 条：本地有操作系统的文件管理器，不需要它。"),
         ("ssh.host-config", Asym::NaturallyAsymmetric, "本地按 §40 的定义就是「**不走 ssh** 的远端」⇒ ssh 目标的枚举/解析/导入/连通性测试/公钥推送在本地没有对应物。"),
 
-        ("tmux.manage", Asym::ParityDebt, "★★ **P3b E 阶段重量（08-12）：那句预言「POSIX 本地落地后自动就有」——三分之三对、四分之一错。** 原文只写「`ccm` 全套修饰本地『无』」+ 那句预言，没说是哪几条命令。逐条量：① `list_remote_tmux` ⇒ **本机已有对侧** `list_local_tmux`（P3t-Y2b + P3 刀2-UI，读 daemon 推来的快照）；② `kill_remote_tmux` ⇒ **本机已通**（P3 刀 2 后端：`daemon_kill` 传输无关，且本机专属错误文案已加）；③ `tmux_send_keys` ⇒ **本机已通**（同款 `daemon_route` 分流）；④ `capture_remote_pane` ⇒ **仍无本机对侧**。⚠ **P4d-Y5（08-12）改了它的一半**：原文接着写「它 `load_remote_config_by_label(&origin)`，对 `<local>` 会报「未找到远端配置」」—— **那半句今天已经假了**，本机分支已补上，报的是真实原因（本机 tmux 快照只带会话名不带屏幕内容，要预览得现抓一次 pane）。⇒ 假话没了，**欠账没结**：能不能预览这件事一点没变，仍等 daemon 出原语。★ 这条订正本身是 `P3b §0b` 的 A 类（过期）活样本，而制造它的正是 P4d 那一刀 —— 改了行为不回来改理由，账本当天就开始撒谎。⇒ 欠账**只剩画面预览这一格**，而它不是「自动就有」的：预览要么现跑 `capture-pane`（本机可以，但那是第二条取数路），要么等 daemon 出原语（`P4d`）。归 **P4d**，不再归 L1/L2。★★ **K-R56（09-11）再订正一次，而这次订正的是上面 ③ 那一格**：③ 逐字写的是「`tmux_send_keys` ⇒ **本机已通**（同款 `daemon_route` 分流）」—— **那句话本身是真的**（PM 单子叮嘱「账本不许直接信」，本轮现打逐字复核过住址：分流确实同款，`daemon_send_keys` 也确实传输无关）。**假的是它旁边那句没写出来的话**：② 给 `kill_remote_tmux` 特地记了「**且本机专属错误文案已加**」，③ 没有那半句 —— 而**它不是省略，是当时真的没有**。⇒ 通道不在时 `tmux_send_keys` 会掉进 SSH 回落、报「未找到远端配置: `<local>`」，与 ①②④ 那一族**一模一样的假话**。K-R56 把那条早退补上了（`tmux.rs::tmux_send_keys` 的 `Routed::NoChannel` 臂，逐字抄 `kill` 那条先例），判据 `tmux::tests::the_local_send_keys_never_falls_back_to_ssh`（走生产入口本体，不是扫源码），存量登记 `local_origin_registry::TRIAGE_DEBT` 同轮 16 → 15。⚠ **「能不能 send-keys」这件事一个字没变** —— 变的只是**通道不在时它说什么**。⇒ 本格的欠账**仍然只剩画面预览那一格**，K-R56 没有结掉任何一笔账，它结的是一句假话。"),
+        ("tmux.manage", Asym::ParityDebt, "★★ **P3b E 阶段重量（08-12）：那句预言「POSIX 本地落地后自动就有」——三分之三对、四分之一错。** 原文只写「`ccm` 全套修饰本地『无』」+ 那句预言，没说是哪几条命令。逐条量：① `list_remote_tmux` ⇒ **本机已有对侧** `list_local_tmux`（P3t-Y2b + P3 刀2-UI，读 daemon 推来的快照）；② `kill_remote_tmux` ⇒ **本机已通**（P3 刀 2 后端：`daemon_kill` 传输无关，且本机专属错误文案已加）；③ `tmux_send_keys` ⇒ **本机已通**（同款 `daemon_route` 分流）；④ `capture_remote_pane` ⇒ **仍无本机对侧**。⚠ **P4d-Y5（08-12）改了它的一半**：原文接着写「它 `load_remote_config_by_label(&origin)`，对 `<local>` 会报「未找到远端配置」」—— **那半句今天已经假了**，本机分支已补上，报的是真实原因（本机 tmux 快照只带会话名不带屏幕内容，要预览得现抓一次 pane）。⇒ 假话没了，**欠账没结**：能不能预览这件事一点没变，仍等 daemon 出原语〔`K-R86` 09-13：**这半句今天假了**，订正在本行末尾〕。★ 这条订正本身是 `P3b §0b` 的 A 类（过期）活样本，而制造它的正是 P4d 那一刀 —— 改了行为不回来改理由，账本当天就开始撒谎。⇒ 欠账**只剩画面预览这一格**，而它不是「自动就有」的：预览要么现跑 `capture-pane`（本机可以，但那是第二条取数路），要么等 daemon 出原语（`P4d`）〔`K-R86` 09-13：同上，**这半句今天也假了**〕。归 **P4d**，不再归 L1/L2。★★ **K-R56（09-11）再订正一次，而这次订正的是上面 ③ 那一格**：③ 逐字写的是「`tmux_send_keys` ⇒ **本机已通**（同款 `daemon_route` 分流）」—— **那句话本身是真的**（PM 单子叮嘱「账本不许直接信」，本轮现打逐字复核过住址：分流确实同款，`daemon_send_keys` 也确实传输无关）。**假的是它旁边那句没写出来的话**：② 给 `kill_remote_tmux` 特地记了「**且本机专属错误文案已加**」，③ 没有那半句 —— 而**它不是省略，是当时真的没有**。⇒ 通道不在时 `tmux_send_keys` 会掉进 SSH 回落、报「未找到远端配置: `<local>`」，与 ①②④ 那一族**一模一样的假话**。K-R56 把那条早退补上了（`tmux.rs::tmux_send_keys` 的 `Routed::NoChannel` 臂，逐字抄 `kill` 那条先例），判据 `tmux::tests::the_local_send_keys_never_falls_back_to_ssh`（走生产入口本体，不是扫源码），存量登记 `local_origin_registry::TRIAGE_DEBT` 同轮 16 → 15。⚠ **「能不能 send-keys」这件事一个字没变** —— 变的只是**通道不在时它说什么**。⇒ 本格的欠账**仍然只剩画面预览那一格**，K-R56 没有结掉任何一笔账，它结的是一句假话。★★ **`K-R86`（09-13）第三次订正，而这次假掉的是上面那两处「仍等 daemon 出原语」**：daemon 侧今天**有**那条原语了 —— `--capture-pane <会话名>`，住 `remote-daemon-proto/src/control/capture_pane.rs`（`tmux -u capture-pane -p -t '=名:'`，argv 直传不过 shell，只读；起进程登记在 `readonly_guard::spawn_registry::ALLOWED`，「它只读」由 `readonly_guard::capture_is_read_only` 逐元素钉 argv；协议面见 `doc/IPC-PROTOCOL.md` §10；`BUILD_ID` p2f → p2g）。🔴 **而这一格的欠账一格都没结，只是换了个名字** —— 本件**只出 daemon 那一侧的原语**，monitor 的 `capture_remote_pane`（`src-tauri/src/tmux.rs`）**一个字节没动**，对 `<local>` 仍然没有本机对侧 ⇒ `Side::Remote` 这一格不许改。⇒ 欠账从「**等 daemon 出原语**」（`K-R86` 之前）变成「**等 monitor 侧接上去**」（`K-R86` 之后），归 `K-R87` 之后的接线那一件。⚠ 别把 `BUILD_ID` 的 bump 读成「远端已经有这条命令了」：那一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，本轮没做。★ 本行「那句话今天还成不成立」从此有人在数：`parity_ledger::tests::the_tmux_manage_row_stops_waiting_for_a_daemon_primitive` —— 它要求每一处「等 daemon 出原语」前后都挂着 `K-R86` 这个订正标记，**且不许靠删掉整行兑现**（同 `KR53D4` 那条的形状）。"),
 
     ];
 
@@ -913,6 +913,87 @@ mod tests {
                 cli.contains(keep),
                 "`launch.render-cli` 把机制那一半（`{keep}`）也改掉了 —— 那一半今天仍然成立，\n\
                  `KR53D4` 逐字写着「机制那半**不用改**」。实得：{cli}"
+            );
+        }
+    }
+
+    /// ★★ `K-R86`（09-13）：**`tmux.manage` 那一行不许再把「等 daemon 出原语」当现在时说。**
+    ///
+    /// # 它买什么、不买什么（诚实边界写在最前，别读大）
+    ///
+    /// 形状照上面那条 `the_two_launch_rows_no_longer_carry_the_two_falsified_clauses`。
+    /// 机器判不了「这句话是不是真的」，本条能判的只有三样，**三样都不是「真假」**：
+    ///
+    /// 1. **那一行还在** —— 不许靠删掉记录兑现（删掉等于把一处已知的不对称从视野里拿走）；
+    /// 2. **每一处「等 daemon 出原语」旁边都挂着订正标记** —— 那句话 09-13 起是假的：
+    ///    daemon 侧有 `--capture-pane` 了（`remote-daemon-proto/src/control/capture_pane.rs`）；
+    /// 3. **订正没有把欠账一起抹掉** —— 本件只出 daemon 那一侧的原语，
+    ///    monitor 的 `capture_remote_pane` 一个字节没动 ⇒ 这一格仍然是 `Remote`，
+    ///    而这一条正是本行历史上栽过三次的那个病（改了行为不回来改理由 / 改理由时把账也抹了）。
+    ///
+    /// ⚠ 它**不**买「新写上去的那段话是真的」。「daemon 侧真有那条原语」由 daemon 那棵树
+    /// 自己的判据钉（`control::capture_pane::tests` 在真 tmux 上抓一屏 ＋
+    /// `readonly_guard::capture_is_read_only` 逐元素钉 argv），本条够不着那棵树。
+    #[test]
+    fn the_tmux_manage_row_stops_waiting_for_a_daemon_primitive() {
+        let why = ASYMMETRY_REASONS
+            .iter()
+            .find(|(c, _, _)| *c == "tmux.manage")
+            .map(|(_, _, w)| *w)
+            .expect(
+                "`tmux.manage` 这一行不在账本里了 —— 不许靠删掉记录兑现：\
+                 删掉等于把一处已知的不对称从视野里拿走，而那正是这张表存在的理由。",
+            );
+
+        // ① 那句话每出现一处，**它周围**就得有订正标记。按出现处逐处判，不是「全文里提过一次」——
+        //    后者放得过「新加一段订正、而旧的那几处原样当现在时留着」。
+        //    ⚠ 窗口**两侧都看**：本轮第一趟门禁就是在这儿红的 —— 订正段自己会逐字引用那句话
+        //    （「原文逐字」是本行三次订正一贯的写法），而标记在**引文之前**。
+        //    只看后面 ⇒ 一次假阳；只看前面 ⇒ 放得过「先写订正、后面又当现在时说一遍」。
+        let stale = "等 daemon 出原语";
+        let mark = "K-R86";
+        let window_chars = 60usize;
+        let mut from = 0usize;
+        let mut seen = 0usize;
+        while let Some(rel) = why[from..].find(stale) {
+            let at = from + rel;
+            from = at + stale.len();
+            seen += 1;
+            let head = &why[..at];
+            let start = head
+                .char_indices()
+                .nth_back(window_chars)
+                .map(|(i, _)| i)
+                .unwrap_or(0);
+            let before = &head[start..];
+            let after: String = why[from..].chars().take(window_chars).collect();
+            assert!(
+                before.contains(mark) || after.contains(mark),
+                "第 {seen} 处「{stale}」前后 {window_chars} 个字符里都没有订正标记 `{mark}` ——\n\
+                 它今天是假的：daemon 侧 09-13 起有 `--capture-pane`\n\
+                 （`remote-daemon-proto/src/control/capture_pane.rs`）。\n\
+                 前实得：{before:?}\n后实得：{after:?}"
+            );
+        }
+        // 反空真：一处都没扫到 ⇒ 要么措辞换了、要么这条在空转，两种都要人来看。
+        // 分母 = 这一行里那句话的出现处；09-13 现打 **5** 处
+        //   （2 处历史叙述 ＋ 3 处订正段自己的逐字引用 —— ⚠ 我先写 2、再写 3，两次都少数了，
+        //    两次都是这条判据现打出来告诉我的。**那正是「按出现处逐处判」买到的东西**：
+        //    「全文里提过一次订正」会让这 5 处里的任意几处静默留在盘上当现在时。）
+        // 写成地板而不是相等：这一行是**追加式**的（三次订正都在往后加），
+        // 相等会让下一次订正被迫来改这个数，而那正是本仓「为了不动数字去拧代码」的反面。
+        assert!(
+            seen >= 2,
+            "只扫到 {seen} 处「{stale}」（09-13 现打 5 处）—— 抽取器或措辞变了，本条此刻在空转"
+        );
+
+        // ② 订正不许把欠账一起抹掉：这一格今天仍然只有远端一条路。
+        for keep in ["capture_remote_pane", "Side::Remote"] {
+            assert!(
+                why.contains(keep),
+                "订正把「欠账没结」这一半抹掉了（找不到 `{keep}`）——\n\
+                 本件只出 daemon 那一侧的原语，monitor 那条本机对侧仍然没有。\n\
+                 把「等 daemon」换成「做完了」，是这一行历史上栽过三次的同一个病换了个方向。"
             );
         }
     }
