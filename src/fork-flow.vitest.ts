@@ -278,8 +278,10 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
   });
 
   it("★★ 基名被占 ⇒ 载荷里的 `tmuxName` **让到了 `-2`**（真过了铸造口，不是拼出来的）", async () => {
-    // 判别格：新会话的基名 `deadbeef-cc` 已经被占着。
-    serveLocal(["deadbeef-cc", "别人的-cc"]);
+    // 判别格：新会话的基名 `p-cc` 已经被占着。
+    // 〔`K-R96` 09-12〕基名从 **cwd**（`/p`）派生，不再是 `<sid8>-cc`
+    // （用户 `R55`：「要是可读的名字 / 不要id」）。
+    serveLocal(["p-cc", "别人的-cc"]);
     expect(await fork()).toBe("started");
     // 反空真：三格全 known ⇒ **一次追问小窗都不该弹**（弹了说明事实喂错了，下面在测别的东西）。
     expect(askMock, "不该弹追问小窗 —— 源会话事实三格全 known").not.toHaveBeenCalled();
@@ -287,7 +289,10 @@ describe("K-R46：分叉本机起会话的 tmux 名（行为）", () => {
       resumePayload().tmuxName,
       "分叉本机起的载荷里没有让过位的 tmux 名 —— 要么名字没传（后端 `NO_TMUX_NAME` 早退\n" +
         "⇒ 会话不进具名容器），要么没过 `remote-launch.ts::mintTmuxName`（全仓唯一铸造口）。",
-    ).toBe("deadbeef-cc-2");
+    ).toBe("p-cc-2");
+    // `K-R96`：名字里**一个 sid 片段都没有** —— 新老 sid 都不许出现。
+    expect(String(resumePayload().tmuxName).includes(NEW.slice(0, 8))).toBe(false);
+    expect(String(resumePayload().tmuxName).includes(SRC.slice(0, 8))).toBe(false);
     // 名字铸的是**新会话自己**的，不是源会话的 —— 换了个 sid 就该换个名字。
     expect(resumePayload().sessionId).toBe(NEW);
     // 这条路说得出「账号 0」，而那是 POSIX 后端唯一渲染得出容器的一态。

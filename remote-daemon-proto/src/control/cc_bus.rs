@@ -350,7 +350,7 @@ pub(crate) fn session_name_of(target: &str) -> &str {
 /// **「不知道」和「不在」是两件事**，混起来会让调用方把一屋子活人当成死人。
 pub(crate) fn join_identity(
     agents: Vec<serde_json::Value>,
-    sessions: Option<&[(String, String, String)]>,
+    sessions: Option<&[(String, String)]>,
 ) -> Vec<serde_json::Value> {
     agents
         .into_iter()
@@ -363,9 +363,11 @@ pub(crate) fn join_identity(
             let name = session_name_of(&target).to_string();
             let (live, sid) = match sessions {
                 None => (serde_json::Value::Null, serde_json::Value::Null),
-                Some(list) => match list.iter().find(|(n, _, _)| *n == name) {
+                // `K-R96`：`gate::list_sessions` 今天回的是**二元组**（会话名 ＋ `@ccm_sid`）——
+                // 中间那列 `#{session_id}` 本函数从来没问过，快照那边也不再取它。
+                Some(list) => match list.iter().find(|(n, _)| *n == name) {
                     None => (serde_json::Value::Bool(false), serde_json::Value::Null),
-                    Some((_, _, ccm_sid)) => (
+                    Some((_, ccm_sid)) => (
                         serde_json::Value::Bool(true),
                         if ccm_sid.is_empty() {
                             serde_json::Value::Null

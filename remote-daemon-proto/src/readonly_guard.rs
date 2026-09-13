@@ -830,15 +830,34 @@ mod spawn_registry {
         (
             "control/gate.rs",
             "tmux",
-            "F03：§34 Gate 2 的探测（`display-message -p` 取 `@ccm_sid` + `#{session_id}`）\
-             ＋ P4f 续刀的 `list-sessions -F`（一次列全部会话的身份三元组，供 `bus-list` \
-             判「这个总线成员的地址今天还活着吗」——**总线成员 ⊆ 活着的会话**，\
-             谁活着由身份空间说了算，不由 cc-bus 那份会过期的 agents.tsv 说了算）。\
+            "F03：§34 Gate 2 的探测（`display-message -p` 取 `@ccm_sid` + `#{session_id}`）。\
              **只读 tmux**，不改任何状态；登记在 control/ 是因为它是「能不能改这个会话」\
-             这个决策的一部分（定框 C13）",
+             这个决策的一部分（定框 C13）。\
+             ⚠ **`K-R96`（09-12）：这一条从前还盖着第二处** —— P4f 续刀那条 \
+             `list-sessions -F`（一次列全部会话）。用户 `R52` 裁定一之后，\
+             判活改成向 `common/session_snapshot.rs` 那张快照发一次询问 \
+             ⇒ 那处调用点搬去了那边，本条今天**只盖 `display-message` 一处**。",
             "缩性质",
             "这一条是**只读 tmux**，本来就落在收窄后的性质之内；\
              等哪天有一条判据能机检「这个起进程点只读」，它就该从受管例外里摘出去、不再占一格。",
+        ),
+        (
+            "common/session_snapshot.rs",
+            "tmux",
+            "`K-R96`（09-12）：**全 crate 唯一一处「一次列全部 tmux 会话」的探测点**\
+             （`list-sessions -F '#{session_name}\t#{@ccm_sid}'`，argv 直传不过 shell）。\
+             用户 `R52` 裁定一逐字：「Gate 能不能改成直接读那份快照. **可以** / \
+             改为**向快照发一次询问, 快照更新一次**」⇒ 这一处就是那「一次询问」。\
+             两个消费者：① Gate 判活（`bus-list` 的「这个总线成员今天还活着吗」——\
+             **总线成员 ⊆ 活着的会话**，谁活着由身份空间说了算，不由 cc-bus 那份会过期的 \
+             agents.tsv 说了算）；② `ccm` 铸名避让（`R52` 裁定二那张 hash 表）。\
+             **只读 tmux**，不改任何状态。\
+             ⚠ **一次调用列全部**，不是每个成员探一次（用户那台的总线有 86 行）。\
+             ⚠ **这一条从 `control/gate.rs` 搬来，不是新增的面**：净处数不变。",
+            "缩性质",
+            "同 `control/gate.rs` 那条：只读，等有判据能机检「这个起进程点只读」时摘出去。\
+             ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二个 tmux 子命令 —— \
+             这一处的立身之本就是「列全部会话只有一处」，加一个子命令就要回来重判。",
         ),
         (
             "control/identity_tag.rs",
@@ -991,6 +1010,11 @@ mod spawn_registry {
         // 那是 `shared/ccm` 那个 bash 脚本被删掉之后，它那两处 `exec` 的新住址。
         // `K-R55`（09-11）：11 → 10。`observe/watcher.rs` 那**两处** `Command::new("sh")`
         // 搬进了 `platform/shell.rs`，而那里**合成一处**（两跳共用同一条口）⇒ 净 −1。
+        // `K-R96`（09-12）：10 → 10，**净零**。`control/gate.rs` 那两处里的
+        // `list-sessions -F` 搬去了 `common/session_snapshot.rs`（`R52` 裁定一：
+        // Gate 判活改成向那张快照发一次询问）—— 一处走、一处来，`ALLOWED` 多一条键。
+        // ⚠ 这种「搬家」最容易在这里留下**两条都在**的痕迹（旧键还盖着已经不存在的调用点）。
+        // 复核法：`ALLOWED` 里那条 `control/gate.rs` 的理由栏今天只该说 `display-message`。
         // ⚠ 这个数变小**不一定**是好事（它也可能是抽取坏了），所以顺带写清怎么复核：
         // `grep -c 'Command::new(' `，逐文件看，`platform/shell.rs` 那份是新住址。
         const SPAWN_SITES_TODAY: usize = 10;

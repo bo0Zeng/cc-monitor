@@ -78,7 +78,7 @@ import {
 import { AGENT_PROFILE } from "./agent-profile";
 import { LOCAL_ORIGIN } from "./daemon-policy";
 import { commands } from "./ipc/commands";
-import { pickFreshTmuxName } from "./remote-launch";
+import { mintSessionTmuxName } from "./remote-launch";
 import { collectEditedFiles } from "./panorama/session-files";
 import { openPanePreview } from "./views/pane-preview";
 import { turnEndNotifier } from "./turn-notify";
@@ -2306,13 +2306,17 @@ export class TabManager {
     }
     // ★★ P3t-Y2b：本机 resume 也进 tmux（POSIX；Windows 那侧后端不读这个名字，`C12`）。
     //
-    // 名字**必须**由 `pickFreshTmuxName` 铸 —— 它 = 基名 `<sid8>-cc` + `mintTmuxName` 的避让，
+    // 名字**必须**由 `mintSessionTmuxName` 铸 —— 它 = 基名 `<项目名>-cc` + `mintTmuxName` 的避让，
     // 而 `mintTmuxName` 是全仓唯一带撞名避让的铸造口（F13）。
     // Rust 侧刻意拒绝自己铸名：在那边补一个默认值就是 F13 修掉的坑第三次。
     //
     // ⚠ **这里第一版直接写了 `mintTmuxName(`${sid.slice(0,8)}-cc`, …)`** —— 那等于**又抄了一份
     // 基名规则**，正是 F13 收敛掉的那个重复（我在上一句里刚写完「唯一铸造口」）。
     // `session_name_registry` 当场判红（它数的就是「谁在产 `-cc` 基名」）。⇒ 改用现成的那个。
+    // 🔴 `K-R96`（用户 09-12 `R55`「要是可读的名字 / 不要id」）：基名从 `<sid8>-cc`
+    //    换成 `<项目名>-cc`（从 cwd 派生）⇒ 这里要给的是 **cwd**，不是 sid。
+    //    sid 一格没丢：它骑在 `@ccm_sid` 上（后端建会话时 `set-option` 写），
+    //    而本仓认会话从来就只问那个、不问名字前缀。
     //
     // `existing` 从 `commands.list_local_tmux()` 来（就在下面几行）。
     // 〔K-R19 订正 09-03〕这里原先写的是 `local_tmux_names()`，**全仓零定义**：
@@ -2326,7 +2330,8 @@ export class TabManager {
     let tmuxName: string | null = null;
     try {
       const sessions = await commands.list_local_tmux();
-      if (sessions) tmuxName = pickFreshTmuxName(sid, new Set(sessions.map((s) => s.name)));
+      if (sessions)
+        tmuxName = mintSessionTmuxName(tab.cwd ?? "", new Set(sessions.map((s) => s.name)));
     } catch {
       // 读不到就当不知道 —— 与上面同一条纪律，绝不退化成空集。
       tmuxName = null;
@@ -2450,9 +2455,10 @@ export class TabManager {
       return;
     }
     // ② 目标会话不在任何 tmux（已结束 / 已漂移到别的 sid）→ 起**全新** resume。tmux 名从现有
-    // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 `<sid8>-cc`（那正是「resume 进 branch」老 bug）。
+    // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 `<项目名>-cc`（那正是「resume 进 branch」老 bug）。
+    // 🔴 `K-R96`：基名从 cwd 派生（可读），不再是 `<sid8>-cc`。
     const existing = new Set((sessions ?? []).map((s) => s.name));
-    const name = pickFreshTmuxName(sid, existing);
+    const name = mintSessionTmuxName(cwd, existing);
     // account-ux U3:tmux 版归档 resume 也跟随账号(注入 configDir)。① attach 活会话分支不动(账号焊死)。
     await withAccount(
       origin,

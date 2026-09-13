@@ -8,9 +8,12 @@
  * **有两格是纪律、不是代码**：
  *
  * 1. **名字只许过 `mintTmuxName`**（`remote-launch.ts`，全仓唯一带撞名避让的铸造口）。
- *    自己拼一个 `<sid8>-cc` 就是 F13 修掉的那个坑：另一处精心让出 `-cc-2`，你直接撞上去。
- *    这里用现成的 `pickFreshTmuxName`（= 基名 `<sid8>-cc` + `mintTmuxName` 的避让），
+ *    自己拼一个 `<项目名>-cc` 就是 F13 修掉的那个坑：另一处精心让出 `-cc-2`，你直接撞上去。
+ *    这里用现成的 `mintSessionTmuxName`（= 基名 `<项目名>-cc` + `mintTmuxName` 的避让），
  *    **不在本文件里重写基名规则**。
+ *    🔴 `K-R96`（用户 09-12 `R55`「**要是可读的名字 / 不要id**」）：基名从 `<sid8>-cc`
+ *    换成从 **cwd** 派生的 `<项目名>-cc` ⇒ 本函数**多收一个 `cwd`**。
+ *    sid 一格没丢 —— 它骑在 `@ccm_sid` 上（后端建会话时写），认会话从来只问那个。
  * 2. **`list_local_tmux()` 回 `null` 是「不知道」，不是「一个都没占」。**
  *    不知道的时候**不铸名、回 `null`** ⇒ 后端诚实降级回旧路（不进容器）。
  *    硬铸就是「不避让」，那正是 issue #76「静默接进第一个会话，而用户以为开了新的」。
@@ -30,20 +33,27 @@
  */
 
 import { commands } from "./commands";
-import { pickFreshTmuxName } from "../remote-launch";
+import { mintSessionTmuxName } from "../remote-launch";
 
 /**
  * 给本机这条会话铸一个**不撞现有 tmux 名**的会话名。
  *
+ * 🔴 〔`K-R96` 09-12〕**`sessionId` 这个参数没了** —— 名字里不再有 sid，它没有用武之地。
+ * 留一个用不上的参数就是下一处「看起来有关系、实际没有」的误导；sid 仍然由调用方
+ * 直接传给 `resume_history_session`（后端拿它去 `set-option @ccm_sid`，那才是它的载体）。
+ *
+ * @param cwd 这条会话的工作目录 —— 名字就是从它派生的（`<项目名>-cc`）。
+ *            🔴 **它不是可选的**：给空串会一律铸出 `session-cc`，而那正是
+ *            「有名字的样子、没有可读性的事实」。少传一个参数由 `tsc` 挡着。
  * @returns 铸出来的名字；**`null` = 说不出**（本机 tmux 快照不知道 / 读口抛了）
  *          ⇒ 调用方照原样传 `null`，后端降级回旧路。
  */
-export async function mintLocalTmuxName(sessionId: string): Promise<string | null> {
+export async function mintLocalTmuxName(cwd: string): Promise<string | null> {
   try {
     const sessions = await commands.list_local_tmux();
     // `null` = 本机 daemon 通道没起 / 还没推过帧 = **不知道**。绝不退化成空集。
     if (!sessions) return null;
-    return pickFreshTmuxName(sessionId, new Set(sessions.map((s) => s.name)));
+    return mintSessionTmuxName(cwd, new Set(sessions.map((s) => s.name)));
   } catch {
     // 读不到就当不知道 —— 与上面同一条纪律。
     return null;

@@ -522,7 +522,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
     for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
       if (f.includes(".test.") || f.includes(".vitest.")) continue;
       if (f.endsWith("/ipc/local-tmux-name.ts")) continue; // 算法口本体
-      if (f.endsWith("/remote-launch.ts")) continue; // `pickFreshTmuxName` 的定义处
+      if (f.endsWith("/remote-launch.ts")) continue; // `mintSessionTmuxName` 的定义处
       const code = stripComments(readFileSync(f, "utf8"), "ts");
       // ⚠ 用**整个标识符**做匹配单位（`\b` + 收尾括号），不是裸子串 —— 那正是
       //   `scanning-guard-registry.vitest.ts` 那条递减棘轮盯的东西。
@@ -530,7 +530,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
       //   ⚠⚠ **连这条注释都不许把那个写法逐字抄下来** —— 那个棘轮扫的是**原始源码**、
       //     不剥注释，散文里写一遍就照样被数进去（本轮实测：改成正则之后仍红 1 处，
       //     红的就是这句注释里那份逐字副本）。本文件 `:440` 那条头注记的是同一族病。
-      if (/\bpickFreshTmuxName\s*\(/.test(code)) inline.push(f.slice(REPO_ROOT.length + 1));
+      if (/\bmintSessionTmuxName\s*\(/.test(code)) inline.push(f.slice(REPO_ROOT.length + 1));
     }
     inline.sort();
     expect(
