@@ -1,0 +1,11 @@
+[package]
+name = "search-core"
+version = "0.1.0"
+edition = "2021"
+description = "历史全文搜索口径的唯一实现——monitor 的内存索引与 daemon 的 `--search` 共用的纯函数（无 IO、无平台依赖）。收口前是 12 个逐字相同的同名助手各写两遍，靠巧合保持一致。"
+
+# **依赖只有 serde_json，这是本 crate 能被两侧共用的前提。**
+# 同 usage-core / branch-core 的约束：daemon 是 Linux-only 的静态 musl 二进制、且刻意
+# 不在 monitor 的 workspace 里；一旦这里引入 tauri / tokio / 平台相关的东西，共享就破了。
+[dependencies]
+serde_json = "1"

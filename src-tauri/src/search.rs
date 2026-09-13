@@ -30,6 +30,16 @@
 //!
 //! 内存：每条消息存原文 + 小写副本（2×文本）。典型用户几百会话 < ~100MB，符合 issue
 //! 预算。重建走 `rebuild_search_index`（手动刷新）。
+//!
+//! ## 🔴 口径不住在这里 —— 住 `search-core`（`K-R100`）
+//!
+//! 抽取 / 匹配 / snippet 的 12 个助手、4 个口径常量、snippet 预算与预算顺序，
+//! **一份都不在本文件**：它们住 `crates/search-core`，daemon 的 `--search`
+//! （`remote-daemon-proto/src/observe/search_query.rs`）调的是**同一份**。
+//! 本文件只剩「怎么扫盘、怎么建索引、怎么组装 wire 类型」这些**本地特有**的活。
+//! 收口前两侧各写一遍那 12 个助手（`K-R85` 实测逐字相同），而 `CROSS_EDGES` 里
+//! search 零命中 ⇒ **没有任何判据在拦着它们漂开**。判据现在有了：
+//! `tests::the_search_kou_jing_has_exactly_one_home`。
 
 use crate::messages::JsonlRecord;
 use crate::parser::parse_line;
@@ -37,21 +47,16 @@ use crate::paths;
 use crate::utils::{parse_iso8601_ms, systime_to_ms};
 use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 use walkdir::WalkDir;
 
-/// 单条 main 文本索引上限（字符）。user/assistant 正文极少超，但兜底防超长粘贴。
-const MAIN_CAP: usize = 20_000;
-/// 单条 tool 文本索引上限（字符）。tool_result 可能是大文件 dump，必须封顶。
-const TOOL_CAP: usize = 4_000;
-/// snippet 命中点前后各保留的字符数。
-const SNIPPET_CTX: usize = 48;
-/// 单会话最多返回的命中条目数（防一个会话刷屏；hit_count 仍报全量）。
-const PER_SESSION_CAP: usize = 30;
+// 🔴 口径常量**一个都不在这里**——它们就是口径本身，两侧各写一个字面量 = 两份口径。
+// `MAIN_CAP` / `TOOL_CAP` / `SNIPPET_CTX` / `PER_SESSION_CAP` / `DEFAULT_LIMIT` 住
+// `search_core`，daemon 用的是同一份。
+use search_core::{MAIN_CAP, TOOL_CAP};
 
 // === wire 类型（camelCase，契约测试守护） ===
 
@@ -66,7 +71,10 @@ pub struct SearchResponse {
     pub total_hits: u32,
     /// 返回的会话组数
     pub session_count: u32,
-    /// 是否因 limit / 每会话上限截断了返回
+    /// 🔴 **整份结果被全局 `limit` 砍过** —— 本地与**每一台远端**任意一处发生就是 true
+    /// （`K-R100` 之前这里只装本地那一半，远端截断在界面上一个字不说）。
+    /// ⚠ **不含**「单会话超 `PER_SESSION_CAP` 条」：那是「这个会话话多」，不是结果被砍，
+    /// 由 `SessionHits::hits_truncated` 与卡片上那行「还有 N 条」分别承担。
     pub truncated: bool,
     /// 已索引的会话数（status=indexing 时给 UI 显示进度）
     pub indexed_sessions: u32,
@@ -92,6 +100,18 @@ pub struct SessionHits {
     /// 本会话命中总数（可能 > 返回的 hits 长度）
     pub hit_count: u32,
     pub hits: Vec<Hit>,
+    /// 🔴 **本会话有命中被「全局 snippet 预算用完」挡下了** —— `K-R100`。
+    ///
+    /// 没有这一格时，`hits: []` 与「这个会话没什么可看的」在下游**同形**：前端只能拿
+    /// `hitCount > hits.length` 反推，而那个式子对**两个完全不同的原因**给出同一个答案
+    /// （① 整份结果被 `--limit` 砍了 ② 这个会话超过 30 条只列前 30）。
+    /// ① 该让用户知道「缩小范围 / 加大 limit」，② 只需要「点进去看」。
+    /// daemon 侧同名字段由 `--search` 逐会话吐出（它才知道自己是哪一种），
+    /// monitor 合并时 OR 进 `SearchResponse::truncated`。
+    ///
+    /// 兼容：旧 daemon 不发这个字段 ⇒ `serde(default)` = false（退化成收口前的行为，不炸）。
+    #[serde(default)]
+    pub hits_truncated: bool,
     /// issue #28：数据来源。`None` = 本地（不序列化，前端无 `[host]` 前缀）；
     /// `Some(label)` = 远端机器 label，前端据此加 `[host]` 前缀 + 点击走远端 viewer。
     /// daemon 的 `--search` 输出**不含** origin（远端无身份概念）；由 monitor fan-out
@@ -296,23 +316,21 @@ impl SearchIndex {
             };
         }
 
-        // 会话按 updated_at desc 排序，让有限的 snippet 预算优先给最近的会话。
+        // 🔴 snippet 预算按**最近优先**花 —— 排序与预算判定都在 `search_core`，
+        // daemon 的 `--search` 调的是同一份（`K-R100`；理由与读数见 `sort_by_recency` 文档注释）。
         let mut order: Vec<usize> = (0..data.sessions.len()).collect();
-        order.sort_by(|&a, &b| {
-            data.sessions[b]
-                .updated_at
-                .cmp(&data.sessions[a].updated_at)
-        });
+        search_core::sort_by_recency(&mut order, |&i| data.sessions[i].updated_at);
 
         let mut total_hits: u32 = 0;
-        let mut kept: usize = 0;
-        let mut truncated = false;
+        let mut budget = search_core::SnippetBudget::new(limit);
         let mut out: Vec<SessionHits> = Vec::new();
 
         for &si in &order {
             let sd = &data.sessions[si];
             let mut hits: Vec<Hit> = Vec::new();
             let mut session_hit_count: u32 = 0;
+            // 本会话有没有命中是**因为全局预算用完**而拿不到 snippet（≠ 单会话超 30 条）。
+            let mut session_starved = false;
 
             for m in &sd.msgs {
                 // 字段过滤：scope 指定时只搜该类型记录（只 user / 只 Claude）。
@@ -335,24 +353,27 @@ impl SearchIndex {
                 total_hits += 1;
 
                 // 只给"还在预算内"的命中构造 snippet（贵活只做这些）。
-                if kept < limit && hits.len() < PER_SESSION_CAP {
-                    let (kind, text) = if in_main {
-                        (m.kind.as_str(), &m.main)
-                    } else {
-                        ("tool", &m.tool)
-                    };
-                    let (before, matched, after) = make_snippet(text, &q);
-                    hits.push(Hit {
-                        uuid: m.uuid.clone(),
-                        ts_ms: m.ts_ms,
-                        kind: kind.to_string(),
-                        before,
-                        matched,
-                        after,
-                    });
-                    kept += 1;
-                } else {
-                    truncated = true;
+                // 🔴 判定在 `search_core::SnippetBudget`，两侧同一份；它还分得清
+                // 「预算用完」与「单会话满 30 条」——收口前这两件事挤在一个 bool 里。
+                match budget.take(hits.len()) {
+                    search_core::SnippetVerdict::Give => {
+                        let (kind, text) = if in_main {
+                            (m.kind.as_str(), &m.main)
+                        } else {
+                            ("tool", &m.tool)
+                        };
+                        let (before, matched, after) = search_core::make_snippet(text, &q);
+                        hits.push(Hit {
+                            uuid: m.uuid.clone(),
+                            ts_ms: m.ts_ms,
+                            kind: kind.to_string(),
+                            before,
+                            matched,
+                            after,
+                        });
+                    }
+                    search_core::SnippetVerdict::BudgetExhausted => session_starved = true,
+                    search_core::SnippetVerdict::SessionCapped => {}
                 }
             }
 
@@ -366,6 +387,7 @@ impl SearchIndex {
                     updated_at: sd.updated_at,
                     hit_count: session_hit_count,
                     hits,
+                    hits_truncated: session_starved,
                     origin: None, // 本地结果无 origin（远端结果由 fan-out 补）
                 });
             }
@@ -375,7 +397,9 @@ impl SearchIndex {
             status: "ready".into(),
             total_hits,
             session_count: out.len() as u32,
-            truncated,
+            // 「整份结果被砍了」= 预算真的被榨干过。单会话超 `PER_SESSION_CAP`
+            // **不算**（那只是「这个会话话多」，卡片上那行「还有 N 条」已经说了）。
+            truncated: budget.starved(),
             indexed_sessions,
             indexed_messages,
             sessions: out,
@@ -471,10 +495,12 @@ fn build_one(path: &Path) -> Option<SessionDoc> {
                         }
                     }
                 }
-                let main = clean_user_text(&extract_text_blocks(&message.content));
-                let tool = extract_tool_text(&message.content, false);
+                let main = search_core::clean_user_text(&search_core::extract_text_blocks(
+                    &message.content,
+                ));
+                let tool = search_core::extract_tool_text(&message.content, false);
                 if first_user_excerpt.is_empty() && !main.is_empty() {
-                    first_user_excerpt = truncate_chars(&main, 120);
+                    first_user_excerpt = search_core::truncate_excerpt(&main, 120);
                 }
                 push_msg(&mut msgs, uuid, &timestamp, Kind::User, main, tool);
             }
@@ -484,8 +510,8 @@ fn build_one(path: &Path) -> Option<SessionDoc> {
                 message,
                 ..
             } => {
-                let main = extract_text_blocks(&message.content);
-                let tool = extract_tool_text(&message.content, true);
+                let main = search_core::extract_text_blocks(&message.content);
+                let tool = search_core::extract_tool_text(&message.content, true);
                 push_msg(&mut msgs, uuid, &timestamp, Kind::Assistant, main, tool);
             }
             JsonlRecord::AiTitle { ai_title: t, .. } => ai_title = Some(t),
@@ -506,10 +532,7 @@ fn build_one(path: &Path) -> Option<SessionDoc> {
         .and_then(|s| s.to_str())
         .map(str::to_string)
         .unwrap_or_else(|| project_path.clone());
-    let title = ai_title
-        .filter(|s| !s.trim().is_empty())
-        .or_else(|| (!first_user_excerpt.is_empty()).then(|| first_user_excerpt.clone()))
-        .unwrap_or_else(|| session_id.chars().take(8).collect());
+    let title = search_core::session_title(ai_title.as_deref(), &first_user_excerpt, &session_id);
 
     Some(SessionDoc {
         session_id,
@@ -531,8 +554,8 @@ fn push_msg(
     main: String,
     tool: String,
 ) {
-    let main = truncate_chars_plain(&main, MAIN_CAP);
-    let tool = truncate_chars_plain(&tool, TOOL_CAP);
+    let main = search_core::truncate_plain(&main, MAIN_CAP);
+    let tool = search_core::truncate_plain(&tool, TOOL_CAP);
     if main.is_empty() && tool.is_empty() {
         return;
     }
@@ -547,273 +570,13 @@ fn push_msg(
     });
 }
 
-// === 文本抽取 ===
-
-/// 抽 content 里所有 text block（或裸字符串）。assistant 正文 / user 正文都用它。
-fn extract_text_blocks(content: &Value) -> String {
-    match content {
-        Value::String(s) => s.clone(),
-        Value::Array(arr) => {
-            let mut out = String::new();
-            for b in arr {
-                if b.get("type").and_then(|t| t.as_str()) == Some("text") {
-                    if let Some(s) = b.get("text").and_then(|t| t.as_str()) {
-                        if !out.is_empty() {
-                            out.push('\n');
-                        }
-                        out.push_str(s);
-                    }
-                }
-            }
-            out
-        }
-        _ => String::new(),
-    }
-}
-
-/// 抽 tool 相关内容（可选搜索）。
-/// - assistant：tool_use（name + input JSON）+ thinking
-/// - user：tool_result 的 content
-fn extract_tool_text(content: &Value, is_assistant: bool) -> String {
-    let Value::Array(arr) = content else {
-        return String::new();
-    };
-    let mut out = String::new();
-    let mut push = |s: &str| {
-        if s.is_empty() {
-            return;
-        }
-        if !out.is_empty() {
-            out.push('\n');
-        }
-        out.push_str(s);
-    };
-    for b in arr {
-        match b.get("type").and_then(|t| t.as_str()) {
-            Some("tool_use") if is_assistant => {
-                if let Some(name) = b.get("name").and_then(|t| t.as_str()) {
-                    push(name);
-                }
-                if let Some(input) = b.get("input") {
-                    push(&stringify_json(input));
-                }
-            }
-            Some("thinking") if is_assistant => {
-                if let Some(t) = b.get("thinking").and_then(|t| t.as_str()) {
-                    push(t);
-                }
-            }
-            Some("tool_result") if !is_assistant => {
-                if let Some(c) = b.get("content") {
-                    push(&stringify_json(c));
-                }
-            }
-            _ => {}
-        }
-    }
-    out
-}
-
-/// 把 JSON 值压成可搜索的纯文本（string 直接取；array/object 取其中字符串叶子）。
-fn stringify_json(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        Value::Array(arr) => {
-            let mut out = String::new();
-            for item in arr {
-                // tool_result.content 常是 [{type:"text", text:"..."}]
-                let s = if let Some(t) = item.get("text").and_then(|t| t.as_str()) {
-                    t.to_string()
-                } else {
-                    stringify_json(item)
-                };
-                if !s.is_empty() {
-                    if !out.is_empty() {
-                        out.push('\n');
-                    }
-                    out.push_str(&s);
-                }
-            }
-            out
-        }
-        Value::Object(_) => v.to_string(),
-        Value::Number(n) => n.to_string(),
-        Value::Bool(b) => b.to_string(),
-        Value::Null => String::new(),
-    }
-}
-
-/// 去掉 CLI 注入的 prompt 包装 + ESC 中断标记（INVARIANT § 20 同一意图，搜索用从宽）。
-fn clean_user_text(s: &str) -> String {
-    let mut out = s.to_string();
-    for tag in [
-        "task-notification",
-        "system-reminder",
-        "local-command-caveat",
-        "local-command-stdout",
-        "local-command-stderr",
-    ] {
-        let open = format!("<{tag}>");
-        let close = format!("</{tag}>");
-        while let (Some(i), Some(j)) = (out.find(&open), out.find(&close)) {
-            if j > i {
-                out.replace_range(i..j + close.len(), "");
-            } else {
-                break;
-            }
-        }
-    }
-    let trimmed = out.trim();
-    // 纯 ESC 中断标记 → 不是真用户内容
-    if trimmed.starts_with("[Request interrupted by user") {
-        return String::new();
-    }
-    trimmed.to_string()
-}
-
-// === snippet ===
-
-/// 在 `text` 里大小写不敏感地定位 `needle_lc`（已小写），返回前/中/后三段。
-/// 找不到（理论上不会，调用前已 contains 粗筛过）则退化成开头窗口。
-fn make_snippet(text: &str, needle_lc: &str) -> (String, String, String) {
-    match find_ci(text, needle_lc) {
-        Some((start, end)) => {
-            let before_raw = &text[..start];
-            let matched = &text[start..end];
-            let after_raw = &text[end..];
-            (
-                tail_chars(before_raw, SNIPPET_CTX),
-                collapse_ws(matched),
-                head_chars(after_raw, SNIPPET_CTX),
-            )
-        }
-        None => (
-            String::new(),
-            String::new(),
-            head_chars(text, SNIPPET_CTX * 2),
-        ),
-    }
-}
-
-/// 大小写不敏感子串查找：返回原文里匹配区间的 (起始字节, 结束字节)。
-/// 逐字符比对原文的小写展开 vs needle（needle 已小写）。只对粗筛命中的 ≤limit 条跑，
-/// O(n·m) 可接受。能正确处理 CJK（无大小写）与 ASCII，多字符小写展开也对齐到原文字符边界。
-fn find_ci(hay: &str, needle_lc: &str) -> Option<(usize, usize)> {
-    if needle_lc.is_empty() {
-        return None;
-    }
-    let needle: Vec<char> = needle_lc.chars().collect();
-    let hay_idx: Vec<(usize, char)> = hay.char_indices().collect();
-    let n = hay_idx.len();
-
-    for i in 0..n {
-        let mut hi = i; // 原文字符下标
-        let mut ni = 0; // needle 字符下标
-        let mut pending: Vec<char> = Vec::new(); // 当前原文字符的小写展开缓冲
-        let mut pi = 0;
-        let start_byte = hay_idx[i].0;
-        let mut end_byte = start_byte;
-        let mut ok = true;
-
-        while ni < needle.len() {
-            if pi >= pending.len() {
-                if hi >= n {
-                    ok = false;
-                    break;
-                }
-                pending.clear();
-                pending.extend(hay_idx[hi].1.to_lowercase());
-                pi = 0;
-                end_byte = if hi + 1 < n {
-                    hay_idx[hi + 1].0
-                } else {
-                    hay.len()
-                };
-                hi += 1;
-            }
-            if pending[pi] != needle[ni] {
-                ok = false;
-                break;
-            }
-            pi += 1;
-            ni += 1;
-        }
-        if ok && ni == needle.len() {
-            return Some((start_byte, end_byte));
-        }
-    }
-    None
-}
-
-/// 取字符串末尾 n 个字符（折叠空白），不足则全取；截断时前缀 …。
-fn tail_chars(s: &str, n: usize) -> String {
-    let chars: Vec<char> = s.chars().collect();
-    let truncated = chars.len() > n;
-    let slice: String = chars[chars.len().saturating_sub(n)..].iter().collect();
-    let collapsed = collapse_ws(&slice);
-    if truncated {
-        format!("…{collapsed}")
-    } else {
-        collapsed
-    }
-}
-
-/// 取字符串开头 n 个字符（折叠空白），截断时后缀 …。
-fn head_chars(s: &str, n: usize) -> String {
-    let mut out = String::new();
-    let mut count = 0;
-    for ch in s.chars() {
-        if count >= n {
-            out.push('…');
-            break;
-        }
-        out.push(ch);
-        count += 1;
-    }
-    collapse_ws_keep_ellipsis(&out)
-}
-
-/// 折叠所有空白（含换行）为单空格，trim。
-fn collapse_ws(s: &str) -> String {
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
-}
-
-/// 同 collapse_ws 但保留尾部 … 。
-fn collapse_ws_keep_ellipsis(s: &str) -> String {
-    let has_ellipsis = s.ends_with('…');
-    let core = if has_ellipsis {
-        &s[..s.len() - '…'.len_utf8()]
-    } else {
-        s
-    };
-    let collapsed = collapse_ws(core);
-    if has_ellipsis {
-        format!("{collapsed}…")
-    } else {
-        collapsed
-    }
-}
-
-/// 按字符截断（保留换行原样，用于 excerpt），加 … 。
-fn truncate_chars(s: &str, n: usize) -> String {
-    let mut out = String::new();
-    for (i, ch) in s.chars().enumerate() {
-        if i >= n {
-            out.push('…');
-            break;
-        }
-        out.push(if ch == '\n' || ch == '\r' { ' ' } else { ch });
-    }
-    out
-}
-
-/// 按字符硬截断（不加 …，用于索引正文封顶）。
-fn truncate_chars_plain(s: &str, n: usize) -> String {
-    if s.chars().count() <= n {
-        return s.to_string();
-    }
-    s.chars().take(n).collect()
-}
+// === 文本抽取 / snippet / 截断：**一份都不在这里** ===
+//
+// 🔴 那 12 个助手（`extract_text_blocks` · `extract_tool_text` · `stringify_json` ·
+// `clean_user_text` · `make_snippet` · `find_ci` · `tail_chars` · `head_chars` ·
+// `collapse_ws` · `collapse_ws_keep_ellipsis` · `truncate_plain` · `truncate_excerpt`）
+// 与它们的单元测试全部住 `crates/search-core`。本文件调它，daemon 也调它 —— **同一份**。
+// 别在这里「顺手再写一个小的」：那就是 `K-R100` 收口前的形状（两份、逐字同、零判据）。
 
 // === IPC ===
 
@@ -837,7 +600,7 @@ pub async fn search_history(
     index: tauri::State<'_, std::sync::Arc<SearchIndex>>,
 ) -> Result<SearchResponse, String> {
     let index = index.inner().clone();
-    let limit = limit.unwrap_or(300).clamp(1, 2000);
+    let limit = search_core::clamp_limit(limit.unwrap_or(search_core::DEFAULT_LIMIT));
     let after_ms = after_ms.unwrap_or(0).max(0);
     let scope_kind = match scope.as_deref() {
         Some("user") => Some(Kind::User),
@@ -870,6 +633,10 @@ fn merge_search_results(local: SearchResponse, remote: Vec<SessionHits>) -> Sear
         return local;
     }
     let remote_hits: u32 = remote.iter().map(|s| s.hit_count).sum();
+    // 🔴 `K-R100`：远端也会被自己的 `--limit` 砍。收口前这里逐字写的是
+    // `truncated: local.truncated` ⇒ **远端截断在界面上一个字不说**
+    // （实测一次查询 13 个命中会话里 10 个 `hitCount>0` 而 `hits: []`，状态行照旧只报总数）。
+    let remote_starved = remote.iter().any(|s| s.hits_truncated);
     let mut sessions = local.sessions;
     sessions.extend(remote);
     sessions.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
@@ -878,7 +645,7 @@ fn merge_search_results(local: SearchResponse, remote: Vec<SessionHits>) -> Sear
         status: "ready".into(),
         total_hits: local.total_hits + remote_hits,
         session_count: sessions.len() as u32,
-        truncated: local.truncated,
+        truncated: local.truncated || remote_starved,
         indexed_sessions: local.indexed_sessions,
         indexed_messages: local.indexed_messages,
         sessions,
@@ -913,76 +680,131 @@ pub async fn rebuild_search_index(
     .map_err(|e| format!("spawn_blocking join: {e}"))?
 }
 
+/// `K-R100`：搜索**口径**只许有一个家 —— `crates/search-core`。
+///
+/// # 失效方向（先说这个，因为最容易做偏）
+///
+/// 🔴 **不许判「两边源码文本一样」**。那判的是**写法**，而且这两份今天本来就逐字相同
+/// （`K-R85` 09-12 实测）⇒ 那样一条判据会**恒绿**，一天都不会响。
+/// 本模块判的是**同一份实现**：core 真的持有 · 两侧都不许自己再有一份 · 两侧都得真调它。
+///
+/// 第 ③ 刀（「改 core 一处、两侧行为都跟着变」）**不在这里** —— 那是行为，
+/// 判不了源码。它由两侧各一条**期望值取自 core、实际值来自本侧生产管线**的行为判据承担：
+/// `tests::the_snippet_window_comes_from_core`（monitor）
+/// ＋ `remote-daemon-proto/src/observe/search_query.rs` 里的同名那条（daemon）。
+#[cfg(test)]
+mod kou_jing_guard {
+    /// 收口前在两侧**各写一遍**的那 12 个助手（`K-R85` 逐条实测同名同形）。
+    /// ⚠ 人群按「口径可能住在哪」取，不是按「当初动过哪几行」取。
+    const HELPERS: &[&str] = &[
+        "extract_text_blocks",
+        "extract_tool_text",
+        "stringify_json",
+        "clean_user_text",
+        "make_snippet",
+        "find_ci",
+        "tail_chars",
+        "head_chars",
+        "collapse_ws",
+        "collapse_ws_keep_ellipsis",
+        "truncate_plain",
+        "truncate_excerpt",
+    ];
+
+    /// 口径常量 —— **它们就是口径本身**，两侧任何一处再写一遍就是第二份口径。
+    const CONSTS: &[&str] = &[
+        "MAIN_CAP",
+        "TOOL_CAP",
+        "SNIPPET_CTX",
+        "PER_SESSION_CAP",
+        "DEFAULT_LIMIT",
+    ];
+
+    /// 两侧都必须真的调到的东西（不只是「import 了」）。
+    const MUST_CALL: &[&str] = &[
+        "search_core::make_snippet",
+        "search_core::sort_by_recency",
+        "search_core::clean_user_text",
+        "search_core::session_title",
+    ];
+
+    #[test]
+    fn the_search_kou_jing_has_exactly_one_home() {
+        // ── ① core 确实持有口径，否则下面两条退化成「哪里都没有」，零命中地绿。
+        let core = guard_core::production_code(include_str!("../crates/search-core/src/lib.rs"));
+        let missing: Vec<&str> = HELPERS
+            .iter()
+            .copied()
+            .filter(|h| !core.contains(&format!("pub fn {h}(")))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "`search-core` 生产段里找不到这些助手：{missing:?}\n             口径搬走了还是抽取坏了？本条此刻无效。"
+        );
+        let missing_c: Vec<&str> = CONSTS
+            .iter()
+            .copied()
+            .filter(|c| !core.contains(&format!("pub const {c}: usize")))
+            .collect();
+        assert!(
+            missing_c.is_empty(),
+            "`search-core` 生产段里找不到这些口径常量：{missing_c:?}"
+        );
+        assert!(
+            core.contains("pub struct SnippetBudget") && core.contains("pub enum SnippetVerdict"),
+            "snippet 预算（含「预算用完」vs「单会话满」这一拆）必须住 core —— \
+             它一旦回到两侧，`hits: []` 又会变成一个装两件事的值"
+        );
+        assert!(
+            core.contains("pub fn sort_by_recency"),
+            "预算顺序必须住 core：收口前 monitor 按 `updated_at desc`、daemon 按 readdir，\
+             `--limit 50` 下两侧给出的 3 个会话**只重合 1 个**"
+        );
+
+        // ── ② 两侧：不许自己再有一份，且必须真的调 core。
+        for (name, raw) in [
+            ("monitor src/search.rs", include_str!("search.rs")),
+            (
+                "daemon observe/search_query.rs",
+                include_str!("../../remote-daemon-proto/src/observe/search_query.rs"),
+            ),
+        ] {
+            let prod = guard_core::production_code(raw);
+            let redefined: Vec<&str> = HELPERS
+                .iter()
+                .copied()
+                .filter(|h| prod.contains(&format!("fn {h}(")))
+                .collect();
+            assert!(
+                redefined.is_empty(),
+                "{name} 的生产段里又长出了这些助手的定义：{redefined:?}\n                 🔴 那就是 `K-R100` 收口前的形状：两份实现、逐字相同、**零判据对拍**。\n                 「今天没漂」不是保障 —— 下一次谁改一侧，另一侧静默留在原地，\n                 而搜索结果不一致**不会报错**（本地一份 snippet、远端另一份，谁都不抛异常）。"
+            );
+            let reconst: Vec<&str> = CONSTS
+                .iter()
+                .copied()
+                .filter(|c| prod.contains(&format!("const {c}")))
+                .collect();
+            assert!(
+                reconst.is_empty(),
+                "{name} 的生产段里重新定义了口径常量：{reconst:?}\n                 那些数**就是口径**，只许住 `search-core`。在这里写一个同样的字面量，\n                 两边漂开时**搜索结果会静默不一致**。"
+            );
+            for call in MUST_CALL {
+                assert!(
+                    prod.contains(call),
+                    "{name} 不再调 `{call}` —— 它要么自己算了一遍（第二份口径），\n                     要么口径搬家了而本条没跟。"
+                );
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn find_ci_ascii_case_insensitive() {
-        assert_eq!(find_ci("Hello World", "world"), Some((6, 11)));
-        assert_eq!(find_ci("HELLO", "hell"), Some((0, 4)));
-        assert_eq!(find_ci("abc", "xyz"), None);
-    }
-
-    #[test]
-    fn find_ci_cjk() {
-        let s = "你好世界 docker 部署";
-        // "docker" 起始字节：4 个 CJK ×3 字节 + 1 空格 = 13
-        let (start, end) = find_ci(s, "docker").unwrap();
-        assert_eq!(&s[start..end], "docker");
-    }
-
-    #[test]
-    fn make_snippet_three_parts() {
-        let text = "请问怎么用 Docker 部署这个服务到生产环境";
-        let (before, matched, after) = make_snippet(text, "docker");
-        assert_eq!(matched, "Docker");
-        assert!(before.contains("怎么用"));
-        assert!(after.contains("部署"));
-    }
-
-    #[test]
-    fn extract_text_blocks_string_and_array() {
-        assert_eq!(extract_text_blocks(&Value::String("hi".into())), "hi");
-        let arr = serde_json::json!([
-            {"type":"text","text":"line1"},
-            {"type":"tool_use","name":"Bash","input":{}},
-            {"type":"text","text":"line2"}
-        ]);
-        assert_eq!(extract_text_blocks(&arr), "line1\nline2");
-    }
-
-    #[test]
-    fn extract_tool_text_assistant_and_user() {
-        let asst = serde_json::json!([
-            {"type":"tool_use","name":"Bash","input":{"command":"ls -la"}}
-        ]);
-        let t = extract_tool_text(&asst, true);
-        assert!(t.contains("Bash"));
-        assert!(t.contains("ls -la"));
-
-        let user = serde_json::json!([
-            {"type":"tool_result","content":[{"type":"text","text":"file output here"}]}
-        ]);
-        let t2 = extract_tool_text(&user, false);
-        assert!(t2.contains("file output here"));
-    }
-
-    #[test]
-    fn clean_user_text_strips_noise_and_interrupt() {
-        assert_eq!(
-            clean_user_text("<system-reminder>noise</system-reminder>真问题"),
-            "真问题"
-        );
-        assert_eq!(clean_user_text("[Request interrupted by user]"), "");
-    }
-
-    #[test]
-    fn truncate_chars_plain_caps() {
-        assert_eq!(truncate_chars_plain("hello", 3), "hel");
-        assert_eq!(truncate_chars_plain("你好世界", 2), "你好");
-        assert_eq!(truncate_chars_plain("hi", 10), "hi");
-    }
+    // ⚠ `K-R100` 的性能台架（同进程配对：`search_core::make_snippet` vs 收口前那份
+    // 逐字相同的本地副本）**跑完就删了**，读数落在 `evidence/K-R100-deathvalue.md`。
+    // 它是一次性量具，不该留在门禁里（留下就成了一条没人跑、也没人维护的 `#[ignore]`）。
 
     #[test]
     fn query_scope_and_time_filter() {
@@ -1055,6 +877,7 @@ mod tests {
                     matched: "m".into(),
                     after: "a".into(),
                 }],
+                hits_truncated: true,
                 origin: None,
             }],
         };
@@ -1070,6 +893,7 @@ mod tests {
             "\"jsonlPath\"",
             "\"updatedAt\"",
             "\"hitCount\"",
+            "\"hitsTruncated\"",
             "\"tsMs\"",
         ] {
             assert!(j.contains(k), "wire 缺 {k}: {j}");
@@ -1079,6 +903,7 @@ mod tests {
             "\"session_id\"",
             "\"jsonl_path\"",
             "\"ts_ms\"",
+            "\"hits_truncated\"",
         ] {
             assert!(!j.contains(snake), "wire 漏改 {snake}: {j}");
         }
@@ -1096,6 +921,7 @@ mod tests {
             updated_at: updated,
             hit_count,
             hits: vec![],
+            hits_truncated: false,
             origin: origin.map(str::to_string),
         }
     }
@@ -1156,6 +982,138 @@ mod tests {
         let merged = merge_search_results(local, vec![]);
         assert_eq!(merged.status, "indexing");
         assert_eq!(merged.session_count, 0);
+    }
+
+    // ── `K-R100` 的行为判据（本侧那一半；daemon 侧有同形的三条）─────────────
+
+    /// 建一棵 `<claude_dir>/projects/<proj>/<sid>.jsonl`，mtime 按给定毫秒设。
+    fn corpus(tag: &str, sessions: &[(&str, u64, usize)]) -> PathBuf {
+        let tmp = std::env::temp_dir().join(format!("ccm-kr100-mon-{tag}-{}", std::process::id()));
+        std::fs::remove_dir_all(&tmp).ok();
+        for (sid, mtime_ms, n) in sessions {
+            let proj = tmp.join("projects").join(format!("p-{sid}"));
+            std::fs::create_dir_all(&proj).unwrap();
+            let jsonl = proj.join(format!("{sid}.jsonl"));
+            let lines: Vec<String> = (0..*n)
+                .map(|i| {
+                    format!(
+                        r#"{{"type":"user","uuid":"{sid}-{i}","timestamp":"2026-01-01T00:00:0{}Z","cwd":"/w","message":{{"role":"user","content":"命中 docker 第 {i} 条"}}}}"#,
+                        i % 10
+                    )
+                })
+                .collect();
+            std::fs::write(&jsonl, lines.join("\n")).unwrap();
+            let f = File::options().write(true).open(&jsonl).unwrap();
+            f.set_modified(std::time::UNIX_EPOCH + Duration::from_millis(*mtime_ms))
+                .unwrap();
+        }
+        tmp
+    }
+    fn built(dir: &Path) -> SearchIndex {
+        let idx = SearchIndex::new();
+        idx.build_blocking(dir, Duration::ZERO);
+        idx
+    }
+
+    /// `KR100D2`：**预算按最近优先花**，与 daemon 同一份 `search_core::sort_by_recency`。
+    /// 死值验①（把某一侧换回「文件系统先走到的顺序」）当场红。
+    #[test]
+    fn the_snippet_budget_goes_to_the_most_recent_sessions() {
+        let dir = corpus(
+            "order",
+            &[("old", 1_000, 3), ("mid", 2_000, 3), ("new", 3_000, 3)],
+        );
+        let idx = built(&dir);
+        let r = idx.query("docker", false, None, 0, 300);
+        let ids: Vec<&str> = r.sessions.iter().map(|s| s.session_id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["new", "mid", "old"],
+            "会话按最近优先排（= 预算顺序 = 展示顺序）"
+        );
+
+        // 预算只够 2 条 ⇒ 都花在最新那个会话上，与 daemon 侧同名判据逐条同形。
+        let r = idx.query("docker", false, None, 0, 2);
+        let newest = r.sessions.iter().find(|s| s.session_id == "new").unwrap();
+        assert_eq!(newest.hits.len(), 2);
+        for s in r.sessions.iter().filter(|s| s.session_id != "new") {
+            assert!(s.hits.is_empty());
+        }
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// `KR100D3`（本地半）：截断自己说出来，且**不与「本会话就这么点命中」同形**。
+    #[test]
+    fn truncation_is_stated_not_left_to_an_empty_array() {
+        let dir = corpus("trunc", &[("a", 3_000, 2), ("b", 2_000, 5)]);
+        let idx = built(&dir);
+        let r = idx.query("docker", false, None, 0, 2);
+        assert!(r.truncated, "整份结果被全局预算砍过 ⇒ 状态行要说得出");
+        let a = r.sessions.iter().find(|s| s.session_id == "a").unwrap();
+        let b = r.sessions.iter().find(|s| s.session_id == "b").unwrap();
+        assert!(!a.hits_truncated, "a 全给到了");
+        assert_eq!((b.hit_count, b.hits.len()), (5, 0));
+        assert!(
+            b.hits_truncated,
+            "🔴 `hitCount>0` 而 `hits: []` 必须自己说出「我被砍了」"
+        );
+        // 反空真：预算充足时一格都不许亮。
+        let r = idx.query("docker", false, None, 0, 300);
+        assert!(!r.truncated);
+        assert!(r.sessions.iter().all(|s| !s.hits_truncated));
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    /// `KR100D3` 的合并半：**远端截断不许在合并那一步被丢掉**。
+    /// 收口前这里逐字 `truncated: local.truncated`。
+    #[test]
+    fn remote_truncation_survives_the_merge() {
+        let local = resp("ready", 1, vec![mk_session("loc", 100, 1, None)]);
+        assert!(!local.truncated);
+        let mut rem = mk_session("rem", 200, 12, Some("pi"));
+        rem.hits_truncated = true; // daemon 说的：它被自己的 --limit 砍了
+        let merged = merge_search_results(local, vec![rem]);
+        assert!(
+            merged.truncated,
+            "远端截断在合并处被丢掉了 —— 那正是「远端截断界面一个字不说」的成因"
+        );
+        // 反空真：远端没截断时不许乱亮。
+        let local2 = resp("ready", 1, vec![mk_session("loc", 100, 1, None)]);
+        let merged2 = merge_search_results(local2, vec![mk_session("rem", 200, 1, Some("pi"))]);
+        assert!(!merged2.truncated);
+    }
+
+    /// `KR100D1` 第 ③ 刀（本侧那一半）：**改 `search_core` 一处，本侧真跑出来的东西跟着变**。
+    ///
+    /// 期望值取自 `search_core::SNIPPET_CTX`，实际值来自本文件的生产管线
+    /// （`build_blocking` → `query` → `search_core::make_snippet`）。
+    /// · 改 core 的 `SNIPPET_CTX` ⇒ 两头一起动，本条仍绿（＝行为确实跟着变）；
+    /// · 本侧哪天写回一个自己的 `const SNIPPET_CTX = 48` ⇒ 实际不动、期望动 ⇒ **当场红**。
+    /// daemon 侧有一条同形的（`observe/search_query.rs::the_snippet_window_comes_from_core`）。
+    #[test]
+    fn the_snippet_window_comes_from_core() {
+        let ctx = search_core::SNIPPET_CTX;
+        let filler = "x".repeat(ctx * 4);
+        let dir = std::env::temp_dir().join(format!("ccm-kr100-mon-ctx-{}", std::process::id()));
+        std::fs::remove_dir_all(&dir).ok();
+        let proj = dir.join("projects").join("p");
+        std::fs::create_dir_all(&proj).unwrap();
+        std::fs::write(
+            proj.join("s.jsonl"),
+            format!(
+                r#"{{"type":"user","uuid":"u","timestamp":"2026-01-01T00:00:00Z","cwd":"/w","message":{{"role":"user","content":"{filler}docker{filler}"}}}}"#
+            ),
+        )
+        .unwrap();
+        let r = built(&dir).query("docker", false, None, 0, 300);
+        let h = &r.sessions[0].hits[0];
+        assert_eq!(
+            h.before.chars().count(),
+            ctx + 1,
+            "snippet 前窗必须等于 `search_core::SNIPPET_CTX`（={ctx}）+ 省略号"
+        );
+        assert_eq!(h.after.chars().count(), ctx + 1);
+        std::fs::remove_dir_all(&dir).ok();
     }
 
     /// 本地 indexing 但有远端结果 → status=ready（不丢远端）。

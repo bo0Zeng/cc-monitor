@@ -11,6 +11,19 @@ title: string, updatedAt: number,
  */
 hitCount: number, hits: Array<Hit>, 
 /**
+ * 🔴 **本会话有命中被「全局 snippet 预算用完」挡下了** —— `K-R100`。
+ *
+ * 没有这一格时，`hits: []` 与「这个会话没什么可看的」在下游**同形**：前端只能拿
+ * `hitCount > hits.length` 反推，而那个式子对**两个完全不同的原因**给出同一个答案
+ * （① 整份结果被 `--limit` 砍了 ② 这个会话超过 30 条只列前 30）。
+ * ① 该让用户知道「缩小范围 / 加大 limit」，② 只需要「点进去看」。
+ * daemon 侧同名字段由 `--search` 逐会话吐出（它才知道自己是哪一种），
+ * monitor 合并时 OR 进 `SearchResponse::truncated`。
+ *
+ * 兼容：旧 daemon 不发这个字段 ⇒ `serde(default)` = false（退化成收口前的行为，不炸）。
+ */
+hitsTruncated: boolean, 
+/**
  * issue #28：数据来源。`None` = 本地（不序列化，前端无 `[host]` 前缀）；
  * `Some(label)` = 远端机器 label，前端据此加 `[host]` 前缀 + 点击走远端 viewer。
  * daemon 的 `--search` 输出**不含** origin（远端无身份概念）；由 monitor fan-out

@@ -231,6 +231,7 @@ dependencies = [
  "notify-debouncer-mini",
  "russh",
  "rustls",
+ "search-core",
  "serde",
  "serde_json",
  "shell-quote-core",
@@ -1696,6 +1697,13 @@ dependencies = [
  "pbkdf2",
  "salsa20",
  "sha2",
+]
+
+[[package]]
+name = "search-core"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

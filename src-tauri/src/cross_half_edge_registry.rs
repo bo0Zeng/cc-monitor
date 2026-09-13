@@ -174,6 +174,18 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          宿主则等在一个永远没人 bind 的口上，日志里只有一句「连不上」。\
          ⇒ 只能同时读两侧的源码才验得了（形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。",
     ),
+    (
+        "monitor→daemon",
+        "src-tauri/src/search.rs",
+        "remote-daemon-proto/src/observe/search_query.rs",
+        "★★〔`K-R100` 09-13 新增〕**搜索口径的跨轨对拍** —— \
+         `kou_jing_guard::the_search_kou_jing_has_exactly_one_home` 要断言两侧都**只调** \
+         `search-core`、都不许自己再有一份那 12 个助手与 4 个口径常量。\
+         那是一条关于**两侧同形**的性质，只能同时读两侧源码才验得了。\
+         🔴 **本条填的是一个先前空着的格**：`K-R85` 09-12 实测本表 17 条里 \
+         `grep -c search` = **0** —— 两侧各写一份逐字相同的搜索口径，而**没有任何判据在对拍**。\
+         「今天没漂」不是保障，本条治的就是「没人拦着它漂」。",
+    ),
     // ── daemon → monitor（2 条）：daemon 的判据去读 monitor ────────────────────
     (
         "daemon→monitor",

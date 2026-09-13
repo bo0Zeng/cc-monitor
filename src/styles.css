@@ -4589,6 +4589,15 @@ body.settings-window-mode .grid-monitor-trigger {
   font-size: var(--font-size-xs);
   color: var(--text-faint);
   font-style: italic;
+  cursor: pointer;
+}
+.search-hit-more:hover {
+  color: var(--text);
+}
+/* K-R100：snippet 预算被榨干那一档——「有结果但没显示」不许看起来像「没什么可看的」 */
+.search-hit-more-truncated {
+  color: var(--warn);
+  font-style: normal;
 }
 
 /* 从搜索结果跳进 viewer 后命中卡片的临时高亮 */
