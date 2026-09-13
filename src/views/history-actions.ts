@@ -23,14 +23,17 @@ export type HistoryActionId =
 /**
  * 动作上下文（纯数据）。identity 段（sessionId/jsonlPath/cwd/origin）在条目行与搜索卡片都填得起；
  * `hasEntry` 标记 ctx 是否携带活的 entry+project 引用（条目行 true / 搜索卡片 false）——决定
- * star/rename/hide/delete 是否可用。starred/hidden/isLive 供菜单文案/未来判定用（纯布尔）。
+ * star/rename/hide/delete 是否可用。starred/hidden 供菜单文案/未来判定用（纯布尔）。
+ * ⚠ `isLive` **不是纯布尔**（`K-R92`）：远端 / Codex 那两条路答不出活状态 ⇒ `null` = 不知道。
+ * 拿它当布尔读会把「不知道」读成「没活着」。形状与读法住 `./counted.ts`（`Counted<boolean>`）——
+ * 这里**刻意写成字面联合类型而不 import**，上面「无 import 的纯模块」那条不破。
  */
 export interface HistoryActionCtx {
   sessionId: string;
   jsonlPath: string;
   cwd: string;
   origin?: string;
-  isLive?: boolean;
+  isLive?: boolean | null;
   starred?: boolean;
   hidden?: boolean;
   hasEntry: boolean;
