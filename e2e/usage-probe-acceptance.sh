@@ -30,7 +30,8 @@ reset() { T kill-server 2>/dev/null; sleep 0.3; }
 sessions() { T ls -F '#{session_name}' 2>/dev/null | sort | tr '\n' ' '; }
 pane() { T capture-pane -p -t "=$1:" 2>/dev/null; }
 
-# 生产命令串里裸调 `tmux`——shim 导到隔离 socket（同 tmux-guarded-acceptance.sh 的做法）。
+# 生产命令串里裸调 `tmux`——shim 导到隔离 socket（同 daemon-gate2-acceptance.sh 的做法；
+# K-R72 09-12 之前这里指的是 tmux-guarded-acceptance.sh，那套随它的输入源一起删了）。
 BIN="$SP/bin"; mkdir -p "$BIN"
 printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$TMUX_BIN" "$SOCK" > "$BIN/tmux"; chmod +x "$BIN/tmux"
 # 假 claude stand-in：先打一行"欢迎"（让第一轮稳定轮询有内容可稳定），然后循环读行，

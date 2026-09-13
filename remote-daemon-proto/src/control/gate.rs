@@ -148,7 +148,8 @@ pub(crate) fn list_sessions() -> Result<Vec<(String, String, String)>, CmdErr> {
 /// ⚠ **F04a 加了 `#{session_windows}`（Gate 3 用）—— 刻意加在同一次探测里**：
 /// 多一次 `display-message` 就多一个 TOCTOU 窗口，而本模块的立身之本就是把那个窗口关掉。
 /// 非破坏性动作（`admit`）**不看**这个字段，但照样取回来 —— 与 monitor 侧同一条纪律
-/// （那边的 `build_guarded_tmux_cmd` 头注写着「**总是**在格式串里带 `#{session_windows}`」）。
+/// （`K-R72`（09-12）之前，monitor 侧那条 SSH 回落的 `build_guarded_tmux_cmd` 头注写着
+/// 同一条纪律；那条路删了之后，这条纪律在本仓只剩这一个家）。
 const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}";
 
 /// `PROBE_FMT` 的列数 —— [`tab_underflow`] 的 N。
@@ -272,8 +273,10 @@ pub(crate) fn admit(name: &str, target: &str) -> Result<String, CmdErr> {
 /// 自己扩出了额外窗口（在里面开了别的东西）——把它整个杀掉就连带毁掉用户的活。
 /// ⇒ Gate 3：**只杀「干净的单窗口会话」**。多窗口 ⇒ 拒绝，让用户自己去那个 tmux 里处理。
 ///
-/// 与 monitor 侧逐条同义（`tmux.rs::build_guarded_tmux_cmd` 的 `[ "$w" = "1" ]`），
-/// 拒绝码也保持同族（`CCM_GUARD_REJECTED windows=<n>`）。
+/// 拒绝码与历史同族（`CCM_GUARD_REJECTED windows=<n>`）。
+/// ⚠ `K-R72`（09-12）：这句话原先写「与 monitor 侧逐条同义」并点名那边那条 shell
+/// 表达式 —— **那一侧今天没有了**（送键与杀会话的桌面侧回落已删），Gate 3 从
+/// 「两处要对齐」变成**只有这一处**。拒绝码保持同族是为了历史日志读得懂，不是为了对拍。
 ///
 /// ⚠ **Gate 3 只给破坏性动作**：`send-keys` 不删除任何东西，窗口数与它无关 ——
 /// 给它加 Gate 3 会让「往一个多窗口会话里打字」被误拒（monitor 侧 F04 Phase D
@@ -551,6 +554,82 @@ mod tests {
         assert!(
             !PROBE_FMT.contains("@ccm_sid_expect"),
             "**只认 `@ccm_sid`** —— `_expect` 是「声明了但未必跑起来」的意图，不是事实"
+        );
+    }
+
+    /// ★★ **`K-R72`（09-12）接手 `K-R56`（09-11）买的那条性质：两道门都**恒先探会话**。**
+    ///
+    /// # 它从哪来 —— 这是一条**搬家**，不是一条新判据
+    ///
+    /// `K-R56` 在 monitor 侧立了 `tmux.rs` 里那条
+    /// `tests::the_ssh_fallback_always_probes_before_it_acts`〔散文墓碑〕，
+    /// 守的是「那条一次性 SSH 回落上，四种守护形态一个不漏地**先探会话、探不到就不动手**」。
+    /// 立它的理由逐字是：daemon 的 [`admit`] **恒先 `probe`**，而 monitor 那条退化分支
+    /// （`cc-*` 名的 send-keys）**一次探测都没有** ⇒ 两条路的门不等价（`K-R54` 表第 1 处）。
+    ///
+    /// 🔴 `K-R72` 把 monitor 那条路整个删了 ⇒ **那条判据的被测对象没有了，而它守的性质还在**
+    /// —— 只是今天只剩这一处实现。按 `KR72D2` 的三类去向，它是 ①「性质还成立 ⇒ 在新住址
+    /// 上重新钉住」。**这里就是那个新住址。**
+    ///
+    /// # 它判什么 · 不判什么（`brief` 12：报一个性质就要说清尺子）
+    ///
+    /// - **判**：两个门函数的生产段里，会话是**先探出来**的（`let Some(p) = probe(target)?`
+    ///   这个绑定 —— 后面每一句都在它之后，所以不必再比位置），探不到那一支回
+    ///   `no_such_session`，而放行交出的是**探回来的句柄** `p.session_id`，
+    ///   不是调用方给的名字。
+    /// - **不判**：「探对了」。那要真 tmux，本区口径禁（`K-R56#§0d`）。
+    ///   行为那一半在 `e2e/daemon-gate2-acceptance.sh`（真 daemon 二进制 + 真 tmux server，
+    ///   用例逐行来自同一张 `gate2-golden.tsv`）。
+    /// - ⚠ **约定型守卫**：扫的是本文件自己的源码形态，挡得住「顺手把 probe 挪到动作后面 /
+    ///   删掉 `else` 那一支」，挡不住「换个名字继续错」。**比没有强，别读成证明。**
+    #[test]
+    fn both_gates_always_probe_before_they_act() {
+        // 探测必须是**那个绑定**：`let Some(p) = probe(target)?` 一旦在，后面每一句都在它之后
+        // ⇒ 不必比位置（那会踩 `structural_scan` 那条「位置比较型判据」的三条纪律）。
+        const PROBE_BINDING: &str = "let Some(p) = probe(target)?";
+        const HANDLE_OUT: &str = "Ok(p.session_id)";
+        let prod = guard_core::production_code(include_str!("gate.rs"));
+        // 抽取器自检：剥生产段塌了下面几条就零命中地绿。
+        assert!(
+            prod.len() > 3_000,
+            "本文件生产段只剩 {} 字节 —— 剥法坏了，本条此刻量不到东西",
+            prod.len()
+        );
+        // 两道门各一份 —— 数量核在这里，下面按签名切段就不会比到隔壁去。
+        assert_eq!(
+            prod.matches(PROBE_BINDING).count(),
+            2,
+            "生产段里 `{PROBE_BINDING}` 不是恰好两处（`admit` 与 `admit_destructive` 各一）"
+        );
+        for sig in ["pub(crate) fn admit(", "pub(crate) fn admit_destructive("] {
+            let at = guard_core::find_pinned(&prod, sig).unwrap_or_else(|e| {
+                panic!("`{sig}` 不是恰好一处（{e}）—— 签名变了就把本条一起改，别让它零命中地绿")
+            });
+            let rest = &prod[at..];
+            let end = rest.find("\n\u{7d}\n").map(|k| k + 3).unwrap_or(rest.len());
+            let body = &rest[..end];
+            assert!(
+                body.contains(PROBE_BINDING),
+                "`{sig}` 的生产段里没有 `{PROBE_BINDING}` —— 它会对一个可能不存在、\n\
+                 也可能不是本工具的会话直接动手。实得这一段：{body:?}"
+            );
+            assert!(
+                body.contains("no_such_session"),
+                "`{sig}` 里探不到会话时没有回 `no_such_session` —— 那一档被吞掉了"
+            );
+            assert!(
+                body.contains(HANDLE_OUT),
+                "`{sig}` 放行时交出来的不是探回来的句柄 `{HANDLE_OUT}` ——\n\
+                 对**名字**下手就把 TOCTOU 窗口留着（`K-R54` 表第 2 处判「留 daemon」\n\
+                 的理由逐字就是这一条）。实得这一段：{body:?}"
+            );
+        }
+        // ★ 反向自检：同一把尺子在一份「不先探就动手」的合成语料上必须分得出来。
+        //   ⚠ 语料里的名字刻意取中性名，断言不取自夹具的名字（`6g` 那一族）。
+        const SYNTHETIC_BAD: &str = "fn zzz(t: &str) -> u8 { act(t); 0 }";
+        assert!(
+            !SYNTHETIC_BAD.contains(PROBE_BINDING) && !SYNTHETIC_BAD.contains(HANDLE_OUT),
+            "本条用来自检的那份坏语料本身就不坏 —— 反向自检此刻什么都没在证明"
         );
     }
 

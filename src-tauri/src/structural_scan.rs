@@ -2901,6 +2901,59 @@ mod tests {
                 "the_ui_never_derives_the_account_id_itself",
                 1,
             ),
+            // 🔴 〔`K-R72` 09-12〕下面这一批是同一件事的账：**送键与杀会话那两条桌面侧
+            //    SSH 回落删净了**（`K-R54` 逐处裁定表第 1 · 2 · 5 处），随之走掉的三个
+            //    生产符号（`build_kill_session_cmd` / `build_send_keys_remote_cmd` /
+            //    `gate_guard_expr`）与两条判据在散文里被逐字点着 —— 而那些句子说的正是
+            //    **「这个东西为什么不在了 / 它守的性质今天住哪」**，删掉的是线索不是病。
+            //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+            ("doc/INVARIANTS.md", "build_kill_session_cmd", 1),
+            ("doc/INVARIANTS.md", "build_send_keys_remote_cmd", 1),
+            ("doc/INVARIANTS.md", "gate_guard_expr", 1),
+            ("src-tauri/src/tmux.rs", "build_kill_session_cmd", 3),
+            ("src-tauri/src/tmux.rs", "build_send_keys_remote_cmd", 3),
+            ("src-tauri/src/tmux.rs", "gate_guard_expr", 1),
+            (
+                "src-tauri/src/tmux_daemon_gate_guard.rs",
+                "build_kill_session_cmd",
+                1,
+            ),
+            (
+                "src-tauri/src/account_usage.rs",
+                "build_kill_session_cmd",
+                1,
+            ),
+            // `K-R56`（09-11）买的那条判据：它守的性质（**探不到就不动手**）没消失，
+            // 换住址钉在今天唯一那处实现上（`control/gate.rs::both_gates_always_probe_before_they_act`），
+            // 而那一段散文必须逐字点出它的旧名字才说得清「接的是谁」。
+            (
+                "remote-daemon-proto/src/control/gate.rs",
+                "the_ssh_fallback_always_probes_before_it_acts",
+                1,
+            ),
+            // 同一刀带走的 e2e 夹具产出者，与它那套跑不起来的真机验收脚本。
+            (
+                "src-tauri/src/account_usage.rs",
+                "emit_guarded_commands_for_e2e",
+                1,
+            ),
+            (
+                "src-tauri/src/shared_crate_registry.rs",
+                "emit_guarded_commands_for_e2e",
+                1,
+            ),
+            // 两条 `the_refusal_wording_matches_the_ssh_path` 改名成
+            // `…_matches_the_sibling_command`（对照面从「那条 SSH 回落」换成兄弟命令）。
+            (
+                "src-tauri/src/backend/control/daemon_kill.rs",
+                "the_refusal_wording_matches_the_ssh_path",
+                1,
+            ),
+            (
+                "src-tauri/src/backend/control/daemon_send_keys.rs",
+                "the_refusal_wording_matches_the_ssh_path",
+                1,
+            ),
         ];
 
         let corpus = dead_name_corpus();

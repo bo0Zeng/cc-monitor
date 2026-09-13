@@ -68,9 +68,11 @@ mod tests {
         // ── 受控构造器（构造器自己带校验/引用，各有行为判据）
         ("cc_bus.rs", "check_cc_bus_agent_online", Origin::Builder("build_online_cmd"), "id 过白名单"),
         ("pubkey.rs", "push_public_key", Origin::Builder("build_authorized_keys_cmd"), "公钥经 shell_quote"),
-        ("tmux.rs", "capture_remote_pane", Origin::Builder("build_capture_pane_cmd"), "target 过 Gate（`tmux_daemon_gate_guard`）"),
-        ("tmux.rs", "kill_remote_tmux", Origin::Builder("build_kill_session_cmd"), "同上"),
-        ("tmux.rs", "tmux_send_keys", Origin::Builder("build_send_keys_remote_cmd"), "同上"),
+        ("tmux.rs", "capture_remote_pane", Origin::Builder("build_capture_pane_cmd"), "target 过 Gate 1（`exact_target`）；只读快照，MASTERPLAN 明确不为它加身份门"),
+        // ⚠ `K-R72`（09-12）：`kill_remote_tmux` / `tmux_send_keys` **从本表出去了** ——
+        //    它们那两条一次性 SSH 回落删了，今天只走后端通道 ⇒ 不再是「远端执行点」。
+        //    这一改是**结构性强制的随动**：上面那条反向锚点（「申报了一处已经不存在的执行点」）
+        //    会当场逮住留在表里的两行。留着它们等于让申报表替真判据挡枪。
         ("account_usage.rs", "account_usage", Origin::Builder("probe_command_for"), "载荷与会话名都在构造器里引用"),
         // ── 本函数里拼，但自由文本过了 shell_quote
         ("remote_history.rs", "run_list_query", Origin::Quoted, "daemon 路径经引用后拼 args"),
