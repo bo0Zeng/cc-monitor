@@ -617,6 +617,33 @@ N-G1 治的正是这一形：vitest 在非 TTY 下照样上色，ESC 不是 [[:s
 }
 gate_selftest
 
+# ── `hooks/` 里那份**会被执行**的东西，跑不跑得起来（`K-R82` 09-12，第 13 格）──────
+#
+# ★★ 题面是 `K-R80` 的转置读数（`DECISIONS.md#R42` 裁定四）：**12 格里 0 格看着 `hooks/`**，
+#   而 `hooks/pre-commit` 与另两棵 0 覆盖的树（`evidence/` · 仓根文件）**性质不同** ——
+#   它**会被 git 执行**、跑在**每一次提交**上、**能改仓**（它挡的是 `C7` 那条
+#   「`[profile.dev]` 不许进提交」）。
+#
+# 🔴 **本格落地那一趟就逮到一条真的**（现打，不是合成的）：
+#   `hooks/pre-commit` 在 index 里是 **`100644`** ⇒ 本仓 `core.filemode=false`，
+#   `chmod +x` 从来没进过 git ⇒ **每一棵新 checkout 出来的工作树里它都是 644**，
+#   而 git 对 644 的 hook 的处置是**忽略它并照常提交**（`rc=0` ＋ 一句可关掉的 advice hint，
+#   现打读数在 `evidence/K-R82-hooks-gate.md` `§1`）⇒ **那道挡在那些树里等于不在。**
+#   本拍用 `git update-index --chmod=+x` 把它记进库里，本格从此盯着它不再掉。
+#
+# ⚠ **两句话分开判**（记忆条 `filemode-false-chmod-invisible`）：
+#   「**盘上跑不跑得起来**」（`test -x`，跟 checkout 走）与「**库里记没记**」
+#   （index mode，跟提交走）是两个互不相干的事实，本格各判一条、红了也分开说。
+# ⚠ **失效方向**（件计划 `KR82D1` 逐字）：**只判「文件在不在」** —— 那和「它跑得起来」
+#   是两件事。⇒ 判据里一条 `test -e` 都没有。
+# ⚠ 判据本体住 `scripts/hooks-are-runnable.sh`（含 8 条阳性对照：三把尺子**正反各一条**，
+#   挡「尺子瞎了」也挡「尺子恒红」）—— 放在那儿是为了能**对着变异过的副本**跑死值验，
+#   不必去动真工作树。
+# ⚠ 本格的数是**数出来的**（每个 hook 文件 3 条 ＋ 8 条阳性对照），跟 `fmt` 那几格的
+#   「只有绿/红两态」不同 —— 往 `hooks/` 里加一份 hook，这个数会涨，那是对的。
+run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里记着可执行位 · 语法过得了它自己声明的解释器）＋ 8 条阳性对照；现打 hooks/ 下 1 个文件 ⇒ 11。hooks/ 之外的任何一棵树本行都盖不到' \
+         bash scripts/hooks-are-runnable.sh
+
 # ── 格式漂移 ────────────────────────────────────────────────────────────────
 #
 # 🔴 **这一格补的是本文件头注里那条「归 PM」的第 ②**（09-10 落，PM）。
@@ -1068,7 +1095,9 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   下面这个 `12` 与「本文件里到底有几格判定」由 `evidence/K-R80-gate-cell-coverage.py`
   #   三方对拍（本行的数 · 本文件真有的判定格 · 那份覆盖登记的条数），对不上就红。
   #   ⚠ 那把尺子**不在本脚本里跑** —— 它是登记的机检，不是出货闸的一格。
-  echo "GATE: OK —— 12 格全绿（fmt · fmt-daemon · winchk · cargo · generated · daemon · npm · 四套 ccm e2e · pb check），可以出货"
+  # 🔴 `K-R82`（09-12）：**12 → 13**，加的是 `hooks` 那一格（上面 `gate_selftest` 之后那一段）。
+  #   这一行的数与点名跟着改了 —— 而**不是靠人记得改**：`C5` 那条三方对拍会当场逮到。
+  echo "GATE: OK —— 13 格全绿（hooks · fmt · fmt-daemon · winchk · cargo · generated · daemon · npm · 四套 ccm e2e · pb check），可以出货"
   exit 0
 fi
 # ★ `K-G3`（09-01）：分隔符**不能**走 `IFS='；'` —— `IFS` 是按**字节**认的，
