@@ -1,9 +1,9 @@
 //! F10（unify-launch，剩余账号 UX）：每账号 Claude 订阅计划用量窗口百分比（"plan 窗口%"）——
 //! 不是 context window 用量（那是 `usage-hud.ts` 的事），不是本地 token 累计（那是
 //! `usage.rs`/`views/usage-view.ts` 的事），是 Anthropic 服务端权威的 5h/周额度窗口剩余%，
-//! 必须真的起一个已登录的 claude 会话跑 `/usage` 斜杠命令、capture-pane 抓屏解析。
+//! 必须真的起一个已登录的 claude 会话跑 `/usage` 斜杠命令、抓屏。
 //!
-//! **本模块只负责编排一次性探针会话本身**（建/等/送键/抓屏/清理），完全不理解 `/usage`
+//! **本模块只负责编排一次性探针会话本身**（起/送键/等/抓屏/清理），完全不理解 `/usage`
 //! 输出的语义。
 //!
 //! 🔴 **〔`K-R101`/`R59` 09-13 订正〕上面那句话后半截原写「——那是 TS 侧
@@ -13,53 +13,46 @@
 //! 解析器与它的 vitest、冻结夹具仍在盘上（退役≠删除），墓碑住那份文件头部。
 //! ⇒ 本模块的产出从此**只有一个消费者语义**：那一屏字节。
 //!
-//! ⚠ **U8c-2a 起载荷不再由 TS 传进来** —— IPC 收的是**结构化账号表态**
-//! （`config_dir: Option<String>`），载荷由 `backend::control::payload::usage_probe_payload` 编译
-//! （见 [`probe_payload_for`]）。TS 的 `buildUsageProbePayload` 已删除。
-//! **Z03 起它有两种形态**，账号维度必定显式表态、不存在裸载荷：
-//!   - 具名账号：`export CLAUDE_CONFIG_DIR=...; unset <嵌套env>; claude`
-//!   - **账号 0**：`unset CLAUDE_CONFIG_DIR; unset <嵌套env>; claude`
-//!     （**不能省成裸载荷**——远端 rc 里那句 `export CLAUDE_CONFIG_DIR=<默认账号>` 会让
-//!     探针探到别的号，而 UI 会把结果标成账号 0 的用量 = 静默串号）
+//! # ★★ `K-R104`（09-13）：**编排整条搬上帧面** —— 本模块从此一个 shell 字符都不渲染
 //!
-//! **命名与识别**：探针会话固定命名 `ccm-usage-<slug>`（`slug` 是账号名的安全化版本）——
-//! 这个前缀（`tmux.rs::USAGE_PROBE_NAME_PREFIX`）专属本功能，不会被其它任何路径创建，因此
-//! 名字本身就是所有权证明：每次探测前先无条件清掉同名残留（不需要额外的 tmux user-option
-//! 打标去区分"是不是自己的"，见 `tmux.rs::is_usage_probe_session` 头注——那条注释解释了为什么
-//! **不**用新 tag 列，改走名字前缀）。
+//! 在它之前，本模块把整条编排渲染成**一条 shell 串**交给远端的登录 shell 跑
+//! （`tmux kill-session … new-session … setsid sh -c 'sleep N; …' … send-keys … capture-pane`），
+//! 那是 `K-R54` 裁定表第 7 行点名的「同一件事盘上有两份实现」。
 //!
-//! **孤儿防护**：自毁看门狗（`setsid`+`sleep 30`+`kill-session`）独立于 SSH 通道是否存活——
-//! 即便本次 exec 因网络中断"跑不完"，这个已脱离本次会话的远端后台进程仍会在 30s 内把探针会话
-//! 杀掉。**不用 `disown`**（Phase D 后端审计指出）：`setsid` 已经把它放进一个全新 session，
-//! shell 退出时的 SIGHUP 只发给控制终端的前台进程组，根本到不了它——`disown` 是多余的；而它是
-//! bash/zsh builtin、POSIX sh 没有，远端登录 shell 若是 dash 会报 `disown: not found`。本探针
-//! 命令其余部分（`command -v`/`[ -n "$cur" ]`/`printf`）都是严格 POSIX，不该只有它一个例外。
-//! **刻意不做**"扫描 tmux 列表、启发式判定孤儿、弹确认批量清理"这类通用机制——这个
-//! 仓库已经做过又主动砍掉过这个模式（见 `.claude/planned-build/audit-fixes/features/
-//! 05-cleanup-orphans.md` 落地、`.claude/planned-build/auto-e2e/features/
-//! remove-orphan-cleanup.md` 因"UX 审计 footgun：把别窗口/实例正跑的活会话误列孤儿劝杀"而
-//! 删除），本模块的探针生命周期管理是自包含、确定性的，不重蹈覆辙。
+//! 🔴 **搬它的理由是结构性的，不是「更干净」**：`K-R101` 现打的阻断 ——
+//! `K-R86` 的 `--capture-pane` 与 `K-R87` 的 `--oneshot-session` 当时**只有 CLI 面**，
+//! 而走 CLI 面**每抓一屏一次 SSH 握手** ⇒ 两段轮询上限 12+20 轮
+//! ⇒ 单次探测最多 **36 次握手** vs [`EXEC_TIMEOUT_SECS`] = 25 ⇒ **结构上超时**。
+//! ⇒ `K-R104` 先把那两条原语搬上**帧面**（`inbound::REGISTRY` 8 → 10），
+//! 本模块再改成在**一条已经建立的控制通道**上发 N 次命令 —— **握手恒 1 次**。
+//!
+//! 今天这条编排是**既有命令的组合**，一步一条，逐步登记在 [`PROBE_ORCHESTRATION_STEPS`]：
+//! `oneshot-session`（起会话 ＋ 挂看门狗 ＋ 定几何）→ `launch send-into`（送启动载荷）
+//! → `capture-pane` × N（**轮询在调用方**）→ `launch send-into`（送 `/usage`）
+//! → `capture-pane` × N → `kill`（收尾）。
+//!
+//! ⚠ **轮询没有消失，它换了住址**：daemon 侧零定时器铁律不许「隔 N 毫秒再抓一次」
+//! （`K37`〔用 09-11〕逐字「后端只给机制，不给偏好」，而「等画面稳定多久算稳」是偏好），
+//! 所以那一半留在本模块，登记在 `rust_timer_registry::REGISTERED`
+//! （**从 shell 那张表搬到 Rust 那张表** —— 两张表都是双向的，搬家两侧都会红一次）。
+//!
+//! **命名与识别**：探针会话名由 **daemon 铸**（`control/oneshot_session.rs::mint_name`），
+//! 形状 `ccm-oneshot-<slug>-cc`。本模块**给不了完整名字**，只给 slug ——
+//! 撞名由 daemon 当场拒（`name_taken`），不再像老串那样「先无条件 `kill-session` 清场」。
+//! ⚠ 那条 `-cc` 尾巴不是装饰：没有它，daemon 铸出来的会话过不了 §34 Gate 2 的名字半支
+//! ⇒ `launch send-into` 与 `kill` **都进不去自己刚建的那个会话**。理由全文住那个常量的头注。
+//!
+//! **孤儿防护**：看门狗由 daemon 挂（`setsid` + `sleep N` + `kill-session <句柄>`，
+//! 对**句柄**下手不对名字）。它**独立于这条控制通道**：连接断了、daemon 没了，它照样到点清场。
+//! ⇒ 本模块的超时（[`EXEC_TIMEOUT_SECS`]）只负责「别让界面无限等」，清场归它。
 //!
 //! **不新增周期性后台负载**：探针只在前端按需调用时触发（面板"查看用量"按钮/chip 菜单展开），
 //! 没有任何 `setInterval`/定时任务。
-//!
-//! ⚠ **F17 订正这个小标题的措辞**（原写「不新增**轮询**」）。逐字读的话，
-//! 「没有 `setInterval`/定时任务」这半**是真的**；但小标题「不新增轮询」**会误导** ——
-//! 本模块**确实产出一段轮询**：[`quiescence_wait`] 拼的
-//! `while [ $i -lt N ]; do sleep 0.5; tmux capture-pane …`（远端 shell 执行，有上限），
-//! 外加一个 `setsid sleep 30; kill-session` 的自毁看门狗。
-//!
-//! ⚠ 而它此前**三张「周期唤醒」账本一张都看不见**（`rust_timer_registry` 只认 Rust 级
-//! `sleep`/`interval` · `polling_registry` 只管 TS 与 `shared/ccm` · daemon 那条「外部节拍」
-//! 子扫描要求 `format!` 与循环词**同行**，而这里是跨行的）—— Phase G 的 `/full-audit` 逮到的。
-//! ⇒ F17 已把这两处登记进 `rust_timer_registry::SHELL_WAKES` 并配了**遍历式**的双向机检。
-//!
-//! ★ 这条订正的一般化：**「陈述为假」与「措辞误导」是两件事，别混说** ——
-//! 这一处属后者，而后者一样有害：它让读者以为「本模块与轮询无关」，
-//! 于是三张账本谁都没来认领它。
 
-use crate::ssh_source;
-use tokio::io::{AsyncReadExt, BufReader};
+use crate::inbound_client::{capture_pane_args, launch_args, oneshot_session_args, CallError};
+use serde_json::Value;
+use std::sync::Arc;
+use std::time::Duration;
 
 /// 探针会话固定几何尺寸——较宽的列数减少 `/usage` 表格换行/裁切风险（真机验证前的保守选择，
 /// 见 F10 计划 §7 真机验证清单第 5 条）。
@@ -69,7 +62,7 @@ const PROBE_ROWS: u32 = 50;
 const WATCHDOG_TIMEOUT_SECS: u32 = 30;
 /// 画面稳定轮询：用"抓屏内容连续多久没变"代替固定 sleep 猜测冷启动/网络查询耗时
 /// （真机耗时未知，且这个判据格式无关、版本无关，见 F10 计划 §1 设计说明）。
-const QUIESCENCE_POLL_INTERVAL_MS: u32 = 500;
+const QUIESCENCE_POLL_INTERVAL_MS: u64 = 500;
 /// 判定"画面稳定"所需的**连续无变化次数**（× 间隔 = 静止时长）。6 × 0.5s = 3s。
 ///
 /// ★ **这是 E42 的真正修复点**，且是唯一有实测支撑的那一半
@@ -96,9 +89,26 @@ const QUIESCENCE_STILL_POLLS: u32 = 6;
 /// 由 `time_budget_ordering_holds` 钉住。
 const STARTUP_MAX_POLLS: u32 = 12; // 6s
 const RENDER_MAX_POLLS: u32 = 20; // 10s
-/// Rust 侧整条 exec 的硬超时——防 SSH 通道本身卡死导致 `account_usage` 永久挂起（比现有
-/// `tmux.rs` 几个近乎瞬时往返的命令更谨慎，因为这次故意要在远端阻塞较久）。
+/// **整条编排**的硬超时——防控制通道本身卡死导致 `account_usage` 永久挂起。
+///
+/// ⚠ `K-R104` 起它盖的面变了：从前它盖「一条 SSH exec」，今天盖「一条通道上的 N 次往返」。
+/// 数值不动 —— 它守的是同一件事（别让界面无限等），而 `K-R101` 现打的那个阻断
+/// （36 次握手撑破它）正是靠**握手从 36 降到 1** 解掉的，不是靠把这个数调大。
 const EXEC_TIMEOUT_SECS: u64 = 25;
+/// 单条帧命令的应答期限。整条编排的总闸仍是 [`EXEC_TIMEOUT_SECS`]，这一条只防
+/// 「某一条命令自己吊着」把总预算一次吃光 —— 抓一屏 / 起会话都是亚秒级动作。
+const CALL_TIMEOUT_SECS: u64 = 10;
+/// 送进 TUI 的那条斜杠命令。**唯一住址**（判据也引它，不写第二份字面量）。
+const USAGE_SLASH_COMMAND: &str = "/usage";
+/// 会话名后缀的前半段 —— daemon 铸名时会在它前面加 `ccm-oneshot-`、后面加 `-cc`。
+const PROBE_SLUG_PREFIX: &str = "usage-";
+
+/// `e2e/usage-probe-acceptance.sh` 里那个**由脚本替换成真名字**的占位 token。
+///
+/// 会话名由 daemon 在运行期铸，编译期给不出 ⇒ 那套 e2e 的输入源印这个 token，
+/// 脚本拿到 `oneshot-session` 的应答之后原样替换。
+/// **它是常量而不是脚本里的一个字面量**：两侧各写一份的话，改一侧不会红。
+pub(crate) const E2E_SESSION_PLACEHOLDER: &str = "CCM-E2E-SESSION";
 
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -111,9 +121,9 @@ pub struct AccountUsageProbeResult {
     /// `captured=true` 的唯一含义是「抓到了」，**包括抓到一片空白**
     /// （`KR101D1` ③：空屏是成功，把它判成失败是明令禁止的那一形）。
     pub captured: bool,
-    /// `captured=true` 时的 capture-pane 原始文本。
+    /// `captured=true` 时的抓屏原始文本。
     pub raw: Option<String>,
-    /// `captured=false` 时的人话原因（无 tmux / 连接失败 / 超时）。
+    /// `captured=false` 时的人话原因（没通道 / 后端太旧 / 远端拒绝 / 超时）。
     pub error: Option<String>,
 }
 
@@ -133,130 +143,139 @@ fn slugify_account_name(name: &str) -> String {
     }
 }
 
-/// 每轮 `sleep` 的秒数字面量（由 [`QUIESCENCE_POLL_INTERVAL_MS`] 推导，不双写）。
-fn poll_interval_secs() -> String {
-    format!(
-        "{}.{:03}",
-        QUIESCENCE_POLL_INTERVAL_MS / 1000,
-        QUIESCENCE_POLL_INTERVAL_MS % 1000
-    )
+/// 一次帧命令失败的两档。**它们不是本模块自己分的** —— 是
+/// `backend::control::daemon_route::route_call_error` 那唯一一份分流规则的两个出口。
+///
+/// 🔴 **本模块一个字都不许自己 `match CallError`**：那是分流规则的第二份实现，
+/// 而它一旦与那一份漂开，一次「被门拒绝」就可能在某条路上被洗成「换条路重做」。
+/// `cc_bus::broadcast_via_daemon` 在同一处栽过一次，逐字记在它那儿。
+/// 由 `daemon_route::every_daemon_sender_is_registered_and_uses_the_one_router` 钉着
+/// （本文件登记为 `Verdict::UsesRouter`）。
+///
+/// ⚠ **名字里刻意不含 `CallError` 那几个字**：上面那条守卫按**子串**判
+/// （`prod.contains("CallError::")`），而 `ProbeCallError::X` 里正好含着它
+/// ⇒ 叫那个名字会让本文件被误判成「自己在 match `CallError`」。
+/// **这是那道守卫的一处假阳**（如实登记在这里，不是在替它遮丑）——
+/// 它按子串判是刻意的粗，收窄成「词边界」会放过 `let e = CallError :: X` 这类写法。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum ProbeStepError {
+    /// 分流器判「**能证明一个字节都没发出去**」（`Routed::NoChannel`）。
+    ///
+    /// 对探针来说这一档**恒是同一件事**：这台机器的后端给不了这条命令。
+    /// 最常见的成因就是 `KR104D3` ③ 说的那一形 —— 老 daemon 的 `hello.commands` 里
+    /// 没有 `capture-pane` / `oneshot-session`（`K-R104` 才上帧面的两条原语）
+    /// ⇒ `InboundClient::accepts` 在发之前就拒了。
+    /// **不静默失败、不挂住**，而且分流器的原话里带着「多半是旧版本」。
+    NothingWasSent(String),
+    /// 分流器判「daemon 说过话了，或者证不了它没执行」（`Routed::Refused`）。原话带出来。
+    Refused(String),
 }
 
-/// 稳定轮询片段：抓屏直到「**相对基线变过** 且 **连续静止够久**」，或到 `max_polls` 上限。
-///
-/// ★ 2026-07-31（E42）重做。原判据是「连续两次一致且非空」，间隔 0.5s ⇒ send-keys
-/// `/usage` 之后 t=0.5s / t=1.0s 抓到的都还是渲染前的画面，两次相等 ⇒ 立刻 break ⇒
-/// 抓回去的屏上根本没有 /usage 面板。用户实测症状正是「抓到了屏幕但认不出格式」
-/// （⚠ 那句症状是 `R59` **之前**的说法 —— 那时有解析层，抓早了才会说「认不出格式」；
-/// 今天同样的抓早会直接把半截屏摆给用户看。**这一段是来历，不是现状描述。**）。
-///
-/// 判据两半，**证据强度不同，别当成一回事**：
-///
-/// 1. 连续 [`QUIESCENCE_STILL_POLLS`] 次无变化 —— **修复 E42 的就是这一半**，
-///    有 e2e 场景 4（慢速 stand-in）红/绿两向实测。
-/// 2. `cur != base` —— 排除"什么都没发生"（键没送到 / 会话没起来）。
-///    **这一半没有实测支撑，是推理**：拿掉它 e2e 仍 9/9 全绿（实测过）。留着的理由是它守
-///    第 1 半守不住的那个形态 —— 「渲染前的画面本身就静止 ≥3s」，典型是 claude 启动慢时
-///    第一段等待停在静止的 shell 提示符上，于是 `/usage` 在 TUI 的输入框就绪前就被送出去、
-///    被真 claude 丢掉。e2e 复现不了它，因为 stand-in 是个 shell：**tty 会把早到的按键缓冲
-///    住**，等程序开始 read 时照样交付，而真 TUI 不会。代价有界（最多多等到上限，且届时
-///    抓到的内容与提前 break 时相同），所以按 fail-safe 留下，但不谎称它被验证过。
-///
-/// `$base` 由调用点在每次 send-keys **之前**取；只取一次不行（第二段会拿"claude 已起来"
-/// 的屏当基线，第 2 半退化成恒真）。
-fn quiescence_wait(t: &str, max_polls: u32) -> String {
-    let interval = poll_interval_secs();
-    let still = QUIESCENCE_STILL_POLLS;
-    format!(
-        "prev=''; same=0; i=0; while [ $i -lt {max_polls} ]; do \
-sleep {interval}; \
-cur=\"$(tmux capture-pane -p -t {t} 2>/dev/null || true)\"; \
-if [ -n \"$cur\" ] && [ \"$cur\" = \"$prev\" ]; then same=$((same+1)); else same=0; fi; \
-prev=\"$cur\"; \
-if [ -n \"$cur\" ] && [ \"$cur\" != \"$base\" ] && [ $same -ge {still} ]; then break; fi; \
-i=$((i+1)); \
-done"
-    )
+impl ProbeStepError {
+    fn message(&self) -> &str {
+        match self {
+            ProbeStepError::NothingWasSent(m) | ProbeStepError::Refused(m) => m,
+        }
+    }
 }
 
-/// 构造整条探针远端脚本（纯函数，可单测——同 `build_capture_pane_cmd`
-/// ⚠ `K-R72`（09-12）：先前这里还并列点着 `build_kill_session_cmd`，那个函数已随  〔散文墓碑〕
-/// 送键与杀会话的桌面侧 SSH 回落一起删了 —— 今天 `tmux.rs` 里只剩 capture-pane 一个构造器
-/// 既有惯例：编排逻辑与"怎么发起 SSH exec"分离）。
-///
-/// 算法：清掉同名残留 → 建会话（固定几何尺寸）→ 挂自毁看门狗 → send-keys 启动 payload →
-/// 稳定轮询 → send-keys `/usage` → 稳定轮询 → capture-pane → kill-session → 输出。
-/// `command -v tmux` 门控：无 tmux → 哨兵 `NO_TMUX`（同仓库其余 tmux 命令的既有惯例）。
-///
-/// `watchdog_timeout_secs` 独立于 `WATCHDOG_TIMEOUT_SECS` 常量传入——生产恒传该常量
-/// （30s）；真机 e2e（`e2e/usage-probe-acceptance.sh`）验证看门狗本身时需要一个短得多的值
-/// 才能在合理时间内跑完测试，不代表生产行为可配置。
-///
-/// **fallible**（F10 Phase D 后端审计）：`-t` 目标一律经 `tmux::exact_target` 产出，不再手抄
-/// `shell_quote(&format!("={session}:"))`——那条手抄绕过了 Gate 1（空 target 恒拒），而
-/// `exact_target` 的头注恰恰声称"任何未来新增的 tmux 命令构造点都结构性不可能绕过它"。
-/// 走真函数就要接它的 `Result`，这个"麻烦"正是结构保证本身。
-fn build_usage_probe_cmd(
-    account_slug: &str,
-    launch_payload: &str,
-    watchdog_timeout_secs: u32,
-) -> Result<String, String> {
-    let session = format!("ccm-usage-{account_slug}");
-    let t = crate::tmux::exact_target(&session)?;
-    let payload_q = ssh_source::shell_quote(launch_payload);
-    let startup_wait = quiescence_wait(&t, STARTUP_MAX_POLLS);
-    let render_wait = quiescence_wait(&t, RENDER_MAX_POLLS);
+/// 一次帧命令调用返回的 future。
+pub(crate) type ProbeStepFuture<'a> = std::pin::Pin<
+    Box<dyn std::future::Future<Output = Result<Option<Value>, ProbeStepError>> + Send + 'a>,
+>;
 
-    Ok(format!(
-        "if command -v tmux >/dev/null 2>&1; then \
-tmux kill-session -t {t} >/dev/null 2>&1 || true; \
-tmux new-session -d -s {session_q} -x {PROBE_COLS} -y {PROBE_ROWS}; \
-setsid sh -c 'sleep {watchdog_timeout_secs}; tmux kill-session -t {t} >/dev/null 2>&1' </dev/null >/dev/null 2>&1 & \
-base=\"$(tmux capture-pane -p -t {t} 2>/dev/null || true)\"; \
-tmux send-keys -t {t} {payload_q} Enter; \
-{startup_wait}; \
-base=\"$(tmux capture-pane -p -t {t} 2>/dev/null || true)\"; \
-tmux send-keys -t {t} '/usage' Enter; \
-{render_wait}; \
-out=\"$(tmux capture-pane -p -t {t} 2>/dev/null || true)\"; \
-tmux kill-session -t {t} >/dev/null 2>&1 || true; \
-printf '%s' \"$out\"; \
-else printf 'NO_TMUX\\n'; fi",
-        session_q = ssh_source::shell_quote(&session),
-    ))
+/// 一条**已经建立**的控制通道：发一条命令、等一条应答。
+///
+/// # 为什么要这一层抽象（它买的是判据，不是灵活性）
+///
+/// `KR104D2` ③ 逐字要求「**握手次数有判据在数**，不是靠『跑得快了』这种观感」。
+/// 「几次连接」这件事在真 `InboundClient` 上量不出来（那是一条早就建好的长连接），
+/// 所以把「拨号」与「在通道上说话」拆成两个可注入的口：
+/// 判据喂一个**会数拨号次数**的假通道，就能按数据断言「整条编排恰好拨一次号、往返 N 次」。
+///
+/// ⚠ **它不是配置口**（同 daemon 侧 `capture_pane::spawn_capture` 那个 `socket` 参数的理由）：
+/// 生产只有一个实现 [`DaemonChannel`]，由 [`dial_origin`] 造。
+pub(crate) trait ProbeChannel: Send + Sync {
+    fn call<'a>(&'a self, cmd: &'a str, args: Value) -> ProbeStepFuture<'a>;
 }
 
-/// **结构化账号表态 → 整条远端探针命令**（U8c-2a：`account_usage` 的构造那一段整体抽成纯函数）。
-///
-/// # 为什么要抽出来（代码审计 R1–R4）
-///
-/// 抽之前，「载荷编译 + 命令编排」两段都长在 `account_usage` 这个 **async tauri 命令**里，
-/// 于是它们**没有任何单测能到达**。审计实测四个变异在 729 条 Rust + 1168 条 TS 全绿下存活：
-/// 恒当账号 0 · 探写死的别的号 · 只清一个嵌套 env 键 · 换掉启动器。
-/// 前两个正是这套设计从头到尾要防的形态 —— **探到别的号、UI 标成本账号 = 静默串号**。
-///
-/// 抽成纯函数之后，后两个（键表 / 启动器）由下面的逐字节断言杀掉，
-/// 前两个的接缝缩成 `account_usage` 里**一行、一个 token**（`config_dir.as_deref()`）。
-///
-/// ⚠ **诚实边界（登记在案，不假装做完了）**：那一行本身**仍然没有判据**。
-/// 代码审计实测：把它改成恒传 `None`（恒当账号 0）或写死别的号，
-/// **729 条 Rust + 1168 条 TS 全绿**。它正是这套设计要防的形态 —— 探到别的号、
-/// UI 标成本账号 = **静默串号**。
-/// 审计试过的两种纯函数写法都杀不掉它（接缝只是换了位置）；要真钉住，得让
-/// `emit_usage_probe_cmd_for_e2e` 改由**真接线**驱动（`Some(dir)`/`None` 两态各发一条场景），
-/// 让 usage-probe 那 9 条 e2e 覆盖到。⇒ **U8c-2b 或独立一件。**
-fn probe_command_for(
-    slug: &str,
-    config_dir: Option<&str>,
-    watchdog_timeout_secs: u32,
-) -> Result<String, String> {
-    build_usage_probe_cmd(slug, &probe_payload_for(config_dir)?, watchdog_timeout_secs)
+/// 生产实现：走 `inbound_client` 那条长连接。
+struct DaemonChannel(Arc<crate::inbound_client::InboundClient>);
+
+impl ProbeChannel for DaemonChannel {
+    fn call<'a>(&'a self, cmd: &'a str, args: Value) -> ProbeStepFuture<'a> {
+        Box::pin(async move {
+            self.0
+                .call(cmd, args, Duration::from_secs(CALL_TIMEOUT_SECS))
+                .await
+                .map_err(|e| route(&e))
+        })
+    }
 }
 
-/// 只产**载荷**那一段（不含外层 tmux 编排）。
+/// 把一次调用失败交给**那唯一一份分流规则**，再落到本模块的两档上。
 ///
-/// 与 [`probe_command_for`] 分开是为了**可断言** —— 载荷进整条命令时会被 `shell_quote`
-/// 包一层，在命令串上做逐字节断言等于顺带在断言引号算法，噪音盖过信号。
+/// ⚠ 这里**没有**任何关于 `CallError` 的判断 —— 判断全在 `route_call_error` 里。
+/// 本函数只做一次「`Routed` → 本模块的两档」的搬运（同 `cc_bus` 那条 `BroadcastRoute`）。
+fn route(e: &CallError) -> ProbeStepError {
+    use crate::backend::control::daemon_route::{route_call_error, Routed};
+    match route_call_error(e, |code, message| {
+        format!("远端后端拒绝了这一步（{code}）：{message}")
+    }) {
+        Routed::NoChannel(why) => ProbeStepError::NothingWasSent(why),
+        Routed::Refused(why) => ProbeStepError::Refused(why),
+        Routed::Done => ProbeStepError::Refused("分流器判成已完成，这不该发生".to_string()),
+    }
+}
+
+/// 拨号：拿这台机器的控制通道。**本机与远端同一条路** —— `<local>` 也是一个 origin。
+///
+/// 「没有通道」那句话也只有一个家（`daemon_route::no_channel`），本模块不另写一份。
+fn dial_origin(origin: &str) -> Result<Arc<dyn ProbeChannel>, String> {
+    use crate::backend::control::daemon_route::{no_channel, Routed};
+    match crate::inbound_client::client_for(origin) {
+        Some(c) => Ok(Arc::new(DaemonChannel(c)) as Arc<dyn ProbeChannel>),
+        None => Err(match no_channel(origin) {
+            Routed::NoChannel(why) => {
+                format!("{why} —— 用量探针整条走后端，通道不在就是明确失败，不换条路悄悄做掉")
+            }
+            other => format!("没有控制通道，而分流器给了 {other:?} —— 这不该发生"),
+        }),
+    }
+}
+
+/// 编排的时间参数。**生产恒 [`ProbeTiming::PRODUCTION`]**。
+///
+/// 可注入的理由与 daemon 侧那两个 `socket` 参数逐字同一条：让「整条编排真的只拨一次号、
+/// 真的在一条通道上往返多次」这件事**测得出来**，而不是让判据去等 16 秒真 sleep。
+/// **它不是配置口** —— 生产路径上没有任何地方读配置来填它。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProbeTiming {
+    pub(crate) interval_ms: u64,
+    pub(crate) still_polls: u32,
+    pub(crate) startup_max_polls: u32,
+    pub(crate) render_max_polls: u32,
+    pub(crate) watchdog_secs: u32,
+    pub(crate) cols: u32,
+    pub(crate) rows: u32,
+}
+
+impl ProbeTiming {
+    pub(crate) const PRODUCTION: Self = Self {
+        interval_ms: QUIESCENCE_POLL_INTERVAL_MS,
+        still_polls: QUIESCENCE_STILL_POLLS,
+        startup_max_polls: STARTUP_MAX_POLLS,
+        render_max_polls: RENDER_MAX_POLLS,
+        watchdog_secs: WATCHDOG_TIMEOUT_SECS,
+        cols: PROBE_COLS,
+        rows: PROBE_ROWS,
+    };
+}
+
+/// 只产**载荷**那一段（不含任何编排）。
+///
+/// 与编排分开是为了**可断言**：载荷是逐字节钉住的（`probe_payload_is_byte_exact_for_both_account_states`），
+/// 而编排是一串命令。两件事，两条判据。
 fn probe_payload_for(config_dir: Option<&str>) -> Result<String, String> {
     // 键表与启动器都走活跃适配器 —— 它们各自已有 TS↔Rust 对拍守卫。
     let agent = crate::adapter::active();
@@ -267,17 +286,216 @@ fn probe_payload_for(config_dir: Option<&str>) -> Result<String, String> {
     )
 }
 
-/// F10：per-account 探测 Claude 订阅计划用量窗口%（"plan 窗口%"）。通道 B（一次性 headless
-/// exec，不占用前台可见终端，同 `list_remote_tmux`/`capture_remote_pane` 既有分工）。
+/// 抓一屏。回的是那一屏的**原文**（空屏是合法的成功）。
+async fn capture_screen(ch: &dyn ProbeChannel, session: &str) -> Result<String, ProbeStepError> {
+    let data = ch.call("capture-pane", capture_pane_args(session)).await?;
+    data.as_ref()
+        .and_then(|v| v.get("screen"))
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| {
+            ProbeStepError::Refused(
+                "抓屏应答里没有 `screen` 字段 —— 这一端与那一端的契约漂开了".to_string(),
+            )
+        })
+}
+
+/// 往探针会话里送一段文本（附 `Enter`）。
+async fn send_into(
+    ch: &dyn ProbeChannel,
+    session: &str,
+    payload: &str,
+) -> Result<(), ProbeStepError> {
+    ch.call(
+        "launch",
+        launch_args(
+            "send-into",
+            session,
+            payload,
+            None,
+            None,
+            Default::default(),
+        ),
+    )
+    .await
+    .map(|_| ())
+}
+
+/// 等画面稳定 —— **轮询住在这里，daemon 里一个定时器都没有**。
+///
+/// 判据两半，**证据强度不同，别当成一回事**：
+///
+/// 1. 连续 `still_polls` 次无变化 —— **修复 E42 的就是这一半**，
+///    有 e2e 场景 4（慢速 stand-in）红/绿两向实测。
+/// 2. `cur != base` —— 排除"什么都没发生"（键没送到 / 会话没起来）。
+///    **这一半没有实测支撑，是推理**：拿掉它 e2e 仍全绿（实测过）。留着的理由是它守
+///    第 1 半守不住的那个形态 —— 「渲染前的画面本身就静止 ≥3s」。
+///    代价有界（最多多等到上限），所以按 fail-safe 留下，但不谎称它被验证过。
+///
+/// `base` 由调用点在每次送键**之前**取；只取一次不行（第二段会拿"claude 已起来"
+/// 的屏当基线，第 2 半退化成恒真）。
+async fn settle(
+    ch: &dyn ProbeChannel,
+    session: &str,
+    base: &str,
+    max_polls: u32,
+    t: ProbeTiming,
+) -> Result<String, ProbeStepError> {
+    let mut prev = String::new();
+    let mut same = 0u32;
+    let mut i = 0u32;
+    while i < max_polls {
+        tokio::time::sleep(Duration::from_millis(t.interval_ms)).await;
+        let cur = capture_screen(ch, session).await?;
+        if !cur.is_empty() && cur == prev {
+            same += 1;
+        } else {
+            same = 0;
+        }
+        prev = cur;
+        if !prev.is_empty() && prev != base && same >= t.still_polls {
+            break;
+        }
+        i += 1;
+    }
+    Ok(prev)
+}
+
+/// 会话起来之后的那几步。抽出来是为了让**收尾杀会话**在成败两条路上都跑得到。
+async fn drive_probe(
+    ch: &dyn ProbeChannel,
+    session: &str,
+    payload: &str,
+    t: ProbeTiming,
+) -> Result<String, ProbeStepError> {
+    let base = capture_screen(ch, session).await?;
+    send_into(ch, session, payload).await?;
+    settle(ch, session, &base, t.startup_max_polls, t).await?;
+    let base = capture_screen(ch, session).await?;
+    send_into(ch, session, USAGE_SLASH_COMMAND).await?;
+    settle(ch, session, &base, t.render_max_polls, t).await
+}
+
+/// **整条编排**：一次拨号 ＋ 一条通道上的 N 次往返。
+///
+/// 🔴 `dial` **只许被调一次** —— 那一行就是 `KR104D2` 的正题
+/// （`§0a` 的阻断：走 CLI 面每抓一屏一次握手 ⇒ 最多 36 次 ⇒ 结构上超时）。
+/// 由 `the_whole_probe_dials_once_and_talks_many_times` 按**数据**断言（数拨号次数，
+/// 不是数耗时 —— 后者是环境噪声）。
+pub(crate) async fn probe_over_frames(
+    dial: &(dyn Fn() -> Result<Arc<dyn ProbeChannel>, String> + Sync),
+    slug: &str,
+    payload: &str,
+    t: ProbeTiming,
+) -> AccountUsageProbeResult {
+    let ch = match dial() {
+        Ok(c) => c,
+        Err(e) => return probe_failed(e),
+    };
+    // ① 起会话：daemon 铸名 ＋ 挂看门狗 ＋ 定几何，一次往返办完。
+    let started = ch
+        .call(
+            "oneshot-session",
+            oneshot_session_args(
+                &format!("{PROBE_SLUG_PREFIX}{slug}"),
+                t.watchdog_secs,
+                Some((t.cols, t.rows)),
+            ),
+        )
+        .await;
+    let session = match started {
+        Ok(data) => match data
+            .as_ref()
+            .and_then(|v| v.get("session"))
+            .and_then(|v| v.as_str())
+        {
+            Some(name) => name.to_string(),
+            None => {
+                return probe_failed(
+                    "起探针会话的应答里没有 `session` 字段 —— 这一端与那一端的契约漂开了"
+                        .to_string(),
+                )
+            }
+        },
+        Err(e) => return probe_failed(describe(&e)),
+    };
+    let out = drive_probe(ch.as_ref(), &session, payload, t).await;
+    // ② 收尾一律杀会话（成败都杀）。看门狗是**保险丝**，不是清场机制 ——
+    //    指望它清场等于让每个探针会话在远端多活到 ttl 秒。
+    let _ = ch
+        .call("kill", serde_json::json!({ "name": session }))
+        .await;
+    match out {
+        Ok(screen) => AccountUsageProbeResult {
+            captured: true,
+            raw: Some(screen),
+            error: None,
+        },
+        Err(e) => probe_failed(describe(&e)),
+    }
+}
+
+/// 失败那一档的**唯一造句处**。
+fn probe_failed(why: String) -> AccountUsageProbeResult {
+    AccountUsageProbeResult {
+        captured: false,
+        raw: None,
+        error: Some(why),
+    }
+}
+
+/// 把一次调用失败讲成人话。**两档分开说**（`KR104D3` ③）。
+fn describe(e: &ProbeStepError) -> String {
+    match e {
+        ProbeStepError::NothingWasSent(m) => format!(
+            "用量探针一个字节都没发出去：{m}\n\
+             ⇒ 最常见的成因是这台机器的后端太旧 —— 抓一屏（`capture-pane`）与\
+             起一次性会话（`oneshot-session`）是后来才上帧面的两条原语，\
+             **重装那台机器的后端**就有了。"
+        ),
+        ProbeStepError::Refused(m) => m.clone(),
+    }
+}
+
+/// 两个 tauri 命令共用的那一段：安全化账号名 → 编载荷 → 跑编排。
+///
+/// # ★ 本机与远端**逐字同一条路**（定框 C1「一份代码两种承载」）
+///
+/// `K-R104` 之前这两条各有一个执行面（远端 SSH exec / 本机 `sh -c`），
+/// 靠一条比**命令串**的判据证同源。
+/// 今天连那半都不存在了：两条**是同一个函数**，只差一个 `origin`
+/// （`<local>` 也是一个 origin，`client_for` 两侧都答得出）。
+async fn probe_account_usage(
+    origin: &str,
+    account_name: &str,
+    config_dir: Option<&str>,
+) -> AccountUsageProbeResult {
+    let slug = slugify_account_name(account_name);
+    // 载荷由内核编译（P4b 起在 `backend::control::payload`）：账号前缀 + 嵌套 env 清理 + 启动器，无 cd。
+    // 构造失败（载荷非法）→ 诚实回报，**不拨号、不发一个字节**。
+    let payload = match probe_payload_for(config_dir) {
+        Ok(p) => p,
+        Err(e) => return probe_failed(e),
+    };
+    let dial = move || dial_origin(origin);
+    match tokio::time::timeout(
+        Duration::from_secs(EXEC_TIMEOUT_SECS),
+        probe_over_frames(&dial, &slug, &payload, ProbeTiming::PRODUCTION),
+    )
+    .await
+    {
+        Ok(r) => r,
+        Err(_) => probe_failed(format!(
+            "探测超时（{EXEC_TIMEOUT_SECS}s）—— 探针会话由 daemon 侧的看门狗到点清场，\
+             不会留下孤儿；稍后重试"
+        )),
+    }
+}
+
+/// F10：per-account 探测 Claude 订阅计划用量窗口%（"plan 窗口%"）。
 ///
 /// `account_name` 只用于探针会话名 slug + 错误文案，不参与鉴权（鉴权/账号存在性由 TS 侧调用
 /// 前已经确认过）。
-///
-/// # U8c-2a：**收结构化账号表态，不再收渲染好的串**
-///
-/// 此前这里收的是 `launch_payload: String` —— TS 的 `buildUsageProbePayload` 渲染好递进来，
-/// 本模块「只透传不校验」。那是账本 S28 里六个载荷产出点的第 ②。现在它退役了：
-/// 前端只报「哪个账号」，载荷由 `backend::control::payload::usage_probe_payload` 编译。
 ///
 /// `config_dir` **两态，没有第三态**（探针恒是 per-account）：
 /// `Some(路径)` = 具名账号 · `None` = **账号 0**（产出 `unset CLAUDE_CONFIG_DIR; `，
@@ -289,862 +507,482 @@ pub async fn account_usage(
     account_name: String,
     config_dir: Option<String>,
 ) -> Result<AccountUsageProbeResult, String> {
-    let cfg = crate::load_remote_config_by_label(&origin)
-        .ok_or_else(|| format!("未找到远端配置: {origin:?}"))?;
-    let slug = slugify_account_name(&account_name);
-    // 载荷由内核编译（P4b 起在 `backend::control::payload`）：账号前缀 + 嵌套 env 清理 + 启动器，无 cd。
-    // 构造失败（载荷非法 / Gate 1 拒绝）→ 诚实回报，**不发起任何 SSH 连接**。
-    let cmd = match probe_command_for(&slug, config_dir.as_deref(), WATCHDOG_TIMEOUT_SECS) {
-        Ok(c) => c,
-        Err(e) => {
-            return Ok(AccountUsageProbeResult {
-                captured: false,
-                raw: None,
-                error: Some(e),
-            });
-        }
-    };
-
-    let exec = async {
-        let stream = ssh_source::connect_and_exec_cmd(&cfg, &cmd).await?;
-        let mut reader = BufReader::new(stream);
-        let mut buf: Vec<u8> = Vec::new();
-        reader
-            .read_to_end(&mut buf)
-            .await
-            .map_err(|e| format!("读用量探针输出失败: {e}"))?;
-        Ok::<Vec<u8>, String>(buf)
-    };
-
-    let buf =
-        match tokio::time::timeout(std::time::Duration::from_secs(EXEC_TIMEOUT_SECS), exec).await {
-            Ok(Ok(buf)) => buf,
-            Ok(Err(e)) => {
-                return Ok(AccountUsageProbeResult {
-                    captured: false,
-                    raw: None,
-                    error: Some(e),
-                });
-            }
-            Err(_) => {
-                return Ok(AccountUsageProbeResult {
-                    captured: false,
-                    raw: None,
-                    error: Some(format!(
-                        "探测超时（{EXEC_TIMEOUT_SECS}s）——远端连接可能卡住，稍后重试"
-                    )),
-                });
-            }
-        };
-
-    let out = String::from_utf8_lossy(&buf);
-    if out.trim() == "NO_TMUX" {
-        return Ok(AccountUsageProbeResult {
-            captured: false,
-            raw: None,
-            error: Some("远端未安装 tmux".to_string()),
-        });
-    }
-    Ok(AccountUsageProbeResult {
-        captured: true,
-        raw: Some(out.to_string()),
-        error: None,
-    })
+    Ok(probe_account_usage(&origin, &account_name, config_dir.as_deref()).await)
 }
 
 /// F08：**本机** per-account 用量探针 —— 补平 `parity_ledger` 那条 `usage.per-account`。
 ///
-/// # 它与远端那条的关系：**同一份载荷，两种承载**（定框 C1）
+/// # 它与远端那条的关系：**同一个函数，两种 origin**（定框 C1）
 ///
-/// 摸底实测：[`probe_command_for`] **与 origin 完全无关** —— 它只吃 `slug` / `config_dir` /
-/// `watchdog_timeout_secs`，载荷由 `backend::control::payload::usage_probe_payload` 编译。
-/// 也就是说「决策那半」早就在 backend 里了；缺的**只有本机那个执行面**。
-/// ⇒ 本函数与 [`account_usage`] **逐字用同一条命令串**，
-/// 由 `the_local_and_remote_probes_use_the_very_same_command` 钉住。
-///
-/// # ⚠ Windows 上**结构性不可能**，所以诚实降级而不是假装支持
-///
-/// 探针载荷硬依赖 **tmux + POSIX shell**（`command -v tmux` · `setsid sh -c` ·
-/// `tmux capture-pane`）—— Windows 本机两者都没有。
-/// ⇒ Windows 分支直接回 tagged 结果 + `reason`（定框 §5：拿不到依赖是诚实降级，不是 `Err`）。
-/// **不是「还没做」，是那条路在那个平台上不存在。**
-/// 由 `the_probe_payload_still_requires_tmux_so_the_windows_branch_is_still_right` 钉住那个前提：
-/// 哪天载荷不再依赖 tmux（比如 `/usage` 有了非 TUI 的取法），本条会红，回来重裁。
-///
-/// # Linux 是一等发布形态，不是「顺手支持」
-///
-/// `release.yml` 有 `build-linux` job（`tauri build --bundles deb`）—— 与 Windows 并列。
-/// 所以补平这条不是为了好看：**Linux 用户今天根本拿不到 per-account 用量窗口。**
+/// `K-R104` 之前这里还有一条独立的本机执行面（`sh -c <载荷>` 并收 stdout），
+/// 以及一条 `#[cfg(not(unix))]` 的诚实降级（Windows 没有 tmux + POSIX shell）。
+/// **今天两样都没有了，而这不是把它们删掉，是它们的前提消失了**：
+/// 执行不再发生在界面进程里，而是发生在**那台机器的后端**里 ——
+/// Windows 上本机后端答的是 `no_tmux`（daemon 侧 `capture_pane` 那一档的真实原因），
+/// 比这一侧猜一句「那条路在那个平台上不存在」更硬。
 #[tauri::command]
 pub async fn account_usage_local(
     account_name: String,
     config_dir: Option<String>,
 ) -> Result<AccountUsageProbeResult, String> {
-    let slug = slugify_account_name(&account_name);
-    // ★ 与远端那条**同一个**构造入口 —— 不是「照抄一份本机版」。
-    let cmd = match probe_command_for(&slug, config_dir.as_deref(), WATCHDOG_TIMEOUT_SECS) {
-        Ok(c) => c,
-        Err(e) => {
-            return Ok(AccountUsageProbeResult {
-                captured: false,
-                raw: None,
-                error: Some(e),
-            })
-        }
-    };
-    run_local_probe(cmd).await
+    Ok(probe_account_usage(
+        crate::inbound_client::LOCAL_ORIGIN,
+        &account_name,
+        config_dir.as_deref(),
+    )
+    .await)
 }
 
-/// 本机执行面：一次性 `sh -c <载荷>` 并**收 stdout**。
+/// 🔴 **`KR104D2`（`K33` 逐字「所有命令只许有一处，其他都是根据传参来调用」）的登记表。**
 ///
-/// ⚠ 不能用 `launch::launch_local_posix` —— 那个是 fire-and-forget（stdout 丢到 `null`），
-/// 而探针要的正是那段输出。这是两个不同的本机执行面，别合并。
-#[cfg(unix)]
-async fn run_local_probe(cmd: String) -> Result<AccountUsageProbeResult, String> {
-    let exec = tokio::task::spawn_blocking(move || {
-        std::process::Command::new("sh")
-            .arg("-c")
-            .arg(&cmd)
-            .stdin(std::process::Stdio::null())
-            .output()
-    });
-    let out =
-        match tokio::time::timeout(std::time::Duration::from_secs(EXEC_TIMEOUT_SECS), exec).await {
-            Ok(Ok(Ok(o))) => o,
-            Ok(Ok(Err(e))) => {
-                return Ok(AccountUsageProbeResult {
-                    captured: false,
-                    raw: None,
-                    error: Some(format!("本机起 sh 失败：{e}")),
-                })
-            }
-            Ok(Err(e)) => {
-                return Ok(AccountUsageProbeResult {
-                    captured: false,
-                    raw: None,
-                    error: Some(format!("本机探针任务异常：{e}")),
-                })
-            }
-            Err(_) => {
-                return Ok(AccountUsageProbeResult {
-                    captured: false,
-                    raw: None,
-                    error: Some(format!(
-                        "探测超时（{EXEC_TIMEOUT_SECS}s）——本机 tmux 可能卡住，稍后重试"
-                    )),
-                })
-            }
-        };
-    let text = String::from_utf8_lossy(&out.stdout);
-    // ★ 与远端那条**同一条**判据：`NO_TMUX` 是载荷自己吐的哨兵，不是退出码。
-    if text.trim() == "NO_TMUX" {
-        return Ok(AccountUsageProbeResult {
-            captured: false,
-            raw: None,
-            error: Some("本机未安装 tmux —— per-account 用量探针需要它".to_string()),
-        });
-    }
-    Ok(AccountUsageProbeResult {
-        captured: true,
-        raw: Some(text.to_string()),
-        error: None,
-    })
-}
-
-#[cfg(not(unix))]
-async fn run_local_probe(_cmd: String) -> Result<AccountUsageProbeResult, String> {
-    // 诚实降级：Windows 本机没有 tmux、也没有 POSIX shell ⇒ 这条路在那个平台上不存在。
-    Ok(AccountUsageProbeResult {
-        captured: false,
-        raw: None,
-        error: Some(
-            "本机 per-account 用量探针在 Windows 上不可用：探针需要 tmux + POSIX shell              （载荷靠 `tmux capture-pane` 抓 `/usage` 面板）。远端探针不受影响。"
-                .to_string(),
-        ),
-    })
-}
-
-/// 🔴 **`KR101D4`（`K33` 逐字「所有命令只许有一处，其他都是根据传参来调用」）的登记表。**
+/// 一行 = 探针编排里的**一步**：`(这一步干什么, 今天由谁做, 它走 daemon 帧面的哪一条命令)`。
 ///
-/// 一行 = 探针编排里的**一步**：`(这一步干什么, 今天由谁渲染, daemon 上已经拥有这个动词的那条命令)`。
+/// # ★★ `K-R104` 把「今天由谁做」那一列整列翻了面
+///
+/// `K-R101` 交回时这一列**全是 `monitor`**，头注逐字写着「也就是说 **编排还没有搬走**。
+/// 本表是那笔欠账的**住址**，不是它的兑现」。**今天它兑现了**：每一步都是本模块在
+/// 一条已经建立的控制通道上发一条 daemon 命令，本模块**一个 shell 字符都不渲染**。
 ///
 /// # 它买到什么、买不到什么 —— **两句都要读**
 ///
-/// **买到的**（由 [`tests::the_probe_is_a_composition_of_commands_the_daemon_already_has`] 钉）：
-/// ① 表里点名的每一条 daemon 命令**今天真的在 daemon 的命令面上**（现打 `SUBCOMMANDS`，
-///    不是抄一份名单）；② daemon 的命令面上**没有一条「整条探针」式的大动作**
-///    —— `§0c` 逐字点名的那个失效方向（新开 `--usage-probe`，把一份 shell 串换成一份
-///    Rust 串，命令是少了一处，**编排仍然只有一份实现在替调用方做决定**）；
+/// **买到的**（由 [`tests::the_probe_is_a_composition_of_frame_commands_the_daemon_already_has`] 钉）：
+/// ① 表里点名的每一条命令**今天真的在 daemon 的帧面上**（现打 `inbound::COMMANDS`，
+///    不是抄一份名单）；② daemon 的两个命令面上**都没有**一条「整条探针」式的大动作；
 /// ③ 这一步是**组合**：owner 列至少四条互不相同的命令，塌成一条就红。
 ///
-/// 🔴 **买不到的（如实登记，别读大）**：「谁渲染」那一列今天**全是 `monitor`** ——
-/// 也就是说 **编排还没有搬走**。本表是那笔欠账的**住址**，不是它的兑现。
-/// 为什么本轮没搬、三条候选各自的实测代价、以及搬它需要的落点在哪几个写区外的文件里，
-/// 逐条写在 `features/K-R101-用量探针的tmux编排整条搬进daemon.md#§8`。
-/// ⚠ **别把本表的绿读成「第 7 行清了」。**
+/// **买不到的（如实登记，别读大）**：本表不证明「这几步真的按这个顺序被发出去了」——
+/// 那一格由 [`tests::the_whole_probe_dials_once_and_talks_many_times`] 用一条**假通道**
+/// 记录真实发出的命令序列来断。两条合起来才是 `KR104D2`。
 const PROBE_ORCHESTRATION_STEPS: &[(&str, &str, &str)] = &[
     (
-        "清掉同名残留",
-        "monitor（build_usage_probe_cmd 渲染 `tmux kill-session`）",
-        "--kill",
-    ),
-    (
-        "建会话（固定几何 -x/-y）",
-        "monitor（build_usage_probe_cmd 渲染 `tmux new-session -d -x -y`）",
-        "--launch",
+        "起会话（daemon 铸名 ＋ 固定几何 -x/-y）",
+        "daemon（帧面 `oneshot-session`，monitor 只给 slug 与尺寸）",
+        "oneshot-session",
     ),
     (
         "挂自毁看门狗（到点自己死）",
-        "monitor（build_usage_probe_cmd 渲染 `setsid sh -c` 那条自毁看门狗）",
-        "--oneshot-session",
+        "daemon（帧面 `oneshot-session` 同一次往返里办完）",
+        "oneshot-session",
     ),
     (
         "送启动载荷 / 送 `/usage`",
-        "monitor（build_usage_probe_cmd 渲染两次 `tmux send-keys`）",
-        "--launch",
+        "daemon（帧面 `launch` 的 `send-into`，monitor 只给那段文本）",
+        "launch",
     ),
     (
         "抓一屏",
-        "monitor（quiescence_wait ＋ 收尾各渲染一次 `tmux capture-pane -p`）",
-        "--capture-pane",
+        "daemon（帧面 `capture-pane`；**抓几次**由本模块的 `settle` 决定）",
+        "capture-pane",
     ),
     (
         "收尾杀会话",
-        "monitor（build_usage_probe_cmd 渲染 `tmux kill-session`）",
-        "--kill",
+        "daemon（帧面 `kill`，过 §34 Gate 2 + Gate 3）",
+        "kill",
     ),
 ];
 
-/// 「一条命令吃下整条探针」长什么样 —— **`§0c` 点名的失效方向的针**。
+/// 「一条命令吃下整条探针」长什么样 —— **`K-R101#§0c` 点名的失效方向的针**。
 ///
 /// 判据不是「名字里有 usage」（`--usage` 今天就在 daemon 上，那是读本地 token 累计的，
-/// 与探针无关），而是「**探针**」这件事本身被做成一条子命令。
-const WHOLE_PROBE_SUBCOMMAND_NEEDLES: &[&str] =
-    &["--usage-probe", "--probe-usage", "--account-usage"];
+/// 与探针无关），而是「**探针**」这件事本身被做成一条命令。
+/// ⚠ `K-R104` 起它盖**两个面**（CLI 的 `--x` 与帧面的裸名），因为编排搬上帧面之后，
+/// 「顺手做一条大命令」最省事的地方就是帧面。
+const WHOLE_PROBE_SUBCOMMAND_NEEDLES: &[&str] = &[
+    "--usage-probe",
+    "--probe-usage",
+    "--account-usage",
+    "usage-probe",
+    "probe-usage",
+    "account-usage",
+];
 
 #[cfg(test)]
 mod tests {
-
-    /// ★★ **monitor 自己建 tmux 的地方必须逐个登记为 C13/D3 的例外**
-    /// 〔audit-0805 F19 / 报告 §4.1「边界越界的两处」〕。
-    ///
-    /// # 它此前没有任何登记
-    ///
-    /// **C13**：最后那次 `exec` 必须在**用户那个终端进程**里。
-    /// **D3 的例外只有一条** —— daemon 在**自己管的 tmux 容器**里起会话（`launch`）。
-    /// 而 `account_usage.rs` 自己拼 `tmux new-session -d -s ccm-usage-<slug>; send-keys …;
-    /// capture-pane; kill-session` —— **它建的 tmux 不是 daemon 管的**。
-    ///
-    /// 报告的倾向判定（本轮采信）：**它正当** —— 那是**无头测量**，不是用户会话：
-    /// 起完就 `capture-pane` 取输出、随即 `kill-session`，没有人会 attach 进去。
-    /// ⇒ 问题不在「它做了这件事」，在「**这件事没有被登记成例外**」。
-    ///
-    /// ⚠ 它今天确实出现在 `daemon_kill.rs::CREATION_PATHS` 里，**但那张表管的是会话名校验**
-    /// （`CreationVerdict`），不是「谁可以绕开 C13/D3」。**两件事，两张表。**
-    ///
-    /// # 判据形态
-    ///
-    /// 扫**整棵 monitor 源码树**的生产段，找真正会跑 `tmux new-session` 的地方；
-    /// 每一处都必须在下面这张表里，且**带理由**。新增一处 ⇒ 它指名道姓地要求写下理由，
-    /// 而不是让「monitor 又多了一个自己起会话的地方」悄悄发生。
-    #[test]
-    fn every_monitor_side_tmux_creation_is_a_registered_d3_exception() {
-        /// (文件, 为什么它可以绕开 C13/D3)
-        const D3_EXCEPTIONS: &[(&str, &str)] = &[(
-            "account_usage.rs",
-            "无头测量而非用户会话：起完即 capture-pane 取输出、随即 kill-session，无人 attach。             会话名 ccm-usage-<slug> 由账号名 sanitize 而来，另有 CREATION_PATHS 管它的字符集。",
-        )];
-
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut found: Vec<String> = Vec::new();
-        let mut stack = vec![root.clone()];
-        while let Some(dir) = stack.pop() {
-            for e in std::fs::read_dir(&dir)
-                .expect("读不到 monitor src")
-                .flatten()
-            {
-                let p = e.path();
-                if p.is_dir() {
-                    stack.push(p);
-                } else if p.extension().is_some_and(|x| x == "rs") {
-                    let src = std::fs::read_to_string(&p).unwrap_or_default();
-                    let prod = guard_core::production_code(&src);
-                    // ★ 发现口径不在这里各写一份 —— 问唯一那个家（E3）。
-                    //   08-08 实测：这里原本只认命令串，argv 形态建的会话本条看不见，
-                    //   而 `daemon_kill` 那张表看得见 ⇒ 两张问同一件事的表口径不一致。
-                    if crate::backend::control::daemon_kill::creation_detect::creates_a_session(
-                        &prod,
-                    ) {
-                        found.push(p.file_name().unwrap().to_string_lossy().into_owned());
-                    }
-                }
-            }
-        }
-        // 抽取器自检：一处都没扫到 ⇒ 剥法或遍历坏了，本条会零命中地绿。
-        assert!(
-            !found.is_empty(),
-            "全树扫不到任何 `tmux new-session` 的生产段 —— 抽取器坏了，本条会零命中地绿"
-        );
-
-        for f in &found {
-            assert!(
-                D3_EXCEPTIONS.iter().any(|(k, _)| k == f),
-                "`{f}` 在 monitor 生产段里建 tmux 会话，却不在 D3 例外表里。\n\
-                 ★ **C13**：最后那次 `exec` 必须在用户那个终端进程里；\n\
-                 **D3 的例外今天只有一条**（daemon 在自己管的容器里起会话）。\n\
-                 monitor 自己建一个 daemon 管不到的 tmux ⇒ 要么它不该这么做，\n\
-                 要么**把「为什么它正当」写进 D3_EXCEPTIONS** —— 两者都不做，\n\
-                 就是让「monitor 又多了一个自己起会话的地方」悄悄发生。\n\
-                 今天扫到的：{found:?}"
-            );
-        }
-        // 反向：例外表不许长草（列了却已经不再建会话）。
-        for (k, _) in D3_EXCEPTIONS {
-            assert!(
-                found.iter().any(|f| f == k),
-                "`{k}` 还留在 D3 例外表里，但它已经不建 tmux 会话了 —— 例外表过期了"
-            );
-        }
-    }
     use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Mutex;
 
-    /// ★ F08 真进程：**本机执行面**真的能跑那条串并把输出收回来。
-    ///
-    /// `#[ignore]`：要真 tmux。由 `e2e/usage-probe-acceptance.sh` 的 F08 段驱动
-    /// （那边负责私有 socket + 假 claude，**绝不碰用户真实 tmux、绝不起真 claude**）。
-    ///
-    /// 与那套 e2e 其余场景的分工：它们验「那条命令串在真 tmux 上干了什么」；
-    /// **本条验「本机执行面能不能把它跑起来并收到 stdout」** —— 两件事，两条判据。
-    #[test]
-    #[ignore]
-    fn e2e_the_local_execution_surface_runs_the_probe_and_returns_output() {
-        let marker = std::env::var("CCM_E2E_FAKE_MARKER").expect("要 CCM_E2E_FAKE_MARKER");
-        // 直接喂一条**最小的**载荷（不经 tmux）：本条要验的是执行面，不是编排。
-        let rt = tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .expect("rt");
-        let r = rt
-            .block_on(run_local_probe(format!("printf '%s' {marker}")))
-            .expect("本机执行面不该返回 Err（拿不到依赖也应是 tagged）");
-        assert!(r.captured, "captured 应为 true：{r:?}");
-        assert_eq!(r.raw.as_deref(), Some(marker.as_str()), "stdout 没被收回来");
-        assert!(r.error.is_none());
-        println!("E2E-OK 本机执行面跑通并收回了 stdout");
+    // ════════════════════ 假通道（`KR104D2` ③ 的量具）════════════════════
 
-        // ★ `NO_TMUX` 哨兵：与远端那条**同一条判据**（看输出，不看退出码）。
-        let r2 = rt
-            .block_on(run_local_probe("printf 'NO_TMUX'".to_string()))
-            .expect("不该 Err");
-        assert!(!r2.captured, "NO_TMUX 时 captured 必须是 false");
-        assert!(
-            r2.error.as_deref().is_some_and(|e| e.contains("tmux")),
-            "NO_TMUX 的诊断要指出缺 tmux：{r2:?}"
-        );
-        println!("E2E-OK NO_TMUX 哨兵与远端同判据（看输出不看退出码）");
+    /// 一条**记账用的**假通道：记下这条通道上真实发出的每一条命令。
+    ///
+    /// ⚠ 它**不模拟 daemon 的行为** —— 只按命令名回一份形状对的应答，
+    /// 好让编排跑得下去。行为归 daemon 侧那几条真 tmux 判据。
+    #[derive(Default)]
+    struct RecordingChannel {
+        /// `(cmd, args)` 按发出的顺序。
+        sent: Mutex<Vec<(String, Value)>>,
+        /// 抓屏依次回这些内容；用完之后重复最后一条。
+        screens: Mutex<Vec<String>>,
+        /// 哪条命令要回 `Unsupported`（模拟老 daemon）。
+        unsupported: Option<&'static str>,
     }
 
-    /// ★ F08：**本机与远端逐字用同一条命令串** —— 定框 C1「一份代码两种承载」的直接判据。
-    ///
-    /// 这条比「两处都调了 `probe_command_for`」更硬：它比**产物**。
-    /// 有人给某一侧偷偷加一个参数（比如本机版不装看门狗），本条当场红。
-    #[test]
-    fn the_local_and_remote_probes_use_the_very_same_command() {
-        // 两侧的构造入口是同一个函数，所以「同一条串」= 同参数下产物相同。
-        // 这里显式跑两遍并比对，而不是只断言「代码里只有一个入口」——
-        // 后者是结构判据，这条是行为判据，两条管两件事。
-        for cfg in [None, Some("/home/u/.claude-x")] {
-            let a = probe_command_for("acct", cfg, WATCHDOG_TIMEOUT_SECS).expect("构造应成功");
-            let b = probe_command_for("acct", cfg, WATCHDOG_TIMEOUT_SECS).expect("构造应成功");
-            assert_eq!(a, b, "同参数两次构造不一致 —— 载荷不是纯函数？");
-            // 载荷里必须有那三样，否则「同一条串」是空话（两侧都空也相等）。
-            for must in ["tmux", "capture-pane", "/usage"] {
-                assert!(a.contains(must), "载荷里没有 `{must}`：{a}");
+    impl RecordingChannel {
+        fn with_screens(screens: &[&str]) -> Self {
+            Self {
+                screens: Mutex::new(screens.iter().rev().map(|s| (*s).to_string()).collect()),
+                ..Default::default()
+            }
+        }
+        fn cmds(&self) -> Vec<String> {
+            self.sent
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(c, _)| c.clone())
+                .collect()
+        }
+        fn args_of(&self, cmd: &str) -> Vec<Value> {
+            self.sent
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|(c, _)| c == cmd)
+                .map(|(_, a)| a.clone())
+                .collect()
+        }
+        fn next_screen(&self) -> String {
+            let mut g = self.screens.lock().unwrap();
+            if g.len() > 1 {
+                g.pop().unwrap_or_default()
+            } else {
+                g.last().cloned().unwrap_or_default()
             }
         }
     }
 
-    /// ★ F08 **前提触发器**：探针载荷仍然硬依赖 tmux + POSIX shell ——
-    /// 所以 Windows 那条诚实降级分支**仍然是对的**。
-    ///
-    /// 哪天 `/usage` 有了非 TUI 的取法（不再需要 tmux 抓屏），本条会红 ——
-    /// **那是好事**，那时 Windows 本机也该能探了，回来把那个分支改掉。
-    #[test]
-    fn the_probe_payload_still_requires_tmux_so_the_windows_branch_is_still_right() {
-        let cmd = probe_command_for("acct", None, WATCHDOG_TIMEOUT_SECS).expect("构造应成功");
-        for must in ["command -v tmux", "capture-pane", "setsid"] {
-            assert!(
-                cmd.contains(must),
-                "载荷里不再有 `{must}` —— **这多半是好事**：探针可能不再依赖 tmux/POSIX shell 了，\n\
-                 那么 `account_usage_local` 的 Windows 分支（今天诚实降级说「不可用」）就该重裁。\n\
-                 回 F08 重新判定那条降级还成不成立。\n载荷：{cmd}"
-            );
+    impl ProbeChannel for RecordingChannel {
+        fn call<'a>(&'a self, cmd: &'a str, args: Value) -> ProbeStepFuture<'a> {
+            self.sent
+                .lock()
+                .unwrap()
+                .push((cmd.to_string(), args.clone()));
+            Box::pin(async move {
+                if self.unsupported == Some(cmd) {
+                    // ★ **走真的分流器造这个错**，不是手搓一个长得像的：
+                    //   本条要证的正是「`CallError::Unsupported` 经那唯一一份分流规则之后，
+                    //   到用户面前是哪句话」。手搓等于把被测的那一段绕过去。
+                    return Err(super::route(
+                        &crate::inbound_client::CallError::Unsupported {
+                            cmd: cmd.to_string(),
+                            offered: vec!["ping".to_string(), "launch".to_string()],
+                        },
+                    ));
+                }
+                Ok(match cmd {
+                    "oneshot-session" => Some(serde_json::json!({
+                        "session": "ccm-oneshot-usage-z-cc",
+                        "handle": "$7",
+                        "ttlSecs": "30",
+                    })),
+                    "capture-pane" => Some(serde_json::json!({
+                        "name": "ccm-oneshot-usage-z-cc",
+                        "screen": self.next_screen(),
+                    })),
+                    "launch" => Some(serde_json::json!({ "typed": true, "created": false })),
+                    "kill" => Some(serde_json::json!({ "killed": true })),
+                    _ => None,
+                })
+            })
         }
     }
 
-    #[test]
-    fn slugify_keeps_only_safe_chars() {
-        assert_eq!(slugify_account_name("z"), "z");
-        assert_eq!(slugify_account_name("my-account_2"), "my-account_2");
-        assert_eq!(slugify_account_name("a b;rm -rf"), "abrm-rf");
-        assert_eq!(slugify_account_name("日本語"), "x"); // 全非 ASCII 字母数字 → 兜底
-        assert_eq!(slugify_account_name(""), "x");
-        // 长度截断：防止一个异常长的账号名把远端命令串撑得过长。
-        let long = "a".repeat(100);
-        assert_eq!(slugify_account_name(&long).len(), 32);
+    /// 从 `at` 起取一段**字符边界安全**的窗口。
+    ///
+    /// ⚠ 直接 `&s[at..at+N]` 在这份文件上会 panic —— 它满是中文（`'面'` 占 3 字节）。
+    /// 这不是风格问题：panic 出来的报错说的是「不是字符边界」，
+    /// 而判据要报的是「那个函数里没有转发参数」，**两句话指的修法完全不同**。
+    fn window_from(s: &str, at: usize, len: usize) -> &str {
+        let mut end = (at + len).min(s.len());
+        while end > at && !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        &s[at..end]
     }
 
-    /// ★ U8c-2a-fix：**把 `account_usage` 那一行接线钉住**（上一轮如实登记为「仍未做完」的债）。
+    /// 判据用的时间参数：**间隔 0**，别让判据去等 16 秒真 sleep。
+    fn fast() -> ProbeTiming {
+        ProbeTiming {
+            interval_ms: 0,
+            still_polls: 2,
+            startup_max_polls: 4,
+            render_max_polls: 4,
+            ..ProbeTiming::PRODUCTION
+        }
+    }
+
+    // ════════════════════ `KR104D2` ════════════════════
+
+    /// ★★ `KR104D2` 的正题：**整条编排恰好拨一次号，而在那一条通道上往返很多次。**
     ///
-    /// 上一轮抽出纯函数只把接缝从「一整段」缩成一行一个 token —— 代码审计实测，把
-    /// `config_dir.as_deref()` 改成 `None`（恒当账号 0）或写死别的号，
-    /// **731 条 Rust + 1168 条 TS 全绿**。那正是这套设计从头到尾要防的形态：
-    /// **探到别的号、UI 标成本账号 = 静默串号**。
+    /// # 🔴 判的是「几次连接」，不是「花了多久」
     ///
-    /// # 为什么是源码守卫，以及它证明不了什么
+    /// 件文件逐字点名了这一条：耗时是环境噪声。这里数的是两个**整数**：
+    /// 拨号次数（必须恰好 1）与往返次数（必须显著大于 1）。
     ///
-    /// 「这个 async tauri 命令有没有把它收到的参数转发下去」**在 Rust 类型里表达不了**
-    /// —— 换成任何一层包装，变异只会跟着下移一层（审计试过两种写法，都杀不掉）。
-    /// 真正的行为判据要让 `usage-probe` 的 e2e 由真接线驱动，而那条路今天走不通：
-    /// e2e 用的是 `FAKECLAUDE` stand-in，而 `probe_payload_for` 里的启动器来自
-    /// `agent.default_launcher()`（恒 `claude`）—— 沙箱里没有真 claude。
+    /// # 它逮的那一形
     ///
-    /// ⇒ 退而求其次：**钉住那一行的源码形态**。它是**约定不是事实**（同
-    /// `protocol_doc_guard` 的 `doc_anchor`、`TS_HALF` 那一族），能挡住的是
-    /// 「顺手把参数换成常量」这一类改动，挡不住「换个名字继续错」。**比没有强，但别读成证明。**
-    #[test]
-    fn account_usage_actually_forwards_the_config_dir_it_received() {
-        let src = guard_core::production_code(include_str!("account_usage.rs"));
-        // 只数**调用点** —— `fn probe_command_for(` 那个定义也含同一串，不能算进来。
-        //
-        // ⚠ **括号要配平**（2026-08-03 复盘 P3 实测修的）：初版取到**第一个** `)` 为止，
-        // 于是 `probe_command_for(&slug, None, watchdog_for(config_dir.as_deref()))`
-        // 这种形态里，`config_dir` 从**第三个实参**漏进窗口 ⇒ 第二个实参明明是 `None`
-        // （恒当账号 0 = 静默串号，正是本条要防的），守卫却 16 passed 全绿。
-        // 现在按括号深度取完整实参表，再按**顶层逗号**切开，只看**第二个**实参。
-        let calls: Vec<Vec<String>> = src
-            .match_indices("probe_command_for(")
-            .filter(|(i, _)| !src[..*i].ends_with("fn "))
-            .map(|(i, _)| {
-                let rest = &src[i + "probe_command_for(".len()..];
-                let mut depth = 0usize;
-                let mut args: Vec<String> = vec![String::new()];
-                for c in rest.chars() {
-                    match c {
-                        '(' | '[' => depth += 1,
-                        ')' | ']' if depth == 0 => break,
-                        ')' | ']' => depth -= 1,
-                        ',' if depth == 0 => {
-                            args.push(String::new());
-                            continue;
-                        }
-                        _ => {}
-                    }
-                    args.last_mut().unwrap().push(c);
-                }
-                args.into_iter().map(|a| a.trim().to_string()).collect()
+    /// `§0a` 的阻断：走 CLI 面**每抓一屏一次 SSH 握手** ⇒ 上限 12+20 轮 ⇒ 最多 36 次握手
+    /// vs `EXEC_TIMEOUT_SECS = 25` ⇒ 结构上超时。把 `dial()` 挪进抓屏那个循环里
+    /// （= 退回 CLI 面的形状），本条第一格当场红。
+    #[tokio::test]
+    async fn the_whole_probe_dials_once_and_talks_many_times() {
+        let dials = Arc::new(AtomicUsize::new(0));
+        // 前两屏相同但等于基线 ⇒ 不算稳定；之后换一屏并静止 ⇒ 稳定。
+        let ch: Arc<RecordingChannel> =
+            Arc::new(RecordingChannel::with_screens(&["", "", "面板出来了"]));
+        let mk = ch.clone();
+        let counter = dials.clone();
+        let dial = move || {
+            counter.fetch_add(1, Ordering::SeqCst);
+            Ok(mk.clone() as Arc<dyn ProbeChannel>)
+        };
+        let r = probe_over_frames(&dial, "z", "unset X; claude", fast()).await;
+
+        assert_eq!(
+            dials.load(Ordering::SeqCst),
+            1,
+            "整条编排拨了 {} 次号 —— `KR104D2` 要的正是「一条连接上多次往返」。\n\
+             每抓一屏拨一次 = 退回 CLI 面那个形状（现打上限 12+20 轮 ⇒ 最多 36 次握手\n\
+             vs EXEC_TIMEOUT_SECS = 25 ⇒ 结构上超时）。",
+            dials.load(Ordering::SeqCst)
+        );
+        let cmds = ch.cmds();
+        assert!(
+            cmds.len() > 6,
+            "一条通道上只往返了 {} 次 —— 编排塌了，本条下面几格在空转：{cmds:?}",
+            cmds.len()
+        );
+        // ★ 顺序按**数据**断（真实发出的命令序列），不是扫源码。
+        assert_eq!(
+            cmds.first().map(String::as_str),
+            Some("oneshot-session"),
+            "第一条不是起会话：{cmds:?}"
+        );
+        assert_eq!(
+            cmds.last().map(String::as_str),
+            Some("kill"),
+            "最后一条不是收尾杀会话 —— 看门狗是保险丝不是清场机制：{cmds:?}"
+        );
+        assert_eq!(
+            cmds.iter().filter(|c| *c == "launch").count(),
+            2,
+            "送键不是恰好两次（启动载荷 ＋ `/usage`）：{cmds:?}"
+        );
+        assert!(
+            cmds.iter().filter(|c| *c == "capture-pane").count() >= 4,
+            "抓屏次数太少 —— 稳定轮询没跑起来，本条量不到「一条连接上多次往返」：{cmds:?}"
+        );
+        // 载荷与 `/usage` 都真的送出去了，而且顺序不能反。
+        let sent: Vec<String> = ch
+            .args_of("launch")
+            .iter()
+            .map(|a| {
+                a.get("payload")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string()
             })
             .collect();
-        // ★ **F08 改写**（不是放宽）：原来钉「恰好 1 个调用点」，那个 `1` 是
-        // 「只有一条路」的**代理指标**。F08 给探针加了**第二个合法承载**（本机执行面，
-        // 与远端逐字用同一条命令串 —— 定框 C1「一份代码两种承载」）⇒ 代理指标失效，
-        // 而它要钉的性质（**所有走探针的路都过同一个构造入口**）**照样成立**。
-        //
-        // ⇒ 换成更强的写法：不只数个数，还**点名**那两个入口。
-        // 出现第三条路 ⇒ 红；把某一条改成绕过 `probe_command_for` 的写法 ⇒ 也红
-        // （因为它就不在 `calls` 里了，个数变 1）。
-        assert_eq!(
-            calls.len(),
-            2,
-            "生产段里 `probe_command_for` 的调用点不是恰好两个（实得 {}）—— \
-             今天只有两条合法承载：远端 `account_usage`（SSH exec）与本机 \
-             `account_usage_local`（`sh -c`）。多一个 = 有第三条路；少一个 = 有人绕过了这个入口。",
-            calls.len()
-        );
-        // 点名两个入口：它们必须各自在自己那个函数里调它（防「两个调用点都挤在同一条路上」）。
-        for owner in [
-            "pub async fn account_usage(",
-            "pub async fn account_usage_local(",
-        ] {
-            let at = src
-                .find(owner)
-                .unwrap_or_else(|| panic!("生产段里找不到 `{owner}` —— 承载少了一个"));
-            let body = &src[at..src.len().min(at + 1600)];
-            assert!(
-                body.contains("probe_command_for("),
-                "`{owner}` 里没有调 `probe_command_for` —— 它自己搓了一条载荷？\n\
-                 那就破了 C1「一份代码两种承载」：两侧会各自漂。"
-            );
-        }
-        // `probe_command_for(slug, config_dir, watchdog)` —— 三个实参，配平后必须切出三段。
-        assert_eq!(
-            calls[0].len(),
-            3,
-            "实参切成了 {} 段（应为 3）：{:?} —— 括号配平/切分坏了，下面那条会看错格子",
-            calls[0].len(),
-            calls[0]
-        );
+        assert_eq!(sent.len(), 2, "送键实参取不到：{sent:?}");
         assert!(
-            calls[0][1].contains("config_dir"),
-            "`account_usage` 没有把它收到的 `config_dir` 转发下去（第二个实参：`{}`；\
-             整个实参表：{:?}）—— 恒当账号 0 或写死别的号 = 静默串号，\
-             而其余全部判据都会保持绿",
-            calls[0][1],
-            calls[0]
+            sent[0].contains("claude"),
+            "第一次送的不是启动载荷：{sent:?}"
         );
+        assert_eq!(
+            sent[1], USAGE_SLASH_COMMAND,
+            "第二次送的不是 `/usage`：{sent:?}"
+        );
+        // 几何真的跟着起会话那一次发出去了（不给就是 80x24，`/usage` 那张表会被折断）。
+        let one = ch.args_of("oneshot-session");
+        assert_eq!(one.len(), 1, "起会话不是恰好一次：{one:?}");
+        assert_eq!(one[0].get("width").and_then(|v| v.as_str()), Some("200"));
+        assert_eq!(one[0].get("height").and_then(|v| v.as_str()), Some("50"));
+        assert_eq!(
+            one[0].get("slug").and_then(|v| v.as_str()),
+            Some("usage-z"),
+            "slug 形状变了 —— daemon 会在它前后加 `ccm-oneshot-` 与 `-cc`"
+        );
+        // 抓回来的那一屏原样交出去（零解析，`R59`）。
+        assert!(r.captured, "应当抓到了：{r:?}");
+        assert_eq!(
+            r.raw.as_deref(),
+            Some("面板出来了"),
+            "原文没被原样带出来：{r:?}"
+        );
+        assert!(r.error.is_none());
     }
 
-    /// ★ U8c-2a（代码审计 R1–R4 的收口）：**两态各自的载荷逐字节钉住**。
+    /// ★ `KR104D2` ①「编排退回 CLI 面 ⇒ 红」的**零命中守卫**。
     ///
-    /// 这条杀掉的是「载荷编译搬进 Rust 之后接线没人管」那一类：审计实测
-    /// 「只清一个嵌套 env 键」「换掉启动器」两个变异在全绿门禁下存活过。
+    /// 本模块的生产段里**不许再出现**任何渲染 shell 的痕迹。
+    /// 这与上面那条互补：那条断「今天真的走帧面」，这条断「盘上没有第二条路」——
+    /// 同 `tmux_daemon_gate_guard` 的回潮闸（`K-R72` 那两条）的形状。
     ///
-    /// 它同时接住了搬家前那条 TS 测试（`launchPayload` 逐字节）钉的三件事：
-    /// ① 账号隔离真的通过 `CLAUDE_CONFIG_DIR` 生效（**不是裸 claude** —— 那会探到错账号
-    /// 的用量且看起来完全正常）· ② 嵌套 env 被清掉 · ③ 引号形态。
-    ///
-    /// ⚠ **键序与 TS `AGENT_PROFILE.nestedEnvVars` 同序是刻意的**（见
-    /// `adapter/claude_code.rs::CLAUDE_NESTED_ENV` 头注）：搬家前后送到远端的字节**完全相同**。
+    /// ⚠ **针在测试段、扫的是生产段**（`production_code` 剥掉测试段）⇒ 本条不会
+    /// 在自己的文本里找到自己。
     #[test]
-    fn probe_payload_is_byte_exact_for_both_account_states() {
-        const NESTED: &str =
-            "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; ";
-        // 这两串**逐字节等于搬家前 TS `buildUsageProbePayload` 的产出**（键序刻意同 TS）。
-        assert_eq!(
-            probe_payload_for(Some("/h/.claude-accts/z")).unwrap(),
-            format!("export CLAUDE_CONFIG_DIR='/h/.claude-accts/z'; {NESTED}claude")
-        );
-        let zero = probe_payload_for(None).unwrap();
-        assert_eq!(zero, format!("unset CLAUDE_CONFIG_DIR; {NESTED}claude"));
-        // ★ 最要紧的一条：账号 0 **绝不**退化成裸载荷（那会继承远端 rc 里的默认号 = 静默串号）。
+    fn the_probe_never_falls_back_to_rendering_a_shell_string() {
+        let prod = guard_core::production_code(include_str!("account_usage.rs"));
         assert!(
-            !zero.contains("export CLAUDE_CONFIG_DIR="),
-            "账号 0 竟带上了 export：\n{zero}"
+            prod.len() > 3_000,
+            "剥完只剩 {} 字节 —— 剥法坏了，本条在空转",
+            prod.len()
         );
-        // 接缝判据：那条载荷真的被塞进了整条命令，中间这一步不是摆设。
-        let named = probe_payload_for(Some("/h/.claude-accts/z")).unwrap();
-        let cmd = probe_command_for("z", Some("/h/.claude-accts/z"), 30).unwrap();
-        assert!(
-            cmd.contains(&ssh_source::shell_quote(&named)),
-            "命令里找不到那条载荷：\n{cmd}"
-        );
-    }
-
-    /// 空 configDir 是坏数据 ⇒ 命令根本构造不出来（**不发起 SSH**）。
-    #[test]
-    fn empty_config_dir_never_produces_a_probe_command() {
-        assert!(probe_command_for("z", Some(""), 30).is_err());
-        assert!(probe_command_for("z", Some("/h/a;rm -rf /"), 30).is_err());
-        // 反向自检：合法输入必须构造得出来，否则上面两条是空转。
-        assert!(probe_command_for("z", Some("/h/.claude-accts/z"), 30).is_ok());
-    }
-
-    #[test]
-    fn probe_cmd_uses_dedicated_prefix_and_exact_target() {
-        let cmd =
-            build_usage_probe_cmd("z", "export FOO=1; claude", WATCHDOG_TIMEOUT_SECS).unwrap();
-        assert!(cmd.contains("ccm-usage-z"), "会话名须含专属前缀+slug");
-        // exact_target 惯例（=name:）——同仓库其余 tmux 命令一致，防前缀/glob 误命中。
-        assert!(
-            cmd.contains("'=ccm-usage-z:'"),
-            "target 须是 =name: 精确形式"
-        );
-        // Phase D 后端审计：这个串必须由 `tmux::exact_target` **真的产出**，不是手抄一个长得像
-        // 的字符串。对拍真函数的返回值——手抄版一旦与 `exact_target` 的规则漂移（比如它日后
-        // 改了引号策略），这条会红。
-        assert!(
-            cmd.contains(&crate::tmux::exact_target("ccm-usage-z").unwrap()),
-            "target 须由 tmux::exact_target 产出，不得手抄"
-        );
-    }
-
-    /// Phase D 后端审计的**订正**：最初这条测试断言"空 slug → Gate 1 拒绝"，实测红了——
-    /// 因为会话名是 `ccm-usage-{slug}`，常量前缀让它**恒非空**，Gate 1（只拒空 target）
-    /// 在本构造点结构上就不可达。所以走 `exact_target` 的真实收益**不是**空值防护，而是
-    /// `=name:` 引号规则的单一事实来源：它日后若改引号策略，本模块自动跟随、不会漂移。
-    /// 这条测试锁的就是这件事——顺带钉死"前缀保证非空"这个让 Gate 1 不可达的前提，
-    /// 万一有人把前缀改成可空的，这里会红。
-    #[test]
-    fn probe_cmd_target_tracks_exact_target_and_prefix_keeps_gate1_unreachable() {
-        for slug in ["z", "", "collision"] {
-            let cmd = build_usage_probe_cmd(slug, "claude", WATCHDOG_TIMEOUT_SECS)
-                .expect("前缀恒非空 → Gate 1 不可达，构造不该失败");
-            let expected = crate::tmux::exact_target(&format!("ccm-usage-{slug}")).unwrap();
-            assert!(
-                cmd.contains(&expected),
-                "slug={slug:?} 的 target 须与 exact_target 产出逐字一致"
-            );
-        }
-    }
-
-    #[test]
-    fn probe_cmd_kills_stale_session_before_creating() {
-        let cmd = build_usage_probe_cmd("z", "claude", WATCHDOG_TIMEOUT_SECS).unwrap();
-        let kill_pos = cmd.find("tmux kill-session").expect("应先清场");
-        let new_pos = cmd.find("tmux new-session").expect("应再建会话");
-        assert!(
-            kill_pos < new_pos,
-            "清场必须先于建会话（同名探针名字前缀专属，可安全无条件清）"
-        );
-    }
-
-    #[test]
-    fn probe_cmd_watchdog_is_setsid_detached_and_posix_only() {
-        let cmd = build_usage_probe_cmd("z", "claude", WATCHDOG_TIMEOUT_SECS).unwrap();
-        assert!(
-            cmd.contains("setsid"),
-            "看门狗须用 setsid 放进新 session，独立于本次 SSH exec 通道存活"
-        );
-        assert!(
-            cmd.contains(&format!("sleep {WATCHDOG_TIMEOUT_SECS}")),
-            "看门狗超时须用配置的常量,不能是魔法数字"
-        );
-        // Phase D 后端审计（重要）：整条探针命令由远端 sshd 用**用户的登录 shell** 执行
-        // （russh `channel.exec`），那可能是 dash。`disown` 是 bash/zsh builtin、POSIX sh 没有，
-        // 且在 `setsid` 之后毫无作用（新 session 收不到控制终端的 SIGHUP）。这条断言防它被
-        // "顺手加回来"——不是风格洁癖，是真会在 dash 登录 shell 上打出 `disown: not found`。
-        assert!(
-            !cmd.contains("disown"),
-            "不得使用 disown（非 POSIX，且 setsid 之后是多余的）"
-        );
-        // 同理：看门狗内层用 `sh -c` 不用 `bash -c`——远端不保证装了 bash。
-        assert!(
-            !cmd.contains("bash -c"),
-            "看门狗内层不得写死 bash，远端不保证有"
-        );
-    }
-
-    #[test]
-    fn probe_cmd_sends_payload_then_usage_with_quiescence_waits_between() {
-        let cmd = build_usage_probe_cmd("z", "export X=1; claude", WATCHDOG_TIMEOUT_SECS).unwrap();
-        let payload_pos = cmd.find("export X=1").expect("须发送启动 payload");
-        let usage_pos = cmd.find("'/usage'").expect("须发送 /usage 斜杠命令");
-        assert!(
-            payload_pos < usage_pos,
-            "先起 claude 再发 /usage，顺序不能反"
-        );
-        // 两次 send-keys 之间必须有稳定轮询（不是固定 sleep），断言轮询逻辑的关键片段在两次
-        // send-keys 之间各出现一次。
-        let between = &cmd[payload_pos..usage_pos];
-        assert!(
-            between.contains("capture-pane"),
-            "两次 send-keys 之间应有抓屏轮询,不是纯 sleep"
-        );
-    }
-
-    #[test]
-    fn probe_quiescence_requires_the_screen_to_change_before_accepting_stability() {
-        // ★ E42 回归钉（2026-07-31 用户实测：「抓到了屏幕但认不出格式」）。
-        //
-        // 这条只钉**结构**（两半判据都在、基线取的位置对）。判据的**行为**由
-        // `e2e/usage-probe-acceptance.sh` 场景 4（慢速 stand-in）钉——那才是能证伪它的地方，
-        // 秒回的 stand-in 无论判据多松都会绿。两处分工写在 `quiescence_wait` 的文档注释里。
-        let cmd = build_usage_probe_cmd("z", "claude", WATCHDOG_TIMEOUT_SECS).unwrap();
-        assert!(
-            cmd.contains(r#"[ "$cur" != "$base" ]"#),
-            "稳定判据须含「相对基线变过」这一半（fail-safe，理由见 quiescence_wait 注释）：{cmd}"
-        );
-        assert!(
-            cmd.contains(&format!("[ $same -ge {QUIESCENCE_STILL_POLLS} ]")),
-            "稳定判据须含「连续静止够久」这一半——**修复 E42 的正是它**：{cmd}"
-        );
-
-        // 「变过」只有配上「每次 send-keys 前重取基线」才成立。基线若只取一次，第二段等待会
-        // 拿第一段结束时的旧屏当基线——那时 claude 已经起来了，判据退化回原来的坏行为。
-        let sends: Vec<usize> = cmd
-            .match_indices("tmux send-keys")
-            .map(|(i, _)| i)
-            .collect();
-        assert_eq!(
-            sends.len(),
-            2,
-            "应恰好两次 send-keys（payload + /usage）：{cmd}"
-        );
-        for (n, &pos) in sends.iter().enumerate() {
-            let before = &cmd[..pos];
-            let base_pos = before
-                .rfind("base=\"$(tmux capture-pane")
-                .unwrap_or_else(|| panic!("第 {} 次 send-keys 之前没有取基线：{cmd}", n + 1));
-            assert!(
-                !before[base_pos..].contains("while ["),
-                "第 {} 次 send-keys 的基线必须紧邻它之前取，中间不能夹一轮等待",
-                n + 1
-            );
-        }
-    }
-
-    #[test]
-    fn time_budget_ordering_holds() {
-        // 三层超时必须**严格套娃**，否则外层会把内层掐死、让被保护的逻辑根本跑不完。
-        // ★ 这条测试是被真事逼出来的：E42 之前 `emit_usage_probe_cmd_for_e2e` 给三个场景
-        // 统一发 3s 看门狗，旧判据下自然完成约 2s 侥幸躲过；判据一改成"静止 3s"，
-        // 正常路径的会话就在轮询跑完前被自己的看门狗杀掉，抓回来一句
-        // "no server running"。**当时没有任何东西钉住这个关系。**
-        let interval_ms = u64::from(QUIESCENCE_POLL_INTERVAL_MS);
-        let poll_budget_ms =
-            interval_ms * u64::from(STARTUP_MAX_POLLS) + interval_ms * u64::from(RENDER_MAX_POLLS);
-        let exec_ms = EXEC_TIMEOUT_SECS * 1000;
-        let watchdog_ms = u64::from(WATCHDOG_TIMEOUT_SECS) * 1000;
-
-        // ① 两段轮询跑满也要装得进 exec 硬超时，且留出余量给 SSH 往返 + 建/清会话。
-        //    余量取轮询预算的 1/4——远端链路慢起来不是几十毫秒的事。
-        assert!(
-            poll_budget_ms + poll_budget_ms / 4 < exec_ms,
-            "轮询预算 {poll_budget_ms}ms(+25% 余量) 撑破了 exec 硬超时 {exec_ms}ms：\
-远端稍慢就会被 exec 先掐断，探针永远拿不到面板"
-        );
-        // ② exec 先放弃，看门狗后收尸——反过来会留下无人清理的探针会话。
-        assert!(
-            exec_ms < watchdog_ms,
-            "exec 超时 {exec_ms}ms 必须早于看门狗 {watchdog_ms}ms，否则会话会被提前杀掉"
-        );
-        // ③ 判定"静止"所需的时长必须显著短于**单段**上限，否则该判据永远无法满足，
-        //    每段都会空跑到上限——功能上还对，但每次探测都白等满预算。
-        let still_ms = interval_ms * u64::from(QUIESCENCE_STILL_POLLS);
-        for (name, cap) in [("startup", STARTUP_MAX_POLLS), ("render", RENDER_MAX_POLLS)] {
-            let cap_ms = interval_ms * u64::from(cap);
-            assert!(
-                still_ms * 2 <= cap_ms,
-                "{name} 段上限 {cap_ms}ms 容不下两倍静止时长 {still_ms}ms：判据几乎必然打不中，等于退化成固定 sleep"
-            );
-        }
-    }
-
-    #[test]
-    fn poll_interval_string_is_derived_not_double_written() {
-        // 反向自检：改 MS 常量，sleep 的字面量必须跟着变（否则就是又一个双写点）。
-        assert_eq!(poll_interval_secs(), "0.500");
-        let cmd = build_usage_probe_cmd("z", "claude", WATCHDOG_TIMEOUT_SECS).unwrap();
-        assert!(cmd.contains(&format!("sleep {}", poll_interval_secs())));
-    }
-
-    #[test]
-    fn probe_cmd_cleans_up_session_after_capture() {
-        let cmd = build_usage_probe_cmd("z", "claude", WATCHDOG_TIMEOUT_SECS).unwrap();
-        let capture_pos = cmd.rfind("capture-pane").expect("须抓屏");
-        let final_kill_pos = cmd.rfind("tmux kill-session").expect("须清理");
-        assert!(
-            final_kill_pos > capture_pos,
-            "抓屏之后必须清理会话，不能残留"
-        );
-    }
-
-    #[test]
-    fn probe_cmd_falls_back_to_no_tmux_sentinel() {
-        let cmd = build_usage_probe_cmd("z", "claude", WATCHDOG_TIMEOUT_SECS).unwrap();
-        assert!(cmd.contains("NO_TMUX"), "无 tmux 时须走既有哨兵惯例");
-    }
-
-    /// F10 Phase D 审计（后端架构，重要）：此前这条测试是伪验证——只断言 `cmd.contains("send-keys")`，
-    /// 跟"payload 有没有被正确转义"毫无关系，含单引号的攻击性 payload 照样能通过。改成两层真验证：
-    /// ①`cmd` 里必须**原样**包含 `shell_quote` 对同一输入的产出（证明确实调过同一套转义规则，
-    /// 不是自己另写了一套或漏调）；②把转义后的字符串真的丢给 `/bin/sh` 解析，确认 shell 眼里
-    /// 看到的就是原始 payload 一字不差（纵深防御——即使①字符串匹配通过，也不能排除转义规则
-    /// 本身有漏洞；这一步验证的是"shell 怎么理解它"而不是"我们怎么拼它"）。
-    #[test]
-    fn probe_payload_and_target_are_shell_quoted() {
-        let adversarial_payloads = [
-            "export X='a'\"'\"'b'; claude",
-            "$(rm -rf /tmp/should-not-run) `whoami`; echo done",
-            "line1\nline2\twith\ttabs and 'quotes'",
+        // 运行时拼，免得命中本文件自己的说明文字。
+        let banned = [
+            (
+                format!("connect_and_exec{}", "_cmd"),
+                "一次性 SSH exec —— 那就是每抓一屏一次握手",
+            ),
+            (
+                format!("shell{}", "_quote"),
+                "渲染 shell 串才需要引用；帧面 argv 直传",
+            ),
+            (
+                format!("tmux {}", "new-session"),
+                "建会话归 daemon 的 `oneshot-session`",
+            ),
+            (
+                format!("tmux {}", "send-keys"),
+                "送键归 daemon 的 `launch send-into`",
+            ),
+            (
+                format!("tmux {}", "capture-pane"),
+                "抓屏归 daemon 的 `capture-pane`",
+            ),
+            (
+                format!("tmux {}", "kill-session"),
+                "杀会话归 daemon 的 `kill`",
+            ),
+            (
+                format!("set{}", "sid"),
+                "看门狗归 daemon 的 `oneshot-session`",
+            ),
+            (
+                format!("NO{}", "_TMUX"),
+                "那是 shell 串时代的哨兵；今天 daemon 回 `no_tmux` 码",
+            ),
         ];
-        for payload in adversarial_payloads {
-            let cmd = build_usage_probe_cmd("z", payload, WATCHDOG_TIMEOUT_SECS).unwrap();
-            let payload_q = ssh_source::shell_quote(payload);
-            assert!(
-                cmd.contains(&payload_q),
-                "payload 未按 shell_quote 规则原样嵌入：{payload:?}"
-            );
-            let out = std::process::Command::new("sh")
-                .arg("-c")
-                .arg(format!("printf '%s' {payload_q}"))
-                .output()
-                .expect("sh 应该可用（本仓库 e2e 套件同样依赖 sh/bash 标配）");
-            assert_eq!(
-                String::from_utf8_lossy(&out.stdout),
-                payload,
-                "shell_quote 未能安全往返（shell 解析出来的内容跟原始 payload 不一致）：{payload:?}"
-            );
-        }
-
-        // exact-target（`={session}:`）同理：账号名经 `slugify_account_name` 清洗后只剩
-        // `[A-Za-z0-9_-]`，这里直接验证 quoting 机制本身对合法 slug 没坏——不是重复验证
-        // slugify（那是它自己的测试职责）。
-        let cmd = build_usage_probe_cmd("z", "claude", WATCHDOG_TIMEOUT_SECS).unwrap();
-        let target_q = ssh_source::shell_quote("=ccm-usage-z:");
+        let hits: Vec<&str> = banned
+            .iter()
+            .filter(|(n, _)| prod.contains(n.as_str()))
+            .map(|(_, why)| *why)
+            .collect();
         assert!(
-            cmd.contains(&target_q),
-            "exact-target 未按 shell_quote 规则原样嵌入"
+            hits.is_empty(),
+            "本模块的生产段里又长出了渲染 shell 的痕迹：{hits:?}\n\
+             `KR104D2` ①：编排退回 CLI 面就是红。整条编排今天只许由帧面命令组合而成。"
+        );
+        // ★ 反向自检：这把尺子真的会咬人 —— 不然上面那一格是空真。
+        let synthetic = format!("let c = format!(\"tmux {} -t x\");", "capture-pane");
+        assert!(
+            banned.iter().any(|(n, _)| synthetic.contains(n.as_str())),
+            "针认不出一条摆在面前的抓屏 shell 串 —— 上面那一格是摆设"
         );
     }
 
-    /// F10 真机验收的**输入源**（这套惯例来自 F04 那条 `emit_guarded_commands_for_e2e`，  〔散文墓碑〕
-    /// 它已随 `K-R72` 走了 —— 惯例本身还在，本条就是它今天的活体）：打印真实
-    /// `build_usage_probe_cmd` 产出的命令串，供 `e2e/usage-probe-acceptance.sh` 提取、在隔离
-    /// tmux socket 上验证真实行为——不手搓等价命令。看门狗超时故意传短值（真机 e2e 要能在合理
-    /// 时间内跑完，不代表生产的 30s 可配置）。`#[ignore]`——只由该脚本用
-    /// `cargo test --lib -- --ignored --nocapture emit_usage_probe_cmd_for_e2e` 触发。
-    #[test]
-    #[ignore]
-    fn emit_usage_probe_cmd_for_e2e() {
-        // 看门狗**按场景分开**：正常路径必须用生产值，短看门狗只给专门测看门狗的那个场景。
-        //
-        // ★ 2026-07-31 修：原先三个场景**统一用 3s**。那在旧的稳定判据下勉强成立（自然完成
-        // 约 2s，刚好赶在自毁前），E42 把判据改成"静止 3s"后自然完成变成 ~7s ⇒ 会话在轮询
-        // 跑完前就被自己的看门狗杀掉，正常路径场景整个失去意义（实测：抓回来的是
-        // "no server running"）。**根子上就不该让正常路径的看门狗短于自然完成时间**
-        // ——那让一个本该测编排的场景变成在测竞态。
-        const E2E_SHORT_WATCHDOG_SECS: u32 = 3;
-        for (name, payload, watchdog) in [
-            (
-                "normal",
-                "unset CLAUDECODE; FAKECLAUDE",
-                WATCHDOG_TIMEOUT_SECS,
-            ),
-            (
-                "collision",
-                "unset CLAUDECODE; FAKECLAUDE",
-                WATCHDOG_TIMEOUT_SECS,
-            ),
-            // 慢速 stand-in：收到 /usage 后先停几秒再吐面板，复现 E42 的真实失败形态。
-            (
-                "slow",
-                "unset CLAUDECODE; SLOWCLAUDE",
-                WATCHDOG_TIMEOUT_SECS,
-            ),
-            (
-                "watchdog",
-                "unset CLAUDECODE; FAKECLAUDE",
-                E2E_SHORT_WATCHDOG_SECS,
-            ),
-        ] {
-            // 各场景用**不同 slug**（会话名互不相同）——同一 slug 跨场景复用会让上一个场景
-            // 遗留的看门狗在下一个场景刚建好同名会话时杀过来，制造纯脚本层面的竞态假象。
-            println!(
-                "{name}\t{}",
-                build_usage_probe_cmd(name, payload, watchdog).unwrap()
+    // ════════════════════ `KR104D3` ════════════════════
+
+    /// ★★ `KR104D3` ③：**老 daemon 说得出「我不认得」** —— 不静默失败、不挂住。
+    ///
+    /// 三格：① 失败（不是假装成功）· ② 话里指出「重装这台机器的后端」
+    /// · ③ **当场返回**（假通道在这一档不 await 任何东西；挂住的话本条会超时红）。
+    #[tokio::test]
+    async fn an_old_backend_says_it_does_not_know_the_command() {
+        for (missing, step) in [("oneshot-session", "起会话"), ("capture-pane", "抓屏")] {
+            let ch = Arc::new(RecordingChannel {
+                unsupported: Some(missing),
+                screens: Mutex::new(vec!["x".to_string()]),
+                ..Default::default()
+            });
+            let mk = ch.clone();
+            let dial = move || Ok(mk.clone() as Arc<dyn ProbeChannel>);
+            let r = probe_over_frames(&dial, "z", "claude", fast()).await;
+            assert!(
+                !r.captured,
+                "`{missing}`（{step}）不被支持时居然回了 captured=true —— 那是假装成功：{r:?}"
+            );
+            let msg = r.error.clone().unwrap_or_default();
+            assert!(
+                msg.contains("重装"),
+                "`{missing}` 不被支持时那句话没告诉用户该怎么办（重装这台机器的后端）：{msg}"
+            );
+            assert!(
+                msg.contains(missing),
+                "那句话没点名是哪条命令不被支持：{msg}"
+            );
+            assert!(
+                msg.contains("旧版本"),
+                "那句话不是从分流器来的 —— 分流器对这一档的原话里带「多半是旧版本」：{msg}"
             );
         }
     }
 
-    // ── `KR101D4`：编排只用既有命令组合，不新开一条「大动作」子命令 ──────────────
+    /// ★ `KR104D3` ③ 的另一半：**发之前就拒**，一个字节都不发。
+    ///
+    /// 这一格由 `inbound_client` 的 `accepts` 买（`hello.commands` 里没有 ⇒ 直接
+    /// `CallError::Unsupported`）。本条钉的是**本模块把它接住并分成单独一档**——
+    /// 压进 `Other` 那一档，用户看到的就只是一句「远端拒绝」，而真相是「后端太旧」。
+    #[test]
+    fn the_unsupported_case_is_a_bucket_of_its_own() {
+        let old = describe(&ProbeStepError::NothingWasSent("原话".into()));
+        let other = describe(&ProbeStepError::Refused("原话".into()));
+        assert_ne!(old, other, "两档讲出来的话一样 —— 那就等于没分档");
+        assert!(old.contains("重装"), "老后端那一档没说该怎么办：{old}");
+        assert_eq!(other, "原话", "其它失败那一档不该被加工");
+        // 反向：`ProbeStepError` 只有这两档，加第三档时本条会红（编译期）。
+        for e in [
+            ProbeStepError::NothingWasSent("m".into()),
+            ProbeStepError::Refused("m".into()),
+        ] {
+            assert_eq!(e.message(), "m");
+        }
+        // ★★ **两档真的由那唯一一份分流规则分的**，不是本模块自己判的。
+        //    换一条 `CallError` 进去，档位必须跟着分流器的裁定走。
+        use crate::inbound_client::CallError;
+        assert!(
+            matches!(
+                super::route(&CallError::Unsupported {
+                    cmd: "capture-pane".into(),
+                    offered: vec![],
+                }),
+                ProbeStepError::NothingWasSent(_)
+            ),
+            "`Unsupported` 没落进「一个字节都没发出去」那一档"
+        );
+        assert!(
+            matches!(
+                super::route(&CallError::Remote {
+                    code: "wrong_owner".into(),
+                    message: "sid=".into(),
+                }),
+                ProbeStepError::Refused(_)
+            ),
+            "`Remote` 落错档了 —— 那是「daemon 说过话了」，不许被当成没发出去"
+        );
+    }
 
-    /// daemon 那棵树的 `main.rs` 原文（现打，不抄名单）。
-    fn daemon_main_rs() -> String {
+    // ════════════════════ `KR104D1` / `K33`：编排是组合 ════════════════════
+
+    /// daemon 那棵树的 `inbound.rs` 原文（现打，不抄名单）。
+    fn daemon_inbound_rs() -> String {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根")
+            .join("remote-daemon-proto/src/inbound.rs");
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}: {e}", p.display()))
+    }
+
+    /// daemon `main.rs` 的 `SUBCOMMANDS`（CLI 那一面，现算）。
+    fn daemon_subcommands() -> Vec<String> {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("仓根")
             .join("remote-daemon-proto/src/main.rs");
-        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}: {e}", p.display()))
-    }
-
-    /// 从 daemon `main.rs` 的 `SUBCOMMANDS` 那个数组里**现算**出它今天认哪些子命令。
-    ///
-    /// ⚠ 只取那个 `const` 的**数组体**（`&[` … `];`），不扫整份文件 ——
-    /// 整份文件里到处是 `"--xxx"` 字面量（分派臂 · 自检夹具 · 注释），
-    /// 拿整份文件当人群会让下面「没有整条探针那条命令」恒绿。
-    fn daemon_subcommands() -> Vec<String> {
-        let src = daemon_main_rs();
+        let src =
+            std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}: {e}", p.display()));
         let head = "const SUBCOMMANDS: &[&str] = &[";
         let at = src
             .find(head)
@@ -1155,9 +993,6 @@ mod tests {
             .expect("SUBCOMMANDS 数组没有收尾 `];`");
         let body = &src[body_start..body_start + body_len];
         let mut out = Vec::new();
-        // ⚠ 只收「整行就是一个字面量」的行 —— 注释行以 `//` 打头，天然进不来。
-        //   刻意**不**在这里再写一份剥注释（`structural_scan::TRANSFORMERS` 数着那件事，
-        //   本轮实测：写了那一句当场被它逮住，第 19 份剥法）。
         for line in body.lines() {
             let t = line.trim();
             if let Some(rest) = t.strip_prefix('"') {
@@ -1169,40 +1004,58 @@ mod tests {
         out
     }
 
-    /// ★ **`KR101D4`：探针编排是既有命令的组合，而 daemon 上没有一条「整条探针」。**
+    /// daemon 帧面今天认哪几条命令（现算自 `inbound::COMMANDS` 那个数组体）。
+    fn daemon_frame_commands() -> Vec<String> {
+        let src = daemon_inbound_rs();
+        let head = "pub const COMMANDS: &[&str] = &[";
+        let at = src
+            .find(head)
+            .expect("daemon inbound.rs 里找不到 COMMANDS —— 尺子的作用域没了");
+        let body_start = at + head.len();
+        let body_len = src[body_start..]
+            .find("];")
+            .expect("COMMANDS 数组没有收尾 `];`");
+        let body = &src[body_start..body_start + body_len];
+        body.split('"')
+            .skip(1)
+            .step_by(2)
+            .map(|s| s.to_string())
+            .collect()
+    }
+
+    /// ★★ **`KR104D2`：探针编排是既有帧面命令的组合，而 daemon 上没有一条「整条探针」。**
     ///
-    /// 🔴 **本条不声称编排已经搬走** —— 那一半的读数与理由住
-    /// [`super::PROBE_ORCHESTRATION_STEPS`] 的头注（「买不到什么」那一段）。
-    /// 本条钉的是**另外两件事**，两件都是今天就能证的：
-    ///   ① 表里点名的每条 daemon 命令**真的存在**（少一条 ⇒ 那一步无处可搬，红）；
-    ///   ② daemon 命令面上**没有**「整条探针」式的大动作（`§0c` 的失效方向，红）。
+    /// 🔴 与 `K-R101` 那一版的差别**不是措辞**：那一版对的是 CLI 那一面
+    /// （`SUBCOMMANDS`，`--x`），因为那时编排根本没走帧面；今天对的是**帧面**
+    /// （`inbound::COMMANDS`），因为编排真的在那上面跑。
+    /// ⚠ 「整条探针」那根针**两个面都扫** —— 编排搬上帧面之后，
+    /// 「顺手做一条大命令」最省事的地方就是帧面。
     #[test]
-    fn the_probe_is_a_composition_of_commands_the_daemon_already_has() {
-        let subs = daemon_subcommands();
-        // 抽取器自检：取不到就拒跑，别零命中地绿（`K-R87` 那轮 `cut.sh` 静默跳过的同族）。
+    fn the_probe_is_a_composition_of_frame_commands_the_daemon_already_has() {
+        let frame = daemon_frame_commands();
+        // 抽取器自检：取不到就拒跑，别零命中地绿。
         assert!(
-            subs.len() > 10,
-            "只从 daemon `SUBCOMMANDS` 里取到 {} 条（现打参照：09-13 主干 27 条上下）—— \
-             取数坏了，下面两条会零命中地绿。取到的：{subs:?}",
-            subs.len()
+            frame.len() >= 8,
+            "只从 daemon 帧面取到 {} 条命令 —— 取数坏了，下面几条会零命中地绿：{frame:?}",
+            frame.len()
         );
         assert!(
-            subs.iter().any(|s| s == "--kill") && subs.iter().any(|s| s == "--launch"),
-            "取到的子命令里连 `--kill`/`--launch` 都没有 —— 取数落在了别的数组上：{subs:?}"
+            frame.iter().any(|s| s == "launch") && frame.iter().any(|s| s == "kill"),
+            "取到的帧面命令里连 `launch`/`kill` 都没有 —— 取数落在了别的数组上：{frame:?}"
         );
 
-        // ① 每一步点名的 owner 命令都得在 daemon 的命令面上。
-        for (step, renderer, owner) in super::PROBE_ORCHESTRATION_STEPS {
+        // ① 每一步点名的命令都得在 daemon 的**帧面**上。
+        for (step, who, owner) in PROBE_ORCHESTRATION_STEPS {
             assert!(
-                subs.iter().any(|s| s == owner),
-                "探针这一步「{step}」（今天由 {renderer} 渲染）点名的 daemon 命令 `{owner}` \
-                 不在 daemon 的 `SUBCOMMANDS` 上 —— 要么它被删/改名了（那这一步就无处可搬），\
-                 要么本表抄错了。daemon 今天认的：{subs:?}"
+                frame.iter().any(|s| s == owner),
+                "探针这一步「{step}」（{who}）点名的帧面命令 `{owner}` \
+                 不在 `inbound::COMMANDS` 上 —— 要么它被删/改名了，要么本表抄错了。\
+                 daemon 帧面今天认的：{frame:?}"
             );
         }
 
         // ② 组合，不是一个大动作。
-        let mut owners: Vec<&str> = super::PROBE_ORCHESTRATION_STEPS
+        let mut owners: Vec<&str> = PROBE_ORCHESTRATION_STEPS
             .iter()
             .map(|(_, _, o)| *o)
             .collect();
@@ -1210,110 +1063,433 @@ mod tests {
         owners.dedup();
         assert!(
             owners.len() >= 4,
-            "探针编排塌成了 {n} 条命令（应 ≥4：起会话 · 看门狗 · 送键 · 抓屏 · 杀会话）—— \
+            "探针编排塌成了 {n} 条命令（应 ≥4：起会话 · 送键 · 抓屏 · 杀会话）—— \
              `K33` 逐字「所有命令只许有一处，其他都是根据传参来调用」，\
-             一条命令吃下整条编排就是 `§0c` 点名的那个失效方向。今天的 owner：{owners:?}",
+             一条命令吃下整条编排就是 `K-R101#§0c` 点名的那个失效方向。今天的 owner：{owners:?}",
             n = owners.len()
         );
 
-        // ③ daemon 上不许长出一条「整条探针」。
-        for needle in super::WHOLE_PROBE_SUBCOMMAND_NEEDLES {
+        // ③ 🔴 **「今天由谁做」那一列整列必须是 daemon** —— `K-R101` 交回时它全是 monitor。
+        for (step, who, _) in PROBE_ORCHESTRATION_STEPS {
             assert!(
-                !subs.iter().any(|s| s == needle),
-                "daemon 的 `SUBCOMMANDS` 上出现了 `{needle}` —— 那是把一份 shell 串换成一份 \
-                 Rust 串：命令是少了一处，**编排仍然只有一份实现在替调用方做决定**，\
-                 而且连带 bump `BUILD_ID`、动 `SUBCOMMANDS` 条数、动层间接口面条数。\
-                 `K-R101#§0c` 逐字点名了这个方向。要新增**小原语**没问题，\
-                 要新增「一条命令吃下整条编排」得回 `K33` 重裁。"
+                who.starts_with("daemon"),
+                "「{step}」这一步的做事方又变回 `{who}` 了 —— 编排退回 monitor 就是 `KR104D2` ①"
+            );
+        }
+
+        // ④ 两个面都不许长出一条「整条探针」。
+        let mut both = frame.clone();
+        both.extend(daemon_subcommands());
+        for needle in WHOLE_PROBE_SUBCOMMAND_NEEDLES {
+            assert!(
+                !both.iter().any(|s| s == needle),
+                "daemon 的命令面上出现了 `{needle}` —— 那是把一份 shell 串换成一份 Rust 串：\
+                 命令是少了一处，**编排仍然只有一份实现在替调用方做决定**。\
+                 要新增**小原语**没问题，要新增「一条命令吃下整条编排」得回 `K33` 重裁。"
             );
         }
     }
 
-    /// ★ 反向自检：上面那条真的逮得住 —— 合成一份长出 `--usage-probe` 的 `SUBCOMMANDS` 必须被认出来。
+    /// ★ 反向自检：上面那条真的逮得住 —— 合成一份长出 `usage-probe` 的命令面必须被认出来。
     ///
-    /// ⚠ 没有这一条，`③` 那个循环在「取数坏了 ⇒ `subs` 为空」时同样全过（空真）。
+    /// ⚠ 没有这一条，`④` 那个循环在「取数坏了 ⇒ 集合为空」时同样全过（空真）。
     #[test]
     fn the_whole_probe_needle_actually_catches_one() {
-        let synthetic: Vec<String> = ["--kill", "--launch", "--usage-probe"]
-            .iter()
-            .map(|s| (*s).to_string())
-            .collect();
-        assert!(
-            super::WHOLE_PROBE_SUBCOMMAND_NEEDLES
-                .iter()
-                .any(|n| synthetic.iter().any(|s| s == n)),
-            "针认不出一条摆在面前的 `--usage-probe` —— 那条判据是摆设"
-        );
-        // 反方向：今天这几条正当的小原语不许被这几根针误伤。
+        for synthetic in ["--usage-probe", "usage-probe", "account-usage"] {
+            assert!(
+                WHOLE_PROBE_SUBCOMMAND_NEEDLES.contains(&synthetic),
+                "针认不出一条摆在面前的 `{synthetic}` —— 那条判据是摆设"
+            );
+        }
+        // 反方向：今天这几条正当的小原语不许被针误伤。
         for ok in [
+            "capture-pane",
+            "oneshot-session",
+            "kill",
+            "launch",
             "--capture-pane",
             "--oneshot-session",
-            "--kill",
-            "--launch",
             "--usage",
         ] {
             assert!(
-                !super::WHOLE_PROBE_SUBCOMMAND_NEEDLES.contains(&ok),
+                !WHOLE_PROBE_SUBCOMMAND_NEEDLES.contains(&ok),
                 "`{ok}` 被针误伤了 —— 它是既有的小原语，本条不禁止小原语"
             );
         }
     }
 
-    /// ★ **登记表不许长草**：表里描述的「今天由谁渲染」得对得上这份文件的现状。
+    /// `e2e/usage-probe-acceptance.sh` 的**输入源**（`K-R104` 起换成帧行）。
     ///
-    /// 编排真的搬走的那一天，这条会红 —— **那正是要的**：那时回来把「谁渲染」那一列改掉，
-    /// 顺手把 `PROBE_ORCHESTRATION_STEPS` 头注里那段「买不到什么」一起结掉。
+    /// 惯例来自 `e2e/inbound-daemon-frames.sh` 那条逐字：喂进去的行必须是
+    /// **monitor 自己的编码器的产物**，否则那套 e2e 只证明「daemon 认得我手写的 JSON」，
+    /// 证明不了「monitor 真会发的那种 JSON」。
+    ///
+    /// 🔴 上一版这条叫「打印真实 `build_usage_probe_cmd` 产出的命令串」——
+    /// **那条 shell 串今天不存在了**，所以输入源跟着换成这四类帧行。
+    ///
+    /// ⚠ 会话名由 daemon 在运行期铸，脚本拿不到编译期的值 ⇒ 这里印
+    /// [`E2E_SESSION_PLACEHOLDER`]，由脚本原样替换。**只有那一个 token 是占位的**，
+    /// 其余每个字节都是真编码器产的。
+    /// `#[ignore]` —— 只由该脚本用
+    /// `cargo test --lib -- --ignored --nocapture emit_usage_probe_frames_for_e2e` 触发。
     #[test]
-    fn the_orchestration_registry_still_describes_what_this_file_does() {
-        let whole = guard_core::production_code(include_str!("account_usage.rs"));
-        // 🔴 **先把登记表自己那一段挖掉再扫** —— 本轮**收工前自查**逮到的：
-        //    `PROBE_ORCHESTRATION_STEPS` 的「今天由谁渲染」那一列里逐字写着
-        //    `tmux kill-session` / `tmux new-session` / `setsid sh -c` / `tmux send-keys` /
-        //    `tmux capture-pane` **五个动词全在**（那正是它要描述的东西）
-        //    ⇒ 不挖掉的话，**这条判据被自己的登记表喂饱**：编排真搬走了它照样绿。
-        //    那是 `F23` 那一族（判据在自己的登记表里找到自己），本件在别的判据上已经栽过两次。
-        let head = "const PROBE_ORCHESTRATION_STEPS";
-        let at = whole.find(head).expect(
-            "生产段里找不到 `PROBE_ORCHESTRATION_STEPS` —— 挖除的锚点漂了，本条会被自己喂饱",
-        );
-        let end = whole[at..]
-            .find("\n];")
-            .map(|i| at + i + 3)
-            .expect("`PROBE_ORCHESTRATION_STEPS` 没有收尾 `];`");
-        let mut prod = String::with_capacity(whole.len());
-        prod.push_str(&whole[..at]);
-        prod.push_str(&whole[end..]);
-        // 抽取器自检：真的挖走了一段，而且挖走的那段里确实含那几个动词（否则挖除是死规则）。
+    #[ignore]
+    fn emit_usage_probe_frames_for_e2e() {
+        use crate::inbound_client::encode_request;
+        let t = ProbeTiming::PRODUCTION;
+        let sess = E2E_SESSION_PLACEHOLDER;
+        // ⚠ **看门狗按场景分开**：正常路径必须用生产值（`t.watchdog_secs`），
+        //   短看门狗只给专门测看门狗的那个场景（同上一版那条纪律，逐字保留理由）：
+        //   让正常路径的看门狗短于自然完成时间，会把一个本该测编排的场景变成在测竞态。
+        const E2E_SHORT_WATCHDOG_SECS: u32 = 2;
+        let lines: &[(&str, String)] = &[
+            (
+                "oneshot",
+                encode_request(
+                    "e2e-up-1",
+                    "oneshot-session",
+                    &oneshot_session_args("usage-e2e", t.watchdog_secs, Some((t.cols, t.rows))),
+                ),
+            ),
+            (
+                "oneshot-shortdog",
+                encode_request(
+                    "e2e-up-2",
+                    "oneshot-session",
+                    &oneshot_session_args(
+                        "usage-dog",
+                        E2E_SHORT_WATCHDOG_SECS,
+                        Some((t.cols, t.rows)),
+                    ),
+                ),
+            ),
+            (
+                "send-payload",
+                encode_request(
+                    "e2e-up-3",
+                    "launch",
+                    &launch_args(
+                        "send-into",
+                        sess,
+                        "unset CLAUDECODE; FAKECLAUDE",
+                        None,
+                        None,
+                        Default::default(),
+                    ),
+                ),
+            ),
+            (
+                "send-usage",
+                encode_request(
+                    "e2e-up-4",
+                    "launch",
+                    &launch_args(
+                        "send-into",
+                        sess,
+                        USAGE_SLASH_COMMAND,
+                        None,
+                        None,
+                        Default::default(),
+                    ),
+                ),
+            ),
+            (
+                "capture",
+                encode_request("e2e-up-5", "capture-pane", &capture_pane_args(sess)),
+            ),
+            (
+                "kill",
+                encode_request("e2e-up-6", "kill", &serde_json::json!({ "name": sess })),
+            ),
+        ];
+        for (tag, line) in lines {
+            // `encode_request` 自带行尾换行 —— 这里去掉，由脚本按 TSV 逐行读。
+            println!("{tag}\t{}", line.trim_end());
+        }
+    }
+
+    // ════════════════════ C13 / D3：monitor 不许自己建 tmux ════════════════
+
+    /// ★★ **monitor 的 Rust 生产段里，一处都不许自己建 tmux 会话**〔`K-R104` 翻面〕。
+    ///
+    /// # 它翻了面，而翻面本身就是本件的交付
+    ///
+    /// 上一版是**登记制**：`D3_EXCEPTIONS` 里逐条写「为什么这一处可以绕开 C13/D3」，
+    /// 而表里**只有一条** —— `account_usage.rs`（它自己拼 `tmux new-session -d -s
+    /// ccm-usage-<slug>`，理由写的是「无头测量而非用户会话」）。
+    /// `K-R104` 把那条编排整条搬上帧面之后，**那一处没有了** ⇒ 例外表空了
+    /// ⇒ 登记制退化成空真（`[] == []` 照样绿）。
+    ///
+    /// ⇒ 换成**零命中守卫**：这条性质今天是「一处都没有」，那就直接钉它。
+    /// **这比登记制强一格**，而且它是 `D3` 逐字要的那句话
+    /// （「D3 的例外只有一条 —— daemon 在**自己管的** tmux 容器里起会话」）。
+    ///
+    /// ⚠ **发现口径不在这里各写一份**（E3）：问唯一那个家
+    /// `daemon_kill::creation_detect::creates_a_session`。
+    /// 08-08 实测过两张表口径不一致的后果，那一次的修法就是这条纪律。
+    #[test]
+    fn monitor_never_creates_a_tmux_session_of_its_own() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut scanned = 0usize;
+        let mut found: Vec<String> = Vec::new();
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            for e in std::fs::read_dir(&dir)
+                .expect("读不到 monitor src")
+                .flatten()
+            {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    scanned += 1;
+                    let src = std::fs::read_to_string(&p).unwrap_or_default();
+                    let prod = guard_core::production_code(&src);
+                    if crate::backend::control::daemon_kill::creation_detect::creates_a_session(
+                        &prod,
+                    ) {
+                        found.push(p.file_name().unwrap().to_string_lossy().into_owned());
+                    }
+                }
+            }
+        }
+        // 人群自检：遍历真的走到了东西（不然「零命中」是遍历坏了）。
         assert!(
-            whole.len() - prod.len() > 400,
-            "挖走的那一段只有 {} 字节 —— 锚点取错了段落",
-            whole.len() - prod.len()
+            scanned >= 60,
+            "只扫到 {scanned} 个 `.rs` —— 遍历坏了，下面那格是零命中地绿"
         );
         assert!(
-            whole[at..end].contains("tmux kill-session"),
-            "挖走的那段里没有那几个动词 —— 那这条挖除是死规则，删掉它并把本条一起重写"
+            found.is_empty(),
+            "monitor 的 Rust 生产段里又有人自己建 tmux 会话了：{found:?}\n\
+             ★ **C13**：最后那次 `exec` 必须在用户那个终端进程里；\n\
+             **D3 的例外只有一条** —— daemon 在**自己管的**容器里起会话。\n\
+             要建会话就发帧面的 `oneshot-session` / `launch`，别在界面进程里拼 tmux。\n\
+             真要开例外，回来把这条零命中守卫改回登记制，并写下「为什么它正当」。"
         );
-        // 表里说这六步今天都由 monitor 渲染 ⇒ 那这份文件的生产段（**扣掉登记表本身**）里
-        // 就该找得到那几个 tmux 动词。
-        for verb in [
-            "tmux kill-session",
-            "tmux new-session",
-            "setsid sh -c",
-            "tmux send-keys",
-            "tmux capture-pane",
+        // ★ 反向自检：这把尺子真的会咬人 —— 不然上面那一格是空真。
+        let synthetic = format!("    let c = \"tmux new-{} -d -s x\";", "session");
+        assert!(
+            crate::backend::control::daemon_kill::creation_detect::creates_a_session(&synthetic),
+            "口径认不出一条摆在面前的建会话语句 —— 上面那一格是摆设"
+        );
+    }
+
+    // ════════════════════ 载荷（`K-R104` 一个字节没动）════════════════════
+
+    #[test]
+    fn slugify_keeps_only_safe_chars() {
+        assert_eq!(slugify_account_name("z"), "z");
+        assert_eq!(slugify_account_name("my-account_2"), "my-account_2");
+        assert_eq!(slugify_account_name("a b;rm -rf"), "abrm-rf");
+        assert_eq!(slugify_account_name("日本語"), "x"); // 全非 ASCII 字母数字 → 兜底
+        assert_eq!(slugify_account_name(""), "x");
+        // 长度截断：防止一个异常长的账号名把会话名撑得过长。
+        let long = "a".repeat(100);
+        assert_eq!(slugify_account_name(&long).len(), 32);
+    }
+
+    /// ★ U8c-2a（代码审计 R1–R4 的收口）：**两态各自的载荷逐字节钉住**。
+    ///
+    /// 这条杀掉的是「载荷编译搬进 Rust 之后接线没人管」那一类：审计实测
+    /// 「只清一个嵌套 env 键」「换掉启动器」两个变异在全绿门禁下存活过。
+    ///
+    /// ⚠ **键序与 TS `AGENT_PROFILE.nestedEnvVars` 同序是刻意的**（见
+    /// `adapter/claude_code.rs::CLAUDE_NESTED_ENV` 头注）。
+    #[test]
+    fn probe_payload_is_byte_exact_for_both_account_states() {
+        const NESTED: &str =
+            "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION; ";
+        assert_eq!(
+            probe_payload_for(Some("/h/.claude-accts/z")).unwrap(),
+            format!("export CLAUDE_CONFIG_DIR='/h/.claude-accts/z'; {NESTED}claude")
+        );
+        let zero = probe_payload_for(None).unwrap();
+        assert_eq!(zero, format!("unset CLAUDE_CONFIG_DIR; {NESTED}claude"));
+        // ★ 最要紧的一条：账号 0 **绝不**退化成裸载荷（那会继承远端 rc 里的默认号 = 静默串号）。
+        assert!(
+            !zero.contains("export CLAUDE_CONFIG_DIR="),
+            "账号 0 竟带上了 export：\n{zero}"
+        );
+    }
+
+    /// 空 / 坏 configDir 是坏数据 ⇒ **一个字节都不发**（连号都不拨）。
+    #[tokio::test]
+    async fn bad_config_dir_never_dials_and_never_sends() {
+        let dials = AtomicUsize::new(0);
+        assert!(probe_payload_for(Some("")).is_err());
+        assert!(probe_payload_for(Some("/h/a;rm -rf /")).is_err());
+        // 反向自检：合法输入必须构造得出来，否则上面两条是空转。
+        assert!(probe_payload_for(Some("/h/.claude-accts/z")).is_ok());
+        // 接线：坏数据经 tauri 命令进来时，`probe_account_usage` 在拨号之前就返回。
+        let r = probe_account_usage("<no-such-origin>", "z", Some("")).await;
+        assert!(!r.captured, "坏 configDir 竟报了成功：{r:?}");
+        assert_eq!(dials.load(Ordering::SeqCst), 0);
+    }
+
+    /// ★ **本机与远端是同一条路** —— 定框 C1「一份代码两种承载」的直接判据。
+    ///
+    /// `K-R104` 之前这条比的是**两条命令串**（两个执行面各渲一份）。
+    /// 今天连那半都不存在：两个 tauri 命令**调的是同一个函数**，只差一个 origin。
+    /// ⇒ 判据跟着变形：钉「两条路都只经 `probe_account_usage`，而它只有一处」。
+    #[test]
+    fn the_local_and_remote_probes_are_the_same_code_path() {
+        let prod = guard_core::production_code(include_str!("account_usage.rs"));
+        // 调用点（排掉定义那一处）。
+        let calls = prod
+            .match_indices("probe_account_usage(")
+            .filter(|(i, _)| !prod[..*i].trim_end().ends_with("async fn"))
+            .count();
+        assert_eq!(
+            calls, 2,
+            "`probe_account_usage` 的生产调用点不是恰好两个（实得 {calls}）—— \
+             今天只有两条合法承载：`account_usage`（给 origin）与 `account_usage_local`\
+             （给 `<local>`）。多一个 = 有第三条路；少一个 = 有人绕过了这个入口。"
+        );
+        for owner in [
+            "pub async fn account_usage(",
+            "pub async fn account_usage_local(",
         ] {
+            let at = prod
+                .find(owner)
+                .unwrap_or_else(|| panic!("生产段里找不到 `{owner}` —— 承载少了一个"));
+            let body = window_from(&prod, at, 900);
             assert!(
-                prod.contains(verb),
-                "`{verb}` 在本文件生产段里已经没有了 —— 编排可能真的搬走了。\
-                 那是好事，但 `PROBE_ORCHESTRATION_STEPS` 的「今天由谁渲染」那一列\
-                 与它头注里那段「买不到什么」的欠账登记**同拍要改**，别让它继续说昨天的话。"
+                body.contains("probe_account_usage("),
+                "`{owner}` 里没有调 `probe_account_usage` —— 它自己搓了一条编排？\n\
+                 那就破了 C1「一份代码两种承载」：两侧会各自漂。"
             );
         }
-        for (_, renderer, _) in super::PROBE_ORCHESTRATION_STEPS {
+        // 🔴 本机那条必须显式给 `<local>`，不许悄悄退化成「不给 origin」。
+        let at = prod
+            .find("pub async fn account_usage_local(")
+            .expect("找不到本机那条");
+        assert!(
+            window_from(&prod, at, 900).contains("LOCAL_ORIGIN"),
+            "本机那条没有显式给 `<local>` origin"
+        );
+    }
+
+    /// ★ 接线：`account_usage` 真的把它收到的 `config_dir` 转发下去。
+    ///
+    /// 恒当账号 0（`None`）或写死别的号 = **静默串号**，而其余全部判据都会保持绿。
+    /// ⚠ 它是**约定不是事实**（源码形态守卫）：挡得住「顺手把参数换成常量」，
+    /// 挡不住「换个名字继续错」。**比没有强，别读成证明。**
+    #[test]
+    fn account_usage_actually_forwards_the_config_dir_it_received() {
+        let prod = guard_core::production_code(include_str!("account_usage.rs"));
+        for owner in [
+            "pub async fn account_usage(",
+            "pub async fn account_usage_local(",
+        ] {
+            let at = prod
+                .find(owner)
+                .unwrap_or_else(|| panic!("找不到 `{owner}`"));
+            let body = window_from(&prod, at, 900);
             assert!(
-                renderer.starts_with("monitor"),
-                "有一步的渲染方已经不是 monitor 了（`{renderer}`）—— 见上一条断言的说明"
+                body.contains("config_dir.as_deref()"),
+                "`{owner}` 没有把它收到的 `config_dir` 转发下去 —— \
+                 恒当账号 0 或写死别的号 = 静默串号"
             );
         }
+    }
+
+    // ════════════════════ 时间预算 ════════════════════
+
+    #[test]
+    fn time_budget_ordering_holds() {
+        // 三层超时必须**严格套娃**，否则外层会把内层掐死、让被保护的逻辑根本跑不完。
+        // ★ 这条测试是被真事逼出来的：E42 之前那条 e2e 输入源给三个场景
+        // 统一发 3s 看门狗，旧判据下自然完成约 2s 侥幸躲过；判据一改成"静止 3s"，
+        // 正常路径的会话就在轮询跑完前被自己的看门狗杀掉。
+        let t = ProbeTiming::PRODUCTION;
+        let poll_budget_ms = t.interval_ms * u64::from(t.startup_max_polls + t.render_max_polls);
+        let exec_ms = EXEC_TIMEOUT_SECS * 1000;
+        let watchdog_ms = u64::from(t.watchdog_secs) * 1000;
+
+        // ① 两段轮询跑满也要装得进整条编排的硬超时，且留出余量给往返 + 建/清会话。
+        assert!(
+            poll_budget_ms + poll_budget_ms / 4 < exec_ms,
+            "轮询预算 {poll_budget_ms}ms(+25% 余量) 撑破了硬超时 {exec_ms}ms"
+        );
+        // ② 外层先放弃，看门狗后收尸——反过来会留下无人清理的探针会话。
+        assert!(
+            exec_ms < watchdog_ms,
+            "硬超时 {exec_ms}ms 必须早于看门狗 {watchdog_ms}ms，否则会话会被提前杀掉"
+        );
+        // ③ 判定"静止"所需的时长必须显著短于**单段**上限。
+        let still_ms = t.interval_ms * u64::from(t.still_polls);
+        for (name, cap) in [
+            ("startup", t.startup_max_polls),
+            ("render", t.render_max_polls),
+        ] {
+            let cap_ms = t.interval_ms * u64::from(cap);
+            assert!(
+                still_ms * 2 <= cap_ms,
+                "{name} 段上限 {cap_ms}ms 容不下两倍静止时长 {still_ms}ms：判据几乎必然打不中"
+            );
+        }
+        // ④ 🔴 **单条命令的期限必须装得进整条预算**，否则一条卡住的命令就把总闸吃光。
+        assert!(
+            CALL_TIMEOUT_SECS < EXEC_TIMEOUT_SECS,
+            "单条命令期限 {CALL_TIMEOUT_SECS}s 不小于整条编排的 {EXEC_TIMEOUT_SECS}s"
+        );
+    }
+
+    /// ★ 稳定判据的**行为**：回显自己不算数，画面要真的变过 ＋ 静止够久。
+    ///
+    /// `K-R104` 之前这一格只钉**结构**（扫那条 shell 串里有没有那两半）。
+    /// 编排搬进 Rust 之后它变成一个纯粹的行为判据：喂一串屏，看它在第几屏收手。
+    #[tokio::test]
+    async fn settling_needs_the_screen_to_change_and_then_hold_still() {
+        // 基线 = "base"。前三屏还是 base（= 什么都没发生）⇒ 不许收手。
+        let ch = RecordingChannel::with_screens(&["base", "base", "新面板", "新面板", "新面板"]);
+        let t = ProbeTiming {
+            interval_ms: 0,
+            still_polls: 2,
+            ..ProbeTiming::PRODUCTION
+        };
+        let got = settle(&ch, "s", "base", 20, t).await.expect("不该失败");
+        assert_eq!(got, "新面板", "收手时拿到的不是稳定之后那一屏：{got:?}");
+        // 抓了几次：base·base·新·新·新 —— 第 5 次时 same=2 且 != base ⇒ 收手。
+        assert_eq!(
+            ch.cmds().iter().filter(|c| *c == "capture-pane").count(),
+            5,
+            "收手的时机不对：{:?}",
+            ch.cmds()
+        );
+
+        // ★ 反向：画面**一直是基线**（键没送到）⇒ 必须一路等到上限，不许早收手。
+        let ch2 = RecordingChannel::with_screens(&["base"]);
+        let got2 = settle(&ch2, "s", "base", 3, t).await.expect("不该失败");
+        assert_eq!(got2, "base");
+        assert_eq!(
+            ch2.cmds().iter().filter(|c| *c == "capture-pane").count(),
+            3,
+            "画面没变过却提前收手了 —— 「相对基线变过」那一半失效了"
+        );
+    }
+
+    /// ★ **空屏是合法的成功**（`KR101D1` ③ 明令禁止把它判成失败）。
+    #[tokio::test]
+    async fn an_empty_screen_is_still_a_successful_capture() {
+        let ch = Arc::new(RecordingChannel::with_screens(&[""]));
+        let mk = ch.clone();
+        let dial = move || Ok(mk.clone() as Arc<dyn ProbeChannel>);
+        let r = probe_over_frames(&dial, "z", "claude", fast()).await;
+        assert!(r.captured, "空屏被判成了失败：{r:?}");
+        assert_eq!(r.raw.as_deref(), Some(""));
+        assert!(r.error.is_none());
+    }
+
+    /// ★ 没通道 ⇒ **明确失败**，不换条路悄悄做掉（同 `tmux.rs::no_channel_message` 那条纪律）。
+    #[tokio::test]
+    async fn no_channel_is_an_explicit_failure() {
+        let dial = || Err("[<local>] 没有可用的控制通道".to_string());
+        let r = probe_over_frames(&dial, "z", "claude", fast()).await;
+        assert!(!r.captured);
+        assert!(
+            r.error.as_deref().is_some_and(|e| e.contains("控制通道")),
+            "没通道时的话没说清是通道不在：{r:?}"
+        );
     }
 }

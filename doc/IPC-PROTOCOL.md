@@ -742,6 +742,68 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 
 ⚠ **F12 2026-08-04 订正**：本段原来断言「这条路的生产切换还没发生、登记为 U8a-2c」——**那句自 U8a-2c-1 起就假了**，而 F07/F11 连着订正了 `INVARIANTS §33b` 里的**三份副本**、**唯独漏了这一份**（是 Phase G 的 `/full-audit` 逮到的）。今天的实况：生产段 `.call("launch")` **2 处**（`backend/control/daemon_launch.rs` 的 `send-into` = U8a-2c-1 · `backend/control/daemon_send_keys.rs` 的 send-keys = F04c）；仍未切的是 **`create-or-attach` 与 attach 两格**。⚠ 那个「2」的唯一家在 `INVARIANTS §33b` 的〔机检〕锚点上，由 `doc_claim_registry` 读它与现场比；本文件从 F12 起也在那条判据的扫描面里 —— 同族副本再写回来就会红。
 
+#### `capture-pane`：把某个 tmux 会话此刻那一屏抓回来（`K-R104`，只读）
+
+```text
+→ {"id":"C1","cmd":"capture-pane","args":{"name":"ccm-oneshot-usage-z-cc"}}
+← {"kind":"reply","id":"C1","ok":true,"data":{"name":"ccm-oneshot-usage-z-cc","screen":"Welcome …"}}
+```
+
+`name` 要抓的会话名；回 `name`（回显）＋ `screen`（**那一屏的原文**，不解析、不裁剪、不归一 ——
+`R58`〔用@09-13〕逐字「直接抓屏给我看」）。
+
+★ **它是 CLI 面 `--capture-pane`（`K-R86`）的同一个本体**（`control/capture_pane.rs::capture`），
+两个面只差取参数与包信封的方式（`K33` 逐字「所有命令只许有一处」）。
+**帧面这一条是 `K-R104` 新加的**，理由是结构性的、不是性能取舍：CLI 面每调一次就是一次
+SSH 握手，而用量探针两段轮询上限 12+20 轮 ⇒ 单次探测最多 **36** 次握手，
+撑破 monitor 侧的 25s 硬超时。帧面是**一条长连接上多次往返**，握手恒 1 次。
+
+🔴 **它只抓一次就返回，daemon 里没有任何「隔 N 毫秒再抓一次」**（零定时器铁律，
+`no_timer_guard` 零容忍）。「抓几次 / 隔多久」是**调用方**的事 ——
+`K37`〔用@09-11〕逐字「后端只给机制，不给偏好」，而「等画面稳定多久算稳」是偏好。
+
+⚠ **空屏是合法的成功**：刚建起来什么都没打印的 pane 抓回来就是空 `screen` ＋ `ok:true`。
+「抓没抓到」看退出码，不看输出是不是空。
+
+⚠ **刻意不过 §34 Gate 2**：这是一次只读快照，与 monitor 侧同族那一处口径一致
+（`exec_site_registry` 里 `capture_remote_pane` 那一行逐字：「只读快照，MASTERPLAN 明确不为它加身份门」）。
+
+错误码：`invalid_args`（`name` 缺/空/含 `:` `=`）· `no_tmux`（tmux 这个程序起不来）·
+`no_server`（这台机上一个 tmux server 都没有）· `no_such_session`（server 在、目标不存在）·
+`capture_failed`（其它失败，**stderr 原样回包** —— 说不清但不撒谎）。
+
+#### `oneshot-session`：起一个到点自己会死的 tmux 会话（`K-R104`）
+
+```text
+→ {"id":"O1","cmd":"oneshot-session","args":{"slug":"usage-z","ttlSecs":"30","width":"200","height":"50"}}
+← {"kind":"reply","id":"O1","ok":true,"data":{"session":"ccm-oneshot-usage-z-cc","handle":"$7","ttlSecs":"30"}}
+```
+
+`slug` 会话名后缀（`[A-Za-z0-9_-]`，daemon **铸**完整名字，调用方给不了完整名字）·
+`ttlSecs` 存活秒数（**没有默认值** —— `K37`：后端只给机制不给偏好）·
+`width` / `height` **可省、必须成对**（省了就是 tmux 的 detached 默认 80×24；
+探针抓的是表格，80 列会把它折断）。
+回 `session`（铸出来的完整名）· `handle`（`#{session_id}`，形如 `$7`）· `ttlSecs`（回显）。
+
+★ **名字由 daemon 铸，撞名一律拒**（`KR87D2`）：形状 = `ccm-oneshot-` ＋ slug ＋ `-cc`。
+那条 `-cc` 尾巴**不是装饰** —— 没有它，daemon 铸出来的会话过不了 §34 Gate 2 的名字半支
+（`gate_core::is_ccm_tmux_name` 只认 `cc-<X>` 与 `<X>-cc`）⇒ **daemon 自己的
+`launch send-into` 与 `kill` 都进不去自己刚建的那个会话**。理由全文与两条出路的比价住
+`control/oneshot_session.rs::ONESHOT_GATE_SUFFIX` 的头注。
+
+★ **看门狗是一个外部进程**（`setsid sh -c 'sleep N; tmux kill-session -t <句柄>'`），
+脚本是常量、变量全走位置参数（这条路上没有一处需要 quote）。它**独立于这条连接**：
+连接断了、daemon 没了，它照样到点清场。
+🔴 **看门狗起不来 ⇒ 不许回成功**：刚建出来的会话当场回滚杀掉，回 `watchdog_failed`
+并在话里说清回滚成没成。
+
+⚠ 与 `launch` 的 `create-or-attach` **刻意相反**：那一条撞名是幂等接回，
+而接回一个别人的会话等于替它定了死期。
+
+错误码：`invalid_args`（slug/秒数/尺寸形状不对，或宽高只给了一半）· `no_tmux` ·
+`name_taken`（那个名字已经有人占着 —— **拒绝，绝不静默接回**）· `create_failed` ·
+`watchdog_failed`。
+
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
 ```text

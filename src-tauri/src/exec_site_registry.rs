@@ -28,8 +28,10 @@
 //! **守**：新增执行点没人认领 · 申报了 `Quoted` 却没引用 · 申报了构造器却没调它。
 //! **不守**：① 引用**用对了没有**（那是 `shell_quote` 自己的判据与各调用点的行为判据）；
 //! ★ ②「构造器被调用了、但命令另拼一份」看不见 —— 机检只要求构造器出现在函数体里，
-//!    不卡 `cmd = builder(..)` 那个形状（`account_usage` 里是 `match probe_command_for(..)`，
-//!    卡形状会把合法写法判红）。这是**刻意的取舍**，不是没想到；
+//!    不卡 `cmd = builder(..)` 那个形状（活体举例：`sftp.rs` 那一族是
+//!    `let cmd = match builder(..) { .. }` —— 卡形状会把合法写法判红）。
+//!    ⚠ `K-R104` 09-13 前这里举的例子是用量探针那一处，它已随编排搬上帧面而退役；
+//!    **换例子不是改口径**，这条「不守」逐字没动。这是**刻意的取舍**，不是没想到；
 //! ③ 一个函数里有多处执行、来历各不相同（人群键是「文件::函数」）；
 //! ④ `PassThrough` **不追调用链**：`cc_bus::exec_read` 的三个调用方各走 `build_*_cmd`，
 //!    那是它们自己那条 singleton 判据在守，本条只确认转发者自己不构造；
@@ -76,7 +78,10 @@ mod tests {
         //    它们那两条一次性 SSH 回落删了，今天只走后端通道 ⇒ 不再是「远端执行点」。
         //    这一改是**结构性强制的随动**：上面那条反向锚点（「申报了一处已经不存在的执行点」）
         //    会当场逮住留在表里的两行。留着它们等于让申报表替真判据挡枪。
-        ("account_usage.rs", "account_usage", Origin::Builder("probe_command_for"), "载荷与会话名都在构造器里引用"),
+        // 🔴 **`K-R104`（09-13）：`account_usage.rs / account_usage` 这一行也出去了**
+        //    ——与上面 `K-R72` 那两条**同一个形状、同一个理由**：它那条一次性 SSH exec
+        //    整条没了（编排改走后端帧面）⇒ 它不再是一个「远端执行点」。
+        //    留着它，上面那条反向锚点（「申报了一处已经不存在的执行点」）会当场逮住。
         // ── 本函数里拼，但自由文本过了 shell_quote
         ("remote_history.rs", "run_list_query", Origin::Quoted, "daemon 路径经引用后拼 args"),
         ("remote_history.rs", "stream_read_remote_session", Origin::Quoted, "daemon 路径与 jsonl 路径各引用一次"),
@@ -256,9 +261,8 @@ mod tests {
                 Origin::Builder(b) => {
                     per_class[1] += 1;
                     // ⚠ 只要求「构造器被调用」，不要求 `{arg} = {b}(` 这个形状：
-                    // `account_usage` 里是 `let cmd = match probe_command_for(..) { .. }`，
-                    // 卡形状会把合法写法判红。**代价写在头注「不守」里**：构造器被调用、
-                    // 而命令另拼一份，本条看不见。
+                    // `let cmd = match builder(..) { .. }` 这种写法是合法的，卡形状会把它判红。
+                    // **代价写在头注「不守」里**：构造器被调用、而命令另拼一份，本条看不见。
                     assert!(
                         body.contains(&format!("{b}(")),
                         "`{f}::{n}` 申报成走构造器 `{b}`（{why}），但函数体里根本没调它（实参 `{arg}`）—— \
