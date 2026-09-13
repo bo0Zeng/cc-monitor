@@ -593,11 +593,11 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 ← {"kind":"reply","id":"K1","ok":true,"data":{"session":"1a2b3c4d-cc","killed":true}}
 ```
 
-**它必须过 §34 的三道门**，逐条对应 monitor 侧 `tmux.rs::kill_remote_tmux` 那条 shell 路
-（⚠ **F04b 2026-08-04 订正**：那条 shell 路已从**主路**降为 **C7 过渡期回落** ——
-`kill_remote_tmux` 现在先走本命令，只有能**证明**命令没发出去时才回落；
-`wrong_owner`/`too_many_windows` 这类**过门被拒绝一律不回落**，否则就是把一次门拒绝
-洗成另一条路的成功。分流规则见 `backend/control/daemon_kill.rs` 头注那张表）：
+**它必须过 §34 的三道门**
+（⚠ **`K-R72` 2026-09-12**：monitor 侧 `tmux.rs::kill_remote_tmux` 那条 shell 路**已经删了**——
+F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ **杀会话今天只剩本命令这一条路**。
+后端通道不在就是**明确失败**，不再换条路悄悄做掉；那句用户看得见的话出口在
+`tmux.rs::no_channel_message`。分流规则仍见 `backend/control/daemon_kill.rs` 头注那张表）：
 
 | 门 | 判据 | 不通过的错误码 |
 |---|---|---|
@@ -615,7 +615,7 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
    给 `send-into` 加 Gate 3 会让「往多窗口会话里打字」被误拒。
    所以 `admit`（非破坏性）与 `admit_destructive` 是**两个入口，不是一个带 flag 的**。
 
-⚠ ~~本命令存在 ≠ monitor 已经改走它~~ **F04b 2026-08-04：monitor 已经改走它了**（`tmux.rs::kill_remote_tmux` 主路调 `backend::control::daemon_kill`；一次性 SSH 那条降为 **C7 过渡期回落**，且**过门被拒绝一律不回落**）。定框 C6 的顺序（先搬门、再切路由）到 **F04c** 走完。
+⚠ ~~本命令存在 ≠ monitor 已经改走它~~ **F04b 2026-08-04：monitor 已经改走它了**（`tmux.rs::kill_remote_tmux` 主路调 `backend::control::daemon_kill`）。🔴 **`K-R72` 2026-09-12：那条一次性 SSH 已删** —— `C7` 说的过渡到此结束，**盘上没有第二条路**（回潮闸住 `tmux_daemon_gate_guard`：那两个函数体里再出现 `connect_and_exec_cmd` 就红）。定框 C6 的顺序（先搬门、再切路由）到 **F04c** 走完。
 
 #### `launch`：平面 ②（远端执行面）——真的建 tmux 会话（U8a-2b）
 

@@ -141,10 +141,16 @@ mod tests {
         }
     }
 
-    /// 与 SSH 那条路的拒绝文案对齐（含反向锚点：SSH 侧那些串还在）。
+    /// 与**兄弟命令**（`daemon_kill`）的拒绝文案对齐，含反向锚点：那一侧的生产段里那些串还在。
+    ///
+    /// ⚠ `K-R72`（09-12）：本条原名 `the_refusal_wording_matches_the_ssh_path`，  〔散文墓碑〕
+    /// 反向锚点原先指 monitor 侧那条一次性 SSH 回落。**那条路整块删了**，
+    /// 而它守的性质（同一个拒绝只许有一种说法）没有消失 ⇒ 对照面换成 `daemon_kill.rs`，
+    /// 并收紧成只看**生产段**（原来是整份源码 `contains`，对面的测试里抄一份就能糊弄过去）。
+    /// 理由与对照关系的全文住 `daemon_kill.rs::the_refusal_wording_matches_the_sibling_command`。
     #[test]
-    fn the_refusal_wording_matches_the_ssh_path() {
-        let ssh = include_str!("../../tmux.rs");
+    fn the_refusal_wording_matches_the_sibling_command() {
+        let sibling = guard_core::production_code(include_str!("daemon_kill.rs"));
         for (code, needle) in [
             ("no_tmux", "远端未安装 tmux"),
             ("no_such_session", "远端会话已不存在（可能已被终止）"),
@@ -155,8 +161,8 @@ mod tests {
                 "`{code}` 的文案里没有 {needle:?}"
             );
             assert!(
-                ssh.contains(needle),
-                "SSH 那条路里已经没有 {needle:?} 了 —— 两条路的文案漂了"
+                sibling.contains(needle),
+                "`daemon_kill.rs` 的生产段里已经没有 {needle:?} 了 —— 两条后端命令的文案漂了"
             );
         }
         // `typed_unconfirmed` 是 daemon 独有的一档（SSH 那条路分不出来）⇒ 只要求它不被吞掉。
