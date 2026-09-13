@@ -227,9 +227,27 @@ pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
 /// 比例。探针会话名完全由本功能自己控制，前缀足够独特，用它做识别零风险、不碰任何双写点。
 const USAGE_PROBE_NAME_PREFIX: &str = "ccm-usage-";
 
-/// F10：判定一个 tmux 会话名是否是本功能建的一次性用量探针——纯字符串前缀匹配，不涉及 IO。
+/// 🔴 **`K-R104`（09-13）：探针会话的名字空间搬家了，本条跟着扩面。**
+///
+/// 编排搬上 daemon 帧面之后，探针会话**不再由 monitor 自己建**，而是由 daemon 的
+/// `oneshot-session` 原语**铸**出来 —— 名字形状是 `ccm-oneshot-<slug>-cc`
+/// （唯一住址 `remote-daemon-proto/src/control/oneshot_session.rs::ONESHOT_PREFIX`
+/// ＋ `ONESHOT_GATE_SUFFIX`）。
+///
+/// ⚠ **不扩面的后果不是「少过滤一个前缀」**：那条 `-cc` 尾巴让它**过得了** §34 Gate 2
+/// 的名字半支（那正是它存在的理由），于是它在用户眼里长得跟一个正牌 `cc-*` 会话一样，
+/// 会**混进会话列表**闪现几秒。上一版那条前缀过滤挡的就是这件事。
+///
+/// ⚠ **这里刻意写 `ccm-oneshot-` 这个字面量而不是引 daemon 那个常量**：
+/// 两棵树是两个 crate，monitor 不依赖 daemon 的 crate（`layering` 那条线）。
+/// 同族的跨轨字面量本仓已有先例（`LOCAL_ORIGIN` 两侧对拍）；这一处由
+/// `tests::the_oneshot_prefix_matches_the_daemon_side` 逐字对拍，**不许各写各的**。
+const ONESHOT_SESSION_NAME_PREFIX: &str = "ccm-oneshot-";
+
+/// F10：判定一个 tmux 会话名是否是**一次性探针会话**（不该出现在用户的会话列表里）。
+/// 纯字符串前缀匹配，不涉及 IO。
 pub(crate) fn is_usage_probe_session(name: &str) -> bool {
-    name.starts_with(USAGE_PROBE_NAME_PREFIX)
+    name.starts_with(USAGE_PROBE_NAME_PREFIX) || name.starts_with(ONESHOT_SESSION_NAME_PREFIX)
 }
 
 /// 列远端 tmux 会话(通道 B,一次性 exec)。`command -v tmux` 门控:无 tmux → 哨兵 `NO_TMUX`
@@ -1604,11 +1622,42 @@ mod tests {
         assert_eq!(s[1].sid, None);
     }
 
+    /// ★★ `K-R104` 跨轨对拍：**那个前缀两侧必须是同一个串**。
+    ///
+    /// 漂了**不会有任何东西报错** —— daemon 照旧铸它的名字，monitor 照旧过滤它以为的那个前缀，
+    /// 而探针会话会开始在用户的会话列表里闪现。同 `LOCAL_ORIGIN` 那条跨轨对拍的形状：
+    /// `include_str!` 读对面那份、抠出字面量、逐字比。
+    #[test]
+    fn the_oneshot_prefix_matches_the_daemon_side() {
+        const DAEMON: &str =
+            include_str!("../../remote-daemon-proto/src/control/oneshot_session.rs");
+        let line = DAEMON
+            .lines()
+            .find(|l| {
+                l.trim_start()
+                    .starts_with("pub(crate) const ONESHOT_PREFIX")
+            })
+            .expect("daemon 那份里找不到 `ONESHOT_PREFIX` —— 名字改了就来改这条");
+        let lit = line
+            .split('"')
+            .nth(1)
+            .expect("那一行不是 `pub(crate) const ONESHOT_PREFIX: &str = \"…\";` 的形状");
+        assert_eq!(
+            lit, ONESHOT_SESSION_NAME_PREFIX,
+            "一次性会话前缀两侧漂了：daemon {lit:?} / monitor {:?}。\n\
+             ⚠ 这种漂**不会有任何东西报错** —— 探针会话会开始在用户的会话列表里闪现。",
+            ONESHOT_SESSION_NAME_PREFIX
+        );
+    }
+
     /// F10：一次性用量探针会话的识别——纯前缀匹配，不涉及新 tmux user-option（不碰
     /// `TMUX_LS_FMT` 双写点，见 `USAGE_PROBE_NAME_PREFIX` 头注）。
     #[test]
     fn usage_probe_session_name_prefix() {
         assert!(is_usage_probe_session("ccm-usage-z"));
+        // `K-R104`：daemon 铸的那个名字空间也要被挡在会话列表之外。
+        assert!(is_usage_probe_session("ccm-oneshot-usage-z-cc"));
+        assert!(!is_usage_probe_session("ccm-oneshot")); // 无尾随连字符，不是前缀本身
         assert!(is_usage_probe_session("ccm-usage-z-2")); // 撞名重试的 -N 变体
         assert!(!is_usage_probe_session("cc-abc12345")); // 正牌会话前缀，不该被误判
         assert!(!is_usage_probe_session("web")); // 用户自己的会话

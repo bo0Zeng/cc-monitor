@@ -3358,9 +3358,10 @@ mod tests {
     ///
     /// 为什么必须这样测：P1 的关键改动是把 `tmux ls … || true` 换成 `exec tmux …` 让 rc
     /// 透出。`|| true` 与 `exec` 的差别**在字符串断言里看不出来**——只有真执行才知道 rc
-    /// 有没有传出来。（同 `account_usage.rs::emit_usage_probe_cmd_for_e2e` 那一族的教训：
-    /// 门禁只锁字符串形状不锁行为。⚠ `K-R72` 09-12 前这里指的是同族里 `tmux.rs` 那一份，
-    /// 它随送键与杀会话的桌面侧回落一起走了 —— 教训没变，换指今天真在的那个活体。）
+    /// 有没有传出来。（同 `control/ccm/plan.rs::render_container` 那一族的教训：
+    /// 门禁只锁字符串形状不锁行为。⚠ 这句话点名的活体**换过两次**：`K-R72` 09-12 之前指
+    /// `tmux.rs` 那一份（随桌面侧 SSH 回落一起走了），之后指用量探针那份
+    /// （`K-R104` 09-13 随编排搬上帧面一起走了）—— **教训没变，每次换指今天真在的那个。**）
     #[test]
     fn probe_script_propagates_rc_with_fake_tmux() {
         let dir = std::env::temp_dir().join(format!("ccm-p1-probe-{}", std::process::id()));

@@ -10,10 +10,10 @@ export type AccountUsageProbeResult = {
  */
 captured: boolean, 
 /**
- * `captured=true` 时的 capture-pane 原始文本。
+ * `captured=true` 时的抓屏原始文本。
  */
 raw: string | null, 
 /**
- * `captured=false` 时的人话原因（无 tmux / 连接失败 / 超时）。
+ * `captured=false` 时的人话原因（没通道 / 后端太旧 / 远端拒绝 / 超时）。
  */
 error: string | null, };

@@ -198,6 +198,14 @@ mod tests {
         // 两档结果都只渲染成给用户的一句话 —— 但**照样走分流器**：
         // 分流规则有第二份实现的那天，「被门拒绝」就会在某一份里被洗成「换条路重做」。
         ("cc_bus.rs", Verdict::UsesRouter),
+        // ★ `K-R104` 09-13：**第六个发送端** —— 用量探针整条编排搬上帧面之后，
+        //   `account_usage.rs` 在一条通道上连发 `oneshot-session` / `launch` /
+        //   `capture-pane` × N / `kill`。
+        //   它**没有第二条路可回落**（那正是 `KR104D2` ① 要的：编排退回 CLI 面就是红），
+        //   但**照样走分流器** —— 理由与 `cc_bus.rs` 那条逐字相同：
+        //   本模块的两档（`NothingWasSent` / `Refused`）是从 `Routed` 搬过来的，
+        //   不是它自己 match 一遍 `CallError`。第一版我就是自己 match 的，本条会当场逮住。
+        ("account_usage.rs", Verdict::UsesRouter),
     ];
 
     #[cfg(test)]

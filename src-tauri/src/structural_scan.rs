@@ -1849,6 +1849,16 @@ mod tests {
                 "**示例占位符**：讲「地址长什么样」时写的假地址，本就不指向真符号",
             ),
             ("foo", "**示例占位符**：同上，讲口径时举的例子"),
+            (
+                "build_usage_probe_cmd",
+                "★〔`K-R104` 09-13〕**历史句**：`payload.rs` 与 `doc_claim_registry.rs` 里\
+                 那几句逐字讲的就是「用量探针那条外层 tmux 串**已经退役**」——\
+                 编排搬上后端帧面之后 monitor 一个 shell 字符都不渲染。\
+                 删掉这个地址反而丢掉「外层四个产出方里退役了哪一个」这条线索\
+                 （同上面 `resolve_claude_dir` 那条）。\
+                 ⚠ 它不是无人看管：`doc_claim_registry::the_outer_layer_producers_are_in_the_state_the_doc_claims` \
+                 把那一格翻面钉着（这个函数要是回来了，那条会红）。",
+            ),
         ];
 
         let corpus = addr_corpus();
@@ -2927,11 +2937,25 @@ mod tests {
                 "build_kill_session_cmd",
                 1,
             ),
+            // 🔴 〔`K-R104` 09-13〕两条**新墓碑**：编排搬上后端帧面之后，两句订正段各逐字
+            //    引用了一个已经不在的名字来说明「它为什么不在了」——
+            //    `doc_claim_registry.rs` 那条判据改了名（旧名说的是「四个都还在」，
+            //    而今天四个里退役了一个）· `src/account-usage.ts` 那句讲的是
+            //    「两条路此前靠同一个命令构造器同源，今天连命令串都不存在了」。
+            //    按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
             (
-                "src-tauri/src/account_usage.rs",
-                "build_kill_session_cmd",
+                "src-tauri/src/doc_claim_registry.rs",
+                "the_four_outer_layer_producers_are_all_still_there",
                 1,
             ),
+            ("src/account-usage.ts", "probe_command_for", 1),
+            // 🔴 〔`K-R104` 09-13〕`src-tauri/src/account_usage.rs` 那两行墓碑账**删了** ——
+            //    不是撕墓碑，是**被墓碑的那段散文随整条编排一起走了**：那份文件里
+            //    「用量探针的 shell 串」整段不存在了（编排搬上后端帧面），
+            //    连带它头注里点 `build_kill_session_cmd` 与
+            //    `emit_guarded_commands_for_e2e` 的那两句一起没了。
+            //    ⇒ 按本表头注那条纪律：「登记的那一处盘上已经没有了 ⇒ 删掉它，
+            //    别让表替真判据挡枪」（同 `K-R96` 那次的处置）。
             // `K-R56`（09-11）买的那条判据：它守的性质（**探不到就不动手**）没消失，
             // 换住址钉在今天唯一那处实现上（`control/gate.rs::both_gates_always_probe_before_they_act`），
             // 而那一段散文必须逐字点出它的旧名字才说得清「接的是谁」。
@@ -2941,11 +2965,6 @@ mod tests {
                 1,
             ),
             // 同一刀带走的 e2e 夹具产出者，与它那套跑不起来的真机验收脚本。
-            (
-                "src-tauri/src/account_usage.rs",
-                "emit_guarded_commands_for_e2e",
-                1,
-            ),
             (
                 "src-tauri/src/shared_crate_registry.rs",
                 "emit_guarded_commands_for_e2e",

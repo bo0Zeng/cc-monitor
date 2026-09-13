@@ -189,12 +189,12 @@ mod tests {
              派生名那条走 `derive_tmux_name`，它的字符集只放行 `[A-Za-z0-9_-]`，\
              **构造上产不出禁字**。三条入口都由              `control::ccm::plan::tests::a_session_name_that_would_confuse_tmux_is_refused` 钉住",
         ),
-        (
-            "src-tauri/src/account_usage.rs",
-            CreationVerdict::UpstreamValidated,
-            "探针会话名是 `ccm-usage-<slug>`，`slug` 由账号名 sanitize 而来、**不是用户自由输入**；\
-             且它自己 `kill-session` 收尾、不经 daemon 的 kill 主路",
-        ),
+        // 🔴 **`K-R104`（09-13）：`src-tauri/src/account_usage.rs` 这一行删了。**
+        //    它原来的理由是「探针会话名是 `ccm-usage-<slug>`……且它自己 `kill-session` 收尾」。
+        //    今天那两句都不成立了：编排搬上 daemon 帧面之后，**monitor 不再建任何 tmux 会话**
+        //    （会话由 `oneshot-session` 原语铸并建，收尾发帧面的 `kill`）。
+        //    ⇒ 它不再是一个「创建路径」⇒ 留着就是幽灵条目，而本表的遍历会当场逮住。
+        //    ★ 同 `K-R72` 那次逐字：这一改是**结构性强制的随动**，不是顺手删记录。
         (
             "src/session-backend.ts",
             CreationVerdict::UpstreamValidated,

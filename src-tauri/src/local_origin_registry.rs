@@ -66,7 +66,11 @@ const REMOTE_ONLY: &[(&str, &str, &str)] = &[];
 /// 多一条同样会红（新增的必须走 `REMOTE_ONLY` 或者去加本机分支）。
 #[cfg(test)]
 const TRIAGE_DEBT: &[(&str, &str)] = &[
-    ("account_usage.rs", "account_usage"),
+    // 🔴 **`K-R104`（09-13）：`account_usage.rs::account_usage` 这一行还掉了，不是删掉。**
+    //    它欠的是「这一处**够不够得到本机**没人量过」。今天量得出来了，而且答案变了：
+    //    编排搬上后端帧面之后，`account_usage`（远端）与 `account_usage_local`（本机）
+    //    **是同一个函数**，只差一个 origin —— `<local>` 也是一个 origin，`client_for` 两侧都答得出。
+    //    ⇒ 它不再是「只服务远端」的那一族。**表只许变短，这一次它真的短了。**
     ("accounts.rs", "cfg_for"),
     ("ccm_probe.rs", "probe_ccm_cli"),
     ("hooks_diag.rs", "diagnose_remote_cc_bus_hooks"),
@@ -209,9 +213,15 @@ mod tests {
         // 反向自检之一：**调用点必须真的数到了**。
         // 08-12 实测 28 处；写成地板是因为这个数天天在变，写等号会天天假红
         // （铁律 18：假阳会训练人绕过判据）。但地板要贴着实测，别写个 5 装样子。
+        // 🔴 `K-R104`（09-13）：地板 20 → **19**，理由与上面 `TRIAGE_DEBT` 那一条是**同一件事**：
+        //    `account_usage` 不再自己去查远端配置（它整条走后端通道，`client_for(origin)`
+        //    对 `<local>` 与远端一视同仁）⇒ 这个人群**恰好少一处**。
+        //    ⚠ 地板守的是「抽取器还够得到东西」；人群真的少了一个成员时不跟着改，
+        //    才是让它替真判据挡枪（`K-G8`）。
         assert!(
-            sites >= 20,
-            "只数到 {sites} 处 `{CALL}` —— 抽取坏了，本断言在空转（08-12 实测 28 处）"
+            sites >= 19,
+            "只数到 {sites} 处 `{CALL}` —— 抽取坏了，本断言在空转（08-12 实测 28 处，\
+             `K-R104` 09-13 现打 19）"
         );
         // 反向自检之二：**函数定位不许大面积退回文件头**。
         // 退回文件头会让位置比较退化成「文件里有没有」——那比本护栏声称的弱，
@@ -230,7 +240,10 @@ mod tests {
         // 地板在「变大」这个方向上是瞎的 —— 这个仓因为这件事栽过三次
         // （`shell_lint_registry` 的账逐字：「`≥` 正是它落后三次的成因」）。
         // K-R56（09-11）：16 → 15，`tmux.rs::tmux_send_keys` 真去分了本机。
-        const TRIAGE_DEBT_TODAY: usize = 15;
+        // 🔴 `K-R104`（09-13）：15 → **14**。`account_usage.rs::account_usage` 那一条
+        //    随编排搬上帧面而**真的还掉了**（理由逐字在表里那条注释）。
+        //    ★ 这是本表第二次往下走，而「变少 ⇒ 好事」正是它自己报错文案里写的那一句。
+        const TRIAGE_DEBT_TODAY: usize = 14;
         assert_eq!(
             TRIAGE_DEBT.len(),
             TRIAGE_DEBT_TODAY,
