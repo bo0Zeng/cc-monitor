@@ -31,6 +31,9 @@ import type { AccountAliasReport } from "./generated/AccountAliasReport";
 import type { ProfileScan } from "./generated/ProfileScan";
 // `K-R69` / `KR69D2`+`KR69D3`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词）。
 import type { LocalCcmEntry } from "./generated/LocalCcmEntry";
+// `K-R93`：**盘上有几个 agent、默认是哪个，都是后端的事实** —— 本文件从前把
+// `claude` / `codex` 写死了两处（下拉清单 + 越层诊断的豁免名单）。
+import { ACTIVE_AGENT, listAgents, lookupAgentProfile } from "./agent-profile";
 
 /**
  * 🔴 `K-R69` / `KR69D3`：**生成出来的那一行，该调哪一份 `ccm`。**
@@ -74,13 +77,35 @@ async function loadCcmEntry(): Promise<{
   }
 }
 
+/**
+ * 后端认得的 agent 的**默认拉起二进制名**（`claude` / `codex` / …）。
+ *
+ * 🔴 `K-R93`：刻意**只收 `defaultLauncher`，不收 `launcherAlias`**。
+ * 别名（claude 的 `cc`）是用户自己那层 shell wrapper —— 它与 `cct` / `oot` 是同一类东西，
+ * 照样绕开 `ccm`，**不该被豁免**。这两个值住在同一行画像里，但它们回答的不是同一个问题。
+ */
+function baseLaunchers(): string[] {
+  const out: string[] = [];
+  for (const agent of listAgents()) {
+    const got = lookupAgentProfile(agent);
+    // 问不到就跳过、不猜 —— 少豁免一个只是多提示一句，编一个出来才是错的。
+    if (got.known) out.push(got.facts.defaultLauncher);
+  }
+  return out;
+}
+
 /** 该远端命令看起来是不是绕开了 `ccm`（越层启动器）——启发式：非空、不含 "ccm"、且不是
- *  裸 `claude`（显式写 claude 是有意选择基座行为，不算"看起来像旧式包装"）。命中不代表
- *  一定错——用户可能就是要一个完全自定义的命令——只是账号/模型偏好不会随它生效，值得提醒。 */
+ *  某个 agent 的裸基座命令（显式写 `claude` / `codex` 是有意选择基座行为，不算"看起来像
+ *  旧式包装"）。命中不代表一定错——用户可能就是要一个完全自定义的命令——只是账号/模型偏好
+ *  不会随它生效，值得提醒。
+ *
+ *  🔴 `K-R93`（09-12）：这里从前只豁免 `claude` 一个字面量 —— 那是「前端只认 claude」
+ *  那一格漏的**第二处**（第一处是 `AGENT_PROFILE`）。填 `codex` 的人从前会收到一句
+ *  「你绕开了 ccm」，而他做的与填 `claude` 是同一件事。今天名单由后端那张表给。 */
 export function diagnoseRemoteLauncher(cmd: string): string | null {
   const trimmed = cmd.trim();
-  if (!trimmed) return null; // 空 = 走默认 claude，不算绕过
-  if (trimmed === "claude") return null; // 显式基座，不是旧式包装
+  if (!trimmed) return null; // 空 = 走默认（后端 `ACTIVE_AGENT` 那一份），不算绕过
+  if (baseLaunchers().includes(trimmed)) return null; // 显式基座，不是旧式包装
   if (/ccm/.test(trimmed)) return null; // 命令本身含 ccm 子串（可能是包了一层的自定义命令）
   return "这条命令似乎绕开了 ccm——账号/模型偏好不会随它生效。想要这些好处的话，改填 ccm（或含 ccm 的自定义命令），或用下面的生成器拼一条。";
 }
@@ -502,10 +527,17 @@ export function buildAliasGeneratorSection(): HTMLElement {
   });
 
   const agentSel = document.createElement("select");
-  for (const [value, text] of [
-    ["", "--agent（默认 claude，省略）"],
-    ["codex", "--agent codex"],
-  ]) {
+  // 🔴 `K-R93`：这张清单**从前是两行写死的字面量**（`claude` ＋ `codex`），与
+  // `src/agent-profile.ts` 那份画像各写各的。今天两处同源：后端那张表
+  //（`adapter.rs::agent_profile_facts` → `src/generated/agent-profile-table.ts`）
+  // 说有几个就是几个，默认那一档也用后端的 `ACTIVE_AGENT`，不写死 claude。
+  const agentOptions: Array<[string, string]> = [
+    ["", `--agent（默认 ${ACTIVE_AGENT}，省略）`],
+    ...listAgents()
+      .filter((a) => a !== ACTIVE_AGENT)
+      .map((a): [string, string] => [a, `--agent ${a}`]),
+  ];
+  for (const [value, text] of agentOptions) {
     const opt = document.createElement("option");
     opt.value = value;
     opt.textContent = text;
