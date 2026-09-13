@@ -15,6 +15,11 @@ import type { RemoteAccount } from "./generated/RemoteAccount";
 import { loadConfig, saveConfig } from "./config";
 import { isValidModelName } from "./shell-quote";
 import type { LaunchModifiers } from "./launch-plan";
+// 🔴 `K-R95`（定框 `K28`：前端不许自己发明对外行为）：本机拉起载荷里「哪个号」那一格的
+// **wire 键名从后端来**，前端不再自己写 `{ kind: "named", configDir, name }` 这三个字面量。
+// 源：`src-tauri/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`
+// （它每次生成都跑一遍 `history.rs::LaunchAccount` 的生产反序列化器验一次）。
+import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
 
 // ---- 账号的形状是**生成物**（K-A1），不再是一份手抄 ----
 //
@@ -355,14 +360,34 @@ export function localLaunchAccountNameSync(sid: string | null): string | null {
  *（退出码 2 = 一次本来能起的会话变成一条报错），与 `relay_account_id_of_dir`
  * 那条「推错就回落」的保守方向相反。理由逐字住 `history.rs` 的 `LaunchAccount::Named::name`。
  */
-export function localLaunchAccountSync(
-  sid: string | null,
-): { kind: "named"; configDir: string; name: string } | undefined {
+export type LocalLaunchAccountWire = Record<
+  typeof LOCAL_LAUNCH_ACCOUNT_WIRE.tag,
+  typeof LOCAL_LAUNCH_ACCOUNT_WIRE.named
+> &
+  Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.configDir, string> &
+  Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.name, string>;
+
+export function localLaunchAccountSync(sid: string | null): LocalLaunchAccountWire | undefined {
   const snap = localLaunchSnapshot;
   const name = localLaunchAccountNameSync(sid);
   if (!snap || !name) return undefined;
   const picked = snap.state.accounts.find((a) => a.name === name);
-  return picked?.configDir ? { kind: "named", configDir: picked.configDir, name } : undefined;
+  // 🔴 `K-R95`：**计算键**，不是三个字面量。这一行此前逐字是
+  //   `{ kind: "named", configDir: picked.configDir, name }`
+  // —— 那是前端自己渲染了一遍后端的载荷形状，而两边靠头注里一句「同源」对齐。
+  // 现在键名与判别值都来自生成物 ⇒ `history.rs::LaunchAccount` 那边改名，
+  // `npm run gen:types` 当场 panic（生成器跑生产反序列化器验过），
+  // 跑完之后**本函数吐出去的键跟着变**，不用回来改这里。
+  //
+  // ⚠ 载荷里**带什么**一个字没改（`K-R95` `§0b`：只改「谁渲染它」）：
+  // 仍是「说不出就缺席，绝不猜」，仍不回落到「当前账号」。
+  return picked?.configDir
+    ? {
+        [LOCAL_LAUNCH_ACCOUNT_WIRE.tag]: LOCAL_LAUNCH_ACCOUNT_WIRE.named,
+        [LOCAL_LAUNCH_ACCOUNT_WIRE.configDir]: picked.configDir,
+        [LOCAL_LAUNCH_ACCOUNT_WIRE.name]: name,
+      }
+    : undefined;
 }
 
 /**
