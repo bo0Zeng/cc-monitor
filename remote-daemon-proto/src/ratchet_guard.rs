@@ -65,7 +65,7 @@ mod tests {
     const PINS: &[(&str, &str, usize, &str)] = &[
         (
             "readonly_guard.rs",
-            "const SPAWN_SITES_TODAY: usize = 11;",
+            "const SPAWN_SITES_TODAY: usize = 13;",
             1,
             "daemon 侧起进程登记表的**相等断言**（不是地板）。\
              ⚠⚠ **这条针钉的是「那一行长什么样」，不是那个数字本身** —— 它挡的是\
@@ -92,6 +92,14 @@ mod tests {
               本针跟着记新值 —— 这正是本条来历栏第一段写的那个流程。\
               ⚠ 而「它只读」这件事**不是这个数买的**（那张表的键分不出被调的子命令）：\
               买它的是 `readonly_guard::capture_is_read_only`，本针不替它作证。〕\
+             〔`K-R87` 09-13：`11` → **13**，又往**上**走一格，而这一次是**一刀加两处**：\
+              `control/oneshot_session.rs` 里 `Command::new` 起 `tmux` 一处（那条路上三次 tmux \
+              调用共用它）＋ `Command::new` 起看门狗那个 launcher 一处（`<非字面量>`，生产恒 `setsid`）。\
+              两条都已在 `ALLOWED` 里逐条写明做什么、为什么不违反收窄后的铁律。\
+              ⚠ 同上一格：往上走**不是本针在放宽** —— `readonly_guard` 那条 `assert_eq!` 自己\
+              先红了，本针跟着记新值。\
+              ⚠ 而「看门狗只杀自己铸的那个会话」这件事**不是这个数买的**（键分不出被起的是谁）：\
+              买它的是 `control/oneshot_session.rs` 自己那几条判据。〕\
              ⚠ 这一行**只挡「不动断言、只把数调小」**；「把断言原地调松」由下面两条实参针挡。",
         ),
         (

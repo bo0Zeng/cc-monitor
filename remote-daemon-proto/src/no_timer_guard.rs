@@ -60,6 +60,22 @@ mod f09_external_beat {
     //! **确实存在，但它住 `shared/ccm`，不在 daemon**。
     //! 也就是说「这种形态真实存在于本仓，只是刻意不在 daemon 侧」——
     //! 本条钉的正是那条边界。
+    //!
+    //! 🔴 **〔`K-R87` 09-13 现打订正〕上面那三段里有两句今天已经不准了，逐句说清**：
+    //!
+    //! 1. **「住 `shared/ccm`，不在 daemon」—— 假了。** `K-R48`（09-11）把那个 bash 脚本
+    //!    删掉、整条搬进了 `control/ccm/`；那条预信任轮询串今天就住
+    //!    `control/ccm/plan.rs`（一条 `do sleep 0.5; tmux capture-pane …` 的等信任框循环）。
+    //! 2. **「daemon 侧今天零实例」—— 只在本条自己的人群里成立。** 它之所以仍然绿，
+    //!    是因为 [`shell_string_literals`] 按「同一行里有引号 **且** 有
+    //!    `sh -c` / `run-shell` / `format!` 之一」收人，而 `plan.rs` 那一行是
+    //!    `format!` 的**续行**（那三个针一个都不在那一行上）⇒ **它不进人群**。
+    //!
+    //! ⇒ 今天准确的说法是：**本条的人群够不着 daemon 侧现存的那一条**，
+    //! 不是「daemon 侧没有」。放宽人群（改成扫全部字符串字面量）会当场把它收进来 ——
+    //! 那是 `control/ccm/plan.rs` 那件事的写区，`K-R87` **不替它决定**，
+    //! 只把这个读数如实登记在这里，并给自己那一形补一条**只盖一份文件**的判据
+    //! （下面那条 `the_oneshot_watchdog_script_carries_no_loop`）。
 
     /// 循环关键字：shell 里提供节拍的三种写法。
     fn loop_words() -> Vec<String> {
@@ -145,8 +161,67 @@ mod f09_external_beat {
              「**周期跑一次外部命令**」形态：不用 sleep/interval，而是让别人的 shell 提供节拍，\n\
              于是本 crate 的零定时器护栏一个字都看不见。\n\
              ⚠ C14 登记的那个例外（预信任「等信任框」）**住 `shared/ccm`，不在 daemon** ——\n\
-             真要在 daemon 侧开这种口子，先回定框把 C12/C14 的边界重新裁定。\n{}",
+             真要在 daemon 侧开这种口子，先回定框把 C12/C14 的边界重新裁定。\n\
+             ⚠ 这段话里那半句今天已经不准了，逐句订正在本模块头注（`K-R87` 09-13）。\n{}",
             bad.join("\n")
+        );
+    }
+
+    /// ★〔`K-R87` 09-13〕**看门狗那条 argv 形的 shell 串，也不许自带节拍。**
+    ///
+    /// # 为什么要单独一条：上面那条**结构上看不见它**
+    ///
+    /// [`shell_string_literals`] 认的是「把一整条**渲染好的**串交给 shell」那个形态
+    /// （同一行里有引号 ＋ `sh -c` / `run-shell` / `format!` 之一）。
+    /// 而 `K-R87` 的看门狗走的是 **argv 直传**：脚本是一个**常量**、`sh` 与 `-c` 是两个
+    /// 独立的 argv 元素 ⇒ 那三个针**一个都不命中**，那条串一个字都不进上面那条的人群。
+    ///
+    /// 🔴 **人群够不着 ≠ 判据坏了**；而放宽人群会连带把 `control/ccm/plan.rs`
+    /// 那条收进来（头注末段那两句订正）—— 那是别件的写区。
+    /// ⇒ 本条**只盖 `control/oneshot_session.rs` 这一份文件**，
+    /// 形状照 `readonly_guard::capture_is_read_only`（那一条同样自陈「只盖一份文件」）。
+    #[test]
+    fn the_oneshot_watchdog_script_carries_no_loop() {
+        let prod = guard_core::production_code(include_str!("control/oneshot_session.rs"));
+        // 反空真①：读到的得是真代码，不是一份被剥空的壳。
+        assert!(
+            prod.len() > 3_000,
+            "剥完 `control/oneshot_session.rs` 只剩 {} 字节 —— 读错文件或剥过头了，\
+             下面几格在空转",
+            prod.len()
+        );
+        // 反空真②：本条声称在盯的那个常量真的在生产段里。
+        let decl = format!("const WATCHDOG{}", "_SCRIPT");
+        assert!(
+            prod.contains(&decl),
+            "生产段里找不到 `{decl}` —— 看门狗那条脚本换了住址或换了写法，回来重判本条"
+        );
+        // ★ 正题：那条脚本里没有任何一个循环关键字。
+        let script = crate::control::oneshot_session::WATCHDOG_SCRIPT;
+        for w in loop_words() {
+            assert!(
+                !script.contains(w.as_str()),
+                "看门狗脚本里出现了循环关键字 `{w}` —— 那就从「到点一次」变成了\
+                 「靠外部 shell 提供节拍」，也就是 C12 的 ⚠ 点名的那一形。实得：{script:?}"
+            );
+        }
+        // ★ 反向自检：判定真的会咬人（否则上面那圈可能是「什么都认不出」地绿）。
+        let synthetic = format!("{}:; do sleep 1; done", loop_words()[0]);
+        assert!(
+            loop_words().iter().any(|w| synthetic.contains(w.as_str())),
+            "合成的带循环样本没被逮到 —— 上面那圈此刻是空转的：{synthetic:?}"
+        );
+        // ★ 那份文件把东西交给 shell 的口**恰好一处**（常量声明 1 ＋ 用它那一处 1）。
+        //   多出来一处 ⇒ 有第二条串在往 shell 里送，而本条只盯着上面那个常量。
+        const SHELL_HANDOFFS_TODAY: usize = 2;
+        let flag = format!("SHELL_SCRIPT{}", "_FLAG");
+        let n = prod.matches(flag.as_str()).count();
+        assert_eq!(
+            n, SHELL_HANDOFFS_TODAY,
+            "`control/oneshot_session.rs` 生产段里 `{flag}` 出现 {n} 次（登记 {SHELL_HANDOFFS_TODAY} \
+             次 = 常量声明一处 ＋ 组 argv 那一处）。\n\
+             变多 ⇒ 那份文件多了一条交给 shell 的路，而本条只盯着那一个常量 ⇒ 回来重判；\n\
+             变少 ⇒ 那条路换了写法，本条此刻盯的是一个没人用的常量。"
         );
     }
 }
