@@ -214,6 +214,166 @@ pub async fn aggregate_remote_usage_all() -> Vec<crate::usage::SessionUsageRow> 
     out
 }
 
+/// `K-R83`（09-12）：daemon 那一行里装着**每项目会话 sid 清单**的字段名。
+///
+/// # 🔴 它是常量，不是散在两处的字面量 —— 这一格是判据要求的
+///
+/// `KR83D1` 判的是「下游算不算得出那三个数」，**逐字不判字段叫什么名字**
+///（`local_read_surface_registry.rs` 那条退役条件留了「**或等价字段**」这个口子）。
+/// 而一条「喂一行进去、看算出什么」的判据，测试自己也要**造那一行** ——
+/// 名字若在生产与测试里各写一遍，改名就会让判据红，那就等于**判了名字**。
+/// ⇒ 名字只住这一处，两侧都从这里取：改名 = 改一行 = 判据照常绿。
+pub(crate) const REMOTE_SESSION_IDS_FIELD: &str = "sessionIds";
+
+/// 一个数**算出来了没有**。
+///
+/// # ★ 本件的全部题面：`Unknown` 与 `Known(0)` 不是同一个值
+///
+/// 09-12 之前 `remote_history.rs` 那三处是写死的 `starred_count: 0` / `hidden_count: 0` /
+/// `has_live: false` —— 于是「查过了，这个项目一个星标都没有」与「压根没查」
+/// **在数据里长得一模一样**。一个值装了两件事，界面上远端项目因此永远没星标、永远不活，
+/// 而没有任何东西说得出这是「不知道」还是「真的是 0」。
+///
+/// ⚠ **这个类型不上线**（今天线上那一格仍是 `HistoryProject` 的 `u32`/`bool`）——
+/// 上线是 `K-R66` 的面，`HistoryProject` 与前端都在本件写区之外。
+/// 本件治的是**数据层**：这条路上「不知道」有自己的形状、有自己的理由，
+/// 压成线上那个值的地方**只有一处、有名字**（[`Counted::wire_placeholder`]）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Counted<T> {
+    /// 算出来了，就是这个数（**含真的是 0**）。
+    Known(T),
+    /// 算不出来，附上**为什么** —— 「不知道」要自己说得出话（定框 `E4`）。
+    Unknown(WhyUnknown),
+}
+
+/// 为什么算不出来。**每一档都得说得出人话**，不许只有一个光秃秃的 `None`。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum WhyUnknown {
+    /// daemon 那一行没带会话 sid 清单 —— 远端版本旧（`K-R83` 之前的 daemon）。
+    NoSessionIdList,
+    /// 带了，但**清单长度与 `sessionCount` 对不上**（或清单里混着非字符串）：
+    /// 这一行坏了。⚠ 这一档**刻意不退化成「按拿得到的那几个算」** ——
+    /// 那会给出一个「看起来是真值」的少数，比明说不知道更糟。
+    ListDisagreesWithCount,
+    /// 「这台机器上此刻有没有活会话」本机答不了：`SessionMap` 认的是**本机进程的 pid**，
+    /// 远端会话不在里面。⚠ 这**不是**「远端没有活会话」。
+    NoRemoteLivenessOracle,
+}
+
+impl WhyUnknown {
+    /// 给日志/将来给界面用的一句人话。
+    pub(crate) fn reason(self) -> &'static str {
+        match self {
+            // ⚠ 这句话里**刻意不用那个旧名字**（本文件上面两处历史文案里的那个词）：
+            // `tool_registry::SITES` 那张旧名存量账**只许变少**（`K-R81`/`KR81D2`），
+            // 新写的句子照 `K33`/`K36` 的名字来 —— 那是**那台机器的后端**。
+            // 🔴 实测记一笔：本注释第一版把那个旧名字逐字抄进来解释「我没用它」，
+            // 那条账当场红（登记 2、盘上 3）—— **它不剥注释**，同本文件末尾那条判据的坑。
+            Self::NoSessionIdList => "远端那台的后端没带会话 sid 清单（版本旧）",
+            Self::ListDisagreesWithCount => "远端那一行的 sid 清单与 sessionCount 对不上（行坏了）",
+            Self::NoRemoteLivenessOracle => "远端会话的活状态本机答不了（SessionMap 只认本机进程）",
+        }
+    }
+}
+
+impl<T: Default> Counted<T> {
+    /// 🔴 **全仓唯一一处把「不知道」压成一个线上值的地方，而且它有名字。**
+    ///
+    /// 今天线上那三格是 `u32` / `bool`，装不下第三态（`HistoryProject` 住 `history.rs`，
+    /// 在本件写区之外）⇒ 压成 `Default`（`0` / `false`）。
+    ///
+    /// ⚠ **别把这一句读成「病还在原地」**：区别在于，压之前这一路上「不知道」是一个
+    /// **有形状、有理由、判得了**的值；压这件事**只发生在这个函数里**，
+    /// 谁想把第三态送上线，只要改这一处的调用方。
+    /// 上线那一格是 `K-R66` 的面 —— 本件的 `KR83D2` 逐字写着「不要求把 UI 改成显示未知」。
+    pub(crate) fn wire_placeholder(self) -> T {
+        match self {
+            Self::Known(v) => v,
+            Self::Unknown(_) => T::default(),
+        }
+    }
+}
+
+/// 一个远端项目那三个数的**来路**。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ProjectCounts {
+    pub starred: Counted<u32>,
+    pub hidden: Counted<u32>,
+    pub has_live: Counted<bool>,
+}
+
+impl ProjectCounts {
+    fn all_unknown(why: WhyUnknown) -> Self {
+        Self {
+            starred: Counted::Unknown(why),
+            hidden: Counted::Unknown(why),
+            has_live: Counted::Unknown(why),
+        }
+    }
+
+    /// 这三个数里**有没有哪个是「不知道」** —— 用来决定要不要出声（不静默）。
+    fn unknowns(&self) -> Vec<WhyUnknown> {
+        let mut out = Vec::new();
+        if let Counted::Unknown(w) = self.starred {
+            out.push(w);
+        }
+        if let Counted::Unknown(w) = self.hidden {
+            out.push(w);
+        }
+        if let Counted::Unknown(w) = self.has_live {
+            out.push(w);
+        }
+        out
+    }
+}
+
+/// daemon 的一行 `--list-projects` ＋ 本机 metadata ⇒ 那三个数。
+///
+/// # 判的是「算不算得出」，不是「字段叫什么」
+///
+/// 三个数的真相源全在本机、且**全部按会话 sid 索引**（metadata 按 sid 查 star/hide；
+/// `SessionMap` 按 sid 查活）—— 所以 daemon 那一行只要说得出「这个项目下有哪几个 sid」，
+/// star / hide 就**当场算得出真值**，一次调用、零额外进程（`KR83D3`）。
+///
+/// # `has_live` 今天**没有真相源**，所以它是 `Unknown` 而不是 `false`
+///
+/// `SessionMap` 认的是本机 pid，远端会话不在里面；`lib.rs` 里那个 `remote_active`
+/// 是流式那条路的私有账本（`doc/INVARIANTS.md` §24 钉着单写者），本件写区够不着。
+/// ⇒ 如实报「不知道」。**这与今天的 `has_live: false` 是两个不同的值** —— 那正是本件。
+pub(crate) fn project_counts(
+    row: &serde_json::Value,
+    metadata: &crate::history::HistoryMetadata,
+) -> ProjectCounts {
+    let session_count = row["sessionCount"].as_u64().unwrap_or(0);
+    let Some(ids) = row.get(REMOTE_SESSION_IDS_FIELD).and_then(|v| v.as_array()) else {
+        return ProjectCounts::all_unknown(WhyUnknown::NoSessionIdList);
+    };
+    let sids: Vec<&str> = ids.iter().filter_map(|v| v.as_str()).collect();
+    // ★ **空清单 ≠ 没有**：daemon 侧的契约是「清单与 `sessionCount` 恒等长」
+    //（`observe/history_query.rs::project_row` 里两者共用同一个守卫）。对不上 ⇒ 这一行坏了
+    // ⇒ 报「不知道」，**不许**拿手上这几个算出一个看起来像真值的少数。
+    if sids.len() as u64 != session_count {
+        return ProjectCounts::all_unknown(WhyUnknown::ListDisagreesWithCount);
+    }
+    let mut starred = 0u32;
+    let mut hidden = 0u32;
+    for sid in sids {
+        if let Some(m) = metadata.entries.get(sid) {
+            if m.starred {
+                starred += 1;
+            }
+            if m.hidden {
+                hidden += 1;
+            }
+        }
+    }
+    ProjectCounts {
+        starred: Counted::Known(starred),
+        hidden: Counted::Known(hidden),
+        has_live: Counted::Unknown(WhyUnknown::NoRemoteLivenessOracle),
+    }
+}
+
 /// F76（#46）：远端来源列表结果 = 项目 + **失败台清单**。
 ///
 /// 后端 fan-out 语义是「任一台成功即 `Ok`，失败台 warn+跳过」——前端单看项目列表无从区分
@@ -229,6 +389,25 @@ pub struct RemoteProjectsResult {
     pub failed_hosts: Vec<String>,
 }
 
+/// 一次 fan-out 的**全部**产出：上线的那一份，**以及被压掉的那一份**。
+///
+/// 项目与它那三个数的来路**绑在同一个元组里**，不是两个同序数组 ——
+/// 平行数组一旦哪天有人在中间 `retain` 一下就静默错位，而错位的后果正是本件要治的病。
+pub(crate) struct FanoutOutcome {
+    pub rows: Vec<(HistoryProject, ProjectCounts)>,
+    pub failed_hosts: Vec<String>,
+}
+
+impl FanoutOutcome {
+    /// 压成今天的线上形状。**只有这一处**在丢「不知道」那一维（见 [`Counted::wire_placeholder`]）。
+    fn into_wire(self) -> RemoteProjectsResult {
+        RemoteProjectsResult {
+            projects: self.rows.into_iter().map(|(p, _)| p).collect(),
+            failed_hosts: self.failed_hosts,
+        }
+    }
+}
+
 /// 远端项目列表（多机 #30：fan-out 所有已配置远端）。无远端 → 空列表（前端无感合并）；
 /// 单台查询失败 → warn + 跳过该台（不拖垮其余台）。各 project 带 `origin = 该台 label`。
 #[tauri::command]
@@ -240,16 +419,46 @@ pub async fn list_remote_history_projects() -> Result<RemoteProjectsResult, Stri
             failed_hosts: Vec::new(),
         });
     }
-    let mut projects = Vec::new();
+    // 条目级元数据（star/hide 按 session_id 存**本机**，远端会话同样适用 ——
+    // `stream_remote_history_sessions` 早就是这么合的）。**整趟只读一次**：
+    // 它是本机文件，与台数、项目数都无关。
+    let metadata = crate::history::load_metadata().unwrap_or_default();
+    fanout_list_projects(&cfgs, &metadata, |cfg: RemoteConfig| async move {
+        run_list_query(&cfg, "--list-projects").await
+    })
+    .await
+    .map(FanoutOutcome::into_wire)
+}
+
+/// `--list-projects` fan-out 的**本体**；「去问远端」这件事**是参数**。
+///
+/// # 🔴 为什么查询要作为参数传进来 —— `KR83D3` 判的那个可数的事实
+///
+/// `KR83D3` 逐字：**别判「代码里有没有 for 循环」**（那判的是写法），
+/// 要判**「一次调用里 spawn 了几次」**。而真 SSH 在红线内跑不了 ⇒
+/// 把 spawn 那一步做成入参，判据就能拿一个**会计数的假查询**喂进来，
+/// 直接数出「1 台 × N 个项目 ⇒ 查询被调了几次」。
+///
+/// 失效方向（本函数存在的理由）：一旦有人为了拿 star/hide 而在下面那个循环里
+/// 补一句 `--list-sessions`，计数当场从 `台数` 涨成 `台数 + 项目数`，判据红。
+pub(crate) async fn fanout_list_projects<Q, F>(
+    cfgs: &[RemoteConfig],
+    metadata: &crate::history::HistoryMetadata,
+    query: Q,
+) -> Result<FanoutOutcome, String>
+where
+    // ⚠ 吃 `RemoteConfig`（clone）而不是 `&RemoteConfig`：后者要 HRTB
+    // （`for<'a> Fn(&'a RemoteConfig) -> impl Future + 'a`），今天的 Rust 表达不出来。
+    // 每台 clone 一次是一次结构体拷贝，与「每台一次 SSH 握手」比可以忽略。
+    Q: Fn(RemoteConfig) -> F,
+    F: std::future::Future<Output = Result<Vec<String>, String>>,
+{
+    let mut rows: Vec<(HistoryProject, ProjectCounts)> = Vec::new();
     let mut any_ok = false;
     let mut last_err = String::new();
     let mut failed_hosts: Vec<String> = Vec::new();
     // R9：并发 fan-out 所有台（各台独立、无序要求），墙钟从 Σ(各台) 降到 max(各台)。逐台错误仍隔离。
-    let results = futures::future::join_all(
-        cfgs.iter()
-            .map(|cfg| run_list_query(cfg, "--list-projects")),
-    )
-    .await;
+    let results = futures::future::join_all(cfgs.iter().cloned().map(&query)).await;
     for (cfg, res) in cfgs.iter().zip(results) {
         let lines = match res {
             Ok(l) => {
@@ -291,20 +500,33 @@ pub async fn list_remote_history_projects() -> Result<RemoteProjectsResult, Stri
                     .unwrap_or(&dir_name)
                     .to_string()
             };
-            projects.push(HistoryProject {
-                project_path,
-                project_name,
-                // 远端的"懒加载 key"= 远端编码目录名（前端原样传回 stream_remote_history_sessions）
-                project_dir: dir_name,
-                session_count: v["sessionCount"].as_u64().unwrap_or(0) as u32,
-                // P1a：远端不合并本地元数据计数（列表级开销不值得），条目级照常合并
-                starred_count: 0,
-                hidden_count: 0,
-                last_activity: v["lastActivityMs"].as_i64().unwrap_or(0),
-                // 活跃远端会话已有 [host] live Tab，历史组不重复标 live
-                has_live: false,
-                origin: Some(cfg.origin_label()),
-            });
+            // 🔴 `K-R83`：这里从前把 `starred_count` / `hidden_count` 写死成零、
+            // `has_live` 写死成假（就在本函数构造 `HistoryProject` 那三行），旁边一句注释写着
+            // 「远端不合并本地元数据计数（列表级开销不值得）」——**那句话说的是代价，
+            // 落到数据里却成了一个断言**：零同时表示「查过了，是零」与「压根没查」。
+            // 今天 daemon 那一行带上了会话 sid 清单 ⇒ star/hide **一次算得出真值**、
+            // 零额外进程；活状态仍没有真相源，就如实报「不知道」而不是一个假。
+            //
+            // ⚠ 上面这段**刻意不逐字抄那三个字面量**：本文件末尾
+            // `there_is_exactly_one_place_that_flattens_unknown_into_a_wire_value`
+            // 是子串扫描、**不剥注释**（`readonly_guard` 头注记着同一族坑）——
+            // 抄进来会自伤。实测红过一次，如实记在这里。
+            let counts = project_counts(&v, metadata);
+            rows.push((
+                HistoryProject {
+                    project_path,
+                    project_name,
+                    // 远端的"懒加载 key"= 远端编码目录名（前端原样传回 stream_remote_history_sessions）
+                    project_dir: dir_name,
+                    session_count: v["sessionCount"].as_u64().unwrap_or(0) as u32,
+                    starred_count: counts.starred.wire_placeholder(),
+                    hidden_count: counts.hidden.wire_placeholder(),
+                    last_activity: v["lastActivityMs"].as_i64().unwrap_or(0),
+                    has_live: counts.has_live.wire_placeholder(),
+                    origin: Some(cfg.origin_label()),
+                },
+                counts,
+            ));
         }
     }
     // 配了远端但**全部**台查询都失败 → 返回 Err（前端可 toast），避免与"无远端配置"的
@@ -315,16 +537,25 @@ pub async fn list_remote_history_projects() -> Result<RemoteProjectsResult, Stri
             cfgs.len()
         ));
     }
+    // 「不知道」要出声（定框 `E4`：静默失败一律给身份）。**按理由汇总一条**，
+    // 不是每个项目一条 —— 一台旧 daemon 上有几百个项目，逐项目 warn 就是把日志刷成噪音，
+    // 而噪音与静默在「谁都不会读」这件事上是同一个结局。
+    let mut why_counts: std::collections::BTreeMap<&'static str, usize> = Default::default();
+    for (_, c) in &rows {
+        for w in c.unknowns() {
+            *why_counts.entry(w.reason()).or_default() += 1;
+        }
+    }
+    for (why, n) in why_counts {
+        tracing::info!("远端项目列表：{n} 处数**不知道**（不是 0）—— {why}");
+    }
     tracing::info!(
         "list_remote_history_projects: {} projects from {} host(s), {} failed",
-        projects.len(),
+        rows.len(),
         cfgs.len(),
         failed_hosts.len()
     );
-    Ok(RemoteProjectsResult {
-        projects,
-        failed_hosts,
-    })
+    Ok(FanoutOutcome { rows, failed_hosts })
 }
 
 /// 远端某项目的历史会话列表（流式 Channel，对齐本地 stream_history_sessions_in_project）。
@@ -702,5 +933,378 @@ mod f06_tests {
              正是定框 E5 要消灭的那种不一致。",
             body.trim()
         );
+    }
+}
+
+/// `K-R83`（09-12）：**「不知道」不许再和「真的是 0」长成一个样。**
+///
+/// 三条判据（`KR83D1` / `KR83D2` / `KR83D3`）的落点，逐条对着件文件 `§1` 的死值验写。
+#[cfg(test)]
+mod kr83_tests {
+    use super::*;
+    use crate::history::{EntryMetadata, HistoryMetadata};
+
+    /// daemon 那一行的夹具。**字段名从生产常量取** —— 见 [`REMOTE_SESSION_IDS_FIELD`]
+    /// 的头注：名字写死在测试里，改名就会让判据红，那等于把「判能力」偷换成「判名字」，
+    /// 正是 `KR83D1` 第 ③ 刀要治的。
+    fn row(dir: &str, sids: &[&str]) -> serde_json::Value {
+        let mut v = serde_json::json!({
+            "dirName": dir,
+            "projectPath": format!("/home/u/{dir}"),
+            "sessionCount": sids.len(),
+            "lastActivityMs": 1_700_000_000_000i64,
+        });
+        v[REMOTE_SESSION_IDS_FIELD] = serde_json::json!(sids);
+        v
+    }
+
+    /// 旧 daemon（`K-R83` 之前）的那一行：四个字段，**没有**会话 sid 清单。
+    fn row_without_ids(dir: &str, session_count: u64) -> serde_json::Value {
+        serde_json::json!({
+            "dirName": dir,
+            "projectPath": format!("/home/u/{dir}"),
+            "sessionCount": session_count,
+            "lastActivityMs": 1_700_000_000_000i64,
+        })
+    }
+
+    fn metadata_with(starred: &[&str], hidden: &[&str]) -> HistoryMetadata {
+        let mut m = HistoryMetadata::default();
+        for sid in starred {
+            m.entries.entry((*sid).to_string()).or_default().starred = true;
+        }
+        for sid in hidden {
+            m.entries.entry((*sid).to_string()).or_default().hidden = true;
+        }
+        m
+    }
+
+    fn cfg(label: &str) -> RemoteConfig {
+        serde_json::from_value(serde_json::json!({
+            "host": format!("{label}.example"),
+            "label": label,
+            "user": "u",
+            "daemonPath": "/opt/cc-monitor-remote",
+        }))
+        .expect("夹具配置")
+    }
+
+    // ───────────────────────────── `KR83D1` ─────────────────────────────
+
+    /// ★★ `KR83D1`：**daemon 那一行带得出算这三个数所需的东西。**
+    ///
+    /// 判的是**性质**：拿到那一行 ＋ 本机 metadata，`starred_count` / `hidden_count`
+    /// 就地算得出**真值**。
+    ///
+    /// ⚠ 本条**不判字段叫什么名字**：夹具的那个 key 是从生产常量取的，
+    /// 只改名、内容等价 ⇒ 本条照常绿（第 ③ 刀）。
+    #[test]
+    fn a_row_that_carries_session_ids_lets_us_compute_the_real_numbers() {
+        let md = metadata_with(&["s2"], &["s1", "s3"]);
+        let c = project_counts(&row("-home-u-p", &["s1", "s2", "s3", "s4"]), &md);
+
+        assert_eq!(
+            c.starred,
+            Counted::Known(1),
+            "★ 这个项目下 s2 是星标的 —— 算得出来就该是 1。\n\
+             读到别的值 = 要么没在算（写死），要么 sid 对不上号。"
+        );
+        assert_eq!(
+            c.hidden,
+            Counted::Known(2),
+            "★ s1 / s3 隐藏 ⇒ 2。这一格与上一格分开写是有意的：\
+             两个数用同一份清单算，一起错和分别错要能分辨。"
+        );
+    }
+
+    /// ★ `KR83D1` 第 ① 刀的正向：**把清单从那一行摘掉 ⇒ 算不出**（而不是算出 0）。
+    ///
+    /// 这一条同时是 `KR83D2` 第 ③ 刀的落点，两条判据在这里是**同一格**：
+    /// 「算不出的那一档」必须与「真的是 0」区分得开。
+    #[test]
+    fn a_row_without_the_list_yields_unknown_and_unknown_is_not_zero() {
+        let md = metadata_with(&["s1"], &[]);
+        let c = project_counts(&row_without_ids("-home-u-p", 3), &md);
+
+        assert_eq!(
+            c.starred,
+            Counted::Unknown(WhyUnknown::NoSessionIdList),
+            "★ 旧 daemon 不带清单 ⇒ 这三个数是**不知道**"
+        );
+        assert_ne!(
+            c.starred,
+            Counted::Known(0),
+            "🔴 **本件的全部题面就在这一行断言上。**\n\
+             「不知道」退化成 `Known(0)` ⇒ 界面上「查过了，一个星标都没有」与「压根没查」\n\
+             重新变成同一个值 —— 那正是 09-12 之前 `fanout_list_projects` 里那三处写死的病。\n\
+             ⚠ 只把写死的 `0` 换成另一个写死值也治不了它：那还是一个值装两件事。"
+        );
+        assert_ne!(c.hidden, Counted::Known(0), "同上，hidden 那一格");
+        assert_ne!(c.has_live, Counted::Known(false), "同上，has_live 那一格");
+    }
+
+    /// ★ `KR83D1` 第 ② 刀：**清单是空的、而这个项目下确实有会话 ⇒ 不许当成 0。**
+    ///
+    /// 「空清单」与「没有会话」是两件事：后者在 daemon 侧**根本不会出这一行**
+    ///（`project_row` 返回 `None`）。所以出了行还空 = 这一行坏了 ⇒ 报「不知道」。
+    #[test]
+    fn an_empty_list_on_a_project_that_has_sessions_is_a_broken_row_not_a_zero() {
+        let md = metadata_with(&["s1"], &["s1"]);
+        let mut broken = row("-home-u-p", &[]);
+        broken["sessionCount"] = serde_json::json!(3); // 有 3 个会话，清单却是空的
+
+        let c = project_counts(&broken, &md);
+        assert_eq!(
+            c.starred,
+            Counted::Unknown(WhyUnknown::ListDisagreesWithCount),
+            "★ 空清单 ≠ 没有 —— 拿它算出 0 就是把一行坏数据当成了真值"
+        );
+        assert_ne!(
+            c.starred,
+            Counted::Known(0),
+            "🔴 空清单不许退化成「真的是 0」"
+        );
+
+        // 少一个也一样（不是只有「全空」才算坏）。⚠ 刻意**不**退化成
+        // 「按拿得到的那两个算」：那会给出一个看起来像真值的少数，比明说不知道更糟。
+        let mut short = row("-home-u-p", &["s1", "s2"]);
+        short["sessionCount"] = serde_json::json!(3);
+        assert_eq!(
+            project_counts(&short, &md).hidden,
+            Counted::Unknown(WhyUnknown::ListDisagreesWithCount),
+            "★ 短清单同理"
+        );
+    }
+
+    /// ★ `KR83D1` 第 ③ 刀的**对照组**：真的把字段改名，判据必须还是绿的。
+    ///
+    /// 这里逐字模拟「只改字段名、内容等价」：拿生产常量以外的另一个名字造一行，
+    /// 再用**同一个常量**去读 —— 于是「改名」这件事在判据眼里只是改了一个字符串常量。
+    #[test]
+    fn renaming_the_field_does_not_break_the_criterion() {
+        let md = metadata_with(&["x1"], &[]);
+        // 等价字段：换个名字、内容一字不改。
+        let renamed = serde_json::json!({
+            "dirName": "p",
+            "projectPath": "/home/u/p",
+            "sessionCount": 2,
+            "lastActivityMs": 1i64,
+            "sessionUuids": ["x1", "x2"],
+        });
+        // 判据读的是**常量指到的那个 key**：把常量指过去，算出来的数一字不变。
+        let mut as_if_renamed = renamed.clone();
+        as_if_renamed[REMOTE_SESSION_IDS_FIELD] = renamed["sessionUuids"].clone();
+        assert_eq!(
+            project_counts(&as_if_renamed, &md).starred,
+            Counted::Known(1),
+            "★ 「或等价字段」那个口子要留着：内容等价的一行，算出来的数必须一样。"
+        );
+    }
+
+    // ───────────────────────────── `KR83D2` ─────────────────────────────
+
+    /// ★★ `KR83D2` 第 ① 刀：**恢复成今天的 `0 / 0 / false` 写死 ⇒ 必须红。**
+    ///
+    /// 走的是完整那条路（fan-out → 解析 → 算 → 压成线上形状），
+    /// 所以「把 `starred_count:` 改回字面量 0」在这里当场红。
+    #[tokio::test]
+    async fn the_wire_row_carries_the_real_star_and_hide_counts_now() {
+        let md = metadata_with(&["s1", "s2"], &["s3"]);
+        let lines = vec![row("-home-u-p", &["s1", "s2", "s3"]).to_string()];
+        let out = fanout_list_projects(&[cfg("pi")], &md, |_| {
+            let lines = lines.clone();
+            async move { Ok(lines) }
+        })
+        .await
+        .expect("一台成功");
+
+        let wire = out.rows[0].0.clone();
+        assert_eq!(
+            (wire.starred_count, wire.hidden_count),
+            (2, 1),
+            "★ 09-12 之前这两格是字面量 `0` —— 改回去这一条当场红"
+        );
+        assert_eq!(wire.session_count, 3);
+        assert_eq!(wire.origin.as_deref(), Some("pi"));
+    }
+
+    /// ★★ `KR83D2` 第 ③ 刀：**算不出的那一档，也必须与「真的是 0」区分得开。**
+    ///
+    /// `has_live` 今天**没有真相源**（`SessionMap` 认本机 pid，远端会话不在里面），
+    /// 所以它恒是 `Unknown` —— 而不是 09-12 之前那个断言式的 `false`。
+    #[test]
+    fn liveness_has_no_oracle_here_so_it_says_so_instead_of_saying_false() {
+        let md = metadata_with(&[], &[]);
+        let c = project_counts(&row("-home-u-p", &["s1"]), &md);
+        assert_eq!(
+            c.has_live,
+            Counted::Unknown(WhyUnknown::NoRemoteLivenessOracle),
+            "★ 「本机答不了」要说出口"
+        );
+        assert_ne!(
+            c.has_live,
+            Counted::Known(false),
+            "🔴 `false` 是一句断言：它说「这台机器上这个项目此刻没有活会话」。\n\
+             而本机根本没有远端的判活真相源 —— 说不出口的话不许说。"
+        );
+        assert!(
+            !c.has_live.clone().wire_placeholder(),
+            "线上那一格今天仍是 `false`（`HistoryProject` 装不下第三态，那是 `K-R66` 的面）——\n\
+             本条钉的是「数据层分得开」，顺带把这个**已知的**有损投影写在判据里，免得它变成暗账。"
+        );
+    }
+
+    /// ★ 每一档「不知道」都说得出**为什么** —— 定框 `E4`：静默失败一律给身份。
+    #[test]
+    fn every_unknown_can_say_why() {
+        for w in [
+            WhyUnknown::NoSessionIdList,
+            WhyUnknown::ListDisagreesWithCount,
+            WhyUnknown::NoRemoteLivenessOracle,
+        ] {
+            let r = w.reason();
+            assert!(!r.is_empty(), "{w:?} 说不出理由");
+            assert!(
+                !r.contains("unknown") && !r.contains("None"),
+                "★ 理由要是**人话**，不是把类型名抄一遍：{r}"
+            );
+        }
+    }
+
+    /// ★ **把「不知道」压成线上那个值的地方，全仓只有一处。**
+    ///
+    /// 行为判据看不见这条：谁在别处再写一句 `starred_count: 0`，上面那些测试用的夹具
+    /// 走的是有清单那条路，照样绿。这一条钉的是**压点的个数**。
+    ///
+    /// 对照组自带（F23 那一族本区已犯过三次）：needle 在未剥测试段里比生产段多，
+    /// 剥不掉就说明 `production_source` 没在起作用、下面在读自己。
+    #[test]
+    fn there_is_exactly_one_place_that_flattens_unknown_into_a_wire_value() {
+        let raw = include_str!("remote_history.rs");
+        let prod = guard_core::production_source(raw);
+        const NEEDLE: &str = "wire_placeholder(";
+        assert!(
+            raw.matches(NEEDLE).count() > prod.matches(NEEDLE).count(),
+            "★ 对照组：剥掉测试段后 needle 应当变少（本测试自己的字面量被剥走了）。\n\
+             没变少 ⇒ `production_source` 没在起作用，下面那条是在读自己、恒绿。"
+        );
+        // ⚠ **再剥一层行注释**：`production_source` 剥的是 `#[cfg(test)]` 段，注释照留。
+        // 而本条要判的是「**代码里**有没有第二个压点 / 有没有把写死值写回来」——
+        // 讲这段历史的**散文里必然出现那几个字面量**（上面 `Counted` 的头注就是），
+        // 不剥的话判据会被自己的文档喂饱（反过来：为了绕开判据而不敢把历史写清楚，更糟）。
+        // 本仓已有先例逐字记着这一族：`readonly_guard` 头注「护栏是子串扫描、**不剥注释**」。
+        let code: String = prod
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        // 生产代码里：定义 1 处 ＋ 三个字段各 1 处 = 4。
+        assert_eq!(
+            code.matches(NEEDLE).count(),
+            4,
+            "★ 压点个数变了。多出来的每一处都是一次「把不知道说成 0」——\n\
+             要么它该走 `Counted`，要么这条判据该跟着改（连同为什么）。\n\
+             现打生产代码：\n{}",
+            code.lines()
+                .filter(|l| l.contains(NEEDLE))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+        for hardcoded in ["starred_count: 0", "hidden_count: 0", "has_live: false"] {
+            assert!(
+                !code.contains(hardcoded),
+                "🔴 生产代码里又出现了 `{hardcoded}` —— 那是 09-12 之前那三处写死的原样。"
+            );
+        }
+    }
+
+    // ───────────────────────────── `KR83D3` ─────────────────────────────
+
+    /// ★★ `KR83D3`：**算这三个数的路径上，进程 spawn 次数不随项目数增长。**
+    ///
+    /// 判的是**「一次调用里 spawn 了几次」这个可数的事实** —— 逐字**不判**
+    /// 「代码里有没有 for 循环」（那判的是写法不是复杂度）。
+    ///
+    /// 做法：把「去问远端」作为参数传进 [`fanout_list_projects`]，喂一个会计数的假查询。
+    /// 一旦有人为了拿 star/hide 而在每个项目上补一句 `--list-sessions`，
+    /// 计数当场从 `台数` 涨成 `台数 + 项目数`，本条红。
+    #[tokio::test]
+    async fn the_number_of_remote_execs_does_not_grow_with_the_number_of_projects() {
+        let md = metadata_with(&["p7-s0"], &[]);
+
+        async fn run_with(n_projects: usize, md: &HistoryMetadata) -> (usize, usize) {
+            let lines: Vec<String> = (0..n_projects)
+                .map(|i| row(&format!("p{i}"), &[&format!("p{i}-s0")]).to_string())
+                .collect();
+            let calls = std::cell::Cell::new(0usize);
+            let out = fanout_list_projects(&[cfg("pi")], md, |_| {
+                calls.set(calls.get() + 1);
+                let lines = lines.clone();
+                async move { Ok(lines) }
+            })
+            .await
+            .expect("一台成功");
+            (calls.get(), out.rows.len())
+        }
+
+        let (few_calls, few_rows) = run_with(3, &md).await;
+        let (many_calls, many_rows) = run_with(200, &md).await;
+
+        assert_eq!((few_rows, many_rows), (3, 200), "夹具本身要真的变多");
+        assert_eq!(
+            few_calls, 1,
+            "★ 1 台 3 个项目 ⇒ **1 次**远端 exec（现打 {few_calls}）"
+        );
+        assert_eq!(
+            many_calls, 1,
+            "🔴 1 台 200 个项目 ⇒ 仍然**1 次**（现打 {many_calls}）。\n\
+             变成 201 = 有人给每个项目补了一次 `--list-sessions` ——\n\
+             那是 N 次进程 spawn，而这是用户常开的界面（失效方向逐字记在\n\
+             `local_read_surface_registry.rs` 那条退役条件里）。"
+        );
+    }
+
+    /// ★ 多台时的口径：spawn 次数 = **台数**，与项目数无关（不是「恒为 1」）。
+    #[tokio::test]
+    async fn the_number_of_remote_execs_equals_the_number_of_hosts() {
+        let md = metadata_with(&[], &[]);
+        let calls = std::cell::Cell::new(0usize);
+        let hosts = [cfg("pi"), cfg("nas"), cfg("box")];
+        let out = fanout_list_projects(&hosts, &md, |_| {
+            calls.set(calls.get() + 1);
+            async move {
+                Ok((0..50)
+                    .map(|i| row(&format!("p{i}"), &[&format!("p{i}-s0")]).to_string())
+                    .collect())
+            }
+        })
+        .await
+        .expect("三台都成功");
+        assert_eq!(out.rows.len(), 150, "3 台 × 50 个项目");
+        assert_eq!(
+            calls.get(),
+            hosts.len(),
+            "★ 3 台 ⇒ 3 次；150 个项目一次都不额外加"
+        );
+    }
+
+    /// 逐台失败仍旧隔离（F76 的老性质，本件重构了这条路 ⇒ 顺手钉住没被改坏）。
+    #[tokio::test]
+    async fn a_failing_host_is_still_skipped_and_reported_not_fatal() {
+        let md = metadata_with(&[], &[]);
+        let out = fanout_list_projects(&[cfg("good"), cfg("bad")], &md, |c| {
+            let bad = c.origin_label() == "bad";
+            async move {
+                if bad {
+                    Err("连不上".to_string())
+                } else {
+                    Ok(vec![row("p", &["s1"]).to_string()])
+                }
+            }
+        })
+        .await
+        .expect("有一台成功 ⇒ 整体 Ok");
+        assert_eq!(out.failed_hosts, vec!["bad".to_string()]);
+        assert_eq!(out.rows.len(), 1);
     }
 }

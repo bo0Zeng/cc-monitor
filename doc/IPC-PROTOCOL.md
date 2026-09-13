@@ -789,7 +789,7 @@ rc=2
 
 带参数 exec = 一次性查询模式，干完即退、**不进流式协议**：
 
-- `--list-projects` → 每行 `{dirName, projectPath, sessionCount, lastActivityMs}`
+- `--list-projects` → 每行 `{dirName, projectPath, sessionCount, lastActivityMs, sessionIds}`。`sessionIds`（`K-R83`，09-12）= 该项目下**全部会话 sid**（升序，`<sid>.jsonl` 的 stem，与 `--list-sessions` 的 `sessionId` 同一个字符串），**与 `sessionCount` 恒等长**。★ 它在的理由：客户端侧的「星标数 / 隐藏数 / 有没有活会话」三个数**全部按 sid 索引**，缺的一直是「这个项目下有哪几个 sid」——带上它，客户端**一次调用**就算得出，不必每个项目再发一次 `--list-sessions`（那是 N 次进程 spawn，而项目列表是常开界面）。⚠ **它不在 `sessionCount` 之外多读一个字节**（同一趟 `read_dir`）。⚠ **客户端读法**：字段**不在**（旧 daemon）⇒ 那三个数是「**不知道**」，**不是 0**；字段在但与 `sessionCount` 长度对不上 ⇒ 这一行坏了，同样按「不知道」处理，**不许**拿手上那几个算出一个看起来像真值的少数
 - `--list-sessions <project_dir>` → 每行 `{sessionId, jsonlPath, startedAtMs, updatedAtMs, messageCountApprox, firstUserExcerpt, aiTitle, cwd}`
 - `--read-session <jsonl_path>` → 原样透传该 jsonl 字节（monitor 侧走既有 `parse_line` 管线）
 - `--read-session-tail <jsonl_path> <N>`（Batch9-F30，p1g）→ **尾部优先**：首行 meta `{"kind":"snapshot_meta","total":T,"tail_from":F}`（可计行口径 = watcher 行号空间），随后原样输出行 [F,T)（最新 N 行）再输出 [0,F)。快照拉取用它——最新内容第一批就位、旧历史回填；monitor 按 meta 两段编 seq（前端 seq 二分插入天然支持乱序），`total` 做精确完整性对账。回填在途经 `snapshot-inflight` 事件驱动前端 batch 模式（替代纯 300ms 静默启发式，5min 防呆上限）
