@@ -631,13 +631,46 @@ mod tests {
     /// ★ 看门狗跑的那条 tmux 命令，与本进程回滚时跑的**是同一条**。
     ///
     /// 两处各写一份的话，改了一处不会红，而「到点杀的是别的东西」这种错**只在到点那一刻**现形。
+    ///
+    /// # ⚠ 它要断的是**两侧**，而第一版只断了一侧（收工前自查补的）
+    ///
+    /// 第一版只比「看门狗那条 argv 的尾巴 == [`kill_argv`]」—— 那证的是**看门狗**这一侧。
+    /// **回滚**那一侧（[`kill_handle`]）当时**没有任何东西在证它也走同一份** ⇒
+    /// 把 `kill_handle` 里的 argv 换成手抄的一条，本条**照样绿**，而它的标题写着「是同一条」。
+    /// ⇒ 这正是本轮头号病理（**量具的作用域对不上它声称守的面**）长在我自己的判据上。
+    /// 下面第二格补的就是那一侧：`kill_handle` 的**函数体**里必须真的出现那次调用。
     #[test]
     fn the_watchdog_runs_the_same_kill_command_the_rollback_runs() {
+        // ① 看门狗那一侧：argv 的尾巴逐元素就是 `kill_argv` 那一份。
         let mine: Vec<String> = kill_argv("$4").iter().map(|a| (*a).to_string()).collect();
         let w = watchdog_args(None, 3, "$4");
         assert!(
             w.ends_with(&mine),
             "看门狗那条命令的尾巴不是 `kill_argv` 那一份：{w:?} / {mine:?}"
+        );
+        // ② 回滚那一侧：`kill_handle` 的函数体里必须真的调它。
+        //    ⚠ 针**在测试段**，而扫的是**生产段**（`production_code` 剥掉测试段）
+        //    ⇒ 本条不会在自己的文本里找到自己（`ratchet_guard` 头注那条纪律）。
+        let prod = crate::guard_support::production_code(include_str!("oneshot_session.rs"));
+        assert!(
+            prod.len() > 3_000,
+            "剥完只剩 {} 字节 —— 剥过头了，下面那格在空转",
+            prod.len()
+        );
+        let after = prod
+            .split("fn kill_handle(")
+            .nth(1)
+            .expect("生产段里找不到 `kill_handle` —— 回滚那一处换了住址，回来重判本条");
+        // ⚠ **切到下一个顶层 `fn` 为止，刻意不按大括号切**：`readonly_guard` 的剥法靠
+        //    大括号配平找测试模块的边界，而**注释或字符串里出现一个落单的右大括号字面量**
+        //    会让它提前收尾 ——「剥完仍有测试属性残留在生产段里」当场红。
+        //    ⚙ 本轮现打踩了**两次**：第一次是这里原本写成按大括号切，第二次是
+        //    **解释这件事的那句注释自己写了一个落单的右大括号**。逐字记在这里。
+        let body = after.split("\nfn ").next().unwrap_or(after);
+        assert!(
+            body.contains("kill_argv("),
+            "回滚那一处没走 `kill_argv` —— 它和看门狗从此各写一份 argv，\
+             而「到点杀的是别的东西」这种错只在到点那一刻现形。那一段是：{body:?}"
         );
     }
 
