@@ -162,7 +162,9 @@ done"
     )
 }
 
-/// 构造整条探针远端脚本（纯函数，可单测——同 `build_capture_pane_cmd`/`build_kill_session_cmd`
+/// 构造整条探针远端脚本（纯函数，可单测——同 `build_capture_pane_cmd`
+/// ⚠ `K-R72`（09-12）：先前这里还并列点着 `build_kill_session_cmd`，那个函数已随  〔散文墓碑〕
+/// 送键与杀会话的桌面侧 SSH 回落一起删了 —— 今天 `tmux.rs` 里只剩 capture-pane 一个构造器
 /// 既有惯例：编排逻辑与"怎么发起 SSH exec"分离）。
 ///
 /// 算法：清掉同名残留 → 建会话（固定几何尺寸）→ 挂自毁看门狗 → send-keys 启动 payload →
@@ -1001,7 +1003,8 @@ mod tests {
         );
     }
 
-    /// F10 真机验收的**输入源**（同 F04 `emit_guarded_commands_for_e2e` 的既有惯例）：打印真实
+    /// F10 真机验收的**输入源**（这套惯例来自 F04 那条 `emit_guarded_commands_for_e2e`，  〔散文墓碑〕
+    /// 它已随 `K-R72` 走了 —— 惯例本身还在，本条就是它今天的活体）：打印真实
     /// `build_usage_probe_cmd` 产出的命令串，供 `e2e/usage-probe-acceptance.sh` 提取、在隔离
     /// tmux socket 上验证真实行为——不手搓等价命令。看门狗超时故意传短值（真机 e2e 要能在合理
     /// 时间内跑完，不代表生产的 30s 可配置）。`#[ignore]`——只由该脚本用

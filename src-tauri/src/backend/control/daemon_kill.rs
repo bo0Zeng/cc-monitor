@@ -449,6 +449,13 @@ mod tests {
     /// 处置不是「以后记得更新」，是**配一条触发器**：本条把那句话与
     /// 「回落这段代码到底还在不在」绑在一起。F11 删回落时它会主动红，
     /// 逼人回来把那句话一起改掉。
+    ///
+    /// 🔴 **`K-R72`（09-12）：它真的响了，而且响得对。**
+    /// 那一刀删掉 `kill_remote_tmux` 的一次性 SSH 回落，本条**当场红**，
+    /// 逼着把 `doc/IPC-PROTOCOL.md` 那两处「过渡期」的说法一起改成「已删」。
+    /// ⇒ 今天两侧都是 `false`：代码里没有回落，文档里也不再说有。
+    /// **本条不因此作废** —— 它两个方向都咬：谁把回落加回来不改文档、
+    /// 或谁把那句话写回文档而代码里没有，都会红。
     #[test]
     fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
         let tmux_rs = guard_core::production_code(include_str!("../../tmux.rs"));
@@ -473,14 +480,28 @@ mod tests {
 
     /// 两条路的拒绝文案必须说同一件事 —— 同一个拒绝在两条路上说两种话，
     /// 用户会以为是两个不同的问题。
+    ///
+    /// # `K-R72`（09-12）：**换了对照面，不是删掉判据**
+    ///
+    /// 本条原名 `the_refusal_wording_matches_the_ssh_path`，反向锚点断的是  〔散文墓碑〕
+    /// 「monitor 侧那条一次性 SSH 回落里这几句话还在」。**那条 SSH 路整块删了** ⇒
+    /// 「两条路」若还指它就是一句假话，而它守的性质（**同一个拒绝只许有一种说法**）没有消失：
+    /// 今天用户碰得到的两条路是 **kill 与 send-keys 这两条后端命令**，
+    /// 各有一份 `refusal_text` ⇒ 对照面换成兄弟命令那一份。
+    ///
+    /// ⚠ 顺带收紧了一格：对照面过 [`guard_core::production_code`]，
+    /// **兄弟文件自己的测试里抄一份同样的串糊弄不过去**（原来那半是整份源码 `contains`）。
+    ///
+    /// ⚠ `too_many_windows` **不参与对照** —— 它是 kill 独有的一档
+    /// （send-keys 不删除任何东西，窗口数与它无关，`admit` / `admit_destructive` 是两个入口）。
+    /// 它自己那句「下一步该干什么」单独钉。
     #[test]
-    fn the_refusal_wording_matches_the_ssh_path() {
-        let ssh = include_str!("../../tmux.rs");
+    fn the_refusal_wording_matches_the_sibling_command() {
+        let sibling = guard_core::production_code(include_str!("daemon_send_keys.rs"));
         for (code, needle) in [
             ("no_tmux", "远端未安装 tmux"),
             ("no_such_session", "远端会话已不存在（可能已被终止）"),
             ("wrong_owner", "可能不是本工具管理的会话"),
-            ("too_many_windows", "请到该 tmux 里自行处理"),
         ] {
             let mine = refusal_text(code, "m");
             assert!(
@@ -488,10 +509,15 @@ mod tests {
                 "`{code}` 的文案里没有 {needle:?}：{mine}"
             );
             assert!(
-                ssh.contains(needle),
-                "SSH 那条路里已经没有 {needle:?} 了 —— 两条路的文案漂了，\
-                 要么一起改，要么本条判据该跟着改"
+                sibling.contains(needle),
+                "`daemon_send_keys.rs` 的生产段里已经没有 {needle:?} 了 —— \
+                 两条后端命令的文案漂了，要么一起改，要么本条判据该跟着改"
             );
         }
+        assert!(
+            refusal_text("too_many_windows", "m").contains("请到该 tmux 里自行处理"),
+            "`too_many_windows` 少了「下一步该干什么」那半句 —— \
+             它是 kill 独有的一档，没有兄弟命令替它兜"
+        );
     }
 }
