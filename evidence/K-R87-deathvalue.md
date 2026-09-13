@@ -283,6 +283,29 @@
   🔴 **本轮独立复现了 `K-R86` `§8c` 报的那条既有盲区**（那一轮是在 `--capture-pane` 上逮到的）。
   本轮同样没动它（改它要重判它整个人群）⇒ 进 `§8`。
 
+### 收工前自查那一刀（`brief` 纪律 15）：**判据的作用域对不上它声称守的面**
+
+拿本轮头号病理（`§0c` 按顶层文件名去数一张住在**模块**里的登记表 · `cut.sh` 按**第 2 行**去找
+`# FILES:`）回打自己写的判据，逮到同一形长在
+`the_watchdog_runs_the_same_kill_command_the_rollback_runs` 上：
+第一版只比「看门狗那条 argv 的尾巴 == `kill_argv`」——**证的是看门狗那一侧**，
+而**回滚**那一侧（`kill_handle`）没有任何东西在证它也走同一份。
+
+- 刀：把 `kill_handle` 里的 `.args(kill_argv(handle))` 换成**手抄的、行为完全相同的**
+  `.args([UTF8_CLIENT_FLAG, "kill-session", "-t", handle])`。
+- 补之前：**照样绿**（判据的标题写着「是同一条」，而它证不到）。
+- 补之后现打：**741 passed / 1 failed**，报错逐字把 `kill_handle` 整段函数体印出来
+  （「回滚那一处没走 `kill_argv` —— 它和看门狗从此各写一份 argv，
+  而「到点杀的是别的东西」这种错只在到点那一刻现形」）。
+- ⚠ **量法的射程如实写**：这一刀跑的是**沙箱里的 `cargo test`（单包 `remote-daemon-proto`）**，
+  **不是整趟 13 格门禁** —— 那条判据整个住在 daemon 这一棵，别的 12 格与它无关。
+  三条 dod 的死值验（`M1`…`M7` ＋ `7u`）**每刀都是整趟门禁**。
+
+⚠ 补这一段的时候**踩了两次同一个坑，逐字记着**：`readonly_guard` 的剥法靠**大括号配平**找
+测试模块边界，而**注释或字符串里一个落单的右大括号**会让它提前收尾 ——
+「剥完仍有测试属性残留在生产段里」当场红（`[("oneshot_session.rs", 9)]`）。
+第一次是切法本身用了大括号，第二次是**解释这件事的那句注释自己写了一个落单的右大括号**。
+
 ## 收官那一趟（阴性对照 ＝ `KR87D1` 刀② / `KR87D2` 刀② / `KR87D3` 刀②）
 
 **`GATE: OK —— 13 格全绿`**（hooks · fmt · fmt-daemon · winchk · cargo · generated · daemon ·
@@ -320,8 +343,15 @@ npm · 四套 ccm e2e · pb check）。
 - `no_timer_guard::f09_external_beat`（**+1**）：`the_oneshot_watchdog_script_carries_no_loop`
 - `main.rs::stream_flag_tests`（**+1**）：`the_oneshot_session_subcommand_is_actually_reachable`
 
-⚠ **量于哪个提交**：`track/k-r87` 上本件的**第二个**提交（`evidence/` 这份文件写完之后的那一个）。
-上表的「收官」列是那一趟门禁的现打读数。
+⚠ **量于哪个提交**：`track/k-r87` 上本件的**第三个**提交（`c634e47`，收工前自查那一拍之后）。
+
+🔴 **收官那一趟里 `pb check` 红 1 条，成因是我自己，而修它的落点不是我 —— 如实记**：
+`FAIL [J3 陈账] INDEX.md 比源文件旧 —— 重跑 `pb index` 落盘`。
+成因：派工单要我把 `§3` / `§8` 写进件文件，而 `INDEX.md` 是**生成区**、由 `pb index` 落盘
+—— **那是 PM 的落点**（`brief` 第 3 条「计划仓只写不提交」＋ 第 19 条「窗口开着期间不跑生成命令」；
+`§2` 也把 `INDEX.md` 标成「PM 用」）。⇒ **我不跑它**，PM 收件时跑一趟即消。
+⚙ **同一份代码在「计划仓还没被我写过」那一刻的完整读数是 13 格全绿**，量于 `384a561`
+（实现那一拍；那一趟 `pb check FAIL=0 BROKEN=0`）。**代码那 12 格在每一趟里都是绿的。**
 
 ⚠ **本树未铺 `src-tauri/embedded-daemons/`**（门禁每趟自印那一行）⇒ cargo 那个合计里
 **少了「本地后端真的能起来吗」那 4 条**。本件 bump 了 `BUILD_ID`（p2g → p2h），
