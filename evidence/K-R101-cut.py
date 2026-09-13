@@ -21,6 +21,7 @@
     python3 evidence/K-R101-cut.py list
     python3 evidence/K-R101-cut.py apply <id>
     python3 evidence/K-R101-cut.py restore
+    python3 evidence/K-R101-cut.py run <落点目录> <刀 id...>
 """
 
 from __future__ import annotations
@@ -247,6 +248,81 @@ def restore() -> None:
     print(f"★ {st['cut']} 已还原")
 
 
+# ── 跑法：一趟一刀，切完还原，全部在沙箱里（`K31`/`R15`）─────────────────────────
+#
+# 🔴 **它为什么是 Python 不是 shell**〔本轮实测〕：第一版是 `evidence/K-R101-run-cuts.sh`，
+# 而 `src-tauri/src/shell_lint_registry.rs` 的
+# `every_shell_script_is_either_linted_or_registered_as_exempt` **当场逮住它** ——
+# 全仓每个 shell 脚本要么进 CI 的 shellcheck 表达式（连带一个计数地板），要么进 `EXEMPT`
+# 并写清理由。为一个只在死值验里用一次的跑法去动 `ci.yml` 的地板、或去 `EXEMPT` 里挂一行，
+# 都是拿判据换方便。**换成 `.py` 就没有这件事**（那也是本仓 `evidence/` 下既有的形态）。
+# ⚠ 它红过三趟（`M11`/`M12`/`M13` 的 cargo 那一格），那三趟的读数里有它的噪音，已重打。
+
+SANDBOX_IMAGE = "ccmon-devbox:latest"
+PROJ = "/home/zbl/文档/claudecode-frontend"
+
+#: 这一刀够得着哪几格（与门禁那几格跑的是**同一条命令**，只是不陪跑无关的）
+SUITES = {"M11": ("cargo", "daemon"), "M12": ("cargo",), "M13": ("vitest", "cargo")}
+DEFAULT_SUITES = ("vitest",)
+
+_STRIP_ANSI = r'sed "s/\x1b\[[0-9;]*m//g"'
+SUITE_CMD = {
+    # 点名**哪一条判据红了**，不是只记「红了」⇒ 抓 `×`（逐条失败名）与 `FAIL`（文件名）
+    "vitest": 'npx vitest run 2>&1 | ' + _STRIP_ANSI
+    + ' | grep -E "^ +× |^ FAIL |Test Files|Tests  " | head -80',
+    "cargo": 'cd src-tauri && cargo test --lib 2>&1 '
+    + '| grep -E "^test result|^failures:|^    [a-z_]+::" | head -60',
+    "daemon": 'cd remote-daemon-proto && cargo test 2>&1 '
+    + '| grep -E "^test result|^failures:|^    [a-z_]+::" | head -60',
+}
+
+
+def sandbox(cmd):
+    """在沙箱里跑一条命令 —— 挂载 / 环境与 `.claude/devbox/gate` 逐条相同。"""
+    import subprocess
+
+    argv = [
+        "docker", "run", "--rm", "--network", "none",
+        "-v", PROJ + ":" + PROJ,
+        "-v", "ccmon-cargo-registry:/opt/rust/cargo/registry",
+        "-e", "CARGO_TARGET_DIR=" + PROJ + "/.claude/pm-targets/k-r101",
+        "-e", "HOME=/home/zbl", "-e", "PB_WS=backend-consolidation",
+        "-w", str(REPO), SANDBOX_IMAGE, "bash", "-o", "pipefail", "-c", cmd,
+    ]
+    r = subprocess.run(argv, capture_output=True, text=True)
+    return r.returncode, r.stdout + r.stderr
+
+
+def git_status():
+    import subprocess
+
+    out = subprocess.run(
+        ["git", "-C", str(REPO), "status", "--porcelain"], capture_output=True, text=True
+    ).stdout
+    return "\n".join(l for l in out.splitlines() if not l.startswith("?? "))
+
+
+def run(outdir, ids):
+    od = Path(outdir)
+    od.mkdir(parents=True, exist_ok=True)
+    for cid in ids:
+        print("════ " + cid + " ════")
+        pre = git_status()
+        apply(cid)
+        buf = []
+        for s in SUITES.get(cid, DEFAULT_SUITES):
+            rc, out = sandbox(SUITE_CMD[s])
+            buf.append("---- 套件 " + s + " ----\n" + out + "\nSUITE_EXIT=" + str(rc))
+        (od / (cid + ".out")).write_text("\n".join(buf), encoding="utf8")
+        restore()
+        post = git_status()
+        if pre != post:
+            _fail(cid + " 还原后盘面与切之前不同 —— 停\n前：" + pre + "\n后：" + post)
+        greens = sum(1 for b in buf if b.rstrip().endswith("SUITE_EXIT=0"))
+        print(cid + ": " + str(greens) + " 格绿 / " + str(len(buf)) + " 格 —— 原文落 " + str(od / (cid + ".out")))
+    print("全部跑完")
+
+
 if __name__ == "__main__":
     cmd = sys.argv[1] if len(sys.argv) > 1 else "list"
     if cmd == "list":
@@ -256,5 +332,7 @@ if __name__ == "__main__":
         apply(sys.argv[2])
     elif cmd == "restore":
         restore()
+    elif cmd == "run":
+        run(sys.argv[2], sys.argv[3:])
     else:
         _fail(f"不认识的动作 {cmd}")
