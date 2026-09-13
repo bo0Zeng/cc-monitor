@@ -261,7 +261,7 @@ vite 报 `TransformPluginContext.error`）：
 `the_orchestration_registry_…` **绿**。两趟原文都在 `…/cuts3/M14.out`
 （第二趟覆盖了第一趟 —— 第一趟的读数逐字记在上面那段里）。
 
-## 收尾那趟 —— 量于 `5f2425f`（交回时的分支尖）
+## 收尾那趟 —— 量于 `5f2425f`，收工前自查之后在 `b40c572` **重打了一趟，逐格相同**
 
 ```
 GATE: FAIL —— pb check[backend-consolidation]（===== pb check: FAIL=1 BROKEN=0 =====）
@@ -278,3 +278,9 @@ GATE: FAIL —— pb check[backend-consolidation]（===== pb check: FAIL=1 BROKE
 它读的是**计划工作区**，前 12 格读的是**代码工作树**；那趟跑的全程我只写计划仓、
 没碰过工作树。`pb index` 是生成命令，窗口开着不许跑（`brief` 第 19 条）⇒ **归 PM 收窗口那一拍**
 （先 `freeze --verify` 再跑）。
+
+⚙ **`b40c572`（＝ 交回时的分支尖，含收工前自查那一刀的修复）重打读数，与上面逐格相同**：
+`hooks 11 · fmt 1 · fmt-daemon 1 · winchk 1 · cargo 1598 · generated 一致 · daemon 742 ·
+npm 1722 · e2e 12/8/46/45`，第 13 格仍是同一条 `[J3 陈账]`。
+⇒ 修那条自喂判据 ＋ 补 `M14` **一格读数都没动**（它加的是牙，不是断言条数：
+`M14` 那一刀之外，`the_orchestration_registry_…` 本来就在跑）。
