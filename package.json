@@ -40,7 +40,6 @@
     "gen:payload-golden": "npx tsx e2e/launch-payload-golden-emit.mts",
     "check:types": "npm run gen:types && tsc --noEmit && git diff --exit-code -- src/generated/",
     "test:tmux-target": "bash e2e/tmux-target-acceptance.sh",
-    "test:tmux-guarded": "bash e2e/tmux-guarded-acceptance.sh",
     "test:ccm-cli": "bash e2e/ccm-cli.test.sh",
     "test:ccm-contract-parity": "bash e2e/ccm-contract-parity.sh",
     "test:cc-spawn-uplift": "bash e2e/cc-spawn-uplift.sh",

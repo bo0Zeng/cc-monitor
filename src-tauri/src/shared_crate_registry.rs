@@ -688,7 +688,7 @@ mod tests {
             ("vendored cc-acct-iso self-tests (sandboxed, 294 assertions)", true, "沙箱内自测；vendor 是 `cc-acct-iso` 不是红线点名的 `code-picture-core`"),
             ("python syntax compile", true, "`python3 -m py_compile e2e/*.py`"),
             // 〔`K-R48` 第二拍 09-11〕标题里那个数从 23 变 21（删了 ccm-acceptance / ccm-pretrust 两套）。
-            ("G-A/G-C 覆盖面地板（21 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
+            ("G-A/G-C 覆盖面地板（20 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
             ("exec-bit guard (shared/** shebang files must be 100755 in git)", true, "`bash e2e/exec-bit-guard.sh`"),
             // ── 无名步骤（`- run: <命令>`，08-07 人群扩到它们之后才第一次可见）。
             // 标识是命令本身，多个 job 里同一条命令共用这一行登记。
@@ -1027,7 +1027,9 @@ mod tests {
     /// | 触发脚本 | 读数 | 带动的 `#[ignore]` |
     /// |---|---|---|
     /// | `local-backend-supervise.sh` | **7 过 / 0 败** | **4 条** |
-    /// | `tmux-guarded-acceptance.sh` | **14 过 / 0 败** | 1 条（`emit_guarded_commands_for_e2e`） |
+    /// | `tmux-guarded-acceptance.sh` | **14 过 / 0 败** | 1 条 —— 🔴 **`K-R72` 09-12：这一行是历史。**
+    ///   那套脚本与它带动的那条 `#[ignore]` 一起删了（输入源是 `tmux.rs` 两条桌面侧 SSH 回落的
+    ///   builder，回落删净 ⇒ 它取不到命令串）。这一行留着是因为**它记着那次读数**，不是现状 |
     /// | `usage-probe-acceptance.sh` | **11 过 / 0 败** | 2 条（F08 段 + 命令串产出） |
     ///
     /// ⇒ **7 条里 7 条都跑过了**（`local_backend` 那 4 条此前一次都没跑过 ——
@@ -1337,7 +1339,19 @@ mod tests {
             //    ⚠ 而现打验过：原生实现**真的建得出会话**（隔离 socket 上 `ccm --tmux=<名>
             //    --detach` ⇒ `tmux ls` 看得到）—— 那 18 条红是**夹具形状**的，不是功能回归。
             //    归 `K-R48` 下一拍（先裁 `@ccm_sid`，再把这套重新指过去）。
-            ("tmux-guarded", "tmux-guarded-acceptance.sh", "ck", 14),
+            // 🔴 〔`K-R72` 09-12〕**`tmux-guarded`(14) 这一行摘了 —— 摘的理由**（同 `K-R48`
+            //    那两行的口径：摘棘轮的行必须写清，不然就是「把棘轮往下拧」）：
+            //    那套 e2e 的**输入源**是 `tmux.rs` 里那条 `emit_guarded_commands_for_e2e`，  〔散文墓碑〕
+            //    它 emit 的是 `build_guarded_tmux_cmd` 那条原子远端 shell 串的生产命令。
+            //    ⚠ 刻意**不写成 `文件.rs::符号` 那个住址形**：那个符号今天不在盘上了，
+            //    住址形会被 `structural_scan` 里那条「源码里的符号住址还解析得到吗」当场判红
+            //    （它已经逮过我一次）——**住址是给人去点的，不是给人凭吊的。**
+            //    送键与杀会话的桌面侧 SSH 回落删净之后**那个 builder 不存在了** ⇒
+            //    脚本第一步 `cargo test … --ignored` 就产不出任何命令串，整套跑不起来。
+            //    ⇒ **不是「断言变少了」，是被测对象没了**：脚本本身已从 `e2e/` 删除，
+            //    留在这里的一行只会让本条去读一个不存在的文件（`read_to_string` 直接 panic）。
+            //    真机那一面的等价覆盖在 `daemon-gate2-acceptance.sh`（下面 `NO_STATIC_SIGNAL`
+            //    那张表里，真 daemon + 真 tmux，用例逐行来自同一张 `gate2-golden.tsv`）。
             ("tmux-target", "tmux-target-acceptance.sh", "ck", 26),
             ("usage-probe", "usage-probe-acceptance.sh", "ck", 9),
         ];

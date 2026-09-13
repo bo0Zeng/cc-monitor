@@ -1055,41 +1055,69 @@ U8c-1 摸底后拆成三步：
 **背景**：F04 根治 R10——过去 `kill_remote_tmux`/`tmux_send_keys` 只有一道门（`is_ccm_tmux_name`
 名字前缀判据），且"查一次状态、再发一条动作命令"是两次独立远端往返，中间留 TOCTOU 窗口。
 
-**三道门**（`src-tauri/src/tmux.rs`；⚠ **F04b 2026-08-04 补**：`kill` 的**主路**已切到 daemon 的
-`remote-daemon-proto/src/control/{gate,kill}.rs`，判定共用 `gate-core`；`tmux.rs` 这三道门
-今天守的是 **C7 过渡期回落**那条路，以及仍未切的 `tmux_send_keys`）：
-1. **Gate 1（恒强制）**：`is_safe_tmux_target`——只拒**空** target（`=:` 会被 tmux 解析成「当前
-   会话」，是唯一真正危险的默认值）。**不额外收紧字符集**——glob/元字符交给 `shell_quote` 安全
-   引号化，字符集收紧是 TS 侧 `isValidNewTmuxName`（仅创建路径）/`isValidTmuxName`（attach 故意
-   宽松）的职责，见 §31a「第二道防线」。折进 `exact_target` 本身（fallible），任何未来新增的
-   tmux 命令构造点结构性不可能绕过它。
-2. **Gate 2（identity，union）**：`is_ccm_tmux_name`（本地、零 IO，前缀命中）**或** `@ccm_sid`
-   已设（远端核验）。**`is_ccm_tmux_name` 不删除**——F02 之前的老 `cc-*` 会话没有 `@ccm_sid`，
+🔴 **`K-R72`（2026-09-12）：这一节的「两处」今天只剩一处 —— 别照旧读。**
+`kill_remote_tmux` / `tmux_send_keys` 的 **C7 过渡期 SSH 回落已经删掉**
+（`K-R54` 逐处裁定表第 1 · 2 · 5 处，`K-R56` 先把两条路的「探了没有」补齐才删得掉）。
+⇒ 今天 monitor 侧**不拼任何破坏性 tmux 命令串**，那两条命令只走后端通道；
+`build_guarded_tmux_cmd` / `build_kill_session_cmd` / `build_send_keys_remote_cmd`  〔散文墓碑〕
+连同 `gate_guard_expr` 一并不在盘上了。**下面三道门的实现住址随之只剩一个家**，  〔散文墓碑〕
+逐条标在各自那一行。回潮闸：`src-tauri/src/tmux_daemon_gate_guard.rs` 的
+`kill_now_routes_through_the_daemon` / `send_keys_now_routes_through_the_daemon`
+——那两条命令里**再出现** `connect_and_exec_cmd` 就红。
+
+**三道门**（⚠ **F04b 2026-08-04**：`kill` 主路切到 daemon；**F04c** 切 `send-keys`；
+**`K-R72` 2026-09-12**：两条回落删净）：
+1. **Gate 1（恒强制）** —— 家在 `src-tauri/src/tmux.rs::gate1_reject_empty`：只拒**空** target
+   （`=:` 会被 tmux 解析成「当前会话」，是唯一真正危险的默认值）。**不额外收紧字符集**——
+   glob/元字符交给 `shell_quote` 安全引号化，字符集收紧是 TS 侧 `isValidNewTmuxName`
+   （仅创建路径）/`isValidTmuxName`（attach 故意宽松）的职责，见 §31a「第二道防线」。
+   ⚠ **`K-R72` 把这个谓词从 `exact_target` 里分出来（不是复制一份）**：`exact_target` 产的是
+   给 shell 用的精确串 `'=<名>:'`，而送键 / 杀会话今天不拼 shell 串 —— 让它们为一次校验去要
+   一个用不上的串就是「一个值装了两件事」。今天三条路（capture-pane · send-keys · kill）
+   调的是同一个谓词、报的是同一句话。
+2. **Gate 2（identity，union）** —— 判定本体的唯一家是 `gate-core`（`gate_singleton_guard`
+   钉着「全仓只有一份」）；**执行面今天只在 daemon** 的 `control/gate.rs::admit`。
+   `is_ccm_tmux_name`（本地、零 IO，前缀命中）**或** `@ccm_sid` 已设（远端核验）。**`is_ccm_tmux_name` 不删除**——F02 之前的老 `cc-*` 会话没有 `@ccm_sid`，
    仍必须可 kill/send-keys，否则是向后兼容回归；F02 之后 `--tmux=<自定义名>` 建的会话没有前缀，
    必须靠远端 `@ccm_sid` 核验才放行，不能被一刀切拒绝（那本身是 F02 引入的真实网开一面缺口）。
-3. **Gate 3（仅破坏性动作，即 kill）**：远端 `session_windows==1`——拒绝 kill 一个已长出额外
+3. **Gate 3（仅破坏性动作，即 kill）** —— 家在 daemon `control/gate.rs::admit_destructive`
+   （`K-R72` 之前 monitor 侧那条 shell 串里还有第二份）：远端 `session_windows==1`——拒绝 kill 一个已长出额外
    window 的会话（signal：有独立于本工具的用户活动，不该被这一个 kill 动作连坐端掉）。send-keys
    不删任何东西，不受此门。
 
-**原子 verify+act**：Gate 2 远端半支 + Gate 3 折进**一条**远端命令（`build_guarded_tmux_cmd`），
-用 `tmux display-message -p -t <target> '<fmt>'` 一次性取 `session_windows`/`@ccm_sid`，同一
-round-trip 内判断后再执行动作——不是"先查一次、再另发一条动作命令"（那正是 R10/#76 的共同根因：
-两次远端往返之间的窗口可被抢跑）。用 `display-message` 而非 `show-options`：后者对未设置的
-option 是 `rc=1` + stderr、需要脆弱的 rc/stderr 联合判断；`display-message` 走这个仓库已验证的
-格式串插值惯例（`TMUX_LS_FMT` 同款），未设置的 option 静默展开成空串，`session_windows` 恒为
-存在会话的正整数、天然当"目标是否存在"的判据（空捕获串 = 目标不存在）。
+**原子 verify+act**：daemon 的 `control/gate.rs::probe` 一次 `tmux display-message -p -t
+<target> '<fmt>'` 取回 `session_id`/`@ccm_sid`/`session_windows` 三个字段，`admit` /
+`admit_destructive` 判完之后**对拿回来的 `#{session_id}` 句柄**下命令——不是"先查一次、
+再另发一条按名字的动作命令"（那正是 R10/#76 的共同根因：两次远端往返之间的窗口可被抢跑）。
+用 `display-message` 而非 `show-options`：后者对未设置的 option 是 `rc=1` + stderr、需要脆弱的
+rc/stderr 联合判断；`display-message` 走这个仓库已验证的格式串插值惯例（`TMUX_LS_FMT` 同款），
+未设置的 option 静默展开成空串，`session_windows` 恒为存在会话的正整数、天然当"目标是否存在"
+的判据（空捕获串 = 目标不存在）。
 
-**性能纪律**：`Gate 2` 本地命中（`cc-*` 前缀）时**完全跳过**远端半支——kill 仍需 Gate 3 的
-`windows` 核验（不能跳），但 send-keys 在这种情形下退化成今天的零 Gate 一行，**零额外 round
-trip**，覆盖 100% 的既有真实流量。别为了"统一形态"让不需要远端核验的路径也走一趟——这不是过早
-优化，是"新增门禁不该让最常见路径变慢"这条纪律的具体应用。
+⚠ **`K-R72` 之前这里有两份 verify+act**：monitor 侧还有一条把 Gate 2 远端半支 + Gate 3 + 动作
+折成一条 shell 串的 `build_guarded_tmux_cmd`。两份**不等价**——那条对 `=name:`（名字）下手，
+TOCTOU 窗口没关干净；`K-R54` 表第 1 · 2 处据此判「留 daemon」。今天只剩上面这一份。
 
-**验证**：`e2e/tmux-guarded-acceptance.sh`（真机验收，隔离 `-L` socket，14 项）——输入来自
-`cargo test --lib -- --ignored --nocapture emit_guarded_commands_for_e2e`（真 builder 产出，不
-手搓等价命令），验证 2-window 真会话真的拒绝 kill 且存活、1-window 真的被 kill、无 `@ccm_sid`
-的自定义名会话被挡（kill 存活/send-keys 不污染 pane）、有 `@ccm_sid` 时真的放行。Rust 单测只锁
-字符串形状，真机验收锁"这条嵌套 if/cut 的 shell 语法真的按预期分支执行"（R1 教训：门禁全绿过仍
-放行过一个让 send-keys 完全失效的改动，字符串断言测不出真实行为）。
+⚠ **一条代价，写在这里免得下一个人以为是 bug**：后端通道不在时，送键与杀会话从
+「悄悄走另一条路做掉」变成**明确失败**。出口是 `tmux.rs::no_channel_message`（本机 / 远端
+两句不同的话，各自说得出下一步）；它会被 `src/account-restart.ts` 原样弹成 toast。
+
+**性能纪律**：Gate 2 本地命中（`cc-*` 前缀）时跳过的是**远端半支的判定**，
+**不是存在性探测**（`K-R56` 2026-09-11 订正：那两件事此前被压成了一件，于是
+`cc-*` 名的 send-keys 成了全仓唯一一条不探会话就动手的写路径）。今天所有形态都恒先 probe 一次。
+
+**验证**：daemon 侧的真机验收 `e2e/daemon-gate2-acceptance.sh`（真 daemon 二进制 + 真 tmux
+server，隔离 `-L` socket，用例逐行来自唯一那张判定表 `gate2-golden.tsv`）。
+Rust 单测只锁判定，真机验收锁"真 daemon 收到请求之后在真 tmux 上到底干了什么"
+（R1 教训：门禁全绿过仍放行过一个让 send-keys 完全失效的改动，字符串断言测不出真实行为）。
+🔴 **`K-R72` 同拍清掉的一颗哑弹，如实写**：monitor 侧那套真机验收
+`e2e/tmux-guarded-acceptance.sh`（14 项）的输入源就是那个已被删掉的 builder
+⇒ **它今天取不到命令串、跑不起来**。⇒ **整套删了**，连同它在 `e2e/README.md` ·
+`package.json` · `.github/workflows/ci.yml`（清单 + 调用步骤）·
+`src-tauri/src/shared_crate_registry.rs`（`dormant_e2e_suites_keep_their_assertions` 的棘轮行）·
+`src-tauri/src/capability_registry.rs` 五处的登记。
+⚠ **不是「三道门少了一层真机验收」**：`daemon-gate2-acceptance.sh` 打的是同一张
+`gate2-golden.tsv`，而且打在**今天真的那条路**（daemon）上；删掉的那套打的是一条已经不存在的路。
 
 ## 35. 维度的 `applies` 绝不能条件性跳过 `cliFlags` 的 `null` 安全网（F05 / unify-launch）
 

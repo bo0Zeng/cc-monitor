@@ -63,7 +63,6 @@ tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，�
 | `graylight-daemon-frames` | 12 过 / 0 败 | |
 | `daemon-gate2-acceptance` | 35 过 / 0 败 | ★ 修了它自己开的方子（登记豁免），此前每跑必 RC=1 |
 | `local-backend-supervise` | 7 过 / 0 败 | ★ 修前 7/1 —— 那条 `#[ignore]` 首跑就红，见 `P3 §0h-2` |
-| `tmux-guarded-acceptance` | 14 过 / 0 败 | |
 | `usage-probe-acceptance` | 11 过 / 0 败 | |
 | `ccm-print-parity` | 12 过 / 0 败 | |
 | `ccm-contract-parity` | 61 过 / 0 败 | |
@@ -138,7 +137,12 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 | job | 套件 |
 |---|---|
 | `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-contract-parity · cc-spawn-uplift · cc-bus-queue-drain · restart · resume · ccm-rbind-title |
-| `e2e-tmux-rust` | tmux-guarded · usage-probe · inbound-frames · daemon-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · daemon-fork · daemon-sessions-rewatch · daemon-tmux-late-server · daemon-cc-bus |
+| `e2e-tmux-rust` | usage-probe · inbound-frames · daemon-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · daemon-fork · daemon-sessions-rewatch · daemon-tmux-late-server · daemon-cc-bus |
+
+> 〔`K-R72` 09-12〕`tmux-guarded-acceptance.sh` **整套删了**：它的输入源是 `tmux.rs` 那两条
+> 桌面侧 SSH 回落的 builder，回落删净之后它连命令串都取不到 ⇒ 跑不起来。三道门的真机覆盖
+> 转由 `daemon-gate2-acceptance.sh` 承担（真 daemon 二进制 + 真 tmux server，用例逐行来自
+> 同一张 `gate2-golden.tsv`）。
 
 **这些套件刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：
 `npm test` 要保持「不需要 tmux / 不需要 daemon 就能跑」，否则每个开发动作都变重。

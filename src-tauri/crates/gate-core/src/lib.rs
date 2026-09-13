@@ -6,7 +6,10 @@
 //! 在 F03 之前它**只活在 monitor 一侧**，而且被拆成了两半、两种语言：
 //!
 //! - 本地半支：`src-tauri/src/tmux.rs` 里一个私有的 `is_ccm_tmux_name`；
-//! - 远端半支：`build_guarded_tmux_cmd` 拼出来的 **shell 串** 里那句 `[ -n "$sid" ]`。
+//! - 远端半支：daemon `control/gate.rs::probe` 取回的 `@ccm_sid`，由 `admit` 判。
+//!   ⚠ `K-R72`（09-12）之前这里还有第二份：monitor 侧 `build_guarded_tmux_cmd` 拼出来的
+//!   **shell 串**里那句 `[ -n "$sid" ]`。那条路（送键与杀会话的桌面侧 SSH 回落）已经删了，
+//!   远端半支从此**只有 daemon 一个家**。
 //!
 //! daemon 的 `control/launch.rs` 则**完全没有**这道门 —— 它建会话时 `set-option` **写**
 //! `@ccm_sid`，却从不**核验**它。于是「把 send-keys/kill 改走 daemon」会**静默丢掉一道门**：
