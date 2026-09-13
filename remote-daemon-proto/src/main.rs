@@ -182,7 +182,20 @@ const PROTO_VERSION: u32 = 1;
 ///   全部从同一处源码常量抠出来 ⇒ 恒等 ⇒ 一格证据都不提供）。
 ///   已部署的旧 daemon **既没有戳、也答不出 `build=`** ⇒ 它必须被判 stale 换掉，
 ///   否则「问得出它是谁」这条性质在已部署的机器上永远为假。
-const BUILD_ID: &str = "p2f-build-stamp";
+///
+/// - p2g-capture-pane〔`K-R86` 09-13〕：新增 `--capture-pane` —— **一条只读的一次性原语**，
+///   把某个 tmux 会话此刻那一屏抓回来（`tmux -u capture-pane -p -t '=名:'`）。
+///   在此之前 daemon 会列会话、会探 `@ccm_sid`、会杀、会键入，**唯独没有「把那一屏取回来」**；
+///   monitor 侧账本 `parity_ledger` 的 `tmux.manage` 那一格为此挂了一个月的欠账。
+///   ⚠ **必须 bump**：这是**新增的一条子命令**，已部署的旧 daemon 上它 `exit 2`
+///   （落进 `unknown argument`），而调用方判「这台机有没有这条能力」看的是 build_id
+///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
+///   （p1r / p1t / G2 / p2d / p2e 那五次的同一个形状）。
+///   ★ 同 `p2d` / `p2e` 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
+///   本轮**没做**（本工作树也没铺 `src-tauri/embedded-daemons/`）。
+///   🔴 **别把它读成「远端画面预览通了」**：本件只出 daemon 这一侧的原语，
+///   monitor 那条 `capture_remote_pane` 一个字节没动 —— 欠账换了个名字，没有被结掉。
+const BUILD_ID: &str = "p2g-capture-pane";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src-tauri/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -1093,6 +1106,10 @@ const SUBCOMMANDS: &[&str] = &[
     "--bus-kill",
     "--bus-list",
     "--bus-send",
+    // `K-R86`：只读的一次性抓屏原语。登记在这里的理由与上面那几条逐字相同 ——
+    // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
+    // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那一屏。
+    "--capture-pane",
     "--daemon-probe",
     // K-P6b：拨号代理。**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
     // `CCM_DIAL_REQUEST`，**argv 与 stdin 都不走** —— argv 在同机任何用户的 `ps` 里都
@@ -1269,6 +1286,42 @@ mod stream_flag_tests {
         assert!(bg);
         assert!(!tail);
     }
+
+    /// ★★ `KR86D1` 的**接线那一半**：`--capture-pane` 真的**够得到**那条原语。
+    ///
+    /// # 失效方向（件文件逐字点名的那个）：**别判「源码里有 `capture-pane` 字面量」**
+    ///
+    /// `control/ccm/plan.rs` 今天就有那个字面量（信任框轮询那条串），
+    /// 按字面量判会**恒绿**。本条断的是两处**承重点**，两处都不是「某个字面量出现过」：
+    ///
+    /// 1. **闸门**：`is_query_mode` 认它。不认 ⇒ 被当未知 flag ⇒ 打一行 warn 之后
+    ///    **照常进流模式**，CLI 面看上去「存在」却永远调不到（`p2b` 08-13 实测过这个形状）。
+    /// 2. **分派臂**：生产段里那一行**整行**就是「把它交给原语本体」。
+    ///    整行相等（`pin_line`）比 `contains` 强一格：撑大成别的表达式时那一行就不见了。
+    ///
+    /// ⚠ 「拿回来的真是屏幕内容」不在本条射程内 —— 那一格由
+    /// `control::capture_pane::tests::capturing_a_real_pane_brings_the_screen_back`
+    /// 在**真 tmux**（隔离 socket）上断。两条合起来才是 `KR86D1`。
+    #[test]
+    fn the_capture_pane_subcommand_is_actually_reachable() {
+        let flag = "--capture-pane".to_string();
+        assert!(
+            super::is_query_mode(std::slice::from_ref(&flag)),
+            "`--capture-pane` 没进 `is_query_mode` 的闸门 —— 它会静默变成「起了个流」"
+        );
+        let prod = crate::guard_support::production_code(include_str!("main.rs"));
+        guard_core::pin_line(
+            &prod,
+            "Some(\"--capture-pane\") => control::capture_pane::run(&args),",
+        )
+        .unwrap_or_else(|e| {
+            panic!(
+                "一次性查询的分派里没有那条把 `--capture-pane` 交给原语本体的臂：{e}\n\
+                 ⇒ 闸门放它进查询模式，而下面没人接 ⇒ 它落进 `_` 臂走历史查询、\n\
+                 报 `unknown argument` + exit 2（v3.4.0 `--account-trust-zero` 那次事故的形状）。"
+            )
+        });
+    }
 }
 
 #[tokio::main]
@@ -1317,6 +1370,9 @@ async fn main() {
         let code = match args.first().map(String::as_str) {
             // P4b：hook 子进程走这条 —— 校验身份后给 daemon 发 SIGUSR1，**不碰文件系统**。
             Some("--tmux-notify") => control::tmux_hook::notify(&args),
+            // `K-R86`：只读抓屏原语。**抓一次、立刻返回** —— 轮询归 `K-R87`，
+            // 零定时器铁律（`no_timer_guard`）看着本 crate 的每一份生产段。
+            Some("--capture-pane") => control::capture_pane::run(&args),
             Some("--search") => observe::search_query::run(&agent_home, &args),
             // P7c-1：列一个父会话的 subagent 候选。**只列不挑**（匹配与排序留在 monitor）。
             Some("--list-subagents") => observe::history_query::list_subagents(&agent_home, &args),

@@ -842,6 +842,31 @@ mod spawn_registry {
              等哪天有一条判据能机检「这个起进程点只读」，它就该从受管例外里摘出去、不再占一格。",
         ),
         (
+            "control/capture_pane.rs",
+            "tmux",
+            "`K-R86`（09-13）：**全 crate 唯一一处 `capture-pane`** —— \
+             `tmux -u capture-pane -p -t '=名:'`（argv 直传不过 shell），\
+             把某个会话此刻那一屏的文本打到 stdout。\
+             **只读 tmux**：不 attach、不落 tmux buffer（`-p` = 打到 stdout，\
+             换成落 buffer 就是改 tmux 状态了）、不写任何文件。\
+             它服务的是 monitor 侧账本 `parity_ledger` 的 `tmux.manage` 那格挂了一个月的\
+             「画面预览」欠账 —— 那一格逐字写着「仍等 daemon 出原语」。\
+             ⚠ **这张表的键分不出被调的是哪条 tmux 子命令**（同 `plugin/invoke.rs` 那条\
+             自陈的 `K6b` 盲区）⇒ 光靠这一行**买不到「只读」**。\
+             真正钉住它的是本文件的 [`super::capture_is_read_only`]：\
+             值级（argv 逐元素）＋ 文本级（生产段零改状态动词）＋ 反向自检。\
+             ⚠ **它只抓一次就返回**，轮询归 `K-R87`（`KR86D3`）—— 同一个模块里\
+             「抓一次」被改成「循环抓」时，`no_timer_guard` 与 `the_capture_site_is_one_shot` \
+             各红一条。",
+            "缩性质",
+            "这一条是**只读 tmux**，本来就落在收窄后的性质之内 —— 同 `control/gate.rs` 那条：\
+             等哪天有一条**通用**判据能机检「这个起进程点只读」，它就该从受管例外里摘出去。\
+             ⚠ [`super::capture_is_read_only`] **不是**那条通用判据：它只盖本文件这一处 \
+             ⇒ 不许拿它去把 `control/gate.rs` / `common/session_snapshot.rs` 那两条也摘掉。\
+             ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二个 tmux 子命令 —— \
+             这一处的立身之本就是「抓一屏只有一处、而且只抓一屏」。",
+        ),
+        (
             "common/session_snapshot.rs",
             "tmux",
             "`K-R96`（09-12）：**全 crate 唯一一处「一次列全部 tmux 会话」的探测点**\
@@ -1017,7 +1042,12 @@ mod spawn_registry {
         // 复核法：`ALLOWED` 里那条 `control/gate.rs` 的理由栏今天只该说 `display-message`。
         // ⚠ 这个数变小**不一定**是好事（它也可能是抽取坏了），所以顺带写清怎么复核：
         // `grep -c 'Command::new(' `，逐文件看，`platform/shell.rs` 那份是新住址。
-        const SPAWN_SITES_TODAY: usize = 10;
+        // `K-R86`（09-13）：10 → 11，新增 `control/capture_pane.rs` 的
+        // `tmux -u capture-pane -p -t '=名:'`。⚠ **这一处是真的新面，不是搬家**：
+        // 抓屏这件事此前 daemon 侧一处都没有（`ALLOWED` 里那条新登记逐字写了它做什么）。
+        // ⚠ 它**只读**，而这张表的键分不出被调的子命令 ⇒ 「只读」由
+        // [`super::capture_is_read_only`] 单独钉，别把这一格的 +1 读成「只读性质有人证了」。
+        const SPAWN_SITES_TODAY: usize = 11;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,
@@ -1163,6 +1193,215 @@ mod spawn_registry {
              ⇒ 搬走了/删掉了就**同轮把登记摘掉**。留着的后果不是「多一行没用的字」——\n\
              它会让下一个人以为那个文件还在起进程，而真正的那一处在别处、\n\
              理由却还挂在旧地址上（`ALLOWED` 里那条漏了 `cc-kill` 13 天，就是这么来的）。"
+        );
+    }
+}
+
+/// 🔴 `K-R86`（09-13）：**那一处新的抓屏起进程点「只读」这件事，逐元素钉住。**
+///
+/// # 为什么 `spawn_registry` 那一行买不到它
+///
+/// [`spawn_registry::ALLOWED`] 的键是 `(文件, 起什么程序)` —— 它**分不出被调的是哪条
+/// tmux 子命令**。同一份文件里把 `capture-pane -p` 改成别的动词、或多塞一个旗，
+/// 键一个字都不变 ⇒ **那条登记照常绿**。这不是新发现的洞：`ALLOWED` 里
+/// `plugin/invoke.rs` 那条自己就写着这句话（`K6b` 那一族，它是活体标本），
+/// 而 `control/gate.rs` 那条的 `unlock` 栏逐字写着「等哪天**有一条判据能机检
+/// 「这个起进程点只读」**」——本模块就是那条判据的**第一格**。
+///
+/// # 它盖多大（⚠ 别读大）
+///
+/// **只盖 `control/capture_pane.rs` 这一份文件。** 它不是通用判据
+/// ⇒ **不许**拿它去把 `control/gate.rs` / `common/session_snapshot.rs` 那两条
+/// 「只读 tmux」的受管例外摘掉 —— 那两处今天仍然只有 `ALLOWED` 那一行看着。
+///
+/// # 两层 ＋ 一条反向自检，缺一不可
+///
+/// - **值级**：这一处发出去的 argv **逐元素**就是那条只读形（顺序也算）。
+///   它挡的是「顺手把 `-p` 换成落 buffer」「顺手多塞一个旗」。
+/// - **文本级**：生产段里**不出现**任何会改 tmux 状态的动词。
+///   它挡的是「另起一条 argv、绕过上面那个构造器」。
+///   ⚠ 文本级是**黑名单**，列不全（同 `platform/cfgless_guard` 的信号表）——
+///   所以它是第二道，不是第一道；每一条针都带「为什么它算改状态」。
+/// - **反向自检**：逐条针各喂一个合成样本，同一把尺子必须逮到。
+///   没有它，上面那条「零命中」是空真（`brief` 第 9 条）。
+#[cfg(test)]
+mod capture_is_read_only {
+    use crate::guard_support::production_code;
+
+    /// 被测对象：那一处抓屏的**生产段**。
+    fn site() -> String {
+        production_code(include_str!("control/capture_pane.rs"))
+    }
+
+    /// 会改 tmux 状态的动词 / 旗，`(针, 为什么它算改状态)`。
+    ///
+    /// 🔴 **运行时拼**，不写字面量：本模块与被扫的文本今天不在同一份文件里
+    /// （那是刻意的，见 `ratchet_guard.rs` 头注），但同族坑本仓记过四次，照纪律拼。
+    fn mutating_verbs() -> Vec<(String, &'static str)> {
+        vec![
+            (
+                format!("send{}", "-keys"),
+                "往别人的键盘缓冲里打字 —— 破坏性，而且它有自己的门（`control/launch.rs`）",
+            ),
+            (
+                format!("kill{}", "-session"),
+                "杀会话 —— 全 crate 只许 `control/kill.rs` 过完三道门再做",
+            ),
+            (
+                format!("new{}", "-session"),
+                "建会话 —— 改 tmux server 的运行期状态",
+            ),
+            (
+                format!("set{}", "-option"),
+                "写 tmux 变量（`@ccm_sid` 那一族）—— 只许 `control/identity_tag.rs`",
+            ),
+            (
+                format!("set{}", "-hook"),
+                "装 hook —— 只许 `control/tmux_hook.rs`",
+            ),
+            (
+                format!("run{}", "-shell"),
+                "让 tmux 去跑一条命令 —— 那是把执行权交出去，不是抓一屏",
+            ),
+            (
+                format!("respawn{}", "-pane"),
+                "重起 pane 里的进程 —— 破坏性",
+            ),
+            (
+                format!("pipe{}", "-pane"),
+                "把 pane 的输出接到一条命令上 —— 常驻副作用，而且不是「抓一次」",
+            ),
+            (
+                format!("load{}", "-buffer"),
+                "写 tmux 的粘贴缓冲 —— 改 tmux server 的状态",
+            ),
+            (
+                format!("copy{}", "-mode"),
+                "把 pane 切进 copy-mode —— 改的是 pane 的模式，用户会看见",
+            ),
+            (
+                format!("\"{}\"", "-X"),
+                "copy-mode 的命令派发口（`-X cancel` 那一族）—— 抓一屏用不到它",
+            ),
+        ]
+    }
+
+    /// 一把尺子：某段文本里命中了哪几条改状态动词。
+    fn hits(text: &str) -> Vec<String> {
+        mutating_verbs()
+            .into_iter()
+            .filter(|(n, _)| text.contains(n.as_str()))
+            .map(|(n, _)| n)
+            .collect()
+    }
+
+    /// ★ 抽取器自检：剥完还得剩下真代码，否则下面几条是空转。
+    #[test]
+    fn the_site_is_really_being_read() {
+        let prod = site();
+        assert!(
+            prod.len() > 800,
+            "剥完 `control/capture_pane.rs` 只剩 {} 字节 —— 读错文件或剥过头了，\
+             本模块此刻是无效的",
+            prod.len()
+        );
+        crate::guard_support::assert_no_test_code("capture_is_read_only", &prod);
+        assert!(
+            prod.contains(&format!("Command::{}", "new(\"tmux\")")),
+            "那一处起进程不见了 —— 本模块声称盖的东西已经不在它声称的地方了"
+        );
+    }
+
+    /// ★★ 正题①（**值级**）：这一处发出去的 argv 逐元素就是那条只读形。
+    #[test]
+    fn the_argv_this_site_emits_is_read_only_element_by_element() {
+        let argv = crate::control::capture_pane::capture_argv("=某会话:");
+        assert_eq!(
+            argv,
+            ["-u", "capture-pane", "-p", "-t", "=某会话:"],
+            "抓屏那一处的 argv 变了。三条硬约束逐条：\n\
+             · `-u` 必须排在子命令**之前**（`K-R12`：放后面是 rc=1 + unknown flag，\n\
+               而那个响错会被判法读成「抓不到」）；\n\
+             · 子命令必须是抓屏那一条 —— 换成任何会改状态的动词，\n\
+               `readonly_guard` 的 `ALLOWED` **不会红**（那张表的键分不出子命令），\n\
+               本条是唯一会红的；\n\
+             · `-p` 必须是「打到 stdout」—— 换成落 tmux buffer 就是改 tmux 状态。"
+        );
+        assert_eq!(argv[4], "=某会话:", "目标那一格被改写了");
+    }
+
+    /// ★★ 正题②（**文本级**）：生产段里不出现任何会改 tmux 状态的动词。
+    #[test]
+    fn the_site_names_no_state_changing_tmux_verb() {
+        let bad = hits(&site());
+        assert_eq!(
+            bad,
+            Vec::<String>::new(),
+            "抓屏那一处的生产段里出现了会改 tmux 状态的动词：{bad:?}\n\
+             ⇒ 要么有人绕过 `capture_argv` 另起了一条 argv，要么那个构造器被改了。\n\
+             这一处的立身之本就是「只读」——`readonly_guard::ALLOWED` 那一行的理由\n\
+             逐字写着它不改任何 tmux 状态；写不成真话就别写。"
+        );
+    }
+
+    /// ★ 反向自检：**那把尺子真的会咬人**。
+    ///
+    /// 没有它，上面那条「零命中」与「针全拼错了」长得一模一样（`brief` 第 9 条：
+    /// 零违例要先证够得到）。逐条喂，不是喂一条了事 —— 一条针拼错也要报出来。
+    #[test]
+    fn the_verb_scan_actually_bites_on_every_needle() {
+        let verbs = mutating_verbs();
+        assert!(
+            verbs.len() >= 8,
+            "改状态动词表只剩 {} 条 —— 被掏瘪了，正题此刻在空转",
+            verbs.len()
+        );
+        for (needle, why) in &verbs {
+            assert!(
+                why.chars().count() >= 12,
+                "针 {needle:?} 没写清「为什么它算改状态」—— 黑名单里的每一条都要说得出理由"
+            );
+            let sample = format!("let _ = tmux_argv({needle}, target);");
+            assert_eq!(
+                hits(&sample),
+                vec![needle.clone()],
+                "针 {needle:?} 喂自己的样本都咬不到 —— 它此刻是一条死针"
+            );
+        }
+        assert!(
+            hits("let out = tmux(\"-u\", \"capture-pane\", \"-p\", \"-t\", t);").is_empty(),
+            "干净样本被误咬 —— 假阳会训练人绕过判据，比没有判据更坏"
+        );
+    }
+
+    /// ★★ `KR86D3`：**这一处只抓一次就返回。**
+    ///
+    /// 两个数一起断：起进程**恰好一处**（多一处 = 有人在这里连着抓第二屏），
+    /// 循环构件**零处**（那是「靠节拍反复问」的形态，归 `K-R87`，不许在本件里做掉）。
+    ///
+    /// ⚠ 与 `no_timer_guard` **不重**：那一条扫的是全 crate 的「会让线程自己醒来的构件」
+    /// （`sleep` / `interval` / `Duration::from_secs`），认不出一个**忙循环**；
+    /// 本条盖的是这一份文件里「循环」这个形状本身。
+    #[test]
+    fn the_capture_site_is_one_shot() {
+        let prod = site();
+        let spawns = prod.matches(&format!("Command::{}", "new(")).count();
+        assert_eq!(
+            spawns, 1,
+            "抓屏那一处的生产段里有 {spawns} 处起进程 —— 该恰好 1 处。\n\
+             多出来的那一处多半就是「再抓一次」：轮询归 `K-R87`（`KR86D3`），\n\
+             本模块只出原语。"
+        );
+        let loops: Vec<String> = [("lo", "op {"), ("whi", "le "), ("fo", "r ")]
+            .iter()
+            .map(|(a, b)| format!("{a}{b}"))
+            .filter(|w| prod.contains(w.as_str()))
+            .collect();
+        assert_eq!(
+            loops,
+            Vec::<String>::new(),
+            "抓屏那一处的生产段里出现了循环构件：{loops:?}\n\
+             ⇒ 「抓几次」是**调用方**的事（`KR86D3` 逐字：本件只出原语，不出轮询）。"
         );
     }
 }
