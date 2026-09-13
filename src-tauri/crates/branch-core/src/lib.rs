@@ -107,9 +107,122 @@ pub fn build_branch_records(
     Ok(out)
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-R88`：**「按 sid 找那份会话文件」也收成一份**
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// `G1` 收掉的是记录变换（上面那一半）。它前面还有一步 —— **把入参变成一条源文件路径**
+// —— 收之前两侧各有一份，且**入参形状都不一样**：
+// monitor 那条收**路径**，再 canonicalize 一遍验它落在记录树内；
+// 后端那条收 **sid**，在记录树下按文件名找。
+//
+// 「同一件事两个入参形状」花的钱很具体：**「查不到」这件事两边可以各答各的** ——
+// 一边报错、一边随手挑一个，而没有任何东西会因此变红。
+// 收成一份之后入参形状也就只剩一个（sid），两侧各自把自己那棵记录树的根交进来。
+//
+// ⚠ **本段刻意没有单元测试住在这个 crate 里，这不是漏。**
+// 后端那条常驻判据 `the_clean_verdict_is_re_measured_on_the_tree_every_run`
+// 拿它自己那两张模式表**整棵树、不剥测试段、连注释一起**重扫本 crate，
+// 而「在临时目录里造一棵树」要用的那几个动词正好都在它的针里
+// ⇒ 在这里写 IO 夹具会把本 crate 的判档从「未见写面」撞掉。
+// 驱动它的是**两侧各自的测试**（monitor 的 `history.rs` / 后端的 `control/fork_write.rs`），
+// 而那恰好就是 `KR88D1` 第三刀要的形状：**改这里一处，两边一起红。**
+
+use std::path::{Path, PathBuf};
+
+/// 往记录树下面找几层。
+///
+/// `2` = 记录根自己那一层（`<根>/<sid>.jsonl`）＋ 项目目录那一层
+/// （`<根>/<项目目录>/<sid>.jsonl`，真机上的常态）。**再深一层是子 agent 那一族**，
+/// 而它们不是可分叉的会话 —— 同一件事的另一半是上面那条 sidechain 判据。
+pub const SESSION_LOOKUP_DEPTH: usize = 2;
+
+/// sid 的合法形状：非空、不超过 64、只许 `[A-Za-z0-9-]`。
+///
+/// 它挡掉 `..`、`/`、`\` 与任何能拼出别处路径的字符。理由不是「防手滑」：
+/// 后端是被远程调起来的，**少一个可被构造的路径入参就少一条路径穿越面**
+/// （`doc/INVARIANTS.md` §41.6 三条收窄里的第 3 条）。
+pub fn is_plain_sid(s: &str) -> bool {
+    !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
+}
+
+/// **两侧唯一的一份「找文件」**：在记录树 `records_root` 下按 sid 找那份 `<sid>.jsonl`。
+///
+/// - sid 形状不合法 → `Err`，且**先于任何 IO**（见 [`is_plain_sid`]）。
+/// - 找不到 → `Err`。🔴 **绝不静默退回「树上第一份」** —— `KR88D2` 第三刀验的就是这一格：
+///   一边报错、一边随手挑一个，就是两边处置不一致。
+/// - 符号链接**不算命中**：类型判定取自目录项本身（**不跟随**链接），
+///   于是一条指向记录树之外的链接进不来。这半是围栏 ——
+///   monitor 那条路原先靠「canonicalize 两边再比前缀」买同一样东西，
+///   而收进 sid 之后连**表达**一个界外目标的办法都没有了。
+pub fn find_session_file(records_root: &Path, sid: &str) -> Result<PathBuf, String> {
+    if !is_plain_sid(sid) {
+        return Err(format!("refuse branch: invalid session id {sid:?}"));
+    }
+    let want = format!("{sid}.jsonl");
+    look_down(records_root, &want, SESSION_LOOKUP_DEPTH)
+        .ok_or_else(|| format!("refuse branch: session {sid} not found under the session tree"))
+}
+
+/// 逐层往下找 `want` 这个文件名，最多 `depth` 层。
+///
+/// **同层先看文件、再下潜**，且子目录按名字排序后再走 —— 目录项的自然顺序由文件系统决定，
+/// 而「同一棵树两次调用给两个答案」是那种只在真机上现形的分叉。
+/// 读不动的目录（权限）**跳过而不是报错**：一棵记录树里有一个进不去的角落，
+/// 不该让别处那份找得到的会话也分叉不了。
+fn look_down(dir: &Path, want: &str, depth: usize) -> Option<PathBuf> {
+    if depth == 0 {
+        return None;
+    }
+    let listing = std::fs::read_dir(dir).ok()?;
+    let mut subdirs: Vec<PathBuf> = Vec::new();
+    for entry in listing.flatten() {
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if kind.is_file() {
+            if entry.file_name().to_str() == Some(want) {
+                return Some(entry.path());
+            }
+        } else if kind.is_dir() {
+            subdirs.push(entry.path());
+        }
+    }
+    subdirs.sort();
+    subdirs
+        .into_iter()
+        .find_map(|d| look_down(&d, want, depth - 1))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::build_branch_records;
+    use super::{build_branch_records, is_plain_sid};
+
+    /// `K-R88`：sid 的形状是**两侧共用的那一把闸**，且它先于任何 IO。
+    ///
+    /// ⚠ 本 crate 里**只测得了这一半**（纯判定）；「在树上找得到 / 找不到」那一半的
+    /// 夹具要造目录，而那正是本 crate 不能有的东西（理由见 `find_session_file` 上面那段）。
+    /// 那一半由两侧各自的测试驱动 —— 这条边界是登记过的，不是漏的。
+    #[test]
+    fn a_session_id_that_could_spell_another_path_is_refused() {
+        assert!(is_plain_sid("0473c3a0-1111-2222-3333-444455556666"));
+        assert!(is_plain_sid("a"));
+        for bad in [
+            "",
+            "../etc/passwd",
+            "a/b",
+            "a\\b",
+            "..",
+            "a b",
+            "a.b",
+            "a'b",
+            "a;b",
+        ] {
+            assert!(!is_plain_sid(bad), "该拒: {bad:?}");
+        }
+        assert!(is_plain_sid(&"a".repeat(64)));
+        assert!(!is_plain_sid(&"a".repeat(65)), "上限是 64");
+    }
 
     /// G0：**按真机原生 fork 的形状**造的合成夹具（无任何真实对话内容）。
     ///

@@ -678,23 +678,19 @@ export class TabManager {
       pendingToolResults: tab.pendingToolResults,
       lazy: true,
     };
-    // G4：批量渲染时 sink 建在循环外，故用一个随迭代更新的游标把当前 payload 的
-    // jsonl 路径带进钩子。渲染是同步的，游标不会串批。
-    let cur: JsonlLinePayload | null = null;
     const sink: StreamSink = {
       timeline: tab.timeline,
       onBranchRecord: () => {},
       onQueueOperation: () => {},
       observeForLazyEnhance: true,
-      // G6：**远端也挂**。远端那条路走 daemon 的 `--fork-session`（只认 sid，不认路径），
-      // 所以 `jsonlPath` 缺席不再是"不能分叉"——只有本机那条路才需要它。
+      // G6：**远端也挂**。〔`K-R88` 09-13〕本机那条命令也收 sid 了 ⇒
+      // **两条路都只要 sid**，「本机拿不到 jsonl 路径就不能分叉」这道门跟着没了
+      // （原先那个随迭代更新的路径游标也一并去掉：没人再要那个值）。
       onCardRendered: (el, msg) => {
-        if (!tab.origin && !cur?.path) return; // 本机没路径就真的做不了
         if (msg.type !== "user" && msg.type !== "assistant") return;
         if (!msg.uuid) return;
         attachBranchButton(el, {
           uuid: msg.uuid,
-          jsonlPath: cur?.path ?? "",
           sourceSessionId: tab.sessionId,
           origin: tab.origin,
           cwd: tab.cwd ?? undefined,
@@ -705,7 +701,6 @@ export class TabManager {
     tab.branchFolder.unwrapAll();
     tab.stream.batchInsert(() => {
       for (const p of payloads) {
-        cur = p;
         try {
           renderContentRecord(p, ctx, sink);
         } catch (e) {
@@ -943,23 +938,19 @@ export class TabManager {
       // G4（branch-anywhere）：实时会话也挂「从这一轮分叉」按钮。
       // 钩子本来就在共享的 `render-stream-record.ts` 里，此前**只有历史查看器传了它**
       // ⇒ 实时 tab 上没有入口。按钮本体是共享组件（off-main 的呈现区分也在那里）。
-      // **G6 起远端也挂**：远端走 daemon 的 `--fork-session`（只认 sid），
-      // 所以远端会话的 jsonl 在不在本机够得着已经不再是门槛。
-      onCardRendered:
-        !tab.origin && !payload.path
-          ? undefined // 本机没路径 → 真的做不了
-          : (el, msg) => {
-              if (msg.type !== "user" && msg.type !== "assistant") return;
-              if (!msg.uuid) return;
-              attachBranchButton(el, {
-                uuid: msg.uuid,
-                jsonlPath: payload.path ?? "",
-                sourceSessionId: tab.sessionId,
-                origin: tab.origin,
-                cwd: tab.cwd ?? undefined,
-                onForked: (res) => void this.startForkedSession(tab, res),
-              });
-            },
+      // **G6 起远端也挂**；〔`K-R88` 09-13〕本机那条也收 sid 之后，
+      // 「本机拿不到 jsonl 路径」这道门对两条路都不再是门槛。
+      onCardRendered: (el, msg) => {
+        if (msg.type !== "user" && msg.type !== "assistant") return;
+        if (!msg.uuid) return;
+        attachBranchButton(el, {
+          uuid: msg.uuid,
+          sourceSessionId: tab.sessionId,
+          origin: tab.origin,
+          cwd: tab.cwd ?? undefined,
+          onForked: (res) => void this.startForkedSession(tab, res),
+        });
+      },
     };
 
     // Batch13-F40a:meta/branch 收集与渲染解耦——收纳(不建卡)的记录也要喂

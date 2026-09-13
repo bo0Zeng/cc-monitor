@@ -18,9 +18,13 @@
 //!   失败: exit 2 + stderr 一行 {"code":"…","message":"…"}
 //! ```
 //!
-//! **daemon 只收 sid、不收路径**（见 `fork_write::find_session_file` 头注）：daemon 是被
+//! **daemon 只收 sid、不收路径**（见 `branch_core::find_session_file` 头注）：daemon 是被
 //! ssh 远程调起来的，少一个可被构造的路径入参就少一条路径穿越的攻击面。所以 monitor 这边
 //! 拿到的远端 jsonl 路径**不往回传**，只传 sid。
+//!
+//! ★〔`K-R88` 09-13〕**这条收窄今天两侧都吃**：本机那条命令
+//! （`history::create_branch_session`）也收 sid 了，「找那份文件」两侧同一份实现。
+//! ⇒ 下面那句「与本地那条的差异」也跟着少了一条 —— 只剩「活儿在哪台机器上干」。
 
 use crate::history::BranchResult;
 use crate::ssh_source::{self, RemoteExec};
@@ -57,9 +61,13 @@ struct ForkErrEnvelope {
 ///
 /// 两个参数最终都会经 `shell_quote` 单引号包裹，所以这里**不是**注入防线的最后一道；
 /// 它的作用是 **fail-fast**：一个明显不是 sid/uuid 的串没必要跑一趟 ssh 才被 daemon 拒。
-/// 字符集与 daemon 侧 `fork_write::is_plain_sid` 一致（`[A-Za-z0-9-]`，长度 1..=64）。
+/// 字符集与共享那份 `branch_core::is_plain_sid` 一致（`[A-Za-z0-9-]`，长度 1..=64）。
+///
+/// ⚠ **这里刻意没有改成直接调它**，理由如实写：本函数要把「长度不对」与「有非法字符」
+/// 分成**两句人话**（这是给用户看的 fail-fast 提示），而那份共享判定只交出一个 `bool`。
+/// 改成调它就得把两句话压成一句。⇒ **登记成一处已知的形状重复**，不假装收干净了。
 fn validate_fork_id(what: &str, s: &str) -> Result<(), String> {
-    // 上限与 daemon 侧 `fork_write::is_plain_sid` 对齐（Phase G 审计：原来这边 128、那边 64，
+    // 上限与共享那份 `branch_core::is_plain_sid` 对齐（Phase G 审计：原来这边 128、那边 64，
     // 65..=128 的 id 会白跑一趟 ssh 才被拒；注释里引的函数名 `valid_sid` 也不存在）。
     if s.is_empty() || s.len() > 64 {
         return Err(format!("{what} 长度非法（1..=64）"));
@@ -142,8 +150,9 @@ fn interpret_fork_exec(ex: &RemoteExec) -> Result<BranchResult, String> {
 
 /// G6 IPC：在远端从某条消息分叉出新会话。前端点远端会话卡上的 `⑂` 时调。
 ///
-/// 与本地那条（`history::create_branch_session`）的差异只有两处：**收 sid 不收路径**、
-/// **活儿在远端干**。返回体同形，所以前端两条路共用同一段成功处理。
+/// 与本地那条（`history::create_branch_session`）的差异**今天只剩一处：活儿在远端干**。
+/// 〔`K-R88` 09-13〕原先还有一处「收 sid 不收路径」—— 本机那条已经跟着收成 sid 了。
+/// 返回体同形，所以前端两条路共用同一段成功处理。
 #[tauri::command]
 pub async fn create_remote_branch_session(
     origin: String,

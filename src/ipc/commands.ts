@@ -731,8 +731,13 @@ export const commands = {
   /** 部署内嵌的 daemon 到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
   deploy_remote_daemon: (args: { cfg: unknown }) => invoke<string>("deploy_remote_daemon", args),
 
-  /** 从某一轮建分支（F62）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  create_branch_session: (args: { sourceJsonlPath: string; messageUuid: string }) =>
+  /**
+   * 从某一轮建分支（F62）。返回值字段被真消费 ⇒ 生成物（桶③）。
+   *
+   * 〔`K-R88` 09-13〕入参从 `sourceJsonlPath` 收成 `sourceSessionId` ——
+   * 与下面远端那条**形状一致**，两侧后端走的也是同一份「按 sid 找那份文件」。
+   */
+  create_branch_session: (args: { sourceSessionId: string; messageUuid: string }) =>
     invoke<BranchResult>("create_branch_session", args),
 
   /**

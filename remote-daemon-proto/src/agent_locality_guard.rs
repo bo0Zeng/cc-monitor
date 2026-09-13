@@ -279,7 +279,13 @@ mod tests {
     /// ⚠〔`S5`〕**注册表那类不在本表里** —— 见 [`AGENT_REGISTRY_SITES`]。
     /// 本表只装「**该被压到零**」的那一类，`S6` 的靶子就是它的总数。
     const ADAPTER_CALL_SITES: &[(&str, usize, &str)] = &[
-        ("control/fork_write.rs", 3, "会话记录根 + 会话文件命名"),
+        (
+            "control/fork_write.rs",
+            2,
+            "会话记录根 + 会话文件命名。〔`K-R88` 09-13〕**3 → 2**：\
+             「按 sid 找那份文件」整段进了共享 crate（两侧同一份），\
+             找那一步的命名不再由本 crate 问适配层，只剩落盘那一处",
+        ),
         (
             "control/resolve_query.rs",
             6,
@@ -371,7 +377,7 @@ mod tests {
         ("会话文件判定", "observe/search_query.rs", 1, "同上，**静默**"),
         ("会话文件判定", "observe/usage_query.rs", 1, "同上，**静默**"),
         ("会话文件判定", "observe/watcher.rs", 1, "同上，**静默**（连 inotify 事件都会被过滤掉）"),
-        ("会话文件命名", "control/fork_write.rs", 2, "按 `<sid>.jsonl` 造新文件 ⇒ 造出来的文件这家自己认不出来"),
+        ("会话文件命名", "control/fork_write.rs", 1, "按 `<sid>.jsonl` 造**新**文件 ⇒ 造出来的文件这家自己认不出来。〔`K-R88` 09-13〕2 → 1：**找**那一步的命名随「找文件」进了共享 crate，只剩落盘这一处"),
         ("会话文件命名", "observe/history_query.rs", 1, "`--list-subagents` 拿 `<stem>.jsonl` 找旁文件 ⇒ 找不到，**静默**返回空"),
         ("pidfile 目录", "observe/accounts_query.rs", 1, "`--session-accounts` 读 `<home>/sessions` ⇒ 读不到就 **静默**返回零行"),
         ("pidfile 目录", "observe/watcher.rs", 1, "判活只看 Claude 的 pidfile 目录 ⇒ 这家的会话恒判死"),
@@ -389,7 +395,11 @@ mod tests {
     ///
     /// ⚠ `S6` 自己**一处都没降**（它是验收件，不许移动自己的靶子，理由住
     /// `crate::agents::fake` 的头注）。降它是「收接口」那轮的活。
-    const NEW_AGENT_GAP_BASELINE: usize = 27;
+    ///
+    /// 🔴 〔`K-R88` 09-13〕**27 → 26**：`control/fork_write.rs` 的「会话文件命名」2 → 1 ——
+    /// 「按 sid 找那份文件」整段进了共享 crate（两侧同一份），**找**那一步的命名
+    /// 从此不由本 crate 问适配层。⚠ 这不是「收进接口了」，是**搬去了两侧共用的那一份**。
+    const NEW_AGENT_GAP_BASELINE: usize = 26;
 
     /// 判据③的针：`<agent 名>_dir` 这一形的**标识符**。**运行时拼**（本文件散文里就有这些词）。
     ///
