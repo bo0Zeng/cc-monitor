@@ -94,6 +94,19 @@ pub enum WireContainer {
     Tmux { name: String, send_into: bool },
 }
 
+/// 🔴 **它比 [`CliAccount`] 少一态，那不是漏，是边界**〔`K-R89` 09-13〕。
+///
+/// `CliAccount` 09-13 起有第三态 `Inherit`（省略 `--account`，语义由
+/// `DECISIONS.md#R28` 定、由 `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account`
+/// 落地）。**本 wire 刻意没有对应变体** ——
+/// 这条 IPC **只有远端会走**（前端的闸是 `ctx.transport.kind === "ssh"`），
+/// 而远端是 ssh 过去，**那台机器上的继承态不是 monitor 的环境**（`R28` 裁定四逐字：
+/// 「远端的继承怎么表达是另一回事，**不算已解**」）。
+///
+/// ⇒ 要给远端加这一态，落点是 `K-R90`，同拍要动的至少有三样：本枚举 ·
+/// `src/launch-cli-wire.ts`（TS 那份手写镜像，由 `launch-cli-wire.vitest.ts` 的
+/// 「字段集相等」钉着）· `remote-launch-run.ts::buildCliRenderRequest`（真正填它的地方）。
+/// **别在这里顺手加一个变体就当远端也通了。**
 #[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum WireAccount {
@@ -862,6 +875,127 @@ mod f07_main_path_tests {
             "`send-keys-raw` 这个 mode 名的生产段落点不止一个（或搬走了）：{homes:?}\n\
              它必须只有一个家（`daemon_send_keys::mode_for`）—— 两处就会漂，\n\
              而这个决策漂了的后果是把 `Escape`（打断当前回合）当成「键入并提交」。"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R89` `KR89D4`：**那条逐字节对拍不许变成自洽夹具，也不许被连量具一起砍**
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 对拍那条判据的源码。**编译期嵌进来** —— 文件被删/改名 ⇒ **编译失败**，
+    /// 不是运行时静默跳过。（同 `launch_payload_parity.rs` 自己对夹具与 TS 那一半的做法。）
+    const PARITY_SRC: &str = include_str!("launch_payload_parity.rs");
+
+    /// 对拍**左边**那个真相源的源码。同上，编译期嵌。
+    const GOLDEN_SRC: &str = include_str!("../../../../src/launch-payload-golden.ts");
+
+    /// 🔴🔴 `KR89D4`：**删得动前端渲染器的那一天，别把量它的尺子一起删了。**
+    ///
+    /// # 它守的是什么形状
+    ///
+    /// `src/launch-payload-golden.ts` 是 Rust 那条「两边逐字节同构」对拍的**左边**：
+    /// 它调**真的** `renderFallback` 产 `fixtures/payload-golden.json`，
+    /// Rust 侧 [`super::super::launch_payload_parity`] 拿自己渲染的结果与**入库的那份**比。
+    /// 两侧都不在运行时去调对方 —— 那正是 `U7-4` 那种**自洽夹具**（夹具由被测代码现场产出、
+    /// 永远自己对自己）被挡住的地方。
+    ///
+    /// `K-R89` 的题目是「删前端那条渲染路」。**删它最省事的做法恰好是最坏的那个**：
+    /// 把对拍一起删掉，或者把左边换成「Rust 自己再算一遍」—— 那时读数照样全绿，
+    /// 而全绿的原因是没有人再在比了。⇒ 本条把这三件事各钉一条。
+    ///
+    /// # ⚠ 诚实边界（两侧都写出来）
+    ///
+    /// - **本条与被守的那份住在两个文件里** ⇒ **两个一起删仍然静默**。
+    ///   这与 [`the_retired_premise_left_a_tombstone_that_is_still_on_the_board`] 是同一形，
+    ///   买到的是「别的都不动、只删对拍」那一刀会红，不是「谁也删不掉」。
+    /// - **本条按文本判**（`include_str!` 进来的源码）⇒ 换个等价写法躲得过。
+    ///   它防的是**顺手**（删一条挡路的判据），不防**决心**。
+    /// - **本条不判夹具的内容对不对** —— 那是对拍自己那三条的事
+    ///   （用例数 `EXPECT_CASES` · 逐条字节比 · `nestedEnvKeys` 集合相等）。
+    #[test]
+    fn the_byte_for_byte_parity_still_has_two_independent_sides() {
+        // 反空真：语料真的读进来了（`include_str!` 空文件也能编过）。
+        assert!(
+            PARITY_SRC.len() > 3_000 && GOLDEN_SRC.len() > 2_000,
+            "对拍语料读进来只有 {} / {} 字节 —— 本条此刻在空转",
+            PARITY_SRC.len(),
+            GOLDEN_SRC.len()
+        );
+
+        // ① **对拍那条判据还在，而且还挂着 `#[test]`**。
+        //    needle 现拼：本文件里不留完整串（`6g` 那族：断言用的子串别取自被断言物的名字）。
+        //
+        //    ⚠ **两半都要**（这一条是死值验逼出来的）：只钉函数名时，
+        //    「把 `#[test]` 摘成 `#[allow(dead_code)]`」那一刀**活了下来** ——
+        //    函数原样在盘上、名字也在，而它再也不跑了。⇒ 加钉「紧挨着它的上一行是 `#[test]`」。
+        let parity_fn = format!(
+            "fn rust_payload_rendering_matches_the_{}",
+            "typescript_golden_byte_for_byte"
+        );
+        let at = PARITY_SRC.find(parity_fn.as_str()).unwrap_or_else(|| {
+            panic!(
+                "`launch_payload_parity.rs` 里那条逐字节对拍没了 ——\n\
+                 **删前端渲染器最省事的做法就是把量它的尺子一起删掉**（纪律 ⑱）。\n\
+                 真要退役它，先回 `K-R89`/`U8c-3` 说明「谁来证明两侧一致」，别自批。"
+            )
+        });
+        let test_attr = format!("#[{}]", "test");
+        assert!(
+            PARITY_SRC[..at].trim_end().ends_with(test_attr.as_str()),
+            "那条逐字节对拍还在盘上，但它**不再是一条会跑的判据**了（紧挨着它的上一行不是 \
+             `{test_attr}`）——\n\
+             「留着函数、摘掉注册」与「删掉它」在读数上一模一样，而前者更难被发现。"
+        );
+
+        // ② **左边仍然是「入库的那份」，右边仍然是「生产命令本体」。**
+        //    这两条一起才是「两个独立的边」：任一条被换成「Rust 自己再算一遍」，
+        //    对拍就退化成 `x == x`，而它照样全绿。
+        assert!(
+            PARITY_SRC.contains("let want = c.payload"),
+            "对拍的**左边**不再取自入库夹具的 `payload` 字段了 ——\n\
+             若它改成了「Rust 现场再渲染一次」，这条对拍就成了自洽夹具（`U7-4` 的病根），\n\
+             逐字禁令住 `src/launch-payload-golden.ts` 的头注。"
+        );
+        assert!(
+            PARITY_SRC.contains("render_launch_payload(c.req)"),
+            "对拍的**右边**不再跑生产命令 `render_launch_payload` 了 ——\n\
+             自己重搭一份 spec 来比，比的就不是上线那条路（复盘实测过：那时\n\
+             「清空 `nested_env`」那个变异全绿）。"
+        );
+        // ③ **左边不许在运行时去调 TS**（头注逐字禁掉的那条捷径的机械形态）。
+        for forbidden in ["Command::new", "process::Command"] {
+            assert!(
+                !PARITY_SRC.contains(forbidden),
+                "`launch_payload_parity.rs` 里出现了 `{forbidden}` ——\n\
+                 那是「让 Rust 侧去调 TS 现场生成」的形状，而 `src/launch-payload-golden.ts`\n\
+                 的头注逐字禁掉它：「不能让 Rust 侧去调 TS 现场生成（那就成了自洽夹具）」。\n\
+                 夹具必须**入库**，两侧各自与它比。"
+            );
+        }
+        // ④ 夹具仍然是**入库的一份文件**（编译期嵌），不是运行时算出来的。
+        // ⚠ 前缀现拼：写成整串字面量的话，本文件自己就多出一处
+        //   `cross_half_edge_registry` 抽不出路径的 `include_*!` 调用
+        //   （它按「动词 + `(`」计数，而这里下一个字符是转义引号）⇒ 那条登记判据当场红。
+        //   〔09-13 实打过一次：`every_non_literal_include_is_registered_with_a_reason` FAILED〕
+        let fixture_include = format!("{}_str!(\"fixtures/payload-golden.json\")", "include");
+        assert!(
+            PARITY_SRC.contains(fixture_include.as_str()),
+            "对拍不再 `include_str!` 那份入库夹具了 —— 夹具一旦不入库，\n\
+             「夹具陈旧」与「两侧一致」就再也分不开。"
+        );
+
+        // ⑤ **左边那个真相源本身**：它必须仍然调**真的**生产渲染器，
+        //    而不是在 TS 里另抄一份「应该长这样」的字面量。
+        assert!(
+            GOLDEN_SRC.contains("renderFallback(planOf(c))"),
+            "`launch-payload-golden.ts` 不再用真的 `renderFallback` 产黄金串了 ——\n\
+             那时左边就从「另一种语言的独立实现」退化成「一份手抄的期望值」。"
+        );
+        // ⑥ 那条逐字禁令本身还在盘上（`K-R89` 的题面逐字点名它）。
+        assert!(
+            GOLDEN_SRC.contains("不能让 Rust 侧去调 TS 现场生成"),
+            "`launch-payload-golden.ts` 头注里那句逐字禁令被删了 ——\n\
+             `KR89D4` 逐字：删了它，下一个人不会知道这条捷径为什么不许走。"
         );
     }
 }
