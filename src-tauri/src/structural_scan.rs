@@ -2954,6 +2954,34 @@ mod tests {
                 "the_refusal_wording_matches_the_ssh_path",
                 1,
             ),
+            // 🔴 〔`K-R94` 09-12〕同一件事的四笔账：**读 subagent 那条路上「找」也交给后端了**
+            //    （候选枚举 / 首行时间戳 / 读 jsonl 三样本机不再自己做，改走后端既有的
+            //    `--list-subagents` ＋ `--read-session`）。随之走掉三个生产符号
+            //    （`derive_subagent_dir` / `list_meta_matches` / `load_subagent_remote`）
+            //    与一条判据（`the_remote_path_actually_asks_the_daemon` —— 它只钉远端那半，
+            //    两条路收成一条之后由 `both_paths_ask_the_backend_and_reuse_the_existing_subcommands`
+            //    接住、钉的是两条）。散文里那几句说的正是**「它们为什么不在了」**
+            //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+            (
+                "doc/远端支持方案-agent查看器与代码全景图.md",
+                "derive_subagent_dir",
+                2,
+            ),
+            (
+                "doc/远端支持方案-agent查看器与代码全景图.md",
+                "list_meta_matches",
+                2,
+            ),
+            (
+                "doc/远端支持方案-agent查看器与代码全景图.md",
+                "load_subagent_remote",
+                1,
+            ),
+            (
+                "src-tauri/src/subagent.rs",
+                "the_remote_path_actually_asks_the_daemon",
+                1,
+            ),
         ];
 
         let corpus = dead_name_corpus();
