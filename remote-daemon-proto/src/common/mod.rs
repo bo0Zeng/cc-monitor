@@ -30,6 +30,17 @@
 //! > 门槛只有在写规则的人也照它办时才有约束力。
 
 pub(crate) mod fs;
+/// `K-R96`（09-12）：**「这台机器上现在有哪些 tmux 会话」那一张快照。**
+///
+/// 它满足门槛的方式：①（≥2 层）**control 与 observe 都在用** ——
+/// control 侧 `gate::list_sessions` 判活、`ccm` 铸名避让向它要 hash 表；
+/// observe 侧 `watcher` 每观测一轮就把看到的那份焐进来。
+/// 这一条是**真的两层**，不是「反正大家都可能用」：它住 `control/` 的话 watcher 要走一条
+/// `observe → control` 的回边（`layering_guard` 数着条数），住 `observe/` 的话 Gate
+/// 根本引用不到（那条边被钉死了）。
+/// ②（平台无关）它起的是 `tmux` 这个跨平台程序，不认识任何 OS 的文件布局。
+/// ③（无域知识）它只认识「会话名 + `@ccm_sid`」两个字段，不认识 `WatchEvent` / `Plan`。
+pub(crate) mod session_snapshot;
 /// `K-R12` 下一拍（09-04）：**「tmux 的打印通道必须是 UTF-8」这一个口径的家。**
 ///
 /// 它满足门槛的方式与 `fs` 不同，值得在这里点一句：①（≥2 层）**只在

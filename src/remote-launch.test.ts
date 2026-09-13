@@ -12,7 +12,7 @@ import {
   buildResumeDirectCmd,
   buildResumeTmuxCmd,
   buildResumeIntoExistingTmuxCmd,
-  pickFreshTmuxName,
+  mintSessionTmuxName,
   mintTmuxName,
   buildOpenTerminalCmd,
   isValidTmuxName,
@@ -251,31 +251,60 @@ test("★ F13 mintTmuxName:产名与避让不可分离 —— 它是全仓唯一
   // 撞名的根因不是「忘了检查」，是**两件事被拆开了**：五个产出点里只有两个带避让，
   // 而带避让的那个避让的正好是不带避让的那个会产的名字。
   // 这条钉住「老产出点现在从这里出名」：给同一个 existing，避让行为必须逐字一致。
-  const taken = new Set(["deadbeef-cc"]);
-  eq(pickFreshTmuxName("deadbeef-1234", taken), mintTmuxName("deadbeef-cc", taken));
+  const taken = new Set(["proj-cc"]);
+  eq(mintSessionTmuxName("/home/pi/proj", taken), mintTmuxName("proj-cc", taken));
   // `existing` 是必填参数（无默认值）—— 少传会被 tsc 挡住，那是编译期那一层的判据；
   // 这里钉「空集合与非空集合确实走不同分支」，证明它真的读了这个参数、不是摆设。
-  eq(mintTmuxName("deadbeef-cc", new Set()) !== mintTmuxName("deadbeef-cc", taken), true);
+  eq(mintTmuxName("proj-cc", new Set()) !== mintTmuxName("proj-cc", taken), true);
 });
 
-test("F13 铸名口:`<sid8>-cc` 的基名只由 pickFreshTmuxName 产（buildResumeTmuxCmd 逐字用传进来的名）", () => {
-  // ⚠ **本条替代了原来那两条**（「sid>8 位 → 取前 8」与「省略 name 时的默认名 == pickFreshTmuxName 的基名」）。
+test("F13 铸名口:`<项目名>-cc` 的基名只由 mintSessionTmuxName 产（buildResumeTmuxCmd 逐字用传进来的名）", () => {
+  // ⚠ **本条替代了原来那两条**（「sid>8 位 → 取前 8」与「省略 name 时的默认名 == 铸名口的基名」）。
   // 那两条钉的是 `planResumeTmux` **自己那个默认值**的形状，而 F13 把那个默认值**删掉了**：
   // 会话名一律由调用方过 `mintTmuxName` 铸出来再传进来。⇒ 它们钉的性质**不复存在**，
   // 不是被放宽（铁律 13：删判据前先证明它恒绿 —— 这里是「被测对象没了」，比恒绿更彻底）。
   //
   // 接手那个性质的是本条 + `session_name_registry` 的递减棘轮（全仓「谁在产 `-cc` 名」的账）。
-  const sid = "deadbeef-1234-5678";
-  const base = pickFreshTmuxName(sid, new Set());
-  eq(base, "deadbeef-cc"); // 基名形状仍由那唯一的产地钉住
+  const cwd = "/home/pi/my-proj";
+  const base = mintSessionTmuxName(cwd, new Set());
+  eq(base, "my-proj-cc"); // 基名形状仍由那唯一的产地钉住
   // 撞名时往后排，而且**这一段是 mintTmuxName 干的**（产名与避让不可分离）。
-  eq(pickFreshTmuxName(sid, new Set(["deadbeef-cc"])), "deadbeef-cc-2");
+  eq(mintSessionTmuxName(cwd, new Set(["my-proj-cc"])), "my-proj-cc-2");
   // 渲染器逐字用传进来的名字，不自己派生任何东西。
-  eq(buildResumeTmuxCmd(sid, "", undefined, base).includes(`-s ${base} `), true);
+  eq(buildResumeTmuxCmd("deadbeef-1234-5678", "", undefined, base).includes(`-s ${base} `), true);
   eq(
-    buildResumeTmuxCmd(sid, "", undefined, "totally-other-cc").includes("-s totally-other-cc "),
+    buildResumeTmuxCmd("deadbeef-1234-5678", "", undefined, "totally-other-cc").includes(
+      "-s totally-other-cc ",
+    ),
     true,
   );
+});
+
+test("★★ KR96D3 铸名口:名字可读、sid 一个片段都不进去（用户 R55：「要是可读的名字 / 不要id」）", () => {
+  const SID = "cb3230f3-dead-beef-0000-111122223333";
+  const name = mintSessionTmuxName("/home/pi/my-proj", new Set());
+  eq(name, "my-proj-cc");
+  // ① 名字里出现 sid 片段 ⇒ 红。逐字扫**每一个** ≥4 字符的前缀，不是只看 8 位那一种
+  //    （只看 8 位的话，一个改成 `slice(0,6)` 的实现会静默通过）。
+  let checked = 0;
+  for (let k = 4; k <= SID.length; k += 1) {
+    checked += 1;
+    if (name.includes(SID.slice(0, k))) {
+      throw new Error(`会话名 ${name} 里带着 sid 片段 ${SID.slice(0, k)}`);
+    }
+  }
+  if (checked < 30) throw new Error(`只扫了 ${checked} 个片段 —— 扫描器坏了，本条在空转`);
+  // ② 撞名不避让 ⇒ 红；③ 产出 `<项目名>-cc-2` ⇒ 绿。
+  eq(mintSessionTmuxName("/home/pi/my-proj", new Set(["my-proj-cc"])), "my-proj-cc-2");
+  eq(
+    mintSessionTmuxName("/home/pi/my-proj", new Set(["my-proj-cc", "my-proj-cc-2"])),
+    "my-proj-cc-3",
+  );
+  // ④ sid **必须还在** —— 只是不在名字里：它的载体是 tmux 的 `@ccm_sid`，
+  //    而那一格由渲染器写进命令串。把它一起去掉 ⇒ 本行当场红。
+  const cmd = buildResumeTmuxCmd(SID, "", "claude", name);
+  eq(cmd.includes(`@ccm_sid ${SID}`), true);
+  eq(cmd.includes(`-s ${name} `), true);
 });
 
 test("buildResumeTmuxCmd:非法 sid throw", () => {
@@ -303,22 +332,22 @@ test("F74 buildResumeTmuxCmd:非法显式 name(空格/tmux 保留字符/注入/�
   throws(() => buildResumeTmuxCmd("s1", "", "claude", "-rf"), "前导-");
 });
 
-test("F74 pickFreshTmuxName:基名空闲→基名;被占→加后缀取第一个空位", () => {
-  // S4b-3b：命名反转成 `<X>-cc`。无冲突 → 基名 `<sid8>-cc`。
-  eq(pickFreshTmuxName("cb3230f3-dead-beef", new Set()), "cb3230f3-cc");
+test("F74 mintSessionTmuxName:基名空闲→基名;被占→加后缀取第一个空位", () => {
+  // S4b-3b：命名反转成 `<X>-cc`。`K-R96`：`<X>` 从 cwd 来（可读），不再是 sid 前 8 位。
+  eq(mintSessionTmuxName("/srv/dash", new Set()), "dash-cc");
   // 基名被占(漂移的会话仍占着原名)→ -2,保证新建自己的 tmux 跑 --resume,落进原会话。
-  eq(pickFreshTmuxName("cb3230f3-dead-beef", new Set(["cb3230f3-cc"])), "cb3230f3-cc-2");
+  eq(mintSessionTmuxName("/srv/dash", new Set(["dash-cc"])), "dash-cc-2");
   // -2 也被占 → 顺延到第一个空位。
   eq(
-    pickFreshTmuxName(
-      "cb3230f3-dead-beef",
-      new Set(["cb3230f3-cc", "cb3230f3-cc-2", "cb3230f3-cc-3"]),
-    ),
-    "cb3230f3-cc-4",
+    mintSessionTmuxName("/srv/dash", new Set(["dash-cc", "dash-cc-2", "dash-cc-3"])),
+    "dash-cc-4",
   );
+  // cwd 派生不出东西（根 / 空串）⇒ 回落 `session-cc`，与 `deriveTmuxName` 同一条兜底。
+  eq(mintSessionTmuxName("/", new Set()), "session-cc");
+  eq(mintSessionTmuxName("", new Set(["session-cc"])), "session-cc-2");
   // 生成的名恒能过 buildResumeTmuxCmd 的裸拼校验(闭环:两函数同一命名域)。
-  const picked = pickFreshTmuxName("s1", new Set(["s1-cc"]));
-  eq(picked, "s1-cc-2");
+  const picked = mintSessionTmuxName("/srv/dash", new Set(["dash-cc"]));
+  eq(picked, "dash-cc-2");
   eq(buildResumeTmuxCmd("s1", "", "claude", picked).includes(`-s ${picked} `), true);
 });
 

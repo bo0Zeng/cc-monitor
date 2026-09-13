@@ -207,7 +207,7 @@ describe("tmux 名", () => {
       },
       asDeps(d),
     );
-    // Phase G：撞名后缀改成**追加在最后**（`p-fork-cc-2`），与 `pickFreshTmuxName`
+    // Phase G：撞名后缀改成**追加在最后**（`p-fork-cc-2`），与 `mintSessionTmuxName`
     // 写下的同一条规则对齐（「让『第几个』始终是名字的末段」）。原来是 `p-fork2-cc`。
     expect(d.startRemote.mock.calls[0][0].tmuxName).toBe("p-fork-cc-2");
   });

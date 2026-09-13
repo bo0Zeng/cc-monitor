@@ -111,7 +111,7 @@ export function describeSlot(k: keyof ForkLaunchFacts, f: ForkLaunchFacts): stri
  * attach 进原会话那个窗口 —— 那正好毁掉「两条都活着」。
  *
  * 命名跟 `shared/ccm` 的 `<X>-cc` 形状一致，加 `-fork` 段；撞名后缀**追加在最后**
- * （`<X>-fork-cc-2`）—— 与 `remote-launch.ts::pickFreshTmuxName` 写下的同一条规则对齐：
+ * （`<X>-fork-cc-2`）—— 与 `remote-launch.ts::mintSessionTmuxName` 写下的同一条规则对齐：
  * 「让『第几个』始终是名字的末段」。
  *
  * # ★ Phase G 审计抓出的一个阻塞：基名必须净化

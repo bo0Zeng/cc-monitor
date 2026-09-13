@@ -13,6 +13,8 @@
 //! `argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 机检（`KR48D2`）。
 
 use super::argv::{flag, parse_size, Action, CwdSpec, Die, Opts};
+// `K-R96`：铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
+use crate::common::session_snapshot::TakenNames;
 use shell_quote_core::posix_quote as sq;
 
 /// 这一趟能看见的**外界**。做成结构体的唯一理由：让整条计划面可以在单测里跑，
@@ -248,17 +250,23 @@ pub(crate) struct Container {
     pub(crate) payload: String,
     /// 要不要挂那段「抓信任框、自动按 Enter」的兜底轮询。
     pub(crate) trust_poll: bool,
-    /// 这个名字**撞了要不要退让**。
-    ///
-    /// 三条取名路的态度**不一样，别合并**：
-    /// - 显式 `--tmux=<名>` ⇒ **不退让**（调用方说的就是要这个名；撞了走 `C14` 响亮失败）；
-    /// - `--tmux-base=<基名>` ⇒ **退让**（`C15` 给 cc-spawn 的那条路，它随后要读回真名字）；
-    /// - 不给名、从 cwd 派生 ⇒ **退让**（幂等接回同一目录的会话，撞了说明有别人占了）。
-    ///
-    /// ⚠ 它**只在真跑那条路上生效**：`--print` 不查实时 tmux 状态（那是它「纯」的全部含义），
-    /// 所以 `--print` 吐的是**没退让过的**名字 —— 旧 `shared/ccm::avoid_name_collision` 〔散文墓碑〕（`K-R48` 已删）
-    /// 那句 `[ "$do_print" != 1 ] && tmux has-session …` 逐字就是这个意思。
-    pub(crate) avoid_collision: bool,
+    // ★★ 〔`K-R96` 09-12〕**`avoid_collision` 这个字段删了** —— 散文墓碑留在这里。
+    //
+    // 它从前的意思是「这个名字撞了要不要退让」，而退让本身发生在 `mod.rs::execute`
+    // ——**只在真跑那条路上**，`--print` 吐的是没退让过的名字。
+    //
+    // 用户 09-12 逐字（`R52` 裁定二）：「**不就是先校验冲突然后取名吗? 搞个 hash 表**不就好了」。
+    // ⇒ 退让搬进 [`build`]：它拿一份 [`TakenNames`]（那张 hash 表，来源只有会话快照一处），
+    //   **算完就把最终名钉进 `Container::name`**。于是：
+    //   ① 「产名」与「避让」不再是两个人干的两件事（前端 `mintTmuxName` 那条纪律的对侧）；
+    //   ② `--print` 与真跑吐的是**同一个名字** —— 平价预言机从此在名字这一维上也是平的；
+    //   ③ `--print` 的「纯」口径改成**相对于快照**：同一份快照 ＋ 同一份输入 ⇒ 同一份输出。
+    //
+    // 三条取名路的态度**仍然不一样，别合并**（判据见
+    // `only_two_of_the_three_naming_paths_step_aside_on_a_collision`）：
+    // - 显式 `--tmux=<名>` ⇒ **不退让**（调用方说的就是要这个名；撞了走 `C14` 响亮失败）；
+    // - `--tmux-base=<基名>` ⇒ **退让**（`C15` 给 cc-spawn 的那条路，它随后要读回真名字）；
+    // - 不给名、从 cwd 派生 ⇒ **退让**（幂等接回同一目录的会话，撞了说明有别人占了）。
     /// `--bus-register` 要的登记；找不到 cc-bus 脚本就是 `None`（并出一句声）。
     pub(crate) bus: Option<BusRegister>,
 }
@@ -348,9 +356,12 @@ pub(crate) fn derive_tmux_name(cwd: &str) -> String {
 
 /// 基名撞了就退让：`<基名>` → `<基名>-2` → `<基名>-3` … 取第一个没被占的。
 ///
-/// 纯函数（已占用的名字由调用方给）—— 这样「退让规则」测得了，而**查实时 tmux 状态**
-/// 那一步留在真跑那条路上（`--print` 不查，见 [`Container::avoid_collision`]）。
-pub(crate) fn next_free_name(base: &str, taken: &[String]) -> String {
+/// 纯函数（已占用的名字由调用方给）—— 这样「退让规则」测得了。
+///
+/// 〔`K-R96` 09-12〕**谁给那份 `taken`，今天只有一个答案**：[`build`] 从
+/// [`TakenNames`] 里拿，而 `TakenNames` 的字段是 `common::session_snapshot` 模块私有的
+/// ⇒ 「另起一份名字集合」在类型层面就造不出来。`--print` 与真跑用的是同一份。
+fn next_free_name(base: &str, taken: &[String]) -> String {
     if !taken.iter().any(|t| t == base) {
         return base.to_string();
     }
@@ -465,7 +476,21 @@ pub(crate) fn resolve_account(
 }
 
 /// 从 [`Opts`] ＋ 外界 ⇒ [`Plan`]。**这是计划面的唯一入口。**
-pub(crate) fn build(o: &Opts, env: &Env, table: &AccountTable) -> Result<Plan, Die> {
+///
+/// `taken` = 那一刻**已被占用的会话名**（`R52` 裁定二那张 hash 表），
+/// 来源只有 `common::session_snapshot` 一处；`None` = **问不到**
+/// （tmux 起不来 / 没装）⇒ **不退让**，与那份已删的 bash `ccm` 那句
+/// `tmux has-session … 2>/dev/null`（问不出来当没占）同义。真撞上了还有
+/// `created:false` ⇒ rc=3 那条响亮失败兜底。
+///
+/// 🔴 **本函数相对 `taken` 是纯的**：同一份快照 ＋ 同一份 `o`/`env`/`table`
+/// ⇒ 同一份 `Plan`（`--print` 的「纯」今天就是这个口径）。
+pub(crate) fn build(
+    o: &Opts,
+    env: &Env,
+    table: &AccountTable,
+    taken: Option<&TakenNames>,
+) -> Result<Plan, Die> {
     // ── attach：不起 agent，早于容器逻辑就定了 ──────────────────────────
     if o.action == Action::Attach {
         // `ccm attach foo --tmux --detach` 从前会**静默吞掉** `--detach` 照样 attach。
@@ -507,7 +532,7 @@ pub(crate) fn build(o: &Opts, env: &Env, table: &AccountTable) -> Result<Plan, D
     }
 
     if use_tmux {
-        let (name, avoid_collision) = if !o.tmux_base.is_empty() {
+        let (base, step_aside) = if !o.tmux_base.is_empty() {
             validate_tmux_name(&o.tmux_base)?;
             (o.tmux_base.clone(), true)
         } else if !o.tmux_name.is_empty() {
@@ -515,6 +540,12 @@ pub(crate) fn build(o: &Opts, env: &Env, table: &AccountTable) -> Result<Plan, D
             (o.tmux_name.clone(), false)
         } else {
             (derive_tmux_name(&cwd), true)
+        };
+        // ★★ `K-R96`：**退让就在这里发生**，`--print` 与真跑因此拿到同一个名字。
+        let name = match (step_aside, taken) {
+            (true, Some(t)) => next_free_name(&base, t.as_slice()),
+            // 不退让 / 问不到快照 ⇒ 原样（后者是诚实降级，见本函数头注）。
+            _ => base,
         };
         // 内层：同一条命令去掉 `--tmux`，并把**继承来的**那几个变量显式化。
         let mut inner: Vec<String> = vec![env.self_path.clone()];
@@ -611,7 +642,6 @@ pub(crate) fn build(o: &Opts, env: &Env, table: &AccountTable) -> Result<Plan, D
             detach: o.detach,
             payload,
             trust_poll: o.agent == "claude" && !env.no_pretrust,
-            avoid_collision,
             bus,
         }));
     }
@@ -809,9 +839,36 @@ mod tests {
     }
 
     fn plan_of(args: &[&str], env: &Env, t: &AccountTable) -> Plan {
+        plan_of_with(args, env, t, None)
+    }
+
+    /// 造一份**固定快照**的 `TakenNames`。
+    ///
+    /// 🔴 只能这么造 —— `TakenNames` 的字段是 `common::session_snapshot` 私有的，
+    /// 本模块（含测试段）**写不出第二种构造法**。那正是 `KR96D2` 第一刀要的形状：
+    /// 「铸名另起一份名字集合」在这里是**编译不过**，不是靠注释劝阻。
+    fn snapshot_of(names: &[&str]) -> TakenNames {
+        let rows: Vec<crate::common::session_snapshot::SessionRow> = names
+            .iter()
+            .map(|n| crate::common::session_snapshot::SessionRow {
+                name: (*n).to_string(),
+                ccm_sid: String::new(),
+            })
+            .collect();
+        crate::common::session_snapshot::SessionSnapshot::with_prober(move || Ok(rows.clone()))
+            .taken_names()
+            .expect("固定夹具问得到")
+    }
+
+    fn plan_of_with(
+        args: &[&str],
+        env: &Env,
+        t: &AccountTable,
+        taken: Option<&TakenNames>,
+    ) -> Plan {
         let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
         match parse(&a).expect("该解析得动") {
-            Parsed::Opts(o) => build(&o, env, t).expect("该算得出计划"),
+            Parsed::Opts(o) => build(&o, env, t, taken).expect("该算得出计划"),
             other => panic!("{other:?}"),
         }
     }
@@ -932,7 +989,7 @@ mod tests {
             Parsed::Opts(o) => o,
             other => panic!("{other:?}"),
         };
-        let Die(msg) = build(&o, &env(), &t).expect_err("不存在的账号必须中止");
+        let Die(msg) = build(&o, &env(), &t, None).expect_err("不存在的账号必须中止");
         assert!(msg.starts_with("账号 'nope' 不可用"), "{msg}");
         assert!(
             msg.contains("可用: z f"),
@@ -971,21 +1028,27 @@ mod tests {
     fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
         let e = env();
         let t = AccountTable::default();
-        let path = |args: &[&str]| match plan_of(args, &e, &t) {
-            Plan::Container(c) => (c.name, c.avoid_collision),
+        // 🔴 `K-R96`：量的是**最终名**，不是那个「要不要退让」的布尔。
+        //    原版量布尔 ⇒ 「布尔为 true 而退让根本没被执行」照样绿 ——
+        //    那正好是这条判据当初逮到的那个病（退让被静默吃掉）换个位置复发。
+        let taken = snapshot_of(&["n1", "proj-cc"]);
+        let path = |args: &[&str]| match plan_of_with(args, &e, &t, Some(&taken)) {
+            Plan::Container(c) => c.name,
             other => panic!("该是容器路：{other:?}"),
         };
         // 显式名：**不退让** —— 调用方说的就是要这个名，撞了走 C14 响亮失败
-        assert_eq!(path(&["--tmux=n1", "--cwd", "/p"]), ("n1".into(), false));
+        assert_eq!(path(&["--tmux=n1", "--cwd", "/p"]), "n1");
         // 基名：退让（cc-spawn 随后要读回真名字）
-        assert_eq!(
-            path(&["--tmux-base", "n1", "--cwd", "/p"]),
-            ("n1".into(), true)
-        );
+        assert_eq!(path(&["--tmux-base", "n1", "--cwd", "/p"]), "n1-2");
         // 不给名、从 cwd 派生：退让
+        assert_eq!(path(&["--tmux", "--cwd", "/x/proj"]), "proj-cc-2");
+        // 问不到快照（`None`）⇒ 诚实降级成「不退让」，不是「假装没占」之外的第三种行为
         assert_eq!(
-            path(&["--tmux", "--cwd", "/x/proj"]),
-            ("proj-cc".into(), true)
+            match plan_of_with(&["--tmux", "--cwd", "/x/proj"], &e, &t, None) {
+                Plan::Container(c) => c.name,
+                other => panic!("该是容器路：{other:?}"),
+            },
+            "proj-cc"
         );
         // 退让规则本身
         assert_eq!(next_free_name("n1", &[]), "n1");
@@ -994,6 +1057,101 @@ mod tests {
         assert_eq!(next_free_name("n1", &["n1".into(), "n1-2".into()]), "n1-3");
         // 只撞中间那个不影响：2 空着就取 2
         assert_eq!(next_free_name("n1", &["n1".into(), "n1-3".into()]), "n1-2");
+    }
+
+    /// ★★ **`KR96D2` 死值验第二刀：`--print` 相对于快照是**纯**的。**
+    ///
+    /// 口径由 `§0c` 定死：**同一份快照 ＋ 同一份输入 ⇒ 同一份输出**（不是「不查实时状态」）。
+    /// 判据喂的就是一个**固定夹具快照**。
+    #[test]
+    fn printing_twice_against_the_same_snapshot_gives_the_same_line() {
+        let e = env();
+        let t = AccountTable::default();
+        let taken = snapshot_of(&["proj-cc", "proj-cc-2"]);
+        let once = render(
+            &plan_of_with(&["--tmux", "--cwd", "/x/proj"], &e, &t, Some(&taken)),
+            None,
+        );
+        let twice = render(
+            &plan_of_with(&["--tmux", "--cwd", "/x/proj"], &e, &t, Some(&taken)),
+            None,
+        );
+        assert_eq!(once, twice, "同一份快照喂两次，`--print` 吐了两样东西");
+        assert!(
+            once.contains("proj-cc-3"),
+            "喂进去的快照里 `proj-cc` 与 `proj-cc-2` 都占着，名字该让到 `proj-cc-3`。\n             实得：{once}"
+        );
+    }
+
+    /// ★★ **`KR96D2` 死值验第三刀：快照变了，名字必须跟着变。**
+    ///
+    /// 这一条是上一条的**反面**，缺了它「纯」就退化成「恒定」——
+    /// 一个把名字写死的实现能同时通过「喂两次一样」和「不查实时状态」。
+    #[test]
+    fn a_different_snapshot_moves_the_name() {
+        let e = env();
+        let t = AccountTable::default();
+        let name = |taken: &TakenNames| match plan_of_with(
+            &["--tmux", "--cwd", "/x/proj"],
+            &e,
+            &t,
+            Some(taken),
+        ) {
+            Plan::Container(c) => c.name,
+            other => panic!("该是容器路：{other:?}"),
+        };
+        assert_eq!(name(&snapshot_of(&[])), "proj-cc");
+        assert_eq!(name(&snapshot_of(&["proj-cc"])), "proj-cc-2");
+        assert_eq!(name(&snapshot_of(&["proj-cc", "proj-cc-2"])), "proj-cc-3");
+    }
+
+    /// ★★ **`KR96D3`：名字是 `<项目名>-cc`，sid 一个片段都不许进去；而 `@ccm_sid` 必须还在。**
+    ///
+    /// 第四刀（把 `@ccm_sid` 也一起去掉 ⇒ 必须红）就在下半段：
+    /// sid **必须还在**，只是**不在名字里** —— 它的载体是 tmux 的 `@ccm_sid` 选项。
+    #[test]
+    fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
+        let e = env();
+        let t = AccountTable::default();
+        const SID: &str = "cb3230f3-dead-beef-0000-111122223333";
+        let plan = plan_of_with(
+            &[
+                "resume",
+                SID,
+                "--ccm-sid",
+                SID,
+                "--tmux",
+                "--cwd",
+                "/home/pi/my-proj",
+            ],
+            &e,
+            &t,
+            Some(&snapshot_of(&[])),
+        );
+        let Plan::Container(c) = plan else {
+            panic!("该是容器路")
+        };
+        assert_eq!(c.name, "my-proj-cc", "名字该读得出是哪个项目");
+        // ① 名字里出现 sid 片段 ⇒ 红。逐字扫**每一个** ≥4 字符的前缀，不是只看 8 位那一种。
+        let mut checked = 0usize;
+        for k in 4..=SID.len() {
+            let frag = &SID[..k];
+            checked += 1;
+            assert!(
+                !c.name.contains(frag),
+                "会话名 {:?} 里带着 sid 片段 {frag:?} —— 用户 `R55` 裁定一逐字：\n                 「**要是可读的名字 / 不要id**」",
+                c.name
+            );
+        }
+        assert!(
+            checked > 30,
+            "只扫了 {checked} 个片段 —— 扫描器坏了，本条在空转"
+        );
+        // ④ 而 sid 本身**必须还在**：它骑在 `@ccm_sid` 上（`P3` 逐字：名字不是 sid 的载体）。
+        assert_eq!(
+            c.ccm_sid, SID,
+            "sid 从计划里消失了 —— 「不进名字」不等于「不要了」。\n             `@ccm_sid` 是它真正的载体，杀会话的菜单与身份判定都认那个。"
+        );
     }
 
     /// 〔搬自 `ccm-cli` 名字校验那一族〕—— 会话名会被拼进 tmux 目标语法，是一条注入面。

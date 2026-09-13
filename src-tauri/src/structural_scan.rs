@@ -2843,11 +2843,16 @@ mod tests {
                 "the_daemonless_remote_still_needs_the_ts_fallback_renderer",
                 2,
             ),
-            (
-                "remote-daemon-proto/src/control/ccm/plan.rs",
-                "avoid_name_collision",
-                1,
-            ),
+            // 🔴 〔`K-R96` 09-12〕**这一行删了 —— 盘上那句墓碑随被墓碑的那件事一起走了。**
+            //
+            // 它盖的是 `plan.rs::Container::avoid_collision` 的头注里那句
+            //「旧 `shared/ccm::avoid_name_collision`（`K-R48` 已删）那句
+            //  `[ "$do_print" != 1 ] && tmux has-session …` 逐字就是这个意思」——
+            // 用来说明「`--print` 不查实时状态」这条行为是从哪继承来的。
+            // 用户 09-12 `R52` 裁定二之后**那条行为本身没了**（退让搬进 `plan::build`、
+            // 问同一张会话快照，`--print` 与真跑吐同一个名字）⇒ 连带那个字段与那句头注
+            // 一起删。⇒ 按本表头注那条纪律：「登记的那一处盘上已经没有了 ⇒ 删掉它，
+            // 别让表替真判据挡枪」。
             (
                 "src-tauri/src/backend/control/launch_wire.rs",
                 "ccm_reaches_the_backend_through_one_shot_subcommands",
