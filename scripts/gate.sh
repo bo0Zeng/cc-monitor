@@ -800,7 +800,7 @@ run_gate winchk '不是数出来的数：`cargo check --target x86_64-pc-windows
          bash -c 'cd src-tauri && cargo check --locked -p monitor --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
 
 # 8 个包 = `monitor` + 7 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
-run_gate_sum cargo 8 bash -c 'cd src-tauri && cargo test --workspace --exclude code-picture-core --lib 2>&1'
+run_gate_sum cargo 9 bash -c 'cd src-tauri && cargo test --workspace --exclude code-picture-core --lib 2>&1'
 
 # ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src-tauri/embedded-daemons/` 铺没铺。
 #

@@ -101,6 +101,10 @@ mod tests {
             "**条数**不是体量（mpsc 通道能排多少帧）。它的溢出语义由 `Overflow` 帧管，见 F03。",
         ),
         (
+            "LIMIT_MAX",
+            "〔`K-R100` 09-13〕**条数**不是体量：`search-core` 里 `--limit` / IPC `limit`              能取的最大值 = 一次搜索最多构造多少条 **snippet**，不是任何字节量。             它「超了怎么办」有答案、但不在本表的语义里 —— `clamp_limit` 直接把它夹住，             而被夹掉的那部分由 `SnippetBudget::starved()` ⇒ `SessionHits::hits_truncated`              ⇒ `SearchResponse::truncated` 一路说出来（那正是 `KR100D3` 治的东西）。",
+        ),
+        (
             "BUILD_STAMP_LEN",
             "🔴 〔`K-R70` 09-12〕**一段定长数据的长度，不是任何东西的上限**：它逐字等于\
              `BUILD_STAMP_OPEN.len() + BUILD_ID.len() + BUILD_STAMP_CLOSE.len()`，\
@@ -259,18 +263,22 @@ mod tests {
             "远端命令串长度（字节）",
             "拒收+回错",
         ),
+        // 🔴 `K-R100`：这两条**原本两侧各登记一份**（`src-tauri/src/search.rs` 与
+        // `remote-daemon-proto/src/observe/search_query.rs`），靠下面「对 D」那条判据
+        // 钉住它们相等。收口之后它们只有一个家 ⇒ **「两侧漂开」这件事在结构上没了**，
+        // 那条对拍随之删掉（见 `the_cross_crate_twins_are_machine_checked_not_hand_copied`）。
         (
-            "src-tauri/src/search.rs",
+            "src-tauri/crates/search-core/src/lib.rs",
             "MAIN_CAP",
             20_000,
-            "单条 main 文本进索引的**字符**数",
+            "单条 main 文本进索引的**字符**数（monitor 与 daemon 同一份）",
             "索引截断（不丢数据）",
         ),
         (
-            "src-tauri/src/search.rs",
+            "src-tauri/crates/search-core/src/lib.rs",
             "TOOL_CAP",
             4_000,
-            "单条 tool 文本进索引的**字符**数",
+            "单条 tool 文本进索引的**字符**数（monitor 与 daemon 同一份）",
             "索引截断（不丢数据）",
         ),
         // ── 〔devbench F10b〕以下七条此前**全都不在本表的扫描面里**。
@@ -397,20 +405,6 @@ mod tests {
             8 * 1024 * 1024,
             "daemon 侧读账号 manifest",
             "硬报错",
-        ),
-        (
-            "remote-daemon-proto/src/observe/search_query.rs",
-            "MAIN_CAP",
-            20_000,
-            "daemon 侧同一封顶（注释逐字「对齐本地封顶」）",
-            "索引截断（不丢数据）",
-        ),
-        (
-            "remote-daemon-proto/src/observe/search_query.rs",
-            "TOOL_CAP",
-            4_000,
-            "daemon 侧同一封顶",
-            "索引截断（不丢数据）",
         ),
         (
             "remote-daemon-proto/src/observe/accounts_query.rs",
@@ -552,7 +546,16 @@ mod tests {
     fn size_typed_consts() -> Vec<(String, String, Option<u64>)> {
         let root = repo_root();
         let mut out = Vec::new();
-        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+        // 🔴 `K-R100` 09-13 加第三条 `src-tauri/crates`：搜索的两条封顶（`MAIN_CAP` /
+        // `TOOL_CAP`）从两侧各一份收进了共享 crate `search-core`。**不加这一条**，
+        // 那两条上限会从本表的扫描面里静默消失 —— 表里还登记着、盘上再也扫不到，
+        // 而 `the_registered_numbers_still_match_the_source` 会以「算不出来」的形态红，
+        // 报的方向还是错的。
+        for sub in [
+            "src-tauri/src",
+            "remote-daemon-proto/src",
+            "src-tauri/crates",
+        ] {
             for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let body = guard_core::production_source(&raw);
                 let rel = f
@@ -643,7 +646,15 @@ mod tests {
     fn scan() -> Vec<(String, String, Option<u64>)> {
         let root = repo_root();
         let mut out = Vec::new();
-        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+        // 🔴 `K-R100` 09-13：`src-tauri/crates` 这一条与 `size_typed_consts()` 那边同源同理
+        // ——搜索的两条封顶已收进共享 crate `search-core`。
+        // ⚠ 上面 `size_typed_consts` 的头注说「两者共用同一份遍历」，**盘上不是**：
+        // 这里自己又走了一遍。⇒ **改扫描面要两处一起改**（本轮就是漏了这一处才红的）。
+        for sub in [
+            "src-tauri/src",
+            "remote-daemon-proto/src",
+            "src-tauri/crates",
+        ] {
             for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 // ★ 只扫**生产段**〔08-06〕：本条原来扫整份文件，于是**测试里的夹具常量**
                 // 也被当成生产上限（`common/fs.rs` 的顺序判据里那个 `const CAP` 当场被误报）。
@@ -798,18 +809,16 @@ mod tests {
              因为它们是同一个量。要刻意分开就把这条判据与那句注释**一起**改。"
         );
 
-        // 对 D：搜索索引封顶。daemon 侧注释逐字「**对齐本地封顶**」⇒ 钉相等。
-        for cap in ["MAIN_CAP", "TOOL_CAP"] {
-            let d1 = by("src-tauri/src/search.rs", cap);
-            let d2 = by("remote-daemon-proto/src/observe/search_query.rs", cap);
-            assert_eq!(
-                d1, d2,
-                "搜索索引封顶 `{cap}` 两侧漂开了（monitor {d1} / daemon {d2}）。\
-                 daemon 侧注释逐字写着「对齐本地封顶防超长粘贴/大 dump」—— \
-                 那句话此前**没有任何东西守着**。漂开的后果是**同一个查询在本地与远端命中不一样**，\
-                 而两边都不会报错。"
-            );
-        }
+        // 对 D（搜索索引封顶）🔴 **这一对没了，是被解决掉的，不是被删掉的**〔`K-R100` 09-13〕。
+        //
+        // 原文：`src-tauri/src/search.rs` 与 `remote-daemon-proto/src/observe/search_query.rs`
+        // 各写一个 `MAIN_CAP`/`TOOL_CAP`，本条钉它们相等。收口后两个字面量只剩一份
+        // （`search-core`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
+        // （它会变成「同一个数等于它自己」，恒绿）。
+        // 把这件事焊住的判据换了个形状，住
+        // `src-tauri/src/search.rs::kou_jing_guard::the_search_kou_jing_has_exactly_one_home`：
+        // 它断言两侧生产段**都不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义。
+        // ⇒ 这两个数搬回任何一侧，当场红。
 
         // 对 C：注释写的是「同**量级**」，而且**今天就不等** ⇒ 钉比值，不钉相等。
         let c1 = by(
@@ -835,7 +844,14 @@ mod tests {
     fn the_exclusion_list_is_not_dead_wood() {
         let root = repo_root();
         let mut all = String::new();
-        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+        // 🔴 `K-R100` 09-13 加 `src-tauri/crates`：排除表的语料面必须与**产生上限的那个语料面**
+        // 一致（`size_typed_consts()` / `scan()` 都已含它）。不一致的话，一条针对共享 crate
+        // 里常量的排除会被本条判成「死木」—— 而它其实活着，只是本条看不见它。
+        for sub in [
+            "src-tauri/src",
+            "remote-daemon-proto/src",
+            "src-tauri/crates",
+        ] {
             for (_, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let body = guard_core::production_source(&raw);
                 all.push_str(&body);
