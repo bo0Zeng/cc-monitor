@@ -161,6 +161,19 @@ CUTS: list[Cut] = [
              '        "--launch",\n    ),', 1),
         ],
     ),
+    Cut(
+        "M14", "KR101D4",
+        "🔴 编排真搬走一步（`tmux kill-session` 那两处从渲染串里没了），而 "
+        "`PROBE_ORCHESTRATION_STEPS` 的「今天由谁渲染」那一列还写着 monitor。"
+        "**这一刀是 `the_orchestration_registry_still_describes_what_this_file_does` 的「先红」**："
+        "收工前自查发现它原来会被**登记表自己**喂饱（五个动词在表的描述文本里全有，`F23` 那一族），"
+        "挖掉表那一段之后才真有牙 —— 本刀就是那颗牙的读数。",
+        # ⚠ 刀口挑 `tmux new-session`：它在**表外**只出现 1 次（`tmux kill-session` 表外有 3 次
+        #   —— 看门狗那句里还有一份，切两处照样剩一处 ⇒ 那一刀证不了这条判据，本轮实测过）。
+        [("replace", "src-tauri/src/account_usage.rs",
+          "tmux new-session -d -s {session_q}",
+          "printf '' {session_q}", 1)],
+    ),
 ]
 
 BY_ID = {c.cid: c for c in CUTS}
@@ -262,7 +275,12 @@ SANDBOX_IMAGE = "ccmon-devbox:latest"
 PROJ = "/home/zbl/文档/claudecode-frontend"
 
 #: 这一刀够得着哪几格（与门禁那几格跑的是**同一条命令**，只是不陪跑无关的）
-SUITES = {"M11": ("cargo", "daemon"), "M12": ("cargo",), "M13": ("vitest", "cargo")}
+SUITES = {
+    "M11": ("cargo", "daemon"),
+    "M12": ("cargo",),
+    "M13": ("vitest", "cargo"),
+    "M14": ("cargo",),
+}
 DEFAULT_SUITES = ("vitest",)
 
 _STRIP_ANSI = r'sed "s/\x1b\[[0-9;]*m//g"'
