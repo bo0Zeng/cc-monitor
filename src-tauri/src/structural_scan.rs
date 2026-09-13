@@ -2787,6 +2787,10 @@ mod tests {
                 1,
             ),
             ("src-tauri/src/launch.rs", "resolve_from_daemon", 1),
+            // 🔴 〔`K-R97` 09-12〕`list_history_projects` 改问本机后端要 `--list-projects`
+            //    ⇒ 项目级那一段（`analyze_project_dir`）连同它唯一的调用点一起删了。
+            //    那句话说的正是「它为什么不在了」，是本文件头注第②条出路的标准形态。
+            ("src-tauri/src/history.rs", "analyze_project_dir", 1),
             // 🔴 〔`K-R65` 09-11〕`tier` 从手填改成派生之后，那条断言「手写那一半的档
             //    不许是 `AppInstalls`」在算术上不可能再红 ⇒ 删掉判据、留下墓碑说清
             //    「它守的那件事没丢，只是那个能填错的格子没有了」。
