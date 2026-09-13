@@ -820,31 +820,18 @@ pub struct BranchResult {
     pub jsonl_path: String,
 }
 
-/// 源会话路径守卫（与 `validate_delete_target` 同构，但不改动 delete 那段安全关键代码）。
-/// canonicalize 两边解 `..`/symlink → 必须落在 projects 内 → 扩展名 `.jsonl`。
-fn validate_branch_source(jsonl_path: &str, projects_dir: &Path) -> Result<PathBuf, String> {
-    let target = PathBuf::from(jsonl_path);
-    if !target.exists() {
-        return Err(format!("{} does not exist", target.display()));
-    }
-    let canon_target = target
-        .canonicalize()
-        .map_err(|e| format!("canonicalize {}: {e}", target.display()))?;
-    let canon_projects = projects_dir
-        .canonicalize()
-        .map_err(|e| format!("canonicalize {}: {e}", projects_dir.display()))?;
-    if !canon_target.starts_with(&canon_projects) {
-        return Err(format!(
-            "refuse branch: {} is outside {}",
-            canon_target.display(),
-            canon_projects.display()
-        ));
-    }
-    if !crate::adapter::has_record_ext(&canon_target) {
-        return Err("refuse branch: not a .jsonl file".into());
-    }
-    Ok(canon_target)
-}
+// 🔴〔`K-R88` 09-13〕**源会话那一步的守卫搬走了，连同它的入参形状一起。**
+//
+// 原先这里有一个收**路径**的门（存在性 → 两边 canonicalize → 前缀落在 projects 内 →
+// 扩展名 `.jsonl`），而后端那条路收的是 **sid**。同一件事两个入参形状 ⇒
+// 「查不到怎么办」两边可以各答各的，而没有任何东西会因此变红。
+//
+// 今天两侧都走 `branch_core::find_session_file`：**入参只有 sid**，
+// 而路径由那一份在记录树里枚举出来。⇒ 界外那种入参**连表达都表达不出来**了 ——
+// 这比「表达得出来但被门拦下」强一档（`K-R88` `§0b` 逐字：少一个可被构造的路径入参
+// 就少一条路径穿越面）。
+// 那道门的两条实证判据（`..` 穿越 · 软链逃逸）没有被删，**换成了新形状的同名两条**，
+// 住在本文件测试段里，读的是同一份实现。
 
 /// 读一个 jsonl 文件为逐行 `serde_json::Value`（剥 BOM、跳空行；解析失败的行**保留原样**
 /// 不了了之——建分支只复制祖先链上的记录，坏行若不在链上自然被忽略）。
@@ -868,38 +855,41 @@ fn read_jsonl_values(path: &Path) -> Result<Vec<serde_json::Value>, String> {
 // G1：**记录变换已提成共享 crate** `branch-core` —— monitor 与远端 daemon 共用同一份。
 // 搬走的理由与选型过程见 `.claude/planned-build/branch-anywhere/features/G1-*.md`；
 // 落盘格式的实证判据见该 crate 的 `build_branch_records` 头注。
-// **本文件只留 IO 与路径守卫**（那两样是 monitor 侧特有的）。
+// **本文件只留 IO**（读 jsonl 的口径 ＋ `O_EXCL` 落盘，那两样是 monitor 侧特有的）；
+// 〔`K-R88` 09-13〕「按 sid 找那份源文件」也进了同一个 crate，两侧同一份。
 use branch_core::build_branch_records;
 
 /// F62 IPC：从历史会话的某条消息创建分支。前端点消息卡上的 `⑂` 时调，成功返回新 sid。
 /// 见本段顶部大注释（§1 正交、原生格式、守卫）。薄壳：resolve_claude_dir → 委托 branch_impl。
+///
+/// 🔴〔`K-R88` 09-13〕**入参从路径改成了 sid**，与远端那条
+/// （`remote_branch::create_remote_branch_session`）**形状一致**。
+/// 前端两条路本来就都拿得到 sid（按钮那份上下文里一直有），所以这不是给调用方加负担。
 #[tauri::command]
 pub fn create_branch_session(
-    source_jsonl_path: String,
+    source_session_id: String,
     message_uuid: String,
 ) -> Result<BranchResult, String> {
     let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
     let projects_dir = crate::adapter::records_dir(&claude_dir);
-    branch_impl(&source_jsonl_path, &message_uuid, &projects_dir)
+    branch_impl(&source_session_id, &message_uuid, &projects_dir)
 }
 
 /// 建分支核心（可注入 projects_dir 直测，绕开 resolve_claude_dir 全局依赖——同 delete 的
 /// validate_delete_target 测法）。安全承诺全在这层：源零改动、只写新 sid、绝不覆盖。
+///
+/// 「找那份源文件」**不在这里**：走 `branch_core::find_session_file`，与后端同一份（`K-R88`）。
+/// 本函数留下的是 monitor 侧特有的两样：读 jsonl 的口径、以及 `O_EXCL` 落盘。
 fn branch_impl(
-    source_jsonl_path: &str,
+    source_session_id: &str,
     message_uuid: &str,
     projects_dir: &Path,
 ) -> Result<BranchResult, String> {
-    let source = validate_branch_source(source_jsonl_path, projects_dir)?;
-    let src_sid = source
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .ok_or("refuse branch: cannot derive source sid from path")?
-        .to_string();
+    let source = branch_core::find_session_file(projects_dir, source_session_id)?;
 
     let lines = read_jsonl_values(&source)?;
     let new_sid = uuid::Uuid::new_v4().to_string();
-    let records = build_branch_records(&lines, message_uuid, &src_sid, &new_sid)?;
+    let records = build_branch_records(&lines, message_uuid, source_session_id, &new_sid)?;
 
     // 目标写进源会话同目录（projects 内某项目目录），文件名 = 新 sid。
     let parent = source
@@ -908,7 +898,7 @@ fn branch_impl(
     let out_path = parent.join(format!("{new_sid}.jsonl"));
     write_branch_file(&out_path, &records)?;
     tracing::info!(
-        "history: branched sid={new_sid} from {src_sid}@{message_uuid} ({} records)",
+        "history: branched sid={new_sid} from {source_session_id}@{message_uuid} ({} records)",
         records.len()
     );
 
@@ -4348,17 +4338,19 @@ mod tests {
 
     /// ★★ **建分支入口真的过了围栏吗**〔audit-0805 08-07，Phase G 第 48 件〕。
     ///
-    /// 与删除那条**同一族的第二例**。`validate_branch_source` 有两条穿越防护判据
-    /// （`..` 穿越 · 软链逃逸），都是实的，但主语同样是**围栏本身**。
-    /// 08-07 实测：把 `branch_impl` 里那行换成 `PathBuf::from(source_jsonl_path)`，
-    /// **全仓 979 条判据一条不红** —— 而那条路会去**读**调用方给的任意文件，
-    /// 再把内容拷进 `projects` 目录（该函数头注自陈「安全承诺全在这层」）。
+    /// 与删除那条**同一族的第二例**。08-07 实测：把当时那行守卫换成裸的
+    /// `PathBuf::from(<调用方给的串>)`，**全仓 979 条判据一条不红** ——
+    /// 而那条路会去**读**调用方给的任意文件，再把内容拷进 `projects` 目录。
     ///
     /// ⇒ 一族两例，说明这不是某个人某次疏忽：**「围栏有判据」与「那条路过了围栏」
     /// 是两件事，而写判据的注意力天然落在前者**（后者要跑真路，前者只要调个函数）。
     ///
-    /// 本条比删除那条更干净：`branch_impl` 可注入 `projects_dir` ⇒ 临时目录**同时**
-    /// 充当「projects」与「界外」，一个字节都不碰用户的目录。
+    /// # 🔴〔`K-R88` 09-13〕**围栏换了形状，本条跟着换靶，不是删**
+    ///
+    /// 入参从路径收成 sid 之后，「一个 `projects` 之外的源」**连表达都表达不出来**：
+    /// 一个绝对路径根本不是合法 sid，而合法 sid 只会在记录树里被枚举出来。
+    /// ⇒ 本条今天钉的是**那一步真的经过了形状闸**：喂一个界外的绝对路径，
+    /// 必须在**任何 IO 之前**被拒，且拒的理由要点名它是 sid 形状不合法。
     #[test]
     fn the_branch_entry_point_actually_goes_through_the_fence() {
         let base = std::env::temp_dir().join(format!(
@@ -4373,19 +4365,21 @@ mod tests {
         std::fs::write(&outsider, "{\"type\":\"user\"}\n").expect("造界外源文件");
 
         let r = branch_impl(&outsider.to_string_lossy(), "uuid-x", &projects);
+        let still_there = outsider.exists();
         let _ = std::fs::remove_dir_all(&base);
 
         let err = r.err().unwrap_or_else(|| {
             panic!(
-                "`branch_impl` 接受了一个 **`projects` 之外**的源路径 —— 围栏没接上。\n\
+                "`branch_impl` 接受了一个 **`projects` 之外**的源 —— 围栏没接上。\n\
                  那条路会去读调用方给的任意文件，再把内容拷进 projects 目录。"
             )
         });
-        // 红要红对成因：必须是**围栏**拒的，不是后面某步偶然失败。
+        assert!(still_there, "界外那份被动过了");
+        // 红要红对成因：必须是**形状闸**拒的，不是后面某步偶然失败。
         assert!(
-            err.contains("refuse branch"),
-            "拒绝了，但不是围栏拒的（错误：{err}）—— \
-             本条没真跑到围栏那一步，等于空转。"
+            err.contains("invalid session id"),
+            "拒绝了，但不是形状闸拒的（错误：{err}）—— \
+             本条没真跑到那一步，等于空转。"
         );
     }
 
@@ -4640,15 +4634,17 @@ mod tests {
 
     // === F62：create_branch_session 守卫 + 原生分支格式 ===
 
+    /// `..` 穿越：〔`K-R88`〕**换成 sid 形状之后仍然拒**，且拒得更早（IO 之前）。
     #[test]
     fn branch_source_guard_rejects_dotdot_traversal() {
         let projects = temp_projects("branch-dotdot");
         let root = projects.parent().unwrap();
         let outside = root.join("outside.jsonl");
         std::fs::write(&outside, "{}\n").unwrap();
-        let sneaky = projects.join("..").join("outside.jsonl");
-        let err = validate_branch_source(sneaky.to_str().unwrap(), &projects).unwrap_err();
-        assert!(err.contains("refuse branch"), "got: {err}");
+        for sneaky in ["../outside", "..", "../../etc/passwd"] {
+            let err = branch_impl(sneaky, "u1", &projects).unwrap_err();
+            assert!(err.contains("invalid session id"), "{sneaky:?} ⇒ {err}");
+        }
         assert!(outside.exists());
         std::fs::remove_dir_all(root).ok();
     }
@@ -4684,6 +4680,11 @@ mod tests {
         std::fs::remove_dir_all(dir.parent().unwrap()).ok();
     }
 
+    /// 软链逃逸：记录树里一条指向界外的链接，**按 sid 也找不到它**。
+    ///
+    /// 〔`K-R88`〕原先靠「两边 canonicalize 再比前缀」买这一样；今天靠的是
+    /// 「目录项的类型判定**不跟随**链接」——同一份实现，后端那侧有条同形的
+    /// `fork_write·rs::a_symlink_inside_the_tree_is_not_a_hit`。
     #[cfg(unix)]
     #[test]
     fn branch_source_guard_rejects_symlink_escape() {
@@ -4693,8 +4694,8 @@ mod tests {
         std::fs::write(&outside, "{}\n").unwrap();
         let link = projects.join("innocent.jsonl");
         std::os::unix::fs::symlink(&outside, &link).unwrap();
-        let err = validate_branch_source(link.to_str().unwrap(), &projects).unwrap_err();
-        assert!(err.contains("refuse branch"), "got: {err}");
+        let err = branch_impl("innocent", "u1", &projects).unwrap_err();
+        assert!(err.contains("not found"), "got: {err}");
         assert!(outside.exists());
         std::fs::remove_dir_all(root).ok();
     }
@@ -4729,16 +4730,14 @@ mod tests {
         std::fs::write(&src, &body).unwrap();
         let before = std::fs::read(&src).unwrap();
 
-        let res = branch_impl(src.to_str().unwrap(), "u4", &projects).unwrap();
+        let res = branch_impl("srcsid", "u4", &projects).unwrap();
 
         // 源一字节不改
         assert_eq!(std::fs::read(&src).unwrap(), before, "源文件被改动了");
         // 新文件在源同目录、文件名=新 sid
         let out = PathBuf::from(&res.jsonl_path);
-        // branch_impl 经 validate_branch_source canonicalize 源路径（安全守卫）——
-        // Windows 上会解 8.3 短名(RUNNER~1→runneradmin)并加 `\\?\` 前缀,故 out.parent()
-        // 已是规范形,而 proj 来自 temp_dir() 原样路径。两边都 canonicalize 再比,消除
-        // 平台差异(否则 Windows CI 上 `\\?\…runneradmin…` != `…RUNNER~1…` 恒红)。
+        // 两边都 canonicalize 再比,消除平台差异(Windows 上 temp_dir() 会给 8.3 短名
+        // RUNNER~1，而枚举出来的那份可能是长名，否则 CI 恒红)。
         assert_eq!(
             std::fs::canonicalize(out.parent().unwrap()).unwrap(),
             std::fs::canonicalize(&proj).unwrap(),
@@ -4767,6 +4766,201 @@ mod tests {
             );
         }
         std::fs::remove_dir_all(projects.parent().unwrap()).ok();
+    }
+
+    // ═══════════════════════════════════════════════════════════════════
+    // 🔴 `K-R88`：「按 sid 找那份会话文件」收成一份 ＋ 两侧入参形状一致
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// 后端那棵树上某个文件的**生产段**（运行时读，不是 `include_str!`）。
+    ///
+    /// ⚠ 刻意**不用** `include_str!`：那会长出一条**编译期**的跨半边，
+    /// 而 `cross_half_edge_registry` 的头注逐字讲过那条边的代价
+    /// （后端在目标机上 `cargo build` 就咬住旁边这棵树了）。运行时读没有这个代价 ——
+    /// 同 `K-R97` 那条 `extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place`。
+    fn r88_backend_production(rel: &str) -> String {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根")
+            .join(rel);
+        let raw = std::fs::read_to_string(&p)
+            .unwrap_or_else(|e| panic!("读不到后端的 {rel}：{e} —— 先修住址，别绕过本条"));
+        guard_core::production_code(&raw)
+    }
+
+    /// ★★ `KR88D1`：**「按 sid 找那份会话文件」这件事，全仓只剩一份实现，两侧都调它。**
+    ///
+    /// # 它买什么
+    ///
+    /// 收之前两侧各有一份、而且**入参形状都不一样**（这边收路径、那边收 sid）。
+    /// 那不是「重复」这么简单：**「查不到怎么办」两边可以各答各的**，
+    /// 而没有任何东西会因此变红。
+    ///
+    /// # 🔴 它刻意**不**判什么（`KR88D1` 点名的失效方向）
+    ///
+    /// **不判「两边源码文本一样」** —— 那是判写法，而且很容易恒绿
+    /// （两边都没有那段文本时它照样通过）。本条判的是**同一份实现**：
+    /// 唯一那份的**声明只有一处**，两侧各有**恰好一处**调用，
+    /// 且两条分叉路径上**一处目录枚举都不许有**（有 = 有人又自己找了一遍）。
+    ///
+    /// 「改那一份一处、两边行为都跟着变」那一刀是**死值验**，读数落在件文件 `§3-1`：
+    /// 判据不可能替代它 —— 那一刀要真的改一次再看两边红不红。
+    #[test]
+    fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
+        const CALL: &str = "branch_core::find_session_file(";
+
+        // ① 唯一那份：声明只有一处，且住在共享 crate 里。
+        let core = guard_core::production_code(include_str!("../crates/branch-core/src/lib.rs"));
+        let decls = core.matches("pub fn find_session_file").count();
+        assert_eq!(
+            decls, 1,
+            "共享 crate 里 `find_session_file` 的声明有 {decls} 处（该是 1）。\n\
+             0 ⇒ 它被搬走/删了，下面两条会零命中地绿；2 ⇒ 唯一那份自己裂了。"
+        );
+
+        // ② 两侧各有**恰好一处**调用（生产段）。
+        //    0 ⇒ 那一侧又自己找了一遍；2+ ⇒ 一条路上问了两遍，先说清为什么。
+        let mine = guard_core::production_code(include_str!("history.rs"));
+        let theirs = r88_backend_production("remote-daemon-proto/src/control/fork_write.rs");
+        for (who, src) in [
+            ("monitor `history.rs`", &mine),
+            ("后端 `fork_write.rs`", &theirs),
+        ] {
+            let n = src.matches(CALL).count();
+            assert_eq!(
+                n, 1,
+                "{who} 的生产段里 `{CALL}` 有 {n} 处（该是 1）——\n\
+                 0 ⇒ 这一侧不走共享那份了（`K-R88` 收的就是这个）；\n\
+                 2+ ⇒ 同一条路上问了两遍，先回答为什么。"
+            );
+        }
+
+        // ③ 两条分叉路径上**一处目录枚举都没有** —— 「自己又找了一遍」的形状。
+        //
+        // ⚠ 人群按**那几个函数**切，不是整份 `history.rs`：这个文件别处本来就有遍历
+        //（历史列表那一族），拿整份文件当分母的话本条恒红。
+        // ⚠ 针**运行时拼**：本文件的测试段自己落在 `scanning_guard_registry` 的扫描面里，
+        //   把那两个词写成字面量会让本条被算进「裸遍历」的人群（09-13 现打，它当场逮到了）。
+        let needles = [format!("read{}dir(", "_"), format!("Walk{}", "Dir")];
+        let scan = |src: &str| -> Vec<String> {
+            src.lines()
+                .filter(|l| needles.iter().any(|n| l.contains(n.as_str())))
+                .map(|l| l.trim().to_string())
+                .collect()
+        };
+        let local_path = format!(
+            "{}\n{}",
+            r88_fn_body(&mine, "pub fn create_branch_session("),
+            r88_fn_body(&mine, "fn branch_impl(")
+        );
+        // 反向自检：尺子够得着 —— 把针塞进一份副本，量具必须数得出来。
+        let poisoned = format!("{local_path}\n  let _ = std::fs::read{}dir(root);\n", "_");
+        assert_eq!(
+            scan(&poisoned).len(),
+            1,
+            "阳性对照没过 —— 量具此刻无效，下面那条断言是空真"
+        );
+        for (who, src) in [
+            ("monitor 的分叉那条路", local_path.as_str()),
+            ("后端 `fork_write.rs`", theirs.as_str()),
+        ] {
+            let hits = scan(src);
+            assert!(
+                hits.is_empty(),
+                "{who}上又长出了目录枚举：\n{}\n\n\
+                 ⇒ 「按 sid 找那份会话文件」的家在 `branch_core::find_session_file`。\n\
+                 真有第二种找法要立，先回答「为什么这一侧不能问那一份」，再连本条一起改。",
+                hits.join("\n")
+            );
+        }
+    }
+
+    /// 从生产段里切出一个函数（含它的签名与函数体）—— 供上面那条按函数切人群。
+    ///
+    /// 收尾认的是**列 0 的右大括号**（`rustfmt` 保证顶层 item 这么收）。
+    /// 自检两条：切得到 · 切出来的东西有分量（塌成半截时下面的断言会空真）。
+    fn r88_fn_body<'a>(src: &'a str, sig: &str) -> &'a str {
+        let at = src
+            .find(sig)
+            .unwrap_or_else(|| panic!("切不到 `{sig}` —— 先修尺子，别改断言"));
+        let rest = &src[at..];
+        let end = rest.find("\n}\n").map(|i| i + 2).unwrap_or(rest.len());
+        let body = &rest[..end];
+        assert!(
+            body.len() > 120,
+            "`{sig}` 只切出 {} 字节 —— 切法坏了",
+            body.len()
+        );
+        body
+    }
+
+    /// ★★ `KR88D2`（monitor 这一侧）：**给一个查不到的 sid，处置是报错，
+    /// 不是「树上有什么就拿什么」。**
+    ///
+    /// 树上**真的有两份**别的会话 —— 少了这一步，本条在空树上也绿，
+    /// 而「静默取第一个」正是它要逮的那一形。
+    /// 后端那侧的同形判据是
+    /// `fork_write·rs::an_unknown_session_id_is_refused_not_silently_substituted`，
+    /// 两条读的是同一份实现 ⇒ 那份一改，两条一起动。
+    #[test]
+    fn an_unknown_session_id_is_refused_not_silently_substituted() {
+        let projects = temp_projects("branch-unknown");
+        let proj = projects.join("proj-x");
+        std::fs::create_dir_all(&proj).unwrap();
+        let mut body = String::new();
+        for r in &io_sample_session() {
+            body.push_str(&serde_json::to_string(r).unwrap());
+            body.push('\n');
+        }
+        for sid in ["aaa", "bbb"] {
+            std::fs::write(proj.join(format!("{sid}.jsonl")), &body).unwrap();
+        }
+        // 反向自检：树上真有东西可被「随手挑」。
+        assert!(
+            branch_impl("aaa", "u4", &projects).is_ok(),
+            "夹具没造出可被挑中的会话"
+        );
+
+        let err = branch_impl("ccc", "u4", &projects).unwrap_err();
+        assert!(
+            err.contains("not found") && err.contains("ccc"),
+            "查不到的 sid 应当报错并点名，实得：{err}"
+        );
+        std::fs::remove_dir_all(projects.parent().unwrap()).ok();
+    }
+
+    /// ★ `KR88D2`：**两条命令的入参形状一致 —— 都收 sid，都不收路径。**
+    ///
+    /// 判的是两个 `#[tauri::command]` 的签名本身（生产段现读）：
+    /// 本机那条一旦退回收路径，本条当场红。
+    #[test]
+    fn both_branch_commands_take_a_session_id_not_a_path() {
+        let local = guard_core::production_code(include_str!("history.rs"));
+        let remote = guard_core::production_code(include_str!("remote_branch.rs"));
+        for (who, src, sig) in [
+            ("本机", &local, "pub fn create_branch_session("),
+            (
+                "远端",
+                &remote,
+                "pub async fn create_remote_branch_session(",
+            ),
+        ] {
+            let at = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("{who}那条命令的签名找不到（`{sig}`）—— 先修尺子"));
+            let close = src[at..].find(')').expect("签名没有收尾括号");
+            let params = &src[at + sig.len()..at + close];
+            assert!(
+                params.contains("session_id: String"),
+                "{who}那条命令的入参里没有 sid：{params:?}"
+            );
+            assert!(
+                !params.contains("path"),
+                "{who}那条命令又收路径了：{params:?}\n\
+                 ⇒ `K-R88` 收的就是「同一件事两个入参形状」，\n\
+                 而多一个可被构造的路径入参就多一条路径穿越面。"
+            );
+        }
     }
 
     // ─────────────────── `KR92D1`：线上那一格分得开「不知道」和「真的是 0」 ───────────────────
