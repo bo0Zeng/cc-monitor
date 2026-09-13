@@ -306,7 +306,12 @@ impl<T> Counted<T> {
     }
 }
 
-/// `K-R92` 第一问的落点：**「这台机器上这个远端会话此刻活没活」谁来答。**
+/// `K-R92` 第一问的落点：**「这台机器上这个会话此刻活没活」谁来答。**
+///
+/// 〔`K-R97` 09-12 改名：`Remote` 那个前缀去掉了。〕本机那条路今天也走这个接口 ——
+/// 它的绑定 `history::SessionMapLiveness` **答得出真值**（`SessionMap` 认本机 pid），
+/// 远端那个绑定 [`NoLivenessOracleYet`] 仍答「不知道」。⇒ 名字里再写「远端」就是一句
+/// 会误导下一个人的话（本仓 `K-R81` 那本旧名账记的正是这一族）。
 ///
 /// # 为什么它是一个入参，而不是函数体里的一句 `false`
 ///
@@ -319,8 +324,9 @@ impl<T> Counted<T> {
 /// 这个引用跨 `.await` 活着 ⇒ 那个 future 要 `Send`，而 `&T: Send` 要 `T: Sync`。
 /// 去掉这两个 bound，`cargo test` 当场报 `future cannot be sent between threads safely`
 ///（实测过，如实记在这里）。
-pub(crate) trait RemoteLiveness: Send + Sync {
-    /// `origin` = 那台机器的稳定身份；`sid` = 会话 id。
+pub(crate) trait LivenessOracle: Send + Sync {
+    /// `origin` = 那台机器的稳定身份（**本机那条路传空串** —— 它的真相源不看这个键）；
+    /// `sid` = 会话 id。
     fn is_live(&self, origin: &str, sid: &str) -> Counted<bool>;
 }
 
@@ -346,7 +352,7 @@ pub(crate) trait RemoteLiveness: Send + Sync {
 /// 而「不知道」现在**过得了线**（`Counted::known` ⇒ `None`）。接哪一条已报 PM 裁（`〔R92a〕`）。
 pub(crate) struct NoLivenessOracleYet;
 
-impl RemoteLiveness for NoLivenessOracleYet {
+impl LivenessOracle for NoLivenessOracleYet {
     fn is_live(&self, _origin: &str, _sid: &str) -> Counted<bool> {
         Counted::Unknown(WhyUnknown::NoRemoteLivenessOracle)
     }
@@ -396,7 +402,7 @@ impl ProjectCounts {
 /// # `has_live` 由传进来的真相源答；答不出就是 `Unknown`，**不是 `false`**
 ///
 /// 〔`K-R92` 改写〕上一版这里把「没有真相源」写死在函数体里。现在它是入参
-/// （[`RemoteLiveness`]），今天的生产绑定 [`NoLivenessOracleYet`] 仍答「不知道」——
+/// （[`LivenessOracle`]），今天的生产绑定 [`NoLivenessOracleYet`] 仍答「不知道」——
 /// **区别在于「谁答不出来」变成了类型上说得清、判据喂得进的一格**，理由逐条写在那个绑定上。
 ///
 /// 汇总口径：任一会话**确定活着** ⇒ `Known(true)`（有一个活的就够了，不确定的不影响）；
@@ -405,7 +411,7 @@ pub(crate) fn project_counts(
     row: &serde_json::Value,
     metadata: &crate::history::HistoryMetadata,
     origin: &str,
-    liveness: &dyn RemoteLiveness,
+    liveness: &dyn LivenessOracle,
 ) -> ProjectCounts {
     let session_count = row["sessionCount"].as_u64().unwrap_or(0);
     let Some(ids) = row.get(REMOTE_SESSION_IDS_FIELD).and_then(|v| v.as_array()) else {
@@ -446,6 +452,88 @@ pub(crate) fn project_counts(
         starred: Counted::Known(starred),
         hidden: Counted::Known(hidden),
         has_live,
+    }
+}
+
+/// daemon 的一行 `--list-projects` ＋ 本机 metadata ＋ 判活真相源 ⇒ **一条项目行**。
+/// 这一行没有 `dirName`（拿不到懒加载的键）⇒ `None`，跳过。
+///
+/// # 🔴 为什么它是一个函数 ——〔`K-R97` 09-12〕**本机那条路今天也走它**
+///
+/// `K-R83`/`K-R92` 落地时这段还内联在 [`fanout_list_projects`] 里，因为只有远端一条路吃它。
+/// `K-R97` 把 `history::list_history_projects` 也改成问本机后端的同一条 `--list-projects`
+/// ⇒ **「一行 JSON 怎么读成一个项目」有了第二个消费者**。抄一份是 `K33`「所有命令只许有一处」
+/// 最常见的破法（`K-R54` 那张 16 处的表整张都是这么长出来的）⇒ 收成一处，两侧都调它。
+///
+/// `origin`：`Some(label)` = 那台远端；**`None` = 本机**（`HistoryProject::origin` 随之为 `None`，
+/// 前端据此判「这是本地项目」）。判活按 `origin.unwrap_or("")` 提问 —— 本机那个真相源
+/// （`history::SessionMapLiveness`）根本不看这个键。
+///
+/// 🔴 `K-R83`：这里从前把 `starred_count` / `hidden_count` 写死成零、`has_live` 写死成假，
+/// 旁边一句注释写着「远端不合并本地元数据计数（列表级开销不值得）」——**那句话说的是代价，
+/// 落到数据里却成了一个断言**：零同时表示「查过了，是零」与「压根没查」。
+/// 今天那一行带上了会话 sid 清单 ⇒ star/hide **一次算得出真值**、零额外进程。
+/// 🔴 `K-R92` 补上后半段：那个「不知道」**现在过得了线**（下面那几个 `.known()`）——
+/// `K-R83` 落地后它是算出来了又在过线那一步被自己丢掉，那比从没算过更坏。
+///
+/// ⚠ 上面这段**刻意不逐字抄那几个字面量**：本文件末尾
+/// `there_is_no_place_left_that_flattens_unknown_into_a_wire_value`
+/// 是子串扫描、**不剥注释**（`readonly_guard` 头注记着同一族坑）—— 抄进来会自伤。
+pub(crate) fn history_project_from_row(
+    v: &serde_json::Value,
+    metadata: &crate::history::HistoryMetadata,
+    origin: Option<&str>,
+    liveness: &dyn LivenessOracle,
+) -> Option<(HistoryProject, ProjectCounts)> {
+    let dir_name = v["dirName"].as_str().unwrap_or_default().to_string();
+    if dir_name.is_empty() {
+        return None;
+    }
+    let project_path = v["projectPath"].as_str().unwrap_or_default().to_string();
+    // 两侧同一口径：projectName = cwd 最后一段；提取不到 cwd 时回退编码目录名。
+    let project_name = if project_path.is_empty() {
+        dir_name.clone()
+    } else {
+        project_path
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or(&dir_name)
+            .to_string()
+    };
+    let counts = project_counts(v, metadata, origin.unwrap_or(""), liveness);
+    Some((
+        HistoryProject {
+            project_path,
+            project_name,
+            // 「懒加载 key」= 后端给的编码目录名，前端原样传回
+            // （远端 `stream_remote_history_sessions` / 本机 `stream_history_sessions_in_project`）。
+            project_dir: dir_name,
+            session_count: v["sessionCount"].as_u64().unwrap_or(0) as u32,
+            // `K-R92`：`.known()` 把「不知道」如实过线成 `None`。
+            starred_count: counts.starred.known(),
+            hidden_count: counts.hidden.known(),
+            last_activity: v["lastActivityMs"].as_i64().unwrap_or(0),
+            has_live: counts.has_live.known(),
+            origin: origin.map(str::to_string),
+        },
+        counts,
+    ))
+}
+
+/// 「不知道」要出声（定框 `E4`：静默失败一律给身份）。**按理由汇总一条**，
+/// 不是每个项目一条 —— 一台旧后端上有几百个项目，逐项目 warn 就是把日志刷成噪音，
+/// 而噪音与静默在「谁都不会读」这件事上是同一个结局。
+///
+/// 〔`K-R97`〕两条路共用：远端 fan-out 与本机那条各传自己的 `what`。
+pub(crate) fn log_unknown_reasons(what: &str, rows: &[(HistoryProject, ProjectCounts)]) {
+    let mut why_counts: std::collections::BTreeMap<&'static str, usize> = Default::default();
+    for (_, c) in rows {
+        for w in c.unknowns() {
+            *why_counts.entry(w.reason()).or_default() += 1;
+        }
+    }
+    for (why, n) in why_counts {
+        tracing::info!("{what}：{n} 处数**不知道**（不是 0）—— {why}");
     }
 }
 
@@ -524,7 +612,7 @@ pub async fn list_remote_history_projects() -> Result<RemoteProjectsResult, Stri
 pub(crate) async fn fanout_list_projects<Q, F>(
     cfgs: &[RemoteConfig],
     metadata: &crate::history::HistoryMetadata,
-    liveness: &dyn RemoteLiveness,
+    liveness: &dyn LivenessOracle,
     query: Q,
 ) -> Result<FanoutOutcome, String>
 where
@@ -558,6 +646,7 @@ where
                 continue;
             }
         };
+        let origin_label = cfg.origin_label();
         for line in lines {
             let v: serde_json::Value = match serde_json::from_str(&line) {
                 Ok(v) => v,
@@ -566,54 +655,12 @@ where
                     continue;
                 }
             };
-            let dir_name = v["dirName"].as_str().unwrap_or_default().to_string();
-            if dir_name.is_empty() {
-                continue;
+            // 〔`K-R97` 09-12〕这一段原本内联在这里，现在住 [`history_project_from_row`] ——
+            // 本机那条路也吃同一份解释了，抄一份就是 `K-R54` 那张表的长法。
+            if let Some(row) = history_project_from_row(&v, metadata, Some(&origin_label), liveness)
+            {
+                rows.push(row);
             }
-            let project_path = v["projectPath"].as_str().unwrap_or_default().to_string();
-            // 对齐本地口径：projectName = cwd 最后一段；提取不到 cwd 时回退编码目录名
-            let project_name = if project_path.is_empty() {
-                dir_name.clone()
-            } else {
-                project_path
-                    .rsplit(['/', '\\'])
-                    .next()
-                    .unwrap_or(&dir_name)
-                    .to_string()
-            };
-            // 🔴 `K-R83`：这里从前把 `starred_count` / `hidden_count` 写死成零、
-            // `has_live` 写死成假（就在本函数构造 `HistoryProject` 那三行），旁边一句注释写着
-            // 「远端不合并本地元数据计数（列表级开销不值得）」——**那句话说的是代价，
-            // 落到数据里却成了一个断言**：零同时表示「查过了，是零」与「压根没查」。
-            // 今天 daemon 那一行带上了会话 sid 清单 ⇒ star/hide **一次算得出真值**、
-            // 零额外进程；活状态仍没有真相源，就如实报「不知道」而不是一个假。
-            // 🔴 `K-R92` 补上后半段：那个「不知道」**现在过得了线**（下面三行的 `.known()`）——
-            // `K-R83` 落地后它是算出来了又在过线那一步被自己丢掉，那比从没算过更坏。
-            //
-            // ⚠ 上面这段**刻意不逐字抄那几个字面量**：本文件末尾
-            // `there_is_no_place_left_that_flattens_unknown_into_a_wire_value`
-            // 是子串扫描、**不剥注释**（`readonly_guard` 头注记着同一族坑）——
-            // 抄进来会自伤。实测红过一次，如实记在这里。
-            let origin_label = cfg.origin_label();
-            let counts = project_counts(&v, metadata, &origin_label, liveness);
-            rows.push((
-                HistoryProject {
-                    project_path,
-                    project_name,
-                    // 远端的"懒加载 key"= 远端编码目录名（前端原样传回 stream_remote_history_sessions）
-                    project_dir: dir_name,
-                    session_count: v["sessionCount"].as_u64().unwrap_or(0) as u32,
-                    // `K-R92`：`.known()` 把「不知道」如实过线成 `None`。
-                    // 上一版这三行是 `.wire_placeholder()`（`Unknown` ⇒ `0`/`false`）——
-                    // 那一步把刚算出来的那一维当场丢掉，而丢的地方没有任何东西说话。
-                    starred_count: counts.starred.known(),
-                    hidden_count: counts.hidden.known(),
-                    last_activity: v["lastActivityMs"].as_i64().unwrap_or(0),
-                    has_live: counts.has_live.known(),
-                    origin: Some(origin_label),
-                },
-                counts,
-            ));
         }
     }
     // 配了远端但**全部**台查询都失败 → 返回 Err（前端可 toast），避免与"无远端配置"的
@@ -624,18 +671,7 @@ where
             cfgs.len()
         ));
     }
-    // 「不知道」要出声（定框 `E4`：静默失败一律给身份）。**按理由汇总一条**，
-    // 不是每个项目一条 —— 一台旧 daemon 上有几百个项目，逐项目 warn 就是把日志刷成噪音，
-    // 而噪音与静默在「谁都不会读」这件事上是同一个结局。
-    let mut why_counts: std::collections::BTreeMap<&'static str, usize> = Default::default();
-    for (_, c) in &rows {
-        for w in c.unknowns() {
-            *why_counts.entry(w.reason()).or_default() += 1;
-        }
-    }
-    for (why, n) in why_counts {
-        tracing::info!("远端项目列表：{n} 处数**不知道**（不是 0）—— {why}");
-    }
+    log_unknown_reasons("远端项目列表", &rows);
     tracing::info!(
         "list_remote_history_projects: {} projects from {} host(s), {} failed",
         rows.len(),
@@ -658,7 +694,7 @@ fn remote_session_entry(
     project_dir: &str,
     metadata: &crate::history::HistoryMetadata,
     origin: &str,
-    liveness: &dyn RemoteLiveness,
+    liveness: &dyn LivenessOracle,
 ) -> Option<HistorySessionEntry> {
     let v: serde_json::Value = match serde_json::from_str(line) {
         Ok(v) => v,
@@ -1114,7 +1150,7 @@ mod kr83_tests {
 
     /// 点名哪几个 sid 活着，其余**确定没活**（答得出）。
     struct Oracle(&'static [&'static str]);
-    impl RemoteLiveness for Oracle {
+    impl LivenessOracle for Oracle {
         fn is_live(&self, _origin: &str, sid: &str) -> Counted<bool> {
             Counted::Known(self.0.contains(&sid))
         }
@@ -1122,7 +1158,7 @@ mod kr83_tests {
 
     /// 只对点名的那几个 sid 答不出，其余确定没活 —— 用来验「一行里混着答得出与答不出」。
     struct OracleBlindTo(&'static [&'static str]);
-    impl RemoteLiveness for OracleBlindTo {
+    impl LivenessOracle for OracleBlindTo {
         fn is_live(&self, _origin: &str, sid: &str) -> Counted<bool> {
             if self.0.contains(&sid) {
                 Counted::Unknown(WhyUnknown::NoRemoteLivenessOracle)

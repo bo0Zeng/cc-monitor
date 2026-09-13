@@ -491,9 +491,11 @@ fn created_ms_or_mtime(p: &Path) -> i64 {
 /// 这里原本是 `read_to_string(p)` —— 一个 257 MB 的会话会被整份读进内存，
 /// 而下一行就是 `.take(40)`。`--list-projects` 对**每个项目**都会调它一次。
 ///
-/// ★ 对照：monitor 侧同名功能 `src-tauri/src/history.rs::quick_extract_cwd` 一直是
-/// `BufReader` + `take(30)` 早返回，**连注释都写着「早返回省 IO」** ——
-/// 又一处「强机器流式、弱机器整读，正好反了」（同 B-4）。
+/// ★ 对照 —— 〔`K-R97` 09-12 改写，上一版说的是 monitor 侧那一份〕：monitor 从前也有一份
+/// 同功能的头部提取（`BufReader` + 前 30 行早返回），于是同一个问题两边给两个答案。
+/// 本机项目列表改走本查询之后，**那一份连同它唯一的调用点一起没了** ——
+/// 这件事今天全仓只剩这一处。原话记的那条「强机器整读、弱机器流式，正好反了」（同 B-4）
+/// 仍然是本函数存在的理由。
 fn extract_cwd_from_head(p: &Path) -> Option<String> {
     use std::io::BufRead;
     let file = std::fs::File::open(p).ok()?;
