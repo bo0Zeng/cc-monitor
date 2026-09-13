@@ -543,7 +543,8 @@ mod tests {
     ///
     /// # ⚠ 模式面为什么只收「只可能是 shell」的形态
     ///
-    /// 摸底时我先用宽模式量了一遍，`for i in` 当场误命中 `search.rs` 的 **Rust** `for i in 0..n`。
+    /// 摸底时我先用宽模式量了一遍，`for i in` 当场误命中 `find_ci` 的 **Rust** `for i in 0..n`
+    /// （当时住 `search.rs`；`K-R100` 09-13 起住 `crates/search-core/src/lib.rs`）。
     /// ⇒ 模式面只留 shell 独有的写法（见 [`shell_wake_hits`]）。**先量后写**，不然扫描面
     /// 要么画小（漏）要么画大（噪音），而两种都会让这张表失去意义。
     const SHELL_WAKES: &[(&str, &str, &str, usize, &str)] = &[
@@ -591,21 +592,25 @@ mod tests {
             "只扫到 {} 个 .rs —— 遍历坏了（与 `REGISTERED` 那条共用同一个遍历器）",
             files.len()
         );
-        // ★ **画大了会怎样**：摸底时 `for i in` 误命中了 `search.rs` 的 Rust `for i in 0..n`。
+        // ★ **画大了会怎样**：摸底时 `for i in` 误命中了 `find_ci` 里那个 Rust `for i in 0..n`。
         //   这条把那次教训钉住 —— 模式面不许收到 Rust 的循环写法。
-        let search = files
-            .iter()
-            .find(|(f, _)| f == "src/search.rs")
-            .map(|(_, raw)| production(raw))
-            .unwrap_or_default();
+        //
+        // ⚠ **标的搬家了，本条跟着搬**〔`K-R100` 09-13〕：那个循环原先住 `src/search.rs`，
+        //   收口后随 `find_ci` 搬进共享 crate `crates/search-core/src/lib.rs`
+        //   （`rust_files()` 只走 `src/`，够不着）。⇒ 直接按住址读，别让本条以
+        //   「`search.rs` 里那个循环不见了」的形态红 —— **报的方向是错的**，
+        //   它不见了不是因为有人删了它，是因为它搬走了。
+        let anchor = root().join("crates/search-core/src/lib.rs");
+        let search = production(&fs::read_to_string(&anchor).unwrap_or_default());
         assert!(
             search.contains(&format!("for i in 0{}n", "..")),
-            "`search.rs` 里那个 Rust `for i in 0..n` 不见了 —— 下面那条反向断言失去了标的"
+            "`crates/search-core/src/lib.rs` 里那个 Rust `for i in 0..n`（`find_ci`）不见了 \
+             —— 下面那条反向断言失去了标的"
         );
         assert_eq!(
             shell_wake_hits(&search),
             0,
-            "模式面把 `search.rs` 的 **Rust** 循环也收进来了 —— 那是摸底时踩过的那个错法\n\
+            "模式面把 `search-core` 的 **Rust** 循环也收进来了 —— 那是摸底时踩过的那个错法\n\
              （画大了 ⇒ 这张表被噪音填满 ⇒ 与画小了一样失去意义）"
         );
     }

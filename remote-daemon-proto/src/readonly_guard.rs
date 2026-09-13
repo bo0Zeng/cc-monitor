@@ -1998,6 +1998,14 @@ mod g6_dependency_signoff {
              ⇒ 要升到 `已量·未见写面` 得真去扫它那棵树，本轮没做",
         ),
         (
+            "search-core",
+            DEPS,
+            MEASURED_CLEAN,
+            "`K-R100`：历史全文搜索口径的唯一实现（12 个纯函数 + 4 个口径常量 + snippet 预算 \
+             + 预算顺序），与 monitor 共用同一份。**纯函数，无 IO** —— 它连 `std::fs` 都不 use，\
+             取数（读 jsonl）仍在本 crate 的 `observe/search_query.rs` 里；仓内 crate，现打 0 处写面",
+        ),
+        (
             "serde",
             DEPS,
             UNMEASURED,

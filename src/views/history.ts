@@ -881,9 +881,15 @@ export class HistoryView {
 
   private renderSearchResults(resp: SearchResponse, query: string): void {
     this.resultsEl.replaceChildren();
+    // K-R100：`truncated` 现在**本地与每一台远端都算**（收口前它只装本地那一半，
+    // 于是远端截断在这一行上一个字不说）。措辞也改准：被砍掉的是 **snippet**，
+    // 不是命中 —— `totalHits` 一直报的是全量。
+    const starved = resp.sessions.filter((x) => x.hitsTruncated).length;
     this.statusEl.textContent =
       `「${query}」匹配 ${resp.totalHits} 条 · ${resp.sessionCount} 个会话` +
-      (resp.truncated ? "（结果较多，仅显示前若干条）" : "");
+      (resp.truncated
+        ? `（snippet 预算已用完${starved > 0 ? `，${starved} 个会话只列了标题` : ""}——缩小关键词范围可看到更多）`
+        : "");
     if (resp.sessions.length === 0) {
       this.resultsEl.appendChild(makeStatusRow("无匹配。试试别的关键词，或勾选「含工具内容」扩大范围。"));
       return;
@@ -952,10 +958,36 @@ export class HistoryView {
     for (const hit of s.hits) {
       group.appendChild(this.buildSearchHit(s, hit));
     }
+    // K-R100：`hitCount > hits.length` **不是一件事，是两件** ——
+    //   · `hitsTruncated`  = 整份结果的 snippet 预算用完了（该说「缩小范围」）
+    //   · 否则             = 这个会话话太多，只列前 30 条（点进去看就行）
+    // 收口前两种同文案，而 `hits: []` 那一档更糟：卡片里**一条可点的行都没有**，
+    // 文案却写着「点任意条打开会话查看全部」—— 指向一个不存在的东西。
     if (s.hitCount > s.hits.length) {
       const more = document.createElement("div");
       more.className = "search-hit-more";
-      more.textContent = `…还有 ${s.hitCount - s.hits.length} 条命中（点任意条打开会话查看全部）`;
+      const rest = s.hitCount - s.hits.length;
+      if (s.hitsTruncated) {
+        more.classList.add("search-hit-more-truncated");
+        more.textContent =
+          s.hits.length === 0
+            ? `本会话 ${s.hitCount} 条命中，snippet 预算已用完、一条都没能显示 —— 点这里打开会话`
+            : `…还有 ${rest} 条命中未显示（snippet 预算已用完）—— 点这里打开会话`;
+      } else {
+        more.textContent = `…还有 ${rest} 条命中（本会话只列前 ${s.hits.length} 条）—— 点这里打开会话`;
+      }
+      // 🔴 无论哪一种，这一行自己就能打开会话：`hits: []` 时它是**唯一**的入口。
+      more.addEventListener("click", () => {
+        this.openViewerWith({
+          jsonlPath: s.jsonlPath,
+          displayTitle: s.title || s.sessionId.slice(0, 8),
+          subtitle: s.projectName
+            ? `${s.projectName}  ·  ${s.projectPath}`
+            : s.projectPath,
+          origin: s.origin,
+          cwd: s.projectPath,
+        });
+      });
       group.appendChild(more);
     }
     return group;
