@@ -220,11 +220,24 @@ describe("C01 边界生成物", () => {
       "Usage.ts", //                  C04c（messages.rs 的 token 计数，**不是** usage.rs 的 UsageTotals）
       "UsageBucket.ts", //            C04d 批3（→ UsageTotals 是 **C03 生成的**，传递依赖已就位）
       "UsageTotals.ts", //            C03
+      // 🔴 `K-R93`（09-12）：**这一份不是 ts-rs 生成的**，是 `src-tauri/src/adapter.rs` 的
+      // `export_bindings_agent_profile_table` 写出来的**值表**（ts-rs 只生成类型、不生成值）。
+      // 它照样被 `npm run gen:types`（= `cargo test --lib export_bindings`）重跑、
+      // 照样被门禁第六格 `generated` 的 `git diff --exit-code` 盖住。
+      // ⚠ 排在最后不是分组：`files.sort()` 是默认排序，小写字母排在大写之后。
+      "agent-profile-table.ts",
     ]);
+    // `K-R93`：「谁生成的」这一格从此认**两种**标记（ts-rs / 上面那个值表生成器）——
+    // 让一个非 ts-rs 的生成物顶着 ts-rs 的头，那是往生成物里写一句假话。
+    // ⚠ 「不许手改」那一格**一个字没放松**：两种生成物都必须带。
+    const GENERATED_BY = [TS_RS_HEADER, "src-tauri/src/adapter.rs"];
     for (const f of files) {
       const src = read(`src/generated/${f}`);
       expect(src.length, `${f} 是空的`).toBeGreaterThan(100);
-      expect(src, `${f} 缺 ts-rs 头`).toContain(TS_RS_HEADER);
+      expect(
+        GENERATED_BY.some((mark) => src.includes(mark)),
+        `${f} 头上没写它是谁生成的（认得的两种：${GENERATED_BY.join(" / ")}）`,
+      ).toBe(true);
       expect(src, `${f} 缺「不许手改」`).toContain(DO_NOT_EDIT);
     }
   });

@@ -34,10 +34,21 @@
 //! |---|---|---|
 //! | monitor Rust `adapter::for_kind` | claude + codex | trait 方法 |
 //! | `shared/ccm` 的 `agent_*` | claude + codex | shell `case` |
-//! | 前端 `AGENT_PROFILE` | **只有 claude** | 单 profile 常量 |
+//! | ~~前端 `AGENT_PROFILE`~~ | ~~**只有 claude**~~ | ~~单 profile 常量~~ |
 //!
-//! ⚠ 第三份**只有 claude** —— 那不是漏，是它今天只服务 claude 那条路。
-//! 本模块只对拍 Rust 那一轨与夹具。
+//! 🔴 **第三行 2026-09-12 起是墓碑（`K-R93`）。** 原文逐字：「⚠ 第三份**只有 claude**
+//! —— 那不是漏，是它今天只服务 claude 那条路。」**那句辩解被推翻了**：`K-R54` 表第 11 行
+//! 把它记成「同一件事两份实现」，而「只有 claude」正是那一格漏的。
+//! 今天前端**不再持有副本**，它是这条链的末端：
+//!
+//! ```text
+//! adapter.rs::agent_profile_facts
+//!   └─(cargo test --lib export_bindings ＝ npm run gen:types)→
+//!      src/generated/agent-profile-table.ts → src/agent-profile.ts
+//! ```
+//!
+//! ⇒ **改后端那一份，前端拿到的值跟着变**；改了不重跑生成，门禁第六格 `generated` 红。
+//! 本模块仍只对拍 Rust 那一轨与夹具，另加一条「取数口与夹具一致」（见下）。
 //!
 //! ⚠⚠ **TS 那一轨的描述原先整句两半都假**〔devbench F04, 08-10 订正〕。原文写着
 //! 「TS 那轨由 `src/agent-profile.vitest.ts` 自己读同一份夹具」——
@@ -48,6 +59,12 @@
 //! 一条读源码、一条读夹具，**它们之间没有共享的真相源**。
 //! ★ 这正是「指向不存在的东西比没有注释更坏」那一族（铁律 14）：
 //! 原措辞让人以为两侧共享一份夹具，于是不会去查那条链其实是断的。
+//!
+//! 🔴 **上面这一段 `K-R93`（09-12）也要接着改**：TS 那一轨**今天读这份夹具了** ——
+//! `agent-profile-parity.vitest.ts` 新增的那个 `describe` 拿 `golden()` 与生成物逐格对拍
+//! （4 个 key × 2 个 agent），另外 5 格（工具名 / 判活进程名）对 `adapter.rs` 的源码。
+//! ⇒ 「两条路径、没有共享真相源」那句话**从 09-12 起只对一半**：共享的那一份就是这份夹具，
+//! 而夹具管不到的那 5 格，两侧对的是同一份 Rust 源。
 //!
 //! # ★ 两项 ccm **独有**的决策，Rust 侧根本没有对侧
 //!
@@ -161,6 +178,42 @@ mod tests {
             "Rust adapter 与 agent 适配表不一致：\n{}\n\
              ⚠ 这张表是 **C4「ccm 变零决策」的前置** —— 三份副本必须先逐字一致，\n\
              不然搬完不知道搬没搬对，而那种不一致今天不会红（三份各自的测试都过）。",
+            bad.join("\n")
+        );
+    }
+
+    /// ★ `K-R93`：**前端那份画像的取数口**也与夹具一致。
+    ///
+    /// 上面那条钉的是 `AgentAdapter` trait；本条钉的是 `adapter::agent_profile_facts`
+    /// —— 它才是**前端今天真正拿到的那份值**的源头（经生成物 `src/generated/
+    /// agent-profile-table.ts` 送到 TS）。**两条都要**：trait 与取数口是两个能各自漂的面，
+    /// 取数口完全有可能被人就地写死一份而 trait 一个字没动。
+    #[test]
+    fn the_front_end_read_port_agrees_with_the_golden_table() {
+        let mut bad = Vec::new();
+        for (agent, key, want) in rows() {
+            let kind = match agent.as_str() {
+                "claude" => AgentKind::ClaudeCode,
+                "codex" => AgentKind::Codex,
+                other => panic!("夹具里出现了未知 agent `{other}` —— 加 agent 要来这里表态"),
+            };
+            let f = adapter::agent_profile_facts(kind);
+            assert_eq!(f.agent, agent, "取数口的表键与夹具第一列对不上");
+            let got = match key.as_str() {
+                "default_launcher" => f.default_launcher.to_string(),
+                "resume_token" => f.resume_token.to_string(),
+                "resume_kind" => f.resume_kind.to_string(),
+                "nested_env" => f.nested_env.join(" "),
+                other => panic!("夹具里出现了未知 key `{other}` —— 加一项要来这里表态"),
+            };
+            if got != want {
+                bad.push(format!("  {agent}.{key}: 期望 {want:?} 实得 {got:?}"));
+            }
+        }
+        assert!(
+            bad.is_empty(),
+            "`agent_profile_facts`（前端那份画像的取数口）与 agent 适配表不一致：\n{}\n\
+             ⚠ 前端拿到的值是从这里生成的 —— 这里漂了，前端就跟着漂。",
             bad.join("\n")
         );
     }
