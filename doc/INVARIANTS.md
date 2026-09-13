@@ -1000,6 +1000,14 @@ U8c-1 摸底后拆成三步：
 
 ⇒ ⚠ **F11 2026-08-04 订正这条推论的依据**：原写「①「否」+ ③「未决」」，而 ① 早在 F07 就订正成了「**部分是**」（`send-into` 那一格已切）。**结论没变**，但依据要换成还量得准的那两条：**`create-or-attach` 与 attach 两格仍未切**（①的剩余面）**＋ ③「未决」** ⇒ 今天删不得：硬删会把「没装 ccm 的远端」与「daemonless 的远端」
 两类主机的起会话能力直接删掉，而那两类今天都还成立。
+
+🔴 **`K-R89` 2026-09-13 第五次订正 —— 上面那句「那两类今天都还成立」今天只剩一类，而且拦路的已经不是「哪类主机没路走」。**
+本节自己写着「订正一句假话时，先把它的全部副本找出来」，而 `K-R59`（09-11）那一拍的订正**只落在下面那张表的 ③ 行里** ⇒ 08-04 这一段又活了一轮。逐条现打（量于 `89ce650`，量具 `evidence/K-R89-ruler.py`，人群 = `src/**` 去掉 `*.test.ts`/`*.vitest.ts`，剥法与 `launch_wire::production_ts` 同口径）：
+- 「daemonless 的远端」**那类主机不存在了**（定框 `K35` ＋ `K-R59` 整格删除，三条回潮闸钉着）；
+- 「没装 ccm 的远端」**存在**，而**产品自带装它的路**（`sftp::install_remote_ccm_helper`，`K27`/`K34`）⇒ 它今天也不是「没路走」，是「还没装」；
+- **今天真正撑着那两个文件的是消费者，不是主机类别**：`renderFallback` 生产处数 **11**（`TS_FALLBACK_KEEPERS` 登记 10 ＋ 定义 1）· `SESSION_BACKEND` **7**（登记 6 ＋ 定义 1），登记表与现打逐格相同。而按**调用点**分母还要再收一格：`remote-launch.ts` 那 5 个 builder **生产调用方是 0**（只有 `e2e/resume-cmd-driver.ts` · `e2e/tmux-target-emit.mts` · `remote-launch.test.ts` 在调）⇒ **真正让 `renderFallback` 站在生产路上的只有 `remote-launch-run.ts::renderLaunchCommand` 最后那一行**，加上同文件里那处 `SESSION_BACKEND.attach`（把 `↗` 交给用户自己的终端那一跳，`K-R59 §0c` 明写**不做**：后端在远端开不了你面前的窗，那是结构不是退路）。
+- ⚠ 顺带一条**分母订正**：`daemon_kill.rs::CREATION_PATHS` **今天是 3 条**（`K-R104` 09-13 把 `account_usage.rs` 那行删了，留着墓碑）⇒ 删得动 `session-backend.ts` 的话是 **3 → 2**，不是「4 → 3」。
+⇒ **结论仍然没变（今天删不得），但理由第五次换人了。** 逐处读数与量法住 `evidence/K-R89-deathvalue.md`；六格今天版住 `src-tauri/src/history.rs::tests::THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS`（由 `every_one_of_the_six_cells_is_measured_not_narrated` 逐格**真去驱动**，改了行为不改说法当场红）。
 **U8c-3 的真前置不是文档，是 U8a-2c 与 U12 两件功能** —— ⚠ **F11 订正：U8a-2c 是「未做完」不是「未做」**（`send-into` 那一格 U8a-2c-1 已交付；剩 `create-or-attach` 与 attach）。
 ⚠ **本节这三处（914 · 925 末 · 本段）与 F07 订正的那一处说的是同一句话。**F07 只订正了手头那一处 ⇒ **同族的三处又活了一轮**。**订正一句假话时，先把它的全部副本找出来**（F01 的四处「每 ~8s」是同一个病）——这条纪律由 `doc_claim_registry` 把可数的那部分变成机检。
 

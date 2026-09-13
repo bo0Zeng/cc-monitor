@@ -1521,32 +1521,49 @@ fn render_local_ccm_with(
     // ③ `None` —— 旧路发**空前缀**，语义是「继承环境里现有的 `CLAUDE_CONFIG_DIR`」。
     //    ⚠⚠ **这一态绝不能映射成 `Base`**：`--base` 是「显式不注入」，与「继承」不是一回事。
     //    映过去 = 把用户 shell 里已有的账号悄悄清掉 —— 那正是 **#75「resume 在错数据目录
-    //    找不到会话」** 的病灶形状。
-    //    ⚠⚠ **也不能靠「省略 `--account`」兑现**，尽管 `K33` 逐字要「能省就省、能默认就默认」：
-    //    〔现打 09-11，量于那份已删的 bash `ccm` 的第 1001-1012 行；`K-R48` 之后
-    //    同一档语义住 `remote-daemon-proto/src/control/ccm/plan.rs`〕——既没 `--account`
-    //    也没 `--base`、而 `CLAUDE_CONFIG_DIR` **为空**时，ccm **落 manifest 的默认号**
-    //    （「『空的 CLAUDE_CONFIG_DIR + 没有账号 flag』→ 落 manifest 默认号，
-    //    把调用方选中的号静默换掉」）。⇒ 省略也是一次静默换号，方向与 `--base` 相反而已。
-    //    **CLI 语法里今天真的没有「继承」这一态**，所以照旧短路。逐格对照表住
-    //    `tests::every_local_account_shape_gets_a_named_verdict_from_the_backend_path` 的头注。
+    //    找不到会话」** 的病灶形状。**这条今天仍然成立，一个字都不许松。**
     //
-    // ⇒ 今天 ① 与 ② 渲染得出来，②′ 与 ③ 不行。③ 那一格要动的是 **ccm 省略时的默认语义**
-    //    （产品决定 ＋ `remote-daemon-proto/src/control/ccm/plan.rs`）。见 ROADMAP `U10`。
-    let acct =
-        match account {
-            Some(LaunchAccount::Base) => ci::CliAccount::Base,
-            // ② / ②′：名字说得出就说，说不出就老实短路 —— `CliAccount::Named{name:None}`
-            //         这一格存在的理由就是后者。
-            Some(LaunchAccount::Named { name, .. }) => ci::CliAccount::Named {
-                name: name.as_deref(),
-            },
-            // ③：`None` 走同一条短路，但**理由不同**（不是「没名字」，是「CLI 说不出继承」）。
-            None => return Err(
-                "本机未表态账号（继承环境）—— CLI 的 account 维度恒真且无「继承」语法，诚实降级"
-                    .into(),
-            ),
-        };
+    //    🔴🔴 **`K-R89` 09-13：这一格今天关掉了 —— 而它是被一条已到的裁定关掉的，不是被绕过去的。**
+    //
+    //    这里此前逐字写着「也不能靠『省略 `--account`』兑现……CLI 语法里今天真的没有
+    //    『继承』这一态」，并把出路记成「**③ 那一格要动的是 ccm 省略时的默认语义
+    //    （产品决定 ＋ `remote-daemon-proto/src/control/ccm/plan.rs`）**」。
+    //    **那句话是陈账：它在等一个 09-12 就已经到了、而且已经落地的决定。**
+    //
+    //    〔`DECISIONS.md#R28`，用户 09-12 逐字：「把调用方选中的号静默换掉 /
+    //     **不要这么做** / 不是有选默认账号吗? **就用那个**」〕
+    //    落地处 `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account`
+    //    （头注挂着 ✅），省略被拆成**两支，两支都是这一裁要的行为**：
+    //      · `CLAUDE_CONFIG_DIR` **非空** ⇒ 保留不覆盖（`R08` 那道 `-z` 闸）= **继承**；
+    //      · 裸终端（都没给）⇒ 落 manifest 的 `isDefault` = 「就用那个」。
+    //
+    //    ⚠⚠ **别把上面那两支压成一句「省略就是继承」** —— 那是本件被反复叮嘱不许照抄的
+    //    那种简写。**说得准的那句是**：省略在这条 CLI 上**有确定语义**，而那个语义
+    //    正是 `R28` 裁定的两支。⇒ 这一维**说得出话了**，于是不必再 §35 短路。
+    //
+    //    ⚠ **本机这条路上「继承」拿到的到底是谁的环境**（现打 09-13，别猜）：
+    //    送法是 `launch::build_local_posix_argv` ⇒ `bash -lic '<cmd>'`（**login ＋
+    //    interactive**）⇒ 用户自己的 rc/profile 先跑，`ccm` 看到的 `CLAUDE_CONFIG_DIR`
+    //    就是**用户 shell 里那一个** —— 与旧路（空前缀 ⇒ 由同一个 shell 决定）**同源**。
+    //    唯一分岔在「rc 里什么都没设」那一支：旧路落 `~/.claude`，这条落 manifest 默认号
+    //    —— **那正是 `R28` 明说要的**（「不是有选默认账号吗? 就用那个」）。
+    //
+    //    🔴 **远端那半不在本件射程内**：远端是 ssh 过去，那台机器上的继承态不是 monitor 的
+    //    环境（`R28` 裁定四逐字）⇒ `WireAccount` 刻意没有对应变体，那一半归 `K-R90`。
+    //
+    // ⇒ 今天 ① · ② · ③ 渲染得出来，**只剩 ②′ 不行**（缺的是「名字」这条信息本身，
+    //    不是语法）。六格今天版逐格住 `tests::THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS`。
+    let acct = match account {
+        Some(LaunchAccount::Base) => ci::CliAccount::Base,
+        // ② / ②′：名字说得出就说，说不出就老实短路 —— `CliAccount::Named{name:None}`
+        //         这一格存在的理由就是后者。
+        Some(LaunchAccount::Named { name, .. }) => ci::CliAccount::Named {
+            name: name.as_deref(),
+        },
+        // ③：`R28` 之后省略有了确定语义 ⇒ **表得出态了**（`Inherit` 渲染成「不加任何
+        //    账号 flag」）。⚠ 不是 `Base`（那是显式清空 = #75），也不是「沉默」。
+        None => ci::CliAccount::Inherit,
+    };
 
     let spec = ci::CliSpec {
         is_ssh: false,
@@ -2909,6 +2926,15 @@ mod tests {
     /// 具名账号带上名字之后渲染得出来（那正是本件开的那一格）。本条测的仍然都成立，
     /// 但它的人群已经缩到「**说不出名字的**那几形」：没有会话名 · 未表态账号 · 只有目录。
     ///
+    /// 🔴 **`K-R89` 09-13：人群又缩了一格，而且这一次连「都被拒」那个动词都不对了。**
+    /// 「未表态账号」那一形**今天渲染得出来**（`R28`：省略 `--account` 有确定语义）——
+    /// 本条的 ② 因此从「必拒」翻成「必渲染得出，且不许带 `--base`/`--account`」。
+    /// ⇒ 今天真正**被拒**的只剩**两形**：没有会话名 · 只有目录没有名字。
+    /// ⚠ **仍然刻意不改名**（同 `K-R53` 那一拍的理由：改判据名要同拍跑 `pb doc`，
+    /// 而本件写区里没有那份生成区）。**全人群那一条仍在继任者手里**
+    /// [`every_local_account_shape_gets_a_named_verdict_from_the_backend_path`]，
+    /// 而「六格今天各自是什么」在 [`THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS`]。
+    ///
     /// ⚠ **刻意不改名**：改判据的名字要同拍跑 `pb doc`（生成区会连带打红），
     /// 而本件的写区里没有那份生成区。⇒ 如实登记在这里，并把**全人群**那一条交给继任者
     /// [`every_local_account_shape_gets_a_named_verdict_from_the_backend_path`]
@@ -2940,8 +2966,11 @@ mod tests {
             );
         }
 
-        // ② 未表态账号（`None`）—— 旧路发**空前缀**＝继承环境，而 CLI 的 account 维度恒真、
-        //    没有「继承」这一态。映成 `--base` 会把用户 shell 里已有的账号悄悄清掉 ＝ #75 病灶。
+        // ② 未表态账号（`None`）—— 🔴 **`K-R89` 09-13：这一格从「必拒」翻成「渲染得出来」**。
+        //    翻它的不是本判据的口味，是 `DECISIONS.md#R28`（用户 09-12）：省略 `--account`
+        //    在 `ccm` 上有确定语义（`plan.rs::resolve_account` 的两支）。
+        //    ⚠ **翻的只有「拒不拒」，没翻的那半必须原样守住**：渲染出来的那一串里
+        //    **不许出现 `--base`** —— 那是把「继承环境」偷换成「显式清空」＝ #75 病灶。
         let r = render_local_ccm_with(
             &act,
             None,
@@ -2950,10 +2979,21 @@ mod tests {
             &caps_of_a_current_ccm(),
             true,
         );
+        let cmd = r.as_ref().unwrap_or_else(|e| {
+            panic!(
+                "未表态账号今天必须渲染得出来（`R28` 之后省略有确定语义）。\n\
+                 若它又回到短路，请先回 `DECISIONS.md#R28` 看那一裁是不是被推翻了，\n\
+                 别在这里把闸悄悄加回来。实得降级理由：{e}"
+            )
+        });
         assert!(
-            r.as_ref().is_err_and(|e| e.contains("继承")),
-            "未表态账号必须拒且理由是「说不出继承」—— 若它被渲染成 `--base`，\n\
-             那就是把「继承环境」偷换成「显式清空」，正是 #75「resume 在错数据目录找不到会话」。实得：{r:?}"
+            !cmd.contains("--base"),
+            "未表态账号被渲染成了 `--base` —— 那是把「继承环境」偷换成「显式清空」，\n\
+             正是 #75「resume 在错数据目录找不到会话」。实得：{cmd}"
+        );
+        assert!(
+            !cmd.contains("--account"),
+            "未表态账号被渲染成了 `--account <某个号>` —— 那是替用户挑了一个号。实得：{cmd}"
         );
 
         // ③ 具名账号 —— `LaunchAccount::Named` 只有 configDir、没有名字，而 CLI 只会
@@ -2988,30 +3028,35 @@ mod tests {
     /// 失效方向逐字（`KR53D1`）：「再加一个入口而它复用了那个缺一态的旧函数」——
     /// 加一个变体 ⇒ 下面这张表的 `match` 不穷尽 ⇒ **编译不过**，不是静默漏一格。
     ///
-    /// # 🔴 缺席那一格**今天是红的，而红的原因不在本仓的 Rust 里**（如实登记，别读成「做漏了」）
+    /// # 🔴 缺席那一格：**09-13 `K-R89` 之前是红的，今天是绿的** —— 翻它的是一条裁定，不是一次放宽
     ///
-    /// 「参数缺席」的语义是**继承环境**（旧路发空前缀）。`K33` 逐字要的是
-    /// 「能省就省、能默认就默认」⇒ 直觉上「不给 `--account`」就该是它。**现打证伪**：
-    /// 那份已删的 bash `ccm` 第 1001-1012 行（`elif [ "$use_base" != 1 ] && [ -z "${CLAUDE_CONFIG_DIR:-}" ]`）
-    /// 逐字写着，既没 `--account` 也没 `--base` 而 `CLAUDE_CONFIG_DIR` **为空**时，
-    /// ccm **落 manifest 的默认号**（那一段自己的注释第 1190 行逐字：
-    /// 「『空的 CLAUDE_CONFIG_DIR + 没有账号 flag』→ 落 manifest 默认号，把调用方选中的号静默换掉」）。
-    /// 〔`K-R61` 09-11：这个读数**量于一份已经不在盘上的文件**（`07e4e72` 删）。
-    /// 同一档语义今天住 `remote-daemon-proto/src/control/ccm/plan.rs`，
-    /// **本轮没有重打它** —— 别把上面那张表读成「今天现打过」。〕
+    /// 「参数缺席」的语义是**继承环境**（旧路发空前缀）。这里此前逐字写着「三格里没有一格
+    /// 逐字等于『继承』⇒ 那是**产品决定** ＋ 改 `remote-daemon-proto/src/control/ccm/plan.rs`」，
+    /// 并把这一格钉成 `Err`。**那段话在 09-12 就过期了，而它一直挂在盘上等一个已经到了的决定。**
     ///
-    /// ⇒ 三种说法逐格对：
+    /// 〔`DECISIONS.md#R28`，用户 09-12 逐字：「把调用方选中的号静默换掉 / **不要这么做** /
+    ///  不是有选默认账号吗? **就用那个**」〕⇒ 那个产品决定做了，而且**落地了**：
+    /// `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account` 头注挂着 ✅，
+    /// 省略被拆成两支，**两支都是这一裁的一部分**：
     ///
-    /// | rc 里有没有 `CLAUDE_CONFIG_DIR` | 旧路（空前缀） | ccm 省略 `--account` | ccm `--base` |
+    /// | 目标 shell 里有没有 `CLAUDE_CONFIG_DIR` | 旧路（空前缀） | ccm 省略 `--account` | ccm `--base` |
     /// |---|---|---|---|
-    /// | 有，= X | 用 X | 尊重 X（1001 的 `-z` 闸不触发）✅ | `unset` ⇒ 用 `~/.claude` ❌ |
-    /// | 没有 | 用 `~/.claude` | **落 manifest 默认号** ❌ | 用 `~/.claude` ✅ |
+    /// | 有，= X | 用 X | **尊重 X**（`R08` 那道 `-z` 闸不触发）= 继承 ✅ | `unset` ⇒ 用 `~/.claude` ❌ |
+    /// | 没有 | 用 `~/.claude` | **落 manifest 默认号** ✅〔`R28`：「就用那个」〕 | 用 `~/.claude` |
     ///
-    /// **三格里没有一格逐字等于「继承」** ⇒ 账本 `parity_ledger.rs` 那句
-    /// 「CLI 语法里没有这一态」**是真的**，而且是**产品决定**（ccm 省略时的默认该不该改）
-    /// ＋ 改 `remote-daemon-proto/src/control/ccm/plan.rs`。**本条把它钉成一格红以外的东西：
-    /// 一格 `Err`，且理由必须仍然指向「继承」** —— 谁哪天把它映成 `--base`，这里当场红，
-    /// 而那一刀正是 `#75`（账本逐字：「把继承偷换成显式清空 = #75」）。
+    /// ⚠ **第二行那一格从 ❌ 翻成 ✅ 的是「该不该」，不是「是什么」** —— 行为一个字节没动，
+    /// 动的是对它的判断（`R28` 裁定零逐字：「本裁改的不是行为，是『这是不是我们要的』」）。
+    /// ⚠ **别把这张表压成一句「省略就是继承」**：省略是**两支**，只有第一支叫继承。
+    ///
+    /// ⚠ **本机这条路上第一支到底拿谁的环境**（现打 09-13）：送法是
+    /// `launch::build_local_posix_argv` ⇒ `bash -lic '<cmd>'`（login ＋ interactive）
+    /// ⇒ 用户 rc/profile 先跑 ⇒ `ccm` 看到的就是**用户 shell 里那一个**，与旧路同源。
+    ///
+    /// ⇒ **本条今天钉的是**：这一格 `Ok`，且渲染出来的那一串里 `--base` 与 `--account`
+    /// **一个都不许有**。谁哪天把它映成 `--base`，这里当场红 —— 那一刀正是 `#75`
+    ///（把继承偷换成显式清空）；谁把它映成某个具名号，也当场红（那是 `R28` 禁的静默换号）。
+    /// ⚠ **`ccm` 那一侧怎么解释省略，本条一个字都不管** —— 那半的唯一住址是
+    /// `plan.rs::resolve_account`，由 `plan::the_four_ways_an_account_gets_picked` 钉着。
     #[test]
     #[cfg(not(windows))]
     fn every_local_account_shape_gets_a_named_verdict_from_the_backend_path() {
@@ -3081,13 +3126,29 @@ mod tests {
                 .1
         };
 
-        // ① 缺席 —— `Err`，且理由必须仍然点着「继承」（见头注那张三说法对照表）。
+        // ① 缺席 —— 🔴 **`K-R89` 09-13：这一格翻面了。**
+        //    它此前是 `Err` 且理由点着「继承」，依据是头注那张三说法对照表的最后一栏
+        //    「省略 `--account` ⇒ 落 manifest 默认号 ⇒ 同样是静默换号」。
+        //    **那一栏今天不是「病灶」了** —— 用户 09-12 `R28` 逐字裁「不是有选默认账号吗?
+        //    **就用那个**」，并且 `plan.rs::resolve_account` 已经按两支落地（`-z` 闸 ＋ 默认号）。
+        //    ⇒ 缺席这一格现在必须 **`Ok`**，且渲染出来的那一串里**两个账号 flag 都不许有**。
         let r = verdict("缺席");
+        let cmd = r.as_ref().unwrap_or_else(|e| {
+            panic!(
+                "「参数缺席」= 继承环境，`R28` 之后它渲染得出来（省略 = `plan.rs::resolve_account`\n\
+                 的两支：有继承态就继承 · 裸终端落 manifest 默认号，两支都是那一裁要的）。\n\
+                 若它又短路了，先回 `DECISIONS.md#R28` 确认那一裁是不是被推翻，别在这里加闸。\n\
+                 实得降级理由：{e}"
+            )
+        });
         assert!(
-            r.as_ref().is_err_and(|e| e.contains("继承")),
-            "「参数缺席」= 继承环境。它今天必须 `Err` 且理由点着「继承」——\n\
-             映成 `--base` 是把继承偷换成显式清空（#75）；\n\
-             省略 `--account` 是落 manifest 默认号（`remote-daemon-proto/src/control/ccm/plan.rs`，同样是静默换号）。实得：{r:?}"
+            !cmd.contains("--base"),
+            "缺席被渲染成 `--base` —— 那是把「继承」偷换成「显式清空」（#75）。实得：{cmd}"
+        );
+        assert!(
+            !cmd.contains("--account"),
+            "缺席被渲染成 `--account <某号>` —— 那是替调用方挑了一个号，\n\
+             与 `R28` 逐字「不许把调用方选中的号静默换掉」反向。实得：{cmd}"
         );
 
         // ② Base —— `Ok`，而且渲染出来的那条真的带 `--base`。
@@ -3120,6 +3181,295 @@ mod tests {
             r.as_ref().is_err_and(|e| e.contains("account")),
             "只有目录没有名字时必须诚实短路（§35），**不许拿目录名当 `--account`**。实得：{r:?}"
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R89` `KR89D1`：**六格的今天版** —— 一张由行为驱动的表，不是一段散文
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 一格今天是什么。**三值，别加第四个而不同时给它一条驱动**（下面那个 `match` 会逼你）。
+    #[cfg(not(windows))]
+    #[derive(PartialEq, Eq, Debug, Clone, Copy)]
+    pub(crate) enum CellToday {
+        /// 后端那条路今天**渲染得出来** —— 这一格关了。
+        Closed,
+        /// 今天仍落回旧路，而**挡路的那样东西说得出名字**（第四列就是它）。
+        StillFallsBack,
+        /// **结构性** —— 不是欠账。翻它要先翻一条定框，不是补一段代码。
+        Structural,
+    }
+
+    /// 🔴🔴 **六格今天版。`parity_ledger.rs` 的 `launch.render-payload` 那一行点的就是这六格。**
+    ///
+    /// `(格名, 今天是什么, 现打的说法, 缺什么 / 谁能关它)`
+    ///
+    /// # 它与账本那一行的分工（别读成两份清单）
+    ///
+    /// 账本那一行是**散文**，它自己记过两次「改了行为没回来改理由」的前科。
+    /// 本表是**同一件事的可执行版**：下面那条判据把每一格**真去驱动一遍**，
+    /// 观测到的状态与本表第二列不符 ⇒ **当场红**。
+    /// ⇒ 「改一格的行为而不改它的说法」在这里做不到 —— 那正是本表存在的理由。
+    ///
+    /// # ⚠ 本表买不到什么（诚实边界，别读大）
+    ///
+    /// - **第三、四列（那两段话）真不真，机器判不了。** 本表钉的是「第二列 == 现打」，
+    ///   以及「有人改了行为就必须回来动这张表」。**一段读着有道理的假理由照样过得去。**
+    /// - **它不是全部降级面**：它只装 `parity_ledger` 那一行点名的这六格。别的降级理由
+    ///   （例：`--base` 那条逃生口、`send-into` 的 #76 防线）不在本表人群里。
+    /// - **Windows 那一格在本树上量不到运行时行为**（本模块整个挂 `#[cfg(not(windows))]`）
+    ///   ⇒ 它的观测是**源码级**的，如实写在驱动里。
+    ///
+    /// # 🔴 `K-R89` 09-13 改了哪一格、为什么（这一段是本轮唯一的行为改动）
+    ///
+    /// 「账号未表态（继承）」从 `StillFallsBack` 翻成 `Closed`。翻它的**不是本件的判断**，
+    /// 是 `DECISIONS.md#R28`（用户 09-12 亲裁）＋ 它在
+    /// `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account` 上的落地。
+    /// 盘上原来有一句陈账逐字写着「③ 那一格要动的是 ccm 省略时的默认语义（**产品决定**
+    /// ＋ `plan.rs`）」—— **它在等一个 09-12 就到了的决定**，本轮一并撤掉。
+    #[cfg(not(windows))]
+    pub(crate) const THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS: &[(&str, CellToday, &str, &str)] = &[
+        (
+            "账号未表态（继承）",
+            CellToday::Closed,
+            "🔴 `K-R89` 09-13 关掉的就是这一格。`CliAccount::Inherit` 渲染成「一个账号 flag 都不加」；\
+             省略在 `ccm` 上有确定语义（`plan.rs::resolve_account` 两支：`CLAUDE_CONFIG_DIR` 非空 ⇒ \
+             保留不覆盖〔`R08` 的 `-z` 闸〕· 裸终端 ⇒ 落 manifest `isDefault`），两支都是 `R28` 要的。",
+            "已关。⚠ **只关了本机那半** —— 远端是 ssh 过去、那台机器上的继承态不是 monitor 的环境\
+             （`R28` 裁定四逐字）⇒ `WireAccount` 刻意没有对应变体，远端那半归 `K-R90`。",
+        ),
+        (
+            "只说得出目录没名字",
+            CellToday::StillFallsBack,
+            "`LaunchAccount::Named{name: None}` ⇒ `CliAccount::Named{name: None}` ⇒ 账号维度\
+             `cli_flags` 回 `None` ⇒ §35 整条降级。理由是「说不出」，不是「不想说」。",
+            "缺的是**名字这条信息本身**，不是 CLI 语法 —— 上游（`accounts.ts` 那个取值口）\
+             说得出名字的那天它自己就关了。🔴 **不许从目录名推一个 `--account` 出来**：\
+             推错的失效方向是 `ccm` 当场 `die`（rc=2），一次能起的会话变成报错。",
+        ),
+        (
+            "没有 tmux 名",
+            CellToday::StillFallsBack,
+            "`NO_TMUX_NAME` —— 名字只许 `remote-launch.ts::mintTmuxName` 铸（F13 那个撞名坑），\
+             Rust 这侧不许补默认值。⚠ **这一格今天是半开的**（现打 09-13）：resume 那条\
+             前端已接线（`views/history.ts::mintLocalTmuxName` · `tabs.ts::mintSessionTmuxName`，\
+             人群由 `src/ipc/commands.vitest.ts` 那条「每处 `resume_history_session` 都带 `tmuxName`」钉着）；\
+             而 `new_local_session` 的 Rust 签名里**根本没有 `tmux_name` 这一格** ⇒ 起新会话恒短路。",
+            "给 `new_local_session` 加一个名字参数 ＋ 前端在那条路上也过一次铸造口。\
+             ⚠ 那要动 `src/ipc/commands.ts` 与两个调用点，**不在 `K-R89` 的写区里**。",
+        ),
+        (
+            "这个号走中转",
+            CellToday::StillFallsBack,
+            "`launch_local` 里那行 `relay.is_empty()` **显式**保住的互斥 —— 不是渲染器拒的\
+             （渲染器单独看已经不再互斥，`K-R53` 开的那一格）。常量是 `RELAY_KEEPS_THE_OLD_PATH`。",
+            "退役条件 `K-R61` 已经收成**一行 Rust**（把 `relay.is_empty()` 换成「探到 \
+             `base-url-across-tmux` 才放行」），但它的前置是「有人守住『用户机器上跑的 `ccm` \
+             就是 app 自己推的那一份』」—— 那一格今天没人守。⚠ 互斥这条性质本身由邻居\
+             那条判据钉，本行只记「这一格今天关没关」。",
+        ),
+        (
+            "这台机没装 ccm",
+            CellToday::StillFallsBack,
+            "`render_ccm_invocation` 的第一行 `if !installed { NotInstalled }`。\
+             探测走 `CcmProbeSource` 那条缝（本判据喂确定值，**不问跑它的这台机器**）。",
+            "**部署面，不是渲染器的欠账**（`K27`/`K34`：部署是产品的一部分，由客户端做）。\
+             远端那条装法 `sftp::install_remote_ccm_helper` 今天就在盘上；本机那条归部署向导。",
+        ),
+        (
+            "Windows",
+            CellToday::Structural,
+            "`render_local_ccm` / `render_local_ccm_with` 整段挂 `#[cfg(not(windows))]` ⇒ \
+             Windows 上那条路**在编译期就不存在**；`launch_local` 的 `#[cfg(windows)]` 那一支\
+             连 `tmux_name` 都不读（读了就是给「Windows 也进容器」开口子）。",
+            "**不是欠账**：定框 `C12`〔用 08-12〕逐字「windows不要tmux」。要翻它先回去翻定框。",
+        ),
+    ];
+
+    /// 🔴🔴 `KR89D1`：**六格逐格现打，观测到的与表上写的不一样就红。**
+    ///
+    /// # 每一格怎么观测的（写在这里，别让读的人去猜）
+    ///
+    /// 五格靠**真去驱动生产函数**（`render_local_ccm_with` / `launch_local`），
+    /// 第六格（Windows）在本树上跑不到运行时，观测是**源码级**的 —— 逐条写在 `observe` 里。
+    ///
+    /// # ⚠ 与邻居 [`a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`] 的分工
+    ///
+    /// 「走中转」那一格两处都会驱动一次 `launch_local`，而**它们量的不是两把尺子**：
+    /// 同一个观测口（[`LaunchSink`] 那条缝上真正交出去的那一串）、同一个判定
+    /// （串里有没有 `--tmux=`）。差别在**结论**：邻居主张的是「两个集合不相交」（互斥），
+    /// 本条只记「这一格今天关没关」。⇒ 谁哪天把中转那一行翻掉，**两条一起红**，
+    /// 而它们要求的后续动作不同（邻居要重裁互斥，本条要改表）。
+    #[test]
+    #[cfg(not(windows))]
+    fn every_one_of_the_six_cells_is_measured_not_narrated() {
+        // 反空真 ①：表得有六行，且**格名互不相同**（重名 ⇒ 有一格根本没被观测过，而条数照样对）。
+        assert_eq!(
+            THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS.len(),
+            6,
+            "账本 `launch.render-payload` 那一行点的是六格。加/删一格 ⇒ 同拍改账本那一行，\
+             并回来给新格写一条驱动。"
+        );
+        let mut names: Vec<&str> = THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS
+            .iter()
+            .map(|(n, ..)| *n)
+            .collect();
+        let n_all = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(
+            names.len(),
+            n_all,
+            "表里有两行是同一个格名 ⇒ 有一格没被观测过"
+        );
+
+        // 反空真 ②：三值**至少两值有人占**。全是同一个值时，下面那条相等断言退化成
+        // 「所有格都一样」——那时把某一格的行为翻掉、再把整列一起改，读起来仍然全绿。
+        let mut kinds: Vec<CellToday> = THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS
+            .iter()
+            .map(|(_, v, ..)| *v)
+            .collect();
+        kinds.sort_by_key(|k| format!("{k:?}"));
+        kinds.dedup();
+        assert!(
+            kinds.len() >= 2,
+            "六格今天是同一个状态（{kinds:?}）—— 先确认这是真的；\
+             真是真的话，本条那条相等断言此刻买不到「逐格」，请改形状。"
+        );
+
+        for (name, want, say, need) in THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS {
+            let got = observe_one_cell(name);
+            assert_eq!(
+                got, *want,
+                "\n★ 六格表第「{name}」格：**现打是 {got:?}，表上写的是 {want:?}**。\n\
+                 ⇒ 有人改了这一格的行为，而没有回来改它的说法 —— 那正是这张表存在的理由。\n\
+                 表上今天写着：{say}\n\
+                 表上今天说缺什么：{need}\n\
+                 ⚠ 改表的同时把 `parity_ledger.rs` 的 `launch.render-payload` 那一行一起读一遍：\
+                 两处说的是同一件事。"
+            );
+        }
+    }
+
+    /// 六格各自的观测口。**一个 `match`，认不出的格名当场 `panic`** ——
+    /// 加一格却不给它驱动时，上面那条判据不会静默少测一格。
+    #[cfg(not(windows))]
+    fn observe_one_cell(name: &str) -> CellToday {
+        let act = LocalPsAction::Resume("s1".into());
+        let caps = caps_of_a_current_ccm();
+        const TMUX: &str = "s1abcdef-cc";
+        let dir_only = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/z".into(),
+            name: None,
+        };
+        // 纯函数半的观测：渲染得出来 = 这一格关了。
+        let pure = |acct: Option<&LaunchAccount>, tmux: Option<&str>, installed: bool| {
+            if render_local_ccm_with(&act, None, acct, tmux, &caps, installed).is_ok() {
+                CellToday::Closed
+            } else {
+                CellToday::StillFallsBack
+            }
+        };
+        match name {
+            // ① 未表态 —— `R28` 之后渲染得出来。
+            "账号未表态（继承）" => pure(None, Some(TMUX), true),
+            // ② 只有目录 —— §35 短路。
+            "只说得出目录没名字" => pure(Some(&dir_only), Some(TMUX), true),
+            // ③ 没有 tmux 名 —— 名字只许铸造口产，Rust 侧不补默认值。
+            //    ⚠ 喂 `Base`（一个**确定渲染得出来**的账号形状）⇒ 这一格观测到的
+            //    「拒」只可能是名字那一维造成的，不会与账号那一维混在一起。
+            "没有 tmux 名" => pure(Some(&LaunchAccount::Base), None, true),
+            // ④ 没装 ccm —— 探测结果由参数喂，**不问跑它的这台机器**。
+            "这台机没装 ccm" => pure(Some(&LaunchAccount::Base), Some(TMUX), false),
+            // ⑤ 走中转 —— 这一格不在纯函数半里（闸在 `launch_local` 体内那行
+            //    `relay.is_empty()`）⇒ 必须真跑一趟拉起，量**交出去的那一串**。
+            "这个号走中转" => {
+                let acct = LaunchAccount::Named {
+                    config_dir: "/home/u/.claude-accts/acct-a".into(),
+                    name: Some("acct-a".into()),
+                };
+                fn rows() -> Vec<String> {
+                    vec!["acct-a".to_string()]
+                }
+                fn running() -> bool {
+                    true
+                }
+                fn not_win() -> bool {
+                    false
+                }
+                let _facts = override_relay_facts(RelayFactSources {
+                    rows,
+                    running,
+                    windows: not_win,
+                });
+                fn a_current_ccm() -> crate::ccm_probe::CcmProbeResult {
+                    crate::ccm_probe::CcmProbeResult {
+                        installed: true,
+                        version: Some("0.0.0-判据替身".to_string()),
+                        capabilities: caps_of_a_current_ccm().into_iter().collect(),
+                        build: None,
+                    }
+                }
+                let _probe = override_ccm_probe(CcmProbeSource(a_current_ccm));
+                thread_local! {
+                    static SEEN: std::cell::RefCell<Vec<String>> =
+                        const { std::cell::RefCell::new(Vec::new()) };
+                }
+                fn recorder(cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
+                    SEEN.with(|v| v.borrow_mut().push(cmd.to_string()));
+                    Ok(())
+                }
+                let _sink = override_launch_sink(LaunchSink(recorder));
+                launch_local(&act, None, None, Some(&acct), Some(TMUX))
+                    .expect("走中转这一趟拉起本身不该失败");
+                let sent = SEEN.with(|v| {
+                    v.borrow()
+                        .last()
+                        .cloned()
+                        .expect("这一趟什么都没送出去 —— 观测口坏了，读数作废")
+                });
+                // 自检：这一趟**真的**走了中转（否则下面那个判定量的是另一件事）。
+                assert!(
+                    sent.contains("ANTHROPIC_BASE_URL"),
+                    "这一趟没拿到中转前缀 —— 替身没生效，本格此刻在量别的东西。实得：{sent}"
+                );
+                if sent.contains("--tmux=") {
+                    CellToday::Closed
+                } else {
+                    CellToday::StillFallsBack
+                }
+            }
+            // ⑥ Windows —— 本模块整个挂 `#[cfg(not(windows))]`，跑不到那一支的运行时。
+            //    ⇒ 观测是**源码级**的，如实写清它量的是什么：
+            //      · `launch_local` 的 `#[cfg(windows)]` 那一支里有 `let _ = tmux_name;`
+            //        （逐字：连读都不读，读了就是给「Windows 也进容器」开口子）；
+            //      · 渲染器那一半挂着 `#[cfg(not(windows))]`（编译期就不给 Windows）。
+            //    两条**都**成立才算「结构性」；少一条就说明有人开了口子。
+            "Windows" => {
+                let prod = guard_core::production_code(include_str!("history.rs"));
+                let at = guard_core::find_pinned(&prod, "fn launch_local(").unwrap_or_else(|e| {
+                    panic!("`fn launch_local(` 不是恰好一处 —— 锚点坏了，本格读数作废：{e}")
+                });
+                let win_arm_keeps_out = prod[at..]
+                    .split_once("#[cfg(not(windows))]")
+                    .map(|(head, _)| head.contains("let _ = tmux_name;"))
+                    .unwrap_or(false);
+                // ⚠ 带 `fn ` 前缀才认得出**定义**那一处 —— 不带的话第一处命中的是
+                //   `render_local_ccm` 体内那次**调用**，而调用点上没有 cfg 属性。
+                let renderer_is_posix_only = prod
+                    .find("fn render_local_ccm_with(")
+                    .map(|i| prod[..i].trim_end().ends_with("#[cfg(not(windows))]"))
+                    .unwrap_or(false);
+                if win_arm_keeps_out && renderer_is_posix_only {
+                    CellToday::Structural
+                } else {
+                    CellToday::Closed
+                }
+            }
+            other => panic!(
+                "六格表里多了一格「{other}」而没有人给它写观测口 —— \
+                 加格与加驱动必须同一拍，否则那一格是**登记了但没量过**。"
+            ),
+        }
     }
 
     /// ★★★ `D4 阻-3`：**「走中转」与「有 tmux 容器」今天仍然互斥** —— 把这个事实钉住。
@@ -3180,7 +3530,7 @@ mod tests {
     ///
     /// | 形状 | 送出去那一串带不带中转前缀 | 带不带 `--tmux=`（= [`launch_local`] 的判据） |
     /// |---|---|---|
-    /// | 缺席（`None`） | 不带（不走中转） | 否 —— 渲染器说不出「继承」 |
+    /// | 缺席（`None`） | 不带（不走中转） | **是**〔🔴 `K-R89` 09-13 翻的：`R28` 之后省略有确定语义，渲染器说得出「继承」了〕 |
     /// | `Base`（账号 0） | 不带（不走中转） | **是** |
     /// | `Named{acct-a}`（**在中转表里**） | 带 | 否 —— `relay.is_empty()` 那一行挡住 |
     /// | `Named{acct-b}`（不在表里） | 不带 | **是**（`K-R53` 开的就是这一格） |
@@ -3315,8 +3665,10 @@ mod tests {
         );
         assert_eq!(
             containered,
-            ["Base", "Named{acct-b·不在表里}"],
-            "能走进 ccm 容器的形状变了 —— 本条的结论要重新裁定（见头注最后一节）"
+            ["缺席", "Base", "Named{acct-b·不在表里}"],
+            "能走进 ccm 容器的形状变了 —— 本条的结论要重新裁定（见头注最后一节）。\n\
+             〔`K-R89` 09-13：「缺席」是本轮新进来的一格 —— `R28` 之后省略 `--account` \
+             有确定语义，渲染器不再对它短路。**互斥那条结论没变**，变的是分母。〕"
         );
         // 正题：两个集合不相交 ⇒ 今天没有任何一次本机拉起同时拿到中转前缀与 tmux 容器。
         assert!(
