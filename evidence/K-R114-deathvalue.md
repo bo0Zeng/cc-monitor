@@ -221,12 +221,54 @@ sha256:    6d91f326bea85c7b61f7eb15c88ae5a7f45d75581e060d3b186b69b184abc5ce
 `T3` 的牙在另一把刀上（把 `rustls` 从依赖树里摘掉），那一刀本轮**没切**。
 ⇒ 现在能说的是「`T2` 有牙」，**不能**说「四条都有牙」。
 
-### 3.5 判不了的那一半（诚实边界）
+### 3.5 🔴 它**跑起来了** —— 在 `qemu-aarch64` 用户态模拟下（沙箱内，`--network none`）
 
-🔴 **「编得出来」买到了，「跑起来对不对」没买到。** 这台机器上没有 aarch64 硬件，
-产物**一次都没执行过**。`remote-daemon-proto/Cargo.toml` 那条登记逐字「**这一格是「没验」，不是「验过没事」**」
-—— 今天它变成「**编得出、静态、信任锚在里面；跑没跑过：没有**」。
-运行期那一半已经写进 `evidence/K-R114-真机清单.md` 的 `R6`。
+这台机器没有 aarch64 硬件。**但产物不必因此「一次都没执行过」**：
+在沙箱里装 `qemu-user-static`（**只装在容器里，宿主一个包都没装；也没动宿主的 binfmt**），
+把那份 aarch64 二进制**真的跑起来**。
+
+**① 以本名跑（进常驻流模式），第一帧 `hello` 逐字**：
+
+```json
+{"kind":"hello","v":1,"build_id":"p2j-bus-state","host_arch":"aarch64","claude_dir":"/tmp/fakehome/.claude",
+ "capabilities":["bg","tail-only"],
+ "emits":["line","session_added","session_status","session_removed","overflow","turn_end","tmux_sessions","tmux_session_closed"],
+ "commands":["bus-kill","bus-list","bus-send","bus-state","cancel","capture-pane","kill","launch","oneshot-session","ping","resolve"]}
+```
+
+三条现打读数：`host_arch` 是**进程自己报的** `aarch64`（不是我从 `file` 抄的）·
+`build_id` = `p2j-bus-state`（与源码那一处逐字相同）·
+`commands` 里**有 `bus-state`**（`K-R113` 那条新原语在 aarch64 产物里真的在）。
+收到 SIGTERM 时逐字 `shutdown signal received; exiting`，退出码 0。
+
+**② 以 `argv[0] = ccm` 跑（一次性 CLI 模式）**，`--ccm-probe` 六行逐字：
+
+```
+name=ccm
+version=5
+self=/tmp/bin/ccm
+capabilities=new,resume,attach,tmux,account,model,cwd,agent,launcher,ccm-sid,print,detach,tmux-size,tmux-base,bus-register,daemon-discover,account-via-daemon,base-url-across-tmux
+agents=claude,codex
+build=p2j-bus-state
+```
+
+⇒ `K33`「后端只有一个：常驻模式与 `ccm` 是同一个二进制的两种模式」这件事，
+**在 aarch64 产物上也成立**（同一份字节，两种 `argv[0]`，两种模式都答得出来）。
+
+### 3.6 判不了的那一半（诚实边界，收窄之后重写）
+
+🔴 **`qemu-user` 买到的比真机少，逐条写死**：
+- 它模拟的是 **aarch64 用户态指令**，**系统调用仍然由这台机器的 x86_64 内核服务**
+  ⇒ 「真 aarch64 内核上对不对」（页大小 64K、内存序、真实 `/proc`、真 tmux）**一格都没买到**。
+- 那一趟是 `--network none` ⇒ **TLS 一次都没真握手过**。`T2` 证的是「信任锚在产物字节里」，
+  **不是**「它连得上 https」。
+- 没有真 tmux、没有真 `~/.claude` ⇒ 观测面那一半跑的是「零会话」那一支。
+
+⇒ 今天准确的说法：**编得出 · 静态 · 信任锚在产物里 · 在 qemu-aarch64 下跑得起来并答得出身份；
+真 aarch64 机器上没跑过、TLS 没握过手。**
+`remote-daemon-proto/Cargo.toml` 那条登记（「这一格是「没验」，不是「验过没事」」）
+今天该按这句话改写 —— ⚠ 那份文件明令不在写区，**我没改**，落点交 PM。
+运行期剩下的那一半已经写进 `evidence/K-R114-真机清单.md` 的 `R6`。
 
 ## 附 · TLS 产物探针全文（`§〇` 那张表的第三行；同一份落在 `scratchpad/kr114/kr114-tls-probe.sh`）
 
