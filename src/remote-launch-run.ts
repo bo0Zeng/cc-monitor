@@ -74,11 +74,17 @@ async function renderLaunchCommand(
     //
     // ⚠ **兜底那支仍在 TS**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
     // 而 §33b 写死了「搬它之前必须先回答三件事」。⇒ 那支归 U8c-3。
-    // ⚠ 〔U8c-3-r2 08-14 复裁〕三问逐条重量过，**一条都没过期到可以放行**，其中 ③ 反而
-    // 从「未决」变成「已决：要」（那个每机开关当时是活的）⇒ 比 08-04 更删不得。
-    // 🔴 〔`K-R59` 09-11〕③ **今天退役了**（定框 `K35`：没有「没有后端」这回事）——
-    // 但**这一处删不得的理由没变**：`renderFallback` 今天有 3 个生产消费者，本行是其中一个
-    //（逐处住址见 `launch_wire.rs` 的 `TS_FALLBACK_KEEPERS`）。
+    // ⚠ 〔U8c-3-r2 08-14 复裁〕那一拍的结论是「三问一条都没过期到可以放行」——
+    // 🔴 **那是 08-14 的读数，今天不成立**：③ 已随定框 `K35` / `K-R59`（09-11）退役，
+    // ① 也在 `K-P2 D3`（09-03）之后变过一次。三问的**今天版**只有一个家：
+    // `doc/INVARIANTS.md §33b` 那张表（由 `doc_claim_registry` 逐问与现场对拍，
+    // 改行为不改答案当场红）。**别在这儿复述那三问，复述就会漂。**
+    //
+    // 🔴 〔`K-R105` 09-13〕**这一处删不得的理由**：本行是 `renderFallback` 今天
+    // **唯一有生产调用方**的那个消费者（尺子B），而它产的三格全要外层 tmux 命令。
+    // 处数与「站不站在生产路上」两把尺子都住 `launch_wire.rs`
+    //（`TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`，**从源码派生**）——
+    // 这里原来写着「今天有 3 个生产消费者」，那是尺子A 的数被当成尺子B 读，已撤。
     // 依据各有一条会红的判据，住 `launch_wire.rs` 的 `f07_main_path_tests`。
     const r = await renderCliViaBackend(ctx, plan, probe);
     if (r.ok) return r.cmd;
