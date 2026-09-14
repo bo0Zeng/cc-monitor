@@ -44,38 +44,52 @@
 
 #[cfg(test)]
 mod f09_external_beat {
-    //! F09（定框 C12 的那条 ⚠ 点名的活）：**「周期跑一次外部命令」也算自己醒过来。**
+    //! F09（定框 `C12` 的那条 ⚠ 点名的活）：**「周期跑一次外部命令」也算自己醒过来。**
     //!
-    //! C12 的 ⚠ 逐字写着：「护栏今天只钉『构件的源码形态』，**没钉住『周期跑一次外部命令』**
+    //! `C12` 的 ⚠ 逐字写着：「护栏今天只钉『构件的源码形态』，**没钉住『周期跑一次外部命令』**
     //! —— 那是 F09 的活。」那个形态是：不用 `sleep`/`interval`，而是**产出一段带循环的
-    //! shell 串**交给别人执行，靠外部进程提供节拍 —— daemon 侧的护栏一个字都看不见。
+    //! shell 串**交给别人执行，靠外部进程提供节拍 —— 后端侧的护栏一个字都看不见。
     //!
-    //! # 实测：daemon 侧**今天零实例**
+    //! 针（逐字）：`sh -c` · `run-shell` · `format!`
     //!
-    //! F09 摸底逐个查过 daemon 的 shell 串产出点，**没有一处含循环关键字**。
-    //! 所以本条今天是**预防性**的零命中守卫。
+    //! # 🔴〔`K-R103` 09-13〕本条不再是零命中守卫：**它今天恰好逮住一处，而那一处登记在案**
     //!
-    //! ⚠ 那它会不会是个「谁都没写过」的空守卫？**不会** —— 它有一个真实的反向锚点：
-    //! C14 登记的那个例外（预信任的「等信任框」，本质就是轮询、以 shell 串形态产出）
-    //! **确实存在，但它住 `shared/ccm`，不在 daemon**。
-    //! 也就是说「这种形态真实存在于本仓，只是刻意不在 daemon 侧」——
-    //! 本条钉的正是那条边界。
+    //! 上一版这里有两句话，今天两句都不准了，逐句订正：
     //!
-    //! 🔴 **〔`K-R87` 09-13 现打订正〕上面那三段里有两句今天已经不准了，逐句说清**：
+    //! 1. 「那条预信任轮询串住 `shared/ccm`，不在后端」—— **假了**。`K-R48`（09-11）把那个
+    //!    bash 脚本删掉、整条搬进了 `control/ccm/`，它今天住 `control/ccm/plan.rs`。
+    //! 2. 「后端侧今天零实例」—— **也假了**；它之所以还绿，是因为**人群够不着**：
+    //!    上一版按**行**收人（同一行里有引号 **且** 有上面三根针之一），
+    //!    而 `plan.rs` 那一条是 `format!(` 的**续行** ⇒ 三根针一根都不落在那一行上。
     //!
-    //! 1. **「住 `shared/ccm`，不在 daemon」—— 假了。** `K-R48`（09-11）把那个 bash 脚本
-    //!    删掉、整条搬进了 `control/ccm/`；那条预信任轮询串今天就住
-    //!    `control/ccm/plan.rs`（一条 `do sleep 0.5; tmux capture-pane …` 的等信任框循环）。
-    //! 2. **「daemon 侧今天零实例」—— 只在本条自己的人群里成立。** 它之所以仍然绿，
-    //!    是因为 [`shell_string_literals`] 按「同一行里有引号 **且** 有
-    //!    `sh -c` / `run-shell` / `format!` 之一」收人，而 `plan.rs` 那一行是
-    //!    `format!` 的**续行**（那三个针一个都不在那一行上）⇒ **它不进人群**。
+    //! ⇒ 病不在「针太窄」，在**匹配单位比事实小**（同族登记在
+    //! `platform/cfgless_guard` 的 `hits` 头注里，本仓量到过三次）。
+    //! 本轮的处置是**把匹配单位从「行」改成「表达式」**（从带针那一行起、括号配平到收尾），
+    //! **不是**把针放宽成「任何字符串字面量」。
     //!
-    //! ⇒ 今天准确的说法是：**本条的人群够不着 daemon 侧现存的那一条**，
-    //! 不是「daemon 侧没有」。放宽人群（改成扫全部字符串字面量）会当场把它收进来 ——
-    //! 那是 `control/ccm/plan.rs` 那件事的写区，`K-R87` **不替它决定**，
-    //! 只把这个读数如实登记在这里，并给自己那一形补一条**只盖一份文件**的判据
-    //! （下面那条 `the_oneshot_watchdog_script_carries_no_loop`）。
+    //! # 为什么不放宽成「任何字符串字面量」：两把尺子现打（09-13，量于本 crate `src/` 生产段）
+    //!
+    //! | 改法 | 人群 | 判红 | 其中假红 |
+    //! |---|---|---|---|
+    //! | 上一版（按行收人） | 176 行 | 0 | — |
+    //! | 放宽成「任何字符串字面量」 | 1704 个串 | 5 | **4**（`watch failed for …` ×2 · `watch_pid_until_exit` ×1 · 一处剥法漏出来的测试尾巴 ×1）|
+    //! | 本轮（针不动，匹配单位改成表达式） | 224 条表达式 / 210 个串 | **1** | **0** |
+    //!
+    //! ⚠ 上表三行是**同一趟**用一份 Python 复刻的剥法量的（量具住址与逐处读数住
+    //! `evidence/K-R103-deathvalue.md`）；本模块自己那两条地板是 Rust 侧现算的。
+    //! 两把尺子的剥法不是同一份实现 ⇒ **个位数的出入是预期的**，如实登记。
+    //!
+    //! 放宽成「任何字符串字面量」买到的是 1 真 4 假 ⇒ **净变宽，人会绕开它**
+    //! （纪律 ⑯：放宽越界闸之前先问它买得到什么）。改匹配单位买到的是 1 真 0 假 —— 选后者。
+    //!
+    //! # 「没扫到」与「刻意不扫」从今天起在盘上分得开
+    //!
+    //! 逮到的那一处**不是违规**，它是 `C14` 逐字登记的那个例外
+    //! （逐字见 [`REGISTERED_EXTERNAL_BEATS`] 的签字栏）。⇒ 那张表**默认拒绝**：
+    //! 没登记的当场红、登记了而今天一处都匹配不上的也当场红。
+    //! 🔴 它买到的**不是**「后端没有外部节拍」，是「**每一条外部节拍都有人签过字**」。
+    //! ⚠ 而「登记的那一条今天还在人群里」是另一格 ——
+    //! 上一版就是死在那里 ⇒ 单立一条 [`the_registered_beat_is_actually_inside_the_population`]。
 
     /// 循环关键字：shell 里提供节拍的三种写法。
     fn loop_words() -> Vec<String> {
@@ -86,8 +100,186 @@ mod f09_external_beat {
             .collect()
     }
 
-    /// daemon 生产段里**产出给别人执行的字符串字面量**。
-    fn shell_string_literals() -> Vec<(String, String)> {
+    /// 三根针 —— 「这一段串是产出给别人执行的」的判别式。
+    ///
+    /// 🔴 它与头注里那一行 `针（逐字）：…` **两向对拍**
+    /// （[`the_head_note_lists_exactly_the_needles_in_use`]）：改一边不改另一边当场红。
+    const NEEDLES: &[&str] = &["sh -c", "run-shell", "format!"];
+
+    /// **登记在案的外部节拍**：`(文件相对路径, 串里的逐字锚点, 定框依据, 签字)`。
+    ///
+    /// 🔴 **这不是免检名单，是默认拒绝**：没登记的当场红；登记了而今天一处都匹配不上的
+    /// 也当场红（过期条目会让这张表慢慢变成一张没人敢动的名单 ——
+    /// 同 `platform/cfgless_guard` 的 `REGISTERED` 那两个方向）。
+    const REGISTERED_EXTERNAL_BEATS: &[(&str, &str, &str, &str)] = &[(
+        "control/ccm/plan.rs",
+        "Yes, I trust this folder",
+        "C14",
+        "`C14`〔实 08-01·inotify 看不见 pane 内容〕逐字：「**预信任的『等信任框』没有内核事件源** \
+         —— 它本质就是轮询。**`C8` 的唯一登记例外**：`control/` 继续**以 shell 字符串形态**产出它\
+         （由目标 shell 执行，因此与零定时器共存）。不写下来，实现期必然有人用 Rust 重写然后撞护栏」。\
+         ⇒ 这一处**不是漏进来的**，是定框点名让它以这个形态住在 `control/` 的：\
+         节拍由**目标 shell** 提供，后端进程自己一个定时器都没有。\
+         🔴 要把它收掉得先回定框重裁 `C14`，不是在这里删一行。",
+    )];
+
+    // ══════════════════════════ 匹配单位 ══════════════════════════
+
+    /// `b[i]` 是双引号：跳过整个字符串字面量，返回收尾引号**之后**的位置。
+    fn skip_string(b: &[u8], i: usize) -> usize {
+        let mut j = i + 1;
+        while j < b.len() {
+            match b[j] {
+                b'\\' => j += 2,
+                b'"' => return j + 1,
+                _ => j += 1,
+            }
+        }
+        b.len()
+    }
+
+    /// `b[i] == b'\''`：**字符字面量**跳过整条，**生命周期**只跳这一个引号。
+    ///
+    /// 🔴 这一格不是洁癖：本 crate 生产段里现打有 **9 处**把双引号写成字符字面量的地方
+    /// （`relay/tee.rs` 的转义器 · `observe/accounts_query.rs` 的 shell 元字符表 …）。
+    /// 只认 `"` 的扫描器走到那儿**当场失步**，从此把代码读成串、把串读成代码。
+    /// 而 `&'static str` 那一族又不能按字面量跳 ⇒ 两者必须分得开：
+    /// 按**首字节算出那个字符占几个字节**，收尾引号正好落在它后面才算字面量。
+    fn skip_quote(b: &[u8], i: usize) -> usize {
+        if b.get(i + 1) == Some(&b'\\') {
+            let mut j = i + 2;
+            while j < b.len() && b[j] != b'\'' {
+                j += 1;
+            }
+            return (j + 1).min(b.len());
+        }
+        let Some(&c) = b.get(i + 1) else {
+            return i + 1;
+        };
+        let w = if c < 0x80 {
+            1
+        } else if c >> 5 == 0b110 {
+            2
+        } else if c >> 4 == 0b1110 {
+            3
+        } else {
+            4
+        };
+        if b.get(i + 1 + w) == Some(&b'\'') {
+            i + w + 2
+        } else {
+            i + 1
+        }
+    }
+
+    /// 从 `from`（带针那一行的行首）起，这条**表达式**收尾在哪个字节。
+    ///
+    /// 收尾 = 第一次开过的那一层括号配平回来；整行一层都没开过就走到行尾。
+    /// 🔴 这就是 `K-R103` 换掉的那一样东西 —— 上一版的匹配单位是**行**。
+    fn expr_end(b: &[u8], from: usize) -> usize {
+        let mut i = from;
+        let mut depth = 0i32;
+        let mut opened = false;
+        while i < b.len() {
+            match b[i] {
+                b'"' => {
+                    i = skip_string(b, i);
+                    continue;
+                }
+                b'\'' => {
+                    i = skip_quote(b, i);
+                    continue;
+                }
+                b'(' | b'[' | b'{' => {
+                    depth += 1;
+                    opened = true;
+                }
+                b')' | b']' | b'}' => {
+                    depth -= 1;
+                    if opened && depth <= 0 {
+                        return i + 1;
+                    }
+                }
+                b'\n' if !opened => return i,
+                _ => {}
+            }
+            i += 1;
+        }
+        b.len()
+    }
+
+    /// 一段文本里每个字符串字面量**内容**的 `(起, 止)` 字节区间（不含两端引号）。
+    ///
+    /// ⚠ **原始字符串 fail-closed**：`r"…"` / `r#"…"#` 的定界规则与这里不同，
+    /// 本 crate 生产段今天**零处**（现打 09-13）⇒ 不实现它，但撞见就 panic，
+    /// 不静默地按普通串读下去。
+    fn literal_spans(seg: &str) -> Vec<(usize, usize)> {
+        let b = seg.as_bytes();
+        let ident = |c: u8| c.is_ascii_alphanumeric() || c == b'_';
+        let mut out = Vec::new();
+        let mut i = 0usize;
+        while i < b.len() {
+            match b[i] {
+                b'r' if i == 0 || !ident(b[i - 1]) => {
+                    let mut j = i + 1;
+                    while j < b.len() && b[j] == b'#' {
+                        j += 1;
+                    }
+                    assert!(
+                        b.get(j) != Some(&b'"'),
+                        "生产段里出现了原始字符串 —— 本扫描器的定界规则认不了它\
+                         （`K-R103` 09-13 现打是零处）。回来把定界补上，\
+                         别让它按普通串读进去。实得：{:?}",
+                        seg.get(i..(i + 40).min(seg.len())).unwrap_or("")
+                    );
+                    i += 1;
+                }
+                b'\'' => i = skip_quote(b, i),
+                b'"' => {
+                    let end = skip_string(b, i);
+                    out.push((i + 1, end.saturating_sub(1)));
+                    i = end;
+                }
+                _ => i += 1,
+            }
+        }
+        out
+    }
+
+    /// 一段生产文本里的人群 —— [`shell_string_literals`] 的**纯函数那一半**。
+    ///
+    /// 抬出来是为了让 [`the_matching_unit_is_an_expression_not_a_line`] 能拿合成夹具
+    /// 量**同一把尺子**：副本一分叉，红灯就开始骗人。
+    fn shell_strings_in(prod: &str) -> Vec<(usize, usize)> {
+        let b = prod.as_bytes();
+        let mut spans: Vec<(usize, usize)> = Vec::new();
+        let mut line_start = 0usize;
+        for line in prod.split('\n') {
+            if NEEDLES.iter().any(|n| line.contains(n)) {
+                let end = expr_end(b, line_start);
+                for (a, z) in literal_spans(&prod[line_start..end]) {
+                    spans.push((line_start + a, line_start + z));
+                }
+            }
+            line_start += line.len() + 1;
+        }
+        spans.sort_unstable();
+        spans.dedup();
+        spans
+    }
+
+    /// 那一处所在的整行（在**生产文本**里，逐字 —— 它同时是住址与校验位）。
+    ///
+    /// ⚠ 刻意不报行号：生产文本是剥过测试段的，行号与文件对不上
+    /// （`brief` 13c：指进本树的行号要么带校验位、要么不写）。
+    fn line_at(prod: &str, at: usize) -> String {
+        let s = prod[..at].rfind('\n').map(|i| i + 1).unwrap_or(0);
+        let e = prod[at..].find('\n').map(|i| at + i).unwrap_or(prod.len());
+        prod[s..e].trim().to_string()
+    }
+
+    /// 后端生产段里**产出给别人执行的 shell 串** —— 逐条 `(文件, 那一行逐字, 串的内容)`。
+    fn shell_string_literals() -> Vec<(String, String, String)> {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
         let mut out = Vec::new();
         let mut stack = vec![dir.clone()];
@@ -109,75 +301,236 @@ mod f09_external_beat {
                     .unwrap_or(&p)
                     .to_string_lossy()
                     .replace('\\', "/");
-                // 本模块自己的说明里逐字写着那三个关键字 —— 排除掉（同族坑记过四次）。
+                // 本模块自己的说明里逐字写着那三根针 —— 排除掉（同族坑记过四次）。
                 if rel == "no_timer_guard.rs" {
                     continue;
                 }
                 let prod =
                     guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
-                for line in prod.lines() {
-                    if line.contains('"')
-                        && (line.contains("sh -c")
-                            || line.contains("run-shell")
-                            || line.contains("format!"))
-                    {
-                        out.push((rel.clone(), line.trim().to_string()));
-                    }
+                for (a, z) in shell_strings_in(&prod) {
+                    out.push((rel.clone(), line_at(&prod, a), prod[a..z].to_string()));
                 }
             }
         }
         out
     }
 
-    /// ★ 抽取器自检：抽不到候选行时下面那条会零命中地绿。
+    /// ★ 抽取器自检：抽不到候选串时下面那几条会零命中地绿。
+    ///
+    /// 地板是**现打值留了余量**（09-13 沙箱实测：**212** 个串；份数那一格由 Python 复刻的剥法
+    /// 量到 40，Rust 侧没单独打印 —— 第一条断言先红，第二条根本没跑到，如实登记）。
+    /// 数掉下来 ⇒ 剥法或遍历坏了，**不是树变干净了**。
     #[test]
     fn the_shell_string_scan_finds_candidates() {
-        let n = shell_string_literals().len();
+        let all = shell_string_literals();
         assert!(
-            n >= 3,
-            "只抽到 {n} 行可能的 shell 串 —— 抽取器坏了，下面那条会空转变绿"
+            all.len() >= 120,
+            "只抽到 {} 个可能的 shell 串 —— 抽取器坏了，下面那几条会空转变绿",
+            all.len()
+        );
+        let mut files: Vec<&str> = all.iter().map(|(f, _, _)| f.as_str()).collect();
+        files.sort_unstable();
+        files.dedup();
+        assert!(
+            files.len() >= 25,
+            "这些串只来自 {} 份文件 —— 遍历塌了",
+            files.len()
         );
     }
 
-    /// ★ 正题：daemon 产出的 shell 串里不许有循环 —— 那是「靠外部节拍反复跑」的形态。
+    /// ★ 正题：后端产出的 shell 串里，**每一条自带节拍的都要签过字**。两个方向都断。
     #[test]
-    fn no_daemon_produced_shell_string_carries_its_own_loop() {
+    fn every_external_beat_the_backend_produces_is_registered() {
         let words = loop_words();
-        let mut bad = Vec::new();
-        for (f, line) in shell_string_literals() {
-            for w in &words {
-                // 只看引号内的部分（`while let` 这类 Rust 语法不算）。
-                if let Some(q) = line.find('"') {
-                    if line[q..].contains(w.as_str()) {
-                        bad.push(format!("  {f}: {line}"));
-                        break;
-                    }
-                }
-            }
-        }
-        assert!(
-            bad.is_empty(),
-            "daemon 产出的 shell 串里出现了循环关键字 —— 那是 C12 的 ⚠ 点名的\n\
+        let beats: Vec<(String, String, String)> = shell_string_literals()
+            .into_iter()
+            .filter(|(_, _, s)| words.iter().any(|w| s.contains(w.as_str())))
+            .collect();
+        let unsigned: Vec<String> = beats
+            .iter()
+            .filter(|(f, _, s)| {
+                !REGISTERED_EXTERNAL_BEATS
+                    .iter()
+                    .any(|(p, anchor, _, _)| *p == f.as_str() && s.contains(*anchor))
+            })
+            .map(|(f, line, _)| format!("  {f}: {line}"))
+            .collect();
+        assert_eq!(
+            unsigned,
+            Vec::<String>::new(),
+            "后端产出的 shell 串里出现了**没签字**的循环关键字 —— 那是 `C12` 的 ⚠ 点名的\n\
              「**周期跑一次外部命令**」形态：不用 sleep/interval，而是让别人的 shell 提供节拍，\n\
              于是本 crate 的零定时器护栏一个字都看不见。\n\
-             ⚠ C14 登记的那个例外（预信任「等信任框」）**住 `shared/ccm`，不在 daemon** ——\n\
-             真要在 daemon 侧开这种口子，先回定框把 C12/C14 的边界重新裁定。\n\
-             ⚠ 这段话里那半句今天已经不准了，逐句订正在本模块头注（`K-R87` 09-13）。\n{}",
-            bad.join("\n")
+             出路两条：把那条节拍去掉；或者回定框重裁 `C12`/`C14` 之后在\n\
+             `REGISTERED_EXTERNAL_BEATS` 上签一行字（写清定框依据）。\n{}",
+            unsigned.join("\n")
+        );
+        let stale: Vec<String> = REGISTERED_EXTERNAL_BEATS
+            .iter()
+            .filter(|(p, anchor, _, _)| {
+                !beats
+                    .iter()
+                    .any(|(f, _, s)| f.as_str() == *p && s.contains(*anchor))
+            })
+            .map(|(p, anchor, ..)| format!("  {p} :: {anchor}"))
+            .collect();
+        assert_eq!(
+            stale,
+            Vec::<String>::new(),
+            "`REGISTERED_EXTERNAL_BEATS` 里这几条今天一处都匹配不上：\n{}\n\
+             🔴 两种成因在盘上必须分得开：**那一处真的挪走/去掉了**（把这一行删掉）\n\
+             与**人群又够不着它了**（本条此刻在空转）。\n\
+             判之前先看 `the_registered_beat_is_actually_inside_the_population` 红没红。",
+            stale.join("\n")
+        );
+    }
+
+    /// ★★ 反空真：**「人群够不着」与「盘上没有」必须分得开。**
+    ///
+    /// 上一版正是死在这一格 —— 那条预信任串一直在盘上，而人群按行收人够不着它，
+    /// 于是判据零命中地绿着，头注还写着「后端侧今天零实例」。
+    /// 本条断的是**登记表上那一处真的落在人群里**。
+    #[test]
+    fn the_registered_beat_is_actually_inside_the_population() {
+        assert!(
+            !REGISTERED_EXTERNAL_BEATS.is_empty(),
+            "登记表空了 —— 本条会变成「对空集全称成立」，恒绿"
+        );
+        let all = shell_string_literals();
+        for (p, anchor, charter, _why) in REGISTERED_EXTERNAL_BEATS {
+            let n = all
+                .iter()
+                .filter(|(f, _, s)| f.as_str() == *p && s.contains(*anchor))
+                .count();
+            assert!(
+                n >= 1,
+                "`{p}` 上那条 `{charter}` 登记的外部节拍（锚点 `{anchor}`）**不在人群里** ——\n\
+                 那不是它没了，是本条的匹配单位又够不着它了（`K-R103` 治的正是这一形）。"
+            );
+        }
+    }
+
+    /// ★★ 拿合成夹具证明**匹配单位真的是表达式** —— 不靠真树上碰巧有没有病灶。
+    ///
+    /// 四刀，两正两反：
+    /// ① 针与串同一行 ⇒ 收得进 · ② 针在上一行、串在**续行** ⇒ **也要收得进**
+    /// （这一刀就是 `K-R103` 之前那个洞，上一版在这里是 0）·
+    /// ③ 一根针都没有的串 ⇒ 不收 · ④ 表达式收尾之后**下一条**语句里的串 ⇒ 不收（窗口不许越界）。
+    #[test]
+    fn the_matching_unit_is_an_expression_not_a_line() {
+        let n = |src: &str| shell_strings_in(src).len();
+        let same_line = format!("let a = {}(\"tmux {} x\");\n", "format!", "run-shell");
+        assert_eq!(n(&same_line), 1, "针与串同一行都收不进 —— 抽取器坏了");
+
+        let continued = format!(
+            "let a = {}(\n    \" && (do sleep 1; done)\"\n);\n",
+            "format!"
+        );
+        assert_eq!(
+            n(&continued),
+            1,
+            "针在上一行、串在续行 ⇒ 收不进 —— 匹配单位又退回「行」了（`K-R103` 那个洞）"
+        );
+
+        let innocent = "let a = String::from(\"just a plain string\");\n";
+        assert_eq!(n(innocent), 0, "一根针都没有的串被收进来了 —— 人群净变宽");
+
+        let after = format!(
+            "let a = {}(\n    \"in\"\n);\nlet b = String::from(\"out\");\n",
+            "format!"
+        );
+        assert_eq!(
+            n(&after),
+            1,
+            "窗口越过了表达式收尾，把下一条语句里的串也收进来了"
+        );
+    }
+
+    /// ★★ 词法自检：**字符字面量与生命周期分得开** —— 分不开就整段失步。
+    #[test]
+    fn the_lexer_tells_char_literals_from_lifetimes() {
+        // `'"'` 那一形：只认 `"` 的扫描器在这里失步，把后面的代码读成字符串。
+        let tricky = format!("let q = '\"'; let s = {}(\"a for b\");\n", "format!");
+        let spans = shell_strings_in(&tricky);
+        assert_eq!(
+            spans.len(),
+            1,
+            "含 `'\"'` 的那一行把扫描器带失步了：{:?}",
+            spans
+                .iter()
+                .map(|(a, z)| &tricky[*a..*z])
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(&tricky[spans[0].0..spans[0].1], "a for b");
+        // 生命周期不许被当成字符字面量、把后面那截整段吃掉。
+        let lt = format!("let x: &'a str = \"z\"; let s = {}(\"y\");\n", "format!");
+        let got: Vec<&str> = shell_strings_in(&lt)
+            .iter()
+            .map(|(a, z)| &lt[*a..*z])
+            .collect();
+        assert_eq!(
+            got,
+            vec!["z", "y"],
+            "生命周期 `'a` 被当成了字符字面量 —— 它后面那截被整段吃掉"
+        );
+    }
+
+    /// ★★★ `KR103D1`：**头注那一行说的针，与 [`NEEDLES`] 逐条相等** —— 两个方向都断。
+    ///
+    /// 改人群不改头注 ⇒ 红；改头注不改人群 ⇒ 也红。
+    /// 「没扫到」与「刻意不扫」之所以在盘上分得开，靠的就是这一格 ＋ 登记表那两个方向：
+    /// 头注说得出它扫哪几根针，登记表说得出它**刻意放过**哪一处、依据是哪条定框。
+    #[test]
+    fn the_head_note_lists_exactly_the_needles_in_use() {
+        let src = include_str!("no_timer_guard.rs");
+        // 标记运行时拼 —— 免得本条自己这一行被当成头注那一行。
+        let mark = format!("//! 针（逐{}）：", "字");
+        let hits: Vec<&str> = src
+            .lines()
+            .filter(|l| l.trim_start().starts_with(mark.as_str()))
+            .collect();
+        assert_eq!(
+            hits.len(),
+            1,
+            "头注里以 `{mark}` 打头的行有 {} 行（应恰好 1 行）—— \
+             少了：读的人没有一句可引的话；多了：两句话可以互相矛盾",
+            hits.len()
+        );
+        let tail = hits[0]
+            .split_once('：')
+            .expect("上一格已经保证它是那一行")
+            .1;
+        let mut listed: Vec<String> = tail
+            .split('·')
+            .map(|s| s.trim().trim_matches('`').to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        listed.sort();
+        let mut used: Vec<String> = NEEDLES.iter().map(|s| (*s).to_string()).collect();
+        used.sort();
+        assert_eq!(
+            listed, used,
+            "头注那一行列的针与 `NEEDLES` 对不上 —— 人群与它自陈的人群分叉了。\n\
+             🔴 两个方向都要看：加了一根针而不写进头注 ⇒ 下一个人按头注把它读成「刻意不扫」；\n\
+             头注多写一根而人群里没有 ⇒ 那是一句今天就假的话。"
         );
     }
 
     /// ★〔`K-R87` 09-13〕**看门狗那条 argv 形的 shell 串，也不许自带节拍。**
     ///
-    /// # 为什么要单独一条：上面那条**结构上看不见它**
+    /// # 为什么要单独一条：上面那条**结构上看不见它**（`K-R103` 改完匹配单位之后**仍然看不见**）
     ///
-    /// [`shell_string_literals`] 认的是「把一整条**渲染好的**串交给 shell」那个形态
-    /// （同一行里有引号 ＋ `sh -c` / `run-shell` / `format!` 之一）。
-    /// 而 `K-R87` 的看门狗走的是 **argv 直传**：脚本是一个**常量**、`sh` 与 `-c` 是两个
-    /// 独立的 argv 元素 ⇒ 那三个针**一个都不命中**，那条串一个字都不进上面那条的人群。
+    /// [`shell_string_literals`] 认的是「一条**含针的表达式**里的字符串字面量」
+    /// （针 = [`NEEDLES`]）。而 `K-R87` 的看门狗走的是 **argv 直传**：脚本是一个**常量**、
+    /// `sh` 与 `-c` 是两个独立的 argv 元素 ⇒ 那三根针**一根都不落在那条常量声明上**。
     ///
-    /// 🔴 **人群够不着 ≠ 判据坏了**；而放宽人群会连带把 `control/ccm/plan.rs`
-    /// 那条收进来（头注末段那两句订正）—— 那是别件的写区。
+    /// 🔴 `K-R103` 把匹配单位从「行」改成「表达式」，关掉的是
+    /// **`format!(` 续行**那个盲区（`control/ccm/plan.rs` 那条因此进了人群）；
+    /// **argv 形常量**是另一个盲区，那一改**没有**顺带关掉它 —— 两个盲区不是一回事，
+    /// 别把「上一条变严了」读成「这一条可以撤了」。
+    /// ⚠ 那条 argv 形的另一面（它是 POSIX-only、按 `K33` 该住 `platform/`）由
+    /// `platform/cfgless_guard` 的 `posix-shell-sh` 那根针接住 —— `K-R103` 把它一并放宽到
+    /// 「整条字面量就是 `sh`」这一形，本模块不重复守那一格。
     /// ⇒ 本条**只盖 `control/oneshot_session.rs` 这一份文件**，
     /// 形状照 `readonly_guard::capture_is_read_only`（那一条同样自陈「只盖一份文件」）。
     #[test]
