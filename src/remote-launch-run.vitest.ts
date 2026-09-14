@@ -16,7 +16,10 @@ import {
   runNewSessionRemote,
   runRemoteResumeIntoExistingTmux,
   runRemoteLauncher,
-  runRemoteAttach, POSIX_NO_WINDOW_MARKER } from "./remote-launch-run";
+  runRemoteAttach, POSIX_NO_WINDOW_MARKER,
+  // 🔴 `K-R109` `KR109D3`：wire 上那两态同形，是「兜底那条路走得到」的第一环。
+  buildCliRenderRequest } from "./remote-launch-run";
+import { planAttach } from "./launch-requests";
 
 const invokeMock = invoke as unknown as ReturnType<typeof vi.fn>;
 const toastMock = showActionFailureToast as unknown as ReturnType<typeof vi.fn>;
@@ -27,6 +30,17 @@ function stubClipboard(writeText: (t: string) => Promise<void>): void {
     configurable: true,
   });
 }
+
+/**
+ * 🔴 `K-R109`：本机后端交出来的那一串 attach 的**替身**。
+ *
+ * ⚠ **它刻意不是 `ccm attach <名>` 的字面** —— 本文件的题目是「前端有没有把后端交的那一串
+ * 原样交出去」，不是「后端渲得对不对」。渲染的正确性由 Rust 那一侧驱动着钉
+ *（`history.rs::tests::the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created`）。
+ * 用一个**中性、认得出**的串，是为了让断言判的是「同一串」，
+ * 而不是靠「这串长得像 ccm 命令」蒙混过去（`brief` 第 12 条：别让夹具名字混进断言）。
+ */
+const LOCAL_ATTACH_FROM_BACKEND = "<backend-rendered-attach-line>";
 
 /**
  * F03：`renderLaunchCommand` 先给 `probeCcm` 打一发 `invoke("probe_ccm_cli", …)`，早于本测试组
@@ -179,6 +193,8 @@ describe("F41 runRemoteResume", () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       if (cmd === "daemon_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
+      // 🔴 `K-R109`：attach 那一句**归本机后端产**（`R61` 裁定三）⇒ 这里是它的替身。
+      if (cmd === "render_local_attach") return Promise.resolve(LOCAL_ATTACH_FROM_BACKEND);
       // 后端在非 Windows 上的既定回答（含跨语言标记）。
       if (cmd === "launch_remote_terminal")
         return Promise.reject(`本机不是 Windows：cc-monitor **${POSIX_NO_WINDOW_MARKER}**（会话容器是 tmux）`);
@@ -189,9 +205,13 @@ describe("F41 runRemoteResume", () => {
     const ok = await runLocalResumeIntoExistingTmux("sid-l2", "l2-cc", "");
     // ★ 就地 resume 成了；**attach 开不开得了窗口不改变这个结论**（两件事别混成一件）。
     expect(ok).toBe(true);
-    // attach 命令用 `=name:` 精确形态（§31a），且**没有** ssh 那一跳。
-    expect(writeText.mock.calls[0][0]).toBe("tmux attach -t '=l2-cc:'");
+    // 🔴 `K-R109`：交给用户的那一串**逐字节等于后端交出来的那一串** ——
+    //   前端一个字都不拼（`K-R109` 之前这里断言的是 `tmux attach -t '=l2-cc:'`，
+    //   那时语法的主人是前端座 `session-backend.ts`）。
+    expect(writeText.mock.calls[0][0]).toBe(LOCAL_ATTACH_FROM_BACKEND);
     expect(String(writeText.mock.calls[0][0])).not.toContain("ssh");
+    // ★ 反向：座那条语法**不许**再从这条路上冒出来（回落到前端拼串 = §31 第①条那条禁令）。
+    expect(String(writeText.mock.calls[0][0])).not.toContain("tmux attach");
     // 标题按后端的声明分档成「既定设计」，不是「拉起失败」。
     expect(String(toastMock.mock.calls[0][0])).toContain("本机不开终端窗口");
     // 正文不许照抄远端那句「到远端 [...] 的 ssh 终端粘贴执行」。
@@ -203,6 +223,7 @@ describe("F41 runRemoteResume", () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       if (cmd === "daemon_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
+      if (cmd === "render_local_attach") return Promise.resolve(LOCAL_ATTACH_FROM_BACKEND);
       if (cmd === "launch_remote_terminal") return Promise.resolve(undefined); // 窗口开成了
       return Promise.resolve(undefined);
     });
@@ -394,5 +415,141 @@ describe("F52/F03/F53/F51 其余 4 个 executor：toast 文案 smoke test", () =
     stubClipboard(vi.fn().mockResolvedValue(undefined));
     await runRemoteAttach("aya", "cc-proj");
     expect(toastMock.mock.calls[0][0]).toBe("拉起失败，已复制 attach 命令");
+  });
+});
+
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-R109` `KR109D2` / `KR109D3`：**attach 那一句归后端** ＋ **兜底那条路今天还走得到**
+// ═════════════════════════════════════════════════════════════════════════════
+
+describe("K-R109 本机 attach 那一句问后端要", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("KR109D2 ★ 就地 resume 之后，attach 那一句是**问后端要**的，参数是那个会话名", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "render_launch_payload") return Promise.resolve("payload");
+      if (cmd === "daemon_send_into")
+        return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
+      if (cmd === "render_local_attach") return Promise.resolve(LOCAL_ATTACH_FROM_BACKEND);
+      if (cmd === "launch_remote_terminal") return Promise.resolve(undefined);
+      return Promise.resolve(undefined);
+    });
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    const ok = await runLocalResumeIntoExistingTmux("sid-l9", "l9-cc", "");
+    expect(ok).toBe(true);
+    // ① 真的问了后端，而且问的是**那个会话名**（问错名字 = 接进别人的会话，issue #76 那一族）。
+    const asked = invokeMock.mock.calls.filter((c) => c[0] === "render_local_attach");
+    expect(asked, "本机就地 resume 没有问后端要 attach 那一句").toHaveLength(1);
+    expect(asked[0][1]).toEqual({ tmuxName: "l9-cc" });
+    // ② 交给拉起那一跳的，**逐字节是后端交出来的那一串**。
+    const launched = invokeMock.mock.calls.find((c) => c[0] === "launch_remote_terminal");
+    expect((launched?.[1] as { remoteCmd: string }).remoteCmd).toBe(LOCAL_ATTACH_FROM_BACKEND);
+  });
+
+  it("KR109D2 ★ 后端渲不出来 ⇒ **诚实失败**，不许回落到前端自己拼一条 tmux attach", async () => {
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "render_launch_payload") return Promise.resolve("payload");
+      if (cmd === "daemon_send_into")
+        return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
+      // 后端拒（本机没装 ccm / 名字过不了闸 …）—— 这条 reject 是**该被看见的读数**：
+      // 走到这里说明 daemon 刚刚把载荷键进去了，而「有后端、没有 ccm」是 `R64` 判过的幽灵态。
+      if (cmd === "render_local_attach") return Promise.reject("本机没装 ccm");
+      return Promise.resolve(undefined);
+    });
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    stubClipboard(writeText);
+    const ok = await runLocalResumeIntoExistingTmux("sid-l10", "l10-cc", "");
+    // ★ 就地 resume 本身成了 —— attach 这一跳的成败不改变它（与上面那两条同一个道理）。
+    expect(ok).toBe(true);
+    // ★★ 最要紧的一格：**一次拉起都没发起**，而且**什么都没往剪贴板里塞**。
+    //    发起了就说明它去拼了一条串，而那正是 §31 最终形态第①条禁的事。
+    expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
+    expect(writeText).not.toHaveBeenCalled();
+    expect(String(toastMock.mock.calls[0][0])).toContain("渲不出来");
+    expect(String(toastMock.mock.calls[0][1])).toContain("本机没装 ccm");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `KR109D3`：**「座今天还删不删得掉」判 A** —— 兜底渲染器今天真走得到，而且不是幽灵态
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// # 这一组钉的是什么
+//
+// `K-R106` 交回时写着「删不掉」，理由是 `launch-render-fallback.ts` 被走到的前提是
+// 「后端渲染器拒了」，而那被归成六格表第 ⑤ 格「这台机没装 ccm」= 部署面。
+// 🔴 **`R64`〔用 09-13 逐字「不存在什么没装 ccm 装了后端的情况」〕之后，那一格是幽灵态**
+// —— 如果拒的理由只有这一条，那条兜底路守的就是一个不可能态。
+//
+// # 而它不只有这一条，`R64` 自己就把另一条划出去了
+//
+// `R64` 逐字：「⚠ **别一刀切**：`unknown`（探不到）与 `not-installed`（探到了、没装）
+// **不是同一件事**，而本条只否掉后者与「有后端」并存。」
+// 而 `ccm-probe.ts` 的三态里 `unknown` **今天就在**（一次 ssh 抖动就是它），
+// 它在 wire 上被压成「拿不到能力集」（`caps: null`，`K-R95` 登记过这个缺口）
+// ⇒ 后端拒 ⇒ **落到座**。⇒ **那条路今天走得到，而且走到它的不是幽灵态。**
+//
+// ⇒ `KR109D3` 判 **A**：座留着，**这一条路写成判据钉住**。
+//
+// # ⚠ 它买不到什么（如实写）
+//
+// - 它**不**证明「今天真的有用户走过这条路」—— 那要真机，不在本条射程。
+//   它证明的是「这条路在代码上通着，而且触发它的条件今天造得出来」。
+// - 它**不**替 `not-installed` 那一半辩护：那一半确实是幽灵态，
+//   处置归 `K-R107`（`R64` 的「归属」那一节逐字点的名）。
+describe("KR109D3 兜底渲染器（座）今天真走得到 —— 判 A 的机检形态", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("★ 第一环：探测**没探出来**（不是「没装」）⇒ wire 上只剩「拿不到能力集」", () => {
+    // `ctx`/`plan` 由**生产构造口**产（`planAttach`），不手捏 —— 手捏的那份下一次改字段就馊。
+    const { ctx, plan } = planAttach("u1-cc");
+    const flaky = buildCliRenderRequest(ctx, plan, { state: "unknown", error: "ssh 抖了一下" });
+    // 🔴 这就是 `K-R95` 登记的那个缺口：值那一侧分得开（三态），**线上只有两态**。
+    //    它今天仍然在 ⇒ 「后端拒」这件事**不是只有「真没装」一种来历**。
+    expect(flaky.caps).toBeNull();
+    // 反向锚点：探到了就**不是** null —— 否则上一条是空真（恒 null 照样过）。
+    const installed = buildCliRenderRequest(ctx, plan, {
+      state: "installed",
+      version: "9.9.9",
+      capabilities: new Set(["tmux"]),
+    });
+    expect(installed.caps).not.toBeNull();
+    // ★ 三态里那个 `unknown` **今天还在**。它哪天没了（真的收成两态），
+    //   本条会红 —— 那时第 ⑤ 格才真的只剩幽灵态，`KR109D3` 要回来重判 A/B。
+    //   （`testing.md` 硬规则 11：钉「今天恰好如此」的判据要写清去哪里重新裁定。）
+    const notInstalled = buildCliRenderRequest(ctx, plan, { state: "not-installed" });
+    expect(notInstalled.caps).toBeNull();
+    expect(
+      { unknown: flaky.caps, notInstalled: notInstalled.caps },
+      "wire 上这两态今天同形 —— 它们要是分开了，`K-R95` 那个缺口就补上了，回来重判",
+    ).toEqual({ unknown: null, notInstalled: null });
+  });
+
+  it("★★ 第二环：那一态走到生产入口上 ⇒ 真的落到座产的那一串（`tmux …`）", async () => {
+    const rendered: string[] = [];
+    invokeMock.mockImplementation((cmd: string, args?: unknown) => {
+      // 探测**出错** ⇒ `ccm-probe.ts` 回 `{state:"unknown"}`（它不进缓存，下次会重探）。
+      if (cmd === "probe_ccm_cli") return Promise.reject("ssh 抖了一下");
+      // 后端照 wire 上那两态办事：拿不到能力集 ⇒ 诚实降级（**不是错误**）。
+      if (cmd === "render_ccm_launch")
+        return Promise.resolve({ ok: false, cmd: null, reason: "远端未装 ccm" });
+      if (cmd === "launch_remote_terminal") {
+        rendered.push((args as { remoteCmd: string }).remoteCmd);
+        return Promise.resolve(undefined);
+      }
+      return Promise.resolve(undefined);
+    });
+    stubClipboard(vi.fn().mockResolvedValue(undefined));
+    await runRemoteResumeTmux("aya", "sid-u1", "/p", "claude", "u1-cc");
+    expect(rendered, "生产入口一次拉起都没发起 —— 本条此刻什么都没量到").toHaveLength(1);
+    // ★ 座产的外层 tmux 命令：这一串只可能从 `launch-render-fallback.ts` → `session-backend.ts` 来
+    //   （Rust 那条渲染器刚刚拒了，而 `container:"none"` 那一格走的是 `render_launch_payload`）。
+    expect(rendered[0]).toContain("tmux new-session");
+    expect(rendered[0]).toContain("u1-cc");
   });
 });
