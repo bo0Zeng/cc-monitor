@@ -497,6 +497,30 @@ mod tests {
     /// ⇒ 今天两侧都是 `false`：代码里没有回落，文档里也不再说有。
     /// **本条不因此作废** —— 它两个方向都咬：谁把回落加回来不改文档、
     /// 或谁把那句话写回文档而代码里没有，都会红。
+    ///
+    /// # 🔴🔴 `K-R106`（09-13）`KR106D3`：**人群从一份文档扩到整棵 `doc/`**
+    ///
+    /// 本条此前只 `include_str!` **一份** `doc/IPC-PROTOCOL.md` ——
+    /// 而同一句话当时在盘上还有**另外三份副本**，它们**结构上够不着**：
+    /// `doc/CONTRIBUTING.md`（正文 ＋ 同节表格两处）· `doc/ARCHITECTURE.md` ·
+    /// `doc/账号用量-usage抓取方案.md`。`K-R72` 那次「响得对」只响到了它看得见的那一份，
+    /// 于是它逼人改的也只有那一份 —— **一条判据挡住的，只有它人群里的那些**。
+    ///
+    /// ⇒ 发现机制从**一个 `include_str!`** 换成**遍历 `doc/`**（同本文件
+    /// `CREATION_PATHS` 那条的做法：人群靠遍历发现，不靠手写清单）。
+    /// ⚠ 这是**扩扫描面 = 更严**，不是放宽闸：两个方向都还咬，只是够得着的人多了。
+    ///
+    /// # ⚠ 诚实边界（两侧都写出来，别读大）
+    ///
+    /// - **人群是 `doc/` 这棵树**，按「耐久文档的家」这条语义划，不是「碰巧只有它们长这样」。
+    ///   仓根那几份 `.md`（`README*` / `CHANGELOG` / 复盘报告）与 `evidence/` **不在人群里**：
+    ///   前者不是耐久设计文档；后者是**死值验留档**，逐字记着历史上那一刀砍的是什么，
+    ///   它**本来就该**提到那句话（现打 09-13：`evidence/K-R72-deathvalue.md` 正是这一形）。
+    ///   ⇒ 把它们扫进来买到的不是更严，是一条必然误报的闸。
+    /// - **它按整串 `contains` 判** ⇒ 想在耐久文档里给这句话立一块**墓碑**（「历史上有过、
+    ///   已经删了」）就会被它拦下。今天的出路是**换一种说法**（本轮三份副本都是这么改的）。
+    ///   这是它已知的代价，不是没看见。
+    /// - **它不判那三份副本说得对不对** —— 只判「那句话在不在」与「代码里那条路在不在」一致。
     #[test]
     fn the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code() {
         let tmux_rs = guard_core::production_code(include_str!("../../tmux.rs"));
@@ -506,16 +530,67 @@ mod tests {
         let body = &tmux_rs[at..];
         let end = body.find("\n}\n").map(|k| k + 3).unwrap_or(body.len());
         let fallback_alive = body[..end].contains("connect_and_exec_cmd");
-        let doc = include_str!("../../../../doc/IPC-PROTOCOL.md");
-        let doc_says_transitional = doc.contains("过渡期回落");
+
+        // ── 人群：遍历 `doc/`（递归），**不是**一张手写清单 ────────────────
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级");
+        let needle = format!("过渡期{}", "回落");
+        let mut scanned: Vec<String> = Vec::new();
+        let mut said: Vec<String> = Vec::new();
+        let mut stack = vec![root.join("doc")];
+        while let Some(d) = stack.pop() {
+            let rd = std::fs::read_dir(&d).unwrap_or_else(|e| {
+                panic!("读不到 {} —— 人群空了本条会零命中地绿：{e}", d.display())
+            });
+            for e in rd.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().and_then(|x| x.to_str()) != Some("md") {
+                    continue;
+                }
+                let rel = p
+                    .strip_prefix(root)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let Ok(text) = std::fs::read_to_string(&p) else {
+                    panic!("{rel} 读不出来 —— 读不到的文件只会静默返回空串");
+                };
+                scanned.push(rel.clone());
+                if text.contains(needle.as_str()) {
+                    said.push(rel);
+                }
+            }
+        }
+        // ★ 抽取器自检：人群塌成 0 时，下面那条相等断言会**空真地**绿。
+        assert!(
+            scanned.len() >= 8,
+            "只扫到 {} 份耐久文档（`doc/**/*.md`）—— 遍历坏了，本条此刻在空转：{scanned:?}",
+            scanned.len()
+        );
+        // ★ 地板的第二半：人群里必须**真的有**那份 `K-R72` 逼着改过的文档，
+        //   否则「扫到 8 份」也可能扫的是另外八份。
+        assert!(
+            scanned.iter().any(|f| f.ends_with("IPC-PROTOCOL.md")),
+            "人群里没有 `doc/IPC-PROTOCOL.md` —— 本条原来唯一看得见的那一份掉出去了：{scanned:?}"
+        );
+        said.sort();
         assert_eq!(
-            fallback_alive, doc_says_transitional,
-            "代码与文档对不上了：\n\
-             · `kill_remote_tmux` 里还有一次性 SSH 回落吗 = {fallback_alive}\n\
-             · `doc/IPC-PROTOCOL.md` 还写着「过渡期回落」吗 = {doc_says_transitional}\n\
-             ⚠ 如果是**删掉了回落**（F11 的活）：那句话要一起改，否则下一个读者会以为\n\
-             「没有 daemon 的远端」还有一条路可走 —— 而那正是 C7 说的过渡期已经结束。\n\
-             ⚠ 如果是**改了文档措辞**：本条判据跟着改（它钉的是两者一致，不是某个字面量）。"
+            !said.is_empty(),
+            fallback_alive,
+            "代码与耐久文档对不上了：\n\
+             · `kill_remote_tmux` 里还有一次性 SSH 的第二条路吗 = {fallback_alive}\n\
+             · `doc/` 里还写着那句话的（分母 = 遍历到的 {} 份 `.md`）= {said:?}\n\
+             ⚠ 如果是**删掉了那条路**：那句话要一起改，否则下一个读者会以为\n\
+             「没有后端的远端」还有一条路可走 —— 而那正是 C7 说的过渡期已经结束。\n\
+             ⚠ 如果是**改了措辞**：本条判据跟着改（它钉的是两者一致，不是某个字面量）。\n\
+             ⚠ 〔`K-R106` 09-13〕人群是**整棵 `doc/`**，不再只有 `IPC-PROTOCOL.md` ——\n\
+             在**任何一份**耐久文档里把那句话写回来，本条都会红。",
+            scanned.len()
         );
     }
 

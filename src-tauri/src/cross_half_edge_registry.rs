@@ -198,6 +198,18 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          `grep -c search` = **0** —— 两侧各写一份逐字相同的搜索口径，而**没有任何判据在对拍**。\
          「今天没漂」不是保障，本条治的就是「没人拦着它漂」。",
     ),
+    (
+        "monitor→daemon",
+        "src-tauri/src/history.rs",
+        "remote-daemon-proto/src/control/ccm/argv.rs",
+        "★★〔`K-R106` 09-13 新增〕**「本机后端产的那一句 attach，后端那份 `ccm` 真读得懂」** ——          `history::tests::the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created`          的第 ③ 段。monitor 这一侧产的是一串 argv（`ccm attach <名>`），         而「它是不是真的被读成 attach、那个位置参数是不是真的落进 `attach_name`」         只有 daemon 这一侧的解析器说得出 —— 那是一条**关于两侧同形**的性质，         只能同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**，不是真跑一次 `ccm`（真跑归 e2e `ccm-print-parity`）。",
+    ),
+    (
+        "monitor→daemon",
+        "src-tauri/src/history.rs",
+        "remote-daemon-proto/src/control/ccm/plan.rs",
+        "★★〔`K-R106` 09-13 新增〕上一条的**下半程**：读懂之后它接进**哪一个**会话。         钉的是 `Plan::Attach` 那一行的**整行渲染**，而承重的不只是 `tmux attach` 四个字，         还有 `=名:` 那个**精确匹配形** —— 裸 `-t <名>` 按「精确名 → 名字开头 → glob」解析，         会打到兄弟会话上（`src/session-backend.ts::exactTarget` 头注有 tmux 3.6 实测）。         ⇒ 「接进刚建的那个会话」这句话的后半截只有读 daemon 源码才验得了。",
+    ),
     // ── daemon → monitor（2 条）：daemon 的判据去读 monitor ────────────────────
     (
         "daemon→monitor",
