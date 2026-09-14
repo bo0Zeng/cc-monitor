@@ -25,6 +25,32 @@
  */
 export type Counted<T> = T | null | undefined;
 
+/**
+ * `Counted<T>` 的**产出侧**形状：「不知道」一律规范成 `null`，`undefined` **产不出来**。
+ *
+ * # 🔴 为什么入口与出口不是同一个类型
+ *
+ * 这条不对称就是 `K-R118` 那 6 条 `TS2322` 的病灶（缺陷引入于 `K-R92` `e707acd`，
+ * 09-12 进来、09-14 才被「真去编一次发版产物」逮到）。**两侧各有各的现打理由**：
+ *
+ * - **入口宽是对的**：`Counted<T>` 连 `undefined` 一起收，理由逐字写在它自己头上
+ *   （旧后端 / 旧缓存的行可能整个缺这一格）；而且这件事**有判据在守** ——
+ *   `counted.vitest.ts` 里 `liveRank(undefined)` / `starRank(undefined)` /
+ *   `bumpCounted(undefined, +1)` 三处逐字喂的就是 `undefined`。
+ *   ⇒ 把 `undefined` 从 `Counted<T>` 里删掉是最省事的一刀，而它删的是那条被守着的入口语义。
+ * - **出口必须窄**：线上那几格（`HistoryProject.starredCount` / `hiddenCount`，
+ *   由 `ts-rs` 从 Rust `Option<u32>` 生成）逐字是 `T | null` —— **一个 `undefined` 都装不下**，
+ *   而那份 `.ts` 是生成物（门禁 `generated` 那一格盯着它，改不得也不该改）。
+ *   而 {@link bumpCounted} 的函数体本来就只走 `null` 与 `number` 两条返回路径 ——
+ *   它承诺过一个自己**从来产不出、也没人接得住**的 `undefined`。
+ *
+ * ⇒ 该改的既不是入口那个类型、也不是线上那个字段，是**返回位**。
+ *
+ * ⚠ 它由 `Counted<T>` **派生**，不另写一份 `T | null` 的字面量：`Counted<T>` 哪天改了，
+ * 本别名自动跟着改，不会长成第二份要人去同步的定义。
+ */
+export type CountedOut<T> = Exclude<Counted<T>, undefined>;
+
 /** 算过了没有。`true` ⇒ 后面那个值可以拿去算。 */
 export function isKnown<T>(c: Counted<T>): c is T {
   return c !== null && c !== undefined;
@@ -59,12 +85,16 @@ export function starRank(c: Counted<number>): number {
  * 而且从此再也回不去 —— 那正是本件在治的那一形，只是发生在前端。
  *
  * `floor` 对齐原来的 `Math.max(0, n - 1)`：计数不会是负的。
+ *
+ * ⚠ **入参 `Counted`、返回 `CountedOut`，这条不对称是刻意的**（`K-R118`）：
+ * 收得宽（旧行可能整个缺这一格），产得窄（线上那几格是 `T | null`，装不下 `undefined`），
+ * 而本函数的两条返回路径本来就只产 `null` 与 `number`。理由全文住 {@link CountedOut}。
  */
 export function bumpCounted(
   c: Counted<number>,
   delta: number,
   floor = 0,
-): Counted<number> {
+): CountedOut<number> {
   if (!isKnown(c)) return null;
   return Math.max(floor, c + delta);
 }

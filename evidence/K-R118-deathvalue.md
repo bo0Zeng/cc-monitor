@@ -1,0 +1,348 @@
+# `K-R118` 死值验与读数 —— 发版三条硬阻塞的第一条（`tsc`）
+
+> 量于 **2026-09-14**，工作树 `.claude/worktrees/k-r118`（分支 `track/k-r118`，基点主干 `98a8d51`）。
+> 门禁一律走**唯一许可命令**（从项目根起跑）：
+> `PB_WS=backend-consolidation .claude/devbox/gate /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r118 k-r118`
+> 沙箱 `ccmon-devbox:latest`，现打 `sha256:85f5e313d4e6`，建于 09-13T22:23。
+> ⚠ 每一个数**量于哪一刻 · 用什么量的**都写在它旁边；带轮次 / 分支尖的句子下一轮自动变成假话。
+> 🔴 **宿主上一条 `cargo` / `npm` / `tsc` / `vitest` 都没跑过**。宿主上跑过的只有**纯静态 python**
+> （`evidence/K-R118-ruler.py` · `evidence/K-R118-cut.py` · `evidence/K-R80-gate-cell-coverage.py`），
+> 不编译、不起进程 —— 与 `K-R115` `§C3` 同一条先例，如实登记，不自批。
+
+## §A 门禁逐格读数（`M0` 基线 → `M1` 立格 → `M2` 终态）
+
+| 格 | `M0` 基线（动手之前） | `M1`（加了格、还没修） | `M2` 终态 | 分母怎么数的 |
+|---|---|---|---|---|
+| `hooks` | 11 passed | 11 | 11 passed | 每个被跟踪的 hook 文件 3 条 ＋ 8 条阳性对照；现打 `hooks/` 下 1 份 ⇒ 11 |
+| `copy2` | 11 passed | 11 | 11 passed | `evidence/*.py` 里 `shutil` 保元数据复制族的**调用点** 11 处 |
+| `fmt` | 1 passed | 1 | 1 passed | 绿/红两态，分母 = `src-tauri` 那个 workspace 全体成员 |
+| `fmt-daemon` | 1 passed | 1 | 1 passed | 绿/红两态，分母 = `remote-daemon-proto` 唯一成员 |
+| `winchk` | 1 passed | 1 | 1 passed | 绿/红两态，`-p monitor` 一个包 |
+| `cargo` | 1611 passed（9 个包合计） | 1611 | 1611 passed | ±0 —— 本件一行 Rust 都没改 |
+| `deadcode` | 41 passed（本格墙钟 **62 秒**，冷 target） | 41（2 秒） | 41 passed（2 秒） | `cargo check -p monitor` 非 test 里 `never used` 的条数，恒等钉 41 |
+| `generated` | ok | ok | ok | `git diff --quiet -- src/generated/` |
+| `daemon` | 762 passed | 762 | 762 passed | ±0 |
+| **`tsc`** | **不存在这一格** | 🔴 **FAIL（退出码 2）· 6 条 `TS2322`** | **366 passed** | **这一趟真读进 tsc 程序的仓内 `.ts`/`.tsx`/`.mts` 份数**，与盘上现打的份数**恒等对账**（两个数同一趟算） |
+| `npm` | 1726 passed | **1726 passed（绿）** | 1726 passed | 取最大值 ⇒ 恒是 `test:dom` 那个数 |
+| `ccm e2e/ccm-print-parity` | PASS=12（地板 12，恒等） | 同 | 同 | — |
+| `ccm e2e/ccm-rbind-title` | PASS=8 | 同 | 同 | — |
+| `ccm e2e/ccm-cli` | PASS=46 | 同 | 同 | — |
+| `ccm e2e/ccm-contract-parity` | PASS=45 | 同 | 同 | — |
+| `pb check` | `FAIL=0 BROKEN=0` | 同 | 同 | 共享计划仓 `backend-consolidation` |
+| **裁决** | `GATE: OK —— **15 格全绿**` | `GATE: FAIL —— tsc（退出码 2）` | `GATE: OK —— **16 格全绿**` | 15 → 16 |
+
+**终局两趟 `M3` / `M4`（两个提交都在盘上、工作树干净、无刀；墙钟 83 / 81 秒，两趟同值）**：
+**十五格代码面逐格全绿**（读数与 `M2` 那一列逐格相同），**第 16 格 `pb check` 红一条**，
+逐字 `FAIL=1 BROKEN=0` · `[J3 陈账] INDEX.md 比源文件旧 —— 重跑 `pb index` 落盘`。
+🔴 **它点的是共享计划仓，不是本件的代码**（`M2` 那趟是 `FAIL=0`，此后我只写过一份计划仓文件，
+现打 `find . -name '*.md' -newer INDEX.md` 排掉 `.briefs/` **恰好回它一份**）。
+`pb index` 属「窗口开着期间一概不跑」那一族，`INDEX.md` 又在「一个字节都不许碰」里 ⇒ **交 PM**。
+
+🔴 **`M0` 那一行就是本件的题面本身**：**这棵树在 `M0` 那一刻发不出产物，而门禁 15 格全绿。**
+🔴 **`M1` 那一列的 `npm` 是这件事最贵的一格读数**：同一棵树、同一趟，
+`tsc` 红着 6 条 `TS2322`，而 `npm` **1726 passed 全绿** ——
+`tsx` 与 `vitest` 都是**转译**执行（`esbuild` 只剥类型不做类型检查），
+一条纯类型错误在那一格下**一条都不会红**。这不是推理，是同一份日志里并排的两行。
+
+⚠ **墙钟不可比**：`M0` 跑在**冷** `k-r118` target 上，`M1`/`M2` 跑在同一个已经热了的 target 上
+（`deadcode` 自印的 62 秒 vs 2 秒就是这件事的旁证）。
+⚠ **`tsc` 那一格的墙钟本轮没单独量** —— 本格**刻意没有**像 `deadcode` 那样的自印墙钟行：
+`deadcode` 有那一行是因为「代价」是它 DoD 的裁决点（甲/乙二选一），本件不是（DoD 逐字是「收进门禁」，
+没有第二个选项）。⇒ **这是一处「我没量」，不是「代价很小」。**
+
+## §B 🔴 `KR118D1` ① —— 「该改哪一侧」：**两侧都不该改，病灶在第三处**
+
+### B1 派工单给的 6 个行号与现打的 6 个行号**不是同一组**
+
+派工单（PM 现打）点的是 `:1082 :1335 :1336 :1601 :1603 :1838`。
+**沙箱里现打的 6 条 `TS2322` 是**（`M1` 那一趟，逐字）：
+
+```
+src/views/history.ts(1601,9):  error TS2322: Type 'Counted<number>' is not assignable to type 'number | null'.
+src/views/history.ts(1603,9):  error TS2322: Type 'Counted<number>' is not assignable to type 'number | null'.
+src/views/history.ts(1640,9):  error TS2322: Type 'Counted<number>' is not assignable to type 'number | null'.
+src/views/history.ts(1642,9):  error TS2322: Type 'Counted<number>' is not assignable to type 'number | null'.
+src/views/history.ts(1838,20): error TS2322: Type 'Counted<number>' is not assignable to type 'number | null'.
+src/views/history.ts(1839,19): error TS2322: Type 'Counted<number>' is not assignable to type 'number | null'.
+```
+
+**两组的交集只有 3 个**（1601 · 1603 · 1838）。差在哪，可证：
+派工单那一组是 `grep -n starredCount src/views/history.ts` 的**全部 6 个命中**
+（现打复算：`1082 · 1335 · 1336 · 1601 · 1603 · 1838` —— 逐字相同）。
+而真正报错的那一族是 `X = bumpCounted(...)` 这个**赋值形**，现打也恰好 6 处：
+`1601 · 1603`（`starredCount`）· `1640 · 1642`（**`hiddenCount`**）· `1838 · 1839`（各一）。
+⇒ **`:1082` / `:1335` / `:1336` 是三处「读」，它们一条都没错**（`number | null` 喂给
+`Counted<number>` 是**变宽**，合法）；而 `hiddenCount` 那 **3 处**派工单里一个都没有。
+**两组都是 6，数目相同纯属巧合。**
+
+### B2 三条候选侧，逐条给现打的理由
+
+| 侧 | 改法 | 判 | 现打的理由 |
+|---|---|---|---|
+| **① `Counted<T>` 太宽** | 删掉 `\| undefined` | ❌ **不该** | 它是**入参**类型，宽是它的岗位（头注逐字：「旧后端 / 旧缓存的行可能整个缺这一格」）。**而且这件事有判据在守**：`src/views/counted.vitest.ts` 现打 3 处逐字喂 `undefined`（`:34` `liveRank(undefined)` · `:35` `starRank(undefined)` · `:59` `bumpCounted(undefined, +1)`）⇒ 删它 = 把 `tsc` 的红从 `history.ts` 搬到 `counted.vitest.ts`，**顺带删掉一条被守着的语义**。这是**最省事的一刀**，正是派工单叫我别挑的那一刀 |
+| **② `starredCount` 太窄** | 改成 `number \| null \| undefined` | ❌ **改不了，也不该** | 它住 `src/generated/HistoryProject.ts`，**是 `ts-rs` 从 Rust `Option<u32>` 生成的**，文件头逐字「Do not edit this file manually」；门禁 `generated` 那一格（`git diff --quiet -- src/generated/`）当场红。语义上也错：`Option<u32>` 过线只可能是 `number` 或 `null`，Rust 那侧**产不出** `undefined` |
+| **③ `bumpCounted` 的返回位** | `Counted<number>` → `CountedOut<number>` | ✅ **就是它** | ⓐ **报错全在赋值位**（6/6 都是 `X = bumpCounted(...)`），一处都不在入参位 ⇒ 病灶在**返回**这一端。ⓑ **函数体自己作证**：`if (!isKnown(c)) return null;` ＋ `return Math.max(floor, c + delta);` —— **两条返回路径，一条产 `null`、一条产 `number`，`undefined` 产不出来**。那个 `Counted<number>` 是一句**它自己做不到、也没人接得住**的承诺 |
+
+**落地**：`CountedOut<T> = Exclude<Counted<T>, undefined>` —— 🔴 **由 `Counted<T>` 派生，
+不另写一份 `T | null` 的字面量**（`Counted<T>` 哪天改了它自动跟；写死就是第二个要人同步的住址）。
+`bumpCounted` 的返回位改成 `CountedOut<number>`，**入参位、`isKnown` / `liveRank` / `starRank`
+一个字节没动**。
+
+⚠ **`src/views/history.ts` 本件一个字节都没改** —— 它在写区里，而正确的修法用不着它。
+「6 处报错就改 6 处」那一刀会把同一句话抄 6 遍（`as number | null` 或 `?? null`），
+且下一个调用点还会再犯。
+
+## §C `KR118D1` ② —— `tsc` 收进门禁（第 16 格）
+
+### C1 为什么它此前不存在（两条路同时断，逐条现打）
+
+- **门禁那条**：`npm` 那一格跑 `npm run test` ＝ 16 个 `tsx` 套件 ＋ `vitest run`，**不含 `tsc`**。
+  实证见 `§A` 的 `M1` 列：`tsc` 红 6 条而 `npm` 1726 全绿。
+- **云端那条**：`.github/workflows/ci.yml` 的 `frontend` job 有 `npx tsc --noEmit`（`:150`），
+  而本文件 `on:` 现打逐字是 `push: branches: [main] / tags: ['v*']` ＋ `pull_request: branches: [main]`
+  ⇒ **只在 `main` / tag / PR 上跑**。而现打 `git rev-list --count origin/main..HEAD` = **221**
+  （量于 `98a8d51`；`origin/main` 现打指着 `14e0f05`，09-10）——
+  **这 221 个提交一次都没进过 `origin/main`。**
+  ⚠ 派工单写的是 210，那是量于更早一个尖的数；**两个数分母不同，别当成漂移**。
+
+### C2 判定有两条，第二条是承重的
+
+1. **`tsc --noEmit` 的退出码**（`npm run build` 的前一半）。
+2. 🔴 **程序面没被掏空**：`tsc --noEmit` 在**空程序**上退出码是 **0** ——
+   把 `tsconfig.json` 的 `include` 改小 / 改错，「一个文件都没检」与「全检过了」在退出码上一模一样。
+   ⇒ 本格用 `--listFiles` 数出**这一趟真读进程序**的仓内 `.ts`/`.tsx`/`.mts` 份数，
+   与 `find src e2e` **同一趟现打**的份数**恒等对账**。
+   **两个数都不写死**（写死一个数，加一份文件就红，那种格三天就会被人调宽）。
+
+**同拍改三处**（`K-R115` 立的那条纪律，照做没自己发明）：
+`scripts/gate.sh` 的**自述节**（`〔自述·格数〕16 格` ＋ `〔自述·点名〕` 加 `tsc` ＋ 一行 `〔自述·现物〕`）·
+**裁决行**（`GATE: OK —— 16 格全绿（… daemon · tsc · npm …）`）· **现打判定**（`run_gate tsc …`）。
+第四处是**写区外**的 `evidence/K-R80-gate-cell-coverage.py`（`cell("tsc", …)` ＋ `order` 加一格），
+逐处见 `§F`。
+
+### C3 顺带一条读数：`npm run check:types` 那三步，今天门禁**三格分别盖住了**
+
+`package.json` 里 `check:types` 逐字 = `npm run gen:types && tsc --noEmit && git diff --exit-code -- src/generated/`。
+现打对照：`gen:types`（＝ `cargo test --lib export_bindings`）落在 `cargo` 那一格的
+`--workspace --lib` 里 · `tsc --noEmit` 就是本件这一格 · `git diff` 是 `generated` 那一格。
+⇒ **本件补上之前，那条 `&&` 链缺的正是中间那一步。**
+
+## §D 死值验 —— 七刀（刀具 `evidence/K-R118-cut.py`，一趟一刀，fail-closed）
+
+每一刀落刀前断言锚点命中数，对不上**一个字节都不改**；`--revert` **重写原文**
+（`write_text` ＋ `os.utime`，mtime 必变），不用 `copy2`/`cp -a`（门禁 `copy2` 那一格在数这件事）。
+
+| 刀 | 切在哪 · 锚点命中几次 | 门禁 / 尺子读数 | 是不是那一格 | 最小面？ |
+|---|---|---|---|---|
+| **`d1`** `KR118D1` ① 把 `bumpCounted` 的**返回位**改回 `Counted<number>`（那 6 条原样回来） | `src/views/counted.ts` 的 `): CountedOut<number> {`，**命中 1 次** | `GATE: FAIL —— tsc（退出码 2）`；**其余 15 格全绿**（`cargo 1611` · `daemon 762` · `npm 1726` · `deadcode 41` 逐格照旧） | ✅ **必须红，实测红** | ✅ 只红一格 |
+| **`d2`** `KR118D1` ② 自述格数不跟（`16 格` → `15 格`） | `scripts/gate.sh` 的 `# │ 〔自述·格数〕16 格`，**命中 1 次** | `evidence/K-R80-gate-cell-coverage.py` **rc=1 · FAIL=2**，两条都是 `C5b`：「自述节自称 **15 格**，现打 **16 格**」＋「自述节 15 vs 裁决行 16」 | ✅ 「同拍改三处，少一处必红」实测成立 | ✅ 只红这两条 |
+| **`d3`** `KR118D1` ③ **阴性对照**：`d1` ＋ 把 `tsc` 那一格整格拿掉（`run_gate tsc` → `: skip-cell`） | 同上 ＋ `run_gate tsc '不是「几条断言过了」`，**命中 1 次** | `GATE: OK`，**15 格 ok / 0 红** | ✅ **一条都不红** | — |
+| **`d4`** `KR118D1` ④ 第二条判定第一刀：`include` 收窄到 `["src/views"]` | `tsconfig.json` 的 `"include": ["src", "e2e"]`，**命中 1 次** | `GATE: FAIL —— tsc（退出码 2）；npm（退出码 1）` | ⚠ **红了，但没打中它想打的那一支** | ❌ **射程过粗，如实登记** |
+| **`d4b`** `KR118D1` ④b 换最小面：`exclude` 掉 `src/**/*.vitest.ts` | 同一处锚点，**命中 1 次** | `GATE: FAIL —— tsc（**退出码 1**）`，诊断全 2 行逐字：「真读进程序的 **239** 份 != 盘上现打的 **366** 份」；其余 15 格全绿 | ✅ **正是「份数对账」那一支** | ✅ 只红一格 |
+| **`d6`** `KR118D1` ⑤ **假红方向**：往 `src/views/` 加一份**类型完全正确**的新 `.ts`（225 B，中性名） | 新建 `src/views/kr118-probe-neutral.ts` | `GATE: OK —— 16 格全绿`，`tsc` 那一格读数 **366 → 367** | ✅ **必须不红，实测不红**，且读数跟着真程序面走 | — |
+| **`d5`** `KR118D2` ① 六处**只改五处**（只把权威源 `package.json` bump） | `package.json` 的 `\n  "version": "`，**命中 1 次** | `GATE: FAIL —— cargo（退出码 101）`，唯一那条逐字 `doc_claim_registry::tests::the_release_version_is_the_same_in_all_six_places`（`1474 passed; 1 failed`），失败原文逐处点名落后的五处 | ✅ **已知答案回测通过** | ✅ 只红一条测试 |
+| **`d7`** `KR118D2` ② 六处 ＋ `Cargo.lock` **一起** bump，而 `CHANGELOG.md` 最上一节**不动** | 七处锚点各**命中 1 次**（`CHANGELOG.md` 一个字节没动） | 🔴 **`GATE: OK —— 16 格全绿`** | 🔴 **一条都没红 ⇒ 这一形今天没人守**，见 `§E3` | — |
+
+### D1 🔴 `d4` 为什么不算数（诚实边界，别把它读成一次成功的死值验）
+
+`d4` 把 `include` 收窄到 `["src/views"]`，读数是 `GATE: FAIL —— tsc（退出码 2）；npm（退出码 1）`。
+**它红了，但红的是别的东西**，两条都可证：
+
+- **`tsc` 那一支红在退出码上，不在份数上** —— 收窄同时把 `src/vite-env.d.ts`
+  那份**环境声明**挡在了程序外，于是冒出 10 条 `TS2339`
+  （`Property '__ccmPerf' does not exist on type 'Window'` · `Property 'env' does not exist on type 'ImportMeta'`）。
+  ⇒ 走的是第 ① 条判定，**第 ② 条那一支一个字都没验到**。
+- **`npm` 那一支是撞上了别人早就立好的一条判据** ——
+  `src/node-suite-registry-guard.vitest.ts:435` 逐字断「`tsconfig` 仍然把 `e2e` 收进 `include`」
+  （`.mts` 那三份靠它进类型检查）。⇒ **那条红不归本件**。
+
+⇒ 换 `d4b`：`exclude` 掉那 127 份 `.vitest.ts`（**没有任何生产代码 import 它们**，
+`src/vite-env.d.ts` 也还在）⇒ 程序面 366 → **239** 而**一条类型错都没有**、
+`tsc` 自己**退出码 0** ⇒ **只有「份数对账」那一支拦得住它**，实测正是它红（我们自己 `exit 1`，
+所以门禁上印的是「退出码 **1**」，与 `tsc` 自己的 2 分得开）。
+
+### D2 `d3` 的一处诚实边界
+
+`d3` 那一趟门禁末尾照旧印 `GATE: OK —— **16** 格全绿`，而实际只跑了 **15** 格 ——
+**裁决行是一句 `echo` 的字面量，它不现算**。逮这一形的是 `K-R80` 那把尺子的 `C5`
+（**不在门禁里跑**）。这与 `K-R115` `d1-2` 是同一处已知形状，不是本件新引入的。
+
+## §E `KR118D2` —— 交给 PM 的两样读数（🔴 **本件不改一个字节**）
+
+🔴 **`§E` 全部是读数。版本号定几由用户裁，PM 转达之前本件对
+`package.json` / `tauri.conf.json` / `Cargo.toml` / `CHANGELOG.md` / 两份 `README`
+一个字节都没动**（现打 `git status` 见 `§G`）。
+
+### E1 六处到底是哪六处 —— **从判据里读出来的**，不是我数的
+
+量具 `evidence/K-R118-ruler.py --places`：解析
+`src-tauri/src/doc_claim_registry.rs::the_release_version_is_the_same_in_all_six_places`
+的**函数体**，把每一处 `pick(who, &文件, 锚点)` 抠出来再照它自己的锚点去盘上取值。
+**「六」这个数就是那条判据里 `pick()` 的调用点数**，本文件不写死它。
+
+| # | 判据里的名字 | 文件 | 逐字锚点 | 行 | 现值 | 锚点命中 |
+|---|---|---|---|---|---|---|
+| 1 | `package.json` 🔴**权威源** | `package.json` | `\n  "version": "` | 3 | 3.7.0 | 1 |
+| 2 | `src-tauri/Cargo.toml` | `src-tauri/Cargo.toml` | `\nversion = "` | 26 | 3.7.0 | 1 |
+| 3 | `src-tauri/tauri.conf.json` | `src-tauri/tauri.conf.json` | `\n  "version": "` | 3 | 3.7.0 | 1 |
+| 4 | `README.md` 抬头那行 | `README.md` | `当前版本: v` | 11 | 3.7.0 | 1 |
+| 5 | `README.md`「项目当前状态」块 | `README.md` | `- **版本**：v` | 328 | 3.7.0 | 1 |
+| 6 | `README.en.md` 抬头那行 | `README.en.md` | `\| Current: v` | 5 | 3.7.0 | 1 |
+
+现打：**6 处出现 1 个不同的值 ⇒ `3.7.0`（一致）**。
+
+🔴 **要 bump 的其实是七处，第七处那条判据够不着**（本件顺手量到的，PM 请裁）：
+
+- **`src-tauri/Cargo.lock` 里 `name = "monitor"` 紧跟的 `version`** ——
+  现打 `3.7.0`（`:2828`）。守它的**不是**上面那条 `#[test]`，是
+  `.github/workflows/release.yml` 的 `Verify version consistency with tag` 那一步
+  （它比的是**四处**：`package.json` · `tauri.conf.json` · `Cargo.toml` · **`Cargo.lock`**）。
+  ⚠ 门禁 `winchk` 那一格跑的是 `cargo check --locked` ⇒ **只改 `Cargo.toml` 不改 `Cargo.lock`，
+  本地门禁当场红**（`d7` 那一刀是七处一起改的，所以它全绿）。
+- **`remote-daemon-proto/Cargo.toml` 的 `version` 现打 `0.0.0`，刻意的，`不`参加这次 bump** ——
+  同一步 guard 盯着它别被人顺手改成一个假数字（理由：后端的真身份是 `BUILD_ID`，
+  `K-R70` 09-12 立的，`build_id_guard::the_crate_version_is_deliberately_zero_and_the_real_identity_has_a_home`）。
+
+🔴 **写区口径要 PM 裁**：六处里 **`README.md`（两处）· `README.en.md`** 与第七处 **`Cargo.lock`**
+**都不在 `K-R118` 的写区**（`§2` 只列了 `package.json` · `tauri.conf.json` · `Cargo.toml` · `CHANGELOG.md`）。
+⇒ **照写区的字面做，那条判据必红**（`d5` 就是这个形状）。请 PM 在给版本号的同一拍把写区补齐。
+
+### E2 `v3.7.0..HEAD` 怎么分档
+
+量具 `evidence/K-R118-ruler.py --commits`（判别式就是它 `classify()` 的字面，可复算）。
+
+**分母现打**（量于 **`98a8d51`**）：`git rev-list v3.7.0..HEAD` = **242** 条；
+去掉合并提交剩 **160** 条；`v3.7.0` 那个 tag 指着 `bae4125d`（2026-09-10）。
+⚠ 派工单写的 230 量于更早一个尖 —— **两个数分母不同，不是漂移。**
+
+| 档 | 条数 | 判别式（机械，只看路径） |
+|---|---|---|
+| **产品面** | **109** | 其余（动到了会进构建的代码） |
+| **内部判据与量具** | **27** | 每一份都落在 `evidence/` `scripts/` `e2e/` `.github/` `hooks/` `doc/` 或 `*.test.*` / `*.vitest.*` |
+| **纯文档** | **24** | 动到的每一份都是 `*.md` / `doc/` / `LICENSE` |
+
+⚠ **「产品面」≠「用户可见」** —— 这一档里混着大量内部重构（判据头注订正、量法收窄、
+层间方向判据……）。⇒ **下面这一层是人裁的，给不出判别式**，分母就是上面那 109 条。
+按**件号**再滚一次（现打 **66 组**），下面每一条都带住址：
+
+**① 会改变已有行为的（CHANGELOG 该单起一节）**
+- `K-R59`（`8f2f8988`，41 份文件）**删掉 `daemonless`** —— 「没有『没有后端』这回事」，
+  前端不再有「不用后端」那条路。
+- `K-R58`（`cdce27fa`）**删掉 `cch` 这个别名 ＋ 默认不再替用户猜目录**。
+- `K-R48` 一族 **13 条**（`3e798cb9` 起）**`ccm` 变成后端的原生命令**，
+  `shared/ccm` 那份 bash 实现连同两套只测它的 e2e 一起删（`e8f9e08e`）。
+- `K-R96`（`fe6113f8`）**tmux 会话名 `<sid8>-cc` → `<项目名>-cc`**。
+- `K-R70` 一族 5 条（`b6850c3f` / `c513e539` / `f62f003f`）**后端二进制自己带身份**
+  （`static` 戳 ＋ `--ccm-probe` 的 `build=` 行），monitor 改问字节、不再读旁边那份 `.build_id`
+  ⇒ **每台已装 daemon 的远端会被判旧并重装一次**。
+- `K-R72`（`e206e5b8`）**送键与杀会话那两条桌面侧 SSH 回落删净**。
+
+**② 新增 / 修好的，用户看得见**
+- `K-R45` 一族 7 条（`c8abece1` `ebd88dcd` `38eea392` …）**历史查看器：列出你说过的每一句，
+  点一下跳过去**；实时窗口那一半也有（`KR45D2`）。
+- `K-R92`（`e707acd1`）**「不知道」不再被显示成 0** —— 星标 / 隐藏 / live 三格转三态。
+  🔴 **它同时就是本件那 6 条 `TS2322` 的来源。**
+- `K-R83`（`04e50aec`）`--list-projects` 带上会话 sid 清单，那三个数不再把「不知道」说成 0。
+- `K-R101`（`353b69a4`）**用量解析层退役，抓到的那一屏原文直给界面**。
+- `K-R100`（`874f80b5`）搜索口径收进 `search-core`，修「预算顺序」与「远端截断不说话」。
+- `K-R46`（`1a7ff668`）历史页与分叉起的会话**也进具名 tmux 容器**（两条路各漏传一个参数）。
+- `K-R53`（`348fd9ea`）本机具名账号进得了后端那条路；**「探测出错」不再被写成「没装」**。
+- `K-R62`（`595e7470` ＋ `61ad05b0`）**本机 POSIX 用户第一次摸得到那个装口**。
+- `K-R49`（`d94b31ba`）加了账号，那条命令跟着有 —— 不用自己去改 `.bashrc`。
+- `K-R69`（`bf3cd42d`）本机的 `ccm` 入口建得出来、说得出旧的、别名指得到它。
+- `K-R89`（`65c8fbd3`）本机「账号未表态（继承）」那一格关掉。
+- `K-R79`（`00a1e1c2`）**只读守卫此前认不出 SFTP 写** ⇒ 立远端写那一层（安全面）。
+- `K-R42`（`fca80e40`）裸 `exe` 自己带上本机后端。
+
+**③ 「本机 = 远端」那条主线（用户感知是「本机也有了」，但多数是搬家）**
+`K-R97` 本机读历史走 `--list-projects`（`e9577f46`）· `K-R98` cc-bus 远端那半走 `bus-send`（`2d87178e`）·
+`K-R93` agent 画像从后端取 ＋ codex 那一格（`6ea197e2`）· `K-R94` 读 subagent 交给后端（`94eb8218`）·
+`K-R95` 前端那几格改从后端取（`162848cd`）· `K-R88` 按 sid 找会话文件收成一份（`3501144b`）·
+`K-R86` `capture-pane` 只读原语（`a82878af`）· `K-R87` 带看门狗的一次性会话（`384a5614`）·
+`K-R104` 用量探针走帧面（`cbcbcfc9`）· `K-R112` cc-bus 三条走 daemon 原语（`0765e709`）·
+`K-R113` `bus-state`（`77631a52`）· `K-R106`/`K-R109` 本机后端产 attach 那一句（`ff791eb6` `d9ce9756`）·
+`K-R71` `observe/` 归位（`a6ab3b7d`）。
+
+**④ 不入 CHANGELOG**（`CHANGELOG.md` 头注逐字：「内部重构与文档调整通常不入」）
+上面那 27 条「内部判据与量具」＋ 24 条「纯文档」，
+以及 109 条产品面里那一大批只动判据 / 头注 / 量法的（`K-R73`–`K-R78` · `K-R80`–`K-R82` ·
+`K-R91` · `K-R102`–`K-R103` · `K-R105` · `K-R110`–`K-R111` · `K-R115` 等）。
+`K-R114`（7 条）是**发版基建**（`workflow_dispatch` · aarch64 · 真机清单），也不入。
+
+### E3 🔴 `KR118D2` 死值验第 ② 刀的答案：**这一形今天没人守**
+
+题面逐字：「CHANGELOG 最上一节仍是旧版本号而版本已 bump ⇒ **必须有东西红**；
+今天没有的话，**如实登记『这一形没人守』**。」
+
+**实测（`d7`）**：把判据点名的六处 ＋ `Cargo.lock` **一起** bump（`3.7.0 → 3.7.1`），
+`CHANGELOG.md` 一个字节不动 ⇒ **`GATE: OK —— 16 格全绿`，一条都没红。**
+
+⇒ **如实登记：「版本号 bump 了而 `CHANGELOG.md` 最上一节没跟」这一形，今天盘上没有任何判据在守。**
+我查过的路（说得出，不是一条 `grep`）：
+- `grep -rn CHANGELOG src-tauri/src remote-daemon-proto/src scripts .github e2e src` ⇒
+  **只有 2 处命中**，都不是这件事：`doc_claim_registry.rs:366` 是把 `CHANGELOG.md` 登记成
+  一句**环境变量声称**的出处（`EnvKeyClaim::Asserts`），`daemon_kill.rs:516` 是一句
+  「仓根那几份 `.md` 不在人群里」的注释。
+- `release.yml` 的 `Verify version consistency with tag`：比的是四处**版本号**，
+  **一个字都没提 `CHANGELOG`**。
+- `d7` 那一趟 16 格全绿，是这条结论的**行为面**证据（不是只看源码）。
+
+⚠ **我没查的**：`~/.claude/skills/**` 与本仓之外的任何钩子；
+以及「人肉 checklist」那一档（`doc/RELEASING.md` 里可能写着一行散文 ——
+而那正是 `the_release_version_is_the_same_in_all_six_places` 的头注逐字说过
+「当时的修法是往 checklist 里加一行散文，而第四次复发时那行散文已经在了」的那一族）。
+
+## §F 🔴 写区外 —— 一份文件、两处改动
+
+**住址：代码仓 `evidence/K-R80-gate-cell-coverage.py`**（门禁分格覆盖登记 ＋ 它的机检）。
+**单独放在一个可整块 `git revert` 的提交上**，提交信息第一行逐字带「写区外」。
+
+- **(a) 加一条 `cell("tsc", …)` 登记（12 棵树逐棵表态）** ——
+  **结构性随动**：不加，那把尺子的 `C1` 当场红「`gate.sh` 里有格没登记」。
+- **(b) `main()` 里 `order` 加一格**（`… "daemon", "tsc", "npm"`）—— 同上，纯随动。
+
+裁词三条（**它们是我写的判断，不是机器算的**，`C1..C6c` 只判「登记完整、锚点指得到真东西」）：
+`src/` = **全**（`include` 第一项，且本格自己现打对账）· `e2e/` = **部**（这棵树绝大多数是 `.sh`）·
+`<仓根文件>` = **无**（`tsconfig.json` 是本格的**配置**不是被检对象；`vite.config.ts` /
+`vitest.config.ts` 不在 `include` 里 ⇒ 一行都没进程序）。其余九棵沿用默认「无」。
+
+**退掉这个提交会怎样**：那把尺子回到 `C1` 红一条（「`tsc` 这一格没登记」），门禁本身照旧全绿
+（那把尺子**不在 `gate.sh` 里跑**）。**这是它的岗位。**
+
+现打（本件动它之前、动它之后各一趟，宿主纯静态 python）：
+动之前 `rc=1`（`C1` 红）· 动之后 `rc=0`（`KR80D3: OK —— C1..C6 全过；C5b 全过；C6b 全过；C6c 全过`）。
+
+## §G 三处 `git status` 与改动面
+
+见 `features/K-R118-发版三条硬阻塞.md#§8`（那里是交回时的现打；本文件不抄第二份，抄来的量下一轮变假话）。
+
+**改动面（本件真正动到的）**：
+- `src/views/counted.ts` —— **加一个导出的类型别名 `CountedOut<T>` ＋ 改 1 处返回位注解**；
+  `isKnown` / `liveRank` / `starRank` / `bumpCounted` 的**函数体一个字节没动**
+  （`git diff` 里那个函数的 body 两行原样，可现打核）。
+- `scripts/gate.sh` —— 自述节 3 处 ＋ 裁决行 1 处 ＋ 新增判定块 1 段。
+- `evidence/K-R80-gate-cell-coverage.py` —— **写区外**，见 `§F`。
+- 🔴 **`src/views/history.ts`：0 字节**（它在写区里，而正确的修法用不着它 —— 见 `§B2`）。
+- 🔴 **`package.json` / `tauri.conf.json` / `Cargo.toml` / `CHANGELOG.md` / 两份 `README`：0 字节**
+  （`KR118D2` 等用户裁版本号）。
+
+## §H 诚实边界（逐条，别读宽）
+
+1. **`tsc` 那一格只买类型，只买 `npm run build` 的前一半。**
+   `vite build` 那一半（打包 · 产物体积 · 资源解析）、`cargo tauri build` 那一整段
+   （签名 · 打包 · installer）、以及 `.github/workflows/release.yml` 里发生的一切，
+   **本格一概盖不到**。⇒ **「这棵树发得出产物」这句话本件没有买到，买到的是「第一步过得去」。**
+2. **本格与 `npm` 那一格不互为子集**：`npm` 买行为，本格买类型。**两格都要。**
+3. **「份数对账」那一支买的是「程序面没被掏空」，不是「该检的都检了」** ——
+   仓根那几份不在 `include` 里的 `.ts`（`vite.config.ts` / `vitest.config.ts`）
+   **今天一行都没进类型检查，而本格不会因此红**（它对账的分母是 `src` ＋ `e2e`）。
+   这是**本格明写的盲区**，不是漏登。
+4. **`d4b` 的 239 这个数不许当常量**：它是「366 减去现打 127 份 `.vitest.ts`」，
+   两个数都随盘上文件数走。
+5. **`tsc` 那一格的墙钟本轮没量**（`§A` 末尾那一段），是「我没量」不是「代价小」。
+6. **`§E2` 的 ①②③ 分层是人裁的，给不出判别式** —— 能给判别式的只有 109/27/24 那三档。
+7. **`§E1` 的「七处」里，第七处（`Cargo.lock`）是我顺手量到的，不是判据算出来的**；
+   「本仓一共有几处版本号」这个全称我**没有**分母，只能写「判据点名 6 处 ＋ 我另外查到 1 处」。
+8. **本轮一条 `.github/**` 都没碰**（`K-R114` 刚落地，派工单红线）；`remote-daemon-proto/**` 同。
+9. **`d2` 那一刀的判官不是门禁**，是 `K-R80` 那把登记的机检（它不在 `gate.sh` 里跑）。
+   本刀在**宿主**上跑（纯静态 python，不编译、不起进程），与 `K-R115` `§C3` 同一条先例。
