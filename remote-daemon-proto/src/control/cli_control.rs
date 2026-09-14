@@ -369,7 +369,10 @@ mod tests {
     #[test]
     fn the_no_input_commands_are_registered_and_declared_consistently() {
         /// 不收入方向载荷的命令。**加一条就来这里写一行**。
-        const NO_INPUT_TODAY: &[&str] = &["bus-list", "ping"];
+        ///
+        /// 〔`K-R113` 09-13〕`bus-state` 是第三条：它与 `bus-list` 同族 —— **无输入、有输出字段**，
+        /// 正是当年那个 `!fields.is_empty()` 代用品会判错的形状。
+        const NO_INPUT_TODAY: &[&str] = &["bus-list", "bus-state", "ping"];
         let declared: Vec<&str> = REGISTRY
             .iter()
             .filter(|s| !s.takes_input)
