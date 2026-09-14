@@ -434,11 +434,22 @@ mod tests {
         let bus: Vec<&String> = names.iter().filter(|n| n.starts_with("bus-")).collect();
         assert_eq!(
             bus.len(),
-            3,
-            "daemon 转调 cc-bus 的命令从 3 条变成 {} 条：{bus:?}\n\
-             ⚠ 顺带纠一条读数：`C19` 的 ⚠ 里写的是「`bus-*` **四条**」，\
-             而 `inbound::REGISTRY` 今天实测是**三条**（`bus-list`/`bus-send`/`bus-kill`），\
-             刻意没有 `bus-recv`（`cc-recv` 有副作用，daemon 代读等于把消息从人那里偷走）。",
+            4,
+            "daemon 转调 cc-bus 的命令从 4 条变成 {} 条：{bus:?}\n\
+             今天这四条是 `bus-list` / `bus-send` / `bus-kill` / `bus-state`\
+             （`bus-state` 是 `K-R113` 09-13 补的**具名读命令**：总线名单 ＋ spawn 台账一次回全）。\n\
+             ⚠ **`C19` 的 ⚠ 与实测今天对上了**：那里写的是「`bus-*` 四条」，实测也是四条 ——\
+             ⚠⚠ 而这一句此前**反过来是过期的**（它逐字写着「`C19` 说四条、实测三条」，\
+             `K-R113` 之后实测就是四条了）⇒ 本行是那次订正的订正，别再照旧读。\n\
+             ★ **仍然刻意没有 `bus-recv`**：`cc-recv` 有副作用（推进已读位置），\
+             daemon 代读等于把消息从人那里偷走 —— 这句今天仍是真的，理由全文在\
+             `remote-daemon-proto/src/control/cc_bus.rs` 的模块头注 ①。\n\
+             🔴 **变了要去看什么：不是 `EU3`。** 本行原先写着「变了就该回去看那条待决\
+             （`EU3`：插件的粒度是命令还是包）」，而 `EU3` **今天已经作废** ——\
+             `backend-consolidation/OPEN-PREMISES.md` 逐字「`plugin-split` `EF04` 已撤件、\
+             `EU3` 同时作废」。⇒ 别去读一份不存在的待决。今天这条绊线买到的是\
+             「**daemon 的 cc-bus 命令面长了一条，而 monitor 这张登记表没人看见**」——\
+             改这个数之前，先回本表 `cc-bus` 那一行看它的「今天什么样 / 差在哪」还成不成立。",
             bus.len()
         );
 
