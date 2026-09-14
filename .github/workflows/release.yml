@@ -11,6 +11,35 @@ name: Release
 on:
   push:
     tags: ['v*']
+  # ── KR114D1（`K-R114`，2026-09-14）：**手工触发**。 ─────────────────────────
+  #
+  # 在这之前本文件**只认 tag push**（`KU27` 登记的那条）⇒「先手工跑一趟看看」
+  # **在构造上做不到**：想验一次本文件改得对不对，唯一的办法是真推一个 `v*` tag，
+  # 而推错了要撤 tag、撤 release，还可能已经发到用户手上。
+  #
+  # 🔴 **加触发器的同时必须加一个「不发布」的开关** —— 否则手工触发就等于**误发一个版**，
+  #    那比「触发不了」更贵：触发不了只是不方便，误发是发出去了收不回来。
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: '把产物挂上 GitHub Release（true = 真发一个版）。默认 false = 只构建、不发布。'
+        type: boolean
+        default: false
+
+# 🔴 **「这一趟发不发布」这个量只有这一个住址** ——
+#    本文件里任何一处要问「该不该往 Release 上写东西」，一律读 `env.PUBLISH`，
+#    不许各自再拼一遍 `github.event_name` / `inputs.publish`（同一个量两处各写一份，
+#    正是 `ci-gate` 那段头注在治的病）。
+#
+# 语义（**fail-closed**）：只有 `push`（= 本文件唯一的 push 触发器：`v*` tag）
+# 或者手工触发时**显式**把 `publish` 拨成 true，才算「要发布」。
+# 将来若再加别的触发器，默认落在「不发布」那一侧 —— 那是刻意的方向。
+#
+# ⚠ 它守的是**「往 GitHub Release 写」**这一件事，**不是** job 之间传的
+#   `actions/upload-artifact`（那份 `embedded-daemons` 是内部件，不发给任何人，
+#   而且 `build-windows` / `build-linux` 靠它才起得来）。
+env:
+  PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
 
 jobs:
   # ────────────────────────────────────────────────────────────────────────────
@@ -65,6 +94,12 @@ jobs:
       actions: read      # 读 workflow runs 要它；仓库默认 token 权限被收紧时这里显式要回来
     steps:
       - name: Require a green CI run on this exact commit
+        # 🔴 只在「要发布」时才拦。理由：本门问的是「**发出去的这棵树测过没有**」——
+        # 演练（`publish=false`）**什么都不发**，没有可发坏的东西；而演练又恰恰跑在
+        # 一个**没进过 main、因此没有 CI run** 的分支上（`ci.yml` 只在 main / PR / tag 上跑）
+        # ⇒ 不放它过，手工触发在构造上永远走不到第一个构建步骤，这个触发器就白加了。
+        # ⚠ 反过来说死：`publish=true` 的手工触发**照样要过这道门**，与推 tag 一模一样。
+        if: env.PUBLISH == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
@@ -256,11 +291,25 @@ jobs:
           # Cargo.lock 里 monitor 包：`name = "monitor"` 紧跟的 version 行
           $lockRaw = Get-Content src-tauri/Cargo.lock -Raw
           $lock = if ($lockRaw -match '(?m)^name = "monitor"\r?\nversion = "([^"]+)"') { $Matches[1] } else { '<missing>' }
-          if ($pkg -ne $tag -or $conf -ne $tag -or $cargo -ne $tag -or $lock -ne $tag) {
-            Write-Error "Version drift: tag=$tag package.json=$pkg tauri.conf=$conf Cargo.toml=$cargo Cargo.lock(monitor)=$lock"
+          # ── KR114D1：这一步拆成**两半**，因为手工触发时 `github.ref_name` 是**分支名**，
+          #    拿它当版本号比，演练必然红在这里，而红的原因与「版本漂了」毫无关系。
+          #    ① **四处互相对账** —— 与触发方式无关，永远做（演练也做，这正是它的价值）。
+          #    ② **与 tag 比** —— 只在真要发布时做（`env.PUBLISH`）。
+          #    ⚠ 推 tag 那条路上两半都做 ⇒ **与改之前逐字同效**，一格覆盖都没少。
+          if ($pkg -ne $conf -or $pkg -ne $cargo -or $pkg -ne $lock) {
+            Write-Error "Version drift (四处内部不一致): package.json=$pkg tauri.conf=$conf Cargo.toml=$cargo Cargo.lock(monitor)=$lock"
             exit 1
           }
-          Write-Host "Version OK: $tag (package.json / tauri.conf / Cargo.toml / Cargo.lock all agree)"
+          Write-Host "Version self-consistent: $pkg (package.json / tauri.conf / Cargo.toml / Cargo.lock all agree)"
+          if ($env:PUBLISH -eq 'true') {
+            if ($pkg -ne $tag) {
+              Write-Error "Version drift: tag=$tag package.json=$pkg tauri.conf=$conf Cargo.toml=$cargo Cargo.lock(monitor)=$lock"
+              exit 1
+            }
+            Write-Host "Version OK: $tag (与 tag 一致)"
+          } else {
+            Write-Host "演练（publish=false）：跳过「与 tag 一致」那一半；ref_name=$($env:GITHUB_REF_NAME) 不是版本号"
+          }
           # ── 🔴 K-R70（09-12）：**第五处刻意不参加，而它从此被点名核过。** ──────────
           #
           # `remote-daemon-proto/Cargo.toml` 的 version 逐字是 `0.0.0`，**故意的** ——
@@ -373,7 +422,9 @@ jobs:
             ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } |
             Out-File -FilePath "SHA256SUMS.txt" -Encoding utf8
 
+      # 🔴 KR114D1：**本文件两处「往 GitHub Release 写」之一**，闸读 `env.PUBLISH`（住址在文件头）。
       - name: Create / update GitHub Release
+        if: env.PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
@@ -516,7 +567,9 @@ jobs:
       # U5-走查：**裸二进制此前算了 hash 却没上传** —— `SHA256SUMS-linux.txt` 里有它那一行，
       # 而 Release 页上没有那个文件，用户照校验和逐个核就会卡在这儿。
       # 补上传（与 Windows 侧 `monitor.exe` 对称：那边一直是「安装器 + 裸二进制」两样都给）。
+      # 🔴 KR114D1：**本文件两处「往 GitHub Release 写」之二**，闸读 `env.PUBLISH`（住址在文件头）。
       - name: Append Linux artifacts to the release
+        if: env.PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: |
