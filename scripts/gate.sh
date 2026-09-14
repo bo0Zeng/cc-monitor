@@ -33,8 +33,8 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕15 格
-# │ 〔自述·点名〕hooks · copy2 · fmt · fmt-daemon · winchk · cargo · deadcode · generated · daemon · npm ·
+# │ 〔自述·格数〕16 格
+# │ 〔自述·点名〕hooks · copy2 · fmt · fmt-daemon · winchk · cargo · deadcode · generated · daemon · tsc · npm ·
 # │   ccm e2e/ccm-print-parity · ccm e2e/ccm-rbind-title · ccm e2e/ccm-cli ·
 # │   ccm e2e/ccm-contract-parity · pb check
 # │ 〔自述·现物〕四套 e2e 的被测文件：`e2e/ccm-print-parity.sh` · `e2e/ccm-rbind-title.sh` ·
@@ -42,6 +42,10 @@
 # │ 〔自述·现物〕`copy2` 那一格的判据本体：`evidence/K-R115-ruler.py`（`K-R115` 09-14 第 14 格）。
 # │ 〔自述·现物〕`deadcode` 那一格没有独立的判据文件 —— 它就是一趟 `cargo check -p monitor`
 # │   加一个递减棘轮，判定逐字写在下面那一行 `run_gate deadcode` 的内联脚本里（第 15 格）。
+# │ 〔自述·现物〕`tsc` 那一格没有独立的判据文件 —— 它就是一趟 `tsc --noEmit`
+# │   （发版那条 `npm run build` 的**第一步**）加一条「程序面没被掏空」的对账，
+# │   判定逐字写在下面那一行 `run_gate tsc` 的内联脚本里（`K-R118` 09-14 第 16 格）；
+# │   程序面由 `tsconfig.json` 的 include 决定。
 # │ 〔自述·不在射程〕跨平台 / 提交状态那一维归 `npm run verify:committed`（`C16`，动 daemon 时跑）。
 # │
 # └─ 〔自述·射程〕完 ────────────────────────────────────────────────────────────
@@ -943,6 +947,45 @@ printf '  分母 %-14s %s\n' "deadcode" "本格墙钟 $(( $(date +%s) - deadcode
 
 run_gate daemon '单包 remote-daemon-proto，只有一行 test result ⇒ 最大值 = 合计' \
          bash -c 'cd remote-daemon-proto && cargo test 2>&1'
+# ── `tsc`：**发版产物编不编得出来**，此前门禁一格都没有（`K-R118` `KR118D1` ②，09-14，第 16 格）──
+#
+# ## 题面：一条缺陷 09-12 进来、09-14 才被发现，而发现它的不是任何判据
+#
+# `tauri build` 的第一步是 `npm run build` ＝ `tsc && vite build`。09-14 `K-R114` 去**真编一次
+# 发版产物**，那一步在 `src/views/history.ts` 上红了 6 条 `TS2322` —— 而同一棵树的门禁
+# **15 格全绿**（现打，`evidence/K-R118-deathvalue.md#§A` 的 `M0`）。
+#
+# 🔴 **两条路同时断，这一格补的是第一条**：
+#   ① 门禁 `npm` 那一格跑的是 `npm test`（16 个 tsx 套件 + `vitest run`）—— **不含 `tsc`**。
+#      `tsx` 与 `vitest` 都是**转译**执行，`esbuild` 只剥类型不做类型检查 ⇒
+#      一条纯类型错误在那一格下**一条都不会红**。
+#   ② 云端 `.github/workflows/ci.yml` 里那条 `npx tsc --noEmit` **只在 `main` / tag / PR 上跑**，
+#      而本分支这一族提交一次都没进过 `origin/main`。
+#   ⇒ 这与 `audit-0805` 的 `3w`/`3x`/`3y` 是同一族病：**判据在，执行面没有**（`R73` 第五节）。
+#
+# ⚠ **射程如实写**：本格只跑 `tsc --noEmit`，也就是 `npm run build` 的**前一半**。
+#   `vite build` 那一半（打包 / 产物体积 / 资源解析）、`cargo tauri build` 那一整段
+#   （签名 · 打包 · installer），本格**一概盖不到**。
+# ⚠ **它不是 `npm` 那一格的超集，也不是子集**：`npm` 买行为（跑起来对不对），
+#   本格买类型（编不编得过）。两格都要。
+#
+# ## 第二条判定：**程序面没被掏空**（这一条是承重的，别删）
+#
+# `tsc --noEmit` 在一个**空程序**上退出码是 **0** —— 把 `tsconfig.json` 的 `include` 改小 /
+# 改错，「一个文件都没检」与「全检过了」在退出码上**一模一样**。
+# ⇒ 本格把 `--listFiles` 真读进程序的那批文件数出来，与**盘上现打**的 `src/` ＋ `e2e/` 下
+#   `.ts`/`.tsx`/`.mts` 份数对账，**两个数在同一趟里现打**，一个都不写死
+#   （写死一个数，加一份文件就红，那种格三天就会被人调宽）。
+run_gate tsc '不是「几条断言过了」：这个数是**这一趟真读进 tsc 程序**的仓内 `.ts`/`.tsx`/`.mts` 份数（`tsconfig.json` 的 include = `src` ＋ `e2e`），并与盘上现打的份数**恒等对账**。⚠ 只判类型（`npm run build` 的前一半）；`vite build` 与 `cargo tauri build` 那两段、以及仓根那几份不在 include 里的 `.ts`（`vite.config.ts` / `vitest.config.ts`），本行一概盖不到' \
+         bash -c 'out=$(node_modules/.bin/tsc --noEmit --listFiles 2>&1); rc=$?; \
+want=$(find src e2e -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.mts" \) | wc -l | tr -d " "); \
+got=$(printf "%s\n" "$out" | grep -v "/node_modules/" | grep -cE "/(src|e2e)/.*\.(ts|tsx|mts)$"); \
+printf "tsc: 盘上现打 %s 份仓内 .ts，这一趟真读进程序的 %s 份\n" "$want" "$got"; \
+printf "%s\n" "$out" | grep -E "error TS" | head -60; \
+if [ "$rc" -ne 0 ]; then printf "tsc: 退出码 %s —— 类型没编过。它就是 npm run build 的第一步，红着这棵树发不出产物\n" "$rc"; exit "$rc"; fi; \
+if [ "$got" -ne "$want" ]; then printf "tsc: 真读进程序的 %s 份 != 盘上现打的 %s 份 —— tsconfig 的 include 被掏空或收窄了。空程序上 tsc 退出码也是 0，「一个文件都没检」与「全检过了」在退出码上一模一样，所以一律按红记\n" "$got" "$want"; exit 1; fi; \
+printf "tsc: %s passed（仓内 %s 份 .ts 全部过 tsc --noEmit；两个数同一趟现打）\n" "$got" "$want"'
+
 run_gate npm '17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字（test:dom 1480 · test:diff 17），而取最大值 ⇒ 这个数恒是 test:dom 的；另 15 个 tsx 套件只打「all X tests passed」，它们「跑了 0 个」这一格守不住（失败仍由 && 链的退出码守）' \
          npm test
 
@@ -1197,7 +1240,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   ⚠ 那把尺子**不在本脚本里跑** —— 它是登记的机检，不是出货闸的一格。
   # 🔴 `K-R82`（09-12）：**12 → 13**，加的是 `hooks` 那一格（上面 `gate_selftest` 之后那一段）。
   #   这一行的数与点名跟着改了 —— 而**不是靠人记得改**：`C5` 那条三方对拍会当场逮到。
-  echo "GATE: OK —— 15 格全绿（hooks · copy2 · fmt · fmt-daemon · winchk · cargo · deadcode · generated · daemon · npm · 四套 ccm e2e · pb check），可以出货"
+  echo "GATE: OK —— 16 格全绿（hooks · copy2 · fmt · fmt-daemon · winchk · cargo · deadcode · generated · daemon · tsc · npm · 四套 ccm e2e · pb check），可以出货"
   exit 0
 fi
 # ★ `K-G3`（09-01）：分隔符**不能**走 `IFS='；'` —— `IFS` 是按**字节**认的，
