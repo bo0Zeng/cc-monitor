@@ -145,6 +145,52 @@ cell(
     },
 )
 
+# ── `K-R115`（09-14）：第 14 格 `copy2` ───────────────────────────────────────
+# 它是**第一格盖到 `evidence/`** 的门 ⇒ 那棵树今天不再是「0 格覆盖」，
+# 下面 `NO_GATE_NEEDED` 里它那一条**同拍删掉**（留着 `C6b` 会红：那条说明陈了）。
+# ⚠ 那条说明当初写的是「0 格覆盖正是它的用途 —— `[J3 陈账]` 死锁的泄压口」。
+#   **泄压口在实质上还在**：本格只在两种情况下红（某处 `copy2` 的目的地落在被 git
+#   跟踪的树内内容上 · 某份 `.py` 连 `ast` 都解析不了），改一份 `.md` / 加一份读数
+#   一格读数都不动。**但那条登记的字面不再成立**，所以删它、不是改它。
+cell(
+    "copy2",
+    anchor="run_gate copy2 '`evidence/*.py` 现打",
+    cwd="仓根",
+    cmd="python3 evidence/K-R115-ruler.py",
+    **{
+        "evidence/": (PART, "只判 `evidence/*.py` 里 `shutil` 保元数据复制族"
+                            "（`copy2` / `copytree` / `copystat`）的**调用点**"
+                            "（现打 11 处）：它的目的地落不落在被 git 跟踪的树内内容上。"
+                            "⚠ 这棵树的其余部分（`.md` 留档 · `.tsv`/`.json` 读数 · "
+                            "`.py` 里除这一族之外的每一行）本格**一个字都不问**。"
+                            "⚠ 尺子自己也住这棵树（`evidence/K-R115-ruler.py`）"
+                            "—— 它自己那份里这一族**零命中**，所以不构成自匹配；"
+                            "哪天它自己用上了，本格会把它和别人一样判一遍"),
+    },
+)
+
+# ── `K-R115`（09-14）：第 15 格 `deadcode` ────────────────────────────────────
+# `KR115D2` 甲：`dead_code` 这一维此前门禁**没有格**，`K-R109` 要量它只能自己拼一条
+# `docker run … cargo check`（因此破了「唯一许可命令」的字面）。本格把它收进来。
+cell(
+    "deadcode",
+    anchor="run_gate deadcode '`cargo check -p monitor`",
+    cwd="src-tauri/",
+    cmd="cargo check -p monitor（非 test）＋ never used 递减棘轮",
+    **{
+        "src-tauri/": (PART, "**只有 `-p monitor` 一个包的生产段**：非 test 构建里 "
+                             "`never used` 的条数，上限 54 / 下限 40 的递减棘轮。"
+                             "⚠ 同 workspace 的其余成员不在 `-p` 里；`#[cfg(test)]` 里的"
+                             "死代码任何非 test 构建都看不见 —— 这两块本格都盖不到"),
+        VENDOR: blind("`-p monitor` 只编它自己那一个包的生产段；vendor 作为依赖被编，"
+                      "而依赖的警告不进 `-p` 那个包的 `never used` 计数（`cargo` 只报"
+                      "本包的 lint）⇒ 这棵树本格一条都数不到"),
+        "remote-daemon-proto/": blind("另一个 workspace，`-p monitor` 够不着 —— "
+                                      "它那棵树的 `dead_code` 今天**仍然没有格**，"
+                                      "这是本格明写的盲区，不是漏登"),
+    },
+)
+
 cell(
     "fmt",
     anchor="run_gate fmt '不是数出来的数",
@@ -189,11 +235,17 @@ cell(
 
 cell(
     "cargo",
-    anchor="run_gate_sum cargo 8 bash -c",
+    # 🔴 〔`K-R115` 09-14〕**这条锚点在本件之前就已经指空了**：它写着 `cargo 8`，
+    #   而 `gate.sh` 现打是 `run_gate_sum cargo 9`（workspace 长到 9 个成员那天没人回来改）。
+    #   ⇒ 本尺子在**本件动它之前**就红着一条 `C2`（现打读数住
+    #   `evidence/K-R115-deathvalue.md#§E`）。这不是本件弄红的，是本件顺手量到的。
+    anchor="run_gate_sum cargo 9 bash -c",
     cwd="src-tauri/",
     cmd="cargo test --workspace --exclude code-picture-core --lib",
     **{
-        "src-tauri/": (FULL, "8 个成员的 `--lib` 判据，合计求和 + 包数相等断言"),
+        "src-tauri/": (FULL, "9 个成员的 `--lib` 判据，合计求和 + 包数相等断言"
+                             "〔09-14 现打：`gate.sh` 那行是 `run_gate_sum cargo 9`；"
+                             "上一版这里与锚点都写着 8〕"),
         VENDOR: blind("显式 `--exclude code-picture-core`（`C7`：vendor 不动）"),
         "remote-daemon-proto/": (PART, "**经扫描型守卫读进去**：现打 18 个读点"
                                        "（尺子见本文件 `cross_tree_reads()`）"),
@@ -310,32 +362,15 @@ cell(
 #   就是**未裁**：**「已被逐份数到」不等于「不需要门」**，这张表不许把后者写成前者。
 NEED_NONE, UNJUDGED = "不需要门", "未裁"
 
+# 🔴 〔`K-R115` 09-14〕**`evidence/` 那一条整段删了，而这是一次「登记的字面不再成立」，
+#   不是一次整理**：本件给门禁加了第 14 格 `copy2`（判据本体 `evidence/K-R115-ruler.py`），
+#   它是**第一格盖到这棵树**的门 ⇒ 「0 格覆盖」这个前提当场不成立，`C6b` 会说「这条说明陈了」。
+#   上一版那段话逐字写着「`0 格覆盖`**正是它的用途**」——`[J3 陈账]` 死锁的泄压口。
+#   ⚠ **泄压口在实质上还在**（本格只在两种情况下红：某处保元数据复制的目的地落在被 git
+#   跟踪的树内内容上 · 某份 `.py` 连 `ast` 都解析不了；改 `.md` / 加读数一格都不动），
+#   **但那句话的字面不成立了** ⇒ 删它，不许改成一句还罩得住的话。
+#   🔴 这一改**推翻了 `K-R80` 记下的一条理由**，不是机械随动 —— 实现方不自批，交回 PM 裁。
 NO_GATE_NEEDED = {
-    "evidence/": {
-        "why": "它是**读数落点**，不是产品行为：本目录下的文件没有任何一个进构建、"
-               "进运行时、或被产品代码读。★ 而 `0 格覆盖`**正是它的用途，不是它的缺陷** —— "
-               "`K-R80` 收官那趟就利用了这一点：`[J3 陈账]` 判 mtime 造成「改一行件文件"
-               "就赔掉一个 GATE: OK」的死锁，它把订正落在这棵树上，正因为改它**不动任何一格读数**。"
-               "给这棵树加一道门 = 把那条唯一的泄压口焊死。",
-        # 钉子：`K-R80` 真的那样用过 —— 那份留档没了/改了措辞，这条「不需要」就失去依据 ⇒ 红。
-        "witness_file": "evidence/K-R80-gate-daemon-fmt.md",
-        "witness_text": "改它不动任何一格读数",
-        # `C6c`：分母是 `git ls-files evidence/` 现打的每一份成员，逐份落进下面某一档。
-        # ⚠ 这一档分得粗（按文件类型），刻意的：这棵树的性质**是齐的**（都是读数落点），
-        #   分细了只会变成一张跟着件号长的清单，而那种清单每加一件就陈一次。
-        "archive": [
-            {"档": "量具（可复算的读数脚本）", "判": NEED_NONE, "成员": ["*.py"],
-             "why": "它们只在有人手动跑时才执行，不进构建、不进运行时、不被产品代码 import；"
-                    "跑坏了当场看得见（脚本自己 rc≠0），不需要一道出货闸替它守"},
-            {"档": "留档（那一拍的读数与判词）", "判": NEED_NONE, "成员": ["*.md"],
-             "why": "纯文字记录，谁都不读它做决定以外的事；改坏它损失的是可追溯性，不是产品行为"},
-            {"档": "跑出来的原始输出", "判": NEED_NONE, "成员": ["*.out", "*.txt"],
-             "why": "某一趟命令的 stdout/stderr 原样落盘，是证据不是代码；重跑一次就能再产一份"},
-            {"档": "结构化读数", "判": NEED_NONE, "成员": ["*.tsv", "*.json", "*.jsonl", "*.snapshot"],
-             "why": "逐条判词与快照的落点（如 `K-R48-356-verdicts.tsv`），同样是证据；"
-                    "没有任何一份被产品代码或构建读进去"},
-        ],
-    },
     ROOTFILES: {
         # 🔴 `K-R91`（09-12）**这一段整段重写过**，上一版逐字是：
         #   「② 其余的（`README*.md` / `CHANGELOG.md` / `LICENSE` / `PHASE-G-REPORT.md` /
@@ -838,7 +873,8 @@ def main():
     print()
     print("| 格 | cwd | 命令 | 全 | 部 | 🔴 盖不到（逐棵点名） |")
     print("|---|---|---|---|---|---|")
-    order = [c for c in ("hooks", "fmt", "fmt-daemon", "winchk", "cargo", "generated", "daemon", "npm")
+    order = [c for c in ("hooks", "copy2", "fmt", "fmt-daemon", "winchk", "cargo",
+                         "deadcode", "generated", "daemon", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm e2e/")) + ["pb check"]
     for name in order:
         ent = REGISTRY[name]
