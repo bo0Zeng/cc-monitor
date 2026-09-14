@@ -279,22 +279,29 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 ### 2.7 改远端会话后端命令（tmux attach / new / send-keys）
 
 > ⚠⚠ **G3 订正（2026-08-04）：本节的「阶段②」已经是现在时了。**
-> 下面第 4 步把「取命令方式转 daemon RPC」写成**未来动作**，而 **F04b（kill）与 F04c（send-keys）
-> 已经把生产主路切到 daemon RPC**：`src-tauri/src/backend/control/daemon_kill.rs` /
+> 下面第 4 步把「取命令方式转后端 RPC」写成**未来动作**，而 **F04b（kill）与 F04c（send-keys）
+> 已经把生产主路切到后端 RPC**：`src-tauri/src/backend/control/daemon_kill.rs` /
 > `daemon_send_keys.rs`（分流判定在 `daemon_route.rs`，三态而非二态）。
-> `src/session-backend.ts` 那条 shell 串**已降级为 C7 过渡期回落**
-> （`tmux_daemon_gate_guard.rs` 反过来钉着「回落必须还在」）。
 >
-> ⇒ **今天要改 kill / send-keys 的行为，先改 Rust 那侧的主路**；
-> 只改 `session-backend.ts` 会改到一条**多数情况下走不到**的路径。
-> ⚠ 但 `attach` / `new-session` 那两条**仍然**走本节原来的路（它们没搬）——
-> **所以本节不是整节作废，是「按命令分叉」**：
+> 🔴 **订正二（`K-R106` 2026-09-13 现打）：这一段原来那两句今天都假了。**
+> 原文逐字是「`src/session-backend.ts` 那条 shell 串**已降级为 C7 过渡期**的第二条路
+> （`tmux_daemon_gate_guard.rs` 反过来钉着**它必须还在**）」——
+> ① `C7` 那条一次性 SSH 的第二条路 **`K-R72`（2026-09-12）整块删了**（`K-R54` 裁定表第 1 · 2 处）；
+> ② `tmux_daemon_gate_guard.rs` 今天钉的是**反向**（回潮闸）：那两条命令的生产段里
+> **再出现** `connect_and_exec_cmd` 就红。两次翻面方向相反，别读成只改了措辞。
+> ③ 而且 `session-backend.ts` 今天**与 kill / send-keys 无关** ——
+> 它只有 `createRunAttach` / `attach` / `runInExistingAttach` 三个方法。
+>
+> ⇒ **今天要改 kill / send-keys 的行为，盘上只有 Rust 那一条路可改。**
+> ⚠ `attach` / `new-session` 那两条**没有整条搬完**，而它今天要**分两半**读
+> —— 所以本节不是整节作废，是「按命令分叉」：
 >
 > | 命令 | 今天的主路 | 改哪里 |
 > |---|---|---|
-> | `kill` | daemon RPC（F04b） | `backend/control/daemon_kill.rs`；`session-backend.ts` 只是回落 |
-> | `send-keys` | daemon RPC（F04c） | `backend/control/daemon_send_keys.rs`；同上 |
-> | `attach` / `new-session` | **仍是** `session-backend.ts` 那条 shell 串 | 照本节原步骤 |
+> | `kill` | 后端 RPC（F04b） | `backend/control/daemon_kill.rs`；**盘上没有第二条路** |
+> | `send-keys` | 后端 RPC（F04c） | `backend/control/daemon_send_keys.rs`；同上 |
+> | `attach`（**本机**） | 🔴 **本机后端**〔`K-R106` 2026-09-13，用户逐字「归本机后端就好了啊」〕 | `src-tauri/src/history.rs::render_local_attach` ⇒ `ccm attach <名>`（走 `render_local_ccm` 那条既有渲染路）。⚠ 前端那条 `↗` 还没改成问它要 |
+> | `attach` / `new-session`（**远端兜底**） | 仍是 `session-backend.ts` 那条 shell 串 | 照本节原步骤。⚠ 它今天靠哪几个消费者站着，两把尺子都在 `launch_wire.rs`（`TS_FALLBACK_KEEPERS` 数处数 · `TS_FALLBACK_REACH` 判有没有生产调用方），**从源码派生，别在这里抄一份数** |
 
 
 **目标**：改「在远端起/接会话」的命令（resume/launcher/attach）。守 **INVARIANTS §31（SS-12）**：

@@ -218,11 +218,16 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 
 ### 2.3 控制面今天真的在 backend 了
 
-两条**改状态**的远端 tmux 命令都已切到 daemon：`kill_remote_tmux` → `control/kill.rs` ·
+两条**改状态**的远端 tmux 命令都已切到后端：`kill_remote_tmux` → `control/kill.rs` ·
 `tmux_send_keys` → `control/launch.rs` 的 `send-into` / `send-keys-raw`。
-一次性 SSH 那两条降为**过渡期回落**，且**过门被拒绝一律不回落**
-（回落到 shell 路 = 把一次被门拒绝洗成另一条路的成功）。
-「能不能回落」的判定**只有一份**（`backend/control/daemon_route.rs`）。
+
+🔴 **订正（`K-R106` 2026-09-13 现打）**：这里原来写着「一次性 SSH 那两条降为**过渡期**的
+第二条路」—— 那两条 **`K-R72`（2026-09-12）整块删了**（`K-R54` 裁定表第 1 · 2 处），
+今天**盘上只有后端这一条**；回潮闸住 `tmux_daemon_gate_guard.rs`
+（那两条命令的生产段里再出现 `connect_and_exec_cmd` 就红）。
+「通道不在时怎么办」的判定**只有一份**（`backend/control/daemon_route.rs`，三态
+`Done` / `Refused` / `NoChannel`），而**过门被拒绝一律不另找一条路**
+（另找一条 = 把一次被门拒绝洗成另一条路的成功）。
 
 ### 2.4 `platform/`：backend 那一半今天**零平台面**，所以还不需要它
 
