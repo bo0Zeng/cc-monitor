@@ -176,7 +176,7 @@ mod tests {
         (
             "甲",
             "daemon 只读铁律 I7",
-            "daemon 不许改动用户既有数据",
+            "后端不许改动用户既有数据",
             "甲里 `install_remote_ccm_helper` / `uninstall_remote_ccm_helper` 改的正是\
              **用户既有的** `~/.bashrc`（备份 → 覆盖写 → 读回校验 → 回滚）。\
              把它搬进后端 = **daemon 进程自身**去改用户既有数据 ⇒ 与铁律 I7 正面撞。\

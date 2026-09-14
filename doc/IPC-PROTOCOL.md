@@ -303,7 +303,7 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 | `status` | string? | 会话状态枚举：`"busy"`（运行中 → 🟢）/ `"idle"`、`"shell"`（等输入 → 🔴）/ `"waiting"`（等用户决定 → 🟡）。**CLI 仅在状态转换时重写本文件**（信号天然稀疏）。旧版 CC 无此字段 → `null`，前端按未知处理（沿用原绿点） |
 | `waitingFor` | string? | 仅 `status=="waiting"` 时有，细分原因：`"permission prompt"` / `"dialog open"` / `"input needed"` / `"worker request"` / `"sandbox request"` |
 | `name` | string? | Claude 给会话起的语义名（aka aiTitle）。**已在用**：`session_map.rs::snapshot_active` 透传下游（有测试钉住），`session_added` 帧与 bridge 事件也带它 |
-| `kind` | string? | 会话类型（Batch6-F21 起双端消费）：`"interactive"` = 交互会话；`"bg"` = CC 2.1.x daemon 后台任务（`--fork-session`，另带 `jobId`）。**Batch7-F24 起 bg 门是配置门**：`showBgSessions` 开（默认）→ bg 正常算会话（建 Tab 带 ⚙ 标识 + 树状挂同 cwd 宿主后、行流出）；关 → 回 F21 行为（不建 Tab、行不流出；历史浏览器仍可看）。**缺失 = 旧 CC = 视为交互**（保守放行），本地 `session_map::scan_dir`（读启动时配置）与远端 daemon kind 门（`--with-bg` 参数）规则一字一致 |
+| `kind` | string? | 会话类型（Batch6-F21 起双端消费）：`"interactive"` = 交互会话；`"bg"` = CC 2.1.x daemon 后台任务（`--fork-session`，另带 `jobId`）。**Batch7-F24 起 bg 门是配置门**：`showBgSessions` 开（默认）→ bg 正常算会话（建 Tab 带 ⚙ 标识 + 树状挂同 cwd 宿主后、行流出）；关 → 回 F21 行为（不建 Tab、行不流出；历史浏览器仍可看）。**缺失 = 旧 CC = 视为交互**（保守放行），本地 `session_map::scan_dir`（读启动时配置）与远端后端 kind 门（`--with-bg` 参数）规则一字一致 |
 | `jobId` | string? | 仅 `kind:"bg"` 时有，后台任务 ID（monitor 不消费，仅留档） |
 
 ### 9.1 ★ `kind` 是**排他式**契约：不在白名单里就被隐藏（E72）
@@ -318,7 +318,7 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 | `"bg"` | 仅当 `showBgSessions` 开（本地）/ `--with-bg`（远端）时放行 |
 | **其它任意值**（`"bridge"`、`"agent"`、你新造的任何名字） | **隐藏** |
 
-**为什么必须写在这里**：它此前只活在 daemon 的 Rust 注释里，而外部集成方最自然的直觉是
+**为什么必须写在这里**：它此前只活在后端的 Rust 注释里，而外部集成方最自然的直觉是
 「加一个新 `kind` = 加一个新类型，monitor 顶多不认识它」—— 事实相反，**不认识就等于隐藏**。
 这条误解已经真实发生过一次（2026-07-31 的跨项目问答里，**我自己第一次也答反了**，
 说写 `"bridge"` 会被当成交互会话；实际是被排除）。
@@ -332,7 +332,7 @@ Claude Code CLI 的 task tracker 持久文件。**monitor 只读不写**——�
 
 | 字段 | 类型 | 说明 |
 |---|---|---|
-| `attachable` | boolean? | **attach 进去对人有没有意义。** `false` ⇒ monitor 不提供 attach / `↗` 拉前 / 「杀死空 tmux」。**缺席 = `true`**（存量会话与旧 daemon 一律照旧，零迁移） |
+| `attachable` | boolean? | **attach 进去对人有没有意义。** `false` ⇒ monitor 不提供 attach / `↗` 拉前 / 「杀死空 tmux」。**缺席 = `true`**（存量会话与旧后端一律照旧，零迁移） |
 
 **为什么要这个字段（`kind` 答不了）**：`kind` 把两件事压在一个轴上 ——
 ① 这个会话该不该在 UI 里出现（§9.1 的排他矩阵）② 它是不是「一个人坐在终端里跟它对话」。
@@ -347,7 +347,7 @@ SDK / 脚本驱动的会话正好是 **①要 ②不要**，现有字段表达�
 **精确落在里面** ⇒ monitor 认为那是个**空壳**，于是给出「杀死会话（kill 空 tmux）」和
 「就地 resume」。它以为里面没东西，实际正跑着你的脚本。
 
-**消费侧（monitor）怎么用**：daemon 把它 additive 放上 `session_added` 帧
+**消费侧（monitor）怎么用**：后端把它 additive 放上 `session_added` 帧
 （`remote-daemon-proto/src/wire.rs`，最小 `BUILD_ID` = **`p1v-attachable`**），
 monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ② 把这些 sid 从 idle-tmux 判定里排除。
 
@@ -365,17 +365,17 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 
 ---
 
-## 10. 远端 daemon wire 协议（issue #15 / #16，**流式，非文件 IPC**）
+## 10. 远端后端 wire 协议（issue #15 / #16，**流式，非文件 IPC**）
 
-唯一的非文件 IPC：SSH 远端模式下，远端 `cc-monitor-remote` daemon 经 **SSH stdout** 把远端会话流式传回 monitor。在此集中协议契约；部署见 [REMOTE-PHASE0-DEPLOY.md](REMOTE-PHASE0-DEPLOY.md)。
+唯一的非文件 IPC：SSH 远端模式下，远端 `cc-monitor-remote` 后端经 **SSH stdout** 把远端会话流式传回 monitor。在此集中协议契约；部署见 [REMOTE-PHASE0-DEPLOY.md](REMOTE-PHASE0-DEPLOY.md)。
 
-### 实时流（流模式启动 daemon）
+### 实时流（流模式启动后端）
 
-流模式 flag（monitor 仅对 hello 帧**声明了对应能力（`capabilities`）**的 daemon 传，见 INVARIANTS §26；F66/#58③ 起**取代**旧的「build_id 精确匹配」门控）：
+流模式 flag（monitor 仅对 hello 帧**声明了对应能力（`capabilities`）**的后端传，见 INVARIANTS §26；F66/#58③ 起**取代**旧的「build_id 精确匹配」门控）：
 
 | flag | 起 | 语义 |
 |---|---|---|
-| （无参数） | Phase 0 | 全量重放所有活跃会话历史 + 尾随（旧 monitor / 未确认 daemon 的兼容路径） |
+| （无参数） | Phase 0 | 全量重放所有活跃会话历史 + 尾随（旧 monitor / 未确认后端的兼容路径） |
 | `--with-bg` | p1e (F24) | 放行 kind:"bg" 后台任务会话（宣告+流行，帧带元信息） |
 | `--tail-only` | p1f (F25) | 不重放历史：连接时各文件 seq 计数器初始化为当前完整行数（seq=行号），只尾随新行；历史由 monitor 旁路 `--read-session` 快照拉取 |
 
@@ -383,29 +383,29 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 
 | `kind` | 字段 | 说明 |
 |---|---|---|
-| `hello` | `v, build_id, host_arch, claude_dir, capabilities, homes?, emits?, commands?, unavailable?`<br>⚠ **本表的列举顺序不是线上字节序**。线上按 `wire.rs` 声明序：`v, build_id, host_arch, claude_dir, homes, capabilities, emits, commands, unavailable`。`dg3_codex_fields_serialize_when_present` 用**精确字节串**钉住它（aterm 拿来做 fixture 真值）—— 要对字节就以 `wire.rs` 为准。⚠ 那个测试名里的 `codex_fields` 是历史名：`S4` 把它钉的两个字段换成了 `homes`，**名字刻意没改**（本文档与仓外 aterm 都按这个名字引用它当 fixture 真值） | 连接建立时**首帧**发一次（握手）。**三轴正交（§26/§28）**：`v`（proto 版本，只留破坏性变更、F66 **绝不 bump**，不符=不兼容）；`build_id`（**身份**，单源自 daemon 源码/编译期 env，管 staleness/重部署提示，不符=偏旧、经 `remote-health` 提示但不 hard-disconnect）；**`capabilities`（能力 token 集，加法式）——monitor 按声明发流模式 flag**（F66/#58③，`decide_stream_flags`；缺该字段=空集=最保守、不发任何 flag，§27）。**绝不用身份（build_id）匹配代理能力声明**（那正是 2026-07-09 事故根因）。**daemon-split `S4`（additive）`homes`**：本机上**各 agent 的 home 目录**表 —— `[{agent_kind, path}]`，如 `[{"agent_kind":"claude","path":"/home/u/.claude"},{"agent_kind":"codex","path":"/home/u/.codex"}]`。它一次替掉了 DG3 那两个字段：`codex_dir`（并列的 `<名>_dir`）与 `kinds`（服务的 agent 集 —— 现在由本表的 `agent_kind` 直接读出，不必并列第二个来源）。**为什么换**：`daemon-split` 的 `D3` 逐字裁定「agent 维度只许出现在**值**里（`agent_kind`），不许出现在**字段名**里」——并列 `<名>_dir` 那条路的终点是 hello 里五个并列的目录字段，而客户端要靠 `if/else` 猜哪个有值。⇒ 接第三个 agent 是**多一个元素**，不是多一个字段。**为什么可以直接换而不是 bump**：`codex_dir`/`kinds` **从来没上过线**（daemon 一直硬写 `None`/空 ⇒ `skip_serializing_if` 省略），换掉对任何已部署的消费方都是零影响。**消费侧口径**：空/缺 = 这台 daemon 没声明任何 home ⇒ **回退 `claude_dir`**（monitor 的 `claude_home_from_hello` 就是这条，`parses_hello_homes_and_falls_back_to_claude_dir` 钉住）；坏项（元素非对象 / 缺 `agent_kind` 或 `path` / 类型不对）**逐项丢掉**，不让整帧变 garbage。**今天恒空**——`main.rs` 硬写 `Vec::new()`（`production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen` 钉住）⇒ **hello 帧对 Claude 的线上字节与 `S4` 之前逐字节相同**。⚠ **`daemon-split S5`（08-14）订正了"为什么恒空"**：不再是"发现做不出来"——daemon 已经**有能力**答出本机看得见哪些 agent（`agents::visible_homes()`，判准 = **该 agent 的 home 目录存在**；`the_daemon_can_already_discover_homes_it_just_does_not_send_them` 钉住这半），**恒空是一次刻意的排期决定**：填 = 一次跨仓契约变更（aterm 的 fixture 按精确字节对），⇒ 留成一次**纯发布决策**。真填那天要**同轮**做三件事：① 改 `main.rs` 那一行；② 更新 `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 的期望串；③ **bump `BUILD_ID`**（那天线上字节真的变了，已部署的远端得被判 stale 重装）。⚠ 与"会话级发现"（DG1：有哪些会话、活没活）**别混**：那一格仍未接线。**`claude_dir` 为什么留着**：它是 hello 里**今天真在线上、且有仓外消费方**（aterm，契约冻结 2026-07-18）的那个目录字段，改名是破坏性变更 ⇒ 走 additive 迁移，原地冻结；解锁条件（monitor 与 aterm 都改读 `homes`）登记在 daemon 的 `agent_boundary_guard::FROZEN_COMPAT`，monitor 那半已经做完。**daemon-08（additive）`emits`**：本 daemon **需要消费侧门控的帧 kind 集**（snake_case）——含该 kind → 依赖它；不含 → 回退 β/watchdog。⚠〔audit-0805 F18〕**这里原本写的是「会发射的帧 kind 集」，那与它的值对不上**：`EMITS` 8 项**不含** `hello`/`reply`/`cancelled`，而这三个 daemon **确实会发**。按字面读它是错的；按意图读它是「门控用」帧集 —— 握手与应答不需要门控（`hello` 是首帧、必然收到；`reply`/`cancelled` 只在你发过命令之后才来，由 `commands` 那一轴管）。**这三个缺席者今天由 `emits_is_a_subset_of_frame_kinds_with_named_exemptions` 逐个点名钉住**，新增帧种漏进 `EMITS` 会红。⚠ `emits` 与 `capabilities` **正交、别混**：`capabilities` 是**流 flag 的可剥离能力**（受 §26 死循环护栏 + `every_capability_token_is_strippable` 强制每 token 有对应 flag），`emits` 是**纯发射声明、无对应 flag、不受 §26**。**U6b-2（additive）`commands`**：本 daemon **接受的入方向命令集**（见下「入方向」小节）。能力协商此前只有出方向那一半（`capabilities` 说「我认识哪些流 flag」）；客户端还得知道**发什么过去有人接**，否则只能试错。**空/缺 = 这个 daemon 不读 stdin**（U6b-1 之前的所有版本），别发命令。**`K-P4`（09-04，additive）`unavailable`**：本 daemon **接得下、但在这台机器上做不到**的命令及原因 —— `[{command, code}]`，如 `[{"command":"kill","code":"no_tmux"}]`。**它买的是「事前」那一半**：`commands` 说的是「我**接**这条命令」，不是「我**做得到**这件事」；差额今天只有**调用之后**才知道（Windows 上没有 tmux，握手帧照样宣称接 `kill`/`launch`，前端照样画按钮，点了才收到 `no_tmux`）。用户 09-04 逐字裁「**事前协商是要的**」。**为什么是第四条面而不是塞进前三条**：`capabilities` 受 §26 死循环护栏 + `every_capability_token_is_strippable` 约束（每个 token 必须有一条能被 `split_stream_flags` 剥掉的流 flag，而「做得到 kill」没有），且它的默认方向相反（缺=最小能力集，往下降级安全；本字段缺=**没有把握**，往下降级会让能用的功能消失）；`emits` 的取值空间是**帧 kind**；`commands` 的取值空间是**命令名**，而且把做不到的从里面摘掉是错的（客户端 `accepts()` 会直接拒发，连「点了告诉你为什么」这条兜底路都没了，`COMMANDS`/`REGISTRY` 双向相等那条判据也要被迫按平台分叉）。⇒ 本字段的键是 **(命令名 × 命令级 code)** 这个**对**，前三条面没有一条是这个形状。**消费侧口径三句，缺一句就会读错**：① **空/缺 = 这台 daemon 没有任何「做不到」的把握**，不是「全都做得到」—— 客户端照今天的样子办（照发、点了看 code），旧 daemon 天然落这一格；② 列出来的那条 = 别画那个按钮（或画成灰的，配 `code` 那句人话 —— monitor 侧那张翻译表已经有了，`backend/control/daemon_launch.rs` 等三处逐字「远端未安装 tmux」）；③ 🔴 **它是提示，不是闸门**：daemon 自己**绝不**拿这张表拒命令（读数是握手那一刻的，之后世界会变；真去拒 = 把一份会过期的读数变成一次真停机），客户端硬发照样走真路，成不成由 `no_tmux` 那条老路回答。**判准与真调用同源**：`tmux` 在不在 `PATH` 上（`control/kill.rs` 等三处走 `Command::new("tmux")`，unix 上就是 `execvp` 的 `PATH` 查找）；表本身**从 `inbound::REGISTRY` 的 `codes` 派生**（谁登记了 `no_tmux` 谁就依赖 tmux），不是手写的第二份真相。**「判不出来」不倒向「做不到」**：`PATH` 没设、或**非 unix**（那儿 `CreateProcess` 还看进程自身目录与当前目录，且真装了叫 `tmux.exe`）⇒ **不列进表**，退回今天的行为 —— 把「不知道」压成「做不到」会让能用的功能从界面上消失，而那种消失没有回音。⚠ 因此**本字段今天在 Windows 上恒为空**，解锁要一次真 Windows 读数。**今天恒空**——`main.rs` 硬写 `Vec::new()`（`production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen` 钉住）⇒ **hello 帧的线上字节逐字节不变**；而「不是没能力」由 `the_answer_is_a_function_of_the_machine_not_of_the_build` 钉另一半（同 `homes` 的 `S5` 口径：**能填不真填**，填 = 一次跨仓契约变更，本机没有 aterm 仓验不了它的运行时 ⇒ 留成一次纯发布决策）。真填那天要**同轮**做三件事：① 换 `main.rs` 那一行；② 更新 `hello_unavailable_is_additive_present_and_absent` 的期望串；③ **bump `BUILD_ID`**。🔴 **真填之前，这一格买到的是形状 + 一条能验的填法，不是「界面已经不画死按钮了」** |
+| `hello` | `v, build_id, host_arch, claude_dir, capabilities, homes?, emits?, commands?, unavailable?`<br>⚠ **本表的列举顺序不是线上字节序**。线上按 `wire.rs` 声明序：`v, build_id, host_arch, claude_dir, homes, capabilities, emits, commands, unavailable`。`dg3_codex_fields_serialize_when_present` 用**精确字节串**钉住它（aterm 拿来做 fixture 真值）—— 要对字节就以 `wire.rs` 为准。⚠ 那个测试名里的 `codex_fields` 是历史名：`S4` 把它钉的两个字段换成了 `homes`，**名字刻意没改**（本文档与仓外 aterm 都按这个名字引用它当 fixture 真值） | 连接建立时**首帧**发一次（握手）。**三轴正交（§26/§28）**：`v`（proto 版本，只留破坏性变更、F66 **绝不 bump**，不符=不兼容）；`build_id`（**身份**，单源自后端源码/编译期 env，管 staleness/重部署提示，不符=偏旧、经 `remote-health` 提示但不 hard-disconnect）；**`capabilities`（能力 token 集，加法式）——monitor 按声明发流模式 flag**（F66/#58③，`decide_stream_flags`；缺该字段=空集=最保守、不发任何 flag，§27）。**绝不用身份（build_id）匹配代理能力声明**（那正是 2026-07-09 事故根因）。**daemon-split `S4`（additive）`homes`**：本机上**各 agent 的 home 目录**表 —— `[{agent_kind, path}]`，如 `[{"agent_kind":"claude","path":"/home/u/.claude"},{"agent_kind":"codex","path":"/home/u/.codex"}]`。它一次替掉了 DG3 那两个字段：`codex_dir`（并列的 `<名>_dir`）与 `kinds`（服务的 agent 集 —— 现在由本表的 `agent_kind` 直接读出，不必并列第二个来源）。**为什么换**：`daemon-split` 的 `D3` 逐字裁定「agent 维度只许出现在**值**里（`agent_kind`），不许出现在**字段名**里」——并列 `<名>_dir` 那条路的终点是 hello 里五个并列的目录字段，而客户端要靠 `if/else` 猜哪个有值。⇒ 接第三个 agent 是**多一个元素**，不是多一个字段。**为什么可以直接换而不是 bump**：`codex_dir`/`kinds` **从来没上过线**（后端一直硬写 `None`/空 ⇒ `skip_serializing_if` 省略），换掉对任何已部署的消费方都是零影响。**消费侧口径**：空/缺 = 这台后端没声明任何 home ⇒ **回退 `claude_dir`**（monitor 的 `claude_home_from_hello` 就是这条，`parses_hello_homes_and_falls_back_to_claude_dir` 钉住）；坏项（元素非对象 / 缺 `agent_kind` 或 `path` / 类型不对）**逐项丢掉**，不让整帧变 garbage。**今天恒空**——`main.rs` 硬写 `Vec::new()`（`production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen` 钉住）⇒ **hello 帧对 Claude 的线上字节与 `S4` 之前逐字节相同**。⚠ **`daemon-split S5`（08-14）订正了"为什么恒空"**：不再是"发现做不出来"——后端已经**有能力**答出本机看得见哪些 agent（`agents::visible_homes()`，判准 = **该 agent 的 home 目录存在**；`the_daemon_can_already_discover_homes_it_just_does_not_send_them` 钉住这半），**恒空是一次刻意的排期决定**：填 = 一次跨仓契约变更（aterm 的 fixture 按精确字节对），⇒ 留成一次**纯发布决策**。真填那天要**同轮**做三件事：① 改 `main.rs` 那一行；② 更新 `dg3_codex_fields_skipped_when_absent_claude_byte_equivalent` 的期望串；③ **bump `BUILD_ID`**（那天线上字节真的变了，已部署的远端得被判 stale 重装）。⚠ 与"会话级发现"（DG1：有哪些会话、活没活）**别混**：那一格仍未接线。**`claude_dir` 为什么留着**：它是 hello 里**今天真在线上、且有仓外消费方**（aterm，契约冻结 2026-07-18）的那个目录字段，改名是破坏性变更 ⇒ 走 additive 迁移，原地冻结；解锁条件（monitor 与 aterm 都改读 `homes`）登记在后端的 `agent_boundary_guard::FROZEN_COMPAT`，monitor 那半已经做完。**daemon-08（additive）`emits`**：本后端 **需要消费侧门控的帧 kind 集**（snake_case）——含该 kind → 依赖它；不含 → 回退 β/watchdog。⚠〔audit-0805 F18〕**这里原本写的是「会发射的帧 kind 集」，那与它的值对不上**：`EMITS` 8 项**不含** `hello`/`reply`/`cancelled`，而这三个后端 **确实会发**。按字面读它是错的；按意图读它是「门控用」帧集 —— 握手与应答不需要门控（`hello` 是首帧、必然收到；`reply`/`cancelled` 只在你发过命令之后才来，由 `commands` 那一轴管）。**这三个缺席者今天由 `emits_is_a_subset_of_frame_kinds_with_named_exemptions` 逐个点名钉住**，新增帧种漏进 `EMITS` 会红。⚠ `emits` 与 `capabilities` **正交、别混**：`capabilities` 是**流 flag 的可剥离能力**（受 §26 死循环护栏 + `every_capability_token_is_strippable` 强制每 token 有对应 flag），`emits` 是**纯发射声明、无对应 flag、不受 §26**。**U6b-2（additive）`commands`**：本后端 **接受的入方向命令集**（见下「入方向」小节）。能力协商此前只有出方向那一半（`capabilities` 说「我认识哪些流 flag」）；客户端还得知道**发什么过去有人接**，否则只能试错。**空/缺 = 这个后端不读 stdin**（U6b-1 之前的所有版本），别发命令。**`K-P4`（09-04，additive）`unavailable`**：本后端 **接得下、但在这台机器上做不到**的命令及原因 —— `[{command, code}]`，如 `[{"command":"kill","code":"no_tmux"}]`。**它买的是「事前」那一半**：`commands` 说的是「我**接**这条命令」，不是「我**做得到**这件事」；差额今天只有**调用之后**才知道（Windows 上没有 tmux，握手帧照样宣称接 `kill`/`launch`，前端照样画按钮，点了才收到 `no_tmux`）。用户 09-04 逐字裁「**事前协商是要的**」。**为什么是第四条面而不是塞进前三条**：`capabilities` 受 §26 死循环护栏 + `every_capability_token_is_strippable` 约束（每个 token 必须有一条能被 `split_stream_flags` 剥掉的流 flag，而「做得到 kill」没有），且它的默认方向相反（缺=最小能力集，往下降级安全；本字段缺=**没有把握**，往下降级会让能用的功能消失）；`emits` 的取值空间是**帧 kind**；`commands` 的取值空间是**命令名**，而且把做不到的从里面摘掉是错的（客户端 `accepts()` 会直接拒发，连「点了告诉你为什么」这条兜底路都没了，`COMMANDS`/`REGISTRY` 双向相等那条判据也要被迫按平台分叉）。⇒ 本字段的键是 **(命令名 × 命令级 code)** 这个**对**，前三条面没有一条是这个形状。**消费侧口径三句，缺一句就会读错**：① **空/缺 = 这台后端没有任何「做不到」的把握**，不是「全都做得到」—— 客户端照今天的样子办（照发、点了看 code），旧后端天然落这一格；② 列出来的那条 = 别画那个按钮（或画成灰的，配 `code` 那句人话 —— monitor 侧那张翻译表已经有了，`backend/control/daemon_launch.rs` 等三处逐字「远端未安装 tmux」）；③ 🔴 **它是提示，不是闸门**：后端自己**绝不**拿这张表拒命令（读数是握手那一刻的，之后世界会变；真去拒 = 把一份会过期的读数变成一次真停机），客户端硬发照样走真路，成不成由 `no_tmux` 那条老路回答。**判准与真调用同源**：`tmux` 在不在 `PATH` 上（`control/kill.rs` 等三处走 `Command::new("tmux")`，unix 上就是 `execvp` 的 `PATH` 查找）；表本身**从 `inbound::REGISTRY` 的 `codes` 派生**（谁登记了 `no_tmux` 谁就依赖 tmux），不是手写的第二份真相。**「判不出来」不倒向「做不到」**：`PATH` 没设、或**非 unix**（那儿 `CreateProcess` 还看进程自身目录与当前目录，且真装了叫 `tmux.exe`）⇒ **不列进表**，退回今天的行为 —— 把「不知道」压成「做不到」会让能用的功能从界面上消失，而那种消失没有回音。⚠ 因此**本字段今天在 Windows 上恒为空**，解锁要一次真 Windows 读数。**今天恒空**——`main.rs` 硬写 `Vec::new()`（`production_hello_leaves_unavailable_empty_so_the_wire_bytes_stay_frozen` 钉住）⇒ **hello 帧的线上字节逐字节不变**；而「不是没能力」由 `the_answer_is_a_function_of_the_machine_not_of_the_build` 钉另一半（同 `homes` 的 `S5` 口径：**能填不真填**，填 = 一次跨仓契约变更，本机没有 aterm 仓验不了它的运行时 ⇒ 留成一次纯发布决策）。真填那天要**同轮**做三件事：① 换 `main.rs` 那一行；② 更新 `hello_unavailable_is_additive_present_and_absent` 的期望串；③ **bump `BUILD_ID`**。🔴 **真填之前，这一格买到的是形状 + 一条能验的填法，不是「界面已经不画死按钮了」** |
 | `line` | `session_id, path, seq, raw, byte_offset` | tail 到的一行原始 jsonl（`seq` = per-file 单调，口径同本地 watcher）。**`byte_offset`**：该行**末尾**的字节偏移，语义**逐字节对齐 aterm `LineFramer.endOffset`**——计 CRLF 的 `\r`、含 `\n`、残行不计；resume 到 N ⇒ `tail -c +(N+1)`。给 offset 续拉 / 截断检测用（**`seq` 是 per-stream 序数、不是 resume 键**，别拿它续）。**只 `line` 帧带**——`turn_end` 明确不带（`daemon-09` 钉住） |
-| `session_added` | `sid`, `session_kind?`, `cwd?`, `name?`, `path?`, `lines?`, `status?`, `waiting_for?`, `agent_kind?`, `liveness_confidence?`, `attachable?` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin, kind, cwd, name}` 事件建骨架 Tab，先于该会话的任何行）。Batch7-F24（p1e）：附加 pidfile 元信息——wire 帧字段叫 `session_kind`（避开帧 tag `kind`），bridge 事件 payload 统一叫 `kind`（与本地 `list_active_sessions`/`session-started` 一致）；**additive 兼容**：None 不序列化（旧行为字节不变）、旧 monitor 忽略未知字段、旧 daemon 缺字段前端视为交互。daemon 默认不宣告 bg（F21）；monitor 仅对 hello **声明了 `bg` 能力**的 daemon 且 `showBgSessions` 开（默认）时传 `--with-bg`（F66/#58③；旧 daemon 不声明该能力→不传，且它会把未知参数当一次性查询→无 hello，护栏「声明 ⟹ 会剥离该 flag」保成立）。本地对称通道：`session-started` payload 扩为 `{session_id, cwd, kind, name}`——前端无 Tab 则建骨架（中途出现的本地 bg 会话由此获得 ⚙/树状）。**Batch8-F25/26（p1f）**：帧再附 `path`（远端 jsonl 绝对路径）；monitor 见 daemon 声明 `tail-only` 能力后 exec 追加 `--tail-only`（Batch9 起快照换 `--read-session-tail` 尾部优先，见查询表）——daemon 不再重放历史（连接时把各文件 seq 计数器初始化为当前完整行数 L，之后新行 seq=行号），历史由 monitor 按 path 经**独立连接**跑 `--read-session` 旁路快照拉回（0..L'-1 行号编 seq、并发 ≤2、F19 priority 先拉、完就断、失败重试 1 次后 remote-health 提示）；两路 seq 同处行号空间，重叠区被 (sid,seq) 去重精确吸收。旧 daemon 不声明能力 → 不传 flag → 全量推流（=2.18.0）；session_added 无 path（会话尚无 jsonl）→ 不拉快照，后续行从 tail 全量到达。**DG3（#2D，additive）`agent_kind`**：本会话属哪个 agent——`"codex"`；Claude 会话**省略** ⇒ **缺 = claude**。**DG3 `liveness_confidence`**：判活置信度——`"heuristic"`（Codex 无 pidfile，靠 mtime/proc 启发）；Claude 走 pidfile 权威故**省略** ⇒ **缺 = authoritative**。两者都是「缺字段有确定含义」，消费侧别把缺当未知。⚠ **今天的消费方是仓外 aterm，不是 cc-monitor** —— monitor 的 `ssh_source::parse_frame` 把这两个字段（以及 `byte_offset` / `emits`）**整个丢掉**。缺省值碰巧等于丢弃行为，不等于 monitor 实现了默认值：真发 `agent_kind:"codex"` monitor 一样当 claude。（daemon 今天也还没产出它们 —— DG1 未接线，`homes`/`agent_kind`/`liveness_confidence` 硬写空/None。）⚠ `S4` 起 **`hello.homes` 是个例外：monitor 真的解析它了**（`claude_home_from_hello`，优先 `homes`、回退 `claude_dir`）——别把它算进"整个丢掉"那一族。|
-| `session_status` | `sid`, `status?`, `waiting_for?`, `liveness_confidence?` | Batch9-F27（p1g）：会话红绿灯状态变化（daemon 对 pidfile modify 做 diff，CC 仅状态转换时重写故天然稀疏）。monitor 转发进 `SessionChange.status_changed` → `session-activity` 事件——**远端灯与本地共用前端链路**。宣告帧另带初始 `status`（连接建立灯就对）。旧 monitor 未知 kind 忽略。**DG3 `liveness_confidence`** 同 `session_added`（状态变化时带；Claude 省略 ⇒ 缺 = authoritative） |
-| `session_removed` | `sid`, `cause?` | 远端会话文件消失。**S0（additive）`cause`**：`"gone"`（真没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind）/ `"superseded"`（同一个 pidfile **原地换了 sid**，即 `/branch`、`/clear`）。`gone` 是默认值且**不序列化** ⇒ 缺字段 = `gone`，旧 daemon × 新 monitor 行为一字不变。**monitor 收到 `superseded` 必须直接归档、不许再去查 tmux 快照**（那份快照对这个场景恒错——这正是「branch 之后原 tab 永久灰点」的成因）。字面量与 `ssh_source.rs` 的解析处由 `removal_cause_wire_literal_stays_in_sync` 钉住 |
+| `session_added` | `sid`, `session_kind?`, `cwd?`, `name?`, `path?`, `lines?`, `status?`, `waiting_for?`, `agent_kind?`, `liveness_confidence?`, `attachable?` | 远端新会话文件出现（Batch5-F18 起 ssh_source 收到即同步透传前端 `remote-session-added {session_id, origin, kind, cwd, name}` 事件建骨架 Tab，先于该会话的任何行）。Batch7-F24（p1e）：附加 pidfile 元信息——wire 帧字段叫 `session_kind`（避开帧 tag `kind`），bridge 事件 payload 统一叫 `kind`（与本地 `list_active_sessions`/`session-started` 一致）；**additive 兼容**：None 不序列化（旧行为字节不变）、旧 monitor 忽略未知字段、旧后端缺字段前端视为交互。后端默认不宣告 bg（F21）；monitor 仅对 hello **声明了 `bg` 能力**的后端且 `showBgSessions` 开（默认）时传 `--with-bg`（F66/#58③；旧后端不声明该能力→不传，且它会把未知参数当一次性查询→无 hello，护栏「声明 ⟹ 会剥离该 flag」保成立）。本地对称通道：`session-started` payload 扩为 `{session_id, cwd, kind, name}`——前端无 Tab 则建骨架（中途出现的本地 bg 会话由此获得 ⚙/树状）。**Batch8-F25/26（p1f）**：帧再附 `path`（远端 jsonl 绝对路径）；monitor 见后端声明 `tail-only` 能力后 exec 追加 `--tail-only`（Batch9 起快照换 `--read-session-tail` 尾部优先，见查询表）——后端不再重放历史（连接时把各文件 seq 计数器初始化为当前完整行数 L，之后新行 seq=行号），历史由 monitor 按 path 经**独立连接**跑 `--read-session` 旁路快照拉回（0..L'-1 行号编 seq、并发 ≤2、F19 priority 先拉、完就断、失败重试 1 次后 remote-health 提示）；两路 seq 同处行号空间，重叠区被 (sid,seq) 去重精确吸收。旧后端不声明能力 → 不传 flag → 全量推流（=2.18.0）；session_added 无 path（会话尚无 jsonl）→ 不拉快照，后续行从 tail 全量到达。**DG3（#2D，additive）`agent_kind`**：本会话属哪个 agent——`"codex"`；Claude 会话**省略** ⇒ **缺 = claude**。**DG3 `liveness_confidence`**：判活置信度——`"heuristic"`（Codex 无 pidfile，靠 mtime/proc 启发）；Claude 走 pidfile 权威故**省略** ⇒ **缺 = authoritative**。两者都是「缺字段有确定含义」，消费侧别把缺当未知。⚠ **今天的消费方是仓外 aterm，不是 cc-monitor** —— monitor 的 `ssh_source::parse_frame` 把这两个字段（以及 `byte_offset` / `emits`）**整个丢掉**。缺省值碰巧等于丢弃行为，不等于 monitor 实现了默认值：真发 `agent_kind:"codex"` monitor 一样当 claude。（后端今天也还没产出它们 —— DG1 未接线，`homes`/`agent_kind`/`liveness_confidence` 硬写空/None。）⚠ `S4` 起 **`hello.homes` 是个例外：monitor 真的解析它了**（`claude_home_from_hello`，优先 `homes`、回退 `claude_dir`）——别把它算进"整个丢掉"那一族。|
+| `session_status` | `sid`, `status?`, `waiting_for?`, `liveness_confidence?` | Batch9-F27（p1g）：会话红绿灯状态变化（后端对 pidfile modify 做 diff，CC 仅状态转换时重写故天然稀疏）。monitor 转发进 `SessionChange.status_changed` → `session-activity` 事件——**远端灯与本地共用前端链路**。宣告帧另带初始 `status`（连接建立灯就对）。旧 monitor 未知 kind 忽略。**DG3 `liveness_confidence`** 同 `session_added`（状态变化时带；Claude 省略 ⇒ 缺 = authoritative） |
+| `session_removed` | `sid`, `cause?` | 远端会话文件消失。**S0（additive）`cause`**：`"gone"`（真没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind）/ `"superseded"`（同一个 pidfile **原地换了 sid**，即 `/branch`、`/clear`）。`gone` 是默认值且**不序列化** ⇒ 缺字段 = `gone`，旧后端 × 新 monitor 行为一字不变。**monitor 收到 `superseded` 必须直接归档、不许再去查 tmux 快照**（那份快照对这个场景恒错——这正是「branch 之后原 tab 永久灰点」的成因）。字面量与 `ssh_source.rs` 的解析处由 `removal_cause_wire_literal_stays_in_sync` 钉住 |
 | `turn_end` | `session_id`, `uuid` | 一轮对话结束（monitor 用它对齐轮次边界） |
-| `tmux_session_closed` | `name` | **P5（zero-poll-liveness，additive）**：某个 tmux 会话**关闭了**——正向死亡帧。**刻意不带 sid**：`#{@ccm_sid}` 在 hook 上下文里取不到（P0 实测会拿到空 ⇒ 把活会话判灰），daemon 这边是**差分算出来的名字**，sid 由 monitor 用最新快照反查 |
-| `tmux_sessions` | `raw`, `observation?` | **B2**：daemon 在远端本地跑 `tmux ls -F '<TMUX_LS_FMT>'` 的**原始 stdout**（或哨兵 `NO_TMUX`），替掉 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏轮询。**送 raw、client 解析**（照 `line` 帧哲学，复用 monitor 现有 `tmux::parse_tmux_ls`）。**P1（additive）`observation`**：`"zero_sessions"` / `"no_tmux"` / `"unobservable"`——**有会话时省略**，热路径字节与 P1 之前逐字节一致。没有它时 `raw` 的空串同时意味着「零会话」与「`tmux ls` 出错被 `\|\| true` 吞了」，两者不可分 |
-| `overflow` | `dropped: u64`, `lost?`, `lost_truncated?` | issue #32：daemon 发送通道被慢/卡的 SSH 管道反压、丢了 `dropped` 帧的哨兵信号（通道排空到能再容纳时发一次）→ monitor 经 SS-F `remote-health` 事件 toast 提示用户可能丢实时行。<br>★ **`lost`（audit-0805 F03，additive）**：`[{kind, subject?}]` —— 那批丢帧里**不可恢复**的那些的身份。⚠ 下面 `#入方向` 那句「出方向丢一帧**可恢复**（行还在远端 jsonl 里）」**只对内容帧成立**：`line`/`turn_end`/`tmux_sessions` 丢了别处还有，而 `session_added`/`session_removed`/`tmux_session_closed`/`session_status` 是**一次差分的结果、别处不存在** —— 只知道「丢了 N 条」是没法重同步的。⇒ 本字段给那些帧带上 `kind` 与 `subject`（sid / tmux 会话名），客户端据此**精确重取那几个主体**。空集时**不序列化**（旧客户端看到的字节与从前一字不差）。<br>★ **`lost_truncated`（additive，bool）**：身份表**有界**（daemon 侧 `LOST_IDENTITY_CAP = 64`）。超出的那些**仍计入 `dropped`**，只是不再留身份并置本位 —— **不是静默截断**。置位 = 「这份清单不全，理性做法是整体重取快照」。为 `false` 时不序列化 |
+| `tmux_session_closed` | `name` | **P5（zero-poll-liveness，additive）**：某个 tmux 会话**关闭了**——正向死亡帧。**刻意不带 sid**：`#{@ccm_sid}` 在 hook 上下文里取不到（P0 实测会拿到空 ⇒ 把活会话判灰），后端这边是**差分算出来的名字**，sid 由 monitor 用最新快照反查 |
+| `tmux_sessions` | `raw`, `observation?` | **B2**：后端在远端本地跑 `tmux ls -F '<TMUX_LS_FMT>'` 的**原始 stdout**（或哨兵 `NO_TMUX`），替掉 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏轮询。**送 raw、client 解析**（照 `line` 帧哲学，复用 monitor 现有 `tmux::parse_tmux_ls`）。**P1（additive）`observation`**：`"zero_sessions"` / `"no_tmux"` / `"unobservable"`——**有会话时省略**，热路径字节与 P1 之前逐字节一致。没有它时 `raw` 的空串同时意味着「零会话」与「`tmux ls` 出错被 `\|\| true` 吞了」，两者不可分 |
+| `overflow` | `dropped: u64`, `lost?`, `lost_truncated?` | issue #32：后端发送通道被慢/卡的 SSH 管道反压、丢了 `dropped` 帧的哨兵信号（通道排空到能再容纳时发一次）→ monitor 经 SS-F `remote-health` 事件 toast 提示用户可能丢实时行。<br>★ **`lost`（audit-0805 F03，additive）**：`[{kind, subject?}]` —— 那批丢帧里**不可恢复**的那些的身份。⚠ 下面 `#入方向` 那句「出方向丢一帧**可恢复**（行还在远端 jsonl 里）」**只对内容帧成立**：`line`/`turn_end`/`tmux_sessions` 丢了别处还有，而 `session_added`/`session_removed`/`tmux_session_closed`/`session_status` 是**一次差分的结果、别处不存在** —— 只知道「丢了 N 条」是没法重同步的。⇒ 本字段给那些帧带上 `kind` 与 `subject`（sid / tmux 会话名），客户端据此**精确重取那几个主体**。空集时**不序列化**（旧客户端看到的字节与从前一字不差）。<br>★ **`lost_truncated`（additive，bool）**：身份表**有界**（后端侧 `LOST_IDENTITY_CAP = 64`）。超出的那些**仍计入 `dropped`**，只是不再留身份并置本位 —— **不是静默截断**。置位 = 「这份清单不全，理性做法是整体重取快照」。为 `false` 时不序列化 |
 | `reply` | `id`, `ok`, `data?`, `code?`, `message?` | **U6b-1**：**入方向命令的应答**。它刻意**复用出方向的 `kind` tag 空间**（不另开一条流），所以它在本表里有一行 —— 而它的完整语义（信封、`id` 不透明性、超时后登记谁摘、逐命令的 `data` 形状与错误码）住在下面的「入方向」小节。⚠ **本行只是清册登记**，不重复那一节的内容（同一份契约不许两处各写一份）。⚠ 〔F06c 补〕它此前**只活在那一节的示例里、本表没有它的行** —— 仓外 aterm 的 KDoc 里那个错的帧数就是数本表数出来的 |
 | `cancelled` | `id` | **U6b-1**：某条入方向命令**被取消了**（`id` = 被取消的那条）。同 `reply`：复用 tag 空间、完整语义在「入方向」小节（含「不可取消」时为什么回 `reply{ok:false,code:"not_cancellable"}` 而不是本帧）。⚠ 〔F06c 补〕同上，此前本表无此行 |
 
 ### 入方向：流连接上的命令信封（U6b-1）
 
-在此之前这条协议是**单向**的：daemon 只写、从不读。这不是设计选择，是缺口 —— 它已经在制造绕路：
+在此之前这条协议是**单向**的：后端只写、从不读。这不是设计选择，是缺口 —— 它已经在制造绕路：
 
-- **`--tmux-notify` 存在的唯一理由**就是 tmux hook 子进程没法给正在跑的 daemon 发消息，
+- **`--tmux-notify` 存在的唯一理由**就是 tmux hook 子进程没法给正在跑的后端发消息，
   只能新起一个进程、校验身份、发信号。
 - **`--resolve` 为一次极小的 RPC 单开一整条 SSH exec。**
 
 载体本来就在：monitor 那头拿的是 `russh::ChannelStream`，**双工**，而写半边
 **在 U8a-2a 之前从来没人用过**（U8a-2 摸底逐个 `write_all` 核过：零数据字节）。
-现在 daemon 在**同一条流连接**上读 stdin，monitor 侧的发送端见下「客户端侧语义」。
+现在后端在**同一条流连接**上读 stdin，monitor 侧的发送端见下「客户端侧语义」。
 
 ```text
 → {"id":"<opaque>","cmd":"<name>","args":{...}}          请求（一行一个）
@@ -417,7 +417,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 
 | 字段 | 向 | 说明 |
 |---|---|---|
-| `id` | → ← | **不透明串**。daemon **不解析、不校验格式、不规范化，只回显**。谁生成谁负责唯一 —— 客户端。daemon 自己发号的话重连后号段会撞（同 §F90「不许拿会变的东西当持久键」）。含 emoji / 超长 / 纯数字都照原样回 |
+| `id` | → ← | **不透明串**。后端 **不解析、不校验格式、不规范化，只回显**。谁生成谁负责唯一 —— 客户端。后端自己发号的话重连后号段会撞（同 §F90「不许拿会变的东西当持久键」）。含 emoji / 超长 / 纯数字都照原样回 |
 | `cmd` | → | 命令名 |
 | `args` | → | 命令自己的参数对象，缺省 `{}` |
 | `ok` | ← | 成败。`true` 时 `code` / `message` **不上线**（skip_if_none） |
@@ -427,7 +427,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 **四条刻意的选择：**
 
 1. **应答复用出方向的 `kind` tag 空间**（`reply` / `cancelled` 是新 kind），不另开一条流 ——
-   旧 monitor 见到未知 kind 会**忽略**（§10 已有的 additive 规律），新 daemon × 旧 monitor 天然安全。
+   旧 monitor 见到未知 kind 会**忽略**（§10 已有的 additive 规律），新后端 × 旧 monitor 天然安全。
 2. **取消是一条普通命令、不是带外信号**。带外要么另开通道要么发明转义序列，两者都要新的解析纪律；
    而取消排队等一下并无妨（它只在长命令上有意义）。取消一个不存在的 `id` 是**幂等**的、不是错误。
 3. **应答走独立通道**（容量 256，与出方向的 10 000 分开）。出方向丢一条**内容帧**可恢复
@@ -438,7 +438,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
    机理是应答通道满时读循环阻塞 ⇒ 通道恒满 ⇒ `biased` 每次都命中应答）。
 4. **应答通道满时阻塞入方向，不丢弃**。满 = 客户端连应答都读不过来，这时候把背压顶回去正是想要的。
 
-**信任边界**（出方向 daemon 是唯一写者；入方向它变成读取不可信输入的一方）：
+**信任边界**（出方向后端是唯一写者；入方向它变成读取不可信输入的一方）：
 
 | 约束 | 行为 |
 |---|---|
@@ -454,7 +454,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 > 文档没跟上，指着两个不存在的测试名。U8a-2a 订正。
 
 - **客户端在读到 `hello` 之前不许写命令**（客户端要先知道对面是什么版本、有什么能力）。
-  - daemon 侧：`inbound::spawn` 的参数里有一个 `wire::HelloFlushed` 见证，
+  - 后端侧：`inbound::spawn` 的参数里有一个 `wire::HelloFlushed` 见证，
     而它**只能**由 `wire::write_and_flush_hello` 产出 ⇒ reader 抢在 Hello 之前起来**编译不过**。
   - monitor 侧（U8a-2a）：写半边一拿到就被 `inbound_client::park` 收进 `ParkedWriter`，
     那个类型**身上没有任何写方法**；唯一出口 `into_client` 要一个 `DaemonHello`，
@@ -468,19 +468,19 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 
 #### 客户端侧语义（monitor `inbound_client`，U8a-2a）
 
-daemon 侧刻意**不管**这些 —— 零定时器铁律不改，超时一律推给客户端。
+后端侧刻意**不管**这些 —— 零定时器铁律不改，超时一律推给客户端。
 
 | 事项 | 归属 | 做法 |
 |---|---|---|
-| `id` 生成 | 客户端 | `<连接 nonce>-<单调序号>`。nonce 每条连接一套 ⇒ 重连后号段不撞，daemon 的 `duplicate_id` 正常打不到 |
-| 超时 | 客户端 | `call(cmd, args, timeout)` 自带，且**覆盖「写入 + 等应答」两段**（共用一个 deadline）。只裹后半段的话，写半边被反压卡住时它会无视自己的 timeout 永久挂起 —— 上面第 4 条（应答通道满时阻塞入方向）正是那条链的一环。等应答超时后**补发一条 `cancel`**（best-effort）让 daemon 别白跑；写入超时则不补（那条命令根本没入队） |
+| `id` 生成 | 客户端 | `<连接 nonce>-<单调序号>`。nonce 每条连接一套 ⇒ 重连后号段不撞，后端的 `duplicate_id` 正常打不到 |
+| 超时 | 客户端 | `call(cmd, args, timeout)` 自带，且**覆盖「写入 + 等应答」两段**（共用一个 deadline）。只裹后半段的话，写半边被反压卡住时它会无视自己的 timeout 永久挂起 —— 上面第 4 条（应答通道满时阻塞入方向）正是那条链的一环。等应答超时后**补发一条 `cancel`**（best-effort）让后端别白跑；写入超时则不补（那条命令根本没入队） |
 | 超时后的登记 | 客户端 | **不摘**。摘了的话晚到的 `reply`/`cancelled` 会落进「未登记的 id」，每次超时刷一条 warn ——而那是预期内的事。登记由路由侧摘，`oneshot` 送不出去即知调用方已走 |
-| 并发上限 | 客户端 | 同时在等的命令 ≤ 256（同 daemon 应答通道容量）。**满之前先回收「调用方已走」的登记**（`oneshot::Sender::is_closed`）—— 否则背压路径下 daemon 的 cancel 应答被 `try_send` 丢掉，那条 id 永远等不到帧，表只涨不落且不自愈 |
-| 能力门控 | 客户端 | `hello.commands` 里没有的命令**直接拒**，一个字节都不发。旧 daemon 无该字段 ⇒ 空集 ⇒ 不发任何入方向命令 |
-| 关写半边 | 客户端 | 显式指令（`close_write`），**只有一次性探测该调**。⚠ 关它**不会让 daemon 退出** ——stdin EOF 只结束 daemon 的入方向 reader task；进程只在 stdout 关掉或收到停机信号时退出 |
+| 并发上限 | 客户端 | 同时在等的命令 ≤ 256（同后端应答通道容量）。**满之前先回收「调用方已走」的登记**（`oneshot::Sender::is_closed`）—— 否则背压路径下后端的 cancel 应答被 `try_send` 丢掉，那条 id 永远等不到帧，表只涨不落且不自愈 |
+| 能力门控 | 客户端 | `hello.commands` 里没有的命令**直接拒**，一个字节都不发。旧后端无该字段 ⇒ 空集 ⇒ 不发任何入方向命令 |
+| 关写半边 | 客户端 | 显式指令（`close_write`），**只有一次性探测该调**。⚠ 关它**不会让后端退出** ——stdin EOF 只结束后端的入方向 reader task；进程只在 stdout 关掉或收到停机信号时退出 |
 
 真进程端到端在 `e2e/inbound-daemon-frames.sh`（15 条断言，进 CI 带地板）——
-它喂给真 daemon 的那条 ping 行**逐字节**由 monitor 的编码器钉住
+它喂给真后端的那条 ping 行**逐字节**由 monitor 的编码器钉住
 （`the_e2e_ping_line_is_exactly_what_the_encoder_produces`），否则那套件只是在验证一个
 monitor 永远不会发的形状。
 
@@ -505,14 +505,14 @@ monitor 永远不会发的形状。
 ★★ **总线成员是身份空间的子集，不是第二套名单**〔用@08-13：「那他不应该是身份空间的
 子集吗? 他应该去调用身份空间啊」〕。cc-bus 自己那份 `agents.tsv` 记的地址**会过期** ——
 会话名被重用是常态（`cc-spawn` 按目录基名取名），实测后果是敲门文字被打进**陌生占用者**
-的屏幕。⇒ `live` / `ccm_sid` 由 daemon **去问 tmux**（一次 `list-sessions` 列全部，
+的屏幕。⇒ `live` / `ccm_sid` 由后端 **去问 tmux**（一次 `list-sessions` 列全部，
 不是每个成员探一次），cc-bus 那份只回答「谁登记过 + 邮箱里还剩几条」。
 
 ⚠ **`live` 有三态**：`true` / `false` / `null`。拿不到身份空间（没装 tmux、起不来）时是
 `null` —— 「不知道」与「不在」是两件事，混起来会让调用方把一屋子活人当成死人。
 
 **它是只读的**，而且**刻意只读**：cc-bus 那边真正"读消息"的命令是 `cc-recv`，
-而 `cc-recv` **会推进已读位置** —— daemon 代替人去读，等于把消息从人那里偷走
+而 `cc-recv` **会推进已读位置** —— 后端代替人去读，等于把消息从人那里偷走
 （agent 自己再跑 `cc-recv` 就什么都看不到了）。⇒ 「有没有新的」这个问题由 `unread` 回答，
 **没有 `bus-recv` 这条命令**。要做代读的那天，先得给 cc-bus 一个「读了但不算数」的两阶段口。
 
@@ -529,12 +529,12 @@ monitor 永远不会发的形状。
 （会话与收件箱都没动）。两种情况 `cc-kill` 都算成功，**必须分得开** ——
 「收掉了」和「那个名字现在是别人的」对用户是两件事。
 
-★ **门在懂语义的那一侧**：daemon 自己那条 `kill` 用 §34 三道门，因为它的归属证据弱
+★ **门在懂语义的那一侧**：后端自己那条 `kill` 用 §34 三道门，因为它的归属证据弱
 （名字前缀 / `@ccm_sid`）；`cc-kill` 用的是强证据 —— `agents.tsv` 第 4 列（登记时记下的
 pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：**杀掉占了同名的无辜进程与会话**
 （`kill -9` 整棵树 + 删收件箱）。⇒ 这里不重写一遍门，转调它。
 
-⚠ 它做的事比 daemon 的 `kill` 多：杀会话 + 进程树 + 清名册 + 清台账 + 清那个 id 的状态。
+⚠ 它做的事比后端的 `kill` 多：杀会话 + 进程树 + 清名册 + 清台账 + 清那个 id 的状态。
 「多窗口要不要拦」是产品判断（账本 `U18` 待裁）；今天照收，`cc-kill` 会把窗口数打出来。
 
 错误码：`invalid_args`（id 非法/缺）· `not_installed` · `timed_out` · `failed`。
@@ -554,10 +554,10 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 ⚠ 它们**不改变投递**：先发后到是正当用法（对方待会儿才 `cc-register`），
 所以照发不误，只是把话说清楚。
 
-★★ **`from` 不给会怎样**：daemon 跑 `cc-send` 时不在任何 tmux pane 里，
+★★ **`from` 不给会怎样**：后端跑 `cc-send` 时不在任何 tmux pane 里，
 `cc-whoami` 解不出身份 ⇒ 实测收信人看到的是「**来自 unknown**」，
 而它给的回复方式是 `cc-send unknown "…"` —— **回复直接掉进一个没人读的收件箱**。
-⇒ 调用方应当给 `from`；daemon 把它作为 `CC_BUS_ID` 传给子进程
+⇒ 调用方应当给 `from`；后端把它作为 `CC_BUS_ID` 传给子进程
 （那是 `cc-whoami` 优先级第一条，**cc-bus 现成的契约**，不改它本体）。
 回值里的 `from` 回显的就是这次用的身份，**不给就是 `null`** —— 让调用方看得见这件事，
 而不是等收信人来问「谁发的」。
@@ -573,15 +573,15 @@ pane 根进程 pid）+ 登记的完整地址。08-13 实测过不核的后果：
 | `too_long` | 正文塞不进一次命令调用（内核单参数上限 **128 KiB**），诊断里带实测字节数 | 起进程时 `E2BIG` |
 | `failed` | 其它 | 其它退出码 / 起不来 |
 
-⚠ **期限住在子进程里，不在 daemon 里**：daemon 侧一个计时器都不加（零定时器铁律 +
+⚠ **期限住在子进程里，不在后端里**：后端侧一个计时器都不加（零定时器铁律 +
 本文档上面那条「超时一律推给客户端」），而是给子进程套一个 `timeout` 前缀 ——
-`ccm` 问 daemon 那条早就是这么写的。找不到 `timeout` 这个命令时**如实降级**：裸跑、没有期限。
-不这么做的后果实测过：`cc-send` 卡在 flock 上时 daemon **无限等**，
+`ccm` 问后端那条早就是这么写的。找不到 `timeout` 这个命令时**如实降级**：裸跑、没有期限。
+不这么做的后果实测过：`cc-send` 卡在 flock 上时后端 **无限等**，
 而这两条是阻塞档、`cancel` 对 `spawn_blocking` 是空操作 ⇒ 一个 worker 被占死。
 
-**收件人合法性归 cc-bus 自己**，daemon 这一层不再写第二份白名单 —— 两处规则会漂。
+**收件人合法性归 cc-bus 自己**，后端这一层不再写第二份白名单 —— 两处规则会漂。
 
-★ **这两条命令都是转调本机的 cc-bus 命令，daemon 不读 cc-bus 的任何数据文件**
+★ **这两条命令都是转调本机的 cc-bus 命令，后端不读 cc-bus 的任何数据文件**
 （地址簿 / 收件箱 / 已读位置）。用户 08-13 逐字说过「后面我可能要改ccbus」⇒
 这一层只把 cc-bus 的**命令**当接口：命令是给外人用的，文件格式是给自己用的。
 由 `control/cc_bus.rs` 里的 `no_cc_bus_data_layout_leaks_into_the_daemon` 钉住。
@@ -699,7 +699,7 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 **三件事它刻意不做**：
 
 1. **不 attach。** U8a 把「起会话」分成三个平面 —— ① 计划面（`resolve`）· ② 远端执行面（本命令）·
-   ③ 本机开窗面。attach 属于 ③，而 daemon 在远端，开不了你面前的窗。
+   ③ 本机开窗面。attach 属于 ③，而后端在远端，开不了你面前的窗。
 2. **不过 shell。** tmux 用 `Command::new("tmux").args([...])` 直传 argv ⇒
    引号 / 转义 / 注入这一整类问题在这条路上**不存在**，不是「被挡住了」。
    ⇒ monitor `launch.rs` 里那条「禁双引号」是 **PowerShell 专属**（`wt.exe` 传参畸变），
@@ -713,18 +713,18 @@ F04b 先把它从**主路**降为一次性回落，本件把它整块拿掉 ⇒ 
 
 **这一条是协议的读者要知道的行为变化，不是 ccm 的内部细节** —— 因为 `shared/ccm`
 经 `src-tauri/src/sftp.rs` 的 `include_str!` 被**部署到每一台远端机器**上，而这条协议
-就是它与那台机器上的 daemon 之间的契约。
+就是它与那台机器上的后端之间的契约。
 
 | | 09-04 之前 | 09-04 之后 |
 |---|---|---|
-| daemon 在，答 `created:true` | ccm 什么都不再做（会话与载荷都由 daemon 做完） | 一样 |
-| daemon 在，答 `created:false`（撞名） | 退回本机 `new-session` ⇒ 撞上 ⇒ `exit 3` | **直接** `exit 3`（同一句文案，少绕一趟） |
-| daemon **不在** / 跑不起来 / 答非所问 | **退回本机 tmux 直起**，往 stderr 说一句「已降级」，`rc=0` | **`exit 4` ＋ 一句人话**。ccm 不铺、不起、不找退路 |
+| 后端在，答 `created:true` | ccm 什么都不再做（会话与载荷都由后端做完） | 一样 |
+| 后端在，答 `created:false`（撞名） | 退回本机 `new-session` ⇒ 撞上 ⇒ `exit 3` | **直接** `exit 3`（同一句文案，少绕一趟） |
+| 后端 **不在** / 跑不起来 / 答非所问 | **退回本机 tmux 直起**，往 stderr 说一句「已降级」，`rc=0` | **`exit 4` ＋ 一句人话**。ccm 不铺、不起、不找退路 |
 
 ⇒ **对协议实现方的两条硬结论：**
 
 1. **这条命令的可达性从「锦上添花」变成了「起会话的唯一路径」。**
-   daemon 在这台机器上不可达 ⇒ 那台机器上 `ccm --tmux` **起不来会话**，
+   后端在这台机器上不可达 ⇒ 那台机器上 `ccm --tmux` **起不来会话**，
    不再有「它自己悄悄用本机 tmux 兜住了」这回事。
    ⇒ 远端部署（`sftp::ensure_daemon_deployed`）从「装了更好」变成**硬前置**。
 2. **`created:false` 是撞名，不是失败** —— 它仍然走调用方自己的响亮失败（`exit 3`），
@@ -744,15 +744,15 @@ monitor 的 `tmux_send_keys(…, enter=false)` 生产上唯一的用途是**优�
 打断当前回合**，多一个 `Enter` 就变成「**提交用户输入框里排队的文本**」。
 
 ⚠ **为什么是一个新 mode 名，而不是给 `launch` 加一个 `enter` 字段**：
-`parse_request` 是手工从 `Map` 取键的、**不 deny unknown fields** ⇒ 旧版本 daemon 会
+`parse_request` 是手工从 `Map` 取键的、**不 deny unknown fields** ⇒ 旧版本后端会
 **静默忽略**那个字段、照样附 `Enter`（静默做错）。而未知 **mode** 会回 `invalid_args`
 ⇒ 客户端拿到明确错误、可以干净回落。**能力协商在 mode 名上是免费的。**
 
 ⚠ 它与 `send-into` **同一道门**（§34 Gate 2），**没有** Gate 3 ——
 `send-keys` 不删除任何东西，给它加窗口数判断会让「往多窗口会话里打字」被误拒。
 
-⚠ 客户端侧：`enter=true` 用的是**既有**的 `send-into` ⇒ 旧 daemon 也接得住；
-只有 `Escape` 那一支需要新版本 daemon。**兼容面不是全有全无。**
+⚠ 客户端侧：`enter=true` 用的是**既有**的 `send-into` ⇒ 旧后端也接得住；
+只有 `Escape` 那一支需要新版本后端。**兼容面不是全有全无。**
 
 **`data` 三字段就是失败语义**（能分辨「没起成」与「起了但没确认」）：
 
@@ -768,7 +768,7 @@ monitor 的 `tmux_send_keys(…, enter=false)` 生产上唯一的用途是**优�
 
 ⚠⚠ **`typed:true` 只有 `send-keys` 的退出码那么强**〔audit-0805 F10，报告 I-3〕。
 pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样退 0**，
-而键被 copy-mode 的键表吃掉、载荷根本没进应用。daemon 侧**没有第二种确认**
+而键被 copy-mode 的键表吃掉、载荷根本没进应用。后端侧**没有第二种确认**
 （`pane_in_mode` / `-X cancel` 全仓零命中），由
 `launch.rs::typed_is_only_as_strong_as_the_send_keys_exit_code` 钉住这个语义边界。
 ⇒ **消费方别把 `typed:true` 读成「载荷确凿落地」**。补第二种确认要真 tmux 才验得了，
@@ -783,7 +783,7 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 （⚠ `resolve` 今天仍回命令级 `bad_request` —— 它与仓外 aterm 的一次性契约冻结在 2026-07-18，
 两条路复用同一个纯函数，改它会破坏那份契约。如实登记，不顺手改。）
 
-**daemon 侧的校验是形状校验，不是安全边界**（同 §「信任边界」那条）：入方向命令来自
+**后端侧的校验是形状校验，不是安全边界**（同 §「信任边界」那条）：入方向命令来自
 已经握着这台机器 SSH 会话的对端，它本来就能在这台机器上跑任意命令。这里只回答
 「这组参数能不能构成一次有意义的 tmux 调用」，缺字段/空/超长/含控制字符 ⇒ 结构化错误。
 
@@ -805,7 +805,7 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 SSH 握手，而用量探针两段轮询上限 12+20 轮 ⇒ 单次探测最多 **36** 次握手，
 撑破 monitor 侧的 25s 硬超时。帧面是**一条长连接上多次往返**，握手恒 1 次。
 
-🔴 **它只抓一次就返回，daemon 里没有任何「隔 N 毫秒再抓一次」**（零定时器铁律，
+🔴 **它只抓一次就返回，后端里没有任何「隔 N 毫秒再抓一次」**（零定时器铁律，
 `no_timer_guard` 零容忍）。「抓几次 / 隔多久」是**调用方**的事 ——
 `K37`〔用@09-11〕逐字「后端只给机制，不给偏好」，而「等画面稳定多久算稳」是偏好。
 
@@ -826,21 +826,21 @@ SSH 握手，而用量探针两段轮询上限 12+20 轮 ⇒ 单次探测最多 
 ← {"kind":"reply","id":"O1","ok":true,"data":{"session":"ccm-oneshot-usage-z-cc","handle":"$7","ttlSecs":"30"}}
 ```
 
-`slug` 会话名后缀（`[A-Za-z0-9_-]`，daemon **铸**完整名字，调用方给不了完整名字）·
+`slug` 会话名后缀（`[A-Za-z0-9_-]`，后端 **铸**完整名字，调用方给不了完整名字）·
 `ttlSecs` 存活秒数（**没有默认值** —— `K37`：后端只给机制不给偏好）·
 `width` / `height` **可省、必须成对**（省了就是 tmux 的 detached 默认 80×24；
 探针抓的是表格，80 列会把它折断）。
 回 `session`（铸出来的完整名）· `handle`（`#{session_id}`，形如 `$7`）· `ttlSecs`（回显）。
 
-★ **名字由 daemon 铸，撞名一律拒**（`KR87D2`）：形状 = `ccm-oneshot-` ＋ slug ＋ `-cc`。
-那条 `-cc` 尾巴**不是装饰** —— 没有它，daemon 铸出来的会话过不了 §34 Gate 2 的名字半支
-（`gate_core::is_ccm_tmux_name` 只认 `cc-<X>` 与 `<X>-cc`）⇒ **daemon 自己的
+★ **名字由后端铸，撞名一律拒**（`KR87D2`）：形状 = `ccm-oneshot-` ＋ slug ＋ `-cc`。
+那条 `-cc` 尾巴**不是装饰** —— 没有它，后端铸出来的会话过不了 §34 Gate 2 的名字半支
+（`gate_core::is_ccm_tmux_name` 只认 `cc-<X>` 与 `<X>-cc`）⇒ **后端自己的
 `launch send-into` 与 `kill` 都进不去自己刚建的那个会话**。理由全文与两条出路的比价住
 `control/oneshot_session.rs::ONESHOT_GATE_SUFFIX` 的头注。
 
 ★ **看门狗是一个外部进程**（`setsid sh -c 'sleep N; tmux kill-session -t <句柄>'`），
 脚本是常量、变量全走位置参数（这条路上没有一处需要 quote）。它**独立于这条连接**：
-连接断了、daemon 没了，它照样到点清场。
+连接断了、后端没了，它照样到点清场。
 🔴 **看门狗起不来 ⇒ 不许回成功**：刚建出来的会话当场回滚杀掉，回 `watchdog_failed`
 并在话里说清回滚成没成。
 
@@ -872,13 +872,13 @@ SSH 握手，而用量探针两段轮询上限 12+20 轮 ⇒ 单次探测最多 
 
 ### argv 三分（U6b-2）
 
-daemon 认识的每个 `--token` 恰好属于三类之一：
+后端认识的每个 `--token` 恰好属于三类之一：
 
 | 类 | 成员 | 语义 |
 |---|---|---|
 | **流模式 flag** | `--with-bg` · `--tail-only` | 出现即剥离并置位，**不影响模式判定** |
 | **一次性查询子命令** | 上面那张查询表的全部 | **只有 `args[0]` 是其中之一才进查询模式** |
-| **子命令选项** | `--accts-dir` · `--after-ms` · `--include-tools` · `--limit` · `--scope` | 只在某条子命令之后才有意义，daemon 顶层不解释 |
+| **子命令选项** | `--accts-dir` · `--after-ms` · `--include-tools` · `--limit` · `--scope` | 只在某条子命令之后才有意义，后端顶层不解释 |
 
 **在此之前是二分**（剥掉流 flag、剩下非空就当查询），实测后果：
 
@@ -888,17 +888,17 @@ cc-monitor-remote query error: unknown argument: --some-future-flag
 rc=2
 ```
 
-**未知 flag 在流位置 ⇒ exit 2、一个字节都不输出、没有 hello。** monitor 看到的和「daemon 崩了」无法区分 ⇒ 重连 ⇒ 发同一个 flag ⇒ **死循环**（2026-07-09 事故的形状）。§26 的 `every_capability_token_is_strippable` 挡不住它 —— 那条只覆盖**与已声明能力绑定**的 flag。
+**未知 flag 在流位置 ⇒ exit 2、一个字节都不输出、没有 hello。** monitor 看到的和「后端崩了」无法区分 ⇒ 重连 ⇒ 发同一个 flag ⇒ **死循环**（2026-07-09 事故的形状）。§26 的 `every_capability_token_is_strippable` 挡不住它 —— 那条只覆盖**与已声明能力绑定**的 flag。
 
-现在：**未知 `--flag` 忽略 + 一行 warn，照常进流模式发 hello**（新版 monitor × 旧版 daemon 能拿到握手、看出对面旧、自行降级）；**未知裸参数仍报错 exit 2**（那是明确的调用错误，任何未来协议都不会把裸参数放 `args[0]`）。
+现在：**未知 `--flag` 忽略 + 一行 warn，照常进流模式发 hello**（新版 monitor × 旧版后端能拿到握手、看出对面旧、自行降级）；**未知裸参数仍报错 exit 2**（那是明确的调用错误，任何未来协议都不会把裸参数放 `args[0]`）。
 
 ⚠ **这张表漏一项的后果比旧行为更糟**：`args[0]` 认不出来 ⇒ 当成流模式 ⇒ 那条子命令**静默变成起了个流**，调用方拿到一堆 jsonl 行而不是查询结果（v3.4.0 `--account-trust-zero` 漏登记那次事故的加强版）。由 `every_dispatched_token_is_classified` + `the_three_classes_do_not_overlap` + `every_listed_subcommand_is_actually_dispatched` 三条机检钉住。
 
-### 一次性历史查询（带参数启动 daemon，issue #16）
+### 一次性历史查询（带参数启动后端，issue #16）
 
 带参数 exec = 一次性查询模式，干完即退、**不进流式协议**：
 
-- `--list-projects` → 每行 `{dirName, projectPath, sessionCount, lastActivityMs, sessionIds}`。`sessionIds`（`K-R83`，09-12）= 该项目下**全部会话 sid**（升序，`<sid>.jsonl` 的 stem，与 `--list-sessions` 的 `sessionId` 同一个字符串），**与 `sessionCount` 恒等长**。★ 它在的理由：客户端侧的「星标数 / 隐藏数 / 有没有活会话」三个数**全部按 sid 索引**，缺的一直是「这个项目下有哪几个 sid」——带上它，客户端**一次调用**就算得出，不必每个项目再发一次 `--list-sessions`（那是 N 次进程 spawn，而项目列表是常开界面）。⚠ **它不在 `sessionCount` 之外多读一个字节**（同一趟 `read_dir`）。⚠ **客户端读法**：字段**不在**（旧 daemon）⇒ 那三个数是「**不知道**」，**不是 0**；字段在但与 `sessionCount` 长度对不上 ⇒ 这一行坏了，同样按「不知道」处理，**不许**拿手上那几个算出一个看起来像真值的少数
+- `--list-projects` → 每行 `{dirName, projectPath, sessionCount, lastActivityMs, sessionIds}`。`sessionIds`（`K-R83`，09-12）= 该项目下**全部会话 sid**（升序，`<sid>.jsonl` 的 stem，与 `--list-sessions` 的 `sessionId` 同一个字符串），**与 `sessionCount` 恒等长**。★ 它在的理由：客户端侧的「星标数 / 隐藏数 / 有没有活会话」三个数**全部按 sid 索引**，缺的一直是「这个项目下有哪几个 sid」——带上它，客户端**一次调用**就算得出，不必每个项目再发一次 `--list-sessions`（那是 N 次进程 spawn，而项目列表是常开界面）。⚠ **它不在 `sessionCount` 之外多读一个字节**（同一趟 `read_dir`）。⚠ **客户端读法**：字段**不在**（旧后端）⇒ 那三个数是「**不知道**」，**不是 0**；字段在但与 `sessionCount` 长度对不上 ⇒ 这一行坏了，同样按「不知道」处理，**不许**拿手上那几个算出一个看起来像真值的少数
 - `--list-sessions <project_dir>` → 每行 `{sessionId, jsonlPath, startedAtMs, updatedAtMs, messageCountApprox, firstUserExcerpt, aiTitle, cwd}`
 - `--read-session <jsonl_path>` → 原样透传该 jsonl 字节（monitor 侧走既有 `parse_line` 管线）
 - `--read-session-tail <jsonl_path> <N>`（Batch9-F30，p1g）→ **尾部优先**：首行 meta `{"kind":"snapshot_meta","total":T,"tail_from":F}`（可计行口径 = watcher 行号空间），随后原样输出行 [F,T)（最新 N 行）再输出 [0,F)。快照拉取用它——最新内容第一批就位、旧历史回填；monitor 按 meta 两段编 seq（前端 seq 二分插入天然支持乱序），`total` 做精确完整性对账。回填在途经 `snapshot-inflight` 事件驱动前端 batch 模式（替代纯 300ms 静默启发式，5min 防呆上限）
@@ -907,15 +907,15 @@ rc=2
   - 🔴 `K-R100`（09-13）两处改动，**都在 wire 上看得见**：
     ① **行序 = snippet 预算顺序 = 最近优先**（按 jsonl mtime 降序）。此前按 `WalkDir`（`readdir`）先走到的顺序花预算，与 monitor 的 `updatedAt desc` 几乎正交（实测前 3 重合 0/3）——而两侧的**展示**顺序都是最近优先。
     ② 每行多一个 **`hitsTruncated: bool`**：本会话有命中因**全局 `--limit` 用完**而拿不到 snippet。此前 `hitCount: 12, hits: []` 在下游与「这个会话没什么可看的」同形，monitor 合并时又逐字 `truncated: local.truncated` 把远端那一半丢掉 ⇒ **远端截断界面一个字不说**。⚠ 与「本会话超 `PER_SESSION_CAP`(30) 条只列前 30」**不是一回事**，后者不置这个位。
-    - 兼容：旧 daemon 不发这个字段 ⇒ monitor 侧 `serde(default)` = `false`，退化成收口前的行为，不炸。
+    - 兼容：旧后端不发这个字段 ⇒ monitor 侧 `serde(default)` = `false`，退化成收口前的行为，不炸。
 - `--usage`（F88a-remote / #52，`remote-daemon-proto/src/observe/usage_query.rs`）→ 服务端在远端聚合用量（**per-requestId 每字段 MAX**，口径对齐 monitor `usage.rs`——有 `per_request_field_max_matches_local_kou_jing` 跨轨对账测），**每会话一行** camelCase 用量行 JSON，monitor 侧 `remote_history::aggregate_remote_usage_all` fan-out 合并（各带 `origin`）。**additive 子命令、未 bump PROTO_VERSION**。
 
 - `--list-accounts [--accts-dir <p>]`（A2 多账号，`remote-daemon-proto/src/observe/accounts_query.rs`）→ 读 cc-acct-iso 的 manifest（`$ACCTS_DIR/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录解析：`--accts-dir` > `~/.cc-acct-iso/config` 的 `ACCTS_DIR=`（**正则抠值，绝不 source**）> `$HOME/.claude-accts`
-- `--session-accounts [--accts-dir <p>]`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId}`。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧住 `history.rs::LAUNCH_ID_VAR`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），daemon 只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老 daemon 不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
+- `--session-accounts [--accts-dir <p>]`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId}`。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧住 `history.rs::LAUNCH_ID_VAR`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），后端只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老后端不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
 - `--account-trust <configDir> <cwd> [--accts-dir <p>]`（A2）→ 换号 resume 前的信任预检（首次用某账号进某目录，CC 会弹信任确认、会卡住自动化）。单行 `{"trusted":bool,"known":bool,"error":null}`。**安全**：`configDir` 必须逐字 ∈ manifest 的账号列表，否则 exit 2 + stderr `{"code":"unknown_config_dir",...}`——避免退化成任意文件读原语；**只回三个布尔/字符串字段，绝不回传 `.claude.json` 内容**（内含 `mcpServers` 的环境变量，可能有 API key）
 - `--account-trust-zero <cwd>`（A2）→ **账号 0**（未启用多账号时那个原生身份）的信任预检，返回形状同 `--account-trust`。**为什么单开一个动词而不是给 `--account-trust` 传空 `configDir`**：账号 0 没有 config dir，而空串是被明令禁止的拼法（空值 ≠ 未设）；且它的 `.claude.json` 原生根是 `$HOME`、不在共享账号库里 ⇒ 路径来源本就不同，合并只能靠哨兵值区分，比多一个动词更易错。**不收任何文件/配置目录路径参数**：它收 `cwd`，但那只当 `projects` 里的**查表键**，`.claude.json` 的根写死 `$HOME` ⇒ 连"任意文件读"的面都没有（`account_trust_zero_takes_no_path_argument` 钉住）
-- `--fork-session <args>`（G2 branch-anywhere，`remote-daemon-proto/src/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**daemon 唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`doc/INVARIANTS.md` §41.6）
-- `--tmux-notify <daemon_pid> <daemon_starttime>`（P4b zero-poll-liveness）→ **不是查询**，是 tmux hook 子进程走的通路：校验身份后给正在跑的 daemon 发一个信号叫它立刻重扫 tmux，**完全不碰文件系统**。两个参数缺一或非整数 ⇒ exit 2。**必须同时比对 starttime 而不只看 pid 存在**：daemon 退出后那个 pid 可能已被别的进程占用，误发信号轻则无效、重则打断无关进程（很多程序把该信号当自定义控制信号，默认处置直接终止）。身份对不上 ⇒ **静默 exit 0，不做事**
+- `--fork-session <args>`（G2 branch-anywhere，`remote-daemon-proto/src/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**后端唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`doc/INVARIANTS.md` §41.6）
+- `--tmux-notify <daemon_pid> <daemon_starttime>`（P4b zero-poll-liveness）→ **不是查询**，是 tmux hook 子进程走的通路：校验身份后给正在跑的后端发一个信号叫它立刻重扫 tmux，**完全不碰文件系统**。两个参数缺一或非整数 ⇒ exit 2。**必须同时比对 starttime 而不只看 pid 存在**：后端退出后那个 pid 可能已被别的进程占用，误发信号轻则无效、重则打断无关进程（很多程序把该信号当自定义控制信号，默认处置直接终止）。身份对不上 ⇒ **静默 exit 0，不做事**
 
 - `--list-subagents <父会话 jsonl 路径>`（P7c-1，p1z）→ 列该会话的 **subagent 候选**，
   每行一个 `{path, description, timestamp}`（拿不到就 `null`，**不猜**）。目录不存在 = 该会话没有
@@ -933,7 +933,7 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 - `--kill`（同上）→ 杀一个 tmux 会话，仍过 §34 三道门。
 - `--ping`（stdin 可空）→ 存活探测，回 `{}`。
 - `--daemon-probe`（不读 stdin）→ **能力探测口**，回 `{proto, buildId, commands}`；
-  `commands` 是这台 daemon **真能派发**的 CLI 控制面子命令清单。
+  `commands` 是这台后端 **真能派发**的 CLI 控制面子命令清单。
   集成方按**能力**兼容，不要按版本号 —— 范式与 `ccm --ccm-probe` 一致。
 
 ★ **这四条不引入任何新语义**：`--launch` / `--kill` / `--ping` 的实现就是流连接上
@@ -948,14 +948,14 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 信封与 `--resolve` 同形：stdin 一段 JSON、stdout 一行紧凑 JSON、exit 0；
 错则 exit 2 + stderr 一行 `{code, message}`。
 
-错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：`--accts-dir <p>` 解析到 `~/.cc-acct-iso/config` 或 `$HOME/.claude-accts`；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧 daemon 兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
+错误写 stderr + 退出码 2（`--account-trust` 用 `--resolve` 那套结构化 `{code,message}` JSON）。**读会话那一族**（`--read-session` / `--read-session-tail` / `--read-session-from-offset` / `--fork-session`）的路径参数严格限制在 `<claude_dir>/projects/` 内（canonicalize 后前缀校验，拒穿越 / symlink 逃逸 / 非 jsonl）。**账号一族不走这条**，各有各的判据：`--accts-dir <p>` 解析到 `~/.cc-acct-iso/config` 或 `$HOME/.claude-accts`；`--account-trust <configDir>` 靠「逐字 ∈ manifest」而非 projects 前缀；`--tmux-notify` 根本不碰文件系统。**旧后端兼容**：不认参数的旧版会照常发 `hello` 进流模式——monitor 以"首行是 hello 帧"识别旧版并提示升级（优雅降级，无版本协商）。
 
 **`K-R86` 追加一条（09-13）**：`--capture-pane <会话名>` —— **只读**地抓一次某个 tmux 会话
 **此刻**那一屏的文本。它是上面读面那一族的邻居，但读的不是文件而是屏幕，所以单列在这里。
 
 - **入参只有一个位置参数**：tmux 会话名（**不读 stdin**）。名字的形状与 `kill` 那条逐字同一套
   （非空、无控制字符、不含 `:` / `=` —— 后两个是 tmux 目标语法的一部分），
-  daemon 侧自己拼成精确目标 `=名:`（`F01`：裸 `-t <名>` 会按「精确名 → 名字开头 → glob」
+  后端侧自己拼成精确目标 `=名:`（`F01`：裸 `-t <名>` 会按「精确名 → 名字开头 → glob」
   解析，只有 `sib-2` 在时 `-t sib` 抓的是 `sib-2`）。
 - **成功**：那一屏**原样**写 stdout（同 `--read-session` 的透传口径，不包 JSON），exit 0。
   ⚠ **空屏是合法的成功**：一个刚建起来、什么都没打印的 pane 抓回来就是空串 + exit 0。
@@ -968,10 +968,10 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
   - `capture_failed` —— 上面三档都不是，**tmux 的原话原样带回**（认不出来时不猜一个具体原因）；
   - `invalid_args` —— 会话名的形状过不了，**在起进程之前**就拒了。
 - **只读**：`tmux -u capture-pane -p -t '=名:'`，argv 直传不过 shell；不 attach、
-  不落 tmux buffer、不写任何文件。这一处起进程在 daemon 侧登记于
+  不落 tmux buffer、不写任何文件。这一处起进程在后端侧登记于
   `readonly_guard::spawn_registry::ALLOWED`，而「它只读」由
   `readonly_guard::capture_is_read_only` 逐元素钉住 argv（那张登记表的键分不出被调的子命令）。
-- 🔴 **它只抓一次**：「抓几次 / 隔多久再抓」由**调用方**决定 —— daemon 侧那条零定时器铁律
+- 🔴 **它只抓一次**：「抓几次 / 隔多久再抓」由**调用方**决定 —— 后端侧那条零定时器铁律
   （`no_timer_guard`）不许它自己长出节拍。
 - ⚠ **`--ping` 那族的「不读 stdin」纪律同样适用**：声明无输入的命令必须秒回，
   不许挂住等一个永远不来的输入（`P4f` 实测过 `bus-list` 那次 6 秒被掐死）。
@@ -982,11 +982,11 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 而这一条**撞名就拒**，因为它会给那个会话挂一条到点杀它的看门狗。
 
 - **入参是两个位置参数**（**不读 stdin**）：
-  - `<名字后缀>` —— 只收 `[A-Za-z0-9_-]`、≤64 字符。**完整会话名由 daemon 铸**：
+  - `<名字后缀>` —— 只收 `[A-Za-z0-9_-]`、≤64 字符。**完整会话名由后端铸**：
     专属前缀 `ccm-oneshot-` ＋ 这个后缀。调用方给不了完整名字，**这是故意的**：
-    那个前缀是 daemon 的名字空间，「哪些会话是一次性的」这个问题只有一个答案。
+    那个前缀是后端的名字空间，「哪些会话是一次性的」这个问题只有一个答案。
   - `<存活秒数>` —— 十进制整数，`>= 1` 且放得进 `u32`。**没有默认值、也没有上界**：
-    一次性会话的寿命是调用方要买的那件东西，daemon 只给机制不替它选（`K37`）——
+    一次性会话的寿命是调用方要买的那件东西，后端只给机制不替它选（`K37`）——
     「多久算太久」是偏好，后端不持有它。⚠ 代价：秒数给得足够大时「到点自己会死」
     这条性质就接近空（它仍然成立，只是那个「点」在很远的地方）—— **那一格归调用方**。
     `0` 拒：0 秒的看门狗等于没有看门狗，调用方会拿到一个**已经死了**的名字。
@@ -1001,12 +1001,12 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
     接回等于替别人的会话定了死期，先例逐字在 `control/ccm/mod.rs` 的 `NAME_TAKEN_FMT`；
   - `create_failed` —— 建不出来，而它也不存在（tmux 原话原样带回）；
   - `watchdog_failed` —— 看门狗那条外部进程起不来 ⇒ 这个会话**没有到点自己会死的保证**
-    ⇒ daemon 当场把刚建出来的会话杀掉（不留孤儿），并在 message 里**说清回滚成没成**。
-- **看门狗是一个外部进程，不是 daemon 里的定时器**：
+    ⇒ 后端当场把刚建出来的会话杀掉（不留孤儿），并在 message 里**说清回滚成没成**。
+- **看门狗是一个外部进程，不是后端里的定时器**：
   `setsid sh -c 'sleep "$1"; shift; exec tmux "$@"' ccm-watchdog <秒> <kill 的 argv…>`。
-  🔴 这不是实现口味：daemon 侧那条**零定时器铁律**（`no_timer_guard`）的人群是
+  🔴 这不是实现口味：后端侧那条**零定时器铁律**（`no_timer_guard`）的人群是
   「本 crate `src/` 的源码文本」，且明写**被起进程的行为不在里面** ——
-  把那个「等 N 秒」搬进 daemon 自己的代码当场撞铁律。
+  把那个「等 N 秒」搬进后端自己的代码当场撞铁律。
   ⚠ **脚本是一个常量**，会话名 / 句柄 / socket 全部走**位置参数** ⇒ 这条路上没有一处
   需要 shell 引号，也就不会有引号写错这一类问题。
 - ⚠ **它只起会话，不看画面**：「隔多久抓一屏看它稳没稳」不在这条命令里
@@ -1065,7 +1065,7 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 
   ⚠ **「首行」指「每个响应的首行」，不是「这条流的第一行」**：同一个进程里 `__meta__`
   会出现多次，每条连接一次、`seq` 递增。现打（下面那一刀的判定行里逐字带出来的同一段流）：
-  `seq:0` 是 `acct-a`、`seq:1` 是 `acct-b`，**同一个 daemon 进程**。
+  `seq:0` 是 `acct-a`、`seq:1` 是 `acct-b`，**同一个后端进程**。
   ⚠ `seq` 在上面**这三种行里只有 `__meta__` 那种**有；`event` 的值是**一个 JSON 串**
   （上游那段逐字节保住但不参与本行结构，理由见 `tee.rs` 头注）。
 
@@ -1110,13 +1110,13 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
   **都被丢掉**，换上这一行自己那一个（写哪个头由该行 `auth_style` 定）。
   ⚠ **`Proxy-Authorization` 仍然照旧转发** —— 它说的是与代理之间的鉴权，收掉它是另一件事，
   **登记为射程外**。那一行**没有** key 时（订阅登录那一档）一个字节都不动。
-- ⚠ 本刀的 tee 行**不带 `t_ns`**，也**不设上游超时** —— 两处都受 daemon 零定时器护栏所限，
+- ⚠ 本刀的 tee 行**不带 `t_ns`**，也**不设上游超时** —— 两处都受后端零定时器护栏所限，
   理由与代价见 `remote-daemon-proto/src/relay/mod.rs` 头注。
 
 **`K-P6b` 追加一条**：`--dial` —— 起 **SSH 拨号代理**（候选 E 的字节代理）。它与 `--relay` 同族：
 不是一次性查询，而是一个**常驻**进程，起来就搬字节直到某一头断开。
 
-🔴 **先写死它买到了多少，别读大**：它搬走的是 **daemon 那条长连接流**的那一跳 SSH 握手 ——
+🔴 **先写死它买到了多少，别读大**：它搬走的是 **后端那条长连接流**的那一跳 SSH 握手 ——
 界面侧 `connect_session` 的生产调用点共 **7 处 / 3 份**，本条覆盖 **1 处**；
 **SFTP · 端口转发 · 跳板 · 其余一次性 exec 与测试连接，界面进程仍然自己拨号。**
 ⇒ **任何地方都不许把它写成「拨号搬出去了」。**
@@ -1155,9 +1155,9 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
   ```text
   界面 → 代理  环境变量 CCM_DIAL_REQUEST：一份 JSON
                       {"host","port","user","key_path","host_key_fingerprint","command"}
-              stdin   **全部**是原始字节 → SSH channel（远端 daemon 的 stdin）
+              stdin   **全部**是原始字节 → SSH channel（远端后端的 stdin）
   代理 → 界面  stdout 第一行 JSON：{"ok":bool,"error":string|null,"fingerprint":string|null}
-                      其后：原始字节 ← SSH channel（远端 daemon 的 stdout）
+                      其后：原始字节 ← SSH channel（远端后端的 stdout）
   ```
 
   ⚠ **键名是蛇形**（`key_path`，不是配置面那套 camelCase 的 `keyPath`）：
@@ -1195,7 +1195,7 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 
   **要什么才测得了**（两个读数就够，缺一不可）：
 
-  1. 干净 win11 + **真安装包**装一次，配一行**填了 `keyPath`** 的远端，开一条 daemon 流；
+  1. 干净 win11 + **真安装包**装一次，配一行**填了 `keyPath`** 的远端，开一条后端流；
   2. 读两样：① monitor 日志里那条 `K-P6b: 不走拨号代理（有二进制=… · 配了 keyPath=…）` warn
      **出没出现**（它就是「这台机器上拨号仍在界面进程里」的运行期证据，出现即回落）；
      ② 流开着的时候 monitor 底下**有没有**一个 `cc-monitor-remote.exe --dial` 子进程。
@@ -1210,7 +1210,7 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
   ⇒ **代理拨得通**这一环成立；**界面在默认装机上选哪一支**仍然是上面那个没测的格子。
 
 ⚠ 加一条 CLI 命令要动**两处**：`inbound::REGISTRY`（实现与分派臂）+ `main::SUBCOMMANDS`
-（`is_query_mode` 的闸门）。只动前者的后果是**静默的** —— daemon 把它当未知 flag、
+（`is_query_mode` 的闸门）。只动前者的后果是**静默的** —— 后端把它当未知 flag、
 打一行 warn 之后照常进流模式，调用方拿到一堆 jsonl 行。08-13 实测撞到过，
 现由 `cli_control::tests::every_cli_exposed_command_is_in_the_query_mode_gate` 钉住。
 
@@ -1229,7 +1229,7 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 实现上也留着痕迹：`run(_agent_home, …)` 的参数带下划线、入参字段 `ResumeSpec.claude_dir`
 （线上是 `claudeDir`）标着 `#[allow(dead_code)] // MVP 未用（不做 pidfile 消解）` ——
 也就是说它**手上有 home 目录却没用**。
-⚠ daemon 仓内的那个参数 08-14 起叫 `agent_home`（`daemon-split` 的 `S4b`：通用层的标识符里
+⚠ 后端仓内的那个参数 08-14 起叫 `agent_home`（`daemon-split` 的 `S4b`：通用层的标识符里
 不许出现 agent 名字）；**`ResumeSpec` 的 `claudeDir` 字段名不受影响、原地冻结** ——
 它是与 aterm 冻结在 2026-07-18 的 stdin 契约的一部分。
 
@@ -1238,19 +1238,19 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 
 ### 10.2 ★ 代码全景 sidecar 的**按需拉取**：地址怎么算、哈希钉在哪、失败面有哪几个（K-W2D）
 
-代码全景那个 sidecar **不进安装包**（交付路径丙）：daemon 第一次收到全景请求时才去取，
+代码全景那个 sidecar **不进安装包**（交付路径丙）：后端第一次收到全景请求时才去取，
 落到 `~/.cc-monitor/bin/`。本节是那条路的**对外契约**——失败面的每个 `code` 都会出现在
 `hello.unavailable[].code` 上，客户端要把它翻成人话。
 
-**地址是三样编译期常量拼出来的，daemon 运行期不发现任何一样**：资产基址 · release 的 tag ·
-这一版的 `build_id`。资产名与 daemon 自己那两份资产同形（`code-picture-<arch>`，
+**地址是三样编译期常量拼出来的，后端运行期不发现任何一样**：资产基址 · release 的 tag ·
+这一版的 `build_id`。资产名与后端自己那两份资产同形（`code-picture-<arch>`，
 arch 取值与 release 上挂的那两份一致）。⚠ **没有「取最新那一份」这条退路** ——
-哈希是按版本钉死的，取别的版本必然对不上，而那条退路会把「这份 daemon 没带钉」这个
+哈希是按版本钉死的，取别的版本必然对不上，而那条退路会把「这份后端没带钉」这个
 真正的病因藏起来。
 
-**哈希钉在 daemon 这份二进制里**，不跟资产一起从网上取。release 上确实挂着一份
+**哈希钉在后端这份二进制里**，不跟资产一起从网上取。release 上确实挂着一份
 `SHA256SUMS-linux.txt`，但它与资产**由同一处发出** ⇒ 拿它去校验资产，证明的只是
-「发资产的人前后一致」。而 daemon 自己是经 SFTP 自部署 + `build_id` 版本门控到这台机器上的，
+「发资产的人前后一致」。而后端自己是经 SFTP 自部署 + `build_id` 版本门控到这台机器上的，
 把钉挂在它身上才接得上那条链。**拉之前**发现盘上那份对不上 ⇒ 重拉；**刚拉回来**的对不上
 ⇒ 到此为止，字节丢弃、不落盘。
 
@@ -1324,23 +1324,23 @@ arch 取值与 release 上挂的那两份一致）。⚠ **没有「取最新那
    marker 都在、唯独忙碌那个被冲成「⠐ 理解…」，点 ↗ 必弹「未绑定窗口」。
    改成由 tmux 从 `@ccm_sid` **自己合成**之后 marker 常驻，两条路不再交叉。
    `#{?@ccm_sid,…,#T}` 的 `#T` 只是 sid 尚未回填时的回退，避免产出一个空的 `ccm-rbind-`。
-3. **marker 刷新**：**由 daemon 打 `@ccm_sid`，tmux 自己合成标题**〔`U-NP④`，2026-08-14〕。
+3. **marker 刷新**：**由后端打 `@ccm_sid`，tmux 自己合成标题**〔`U-NP④`，2026-08-14〕。
    ⚠ 本步原文是「后台 poller 每 1s 读 `sessions/<PID>.json` … 或每 20 次循环（≈20s）自愈重打，
    发 `\033]0;ccm-rbind-<sid>\007`」。用户裁定「不要轮询」「ccm 做到必须走 daemon」之后，
    **那条每会话一条、与会话同寿、跑在远端的每秒循环被整条删除，不留轮询退路**。
    今天的链路：
-   daemon（`control/identity_tag.rs`，触发源是它本来就有的 `sessions/` inotify）
+   后端（`control/identity_tag.rs`，触发源是它本来就有的 `sessions/` inotify）
    → 读 `/proc/<pid>/environ` 的 `TMUX_PANE` 定位会话
    → `tmux set-option -t <session_id> @ccm_sid <sid>`
    → **tmux 按第 2 步那条 `set-titles-string` 现算标题**并推给 attach 着的 client
    （`ESC ]0;ccm-rbind-<sid> BEL`）→ 直通外层终端 → 经 ssh 显示层透传 → **本地 WT 窗口标题**。
    ⇒ 「自愈重打」不再需要（标题是 tmux 现算的，不是谁定期喷的）；
-   `/clear`、`/branch` 原地换 sid 时 pidfile 被重写 ⇒ inotify modify ⇒ daemon 跟着重打。
+   `/clear`、`/branch` 原地换 sid 时 pidfile 被重写 ⇒ inotify modify ⇒ 后端跟着重打。
    契约与 `doc/INVARIANTS.md` §30 同源。
    ⚠ **代价（如实登记）**：**不在 tmux 里**跑的 `ccm` 从此**没有** rbind marker ——
    旧 poller 是直接 `printf` OSC 到终端的，而 `@ccm_sid` 是 tmux 会话级 option、
    没有 tmux 就没有地方放身份。ccm 会为此往 stderr 说一句，不静默。
-4. **扫描绑定**（`lib.rs` remote-session-emitter）：daemon `session_added` 后对该 sid
+4. **扫描绑定**（`lib.rs` remote-session-emitter）：后端 `session_added` 后对该 sid
    起独立线程，**每 600ms 重试扫描一次、最多 15 次（≈9s）**（等远端 shell 起 + OSC 透传；`lib.rs` 里那句注释说明为什么比固定 4 次更稳健），
    `EnumWindows` + `GetWindowTextW` 找**标题子串含** `ccm-rbind-<sid>` 的首个可见窗口，
    命中即组 `SidHwndBinding{hwnd, owner_pid, owner_proc_start}` 存入 `RemoteHwndCache`。
