@@ -690,6 +690,109 @@ jobs:
       - name: exec-bit guard (shared/** shebang files must be 100755 in git)
         run: bash e2e/exec-bit-guard.sh
 
+      # ── KR114D1（`K-R114`，2026-09-14）：**`release.yml` 手工触发守卫** ─────────────
+      #
+      # 它守两件事，两件都是「发版」这一拍付不起的：
+      #   ① `release.yml` **触发得了**（有 `workflow_dispatch`）—— 没有它，想验一次
+      #      发版流水线改得对不对，唯一的办法是真推一个 `v*` tag。
+      #   ② **手工触发默认不发布** —— 有了触发器而没有这个开关，随手点一下「Run workflow」
+      #      就是**误发一个版**。误发比触发不了贵：发出去收不回来。
+      #
+      # ⚠ **诚实边界，别读宽**（写在这里，不写在别处）：
+      #   · 它比的是**开关表达式的字面**（整格相等，不是子串）。等价改写（比如把
+      #     `== 'true'` 写成 `!= 'false'`）会被判红 —— 假阳，但方向是安全的那一侧。
+      #   · 「往 Release 上写」这件事它只认两种形状：`uses:` 是 `softprops/action-gh-release`，
+      #     或 `run:` 里出现 `gh release` / `gh api` 打 `/releases`。**换第三种路子上传
+      #     （例如手写 `curl` 打 uploads.github.com）它看不见。**
+      #   · 它**不**执行 GitHub 的表达式求值器 —— 「这个表达式在那个事件下真的是 false 吗」
+      #     这一格靠的是「字面与钉住的那一份逐字相同」，不是求值。
+      #   · 它读的是**盘上的 `release.yml`**，不是某一次 run 真正跑的那一份。
+      - name: release.yml 手工触发守卫（KR114D1）
+        run: |
+          set -euo pipefail
+          python3 -c 'import yaml' 2>/dev/null \
+            || python3 -m pip install --quiet --break-system-packages pyyaml \
+            || python3 -m pip install --quiet pyyaml
+          python3 - <<'PYGUARD'
+          import os, sys, yaml
+
+          # 被测对象由环境给，缺省是本仓那一份 —— 死值验时指向副本，判据本身一个字不改。
+          TARGET = os.environ.get("RELEASE_WORKFLOW", ".github/workflows/release.yml")
+
+          # 🔴 **闭集只有这一个住址**：本文件里「发不发布」那个闸的字面，钉在这两个常量上。
+          CANON_ENV = "${{ github.event_name == 'push' || inputs.publish == true }}"
+          CANON_IF = "env.PUBLISH == 'true'"
+
+          doc = yaml.safe_load(open(TARGET, encoding="utf-8"))
+          # PyYAML 走 YAML 1.1 ⇒ 裸 `on:` 这个键会被解析成布尔 True，不是字符串 "on"。
+          on = doc.get("on", doc.get(True))
+          jobs = doc.get("jobs") or {}
+
+          fails = []
+          def check(ok, label, detail):
+              print(("PASS  " if ok else "FAIL  ") + label + " :: " + detail)
+              if not ok:
+                  fails.append(label)
+
+          # ── 地板：先证够得到，再问有没有违例（否则「零违例」是空真）────────────
+          check(isinstance(on, dict) and len(on) > 0, "地板·触发器解析得出来",
+                "on 的键 = %r" % (sorted(map(str, on)) if isinstance(on, dict) else on,))
+          check(len(jobs) >= 4, "地板·job 数",
+                "%d 个 job（分母 = release.yml 顶层 jobs 的键数）" % len(jobs))
+          if fails:
+              print("::error::地板没过 —— 后面的判据一律不算数")
+              sys.exit(1)
+
+          # ── ① 触发得了吗 ────────────────────────────────────────────────
+          wd = on.get("workflow_dispatch", "<缺>") if isinstance(on, dict) else "<缺>"
+          check(wd != "<缺>", "①触发得了（有 workflow_dispatch）",
+                "on.workflow_dispatch = %r" % (wd,))
+
+          # ── ② 手工触发默认不发布 ─────────────────────────────────────────
+          inputs = (wd or {}).get("inputs", {}) if isinstance(wd, dict) else {}
+          pub = inputs.get("publish")
+          check(isinstance(pub, dict), "②有 publish 这个输入", "inputs 的键 = %r" % (sorted(inputs),))
+          if isinstance(pub, dict):
+              check(pub.get("type") == "boolean", "②publish 是 boolean", "type=%r" % (pub.get("type"),))
+              check(pub.get("default") is False, "②publish 默认 false",
+                    "default=%r（这一格红 = 随手点一下就发一个版）" % (pub.get("default"),))
+
+          # ── ③ 那个量只有一个住址，且字面就是钉住的那一份 ───────────────────
+          env_pub = (doc.get("env") or {}).get("PUBLISH")
+          check(env_pub == CANON_ENV, "③env.PUBLISH 与钉住的字面逐字相同",
+                "盘上=%r" % (env_pub,))
+
+          # ── ④ 每一处「往 Release 上写」都挂着那个闸 ────────────────────────
+          pubsteps, allsteps = [], 0
+          for jname, j in jobs.items():
+              for st in (j.get("steps") or []):
+                  allsteps += 1
+                  uses = str(st.get("uses") or "")
+                  run = str(st.get("run") or "")
+                  writes = uses.startswith("softprops/action-gh-release") \
+                      or "gh release" in run \
+                      or ("gh api" in run and "/releases" in run)
+                  if writes:
+                      pubsteps.append((jname, st.get("name") or uses, st.get("if")))
+          check(len(pubsteps) >= 2, "④地板·找得到「往 Release 上写」的步骤",
+                "%d 处（分母 = 全部 job 的全部 step 共 %d 个）" % (len(pubsteps), allsteps))
+          for jname, sname, sif in pubsteps:
+              check(sif == CANON_IF, "④闸·%s / %s" % (jname, sname), "if=%r" % (sif,))
+
+          # ── ⑤ CI 门那一步：只在要发布时拦（拦法与闸同一个住址）──────────────
+          gate = [st for j in jobs.values() for st in (j.get("steps") or [])
+                  if "green CI run" in str(st.get("name") or "")]
+          check(len(gate) == 1, "⑤地板·找得到 CI 门那一步", "%d 处" % len(gate))
+          if len(gate) == 1:
+              check(gate[0].get("if") == CANON_IF, "⑤CI 门挂在同一个闸上",
+                    "if=%r（这一格红 = 真发版那条路上 CI 门可能被跳过）" % (gate[0].get("if"),))
+
+          print("---- 红 %d 条（分母 = 上面逐行 PASS/FAIL 打出来的那几条）----" % len(fails))
+          if fails:
+              print("::error::release.yml 手工触发守卫红了：" + " / ".join(fails))
+              sys.exit(1)
+          PYGUARD
+
   # R00③：**真机行为验收进 CI**。**E82（2026-08-01）订正这段散文里的数**：地板值本身一直是对的
   # （下面有逐个 grep 的反向自检兜着），只是这几行注释没跟 —— 实际调用行是
   # `ccm-acceptance 19` / `usage-probe 9`，不是 15 / 7；套数也从 8 长到了 15（跨两个 job）。
