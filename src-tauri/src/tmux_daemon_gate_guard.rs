@@ -259,8 +259,14 @@ mod tests {
             }
         }
         // 抽取器自检：一处都没数到 ⇒ 剥生产段或扫描坏了，本条此刻量不到东西。
+        // 🔴 `K-R112`（09-13）：地板 2 → **1**。`tmux capture-pane` 那一处随抓屏改走
+        //    daemon 帧面而不存在了 ⇒ monitor 侧只剩 `tmux … ls`（`list_remote_tmux`）一处。
+        //    ⚠ **这一格快到头了**：`list_remote_tmux` 也改走后端的那天，这个人群会归零，
+        //    而**归零之后本条就是空真**（`bad` 恒空）—— 到那一拍该做的不是把地板改成 0，
+        //    是给它换一份**会漂的活体语料**（同 `tmux.rs::every_target_placeholder_comes_from_exact_target`
+        //    今天的做法：人群 0 + 一份合成坏语料承重）。
         assert!(
-            seen_read_only >= 2,
+            seen_read_only >= 1,
             "只数到 {seen_read_only} 处只读动词 —— 抽取器或剥生产段那步坏了，本条此刻空转"
         );
         assert!(

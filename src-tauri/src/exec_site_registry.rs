@@ -71,9 +71,17 @@ mod tests {
         ("ccm_probe.rs", "probe_ccm_cli", Origin::Const, "`CCM_PROBE_CMD`：字面量，零插值。P3t-Y2 起本机探针与它**共用同一个常量**"),
         ("sftp.rs", "probe_remote_arch", Origin::Const, "`\"uname -m\"` 直接当实参"),
         // ── 受控构造器（构造器自己带校验/引用，各有行为判据）
-        ("cc_bus.rs", "check_cc_bus_agent_online", Origin::Builder("build_online_cmd"), "id 过白名单"),
         ("pubkey.rs", "push_public_key", Origin::Builder("build_authorized_keys_cmd"), "公钥经 shell_quote"),
-        ("tmux.rs", "capture_remote_pane", Origin::Builder("build_capture_pane_cmd"), "target 过 Gate 1（`exact_target`）；只读快照，MASTERPLAN 明确不为它加身份门"),
+        // 🔴 **`K-R112`（09-13）：这里原来有两行，两行都出去了** ——
+        //    `cc_bus.rs / check_cc_bus_agent_online`（`Builder("build_online_cmd")`）与
+        //    `tmux.rs / capture_remote_pane`（`Builder("build_capture_pane_cmd")`）。
+        //    形状与理由**与上面 `K-R72` / `K-R104` 那几笔逐字同形**：那两处的一次性 SSH exec
+        //    整条没了（查在线改走帧 `bus-list`、抓屏改走帧 `capture-pane`）
+        //    ⇒ 它们不再是「远端执行点」，两个构造器也随之整块删。
+        //    留着它们，上面那条反向锚点（「申报了一处已经不存在的执行点」）会当场逮住 ——
+        //    而且这一次连 `Builder` 那一支的机检也会红（构造器函数不存在了）。
+        //    ⚠ **`Builder` 这一类今天只剩 1 个样本**（`pubkey.rs`）：下面那条常驻自检
+        //    要求四类各 ≥1，它就是那一支唯一的活样本。真收敛到 0 的那天要连自检一起改。
         // ⚠ `K-R72`（09-12）：`kill_remote_tmux` / `tmux_send_keys` **从本表出去了** ——
         //    它们那两条一次性 SSH 回落删了，今天只走后端通道 ⇒ 不再是「远端执行点」。
         //    这一改是**结构性强制的随动**：上面那条反向锚点（「申报了一处已经不存在的执行点」）
@@ -204,7 +212,9 @@ mod tests {
         }
         assert!(
             found.len() >= 12,
-            "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16）—— 抽取器坏了，本条此刻无效",
+            "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16；\
+             **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走 daemon 帧面之后各少一处）\
+             —— 抽取器坏了，本条此刻无效",
             found.len()
         );
 
@@ -298,7 +308,8 @@ mod tests {
         {
             assert!(
                 per_class[i] >= 1,
-                "`{name}` 这一类今天一个样本都没有（08-07 实测 5/6/5/3）—— \
+                "`{name}` 这一类今天一个样本都没有（08-07 实测 5/6/5/3；\
+                 **`K-R112` 09-13 现打 5/1/5/3** —— `Builder` 那一类只剩 `pubkey.rs` 一个）—— \
                  那一支的机检在空转，而它看起来照样绿。真收敛掉了就把这条自检一起改。"
             );
         }

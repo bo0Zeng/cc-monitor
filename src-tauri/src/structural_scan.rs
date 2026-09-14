@@ -3017,6 +3017,19 @@ mod tests {
             //    删掉的是线索不是病 ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
             ("doc/ARCHITECTURE.md", "validate_branch_source", 1),
             ("doc/INVARIANTS.md", "validate_branch_source", 1),
+            // 🔴 〔`K-R112` 09-13〕同一形，第四件：**cc-bus 三条与抓屏改走 daemon 原语之后，
+            //    它们各自那个 shell 命令构造器整块删了**（`build_broadcast_cmd` /
+            //    `build_kill_cmd` / `build_capture_pane_cmd`；`build_online_cmd` 不在这里 ——
+            //    它在 `write_site_registry.rs` 的一段**字符串字面量**里还有代码侧出现）。
+            //    散文里点名它们的那几句说的正是**「它们为什么不在了」**
+            //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+            ("src-tauri/src/cc_bus.rs", "build_broadcast_cmd", 2),
+            ("src-tauri/src/cc_bus.rs", "build_kill_cmd", 3),
+            ("src-tauri/src/tmux.rs", "build_capture_pane_cmd", 4),
+            //    同一件事的另一半：那条串的**出口判定**（两个哨兵 `NO_TMUX` / `NO_PANE`）
+            //    也随之不存在了 —— 帧面把「答案」与「屏幕内容」分开走，
+            //    「屏幕上恰好只有 NO_PANE 这几个字」这个误判形状跟着消失。
+            ("src-tauri/src/tmux.rs", "classify_capture_output", 1),
         ];
 
         let corpus = dead_name_corpus();
