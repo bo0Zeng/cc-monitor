@@ -732,6 +732,13 @@ fn render_container(c: &Container) -> String {
 pub(crate) fn render_container_tail(c: &Container) -> String {
     let t = sq(&format!("={}:", c.name));
     let mut seq = String::new();
+    // 🔴 下面那条**自带节拍的 shell 串**不是漏进来的，是 `C14` 逐字登记的那个例外
+    //（「预信任的『等信任框』没有内核事件源 …… `C8` 的唯一登记例外：`control/` 继续
+    // 以 shell 字符串形态产出它」）。节拍由**目标 shell** 提供，后端进程自己一个定时器都没有。
+    // ⚠〔`K-R103` 09-13〕`no_timer_guard::f09` 从今天起**扫得到它**（匹配单位从「行」
+    // 改成「表达式」之后，`format!(` 的续行不再掉出人群）⇒ 它在
+    // `no_timer_guard::f09_external_beat::REGISTERED_EXTERNAL_BEATS` 上**签了字**。
+    // 改这一段之前先看那张表：动了这条串的形状，那边会红。
     if c.trust_poll {
         seq.push_str(&format!(
             " && {{ (for _i in 1 2 3 4 5 6; do sleep 0.5; tmux capture-pane -t {t} -p 2>/dev/null | grep -q 'Yes, I trust this folder' && {{ tmux send-keys -t {t} Enter; break; }}; done) || true; }}"
