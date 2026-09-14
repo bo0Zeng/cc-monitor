@@ -2510,19 +2510,59 @@ pub fn new_local_session(
 /// | `src-tauri/src/parity_ledger.rs` 的 `LEDGER` | ✅ | **必须同一拍**加一行，否则它当场判「已注册但没进对账表」 |
 /// | `src/ipc/commands.ts` ＋ `src/ipc/commands.vitest.ts` | ❌ | 加包装层；后者那个**命令总数**是写死的（现打 147），要 +1 |
 ///
-/// 再加前端那条 `↗`（`src/remote-launch-run.ts::runLocalResumeIntoExistingTmux`，在写区）
-/// 改成问它要。⇒ 交回时逐处报给 PM 裁，**不自批**。
+/// # 🔴 `K-R109`（09-13）：**接出去了** —— 上面那张「要动四处」的表已经全部落地
+///
+/// 四处逐一：本函数挂回 `#[tauri::command]`（就在下面）· `lib.rs` 的 `generate_handler!`
+/// 注册一行 · `parity_ledger::LEDGER` 同一拍加一行 · `src/ipc/commands.ts` 加包装层。
+/// 前端那条 `↗`（`src/remote-launch-run.ts::runLocalResumeIntoExistingTmux`）改成问它要。
+/// ⇒ 「`Attach` 没有生产构造点」那条诚实边界**本轮消掉**，连带非 test 的 `cargo build`
+/// 那条 `dead_code` 一起（是**注册**杀掉它的，不是接线 —— `generate_handler!` 展开出来的
+/// 那个包装函数就是第一个非 test 调用方；读数与量法住 `evidence/K-R109-deathvalue.md`）。
+///
+/// # 入参为什么是 `String` 而不是 `&str`
+///
+/// 现打（09-13，量具 `evidence/K-R109-ruler.py` 的 `command-params` 一格；
+/// 分母 = 剥掉整行 `//` 注释后 `src-tauri/src/**.rs` 里 `#[tauri::command]` 紧跟着的
+/// **149** 处 `fn`（= 148 个唯一命令名 ＋ `bring_monitor_to_front` 的第二份 cfg 实现））：
+/// **入参出现 `&str` 的 0 处**。⚠ 不剥注释会读成 16 处 —— 那 16 处全是散文里逐字提到
+/// 这个属性、而它下面碰巧跟着一个内部 `fn`（`parity_ledger.rs::registered_commands`
+/// 的头注逐字警告过这个形状）。**一个数不写清它的剥法，就是半句假话。**
+///
+/// 命令入参要从 IPC 那一侧反序列化出来，借用形态在这条路上不是「省一次拷贝」，
+/// 是**给自己找一个只在某些 tauri 版本上成立的前提**。⇒ 与全仓同形，owned。
+/// 判据侧的调用点跟着改一处（`.to_string()`）。
 ///
 /// # Windows：拒，而且理由是定框
 ///
 /// `C12`〔用 08-12〕逐字「windows不要tmux」⇒ 那台机器上没有 tmux 容器，
 /// 也就没有「接进那个容器」这件事。[`LocalPsAction::Attach`] 这个变体本身就挂着
-/// `#[cfg(not(windows))]`（与 [`render_local_ccm_with`] 同一条 cfg）——
-/// **编译期就不存在**，不是运行期再判一次。⇒ 本函数整个也挂同一条 cfg。
-#[cfg(not(windows))]
-pub(crate) fn render_local_attach(tmux_name: &str) -> Result<String, String> {
-    render_local_ccm(&LocalPsAction::Attach, None, None, Some(tmux_name))
+/// `#[cfg(not(windows))]`（与 [`render_local_ccm_with`] 同一条 cfg）——**编译期就不存在**。
+///
+/// 🔴 **而本函数不能再整个挂那条 cfg 了，这是注册面逼出来的**：`generate_handler![…]`
+/// 收的是一串**路径**，`#[cfg]` 挂不进去（那个宏不解析属性）⇒ 命令名在 Windows 上必须
+/// 也解析得到，否则 `cargo check --target x86_64-pc-windows-gnu`（门禁 `winchk` 那一格）
+/// 当场编不过。⇒ **cfg 收进函数体**：Windows 那一支直接拒，理由就是 `C12`，
+/// 不是运行期探测。仓里的先例是 `lib.rs::bring_monitor_to_front`（两侧各一份实现）——
+/// 本函数取的是同一条路的另一种写法（一个声明、体内分叉），因为 Windows 那一支
+/// 只有一行、单独立一个同名 `fn` 反而多一处要对齐的签名。
+#[tauri::command]
+pub fn render_local_attach(tmux_name: String) -> Result<String, String> {
+    #[cfg(not(windows))]
+    {
+        render_local_ccm(&LocalPsAction::Attach, None, None, Some(tmux_name.as_str()))
+    }
+    #[cfg(windows)]
+    {
+        let _ = tmux_name;
+        Err(WINDOWS_HAS_NO_TMUX_CONTAINER.to_string())
+    }
 }
+
+/// Windows 上 [`render_local_attach`] 的拒词。**它是定框 `C12` 的字面**，不是一句提示语。
+#[cfg(windows)]
+pub(crate) const WINDOWS_HAS_NO_TMUX_CONTAINER: &str =
+    "Windows 上没有 tmux 容器（定框 `C12`〔用 08-12〕逐字「windows不要tmux」）\
+     ⇒ 也就没有「把终端接进那个容器」这件事。要翻它先回去翻定框。";
 
 // === 内部：jsonl 级扫描 ===
 //
@@ -3073,9 +3113,12 @@ mod tests {
     ///
     /// - ③ 是**文本级的两侧同形**，不是真跑一次 `ccm`。真跑那一格归 e2e
     ///   （`ccm-print-parity` 里「attach 到 cc-p1」那条）。**本条不声称跑过。**
-    /// - **前端今天还没在问它要**：`src/remote-launch-run.ts` 那条 `↗` 仍问
-    ///   `SESSION_BACKEND.attach` 要。本条钉的是「后端**产得出**」，不是「有人在用」——
-    ///   接线要动的四处里有两处不在本件写区（见 [`render_local_attach`] 头注）。
+    /// - 🔴 **`K-R109`（09-13）订正：前端在问它要了。** 原文写「前端今天还没在问它要：
+    ///   `src/remote-launch-run.ts` 那条 `↗` 仍问 `SESSION_BACKEND.attach` 要」——
+    ///   那四处接线本轮全部落地（属性 · `generate_handler!` · `LEDGER` · 包装层），
+    ///   `runLocalResumeIntoExistingTmux` 现在 `await commands.render_local_attach(…)`。
+    ///   ⚠ **本条钉的仍然只是「后端产得出」** —— 「有人在用」那一半由前端那一侧的判据钉
+    ///   （`src/remote-launch-run.vitest.ts` 的 `KR109D2` 两条），两处别混成一处。
     #[test]
     #[cfg(not(windows))]
     fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created() {
@@ -3214,7 +3257,7 @@ mod tests {
         }
         let _probe = override_ccm_probe(CcmProbeSource(a_current_ccm));
         assert_eq!(
-            render_local_attach(NAME).expect("本机后端那个产出口渲不出来"),
+            render_local_attach(NAME.to_string()).expect("本机后端那个产出口渲不出来"),
             attach,
             "\n★ `render_local_attach` 交出去的那一串与渲染路现算的不是同一串 ——\n\
              那说明产出口自己又走了一条（两个决定点、两套判据，正是 #76 那条病的形状）。"

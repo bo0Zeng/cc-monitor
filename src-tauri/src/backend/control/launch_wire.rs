@@ -447,14 +447,16 @@ mod f07_main_path_tests {
             "座本身：`import` 一处 + `attach` / `createRunAttach` / `runInExistingAttach` 各一处。",
             "外层 tmux 命令改由后端产出的那天（`control/launch.rs` 头注逐字「本模块**不 attach**」）。",
         ),
-        (
-            "SESSION_BACKEND",
-            "src/remote-launch-run.ts",
-            2,
-            "`import` 一处 + `attachCmd` 那一处（把 `↗` 交给用户自己的终端那一跳）。",
-            "同上；⚠ `attach` 那一跳由 `K-R59` `§0c` 明写**不做** —— \
-             后端在远端开不了你面前的窗，那是结构不是退路。",
-        ),
+        // 🔴 〔`K-R109` 09-13〕**这里原来有第 6 行，走了。**
+        // 原文：`("SESSION_BACKEND", "src/remote-launch-run.ts", 2, "`import` 一处 +
+        // `attachCmd` 那一处（把 `↗` 交给用户自己的终端那一跳）", …)`，解锁条件写着
+        // 「`attach` 那一跳由 `K-R59` `§0c` 明写**不做** —— 后端在远端开不了你面前的窗」。
+        // ⚠ **那句话没有错，它的射程被读宽了**：`control/launch.rs` 那条「本模块不 attach」
+        // 讲的是**远端**（`R61` 裁定三之后不许再拿「daemon」把两侧压成一个）。
+        // 这一处是**本机**就地 resume，后端就在用户面前那台机器上 ⇒ 它产得出，也接过去了
+        //（`history.rs::render_local_attach` ⇒ `commands.render_local_attach`）。
+        // ⇒ 这一行**不是「登记漏了」，是消费者真的少了一个**：生产处数 2 → 0。
+        // 反向闭合由下面 ⑤ 那一格守着（少一个不登记会红，**多一个也会红**）。
     ];
 
     /// 🔴 **尺子B**〔`K-R105` 09-13〕：[`TS_FALLBACK_KEEPERS`] 里那个消费者文件
@@ -946,6 +948,61 @@ mod f07_main_path_tests {
                      回 `U8c-3` 重裁 —— 别只改这张表。\n\
                      ⚠ 它今天靠谁跑：{who}\n\
                      ⚠ 本条**不做可达性分析**，只数「那几个导出符号在别的生产 TS 里出现过没有」。"
+                );
+            }
+
+            // ⑤ 🔴🔴 〔`K-R109` 09-13〕**尺子A 反向闭合** —— 座今天有哪几个生产消费者，
+            //    由**遍历**说了算，不由登记说了算。
+            //
+            // # 为什么非补不可（这是本轮现打出来的一个洞，不是顺手加的一格）
+            //
+            // 上面 ② 只对**登记在案**的 `(符号, 文件)` 对逐格比数 ⇒ 它逮得住「少一处」，
+            // **逮不住「多一处」**：把 `SESSION_BACKEND.attach` 写回任意一个**没登记**的
+            // 生产文件里，② 一格都不响（那个文件根本不在它的循环里）。
+            // ⇒ 「座的生产消费者从 3 个文件收到 2 个」这句话，在本轮之前**没有任何东西钉着**：
+            //    收窄它不会红（那是 ② 的活），而**反悔**同样不会红。
+            //
+            // # 它守什么、不守什么
+            //
+            // **守**：座的生产消费者集合 == 本表登记的那几份。少一份（有人接走了）红、
+            // **多一份**（有人把语法又写回前端某处）也红 —— 后者正是 ② 的盲区。
+            // **不守**：别名 import（`import { SESSION_BACKEND as X }`）与动态取属性 ——
+            // 与尺子A 同一条射程，不声称堵住。座自己（`session-backend.ts`）不在人群里：
+            // 它是**被问的那一层**，口径与 `doc_claim_registry` 量法 ② 逐字同源。
+            {
+                const SEAT: &str = "SESSION_BACKEND";
+                let mut registered: Vec<&str> = TS_FALLBACK_KEEPERS
+                    .iter()
+                    .filter(|(sym, ..)| *sym == SEAT)
+                    .map(|(_, f, ..)| *f)
+                    .collect();
+                registered.sort_unstable();
+                registered.dedup();
+                // 反空真：登记侧空了，下面那条相等就是 `[] == []`，把座删光都绿。
+                assert!(
+                    !registered.is_empty(),
+                    "`TS_FALLBACK_KEEPERS` 里一条 `{SEAT}` 的登记都没有 —— \
+                     本条此刻是空真。**掉到 0 那天**是 `U8c-3` 该重裁的那天，\
+                     不是把这一格删掉的那天。"
+                );
+                let mut found: Vec<&str> = corpus
+                    .iter()
+                    .filter(|(rel, _)| rel != "src/session-backend.ts")
+                    .filter(|(_, code)| guard_core::contains_word(code, SEAT))
+                    .map(|(rel, _)| rel.as_str())
+                    .collect();
+                found.sort_unstable();
+                assert_eq!(
+                    found, registered,
+                    "座（`{SEAT}`）的**生产消费者文件集**与 `TS_FALLBACK_KEEPERS` 的登记对不上。\n\
+                     遍历实得：{found:?}\n登记：{registered:?}\n\
+                     **实得多出来的** ⇒ 有人把会话后端的语法又写回前端某处了 —— \
+                     那是 §31 最终形态第①条禁的事，先问它能不能改成问后端要\
+                     （本机那一句今天有：`history.rs::render_local_attach`）。\n\
+                     **实得少一个** ⇒ 一个消费者接走了，把登记那一行删掉，\
+                     并回 `U8c-3` 看看「删座」的代价是不是又低了一格。\n\
+                     ⚠ 本条与 ② 是**两个方向**：② 逮「少」，本条逮「多」。\
+                     `K-R109` 之前只有 ②，于是「消费者从 3 收到 2」这句话反悔不会红。"
                 );
             }
         }

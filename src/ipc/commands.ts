@@ -799,6 +799,14 @@ export const commands = {
   // 非法输入（空 configDir / shell 元字符 / 会裂的 arg）⇒ Rust 侧 `Err` ⇒ 这里 reject。
   render_launch_payload: (args: { req: PayloadRenderRequest }) =>
     invoke<string>("render_launch_payload", args),
+  // 🔴 `K-R109`：**本机后端产「把终端接进那个会话」那一句**（`ccm attach <名>`）。
+  // `R61` 裁定三〔用 09-13 逐字「归本机后端就好了啊」〕。
+  // ⚠ 它**没有 `origin`**：本机后端就在这台机器上，问它要不必绕 ssh 那一跳
+  //（远端那一侧的同一件事由 `render_ccm_launch` 的 `action:"attach"` 产）。
+  // ⚠ 渲不出来 ⇒ Rust 侧 `Err` ⇒ 这里 reject。**调用方不许拿前端自己拼一条糊过去**：
+  // 那就是 §31 最终形态第①条逐字禁的「前端硬编码后端命令」。
+  render_local_attach: (args: { tmuxName: string }) =>
+    invoke<string>("render_local_attach", args),
 
   // U8a-2c-1：**「控制搬进 daemon」的第一条生产通道** —— 往已存在的远端 tmux 会话键入载荷
   // （`send-keys` 那半边）。`attach` 那半边**不走它**：§1.3 要求最终 exec 落在用户自己的
