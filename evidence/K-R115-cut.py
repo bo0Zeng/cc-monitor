@@ -263,6 +263,9 @@ def do_revert() -> int:
 
 
 def main() -> int:
+    # 🔴 占位：本文件**刻意不用** `shutil` 的复制族 —— `--revert` 是重写原文
+    #    （`write_text` ＋ `os.utime`），mtime 必变。同 `K-R106-cut.py` 那一行的先例。
+    _ = shutil
     if len(sys.argv) < 2:
         print(__doc__)
         return 2
