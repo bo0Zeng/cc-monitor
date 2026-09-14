@@ -241,6 +241,13 @@ NEEDLES: dict[str, tuple[str, ...]] = {
         "send_via_daemon",
         "online_via_daemon",
         "broadcast_via_daemon",
+        # 🔴 `K-R112`（09-13）新增两条：收掉走 `bus-kill` 帧、抓屏走 `capture-pane` 帧。
+        #    ⚠ **加针不是「拧尺子让今天好过」** —— 判据是「这一跳交给后端了没有」，
+        #    而这两个转发口就是「交出去了」的字面形式（同上面那三条 `*_via_daemon`）。
+        #    不加的话那两条命令会落进 `[分不了档]`（一根针都没中）—— 那是**尺子没跟上**，
+        #    不是「它们还在自实现」。真正的棘轮在 `BASELINE`，那一头一个字没松。
+        "kill_via_daemon",
+        "capture_via_daemon",
         "probe_account_usage",
         "client.call(",
     ),
@@ -321,16 +328,18 @@ SITES: dict[str, tuple[str, str, str, str | None]] = {
     "daemon_send_into": ("后端", "backend/control/daemon_launch.rs", "daemon_send_into", "launch"),
     # ── tmux
     "list_remote_tmux": ("执行面", "tmux.rs", "list_remote_tmux", None),
-    "capture_remote_pane": ("执行面", "tmux.rs", "capture_remote_pane", "capture-pane"),
+    # 🔴 `K-R112`（09-13）：面从「执行面」改成「后端」——`capture_via_daemon` 走 `capture-pane` 帧。
+    "capture_remote_pane": ("后端", "tmux.rs", "capture_remote_pane", "capture-pane"),
     "kill_remote_tmux": ("后端", "tmux.rs", "kill_remote_tmux", "kill"),
     "tmux_send_keys": ("后端", "tmux.rs", "tmux_send_keys", "launch"),
     # ── cc-bus
     "read_cc_bus_state": ("执行面", "cc_bus.rs", "read_cc_bus_state", None),
-    "check_cc_bus_agent_online": ("执行面", "cc_bus.rs", "check_cc_bus_agent_online", "bus-list"),
+    # 🔴 `K-R112`（09-13）：下面三条的面都从「执行面」改成「后端」（回落 / 主路那条 shell 都删了）。
+    "check_cc_bus_agent_online": ("后端", "cc_bus.rs", "check_cc_bus_agent_online", "bus-list"),
     "read_cc_bus_inbox": ("执行面", "cc_bus.rs", "read_cc_bus_inbox", None),
     "cc_bus_send": ("后端", "cc_bus.rs", "cc_bus_send", "bus-send"),
-    "cc_bus_broadcast": ("执行面", "cc_bus.rs", "cc_bus_broadcast", "bus-send"),
-    "cc_bus_kill": ("执行面", "cc_bus.rs", "cc_bus_kill", "bus-kill"),
+    "cc_bus_broadcast": ("后端", "cc_bus.rs", "cc_bus_broadcast", "bus-send"),
+    "cc_bus_kill": ("后端", "cc_bus.rs", "cc_bus_kill", "bus-kill"),
     "cc_bus_spawn": ("执行面", "cc_bus.rs", "cc_bus_spawn", None),
     # ── ccm.status
     "cc_integration_status": ("读面", "profile_installer.rs", "scan_profile", None),
@@ -344,7 +353,9 @@ SITES: dict[str, tuple[str, str, str, str | None]] = {
     "relay_routing_for": ("读面", "history.rs", "relay_rows_at", None),
 }
 
-#: 🔴 **递减棘轮的当前刻度** —— 量于主干 `b0953e5`（`git log --oneline -1` 现打）。
+#: 🔴 **递减棘轮的当前刻度** —— 立表时量于主干 `b0953e5`；
+#: **`K-R112`（09-13）在 `track/k-r112`（基点 `afda78b`）上把其中四格往下拧了一格**，
+#: 逐格理由写在那四行上面。⚠ 这一行是「上一次有人核过的答案」，不是「今天的答案」。
 #:
 #: 一条命令真退完了 ⇒ 现算的档变了 ⇒ 与本表对不上 ⇒ **红**，逼下一个人把刻度拧下来。
 #: 反向也红：新长出一处自实现，同样对不上。
@@ -364,10 +375,24 @@ BASELINE: dict[str, str] = {
     "kill_remote_tmux": "已完",
     "tmux_send_keys": "已完",
     "cc_bus_send": "已完",
-    "capture_remote_pane": "还有接线活",
-    "check_cc_bus_agent_online": "还有接线活",
-    "cc_bus_broadcast": "还有接线活",
-    "cc_bus_kill": "还有接线活",
+    # 🔴🔴 **`K-R112`（09-13）：这四条从「还有接线活」拧到「已完」。**
+    #
+    #    这就是「递减棘轮」那句话的兑现口：本件把它们四条真的改走了 daemon 原语
+    #    （`bus-list` / `bus-send` 组合 / `bus-kill` / `capture-pane`），现打的档跟着变，
+    #    刻度**必须同拍跟着拧下来** —— 拧不下来，这张表就在说谎（它会报「回潮了 ⚠」，
+    #    而真相是「退役了 ✅」）。
+    #
+    #    ⚠ **两个方向都咬**（这正是本件死值验那两刀验的形状）：
+    #    · 不拧 ⇒ 基线 `还有接线活` ≠ 现打 `已完` ⇒ 红；
+    #    · 拧过头（把还没退役的也写成 `已完`）⇒ 基线 `已完` ≠ 现打 ⇒ 红。
+    #    棘轮只许往「已完」这一个方向走，而且**只在真退役之后走得动**。
+    #
+    #    ⚠ 第 5 条 `read_cc_bus_state` **一个字没动**：它等 `K-R113` 给 daemon 补 `bus-state`
+    #    （`spawned` 那半今天没有对侧 —— `K-R111 §C3` 现打）。别顺手把它一起拧。
+    "capture_remote_pane": "已完",
+    "check_cc_bus_agent_online": "已完",
+    "cc_bus_broadcast": "已完",
+    "cc_bus_kill": "已完",
     "render_ccm_launch": "不是接线",
     "render_launch_payload": "不是接线",
     "list_remote_tmux": "不是接线",
