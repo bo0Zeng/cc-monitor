@@ -301,3 +301,55 @@ fi
 echo "---- 红 $fails 条（分母 = 上面 T1–T4 共 4 条）----"
 exit $([ "$fails" -eq 0 ] && echo 0 || echo 1)
 ```
+
+---
+
+# 第二拍（09-14 PM 重判之后）· `R73` 那条判据的死值验
+
+PM 依据 run `34861383050` 把 `3w`/`3y` 翻正、`3x` 不翻正，裁定住 `DECISIONS.md#R73`；
+**改判据这一步交回给实现方**，写区同拍扩到 `src-tauri/src/shared_crate_registry.rs`。
+
+## 四 · 判据改成什么形状（没删、没放宽）
+
+`the_premise_behind_three_honesty_boundaries_still_holds` 从「**一律禁**」换成「**禁 ＋ 登记**」：
+
+| 件 | 内容 |
+|---|---|
+| `ADJUDICATED` | **裁过的**自启触发器（workflow 文件 · 触发器 · **裁决口住址**）。今天**恰好 1 行**：`("release.yml", "workflow_dispatch", "DECISIONS.md#R73")` |
+| `STILL_RESTING_ON` | 扫描面 ＋ **每个文件今天还压着哪几条边界** —— 诊断里要说得出「你这一下动的是**谁**的前提」（`ci.yml` ⇒ `3x`；`release.yml` ⇒ `3w`/`3y` 已翻正、再加新的仍要重判） |
+| 三态判 | 有触发器 · 没登记 ⇒ **红**（原来那一形，措辞改成指名那几条边界）· 登记还在 · 触发器没了 ⇒ **红**（登记表在替真判据挡枪）· 两者都有 ⇒ 放行并**计数** |
+| 登记表自检 3 条 | 登记的文件必须在扫描面里 · 触发器必须在 `SELF_STARTING` 里 · 住址必须成形（`<文件>#<锚点>`） |
+| 地板 1 条 | 「裁过的」那一支这一趟**必须真的被走过**（`seen_adjudicated == ADJUDICATED.len()`）—— 防零命中死支 |
+
+🔴 **`ci.yml` 照旧一个自启触发器都不许有**（`3x` 还压在它身上）。**判据整条没删** —— 删了会把
+`3x` 那一半的守卫一起砍掉。
+
+## 五 · 变异表（三刀，量具住 `scratchpad/kr114/kr114-r73-cuts.py`，刀具 fail-closed）
+
+**被测对象**：`.claude/worktrees/k-r114`（本轮唯一那棵树）。跑法：沙箱内
+`cargo test -p monitor --lib`（`CARGO_TARGET_DIR=.claude/pm-targets/k-r114`）。
+**每一刀切之前先断言锚点恰好命中 N 次**，不是就一个字节不落地；每刀跑完**从内存里的原文还原**。
+
+| 刀 | 切在哪 / 锚点命中 | 射程 | 判定行（真实输出） | 红名单 | 判 |
+|---|---|---|---|---|---|
+| **M-0 阴性对照** | 一刀不切 | —— | `test result: ok. 1474 passed; 0 failed; 8 ignored; 0 filtered out` · 退出码 **0** | 0 条 | ✅ 台子是绿的 |
+| **刀 A**（PM 点名①） | `ci.yml` 的 `on:` 块尾加一行 `  workflow_dispatch:`；锚点 = 那整块 `on:`，命中 **1** 次 | 只动 `ci.yml`，不碰判据、不碰 `release.yml` | `test result: FAILED. 1473 passed; 1 failed` · 退出码 **101** | **1 条**，`shared_crate_registry::tests::the_premise_behind_three_honesty_boundaries_still_holds` | ✅ **必须红，红了**，且诊断逐字「`ci.yml` 新增了 `workflow_dispatch` 触发器 …… 今天压在这个文件上的诚实边界**前提当场消失，必须重判**」并**点名 `3x`** |
+| **刀 B**（PM 点名②） | 把 `ADJUDICATED` 那一行删掉（`&[…]` → `&[]`）；锚点 = 那一行，命中 **1** 次 | 只动登记表一行，`release.yml` 一个字不动 | `test result: FAILED. 1473 passed; 1 failed` · 退出码 **101** | **1 条**，同上 | ✅ **必须红，红了** —— 诊断回到「没人裁过」那一形（`release.yml 新增了 workflow_dispatch 触发器 …`）⇒ **「裁过的」与「没人管」在盘上分得开** |
+| **刀 C**（保鲜，本轮自加） | 把 `release.yml` 的 `workflow_dispatch` 整块摘掉、**登记原样留着**；锚点 = 块头 `  workflow_dispatch:\n    inputs:\n`，命中 **1** 次 | 只动 `release.yml` 的 `on:` 段 | `test result: FAILED. 1473 passed; 1 failed` · 退出码 **101** | **1 条**，同上 | ✅ 诊断是**第三种**：「`ADJUDICATED` 里登记着「release.yml 的 `workflow_dispatch` 已裁过（`DECISIONS.md#R73`）」，而 `release.yml` 的 `on:` 段里**今天没有它** ⇒ 那一行在替真判据挡枪」 |
+| **M-0′ 还原后重打** | 三刀全部还原 | —— | `test result: ok. 1474 passed; 0 failed` · 退出码 **0** | 0 条 | ✅ 台子没被刀留下痕；**还原核对：三份文件与切之前逐字相同 = True** |
+
+**三刀各自的诊断互不相同** —— 这一点是有意的：`未裁` / `登记挡枪` 两形要分得开，
+否则「加了没人裁」和「裁过但东西没了」会指着同一句话，照它去查的人会走错方向。
+
+⚠ **这一族没有第四刀，写出来别读宽**：`schedule` / `repository_dispatch` 那两个词
+**本轮一刀都没切**（今天两个 workflow 里都没有它们）⇒ 它们走的是同一条 `(true, None)` 支，
+**理由是代码同源，不是我量过**。
+
+## 六 · 判据自己的诚实边界（三条，逐字写在 docstring 里，这里抬进上报口）
+
+① 登记表那个住址本条**只验形状**（非空 ＋ 形如 `<文件>#<锚点>`），**不去那棵树上核它真指得到**
+—— 裁决口住计划仓，本 crate 结构上够不着；
+② 它认的是 `on:` 段里**有没有那个词**，**不解释 GitHub 的触发语义**（`schedule` 配一个
+永不命中的 cron，本条照样算它「有」）；
+③ 登记一行买到的是「**有人回来过**」，**不是**「那三条边界今天写得对」——
+后者要读 `audit-0805` 那份 `ROADMAP` 的正文，不在本条射程里。
