@@ -499,6 +499,17 @@ export async function runLocalResumeIntoExistingTmux(
   //   ⚠ 那条门禁此前只是散文里的一条手工 grep，**且只盯 `remote-launch.ts` 一个文件** ——
   //   本文件是后来从它拆出去的，门禁没跟着拆 ⇒ 这处违反因此躺了下来。
   //   现在它有机检了（`session-backend-gate.vitest.ts`），扫**整个前端生产段**。
+  //
+  // 🔴🔴 〔`K-R106` 2026-09-13〕**这一处今天已经有替代品了，而它还没接过去。**
+  //   用户逐字裁「新起一个会话之后，把你的终端接进那个会话那一句 `tmux attach`，
+  //   归谁产？」→「**归本机后端就好了啊**」（`DECISIONS.md#R61` 裁定三）。
+  //   本机后端那一侧已经产得出：`src-tauri/src/history.rs::render_local_attach`
+  //   ⇒ `ccm attach <名>`（走本机 `new`/`resume` 同一条渲染路，判据在那个文件里）。
+  //   ⚠ **没有在本轮接过去，不是忘了**：换成问它要要动四处，其中
+  //   `src-tauri/src/lib.rs`（命令注册）与 `src/ipc/commands.ts`（前端那一侧的口）
+  //   **不在 `K-R106` 的写区**，交回时逐处报给 PM 裁 —— 不自批。
+  //   ⚠ 那条「本模块**不 attach**，一次都不」仍然对，它说的是**远端**后端
+  //   （在远端，开不了你面前的窗）；本机后端就在用户面前那台机器上。
   const attachCmd = SESSION_BACKEND.attach({ kind: "quoted", value: name });
   await invokeLaunchOrCopyFallback(LOCAL_ORIGIN, attachCmd, {
     success: "已就地 resume",

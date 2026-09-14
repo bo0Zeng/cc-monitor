@@ -1039,11 +1039,47 @@ fn sanitize_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
     Ok(Some(l.to_string()))
 }
 
-/// F06（unify-launch）：本地路径的动作枚举——与 TS `LaunchAction` 同构（无 `attach` 变体：
-/// 本地会话从无 attach 概念）。
+/// F06（unify-launch）：本地路径的动作枚举——与 TS `LaunchAction` 同构。
+///
+/// # 🔴 `K-R106`〔用@09-13〕：`Attach` 是本轮加的，而它此前那句「不该有」是错的
+///
+/// 这里原来逐字写着「**无 `attach` 变体：本地会话从无 attach 概念**」。
+/// 用户 09-13 亲裁把它推翻了：
+///
+/// > 「新起一个会话之后，把你的终端接进那个会话那一句 `tmux attach`，归谁产？」
+/// > 「**归本机后端就好了啊**」〔用@09-13，`DECISIONS.md#R61` 裁定三〕
+///
+/// ⚠ 那句「本模块**不 attach**，一次都不」（`remote-daemon-proto/src/control/launch.rs`
+/// 头注）**仍然对** —— 它说的是**远端后端**，理由逐字是「在远端，**开不了你面前的窗**」。
+/// 🔴 **本机后端就在用户面前那台机器上** ⇒ 那条位置约束在这一侧不成立。
+/// `R61` 立的就是这件事：**不许再用「daemon」这个词把这两件事压平。**
+///
+/// # ⚠ `Attach` 与另外两个变体**不是同一类动作**，三处边界写在这里
+///
+/// 1. **它不起 agent** ⇒ 不需要 sid、不需要账号、不需要中转前缀、不需要身份 token。
+///    下面每一处 `match` 的 `Attach` 臂都是这句话的一个面，不是「顺手填 `None`」。
+/// 2. **旧路产不出它**（[`local_launch_choice`] 当场拒）：那条路只会拼一个**拉起器**，
+///    渲出来的是「起一个新的 claude」，而不是「接进已有的那个」——
+///    静默产出它比拒绝更坏（用户以为接回了原会话，实际另起一条）。
+/// 3. **它不经 [`launch_local`]**（那里也当场拒）：那条路 `spawn` 出去、stdio 全 null，
+///    而 attach 的正题是把**用户自己的终端**接进去（`§1.3`）。⇒ 只渲染，交给调用方。
+///
+/// # Windows 那一格：变体本身挂 `#[cfg(not(windows))]`
+///
+/// 与 [`render_local_ccm`] / [`render_local_ccm_with`] **同一条 cfg**。
+/// 定框 `C12`〔用 08-12〕逐字「windows不要tmux」⇒ Windows 上没有 tmux 容器，
+/// 也就没有「接进那个容器」这个动作 —— 让它在**编译期就不存在**，
+/// 而不是运行期再判一次（后者是「加个变体不接线」那一形的温床）。
 enum LocalPsAction {
     New,
     Resume(String),
+    /// 🔴 `K-R106`：**接进一个已经存在的 tmux 会话**。
+    ///
+    /// 会话名**不放在变体里**，走 `tmux_name` 那个参数 —— 全仓只有一个地方说得出
+    /// 「这次说的是哪个容器」，两处就会漂（而 `ccm attach` 收的正是容器名本身，
+    /// `ccm_invocation::render_ccm_invocation` 的 attach 分支读的是 `Container::Tmux`）。
+    #[cfg(not(windows))]
+    Attach,
 }
 
 /// 构造本地 PowerShell 命令体（不含 `-EncodedCommand` 编码）——`build_resume_ps_command`/
@@ -1284,10 +1320,27 @@ enum LocalLaunchChoice {
     },
 }
 
+/// 🔴 `K-R106`：旧路（[`build_local_posix_command`] / [`build_local_ps_command`]）
+/// 被要求产 attach 时给出的**理由**，而不是一个 `bool` 分支 ——
+/// 与 [`NO_TMUX_NAME`] / [`RELAY_KEEPS_THE_OLD_PATH`] 同一条纪律：
+/// 这条路上「为什么这次没接上」只有降级理由这一个线索。
+#[cfg(not(windows))]
+const OLD_PATH_CANNOT_ATTACH: &str =
+    "旧路产不出 attach —— 它只会拼一个拉起器，渲出来的是「另起一条 claude」而不是     「接进已有的那个」；产得出 attach 的只有 ccm 那条容器路〔`K-R106`，用@09-13     「归本机后端就好了啊」〕";
+
 fn local_launch_choice(
     action: &LocalPsAction,
     launcher: Option<&str>,
 ) -> Result<LocalLaunchChoice, String> {
+    // 🔴 `K-R106`：**旧路产不出 attach，而它必须是「拒」不是「凑一个出来」。**
+    //    本函数唯一会拼的东西是一个**拉起器**（`cc` / `claude` / F34 自定义命令）——
+    //    拿它去表达「接进已有的那个会话」，渲出来的是**另起一条 claude**：
+    //    用户以为回到了原会话，实际上开了第二条，而两条都在跑。
+    //    ⇒ fail-closed。产得出 attach 的只有 ccm 那条容器路（[`render_local_ccm_with`]）。
+    #[cfg(not(windows))]
+    if matches!(action, LocalPsAction::Attach) {
+        return Err(OLD_PATH_CANNOT_ATTACH.into());
+    }
     if let LocalPsAction::Resume(sid) = action {
         let valid = !sid.is_empty()
             && sid
@@ -1303,6 +1356,9 @@ fn local_launch_choice(
         match action {
             LocalPsAction::Resume(sid) => format!("{bin} {} {sid}", agent.resume_flag()),
             LocalPsAction::New => bin.to_string(),
+            // 上面那道 fail-closed 已经把它拦在函数入口 —— 到不了这里。
+            #[cfg(not(windows))]
+            LocalPsAction::Attach => unreachable!("attach 在本函数入口就被拒了"),
         }
     };
     // F34：设了自定义命令就直接用（不再别名自动检测——用户显式选择优先）
@@ -1500,6 +1556,12 @@ fn render_local_ccm_with(
     let (sid_owned, cli_action) = match action {
         LocalPsAction::Resume(sid) => (sid.clone(), None),
         LocalPsAction::New => (String::new(), Some(ci::Action::New)),
+        // 🔴 `K-R106`：**这一行就是「本机后端产得出 attach 那一句」的全部接线。**
+        //    `ci::Action::Attach` 那一支在 `render_ccm_invocation` 里**早于维度循环 return**
+        //    （`ccm attach <名>` 不收任何修饰 flag），名字取的是 `Container::Tmux` 那个
+        //    —— 也就是下面 `spec.container` 里的 `name`，与本行这个是**同一个** `&str`。
+        //    ⇒ 「接进去的那个」与「刚建的那个」在类型上就是同一个名字，不是两处各写一遍。
+        LocalPsAction::Attach => (String::new(), Some(ci::Action::Attach { name })),
     };
     let act = cli_action.unwrap_or(ci::Action::Resume { sid: &sid_owned });
 
@@ -1587,6 +1649,9 @@ fn render_local_ccm_with(
         ccm_sid: match action {
             LocalPsAction::Resume(sid) => Some(sid.as_str()),
             LocalPsAction::New => None,
+            // attach 不起 agent ⇒ 没有「这次要打哪个 sid 的标」这回事。
+            #[cfg(not(windows))]
+            LocalPsAction::Attach => None,
         },
         model: None,
         launcher: sanitized.as_deref().unwrap_or(default_launcher),
@@ -1665,6 +1730,11 @@ const RELAY_KEEPS_THE_OLD_PATH: &str =
      转发做到了、也声明了（`remote-daemon-proto/src/control/ccm/mod.rs`），\
      差的只是这一行；`K-R61` 只重裁理由，不动行为";
 
+/// 🔴 `K-R106`：[`launch_local`] 被要求 attach 时给出的理由（同上，是理由不是 `bool`）。
+#[cfg(not(windows))]
+const ATTACH_IS_NOT_A_SPAWN: &str =
+    "attach 不经本机拉起那条路：它 spawn 出去、stdio 全 null，接不上任何终端；     `§1.3` 把最终那次 exec 钉在用户自己的终端进程里 ⇒ 本机后端交的是**那一串**     （`render_local_attach`），不是一次 spawn";
+
 /// ⚠ **`Err` 那一支不回 token**：拉起没成功就没有「刚起的那条」可言，
 /// 回一个 token 会让调用方去等一条根本不存在的会话。
 fn launch_local(
@@ -1686,6 +1756,23 @@ fn launch_local(
     };
     #[cfg(not(windows))]
     let base = {
+        // 🔴 `K-R106`：**attach 不走这条路，而这是结构，不是「暂时没接」。**
+        //
+        // 本函数最后一跳是 `(launch_sink().0)(&cmd, cwd)` —— `launch_local_posix` 把命令
+        // `spawn` 出去、**stdio 全 null**。拿它送 `ccm attach <名>` 的结果是：一个看不见、
+        // 摸不着、连不上任何终端的 attach 进程，而用户面前什么都没发生（**还会静默成功**）。
+        // ⇒ attach 的正题是把**用户自己的终端**接进去（`§1.3` 把最终那次 exec 钉在那里）。
+        // 本机后端在这件事上的产物是**那一串**，不是一次 spawn —— [`render_local_attach`] 交它。
+        //
+        // ⚠ **它为什么住在这个块里、而不是函数入口**（量具事故留档，别搬回去）：
+        //   闸带着一个 `#[cfg(not(windows))]` 属性，放在入口就成了本函数里**第一个**
+        //   `#[cfg(not(windows))]`，而六格表「Windows」格的观测口正是
+        //   「`fn launch_local(` 到第一个 `#[cfg(not(windows))]` 之间有没有 `let _ = tmux_name;`」
+        //   ⇒ 现打当场从 `Structural` 翻成 `Closed`（`K-R106` 第一趟门禁真红过一次）。
+        //   **改闸的位置，不改那条观测口** —— 改观测口就是「改判据迁就实现」。
+        if matches!(action, LocalPsAction::Attach) {
+            return Err(ATTACH_IS_NOT_A_SPAWN.into());
+        }
         // ★★ `K-H2b`（08-28 第二拍）：**照旧走 ccm 那条容器路，前缀拼在它外面。**
         //
         // # 第一拍为什么绕开它，第二拍为什么不用绕了
@@ -2070,6 +2157,11 @@ fn relay_prefix_for_launch(
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
         LocalPsAction::New => None,
+        // attach 不起 agent ⇒ 这一跳没有「要往哪个号的中转上指」这个问题。
+        // ⚠ 它今天到不了这里（[`launch_local`] 入口就拒了 attach），本臂是**穷尽性**的一半：
+        //    哪天有人把 attach 接进那条路，编译器会先逼他读一遍上面这句话。
+        #[cfg(not(windows))]
+        LocalPsAction::Attach => None,
     };
     let facts = relay_facts();
     relay_prefix_for(
@@ -2121,6 +2213,9 @@ fn launch_identity_token(action: &LocalPsAction) -> String {
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
         LocalPsAction::New => None,
+        // attach 不起进程 ⇒ 没有「这一次拉起」可以铸身份。同上，本臂今天到不了。
+        #[cfg(not(windows))]
+        LocalPsAction::Attach => None,
     };
     crate::backend::control::payload::route_key_for_session(sid)
 }
@@ -2378,6 +2473,55 @@ pub fn new_local_session(
     //   `bindErrorToast` 刷到界面上 —— 内部 nonce 一个字节都不该往那条路上走。
     tracing::info!("history: new local session in {cwd}");
     Ok(launch_id)
+}
+
+/// 🔴 `K-R106`〔用@09-13〕**本机后端产 `attach` 那一句** —— `K-R54` 表第 3 行的收尾。
+///
+/// # 用户逐字，这是本命令的全部依据
+///
+/// > 「新起一个会话之后，把你的终端接进那个会话那一句 `tmux attach`，归谁产？」
+/// > 「**归本机后端就好了啊**」〔`DECISIONS.md#R61` 裁定三〕
+///
+/// # 它**只渲染，不执行**，而这不是偷懒
+///
+/// `§1.3` 把最终那次 exec 钉在**用户自己的终端进程**里。[`launch_local`] 那条路是
+/// `spawn` + stdio 全 null ⇒ 拿它送 attach 等于什么都没发生（还会静默成功）。
+/// ⇒ 本机后端在这件事上的产物就是**那一串**；谁把终端接上去由调用方决定。
+///
+/// # 它走的是**既有那条渲染路**，不是第二条
+///
+/// [`render_local_ccm`] → [`render_local_ccm_with`] → `ccm_invocation::render_ccm_invocation`
+/// —— 与本机 `new` / `resume` 逐字同一条路，同一份能力探测（[`CcmProbeSource`] 那条缝）、
+/// 同一条 `NO_TMUX_NAME`。**没有为 attach 新开任何一个决定点**
+/// （两个决定点、两套判据正是 issue #76 那条病的形状，`session-backend.ts` 头注记着它）。
+///
+/// # 🔴 ⚠ 它今天**不是** `#[tauri::command]`，而这是量出来的，不是选择
+///
+/// 第一版给它挂了 `#[tauri::command]`，想着「注册那一行归 PM」。**门禁当场红两条**
+/// （`src/ipc/commands.vitest.ts` 的 `C04a`）：「这些命令声明了却没注册 ⇒ 前端调不到」
+/// 与「TS 静态看不见的命令集变了」。⇒ 本仓**不接受**「声明了不注册」这个中间态。
+///
+/// 把它接出去要动**四处**，其中三处不在 `K-R106` 的写区：
+///
+/// | 处 | 在写区吗 | 要做什么 |
+/// |---|---|---|
+/// | 本函数 | ✅ | 加回 `#[tauri::command]` |
+/// | `src-tauri/src/lib.rs` 的 `generate_handler!` | ❌ | 注册一行 |
+/// | `src-tauri/src/parity_ledger.rs` 的 `LEDGER` | ✅ | **必须同一拍**加一行，否则它当场判「已注册但没进对账表」 |
+/// | `src/ipc/commands.ts` ＋ `src/ipc/commands.vitest.ts` | ❌ | 加包装层；后者那个**命令总数**是写死的（现打 147），要 +1 |
+///
+/// 再加前端那条 `↗`（`src/remote-launch-run.ts::runLocalResumeIntoExistingTmux`，在写区）
+/// 改成问它要。⇒ 交回时逐处报给 PM 裁，**不自批**。
+///
+/// # Windows：拒，而且理由是定框
+///
+/// `C12`〔用 08-12〕逐字「windows不要tmux」⇒ 那台机器上没有 tmux 容器，
+/// 也就没有「接进那个容器」这件事。[`LocalPsAction::Attach`] 这个变体本身就挂着
+/// `#[cfg(not(windows))]`（与 [`render_local_ccm_with`] 同一条 cfg）——
+/// **编译期就不存在**，不是运行期再判一次。⇒ 本函数整个也挂同一条 cfg。
+#[cfg(not(windows))]
+pub(crate) fn render_local_attach(tmux_name: &str) -> Result<String, String> {
+    render_local_ccm(&LocalPsAction::Attach, None, None, Some(tmux_name))
 }
 
 // === 内部：jsonl 级扫描 ===
@@ -2882,6 +3026,199 @@ mod tests {
             .map(|c| (*c).to_string())
             .chain(["account".to_string(), "model".to_string()])
             .collect()
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R106` `KR106D1`：**本机后端产得出 `attach` 那一句**，而且它落在刚建的那个会话上
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 后端那份 `ccm` 的 **argv 解析**半。跨半边编译期边，登记住
+    /// `cross_half_edge_registry::CROSS_EDGES`。
+    #[cfg(not(windows))]
+    const CCM_ARGV_SRC: &str = include_str!("../../remote-daemon-proto/src/control/ccm/argv.rs");
+
+    /// 后端那份 `ccm` 的 **计划 + 等价 shell 渲染**半。同上。
+    #[cfg(not(windows))]
+    const CCM_PLAN_SRC: &str = include_str!("../../remote-daemon-proto/src/control/ccm/plan.rs");
+
+    /// 后端那份 `ccm` 把 `Plan::Attach` 渲成什么 —— **逐字**。
+    ///
+    /// 钉整行而不是钉 `"tmux attach"` 四个字：`=名:` 那个**精确匹配形**是承重的
+    /// （裸 `-t <名>` 会打到兄弟会话上，`session-backend.ts::exactTarget` 头注记着实测）。
+    /// 只钉动词的话，把 `={name}:` 改成 `{name}` 照样绿，而那一刀的后果是接错会话。
+    #[cfg(not(windows))]
+    const CCM_ATTACH_RENDER: &str =
+        r#"Plan::Attach { name } => format!("tmux attach -t {}", sq(&format!("={name}:")))"#;
+
+    /// 🔴🔴 `KR106D1`〔用@09-13「**归本机后端就好了啊**」〕：
+    /// **本机后端产得出 `attach` 那一句，而且那一句落在它刚建的那个会话上。**
+    ///
+    /// # 它为什么不判「枚举里有 `Attach` 这个词」
+    ///
+    /// 那是本件单子逐字点名的失效方向：**加个变体不接线照样绿**。
+    /// ⇒ 本条一个字都不读源码里的枚举，它**驱动生产渲染路**
+    /// （[`render_local_ccm_with`]，本机 `new`/`resume` 走的同一条），
+    /// 从**渲出来的那两串话本身**里把会话名读回来比。
+    ///
+    /// # 四段各买什么（别读成一段）
+    ///
+    /// | 段 | 它挡住的那一刀 |
+    /// |---|---|
+    /// | ① 名字形状 | `K-R87` 那次 `ccm-oneshot-` 两形都不命中 ⇒ 建出来的是**失管会话** |
+    /// | ② 建/接同名 | attach 那一臂渲成 `ccm attach <sid>` 或干脆掉进 `_ => new` 兜底 |
+    /// | ③ 跨半边 | 我们产的这一串，后端那份 `ccm` 真把它读成「接进这个名字」 |
+    /// | ④ fail-closed | 旧路 / spawn 那条路被要求 attach 时**拒**，不许凑一个出来 |
+    ///
+    /// # ⚠ 它买不到什么（如实写）
+    ///
+    /// - ③ 是**文本级的两侧同形**，不是真跑一次 `ccm`。真跑那一格归 e2e
+    ///   （`ccm-print-parity` 里「attach 到 cc-p1」那条）。**本条不声称跑过。**
+    /// - **前端今天还没在问它要**：`src/remote-launch-run.ts` 那条 `↗` 仍问
+    ///   `SESSION_BACKEND.attach` 要。本条钉的是「后端**产得出**」，不是「有人在用」——
+    ///   接线要动的四处里有两处不在本件写区（见 [`render_local_attach`] 头注）。
+    #[test]
+    #[cfg(not(windows))]
+    fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created() {
+        let caps = caps_of_a_current_ccm();
+        // ① 名字不是随手起的：它要过 `gate_core` 那两形之一，否则起出来的会话主路认不出、
+        //    杀不掉 —— `K-R87` 那次 `ccm-oneshot-<x>` 两形都不命中，就是这个坑。
+        const NAME: &str = "s1abcdef-cc";
+        assert!(
+            gate_core::is_ccm_tmux_name(NAME),
+            "本条自己用的名字就过不了 Gate 2 —— 那么下面量到的一切都在量一个失管会话"
+        );
+        // 阴性对照：`K-R87` 那个形状**必须**不过，否则上面那条是空真。
+        let the_r87_shape = format!("ccm-oneshot-{}", "abcdef");
+        assert!(
+            !gate_core::is_ccm_tmux_name(&the_r87_shape),
+            "{the_r87_shape:?} 居然过了 Gate 2 —— 上面那条断言此刻什么都没买到"
+        );
+
+        let acct = LaunchAccount::Base;
+        // 建那一句（今天就产得出的）与接那一句（本轮加的）**走同一条渲染路、同一个名字**。
+        let created = render_local_ccm_with(
+            &LocalPsAction::New,
+            None,
+            Some(&acct),
+            Some(NAME),
+            &caps,
+            true,
+        )
+        .expect("建那一句本来就渲染得出来 —— 渲不出说明本条的前提变了，回来重裁");
+        let attach = render_local_ccm_with(
+            &LocalPsAction::Attach,
+            None,
+            Some(&acct),
+            Some(NAME),
+            &caps,
+            true,
+        )
+        .expect(
+            "本机后端产不出 attach —— `KR106D1` 的正题就是这一句〔用@09-13「归本机后端就好了啊」〕",
+        );
+
+        // ② 会话名从**那两串话本身**里读回来，不是拿常量对常量。
+        let created_target = created
+            .split_whitespace()
+            .find_map(|t| t.strip_prefix("--tmux="))
+            .unwrap_or_else(|| {
+                panic!("建那一句里没有 `--tmux=<名>`，它根本没建容器 —— 下面两条会空转：{created}")
+            });
+        let mut toks = attach.split_whitespace();
+        assert_eq!(
+            toks.next(),
+            Some("ccm"),
+            "attach 那一句不是在调后端的命令行入口（`K26`：`ccm` 就是它）：{attach}"
+        );
+        assert_eq!(
+            toks.next(),
+            Some("attach"),
+            "\n★ 本机后端渲出来的**动作不是 attach**（实得整串：{attach}）。\n\
+             最可能的形状：`Attach` 那一臂掉进了 `render_ccm_invocation` 的 `_ => new` 兜底 ——\n\
+             那一刀的后果不是「没接上」，是**另起一条 claude**，而用户以为回到了原会话。"
+        );
+        let attach_target = toks
+            .next()
+            .unwrap_or_else(|| panic!("attach 那一句没有目标会话名：{attach}"));
+        assert_eq!(
+            toks.next(),
+            None,
+            "`ccm attach <名>` 不收任何修饰 flag（`ccm_invocation` 那一支早于维度循环 return），\
+             多出来的东西说明它走了别的分支：{attach}"
+        );
+        assert_eq!(
+            attach_target, created_target,
+            "\n★★ **接的不是刚建的那个会话**：建的是 {created_target:?}，接的是 {attach_target:?}。\n\
+             这两个名字在生产代码里本来就是同一个 `&str`（`render_local_ccm_with` 的 `name`，\n\
+             同时喂给 `Action::Attach` 与 `Container::Tmux`）—— 它们不相等只有一种可能：\n\
+             有人给 attach 那一臂另开了一个名字来源。"
+        );
+        assert!(
+            gate_core::is_ccm_tmux_name(attach_target),
+            "接进去的那个名字过不了 Gate 2（{attach_target:?}）—— 主路认不出它，杀不掉它"
+        );
+
+        // ③ 跨半边：我们产的这一串，后端那份 `ccm` 真把它读成「接进这个名字」。
+        let argv_prod = guard_core::production_code(CCM_ARGV_SRC);
+        let plan_prod = guard_core::production_code(CCM_PLAN_SRC);
+        assert!(
+            argv_prod.len() > 3_000 && plan_prod.len() > 5_000,
+            "跨半边语料只读进来 {} / {} 字节 —— 下面三条此刻在空转",
+            argv_prod.len(),
+            plan_prod.len()
+        );
+        let attach_verb = format!("\"{}\" => {{", "attach");
+        assert!(
+            argv_prod.contains(attach_verb.as_str()),
+            "后端那份 `ccm` 的 argv 解析里，位置动作 `{attach_verb}` 那一支不见了 —— \
+             我们产的这一句它读不成 attach"
+        );
+        assert!(
+            argv_prod.contains("o.attach_name = v.clone()"),
+            "`ccm attach <名>` 后面那个位置参数不再落进 `attach_name` —— \
+             那么「接哪一个」这条信息在后端那半就断了"
+        );
+        assert!(
+            plan_prod.contains(CCM_ATTACH_RENDER),
+            "\n后端那份 `ccm` 把 `Plan::Attach` 渲成的那一行变了（本条钉的整行：\n  {CCM_ATTACH_RENDER}\n\
+             ）。⚠ 承重的不只是 `tmux attach` 四个字，还有 `=名:` 那个**精确匹配形** ——\n\
+             裸 `-t <名>` 会按「精确名 → 名字开头 → glob」解析，打到兄弟会话上\n\
+             （`src/session-backend.ts::exactTarget` 头注有 tmux 3.6 的实测）。"
+        );
+
+        // ④ fail-closed：旧路与 spawn 那条路被要求 attach 时**拒**。
+        let old = build_local_posix_command(&LocalPsAction::Attach, None, None);
+        assert!(
+            old.as_ref().is_err_and(|e| e.contains("旧路产不出 attach")),
+            "\n★ 旧路（`build_local_posix_command`）居然给 attach 渲出了东西：{old:?}\n\
+             它只会拼一个**拉起器** ⇒ 渲出来的是「另起一条 claude」。\n\
+             **静默产出比拒绝坏得多**：用户以为接回了原会话，实际两条都在跑。"
+        );
+        let spawned = launch_local(&LocalPsAction::Attach, None, None, None, Some(NAME));
+        assert!(
+            spawned.as_ref().is_err_and(|e| e.contains("stdio 全 null")),
+            "\n★ `launch_local` 收下了 attach：{spawned:?}\n\
+             那条路把命令 spawn 出去、stdio 全 null ⇒ 一个接不上任何终端的 attach 进程，\n\
+             而它**还会静默成功**。attach 的正题是把用户自己的终端接进去（`§1.3`）。"
+        );
+
+        // ⑤ **产出口真的走这条路**：本机后端那个出口喂一份确定的 ccm 事实进去，
+        //    拿到的必须与上面那一句**逐字节相同**（不是「长得像」）。
+        fn a_current_ccm() -> crate::ccm_probe::CcmProbeResult {
+            crate::ccm_probe::CcmProbeResult {
+                installed: true,
+                version: Some("0.0.0-判据替身".to_string()),
+                capabilities: caps_of_a_current_ccm().into_iter().collect(),
+                build: None,
+            }
+        }
+        let _probe = override_ccm_probe(CcmProbeSource(a_current_ccm));
+        assert_eq!(
+            render_local_attach(NAME).expect("本机后端那个产出口渲不出来"),
+            attach,
+            "\n★ `render_local_attach` 交出去的那一串与渲染路现算的不是同一串 ——\n\
+             那说明产出口自己又走了一条（两个决定点、两套判据，正是 #76 那条病的形状）。"
+        );
     }
 
     #[test]
