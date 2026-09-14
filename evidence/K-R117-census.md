@@ -397,18 +397,34 @@ M3 就是那一趟 —— 摘掉归档那两块（6 处 `red()`）之后，**刀
 
 ## §G 门禁读数（不是本件的验收条件，只留读数）
 
-沙箱 `.claude/devbox/gate`（镜像 `ccmon-devbox:latest`），工作树 `k-r117`，`PB_WS=backend-consolidation`：
+沙箱 `.claude/devbox/gate`（镜像 `ccmon-devbox:latest`），工作树 `k-r117`，`PB_WS=backend-consolidation`。
+**跑了三趟，三趟的差别写清楚**（纪律 12c：每趟的分母不一样，别混成一个数）：
 
-```
-GATE: OK —— 16 格全绿（hooks · copy2 · fmt · fmt-daemon · winchk · cargo · deadcode ·
-generated · daemon · tsc · npm · 四套 ccm e2e · pb check），可以出货
-```
+| 趟 | 那一刻树上有什么 | 裁决 |
+|---|---|---|
+| 1 | 只有尺子 | `GATE: FAIL —— pb check（没给 PB_WS）` —— **fail-closed，不回落默认值**，是我没带环境变量，不是树坏了 |
+| 2 | 尺子（无 `§S5b`）· 件文件 `§3`/`§8` **还没写** | **`GATE: OK —— 16 格全绿`** |
+| 3 | 尺子（含 `§S5b`）· 普查件 · 件文件 `§3`/`§8` **已写** | **15 格绿 ＋ 第 16 格 `pb check` 红：`[J3 陈账] INDEX.md 比源文件旧`** |
 
-逐格读数（逐字抄自那一趟的输出）：`hooks 11` · `copy2 11` · `fmt 1` · `fmt-daemon 1` ·
+🔴 **第 3 趟那一红是我自己造的，而修它不是我的活**：我往计划仓的件文件里写了 `§3`/`§8`
+⇒ `INDEX.md` 相对源文件变旧。**出路只有一条 `pb index`，那是生成命令** ——
+纪律 19 逐字「窗口开着期间一概不跑生成命令」，纪律 25 逐字「`INDEX.md` 归 PM，不是许可你去写」。
+⇒ **我不跑、不写，就地报 PM。** 第 2 趟那个「16 格全绿」证明的是**代码那一侧没问题**
+（15 个非 `pb check` 的格三趟读数逐格相同）。
+
+逐格读数（第 3 趟，逐字抄自输出；15 格与第 2 趟**逐格相同**）：
+`hooks 11` · `copy2 11` · `fmt 1` · `fmt-daemon 1` ·
 `winchk 1` · **`cargo 1613`（9 个包合计）** · `generated 与 Rust 源一致` · `deadcode 41` ·
 `daemon 762` · `tsc 366` · `npm 1726` · `ccm-print-parity PASS=12` · `ccm-rbind-title PASS=8` ·
 `ccm-cli PASS=46` · `ccm-contract-parity PASS=45` ·
-`pb check [backend-consolidation] FAIL=0 BROKEN=0`。
+`pb check [backend-consolidation]` **FAIL=1 BROKEN=0**（就是上面那条 `J3 陈账`；第 2 趟是 `FAIL=0 BROKEN=0`）。
+
+🔴 **顺手逮到一处（不在本件 dod 射程内，只报不改）**：`copy2` 那一格的分母行逐字写着
+「`evidence/*.py` **现打 176 份**里」，而那个 **176 是 `scripts/gate.sh:710` 里的一个字面量**
+（`run_gate copy2 '…现打 176 份里…'`），**不是现打**。本树今天 `ls evidence/*.py | wc -l` = **181**
+（其中 1 份是我这一拍加的 ⇒ 我入场前是 180）。
+判过的那个数（**调用点 11 处**）是活的，不受影响；**腐的是它旁边那句「现打 N 份」的分母散文**。
+这正是 `brief` 硬规则那一条的形状：「描述盘上现状的话是那一刻的快照，引用前重打」。**本件只读，没改。**
 
 ⚠ **`cargo 1613` 这个数带一条分母警示**（门禁自己印的）：
 「本树**未铺** `src-tauri/embedded-daemons/` ⇒ `embedded_daemons` cfg 不置 ⇒ 上面那个合计里
