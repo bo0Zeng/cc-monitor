@@ -904,7 +904,17 @@ mod spawn_registry {
              测得出来（`KR87D3`）—— 那**不是配置口**，同 `capture_pane` 那条 socket 的理由。\
              ⚠⚠ 与 `plugin/invoke.rs` / `platform/shell.rs` 那两条 `<非字面量>` 同族病：\
              这条键**分不出**被起的是谁 ⇒ 把 launcher 换成别的程序**不会红**。\
-             逮那一格的是本模块 argv 逐元素那条判据（脚本是常量 · 变量全走位置参数）。",
+             逮那一格的是本模块 argv 逐元素那条判据（脚本是常量 · 变量全走位置参数）。\
+             \n🔴 **搬家欠账登记之二〔`K-R110` `KR110D3`，09-13〕**：这条路是 **POSIX-only**\
+             （`setsid` ＋ `sh` ＋ `sleep`），按 `K33` 裁定二「平台差异只许住适配层」它该住 `platform/`，\
+             **今天没住** —— 住址逐字是 `remote-daemon-proto/src/control/oneshot_session.rs`\
+             （`WATCHDOG_LAUNCHER` 与它那段常量脚本），来历住 \
+             `features/K-R87-daemon侧没有「带看门狗的一次性会话」模式.md#§8` 第 13 条。\
+             **今天为什么没搬**：① 它要**新造一条适配层原语**（现成的 `platform/shell.rs::posix_shell` \
+             形状对不上：那条送的是「一条命令串」，这条要的是「脱离会话组、后台、带位置参数」）；\
+             ② `platform/` 与 `control/oneshot_session.rs` **都不在 `K-R110` 的写区**，\
+             而 `platform/cfgless_guard.rs` 还是 `K-R103` 刚做完的面（主干 `c741228`），本轮明令不许动。\
+             ⇒ **只登记、不搬**，由 PM 另立一件。",
             "缩性质",
             "哪天「一个会话到点自己没」这件事有了不必起外部进程的做法（tmux 自己出一条 \
              session TTL、或判活那套事件源能承载它），这一条就该摘掉。\
@@ -2126,6 +2136,17 @@ mod g6_scope_pins {
 ///
 /// 正确落点是新立一份 `error_envelope_guard.rs`；`K-R103` 的写区里没有「新建文件」这一项
 /// ⇒ 暂住这里（同本文件头注里那三个 `g6_*` 模块的处境），**已上报 PM**。搬家那天把这段一起删掉。
+///
+/// 🔴 **搬家欠账登记之一〔`K-R110` `KR110D3`，09-13 复核：今天仍然没搬〕**
+///
+/// - **欠的是什么**：本模块（`mod error_envelope_registry`）该住 `remote-daemon-proto/src/error_envelope_guard.rs`。
+/// - **今天为什么没搬**：`K-R110` 的写区里同样没有「新建文件」这一项 ——
+///   件文件 `features/K-R110-量具自己的人群是错的（提前收尾＋47处按行匹配）.md` 的 `§2`
+///   逐字把「**新建 guard 文件**」列进了「明令不在写区」。⇒ 本轮**只登记、不搬**。
+/// - **搬家那一拍要做的三件事**（写在这儿，省得下一个人重新推）：
+///   ① 新建那份文件、整段搬过去；② `main.rs` 加一行 `mod` 声明；③ 回来把本节连同这条登记一起删掉。
+/// - **别零敲**：它与本文件头注点名的 `g6_doctrine` / `g6_staged_zero` / `g6_scope_pins`
+///   等着**同一趟**搬家 —— 一件专门做，比四次各搬一个便宜。
 #[cfg(test)]
 mod error_envelope_registry {
     /// 信封那两个键。运行时拼进两种写法，见 [`key_forms`]。
