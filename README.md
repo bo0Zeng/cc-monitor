@@ -12,7 +12,7 @@
 
 把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复 / **从历史某轮创建分支**。**对 Claude 的数据只读、零侵入**（不**修改** Claude Code 的 jsonl / pidfile；对它们的显式用户写只有两处：历史里删除会话、从某轮建分支——后者只**新增**一个会话文件，原会话零改动）。⚠ **这句话不覆盖用户自己的文件**：SFTP 面板、planned-build 收件箱、`~/.bashrc` 的 helper 安装、`.mcp.json` 等都是明确手势下的写，逐处登记在 `src-tauri/src/write_site_registry.rs`（本机，21 个「文件::函数」）与 `remote_write_registry.rs`（远端，10 处）。
 
-**项目状态**：稳定可用。后端 cargo + 远端 daemon + vendor `code-picture-core` + 前端 node 纯函数 & vitest+jsdom DOM 单测 + e2e 套件，tsc 严格类型检查，**CI 全绿**（**条数以实跑为准，本文件刻意不存副本** —— 见 `doc/DEVELOPMENT.md` 那张表与 `.github/workflows/ci.yml` 的地板行）（Rust `cargo test`〔含 `-p code-picture-core`〕 + 前端 `npm test`〔+ eslint/stylelint 顾问式 + 覆盖率地板棘轮〕 + 远端 daemon `cargo test` + e2e 脚本健康冒烟〔shellcheck/py_compile〕——`npm test` 只门禁前端）。当前发布 **v3.7.0**（**多账号 + 第三方 API 中转** —— 每个账号能配自己的上游端点与 key，只听回环的 HTTP 中转在转发时替换 `Authorization` 头、客户端一个凭据都不配，中转表里没有那一行的号照旧走官方直连；**本机也被当成一台机器** —— 新装完、一台远端都没配的人第一次打开也有东西可用；**⚠ 有两格不重新部署就会踩坑**：`ccm --tmux` 起会话统一走后端（本机 tmux 直起那条退路已从 exec 路上删掉，后端不可达即失败、退出码 `4`，`CCM_VERSION` 由 3 升到 4 ⇒ 要重新部署 `ccm`）、daemon 的构建标识已 bump 且它起的插件不再继承 daemon 整份环境（每台已装过 daemon 的远端连上会被判旧并自动重装一次）；v3.6.0：**任意对话节点分叉，两条都活着** —— 每条消息旁的 `⑂` 复制 `[根…这一条]` 成一个**新会话文件**并直接把它起起来，**原会话不受影响**；**远端会话也能分叉**（经 daemon 在那台机器上做，只传 sid 不传路径）；实时会话里也有入口；被 ESC 回退掉的分支**保留路口但呈现区分**；新会话继承原会话的账号 / 工作目录 / tmux，查不出来的那几格**问一次而不是猜**；v3.5.0：**设置面板按「被设置的对象」重做：应用 / 机器 / 改动足迹三页，机器成为中心对象、本机是列表第一行，三处部署首次同屏；cc-bus 驾驶舱移出设置成顶层视图**；v3.4.0：**判活改内核事件、变灰从 ~16s 降到 ~0.13s + 首发 Linux `.deb`**；v3.3.0：**多账号：隔离又同步 + 按会话切账号 + app 内账号部署向导（#68/#69）**；此前 **Batch 14：SSH/SFTP/tmux 远端集成大批功能（F41-F60）**——远端会话一键 resume（拉起终端）/多地址故障切换（happy-eyeballs 竞速）/SFTP 文件面板（浏览·上传下载·编辑）/公钥一键推送/tmux attach·右键预览画面/跳板 ProxyJump/从 ~/.ssh/config 批量导入聚合/本地端口转发管理台/daemonless 降级读取/「Claude 完成一轮」系统通知/工具卡文件路径→SFTP 定位；v2.22.2：**⚙ 误标修复**——bg-spare 谎报父会话 sid 致交互会话被降格挂错树,kind 冲突改确定性消解;**远端流模式降级修复**——历代安装包漏嵌 daemon 身份清单致 bg 会话不可见/拥塞复发,补清单+hello 自愈+降级可见化;v2.22.0：**消息流虚拟化** #35——长会话不再卡顿（视口外跳过布局/绘制+精确估高）、历史查看器 37MB 会话首屏 65.5s→1.1s、冷启动 24s→4s、live Tab 上翻自动加载更早消息；**灰 Tab 右键 Resume**；`cc` 首次绑定竞态修复——新 shell 不再固定卡 800ms）；v2.21.0：（**resume 命令可自定义**（cc/cct）、拖宽/横滚/远端 ↗ 与 ccm 安装修复；v2.20.0：**左侧竖直 tab 栏**——拖拽调宽/窄窗折叠，tab 不再压住右上角图标；**历史标注 CC 后台分身会话** ⚙ 徽标防 resume 选错克隆；+v2.19.1 修复队列消息被误判 ESC 回退折叠 #36）；v2.19.0：（**远端拥塞根治**——历史旁路快照+实时独立尾随，46MB≈4.6s 零拥塞（E2E 实证）；**最新消息优先加载**；**远端红绿灯**与本地对齐；F5 后远端骨架/bg/焦点正确重建），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **daemon 自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸 daemon 与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / 一键 resume**（F41 起 tab 右键 / 历史 ↺ 直接拉起远端终端，失败回退复制）、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
+**项目状态**：稳定可用。后端 cargo + 远端后端 + vendor `code-picture-core` + 前端 node 纯函数 & vitest+jsdom DOM 单测 + e2e 套件，tsc 严格类型检查，**CI 全绿**（**条数以实跑为准，本文件刻意不存副本** —— 见 `doc/DEVELOPMENT.md` 那张表与 `.github/workflows/ci.yml` 的地板行）（Rust `cargo test`〔含 `-p code-picture-core`〕 + 前端 `npm test`〔+ eslint/stylelint 顾问式 + 覆盖率地板棘轮〕 + 远端后端 `cargo test` + e2e 脚本健康冒烟〔shellcheck/py_compile〕——`npm test` 只门禁前端）。当前发布 **v3.7.0**（**多账号 + 第三方 API 中转** —— 每个账号能配自己的上游端点与 key，只听回环的 HTTP 中转在转发时替换 `Authorization` 头、客户端一个凭据都不配，中转表里没有那一行的号照旧走官方直连；**本机也被当成一台机器** —— 新装完、一台远端都没配的人第一次打开也有东西可用；**⚠ 有两格不重新部署就会踩坑**：`ccm --tmux` 起会话统一走后端（本机 tmux 直起那条退路已从 exec 路上删掉，后端不可达即失败、退出码 `4`，`CCM_VERSION` 由 3 升到 4 ⇒ 要重新部署 `ccm`）、后端的构建标识已 bump 且它起的插件不再继承后端整份环境（每台已装过后端的远端连上会被判旧并自动重装一次）；v3.6.0：**任意对话节点分叉，两条都活着** —— 每条消息旁的 `⑂` 复制 `[根…这一条]` 成一个**新会话文件**并直接把它起起来，**原会话不受影响**；**远端会话也能分叉**（经后端在那台机器上做，只传 sid 不传路径）；实时会话里也有入口；被 ESC 回退掉的分支**保留路口但呈现区分**；新会话继承原会话的账号 / 工作目录 / tmux，查不出来的那几格**问一次而不是猜**；v3.5.0：**设置面板按「被设置的对象」重做：应用 / 机器 / 改动足迹三页，机器成为中心对象、本机是列表第一行，三处部署首次同屏；cc-bus 驾驶舱移出设置成顶层视图**；v3.4.0：**判活改内核事件、变灰从 ~16s 降到 ~0.13s + 首发 Linux `.deb`**；v3.3.0：**多账号：隔离又同步 + 按会话切账号 + app 内账号部署向导（#68/#69）**；此前 **Batch 14：SSH/SFTP/tmux 远端集成大批功能（F41-F60）**——远端会话一键 resume（拉起终端）/多地址故障切换（happy-eyeballs 竞速）/SFTP 文件面板（浏览·上传下载·编辑）/公钥一键推送/tmux attach·右键预览画面/跳板 ProxyJump/从 ~/.ssh/config 批量导入聚合/本地端口转发管理台/daemonless 降级读取/「Claude 完成一轮」系统通知/工具卡文件路径→SFTP 定位；v2.22.2：**⚙ 误标修复**——bg-spare 谎报父会话 sid 致交互会话被降格挂错树,kind 冲突改确定性消解;**远端流模式降级修复**——历代安装包漏嵌后端身份清单致 bg 会话不可见/拥塞复发,补清单+hello 自愈+降级可见化;v2.22.0：**消息流虚拟化** #35——长会话不再卡顿（视口外跳过布局/绘制+精确估高）、历史查看器 37MB 会话首屏 65.5s→1.1s、冷启动 24s→4s、live Tab 上翻自动加载更早消息；**灰 Tab 右键 Resume**；`cc` 首次绑定竞态修复——新 shell 不再固定卡 800ms）；v2.21.0：（**resume 命令可自定义**（cc/cct）、拖宽/横滚/远端 ↗ 与 ccm 安装修复；v2.20.0：**左侧竖直 tab 栏**——拖拽调宽/窄窗折叠，tab 不再压住右上角图标；**历史标注 CC 后台分身会话** ⚙ 徽标防 resume 选错克隆；+v2.19.1 修复队列消息被误判 ESC 回退折叠 #36）；v2.19.0：（**远端拥塞根治**——历史旁路快照+实时独立尾随，46MB≈4.6s 零拥塞（E2E 实证）；**最新消息优先加载**；**远端红绿灯**与本地对齐；F5 后远端骨架/bg/焦点正确重建），能力已覆盖 **SSH 远端模式**（同一窗口聚合本地 + 多台远端机器的会话，#15/#17/#18/#20/#30/#31）——含 **后端自动部署 + 一键安装/卸载**（内嵌 musl 二进制经 SFTP 自动推送 #29；设置面板每台机器卡片可手动装/卸后端与 ccm 助手、附安装位置提示）、**远端全文搜索**（#28）、**远端历史删除 / 一键 resume**（F41 起 tab 右键 / 历史 ↺ 直接拉起远端终端，失败回退复制）、**历史按机器分组折叠**（#30/#31）、**版本协商 + 拥塞提示**（#32/#33）、**会话红绿灯**（#23）、**本地会话 resume 后 Tab 自动复活**（崩溃/退出→灰显，`/resume` 后免 F5 恢复）、AskUserQuestion 选项 / API 报错直接可见（#21）、单键快捷键 + Tab 撕离独立窗口等。详 [CHANGELOG](CHANGELOG.md) / [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md)。
 
 ---
 
@@ -22,7 +22,7 @@
 > 判活是 PID + 进程启动时刻双重校验（防 PID 复用），两个平台各用原生口径
 > （Windows: Win32 `GetProcessTimes`；Linux: `/proc/<pid>/stat` 第 22 字段）。
 > **macOS 上本机会话不会被监听**（没有 `/proc`，需要 `sysctl` FFI，本仓无 macOS CI 故未实现）——
-> 那个平台上请把它当远端监视器用，SSH + daemon 那条路（见下方「SSH 远端模式」）完全正常。
+> 那个平台上请把它当远端监视器用，SSH + 后端那条路（见下方「SSH 远端模式」）完全正常。
 > 细节见 `doc/ARCHITECTURE.md` §「本机判活」。
 
 ### 实时渲染
@@ -36,15 +36,15 @@
 
 ### SSH 远端模式（issue #15）
 - 在**同一个窗口**聚合本地 + **多台**远端机器（NanoPi / 任意 Linux / WSL）上的 Claude 会话，远端 Tab 标题带 `[host]` 前缀；历史浏览器按机器**分组 / 筛选**（#30/#31）
-- 远端 daemon 经 SSH 实时流式传回会话；**断线自动重连**（指数退避 2→30s，issue #17）、重连后按 seq 去重补放
-- **daemon 自动部署**（#29）：cc-monitor 内嵌交叉编译的 aarch64/x86_64 musl daemon 二进制，连接时按 arch + build_id 版本门控经 SFTP 自动推送——零手动部署
-- **远端全文搜索**（#28）：顶栏「全文」搜索覆盖远端会话内容（daemon 服务端 `--search`），命中带 `[host]`
+- 远端后端经 SSH 实时流式传回会话；**断线自动重连**（指数退避 2→30s，issue #17）、重连后按 seq 去重补放
+- **后端自动部署**（#29）：cc-monitor 内嵌交叉编译的 aarch64/x86_64 musl 后端二进制，连接时按 arch + build_id 版本门控经 SFTP 自动推送——零手动部署
+- **远端全文搜索**（#28）：顶栏「全文」搜索覆盖远端会话内容（后端服务端 `--search`），命中带 `[host]`
 - **远端历史删除**（SFTP 移除 + 二次确认）/ **一键 resume**：tab 右键 / 历史 `↺` 直接拉起远端终端跑 `claude --resume`（wt.exe 优先，失败才回退复制命令到剪贴板）
   - ⚠ **Linux / macOS 上不开终端窗口**，而是把命令复制给你 —— 这是**既定设计**，不是没做完：
     POSIX 上没有「唯一的终端」，替你挑一个（gnome-terminal / konsole / alacritty…）是个会在别人机器上错的决定。
     你在自己的终端里粘贴执行即可。⚠ 这里原先写着「容器一定是 tmux」——**那是假的**：`↺` 复制的是**不进容器**的命令（判据见 `launch-requests.vitest.ts`）；要 tmux 得走 tab 右键那条（F52）。**本机** resume 则不受影响（不开窗，命令直接跑）
-- **设置面板每台机器卡片**：一键 **安装 / 卸载 daemon**、**装 / 卸 ccm 助手**（写进远端 `~/.bashrc`），并有**安装位置提示**告诉你装到哪（daemon→`~/.cc-monitor/bin/`、ccm→`~/.bashrc` 标记块）；卡片可折叠成机器名
-- **版本协商**（#33）+ **慢消费者 overflow 信号**（#32）：daemon/client build_id 不符或管道拥塞 → 远端健康 toast 提示
+- **设置面板每台机器卡片**：一键 **安装 / 卸载后端**、**装 / 卸 ccm 助手**（写进远端 `~/.bashrc`），并有**安装位置提示**告诉你装到哪（后端→`~/.cc-monitor/bin/`、ccm→`~/.bashrc` 标记块）；卡片可折叠成机器名
+- **版本协商**（#33）+ **慢消费者 overflow 信号**（#32）：后端/client build_id 不符或管道拥塞 → 远端健康 toast 提示
 - 远端 Tab 也能 ↗ 拉前对应终端（issue #18）
 - 部署见 [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md)（自动部署 + 手动回退）
 
@@ -57,7 +57,7 @@
 - **公钥一键推送**：把本地公钥追加进远端 `~/.ssh/authorized_keys` 免密
 - **跳板 ProxyJump / ssh-config 批量导入**：经跳板机连内网目标；从 `~/.ssh/config` 批量导入并智能聚合同机多地址
 - **本地端口转发管理台**（`-L`）：复用已有 SSH 连接做端口转发，一处启停
-- **daemonless 降级读取**：不装 daemon 也能纯 `tail` 轮询读远端会话（能力子集，如实提示）
+- **daemonless 降级读取**：不装后端也能纯 `tail` 轮询读远端会话（能力子集，如实提示）
 - **完成一轮通知**：远端会话答完一轮弹系统通知；**指纹重置**：远端 host-key 变更时可重置
 
 ### 多账号（隔离又同步，#68/#69）
@@ -65,8 +65,8 @@
 - **设置「账号」组**：列出远端各账号（名/邮箱/是否已登录），当前账号带 chip/徽章
 - **按会话选账号起 / Resume**：起或 Resume 会话时可指定用哪个账号的 config-dir 启动（远端优先）
 - **换号重启的优雅退出**：切账号需重启会话——先请求优雅退出（`Escape` 打断当前轮 → `/exit` → 有界等待 → 兜底 kill），再用新账号 config-dir 重起
-- **app 内账号部署向导**：设置内置向导分步跑 `cc-acct-iso` 隔离/同步管线（只读状态查询走 daemon；动凭据/登录/同步经真实终端窗口），每账号一个「登录终端」按钮
-- **注**：多账号只读查询需远端 daemon 为最新版（连上自动重部署，或设置页手动重装）
+- **app 内账号部署向导**：设置内置向导分步跑 `cc-acct-iso` 隔离/同步管线（只读状态查询走后端；动凭据/登录/同步经真实终端窗口），每账号一个「登录终端」按钮
+- **注**：多账号只读查询需远端后端为最新版（连上自动重部署，或设置页手动重装）
 
 ### 富渲染
 - **Markdown**：GFM + 表格 + 任务列表（marked.js）
@@ -90,7 +90,7 @@
   - `↺` 恢复（v2.8.1：新 **PowerShell** 窗口跑 `cc --resume`，无 `cc` 时回退 `claude`；加载 profile 故代理 / env 生效）
   - `✕` 物理删除（二次确认；jsonl 文件被真删）
 - 点击会话条目进入**只读消息查看器**
-- **从这一轮创建分支（F62）**：只读查看器里 hover 任意一轮（你的提问 / Claude 回复）卡片 → 右上角浮现 `⑂`，点它把「开头 → 这一轮」复制成一个**新会话**（对齐 Claude 原生 `/branch` 的 `forkedFrom` 格式，**原会话零改动**），弹提示可一键在新终端 `resume` 从该轮岔开。补上内置 `/branch` 只能从当前进度分叉的缺口。**本地与远端会话都支持**（G6 起；daemon 侧 `--fork-session`，e2e `daemon-fork` 在 CI 里）
+- **从这一轮创建分支（F62）**：只读查看器里 hover 任意一轮（你的提问 / Claude 回复）卡片 → 右上角浮现 `⑂`，点它把「开头 → 这一轮」复制成一个**新会话**（对齐 Claude 原生 `/branch` 的 `forkedFrom` 格式，**原会话零改动**），弹提示可一键在新终端 `resume` 从该轮岔开。补上内置 `/branch` 只能从当前进度分叉的缺口。**本地与远端会话都支持**（G6 起；后端侧 `--fork-session`，e2e `daemon-fork` 在 CI 里）
 
 ### 设置面板（,）
 
@@ -279,8 +279,8 @@ cc-monitor/
 │       ├── launch.rs       B14-F41 终端拉起单一入口（wt.exe→PowerShell）+ 远端 ssh 拉起
 │       ├── search.rs       issue #6 历史全文搜索（内存索引 + 远端合并）
 │       ├── ssh_source.rs   issue #15 russh 远端数据源（连接/鉴权/流帧 + 跳板 + daemonless 降级）
-│       ├── remote_history.rs 远端历史浏览 + 远端全文搜索（exec daemon 子命令，多机 fan-out）
-│       ├── sftp.rs         SS-D 统一 SFTP 写层（#29 daemon 自动部署 + F11 删除 + F10 ccm）
+│       ├── remote_history.rs 远端历史浏览 + 远端全文搜索（exec 后端子命令，多机 fan-out）
+│       ├── sftp.rs         SS-D 统一 SFTP 写层（#29 后端自动部署 + F11 删除 + F10 ccm）
 │       ├── sftp_pool.rs    B14-F47 SFTP 文件面板 utility 连接池 + 浏览/传输/写命令
 │       ├── pubkey.rs       B14-F50 公钥一键推送 authorized_keys
 │       ├── port_forward.rs B14-F58 本地端口转发(-L)管理台
@@ -310,7 +310,7 @@ cc-monitor/
 | [CHANGELOG.md](CHANGELOG.md) | 升级用户 | 版本变更历史 |
 | [doc/ARCHITECTURE.md](doc/ARCHITECTURE.md) | 新贡献者深入第一站 | 数据流三条链 + 层边界（backend / 零轮询）+ 「为什么不能用别的方案」 |
 | [doc/IPC-PROTOCOL.md](doc/IPC-PROTOCOL.md) | 改协议的贡献者 | 跨进程文件 IPC + sessions/status + 远端 wire 完整 schema + 握手时序 |
-| [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md) | 部署远端的人 | SSH 远端 daemon 自动部署（#29）+ 手动部署 runbook（issue #15） |
+| [doc/REMOTE-PHASE0-DEPLOY.md](doc/REMOTE-PHASE0-DEPLOY.md) | 部署远端的人 | SSH 远端后端自动部署（#29）+ 手动部署 runbook（issue #15） |
 | [doc/INVARIANTS.md](doc/INVARIANTS.md) | 全员 | 全局不变量清单（零侵入 / 编码 / ACL / 顺序保证 / seq 单调） |
 | [doc/STATE-MATRIX.md](doc/STATE-MATRIX.md) | 改 IPC 命令的贡献者 | Tauri State 注册矩阵 + 修改规则 |
 | [doc/CONTRIBUTING.md](doc/CONTRIBUTING.md) | 贡献者 | 操作 checklist + cookbook（加 IPC / jsonl 类型 / 设置项 / 快捷键） |
@@ -319,18 +319,18 @@ cc-monitor/
 | [doc/RELEASING.md](doc/RELEASING.md) | 发版者 | 发版 SOP + CHANGELOG 写法 |
 | [src/README.md](src/README.md) | 前端开发 | 前端模块导览 |
 | [src-tauri/README.md](src-tauri/README.md) | 后端开发 | 后端模块导览 + IPC 清单 |
-| [remote-daemon-proto/README.md](remote-daemon-proto/README.md) | 远端 daemon 开发 | 只读 daemon 模块导览 + wire 协议 |
+| [remote-daemon-proto/README.md](remote-daemon-proto/README.md) | 远端后端开发 | 只读后端模块导览 + wire 协议 |
 | [scripts/README.md](scripts/README.md) | 用脚本的人 | 脚本说明 |
 | [e2e/README.md](e2e/README.md) | E2E | 套件与 DEV 探针：跑法 / 前置 / 人工场景（WebView2 复核） |
 
 ## 项目当前状态
 
 - **版本**：v3.7.0（Released）
-- **平台**：Windows 10 (1809+) / 11 · **Linux（`.deb`，v3.4.0 起随 release 一起发）**（远端 daemon 跑 Linux x86_64 / aarch64）
-- **测试**：后端 cargo + vendor code-picture-core + 远端 daemon + 前端 node 纯函数 + vitest（jsdom）+ e2e 脚本，CI job 全绿（`rust` / `frontend` / `daemon` / `linux-app-build` / `e2e-smoke` / `e2e-tmux` / `e2e-tmux-rust`；eslint/stylelint 是顾问式基线，覆盖率有地板棘轮）。
+- **平台**：Windows 10 (1809+) / 11 · **Linux（`.deb`，v3.4.0 起随 release 一起发）**（远端后端跑 Linux x86_64 / aarch64）
+- **测试**：后端 cargo + vendor code-picture-core + 远端后端 + 前端 node 纯函数 + vitest（jsdom）+ e2e 脚本，CI job 全绿（`rust` / `frontend` / `daemon` / `linux-app-build` / `e2e-smoke` / `e2e-tmux` / `e2e-tmux-rust`；eslint/stylelint 是顾问式基线，覆盖率有地板棘轮）。
   ⚠ **各项条数刻意不写在这里**（audit-0805 F18）：这个数在仓里曾有 4-5 份拷贝、全部漂成假的。
   唯一真相是**实跑**（`doc/DEVELOPMENT.md` 那张表给命令）与 `ci.yml` 里的**地板行**（那些有判据看着）
-- **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~33K 行 TS〔另 ~18K 行测试〕 + ~35K 行 Rust + ~10K 行远端 daemon）
+- **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~33K 行 TS〔另 ~18K 行测试〕 + ~35K 行 Rust + ~10K 行远端后端）
 - **设计原则**：只读零侵入（INVARIANT § 1）/ 可选性 / Windows-first / 长期记忆机制（CHANGELOG + doc/ 专题文档 + 各模块 README）
 
 ---

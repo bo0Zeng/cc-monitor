@@ -2535,3 +2535,522 @@ mod tests {
         assert!(!env_key_claim_lines().is_empty());
     }
 }
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🔴 `K-R116`（2026-09-14）：措辞收干净之后的**两道闸**
+//
+// `R61`〔用@09-13〕逐字：「**不要有 daemon 这个说法了 / daemon 就是常驻后端，后端就是
+// daemon**」；`R63` 要「全仓改措辞」；`R64` 逐字收窄「**ccm 不改**」。
+//
+// ⇒ 改的是**人读的散文**，**不是代码标识符**（`remote-daemon-proto` 这个 crate 名、
+// `daemon_*` 函数名、`--daemon-probe` 这类子命令、`daemon-gate2` 这类 e2e 套件名，
+// 一个都不改）。**「这个词出现几次」与「该改几处」是两个数**，下面第一道闸就长在这条线上。
+//
+// 本轮现打（量具 `evidence/K-R116-ruler.py`，人群 = `git ls-files '*.md'` 95 份）：
+// 改之前**出现 2098 次**，其中**该改 358 处**；改完之后写区里 `该改` 归零。
+// 两个数差在哪，逐档读数落在 `evidence/K-R116-census.md`。
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// 闸一：**那 9 份散文里不许再有人读的 `daemon`**（`K-R116` `KR116D1` 的机器面）。
+///
+/// # 为什么要一道闸，而不是「改完就算了」
+///
+/// 散文的正常演进就是有人往里写新句子，而写的人手里正躺着一份满是 `daemon` 的旧文档。
+/// 一次性改干净买到的是「今天干净」；这道闸买的是「**明天写脏了当场红**」。
+///
+/// # 人群 · 分母
+///
+/// [`SITES`] 那 9 份 —— 逐字取自 `K-R116` 的写区。**不是**整棵 `doc/`：
+/// `doc/` 今天 11 份，写区只点了 4 份，另外 7 份（`REMOTE-PHASE0-DEPLOY.md` 那 54 处占大头）
+/// 本轮**没改**，把它们收进人群就是一条必然红的闸。⚠ **这是本闸今天的射程边界，不是「没有」。**
+///
+/// # 它怎么分「散文」与「标识符」
+///
+/// 从命中处向两侧扩成一个 **ASCII token**：字母 / 数字 / `_` 一律吃；`-` `.` `/` `:`
+/// 只在它另一侧紧跟 ASCII 标识符字符时才吃。**汉字不算标识符字符。**
+/// token 恰好是光秃秃的 `daemon`（不分大小写）⇒ 那是散文；否则是标识符，放行。
+///
+/// ⚠ 这条规则**认不出**两形，两侧都写出来：
+/// ① 中文夹缝里的标识符（`daemon-协议-v1`）会被切成裸词 ⇒ 靠 [`EXEMPT`] 逐条兜；
+/// ② 英文连字符**形容词**（`daemon-spawned`）会被当成标识符放过 ⇒ 那是**漏**，
+///    本轮那 3 处由量具的「整句改写登记」逐处改掉了，而这道闸看不见同形的新增。
+///
+/// # ⚠ 它买不到什么
+///
+/// **只判那个词在不在**，判不了「改完读起来对不对」，也判不了别处（源码注释 · 界面文案 ·
+/// `evidence/` · 计划仓）——那几档各有各的归属，见 [`EXEMPT`] 逐条的理由。
+#[cfg(test)]
+mod daemon_wording_registry {
+    use std::path::{Path, PathBuf};
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级")
+            .to_path_buf()
+    }
+
+    /// 本闸的扫描面 —— `K-R116` 写区里那 9 份散文。**闭集，按住址点名。**
+    ///
+    /// 🔴 表名起成 `SITES` 是 `scanning_guard_registry::TABLE_DECLS` 那条纪律要的
+    /// （「新写一条『扫描面 ＋ 常量表』型的判据，那张表要起成 `TABLE_DECLS` 里已有的名字之一」）。
+    const SITES: &[&str] = &[
+        "doc/IPC-PROTOCOL.md",
+        "doc/INVARIANTS.md",
+        "doc/ARCHITECTURE.md",
+        "doc/CONTRIBUTING.md",
+        "README.md",
+        "README.en.md",
+        "e2e/README.md",
+        "src-tauri/README.md",
+        "remote-daemon-proto/README.md",
+    ];
+
+    /// 写区里**裸着的 `daemon`，而它一个字都不许动** —— `(文件, 逐字片段, 理由)`。
+    ///
+    /// 🔴 **这是本仓这个闭集的唯一住址**：量具 `evidence/K-R116-ruler.py` 不抄一份，
+    /// 它**解析本表**（`--apply` 与本闸因此不可能对不上）。
+    ///
+    /// 每条片段必须在那份文件里**恰好命中一次** —— 命中 0 次 = 那句话被改过了、这条例外
+    /// 此刻在空转；命中多次 = 片段太短，说不清点的是哪一处。两侧都由下面的判据断言。
+    const EXEMPT: &[(&str, &str, &str)] = &[
+        ("doc/INVARIANTS.md", "「**ccm做到必须走daemon**」",
+         "用户 08-14 逐字裁定的原话 —— 引文改了就不是引文了"),
+        ("doc/IPC-PROTOCOL.md", "「ccm 做到必须走 daemon」",
+         "同上，用户 08-14 逐字裁定在本文件里的第二处引用"),
+        ("doc/INVARIANTS.md", "**原措辞**：「daemon 对被观测文件系统必须只读，绝不写。」",
+         "§41.6 的**原措辞留档**（2026-07-31 收窄前那句）—— 历史句，改它等于篡改沿革；而它旁边那句「现措辞」正是本轮改的那一处"),
+        ("doc/INVARIANTS.md", "「daemonless 降级读取（无需 daemon）」",
+         "已删掉的那个界面 checkbox 的**逐字标签**（`K-R59` 09-11 整格删除，这里是墓碑）"),
+        ("doc/INVARIANTS.md", "「**daemon 结构上产不出它**：`control/launch.rs` 头注逐字",
+         "`K-R106` 订正段里**逐字回抄的原文**（下一句就是「那句被用户当场推翻了一半」）"),
+        ("doc/INVARIANTS.md", "不许再用「daemon」这个词把「远端常驻的那份」与「后端」压成一个",
+         "`R61` 裁定三本身 —— 它说的就是这个词，把词换掉这句话就没有指称对象了"),
+        ("doc/CONTRIBUTING.md", "REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-daemon-二进制f08b",
+         "markdown **锚点**，指向 `doc/REMOTE-PHASE0-DEPLOY.md` 的标题；那份文件不在本轮写区 ⇒ 标题不动，锚点跟着不许动，否则链接当场断"),
+        ("doc/IPC-PROTOCOL.md", "= CC 2.1.x daemon 后台任务",
+         "这一处的 `daemon` 指的是 **Claude Code 自己**那个 `--fork-session` 后台模式，不是本仓的后端 —— 换了词就把两个不同的东西压成一个（`R61` 治的正是这一形，反方向）"),
+        ("doc/IPC-PROTOCOL.md", "（`daemon-协议-v1 §3`）",
+         "与仓外 aterm **冻结在 2026-07-18** 的那份契约文档的**名字**，不是散文"),
+        ("README.md", "`rust` / `frontend` / `daemon` / `linux-app-build` / `e2e-smoke`",
+         "`.github/workflows/ci.yml` 里的 **job 名**，改它 CI 就对不上"),
+        ("e2e/README.md", "<daemon>",
+         "shell 命令里的**占位符** `<daemon>`（要替进去的是那个二进制的路径）"),
+        ("src-tauri/README.md", "设置面板「安装 daemon」",
+         "**逐字引用界面上那个按钮的文案** —— 文案住 `src/settings/machine-card.ts`（本轮写区之外）；只改文档不改界面，文档当场说假话。UI 文案那一档整体交回 PM 另派"),
+        ("src-tauri/README.md", "设置面板「卸载 daemon」",
+         "同上，另一个按钮的逐字文案"),
+        ("src-tauri/README.md", "一次性 exec `<daemon> --list-projects/--list-sessions/",
+         "同上，命令行占位符 `<daemon>`"),
+        ("src-tauri/README.md", "各配置远端 exec `<daemon> --usage`",
+         "同上，命令行占位符 `<daemon>`"),
+    ];
+
+    /// 语料地板：低于这个字节数就判「散文没喂进来」，而不是「一处都没有」。
+    const CORPUS_FLOOR_BYTES: usize = 300_000;
+
+    /// 例外表覆盖的处数 —— **恒等**，不是地板。
+    ///
+    /// 少一处 = 有条例外空转了（那句话被改过）；多一处 = 有人往例外表里塞了新的放行，
+    /// 而放行必须是**有意的一拍**。⚠ 这个数与 [`EXEMPT`] 的条数今天恰好相等（15），
+    /// 但两者不是同一件事：一条片段可以盖住同一句里的两处裸词。
+    const EXEMPT_HITS: usize = 15;
+
+    /// ASCII 标识符字符 —— **汉字不算**，这一条就是「两个数」的分水岭。
+    fn is_ident(c: u8) -> bool {
+        c.is_ascii_alphanumeric() || c == b'_'
+    }
+
+    /// 把 `[a, b)` 这处命中扩成它所属的 ASCII token，返回 `(起, 止)`。
+    ///
+    /// ⚠ 按**字节**走：`-` `.` `/` `:` 只在它另一侧紧跟 ASCII 标识符字符时才吃 ——
+    /// 于是 `ccm做到必须走daemon` 切出裸词（汉字挡住了扩张），
+    /// 而 `remote-daemon-proto` / `daemon_send_keys.rs` 切出整条。
+    fn token_at(s: &[u8], mut a: usize, mut b: usize) -> (usize, usize) {
+        while a > 0
+            && (is_ident(s[a - 1])
+                || (matches!(s[a - 1], b'-' | b'.' | b'/' | b':') && a >= 2 && is_ident(s[a - 2])))
+        {
+            a -= 1;
+        }
+        while b < s.len()
+            && (is_ident(s[b])
+                || (matches!(s[b], b'-' | b'.' | b'/' | b':')
+                    && b + 1 < s.len()
+                    && is_ident(s[b + 1])))
+        {
+            b += 1;
+        }
+        (a, b)
+    }
+
+    /// 一份文本里 `daemon`（不分大小写）的全部命中起点。
+    ///
+    /// ⚠ 刻意**不写** `.contains("…")` / `.find("…")` 那一形：
+    /// `needle_anchor_registry` 的递减棘轮按「拿磁盘语料做裸字面量匹配」计数，
+    /// 而本条的针是**变量**（下面 `NEEDLE`），不进那个人群。
+    fn hits(haystack: &str) -> Vec<usize> {
+        const NEEDLE: &str = "daemon";
+        // ⚠ 局部变量**刻意起长名**：`needle_anchor_registry::corpus_vars` 的传递闭包
+        //   **按名字**跑（不看类型），而本文件里 `text` / `b` / `lower` 这几个短名
+        //   早就被别的判据用着 —— 在这里复用一个，就会把同文件里
+        //   `name.starts_with("README")` 那一族**早已存在**的匹配一起卷进它的人群，
+        //   那条递减棘轮当场 33 → 34。〔09-14 实打逮到过一次，读数在 `evidence/K-R116-deathvalue.md`〕
+        let folded_haystack = haystack.to_ascii_lowercase();
+        let folded_bytes = folded_haystack.as_bytes();
+        let width = NEEDLE.len();
+        let mut out = Vec::new();
+        let mut cursor = 0usize;
+        while cursor + width <= folded_bytes.len() {
+            if &folded_bytes[cursor..cursor + width] == NEEDLE.as_bytes() {
+                out.push(cursor);
+                cursor += width;
+            } else {
+                cursor += 1;
+            }
+        }
+        out
+    }
+
+    fn read(rel: &str) -> String {
+        std::fs::read_to_string(repo_root().join(rel))
+            .unwrap_or_else(|e| panic!("{rel} 读不到：{e} —— 文件搬了就把本条一起改"))
+    }
+
+    /// ★★ 正题：**那 9 份散文里不许再有人读的 `daemon`**。
+    #[test]
+    fn no_prose_in_the_wording_sites_still_says_daemon() {
+        let bodies: Vec<(&str, String)> = SITES.iter().map(|r| (*r, read(r))).collect();
+
+        // ── 抽取器自检①：语料真喂进来了（读空了下面每一条都会零命中地绿）──
+        let total: usize = bodies.iter().map(|(_, t)| t.len()).sum();
+        assert!(
+            total >= CORPUS_FLOOR_BYTES,
+            "{} 份散文只读到 {total} 字节（地板 {CORPUS_FLOOR_BYTES}）—— 抽取器坏了，本条在空转",
+            bodies.len()
+        );
+
+        // ── 抽取器自检②：切 token 那一步两个方向都要对 ──
+        //
+        // 用**合成串**喂，不碰真语料：真树上「采到了它、而它过了」与「压根没扫到」
+        // 在输出上一模一样，那正是 `scanning_guard_registry` 头注治的那一形。
+        for (probe, want_bare) in [
+            // ⚠ 刻意**不写**那个「远端 ＋ 旧词」连写的形：`tool_registry::SITES` 那张**旧名字存量账**
+            //   按整串数它（`Why::Wording`），本文件写一处就得往那张账上加一行 ——
+            //   而那张账数的是「还没改的措辞」，一处**自检夹具**混进去会把它读成一笔真债。
+            ("常驻 daemon 的 stdin", true),
+            ("ccm做到必须走daemon", true),
+            ("remote-daemon-proto", false),
+            ("daemon_send_keys.rs", false),
+            ("--daemon-probe", false),
+            ("daemonPath", false),
+        ] {
+            let h = hits(probe);
+            assert_eq!(h.len(), 1, "自检串 {probe:?} 里应当恰好一处命中");
+            let (a, b) = token_at(probe.as_bytes(), h[0], h[0] + 6);
+            let bare = probe[a..b].eq_ignore_ascii_case("daemon");
+            assert_eq!(
+                bare,
+                want_bare,
+                "切 token 判错了：{probe:?} 切出 {:?}，期望「裸词={want_bare}」",
+                &probe[a..b]
+            );
+        }
+
+        // ── 例外表：每条恰好命中一次，逐条求出它盖住的区间 ──
+        let mut spans: Vec<(&str, usize, usize)> = Vec::new();
+        for (f, frag, why) in EXEMPT {
+            let site_text = &bodies
+                .iter()
+                .find(|(r, _)| r == f)
+                .unwrap_or_else(|| panic!("例外表点的 {f} 不在 SITES 里 —— 两张表对不上"))
+                .1;
+            let n = site_text.matches(frag).count();
+            assert_eq!(
+                n, 1,
+                "例外片段在 {f} 里命中 {n} 次（要求恰好 1 次）：{frag}\n\
+                 · 0 次 = 那句话被改过了，这条例外此刻在空转（理由：{why}）\n\
+                 · 多次 = 片段太短，说不清点的是哪一处"
+            );
+            let at = site_text.find(frag).expect("上面刚断言过命中一次");
+            spans.push((f, at, at + frag.len()));
+        }
+
+        // ── 正题 ──
+        let mut offenders: Vec<String> = Vec::new();
+        let mut exempted = 0usize;
+        let mut idents = 0usize;
+        for (rel, site_text) in &bodies {
+            let raw = site_text.as_bytes();
+            for h in hits(site_text) {
+                let (a, b) = token_at(raw, h, h + 6);
+                if !site_text[a..b].eq_ignore_ascii_case("daemon") {
+                    idents += 1;
+                    continue;
+                }
+                if spans.iter().any(|(f, x, y)| f == rel && *x <= a && a < *y) {
+                    exempted += 1;
+                    continue;
+                }
+                let at = site_text[..a].matches('\n').count() + 1;
+                let from = site_text[..a].rfind('\n').map(|i| i + 1).unwrap_or(0);
+                let upto = site_text[b..]
+                    .find('\n')
+                    .map(|i| b + i)
+                    .unwrap_or(site_text.len());
+                let ctx: String = site_text[from..upto].chars().take(90).collect();
+                offenders.push(format!("  {rel}:{at}  {ctx}"));
+            }
+        }
+
+        // ── 抽取器自检③：标识符那一档必须真的数到东西 ──
+        //
+        // 数不到 = 切 token 那一步在真语料上根本没跑（合成串过了不代表真树上跑到了）。
+        assert!(
+            idents >= 100,
+            "只数出 {idents} 处代码标识符（09-14 现打 139）—— 本条在真语料上没跑起来"
+        );
+
+        // ── 抽取器自检④：例外表不许空转（**恒等**，不是地板）──
+        assert_eq!(
+            exempted, EXEMPT_HITS,
+            "例外表今天盖住 {exempted} 处（登记 {EXEMPT_HITS}）——\n\
+             少了 = 有条例外空转；多了 = 有人往表里塞了新的放行。\n\
+             放行必须是有意的一拍：改这个数的同一拍要在 EXEMPT 里写清是哪条、为什么。"
+        );
+
+        assert!(
+            offenders.is_empty(),
+            "这些散文里又写了人读的 `daemon`（`R61`：不要有 daemon 这个说法了）：\n{}\n\n\
+             ★ 出路两条：① 把它改成「后端」（英文那份是 `backend`）；\n\
+             ② 它**真的**不该改（用户逐字引用 · 历史原措辞留档 · markdown 锚点 ·\n\
+             命令行占位符 · CI job 名 · 界面按钮的逐字文案 · 指的是 Claude Code 自己那个\n\
+             daemon）⇒ 往 `EXEMPT` 加一行**并写清理由**，同一拍把 `EXEMPT_HITS` 调上去。\n\
+             ⚠ **代码标识符本来就不该红**（`remote-daemon-proto` · `daemon_*` · `--daemon-probe`）——\n\
+             它红了说明 token 切法出问题了，先看上面那几条自检。",
+            offenders.join("\n")
+        );
+    }
+}
+
+/// 闸二：**`evidence/` 与 `CHANGELOG.md` 里那两个词的处数只许涨**（`K-R116` `KR116D2`）。
+///
+/// # 🔴 理由（`KR116D2` 逐字要它写进头注）
+///
+/// `evidence/**` 是**死值验留档**，`CHANGELOG.md` 是发版墓碑 —— 两者装的都是
+/// 「**某年某月现打是多少**」。谁哪天顺手把里面的 `daemon` 批量替换成「后端」，
+/// 那些读数就**改错了改不回来**：`brief` 第 12 条逐字「变异台上的数字就是证据，
+/// **写错一个数等于伪造一次读数**」。
+///
+/// ⚠ 这一档与闸一是**反向**的：闸一要那个词消失，闸二要那个词**留着**。
+/// 一次「全仓 sed」会同时撞上两道，而它们会分别点名是哪一侧。
+///
+/// # 判法：**地板，不是等号**
+///
+/// 逐文件钉 `(daemon 处数, ccm 处数)` 的**下界**。为什么不是等号：
+/// `CHANGELOG.md` 每次发版都会长（新条目里当然会再提到这两个词），等号会天天假红 ——
+/// 而**批量替换只会让数变小**，地板正好卡在那个方向上。
+///
+/// # 人群 · 分母 · 它够不着什么
+///
+/// [`REGISTERED`] 是**量于 `897afec`（2026-09-14）**的那 69 份 `evidence/*.md` ＋ `CHANGELOG.md`。
+/// 之后新长出来的 `evidence/*.md` **不在逐文件那一档里** —— 接它们的是下面那条
+/// **整棵树的合计地板**（`EVIDENCE_DAEMON_FLOOR`）。
+///
+/// ⚠ 两侧都写出来：
+/// - **接得住**：改动登记过的任一份（点名那一份）· 删掉登记过的任一份（读不到 ⇒ panic）·
+///   在**新**文件里批量替换到把整棵树的合计打下去。
+/// - **接不住**：在一份新文件里替换掉 N 处、同一拍另一份新文件又新增 ≥N 处
+///   ⇒ 合计没降，本闸静默。**这是已知的漏，不是「没有」。**
+/// - 它判的是**处数**，不判「那一处还是不是原来那句话」（同一份里删一句、加一句同词的话，
+///   本闸看不见）。真要钉逐句，那是另一件。
+#[cfg(test)]
+mod frozen_daemon_census {
+    use std::path::{Path, PathBuf};
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级")
+            .to_path_buf()
+    }
+
+    /// 整棵 `evidence/*.md` 的 `daemon` 合计地板 —— **量于 `897afec`，2026-09-14，69 份**。
+    ///
+    /// 🔴 **只许涨，不许把这个数调下来让今天好过。** 调下来 = 把「有人抹掉了历史读数」
+    /// 这件事直接注销掉，而那正是本闸唯一要接的东西。
+    const EVIDENCE_DAEMON_FLOOR: usize = 1388;
+
+    /// 同上，`ccm` 那一侧（`R64` 逐字「**ccm 不改**」，它在这棵树里同样是历史读数）。
+    const EVIDENCE_CCM_FLOOR: usize = 442;
+
+    /// 登记过的那几份 —— `(住址, daemon 处数下界, ccm 处数下界)`，量于 `897afec`。
+    ///
+    /// 🔴 表名起成 `REGISTERED` 是 `scanning_guard_registry::TABLE_DECLS` 那条纪律要的。
+    const REGISTERED: &[(&str, usize, usize)] = &[
+        ("evidence/K-P6-readings.md", 26, 2),
+        ("evidence/K-P6b-readings.md", 29, 0),
+        ("evidence/K-P7-readings.md", 82, 1),
+        ("evidence/K-R100-deathvalue.md", 19, 1),
+        ("evidence/K-R101-deathvalue.md", 20, 1),
+        ("evidence/K-R102-deathvalue.md", 37, 6),
+        ("evidence/K-R103-deathvalue.md", 7, 5),
+        ("evidence/K-R104-deathvalue.md", 43, 4),
+        ("evidence/K-R105-deathvalue.md", 10, 2),
+        ("evidence/K-R106-deathvalue.md", 13, 16),
+        ("evidence/K-R109-deathvalue.md", 5, 4),
+        ("evidence/K-R110-census.md", 10, 1),
+        ("evidence/K-R110-deathvalue.md", 16, 8),
+        ("evidence/K-R111-census.md", 39, 31),
+        ("evidence/K-R112-deathvalue.md", 41, 3),
+        ("evidence/K-R113-deathvalue.md", 43, 0),
+        ("evidence/K-R114-deathvalue.md", 16, 20),
+        ("evidence/K-R114-真机清单.md", 31, 37),
+        ("evidence/K-R115-deathvalue.md", 16, 9),
+        ("evidence/K-R118-deathvalue.md", 13, 14),
+        ("evidence/K-R12-deathvalue.md", 0, 9),
+        ("evidence/K-R12-locale-lab.md", 0, 7),
+        ("evidence/K-R24-D1-premise-census.md", 5, 3),
+        ("evidence/K-R24-D5-home-axis-census.md", 4, 3),
+        ("evidence/K-R24-D6-locale-axis-census.md", 5, 8),
+        ("evidence/K-R24-D7-etxtbsy.md", 8, 2),
+        ("evidence/K-R24-D8-load-axis.md", 12, 1),
+        ("evidence/K-R25-D2-unit-alignment.md", 44, 1),
+        ("evidence/K-R25-D4-nine-uncovered-files.md", 6, 0),
+        ("evidence/K-R26-readings.md", 17, 5),
+        ("evidence/K-R27-parked-tense-audit.md", 38, 1),
+        ("evidence/K-R56-deathvalue.md", 10, 1),
+        ("evidence/K-R67-依赖脊柱与顺序.md", 14, 24),
+        ("evidence/K-R68-三种载体摸底.md", 79, 21),
+        ("evidence/K-R70-身份从字节里读得出.md", 29, 11),
+        ("evidence/K-R71-observe归位.md", 5, 3),
+        ("evidence/K-R72-deathvalue.md", 53, 2),
+        ("evidence/K-R73-monitor侧层间方向判据.md", 9, 5),
+        ("evidence/K-R74-拨号住址与递减棘轮.md", 5, 2),
+        ("evidence/K-R75-剥法认形状与真静默读数.md", 27, 5),
+        ("evidence/K-R76-三处假话与裸行号的刀.md", 21, 0),
+        ("evidence/K-R77-拆最后那道绕道与恒零棘轮.md", 30, 0),
+        ("evidence/K-R78-readings.md", 22, 5),
+        ("evidence/K-R79-远端写那一层与判档第四档.md", 22, 2),
+        ("evidence/K-R80-gate-daemon-fmt.md", 66, 25),
+        ("evidence/K-R81-一个后端两处使用.md", 37, 12),
+        ("evidence/K-R82-hooks-gate.md", 10, 5),
+        ("evidence/K-R83-deathvalue.md", 11, 1),
+        ("evidence/K-R85-摸底.md", 20, 2),
+        ("evidence/K-R86-deathvalue.md", 33, 6),
+        ("evidence/K-R87-deathvalue.md", 43, 10),
+        ("evidence/K-R88-deathvalue.md", 11, 0),
+        ("evidence/K-R89-deathvalue.md", 28, 26),
+        ("evidence/K-R9-R2-fallback-watch-scope.md", 16, 1),
+        ("evidence/K-R92-deathvalue.md", 2, 0),
+        ("evidence/K-R93-deathvalue.md", 2, 1),
+        ("evidence/K-R94-deathvalue.md", 0, 2),
+        ("evidence/K-R95-deathvalue.md", 6, 10),
+        ("evidence/K-R96-deathvalue.md", 12, 39),
+        ("evidence/K-R97-deathvalue.md", 2, 0),
+        ("evidence/K-R98-deathvalue.md", 15, 0),
+        ("evidence/K-W1B-D1-agent-coupling-census.md", 12, 1),
+        ("evidence/K-W1C-D1-edges.md", 1, 0),
+        ("evidence/K-W1C-D3D4-deathvalue.md", 0, 0),
+        ("evidence/K-W1C-D4-reachability.md", 0, 5),
+        ("evidence/K-W2E-readings.md", 17, 2),
+        ("evidence/K-W4-D1-rename-surface.md", 5, 1),
+        ("evidence/K-W4-D4-build-id-split.md", 50, 1),
+        ("evidence/K-W4b-readings.md", 8, 6),
+        ("CHANGELOG.md", 90, 79),
+    ];
+
+    /// 读一份登记在案的历史留档。读不到 ⇒ 当场 panic 并说清为什么。
+    ///
+    /// ⚠ **刻意包成函数，不在 `let` 右边直接写 `read_to_string`**：
+    /// `needle_anchor_registry::corpus_vars` 按「`let X = …read_to_string(…)`」播种语料变量，
+    /// 而它的传递闭包**按名字**跑一层 —— 在本文件里播一个 `body` 出去，
+    /// 会把同文件别处 `name.starts_with("README")` 这类**早就存在**的匹配一起卷进人群，
+    /// 那条递减棘轮当场从 33 涨到 34。〔09-14 实打过一次，读数在 `evidence/K-R116-deathvalue.md`〕
+    fn read_frozen(root: &Path, rel: &str) -> String {
+        std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| {
+            panic!(
+                "{rel} 读不到：{e}\n\
+                 ★ 它是登记在案的历史读数 / 墓碑（`K-R116` `KR116D2`）——\n\
+                 删掉它 = 把那一刀的证据整份销毁。真要删，先在这张表里删行并说清为什么。"
+            )
+        })
+    }
+
+    /// 一份文本里某个词的处数。`needle` 走**变量**（针不写成字面量：
+    /// `needle_anchor_registry` 的棘轮按「拿磁盘语料做裸字面量匹配」计数）。
+    fn count(text: &str, needle: &str, fold_case: bool) -> usize {
+        let hay = if fold_case {
+            text.to_ascii_lowercase()
+        } else {
+            text.to_string()
+        };
+        hay.matches(needle).count()
+    }
+
+    /// ★★ 正题：登记过的每一份，两个词的处数都不许掉。
+    #[test]
+    fn the_frozen_history_never_loses_a_daemon() {
+        const DAEMON: &str = "daemon";
+        const CCM: &str = "ccm";
+        let root = repo_root();
+
+        // 抽取器自检：登记表不许被掏空。
+        assert!(
+            REGISTERED.len() >= 60,
+            "登记表只剩 {} 行（09-14 现打 70）—— 被掏空了，本条在空转",
+            REGISTERED.len()
+        );
+
+        let mut shrunk: Vec<String> = Vec::new();
+        for (rel, floor_d, floor_c) in REGISTERED {
+            let frozen_text = read_frozen(&root, rel);
+            let d = count(&frozen_text, DAEMON, true);
+            let c = count(&frozen_text, CCM, false);
+            if d < *floor_d {
+                shrunk.push(format!("  {rel}：daemon {d} < 登记 {floor_d}"));
+            }
+            if c < *floor_c {
+                shrunk.push(format!("  {rel}：ccm {c} < 登记 {floor_c}"));
+            }
+        }
+
+        // ── 整棵树那一档：新长出来的 `evidence/*.md` 由它兜 ──
+        //
+        // ⚠ 用 `scan_tree!` 而不是裸 `read_dir`：`scanning_guard_registry` 那条元判据
+        // 逐字禁裸遍历（判据在自己那份里找到自己 ⇒ 恒绿）。
+        let mut n_files = 0usize;
+        let mut sum_d = 0usize;
+        let mut sum_c = 0usize;
+        for (_, evidence_text) in guard_core::scan_tree!(&root.join("evidence"), &["md"]) {
+            n_files += 1;
+            sum_d += count(&evidence_text, DAEMON, true);
+            sum_c += count(&evidence_text, CCM, false);
+        }
+        assert!(
+            n_files >= 60,
+            "`evidence/` 只扫到 {n_files} 份 `.md`（09-14 现打 69）—— 遍历坏了，下面两条在空转"
+        );
+        if sum_d < EVIDENCE_DAEMON_FLOOR {
+            shrunk.push(format!(
+                "  evidence/ 整棵树：daemon 合计 {sum_d} < 地板 {EVIDENCE_DAEMON_FLOOR}"
+            ));
+        }
+        if sum_c < EVIDENCE_CCM_FLOOR {
+            shrunk.push(format!(
+                "  evidence/ 整棵树：ccm 合计 {sum_c} < 地板 {EVIDENCE_CCM_FLOOR}"
+            ));
+        }
+
+        assert!(
+            shrunk.is_empty(),
+            "有人把历史读数里的 `daemon` / `ccm` 抹掉了：\n{}\n\n\
+             ★ `evidence/**` 是死值验留档、`CHANGELOG.md` 是发版墓碑，两者装的都是\n\
+             「**某年某月现打是多少**」—— 改它 = **伪造一次读数**（`brief` 第 12 条）。\n\
+             `K-R116` 那一轮把散文里的 `daemon` 全换成了「后端」，**这两档刻意不在射程里**。\n\
+             ⚠ 真要动（比如一份留档整个作废）：先在 `REGISTERED` 里改行并写清为什么，\n\
+             别反过来把地板调下去 —— 那等于把这道闸注销掉。",
+            shrunk.join("\n")
+        );
+    }
+}
