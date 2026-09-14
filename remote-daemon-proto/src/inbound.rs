@@ -79,6 +79,7 @@ pub const COMMANDS: &[&str] = &[
     "bus-kill",
     "bus-list",
     "bus-send",
+    "bus-state",
     "cancel",
     "capture-pane",
     "kill",
@@ -428,6 +429,22 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         fields: &["from", "live", "registered", "sent", "to"],
         takes_input: true,
         run: Run::Blocking(|r| crate::control::cc_bus::send_for_inbound(&r.args).map(Some)),
+    },
+    // `K-R113`（09-13）：**一次回全的具名读命令。**
+    //
+    // 它不是 `bus-list` 的超集写法 —— `agents` 那一半**就是** `bus-list` 那一半
+    //（同一个 `agents_via_cc_list`，由 `cc_bus::tests::bus_state_answers_both_halves_from_one_call`
+    // 钉住），多出来的是 spawn 台账。⚠ 两半必须在**同一条命令**里回：总线名单与 spawn 台账
+    // 互相引用，分两条命令取回来的两份是两个时刻的，拼出来的状态盘上从没存在过。
+    CommandSpec {
+        name: "bus-state",
+        doc_anchor: Some("#### `bus-state`"),
+        codes: &["not_installed", "timed_out", "failed"],
+        fields: &[
+            "agents", "ccm_sid", "dir", "id", "live", "spawned", "target", "task", "unread",
+        ],
+        takes_input: false,
+        run: Run::Blocking(|_r| crate::control::cc_bus::state_for_inbound().map(Some)),
     },
     CommandSpec {
         name: "cancel",
@@ -1053,10 +1070,12 @@ mod tests {
 
         // P4f：两条 cc-bus 命令**要起子进程并等它退出** ⇒ 与 `launch`/`kill` 同档。
         // `K-R104`：那两条 tmux 原语同理（抓一屏 / 建会话都要起 tmux 并等它退出）。
+        // `K-R113`：`bus-state` 起**两个**子进程（`cc-list` ＋ `cc-agents`）⇒ 更是阻塞档。
         for c in [
             "bus-list",
             "bus-send",
             "bus-kill",
+            "bus-state",
             "capture-pane",
             "oneshot-session",
         ] {
@@ -1076,6 +1095,7 @@ mod tests {
             "bus-list",
             "bus-send",
             "bus-kill",
+            "bus-state",
             "capture-pane",
             "oneshot-session",
         ];
@@ -1468,6 +1488,7 @@ mod structure_guards {
                     | "bus-list"
                     | "bus-send"
                     | "bus-kill"
+                    | "bus-state"
                     | "capture-pane"
                     | "oneshot-session"
             );
@@ -1497,6 +1518,7 @@ mod structure_guards {
             "bus-list",
             "bus-send",
             "bus-kill",
+            "bus-state",
             "capture-pane",
             "oneshot-session",
         ];

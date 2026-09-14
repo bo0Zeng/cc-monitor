@@ -222,7 +222,21 @@ const PROTO_VERSION: u32 = 1;
 ///   当场判 `CallError::Unsupported`、一个字节都不发（`bus-send` 是现成先例）。
 ///   ⇒ 探针在已部署的旧远端上整条不可用，而判 stale 只看 build_id。
 ///   ★ 同 p2d / p2e / p2g / p2h：这一半是**源码半**，re-embed 归发版那一拍，本轮**没做**。
-const BUILD_ID: &str = "p2i-frame-tmux-primitives";
+///
+/// - p2j-bus-state〔`K-R113` 09-13〕：新增 `bus-state` —— cc-bus 的**具名读命令**，
+///   总线名单 ＋ spawn 台账**一次回全**。两个命令面**同拍都动**（`SUBCOMMANDS` 26 → 27、
+///   `inbound::REGISTRY` 与 `COMMANDS` 10 → 11），这是本谱系里第一次两面一起变。
+///   它补的是 `K-R111` 摸底点名的那个缺口：monitor 侧 `read_cc_bus_state` 想改走后端，
+///   而**后端没有对侧** —— 那条读面的头注逐字写着解锁条件是「格式契约稳下来」，
+///   届时「正确形状多半不是把 shell 串搬过去，而是 daemon 出一条**具名的读命令**」。
+///   ⚠ **必须 bump**，而这一次两个失效形状**同时**成立：CLI 面那半是 p1r/p1t/G2/p2d/p2e/p2g/p2h
+///   那七次的 `unknown argument` + exit 2；帧面那半是 p2i 那次的 `hello.commands` 里没有它
+///   ⇒ monitor 的 `InboundClient::accepts` 判 `Unsupported`、一个字节都不发。
+///   ★ 同 p2d / p2e / p2g / p2h / p2i 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
+///   归发版那一拍，本轮**没做**（本工作树也没铺 `src-tauri/embedded-daemons/` ⇒ 不涉及 re-embed）。
+///   🔴 **别把它读成「驾驶舱那条读面接上后端了」**：本件只出后端这一侧的命令，
+///   monitor 的 `read_cc_bus_state` **一个字节没动**（那是下一件）。
+const BUILD_ID: &str = "p2j-bus-state";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src-tauri/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -1149,6 +1163,9 @@ const SUBCOMMANDS: &[&str] = &[
     "--bus-kill",
     "--bus-list",
     "--bus-send",
+    // `K-R113`：cc-bus 的**具名读命令**（名单 ＋ spawn 台账一次回全）。
+    // 登记在这里的理由与上面那三条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
+    "--bus-state",
     // `K-R86`：只读的一次性抓屏原语。登记在这里的理由与上面那几条逐字相同 ——
     // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
     // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那一屏。
