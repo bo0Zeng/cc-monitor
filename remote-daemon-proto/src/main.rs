@@ -2181,14 +2181,23 @@ mod argv_table_guard {
         &src[beg..end]
     }
 
-    /// 一段 `match` 块里出现的 `Some("--x")` 形态的**臂 token**（按出现序去重）。
+    /// 一段 `match` 块里的**臂 token**（按出现序去重）—— 只认**模式那一侧**。
+    ///
+    /// 🔴 **只扫「trim 之后以 `Some("` 或 `| Some("` 打头」的行**，不扫整块：
+    /// 臂**体**里要是碰巧也出现一个 `Some("--x")`，整块扫法会把它当成一条真臂收进来
+    /// ⇒ 那条 token 于是「有落点」，而实际上没有 —— **这是一个假绿方向**，不是假红。
     ///
     /// 运行时拼 `Some("`，免得本函数自己的文本被别的扫描器当成一条分派臂。
     fn arm_tokens(block: &str) -> Vec<&str> {
         let needle = format!("{}(\"", "Some");
         let mut out: Vec<&str> = Vec::new();
-        for (i, _) in block.match_indices(needle.as_str()) {
-            let rest = &block[i + needle.len()..];
+        for line in block.lines() {
+            let l = line.trim_start();
+            let l = l.strip_prefix("| ").unwrap_or(l);
+            if !l.starts_with(needle.as_str()) {
+                continue;
+            }
+            let rest = &l[needle.len()..];
             if let Some(end) = rest.find('"') {
                 let t = &rest[..end];
                 if t.starts_with("--") && !out.contains(&t) {
@@ -2429,6 +2438,17 @@ mod argv_table_guard {
             fallback.len() >= 3,
             "`history_query::run` 的块里只抠到 {} 条（地板 3，实测 5）—— 块界找错或抽取塌了：{fallback:?}",
             fallback.len()
+        );
+
+        // ★ 表侧也要有反空真地板：`SUBCOMMANDS` 被掏瘪 ⇒ 下面那个循环跑零圈、
+        //   主断言**零命中地绿**（`testing.md` 硬规则 7：先证够得到，再问有没有违例）。
+        //   地板取 **10**，与 `build_id_guard::subcommand_fingerprint` 那条**同一个数**
+        //   （不另发明一个），而今天实测 26 —— 压得低是刻意的：删掉一两条子命令时
+        //   要让上面/下面那几条真判据先说话，别先撞上这道自检。
+        assert!(
+            SUBCOMMANDS.len() >= 10,
+            "`SUBCOMMANDS` 只剩 {} 条（地板 10，实测 26）—— 登记表被掏了，本条此刻在空转",
+            SUBCOMMANDS.len()
         );
 
         // ── 主断言：表里每一条都得落在三条路之一上 ──────────────────────────
