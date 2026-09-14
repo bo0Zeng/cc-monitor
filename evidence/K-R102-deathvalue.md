@@ -179,10 +179,10 @@ CLI 派生面（`REGISTRY` 非 Builtin ＋ PROBE_FLAG）：10 条
 
 | `fn` | 基点 | 工作树 |
 |---|---|---|
-| `arm_tokens` | （基点没有） | 新增 |
-| `dispatch_block` | （基点没有） | 新增 |
-| `every_listed_subcommand_has_a_live_dispatch_route` | （基点没有） | 新增 |
-| `every_dispatch_arm_actually_calls_an_implementation` | `0db4027de74b` | 变了（块界抽取换成调 `dispatch_block`，断言一个字未动） |
+| `arm_tokens` | （基点没有） | 新增（`73bd816579f0`；第二轮收窄到模式行之后的值）|
+| `dispatch_block` | （基点没有） | 新增（`0a72eb245228`）|
+| `every_listed_subcommand_has_a_live_dispatch_route` | （基点没有） | 新增（`3f12069e3de1`；第二轮补了表侧地板之后的值）|
+| `every_dispatch_arm_actually_calls_an_implementation` | `0db4027de74b` | `6e3a250c8cfc`（块界抽取换成调 `dispatch_block`，断言一个字未动）|
 
 **其余 38 块整块 md5 逐个相同。** 别的文件一个字节没动（`git status` 见 `§三之四`）。
 
@@ -232,3 +232,16 @@ GATE: OK —— 13 格全绿（hooks · fmt · fmt-daemon · winchk · cargo · 
 逐格与 `M0` 的差：**只有 `daemon` 那一格 `755 → 756`**，差正好是本件新增的那一条判据；
 第 13 格从 `FAIL=1`（`[J3 陈账] INDEX.md 比源文件旧，共享计划仓）变成 `FAIL=0`，
 **不是本件做的**（并跑的人在计划仓那侧动过）。其余十一格逐格恒等。
+
+## 四 · 第二轮：拿本轮这几条病理回头打自己写的代码（brief 15）
+
+本轮逮到的三条病理，逐条对新判据自己念一遍：
+
+| 病理（本轮实打） | 新判据身上有没有同一形 | 处置 |
+|---|---|---|
+| **写死一张表当人群**（尺子第一版）| 有半条：`DUAL_ROUTE_ARMS` 是手写的 | **保留手写，但两个方向都判**（表里的必须还在双路上 · 双路上的必须在表里）。理由与 `daemon_kill.rs::VALIDATORS` 逐字同一条：那一维**遍历不出来**，它是一次裁定 |
+| **空真**（人群塌了、断言零命中地绿）| 🔴 **有**：`SUBCOMMANDS` 被掏瘪 ⇒ 主断言那个循环跑零圈、恒绿。臂侧三条路都有地板，**表侧原本没有** | 补一条 `SUBCOMMANDS.len() >= 10`（与 `build_id_guard::subcommand_fingerprint` **同一个数**，不另发明；实测 26，压得低是刻意的 —— 删一两条子命令时要让真判据先说话） |
+| **扫描面画大了**（整块扫 vs 块内扫）| 🔴 **有**：`arm_tokens` 原来扫整块 ⇒ 臂**体**里碰巧出现一个 `Some("--x")` 也会被当成一条真臂收进来。那是一个**假绿**方向（token 于是「有落点」而实际没有）| 收窄到**模式那一侧**：只认 trim 后以 `Some("` / `\| Some("` 打头的行。尺子那份转写同拍收窄 |
+
+⚠ 两处改动**都不改任何读数**（改前改后：入场 `26 / 7 / 19`、交回 `26 / 26 / 0`，逐字相同）——
+它们买的是「**将来**塌了会被发现」，不是今天的数。这一句就是它们的诚实边界。

@@ -183,7 +183,19 @@ def span(prod: str, beg: str, end: str, who: str) -> str:
 
 
 def arm_tokens(block: str) -> list[str]:
-    return re.findall(r'Some\("(--[A-Za-z0-9_-]+)"\)', block)
+    """只认**模式那一侧**（trim 后以 `Some("` / `| Some("` 打头的行）—— 与 Rust 那份同口径。
+
+    整块扫会把臂**体**里碰巧出现的 `Some("--x")` 也收进来 ⇒ 那是**假绿**方向。
+    """
+    out: list[str] = []
+    for line in block.split("\n"):
+        l = line.lstrip()
+        if l.startswith("| "):
+            l = l[2:]
+        m = re.match(r'Some\("(--[A-Za-z0-9_-]+)"\)', l)
+        if m and m.group(1) not in out:
+            out.append(m.group(1))
+    return out
 
 
 def routes(main_prod: str, hist_prod: str):
