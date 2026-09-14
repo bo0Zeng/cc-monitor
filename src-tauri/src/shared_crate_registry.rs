@@ -692,6 +692,10 @@ mod tests {
             // 〔`K-R48` 第二拍 09-11〕标题里那个数从 23 变 21（删了 ccm-acceptance / ccm-pretrust 两套）。
             ("G-A/G-C 覆盖面地板（20 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
             ("exec-bit guard (shared/** shebang files must be 100755 in git)", true, "`bash e2e/exec-bit-guard.sh`"),
+            // 🔴 **写区外的随动**〔`K-R114` 09-14〕：本轮往 `e2e-smoke` 加了一步，
+            // 而这条判据的题面逐字就是「CI 里加了一步、本地门禁不知道」⇒ 加步骤必须同拍登记。
+            // 本行**只登记事实**（这一步本地跑得动，以及怎么跑），不裁定任何东西。
+            ("release.yml 手工触发守卫（KR114D1）", true, "步骤体从 `ci.yml` 原样抽出来跑（沙箱镜像里 `python3 -c \'import yaml\'` 直接有，用不上那条 pip 兜底）；被测对象由环境变量 `RELEASE_WORKFLOW` 给，缺省是本仓 `.github/workflows/release.yml`"),
             // ── 无名步骤（`- run: <命令>`，08-07 人群扩到它们之后才第一次可见）。
             // 标识是命令本身，多个 job 里同一条命令共用这一行登记。
             ("run: npm ci", false, "按 lockfile **重装** node_modules（三个 job 各一条无名步骤）：本地等价物是既有依赖树，重跑改变的是环境不是结论 —— 与上面那条有名字的 `npm ci` 同一个理由"),
