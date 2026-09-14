@@ -33,12 +33,15 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕13 格
-# │ 〔自述·点名〕hooks · fmt · fmt-daemon · winchk · cargo · generated · daemon · npm ·
+# │ 〔自述·格数〕15 格
+# │ 〔自述·点名〕hooks · copy2 · fmt · fmt-daemon · winchk · cargo · deadcode · generated · daemon · npm ·
 # │   ccm e2e/ccm-print-parity · ccm e2e/ccm-rbind-title · ccm e2e/ccm-cli ·
 # │   ccm e2e/ccm-contract-parity · pb check
 # │ 〔自述·现物〕四套 e2e 的被测文件：`e2e/ccm-print-parity.sh` · `e2e/ccm-rbind-title.sh` ·
 # │   `e2e/ccm-cli.test.sh` · `e2e/ccm-contract-parity.sh`；判法一律走 `e2e/assert-pass-floor.sh`。
+# │ 〔自述·现物〕`copy2` 那一格的判据本体：`evidence/K-R115-ruler.py`（`K-R115` 09-14 第 14 格）。
+# │ 〔自述·现物〕`deadcode` 那一格没有独立的判据文件 —— 它就是一趟 `cargo check -p monitor`
+# │   加一个递减棘轮，判定逐字写在下面那一行 `run_gate deadcode` 的内联脚本里（第 15 格）。
 # │ 〔自述·不在射程〕跨平台 / 提交状态那一维归 `npm run verify:committed`（`C16`，动 daemon 时跑）。
 # │
 # └─ 〔自述·射程〕完 ────────────────────────────────────────────────────────────
@@ -679,6 +682,30 @@ gate_selftest
 run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里记着可执行位 · 语法过得了它自己声明的解释器）＋ 8 条阳性对照；现打 hooks/ 下 1 个文件 ⇒ 11。hooks/ 之外的任何一棵树本行都盖不到' \
          bash scripts/hooks-are-runnable.sh
 
+# ── 量具的**还原那一跳**有没有把旧 mtime 搬回被测树（`K-R115` `KR115D1`，09-14，第 14 格）──
+#
+# ## 题面：一条纪律立了一天，第二天在另一把量具里又长出来
+#
+# `K-R75`（09-12）：变异台 `restore` 用 `shutil.copy2` 把**旧 mtime** 一起搬回
+#   ⇒ `cargo` 判「源码没变」⇒ 复用上一刀的产物 ⇒ **那一趟读到的是上一刀的回声**，整趟作废。
+# `K-R102`（09-13）：**同形复发**在另一把量具上 —— `M6-final` 印 `GATE: OK · daemon 755`，
+#   而那条判据还在盘上、一趟都没跑。它自己逮住并重跑。
+# ⇒ 当时的处置逐字是「每趟变异都要有一个『它真的重编过吗』的活体信号」——
+#   **一句纪律，没有任何东西在执行它**。第二次发生就是证据。本格是那句纪律的机器面。
+#
+# ⚠ **它判的不是「源码里有没有 `copy2` 这个词」**：`shutil.copy2` 有正当用途
+#   （造夹具 · 拷读数文件 · 把二进制搬进临时目录），那些一个都不该红。
+#   判的是**这一次复制的目的地落不落在「被 git 跟踪的工作树内容」上** —— 落在那儿，
+#   你在还原被测源码；落在临时目录 / 一个 git 里一份文件都没有的暂存目录，你在造夹具或备份。
+# ⚠ 判据本体住 `evidence/K-R115-ruler.py`（`--census` 只印人群表不判，供死值验对照）。
+#   它的**诚实边界**（看不见 shell 串里的 `cp -a`、看不见 `tarfile`、判落点不判意图）
+#   逐条写在那份文件的头注里，**这里不复述一份**（复述就会漂）。
+# ⚠ 本格是**唯一一格盖到 `evidence/`** 的门。那棵树在 `K-R80` 的登记里此前是
+#   「0 格覆盖，而这正是它的用途」（`[J3 陈账]` 死锁的泄压口）—— 本格落地之后那条登记要跟着改，
+#   随动逐处交回 PM，`evidence/K-R115-deathvalue.md` 里点名。
+run_gate copy2 '`evidence/*.py` 现打 176 份里，`shutil` 保元数据复制族（copy2 · copytree · copystat）的**调用点** 11 处，逐处判目的地；这个数就是判过的调用点数。⚠ 只看 `evidence/` 下的 `.py`，别的目录、别的语言、shell 串里的 `cp -a` 本行一概盖不到' \
+         bash -c 'python3 evidence/K-R115-ruler.py'
+
 # ── 格式漂移 ────────────────────────────────────────────────────────────────
 #
 # 🔴 **这一格补的是本文件头注里那条「归 PM」的第 ②**（09-10 落，PM）。
@@ -875,6 +902,44 @@ case "$gen_rc" in
     fails+=("generated（git diff 退出码 $gen_rc —— 判不了，不许当成绿）")
     ;;
 esac
+
+# ── `dead_code`：门禁此前**没有这一格**（`K-R115` `KR115D2` 甲，09-14，第 15 格）────────
+#
+# ## 题面：要量它只能自己开一条路
+#
+# 门禁跑的是 `cargo test`，而 test 构建里那些函数**有调用方**（测试自己）⇒ 那条 `dead_code`
+# 它一辈子看不见。`K-R109`（09-13）要量这一维，只能自己拼一条 `docker run … cargo check`
+# —— **因此破了派工单「唯一许可命令」的字面**（PM 已裁「破字面未破实质 · 照登记不抹」）。
+# ⇒ `KR115D2` 二选一：收进门禁，或明写「本门禁不看它」。本格选的是**收进来**。
+#
+# ⚠ **射程如实写**：`-p monitor` 一个包的**非 test** 构建。
+#   `remote-daemon-proto` 那棵树、`src-tauri` 的其余成员、`#[cfg(test)]` 里的死代码，
+#   本行**一概盖不到**。
+# ⚠ **判法是恒等，不是「不超过某个上限」** —— 这一条承重，理由是死值验逼出来的：
+#   本格第一趟落地时写的是「≤ 54」（照抄 `K-R109` 09-13 的读数），而**本趟现打是 41** ⇒
+#   造一处 `dead_code` 只会让它变成 42，**离 54 还很远，那一刀不红**。
+#   一个宽了 13 的上限，长得和一道门一模一样，而它拦不住本格要拦的那一形。
+#   ⇒ 恒等：多了红（有人写了新的死代码），少了也红（好事 —— 回来把这个数改小，
+#   并写清降的是哪几条；不写就没人分得开「清理了」与「这一趟根本没编」）。
+# ⚠ **「这一趟根本没编」那一形单独有话说**：`cargo` 对**新鲜**单元会重放缓存里的警告，
+#   万一哪天它不重放了，「一条都没有」与「没编」在终端上一模一样 —— 恒等把它一起接住了。
+# ⚠ 它**不修**任何一条 `dead_code`，只是从此有人在数（`K-R80 §0d` 同一条边界：数出来归数出来）。
+#
+# 〔量于 09-14，本工作树 `track/k-r115`，沙箱 `ccmon-devbox:latest`〕**41 条**，本格墙钟 **71 秒**
+#   （冷 target 的第一趟；这个数就是 `KR115D2` 甲的实测代价，同一趟的门禁基线是 4 分 45 秒）。
+# ⚠ `K-R109` 09-13 现打的是 **54** 条 —— **两个数分母不同，别相减**：那一趟的命令是
+#   `touch src/history.rs src/lib.rs && cargo check -p monitor`（默认 message-format），
+#   本格是 `--message-format=short`、不 touch，而且量于另一个主干尖。
+deadcode_t0=$(date +%s)
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 41，理由见上方注释）。射程只有 monitor 一个包的生产段；daemon 那棵树与 cfg(test) 里的死代码本行盖不到' \
+         bash -c 'cd src-tauri && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+n=$(printf "%s\n" "$out" | grep -c "never used"); \
+printf "%s\n" "$out" | tail -5; \
+if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
+if [ "$n" -gt 41 ]; then printf "deadcode: never used %s 条，钉的是 41 —— 有人写了新的死代码；修掉它，或者说清为什么留着、再来改这个数\n" "$n"; exit 1; fi; \
+if [ "$n" -lt 41 ]; then printf "deadcode: never used 只数到 %s 条，钉的是 41 —— 要么真清掉了几条（好事：回来把 41 改小，并写清降的是哪几条），要么这一趟 cargo 根本没重编 / 没重放警告。两者在终端上一模一样，所以一律按红记\n" "$n"; exit 1; fi; \
+printf "deadcode: %s passed（never used %s 条，恒等钉在 41）\n" "$n" "$n"'
+printf '  分母 %-14s %s\n' "deadcode" "本格墙钟 $(( $(date +%s) - deadcode_t0 )) 秒（现打，与门禁基线相减就是加这一格的代价）"
 
 run_gate daemon '单包 remote-daemon-proto，只有一行 test result ⇒ 最大值 = 合计' \
          bash -c 'cd remote-daemon-proto && cargo test 2>&1'
@@ -1132,7 +1197,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   ⚠ 那把尺子**不在本脚本里跑** —— 它是登记的机检，不是出货闸的一格。
   # 🔴 `K-R82`（09-12）：**12 → 13**，加的是 `hooks` 那一格（上面 `gate_selftest` 之后那一段）。
   #   这一行的数与点名跟着改了 —— 而**不是靠人记得改**：`C5` 那条三方对拍会当场逮到。
-  echo "GATE: OK —— 13 格全绿（hooks · fmt · fmt-daemon · winchk · cargo · generated · daemon · npm · 四套 ccm e2e · pb check），可以出货"
+  echo "GATE: OK —— 15 格全绿（hooks · copy2 · fmt · fmt-daemon · winchk · cargo · deadcode · generated · daemon · npm · 四套 ccm e2e · pb check），可以出货"
   exit 0
 fi
 # ★ `K-G3`（09-01）：分隔符**不能**走 `IFS='；'` —— `IFS` 是按**字节**认的，

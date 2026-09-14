@@ -1050,4 +1050,476 @@ mod tests {
         assert_eq!(kinds.get("undecided"), Some(&3), "未裁定条数变了"); // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
                                                                         // P3b -1（launch.send-into：它的「还没裁定」被 C1/C8 + P2 + P3 刀 3 三重证伪）
     }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // 🔴 `K-R115` `KR115D4`：**`Side` 这一栏靠人签字，而签字的触发是派生出来的**
+    // ════════════════════════════════════════════════════════════════════════
+    //
+    // # 题面（`K-R112` 09-13 撞见、一个字没动、PM 判「开件不在本件补」）
+    //
+    // `LEDGER` 的 `Side` 栏**没有任何机检**。一条命令的派发跳改走了「origin 无关」的
+    // 帧面（`inbound_client::client_for(origin)` / `daemon_route`）之后，它对
+    // `<local>` 也走得通，而这一行还写着 `Side::Remote` —— **表在撒谎，而且不红**。
+    //
+    // # 为什么**不是**「让 `Side` 从源码派生」（甲），而是「签字 ＋ 派生的触发器」（乙）
+    //
+    // 甲在这张表上**不成立**，三条现打的理由（09-14，本工作树）：
+    //
+    // 1. **本模块头注自己裁过**：「这项能力在两侧都有吗」是**判断**，不是能从代码推出来的
+    //    东西（本地需不需要 SFTP 面板？不需要 —— 但没有任何语法说明这点）。
+    //    同一段还写着**反向那条刻意没做**（`Remote` ⇒ 必须吃远端参数），实测 11 条合法例外。
+    // 2. **反向方向现打就是一堆假阳**：拿同一套标记去判「声明 `Local`/`Both` 而其实只走远端」，
+    //    09-14 现打 **7 条命中，7 条全是假阳**（`read_cc_bus_state` / `read_cc_bus_inbox` /
+    //    `list_local_tmux` / `daemon_start` / `load_subagent` / `read_skill_file` /
+    //    `write_skill_file` —— 它们**两条路都有**，标记只看得见远端那条）。⇒ 这个方向不接。
+    // 3. **正向也有一条假阳**：`account_usage` 派生出来是「帧面·origin 无关」，
+    //    而它的 `Side::Remote` **没说假话** —— 本机那一侧另有一条命令
+    //    （`account_usage_local` 逐字拿 `LOCAL_ORIGIN` 调它），`usage.per-account`
+    //    在表上已经是 `{Local, Remote}` 对称。⇒ **候选要人签，不能机器直接判红。**
+    //
+    // ⇒ 落 **乙**：这一栏**明写靠人签字**，而**「什么时候必须回来签」由机器算**：
+    //   · **没签字红** —— 一条 `Side::Remote` 的行不在签字表里（新增的、或改成 `Remote` 的）；
+    //   · **过期红**   —— 签的那个派发类与**今天现打的**对不上（源码改了、没回来重签）；
+    //   · **陈账红**   —— 签字表里有一行今天已经不是 `Side::Remote` 了（`Side` 被改过）。
+    //
+    // # ⚠ 它买不到什么（诚实边界，写死）
+    //
+    // - **不判 `Side` 对不对**。它买的是「派发跳一变，签字当场作废」，
+    //   不是「表说的是真话」。今天表里就有 **5 行**签着「说假话·欠一次订正」。
+    // - **射程只有 `Side::Remote` 那一栏**（现打 55 行）。`Local` ↔ `Both` 之间改来改去
+    //   本条看不见 —— 理由是上面第 2 条：那个方向的派生现打 7 条全假阳。
+    // - **派生器只跟同一份文件里的调用，深度 2**。跨文件的 helper 看不见 ⇒ 落 `Unclassified`
+    //   （今天 10 行）。`Unclassified` **不是「安全」**，是「这把尺子够不着」。
+    // - 它**不证明**「本机真的抓得到一屏 / 真的杀得掉」—— 那要跑真机（`K31` 之下没跑过，
+    //   `K-R112` 交回时逐字承认过同一条）。它只证明**这一跳走的是哪条路**。
+
+    /// 一条命令的**派发跳**是什么形状 —— 从源码派生，不是人写的。
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum Derived {
+        /// 生产段里出现了**只有远端才用得上**的东西（SSH / 远端配置 / 拒绝 `<local>`）。
+        RemoteOnly,
+        /// 只走 **origin 无关的帧面**（`client_for(origin)` / 共用分流器）⇒ `<local>` 也走得通。
+        FramePlane,
+        /// 两样都有 —— 它自己分了两条路。本条不判它（人签）。
+        Mixed,
+        /// 两样都没有 ⇒ **这把尺子够不着**，不是「它安全」。
+        Unclassified,
+    }
+
+    /// 一条候选（`Side::Remote` ＋ 派生 `FramePlane`）的**人裁**。闭集。
+    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    enum FrameVerdict {
+        /// 名副其实：本机那一侧**另有一条命令名**，这一行的 `Remote` 说的是「这个命令名给远端用」。
+        SecondCommandServesLocal,
+        /// 🔴 **说假话**：本机没有别的命令名，而这一跳对 `<local>` 也走得通 —— 欠一次订正。
+        LiesTodayOwedACorrection,
+    }
+
+    /// 生产段里「只有远端才用得上」的标记。运行时不拼 —— 本文件整份住在 `#[cfg(test)]` 里，
+    /// `production_code` 会把它整份剥掉，扫描面里根本没有本文件（`scan_tree!` 还会再摘一次）。
+    const REMOTE_ONLY_MARKS: &[&str] = &[
+        "load_remote_config_by_label(",
+        "ssh_source::",
+        "refuse_local_write(",
+        "RemoteConfig",
+        "sftp_pool::",
+    ];
+
+    /// 生产段里「走 origin 无关帧面」的标记。
+    const FRAME_PLANE_MARKS: &[&str] = &["client_for(", "route_call_error", "daemon_route::"];
+
+    /// 派生器跟同文件调用的**深度**。〔09-14 现打：2 / 3 / 4 三个深度**答案完全相同**
+    /// （6 条 `FramePlane` 逐字同一批）⇒ 取最小的那个，别多扫。〕
+    const DERIVE_DEPTH: usize = 2;
+
+    /// 顶层 `fn` 的函数体：从**列 0** 的 `fn` 声明行起，到**列 0 的 `}`** 那一行止。
+    ///
+    /// ⚠ 这是本仓「列 0 收尾」那一族剥法的同一条口径 —— 它的边界（原始字符串里的
+    /// 列 0 右大括号）由 `guard_core::assert_test_module_ranges_are_brace_balanced` 守着，
+    /// 两棵树的 `every_*_file_strips_clean` 每趟都在跑它。**别在这里再发明一份近似。**
+    fn top_level_fn_bodies(prod: &str) -> BTreeMap<String, String> {
+        let mut out: BTreeMap<String, String> = BTreeMap::new();
+        let lines: Vec<&str> = prod.lines().collect();
+        let mut i = 0usize;
+        while i < lines.len() {
+            let Some(name) = top_level_fn_name(lines[i]) else {
+                i += 1;
+                continue;
+            };
+            let mut j = i + 1;
+            while j < lines.len() && lines[j] != "}" {
+                j += 1;
+            }
+            let last = j.min(lines.len() - 1);
+            out.entry(name)
+                .or_insert_with(|| lines[i..=last].join("\n"));
+            i = j + 1;
+        }
+        out
+    }
+
+    /// `fn` 前面允许出现的修饰（可见性那一截由 `guard_core::strip_visibility` 单独剥）。
+    const FN_MODIFIERS: &[&str] = &["async ", "unsafe ", "const ", "extern \"C\" "];
+    const FN_KEYWORD: &str = "fn ";
+
+    /// 一行是不是**列 0 的 `fn` 声明**；是就给出函数名。
+    ///
+    /// 可见性那一截走 `guard_core::strip_visibility` —— `K-R75` 逐字：
+    /// 别再列一张前缀表，`pub(in a::b::c…)` 穷举不了，形状认得出。
+    fn top_level_fn_name(line: &str) -> Option<String> {
+        if line.starts_with(' ') || line.starts_with('\t') {
+            return None;
+        }
+        // ⚠ 前缀一律**从常量表里取变量**再剥，不写成 `strip_prefix("字面量")` ——
+        //    `needle_anchor_registry` 那条棘轮对语料变量上的裸 `strip_prefix("…")`
+        //    上限是 **0**，而它逐字禁「把上限调上去让今天好过」。
+        let mut rest = guard_core::strip_visibility(line);
+        for m in FN_MODIFIERS {
+            rest = rest.strip_prefix(*m).unwrap_or(rest);
+        }
+        let rest = rest.strip_prefix(FN_KEYWORD)?;
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_alphanumeric() || *c == '_')
+            .collect();
+        if name.is_empty() {
+            return None;
+        }
+        // 名字后面必须紧接 `(` 或 `<`，否则那不是一个 `fn` 声明。
+        let after = &rest[name.len()..];
+        if after.starts_with('(') || after.starts_with('<') {
+            Some(name)
+        } else {
+            None
+        }
+    }
+
+    /// 一段代码里被调用到的标识符（`foo(` 那一形）。
+    fn callees(body: &str) -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        let b: Vec<char> = body.chars().collect();
+        let mut k = 0usize;
+        while k < b.len() {
+            if b[k].is_ascii_lowercase() || b[k] == '_' {
+                let s = k;
+                while k < b.len() && (b[k].is_ascii_alphanumeric() || b[k] == '_') {
+                    k += 1;
+                }
+                if k < b.len() && b[k] == '(' {
+                    let ident: String = b[s..k].iter().collect();
+                    if ident.len() >= 4 {
+                        out.insert(ident);
+                    }
+                }
+            } else {
+                k += 1;
+            }
+        }
+        out
+    }
+
+    /// **每条 Tauri 命令的派发跳是什么形状** —— 现打，不读任何人写下的结论。
+    ///
+    /// 取法：`#[tauri::command]` 定位到命令住哪一份文件（与 [`command_signatures`] 同一条
+    /// 取法），在**那一份文件的生产段**里取它的函数体，再顺着同文件的调用跟 [`DERIVE_DEPTH`] 层。
+    fn command_dispatch_class() -> BTreeMap<String, Derived> {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let attr = format!("#[tauri::{}]", "command");
+        let mut out = BTreeMap::new();
+        let mut files: Vec<std::path::PathBuf> = guard_core::scan_tree!(&root, &["rs"])
+            .into_iter()
+            .map(|(p, _)| p)
+            .collect();
+        files.sort();
+        for path in files {
+            let raw = std::fs::read_to_string(&path).expect("read rs");
+            let prod = guard_core::production_code(&raw);
+            let bodies = top_level_fn_bodies(&prod);
+            for (i, _) in prod.match_indices(&attr) {
+                let rest = &prod[i..];
+                let Some(fpos) = rest.find("fn ") else {
+                    continue;
+                };
+                if rest[..fpos].contains('{') {
+                    continue;
+                }
+                let after = &rest[fpos + 3..];
+                let Some(paren) = after.find('(') else {
+                    continue;
+                };
+                let name = after[..paren].trim();
+                if name.is_empty() || !name.chars().all(|c| c.is_alphanumeric() || c == '_') {
+                    continue;
+                }
+                let Some(first) = bodies.get(name) else {
+                    continue;
+                };
+                // 同文件、深度 DERIVE_DEPTH 的闭包
+                let mut seen: BTreeSet<String> = BTreeSet::new();
+                seen.insert(name.to_string());
+                let mut text = first.clone();
+                let mut frontier = vec![first.clone()];
+                for _ in 0..DERIVE_DEPTH {
+                    let mut next = Vec::new();
+                    for t in &frontier {
+                        for c in callees(t) {
+                            if seen.contains(&c) {
+                                continue;
+                            }
+                            if let Some(b) = bodies.get(&c) {
+                                seen.insert(c);
+                                text.push('\n');
+                                text.push_str(b);
+                                next.push(b.clone());
+                            }
+                        }
+                    }
+                    frontier = next;
+                }
+                let r = REMOTE_ONLY_MARKS.iter().any(|m| text.contains(m));
+                let f = FRAME_PLANE_MARKS.iter().any(|m| text.contains(m));
+                let cls = match (r, f) {
+                    (true, false) => Derived::RemoteOnly,
+                    (false, true) => Derived::FramePlane,
+                    (true, true) => Derived::Mixed,
+                    (false, false) => Derived::Unclassified,
+                };
+                out.entry(name.to_string()).or_insert(cls);
+            }
+        }
+        out
+    }
+
+    /// **`Side::Remote` 那一栏的签字** —— 签的是「签字人现打时，这一栏是什么形状」。
+    ///
+    /// 🔴 **为什么是直方图，不是一行一条的 55 行清单**：一行一条要把 55 个命令名再抄一遍，
+    /// 而那份抄写**当场把一条现行棘轮顶红** —— `tool_registry` 那张旧名账按**文件**数
+    /// 「旧名的符号形出现几处」，本文件登记 2 处（`daemon.deploy` 那两行的命令名里就带着它），
+    /// 抄一遍当场变 4 处；而那条账逐字禁「把上限调上去让今天好过」。
+    /// 〔09-14 实打：第一版就是 55 行清单，`cargo` 那格红在这一条上，读数住
+    /// `evidence/K-R115-deathvalue.md`〕
+    /// ⇒ 签的是**形状**：`Side::Remote` 那一栏里，每一档派生类各几行。
+    ///
+    /// **它照样拦得住「改一行 `Side`」**：把一行 `Remote` 改掉 ⇒ 那一档少一个；
+    /// 把一行 `Local`/`Both` 改成 `Remote` ⇒ 某一档多一个。两边都不等 ⇒ 红。
+    /// ⚠ **它拦不住的那一形写死**：同一拍里一进一出、且**恰好同一档**
+    /// （改走一行 `RemoteOnly`、同时另加一行 `RemoteOnly`）⇒ 直方图不动，本条静默。
+    /// 候选那一档（`FramePlane`）**不吃这个亏** —— 它另有一张逐条点名的人裁表在对拍。
+    ///
+    /// 〔量于 09-14，本工作树 `track/k-r115`，`command_dispatch_class()` 现打〕
+    const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
+        (Derived::RemoteOnly, 39),
+        (Derived::FramePlane, 6),
+        (Derived::Mixed, 0),
+        (Derived::Unclassified, 10),
+    ];
+
+    /// **候选（派生 = `FramePlane`）的人裁** —— 闭集见 [`FrameVerdict`]，理由必须可追问。
+    ///
+    /// 🔴 **这张表就是本笔的产出**：`K-R112` 交回时点了 **3** 行（`capture_remote_pane` /
+    /// `cc_bus_kill` / `cc_bus_broadcast`）。派工单逐字「别只修它撞见的那三行，先量」——
+    /// **现打是 5 行在说假话**，多出来的两行是 `kill_remote_tmux` 与 `tmux_send_keys`。
+    /// ⚠ 那两行最狠的地方：**同一行的 `ASYMMETRY_REASONS` 散文早就写着它们「本机已通」**
+    /// （`tmux.manage` 那条理由里逐字「② `kill_remote_tmux` ⇒ **本机已通**」「③
+    /// `tmux_send_keys` ⇒ **本机已通**」，P3b 08-12 写下、`K-R56` 09-11 复核过）——
+    /// **散文说通了，同一行的 `Side` 栏说没通，两边打了一个月的架，没有任何东西在数它。**
+    ///
+    /// 🔴 **本件刻意不翻这 5 行**，理由两条，都写在这里别读丢：
+    /// ① 翻它要动的连锁现打是 **4 处**：`EXPECTED_LOCAL_OR_BOTH`（93 → 98）·
+    ///    `ORIGIN_TAKING_BOTH`（＋5 条，它们都吃 `origin:`）· `tmux.manage` 那条
+    ///    `ASYMMETRY_REASONS` 的散文 · 钉着那句散文的
+    ///    [`the_tmux_manage_row_stops_waiting_for_a_daemon_primitive`]（它逐字断言那句理由里
+    ///    **必须**含 `Side::Remote`）。⇒ 翻 `Side` 要**同拍改掉一条现行判据的断言**。
+    /// ② 而「本机真的抓得到一屏 / 真的杀得掉」**今天判不了**（一趟真机都没跑过，
+    ///    `K-R112` 交回时逐字承认过）。`Side::Both` 的字面是「这条命令自己就把两侧都办了」——
+    ///    在没跑过的前提下把它写上去，是拿一句没验过的话换一格好看的表。
+    /// ⇒ **登记成欠账，归后续一件**；本条保证的是**它从此不会静默**。
+    const FRAME_PLANE_VERDICTS: &[(&str, FrameVerdict, &str)] = &[
+        (
+            "account_usage",
+            FrameVerdict::SecondCommandServesLocal,
+            "本机那一侧另有命令名 `account_usage_local` —— 它逐字拿 `inbound_client::LOCAL_ORIGIN` \
+             调本条（`account_usage.rs` 里那两行紧挨着，判据 `account_usage_local` 那条窗口断言钉着）。\
+             ⇒ `usage.per-account` 在 `capability_sides()` 里已经是 `{Local, Remote}`、对称，\
+             本行的 `Remote` 说的是「这个命令名给远端用」，没说假话。",
+        ),
+        (
+            "capture_remote_pane",
+            FrameVerdict::LiesTodayOwedACorrection,
+            "`K-R112`（09-13）把抓屏改走帧面 `capture-pane`（`tmux.rs::capture_via_daemon`，\
+             登记在 `daemon_route.rs::SENDERS` 第七个发送端）⇒ 这一跳对 `<local>` 也走得通，\
+             而本行仍是 `Side::Remote`。⚠ 同一行的 `ASYMMETRY_REASONS` 里 `K-R104` 那段逐字写着\
+             「`capture_remote_pane` 一个字节没动 … `Side::Remote` 这一格不许改」——**那句话今天假了**。",
+        ),
+        (
+            "kill_remote_tmux",
+            FrameVerdict::LiesTodayOwedACorrection,
+            "`P3 刀 2`（08-12）就改走了 `daemon_kill`（传输无关）。`tmux.manage` 那条 \
+             `ASYMMETRY_REASONS` 逐字「② `kill_remote_tmux` ⇒ **本机已通**」——\
+             **散文说通了一个月，`Side` 栏没跟**。`K-R112` 点名的三行里没有它。",
+        ),
+        (
+            "tmux_send_keys",
+            FrameVerdict::LiesTodayOwedACorrection,
+            "同上：`tmux.manage` 那条理由逐字「③ `tmux_send_keys` ⇒ **本机已通**（同款 \
+             `daemon_route` 分流）」，`K-R56`（09-11）还补了本机专属的 `NoChannel` 早退\
+             （判据 `tmux::tests::the_local_send_keys_never_falls_back_to_ssh`）。\
+             ⇒ 派生说它 origin 无关，而 `Side` 栏还写着 `Remote`。",
+        ),
+        (
+            "cc_bus_broadcast",
+            FrameVerdict::LiesTodayOwedACorrection,
+            "`K-R112` 交回时逐字点名「`cc_bus_broadcast` 那行**在本件之前就已经腐了**」。\
+             它今天走 `cc_bus.rs` 里那条帧面原语 ＋ 共用分流器（`daemon_route.rs::SENDERS` \
+             登记着 `cc_bus.rs`），没有 `refuse_local_write(` 拦 `<local>` ⇒ 本机也走得通，\
+             而这一行的 `Side` 那一格还写着「只有远端」。",
+        ),
+        (
+            "cc_bus_kill",
+            FrameVerdict::LiesTodayOwedACorrection,
+            "`K-R112` 把它改走 `bus-kill` 原语 ⇒ `<local>` 也走得通，而本行仍是 `Side::Remote`。\
+             ⚠ 与 `cc_bus_spawn` 分得开：那一条生产段里**有** `refuse_local_write(`（派生判 \
+             `RemoteOnly`），它是真远端专属。",
+        ),
+    ];
+
+    /// 🔴 **`KR115D4`：`Side::Remote` 那一栏，没签字红 · 过期红 · 陈账红。**
+    ///
+    /// 三条判定与它们各自拦得住什么，逐条写在断言的报文里；边界见本节开头那段头注。
+    #[test]
+    fn the_remote_side_column_is_signed_off() {
+        let derived = command_dispatch_class();
+        // 反向自检①：派生器扫不到东西的时候，下面每一条都会**空真地**成立。
+        assert!(
+            derived.len() >= 140,
+            "派生器只认出 {} 条命令的派发跳（`LEDGER` 现打 {} 行）—— **扫描面塌了**，\n\
+             不是「命令变少了」。先修 `command_dispatch_class`，别信下面任何一条绿。",
+            derived.len(),
+            LEDGER.len()
+        );
+
+        let remote_rows: BTreeSet<&str> = LEDGER
+            .iter()
+            .filter(|(_, _, s)| *s == Side::Remote)
+            .map(|(c, _, _)| *c)
+            .collect();
+        // 反向自检②：`Side::Remote` 那一栏本身不许塌成空集。
+        assert!(
+            remote_rows.len() >= 50,
+            "`Side::Remote` 现打只有 {} 行 —— 本条的人群塌了，下面几条会空真地绿",
+            remote_rows.len()
+        );
+
+        // ① 现打这一栏的派生形状直方图。
+        //    ⚠ **每一档都要先播成 0** —— 只记「数得到的那几档」的话，
+        //    「某一档今天恰好一个都没有」与「签字表里根本没写这一档」在比对上一模一样。
+        let all_kinds = [
+            Derived::RemoteOnly,
+            Derived::FramePlane,
+            Derived::Mixed,
+            Derived::Unclassified,
+        ];
+        let mut hist: BTreeMap<String, usize> =
+            all_kinds.iter().map(|k| (format!("{k:?}"), 0)).collect();
+        let mut candidates: BTreeSet<&str> = BTreeSet::new();
+        for cmd in &remote_rows {
+            let got = derived.get(*cmd).unwrap_or_else(|| {
+                panic!("派生器认不出命令 `{cmd}` —— 它在 `LEDGER` 里，却不在源码的 `#[tauri::command]` 面上")
+            });
+            *hist.entry(format!("{got:?}")).or_default() += 1;
+            if *got == Derived::FramePlane {
+                candidates.insert(*cmd);
+            }
+        }
+
+        // ② **没签字红 / 陈账红 / 过期红** 三条都收在这一比里：
+        //    多一行 `Remote`、少一行 `Remote`、某一行的派发跳换了档 —— 三样都让直方图不等。
+        let want: BTreeMap<String, usize> = REMOTE_SIDE_SIGNOFF
+            .iter()
+            .map(|(d, n)| (format!("{d:?}"), *n))
+            .collect();
+        // 反向自检③：签字表必须把**每一档**都写出来（含 0），否则「某一档冒出来了」
+        //    会被读成「表里没有这一档」而静默。
+        assert_eq!(
+            want.len(),
+            all_kinds.len(),
+            "签字表列了 {} 档，而派生类闭集有 {} 档 —— 每一档都要写出来（0 也要写）",
+            want.len(),
+            all_kinds.len()
+        );
+        for k in all_kinds {
+            assert!(
+                want.contains_key(&format!("{k:?}")),
+                "签字表里少了 `{k:?}` 这一档"
+            );
+        }
+        let signed_total: usize = want.values().sum();
+        assert_eq!(
+            signed_total,
+            remote_rows.len(),
+            "签字表合计 {} 行，而 `Side::Remote` 现打 {} 行 —— 有人动过 `Side` 那一栏，\n\
+             而这一栏今天靠人签字（为什么不是从源码派生，见本节头注那三条现打的理由）。\n\
+             出路：现打一次 `command_dispatch_class()`，把签字改成今天的形状。",
+            signed_total,
+            remote_rows.len()
+        );
+        assert!(
+            hist == want,
+            "**`Side::Remote` 那一栏的形状变了，而签字没跟** —— 现打 {hist:?} · 签字 {want:?}。\n\
+             左边是今天现打的，右边是签字表里的。三种情况都会走到这里：\n\
+               · 新增 / 改成 `Side::Remote` 的行没人签字；\n\
+               · 签过字的行今天不再是 `Side::Remote`（有人改了 `Side`）；\n\
+               · 某条命令的**派发跳换了档**（改了行为，没回来重签）—— \n\
+                 这一条正是本笔要治的病：`K-R112` 09-13 撞见时，账本已经这样撒了一个月的谎。"
+        );
+
+        // ③ 候选集（派生 = `FramePlane`）必须**恰好等于**人裁表的键集。
+        let judged: BTreeSet<&str> = FRAME_PLANE_VERDICTS.iter().map(|(c, _, _)| *c).collect();
+        // 反向自检④：候选集空了 ⇒ 下面那条相等是空真（`[] == []` 照样成立）。
+        assert!(
+            candidates.len() >= 5,
+            "「派发跳 origin 无关而 `Side` 还写着 `Remote`」的候选现打只有 {} 条 —— \
+             〔09-14 现打 6 条〕人群塌到这个数，多半是标记表或派生器坏了，不是大家都改好了",
+            candidates.len()
+        );
+        assert_eq!(
+            candidates, judged,
+            "候选集与人裁表对不上。\n\
+             多出来的候选 = **有人把一条命令改成了 origin 无关的帧面派发，而没人裁过\
+             它的 `Side` 该不该跟着改**；\n\
+             多出来的人裁 = 那一条今天已经不是候选了（表在腐烂）。"
+        );
+
+        // ④ 每条人裁的理由要**可追问**（同 `every_asymmetry_reason_carries_something_you_can_go_check`
+        //    的那条口径：锚 = 反引号里的标识符）。空泛道理不算裁过。
+        for (cmd, verdict, why) in FRAME_PLANE_VERDICTS {
+            assert!(
+                why.chars().count() > 40 && why.contains('`'),
+                "{cmd} 的人裁没有可追问的锚（要一处反引号里的文件名 / 函数名 / 判据名）"
+            );
+            if *verdict == FrameVerdict::LiesTodayOwedACorrection {
+                // 运行时拼：语料变量上的裸子串匹配有一条只许降的棘轮
+                // （`needle_anchor_registry`），别往上顶。
+                let side_word = format!("Si{}", "de");
+                let local_word = format!("本{}", "机");
+                assert!(
+                    why.contains(side_word.as_str()) || why.contains(local_word.as_str()),
+                    "{cmd} 签的是「说假话·欠一次订正」，理由里却没说清**哪一格假了**"
+                );
+            }
+        }
+
+        // ⑤ 这一栏今天欠着几笔 —— **现算**，不写字面量（写死的数下一轮自动变成假话）。
+        let owed = FRAME_PLANE_VERDICTS
+            .iter()
+            .filter(|(_, v, _)| *v == FrameVerdict::LiesTodayOwedACorrection)
+            .count();
+        assert!(
+            owed >= 1,
+            "人裁表里一条「说假话·欠一次订正」都没有了 —— 那要么是真的都改好了\
+             （那就把 `LEDGER` 里那几行的 `Side` 一起改掉、连锁一起拧），\
+             要么是有人把裁词改宽了。两者在输出上一模一样，所以这里要求\
+             **显式声明为零之前先来改这一条**。"
+        );
+    }
 }

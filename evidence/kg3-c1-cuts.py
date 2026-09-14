@@ -41,6 +41,7 @@
 """
 
 import hashlib
+import os
 import pathlib
 import shutil
 import subprocess
@@ -211,7 +212,13 @@ def cmd_oldgate():
     try:
         rc, _ = run_gate(f"7u 对照：{BASELINE_TIP} 的 gate.sh（本拍实现整个退掉）")
     finally:
-        shutil.copy2(keep, GATE)
+        # 🔴 **还原那一跳不许用 `copy2`**（纪律 ㉒ · `K-R115` `KR115D1`）：它连**旧 mtime**
+        #    一起搬回被测树 ⇒ 下游按 mtime 判「没变」的东西（`cargo` 那一族）会直接复用
+        #    上一刀的产物，而那一趟的输出与真跑了一模一样。
+        #    ⇒ `copyfile`（不带元数据）＋ 显式把 mtime 推到现在。
+        #    机检落点：`evidence/K-R115-ruler.py`（门禁 `copy2` 那一格）。
+        shutil.copyfile(keep, GATE)
+        os.utime(GATE, None)
         back = md5(GATE)
         print(f"· 已还原本拍那一版  md5 {back}  {'一致' if back == mine else '!! 对不上'}")
     return rc
