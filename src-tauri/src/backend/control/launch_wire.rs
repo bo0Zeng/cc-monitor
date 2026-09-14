@@ -1099,6 +1099,223 @@ mod f07_main_path_tests {
     /// 对拍**左边**那个真相源的源码。同上，编译期嵌。
     const GOLDEN_SRC: &str = include_str!("../../../../src/launch-payload-golden.ts");
 
+    /// 对拍那条判据**被绕过**的三种形状。**用变体，不用一句话** ——
+    /// 棘轮要断言「这一刀触发的是**哪一格**」，按格认不按文字认
+    /// （`brief` 第 12b 条：有些诊断里嵌着现算的数，按字面比会把同一格算成找不到）。
+    #[derive(Debug, PartialEq, Eq)]
+    enum ParityBypass {
+        /// **`K-R89` 那一形（写死）**：左边不再取自入库夹具的 `payload` 字段。
+        LeftNoLongerFromTheFixture,
+        /// **`K-R105` 那一形（同名遮蔽）**：原行一字不动，前面**再绑一次**同名的
+        /// ⇒ 比较退化成 `got != got`。事实是「一边只许被绑**一次**」，
+        /// 所以这一格的判定单位必须是**计数**。
+        ASideIsBoundMoreThanOnce { side: &'static str, times: usize },
+        /// 右边不再跑生产命令，改成自己重搭一份 spec 去比。
+        RightNoLongerRunsTheProductionCommand,
+    }
+
+    impl ParityBypass {
+        /// 判据红的时候给人看的那段话。**只在这里写一份**（判据与棘轮共用判定，
+        /// 诊断也就只该有一个家）。
+        fn why(&self) -> String {
+            match self {
+                ParityBypass::LeftNoLongerFromTheFixture => {
+                    "对拍的**左边**不再取自入库夹具的 `payload` 字段了 ——\n\
+                     若它改成了「Rust 现场再渲染一次」，这条对拍就成了自洽夹具（`U7-4` 的病根），\n\
+                     逐字禁令住 `src/launch-payload-golden.ts` 的头注。\n\
+                     ★ 这是 `K-R89` 09-13 逮到的那一形（`want` 被写死成 `got`）。"
+                        .to_string()
+                }
+                ParityBypass::ASideIsBoundMoreThanOnce { side, times } => format!(
+                    "对拍函数体里 `{side}` 出现了 {times} 次（只许 1 次）。\n\
+                     **两次 = 有人用同名遮蔽把这条对拍的一边换掉了** —— 「那一行还在」\n\
+                     那一格对这一形是瞎的（原来那一行还在，而它已经不参与比较了）。\n\
+                     ★ 这是 `K-R105` 09-13 逮到的那一形，当时 13 格全绿一声不吭。\n\
+                     ⚠ 真要重构变量名，把本条一起改；但先想清楚：改完之后，\n\
+                     「左边取自入库夹具、右边跑生产命令」这两件事还有谁在看着。"
+                ),
+                ParityBypass::RightNoLongerRunsTheProductionCommand => {
+                    "对拍的**右边**不再跑生产命令 `render_launch_payload` 了 ——\n\
+                     自己重搭一份 spec 来比，比的就不是上线那条路（复盘实测过：那时\n\
+                     「清空 `nested_env`」那个变异全绿）。"
+                        .to_string()
+                }
+            }
+        }
+    }
+
+    /// 对拍函数体的**切法**（带长度地板）—— 判据与棘轮共用，两处各切一遍就会漂。
+    fn the_parity_fn_body(src: &str, at: usize) -> Result<&str, String> {
+        let rest = &src[at..];
+        let end = rest.find("\n    }\n").map(|k| k + 6).unwrap_or(rest.len());
+        let body = &rest[..end];
+        if body.len() <= 300 {
+            return Err(format!(
+                "取到的对拍函数体只有 {} 字节 —— 切法坏了，判定会零命中地绿",
+                body.len()
+            ));
+        }
+        Ok(body)
+    }
+
+    /// 🔴🔴 **「那条逐字节对拍的两条边还独立吗」的判定本体**〔`K-R106` 09-13〕。
+    ///
+    /// # 它为什么被抽出来（这是本轮加的唯一一件事，理由值得写清楚）
+    ///
+    /// `K-R89`（左边被**写死**成右边）与 `K-R105`（**同名遮蔽**，原行一字不动）
+    /// 连着两次栽在同一件事上：**对拍死了，而门禁全绿。**
+    /// `K-R105` 的解药是把匹配单位从「有没有」换成「**有几处**」——
+    /// 🔴 **而那副解药本身今天没有任何判据在守**（`K-R106` 实测：把那段计数整块拿掉，
+    /// 全量 `cargo` 一条都不红）。⇒ 判定抽成这一份，
+    /// 让 [`the_parity_guard_counts_bindings_it_does_not_merely_look_for_them`]
+    /// 拿**活体变异语料**去驱动它：谁把 ② 那一格退回子串存在性，那条棘轮当场红。
+    ///
+    /// # 三格各钉什么（顺序即优先级：先看左边在不在，再看它被绑了几次）
+    ///
+    /// | 格 | 钉的事实 | 判定单位 |
+    /// |---|---|---|
+    /// | ① | 左边取自**入库夹具**的 `payload` 字段 | 那一行在不在（`K-R89` 那一形是**替换**，行会消失）|
+    /// | ② | 每一边**只许被绑一次** | 🔴 **计数**（`K-R105` 那一形原行不动，只看「在不在」是瞎的）|
+    /// | ③ | 右边跑**生产命令本体** | 那一处调用在不在 |
+    ///
+    /// # ⚠ 它买不到什么（如实写）
+    ///
+    /// - **射程收到了函数体内**（`K-R106` 前 ① ③ 读的是整份 `PARITY_SRC`）。
+    ///   这是**收紧**：文件别处提一句同样的话不再能替它兑现。
+    /// - **判定仍是文本**。它防的是**顺手**：让一条挡路的对拍过去，最省事的两种写法
+    ///   （写死 · 遮蔽）现在都会红。换一套等价写法（改变量名、把比较搬进 helper）躲得过 ——
+    ///   **那是决心，不是顺手**，本条不声称挡得住。
+    /// - **有人把判据里那句调用删掉、就地再写一个更弱的检查**，本条看不见
+    ///   （棘轮驱动的是这个函数，不是那条判据的调用点）。⇒ 那一步会让本函数变成死代码
+    ///   （编译器会喊 `dead_code`），但**没有判据会红**。登记，不假装钉住了。
+    fn the_two_sides_are_still_independent(body: &str) -> Result<(), ParityBypass> {
+        // ① 左边那一行还在（`K-R89` 那一形是替换 ⇒ 行会消失）。
+        if !body.contains("let want = c.payload") {
+            return Err(ParityBypass::LeftNoLongerFromTheFixture);
+        }
+        // ② 🔴 **计数，不是存在性。** 这一格就是 `K-R105` 那副解药，棘轮守的正是它。
+        for side in ["let want", "let got"] {
+            let times = body.matches(side).count();
+            if times != 1 {
+                return Err(ParityBypass::ASideIsBoundMoreThanOnce { side, times });
+            }
+        }
+        // ③ 右边仍然跑生产命令本体。
+        if !body.contains("render_launch_payload(c.req)") {
+            return Err(ParityBypass::RightNoLongerRunsTheProductionCommand);
+        }
+        Ok(())
+    }
+
+    /// 🔴🔴🔴 **反向棘轮**〔`K-R106` `KR106D4` ①，PM 09-13 裁「先问能不能把闸补上」〕：
+    /// **那条对拍守卫的匹配单位必须是「有几处」，不许退回「有没有」。**
+    ///
+    /// # 它为什么非有不可（这是一条量出来的缺口，不是补全癖）
+    ///
+    /// `K-R89`（写死）与 `K-R105`（同名遮蔽）连着两次栽在「对拍死了而门禁全绿」上。
+    /// `K-R105` 开的药是把 [`the_two_sides_are_still_independent`] 的 ② 那一格
+    /// 从存在性换成计数。**`K-R106` 现打：把那段计数整块拿掉，全量 `cargo` 一条都不红**
+    /// —— **解药本身没人守**。本条就是那个守。
+    ///
+    /// # 它怎么钉的：**不看源码里有没有某个词，而是拿活体变异去驱动判定本体**
+    ///
+    /// 那种「文件里出现过 `.count()` 吗」的写法，正是本族（`needle_anchor_registry`：
+    /// **匹配单位比事实小**）自己要治的病的同形 —— 换个等价写法就绿，而且它证不出行为。
+    /// ⇒ 本条**从真语料现造三份变异体**（不是手写夹具：手写的会与真语料漂开），
+    /// 逐份断言判定本体**指名点姓地**报出哪一格：
+    ///
+    /// | 变异体 | 复刻的是哪一刀 | 必须报 |
+    /// |---|---|---|
+    /// | 左边被写死成右边 | `K-R89` `D4-selffix` | ① `LeftNoLongerFromTheFixture` |
+    /// | 原行不动、前面再绑一次 | `K-R105` `D4-selffix` | ② `ASideIsBoundMoreThanOnce`（**只有计数看得见**）|
+    /// | 右边改成自己重搭 | 复盘那一刀 | ③ `RightNoLongerRunsTheProductionCommand` |
+    ///
+    /// ⇒ 谁把 ② 退回 `body.contains("let want")`，第二份变异体当场变成 `Ok`，**本条红**。
+    ///
+    /// # ⚠ 诚实边界
+    ///
+    /// - 三份变异体都**从真语料现造**，造之前逐处断言锚点**恰好命中一次**（fail-closed）——
+    ///   锚点漂了就当场炸，不许「零命中地绿」。
+    /// - 本条守的是**判定本体**，不是那条判据的**调用点**：有人把调用删掉、就地写一个更弱的，
+    ///   本条看不见（那会让判定本体变成死代码，编译器喊 `dead_code`，但没有判据红）。
+    ///   **登记在案**，同 [`the_two_sides_are_still_independent`] 头注最后一条。
+    #[test]
+    fn the_parity_guard_counts_bindings_it_does_not_merely_look_for_them() {
+        let parity_fn = format!(
+            "fn rust_payload_rendering_matches_the_{}",
+            "typescript_golden_byte_for_byte"
+        );
+        let at = PARITY_SRC
+            .find(parity_fn.as_str())
+            .expect("对拍那条判据不在了 —— 本条此刻在量一个不存在的东西");
+        let clean = the_parity_fn_body(PARITY_SRC, at).unwrap_or_else(|e| panic!("{e}"));
+
+        // ── 反空真：干净语料**必须过**。它要是本来就不过，下面三条一律作废 ──────
+        assert_eq!(
+            the_two_sides_are_still_independent(clean),
+            Ok(()),
+            "盘上那份对拍语料自己就过不了判定 —— 那么下面三份变异体的「红」证明不了任何事"
+        );
+
+        // ── 现造三份变异体。造之前逐处 fail-closed 断言锚点恰好命中一次 ──────────
+        let mutate = |anchor: &str, into: &str| -> String {
+            let n = clean.matches(anchor).count();
+            assert_eq!(
+                n, 1,
+                "造变异体的锚点 {anchor:?} 在真语料里命中 {n} 次（要 1 次）——\n\
+                 锚点漂了，本条**不许**继续跑：一个打不中的变异会让下面那条断言\n\
+                 变成「判定对一份没变的语料说 Err」，那是假读数。"
+            );
+            clean.replace(anchor, into)
+        };
+
+        // ① `K-R89` 那一刀：把左边**写死**成右边。
+        let hardcoded = mutate("let want = c.payload.clone();", "let want = got.clone();");
+        assert_eq!(
+            the_two_sides_are_still_independent(&hardcoded),
+            Err(ParityBypass::LeftNoLongerFromTheFixture),
+            "\n★ 判定没认出 `K-R89` 那一形（左边被写死成右边）——\n\
+             那一刀之后对拍在比 `x == x`，而它照样全绿。"
+        );
+
+        // ② 🔴 `K-R105` 那一刀：**原行一字不动**，前面再绑一次同名的。
+        //    这一份就是本棘轮的正题：**只有「计数」看得见它。**
+        let shadowed = mutate(
+            "            if got != want {",
+            "            let want = got.clone();\n            if got != want {",
+        );
+        assert!(
+            shadowed.contains("let want = c.payload.clone();"),
+            "变异体没造对：`K-R105` 那一形的要害是**原行留着**，留不住就退化成 ① 那一形了"
+        );
+        assert_eq!(
+            the_two_sides_are_still_independent(&shadowed),
+            Err(ParityBypass::ASideIsBoundMoreThanOnce {
+                side: "let want",
+                times: 2
+            }),
+            "\n★★★ **匹配单位被退回「子串存在性」了。**\n\
+             这一份变异体的形状是：`if got != want {{` 前面插一行 `let want = got.clone();`，\n\
+             **原来那一行一个字节没动** ⇒ 对拍变成 `got != got`。\n\
+             「那一行还在吗」对它是瞎的 —— 事实是「一边只许被绑**一次**」，\n\
+             所以 `the_two_sides_are_still_independent` 的 ② 那一格**必须数，不许只看有没有**。\n\
+             ⚠ `K-R105` 09-13 实测过这一刀：加固之前它让 **13 格全绿一声不吭**。\n\
+             ⚠ 这条棘轮是 `KR106D4` ① 的落点（PM 09-13 裁「先问能不能把闸补上」）——\n\
+             **不许把它调宽让今天好过**；真要改判定，先回来说明谁来接这一格。"
+        );
+
+        // ③ 右边改成自己重搭一份，不跑生产命令。
+        let selfmade = mutate(
+            "render_launch_payload(c.req)",
+            "payload_rebuilt_by_hand(c.req)",
+        );
+        assert_eq!(
+            the_two_sides_are_still_independent(&selfmade),
+            Err(ParityBypass::RightNoLongerRunsTheProductionCommand),
+            "\n★ 判定没认出「右边不跑生产命令」那一形 —— 那时比的不是上线那条路。"
+        );
+    }
+
     /// 🔴🔴 `KR89D4`：**删得动前端渲染器的那一天，别把量它的尺子一起删了。**
     ///
     /// # 它守的是什么形状
@@ -1120,8 +1337,21 @@ mod f07_main_path_tests {
     ///   买到的是「别的都不动、只删对拍」那一刀会红，不是「谁也删不掉」。
     /// - **本条按文本判**（`include_str!` 进来的源码）⇒ 换个等价写法躲得过。
     ///   它防的是**顺手**（删一条挡路的判据），不防**决心**。
+    ///   ⚠ 〔`K-R105` 09-13〕**这句诚实边界曾经把一形放错了边**：它写着「防顺手不防决心」，
+    ///   而**同名遮蔽恰恰是顺手**（让一条挡路的对拍过去，最省事的写法就是它）。
+    ///   ⇒ 那一格的判定单位换成了**计数**。
     /// - **本条不判夹具的内容对不对** —— 那是对拍自己那三条的事
     ///   （用例数 `EXPECT_CASES` · 逐条字节比 · `nestedEnvKeys` 集合相等）。
+    ///
+    /// # 🔴 `K-R106` 09-13：**判定本体搬出去了，而且它自己有人守了**
+    ///
+    /// ② 那一格（左边取自夹具 · 两边各只绑一次 · 右边跑生产命令）此前**就地写在本函数体里**
+    /// ⇒ 它自己不可被驱动、也没有任何判据在守。现打实测：把那段计数整块拿掉，
+    /// 全量 `cargo` **一条都不红** —— `K-R105` 那副解药本身是裸的。
+    /// ⇒ 判定搬进 [`the_two_sides_are_still_independent`]（**本条与棘轮共用那一份**），
+    /// 反向棘轮 [`the_parity_guard_counts_bindings_it_does_not_merely_look_for_them`]
+    /// 拿**从真语料现造的三份变异体**驱动它：
+    /// 谁把「有几处」退回「有没有」，那条棘轮当场红。
     #[test]
     fn the_byte_for_byte_parity_still_has_two_independent_sides() {
         // 反空真：语料真的读进来了（`include_str!` 空文件也能编过）。
@@ -1157,51 +1387,13 @@ mod f07_main_path_tests {
              「留着函数、摘掉注册」与「删掉它」在读数上一模一样，而前者更难被发现。"
         );
 
-        // ② **左边仍然是「入库的那份」，右边仍然是「生产命令本体」。**
-        //    这两条一起才是「两个独立的边」：任一条被换成「Rust 自己再算一遍」，
-        //    对拍就退化成 `x == x`，而它照样全绿。
-        assert!(
-            PARITY_SRC.contains("let want = c.payload"),
-            "对拍的**左边**不再取自入库夹具的 `payload` 字段了 ——\n\
-             若它改成了「Rust 现场再渲染一次」，这条对拍就成了自洽夹具（`U7-4` 的病根），\n\
-             逐字禁令住 `src/launch-payload-golden.ts` 的头注。"
-        );
-        // 🔴🔴 **`K-R105` 09-13：上面那两条「那一行还在」挡不住「再绑一次同名的」。**
-        //
-        // 现打逮到的活体（`D4-selffix` 那一刀）：在 `if got != want {` **前面插一行**
-        // `let want = got.clone();` —— 原来那一行**原样留着**，上面那条 `contains` 照样绿，
-        // 而比较已经变成 `got != got` ⇒ **对拍死了，13 格全绿一声不吭。**
-        //
-        // ★ 这正是本文件治的那一族（`needle_anchor_registry`：**匹配单位比事实小**）
-        //   在这条判据自己身上的发作：事实是「`want` 只许被绑一次」，
-        //   而它量的是「有没有出现过那一行」。**遮蔽是顺手，不是决心** ——
-        //   头注那句「防顺手不防决心」的诚实边界，把这一形放在了错的一边。
-        // ⇒ 匹配单位从「有没有」换成「有几处」，两边各数一次。
-        let rest = &PARITY_SRC[at..];
-        let end = rest.find("\n    }\n").map(|k| k + 6).unwrap_or(rest.len());
-        let body = &rest[..end];
-        assert!(
-            body.len() > 300,
-            "取到的对拍函数体只有 {} 字节 —— 切法坏了，下面两条会零命中地绿",
-            body.len()
-        );
-        for side in ["let want", "let got"] {
-            let n = body.matches(side).count();
-            assert_eq!(
-                n, 1,
-                "对拍函数体里 `{side}` 出现了 {n} 次（只许 1 次）。\n\
-                 **两次 = 有人用同名遮蔽把这条对拍的一边换掉了** —— 上面那两条\n\
-                 「那一行还在」的断言对这一形是瞎的（原来那一行还在，而它已经不参与比较了）。\n\
-                 ⚠ 真要重构变量名，把本条一起改；但先想清楚：改完之后，\n\
-                 「左边取自入库夹具、右边跑生产命令」这两件事还有谁在看着。"
-            );
+        // ② **左边仍然是「入库的那份」，右边仍然是「生产命令本体」，而且两边各只被绑一次。**
+        //    判定本体不在这里 —— 它住 [`the_two_sides_are_still_independent`]，
+        //    **判据与棘轮共用那一份**（`K-R106`；理由住那个函数的头注）。
+        let body = the_parity_fn_body(PARITY_SRC, at).unwrap_or_else(|e| panic!("{e}"));
+        if let Err(bypass) = the_two_sides_are_still_independent(body) {
+            panic!("{}", bypass.why());
         }
-        assert!(
-            PARITY_SRC.contains("render_launch_payload(c.req)"),
-            "对拍的**右边**不再跑生产命令 `render_launch_payload` 了 ——\n\
-             自己重搭一份 spec 来比，比的就不是上线那条路（复盘实测过：那时\n\
-             「清空 `nested_env`」那个变异全绿）。"
-        );
         // ③ **左边不许在运行时去调 TS**（头注逐字禁掉的那条捷径的机械形态）。
         for forbidden in ["Command::new", "process::Command"] {
             assert!(

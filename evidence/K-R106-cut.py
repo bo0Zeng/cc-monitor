@@ -85,16 +85,22 @@ USAGE_WRITEBACK = "那条一次性 ssh 今天仍是 C7 过渡期回落"
 SHADOW_ANCHOR = "            if got != want {"
 SHADOW_CUT = "            let want = got.clone();\n            if got != want {"
 
-HARDEN_BLOCK = """        for side in ["let want", "let got"] {
-            let n = body.matches(side).count();
-            assert_eq!(
-                n, 1,
-                "对拍函数体里 `{side}` 出现了 {n} 次（只许 1 次）。\\n\\
-                 **两次 = 有人用同名遮蔽把这条对拍的一边换掉了** —— 上面那两条\\n\\
-                 「那一行还在」的断言对这一形是瞎的（原来那一行还在，而它已经不参与比较了）。\\n\\
-                 ⚠ 真要重构变量名，把本条一起改；但先想清楚：改完之后，\\n\\
-                 「左边取自入库夹具、右边跑生产命令」这两件事还有谁在看着。"
-            );
+# 🔴 `K-R106` 第二轮（PM 裁「先问能不能把闸补上」）：判定本体搬进了
+#    `the_two_sides_are_still_independent`，而 ② 那一格（**计数**）现在由反向棘轮守着。
+#    这把刀就是「把匹配单位退回子串存在性」——**最小面**：只换那一格的判定，
+#    循环、变体、诊断一律不动。
+HARDEN_COUNT = """        for side in ["let want", "let got"] {
+            let times = body.matches(side).count();
+            if times != 1 {
+                return Err(ParityBypass::ASideIsBoundMoreThanOnce { side, times });
+            }
+        }
+"""
+HARDEN_EXISTS = """        for side in ["let want", "let got"] {
+            let times = usize::from(!body.contains(side));
+            if times != 0 {
+                return Err(ParityBypass::ASideIsBoundMoreThanOnce { side, times });
+            }
         }
 """
 
@@ -133,10 +139,14 @@ CUTS = {
     # ── KR106D4 ───────────────────────────────────────────────────────────
     # ③ 逐字复刻 `K-R105` 那把「同名遮蔽」的刀（原行一字不动）⇒ 必须红。
     "D4-shadow": [(PARITY, SHADOW_ANCHOR, SHADOW_CUT, 1)],
-    # ① 阴性对照：**把加固退回「子串存在性」**（拿掉那段计数）＋ 同一把遮蔽刀
-    #    ⇒ 预期**全绿** = 那一红确实是加固买的，不是别处顺手接住的。
+    # ① 🔴 **本轮加的反向棘轮的正题**：只把匹配单位退回「子串存在性」，别的一个字不动
+    #    ⇒ 预期**红**，而且红的必须是那条棘轮（`KR106D4` ① 的落点）。
+    "D4-unratchet": [(WIRE, HARDEN_COUNT, HARDEN_EXISTS, 1)],
+    # ① 的**阴性对照**：退回子串存在性 ＋ 同一把遮蔽刀
+    #    ⇒ 对拍那条判据**不再红**（证明那一红原本就是「计数」买的），
+    #    而棘轮**照旧红**（证明退加固这一步今天有人接住了）。
     "D4-unharden": [
-        (WIRE, HARDEN_BLOCK, "", 1),
+        (WIRE, HARDEN_COUNT, HARDEN_EXISTS, 1),
         (PARITY, SHADOW_ANCHOR, SHADOW_CUT, 1),
     ],
     # ── 7u：把本件实现整个退掉（逐处掏空，不用 `git checkout`）─────────────

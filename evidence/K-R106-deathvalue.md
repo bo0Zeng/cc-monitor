@@ -84,7 +84,7 @@ GATE: FAIL —— fmt（退出码 1）；cargo（退出码 101）；npm（退出
 
 **把它接出去要动四处 ＋ 前端一处，逐处见件文件 `§8`。**
 
-## `M2` 基线（实现落地、门禁复绿）
+## `M2` 基线（第一轮：attach 实现落地、门禁复绿）
 
 ```
 GATE: OK —— 13 格全绿
@@ -92,6 +92,17 @@ hooks 11 · fmt 1 · fmt-daemon 1 · winchk 1 · cargo 1600（+1，就是本件�
 generated 一致 · daemon 745（±0）· npm 1722（±0）
 ccm e2e: 12 / 8 / 46 / 45（四格地板恒等）
 pb check[backend-consolidation]: FAIL=0 BROKEN=0
+```
+
+## `M4` 基线（**第二轮**：`KR106D4` ① 的反向棘轮落地）
+
+```
+代码侧 12 格全绿
+hooks 11 · fmt 1 · fmt-daemon 1 · winchk 1 · cargo 1601（M2 1600 +1，就是那条反向棘轮）
+generated 一致 · daemon 745（±0）· npm 1722（±0）
+ccm e2e: 12 / 8 / 46 / 45
+第 13 格 pb check：FAIL=1 —— `[J5 审计正文] audits/K-R103-PM.md 交回之后正文变了`。
+⚠ **那是 PM 自己在计划仓的在飞编辑**（`audits/` 是我一个字节都不许碰的面），不是代码侧的红。
 ```
 
 ⚠ **`M2` 之后计划仓那侧被 PM 动过一次**：`.dispatch.json` 的 mtime 是 `18:15:07`，
@@ -116,9 +127,10 @@ pb check[backend-consolidation]: FAIL=0 BROKEN=0
 | 6 | `D2-orphan` | 那条创建路径理由里点校验器名的那半句 · **1** | `FAIL —— cargo(101)` | `1467 passed; 1 failed` | **只红一条**：`daemon_kill::no_creation_path_can_mint_a_name_the_main_path_cannot_kill`（`:430` = ③b **校验器落单**那一格）|
 | 7 | `D3-writeback` | `doc/ARCHITECTURE.md` 那句 · **1** | `FAIL —— cargo(101)` | `1467 passed; 1 failed` | **只红一条**：`daemon_kill::the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code`（`:582`）|
 | 8 | `D3-narrow`（**阴性对照**）| 判定那一行退回「只看 `IPC-PROTOCOL.md`」· **1**；同一句写回 `ARCHITECTURE.md` · **1** | `cargo/npm/e2e **全绿**`（只剩那条计划仓陈账）| `cargo 1600 passed` | **一条都没红** ⇒ 🔴 **「只改文档不扩人群」买不到任何东西**：同样的话照样溜得进去 |
-| 9 | `D4-shadow` | `launch_payload_parity.rs` 的 `if got != want {` · **1** | `FAIL —— cargo(101)` | `1467 passed; 1 failed` | **只红一条**：`launch_wire::f07_main_path_tests::the_byte_for_byte_parity_still_has_two_independent_sides`（`:1190` = 「`let want` 出现了 2 次」）⇒ 🔴 **`K-R105` 那次加固买到的是行为** |
-| 10 | `D4-unharden`（**阴性对照**）| 加固那段计数整块拿掉 · **1**；同一把遮蔽刀 · **1** | `cargo/npm/e2e **全绿**` | `cargo 1600 passed` | **一条都没红** ⇒ 那一红确实是加固买的，不是别处顺手接住的 |
-| 11 | `7u` | 6 处（渲染臂 · 旧路闸 · spawn 闸 · 三份文档）· 各 **1** | `FAIL —— cargo(101)` | `1466 passed; 2 failed` | `daemon_kill::the_doc_sentence…`（`:582`）＋ 本件那条（`:3130`）|
+| 9 | `D4-shadow` | `launch_payload_parity.rs` 的 `if got != want {` · **1** | `FAIL —— cargo(101)` | `1467 passed; 2 failed` | ① `launch_wire::…::the_byte_for_byte_parity_still_has_two_independent_sides`（`:1395` = 判定本体报 ②「`let want` 出现了 2 次」）· ② `launch_wire::…::the_parity_guard_counts_bindings_it_does_not_merely_look_for_them`（`:1254`）。⚠ **第二条不是重复的牙**：那是棘轮的**反空真前置**（「盘上那份对拍语料自己就过不了判定 ⇒ 下面三份变异体的红证明不了任何事」）—— 这一刀确实把真语料弄脏了，它喊得对 |
+| 10 | 🔴 `D4-unratchet`（**`KR106D4` ① 的落点**：只把匹配单位退回子串存在性，别的一个字不动）| 1 | `FAIL —— cargo(101)` | `1468 passed; 1 failed` | **只红一条**：`launch_wire::…::the_parity_guard_counts_bindings_it_does_not_merely_look_for_them`（`:1291` = 那份**同名遮蔽**变异体不再被认出来）⇒ 🔴 **① 从「一条都不红」变成「当场红」** |
+| 11 | `D4-unharden`（**阴性对照**）| 退回子串存在性 · **1**；同一把遮蔽刀 · **1** | `FAIL —— cargo(101)` | `1468 passed; 1 failed` | **只红棘轮那一条**（`:1291`）；`the_byte_for_byte_parity…` **不红** ⇒ 两件事同时被证：① 那一红原本就是「计数」买的（退掉它，遮蔽刀就溜过去了）· ② **退掉它这一步今天有人接住了** |
+| 12 | `7u` | 6 处（渲染臂 · 旧路闸 · spawn 闸 · 三份文档）· 各 **1** | `FAIL —— cargo(101)` | `1467 passed; 2 failed` | `daemon_kill::the_doc_sentence…`（`:582`）＋ 本件那条（`:3130`）。⚠ 新棘轮**仍绿**（它守的是判定本体，与 attach 那一臂无关）|
 
 **CRASH：0 条**（每一趟的判定行数都在，`test result:` 那一行逐趟印得出来；
 没有 `SyntaxError` / 运行期炸这一族）。
@@ -135,31 +147,68 @@ pb check[backend-consolidation]: FAIL=0 BROKEN=0
 ⇒ 刀换成**整名替换**（`ccm-oneshot-usage`，`K-R87` 那个真形状），当场红。
 ★ 这一条本身是给下一个人的读数：**「名字看起来像 `K-R87` 那一形」不等于「它掉出了 Gate 2」。**
 
-## 🔴 `KR106D4` ① 那一刀的字面与现打**不符**，如实报
+## 🔴 `KR106D4` ①：**第一轮量到它不成立，第二轮把闸补上了**
 
-`§1` 的 `KR106D4` ①逐字是「把加固退回『子串存在性』⇒ **红**」。
-现打（第 10 行 `D4-unharden`）：**把那段计数整块拿掉，一条都不红。**
+**第一轮现打**：`§1` 的 ① 逐字是「把加固退回『子串存在性』⇒ **红**」，而实测**一条都不红** ——
+成因是结构性的：**没有任何判据在守那段加固本身**
+（`the_retired_premise_left_a_tombstone_that_is_still_on_the_board` 看的是
+`TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`，够不着它）。
 
-成因是结构性的：**没有任何判据在守那段加固本身**。
-`the_byte_for_byte_parity_still_has_two_independent_sides` 守的是**对拍**，
-守它自己的只有 `the_retired_premise_left_a_tombstone_that_is_still_on_the_board` 那一族，
-而那一族看的是 `TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`，**够不着这段计数**。
+**PM 09-13 裁**：**不改 dod 字面，回去补一条反向棘轮，让它真的能红**
+（纪律 ⑯：dod 对不上现打时先问能不能把闸补上，补不上才改字面）。
 
-⇒ ① 那一刀能买到的是**阴性对照**（「退掉加固之后，遮蔽那一刀就不红了」——
-第 10 行读到的正是这个），不是「退加固本身会红」。
-**这不是我判它不成立，是我量到它与字面不符，交回请 PM 裁**（`brief` 第 17 条）。
+**第二轮做了什么**（`src-tauri/src/backend/control/launch_wire.rs`，写区内，**没新建文件**）：
+
+1. 判定**从判据体里搬出来**，成为一份具名的判定本体
+   `f07_main_path_tests::the_two_sides_are_still_independent(body) -> Result<(), ParityBypass>`
+   —— **判据与棘轮共用这一份**（就地写在判据里的判定，自己不可被驱动，
+   `references/testing.md` 四之 6 逐字：「判据不许 inline 在测试里，否则它自己不可被变异」）。
+   三格：① 左边取自入库夹具 · ② **两边各只许被绑一次（计数）** · ③ 右边跑生产命令本体。
+   绕过形状做成**枚举** `ParityBypass`，棘轮**按格认不按文字认**（`brief` 第 12b 条）。
+   ⚙ 顺带收紧一格：① ③ 此前读的是整份 `PARITY_SRC`，现在读**函数体**
+   —— 文件别处提一句同样的话不再能替它兑现。
+2. 反向棘轮
+   `f07_main_path_tests::the_parity_guard_counts_bindings_it_does_not_merely_look_for_them`。
+
+**🔴 棘轮怎么钉的 —— 刻意不是「文件里有没有出现某个词」**：
+那种写法正是本族（`needle_anchor_registry`：**匹配单位比事实小**）自己要治的病的同形，
+换个等价写法就绿，而且它证不出行为。⇒ 棘轮**从真语料现造三份变异体**
+（不是手写夹具 —— 手写的会与真语料漂开），逐份断言判定本体**指名点姓地**报出哪一格：
+
+| 变异体 | 复刻的是哪一刀 | 必须报 |
+|---|---|---|
+| 左边被写死成右边 | `K-R89` | ① `LeftNoLongerFromTheFixture` |
+| **原行不动、前面再绑一次** | `K-R105` | ② `ASideIsBoundMoreThanOnce{side:"let want",times:2}` —— **只有计数看得见** |
+| 右边改成自己重搭 | 复盘那一刀 | ③ `RightNoLongerRunsTheProductionCommand` |
+
+外加两条反空真：**干净语料必须过**（不过则下面三条一律作废）·
+造变异体前逐处断言锚点**恰好命中一次**（fail-closed，锚点漂了当场炸，不许零命中地绿）。
+
+**验它的刀（第 10 · 11 行）**：`D4-unratchet` 只把 ② 那一格换成 `body.contains(side)`
+（循环、变体、诊断一律不动 —— **最小面**）⇒ **只红棘轮那一条**。
+`D4-unharden`（退计数 ＋ 同一把遮蔽刀）⇒ 也只红棘轮，而 `the_byte_for_byte_parity…` **不红**
+⇒ 「那一红原本是计数买的」与「退计数今天有人接住」**同时**被证。
+
+**⚠ 它买不到什么（如实写，两侧都说）**：
+
+- 棘轮守的是**判定本体**，不是那条判据的**调用点**。有人把调用删掉、就地再写一个更弱的检查，
+  棘轮看不见（那会让判定本体变成死代码、编译器喊 `dead_code`，**但没有判据会红**）。
+  ⇒ 它把「顺手」那条路封了（改判定本体是最省事的写法，而那一步现在当场红），**不封「决心」**。
+  两处头注都写了这一条。
+- 判定仍是**文本**：改变量名、把比较搬进 helper 之类的等价重写躲得过。
 
 ## `7u`：把实现整个退掉，还有多少条新断言仍绿
 
-本件新增/加宽的断言共 **4 条**：
+本件新增/加宽的断言共 **5 条**（第二轮加了棘轮那一条）：
 
 | # | 新断言 | `7u` 之后 | 仍绿的话，理由 |
 |---|---|---|---|
 | 1 | `history::…::the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created` | 🔴 **红**（`:3130`）| — |
 | 2 | `daemon_kill::the_doc_sentence_about_the_transitional_fallback_cannot_outlive_the_code`（人群加宽那一半）| 🔴 **红**（`:582`）| — |
 | 3 | `cross_half_edge_registry::CROSS_EDGES` 那两条新登记（monitor→daemon，`argv.rs` / `plan.rs`）| ⚪ **仍绿** | 它们钉的是「这条编译期边登记了没有」，**与 attach 那一臂在不在无关** —— `7u` 掏空的是实现，`include_str!` 那两行住在判据里，`7u` 不碰。⚠ **仍绿不等于仪式**：它们的牙在 `D1-shape`/`D2-droppath` 之外的另一个方向（谁新长一条跨半边边而不登记），本轮没有单独给它们切刀，**如实登记为「本轮没验过」** |
+| 4 | `launch_wire::…::the_parity_guard_counts_bindings_it_does_not_merely_look_for_them`（反向棘轮）| ⚪ **仍绿** | 它守的是**对拍那条判据的匹配单位**，与本件 attach 那条实现**正交** —— `7u` 掏空 attach 掏不到它。**它自己的牙在第 10 · 11 行**（`D4-unratchet` / `D4-unharden` 各只红它一条），不是没验过 |
 
-⇒ **仍绿 2 条（同一条判据的两行登记），且已逐条给出理由。**
+⇒ **仍绿 3 条**（两条跨半边登记 ＋ 棘轮），且已逐条给出理由；其中棘轮**另有自己的刀验过**。
 
 ## `git status --porcelain` 三处（收工时）
 
