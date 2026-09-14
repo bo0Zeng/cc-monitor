@@ -284,6 +284,32 @@ cell(
     },
 )
 
+# ── `K-R118`（09-14）：第 16 格 `tsc` ─────────────────────────────────────────
+# `KR118D1` ②：**「这棵树编不编得出发版产物」这一维此前门禁一格都没有**。
+# `npm` 那一格跑的是 `npm test`（`tsx` / `vitest` 都是转译执行，`esbuild` 只剥类型），
+# 云端那条 `npx tsc --noEmit` 只在 `main`/tag/PR 上跑 —— 两条路同时断，
+# 于是一条 09-12 引入的 `TS2322` 在 15 格全绿之下活了两天。
+# ⚠ 本格**不改变** `src/` 这棵树的覆盖档（`npm` 那一格已经是 `全`）——
+#   它加的是**另一维**：`npm` 买行为，本格买类型。两格都在，档位不叠加。
+cell(
+    "tsc",
+    anchor="run_gate tsc '不是「几条断言过了」",
+    cwd="仓根",
+    cmd="node_modules/.bin/tsc --noEmit --listFiles（＋ 程序面份数对账）",
+    **{
+        "src/": (FULL, "`tsconfig.json` 的 `include` 第一项就是这棵树 ⇒ 下面每一份 "
+                       "`.ts`/`.tsx`/`.mts` 都进程序，**而且本格自己现打对账**"
+                       "（真读进程序的份数 == 盘上现打的份数，两个数同一趟算，一个都不写死）。"
+                       "⚠ 买的是**类型**这一层：`tsc --noEmit` 不跑一行代码 ⇒ "
+                       "「类型对而行为错」本格一个字都问不出来（那一维归 `npm` 那一格）"),
+        "e2e/": (PART, "`include` 的第二项，但这棵树下绝大多数是 `.sh` —— "
+                       "现打只有 `.ts`/`.mts` 那几份进程序，shell 套件本格一行都读不到"),
+        ROOTFILES: blind("`tsconfig.json` 是本格的**配置**（它决定程序面），不是被检对象；"
+                         "而仓根那几份 `.ts`（`vite.config.ts` / `vitest.config.ts`）"
+                         "**不在 `include` 里** ⇒ 一行都没进程序。这是本格明写的盲区，不是漏登"),
+    },
+)
+
 cell(
     "npm",
     anchor="run_gate npm '17 个套件",
@@ -874,7 +900,7 @@ def main():
     print("| 格 | cwd | 命令 | 全 | 部 | 🔴 盖不到（逐棵点名） |")
     print("|---|---|---|---|---|---|")
     order = [c for c in ("hooks", "copy2", "fmt", "fmt-daemon", "winchk", "cargo",
-                         "deadcode", "generated", "daemon", "npm")
+                         "deadcode", "generated", "daemon", "tsc", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm e2e/")) + ["pb check"]
     for name in order:
         ent = REGISTRY[name]
