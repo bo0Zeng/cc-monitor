@@ -1013,7 +1013,7 @@ mod tests {
     /// ★ 「别在一张表里混装两种角色」这条纪律**也适用于抽取器本身**。
     fn documented_frame_kinds() -> Vec<String> {
         let sec = DOC
-            .find("## 10. 远端 daemon wire 协议")
+            .find("## 10. 远端后端 wire 协议")
             .expect("文档里找不到 §10");
         let sec_end = DOC[sec..]
             .find("\n## ")
@@ -1212,7 +1212,7 @@ mod tests {
         // 也就是说：**一半的字段就算权威表被删干净，护栏也照样绿。**
         // 子命令那条早已收紧成「必须落进 §10 的两张表之一」，字段这条一直停在全文。
         let sec = DOC
-            .find("## 10. 远端 daemon wire 协议")
+            .find("## 10. 远端后端 wire 协议")
             .expect("文档里找不到 §10 —— 抽取坏了还是文档被大改了？");
         let sec_end = DOC[sec..]
             .find("\n## ")
@@ -1256,7 +1256,7 @@ mod tests {
     #[test]
     fn every_inbound_command_appears_in_the_protocol_doc() {
         let sec = DOC
-            .find("## 10. 远端 daemon wire 协议")
+            .find("## 10. 远端后端 wire 协议")
             .expect("文档里找不到 §10 —— 抽取坏了");
         let sec_end = DOC[sec..]
             .find("\n## ")
@@ -1312,7 +1312,7 @@ mod tests {
         // 那是一份**过期的宣称**，正是本仓最忌讳的那种：护栏自称的强度比实际高一档。
         // （D 设计审计 · 视角 A · P7 点名。字段那条早在 U6a 就收到 §10 了，这条没跟。）
         let sec = DOC
-            .find("## 10. 远端 daemon wire 协议")
+            .find("## 10. 远端后端 wire 协议")
             .expect("文档里找不到 §10 —— 抽取坏了");
         let sec_end = DOC[sec..]
             .find("\n## ")

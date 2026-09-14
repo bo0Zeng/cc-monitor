@@ -79,7 +79,7 @@ powershell -NoProfile -File scripts\run.ps1 dev
   - `src-tauri/Cargo.toml::[package].version`
   - `src-tauri/tauri.conf.json::version`
 - [ ] `Cargo.lock` 提交（Rust 应用必须锁版本）
-- [ ] 若改过 daemon：`remote-daemon-proto/src/main.rs::BUILD_ID` 已 bump（手工标签非哈希！）+ 内嵌二进制一致（tag 发版 CI 自动重编；本地打包须先重编 —— 🔴 **`K-R70`（09-12）起不再需要「同步 `.build_id` 清单」那一步**，身份跟着字节走）
+- [ ] 若改过后端：`remote-daemon-proto/src/main.rs::BUILD_ID` 已 bump（手工标签非哈希！）+ 内嵌二进制一致（tag 发版 CI 自动重编；本地打包须先重编 —— 🔴 **`K-R70`（09-12）起不再需要「同步 `.build_id` 清单」那一步**，身份跟着字节走）
       > **这条 2026-08-01 起是机器强制的**，不再靠自觉：`src-tauri/build.rs` 在「内嵌二进制的
       > **字节里问不出身份戳**」「字节自报的身份 ≠ 源码 `BUILD_ID`」「抠不到源码 `BUILD_ID`」三种情况
       > 直接 **panic 掉编译**（原来只有一条比 mtime 的 warning，漏掉了真实发生过的半 bump）。
@@ -315,7 +315,7 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 grep -nE "tmux (new-session|send-keys|attach)" src/remote-launch.ts   # 命中的必须全是 ` * ` 注释行
 ```
 3. **保形回归** → `node src/remote-launch.test.ts`（改命令串则同步更新其逐串断言）+ `node src/session-backend.test.ts`。
-4. **加后端**（阶段②，daemon 在场）：先过 §31 最终形态第②③条——**abduco/dtach 没有 send-keys，取命令方式转 daemon RPC**，不是往座里再加一个返回 shell 串的 const（见 `session-backend.ts` 顶注）。
+4. **加后端**（阶段②，后端在场）：先过 §31 最终形态第②③条——**abduco/dtach 没有 send-keys，取命令方式转后端 RPC**，不是往座里再加一个返回 shell 串的 const（见 `session-backend.ts` 顶注）。
 
 ---
 
@@ -326,7 +326,7 @@ grep -nE "tmux (new-session|send-keys|attach)" src/remote-launch.ts   # 命中�
 3. `cargo fmt + cargo clippy + cargo test --workspace --exclude code-picture-core + cargo test -p code-picture-core + npm test + npm run coverage + npm run build` 全绿。
    ⚠ **`--all` 只是 `--workspace` 的弃用别名**，差的是 **vendor 排除** —— 少了 `--exclude code-picture-core` 会把红线里「一字节不动」的 vendor 也跑进来（audit-0805 F18 订正）。
    ⚠ **各项条数与 CI job 数刻意不写在这里**：那些数在仓里曾有 4-5 份拷贝、全部漂成假的。
-   分工照旧：`npm test` = node 纯函数 + vitest DOM = **前端那个 CI job**；后端 / 远端 daemon / e2e 冒烟是**各自独立的 job**，`npm test` 不含它们；动滚动/渲染管线另跑 `e2e/f40-suite.sh`（见 e2e/README.md）
+   分工照旧：`npm test` = node 纯函数 + vitest DOM = **前端那个 CI job**；本机后端 / 远端后端 / e2e 冒烟是**各自独立的 job**，`npm test` 不含它们；动滚动/渲染管线另跑 `e2e/f40-suite.sh`（见 e2e/README.md）
 4. PR 描述：
    - 解决什么问题（链到 issue）
    - 怎么解决（一句话）
