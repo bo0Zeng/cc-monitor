@@ -29,7 +29,7 @@
 | **`M0`** | 基线：写区一个字节未动，只有 3 份未跟踪的 evidence 占位 | `GATE: OK —— 13 格全绿` |
 | `M1` | 实现落地第一趟 | `GATE: FAIL —— fmt-daemon（1）；cargo（101）` |
 | **`M2`** | fmt 修好之后的**本件工作基线** | `GATE: FAIL —— cargo（101）`，**唯一那条红是跨轨阻塞，见 `§E`** |
-| **`M3`** | 收工趟（两个提交都在盘上、件文件写完之后） | 见本节末 |
+| **`M3`** | 收工趟（两个提交都在盘上、件文件写完之后） | `GATE: FAIL —— cargo（101）；pb check（FAIL=1 BROKEN=0）` |
 
 **`M0` 逐格**（分母逐格照抄门禁自己印的那一句）：
 hooks 11 · fmt 1 · fmt-daemon 1 · winchk 1 · **cargo 1610（9 个包合计）** ·
@@ -37,6 +37,18 @@ generated 一致 · **daemon 756（单包 `remote-daemon-proto`）** · npm 1726
 e2e **12 / 8 / 46 / 45**（四套各自的地板，恒等）· pb check `FAIL=0 BROKEN=0`。
 ⚠ 本树**未铺** `src-tauri/embedded-daemons/` ⇒ cargo 那一格少「本地后端真的能起来吗」那族 4 条
 （门禁自己印的「分母 cargo」那一行）。**⇒ 本轮不涉及 re-embed**（件文件 `§0b` 要求在上报里说这一句）。
+
+**`M3` 逐格**（收工趟）：hooks 11 · fmt 1 · fmt-daemon 1 · winchk 1 ·
+**cargo `1473 passed; 1 failed; 8 ignored`（唯一那条仍是 `§E` 那条跨轨阻塞，逐字同 `M2`）** ·
+generated 一致 · **daemon 761** · npm 1726 · e2e 12 / 8 / 46 / 45 · **pb check `FAIL=1 BROKEN=0`**。
+
+🔴 **`M3` 的 pb check 那一条 `FAIL` 点的是共享计划仓，不是本件的代码**，成因可证：
+逐字 `FAIL [J3 陈账] INDEX.md 比源文件旧 —— 重跑 pb index 落盘`。
+`M2`（我还没写件文件）那趟 `pb check` 是 `FAIL=0`，而 `M2` → `M3` 之间我只写了**一份**计划仓文件 ——
+现打 `find . -name '*.md' -newer INDEX.md`（排掉 `.briefs/`）在计划仓里**恰好回它一份**：
+`./features/K-R113-daemon补bus-state这条具名读命令.md`。
+⚠ `pb index` 属「窗口开着期间一概不跑」的生成命令族（固定项第 19 条第三款），
+`INDEX.md` 又在第 2 条的「一个字节都不许碰」里 ⇒ **我不跑、也不碰，交 PM 收窗口那一拍跑。**
 
 **`M2` 逐格**：hooks 11 · fmt 1 · fmt-daemon 1 · winchk 1 ·
 **cargo `1473 passed; 1 failed; 8 ignored`（`-p monitor --lib` 那一包）** ·
