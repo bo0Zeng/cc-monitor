@@ -1292,6 +1292,12 @@ pub fn run() {
             history::list_last_accounts,
             history::resume_history_session,
             history::new_local_session,
+            // 🔴 `K-R109`（09-13）：本机后端产「把终端接进那个会话」那一句（`ccm attach <名>`）。
+            //    `R61` 裁定三〔用 09-13 逐字「归本机后端就好了啊」〕。注册这一行与
+            //    `parity_ledger::LEDGER` 那一行、`src/ipc/commands.ts` 那个包装层
+            //    **是同一拍的事**：拆开任意一处，`commands.vitest.ts` 的 `C04a`
+            //    或 `parity_ledger` 的双向相等当场红（`K-R106` 实测过前一种）。
+            history::render_local_attach,
             usage::aggregate_usage_all,
             remote_history::aggregate_remote_usage_all, // F88a-remote：远端 daemon 用量 fan-out
             // A2：多账号只读查询（账号=一个 CLAUDE_CONFIG_DIR）。旧 daemon
