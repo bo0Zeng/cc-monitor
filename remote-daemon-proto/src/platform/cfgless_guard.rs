@@ -54,6 +54,24 @@
 //!   而同一份样本**只要把其中任意一样放回去就被逮住** —— 三格逐格断在那一条里。
 //!   这条仍然**刻意不追**：完备性在这里做不到，而本模块挡的是
 //!   「顺手写一行平台代码」这个真实且高频的形态。
+//! - **`sh` / `bash` 那两条认的是「整条字面量恰好是它」，不是「出现过 `sh`」**〔`K-R103` 09-13〕。
+//!   放宽的是**形状**不是**宽度**：`Command::new("sh")` 与 `const POSIX_SHELL: &str = "sh"`
+//!   都进人群；而渲进一条更长的命令串里的 `sh`（`"tmux run-shell 'sh -c …'"`）、
+//!   以及 `ssh` / `shell` / 变量名 `sh` 这类标识符**一律不进**。
+//!   🔴 **刻意不做「凡出现 `sh` 就红」**：那会把正当用法一并扫进来 ⇒ **净变宽，人会绕开它**。
+//!   现打（09-13，本 crate `src/` 生产段）：整条字面量这一口径命中 **3** 处
+//!   （`control/ccm/mod.rs` 已签字 · `platform/shell.rs` 在 `#[cfg(unix)]` 门后 ·
+//!   `control/oneshot_session.rs` 本轮新签），**假红 0**。
+//! - **同一趟普查补上的 `posix-setsid`**〔`K-R103` 09-13〕：那条 argv 路是
+//!   `setsid` ＋ `sh` ＋ `sleep` **三件**，而上一版只有 `sh` 那一件有针。
+//!   `"setsid"` 整条字面量现打命中 **1** 处（`control/oneshot_session.rs`，本轮签字），假红 0。
+//!   ⚠ `sleep` 那一件**刻意不加针**：它渲在一条更长的串里（`"sleep \"$1\"; shift; …"`），
+//!   按子串认会把日志文案一并扫进来 —— **如实登记为没做**，不是「顺便也守住了」。
+//!   ⚠ `tmux` 同样**刻意不加**：它也不在 Windows 上，但 `C12`〔用 08-11〕「windows不要tmux」
+//!   已经把整个命令面裁成 POSIX-only，现打 **10** 处，加针买到的是 10 行签字、不是一条新事实。
+//!   ⚠ 它仍然挡不住**运行期算出来的**程序名 —— 现打 **2** 处
+//!   （`control/oneshot_session.rs` 的 `Command::new(launcher)` ·
+//!   `control/ccm/mod.rs` 的 `Command::new(prog)`）。那一形无解，如实登记。
 //! - **不认空白变体**：`#[cfg(` 与 `std :: os :: unix` 这类插了空格的写法认不出来。
 //!   本 crate 全量过 `cargo fmt --check`（CI 与沙箱门禁各一道）⇒ 今天不会出现；
 //!   哪天 fmt 那道门没了，这一条同时失效。
@@ -551,16 +569,31 @@ mod tests {
             "A2",
             Where::Literal,
             false,
-            "Command::new(\"sh\")",
-            "起 POSIX shell —— Windows 上没有 `sh`（编得过、跑不对）",
+            "\"sh\"",
+            "起 POSIX shell —— Windows 上没有 `sh`（编得过、跑不对）。\
+             🔴 `K-R103`（09-13）把 needle 从 `Command::new(\"sh\")` 放宽成\
+             **整条字面量恰好是 `sh`**：那一形之外还有 **argv 形**（`sh` 是一个 argv 元素、\
+             或一个具名常量的值），上一版一个字都看不见 —— 活体就是\
+             `control/oneshot_session.rs` 的看门狗",
+        ),
+        (
+            "posix-setsid",
+            "A2",
+            Where::Literal,
+            false,
+            "\"setsid\"",
+            "`setsid(1)`（util-linux）—— Windows 上没有这个程序，也没有「会话」这套概念\
+             （编得过、跑不对）。🔴 它是 `K-R103` 现打补上的：`posix-shell-*` 那两根针只看得见\
+             **起 shell** 那一半，而同一条 argv 路上**把进程放进新会话**的那一半（launcher），\
+             上一版一根针都没落在它身上",
         ),
         (
             "posix-shell-bash",
             "A2",
             Where::Literal,
             false,
-            "Command::new(\"bash\")",
-            "起 POSIX shell（编得过、跑不对）",
+            "\"bash\"",
+            "起 POSIX shell（编得过、跑不对）。放宽同上一条：认的是**整条字面量恰好是 `bash`**",
         ),
     ];
 
@@ -604,6 +637,30 @@ mod tests {
              已经把「一次性模式在 Windows 上是什么形状」登记成**判不了**。\
              ⇒ 这里不假装它跨平台：`exec_or_spawn` 里那条 `#[cfg(unix)]` 是真门，\
              而这一处**没有门**，归 PM（要么进适配层，要么随那一格一起裁）。",
+        ),
+        (
+            "control/oneshot_session.rs",
+            "const POSIX_SHELL",
+            "真漏",
+            "`K-R87` 的一次性会话看门狗走 **argv 直传**：`setsid sh -c <常量脚本> …`，\
+             `sh` 是一个具名常量的值、不是 `Command::new` 的实参 ⇒ 上一版那根针看不见它\
+             （那份文件的头注在 09-13 之前逐字登记着这条盲区，交 PM 定夺）。\
+             `K-R103` 把针放宽成「整条字面量恰好是 `sh`」之后，它进了人群。\
+             🔴 **它该搬进 `platform/`**（`K33` 裁定二）：整条路是 POSIX-only\
+             （`setsid` ＋ `sh` ＋ `sleep`），而 [`super::shell::posix_shell`] 备的是\
+             一条 `sh -c <脚本>` 的 `Command`、**形状对不上**（看门狗要的是把 `sh` 当\
+             **参数**递给 launcher）⇒ 要在适配层新造一条原语。\
+             **`K-R103` 的写区不含 `platform/shell.rs` 与 `platform/mod.rs`**\
+             ⇒ 本轮只签字、不搬，归 PM 排。",
+        ),
+        (
+            "control/oneshot_session.rs",
+            "const WATCHDOG_LAUNCHER",
+            "真漏",
+            "上一行那条路的**另一半**：`setsid` 是把看门狗放进新会话的 launcher\
+             （「看门狗必须活得比起它的人久，这就是它存在的全部理由」—— 那份文件的常量头注逐字）。\
+             它与 `sh` 一起构成 `K-R87` 那条 POSIX-only 的路 ⇒ 一起搬、一起归 PM。\
+             `K-R103` 只是让它**第一次被看见**：上一版盘上没有任何一根针落在它身上。",
         ),
         (
             "agents/fake/mod.rs",
@@ -958,6 +1015,74 @@ mod tests {
             "`platform/pidwatch/linux.rs` 只贡献 {pidwatch} 处命中 —— \
              它是这棵树上平台原语最密的一份（`SYS_pidfd_open` / `std::os::fd` / `libc::poll` …）；\
              数不出来说明**文件级门**那一段把整份文件漏掉了，而不是它变干净了"
+        );
+    }
+
+    /// 一份合成源码里**门外的 A2** 命中了哪几条信号 —— 与 [`naked_a1`] 同源，只换档。
+    ///
+    /// ⚠ 它回**信号名**而不是个数：`KR103D2` 要断的是「argv 形那一条被 `posix-shell-sh`
+    /// 接住了」，只数个数分不出是哪根针在响。
+    fn naked_a2(src: &str) -> Vec<&'static str> {
+        let prod = production_code(src);
+        let code = mask_strings(&prod);
+        let gates = platform_gates(&prod);
+        let mut out: Vec<&'static str> = Vec::new();
+        for (name, tier, wh, word, needle, _) in SIGNALS {
+            if *tier != "A2" {
+                continue;
+            }
+            let hay = if *wh == Where::Code { &code } else { &prod };
+            for at in hits(hay, needle, *word) {
+                if !gates.iter().any(|g| g.span.0 <= at && at < g.span.1) {
+                    out.push(name);
+                }
+            }
+        }
+        out.sort_unstable();
+        out
+    }
+
+    /// ★★ `KR103D2`：**argv 形起 shell 逮得到，而「出现过 `sh`」不算。**
+    ///
+    /// 五刀。反的那三刀就是「🔴 别把针扩成『凡出现 `sh` 就红』」那条红线的**活体** ——
+    /// 没有它们，把 needle 换成裸 `sh` 这一步在盘上与本轮的改法长得一模一样。
+    #[test]
+    fn an_argv_shaped_shell_start_is_caught_and_a_mere_mention_of_sh_is_not() {
+        // ★ 老形态不许丢。
+        let ctor = "fn f() {\n    let c = std::process::Command::new(\"sh\");\n}\n";
+        assert_eq!(
+            naked_a2(ctor),
+            vec!["posix-shell-sh"],
+            "`Command::new(…)` 那一形不逮了 —— 放宽把老形态弄丢了"
+        );
+        // ★ 正题：argv 形 —— `sh` 是一个具名常量的值，`Command::new` 一个字都没有。
+        let argv = "pub const POSIX_SHELL: &str = \"sh\";\n";
+        assert_eq!(
+            naked_a2(argv),
+            vec!["posix-shell-sh"],
+            "argv 形起 shell 没被逮到 —— 那正是 `K-R103` 要关的那条盲区"
+        );
+        // ★ 反 ①：`sh` 渲在一条更长的命令串里（**正当用法**：那条串是交给别人执行的）。
+        let inside = "fn f() {\n    let s = \"tmux run-shell 'sh -c echo'\";\n}\n";
+        assert_eq!(
+            naked_a2(inside),
+            Vec::<&str>::new(),
+            "把渲在长串里的 `sh` 也判红了 —— 那就是「凡出现 sh 就红」，净变宽"
+        );
+        // ★ 反 ②：标识符里的 `sh`（`ssh` / `shell` / 变量名 `sh`）。
+        let ident = "fn f() {\n    let sh = ssh_shell();\n}\n";
+        assert_eq!(
+            naked_a2(ident),
+            Vec::<&str>::new(),
+            "标识符里的 `sh` 被判红了 —— 匹配单位比事实大"
+        );
+        // ★ 反 ③：门后那一臂仍然不算门外，否则适配层自己会被打红。
+        let gated = "fn f() {\n    #[cfg(unix)]\n    {\n        \
+                     let c = Command::new(\"sh\");\n    }\n}\n";
+        assert_eq!(
+            naked_a2(gated),
+            Vec::<&str>::new(),
+            "有门的那一处被判成门外 —— 粗刀：把合法的适配层代码一起打红"
         );
     }
 

@@ -2084,6 +2084,314 @@ mod g6_scope_pins {
     }
 }
 
+/// 〔`K-R103` 09-13〕**CLI 错误信封：那几份实现是有意共存的，而它们的形状从今天起有人钉着。**
+///
+/// # 它从哪来：`K-R87` 交回时问的是「本 crate 第 4 份同形 `emit_err` 要不要收成一份」
+///
+/// 🔴 **答案是不收** —— 而理由不是「懒得动」，是三条现打的读数（09-13，量于本 crate `src/` 生产段）：
+///
+/// 1. **零不同步事故。** 四份 `emit_err` 每一份都只有**一个** commit（引入它的那一个），
+///    引入之后一个字都没改过（`git log -L :emit_err:<文件>` 逐份现打）
+///    ⇒ 盘上从来没发生过「改了一处、忘了另一处」。**收它是为了防一件没发生过的事。**
+/// 2. **收了也买不到「一处改、全体跟」。** 按**名字**数是 4 份；按**行为**
+///    （往 stderr 打一个 `{code,message}` 信封）数是 **12 处 / 7 份文件**：
+///    `control/fork_write.rs` 那份叫 `fail`，`observe/accounts_query.rs` 与
+///    `observe/history_query.rs` 那 7 处**根本没有函数包着**。
+///    把 4 份收成 1 份之后，「一处改、全体跟」这句话**仍然是假的**
+///    〔`split-by-defect-not-size`：拆/合由具体缺陷证成，不由份数证成〕。
+/// 3. **「4 份同形」这个说法按逐字比就不成立。** 规范化函数体之后：`control/capture_pane.rs`
+///    与 `control/oneshot_session.rs` **逐字同形**；`control/cli_control.rs` 差一个 `.into()`；
+///    `control/resolve_query.rs` **结构性不同**（走 typed `ResolveError` ＋ 一条序列化失败的兜底）。
+///    强行收成一份，要么砍掉那条兜底，要么把它摊给另三份 —— 净增复杂度。
+///
+/// # 🔴 那真缺陷在哪：**这个信封是契约，而在本模块之前没有一条判据在守它**
+///
+/// `doc/IPC-PROTOCOL.md` 与两处头注逐字把它写成约定
+/// （`control/fork_write.rs`「与 `--resolve` 同一个错误信封约定」·
+/// `control/capture_pane.rs`「形状与 `--resolve` 逐字相同」）——
+/// 而那 12 处里**任何一处**把 `code` 那个键改个名，门禁全绿。
+/// ⇒ 本模块立的是**那一条**，不是一次合并。
+///
+/// # 它买到什么 / 买不到什么（两侧都写出来）
+///
+/// - **买到**：① 每一处信封都有一行签字，**默认拒绝** —— 新长出来一处而没签字 ⇒ 当场红；
+///   ② 每一处 `code` 旁边都得有 `message`（键集不许分叉）；
+///   ③ **过期条目也红** —— 登记了而今天一处都匹配不上，说明这张表在变松。
+/// - **买不到**：它按**文本**认，不跑那几条命令 ⇒ 「真打出去的那一行长这样」要 e2e 去证；
+///   它也不检查那行签字说得对不对（同 [`spawn_registry`] 那条登记过的边界）。
+/// - ⚠ **退出码那一半刻意不在射程里**：`2` 是个裸字面量、散在各处，
+///   按文本钉它真阳率压不住噪声 ⇒ **如实登记为没做**，不是「顺便也守住了」。
+///
+/// # ⚠ 住址是写区限制的结果，不是设计
+///
+/// 正确落点是新立一份 `error_envelope_guard.rs`；`K-R103` 的写区里没有「新建文件」这一项
+/// ⇒ 暂住这里（同本文件头注里那三个 `g6_*` 模块的处境），**已上报 PM**。搬家那天把这段一起删掉。
+#[cfg(test)]
+mod error_envelope_registry {
+    /// 信封那两个键。运行时拼进两种写法，见 [`key_forms`]。
+    const CODE_KEY: &str = "code";
+    /// 见 [`CODE_KEY`]。
+    const MESSAGE_KEY: &str = "message";
+
+    /// 一个键的两种写法：普通字面量，与**转义进另一层串**里的那一形。
+    ///
+    /// 🔴 第二形不是凑数：`control/resolve_query.rs` 的序列化兜底分支就是那么写的
+    /// （`eprintln!("{{\"code\":\"{code}\"…")`）。只认第一形会把它整处漏掉 ——
+    /// 而那一处恰恰是四份里**最不同形**的那一份。
+    fn key_forms(name: &str) -> [String; 2] {
+        [format!("\"{name}\""), format!("\\\"{name}\\\"")]
+    }
+
+    /// `(文件相对路径, 那一行的逐字锚点, 这一份是谁的出口, 为什么它是独立的一份)`
+    ///
+    /// 🔴 **不是免检名单**：没签字的当场红，签了字而今天匹配不上的也当场红。
+    const SIGNED: &[(&str, &str, &str, &str)] = &[
+        (
+            "control/resolve_query.rs",
+            "<unserializable>",
+            "`--resolve` 的 `emit_err`",
+            "**信封的原型**，其余几处的头注都逐字指向它。它是四份里唯一走 typed 结构体\
+             （`ResolveError` ＋ `Serialize`）的一份，并且**多一条兜底**：序列化失败时手写一行 JSON。\
+             ⇒ 它与另三份**不同形**，收成一份要么砍掉这条兜底、要么把它摊给另三份。",
+        ),
+        (
+            "control/cli_control.rs",
+            "message.into()",
+            "一次性 CLI 入口的 `emit_err`",
+            "签名收 `impl Into<String>`（调用点既传 `&str` 也传 `format!` 出来的 `String`）\
+             ⇒ 与另两份差一个 `.into()`。它是**入口层**的出口：命令本体回什么，由它翻成信封。",
+        ),
+        (
+            "control/capture_pane.rs",
+            "let line = serde_json::json!",
+            "`--capture-pane` 的 `emit_err`",
+            "与 `control/oneshot_session.rs` 那份**逐字同形**（两份都收 `CmdErr` 元组）。\
+             两份都只有三行、都只被自己那个入口用；`K-R103` 现打：引入至今零改动、零不同步事故\
+             ⇒ 收它买不到「一处改、全体跟」（真正的分母是 12 处，不是 4 份）。",
+        ),
+        (
+            "control/oneshot_session.rs",
+            "let line = serde_json::json!",
+            "`--oneshot-session` 的 `emit_err`",
+            "同上一行 —— 这两份就是 `K-R87` 交回时点名的「第 4 份同形」。**有意共存**，\
+             理由逐条在本模块头注；要收就得把 12 处一起收，那是另一件事的规模。",
+        ),
+        (
+            "control/fork_write.rs",
+            "let env = serde_json::json!",
+            "`--fork-session` 的 `fail`",
+            "🔴 **它不叫 `emit_err`，叫 `fail`** —— 按名字数的那把尺子看不见它。\
+             这一行就是「按份数判合并」那种做法为什么买不到东西的活体：\
+             把 4 份 `emit_err` 收干净，这一份照旧是第 5 份。",
+        ),
+        (
+            "observe/accounts_query.rs",
+            "json!({\"code\": code, \"message\": message})",
+            "账号一族的**内联**信封（两处：`--account-trust` / `--account-trust-zero`）",
+            "🔴 **没有函数包着** —— 直接内联在分派臂里。它落在 observe 层，\
+             而 `control/` 那几份出口按 `layering_guard` 的边它**引不到**（反向边不许）\
+             ⇒ 「收成一份」在这里不是重构，是要先动分层。",
+        ),
+        (
+            "observe/accounts_query.rs",
+            "\"bad_args\"",
+            "账号一族的**用法错**信封（两处）",
+            "同上一行，另一档：参数不齐那一支。它与 `message` 分在两行上\
+             ⇒ 键集那条判据的窗口必须够得着下一行（见 `every_envelope_carries_both_keys`）。",
+        ),
+        (
+            "observe/history_query.rs",
+            "\"invalid_args\"",
+            "`--list-subagents` 的用法错",
+            "同样**没有函数包着**。这一族三处（用法错 / 路径被拒 / 推不出目录）各写一份 `json!`，\
+             共同点只有键集 —— 而那正是本模块钉住的东西。",
+        ),
+        (
+            "observe/history_query.rs",
+            "\"path_refused\"",
+            "`--list-subagents` 的路径被拒",
+            "同上一行。⚠ 它的 `message` 直接塞 `fence_under_projects` 回的那句话\
+             ⇒ 信封的**值**不受本模块管，本模块只管键集。",
+        ),
+        (
+            "observe/history_query.rs",
+            "\"bad_parent\"",
+            "`--list-subagents` 的父路径推不出目录",
+            "同上一行。三处凑在同一个函数里，而它们仍然是三份独立的字面量 ——\
+             这一格如实登记：它们**没有**共享出口，改一处不会带着另两处走。",
+        ),
+    ];
+
+    /// 一行里 `code` 这个键出现几次（两种写法都算）—— [`envelope_sites`] 的**纯函数那一半**。
+    ///
+    /// 抬出来是为了让 [`the_needle_bites_on_both_writings_and_not_on_the_bare_word`]
+    /// 量**同一把尺子**：副本一分叉，红灯就开始骗人。
+    fn code_key_hits(line: &str) -> usize {
+        key_forms(CODE_KEY)
+            .iter()
+            .map(|k| line.matches(k.as_str()).count())
+            .sum()
+    }
+
+    fn src_root() -> std::path::PathBuf {
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+    }
+
+    /// 全树一趟：每一处信封的 `(文件相对路径, 那一行逐字, 该行起三行的窗口)`。
+    ///
+    /// ⚠ 刻意不报行号：生产文本剥过测试段，行号与文件对不上；
+    /// 报**逐字那一行**既是住址也是校验位（`brief` 13c）。
+    fn envelope_sites() -> Vec<(String, String, String)> {
+        let root = src_root();
+        let mut out = Vec::new();
+        for (f, src) in guard_core::scan_tree!(&root, &["rs"]) {
+            let rel = f
+                .strip_prefix(&root)
+                .unwrap_or(&f)
+                .to_string_lossy()
+                .replace('\\', "/");
+            let prod = guard_core::production_code(&src);
+            let lines: Vec<&str> = prod.lines().collect();
+            for i in 0..lines.len() {
+                if code_key_hits(lines[i]) == 0 {
+                    continue;
+                }
+                let window = lines[i..(i + 3).min(lines.len())].join("\n");
+                out.push((rel.clone(), lines[i].trim().to_string(), window));
+            }
+        }
+        out
+    }
+
+    /// ★ 反空真：人群不许静默塌掉（现打 09-13：12 处 / 7 份文件，地板留了余量）。
+    #[test]
+    fn the_envelope_scan_is_not_silently_empty() {
+        let sites = envelope_sites();
+        assert!(
+            sites.len() >= 8,
+            "全树只扫到 {} 处错误信封 —— 扫坏了，下面几条此刻在空转",
+            sites.len()
+        );
+        let mut files: Vec<&str> = sites.iter().map(|(f, _, _)| f.as_str()).collect();
+        files.sort_unstable();
+        files.dedup();
+        assert!(
+            files.len() >= 5,
+            "这些信封只来自 {} 份文件 —— 遍历塌了",
+            files.len()
+        );
+    }
+
+    /// ★★ 正题：**每一处信封都签过字**。两个方向都断，缺一不可。
+    #[test]
+    fn every_error_envelope_site_is_signed_for() {
+        let sites = envelope_sites();
+        let unsigned: Vec<String> = sites
+            .iter()
+            .filter(|(f, line, _)| {
+                !SIGNED
+                    .iter()
+                    .any(|(p, anchor, _, _)| *p == f.as_str() && line.contains(*anchor))
+            })
+            .map(|(f, line, _)| format!("  {f}: {line}"))
+            .collect();
+        assert_eq!(
+            unsigned,
+            Vec::<String>::new(),
+            "这几处 CLI 错误信封在 `SIGNED` 里没有签字：\n{}\n\
+             它不是「多写了一份就红」——是要你回答一句：**这一份为什么是独立的一份**。\n\
+             （`K-R103` 判过一次「不收」，理由逐条在本模块头注；\n\
+             要改判就把那三条读数重打一遍，别只加一行。）",
+            unsigned.join("\n")
+        );
+        let stale: Vec<String> = SIGNED
+            .iter()
+            .filter(|(p, anchor, _, _)| {
+                !sites
+                    .iter()
+                    .any(|(f, line, _)| f.as_str() == *p && line.contains(*anchor))
+            })
+            .map(|(p, anchor, ..)| format!("  {p} :: {anchor}"))
+            .collect();
+        assert_eq!(
+            stale,
+            Vec::<String>::new(),
+            "`SIGNED` 里这几条今天一处都匹配不上：\n{}\n\
+             多半是那一处收掉了 / 换了写法 ⇒ 把这一行删掉。\n\
+             留着它这张表会越长越松，而每一行都说得出理由的表才拦得住人。",
+            stale.join("\n")
+        );
+    }
+
+    /// ★★ 键集不许分叉：每一处 `code` 的**三行窗口**里都得有 `message`。
+    ///
+    /// ⚠ 窗口是三行，不是一行 —— `observe/accounts_query.rs` 那两处把两个键写在两行上。
+    /// 这条边界写出来：一个把 `message` 推到第四行的写法，本条**看不见**。
+    #[test]
+    fn every_envelope_carries_both_keys() {
+        let bad: Vec<String> = envelope_sites()
+            .into_iter()
+            .filter(|(_, _, window)| {
+                !key_forms(MESSAGE_KEY)
+                    .iter()
+                    .any(|k| window.contains(k.as_str()))
+            })
+            .map(|(f, line, _)| format!("  {f}: {line}"))
+            .collect();
+        assert_eq!(
+            bad,
+            Vec::<String>::new(),
+            "这几处信封只有 `{CODE_KEY}` 没有 `{MESSAGE_KEY}` —— 键集分叉了：\n{}\n\
+             `doc/IPC-PROTOCOL.md` 与两处头注逐字把这个信封写成**约定**\
+             （「与 `--resolve` 同一个错误信封约定」）；\n\
+             约定分叉的那一刻，客户端整段 parse 的那条路就断了。",
+            bad.join("\n")
+        );
+    }
+
+    /// ★ 表本身：每一行都说得出「它为什么是独立的一份」。
+    ///
+    /// 一条说不出理由的签字就是一条免检，而这张表存在的全部意义是逼人回答那一问。
+    #[test]
+    fn every_signed_row_says_why_it_is_its_own_copy() {
+        assert!(
+            SIGNED.len() >= 8,
+            "`SIGNED` 只剩 {} 行 —— 它在缩水",
+            SIGNED.len()
+        );
+        for (p, anchor, whose, why) in SIGNED {
+            assert!(!anchor.is_empty(), "{p} 的锚点是空串 —— 那会匹配到任何地方");
+            assert!(
+                whose.chars().count() >= 5,
+                "{p} :: {anchor} 说不出这一份是谁的出口"
+            );
+            assert!(
+                why.chars().count() >= 30,
+                "{p} :: {anchor} 的理由只有 {} 字 —— 一条说不出理由的签字就是一条免检",
+                why.chars().count()
+            );
+        }
+    }
+
+    /// ★★ 反空真②：**两种写法都认得出，而 `code` 这个词本身不算。**
+    ///
+    /// 三刀。第三刀是这条判据最容易坏的地方：把 needle 写成裸 `code`，
+    /// 于是 `let code = …` / `status.code()` 全被数进来 ⇒ 这张表当场变成噪声。
+    #[test]
+    fn the_needle_bites_on_both_writings_and_not_on_the_bare_word() {
+        let plain = format!("json!({{{CODE_KEY:?}: c, {MESSAGE_KEY:?}: m}})");
+        assert_eq!(code_key_hits(&plain), 1, "普通写法认不出来：{plain}");
+        let escaped = format!("eprintln!(\"{{\\\"{CODE_KEY}\\\":1}}\")");
+        assert_eq!(code_key_hits(&escaped), 1, "转义写法认不出来：{escaped}");
+        let bare = format!("let {CODE_KEY} = out.status.{CODE_KEY}();");
+        assert_eq!(
+            code_key_hits(&bare),
+            0,
+            "裸词 `{CODE_KEY}` 被数进来了 —— 这张表会当场变成噪声：{bare}"
+        );
+    }
+}
+
 /// 〔`K-R2` 09-04，兑现 `K-W2D` `KW2D5` 的一半〕**依赖 crate 的写面：从「判据看不见」
 /// 变成「有人签过字」。**
 ///
