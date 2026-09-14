@@ -53,7 +53,7 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 
 ## §C 安装面人群 —— 现打 **22 条命令 ＋ 8 处内部动作 = 30 项**
 
-### C1 · 与 `K-R107 §F2`「21 ＋ 3 / 9 个能力 id / 6 个文件」逐项对账
+### §C1 · 与 `K-R107 §F2`「21 ＋ 3 / 9 个能力 id / 6 个文件」逐项对账
 
 | 项 | `K-R107`（09-13） | 现打（09-14） | 差在哪 |
 |---|---|---|---|
@@ -62,7 +62,7 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 | 后端文件 | **6** | **7**（不含 `skill.inbox` 则 6） | 6 站得住；＋`skill_host.rs` |
 | 内部动作 | **3** | **8** | 见 C3 |
 
-### C2 · 逐条落哪一处（**住址从源码派生**，`evidence/K-R117-ruler.py` 现打）
+### §C2 · 逐条落哪一处（**住址从源码派生**，`evidence/K-R117-ruler.py` 现打）
 
 | 归处 | 能力 id | 命令 | `Side` | 今天住哪 | 依据 |
 |---|---|---|---|---|---|
@@ -93,7 +93,7 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 （`acct_iso_deploy.rs` · `cc_bus_deploy.rs` · `ccm_probe.rs` · `lib.rs` · `mcp.rs` · `sftp.rs` · `skill_host.rs`）。
 `skill.inbox` 的另外两条（`list_skills` / `read_skill_file`）**只读**，由 `CMD_OVERRIDE` 划出安装面。
 
-### C3 · 内部动作（非 Tauri 命令）—— 现打 **8 处**，不是 3 处
+### §C3 · 内部动作（非 Tauri 命令）—— 现打 **8 处**，不是 3 处
 
 `K-R107 §F2` 的括注逐字是「`write_site_registry::WRITE_SITES` 里**带 tool id 的那几行**」。
 **那个判别式现打给 7 行，而 `K-R107` 只点了 2 行**；第 3 行（`build.rs::embed_daemons`）
@@ -114,7 +114,7 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 「`profile_installer.rs` 那四个写盘落点」——**它们本来就在 `WRITE_SITES` 里带着 tool id**，
 只是 `K-R107` 数「3 处」时没把它们算进来。
 
-### C4 · 🔴 顺手逮到的一处：**两张源码权威表对同一个符号说法不一致，而没有判据在对拍**
+### §C4 · 🔴 顺手逮到的一处：**两张源码权威表对同一个符号说法不一致，而没有判据在对拍**
 
 | 落点 | `WRITE_SITES` 说 | `claims()` 说 |
 |---|---|---|
@@ -129,7 +129,7 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 按 `claims()` 读，归两条 profile 系工具（②）。本件按 `§0b` 的目标形状归 **②**，
 并把这处矛盾单列出来交 PM ——**不自己改表**。
 
-### C5 · 前端落点（**切件的写区按这个切**，`src/**.ts` 现打，排除 `*.vitest.ts` 与 `src/generated/`）
+### §C5 · 前端落点（**切件的写区按这个切**，`src/**.ts` 现打，排除 `*.vitest.ts` 与 `src/generated/`）
 
 `src/ipc/commands.ts` 是**共用包装层**（22 条逐条都在它里面）⇒ 它是**唯一一处会被所有件撞到的写区**。
 包装层之外 **10 份文件**：
@@ -151,7 +151,7 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 
 ## §D `cc-acct-iso` —— 落 ① 之后的代价（`KR117D2`）
 
-### D1 · 甲：**现在要做的那一半**，落地要动哪几处
+### §D1 · 甲：**现在要做的那一半**，落地要动哪几处
 
 **三条命令今天的形状（`acct_iso_deploy.rs`，441 行）**：三条**全是远端专属**
 （都吃 `RemoteConfig`、都走 `connect_and_exec_cmd` / SFTP），`Side` 栏三条都是 `Remote`：
@@ -193,7 +193,7 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 ⇒ **①补本机装口之后，必然长出一条 ② 的活**：落点从 `~/.local/bin` 挪进 `~/.cc-monitor/bin` 之后，
 用户 PATH 上够不着它 ⇒ 必须由 ② 生成那段 rc 片段（PATH 或 alias）。**①与②在这条上是串联，不是并列。**
 
-### D2 · 乙：**真吞那 11 个子命令要多少代价**（只出读数，不做）
+### §D2 · 乙：**真吞那 11 个子命令要多少代价**（只出读数，不做）
 
 **先订正人群**：PM 给的是 11 个子命令。源码现打的**分派臂是 13 个**
 （`cc-acct-iso::main` 的 `case "$cmd"`，第 991–1006 行）：
@@ -285,7 +285,7 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 
 ## §E `Side` 栏复量（`KR117D4`）—— **只量代价，一行都没翻**
 
-### E1 · `K-R115` 那三个数：**三个全部复现**
+### §E1 · `K-R115` 那三个数：**三个全部复现**
 
 | `K-R115` 交回的 | 我现打 | 怎么量的 |
 |---|---|---|
@@ -300,7 +300,7 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 量具住址 `/tmp/…/scratchpad/kr117/side-derive-probe.py`（**临时件，不随树走**，
 要复现就照本节这段说明重写 —— 别照那个住址找）。
 
-### E2 · 🔴 翻这 5 行要同拍改哪几处（逐条）
+### §E2 · 🔴 翻这 5 行要同拍改哪几处（逐条）
 
 | # | 要改的 | 住址 | 翻 5 行之后它变成什么 |
 |---|---|---|---|
@@ -320,7 +320,7 @@ PM 现打的 `grep -c "installable: true" src-tauri/src/tool_registry.rs` = **19
 ⇒ **同一句假话现打住在 3 个地方**（`LEDGER` 的 `Side` 栏 · 两处散文），
 而 `K-R115` 的「连锁 4 处」只覆盖了 tmux 那一族的散文。**翻 5 行的真代价是 7 处，不是 4 处。**
 
-### E3 · 两问
+### §E3 · 两问
 
 **① 那 10 行 `Unclassified` 今天到底是什么 —— 「够不着的是哪一层」**
 
