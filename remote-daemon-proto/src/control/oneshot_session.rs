@@ -62,15 +62,26 @@
 //! 那是 fork 之后的事，父进程结构上拿不到。**如实登记：回了 `Ok` 不等于看门狗真的武装好了。**
 //! 要那一格得由调用方自己去看那个会话到点在不在（本模块的判据就是那样断的）。
 //!
-//! # ⚠ 一条平台账，写出来别装作没有
+//! # ⚠ 一条平台账 —— 🔴 它是**两问**，`K-R103`（09-13）只答掉了一问
 //!
-//! 这条路是 **POSIX-only**：`setsid`（util-linux）＋ `sh`＋`sleep`。按 `K33` 裁定二
-//! 「平台差异只许住适配层」它该住 `platform/`，**今天没住** —— 本件写区不含 `platform/`
-//! （同 `K-R52` 给 `observe/watcher.rs` 那两处起 `sh` 写的签字栏：「该进适配层，今天没进」）。
+//! 这条路是 **POSIX-only**：`setsid`（util-linux）＋ `sh` ＋ `sleep`。两件事别压成一件：
 //!
-//! ⚠ 而 `platform/cfgless_guard.rs` 的 `posix-shell-sh` 那条针认的是
-//! `Command::new("sh")` 这个**形状**，本处起的是 launcher、把 `sh` 当**参数**递进去
-//! ⇒ **它看不见本处**。这不是判据坏了，是本处落在它的盲区里 —— 登记在这儿，交 PM 定夺。
+//! **① 判据看不看得见它 —— 09-13 答了：看得见了。**
+//! `platform/cfgless_guard.rs` 的 `posix-shell-sh` 那根针，上一版认的是
+//! `Command::new("sh")` 这个**形状**；而本处起的是 launcher、把 `sh` 当**参数**递进去
+//! ⇒ 它一个字都看不见本处。`K-R103` 把那根针放宽成「**整条字面量恰好是 `sh`**」
+//! （**不是**「凡出现 `sh` 就红」—— 那会净变宽），于是 [`POSIX_SHELL`] 这一处进了人群，
+//! 并在那份文件的 `REGISTERED` 上**签了字**（堆：`真漏`）。
+//!
+//! **② 这条路该不该住 `platform/` —— 今天仍是「该住，没住」，归 PM 排。**
+//! 按 `K33` 裁定二「平台差异只许住适配层」它该住 `platform/`。
+//! ⚠ **不能直接复用 [`crate::platform::shell::posix_shell`]**：那一条备的是
+//! 一条 `sh -c <脚本>` 的 `Command`，而看门狗要的是「把 `sh` 当**参数**递给 launcher」
+//! ⇒ **形状对不上**，要在适配层新造一条原语。
+//! `K-R103` 的写区不含 `platform/shell.rs` 与 `platform/mod.rs` ⇒ 本轮只签字、不搬。
+//! （同 `K-R52` 给 `observe/watcher.rs` 那两处起 `sh` 写的签字栏：「该进适配层，今天没进」。）
+//! 🔴 **签字 ≠ 搬走**：`cfgless_guard::CLOSED_FOR_GOOD` 那条棘轮分的正是这两件事，
+//! 本处今天在**签字**这一侧。
 
 use crate::common::tmux_utf8::UTF8_CLIENT_FLAG;
 use std::process::{Command, Stdio};
