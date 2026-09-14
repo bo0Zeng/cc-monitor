@@ -37,7 +37,6 @@ import type { CliRenderResult } from "./launch-render-cli";
 import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire.ts";
 import type { CcmProbeResult } from "./ccm-probe.ts";
 import { sanitizeRemoteLauncher } from "./shell-quote.ts";
-import { SESSION_BACKEND } from "./session-backend.ts";
 import { probeCcm } from "./ccm-probe";
 import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
@@ -500,17 +499,34 @@ export async function runLocalResumeIntoExistingTmux(
   //   本文件是后来从它拆出去的，门禁没跟着拆 ⇒ 这处违反因此躺了下来。
   //   现在它有机检了（`session-backend-gate.vitest.ts`），扫**整个前端生产段**。
   //
-  // 🔴🔴 〔`K-R106` 2026-09-13〕**这一处今天已经有替代品了，而它还没接过去。**
+  // 🔴🔴 〔`K-R109` 2026-09-13〕**接过去了 —— 这一处不再问座要。**
   //   用户逐字裁「新起一个会话之后，把你的终端接进那个会话那一句 `tmux attach`，
   //   归谁产？」→「**归本机后端就好了啊**」（`DECISIONS.md#R61` 裁定三）。
-  //   本机后端那一侧已经产得出：`src-tauri/src/history.rs::render_local_attach`
-  //   ⇒ `ccm attach <名>`（走本机 `new`/`resume` 同一条渲染路，判据在那个文件里）。
-  //   ⚠ **没有在本轮接过去，不是忘了**：换成问它要要动四处，其中
-  //   `src-tauri/src/lib.rs`（命令注册）与 `src/ipc/commands.ts`（前端那一侧的口）
-  //   **不在 `K-R106` 的写区**，交回时逐处报给 PM 裁 —— 不自批。
+  //   本机后端那一侧 `K-R106` 就产得出了（`src-tauri/src/history.rs::render_local_attach`
+  //   ⇒ `ccm attach <名>`，走本机 `new`/`resume` 同一条渲染路）；`K-R109` 补的是**注册面**
+  //   （`generate_handler!` ＋ `parity_ledger::LEDGER` ＋ 上面那个包装层，三处同一拍）。
   //   ⚠ 那条「本模块**不 attach**，一次都不」仍然对，它说的是**远端**后端
   //   （在远端，开不了你面前的窗）；本机后端就在用户面前那台机器上。
-  const attachCmd = SESSION_BACKEND.attach({ kind: "quoted", value: name });
+  //
+  // 🔴 **渲不出来就诚实失败，不许回落到前端自己拼一条** —— 两条理由，都不是偏好：
+  //   ① §31 最终形态第①条逐字禁「前端硬编码后端命令」，回落等于把它请回来；
+  //   ② **走到这一行时后端刚刚证明过自己在**（上面那个 `sent.verdict === "typed"` 是
+  //      本机 daemon 通道真的把载荷键进去了才有的结论）。而「有后端、没有 ccm」是
+  //      `DECISIONS.md#R64` 判过的**幽灵态**（用户逐字「不存在什么没装 ccm 装了后端的情况」）
+  //      ⇒ 这一行真的 reject 的时候，那是一条**该让人看见的**读数，不是该被糊过去的边角。
+  let attachCmd: string;
+  try {
+    attachCmd = await commands.render_local_attach({ tmuxName: name });
+  } catch (err) {
+    showActionFailureToast(
+      "已就地 resume，但接终端那一句渲不出来",
+      `${String(err)}\n` +
+        "（接终端那一句归本机后端产，前端不再自己拼一条。" +
+        "刚才载荷已经键进去了，会话本身没事。）",
+    );
+    // ★ 与下面那条同一个道理：**就地 resume 已经成了**，attach 这一跳的成败不改变它。
+    return true;
+  }
   await invokeLaunchOrCopyFallback(LOCAL_ORIGIN, attachCmd, {
     success: "已就地 resume",
     successDetail: `本机 tmux 会话「${name}」里已就地 resume（复用、不新建），终端窗口正在接上它。`,
