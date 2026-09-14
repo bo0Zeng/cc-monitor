@@ -87,13 +87,21 @@ mod spawn_sites {
           而**只比路径认不出同名不同物** —— 那正是本件的题面（用户 `~/.local/bin/ccm` 那份旧 bash）。\
           ⚠ 参数是**路径**，来自 `local_backend::local_ccm_entry_name()` 拼出来的落点，\
           不吃任何用户输入；等待 / 读 / 解析与上一行**共用** `probe_spawned`（抄第二份必漂）"),
+        // 🔴 **`K-R112`（09-13）：这一行**留着**，而「留」这个判断是现打出来的，不是默认。**
+        //    本件删掉了查在线那条回落 ⇒ `local_shell_read` 的生产实参从**三个变两个**
+        //    （`build_online_cmd` 整块删了）。⇒ 它**仍然有生产调用方**（读清单 / 读 inbox），
+        //    这一行留着；说法那一列跟着改（下面括号里从「清单 / 在线 / inbox」变成「清单 / inbox」）。
+        //    ⚠ **改了行为不回来改理由，账本当天就开始撒谎** —— 这一行差一点就成了那种样本。
+        //    它什么时候能出表：`read_cc_bus_state` 与 `read_cc_bus_inbox` 都改走 daemon 原语那天
+        //    （前者等 `K-R113` 的 `bus-state`，后者 daemon 侧今天没有读口 —— `K-R111 §C3` 现打）。
         ("cc_bus.rs", "local_shell_read", "`bash -lc <cc-bus 的读串>`",
-         "P4a-Y1：本机 cc-bus 的**读**面（清单 / 在线 / inbox）。必须起进程的理由是\
+         "P4a-Y1：本机 cc-bus 的**读**面（清单 / inbox）。必须起进程的理由是\
           **不许有第二份文件布局知识** —— `CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样，\
           本机若自己 `read_to_string` 那两个文件，仓里就有了同一件事的两种表示，而它们会各自漂。\
           ⇒ 照 `P3t-Y2` 的先例：**同一条串，远端包进 ssh，本机交给 bash**（`C1` 逐字「只是远端走 ssh」）。\
-          ⚠ **命令是参数**，但生产侧的三个实参各有来历：`CC_BUS_CAT_CMD`（常量）· `build_online_cmd` · \
-          `build_inbox_cmd`（两个构造器都过 `is_valid_bus_id`），由 `exec_site_registry` 那条按源码钉住。\
+          ⚠ **命令是参数**，但生产侧的**两个**实参各有来历：`CC_BUS_CAT_CMD`（常量）· \
+          `build_inbox_cmd`（过 `is_valid_bus_id`）。〔`K-R112` 09-13：原文写「三个」，第三个是 \
+          `build_online_cmd` —— 查在线改走帧 `bus-list` 之后它整块删了。〕\
           用 `-lc` 而不是 `-lic`：只要 `$HOME`/`$CC_BUS_HOME`，不需要交互式 rc"),
         ("ssh_source.rs", "spawn_dial_proxy", "`<代理二进制> --dial`（子进程，常驻到某一头断开）",
          "`K-P6b`：**daemon 那条长连接流的 SSH 握手交给这个子进程去跑**，界面只收字节。\
