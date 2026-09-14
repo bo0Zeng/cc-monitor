@@ -1238,25 +1238,90 @@ mod tests {
         );
     }
 
-    /// 〔audit-0805 08-06〕**三条诚实边界压在同一个前提上：「CI 今天不会跑」——把这个前提钉住。**
+    /// 〔audit-0805 08-06 立 · `K-R114` / `R73` 09-14 重判后改措辞〕
+    /// **三条诚实边界压在同一个前提上：「CI 今天不会跑」——把这个前提钉住。**
     ///
-    /// `ROADMAP §5` 的 3w（release.yml 的版本 guard 不触发）· 3x（七条 `#[ignore]` 执行次数为零）·
-    /// 3y（monitor 的 Windows 面没有编译信号），**三条的成立都只因为一件事**：
-    /// 两个 workflow 都只在 `push` / `pull_request` 上触发，而〔用 08-05〕裁定不再 push。
+    /// `ROADMAP §5`（住 `audit-0805` 那个工作区）的 3w（release.yml 的版本 guard 不触发）·
+    /// 3x（七条 `#[ignore]` 执行次数为零）· 3y（monitor 的 Windows 面没有编译信号），
+    /// 三条当初的成立**都只因为一件事**：两个 workflow 都只在 `push` / `pull_request` 上触发，
+    /// 而〔用 08-05〕裁定不再 push。
     ///
     /// 这个前提**没人盯**。谁加一个 `workflow_dispatch`（手点就能跑）或 `schedule`（定时跑），
     /// 三条边界当天就该重判 —— 而在本条之前，它们会**继续以「已登记的诚实边界」的样子留在表里**，
     /// 那正是本会话反复量到的**停滞式腐坏**：世界变了、文本一个字没动。
     ///
-    /// ⚠ 本条**不断言 CI 应该怎么触发**（那是〔用〕的裁决）。它只断言
-    /// 「触发方式没变过」——变了就红，逼人回来把那三条边界重新过一遍。
+    /// # 🔴 09-14：它红过一次，而那一次它红得对 —— 于是本条从「一律禁」变成「禁 ＋ 登记」
+    ///
+    /// `K-R114` 给 `release.yml` 加了 `workflow_dispatch`（`KU27`：在那之前，想验一次发版流水线
+    /// 改得对不对，唯一的办法是真推一个 `v*` tag）⇒ **本条当场红**。
+    /// 那一件**判不了这条**（三条边界住**另一个工作区**，且翻正属重新裁定）⇒ 交 PM。
+    /// 重判落在 `DECISIONS.md#R73`，**依据是那一趟真跑的 CI（run `34861383050`），不是读配置推的**：
+    /// - **`3w` 翻正** —— 那趟**真跑了**版本 guard（逐字 `Version self-consistent: 3.7.0`）；
+    /// - **`3y` 翻正** —— 那趟**真编了** Windows 面；
+    /// - **`3x` 不翻正** —— 它压在 **`ci.yml`** 上，而那一件**一个字没动 `ci.yml`**。
+    ///
+    /// ⇒ 本条因此**不许整条删掉**：删了会把 `3x` 那一半的守卫一起砍掉（**刀不许连量具一起砍**）。
+    /// 今天的形状是：**`ci.yml` 照旧一个自启触发器都不许有**；`release.yml` 上那一个是**裁过的**，
+    /// 进 `ADJUDICATED` 登记并带住址回指裁决口。**谁再往 `ci.yml` 加，照样当场红。**
+    ///
+    /// ⚠ 本条**不断言 CI 应该怎么触发**（那是〔用〕/ PM 的裁决）。它断言的是
+    /// **「自启触发器要么没有，要么有人裁过并留了住址」** —— 两者都不成立就红，逼人回来重判。
+    ///
+    /// ⚠ **诚实边界，三条，别读宽**：
+    /// ① 登记表里那个住址本条**只验形状**（非空 ＋ 形如 `<文件>#<锚点>`），
+    ///    **不去那棵树上核它真的指得到** —— 裁决口住计划仓，本 crate 结构上够不着；
+    /// ② 它认的是 `on:` 段里**有没有那个词**，不解释 GitHub 的触发语义
+    ///    （`schedule` 配一个永不命中的 cron，本条照样算它「有」）；
+    /// ③ 登记一行买到的是「**有人回来过**」，**不是**「那三条边界今天写得对」——
+    ///    后者要读 `audit-0805` 那份 `ROADMAP` 的正文，不在本条射程里。
     #[test]
     fn the_premise_behind_three_honesty_boundaries_still_holds() {
         /// 会让 workflow **在没有 push 的情况下也能跑起来**的触发器。
         const SELF_STARTING: &[&str] = &["workflow_dispatch", "schedule", "repository_dispatch"];
+        /// **裁过的**自启触发器：(workflow 文件 · 触发器 · 裁决口住址)。
+        ///
+        /// 🔴 **一行 = 一次「有人回来把那几条边界重新过了一遍」。没有这一行 = 没人裁过。**
+        /// 加一行之前先问：那几条边界你重判了吗？裁决口在哪？——答不出就别加行，让它红着。
+        const ADJUDICATED: &[(&str, &str, &str)] =
+            &[("release.yml", "workflow_dispatch", "DECISIONS.md#R73")];
+        /// 扫描面 ＋ **每个文件今天还压着哪几条边界**（红了要人去重判的就是这些）。
+        /// 🔴 这一栏不是装饰：诊断里要说得出「你这一下动的是**谁**的前提」。
+        const STILL_RESTING_ON: &[(&str, &str)] = &[
+            (
+                "ci.yml",
+                "3x —— 七条 `#[ignore]` 的 e2e 触发路今天**只有 ci.yml 这一条**，\
+                 09-14 那次重判**刻意没翻它**（`R73` 逐字：K-R114 只动 release.yml）",
+            ),
+            (
+                "release.yml",
+                "3w / 3y —— 09-14 已由 `R73` 依据 run 34861383050 翻正；\
+                 再加**新的**自启触发器，仍要重判一次再登记",
+            ),
+        ];
+
+        // ★ 登记表自检：三条，防「登记了一行却永远轮不到」那一形（那种行只会替真判据挡枪）。
+        let files: Vec<&str> = STILL_RESTING_ON.iter().map(|(f, _)| *f).collect();
+        for (wf, trig, at) in ADJUDICATED {
+            assert!(
+                files.contains(wf),
+                "`ADJUDICATED` 登记了 `{wf}`，而扫描面里没有它（今天扫的是 {files:?}）—— \n\
+                 这一行永远轮不到，等于没登记。"
+            );
+            assert!(
+                SELF_STARTING.contains(trig),
+                "`ADJUDICATED` 登记的 `{trig}` 不在 `SELF_STARTING` 里 —— \n\
+                 那它压根不会被检查，这一行是死的。"
+            );
+            assert!(
+                at.contains('#') && !at.starts_with('#') && !at.ends_with('#'),
+                "`{wf}` / `{trig}` 那一行的裁决口住址 `{at}` 不成形（要 `<文件>#<锚点>`）—— \n\
+                 ⚠ 本条只验形状，不去那棵树上核它真指得到（裁决口住计划仓，本 crate 够不着）。"
+            );
+        }
 
         let root = root().parent().expect("仓根").to_path_buf();
-        for wf in ["ci.yml", "release.yml"] {
+        let mut seen_adjudicated = 0usize;
+        for (wf, resting) in STILL_RESTING_ON {
             let text = std::fs::read_to_string(root.join(".github/workflows").join(wf))
                 .unwrap_or_else(|e| panic!("读不到 {wf}: {e}"));
             // 只看 `on:` 到 `jobs:` 之间那一段，且剔注释 —— 别把说明文字当触发器。
@@ -1287,17 +1352,39 @@ mod tests {
                 seg.len()
             );
             for trig in SELF_STARTING {
-                assert!(
-                    !guard_core::contains_word(&seg, trig),
-                    "{wf} 新增了 `{trig}` 触发器 —— **CI 从此可以在没有 push 的情况下跑起来**。\n\
-                     ⇒ `ROADMAP §5` 的 3w / 3x / 3y 三条诚实边界的**前提当场消失**，必须重判：\n\
-                     · 3w：release.yml 的版本一致性 guard 又会跑了；\n\
-                     · 3x：七条 `#[ignore]` 的 e2e 触发路重新接通；\n\
-                     · 3y：monitor 的 Windows 面重新有编译信号。\n\
-                     本条不反对加触发器 —— 它只是不许**加了而没人回来改那三条**。"
-                );
+                let present = guard_core::contains_word(&seg, trig);
+                let registered = ADJUDICATED.iter().find(|(f, t, _)| f == wf && t == trig);
+                match (present, registered) {
+                    // 有触发器、没人裁过 ⇒ 这就是本条要逮的那一形。
+                    (true, None) => panic!(
+                        "{wf} 新增了 `{trig}` 触发器 —— **它从此可以在没有 push 的情况下跑起来**。\n\
+                         ⇒ 今天压在这个文件上的诚实边界**前提当场消失，必须重判**：\n\
+                         · {resting}\n\
+                         重判完之后把这一行加进 `ADJUDICATED`（带裁决口住址），本条自然绿。\n\
+                         🔴 **不许把本判据删掉或放宽** —— 别的文件那一半的守卫还压在它身上。\n\
+                         （已经裁过的：{ADJUDICATED:?}）"
+                    ),
+                    // 登记还在、触发器没了 ⇒ 登记表在替真判据挡枪，摘掉它。
+                    (false, Some((_, _, at))) => panic!(
+                        "`ADJUDICATED` 里登记着「{wf} 的 `{trig}` 已裁过（{at}）」，\n\
+                         而 `{wf}` 的 `on:` 段里**今天没有它**。\n\
+                         ⇒ 那一行在替真判据挡枪：它一留着，下次谁再加回来就**不会红**。\n\
+                         处置：把那一行摘掉（那条边界随之回到「未裁」，加回来要重判）。"
+                    ),
+                    (true, Some(_)) => seen_adjudicated += 1,
+                    (false, None) => {}
+                }
             }
         }
+        // ★ 地板：「裁过的」那一支今天必须**真的被走过**，否则它是一条零命中的死支
+        //   —— 而零命中的分支在本仓已经连着栽过五次（「新分支平时没人走」）。
+        assert_eq!(
+            seen_adjudicated,
+            ADJUDICATED.len(),
+            "「裁过的」那一支这一趟走了 {seen_adjudicated} 次，而登记表有 {} 行 —— \n\
+             对不上说明有登记行没被行使（上面两条 panic 本该先响；都没响就是扫描面漏了文件）。",
+            ADJUDICATED.len()
+        );
     }
 
     /// 〔audit-0805 08-06〕**跑不了的那批 e2e，静态断言条数只许涨不许掉。**
