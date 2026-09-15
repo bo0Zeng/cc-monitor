@@ -26,7 +26,8 @@
 #
 # ## 跑完不留东西（`WF1D4`）
 #
-# 容器、自建网络、临时目录跑完都删；宿主的 `docker network ls` 与 `ip link` 跑前跑后**逐字比**。
+# 容器、自建网络、临时目录跑完都删；宿主的 `docker network ls` 跑前跑后**整份逐字比**，
+# 宿主的 `ip link` **按设备逐字比**（人群与排除的那一档见下面 `host_link_classify` 那一段）。
 # 开跑前还会先查一遍「上一趟有没有留垃圾」——**刻意不做「先强删再建」**：那样清理这一步
 # 被拆掉也照样绿（第二趟会替第一趟擦屁股），而这里要的正是「没清干净时第二趟当场红」。
 #
@@ -81,6 +82,107 @@ ok()   { echo "  PASS $1"; pass=$((pass + 1)); }
 no()   { echo "  FAIL $1"; fail=$((fail + 1)); }
 chk()  { if [ "$2" = "$3" ]; then ok "$1"; else no "$1: 期望[$3] 实得[$2]"; fi; }
 
+# ══ 宿主 `ip link` 的残留判定（件 `K-R136`）══════════════════════════
+#
+# ## 原先那一版错在**人群**，不在实现
+#
+# 收尾那条自检原先对**整份 `ip link` 输出**做 `diff` ⇒ 它把「宿主上任何设备的任何变化」
+# 都读成「台架留下的残留」。**已实撞两趟，都在 GitHub runner（Azure）上**：
+#   · PR `#92` 一趟 `enP20511s1` · `main` `7fb79638` 一趟 `enP29037s1`
+# 那是 **Azure 加速网络的 VF**（`SLAVE` ＋ `master eth0`），由**内核在运行期热插拔**，
+# 跟本仓一个字节的代码无关。⚠ **两趟名字不同 ⇒ 名字每次开机都变，白名单不管用**
+# —— 这是实测，不是推理。每趟都要 PM 手工重跑一次。
+#
+# ## 🔴 收窄的是**人群**，判定一格都没放宽 —— 三颗牙一颗没拔
+#
+#   T1 后一份里**多出来**的设备（＝真残留）                     ⇒ 红，**点名是哪一个**
+#   T2 前一份里有、后一份**没了**的设备（台架把宿主设备弄没了）  ⇒ 红，点名
+#   T3 两份**都有**、而那一行**变了**                          ⇒ 红，点名，前后两行都印
+#      —— T3 守的是「`tc` 打到了宿主设备上」：实测 `tc qdisc add dev X root netem`
+#         会把 X 那一行从 `qdisc noqueue` 翻成 `qdisc netem`，`ip link` 看得见。
+#      ⚠ T3 **刻意仍是整行逐字比**：实撞的那趟 `diff` 给的是 `6a7,9`（纯 append，
+#         零 `c`/`d` 段）⇒ 放宽 T3 治的不是实测到的病。
+#
+# ## 排除的那一档：**结构性判别式**，不是名字白名单
+#
+#   `kernel_enslaved()` ＝ `<…>` 旗标里有 `SLAVE` **且** `master <X>` 的 `X`
+#   在**对面那一份快照**里（新设备看前一份，消失的设备看后一份）。两条腿都要成立。
+#
+# 两条腿都是实测的（量于 2026-09-15，`docker run --network none --cap-add=NET_ADMIN`
+# 起一个与宿主完全隔离的 netns，**宿主网络零改动**）：
+#   · **docker 造出来的东西不带 `SLAVE`** —— `ip link set <veth> master <bridge>` 之后：
+#     `<BROADCAST,MULTICAST,M-DOWN> mtu 1500 qdisc noop master brtest` ⇒ 没有 `SLAVE`。
+#     网桥端口走的是 `bridge_slave`，内核**不置** `IFF_SLAVE`。
+#   · **bond/team/VF 那一族才带** —— `ip link set <dev> master <bond>` 之后：
+#     `<NO-CARRIER,BROADCAST,MULTICAST,SLAVE,UP,M-DOWN> … master bondtest` ⇒ 有 `SLAVE`。
+#     `enP20511s1` 那一行 `<…,SLAVE,…> … master eth0` 正是这一形（hv_netvsc 的 VF 透明绑定）。
+# ⇒ 台架造得出来的设备（bridge · veth · netem 挂载面）**一个都不带 `SLAVE`**
+#   ⇒ 这一档排除**结构上够不着**台架自己的残留。
+#   而「够不着」这句话不是靠嘴说的：**P2 那一格就是它的分母** —— 排除写宽到连 veth 都吞掉，
+#   P2 当场红（见下面「正向读数」那一格）。
+#
+# ## 🔴 它**买不到**什么（别把它读大）
+#
+# · **第三方 docker 活动判不了**：别人在这台机上起停一个容器，也会多出 `vethX@ifN`
+#   `master br-<别人的网络>` —— 它与台架自己的 veth **结构上一模一样**，本判别式分不开。
+#   GitHub runner 上台架是唯一的 docker 消费者 ⇒ 那一档人群为空；共用开发机上它是一处真假红。
+#   **刻意不为它放宽**：「新设备的 master 在前一份里就有」那一条挡得住它，但那是在治一个
+#   **没实测到**的病，而且会把「故意挂在 `docker0` 上的野 veth」一起放过。记在这里，归 PM 裁。
+# · 同理 T3：`docker0` 的 `state DOWN`↔`UP` 会随别人的容器起停翻 ⇒ 共用开发机上会红。
+# · 它**不防恶意**：判别式读的是 `ip link` 的文本，谁能改那份文本谁就能骗过它。
+
+# 逐设备分类，**只印分类不判红**（判红归调用方）。五档：
+#   `NEW` 多出来且算在人群里 · `NEWX` 多出来但排除 · `GONE` 没了且算在人群里
+#   `GONEX` 没了但排除 · `CHG` 两份都有而那一行变了
+host_link_classify() { # $1=前一份 ip link 快照  $2=后一份
+  # 🔴 两份都必须非空：awk 的 `NR==FNR` 双文件惯用法在**第一份为空**时会把第二份
+  #    当成第一份读，于是恒印「什么都没变」——那不是判不了，是一句**自信的错答案**。
+  if [ ! -s "${1:-}" ] || [ ! -s "${2:-}" ]; then
+    printf 'ERR\t快照为空或不在（%s / %s）—— 判不了，按红算\n' "${1:-}" "${2:-}"
+    return 2
+  fi
+  awk '
+    function dname(t) { sub(/:$/, "", t); sub(/@.*/, "", t); return t }
+    function fl(rec) {
+      if (match(rec, /<[^>]*>/)) return "," substr(rec, RSTART + 1, RLENGTH - 2) ","
+      return ",,"
+    }
+    function ma(rec) {
+      if (match(rec, /master [^ ]+/)) return substr(rec, RSTART + 7, RLENGTH - 7)
+      return ""
+    }
+    # 🔴 本件唯一的收窄点，全仓没有第二处。把这个函数体换成 `return 0`
+    #    ＝ 逐字退回 2026-09-15 之前那一版（死值验刀①切的就是这里）。
+    function kernel_enslaved(rec, where,   m) {
+      if (fl(rec) !~ /,SLAVE,/) return 0
+      m = ma(rec)
+      if (m == "") return 0
+      if (where == "B") return (m in B)
+      return (m in A)
+    }
+    NR == FNR {
+      if ($0 ~ /^[0-9]+: /) { b = dname($2); B[b] = 1; BR[b] = $0; bord[++bk] = b }
+      else if (b != "") { s = $0; sub(/^[ \t]+/, "", s); BR[b] = BR[b] " | " s }
+      next
+    }
+    {
+      if ($0 ~ /^[0-9]+: /) { a = dname($2); A[a] = 1; AR[a] = $0; aord[++ak] = a }
+      else if (a != "") { s = $0; sub(/^[ \t]+/, "", s); AR[a] = AR[a] " | " s }
+    }
+    END {
+      for (i = 1; i <= ak; i++) {
+        n = aord[i]
+        if (n in B) { if (AR[n] != BR[n]) printf "CHG\t%s\t%s ||| %s\n", n, BR[n], AR[n] }
+        else printf "%s\t%s\t%s\n", (kernel_enslaved(AR[n], "B") ? "NEWX" : "NEW"), n, AR[n]
+      }
+      for (i = 1; i <= bk; i++) {
+        n = bord[i]
+        if (!(n in A)) printf "%s\t%s\t%s\n", (kernel_enslaved(BR[n], "A") ? "GONEX" : "GONE"), n, BR[n]
+      }
+    }
+  ' "$1" "$2"
+}
+
 # 清理：容器 + 自建网络。**WM4 那一刀切的就是这个函数体。**
 cleanup_rig() {
   docker rm -f "$CA" "$CB" >/dev/null 2>&1
@@ -102,6 +204,14 @@ if [ "${1:-}" = "--clean" ]; then
   cleanup_rig
   echo "[rig] 已清掉 $CA / $CB / $NET（若在）"
   exit 0
+fi
+
+# 只跑上面那个判定函数：喂两份 `ip link` 快照文件，印分类。**不起 docker、不碰宿主网络。**
+# 它是 `KR136D2` 的死值验入口 —— 判据住在被测文件里、不 inline 在测试里
+# （`references/testing.md` 四·6），于是它自己可被变异。
+if [ "${1:-}" = "--link-residue" ]; then
+  host_link_classify "${2:-}" "${3:-}"
+  exit $?
 fi
 
 command -v docker >/dev/null 2>&1 || { echo "需要 docker" >&2; exit 2; }
@@ -159,6 +269,27 @@ docker run -d --name "$CA" --network "$NET" --cap-add=NET_ADMIN "$IMG" sleep inf
 chk "自建网络确实建出来了（$NET）" "$(docker network ls -q -f "name=^${NET}$" | wc -l)" "1"
 chk "容器 A 确实在跑（$CA）" "$(docker inspect -f '{{.State.Running}}' "$CA" 2>/dev/null)" "true"
 chk "容器 B 确实在跑（$CB）" "$(docker inspect -f '{{.State.Running}}' "$CB" 2>/dev/null)" "true"
+
+# ★ 正向读数 ＝ P9「宿主没留残留」那几格的**分母**（`KR136D2`）。
+#   台架**此刻**在宿主 `ip link` 上造出来的设备，要用**同一个分类器**数得出来。
+#   数出 0 个 ⇒ 分类器够不着台架自己的东西 ⇒ 「跑完没残留」是**空真**。
+#   🔴 这一格就是「排除那一档被写宽」的活体夹具：宽到把 veth 也吞掉，它当场红。
+#   人群构成（现打 `rig.sh` 全程，出处行号见件 `K-R136` 的 `§3-1`）：
+#     1 座自建网络的宿主 bridge（`docker network create "$NET"`）
+#     2 条容器 veth 的宿主端（两次 `docker run --network "$NET"`）
+#     0 个 netem 挂载面 —— `tc` 打在容器 A 自己 netns 的 `eth0`，宿主 `ip link` 里没有它
+ip link > "$SNAP/link.mid" 2>&1
+MID_CLS="$(host_link_classify "$SNAP/link.before" "$SNAP/link.mid")"
+RIG_DEVS="$(printf '%s\n' "$MID_CLS" | awk -F'\t' '$1 == "NEW" { printf "%s ", $2 }')"
+RIG_DEV_N="$(printf '%s\n' "$MID_CLS" | awk -F'\t' '$1 == "NEW"' | wc -l | tr -d '[:space:]')"
+NETID="$(docker network inspect -f '{{.Id}}' "$NET" 2>/dev/null)"
+echo "  宿主侧对照（读数，不判红）：$NET 的 id 前 12 位 = ${NETID:0:12} ⇒ docker 的 bridge 命名约定是 br-${NETID:0:12}"
+echo "  分类器现数出来的台架设备（$RIG_DEV_N 个）：$RIG_DEVS"
+if [ "$RIG_DEV_N" -ge 3 ]; then
+  ok "台架确实在宿主 ip link 上造出了 $RIG_DEV_N 个设备（≥3 ＝ 1 bridge + 2 veth）—— 收尾那几格有分母了"
+else
+  no "分类器只数出 $RIG_DEV_N 个台架设备（期望 ≥3：1 bridge + 2 veth）—— 分母塌了，收尾「没残留」会是空真。实得：$RIG_DEVS"
+fi
 
 BIP="$(docker inspect -f "{{(index .NetworkSettings.Networks \"$NET\").IPAddress}}" "$CB" 2>/dev/null)"
 case "$BIP" in
@@ -345,10 +476,33 @@ if diff -q "$SNAP/net.before" "$SNAP/net.after" >/dev/null 2>&1; then
 else
   no "宿主 docker network ls 变了：$(diff "$SNAP/net.before" "$SNAP/net.after" | tr '\n' ' ')"
 fi
-if diff -q "$SNAP/link.before" "$SNAP/link.after" >/dev/null 2>&1; then
-  ok "宿主 ip link 跑前跑后逐字相同"
+# 宿主 `ip link`：**按设备**逐字比，三颗牙各一格（`K-R136`，判别式见本文件
+# `host_link_classify` 上面那一段）。原先这里是一格整份 `diff`，人群错了。
+CLS="$(host_link_classify "$SNAP/link.before" "$SNAP/link.after")"
+if printf '%s\n' "$CLS" | grep -q '^ERR'; then
+  no "宿主 ip link 残留判定跑不动：$(printf '%s\n' "$CLS" | head -1)—— 判不了，不许算绿"
 else
-  no "宿主 ip link 变了：$(diff "$SNAP/link.before" "$SNAP/link.after" | tr '\n' ' ')"
+  LEFT="$(printf '%s\n' "$CLS" | awk -F'\t' '$1 == "NEW"  { printf "%s〔%s〕 ", $2, $3 }')"
+  LOST="$(printf '%s\n' "$CLS" | awk -F'\t' '$1 == "GONE" { printf "%s〔%s〕 ", $2, $3 }')"
+  CHGD="$(printf '%s\n' "$CLS" | awk -F'\t' '$1 == "CHG"  { printf "%s〔%s〕 ", $2, $3 }')"
+  SKIP="$(printf '%s\n' "$CLS" | awk -F'\t' '$1 == "NEWX" || $1 == "GONEX" { printf "%s(%s) ", $2, $1 }')"
+  # 排除掉的那几个**逐个印出来** —— 静默的排除与没有排除长得一模一样。
+  echo "  不进人群的设备变化（内核 SLAVE 绑定，读数不判红）：${SKIP:-（本趟 0 个）}"
+  if [ -z "$LEFT" ]; then
+    ok "宿主 ip link：台架没留下新设备（它跑动中造过 $RIG_DEV_N 个，见 P2 那一格）"
+  else
+    no "宿主 ip link 留下了设备：$LEFT"
+  fi
+  if [ -z "$LOST" ]; then
+    ok "宿主 ip link：跑前有的设备一个都没少"
+  else
+    no "宿主 ip link 少了设备（台架把宿主的东西弄没了）：$LOST"
+  fi
+  if [ -z "$CHGD" ]; then
+    ok "宿主 ip link：两份都有的设备，每一行逐字相同（tc 没打到宿主设备上）"
+  else
+    no "宿主 ip link 里就地变了的设备：$CHGD"
+  fi
 fi
 
 TMPDIR_KEEP="$SNAP"

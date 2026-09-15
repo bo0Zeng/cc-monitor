@@ -37,9 +37,10 @@
 # 宿主上不跑任何一条被测命令（定框 `K31` 逐字：「以后所有开发测试都不允许直接在本机跑」）。
 #
 # 用法：
-#   # 先把发版产物下下来（本脚本不联网、不替你下）：
-#   #   gh release download v3.8.0 --repo <owner>/cc-monitor \
-#   #     --pattern 'cc-monitor_3.8.0_amd64.deb' --pattern 'monitor' --dir <某个目录>
+#   # 先把发版产物下下来（本脚本不联网、不替你下）。
+#   # 🔴 **tag 与文件名都别手打** —— 手打的那一刻它就开始过期（见下面「被测的是哪一版」）：
+#   #   gh release download "$(gh release view --repo <owner>/cc-monitor --json tagName -q .tagName)" \
+#   #     --repo <owner>/cc-monitor --pattern '*_amd64.deb' --pattern 'monitor' --dir <某个目录>
 #   bash e2e/local-backend-container/build-image.sh
 #   LBC_ARTIFACTS=<某个目录> bash e2e/local-backend-container/rig.sh
 #   bash e2e/local-backend-container/rig.sh --clean    # 只清上一趟崩掉时留下的容器/网络
@@ -47,7 +48,22 @@
 # 环境变量：
 #   LBC_IMAGE      默认 ccmon-lbc:latest（由 build-image.sh 建）
 #   LBC_ARTIFACTS  发版产物所在目录（必须含 .deb；`monitor` 裸二进制可选）
-#   LBC_DEB        .deb 的文件名，默认 cc-monitor_3.8.0_amd64.deb
+#   LBC_DEB        .deb 的文件名。**不给就从 $LBC_ARTIFACTS 里发现**（见下）；
+#                  给了就以它为准（要指名测某一份旧包时用）。
+#
+# ## 🔴 被测的是哪一版 —— **发现出来的，不是写死的**
+#
+# 这里原先写死 `cc-monitor_3.8.0_amd64.deb`（`K-R143` 09-15 逮到，同族共 5 处）。
+# 它与 SPICE 那条 `listen`、门禁那条 `SKILL=` **是同一形：写死、今天恰好对、换一次就断**。
+# 而这一处比那两处更坏，因为它**会静默地量错东西**：上面用法里那条 `gh release download`
+# 也带着同一个版本号 ⇒ 照着文档走的人下回来的就是**旧包**，台架照跑照绿，
+# 报告上写着「装机通过」，测的却是上一版。**「改成 3.8.1」只是把日期往后挪一格。**
+#
+# ⇒ 治法是**把那个字面量整个拿掉**：「测哪一份」这件事的事实**已经在盘上**——
+#   调用方下进 `$LBC_ARTIFACTS` 的那一份就是。字面量只是它的第二住址，而第二住址会漂。
+#   `$LBC_ARTIFACTS` 里**恰好一个** `.deb` ⇒ 就是它；**0 个或 ≥2 个 ⇒ 判红并列出实得**，
+#   **不许静默挑一个**（静默挑 = 把「量错了」重新造出来）。被测文件名 · sha256 · 字节数
+#   三样每趟都印，「这一趟测的是哪一版」永远在读数里。
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -56,7 +72,8 @@ NET="ccmon-lbc-net"
 CT="ccmon-lbc-box"
 CT_BARE="ccmon-lbc-bare"
 ART="${LBC_ARTIFACTS:-}"
-DEB="${LBC_DEB:-cc-monitor_3.8.0_amd64.deb}"
+# 空 ＝ 「没点名」⇒ P1 里从 $ART 发现。**这里刻意没有版本号字面量**（理由见头注）。
+DEB="${LBC_DEB:-}"
 
 # 产品侧的两个落点（**只写在这里一处**，下面全部引用它）。
 DIR_REAL='.cc-monitor/bin'      # install_local_ccm_entry 的真落点（local_backend.rs:1657）
@@ -137,9 +154,36 @@ if ! docker image inspect "$IMG" >/dev/null 2>&1; then
 fi
 ok "镜像在：$IMG"
 
-if [ -z "$ART" ] || [ ! -f "$ART/$DEB" ]; then
-  echo "::error::没找到产物 \$LBC_ARTIFACTS/$DEB（LBC_ARTIFACTS=[${ART:-空}]）。" >&2
-  echo "::error::本脚本**刻意不联网下载** —— 测的是哪一版必须由调用方点名，见头注用法。" >&2
+if [ -z "$ART" ] || [ ! -d "$ART" ]; then
+  echo "::error::\$LBC_ARTIFACTS 没给或不是目录（实得[${ART:-空}]）。" >&2
+  echo "::error::本脚本**刻意不联网下载** —— 产物由调用方事先下好，见头注用法。" >&2
+  no "产物目录不在"
+  finish 2
+fi
+
+# 被测 .deb：点名了就用点名的；没点名就**发现**。0 个或 ≥2 个一律判红并列出实得 ——
+# 静默挑一个就是把「量的是上一版」这条病重新造出来（理由见头注「被测的是哪一版」）。
+if [ -n "$DEB" ]; then
+  note "被测 .deb 由 \$LBC_DEB 点名：$DEB"
+else
+  DEB_CAND=()
+  while IFS= read -r f; do DEB_CAND+=("$f"); done \
+    < <(find "$ART" -maxdepth 1 -type f -name '*.deb' -printf '%f\n' 2>/dev/null | LC_ALL=C sort)
+  case "${#DEB_CAND[@]}" in
+    1) DEB="${DEB_CAND[0]}"
+       note "被测 .deb 是**发现**出来的（$ART 里恰好一个 .deb）：$DEB" ;;
+    0) echo "::error::$ART 里一个 .deb 都没有 ⇒ 没东西可测。目录实得：$(find "$ART" -maxdepth 1 -type f -printf '%f ' 2>/dev/null)" >&2
+       no "产物目录里没有 .deb"
+       finish 2 ;;
+    *) echo "::error::$ART 里有 ${#DEB_CAND[@]} 个 .deb ⇒ **不许替你挑**（挑错就是量了上一版）。" >&2
+       echo "::error::实得：${DEB_CAND[*]}" >&2
+       echo "::error::⇒ 用 LBC_DEB=<文件名> 点名，或把目录里只留下要测的那一份。" >&2
+       no "产物目录里有 ${#DEB_CAND[@]} 个 .deb，分不出测哪一份"
+       finish 2 ;;
+  esac
+fi
+if [ ! -f "$ART/$DEB" ]; then
+  echo "::error::点名的产物不在：\$LBC_ARTIFACTS/$DEB（LBC_ARTIFACTS=[$ART]）。" >&2
   no "产物不在"
   finish 2
 fi
