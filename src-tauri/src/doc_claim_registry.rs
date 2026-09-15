@@ -2080,6 +2080,107 @@ mod tests {
         }
     }
 
+    /// 〔`K-R120` 收窗口补，09-14〕**两份 README 里「这份文档此刻自称的版本」那一处，
+    /// 必须就是这棵树此刻要发的那个版本号。**
+    ///
+    /// # 它从哪来 —— 收窗口现打逮到的漏，而漏在**人群**上，不在实现上
+    ///
+    /// 本件按 `KR120D1` 把「七处」一次改齐到 `3.8.0` 之后，收窗口现打逮到
+    /// `README.md` 与 `README.en.md` 的发布沿革段抬头仍写着 `当前发布 **v3.7.0**` /
+    /// `current release **v3.7.0**` —— **这棵树会带着「当前发布 v3.7.0」把 3.8.0 发出去。**
+    ///
+    /// 🔴 **成因不是「有人改漏了」，是「人群里根本没有它」**：那一件的「七处」＝
+    /// [`the_release_version_is_the_same_in_all_six_places`] 数得到的那几处 ＋ `Cargo.lock`，
+    /// 而现打 `grep -c '当前发布\|current release' src-tauri/src/doc_claim_registry.rs`
+    /// **零命中** —— **判据在，而它的人群不含这一处**。
+    /// ★ 这与 `R73` 第五节登记的「判据在、执行面没有」是**同一族的镜像**：执行面在，人群不够。
+    /// 而它的默认结局一样：**静默的绿**。
+    ///
+    /// # 🔴 射程刻意很窄：判「此刻自称的版本」，不判「文档里出现过的所有版本号」
+    ///
+    /// 那两行是**发布沿革**段 —— 现打各含 **11** 个形如 `vX.Y.Z` 的串
+    /// （`v2.19.0` `v2.19.1` `v2.20.0` `v2.21.0` `v2.22.0` `v2.22.2` `v3.3.0` `v3.4.0`
+    /// `v3.5.0` `v3.6.0` ＋ 自称的那一个），其中 **10 个是历史沿革，本来就该停在旧号上**。
+    /// ⇒ 本条只钉**紧跟在那两个锚点之后**的那一个。
+    /// **把整段收进人群 = 下次发版红一片**，那不是守，是拆（`testing.md` 判据硬规则 4：
+    /// 扫描面按**语义**划，不按「碰巧只有它长这样」划）。
+    /// 同理，`README.md` 与 `README.en.md` 里那两句「v3.6.0 与 v3.7.0 的实际产物是 `en-US`」
+    /// 是 09-10 落的**历史订正**，**刻意不在射程里**。
+    ///
+    /// # 跟谁比
+    ///
+    /// 与 [`the_changelog_top_section_is_the_version_we_ship`] 同一条路：
+    /// `env!("CARGO_PKG_VERSION")`（＝ `src-tauri/Cargo.toml` 的 `version`，编译期注入）——
+    /// **不抠第二份权威源锚点**（`brief` 13b）。它与另外五处的一致由
+    /// [`the_release_version_is_the_same_in_all_six_places`] 守，与 `Cargo.lock` 的一致由
+    /// 门禁 `winchk` 那一格的 `cargo check --locked` 守。
+    ///
+    /// # ⚠ 诚实边界（三条）
+    ///
+    /// 1. 人群是**两处，按锚点点名**。README 里别处再长出第三句「当前发布 …」，本条看不见 ——
+    ///    它判的是**这两个锚点**，不是「所有自称」。
+    /// 2. 锚点里带着 markdown 的 `**` ⇒ 排版一改（比如去掉加粗），本条**当场红在
+    ///    「锚点命中 0 次」上**，而不是静默地绿。这是有意的，与那条「六处一致」的 `pick`
+    ///    同一条纪律：命中必须恰好 1 次。
+    /// 3. 本条**不判那一整段散文对不对**（沿革列得全不全、里面的话有没有过期），一个字都不判。
+    #[test]
+    fn the_docs_self_reported_release_is_the_version_we_ship() {
+        let shipping = env!("CARGO_PKG_VERSION");
+
+        // 人群：**两处，按锚点点名**。
+        // ⚠ 刻意写成函数体里的 `let`，不是模块级 `const …: &[…]` ——
+        //   后者要起 `scanning_guard_registry::TABLE_DECLS` 里**已有的**名字（那条元判据
+        //   按名字认表），而往那张闭集里加一个新名字必须同拍改 `MUST_BE_RECOGNISED`，
+        //   两处都不在本件写区。同形先例就在上面那条「六处一致」里（它的 `others` 也是
+        //   函数体里的 `let`）。
+        let places: [(&str, &str, &str); 2] = [
+            ("README.md 发布沿革段抬头", "README.md", "当前发布 **v"),
+            (
+                "README.en.md 发布沿革段抬头",
+                "README.en.md",
+                "current release **v",
+            ),
+        ];
+
+        let mut off: Vec<String> = Vec::new();
+        for (who, file, needle) in places {
+            let doc = read_repo_file(file);
+            let hits = doc.matches(needle).count();
+            assert_eq!(
+                hits, 1,
+                "在 {who}（`{file}`）里，锚点 {needle:?} 命中 {hits} 次（要求恰好 1 次）——\n\
+                 那一行被改写、被挪走，或者排版变了（锚点里带着 markdown 的 `**`）。\n\
+                 **先修锚点再谈版本号对不对**，否则本条会零命中地绿。"
+            );
+            let at = doc.find(needle).expect("上面已断言命中一次") + needle.len();
+            let rest = &doc[at..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+                .unwrap_or(rest.len());
+            let got = &rest[..end];
+            assert!(
+                got.split('.').count() == 3 && got.split('.').all(|s| !s.is_empty()),
+                "{who} 在锚点之后抠到的是 {got:?} —— 形状不像 `X.Y.Z`"
+            );
+            if got != shipping {
+                off.push(format!("  {who}（`{file}`）：{got}"));
+            }
+        }
+
+        assert!(
+            off.is_empty(),
+            "这棵树要发的是 `{shipping}`，而这几处文档**自称**的是别的号：\n{}\n\n\
+             ★ 本条是 `K-R120` 收窗口现打逮到的那个漏的处置：那一拍七处都已经是新号，\n\
+             而这两处**不在任何判据的人群里** ⇒ 这棵树会带着「当前发布 <旧号>」把新版发出去。\n\
+             「判据在、而它的人群不含这一处」与「判据在、执行面没有」是同一族，\n\
+             两边的默认结局都是**静默的绿**。\n\n\
+             修法：把上面点名的那几处改成 {shipping}。\n\
+             ⚠ **只改紧跟锚点的那一个** —— 同一段里另外十个 `vX.Y.Z` 是**历史沿革**，\n\
+             它们本来就该停在旧号上，跟着改就是把沿革改成假的。",
+            off.join("\n")
+        );
+    }
+
     /// 〔audit-0805 08-06〕**文档里写成 `CONST = 数` 的，代码里那个常量必须真是这个数。**
     ///
     /// **这是定框 E12 自己点名的洞**：E12 的 ⚠ 逐字写着「那四个准确的细节数
