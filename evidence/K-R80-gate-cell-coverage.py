@@ -154,7 +154,10 @@ cell(
 #   一格读数都不动。**但那条登记的字面不再成立**，所以删它、不是改它。
 cell(
     "copy2",
-    anchor="run_gate copy2 '`evidence/*.py` 现打",
+    # 〔`K-R122` 09-14〕锚点跟着 `gate.sh` 那一行改了：原先是
+    #   `run_gate copy2 '`evidence/*.py` 现打` —— 那个「现打」后面跟的是一个**手抄的份数**，
+    #   本件把它摘了（份数以判据本体自己印的那一行为准）⇒ 锚点收到「不含那个数」的那一段。
+    anchor="run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族",
     cwd="仓根",
     cmd="python3 evidence/K-R115-ruler.py",
     **{
@@ -188,6 +191,37 @@ cell(
         "remote-daemon-proto/": blind("另一个 workspace，`-p monitor` 够不着 —— "
                                       "它那棵树的 `dead_code` 今天**仍然没有格**，"
                                       "这是本格明写的盲区，不是漏登"),
+    },
+)
+
+# ── `K-R122`（09-14）：第 17 格 `shellcheck` ──────────────────────────────────
+# `KR122D2` 甲：**这一维此前门禁一格都没有**（`grep -c -i shellcheck scripts/gate.sh` 当时 = 0），
+# 而它在 CI 里是独立一个 job —— `K-R119` 推 tag 那一趟五条红里有一条就是它。
+# ⚠ 本格**不另起一份人群清单**：它把 `.github/workflows/ci.yml` 那段 `FILES=` 现读进来展开
+#   （那份清单同时是 `src-tauri/src/shell_lint_registry.rs` 的被解析对象）⇒ 一个闭集一个住址。
+cell(
+    "shellcheck",
+    anchor="run_gate shellcheck '不是「几条断言过了」",
+    cwd="仓根",
+    cmd="shellcheck --severity=error <人群从 ci.yml 现读>",
+    **{
+        "e2e/": (PART, "现打 `e2e/*.sh` **30** 份 ＋ `e2e/weak-net/*.sh` **4** 份 ＋ "
+                       "`e2e/fake-claude` **1** 份 = 35 / 这棵树现打 **50** 份。"
+                       "⚠ 剩下那 15 份（`.ts` / `.py` / `.tsv` / `fixtures/`）本格一行都不读；"
+                       "⚠ 买的是「`--severity=error` 这一档没有告警」，**不买「脚本干得对」**"),
+        "shared/": (PART, "只有 `shared/cc-bus/scripts/*` **14** 份 / 这棵树现打 **19** 份 —— "
+                          "`shared/cc-bus/examples/` 那 3 份与仓根那 1 份不在人群里"),
+        "scripts/": (PART, "`scripts/*.sh` 现打 **3** 份 / 这棵树现打 **6** 份 —— "
+                           "`run.ps1` 全仓没有 linter（`audit-0805` 登记的诚实边界），"
+                           "`assert-coverage-floors.mjs` 是 JS"),
+        "src-tauri/": (PART, "只有 vendored `cc-acct-iso` 那 **4** 份 bash（逐份点名，不用 glob —— "
+                             "`ci.yml` 那段注释逐字记着为什么：不开 globstar 时 `**` 等价于 `*`，"
+                             "会把一个目录喂给 shellcheck ⇒ 恒红）。这棵树的其余部分与本格无关"),
+        "hooks/": (PART, "只有 `hooks/pre-commit` 这**一份**，而且是**逐份点名**进人群的、不是 glob "
+                         "⇒ 往这棵树加第二份 hook，本格看不见它（那一维由 `hooks` 那一格的 "
+                         "`git ls-files hooks/` 盖）"),
+        ".github/": blind("`ci.yml` 在本格里是**人群清单**（被读的那份配置），不是被检对象 —— "
+                          "把量具自己算进它的覆盖，正是本区最高频那族病"),
     },
 )
 
@@ -230,6 +264,57 @@ cell(
         VENDOR: (PART, "作为 `monitor` 的依赖被编。⚠ 这一条**本件没现打**，"
                        "是从依赖关系推的 —— 按「未验」读"),
         "remote-daemon-proto/": blind("本格逐字写着它盖不到：那 17 处 `cfg(windows)` 没人跨编"),
+    },
+)
+
+# ── `K-R122`（09-14）：第 18 格 `ci-e2e-prereq` ───────────────────────────────
+# `KR122D1` ③④：`K-R119` 那趟云端五条红里有**两条**是「job 的前置没跟上产品变化」——
+# 而本脚本自己在跑四套 ccm e2e 之前有一步 build，CI 那两个 job 没有 ⇒ 两边的「绿」同形。
+# ⚠ 本格是**第一格把 `.github/` 当被测对象**的门（在它之前那棵树只被 `cargo` 那格
+#   「经扫描型守卫读进去」地擦到 3 个读点）。
+cell(
+    "ci-e2e-prereq",
+    anchor="run_gate ci-e2e-prereq '判过的 e2e 调用行数",
+    cwd="仓根",
+    cmd="python3 evidence/K-R122-ruler.py",
+    **{
+        ".github/": (PART, "只判 `ci.yml` 一份文件里的**一个切片**：`steps:` 里那 20 条 e2e "
+                           "调用行，各自的 build 前置齐不齐。⚠ 这棵树的其余部分"
+                           "（`release.yml` 整份 · 那些 job 的 runner / 工具链 / needs / if）"
+                           "本格一个字都不问；⚠ 它**不跑任何 e2e**，「前置齐了」≠「那一套会绿」"),
+        "e2e/": (PART, "那 20 条调用行指到的 `.sh`（现打 20 份，其中 15 份硬门后端二进制）"
+                       "**只被读一个字面量**（`debug/cc-monitor-remote` 在不在）—— "
+                       "脚本里的任何一行断言、任何一处行为，本格都不看"),
+        ROOTFILES: blind("`package.json` 的 `scripts` 那一块在本格里是**索引**"
+                         "（把套件名解析到那份 `.sh`），**不是被检对象** —— "
+                         "与上面 `shellcheck` 那一格判 `.github/` 「无」同一条理由："
+                         "被读的那份配置不算被它盖到。⚠ 这一条判「无」是**有代价**的："
+                         "`test:<套件>` 那条脚本被改坏时本格报的是「找不到脚本」，"
+                         "而那句诊断说的是**索引坏了**，不是「仓根文件有问题」"),
+        "scripts/": blind("本格的**尺子**住 `evidence/K-R122-ruler.py`，不在这棵树上；"
+                          "而尺子本来也不该算进自己的覆盖"),
+        "evidence/": blind("同上 —— 把量具自己算进它的覆盖，正是本区最高频那族病"),
+    },
+)
+
+# ── `K-R122`（09-14）：第 18 格 `winchk-daemon` ───────────────────────────────
+# `KR122D2` 甲：上面 `winchk` 那一格的裁词逐字写着「那 17 处 `cfg(windows)` 没人跨编」，
+# 而 `K-R119` 那一趟云端正是红在它上面（daemon job 第 7 步，**10 个编译错全在 test 档**）。
+# ⚠ 与 CI 的差别写在 `gate.sh` 那一格的分母里（target `-gnu` vs `-msvc`），这里不抄第二份。
+cell(
+    "winchk-daemon",
+    anchor="run_gate winchk-daemon '不是数出来的数",
+    cwd="remote-daemon-proto/",
+    cmd="cargo check --all-targets --target x86_64-pc-windows-gnu",
+    **{
+        "remote-daemon-proto/": (PART, "唯一成员 `cc-monitor-remote` 的**生产段 ＋ test 档**"
+                                       "（`--all-targets` 是承重的：云端那 10 个错一个都不在生产段）"
+                                       "在 Windows target 上**编得过**。"
+                                       "⚠ 只买「编得过」，**买不到「在 Windows 上跑得对」** —— "
+                                       "`check` 一行代码都不执行；⚠ `-gnu` 不是 `-msvc`，"
+                                       "MSVC ABI 专属的那一类本格盖不到"),
+        "src-tauri/": blind("另一个 workspace，由上面 `winchk` 那一格盖"),
+        VENDOR: blind("同上 —— 它是 `src-tauri` 那棵的依赖，本命令的编译图里没有它"),
     },
 )
 
@@ -617,6 +702,91 @@ def suite_on_disk(tok):
     return any((ROOT / f"e2e/{tok}{ext}").exists() for ext in (".sh", ".test.sh", ""))
 
 
+# ── `C5c`（`K-R122` `KR122D3` 的兄弟条，09-14）：**裁决行上那句射程，有人守** ────────
+#
+# 🔴 题面（`K-R119` 09-14 的读数）：同一棵树本门禁 **16 格全绿**，云端 8 个 job 里 **5 个红**。
+#   `KR122D2` 二选一里的**乙**要求「在裁决行上明写射程，逐字说出本门禁不看什么」——
+#   而一句没有判据在守的散文，下一轮就是一句**没人守的散文**（`brief` 第 17 条那一族）。
+#
+# ★ 取法：射程表写成 `键|说明`，**键进机检、说明不进**。
+#   ① 表非空（地板：挡「把数组掏空、函数留着」那一形 —— 那时它照印一行「下面这 0 件事」）；
+#   ② 每一项形状对（`键|非空说明`，键 `^[a-z0-9-]+$`）、键不重复；
+#   ③ **键集合与现打的判定格名互不相交** —— 这一条是它唯一真有牙的地方：
+#      哪天有人把某一维收成了格（本件就干了两次：`shellcheck` · `winchk-daemon`），
+#      而这里还自称「不看」，当场红。与 `C5b` 治的腐同源：**自述与盘上现状分叉**。
+#   ④ 印出来的条数**现算**（源码里得有 `${#GATE_BLIND[@]}`），不许写死一个数 ——
+#      写死就是 `R42 裁定零` 那个被传播了 46 次的错数的同一形状。
+#   ⑤ 那个打印函数**真的被裁决那一支调到**（定义 ＋ 调用，至少两处命中）。
+#
+# ⚠ **它买不到什么**：这张表是**黑名单**，`C5c` 只保证「列出来的这几条不会悄悄变成散文」，
+#   **不保证射程之外只有这几条**（那个分母没人数得出）。说明那一栏写得对不对，它一个字都不判。
+BLIND_DECL = "GATE_BLIND=("
+BLIND_COUNT_EXPR = "${#GATE_BLIND[@]}"
+BLIND_PRINTER = "gate_print_blind"
+BLIND_KEY_RE = re.compile(r"^[a-z0-9-]+$")
+
+
+def blind_items(text):
+    """抠出 `GATE_BLIND=( … )` 里那几条双引号字符串。返回 (条目列表, 诊断列表)。"""
+    out, bad = [], []
+    n = text.count(BLIND_DECL)
+    if n != 1:
+        bad.append(f"C5c `gate.sh` 里 `{BLIND_DECL}` 命中 {n} 处（应当恰好 1 处）—— "
+                   f"射程表是裁决行那句话的唯一住址，没有它那句话就没人守")
+        return out, bad
+    body = text.split(BLIND_DECL, 1)[1]
+    end = body.find("\n)")
+    if end < 0:
+        bad.append("C5c `GATE_BLIND=(` 找不到收尾的 `)` —— 数组的形状变了，本条抠不到东西")
+        return out, bad
+    for ln in body[:end].split("\n"):
+        ln = ln.strip()
+        if not ln or ln.startswith("#"):
+            continue
+        if not (ln.startswith('"') and ln.endswith('"')):
+            bad.append(f"C5c 射程表里有一项不是一整条双引号字符串：{ln[:60]!r}")
+            continue
+        out.append(ln[1:-1])
+    return out, bad
+
+
+def check_blind_scope(text, cells):
+    items, out = blind_items(text)
+    if out:
+        return out
+    if not items:
+        out.append("C5c 射程表是**空的** —— 那时裁决行后面照印一句「下面这 0 件事」，"
+                   "而「什么都不漏」正是本条要挡的那句假话")
+        return out
+    keys = []
+    for it in items:
+        if "|" not in it:
+            out.append(f"C5c 射程表这一项没有 `键|说明` 的形状：{it[:60]!r}")
+            continue
+        k, why = it.split("|", 1)
+        if not BLIND_KEY_RE.match(k):
+            out.append(f"C5c 射程表的键 {k!r} 不合形状（只许 `^[a-z0-9-]+$`）—— "
+                       f"键要进机检，形状松了就点不准")
+        if not why.strip():
+            out.append(f"C5c 射程表的 `{k}` 只有键、没有说明 —— 空白格不算「逐字说出来」")
+        keys.append(k)
+    dup = sorted({k for k in keys if keys.count(k) > 1})
+    if dup:
+        out.append(f"C5c 射程表里的键重复了：{dup}")
+    clash = sorted(set(keys) & set(cells))
+    if clash:
+        out.append(f"C5c 射程表仍自称**不看** {clash}，而 `gate.sh` 现打**已经有这几格了** —— "
+                   f"买到了却还在说买不到，与 `C5b` 治的腐同源。收成格的那一拍要把这一条摘掉")
+    if BLIND_COUNT_EXPR not in text:
+        out.append(f"C5c 印射程那一行没有现算条数（找不到 `{BLIND_COUNT_EXPR}`）—— "
+                   f"写死一个数就是 `R42 裁定零` 那个错数的同一形状")
+    hits = text.count(BLIND_PRINTER)
+    if hits < 2:
+        out.append(f"C5c `{BLIND_PRINTER}` 在 `gate.sh` 里只命中 {hits} 处（定义 ＋ 裁决那一支的调用，"
+                   f"至少 2 处）—— 射程表还在，而**没有人印它**：那就退回成一段注释了")
+    return out
+
+
 def check_self_description(text, cells, rollcall):
     out = []
     hdr = header_lines(text)
@@ -891,6 +1061,8 @@ def main():
     # `C5b`（`K-R91`）：**扩 `C5` 的射程，一个字没动它上面那三方对拍** ——
     # 它买的是裁决行，本条买的是**头注里的自述**（那儿的腐 `C5` 钉不到）。
     fails += check_self_description(text, cells, int(m.group(1)) if m else None)
+    # `C5c`（`K-R122`）：裁决行上那句**射程**（`KR122D2` 乙），取法见上面那段头注。
+    fails += check_blind_scope(text, cells)
 
     print(f"# `K-R80` `KR80D3` 门禁分格覆盖登记 —— 量于 `{GATE}`")
     print()
@@ -899,7 +1071,8 @@ def main():
     print()
     print("| 格 | cwd | 命令 | 全 | 部 | 🔴 盖不到（逐棵点名） |")
     print("|---|---|---|---|---|---|")
-    order = [c for c in ("hooks", "copy2", "fmt", "fmt-daemon", "winchk", "cargo",
+    order = [c for c in ("hooks", "copy2", "shellcheck", "ci-e2e-prereq",
+                         "fmt", "fmt-daemon", "winchk", "winchk-daemon", "cargo",
                          "deadcode", "generated", "daemon", "tsc", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm e2e/")) + ["pb check"]
     for name in order:
@@ -996,6 +1169,7 @@ def main():
             print(f"  ✗ {f}")
         return 1
     print("KR80D3: OK —— C1..C6 全过；C5b 全过（`K-R91` `KR91D1`）；"
+          "C5c 全过（`K-R122` `KR122D2` 乙：裁决行那句射程）；"
           "C6b 全过（`K-R82` `KR82D3`）；C6c 全过（`K-R91` `KR91D2`）"
           "（⚠ 它只判「登记完整且指得到真东西」，不判裁词对不对、不判归得对不对）")
     return 0
