@@ -44,6 +44,11 @@
      `#[tauri::command]`、要么在 `CLAIMS_NON_COMMAND_SYMBOLS` 明示名单里。
      🔴 钉的是**命令名**不是文件字节 ⇒ 往那三份里加一条**与这 22 条无关**的新命令**不红**。
 
+〔`K-R131` 09-15 加的一条 —— 第三块（S1–S5）的**收工目标**〕：
+  R11 收工目标的**算术闭合**（`KR131D3`）：（五组目标的并集 － 非入口）**逐字等于**全盘目标
+     那张名单（两向点名）· 豁免不许是死钉 · 豁免与全盘目标不许相交 · 逐组目标表与分组表
+     同一批组。🔴 **目标只许有一处住址**（那三张表），`FRONTEND_PIN` 的散文里不许再有第二份。
+
 **不判**（诚实边界，逐条写死）：
   B1 **不判归属对不对**。`CAP_ARCHIVE` 的每一格是**人的判断**（依据写在那一格的 `why` 里），
      本尺子只保证「没有一条命令没人回答过」，不保证「回答得对」。
@@ -70,6 +75,14 @@
      哪天有人换了调用形状，那一份会从「落点」掉进第二档，在读数面上当场可见。
   B8 〔`K-R128`〕`R9` 度量的是「**几份文件**」，不是「几处引用」⇒ 往一份**已经在名单里**的
      文件里再加一处引用，**不红**。这是刻意的：第三块的目标就是把引用收进那几份留下来的文件。
+  B9 〔`K-R131`〕**`R11` 只读本文件自己的三张表，一行被测树都不读** ⇒ 它够不着「目标定得
+     对不对」，也不会因为产品代码变了而红。它买到的只有「那四条算术关系没人能悄悄写歪」。
+  B10 〔`K-R131`〕**「落点」不等于「用户看到的一处」，而收工判据量的是前者** ——
+     两条现打的反例都在盘上：① `src/ccm-probe.ts` 是渲染链的探测缓存，**界面上没有这一处**，
+     却算一份落点；② `buildAccountAliasBlock` 现打**渲染在两处**（`panel.ts` 那一组 ＋
+     `accounts-section.ts`），而调用写在 `launcher-diagnostics.ts` 里 ⇒ 只算**一份**落点。
+     ⇒ **「该组落点收到 1」买到的是「调用收敛到一份文件」，不是「用户只看到一处」。**
+     今天这个差由 `FRONTEND_NON_ENTRY` 逐份写出来顶着，**没有闸在数「用户看到几处」**。
 """
 
 from __future__ import annotations
@@ -309,33 +322,138 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
 FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
     ("S1", (("src/settings/machine-card.ts",),
             "量于 09-15 · `K-R128` 实现方现打（本文件 `§S5d`，被测树 = `--root`）",
-            "S1 收完远端半那一拍改这一行（目标：空）")),
+            "S1 收完远端半那一拍改这一行。**目标不在这一栏** —— 住 "
+            "`FRONTEND_GOAL_PER_ITEM['S1']`（`K-R131` 09-15：这一栏从前逐字写着"
+            "「目标：空」，与 `FRONTEND_GOAL_PER_GROUP = 1` 同份输出里打架）")),
     ("S2", (("src/ccm-probe.ts",
              "src/launcher-diagnostics.ts",
              "src/settings/cc_integration.ts"),
             "量于 09-15 · 同上",
-            "S2 收完本机半那一拍改这一行（目标：收成 1 份）。"
+            "S2 收完本机半那一拍改这一行。**目标不在这一栏** —— 住 "
+            "`FRONTEND_GOAL_PER_ITEM['S2']`。"
             "⚠ `src/settings/panel.ts` **不在**这张名单里：它今天只在一句注释里提到 "
             "`cc_integration_status`，不是调用点（见 `§S5d` 第二档）")),
     ("S3", (("src/settings/accounts-section.ts",),
             "量于 09-15 · 同上",
-            "S3 那一拍改这一行。⚠ 现打**已经只剩 1 份** —— S3 的活在后端与那条欠口，"
-            "前端这一维今天就到位了（`§3-3` 写「S3 今天 2」是把 `src/accounts.ts` 那条"
-            "**注释里的提名**算成了落点，见 `§S5d` 第二档）")),
+            "S3 那一拍改这一行。**目标不在这一栏** —— 住 "
+            "`FRONTEND_GOAL_PER_ITEM['S3']`。⚠ 现打只剩 1 份这件事**只是现打**，"
+            "不等于到位：`K-R131` 裁定 S3 的落点要从 `accounts-section.ts` 搬到 ① 那一处。"
+            "（`§3-3` 写「S3 今天 2」是把 `src/accounts.ts` 那条**注释里的提名**"
+            "算成了落点，见 `§S5d` 第二档 —— 那一半仍然成立）")),
     ("S4", (("src/launcher-diagnostics.ts",
              "src/settings/accounts-section.ts"),
             "量于 09-15 · 同上",
-            "S4 那一拍改这一行（目标：收成 1 份）")),
+            "S4 那一拍改这一行。**目标不在这一栏** —— 住 "
+            "`FRONTEND_GOAL_PER_ITEM['S4']`")),
     ("S5", (("src/settings/cc-bus-section.ts",
              "src/settings/mcp-section.ts",
              "src/views/inbox-view.ts"),
             "量于 09-15 · 同上",
-            "S5 那一拍改这一行（目标：收成 1 份）")),
+            "S5 那一拍改这一行。**目标不在这一栏** —— 住 "
+            "`FRONTEND_GOAL_PER_ITEM['S5']`")),
 ])
 
-# 收工的目标形状（`K-R117` `§3-3` 逐字「该件那一组的前端落点数恒等于 1」）。
-# ⚠ **只印，不判** —— 判它就是 `§0c` 点名不许装的那个恒红闸。
-FRONTEND_GOAL_PER_GROUP = 1
+# ── 收工目标〔`K-R131` 09-15 裁定〕 ─────────────────────────────────────────────
+#
+# 🔴 **这里从前是一个标量** `FRONTEND_GOAL_PER_GROUP = 1`（五组共用），而 `FRONTEND_PIN`
+#    第三栏的散文同时写着「S1 …（目标：空）」⇒ **同一份输出里 S1 的目标既是 1 又是空**。
+#    那正是本区自己命名的最贵那条病「**数与名单不同句**」，而它长在治这条病的尺子上。
+#    ⇒ `K-R131` 把目标收成**一处住址**：下面这三张表。**散文里不许再出现第二份目标。**
+#
+# 🔴 **「全盘目标」这个数的出处**（`KR131D1`：现打出处，不许说「大家都这么写」）：
+#    `DECISIONS.md#R63` **裁定三**〔`src: 用@09-13`，用户逐字〕——
+#      「现在应该只有安装后端, 以及bash命令等等 / 然后就是安装mcp功能\skill等等 /
+#        不要拆成什么多个」
+#    ⇒ R63 裁定三把它落成三条：一处「安装后端」· 一处「生成 bash/PowerShell 那段让用户
+#      自己填」· 一处「安装 MCP / skill 等」，并逐字明令
+#      「**不许再按『装 ccm 助手 / 装别名 / 装 tmux hooks / 装账号隔离』这样按实现分**」。
+#    ⚠ **`K-R117#§3-3` 那一行给的出处是半个** —— 它写「前端落点 10 份 → 目标 3 份」，
+#      第三栏署的是「`#§C5` 现打」，而 `§C5` 只现打得出**左边那个 10**；
+#      **右边那个 3 不在 `§C5` 里**，它来自 R63 裁定三。⇒ 出处补在这里。
+#    ⚠ **左边那个数今天也换了尺子**：`§3-3` 的 10 用的是 `§S5b`「被谁**引用**」的口径；
+#      而收工判据用的是 `§S5d`「有**调用形状**」的口径（`K-R128` 收窄的）⇒ 两者现打不同。
+#      **目标要按 `§S5d` 的分母说话**，不许把 `§3-3` 那个 10 的目标原样搬过来。
+#
+# 🔴 **「处」不是「份文件」** —— R63 数的是**用户要去的地方**，这把尺子数的是**有调用形状的
+#    `.ts` 文件**。两者今天差两份，逐份写在 `FRONTEND_NON_ENTRY` 里并由 `R11b` 钉住。
+#    ⇒ 算术这样才闭合：`五组目标的并集 － 非入口 == 全盘目标那张名单`（`R11a`）。
+
+# 全盘目标 —— **这张表就是 R63 裁定三那三条**。key = 收工之后用户去的那一份文件。
+FRONTEND_GOAL_OVERALL: "OrderedDict[str, tuple]" = OrderedDict([
+    ("src/settings/machine-card.ts", (
+        "①一处「安装后端」",
+        "R63裁定三+K15+K35+K36+R75",
+        "「装后端」本来就是**对某一台机器**的动作 ⇒ 它的入口该跟着机器走。UI 侧这一处"
+        "今天已经存在：`S4b-3b-2` 把 `MachineCard` 拆成「连接 / 组件」两栏，**组件栏**"
+        "逐字就是「这台机器上装了什么」。`K15`/`K35`/`K36`（本地 = 不走 ssh 的远端 · "
+        "没有「没有后端」这回事 · 两份后端逐字相同）⇒ **本机页要与远端页同形**，"
+        "本机的装口进同一栏，而不是另起一处「终端集成」。"
+        "⚠ 现打 `remote-section.rebuild_cards` 只给远端建 `MachineCard`，本机页是一个"
+        "空 div、只靠 per-machine 分节填 ⇒ **本机今天在结构上是二等公民**，"
+        "而那正是 R63 点名的「按实现分」。补本机那一栏是 `S2` 的活。")),
+    ("src/launcher-diagnostics.ts", (
+        "②一处「生成 bash/PowerShell 那段让用户自己填」",
+        "R63裁定三+K33",
+        "它今天**已经是**这一处：模块头注逐字记着 Phase D UX 审计把「诊断」与「别名生成器」"
+        "两半合并到同一处的理由（分居两处会让用户看到诊断却无路可循）；`paste-block.ts` 那个"
+        "共用待贴组件的规范宿主也是它。⇒ `remote_acct_iso_shellinit` 那块待贴片段"
+        "（今天住 `accounts-section.ts`）搬进来，② 就只剩一处。")),
+    ("src/settings/mcp-section.ts", (
+        "③一处「安装 MCP / skill 等」",
+        "R63裁定三+K34",
+        "R63 逐字「安装mcp功能\\skill等等」。`cc-bus` 的装口（`deploy_local_cc_bus` / "
+        "`cc_bus_install_state`）今天寄在**驾驶舱**里，而驾驶舱 `S6` 已搬出设置、成了顶层"
+        "运营视图 ⇒ 「装它」与「用它」今天挤在同一处。收工形状是**装的进这一处、用的留在"
+        "各自的运营视图**。")),
+])
+
+# 逐组目标 —— **收工判据按这张表判**，不再是「恒等于 1」。
+# 每行：组 -> (收工之后该组落点名单**逐字**应当是什么, 为什么)
+FRONTEND_GOAL_PER_ITEM: "OrderedDict[str, tuple]" = OrderedDict([
+    ("S1", (("src/settings/machine-card.ts",),
+            "**已达标，S1 的前端这一半不用做**。四条远端装口今天就住在组件栏里，"
+            "而那正是 ① 该在的地方。⚠ 从前那句「目标：空」讲不通：R63 要的是「收成一处」"
+            "不是「取消入口」，降到空等于用户再也没有地方部署远端后端，与 `K27`"
+            "（部署是产品的一部分，由客户端做）直接冲突。")),
+    ("S2", (("src/settings/machine-card.ts", "src/ccm-probe.ts"),
+            "「终端集成」那一块（`cc_integration_*`）与本机 ccm 入口查询并进组件栏的"
+            "**本机页那一份**；`src/ccm-probe.ts` 留着，它不是入口（见 `FRONTEND_NON_ENTRY`）。"
+            "⚠ 一条要一起裁的：`profile_installer` 那四处写盘落点归档在 **②**，而调它们的"
+            "`cc_integration_install` 归 **①** ⇒ `§3-3` 说的「② 的行为要改（写盘→只生成）」"
+            "落地那一拍，这一行可能要分出一份到 ②。**那是 S2 立件时要回来重裁的**，不是今天。")),
+    ("S3", (("src/settings/machine-card.ts",),
+            "**没达标，前端这一半要做**：把「一键部署 cc-acct-iso」从「账号」栏的空态里"
+            "搬进组件栏。R63 裁定三逐字点名「不许再按『…装账号隔离』这样按实现分」，"
+            "而今天它正是一个按实现分出来的独立装口。`R75`〔用@09-14「account 进后端」〕"
+            "已把它归 ①。账号栏留一句指路（**不带命令调用** ⇒ 不算落点）。")),
+    ("S4", (("src/launcher-diagnostics.ts",),
+            "`remote_acct_iso_shellinit` 那块待贴片段从 `accounts-section.ts` 搬到 ② 那一处，"
+            "与 `write_account_aliases` 同处。")),
+    ("S5", (("src/settings/mcp-section.ts", "src/views/inbox-view.ts"),
+            "`cc-bus` 的两条装口从驾驶舱搬进 ③；`src/views/inbox-view.ts` 留着，"
+            "它不是装口（见 `FRONTEND_NON_ENTRY`）。")),
+])
+
+# 非入口落点 —— **有调用形状、但不是「用户要去装东西的那一处」**。
+# 🔴 形状同 `CLAIMS_NON_COMMAND_SYMBOLS`：**明示名单 ＋ 逐条理由**，不许用「反正它不像」。
+# 🔴 每一条的理由都要**自己站得住**（不是「不这么划 3 就闭合不了」）——
+#    `KR131D1` 逐字警告过「别为了让 3 闭合去硬凑分组」。
+FRONTEND_NON_ENTRY: "OrderedDict[str, str]" = OrderedDict([
+    ("src/ccm-probe.ts",
+     "它是 `probe_ccm_cli` 的**按 origin 的 5 分钟 TTL 缓存**，消费者是 `remote-launch-run.ts` "
+     "的 `renderLaunchCommand`（决定这次走 CLI 渲染器还是兜底渲染器）。**用户界面上没有这一处**，"
+     "它也不装任何东西。把它搬进设置里的某个分节等于让底层渲染链去 import 一个 UI 模块。"
+     "⇒ 它会**永远**留在 `§S5d` 的落点名单里，而永远不该被算成一处安装面入口。"),
+    ("src/views/inbox-view.ts",
+     "它是收件箱**编辑 overlay** 的保存按钮，调 `write_skill_file`。而 `write_skill_file` "
+     "**装不了 skill**：`skill_host::resolve_editable` 第一刀就是 "
+     "`requested.canonicalize()`，报错逐字「解析路径失败（**文件必须已存在**）」⇒ 它只能"
+     "改一份**已经装好的** skill 的白名单内文件。"
+     "🔴 **这说明归档表那一格的依据现打是假的** —— `CAP_ARCHIVE['skill.inbox']` 逐字写着"
+     "「写侧（`write_skill_file`）是往用户项目里装东西」。**`K-R131` 不改它**"
+     "（`K-R117` 已签收，`[J5]` 不许事后改），把这条退回 PM：订正之后 `skill.inbox` 写侧"
+     "落「非装面」⇒ 人群 22→21、`S5` 收 6 条、本表这一行可以撤，全盘目标不变。"),
+])
 
 # ── 纪律 A 的闸（`KR128D3`）—— 三份共用文件 ───────────────────────────────────
 #
@@ -739,10 +857,15 @@ def section_frontend_ratchet(texts, cmds_now, wrapper: str):
         now = tuple(sorted({f for m in members for f in calls.get(m, ())}))
         total_now |= set(now)
         want = tuple(sorted(pin))
-        print(f"  {g:<5s}{len(now):<5d}{len(want):<5d}{FRONTEND_GOAL_PER_GROUP:<5d}"
+        goal, goal_why = FRONTEND_GOAL_PER_ITEM[g]
+        print(f"  {g:<5s}{len(now):<5d}{len(want):<5d}{len(goal):<5d}"
               f"{', '.join(now) if now else '（零）'}")
         print(f"        钉于：{when}")
         print(f"        该降的时候谁来改：{whoi}")
+        # 🔴 目标**逐字印名单**，份数 `len()` 现算 —— 表里一个基数字面量都没有（`brief` 13b）。
+        print(f"        目标（`FRONTEND_GOAL_PER_ITEM['{g}']`，唯一住址）："
+              f"{', '.join(sorted(goal))}")
+        print(f"        为什么：{goal_why}")
         if now == want:
             ok(f"R9 {g} 落点名单逐字相等（{len(now)} 份）")
             continue
@@ -759,11 +882,106 @@ def section_frontend_ratchet(texts, cmds_now, wrapper: str):
                        f"{', '.join(now) if now else '（零）'}。"
                        f"要么这一件真收干净了（那就**同一拍**把 `FRONTEND_PIN['{g}']` 降下来），"
                        f"要么那一处是被别的改动顺手带没的 ⇒ 回来裁")
-    print(f"  ⇒ 全盘并集 **{len(total_now)} 份**（目标 3）：{', '.join(sorted(total_now))}")
+    print(f"  ⇒ 全盘并集 **{len(total_now)} 份**（目标 {len(FRONTEND_GOAL_OVERALL)} 处，"
+          f"名单住 `FRONTEND_GOAL_OVERALL`，判定在 `§S5f`）："
+          f"{', '.join(sorted(total_now))}")
     print(f"  ── 第二档：**只提到、没有调用形状** 现打 {len(mentions)} 处 "
           f"（只出读数、不判红；它在这里是为了让「换了调用形状」不静默）──")
     for rel, ln, cmd in mentions:
         print(f"    {rel}:{ln}  提到 `{cmd}`")
+
+
+def section_frontend_goal_closure():
+    """`§S5f`（`KR131D3`）：收工目标的**算术闭合** —— 五组目标的并集 == 全盘目标那张名单。
+
+    这一条治的是 `K-R131` 逮到的那个形状：目标从前是**五组共用的一个标量**
+    （`FRONTEND_GOAL_PER_GROUP = 1`），于是「每组 1 份 × 5 组 = 5 个名额」与
+    「全盘目标 3 份」在同一份输出里对不上，**而盘上没有任何一处说那 3 份是哪 3 份**。
+    ⇒ 现在目标是**三张名单**，这一节把它们之间的算术关系钉死：
+
+      `R11a` （五组目标的并集 － `FRONTEND_NON_ENTRY`）**逐字等于** `FRONTEND_GOAL_OVERALL`
+             的键集（**两向点名**）。不闭合当场红。
+      `R11b` `FRONTEND_NON_ENTRY` 每一条都**真的出现在**某一组的目标里 ——
+             防「留一条永远不会红的豁免」（同 `LEDGER` ⑥ 那条「不留永远不会红的钉子」）。
+      `R11c` `FRONTEND_NON_ENTRY` 与 `FRONTEND_GOAL_OVERALL` **不许相交** ——
+             一份文件不能既是「那三处之一」又是「不是入口」。
+      `R11d` `FRONTEND_GOAL_PER_ITEM` 的键集 == `SPLIT_GROUPS` 的键集（两向）——
+             新切出一组而没给它目标，或给一个不存在的组写目标，都当场红。
+
+    ⚠ **诚实边界（`references/testing.md` 判据硬规则 10）：这一节只读本文件自己的三张表，
+      一行被测树都不读。** ⇒ 它**够不着**「目标定得对不对」，也**不会**因为产品代码变了而红；
+      它买到的只有一样：**这四条算术关系没人能悄悄写歪**。
+      「目标定得对不对」是人的判断，依据逐条写在表的第三栏里（同 `CAP_ARCHIVE` 的 `B1` 口径）。
+    ⚠ 也因为它不读树，它**不是空真**：分母是三张非空表，`R11b`/`R11d` 各自的地板就是
+      「表非空」，空了下面 `len()` 对拍立刻两向点名。
+    """
+    print(head("§S5f 收工目标的算术闭合〔`K-R131` `KR131D3`〕"))
+    print("  🔴 **目标只许有一处住址** —— 就是这三张表。`FRONTEND_PIN` 第三栏只写"
+          "「谁来改」，不写目标；散文里再出现一份目标就是 `K-R131` 治的那个病本身。")
+    print(f"  全盘目标（`FRONTEND_GOAL_OVERALL`，出处 `DECISIONS.md#R63` 裁定三）"
+          f"**{len(FRONTEND_GOAL_OVERALL)} 处**：")
+    for f, (place, why_id, why) in FRONTEND_GOAL_OVERALL.items():
+        print(f"    {place:<34s}{f}")
+        print(f"        依据：{why_id} —— {why}")
+    print(f"  非入口落点（`FRONTEND_NON_ENTRY`）**{len(FRONTEND_NON_ENTRY)} 份** —— "
+          f"有调用形状、但不是用户要去装东西的那一处：")
+    for f, why in FRONTEND_NON_ENTRY.items():
+        print(f"    {f}\n        理由：{why}")
+
+    # ── R11d：逐组目标表与分组表**同一批组** ────────────────────────────────
+    gi = set(FRONTEND_GOAL_PER_ITEM)
+    gs = set(SPLIT_GROUPS)
+    only_goal, only_split = sorted(gi - gs), sorted(gs - gi)
+    if only_goal:
+        red("R11d", f"`FRONTEND_GOAL_PER_ITEM` 里这几组**不在 `SPLIT_GROUPS` 里**："
+                    f"{', '.join(only_goal)} —— 给一个不存在的组写了目标")
+    if only_split:
+        red("R11d", f"`SPLIT_GROUPS` 里这几组**没有目标**：{', '.join(only_split)} —— "
+                    f"新切出一组就要同拍给它一行目标，否则它的收工判据是空的")
+    if not only_goal and not only_split:
+        ok(f"R11d 逐组目标表与分组表同一批组（{len(gi)} 组，两向差集都空）")
+        print(f"  ✓ R11d 两表组名逐字相等（{len(gi)} 组，目标→分组 0 · 分组→目标 0）")
+
+    # ── R11c：豁免与全盘目标不许相交 ──────────────────────────────────────
+    both = sorted(set(FRONTEND_NON_ENTRY) & set(FRONTEND_GOAL_OVERALL))
+    if both:
+        red("R11c", f"这几份**既在全盘目标里、又被划成非入口**：{', '.join(both)} —— "
+                    f"一份文件不能同时是「那几处之一」和「不是入口」")
+    else:
+        ok("R11c 非入口名单与全盘目标名单不相交")
+        print("  ✓ R11c 两张名单交集为空")
+
+    # ── R11b：豁免不许是死钉 ──────────────────────────────────────────────
+    union = set()
+    for g, (goal, _why) in FRONTEND_GOAL_PER_ITEM.items():
+        union |= set(goal)
+    dead = sorted(set(FRONTEND_NON_ENTRY) - union)
+    if dead:
+        red("R11b", f"这几条豁免**没有任何一组的目标用到**：{', '.join(dead)} —— "
+                    f"一条永远不会被触发的豁免只会让下一个人以为这里判过了")
+    else:
+        ok(f"R11b 非入口名单每一条都真的出现在某一组的目标里（{len(FRONTEND_NON_ENTRY)} 条）")
+        print(f"  ✓ R11b {len(FRONTEND_NON_ENTRY)} 条豁免逐条有落点")
+
+    # ── R11a：算术闭合（本节的正题）────────────────────────────────────────
+    lhs = union - set(FRONTEND_NON_ENTRY)
+    rhs = set(FRONTEND_GOAL_OVERALL)
+    print(f"  ⇒ 五组目标并集 **{len(union)} 份** － 非入口 **{len(FRONTEND_NON_ENTRY)} 份** "
+          f"= **{len(lhs)} 处**；全盘目标 **{len(rhs)} 处**")
+    only_items = sorted(lhs - rhs)
+    only_all = sorted(rhs - lhs)
+    if only_items:
+        red("R11a", f"这几份**是某一组的目标、却不在全盘目标名单里**：{', '.join(only_items)} "
+                    f"—— 算术不闭合：某一件打算收到一处新地方，而「全盘一共收成几处」"
+                    f"那张名单没跟着改。⚠ **两边都要人来裁**，别顺手改一侧让它绿")
+    if only_all:
+        red("R11a", f"全盘目标里这几处**没有任何一组认领**：{', '.join(only_all)} —— "
+                    f"名单上写着要收到这里，而五件谁都没把它当目标 ⇒ 这一处收工那天不会有人去做")
+    if not only_items and not only_all:
+        ok(f"R11a 五组目标的并集（扣掉非入口）逐字等于全盘目标名单（{len(rhs)} 处，两向差集都空）")
+        print(f"  ✓ R11a 算术闭合（组→全盘 0 · 全盘→组 0）")
+    for f in sorted(lhs & rhs):
+        ok(f"R11 目标文件 `{f}` 两侧都在")
 
 
 def section_discipline_a(texts, cmds_now, claims, cmd_addr, wrapper: str):
@@ -1061,6 +1279,7 @@ def main() -> int:
     cmds_now = [r_[2] for r_ in rows]
     section_split_closure(cmds_now)
     section_frontend_ratchet(texts, cmds_now, wrapper)
+    section_frontend_goal_closure()
     section_discipline_a(texts, cmds_now, claims, cmd_addr, wrapper)
 
     # ── §S6 `Side` 栏复量（D4：只量代价，不许翻） ───────────────────────────────
@@ -1128,7 +1347,7 @@ def main() -> int:
     print(head("裁决"))
     # 🔴 门禁那一格的读数行：`run_gate` 靠「N passed」认这一格**真的跑了**
     #   （`0 passed 不是绿` 是它的另一条判定）。〔`K-R128` 09-15 加〕
-    print(f"  installface: {len(PASSED)} passed（分母 = `§S5c`/`§S5d`/`§S5e` 三节逐条记下的"
+    print(f"  installface: {len(PASSED)} passed（分母 = `§S5c`/`§S5d`/`§S5e`/`§S5f` 四节逐条记下的"
           f"**过了**的判定条数，`len()` 现算 —— ⚠ `R1`–`R7` 那七条**不在这个数里**："
           f"它们只在红的时候出声，没有逐条的「过了」事件 ⇒ 这个数**不是**"
           f"「本尺子judge过的全部条数」）")
@@ -1137,9 +1356,11 @@ def main() -> int:
             print(f"  RED [{tag}] {msg}")
         print(f"\nRULER: FAIL（{len(RED)} 条）")
         return 1
-    print("  没有红。⚠ 「没有红」只说明上面那**十**条判定过了（`R1`–`R7` ＋ `K-R128` 的 "
-          "`R8`/`R9`/`R10`），**不说明归档表的每一格判断是对的**（诚实边界 B1），"
-          "也**不说明 `parity_ledger.rs` 被 `§S5e` 判过**（那一份逐字判不了，闸在 `§S5c`）。")
+    print("  没有红。⚠ 「没有红」只说明这几条判定过了（`R1`–`R7` ＋ `K-R128` 的 "
+          "`R8`/`R9`/`R10` ＋ `K-R131` 的 `R11`），**不说明归档表的每一格判断是对的**"
+          "（诚实边界 B1），**不说明 `parity_ledger.rs` 被 `§S5e` 判过**"
+          "（那一份逐字判不了，闸在 `§S5c`），也**不说明收工目标定得对**"
+          "（`R11` 只判算术闭合，诚实边界 B9）。")
     print("\nRULER: OK")
     return 0
 
