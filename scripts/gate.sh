@@ -33,9 +33,9 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕19 格
-# │ 〔自述·点名〕hooks · copy2 · shellcheck · ci-e2e-prereq · fmt · fmt-daemon · winchk · winchk-daemon ·
-# │   cargo · deadcode · generated · daemon · tsc · npm ·
+# │ 〔自述·格数〕20 格
+# │ 〔自述·点名〕hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · fmt · fmt-daemon ·
+# │   winchk · winchk-daemon · cargo · deadcode · generated · daemon · tsc · npm ·
 # │   ccm e2e/ccm-print-parity · ccm e2e/ccm-rbind-title · ccm e2e/ccm-cli ·
 # │   ccm e2e/ccm-contract-parity · pb check
 # │ 〔自述·现物〕四套 e2e 的被测文件：`e2e/ccm-print-parity.sh` · `e2e/ccm-rbind-title.sh` ·
@@ -45,6 +45,9 @@
 # │   `.github/workflows/ci.yml` 现读**（那一段 `FILES=` ＋ 它下面那条覆盖面地板行），
 # │   判定逐字写在下面那个 `gate_shellcheck` 函数里（`K-R122` 09-14 第 17 格）。
 # │ 〔自述·现物〕`ci-e2e-prereq` 那一格的判据本体：`evidence/K-R122-ruler.py`（`K-R122` 09-14 第 18 格）。
+# │ 〔自述·现物〕`release-gate` 那一格的判据本体：`evidence/K-R124-ruler.py`（`K-R124` 09-15 第 20 格）
+# │   —— 它与 `.github/workflows/ci.yml` 里那一步跑的是**同一份文件**，不是两份抄件；
+# │   被测对象是 `.github/workflows/release.yml`，它顺带调 `scripts/release-notes.mjs --check`。
 # │ 〔自述·现物〕`winchk-daemon` 那一格没有独立的判据文件 —— 它就是一趟
 # │   `cargo check --all-targets`，target 是 `x86_64-pc-windows-gnu`，跑在
 # │   `remote-daemon-proto` 那个 workspace 上（`K-R122` 09-14 第 18 格）。
@@ -824,6 +827,28 @@ run_gate shellcheck '不是「几条断言过了」：这个数是**从 `.github
 run_gate ci-e2e-prereq '判过的 e2e 调用行数（`ci.yml` 的 `steps:` 里形如 `assert-pass-floor.sh <套件> <地板>` 的 `run:`，现打 20 条），其中「被测对象是后端二进制」的那几条逐条要求同 job 里有一条 `cargo build` 排在它前面。⚠ 它**不跑任何 e2e**，只读盘上三份文本 ⇒ 「前置齐了」不等于「那一套会绿」；⚠ 认「要不要二进制」靠一个字面量、认「有 build」靠 `cargo build` 四个字，两处的失效形状逐条写在判据本体的头注里' \
          python3 evidence/K-R122-ruler.py
 
+# ── `release-gate`：**发版那条流水线的两件事**（`K-R124` `KR124D1`/`KR124D2`，09-15，第 20 格）──
+#
+# ## 题面：一条**从加进去那天起就不可能过**的守卫，在本地一个字都看不见
+#
+# `K-R114`（09-14，`d1a0552`）在 `ci.yml` 里加了「`release.yml` 手工触发守卫」，判据本体
+# 整段写在 `run: |` 块里。而 **runner 会把 `run:` 里的 `${{ … }}` 先求值再交给 shell**
+# ⇒ 它要比的那个字面渲染后变成 `"false"`，与盘上那串模板**在三个触发器上都必不相等**。
+# 云端实打读数住 `evidence/K-R123-发版读数.md § 1.3`。
+#
+# 🔴 **为什么坏了一个月没人看见**（这一半才是本格存在的理由）：那段判据用 `yaml.safe_load`
+#   写，而沙箱镜像里 `python3 -c 'import yaml'` 是 `ModuleNotFoundError`
+#   ⇒ **它在本地一次都跑不起来**；而 `ci.yml` 里它前面那一步（shellcheck）先红，
+#   `-e` 带着它一起没执行 ⇒ 云端也**从来没露过面**。两头都看不见。
+# ⇒ 本格把它收进本地门禁：判据本体搬到 `evidence/K-R124-ruler.py`（不依赖 PyYAML，
+#   自带 YAML 子集切块器），**CI 那一步与本格跑的是同一份文件**，不是两份抄件。
+#
+# ⚠ 射程与买不到的东西逐条写在那份文件的头注里，这里不复述一份（复述就会漂 ——
+#   与上面 `ci-e2e-prereq` 那一格同一条取法）。放在那儿也是为了能对着变异过的副本跑死值验
+#   （`K_R124_ROOT=<副本>` / `RELEASE_WORKFLOW=<某份 release.yml>`），不必去动真工作树。
+run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：三条地板 ＋ ①触发得了 ②手工默认不发布 ③`env.PUBLISH` 字面 ④两处发布步骤的闸 ⑤CI 门的闸 ⑥两处发布步骤各自的正文来源 ⑦生成器排在发布步骤前面 ⑧生成器吐得出本版正文）。⚠ 它**不执行 GitHub 的表达式求值器**，也**不跑那条流水线** ⇒ 「盘上这份文本满足这几条」不等于「云端那一趟会绿」；⚠ 「往 Release 上写」只认两种形状（`softprops/action-gh-release` 的 `uses:` · `run:` 里的 `gh release`/`gh api …/releases`），换第三种路子上传它看不见；⚠ 正文**写得对不对**它一个字都不判' \
+         python3 evidence/K-R124-ruler.py
+
 # ── 格式漂移 ────────────────────────────────────────────────────────────────
 #
 # 🔴 **这一格补的是本文件头注里那条「归 PM」的第 ②**（09-10 落，PM）。
@@ -1404,9 +1429,9 @@ fi
 #   把真正要看的诊断顶下去。
 GATE_BLIND=(
   "windows-runner|Windows runner 上才犯的那一族 —— 本门禁的 npm / tsc / e2e 全跑在 Linux 上，路径分隔符恒是 /。K-R119 那趟云端 vitest 的唯一一条红（1 failed / 1725 passed）就是这一形，本机在构造上红不了"
-  "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。⚠ 这一条本件收窄过一次：ci-e2e-prereq 那一格今天判的是它的**一个切片**（e2e 步骤的 build 前置齐不齐），**其余全部仍然没人看**"
+  "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。⚠ 这一条已经被收窄过两次，两次都只割走一个切片：ci-e2e-prereq 判 ci.yml 里 e2e 步骤的 build 前置齐不齐（K-R122）；release-gate 判 release.yml 的触发器、env.PUBLISH 字面、两处发布步骤与 CI 门那一步的 if、以及两处发布步骤的正文来源（K-R124）。**其余全部仍然没人看** —— 包括 ci.yml 那 8 个 job 的 runner/工具链/needs/缓存，和 release.yml 里除上面点名那几处以外的每一步"
   "msvc-abi|MSVC ABI 专属的那一类跨平台编译问题 —— 两格 Windows 交叉检查用的都是 -gnu（沙箱里没有 zig，ring 的 build script 缺 lib.exe）。只在 msvc 上才犯的毛病本门禁盖不到"
-  "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁断网跑（--network none），它一次 gh run view 都做不到。GATE: OK 说的是这棵树在本机这 18 格上的样子，不是它在云端的样子"
+  "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁断网跑（--network none），它一次 gh run view 都做不到。GATE: OK 说的是这棵树在本机这几格上的样子（几格由裁决行现算，这里刻意不写死一个数——上一版这里写着 18 而盘上已经是 19），不是它在云端的样子"
 )
 gate_print_blind() {
   printf 'GATE: 射程 —— 上面那行只对它自己那几格负责；下面这 %s 件事**本门禁不看**：\n' "${#GATE_BLIND[@]}"
@@ -1429,7 +1454,10 @@ if [ "${#fails[@]}" -eq 0 ]; then
   # 🔴 `K-R122`（09-14）：**16 → 19**，加了三格 —— `shellcheck`（第 17 格）·
   #   `ci-e2e-prereq`（第 18 格）· `winchk-daemon`（第 19 格）。三格都是
   #   「CI 那边有人看、本门禁一个字都看不见」的那一维（`KR122D2` 甲）。
-  echo "GATE: OK —— 19 格全绿（hooks · copy2 · shellcheck · ci-e2e-prereq · fmt · fmt-daemon · winchk · winchk-daemon · cargo · deadcode · generated · daemon · tsc · npm · 四套 ccm e2e · pb check），可以出货"
+  # 🔴 `K-R124`（09-15）：**19 → 20**，加的是 `release-gate`（第 20 格）。它治的不是
+  #   「CI 有、本地没有」，是**更坏的一档**：CI 里那一步从加进去那天起就不可能过，
+  #   而它在本地跑不起来（判据本体用了沙箱里没有的 PyYAML）⇒ **两头都看不见**。
+  echo "GATE: OK —— 20 格全绿（hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · fmt · fmt-daemon · winchk · winchk-daemon · cargo · deadcode · generated · daemon · tsc · npm · 四套 ccm e2e · pb check），可以出货"
   gate_print_blind
   exit 0
 fi
