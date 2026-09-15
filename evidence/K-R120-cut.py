@@ -13,9 +13,14 @@
 
 ## 刀
 
-    d1   `KR120D1` ① —— 七处里**只漏 `Cargo.lock`**（把它按补丁位 -1 退回上一档，
-                       另外六处不动）⇒ 门禁 `winchk`（`cargo check --locked`）必须红。
+    d1   `KR120D1` ① —— 七处里**只漏 `Cargo.lock`**（把它退回上一档，另外六处不动）
+                       ⇒ 门禁 `winchk`（`cargo check --locked`）必须红。
                        **这是已知答案的回测**（`K-R118` `§0a` 就是这么判的）。
+                       🔴 **第一版是 CRASH，不是读数**：`_patch(cur, -1)` 在 `patch == 0`
+                       时算出 `3.8.-1`，`cargo` 当场 `failed to parse lock file`，
+                       winchk / cargo / deadcode 三格一起红在**解析**上。
+                       现在 `_patch` 会借位，读数与病历都留在
+                       `evidence/K-R120-deathvalue.md` 里。
     d2   `KR120D1` ② —— 「只改五处」那一形：**只把权威源 `package.json` 再 bump 一档**，
                        另外五处不动 ⇒ `the_release_version_is_the_same_in_all_six_places`
                        必须红。锚点与 `K-R118` 的 `d5` **逐字相同**。
@@ -28,8 +33,14 @@
                        **这一刀的答案本身就是读数**：不红 ⇒ 如实登记「这一形不在射程」。
     d5   `KR120D2` ②b —— breaking 段**被埋在列表里**：把最上面那一节的头两个 `###`
                        整块对调 ⇒ 新判据第二条判定必须红。
-    d6   `KR120D2` ③ —— 阴性对照：把新那道闸**整个拿掉**（`#[ignore]`）＋ 刀 `d3`
-                       ⇒ 一条都不红。
+    d6   `KR120D2` ③ —— 阴性对照：把新那道闸插进去的那**一整块删掉** ＋ 刀 `d3`
+                       ⇒ 一条都不红。🔴 **第一版用 `#[ignore]`，那一刀打中了台子自己**
+                       （`shared_crate_registry::every_ignored_test_still_has_someone_who_triggers_it`
+                       当场红）—— 读数与病历留在 `evidence/K-R120-deathvalue.md`。
+    d7   反方向 —— 七处一起**退回**上一档、`CHANGELOG.md` 留在新号上 ⇒ 新闸必须红。
+                       它证的是这道闸**两个方向都有牙**（`d3` 是另一个方向）。
+    d8   「把实现整个退掉」那一问 —— 七处退回 ＋ 删掉 `CHANGELOG.md` 最上面那一整节，
+                       只留那道新闸 ⇒ **预期全绿**（它守的是一致，不是某个具体的号）。
 
 ## 跑法（从工作树根起跑）
 
@@ -38,6 +49,7 @@
     python3 evidence/K-R120-cut.py --revert
 """
 
+import hashlib
 import json
 import os
 import shutil
@@ -64,8 +76,11 @@ SECTION = "## ["
 # 与判据里 `BREAKING_MARK` 同一个词 —— 🔴 **从判据里读**，不在本文件写死。
 MARK_DECL = 'const BREAKING_MARK: &str = "'
 
-GATE_FN = "    fn the_changelog_top_section_is_the_version_we_ship() {"
-GATE_ATTR = "    #[test]\n" + GATE_FN
+# 本轮插进 `doc_claim_registry.rs` 的那一整块的两端（`d6` 用它整块摘掉那道闸）。
+BLOCK_HEAD = "\n    /// 读仓根的一份文本。"
+BLOCK_TAIL = "\n    /// 〔audit-0805 08-06〕**文档里写成 `CONST = 数` 的"
+# 基点 `0a92892` 上那份 `doc_claim_registry.rs` 的整份 md5 —— `d6` 摘完自证用。
+REGISTRY_MD5_AT_BASE = "3f2e8c3cf441eb67a3c64437d46fcac2"
 
 
 def breaking_mark(files) -> str:
@@ -78,10 +93,27 @@ def breaking_mark(files) -> str:
 
 
 def _patch(cur: str, delta: int) -> str:
+    """往前 / 往后一档 —— 🔴 **算出来的每一位都必须 >= 0**。
+
+    第一版只写了 `patch + delta`，`patch == 0` 时算出 `3.8.-1` ——
+    那不是「落后一档」，那是一份**语法都不合法**的版本号：`cargo` 当场
+    `failed to parse lock file`，winchk / cargo / deadcode 三格一起红在解析上。
+    按 `brief` 第 7 条，那是**类型契约破了 ⇒ CRASH，不是读数**。
+    ⇒ 借位：`patch` 到 0 就退 `minor`，`minor` 到 0 就退 `major`。
+    """
     parts = cur.split(".")
     if len(parts) != 3:
         raise SystemExit(f"🔴 拒绝落刀：现值 {cur!r} 形状不像 X.Y.Z")
-    return f"{parts[0]}.{parts[1]}.{int(parts[2]) + delta}"
+    a, b, c = (int(x) for x in parts)
+    if delta >= 0:
+        return f"{a}.{b}.{c + delta}"
+    if c > 0:
+        return f"{a}.{b}.{c - 1}"
+    if b > 0:
+        return f"{a}.{b - 1}.0"
+    if a > 0:
+        return f"{a - 1}.0.0"
+    raise SystemExit(f"🔴 拒绝落刀：{cur!r} 已经退无可退")
 
 
 def _current(files) -> str:
@@ -197,13 +229,68 @@ def bury_breaking_block(files):
 
 
 # ── d6：把新那道闸整个拿掉 ＋ d3 ────────────────────────────────────────────
-def mute_the_new_gate(files):
+def remove_the_new_gate(files):
+    """把本轮插进 `doc_claim_registry.rs` 的那一整块**整块删掉**。
+
+    🔴 **第一版不是这么切的，而它打中了台子自己**：那一版给判据挂 `#[ignore]`，
+    结果 `shared_crate_registry::every_ignored_test_still_has_someone_who_triggers_it`
+    当场红（逐字「这些 `#[ignore]` 测试没有任何 e2e 脚本会点名它们」）——
+    阴性对照要的是「一条都不红」，而那一条红**与被测对象无关**，是刀自己招来的。
+    ⇒ 换成整块摘除，并用**整份文件的 md5** 自证「退回基点那一份，一个字节不差」。
+    """
     text = files[REGISTRY]
-    n = text.count(GATE_ATTR)
-    if n != 1:
-        raise SystemExit(f"🔴 拒绝落刀：`{REGISTRY}` 里锚点命中 {n} 次，应当 1 次")
-    files[REGISTRY] = text.replace(GATE_ATTR, "    #[test]\n    #[ignore]\n" + GATE_FN)
-    return "新那道闸挂上 `#[ignore]`（编译照旧、判据不跑）；锚点命中 1 次"
+    for mark in (BLOCK_HEAD, BLOCK_TAIL):
+        n = text.count(mark)
+        if n != 1:
+            raise SystemExit(f"🔴 拒绝落刀：`{REGISTRY}` 里锚点 {mark[:24]!r}… 命中 {n} 次，应当 1 次")
+    lo, hi = text.index(BLOCK_HEAD), text.index(BLOCK_TAIL)
+    if lo >= hi:
+        raise SystemExit("🔴 拒绝落刀：两端次序反了，段界读法坏了")
+    carved = text[:lo] + text[hi:]
+    got = hashlib.md5(carved.encode("utf-8")).hexdigest()
+    if got != REGISTRY_MD5_AT_BASE:
+        raise SystemExit(
+            f"🔴 拒绝落刀：摘完的 md5 是 {got}，而基点那份是 {REGISTRY_MD5_AT_BASE} ——\n"
+            f"   说明这一块之外还有别的改动，这一刀会把它一起带走。先核清楚再切。"
+        )
+    files[REGISTRY] = carved
+    return (f"整块摘掉本轮插进 `{REGISTRY}` 的那 {text[lo:hi].count(chr(10))} 行；"
+            f"两端锚点各命中 1 次；摘完整份 md5 == 基点那份（{REGISTRY_MD5_AT_BASE}）")
+
+
+# ── d7：反方向 —— 七处退回，CHANGELOG 留在新号上 ────────────────────────────
+def unbump_all_but_changelog(files):
+    """把版本 bump 这一半**整个退掉**，而 `CHANGELOG.md` 那一节留着。
+
+    它答的是固定项那一问「把实现整个退掉，还有多少条新断言仍绿」的**一半**：
+    退掉七处而留下 CHANGELOG ⇒ 新闸必须红（方向与 `d3` 相反）。
+    ⚠ 两半**一起**退掉时新闸是**绿**的，而那是对的 —— 它守的是「一致」，
+      不是「必须是某个具体的号」。这一点在交回时单列，别读成「退掉也不红」。
+    """
+    cur = _current(files)
+    prev = _patch(cur, -1)
+    note = _apply_edits(files, _edits(cur, prev), f"七处一起 {cur} → {prev}")
+    return note + f"；`{CHANGELOG}` 一个字节没动（最上一节仍是 {cur}）"
+
+
+# ── d8：把本件的实现整个退掉，只留那道新闸 ──────────────────────────────────
+def revert_the_whole_implementation(files):
+    """七处一起退回上一档 **并且** 把 `CHANGELOG.md` 最上面那一整节删掉。
+
+    它答的是固定项那一问：「**把实现整个退掉，还有多少条新断言仍绿**」。
+    预期是**绿** —— 而那是对的：本轮那道闸守的是「最上一节 == 那七处」这个**一致性**，
+    不是「必须是某个具体的号」。退回去之后两侧仍然一致 ⇒ 它当然不该红。
+    它的牙由 `d3`（CHANGELOG 落后）与 `d7`（CHANGELOG 超前）两个方向分别证。
+    """
+    cur = _current(files)
+    prev = _patch(cur, -1)
+    note = _apply_edits(files, _edits(cur, prev), f"七处一起 {cur} → {prev}")
+    lines, at, end = _top_section(files[CHANGELOG])
+    if f"[{cur}]" not in lines[at]:
+        raise SystemExit(f"🔴 拒绝落刀：最上面那一节的标题里没有 `[{cur}]`，逐字是 {lines[at]!r}")
+    files[CHANGELOG] = "\n".join(lines[:at] + lines[end:])
+    return (note + f"；并删掉 `{CHANGELOG}` 最上面那一整节 "
+            f"`{lines[at]}`（第 {at + 1}–{end} 行，{end - at} 行），段界锚点命中 1 次")
 
 
 def compose(*steps):
@@ -221,7 +308,11 @@ CUTS = {
            drop_breaking_block),
     "d5": ("KR120D2 ②b breaking 段被埋到第二位 ⇒ 新闸第二条判定必须红", bury_breaking_block),
     "d6": ("KR120D2 ③ 阴性对照：新闸整个拿掉 ＋ d3 ⇒ 一条都不红",
-           compose(mute_the_new_gate, bump_all_but_changelog)),
+           compose(remove_the_new_gate, bump_all_but_changelog)),
+    "d7": ("KR120D2 反方向：七处一起退回上一档、CHANGELOG 留在新号上 ⇒ 新闸必须红",
+           unbump_all_but_changelog),
+    "d8": ("把实现整个退掉（七处退回 ＋ 删掉 CHANGELOG 最上一节），只留那道新闸 ⇒ 预期全绿",
+           revert_the_whole_implementation),
 }
 
 
