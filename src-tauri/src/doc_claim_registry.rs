@@ -1912,6 +1912,275 @@ mod tests {
         );
     }
 
+    /// 读仓根的一份文本。
+    ///
+    /// ⚠ **刻意包成函数，不在 `let` 右边直接写 `read_to_string`**：
+    /// `needle_anchor_registry::corpus_vars` 按「`let X = …read_to_string(…)`」播种
+    /// 「语料变量」，而它的传递闭包**按名字**跑一层 —— 在本文件里多播一个名字出去，
+    /// 会把同文件别处**早就存在**的匹配一起卷进人群，那条递减棘轮当场涨一格。
+    /// 〔与 `frozen_daemon_census::read_frozen` 那条头注同源，09-14 实打过一次〕
+    fn read_repo_file(rel: &str) -> String {
+        std::fs::read_to_string(repo_root().join(rel))
+            .unwrap_or_else(|e| panic!("读 {rel} 失败：{e}"))
+    }
+
+    /// 本仓 breaking 段的**约定名** —— `CHANGELOG.md` 里标题带这个词的那个 `###` 就是它。
+    ///
+    /// 〔现打于 `track/k-r120` 交回那一刻，量法
+    /// `grep -c '^### .*会改变已有行为' CHANGELOG.md` = **2**（`3.8.0` 与 `3.7.0` 各一处）。
+    /// **这个数不进判据** —— 下面只有一条 `≥ 1` 的地板，它挡的是
+    /// 「这个约定被整份抹掉、而『不许被埋』那条从此零命中地绿」。〕
+    const BREAKING_MARK: &str = "会改变已有行为";
+
+    /// 〔`K-R120` `KR120D2`，09-14〕**`CHANGELOG.md` 最上面那一节的版本号，
+    /// 必须就是这棵树此刻要发的那个版本号。**
+    ///
+    /// # 它从哪来 —— 一条**现打出来**的缺口，不是设想
+    ///
+    /// `K-R118` 的死值验第 ⑦ 刀（刀具住 `evidence/K-R118-cut.py` 的 `d7`）：
+    /// 把版本号那六处 ＋ `src-tauri/Cargo.lock` **一起** bump，而 `CHANGELOG.md`
+    /// 一个字不动 ⇒ 实测 `GATE: OK —— 16 格全绿，一条都没红`
+    /// （逐字读数住 `evidence/K-R118-deathvalue.md#§E3`，本条不抄那份快照）。
+    /// ⇒ 「**版本号 bump 了而 CHANGELOG 没跟**」这一形当时**没有任何东西在守**。
+    /// 它的后果正是本区最贵的那一族：一次**静默的行为改变** —— 用户拿到的包只涨了小版本号，
+    /// 而里面有几条会让他原来的用法当场失效。
+    ///
+    /// # 🔴 判的**不是**「文件里有没有出现这个版本号串」
+    ///
+    /// 那种判法一个字都买不到：版本号写在这份文件的**任何地方**（一句散文、一条旧条目、
+    /// 甚至一段注释）都能骗过它。本条判的是**最上面那一节标题里的那个版本号**。
+    ///
+    /// # 为什么只跟**一处**比，而不是把七处都读一遍
+    ///
+    /// 「七处」今天已经各有各的家，本条只接最后那一段，**不再复述一份锚点表**
+    /// （`brief` 13b：闭集只许有一个住址）：
+    ///
+    /// | 谁 ↔ 谁 | 由谁守 |
+    /// |---|---|
+    /// | 权威源 `package.json` ↔ 另外四处（`Cargo.toml` · `tauri.conf.json` · `README.md` ×2 · `README.en.md`） | 同模块的 [`the_release_version_is_the_same_in_all_six_places`] |
+    /// | `src-tauri/Cargo.toml` ↔ `src-tauri/Cargo.lock` | 门禁 `winchk` 那一格的 `cargo check --locked`；发版路上另有 `release.yml` 的 `Verify version consistency with tag`（四处对账） |
+    /// | **`CHANGELOG.md` 最上一节 ↔ `src-tauri/Cargo.toml`** | **本条**（`env!("CARGO_PKG_VERSION")`，编译期注入，不抠锚点） |
+    ///
+    /// ⇒ **三段接起来**才等于「最上一节 == 那七处」。少任何一段都不等于 ——
+    /// 上面那两行不是背景，是本条结论的**承重件**。
+    ///
+    /// # 第二条判定：breaking 段不许被埋在列表里
+    ///
+    /// `R77` 裁的是「既然不走 `4.0.0`，那几条破坏性变更**必须写成显眼的 breaking 段**」——
+    /// 而「显眼」在机器面上唯一判得动的那一半是**位置**：最上面那一节里若有 breaking 段，
+    /// 它必须是**第一个** `###`。「**藏在列表里**」正是那条裁定点名要避开的形状。
+    ///
+    /// # ⚠ 诚实边界（三条，别读宽）
+    ///
+    /// 1. 🔴 **「该不该有 breaking 段」本条判不了，也不判** —— 机器分不出「这一版真的没有
+    ///    破坏性变更」与「有而没写」。硬要求每一节都有，只会把它变成谁都会写的一句空话，
+    ///    而 `references/writing.md` 第三节逐字反对这一形（那种闸的真阳率压不住噪声）。
+    ///    ⇒ **这一档登记为「不在射程」，不是「做到了」。**
+    /// 2. breaking 段靠 [`BREAKING_MARK`] 这个**约定词**认。换一种说法另起一节 ⇒ 本条静默。
+    ///    挡这一形的是下面那条**地板**（全文至少一处），它只保证「这个约定没被整份抹掉」，
+    ///    **不保证最上面那一节里那一处还在**。
+    /// 3. 本条只读 `CHANGELOG.md` 一份文件 ＋ 一个编译期常量。那一节里**写的内容对不对、
+    ///    全不全**（六条是不是真的六条、有没有漏掉一条）一个字都不判 ——
+    ///    那是人裁的，`K-R118` 交回时逐字写过「**用户可见**那一层给不出判别式」。
+    #[test]
+    fn the_changelog_top_section_is_the_version_we_ship() {
+        /// 段界记号。**一律走具名常量** —— `needle_anchor_registry` 那条递减棘轮数的正是
+        /// 「拿磁盘语料做裸字面量匹配」，本条一处都不往上加。
+        const TOP_MARK: &str = "## ";
+        /// 版本节的标题形状：`## [X.Y.Z] — 日期`。
+        const SECTION_MARK: &str = "## [";
+        /// 节内子标题。
+        const SUB_MARK: &str = "### ";
+
+        // 🔴 **要发的那个版本号从 `src-tauri/Cargo.toml` 编译期注入**，本条不自己再抠一遍锚点
+        //    —— 同一个值不许长出第二个住址（`brief` 13b）。
+        let shipping = env!("CARGO_PKG_VERSION");
+        let changelog = read_repo_file("CHANGELOG.md");
+
+        let heading = changelog
+            .lines()
+            .find(|l| l.starts_with(SECTION_MARK))
+            .unwrap_or_else(|| {
+                panic!(
+                    "`CHANGELOG.md` 里一行 `{SECTION_MARK}…` 都找不到 —— 节标题的写法变了，\n\
+                     本条从此零命中地绿。**先修段界读法，再谈版本号对不对。**"
+                )
+            });
+
+        let top_version = heading
+            .trim_start_matches('#')
+            .trim()
+            .strip_prefix('[')
+            .and_then(|rest| rest.split_once(']'))
+            .map(|(v, _)| v)
+            .unwrap_or_else(|| panic!("最上面那一节的标题抠不出 `[…]`，它逐字是：{heading}"));
+
+        assert_eq!(
+            top_version, shipping,
+            "`CHANGELOG.md` 最上面那一节写的是 `{top_version}`，而这棵树要发的是 `{shipping}`。\n\n\
+             ★ 本条接的是 `K-R118` `d7` 那一刀现打出来的缺口：那一刀把版本号七处一起 bump、\n\
+             `CHANGELOG.md` 一个字不动 ⇒ 当时 **16 格全绿，一条都没红**。\n\
+             「小版本号 ＋ 没人说的破坏性变更」= 一次静默的行为改变，那是本区最贵的一族。\n\n\
+             出路二选一（**不是**「把这一条放宽」）：\n\
+             ① 版本号真的要 bump ⇒ 在 `CHANGELOG.md` 顶上补 `## [{shipping}] — <日期>` 那一节，\n\
+                破坏性变更写在**最前**（`R77`）；\n\
+             ② 版本号 bump 错了 ⇒ 改回去，七处一起\n\
+                （另外五处由 `the_release_version_is_the_same_in_all_six_places` 看着，\n\
+                 `Cargo.lock` 由 `cargo check --locked` 看着）。\n\n\
+             ⚠ **这条前提本来就该变的时候去哪里重裁**：顶上挂一个 `## [Unreleased]` 会让本条红。\n\
+             本仓至今没用过那种写法（所以这里没有那一档豁免，也就没有一条没夹具的分支）；\n\
+             真要用，去 `doc/RELEASING.md` 把发版次序整个重裁一次 —— 别在这里加一行豁免。"
+        );
+
+        // ── 第二条判定：breaking 段不许被埋在列表里 ──────────────────────────
+        let body: Vec<&str> = changelog
+            .lines()
+            .skip_while(|l| !l.starts_with(SECTION_MARK))
+            .skip(1)
+            .take_while(|l| !l.starts_with(TOP_MARK))
+            .collect();
+        // 抽取器自检：段界真的切到了东西，下面两条不是在空转。
+        assert!(
+            !body.is_empty(),
+            "最上面那一节 `{heading}` 的正文是空的 —— 段界读法坏了，下面两条此刻在空转"
+        );
+
+        // 地板（反空真）：breaking 段那个约定词在整份 `CHANGELOG.md` 里至少还有一处。
+        let mark_lines = changelog
+            .lines()
+            .filter(|l| l.starts_with(SUB_MARK) && l.contains(BREAKING_MARK))
+            .count();
+        assert!(
+            mark_lines >= 1,
+            "整份 `CHANGELOG.md` 里一条带 {BREAKING_MARK:?} 的 `{SUB_MARK}` 标题都没有 ——\n\
+             breaking 段的**约定名**被换掉了，下面那条「不许被埋」从此零命中地绿。\n\
+             换写法可以，但要同一拍把 `BREAKING_MARK` 改过来。"
+        );
+
+        let subs: Vec<&str> = body
+            .iter()
+            .copied()
+            .filter(|l| l.starts_with(SUB_MARK))
+            .collect();
+        if let Some(at) = subs.iter().position(|l| l.contains(BREAKING_MARK)) {
+            assert_eq!(
+                at,
+                0,
+                "`{heading}` 这一节里，breaking 段排在第 {} 个 `{SUB_MARK}`，不是第一个。\n\n\
+                 ★ `R77` 裁的是「既然不走大版本号，那几条破坏性变更**必须写成显眼的 breaking 段**」\n\
+                 —— 而「小版本号 ＋ **藏在列表里**的破坏性变更」正是那条裁定点名要避开的形状。\n\
+                 这一节现在的子标题顺序是：\n{}",
+                at + 1,
+                subs.iter()
+                    .enumerate()
+                    .map(|(i, l)| format!("  {}. {l}", i + 1))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
+    }
+
+    /// 〔`K-R120` 收窗口补，09-14〕**两份 README 里「这份文档此刻自称的版本」那一处，
+    /// 必须就是这棵树此刻要发的那个版本号。**
+    ///
+    /// # 它从哪来 —— 收窗口现打逮到的漏，而漏在**人群**上，不在实现上
+    ///
+    /// 本件按 `KR120D1` 把「七处」一次改齐到 `3.8.0` 之后，收窗口现打逮到
+    /// `README.md` 与 `README.en.md` 的发布沿革段抬头仍写着 `当前发布 **v3.7.0**` /
+    /// `current release **v3.7.0**` —— **这棵树会带着「当前发布 v3.7.0」把 3.8.0 发出去。**
+    ///
+    /// 🔴 **成因不是「有人改漏了」，是「人群里根本没有它」**：那一件的「七处」＝
+    /// [`the_release_version_is_the_same_in_all_six_places`] 数得到的那几处 ＋ `Cargo.lock`，
+    /// 而现打 `grep -c '当前发布\|current release' src-tauri/src/doc_claim_registry.rs`
+    /// **零命中** —— **判据在，而它的人群不含这一处**。
+    /// ★ 这与 `R73` 第五节登记的「判据在、执行面没有」是**同一族的镜像**：执行面在，人群不够。
+    /// 而它的默认结局一样：**静默的绿**。
+    ///
+    /// # 🔴 射程刻意很窄：判「此刻自称的版本」，不判「文档里出现过的所有版本号」
+    ///
+    /// 那两行是**发布沿革**段 —— 现打各含 **11** 个形如 `vX.Y.Z` 的串
+    /// （`v2.19.0` `v2.19.1` `v2.20.0` `v2.21.0` `v2.22.0` `v2.22.2` `v3.3.0` `v3.4.0`
+    /// `v3.5.0` `v3.6.0` ＋ 自称的那一个），其中 **10 个是历史沿革，本来就该停在旧号上**。
+    /// ⇒ 本条只钉**紧跟在那两个锚点之后**的那一个。
+    /// **把整段收进人群 = 下次发版红一片**，那不是守，是拆（`testing.md` 判据硬规则 4：
+    /// 扫描面按**语义**划，不按「碰巧只有它长这样」划）。
+    /// 同理，`README.md` 与 `README.en.md` 里那两句「v3.6.0 与 v3.7.0 的实际产物是 `en-US`」
+    /// 是 09-10 落的**历史订正**，**刻意不在射程里**。
+    ///
+    /// # 跟谁比
+    ///
+    /// 与 [`the_changelog_top_section_is_the_version_we_ship`] 同一条路：
+    /// `env!("CARGO_PKG_VERSION")`（＝ `src-tauri/Cargo.toml` 的 `version`，编译期注入）——
+    /// **不抠第二份权威源锚点**（`brief` 13b）。它与另外五处的一致由
+    /// [`the_release_version_is_the_same_in_all_six_places`] 守，与 `Cargo.lock` 的一致由
+    /// 门禁 `winchk` 那一格的 `cargo check --locked` 守。
+    ///
+    /// # ⚠ 诚实边界（三条）
+    ///
+    /// 1. 人群是**两处，按锚点点名**。README 里别处再长出第三句「当前发布 …」，本条看不见 ——
+    ///    它判的是**这两个锚点**，不是「所有自称」。
+    /// 2. 锚点里带着 markdown 的 `**` ⇒ 排版一改（比如去掉加粗），本条**当场红在
+    ///    「锚点命中 0 次」上**，而不是静默地绿。这是有意的，与那条「六处一致」的 `pick`
+    ///    同一条纪律：命中必须恰好 1 次。
+    /// 3. 本条**不判那一整段散文对不对**（沿革列得全不全、里面的话有没有过期），一个字都不判。
+    #[test]
+    fn the_docs_self_reported_release_is_the_version_we_ship() {
+        let shipping = env!("CARGO_PKG_VERSION");
+
+        // 人群：**两处，按锚点点名**。
+        // ⚠ 刻意写成函数体里的 `let`，不是模块级 `const …: &[…]` ——
+        //   后者要起 `scanning_guard_registry::TABLE_DECLS` 里**已有的**名字（那条元判据
+        //   按名字认表），而往那张闭集里加一个新名字必须同拍改 `MUST_BE_RECOGNISED`，
+        //   两处都不在本件写区。同形先例就在上面那条「六处一致」里（它的 `others` 也是
+        //   函数体里的 `let`）。
+        let places: [(&str, &str, &str); 2] = [
+            ("README.md 发布沿革段抬头", "README.md", "当前发布 **v"),
+            (
+                "README.en.md 发布沿革段抬头",
+                "README.en.md",
+                "current release **v",
+            ),
+        ];
+
+        let mut off: Vec<String> = Vec::new();
+        for (who, file, needle) in places {
+            let doc = read_repo_file(file);
+            let hits = doc.matches(needle).count();
+            assert_eq!(
+                hits, 1,
+                "在 {who}（`{file}`）里，锚点 {needle:?} 命中 {hits} 次（要求恰好 1 次）——\n\
+                 那一行被改写、被挪走，或者排版变了（锚点里带着 markdown 的 `**`）。\n\
+                 **先修锚点再谈版本号对不对**，否则本条会零命中地绿。"
+            );
+            let at = doc.find(needle).expect("上面已断言命中一次") + needle.len();
+            let rest = &doc[at..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+                .unwrap_or(rest.len());
+            let got = &rest[..end];
+            assert!(
+                got.split('.').count() == 3 && got.split('.').all(|s| !s.is_empty()),
+                "{who} 在锚点之后抠到的是 {got:?} —— 形状不像 `X.Y.Z`"
+            );
+            if got != shipping {
+                off.push(format!("  {who}（`{file}`）：{got}"));
+            }
+        }
+
+        assert!(
+            off.is_empty(),
+            "这棵树要发的是 `{shipping}`，而这几处文档**自称**的是别的号：\n{}\n\n\
+             ★ 本条是 `K-R120` 收窗口现打逮到的那个漏的处置：那一拍七处都已经是新号，\n\
+             而这两处**不在任何判据的人群里** ⇒ 这棵树会带着「当前发布 <旧号>」把新版发出去。\n\
+             「判据在、而它的人群不含这一处」与「判据在、执行面没有」是同一族，\n\
+             两边的默认结局都是**静默的绿**。\n\n\
+             修法：把上面点名的那几处改成 {shipping}。\n\
+             ⚠ **只改紧跟锚点的那一个** —— 同一段里另外十个 `vX.Y.Z` 是**历史沿革**，\n\
+             它们本来就该停在旧号上，跟着改就是把沿革改成假的。",
+            off.join("\n")
+        );
+    }
+
     /// 〔audit-0805 08-06〕**文档里写成 `CONST = 数` 的，代码里那个常量必须真是这个数。**
     ///
     /// **这是定框 E12 自己点名的洞**：E12 的 ⚠ 逐字写着「那四个准确的细节数
