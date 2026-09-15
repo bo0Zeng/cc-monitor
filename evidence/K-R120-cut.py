@@ -33,7 +33,9 @@
                        **这一刀的答案本身就是读数**：不红 ⇒ 如实登记「这一形不在射程」。
     d5   `KR120D2` ②b —— breaking 段**被埋在列表里**：把最上面那一节的头两个 `###`
                        整块对调 ⇒ 新判据第二条判定必须红。
-    d6   `KR120D2` ③ —— 阴性对照：把新那道闸插进去的那**一整块删掉** ＋ 刀 `d3`
+    d6   `KR120D2` ③ —— 阴性对照：把本轮插进去的那**几块整个删掉** ＋ 刀 `d3`
+                       （`BLOCK_HEAD..BLOCK_TAIL` 框的是**本轮插进去的全部**，
+                       收窗口补了第二块之后它一起摘；md5 自证仍然成立 —— 摘完就是基点那一份）
                        ⇒ 一条都不红。🔴 **第一版用 `#[ignore]`，那一刀打中了台子自己**
                        （`shared_crate_registry::every_ignored_test_still_has_someone_who_triggers_it`
                        当场红）—— 读数与病历留在 `evidence/K-R120-deathvalue.md`。
@@ -41,6 +43,11 @@
                        它证的是这道闸**两个方向都有牙**（`d3` 是另一个方向）。
     d8   「把实现整个退掉」那一问 —— 七处退回 ＋ 删掉 `CHANGELOG.md` 最上面那一整节，
                        只留那道新闸 ⇒ **预期全绿**（它守的是一致，不是某个具体的号）。
+    d9   收窗口 ① —— 只把两份 README 的「**此刻自称的版本**」退回一档、**其余七处不动**
+                       ⇒ 那条新判据必须红。**这是已知答案的回测**：这一形收窗口那一刻
+                       真的在盘上，而当时 16 格全绿（人群里没有它们）。
+    d10  收窗口 ② —— 阴性对照：把收窗口补的那一段人群**整块摘掉** ＋ 刀 `d9`
+                       ⇒ 一条都不红。
 
 ## 跑法（从工作树根起跑）
 
@@ -76,9 +83,19 @@ SECTION = "## ["
 # 与判据里 `BREAKING_MARK` 同一个词 —— 🔴 **从判据里读**，不在本文件写死。
 MARK_DECL = 'const BREAKING_MARK: &str = "'
 
-# 本轮插进 `doc_claim_registry.rs` 的那一整块的两端（`d6` 用它整块摘掉那道闸）。
+# 本轮插进 `doc_claim_registry.rs` 的那两块的边界。
+# `BLOCK_HEAD .. BLOCK_TAIL` 把**两块一起**框住（`d6` 用它，并用 md5 自证退回了基点那一份）；
+# `BLOCK2_HEAD .. BLOCK_TAIL` 只框**收窗口补的那第二块**（`d10` 用它）。
 BLOCK_HEAD = "\n    /// 读仓根的一份文本。"
+BLOCK2_HEAD = "\n    /// 〔`K-R120` 收窗口补，09-14〕"
 BLOCK_TAIL = "\n    /// 〔audit-0805 08-06〕**文档里写成 `CONST = 数` 的"
+# 第二块那条判据的名字 —— `d10` 摘完自证「摘干净了」用。
+GATE2_FN = "the_docs_self_reported_release_is_the_version_we_ship"
+# 两份 README 里「这份文档此刻自称的版本」那一处的逐字锚点（与判据里那张 `places` 同源）。
+SELF_REPORT = [
+    (README, "当前发布 **v"),
+    (README_EN, "current release **v"),
+]
 # 基点 `0a92892` 上那份 `doc_claim_registry.rs` 的整份 md5 —— `d6` 摘完自证用。
 REGISTRY_MD5_AT_BASE = "3f2e8c3cf441eb67a3c64437d46fcac2"
 
@@ -293,6 +310,46 @@ def revert_the_whole_implementation(files):
             f"`{lines[at]}`（第 {at + 1}–{end} 行，{end - at} 行），段界锚点命中 1 次")
 
 
+# ── d9：只把两份 README 的「此刻自称的版本」退回一档 ────────────────────────
+def self_report_falls_behind(files):
+    """两处 README 自称的版本退回上一档，**另外七处留在新号上**。
+
+    这是 `K-R120` 收窗口那一刀的**已知答案回测**：这一形今天真的发生过 ——
+    七处都改齐了 `3.8.0`，而这两处还写着 `当前发布 **v3.7.0**`，
+    **而当时没有任何判据的人群含它们**（16 格全绿）。
+    """
+    cur = _current(files)
+    prev = _patch(cur, -1)
+    edits = [(f, f"{n}{cur}", f"{n}{prev}") for f, n in SELF_REPORT]
+    note = _apply_edits(files, edits, f"两处「此刻自称的版本」{cur} → {prev}")
+    return note + f"；另外七处仍是 {cur}，一个字节没动"
+
+
+# ── d10：阴性对照 —— 把收窗口补的那一段人群整块摘掉 ＋ d9 ───────────────────
+def remove_the_self_report_gate(files):
+    """把收窗口补进去的那**一整块**（那条 README 自称版本的判据）摘掉。
+
+    摘完自证：那条判据的名字在整份文件里出现 **0** 次。
+    ⚠ 与 `d6` 的区别写清楚：`d6` 摘的是 `BLOCK_HEAD..BLOCK_TAIL`（**两块一起**，
+      并用整份 md5 自证退回基点那一份）；本刀只摘第二块，第一块（CHANGELOG 那道闸）留着。
+    """
+    text = files[REGISTRY]
+    for mark in (BLOCK2_HEAD, BLOCK_TAIL):
+        n = text.count(mark)
+        if n != 1:
+            raise SystemExit(f"🔴 拒绝落刀：`{REGISTRY}` 里锚点 {mark[:26]!r}… 命中 {n} 次，应当 1 次")
+    lo, hi = text.index(BLOCK2_HEAD), text.index(BLOCK_TAIL)
+    if lo >= hi:
+        raise SystemExit("🔴 拒绝落刀：两端次序反了，段界读法坏了")
+    carved = text[:lo] + text[hi:]
+    left = carved.count(GATE2_FN)
+    if left != 0:
+        raise SystemExit(f"🔴 拒绝落刀：摘完 `{GATE2_FN}` 还剩 {left} 处，没摘干净")
+    files[REGISTRY] = carved
+    return (f"整块摘掉收窗口补进 `{REGISTRY}` 的那 {text[lo:hi].count(chr(10))} 行；"
+            f"两端锚点各命中 1 次；摘完 `{GATE2_FN}` 在整份文件里 0 处")
+
+
 def compose(*steps):
     def run(files):
         return " ｜ ".join(s(files) for s in steps)
@@ -313,6 +370,10 @@ CUTS = {
            unbump_all_but_changelog),
     "d8": ("把实现整个退掉（七处退回 ＋ 删掉 CHANGELOG 最上一节），只留那道新闸 ⇒ 预期全绿",
            revert_the_whole_implementation),
+    "d9": ("收窗口①：只把两份 README「此刻自称的版本」退回一档、其余七处不动 ⇒ 新判据必须红",
+           self_report_falls_behind),
+    "d10": ("收窗口②阴性对照：把那一段人群整块摘掉 ＋ 刀 d9 ⇒ 一条都不红",
+            compose(remove_the_self_report_gate, self_report_falls_behind)),
 }
 
 
