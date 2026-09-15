@@ -1259,6 +1259,13 @@ pub fn run() {
             cc_integration_scan_path,
             cc_integration_install,
             cc_integration_uninstall,
+            // 🔴 `K-R135` / `R85`：用户级 PATH 那一格（现在状态 · 加 · 撤）。
+            //    `R87` 裁定它住 Tauri 命令 —— 与上面 `cc_integration_*` 同族
+            //    （「往用户的 shell profile 里写」与「往用户级 PATH 里写一段」是同一族动作，
+            //    而前者已经在这儿了；再给同一族动作另起一条路本身就违反 `K33`）。
+            ccm_user_path_status,
+            ccm_user_path_add,
+            ccm_user_path_remove,
             cc_get_auto_launch,
             cc_set_auto_launch,
             // v2.0.0 (issue #4): 诊断 / log
@@ -2256,6 +2263,46 @@ async fn cc_integration_uninstall(path: String) -> Result<(), String> {
     })
     .await
     .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+// ===== 🔴 `K-R135`（`R85` / `R87` / `R88`）：用户级 PATH 那一格 =====
+//
+// 用户 `R85` 逐字：「**应该让用户手动点击加，也能管理删除。就像是 log 数据管理一样。**」
+// ⇒ 三样：**现在状态（现算不缓存）· 一个按钮加 · 一个按钮撤**，形状照
+// `src/settings/diagnostics-section.ts`（用户点名的那个范式，它现打也全走 `commands.*`）。
+//
+// 实现一律住 `profile_installer` 那一族（`R87` 裁定：同一族动作不许另起一条路）；
+// 这三条只是**包装层**，一行业务逻辑都不许写在这里。
+// 三条都走 `spawn_blocking`：它们底下要起一趟 `powershell.exe`（`R88`），不许占住 async 执行器。
+
+/// `KR135D1` ①：**现在状态** —— `~/.cc-monitor\bin` 在不在**用户级** PATH 上。
+///
+/// **现算，不缓存**：每调一次真跑一趟探针。界面只在「打开那一格 / 点刷新」时调它
+/// （起一趟 PowerShell 几百 ms ⇒ 不许轮询）。
+/// 🔴 探不动时回的是 `error` 非空、`on_user_path = false` —— 前端**必须**把 `error` 显示出来，
+/// 不许把「问不出来」静默成「没装」。
+#[tauri::command]
+async fn ccm_user_path_status() -> Result<profile_installer::UserPathStatus, String> {
+    tokio::task::spawn_blocking(profile_installer::user_path_status)
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))
+}
+
+/// `KR135D1` ②：**一个按钮加**。跑的就是界面上显示给用户看的那段字节
+/// （`render_user_path_setup_command`）—— 点按钮与自己复制去跑**逐字同一份**。
+#[tauri::command]
+async fn ccm_user_path_add() -> Result<(), String> {
+    tokio::task::spawn_blocking(profile_installer::user_path_add)
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
+}
+
+/// `KR135D1` ③：**一个按钮撤**。**只摘自己那一格**（整格比，不碰用户 PATH 里别的东西）。
+#[tauri::command]
+async fn ccm_user_path_remove() -> Result<(), String> {
+    tokio::task::spawn_blocking(profile_installer::user_path_remove)
+        .await
+        .map_err(|e| format!("spawn_blocking join error: {e}"))?
 }
 
 // ===== v2.0.0 (issue #4): 诊断 / log IPC =====
