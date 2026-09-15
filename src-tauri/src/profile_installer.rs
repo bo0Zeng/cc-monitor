@@ -563,16 +563,20 @@ pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> Pr
 // （[`install_to_profile`]：两种方言 · 备份 → 原子替换 → 读回逐字比对 → 不符回滚）
 // ⇒ 照 `K-R62` 那条走：**让这台已有的安装器多吐一行 PATH，不新起第四套**。
 //
-// ## 🔴 它买到什么、买不到什么（`cmd` 这一格是真的买不到，别读大）
+// ## 🔴 〔`R86` 09-15 用户裁〕**那条路后来被裁掉了 —— 这张表记的正是它为什么不够**
 //
-// | shell | 读不读 PowerShell `$PROFILE` | 这一段管不管用 |
+// | shell | 读不读 PowerShell `$PROFILE` | 往 profile 里塞一段 PATH 管不管用 |
 // |---|---|---|
-// | PowerShell | 读 | **管** —— [`render_path_block`] 那两行 |
+// | PowerShell | 读 | 管 —— 但**只管这一个进程** |
 // | `cmd` | **不读**（它根本没有 profile 这个概念） | **不管** |
 // | Git Bash | 不读（它读 `~/.bashrc`，那是 POSIX 那一臂） | 不管 |
 //
-// ⇒ 要让 `cmd` 也找得到，**只有改用户级 PATH 一条路**，而那一步按用户那句话
-// **生成命令交给用户自己跑**：[`render_user_path_setup_command`]。
+// ⇒ 三格里只有一格通，而**「一格通、两格不通」比「三格都不通」更难查** ——
+// 用户会把它读成「装好了」。⇒ 用户当场裁掉这条路（`R86` 逐字「既然要加用户 path，
+// 这个就没用了」）：**要让三格都通只有改用户级 PATH 一条路**，
+// 而那一步**由用户点一下**（`R85` 逐字「应该让用户手动点击加，也能管理删除」）。
+// 命令文本住 [`render_user_path_setup_command`] 与 [`render_user_path_removal_command`]，
+// 状态那一格住 [`user_path_has_our_bin`]。
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 🔴 `K-R132` 真机现打逮到的**第二条缺陷**：BOM-less UTF-8 ＋ PS 5.1 ＝ 吞掉一行
@@ -648,66 +652,43 @@ fn encode_for_disk(flavor: ProfileFlavor, content: &str) -> String {
 ///
 /// 目录本身取自 [`crate::tool_registry::local_ccm_bin_dir_rel`]（唯一住址是那张表），
 /// 这里只做一件事：把 `/` 换成 `\`。**本函数体内没有任何目录字面量。**
+// 🔴 〔`K-R135` 09-15〕**没有生产调用方是暂时的，而且原因是写区** ——
+// 它的调用方是那一条新 IPC 命令（界面那一格「加 / 撤 / 现在状态」），
+// 而登记一条 IPC 命令要同拍动 `lib.rs` 的 `generate_handler!` 与
+// `parity_ledger.rs` 那张双向相等的表，**两份都在 `K-R135` 的写区之外**。
+// ⇒ 本件把机制与判据做完，那一跳交回 PM（件文件 `§8`）。
+// ⚠ **接上去的那一拍要把这个 `allow` 摘掉** —— 留着它，下一次真的没人用了也看不出来。
+#[allow(dead_code)]
 fn ccm_bin_dir_windows() -> Option<String> {
     crate::tool_registry::local_ccm_bin_dir_rel().map(|d| d.replace('/', "\\"))
 }
 
-/// 🔴 `KR132D2` 的正题：**装进 PowerShell 块里的那一段 PATH。**
-///
-/// 形状与 POSIX 那一臂里那一行（`shared/ccm-aliases.sh` 的
-/// `case ":$PATH:" in … export PATH=…`）**同职**：只动**这个会话**的 `PATH`，
-/// 已经在里面就什么都不做（幂等）。
-///
-/// # 三条刻意的选择
-///
-/// - **只动 `$env:PATH`，一个字节都不写注册表。** 写注册表 = 替用户改他的环境
-///   （`K31`「只能做产品，不能动机器」＋ 用户那句「生成命令让用户自己填」）。
-/// - **按 `;` 切开比整格，不用 `-like "*…*"`。** 子串比法的匹配单位比事实小：
-///   PATH 上有 `…\.cc-monitor\bin-old` 时子串比法会说「已经在了」然后什么都不做。
-/// - **插在最前面。** 用户 PATH 上可能另有一个也叫 `ccm` 的旧东西
-///   （`K34` 逐字「原本的配置要手动删除」，产品不删）⇒ 这一块要让**我们装的这一份**
-///   在本会话里赢。它输了的那一形有人在数：`ccm_probe::classify_path_ccm` 的 `NotOurs`。
-///
-/// 取不到目录（注册表被改坏）⇒ 空串：**不发明一个目录**。少吐这一段会被
-/// `the_powershell_block_puts_our_ccm_bin_dir_on_the_session_path` 当场逮到。
-fn render_path_block() -> String {
-    let Some(dir) = ccm_bin_dir_windows() else {
-        return String::new();
-    };
-    let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
-    format!(
-        "\n# cc-monitor：让 `{word}` 在这个 PowerShell 会话里找得到〔K-R132〕。\n\
-         $ccmBinDir = Join-Path $env:USERPROFILE '{dir}'\n\
-         if (($env:PATH -split ';') -notcontains $ccmBinDir) {{\n\
-         \x20   $env:PATH = \"$ccmBinDir;$env:PATH\"\n\
-         }}\n"
-    )
-}
-
-/// 上面那一段 PATH **只对 PowerShell 有效**这件事，写给读到自己 profile 的那个人看。
-///
-/// 🔴 **这不是装饰**：`cmd` 根本没有 profile 这个概念 ⇒ 补 profile 这条路对它
-/// **在构造上**无效。不把这句话写出来，用户会以为「装了终端集成 = 三种 shell 都好了」，
-/// 而那正是 `K-R129` 那张 3×3 表里唯一还红着的那一列。
-fn render_path_hint_comment() -> String {
-    let Some(cmd) = render_user_path_setup_command() else {
-        return String::new();
-    };
-    let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
-    let mut out = format!(
-        "\n# ⚠ 上面那一段只对 **PowerShell** 有效：`cmd` 不读本文件，Git Bash 读的是 ~/.bashrc。\n\
-         #   要让 `{word}` 在**所有**终端里都找得到，把下面这几行复制到 PowerShell 里\n\
-         #   **自己跑一次**，然后重开终端。cc-monitor 不替你跑它 ——\n\
-         #   它只改你自己的用户级 PATH：不需要管理员、不碰系统 PATH、不碰别的用户。\n\
-         #\n"
-    );
-    for line in cmd.lines() {
-        out.push_str("#   ");
-        out.push_str(line);
-        out.push('\n');
-    }
-    out
-}
+// 🔴 〔`R86` 09-15 用户裁〕**这里原本住着两个函数，本件把它们整个删掉了** ——
+// 一个把我们那个 bin 目录塞进**本会话**的 `$env:PATH`，一个给它配一段说明注释。
+// 用户逐字：「既然要加用户 path，这个就没用了。」
+// ⚠ 旧名字刻意不写在这里：`structural_scan` 有一条判据在数「散文点名了一个代码里
+// 根本不存在的符号」，而**指向不存在的判据比没有注释更坏**（testing.md 诚实边界 4）。
+// 要查它们逐字长什么样，去 `git log -S` 那两个函数体，或读 `K-R132` 的件文件。
+//
+// ## PM 认，而且理由比「没用了」更硬一条：**留着它会一直制造那个「半通」状态**
+//
+// 那一段只动**这个 PowerShell 进程自己**的 `$env:PATH` ⇒
+// `K-R129` / `K-R132` 两轮真机 3×3 表里最难看的那一格（**PowerShell 里能、`cmd` 里不能**）
+// 就是它造出来的。**「看起来装好了、换个终端就没了」比「哪儿都没有」更难查。**
+// ⇒ 删掉之后状态变**二值**：没点按钮 ⇒ 哪儿都敲不到；点了 ⇒ 哪儿都敲得到。
+//
+// ## 🔴 停止生成 ≠ 已有用户 profile 里那一段会自己消失
+//
+// `v3.8.0` 与 `main` 现在这一版**已经会往用户 profile 里写那一段**。现成机制接得住：
+// 那一段住在 `BEGIN/END` 围栏里，[`install_to_profile`] **每次装 / 修复整块重写**、
+// [`uninstall_from_profile`] 整块摘掉 ⇒ **只要用户再走一次装或卸，旧那段就没了。**
+// ⚠ **但「一直没再装过」的用户会留着它** —— 它本身无害（只是把一个目录再前置一次），
+// **可对没点过按钮的那位用户，半通状态会继续保留。别当它自动消失。**
+//
+// ⚠ 不为它做「检测到旧块」的提示，理由是**那条提示够不着它要治的人**：
+// 会看见提示的人是**打开了这一格**的人，而那位用户点一下「加」就两头都好了；
+// 真正留着旧块的是**再也没打开过这个面板**的人 —— 提示对他恒不可见。
+// ⇒ 多一条恒静默的 UI 不如把状态做成二值。
 
 /// 🔴 `KR132D1` 的结论落地：**让用户自己跑一次的那条命令**（路线①，用户级 PATH）。
 ///
@@ -729,9 +710,16 @@ fn render_path_hint_comment() -> String {
 /// 卸载时也只影响这一个用户。
 ///
 /// ⚠ **要重开终端才生效** —— 已经开着的进程拿的是自己启动那一刻的环境块副本。
-/// 这句话不在这段命令里（这里只放**能跑的那几行**），由
-/// [`render_path_hint_comment`] 那一侧的说明承担；UI 要显示它时同理，
-/// 自己配说明，别把说明混进可执行文本里（混进去，用户复制一整段就会连注释一起跑）。
+/// 这句话**刻意不在这段命令里**（这里只放**能跑的那几行**）——
+/// 它归**显示这段命令的那一侧**（界面那一格）去配说明。
+/// 别把说明混进可执行文本里：混进去，用户复制一整段就会连注释一起跑。
+// 🔴 〔`K-R135` 09-15〕**没有生产调用方是暂时的，而且原因是写区** ——
+// 它的调用方是那一条新 IPC 命令（界面那一格「加 / 撤 / 现在状态」），
+// 而登记一条 IPC 命令要同拍动 `lib.rs` 的 `generate_handler!` 与
+// `parity_ledger.rs` 那张双向相等的表，**两份都在 `K-R135` 的写区之外**。
+// ⇒ 本件把机制与判据做完，那一跳交回 PM（件文件 `§8`）。
+// ⚠ **接上去的那一拍要把这个 `allow` 摘掉** —— 留着它，下一次真的没人用了也看不出来。
+#[allow(dead_code)]
 pub fn render_user_path_setup_command() -> Option<String> {
     let dir = ccm_bin_dir_windows()?;
     Some(format!(
@@ -743,6 +731,99 @@ pub fn render_user_path_setup_command() -> Option<String> {
     ))
 }
 
+/// 🔴 `KR135D1` 的另一半（`R85` 逐字「**也能管理删除**」）：**把我们那一段从用户级
+/// PATH 上摘掉的那条命令。** 「加」是上面那一条，这一条是「撤」。
+///
+/// # 🔴 撤这一侧会**再撞一次**同样那两个地雷 —— 逐条写出它是怎么绕的
+///
+/// 1. **不用 `setx`**：它把值截断在 1024 字符，提示只是一句警告、**退出码照样 0**。
+///    ⚠ 撤这一侧踩它的后果比加那一侧**更重**：加那一次截断掉的是「多出来的尾巴」，
+///    而撤是**整条重写**，截断掉的是用户本来就有的那一截。
+/// 2. **读回来的是 `'User'` 那一档，不是 `$env:PATH`。** 进程里那份是机器级 ＋ 用户级
+///    拼起来的；撤的时候拿它当基准写回用户级，后果与加那一侧**一模一样**
+///    —— 整条系统 PATH 被复制进用户 PATH。
+///    ★ **撤比加更容易踩这一个**，因为「先读一下现在的 PATH」在撤的语境里读起来非常顺手。
+///
+/// # 🔴 第三条，它是撤这一侧**独有**的：**只摘自己那一段，不碰别的**
+///
+/// 过滤条件 `-ne $d` 是**整格**比较（PowerShell 的 `-ne` 对字符串默认大小写不敏感，
+/// 与加那一侧的 `-notcontains` 是**同一种相等**）⇒ 摘掉的**恰好**是我们加进去的那一格。
+///
+/// **刻意不用** `-replace` / `-like` / `.Replace()` —— 那三种都是**子串**口径：
+/// 用户 PATH 上存在 `…\.cc-monitor\bin-old`（任何以我们那一段为前缀的目录）时会被一起打掉，
+/// 而那正是「碰了用户 PATH 里别的东西」。同一个病在加那一侧的形状是「误判成已经在了」，
+/// 在撤这一侧的形状是**误删用户的目录** —— 后者不可逆。
+///
+/// ⚠ **连空项都不许顺手清**：过滤条件里**只有** `-ne $d` 一条，**没有**
+/// `Where-Object {{ $_ }}` 那种「顺手把空项也滤掉」。PATH 上的空项在 Windows 上
+/// 语义是「当前目录」，删掉它是一次**我们没被要求做的改动**（哪怕它算个改进）。
+/// ⇒ 除我们那一格之外**逐字复原**，这是「只摘自己那一段」的字面意思。
+///
+/// ⚠ 摘完剩下空串是**正常**的：`.NET` 把空串当「删掉这个变量」，
+/// 而那正是「我们那一格是用户级 PATH 上唯一一格」时该有的结果 —— 不是清空了用户的 PATH
+/// （**机器级那一档一个字节都没碰**，用户下次开终端仍然有完整的系统 PATH）。
+///
+/// ⚠ **要重开终端才看得到** —— 与加那一侧同理，已经开着的进程拿的是自己启动那一刻的
+/// 环境块副本。这句话不放进可执行文本里（放进去，用户复制一整段就会连注释一起跑）。
+// 🔴 〔`K-R135` 09-15〕**没有生产调用方是暂时的，而且原因是写区** ——
+// 它的调用方是那一条新 IPC 命令（界面那一格「加 / 撤 / 现在状态」），
+// 而登记一条 IPC 命令要同拍动 `lib.rs` 的 `generate_handler!` 与
+// `parity_ledger.rs` 那张双向相等的表，**两份都在 `K-R135` 的写区之外**。
+// ⇒ 本件把机制与判据做完，那一跳交回 PM（件文件 `§8`）。
+// ⚠ **接上去的那一拍要把这个 `allow` 摘掉** —— 留着它，下一次真的没人用了也看不出来。
+#[allow(dead_code)]
+pub fn render_user_path_removal_command() -> Option<String> {
+    let dir = ccm_bin_dir_windows()?;
+    Some(format!(
+        "$d = Join-Path $env:USERPROFILE '{dir}'\n\
+         $p = [Environment]::GetEnvironmentVariable('Path', 'User')\n\
+         $kept = @($p -split ';' | Where-Object {{ $_ -ne $d }})\n\
+         [Environment]::SetEnvironmentVariable('Path', ($kept -join ';'), 'User')\n"
+    ))
+}
+
+/// 🔴 `KR135D1` 的第一样：**`~/.cc-monitor\bin` 在不在用户级 PATH 上。**
+///
+/// 这是那一格的**判定内核**（`现算，不缓存` 指的是调用方每次重新读一遍 `'User'`
+/// 那一档再问它，本函数自己不持有任何状态）。
+///
+/// - `user_path_raw`：从 **`'User'` 那一档**读回来的原始串。
+///   🔴 **不许传 `$env:PATH`**（`§0b` 第 2 条）—— 那一份是机器级 ＋ 用户级拼起来的，
+///   拿它判「在不在**用户级**上」会把「机器级上有」读成「用户级上有」，
+///   于是「撤」那个按钮点下去什么都没发生，而界面还说它撤掉了。
+/// - `dir_abs`：`%USERPROFILE%` 展开之后我们那个目录。
+///
+/// # 🔴 相等口径与生成的那两条命令**必须是同一种**，否则界面会撒谎
+///
+/// 加那一条用 `-notcontains $d`、撤那一条用 `-ne $d`，两者在 PowerShell 里都是
+/// **整格 · 大小写不敏感**。这里逐字照同一种：按 `;` 切开比**整格**，
+/// 用 `eq_ignore_ascii_case`。
+///
+/// ⚠ **刻意不做路径规范化**（不砍末尾 `\`、不解析 `..`、不 `canonicalize`）——
+/// 理由是**一致压过聪明**：规范化之后本函数会说「已经在了」，而那两条命令
+/// （它们不规范化）会说「不在」⇒ 界面显示 ✓、点一下却又多出一格重复。
+/// **两边同样地笨，比一边聪明一边笨要好。**
+/// ⇒ 代价如实写在这里：用户手写过一格**带末尾反斜杠**的同一个目录时，这一格显示「不在」，
+/// 点「加」会再插一格。要治它得三处一起改（本函数 ＋ 两条命令），不许只改这一处。
+///
+/// ⚠ `dir_abs` 为空时**恒回 `false`** —— 不然 PATH 上任何一个空项（连着两个 `;`）
+/// 都会与它相等，于是「拿不到目录」会被读成「已经装好了」。
+// 🔴 〔`K-R135` 09-15〕**没有生产调用方是暂时的，而且原因是写区** ——
+// 它的调用方是那一条新 IPC 命令（界面那一格「加 / 撤 / 现在状态」），
+// 而登记一条 IPC 命令要同拍动 `lib.rs` 的 `generate_handler!` 与
+// `parity_ledger.rs` 那张双向相等的表，**两份都在 `K-R135` 的写区之外**。
+// ⇒ 本件把机制与判据做完，那一跳交回 PM（件文件 `§8`）。
+// ⚠ **接上去的那一拍要把这个 `allow` 摘掉** —— 留着它，下一次真的没人用了也看不出来。
+#[allow(dead_code)]
+pub fn user_path_has_our_bin(user_path_raw: &str, dir_abs: &str) -> bool {
+    if dir_abs.is_empty() {
+        return false;
+    }
+    user_path_raw
+        .split(';')
+        .any(|seg| seg.eq_ignore_ascii_case(dir_abs))
+}
+
 /// 生成将要写入的代码（替换 placeholder）。
 ///
 /// - `include_cc_function = true`：装 `__ccm_bind` helper **加上** `function {name}`
@@ -751,55 +832,55 @@ pub fn render_user_path_setup_command() -> Option<String> {
 ///   `function cc`——避免覆盖用户原有 cd/代理/etc 逻辑，用户自己在 cc 开头加
 ///   `__ccm_bind` 一行调用即可）。
 ///
-/// 🔴 〔`K-R132`〕**PATH 那一段与 `include_cc_function` 无关，两支都吐。**
-/// 理由：`ccm` 找不找得到，与「用户有没有自己的 `cc` 函数」是两件事 ——
-/// 恰恰是**有**自己 `cc` 函数的那位用户最需要 `ccm` 在 PATH 上（他的函数要调它）。
+/// 🔴 〔`R86` 09-15〕**PATH 那一段不在这里了** —— 生成它的那两个函数整个删了
+/// （理由住本文件上面那段横幅）⇒ 这一块现在**只装 `cc`**。
+/// 用户级 PATH 那件事换成**用户点一下**（`R85`），命令文本由
+/// [`render_user_path_setup_command`] / [`render_user_path_removal_command`] 生成。
 ///
-/// 🔴 〔`KR132D3`〕**`cc` 今天仍然直呼 `claude`，而那是一处已登记的不一致 ——
-/// 本轮刻意不改，理由是可证伪的三条，逐条写在这里。**
+/// 🔴 〔`KR135D2` 09-15〕**`cc` 翻正了：它现在走 `ccm`，不再直呼 `claude`。**
 ///
-/// 答案本身没有悬念：**该改成走 `ccm`**。`K33` 逐字「**所有命令只许有一处**，
-/// 其他都是根据传参来调用」；`K28`「前端不许自己发明对外行为 —— 一切对外都经后端」。
-/// 今天这一行是 `& claude $RemainingArgs`：它**绕过后端**直起 agent ⇒ 同一个名字 `cc`
-/// 在 PowerShell 与 POSIX（`shared/ccm-aliases.sh` 的 `cc() { ccm "$@"; }`）上
-/// 是**两个不同的东西**，账号 / 工作目录 / agent 选择这几维在 Windows 上整条够不着。
+/// 上一轮（`K-R132`）这一行是 `& claude $RemainingArgs`，并被登记成一处**反向锚点** ——
+/// 那不是遗忘，是刻意钉住的一处不一致。本轮把它翻正，它当初那三条暂缓理由逐条到期：
 ///
-/// **本轮不动它的三条理由**（`brief` 17：题目比该做的宽一格时不自批）：
-/// 1. 🔴 **改了会是一次真的回归，而且我在真机上量到了那个回归的前提**：
-///    `& ccm` 要 `ccm` 找得到，而 `K-R132` 真机实测（读数住 `evidence/K-R132-摸底.md`）
-///    显示 Windows PowerShell 5.1 会把本块里的一行吞掉 —— 那条病本轮才刚修
-///    （见 [`encode_for_disk`]），**修完的形状还没在真机上验过一整趟**。
-///    先改 `cc`，等于把「cc 彻底不能用」压在一个刚修好、还没复验的前提上。
-/// 2. **它的落点不在本件的写区里**：`launcher_identity_registry` 把
-///    `& claude $RemainingArgs` 登记成「T2 · Windows 终端里的那一下」的锚点，
-///    改这一行就要同拍改那张登记表 —— 而那张表在 `§2` 之外。
-/// 3. **它是一次发版产物的行为变更**，不是实现细节。
+/// 1. `K33` 逐字「**所有命令只许有一处**，其他都是根据传参来调用」＋ `K28`
+///    「前端不许自己发明对外行为 —— 一切对外都经后端」⇒ 答案本来就没有悬念。
+/// 2. 翻正之前，同一个名字 `cc` 在 PowerShell 与 POSIX
+///    （`shared/ccm-aliases.sh` 的 `cc() { ccm "$@"; }`）上是**两个不同的东西**：
+///    账号 / 工作目录 / agent 选择这几维在 Windows 上整条够不着。
+/// 3. 它第一条暂缓理由是「`& ccm` 要 `ccm` 找得到，而那个前提刚修完没复验」——
+///    本件把那个前提从「profile 里一段只管本进程的 PATH」换成**用户级 PATH**
+///    （`R85` 那一下点击）⇒ 前提换了一个，不再压在会话级那一段上。
 ///
-/// ⇒ **交回 PM**。翻正它的那一拍要同时做三件事：改这一行 · 改那条登记 ·
-/// 在真机上把 `cc` 跑一趟（不是只看它「找得到」）。
+/// ⚠ **诚实边界，别读大**：本件**没有**在真机上把 `cc` 真跑过一趟。这一行今天证得住的
+/// 只有「**它生成的文本指向 `ccm`**」，证不了「敲下去真起得来」。
 ///
-/// 🔴 〔`KR132D3` 另一半〕**`cct` 这一臂刻意不生成。** POSIX 那边
-/// `cct() { ccm --tmux "$@"; }`，而 **Windows 上没有 tmux** ⇒ 给它一个
-/// 「名字在、行为不在」的壳比没有更坏。该做的是**把 `cct` 从 Windows 面的文案里摘掉**
-/// （`src/launcher-diagnostics.ts` 那句「还没有 ccm 别名块（cc / cct 这一族）」
-/// 对 PowerShell profile 也在印 —— 那份文件同样在 `§2` 之外，一并交回）。
+/// 🔴 〔`KR132D3` 另一半，本轮**复打后维持**〕**`cct` 这一臂刻意不生成。**
+/// POSIX 那边 `cct() { ccm --tmux "$@"; }`，而 **Windows 上没有 tmux** ⇒ 给它一个
+/// 「名字在、行为不在」的壳比没有更坏（`K-R129` 那位用户正是照文案敲了 `cct`）。
+///
+/// ⚠ **`K-R132` 把「把 `cct` 从 Windows 文案里摘掉」随动到 `src/launcher-diagnostics.ts`
+/// 那一句上 —— 本轮现打，那个随动的前提是假的**：那一句只在 **POSIX rc** 那一臂印
+/// （它的下拉只遍历 `AccountAliasReport::rc_candidates`，而那张表现算自
+/// `account_aliases::RC_CANDIDATES`，**一份 PowerShell profile 都没有**），
+/// 而那一臂的 `cct` 是**真有**的（`shared/ccm-aliases.sh` 里就定义着）。
+/// PowerShell 那一臂是另一份文件（`src/settings/cc_integration.ts` 的 `renderScanResult`），
+/// 现打 `cct` **零命中**。⇒ **Windows 文案里今天一个 `cct` 都没有，没有东西要摘。**
+/// 读数 · 量法 · 分母住 `evidence/K-R135-摸底.md`。
 pub fn render_cc_code(command_name: &str, include_cc_function: bool) -> String {
     let safe_name = sanitize_command_name(command_name);
     let cc_block = if include_cc_function {
+        // 🔴 `KR135D2`：**这一行就是翻正的落点。** `{word}` 现算自 `CCM_ENTRY_WORD`
+        // （`13b`：那个词的唯一住址），不写第二份字面量。
+        let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
         format!(
-            "\nfunction {0} {{\n    [CmdletBinding()] param(\n        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs\n    )\n    __ccm_bind\n    & claude $RemainingArgs\n}}\n",
-            safe_name
+            "\nfunction {safe_name} {{\n    [CmdletBinding()] param(\n        [Parameter(ValueFromRemainingArguments = $true)] $RemainingArgs\n    )\n    __ccm_bind\n    & {word} $RemainingArgs\n}}\n"
         )
     } else {
         String::new()
     };
-    let filled = format!(
-        "{}{}{}",
-        render_path_block(),
-        render_path_hint_comment(),
-        cc_block
-    );
-    CC_TEMPLATE.replace("{{CC_FUNCTION_BLOCK}}", &filled)
+    // 〔`R86`〕这里原先是一个三项拼装：会话级 PATH 那一段 ＋ 它的说明注释 ＋ `cc` 那一块。
+    // 前两项删了（理由住上面那段横幅），于是**装进 profile 的东西只剩 `cc` 那一块**。
+    CC_TEMPLATE.replace("{{CC_FUNCTION_BLOCK}}", &cc_block)
 }
 
 /// idempotent 安装：把 cc function 块写到 profile，已有 ccm 块则原地替换。
@@ -2248,37 +2329,45 @@ gs() { git status; }
     // ⚠ 别把这段话读成「所以这几条没用」：`K-R129` 那条缺陷的**直接死因**就是
     // 「这几行里根本没有 PATH 这回事」，而那一半恰好是这里盘得住的。
 
-    /// ★★ `KR132D2` 的正题：**装进 PowerShell 的那一块，真的把我们那个 bin 目录
-    /// 放上了这个会话的 PATH。**
+    /// ★★ 〔`KR135D1b` / `R86` 09-15〕**这一条是上一轮那条判据翻过来的那一面。**
+    ///
+    /// 上一轮那条判据（`K-R132` 立的）钉的是**反过来**的事：
+    /// 「块里**必须有**一段把我们那个 bin 目录放上 `$env:PATH` 的代码」。
+    /// `R86` 把那一段删了 ⇒ **那条判据失去了对象**。件文件逐字要求
+    /// **别留一条永远绿的空判据** ⇒ 这里不是删掉了事，是**翻正成棘轮**：那一段不许再回来。
+    ///
+    /// # 它守的不是风格，是那个「半通」状态
+    ///
+    /// 会话级 `$env:PATH` 只对 PowerShell 有效（`cmd` 不读任何 profile、
+    /// Git Bash 读 `~/.bashrc`）⇒ 一旦有人把它加回来，`K-R129`/`K-R132` 两轮真机
+    /// 3×3 表里那个「**PowerShell 里能、`cmd` 里不能**」的格子当场复活，
+    /// 而**「看起来装好了、换个终端就没了」比「哪儿都没有」更难查**。
     ///
     /// # 地板先证（testing.md 判据规则 7：先证够得到，否则「零违例」是空真）
     ///
-    /// 先断言渲染出来的东西**不是空的、围栏在、placeholder 被填掉了**；
-    /// 再去问 PATH 那一段在不在。少了这一步，`render_cc_code` 回一个空串也能让
-    /// 「没有违例」成立。
+    /// 两道地板，缺一不可：① 渲染出来不是空的、围栏在、placeholder 填掉了；
+    /// ② **正向**那一道 —— 块里真有 `__ccm_bind`。少了 ②，
+    /// 「把整个模板掏空」这一刀照样让下面每一条「不含」成立。
     ///
-    /// # 人群是**两支**，不是一支
+    /// # 诚实边界
     ///
-    /// `include_cc_function` 的 `true` / `false` 两支都要有 —— 恰恰是 `false`
-    /// 那一支（用户已有自己的 `cc` 函数）最需要 `ccm` 在 PATH 上，
-    /// 而它是最容易被漏掉的那一支（PATH 那一段本来很容易被顺手写进 `cc_block` 里）。
+    /// 它只看**我们生成的那一块**。用户自己在围栏外写的任何 `$env:PATH` 一概不管
+    /// （那是用户的文件，`K31`）；`v3.8.0` 已经写进某人 profile 里的那段**旧块**
+    /// 也不在射程内 —— 那一格靠「用户再走一次装或卸就整块重写」接住，
+    /// 逐字住本文件上面那段横幅，**不是自动消失**。
     ///
-    /// # 死值验（`KR132D2` 刀①）
+    /// # 死值验（`KR135D1b` 刀①）
     ///
-    /// 把 [`render_path_block`] 的函数体换成 `String::new()` ⇒ 本条红。
+    /// 往 `render_cc_code` 的拼装处加回一段 `$env:PATH = "<我们的 bin 目录>;$env:PATH"` ⇒ 本条红。
     #[test]
-    fn the_powershell_block_puts_our_ccm_bin_dir_on_the_session_path() {
-        let dir = ccm_bin_dir_windows().expect(
-            "拿不到本机 ccm 的 bin 目录 —— 它现算自 `tool_registry::TOOLS` 里 `ccm` \
-             那条本机载体的落点。取不到 = 那张表被改坏了（或本机载体被删了），\
-             而不是「这一格不适用」",
-        );
+    fn the_powershell_block_never_touches_the_session_path_again() {
+        let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
         for include_cc in [true, false] {
             let out = render_cc_code("cc", include_cc);
-            // ── 地板：这份东西本身得是真的 ──────────────────────────────
+            // ── 地板①：这份东西本身得是真的 ──────────────────────────────
             assert!(
                 !out.trim().is_empty(),
-                "渲染出来是空的 —— 下面任何「不含违例」的断言都成了空真"
+                "渲染出来是空的 —— 下面每一条「不含」都成了空真"
             );
             assert!(
                 out.contains(BEGIN_MARKER) && out.contains(END_MARKER),
@@ -2288,41 +2377,29 @@ gs() { git status; }
                 !out.contains("{{CC_FUNCTION_BLOCK}}"),
                 "placeholder 没被填掉（include_cc_function={include_cc}）"
             );
-            // ── 正题：PATH 那一段在不在，而且指的是那个目录 ────────────
-            //
-            // ⚠ 比的是「**有整整一行**同时写着赋值与那个变量」，不是 `contains` 一个词：
-            //    子串比法的匹配单位比事实小 —— profile 里别处出现一次 `$env:PATH`
-            //    （用户自己的行不在块里，但我们自己的注释里也可能提到）就会假绿。
-            let assigns = out
-                .lines()
-                .filter(|l| l.contains("$env:PATH =") && l.contains("$ccmBinDir"))
-                .count();
-            assert_eq!(
-                assigns, 1,
-                "这一块里「把我们的 bin 目录赋回 $env:PATH」的行应当恰好 1 行，实得 {assigns} 行\
-                 （include_cc_function={include_cc}）。\n\
-                 0 行 = `K-R129` 那条缺陷原样还在：ccm.exe 装下去了，而没有任何一处把它放上 PATH；\n\
-                 >1 行 = 有第二处在动 PATH，两处会各自漂。\n\
-                 逐字：\n{out}"
-            );
+            // ── 地板②：正向那一道 —— 模板没被掏空 ────────────────────────
             assert!(
-                pinned(
-                    &out,
-                    &format!("$ccmBinDir = Join-Path $env:USERPROFILE '{dir}'")
-                ),
-                "PATH 那一段指的不是 `{dir}` —— 而那是 `tool_registry` 申报的本机 ccm 落点目录。\
-                 指错目录与根本没补，在终端上是同一个结果。\n逐字：\n{out}"
+                guard_core::contains_word(&out, "__ccm_bind"),
+                "连 `__ccm_bind` 都不在了 —— 模板被掏空，下面的「不含」全是空真\n{out}"
             );
-            // 幂等：已经在 PATH 上就不再插一遍（否则每开一个嵌套 shell PATH 长一截）。
+            // ── 棘轮：会话级 PATH 那一段不许再回来 ────────────────────────
+            let touches: Vec<&str> = out.lines().filter(|l| l.contains("$env:PATH")).collect();
             assert!(
-                out.contains("-notcontains $ccmBinDir"),
-                "少了「已经在就不插」那一道 —— 嵌套 shell 会让 PATH 无限变长"
+                touches.is_empty(),
+                "这一块又在动会话级 `$env:PATH` 了（include_cc_function={include_cc}）。\n\
+                 `R86` 逐字把这一段删了，理由是它造出「PowerShell 里能、`cmd` 里不能」\
+                 那个半通状态 —— 要让 `{word}` 在**所有**终端里都找得到，\
+                 走的是**用户级** PATH 那一条（`render_user_path_setup_command`，\
+                 由用户点一下）。\n实得 {} 行：\n{:#?}",
+                touches.len(),
+                touches
             );
-            // 比整格，不比子串：`-like \"*…*\"` 那种写法会把 `…\\bin-old` 误判成「已经在了」。
+            // 持久化那一族更不许出现在 profile 里：这一块每开一个会话跑一次，
+            // 把写注册表放在这里 = 每开一个终端就改一次用户的环境（`K33` 明禁）。
             assert!(
-                !out.contains("-like") || !out.contains("$ccmBinDir"),
-                "PATH 判在不在用了通配子串比法 —— 它会把 `<bin>-old` 之类读成「已经在了」，\
-                 然后什么都不做"
+                !out.contains("SetEnvironmentVariable"),
+                "profile 块里出现了 `SetEnvironmentVariable` —— 这一块每开一个会话跑一次，\
+                 放在这里等于每开一个终端改一次用户环境。\n{out}"
             );
         }
     }
@@ -2331,7 +2408,7 @@ gs() { git status; }
     ///
     /// # 为什么单独一条：上一条只证「这两处一致」，这一条证「它们对得上现实」
     ///
-    /// 上一条比的是 `render_path_block` 与 `tool_registry` 的申报 —— **两边同时改错**
+    /// 上一条比的是**我们生成的那段命令**与 `tool_registry` 的申报 —— **两边同时改错**
     /// 照样全绿。真落点住在**第三处**：`local_daemon.rs` 里算 `extract_dir` 的那一行，
     /// 它就是 `install_local_ccm_entry` 的 `dir` 实参。⇒ 这一条去读**那一行源码**。
     ///
@@ -2381,105 +2458,365 @@ gs() { git status; }
         }
     }
 
-    /// ★★ `KR132D1` 的结论落地：**那条让用户自己跑的命令，不许踩 Windows 改 PATH
-    /// 的两个经典地雷。**
+    /// ★★ `KR132D1` ＋〔`KR135D1` 09-15 **扩到「撤」那一侧**〕：
+    /// **那两条要在用户机器上改 PATH 的命令，一条都不许踩 Windows 的那两个经典地雷。**
     ///
-    /// 这两条不是风格：它们各自对应一类**真的把用户机器改坏**的事故。
+    /// 上一轮这条判据只数「加」那一条。`R85` 用户逐字「**也能管理删除**」把「撤」那一半
+    /// 加进来了，而件文件 `§0b` 逐字点名：**做「撤」那一半会再撞一次同一个坑**
+    /// ⇒ 这里把人群从**一条**扩成**两条**，两条走同一批断言。
     ///
-    /// | 地雷 | 后果 |
-    /// |---|---|
-    /// | `setx` | 值截断在 1024 字符，只给一句警告、**退出码照样 0** ⇒ 静默截断用户 PATH |
-    /// | 拿 `$env:PATH` 当新值写回用户级 | 进程里那份是**机器级 ＋ 用户级拼起来的** ⇒ 整条系统 PATH 被复制进用户 PATH，此后系统 PATH 的更新对这个用户永久失效 |
+    /// | 地雷 | 后果 | 撤这一侧为什么更重 |
+    /// |---|---|---|
+    /// | `setx` | 值截断在 1024 字符，只给一句警告、**退出码照样 0** ⇒ 静默截断用户 PATH | 加那一次截掉的是「多出来的尾巴」，撤是**整条重写** ⇒ 截掉的是用户本来就有的那一截 |
+    /// | 拿 `$env:PATH` 当新值写回用户级 | 进程里那份是**机器级 ＋ 用户级拼起来的** ⇒ 整条系统 PATH 被复制进用户 PATH，此后系统 PATH 的更新对这个用户永久失效 | 「先读一下现在的 PATH」在撤的语境里读起来**格外顺手** |
     ///
-    /// # 死值验（`KR132D2` 刀⑤）
+    /// # 撤这一侧独有的第三条：**只摘自己那一段**
     ///
-    /// 把 [`render_user_path_setup_command`] 改成 `setx PATH "%PATH%;…"` ⇒ 本条红两处。
+    /// 过滤必须是**整格**（`-ne $d`）。`-replace` / `-like` / `.Replace(` 全是**子串**口径，
+    /// 用户 PATH 上有 `…\.cc-monitor\bin-old` 时会被一起打掉 —— 同一个病在加那一侧
+    /// 只是「误判成已经在了」，在撤这一侧是**误删用户的目录**，不可逆。
+    /// ⚠ 还要数一条**反向**的：不许出现 `Where-Object { $_ }` 那种「顺手把空项也滤掉」
+    /// —— 空项在 Windows 上语义是「当前目录」，删它是一次我们没被要求做的改动。
+    ///
+    /// # 死值验（`KR135D1` 刀①/②）
+    ///
+    /// ① 把 [`render_user_path_setup_command`] 改成 `setx PATH "%PATH%;…"` ⇒ 本条红；
+    /// ② 把 [`render_user_path_removal_command`] 的 `-ne $d` 改成
+    ///    `-notlike "*$d*"` ⇒ 本条红（撤那一侧的整格断言）。
     #[test]
     fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
-        let cmd = render_user_path_setup_command().expect("生成的命令");
-        assert!(!cmd.trim().is_empty(), "生成出来是空的 —— 下面全是空真");
-        // 地板：它确实在写 PATH，而不是一段无关的文字。
-        assert!(
-            cmd.contains("SetEnvironmentVariable('Path', ") && cmd.contains("'User')"),
-            "它没有在写**用户级** PATH：\n{cmd}"
-        );
-        assert!(
-            cmd.contains("GetEnvironmentVariable('Path', 'User')"),
-            "新值不是从**用户级**那一档读出来的 —— 拿 `$env:PATH`（机器级＋用户级拼起来的\
-             那一份）当新值写回去，会把整条系统 PATH 复制进用户 PATH。\n{cmd}"
-        );
-        for landmine in ["setx", "'Machine'", "\"Machine\"", "$env:PATH"] {
+        let both = [
+            (
+                "加",
+                render_user_path_setup_command().expect("生成的「加」命令"),
+            ),
+            (
+                "撤",
+                render_user_path_removal_command().expect("生成的「撤」命令"),
+            ),
+        ];
+        for (which, cmd) in &both {
+            // ── 地板：它确实在写 PATH，而不是一段无关的文字 ──────────────
             assert!(
-                !cmd.contains(landmine),
-                "生成的命令里出现了 `{landmine}` —— 见本判据头注那张表。\n{cmd}"
+                !cmd.trim().is_empty(),
+                "「{which}」生成出来是空的 —— 下面全是空真"
+            );
+            assert!(
+                cmd.contains("SetEnvironmentVariable('Path', ") && cmd.contains("'User')"),
+                "「{which}」没有在写**用户级** PATH：\n{cmd}"
+            );
+            assert!(
+                cmd.contains("GetEnvironmentVariable('Path', 'User')"),
+                "「{which}」的新值不是从**用户级**那一档读出来的 —— 拿 `$env:PATH`\
+                 （机器级＋用户级拼起来的那一份）当基准，会把整条系统 PATH 复制进用户 PATH。\n{cmd}"
+            );
+            // ── 两个地雷，两侧同一批 ─────────────────────────────────────
+            for landmine in ["setx", "'Machine'", "\"Machine\"", "$env:PATH"] {
+                assert!(
+                    !cmd.contains(landmine),
+                    "「{which}」那条命令里出现了 `{landmine}` —— 见本判据头注那张表。\n{cmd}"
+                );
+            }
+        }
+        // ── 加：幂等（跑两次不许把目录塞两遍）──────────────────────────
+        let add = &both[0].1;
+        assert!(
+            add.contains("-notcontains $d"),
+            "「加」跑第二次会重复追加：\n{add}"
+        );
+        // ── 撤：整格，而且**只**摘我们那一格 ──────────────────────────
+        let del = &both[1].1;
+        assert!(
+            del.contains("-ne $d"),
+            "「撤」不是按**整格**比的 —— 子串口径会把 `<我们那段>-old` 之类一起删掉，\
+             而那是删用户的东西，不可逆。\n{del}"
+        );
+        for substr_op in ["-replace", "-like", "-notlike", "-match", ".Replace("] {
+            assert!(
+                !del.contains(substr_op),
+                "「撤」用了子串口径 `{substr_op}` —— 见本判据头注「撤这一侧独有的第三条」。\n{del}"
             );
         }
-        // 幂等：跑两次不许把目录塞两遍。
         assert!(
-            cmd.contains("-notcontains $d"),
-            "跑第二次会重复追加：\n{cmd}"
+            !del.contains("Where-Object { $_ }"),
+            "「撤」顺手把 PATH 上的空项也滤掉了 —— 空项在 Windows 上语义是「当前目录」，\
+             删它是一次**我们没被要求做的改动**。除我们那一格之外要逐字复原。\n{del}"
         );
-        // 它**只是文字**：产品这一侧一个字节都不执行（`K31` + 用户「生成命令让用户自己填」）。
+        // ── 产品这一侧今天一个字节都不执行 ────────────────────────────
         //
-        // ⚠ **分母只装「起进程」这一形**，不装 `std::process::`：本模块的生产段本来就用
-        //   `std::process::id()` 给临时文件起名（两处），把它算进来这条判据第一天就是红的，
-        //   而「第一天就红的判据」的唯一出路是放宽它 —— 那比没有更坏。
+        // 🔴 **这条断言的理由在 `R85` 之后变了，别照旧读**：上一轮它的理由是
+        //   「产品自己跑它就变成了替用户改他的环境」；`R85` 用户逐字
+        //   「**应该让用户手动点击加**」⇒ **点击即执行是允许的**（`§0c`：`K33` 禁的是
+        //   产品**替**用户决定，用户点一下就是用户自己决定）。
+        //   它今天仍然绿，是因为**那一跳还没接进来** —— 接它要动
+        //   `lib.rs`（`generate_handler!`）· `parity_ledger.rs`（双向相等）·
+        //   `write_site_registry.rs`（`SPAWNS` 默认拒绝），**三份都在 `K-R135` 的写区之外**
+        //   ⇒ 本件把机制与判据做完、那一跳交回 PM（`§8`）。
+        //   ⚠ 接进来的那一拍**必须同拍**改这条断言与那三份登记，别让它继续挡路
+        //   （testing.md 规则 12：出路是重新裁定，不是悄悄删掉）。
         let prod = guard_core::production_code(include_str!("profile_installer.rs"));
         assert!(
             !prod.contains("Command::new("),
-            "本模块的生产段里起了进程 —— 这条命令是**给用户跑的**，\
-             产品自己跑它就变成了「替用户改他的环境」（`INVARIANTS.md §41.6` ＋ \
-             用户逐字「生成命令让用户自己填」）"
+            "本模块的生产段里起了进程。今天这一条仍然成立是因为**执行那一跳还没接进来**；\
+             真要接（`R85` 允许点击即执行），同拍要做的三件事逐字写在本断言上面那段注释里 —— \
+             改了这里却没改那三份登记，门禁会在别的格子红，而红的原因读起来与这里无关。"
         );
     }
 
-    /// ★★ `KR132D3` 的**反向锚点**：`cc` 今天绕过后端直呼 `claude`，
-    /// 而 POSIX 那一臂的同名命令走 `ccm` —— **这条判据把这处不一致钉住，好让它翻正时
-    /// 必须先回到这里。**
+    /// ★★ 〔`KR135D1` 09-15〕**那一格的「现在状态」：`~/.cc-monitor\bin` 在不在
+    /// 用户级 PATH 上 —— 它与那两条命令必须用**同一种相等**。**
     ///
-    /// # 为什么写成反向锚点，而不是直接改
+    /// # 为什么这一条单独存在：不一致的代价是**界面撒谎**
     ///
-    /// 答案没有悬念（`K33`「所有命令只许有一处」＋ `K28`「一切对外都经后端」⇒ **该改**），
-    /// 但本轮不改，三条理由逐条写在 [`render_cc_code`] 的头注里（真机回归前提未复验 ·
-    /// 落点 `launcher_identity_registry` 在写区之外 · 它是发版产物的行为变更）。
+    /// 加用 `-notcontains $d`、撤用 `-ne $d`，两者在 PowerShell 里都是
+    /// **整格 · 大小写不敏感**。状态那一格要是比它们**聪明**（做了路径规范化），
+    /// 就会出现「显示 ✓、点一下又多出一格重复」；要是比它们**笨**，
+    /// 就会出现「显示 ✗、点了没反应」。**两边同样地笨，比一边聪明一边笨要好。**
     ///
-    /// 🔴 **翻正它的条件**（testing.md 判据规则 11/12：反向锚点的出路只有「重新裁定」）：
-    /// 同一拍做完三件事 —— ① 这一行改成走 `ccm`；② `launcher_identity_registry`
-    /// 那条 `T2` 锚点跟着改；③ 在真机上把 `cc` **真跑一趟**（不是只看它「找得到」）。
-    /// **把这条判据删掉让今天好过，不是出路。**
+    /// # 地板先证
     ///
-    /// # `cct` 那一半
+    /// 第一条断言是**正向**的（整格命中要认得出）—— 少了它，
+    /// 一个恒回 `false` 的实现能让下面每一条 `!` 断言全绿。
     ///
-    /// POSIX 那一臂里 `cct() {{ ccm --tmux "$@"; }}`，而 **Windows 上没有 tmux**。
-    /// ⇒ 这一臂**刻意不生成 `cct`**：给它一个「名字在、行为不在」的壳，
-    /// 比没有更坏（`K-R129` 那位用户正是照文案敲了 `cct`）。
-    /// ⚠ **这半条是棘轮，不是发现**：它今天绿，买到的是「哪天有人往这一臂加 `cct`，
-    /// 得先回来把 `--tmux` 在 Windows 上是什么意思答了」。别把它读成一次证明。
+    /// # 死值验（`KR135D1` 刀③）
+    ///
+    /// 把 [`user_path_has_our_bin`] 的 `split(';').any(整格相等)` 换成
+    /// `user_path_raw.contains(dir_abs)` ⇒ 本条红（`-old` 那两格）。
     #[test]
-    fn the_powershell_cc_still_bypasses_the_backend_and_that_is_registered_not_forgotten() {
+    fn the_user_path_status_uses_the_same_equality_as_the_generated_commands() {
+        let dir = r"C:\Users\me\.cc-monitor\bin";
+        // ── 地板：整格命中真认得出（否则下面全是空真）──────────────────
+        assert!(
+            user_path_has_our_bin(&format!(r"C:\Windows;{dir};C:\foo"), dir),
+            "整格命中都认不出来 —— 判据够不着被测对象了，先修实现"
+        );
+        assert!(user_path_has_our_bin(dir, dir), "独占一格认不出");
+        assert!(
+            user_path_has_our_bin(&format!(r"C:\Windows;{dir}"), dir),
+            "在末尾认不出"
+        );
+        // ── 大小写不敏感：PowerShell 的 -contains / -ne 就是这样 ────────
+        assert!(
+            user_path_has_our_bin(r"C:\Windows;c:\users\me\.cc-monitor\BIN;C:\foo", dir),
+            "大小写不一样就认不出了 —— 而那两条命令认得出 ⇒ 状态与按钮会各说各话"
+        );
+        // ── 比整格，不比子串：`-old` 这一形正是要挡的那个 ──────────────
+        assert!(
+            !user_path_has_our_bin(&format!("{dir}-old"), dir),
+            "子串比法：`<我们那段>-old` 被读成「已经在了」，然后「加」那个按钮什么都不做"
+        );
+        assert!(!user_path_has_our_bin(
+            &format!(r"C:\Windows;{dir}-old"),
+            dir
+        ));
+        assert!(!user_path_has_our_bin(&format!(r"{dir}2;C:\x"), dir));
+        // ── 末尾反斜杠：**刻意判 false**（代价写在函数头注里）──────────
+        assert!(
+            !user_path_has_our_bin(&format!(r"{dir}\"), dir),
+            "这一格刻意与那两条命令**同样地笨** —— 它们也不砍末尾反斜杠。\
+             要改成规范化，三处（本函数 ＋ 两条命令）必须同拍一起改"
+        );
+        // ── 拿不到目录时恒 false：不许把「拿不到」读成「已经装好了」──────
+        assert!(
+            !user_path_has_our_bin(r"C:\a;;C:\b", ""),
+            "空目录与 PATH 上的空项相等了"
+        );
+        assert!(!user_path_has_our_bin("", ""));
+        assert!(!user_path_has_our_bin("", dir));
+    }
+
+    /// ★★ 〔`KR135D3` 09-15〕**那份共用的 POSIX 别名 snippet，真的把两边申报的
+    /// `ccm` 目录都放上了 PATH，而且本机那个赢。**
+    ///
+    /// # 病是什么（`R80 §二` 的 `R2`，现打出来的，不是推理）
+    ///
+    /// `shared/ccm-aliases.sh` 是**一份文件、两个消费者**：本机走
+    /// [`plan_install`] 的 POSIX 方言合进用户选的那份 rc，远端走
+    /// `sftp::install_remote_ccm_helper` 合进远端 rc —— **合进去的是逐字同一份文本**。
+    /// 而两边的 `ccm` 落点**不是同一个目录**（`tool_registry::TOOLS` 现算：
+    /// 本机 `.cc-monitor/bin`、远端 `.local/bin`）。
+    /// ⇒ 那一行只写一个目录时，**它只可能对其中一边是对的**。
+    /// 上一轮它只写 `~/.local/bin` ⇒ **对远端对、对本机错**，
+    /// 而那正是 `R80` 逐字记下的那条预判（干净机器上 `ccm`/`cc`/`cct` 全 command not found）。
+    ///
+    /// # 修法为什么是「两个都加」而不是「改成本机那个」
+    ///
+    /// 改成本机那个只是把错换到另一边。这份 snippet **必须只有一个住址**
+    /// （同文件另有一条判据在数 `include_str!` 恰好一处）⇒ 不能按边分叉
+    /// ⇒ 两个都上，各自那台机器上只有一个真的存在（不存在的那个在 PATH 上无害）。
+    ///
+    /// # 顺序是承重的，不是风格
+    ///
+    /// `.cc-monitor/bin` 必须**赢过** `.local/bin`：后者是用户那份**旧的** `ccm`
+    /// 住的地方（`K34` 逐字「原本的配置要手动删除」，产品一个字节都不删）。
+    /// 它输了的那一形有人在数：`ccm_probe::classify_path_ccm` 的 `NotOurs`。
+    ///
+    /// # 🔴 诚实边界 —— 这一条**证不了** POSIX 那一臂通了
+    ///
+    /// 它量的是「这份 snippet 被 `source` 之后 `$PATH` 长什么样」，
+    /// **不是**「干净 Linux 机上装完真敲得到 `ccm`」—— 后者要一台干净 Linux 机，
+    /// 本件没有。⇒ `R80` 的 `R2` 今天仍然**既没被证实也没被证伪**，
+    /// 被治掉的只是它的**静态成因**。别把这一条读成「验过了」。
+    ///
+    /// ⚠ 它跑在 `cfg(unix)` 下（要 `bash` 来 `source`）。Windows 上这条不出声 ——
+    /// 而那**不是漏**：这份 snippet 本来就只装进 POSIX rc。
+    ///
+    /// # 死值验（`KR135D3` 刀①）
+    ///
+    /// 把那一行改回只有 `$HOME/.local/bin` ⇒ 本条红（本机那个目录不在 PATH 上）。
+    #[cfg(unix)]
+    #[test]
+    fn the_shared_alias_snippet_really_puts_both_ccm_dirs_on_path_local_first() {
+        let local = crate::tool_registry::local_ccm_bin_dir_rel().expect("本机申报的 bin 目录");
+        let remote = crate::tool_registry::remote_ccm_bin_dir_rel().expect("远端申报的 bin 目录");
+        assert_ne!(
+            local, remote,
+            "两边落点变成同一个了 —— 那本条的前提（一份文本、两个落点）就没了。\
+             这不是放宽它的理由：回到 `KR135D3` 重裁一次"
+        );
+        let td = tmpdir("aliassnip");
+        let home = td.0.join("h");
+        std::fs::create_dir_all(&home).expect("造假家目录");
+        let snip = td.0.join("snippet.sh");
+        std::fs::write(&snip, crate::sftp::CCM_WRAPPER_SNIPPET).expect("写 snippet");
+
+        // **量真实输出，不量源码**（`brief` 第 5 条）：真 source 一趟，问 `$PATH`。
+        let run = |times: usize| -> String {
+            let dots = ". '".to_string() + &snip.display().to_string() + "'; ";
+            let script = dots.repeat(times) + "printf '%s' \"$PATH\"";
+            let out = std::process::Command::new("bash")
+                .arg("-c")
+                .arg(&script)
+                .env("HOME", &home)
+                .env("PATH", "/usr/bin:/bin")
+                .output()
+                .expect("跑 bash —— 沙箱里没有 bash 的话这条判据够不着被测对象");
+            assert!(
+                out.status.success(),
+                "source 那份 snippet 直接失败了（这本身就是一条缺陷）：\n{}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+
+        let path = run(1);
+        // ── 地板：真读到东西了，而且原来的 PATH 没被吃掉 ──────────────
+        assert!(
+            path.contains("/usr/bin"),
+            "原来的 PATH 不见了 —— 这一行把用户的 PATH 覆盖掉了，而它只该往前插。\n实得：{path}"
+        );
+        let want_local = format!("{}/{local}", home.display());
+        let want_remote = format!("{}/{remote}", home.display());
+        let segs: Vec<&str> = path.split(':').collect();
+        for (who, want) in [("本机", &want_local), ("远端", &want_remote)] {
+            assert!(
+                segs.contains(&want.as_str()),
+                "{who}那个 `ccm` 落点不在 PATH 上：`{want}`。\n\
+                 ⚠ 只写一个目录时这一行**只可能对其中一边是对的** —— 见本判据头注。\n\
+                 实得 {} 段：{segs:?}",
+                segs.len()
+            );
+        }
+        // ── 顺序：本机那个要赢过远端那个（旧的 ccm 住在远端那个目录里）──
+        let i_local = segs
+            .iter()
+            .position(|s| *s == want_local)
+            .expect("本机那格");
+        let i_remote = segs
+            .iter()
+            .position(|s| *s == want_remote)
+            .expect("远端那格");
+        assert!(
+            i_local < i_remote,
+            "`{want_local}`（我们放下去的那一份）排在 `{want_remote}`（你那份旧的住处）后面 —— \
+             那样赢的是旧的那个，而 `ccm_probe::classify_path_ccm` 会把它记成 `NotOurs`。\n\
+             实得：{segs:?}"
+        );
+        // ── 幂等：source 两趟不许让 PATH 长一截 ────────────────────────
+        assert_eq!(
+            run(2),
+            path,
+            "source 两趟 PATH 变了 —— 「已经在就不插」那一道破了，嵌套 shell 会让 PATH 无限变长"
+        );
+    }
+
+    /// ★★ 〔`KR135D2` 09-15〕**`cc` 翻正了 —— 这一条是那处反向锚点翻过来的那一面。**
+    ///
+    /// 上一轮那条判据（`K-R132` 立的，名字里逐字写着「仍然绕过后端、而这是登记过的、
+    /// 不是忘了」）钉的是「今天这一行就是 `& claude`」这处**已登记的不一致**。
+    /// testing.md 判据规则 12：反向锚点的合法出路只有「**重新裁定**」——
+    /// `KR135D2` 就是那一次重新裁定，于是它连名字一起翻正。
+    ///
+    /// # 现在钉的是什么：**两臂的 `cc` 走同一条路**
+    ///
+    /// PowerShell 那一臂 `& ccm $RemainingArgs`、POSIX 那一臂 `cc() { ccm "$@"; }`
+    /// —— `K33`「所有命令只许有一处」＋ `K26`「`ccm` 就是后端的原生命令行入口」＋
+    /// `K28`「一切对外都经后端」。⚠ 两边都**现读**（一边读渲染产物、一边读
+    /// `CCM_WRAPPER_SNIPPET`），一个名字都不抄第二份。
+    ///
+    /// # 🔴 它同拍仍然钉住「别只改一边」
+    ///
+    /// `launcher_identity_registry` 把这一行登记成 `T2` 的锚点。`K-R132` 上一轮现打验过：
+    /// 动这一行会让**本条 ＋ 那条 `T2`** 同时红。本轮两处一起改了，
+    /// 而这条性质**没变** —— 下一个人再动它，仍然是两条一起红。
+    ///
+    /// # 🔴 诚实边界（别读大）
+    ///
+    /// 它证的是「**生成的文本指向 `ccm`**」，**不是**「敲下去真起得来」。
+    /// 后者要一台 Windows，而本门禁跑在 Linux 沙箱里（`GATE_BLIND` 的 `windows-runner`）。
+    /// **本件没有在真机上把 `cc` 跑过一趟**，这一格如实记在 `§8`。
+    ///
+    /// # `cct` 那一半（维持上一轮的棘轮）
+    ///
+    /// POSIX 那一臂里 `cct() { ccm --tmux "$@"; }`，而 **Windows 上没有 tmux**
+    /// ⇒ 这一臂**刻意不生成 `cct`**：给它一个「名字在、行为不在」的壳比没有更坏
+    /// （`K-R129` 那位用户正是照文案敲了 `cct`）。**这半条是棘轮，不是发现。**
+    ///
+    /// # 死值验（`KR135D2` 刀①）
+    ///
+    /// 把那一行改回 `& claude $RemainingArgs` ⇒ 本条 ＋ `T2` 那条同时红。
+    #[test]
+    fn the_powershell_cc_goes_through_ccm_exactly_like_the_posix_one() {
         let word = crate::backend::control::local_backend::CCM_ENTRY_WORD;
         let out = render_cc_code("cc", true);
         assert!(
             pinned(&out, "function cc {"),
             "地板没了：这一支本来就该生成 `function cc`\n{out}"
         );
-        // 反向锚点：今天它就是 `& claude`。翻正要走头注那三步。
+        // ── 正题：那一行走 `ccm` ─────────────────────────────────────────
         assert!(
-            pinned(&out, "    & claude $RemainingArgs"),
-            "这一行变了 —— 如果是改成走 `{word}`（本判据头注说的正解），\
-             那就同拍把 `launcher_identity_registry` 的 `T2` 锚点改掉，\
-             并把本判据翻正（连同它的名字）。**别只改一边。**\n{out}"
+            pinned(&out, &format!("    & {word} $RemainingArgs")),
+            "PowerShell 那一臂的 `cc` 不走 `{word}` 了。`K33`「所有命令只许有一处」＋ \
+             `K28`「一切对外都经后端」—— 改回直呼别的东西，等于让同一个名字\
+             在两个平台上是两件东西（账号 / 工作目录 / agent 选择这几维在 Windows 上\
+             整条够不着）。\n{out}"
         );
-        // 而 POSIX 那一臂的同名命令确实走 `ccm` —— 这就是那处不一致的另一半，
-        // 现读，不抄：抄一份就是第二个住址。
+        // ── 反面：这一块里**只许有这一条**调用行 ─────────────────────────
+        //
+        // ⚠ 不写成 `!out.contains("claude")`：模板里本来就有两处 `claude`
+        //   （`.claude\claudecode-frontend` 这个路径、以及一句注释）⇒ 那样写第一天就是红的，
+        //   而「第一天就红的判据」的唯一出路是放宽它。⇒ 人群收成「调用行」这一形。
+        let invokes: Vec<String> = out
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| l.starts_with("& "))
+            .collect();
+        assert_eq!(
+            invokes,
+            vec![format!("& {word} $RemainingArgs")],
+            "这一块里的**调用行**应当恰好一条、而且走 `{word}`。\n\
+             多一条 = 旁边又加了一条别的路（后一条赢，而读的人看见前一条）；\n\
+             0 条 = `cc` 什么都不调了。\n逐字：\n{out}"
+        );
+        // ── POSIX 那一臂现读，不抄：抄一份就是第二个住址 ──────────────────
         assert!(
             crate::sftp::CCM_WRAPPER_SNIPPET
                 .lines()
                 .any(|l| l.trim_start().starts_with("cc()") && guard_core::contains_word(l, word)),
-            "POSIX 那一臂的 `cc` 不再走 `{word}` 了 —— 那样两臂就**一致地都错**了，\
-             而本判据钉的是「它们今天不一致」这件事"
+            "POSIX 那一臂的 `cc` 不走 `{word}` 了 —— 本判据钉的是**两臂一致**，\
+             一致地错也是红"
         );
-        // `cct`：这一臂不发明它。
+        // ── `cct`：这一臂不发明它 ────────────────────────────────────────
         for rendered in [render_cc_code("cc", true), render_cc_code("cc", false)] {
             assert!(
                 !guard_core::contains_word(&rendered, "function cct"),
