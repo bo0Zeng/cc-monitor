@@ -862,8 +862,9 @@ pub const TOOLS: &[ToolSpec] = &[
 /// # 取不到就是 `None`，**不兜默认值**
 ///
 /// 兜一个默认值 = 上面那张表被改坏了也看不出来，而那正是本函数要买的东西。
-/// 调用方拿到 `None` 时**不发明一个目录**，它宁可少吐那一行（`profile_installer` 就是这么做的），
-/// 而少吐那一行会被 `the_powershell_block_puts_our_ccm_bin_dir_on_the_session_path` 当场逮到。
+/// 调用方拿到 `None` 时**不发明一个目录**：`profile_installer` 那两条用户级 PATH 命令
+/// 会原样往上传 `None`（**一条命令都不吐**），界面那一格显示「拿不到落点」
+/// 而不是一个编出来的目录 —— **指错目录与根本没补，在用户终端上是同一个结果**。
 ///
 /// ⚠ **诚实边界**：它答的是「**表里申报的**本机落点在哪个目录」，
 /// 不是「盘上那份**真的**在哪」。两者对不对得上由
@@ -887,6 +888,47 @@ pub fn local_ccm_bin_dir_rel() -> Option<&'static str> {
                 if found.is_some() {
                     // 同一个工具声明了两条本机落点 ⇒ 「那个目录」这个问题没有唯一答案，
                     // 而**猜一个**正是这一格不许做的事。
+                    return None;
+                }
+                found = Some(dir);
+            }
+        }
+    }
+    found
+}
+
+/// 🔴 `KR135D3`：**远端那条 `ccm` 落点的目录**（`$HOME` 相对，末段文件名已砍掉）。
+///
+/// 与 [`local_ccm_bin_dir_rel`] 是**同一个问题的另一边**，所以形状逐字照它：
+/// 从这张表现算，不写死目录字面量（`13b`：闭集只许有一个住址）。
+///
+/// # 为什么本机那个不够用，非要把远端这个也取出来
+///
+/// `shared/ccm-aliases.sh` 是**一份文件、两个消费者**（本机 rc 与远端 rc 合的是
+/// 逐字同一份文本），而两边的落点**不是同一个目录** ⇒ 那一行里两个目录都得在。
+/// 判据要判「两个都在」，就得两个都能从这张表问出来 ——
+/// 在判据里手抄一个 `.local/bin` 就是第二个住址，而那正是本病的成因。
+///
+/// 两条同名落点 ⇒ 回 `None`（「那个目录」没有唯一答案时**不许猜一个**，同本机那条）。
+// 🔴 〔`K-R135` 09-15〕**它今天的使用者只有判据，所以住在判据档里，而不是挂一个
+// `#[allow(dead_code)]` 把警告压掉。** 两者的差别是**下一个人读得出什么**：
+// `allow` 说的是「有人用，只是编译器看不见」，而这一档说的是「**今天只有判据用它**」——
+// 后者才是实话。⚠ 它不是可有可无的：判据要证「那一行把**两边申报的**目录都放上了 PATH」，
+// 而在判据里手抄一个 `.local/bin` 就是那个落点的第二个住址 —— 正是本病的成因。
+// ⇒ 哪天生产侧真要问「远端那个目录是哪个」，把这一行 `#[cfg(test)]` 摘掉即可。
+#[cfg(test)]
+pub fn remote_ccm_bin_dir_rel() -> Option<&'static str> {
+    let mut found: Option<&'static str> = None;
+    for spec in TOOLS {
+        // 同 `local_ccm_bin_dir_rel`：`"ccm"` 是**这张表自己的键**，
+        // 不是 `local_backend::CCM_ENTRY_WORD` 那个命令名的第二个住址。
+        if spec.id != "ccm" {
+            continue;
+        }
+        for carrier in spec.carriers {
+            if let ToolDestination::RemoteHomeRelative(p) = carrier.destination {
+                let (dir, _last) = p.rsplit_once('/')?;
+                if found.is_some() {
                     return None;
                 }
                 found = Some(dir);

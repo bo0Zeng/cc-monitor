@@ -122,6 +122,29 @@ mod spawn_sites {
          "在用户的终端里起会话 —— 承接 C13「最后那次 exec 在用户终端里」，这是本产品的主用途"),
         ("launch.rs", "launch_powershell_window", "`wt.exe` / `powershell.exe`",
          "Windows 侧同上；两个名字都是常量，不吃用户输入"),
+        // 🔴 〔`K-R135` / `R88` 09-15〕**这一行就是 `R88` 放行的那一行，只加了这一行。**
+        //
+        // `R87` 原本写着「本件不需要起进程」——**那是假前提，`R88` 已推翻**：`§0b` 明禁拿
+        // `$env:PATH` 判用户级 PATH（它是机器级＋用户级拼起来的）⇒ **状态 / 加 / 撤三样
+        // 都得碰 `HKCU\Environment`**，而「现在状态」那一格**根本不可能靠用户自己去跑**。
+        //
+        // **为什么必须起进程**：Rust 侧够到那一档只有两条路 —— 起 PowerShell，或直接读写
+        // 注册表。后者现打编不过（`windows::Win32::System::Registry` 是 `E0432`，全仓
+        // `Cargo.toml` 开这个 feature **0 处**、现有注册表调用 **0 处**），而且 `R88` 按份量
+        // 否掉了它：① 直接写注册表会造出**第二份 PATH 编辑实现**，而走 Tauri 命令的理由
+        // 本身就是「别给同一族动作另起一条路」；② `[Environment]::SetEnvironmentVariable`
+        // **自带 `WM_SETTINGCHANGE` 广播**，自己写注册表就得自己记得广播，忘了就是
+        // 「改了、新终端看不到」—— **那正是 `K-R135` 在杀的那个形状**。
+        //
+        // ⚠ **argv 是什么**：`powershell.exe -NoProfile -NonInteractive -Command <脚本>`。
+        // `<脚本>` **只可能是 `profile_installer` 那三个 `render_*` 函数的输出**
+        // （探 / 加 / 撤），**不吃任何用户输入** —— 里面唯一的变量是 `tool_registry` 申报的
+        // 那个目录。同文件的 `the_generated_path_command_edits_only_the_user_scope_and_never_via_setx`
+        // 在数「生产段起进程恰好一处、写环境变量恰好两处」，别读成「这里能跑任意命令」。
+        ("profile_installer.rs", "run_user_path_powershell", "`powershell.exe -NoProfile -NonInteractive -Command <我们自己生成的那段>`",
+         "`R85` 用户逐字「应当让用户手动点击加，也能管理删除」⇒ **点击即执行是允许的**（`K33` 禁的是产品**替**用户决定，用户点一下就是用户自己决定）。\
+          必须起进程的理由是**那一档只有 Windows 的用户级环境块里有**，而 Rust 侧够得着它的另一条路（直接写注册表）会造出第二份 PATH 编辑实现、并把 `WM_SETTINGCHANGE` 广播的责任揽到自己身上 —— 两条都被 `R88` 否掉了。\
+          ⚠ 跑的**就是界面上显示给用户看的那段字节** ⇒ 「点按钮」与「自己复制去跑」逐字同一份，实现只有一处"),
         ("launch.rs", "ssh_client_available", "探测用的 `ssh`",
          "只探测「本机有没有 ssh」，不带用户参数"),
         ("lib.rs", "open_with_os", "`cmd` / `open` / `xdg-open`",

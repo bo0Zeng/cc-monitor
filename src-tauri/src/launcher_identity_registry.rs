@@ -146,9 +146,15 @@ mod tests {
         Launcher {
             label: "T2 · Windows 终端里的那一下（`profile_installer.rs` 生成的 `function cc`）",
             ledger_cmds: &[],
+            // 🔴 〔`KR135D2` 09-15〕**锚点跟着翻正了**：那一行从 `& claude $RemainingArgs`
+            //    改成走 `ccm`（`K33`「所有命令只许有一处」＋ `K28`）。`K-R132` 上一轮现打
+            //    验过「动那一行 ⇒ 本条与 profile_installer 那条同时红」——**两处一起改**
+            //    正是它当时要求的，不是绕过它。
+            //    ⚠ 锚点钉的是**源码里那个 format 串**（`{word}` 现算自 `CCM_ENTRY_WORD`），
+            //    不是渲染后的文本 —— 抄一份 `ccm` 进来就是那个词的第二个住址。
             anchors: &[(
                 "src-tauri/src/profile_installer.rs",
-                "& claude $RemainingArgs",
+                "& {word} $RemainingArgs",
                 1,
             )],
             plants: false,

@@ -177,6 +177,25 @@ import type { TaskEntry } from "../generated/TaskEntry";
  * 不许按模块嵌套（`commands.sftp.delete`），不许塞非命令键——动态派发之类的逃生口
  * 必须是**另一个导出**。塞了会被守卫第 2 条当场抓红（fail-safe）。
  */
+/**
+ * `K-R135`：用户级 PATH 那一格的现状。**手写**（理由见 `ccm_user_path_status` 那一条），
+ * 字段名与 Rust 侧 `profile_installer::UserPathStatus` 的**线上名**由判据对拍。
+ */
+export interface UserPathStatus {
+  /** 这台机器有没有「用户级 PATH」这一档 —— 它是 Windows 独有的。 */
+  supported: boolean;
+  /** 我们那个 bin 目录的绝对路径。探不动 ⇒ null。 */
+  dir: string | null;
+  /** 在不在用户级 PATH 上。🔴 `error` 非空时这一格恒 false，**别单看它**。 */
+  onUserPath: boolean;
+  /** 「加」那条命令的逐字文本（与按钮跑的是同一份字节）。 */
+  addCommand: string | null;
+  /** 「撤」那条命令的逐字文本。 */
+  removeCommand: string | null;
+  /** 探不动时的原话。🔴 **探不动 ≠ 不在 PATH 上**，界面必须把它显示出来。 */
+  error: string | null;
+}
+
 export const commands = {
   /**
    * 起一个 tmux 会话跑 `/usage` 并 capture-pane 抓屏。返回值字段被真消费 ⇒ 生成物（桶③）。
@@ -261,6 +280,26 @@ export const commands = {
 
   /** 写 `cc_set_auto_launch`。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   cc_set_auto_launch: (args: { enabled: boolean }) => invoke<void>("cc_set_auto_launch", args),
+
+  /**
+   * `K-R135` / `R85`：用户级 PATH 那一格的**现状**。**现算，不缓存** ——
+   * 每调一次后端真跑一趟 `powershell.exe`（几百 ms）⇒ **只在打开那一格 / 点刷新时调，不许轮询**。
+   *
+   * ⚠ **返回类型是手写的（`UserPathStatus`），这是一处有意的例外，理由写出来**：
+   * 本文件头注那「三桶」规则说桶③（TS 真消费字段）该用生成物，而生成物要落进
+   * `src/generated/`，那份目录**不在 `K-R135` 的写区里**。⇒ 手写一份，并且**不是裸奔的**：
+   * Rust 侧有一条判据（`profile_installer` 的
+   * `the_user_path_status_wire_fields_match_the_hand_written_ts`）把**线上字段名**
+   * （serde 序列化一个样本实例现算出来的）与本文件这份接口逐字对拍 ⇒ 改了 Rust 不改这里当场红。
+   * 哪天写区放开 `src/generated/`，换成生成物、把那条判据删掉。
+   */
+  ccm_user_path_status: () => invoke<UserPathStatus>("ccm_user_path_status"),
+
+  /** `K-R135`：把我们那个 bin 目录**加**到用户级 PATH。桶①。 */
+  ccm_user_path_add: () => invoke<void>("ccm_user_path_add"),
+
+  /** `K-R135`：从用户级 PATH 上**只摘掉我们那一格**。桶①。 */
+  ccm_user_path_remove: () => invoke<void>("ccm_user_path_remove"),
 
   /** 远端 `tmux capture-pane -p` 的画面文本。返回**原始类型**，无需生成物（桶③）。 */
   capture_remote_pane: (args: { origin: string; target: string }) =>
