@@ -183,32 +183,39 @@ pub(crate) fn negotiate(
 mod tests {
     use super::*;
 
-    /// 仓里唯一一个真在说这套方言的插件的源码。
+    /// 仓里唯一一个真在说这套方言的插件 —— **`K-R48` 第二拍起它是本二进制自己**。
     ///
-    /// ★ 读**源码**而不是跑那条命令是有代价的，代价写在模块头注里：
-    /// 它挡得住「改源码」，挡不住「PATH 上换了一份」。选它是因为**它进得了出货门禁**
-    ///（`cargo test`），而真跑那条命令的判据只住 e2e，出货门禁一套 e2e 都不跑。
-    const REAL_PLUGIN_SRC: &str = include_str!("../../../shared/ccm");
+    /// # 语料换了，而且换得更硬
+    ///
+    /// 从前这里是一句 `include_str!` 指着那份 bash `ccm` 脚本 ——**读它的源码**，
+    /// 再从里面抠 `capabilities=` 那一行。头注当时逐字写着这么做的代价：
+    /// 「它挡得住『改源码』，挡不住『PATH 上换了一份』」。
+    ///
+    /// 〔用@09-11 `K33`〕那个脚本删了。今天说这套方言的是**本二进制的一次性模式**
+    /// （`control::ccm::probe_output`）⇒ 语料改成**真调那个产出函数**：
+    /// 不再是「读一份源码再抠」，是**拿生产那条路真吐出来的那份**。
+    /// ⚠ 仍然挡不住「PATH 上换了一份」（那要真跑一条命令，住 e2e）—— 这一格没有变好也没有变坏。
+    fn real_plugin_probe_text() -> String {
+        crate::control::ccm::probe_output("/usr/local/bin/ccm")
+    }
 
-    /// 那个插件**自己声明**的能力 token（从它的源码里抠出来）。
+    /// 那个插件**自己声明**的能力 token（从它真吐出来的那份里抠）。
     ///
-    /// ⚠ 锚点必须带**它前面那个换行转义**：光找 `capabilities=` 会先命中那份源码
-    /// **注释里**的同一个词（实测：第一次这么写，抠出来的是一句中文散文，
-    /// 而断言当场把它当成「token 从 17 变成 1」）。⇒ 锚点唯一性也一并断言。
+    /// ⚠ 锚点必须带**它前面那个换行**：光找 `capabilities=` 会先命中散文里的同一个词。
+    /// ⇒ 锚点唯一性也一并断言（这条纪律从 bash 语料那一版逐字保留 —— 它当年真逮到过一次）。
     fn declared_capabilities() -> Vec<String> {
-        let key = format!("\\ncapabi{}=", "lities");
+        let src = real_plugin_probe_text();
+        let key = format!("\ncapabi{}=", "lities");
         assert_eq!(
-            REAL_PLUGIN_SRC.matches(&key).count(),
+            src.matches(&key).count(),
             1,
             "对拍语料里 `{key}` 出现的次数不是 1 —— 锚点不唯一，抠到的可能不是那一行"
         );
-        let at = REAL_PLUGIN_SRC
+        let at = src
             .find(&key)
             .expect("对拍语料里找不到能力声明 —— 抠法坏了，下面几条会空转");
-        let tail = &REAL_PLUGIN_SRC[at + key.len()..];
-        let end = tail
-            .find(|c: char| c == '\\' || c == '\n' || c == '\'')
-            .unwrap_or(tail.len());
+        let tail = &src[at + key.len()..];
+        let end = tail.find('\n').unwrap_or(tail.len());
         tail[..end]
             .split(',')
             .map(|t| t.trim().to_string())
@@ -252,10 +259,13 @@ mod tests {
         let caps = declared_capabilities();
         assert_eq!(
             caps.len(),
-            17,
-            "对拍语料里的能力 token 从 17 个变成 {}：{caps:?}\n\
+            18,
+            "对拍语料里的能力 token 从 18 个变成 {}：{caps:?}\n\
              加 token 是好事（消费者全是子集检查）；**删/改名才危险** —— \
-             那会让下面那份必需清单里的某一条对不上。这个数变了就顺手看一眼消费者。",
+             那会让下面那份必需清单里的某一条对不上。这个数变了就顺手看一眼消费者。\n\
+             〔`K-R61` 09-11：17 → 18，加的是 `base-url-across-tmux`。\
+             **本条是『谁在数它』那张表上的第五处**，而 `K-R61` 派工时那张表只登记了四处 —— \
+             已点名交回 PM。〕",
             caps.len()
         );
         for want in required_today() {

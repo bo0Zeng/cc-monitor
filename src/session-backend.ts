@@ -76,7 +76,7 @@ export interface SessionBackend {
  * **裸 `-t <名>` 不是精确匹配**：tmux 依次按「精确名 → **名字开头** → **glob**」解析。
  * 实测（tmux 3.6，隔离 `-L` socket）：只有 `sib-2` 存在时 `kill-session -t sib` **杀掉 `sib-2` 且 rc=0**；
  * `send-keys -t sib` 投进 `sib-2`；`capture-pane -p -t sib` 抓的是 `sib-2`；`kill-session -t 'si*'` glob 命中。
- * 本仓必然踩：`pickFreshTmuxName` 刻意造 `cc-<sid8>-2/-3`，终端 `cct` 造 `<dir>_cc-2/-3`。
+ * 本仓必然踩：铸名口刻意造 `<项目名>-cc-2/-3`（`K-R96` 之前是 `<sid8>-cc-2/-3`），终端 `cct` 造 `<dir>_cc-2/-3`。
  *
  * **为什么是 `=name:` 而不是 `=name`**（别"简化"掉尾冒号）：`=` 前缀只在 target-**session**
  * 解析路径上被识别。`send-keys`/`capture-pane` 收的是 target-**pane**，`set-option`/`show-options`

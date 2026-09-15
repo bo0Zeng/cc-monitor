@@ -65,12 +65,24 @@ pub(crate) fn classify(code: Option<i32>, stdout: String, stderr: String) -> Que
 /// 而在这一层写死会让两种调用方之一必然错。如实记为诚实边界。
 // F10b 第一批起有生产调用方（`usage.rs`），不再需要 `allow(dead_code)`。
 pub(crate) fn run_query(target_triple: &str, args: &[&str]) -> QueryOutcome {
-    let bin: PathBuf = match super::local_backend::resolve_beside_this_exe(target_triple) {
-        super::local_backend::Resolved::Found(p) => p,
-        super::local_backend::Resolved::Missing { reason, looked_at } => {
-            return QueryOutcome::NoBackend(format!("{reason}；找过 {looked_at:?}"));
-        }
-    };
+    // 🔴 这是本文件唯一一条**跨能力线**的引用（`observe → control`），`K-R71` 归位时才显形 ——
+    // 先前它写成 `super::local_backend::…`，因为两个文件当时同住 `control/`。
+    // 方向是对的（daemon 侧 `layering_guard` 逐字：`observe → control` 许、反向一条都不许），
+    // ★〔`K-R73` 09-12，`DECISIONS.md#R29` 裁定三〕**这条边现在有登记的家了**：
+    // `backend/mod.rs` 的 `layering` 模块照 daemon 的形立了两条判据 ——
+    // 正向逐条列举、条数被等号钉住（下面三个符号各占一条），反向零容忍。
+    // 〔本段原话逐字，留作来历：「⚠ 但**monitor 侧今天没有任何判据在数这条边**：daemon
+    //  那侧要求「接口面显式列举、条数钉住」（`ALLOWED_OBSERVE_TO_CONTROL`），
+    //  monitor 侧的对应物**不存在**。如实记，不假装钉住了。」〕
+    // ⚠ 加一处新的 `control::` 引用**会红** —— 那不是坏了，是要你先回答
+    // 「为什么这件事非得由读面发起」，再把它写进那张表。
+    let bin: PathBuf =
+        match crate::backend::control::local_backend::resolve_beside_this_exe(target_triple) {
+            crate::backend::control::local_backend::Resolved::Found(p) => p,
+            crate::backend::control::local_backend::Resolved::Missing { reason, looked_at } => {
+                return QueryOutcome::NoBackend(format!("{reason}；找过 {looked_at:?}"));
+            }
+        };
     match std::process::Command::new(&bin).args(args).output() {
         Ok(out) => classify(
             out.status.code(),
@@ -321,7 +333,16 @@ mod tests {
             let key = format!("\"src/{c}\"");
             if let Some(at) = ledger.find(key.as_str()) {
                 // 该条目的类别就在文件名之后不远处；只要它还标着 reader 就算「未退役」。
-                let window = &ledger[at..(at + 120).min(ledger.len())];
+                // 🔴 〔`K-R97` 09-12 实测〕**按字节切窗口之前要先落到字符边界上**：
+                // 登记表里全是中文说明，`at + 120` 十有八九落在一个汉字中间，
+                // 那时切片当场 panic（逐字 `end byte index … is not a char boundary`）。
+                // ⚠ 这不是本件改坏的，是本条**一直**踩在一颗只由字节偏移决定的雷上 ——
+                // 上一处 `"src/…"` 的位置一变，雷就换个地方埋，而它此前从没被踩到过。
+                let mut end = (at + 120).min(ledger.len());
+                while !ledger.is_char_boundary(end) {
+                    end -= 1;
+                }
+                let window = &ledger[at..end];
                 if window.contains("\"reader\"") {
                     still_on_ledger.push(c);
                 }

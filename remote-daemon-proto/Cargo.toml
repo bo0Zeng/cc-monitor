@@ -1,5 +1,21 @@
 [package]
 name = "cc-monitor-remote"
+# 🔴 K-R70（09-12）：本 crate 刻意不用 Cargo.toml 的版本 —— 真身份住 src/main.rs 的 BUILD_ID
+#
+# 这一行**不是忘了填**，也**不许**顺手换成一个「像样」的数字。
+#
+# · 它不参加 `release.yml` 那道「四处版本号与 tag 一致」的检查（那四处是
+#   `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml` /
+#   `src-tauri/Cargo.lock` 的 `monitor` 包）—— 后端**不随 app 的 tag 走**：
+#   `K25`/`K36` 裁的是「一份代码、每平台一份原生二进制」，而它换不换由**行为变没变**决定
+#   （`BUILD_ID` 的 bump 纪律），不由发版节奏决定。给它一个跟 tag 走的版本号 = 给后端
+#   造**第二个身份**，那正是 `K33`「后端只有一个」在身份这一维要避开的事。
+# · 那条「不参加」不是靠这段散文守着：`build_id_guard` 的
+#   `the_crate_version_is_deliberately_zero_and_the_real_identity_has_a_home`
+#   **在数它** —— 这一行一动、或真身份那一处住址坏掉，当场红。
+# · 真身份的住址（判据逐条核）：`src/main.rs` 的 `const BUILD_ID`
+#   ＋ 由它编译期拼出来、扫得进二进制字节的 `CC_MONITOR_BUILD_STAMP`
+#   ＋ `--ccm-probe` 吐的 `build=` 那一行。
 version = "0.0.0"
 edition = "2021"
 
@@ -55,6 +71,9 @@ creds-core = { path = "../src-tauri/crates/creds-core" }
 # U8c-2b-0：POSIX 单引号 quote 的唯一实现（账本 S5 收口）。
 # 本 crate 只用它一处（`control/tmux_hook::sq`）；U8c-2c 起载荷渲染也走它。
 shell-quote-core = { path = "../src-tauri/crates/shell-quote-core" }
+# K-R100：历史全文搜索口径的唯一实现（本 crate 的 `observe/search_query.rs` 全靠它）。
+# 与 monitor 同一份 —— 两侧的 snippet 预算顺序、截断口径、文本抽取从此不可能各走各的。
+search-core = { path = "../src-tauri/crates/search-core" }
 # F03：§34 Gate 2 的唯一实现。**生产依赖**——这道门要在 `control/` 的生产段真的执行，
 # 不是只在测试里比对（那样就成了「门在测试里、路在生产里」）。
 gate-core = { path = "../src-tauri/crates/gate-core" }

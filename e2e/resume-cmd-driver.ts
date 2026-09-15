@@ -9,7 +9,7 @@
 //   into-existing <sid> <name> <launcher> [configDir]   -> buildResumeIntoExistingTmuxCmd
 //   tmux-new      <sid> <cwd> <launcher> <name> [configDir] -> buildResumeTmuxCmd
 //   direct        <sid> <cwd> <launcher> [configDir]      -> buildResumeDirectCmd
-//   pick-fresh    <sid> <existing-comma-list>             -> pickFreshTmuxName
+//   mint-name     <cwd> <existing-comma-list>             -> mintSessionTmuxName（K-R96）
 //   env-prefix    [configDir]                             -> buildEnvPrefix
 //   follow        <lastAccount|-> <current|-> <stateJson> -> resolveFollowAccount(名或 "<base>")
 //   acct-dir      <name> <stateJson>                      -> accountConfigDir(路径或 "<none>")
@@ -19,7 +19,7 @@ import {
   buildResumeIntoExistingTmuxCmd,
   buildResumeTmuxCmd,
   buildResumeDirectCmd,
-  pickFreshTmuxName,
+  mintSessionTmuxName,
   buildEnvPrefix,
 } from "../src/remote-launch.ts";
 import { resolveFollowAccount, accountConfigDir } from "../src/accounts.ts";
@@ -44,9 +44,10 @@ try {
     case "direct":
       process.stdout.write(buildResumeDirectCmd(a[0], a[1], a[2], opt(a[3])) + "\n");
       break;
-    case "pick-fresh": {
+    case "mint-name": {
+      // `K-R96`（用户 09-12 `R55`）：名字从 **cwd** 派生（`<项目名>-cc`），不再带 sid。
       const existing = new Set((a[1] ?? "").split(",").filter(Boolean));
-      process.stdout.write(pickFreshTmuxName(a[0], existing) + "\n");
+      process.stdout.write(mintSessionTmuxName(a[0] ?? "", existing) + "\n");
       break;
     }
     case "env-prefix":

@@ -56,6 +56,205 @@ const STATUS_CELLS: &[(&str, &str)] = &[
 ];
 
 // ═════════════════════════════════════════════════════════════════════════════
+// `K-R73` `KR73D3`：**「量法与它声称的性质对不上」在本模块里数一遍**
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// # 为什么要在这里数
+//
+// 本模块头注自己记着这个病的三次发作（F01 的四处「每 ~8s」· F07 漏同节 11 行前那格 ·
+// `K-P5f` 漏 `INVARIANTS.md` 并新写第五份副本）。`DECISIONS.md#R29` **裁定零**是第四次，
+// 而且犯在「量法」上：`control/` 那格上方逐字警告「刻意不是裸 `is_dir`」，
+// 而**紧接着的三格全是裸 `is_dir()`** —— 写下警告的人在下面三行里连犯三次。
+//
+// ⇒ 这张表是那次裁定要的**普查**：`STATUS_CELLS` 每一格的现场量法，
+// 与它那格声称的话**对不对得上**，对不上的**逐条点名**。
+// 🔴 **不要求本件全修**（改一条量法就是动一条判据的射程，那要各自论证）——
+// 要求的是**数得出、点得名**，并且这张表**不许悄悄少一行**。
+//
+// # 两条穿过全表的读数（分母都是 `STATUS_CELLS` 的 10 格）
+//
+// ① **5 条**量法是「读一份文件、在里面找一根针」。**只有 1 条断言了那份文件存在**
+//    （`posix-quote-has-one-home`，F12 那次 `/full-audit` 逮到之后补的）。
+//    另外 4 条读不到文件时只会**静默返回空串** —— 那正是 F12 那条订正注释里逐字写的形。
+//    ⚠ 说清它今天为什么还不是假绿：那 4 格的文档状态都是「已交付」⇒ 文件没了 ⇒ 量法 `false`
+//    ⇒ 与「已交付」对不上 ⇒ **红**。它们**fail closed**，但报错文案会把人指向
+//    「事实前进了而文档没跟」，而真相是「量法读的那份文件不见了」。
+//    **哪天某一格翻成「待做」，这一支就从「诊断误导」变成「静默同意」。**
+// ② **那 5 条针全是裸子串**（`contains("fn render_payload")` 这一形）——
+//    `needle_anchor_registry` 头注治的正是这个族（「匹配单位比事实小」，本仓实测四次
+//    都是把 needle 撑大就照样绿）。⇒ **F12 的教训补在了 1/5 处，F24 的教训一处都没补。**
+//
+// # 这张表**不是**要求一个总数
+//
+// 「报一个总数而不逐条点名」是本区反复抓的那一形。⇒ 下面 10 行，一格一行，
+// 每行自带「它到底量了什么、与那句话差在哪」。棘轮只是**别再长**，不是这张表的正题。
+
+/// 一条现场量法的**形状**。
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum MeasureShape {
+    /// 钉住**那个唯一的住户**：那份文件在不在。
+    PinsTheOneResident,
+    /// 读**剥过注释的生产段**、在里面找一根裸子串针。
+    ProdNeedle,
+    /// 读**没剥过注释的原文**（TS / MD）找针 ⇒ 把那句话注释掉，它照样命中。
+    RawTextNeedle,
+    /// 反向：那样东西**不在**才算交付。
+    AbsenceIsTheClaim,
+    /// 这条能力线里**真有住户**（`K-R73` 把两格裸 `is_dir()` 收窄成的形）。
+    LineHasResidents,
+}
+
+/// 这条量法与它那格声称的话**对不对得上**。
+#[cfg(test)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum Verdict {
+    /// 对得上：量的就是那句话说的那件事（可能仍有登记在案的代价，但代价不是「量错了东西」）。
+    Holds,
+    /// **对不上**：量到的比那句话说的**宽**（或**窄**），下面那一栏逐条写清差在哪。
+    FallsShort,
+}
+
+/// **普查表**：`STATUS_CELLS` 每一格的现场量法 → `(量法键, 形状, 判定, 差在哪 / 代价是什么)`。
+///
+/// 🔴 **一格一行，两个方向都对拍**（见 [`tests::every_status_cell_measure_is_in_the_census`]）：
+/// `STATUS_CELLS` 新加一格而这里没跟 ⇒ 红；这里留着一行而那边没了 ⇒ 也红。
+/// 少了这一条，这张表会跟本模块治的那些文档副本一样腐。
+#[cfg(test)]
+const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
+    (
+        "payload-kernel-exists",
+        MeasureShape::ProdNeedle,
+        Verdict::FallsShort,
+        "声称「载荷内核在 `backend/control/payload.rs`」，量的是生产段里有没有子串          `fn render_payload` ⇒ **`fn render_payload_v2` 之类以它打头的名字照样命中**         （`needle_anchor_registry` 治的那一族）。另**没有断言那份文件存在** ——          读不到只会静默返回空串",
+    ),
+    (
+        "usage-probe-uses-the-kernel",
+        MeasureShape::ProdNeedle,
+        Verdict::FallsShort,
+        "声称「用量探针在调 `usage_probe_payload` 入口」，量的是裸子串 ⇒ 入口改名成         以它打头的另一个名字时照样绿。⚠ 这一格已经**被自己红过一次**并改对了标的         （原先量 `render_payload`），改的是「量哪一个」，没改「用什么单位量」。         另无存在性断言",
+    ),
+    (
+        "posix-quote-has-one-home",
+        MeasureShape::ProdNeedle,
+        Verdict::FallsShort,
+        "本模块**唯一**断言了「量法读的那份文件存在」的一格（F12 那次 `/full-audit`          逮到左支读一个不存在的文件、恒 `false` 之后补的）。⇒ F12 那半的教训补上了；         **F24 那半没有** —— 针仍是裸子串 `shell_quote_core::posix_quote`",
+    ),
+    (
+        "ccm-invocation-kernel-exists",
+        MeasureShape::ProdNeedle,
+        Verdict::FallsShort,
+        "与 `payload-kernel-exists` 逐字同形：裸子串 `fn render_ccm_invocation` ＋          无存在性断言。**同一个形状在本表里出现三次**，说明它不是某一格的疏忽",
+    ),
+    (
+        "production-ts-calls-the-rust-renderers",
+        MeasureShape::RawTextNeedle,
+        Verdict::FallsShort,
+        "🔴 **本表唯一一条今天就用一刀验过的**：它声称「**生产** TS 主路在调那两条 Rust \
+         渲染命令」，而量法用的是 `read()` 而不是 `prod()` ⇒ **没剥注释**。\
+         09-12 现打：把 `src/remote-launch-run.ts` 里那 3 行调用**整行注释掉**，\
+         本模块 19 条判据 **一条不红**。\
+         ⚠ **别把这条读成「那个性质没人守」** —— 真正接住它的是 \
+         `backend/control/launch_wire.rs` 里那条生产接线钉（同一刀下它**当场红**，\
+         最小面 1）：那一条走 `production_ts()`，行首与行尾注释都剥，\
+         头注逐字写着「行尾注释里的提及不算数」。\
+         ⇒ 本模块这一格是**同一个事实的第二份、而且更弱的那一份**，\
+         它的害处不是漏守，是**让人以为这一格自己有牙**。\
+         ⚠ 修法不是「TS 也走 `production_code`」（那份剥法是按 Rust 的 `#[cfg(test)]` 写的），\
+         要么复用那条已有的 TS 剥法，要么把这一格摘掉、指向那条判据 —— 两条都要论证，另开一件",
+    ),
+    (
+        "ts-renderer-still-there",
+        MeasureShape::AbsenceIsTheClaim,
+        Verdict::Holds,
+        "反向量法：`src/session-backend.ts` **不在**才算交付，与那格声称的话对得上。         ⚠ 登记一处**可读性陷阱**（不是洞）：键名逐字是「still-there」，而它为 `true` 时         的意思是「**已经删了**」—— 键名与布尔方向相反，读的人容易读反",
+    ),
+    (
+        "monitor-backend-control-landed",
+        MeasureShape::PinsTheOneResident,
+        Verdict::Holds,
+        "钉住那个唯一的回落分流器在不在。**代价登记在案**：它钉的是那**一个文件名** ⇒          住户改名或再搬家时会**假红**（红得对不对要人判）。这与 `observe/` 那格是同一个代价",
+    ),
+    (
+        "monitor-backend-observe-landed",
+        MeasureShape::PinsTheOneResident,
+        Verdict::Holds,
+        "〔`K-R71` 09-12 按 `R29` 裁定一从裸 `is_dir()` 收窄成钉住那个唯一的读面传输〕。         代价与 `control/` 那格逐字相同。⚠ **`K-R73` 一个字都没动它**",
+    ),
+    (
+        "monitor-backend-platform-landed",
+        MeasureShape::LineHasResidents,
+        Verdict::Holds,
+        "〔`K-R73` 09-12 按 `R29` 裁定二从裸 `is_dir()` 收窄〕。**不许硬指住户**：         这条线今天没有那个唯一的住户，指一个就是替未来的人做决定 ⇒ 量的是         「目录在 ∧ 里面真有住户」，空壳目录直接红。代价见那份量法的头注",
+    ),
+    (
+        "monitor-backend-common-landed",
+        MeasureShape::LineHasResidents,
+        Verdict::Holds,
+        "与 `platform/` 那格逐字同形。⚠ 这条线的文档那一格逐字写着「**刻意不建**：         monitor 侧的共用面住 `src-tauri/crates/*`」⇒ 它大概率**永远**停在这一支，         而空壳目录那条红正是为它准备的",
+    ),
+];
+
+// ═════════════════════════════════════════════════════════════════════════════
+// `K-R105` `KR105D1`：**`INVARIANTS §33b` 那三问的答案，也是「描述当下」的字段**
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// # 为什么它非补不可：本模块头注点名的那次事故，就是这三问
+//
+// 头注逐字记着「**F07 自己就是这个病的受害者**：它订正了 §33b 三问的答案 ①，
+// 却漏了同一节里 11 行之前那一格」。⇒ 那一拍之后，本模块给**那一格**配了机检
+//（[`tests::the_doc_number_for_production_launch_calls_matches_reality`]），
+// **却始终没给三问的答案本身配一条** —— 于是它们又腐了两轮：
+//
+// - **③**：`K-R59`（09-11，定框 `K35`）把 `daemonless` 整档删了 ⇒ 第三问的前提不存在了。
+//   那一拍的订正**只落在 08-14 那张复裁表的 ③ 行里**，08-04 三问表里的 ③ 行原封不动。
+// - **①**：`K-P2` `D3`（09-03）把 `ccm` 那条路接到了后端的一次性口上 ⇒
+//   「起会话这一格」在**那棵树上**切过去了。`launch_wire.rs` 里逐字记了这件事
+//   （「三问的答案① 变了」），而 §33b 的表**一个字没动**。
+//
+// ⇒ 两次都不是「没人知道」，是「**知道的人写在别处**」。本组判据买的就是这一件事：
+//   **改一问所依赖的行为而不改那问的答案 ⇒ 当场红。**
+//
+// # 手法：与 `STATUS_CELLS` 逐字同形 —— 表里**不存答案**，只存「怎么量」
+//
+// 答案是一整段散文，机器比不了。⇒ 每一问在文档里必须带一个**判词**
+//（`〔现打…〕` 那一族），判词的**闭集**写在下面这张表里，**由机器挑一个**，
+// 再断言文档里出现的正是它、且**别的判词一个都不许出现**。
+// 散文怎么写不管（不做语义审查），但那个判词必须与现场一致。
+//
+// ⚠ 诚实边界，写出来别读大：它钉的是**判词**，不是那段散文。
+// 一段与判词相符、其余全说反了的答案，本条静默。它买到的是
+// 「三问的答案**不会静默地过期**」，不是「答案写得对」。
+
+/// §33b 三问 → `(问号, 那一问的判词闭集)`。**判词由机器挑，本表不存答案。**
+///
+/// 闭集第一个元素是「什么都没发生」那一档，最后一个是「这一问可以放行了」那一档 ——
+/// 顺序**不承重**（判据按相等比），写成这样只是给读的人一个方向感。
+#[cfg(test)]
+const THIRTY_THREE_B_QUESTIONS: &[(&str, &[&str])] = &[
+    (
+        "① 生产切到 daemon 的 launch 了吗",
+        &["〔现打①〕一格没切", "〔现打①〕部分切", "〔现打①〕全切"],
+    ),
+    (
+        "② attach 那条串归谁产",
+        &["〔现打②〕前端仍产 attach", "〔现打②〕后端全产 attach"],
+    ),
+    (
+        "③ daemonless 的远端还要不要能起会话",
+        &["〔现打③〕那一档还在", "〔现打③〕已退役"],
+    ),
+];
+
+/// **对不上那一栏的递减棘轮**（09-12 现打 **5** 条，全部是「读文件找针」那一支）。
+///
+/// 🔴 **只许降。** 修好一条就把这个数调下来，**不许调上去让今天好过**。
+/// ⚠ 它只挡「别再长」，**不代表这 5 条已经排期** —— 排期是另一件事，
+/// 而把「已知的欠账」和「有人在还」混成一句话，正是本模块治的那个病。
+#[cfg(test)]
+const FALLS_SHORT_CEILING: usize = 5;
+
+// ═════════════════════════════════════════════════════════════════════════════
 // `K-P5g` `KP5GD3`：**一句话散在好几处** —— 本模块头注那个病的第三次发作
 // ═════════════════════════════════════════════════════════════════════════════
 //
@@ -199,7 +398,10 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
 
 #[cfg(test)]
 mod tests {
-    use super::{EnvKeyClaim, ENV_KEY_CLAIM_SITES, STATUS_CELLS};
+    use super::{
+        EnvKeyClaim, Verdict, ENV_KEY_CLAIM_SITES, FALLS_SHORT_CEILING, MEASURE_CENSUS,
+        STATUS_CELLS, THIRTY_THREE_B_QUESTIONS,
+    };
     use std::path::{Path, PathBuf};
 
     const INVARIANTS: &str = include_str!("../../doc/INVARIANTS.md");
@@ -458,12 +660,25 @@ mod tests {
         );
     }
 
-    /// ★ 「外层载荷有四个产出方，一个都没退役」—— 逐个存在性复核。
+    /// ★ 「外层载荷那几个产出方」—— 逐个**按文档说的状态**复核。
     ///
-    /// 这条是「可数的实测断言」里第二条能钉的。⚠ 它**只钉住「四个都还在」**，
+    /// 这条是「可数的实测断言」里第二条能钉的。⚠ 它**只钉住「在不在」**，
     /// 钉不住「它们各自还是不是生产在跑」—— 那需要真远端/真安装包（ROADMAP §5）。
+    ///
+    /// # 🔴 `K-R104`（09-13）：它从「四个都还在」变成「各自是不是文档说的那个状态」
+    ///
+    /// 上一版逐字叫 `the_four_outer_layer_producers_are_all_still_there`，〔散文墓碑〕
+    /// 断的是**四条存在性**。而 `K-R104` 让其中一条**真的退役了** ——
+    /// `account_usage.rs::build_usage_probe_cmd`（用量探针那条 shell 串）
+    /// 随编排搬上后端帧面而整个不存在了。
+    ///
+    /// ⇒ 按它自己报错文案里那句话办：「**这多半是好事** …… 回去把它和 `INVARIANTS §33b`
+    /// 那句『四个产出方，一个都没退役』一起重裁」。**重裁的结果不是删掉本条**，
+    /// 是把那一格从「必须在」翻成「**必须不在**」——
+    /// 退役了却又长回来（有人重新在 monitor 里拼一条 tmux 编排串）同样要红。
+    /// 剩下三条照旧钉存在性。
     #[test]
-    fn the_four_outer_layer_producers_are_all_still_there() {
+    fn the_outer_layer_producers_are_in_the_state_the_doc_claims() {
         let root = repo_root();
         let checks: &[(&str, bool)] = &[
             (
@@ -476,14 +691,23 @@ mod tests {
                     .is_file(),
             ),
             (
-                "account_usage.rs::build_usage_probe_cmd（用量探针 shell 串）",
+                // 🔴 **翻面**（`K-R104` 09-13）：这一条**退役了**，所以这里断的是「它不在」。
+                //    读得到文件是前提（读不到会静默变成 `unwrap_or(false)` ⇒ 恒 true 的假绿），
+                //    所以两半都写出来：文件必须在 ＋ 那个函数必须不在。
+                "account_usage.rs::build_usage_probe_cmd（用量探针 shell 串，`K-R104` 已退役 —— 这一格断的是它**不许回来**）",
                 std::fs::read_to_string(root.join("src-tauri/src/account_usage.rs"))
-                    .map(|s| s.contains("fn build_usage_probe_cmd"))
+                    .map(|s| !s.contains("fn build_usage_probe_cmd"))
                     .unwrap_or(false),
             ),
             (
-                "shared/ccm（用户终端那条路）",
-                root.join("shared/ccm").is_file(),
+                // 🔴 〔`K-R48` 第二拍 09-11〕住址换了，**产出方本身没退役**：
+                //    〔用@09-11 `K33`〕那个 bash 脚本删了，「用户终端那条路」今天由
+                //    后端本体的一次性模式渲（`control::ccm::plan::render_container`）。
+                //    ⇒ `INVARIANTS §33b` 那句「四个产出方，一个都没退役」**仍然成立**，
+                //    只是第四个的住址从 `shared/ccm` 变成了 `control/ccm/plan.rs`。
+                "control/ccm/plan.rs（用户终端那条路）",
+                root.join("remote-daemon-proto/src/control/ccm/plan.rs")
+                    .is_file(),
             ),
         ];
         let missing: Vec<&str> = checks
@@ -493,10 +717,387 @@ mod tests {
             .collect();
         assert!(
             missing.is_empty(),
-            "「外层四个产出方」里这些已经没了：{missing:?} —— **这多半是好事**：\n\
-             有产出方退役了 ⇒ `INVARIANTS §33b` 那句「四个产出方，一个都没退役」过期了，\n\
-             回去把它和 U8c-3 的前置一起重裁。"
+            "「外层产出方」里这几格与文档说的状态对不上：{missing:?}\n\
+             · 还没退役的那几条**不在了** ⇒ **这多半是好事**：有产出方退役了 ⇒\n\
+               `INVARIANTS §33b` 那张表过期了，回去把它和 U8c-3 的前置一起重裁。\n\
+             · 已退役的那条**又回来了** ⇒ 那是有人重新在 monitor 里拼一条 tmux 编排串\n\
+               （`K-R104` 刚把它整条搬上后端帧面）—— 回去看 `account_usage.rs` 的头注。"
         );
+    }
+
+    /// 🔴🔴 **`K-R105` `KR105D1`：`§33b` 三问的答案，逐问与现场对拍。**
+    ///
+    /// 立项理由与手法住 [`THIRTY_THREE_B_QUESTIONS`] 上方那一段（本条不复述）。
+    /// 一句话：**改一问所依赖的行为而不改那问的答案 ⇒ 当场红。**
+    ///
+    /// # 三条量法，逐条写清它量的是什么
+    ///
+    /// - **①「生产切到 daemon 的 `launch` 了吗」** —— 量「哪几棵树的生产段真的发
+    ///   `create-or-attach`」。**两棵树各算一格**：monitor 自己那条 `↗` 路
+    ///   （`src-tauri/src/**.rs`）与后端自带的 CLI 面（`control/ccm/`）。
+    ///   🔴 08-14 那一版只量了前一棵 ⇒ `K-P2` `D3`（09-03）把后一棵翻正之后，
+    ///   那个读数**在它自己的尺子上仍然是对的**，而它答的那一问已经不是原来那一问了。
+    ///   ⇒ 本条把两棵树都收进来，`部分切` 与 `全切` 因此分得开。
+    /// - **②「attach 那条串归谁产」** —— 量「生产 TS 里还有没有人问座要 attach」。
+    ///   daemon **结构上不产 attach**（`control/launch.rs` 头注逐字「本模块不 attach，一次都不」，
+    ///   `parse_request` 的错文案逐字「attach 是平面 ③，不归 daemon」）⇒
+    ///   前端不产的那天，就是这一问有第二个答案的那天。
+    /// - **③「daemonless 的远端还要不要能起会话」** —— 量那一档的**三个载体**
+    ///   （落盘字段 · 界面那个 input · 数据源那条轮询回落）。
+    ///   刻意**不数 `daemonless` 这个词**：`remote-config.ts` 里还留着一处认旧配置的墓碑，
+    ///   数名字会把它读成回潮（口径与 `launch_wire.rs` 那条同源）。
+    ///
+    /// # ⚠ 剥法用的是哪一份
+    ///
+    /// TS 用 [`guard_core::strip_comment_lines`]（块注释 + 整行 + 行尾），**不是**
+    /// `production_code` —— 后者按 Rust 的 `#[cfg(test)]` 写，喂 TS 会多剥或少剥。
+    /// Rust 侧照旧 `production_code`。⇒ 注释里怎么解释这三问都不算数，只看生产段。
+    #[test]
+    fn the_three_questions_in_33b_have_todays_answers() {
+        let root = repo_root();
+        let read = |rel: &str| std::fs::read_to_string(root.join(rel)).unwrap_or_default();
+        let prod_rs = |rel: &str| guard_core::production_code(&read(rel));
+        let prod_ts = |rel: &str| guard_core::strip_comment_lines(&read(rel));
+
+        // ── 量法 ① ────────────────────────────────────────────────────────────
+        // 运行时拼，免得命中本文件自己的说明。
+        let mode = format!("\"create-or-{}\"", "attach");
+        let word = format!("create-or-{}", "attach");
+        let mut monitor_emits = false;
+        let mut scanned_rs = 0usize;
+        for (p, raw) in guard_core::scan_tree!(&root.join("src-tauri/src"), &["rs"]) {
+            // `launch_wire.rs` 的说明里逐字写着那个串（F07 立的例外，本条沿用同一条）。
+            if p.file_name().is_some_and(|n| n == "launch_wire.rs") {
+                continue;
+            }
+            scanned_rs += 1;
+            if guard_core::production_code(&raw).contains(mode.as_str()) {
+                monitor_emits = true;
+            }
+        }
+        // ★ 抽取器自检：人群没缩水（否则 `monitor_emits` 恒 false ⇒ ① 永远读成「部分切」）。
+        assert!(
+            scanned_rs >= 50,
+            "只扫到 {scanned_rs} 个 monitor 侧 `.rs` —— 遍历坏了，量法 ① 会零命中地绿"
+        );
+        let ccm: String = ["mod.rs", "argv.rs", "plan.rs"]
+            .iter()
+            .map(|f| prod_rs(&format!("remote-daemon-proto/src/control/ccm/{f}")))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            ccm.lines().count() >= 300,
+            "`control/ccm/` 三份的生产段只剩 {} 行 —— 读错了或剥法把代码也剥了，量法 ① 会零命中地绿",
+            ccm.lines().count()
+        );
+        let ccm_emits = guard_core::contains_word(&ccm, &word);
+        let a1 = match (monitor_emits, ccm_emits) {
+            (false, false) => "〔现打①〕一格没切",
+            (true, true) => "〔现打①〕全切",
+            _ => "〔现打①〕部分切",
+        };
+
+        // ── 量法 ② ────────────────────────────────────────────────────────────
+        // 座本身（`session-backend.ts`）不算 —— 它是被问的那一层，不是问的人。
+        let seat_attach = format!("SESSION_BACKEND.{}", "attach");
+        let mut askers: Vec<String> = Vec::new();
+        let mut scanned_ts = 0usize;
+        for (p, raw) in guard_core::scan_tree!(&root.join("src"), &["ts"]) {
+            let name = p
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .to_string();
+            // 座本身不算 —— 它是被问的那一层，不是问的人。
+            if name.ends_with(".test.ts")
+                || name.ends_with(".vitest.ts")
+                || name == "session-backend.ts"
+            {
+                continue;
+            }
+            scanned_ts += 1;
+            let code = guard_core::strip_comment_lines(&raw);
+            // 整词，不是裸子串：`…attachFoo` 不算（与 `launch_wire` 那把尺子同口径）。
+            if guard_core::contains_word(&code, seat_attach.as_str()) {
+                askers.push(name);
+            }
+        }
+        assert!(
+            scanned_ts >= 100,
+            "只扫到 {scanned_ts} 份生产 TS —— 遍历坏了，量法 ② 会零命中地绿"
+        );
+        let a2 = if askers.is_empty() {
+            "〔现打②〕后端全产 attach"
+        } else {
+            "〔现打②〕前端仍产 attach"
+        };
+        // ★ 反向锚点：daemon 那条「不 attach」的结构事实还在。它没了，② 的两档都说不清。
+        // 🔴 **钉整行，不是子串**（`needle_anchor_registry` 治的那一族：匹配单位比事实小）。
+        let launch_rs = read("remote-daemon-proto/src/control/launch.rs");
+        let no_attach = "//! 开不了你面前的窗）。所以本模块**不 attach**，一次都不。";
+        assert!(
+            guard_core::pin_line(&launch_rs, no_attach).is_ok(),
+            "`control/launch.rs` 头注里那一行「本模块不 attach，一次都不」不在了 ——\n\
+             ② 这一问的整个形状建立在它上面（后端结构上开不了你面前的窗）。\n\
+             真要改，回 `INVARIANTS §33b` 与 `U8c-3` 重裁，别只改头注。"
+        );
+
+        // ── 量法 ③ ────────────────────────────────────────────────────────────
+        // 断的是**载体**不是名字（口径与 `launch_wire.rs` 那条同源，理由见本条头注）。
+        let carriers: [(&str, bool); 3] = [
+            (
+                "落盘字段 `REMOTE_HOST_FIELDS`",
+                prod_ts("src/remote-config.ts").contains(r#""daemonless","#),
+            ),
+            (
+                "机器卡片那个 input",
+                prod_ts("src/settings/machine-card.ts").contains("daemonlessInput"),
+            ),
+            (
+                "数据源那条轮询回落",
+                prod_rs("src-tauri/src/ssh_source.rs").contains("daemonless_stream_loop"),
+            ),
+        ];
+        // ★ 抽取器自检：三份语料都真的读到了（读不到只会静默返回空串 ⇒ 三格全 false ⇒ 假「已退役」）。
+        for rel in [
+            "src/remote-config.ts",
+            "src/settings/machine-card.ts",
+            "src-tauri/src/ssh_source.rs",
+        ] {
+            assert!(
+                read(rel).len() > 3000,
+                "量法 ③ 读的 {rel} 只有 {} 字节 —— 读不到的文件只会静默返回空串",
+                read(rel).len()
+            );
+        }
+        let back: Vec<&str> = carriers
+            .iter()
+            .filter(|(_, on)| *on)
+            .map(|(n, _)| *n)
+            .collect();
+        let a3 = if back.is_empty() {
+            "〔现打③〕已退役"
+        } else {
+            "〔现打③〕那一档还在"
+        };
+
+        // ── 逐问与文档对拍 ────────────────────────────────────────────────────
+        let derived = [a1, a2, a3];
+        assert_eq!(
+            THIRTY_THREE_B_QUESTIONS.len(),
+            derived.len(),
+            "三问表的行数与量法条数对不上 —— 加一问要同时加一条量法"
+        );
+        for ((q, verdicts), got) in THIRTY_THREE_B_QUESTIONS.iter().zip(derived) {
+            assert!(
+                verdicts.contains(&got),
+                "`{q}` 量出来的判词 {got:?} 不在它自己的闭集里 —— 量法与表对不上"
+            );
+            let present: Vec<&&str> = verdicts
+                .iter()
+                .filter(|v| INVARIANTS.contains(**v))
+                .collect();
+            assert_eq!(
+                present.len(),
+                1,
+                "`{q}`：`INVARIANTS.md` 里出现的判词是 {present:?} —— 必须**恰好一个**。\n\
+                 · 一个都没有 ⇒ 那一问的答案没带判词（改措辞就把本条变成零命中地绿，\n\
+                   所以宁可让它红）；\n\
+                 · 出现两个以上 ⇒ 同一问在文档里有两份互相矛盾的答案。\n\
+                 闭集：{verdicts:?}"
+            );
+            assert_eq!(
+                *present[0], got,
+                "🔴 **`{q}` 的答案过期了。**\n\
+                 文档里写着 {:?}，现打是 {got:?}。\n\
+                 · **事实前进了而答案没跟**（这一族在本节犯过至少三次：F07 · `K-R59` · `K-P2 D3`）\n\
+                   ⇒ 改文档那一格，并同轮问一句：这一问挡着的那件事，今天还挡不挡得住？\n\
+                 · **答案改了而事实没动** ⇒ 那是有人在文档里许了一个还没兑现的愿。\n\
+                 ⚠ 现场读数：① monitor 树发 `create-or-…`={monitor_emits} · `control/ccm/` 发={ccm_emits}；\n\
+                 ② 生产 TS 里还问座要 attach 的：{askers:?}；③ 那一档还在场的载体：{back:?}。",
+                present[0]
+            );
+        }
+    }
+
+    /// ★★ `K-R73` `KR73D3`：**普查表与 `STATUS_CELLS` 两个方向对拍**，外加那条递减棘轮。
+    ///
+    /// # 没有这一条，那张普查表会跟本模块治的那些文档副本一样腐
+    ///
+    /// 新加一格量法而普查表没跟 ⇒ 那一格**没人判过它量的是不是它声称的那件事**，
+    /// 而这正是 `R29` 裁定零那次的形状（`observe`/`platform`/`common` 三格是**跟着**
+    /// `control/` 那格一起写下去的，没有一格被单独问过「你量的是落地还是有个目录」）。
+    /// 反方向也要：普查表留着一行而 `STATUS_CELLS` 那边没了 ⇒ 那一行在描述一个不存在的量法。
+    #[test]
+    fn every_status_cell_measure_is_in_the_census() {
+        let mut cells: Vec<&str> = STATUS_CELLS.iter().map(|(_, how)| *how).collect();
+        cells.sort();
+        cells.dedup();
+        let mut census: Vec<&str> = MEASURE_CENSUS.iter().map(|(k, ..)| *k).collect();
+        census.sort();
+        // 同一个量法键不许在普查表里出现两次 —— 两行说法不一致时谁也不知道哪行算数。
+        let mut uniq = census.clone();
+        uniq.dedup();
+        assert_eq!(
+            census, uniq,
+            "普查表里有重复的量法键 —— 一个事实恰好一个住址"
+        );
+        assert_eq!(
+            cells, census,
+            "`STATUS_CELLS` 的量法键与 `MEASURE_CENSUS` 对不上。\n\
+             **`STATUS_CELLS` 多出来的**：新加了一格量法却没判过「它量的是不是它声称的那件事」——\n\
+             那正是 `DECISIONS.md#R29` 裁定零那次的形状（三格裸 `is_dir()` 是跟着上一格一起写下去的）。\n\
+             **普查表多出来的**：那一行在描述一个已经不存在的量法，摘掉它。"
+        );
+        // 分母自检：表空了上面那个等号会退化成「空 == 空」。
+        assert!(
+            MEASURE_CENSUS.len() >= 10,
+            "普查表只剩 {} 行（09-12 现打 10 行）—— 少于分母说明有人在偷偷删行",
+            MEASURE_CENSUS.len()
+        );
+        for (k, _, _, why) in MEASURE_CENSUS {
+            assert!(
+                why.trim().chars().count() >= 30,
+                "`{k}` 那一行没写清「它到底量了什么、与那句话差在哪」（只有 {} 字）",
+                why.trim().chars().count()
+            );
+        }
+        // ★ 递减棘轮：**对不上**那一栏只许比今天少。
+        let falls_short = MEASURE_CENSUS
+            .iter()
+            .filter(|(_, _, v, _)| *v == Verdict::FallsShort)
+            .map(|(k, ..)| *k)
+            .collect::<Vec<_>>();
+        assert!(
+            falls_short.len() <= FALLS_SHORT_CEILING,
+            "「量法与它声称的性质对不上」涨到 {} 条了 > 棘轮上限 {FALLS_SHORT_CEILING}（09-12 现打 5）。\n\
+             逐条：{falls_short:?}\n\
+             ⚠ **不许把上限调上去让今天好过** —— 这是递减棘轮。",
+            falls_short.len()
+        );
+    }
+
+    /// `K-R73` `KR73D2`：`backend/` 下一条能力线**落地了没有**。
+    ///
+    /// # 量的必须是**落地**，不是**有个目录**（`DECISIONS.md#R29` 裁定零）
+    ///
+    /// 这一格原本是裸 `is_dir()`。而**紧挨着上面那几行**的 `control/` 那格逐字警告过：
+    /// 「目录空着也算「有目录」，而这一格要主张的是控制面真的住进来了」——
+    /// 写下那条警告的人在下面三行里连犯三次它警告的那件事（`observe/` 已由 `K-R71` 收窄，
+    /// 这两格归本件）。
+    ///
+    /// # 为什么不像 `control/` / `observe/` 那两格那样钉住一个住户的**文件名**
+    ///
+    /// 那两条线各有「那个唯一的住户」可钉。`platform/` 与 `common/` **今天没有**（目录都还不在）
+    /// ⇒ 随手指一个文件名就是**替未来的人做决定**。这里量的是一个说得出口的形：
+    /// **目录在 ∧ 里面至少有一个不是 `mod.rs` 的 `.rs`**。
+    ///
+    /// ⚠ **代价写明，别读宽**：这个形分不清「真住户」与「一份占位的 `.rs`」，
+    /// 也不像 `control/` 那格那样钉住**是谁**在里面。等这条线真有那个唯一住户的那天，
+    /// 换成与 `control/` 同形（钉住住户名）是**更紧**的一格 —— 那是那个人的活，不是本件的。
+    ///
+    /// # 🔴 空目录的答案不是 `false`，是**红**
+    ///
+    /// 目录不存在 ⇒ `false`（今天两格都在这一支，与文档那两格的「待做」对得上）。
+    /// 目录**在**、里面却没有住户 ⇒ 直接 panic：那是一份**装饰**，
+    /// 而装饰的危险不在它今天算 `true` 还是 `false`，在于**它让下一个人只要顺手改一下文档
+    /// 那一格就能把它洗成「已交付」**（`K-R71` 的 `7u` 逮到的正是这一形：
+    /// 空的 `observe/` ＋ 文档说「已交付」，monitor lib 1397 条一条不红）。
+    fn a_capability_line_has_landed(root: &Path, line: &str) -> bool {
+        layer_has_landed_at(&root.join("src-tauri/src/backend").join(line))
+    }
+
+    /// [`a_capability_line_has_landed`] 的**根可注入**版本。
+    ///
+    /// 抽出这一层只为一件事：下面那条反向自检要让**这一份量法本身**（不是它的复刻）
+    /// 跑在真目录上 —— 自检若另写一份判断，它证明的是那一份、不是量法。
+    fn layer_has_landed_at(dir: &Path) -> bool {
+        if !dir.is_dir() {
+            return false;
+        }
+        let mut residents: Vec<String> = Vec::new();
+        let mut stack = vec![dir.to_path_buf()];
+        while let Some(d) = stack.pop() {
+            for entry in std::fs::read_dir(&d).expect("读能力线目录") {
+                let p = entry.expect("目录项").path();
+                if p.is_dir() {
+                    stack.push(p);
+                    continue;
+                }
+                if p.extension().and_then(|x| x.to_str()) == Some("rs")
+                    && p.file_name().and_then(|x| x.to_str()) != Some("mod.rs")
+                {
+                    residents.push(p.to_string_lossy().into_owned());
+                }
+            }
+        }
+        assert!(
+            !residents.is_empty(),
+            "`{}` 建出来了，可里面一个住户都没有（只有 `mod.rs` 也算没有）。\n\
+             ⚠ 一个空的能力线目录是**装饰**：它自己不说假话，但它让下一个人\n\
+             只要顺手把 `doc/ARCHITECTURE.md` 那一格改成「已交付」就全绿。\n\
+             两条出路，别默认第一条：① 把那个住户真的搬进来；\n\
+             ② 这一层其实还不需要 ⇒ 把目录删掉，让「待做」继续是真的。",
+            dir.display()
+        );
+        true
+    }
+
+    /// ★ 反向自检：上面那份量法**真的在量**，两个方向都验。
+    ///
+    /// # 没有这一格会怎样
+    ///
+    /// 把 [`layer_has_landed_at`] 改成恒 `false`，那两格就**永远说「没落地」** ——
+    /// 与文档今天的「待做」一直对得上，真落地那天同样没人红。
+    /// 反过来改成恒 `true`，今天当场红（那一支由 ② 接住）。
+    /// **两个方向都要有刀**，所以这里既有非空对照、也有空对照。
+    #[test]
+    fn the_capability_line_landing_probe_actually_bites() {
+        let root = repo_root();
+        // ① **非空对照，而且是活体**：`control/` 这条线盘上确实有住户 ⇒ 必须 `true`。
+        //    量法一旦被改成恒 `false`，这一格当场红。
+        //    ⚠ 刻意用 `control/` 而不是 `observe/`：`observe/` 那一格 09-12 刚被 `K-R71`
+        //    按 `R29` 裁定一动过，本件一个字都不碰它。
+        assert!(
+            layer_has_landed_at(&root.join("src-tauri/src/backend/control")),
+            "`backend/control/` 这条线明明住满了人，量法却说它没落地 —— \
+             那说明这份量法此刻是恒 `false`，而恒 `false` 让那两格永远说「没落地」"
+        );
+        // ② 目录不存在 ⇒ `false`（今天 `platform/` 与 `common/` 就在这一支）。
+        //    量法一旦被改成恒 `true`，这一格当场红。
+        let gone = std::env::temp_dir().join(format!("ccm-cl-gone-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&gone);
+        assert!(
+            !layer_has_landed_at(&gone),
+            "一个根本不存在的目录被量成「落地了」"
+        );
+        // ③ 目录在、只有 `mod.rs` ⇒ **装饰，必须红**。
+        //    🔴 这就是件计划那条死值验（「建一个空的 `backend/platform/` 目录」）的活体版：
+        //    真判据跑在真目录上，而不是靠喂字符串。
+        let sham = std::env::temp_dir().join(format!("ccm-cl-sham-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&sham);
+        std::fs::create_dir_all(&sham).expect("造夹具目录");
+        std::fs::write(sham.join("mod.rs"), "//! 什么都不声明\n").expect("写夹具");
+        let r = std::panic::catch_unwind(|| layer_has_landed_at(&sham));
+        assert!(
+            r.is_err(),
+            "只有一份 `mod.rs` 的空壳目录被量成了「没落地」而不是红 —— \
+             那让「建个目录 + 顺手改一下文档」重新变成一条全绿的路"
+        );
+        // ④ 目录在、有一个真住户 ⇒ `true`。这一格与 ③ 一起把「有住户」这个形钉住：
+        //    少了它，量法可以退化成「目录里有 `mod.rs` 就红」这种谁都过不去的东西。
+        let real = std::env::temp_dir().join(format!("ccm-cl-real-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&real);
+        std::fs::create_dir_all(&real).expect("造夹具目录");
+        std::fs::write(real.join("mod.rs"), "//! 说明\n").expect("写夹具");
+        std::fs::write(real.join("one.rs"), "pub fn ok() -> usize { 0 }\n").expect("写夹具");
+        assert!(
+            layer_has_landed_at(&real),
+            "目录里有一个真住户，量法却说它没落地"
+        );
+        for d in [gone, sham, real] {
+            let _ = std::fs::remove_dir_all(&d);
+        }
     }
 
     /// ★★ 逐格跑「现场量法」：**文档里那一格**记的状态今天还对不对。
@@ -576,17 +1177,36 @@ mod tests {
                         .is_file(),
                     "monitor 侧 `backend/control/` 在，且那个唯一的回落分流器住在里面",
                 ),
+                // 🔴 〔`K-R71` 09-12，PM 裁定一〕**这一格原本是裸 `is_dir`** —— 原文逐字：
+                // `root.join("src-tauri/src/backend/observe").is_dir()` ＋ 说明串
+                // 「monitor 侧 `backend/observe/` 目录存在」。
+                // ★ 它犯的正是**紧挨着上面那三行警告**说的那件事：目录空着也算「有目录」。
+                //   ⇒ 同一段代码里，写下那条警告的人在下一格就犯了它警告的事（`K-R71` 的 `7u` 逮到：
+                //   把整次搬运掏空、只留一个空的 `observe/` 与一份什么都不声明的 `mod.rs`，
+                //   而文档继续宣称「已交付」—— monitor lib **1397 条一条不红**）。
+                // ⇒ 收窄成与 `control/` 那格同形：钉住那个**唯一的住户**。
+                // ⚠ **这不是新判据，是把一条已有判据收窄到它自己声称守的性质** ——
+                //   本格改动不加任何 `#[test]`，判据条数一格没涨。
                 "monitor-backend-observe-landed" => (
-                    root.join("src-tauri/src/backend/observe").is_dir(),
-                    "monitor 侧 `backend/observe/` 目录存在",
+                    root.join("src-tauri/src/backend/observe/local_query.rs")
+                        .is_file(),
+                    "monitor 侧 `backend/observe/` 在，且那个唯一的读面传输住在里面",
                 ),
+                // 🔴 〔`K-R73` 09-12，PM 裁定二排期到本件〕**这两格原本是裸 `is_dir`** —— 原文逐字：
+                //   `root.join("src-tauri/src/backend/platform").is_dir()` ＋ 说明串
+                //   「monitor 侧 `backend/platform/` 目录存在」（`common/` 同形）。
+                //   它们**今天不说假话**（两个目录都不在，`false` 是真的），**建目录那一刻才会** ——
+                //   与 `observe/` 那一格 09-12 的遭遇逐字同形。
+                // ⚠ **本件不许硬指一个住户**：这两条线今天没有「那个唯一的住户」可钉，
+                //   随手指一个文件名就是替未来的人做决定。⇒ 收窄成一个**说得出口的形**，
+                //   见 [`a_capability_line_has_landed`]：目录在 ∧ 里面真有住户。
                 "monitor-backend-platform-landed" => (
-                    root.join("src-tauri/src/backend/platform").is_dir(),
-                    "monitor 侧 `backend/platform/` 目录存在",
+                    a_capability_line_has_landed(&root, "platform"),
+                    "monitor 侧 `backend/platform/` 在，且里面**真有住户**（至少一个不是 `mod.rs` 的 `.rs`）",
                 ),
                 "monitor-backend-common-landed" => (
-                    root.join("src-tauri/src/backend/common").is_dir(),
-                    "monitor 侧 `backend/common/` 目录存在",
+                    a_capability_line_has_landed(&root, "common"),
+                    "monitor 侧 `backend/common/` 在，且里面**真有住户**（至少一个不是 `mod.rs` 的 `.rs`）",
                 ),
                 other => panic!("`{item}` 的量法键 {other:?} 没有实现 —— 登记表与实现漂了"),
             };
@@ -736,6 +1356,15 @@ mod tests {
                 "run_tmux_reconcile_poller",
                 "`INVARIANTS.md` 那句逐字写着它**已删**（audit-fixes F03.2）—— 历史句，\
                  删掉反而丢掉「为什么今天没有 poller」的解释",
+            ),
+            (
+                "build_usage_probe_cmd",
+                "★〔`K-R104` 09-13〕`INVARIANTS.md` §33b 那两处逐字写着它**已退役** \
+                 —— 用量探针的整条编排搬上后端帧面之后，monitor 一个 shell 字符都不渲染。\
+                 那两句正是「外层四个产出方里退役了哪一个、为什么」的解释，\
+                 **删掉这个地址反而丢掉线索**（同上面 `run_tmux_reconcile_poller` 那条）。\
+                 ⚠ 它今天不是无人看管的：`the_outer_layer_producers_are_in_the_state_the_doc_claims` \
+                 把那一格**翻面**钉着 —— 这个函数要是回来了，那条会红。",
             ),
         ];
         const KW: &[&str] = &[
@@ -935,6 +1564,12 @@ mod tests {
             (
                 "shared/ccm-wrapper.sh",
                 "**历史句**：原文逐字写着「取代已删除的 …」——删掉它反而丢掉「今天为什么没有 wrapper」",
+            ),
+            (
+                "e2e/tmux-guarded-acceptance.sh",
+                "**历史句**〔`K-R72` 09-12〕：`INVARIANTS §34` 那一段逐字在说「这套 e2e 的输入源是\
+                 那个已被删掉的 builder ⇒ 整套删了」——它点这个路径正是为了说清**哪一套没了**；\
+                 删掉这句话，读的人只会看见「三道门少了一层真机验收」而不知道为什么",
             ),
             (
                 "src/cards/memory-recall.ts",
@@ -1273,6 +1908,372 @@ mod tests {
              `doc/RELEASING.md` 自己记着这件事）。当时的修法是往 checklist 里加一行散文，\n\
              而第四次复发时那行散文已经在了 —— 所以现在由本条判据接着。\n\
              修法：把落后的那几处改成 {authority}（`RELEASING.md § 1` 的 checklist 列了全部落点）。",
+            off.join("\n")
+        );
+    }
+
+    /// 读仓根的一份文本。
+    ///
+    /// ⚠ **刻意包成函数，不在 `let` 右边直接写 `read_to_string`**：
+    /// `needle_anchor_registry::corpus_vars` 按「`let X = …read_to_string(…)`」播种
+    /// 「语料变量」，而它的传递闭包**按名字**跑一层 —— 在本文件里多播一个名字出去，
+    /// 会把同文件别处**早就存在**的匹配一起卷进人群，那条递减棘轮当场涨一格。
+    /// 〔与 `frozen_daemon_census::read_frozen` 那条头注同源，09-14 实打过一次〕
+    fn read_repo_file(rel: &str) -> String {
+        std::fs::read_to_string(repo_root().join(rel))
+            .unwrap_or_else(|e| panic!("读 {rel} 失败：{e}"))
+    }
+
+    /// 本仓 breaking 段的**约定名** —— `CHANGELOG.md` 里标题带这个词的那个 `###` 就是它。
+    ///
+    /// 〔现打于 `track/k-r120` 交回那一刻，量法
+    /// `grep -c '^### .*会改变已有行为' CHANGELOG.md` = **2**（`3.8.0` 与 `3.7.0` 各一处）。
+    /// **这个数不进判据** —— 下面只有一条 `≥ 1` 的地板，它挡的是
+    /// 「这个约定被整份抹掉、而『不许被埋』那条从此零命中地绿」。〕
+    const BREAKING_MARK: &str = "会改变已有行为";
+
+    /// 〔`K-R120` `KR120D2`，09-14〕**`CHANGELOG.md` 最上面那一节的版本号，
+    /// 必须就是这棵树此刻要发的那个版本号。**
+    ///
+    /// # 它从哪来 —— 一条**现打出来**的缺口，不是设想
+    ///
+    /// `K-R118` 的死值验第 ⑦ 刀（刀具住 `evidence/K-R118-cut.py` 的 `d7`）：
+    /// 把版本号那六处 ＋ `src-tauri/Cargo.lock` **一起** bump，而 `CHANGELOG.md`
+    /// 一个字不动 ⇒ 实测 `GATE: OK —— 16 格全绿，一条都没红`
+    /// （逐字读数住 `evidence/K-R118-deathvalue.md#§E3`，本条不抄那份快照）。
+    /// ⇒ 「**版本号 bump 了而 CHANGELOG 没跟**」这一形当时**没有任何东西在守**。
+    /// 它的后果正是本区最贵的那一族：一次**静默的行为改变** —— 用户拿到的包只涨了小版本号，
+    /// 而里面有几条会让他原来的用法当场失效。
+    ///
+    /// # 🔴 判的**不是**「文件里有没有出现这个版本号串」
+    ///
+    /// 那种判法一个字都买不到：版本号写在这份文件的**任何地方**（一句散文、一条旧条目、
+    /// 甚至一段注释）都能骗过它。本条判的是**最上面那一节标题里的那个版本号**。
+    ///
+    /// # 为什么只跟**一处**比，而不是把七处都读一遍
+    ///
+    /// 「七处」今天已经各有各的家，本条只接最后那一段，**不再复述一份锚点表**
+    /// （`brief` 13b：闭集只许有一个住址）：
+    ///
+    /// | 谁 ↔ 谁 | 由谁守 |
+    /// |---|---|
+    /// | 权威源 `package.json` ↔ 另外四处（`Cargo.toml` · `tauri.conf.json` · `README.md` ×2 · `README.en.md`） | 同模块的 [`the_release_version_is_the_same_in_all_six_places`] |
+    /// | `src-tauri/Cargo.toml` ↔ `src-tauri/Cargo.lock` | 门禁 `winchk` 那一格的 `cargo check --locked`；发版路上另有 `release.yml` 的 `Verify version consistency with tag`（四处对账） |
+    /// | **`CHANGELOG.md` 最上一节 ↔ `src-tauri/Cargo.toml`** | **本条**（`env!("CARGO_PKG_VERSION")`，编译期注入，不抠锚点） |
+    ///
+    /// ⇒ **三段接起来**才等于「最上一节 == 那七处」。少任何一段都不等于 ——
+    /// 上面那两行不是背景，是本条结论的**承重件**。
+    ///
+    /// # 第二条判定：breaking 段不许被埋在列表里
+    ///
+    /// `R77` 裁的是「既然不走 `4.0.0`，那几条破坏性变更**必须写成显眼的 breaking 段**」——
+    /// 而「显眼」在机器面上唯一判得动的那一半是**位置**：最上面那一节里若有 breaking 段，
+    /// 它必须是**第一个** `###`。「**藏在列表里**」正是那条裁定点名要避开的形状。
+    ///
+    /// # ⚠ 诚实边界（三条，别读宽）
+    ///
+    /// 1. 🔴 **「该不该有 breaking 段」本条判不了，也不判** —— 机器分不出「这一版真的没有
+    ///    破坏性变更」与「有而没写」。硬要求每一节都有，只会把它变成谁都会写的一句空话，
+    ///    而 `references/writing.md` 第三节逐字反对这一形（那种闸的真阳率压不住噪声）。
+    ///    ⇒ **这一档登记为「不在射程」，不是「做到了」。**
+    /// 2. breaking 段靠 [`BREAKING_MARK`] 这个**约定词**认。换一种说法另起一节 ⇒ 本条静默。
+    ///    挡这一形的是下面那条**地板**（全文至少一处），它只保证「这个约定没被整份抹掉」，
+    ///    **不保证最上面那一节里那一处还在**。
+    /// 3. 本条只读 `CHANGELOG.md` 一份文件 ＋ 一个编译期常量。那一节里**写的内容对不对、
+    ///    全不全**（六条是不是真的六条、有没有漏掉一条）一个字都不判 ——
+    ///    那是人裁的，`K-R118` 交回时逐字写过「**用户可见**那一层给不出判别式」。
+    #[test]
+    fn the_changelog_top_section_is_the_version_we_ship() {
+        /// 段界记号。**一律走具名常量** —— `needle_anchor_registry` 那条递减棘轮数的正是
+        /// 「拿磁盘语料做裸字面量匹配」，本条一处都不往上加。
+        const TOP_MARK: &str = "## ";
+        /// 版本节的标题形状：`## [X.Y.Z] — 日期`。
+        const SECTION_MARK: &str = "## [";
+        /// 节内子标题。
+        const SUB_MARK: &str = "### ";
+
+        // 🔴 **要发的那个版本号从 `src-tauri/Cargo.toml` 编译期注入**，本条不自己再抠一遍锚点
+        //    —— 同一个值不许长出第二个住址（`brief` 13b）。
+        let shipping = env!("CARGO_PKG_VERSION");
+        let changelog = read_repo_file("CHANGELOG.md");
+
+        let heading = changelog
+            .lines()
+            .find(|l| l.starts_with(SECTION_MARK))
+            .unwrap_or_else(|| {
+                panic!(
+                    "`CHANGELOG.md` 里一行 `{SECTION_MARK}…` 都找不到 —— 节标题的写法变了，\n\
+                     本条从此零命中地绿。**先修段界读法，再谈版本号对不对。**"
+                )
+            });
+
+        let top_version = heading
+            .trim_start_matches('#')
+            .trim()
+            .strip_prefix('[')
+            .and_then(|rest| rest.split_once(']'))
+            .map(|(v, _)| v)
+            .unwrap_or_else(|| panic!("最上面那一节的标题抠不出 `[…]`，它逐字是：{heading}"));
+
+        assert_eq!(
+            top_version, shipping,
+            "`CHANGELOG.md` 最上面那一节写的是 `{top_version}`，而这棵树要发的是 `{shipping}`。\n\n\
+             ★ 本条接的是 `K-R118` `d7` 那一刀现打出来的缺口：那一刀把版本号七处一起 bump、\n\
+             `CHANGELOG.md` 一个字不动 ⇒ 当时 **16 格全绿，一条都没红**。\n\
+             「小版本号 ＋ 没人说的破坏性变更」= 一次静默的行为改变，那是本区最贵的一族。\n\n\
+             出路二选一（**不是**「把这一条放宽」）：\n\
+             ① 版本号真的要 bump ⇒ 在 `CHANGELOG.md` 顶上补 `## [{shipping}] — <日期>` 那一节，\n\
+                破坏性变更写在**最前**（`R77`）；\n\
+             ② 版本号 bump 错了 ⇒ 改回去，七处一起\n\
+                （另外五处由 `the_release_version_is_the_same_in_all_six_places` 看着，\n\
+                 `Cargo.lock` 由 `cargo check --locked` 看着）。\n\n\
+             ⚠ **这条前提本来就该变的时候去哪里重裁**：顶上挂一个 `## [Unreleased]` 会让本条红。\n\
+             本仓至今没用过那种写法（所以这里没有那一档豁免，也就没有一条没夹具的分支）；\n\
+             真要用，去 `doc/RELEASING.md` 把发版次序整个重裁一次 —— 别在这里加一行豁免。"
+        );
+
+        // ── 第二条判定：breaking 段不许被埋在列表里 ──────────────────────────
+        let body: Vec<&str> = changelog
+            .lines()
+            .skip_while(|l| !l.starts_with(SECTION_MARK))
+            .skip(1)
+            .take_while(|l| !l.starts_with(TOP_MARK))
+            .collect();
+        // 抽取器自检：段界真的切到了东西，下面两条不是在空转。
+        assert!(
+            !body.is_empty(),
+            "最上面那一节 `{heading}` 的正文是空的 —— 段界读法坏了，下面两条此刻在空转"
+        );
+
+        // 地板（反空真）：breaking 段那个约定词在整份 `CHANGELOG.md` 里至少还有一处。
+        let mark_lines = changelog
+            .lines()
+            .filter(|l| l.starts_with(SUB_MARK) && l.contains(BREAKING_MARK))
+            .count();
+        assert!(
+            mark_lines >= 1,
+            "整份 `CHANGELOG.md` 里一条带 {BREAKING_MARK:?} 的 `{SUB_MARK}` 标题都没有 ——\n\
+             breaking 段的**约定名**被换掉了，下面那条「不许被埋」从此零命中地绿。\n\
+             换写法可以，但要同一拍把 `BREAKING_MARK` 改过来。"
+        );
+
+        let subs: Vec<&str> = body
+            .iter()
+            .copied()
+            .filter(|l| l.starts_with(SUB_MARK))
+            .collect();
+        if let Some(at) = subs.iter().position(|l| l.contains(BREAKING_MARK)) {
+            assert_eq!(
+                at,
+                0,
+                "`{heading}` 这一节里，breaking 段排在第 {} 个 `{SUB_MARK}`，不是第一个。\n\n\
+                 ★ `R77` 裁的是「既然不走大版本号，那几条破坏性变更**必须写成显眼的 breaking 段**」\n\
+                 —— 而「小版本号 ＋ **藏在列表里**的破坏性变更」正是那条裁定点名要避开的形状。\n\
+                 这一节现在的子标题顺序是：\n{}",
+                at + 1,
+                subs.iter()
+                    .enumerate()
+                    .map(|(i, l)| format!("  {}. {l}", i + 1))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            );
+        }
+    }
+
+    /// 〔`K-R120` 收窗口补，09-14〕**两份 README 里「这份文档此刻自称的版本」那一处，
+    /// 必须就是这棵树此刻要发的那个版本号。**
+    ///
+    /// # 它从哪来 —— 收窗口现打逮到的漏，而漏在**人群**上，不在实现上
+    ///
+    /// 本件按 `KR120D1` 把「七处」一次改齐到 `3.8.0` 之后，收窗口现打逮到
+    /// `README.md` 与 `README.en.md` 的发布沿革段抬头仍写着 `当前发布 **v3.7.0**` /
+    /// `current release **v3.7.0**` —— **这棵树会带着「当前发布 v3.7.0」把 3.8.0 发出去。**
+    ///
+    /// 🔴 **成因不是「有人改漏了」，是「人群里根本没有它」**：那一件的「七处」＝
+    /// [`the_release_version_is_the_same_in_all_six_places`] 数得到的那几处 ＋ `Cargo.lock`，
+    /// 而现打 `grep -c '当前发布\|current release' src-tauri/src/doc_claim_registry.rs`
+    /// **零命中** —— **判据在，而它的人群不含这一处**。
+    /// ★ 这与 `R73` 第五节登记的「判据在、执行面没有」是**同一族的镜像**：执行面在，人群不够。
+    /// 而它的默认结局一样：**静默的绿**。
+    ///
+    /// # 🔴 射程刻意很窄：判「此刻自称的版本」，不判「文档里出现过的所有版本号」
+    ///
+    /// 那两行是**发布沿革**段 —— 现打各含 **11** 个形如 `vX.Y.Z` 的串
+    /// （`v2.19.0` `v2.19.1` `v2.20.0` `v2.21.0` `v2.22.0` `v2.22.2` `v3.3.0` `v3.4.0`
+    /// `v3.5.0` `v3.6.0` ＋ 自称的那一个），其中 **10 个是历史沿革，本来就该停在旧号上**。
+    /// ⇒ 本条只钉**紧跟在那两个锚点之后**的那一个。
+    /// **把整段收进人群 = 下次发版红一片**，那不是守，是拆（`testing.md` 判据硬规则 4：
+    /// 扫描面按**语义**划，不按「碰巧只有它长这样」划）。
+    /// 同理，`README.md` 与 `README.en.md` 里那两句「v3.6.0 与 v3.7.0 的实际产物是 `en-US`」
+    /// 是 09-10 落的**历史订正**，**刻意不在射程里**。
+    ///
+    /// # 跟谁比
+    ///
+    /// 与 [`the_changelog_top_section_is_the_version_we_ship`] 同一条路：
+    /// `env!("CARGO_PKG_VERSION")`（＝ `src-tauri/Cargo.toml` 的 `version`，编译期注入）——
+    /// **不抠第二份权威源锚点**（`brief` 13b）。它与另外五处的一致由
+    /// [`the_release_version_is_the_same_in_all_six_places`] 守，与 `Cargo.lock` 的一致由
+    /// 门禁 `winchk` 那一格的 `cargo check --locked` 守。
+    ///
+    /// # ⚠ 诚实边界（三条）
+    ///
+    /// 1. 人群是**两处，按锚点点名**。README 里别处再长出第三句「当前发布 …」，本条看不见 ——
+    ///    它判的是**这两个锚点**，不是「所有自称」。
+    /// 2. 锚点里带着 markdown 的 `**` ⇒ 排版一改（比如去掉加粗），本条**当场红在
+    ///    「锚点命中 0 次」上**，而不是静默地绿。这是有意的，与那条「六处一致」的 `pick`
+    ///    同一条纪律：命中必须恰好 1 次。
+    /// 3. 本条**不判那一整段散文对不对**（沿革列得全不全、里面的话有没有过期），一个字都不判。
+    #[test]
+    fn the_docs_self_reported_release_is_the_version_we_ship() {
+        let shipping = env!("CARGO_PKG_VERSION");
+
+        // 人群：**两处，按锚点点名**。
+        // ⚠ 刻意写成函数体里的 `let`，不是模块级 `const …: &[…]` ——
+        //   后者要起 `scanning_guard_registry::TABLE_DECLS` 里**已有的**名字（那条元判据
+        //   按名字认表），而往那张闭集里加一个新名字必须同拍改 `MUST_BE_RECOGNISED`，
+        //   两处都不在本件写区。同形先例就在上面那条「六处一致」里（它的 `others` 也是
+        //   函数体里的 `let`）。
+        let places: [(&str, &str, &str); 2] = [
+            ("README.md 发布沿革段抬头", "README.md", "当前发布 **v"),
+            (
+                "README.en.md 发布沿革段抬头",
+                "README.en.md",
+                "current release **v",
+            ),
+        ];
+
+        let mut off: Vec<String> = Vec::new();
+        for (who, file, needle) in places {
+            let doc = read_repo_file(file);
+            let hits = doc.matches(needle).count();
+            assert_eq!(
+                hits, 1,
+                "在 {who}（`{file}`）里，锚点 {needle:?} 命中 {hits} 次（要求恰好 1 次）——\n\
+                 那一行被改写、被挪走，或者排版变了（锚点里带着 markdown 的 `**`）。\n\
+                 **先修锚点再谈版本号对不对**，否则本条会零命中地绿。"
+            );
+            let at = doc.find(needle).expect("上面已断言命中一次") + needle.len();
+            let rest = &doc[at..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+                .unwrap_or(rest.len());
+            let got = &rest[..end];
+            assert!(
+                got.split('.').count() == 3 && got.split('.').all(|s| !s.is_empty()),
+                "{who} 在锚点之后抠到的是 {got:?} —— 形状不像 `X.Y.Z`"
+            );
+            if got != shipping {
+                off.push(format!("  {who}（`{file}`）：{got}"));
+            }
+        }
+
+        assert!(
+            off.is_empty(),
+            "这棵树要发的是 `{shipping}`，而这几处文档**自称**的是别的号：\n{}\n\n\
+             ★ 本条是 `K-R120` 收窗口现打逮到的那个漏的处置：那一拍七处都已经是新号，\n\
+             而这两处**不在任何判据的人群里** ⇒ 这棵树会带着「当前发布 <旧号>」把新版发出去。\n\
+             「判据在、而它的人群不含这一处」与「判据在、执行面没有」是同一族，\n\
+             两边的默认结局都是**静默的绿**。\n\n\
+             修法：把上面点名的那几处改成 {shipping}。\n\
+             ⚠ **只改紧跟锚点的那一个** —— 同一段里另外十个 `vX.Y.Z` 是**历史沿革**，\n\
+             它们本来就该停在旧号上，跟着改就是把沿革改成假的。",
+            off.join("\n")
+        );
+    }
+
+    /// 〔`K-R122`（09-14）`KR122D3`〕**`package-lock.json` 自称的那个版本，
+    /// 必须就是这棵树此刻要发的那个版本号。**
+    ///
+    /// # 它从哪来 —— `K-R119` 推 tag 之前现打逮到的第十、十一处旧号
+    ///
+    /// `K-R119` 在推 `v3.8.0` 之前逐处 grep 了一遍（不是「判据绿了」，是真去看那几行），
+    /// 七处版本号 ＋ `R79` 那两处 README 自称全是 `3.8.0`，而 `package-lock.json`
+    /// 的**顶层两处**仍是 `3.7.0`。读数住 `evidence/K-R119-发版读数.md § 四`。
+    ///
+    /// 🔴 **成因与 `K-R120` 那两处 README 同源，不是「有人改漏了」**：
+    /// 那两处**不在任何判据的人群里** —— 现打 `grep -c 'package-lock' src-tauri/src/` 在本条
+    /// 落地之前是 **0**。`doc/RELEASING.md § 1` 自己逐字记着这一条「**没有任何东西卡它**」。
+    /// ⇒ 「判据在、而它的人群不含这一处」，默认结局是**静默的绿**。
+    ///
+    /// # 🔴 射程刻意很窄：只钉**顶层那两处**，不钉几百个依赖的 `version`
+    ///
+    /// 这份文件里 `"version": "` 这个串现打有 **790** 处 —— 其中 **788** 处是**依赖自己的
+    /// 版本**，它们跟本包的版本号一点关系都没有，跟着改就是把 lockfile 改成假的。
+    /// 本条只钉 npm 自己写的那两处「**这个包是谁、什么版本**」：
+    ///   ① 文件顶层的 `version`（紧跟顶层 `name` 那一个）；
+    ///   ② `packages` 里 `""` 这个键（npm 用它表示**根包自己**）底下的 `version`。
+    /// ⇒ 锚点按**语义**划，不按「碰巧只有它长这样」划（`references/testing.md` 判据硬规则 4）。
+    ///
+    /// # 跟谁比
+    ///
+    /// 与 [`the_changelog_top_section_is_the_version_we_ship`] 和
+    /// [`the_docs_self_reported_release_is_the_version_we_ship`] 同一条路：
+    /// `env!("CARGO_PKG_VERSION")`（＝ `src-tauri/Cargo.toml` 的 `version`，编译期注入），
+    /// **不抠第二份权威源锚点**（`brief` 13b）。它与 `package.json` 那个权威源的一致由
+    /// [`the_release_version_is_the_same_in_all_six_places`] 守。
+    /// ⇒ **三段接起来**才等于「lockfile == `package.json`」；少任何一段都不等于。
+    ///
+    /// # ⚠ 诚实边界（四条，别读宽）
+    ///
+    /// 1. **不判 lockfile 的其余任何一个字节** —— 依赖树对不对、`integrity` 对不对、
+    ///    与 `package.json` 的依赖区间合不合，本条一个字都不问（那是 `npm ci` 的事）。
+    /// 2. 人群是**两处，按锚点点名**。npm 换一种排版（缩进变了 / 键序变了）⇒ 本条**当场红在
+    ///    「锚点命中 0 次」上**，而不是静默地绿。这是有意的，与本模块另外两条 `pick` 同一条纪律。
+    /// 3. 锚点 ② 里带着包名 `cc-monitor`。改包名 ⇒ 本条红在命中 0 次上，
+    ///    **那正是该有人看一眼的时刻**（改包名要同拍改 `package.json`）。
+    /// 4. 🔴 **它不会让构建红，这正是它当初漏掉的原因** —— `K-R119` 那趟演练里
+    ///    `npm ci` 与 `npm install` 两步都 success（读数同上）。lockfile 里这个号是
+    ///    「**这棵树自称的版本**」的一处，不是构建的输入 ⇒ 没有第二个机制会替它出声。
+    #[test]
+    fn the_npm_lockfile_claims_the_version_we_ship() {
+        let shipping = env!("CARGO_PKG_VERSION");
+        let lock = read_repo_file("package-lock.json");
+
+        // 人群：**两处，按锚点点名**。刻意写成函数体里的 `let`（理由同上一条：
+        // 模块级 `const …: &[…]` 要进 `scanning_guard_registry::TABLE_DECLS` 那张闭集）。
+        let places: [(&str, &str); 2] = [
+            ("package-lock.json 顶层的 version", "\n  \"version\": \""),
+            (
+                "package-lock.json 的 packages[\"\"]（npm 用它表示根包自己）",
+                "\n    \"\": {\n      \"name\": \"cc-monitor\",\n      \"version\": \"",
+            ),
+        ];
+
+        let mut off: Vec<String> = Vec::new();
+        for (who, needle) in places {
+            let hits = lock.matches(needle).count();
+            assert_eq!(
+                hits, 1,
+                "在 {who} 里，锚点 {needle:?} 命中 {hits} 次（要求恰好 1 次）——\n\
+                 npm 换了排版、或者包名改了。**先修锚点再谈版本号对不对**，\n\
+                 否则本条会零命中地绿（这份文件里另外那几百个 `version` 字段是依赖的，\n\
+                 锚点一松就会抠到它们身上）。"
+            );
+            let at = lock.find(needle).expect("上面已断言命中一次") + needle.len();
+            let rest = &lock[at..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+                .unwrap_or(rest.len());
+            let got = &rest[..end];
+            assert!(
+                got.split('.').count() == 3 && got.split('.').all(|s| !s.is_empty()),
+                "{who} 在锚点之后抠到的是 {got:?} —— 形状不像 `X.Y.Z`"
+            );
+            if got != shipping {
+                off.push(format!("  {who}：{got}"));
+            }
+        }
+
+        assert!(
+            off.is_empty(),
+            "这棵树要发的是 `{shipping}`，而 `package-lock.json` **自称**的是别的号：\n{}\n\n\
+             ★ 本条是 `K-R119` 推 tag 之前现打逮到的那个漏的处置：那一拍七处版本号 ＋ 两处 README\n\
+             自称都已经是新号，而这两处**不在任何判据的人群里** ⇒ 这棵树会带着一个旧号的 lockfile 发版。\n\
+             ⚠ 它**不会**让 `npm ci` 红（`K-R119` 演练实测两步都 success）—— 所以没有第二个机制\n\
+             会替它出声，只有本条。\n\n\
+             修法：把 `package-lock.json` **顶层那两处**改成 {shipping}。\n\
+             ⚠ **只改那两处** —— 同一份文件里另外几百个 `version` 是**依赖自己的版本**，\n\
+             跟着改就是把 lockfile 改成假的。",
             off.join("\n")
         );
     }
@@ -1898,5 +2899,524 @@ mod tests {
         );
         // 非空对照：针本身是有效的（同一把尺子在别处确实抓得到东西）。
         assert!(!env_key_claim_lines().is_empty());
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// 🔴 `K-R116`（2026-09-14）：措辞收干净之后的**两道闸**
+//
+// `R61`〔用@09-13〕逐字：「**不要有 daemon 这个说法了 / daemon 就是常驻后端，后端就是
+// daemon**」；`R63` 要「全仓改措辞」；`R64` 逐字收窄「**ccm 不改**」。
+//
+// ⇒ 改的是**人读的散文**，**不是代码标识符**（`remote-daemon-proto` 这个 crate 名、
+// `daemon_*` 函数名、`--daemon-probe` 这类子命令、`daemon-gate2` 这类 e2e 套件名，
+// 一个都不改）。**「这个词出现几次」与「该改几处」是两个数**，下面第一道闸就长在这条线上。
+//
+// 本轮现打（量具 `evidence/K-R116-ruler.py`，人群 = `git ls-files '*.md'` 95 份）：
+// 改之前**出现 2098 次**，其中**该改 358 处**；改完之后写区里 `该改` 归零。
+// 两个数差在哪，逐档读数落在 `evidence/K-R116-census.md`。
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// 闸一：**那 9 份散文里不许再有人读的 `daemon`**（`K-R116` `KR116D1` 的机器面）。
+///
+/// # 为什么要一道闸，而不是「改完就算了」
+///
+/// 散文的正常演进就是有人往里写新句子，而写的人手里正躺着一份满是 `daemon` 的旧文档。
+/// 一次性改干净买到的是「今天干净」；这道闸买的是「**明天写脏了当场红**」。
+///
+/// # 人群 · 分母
+///
+/// [`SITES`] 那 9 份 —— 逐字取自 `K-R116` 的写区。**不是**整棵 `doc/`：
+/// `doc/` 今天 11 份，写区只点了 4 份，另外 7 份（`REMOTE-PHASE0-DEPLOY.md` 那 54 处占大头）
+/// 本轮**没改**，把它们收进人群就是一条必然红的闸。⚠ **这是本闸今天的射程边界，不是「没有」。**
+///
+/// # 它怎么分「散文」与「标识符」
+///
+/// 从命中处向两侧扩成一个 **ASCII token**：字母 / 数字 / `_` 一律吃；`-` `.` `/` `:`
+/// 只在它另一侧紧跟 ASCII 标识符字符时才吃。**汉字不算标识符字符。**
+/// token 恰好是光秃秃的 `daemon`（不分大小写）⇒ 那是散文；否则是标识符，放行。
+///
+/// ⚠ 这条规则**认不出**两形，两侧都写出来：
+/// ① 中文夹缝里的标识符（`daemon-协议-v1`）会被切成裸词 ⇒ 靠 [`EXEMPT`] 逐条兜；
+/// ② 英文连字符**形容词**（`daemon-spawned`）会被当成标识符放过 ⇒ 那是**漏**，
+///    本轮那 3 处由量具的「整句改写登记」逐处改掉了，而这道闸看不见同形的新增。
+///
+/// # ⚠ 它买不到什么
+///
+/// **只判那个词在不在**，判不了「改完读起来对不对」，也判不了别处（源码注释 · 界面文案 ·
+/// `evidence/` · 计划仓）——那几档各有各的归属，见 [`EXEMPT`] 逐条的理由。
+#[cfg(test)]
+mod daemon_wording_registry {
+    use std::path::{Path, PathBuf};
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级")
+            .to_path_buf()
+    }
+
+    /// 本闸的扫描面 —— `K-R116` 写区里那 9 份散文。**闭集，按住址点名。**
+    ///
+    /// 🔴 表名起成 `SITES` 是 `scanning_guard_registry::TABLE_DECLS` 那条纪律要的
+    /// （「新写一条『扫描面 ＋ 常量表』型的判据，那张表要起成 `TABLE_DECLS` 里已有的名字之一」）。
+    const SITES: &[&str] = &[
+        "doc/IPC-PROTOCOL.md",
+        "doc/INVARIANTS.md",
+        "doc/ARCHITECTURE.md",
+        "doc/CONTRIBUTING.md",
+        "README.md",
+        "README.en.md",
+        "e2e/README.md",
+        "src-tauri/README.md",
+        "remote-daemon-proto/README.md",
+    ];
+
+    /// 写区里**裸着的 `daemon`，而它一个字都不许动** —— `(文件, 逐字片段, 理由)`。
+    ///
+    /// 🔴 **这是本仓这个闭集的唯一住址**：量具 `evidence/K-R116-ruler.py` 不抄一份，
+    /// 它**解析本表**（`--apply` 与本闸因此不可能对不上）。
+    ///
+    /// 每条片段必须在那份文件里**恰好命中一次** —— 命中 0 次 = 那句话被改过了、这条例外
+    /// 此刻在空转；命中多次 = 片段太短，说不清点的是哪一处。两侧都由下面的判据断言。
+    const EXEMPT: &[(&str, &str, &str)] = &[
+        ("doc/INVARIANTS.md", "「**ccm做到必须走daemon**」",
+         "用户 08-14 逐字裁定的原话 —— 引文改了就不是引文了"),
+        ("doc/IPC-PROTOCOL.md", "「ccm 做到必须走 daemon」",
+         "同上，用户 08-14 逐字裁定在本文件里的第二处引用"),
+        ("doc/INVARIANTS.md", "**原措辞**：「daemon 对被观测文件系统必须只读，绝不写。」",
+         "§41.6 的**原措辞留档**（2026-07-31 收窄前那句）—— 历史句，改它等于篡改沿革；而它旁边那句「现措辞」正是本轮改的那一处"),
+        ("doc/INVARIANTS.md", "「daemonless 降级读取（无需 daemon）」",
+         "已删掉的那个界面 checkbox 的**逐字标签**（`K-R59` 09-11 整格删除，这里是墓碑）"),
+        ("doc/INVARIANTS.md", "「**daemon 结构上产不出它**：`control/launch.rs` 头注逐字",
+         "`K-R106` 订正段里**逐字回抄的原文**（下一句就是「那句被用户当场推翻了一半」）"),
+        ("doc/INVARIANTS.md", "不许再用「daemon」这个词把「远端常驻的那份」与「后端」压成一个",
+         "`R61` 裁定三本身 —— 它说的就是这个词，把词换掉这句话就没有指称对象了"),
+        ("doc/CONTRIBUTING.md", "REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-daemon-二进制f08b",
+         "markdown **锚点**，指向 `doc/REMOTE-PHASE0-DEPLOY.md` 的标题；那份文件不在本轮写区 ⇒ 标题不动，锚点跟着不许动，否则链接当场断"),
+        ("doc/IPC-PROTOCOL.md", "= CC 2.1.x daemon 后台任务",
+         "这一处的 `daemon` 指的是 **Claude Code 自己**那个 `--fork-session` 后台模式，不是本仓的后端 —— 换了词就把两个不同的东西压成一个（`R61` 治的正是这一形，反方向）"),
+        ("doc/IPC-PROTOCOL.md", "（`daemon-协议-v1 §3`）",
+         "与仓外 aterm **冻结在 2026-07-18** 的那份契约文档的**名字**，不是散文"),
+        ("README.md", "`rust` / `frontend` / `daemon` / `linux-app-build` / `e2e-smoke`",
+         "`.github/workflows/ci.yml` 里的 **job 名**，改它 CI 就对不上"),
+        ("e2e/README.md", "<daemon>",
+         "shell 命令里的**占位符** `<daemon>`（要替进去的是那个二进制的路径）"),
+        ("src-tauri/README.md", "设置面板「安装 daemon」",
+         "**逐字引用界面上那个按钮的文案** —— 文案住 `src/settings/machine-card.ts`（本轮写区之外）；只改文档不改界面，文档当场说假话。UI 文案那一档整体交回 PM 另派"),
+        ("src-tauri/README.md", "设置面板「卸载 daemon」",
+         "同上，另一个按钮的逐字文案"),
+        ("src-tauri/README.md", "一次性 exec `<daemon> --list-projects/--list-sessions/",
+         "同上，命令行占位符 `<daemon>`"),
+        ("src-tauri/README.md", "各配置远端 exec `<daemon> --usage`",
+         "同上，命令行占位符 `<daemon>`"),
+    ];
+
+    /// 语料地板：低于这个字节数就判「散文没喂进来」，而不是「一处都没有」。
+    const CORPUS_FLOOR_BYTES: usize = 300_000;
+
+    /// 例外表覆盖的处数 —— **恒等**，不是地板。
+    ///
+    /// 少一处 = 有条例外空转了（那句话被改过）；多一处 = 有人往例外表里塞了新的放行，
+    /// 而放行必须是**有意的一拍**。⚠ 这个数与 [`EXEMPT`] 的条数今天恰好相等（15），
+    /// 但两者不是同一件事：一条片段可以盖住同一句里的两处裸词。
+    const EXEMPT_HITS: usize = 15;
+
+    /// ASCII 标识符字符 —— **汉字不算**，这一条就是「两个数」的分水岭。
+    fn is_ident(c: u8) -> bool {
+        c.is_ascii_alphanumeric() || c == b'_'
+    }
+
+    /// 把 `[a, b)` 这处命中扩成它所属的 ASCII token，返回 `(起, 止)`。
+    ///
+    /// ⚠ 按**字节**走：`-` `.` `/` `:` 只在它另一侧紧跟 ASCII 标识符字符时才吃 ——
+    /// 于是 `ccm做到必须走daemon` 切出裸词（汉字挡住了扩张），
+    /// 而 `remote-daemon-proto` / `daemon_send_keys.rs` 切出整条。
+    fn token_at(s: &[u8], mut a: usize, mut b: usize) -> (usize, usize) {
+        while a > 0
+            && (is_ident(s[a - 1])
+                || (matches!(s[a - 1], b'-' | b'.' | b'/' | b':') && a >= 2 && is_ident(s[a - 2])))
+        {
+            a -= 1;
+        }
+        while b < s.len()
+            && (is_ident(s[b])
+                || (matches!(s[b], b'-' | b'.' | b'/' | b':')
+                    && b + 1 < s.len()
+                    && is_ident(s[b + 1])))
+        {
+            b += 1;
+        }
+        (a, b)
+    }
+
+    /// 一份文本里 `daemon`（不分大小写）的全部命中起点。
+    ///
+    /// ⚠ 刻意**不写** `.contains("…")` / `.find("…")` 那一形：
+    /// `needle_anchor_registry` 的递减棘轮按「拿磁盘语料做裸字面量匹配」计数，
+    /// 而本条的针是**变量**（下面 `NEEDLE`），不进那个人群。
+    fn hits(haystack: &str) -> Vec<usize> {
+        const NEEDLE: &str = "daemon";
+        // ⚠ 局部变量**刻意起长名**：`needle_anchor_registry::corpus_vars` 的传递闭包
+        //   **按名字**跑（不看类型），而本文件里 `text` / `b` / `lower` 这几个短名
+        //   早就被别的判据用着 —— 在这里复用一个，就会把同文件里
+        //   `name.starts_with("README")` 那一族**早已存在**的匹配一起卷进它的人群，
+        //   那条递减棘轮当场 33 → 34。〔09-14 实打逮到过一次，读数在 `evidence/K-R116-deathvalue.md`〕
+        let folded_haystack = haystack.to_ascii_lowercase();
+        let folded_bytes = folded_haystack.as_bytes();
+        let width = NEEDLE.len();
+        let mut out = Vec::new();
+        let mut cursor = 0usize;
+        while cursor + width <= folded_bytes.len() {
+            if &folded_bytes[cursor..cursor + width] == NEEDLE.as_bytes() {
+                out.push(cursor);
+                cursor += width;
+            } else {
+                cursor += 1;
+            }
+        }
+        out
+    }
+
+    fn read(rel: &str) -> String {
+        std::fs::read_to_string(repo_root().join(rel))
+            .unwrap_or_else(|e| panic!("{rel} 读不到：{e} —— 文件搬了就把本条一起改"))
+    }
+
+    /// ★★ 正题：**那 9 份散文里不许再有人读的 `daemon`**。
+    #[test]
+    fn no_prose_in_the_wording_sites_still_says_daemon() {
+        let bodies: Vec<(&str, String)> = SITES.iter().map(|r| (*r, read(r))).collect();
+
+        // ── 抽取器自检①：语料真喂进来了（读空了下面每一条都会零命中地绿）──
+        let total: usize = bodies.iter().map(|(_, t)| t.len()).sum();
+        assert!(
+            total >= CORPUS_FLOOR_BYTES,
+            "{} 份散文只读到 {total} 字节（地板 {CORPUS_FLOOR_BYTES}）—— 抽取器坏了，本条在空转",
+            bodies.len()
+        );
+
+        // ── 抽取器自检②：切 token 那一步两个方向都要对 ──
+        //
+        // 用**合成串**喂，不碰真语料：真树上「采到了它、而它过了」与「压根没扫到」
+        // 在输出上一模一样，那正是 `scanning_guard_registry` 头注治的那一形。
+        for (probe, want_bare) in [
+            // ⚠ 刻意**不写**那个「远端 ＋ 旧词」连写的形：`tool_registry::SITES` 那张**旧名字存量账**
+            //   按整串数它（`Why::Wording`），本文件写一处就得往那张账上加一行 ——
+            //   而那张账数的是「还没改的措辞」，一处**自检夹具**混进去会把它读成一笔真债。
+            ("常驻 daemon 的 stdin", true),
+            ("ccm做到必须走daemon", true),
+            ("remote-daemon-proto", false),
+            ("daemon_send_keys.rs", false),
+            ("--daemon-probe", false),
+            ("daemonPath", false),
+        ] {
+            let h = hits(probe);
+            assert_eq!(h.len(), 1, "自检串 {probe:?} 里应当恰好一处命中");
+            let (a, b) = token_at(probe.as_bytes(), h[0], h[0] + 6);
+            let bare = probe[a..b].eq_ignore_ascii_case("daemon");
+            assert_eq!(
+                bare,
+                want_bare,
+                "切 token 判错了：{probe:?} 切出 {:?}，期望「裸词={want_bare}」",
+                &probe[a..b]
+            );
+        }
+
+        // ── 例外表：每条恰好命中一次，逐条求出它盖住的区间 ──
+        let mut spans: Vec<(&str, usize, usize)> = Vec::new();
+        for (f, frag, why) in EXEMPT {
+            let site_text = &bodies
+                .iter()
+                .find(|(r, _)| r == f)
+                .unwrap_or_else(|| panic!("例外表点的 {f} 不在 SITES 里 —— 两张表对不上"))
+                .1;
+            let n = site_text.matches(frag).count();
+            assert_eq!(
+                n, 1,
+                "例外片段在 {f} 里命中 {n} 次（要求恰好 1 次）：{frag}\n\
+                 · 0 次 = 那句话被改过了，这条例外此刻在空转（理由：{why}）\n\
+                 · 多次 = 片段太短，说不清点的是哪一处"
+            );
+            let at = site_text.find(frag).expect("上面刚断言过命中一次");
+            spans.push((f, at, at + frag.len()));
+        }
+
+        // ── 正题 ──
+        let mut offenders: Vec<String> = Vec::new();
+        let mut exempted = 0usize;
+        let mut idents = 0usize;
+        for (rel, site_text) in &bodies {
+            let raw = site_text.as_bytes();
+            for h in hits(site_text) {
+                let (a, b) = token_at(raw, h, h + 6);
+                if !site_text[a..b].eq_ignore_ascii_case("daemon") {
+                    idents += 1;
+                    continue;
+                }
+                if spans.iter().any(|(f, x, y)| f == rel && *x <= a && a < *y) {
+                    exempted += 1;
+                    continue;
+                }
+                let at = site_text[..a].matches('\n').count() + 1;
+                let from = site_text[..a].rfind('\n').map(|i| i + 1).unwrap_or(0);
+                let upto = site_text[b..]
+                    .find('\n')
+                    .map(|i| b + i)
+                    .unwrap_or(site_text.len());
+                let ctx: String = site_text[from..upto].chars().take(90).collect();
+                offenders.push(format!("  {rel}:{at}  {ctx}"));
+            }
+        }
+
+        // ── 抽取器自检③：标识符那一档必须真的数到东西 ──
+        //
+        // 数不到 = 切 token 那一步在真语料上根本没跑（合成串过了不代表真树上跑到了）。
+        assert!(
+            idents >= 100,
+            "只数出 {idents} 处代码标识符（09-14 现打 139）—— 本条在真语料上没跑起来"
+        );
+
+        // ── 抽取器自检④：例外表不许空转（**恒等**，不是地板）──
+        assert_eq!(
+            exempted, EXEMPT_HITS,
+            "例外表今天盖住 {exempted} 处（登记 {EXEMPT_HITS}）——\n\
+             少了 = 有条例外空转；多了 = 有人往表里塞了新的放行。\n\
+             放行必须是有意的一拍：改这个数的同一拍要在 EXEMPT 里写清是哪条、为什么。"
+        );
+
+        assert!(
+            offenders.is_empty(),
+            "这些散文里又写了人读的 `daemon`（`R61`：不要有 daemon 这个说法了）：\n{}\n\n\
+             ★ 出路两条：① 把它改成「后端」（英文那份是 `backend`）；\n\
+             ② 它**真的**不该改（用户逐字引用 · 历史原措辞留档 · markdown 锚点 ·\n\
+             命令行占位符 · CI job 名 · 界面按钮的逐字文案 · 指的是 Claude Code 自己那个\n\
+             daemon）⇒ 往 `EXEMPT` 加一行**并写清理由**，同一拍把 `EXEMPT_HITS` 调上去。\n\
+             ⚠ **代码标识符本来就不该红**（`remote-daemon-proto` · `daemon_*` · `--daemon-probe`）——\n\
+             它红了说明 token 切法出问题了，先看上面那几条自检。",
+            offenders.join("\n")
+        );
+    }
+}
+
+/// 闸二：**`evidence/` 与 `CHANGELOG.md` 里那两个词的处数只许涨**（`K-R116` `KR116D2`）。
+///
+/// # 🔴 理由（`KR116D2` 逐字要它写进头注）
+///
+/// `evidence/**` 是**死值验留档**，`CHANGELOG.md` 是发版墓碑 —— 两者装的都是
+/// 「**某年某月现打是多少**」。谁哪天顺手把里面的 `daemon` 批量替换成「后端」，
+/// 那些读数就**改错了改不回来**：`brief` 第 12 条逐字「变异台上的数字就是证据，
+/// **写错一个数等于伪造一次读数**」。
+///
+/// ⚠ 这一档与闸一是**反向**的：闸一要那个词消失，闸二要那个词**留着**。
+/// 一次「全仓 sed」会同时撞上两道，而它们会分别点名是哪一侧。
+///
+/// # 判法：**地板，不是等号**
+///
+/// 逐文件钉 `(daemon 处数, ccm 处数)` 的**下界**。为什么不是等号：
+/// `CHANGELOG.md` 每次发版都会长（新条目里当然会再提到这两个词），等号会天天假红 ——
+/// 而**批量替换只会让数变小**，地板正好卡在那个方向上。
+///
+/// # 人群 · 分母 · 它够不着什么
+///
+/// [`REGISTERED`] 是**量于 `897afec`（2026-09-14）**的那 69 份 `evidence/*.md` ＋ `CHANGELOG.md`。
+/// 之后新长出来的 `evidence/*.md` **不在逐文件那一档里** —— 接它们的是下面那条
+/// **整棵树的合计地板**（`EVIDENCE_DAEMON_FLOOR`）。
+///
+/// ⚠ 两侧都写出来：
+/// - **接得住**：改动登记过的任一份（点名那一份）· 删掉登记过的任一份（读不到 ⇒ panic）·
+///   在**新**文件里批量替换到把整棵树的合计打下去。
+/// - **接不住**：在一份新文件里替换掉 N 处、同一拍另一份新文件又新增 ≥N 处
+///   ⇒ 合计没降，本闸静默。**这是已知的漏，不是「没有」。**
+/// - 它判的是**处数**，不判「那一处还是不是原来那句话」（同一份里删一句、加一句同词的话，
+///   本闸看不见）。真要钉逐句，那是另一件。
+#[cfg(test)]
+mod frozen_daemon_census {
+    use std::path::{Path, PathBuf};
+
+    fn repo_root() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级")
+            .to_path_buf()
+    }
+
+    /// 整棵 `evidence/*.md` 的 `daemon` 合计地板 —— **量于 `897afec`，2026-09-14，69 份**。
+    ///
+    /// 🔴 **只许涨，不许把这个数调下来让今天好过。** 调下来 = 把「有人抹掉了历史读数」
+    /// 这件事直接注销掉，而那正是本闸唯一要接的东西。
+    const EVIDENCE_DAEMON_FLOOR: usize = 1388;
+
+    /// 同上，`ccm` 那一侧（`R64` 逐字「**ccm 不改**」，它在这棵树里同样是历史读数）。
+    const EVIDENCE_CCM_FLOOR: usize = 442;
+
+    /// 登记过的那几份 —— `(住址, daemon 处数下界, ccm 处数下界)`，量于 `897afec`。
+    ///
+    /// 🔴 表名起成 `REGISTERED` 是 `scanning_guard_registry::TABLE_DECLS` 那条纪律要的。
+    const REGISTERED: &[(&str, usize, usize)] = &[
+        ("evidence/K-P6-readings.md", 26, 2),
+        ("evidence/K-P6b-readings.md", 29, 0),
+        ("evidence/K-P7-readings.md", 82, 1),
+        ("evidence/K-R100-deathvalue.md", 19, 1),
+        ("evidence/K-R101-deathvalue.md", 20, 1),
+        ("evidence/K-R102-deathvalue.md", 37, 6),
+        ("evidence/K-R103-deathvalue.md", 7, 5),
+        ("evidence/K-R104-deathvalue.md", 43, 4),
+        ("evidence/K-R105-deathvalue.md", 10, 2),
+        ("evidence/K-R106-deathvalue.md", 13, 16),
+        ("evidence/K-R109-deathvalue.md", 5, 4),
+        ("evidence/K-R110-census.md", 10, 1),
+        ("evidence/K-R110-deathvalue.md", 16, 8),
+        ("evidence/K-R111-census.md", 39, 31),
+        ("evidence/K-R112-deathvalue.md", 41, 3),
+        ("evidence/K-R113-deathvalue.md", 43, 0),
+        ("evidence/K-R114-deathvalue.md", 16, 20),
+        ("evidence/K-R114-真机清单.md", 31, 37),
+        ("evidence/K-R115-deathvalue.md", 16, 9),
+        ("evidence/K-R118-deathvalue.md", 13, 14),
+        ("evidence/K-R12-deathvalue.md", 0, 9),
+        ("evidence/K-R12-locale-lab.md", 0, 7),
+        ("evidence/K-R24-D1-premise-census.md", 5, 3),
+        ("evidence/K-R24-D5-home-axis-census.md", 4, 3),
+        ("evidence/K-R24-D6-locale-axis-census.md", 5, 8),
+        ("evidence/K-R24-D7-etxtbsy.md", 8, 2),
+        ("evidence/K-R24-D8-load-axis.md", 12, 1),
+        ("evidence/K-R25-D2-unit-alignment.md", 44, 1),
+        ("evidence/K-R25-D4-nine-uncovered-files.md", 6, 0),
+        ("evidence/K-R26-readings.md", 17, 5),
+        ("evidence/K-R27-parked-tense-audit.md", 38, 1),
+        ("evidence/K-R56-deathvalue.md", 10, 1),
+        ("evidence/K-R67-依赖脊柱与顺序.md", 14, 24),
+        ("evidence/K-R68-三种载体摸底.md", 79, 21),
+        ("evidence/K-R70-身份从字节里读得出.md", 29, 11),
+        ("evidence/K-R71-observe归位.md", 5, 3),
+        ("evidence/K-R72-deathvalue.md", 53, 2),
+        ("evidence/K-R73-monitor侧层间方向判据.md", 9, 5),
+        ("evidence/K-R74-拨号住址与递减棘轮.md", 5, 2),
+        ("evidence/K-R75-剥法认形状与真静默读数.md", 27, 5),
+        ("evidence/K-R76-三处假话与裸行号的刀.md", 21, 0),
+        ("evidence/K-R77-拆最后那道绕道与恒零棘轮.md", 30, 0),
+        ("evidence/K-R78-readings.md", 22, 5),
+        ("evidence/K-R79-远端写那一层与判档第四档.md", 22, 2),
+        ("evidence/K-R80-gate-daemon-fmt.md", 66, 25),
+        ("evidence/K-R81-一个后端两处使用.md", 37, 12),
+        ("evidence/K-R82-hooks-gate.md", 10, 5),
+        ("evidence/K-R83-deathvalue.md", 11, 1),
+        ("evidence/K-R85-摸底.md", 20, 2),
+        ("evidence/K-R86-deathvalue.md", 33, 6),
+        ("evidence/K-R87-deathvalue.md", 43, 10),
+        ("evidence/K-R88-deathvalue.md", 11, 0),
+        ("evidence/K-R89-deathvalue.md", 28, 26),
+        ("evidence/K-R9-R2-fallback-watch-scope.md", 16, 1),
+        ("evidence/K-R92-deathvalue.md", 2, 0),
+        ("evidence/K-R93-deathvalue.md", 2, 1),
+        ("evidence/K-R94-deathvalue.md", 0, 2),
+        ("evidence/K-R95-deathvalue.md", 6, 10),
+        ("evidence/K-R96-deathvalue.md", 12, 39),
+        ("evidence/K-R97-deathvalue.md", 2, 0),
+        ("evidence/K-R98-deathvalue.md", 15, 0),
+        ("evidence/K-W1B-D1-agent-coupling-census.md", 12, 1),
+        ("evidence/K-W1C-D1-edges.md", 1, 0),
+        ("evidence/K-W1C-D3D4-deathvalue.md", 0, 0),
+        ("evidence/K-W1C-D4-reachability.md", 0, 5),
+        ("evidence/K-W2E-readings.md", 17, 2),
+        ("evidence/K-W4-D1-rename-surface.md", 5, 1),
+        ("evidence/K-W4-D4-build-id-split.md", 50, 1),
+        ("evidence/K-W4b-readings.md", 8, 6),
+        ("CHANGELOG.md", 90, 79),
+    ];
+
+    /// 读一份登记在案的历史留档。读不到 ⇒ 当场 panic 并说清为什么。
+    ///
+    /// ⚠ **刻意包成函数，不在 `let` 右边直接写 `read_to_string`**：
+    /// `needle_anchor_registry::corpus_vars` 按「`let X = …read_to_string(…)`」播种语料变量，
+    /// 而它的传递闭包**按名字**跑一层 —— 在本文件里播一个 `body` 出去，
+    /// 会把同文件别处 `name.starts_with("README")` 这类**早就存在**的匹配一起卷进人群，
+    /// 那条递减棘轮当场从 33 涨到 34。〔09-14 实打过一次，读数在 `evidence/K-R116-deathvalue.md`〕
+    fn read_frozen(root: &Path, rel: &str) -> String {
+        std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| {
+            panic!(
+                "{rel} 读不到：{e}\n\
+                 ★ 它是登记在案的历史读数 / 墓碑（`K-R116` `KR116D2`）——\n\
+                 删掉它 = 把那一刀的证据整份销毁。真要删，先在这张表里删行并说清为什么。"
+            )
+        })
+    }
+
+    /// 一份文本里某个词的处数。`needle` 走**变量**（针不写成字面量：
+    /// `needle_anchor_registry` 的棘轮按「拿磁盘语料做裸字面量匹配」计数）。
+    fn count(text: &str, needle: &str, fold_case: bool) -> usize {
+        let hay = if fold_case {
+            text.to_ascii_lowercase()
+        } else {
+            text.to_string()
+        };
+        hay.matches(needle).count()
+    }
+
+    /// ★★ 正题：登记过的每一份，两个词的处数都不许掉。
+    #[test]
+    fn the_frozen_history_never_loses_a_daemon() {
+        const DAEMON: &str = "daemon";
+        const CCM: &str = "ccm";
+        let root = repo_root();
+
+        // 抽取器自检：登记表不许被掏空。
+        assert!(
+            REGISTERED.len() >= 60,
+            "登记表只剩 {} 行（09-14 现打 70）—— 被掏空了，本条在空转",
+            REGISTERED.len()
+        );
+
+        let mut shrunk: Vec<String> = Vec::new();
+        for (rel, floor_d, floor_c) in REGISTERED {
+            let frozen_text = read_frozen(&root, rel);
+            let d = count(&frozen_text, DAEMON, true);
+            let c = count(&frozen_text, CCM, false);
+            if d < *floor_d {
+                shrunk.push(format!("  {rel}：daemon {d} < 登记 {floor_d}"));
+            }
+            if c < *floor_c {
+                shrunk.push(format!("  {rel}：ccm {c} < 登记 {floor_c}"));
+            }
+        }
+
+        // ── 整棵树那一档：新长出来的 `evidence/*.md` 由它兜 ──
+        //
+        // ⚠ 用 `scan_tree!` 而不是裸 `read_dir`：`scanning_guard_registry` 那条元判据
+        // 逐字禁裸遍历（判据在自己那份里找到自己 ⇒ 恒绿）。
+        let mut n_files = 0usize;
+        let mut sum_d = 0usize;
+        let mut sum_c = 0usize;
+        for (_, evidence_text) in guard_core::scan_tree!(&root.join("evidence"), &["md"]) {
+            n_files += 1;
+            sum_d += count(&evidence_text, DAEMON, true);
+            sum_c += count(&evidence_text, CCM, false);
+        }
+        assert!(
+            n_files >= 60,
+            "`evidence/` 只扫到 {n_files} 份 `.md`（09-14 现打 69）—— 遍历坏了，下面两条在空转"
+        );
+        if sum_d < EVIDENCE_DAEMON_FLOOR {
+            shrunk.push(format!(
+                "  evidence/ 整棵树：daemon 合计 {sum_d} < 地板 {EVIDENCE_DAEMON_FLOOR}"
+            ));
+        }
+        if sum_c < EVIDENCE_CCM_FLOOR {
+            shrunk.push(format!(
+                "  evidence/ 整棵树：ccm 合计 {sum_c} < 地板 {EVIDENCE_CCM_FLOOR}"
+            ));
+        }
+
+        assert!(
+            shrunk.is_empty(),
+            "有人把历史读数里的 `daemon` / `ccm` 抹掉了：\n{}\n\n\
+             ★ `evidence/**` 是死值验留档、`CHANGELOG.md` 是发版墓碑，两者装的都是\n\
+             「**某年某月现打是多少**」—— 改它 = **伪造一次读数**（`brief` 第 12 条）。\n\
+             `K-R116` 那一轮把散文里的 `daemon` 全换成了「后端」，**这两档刻意不在射程里**。\n\
+             ⚠ 真要动（比如一份留档整个作废）：先在 `REGISTERED` 里改行并写清为什么，\n\
+             别反过来把地板调下去 —— 那等于把这道闸注销掉。",
+            shrunk.join("\n")
+        );
     }
 }

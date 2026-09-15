@@ -318,7 +318,8 @@ fn launch_local_posix_via(cmd: &str, cwd: Option<&str>, term: Option<&str>) -> R
         builder.current_dir(d);
     }
     // F06b-1d（C9）：backend 把 daemon 路径交给它亲手开的这个窗口 —— 窗口里那次 `ccm resume`
-    // 据此去调 `--resolve`（`shared/ccm::resolve_from_daemon`）。sidecar 不在就不设。
+    // 据此去调 `--resolve`（旧 `shared/ccm::resolve_from_daemon` 〔散文墓碑〕，`K-R48` 已删；
+    // 今天那一问在后端进程内直接答）。sidecar 不在就不设。
     if let Some((k, v)) =
         crate::backend::control::local_backend::daemon_bin_env_for_window(env!("CCM_TARGET_TRIPLE"))
     {
@@ -673,7 +674,6 @@ mod tests {
             host_key_fingerprint: None,
             addresses: Vec::new(),
             jump: None,
-            daemonless: false,
         }
     }
 

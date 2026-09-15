@@ -17,15 +17,26 @@ projectName: string,
  * 编码后的目录名（位于 `<claude_dir>/projects/` 之下），前端调用
  * `stream_history_sessions_in_project` 时传回来作 key
  */
-projectDir: string, sessionCount: number, starredCount: number, hiddenCount: number, 
+projectDir: string, sessionCount: number, 
+/**
+ * `K-R92`：**`None` = 不知道**（没查 / 查不了），`Some(0)` = 查过了，真的一个都没有。
+ * 这两件事在 09-12 之前是同一个 `0` —— 病灶与全部论证见本文件
+ * [`the_three_counts_can_say_i_do_not_know`] 与 `remote_history::Counted`。
+ */
+starredCount: number | null, 
+/**
+ * 同上：`None` = 不知道，`Some(0)` = 查过了是 0。
+ */
+hiddenCount: number | null, 
 /**
  * 该项目下任意 jsonl 文件的最大 mtime（ms）
  */
 lastActivity: number, 
 /**
- * 该项目下是否有 session 当前 PID 还活着
+ * 该项目下是否有 session 当前还活着。**`None` = 这条路上答不了**
+ * （远端没有判活真相源 · Codex 无 pidfile），**不是**「没有活会话」。
  */
-hasLive: boolean, 
+hasLive: boolean | null, 
 /**
  * issue #16：数据来源。None=本地；Some(host)=远端（前端组头显示 [host] 徽标，
  * 展开时改调 stream_remote_history_sessions）。

@@ -7,7 +7,7 @@
 //   3. 提供纯函数（降级判定 / 会话徽章映射）供 UI 与 vitest。
 //
 // **不注入 env（A4）、不重启会话（A5）、不碰本地账号（A7）**。全程走 A2 的
-// available:false 降级：未迁移 / 旧 daemon / daemonless 一律安静隐藏账号 UI，不报错。
+// available:false 降级：未迁移 / 旧 daemon 一律安静隐藏账号 UI，不报错。
 import { invoke } from "@tauri-apps/api/core";
 import { commands } from "./ipc/commands";
 import type { AuthKind } from "./generated/AuthKind";
@@ -15,6 +15,11 @@ import type { RemoteAccount } from "./generated/RemoteAccount";
 import { loadConfig, saveConfig } from "./config";
 import { isValidModelName } from "./shell-quote";
 import type { LaunchModifiers } from "./launch-plan";
+// 🔴 `K-R95`（定框 `K28`：前端不许自己发明对外行为）：本机拉起载荷里「哪个号」那一格的
+// **wire 键名从后端来**，前端不再自己写 `{ kind: "named", configDir, name }` 这三个字面量。
+// 源：`src-tauri/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`
+// （它每次生成都跑一遍 `history.rs::LaunchAccount` 的生产反序列化器验一次）。
+import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
 
 // ---- 账号的形状是**生成物**（K-A1），不再是一份手抄 ----
 //
@@ -98,8 +103,10 @@ export interface AccountsState {
 }
 
 /** chip / 设置组据此决定怎么显示。纯派生自 AccountsState。 */
+// 🔴 `K-R59`（09-11）：这里原来还有一档 `{ kind: "hidden" }` —— 它**只由**
+// 「该主机配置为 daemonless（无 daemon）」那条错误串产出，而 `K35` 把那一档整个删了
+//（`accounts.rs::cfg_for` 那个早返回一起走）⇒ 留着就是一档**再也到不了**的 UI 状态。
 export type AccountsUi =
-  | { kind: "hidden"; reason: string } // daemonless：完全不显示账号 UI
   | { kind: "needs-update"; reason: string } // 旧 daemon
   | { kind: "not-enabled"; manifestPath: string | null; reason: string } // 未迁移/无账号
   | { kind: "ready"; accounts: Account[]; defaultName: string | null; notice: string | null };
@@ -110,7 +117,6 @@ export type AccountsUi =
 export function deriveUi(state: AccountsState): AccountsUi {
   if (!state.available) {
     const e = state.error ?? "";
-    if (e.includes("daemonless")) return { kind: "hidden", reason: e };
     if (e.includes("过旧") || e.includes("不支持账号")) {
       return { kind: "needs-update", reason: e || "远端 daemon 需要更新" };
     }
@@ -336,14 +342,52 @@ export function localLaunchAccountNameSync(sid: string | null): string | null {
   return cur && isSelectable(cur) ? cur.name : null;
 }
 
-export function localLaunchAccountSync(
-  sid: string | null,
-): { kind: "named"; configDir: string } | undefined {
+/**
+ * 上面那条的**载荷半** —— 把「哪个号」摊成后端收得下的形状。
+ *
+ * # 🔴 `K-R53`（09-11）：**名字也要交出去，不只是目录**
+ *
+ * 后端那条 ccm 路只会 `--account <名字>`（`shared/ccm:606`）。本函数先前只回
+ * `{kind:"named", configDir}` ⇒ Rust 那侧的 `LaunchAccount::Named` 手上**没有名字**
+ * ⇒ `history.rs::render_local_ccm_with` 对它必然 §35 短路 ⇒ **本机具名账号一条都进不了
+ * ccm 容器**。而盘上四个本机拉起入口里有三个只说得出具名账号（`tabs.ts` 一处 +
+ * `views/history.ts` 两处，人群由 `ipc/commands.vitest.ts` 那条「恰好 4 处」钉着）
+ * ⇒ 那三条**在类型上**就到不了后端那条路，100% 落第二实现。
+ *
+ * ⚠ 名字这一半**本来就在手上**（[`localLaunchAccountNameSync`]，与取目录那半同源）——
+ * 缺的从来不是数据，是**没往下传**。所以这里是把同一条规则的两半一起交出去，
+ * **不是**在后端那侧从目录名反推一个名字：反推错的失效方向是 `shared/ccm` 当场 `die`
+ *（退出码 2 = 一次本来能起的会话变成一条报错），与 `relay_account_id_of_dir`
+ * 那条「推错就回落」的保守方向相反。理由逐字住 `history.rs` 的 `LaunchAccount::Named::name`。
+ */
+export type LocalLaunchAccountWire = Record<
+  typeof LOCAL_LAUNCH_ACCOUNT_WIRE.tag,
+  typeof LOCAL_LAUNCH_ACCOUNT_WIRE.named
+> &
+  Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.configDir, string> &
+  Record<typeof LOCAL_LAUNCH_ACCOUNT_WIRE.name, string>;
+
+export function localLaunchAccountSync(sid: string | null): LocalLaunchAccountWire | undefined {
   const snap = localLaunchSnapshot;
   const name = localLaunchAccountNameSync(sid);
   if (!snap || !name) return undefined;
   const picked = snap.state.accounts.find((a) => a.name === name);
-  return picked?.configDir ? { kind: "named", configDir: picked.configDir } : undefined;
+  // 🔴 `K-R95`：**计算键**，不是三个字面量。这一行此前逐字是
+  //   `{ kind: "named", configDir: picked.configDir, name }`
+  // —— 那是前端自己渲染了一遍后端的载荷形状，而两边靠头注里一句「同源」对齐。
+  // 现在键名与判别值都来自生成物 ⇒ `history.rs::LaunchAccount` 那边改名，
+  // `npm run gen:types` 当场 panic（生成器跑生产反序列化器验过），
+  // 跑完之后**本函数吐出去的键跟着变**，不用回来改这里。
+  //
+  // ⚠ 载荷里**带什么**一个字没改（`K-R95` `§0b`：只改「谁渲染它」）：
+  // 仍是「说不出就缺席，绝不猜」，仍不回落到「当前账号」。
+  return picked?.configDir
+    ? {
+        [LOCAL_LAUNCH_ACCOUNT_WIRE.tag]: LOCAL_LAUNCH_ACCOUNT_WIRE.named,
+        [LOCAL_LAUNCH_ACCOUNT_WIRE.configDir]: picked.configDir,
+        [LOCAL_LAUNCH_ACCOUNT_WIRE.name]: name,
+      }
+    : undefined;
 }
 
 /**
@@ -683,9 +727,9 @@ export function sessionBadge(
 }
 
 /**
- * A4/§7 降级：某会话是否**该显**账号徽章。只有「账号可查询」的远端才显（即 available 且非
- * daemonless 的 origin,由 main.ts 收进 readyOrigins）。本地会话（origin null）与不可查询的远端
- * （daemonless / 未迁移 / 旧 daemon）一律不显——否则满屏 `—` 是噪音、违反 §7「不可用即安静隐藏」。
+ * A4/§7 降级：某会话是否**该显**账号徽章。只有「账号可查询」的远端才显（即 available 的
+ * origin,由 main.ts 收进 readyOrigins）。本地会话（origin null）与不可查询的远端
+ * （未迁移 / 旧 daemon）一律不显——否则满屏 `—` 是噪音、违反 §7「不可用即安静隐藏」。
  */
 export function shouldShowAccountBadge(
   origin: string | null,
@@ -1080,7 +1124,8 @@ export async function fetchAccounts(origin: string, force = false): Promise<Acco
  * L3a（local-as-remote）：取**本机**的账号状态 —— `fetchAccounts` 的本地对侧。
  *
  * ⚠ `N-F1c`（09-05）之后这句话变了：`list_local_accounts` **不再直接读磁盘，而是问本机后端**
- * （`local_query::run_query(…, &["--list-accounts"])`，与远端那条同一套解析、不同传输）——
+ * （`backend::observe::local_query::run_query(…, &["--list-accounts"])`，与远端那条同一套解析、
+ * 不同传输；`K-R71` 09-12 之前它住 `backend::control::`）——
  * 裁定住 `first-run/DECISIONS.md` `NR2`〔用 09-05〕：**claude 进程真实跑在哪台机器，
  * 账号就归那台机器的后端管**。⇒ 它**会起一个短命子进程**，而「后端不在」是一个
  * 明写出来的档（`LocalAccountsOutcome::NoBackend`），**不许渲染成「你没有账号」**。

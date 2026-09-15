@@ -110,7 +110,7 @@ pub const SIDECAR_STEM: &str = "cc-monitor-remote";
 /// ⚠ **这个名字只有一个家** —— `shared/ccm` 读的必须是同一个字面量，
 /// 由 `the_daemon_bin_env_name_has_exactly_one_home` 钉住（定框 §4）。
 ///
-/// ⚠ **ccm 那一半已接**〔F06b-1c〕：`shared/ccm` 的 `resolve_from_daemon`（函数，exec 路用）
+/// ⚠ **ccm 那一半已接**〔F06b-1c〕：旧 `shared/ccm` 的 `resolve_from_daemon` 〔散文墓碑〕（函数，exec 路用）
 /// 与 `resolve_recipe`（文本，print 路用），照该文件里 `derive_bus_id`/`BUS_ID_RECIPE` 的先例写；
 /// 一致性由 `e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
 ///
@@ -1044,6 +1044,141 @@ pub fn extract_embedded_to(
     Ok(dest)
 }
 
+// ── `K-R69`（09-12）：**本机的 `ccm` 入口** ──────────────────────────────
+//
+// 立件时现打（量于 `79bf97d`）：闭集 `tool_registry::TOOLS` 里落点是 `…/ccm` 的**只有一条**，
+// 而它是 `RemoteHomeRelative(".local/bin/ccm")` ⇒ **本机侧 0 条**；装口也只有远端那一个
+// （`sftp::install_remote_ccm_helper`）。⇒ 用户 `K34` 逐字要的「装了新版后
+// `~/.local/bin/ccm` 可以干净退役」**今天没有承接方** —— 不是「没验过旧的能不能退役」，
+// 是**本机压根没有新的那一份**。
+//
+// 🔴 **它不是第二个 `ccm`**。`K33` 逐字「不要有什么单独的 ccm，所有命令只许有一处」，
+//    而 `K-R48` 花两拍删掉的正是那份 1592 行的 bash。本机这条落点是**后端二进制自己**，
+//    只是换了个名字：`control::ccm::intercept` 的入口①逐字写着「`argv[0]` 的 basename
+//    是 `ccm`（别名 / 软链 / **改名拷贝**指过来）」。⇒ 零新增实现、零新增 argv 解析。
+
+/// 🔴 `ccm` 这个词的**唯一住址**〔`13b`：闭集只许有一个住址〕。
+///
+/// 本机与远端两条落点都取自这里：
+/// · **本机** —— 它是文件名（[`local_ccm_entry_name`]）⇒ 走 `intercept` 的入口①（basename）；
+/// · **远端** —— 它是 shim 里交给后端的那个子命令（[`ccm_entry_shim`]）⇒ 走入口②（`<bin> ccm …`）。
+///
+/// ⇒ **「两条同源」不是一句声明**：它们把 argv 交给的是同一份后端里的同一处解析
+/// （`remote_daemon_proto::control::ccm::intercept`），两条路上一处第二实现都没有。
+pub const CCM_ENTRY_WORD: &str = "ccm";
+
+/// 本机 `ccm` 入口的**文件名**（唯一真相源，判据与生产共用这一个）。
+///
+/// 后缀与 [`local_extract_name`] 同一个来路：`build.rs` 按 **`TARGET`** 算好的编译期常量
+/// `CCM_TARGET_EXE_SUFFIX`。这一份是要**被起成进程**的 ⇒ 在把扩展名当身份的平台上
+/// 它得带着自己那个后缀。
+/// ⚠ 这里**不许**现算 `env::consts::EXE_SUFFIX` —— 那是平台原语，而本文件在
+/// `backend/mod.rs::PLATFORM_EXCEPTIONS` 上只有一格例外额度，今天已被
+/// `resolve_beside_this_exe` 占满（那张表挂着递减棘轮 `len() <= 1`）。
+pub fn local_ccm_entry_name() -> String {
+    format!("{CCM_ENTRY_WORD}{}", env!("CCM_TARGET_EXE_SUFFIX"))
+}
+
+/// 远端 `~/.local/bin/ccm` 的内容：**一个入口，不是一份实现**。
+///
+/// 🔴 **它里面不许有第二个 `case` / `if` / 任何行为** —— 一旦有，`K33` 那句
+/// 「所有命令只许有一处」就又破了，而这正是 `K-R48` 这一整件要根除的东西。
+/// 它做且只做一件事：把 argv 原样交给后端。
+///
+/// **为什么不是软链**：软链更干净（`intercept` 头一条入口逐字写着「别名 / 软链指过来」），
+/// 但本仓的 SFTP 客户端今天**一处都没用过 `symlink`**，而这条路**没有任何一台真远端机器可以验**
+/// （`K-R48` `§0-Bx-7` 同族）⇒ 用已经被 12 条 print-parity + 真机验收盯过的 `upload_atomic`
+/// 那条路，把「没验过的新机制」这个变量拿掉。换软链是一件独立的活，别搭在这一拍上。
+///
+/// # 🔴 `K-R69` 09-12：它从 `sftp.rs` 搬到这里，理由是**它有了第二个读者**
+///
+/// 从前只有远端那条装口读它，住在 `sftp.rs` 里刚好；今天本机也要一条入口，
+/// 而「本机那条与远端那条同源」这句话**只有在两边取自同一处时才是结构性的**。
+/// ⇒ 生成器与 [`CCM_ENTRY_WORD`] 一起住在后端层，`sftp.rs` 改成调它。
+/// ⚠ 搬过来**没有**把平台知识带进 `backend/`：它是个纯字符串生成器，
+/// 一处 `cfg`、一处平台原语都没有（`the_backend_half_stays_platform_agnostic` 照旧绿）。
+pub fn ccm_entry_shim(daemon_path: &str) -> String {
+    format!(
+        "#!/bin/sh\n# cc-monitor: {CCM_ENTRY_WORD} = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec {} {CCM_ENTRY_WORD} \"$@\"\n",
+        shell_quote_core::posix_quote(daemon_path)
+    )
+}
+
+/// 🔴 `K-R69`：把**本机的 `ccm` 入口**放到后端二进制旁边（`dir` 由调用方给 ＝ `~/.cc-monitor/bin`）。
+///
+/// # 它写的是什么：`backend_bin` 的**逐字节副本**，改名成 [`local_ccm_entry_name`]
+///
+/// 三条路各自为什么不走，写清楚免得下一个人以为是随手选的：
+/// · **不写一个壳** —— `K33` 逐字「所有命令只许有一处」。多一份壳就多一处要跟着改的东西，
+///   而 `KR69D1` 的失效方向逐字写着「在本机再写一个 `ccm` 壳 ⇒ 不算兑现」。
+/// · **不写 shim** —— 远端那条只能是 shim（后端落点由用户配置的 `daemon_path` 决定，
+///   而且推过去的是文本）；本机这一份的字节**我们手里就有**，直接给它一个名字最省。
+///   而且 `#!/bin/sh` 那一形在 Windows 上根本起不来，本层不许认识平台（`C10`）。
+/// · **不做软链** —— `std::os::unix::fs::symlink` 与 Windows 那条都是**平台原语**，
+///   本文件的例外额度已被占满（见 [`local_ccm_entry_name`]）。
+///
+/// # 落点为什么是 `~/.cc-monitor/bin`，不是 `~/.local/bin`
+///
+/// 后者是**用户那份旧 `ccm` 住的地方**。往那儿写就是覆盖用户的文件，而 `K34` 逐字
+/// 「原本的配置**要手动删除**」、`K31`「不许动用户机器」⇒ **产品一个字节都不动它**。
+/// 写进 monitor 自己的目录还买到第二件事：两份**同时在盘上**，
+/// 「你 PATH 上那个不是我们装的这一份」才有得可判（`KR69D2`）。
+///
+/// # 幂等
+///
+/// 已经在、长度与后端相同、且**不比后端旧** ⇒ 跳过。否则写 `.<名字>.<pid>.partial`
+/// → 置可执行位 → `rename` 覆盖（与 [`extract_embedded_to`] 同一套，理由住那儿）。
+/// ⚠ **这两条不是「内容相同」的证明，是便宜的止损**：长度相同的两版二进制是可能的，
+/// 所以第二条要「不比后端旧」——换了一版后端，释放出来那份是新的 ⇒ 这一份跟着重写。
+/// 真正的保证在写的那一步：整份字节**从 `backend_bin` 读**，没有第二个来源。
+///
+/// # 它不做什么
+///
+/// **不碰 PATH、不碰任何 rc、不碰用户的 `~/.local/bin`。** 「怎么让终端里那句 `ccm`
+/// 指到它」是别名层与 `KR69D3` 的事，不是这里。
+pub fn install_local_ccm_entry(
+    dir: &Path,
+    backend_bin: &Path,
+    make_executable: &dyn Fn(&Path) -> Result<(), String>,
+) -> Result<PathBuf, String> {
+    let name = local_ccm_entry_name();
+    let dest = dir.join(&name);
+    // 后端自己就叫 `ccm`（有人把它改名部署了）⇒ 本机那条落点**已经是它**，没有第二份要放。
+    if dest == backend_bin {
+        return Ok(dest);
+    }
+    let src_meta = std::fs::metadata(backend_bin)
+        .map_err(|e| format!("读不到后端二进制 {}: {e}", backend_bin.display()))?;
+    if let Ok(m) = std::fs::metadata(&dest) {
+        if m.is_file() && m.len() == src_meta.len() && !older_than(&m, &src_meta) {
+            return Ok(dest);
+        }
+    }
+    std::fs::create_dir_all(dir).map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))?;
+    let tmp = dir.join(format!(".{}.{}.partial", name, std::process::id()));
+    sweep_stale_partials(dir, &name);
+    std::fs::copy(backend_bin, &tmp).map_err(|e| {
+        format!(
+            "把后端 {} 复制成本机 ccm 入口失败: {e}",
+            backend_bin.display()
+        )
+    })?;
+    make_executable(&tmp)?;
+    std::fs::rename(&tmp, &dest).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!("rename 到 {} 失败: {e}", dest.display())
+    })?;
+    Ok(dest)
+}
+
+/// 盘上那份比后端旧吗。**取不到时间就当旧的**（宁可多写一次，也不要留一份过期的入口）。
+fn older_than(dest: &std::fs::Metadata, src: &std::fs::Metadata) -> bool {
+    match (dest.modified(), src.modified()) {
+        (Ok(d), Ok(s)) => d < s,
+        _ => true,
+    }
+}
+
 /// 「带着后端但放不下来」这一形的**认路标记**。
 ///
 /// ⚠ 它是给**判据**认的，不是给用户读的措辞规范：判据钉「这一句与『没带后端』那一句
@@ -1065,7 +1200,9 @@ const EXTRACTION_REFUSED_MARKER: &str = "放不下来";
 ///
 /// 把后者说成前者，就是 09-10 一整天在治的那一形（读面把「读不到」说成「你没有」）。
 /// ⇒ 这一支自己拼一句**结构上分得开**的话（[`EXTRACTION_REFUSED_MARKER`]），
-/// 并由 [`start_or_extract`] 在返回之前 `tracing::error!` 吼一声 ——
+/// 并由 [`resolve_or_extract`] 在返回之前 `tracing::error!` 吼一声 ——
+/// 〔`K-R43` 订正住址：那一声原先在 [`start_or_extract`] 体内，抽进共用那份之后
+///  **两条生产路共用这一声** —— 常驻那条（`local_daemon.rs`）从此也吼得出来〕
 /// 光靠返回值不够：调用方可能只把它记进 `info`。
 ///
 /// # 纯函数
@@ -1426,8 +1563,7 @@ fn local_stdio_consumer_guarded(
     }
 }
 
-/// P2z（`control-parity` 的定框 C10）：**生产入口的自释放版** —— exe 旁边找不到 sidecar 时，
-/// 把内嵌的那份释放到 `extract_dir` 再起。这就是「单 exe 也能起 daemon 进程」那句话的落点。
+/// P2z（`control-parity` 的定框 C10）：**「那个 daemon 二进制在哪」的唯一一份答案。**
 ///
 /// 顺序刻意是 **先找旁边、再释放**：开发构建里 `target/debug/` 旁边就有一个**更新**的二进制，
 /// 那条路径优先于内嵌那份（内嵌的是打包时的快照）。
@@ -1436,7 +1572,7 @@ fn local_stdio_consumer_guarded(
 /// 测到的是旧路径，而读数看起来和「释放成功」一模一样。
 ///
 /// `embedded` 由调用方给（`sftp::daemon_binary(arch)` 的产物）—— 本模块不认识 `sftp`，
-/// 也不认识「当前是什么 arch」，那都是宿主知识。
+/// 也不认识「当前是什么 arch」，那都是宿主知识。`make_executable` 同理（`C10`）。
 ///
 /// # `K-R42`：`embedded` 给 `None` 时还有第二个来源
 ///
@@ -1446,6 +1582,90 @@ fn local_stdio_consumer_guarded(
 /// ⇒ 这里补上 [`native_embedded_daemon`]：宿主给不出时，问这一份产物自己带没带。
 /// **次序刻意是「宿主优先」** —— 那条路今天在 Linux 上是活的（安装包那份也走它），
 /// 本件不许让它退化；本层这份只在它交白卷时才说话。
+///
+/// # 🔴 `K-R43`：本函数**为什么是从 [`start_or_extract`] 里抽出来的**
+///
+/// 抽出来之前，「找那个二进制」有**两份手写实现**：本模块的 [`start_or_extract`]
+/// 与 `local_daemon.rs::resolve_daemon_bin`（常驻那条路不要监护那半，用不了前者）。
+/// 两份之间只有一条 `the_two_resolution_paths_still_agree_on_the_order` 盯着，而它**只对拍顺序**。
+///
+/// ⚠ **那条判据眼皮底下真的漂了一次，而它全程绿**〔`K-R43` 现打，读数住件文件 `§9`〕：
+/// `K-R42` 只给 [`start_or_extract`] 接上了上面那两段（问产物带没带 · 释放失败说一句分得开的话），
+/// `resolve_daemon_bin` 一个字没动 —— 顺序仍是「先旁边、再释放」⇒ 那条判据**照样绿**。
+/// 于是同一台机器上，两条路对**同一个失败**给出的是两句性质不同的话。
+/// ⇒ 处置**不是**再加一条「两边内容也要一样」的对拍（那是「测自己的副本」的近亲，
+/// 本模块 [`local_extract_name`] 的头注逐字论证过同一件事），是**只留一份**。
+///
+/// # 它不做什么
+///
+/// **不监护**。监护是 [`start_or_extract`] 那一半 —— 常驻那条路（`local_daemon.rs`）
+/// 起完就脱离，它要的只是这个答案。**「找」与「监护」焊在一起，正是当初逼出第二份实现的那颗钉子。**
+pub fn resolve_or_extract(
+    target_triple: &str,
+    extract_dir: &Path,
+    embedded: Option<(&str, &[u8])>,
+    make_executable: &dyn Fn(&Path) -> Result<(), String>,
+) -> Resolved {
+    // 🔴 `K-R69`：整段解析包进一个**带标号的块**，只为在返回之前多做一件事
+    //    （放本机那条 `ccm` 入口）。**刻意不抽成第二个函数** ——
+    //    `the_self_extract_path_really_asks_the_product_whether_it_carries_one`
+    //    切的就是本函数的体，抽走等于把那三条断言切到一段空文本上（它们会恒答）。
+    let resolved = 'resolve: {
+        let beside = resolve_beside_this_exe(target_triple);
+        if matches!(beside, Resolved::Found(_)) {
+            break 'resolve beside;
+        }
+        // `K-R42`：宿主给不出就问这一份产物自己带没带（头注「第二个来源」那一段）。
+        // ⚠ 中间这个**带标注的局部**不是多余的：内嵌那份是 `&'static`，直接
+        // `embedded.or_else(native_embedded_daemon)` 会把两边的生存期**往 `'static` 上**统一，
+        // 于是编译器要求调用方那个借来的 `embedded` 也活到 `'static`（实测 `E0521`）。
+        // 标注一下就让它按**短的那个**统一（`'static` 往下兼容，反过来不行）。
+        let carried: Option<(&str, &[u8])> = native_embedded_daemon();
+        let Some((build_id, bytes)) = embedded.or(carried) else {
+            // 两个来源都空（`cfg(embedded_daemons)` 与 `cfg(embedded_native_daemon)` 都未置）⇒
+            // 诚实降级，把 `beside` 的 reason/looked_at 原样交回，别伪造一个新理由。
+            break 'resolve beside;
+        };
+        match extract_embedded_to(extract_dir, build_id, bytes, make_executable) {
+            Ok(p) => Resolved::Found(p),
+            Err(e) => {
+                // 🔴 `K-R42` 硬要求①：**这一支不许被读成「这份产物没带后端」。**
+                //    它是「带了，但这台机器不让我把它放下来」——两件事的下一步完全不同
+                //    （前者去装安装包，后者去看那个目录的权限 / 杀毒软件）。
+                //    09-10 一整天治的正是这一形：读面把「读不到」说成「你没有」。
+                let reason = extraction_failure_reason(extract_dir, &e);
+                // 光靠返回值不够响：调用方可能只把它记进 `tracing::info!`
+                //（`K-R43` 之前，`local_daemon.rs` 那条自动起的路对没有记录的失败就是这么走的
+                //  —— 而它当时**根本走不到这里**，那条路自己拼了一句分不开的话）。
+                // ⇒ 这一支自己吼一声 error，日志里一定留得下。**两条路今天共用这一声。**
+                tracing::error!("{reason}");
+                Resolved::Missing {
+                    reason,
+                    looked_at: match beside {
+                        Resolved::Missing { looked_at, .. } => looked_at,
+                        Resolved::Found(_) => Vec::new(),
+                    },
+                }
+            }
+        }
+    };
+    // 🔴 `K-R69`：**后端在哪儿，本机那条 `ccm` 入口就跟到哪儿。**
+    //    放在这里而不是放在两个生产入口里，理由与 `K-R43` 抽出本函数时那条逐字相同：
+    //    两份手写实现之间只会漂，而漂开的后果是同一台机器上两条路给出不同的答案。
+    // ⚠ **它失败不许拖垮后端**：少一条终端命令 ≠ 后端起不来。诚实吼一声，照常返回。
+    if let Resolved::Found(bin) = &resolved {
+        if let Err(e) = install_local_ccm_entry(extract_dir, bin, make_executable) {
+            tracing::warn!("本机 ccm 入口没放下来（后端本身没事，只是终端里少一条 `ccm`）：{e}");
+        }
+    }
+    resolved
+}
+
+/// P2z：**生产入口的自释放版** —— [`resolve_or_extract`] 找到就起并看住它。
+/// 这就是「单 exe 也能起 daemon 进程」那句话的落点。
+///
+/// ⚠ 本函数 = **那一份共用的解析 + 监护**。「在哪找、找不到说什么」一个字都不住这里
+/// （`K-R43` 抽走了，理由住 [`resolve_or_extract`] 的头注）。
 pub fn start_or_extract(
     target_triple: &str,
     extract_dir: &Path,
@@ -1453,46 +1673,10 @@ pub fn start_or_extract(
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
 ) -> (Resolved, Option<SuperviseHandle>) {
-    let beside = resolve_beside_this_exe(target_triple);
-    let bin = match &beside {
-        Resolved::Found(p) => p.clone(),
-        Resolved::Missing { .. } => {
-            // `K-R42`：宿主给不出就问这一份产物自己带没带（头注「第二个来源」那一段）。
-            // ⚠ 中间这个**带标注的局部**不是多余的：内嵌那份是 `&'static`，直接
-            // `embedded.or_else(native_embedded_daemon)` 会把两边的生存期**往 `'static` 上**统一，
-            // 于是编译器要求调用方那个借来的 `embedded` 也活到 `'static`（实测 `E0521`）。
-            // 标注一下就让它按**短的那个**统一（`'static` 往下兼容，反过来不行）。
-            let carried: Option<(&str, &[u8])> = native_embedded_daemon();
-            let Some((build_id, bytes)) = embedded.or(carried) else {
-                // 两个来源都空（`cfg(embedded_daemons)` 与 `cfg(embedded_native_daemon)` 都未置）⇒
-                // 诚实降级，把 `beside` 的 reason/looked_at 原样交回，别伪造一个新理由。
-                return (beside, None);
-            };
-            match extract_embedded_to(extract_dir, build_id, bytes, make_executable) {
-                Ok(p) => p,
-                Err(e) => {
-                    // 🔴 `K-R42` 硬要求①：**这一支不许被读成「这份产物没带后端」。**
-                    //    它是「带了，但这台机器不让我把它放下来」——两件事的下一步完全不同
-                    //    （前者去装安装包，后者去看那个目录的权限 / 杀毒软件）。
-                    //    09-10 一整天治的正是这一形：读面把「读不到」说成「你没有」。
-                    let reason = extraction_failure_reason(extract_dir, &e);
-                    // 光靠返回值不够响：调用方可能只把它记进 `tracing::info!`
-                    //（`local_daemon.rs` 那条自动起的路对没有记录的失败就是这么走的）。
-                    // ⇒ 这一支自己吼一声 error，日志里一定留得下。
-                    tracing::error!("{reason}");
-                    return (
-                        Resolved::Missing {
-                            reason,
-                            looked_at: match beside {
-                                Resolved::Missing { looked_at, .. } => looked_at,
-                                Resolved::Found(_) => Vec::new(),
-                            },
-                        },
-                        None,
-                    );
-                }
-            }
-        }
+    let resolved = resolve_or_extract(target_triple, extract_dir, embedded, make_executable);
+    let Resolved::Found(bin) = resolved else {
+        // 诚实降级：`reason` / `looked_at` 原样交回，这一层不再包一句自己的话。
+        return (resolved, None);
     };
     // P2：本机后端**起来就带入方向通道** —— 不是可选项，也不由宿主决定。
     // 「本机 = 不走 ssh 的远端」（`INVARIANTS §40`）：远端一连上就 attach 通道，本机同理。
@@ -1966,14 +2150,41 @@ mod tests {
     /// 一个写到一半、另一个 `rename` 走 —— 出来的正是这道防线要防的东西。
     /// ⚠ 不是理论：`tauri_plugin_single_instance` **只在 `#[cfg(windows)]` 注册**
     /// ⇒ Linux/macOS 上两个 monitor 天然并存。
+    ///
+    /// # 🔴 `K-R69` 09-12：**人群从「恰好一处」改成「每一处」**，理由写清楚
+    ///
+    /// 原来这一条是 `find_pinned(&prod, "std::process::id()")`（要求**恰好一处**）＋
+    /// 「那一处在 `.partial` 附近」。本轮新增了第二个走 `.partial` + `rename` 的落点
+    /// （[`install_local_ccm_entry`]）⇒ 它当场红了，报文逐字「命中 2 处，断言指不明是哪一处」。
+    ///
+    /// **那不是「判据过严」，是它的人群一直写小了**：这条性质从头就该覆盖**所有**临时名落点，
+    /// 只是当时只有一处，于是「恰好一处」与「每一处」在读数上分不开。
+    /// ⇒ 改成覆盖式（人群现算），**不是**把 needle 撑大到只认第一处 ——
+    /// 后者正是本仓那条「匹配单位比事实小」的老病。
     #[test]
     fn two_processes_do_not_share_one_partial_file() {
         let prod = guard_core::production_code(include_str!("local_backend.rs"));
-        let at = guard_core::find_pinned(&prod, "std::process::id()")
-            .expect("临时名里必须有本进程 id —— 固定名会让两个 monitor 写同一个文件");
-        // 位置性质：那个 id 必须落在**构造 tmp 名**的那几行里，不是别处随便一处。
-        let head = prod[..at].rfind(".partial").is_some() || prod[at..].contains(".partial");
-        assert!(head, "`process::id()` 不在 `.partial` 名的构造处");
+        // 人群**现算**：每一处「`.partial` 结尾的格式串 + 后面跟着实参」。
+        // ⚠ 针带逗号是刻意的：`name.ends_with(".partial")`（清扫那一处**读**它）
+        //   长得像但不是构造点，带上逗号就分开了。
+        assert!(
+            prod.split(".partial\",").skip(1).count() >= 2,
+            "生产段里构造 `.partial` 临时名的地方少于 2 处 —— 抽取器坏了、或落点改了写法，\n\
+             本条此刻**无效**（零命中会让下面那个 for 循环空转变绿）"
+        );
+        for args in prod.split(".partial\",").skip(1) {
+            assert!(
+                args.chars()
+                    .take(160)
+                    .collect::<String>()
+                    .contains("std::process::id()"),
+                "有一处 `.partial` 临时名里没有本进程 id —— 固定名会让两个 monitor 写同一个文件：\n\
+                 一个写到一半、另一个 `rename` 走，出来的正是这道防线要防的**半截可执行文件**。\n\
+                 ⚠ 不是理论：`tauri_plugin_single_instance` 只在 `#[cfg(windows)]` 注册 ⇒ \n\
+                 Linux/macOS 上两个 monitor 天然并存。实参逐字：{}",
+                args.chars().take(160).collect::<String>()
+            );
+        }
     }
 
     /// `P2t`：清扫只收**够老**的残骸，绝不碰新鲜的。
@@ -2140,7 +2351,7 @@ mod tests {
         use std::time::Duration;
 
         // ★★ **fail closed，排在一切之前**（`K-R7`）。
-        let shim = crate::local_daemon::demand_tmux_shim("本条起真 daemon 且起真 tmux");
+        let shim = crate::local_daemon::tests::demand_tmux_shim("本条起真 daemon 且起真 tmux");
         let _guard = crate::inbound_client::local_origin_test_lock();
 
         // ★★★ 「用户真实的 tmux」这一问**必须绕开 PATH 上的 shim**〔`K-R7` 08-31，实测逼出来的〕。
@@ -2461,7 +2672,7 @@ mod tests {
     #[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 e2e/local-backend-supervise.sh 那条带 shim 的路"]
     fn the_local_daemon_really_registers_an_inbound_client() {
         // ★★ **fail closed，而且排在一切之前** —— 见上面头注第三段。
-        let shim = crate::local_daemon::demand_tmux_shim(
+        let shim = crate::local_daemon::tests::demand_tmux_shim(
             "本条起真 daemon，而 daemon 一上来就往它连得到的 tmux server 装全局 hook",
         );
         let _guard = crate::inbound_client::local_origin_test_lock();
@@ -2629,6 +2840,262 @@ mod tests {
         );
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🔴 `K-R69` / `KR69D1`：**本机那条 `ccm` 入口，与远端那条同源**
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// `KR69D1` 的**同源那一半（内容侧）**：本机那条落点**就是后端二进制本身**。
+    ///
+    /// # 它是这一格的死值验第二向
+    ///
+    /// `KR69D1` 逐字：「让本机那条改用**另一份**二进制 / 另一套 argv 解析 ⇒ **必须红**」。
+    /// 本条断的正是这件事，而且断得比「路径对不对」硬：**逐字节相同**。
+    /// 谁把这里改成写一段 shim 文本、或改成从别处取字节，当场红。
+    ///
+    /// # 为什么不能拿「文件在不在」当判据
+    ///
+    /// 「在」只说明有个叫 `ccm` 的文件，说不出它是谁 —— 而**本机上恰好有另一个叫 `ccm`
+    /// 的东西**正是这一整件的题面（用户 `~/.local/bin/ccm` 那份旧 bash）。
+    /// 「同名不同物」认不出来的判据，在这一件上等于没有。
+    #[test]
+    fn the_local_ccm_entry_is_a_copy_of_the_backend_itself() {
+        let base = std::env::temp_dir().join(format!("ccm-kr69-copy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("建夹具目录");
+        // 夹具名**中性**、内容**唯一**：断言比的是这串字节，不是任何路径 / 目录名
+        //〔固定项 12 那条 `6g`：断言用的子串不许取自夹具的名字〕。
+        let bytes: Vec<u8> = (0u8..=255).cycle().take(4096).collect();
+        let backend = base.join("some-backend-binary");
+        std::fs::write(&backend, &bytes).expect("写夹具后端");
+
+        let marked = std::sync::Mutex::new(Vec::<PathBuf>::new());
+        let mark = |p: &Path| {
+            marked.lock().unwrap().push(p.to_path_buf());
+            Ok(())
+        };
+        let dest = install_local_ccm_entry(&base, &backend, &mark).expect("放本机 ccm 入口");
+
+        assert_eq!(
+            dest.file_name().and_then(|s| s.to_str()),
+            Some(local_ccm_entry_name().as_str()),
+            "放下去的名字不是 `local_ccm_entry_name()` 说的那个 —— 名字有了第二个来源"
+        );
+        assert_eq!(
+            std::fs::read(&dest).expect("读回本机 ccm 入口"),
+            bytes,
+            "本机那条 `ccm` 落点的内容**不是后端那份字节** —— \n\
+             那它就是第二份东西了，而 `K33` 逐字「所有命令只许有一处」。\n\
+             `KR69D1` 的失效方向逐字：「在本机再写一个 `ccm` 壳 ⇒ 不算兑现」。"
+        );
+        assert_eq!(
+            marked.lock().unwrap().len(),
+            1,
+            "置可执行位那一步没走（或走了不止一次）—— 放下去一个起不来的文件\n\
+             比不放更坏：`--ccm-probe` 探它会失败，而失败长得像「没装」"
+        );
+        // 幂等：再放一次不重写（长度相同、且不比后端旧）。
+        let before = std::fs::metadata(&dest).and_then(|m| m.modified()).ok();
+        let again = install_local_ccm_entry(&base, &backend, &mark).expect("第二趟");
+        assert_eq!(again, dest);
+        assert_eq!(
+            std::fs::metadata(&dest).and_then(|m| m.modified()).ok(),
+            before,
+            "第二趟重写了 —— 每次起 app 都白付一次几 MB 的顺序写"
+        );
+        // 反向：后端换了一版（字节变了、时间更新）⇒ 这一份必须跟着换。
+        let newer: Vec<u8> = (0u8..=255).cycle().skip(7).take(4096).collect();
+        assert_ne!(newer, bytes, "夹具自己塌了：两版字节竟然相同");
+        std::fs::write(&backend, &newer).expect("换一版后端");
+        filetime_bump(&backend);
+        install_local_ccm_entry(&base, &backend, &mark).expect("第三趟");
+        assert_eq!(
+            std::fs::read(&dest).expect("读回"),
+            newer,
+            "后端换了一版，本机那条 `ccm` 入口还停在上一版 —— \n\
+             用户终端里那条命令与 app 里跑的后端**不是同一份**，而两边都不会出声"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// 把一个文件的 mtime 往后推一点。**不引新依赖**：重写一次内容之后
+    /// 有些文件系统的时间戳粒度是秒级 ⇒ 直接改内容不一定改得动 `modified()`。
+    /// 这里显式把**目标**那份的时间戳往回拨（比推源那份便宜，也不碰时钟）。
+    fn filetime_bump(newer_than_this: &Path) {
+        let dir = newer_than_this.parent().expect("有父目录");
+        let stale = dir.join(local_ccm_entry_name());
+        // 把目标那份的 mtime 设成 1970 —— 于是它一定「比后端旧」。
+        // ⚠ **必须以可写方式打开**：只读句柄在有些平台上 `set_modified` 直接 `EBADF`，
+        //   而那时上面第三条断言会**因为夹具没生效**而红 —— 那是假红，比不测还坏。
+        //   ⇒ 这里不吞错：夹具塌了就当场说出来。
+        std::fs::OpenOptions::new()
+            .write(true)
+            .open(&stale)
+            .expect("夹具：打不开本机 ccm 入口")
+            .set_modified(std::time::UNIX_EPOCH)
+            .expect("夹具：改不动 mtime —— 下面那条「换版必刷新」判的就不是它了");
+    }
+
+    /// `KR69D1` 的**防空转**：那条入口真的有生产调用点，而且就在解析出后端之后。
+    ///
+    /// # 没有这一条会怎样
+    ///
+    /// [`install_local_ccm_entry`] 是个自足的函数，上面那条判据喂它一份夹具就能全绿 ——
+    /// 而**只要没人在生产段里调它，本机就还是一条 `ccm` 都没有**，
+    /// 也就是 `K-R69` 立件时那个读数原封不动。本仓这一形有名字（`K-R28` 那条「防空转」）。
+    ///
+    /// # ⚠ 它守什么、**不守什么**〔`K-R69` 收窗口前订正 —— 原话不完整，PM 一刀切中〕
+    ///
+    /// **约定型守卫**（查源码形态）。原话只写「挡得住『接线被删掉』，挡不住『换个名字继续错』」，
+    /// 而 PM 09-12 的**刀 T** 实测出第三样它当时也挡不住：**接线还在、名字没改、
+    /// 而调用点喂进去的可以不是后端本体** —— 把第二个实参从 `bin` 换成
+    /// `&extract_dir.join("<随便一个不存在的名字>")`，别处一字不动，
+    /// 判定行逐字 `test result: ok. 1393 passed; 0 failed` —— **一条都没红**。
+    /// 后果不是编译错，是**静默放下一份不是后端的文件**，而 `--ccm-probe` 探它会失败，
+    /// **失败长得像「没装」**（那句话正是本模块另一条判据自己写的）。
+    ///
+    /// ⇒ 本条今天多钉一格：**那唯一一处调用喂进去的，就是 `Resolved::Found` 解开的那个绑定**。
+    /// ⚠ 这一格仍是**形态**（换个变量名照样能骗过它）—— 真正不看拼法的那一半在
+    /// [`tests::the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved`]：
+    /// 它真跑一趟 `resolve_or_extract`，比的是**落下来那份的字节**。
+    /// **两条合起来才是那道缝，单独任何一条都不够。**
+    #[test]
+    fn the_resolution_path_really_puts_the_local_ccm_entry_down() {
+        let sect = shared_resolution_body();
+        let put = guard_core::find_pinned(&sect, "install_local_ccm_entry(").unwrap_or_else(|e| {
+            panic!(
+                "那份共用的解析体内 `install_local_ccm_entry(` 不是恰好一处（{e}）——\n\
+                 一处都没有 ⇒ 本机那条 `ccm` 入口**没有任何生产调用点**，\n\
+                 盘上回到 `K-R69` 立件时那个读数（本机 0 条），而上面那条判据照样绿。\n\
+                 多于一处 ⇒ 有第二条放法，下面那条顺序断言说不清它断的是哪一处。\n逐字：{sect}"
+            )
+        });
+        let found = guard_core::find_pinned(&sect, "extract_embedded_to(")
+            .expect("那份共用的解析体内 `extract_embedded_to(` 不是恰好一处 —— 切歪了");
+        assert!(
+            found < put,
+            "「放本机 ccm 入口」排到了「把后端释放出来」前面 —— 顺序反了：\n\
+             那时它复制的是一份还不存在（或还是上一版）的二进制。"
+        );
+        // 🔴 **PM 刀 T 逼出来的那一格**：喂进去的**是解析出来的那份后端**，不是别的什么路径。
+        // ⚠ 钉的是**这一对**，不是两个孤立的串：一头是 `Resolved::Found` 解开的那个绑定，
+        //   另一头是那唯一一处调用的实参表。分开钉的话，把绑定留着、实参换掉照样过。
+        guard_core::find_pinned(&sect, "if let Resolved::Found(bin) = &resolved {").unwrap_or_else(
+            |e| {
+                panic!(
+                    "那份共用的解析体内「解开 `Resolved::Found`」不是恰好一处（{e}）——\n\
+                     下面那条断言指不明它说的是哪一个 `bin`，本条此刻无效。\n逐字：{sect}"
+                )
+            },
+        );
+        guard_core::find_pinned(&sect, "install_local_ccm_entry(extract_dir, bin, make_executable)")
+            .unwrap_or_else(|e| {
+                panic!(
+                    "那一处调用喂进去的不是解析出来的那份后端（{e}）。\n\
+                     🔴 这正是 PM 09-12 刀 T 切中的那道缝：接线还在、函数没改，\n\
+                     而实参换成别的路径 ⇒ **静默放下一份不是后端的文件**，\n\
+                     `--ccm-probe` 探它会失败，而**失败长得像「没装」**。\n\
+                     期望逐字：`install_local_ccm_entry(extract_dir, bin, make_executable)`\n逐字：{sect}"
+                )
+            });
+    }
+
+    /// 🔴 **刀 T 那道缝的另一半，而且这一半不看拼法**：真跑一趟 `resolve_or_extract`，
+    /// 断言落下来那条 `ccm` 入口**与它刚解析出来的那份后端逐字节相同**。
+    ///
+    /// # 为什么非要行为判据不可
+    ///
+    /// 上面那条是**形态**判据：换个变量名、换个等价写法都能绕过去。
+    /// 本条不读一个字源码 —— 它只问「盘上那两份字节一样吗」，
+    /// 于是「喂进去的不是后端本体」这一形**不论怎么拼**都会在这里现原形。
+    ///
+    /// # 夹具怎么保证走的是我要盯的那一支
+    ///
+    /// `target_triple` 取一个**盘上必不存在**的中性串 ⇒ `resolve_beside_this_exe` 必回
+    /// `Missing` ⇒ 走「释放内嵌那份」那一支，而本条盯的正是那一支之后那一跳。
+    /// 三条反向自检（缺一条这里就会零命中地绿）：① 真的 `Found` 了；
+    /// ② 释放出来那份就是我喂进去的字节；③ 那两个文件**不是同一个**
+    /// （否则「两份相同」靠自反恒真）。
+    #[test]
+    fn the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved() {
+        let base = std::env::temp_dir().join(format!("ccm-kr69-wire-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&base).expect("建夹具目录");
+        // 内容唯一、夹具名中性：断言比的是这串字节，不是任何路径 / 目录名〔固定项 12 的 `6g`〕。
+        let bytes: Vec<u8> = (0u8..=255).cycle().skip(3).take(3072).collect();
+        let mark = |_: &Path| Ok(());
+
+        let r = resolve_or_extract(
+            "no-such-target-triple",
+            &base,
+            Some(("kr69wire", &bytes)),
+            &mark,
+        );
+        // ① 反向自检：真的走到了「释放出来并 Found」那一支。
+        let Resolved::Found(bin) = r.clone() else {
+            panic!("夹具塌了：内嵌那份没释放出来 ⇒ 本条此刻无效。实得 {r:?}");
+        };
+        // ② 反向自检：释放出来那份就是我喂进去的字节。
+        assert_eq!(
+            std::fs::read(&bin).expect("读回释放出来那份"),
+            bytes,
+            "夹具塌了：释放出来那份不是我喂进去的字节"
+        );
+        let entry = base.join(local_ccm_entry_name());
+        // ③ 反向自检：两个文件不是同一个（否则下面那条比较靠自反恒真）。
+        assert_ne!(
+            entry, bin,
+            "夹具塌了：本机 `ccm` 入口与释放出来那份是同一个文件 ⇒ 下面那条比较恒真"
+        );
+        assert!(
+            entry.is_file(),
+            "解析出后端之后，本机那条 `ccm` 入口**没被放下来**：{}\n\
+             要么那一跳没接上，要么它拿到的路径根本不存在（PM 刀 T 那一形）。",
+            entry.display()
+        );
+        assert_eq!(
+            std::fs::read(&entry).expect("读回本机 ccm 入口"),
+            bytes,
+            "本机那条 `ccm` 入口的字节**不是刚解析出来的那份后端** ——\n\
+             🔴 静默放下一份不是后端的文件，而 `--ccm-probe` 探它会失败，\n\
+             **失败长得像「没装」**：用户看到的是「你没装」，而真相是「我们放错了东西」。"
+        );
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    /// `KR69D1` 的**同源那一半（拼写侧）**：两条落点里那个 `ccm`，取自**同一处**。
+    ///
+    /// # 它买的是什么
+    ///
+    /// 本机那条靠**文件名**进 `intercept` 的入口①（`argv[0]` 的 basename），
+    /// 远端那条靠 shim 里的**子命令词**进入口②（`<bin> ccm …`）。
+    /// 两处要是各写一个字面量，改一个漏一个的后果是**静默的**：
+    /// 本机那份改了名字之后，它就不再被后端认成 `ccm`，而是当普通流模式起来 ——
+    /// 用户敲下去看到的是一个不动的进程，没有任何一条判据会红。
+    /// ⇒ 闭集只许有一个住址（`13b`），那个住址是 [`CCM_ENTRY_WORD`]。
+    #[test]
+    fn both_ccm_entries_spell_the_word_from_the_same_place() {
+        // ① 本机：文件名以那个词打头（后面只许跟目标平台的可执行后缀）。
+        let name = local_ccm_entry_name();
+        assert_eq!(
+            name.strip_prefix(CCM_ENTRY_WORD).map(str::to_string),
+            Some(env!("CCM_TARGET_EXE_SUFFIX").to_string()),
+            "本机那条入口的文件名不是「那个词 + 目标平台后缀」：{name:?}"
+        );
+        // ② 远端：shim 把 argv 交给的就是那个子命令词。
+        let shim = ccm_entry_shim("/x/cc-monitor-remote");
+        let handoff = format!(" {CCM_ENTRY_WORD} \"$@\"");
+        assert!(
+            shim.contains(&handoff),
+            "远端那条 shim 交给后端的不是 `{CCM_ENTRY_WORD}` 子命令：\n{shim}"
+        );
+        // ③ 反向自检：那个词不许是空串 / 空白 —— 否则上面两条都会**空真**。
+        assert!(
+            !CCM_ENTRY_WORD.trim().is_empty()
+                && CCM_ENTRY_WORD.chars().all(|c| c.is_ascii_alphanumeric()),
+            "`CCM_ENTRY_WORD` 变成了 {CCM_ENTRY_WORD:?} —— 上面两条会零命中地绿"
+        );
+    }
+
     /// P2z-Y3：**本机那条路不许自己写版本比较** —— 复用 `sftp::deploy_decision`（纯函数）。
     ///
     /// 它会失效的地方（如实写）：`deploy_decision` 只回答「要不要装」，
@@ -2716,20 +3183,21 @@ mod tests {
     /// 它买的是「消息里有一条**看起来是**下一步的东西」，**买不到**「那句话是真的」，
     /// 更买不到「读者真看懂了」—— 把标记词拼进一句废话里，它照样绿。
     /// 射程也只有 [`resolve_with`] 这一条 `reason`：
-    /// [`resolve_beside_this_exe`] 拿不到自身路径那条、[`start_or_extract`] 释放失败那条，
+    /// [`resolve_beside_this_exe`] 拿不到自身路径那条、[`resolve_or_extract`] 释放失败那条，
     /// **本条一条都没盖**。头注 / `DECISIONS` / 模块注释里写件号**不受本条管**，
     /// 本条只管**发到用户面前的那一串**。
     ///
     /// # 🔴 `K-R42`（09-10 同日）：**换完靶之后一天，被测对象自己变了 —— 本条现在守什么**
     ///
-    /// 本件给 [`start_or_extract`] 接上了「产物自己带着的那份」（[`native_embedded_daemon`]），
+    /// 本件给自释放那条路接上了「产物自己带着的那份」（[`native_embedded_daemon`]），
+    /// 〔那条路 `K-R42` 时住 [`start_or_extract`] 体内，`K-R43` 抽进了 [`resolve_or_extract`]〕
     /// 于是要先回答一句：**「找不到 sidecar」这一形还存不存在？**
     ///
     /// **存在，而且一点没少。** [`resolve_with`] 的职责一个字没改 —— 它仍然只回答
     /// 「**exe 旁边**有没有」，而裸 exe 旁边**仍然没有**（本件不往 exe 旁边放东西）。
     /// 变的是**这个答案之后发生什么**：以前它就是终点，现在它是自释放那一支的**入口**。
     /// ⇒ 本条守的东西**逐字未变**（那一串给不给得出下一步 · 有没有把件号甩给用户），
-    /// 而且它守的那一串**仍然到得了用户眼前** —— `start_or_extract` 在两个来源都空时
+    /// 而且它守的那一串**仍然到得了用户眼前** —— `resolve_or_extract` 在两个来源都空时
     /// 把 `beside` 的 `reason` **原样**交回去，那条路今天照走。
     ///
     /// ⚠ **真正过期的是那一串里的两句话，本件同拍改掉了**（不改就又成了「判据替假话背书」）：
@@ -2891,21 +3359,36 @@ mod tests {
     /// # 没有这一条会怎样
     ///
     /// [`native_embedded_daemon`] 是纯的、[`extraction_failure_reason`] 是纯的 ——
-    /// 两条都测得漂漂亮亮，而**只要没人在 [`start_or_extract`] 里接上它们，整件事就是死代码**，
+    /// 两条都测得漂漂亮亮，而**只要没人在生产段里接上它们，整件事就是死代码**，
     /// 上面那几格照样全绿。本仓这一形有名字（`K-R28` 那条「防空转」逐字记着同一件事）。
+    ///
+    /// # 🔴 `K-R43`：**靶搬了家，它守的是什么、还守不守得住**
+    ///
+    /// 〔`K-R42` 立本条时，那三问住 [`start_or_extract`] 体内，本条切的就是那个体。
+    ///  `K-R43` 把那三问整段抽进 [`resolve_or_extract`] ⇒ 靶跟着搬到共用那份上。〕
+    ///
+    /// **它守的东西逐字未变**：自释放那条路上，「问产物自己带没带」与「释放失败说那句分得开的话」
+    /// 必须**真的有生产调用点**，而且「问产物」必须排在「找 exe 旁边」之后。
+    ///
+    /// **还守得住，而且盖的面变大了**：`K-R43` 之后**只有一条自释放路**，
+    /// 两个生产入口（[`start_or_extract`] · `local_daemon.rs::resolve_daemon_bin`）都走它
+    /// ⇒ 同一条断言从盖 1 处变成盖 **2** 处。
+    /// ⚠ **但「都走了它」这一半不在本条射程里** —— 靶搬家之后，谁把 `start_or_extract`
+    /// 里那行调用删掉、自己再写一遍，本条**照样绿**（它只看共用那份的体）。
+    /// 那一半由 `local_daemon::the_two_resolution_paths_still_agree_on_the_order` 钉
+    /// （`K-R43` 同拍换了它的机制，理由住那条的头注）。**两条合起来才是原来那一格，单条都不够。**
     ///
     /// # 顺序那一半
     ///
     /// 「先找 exe 旁边、再动内嵌那份」是本模块头注花一整段论证过的取舍
-    /// （dev 构建里旁边那个更新），跨文件那一半由
-    /// `local_daemon::the_two_resolution_paths_still_agree_on_the_order` 钉着。
-    /// 本件新加的这个来源**同属「内嵌那一档」** ⇒ 它也必须排在「找旁边」之后。
+    /// （dev 构建里旁边那个更新）。`K-R42` 新加的那个来源**同属「内嵌那一档」**
+    /// ⇒ 它也必须排在「找旁边」之后。
     ///
     /// ⚠ **诚实边界**：这是**约定型守卫**（查源码形态，同 `the_backend_layer_stays_host_agnostic`
     /// 那一族）—— 它挡得住「接线被删掉 / 顺序被写反」，挡不住「换个名字继续错」。
     #[test]
     fn the_self_extract_path_really_asks_the_product_whether_it_carries_one() {
-        let body = start_or_extract_body();
+        let body = shared_resolution_body();
         // 反向自检：切出来的确实是那个函数体（切歪了下面几条会在一段不相干的文本上恒答）。
         // ⚠ 三处都走 `find_pinned`（**恰好一处** + 两侧有边界），不用裸 `contains` ——
         //   `needle_anchor_registry` 那条递减棘轮治的就是「匹配单位比事实小」。
@@ -2919,21 +3402,21 @@ mod tests {
         //   ⇒ 「那句响亮的话真的被用上了」得在这里钉，不能指望那一条。
         guard_core::find_pinned(&body, "extraction_failure_reason(").unwrap_or_else(|e| {
             panic!(
-                "`start_or_extract` 体内 `extraction_failure_reason(` 不是恰好一处（{e}）——\n\
+                "那份共用的解析体内 `extraction_failure_reason(` 不是恰好一处（{e}）——\n\
                  一处都没有 ⇒ 释放失败又退回那句**与「没带后端」分不开**的话，\n\
                  而 `the_extraction_refusal_…` 这类纯函数判据**照样全绿**（本轮实测过）。\n逐字：{body}"
             )
         });
         let asked = guard_core::find_pinned(&body, "native_embedded_daemon").unwrap_or_else(|e| {
             panic!(
-                "`start_or_extract` 体内 `native_embedded_daemon` 不是恰好一处（{e}）——\n\
+                "那份共用的解析体内 `native_embedded_daemon` 不是恰好一处（{e}）——\n\
                  一处都没有 ⇒「产物自己带着的那份」没有任何生产调用点：\n\
                  裸 exe 回到 09-10 那个读数（0 个本机后端进程），而本模块每一条判据照样绿。\n\
                  多于一处 ⇒ 有第二条取法，下面那条顺序断言就说不清它断的是哪一处。\n逐字：{body}"
             )
         });
         let beside = guard_core::find_pinned(&body, "resolve_beside_this_exe(")
-            .expect("`start_or_extract` 体内 `resolve_beside_this_exe(` 不是恰好一处");
+            .expect("那份共用的解析体内 `resolve_beside_this_exe(` 不是恰好一处");
         assert!(
             beside < asked,
             "「问产物自己带没带」排到了「找 exe 旁边」前面 —— 顺序反了。\n\
@@ -3164,70 +3647,23 @@ mod tests {
 
     /// ★★ **那个 env 名只有一个家**〔F06b-1 立，F06b-1c 起转为实断言〕。
     ///
-    /// # 两条断言，各管一件
+    /// # 🔴 `K-R48` 第二拍（09-11）：**射程砍掉一半，写清楚砍的是哪一半**
     ///
-    /// ① **同名**：`shared/ccm` 里**若**出现这个 env 名，必须与 Rust 侧的
-    ///    [`super::DAEMON_BIN_ENV`] **逐字相同** —— 名字打错的后果是
-    ///    「ccm 永远读不到 ⇒ 永远走本地那条」，而那**看起来完全正常**（诚实降级本来就是它的兜底）。
-    ///    ⇒ 这种错**不会自己暴露**，只能靠钉。
-    /// ② **原先是前提触发器**（「今天 ccm 还没用它」），它**如期红过一次** ——
-    ///    F06b-1c 接线时 `shared/ccm` 一出现这个名字，本条当场红，提醒把一致性一并做完。
-    ///    做完后它转成**实断言**：名字必须真出现在 `shared/ccm` 里（≥7 处，按实测）。
-    ///    ⚠ 一致性那件事**理由不是「会撞红黄金串」**〔订正 F06b-1b·实测〕：
-    ///    真把答案烤进打印串时，`ccm-print-parity`(12) 与 `ccm-contract-parity`(31)
-    ///    **两套全绿** —— 前者的 resume 场景全走 `--tmux`（碰不到非容器打印路），
-    ///    后者的 A 组比的是**环境键**、六格又全是 `new`。**当时根本没有网。**
-    ///    （「44 条黄金串」是 `ccm-cli` 的地板，不是 `ccm-print-parity` 的 —— 那句混了套件。）
-    ///    ⇒ 网已在 F06b-1b 补上：`ccm-contract-parity` 的 **A′ 组**比 print↔exec 的 **argv**。
-    ///    正解仍是 ccm 头注那句「**打印的是配方，不是值**」。
+    /// 原来它有两条腿：① 本文件生产段里那个字面量只许出现 1 次；
+    /// ② `shared/ccm` 里出现的每一处「像那个名字」的拼写都必须与 Rust 侧**逐字相同**
+    ///（名字打错的后果是「ccm 永远读不到 ⇒ 永远走本地那条」，而那看起来完全正常）。
     ///
-    /// ⚠ 判据**不存那个名字的副本**：它从 Rust 的 `const` 读，再去 `shared/ccm` 里找（定框 §4）。
+    /// 〔用@09-11 `K33`〕「**不要有什么 bash 脚本**」⇒ `shared/ccm` 删了，
+    /// **第②条腿没有被测对象了**：今天不存在「另一个进程按名字去读这个 env」这回事，
+    /// 敲的那个命令就是后端。⇒ 只留①。
+    ///
+    /// ⚠ **如实边界**：①**买不到**②买的那件事（「两处拼写一致」）。今天那个风险不存在，
+    /// 是因为**对侧没了**，不是因为有判据盯着 —— 哪天再出现一个按名字读它的消费者，
+    /// 这条判据**不会**替你盯着它。
     #[test]
     fn the_daemon_bin_env_name_has_exactly_one_home() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src-tauri 的上级");
-        let ccm = root.join("shared/ccm");
-        let src = std::fs::read_to_string(&ccm).expect("读不到 shared/ccm");
-        // 中间量自检：读到的必须是那个真文件（它是 696 行的大脚本，不是空串）。
-        assert!(
-            src.len() > 10_000 && src.contains("ccm"),
-            "shared/ccm 只读到 {} 字节 —— 读错文件了，本条会零命中地绿",
-            src.len()
-        );
-        let name = super::DAEMON_BIN_ENV;
-        // ① 每一处「像那个名字」的拼写都必须逐字相同 —— **逐处查，不是只查第一处**：
-        //    ccm 里现在有好几处（函数、配方、头注），打错任何一处都是静默失败。
-        let looks_like = "CCM_DAEMON";
-        let mut seen = 0usize;
-        for (at, _) in src.match_indices(looks_like) {
-            seen += 1;
-            // ⚠ **不许 `&src[at..at + 40]`** —— 那是**按字节切**，而这后面紧跟中文注释，
-            //   会切在字符中间直接 panic（第一版就是这么炸的）。切片必须落在字符边界上。
-            let after = &src[at..];
-            // ⚠ 光 `starts_with` 不够：`CCM_DAEMON_BINARY` **也**以 `CCM_DAEMON_BIN` 开头。
-            //   变异 Z1 就是这么活下来的 ⇒ 必须查名字后面那个字符是不是标识符字符。
-            let exact = after.strip_prefix(name).is_some_and(|rest| {
-                !rest.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
-            });
-            let tail: String = after.chars().take(40).collect();
-            assert!(
-                exact,
-                "`shared/ccm` 里那个 env 名与 Rust 侧对不上：ccm 写的是 {tail:?}，\n\
-                 而唯一的家是 `DAEMON_BIN_ENV` = {name:?}。\n\
-                 ⚠ 名字打错**不会自己暴露** —— ccm 读不到就静静走本地那条（诚实降级是它的兜底）。"
-            );
-        }
-        // ② **接线已发生**〔F06b-1c〕：F06b-1 时这里是「今天还没接线」的前提触发器，
-        //    ccm 一用它就红。它**如期红过一次**，本轮把接线做完，于是它转成一条实断言：
-        //    名字必须真出现在 `shared/ccm` 里 —— 接线要是被谁整段删了，本条红。
-        //    ⚠ **地板按实测写**：当时 7 处（第一版顺手写了 4，是猜的 —— 实测 7）。
-        // ★★ **「唯一的家」只能用源码扫描钉，值比较钉不住**〔W3 存活教的，F06b-1d〕：
-        //    判据原先只有 `assert_eq!(k, DAEMON_BIN_ENV)`，而**副本的值按定义就相等** ——
-        //    把 `DAEMON_BIN_ENV` 换成字面量 `"CCM_DAEMON_BIN"`，那条断言照样绿。
-        //    ⇒ **「同一个值」与「同一个来源」是两回事**；要钉来源，就得去源码里数它出现几次。
         let me = guard_core::production_code(include_str!("local_backend.rs"));
-        let lit = format!("\"{name}\"");
+        let lit = format!("\"{}\"", super::DAEMON_BIN_ENV);
         let n_lit = me.matches(lit.as_str()).count();
         assert_eq!(
             n_lit, 1,
@@ -3235,26 +3671,6 @@ mod tests {
              唯一的家是那个 `const`，其余一律引用它。\n\
              ⚠ 值相等的断言**看不见副本**（副本的值按定义就相等），只有数源码才看得见。"
         );
-        // ★★ **地板 7 → 1**〔`P4e` 08-13〕：接线**没有缩水，是被去重了**。
-        //
-        // 原来查找规则在两处各写一遍（`resolve_from_daemon` 与 `resolve_recipe`，
-        // 「逐行同构、改一边必须改另一边」），env 名因此出现 7 次。`P4e` 把规则收成
-        // **同一个字面量** `DAEMON_BIN_RECIPE`，真跑那侧 `eval` 它 ⇒ 生产段里只剩 1 处。
-        //
-        // ⚠ **「数字降下来」在本仓通常是坏消息**（棘轮一律只许降是因为那个数是欠账）。
-        //   这里方向相反：这个数是「接线在不在」的代理，而**代理变了** ——
-        //   ⇒ 不是把地板调低让今天好过，是**把钉子挪到新家上**：下面第二条钉配方本身。
-        assert!(
-            seen >= 1,
-            "`shared/ccm` 里一处 `{looks_like}` 都没有（实得 {seen}）—— \n\
-             F06b-1c 的接线（`resolve_from_daemon` + `resolve_recipe`）是不是被删了？"
-        );
-        // 新家：查找规则本身。删掉它 = 接线没了，而上面那条**看不见**（env 名还在注释里）。
-        let ccm_src = include_str!("../../../../shared/ccm");
-        guard_core::find_pinned(&guard_core::strip_hash_comment_lines(ccm_src), "DAEMON_BIN_RECIPE=")
-            .unwrap_or_else(|e| {
-                panic!("{e}\n⇒ `P4e` 的查找规则不在了（或有两份）。它是 `ccm → daemon` 这条路的**唯一**入口：\n   没有它，只有 cc-monitor 亲自注入 env 时才够得着 daemon，而 skill 跑在普通 shell 里。")
-            });
     }
 
     /// ★★ **F05b 接线钉：每一个打包 job 都必须给 sidecar 备好料。**
@@ -3311,6 +3727,145 @@ mod tests {
             src.contains(super::SIDECAR_STEM),
             "release.yml 里没有出现 `{}` —— 拷过去的名字与消费侧对不上",
             super::SIDECAR_STEM
+        );
+    }
+
+    /// ★★ 🔴 `KR70D3`（09-12）：**载体①与载体③是同一次构建 —— 这件事从此有人守。**
+    ///
+    /// # 题面（`K-R68` 现打，`DECISIONS.md#R26` 裁定一）
+    ///
+    /// 发版流水线里同一个文件被拷了两次：
+    /// `remote-daemon-proto/target/release/cc-monitor-remote.exe`
+    /// → `src-tauri/binaries/…`（载体③，Tauri `externalBin`，装机那份）
+    /// → `src-tauri/native-daemon/cc-monitor-native`（载体①，自释放那份）。
+    /// 两步之间**一条 `cargo` 都没有** ⇒ 它们逐字节相同，是最强的那种同源。
+    /// 🔴 **而这件事此前没有任何断言守着**：中间插一条 `cargo build`（换个 feature、
+    /// 换个 profile、甚至只是重编一次）就不再是同一份字节，**没人会红**。
+    /// 而两份字节不同、身份戳却相同（同一个 `BUILD_ID`）时，产品**分不出它们** ——
+    /// 那正是 `K-R70` 这一件的题面本身。
+    ///
+    /// # ⚠ 本条**不主张**「载体②也要同字节」
+    ///
+    /// ② 是另一个 job（ubuntu / `cargo zigbuild` / musl），**结构上不可能**逐字节相同 ——
+    /// 那正是 `K25` 裁的形状（「一份代码、每个平台编出自己那一份原生二进制」），不是缺陷。
+    /// ⇒ 本条的射程只到「同一个 job 里、拷同一个路径的那两步」。
+    ///
+    /// # 量法与它的边界
+    ///
+    /// 人群 = `release.yml` 里**拷贝那个原生产物**的所有行（锚是那条产物路径，不是步骤名 ——
+    /// 步骤名是散文，路径是事实），**按 job 分组**。断言：**同一个 job 内**，第一处与
+    /// 最后一处拷贝之间没有非注释的构建命令。
+    ///
+    /// ⚠ **为什么按 job 分组，而不是拿全仓那几处一起比** —— 这一格是本条第一次跑就
+    /// 逮出来的（写它的时候以为是 2 处，实得 **3** 处）：第三处在 `build-linux` 里，
+    /// 它同样把那个原生产物拷成载体③，而 **Linux 那条路根本没有载体①**
+    /// （`K-R68` 现打：`native-daemon` 那三个字只出现在 `build-windows` 一个 job 里 ——
+    /// 已立成待决 `KU26` 问用户）。跨 job 比是**分母错**：两个 job 各自 `checkout` 各自编，
+    /// 它们之间当然有构建动作，那不是缺陷。
+    ///
+    /// ⚠ 它**看不见**「构建命令写在别的文件里、由这里 `run:` 一个脚本触发」那一形；
+    /// 今天 `release.yml` 里这一段没有那种写法（人群里每一行都是内联的 `Copy-Item`/`cp`），
+    /// 真出现那一形要另加一条判据。**这是登记的射程，不是穷举过的全称。**
+    #[test]
+    fn the_two_carriers_are_copies_of_one_build_with_nothing_rebuilt_between() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级");
+        let wf = root.join(".github/workflows/release.yml");
+        let src = std::fs::read_to_string(&wf).expect("读不到 release.yml");
+        let lines: Vec<&str> = src.lines().collect();
+        // 锚：那个**原生产物**的路径。运行时拼，免得命中本条自己的说明文字。
+        let artifact = format!("remote-daemon-proto/target/release/{}", super::SIDECAR_STEM);
+        // job 边界：`jobs:` 下**两空格缩进**的那一层键。
+        let job_at = |i: usize| -> &str {
+            lines[..=i]
+                .iter()
+                .rev()
+                .find(|l| {
+                    l.len() > 2
+                        && l.starts_with("  ")
+                        && !l.starts_with("   ")
+                        && l.trim_end().ends_with(':')
+                })
+                .map(|l| l.trim().trim_end_matches(':'))
+                .unwrap_or("<不在任何 job 里>")
+        };
+        let is_copy = |l: &str| {
+            let t = l.trim_start();
+            !t.starts_with('#')
+                && l.contains(&artifact)
+                && (t.starts_with("Copy-Item") || t.starts_with("cp "))
+        };
+        let copies: Vec<usize> = lines
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| is_copy(l))
+            .map(|(i, _)| i)
+            .collect();
+        // 中间量自检：找不到 = 抽取器坏了 / 流水线变形，本条会零命中地绿。
+        assert!(
+            copies.len() >= 2,
+            "在 release.yml 里只找到 {} 处「拷 `{artifact}`」（09-12 实测 3：\n\
+             `build-windows` 两处（载体③ ＋ 载体①）· `build-linux` 一处（只有载体③））—— \n\
+             抽取器坏了或那几步被改名/挪走，**本条此刻是无效的**。",
+            copies.len()
+        );
+        // 词表如实登记：它是「已经栽过 + 想得到」的那几个，不是全称。
+        const BUILD_VERBS: [&str; 3] = ["cargo build", "cargo zigbuild", "cargo run"];
+        // 🔴 `rustc` 要分「编」与「问」—— **这一格是本条第一次跑就被它自己逮到的**：
+        //    `Stage native daemon for self-extract` 头一行是 `rustc -vV | …` 取 target triple，
+        //    那是一次**查询**，一个字节都没编。把它读成构建就是一条自信的假报警
+        //    （`C17`：诊断不许比它证得出的说得更死）。
+        const RUSTC_QUERIES: [&str; 4] =
+            ["rustc -vV", "rustc -V", "rustc --version", "rustc --print"];
+        let is_build_action = |t: &str| -> bool {
+            if t.starts_with('#') {
+                return false;
+            }
+            if BUILD_VERBS.iter().any(|v| t.contains(v)) {
+                return true;
+            }
+            t.contains("rustc ") && !RUSTC_QUERIES.iter().any(|q| t.contains(q))
+        };
+        let mut jobs_with_a_pair = 0usize;
+        for job in {
+            let mut js: Vec<&str> = copies.iter().map(|i| job_at(*i)).collect();
+            js.dedup();
+            js
+        } {
+            let mine: Vec<usize> = copies
+                .iter()
+                .copied()
+                .filter(|i| job_at(*i) == job)
+                .collect();
+            let (a, b) = (mine[0], *mine.last().expect("非空"));
+            if b <= a + 1 {
+                continue; // 这个 job 只拷一次（或两次挨着）⇒ 没有「之间」可查
+            }
+            jobs_with_a_pair += 1;
+            let offenders: Vec<String> = lines[a + 1..b]
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| is_build_action(l.trim_start()))
+                .map(|(k, l)| format!("release.yml:{} 逐字 `{}`", a + 2 + k, l.trim()))
+                .collect();
+            assert!(
+                offenders.is_empty(),
+                "job `{job}` 里，那个原生产物被拷去两个载体，而**两次拷贝之间出现了构建动作**：\n  {}\n\
+                 ⇒ 它们**不再是同一份字节**，而两份字节会带着**同一个 `BUILD_ID`** 出货\n\
+                 （身份戳取自源码常量）⇒ 产品分不出它们，`K33`「后端只有一个」在身份这一维当场破。\n\
+                 真要在中间重编，得先答一个问题：**那两份字节凭什么还叫同一个身份？**\n\
+                 （`DECISIONS.md#R26` 裁定一 · 本条的射程与边界见头注 —— 载体②不在里面，\n\
+                  它是另一个 job / musl，结构上不可能同字节，那是 `K25` 裁的形状。）",
+                offenders.join("\n  ")
+            );
+        }
+        // 反空真：至少有一个 job 真的拷了两次，否则上面整段是空转的。
+        assert!(
+            jobs_with_a_pair >= 1,
+            "没有任何一个 job 把那个原生产物拷去两个载体 —— 上面那段检查此刻**一格都没跑**。\n\
+             （09-12 实测 `build-windows` 是那一个：`Stage sidecar for externalBin` → 载体③、\n\
+              `Stage native daemon for self-extract` → 载体①。）"
         );
     }
 
@@ -3779,7 +4334,7 @@ mod tests {
     #[ignore]
     fn e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed() {
         let bin = std::env::var("CCM_E2E_DAEMON").expect("要 CCM_E2E_DAEMON");
-        let shim = crate::local_daemon::demand_tmux_shim("本条起真 daemon");
+        let shim = crate::local_daemon::tests::demand_tmux_shim("本条起真 daemon");
         let claude = std::env::var("CCM_E2E_CLAUDE_DIR").expect("要 CCM_E2E_CLAUDE_DIR");
         let events: Arc<Mutex<Vec<SuperviseEvent>>> = Arc::new(Mutex::new(Vec::new()));
         let ev = events.clone();
@@ -3909,7 +4464,14 @@ mod tests {
     // F16：三处失败模式（都是 F05a 我自己写的代码，F12 的 `/full-audit` 逐行核出来的）
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// [`start_or_extract`] 的**生产段函数体**。
+    /// [`resolve_or_extract`] 的**生产段函数体** —— 那份**共用的**「找那个二进制」。
+    ///
+    /// 〔`K-R43` 改：原来切的是 [`start_or_extract`]（当时那三问就住在它体内）。
+    ///  今天三问住共用那份，`start_or_extract` 体内只剩「调它 + 监护」⇒ 靶跟着搬。
+    ///  **切法一个字没动**，动的只是切哪个函数。
+    ///  搬完之后这把尺子买到的比原来多一格：`local_daemon.rs` 那条路今天也走这一份，
+    ///  ⇒ 同一条断言同时盖住**两个**生产落点（「都走了它」那半由
+    ///  `local_daemon::the_two_resolution_paths_still_agree_on_the_order` 钉）。〕
     ///
     /// ⚠ 切法照下面那个 `wait_section()`（`find` 一个锚点再往后取），**但多一个右界**：
     /// `wait_section` 取到文件尾，那对「顺序」类断言没关系，对「体内有没有某个名字」
@@ -3923,11 +4485,11 @@ mod tests {
     /// 按 `#[te st]` 行切块、并把**含 `include_st r!(` 的块当守卫整块跳过**。
     /// 一挪过去，`the_local_daemon_really_registers_an_inbound_client` 会**静默掉出那条判据的人群**
     /// （实测：那条判据的地板当场红，报文逐字「它起真 daemon 的来历不见了」）。
-    fn start_or_extract_body() -> String {
+    fn shared_resolution_body() -> String {
         let prod = guard_core::production_code(include_str!("local_backend.rs"));
         let at = prod
-            .find("pub fn start_or_extract(")
-            .expect("找不到 `start_or_extract` —— 改名了就把引它的判据一起改");
+            .find("pub fn resolve_or_extract(")
+            .expect("找不到 `resolve_or_extract` —— 改名了就把引它的判据一起改");
         let rest = &prod[at..];
         let end = rest.find("\n}\n").map(|i| i + 2).unwrap_or(rest.len());
         // ⚠ **整行 `//` 注释剥掉再交出去**：调用方用 `find_pinned`（恰好一处），

@@ -9,11 +9,12 @@
  *  - 任一已触发维度的 `cliFlags(ctx)` 返回 `null` → 强制走兜底。F05 前 `account` 维度恒如此
  *    （调用方只有 `configDir` 没有账号「名字」）；F05 后账号名已线通，`cliFlags` 对 `account`/
  *    `base` 两态都吐实际 flag、不再返回 `null`——这条规则本身留给未来任何"半成品"维度当安全网。
- *  - `container.mode === "send-into"` → 强制走兜底。**这条是防 #76 复发的关键**：`shared/ccm`
+ *  - `container.mode === "send-into"` → 强制走兜底。**这条是防 #76 复发的关键**：`ccm`
  *    的 `--tmux` 只有一种容器形态，没有「就地复用已存在 idle tmux、不新建」
  *    的模式；硬套会让 #76（claude 已退出但 tmux 还在时短路跳过 send-keys、把用户 attach 进空
  *    shell）以 CLI 路径的新形式复发。**诚实放弃，不近似**。
- *    **`attach-only` 不在此列**——`ccm attach <名>` 与 `shared/ccm` 源码核对，就是
+ *    **`attach-only` 不在此列**——`ccm attach <名>` 与 `ccm` 源码核对（今天住
+ *    `remote-daemon-proto/src/control/ccm/`），就是
  *    `exec tmux attach -t "=$名:"`，与兜底渲染器的 `SESSION_BACKEND.attach()` 逐字同构，没有
  *    #76 那种「建还是接」的歧义，可以安全走 CLI 渲染器（F03 Phase D
  *    架构审计发现：早期实现把这两种模式并入同一把闸门，导致 `renderCli` 的 attach 分支和
@@ -36,6 +37,11 @@ import { LAUNCH_DIMENSIONS } from "./launch-dimensions.ts";
 import { sanitizeRemoteLauncher } from "./shell-quote.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import type { CcmProbeResult } from "./ccm-probe.ts";
+// 🔴 `K-R95`（`K28`）：八句降级理由里的**六句**改从后端取。生成物的源是
+// `src-tauri/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`。
+// 剩下两句（两条「维度 …」闸门）与下面那份能力清单为什么还留在本文件里，
+// 逐字写在它们各自那一处上方 —— 三处都由 Rust 侧判据**逐字节钉在后端那一份上**。
+import { CLI_REFUSAL_REASON } from "./generated/launch-render-facts";
 
 /** shell-safe 的 argv token quoting——**不做 denylist**（与 `sanitizeRemoteLauncher` 的语义
  *  刻意不同）：`ccm` 内部 `exec "${argv[@]}"` 是数组 exec，字符串里的 `;` 不构成注入面，
@@ -44,16 +50,31 @@ function argv(token: string): string {
   return /^[A-Za-z0-9_@%+=:,./-]+$/.test(token) ? token : `'${token.replace(/'/g, `'\\''`)}'`;
 }
 
-/** CLI 语法覆盖面（对齐 `shared/ccm` 的 `--ccm-probe` 输出 `capabilities=`）——
- *  **只放"与具体维度无关的动作/容器语法"**。
+/** CLI 语法覆盖面 —— **每次调用都无条件要求**的能力。**只放"与具体维度无关的动作/容器语法"**。
  *
- *  R04② 后 `account` 与 `model` **已从这里移出**，改由各自维度的 `requiredCaps` 声明
- *  （F05 曾把 `account` 加进本列表，那条注释已随之删除——留着会与第 40 行的实际内容矛盾）。
- *  **这里仍是"每次调用都无条件要求"**，所以只适合放动作/容器这类按 R12 属一等字段、
- *  不进维度注册表的东西。**残留的双机制是有边界的、不是没解决**（R04 Phase D 审计建议 7）：
+ *  R04② 后 `account` 与 `model` **已从这里移出**，改由各自维度的 `requiredCaps` 声明。
+ *  **残留的双机制是有边界的、不是没解决**（R04 Phase D 审计建议 7）：
  *  `new`/`resume`/`attach` 三个动作能力今天被**全部**要求，而一次调用只用其中一个——
- *  这是已知的过度收紧，代价是"装了只支持部分动作的 ccm"会整体降级；
- *  因 `shared/ccm` 从 F02 首版就三个动作齐全，实际不可达，故不额外收窄。 */
+ *  已知的过度收紧，代价是"装了只支持部分动作的 ccm"会整体降级；`ccm` 三个动作齐全，实际不可达。
+ *
+ *  # 🔴 `K-R95`：它**是第二份**，而本件**没能把它删掉** —— 这是登记在案的边界，不是漏了
+ *
+ *  后端那份是 `ccm_invocation::CLI_REQUIRED_CAPS`（它的头注写着「与 TS
+ *  `launch-render-cli.ts::CLI_REQUIRED_CAPS` **逐项同序**」）。本件生成的
+ *  `src/generated/launch-render-facts.ts` 里已经有这份清单了，改成读它是一行的事 ——
+ *  **卡住的不是设计，是两条判据**，而两个文件都不在本件写区：
+ *
+ *  - `e2e/ccm-contract-parity.sh:291` 逐字
+ *    `sed -n 's/^const CLI_REQUIRED_CAPS = \[\(.*\)\] as const;$/\1/p' src/launch-render-cli.ts`
+ *    —— 它**按文件路径 ＋ 单行数组字面量**抽这份清单，去比真 `ccm --ccm-probe` 的
+ *    `capabilities=`（还配了「抽到 ≥5 项」的抽取器自检）。搬走 ⇒ 抽到 0 项 ⇒ 那条当场红。
+ *  - `src/launch-render-cli.vitest.ts` 同族（按措辞 grep 本文件源码）。
+ *
+ *  ⚠ 那正是 `KR95D1` 点名的失效方向（**判写法**）—— 而它今天在承重。
+ *  ⇒ 本件的处置：**清单留在这里，但不许它自己漂**。
+ *  `launch_cli_parity.rs::the_capability_list_the_frontend_still_spells_out_is_pinned_to_the_backend`
+ *  拿后端那一份**逐字节**钉着它（含顺序）：改 Rust 不改这里 ⇒ cargo 红。
+ *  **它此前没有任何判据，只有两句互指的注释。** */
 const CLI_REQUIRED_CAPS = ["new", "resume", "attach", "tmux", "cwd", "launcher", "ccm-sid"] as const;
 
 /** R04①：把"能不能渲染"与"渲染出什么"合成一次遍历、一个返回值。
@@ -81,23 +102,45 @@ export function tryRenderCli(
   probe: CcmProbeResult,
   ccmPath = "ccm",
 ): CliRenderResult {
-  if (!probe.installed) return { ok: false, reason: "远端未装 ccm" };
+  // `K-R53` `KR53D3`：**肯定式**的问法 —— 只有真探到「装了」才走这条渲染器。
+  // 先前写的是 `!probe.installed`，那把「没探出来」和「它真的没装」读成了同一件事，
+  // 而拒绝理由也就跟着撒谎（一次 ssh 抖动被说成「远端未装 ccm」）。
+  // 三态的理由与代价住 `ccm-probe.ts` 的头注。
+  if (probe.state !== "installed") {
+    return {
+      ok: false,
+      reason:
+        probe.state === "not-installed"
+          ? CLI_REFUSAL_REASON.notInstalled
+          : // 🔴 `K-R95` `KR95D3`：这一句的措辞现在住后端（生成物那一份）。
+            // ⚠ **线上还说不出它**：`CliRenderRequest.caps: Option<Vec<String>>` 只有两态，
+            // 「没探出来」一过线就被压成「没装」，于是走**后端渲染**那条路（生产主路，
+            // `remote-launch-run.ts::renderCliViaBackend`）的用户读到的仍是「远端未装 ccm」。
+            // 补那一态要改 `src/launch-cli-wire.ts` ＋ `remote-launch-run.ts`，
+            // 两个文件都不在 `K-R95` 写区 ⇒ 交回里作 `〔R95b〕` 报了。缺的是线，不是措辞。
+            CLI_REFUSAL_REASON.probeUnknown.replace("{error}", probe.error),
+    };
+  }
   // local 恒不走这条渲染器（F06 落地）：不是"未实现"，是设计上的分工——本地路径有自己独立的
   // Rust 侧 renderer（history.rs::build_local_ps_command），因为它要问的问题（本机是否有 `cc`
   // PowerShell 函数）只能在目标机器上现场探测，TS 无法预先渲染好交给它。
-  if (plan.transport.kind !== "ssh") return { ok: false, reason: "本地路径不走 CLI 渲染器" };
+  if (plan.transport.kind !== "ssh") return { ok: false, reason: CLI_REFUSAL_REASON.notSsh };
   for (const c of CLI_REQUIRED_CAPS) {
-    if (!probe.capabilities.has(c)) return { ok: false, reason: `远端 ccm 缺能力 ${c}` };
+    if (!probe.capabilities.has(c)) {
+      return { ok: false, reason: CLI_REFUSAL_REASON.missingCap.replace("{cap}", c) };
+    }
   }
   // #76 防线：仅挡 idle-tmux 就地复用（`attach-only` 与 `create` 都安全，见文件头注）。
   if (plan.container.kind === "tmux" && plan.container.mode === "send-into") {
-    return { ok: false, reason: "send-into（idle-tmux 就地复用）无 CLI 等价语法，诚实降级" };
+    return { ok: false, reason: CLI_REFUSAL_REASON.sendIntoHasNoCliForm };
   }
 
   const tokens: string[] = [ccmPath];
 
   if (plan.action.kind === "attach") {
-    if (plan.container.kind !== "tmux") return { ok: false, reason: "attach 必须是 tmux 容器" };
+    if (plan.container.kind !== "tmux") {
+      return { ok: false, reason: CLI_REFUSAL_REASON.attachNeedsTmux };
+    }
     tokens.push("attach", plan.container.name);
     return { ok: true, cmd: tokens.map(argv).join(" ") }; // attach 分支不读其余修饰
   }
@@ -112,12 +155,19 @@ export function tryRenderCli(
     // 只在真触发时才要求这个能力"是结构保证，不再需要渲染器里给 model 开特判（F08 那条已删）。
     for (const cap of dim.requiredCaps?.(ctx) ?? []) {
       if (!probe.capabilities.has(cap)) {
+        // 🔴 `K-R95` 搬不动的两句之一 —— **不是漏了**。`src/launch-render-cli.vitest.ts`
+        // 那两条判据是**按措辞 grep 本文件源码**钉的（「各恰好一处」+ 必须是
+        // `` return { ok: false, reason: `…` } `` 这个模板形），而那个文件不在本件写区。
+        // ⇒ 措辞留在这里，但**不许它自己漂**：`launch_cli_parity.rs` 的
+        // `the_two_reasons_the_frontend_still_spells_out_are_pinned_to_the_backend`
+        // 拿后端那份逐字节钉着它（改 Rust 措辞不改这里 ⇒ cargo 红）。
         return { ok: false, reason: `维度 ${dim.id} 需要远端 ccm 能力 ${cap}，但它不支持` };
       }
     }
     const flags = dim.cliFlags?.(ctx);
     // R04① 的要害：`null` 在这里就是**放弃**，不是"跳过这个维度继续渲染"。
     if (flags === null) {
+      // 🔴 `K-R95` 搬不动的两句之二 —— 理由同上一处，同样由 Rust 那条判据钉着。
       return { ok: false, reason: `维度 ${dim.id} 无法用 CLI 语法表达（cliFlags 返回 null）` };
     }
     if (flags) tokens.push(...flags);

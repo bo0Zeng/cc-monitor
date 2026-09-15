@@ -15,7 +15,10 @@ totalHits: number,
  */
 sessionCount: number, 
 /**
- * 是否因 limit / 每会话上限截断了返回
+ * 🔴 **整份结果被全局 `limit` 砍过** —— 本地与**每一台远端**任意一处发生就是 true
+ * （`K-R100` 之前这里只装本地那一半，远端截断在界面上一个字不说）。
+ * ⚠ **不含**「单会话超 `PER_SESSION_CAP` 条」：那是「这个会话话多」，不是结果被砍，
+ * 由 `SessionHits::hits_truncated` 与卡片上那行「还有 N 条」分别承担。
  */
 truncated: boolean, 
 /**

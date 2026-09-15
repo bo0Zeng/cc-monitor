@@ -35,6 +35,9 @@
 //! 1. `bind.rs::run_heartbeat` = `loop { sleep(10s); cleanup_dead(); }` —— 无限、周期、无上限。
 //! 2. ★★ `ssh_source.rs` 的 **daemonless 数据轮询**（`DAEMONLESS_POLL_INTERVAL = 2s`）——
 //!    **它与定框 C7（没有 daemonless）和 C8（不许轮询）直接冲突**，而且是本工作区的正题。
+//!    〔`K-R59` 09-11：**这一条已经退役** —— 定框 `K35` 把那一档整个取消。本段记的是
+//!     「它一上岗抓到了什么」，不是今天的清单；今天的清单以 `REGISTERED` 与
+//!     `every_ticker_names_its_event_source_and_owner` 里那个 `tickers` 数为准。〕
 //!
 //! **两个都此前完全没有被任何账本记过**：`polling_registry` 按设计不管 Rust 侧，
 //! `no_timer_guard` 只管 daemon crate ⇒ 它们正落在「两个护栏各自划了范围、中间那块没人管」里。
@@ -120,6 +123,27 @@ mod tests {
              （而它也顺手把 `EADDRINUSE` 挪到宿主手里）。",
         ),
         (
+            "src/account_usage.rs",
+            "wait-for-condition",
+            1,
+            "★★ 🔴 **`K-R104`（09-13）：这两处是从 `SHELL_WAKES` 那张表搬过来的** —— \
+             用量探针的画面稳定轮询（`settle`）。搬之前它是 monitor 在 Rust 里**拼出来的一段 \
+             shell**（`while [ $i -lt N ]; do sleep 0.5; tmux capture-pane …`，跑在远端登录 shell 里）；\
+             编排搬上 daemon 帧面之后，同一件事变成本进程的 `tokio::time::sleep` ＋ 一条 \
+             `capture-pane` 帧命令。**周期唤醒这件事一点没少，它换了住址与形态** —— \
+             所以它从那张表出去、进这张表，两张表各红一次。\
+             **处数 1，而等待有两段**：`settle` 是同一个函数、被调两次，本表按 `wake_hits` 的\
+             **源码处数**数（那一处 `sleep` 语句被两段共用）。⚠ 这两个数不是一回事，别读混。\
+             上限：startup 12 轮 / render 20 轮 × 0.5s（6s / 10s），装在 `EXEC_TIMEOUT_SECS` = 25s 里，\
+             由 `account_usage::tests::time_budget_ordering_holds` 钉住。\
+             ⚠ **为什么非轮询不可**：tmux **没有**「pane 内容变化」这种 hook —— \
+             `rust_timer_registry` 的 `SHELL_WAKES` 那两行退役前逐字记着同一句，**事件源今天仍不存在**。\
+             🔴 **为什么它必须留在调用方、不许收回 daemon**：`K37`〔用 09-11〕逐字\
+             「后端只给机制，不给偏好」，而 `K-R101` 已按它判定「等画面稳定多久算稳」是**偏好** \
+             ⇒ 出去。daemon 侧 `no_timer_guard` 零容忍地钉着这一格。\
+             **退役归**：哪天 tmux（或 claude）给得出「这一屏画完了」的事件源 —— **今天没有，未排期**。",
+        ),
+        (
             "src/search.rs",
             "startup-delay",
             1,
@@ -134,29 +158,15 @@ mod tests {
              **避免忙等**用的。本地已 bound 的 listener 没有「永久失败」态，故不 break。\
              它等的条件是「下一个连接」，由 `accept()` 本身阻塞驱动，sleep 只在错误分支。",
         ),
-        (
-            "src/ssh_source.rs",
-            "ticker",
-            1,
-            "★★ **本表抓到的第二个真节拍器，而且是关键的那个**：\
-             `DAEMONLESS_POLL_INTERVAL = 2s` 的 `loop { …; sleep(2s) }` —— \
-             **daemonless 回落路径的数据轮询**（没有 daemon 时靠自己每 2s 读一遍）。\
-             ⚠ 它与**定框 C7 直接冲突**（「没有 daemonless —— 使用软件就要有后端」，\
-             回落路径是**过渡期**的、不是永久形态），也与 **C8**（不许轮询）冲突。\
-             **事件源**：daemon 在场时那条路本来就是事件驱动的（帧）—— 这 2s 补的正是\
-             「那台主机没有 daemon」那个过渡态。\
-             ⚠⚠ **F10 摸底订正了 F09 在这里写的退役归属**（原写「归 F05a+F05b，F10 收尾」，\
-             那是**错的**）：实测 `cfg.daemonless` 是 **每台远端主机的一个用户配置开关**\
-             （`remote-config.ts` 的 `daemonless: boolean`，默认 false —— 用户主动勾「这台不装 daemon」），\
-             与「本机后端进程」和「本机读面」**都无关**。\
-             ⇒ 真正的退役条件是「**远端自动部署可靠到可以删掉这个开关**」\
-             （`embedded_daemons` + SFTP 自动部署已存在），而那是一个**产品决策**\
-             （有些主机可能装不上 daemon）。**今天无人认领，如实记未排期。**\
-             ⚠ 记这一条的教训：F09 自己那条判据要求 `ticker` 必须写 owner，\
-             而我写了一个**似是而非**的 —— 正是同一条登记里写着「不编假 owner」的反面。\
-             ⚠ **它此前从未被任何账本记过** —— `polling_registry` 按设计不管 Rust 侧，\
-             `no_timer_guard` 只管 daemon crate。两个护栏各自划了范围，它就落在中间那块。",
-        ),
+        // ★★ 🔴 `K-R59`（09-11）：**这里原来是本表抓到的第二个真节拍器，那一条今天退役了。**
+        //    它是 `src/ssh_source.rs` 的 `DAEMONLESS_POLL_INTERVAL = 2s`（`loop { …; sleep(2s) }`），
+        //    登记里逐字写着它「与**定框 C7 直接冲突**」「也与 **C8**（不许轮询）冲突」，
+        //    而退役条件当时写的是「**远端自动部署可靠到可以删掉这个开关**……今天无人认领，
+        //    如实记未排期」。
+        //    ⇒ 09-11 用户裁 `K35`（「不要有 daemonless。没有没有后端的情况。」）—— **认领人来了，
+        //      而且不是走「自动部署可靠了」那条路，是直接取消那一档。**
+        //    ★ 这一条与 `watcher.rs` 那条（F11）同形：**退役的验收证据就是本表先红在
+        //      「少一处 = 退役了」上，删掉登记才绿。** 不是靠人说「我改好了」。
         (
             "src/ssh_source.rs",
             "throttle",
@@ -424,11 +434,11 @@ mod tests {
         }
         // 抽取器自检：一条 ticker 都没认出来时上面的断言全空转。
         assert_eq!(
-            tickers, 3,
-            "登记表里的 ticker 条数变了（实测 3 条：`bind.rs::run_heartbeat` 10s · \
-             `ssh_source.rs` 的 daemonless 2s · **`session_map.rs` 的 2s**）。\n\
+            tickers, 2,
+            "登记表里的 ticker 条数变了（实测 2 条：`bind.rs::run_heartbeat` 10s · \
+             **`session_map.rs` 的 2s**）。\n\
              多一条 ⇒ 新增了真节拍器，必须单独论证；少一条 ⇒ 退役了，把账拧下来。\n\
-             ⚠ **这个数最近走过 2 → 4 → 3，三次都不是回归**，值得一并读懂：\n\
+             ⚠ **这个数最近走过 2 → 4 → 3 → 2，四次都不是回归**，值得一并读懂：\n\
              · 2 → 4（08-10 devbench **F07**）：把 `recv_timeout` 收进针时 `watcher.rs` 的 100ms \
              与 `session_map.rs` 的 2s **第一次上账**。它们在那之前一直在跑，只是针看不见它们 \
              ⇒ **可见性变了，不是新增了轮询**。\n\
@@ -436,6 +446,10 @@ mod tests {
              （文件事件 + rescan 请求）合成一个 `WatchEvent` enum，主循环改无超时 `recv()`。\
              ★ **本条判据就是那次退役的验收证据**：改完代码后它先红在「少一处 = 退役了」上，\
              删掉登记才绿 —— 退役不是靠人说「我改好了」。\n\
+             · 3 → 2（09-11 `K-R59`）：`ssh_source.rs` 的 **daemonless 2s 真退役了** —— \
+             用户裁 `K35`「不要有 daemonless。没有没有后端的情况。」，那一整段轮询读随之删除。\
+             ⚠ **别把它读成「自动部署终于可靠了」**（那是这条登记当年自己写的退役条件）：\
+             实际走的是另一条路 —— **那一档整个取消**。\n\
              · 剩下的 `session_map.rs` 那条退役归 **F12**，被 `unified-backend` 的 **U4b** 挡着\
              （daemon 侧 Windows 判活是诚实空壳，而本条治的 bug 恰恰是 Windows 场景）。"
         );
@@ -550,24 +564,30 @@ mod tests {
     ///
     /// # ⚠ 模式面为什么只收「只可能是 shell」的形态
     ///
-    /// 摸底时我先用宽模式量了一遍，`for i in` 当场误命中 `search.rs` 的 **Rust** `for i in 0..n`。
+    /// 摸底时我先用宽模式量了一遍，`for i in` 当场误命中 `find_ci` 的 **Rust** `for i in 0..n`
+    /// （当时住 `search.rs`；`K-R100` 09-13 起住 `crates/search-core/src/lib.rs`）。
     /// ⇒ 模式面只留 shell 独有的写法（见 [`shell_wake_hits`]）。**先量后写**，不然扫描面
     /// 要么画小（漏）要么画大（噪音），而两种都会让这张表失去意义。
     const SHELL_WAKES: &[(&str, &str, &str, usize, &str)] = &[
-        (
-            "src/account_usage.rs",
-            "画面稳定轮询（quiescence_wait）",
-            "wait-for-condition",
-            2,
-            "抓屏内容连续 N 次不变即 break，**有上限**（startup 12 次 / render 20 次 × 0.5s ⇒ 6s / 10s）。             ⚠ **事件源与 F02 已登记的那条同根**：tmux **没有** 「pane 内容变化」这种 hook，             能想到的路只有轮询 `capture-pane` 或让 claude 自己上报 ⇒ **今天无人认领，如实记未排期**。             ⚠ 它跑在**远端主机**上（由 SSH 带过去的 shell 串执行），不是 monitor 进程自己醒 ——             但那不改变「它是一处周期唤醒」这件事，所以照样登记。             ⚠ 它本地已有 5 条判据钉着**形状**（两次 send-keys 之间必须有稳定轮询 · `$same -ge N` ·              上限容得下两倍静止时长 · 改 MS 常量 sleep 字面量必须跟着变）——              **那些钉的是「轮询长得对不对」，不是「它作为一处周期唤醒被登记了」**。两件事。",
-        ),
-        (
-            "src/account_usage.rs",
-            "自毁看门狗（setsid sleep N; kill-session）",
-            "startup-delay",
-            1,
-            "一次性延时后强杀探针会话，是「万一跑不完」的保险丝（30s）。             **一次性、不循环** ⇒ 归 `startup-delay` 那一类（延时一次就结束）。             ⚠ 它刻意用 `setsid` 脱离本次 SSH 通道 ⇒ **通道断了它照样会清场**，那是它存在的理由。             退役条件：探针改成由 daemon 托管（届时进程生命周期由 daemon 的 pidfd 管）⇒ **未排期**。",
-        ),
+        // ★★ 🔴 `K-R104`（09-13）：**本表今天是空的，而空是它的交付，不是它坏了。**
+        //
+        // 它原来有两行，都在 `src/account_usage.rs`：
+        // ① 画面稳定轮询（那个渲染函数拼的 `while [ $i -lt N ]; do sleep 0.5;
+        //    tmux capture-pane …`，2 处）· ② 自毁看门狗（`setsid sh -c 'sleep 30;
+        //    tmux kill-session …'`，1 处）。两行的「退役条件」当时逐字写着
+        //    **「探针改成由 daemon 托管」⇒ 未排期**。
+        // ⇒ `K-R104` 把整条编排搬上 daemon 帧面：轮询那一半变成 monitor Rust 里的
+        //    `tokio::time::sleep`（**归 `REGISTERED`**，不再是 shell 形态），
+        //    看门狗那一半整个搬进 daemon（`control/oneshot_session.rs` 的外部进程）。
+        //    **认领人来了。**
+        // ★ 与 `watcher.rs`（F11）· `ssh_source.rs` 的 daemonless（`K-R59`）同形：
+        //   **退役的验收证据就是本表先红在「少一处 = 退役了」上，删掉登记才绿。**
+        //   不是靠人说「我改好了」。
+        //
+        // ⚠ **表空了之后这一族由谁守**：下面 `every_shell_shaped_periodic_wake_is_registered`
+        //   翻成了**零命中守卫**（monitor Rust 生产段里一处 shell 形态的周期唤醒都不许有），
+        //   并带一条反向自检（合成样本必须被逮到）——
+        //   否则「表空 + 扫不到」与「扫描器坏了」在读数上一模一样。
     ];
 
     /// shell 形态的周期唤醒。**只收「只可能是 shell」的写法** —— 见 `SHELL_WAKES` 头注。
@@ -598,21 +618,25 @@ mod tests {
             "只扫到 {} 个 .rs —— 遍历坏了（与 `REGISTERED` 那条共用同一个遍历器）",
             files.len()
         );
-        // ★ **画大了会怎样**：摸底时 `for i in` 误命中了 `search.rs` 的 Rust `for i in 0..n`。
+        // ★ **画大了会怎样**：摸底时 `for i in` 误命中了 `find_ci` 里那个 Rust `for i in 0..n`。
         //   这条把那次教训钉住 —— 模式面不许收到 Rust 的循环写法。
-        let search = files
-            .iter()
-            .find(|(f, _)| f == "src/search.rs")
-            .map(|(_, raw)| production(raw))
-            .unwrap_or_default();
+        //
+        // ⚠ **标的搬家了，本条跟着搬**〔`K-R100` 09-13〕：那个循环原先住 `src/search.rs`，
+        //   收口后随 `find_ci` 搬进共享 crate `crates/search-core/src/lib.rs`
+        //   （`rust_files()` 只走 `src/`，够不着）。⇒ 直接按住址读，别让本条以
+        //   「`search.rs` 里那个循环不见了」的形态红 —— **报的方向是错的**，
+        //   它不见了不是因为有人删了它，是因为它搬走了。
+        let anchor = root().join("crates/search-core/src/lib.rs");
+        let search = production(&fs::read_to_string(&anchor).unwrap_or_default());
         assert!(
             search.contains(&format!("for i in 0{}n", "..")),
-            "`search.rs` 里那个 Rust `for i in 0..n` 不见了 —— 下面那条反向断言失去了标的"
+            "`crates/search-core/src/lib.rs` 里那个 Rust `for i in 0..n`（`find_ci`）不见了 \
+             —— 下面那条反向断言失去了标的"
         );
         assert_eq!(
             shell_wake_hits(&search),
             0,
-            "模式面把 `search.rs` 的 **Rust** 循环也收进来了 —— 那是摸底时踩过的那个错法\n\
+            "模式面把 `search-core` 的 **Rust** 循环也收进来了 —— 那是摸底时踩过的那个错法\n\
              （画大了 ⇒ 这张表被噪音填满 ⇒ 与画小了一样失去意义）"
         );
     }
@@ -623,6 +647,16 @@ mod tests {
     /// 「一组同类东西都必须满足 X」的判据，清单只能用来**表态**（F12 在另一个守卫脚下逮到过我）。
     #[test]
     fn every_shell_shaped_periodic_wake_is_registered() {
+        // ★ 反向自检先跑（`K-R104`）：表空了之后，「扫不到」必须与「扫描器坏了」分得开。
+        //   合成一条 shell 轮询喂给同一把尺子，它必须数出 ≥1。
+        let synthetic = format!(
+            "let s = format!(\"while {} $i -lt 3 ]; do {} 0.5; done\");",
+            "[", "sleep"
+        );
+        assert!(
+            shell_wake_hits(&synthetic) >= 1,
+            "尺子认不出一条摆在面前的 shell 轮询 —— 下面那格是零命中地绿"
+        );
         let mut want: Vec<(String, usize)> = Vec::new();
         for (f, _, _, n, _) in SHELL_WAKES {
             match want.iter_mut().find(|(k, _)| k == f) {
@@ -653,10 +687,11 @@ mod tests {
     /// ★ shell 那张表也守同一条类别纪律；且 `ticker` 必须写明事件源与退役归属。
     #[test]
     fn every_shell_wake_names_its_class_and_who_retires_it() {
-        assert!(
-            !SHELL_WAKES.is_empty(),
-            "登记表空了 —— 上面那条会零命中地绿"
-        );
+        // 🔴 `K-R104`：本表**今天就是空的**（那两行随编排搬进 daemon 而退役，
+        //    理由逐条写在表里）。⇒ 这里不再断「非空」——
+        //    「上面那条会不会零命中地绿」由它自己那条**反向自检**接住（合成样本必须被逮到），
+        //    那比「表里得有东西」强：表非空也可能扫描器早就坏了。
+        //    ⚠ 哪天又有人往这张表里加行，下面这个循环自动盖到它。
         for (f, form, kind, n, why) in SHELL_WAKES {
             assert!(
                 matches!(

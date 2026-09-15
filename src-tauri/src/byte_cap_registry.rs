@@ -13,6 +13,8 @@
 //!
 //! 台账漏掉的八处里，`ssh_source.rs` 自己就还有三处（`EXEC_CAPTURE_MAX_BYTES` /
 //! `DAEMONLESS_READ_CAP` / `DAEMONLESS_DISCOVER_CAP`）。
+//! 〔`K-R59` 09-11：后两处**已退役**（`daemonless` 那一整段随定框 `K35` 删掉）。
+//!  上面那几个数是**那一刻的快照**，刻意不改 —— 它们记的是「谁数出了几处」这段账。〕
 //! ⇒ **E1「筛子不是免检章」这一轮兑现在计数上**：筛过一次的数字仍然可能是错的。
 //!
 //! # 账本 S3 的「最终形态」写错了，本轮改形
@@ -50,7 +52,13 @@ mod tests {
         "硬报错",
         "截断+说清",
         "拒收+回错",
-        "分轮续读",
+        // 🔴 `K-R59`（09-11）：这里原来还有第四种 **「分轮续读」** —— 它的**唯一**用户是
+        //    远端会话流那一段里那条 8 MiB 的「单文件单轮读满即停、下轮续读」上限
+        //    〔散文墓碑〕它当年叫 `DAEMONLESS_READ_CAP`，与 `DAEMONLESS_DISCOVER_CAP` 同批。
+        //    那一整段随定框 `K35` 删除 ⇒ 这一项当场变成「没人用的名字」，
+        //    而本文件那条判据逐字要求「登记表里每一种都得真有人用……别留一个谁都能往里塞的口子」
+        //    ⇒ **一起摘掉，不是顺手，是被那条判据逼下来的**（它先红，摘了才绿）。
+        //    ⚠ 真有人重新做「读一大块、分轮续」的形状，请**回来重新论证**再加，别照抄这段墓碑。
         // ⚠ 第五种是本轮**论证后**加的，不是顺手加的：搜索索引的字符封顶截掉的是
         // **可搜性**，不是数据 —— 原始 jsonl 一个字节没动，只是超过封顶的那段搜不到。
         // 它与「静默截断」的分界就在这里：**有没有丢掉用户的东西**。
@@ -91,6 +99,21 @@ mod tests {
         (
             "CHANNEL_CAPACITY",
             "**条数**不是体量（mpsc 通道能排多少帧）。它的溢出语义由 `Overflow` 帧管，见 F03。",
+        ),
+        (
+            "LIMIT_MAX",
+            "〔`K-R100` 09-13〕**条数**不是体量：`search-core` 里 `--limit` / IPC `limit`              能取的最大值 = 一次搜索最多构造多少条 **snippet**，不是任何字节量。             它「超了怎么办」有答案、但不在本表的语义里 —— `clamp_limit` 直接把它夹住，             而被夹掉的那部分由 `SnippetBudget::starved()` ⇒ `SessionHits::hits_truncated`              ⇒ `SearchResponse::truncated` 一路说出来（那正是 `KR100D3` 治的东西）。",
+        ),
+        (
+            "BUILD_STAMP_LEN",
+            "🔴 〔`K-R70` 09-12〕**一段定长数据的长度，不是任何东西的上限**：它逐字等于\
+             `BUILD_STAMP_OPEN.len() + BUILD_ID.len() + BUILD_STAMP_CLOSE.len()`，\
+             是 `CC_MONITOR_BUILD_STAMP` 那个 `static [u8; N]` 的 N。\
+             它**没有「超了怎么办」这一格** —— 编译期算出来多少就是多少，\
+             `BUILD_ID` 长一个字符它跟着长一个字符。\
+             ⚠ 它之所以必须是**定长数组**而不是 `&str`：`#[used] static [u8; N]` 有地址、\
+             进 `.rodata`、字节按定义连续，编译器拆不成立即数 —— 那正是「拿到一份二进制\
+             扫得出它是谁」这条性质的支点（理由全文住 daemon `main.rs` 的 `build_stamp`）。",
         ),
         // ── 〔audit-0805 08-06〕默认拒绝上线后，把「名字没关键词的尺寸类常量」逐个判过。
         // **七个全都不是字节上限** —— 也就是说旧的名字关键词过滤今天恰好完整；
@@ -228,20 +251,11 @@ mod tests {
             "一次 exec 的 stdout/stderr 各自收集量",
             "截断+说清",
         ),
-        (
-            "src-tauri/src/ssh_source.rs",
-            "DAEMONLESS_READ_CAP",
-            8 * 1024 * 1024,
-            "daemonless 单文件**单轮**读字节",
-            "分轮续读",
-        ),
-        (
-            "src-tauri/src/ssh_source.rs",
-            "DAEMONLESS_DISCOVER_CAP",
-            4 * 1024 * 1024,
-            "daemonless 发现命令的 stdout",
-            "截断+说清",
-        ),
+        // 🔴 `K-R59`（09-11，定框 `K35`）：这里原来有**两条** ——
+        //    `DAEMONLESS_READ_CAP`（8 MiB，单文件单轮读，超了分轮续读）与
+        //    `DAEMONLESS_DISCOVER_CAP`（4 MiB，`find` 发现命令的 stdout，超了截断+说清）。
+        //    它们随 `ssh_source.rs` 那一整段 `daemonless` 轮询读一起退役 ——
+        //    **不是「上限放宽了」，是被它们限住的那条读根本不存在了。**
         (
             "src-tauri/src/launch.rs",
             "MAX_REMOTE_CMD",
@@ -249,18 +263,22 @@ mod tests {
             "远端命令串长度（字节）",
             "拒收+回错",
         ),
+        // 🔴 `K-R100`：这两条**原本两侧各登记一份**（`src-tauri/src/search.rs` 与
+        // `remote-daemon-proto/src/observe/search_query.rs`），靠下面「对 D」那条判据
+        // 钉住它们相等。收口之后它们只有一个家 ⇒ **「两侧漂开」这件事在结构上没了**，
+        // 那条对拍随之删掉（见 `the_cross_crate_twins_are_machine_checked_not_hand_copied`）。
         (
-            "src-tauri/src/search.rs",
+            "src-tauri/crates/search-core/src/lib.rs",
             "MAIN_CAP",
             20_000,
-            "单条 main 文本进索引的**字符**数",
+            "单条 main 文本进索引的**字符**数（monitor 与 daemon 同一份）",
             "索引截断（不丢数据）",
         ),
         (
-            "src-tauri/src/search.rs",
+            "src-tauri/crates/search-core/src/lib.rs",
             "TOOL_CAP",
             4_000,
-            "单条 tool 文本进索引的**字符**数",
+            "单条 tool 文本进索引的**字符**数（monitor 与 daemon 同一份）",
             "索引截断（不丢数据）",
         ),
         // ── 〔devbench F10b〕以下七条此前**全都不在本表的扫描面里**。
@@ -281,13 +299,11 @@ mod tests {
             "读远端 cc-bus 的两份登记表（`agents.tsv` + `spawned.tsv`）",
             "拒收+回错",
         ),
-        (
-            "src-tauri/src/cc_bus.rs",
-            "ONLINE_PROBE_CAP",
-            4096,
-            "查单个 agent 是否在线的输出（预期 ~7 字节）",
-            "拒收+回错",
-        ),
+        // 🔴 `K-R112`（09-13）：**cc-bus 查在线那条读上限删了，不是「忘了」。**
+        //    它是老那条按名字探在线的 shell 串（`tmux has-session`）的读上限，
+        //    而查在线整条改走 daemon 的 `bus-list` 帧之后**没有一条流要读** ——
+        //    帧应答是结构化的，上限由入方向通道自己那一层管。
+        //    ⇒ 常量不存在了，留着这一行就是**僵尸账**（本表自己那条反向锚点会当场逮住）。
         (
             "src-tauri/src/cc_bus.rs",
             "INBOX_READ_CAP",
@@ -389,20 +405,6 @@ mod tests {
             "硬报错",
         ),
         (
-            "remote-daemon-proto/src/observe/search_query.rs",
-            "MAIN_CAP",
-            20_000,
-            "daemon 侧同一封顶（注释逐字「对齐本地封顶」）",
-            "索引截断（不丢数据）",
-        ),
-        (
-            "remote-daemon-proto/src/observe/search_query.rs",
-            "TOOL_CAP",
-            4_000,
-            "daemon 侧同一封顶",
-            "索引截断（不丢数据）",
-        ),
-        (
             "remote-daemon-proto/src/observe/accounts_query.rs",
             "MAX_SESSION_FILE_BYTES",
             1024 * 1024,
@@ -450,6 +452,38 @@ mod tests {
             8388608,
             "tee 侧解码缓冲攒着的那截（SSE 半行 / chunked 还没成形的块长度行）",
             "丢弃+带身份报告",
+        ),
+        // ⚠〔`K-W2D` 09-10，接线那一拍〕**这一条是在还一笔明账，不是新加一个数。**
+        // 上一拍（09-04）那个纯判定层里本来就该有这个上限，而它写在那儿会被本表当场打红
+        // （那一拍的写区不含本文件）⇒ 当时改成了**入参**，代价逐字记在
+        // `sidecars/codepicture/fetch.rs::within_cap` 的头注里：「今天这条路上的上限**没有住址**」。
+        // 本拍写区含了 monitor 树，上限跟着**真正会去下载的那一层**落地，同轮登记在这里。
+        //
+        // ⚠ 它与 `HEAD_CAP` / `BODY_CAP` 那一族**不同族，别混**：那两条管的是中转替**别人**
+        // 搬的字节；这一条管的是 daemon **给自己拉一个可执行文件**。对端不是用户配的上游，
+        // 是我们自己发版挂上去的资产 —— 它挡的不是「大了一点」，是「对面换了个东西」
+        // （一个 HTML 错误页 / 一份 tar / 一次重定向到别的站）。
+        // ★ 超限那一支**一个字节都不落盘**（`Transport::Oversize` ⇒ `Face::Oversize`），
+        //   所以是「拒收+回错」而不是任何一种截断。
+        (
+            "remote-daemon-proto/src/sidecars/codepicture/acquire.rs",
+            "ASSET_BYTE_CAP",
+            64 * 1024 * 1024,
+            "按需拉取代码全景 sidecar 时，一趟 HTTP GET 收进内存的那一整份**响应体**",
+            "拒收+回错",
+        ),
+        // 🔴 **这一条是本轮自己的判据逼出来的，不是设计出来的** —— 值得单独记一笔：
+        // 头一版头与体**共用一个上限**，喂 100 字节上限 + 200 字节响应体，读回来的是
+        // `Got(42)`：头把体的额度吃掉 158 字节，剩下的 42 字节被当成一份完整的资产。
+        // 那正是本表 `ALLOWED_SEMANTICS` 刻意排除的「静默截断」，而它是**这一族在本仓的第 N 次**：
+        // 一个上限罩着两个量，超限那一刻分不出被截的是谁。
+        // ⇒ 两个量两个数。它与上面那条是**一对**，别单看其中一个。
+        (
+            "remote-daemon-proto/src/sidecars/codepicture/acquire.rs",
+            "RESPONSE_HEAD_BYTE_CAP",
+            8 * 1024,
+            "同一趟里那份 HTTP 响应的**头部**字节数（不是体）",
+            "拒收+回错",
         ),
     ];
 
@@ -510,7 +544,16 @@ mod tests {
     fn size_typed_consts() -> Vec<(String, String, Option<u64>)> {
         let root = repo_root();
         let mut out = Vec::new();
-        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+        // 🔴 `K-R100` 09-13 加第三条 `src-tauri/crates`：搜索的两条封顶（`MAIN_CAP` /
+        // `TOOL_CAP`）从两侧各一份收进了共享 crate `search-core`。**不加这一条**，
+        // 那两条上限会从本表的扫描面里静默消失 —— 表里还登记着、盘上再也扫不到，
+        // 而 `the_registered_numbers_still_match_the_source` 会以「算不出来」的形态红，
+        // 报的方向还是错的。
+        for sub in [
+            "src-tauri/src",
+            "remote-daemon-proto/src",
+            "src-tauri/crates",
+        ] {
             for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let body = guard_core::production_source(&raw);
                 let rel = f
@@ -601,7 +644,15 @@ mod tests {
     fn scan() -> Vec<(String, String, Option<u64>)> {
         let root = repo_root();
         let mut out = Vec::new();
-        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+        // 🔴 `K-R100` 09-13：`src-tauri/crates` 这一条与 `size_typed_consts()` 那边同源同理
+        // ——搜索的两条封顶已收进共享 crate `search-core`。
+        // ⚠ 上面 `size_typed_consts` 的头注说「两者共用同一份遍历」，**盘上不是**：
+        // 这里自己又走了一遍。⇒ **改扫描面要两处一起改**（本轮就是漏了这一处才红的）。
+        for sub in [
+            "src-tauri/src",
+            "remote-daemon-proto/src",
+            "src-tauri/crates",
+        ] {
             for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 // ★ 只扫**生产段**〔08-06〕：本条原来扫整份文件，于是**测试里的夹具常量**
                 // 也被当成生产上限（`common/fs.rs` 的顺序判据里那个 `const CAP` 当场被误报）。
@@ -756,18 +807,16 @@ mod tests {
              因为它们是同一个量。要刻意分开就把这条判据与那句注释**一起**改。"
         );
 
-        // 对 D：搜索索引封顶。daemon 侧注释逐字「**对齐本地封顶**」⇒ 钉相等。
-        for cap in ["MAIN_CAP", "TOOL_CAP"] {
-            let d1 = by("src-tauri/src/search.rs", cap);
-            let d2 = by("remote-daemon-proto/src/observe/search_query.rs", cap);
-            assert_eq!(
-                d1, d2,
-                "搜索索引封顶 `{cap}` 两侧漂开了（monitor {d1} / daemon {d2}）。\
-                 daemon 侧注释逐字写着「对齐本地封顶防超长粘贴/大 dump」—— \
-                 那句话此前**没有任何东西守着**。漂开的后果是**同一个查询在本地与远端命中不一样**，\
-                 而两边都不会报错。"
-            );
-        }
+        // 对 D（搜索索引封顶）🔴 **这一对没了，是被解决掉的，不是被删掉的**〔`K-R100` 09-13〕。
+        //
+        // 原文：`src-tauri/src/search.rs` 与 `remote-daemon-proto/src/observe/search_query.rs`
+        // 各写一个 `MAIN_CAP`/`TOOL_CAP`，本条钉它们相等。收口后两个字面量只剩一份
+        // （`search-core`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
+        // （它会变成「同一个数等于它自己」，恒绿）。
+        // 把这件事焊住的判据换了个形状，住
+        // `src-tauri/src/search.rs::kou_jing_guard::the_search_kou_jing_has_exactly_one_home`：
+        // 它断言两侧生产段**都不许**再出现 `const MAIN_CAP` / `const TOOL_CAP` 之类的定义。
+        // ⇒ 这两个数搬回任何一侧，当场红。
 
         // 对 C：注释写的是「同**量级**」，而且**今天就不等** ⇒ 钉比值，不钉相等。
         let c1 = by(
@@ -793,7 +842,14 @@ mod tests {
     fn the_exclusion_list_is_not_dead_wood() {
         let root = repo_root();
         let mut all = String::new();
-        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+        // 🔴 `K-R100` 09-13 加 `src-tauri/crates`：排除表的语料面必须与**产生上限的那个语料面**
+        // 一致（`size_typed_consts()` / `scan()` 都已含它）。不一致的话，一条针对共享 crate
+        // 里常量的排除会被本条判成「死木」—— 而它其实活着，只是本条看不见它。
+        for sub in [
+            "src-tauri/src",
+            "remote-daemon-proto/src",
+            "src-tauri/crates",
+        ] {
             for (_, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let body = guard_core::production_source(&raw);
                 all.push_str(&body);
@@ -1003,6 +1059,18 @@ mod tests {
              `n > cap` 的判断在 `take(n)` **之前**，所以这里读不满 `cap` 就停 —— \
              不是静默截断：超限那一支一个字节都不读，直接回 413。",
         ),
+        // 〔`K-W2D` 09-10〕与上面第一、第二条**同族**（上限是入参、调用方给具名常量），
+        // 与第三条不同族（那条的 `n` 是敌手可控的声明长度）。
+        (
+            "remote-daemon-proto/src/sidecars/codepicture/acquire.rs",
+            "ceiling",
+            "`get_over` 是 sidecar 拉取那一跳的 HTTP 读。`ceiling` 是**同一趟里两个量的和**：\
+             `RESPONSE_HEAD_BYTE_CAP`（具名常量，已在 `CAPS` 里）＋ 体的上限（入参）＋ 1。\
+             体那个入参唯一的生产调用方（`Net::get`）给的是具名常量 `ASSET_BYTE_CAP`\
+             （也已在 `CAPS` 里，两条的超限语义都是「拒收+回错」——超了一个字节都不落盘）。\
+             ★ **两个量分两个数**是本轮判据逼出来的（共用一个会静默截断，读数见 `CAPS` 里那一对）；\
+             读进来之后头与体**各自**再对自己那个上限判一次，`ceiling` 只负责「一趟别读过头」。",
+        ),
     ];
 
     /// 异步流整读里**压根没有上限**的那些。
@@ -1011,12 +1079,12 @@ mod tests {
     /// ⚠ **这不是豁免清单**：第三格必须写「退役归」（下面 `every_uncapped_stream_read_has_an_owner`
     /// 钉着），照 `polling_registry` 的先例。
     const UNCAPPED_STREAM_READS: &[(&str, &str, &str)] = &[
-        (
-            "src-tauri/src/account_usage.rs",
-            "远端 `ccm` 用量探针的 stdout",
-            "远端 SSH exec 输出，无 e2e 覆盖 ⇒ 改完无法验。正确修法是抽一个 \
-             `exec_read_capped` 共享助手而不是撒八个 `.take()`，那是重构。**退役归 F10d**。",
-        ),
+        // 🔴 **`K-R104`（09-13）：`src-tauri/src/account_usage.rs` 这一行删了，欠账真的没了。**
+        //    它欠的是「整读一条远端 SSH exec 的 stdout，没有上限」。
+        //    编排搬上后端帧面之后，本模块**不再读任何流** —— 抓回来的那一屏是一条
+        //    `capture-pane` 帧应答的 `screen` 字段，而**帧那一层自己有单行上限**
+        //    （daemon 侧 `inbound.rs` 的超长行处理 + monitor 侧收帧那一层）。
+        //    ⇒ 这一处不再属于「异步流整读」那个人群，留着就是幽灵条目。
         (
             "src-tauri/src/acct_iso_deploy.rs",
             "远端 `cc-acct-iso` 部署脚本的 stdout",
@@ -1262,9 +1330,21 @@ mod tests {
                 }
             }
         }
+        // 🔴 `K-R104`（09-13）：地板 14 → **13**，而这一格必须写清**为什么不是抽取器坏了**：
+        //    `src-tauri/src/account_usage.rs` 那一处 `read_to_end`（远端探针的 stdout）
+        //    随整条编排搬上后端帧面而**不存在了** —— 探针今天读的是一条帧应答的字段，
+        //    不再整读一条流。⇒ 人群**恰好少一处**，而那一处同时从 `UNCAPPED_STREAM_READS`
+        //    里删掉了（两侧同拍，不然那一行会变成幽灵条目）。
+        //    ⚠ **这不是「挡路就放宽」**：地板守的是「抽取器还够得到东西」，
+        //    而人群真的少了一个成员时，不跟着改这个数才是让它继续替真判据挡枪（`K-G8`）。
+        // 🔴 `K-R112`（09-13）：地板 13 → **11**，理由与上面 `K-R104` 那一段**同形**：
+        //    `cc_bus.rs::check_cc_bus_agent_online` 与 `tmux.rs::capture_remote_pane`
+        //    那两处 `read_to_end`（一次性 SSH 的 stdout）随两条命令改走 daemon 帧面而
+        //    **不存在了** ⇒ 人群**恰好少两处**。⚠ 同样不是「挡路就放宽」。
         assert!(
-            population >= 14,
-            "只扫到 {population} 处异步流读（08-10 G 审计后实测 18）—— 抽取器坏了，本条此刻是空转的"
+            population >= 11,
+            "只扫到 {population} 处异步流读（08-10 G 审计后实测 18，`K-R104` 09-13 现打 13，\
+             `K-R112` 09-13 现打 11）—— 抽取器坏了，本条此刻是空转的"
         );
         assert!(
             orphans.is_empty(),

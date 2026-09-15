@@ -25,7 +25,12 @@
 import { resolveResumeCommand } from "../remote-config";
 import { Channel } from "@tauri-apps/api/core";
 import { commands } from "../ipc/commands";
+// `K-R46`：本机 tmux 名的唯一算法口（铸名过 `mintTmuxName` + 「不知道就不铸」）。
+import { mintLocalTmuxName } from "../ipc/local-tmux-name";
 import { SessionViewer, type ViewerOptions } from "./session-viewer";
+// `K-R92`：那三格是三态（`null` = 不知道，不是 0）。排序档与加减都只许从这里走 ——
+// JS 会安静地把 `null` 当 0（`Number(null)` / `null > 0` / `null + 1`），那正是本件在治的病。
+import { liveRank, starRank, bumpCounted, isKnown } from "./counted";
 import { dispatcher } from "../keybindings/registry";
 import { showActionFailureToast } from "../error-toast";
 import { runRemoteResume, runNewSessionRemote } from "../remote-launch-run";
@@ -876,9 +881,15 @@ export class HistoryView {
 
   private renderSearchResults(resp: SearchResponse, query: string): void {
     this.resultsEl.replaceChildren();
+    // K-R100：`truncated` 现在**本地与每一台远端都算**（收口前它只装本地那一半，
+    // 于是远端截断在这一行上一个字不说）。措辞也改准：被砍掉的是 **snippet**，
+    // 不是命中 —— `totalHits` 一直报的是全量。
+    const starved = resp.sessions.filter((x) => x.hitsTruncated).length;
     this.statusEl.textContent =
       `「${query}」匹配 ${resp.totalHits} 条 · ${resp.sessionCount} 个会话` +
-      (resp.truncated ? "（结果较多，仅显示前若干条）" : "");
+      (resp.truncated
+        ? `（snippet 预算已用完${starved > 0 ? `，${starved} 个会话只列了标题` : ""}——缩小关键词范围可看到更多）`
+        : "");
     if (resp.sessions.length === 0) {
       this.resultsEl.appendChild(makeStatusRow("无匹配。试试别的关键词，或勾选「含工具内容」扩大范围。"));
       return;
@@ -947,10 +958,36 @@ export class HistoryView {
     for (const hit of s.hits) {
       group.appendChild(this.buildSearchHit(s, hit));
     }
+    // K-R100：`hitCount > hits.length` **不是一件事，是两件** ——
+    //   · `hitsTruncated`  = 整份结果的 snippet 预算用完了（该说「缩小范围」）
+    //   · 否则             = 这个会话话太多，只列前 30 条（点进去看就行）
+    // 收口前两种同文案，而 `hits: []` 那一档更糟：卡片里**一条可点的行都没有**，
+    // 文案却写着「点任意条打开会话查看全部」—— 指向一个不存在的东西。
     if (s.hitCount > s.hits.length) {
       const more = document.createElement("div");
       more.className = "search-hit-more";
-      more.textContent = `…还有 ${s.hitCount - s.hits.length} 条命中（点任意条打开会话查看全部）`;
+      const rest = s.hitCount - s.hits.length;
+      if (s.hitsTruncated) {
+        more.classList.add("search-hit-more-truncated");
+        more.textContent =
+          s.hits.length === 0
+            ? `本会话 ${s.hitCount} 条命中，snippet 预算已用完、一条都没能显示 —— 点这里打开会话`
+            : `…还有 ${rest} 条命中未显示（snippet 预算已用完）—— 点这里打开会话`;
+      } else {
+        more.textContent = `…还有 ${rest} 条命中（本会话只列前 ${s.hits.length} 条）—— 点这里打开会话`;
+      }
+      // 🔴 无论哪一种，这一行自己就能打开会话：`hits: []` 时它是**唯一**的入口。
+      more.addEventListener("click", () => {
+        this.openViewerWith({
+          jsonlPath: s.jsonlPath,
+          displayTitle: s.title || s.sessionId.slice(0, 8),
+          subtitle: s.projectName
+            ? `${s.projectName}  ·  ${s.projectPath}`
+            : s.projectPath,
+          origin: s.origin,
+          cwd: s.projectPath,
+        });
+      });
       group.appendChild(more);
     }
     return group;
@@ -1037,12 +1074,13 @@ export class HistoryView {
     );
 
     // 项目排序：live > starred > last_activity desc（与后端默认一致，前端不改）
+    // `K-R92`：`Number(b.hasLive)` 在 `hasLive` 是 `null`（不知道）时得 0 —— 与
+    // 「查过了，没有活会话」一模一样。改走三态档位：确定有 > 不知道 > 确定没有。
     const sorted = filteredProjects.slice().sort((a, b) => {
-      if (a.hasLive !== b.hasLive)
-        return Number(b.hasLive) - Number(a.hasLive);
-      const aStar = a.starredCount > 0;
-      const bStar = b.starredCount > 0;
-      if (aStar !== bStar) return Number(bStar) - Number(aStar);
+      const live = liveRank(b.hasLive) - liveRank(a.hasLive);
+      if (live !== 0) return live;
+      const star = starRank(b.starredCount) - starRank(a.starredCount);
+      if (star !== 0) return star;
       return b.lastActivity - a.lastActivity;
     });
 
@@ -1290,9 +1328,13 @@ export class HistoryView {
     const stats = document.createElement("span");
     stats.className = "history-group-stats";
     const chips: string[] = [`${proj.sessionCount} 个会话`];
-    if (proj.hasLive) chips.push("● live");
-    if (proj.starredCount > 0) chips.push(`★ ${proj.starredCount}`);
-    if (this.showHidden && proj.hiddenCount > 0)
+    // `K-R92`：只在**算过了**的时候才说话。「不知道」这一档不出 chip ——
+    // ⚠ 界面怎么把「不知道」显示出来（例如一个 `?` 徽标）是 `K-R66` 的面，本件不做；
+    // 本件只保证这里不会拿一个没人查过的值去说「没有星标」「没有活会话」。
+    if (isKnown(proj.hasLive) && proj.hasLive) chips.push("● live");
+    if (isKnown(proj.starredCount) && proj.starredCount > 0)
+      chips.push(`★ ${proj.starredCount}`);
+    if (this.showHidden && isKnown(proj.hiddenCount) && proj.hiddenCount > 0)
       chips.push(`隐藏 ${proj.hiddenCount}`);
     chips.push(formatTimestampSmart(proj.lastActivity));
     stats.textContent = chips.join(" · ");
@@ -1553,9 +1595,12 @@ export class HistoryView {
       const wasStarred = e.starred;
       e.starred = next.starred;
       // 同步 project 的 starred_count
-      if (!wasStarred && next.starred) proj.starredCount += 1;
+      // `K-R92`：`null + 1 === 1` —— 一次 star 操作能把「不知道」变成一个看起来是真值的数，
+      // 而且从此回不去。`bumpCounted` 让「不知道」加减之后**还是不知道**。
+      if (!wasStarred && next.starred)
+        proj.starredCount = bumpCounted(proj.starredCount, +1);
       else if (wasStarred && !next.starred)
-        proj.starredCount = Math.max(0, proj.starredCount - 1);
+        proj.starredCount = bumpCounted(proj.starredCount, -1);
       this.renderList();
     } catch (err) {
       console.warn("star update failed:", err);
@@ -1591,9 +1636,10 @@ export class HistoryView {
       });
       const wasHidden = e.hidden;
       e.hidden = updated.hidden;
-      if (!wasHidden && updated.hidden) proj.hiddenCount += 1;
+      if (!wasHidden && updated.hidden)
+        proj.hiddenCount = bumpCounted(proj.hiddenCount, +1);
       else if (wasHidden && !updated.hidden)
-        proj.hiddenCount = Math.max(0, proj.hiddenCount - 1);
+        proj.hiddenCount = bumpCounted(proj.hiddenCount, -1);
       this.renderList();
     } catch (err) {
       console.warn("hide toggle failed:", err);
@@ -1657,6 +1703,15 @@ export class HistoryView {
       try {
         // F34：用户自定义本地 resume 命令（如 cct）；空 = 后端默认（cc 检测→默认）
         const behavior = await getBehavior();
+        // ★★ `K-R46`：**这条路先前一个 tmux 名都不传** —— 而后端**故意**拒绝自己铸名
+        //    （`history.rs` 的 `NO_TMUX_NAME`）⇒ 名字为 `None` ⇒ 渲染器早退 ⇒ 后端如实
+        //    降级回旧路 ⇒ 起出来的会话**不在一个具名 tmux 容器里**，于是 `list_local_tmux`
+        //    那一族（右键「杀死会话（kill tmux …）」/「就地 resume（复用空 tmux …）」）
+        //    对它一个都给不出来。tab 栏那条 resume 早就传了，历史页这条没有 ——
+        //    **架构上一条路、行为上两条**，本件补的就是这个。
+        //    ⚠ 铸名与「不知道就不铸」两格住 `ipc/local-tmux-name.ts`，别在这里重写。
+        //    〔`K-R96` 09-12〕名字从 cwd 派生（`<项目名>-cc`，用户 `R55` 裁定一）。
+        const tmuxName = await mintLocalTmuxName(ctx.cwd);
         // ★★ `K-H2b` `D1 阻-1`：账号这一格先前是空的（历史页 resume 那条主路）。
         //    取值口只有一个（`resolveLocalLaunchAccount`），resume 走那条会话上次的 pin ——
         //    与上面远端那条 `withAccount(..., {follow:{lastAccount}})` **同形**。
@@ -1664,6 +1719,7 @@ export class HistoryView {
           sessionId: ctx.sessionId,
           cwd: ctx.cwd,
           launcher: behavior.resumeCommandLocal || null,
+          tmuxName,
           account: localLaunchAccountSync(ctx.sessionId),
         });
         // `D3 阻-2`：本机这条路也要往 pin 里写（同 `tabs.ts` 那处，理由见取值口头注）。
@@ -1779,8 +1835,8 @@ export class HistoryView {
       if (idx >= 0) arr.splice(idx, 1);
     }
     proj.sessionCount = Math.max(0, proj.sessionCount - 1);
-    if (e.starred) proj.starredCount = Math.max(0, proj.starredCount - 1);
-    if (e.hidden) proj.hiddenCount = Math.max(0, proj.hiddenCount - 1);
+    if (e.starred) proj.starredCount = bumpCounted(proj.starredCount, -1);
+    if (e.hidden) proj.hiddenCount = bumpCounted(proj.hiddenCount, -1);
     // 项目内全部删完了 → 也从 projects 列表移除
     if (proj.sessionCount === 0) {
       this.projects = this.projects.filter(
@@ -1842,7 +1898,7 @@ export class HistoryView {
 
   /**
    * A4：给远端会话菜单追加「用账号 X resume」项（每个可选账号一条）。**异步**——不阻塞菜单弹出。
-   * 只在 ≥2 个可选账号时出（<2 无可切换意义）；账号库不可用（daemonless/旧/未启用）安静不加（§7 降级）。
+   * 只在 ≥2 个可选账号时出（<2 无可切换意义）；账号库不可用（旧/未启用）安静不加（§7 降级）。
    * 追加前校验菜单仍是当前打开的那个（防 fetch 期间已换/已关，避免挂到陈旧 DOM）。
    */
   private async appendAccountResumeItems(menu: HTMLElement, ctx: RowActionCtx): Promise<void> {
@@ -1853,7 +1909,7 @@ export class HistoryView {
     } catch {
       return; // fetch 失败 → 就不加账号项，默认 resume 仍可用
     }
-    if (!state.available) return; // daemonless / 旧 daemon / 未启用 → 安静降级
+    if (!state.available) return; // 旧 daemon / 未启用 → 安静降级
     const selectable = state.accounts.filter(isSelectable);
     if (selectable.length < 2) return; // 无可切换选择就不加噪
     if (this.openEntryMenu !== menu) return; // fetch 期间菜单已变/已关
@@ -2017,6 +2073,10 @@ export class HistoryView {
     const meta = document.createElement("div");
     meta.className = "history-meta";
     meta.append(
+      // ⚠ `K-R92` 现打如实记：`isLive` 是三态（`null` = 这条路答不出），而这一格仍旧
+      // 把「不知道」显示成 `archived`。**这是本件刻意没做的那一半** —— 界面怎么把
+      // 「不知道」显示出来是 `K-R66` 的面（件文件 `§0b` 逐字：本件只到数据层）。
+      // 判据只判**排序与加减**不许把它当 0，显示这一格不在射程里；写在这里免得它变成暗账。
       makeChip(e.isLive ? "live" : "archived", e.isLive ? "history-live" : ""),
       makeChip(`${e.messageCountApprox} 条消息`),
       makeChip(formatTimestampSmart(e.updatedAt)),

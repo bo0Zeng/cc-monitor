@@ -36,6 +36,14 @@ import type { BehaviorConfig } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
 import { RecordTimeline } from "./record-timeline";
 import { TailWindow } from "./live-window";
+// K-R45 乙（`KR45D2`）：「我说过的 N 句」。挑句子 / 界面 / 跳，三段都与历史查看器共用同一份。
+import { toUserInputEntry, type UserInputEntry } from "./views/user-input-index";
+import { UserInputPanel } from "./views/user-input-panel";
+// ⚠ **实时窗口 import 历史查看器，方向是别扭的 —— 这是写区逼出来的将就，不是惯例。**
+// 共用的只有 `revealCard`（找卡→展开→滚，两条路的卡由同一份渲染器建）。把它搬进中立文件
+// 要同时改 `src-tauri/src/polling_registry.rs` 的调度点分类账（rAF/setTimeout 按文件精确对账），
+// 而 `src-tauri/` 不在本轮写区 —— 实测搬了就红。理由与读数在 `revealCard` 的头注 + 件 `§5.6`。
+import { revealCard } from "./views/session-viewer";
 import {
   renderContentRecord,
   routeMetaAndBranch,
@@ -70,7 +78,7 @@ import {
 import { AGENT_PROFILE } from "./agent-profile";
 import { LOCAL_ORIGIN } from "./daemon-policy";
 import { commands } from "./ipc/commands";
-import { pickFreshTmuxName } from "./remote-launch";
+import { mintSessionTmuxName } from "./remote-launch";
 import { collectEditedFiles } from "./panorama/session-files";
 import { openPanePreview } from "./views/pane-preview";
 import { turnEndNotifier } from "./turn-notify";
@@ -266,6 +274,45 @@ export interface Tab {
    * 已知微小残留：无 uuid 的 system 细条理论上可翻倍，影响面可忽略）。closeTab 时 clear。
    */
   processedUuids: Set<string>;
+  /**
+   * K-R45 乙（`KR45D2`）：**本会话「我说过的每一句」的账本 —— 今天之前前端没有这个东西。**
+   *
+   * # 为什么非新建不可（这一段是读数，不是理由的措辞）
+   *
+   * 历史查看器那条路有 `payloads`（收集阶段全量留着），所以清单是**现算**的。
+   * 实时这条路**一条记录的文本在前端零处留存**：持有整条 payload 的只有
+   * `window: TailWindow`（只收**没渲染**的那些，`takeTail` 一取就 `splice` 出账）
+   * 与 `midBatchBuffer`（每批 flush 后置空）；已渲染那侧的 `RecordTimeline` 条目是
+   * `{seq, element, kind, toolGroup}`，**没有 `message`、没有 `uuid`**。
+   * ⇒ 记录一旦上屏，想再问它「你说了什么」就没有地方可问了。
+   *
+   * # 存什么 · 存多久 · 什么时候清
+   *
+   * - **存**：`UserInputEntry`（uuid + **截断到 80 字**的摘要 + timestamp + 序号），
+   *   **不存整条 payload** —— 那才是几十 MB 的那一份。
+   * - **存多久**：与 tab 同寿。
+   * - **什么时候清**：`closeTab`（与 `seenSeqs` / `processedUuids` / `window` 同一拍）。
+   *   归档**不清** —— 归档 tab 内容还在、还能翻，清单跟着没了才是回归。
+   *
+   * # 内存代价（现打，分母写明）
+   *
+   * 量具 `scratchpad/kr45c-ledger-cost.py`，被测对象 = 本机 `~/.claude/projects` 下
+   * **1520 份** jsonl（60.2 万行）。按 UTF-16 + 对象头的**保守上界**算：
+   * **单条 326 B**（分母 = 命中口径的 4374 条）· 每会话中位数 **0 B**、p90 **272 B**、
+   * p99 **16.6 KB**、**最大 197 KiB**（585 条，那份 jsonl 自己 49.9 MiB ⇒ 账本占 0.39%）。
+   * ⇒ 典型 <10 个 tab 的窗口最坏合计约 2 MB，**代价可接受，所以存全量摘要、不降级成只存 uuid**。
+   * ⚠ 这个数**没有上限闸**：加一个「只留最近 N 条」就是在最需要它的长会话上交一份缺斤短两的清单，
+   *   与 `KR45D1` 的「不多不少」直接冲突。真要封顶，得先有一个比 197 KiB 更疼的读数。
+   */
+  userInputs: UserInputEntry[];
+  /** 清单界面（与历史查看器**同一个类**）。开关 + 面板都挂在 `inputsEl` 里。 */
+  inputsPanel: UserInputPanel;
+  /**
+   * 清单那块悬浮层。实时 tab 没有查看器那样的顶栏可以塞开关 —— 每个 tab 只有一个
+   * `.stream`（`position:absolute; inset:0`），所以做成与它**平级**的一层，
+   * `.active` 跟着 tab 一起翻（同一套 visibility 机制，切 tab 0 reflow）。
+   */
+  inputsEl: HTMLElement;
 }
 
 /** Tab 数量摘要，发给宿主用于状态栏 / empty-state 等外部 UI */
@@ -341,7 +388,7 @@ export class TabManager {
   private accountEmailByName = new Map<string, string>();
   /** A4：sid → lastAccount（history-metadata）。徽章源②：live 探测不到时兜底。main.ts 定期喂。 */
   private accountLastByS = new Map<string, string>();
-  /** A4/§7：账号可查询的远端 origin 集（available 且非 daemonless）。只有这些 origin 的会话才显徽章。 */
+  /** A4/§7：账号可查询的远端 origin 集（available）。只有这些 origin 的会话才显徽章。 */
   private accountReadyOrigins = new Set<string>();
   /** account-ux U5：origin → 当前账号名。徽章「信息才显」比对：会话账号==它 → 不挂徽章。main.ts 定期喂。
    *  **只放 isSelectable 的账号**（main.ts 侧过滤）：不可选的当前账号对齐必失败，指着它说"你不一致"
@@ -631,23 +678,19 @@ export class TabManager {
       pendingToolResults: tab.pendingToolResults,
       lazy: true,
     };
-    // G4：批量渲染时 sink 建在循环外，故用一个随迭代更新的游标把当前 payload 的
-    // jsonl 路径带进钩子。渲染是同步的，游标不会串批。
-    let cur: JsonlLinePayload | null = null;
     const sink: StreamSink = {
       timeline: tab.timeline,
       onBranchRecord: () => {},
       onQueueOperation: () => {},
       observeForLazyEnhance: true,
-      // G6：**远端也挂**。远端那条路走 daemon 的 `--fork-session`（只认 sid，不认路径），
-      // 所以 `jsonlPath` 缺席不再是"不能分叉"——只有本机那条路才需要它。
+      // G6：**远端也挂**。〔`K-R88` 09-13〕本机那条命令也收 sid 了 ⇒
+      // **两条路都只要 sid**，「本机拿不到 jsonl 路径就不能分叉」这道门跟着没了
+      // （原先那个随迭代更新的路径游标也一并去掉：没人再要那个值）。
       onCardRendered: (el, msg) => {
-        if (!tab.origin && !cur?.path) return; // 本机没路径就真的做不了
         if (msg.type !== "user" && msg.type !== "assistant") return;
         if (!msg.uuid) return;
         attachBranchButton(el, {
           uuid: msg.uuid,
-          jsonlPath: cur?.path ?? "",
           sourceSessionId: tab.sessionId,
           origin: tab.origin,
           cwd: tab.cwd ?? undefined,
@@ -658,7 +701,6 @@ export class TabManager {
     tab.branchFolder.unwrapAll();
     tab.stream.batchInsert(() => {
       for (const p of payloads) {
-        cur = p;
         try {
           renderContentRecord(p, ctx, sink);
         } catch (e) {
@@ -843,6 +885,13 @@ export class TabManager {
       tab.processedUuids.add(uuid);
     }
 
+    // K-R45 乙：记进「我说过的 N 句」的账本。
+    // 🔴 **位置是有讲究的**：放在双重去重**之后**（重投的行不许把同一句记两遍），
+    // 但在渲染门控**之前** —— 收纳（不建卡）的那些记录**也算数**，而它们恰恰是
+    // 「长会话里找不回自己刚才说过的那句话」说的那一批。放到门控之后就等于
+    // 又做了一遍「扫已渲染的」，那正是 `KR45D1` 顶掉过的那条错前提。
+    this.trackUserInput(tab, payload.message);
+
     // A5：换号重启的 compact 完成检测。仅当有该 sid 的等待者才判（常态零开销）：见 compact 摘要
     // 行即 resolve 该等待者（换号重启编排随即从 compact 步进入 kill 步）。
     if (this.compactWaiters.size > 0) {
@@ -889,23 +938,19 @@ export class TabManager {
       // G4（branch-anywhere）：实时会话也挂「从这一轮分叉」按钮。
       // 钩子本来就在共享的 `render-stream-record.ts` 里，此前**只有历史查看器传了它**
       // ⇒ 实时 tab 上没有入口。按钮本体是共享组件（off-main 的呈现区分也在那里）。
-      // **G6 起远端也挂**：远端走 daemon 的 `--fork-session`（只认 sid），
-      // 所以远端会话的 jsonl 在不在本机够得着已经不再是门槛。
-      onCardRendered:
-        !tab.origin && !payload.path
-          ? undefined // 本机没路径 → 真的做不了
-          : (el, msg) => {
-              if (msg.type !== "user" && msg.type !== "assistant") return;
-              if (!msg.uuid) return;
-              attachBranchButton(el, {
-                uuid: msg.uuid,
-                jsonlPath: payload.path ?? "",
-                sourceSessionId: tab.sessionId,
-                origin: tab.origin,
-                cwd: tab.cwd ?? undefined,
-                onForked: (res) => void this.startForkedSession(tab, res),
-              });
-            },
+      // **G6 起远端也挂**；〔`K-R88` 09-13〕本机那条也收 sid 之后，
+      // 「本机拿不到 jsonl 路径」这道门对两条路都不再是门槛。
+      onCardRendered: (el, msg) => {
+        if (msg.type !== "user" && msg.type !== "assistant") return;
+        if (!msg.uuid) return;
+        attachBranchButton(el, {
+          uuid: msg.uuid,
+          sourceSessionId: tab.sessionId,
+          origin: tab.origin,
+          cwd: tab.cwd ?? undefined,
+          onForked: (res) => void this.startForkedSession(tab, res),
+        });
+      },
     };
 
     // Batch13-F40a:meta/branch 收集与渲染解耦——收纳(不建卡)的记录也要喂
@@ -974,6 +1019,24 @@ export class TabManager {
       // 反而会把「点完立刻看到」变成「下一帧才看到」。
       this.scheduleTabBarRefresh();
     }
+  }
+
+  /**
+   * K-R45 乙：一条 live 记录进账本。不是用户输入 ⇒ 一个字段都不碰。
+   *
+   * 🔴 **口径不在这里判**：直接调 `toUserInputEntry` ⇒ `collectUserInputs`
+   * ⇒「什么算一条用户输入」全仓只有一个住址（那个函数的头注）。
+   * 实时这条路一次只有一条 payload，所以是「一条一条喂」，不是「整份扫一遍」。
+   *
+   * ⚠ 每来一句刷一次清单是 O(账本长度) 的对账（`setEntries` 按 uuid 就地补差值，
+   * 不整表重建）—— 账本最大实测 585 条（分母见 `Tab.userInputs` 的头注），
+   * 而它只在**用户真敲了一句**时才跑，不是每行都跑。
+   */
+  private trackUserInput(tab: Tab, message: unknown): void {
+    const entry = toUserInputEntry(message, tab.userInputs.length);
+    if (!entry) return;
+    tab.userInputs.push(entry);
+    tab.inputsPanel.setEntries(tab.userInputs);
   }
 
   /**
@@ -1330,6 +1393,20 @@ export class TabManager {
     const stream = new MessageStream(streamEl);
     const branchFolder = new BranchFolder(stream.contentElement);
     const timeline = new RecordTimeline(stream);
+
+    // K-R45 乙：本 tab 的「我说过的 N 句」。界面是共用那一份，这里只给它两件宿主自己的事：
+    // ① 怎么跳 —— 实时窗口没有 `uuidToIdx` / `UnrenderedRanges`，够得着的只有**已经建了卡的**
+    //    那些（`revealCard` 找不到就什么都不做：这条流本来就贴在底部，再滚一次是无意义的动作）；
+    // ② 跳空了怎么解释 —— 实时这一侧的成因与查看器**不是同一件事**：那边是「渲染时被剥成空卡」
+    //    （永久），这边是「还收纳在 `TailWindow` 里没建卡」（**上翻补一批就好了**）。
+    const inputsEl = document.createElement("div");
+    inputsEl.className = "live-user-inputs";
+    const inputsPanel = new UserInputPanel({
+      jumpTo: (uuid) => revealCard(streamEl, uuid),
+      unjumpableHint: "这一条还没加载出来 —— 往上翻到更早的消息之后再点",
+    });
+    inputsEl.append(inputsPanel.toggle, inputsPanel.panel);
+    this.streamRootEl.appendChild(inputsEl);
     // v2.2 issue #12: 重放期创建的新 Tab 也进 batch 模式，避免每条 record 都
     // 触发 O(N) computeMainBranch。批结束时 onBatchEnd 会统一 flush。
     if (this.inBatch) {
@@ -1371,6 +1448,9 @@ export class TabManager {
       midBatchBuffer: [],
       fillHandler: null,
       processedUuids: new Set(),
+      userInputs: [], // K-R45 乙：账本；口径与查看器同一个住址（collectUserInputs 的头注）
+      inputsPanel,
+      inputsEl,
       // issue #23：红绿灯信号若先于建 Tab 到达，从暂存取（否则 null=未知→绿）
       activity: this.pendingActivity.get(sessionId) ?? null,
       tmuxIdle: false, // audit-fixes F03.2：默认非灰；pendingTmuxIdle 在下方落实
@@ -1757,6 +1837,12 @@ export class TabManager {
 
     tab.stream.dispose();
     tab.streamEl.remove();
+    // K-R45 乙：账本与它的界面跟着走。账本持的是摘要不是 payload（量在 `Tab.userInputs`
+    // 的头注：最大 197 KiB），但留着就是「关掉的会话还挂在屏幕上」——
+    // 悬浮层是 `streamRootEl` 的直接子节点，不随 `streamEl.remove()` 一起走。
+    tab.userInputs = [];
+    tab.inputsPanel.clear();
+    tab.inputsEl.remove();
     // 显式清 Map：释放对已卸载 DOM 节点的强引用，让 GC 可早回收
     // （Map 本身也会随 Tab 对象一起回收，但显式 clear 让 DOM 引用计数立即归零）
     tab.toolUseNames.clear();
@@ -2211,13 +2297,17 @@ export class TabManager {
     }
     // ★★ P3t-Y2b：本机 resume 也进 tmux（POSIX；Windows 那侧后端不读这个名字，`C12`）。
     //
-    // 名字**必须**由 `pickFreshTmuxName` 铸 —— 它 = 基名 `<sid8>-cc` + `mintTmuxName` 的避让，
+    // 名字**必须**由 `mintSessionTmuxName` 铸 —— 它 = 基名 `<项目名>-cc` + `mintTmuxName` 的避让，
     // 而 `mintTmuxName` 是全仓唯一带撞名避让的铸造口（F13）。
     // Rust 侧刻意拒绝自己铸名：在那边补一个默认值就是 F13 修掉的坑第三次。
     //
     // ⚠ **这里第一版直接写了 `mintTmuxName(`${sid.slice(0,8)}-cc`, …)`** —— 那等于**又抄了一份
     // 基名规则**，正是 F13 收敛掉的那个重复（我在上一句里刚写完「唯一铸造口」）。
     // `session_name_registry` 当场判红（它数的就是「谁在产 `-cc` 基名」）。⇒ 改用现成的那个。
+    // 🔴 `K-R96`（用户 09-12 `R55`「要是可读的名字 / 不要id」）：基名从 `<sid8>-cc`
+    //    换成 `<项目名>-cc`（从 cwd 派生）⇒ 这里要给的是 **cwd**，不是 sid。
+    //    sid 一格没丢：它骑在 `@ccm_sid` 上（后端建会话时 `set-option` 写），
+    //    而本仓认会话从来就只问那个、不问名字前缀。
     //
     // `existing` 从 `commands.list_local_tmux()` 来（就在下面几行）。
     // 〔K-R19 订正 09-03〕这里原先写的是 `local_tmux_names()`，**全仓零定义**：
@@ -2231,7 +2321,8 @@ export class TabManager {
     let tmuxName: string | null = null;
     try {
       const sessions = await commands.list_local_tmux();
-      if (sessions) tmuxName = pickFreshTmuxName(sid, new Set(sessions.map((s) => s.name)));
+      if (sessions)
+        tmuxName = mintSessionTmuxName(tab.cwd ?? "", new Set(sessions.map((s) => s.name)));
     } catch {
       // 读不到就当不知道 —— 与上面同一条纪律，绝不退化成空集。
       tmuxName = null;
@@ -2355,9 +2446,10 @@ export class TabManager {
       return;
     }
     // ② 目标会话不在任何 tmux（已结束 / 已漂移到别的 sid）→ 起**全新** resume。tmux 名从现有
-    // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 `<sid8>-cc`（那正是「resume 进 branch」老 bug）。
+    // 名里挑一个不撞的，避免复用被 /branch 漂移占着的 `<项目名>-cc`（那正是「resume 进 branch」老 bug）。
+    // 🔴 `K-R96`：基名从 cwd 派生（可读），不再是 `<sid8>-cc`。
     const existing = new Set((sessions ?? []).map((s) => s.name));
-    const name = pickFreshTmuxName(sid, existing);
+    const name = mintSessionTmuxName(cwd, existing);
     // account-ux U3:tmux 版归档 resume 也跟随账号(注入 configDir)。① attach 活会话分支不动(账号焊死)。
     await withAccount(
       origin,
@@ -2672,7 +2764,7 @@ export class TabManager {
    *  submenu（补基座+具名账号入口）；活 tab → 账号数 ≥2 时追加一个「Restart」一级项 + flyout
    *  （旧版从不给活会话基座逃生口，见 buildRestartSubmenu）。复用 F51 代次守卫（gen !==
    *  tabMenuGeneration 则菜单已换/已关，整体 no-op，防 R-1 跨 tab 串味）。账号库不可用（§7
-   *  daemonless/旧/未启用）→ `enumerateAccountModifiers` 内部已容错返回空数组，本方法
+   *  旧/未启用）→ `enumerateAccountModifiers` 内部已容错返回空数组，本方法
    *  据此自然不追加任何东西（默认 Resume 仍在）。异步 fetch 用新鲜值，无冷缓存分裂。 */
   private async appendAccountMenuItems(
     origin: string,
@@ -2978,6 +3070,9 @@ export class TabManager {
     // 触发整棵子树重建 layout tree 卡顿。详 styles.css 的 .stream 注释。
     for (const [sid, t] of this.tabs) {
       t.streamEl.classList.toggle("active", sid === sessionId);
+      // K-R45 乙：清单悬浮层与它那条流**同进同出**。漏掉这一句 = 所有 tab 的清单
+      // 一起挂在屏幕上，而且点下去找的是别人的流（`revealCard` 只在自己的 streamEl 里找）。
+      t.inputsEl.classList.toggle("active", sid === sessionId);
     }
     const next = this.tabs.get(sessionId);
     if (next) next.unread = 0;

@@ -66,15 +66,15 @@ export const FIRST_RUN_HINT_CLASS = "status-first-run";
 
 /**
  * 依赖**注入而不是直接 import** —— 与 `readiness.ts` 同一个理由（它的 `statusOf` /
- * `isDaemonless` / `hostOs` 当初就是为这个注入的）：注入了才测得动「补齐 ⇒ 消失」。
+ * `hostOs` 与那条迁移告知当初就是为这个注入的）：注入了才测得动「补齐 ⇒ 消失」。
  */
 export interface FirstRunHintDeps {
   /** 要算哪几台机器（本机用 `LOCAL_MACHINE_KEY`）。顺序即 `computeGaps` 的呈现顺序。 */
   origins: () => string[];
   /** 读 S3 那本账。 */
   statusOf: (origin: string) => MachineStatus;
-  /** daemonless 是用户显式选的降级，不是缺件。 */
-  isDaemonless?: (origin: string) => boolean;
+  /** `K-R59`：盘上还带着旧「不装后端」开关的主机（见 `settings/readiness.ts` 同名入参）。 */
+  legacyNoBackend?: (origin: string) => boolean;
   /** S9：本机 OS 决定哪些组件适用（Windows 本机没有 `ccm`）。 */
   hostOs: () => HostOs;
   /** 点它 ⇒ 打开那张清单住的地方。 */
@@ -115,7 +115,7 @@ export class FirstRunHint {
       computeGaps({
         origins: this.deps.origins(),
         statusOf: this.deps.statusOf,
-        isDaemonless: this.deps.isDaemonless,
+        legacyNoBackend: this.deps.legacyNoBackend,
         hostOs: this.deps.hostOs(),
       }),
     );

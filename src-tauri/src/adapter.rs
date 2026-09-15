@@ -202,6 +202,120 @@ fn is_uuid(s: &str) -> bool {
         })
 }
 
+// ── `K-R93`（09-12）：**前端那份 agent 画像的取数口** ────────────────────────────
+//
+// # 它治的是什么
+//
+// `K-R54` 表第 11 行：同一张 agent 适配表盘上有**两份** —— 后端这一份（claude ＋ codex）
+// 与前端 `src/agent-profile.ts` 的 `AGENT_PROFILE`（🔴 **只有 claude**）。
+// 前端那份从此不再自己写死：值由下面这个取数口给出，经生成物
+// `src/generated/agent-profile-table.ts`（本文件的 `export_bindings_agent_profile_table`
+// 生成，`npm run gen:types` 重跑）送到 TS 那一侧。
+// ⇒ **删掉前端那一份的同一刻，codex 那一格也补上了**（不是回归，是把一格漏的补上）。
+//
+// # 为什么这几张表住在这里，而不是各自的 adapter 模块里
+//
+// `AgentAdapter` trait 今天没有「工具名 / 判活进程名」这几个方法，加进去要动
+// `adapter/claude_code.rs` 与 `adapter/codex.rs` —— 而 `K-R93` 的写区只给了本文件这一格
+//（件文件 `§2` 逐字「只加取数口，不动分派」）。⇒ **先住这里，住址写明，不假装它是终点**：
+// 收进 trait（顺带把 daemon 侧那份判活词表也接上，`daemon-api` F11）是下一刀的事。
+//
+// # `None` 与 `Some(&[])` 不是一回事
+//
+// `None` = **这一格今天没人考据过**；`Some(&[])` = 考据过、确实是空的。
+// 把这两个值合并就是 `K-R92` 那一形（「一个值装了两件事」），`KR93D3` 明令禁止。
+
+/// 盘上**所有**的 agent 种类 —— 与 [`enabled_kinds`]（本机装了哪几个）**不是同一个问题**。
+/// 加一个 `AgentKind` 而忘了这里 ⇒ [`agent_profile_facts`] 的 `match` 编译不过。
+pub const ALL_AGENT_KINDS: [AgentKind; 2] = [AgentKind::ClaudeCode, AgentKind::Codex];
+
+/// 一个 agent 的**画像**：前端那份 `AGENT_PROFILE` 今天用到的每一格，加上「它是谁」。
+///
+/// 五个 `Option` 字段的 `None` 读作**「这一格今天没人考据过」**，不是「空的」。
+#[allow(dead_code)] // 消费方在 TS 那一侧（生成物）；Rust 这侧只有生成器与判据读它 —— 不假装它在别处在用。
+pub struct AgentProfileFacts {
+    /// 这张表的键（= `agent-profile-golden.tsv` 第一列，也是 `ccm --agent` 收的那个名字）。
+    pub agent: &'static str,
+    /// 后端适配器 id（[`AgentAdapter::id`]）。
+    pub adapter_id: &'static str,
+    pub default_launcher: &'static str,
+    pub launcher_alias: Option<&'static str>,
+    /// resume 的**调用形态**：`flag`（`claude --resume <sid>`）/ `subcommand`（`codex resume <sid>`）。
+    pub resume_kind: &'static str,
+    pub resume_token: &'static str,
+    pub nested_env: &'static [&'static str],
+    pub agent_tools: Option<&'static [&'static str]>,
+    pub interactive_tools: Option<&'static [&'static str]>,
+    pub diff_tools: Option<&'static [&'static str]>,
+    pub md_tools: Option<&'static [&'static str]>,
+    pub liveness_process_names: Option<&'static [&'static str]>,
+}
+
+/// 子 agent 工具（展开 = 子会话）。〔`K-R93` 从 `src/agent-profile.ts` 搬来，值逐字未改〕
+static CLAUDE_AGENT_TOOLS: &[&str] = &["Agent", "Task"];
+/// 交互工具（agent 在等用户决定）。〔同上〕
+static CLAUDE_INTERACTIVE_TOOLS: &[&str] = &["AskUserQuestion", "ExitPlanMode"];
+/// 写类工具（行级 diff）。〔同上〕
+static CLAUDE_DIFF_TOOLS: &[&str] = &["Edit", "Write", "MultiEdit"];
+/// 结果默认按 markdown 渲染的工具。〔同上〕
+static CLAUDE_MD_TOOLS: &[&str] = &["Read", "Grep", "WebFetch", "NotebookRead", "TodoWrite"];
+/// tmux 前台命令算该 agent 的会话（CC 是 Node CLI，视启动路径也可能报解释器）。〔同上〕
+///
+/// ⚠ 这一格从前**没有权威方**（`src/liveness-process-names-parity.vitest.ts` 的头注逐字说过
+/// 「`agent-profile-golden.tsv` 只有 4 个 key，不含这一项；`AgentAdapter` trait 也没有这个方法」）。
+/// 今天权威方在这里 —— 但 **daemon 那一侧仍是各写各的**（`agents/claudecode/liveness.rs` 的内联
+/// 字面量），两侧仍靠那条对拍咬着。收成一份归 `daemon-api` F11，本件没做。
+static CLAUDE_LIVENESS_PROCESS_NAMES: &[&str] = &["claude", "node"];
+
+/// resume 的调用形态 —— 与 `backend/control/agent_profile_parity.rs` 那条**同一条推法**：
+/// 以 `--` 开头 = flag，否则 = 子命令。
+fn resume_kind_of(token: &str) -> &'static str {
+    if token.starts_with("--") {
+        "flag"
+    } else {
+        "subcommand"
+    }
+}
+
+/// `K-R93`：按 kind 取那份画像（**只取数，不参与派发**）。
+#[allow(dead_code)] // 同上：消费方在 TS 那一侧。
+pub fn agent_profile_facts(kind: AgentKind) -> AgentProfileFacts {
+    let a = for_kind(kind);
+    let agent = match kind {
+        AgentKind::ClaudeCode => "claude",
+        AgentKind::Codex => "codex",
+    };
+    let facts = AgentProfileFacts {
+        agent,
+        adapter_id: a.id(),
+        default_launcher: a.default_launcher(),
+        launcher_alias: a.launcher_alias(),
+        resume_kind: resume_kind_of(a.resume_flag()),
+        resume_token: a.resume_flag(),
+        nested_env: a.nested_env_to_scrub(),
+        // 下面五格：claude 那份在下面填上；**codex 那五格今天没人考据过**（不是空的）。
+        agent_tools: None,
+        interactive_tools: None,
+        diff_tools: None,
+        md_tools: None,
+        liveness_process_names: None,
+    };
+    match kind {
+        AgentKind::ClaudeCode => AgentProfileFacts {
+            agent_tools: Some(CLAUDE_AGENT_TOOLS),
+            interactive_tools: Some(CLAUDE_INTERACTIVE_TOOLS),
+            diff_tools: Some(CLAUDE_DIFF_TOOLS),
+            md_tools: Some(CLAUDE_MD_TOOLS),
+            liveness_process_names: Some(CLAUDE_LIVENESS_PROCESS_NAMES),
+            ..facts
+        },
+        // ⚠ Codex 的工具名 / 判活进程名**本仓今天没有考据过的读数**（`codex_record.rs` 的真机样本里
+        // 只出现过 `shell` 一个名字，那不足以当一张表）⇒ 五格留 `None`＝「不知道」。
+        // 编一份出来，或者拿 claude 那份顶上，都是 `KR93D3` 禁的那件事。
+        AgentKind::Codex => facts,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -244,5 +358,155 @@ mod tests {
             kind_of_path(Path::new("/tmp/nowhere/x.jsonl")),
             AgentKind::ClaudeCode
         );
+    }
+
+    // ── `K-R93`：把前端那份画像**生成出去** ─────────────────────────────────
+    //
+    // `npm run gen:types` 逐字就是 `cd src-tauri && cargo test --lib export_bindings`
+    // ⇒ 本条会被它跑到；门禁第六格 `generated` 随后判「已提交的那份与 Rust 源一不一致」。
+    // ⇒ **改了上面那几张表而不重跑生成 ⇒ 门禁红**，这就是 `KR93D1` 要的那条牙。
+
+    /// 生成物的头。「Do not edit this file manually」那句话是给
+    /// `src/generated-boundary-guard.vitest.ts` 那条判据看的，别改措辞。
+    ///
+    /// 🔴 **本段与下面 `TABLE_HEADER_TAIL` 刻意分成两个字面量，别合回去。**
+    /// `guard_core::test_module_ranges` 用「**列 0 的右大括号**」判测试模块到哪儿收尾
+    /// （它刻意不解析字符串 / 原始字符串，理由写在那个函数自己的头注里）。
+    /// 这段 TS 里 `};`（`AgentProfileRow` 那个类型的收尾）一旦落在本 `.rs` 文件的列 0，
+    /// **测试模块就在那里被切断**，后面的测试代码全被当成生产段。
+    /// 〔实打，09-12 本件第一趟门禁：合成一个字面量 ⇒ `cargo` 当场**四条**红 ——
+    /// `structural_scan.rs`（剥完仍残留测试属性）· `write_site_registry.rs`（把生成器那句
+    /// `fs::write` 当成未申报的写盘落点）· `agent_dispatch_registry.rs` 两条（把测试段里的
+    /// agent 名数成了生产耦合点）。**四条都不是假红，是那一刀真的把模块切断了。**
+    /// 四条判据的逐字名字与读数住 `evidence/K-R93-deathvalue.md`〕
+    const TABLE_HEADER: &str = r#"// 本文件由 `src-tauri/src/adapter.rs` 的 `export_bindings_agent_profile_table` 生成
+// （`npm run gen:types`）。Do not edit this file manually.
+//
+// `K-R93`：**前端那份 agent 画像的值来自后端**（`adapter.rs::agent_profile_facts`），
+// 不再是 `src/agent-profile.ts` 里自己写死的一份常量 —— 那一份只认 claude，
+// 接上后端的同一刻把 codex 那一格也补上了。
+//
+// ⚠ **`null` ≠ 空**：`null` = 这一格今天没人考据过（后端 `None`），**不许拿 claude 那份顶上**
+// （`KR93D3`）；`[]` 才是「考据过、确实是空的」。
+
+export type AgentProfileRow = {
+  /** 这张表的键（= `agent-profile-golden.tsv` 第一列，也是 `ccm --agent` 收的那个名字）。 */
+  agent: string;
+  /** 后端适配器 id（`AgentAdapter::id()`）。 */
+  adapterId: string;
+  defaultLauncher: string;
+  launcherAlias: string | null;
+  resumeKind: "flag" | "subcommand";
+  resumeToken: string;
+  nestedEnvVars: string[];
+  agentTools: string[] | null;
+  interactiveTools: string[] | null;
+  diffTools: string[] | null;
+  mdTools: string[] | null;
+  livenessProcessNames: string[] | null;
+"#;
+
+    /// 接着上面那一段 —— **第一行就是那个收尾的 `};`**（见上面为什么不能合并）。
+    const TABLE_HEADER_TAIL: &str = r#"};
+
+export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
+"#;
+
+    /// `ACTIVE_AGENT` 那一格的头注（后端 `active()` 今天是谁，不是前端自己挑的）。
+    const ACTIVE_HEADER: &str = r#"
+/** 后端 `adapter::active()` 今天派发给谁 —— `AGENT_PROFILE` 就是它那一份。 */
+"#;
+
+    /// 一个 TS 串字面量。**这个生成器不做转义** —— 真出现要转义的字符就当场炸，不产坏 TS。
+    fn ts_str(s: &str) -> String {
+        assert!(
+            !s.contains('"') && !s.contains('\\'),
+            "画像里出现了要转义的字符：{s:?}"
+        );
+        format!("\"{s}\"")
+    }
+
+    fn ts_list(v: &[&str]) -> String {
+        let items: Vec<String> = v.iter().map(|s| ts_str(s)).collect();
+        format!("[{}]", items.join(", "))
+    }
+
+    /// `None` ⇒ `null`（**「没人考据过」，不是空数组**）。
+    fn ts_opt_list(v: Option<&[&str]>) -> String {
+        v.map(ts_list).unwrap_or_else(|| "null".to_string())
+    }
+
+    fn ts_opt_str(v: Option<&str>) -> String {
+        v.map(ts_str).unwrap_or_else(|| "null".to_string())
+    }
+
+    fn row_fields(f: &AgentProfileFacts) -> Vec<(&'static str, String)> {
+        let inter = ts_opt_list(f.interactive_tools);
+        let live = ts_opt_list(f.liveness_process_names);
+        vec![
+            ("agent", ts_str(f.agent)),
+            ("adapterId", ts_str(f.adapter_id)),
+            ("defaultLauncher", ts_str(f.default_launcher)),
+            ("launcherAlias", ts_opt_str(f.launcher_alias)),
+            ("resumeKind", ts_str(f.resume_kind)),
+            ("resumeToken", ts_str(f.resume_token)),
+            ("nestedEnvVars", ts_list(f.nested_env)),
+            ("agentTools", ts_opt_list(f.agent_tools)),
+            ("interactiveTools", inter),
+            ("diffTools", ts_opt_list(f.diff_tools)),
+            ("mdTools", ts_opt_list(f.md_tools)),
+            ("livenessProcessNames", live),
+        ]
+    }
+
+    fn render_row(f: &AgentProfileFacts) -> String {
+        let mut s = String::new();
+        s.push_str("  {\n");
+        for (key, value) in row_fields(f) {
+            s.push_str("    ");
+            s.push_str(key);
+            s.push_str(": ");
+            s.push_str(&value);
+            s.push_str(",\n");
+        }
+        s.push_str("  },\n");
+        s
+    }
+
+    /// 后端 [`active`] 今天是哪一个 agent（按 [`AgentAdapter::id`] 回查表键）。
+    fn active_agent_key() -> &'static str {
+        let id = active().id();
+        for kind in ALL_AGENT_KINDS {
+            let f = agent_profile_facts(kind);
+            if f.adapter_id == id {
+                return f.agent;
+            }
+        }
+        panic!("`active()` 的 id `{id}` 不在 ALL_AGENT_KINDS 里 —— 表漏了一个 agent");
+    }
+
+    fn render_agent_profile_table() -> String {
+        let mut s = String::from(TABLE_HEADER);
+        s.push_str(TABLE_HEADER_TAIL);
+        for kind in ALL_AGENT_KINDS {
+            s.push_str(&render_row(&agent_profile_facts(kind)));
+        }
+        s.push_str("];\n");
+        s.push_str(ACTIVE_HEADER);
+        s.push_str("export const ACTIVE_AGENT: string = ");
+        s.push_str(&ts_str(active_agent_key()));
+        s.push_str(";\n");
+        s
+    }
+
+    /// `K-R93`：生成 `src/generated/agent-profile-table.ts`。
+    #[test]
+    fn export_bindings_agent_profile_table() {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级目录");
+        let out = repo.join("src/generated/agent-profile-table.ts");
+        let body = render_agent_profile_table();
+        std::fs::write(&out, body).unwrap_or_else(|e| panic!("写不进 {}：{e}", out.display()));
     }
 }

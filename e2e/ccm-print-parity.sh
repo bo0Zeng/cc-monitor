@@ -21,9 +21,22 @@ contains() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
 # `~/.local/bin/ccm` 那份装机版——于是这套「平价预言机」验的就不是本仓代码，而是碰巧装在
 # 机器上的某个版本（可能比仓内旧/新）。CI 上根本没装 ccm，12 条断言全红，正是靠这个才暴露出来。
 # 教训清单第 5 条的同型问题：不显式隔离，开发者本机状态就会污染测试断言。
+#
+# ★ `K-R48` 第二拍（09-11）：`ccm` 从**仓内 bash 脚本**换成**后端二进制本体**。
+#   〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
+#   ⇒ 终端里敲的 `ccm` 就是 `cc-monitor-remote`（`argv[0]` 的 basename 是 `ccm` 就进一次性模式）。
+#   **本套件 12 条断言一个字都没改** —— 它测的一直是「renderCli 渲出来的那行，被真 `ccm`
+#   解析后展开成什么」，那是后端今天仍要保证的命令契约，与用什么语言实现无关。
+#   依据是 `K-R48` 第一拍的逐字节对拍（`evidence/K-R48-native-vs-bash-parity.py`，SAME=27/DIFF=2）。
+# 🔴 **fail-closed**：二进制没 build 就**响亮退出**，不许静默回落到 PATH 上碰巧有的那一份
+#   —— 那正是本段头注第一句要治的病。
+CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/remote-daemon-proto/target}/debug/cc-monitor-remote"
+[ -x "$CCM_NATIVE" ] || {
+  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd remote-daemon-proto && cargo build --bin cc-monitor-remote\`" >&2
+  exit 2
+}
 BIN="$(mktemp -d)"; trap 'rm -rf "$BIN"' EXIT
-printf '#!/bin/sh\nexec bash %s "$@"\n' "$REPO/shared/ccm" > "$BIN/ccm"
-chmod +x "$BIN/ccm"
+ln -s "$CCM_NATIVE" "$BIN/ccm"
 export PATH="$BIN:$PATH"
 
 echo "===== 生产命令行（来自真 renderCli，不手搓）====="
@@ -65,7 +78,7 @@ NEEDLE_TMUX_NAME="-s 'cc-p1'"
 NEEDLE_CWD="-c '/tmp'"
 NEEDLE_SID_TAG="@ccm_sid_expect 'p1'"
 NEEDLE_BASE="'--base'"
-ck "resume 动作被内层 ccm 收到（positional，非 flag——shared/ccm 内部约定）" yes "$(contains "resume" "$OUT")"
+ck "resume 动作被内层 ccm 收到（positional，非 flag——ccm 的内部约定）" yes "$(contains "resume" "$OUT")"
 ck "sid p1 出现在内层调用里" yes "$(contains "p1" "$OUT")"
 ck "tmux 名 cc-p1 出现在 new-session" yes "$(contains "$NEEDLE_TMUX_NAME" "$OUT")"
 ck "cwd /tmp 出现在 -c" yes "$(contains "$NEEDLE_CWD" "$OUT")"

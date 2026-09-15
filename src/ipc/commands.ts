@@ -98,6 +98,7 @@ import type {
   SendIntoResponse,
 } from "../launch-cli-wire.ts";
 
+import type { AccountAliasReport } from "../generated/AccountAliasReport";
 import type { AccountUsageProbeResult } from "../generated/AccountUsageProbeResult";
 import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
@@ -110,6 +111,8 @@ import type { CcStatusResponse } from "../generated/CcStatusResponse";
 import type { ConnectStage } from "../generated/ConnectStage";
 import type { ConnTestResult } from "../generated/ConnTestResult";
 import type { CcmProbeResult } from "../generated/CcmProbeResult";
+// `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）。
+import type { LocalCcmEntry } from "../generated/LocalCcmEntry";
 import type { ConfigSurfaceReport } from "../generated/ConfigSurfaceReport";
 import type { DriftFaceReport } from "../generated/DriftFaceReport";
 import type { MarketplaceSurvey } from "../generated/MarketplaceSurvey";
@@ -177,7 +180,10 @@ import type { TaskEntry } from "../generated/TaskEntry";
 export const commands = {
   /**
    * 起一个 tmux 会话跑 `/usage` 并 capture-pane 抓屏。返回值字段被真消费 ⇒ 生成物（桶③）。
-   * **解析是 TS 侧纯函数 `parseUsageCapture` 的职责**——`captured=true` 只代表拿到了文本。
+   * `captured=true` 只代表**拿到了文本**（包括空屏）。
+   * 🔴 〔`K-R101`/`R59` 09-13 订正〕原话接着写「解析是 TS 侧纯函数 `parseUsageCapture`
+   * 的职责」——**那半句今天是假的**：解析层功能已退役（墓碑住 `src/account-usage-parse.ts`
+   * 头部），生产路上抓到的那一屏**原样**交给界面。
    */
   // U8c-2a：收**结构化账号表态**，不再收渲染好的载荷串。
   // `configDir: null` = 账号 0（Rust 侧产出 `unset CLAUDE_CONFIG_DIR; `），不是「不表态」。
@@ -347,6 +353,24 @@ export const commands = {
 
   write_skill_file: (args: { cwd: string; skillId: string; path: string; content: string }) =>
     invoke<void>("write_skill_file", args),
+
+  /**
+   * `K-R49`：**加了账号，那条命令也该跟着有。**
+   *
+   * `lines` 是 `buildAliasLine`（全仓唯一那份别名生成器）吐出来的那几行，后端只负责落盘：
+   * 整份重写 `~/.cc-monitor/account-aliases.sh`（**monitor 自己的文件**，不是用户的 rc）。
+   *
+   * ⚠ `rcPath` 是**可选**的，而且**没有默认值** —— 用户的 shell 配置是哪一份
+   * （`.bashrc` / `.zshrc` / …）只能由界面上的人选，猜一个写进去是最坏的那条路。
+   * 不给它就只写生成文件，用户的 shell 配置一个字节不动。
+   *
+   * ⚠ `dryRun: true` 时后端**一个字节都不写**，返回的是同一份报告 —— 界面拿它做预览。
+   */
+  write_account_aliases: (args: {
+    lines: string[];
+    rcPath?: string | null;
+    dryRun: boolean;
+  }) => invoke<AccountAliasReport>("write_account_aliases", args),
 
   /** 某符号的被调者边。`depth` 是 `u32` ⇒ `number`。 */
   panorama_callees: (args: { repo: string; symbol: string; depth: number }) =>
@@ -634,13 +658,20 @@ export const commands = {
      *
      * - 参数缺席 = 调用方**没表态** ⇒ 一个字都不注入（既有调用点逐字节等价旧行为）
      * - `{ kind: "base" }` = 用户**显式**选了账号 0 ⇒ 后端产出 `unset CLAUDE_CONFIG_DIR`
-     * - `{ kind: "named", configDir }` = 具名账号 ⇒ `export CLAUDE_CONFIG_DIR='…'`
+     * - `{ kind: "named", configDir, name? }` = 具名账号 ⇒ `export CLAUDE_CONFIG_DIR='…'`
      *
      * **「账号 0」不等于「什么都不加」**：本地拉起故意加载 shell rc，而 rc 里很可能有
      * `export CLAUDE_CONFIG_DIR=<默认账号>`（`cc-acct-iso shellinit` 生成的就是它）⇒
      * 什么都不加会静默落到别的账号上。远端那条路一直渲染成 `unset`，本地此前不是（Phase G 修）。
+     *
+     * 🔴 `K-R53`（09-11）：`named` 那一态**说得出名字就一起传**。后端那条 ccm 路只会
+     * `--account <名字>`（`shared/ccm:606`）⇒ 不传名字 = 那次拉起**结构上到不了后端那条路**，
+     * 必然落回第二实现（`history.rs::build_local_posix_command`，没有 tmux 容器）。
+     * 取值口只有一个：`accounts.ts::localLaunchAccountSync`（名字与目录同源）。
+     * `name` 缺席是**合法的**（例：分叉时继承的是源会话的目录、没有名字）—— 那时后端诚实短路，
+     * **绝不从目录名反推**（推错 ⇒ `shared/ccm` 当场 `die`，一次能起的会话变成一条报错）。
      */
-    account?: { kind: "base" } | { kind: "named"; configDir: string };
+    account?: { kind: "base" } | { kind: "named"; configDir: string; name?: string };
     /**
      * P3t（`C12`）：**POSIX 本机**把会话建进 tmux 时的会话名。
      *
@@ -664,6 +695,13 @@ export const commands = {
    *  `session-created/closed/renamed` 三条 —— pane 前台命令从 claude 变回 shell **不触发任何一条**。
    *  ⇒ 依赖它判活的流程（换号重启的 `awaitExitFor`）**不许**改读本机这条。 */
   list_local_tmux: () => invoke<TmuxSession[] | null>("list_local_tmux"),
+
+  /** `K-R69`：**本机那条 `ccm` 入口现在是什么样** —— 我们放下去的那一份在哪、它自报什么身份、
+   *  你 PATH 上那个 `ccm` 是不是它，以及给人读的那句话。`LocalCcmEntry` 是生成物 ⇒ **桶③**。
+   *
+   *  ⚠ 它**只读**：跑两次 `--ccm-probe`，一个字节都不写；产品也**不删**用户 `~/.local/bin/ccm`
+   *  下那份旧的（用户逐字「原本的配置要手动删除」）。 */
+  local_ccm_entry_status: () => invoke<LocalCcmEntry>("local_ccm_entry_status"),
 
   /** 某会话的 TodoWrite 任务快照。`TaskEntry` C02 已生成 ⇒ **桶③**。 */
   get_session_tasks: (args: { sessionId: string }) =>
@@ -696,8 +734,13 @@ export const commands = {
   /** 部署内嵌的 daemon 到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
   deploy_remote_daemon: (args: { cfg: unknown }) => invoke<string>("deploy_remote_daemon", args),
 
-  /** 从某一轮建分支（F62）。返回值字段被真消费 ⇒ 生成物（桶③）。 */
-  create_branch_session: (args: { sourceJsonlPath: string; messageUuid: string }) =>
+  /**
+   * 从某一轮建分支（F62）。返回值字段被真消费 ⇒ 生成物（桶③）。
+   *
+   * 〔`K-R88` 09-13〕入参从 `sourceJsonlPath` 收成 `sourceSessionId` ——
+   * 与下面远端那条**形状一致**，两侧后端走的也是同一份「按 sid 找那份文件」。
+   */
+  create_branch_session: (args: { sourceSessionId: string; messageUuid: string }) =>
     invoke<BranchResult>("create_branch_session", args),
 
   /**
@@ -756,6 +799,14 @@ export const commands = {
   // 非法输入（空 configDir / shell 元字符 / 会裂的 arg）⇒ Rust 侧 `Err` ⇒ 这里 reject。
   render_launch_payload: (args: { req: PayloadRenderRequest }) =>
     invoke<string>("render_launch_payload", args),
+  // 🔴 `K-R109`：**本机后端产「把终端接进那个会话」那一句**（`ccm attach <名>`）。
+  // `R61` 裁定三〔用 09-13 逐字「归本机后端就好了啊」〕。
+  // ⚠ 它**没有 `origin`**：本机后端就在这台机器上，问它要不必绕 ssh 那一跳
+  //（远端那一侧的同一件事由 `render_ccm_launch` 的 `action:"attach"` 产）。
+  // ⚠ 渲不出来 ⇒ Rust 侧 `Err` ⇒ 这里 reject。**调用方不许拿前端自己拼一条糊过去**：
+  // 那就是 §31 最终形态第①条逐字禁的「前端硬编码后端命令」。
+  render_local_attach: (args: { tmuxName: string }) =>
+    invoke<string>("render_local_attach", args),
 
   // U8a-2c-1：**「控制搬进 daemon」的第一条生产通道** —— 往已存在的远端 tmux 会话键入载荷
   // （`send-keys` 那半边）。`attach` 那半边**不走它**：§1.3 要求最终 exec 落在用户自己的
@@ -890,7 +941,7 @@ export const commands = {
   new_local_session: (args: {
     cwd: string;
     launcher: string | null;
-    account?: { kind: "base" } | { kind: "named"; configDir: string };
+    account?: { kind: "base" } | { kind: "named"; configDir: string; name?: string };
   }) => invoke<string>("new_local_session", args),
 
   /** 开独立设置窗口（非浮层）。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */

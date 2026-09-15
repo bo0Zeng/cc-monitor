@@ -1,6 +1,6 @@
-# cc-monitor-remote (远端 daemon)
+# cc-monitor-remote (远端后端)
 
-cc-monitor 的 SSH-远端功能后端 daemon（issue #15 起，已历 F14–F30+ 多轮迭代）。它 tail 远端
+cc-monitor 的 SSH-远端功能后端（issue #15 起，已历 F14–F30+ 多轮迭代）。它 tail 远端
 `~/.claude` 会话 JSONL 并流式回传已连接的 client（cc-monitor / 未来 aterm）。协议契约的权威文档是
 [`../doc/IPC-PROTOCOL.md`](../doc/IPC-PROTOCOL.md)；部署见 [`../doc/REMOTE-PHASE0-DEPLOY.md`](../doc/REMOTE-PHASE0-DEPLOY.md)。
 
@@ -11,7 +11,7 @@ cc-monitor 的 SSH-远端功能后端 daemon（issue #15 起，已历 F14–F30+
   首次连远端时经 SFTP 自部署到 `~/.cc-monitor/bin/`
   （`sftp::ensure_daemon_deployed`，按 arch + `.build_id` 门控）。**不再需要在目标机上手动 build**。
 - **Standalone crate。** 故意 *不* 进 Cargo workspace、无根 `Cargo.toml` 引用它——避免 Windows/Tauri CI 去
-  编译这个 Linux-only crate。CI 单独在 ubuntu 跑它的 `cargo fmt --check`/`clippy`/`test`（`.github/workflows/ci.yml` 的 daemon job）。
+  编译这个 Linux-only crate。CI 单独在 ubuntu 跑它的 `cargo fmt --check`/`clippy`/`test`（`.github/workflows/ci.yml` 的后端 job）。
 
 ## 内部分层（U2 起，2026-08-01）
 
@@ -75,7 +75,7 @@ Phase D 审计逐条查过，**生产段还有 3 处平台原语在 `platform/` 
 ### ✅ U4a：跨 target 编译**已清零并进 CI**
 
 `cargo check --all-targets --target x86_64-pc-windows-msvc` **RC=0**（此前 12 个错），
-并已接进 daemon CI job（ubuntu 上跑，`check` 不链接，成本近零）。
+并已接进后端 CI job（ubuntu 上跑，`check` 不链接，成本近零）。
 
 ⚠ **「编得过」≠「跑得起来」。** Windows 侧今天是**诚实的空壳**，不是实现：
 
@@ -109,7 +109,7 @@ U2 把 11/12 个错集中到一个文件，**U4a 清零并接进 CI**（见上�
 ## 版本 / 身份 / 能力（三轴正交，见 `../doc/INVARIANTS.md` §26/§28）
 - `PROTO_VERSION`（`main.rs`）：只在**破坏性 wire 变更**时 bump；additive 新帧/新能力**不** bump。
 - `BUILD_ID`（`main.rs`）：人读构建标 = **身份**，管 staleness 检测 + 重部署确认（单源自源码，`build.rs` 编译期提取）。
-- `CAPABILITIES`（`main.rs`）：daemon 在 hello 帧自报的**能力 token 集**——monitor 按声明发流模式 flag（F66/#58③，
+- `CAPABILITIES`（`main.rs`）：后端在 hello 帧自报的**能力 token 集**——monitor 按声明发流模式 flag（F66/#58③，
   取代旧「build_id 精确匹配」门控）。**加新能力 token = 同时加 `split_stream_flags` 剥离分支**（`every_capability_token_is_strippable` 测试强制，防 §26 死循环）。
 
 ## Wire protocol

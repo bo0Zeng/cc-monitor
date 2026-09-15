@@ -107,10 +107,10 @@ function tsDerivingSources(): string[] {
 const TS_DERIVING_SOURCES = tsDerivingSources();
 
 describe("C01 边界生成物", () => {
-  it("派生 ts_rs::TS 的 Rust 源文件恰好 30 个（自动发现的范围自检）", () => { // ⚠ 标题里这个数腐过：曾写 27 而断言是 28
+  it("派生 ts_rs::TS 的 Rust 源文件恰好 31 个（自动发现的范围自检）", () => { // ⚠ 标题里这个数腐过：曾写 27 而断言是 28
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(30); // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(32); // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -123,6 +123,9 @@ describe("C01 边界生成物", () => {
     expect(files, "生成目录内容变了——把新文件纳入本守卫再更新这个期望").toEqual([
       // **按字母序**（本条是 readdir + sort 的逐项对拍，不许按功能分组打乱顺序）。
       // 每项后面标它属于哪个功能，便于回溯。
+      // K-R49：按账号生成命令并落盘那一条命令的返回形状（报告 + 候选 rc）。
+      "AccountAliasRc.ts",
+      "AccountAliasReport.ts",
       "AccountUsageProbeResult.ts", // C04d 批2
       // P8a：marketplace 只读枚举的两个载荷。
       // ⚠ 顺序按目录名排序，别按加入时间摆。
@@ -156,6 +159,8 @@ describe("C01 边界生成物", () => {
       "DriftFace.ts", //              U-CC1
       "DriftFaceReport.ts", //        U-CC1
       "EntryMetadata.ts", // C04d 批6c
+      // K-R65：环境清单那四档（app 装的 / 该自带而没装口 / 你自己装我提示 / 只查）。
+      "EnvTier.ts",
       "ForkedFrom.ts", //             C04c
       "ForwardStatus.ts", //          C04d 批3（`connCount: u64` 按累计连接数量纲论证）
       "FrontendReadyPayload.ts", //   C02（方向相反的那个：TS → Rust，带 Deserialize）
@@ -171,6 +176,7 @@ describe("C01 边界生成物", () => {
       "JsonlLinePayload.ts", //       C04c
       "JsonlRecord.ts", //            C04c（**线定义本身**：wire == serde_json::to_string(它)）
       "LegacyProfileEntry.ts", // C04d 批5a（**非 pub**，CcStatusResponse 的传递依赖）
+      "LocalCcmEntry.ts", // `K-R69`：本机那条 `ccm` 入口这一格（我们那一份 · PATH 上那一份 · 判词 · 那句话）
       "LogFileEntry.ts", // C04d 批4（LogFileInfo 的传递依赖）
       "LogFileInfo.ts", // C04d 批4（字节数 + 毫秒时间戳，两个量纲分开论证）
       // P8a：marketplace 只读枚举的两个载荷（`declared_plugins` 刻意是可空的
@@ -179,6 +185,7 @@ describe("C01 边界生成物", () => {
       "MarketplaceSurvey.ts",
       "McpServerEntry.ts", // C04d 批5b（`scope: String` 比手写的三值 union **宽**——那才是线上真相）
       "PanoramaStatus.ts", // C04d 批7（**panorama 一族唯一能生成的**——其余 10 个住 vendored，受 SS-10 铁律阻塞）
+      "PathCcmVerdict.ts", // `K-R69`：PATH 上那个 `ccm` 与我们那一份的关系（四态，没有兜底档）
       "ProfileKind.ts", // C04d 批5a（ProfileScan 的传递依赖）
       "ProfileScan.ts", // C04d 批5a（`size_bytes: u64` 按字节数量纲论证）
       "PushResult.ts", // C04d 批5c（**我用 grep 漏掉的那个跨行调用点**）
@@ -213,11 +220,35 @@ describe("C01 边界生成物", () => {
       "Usage.ts", //                  C04c（messages.rs 的 token 计数，**不是** usage.rs 的 UsageTotals）
       "UsageBucket.ts", //            C04d 批3（→ UsageTotals 是 **C03 生成的**，传递依赖已就位）
       "UsageTotals.ts", //            C03
+      // 🔴 `K-R93`（09-12）：**这一份不是 ts-rs 生成的**，是 `src-tauri/src/adapter.rs` 的
+      // `export_bindings_agent_profile_table` 写出来的**值表**（ts-rs 只生成类型、不生成值）。
+      // 它照样被 `npm run gen:types`（= `cargo test --lib export_bindings`）重跑、
+      // 照样被门禁第六格 `generated` 的 `git diff --exit-code` 盖住。
+      // ⚠ 排在最后不是分组：`files.sort()` 是默认排序，小写字母排在大写之后。
+      "agent-profile-table.ts",
+      // 🔴 `K-R95`（09-12）：**第二份值表**，源是
+      // `src-tauri/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`。
+      // 三格：`ccm` 调用行每次无条件要求的能力集 · 八句降级理由的措辞 ·
+      // 本机拉起载荷里「哪个号」那一格的 wire 键名。三格此前都在前端各写一份
+      //（定框 `K28`：前端不许自己发明对外行为）。
+      "launch-render-facts.ts",
     ]);
+    // `K-R93`：「谁生成的」这一格从此认**多种**标记（ts-rs / 上面那两个值表生成器）——
+    // 让一个非 ts-rs 的生成物顶着 ts-rs 的头，那是往生成物里写一句假话。
+    // ⚠ 「不许手改」那一格**一个字没放松**：两种生成物都必须带。
+    // `K-R95`：第三种标记 —— 值表生成器不止 `adapter.rs` 一个了。
+    const GENERATED_BY = [
+      TS_RS_HEADER,
+      "src-tauri/src/adapter.rs",
+      "src-tauri/src/backend/control/launch_wire.rs",
+    ];
     for (const f of files) {
       const src = read(`src/generated/${f}`);
       expect(src.length, `${f} 是空的`).toBeGreaterThan(100);
-      expect(src, `${f} 缺 ts-rs 头`).toContain(TS_RS_HEADER);
+      expect(
+        GENERATED_BY.some((mark) => src.includes(mark)),
+        `${f} 头上没写它是谁生成的（认得的两种：${GENERATED_BY.join(" / ")}）`,
+      ).toBe(true);
       expect(src, `${f} 缺「不许手改」`).toContain(DO_NOT_EDIT);
     }
   });
@@ -320,7 +351,11 @@ describe("C01 边界生成物", () => {
     // **K-A1：10 → 12。** `RemoteAccount.auth_kind` / `RemoteAccount.auth_ready`
     // ——两者都是 `Option`，而**缺席与 `null` 在这里语义不同**：缺席 = 旧 daemon 压根没说
     // （前端据此回落到逐字节旧行为），`null` 会让那个 `??` 回落判据失效。⇒ 必须 `ts(optional)`。
-    expect(checked, `期望恰好 12 处 skip_serializing_if，实得 ${checked}`).toBe(12);
+    // **`K-R70`（09-12）：12 → 13。** `ccm_probe.rs::CcmProbeResult.build`
+    // ——对面那份二进制自报的构建身份（`--ccm-probe` 的 `build=` 行）。同一条理由：
+    // **缺席与 `null` 语义不同** —— 缺席 = 那份后端是 `p2f-build-stamp` 之前的旧版、
+    // 它压根不吐这一行；写成 `| null` 会把「它没说」与「它说了个空」混成一格。
+    expect(checked, `期望恰好 13 处 skip_serializing_if，实得 ${checked}`).toBe(13);
   });
 
   it("每一个 u64/i64 字段都配了 ts(type = …)——C03 的大整数策略，打在源上", () => {

@@ -16,13 +16,13 @@
 
 ### 为什么现在不支持
 - subagent 记录在 `<encoded-cwd>/<parent-session-id>/subagents/agent-<hash>.jsonl`（+ `*.meta.json`）。
-- 本地 `load_subagent(parent_jsonl_path, description, timestamp)` 直接读**本地**文件：`derive_subagent_dir`（`<dir>/<stem>/subagents`）→ `list_meta_matches`（按 description 精确匹配 `*.meta.json`）→ 读匹配的 subagent jsonl。
+- 本地 `load_subagent(parent_jsonl_path, description, timestamp)` 直接读**本地**文件：`derive_subagent_dir`（`<dir>/<stem>/subagents`）→ `list_meta_matches`（按 description 精确匹配 `*.meta.json`）→ 读匹配的 subagent jsonl。  〔散文墓碑〕本行点名的那两个查找符号今天**已经不在**：`K-R94`（09-12）把「找」也交给后端 —— 本机那条改走 `--list-subagents`，候选枚举与首行时间戳都由后端给。
 - 远端会话的 subagent 文件**在远端机器**，本地 `load_subagent` 够不着 → `subagent.ts:79` 现直接显示「远端会话暂不支持展开 subagent」。**代码注释已写明方案：daemon `--read-subagent` 协议扩容**（照 `--read-session` 模式）。
 
 ### 方案（照 `--read-session` 镜像）
-1. **daemon**（`history_query.rs` + 复刻 `subagent.rs` 的查找逻辑）：加 `--load-subagent <parent_jsonl_path> <description>`（可选 `<timestamp>` 消歧）。做：`derive_subagent_dir` → `list_meta_matches`（description 精确匹配）→ 读匹配 subagent jsonl。**输出**：首行 meta（subagent_type 等）+ 后续 subagent jsonl 原始字节（monitor 解析）。安全：路径 canonicalize + `projects/` 前缀 + symlink 逃逸校验（同 `--read-session`）、只读。
+1. **daemon**（`history_query.rs` + 复刻 `subagent.rs` 的查找逻辑）：加 `--load-subagent <parent_jsonl_path> <description>`（可选 `<timestamp>` 消歧）。做：`derive_subagent_dir` → `list_meta_matches`（description 精确匹配）→ 读匹配 subagent jsonl。**输出**：首行 meta（subagent_type 等）+ 后续 subagent jsonl 原始字节（monitor 解析）。安全：路径 canonicalize + `projects/` 前缀 + symlink 逃逸校验（同 `--read-session`）、只读。  〔散文墓碑〕本行「复刻」的那两个符号今天**两侧都不在**：daemon 侧最终落成的是 `--list-subagents`（只列候选、不挑），`K-R94` 之后本机那条也删净了。
 2. **monitor**（`remote_history.rs`，镜像 `stream_read_remote_session`）：加 `load_subagent_remote(parent_path, description, timestamp, origin)` IPC → SSH exec daemon `--load-subagent` → 组装 `SubagentLoadResult`（与本地 `load_subagent` 同结构，前端零差异）。
-3. **前端**（`subagent.ts:79`）：`if (ctx.origin)` 分支从「暂不支持」note 改为调 `load_subagent_remote` → 拿到 `SubagentLoadResult` → 走现有 `renderChild` 渲染（嵌套渲染时 `ctx.parentPath` 切远端 subagent 路径、origin 保留，与本地路径逻辑一致）。
+3. **前端**（`subagent.ts:79`）：`if (ctx.origin)` 分支从「暂不支持」note 改为调 `load_subagent_remote` → 拿到 `SubagentLoadResult` → 走现有 `renderChild` 渲染（嵌套渲染时 `ctx.parentPath` 切远端 subagent 路径、origin 保留，与本地路径逻辑一致）。  〔散文墓碑〕本行点名的那个只服务远端的入口今天**已经不在**：`K-R94`（09-12）把两条路收成一条，分流只剩一处按 origin 选传输。
 
 ### 改动面 / 工作量 / 风险
 - daemon：+1 命令 + subagent 查找逻辑（~简单文件逻辑、无新重依赖）+ 单测。**BUILD_ID bump**（行为变、需 redeploy）。

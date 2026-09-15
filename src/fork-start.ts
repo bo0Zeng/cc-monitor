@@ -30,6 +30,17 @@ import {
 export interface ForkChoices {
   /** `null` = 账号 0（不注入 `CLAUDE_CONFIG_DIR`）。 */
   configDir?: string | null;
+  /**
+   * `K-R53`：**用户挑的那个号的名字**，与 `configDir` 是同一次选择的两半。
+   *
+   * 后端那条 ccm 路只会 `--account <名字>`（`shared/ccm:606`）⇒ 只给目录 = 那次拉起
+   * 结构上到不了后端那条路。小窗那一侧本来就有名字（`ForkAccountOption.name`，
+   * 它就是 `<option>` 的显示文本），这里只是把它一起带下去，**不是**在下游从目录反推
+   *（推错 ⇒ ccm 当场 `die`，理由住 `history.rs` 的 `LaunchAccount::Named::name`）。
+   *
+   * `null` = 账号 0（那一态根本不需要名字）。缺席 = 这一格没问过。
+   */
+  accountName?: string | null;
   /** 起在 tmux 里还是直连。 */
   useTmux?: boolean;
   cwd?: string;
@@ -42,6 +53,16 @@ export interface ForkStartDeps {
     sessionId: string;
     cwd: string;
     configDir: string | null;
+    /**
+     * `K-R53`：这个号的名字，**说得出才有**。
+     *
+     * `null` 的两种来历，下游一视同仁（都不发 `--account`）：
+     * ① `configDir === null`（账号 0 —— 那一态走 `base`，本来就不要名字）；
+     * ② `facts.account.kind === "known"` —— 分叉时源会话是活的，继承的是它的**目录**，
+     *    盘上这一路从来没有过它的名字（`fork-launch.ts` 的 `Slot<string|null>` 装的就是目录）。
+     *    ⇒ 如实交 `null`，后端诚实短路回旧路，**不许在任何一侧从目录名反推**。
+     */
+    accountName: string | null;
   }) => Promise<void>;
   /**
    * 起远端。**返回「真的拉起来了吗」** —— 远端那两条路（`runRemoteResume*`）失败时
@@ -120,6 +141,11 @@ export async function startForkedSession(
     facts.cwd.kind === "known" ? facts.cwd.value : (choices.cwd ?? "");
   const configDir =
     facts.account.kind === "known" ? facts.account.value : (choices.configDir ?? null);
+  // `K-R53`：名字与目录是**同一次选择的两半**，所以取法也必须同形 ——
+  // 「知道就用知道的，不知道就用用户答的」。⚠ `known` 那一支**没有名字可知**
+  // （那一格装的是源会话的目录），如实 `null`，别在这里补一个推出来的。
+  const accountName =
+    facts.account.kind === "known" ? null : (choices.accountName ?? null);
   const useTmux =
     facts.tmux.kind === "known" ? facts.tmux.value : (choices.useTmux ?? false);
 
@@ -130,6 +156,7 @@ export async function startForkedSession(
       sessionId: input.newSessionId,
       cwd,
       configDir,
+      accountName,
     });
     return "started";
   }

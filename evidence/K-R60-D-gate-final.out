@@ -1,0 +1,15 @@
+  ok   fmt            1 passed（分母：不是数出来的数：`cargo fmt --all --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src-tauri` 那个 workspace 的全部成员；`remote-daemon-proto` 是另一个 workspace，本行盖不到）
+  ok   winchk         1 passed（分母：不是数出来的数：`cargo check --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 一个包（`src-tauri/src` 的 67 处 `cfg(windows)`）；`remote-daemon-proto` 那 17 处与 `creds-core` 那 2 处本行盖不到）
+  ok   cargo          1482 passed（8 个包合计）
+  分母 cargo          本树未铺 src-tauri/embedded-daemons/ ⇒ embedded_daemons cfg 不置 ⇒ 上面那个合计里少了「本地后端真的能起来吗」那一族（4 条，逐个点名见上方注释）
+  ok   generated      与 Rust 源一致（跑过上面那道 cargo 门之后再判的）
+  ok   daemon         681 passed（分母：单包 remote-daemon-proto，只有一行 test result ⇒ 最大值 = 合计）
+  ok   npm            1667 passed（分母：17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字（test:dom 1480 · test:diff 17），而取最大值 ⇒ 这个数恒是 test:dom 的；另 15 个 tsx 套件只打「all X tests passed」，它们「跑了 0 个」这一格守不住（失败仍由 && 链的退出码守））
+  ·    e2e 前置     build 后端二进制（四套 ccm e2e 的被测对象）
+  ok   ccm e2e        ccm-print-parity       PASS=12（地板 12，恒等）
+  ok   ccm e2e        ccm-rbind-title        PASS=8（地板 8，恒等）
+  ok   ccm e2e        ccm-cli                PASS=46（地板 46，恒等）
+  ok   ccm e2e        ccm-contract-parity    PASS=39（地板 39，恒等）
+  ok   pb check       [backend-consolidation] ===== pb check: FAIL=0 BROKEN=0 =====
+
+GATE: OK —— 三道门 + 生成物漂移 + pb check + 四套 ccm e2e 全绿，可以出货

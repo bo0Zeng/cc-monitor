@@ -37,7 +37,6 @@ import type { CliRenderResult } from "./launch-render-cli";
 import type { CliRenderRequest, PayloadRenderRequest } from "./launch-cli-wire.ts";
 import type { CcmProbeResult } from "./ccm-probe.ts";
 import { sanitizeRemoteLauncher } from "./shell-quote.ts";
-import { SESSION_BACKEND } from "./session-backend.ts";
 import { probeCcm } from "./ccm-probe";
 import { getBehavior } from "./behavior";
 import { showActionFailureToast } from "./error-toast";
@@ -74,9 +73,18 @@ async function renderLaunchCommand(
     //
     // ⚠ **兜底那支仍在 TS**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
     // 而 §33b 写死了「搬它之前必须先回答三件事」。⇒ 那支归 U8c-3。
-    // ⚠ 〔U8c-3-r2 08-14 复裁〕三问逐条重量过，**一条都没过期到可以放行**，其中 ③ 反而
-    // 从「未决」变成「已决：要」（daemonless 是活的每机开关）⇒ 比 08-04 更删不得。
-    // 三条依据各有一条会红的判据，住 `launch_wire.rs` 的 `f07_main_path_tests`。
+    // ⚠ 〔U8c-3-r2 08-14 复裁〕那一拍的结论是「三问一条都没过期到可以放行」——
+    // 🔴 **那是 08-14 的读数，今天不成立**：③ 已随定框 `K35` / `K-R59`（09-11）退役，
+    // ① 也在 `K-P2 D3`（09-03）之后变过一次。三问的**今天版**只有一个家：
+    // `doc/INVARIANTS.md §33b` 那张表（由 `doc_claim_registry` 逐问与现场对拍，
+    // 改行为不改答案当场红）。**别在这儿复述那三问，复述就会漂。**
+    //
+    // 🔴 〔`K-R105` 09-13〕**这一处删不得的理由**：本行是 `renderFallback` 今天
+    // **唯一有生产调用方**的那个消费者（尺子B），而它产的三格全要外层 tmux 命令。
+    // 处数与「站不站在生产路上」两把尺子都住 `launch_wire.rs`
+    //（`TS_FALLBACK_KEEPERS` / `TS_FALLBACK_REACH`，**从源码派生**）——
+    // 这里原来写着「今天有 3 个生产消费者」，那是尺子A 的数被当成尺子B 读，已撤。
+    // 依据各有一条会红的判据，住 `launch_wire.rs` 的 `f07_main_path_tests`。
     const r = await renderCliViaBackend(ctx, plan, probe);
     if (r.ok) return r.cmd;
     // R04① 的第二条收益（Phase D 审计指出它此前"只活在测试里"，生产侧零消费者）：
@@ -140,7 +148,11 @@ export function buildCliRenderRequest(
 ): CliRenderRequest {
   return {
     isSsh: plan.transport.kind === "ssh",
-    caps: probe.installed ? [...probe.capabilities] : null,
+    // `K-R53` `KR53D3`：**肯定式** —— `null` 的两种来历（真没装 · 没探出来）在这条 wire 上
+    // 本来就同形（都是「拿不到能力集」⇒ Rust 侧 `installed = caps.is_some()` 为 false ⇒ 降级），
+    // 而**值**那一侧已经分得开了（`ccm-probe.ts` 的三态）。这里刻意不把 `unknown` 写成
+    // `installed:false` 再传下去 —— 降级是处置，不是事实。
+    caps: probe.state === "installed" ? [...probe.capabilities] : null,
     action:
       plan.action.kind === "resume"
         ? { kind: "resume", sid: plan.action.sid }
@@ -486,7 +498,35 @@ export async function runLocalResumeIntoExistingTmux(
   //   ⚠ 那条门禁此前只是散文里的一条手工 grep，**且只盯 `remote-launch.ts` 一个文件** ——
   //   本文件是后来从它拆出去的，门禁没跟着拆 ⇒ 这处违反因此躺了下来。
   //   现在它有机检了（`session-backend-gate.vitest.ts`），扫**整个前端生产段**。
-  const attachCmd = SESSION_BACKEND.attach({ kind: "quoted", value: name });
+  //
+  // 🔴🔴 〔`K-R109` 2026-09-13〕**接过去了 —— 这一处不再问座要。**
+  //   用户逐字裁「新起一个会话之后，把你的终端接进那个会话那一句 `tmux attach`，
+  //   归谁产？」→「**归本机后端就好了啊**」（`DECISIONS.md#R61` 裁定三）。
+  //   本机后端那一侧 `K-R106` 就产得出了（`src-tauri/src/history.rs::render_local_attach`
+  //   ⇒ `ccm attach <名>`，走本机 `new`/`resume` 同一条渲染路）；`K-R109` 补的是**注册面**
+  //   （`generate_handler!` ＋ `parity_ledger::LEDGER` ＋ 上面那个包装层，三处同一拍）。
+  //   ⚠ 那条「本模块**不 attach**，一次都不」仍然对，它说的是**远端**后端
+  //   （在远端，开不了你面前的窗）；本机后端就在用户面前那台机器上。
+  //
+  // 🔴 **渲不出来就诚实失败，不许回落到前端自己拼一条** —— 两条理由，都不是偏好：
+  //   ① §31 最终形态第①条逐字禁「前端硬编码后端命令」，回落等于把它请回来；
+  //   ② **走到这一行时后端刚刚证明过自己在**（上面那个 `sent.verdict === "typed"` 是
+  //      本机 daemon 通道真的把载荷键进去了才有的结论）。而「有后端、没有 ccm」是
+  //      `DECISIONS.md#R64` 判过的**幽灵态**（用户逐字「不存在什么没装 ccm 装了后端的情况」）
+  //      ⇒ 这一行真的 reject 的时候，那是一条**该让人看见的**读数，不是该被糊过去的边角。
+  let attachCmd: string;
+  try {
+    attachCmd = await commands.render_local_attach({ tmuxName: name });
+  } catch (err) {
+    showActionFailureToast(
+      "已就地 resume，但接终端那一句渲不出来",
+      `${String(err)}\n` +
+        "（接终端那一句归本机后端产，前端不再自己拼一条。" +
+        "刚才载荷已经键进去了，会话本身没事。）",
+    );
+    // ★ 与下面那条同一个道理：**就地 resume 已经成了**，attach 这一跳的成败不改变它。
+    return true;
+  }
   await invokeLaunchOrCopyFallback(LOCAL_ORIGIN, attachCmd, {
     success: "已就地 resume",
     successDetail: `本机 tmux 会话「${name}」里已就地 resume（复用、不新建），终端窗口正在接上它。`,

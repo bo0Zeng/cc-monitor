@@ -37,6 +37,15 @@
 //!    那类仍然要靠人判断。本护栏只覆盖 p1t / G2 这一类「加/改子命令」——
 //!    而那恰好是本仓栽过的两次里的两次。
 //!
+//! # 🔴 `K-R70`（09-12）：本模块从此守**两件事**，别把它读成只守 bump
+//!
+//! 上面全篇讲的是「**该不该** bump」。`K-R68` 摸底逮出来的是另一格：
+//! **拿起一份后端二进制，产品判断不了它是不是我们以为的那一份** ——
+//! 三个载体的身份全靠旁边那个 `.build_id` 文本文件，而它是从同一处源码常量抠的标签
+//! ⇒ 三份恒等 ⇒ 一格证据都不提供（`DECISIONS.md#R26` 裁定零）。
+//! 本模块下半段（`the_build_stamp_is_byte_scannable_in_this_very_binary` 起）守的是
+//! **身份长在二进制自己身上**这条性质。
+//!
 //! 注：本模块整体在 `#[cfg(test)]` 内，非测试构建为空。
 
 #[cfg(test)]
@@ -160,6 +169,69 @@ mod tests {
         (
             "p2e-dial",
             "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
+        // ★ p2g（`K-R86`，09-13）：新增 `--capture-pane` —— **一条只读的一次性抓屏原语**。
+        //
+        // ⚠ **没有 p2f 行**，而这**不是漏**：`p2f-build-stamp`（`K-R70` 09-12）动的是
+        //   「这份二进制说不说得出自己是谁」，**子命令集一条没动** ⇒ 它的指纹与 `p2e-dial`
+        //   逐字相同，按本表的口径（「当前指纹在不在表里」，不是「等于最后一行」）**不该追加**。
+        //   头注那段逐字写着为什么不是「等于最后一行」：因为别的原因 bump 也被逼着改这张表，
+        //   而改表恰恰是本护栏最不想诱导的动作。
+        //
+        // ⚠ **必须 bump**：新增子命令 ⇒ 已部署的旧 daemon 上 `--capture-pane` 落进
+        //   `unknown argument` + exit 2，而调用方判 stale 只看 build_id
+        //   ⇒ 不 bump 就不重装，这条能力在已部署的远端休眠（p1r / p1t / G2 / p2d / p2e 同形）。
+        // ★ 同 p2d / p2e 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
+        //   本轮**没做**；本护栏对「半 bump」是瞎的。
+        (
+            "p2g-capture-pane",
+            "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--capture-pane\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
+        // ★ p2h（`K-R87`，09-13）：新增 `--oneshot-session` —— **带看门狗的一次性会话**。
+        //
+        // ⚠ **必须 bump**：又一条新增的子命令 ⇒ 已部署的旧 daemon 上它落进
+        //   `unknown argument` + exit 2，而调用方判 stale 只看 build_id
+        //   ⇒ 不 bump 就不重装，这条能力在已部署的远端休眠
+        //   （p1r / p1t / G2 / p2d / p2e / p2g 同形，这已经是本表第七次写这个理由）。
+        // ★ 通道面（`inbound::COMMANDS`）**一条没动**：本件只出 CLI 那一面，
+        //   帧面要不要有它是另一件事（今天没有需求，不先造）。
+        // ★ 同 p2d / p2e / p2g 那条如实登记：这一半是**源码半**，re-embed 归发版那一拍，
+        //   本轮**没做**；本护栏对「半 bump」是瞎的。
+        (
+            "p2h-oneshot-session",
+            "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--capture-pane\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--oneshot-session\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
+        // ★ p2i（`K-R104`，09-13）：**CLI 那一面一个字没动，变的全在通道面** ——
+        //   `ch:capture-pane` ＋ `ch:oneshot-session`。这是本表**第一次**只有 `#channel`
+        //   那半变了（p1w 那次是「第一次把通道面纳进指纹」，形状不同，别读成同一件事）。
+        //
+        // ⚠ **必须 bump**，而这一次的理由比前七次更硬：
+        //   前七次是「新子命令在旧 daemon 上落进 `unknown argument` + exit 2」；
+        //   这一次是**帧面**：旧 daemon 的 `hello.commands` 里没有这两条 ⇒ monitor 的
+        //   `InboundClient::accepts` 当场判 `CallError::Unsupported`、**一个字节都不发**
+        //   （`bus-send` 那条是现成先例）。⇒ 用量探针在已部署的旧远端上**整条不可用**，
+        //   而调用方判 stale 只看 build_id ⇒ 不 bump 就不重装。
+        //   ★ 那不是静默失败：`Unsupported` 的 `Display` 逐字说「多半是旧版本，请重装该机器的 daemon」。
+        // ★ 同 p2d / p2e / p2g / p2h 那条如实登记：这一半是**源码半**，
+        //   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**；本护栏对「半 bump」是瞎的。
+        (
+            "p2i-frame-tmux-primitives",
+            "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--capture-pane\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--oneshot-session\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:capture-pane\nch:kill\nch:launch\nch:oneshot-session\nch:ping\nch:resolve",
+        ),
+        // ★ p2j（`K-R113`，09-13）：新增 `bus-state` —— **两个命令面同拍都动**
+        //   （`--bus-state` 进 `SUBCOMMANDS` 26 → 27；`ch:bus-state` 进 `inbound::COMMANDS`
+        //   10 → 11）。这是本表**第一次**两半一起变：p2h 只动 CLI 那半、p2i 只动通道那半。
+        //
+        // ⚠ **必须 bump**，而这一次前八次的两个失效形状**同时**成立：
+        //   ① CLI 面 —— 旧 daemon 上 `--bus-state` 落进 `unknown argument` + exit 2；
+        //   ② 帧面 —— 旧 daemon 的 `hello.commands` 里没有它 ⇒ monitor 的
+        //      `InboundClient::accepts` 当场判 `CallError::Unsupported`、一个字节都不发。
+        //   两条路都止于「调用方判 stale 只看 build_id」⇒ 不 bump 就不重装，能力在远端休眠。
+        // ★ 同 p2d / p2e / p2g / p2h / p2i 那条如实登记：这一半是**源码半**，
+        //   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**；本护栏对「半 bump」是瞎的。
+        (
+            "p2j-bus-state",
+            "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--bus-state\n--capture-pane\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--oneshot-session\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-state\nch:cancel\nch:capture-pane\nch:kill\nch:launch\nch:oneshot-session\nch:ping\nch:resolve",
         ),
     ];
 
@@ -315,6 +387,236 @@ mod tests {
         ids.dedup();
         assert_eq!(ids.len(), n, "历史表里有重复的 BUILD_ID：{ids:?}");
         assert!(n >= 2, "至少要留一行历史，否则「加了一个」在 diff 里看不见");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // 🔴 `K-R70`（09-12）：**后端说得出自己是谁** —— 身份从字节里读得出，不是从旁边抄
+    // ═══════════════════════════════════════════════════════════════════════
+    //
+    // 上面那几条守的是「**该不该** bump」。本节守的是另一件事，`K-R68` 摸底才逮出来的：
+    // **拿起一份后端二进制，产品今天没有办法判断它是不是我们以为的那一份。**
+    // 三个载体（`native-daemon/` · `embedded-daemons/` · `binaries/`）的身份
+    // 全靠旁边那个 `.build_id` 文本文件，而那个文件是**从同一处源码常量抠出来的标签**
+    // ⇒ 三份恒等 ⇒ 一格证据都不提供（`DECISIONS.md#R26` 裁定零）。
+    //
+    // 出路是两条**都长在二进制自己身上**的路，同源于 `BUILD_ID`：
+    //   ① 跑得动它的人 —— `--ccm-probe` 的 `build=` 那一行；
+    //   ② 跑不动它的人（交叉编译的 musl 二进制在 Windows 构建机上执行不了）——
+    //      扫字节里的 `CC_MONITOR_BUILD_STAMP`。
+
+    /// 把一段字节里的身份戳扫出来（**去重后的全部取值**）。
+    ///
+    /// ⚠ 空串与非法字符一律不收：debug 构建里 `BUILD_STAMP_OPEN` / `BUILD_STAMP_CLOSE`
+    /// 这两个常量本身可能被并排放进 `.rodata`（本条第一版实测撞到过，扫出 `["", "p2e-dial"]`）
+    /// —— 那是**两个字面量挨着**，不是一个戳。收它就会把「有几个身份」这个读数变假。
+    fn build_ids_in(bytes: &[u8]) -> Vec<String> {
+        let open = crate::BUILD_STAMP_OPEN.as_bytes();
+        let close = crate::BUILD_STAMP_CLOSE.as_bytes();
+        let mut out: Vec<String> = Vec::new();
+        let mut i = 0usize;
+        while i + open.len() <= bytes.len() {
+            if &bytes[i..i + open.len()] == open {
+                let rest = &bytes[i + open.len()..];
+                let win = &rest[..rest.len().min(96)];
+                if let Some(e) = win.windows(close.len()).position(|w| w == close) {
+                    if let Ok(s) = std::str::from_utf8(&win[..e]) {
+                        let ok = !s.is_empty()
+                            && s.bytes().all(|b| {
+                                b.is_ascii_alphanumeric() || matches!(b, b'-' | b'.' | b'_')
+                            });
+                        if ok {
+                            out.push(s.to_string());
+                        }
+                    }
+                }
+                i += open.len();
+            } else {
+                i += 1;
+            }
+        }
+        out.sort_unstable();
+        out.dedup();
+        out
+    }
+
+    /// 反向自检：**扫描器真的在扫**，不是恒答一个好看的答案。
+    ///
+    /// 一个「永远返回 `BUILD_ID`」的扫描器会让上面两条判据全绿而什么都没证。
+    /// ⇒ 三格：没有戳 ⇒ 空 · 换个 id ⇒ 认出那个 id · 两个不同的戳 ⇒ 认出两个。
+    #[test]
+    fn the_stamp_scanner_actually_bites() {
+        assert!(
+            build_ids_in(b"nothing to see here").is_empty(),
+            "没有戳的字节里也扫出东西 —— 扫描器在编答案"
+        );
+        let fake = format!(
+            "{}zz-not-us{}",
+            crate::BUILD_STAMP_OPEN,
+            crate::BUILD_STAMP_CLOSE
+        );
+        assert_eq!(
+            build_ids_in(fake.as_bytes()),
+            vec!["zz-not-us".to_string()],
+            "换一份字节，它必须报出**那一份**的身份，而不是本进程的"
+        );
+        let real = String::from_utf8_lossy(crate::CC_MONITOR_BUILD_STAMP.as_slice()).to_string();
+        let two = format!("头{fake}中{real}尾");
+        let mut want = vec![super::super::BUILD_ID.to_string(), "zz-not-us".to_string()];
+        want.sort();
+        assert_eq!(build_ids_in(two.as_bytes()), want, "两个戳要认出两个");
+        // 界标挨着（debug 构建 `.rodata` 里真会出现的那一形）不许被当成一个戳。
+        let adjacent = format!("{}{}", crate::BUILD_STAMP_OPEN, crate::BUILD_STAMP_CLOSE);
+        assert!(
+            build_ids_in(adjacent.as_bytes()).is_empty(),
+            "两个界标挨着被读成了一个身份 —— 那会让「有几个身份」这个读数变假"
+        );
+    }
+
+    /// ★★ `KR70D1` 的正题：**身份真的在这一份二进制的字节里** —— 扫这个进程自己。
+    ///
+    /// # 为什么扫 `current_exe()` 而不是扫一份夹具
+    ///
+    /// 本条要证的性质是「**编译之后它还在、而且连续**」。夹具证不了这一点：
+    /// 夹具是我们自己拼的字节，编译器没插手。⇒ 唯一说得上话的被测对象是
+    /// **一份真的编出来的二进制**，而手边最便宜的那一份就是**跑着本测试的这个壳**
+    /// （它由 `main.rs` 编来，生产段的 `#[used] static` 一样在里面）。
+    ///
+    /// # 它证的与不证的
+    ///
+    /// ✅ 证：这一份二进制里**恰好一个**身份戳，值 = `BUILD_ID`。
+    /// ⚠ 不证：**发版那份 release 二进制**也如此 —— 那是另一套 profile
+    ///   （`lto` / `strip` / `opt-level`）。开工时在沙箱里用一份 `lto=true, strip=true`
+    ///   的 release 壳单独打过一趟、同样扫出恰好一处，**但那是一次实验不是一条常驻判据**；
+    ///   常驻的那条在 `src-tauri/build.rs`：内嵌任何一个载体之前都要从**它的字节**里
+    ///   把身份扫出来，扫不出当场 panic ⇒ release 那一侧由发版路自己守。
+    #[test]
+    fn the_build_stamp_is_byte_scannable_in_this_very_binary() {
+        let exe = std::env::current_exe().expect("拿不到本测试壳自己的路径");
+        let bytes = std::fs::read(&exe).unwrap_or_else(|e| panic!("读不到 {}：{e}", exe.display()));
+        assert!(
+            bytes.len() > 100_000,
+            "读到的字节只有 {} —— 读错文件了，本条会零命中地绿",
+            bytes.len()
+        );
+        let ids = build_ids_in(&bytes);
+        assert_eq!(
+            ids,
+            vec![super::super::BUILD_ID.to_string()],
+            "从这一份二进制的字节里扫出来的身份是 {ids:?}，而 `BUILD_ID` 是 `{}`。\n\
+             \n\
+             · 扫到 **0 个** ⇒ 那个 `#[used] static CC_MONITOR_BUILD_STAMP` 被优化掉 / 被删了\n\
+               ⇒ 「拿到一份二进制问得出它是谁」这条性质当场没了，而**旁边那个 `.build_id`\n\
+               文件不算数**：它是从源码常量抄的标签，三个载体永远一致，一格证据都不提供\n\
+               （`K-R68` 摸底 · `DECISIONS.md#R26` 裁定零）。\n\
+             · 扫到 **多个** ⇒ 有第二处也在往二进制里写这个形状的串，身份不再唯一。\n\
+             · 值不对 ⇒ 拼戳那条 `const fn` 与 `BUILD_ID` 脱钩了。",
+            super::super::BUILD_ID
+        );
+    }
+
+    /// ★★ `KR70D1` 的另一半：**跑得动它的人，直接问它**。
+    ///
+    /// `--ccm-probe` 那条握手此前只答得出 `version=`（**CLI 的契约版本**，`5`），
+    /// 它答不出「你是哪一次构建」。本条钉住 `build=` 那一行**取自这个进程编进来的常量**。
+    ///
+    /// ⚠ 与 `control::ccm` 里那条形状判据**不重**：那边钉的是整份输出的**行序与行数**
+    /// （外部契约），这边钉的是**这一行的值从哪来**（身份）。
+    #[test]
+    fn the_probe_answers_which_build_this_is() {
+        let out = crate::control::ccm::probe_output("/somewhere/ccm");
+        let line = out
+            .lines()
+            .find_map(|l| l.strip_prefix("build="))
+            .unwrap_or_else(|| {
+                panic!(
+                    "`--ccm-probe` 的输出里没有 `build=` 那一行 —— \
+                     「问一份二进制它是谁」这条路断了。实得：\n{out}"
+                )
+            });
+        assert_eq!(
+            line,
+            super::super::BUILD_ID,
+            "`build=` 报的是 `{line}`，而这一份的 `BUILD_ID` 是 `{}` —— \
+             它没有取自本进程的常量（抄了别处 = 又一个标签）",
+            super::super::BUILD_ID
+        );
+    }
+
+    /// ★★ `KR70D2`：**`version = "0.0.0"` 是刻意的，而且有人在数它。**
+    ///
+    /// # 选的是件计划里那条 ②，代价写在这里
+    ///
+    /// ①（给它一个真版本、进 `release.yml` 那道「四处版本号与 tag 一致」的检查）**没选**。
+    /// 代价现打：那道检查比的是**四处 == tag**，而后端换不换由**行为变没变**决定
+    /// （`BUILD_ID` 的 bump 纪律，`SUBCOMMAND_HISTORY` 那张表就是它的账本），
+    /// 不由发版节奏决定。把它绑上 tag ⇒ 每次发版这个 crate 的版本都动一格，
+    /// 而 `BUILD_ID` 不动 ⇒ **后端从此有两个版本号，谁都不是权威** ——
+    /// 那正是 `K33`「后端只有一个」在身份这一维要避开的东西。
+    ///
+    /// ②（明写刻意不用 + 判据钉住真身份住址）**选了**。它的代价也如实写：
+    /// 后端的身份**不出现在** `cargo metadata` / `Cargo.lock` 那一面 ⇒
+    /// 靠 crate 版本号做依赖管理的工具看它永远是 `0.0.0`。
+    /// 今天没有任何消费者走那条路（本 crate 不发布、不被别的 crate 依赖，
+    /// `[[bin]]` 是它唯一的产物），所以这一格是**已知且今天为空**的代价，不是漏。
+    ///
+    /// # 死值验：把身份住址改坏 ⇒ 必须红
+    ///
+    /// 三处住址逐个核：`const BUILD_ID` · 拼戳那段 · `--ccm-probe` 的 `build=`。
+    /// 少任何一处，本条或它上面那两条当场红。
+    #[test]
+    fn the_crate_version_is_deliberately_zero_and_the_real_identity_has_a_home() {
+        // ── ① `version = "0.0.0"` 还在，而且**恰好一处** ────────────────────
+        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("Cargo.toml");
+        let toml = std::fs::read_to_string(&manifest)
+            .unwrap_or_else(|e| panic!("读不到 {}：{e}", manifest.display()));
+        let version_lines: Vec<&str> = toml
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("version = ") || l.starts_with("version="))
+            .collect();
+        assert_eq!(
+            version_lines,
+            vec![r#"version = "0.0.0""#],
+            "本 crate 的 `[package] version` 实得 {version_lines:?}。\n\
+             它**刻意**是 `0.0.0`（真身份住 `src/main.rs` 的 `BUILD_ID`，理由逐字写在\n\
+             `Cargo.toml` 那一行上方）。要改成别的数字，得先答一个问题：\n\
+             **谁在数它？** 把一个假值换成另一个假值，是 `KR70D2` 逐字点名的失效方向。"
+        );
+        // ── ② 「刻意」这件事在盘上写着，不是只住在我脑子里 ──────────────────
+        //    锚是**一句中性的话**，不取自任何夹具名（`brief` 12 那条）。
+        const DELIBERATE: &str = "本 crate 刻意不用 Cargo.toml 的版本";
+        assert!(
+            toml.contains(DELIBERATE),
+            "`Cargo.toml` 里找不到逐字「{DELIBERATE}」—— \n\
+             `0.0.0` 于是退回成一个**没人解释过的假值**，而下一个人看到它只会顺手改掉。"
+        );
+        // ── ③ 真身份的住址逐个还在 ─────────────────────────────────────────
+        let main_rs = include_str!("main.rs");
+        let decls = main_rs
+            .lines()
+            .filter(|l| l.trim_start().starts_with("const BUILD_ID"))
+            .count();
+        assert_eq!(
+            decls, 1,
+            "`main.rs` 里 `const BUILD_ID` 的声明有 {decls} 处（应当 1）—— \n\
+             ⚠ `src-tauri/build.rs::extract_build_id` 与 `release.yml` 两处都按\n\
+             「含 `const BUILD_ID` 的那一行」去抠它；0 处 ⇒ 抠出 `unknown`，\n\
+             多处 ⇒ 抠到哪一个看运气。"
+        );
+        assert!(
+            !super::super::BUILD_ID.is_empty(),
+            "`BUILD_ID` 是空串 —— 落到用户盘上的名字会变成 `cc-monitor-local-`（不带版本）"
+        );
+        // 戳的两个界标也是身份住址的一部分：它们一变，扫字节那一侧全瞎。
+        assert!(
+            !crate::BUILD_STAMP_OPEN.is_empty() && !crate::BUILD_STAMP_CLOSE.is_empty(),
+            "身份戳的界标是空串 —— 扫字节那条路会把整份二进制当成一个戳"
+        );
+        assert!(
+            build_ids_in(crate::CC_MONITOR_BUILD_STAMP.as_slice())
+                == vec![super::super::BUILD_ID.to_string()],
+            "那段 `static` 自己都扫不出 `BUILD_ID` —— 拼戳的 `const fn` 与常量脱钩了"
+        );
     }
 
     /// 反向自检：判据**真的会抓人**。喂一个「多了一个子命令」的假指纹，比对必须不等。

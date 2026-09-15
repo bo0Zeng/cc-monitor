@@ -556,7 +556,8 @@ fn spawn_detached(
         .stderr(std::process::Stdio::null())
         .process_group(0);
     // ★★ `K-R28`：与 `supervise_with_stdio` **同一份分类**（住 `local_backend`，不各写一份）。
-    //    这条路 exec 的正是 `resolve_daemon_bin` 刚用 `extract_embedded_to` 释放出来的那个文件
+    //    这条路 exec 的正是 `resolve_daemon_bin` 刚拿到的那个文件 —— 而它可能是
+    //    `extract_embedded_to` 刚写出来的那一份（`K-R43` 之后经 `resolve_or_extract` 走）
     //    ⇒ 它是本仓两处「写了一个文件、随后 exec 它」的落点之一。
     local_backend::spawn_with_etxtbsy_retry(&mut cmd).map_err(|f| match f {
         // 这一刻恰好撞上了会自己过去的竞态 —— 那句话也是共用的那一份。
@@ -1125,36 +1126,35 @@ fn adopt_with(port: u16, home: &str, token: &str, wait_for_bind: bool) -> Adopt 
     ))
 }
 
-/// 找那个二进制：**先找 exe 旁边，再释放内嵌的那份**。
+/// 找那个二进制 —— **这一层只做适配，答案取自那一份共用的解析**
+/// （`local_backend::resolve_or_extract`：先找 exe 旁边、再问产物自己带没带、再释放）。
 ///
-/// ⚠⚠ **这个顺序与 `local_backend::start_or_extract` 的必须一样**，
-/// 而它们是两份实现（那一份把「找」与「监护」焊在一起，常驻这条路不要监护那半）。
-/// 两份实现就会漂 ⇒ 由 `the_two_resolution_paths_still_agree_on_the_order` 逐字对拍。
+/// # 🔴 `K-R43`：本函数**曾经是第二份手写实现**，今天不是了
+///
+/// 原来这里自己走一遍「找旁边 → 释放内嵌」，与 `local_backend::start_or_extract` 并列两份，
+/// 中间只有 `the_two_resolution_paths_still_agree_on_the_order` **对拍顺序**。
+/// ⚠ **那条判据眼皮底下真的漂过一次，而它全程绿**：`K-R42` 只给那一份接上了
+/// 「问产物自己带没带」与「释放失败说一句分得开的话」，本函数一个字没动 ——
+/// 顺序没变 ⇒ 判据没红，而同一台机上两条路对同一个失败给出了两句性质不同的话
+/// （本函数那一句逐字是 `K-R42` 从对面删掉的那一句）。读数住件文件 `K-R43 §9`。
+/// ⇒ 处置是**只留一份**，本函数降为适配器：把 `Resolved` 换成这条路要的 `Result`，
+/// 并补上两样**宿主知识**（目标三元组常量 · `make_executable`）。
+///
+/// ⚠ **本层不许再自己拼失败串** —— 拼了就是第二份说法。由
+/// `the_two_resolution_paths_still_agree_on_the_order` 钉着（它今天钉的是「两条路都走那一份」）。
 fn resolve_daemon_bin(
     extract_dir: &std::path::Path,
     embedded: Option<(&str, &[u8])>,
 ) -> Result<std::path::PathBuf, (String, Vec<std::path::PathBuf>)> {
-    let beside = local_backend::resolve_beside_this_exe(env!("CCM_TARGET_TRIPLE"));
-    match beside {
+    match local_backend::resolve_or_extract(
+        env!("CCM_TARGET_TRIPLE"),
+        extract_dir,
+        embedded,
+        // `backend-split` 的 C10：平台知识由宿主注入。
+        &crate::platform_fs::make_executable,
+    ) {
         Resolved::Found(p) => Ok(p),
-        Resolved::Missing { reason, looked_at } => {
-            let Some((build_id, bytes)) = embedded else {
-                return Err((reason, looked_at));
-            };
-            local_backend::extract_embedded_to(
-                extract_dir,
-                build_id,
-                bytes,
-                // `backend-split` 的 C10：平台知识由宿主注入。
-                &crate::platform_fs::make_executable,
-            )
-            .map_err(|e| {
-                (
-                    format!("exe 旁无 sidecar，且释放内嵌 daemon 失败: {e}"),
-                    looked_at,
-                )
-            })
-        }
+        Resolved::Missing { reason, looked_at } => Err((reason, looked_at)),
     }
 }
 
@@ -1507,9 +1507,15 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 //   · **前半是把一道闸的射程读大了**。那道闸逐字是
 //     `let embedded = if cfg!(target_os = "linux") {` —— 它置空的是 **`embedded`
 //     这一个变量（内嵌回落那一支）**，不是「解析」。
-//   · **后半是从前半推出来的**。`resolve_daemon_bin` 的**第一条路**逐字是
-//     `let beside = local_backend::resolve_beside_this_exe(env!("CCM_TARGET_TRIPLE"));`
-//     —— **与平台无关**，只有它返回 `Missing` 才轮到 `embedded`。
+//   · **后半是从前半推出来的**。`resolve_daemon_bin` 的**第一条路**是
+//     `local_backend::resolve_beside_this_exe` —— **与平台无关**，
+//     只有它返回 `Missing` 才轮到 `embedded`。
+//     〔`K-R43` 订正**这一行的形式，不是它的结论**：那一句原先逐字抄在这里
+//      （`let beside = local_backend::resolve_beside_this_exe(env!("CCM_TARGET_TRIPLE"));`），
+//      而 `K-R43` 把解析抽进了 `local_backend::resolve_or_extract` ⇒ 那份逐字抄件当场馊了。
+//      **结论一格没动**：第一条路仍是「找 exe 旁边」、仍与平台无关，只是它今天住共用那份里。
+//      ⚠ 留下这条订正是有意的：本段自己就是「一句注释在开发树上恒真、在用户手上恒假」的病历，
+//      而**抄逐字**正是让它馊得更快的那一手。〕
 //   ⇒ 发版的 Windows 包里那份 sidecar **就在 `monitor.exe` 旁边**
 //     （`src-tauri/tauri.sidecar.conf.json` 逐字声明 `"externalBin": ["binaries/cc-monitor-remote"]`；
 //     `.github/workflows/release.yml` 的 `build-windows` job 跑在 `windows-latest` 上，
@@ -1733,9 +1739,76 @@ pub fn stop_local_backend() -> Result<String, String> {
     }
 }
 
+// ══ 取 shim 那个唯一入口的**跨文件出口**〔`K-R7` 09-01，`§0q` 裁一 · 出路乙〕════
+//
+// `backend/control/local_backend.rs` 的三个落点也要走这个口 ⇒ 这个测试模块必须 `pub(crate)`，
+// 它们按 `crate::local_daemon::tests::demand_tmux_shim(..)` 取。
+//
+// 〔`K-R76` 09-12〕**这里原先多一道绕道，现在拆掉了**：模块写成私有 `mod tests`，再在
+// 文件末尾补一行 `pub(crate) use tests::demand_tmux_shim;` 重导出一次。那道绕道**不是随手写的**，
+// 它当时有一个真理由 —— 09-01 实打，直接写成 `pub(crate) mod tests` **当场打红 17 条**
+// （`cargo test -p monitor --lib`：`1194 passed; 17 failed; 13 ignored`；`guard-core` 的反向
+// 自检逐字「剥完仍残留 23 个测试属性 —— 剥法坏了」）：当时 `guard_core::test_module_ranges`
+// 按**字面前缀**认 `mod `，`pub(crate) mod tests {` 过不了那一关 ⇒ 整段测试代码被当成
+// 生产段，各条扫生产段的守卫跟着去扫测试代码。
+// `K-R75`（09-12）把那一步换成**按形状**剥可见性修饰（`guard_core::strip_visibility`）之后
+// **那个理由不再成立** ⇒ 绕道拆掉，模块写回它本来的样子。
+//
+// 🔴 **上一版这里指的是一个裸行号**（`guard-core/src/lib.rs` 加一个数字）——
+//   那份文件 09-12 一动那个数就漂了，而**漂了没有任何东西会说话**（本区 `[J5 审计正文]` 那一族）。
+//   ⇒ 今天指的是**函数名 ＋ 一段机检着的逐字校验位**，不是行号：剥法住
+//   `src-tauri/crates/guard-core/src/lib.rs` 的 `test_module_ranges`；校验位（那一行的原文）
+//   **只有一个家** —— 下面 [`tests::the_strip_rule_this_file_leans_on_is_still_on_disk`]
+//   里那个 `PIN`，它在盘上找不着就当场红。
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
+
+    /// 〔`K-R76` `KR76D2`，09-12〕**上面那个 `pub(crate) mod tests` 靠的那条剥法，今天还在盘上。**
+    ///
+    /// # 它治的是一处**裸行号**
+    ///
+    /// 09-01 到 09-12 之间，上面那段说明指的是 `guard-core/src/lib.rs` 的**某一行行号**。
+    /// 那份文件 09-12 被 `K-R75` 改过 ⇒ **那个数当场就漂了**，而漂了**没有任何东西会说话**
+    /// （本区 `[J5 审计正文]` 一直在治这一族）。⇒ 换成**逐字校验位**：把剥法那一行的原文抄进
+    /// `PIN`，由本条去核它还在不在、且**恰好一处**。
+    ///
+    /// # 买到什么 · 买不到什么（写死，别读大）
+    ///
+    /// - **买到**：上面那段散文**指得着** —— 剥法那一行被改写 / 退回旧写法 / 搬走，本条当场红。
+    /// - **买不到**：剥法**对不对**。那是 `guard-core` 自己那几条的事
+    ///   （`a_test_module_is_recognised_whatever_its_visibility` 那一族），不归本条。
+    /// - **也买不到**「本文件的测试段真的被剥干净了」—— 那归 `structural_scan.rs` 里那条
+    ///   走 `guard_core::assert_tree_strips_clean` 的树级反向自检。
+    /// - ⚠ 这条 `include_str!` **不是跨半边的边**：`cross_half_edge_registry` 那张表管的是
+    ///   monitor ↔ daemon，而 `src-tauri/crates/` 与 `src-tauri/src/` 同属这一半。
+    ///   同形先例：`dial_home_registry::INTERFACE_MANIFEST` · `usage.rs` 读 `usage-core`。
+    #[test]
+    fn the_strip_rule_this_file_leans_on_is_still_on_disk() {
+        // 校验位：`guard_core::test_module_ranges` 里认「这一行是不是测试模块的开头」的那一句，**逐字**。
+        //
+        // 🔴 **这一族只许有一个家**（`brief` 13b）：别在上面那段注释里、也别在别的判据里再抄一份
+        //   —— 抄一份就有两个家，而漂开的那一天两边看起来一模一样。
+        const PIN: &str = r#"strip_visibility(mod_line).starts_with("mod ")"#;
+        const GUARD_CORE: &str = include_str!("../crates/guard-core/src/lib.rs");
+        // 反空真：先证 `include_str!` 真读到了东西，否则「找不到就红」是空转。
+        assert!(
+            GUARD_CORE.len() > 10_000,
+            "只读到 {} 字节的 `crates/guard-core/src/lib.rs` —— `include_str!` 没读到东西，本条在空转",
+            GUARD_CORE.len()
+        );
+        assert_eq!(
+            GUARD_CORE.matches(PIN).count(),
+            1,
+            "在 `src-tauri/crates/guard-core/src/lib.rs` 里没有恰好一处剥法那一行的逐字校验位：\n\
+             逐字 `{PIN}`\n\
+             ⇒ 两种来路，都要人来看：\n\
+             ① **剥法被改了**（退回按字面前缀认 `mod ` 那一版？）—— 那么本文件上面那个\n\
+                `pub(crate) mod tests` 会让整段测试代码留在生产段里。**这不是改注释能修的。**\n\
+             ② 只是那一行被重写 / 搬家了 —— 那么把 `PIN` 换成新的原文，\
+                **别换回一个行号**（那正是本条 09-12 治掉的那个病）。"
+        );
+    }
 
     /// ★★★ `D1 阻-6` 刀 B 的反面：**`relay_running()` 真的在看那张表，不是一个常量。**
     ///
@@ -3062,36 +3135,79 @@ mod tests {
         }
     }
 
-    /// ★★ **两份「找那个二进制」的实现必须同序**。
+    /// ★★ **两条「找那个二进制」的路必须给同一个答案** —— 今天靠的是「只有一份实现」。
     ///
-    /// 常驻这条路不要监护那半，所以它没法直接用 `start_or_extract`
-    /// （那一份把「找」与「监护」焊在一起）⇒ 今天是**两份实现**。
-    /// 两份就会漂，而漂的后果是「同一台机上两条路找到不同的二进制」——
-    /// 那正是「每台机 N 个 daemon」的另一个入口。
-    /// ⇒ 逐字对拍**顺序**这一件事：两边都必须**先 `resolve_beside_this_exe`、再释放内嵌那份**。
+    /// # 🔴 `K-R43` 换了机制，**名字刻意没改**（引它的地方不用跟着动）
+    ///
+    /// 墓碑，原文逐字：「常驻这条路不要监护那半，所以它没法直接用 `start_or_extract`
+    /// （那一份把「找」与「监护」焊在一起）⇒ 今天是**两份实现**。两份就会漂 …… ⇒ 逐字对拍**顺序**
+    /// 这一件事：两边都必须先 `resolve_beside_this_exe`、再释放内嵌那份。」
+    ///
+    /// ⚠ **它守的那件事一个字没变** —— 仍是「同一台机上两条路不许找到不同的二进制」
+    /// （那正是「每台机 N 个 daemon」的另一个入口）。变的是**拿什么去守**，而换机制的理由是
+    /// **一次实打的失效**：`K-R42` 只改了 `start_or_extract`（接上「问产物自己带没带」、
+    /// 释放失败改说一句分得开的话），`resolve_daemon_bin` 一个字没动 —— **顺序两边都没动**
+    /// ⇒ 上面那版**全程绿**，而两条路对同一个失败已经在说两句性质不同的话。
+    /// ⇒ 「两份手写实现 + 一条只对拍顺序的判据」这一档**被证伪了**，
+    /// 换成「**抽一份共用的，再钉住两条路都真的走它**」（`K-R28` 那条防空转的形状）。
+    ///
+    /// # 它今天钉四件
+    ///
+    /// ① 那份共用的解析**存在**（切得出体，且体里那三问俱在 —— 反空真）；
+    /// ②③ 两条路**各自恰好一处**调它；
+    /// ④ 两条路体内**都不再有**自己那套取法（`extract_embedded_to(` /
+    ///    `native_embedded_daemon` / `resolve_beside_this_exe(` 一处都不许剩）——
+    ///    少了④，谁在旁边**再写一份**并列的取法，②③ 照样绿。
+    ///
+    /// ⚠ **诚实边界**：它是**约定型守卫**（查源码形态）——
+    /// 挡得住「接线被删 / 旁边又长出第二份取法」，挡不住「把共用那份自己改坏」。
+    /// 共用那份的内容由 `local_backend` 那侧的
+    /// `the_self_extract_path_really_asks_the_product_whether_it_carries_one` 钉。
     #[test]
     fn the_two_resolution_paths_still_agree_on_the_order() {
-        let mine = body_of(
-            &guard_core::production_code(include_str!("local_daemon.rs")),
-            "fn resolve_daemon_bin(",
-        );
-        let theirs = body_of(
-            &guard_core::production_code(include_str!("backend/control/local_backend.rs")),
-            "pub fn start_or_extract(",
-        );
-        for (who, body) in [("常驻这条", &mine), ("今天那条", &theirs)] {
-            let beside = body
-                .find("resolve_beside_this_exe(")
-                .unwrap_or_else(|| panic!("{who}路里找不到 `resolve_beside_this_exe(`"));
-            let extract = body
-                .find("extract_embedded_to(")
-                .unwrap_or_else(|| panic!("{who}路里找不到 `extract_embedded_to(`"));
-            assert!(
-                beside < extract,
-                "{who}路把「释放内嵌那份」排在「找 exe 旁边」之前 —— 顺序反了。\n\
-                 开发构建里 exe 旁边那个是**更新**的，内嵌那份是打包时的快照；\
-                 顺序一反，两条路就会在同一台机上找到不同的二进制。"
-            );
+        let theirs = guard_core::production_code(include_str!("backend/control/local_backend.rs"));
+        // ① 那份共用的解析真的在，而且三问俱在 —— 它是下面三条的地板。
+        let shared = body_of(&theirs, "pub fn resolve_or_extract(");
+        for needle in [
+            "resolve_beside_this_exe(",
+            "native_embedded_daemon",
+            "extract_embedded_to(",
+            "extraction_failure_reason(",
+        ] {
+            guard_core::find_pinned(&shared, needle).unwrap_or_else(|e| {
+                panic!(
+                    "那份共用的解析体内 `{needle}` 不是恰好一处（{e}）——\n\
+                     它是本条的地板：共用那份自己塌了，下面「都走了它」这几条\n\
+                     买到的就只是「都走了一个空壳」。\n逐字：{shared}"
+                )
+            });
+        }
+        let mine = guard_core::production_code(include_str!("local_daemon.rs"));
+        for (who, prod, head) in [
+            ("常驻这条", &mine, "fn resolve_daemon_bin("),
+            ("今天那条", &theirs, "pub fn start_or_extract("),
+        ] {
+            let body = body_of(prod, head);
+            // ②③ 恰好一处调用 —— 两处就说不清哪一处才是它的答案。
+            guard_core::find_pinned(&body, "resolve_or_extract(").unwrap_or_else(|e| {
+                panic!(
+                    "{who}路体内 `resolve_or_extract(` 不是恰好一处（{e}）——\n\
+                     一处都没有 ⇒ 它又自己找去了，而「自己找」正是 `K-R42` 那次漂的形状：\n\
+                     同一台机上两条路对同一个失败说两句性质不同的话。\n逐字：{body}"
+                )
+            });
+            // ④ 自己那套取法一处都不许剩。
+            for own in [
+                "extract_embedded_to(",
+                "native_embedded_daemon",
+                "resolve_beside_this_exe(",
+            ] {
+                assert!(
+                    !body.contains(own),
+                    "{who}路体内又出现了 `{own}` —— 旁边长出了第二份取法。\n\
+                     ★ 少了本条，「都调了那份共用的」照样绿，而真正跑起来的是哪一份没人说得准。\n逐字：{body}"
+                );
+            }
         }
     }
 
@@ -3114,7 +3230,8 @@ mod tests {
     ///
     /// # ⚠ 射程：只到这两处
     ///
-    /// `local_query::run_query` 那处起进程的落点**刻意不在分母里**：它 exec 的是
+    /// `backend::observe::local_query::run_query`（`K-R71` 09-12 之前住 `backend::control::`）
+    /// 那处起进程的落点**刻意不在分母里**：它 exec 的是
     /// `resolve_beside_this_exe` 找到的 sidecar，**不是我们刚写出来的那个文件**
     /// （`extract_embedded_to` 的产物它够不着）⇒ 那条路上不存在这个竞态的必要条件。
     /// 全树起进程的落点现打 21 处、其中 monitor 侧 12 处（量具
@@ -4748,7 +4865,12 @@ mod tests {
         //  ★ 「诚实降级」这一档今天还有真人群，一批都不靠 F05b 有没有做：
         //  ① **裸 exe**（PM 那一趟实测 0 个后端进程）· ② **开发树**（`externalBin` 刻意不进基础
         //  `tauri.conf.json` ⇒ exe 旁恒空）· ③ **释放内嵌那一份也失败**
-        //  （`resolve_daemon_bin` 里那条 `exe 旁无 sidecar，且释放内嵌 daemon 失败`）。
+        //  （走 `local_backend::extraction_failure_reason` 那句话）。
+        //  〔`K-R43` 订正 ③ 的**住址**：它原先写的是「`resolve_daemon_bin` 里那条
+        //   `exe 旁无 sidecar，且释放内嵌 daemon 失败`」—— 那一句是 `K-R42` 从
+        //   `start_or_extract` 删掉的**同一句**，`K-R43` 把它从这条路上也删了。
+        //   ⚠ **这一档的人群没变**（释放失败仍走诚实降级），变的只是它今天说哪一句话：
+        //   从「把两件事说成一件」换成「带了，但这台机器不让我放下来」。〕
         //  ⇒ 人群从「所有人」缩成这三批，**性质没变**，所以这条不换靶。
         //  与 `local_backend.rs` 那条「换靶」不同形：那条的**目的**随 F05b 过期，必须换；
         //  本条改的只是红了之后说给人听的那句话。〕
@@ -5694,24 +5816,3 @@ mod tests {
         );
     }
 }
-
-// ══ 取 shim 那个唯一入口的**跨文件出口**〔`K-R7` 09-01，`§0q` 裁一 · 出路乙〕════
-//
-// `backend/control/local_backend.rs` 的三个落点也要走这个口，而 `mod tests` 是私有的
-// ⇒ 在这里 `pub(crate)` 重导出一次。
-//
-// 🔴 **为什么不是直接把 `mod tests` 改成 `pub(crate) mod tests`** —— 09-01 实打，
-//   那一改**当场打红 17 条**（`cargo test -p monitor --lib`：`1194 passed; 17 failed`）。
-//   机制现打自 `src-tauri/crates/guard-core/src/lib.rs:141`：`test_module_ranges` 认测试模块的条件是
-//   「`#[cfg(test)]` 的下一行 `trim()` 后 **`starts_with("mod ")`** 且以 `{` 收尾」——
-//   `pub(crate) mod tests {` 过不了这一关 ⇒ 整个测试段被当成**生产段**，
-//   于是走 `production_source` / `production_code` 的守卫跟着去扫测试代码
-//   —— **那一趟实打 17 条红**（分母 = `cargo test -p monitor --lib` 的判定行：
-//   `1194 passed; 17 failed; 13 ignored`；**我没有逐条去数「全仓有多少条这样的守卫」**），
-//   `guard-core` 的反向自检逐字：「剥完仍残留 **23** 个测试属性 —— 剥法坏了」。
-//   ⇒ **本行这种写法是被那次实测选出来的，不是随手写的**：`#[cfg(test)]` 底下不是
-//     `mod X {` 的东西，剥法会原样跳过（`i = attr_end; continue;`），一个字节都不影响剥法。
-//   ⚠ 它也**排在 `mod tests` 之后** ⇒ 「文件里首个 `#[cfg(test)]` 之前那一段」逐字节没变
-//     （本件四拍守着的「生产段零改动」按的就是那个切法）。
-#[cfg(test)]
-pub(crate) use tests::demand_tmux_shim;

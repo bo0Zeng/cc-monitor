@@ -18,7 +18,6 @@ pub mod daemon_route;
 pub mod daemon_send_keys;
 pub mod launch_wire;
 pub mod local_backend;
-pub mod local_query;
 pub mod payload;
 
 #[cfg(test)]

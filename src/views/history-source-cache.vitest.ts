@@ -250,4 +250,49 @@ describe("HistoryView 来源列表 TTL 缓存 (F76 #46)", () => {
     expect(inner.projects.filter((p) => p.origin === "hostA").length).toBe(1); // 暖帧 cached 仍在
     expect(localStorage.getItem(LS_KEYS.historyRemoteSources)).not.toBeNull(); // Err 分支不清持久
   });
+
+  // ★★〔K-R97 09-12〕本机项目列表改走后端之后，`projectDir` 从**绝对路径**变成后端给的
+  // **编码目录名**（与远端那条路同形）。前端在这条链上的角色是**纯搬运** ——
+  // 它既不解析这个值、也不拼路径，原样传回后端。
+  //
+  // 为什么值得一条：形状变过一次，就会有人想「顺手补个前缀让它看起来像路径」。
+  // 那一改在 TS 侧一声不吭（类型仍是 string），却让后端那道「名字里不许有分隔符」的
+  // 围栏当场拒掉每一次展开。⇒ 这条钉的是「原样」，不是某个具体字符串。
+  it("K-R97 展开本地项目：projectDir 原样回传后端，前端不加工", async () => {
+    const view = new HistoryView();
+    const localProj = {
+      projectPath: "/w/alpha",
+      projectName: "alpha",
+      projectDir: "-w-alpha", // 后端给的编码目录名，**不是**路径
+      sessionCount: 2,
+      starredCount: null, // K-R92/K-R97：本机这条路也可能是「不知道」
+      hiddenCount: null,
+      lastActivity: 1,
+      hasLive: null,
+    };
+    invokeMock.mockReset();
+    invokeMock.mockImplementation((cmd: string) => {
+      if (cmd === "list_history_projects") return Promise.resolve([localProj]);
+      if (cmd === "list_remote_history_projects")
+        return Promise.resolve({ projects: [], failedHosts: [] });
+      return Promise.resolve(undefined);
+    });
+    await view.open();
+    await (view as unknown as { loadProjectSessions(p: unknown): Promise<void> })
+      .loadProjectSessions(localProj);
+
+    const calls = invokeMock.mock.calls.filter(
+      (c) => c[0] === "stream_history_sessions_in_project",
+    );
+    expect(calls.length, "本地项目该走本机那条流式命令").toBe(1);
+    const args = calls[0][1] as { projectDir: string };
+    expect(
+      args.projectDir,
+      "前端加工了 projectDir —— 它只该原样搬运后端给的目录名",
+    ).toBe("-w-alpha");
+    // 远端那条命令一次都不该被调（本地项目没有 origin）。
+    expect(
+      invokeMock.mock.calls.filter((c) => c[0] === "stream_remote_history_sessions").length,
+    ).toBe(0);
+  });
 });

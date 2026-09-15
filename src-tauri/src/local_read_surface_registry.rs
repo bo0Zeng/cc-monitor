@@ -35,10 +35,16 @@
 //! **要什么才测得了**（缺一不可）：① 干净机装一次真安装包；
 //! ② 挑一处 `reader` 真切到本机后端；③ 同一份 `~/.claude` 上新旧两条路各读一遍、**逐字段比**。
 //! 缺这一趟，「退得了 / 退不了」就只能写成「判不了」。
+//! 🔴 **〔`K-R97` 09-12〕这三格今天是 ②✓ ①✗ ③✗，别读成「测过了」**：
+//! `list_history_projects` 真切到了本机后端（代码这一格兑现了 ②），而 ①/③ **一趟都没跑过** ——
+//! 红线内（`K31`）跑不了真安装包，也就比不了「新旧两条路逐字段」。⇒ 结论仍是「判不了」，
+//! 变的只是**欠的那两格更清楚了**。
 //!
 //! ★ 而**棘轮为什么今天还该在**，靠的**不是**上面那句已翻的前提，是登记表**每一行自己**
-//! 写着的缺口（daemon `--list-projects` 缺会话 sid 清单 · daemon 侧没有 codex 的项目枚举 ·
-//! daemon `--search` 没有索引 · 缺 `--list-marketplaces` · 删会话 daemon 侧无对侧），
+//! 写着的缺口（daemon 侧没有 codex 的项目枚举 · daemon `--search` 没有索引 ·
+//! 缺 `--list-marketplaces` · 删会话 daemon 侧无对侧），
+//! 〔`K-R97` 09-12：**「`--list-projects` 缺会话 sid 清单」那一格从这份清单里去掉了** ——
+//! `K-R83` 把它补齐、`K-R92` 把分类改对、`K-R97` 把那条路真迁走，一格三步走完了。〕
 //! 外加 `fence` / `write` / `remote` / `hub` / `payload` 那几类**根本不是读面**。
 //! ⇒ 人群窄了（不再是「所有人都没有后端」），**性质没变** ⇒ 棘轮不换靶。
 //! 这正是 skill 那个「目标今天钉不上（终点被别的件挡着）」的出口 ——
@@ -106,30 +112,22 @@ mod tests {
     /// 多一处 ⇒ 下面那条红（防「F10 还没做而直读点增长」）；
     /// 少一处 ⇒ **也红**（退役了要把棘轮往下拧）。
     const REGISTERED: &[(&str, &str, usize, &str)] = &[
-        // 〔F10b 末批〕`history.rs` **按角色拆成四条** —— 逐函数量过，那 15 个命中不是一类活。
-        // ★ 拆条的理由：登记表原本按「文件 × 单一类别」记账，而这个文件承载四种角色 ⇒
+        // 〔F10b 末批〕`history.rs` **按角色分条** —— 逐函数量过，那些命中不是一类活。
+        // ★ 分条的理由：登记表原本按「文件 × 单一类别」记账，而这个文件承载多种角色 ⇒
         // 「读面迁完」时那条登记不会消失、`readers` 也不会降，账就成了假的。
-        // ⚠ 四条的**处数之和仍是 15**，与实测那一侧的口径一致（比较逻辑已改成「按文件求和」）。
-        (
-            "src/history.rs",
-            "no-counterpart",
-            2,
-            "`list_history_projects`(168/169) 遍历 records 根列项目。\
-             ⚠ **今天的查询集下迁不了、不属能退役的范围** —— 逐字段量过：\
-             daemon `--list-projects` 每行只给 `dirName` / `projectPath` / `sessionCount` / \
-             `lastActivityMs` **四个字段**，而本函数还要 `starred_count` / `hidden_count`（本机\
-             metadata，**按会话 sid 查**）与 `has_live`（`SessionMap` 活状态）—— \
-             `analyze_project_dir` 正是靠 `read_dir` + 从文件名推 sid 才算得出它们。\
-             ⇒ 要么 daemon 补「每项目的会话 sid 清单」，要么每个项目再来一次 `--list-sessions`\
-             （N 次进程 spawn，而这是用户常开的界面）。\
-             ★ **退役条件：daemon 的 `--list-projects` 每行带上会话 sid 清单**（或等价字段）。",
-        ),
+        // 🔴 〔`K-R97` 09-12〕**那条 `reader` 真退役了，本文件的处数之和 15 → 13。**
+        //    `list_history_projects` 不再 `resolve_claude_dir()` + `records_dir()` 自己遍历，
+        //    改问本机后端要 `--list-projects`（住 `backend/observe/local_query.rs`）——
+        //    这正是那条登记自己写着的退役条件，逐字兑现。⚠ **分条这件事因此付了息**：
+        //    它当初就是为了让「迁完了」这件事在账上看得见，而今天它确实少了一行。
         (
             "src/history.rs",
             "fence",
             2,
-            "`stream_history_sessions_in_project`(430/431) 的**路径围栏** —— 它解析 records 根\
-             **只为验前端传来的 `project_dir` 在不在里面**（`refuse: … outside …`），与 499 同形。\
+            "`stream_history_sessions_in_project` 的**路径围栏** —— 它解析 records 根，\
+             把前端传回的**编码目录名**落到根之内并验它没跑出去（`refuse: … outside …`），与下面那条同形。\
+             〔`K-R97` 09-12〕入参从绝对路径改成目录名之后**这两行照旧、口径没变**：\
+             解析根是为了**定位与设栏**，不是去读内容。\
              ⚠ **刻意保留、不属退役范围**（纵深防御，理由同那条 `fence`）。",
         ),
         (
@@ -169,10 +167,12 @@ mod tests {
         (
             "src/ssh_source.rs",
             "remote",
-            10,
-            "★ **说的全是远端主机的 claude 目录**：daemon `hello` 帧的 `claude_dir` 字段 · \
-             daemonless 那条远端 shell 串里的 `\\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects`。\
+            9,
+            "★ **说的全是远端主机的 claude 目录**：daemon `hello` 帧的 `claude_dir` 字段。\
              **根本不是本机读面** ⇒ 不属 F10。\
+             〔`K-R59` 09-11：**10 → 9**。退役的那 1 行是原先并列写在这里的第二样 —— \
+             `daemonless` 那条远端 shell 串里的 `\\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects`，\
+             随定框 `K35` 整段删除。⚠ **口径没变，仍是远端**：拧下来的不是「本机读面少了一行」。〕\
              ⚠ 我摸底时差点把它算成本机的 8 行 —— 同名最便宜的误导。\
              〔daemon-split `S4` 08-14〕**8 → 10**：additive 迁移在消费侧多了一个解析点 —— \
              `claude_home_from_hello`（优先 `hello.homes`、回退 `claude_dir`）加上它的两处调用。\
@@ -311,20 +311,24 @@ mod tests {
              而**真正读盘的那几行**（`~/.claude/settings.json` 的三条失败诊断文案 · \
              `home.join(\".claude\")` 兜底路径 · 远端探测串 · 来源标签）全在针外。",
         ),
-        (
-            "src/ccm_cli_contract.rs",
-            "non-read",
-            1,
-            "只在契约清单里出现 `CLAUDE_CONFIG_DIR` 这个**变量名**，不读文件 ⇒ **不属**读面。",
-        ),
+        // 🔴 〔`K-R48` 第二拍 09-11〕原来这里有一行 `src/ccm_cli_contract.rs`（`non-read` 1 处：
+        //    契约清单里出现过 `CLAUDE_CONFIG_DIR` 这个变量名）。本拍把那个模块从 2773 行砍到
+        //    只剩 7 条 cc-spawn 判据，那张清单随 `shared/ccm` 一起删了 ⇒ 那个变量名不再出现。
+        //    **账跟着删**（登记表腐烂比没有登记更糟）。
         (
             "src/tool_registry.rs",
             "non-read",
-            5,
+            7,
             "T01 受管工具登记表的一句**文案**里提到它，不读文件 ⇒ **不属**读面。\
              ⚠ **08-10（devbench F06）4 → 5**：新增的 `NOT_MANAGED` 反向登记表里，\
              `planned-build` 那条理由写着它装在 `<claude_dir>/skills/planned-build/`。\
-             仍是**文案**（说明它为什么不由 cc-monitor 装），零文件读取。",
+             仍是**文案**（说明它为什么不由 cc-monitor 装），零文件读取。\
+             ⚠ **09-11（`K-R60`）5 → 7**：两条新的**申报路径字面量** —— \
+             `~/.claude/skills/cc-bus`（cc-bus 的 `installable` 从假申报改对之后，\
+             『装得了就必须申报装到哪』当场要它）与 `~/.claude/projects/`\
+             （Claude Code 自己写的会话记录，app 装不了、只读）。\
+             两条都仍是**登记表里的申报字面量**，本文件零文件读取 —— \
+             真去 stat 它们的是 `config_surface`（已在本表里单列，仍是 3 处）。",
         ),
         (
             "src/skill_host.rs",
@@ -466,6 +470,32 @@ mod tests {
             "diagnose_local_cc_bus_hooks",
             "cc-bus 钩子的安装位置",
             "只读诊断；本文件另有 `this_module_never_writes` 守着不写",
+        ),
+        (
+            "lib.rs",
+            "write_account_aliases",
+            "`~/.cc-monitor/account-aliases.sh`，以及**用户自己选的**那份 rc（`K-R49`）",
+            "**两个落点，性质不同，别混成一格**：\
+             ① 生成的那份别名文件在 `~/.cc-monitor` 下 —— 与 `local_daemon.rs::cc_monitor_dir` \
+             同一个目录、同一个理由：monitor 自己的东西，用 `home_dir()` 只为「每个用户各一份」；\
+             ② 那一行 `source` 会写**用户既有的** shell 配置 —— 那一处**有围栏**：\
+             `profile_installer::fence_path_under`（只许落在 home 之内），而且路径由界面上的人\
+             从「盘上真实存在的那几份」里选，代码不猜。\
+             写侧两条登记在 `write_site_registry` 的 `account_aliases.rs::write_alias_file` 与 \
+             `account_aliases.rs::ensure_rc_source_line`。\
+             ⚠ `home_dir()` 出现在**这一处**而不是 `account_aliases.rs` 里，是刻意的：\
+             那个模块把 `home` 当参数收，于是它的测试拿临时目录当 home，结构上碰不到真实家目录。",
+        ),
+        (
+            "ccm_probe.rs",
+            "local_ccm_entry_status",
+            "`~/.cc-monitor/bin/<本机 ccm 入口名>`（`K-R69`：在不在 + 它自报的身份）",
+            "**不是伸手拿用户的东西**：这是 monitor 自己的目录，那一份也是我们自己放下去的\
+             （写侧登记在 `write_site_registry` 的 `local_backend.rs::install_local_ccm_entry`）。\
+             `home_dir()` 只为「每个用户各一份」。\
+             🔴 **它刻意够不到 `~/.local/bin/ccm`** —— 用户那份旧的由产品**一个字节都不碰**\
+             （`K34` 逐字：原本的配置要手动删除）；那一份的存在与否是靠**跑一次 `--ccm-probe`**\
+             问出来的，不是靠 stat 一个路径（比路径认不出同名不同物）。",
         ),
         (
             "local_daemon.rs",
@@ -702,7 +732,22 @@ mod tests {
              BUILD_ID + 协议文档 + 内嵌重编，是另一件事的体量，而本件是梯队 5 的只读面）；\n\
              ② 不做（`U10d` 已裁「marketplace 面的只读枚举**可做**」）。\n\
              ⇒ 记账不记功：退役条件写在那条登记里，且它与远端那半是**同一条**\n\
-             （daemon 补 `--list-marketplaces` 一次清两笔）。"
+             （daemon 补 `--list-marketplaces` 一次清两笔）。\n\
+             → **9**〔`K-R92` 09-12〕`history.rs` 的 `list_history_projects` 那条\n\
+             **从 `no-counterpart` 转回 `reader`**。⚠ **第三次「往上走」，而三次来历各不相同**：\n\
+             `P8a` 那次是真加了直读点，这次是**把一处误分类改对**（同 `accounts.rs` 那次的形状、\n\
+             方向相反）。理由：`no-counterpart` 的字面含义是「daemon 侧没有对侧」，\n\
+             而 `K-R83` 已经把 `--list-projects` 那一行的 `sessionIds` 补齐了 ⇒ 对侧有了。\n\
+             **F10 的工作面没变大，变真的是账** —— 那一处本来就要迁，只是从前记在\n\
+             「等后端补东西」那一栏里，看起来不像工作量。\n\
+             → **8**〔`K-R97` 09-12〕**同一条登记，这次是真退役**：`list_history_projects`\n\
+             改问本机后端要 `--list-projects`（走 `backend::observe::local_query::run_query`），\n\
+             `resolve_claude_dir()` + `records_dir()` 那两行就地消失。\n\
+             ⚠ **与上面那些「往下走」的来历也不一样**：`usage.rs`/`local_accounts.rs` 那两次退的是\n\
+             一整个文件的读点，这次退的是**一条分条登记**（同文件还剩 fence/write/payload/codex 四类，\n\
+             那几类本来就不属退役范围）。⇒ 本文件的处数之和 15 → 13，`readers` 9 → 8。\n\
+             ⚠ **没有跟着退的那一半，写清楚免得成暗账**：codex 那条 `no-counterpart` 原封不动 ——\n\
+             后端的 `--list-projects` 只服务 claude，本机仍自己合成 codex 的合成项目。"
         );
     }
 

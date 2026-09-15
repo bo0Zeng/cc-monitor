@@ -84,7 +84,7 @@ export interface AccountRows {
   currentByOrigin: Map<string, string>;
 }
 
-/** 一台远端上的两条查询。`daemonless` 的机器在调用方过滤掉，这里不再判。 */
+/** 一台远端上的两条查询。 */
 async function oneHost(
   h: RemoteHostConfig,
   f: HostFetchers,
@@ -100,7 +100,9 @@ async function oneHost(
 }
 
 /**
- * 对所有非 `daemonless` 的远端扇出，**有上限、保序**地聚合。
+ * 对所有已配置远端扇出，**有上限、保序**地聚合。
+ *
+ * ⚠ `K-R59` 之前这里先 `filter(h => !h.daemonless)` —— 那一档没了，今天一台都不排。
  *
  * 返回聚合结果而不是直接写 UI —— 那是接线层的事，留在 `main.ts`。
  */
@@ -109,8 +111,7 @@ export async function collectAccountRows(
   f: HostFetchers,
   limit: number = HOST_FANOUT_LIMIT,
 ): Promise<AccountRows> {
-  const targets = hosts.filter((h) => !h.daemonless);
-  const per = await mapWithLimit(targets, limit, (h) => oneHost(h, f));
+  const per = await mapWithLimit(hosts, limit, (h) => oneHost(h, f));
 
   const out: AccountRows = {
     rows: [],
