@@ -233,6 +233,18 @@ Linux 打包）全部不起。
 
 ## 5. Release Notes
 
+🔴 **〔`K-R124` 2026-09-15〕这一节的第一句话从「手工复制」变成了「流水线自己做」。**
+`release.yml` 两处发布步骤（`build-windows` 的 `Create / update GitHub Release` ·
+`build-linux` 的 `Append Linux artifacts to the release`）现在各跑一次
+`node scripts/release-notes.mjs RELEASE_BODY.md`，并把 `body_path` 指向它 ——
+正文就是下面这句 SOP 说的那份：**`CHANGELOG.md` 对应版本段**。
+⚠ 在这之前两处一处写着 `generate_release_notes: true`、另一处连 `body` 都没有
+⇒ **真发出去的正文一直是 GitHub 自动生成的提交列表**（这一节从 v3.6.0 起没人执行过）。
+⇒ **发版前要做的只剩一件：`CHANGELOG.md` 里有本版那一段**。没有那一段，
+流水线**红在渲染那一步**，不会静默回落（本地门禁 `release-gate` 那一格提前一步逮同一件事）。
+⚠ 下面那张「下载」模板**生成器刻意不抄**（资产名今天已经有两个住址，再抄第三份必漂；
+Release 页本来就会把资产逐个列出来）—— 要它就手工加，别让机器再立一份副本。
+
 GitHub Releases 描述用 [CHANGELOG.md](../CHANGELOG.md) 对应版本段的复制 + 加：
 
 ```markdown
