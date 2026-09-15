@@ -158,3 +158,80 @@ build=p2j-bus-state
 没有起过真 `claude` 会话 ⇒ 列表区是空态。空态之外的界面**没测**。
 
 ---
+
+## 六 · `KR139D3` ③ —— **装 → 卸 → 看残留**
+
+卸载走 `C:\Program Files\cc-monitor\uninstall.exe /S`（同样 `/IT` ＋ `/RL HIGHEST` 计划任务）。
+卸之前先把 app 与后端停掉（`monitor pid=412` · `cc-monitor-remote pid=1536` · `pid=8372`，
+三个都 `Stop-Process -Force`）。**`uninstall exit=0`。**
+
+| 项 | 卸之后 | 判 |
+|---|---|---|
+| 三处 `Uninstall\*` 登记 | **0 条** | 摘干净了 |
+| `C:\Program Files\cc-monitor` | **不存在** | 摘干净了 |
+| `VM260726` HKCU `Path` | 与开工前逐字相同 | 本来就没碰过 |
+| 🔴 `%USERPROFILE%\.cc-monitor\bin\ccm.exe` | **还在**（7921664） | **残留** |
+| 🔴 `%LOCALAPPDATA%\com.ccmonitor.app\EBWebView\` | **整个还在**（现打 20+ 个文件，含 1.3MB 的 `BrowserMetrics-spare.pma`、`component_crx_cache` 若干 MB） | **残留** |
+
+⇒ **`K-R132` `§0.2` 那条「卸载器把自己摘干净了、`%USERPROFILE%\.cc-monitor\` 整个留着」
+在 `v3.8.0` 上原样复现，而且现打多出一处：WebView2 的数据目录 `com.ccmonitor.app` 也整个留着。**
+
+⚠ **分母**：我只查了这五处（登记三处合一 · Program Files · HKCU Path · `.cc-monitor` · `com.ccmonitor.app`）。
+「有没有别的残留」**我没有穷举全盘**，那个分母我数不出来。
+
+---
+
+## 七 · ⚠ `KR139D3` ② —— **判不了**，拦路石写清楚
+
+要判的是「产品**自己写出来的那份** PowerShell profile 有没有 BOM、CJK 注释下一行有没有被吞」。
+
+**判不了。拦路石是：`v3.8.0` 里那份 profile 只有 GUI 能触发，而我敲不到那个按钮。**
+
+我查过的路（**逐条**，第 14 条要求）：
+
+1. **`$PROFILE` 从头到尾没被创建过** —— 装前 / 装后 / 起过 app 之后三次量，全是 `exists=False`。
+2. **`ccm --help` 全文现打（45 行）里没有任何一个装 profile / 写 rc 的子命令** ——
+   动作只有 `new` / `resume` / `attach`，选项里没有 `shellinit` 这一族。⇒ **没有 CLI 路。**
+3. **全盘搜过 app 写出来的 `.ps1`** —— `$env:USERPROFILE` 下三小时内改过的 `.ps1` **只有我自己那七份量具**；
+   `C:\Program Files\cc-monitor` 下**一个 `.ps1` 都没有**（只有三个 exe）；
+   `%APPDATA%` / `%LOCALAPPDATA%\com.ccmonitor.app` 下也没有。⇒ **模板不落盘，装 profile 是运行时行为。**
+4. **试过用命令面板触发** —— 状态条上写着「命令 `Ctrl + K`」。
+   用 `WScript.Shell::SendKeys("^k")` 打进已提到前台的 app 窗口，**面板没开**
+   （截图 `kr139-palette.png` 与前一张逐像素级别看不出差别）⇒ **`SendKeys` 进不了 WebView2**。
+   再往下就要真的做坐标点击 / DOM 注入，那是另一件事的量级。
+
+⇒ **这一格如实记「判不了」，不记「通过」，也不记「没问题」。**
+
+### 7.1 但有一条**活体旁证**，方向是不利的
+
+`§1` 里我自己那份不带 BOM 的 CJK `.ps1` 在这台机器上**当场被吞**了。
+再加上两条现打的事实：
+
+- **`K-R132` 的 BOM 修（提交 `dfac600`）不在 `v3.8.0` 里** ——
+  `git rev-list --count v3.8.0..b3e5e22` = 15，而 `dfac600` 就在那 15 个里
+  （`git log --oneline v3.8.0..b3e5e22` 现打含
+  `dfac600 K-R132: ccm 不在 PATH 上 —— 补 PATH 那一行，并修真机逮到的 BOM 缺陷`）。
+- 这台机器 `ACP=936`，正是那条机制成立的前提。
+
+⇒ **合理预期是「`v3.8.0` 在这台机器上写出来的 profile 会犯那个病」，但我没有把它量出来。**
+**预期不是读数** —— 按 `R80` 那条形状（「没验 ≠ 没有」），本条只记预期，归 `§8` 的「没测到」。
+
+---
+
+## 八 · 收工时那台机器的状态（逐项核过，与 `§0` 开工快照比）
+
+| 项 | 开工前 | 收工时 | 一样吗 |
+|---|---|---|---|
+| `Uninstall\*` 登记 | 0 条 | 0 条 | ✅ |
+| `C:\Program Files\cc-monitor` | 不存在 | 不存在 | ✅ |
+| `VM260726\.cc-monitor\bin\` | `cc-monitor-local-p2e-dial.exe(7737344)` | `cc-monitor-local-p2e-dial.exe(7737344)` | ✅（我把本轮出现的 `ccm.exe` 删了） |
+| `kr129clean\.cc-monitor\bin\` | `…p2j-bus-state.exe(7921664)`, `ccm.exe(7921664)` | 逐字相同 | ✅ **一个字节没动** |
+| `VM260726` HKCU `Path` | 三项 | 逐字相同 | ✅ |
+| `$PROFILE` | 不存在 | 不存在 | ✅ |
+| `%LOCALAPPDATA%\com.ccmonitor.app` | 不存在 | **已删** | ✅ |
+| 我放的量具 `kr139-*` ＋ `kr139r.ps1` | — | **全删**（`dir kr139*` 零命中） | ✅ |
+| 我建的计划任务（6 个） | — | **全删**（`schtasks /Query | Select-String kr139` 零命中） | ✅ |
+| VM | 关机状态 | **从 guest 内 `shutdown /s /t 0` 关机**，`virsh list` 现打 `关闭` | ✅ **没有用 `virsh destroy`** |
+
+⚠ **本轮确实动了这台机器**（装了一次、起了一次 app、卸了一次），**但都还原了**。
+`kr129clean` 与构建环境**一个字节没动**。
