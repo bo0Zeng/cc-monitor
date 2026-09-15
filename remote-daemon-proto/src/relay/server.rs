@@ -1067,6 +1067,21 @@ mod tests {
         /// `sent` 数的是**网线上的块**（含终止块），`events` 数的是**上游发出的 `data:` 事件**。
         /// `DoD-2㈡` 的「块数对账」用前者，`DoD-3㈠` 的「`event` 数对账」用后者。
         events: Arc<AtomicU64>,
+        /// **下游在响应写完之前就走了**、本桩因此丢掉的连接数〔`K-R126`〕。
+        ///
+        /// 桩那条 accept 线程的把手〔`K-R126`〕—— 判据拿它判「桩整个下线了没有」。
+        ///
+        /// ⚠ **为什么不探端口**：`listener` drop 之后那个临时端口回到内核的池子里，
+        /// 同一个进程里别的判据 `bind(0)` 有机会抢到它 ⇒ `connect` 又通了
+        /// ⇒ 「桩还在」这句话就成了假读数。**线程死没死**与端口池无关。
+        /// ⚠ **为什么是 `is_finished()` 轮询而不是 `join()`**：真出了「错被吞掉」那一形时，
+        /// 线程还在 accept 循环里，`join()` 会**永远挂住** —— CI 上挂死比红一条更坏。
+        accept_thread: Option<std::thread::JoinHandle<()>>,
+        /// ⚠ 它是一个**读数，不是一处被吞掉的错**：判据读得到它，
+        /// [`a_peer_that_left_costs_the_stub_one_connection_not_its_listener`]
+        /// 就是拿它先证「这一趟真的走到了那一支」，再去证 `listener` 还活着 ——
+        /// 少了这个数，那一条判据的后半截是**空真**（`testing.md` 四⑷）。
+        aborted: Arc<AtomicU64>,
     }
 
     impl FakeUpstream {
@@ -1077,133 +1092,244 @@ mod tests {
         fn events(&self) -> u64 {
             self.events.load(Ordering::SeqCst)
         }
+
+        /// 见字段头注〔`K-R126`〕。
+        fn aborted(&self) -> u64 {
+            self.aborted.load(Ordering::SeqCst)
+        }
+    }
+
+    /// 对端（中转）在这一条连接上**先走了**。
+    ///
+    /// ★★ `K-R126`：这**是合法的下游行为，不是夹具坏了**。`STUB_LAUNCHER` 只读一行状态行
+    /// （`head -n 1`）就退出，`bash` 一退出这条连接就没了 —— 每一发都在造这一形。
+    /// 中转那一侧照规矩把它记成 `connection ended: Broken pipe` 并收掉上游那条连接，
+    /// **假上游这一侧也必须认得它**，否则就会拿一条正常的客户端行为去炸自己的线程。
+    ///
+    /// ⚠ 这个闭集**只装「对端走了」这三种**。别往里加第四种去「让红消失」——
+    /// 其余的错今天仍然**大声炸**（见 `spawn_fake_upstream` 的 accept 循环），
+    /// 响度一个分贝都没降：降了就成了把量具关掉。
+    ///
+    /// ⚠ 成员表的**唯一住址**是 [`PEER_LEFT_KINDS`]，这里只读它，不再写第二遍
+    /// （`brief` 13b：闭集只许有一个住址）。
+    fn peer_is_gone(e: &std::io::Error) -> bool {
+        PEER_LEFT_KINDS.contains(&e.kind())
+    }
+
+    /// 「对端走了」这个闭集的**唯一住址**〔`K-R126`〕。
+    ///
+    /// 下游（`STUB_LAUNCHER` 的 `head -n 1`）在响应写完之前退出时，
+    /// 假上游这一侧真正会撞上的就是这几种。判据
+    /// `a_peer_that_left_costs_the_stub_one_connection_not_its_listener`
+    /// 拿它当**地板**（成员数对不上就红），别往里塞第四种去让红消失。
+    const PEER_LEFT_KINDS: [std::io::ErrorKind; 3] = [
+        std::io::ErrorKind::BrokenPipe,
+        std::io::ErrorKind::ConnectionReset,
+        std::io::ErrorKind::ConnectionAborted,
+    ];
+
+    /// 让假上游的**第 `nth` 条连接**（从 1 数）不管真实 I/O 如何，都按 `kind` 这个错收场
+    /// 〔`K-R126`〕。
+    ///
+    /// # 为什么要注入 —— 这一条是本件最贵的一个读数，别删
+    ///
+    /// 本件头一版判据是**有机**的：让下游只读一行状态行就走，等桩自己撞上 `Broken pipe`。
+    /// 它在 `--test-threads=1` 下跑 200 趟 0 红，**而整族并发 16 线程跑 10 趟红了 5 趟**
+    /// —— 因为「对端已经走了」这件事要等 `RST` 被内核投递到桩那一侧才看得见，
+    /// 机器一忙，桩的 4 次写就**全部先写完**（`aborted` 停在 0），判据自己的采集面自检翻红。
+    /// ⇒ **那一版判据本身就是一个新的 flake 源**，与本件要治的病同形。
+    ///
+    /// 注入把「错**什么时候**来」这一维整个拿掉：判据要钉的本来就不是内核的时序，
+    /// 而是**收场那一档的策略**（对端走了 ⇒ 只丢这条连接；别的错 ⇒ 照旧大声炸）。
+    /// 有机那一半没有丢，它住在 `evidence/K-R126-deathvalue.md` 的复现台面上：
+    /// 修前收场 ＋ 复现刀 ⇒ CI 上红的那两条**逐趟必红 5/5**。
+    #[derive(Clone, Copy)]
+    struct StubFault {
+        nth: u64,
+        kind: std::io::ErrorKind,
     }
 
     /// 发一块 —— **一次** `write_all` + `flush`。
     ///
     /// 长度行 / 数据 / CRLF 分三次写会让「一块」在网线上散成三段，
     /// 那时「下游读到的块数」就不再是上游发出的块数 ⇒ 对账那条判据要的是 1:1。
-    fn send_chunk(s: &mut TcpStream, sent: &AtomicU64, payload: &[u8]) {
+    ///
+    /// ★ `K-R126` 把 `.expect()` 换成 `?`：**写不出去不是 panic 的理由** ——
+    /// 收场归调用方那一处统一判（对端走了 ⇒ 丢这一条连接；其余 ⇒ 照旧炸）。
+    /// `sent` 只在**真写出去了**之后才 +1，这一条一个字没动。
+    fn send_chunk(s: &mut TcpStream, sent: &AtomicU64, payload: &[u8]) -> std::io::Result<()> {
         let mut frame = format!("{:x}\r\n", payload.len()).into_bytes();
         frame.extend_from_slice(payload);
         frame.extend_from_slice(b"\r\n");
-        s.write_all(&frame).expect("chunk");
-        s.flush().expect("flush");
+        s.write_all(&frame)?;
+        s.flush()?;
         sent.fetch_add(1, Ordering::SeqCst);
+        Ok(())
     }
 
     fn spawn_fake_upstream(gate: Option<mpsc::Receiver<()>>) -> FakeUpstream {
+        spawn_fake_upstream_faulted(gate, None)
+    }
+
+    /// 带注入口的那一版〔`K-R126`〕。`fault` 给 `None` 时与 [`spawn_fake_upstream`]
+    /// **逐字节同路**（同一个函数体），既有的那几十条判据一个字都不用改。
+    fn spawn_fake_upstream_faulted(
+        gate: Option<mpsc::Receiver<()>>,
+        fault: Option<StubFault>,
+    ) -> FakeUpstream {
         let listener = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind fake upstream");
         let addr = listener.local_addr().expect("addr");
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
         let bodies = Arc::new(std::sync::Mutex::new(Vec::new()));
         let sent = Arc::new(AtomicU64::new(0));
         let events = Arc::new(AtomicU64::new(0));
+        let aborted = Arc::new(AtomicU64::new(0));
+        let aborted_c = Arc::clone(&aborted);
         let auth_values = Arc::new(std::sync::Mutex::new(Vec::new()));
         let auth_values_c = Arc::clone(&auth_values);
         let seen_c = Arc::clone(&seen);
         let bodies_c = Arc::clone(&bodies);
         let sent_c = Arc::clone(&sent);
         let events_c = Arc::clone(&events);
-        std::thread::spawn(move || {
+        let accept_thread = std::thread::spawn(move || {
             let gate = gate;
+            let mut conn_no: u64 = 0;
             for s in listener.incoming() {
                 let Ok(mut s) = s else { continue };
-                let mut r = BufReader::new(s.try_clone().expect("clone"));
-                let mut line = String::new();
-                r.read_line(&mut line).expect("read request line");
-                let mut auth = false;
-                let mut clen = 0usize;
-                loop {
-                    let mut h = String::new();
-                    let n = r.read_line(&mut h).expect("read header");
-                    if n == 0 || h == "\r\n" {
-                        break;
+                conn_no += 1;
+                // ★★★ `K-R126` —— **一条连接怎么收场，分两档**。读数住件文件 `§3`。
+                //
+                // 在此之前这里是一串 `.expect(...)`：下游只要在响应写完之前走掉
+                //（`STUB_LAUNCHER` 的 `head -n 1` **每一发都这样**），
+                // 桩这条 accept 线程就 panic ⇒ 连带把 `listener` 一起 drop 掉
+                // ⇒ **同一条判据里后面每一发都是 `Connection refused`**。
+                // 那正是 CI 上连红两趟的根因（run `34939805688` 两趟 attempt 逐字同形：
+                // 桩线程炸在终止块那一写、测试线程红在**第二个账号**上的 502）。
+                //
+                // ⚠ **`Broken pipe` 是根、`Connection refused` 是果**，别读反了：
+                //   桩不是「还没 listen 上」—— `bind` 在 `spawn` **之前**、
+                //   `addr` 就是从 `listener` 上取的 ⇒ 地址存在的那一刻它已经在听了。
+                //   它是**听着听着被自己炸没的**。
+                //
+                // ⚠ **这不是「把错吞掉」**：
+                //   · 对端走了 ⇒ 记进 `aborted`（判据读得到的一个数），只丢这一条连接；
+                //   · 其余任何错 ⇒ **照旧 panic**，响度一分贝没降。
+                let outcome = (|| -> std::io::Result<()> {
+                    let mut r = BufReader::new(s.try_clone().expect("clone"));
+                    let mut line = String::new();
+                    r.read_line(&mut line)?;
+                    let mut auth = false;
+                    let mut clen = 0usize;
+                    loop {
+                        let mut h = String::new();
+                        let n = r.read_line(&mut h)?;
+                        if n == 0 || h == "\r\n" {
+                            break;
+                        }
+                        let lower = h.to_ascii_lowercase();
+                        if lower.starts_with("authorization:") {
+                            auth = true;
+                            // `K-H2a` `KS3`：把**值**也收下来。
+                            // 只有 `auth=true` 这个布尔证不了「换头真的发生了」——
+                            // 原样转发和换头**在这个布尔上一模一样**。
+                            auth_values_c
+                                .lock()
+                                .expect("lock")
+                                .push(h[..].trim().to_string());
+                        }
+                        if let Some(v) = lower.strip_prefix("content-length:") {
+                            clen = v.trim().parse().unwrap_or(0);
+                        }
                     }
-                    let lower = h.to_ascii_lowercase();
-                    if lower.starts_with("authorization:") {
-                        auth = true;
-                        // `K-H2a` `KS3`：把**值**也收下来。
-                        // 只有 `auth=true` 这个布尔证不了「换头真的发生了」——
-                        // 原样转发和换头**在这个布尔上一模一样**。
-                        auth_values_c
-                            .lock()
-                            .expect("lock")
-                            .push(h[..].trim().to_string());
+                    // ★ **真的把请求体读进来**（回修轮补的）。不读它有两条后果，本仓都实测过：
+                    //   ① 「请求体到不到得了上游」**零判据** —— 把 `read_exact_body(...)` 换成
+                    //      `Vec::new()`（请求体整个丢掉）⇒ 384 条全绿（审计 `CG5`）。
+                    //   ② 迭代结束 drop 时接收队列里还压着未读数据 ⇒ 内核发 **RST 而不是 FIN**
+                    //      ⇒ `pump` 的干净 EOF 路 `Ok(0) => break` 一次都走不到，
+                    //         走的全是 `Err(e) => return Err(e)`。
+                    // 读期限是**兜底**：中转若少发字节，这里要在对账那条判据上红，**不许挂住**。
+                    s.set_read_timeout(Some(std::time::Duration::from_millis(2000)))
+                        .expect("upstream read deadline");
+                    let mut body = vec![0u8; clen];
+                    let mut filled = 0usize;
+                    while filled < clen {
+                        match r.read(&mut body[filled..]) {
+                            Ok(0) => break,
+                            Ok(k) => filled += k,
+                            Err(_) => break,
+                        }
                     }
-                    if let Some(v) = lower.strip_prefix("content-length:") {
-                        clen = v.trim().parse().unwrap_or(0);
+                    body.truncate(filled);
+                    bodies_c.lock().expect("lock").push(body);
+                    seen_c
+                        .lock()
+                        .expect("lock")
+                        .push(format!("{} auth={}", line.trim(), auth));
+                    s.set_nodelay(true).expect("nodelay");
+                    s.write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n",
+                    )
+    ?;
+                    s.flush()?;
+                    for i in 1..=UPSTREAM_EVENTS {
+                        if let Some(g) = gate.as_ref() {
+                            // 等下游确认收到**上一块**。这是逐块门闩。
+                            let _ = g.recv();
+                        }
+                        send_chunk(
+                            &mut s,
+                            &sent_c,
+                            format!("data: {{\"i\":{i}}}\n\n").as_bytes(),
+                        )?;
+                        // ★ 事件数**由夹具自己数**（`阻-4(D3)`）：判据拿它当分母，
+                        //   而不是拿 `UPSTREAM_EVENTS` 这个常量 —— 夹具少发了也要看得见。
+                        events_c.fetch_add(1, Ordering::SeqCst);
                     }
-                }
-                // ★ **真的把请求体读进来**（回修轮补的）。不读它有两条后果，本仓都实测过：
-                //   ① 「请求体到不到得了上游」**零判据** —— 把 `read_exact_body(...)` 换成
-                //      `Vec::new()`（请求体整个丢掉）⇒ 384 条全绿（审计 `CG5`）。
-                //   ② 迭代结束 drop 时接收队列里还压着未读数据 ⇒ 内核发 **RST 而不是 FIN**
-                //      ⇒ `pump` 的干净 EOF 路 `Ok(0) => break` 一次都走不到，
-                //         走的全是 `Err(e) => return Err(e)`。
-                // 读期限是**兜底**：中转若少发字节，这里要在对账那条判据上红，**不许挂住**。
-                s.set_read_timeout(Some(std::time::Duration::from_millis(2000)))
-                    .expect("upstream read deadline");
-                let mut body = vec![0u8; clen];
-                let mut filled = 0usize;
-                while filled < clen {
-                    match r.read(&mut body[filled..]) {
-                        Ok(0) => break,
-                        Ok(k) => filled += k,
-                        Err(_) => break,
-                    }
-                }
-                body.truncate(filled);
-                bodies_c.lock().expect("lock").push(body);
-                seen_c
-                    .lock()
-                    .expect("lock")
-                    .push(format!("{} auth={}", line.trim(), auth));
-                s.set_nodelay(true).expect("nodelay");
-                s.write_all(
-                    b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nTransfer-Encoding: chunked\r\n\r\n",
-                )
-                .expect("head");
-                s.flush().expect("flush");
-                for i in 1..=UPSTREAM_EVENTS {
                     if let Some(g) = gate.as_ref() {
-                        // 等下游确认收到**上一块**。这是逐块门闩。
                         let _ = g.recv();
                     }
-                    send_chunk(
-                        &mut s,
-                        &sent_c,
-                        format!("data: {{\"i\":{i}}}\n\n").as_bytes(),
-                    );
-                    // ★ 事件数**由夹具自己数**（`阻-4(D3)`）：判据拿它当分母，
-                    //   而不是拿 `UPSTREAM_EVENTS` 这个常量 —— 夹具少发了也要看得见。
-                    events_c.fetch_add(1, Ordering::SeqCst);
+                    s.write_all(b"0\r\n\r\n")?;
+                    s.flush()?;
+                    sent_c.fetch_add(1, Ordering::SeqCst);
+                    // ★★ **最后一块也要等下游确认**（回修轮之四 08-25，D2 `重要-1(D2)`）。
+                    //
+                    // 先前门闩到终止块**之前**就停了。门闩是因果链「攒住第 i 块 ⇒ 下游不发第 i+1
+                    // 次确认 ⇒ 上游卡住」，而**最后一块没有「第 i+1 块」** ⇒ 中转把终止块攒到流末
+                    // 再吐，下游照样数到 4 块、`pump` 照样返回 4 ⇒ **两个半格同时瞎在同一形上**
+                    //（D2 `D2M2` 实测 389 全绿；本轮重打 392 全绿）。而判据头注当时逐字写着
+                    // 「射程覆盖到最后一块」—— **那句话是假的**。
+                    //
+                    // 这里再 `recv` 一次、**带上限**，把那一形接住：
+                    //   · 中转正常透传 ⇒ 下游立刻确认 ⇒ 这一次 `recv` 立刻返回，什么都不耽误；
+                    //   · 中转攒住终止块 ⇒ 下游读不到、不确认 ⇒ 上游**不 drop、不发 FIN**
+                    //     ⇒ 中转的 `Ok(0) => break` 走不到、攒着的吐不出去
+                    //     ⇒ 下游那边 **4s 读期限**先到 ⇒ **红**。
+                    // ⚠ **6s > 4s 这个大小关系就是这一格的地基**：上限要严格大于下游的读期限，
+                    //   否则上游先放手、中转把攒着的吐出去，这一形又逃了。
+                    if let Some(g) = gate.as_ref() {
+                        let _ = g.recv_timeout(std::time::Duration::from_millis(6000));
+                    }
+                    // 请求体已读干净 ⇒ 这里 drop 发的是 **FIN 不是 RST**。
+                    Ok(())
+                })();
+                // ★ 注入口〔`K-R126`〕：**只有**判据显式要了 `fault` 才走这里，
+                //   `None` 那条路（其余每一条判据）一个分支都不改。
+                let outcome = match fault {
+                    Some(f) if f.nth == conn_no => Err(std::io::Error::new(
+                        f.kind,
+                        "K-R126 判据注入的错 —— 这一行出现在**绿**的一趟里也是对的",
+                    )),
+                    _ => outcome,
+                };
+                match outcome {
+                    Ok(()) => {}
+                    // 下游先走 —— 合法的客户端行为，只丢这一条连接，`listener` 照常接下一发。
+                    Err(e) if peer_is_gone(&e) => {
+                        aborted_c.fetch_add(1, Ordering::SeqCst);
+                    }
+                    // 不是「对端走了」那一档 ⇒ 夹具自己坏了，仍然大声炸。
+                    Err(e) => panic!("假上游这一条连接坏在**不是对端走了**的地方：{e:?}"),
                 }
-                if let Some(g) = gate.as_ref() {
-                    let _ = g.recv();
-                }
-                s.write_all(b"0\r\n\r\n").expect("end");
-                s.flush().expect("flush");
-                sent_c.fetch_add(1, Ordering::SeqCst);
-                // ★★ **最后一块也要等下游确认**（回修轮之四 08-25，D2 `重要-1(D2)`）。
-                //
-                // 先前门闩到终止块**之前**就停了。门闩是因果链「攒住第 i 块 ⇒ 下游不发第 i+1
-                // 次确认 ⇒ 上游卡住」，而**最后一块没有「第 i+1 块」** ⇒ 中转把终止块攒到流末
-                // 再吐，下游照样数到 4 块、`pump` 照样返回 4 ⇒ **两个半格同时瞎在同一形上**
-                //（D2 `D2M2` 实测 389 全绿；本轮重打 392 全绿）。而判据头注当时逐字写着
-                // 「射程覆盖到最后一块」—— **那句话是假的**。
-                //
-                // 这里再 `recv` 一次、**带上限**，把那一形接住：
-                //   · 中转正常透传 ⇒ 下游立刻确认 ⇒ 这一次 `recv` 立刻返回，什么都不耽误；
-                //   · 中转攒住终止块 ⇒ 下游读不到、不确认 ⇒ 上游**不 drop、不发 FIN**
-                //     ⇒ 中转的 `Ok(0) => break` 走不到、攒着的吐不出去
-                //     ⇒ 下游那边 **4s 读期限**先到 ⇒ **红**。
-                // ⚠ **6s > 4s 这个大小关系就是这一格的地基**：上限要严格大于下游的读期限，
-                //   否则上游先放手、中转把攒着的吐出去，这一形又逃了。
-                if let Some(g) = gate.as_ref() {
-                    let _ = g.recv_timeout(std::time::Duration::from_millis(6000));
-                }
-                // 请求体已读干净 ⇒ 这里 drop 发的是 **FIN 不是 RST**。
             }
         });
         FakeUpstream {
@@ -1213,7 +1339,151 @@ mod tests {
             bodies,
             sent,
             events,
+            aborted,
+            accept_thread: Some(accept_thread),
         }
+    }
+
+    /// 往假上游发一整发、并把响应**整条**读回来。只给 `K-R126` 那两条判据用。
+    fn one_whole_shot(addr: SocketAddr, what: &str) -> String {
+        let mut c = TcpStream::connect(addr).unwrap_or_else(|e| {
+            panic!("{what}：连不上假上游 —— 它的 `listener` 已经不在了（{e:?}）")
+        });
+        let req = format!(
+            "POST /v1/messages HTTP/1.1\r\nContent-Length: {}\r\n\r\n{REQUEST_BODY}",
+            REQUEST_BODY.len()
+        );
+        c.write_all(req.as_bytes()).expect("发请求");
+        c.flush().expect("flush");
+        c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .expect("读期限");
+        let mut buf = Vec::new();
+        c.read_to_end(&mut buf).expect("读响应");
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    /// ★★★ `K-R126` 的牙之一 —— **一条连接上「对端走了」，只该丢掉那一条连接，
+    /// 不该把假上游的 `listener` 一起带走。**
+    ///
+    /// # 它钉的是 CI 上连红两趟的那个根因
+    ///
+    /// `main` 上同一份代码，run `34939805688` 连红两趟、每趟红的不是同一条，
+    /// 而**两趟的桩线程都炸在同一处**（终止块那一写，`end: BrokenPipe`）：
+    ///   ① 下游（`STUB_LAUNCHER` 的 `head -n 1`）读到状态行就退出 ⇒ 中转写下游 `Broken pipe`；
+    ///   ② 中转因此收掉上游那条连接 ⇒ 桩接着写 ⇒ `Broken pipe` ⇒ 桩线程 panic；
+    ///   ③ panic 把 `listener` 一起 drop 掉 ⇒ **同一条判据里第二发 `Connection refused`** ⇒ 502。
+    /// ⇒ **`Broken pipe` 是根、`Connection refused` 是果**，不是「桩还没 listen 上」——
+    ///   `bind` 发生在 `spawn` 之前，地址存在的那一刻它已经在听了。
+    ///
+    /// # 为什么用注入，而不是让下游真的中途走人
+    ///
+    /// 有机那一版**自己就是一个 flake 源**，实测：`--test-threads=1` 跑 200 趟 0 红，
+    /// 而整族 16 线程跑 10 趟**红 5 趟** —— 「对端已经走了」要等 `RST` 投递到桩这一侧
+    /// 才看得见，机器一忙桩的四次写全都先写完了。见 [`StubFault`] 头注与
+    /// `evidence/K-R126-deathvalue.md`。有机那一半没有丢：它是那份文档里的**复现台面**
+    /// （修前收场 ＋ 复现刀 ⇒ CI 上红的那两条 5/5 必红）。
+    #[test]
+    fn a_peer_that_left_costs_the_stub_one_connection_not_its_listener() {
+        // 判据自己那份输入表。**刻意是第二处写下这三个名字**，理由就在下面那条地板断言：
+        // 判据若也去读 `PEER_LEFT_KINDS`，闭集少一个成员它就跟着少跑一轮（空真）,
+        // 那样「成员被人摘掉了」这一形永远钉不住。
+        let cases = [
+            std::io::ErrorKind::BrokenPipe,
+            std::io::ErrorKind::ConnectionReset,
+            std::io::ErrorKind::ConnectionAborted,
+        ];
+        // ★ 地板（`testing.md` 三⑺）：两边**一样多**。闭集加了第四种而这里没跟上 ⇒ 红；
+        //   闭集被摘掉一种 ⇒ 也红。**现算两边的 `len()`，不写死那个基数**（`brief` 13b）。
+        assert_eq!(
+            cases.len(),
+            PEER_LEFT_KINDS.len(),
+            "「对端走了」那个闭集变了，而这条判据的输入表没跟上 —— 它会静默地少量一格"
+        );
+
+        for kind in cases {
+            let up = spawn_fake_upstream_faulted(None, Some(StubFault { nth: 1, kind }));
+
+            // 头一发：网线上一切正常，**这一条连接的收场被注入成「对端走了」**。
+            let first = one_whole_shot(up.addr, "头一发");
+            assert!(
+                first.starts_with("HTTP/1.1 200"),
+                "头一发没拿到响应（{kind:?}）：{first:?}"
+            );
+
+            // 采集面自检（`testing.md` 四⑷）：桩**真的**走到了「对端走了」那一支。
+            // 少了这一步，下面「listener 还活着」是空真 —— 它根本没撞上那一形。
+            // ⚠ 这是一个**单向**条件（记上了就不会再变回去）⇒ 机器越慢它只是多等几轮，
+            //   判不出两种结果。本件治的正是「靠来得及」的判据，别在这里把它请回来。
+            assert!(
+                wait_until(|| up.aborted() == 1),
+                "桩没把这一条连接记进 `aborted`（{kind:?}）\
+                 ⇒ 下面那几条是空真，这一趟量的不是该量的东西"
+            );
+
+            // ★ 正题：桩**还在 listen**，第二发要走完一整条响应。
+            //   修之前这里就是 CI 上那一发：`Connection refused` ⇒ 502。
+            let second = one_whole_shot(up.addr, "第二发");
+            assert!(
+                second.starts_with("HTTP/1.1 200"),
+                "第二发没拿到一条完整响应（{kind:?}）：{second:?}"
+            );
+            assert!(
+                second.ends_with("0\r\n\r\n"),
+                "第二发缺终止块 ⇒ 桩没把这一条走完（{kind:?}）：{second:?}"
+            );
+            // 两发**都**到了桩这里 —— 「listener 还活着」不是靠第二发被静默吃掉换来的。
+            let seen = up.seen.lock().expect("lock").clone();
+            assert_eq!(seen.len(), 2, "桩收到的是（{kind:?}）：{seen:?}");
+            // 第二发是**一条好连接**：它不许也被记成 abort（否则修法把好连接一起丢了）。
+            assert_eq!(
+                up.aborted(),
+                1,
+                "第二发那条好连接也被记成 abort 了（{kind:?}）"
+            );
+        }
+    }
+
+    /// ★★★ `K-R126` 的牙之二 —— **不是「对端走了」的那些错，响度一分贝都不许降。**
+    ///
+    /// 上面那条判据买的是「别把一条正常的客户端行为读成夹具坏了」；
+    /// 这一条买的是它的**反面**：修法不许顺手把**别的**错也一起吞掉。
+    /// 少了这一条，「`peer_is_gone` 只装三种」那句话没有任何东西在守 ——
+    /// 把它改成恒 `true`（夹具从此再也不会大声炸）能一路全绿。
+    #[test]
+    fn a_stub_failure_that_is_not_the_peer_leaving_still_brings_the_stub_down_loudly() {
+        // 取一种**不在**闭集里的错。「它不在」这句话**现算**，不写死。
+        let kind = std::io::ErrorKind::InvalidData;
+        assert!(
+            !PEER_LEFT_KINDS.contains(&kind),
+            "这一条判据挑的错跑进闭集里了 ⇒ 它量的不再是「不该吞的那一档」"
+        );
+
+        let mut up = spawn_fake_upstream_faulted(None, Some(StubFault { nth: 1, kind }));
+        let first = one_whole_shot(up.addr, "头一发");
+        assert!(
+            first.starts_with("HTTP/1.1 200"),
+            "头一发没拿到响应：{first:?}"
+        );
+
+        // 桩这条 accept 线程该**炸**。「炸了就不会活回来」是**单向**的
+        // ⇒ 这是收敛的等待，不是掷骰子。判的是**线程**不是端口，理由见 `accept_thread` 头注。
+        let th = up
+            .accept_thread
+            .take()
+            .expect("桩的线程把手不在了 —— 这一条判据够不着它要判的东西");
+        assert!(
+            wait_until(|| th.is_finished()),
+            "桩吞掉了一个**不该吞**的错：那条 accept 线程还活着 ⇒ 响度降了，量具被关掉一格"
+        );
+        assert!(
+            th.join().is_err(),
+            "那条线程是**正常结束**的，不是炸掉的 —— 不该吞的错被吞了"
+        );
+        assert_eq!(
+            up.aborted(),
+            0,
+            "不在闭集里的错被记成了「对端走了」—— 那正是把量具关掉"
+        );
     }
 
     /// ★★ **tee 的收集面必须「能等」**〔回修轮之五 08-25，`阻-2(D3)` 的连带〕：
