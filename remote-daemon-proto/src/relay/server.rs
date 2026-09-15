@@ -1069,9 +1069,17 @@ mod tests {
         events: Arc<AtomicU64>,
         /// **下游在响应写完之前就走了**、本桩因此丢掉的连接数〔`K-R126`〕。
         ///
+        /// 桩那条 accept 线程的把手〔`K-R126`〕—— 判据拿它判「桩整个下线了没有」。
+        ///
+        /// ⚠ **为什么不探端口**：`listener` drop 之后那个临时端口回到内核的池子里，
+        /// 同一个进程里别的判据 `bind(0)` 有机会抢到它 ⇒ `connect` 又通了
+        /// ⇒ 「桩还在」这句话就成了假读数。**线程死没死**与端口池无关。
+        /// ⚠ **为什么是 `is_finished()` 轮询而不是 `join()`**：真出了「错被吞掉」那一形时，
+        /// 线程还在 accept 循环里，`join()` 会**永远挂住** —— CI 上挂死比红一条更坏。
+        accept_thread: Option<std::thread::JoinHandle<()>>,
         /// ⚠ 它是一个**读数，不是一处被吞掉的错**：判据读得到它，
-        /// `a_downstream_that_leaves_mid_response_costs_the_stub_one_connection_not_its_listener`
-        /// 就是拿它先证「这一趟真的走到了那一支」，再去证 listener 还活着 ——
+        /// [`a_peer_that_left_costs_the_stub_one_connection_not_its_listener`]
+        /// 就是拿它先证「这一趟真的走到了那一支」，再去证 `listener` 还活着 ——
         /// 少了这个数，那一条判据的后半截是**空真**（`testing.md` 四⑷）。
         aborted: Arc<AtomicU64>,
     }
@@ -1101,13 +1109,44 @@ mod tests {
     /// ⚠ 这个闭集**只装「对端走了」这三种**。别往里加第四种去「让红消失」——
     /// 其余的错今天仍然**大声炸**（见 `spawn_fake_upstream` 的 accept 循环），
     /// 响度一个分贝都没降：降了就成了把量具关掉。
+    ///
+    /// ⚠ 成员表的**唯一住址**是 [`PEER_LEFT_KINDS`]，这里只读它，不再写第二遍
+    /// （`brief` 13b：闭集只许有一个住址）。
     fn peer_is_gone(e: &std::io::Error) -> bool {
-        matches!(
-            e.kind(),
-            std::io::ErrorKind::BrokenPipe
-                | std::io::ErrorKind::ConnectionReset
-                | std::io::ErrorKind::ConnectionAborted
-        )
+        PEER_LEFT_KINDS.contains(&e.kind())
+    }
+
+    /// 「对端走了」这个闭集的**唯一住址**〔`K-R126`〕。
+    ///
+    /// 下游（`STUB_LAUNCHER` 的 `head -n 1`）在响应写完之前退出时，
+    /// 假上游这一侧真正会撞上的就是这几种。判据
+    /// `a_peer_that_left_costs_the_stub_one_connection_not_its_listener`
+    /// 拿它当**地板**（成员数对不上就红），别往里塞第四种去让红消失。
+    const PEER_LEFT_KINDS: [std::io::ErrorKind; 3] = [
+        std::io::ErrorKind::BrokenPipe,
+        std::io::ErrorKind::ConnectionReset,
+        std::io::ErrorKind::ConnectionAborted,
+    ];
+
+    /// 让假上游的**第 `nth` 条连接**（从 1 数）不管真实 I/O 如何，都按 `kind` 这个错收场
+    /// 〔`K-R126`〕。
+    ///
+    /// # 为什么要注入 —— 这一条是本件最贵的一个读数，别删
+    ///
+    /// 本件头一版判据是**有机**的：让下游只读一行状态行就走，等桩自己撞上 `Broken pipe`。
+    /// 它在 `--test-threads=1` 下跑 200 趟 0 红，**而整族并发 16 线程跑 10 趟红了 5 趟**
+    /// —— 因为「对端已经走了」这件事要等 `RST` 被内核投递到桩那一侧才看得见，
+    /// 机器一忙，桩的 4 次写就**全部先写完**（`aborted` 停在 0），判据自己的采集面自检翻红。
+    /// ⇒ **那一版判据本身就是一个新的 flake 源**，与本件要治的病同形。
+    ///
+    /// 注入把「错**什么时候**来」这一维整个拿掉：判据要钉的本来就不是内核的时序，
+    /// 而是**收场那一档的策略**（对端走了 ⇒ 只丢这条连接；别的错 ⇒ 照旧大声炸）。
+    /// 有机那一半没有丢，它住在 `evidence/K-R126-deathvalue.md` 的复现台面上：
+    /// 修前收场 ＋ 复现刀 ⇒ CI 上红的那两条**逐趟必红 5/5**。
+    #[derive(Clone, Copy)]
+    struct StubFault {
+        nth: u64,
+        kind: std::io::ErrorKind,
     }
 
     /// 发一块 —— **一次** `write_all` + `flush`。
@@ -1129,6 +1168,15 @@ mod tests {
     }
 
     fn spawn_fake_upstream(gate: Option<mpsc::Receiver<()>>) -> FakeUpstream {
+        spawn_fake_upstream_faulted(gate, None)
+    }
+
+    /// 带注入口的那一版〔`K-R126`〕。`fault` 给 `None` 时与 [`spawn_fake_upstream`]
+    /// **逐字节同路**（同一个函数体），既有的那几十条判据一个字都不用改。
+    fn spawn_fake_upstream_faulted(
+        gate: Option<mpsc::Receiver<()>>,
+        fault: Option<StubFault>,
+    ) -> FakeUpstream {
         let listener = TcpListener::bind(SocketAddr::new(LOOPBACK, 0)).expect("bind fake upstream");
         let addr = listener.local_addr().expect("addr");
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
@@ -1143,10 +1191,12 @@ mod tests {
         let bodies_c = Arc::clone(&bodies);
         let sent_c = Arc::clone(&sent);
         let events_c = Arc::clone(&events);
-        std::thread::spawn(move || {
+        let accept_thread = std::thread::spawn(move || {
             let gate = gate;
+            let mut conn_no: u64 = 0;
             for s in listener.incoming() {
                 let Ok(mut s) = s else { continue };
+                conn_no += 1;
                 // ★★★ `K-R126` —— **一条连接怎么收场，分两档**。读数住件文件 `§3`。
                 //
                 // 在此之前这里是一串 `.expect(...)`：下游只要在响应写完之前走掉
@@ -1262,6 +1312,15 @@ mod tests {
                     // 请求体已读干净 ⇒ 这里 drop 发的是 **FIN 不是 RST**。
                     Ok(())
                 })();
+                // ★ 注入口〔`K-R126`〕：**只有**判据显式要了 `fault` 才走这里，
+                //   `None` 那条路（其余每一条判据）一个分支都不改。
+                let outcome = match fault {
+                    Some(f) if f.nth == conn_no => Err(std::io::Error::new(
+                        f.kind,
+                        "K-R126 判据注入的错 —— 这一行出现在**绿**的一趟里也是对的",
+                    )),
+                    _ => outcome,
+                };
                 match outcome {
                     Ok(()) => {}
                     // 下游先走 —— 合法的客户端行为，只丢这一条连接，`listener` 照常接下一发。
@@ -1281,13 +1340,32 @@ mod tests {
             sent,
             events,
             aborted,
+            accept_thread: Some(accept_thread),
         }
     }
 
-    /// ★★★ `K-R126` 的牙 —— **下游在响应写完之前走掉，只该丢掉那一条连接，
+    /// 往假上游发一整发、并把响应**整条**读回来。只给 `K-R126` 那两条判据用。
+    fn one_whole_shot(addr: SocketAddr, what: &str) -> String {
+        let mut c = TcpStream::connect(addr).unwrap_or_else(|e| {
+            panic!("{what}：连不上假上游 —— 它的 `listener` 已经不在了（{e:?}）")
+        });
+        let req = format!(
+            "POST /v1/messages HTTP/1.1\r\nContent-Length: {}\r\n\r\n{REQUEST_BODY}",
+            REQUEST_BODY.len()
+        );
+        c.write_all(req.as_bytes()).expect("发请求");
+        c.flush().expect("flush");
+        c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
+            .expect("读期限");
+        let mut buf = Vec::new();
+        c.read_to_end(&mut buf).expect("读响应");
+        String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    /// ★★★ `K-R126` 的牙之一 —— **一条连接上「对端走了」，只该丢掉那一条连接，
     /// 不该把假上游的 `listener` 一起带走。**
     ///
-    /// # 它钉的是 CI 上连红两趟的那个根因，不是两条判据各自的症状
+    /// # 它钉的是 CI 上连红两趟的那个根因
     ///
     /// `main` 上同一份代码，run `34939805688` 连红两趟、每趟红的不是同一条，
     /// 而**两趟的桩线程都炸在同一处**（终止块那一写，`end: BrokenPipe`）：
@@ -1297,83 +1375,115 @@ mod tests {
     /// ⇒ **`Broken pipe` 是根、`Connection refused` 是果**，不是「桩还没 listen 上」——
     ///   `bind` 发生在 `spawn` 之前，地址存在的那一刻它已经在听了。
     ///
-    /// # 为什么这一条**不掷骰子**
+    /// # 为什么用注入，而不是让下游真的中途走人
     ///
-    /// 那两条判据要靠「机器慢」才红（PM 三趟本地门禁全绿、云端连红两趟）。
-    /// 这一条不等时间：用 `gate` 把桩摁在「head 已经写出去、块还没开始写」那一刻，
-    /// **先**把下游关掉、**再**放闸 ⇒ 桩那几写必定落进一条没人的连接。
-    ///
-    /// # 采集面自检（`testing.md` 四⑷）
-    ///
-    /// 先断言 `aborted()` 真的变成 1 —— 否则「第二发还通」是**空真**：
-    /// 桩根本没撞上那一形，当然还活着。
+    /// 有机那一版**自己就是一个 flake 源**，实测：`--test-threads=1` 跑 200 趟 0 红，
+    /// 而整族 16 线程跑 10 趟**红 5 趟** —— 「对端已经走了」要等 `RST` 投递到桩这一侧
+    /// 才看得见，机器一忙桩的四次写全都先写完了。见 [`StubFault`] 头注与
+    /// `evidence/K-R126-deathvalue.md`。有机那一半没有丢：它是那份文档里的**复现台面**
+    /// （修前收场 ＋ 复现刀 ⇒ CI 上红的那两条 5/5 必红）。
     #[test]
-    fn a_downstream_that_leaves_mid_response_costs_the_stub_one_connection_not_its_listener() {
-        let (tx, rx) = mpsc::channel::<()>();
-        let up = spawn_fake_upstream(Some(rx));
-        let req = format!(
-            "POST /v1/messages HTTP/1.1\r\nContent-Length: {}\r\n\r\n{REQUEST_BODY}",
-            REQUEST_BODY.len()
+    fn a_peer_that_left_costs_the_stub_one_connection_not_its_listener() {
+        // 判据自己那份输入表。**刻意是第二处写下这三个名字**，理由就在下面那条地板断言：
+        // 判据若也去读 `PEER_LEFT_KINDS`，闭集少一个成员它就跟着少跑一轮（空真）,
+        // 那样「成员被人摘掉了」这一形永远钉不住。
+        let cases = [
+            std::io::ErrorKind::BrokenPipe,
+            std::io::ErrorKind::ConnectionReset,
+            std::io::ErrorKind::ConnectionAborted,
+        ];
+        // ★ 地板（`testing.md` 三⑺）：两边**一样多**。闭集加了第四种而这里没跟上 ⇒ 红；
+        //   闭集被摘掉一种 ⇒ 也红。**现算两边的 `len()`，不写死那个基数**（`brief` 13b）。
+        assert_eq!(
+            cases.len(),
+            PEER_LEFT_KINDS.len(),
+            "「对端走了」那个闭集变了，而这条判据的输入表没跟上 —— 它会静默地少量一格"
         );
 
-        // 头一发：**只读状态行就走人** —— 与 `STUB_LAUNCHER` 的 `head -n 1` 同形。
-        {
-            let mut c = TcpStream::connect(up.addr).expect("connect 假上游");
-            c.write_all(req.as_bytes()).expect("发头一发");
-            c.flush().expect("flush");
-            let mut r = BufReader::new(c.try_clone().expect("clone"));
-            let mut status = String::new();
-            r.read_line(&mut status).expect("读状态行");
+        for kind in cases {
+            let up = spawn_fake_upstream_faulted(None, Some(StubFault { nth: 1, kind }));
+
+            // 头一发：网线上一切正常，**这一条连接的收场被注入成「对端走了」**。
+            let first = one_whole_shot(up.addr, "头一发");
             assert!(
-                status.starts_with("HTTP/1.1 200"),
-                "桩连状态行都没给 ⇒ 下面全是空真：{status:?}"
+                first.starts_with("HTTP/1.1 200"),
+                "头一发没拿到响应（{kind:?}）：{first:?}"
             );
-            // 剩下的一个字节都不读，直接走。
-        }
 
-        // 放闸：桩这才去写那几块 —— 写进一条**已经没人**的连接。
-        // 放得比要用的多，第二发不至于饿着（`mpsc` 无界，多发的只是排队）。
-        for _ in 0..32 {
-            let _ = tx.send(());
-        }
+            // 采集面自检（`testing.md` 四⑷）：桩**真的**走到了「对端走了」那一支。
+            // 少了这一步，下面「listener 还活着」是空真 —— 它根本没撞上那一形。
+            // ⚠ 这是一个**单向**条件（记上了就不会再变回去）⇒ 机器越慢它只是多等几轮，
+            //   判不出两种结果。本件治的正是「靠来得及」的判据，别在这里把它请回来。
+            assert!(
+                wait_until(|| up.aborted() == 1),
+                "桩没把这一条连接记进 `aborted`（{kind:?}）\
+                 ⇒ 下面那几条是空真，这一趟量的不是该量的东西"
+            );
 
-        // 采集面自检：桩**真的**走到了「对端走了」那一支。
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while up.aborted() == 0 && std::time::Instant::now() < deadline {
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            // ★ 正题：桩**还在 listen**，第二发要走完一整条响应。
+            //   修之前这里就是 CI 上那一发：`Connection refused` ⇒ 502。
+            let second = one_whole_shot(up.addr, "第二发");
+            assert!(
+                second.starts_with("HTTP/1.1 200"),
+                "第二发没拿到一条完整响应（{kind:?}）：{second:?}"
+            );
+            assert!(
+                second.ends_with("0\r\n\r\n"),
+                "第二发缺终止块 ⇒ 桩没把这一条走完（{kind:?}）：{second:?}"
+            );
+            // 两发**都**到了桩这里 —— 「listener 还活着」不是靠第二发被静默吃掉换来的。
+            let seen = up.seen.lock().expect("lock").clone();
+            assert_eq!(seen.len(), 2, "桩收到的是（{kind:?}）：{seen:?}");
+            // 第二发是**一条好连接**：它不许也被记成 abort（否则修法把好连接一起丢了）。
+            assert_eq!(
+                up.aborted(),
+                1,
+                "第二发那条好连接也被记成 abort 了（{kind:?}）"
+            );
         }
+    }
+
+    /// ★★★ `K-R126` 的牙之二 —— **不是「对端走了」的那些错，响度一分贝都不许降。**
+    ///
+    /// 上面那条判据买的是「别把一条正常的客户端行为读成夹具坏了」；
+    /// 这一条买的是它的**反面**：修法不许顺手把**别的**错也一起吞掉。
+    /// 少了这一条，「`peer_is_gone` 只装三种」那句话没有任何东西在守 ——
+    /// 把它改成恒 `true`（夹具从此再也不会大声炸）能一路全绿。
+    #[test]
+    fn a_stub_failure_that_is_not_the_peer_leaving_still_brings_the_stub_down_loudly() {
+        // 取一种**不在**闭集里的错。「它不在」这句话**现算**，不写死。
+        let kind = std::io::ErrorKind::InvalidData;
+        assert!(
+            !PEER_LEFT_KINDS.contains(&kind),
+            "这一条判据挑的错跑进闭集里了 ⇒ 它量的不再是「不该吞的那一档」"
+        );
+
+        let mut up = spawn_fake_upstream_faulted(None, Some(StubFault { nth: 1, kind }));
+        let first = one_whole_shot(up.addr, "头一发");
+        assert!(
+            first.starts_with("HTTP/1.1 200"),
+            "头一发没拿到响应：{first:?}"
+        );
+
+        // 桩这条 accept 线程该**炸**。「炸了就不会活回来」是**单向**的
+        // ⇒ 这是收敛的等待，不是掷骰子。判的是**线程**不是端口，理由见 `accept_thread` 头注。
+        let th = up
+            .accept_thread
+            .take()
+            .expect("桩的线程把手不在了 —— 这一条判据够不着它要判的东西");
+        assert!(
+            wait_until(|| th.is_finished()),
+            "桩吞掉了一个**不该吞**的错：那条 accept 线程还活着 ⇒ 响度降了，量具被关掉一格"
+        );
+        assert!(
+            th.join().is_err(),
+            "那条线程是**正常结束**的，不是炸掉的 —— 不该吞的错被吞了"
+        );
         assert_eq!(
             up.aborted(),
-            1,
-            "桩没撞上「下游先走了」那一形 ⇒ 下面那一条是空真，这一趟量的不是该量的东西"
+            0,
+            "不在闭集里的错被记成了「对端走了」—— 那正是把量具关掉"
         );
-
-        // ★ 正题：桩**还在 listen**，第二发要走完一整条响应。
-        //   修之前这里就是 CI 上那一发：连不上 / 当场断。
-        let mut c = TcpStream::connect(up.addr).expect(
-            "假上游的 listener 没了 —— 一条连接上的 `Broken pipe` 把整个桩带走了，\
-             正是 run `34939805688` 连红两趟的那个根因",
-        );
-        c.write_all(req.as_bytes()).expect("发第二发");
-        c.flush().expect("flush");
-        c.set_read_timeout(Some(std::time::Duration::from_secs(10)))
-            .expect("读期限");
-        let mut buf = Vec::new();
-        c.read_to_end(&mut buf).expect("第二发没读完");
-        let whole = String::from_utf8_lossy(&buf);
-        assert!(
-            whole.starts_with("HTTP/1.1 200"),
-            "第二发没拿到一条完整响应：{whole:?}"
-        );
-        assert!(
-            whole.ends_with("0\r\n\r\n"),
-            "第二发缺终止块 ⇒ 桩没把这一条走完：{whole:?}"
-        );
-        // 两发**都**到了桩这里 —— 「listener 还活着」不是靠第二发被静默吃掉换来的。
-        let seen = up.seen.lock().expect("lock").clone();
-        assert_eq!(seen.len(), 2, "桩收到的是：{seen:?}");
-        // 第二发是**一条好连接**：它不许也被记成 abort（否则修法把好连接一起丢了）。
-        assert_eq!(up.aborted(), 1, "第二发也被记成 abort 了");
     }
 
     /// ★★ **tee 的收集面必须「能等」**〔回修轮之五 08-25，`阻-2(D3)` 的连带〕：
