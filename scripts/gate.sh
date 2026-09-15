@@ -33,13 +33,21 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕16 格
-# │ 〔自述·点名〕hooks · copy2 · fmt · fmt-daemon · winchk · cargo · deadcode · generated · daemon · tsc · npm ·
+# │ 〔自述·格数〕19 格
+# │ 〔自述·点名〕hooks · copy2 · shellcheck · ci-e2e-prereq · fmt · fmt-daemon · winchk · winchk-daemon ·
+# │   cargo · deadcode · generated · daemon · tsc · npm ·
 # │   ccm e2e/ccm-print-parity · ccm e2e/ccm-rbind-title · ccm e2e/ccm-cli ·
 # │   ccm e2e/ccm-contract-parity · pb check
 # │ 〔自述·现物〕四套 e2e 的被测文件：`e2e/ccm-print-parity.sh` · `e2e/ccm-rbind-title.sh` ·
 # │   `e2e/ccm-cli.test.sh` · `e2e/ccm-contract-parity.sh`；判法一律走 `e2e/assert-pass-floor.sh`。
 # │ 〔自述·现物〕`copy2` 那一格的判据本体：`evidence/K-R115-ruler.py`（`K-R115` 09-14 第 14 格）。
+# │ 〔自述·现物〕`shellcheck` 那一格没有独立的判据文件 —— 它的**人群与地板都从
+# │   `.github/workflows/ci.yml` 现读**（那一段 `FILES=` ＋ 它下面那条覆盖面地板行），
+# │   判定逐字写在下面那个 `gate_shellcheck` 函数里（`K-R122` 09-14 第 17 格）。
+# │ 〔自述·现物〕`ci-e2e-prereq` 那一格的判据本体：`evidence/K-R122-ruler.py`（`K-R122` 09-14 第 18 格）。
+# │ 〔自述·现物〕`winchk-daemon` 那一格没有独立的判据文件 —— 它就是一趟
+# │   `cargo check --all-targets`，target 是 `x86_64-pc-windows-gnu`，跑在
+# │   `remote-daemon-proto` 那个 workspace 上（`K-R122` 09-14 第 18 格）。
 # │ 〔自述·现物〕`deadcode` 那一格没有独立的判据文件 —— 它就是一趟 `cargo check -p monitor`
 # │   加一个递减棘轮，判定逐字写在下面那一行 `run_gate deadcode` 的内联脚本里（第 15 格）。
 # │ 〔自述·现物〕`tsc` 那一格没有独立的判据文件 —— 它就是一趟 `tsc --noEmit`
@@ -707,8 +715,114 @@ run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里
 # ⚠ 本格是**唯一一格盖到 `evidence/`** 的门。那棵树在 `K-R80` 的登记里此前是
 #   「0 格覆盖，而这正是它的用途」（`[J3 陈账]` 死锁的泄压口）—— 本格落地之后那条登记要跟着改，
 #   随动逐处交回 PM，`evidence/K-R115-deathvalue.md` 里点名。
-run_gate copy2 '`evidence/*.py` 现打 176 份里，`shutil` 保元数据复制族（copy2 · copytree · copystat）的**调用点** 11 处，逐处判目的地；这个数就是判过的调用点数。⚠ 只看 `evidence/` 下的 `.py`，别的目录、别的语言、shell 串里的 `cp -a` 本行一概盖不到' \
+run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族（copy2 · copytree · copystat）的**调用点**数，逐处判目的地；绿行那个数就是判过的调用点数。⚠ 〔`K-R122` 09-14 订正〕本行原先写着「现打 176 份」——那是从判据本体那句现算的分母**手抄**过来的第二份，而本件落地前盘上已经是 183、落地后 185 ⇒ **摘掉那个抄来的数**，份数以 `evidence/K-R115-ruler.py` 自己印的那一行为准。⚠ 只看 `evidence/` 下的 `.py`，别的目录、别的语言、shell 串里的 `cp -a` 本行一概盖不到' \
          bash -c 'python3 evidence/K-R115-ruler.py'
+
+# ── `shellcheck`：**CI 独有的那一格收进门禁**（`K-R122` `KR122D2` 甲，09-14，第 17 格）──
+#
+# ## 题面：这一格在本门禁里**一格都没有**，而它在 CI 里是独立一个 job
+#
+# `K-R119`（09-14）推 `v3.8.0` 那一趟被 `release.yml` 自己的 `ci-gate` 拦下，
+# CI 五条红里有一条就是它：`e2e-smoke` job 的 `shellcheck --severity=error`
+# 报 `SC1081` 六处，全在 `e2e/usage-probe-acceptance.sh`（一个叫 `FOR` 的函数，
+# 它按「大小写写错的关键字」判 error）。
+# 而同一棵树上本门禁 **16 格全绿** —— 〔量于 09-14 本件落地之前〕
+# `grep -c -i shellcheck scripts/gate.sh` = **0**。
+# ⇒ 这不是「射程印出来了没人读」，是**这一维根本没有格**。
+#
+# ⚠ **本段刻意不让任何一行以 `#` ＋ 空格 ＋ 那个工具名开头** —— 那是它的**指令**语法
+#   （`# shellcheck disable=…` 那一形）。现打栽过一次：本段第一版有一行那么开头，
+#   它当场报 `SC1072`/`SC1073`（`Expected '=' after directive key`）把本文件自己判红。
+#
+# ## 🔴 人群**从 `.github/workflows/ci.yml` 现读**，本文件不写第二份清单
+#
+# 那份清单（`FILES=$(printf …)` 那一段 ＋ 它下面那条覆盖面地板）今天已经有唯一住址，
+# 而且 `src-tauri/src/shell_lint_registry.rs` 那条恒等判据就是靠**解析它**来钉
+# 「每个 shell 脚本要么进 shellcheck 要么登记豁免」。
+# ⇒ 在本文件里抄一份 = 同一个闭集第三个住址，三处必漂（本仓那笔账写在
+#   `e2e/assert-pass-floor.sh` 的地板纪律里，已经栽过两次）。
+# ⇒ 本格**解析那一段**取人群、**解析那条地板行**取地板，一个数都不写死。
+#
+# ⚠ **fail-closed 的三条**（缺一条它就会在「解析坏了」的时候静默地绿）：
+#   ① `shellcheck` 不在 PATH ⇒ 红（不许退化成「跳过」）；
+#   ② 解析不到地板数 ⇒ 红；
+#   ③ 展开出来的份数 < `ci.yml` 自己那条地板 ⇒ 红 —— 解析坏了最可能的样子就是展开出 0 份，
+#      而「扫了 0 个文件」与「全都干净」在 `shellcheck` 的退出码上一模一样。
+#
+# ⚠ **诚实边界**：
+#   · 本格与 CI 那一格用的是**两份 shellcheck 二进制**（沙箱镜像 0.9.0 · `ubuntu-latest` 自带）。
+#     版本不同 ⇒ 规则集可能不同；本格买的是「**本地先看见**」，不是「与 CI 逐字等价」。
+#   · 它只判 `--severity=error`（与 CI 同一档）；warning / info / style 一概不看。
+#   · 它读 `ci.yml` 的**那一段文本**。那一段的写法一变（换成别的取人群方式）⇒ 本格红在
+#     「展开份数不够」上，**那是对的**：人群换了家，就该有人回来看一眼。
+gate_shellcheck() {
+  local yml=".github/workflows/ci.yml"
+  local block pats floor n out rc
+  command -v shellcheck >/dev/null 2>&1 || {
+    printf 'shellcheck: 这台机器上没有 shellcheck —— 判不了，按红记（不许退化成静默跳过）\n'
+    return 1
+  }
+  [ -f "$yml" ] || {
+    printf 'shellcheck: 读不到 %s —— 人群的唯一住址不在了，判不了\n' "$yml"
+    return 1
+  }
+  # 取 `FILES=$(printf …)` 那一段：从它那一行起，到第一行以 `)` 收尾的行为止。
+  block="$(awk '/FILES=[$][(]printf/{f=1} f{print} f && /[)][[:space:]]*$/{exit}' "$yml")"
+  # 首行剥到最后一个单引号（那是 `printf` 的格式串尾），每行剥行尾续行符，末行剥收尾括号。
+  pats="$(printf '%s\n' "$block" | sed -e "1s/^.*'//" -e 's/\\[[:space:]]*$//' -e '$s/)[[:space:]]*$//')"
+  floor="$(grep -oE '"\$N" -ge [0-9]+' "$yml" | grep -oE '[0-9]+' | head -1)"
+  case "${floor:-}" in
+    ''|*[!0-9]*)
+      printf 'shellcheck: 从 %s 里解析不到那条覆盖面地板（`[ "$N" -ge <数> ]`）—— 判不了\n' "$yml"
+      return 1 ;;
+  esac
+  local -a files=()
+  shopt -s nullglob
+  # shellcheck disable=SC2206
+  files=($pats)
+  shopt -u nullglob
+  n=${#files[@]}
+  if [ "$n" -lt "$floor" ]; then
+    printf 'shellcheck: 人群只展开出 %s 份，而 %s 自己那条地板是 %s —— 要么那一段的写法变了、要么真的少了文件。「扫了 0 个」与「全都干净」在退出码上一模一样，所以一律按红记\n' \
+           "$n" "$yml" "$floor"
+    return 1
+  fi
+  # 🔴 `LC_ALL` 是承重的，别删：本仓的 shell 脚本里有大量中文注释，而 shellcheck 报告时会把
+  #   出错那一行**原样打出来**。沙箱镜像里 `LANG` 未设（现打 `locale -a` 只有 `C` / `C.utf8` /
+  #   `POSIX`）⇒ 非 UTF-8 下它死在 `commitBuffer: invalid argument (invalid character)`、rc=2，
+  #   而那个 rc 与「真有 error」在退出码上一模一样。CI 的 `ubuntu-latest` 自带 `LANG=C.UTF-8`
+  #   ⇒ 不设这一条，本格与 CI 那一格在**同一份输入**上会给出不同的答案。
+  out="$(LC_ALL=C.UTF-8 shellcheck --severity=error "${files[@]}" 2>&1)"
+  rc=$?
+  printf '%s\n' "$out" | head -80
+  if [ "$rc" -ne 0 ]; then
+    printf 'shellcheck: 退出码 %s —— 云端 `E2E scripts health` 那个 job 跑的是同一条命令、同一份人群，它会红\n' "$rc"
+    return "$rc"
+  fi
+  printf 'shellcheck: %s passed（人群与地板都是从 %s 现读的，本文件一个数都没写死；地板 %s）\n' \
+         "$n" "$yml" "$floor"
+}
+run_gate shellcheck '不是「几条断言过了」：这个数是**从 `.github/workflows/ci.yml` 现读的那张人群**展开出来的 shell 文件份数（与云端 `E2E scripts health` 那个 job 同一份人群、同一档 `--severity=error`）。⚠ 只判 error 这一档；warning/info/style 本行一概不看。⚠ 沙箱与 CI 是两份 shellcheck 二进制，版本可能不同 ⇒ 本格买的是「本地先看见」，不是「与 CI 逐字等价」。⚠ 人群之外的 shell（`.ps1` 全仓零 lint · 没进那张人群的任何脚本）本行盖不到' \
+         gate_shellcheck
+
+# ── `ci-e2e-prereq`：**CI 里那些 e2e 的前置跟没跟上**（`K-R122` `KR122D1` ③④，09-14，第 18 格）──
+#
+# ## 题面：`K-R119` 那趟五条红里有**两条**是这一形，而它在本地一个字都看不见
+#
+# `K-R48` 第二拍（09-11）把 `ccm` 收成后端的原生命令、`K-R104`（09-13）把用量探针整条
+# 重写成「往真 daemon 的帧面写帧」—— **两次都换了被测对象，而 `ci.yml` 里那两处 job 的
+# 前置一次都没跟上** ⇒ 云端双双红在「找不到原生入口 / 需要先 build daemon」。
+#
+# 🔴 **为什么本地看不见**：本脚本自己在跑四套 ccm e2e 之前**有一步 build 后端二进制**
+#（下面那行 `e2e 前置`），CI 那两个 job 没有 ⇒ 同一份被测对象，两边的「绿」长得一模一样。
+# ⇒ 这一格把「**前置齐不齐**」本身变成判据：它不跑任何 e2e，只读 `ci.yml` ＋ `package.json`
+#   ＋ 那些 `.sh`，对账「每一套硬门后端二进制的 e2e，同 job 里都有一条 build 排在它前面」。
+#
+# ⚠ 判据本体住 `evidence/K-R122-ruler.py`，**它的射程与买不到的东西逐条写在那份文件的头注里**，
+#   这里不复述一份（复述就会漂）。放在那儿也是为了能对着变异过的副本跑死值验
+#   （`K_R122_ROOT=<副本>`），不必去动真工作树 —— 与 `hooks` 那一格同一条取法。
+run_gate ci-e2e-prereq '判过的 e2e 调用行数（`ci.yml` 的 `steps:` 里形如 `assert-pass-floor.sh <套件> <地板>` 的 `run:`，现打 20 条），其中「被测对象是后端二进制」的那几条逐条要求同 job 里有一条 `cargo build` 排在它前面。⚠ 它**不跑任何 e2e**，只读盘上三份文本 ⇒ 「前置齐了」不等于「那一套会绿」；⚠ 认「要不要二进制」靠一个字面量、认「有 build」靠 `cargo build` 四个字，两处的失效形状逐条写在判据本体的头注里' \
+         python3 evidence/K-R122-ruler.py
 
 # ── 格式漂移 ────────────────────────────────────────────────────────────────
 #
@@ -829,6 +943,40 @@ run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红�
 #   fail-closed 比静默跳过好。
 run_gate winchk '不是数出来的数：`cargo check --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 一个包（`src-tauri/src` 的 67 处 `cfg(windows)`）；`remote-daemon-proto` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
          bash -c 'cd src-tauri && cargo check --locked -p monitor --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
+
+# ── `winchk-daemon`：**daemon 那棵树在 Windows 上编不编得过**（`K-R122` `KR122D2` 甲，09-14，第 18 格）──
+#
+# ## 题面：上面那一行自己写着「盖不到」，而那句话 09-14 兑现成了发版被拦
+#
+# 上面 `winchk` 那一行的分母逐字写着「`remote-daemon-proto` 那 17 处与 `creds-core` 那 2 处
+# 本行盖不到」。`K-R119` 推 `v3.8.0` 那一趟，云端 `Remote daemon (Linux) lint + test`
+# 那个 job 正是红在它的第 7 步（`cargo check --all-targets --target x86_64-pc-windows-msvc`）：
+# **10 个编译错，全在 test 档**。⇒ **射程印在那一行上，而没有任何东西替它出声。**
+#
+# ## 🔴 与 CI 那一格的差别，逐条写清（别把本格读成「和 CI 一样」）
+#
+#   · **target 不同**：CI 用 `x86_64-pc-windows-msvc`，本格用 `x86_64-pc-windows-gnu`。
+#     现打（09-14，本沙箱镜像）：msvc 那条在这里跑不了 —— `ring` 的 build script 要编 C，
+#     cc-rs 找不到 `lib.exe` ⇒ rc=101，而它**根本走不到我们自己的代码**
+#     （CI 那边是靠额外装一个 `zig` 把 `lib.exe` 这一环补上的，沙箱镜像里没有 zig，
+#     而 `.claude/devbox/Dockerfile` 不在本件写区）。
+#   · **两个 target 对本族缺陷等价**：那 10 个错全是「这个名字在 Windows 上不存在」
+#     （`std::os::unix` / `libc::utimensat` / `libc::AT_FDCWD` / `Permissions::from_mode`）——
+#     那是 `cfg(unix)` 这一维，与 ABI 无关。**现打验过**：同一份未修的源码在本格这条
+#     `-gnu` 命令下逐字报 `due to 10 previous errors`、`(bin "cc-monitor-remote" test)`，
+#     与 CI 那趟 msvc 的读数**同数同档**。
+#   · ⚠ **它买不到 MSVC ABI 专属的那一类** —— 只在 msvc 上才犯的毛病（C 依赖的链接面、
+#     MSVC 特有的 `#[link]`）本格盖不到。**那一格仍然只有 CI 有。**
+#
+# ⚠ **`--all-targets` 是承重的，别「简化」掉**：那 10 个错**一个都不在生产段**
+#   （同一份源码在 `build-windows` 里原生编出过 `cc-monitor-remote.exe`）。
+#   不加这个 flag，本格会在这一族缺陷上**全绿**。
+# ⚠ 依赖沙箱镜像装了 `x86_64-pc-windows-gnu` 这个 target（现打在；`.claude/devbox/Dockerfile`
+#   仓外、不进版本控制）。没装的机器上本格红在「找不到 target」—— fail-closed，那是对的。
+# ⚠ 刻意**不带** `--locked`：CI 那一步也没带（`remote-daemon-proto` 的锁文件由它自己的
+#   `cargo test` 那一步管）。一个性质两把尺子是本区最贵那族病。
+run_gate winchk-daemon '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `remote-daemon-proto` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src-tauri` 那棵树由上面 winchk 那一格盖' \
+         bash -c 'cd remote-daemon-proto && cargo check --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-daemon: 1 passed"'
 
 # 8 个包 = `monitor` + 7 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
 run_gate_sum cargo 9 bash -c 'cd src-tauri && cargo test --workspace --exclude code-picture-core --lib 2>&1'
@@ -1230,6 +1378,44 @@ else
   rm -f -- "$pb_raw"
 fi
 
+# ── 〔裁决·射程〕`GATE: OK` 那一行**不对什么负责**（`K-R122` `KR122D2` 乙，09-14）──────
+#
+# ## 题面：那一行今天**不带射程**，而它不等于「CI 会绿」
+#
+# `K-R119`（09-14）：同一棵树上本门禁 **16 格全绿**，推 tag 那一趟云端 **8 个 job 里 5 个红**
+#（读数住 `evidence/K-R119-发版读数.md § 六`）。四条差异里三条落在门禁自己**逐格印出来**的
+# 射程之外 —— 读数在那儿，而**没有人把它读成「所以这三件事没人管」**；
+# 第四条更直接：`shellcheck` 当时 16 格里**一格都没有**。
+# ⇒ 本件甲那一半已经把其中两条收成了格（`shellcheck` · `winchk-daemon`）。
+#   **剩下的这几条今天仍然买不到，所以要在裁决那一刻逐字说出来。**
+#
+# ## 形状：`键|说明`，而**键是有牙的那一半**
+#
+# 说明是给人读的散文；**键**（`|` 左边那个小写标识）进机检：
+# `evidence/K-R80-gate-cell-coverage.py` 的 `C5c` 对拍三件事 ——
+#   ① 这张表非空、每一项形状对、键不重复；
+#   ② **键集合与现打的判定格名互不相交** —— 哪天有人把某一维收成了格而这里还自称「不看」，
+#      当场红（那正是「买到了却还在说不看」那一形，和 `C5b` 治的腐同源）；
+#   ③ 印出来的条数是**现算**的（`${#GATE_BLIND[@]}`），不许写死一个数。
+#
+# ⚠ **它买不到什么**：这张表是**黑名单**，列不全 —— 它保证的是「**列出来的这几条不会悄悄
+#   变成一句没人守的散文**」，不是「射程之外只有这几条」。
+# ⚠ 只在 `GATE: OK` 那一支印。`GATE: FAIL` 那一支本来就没有在声称什么，那里再印一遍只会
+#   把真正要看的诊断顶下去。
+GATE_BLIND=(
+  "windows-runner|Windows runner 上才犯的那一族 —— 本门禁的 npm / tsc / e2e 全跑在 Linux 上，路径分隔符恒是 /。K-R119 那趟云端 vitest 的唯一一条红（1 failed / 1725 passed）就是这一形，本机在构造上红不了"
+  "ci-job-shape|.github/workflows/*.yml 里那些 job 自己的形状 —— 装了哪条工具链、runner 是谁、缓存与 needs 怎么连、每一步的 if 条件。⚠ 这一条本件收窄过一次：ci-e2e-prereq 那一格今天判的是它的**一个切片**（e2e 步骤的 build 前置齐不齐），**其余全部仍然没人看**"
+  "msvc-abi|MSVC ABI 专属的那一类跨平台编译问题 —— 两格 Windows 交叉检查用的都是 -gnu（沙箱里没有 zig，ring 的 build script 缺 lib.exe）。只在 msvc 上才犯的毛病本门禁盖不到"
+  "did-ci-actually-run|云端那条流水线到底跑没跑、绿没绿 —— 本门禁断网跑（--network none），它一次 gh run view 都做不到。GATE: OK 说的是这棵树在本机这 18 格上的样子，不是它在云端的样子"
+)
+gate_print_blind() {
+  printf 'GATE: 射程 —— 上面那行只对它自己那几格负责；下面这 %s 件事**本门禁不看**：\n' "${#GATE_BLIND[@]}"
+  local item
+  for item in "${GATE_BLIND[@]}"; do
+    printf '  不看  %-20s %s\n' "${item%%|*}" "${item#*|}"
+  done
+}
+
 echo
 if [ "${#fails[@]}" -eq 0 ]; then
   # 🔴 `K-R80`（09-12）：**这一行原来逐字是「三道门 + 生成物漂移 + pb check + 四套 ccm e2e」
@@ -1240,7 +1426,11 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   ⚠ 那把尺子**不在本脚本里跑** —— 它是登记的机检，不是出货闸的一格。
   # 🔴 `K-R82`（09-12）：**12 → 13**，加的是 `hooks` 那一格（上面 `gate_selftest` 之后那一段）。
   #   这一行的数与点名跟着改了 —— 而**不是靠人记得改**：`C5` 那条三方对拍会当场逮到。
-  echo "GATE: OK —— 16 格全绿（hooks · copy2 · fmt · fmt-daemon · winchk · cargo · deadcode · generated · daemon · tsc · npm · 四套 ccm e2e · pb check），可以出货"
+  # 🔴 `K-R122`（09-14）：**16 → 19**，加了三格 —— `shellcheck`（第 17 格）·
+  #   `ci-e2e-prereq`（第 18 格）· `winchk-daemon`（第 19 格）。三格都是
+  #   「CI 那边有人看、本门禁一个字都看不见」的那一维（`KR122D2` 甲）。
+  echo "GATE: OK —— 19 格全绿（hooks · copy2 · shellcheck · ci-e2e-prereq · fmt · fmt-daemon · winchk · winchk-daemon · cargo · deadcode · generated · daemon · tsc · npm · 四套 ccm e2e · pb check），可以出货"
+  gate_print_blind
   exit 0
 fi
 # ★ `K-G3`（09-01）：分隔符**不能**走 `IFS='；'` —— `IFS` 是按**字节**认的，

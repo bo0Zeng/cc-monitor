@@ -81,7 +81,15 @@ LINE() { grep -P "^$1\t" "$LINES" | cut -f2-; }
 # 占位符**从 Rust 常量现读**，不在这里再写一份字面量（两侧各写一份就会漂）。
 PLACEHOLDER="$(grep -oP 'E2E_SESSION_PLACEHOLDER: &str = "\K[^"]+' "$REPO/src-tauri/src/account_usage.rs")"
 [ -n "$PLACEHOLDER" ] || { echo "读不到 E2E_SESSION_PLACEHOLDER —— 那个常量改名了？"; exit 1; }
-FOR() { LINE "$1" | sed "s/$PLACEHOLDER/$2/g"; }
+# `K-R122`（09-14）：**这个函数原来叫 `FOR`，改名是因为 `shellcheck` 判它 error。**
+# `SC1081` 逐字「Scripts are case sensitive. Use 'for', not 'FOR'」—— 它按「大小写写错的
+# 关键字」判，定义处 ＋ 5 个调用点共 **6 处**全中（`--severity=error` ⇒ 整条 `e2e-smoke` job 红）。
+# ⚠ 这是**脚本自己的病**，不是 shellcheck 误报：一个全大写的 `FOR` 在 bash 里合法，
+#   但人和工具都会先把它读成关键字。⇒ 改名，不加 `# shellcheck disable=`。
+# ⚠ **调用点一起改了**。现打（改名前，量于本工作树）：全仓匹配「那个旧名后面紧跟一个左括号」
+#   只有下面这一处定义，别的文件零命中；本文件里的调用 5 处，全在下面改了。
+#   新名 `frame_for` 改名前全仓零命中（所以不会撞上别人）。
+frame_for() { LINE "$1" | sed "s/$PLACEHOLDER/$2/g"; }
 
 # ── 起 daemon（一条长连接，fifo 当 stdin）────────────────────────────────────
 CLAUDE_CONFIG_DIR="$CLAUDE_DIR" "$DAEMON" --tail-only <"$IN" >"$OUT" 2>"$ERR" &
@@ -132,25 +140,25 @@ ck "回了句柄（后面破坏性动作对它下手，不对名字）" "true" \
 ck "那个会话真的在 tmux 上" "true" \
   "$(T has-session -t "=$SESS:" 2>/dev/null && echo true || echo false)"
 
-send "$(FOR send-payload "$SESS")"
+send "$(frame_for send-payload "$SESS")"
 ck "送启动载荷成功" "true" "$(reply_of e2e-up-3 | jq -r '.ok')"
 
 # 调用方轮询：抓屏直到画面里出现 FAKECLAUDE 的欢迎行（**轮询在这一侧，daemon 里零定时器**）。
 got_welcome=false
 for i in $(seq 1 40); do
   sleep 0.25
-  send "$(FOR capture "$SESS")"
+  send "$(frame_for capture "$SESS")"
   SCREEN="$(reply_of e2e-up-5 | jq -r '.data.screen // ""')"
   case "$SCREEN" in *"fake stand-in"*) got_welcome=true; break;; esac
 done
 ck "抓屏拿回了真内容（stand-in 的欢迎行）" "true" "$got_welcome"
 
-send "$(FOR send-usage "$SESS")"
+send "$(frame_for send-usage "$SESS")"
 ck "送 /usage 成功" "true" "$(reply_of e2e-up-4 | jq -r '.ok')"
 got_panel=false; cols=""
 for i in $(seq 1 40); do
   sleep 0.25
-  send "$(FOR capture "$SESS")"
+  send "$(frame_for capture "$SESS")"
   SCREEN="$(reply_of e2e-up-5 | jq -r '.data.screen // ""')"
   case "$SCREEN" in *38%*) got_panel=true; cols="$(printf '%s' "$SCREEN" | grep -o 'COLS=[0-9]*' | tail -1)"; break;; esac
 done
@@ -158,7 +166,7 @@ ck "抓到了 /usage 面板（38%）" "true" "$got_panel"
 # 🔴 几何那一格：不给 -x/-y 时 detached 会话是 80 列，`/usage` 那张表会被折断。
 ck "会话宽度是探针要的那个（不是 tmux 默认 80）" "COLS=200" "$cols"
 
-send "$(FOR kill "$SESS")"
+send "$(frame_for kill "$SESS")"
 ck "收尾杀会话成功" "true" "$(reply_of e2e-up-6 | jq -r '.ok')"
 sleep 0.3
 ck "探针会话用完即清（不残留）" "" "$(sessions)"
