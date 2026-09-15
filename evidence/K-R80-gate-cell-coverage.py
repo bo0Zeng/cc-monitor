@@ -318,6 +318,38 @@ cell(
     },
 )
 
+# ── `K-R124`（09-15）：第 20 格 `release-gate` ────────────────────────────────
+# `KR124D1`/`KR124D2`：`ci.yml` 里那条「`release.yml` 手工触发守卫」**从加进去那天起就不可能过**
+# （`run:` 块里的 `${{ … }}` 被 runner 先求值 ⇒ 要比的字面渲染成 `"false"`），
+# 而它用 `yaml.safe_load` 写 ⇒ **在本地一次都跑不起来** ⇒ 两头都看不见，坏了一个月。
+# ⚠ 本格与 CI 那一步**跑的是同一份判据本体**（`evidence/K-R124-ruler.py`），不是两份抄件
+#   —— 所以这里不重抄它的射程，射程住那份文件的头注。
+cell(
+    "release-gate",
+    anchor="run_gate release-gate '判过的条数",
+    cwd="仓根",
+    cmd="python3 evidence/K-R124-ruler.py",
+    **{
+        ".github/": (PART, "只判 `release.yml` **一份文件里点名的那几处**：触发器解析得出来 · "
+                           "`workflow_dispatch` 在不在 · `inputs.publish` 的 type/default · "
+                           "`env.PUBLISH` 的**字面** · 两处「往 Release 上写」与 CI 门那一步的 `if:` · "
+                           "两处发布步骤各自的正文来源。⚠ 这份文件的其余每一步"
+                           "（四个 job 的 runner / 工具链 / needs / 缓存 / 构建那几步）本格一个字不问；"
+                           "⚠ `ci.yml` 整份**不在本格射程里**（那棵树的切片由 `shellcheck` 与 "
+                           "`ci-e2e-prereq` 两格各判一块）；⚠ 它**不跑那条流水线**，"
+                           "「盘上这份文本满足这几条」≠「云端那一趟会绿」"),
+        "scripts/": (PART, "只判 `scripts/release-notes.mjs` **两件事**：它在不在盘上、"
+                           "`--check` 跑不跑得出一段非空的正文。那份文件里的任何一行逻辑"
+                           "（段落切法 · 拼装 · 写文件那一半）本格都不看"),
+        ROOTFILES: (PART, "经生成器 `--check` 读进去的那两份：`package.json` 的 `version`、"
+                          "以及 `CHANGELOG.md` 里 `## [<version>]` 那一段**在不在、非不非空**。"
+                          "⚠ 这是**分母**不是依赖（本格真的在判它们：版本号没有对应段 ⇒ 本格红）；"
+                          "⚠ 那一段**写得对不对**本格一个字不判"),
+        "evidence/": blind("本格的尺子自己就住在这棵树上 —— 把量具算进它自己的覆盖，"
+                           "正是本区最高频那族病（与上面 `ci-e2e-prereq` 同一条理由）"),
+    },
+)
+
 cell(
     "cargo",
     # 🔴 〔`K-R115` 09-14〕**这条锚点在本件之前就已经指空了**：它写着 `cargo 8`，

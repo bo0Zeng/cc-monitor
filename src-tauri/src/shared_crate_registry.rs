@@ -695,7 +695,18 @@ mod tests {
             // 🔴 **写区外的随动**〔`K-R114` 09-14〕：本轮往 `e2e-smoke` 加了一步，
             // 而这条判据的题面逐字就是「CI 里加了一步、本地门禁不知道」⇒ 加步骤必须同拍登记。
             // 本行**只登记事实**（这一步本地跑得动，以及怎么跑），不裁定任何东西。
-            ("release.yml 手工触发守卫（KR114D1）", true, "步骤体从 `ci.yml` 原样抽出来跑（沙箱镜像里 `python3 -c \'import yaml\'` 直接有，用不上那条 pip 兜底）；被测对象由环境变量 `RELEASE_WORKFLOW` 给，缺省是本仓 `.github/workflows/release.yml`"),
+            //
+            // 🔴 **〔`K-R124` 09-15〕上一版这一行是一条假登记，订正在这里** ——
+            //    它逐字写着「沙箱镜像里 `python3 -c 'import yaml'` **直接有**」。**那是假的**：
+            //    现打 `docker run --rm ccmon-devbox:latest python3 -c 'import yaml'` 是
+            //    `ModuleNotFoundError: No module named 'yaml'`（2026-09-15）。
+            //    ⚠ **而真正的病不是这句话写错了**：那条守卫当时是用 `yaml.safe_load` 写的
+            //    ⇒ 它**在本地一次都跑不起来**，于是「CI 里有、本地也跑得动」这条登记
+            //    从来没有人真的去兑现过 —— 它坏了一个月（`d1a0552` → `4cf2ec2`）没人看见。
+            //    ⇒ 本轮把判据本体搬出 `ci.yml`、改成不依赖 PyYAML，并在本地门禁里收成一格
+            //    （`scripts/gate.sh` 的 `release-gate`）。**「跑得动」从此是一个有读数的事实，
+            //    不是一句登记。**
+            ("release.yml 发版守卫（KR114D1 ＋ KR124D2）", true, "判据本体住 `evidence/K-R124-ruler.py`（**不依赖 PyYAML**，自带 YAML 子集切块器）；CI 与本地门禁 `release-gate` 那一格跑的是**同一份文件**，不是两份抄件。被测对象由环境变量 `RELEASE_WORKFLOW` 给、整棵树由 `K_R124_ROOT` 给，缺省是本仓 `.github/workflows/release.yml`"),
             // ── 无名步骤（`- run: <命令>`，08-07 人群扩到它们之后才第一次可见）。
             // 标识是命令本身，多个 job 里同一条命令共用这一行登记。
             ("run: npm ci", false, "按 lockfile **重装** node_modules（三个 job 各一条无名步骤）：本地等价物是既有依赖树，重跑改变的是环境不是结论 —— 与上面那条有名字的 `npm ci` 同一个理由"),
