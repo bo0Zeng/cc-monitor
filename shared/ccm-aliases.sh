@@ -1,6 +1,6 @@
 # cc-monitor 统一启动器的**别名层**。
 #
-# 唯一实现在 ~/.local/bin/ccm（可执行文件，不是 shell 函数 —— 与 shell 无关，zsh/fish 同样可用）。
+# 实现是一个可执行文件（不是 shell 函数 —— 与 shell 无关，zsh/fish 同样可用）；落点见下面那行 PATH。
 # 本块只放**组合层别名**：自定义在这里，不在实现里。随便改、随便加。
 #
 #   ccm [动作] [修饰...] [-- 透传给 agent]
@@ -10,8 +10,8 @@
 #
 # 加一个新维度 = ccm 多一个 flag + 这里多一行别名，不是再写一个实现。
 
-# ccm 装在 ~/.local/bin，确保它在 PATH 里
-case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) export PATH="$HOME/.local/bin:$PATH";; esac
+# ccm 的落点**两边不同**：本机 ~/.cc-monitor/bin（monitor 放的那份）· 远端 ~/.local/bin（推过去的 shim）
+for __ccm_d in "$HOME/.local/bin" "$HOME/.cc-monitor/bin"; do case ":$PATH:" in *":$__ccm_d:"*) ;; *) export PATH="$__ccm_d:$PATH";; esac; done; unset __ccm_d  # 两边共用一份文本 ⇒ 两个都加；本机那个排在前面（赢过你那份旧的）
 
 # 便捷别名 —— **不覆盖你已有的同名函数**（有自己启动器的用户在自己的函数里调 ccm 即可）
 #

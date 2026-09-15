@@ -120,6 +120,15 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
                      "「后端二进制自己的改名副本」⇒ 装 ccm 与装后端是同一个动作")),
     ("ccm.uninstall", (B1, "R64+K26", "同上，卸那一侧")),
     ("ccm.install-ui", (B1, "R64+K26", "装 ccm 之前的预览 / 扫 PATH，是同一颗按钮的前半")),
+    # 🔴 `K-R135`（`R85`/`R87`/`R88`）：用户级 PATH 那一格（现在状态 · 加 · 撤）。
+    # 归 ① 而不是 ②：② 是「生成 rc 片段**让用户自己填**」，而这一格是**用户点一下、产品就执行**
+    # （`R85` 逐字「应该让用户手动点击加，也能管理删除」）。它是「装 ccm」这件事的**后半** ——
+    # 二进制放下去了却敲不到等于没装（`K-R129`/`K-R132` 那条已发版缺陷就是这一形）
+    # ⇒ 与 `ccm.install` 是同一颗按钮的两半。⚠ 同族的 `ccm.install-ui` 早就在 ① 里，
+    # 而它的理由逐字写着「装 ccm 之前的预览 / **扫 PATH**」—— PATH 这件事本来就归 ①。
+    ("ccm.user-path", (B1, "R85+R87+R88",
+                       "把我们那个 bin 目录放上**用户级** PATH，让三种终端都敲得到 `ccm`；"
+                       "POSIX 那一侧的同一件事是写进 rc 的那个围栏块")),
     ("ccm.status", (B1, "R64+K26+K-R111",
                     "查装态。`K-R111` 已判 `cc_integration_status` 归属重判、该挪进安装面")),
     ("daemon.deploy", (B1, "K33+K27", "推 / 撤远端那一份后端，本来就是「装后端」")),
@@ -274,11 +283,22 @@ SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
         "cc_integration_scan_path",
         "cc_integration_status",
         "cc_integration_uninstall",
+        "ccm_user_path_add",
+        "ccm_user_path_remove",
+        "ccm_user_path_status",
         "local_ccm_entry_status",
         "probe_ccm_cli",
-    ), "§3-3 第二行：后端写区 `lib.rs`（逐字限定 `cc_integration_*`）· `ccm_probe.rs`，"
-       "收 7 条 = `lib.rs` 里五条 `cc_integration_*` ＋ `ccm_probe.rs` 里两条。"
-       "⚠ 限定词承重：`lib.rs` 里还住着 `write_account_aliases`，那条归 S4")),
+    ), "§3-3 第二行：后端写区 `lib.rs`（`cc_integration_*` ＋ `ccm_user_path_*`）· `ccm_probe.rs`，"
+       "收 10 条 = `lib.rs` 里五条 `cc_integration_*` ＋ **三条 `ccm_user_path_*`** ＋ `ccm_probe.rs` 里两条。"
+       "⚠ 限定词承重：`lib.rs` 里还住着 `write_account_aliases`，那条归 S4。"
+       "🔴 〔`K-R135` 09-15〕那三条 `ccm_user_path_*`（用户级 PATH 那一格：现在状态 / 加 / 撤）"
+       "是本轮新长出来的装口，归 S2 的理由有三条、且**没有第二个连贯的归属**："
+       "① 它们归档在 `①装后端`（见 `CAP_ARCHIVE` 的 `ccm.user-path`）⇒ 只可能落 S1/S2/S3；"
+       "② 它们是**本机**半（S1 是远端、S3 是 acct-iso）；③ 它们住 `lib.rs`，正是 S2 的后端写区。"
+       "⚠ 而且**前端落点一个字都没多**：它们的调用点在 `src/launcher-diagnostics.ts`，"
+       "那一份本来就在 `FRONTEND_PIN['S2']` 里 ⇒ `R9` 那条棘轮不动。"
+       "⚠ **这一处不是纯计数随动，它把 S2 的射程从「逐字 `cc_integration_*`」扩到也含 "
+       "`ccm_user_path_*`** —— 属切件方案的改动，已在 `K-R135 §8` 里点名请 PM 追认")),
     ("S3", ("①-account 半", (
         "check_remote_acct_iso",
         "deploy_remote_acct_iso",
