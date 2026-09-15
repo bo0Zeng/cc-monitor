@@ -484,6 +484,14 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
             if let Some(sid) = &req.ccm_sid {
                 let _ = tmux(&["set-option", "-t", &t, "@ccm_sid_expect", sid]);
                 let _ = tmux(&["set-option", "-t", &t, "set-titles", "on"]);
+                // ⚠ 〔`K-R48` 09-11〕**这一行刻意保持字面量，别「顺手收口」成
+                // `super::ccm::RBIND_TITLE_FORMAT`。** 试过一次，代价是 monitor 侧
+                // `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
+                // 当场红：那条判据数的是**本文件生产段里「事实标记读点」的处数**（登记 2 处，
+                // 就是这一行里的条件头与取值），收口之后它读到 0 —— 而 0 的含义逐字是
+                // 「标题回填没了」。⇒ 收口会把一条真判据变瞎。
+                // 两份不漂由 `control::ccm::tests::the_window_title_format_has_the_same_text_on_both_sides`
+                // 钉住（它拿常量去本文件的生产段里找），比收口买到的更多。
                 let _ = tmux(&[
                     "set-option",
                     "-t",

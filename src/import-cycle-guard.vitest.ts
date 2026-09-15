@@ -35,7 +35,16 @@ import { stripComments } from "./test-support/strip-comments";
 const REPO_ROOT = resolve(__dirname, "..");
 const SRC = join(REPO_ROOT, "src");
 
-/** 生产 .ts（排掉测试与生成物；生成物是叶子类型、不会成环）。 */
+/**
+ * 生产 .ts（排掉测试与生成物；生成物是**叶子**，不会成环）。
+ *
+ * 🔴 `K-R93`（09-12）：原句写的是「生成物是叶子**类型**」—— 那半句今天过期了。
+ * `src/generated/agent-profile-table.ts` 是一份**值**表（agent 画像，源在
+ * `src-tauri/src/adapter.rs`），于是生成物第一次成为**运行期** import 的目标。
+ * `K-R95`（09-12）又加了一份（`launch-render-facts.ts`，源在
+ * `src-tauri/src/backend/control/launch_wire.rs`）——下面那条自检的数因此是 2 不是 1。
+ * 「不会成环」那一半**仍然成立且现在被机检**：见下面自检里那条「生成物真的是叶子」。
+ */
 function productionTsFiles(dir: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
@@ -128,6 +137,8 @@ describe("E80：生产代码不许有运行期 import 环", () => {
   const files = productionTsFiles(SRC).sort();
   const graph = new Map<string, string[]>(files.map((f) => [f, runtimeDeps(f)]));
   const rel = (p: string) => relative(REPO_ROOT, p).replace(/\\/g, "/");
+  /** `src/generated/` 下那份生成物 —— 上面的遍历刻意不收它们，但它们**能被 import**。 */
+  const isGenerated = (p: string) => rel(p).startsWith("src/generated/");
 
   it("★ 反向自检：图真的建起来了（否则下面那条恒绿）", () => {
     expect(files.length, "一个生产 .ts 都没扫到 —— 遍历坏了").toBeGreaterThan(100);
@@ -135,7 +146,24 @@ describe("E80：生产代码不许有运行期 import 环", () => {
     expect(edges, "图里一条边都没有 —— import 抠法坏了").toBeGreaterThan(200);
     // 抠出来的目标必须都是真文件（`statSync` 已经保证，这里再钉一次口径）
     for (const [, deps] of graph) {
-      for (const d of deps) expect(files.includes(d) || d.endsWith("index.ts")).toBe(true);
+      for (const d of deps) {
+        expect(
+          files.includes(d) || d.endsWith("index.ts") || isGenerated(d),
+          `import 目标 ${rel(d)} 既不在扫到的清单里、也不是 index/生成物`,
+        ).toBe(true);
+      }
+    }
+    // `K-R93`：生成物**真的是叶子**（它们自己不 import 任何相对路径）—— 上面那条
+    // 放它们过关的**唯一理由**就是这个，所以在这里把它钉住，而不是当成一句注释。
+    const generatedTargets = [...new Set([...graph.values()].flat())].filter(isGenerated);
+    expect(
+      generatedTargets.length,
+      "今天有 2 份生成物被**运行期** import（`agent-profile-table`，K-R93；" +
+        "`launch-render-facts`，K-R95）—— " +
+        "这个数变了就在这里红一次，好让新的那一份也过一遍「它是不是叶子」",
+    ).toBe(2);
+    for (const g of generatedTargets) {
+      expect(runtimeDeps(g), `${rel(g)} 不再是叶子 —— 它开始 import 别人了，可能成环`).toEqual([]);
     }
   });
 

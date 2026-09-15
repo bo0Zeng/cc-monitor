@@ -22,6 +22,30 @@ use std::path::{Path, PathBuf};
 ///
 /// ⚠ 判**文件**再判执行位，两个都要：只判执行位会被同名的**目录**劫持
 ///（那是反推样本之一逐字记下来的坑）。
+///
+/// # 🔴 `K-R52`（09-11）：非 unix 那一臂此前是**裸 `true`**
+///
+/// 「什么都算可执行」。它的后果不是编不过，是**跑不对**：[`on_path`] 会把 `PATH` 上
+/// 第一个同名文件当成插件交出去，不管那是不是一个能跑的东西。
+///
+/// ⚠ **仓里自己点过名、放了很久没治** —— `platform/fallback_guard.rs` 的头注承认过：
+/// 它要挡的那个形状**就在 `plugin/discover.rs` 活着，而人群够不着它**
+/// （那道护栏只扫 `platform/` 一个目录）。`K-R52` 把人群补上了，判据住
+/// [`crate::platform::cfgless_guard`]，而这一处正是那条新判据**修之前先红**的那个样本。
+/// 〔那份头注与它的 `g6_reach::counterexample_b…` 已**同轮摘登记**，改成过去时；
+///  那条反例从**活体**退成了**合成**，差别写在它自己的头注里。〕
+///
+/// # 改成 `false` 是「保守方向」，不是 Windows 实现
+///
+/// `fallback_guard` 头注列的三个诚实取值里，`false` 那一条的括号写着
+/// 「保守方向……**调用方本就容忍**」—— 这里正是：找不到的那条路上有
+/// [`not_installed_message`]，它会说出**查过哪些地方**，不会报成笼统失败。
+///
+/// 🔴 **如实登记这一臂今天不是什么**：它**不是** Windows 的语义。Windows 上
+/// 「这个文件能不能跑」是按**扩展名**判的（`PATHEXT`：`.exe` / `.bat` / `.cmd` …），
+/// 那是一份**真实现**，该住进 `platform/`。本件 `K-R52` 的射程是「让那条线守得住」、
+/// **一行代码都不搬**，写一份 Windows 实现是一次产品决策 ⇒ **本件不写，已走上报口交回 PM**。
+/// ⇒ 今天非 unix 上这条能力是**确证的空实现**（一个插件都找不到），不是「不知道」。
 pub(crate) fn is_executable(p: &Path) -> bool {
     let Ok(md) = std::fs::metadata(p) else {
         return false;
@@ -29,8 +53,6 @@ pub(crate) fn is_executable(p: &Path) -> bool {
     if !md.is_file() {
         return false;
     }
-    // Windows 上没有执行位这个概念；daemon 的目标平台是 Linux，但它**必须在 Windows 上编得过**
-    //（`C16`：动 daemon 就跑 `npm run verify:committed`）。
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -38,7 +60,7 @@ pub(crate) fn is_executable(p: &Path) -> bool {
     }
     #[cfg(not(unix))]
     {
-        true
+        false
     }
 }
 

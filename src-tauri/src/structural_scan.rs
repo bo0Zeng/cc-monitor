@@ -404,6 +404,52 @@ pub fn line_addresses(text: &str) -> Vec<LineAddress> {
     out
 }
 
+/// 枚举 `text` 的**生产段**里所有以 `verbs` 任一动词打头的 `fn` 名（去重、有序）。
+///
+/// # 它服务的是哪一族判据〔`K-R63` 09-11〕
+///
+/// 一族「**声明缺口**」：某张表上写着「这一格今天盘上没有实现」（`None` / `false`），
+/// 而那句话**没有任何东西核**。本仓的活体是 `tool_registry.rs::TOOLS` 的 `remote-daemon`：
+/// 字段写着 `uninstallable: false`，而 `sftp.rs::uninstall_remote_daemon` 是设置面板上
+/// 那个「卸载 daemon」按钮背后的实现，**一直都在** —— 假申报活了一个月，一格没红。
+///
+/// ⇒ 处方：申报「没有」的那一格，**去它家里扫一眼有没有一个没人认领的同族实现**。
+///
+/// # 🔴 射程写死，别读大一格
+///
+/// 它按**名字**认，一个字的语义都不读：
+///   · 动词表由调用方给，**不是穷举** —— 叫别的名字的实现它一个都看不见；
+///   · 它只说「那份文件的生产段里有一个这么打头的 `fn`」，
+///     **说不出**那个 `fn` 是不是真在做那件事（反过来也一样）。
+/// ⇒ 它买到的是「那句『没有』有人在核」，**不是**「那句『没有』一定是真的」。
+///
+/// 剥法走**共享原语** `guard_core::production_code`（剥注释 + 剥测试段）——
+/// 本文件那条 `every_comment_stripping_transformer_is_registered` 逐字要求
+/// 「先问共享原语为什么不够」，这里够。
+pub fn fn_names_starting_with(text: &str, verbs: &[&str]) -> Vec<String> {
+    let prod = guard_core::production_code(text);
+    let mut out = Vec::new();
+    for line in prod.lines() {
+        let mut it = line.split_whitespace().peekable();
+        while let Some(tok) = it.next() {
+            if tok != "fn" {
+                continue;
+            }
+            let Some(next) = it.peek() else { continue };
+            let name: String = next
+                .chars()
+                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                .collect();
+            if !name.is_empty() && verbs.iter().any(|v| name.starts_with(v)) {
+                out.push(name);
+            }
+        }
+    }
+    out.sort_unstable();
+    out.dedup();
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -487,7 +533,16 @@ mod tests {
             let lines: Vec<&str> = src.lines().collect();
             let Some(start) = lines.iter().position(|l| {
                 let t = l.trim();
-                t.starts_with("mod ") && t.contains("test") && t.ends_with('{')
+                // 🔴 〔`K-R75` 09-12〕这里原先也是 `t.starts_with("mod ")` ——
+                //    **同一族病的第二个住址**，而它的失效方向比剥法那处更阴：
+                //    一份文件的测试模块若写成 `pub(crate) mod tests {`，`position` 返回 `None`
+                //    ⇒ 那份文件**整份掉出本条的人群**，而本条照样绿（人群缩水，静默）。
+                //    ⇒ 走同一份权威的形状判定，不再各写一份近似的（`E3`）。
+                //    ⚠ 现打：今天全仓「带可见性且名字含 test 的 `mod`」**0 处**
+                //       ⇒ 这一改在今天的盘上是 **no-op**，买的是「下一处这么写时不会静默」。
+                guard_core::strip_visibility(t).starts_with("mod ")
+                    && t.contains("test")
+                    && t.ends_with('{')
             }) else {
                 continue;
             };
@@ -545,10 +600,27 @@ mod tests {
     /// U8a-2a：monitor 的每个源文件都要能被共享剥法（`guard_core`）剥干净。
     ///
     /// 与 daemon 侧 `every_daemon_file_strips_clean` 同一条，只是换了一棵树。
-    /// 它同时是「列 0 右大括号这个收尾判据够不够用」的持续验证 —— 哪天有人在测试模块里
-    /// 写了一段列 0 含右大括号的原始字符串，这里会红，那时再上真正的大括号配对。
     ///
     /// `min_files` 是**计数自检**：遍历坏掉时它会红，而不是静默扫 0 个文件通过。
+    ///
+    // ⟦KR115D3 共用段·起⟧
+    /// 这条同时是「列 0 收尾判据够不够用」的持续验证 —— **而它自己已经守不住那一形了**。
+    ///
+    /// ⚠ 〔`K-R115` 09-14〕上一版这里逐字写着「哪天有人在测试模块里写了一段列 0 含右
+    /// 大括号的原始字符串，**这里会红**」。那句话**两天里假了两次**：
+    /// ① `K-R110`（09-13）现打它**当时就没红** —— 那 31 行漏进生产段，而守门人看不见；
+    /// ② `K-R110` 之后它**永远不会再因此红** —— 那一形已经被
+    ///    `guard_core::assert_test_module_ranges_are_brace_balanced` 正确处理掉了
+    ///    （匹配单位从「行」换成「计数」，区间在原始字符串里收尾会被它当场逮住）。
+    /// ⇒ **今天真正守这一形的是那条判据**；本条经 `assert_tree_strips_clean` 调到它，
+    ///    本条自己守的只剩「这棵树剥得干净 ＋ 文件数没缩水」。
+    ///
+    /// 🔴 **这一段在两棵树里各住一份，逐字必须相同**
+    /// （`remote-daemon-proto/src/guard_support.rs` ＋ `src-tauri/src/structural_scan.rs`）——
+    /// `K-R110` 交回时点名过这个形状：**两个住址、同一句话**，改一处漏一处，
+    /// 下一次还是一处真一处假。钉着它的是
+    /// `guard_support.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
+    // ⟦KR115D3 共用段·止⟧
     #[test]
     fn every_monitor_file_strips_clean() {
         // 地板 = **实测值**（2026-08-02：52 个 .rs）。松着放等于把灵敏度交出去
@@ -561,6 +633,455 @@ mod tests {
             // ⚠ 棘轮纪律：只许升不许降；要降必须带「副本真退役」的证据。
             80,
         );
+    }
+
+    /// 🔴 `K-R75` `KR75D2` 的**点名**这一半：上一条红的时候，必须说得出**是哪一份** `mod.rs`。
+    ///
+    /// # 它买的是什么
+    ///
+    /// 两棵真树里 `mod.rs` 各有十几份（`backend/mod.rs` · `backend/control/mod.rs` · …）。
+    /// `K-R75` 之前 `assert_tree_strips_clean` 传给断言的 `who` 是 `path.file_name()`
+    /// ⇒ 报错逐字「`mod.rs`：剥完仍残留 1 个测试属性」，**指不出是哪一份**。
+    /// 而「点名那份文件」正是这条反向自检的产出，不是附赠 ——
+    /// 一条说不出住址的红，下一个人要拿全树重新找一遍。
+    ///
+    /// # 为什么住在这里而不是 `guard-core` 里
+    ///
+    /// 它要一棵**真目录**才测得了，而造目录要写盘 —— 而 `guard-core`
+    /// **一处写盘都不许有，连 `cfg(test)` 里也不许**（daemon 侧
+    /// `readonly_guard::g6_dependency_signoff::…::the_clean_verdict_is_re_measured_on_the_tree_every_run`
+    /// 按**原文行**重扫那几棵仓内 crate，不走 `production_code`）。
+    /// 〔09-12 现打：先写在 `guard-core` 里，门禁 `daemon` 那格当场 `685 passed; 1 failed`，
+    ///  逐字点名 `guard-core（../src-tauri/crates/guard-core）src/lib.rs:2219: \`fs::create_dir\``〔行号墓碑〕
+    ///  —— 那个行号是**当时那一趟**的读数，那段代码已经搬走 ⇒ 它必然腐；留着是为了说清
+    ///  「那把尺子按原文行数、连测试夹具都算」，不是给人拿去定位。
+    ///  处置是**搬家**，不是去动那把尺子 —— 那把尺子同时守着 daemon 本体两层判据。〕
+    ///
+    /// **死值验**：把 `guard_core::assert_tree_strips_clean` 里的 `strip_prefix(root)`
+    /// 退回 `path.file_name()` ⇒ 本条必须红（读数落 `evidence/K-R75-剥法认形状与真静默读数.md`）。
+    #[test]
+    fn the_tree_walk_names_the_file_by_path_not_by_basename() {
+        let root = std::env::temp_dir().join(format!(
+            "kr75-naming-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        let deep = root.join("alpha").join("beta");
+        std::fs::create_dir_all(&deep).expect("建夹具目录");
+        std::fs::write(root.join("mod.rs"), "fn clean() {}\n").expect("写干净的那份");
+        // 属性与 `mod` 之间夹一行文档注释 ⇒ 剥法认不出（这正是本条要点名的那一族）。
+        let cfg = format!("#[{}({})]", "cfg", "test");
+        std::fs::write(
+            deep.join("mod.rs"),
+            format!("fn a() {{}}\n{cfg}\n/// 说明\npub(crate) mod probe {{\n    fn z() {{}}\n}}\n"),
+        )
+        .expect("写带违规写法的那份");
+        let r = std::panic::catch_unwind({
+            let root = root.clone();
+            move || guard_core::assert_tree_strips_clean(&root, 1)
+        });
+        let _ = std::fs::remove_dir_all(&root);
+        let e = r.expect_err("带违规写法的那份没红 —— 树遍历这一层的第二半没接上");
+        let msg = e
+            .downcast_ref::<String>()
+            .cloned()
+            .or_else(|| e.downcast_ref::<&str>().map(|s| (*s).to_string()))
+            .unwrap_or_default();
+        assert!(
+            msg.contains("alpha/beta/mod.rs"),
+            "报错里没有带目录的相对路径 —— 两份 `mod.rs` 分不开：{msg}"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R77`（09-12）：**「`#[cfg(test)]` 顶层再导出自己的测试模块」那道绕道** ——
+    // 拆掉最后一处的同一拍给它上棘轮。裁定住 `DECISIONS.md#R36` 裁定二。
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 顶层 = **列 0**（不带前导空白）且非空行。
+    fn detour_top_level(line: &str) -> bool {
+        !line.is_empty() && !line.starts_with(' ') && !line.starts_with('\t')
+    }
+
+    /// `from` 那一行之后**第一行有内容的顶层行**：`(0 起的下标, trim 后的原文)`。
+    ///
+    /// 空行与整行注释跳过（属性与它修饰的 item 之间夹一行 `//` 是合法 Rust，
+    /// 跳过它是**只严不松**）；遇到缩进行就停 —— 那说明这个属性挂在别人的块里。
+    fn detour_next_item<'a>(lines: &[&'a str], from: usize) -> Option<(usize, &'a str)> {
+        for (k, line) in lines.iter().enumerate().skip(from + 1) {
+            let t = line.trim();
+            if t.is_empty() || t.starts_with("//") {
+                continue;
+            }
+            if !detour_top_level(line) {
+                return None;
+            }
+            return Some((k, t));
+        }
+        None
+    }
+
+    /// 本文件里由 `#[cfg(test)]` 修饰的**顶层模块**名 —— **可见性一律不看**。
+    ///
+    /// 🔴 这一句就是 `K-R75` 治过的那个病的复发点：那一版剥法只认字面 `mod `，
+    /// 一个 `pub(crate)` 前缀就让整份文件**静默掉出人群**。⇒ 走同一份权威的形状判定
+    /// `guard_core::strip_visibility`，**不再各写一份近似的**（本仓 `E3`）。
+    fn cfg_test_module_names(src: &str) -> std::collections::BTreeSet<&str> {
+        let lines: Vec<&str> = src.lines().collect();
+        let mut out = std::collections::BTreeSet::new();
+        for (i, l) in lines.iter().enumerate() {
+            if l.trim() != "#[cfg(test)]" || !detour_top_level(l) {
+                continue;
+            }
+            let Some((_, next)) = detour_next_item(&lines, i) else {
+                continue;
+            };
+            let Some(decl) = guard_core::strip_visibility(next).strip_prefix("mod ") else {
+                continue;
+            };
+            let name = decl
+                .split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .trim_end_matches('{')
+                .trim_end_matches(';');
+            if !name.is_empty() {
+                out.insert(name);
+            }
+        }
+        out
+    }
+
+    /// 这道绕道在 `src` 里的每一处：`(1 起的行号, 那一行 trim 后的原文)`。
+    ///
+    /// **人群逐字**：顶层一行恰好是 `#[cfg(test)]`，其后第一行有内容的顶层行是
+    /// `<任意可见性> use <本文件的某个 cfg(test) 模块>::…`。
+    fn cfg_test_reexport_sites(src: &str) -> Vec<(usize, String)> {
+        let mods = cfg_test_module_names(src);
+        let lines: Vec<&str> = src.lines().collect();
+        let mut out = Vec::new();
+        for (i, l) in lines.iter().enumerate() {
+            if l.trim() != "#[cfg(test)]" || !detour_top_level(l) {
+                continue;
+            }
+            let Some((k, next)) = detour_next_item(&lines, i) else {
+                continue;
+            };
+            let Some(path) = guard_core::strip_visibility(next).strip_prefix("use ") else {
+                continue;
+            };
+            let seg = path.trim().split("::").next().unwrap_or_default().trim();
+            if mods.contains(seg) {
+                out.push((k + 1, next.to_string()));
+            }
+        }
+        out
+    }
+
+    /// 住址：仓根相对路径（够不着仓根就退回原样）。
+    ///
+    /// `K-R75` 那条逐字：**点名要给住址，不是基名** —— 两棵树里同名文件是常态。
+    fn detour_addr(p: &std::path::Path) -> String {
+        p.strip_prefix(addr_repo_root())
+            .unwrap_or(p)
+            .to_string_lossy()
+            .replace('\\', "/")
+    }
+
+    /// 这道绕道的**存量上限**。🔴 **今天是 0，而且它有资格恒零** ——
+    /// 三条理由写在 [`the_cfg_test_reexport_detour_stays_extinct`] 头注，别在这里抬它。
+    const DETOUR_CEILING: usize = 0;
+
+    /// 纯算子：今天的处数 `today` 有没有**越过**上限 `ceiling`；越了就回超出多少。
+    ///
+    /// 🔴 **单独成函数的理由与 `scanning_guard_registry::ratchet_backslide` 逐字同源**：
+    /// 真树上今天 `today` 与 `ceiling` **都是 0** ⇒ 把 `>` 写成 `<` / `>=` / `!=`，
+    /// **输出与判对了一模一样（绿）**。
+    /// [`the_detour_reader_can_tell_a_new_one_from_none`] 拿**合成读数**把这一格钉住。
+    fn detour_over_ceiling(today: usize, ceiling: usize) -> Option<usize> {
+        if today > ceiling {
+            Some(today - ceiling)
+        } else {
+            None
+        }
+    }
+
+    /// 🔴 `K-R77` `KR77D2`：**那道 `#[cfg(test)]` 顶层再导出的绕道，恒零。**
+    ///
+    /// # 它治的是什么
+    ///
+    /// 绕道的形状：测试模块写成私有 `mod X`，再在文件顶层补一行
+    /// `#[cfg(test)] pub(crate) use X::…`，把要跨模块用的东西导出去。
+    /// 它**曾经有一个真理由** —— `guard_core::test_module_ranges` 那时按字面前缀认
+    /// `mod `，模块一带可见性前缀就认不出来，那份文件**整段测试代码留在生产段里**被别的
+    /// 守卫扫。`K-R75`（09-12）把那一步换成按形状剥可见性
+    /// （`guard_core::strip_visibility`）之后，**那个理由没了**，而盘上那三处还在。
+    ///
+    /// # 🔴 在本条落地之前，这一族**一颗牙都没有**
+    ///
+    /// `K-R76` 现打（它的刀 `M3`）：把已经拆掉的那道绕道**整个装回去**，全量门禁 **0 红**。
+    /// ⇒ 本条不是「再加一层保险」，它是这一族的**第一道闸**。
+    ///
+    /// # 凭什么可以恒零（而不是「比历史最低档低」）
+    ///
+    /// `K-R38` 亲手证过「**钉一个固定上限买不到棘轮**」—— 降到低点再涨回来仍然过。
+    /// 这里选**恒零**，三条理由缺一条都不该恒零：
+    /// ① **今天真的是 0**：本条自己就是那个读数（两棵树 · 现打，见
+    ///    [`the_detour_ratchet_reaches_both_trees`] 的分母）；
+    /// ② **它没有合法用途了**：这道绕道存在的唯一理由是剥法那个缺陷，缺陷已修；
+    ///    今天要跨模块就把模块写成 `pub(crate) mod` —— 那正是三处拆完之后的写法；
+    /// ③ **0 是这个量的下界** ⇒ 「必须比历史最低档低」在这里退化成「等于 0」，
+    ///    再拿 git 历史算一遍最低档只是把同一句话说贵一点。
+    /// ⇒ 恒零比「历史最低档」**更强**：后者允许「降下去再涨回来」的那一格，前者不允许。
+    ///
+    /// ⚠ **这条前提本来就该变的时候，去哪里重新裁定**（判据纪律 11）：
+    /// 只有一种情形该动它 —— 剥法**又**认不出某种可见性写法。那时先修
+    /// `guard_core::strip_visibility`，**不是**回来抬这个 0。
+    /// 真要给这道绕道开一个正当口子，走 `DECISIONS.md` 立一条裁定。
+    ///
+    /// # 它买不到什么（如实登记，别读成证明）
+    ///
+    /// · 只认**顶层**那一形：把再导出塞进另一个 `mod` 里包一层，它看不见。
+    /// · 只认属性行**逐字** `#[cfg(test)]`：写成 `#[cfg(all(test, unix))]` 躲得过
+    ///   （这一格由 [`the_detour_scanner_sees_every_visibility`] 的反面那半**钉着读数**，
+    ///   哪天扩了人群就来改那一行）。
+    /// · 它是**文本**扫描：不问那个再导出有没有人用，也不问拆了之后编不编得过。
+    #[test]
+    fn the_cfg_test_reexport_detour_stays_extinct() {
+        let corpus = addr_corpus();
+
+        // ── 地板① **人群的第一步**：认得出多少个 `#[cfg(test)]` 顶层模块。
+        //    这一步塌了 ⇒ 任何再导出都匹配不上，而输出与「盘上真的没有」一模一样（静默空真）。
+        let mods: usize = corpus
+            .iter()
+            .map(|(_, s)| cfg_test_module_names(s).len())
+            .sum();
+        assert!(
+            mods >= 200,
+            "只认出 {mods} 个 `#[cfg(test)]` 顶层模块（语料 {} 份）—— 人群的第一步塌了，\
+             本条在空转。09-12 现打 250 个 / 207 份（两棵树）。",
+            corpus.len()
+        );
+
+        // ── 地板② **扫描器真的会说话**：同一个纯算子喂一份合成语料，必须恰好逮到 1 处。
+        //    「断某个对账今天该是空的」是空真形（闸死了 `[] == []` 照样绿）⇒ 活体正控在这里。
+        let attr = format!("#[{}({})]", "cfg", "test");
+        let probe = format!(
+            "fn prod() {{}}\n{attr}\npub(crate) use tests::HELPER;\n\n\
+             {attr}\nmod tests {{\n    pub(crate) const HELPER: usize = 1;\n}}\n"
+        );
+        assert_eq!(
+            cfg_test_reexport_sites(&probe).len(),
+            1,
+            "合成语料里那一处绕道都逮不到 —— 扫描器坏了，下面那句「盘上 0 处」不算数"
+        );
+
+        // ── 正题：两棵树上现打。
+        let mut sites: Vec<String> = Vec::new();
+        for (p, src) in &corpus {
+            for (ln, text) in cfg_test_reexport_sites(src) {
+                sites.push(format!("  {}（第 {ln} 行）—— `{text}`", detour_addr(p)));
+            }
+        }
+        if let Some(over) = detour_over_ceiling(sites.len(), DETOUR_CEILING) {
+            panic!(
+                "这里有 {} 处「`#[cfg(test)]` 顶层再导出自己的测试模块」，比上限 \
+                 {DETOUR_CEILING} 多 {over} 处：\n{}\n\n\
+                 ⇒ **这道绕道今天没有理由了**：`guard_core::test_module_ranges` 自 `K-R75`\n\
+                 起按形状剥可见性修饰，测试模块直接写成 `pub(crate) mod X` 就认得出来，\n\
+                 跨模块的取名走 `crate::<文件>::X::…`，不需要在顶层再导出一次。\n\
+                 修法：把 `mod X` 写成 `pub(crate) mod X`，删掉这一行，引用者改走全路径。\n\
+                 （盘上三处的先例：`ssh_source.rs` 的 `dial_move_judge` · `local_daemon.rs` 的\n\
+                  `tests` · `readonly_guard.rs` 的 `g6_doctrine`，`K-R76`/`K-R77` 各拆过。）\n\
+                 ⚠ 真有正当理由要开口子 ⇒ 走 `DECISIONS.md` 立裁定，**不许**在这里抬 \
+                 `DETOUR_CEILING`。",
+                sites.len(),
+                sites.join("\n")
+            );
+        }
+    }
+
+    /// 🔴 `K-R77` `KR77D3`：上面那条棘轮的语料面**跨两棵树** —— 少一棵当场红。
+    ///
+    /// # 为什么要单独一条
+    ///
+    /// 这道绕道**两棵树上都长过**（monitor 侧 `ssh_source.rs` 与 `local_daemon.rs`，
+    /// daemon 侧 `readonly_guard.rs`）。而它的失效方向是**分母悄悄缩到一棵树** ——
+    /// 那时上面那条照样绿，读起来却像「两棵树都守住了」。
+    /// ⇒ 这一条把「够得到」本身变成判据：**逐棵树各有地板**，并且**点名**那三份
+    /// 真长过绕道的文件必须在语料里。
+    ///
+    /// # ⚠ 它买不到什么 —— `KR77D3` 要的那个诚实读数，写在这里
+    ///
+    /// 闸**住在 monitor 这棵树上**（门禁 `cargo` 那一格 = `cargo test --workspace --lib`），
+    /// 靠**读盘上的 `remote-daemon-proto/src`** 够到 daemon。
+    /// ⇒ 🔴 **daemon 自己那一格（门禁 `daemon` = `cd remote-daemon-proto && cargo test`）
+    /// 今天没有这道闸**：只跑 daemon 那一格的人新写一道绕道，**不会红**。
+    /// 两棵树是两个 workspace（`remote-daemon-proto/Cargo.toml` 头注逐字写着 standalone），
+    /// 而「daemon 那一格要不要也跑一条同形的判据」不是本件能决定的事 —— 交回 PM。
+    #[test]
+    fn the_detour_ratchet_reaches_both_trees() {
+        let corpus = addr_corpus();
+        let mut monitor = 0usize;
+        let mut daemon = 0usize;
+        for (p, _) in &corpus {
+            let rel = detour_addr(p);
+            if rel.starts_with("remote-daemon-proto/") {
+                daemon += 1;
+            } else if rel.starts_with("src-tauri/") {
+                monitor += 1;
+            }
+        }
+        // 地板逐棵树各一条 —— 合起来一条挡不住「一棵塌了另一棵涨了」。
+        // 09-12 现打：monitor 118（`src-tauri/src` 108 ＋ `src-tauri/crates` 9 ＋ `build.rs` 1；
+        //   `scan_tree!` 按构造摘掉本文件自己，它由 `addr_corpus` 用相对住址补回来）· daemon 88。
+        assert!(
+            monitor >= 100,
+            "monitor 那棵树只收到 {monitor} 份 .rs（09-12 现打 118）—— 分母缩水了"
+        );
+        assert!(
+            daemon >= 80,
+            "🔴 daemon 那棵树只收到 {daemon} 份 .rs（09-12 现打 88）—— \
+             `remote-daemon-proto/src` 掉出语料面了。\n\
+             那一刻上面那条棘轮照样绿，而它只守着一棵树 —— \
+             **报「已守住」而分母只有一棵树**，正是本条要挡的形状。"
+        );
+        // 点名：三份真长过绕道的文件必须都在语料里（地板是数，这一条是**住址**）。
+        let names: std::collections::BTreeSet<String> =
+            corpus.iter().map(|(p, _)| detour_addr(p)).collect();
+        for want in [
+            "remote-daemon-proto/src/readonly_guard.rs",
+            "src-tauri/src/ssh_source.rs",
+            "src-tauri/src/local_daemon.rs",
+        ] {
+            assert!(
+                names.contains(want),
+                "`{want}` 不在语料面里 —— 它是这道绕道真长过的三处之一，\
+                 够不着它就等于这一处从此没人守（monitor {monitor} 份 · daemon {daemon} 份）"
+            );
+        }
+    }
+
+    /// 🔴 `K-R77` `KR77D2` 的**反向那半** —— 照 `K-R38` 那条的形。
+    ///
+    /// 真树上今天处数与 `DETOUR_CEILING` **都是 0** ⇒ 把 [`detour_over_ceiling`] 里的
+    /// `>` 写成 `<`（或 `>=`、`!=`），**正题照样绿**。`K-R38` 那次实打逐字：
+    /// 「正题照样绿、只有反向红 ⇒ 反向那半承重」。
+    /// ⇒ 这里拿**合成读数**把方向钉死，一格都不靠真树。
+    #[test]
+    fn the_detour_reader_can_tell_a_new_one_from_none() {
+        assert_eq!(
+            detour_over_ceiling(1, 0),
+            Some(1),
+            "新长出来 1 处而它说没事 —— 比较写反了，棘轮一颗牙都没有"
+        );
+        assert_eq!(detour_over_ceiling(3, 0), Some(3), "超出的处数报错了");
+        assert_eq!(
+            detour_over_ceiling(0, 0),
+            None,
+            "0 处而它报违规 —— 恒红的闸，下一个人第一件事就是把它关掉"
+        );
+        assert_eq!(detour_over_ceiling(0, 1), None, "低于上限却报违规");
+        assert_eq!(detour_over_ceiling(2, 5), None, "低于上限却报违规");
+        assert_eq!(detour_over_ceiling(6, 5), Some(1), "刚越线那一格没逮住");
+    }
+
+    /// 🔴 `K-R77` `KR77D2` 的**失效方向**那半：人群**不许只认一种可见性**。
+    ///
+    /// 那正是 `K-R75` 治过的病换个地方再犯 —— 前一版剥法只认字面 `mod `，
+    /// 一个 `pub(crate)` 前缀就让整份文件掉出人群，**而判据照样绿**。
+    /// Rust 的 `Visibility` 文法是语言定死的闭集，而 `pub(in <路径>)` 的路径**任意长**
+    /// ⇒ **前缀表穷举不了、形状认得出**。这一条逐形喂一遍，外加反面五形。
+    #[test]
+    fn the_detour_scanner_sees_every_visibility() {
+        let attr = format!("#[{}({})]", "cfg", "test");
+        let with_vis = |vis: &str| {
+            format!(
+                "fn prod() {{}}\n{attr}\n{vis}use tests::HELPER;\n\n\
+                 {attr}\nmod tests {{\n    pub(crate) const HELPER: usize = 1;\n}}\n"
+            )
+        };
+        for vis in [
+            "",
+            "pub ",
+            "pub(crate) ",
+            "pub(super) ",
+            "pub(self) ",
+            "pub(in crate::alpha::beta::gamma) ",
+        ] {
+            let src = with_vis(vis);
+            let hits = cfg_test_reexport_sites(&src);
+            assert_eq!(
+                hits.len(),
+                1,
+                "可见性写成 `{vis}` 时逮不到（实得 {hits:?}）—— 人群只认一种拼法，\
+                 那是 `K-R75` 治过的病换个地方再犯"
+            );
+            assert!(
+                hits[0].1.ends_with("use tests::HELPER;"),
+                "逮到了但报的不是那一行：{:?}",
+                hits[0]
+            );
+            assert_eq!(
+                hits[0].0, 3,
+                "行号指错了（应当是 `use` 那一行，不是属性那一行）"
+            );
+        }
+        // 属性与 item 之间夹一行注释 —— 合法 Rust，躲不过去。
+        let commented = format!(
+            "{attr}\n// 说明\npub(crate) use tests::HELPER;\n\n\
+             {attr}\nmod tests {{\n    pub(crate) const HELPER: usize = 1;\n}}\n"
+        );
+        assert_eq!(
+            cfg_test_reexport_sites(&commented).len(),
+            1,
+            "中间夹一行注释就躲过去了"
+        );
+
+        // ── 反面：这五形一个都不许算进来（前四条是**正当写法**，第五条是**已登记的盲区**）。
+        let mod_only = format!("{attr}\nmod tests {{\n    fn a() {{}}\n}}\n");
+        let foreign = format!(
+            "{attr}\npub(crate) use guard_core::production_code;\n\n\
+             {attr}\nmod tests {{\n    fn a() {{}}\n}}\n"
+        );
+        let from_super = format!(
+            "{attr}\npub(crate) use super::HELPER;\n\n\
+             {attr}\nmod tests {{\n    fn a() {{}}\n}}\n"
+        );
+        let nested = format!(
+            "mod outer {{\n    {attr}\n    pub(crate) use tests::HELPER;\n}}\n\
+             {attr}\nmod tests {{\n    pub(crate) const HELPER: usize = 1;\n}}\n"
+        );
+        let wider_cfg = format!(
+            "#[{}(all({}, unix))]\npub(crate) use tests::HELPER;\n\n\
+             {attr}\nmod tests {{\n    pub(crate) const HELPER: usize = 1;\n}}\n",
+            "cfg", "test"
+        );
+        for (what, src) in [
+            ("`#[cfg(test)]` 修饰的是模块声明，不是再导出", &mod_only),
+            (
+                "再导出的是**别的 crate** 的东西（`guard_support.rs` 就是这一形）",
+                &foreign,
+            ),
+            ("再导出的是 `super::`，不是本文件的测试模块", &from_super),
+            (
+                "再导出包在另一个 `mod` 里 —— **已登记的盲区**，不是正当写法",
+                &nested,
+            ),
+            (
+                "属性不是逐字 `#[cfg(test)]` —— **已登记的盲区**，扩了人群就来改这一行",
+                &wider_cfg,
+            ),
+        ] {
+            assert_eq!(
+                cfg_test_reexport_sites(src).len(),
+                0,
+                "这一形被算进人群了：{what}"
+            );
+        }
     }
 
     /// ★ **剥注释只许有一个权威实现**〔audit-0805 §5 3h，08-06〕。
@@ -658,6 +1179,15 @@ mod tests {
             ("shared_crate_registry.rs::job_block", "不是剥法：抽某个 job 的段落"),
             ("ssh_source.rs::parse_host_aliases", "不是剥法：解析 ssh config 的 Host 别名"),
             ("tool_registry.rs::declared_fields_of", "不是剥法：解析结构体字段声明"),
+            // 〔`K-R62` 09-11〕**方向恰好相反的一条**：它不剥注释，它**把注释留下来并指名**。
+            // 那一格的正题是「你 rc 里这几行是旧的」——`#` 打头的行照样进结果，只是分类成
+            // `LegacyRcKind::Comment`（`K-R57` 现打用户 `~/.bashrc`：14 行里 4 行是注释，
+            // 那 4 行也该让用户看见）。⇒ 共享原语在这里不是「不够」，是**用了就把活做反了**。
+            (
+                "profile_installer.rs::scan_legacy_rc_lines",
+                "不是剥法，是**反过来**：它逐行指名 rc 里提到 `ccm` 的行（含注释行），\
+                 一个字节都不删也不丢 —— 用 `strip_comment_lines` 会把该指名的那几行吃掉",
+            ),
             // 〔U8c-3-r2 08-14〕**这一格是本条判据当场逮出来的**：08-04 那份剥法是**内联**的
             // （一串 `.lines().filter().map()`），本条看不见；把它抽成具名函数给两处共用时，
             // 本条立刻说「你有第二份剥法」。⇒ 收口的动作反而暴露了此前没被登记的欠账。
@@ -1336,6 +1866,16 @@ mod tests {
                 "**示例占位符**：讲「地址长什么样」时写的假地址，本就不指向真符号",
             ),
             ("foo", "**示例占位符**：同上，讲口径时举的例子"),
+            (
+                "build_usage_probe_cmd",
+                "★〔`K-R104` 09-13〕**历史句**：`payload.rs` 与 `doc_claim_registry.rs` 里\
+                 那几句逐字讲的就是「用量探针那条外层 tmux 串**已经退役**」——\
+                 编排搬上后端帧面之后 monitor 一个 shell 字符都不渲染。\
+                 删掉这个地址反而丢掉「外层四个产出方里退役了哪一个」这条线索\
+                 （同上面 `resolve_claude_dir` 那条）。\
+                 ⚠ 它不是无人看管：`doc_claim_registry::the_outer_layer_producers_are_in_the_state_the_doc_claims` \
+                 把那一格翻面钉着（这个函数要是回来了，那条会红）。",
+            ),
         ];
 
         let corpus = addr_corpus();
@@ -1459,11 +1999,6 @@ mod tests {
             ("local_daemon.rs", "launch.rs", 196),
             ("local_daemon.rs", "launch.rs", 198),
             ("local_daemon.rs", "local_backend.rs", 336),
-            (
-                "local_daemon.rs",
-                "src-tauri/crates/guard-core/src/lib.rs",
-                141,
-            ),
             ("local_daemon.rs", "structural_scan.rs", 425),
             ("local_daemon.rs", "structural_scan.rs", 508),
             ("panorama.rs", "engine.rs", 42),
@@ -1639,6 +2174,34 @@ mod tests {
         assert!(
             addr[0].2 > len,
             "越界那一格必须是「被引行号 > 文件行数」，否则上面那条的越界半边是空转的"
+        );
+    }
+
+    /// 〔`K-R63`〕[`fn_names_starting_with`] 的反向自检：**既不恒空也不恒满**，
+    /// 而且它**看不见注释与测试段** —— 那两处的名字不是实现，认进去就会误红。
+    #[test]
+    fn the_verb_scan_reads_production_only_and_is_not_vacuous() {
+        let src = concat!(
+            "pub fn uninstall_thing() {}\n",
+            "fn keep_this() {}\n",
+            "// fn uninstall_that_is_only_a_comment() {}\n",
+            "\n#[cfg",
+            "(test)]\nmod tests {\n    fn uninstall_that_is_only_a_test() {}\n}\n"
+        );
+        assert_eq!(
+            fn_names_starting_with(src, &["uninstall"]),
+            vec!["uninstall_thing".to_string()],
+            "生产段那一个要认出来，注释与测试段那两个都不许认"
+        );
+        assert!(
+            fn_names_starting_with(src, &["nobody_writes_a_name_like_this"]).is_empty(),
+            "动词对不上还回东西 ⇒ 它是恒满的，用它的判据全是空真"
+        );
+        // 真树上打一发：这个动词在真文件里确实有命中（恒空的扫描买不到任何东西）。
+        assert!(
+            fn_names_starting_with(include_str!("sftp.rs"), &["uninstall"])
+                .contains(&"uninstall_remote_daemon".to_string()),
+            "真树上扫不到 `uninstall_remote_daemon` —— 剥法或遍历坏了"
         );
     }
 
@@ -2003,6 +2566,21 @@ mod tests {
                 "hello_commands_match_the_dispatch_table",
                 1,
             ),
+            // 🔴 `K-R77` 09-12 加这一行 —— **它不是一处「判不了真伪」，是本条的一个结构性盲区**，
+            // 与下面 `guard-core/src/lib.rs` 那两行、`doc/INVARIANTS.md` 那一行**同一形**：
+            // 名字住在**本文件**里，而 `dead_name_corpus` 按构造摘掉调用者自己
+            // ⇒ 凡是别处散文点名住在这里的判据，本条一律读成「代码里根本不存在」。
+            // ⚠ 那句话**真的有人核**：它在 `readonly_guard.rs` 里写成
+            // `structural_scan·rs::<判据名>` 的**住址形**，由本文件的
+            // `every_symbol_address_in_the_sources_still_resolves` 真的判得了（那条的语料
+            // 用 `include_str!` 把本文件补了回来）。⇒ 这一行买的是「本条别再报这处假阳」，
+            // **不是**「这句话没人守」。根因怎么治（要不要把本文件的**声明**单独补进 `in_code`）
+            // 归 PM，本件不自批。
+            (
+                "remote-daemon-proto/src/readonly_guard.rs",
+                "the_cfg_test_reexport_detour_stays_extinct",
+                1,
+            ),
             (
                 "remote-daemon-proto/src/relay/http1.rs",
                 "handle_alloc_error",
@@ -2127,11 +2705,11 @@ mod tests {
                 "unknown_type_falls_through_to_unknown_variant",
                 1,
             ),
-            (
-                "src-tauri/src/polling_registry.rs",
-                "every_comment_stripping_transformer_is_registered",
-                1,
-            ),
+            // 🔴 〔`K-R48` 第二拍 09-11〕原来这里登记着 `polling_registry.rs` 里那句提到
+            //    `every_comment_stripping_transformer_is_registered` 的散文。那句话住在
+            //    `the_identity_poller_is_gone_for_good` 的注释里，而本拍把那条判据的语料
+            //    从 `shared/ccm`（bash，剥 `#`）换成了 `control/ccm/`（Rust，剥 `//`）
+            //    ⇒ 那段解释连同它一起重写了，名字不再出现。**账跟着删，别留成僵尸行。**
             (
                 "src-tauri/src/polling_registry.rs",
                 "the_per_second_identity_poller_spawns_nothing_per_tick",
@@ -2226,6 +2804,109 @@ mod tests {
         /// 这 6 处全是 `K-R20` 本轮真的改过的**订正段** —— 订正段逐字引用旧名字，
         /// 那正是 `K-R19` 实测到「订正落盘之后尺子读数一动没动」的原因。
         const TOMBSTONED: &[(&str, &str, usize)] = &[
+            // 🔴 〔`K-R48` 第二拍 09-11〕下面这 9 行全是同一件事的账：`shared/ccm` 那个 bash
+            //    脚本与它那一族判据删了（`K33`：「不要有什么 bash 脚本」），而**散文里那几处
+            //    点名它们的句子留着是有用的**（它们说的正是「这个东西为什么不在了」）
+            //    ⇒ 按第②条出路走：加 `PROSE_NAME_TOMBSTONE` 标记 ＋ 在这里记一笔账。
+            (
+                "doc/IPC-PROTOCOL.md",
+                "the_local_launch_recipe_is_reachable_only_from_print",
+                1,
+            ),
+            ("src-tauri/src/launch.rs", "resolve_from_daemon", 1),
+            // 🔴 〔`K-R97` 09-12〕`list_history_projects` 改问本机后端要 `--list-projects`
+            //    ⇒ 项目级那一段（`analyze_project_dir`）连同它唯一的调用点一起删了。
+            //    那句话说的正是「它为什么不在了」，是本文件头注第②条出路的标准形态。
+            ("src-tauri/src/history.rs", "analyze_project_dir", 1),
+            // 🔴 〔`K-R65` 09-11〕`tier` 从手填改成派生之后，那条断言「手写那一半的档
+            //    不许是 `AppInstalls`」在算术上不可能再红 ⇒ 删掉判据、留下墓碑说清
+            //    「它守的那件事没丢，只是那个能填错的格子没有了」。
+            (
+                "src-tauri/src/tool_registry.rs",
+                "a_hand_written_entry_is_never_app_installs",
+                1,
+            ),
+            (
+                "src-tauri/src/plugin_class_registry.rs",
+                "ccm_agent_arms",
+                1,
+            ),
+            (
+                "src-tauri/src/plugin_class_registry.rs",
+                "ccm_probe_values",
+                1,
+            ),
+            (
+                "src-tauri/src/polling_registry.rs",
+                "ccm_fails_loudly_when_no_daemon_can_be_found",
+                1,
+            ),
+            (
+                "src-tauri/src/sftp.rs",
+                "ccm_cli_strength_is_at_or_above_baseline",
+                1,
+            ),
+            ("src-tauri/src/sftp.rs", "pin_t_def", 1),
+            // 🔴 〔`K-R70` 09-12〕又一形同族的账：那个「见证型布尔」`id_from_manifest`
+            //    与守着它的判据一起删了 —— 它见证的是**一份旁挂清单在不在**，而清单是
+            //    `release.yml` 从源码常量抠出来写的标签（三个载体恒等 ⇒ 零证据，
+            //    `K-R68` · `DECISIONS.md#R26` 裁定零）。守的动作对、守的东西错。
+            //    接替它的是 `the_embedded_identity_comes_from_the_bytes_not_from_a_label`
+            //    ＋ 部署路上无条件跑的 `bytes_carry_build_stamp`。
+            //    散文里那一句留着才说得清「为什么换掉它，而不是把它写得更严」。
+            (
+                "src-tauri/src/sftp.rs",
+                "the_identity_witness_is_derived_from_the_manifest_not_written_by_hand",
+                1,
+            ),
+            // 🔴 〔`K-R59` 09-11〕同一形，另一件事的账：`daemonless` 那一档整格删了
+            //    （定框 `K35`：「不要有 daemonless。没有没有后端的情况。」），
+            //    而 08-14 立的那条前提触发器 `the_daemonless_remote_still_needs_the_ts_fallback_renderer`
+            //    **是设计好要在这一天主动红的** ⇒ 散文里那几处点名它的句子留着才说得清
+            //    「它红过、红完之后换了谁」。按第②条出路：贴墓碑 ＋ 在这里记一笔账。
+            (
+                "doc/INVARIANTS.md",
+                "the_daemonless_remote_still_needs_the_ts_fallback_renderer",
+                1,
+            ),
+            (
+                "src-tauri/src/backend/control/launch_wire.rs",
+                "the_daemonless_remote_still_needs_the_ts_fallback_renderer",
+                2,
+            ),
+            // 🔴 〔`K-R96` 09-12〕**这一行删了 —— 盘上那句墓碑随被墓碑的那件事一起走了。**
+            //
+            // 它盖的是 `plan.rs::Container::avoid_collision` 的头注里那句
+            //「旧 `shared/ccm::avoid_name_collision`（`K-R48` 已删）那句
+            //  `[ "$do_print" != 1 ] && tmux has-session …` 逐字就是这个意思」——
+            // 用来说明「`--print` 不查实时状态」这条行为是从哪继承来的。
+            // 用户 09-12 `R52` 裁定二之后**那条行为本身没了**（退让搬进 `plan::build`、
+            // 问同一张会话快照，`--print` 与真跑吐同一个名字）⇒ 连带那个字段与那句头注
+            // 一起删。⇒ 按本表头注那条纪律：「登记的那一处盘上已经没有了 ⇒ 删掉它，
+            // 别让表替真判据挡枪」。
+            (
+                "src-tauri/src/backend/control/launch_wire.rs",
+                "ccm_reaches_the_backend_through_one_shot_subcommands",
+                1,
+            ),
+            (
+                "src-tauri/src/backend/control/launch_wire.rs",
+                "launch_via_daemon",
+                1,
+            ),
+            (
+                "src-tauri/src/backend/control/local_backend.rs",
+                "resolve_from_daemon",
+                1,
+            ),
+            ("src-tauri/src/cc_bus.rs", "resolve_from_daemon", 1),
+            ("src-tauri/src/ccm_cli_contract.rs", "pin_t_def", 1),
+            ("src-tauri/src/ccm_cli_contract.rs", "scan_t_targets", 1),
+            (
+                "src-tauri/src/ccm_cli_contract.rs",
+                "the_avoidance_lives_in_ccm_now",
+                1,
+            ),
             (
                 "doc/IPC-PROTOCOL.md",
                 "handlers_never_run_on_the_reader_task",
@@ -2256,6 +2937,116 @@ mod tests {
                 "the_ui_never_derives_the_account_id_itself",
                 1,
             ),
+            // 🔴 〔`K-R72` 09-12〕下面这一批是同一件事的账：**送键与杀会话那两条桌面侧
+            //    SSH 回落删净了**（`K-R54` 逐处裁定表第 1 · 2 · 5 处），随之走掉的三个
+            //    生产符号（`build_kill_session_cmd` / `build_send_keys_remote_cmd` /
+            //    `gate_guard_expr`）与两条判据在散文里被逐字点着 —— 而那些句子说的正是
+            //    **「这个东西为什么不在了 / 它守的性质今天住哪」**，删掉的是线索不是病。
+            //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+            ("doc/INVARIANTS.md", "build_kill_session_cmd", 1),
+            ("doc/INVARIANTS.md", "build_send_keys_remote_cmd", 1),
+            ("doc/INVARIANTS.md", "gate_guard_expr", 1),
+            ("src-tauri/src/tmux.rs", "build_kill_session_cmd", 3),
+            ("src-tauri/src/tmux.rs", "build_send_keys_remote_cmd", 3),
+            ("src-tauri/src/tmux.rs", "gate_guard_expr", 1),
+            (
+                "src-tauri/src/tmux_daemon_gate_guard.rs",
+                "build_kill_session_cmd",
+                1,
+            ),
+            // 🔴 〔`K-R104` 09-13〕两条**新墓碑**：编排搬上后端帧面之后，两句订正段各逐字
+            //    引用了一个已经不在的名字来说明「它为什么不在了」——
+            //    `doc_claim_registry.rs` 那条判据改了名（旧名说的是「四个都还在」，
+            //    而今天四个里退役了一个）· `src/account-usage.ts` 那句讲的是
+            //    「两条路此前靠同一个命令构造器同源，今天连命令串都不存在了」。
+            //    按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+            (
+                "src-tauri/src/doc_claim_registry.rs",
+                "the_four_outer_layer_producers_are_all_still_there",
+                1,
+            ),
+            ("src/account-usage.ts", "probe_command_for", 1),
+            // 🔴 〔`K-R104` 09-13〕`src-tauri/src/account_usage.rs` 那两行墓碑账**删了** ——
+            //    不是撕墓碑，是**被墓碑的那段散文随整条编排一起走了**：那份文件里
+            //    「用量探针的 shell 串」整段不存在了（编排搬上后端帧面），
+            //    连带它头注里点 `build_kill_session_cmd` 与
+            //    `emit_guarded_commands_for_e2e` 的那两句一起没了。
+            //    ⇒ 按本表头注那条纪律：「登记的那一处盘上已经没有了 ⇒ 删掉它，
+            //    别让表替真判据挡枪」（同 `K-R96` 那次的处置）。
+            // `K-R56`（09-11）买的那条判据：它守的性质（**探不到就不动手**）没消失，
+            // 换住址钉在今天唯一那处实现上（`control/gate.rs::both_gates_always_probe_before_they_act`），
+            // 而那一段散文必须逐字点出它的旧名字才说得清「接的是谁」。
+            (
+                "remote-daemon-proto/src/control/gate.rs",
+                "the_ssh_fallback_always_probes_before_it_acts",
+                1,
+            ),
+            // 同一刀带走的 e2e 夹具产出者，与它那套跑不起来的真机验收脚本。
+            (
+                "src-tauri/src/shared_crate_registry.rs",
+                "emit_guarded_commands_for_e2e",
+                1,
+            ),
+            // 两条 `the_refusal_wording_matches_the_ssh_path` 改名成
+            // `…_matches_the_sibling_command`（对照面从「那条 SSH 回落」换成兄弟命令）。
+            (
+                "src-tauri/src/backend/control/daemon_kill.rs",
+                "the_refusal_wording_matches_the_ssh_path",
+                1,
+            ),
+            (
+                "src-tauri/src/backend/control/daemon_send_keys.rs",
+                "the_refusal_wording_matches_the_ssh_path",
+                1,
+            ),
+            // 🔴 〔`K-R94` 09-12〕同一件事的四笔账：**读 subagent 那条路上「找」也交给后端了**
+            //    （候选枚举 / 首行时间戳 / 读 jsonl 三样本机不再自己做，改走后端既有的
+            //    `--list-subagents` ＋ `--read-session`）。随之走掉三个生产符号
+            //    （`derive_subagent_dir` / `list_meta_matches` / `load_subagent_remote`）
+            //    与一条判据（`the_remote_path_actually_asks_the_daemon` —— 它只钉远端那半，
+            //    两条路收成一条之后由 `both_paths_ask_the_backend_and_reuse_the_existing_subcommands`
+            //    接住、钉的是两条）。散文里那几句说的正是**「它们为什么不在了」**
+            //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+            (
+                "doc/远端支持方案-agent查看器与代码全景图.md",
+                "derive_subagent_dir",
+                2,
+            ),
+            (
+                "doc/远端支持方案-agent查看器与代码全景图.md",
+                "list_meta_matches",
+                2,
+            ),
+            (
+                "doc/远端支持方案-agent查看器与代码全景图.md",
+                "load_subagent_remote",
+                1,
+            ),
+            (
+                "src-tauri/src/subagent.rs",
+                "the_remote_path_actually_asks_the_daemon",
+                1,
+            ),
+            // 🔴 〔`K-R88` 09-13〕同一形，第三件：**「按 sid 找那份会话文件」收成一份之后，
+            //    monitor 侧那个收路径的源守卫 `validate_branch_source` 整个不在了**
+            //    （入参从路径收成 sid，找那一步走 `branch_core::find_session_file`，两侧同一份）。
+            //    这两句散文说的正是**「那道门原先长什么样、为什么今天不需要它了」** ——
+            //    删掉的是线索不是病 ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+            ("doc/ARCHITECTURE.md", "validate_branch_source", 1),
+            ("doc/INVARIANTS.md", "validate_branch_source", 1),
+            // 🔴 〔`K-R112` 09-13〕同一形，第四件：**cc-bus 三条与抓屏改走 daemon 原语之后，
+            //    它们各自那个 shell 命令构造器整块删了**（`build_broadcast_cmd` /
+            //    `build_kill_cmd` / `build_capture_pane_cmd`；`build_online_cmd` 不在这里 ——
+            //    它在 `write_site_registry.rs` 的一段**字符串字面量**里还有代码侧出现）。
+            //    散文里点名它们的那几句说的正是**「它们为什么不在了」**
+            //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+            ("src-tauri/src/cc_bus.rs", "build_broadcast_cmd", 2),
+            ("src-tauri/src/cc_bus.rs", "build_kill_cmd", 3),
+            ("src-tauri/src/tmux.rs", "build_capture_pane_cmd", 4),
+            //    同一件事的另一半：那条串的**出口判定**（两个哨兵 `NO_TMUX` / `NO_PANE`）
+            //    也随之不存在了 —— 帧面把「答案」与「屏幕内容」分开走，
+            //    「屏幕上恰好只有 NO_PANE 这几个字」这个误判形状跟着消失。
+            ("src-tauri/src/tmux.rs", "classify_capture_output", 1),
         ];
 
         let corpus = dead_name_corpus();

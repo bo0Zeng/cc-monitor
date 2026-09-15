@@ -44,6 +44,8 @@ mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
 mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
 mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
+mod sidecar_fetch_guard; // K-W2D R2④：按需拉取那条路的四格机器判据（整体 #[cfg(test)]）
+mod sidecars; // K6 裁定一：我们自己出、自己装、自己调的那几个独立进程（与 agents/ 对称）
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
 mod wire;
 
@@ -170,7 +172,131 @@ const PROTO_VERSION: u32 = 1;
 ///   🔴 **别把这条读成「拨号搬出去了」**：`connect_session` 的 7 处生产调用点里
 ///   本件只覆盖 1 处，SFTP / 端口转发 / 跳板 / 其余 exec 路径**界面仍然自己拨**。
 ///   ★ 与 `p2d-relay` 同一条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍。
-const BUILD_ID: &str = "p2e-dial";
+///
+/// - p2f-build-stamp〔`K-R70` 09-12〕：**这一份二进制第一次说得出自己是谁。**
+///   两件事同拍落：① 下面那个 [`CC_MONITOR_BUILD_STAMP`] —— 一段**保证连续**的
+///   `<<ccm-build-id:…:ccm-build-id>>`，谁拿到字节都扫得出来；
+///   ② `--ccm-probe` 多吐一行 `build=<BUILD_ID>`（**能跑它的人直接问**）。
+///   ⚠ **必须 bump**：在此之前，「这份二进制是谁」只能去读它**旁边**那个 `.build_id`
+///   文本文件，而那个文件与二进制是两回事（`K-R68` 现打：三个载体的 `.build_id`
+///   全部从同一处源码常量抠出来 ⇒ 恒等 ⇒ 一格证据都不提供）。
+///   已部署的旧 daemon **既没有戳、也答不出 `build=`** ⇒ 它必须被判 stale 换掉，
+///   否则「问得出它是谁」这条性质在已部署的机器上永远为假。
+///
+/// - p2g-capture-pane〔`K-R86` 09-13〕：新增 `--capture-pane` —— **一条只读的一次性原语**，
+///   把某个 tmux 会话此刻那一屏抓回来（`tmux -u capture-pane -p -t '=名:'`）。
+///   在此之前 daemon 会列会话、会探 `@ccm_sid`、会杀、会键入，**唯独没有「把那一屏取回来」**；
+///   monitor 侧账本 `parity_ledger` 的 `tmux.manage` 那一格为此挂了一个月的欠账。
+///   ⚠ **必须 bump**：这是**新增的一条子命令**，已部署的旧 daemon 上它 `exit 2`
+///   （落进 `unknown argument`），而调用方判「这台机有没有这条能力」看的是 build_id
+///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
+///   （p1r / p1t / G2 / p2d / p2e 那五次的同一个形状）。
+///   ★ 同 `p2d` / `p2e` 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
+///   本轮**没做**（本工作树也没铺 `src-tauri/embedded-daemons/`）。
+///   🔴 **别把它读成「远端画面预览通了」**：本件只出 daemon 这一侧的原语，
+///   monitor 那条 `capture_remote_pane` 一个字节没动 —— 欠账换了个名字，没有被结掉。
+///
+/// - p2h-oneshot-session〔`K-R87` 09-13〕：新增 `--oneshot-session` —— **一次性会话**，
+///   起一个到点**自己会死**的 tmux 会话（`new-session -d -P -F '#{session_id}'` ＋
+///   一条 `setsid sh -c 'sleep N; tmux kill-session -t $N'` 的**外部**看门狗）。
+///   `K-R86` 出的是「看得见」那一半（抓一屏），这一条是「有寿命」那一半 ——
+///   在它之前 daemon 建得出会话、杀得掉会话，**唯独没有「建出来的这个到点自己没」**。
+///   ⚠ **必须 bump**：又一条**新增的子命令**，已部署的旧 daemon 上它落进
+///   `unknown argument` + exit 2，而调用方判「这台机有没有这条能力」看的是 build_id
+///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
+///   （p1r / p1t / G2 / p2d / p2e / p2g 那六次的同一个形状）。
+///   ★ 同 p2d / p2e / p2g 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
+///   归发版那一拍，本轮**没做**（本工作树也没铺 `src-tauri/embedded-daemons/`）。
+///   🔴 **别把它读成「用量探针搬进后端了」**：本件只出 daemon 这一侧的原语，
+///   monitor 的 `account_usage` 那条 shell 串编排**一个字节没动**。
+///
+/// - p2i-frame-tmux-primitives〔`K-R104` 09-13〕：**`capture-pane` 与 `oneshot-session`
+///   上了帧面** —— `inbound::REGISTRY` 8 → 10。CLI 那一面（`SUBCOMMANDS`）**一个字没动**，
+///   这是本谱系里第一次**只有通道面**变。
+///   为什么非搬不可：那两条此前只有 CLI 面，而 CLI 面**每调一次一次 SSH 握手** ——
+///   用量探针两段轮询上限 12+20 轮 ⇒ 单次探测最多 **36** 次握手，
+///   撑破 monitor 侧的 `EXEC_TIMEOUT_SECS = 25` ⇒ **结构上超时**，不是慢。
+///   帧面是一条长连接上多次往返，握手恒 1 次。
+///   ⚠ **必须 bump**，而这一次的形状与前七次不同：旧 daemon 不是「`exit 2`」，
+///   是它的 `hello.commands` 里**根本没有这两条** ⇒ monitor 的 `InboundClient::accepts`
+///   当场判 `CallError::Unsupported`、一个字节都不发（`bus-send` 是现成先例）。
+///   ⇒ 探针在已部署的旧远端上整条不可用，而判 stale 只看 build_id。
+///   ★ 同 p2d / p2e / p2g / p2h：这一半是**源码半**，re-embed 归发版那一拍，本轮**没做**。
+///
+/// - p2j-bus-state〔`K-R113` 09-13〕：新增 `bus-state` —— cc-bus 的**具名读命令**，
+///   总线名单 ＋ spawn 台账**一次回全**。两个命令面**同拍都动**（`SUBCOMMANDS` 26 → 27、
+///   `inbound::REGISTRY` 与 `COMMANDS` 10 → 11），这是本谱系里第一次两面一起变。
+///   它补的是 `K-R111` 摸底点名的那个缺口：monitor 侧 `read_cc_bus_state` 想改走后端，
+///   而**后端没有对侧** —— 那条读面的头注逐字写着解锁条件是「格式契约稳下来」，
+///   届时「正确形状多半不是把 shell 串搬过去，而是 daemon 出一条**具名的读命令**」。
+///   ⚠ **必须 bump**，而这一次两个失效形状**同时**成立：CLI 面那半是 p1r/p1t/G2/p2d/p2e/p2g/p2h
+///   那七次的 `unknown argument` + exit 2；帧面那半是 p2i 那次的 `hello.commands` 里没有它
+///   ⇒ monitor 的 `InboundClient::accepts` 判 `Unsupported`、一个字节都不发。
+///   ★ 同 p2d / p2e / p2g / p2h / p2i 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
+///   归发版那一拍，本轮**没做**（本工作树也没铺 `src-tauri/embedded-daemons/` ⇒ 不涉及 re-embed）。
+///   🔴 **别把它读成「驾驶舱那条读面接上后端了」**：本件只出后端这一侧的命令，
+///   monitor 的 `read_cc_bus_state` **一个字节没动**（那是下一件）。
+const BUILD_ID: &str = "p2j-bus-state";
+
+/// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
+/// `src-tauri/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
+/// 再经 `DAEMON_STAMP_OPEN` / `DAEMON_STAMP_CLOSE` 交给 monitor 生产段。
+/// **别在第二处写这两个字面量。**
+pub(crate) const BUILD_STAMP_OPEN: &str = "<<ccm-build-id:";
+/// 见 [`BUILD_STAMP_OPEN`]。
+pub(crate) const BUILD_STAMP_CLOSE: &str = ":ccm-build-id>>";
+
+const BUILD_STAMP_LEN: usize = BUILD_STAMP_OPEN.len() + BUILD_ID.len() + BUILD_STAMP_CLOSE.len();
+
+/// 编译期把 `<开>` ＋ `BUILD_ID` ＋ `<关>` 拼成一段**定长字节**。
+///
+/// 🔴 **为什么必须是 `static [u8; N]` 而不是一个 `&str` 常量** —— 这一条是本件的支点，
+/// 它治的是 `build.rs` 里逐字记着的那次失败（`embed_daemons` 头注）：
+/// 「编译器可把 BUILD_ID 优化成立即数指令（字符串在字节里**不连续**），
+///  运行时 `bytes_contain` 启发式会误拒正品二进制」⇒ 当时的出路是**旁挂一份清单**，
+/// 也就是「把标签抄到旁边」。
+/// 一个带地址、被 `#[used]` 钉住的 `static` 数组**不可能**被拆成立即数：它有地址、要进
+/// `.rodata`、字节按定义连续。⇒ 「扫字节问身份」从一条启发式变成一条**结构性成立**的事。
+/// 〔实测：release + `lto` + `strip` 与 debug 测试壳两侧都扫得出，且**恰好一处**。〕
+const fn build_stamp() -> [u8; BUILD_STAMP_LEN] {
+    let mut out = [0u8; BUILD_STAMP_LEN];
+    let mut i = 0usize;
+    let open = BUILD_STAMP_OPEN.as_bytes();
+    let mut j = 0usize;
+    while j < open.len() {
+        out[i] = open[j];
+        i += 1;
+        j += 1;
+    }
+    let id = BUILD_ID.as_bytes();
+    let mut j = 0usize;
+    while j < id.len() {
+        out[i] = id[j];
+        i += 1;
+        j += 1;
+    }
+    let close = BUILD_STAMP_CLOSE.as_bytes();
+    let mut j = 0usize;
+    while j < close.len() {
+        out[i] = close[j];
+        i += 1;
+        j += 1;
+    }
+    out
+}
+
+/// 🔴 `K-R70`：**这一份后端二进制自己带着的身份**。
+///
+/// 拿到一份字节（内嵌的 / 装出来的 / 推到远端的那份都算），**不看它旁边任何文件**，
+/// 搜 [`BUILD_STAMP_OPEN`] 就问得出它是谁。消费者：
+/// `src-tauri/build.rs`（内嵌两条路的构建期校验）· `src-tauri/src/sftp.rs`
+/// （推远端之前的运行期见证）· 本 crate `build_id_guard` 的自扫判据。
+///
+/// `#[used]` ＋ `#[no_mangle]`：前者挡「没人读它就优化掉」，后者让它在符号表里也留个名
+/// （`strip` 之后符号没了，**数据还在** —— 判据扫的是数据不是符号）。
+#[used]
+#[no_mangle]
+pub static CC_MONITOR_BUILD_STAMP: [u8; BUILD_STAMP_LEN] = build_stamp();
 
 /// F66（#58③）：本构建**声明支持的能力 token**（hello 帧 `capabilities` 字段）。
 /// monitor 按此决定发 `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配去猜
@@ -483,9 +609,14 @@ mod fourth_face_tests {
         );
         let missing = unavailable_from(Some(false));
         let names: Vec<&str> = missing.iter().map(|u| u.command.as_str()).collect();
+        // 🔴 `K-R104`（09-13）：2 → **4**。`capture-pane` / `oneshot-session` 上帧面时
+        //    各自登记了 `no_tmux`（它们都要起 tmux），**这张表是从 `codes` 派生的**
+        //    ⇒ 它们自动进表。这正是本条报错文案里逐字预言的那一形：
+        //    「本条红未必是错……那就把这里的期望值补上」。
+        //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
         assert_eq!(
             names,
-            vec!["kill", "launch"],
+            vec!["capture-pane", "oneshot-session", "kill", "launch"],
             "没有 tmux 的那台机器上，做不到的恰好是 `REGISTRY` 里登记了 `{NO_TMUX}` 的那几条。\n\
              ⚠ 本条红**未必是错**：你要是新加了一条会回 `{NO_TMUX}` 的命令，它已经自动进表了\n\
              （这张表是从 `codes` 派生的，不是手写的）—— 那就把这里的期望值补上。\n\
@@ -535,10 +666,15 @@ mod fourth_face_tests {
 
             // ★ 合起来：**同一份代码，两台不同的机器，两个不同的答案。**
             //   这一步才是「不是编译期常量」的正面证据 —— 上面两组各自都只证了一半。
+            // 🔴 `K-R104`：`2` → **4**（`capture-pane` / `oneshot-session` 也登记了
+            //    `no_tmux`，这张表从 `codes` 派生 ⇒ 自动进表）。
+            //    ⚠ 这个数**不许写成地板** —— 「有 tmux 的机器上一条都不报」那一半是
+            //    `is_empty()`，而这一半要的是「恰好是登记了 `no_tmux` 的那几条」。
+            let today = unavailable_from(Some(false)).len();
             assert!(
-                unavailable_from(tmux_in(Some(without.as_os_str()))).len() == 2
+                unavailable_from(tmux_in(Some(without.as_os_str()))).len() == today
                     && unavailable_from(tmux_in(Some(with.as_os_str()))).is_empty(),
-                "端到端：没有 tmux 的机器上要报出两条做不到，有 tmux 的机器上一条都不报"
+                "端到端：没有 tmux 的机器上要报出 {today} 条做不到，有 tmux 的机器上一条都不报"
             );
         }
         #[cfg(not(unix))]
@@ -609,9 +745,15 @@ mod fourth_face_tests {
         .iter()
         .map(|u| u.command.clone())
         .collect();
+        // 🔴 `K-R104`：同上一条，2 → **4**（`capture-pane` / `oneshot-session` 自动进表）。
         assert_eq!(
             names,
-            vec!["kill".to_string(), "launch".to_string()],
+            vec![
+                "capture-pane".to_string(),
+                "oneshot-session".to_string(),
+                "kill".to_string(),
+                "launch".to_string()
+            ],
             "🔴 **Windows 上这张表又空了** —— 这一格就是本拍的正题。\n\
              握手帧第四条面在动机平台上不说话 = 这一拍什么都没买到。\n\
              ⚠ 本条红未必是错：新加了一条会回 `no_tmux` 的命令，它会自动进表 —— 那就补期望值。\n\
@@ -1021,6 +1163,13 @@ const SUBCOMMANDS: &[&str] = &[
     "--bus-kill",
     "--bus-list",
     "--bus-send",
+    // `K-R113`：cc-bus 的**具名读命令**（名单 ＋ spawn 台账一次回全）。
+    // 登记在这里的理由与上面那三条逐字相同 —— `is_query_mode` 那道闸门读的就是本表。
+    "--bus-state",
+    // `K-R86`：只读的一次性抓屏原语。登记在这里的理由与上面那几条逐字相同 ——
+    // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
+    // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那一屏。
+    "--capture-pane",
     "--daemon-probe",
     // K-P6b：拨号代理。**常驻**（起来就一直搬字节，不返回），配置走**环境变量**
     // `CCM_DIAL_REQUEST`，**argv 与 stdin 都不走** —— argv 在同机任何用户的 `ps` 里都
@@ -1055,6 +1204,10 @@ const SUBCOMMANDS: &[&str] = &[
     "--list-subagents",
     "--list-projects",
     "--list-sessions",
+    // `K-R87`：带看门狗的一次性会话。登记在这里的理由与上面那几条逐字相同 ——
+    // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
+    // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那个会话名。
+    "--oneshot-session",
     "--ping",
     "--read-session",
     "--read-session-from-offset",
@@ -1197,10 +1350,101 @@ mod stream_flag_tests {
         assert!(bg);
         assert!(!tail);
     }
+
+    /// ★★ `KR86D1` 的**接线那一半**：`--capture-pane` 真的**够得到**那条原语。
+    ///
+    /// # 失效方向（件文件逐字点名的那个）：**别判「源码里有 `capture-pane` 字面量」**
+    ///
+    /// `control/ccm/plan.rs` 今天就有那个字面量（信任框轮询那条串），
+    /// 按字面量判会**恒绿**。本条断的是两处**承重点**，两处都不是「某个字面量出现过」：
+    ///
+    /// 1. **闸门**：`is_query_mode` 认它。不认 ⇒ 被当未知 flag ⇒ 打一行 warn 之后
+    ///    **照常进流模式**，CLI 面看上去「存在」却永远调不到（`p2b` 08-13 实测过这个形状）。
+    /// 2. **分派臂**：生产段里那一行**整行**就是「把它交给原语本体」。
+    ///    整行相等（`pin_line`）比 `contains` 强一格：撑大成别的表达式时那一行就不见了。
+    ///
+    /// ⚠ 「拿回来的真是屏幕内容」不在本条射程内 —— 那一格由
+    /// `control::capture_pane::tests::capturing_a_real_pane_brings_the_screen_back`
+    /// 在**真 tmux**（隔离 socket）上断。两条合起来才是 `KR86D1`。
+    #[test]
+    fn the_capture_pane_subcommand_is_actually_reachable() {
+        let flag = "--capture-pane".to_string();
+        assert!(
+            super::is_query_mode(std::slice::from_ref(&flag)),
+            "`--capture-pane` 没进 `is_query_mode` 的闸门 —— 它会静默变成「起了个流」"
+        );
+        let prod = crate::guard_support::production_code(include_str!("main.rs"));
+        guard_core::pin_line(
+            &prod,
+            "Some(\"--capture-pane\") => control::capture_pane::run(&args),",
+        )
+        .unwrap_or_else(|e| {
+            panic!(
+                "一次性查询的分派里没有那条把 `--capture-pane` 交给原语本体的臂：{e}\n\
+                 ⇒ 闸门放它进查询模式，而下面没人接 ⇒ 它落进 `_` 臂走历史查询、\n\
+                 报 `unknown argument` + exit 2（v3.4.0 `--account-trust-zero` 那次事故的形状）。"
+            )
+        });
+    }
+
+    /// ★★ `KR87D1` 的**接线那一半**：`--oneshot-session` 真的**够得到**那条原语。
+    ///
+    /// # 失效方向（件文件逐字点名的那个）：**别判「串里有 `setsid` / `sleep` 字面量」**
+    ///
+    /// `control/ccm/plan.rs` 今天就有一条同形的串（信任框那条兜底），按字面量判会**恒绿**。
+    /// 本条断的是两处**承重点**，两处都不是「某个字面量出现过」：
+    ///
+    /// 1. **闸门**：`is_query_mode` 认它。不认 ⇒ 被当未知 flag ⇒ 打一行 warn 之后
+    ///    **照常进流模式**，CLI 面看上去「存在」却永远调不到（`p2b` 08-13 实测过这个形状）。
+    /// 2. **分派臂**：生产段里那一行**整行**就是「把它交给原语本体」。
+    ///    整行相等（`pin_line`）比 `contains` 强一格：撑大成别的表达式时那一行就不见了。
+    ///
+    /// ⚠ 「那个会话到点真的不在了」不在本条射程内 —— 那一格由
+    /// `control::oneshot_session::tests::the_session_is_gone_at_its_deadline_while_its_neighbour_stays`
+    /// 在**真 tmux**（隔离 socket）上断，且带一个同台 server 的阴性对照。两条合起来才是 `KR87D1`。
+    #[test]
+    fn the_oneshot_session_subcommand_is_actually_reachable() {
+        let flag = "--oneshot-session".to_string();
+        assert!(
+            super::is_query_mode(std::slice::from_ref(&flag)),
+            "`--oneshot-session` 没进 `is_query_mode` 的闸门 —— 它会静默变成「起了个流」"
+        );
+        let prod = crate::guard_support::production_code(include_str!("main.rs"));
+        guard_core::pin_line(
+            &prod,
+            "Some(\"--oneshot-session\") => control::oneshot_session::run(&args),",
+        )
+        .unwrap_or_else(|e| {
+            panic!(
+                "一次性查询的分派里没有那条把 `--oneshot-session` 交给原语本体的臂：{e}\n\
+                 ⇒ 闸门放它进查询模式，而下面没人接 ⇒ 它落进 `_` 臂走历史查询、\n\
+                 报 `unknown argument` + exit 2。"
+            )
+        });
+    }
 }
 
 #[tokio::main]
 async fn main() {
+    // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
+    //
+    // 〔用@09-11 `K33`〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
+    // ⇒ 终端里敲的 `ccm` 就是本二进制（别名 / 软链指过来，或 `cc-monitor-remote ccm …`）。
+    //
+    // 🔴 **三个「必须排在前面」，一个都不是排版**：
+    //   ① 排在 `tracing_subscriber` 之前 —— 一次性模式的 stderr 是给人看的，
+    //      混进 daemon 的日志行就把「正常路径一个字都不说」这条契约破了；
+    //   ② 排在 `split_stream_flags` 之前 —— 那一步会把 `--with-bg` / `--tail-only`
+    //      从 argv **任意位置**剥掉，而 `ccm -- --tail-only` 里那个要原样透传给 agent；
+    //   ③ 排在 `resolve_agent_home()` 之前 —— 一次性模式不必去解析 agent 家目录。
+    {
+        let argv0 = std::env::args().next().unwrap_or_default();
+        let rest: Vec<String> = std::env::args().skip(1).collect();
+        if let Some(ccm_args) = control::ccm::intercept(&argv0, &rest) {
+            std::process::exit(control::ccm::run(&ccm_args));
+        }
+    }
+
     // Log to stderr so it never corrupts the stdout wire stream.
     tracing_subscriber::fmt()
         .with_writer(std::io::stderr)
@@ -1226,6 +1470,12 @@ async fn main() {
         let code = match args.first().map(String::as_str) {
             // P4b：hook 子进程走这条 —— 校验身份后给 daemon 发 SIGUSR1，**不碰文件系统**。
             Some("--tmux-notify") => control::tmux_hook::notify(&args),
+            // `K-R86`：只读抓屏原语。**抓一次、立刻返回** —— 轮询归 `K-R87`，
+            // 零定时器铁律（`no_timer_guard`）看着本 crate 的每一份生产段。
+            Some("--capture-pane") => control::capture_pane::run(&args),
+            // `K-R87`：起一个到点自己会死的一次性会话。看门狗是**外部进程**，
+            // 不在本 crate 的源码文本里 —— 零定时器铁律的人群逐字排除「被起进程的行为」。
+            Some("--oneshot-session") => control::oneshot_session::run(&args),
             Some("--search") => observe::search_query::run(&agent_home, &args),
             // P7c-1：列一个父会话的 subagent 候选。**只列不挑**（匹配与排序留在 monitor）。
             Some("--list-subagents") => observe::history_query::list_subagents(&agent_home, &args),
@@ -1932,6 +2182,49 @@ mod argv_table_guard {
         crate::protocol_doc_guard::dispatched_subcommands()
     }
 
+    /// 一次性查询那个 `match` 块的**块内**文本 —— 分派臂那一侧唯一的取法。
+    ///
+    /// 🔴 **它必须是块内的，这不是省事**：[`SUBCOMMANDS`] 那张表住在同一份文件的
+    /// 生产段里，扫描面一旦放大到整份文件，表就把臂喂饱了 —— 那正是
+    /// [`every_listed_subcommand_is_actually_dispatched`] 今天瞎掉的成因。
+    fn dispatch_block(src: &str) -> &str {
+        let beg = src
+            .find("let code = match args.first()")
+            .expect("找不到一次性查询的调度块 —— 块界锚点变了");
+        let end = src[beg..]
+            .find("std::process::exit(code);")
+            .expect("找不到调度块的结尾锚点")
+            + beg;
+        &src[beg..end]
+    }
+
+    /// 一段 `match` 块里的**臂 token**（按出现序去重）—— 只认**模式那一侧**。
+    ///
+    /// 🔴 **只扫「trim 之后以 `Some("` 或 `| Some("` 打头」的行**，不扫整块：
+    /// 臂**体**里要是碰巧也出现一个 `Some("--x")`，整块扫法会把它当成一条真臂收进来
+    /// ⇒ 那条 token 于是「有落点」，而实际上没有 —— **这是一个假绿方向**，不是假红。
+    ///
+    /// 运行时拼 `Some("`，免得本函数自己的文本被别的扫描器当成一条分派臂。
+    fn arm_tokens(block: &str) -> Vec<&str> {
+        let needle = format!("{}(\"", "Some");
+        let mut out: Vec<&str> = Vec::new();
+        for line in block.lines() {
+            let l = line.trim_start();
+            let l = l.strip_prefix("| ").unwrap_or(l);
+            if !l.starts_with(needle.as_str()) {
+                continue;
+            }
+            let rest = &l[needle.len()..];
+            if let Some(end) = rest.find('"') {
+                let t = &rest[..end];
+                if t.starts_with("--") && !out.contains(&t) {
+                    out.push(t);
+                }
+            }
+        }
+        out
+    }
+
     /// ★★ **每条调度臂都必须真的调到一个实现**〔G1，Phase G 变异抽样 A2 的产物〕。
     ///
     /// # 为什么需要这条：隔壁那条名字里写着它该抓这个，但它没验
@@ -1956,14 +2249,7 @@ mod argv_table_guard {
     #[test]
     fn every_dispatch_arm_actually_calls_an_implementation() {
         let src = crate::guard_support::production_code(include_str!("main.rs"));
-        let beg = src
-            .find("let code = match args.first()")
-            .expect("找不到一次性查询的调度块 —— 块界锚点变了");
-        let end = src[beg..]
-            .find("std::process::exit(code);")
-            .expect("找不到调度块的结尾锚点")
-            + beg;
-        let block = &src[beg..end];
+        let block = dispatch_block(&src);
         let arms: Vec<&str> = block
             .lines()
             .filter_map(|l| l.split_once("=>"))
@@ -2037,6 +2323,14 @@ mod argv_table_guard {
     }
 
     /// ★ 表里登记的子命令必须**真的被分派**（防表里堆死条目，让上面那条越来越松）。
+    ///
+    /// # ⚠ 它在「**臂删了、表还在**」这一形上**不红** —— 这不是缺陷登记，是它的构造
+    ///
+    /// 它拿 [`SUBCOMMANDS`] 去比 [`dispatched`]，而后者是**整份文件**的 `"--` 字面量扫描
+    /// （`protocol_doc_guard::DISPATCH_FILES` 的第一项就是 `main.rs`）——
+    /// 而 [`SUBCOMMANDS`] **自己就住在那份被扫的生产段里** ⇒ 「表里有这个串」与
+    /// 「源码里有这个串」在同一次扫描里互相喂饱，摘掉任何一条分派臂它都照样全绿。
+    /// ⇒ 那一形今天由 [`every_listed_subcommand_has_a_live_dispatch_route`] 接住（`K-R102`）。
     #[test]
     fn every_listed_subcommand_is_actually_dispatched() {
         let tokens = dispatched();
@@ -2047,6 +2341,192 @@ mod argv_table_guard {
         assert!(
             ghosts.is_empty(),
             "SUBCOMMANDS 里这些 token 没有任何分派点：{ghosts:?}（删掉，别让表虚胖）"
+        );
+    }
+
+    /// **同时**落在「字面量臂」与「派生臂」两条路上的那几条 —— `(token, 它为什么非要留自己那条臂)`。
+    ///
+    /// # 为什么这一张是手写的，而上面那三条路是遍历出来的
+    ///
+    /// 「今天谁在双路上」遍历得出来；「**它为什么必须留着自己那条臂**」遍历不出来 ——
+    /// 那是一次裁定。**两种角色的发现机制不同 ⇒ 分两张表**，
+    /// 抄 `src-tauri/src/backend/control/daemon_kill.rs` 的 `CREATION_PATHS`／`VALIDATORS`
+    /// （逐字：「一张表混装两种角色是它自己会红的那种错」）。
+    ///
+    /// 没有这一张，[`every_listed_subcommand_has_a_live_dispatch_route`] 在双路那几条上
+    /// **有一个洞**：摘掉它们的字面量臂，派生臂会静默接住 ⇒ 主断言不红，
+    /// 而那是一次**换路**（`--resolve` 那条臂上方逐字写着它「故意留在前面」，
+    /// 理由是仓外 aterm 的冻结契约「不拿『实际上一样』去赌」）。
+    const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[
+        (
+            "--capture-pane",
+            "`K-R86` 的只读抓屏原语：一次性 exec 直接调本体，不绕 CLI 面那层信封",
+        ),
+        (
+            "--oneshot-session",
+            "`K-R87` 的一次性会话原语：理由与上面那条逐字相同",
+        ),
+        (
+            "--resolve",
+            "信封与仓外 aterm 冻结在 2026-07-18，走原路一个字节都不动 —— \
+             两条路的输出实为同一个 `CommandPlan`，而冻结的契约不拿「实际上一样」去赌",
+        ),
+    ];
+
+    /// ★★ `KR102D2` 甲〔`K-R102` 09-13〕：**表里每一条子命令都有一条活的分派落点。**
+    ///
+    /// # 它买的是哪一形：「子命令表里有、分派臂没有」
+    ///
+    /// 上面 [`every_listed_subcommand_is_actually_dispatched`] 的头注写清了它为什么看不见
+    /// 这一形。这一形不是假想：`K-P6b` 实打过一次（摘掉 `--dial` 那条臂，daemon 侧
+    /// 一条判据都不红，见 `dial/mod.rs::the_dial_arm_is_actually_wired_into_the_dispatch`），
+    /// `K-R86` 又撞了一次（`--capture-pane`）。两次都是**一件一件地各补一把伞**。
+    /// 本条是那把**总伞**：人群不是手写的，是 [`SUBCOMMANDS`] 自己。
+    ///
+    /// # 🔴 两侧的发现机制刻意不同 —— 这是本条的承重要求，不是排版
+    ///
+    /// - **表侧** = `SUBCOMMANDS` 这个**编译后的常量值**。没有抽取器可坏，改名增删自动反映。
+    /// - **臂侧** = 三处**块内**取法，每一处的扫描面都**不含那张表**：
+    ///   ① `main.rs` 一次性查询 `match` 块（[`dispatch_block`]）里的 `Some("--x")` 字面量臂；
+    ///   ② 那条**派生臂** —— 它**在不在**由块内文本判，它**认哪几条**由
+    ///      [`crate::control::cli_control::spec_for`] 在**运行期**从 `inbound::REGISTRY` 派生；
+    ///   ③ `_` 兜底臂交给 `observe::history_query::run`，它认哪几条由**那份文件里
+    ///      它自己那个 `match` 块**判。
+    ///
+    /// 分表这一形抄 `src-tauri/src/backend/control/daemon_kill.rs` 的
+    /// `CREATION_PATHS`／`VALIDATORS`（逐字：「一张表混装两种角色是它自己会红的那种错，
+    /// 因为两种角色的发现机制不同」），不自己重发明。
+    ///
+    /// ⚠ 头三条 `assert` 是**反空真地板**，它们只问「抽取有没有整个塌掉」，
+    /// **不问某一条在不在** —— 后者是下面那条主断言的活。地板刻意压在实测值以下，
+    /// 免得「摘掉一条臂」这一刀先撞上地板，红出来的话变成「抽取器可能坏了」
+    /// （红对了位置、讲错了成因，`inbound.rs` 那条 runtime 判据记过同一个坑）。
+    ///
+    /// # ⚠ 它买不到什么（如实登记）
+    ///
+    /// - 只判**够不够得到**，不判「调过去之后做得对不对」—— 那是各条命令自己的测试。
+    /// - 臂体是不是一次真调用由 [`every_dispatch_arm_actually_calls_an_implementation`] 判。
+    /// - 走**派生臂**那几条是**同生共死**的：摘掉那一条臂它们一起红，
+    ///   摘不掉其中单独一条（那条臂上根本没有它们各自的字面量）。
+    /// - 它读的仍是**源码文本**（只是收窄到块内）⇒ token 连 `"--` 字面量都不出现的写法
+    ///   （`concat!` 拼）一样看不见，与 `protocol_doc_guard` 头注登记的是同一条边界。
+    /// - **反方向**（表里删一条、臂还在）不在本条射程：那一形由
+    ///   [`every_dispatched_token_is_classified`] 接住 —— 臂上那个 token 仍被扫到，
+    ///   而它已经不在三分表里的任何一张 ⇒ 那条当场红。
+    #[test]
+    fn every_listed_subcommand_has_a_live_dispatch_route() {
+        let src = crate::guard_support::production_code(include_str!("main.rs"));
+        let block = dispatch_block(&src);
+        // 反喂饱自检：那张表**不许**落进臂侧的扫描面，否则本条退化成上面那条瞎子。
+        assert!(
+            !block.contains(&format!("SUB{}", "COMMANDS")),
+            "分派块的扫描面里出现了那张表 —— 表与臂又回到同一次扫描里，本条此刻是个瞎子"
+        );
+        let literal = arm_tokens(block);
+        let derived_arm = block.contains("cli_control::handles(");
+        let catch_all = block.lines().any(|l| l.trim_start().starts_with("_ =>"));
+
+        let hist_src = include_str!("observe/history_query.rs");
+        let hist = crate::guard_support::production_code(hist_src);
+        let hbeg = hist
+            .find("let result = match args.first()")
+            .expect("`history_query::run` 的分派块起点锚点变了");
+        let hend = hist[hbeg..]
+            .find("Some(other) =>")
+            .expect("`history_query::run` 的分派块收尾锚点变了")
+            + hbeg;
+        let fallback = arm_tokens(&hist[hbeg..hend]);
+
+        // ── 反空真地板（只问「抽取塌没塌」，不问「某一条在不在」）──────────────
+        assert!(
+            literal.len() >= 6,
+            "分派块里只抠到 {} 条字面量臂（地板 6，实测 14）—— 块界找错或抽取塌了：{literal:?}",
+            literal.len()
+        );
+        assert!(
+            derived_arm,
+            "分派块里没有那条派生臂（`cli_control::handles`）—— 走 CLI 面的子命令一条都调不到了"
+        );
+        assert!(
+            catch_all,
+            "分派块里没有 `_` 兜底臂 —— 历史查询那一族一条都调不到了"
+        );
+        assert!(
+            fallback.len() >= 3,
+            "`history_query::run` 的块里只抠到 {} 条（地板 3，实测 5）—— 块界找错或抽取塌了：{fallback:?}",
+            fallback.len()
+        );
+
+        // ★ 表侧也要有反空真地板：`SUBCOMMANDS` 被掏瘪 ⇒ 下面那个循环跑零圈、
+        //   主断言**零命中地绿**（`testing.md` 硬规则 7：先证够得到，再问有没有违例）。
+        //   地板取 **10**，与 `build_id_guard::subcommand_fingerprint` 那条**同一个数**
+        //   （不另发明一个），而今天实测 26 —— 压得低是刻意的：删掉一两条子命令时
+        //   要让上面/下面那几条真判据先说话，别先撞上这道自检。
+        assert!(
+            SUBCOMMANDS.len() >= 10,
+            "`SUBCOMMANDS` 只剩 {} 条（地板 10，实测 26）—— 登记表被掏了，本条此刻在空转",
+            SUBCOMMANDS.len()
+        );
+
+        // ── 主断言：表里每一条都得落在三条路之一上 ──────────────────────────
+        let orphans: Vec<&str> = SUBCOMMANDS
+            .iter()
+            .copied()
+            .filter(|tok| {
+                if literal.contains(tok) {
+                    return false;
+                }
+                if derived_arm
+                    && (crate::control::cli_control::spec_for(tok).is_some()
+                        || *tok == crate::control::cli_control::PROBE_FLAG)
+                {
+                    return false;
+                }
+                !(catch_all && fallback.contains(tok))
+            })
+            .collect();
+        assert!(
+            orphans.is_empty(),
+            "这些子命令**登记在表里，却没有任何一条分派路够得到**：{orphans:?}\n\
+             ⇒ `is_query_mode` 那道闸门照旧放它们进查询模式（表还在），而下面没人接 ⇒\n\
+             它们落进 `_` 臂走历史查询、回 `unknown argument` + exit 2 —— \n\
+             v3.4.0 `--account-trust-zero` 那次事故的形状，只是方向反过来（那次是表里漏）。\n\
+             三条合法落点：① 块内写一条 `Some(\"--x\") => …` 的字面量臂；\n\
+             ② 让它上 `inbound::REGISTRY` 的 CLI 面（走派生臂）；\n\
+             ③ 在 `observe::history_query::run` 里给它一条臂（走 `_` 兜底）。"
+        );
+
+        // ── 第二格：**双路**那几条的字面量臂不许悄悄消失（[`DUAL_ROUTE_ARMS`] 的活）──
+        //
+        // 上面那条主断言在它们身上**有个洞**：摘掉字面量臂，派生臂会静默接住 ⇒ 不红。
+        // 而那是一次**换路**，不是等价重构。两个方向都判。
+        let mut vanished: Vec<&str> = Vec::new();
+        for (tok, _why) in DUAL_ROUTE_ARMS {
+            if !literal.contains(tok) {
+                vanished.push(tok);
+            }
+        }
+        assert!(
+            vanished.is_empty(),
+            "这几条**登记过「必须走自己那条臂」**的子命令，字面量臂不见了：{vanished:?}\n\
+             ⇒ 派生臂（CLI 面）会静默接住它们 —— 主断言因此不红，而**路已经换了**。\n\
+             理由逐条写在 `DUAL_ROUTE_ARMS` 里。真要换路，改那张表并说清谁来承接旧信封。"
+        );
+        let mut unexplained: Vec<&str> = Vec::new();
+        for tok in SUBCOMMANDS.iter().copied() {
+            let on_derived = derived_arm && crate::control::cli_control::spec_for(tok).is_some();
+            if on_derived
+                && literal.contains(&tok)
+                && !DUAL_ROUTE_ARMS.iter().any(|(t, _)| *t == tok)
+            {
+                unexplained.push(tok);
+            }
+        }
+        assert!(
+            unexplained.is_empty(),
+            "这几条**同时**落在字面量臂与派生臂上，而 `DUAL_ROUTE_ARMS` 里没有它们：{unexplained:?}\n\
+             ⇒ 两条路谁先谁后决定了调用方拿到哪一种信封，这件事必须有人写下理由。\n\
+             要么把它加进那张表（连理由一起），要么把它那条字面量臂删掉、只走派生。"
         );
     }
 

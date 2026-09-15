@@ -103,7 +103,8 @@ pub enum Container<'a> {
     Tmux { name: &'a str, send_into: bool },
 }
 
-/// 账号维度的两态（同 [`crate::Account`]，但 CLI 侧还需要**名字**才能说出 `--account`）。
+/// 账号维度的三态（同 [`crate::Account`] 的两态 ＋ 「调用方没表态」那一态；
+/// CLI 侧还需要**名字**才能说出 `--account`）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CliAccount<'a> {
     /// 具名账号。`name: None` = 只有 configDir 没有名字 ⇒ **说不出 `--account`** ⇒ §35 短路。
@@ -111,6 +112,30 @@ pub enum CliAccount<'a> {
         name: Option<&'a str>,
     },
     Base,
+    /// 🔴 **`K-R89`（09-13）新加的第三态：调用方没表态（继承）。**
+    ///
+    /// # 它渲染成什么：**什么都不加**
+    ///
+    /// 既不发 `--account` 也不发 `--base`。这**不是**「这一维沉默了」（F05 禁的那个），
+    /// 是「**省略在这条 CLI 上有确定语义**」—— 语义的唯一住址是
+    /// `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account`，它把省略拆成两支：
+    ///
+    /// - `CLAUDE_CONFIG_DIR` **非空** ⇒ 保留不覆盖（`R08` 那道 `-z` 闸，
+    ///   由一次真机复现过的静默换号逼出来）= **继承**；
+    /// - 都没给（裸终端）⇒ 落 manifest 的 `isDefault`。
+    ///
+    /// **两支都是用户 09-12 亲裁要的行为**（`DECISIONS.md#R28` 逐字：
+    /// 「把调用方选中的号静默换掉 / 不要这么做 / 不是有选默认账号吗? 就用那个」）。
+    /// ⇒ 在 `R28` 之前这一态只能 §35 短路（`--base` 是「显式清空」≠「继承」，映过去就是 #75）；
+    /// `R28` 之后它有了确定语义，于是**说得出话了**。
+    ///
+    /// # ⚠ 它今天只有**本机**那条路在用，远端不许照抄
+    ///
+    /// 唯一构造点是 `history.rs::render_local_ccm_with`（整段 `#[cfg(not(windows))]`）。
+    /// [`super::launch_wire::WireAccount`] **刻意没有对应变体** —— 远端是 ssh 过去，
+    /// **那台机器上的继承态不是 monitor 的环境**（`R28` 裁定四逐字）⇒
+    /// 「远端的继承怎么表达」是 `K-R90`，不是本变体。
+    Inherit,
 }
 
 /// 渲染 ccm 调用行所需的全部输入（TS `LaunchPlan` + `LaunchContext` 的交集）。
@@ -238,12 +263,20 @@ const DIMENSION_ORDER: &[Dim] = &[
     Dim {
         id: "account",
         // **恒真** —— 账号维度在 CLI 语境下必须永远显式表态（F05：沉默 = 意外身份切换）。
+        //
+        // 🔴 `K-R89`（09-13）：**「表态」不等于「一定要吐一个 flag」**。
+        // [`CliAccount::Inherit`] 是**表了态的省略** —— 省略在 `ccm` 上有确定语义
+        //（`plan.rs::resolve_account` 的两支，用户 09-12 `R28` 亲裁）。
+        // F05 禁的是「这一维没人管、于是身份被别的东西决定」，不是「这一维的答案恰好是空」。
         applies: |_| true,
         cli_flags: |s| match s.account {
             CliAccount::Base => Some(vec!["--base".into()]),
             CliAccount::Named { name: Some(n) } => Some(vec!["--account".into(), n.to_string()]),
             // 只有 configDir 没有名字 ⇒ 老实说「我说不出 --account」⇒ 整条降级（§35）。
             CliAccount::Named { name: None } => None,
+            // 🔴 继承 ⇒ **一个 flag 都不吐**（`R28`）。⚠ `Some(vec![])` 与上一行的 `None`
+            // 是两件完全不同的事：前者「我说得出，答案是省略」，后者「我说不出，整条降级」。
+            CliAccount::Inherit => Some(vec![]),
         },
         caps: &["account"],
     },
@@ -487,10 +520,13 @@ mod tests {
                     send_into: true,
                 },
             ] {
+                // `K-R89`：第四态 [`CliAccount::Inherit`] 也进矩阵 —— 不进的话
+                // 「对每个 spec 都成立」那几条判据的输入域里根本没有它。
                 for account in [
                     CliAccount::Base,
                     CliAccount::Named { name: Some("z") },
                     CliAccount::Named { name: None },
+                    CliAccount::Inherit,
                 ] {
                     for (ccm_sid, model) in [(None, None), (Some("sid-1"), Some("opus"))] {
                         let mut s = base_spec();
@@ -511,7 +547,8 @@ mod tests {
     fn the_spec_matrix_is_not_accidentally_empty() {
         // 下面几条「对矩阵里每个 spec 都成立」的判据，矩阵一空就零命中变绿。
         let m = spec_matrix();
-        assert_eq!(m.len(), 3 * 3 * 3 * 2, "矩阵规模变了，请确认覆盖面还在");
+        // `K-R89`：账号那一维从 3 态变 4 态（多了 `Inherit`）⇒ 3 * 3 * **4** * 2。
+        assert_eq!(m.len(), 3 * 3 * 4 * 2, "矩阵规模变了，请确认覆盖面还在");
         assert!(
             m.iter().any(|s| render(s).is_ok()),
             "矩阵里没有一个渲染得出来的 spec —— 那「applies ⇒ 必被拒」那条就恒真了"
@@ -529,7 +566,11 @@ mod tests {
         assert_eq!(
             CLI_REQUIRED_CAPS, STATIC_CAPS_EXPECTED,
             "静态能力清单变了。改它是改「装了哪种 ccm 才肯走 CLI 形态」的门槛，\
-             要同步 TS 的 CLI_REQUIRED_CAPS 与 shared/ccm 的 --ccm-probe capabilities="
+             要同步 TS 的 CLI_REQUIRED_CAPS 与 \
+             remote-daemon-proto/src/control/ccm/mod.rs 的 CAPABILITIES\n\
+             〔`K-R61` 09-11：这里原先点的是那份 bash `ccm` 的 `--ccm-probe` —— \
+             那个文件 `07e4e72` 就删了，与 `K-R61` 治的是同一种悬空引用。\
+             本清单是**子集检查** ⇒ 对面加 token 不影响本条；删/改名才影响。〕"
         );
         for missing in STATIC_CAPS_EXPECTED {
             let got = render_ccm_invocation(&base_spec(), &caps_without(missing), true);
@@ -799,6 +840,10 @@ mod tests {
         );
     }
 
+    /// ⚠ **名字里那个「three」今天已经比它测的东西窄了一格**（`K-R89` 09-13）：
+    /// 账号维度现在有**四**形（`Base` · `Named{有名字}` · `Named{只有目录}` · `Inherit`）。
+    /// **刻意不改名** —— 与 `history.rs` 那条同族的处置（改判据名要同拍跑 `pb doc`，
+    /// 而本件写区里没有那份生成区）⇒ 如实登记在这里，下面四形逐个断言。
     #[test]
     fn account_dimension_always_speaks_up_and_has_three_shapes() {
         let d = dim("account");
@@ -819,6 +864,48 @@ mod tests {
             (d.cli_flags)(&s),
             None,
             "只有 configDir 没有名字时必须老实说「说不出」（§35），不能悄悄降级成 --base"
+        );
+        // 🔴 `K-R89`：第四形 —— **说得出，而答案是省略**。
+        s.account = CliAccount::Inherit;
+        assert_eq!(
+            (d.cli_flags)(&s),
+            Some(Vec::<String>::new()),
+            "继承那一态必须渲染成「一个 flag 都不加」（`R28`）——\n\
+             它**不是** `None`（那是「说不出、整条降级」），也**不是** `--base`\n\
+             （那是「显式清空」，把继承偷换成清空正是 #75 的病灶形状）。"
+        );
+    }
+
+    /// 🔴 `K-R89` `KR89D2`：**「省略」与「显式清空」在渲染出来的那一串上必须真的不同。**
+    ///
+    /// 上面那条比的是**维度函数**的返回值；本条比的是**整条命令**——
+    /// 谁哪天把 `Inherit` 那一臂改成 `Some(vec!["--base".into()])`，
+    /// 上面那条会红、本条也会红，而**本条红在生产渲染器的出口上**。
+    ///
+    /// ⚠ **本条不管 `ccm` 拿到这条命令之后怎么解释省略** —— 那一半的唯一住址是
+    /// `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account`（`R08` 的 `-z` 闸
+    /// ＋ manifest 默认号两支），由那边的
+    /// `plan::the_four_ways_an_account_gets_picked` 钉着。**两侧各钉各的，别压成一句。**
+    #[test]
+    fn inheriting_renders_a_command_with_no_account_flag_at_all() {
+        let mut s = base_spec();
+        s.account = CliAccount::Inherit;
+        let cmd = render(&s).expect("继承那一态在 `R28` 之后渲染得出来");
+        assert!(
+            !cmd.contains("--account"),
+            "继承那一态渲染出了 `--account` —— 那是替用户挑了一个号。实得：{cmd}"
+        );
+        assert!(
+            !cmd.contains("--base"),
+            "继承那一态渲染出了 `--base` —— 那是把「继承」偷换成「显式清空」（#75）。实得：{cmd}"
+        );
+        // 阳性对照：同一个 spec 换成 `Base`，那一串里就**必须**有 `--base`
+        //（否则上面两条「不含」在渲染器整个哑掉时也会绿）。
+        s.account = CliAccount::Base;
+        let base_cmd = render(&s).expect("账号 0 一直渲染得出来");
+        assert!(
+            base_cmd.contains("--base"),
+            "阳性对照塌了：`Base` 也不吐 `--base` 了 ⇒ 上面那两条「不含」是空真。实得：{base_cmd}"
         );
     }
 

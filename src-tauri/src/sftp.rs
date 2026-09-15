@@ -330,10 +330,16 @@ pub(crate) async fn ensure_dir_all(sftp: &SftpSession, dir: &str) {
 /// 内嵌的 daemon 二进制（F08b 由 `include_bytes!` 填充）。`build_id` 与
 /// `ssh_source::EXPECTED_DAEMON_BUILD_ID` 同源（SS-B）。
 pub struct DaemonBinary {
+    /// 🔴 `K-R70`：**这份字节自报的身份**（`build.rs` 从二进制里扫 `CC_MONITOR_BUILD_STAMP`
+    /// 得来，不是从旁边那个 `.build_id` 文本文件抄的）。
+    ///
+    /// 〔墓碑 —— 本结构此前还有一格 `id_from_manifest: bool`，逐字注释是
+    ///  「build_id 是否来自 .build_id 清单（true=字节真实身份可信）」。那句话把**标签**
+    ///  说成了**真实身份**：清单是 `release.yml` 从源码常量抠出来写的，三个载体恒等
+    ///  ⇒ 一格证据都不提供（`K-R68` · `DECISIONS.md#R26` 裁定零）。
+    ///  今天身份**只有一条来路**（字节），于是那个见证布尔没有了对立面，删掉；
+    ///  它守的那件事换成了 [`bytes_carry_build_stamp`] 在部署路上**无条件**跑一遍。〕
     pub build_id: &'static str,
-    /// Batch9：build_id 是否来自 .build_id 清单（true=字节真实身份可信；
-    /// false=源码回退，需 bytes_contain 启发式兜底且可能误拒——见 daemon_binary doc）。
-    pub id_from_manifest: bool,
     pub bytes: &'static [u8],
 }
 
@@ -574,15 +580,21 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>
         tracing::debug!("无 {arch} 的内嵌 daemon 二进制（F08b 未嵌入该 arch?），跳过自动部署");
         return Ok(None);
     };
-    // Batch8 stale 防御（Batch9 修订）：首选 .build_id 清单（bin.build_id 即
-    // 字节真实身份，与源码期望的比对在 ssh_source 的 confirmed 判定处自然完成）。
-    // 无清单（旧产物）时才用 bytes_contain 启发式兜底——注意它可能误拒正品
-    // （Batch9 E2E 实证：编译器可把 BUILD_ID 优化成立即数、字节不连续），故仅
-    // 在"启发式也找不到源码 id"且**无清单**时拒。
-    if !bin.id_from_manifest && !bytes_contain(bin.bytes, bin.build_id.as_bytes()) {
-        // 无清单（旧产物）且字节内搜不到源码 id → 无法确认字节身份
+    // 🔴 `K-R70`：**把这几 MB 字节推到别人机器上之前，先让它自己说一遍它是谁。**
+    //
+    // 〔墓碑 —— 原来这里逐字写着：「首选 .build_id 清单（bin.build_id 即字节真实身份）……
+    //  无清单（旧产物）时才用 bytes_contain 启发式兜底——注意它可能误拒正品」，
+    //  条件是 `!bin.id_from_manifest && !bytes_contain(bin.bytes, bin.build_id.as_bytes())`。
+    //  两处病：① 括号里那句「清单即字节真实身份」是假的（清单从源码常量抄，见 `K-R68`）；
+    //  ② 有清单时这道闸**整个跳过** ⇒ 真正会出事的那一形（有人手工塞了别的字节、
+    //  清单照旧）恰恰不检查。〕
+    //
+    // 今天判据**无条件**跑，而且不再是启发式：戳是一段 `#[used] static [u8; N]`，
+    // 连续、拆不成立即数（daemon 侧 `CC_MONITOR_BUILD_STAMP`）。
+    if !bytes_carry_build_stamp(bin.bytes, bin.build_id) {
         tracing::warn!(
-            "内嵌 daemon 无 .build_id 清单且字节内搜不到 {}——按身份未知跳过自动部署             （请在 embedded-daemons/ 旁写 <bin>.build_id 清单，或重跑 zigbuild）",
+            "内嵌 daemon 的字节里问不出 `{}` 这个身份戳——按身份未知跳过自动部署\
+             （这份字节不是这套源码编出来的，或它太旧、还没有身份戳；重跑 zigbuild 重铺）",
             bin.build_id
         );
         return Ok(None);
@@ -629,34 +641,59 @@ fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
     !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
 }
 
+/// 🔴 `K-R70`：**这份字节自己说得出它是 `build_id` 吗** —— 不看它旁边任何文件。
+///
+/// 找的是 daemon 那侧那段 `#[used] static CC_MONITOR_BUILD_STAMP`：
+/// `<开>` ＋ `BUILD_ID` ＋ `<关>`，两个界标的**唯一住址**在
+/// `remote-daemon-proto/src/main.rs`（`BUILD_STAMP_OPEN` / `BUILD_STAMP_CLOSE`），
+/// 由 `build.rs` 抠出来经 `DAEMON_STAMP_OPEN` / `DAEMON_STAMP_CLOSE` 交到这里
+/// ⇒ 本文件里**不许出现那两个字面量**
+/// （`the_embedded_identity_comes_from_the_bytes_not_from_a_label` 在数它）。
+///
+/// # 它买到的与买不到的
+///
+/// ✅ 买到：「这份字节是不是 `build_id` 那一次构建的产物」——**戳与字节同生共死**，
+///    改一份旁文件、换一张清单都动不了它。
+/// ⚠ 买不到：**防篡改**。谁都能往一段字节里塞一个假戳。它防的是漂移与手滑
+///    （拿错文件 / 铺了旧产物 / 只 bump 源码没重编），不防恶意 —— 那要签名，不是戳。
+pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
+    if build_id.is_empty() {
+        return false;
+    }
+    let stamp = format!(
+        "{}{build_id}{}",
+        env!("DAEMON_STAMP_OPEN"),
+        env!("DAEMON_STAMP_CLOSE")
+    );
+    bytes_contain(bytes, stamp.as_bytes())
+}
+
 /// 按远端 arch 选内嵌的 daemon 二进制（F08b）。build.rs 把交叉编译的 musl 二进制复制进
 /// OUT_DIR 并置 `embedded_daemons` cfg 时，这里 `include_bytes!` 内嵌并按 arch 返回；二进制
 /// 未就位（无 cfg）→ 返回 None（ensure_daemon_deployed 优雅跳过，沿用手动部署）。
-/// `build_id` 取编译期 env（来自 daemon 源码，SS-B 单源）。
+/// `build_id` 取编译期 env —— 🔴 `K-R70` 起那个 env 由 `build.rs` **从二进制字节里扫出来**。
 pub fn daemon_binary(arch: &str) -> Option<&'static DaemonBinary> {
     #[cfg(embedded_daemons)]
     {
-        // Batch9：build_id = 字节的**真实身份**——优先 .build_id 清单（构建时
-        // 与二进制一并写入）；清单缺失（旧产物）→ 退回源码 id + 运行时
-        // bytes_contain 启发式兜底（见 ensure_daemon_deployed）。
-        // 身份与期望（EXPECTED_DAEMON_BUILD_ID = 源码）分离后：陈旧内嵌 =
+        // 🔴 `K-R70`：`DAEMON_EMBEDDED_ID_<ARCH>` = `build.rs` 从**这份字节**里扫出的身份戳。
+        //
+        // 〔墓碑 —— 原来这里有一个 `pick()`：清单为空就退回 `env!("DAEMON_BUILD_ID")`（源码 id）。
+        //  那是「问不出来就拿源码的答案顶上」——把一个失败面换成一个假答案（`brief` 里
+        //  `sidecar_fetch_guard` 那张禁词表逐字点名的第三条）。今天它不需要了：
+        //  `build.rs` 在**任一 arch 的字节里扫不出身份时当场 panic**，扫得出才置
+        //  `embedded_daemons` cfg ⇒ 走到这里的路径上，这两个 env 结构上不可能是空串。
+        //  「结构上不可能」不许当成不检查的理由 ⇒ 下面 `deploy_embedded_daemon` 出门前
+        //  仍无条件跑一遍 `bytes_carry_build_stamp`，本文件的判据也钉住这两处取值口。〕
+        //
+        // 身份与期望（`EXPECTED_DAEMON_BUILD_ID` = 源码）**仍然分离**：陈旧内嵌 =
         // 身份 p1f ≠ 期望 p1g → 部署照做（远端至少拿到 p1f）但 confirmed=p1f
-        // → 降级不传新 flag——比"拒部署"更平滑且永不误拒正品。
-        const fn pick(manifest: &'static str) -> &'static str {
-            if manifest.is_empty() {
-                env!("DAEMON_BUILD_ID")
-            } else {
-                manifest
-            }
-        }
+        // → 降级不传新 flag，比「拒部署」更平滑。
         static X86: DaemonBinary = DaemonBinary {
-            build_id: pick(env!("DAEMON_EMBEDDED_ID_X86_64")),
-            id_from_manifest: !env!("DAEMON_EMBEDDED_ID_X86_64").is_empty(),
+            build_id: env!("DAEMON_EMBEDDED_ID_X86_64"),
             bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-x86_64")),
         };
         static ARM: DaemonBinary = DaemonBinary {
-            build_id: pick(env!("DAEMON_EMBEDDED_ID_AARCH64")),
-            id_from_manifest: !env!("DAEMON_EMBEDDED_ID_AARCH64").is_empty(),
+            build_id: env!("DAEMON_EMBEDDED_ID_AARCH64"),
             bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-aarch64")),
         };
         match arch {
@@ -866,8 +903,14 @@ pub async fn remove_remote_file(cfg: &RemoteConfig, remote_path: &str) -> Result
 
 /// 远端 ccm 块的 BEGIN/END 标记（镜像本地 profile_installer 的 `# === cc-monitor BEGIN/END`）。
 /// 重装时整块替换、卸载时整块删；用户在块外的内容绝不动。
-const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN ===";
-const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
+///
+/// ⚠ `K-R62` 起是 `pub(crate)`：**本机 POSIX 那条路装的是同一个块**
+/// （`profile_installer::plan_install` 的 `PosixRc` 臂走 [`merge_profile_block`]）。
+/// 在那边抄一对同样的字符串就是第二个住址 —— 而「同一件事有两个住址」正是
+/// `KR62D1` 那条「不许变成第四套」要挡的东西。名字里的 `remote` 是历史，
+/// 今天它的意思是「**POSIX rc 里那一对围栏**」，本机远端共用。
+pub(crate) const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN ===";
+pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 
 /// 远端 ↗ 拉前用的 `ccm` wrapper（**后端拥有**，install 写它而非前端传入——见审计 S-1：
 /// 写进 ~/.bashrc 的是被 shell **执行**的代码，绝不能让前端注入任意 bash）。
@@ -876,16 +919,74 @@ const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// **单一来源**：`shared/ccm-aliases.sh`——前端 `remote-section.ts` 经 `?raw` import
 /// 同一文件（修复历史漂移：Batch7 重构时只改了前端展示版，装进远端的还是老版）。
 ///
-/// **F02 起本块只剩「别名层」**：唯一实现搬进 [`CCM_CLI_SCRIPT`]（部署为可执行文件）。
+/// **F02 起本块只剩「别名层」**；`K-R48` 第二拍起它指向的那个 `ccm` 是 [`ccm_entry_shim`]
+/// （三行入口，转给后端本体），不再是一份 bash 实现。
 /// 理由：shell 函数**优先于 PATH**，装成函数则与用户已有同名函数硬冲突且必然被遮蔽（实测）；
 /// 且远端是 zsh/fish 时 `.bashrc` 根本不被 source，函数形态拿不到（审计 D2）。
-const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-aliases.sh");
+/// ⚠ `K-R49` 起它是 `pub(crate)`：`account_aliases::collision_note` 要问
+/// 「`cc` / `cct` 这几个名字是不是已经被自带的别名块占了」，
+/// 而那个答案**只有这份文件说了算** —— 在那边抄一份名字清单就是第二个住址。
+/// 〔`K-R58` 09-11：`cch` 从这份文件里删了 ⇒ 它**不再**被当作「已被占用」，
+/// 用户可以自己定义一个 `cch`。**多一格自由，不是回归。**〕
+pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-aliases.sh");
 
-/// F02：统一启动 CLI 本体，部署为远端 `~/.local/bin/ccm`（0755 可执行文件）。
-/// 它独占 L1 容器 / L2 环境 / L5 身份的实现——**环境必须在最终 exec 的那个 shell 里设**，
-/// 否则会像旧 `cct` 那样被 tmux 的进程边界吃掉（`update-environment` 默认列表不含
-/// `CLAUDE_CONFIG_DIR`，实测有对照组：`e2e/ccm-acceptance.sh`）。
-pub(crate) const CCM_CLI_SCRIPT: &str = include_str!("../../shared/ccm");
+/// 自带别名块里**今天定义了哪几个名字** —— 现算，不写死（`13b`：闭集只许有一个住址，
+/// 那个住址就是 `shared/ccm-aliases.sh` 自己）。
+///
+/// `account_aliases` 的撞名判据与本文件的文档对账判据都拿它当人群，
+/// 于是「删/加一个别名」这件事**不需要同时去改两份名单**（改漏一份正是 `KR58D1`
+/// 的失效方向）。
+///
+/// 🔴 〔`K-R62` 09-11〕**它从 `#[cfg(test)]` 转正了**，因为多了一个生产使用者：
+/// `profile_installer::render_manual_cleanup_hint` 要回答「你 rc 里那几行裸的
+/// `cc()` / `cct()`，会不会把我们装的那一块遮蔽掉」—— 那个答案**只有这份文件说了算**，
+/// 在提示文案里抄一份名字清单就是第二个住址。转正**没有放宽任何东西**：
+/// 它仍然现算自 [`CCM_WRAPPER_SNIPPET`]，一个字节的名单都没写死。
+///
+/// ⚠ **它认的形状写死在这里**：`<名>() {`（`()` 与 `{` 之间允许空白）。
+/// 注释行里那两条示例（`#   zcc()  { … }`）靠「名字只许 `[A-Za-z0-9_]`」被剔掉 ——
+/// 换一种写法（`function cc {`）它会**漏**，而漏出来的形状是「人群变空」，
+/// 调用处一律先断 `!is_empty()`，不让它静默变成空真。
+pub(crate) fn builtin_alias_names() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = CCM_WRAPPER_SNIPPET
+        .lines()
+        .filter_map(|l| {
+            let (name, rest) = l.split_once("()")?;
+            if !rest.trim_start().starts_with('{') {
+                return None;
+            }
+            let name = name.trim();
+            (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+                .then_some(name)
+        })
+        .collect();
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
+/// 🔴 **`K-R48` 第二拍（09-11）：`CCM_CLI_SCRIPT` 没了，这里是它的墓碑。**
+///
+/// 原来这一行是 `pub(crate) const CCM_CLI_SCRIPT: &str = include_str!("../../shared/ccm");`
+/// —— 把那个 1592 行的 bash 启动器整份编进产物，再 SFTP 推到远端 `~/.local/bin/ccm`。
+/// 〔用@09-11 `K33`〕逐字：「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。
+/// **所有命令只许有一处**，其他都是**根据传参来调用**」⇒ 那个文件删了。
+///
+/// **`KR48D1` 盯的就是这一行**：那句 `include_str!` 在 = 脚本仍是产品的一部分。今天 0。
+///
+/// 远端那份 `~/.local/bin/ccm` 换成 [`ccm_entry_shim`] —— **三行、零实现**，
+/// 只把 argv 原样转给已经部署好的后端（`intercept` 的第二条入口 `<bin> ccm <argv…>`）。
+fn _kr48d1_tombstone() {}
+
+/// 远端 `~/.local/bin/ccm` 的内容：**一个入口，不是一份实现**。
+///
+/// 🔴 **`K-R69` 09-12：这个生成器搬到了 `backend/control/local_backend.rs`。**
+/// 理由是它有了**第二个读者** —— 本机也要一条 `ccm` 入口，而「本机那条与远端那条同源」
+/// 这句话只有在两边取自**同一处**时才是结构性的（各写一份就只是巧合，而巧合会漂）。
+/// ⇒ 本文件不再自己拼那三行，改成调它；`ccm` 这个词的唯一住址是
+/// [`crate::backend::control::local_backend::CCM_ENTRY_WORD`]。
+/// 头注（不许有第二个 `case` / 为什么不是软链）逐字跟着搬过去了，别在这里再写一份。
+use crate::backend::control::local_backend::ccm_entry_shim;
 
 /// CLI 在远端的落点（SFTP 相对路径 = home 相对）。
 const CCM_CLI_REMOTE_PATH: &str = ".local/bin/ccm";
@@ -1092,9 +1193,15 @@ pub async fn install_remote_ccm_helper(
             let _ = sftp.create_dir(cur.clone()).await;
         }
     }
-    upload_atomic(sftp, CCM_CLI_REMOTE_PATH, CCM_CLI_SCRIPT.as_bytes(), 0o755)
+    // 🔴 `K-R48` 第二拍：推的不再是那个 1592 行的 bash 启动器，是 [`ccm_entry_shim`]
+    //    —— 三行、零实现，只把 argv 转给**已经部署好的后端**（`ensure_daemon_deployed`
+    //    把它推到 `cfg.daemon_path`，默认约定 `~/.cc-monitor/bin/cc-monitor-remote`）。
+    // ⚠ **入口与后端本体的部署是两条路，这里刻意不合并**：本函数是「装 shell 便捷层」，
+    //   后端本体由连接流程自己保证；合并就等于在这条路上再造一次部署逻辑（第二处实现）。
+    let shim = ccm_entry_shim(&cfg.daemon_path);
+    upload_atomic(sftp, CCM_CLI_REMOTE_PATH, shim.as_bytes(), 0o755)
         .await
-        .map_err(|e| format!("部署 ccm CLI 到远端 ~/{CCM_CLI_REMOTE_PATH} 失败: {e}"))?;
+        .map_err(|e| format!("部署 ccm 入口到远端 ~/{CCM_CLI_REMOTE_PATH} 失败: {e}"))?;
     // 读回精确比对（兼防传输损坏）——CLI 是可执行文件，写坏比 profile 写坏更危险。
     let cli_back = read_optional(sftp, CCM_CLI_REMOTE_PATH)
         .await
@@ -1109,10 +1216,10 @@ pub async fn install_remote_ccm_helper(
     // 而它被 12 条 print-parity + 15 条 acceptance 真机断言盯着，风险/收益不划算。
     // 但要如实说清后果——见下方错误措辞：**损坏的 CLI 会留在远端**。
     if let crate::verified_write::WriteVerdict::Mismatch { detail } =
-        crate::verified_write::verify_readback(CCM_CLI_SCRIPT, &cli_back)
+        crate::verified_write::verify_readback(&shim, &cli_back)
     {
         return Err(format!(
-            "ccm CLI 写后校验失败：{detail} 未改动 {profile}；\
+            "ccm 入口写后校验失败：{detail} 未改动 {profile}；\
              但 ~/{CCM_CLI_REMOTE_PATH} 已被写入且内容不对，请手动删除或重新部署。"
         ));
     }
@@ -1201,7 +1308,6 @@ mod tests {
             host_key_fingerprint: None,
             addresses: Vec::new(),
             jump: None,
-            daemonless: false,
         }
     }
 
@@ -1289,12 +1395,13 @@ mod tests {
     use super::*;
 
     /// 单一来源漂移守卫①：写进远端 profile 的**别名块**。
-    /// F02 起本块只剩组合层别名——实现搬进 `CCM_CLI_SCRIPT`（见守卫②）。
+    /// F02 起本块只剩组合层别名；`K-R48` 第二拍起实现住后端本体
+    /// （远端那个 `~/.local/bin/ccm` 是 [`ccm_entry_shim`]，见下一条判据）。
     #[test]
     fn ccm_aliases_snippet_has_required_elements() {
         for needle in [
             ".local/bin", // CLI 落点必须进 PATH，否则别名全指向不存在的命令
-            "cc()",       // 智能选目录
+            "cc()",       // 裸起（`K-R58` 起 = 就在当前目录，ccm 不再替用户挑）
             "cct()",      // tmux 版
             "ccm --tmux", // 别名只做组合，不自己建容器
             "declare -f", // 防覆盖用户已有同名函数
@@ -1311,6 +1418,56 @@ mod tests {
                 "别名块不该含实现细节 {forbidden}——实现属于 ~/.local/bin/ccm"
             );
         }
+    }
+
+    /// `KR58D2` —— `doc/IPC-PROTOCOL.md` §11 里描述别名块的那一句，**行数与名单同句**。
+    ///
+    /// 本区最高频的那条病就是「数与名单同句、只改一半」⇒ 这里**两样一起对**，
+    /// 而且两样都**现算**自真相源 [`CCM_WRAPPER_SNIPPET`]（= `shared/ccm-aliases.sh` 本身），
+    /// 判据里不抄第二份名单、不写死行数。
+    ///
+    /// ⚠ **它买到的射程只有这一句**：§11 其余部分（`shared/ccm` · `CCM_CLI_SCRIPT`）
+    /// 在 `K-R48` 第二拍之后已经是**存量馊话**，本判据够不着，也不假装够得着。
+    ///
+    /// ⚠ 判据够不着被测对象时必须**响亮地红**，不许变成空真 ⇒ 找不到那一句就 panic。
+    #[test]
+    fn the_protocol_doc_sentence_about_the_alias_block_matches_the_file() {
+        const IPC_DOC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
+        let want_names = crate::sftp::builtin_alias_names();
+        assert!(
+            !want_names.is_empty(),
+            "从 shared/ccm-aliases.sh 里一个别名都没解析出来 —— 判据够不着被测对象了，先修判据"
+        );
+        let want_lines = CCM_WRAPPER_SNIPPET.lines().count();
+
+        let sent = IPC_DOC
+            .lines()
+            .find(|l| l.contains("shared/ccm-aliases.sh`，**"))
+            .expect(
+                "doc/IPC-PROTOCOL.md 里描述别名块的那一句找不到了 —— \
+                 要么它被改写了、要么被删了；无论哪种，这条对账现在是瞎的",
+            );
+        let bold = sent
+            .split("**")
+            .nth(1)
+            .expect("那一句里的粗体段没了 —— 对账抓不到数与名单");
+
+        assert!(
+            bold.contains(&format!("{want_lines} 行")),
+            "行数对不上：shared/ccm-aliases.sh 现在 {want_lines} 行，而文档那句写的是「{bold}」"
+        );
+        assert!(
+            bold.contains(&format!("这 {} 个", want_names.len())),
+            "别名个数对不上：现在 {} 个（{}），而文档那句写的是「{bold}」",
+            want_names.len(),
+            want_names.join(" / ")
+        );
+        let mut doc_names: Vec<&str> = bold.split('`').skip(1).step_by(2).collect();
+        doc_names.sort_unstable();
+        assert_eq!(
+            doc_names, want_names,
+            "名单对不上：文档那句列的是 {doc_names:?}，盘上真有的是 {want_names:?}"
+        );
     }
 
     /// 单一来源漂移守卫②：部署为远端 `~/.local/bin/ccm` 的 **CLI 本体**。
@@ -1351,79 +1508,61 @@ mod tests {
         // **判据一条没改、没加、没减** —— 搬出去只是为了让 U9 迁到 `control/` 时
         // 改的是「喂哪份脚本文本」，而不是把这些断言重写一遍（账本 S11：迁移是强度
         // 悄悄下降的经典时机）。强度读数的基线对拍在那个模块的
-        // `ccm_cli_strength_is_at_or_above_baseline`。
+        // `ccm_cli_strength_is_at_or_above_baseline` 〔散文墓碑〕。
         use crate::ccm_cli_contract as contract;
 
-        // ★★ 〔`K-P2` C 第五拍，09-03；PM `§13 裁五` **窄授权**〕**这两条循环认住址账本了。**
+        // 🔴 〔`K-R48` 第二拍 09-11〕**这里原来还有五段断言，全部打在 `CCM_CLI_SCRIPT` 上，
+        //    随 `shared/ccm` 一起删了**：住址账本两条循环（`ledger.needles` / `ledger.channel_a`）·
+        //    `pin_t_def` 〔散文墓碑〕（`$t` 只许被赋值一次）· `scan_t_targets(...).require(floor, …)`
+        //    （tmux 目标必须是 `=名:` 形态，`INVARIANTS §31a`）。
+        //    它们量的全是「**那个 bash 脚本怎么写的**」，被测对象没了就没了。
         //
-        // # 它修的是什么：同一条性质**两份实现，而它们不知道对方在**
-        //
-        // `ccm_cli_contract` 那边 C 第四拍已经把「少一条要素」拆成了**流失**（红）与
-        // **搬家**（记了账、新住址真有它 ⇒ 绿）。**本函数这一份没跟着换** ——
-        // 它只问「这个串在不在这份文件里」，于是「搬家照样绿」**只在半个仓里成立**：
-        // 同一个提交，`ccm_cli_contract` 说搬家 OK，这里说少了一条要素。
-        // C 第四拍的 `M3`（真搬家）实测过：唯一剩下的那条红就是本函数。
-        //
-        // # 认账本 ≠ 放水
-        //
-        // 跳过的**只有**登记为 `Backend` 的那些，而每一条 `Backend` 都要付两条断言
-        //（`every_needle_that_moved_is_actually_at_its_new_home`：新住址真有锚点 ＋
-        //  旧住址真没了）。**把某条改成 `Backend` 换不来免检**，只是把举证换了个地方。
-        // ⚠ 那条判据在**门①**、与本条同一道门 ⇒ 不存在「那边没跑而这边放行」的窗口。
-        let ledger = contract::LEDGER;
-        for (needle, home) in ledger.needles {
-            if matches!(home, contract::NeedleHome::Backend { .. }) {
-                continue; // 记了账的搬家，举证在 `every_needle_that_moved_is_actually_at_its_new_home`
-            }
-            assert!(
-                CCM_CLI_SCRIPT.contains(needle),
-                "ccm CLI 缺关键要素: {needle}\n\
-                 （它在住址账本里登记为仍住 `shared/ccm`。真搬走了就**同拍改那张账本**，\
-                 别在这里删一行 —— 那样两份实现又会各说各话。）"
-            );
-        }
-        for (needle, home) in ledger.channel_a {
-            if matches!(home, contract::NeedleHome::Backend { .. }) {
-                continue;
-            }
-            assert!(
-                CCM_CLI_SCRIPT.contains(needle),
-                "通道A（意图声明）必须写 @ccm_sid_expect（而非裸 @ccm_sid），缺: {needle}"
-            );
-        }
-        // 钉死逃生口。**除「逐字存在」还要断言只被赋值一次**（T01 审计 S3，已独立复现：
-        // 在它后面再加一行 `t="$tmux_name"`，旧的 contains 版本照样通过而 `$t` 已成裸值）。
-        contract::pin_t_def(CCM_CLI_SCRIPT)
-            .expect("$t 的定义被改动或被二次赋值 —— 它是 tmux 序列里所有 -t 的来源");
+        // ⚠ **它们守的性质没有一条被丢掉，逐条给新住址**：
+        //    · `=名:` 精确目标 ⇒ `control::ccm::plan` 的渲染判据（`--print` 黄金串里每个
+        //      `-t` 都是 `'=名:'`，变异刀 #8「attach 目标退回裸名字」当场红）;
+        //    · 通道A 写**意图**标记 `@ccm_sid_expect` ⇒ 变异刀 #7「写事实标记而非意图标记」;
+        //    · `$t` 不许二次赋值 ⇒ 那是 bash 变量的病，Rust 里没有那个形状（`Plan` 里是字段）。
+        //    ⚠ 「跨语言那一半」（TS 侧 `deriveTmuxName` 对拍 · `capabilities ⊇ CLI_REQUIRED_CAPS`）
+        //      仍**只**住 e2e（`ccm-cli.test.sh` 5 条 · `ccm-contract-parity.sh` 5 条），别当 Rust 判据能顶。
+    }
 
-        // tmux 目标精确形态（INVARIANTS §31a）：**结构性扫描**——扫出 CLI 里每一个 `-t ` 的
-        // 目标 token，逐个断言含 `=` 且以 `:`（或 `:` + 引号）收尾。
-        //
-        // 刻意不用固定 needle：D 审计实测过，固定 needle 版本是**空转的**——把 CLI 里的
-        // `=名:` 全改回裸目标，`cargo test` 依旧全绿（正向 needle 恰好都还命中，反向 needle
-        // 引用的是 CLI 里根本不存在的代码）。而这正是 F01 修掉的「杀错/打错兄弟会话」生产事故。
-        // 结构性扫描对**新增**的 `-t` 也自动生效，这是固定 needle 永远做不到的。
-        //
-        // ⚠ **阈值余量已经没了**（U1a 实测订正）：本注释此前写「真实脚本 checked=11 ……
-        // 往下留 1 的余量以免正常增删命令时误红」，而实测 checked = **10** == 阈值。
-        // 追溯到 `666cc14`（无名 `--tmux` 改为无条件新建会话）：删两处 `display-message -p -t`、
-        // 加一处 `has-session -t`，净 −1，是正当的行为变更。**不下调阈值** —— 下调等于把
-        // 「少一处 tmux 命令」重新变成无声的。读数本身由 `ccm_cli_contract::BASELINE` 单独盯着。
-        //
-        // ★★ 〔C 第五拍；PM `§13 裁五`〕**这条下限也认住址账本** —— 理由同上面那两条循环。
-        // `--tmux` 那一块里有 3 处 `-t`，搬走之后现扫读数从 11 掉到 8，而
-        // `MIN_CHECKED_T_TARGETS` 是 `KP2B` 🔴 逐字禁止 agent 下调的两个数之一
-        // ⇒ 不认账本的话，`§11 丙`（守恒）在这一维上买不到，只能去动那个数。
-        //
-        // ⚠ **减的是「已经登记搬走了几处」，不是「允许少几处」**：`MOVED_T_TARGETS` 每一行都要付
-        // 「新住址真有锚点 ＋ ccm 那处真没了」两条断言。
-        // ⚠ 兜底在 `require` 自己身上：它对 `min_checked == 0` 是**硬失败**
-        //（逐字「那等于关掉计数自检」）⇒ 有人把 10 处全登记成「搬走了」时这里当场红，
-        //  而不是静默地变成一条永远通过的判据。
-        let floor = contract::MIN_CHECKED_T_TARGETS.saturating_sub(contract::MOVED_T_TARGETS.len());
-        contract::scan_t_targets(CCM_CLI_SCRIPT)
-            .require(floor, "CLI 的 tmux 目标（INVARIANTS §31a）")
-            .expect("结构性扫描不通过");
+    /// `K-R48` 第二拍：远端 `~/.local/bin/ccm` 今天是**入口**，不是实现。
+    ///
+    /// 🔴 **这一条的岗位是「别让它长回去」**：`K33` 逐字「所有命令只许有一处，其他都是
+    /// 根据传参来调用」。一个 shim 里只要出现第二个分支，那句话就又破了 ——
+    /// 而破的时候没有任何别的判据会出声（它不进任何 e2e，没有一台真远端可跑）。
+    #[test]
+    fn the_remote_ccm_entry_is_an_entry_not_an_implementation() {
+        let shim = ccm_entry_shim("/home/pi/.cc-monitor/bin/cc-monitor-remote");
+        // ① 真的把 argv 转给后端，且走的是 `intercept` 的第二条入口（子命令形）。
+        assert!(
+            shim.contains("exec '/home/pi/.cc-monitor/bin/cc-monitor-remote' ccm \"$@\"")
+                || shim.contains("exec /home/pi/.cc-monitor/bin/cc-monitor-remote ccm \"$@\""),
+            "shim 没把 argv 原样转给后端的 `ccm` 子命令：\n{shim}"
+        );
+        // ② **零实现**：除了 shebang、一行注释、一行 exec，不许有别的可执行行。
+        let code: Vec<&str> = shim
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect();
+        assert_eq!(
+            code.len(),
+            1,
+            "远端 ccm 入口里出现了第二条可执行语句 —— 那就是第二处实现了（K33）。\n\
+             它只许有一行 `exec <后端> ccm \"$@\"`。现打：{code:?}"
+        );
+        assert!(
+            code[0].starts_with("exec "),
+            "唯一那一行必须是 `exec`（不许起子进程再包一层：那会吃掉退出码与信号）。现打：{}",
+            code[0]
+        );
+        // ③ 路径必须经 POSIX quote（daemon_path 是用户填的，可能带空格 / 引号）。
+        let tricky = ccm_entry_shim("/home/用户/带 空格/it's");
+        assert!(
+            tricky.contains(&shell_quote_core::posix_quote("/home/用户/带 空格/it's")),
+            "daemon_path 没经 `shell_quote_core::posix_quote` —— 带空格的路径会被拆成两个词。\n{tricky}"
+        );
     }
 
     #[test]
@@ -1503,62 +1642,126 @@ mod tests {
         assert!(daemon_binary("riscv64").is_none(), "未知 arch → None");
     }
 
-    /// ★★ **「字节身份可信」这个见证不许写死**〔audit-0805 08-08，Phase G 第 78 件〕。
+    /// 🔴 `K-R70`：**那道身份见证真的会咬人** —— 四格（纯函数，不依赖内嵌产物在不在）。
     ///
-    /// # 它是本仓第二个（也是最后一个）「见证型布尔」
+    /// ⚠ 这一条与上面那条判据分工：那条钉**接线**（有没有无条件跑），这条钉**行为**
+    /// （跑了会不会说真话）。少任何一条，另一条都能被一个恒答 `true` 的实现骗过去。
+    #[test]
+    fn the_build_stamp_witness_actually_bites() {
+        let (o, c) = (env!("DAEMON_STAMP_OPEN"), env!("DAEMON_STAMP_CLOSE"));
+        let real = format!("头部随便什么{o}p9-sample{c}尾部随便什么");
+        assert!(
+            super::bytes_carry_build_stamp(real.as_bytes(), "p9-sample"),
+            "带着自己那个戳的字节被判「问不出身份」—— 见证会误拒正品"
+        );
+        assert!(
+            !super::bytes_carry_build_stamp(real.as_bytes(), "p9-other"),
+            "戳写着 `p9-sample` 而问它是不是 `p9-other`，它答了「是」—— 见证形同虚设"
+        );
+        assert!(
+            !super::bytes_carry_build_stamp(b"no stamp at all", "p9-sample"),
+            "一段没有戳的字节被判「身份可信」—— 那正是老启发式的失效面"
+        );
+        assert!(
+            !super::bytes_carry_build_stamp(real.as_bytes(), ""),
+            "空身份必须判假：空串会让「戳」退化成两个界标挨着，而那一形是噪音不是身份"
+        );
+        // ⚠ 反向自检：**戳不是随便一处提到 build_id 就算**。
+        //   旧启发式 `bytes_contain(bytes, build_id)` 会被裸出现的 id 喂饱 —— 而 daemon
+        //   的 hello 帧里本来就带着这个串 ⇒ 那条判据在任何一份 daemon 上都恒真。
+        assert!(
+            !super::bytes_carry_build_stamp(b"...p9-sample...", "p9-sample"),
+            "裸出现一次 id 就被当成身份戳 —— 那退回了 `K-R70` 之前那条恒真的启发式"
+        );
+    }
+
+    /// ★★ 🔴 `K-R70`（09-12）：**内嵌那份的身份只许来自它自己的字节。**
     ///
-    /// 08-08 沿「保证压在构造面」这条透镜横扫，人群定义是**文档自称证明了什么、
-    /// 且真被分支读**的布尔 —— 全仓（monitor + daemon 生产段）**恰好两个**：
-    /// `daemon_launch::may_fall_back`（上一件做了）与这里的 `id_from_manifest`。
-    /// ⇒ 人群这么窄，不建登记表，直接把这一个钉住。
+    /// # 它取代了什么，以及为什么不是「换个写法」
     ///
-    /// # 写死它会关掉什么
+    /// 〔散文墓碑〕〔本条原名 `the_identity_witness_is_derived_from_the_manifest_not_written_by_hand`，
+    ///  钉的是那个见证布尔 `id_from_manifest` 只能由「那份清单在不在」推出来、不许写死 `true`
+    ///  （写死会让 `deploy_embedded_daemon` 里那道 `bytes_contain` 兜底整个跳过；
+    ///   08-08 实测写死 x86_64 那处，monitor 1004 一条都不红）。
+    ///  **它守的动作是对的，守的东西是错的**：那个「见证」见证的是**一份旁挂清单在不在**，
+    ///  而清单是 `release.yml` 从源码常量 `const BUILD_ID` 抠出来写的 ——
+    ///  三个载体的清单**恒等**，恒等的东西一格证据都不提供
+    ///  （`K-R68` 摸底 · `DECISIONS.md#R26` 裁定零：那是把标签当成了指纹）。〕
     ///
-    /// `id_from_manifest: true` 的意思是「`build_id` 来自旁挂的 `.build_id` 清单，
-    /// 字节真实身份可信」⇒ `deploy_embedded_daemon` 里那道
-    /// `!bin.id_from_manifest && !bytes_contain(…)` 的兜底**整个跳过**，
-    /// 于是身份未确认的字节会被**部署到用户的远端机器**。
+    /// 今天身份**只有一条来路**：`build.rs` 从二进制字节里扫 `CC_MONITOR_BUILD_STAMP`。
+    /// 于是本条钉三件事：
     ///
-    /// ★ 而这不是一个假想的手滑：它旁边的注释逐字写着那道启发式
-    /// 「**可能误拒正品**（编译器可把 BUILD_ID 优化成立即数、字节不连续）」——
-    /// 被误拒过一次的人，最省事的修法就是把这行改成 `true`。
-    /// 实测：把 x86_64 那处写死成 `true`，**monitor 1004 一条都不红**。
-    ///
-    /// ⇒ 钉的是**来源**而不是值：这一格只能由「那份清单在不在」推出来
-    /// （`!env!("DAEMON_EMBEDDED_ID_<ARCH>").is_empty()`），不许出现字面量。
+    /// 1. 两个 `DaemonBinary` 的 `build_id` **只许**是 `env!("DAEMON_EMBEDDED_ID_<ARCH>")`
+    ///    —— 出现字面量、或退回源码 id（老 `pick()` 那条「问不出就拿源码顶上」的路）都红；
+    /// 2. 部署路上**真的**跑了 [`bytes_carry_build_stamp`]，而且**不带前置条件**
+    ///    （老写法 `!bin.id_from_manifest && …` 正是「有清单就整个跳过」）；
+    /// 3. 界标那两个字面量**不许**在本文件里出现第二份（闭集唯一住址在 daemon 源码）。
     ///
     /// 顺带钉住 arch 那条跨文件契约的**另一半**：`build.rs` 期待的每个 arch，
     /// 这里都必须真有一份 `DaemonBinary`（漏一个 ⇒ `daemon_binary()` 对它返回 `None`，
     /// 远端自动部署对那个 arch **悄悄关闭** —— 与上一条判据守的是同一个事故形状的两端）。
     #[test]
-    fn the_identity_witness_is_derived_from_the_manifest_not_written_by_hand() {
+    fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         let src = std::fs::read_to_string(root.join("src/sftp.rs")).expect("读不到 sftp.rs");
         let prod = guard_core::production_code(&src);
         // 运行时拼，免得命中本条自己的说明文字。
-        let field = format!("{}_from_manifest:", "id");
+        let field = format!("{}_id:", "build");
         let inits: Vec<&str> = prod
             .lines()
             .map(str::trim)
-            .filter(|l| l.starts_with(&field))
+            .filter(|l| l.starts_with(&field) && l.contains("env!"))
             .collect();
-        assert!(
-            inits.len() >= 2,
-            "生产段里只找到 {} 处 `{field}` 初始化（08-08 实测 2：X86 / ARM）—— \
-             抽取器坏了或那两个 static 被改写了，本条会零命中地绿",
+        assert_eq!(
+            inits.len(),
+            2,
+            "生产段里找到 {} 处 `{field}` 的 env 取值（应当 2：X86 / ARM）—— \
+             抽取器坏了或那两个 static 被改写了，本条会零命中地绿：{inits:?}",
             inits.len()
         );
         for l in &inits {
             assert!(
-                l.contains("env!(\"DAEMON_EMBEDDED_ID_") && l.contains("is_empty()"),
-                "这一格没有从清单推出来：{l}\n\
-                 ★ 它的意思是「字节真实身份可信」，写死 `true` 会让 \n\
-                 `deploy_embedded_daemon` 里那道 `bytes_contain` 兜底**整个跳过** ⇒ \n\
-                 身份未确认的字节被部署到**用户的远端机器**。\n\
-                 ⚠ 而这正是最省事的错法：旁边的注释逐字写着那道启发式「可能误拒正品」，\n\
-                 被误拒过一次的人第一反应就是把这行改成 `true`。\n\
-                 真要处理误拒，改的是**清单为什么没生成**（`release.yml` 的 Stage binaries \n\
-                 或本机 build.rs 那段），不是把见证写死。"
+                l.contains("env!(\"DAEMON_EMBEDDED_ID_"),
+                "这一格的身份不是从**字节**来的：{l}\n\
+                 ★ 只有 `DAEMON_EMBEDDED_ID_<ARCH>` 是 `build.rs` 从这份二进制的字节里\n\
+                 扫出来的（`CC_MONITOR_BUILD_STAMP`）。退回 `DAEMON_BUILD_ID`（源码 id）\n\
+                 就是「问不出就拿源码的答案顶上」—— 把一个失败面换成一个假答案；\n\
+                 写一份 `.build_id` 旁文件再读它，是把标签换个地方抄（`KR70D1` 逐字点名的失效方向）。"
+            );
+        }
+        // ② 部署路真的跑了那道见证，而且**不带前置条件**。
+        let witness = format!("{}_carry_build_stamp(", "bytes");
+        let calls: Vec<&str> = prod
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.contains(&witness) && !l.starts_with("pub fn"))
+            .collect();
+        assert_eq!(
+            calls.len(),
+            1,
+            "生产段里 `{witness}` 的调用处有 {} 个（应当恰好 1：`deploy_embedded_daemon` 出门前那一道）：{calls:?}",
+            calls.len()
+        );
+        assert_eq!(
+            calls[0], "if !bytes_carry_build_stamp(bin.bytes, bin.build_id) {",
+            "那道见证被加了前置条件或换了形状：{}\n\
+             ★ 老写法 `!bin.id_from_manifest && !bytes_contain(…)` 的病就在前半句：\n\
+             **有清单时整道闸跳过**，而会出事的那一形（有人塞了别的字节、清单照旧）\n\
+             恰恰在那一支里。⇒ 它必须无条件跑。",
+            calls[0]
+        );
+        // ③ 界标闭集只有一个住址（在 daemon 源码里），本文件只许 `env!` 取。
+        for mark in [env!("DAEMON_STAMP_OPEN"), env!("DAEMON_STAMP_CLOSE")] {
+            assert!(
+                !mark.is_empty(),
+                "`DAEMON_STAMP_OPEN/CLOSE` 是空串 —— `build.rs` 从 daemon 源码抠界标失败了，\n\
+                 而空界标会让 `bytes_carry_build_stamp` 恒答 false ⇒ 自动部署整个静默关闭。"
+            );
+            assert!(
+                !prod.contains(&format!("\"{mark}\"")),
+                "本文件生产段里出现了界标字面量 `{mark}` —— 闭集唯一住址在\n\
+                 `remote-daemon-proto/src/main.rs`（`BUILD_STAMP_OPEN`/`CLOSE`），\n\
+                 这里只许 `env!(\"DAEMON_STAMP_OPEN\")` / `env!(\"DAEMON_STAMP_CLOSE\")` 取。"
             );
         }
 
@@ -1673,9 +1876,16 @@ mod tests {
                     format!("staged/cc-monitor-remote-{arch}"),
                     "编了但没按 `build.rs` 期待的名字放进 staged/",
                 ),
+                // 🔴 〔`K-R70` 09-12〕这里原来还有第三条：`staged/cc-monitor-remote-<arch>.build_id`，
+                //    理由逐字「少了旁挂的 .build_id 清单（没有它，运行时只能回退到会误拒正品的启发式）」。
+                //    **那条清单没有了**（它是从源码常量抠出来的标签，不是指纹 ——
+                //    `K-R68` · `DECISIONS.md#R26` 裁定零），身份改从字节里扫。
+                //    ⇒ 接替它的不是一条**按 arch** 的判据（校验那一步是 `foreach ($a in …)`，
+                //      路径里带的是变量不是字面 arch，按 arch 去 grep 只会零命中地红），
+                //      而是这个 arch 出现在那个 `foreach` 的清单里 ＋ 循环外那两条（见下）。
                 (
-                    format!("staged/cc-monitor-remote-{arch}.build_id"),
-                    "少了旁挂的 .build_id 清单（没有它，运行时只能回退到会误拒正品的启发式）",
+                    format!("\"{arch}\""),
+                    "这个 arch 不在校验那一步的 `foreach` 清单里 ⇒ 它的字节**没有人问过身份**",
                 ),
             ] {
                 assert!(
@@ -1688,6 +1898,33 @@ mod tests {
                      要么先把那一行改掉（改它会逼你想清楚「不再支持这个 arch」这件事）。"
                 );
             }
+        }
+
+        // ── 🔴 〔`K-R70` 09-12〕**流水线真的去问过那份字节** ─────────────────────
+        //
+        // 上面那条按 arch 的清单只买到「它在校验的名单里」；这两条买的是**校验本身还在**。
+        // 两个锚各自不可替代：
+        //   · `ReadAllBytes` —— 它**真的把那份二进制读进来了**（不是 stat、不是读旁边的谁）；
+        //   · `const BUILD_STAMP_OPEN` —— 界标是**从 daemon 源码抠的**，不是在 yml 里手抄一份
+        //     （手抄那一份哪天与源码漂开，校验会以「假红」的形式提醒错人）。
+        for (needle, why) in [
+            (
+                "ReadAllBytes",
+                "校验那一步没有把二进制的字节读进来 —— 那它验的就不是这份字节，\
+                 而是它旁边的某个文件（`K-R70` 整件治的就是这个）",
+            ),
+            (
+                "const BUILD_STAMP_OPEN",
+                "身份戳的界标不是从 daemon 源码抠的 —— 手抄一份就多一个会漂的住址；\
+                 漂开那天校验会红，而红的原因与真病无关",
+            ),
+        ] {
+            assert!(
+                rel.contains(needle),
+                "`release.yml` 里找不到 `{needle}` —— {why}。\n\
+                 ⚠ 后果与下面 `if-no-files-found` 那条同族：**静默** —— \n\
+                 安装包照出，只是内嵌的那份没人问过它是谁。"
+            );
         }
 
         // fail-closed 那一半：一个都没 stage 到时，上传步骤必须当场失败而不是传个空包。

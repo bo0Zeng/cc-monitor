@@ -68,9 +68,25 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 }
 
 /// `--list-projects`：每个项目目录一行 JSON：
-/// `{"dirName","projectPath","sessionCount","lastActivityMs"}`
+/// `{"dirName","projectPath","sessionCount","lastActivityMs","sessionIds"}`
 /// projectPath 从该项目**最新** jsonl 的头部记录提取 cwd（对齐本地口径：真实工作
 /// 目录，而非编码过的目录名）；提取不到则空字符串，monitor 侧回退显示 dirName。
+///
+/// # `sessionIds`（`K-R83` 09-12）：这一行**带得出下游要算的那三个数**
+///
+/// monitor 侧的项目行还要 `starredCount` / `hiddenCount` / `hasLive` 三个数，
+/// 而这三个数的真相源在 monitor 那侧（本机 metadata / `SessionMap`）**全部按会话 sid 索引**
+/// —— 缺的从来不是「谁来数」，是「这个项目下有哪几个 sid」。
+/// ⇒ 本行把那份清单带上，下游一次就算得出，**不用每个项目再来一次 `--list-sessions`**
+/// （那是 N 次进程 spawn，而项目列表是用户常开的界面 —— 失效方向逐字记在
+/// monitor 的 `local_read_surface_registry.rs` 那条退役条件里）。
+///
+/// **代价如实记**：`sessionIds` 与 `sessionCount` 同源同一趟 `read_dir`，
+/// **零额外 I/O**；涨的只有输出字节（每会话 ~38 B）。monitor 侧单行上限是 64 MiB
+/// （`ssh_source::DAEMON_FRAME_LINE_CAP`），要撞上它得一个项目下约 170 万个会话。
+///
+/// ⚠ **它与 `sessionCount` 恒等长，这是契约的一部分** —— 下游据此判「空清单」是
+/// 「真的没有会话」还是「这一行坏了」（`sessionCount > 0` 而清单空 ⇒ 后者，不许当成 0）。
 fn list_projects(agent_home: &Path) -> Result<(), String> {
     let root = projects_root(agent_home);
     let entries =
@@ -82,41 +98,69 @@ fn list_projects(agent_home: &Path) -> Result<(), String> {
         if !dir.is_dir() {
             continue;
         }
-        let mut session_count = 0u32;
-        let mut last_activity_ms = 0i64;
-        let mut newest_jsonl: Option<(i64, PathBuf)> = None;
-        if let Ok(files) = std::fs::read_dir(&dir) {
-            for f in files.flatten() {
-                let p = f.path();
-                if !p.is_file() || !crate::agents::claudecode::records::is_session_file(&p) {
-                    continue;
-                }
-                session_count += 1;
-                let mtime = mtime_ms(&p);
-                if mtime > last_activity_ms {
-                    last_activity_ms = mtime;
-                }
-                if newest_jsonl.as_ref().is_none_or(|(m, _)| mtime > *m) {
-                    newest_jsonl = Some((mtime, p));
-                }
+        let dir_name = entry.file_name().to_string_lossy().into_owned();
+        let Some(line) = project_row(&dir, dir_name) else {
+            continue; // 空目录（全删过/只剩 sidecar）不展示
+        };
+        writeln!(out, "{line}").map_err(|e| format!("stdout write failed: {e}"))?;
+    }
+    Ok(())
+}
+
+/// 一个项目目录 → `--list-projects` 的那一行；目录下没有会话记录 ⇒ `None`（不展示）。
+///
+/// # 为什么它是**一个函数**而不是 `list_projects` 里的一段
+///
+/// `list_projects` 的出口是 `stdout`，红线内测不了；而 `K-R83` 的三条判据要判的是
+/// **这一行带了什么**，不是「stdout 上出现了什么」。同样的分法在本文件里已有先例：
+/// `analyze_session` 也是把「算出那一行」与「把它印出去」分开的。
+fn project_row(dir: &Path, dir_name: String) -> Option<serde_json::Value> {
+    let mut session_count = 0u32;
+    let mut last_activity_ms = 0i64;
+    let mut newest_jsonl: Option<(i64, PathBuf)> = None;
+    // `K-R83`：sid 的取法与 `--list-sessions` 那条逐字同源（`analyze_session` 也是
+    // `file_stem`）—— 两条路给同一个会话的 id 必须是同一个字符串，否则下游按 sid
+    // 去查 metadata 会**查不着而看起来像「没有星标」**，又是一次「不知道」装成 0。
+    let mut session_ids: Vec<String> = Vec::new();
+    if let Ok(files) = std::fs::read_dir(dir) {
+        for f in files.flatten() {
+            let p = f.path();
+            if !p.is_file() || !crate::agents::claudecode::records::is_session_file(&p) {
+                continue;
+            }
+            // ⚠ 计数与 sid **共用同一个守卫**：不是「先数了再看取不取得到 sid」。
+            // 分开写的话，取不到 stem 的那一格会让 `sessionCount` 与清单长度错开，
+            // 而下游正是拿这两者对拍来分辨「真的没有」与「这一行坏了」。
+            let Some(sid) = p.file_stem().map(|s| s.to_string_lossy().into_owned()) else {
+                continue;
+            };
+            session_count += 1;
+            session_ids.push(sid);
+            let mtime = mtime_ms(&p);
+            if mtime > last_activity_ms {
+                last_activity_ms = mtime;
+            }
+            if newest_jsonl.as_ref().is_none_or(|(m, _)| mtime > *m) {
+                newest_jsonl = Some((mtime, p));
             }
         }
-        if session_count == 0 {
-            continue; // 空目录（全删过/只剩 sidecar）不展示
-        }
-        let project_path = newest_jsonl
-            .and_then(|(_, p)| extract_cwd_from_head(&p))
-            .unwrap_or_default();
-        let dir_name = entry.file_name().to_string_lossy().into_owned();
-        let line = serde_json::json!({
+    }
+    if session_count == 0 {
+        return None; // 空目录（全删过/只剩 sidecar）不展示
+    }
+    let project_path = newest_jsonl
+        .and_then(|(_, p)| extract_cwd_from_head(&p))
+        .unwrap_or_default();
+    // 排序**不是**为了好看：`read_dir` 的顺序是文件系统给的，两趟未必一样，
+    // 而下游要拿这份清单做对拍与缓存 key —— 不稳定的顺序会让「同一份数据」看起来变了。
+    session_ids.sort_unstable();
+    Some(serde_json::json!({
             "dirName": dir_name,
             "projectPath": project_path,
             "sessionCount": session_count,
             "lastActivityMs": last_activity_ms,
-        });
-        writeln!(out, "{line}").map_err(|e| format!("stdout write failed: {e}"))?;
-    }
-    Ok(())
+            "sessionIds": session_ids,
+    }))
 }
 
 /// `--list-sessions <project_dir>`：该项目每个 jsonl 一行 JSON：
@@ -447,9 +491,11 @@ fn created_ms_or_mtime(p: &Path) -> i64 {
 /// 这里原本是 `read_to_string(p)` —— 一个 257 MB 的会话会被整份读进内存，
 /// 而下一行就是 `.take(40)`。`--list-projects` 对**每个项目**都会调它一次。
 ///
-/// ★ 对照：monitor 侧同名功能 `src-tauri/src/history.rs::quick_extract_cwd` 一直是
-/// `BufReader` + `take(30)` 早返回，**连注释都写着「早返回省 IO」** ——
-/// 又一处「强机器流式、弱机器整读，正好反了」（同 B-4）。
+/// ★ 对照 —— 〔`K-R97` 09-12 改写，上一版说的是 monitor 侧那一份〕：monitor 从前也有一份
+/// 同功能的头部提取（`BufReader` + 前 30 行早返回），于是同一个问题两边给两个答案。
+/// 本机项目列表改走本查询之后，**那一份连同它唯一的调用点一起没了** ——
+/// 这件事今天全仓只剩这一处。原话记的那条「强机器整读、弱机器流式，正好反了」（同 B-4）
+/// 仍然是本函数存在的理由。
 fn extract_cwd_from_head(p: &Path) -> Option<String> {
     use std::io::BufRead;
     let file = std::fs::File::open(p).ok()?;
@@ -929,5 +975,161 @@ mod f07_tests {
                  慢不会让任何测试变红 —— 所以这条只能靠源码形态钉。"
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod kr83_tests {
+    use super::*;
+
+    /// 本模块的夹具根：每个测试一个独立目录（同进程并发跑，不许互相看见）。
+    fn tmp_root(tag: &str) -> PathBuf {
+        let root = std::env::temp_dir().join(format!("ccm-kr83-{}-{tag}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        root
+    }
+
+    fn project_with(root: &Path, dir_name: &str, sids: &[&str]) -> PathBuf {
+        let dir = root.join("projects").join(dir_name);
+        std::fs::create_dir_all(&dir).unwrap();
+        for sid in sids {
+            std::fs::write(dir.join(format!("{sid}.jsonl")), b"{}\n").unwrap();
+        }
+        dir
+    }
+
+    /// 一个 JSON 对象里**所有**字符串叶子（含数组里的），**不看它们挂在哪个 key 下**。
+    ///
+    /// ★ 这个取法就是 `KR83D1` 第 ③ 刀（「只改字段名、内容等价 ⇒ 必须绿」）的落点：
+    /// 判据要判的是「**这一行带不带得出那三个数**」，不是「有没有一个叫 `sessionIds` 的 key」。
+    /// 按 key 取 = 判名字；按叶子取 = 判**内容**。
+    fn string_leaves(v: &serde_json::Value) -> Vec<String> {
+        let mut out = Vec::new();
+        fn walk(v: &serde_json::Value, out: &mut Vec<String>) {
+            match v {
+                serde_json::Value::String(s) => out.push(s.clone()),
+                serde_json::Value::Array(a) => a.iter().for_each(|x| walk(x, out)),
+                serde_json::Value::Object(m) => m.values().for_each(|x| walk(x, out)),
+                _ => {}
+            }
+        }
+        walk(v, &mut out);
+        out
+    }
+
+    /// ★★ `KR83D1`：**`--list-projects` 的每一行，下游算得出 `starredCount` /
+    /// `hiddenCount` / `hasLive`。**
+    ///
+    /// # 判的是什么
+    ///
+    /// 那三个数的真相源全在 monitor 那侧、且**全部按会话 sid 索引**
+    ///（本机 metadata 按 sid 查 star/hide；`SessionMap` 按 sid 查活）——
+    /// 所以「这一行够不够用」这个性质，逐字等于「**这一行说不说得出这个项目下有哪几个 sid**」。
+    ///
+    /// # ⚠ 它**不判字段叫什么名字**
+    ///
+    /// `local_read_surface_registry.rs` 那条退役条件逐字留了「**或等价字段**」这个口子。
+    /// 判据按 [`string_leaves`] 取值（不看 key），所以把 `sessionIds` 改名、
+    /// 或改成 `[{"sid": …}]` 这种等价形状，本条**照常绿**；
+    /// 只有**内容真的没了**才红。
+    #[test]
+    fn every_project_row_carries_the_session_ids_the_three_numbers_are_indexed_by() {
+        let root = tmp_root("d1");
+        let dir = project_with(&root, "-home-u-proj", &["sid-aaa", "sid-bbb", "sid-ccc"]);
+        let row = project_row(&dir, "-home-u-proj".into()).expect("有会话的项目必须出一行");
+
+        let leaves = string_leaves(&row);
+        for sid in ["sid-aaa", "sid-bbb", "sid-ccc"] {
+            assert!(
+                leaves.iter().any(|s| s == sid),
+                "★ 这一行里找不到 sid `{sid}` —— 下游就**算不出** starredCount / hiddenCount / hasLive，\n\
+                 只能退回「每个项目再来一次 --list-sessions」（N 次进程 spawn，见 KR83D3）。\n\
+                 ⚠ 本条按**值**找、不按 key 找：改字段名不会让它红，内容没了才会。\n\
+                 这一行现打：{row}"
+            );
+        }
+
+        // 第 ② 刀的正向那一半：清单**不许**是空的，而项目下确实有会话。
+        // 「空清单」与「这个项目下没有会话」在下游是两件事 —— 后者根本不会有这一行
+        //（`project_row` 返回 `None`），所以出了行还空 = 这一行坏了。
+        assert_eq!(
+            row["sessionCount"].as_u64(),
+            Some(3),
+            "sessionCount 与夹具对不上，下面那条对拍就没有意义了：{row}"
+        );
+        let ids_len = leaves.iter().filter(|s| s.starts_with("sid-")).count();
+        assert_eq!(
+            ids_len, 3,
+            "★ 带出来的 sid 只有 {ids_len} 个而这个项目下有 3 个会话 —— \n\
+             **空清单 / 短清单 ≠ 没有**。下游拿它当「真的是 0」就是本件要治的那个病。\n\
+             这一行现打：{row}"
+        );
+    }
+
+    /// ★ **`sessionCount` 与 sid 清单恒等长** —— 这是契约里下游用来分辨
+    /// 「真的没有」与「这一行坏了」的那把尺子（monitor 侧 `remote_history.rs` 逐字对拍它）。
+    ///
+    /// 两侧由**同一个守卫**产出（见 `project_row` 里那段注释），所以这条钉的是
+    /// 「别把它们拆成两个守卫」。
+    ///
+    /// ⚠ 同 [`every_project_row_carries_the_session_ids_the_three_numbers_are_indexed_by`]：
+    /// 数的是**带前缀的那几个值**，不按 key 取 —— 本模块**没有一条判据碰那个字段名**，
+    /// 这就是 `KR83D1` 第 ③ 刀（改名必须绿）在 daemon 这一侧的落法。
+    #[test]
+    fn the_session_id_list_and_the_count_are_produced_by_the_same_guard() {
+        let root = tmp_root("d1b");
+        let dir = project_with(&root, "p", &["kr83-a", "kr83-b", "kr83-c", "kr83-d"]);
+        // 非会话文件（sidecar / 目录）既不进计数、也不进清单。
+        std::fs::write(dir.join("notes.txt"), b"x").unwrap();
+        std::fs::create_dir_all(dir.join("subagents")).unwrap();
+
+        let row = project_row(&dir, "p".into()).expect("有会话的项目必须出一行");
+        let ids = string_leaves(&row)
+            .into_iter()
+            .filter(|s| s.starts_with("kr83-"))
+            .count();
+        assert_eq!(
+            row["sessionCount"].as_u64(),
+            Some(ids as u64),
+            "★ 计数与清单长度错开了 —— 下游的「空清单是坏行还是真没有」这条判断就瞎了：{row}"
+        );
+        assert_eq!(ids, 4, "sidecar / 子目录不该被算进来：{row}");
+    }
+
+    /// 空目录（只剩 sidecar）**不出行** —— 「没有这一行」与「有这一行但清单空」
+    /// 必须是两件事，否则下游没法把第二种当成坏行。
+    #[test]
+    fn a_project_with_no_sessions_has_no_row_at_all() {
+        let root = tmp_root("d1c");
+        let dir = root.join("projects").join("empty");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("README.md"), b"x").unwrap();
+        assert!(
+            project_row(&dir, "empty".into()).is_none(),
+            "★ 没有会话的项目出了一行 —— 那一行的空清单会与「坏行」同形"
+        );
+    }
+
+    /// sid 的取法与 `--list-sessions` 那条**必须是同一个** —— 两条路给同一个会话
+    /// 两个不同的 id，下游按 sid 查 metadata 就会**查不着**，
+    /// 而查不着在今天的界面上长得和「没有星标」一模一样（又一次「不知道」装成 0）。
+    #[test]
+    fn the_two_query_paths_spell_a_session_id_the_same_way() {
+        let root = tmp_root("d1d");
+        let dir = project_with(&root, "p", &["019f75dd-875c-7c81-9eda-32f866b2c60f"]);
+        let row = project_row(&dir, "p".into()).expect("row");
+        let from_list_sessions =
+            analyze_session(&dir.join("019f75dd-875c-7c81-9eda-32f866b2c60f.jsonl"))["sessionId"]
+                .as_str()
+                .unwrap()
+                .to_string();
+        // 按**值**找，不按 key 找（`KR83D1` 第 ③ 刀）：改字段名不许让这条红。
+        assert!(
+            string_leaves(&row).contains(&from_list_sessions),
+            "★ `--list-sessions` 把这个会话叫 `{from_list_sessions}`，\n\
+             而 `--list-projects` 那一行里找不到这个字符串 —— 下游按 sid 对不上号，\n\
+             查不着在界面上长得和「没有星标」一模一样（又一次「不知道」装成 0）。\n\
+             这一行现打：{row}"
+        );
     }
 }

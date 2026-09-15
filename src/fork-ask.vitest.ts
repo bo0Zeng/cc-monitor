@@ -59,7 +59,7 @@ describe("askForkLaunch", () => {
     expect((await p)?.configDir, "账号 0 ⇒ null，不是空串").toBeNull();
   });
 
-  it("选了某个账号 → 回它的 configDir", async () => {
+  it("选了某个账号 → 回它的 configDir **与名字**", async () => {
     const p = askForkLaunch({
       facts: FACTS,
       slots: ["account"],
@@ -69,7 +69,26 @@ describe("askForkLaunch", () => {
     const sel = q<HTMLSelectElement>(".fork-ask-account");
     sel.value = "/home/u/.claude-accts/b";
     q<HTMLButtonElement>(".fork-ask-ok").click();
-    expect((await p)?.configDir).toBe("/home/u/.claude-accts/b");
+    const answered = await p;
+    expect(answered?.configDir).toBe("/home/u/.claude-accts/b");
+    // `K-R53`：后端那条 ccm 路只会 `--account <名字>`，只给目录 = 这条分叉路到不了它。
+    // ⚠ 名字必须是**从 `accounts` 清单里查的**，不是 `<option>` 的显示文本：
+    //   显示文本哪天加个后缀（「b（默认）」）就会把一个查不到的名字传下去，
+    //   而 `shared/ccm` 对打错的 `--account` 是当场 `die`（退出码 2）。
+    expect(answered?.accountName, "用户挑的号的名字没跟着回来").toBe("b");
+  });
+
+  it("★ 账号 0 ⇒ 名字也是 `null`（那一态走 `base`，本来就不要名字）", async () => {
+    const p = askForkLaunch({
+      facts: FACTS,
+      slots: ["account"],
+      accounts: ACCOUNTS,
+      defaultUseTmux: false,
+    });
+    q<HTMLButtonElement>(".fork-ask-ok").click(); // 默认位就是账号 0
+    const answered = await p;
+    expect(answered?.configDir).toBeNull();
+    expect(answered?.accountName).toBeNull();
   });
 
   /** ★★ 取消必须是 `null`。`{}` 会被 `startForkedSession` 当成"用户确认了默认值"照常起。 */

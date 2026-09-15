@@ -2825,7 +2825,7 @@ dependencies = [
 
 [[package]]
 name = "monitor"
-version = "3.7.0"
+version = "3.8.0"
 dependencies = [
  "acct-core",
  "branch-core",
@@ -2841,6 +2841,7 @@ dependencies = [
  "primefield",
  "russh",
  "russh-sftp",
+ "search-core",
  "serde",
  "serde_json",
  "shell-quote-core",
@@ -4278,6 +4279,13 @@ dependencies = [
  "pbkdf2",
  "salsa20",
  "sha2 0.11.0",
+]
+
+[[package]]
+name = "search-core"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
 ]
 
 [[package]]

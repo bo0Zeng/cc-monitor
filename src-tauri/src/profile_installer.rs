@@ -11,12 +11,40 @@
 //! ```
 //!
 //! 重装时找到 BEGIN/END 范围整块替换；卸载时整块删除。用户在块外的任何内容不动。
+//!
+//! ## 🔴 〔`K-R62` 09-11〕本模块从「PowerShell 专用」扩到**两种方言**
+//!
+//! 立件时现打的账（`K-R57` 摸底 → `K-R62 §0b`）：**本机 POSIX 那一格，装与查都缺。**
+//!
+//! | 面 | 本机 Windows | 本机 POSIX（本件之前） | 远端 POSIX |
+//! |---|---|---|---|
+//! | 装「别名块」 | [`install_to_profile`] | 🔴 **零口** | `sftp::install_remote_ccm_helper` |
+//! | 查「你 rc 里那几行是旧的」 | [`scan_legacy_profiles`] | 🔴 **零口** | —— |
+//!
+//! 补法有两条硬边界，两条都是**这件事的一半价值**：
+//!
+//! 1. **不许变成第四套。** 装进本机 rc 的内容与远端那个口来自**同一个常量**
+//!    （`sftp::CCM_WRAPPER_SNIPPET`），合块与剥块走**同一份实现**
+//!    （`sftp::merge_profile_block` / `sftp::strip_profile_block`），围栏是**同一对标记**
+//!    （`sftp::CCM_PROFILE_BEGIN` / `..._END`）。本模块**一个字节的 snippet 都不生成**，
+//!    也**没有第二套 merge/strip** —— 见 [`plan_install`] / [`plan_uninstall`]。
+//! 2. **一个字节都不许删用户的行**（`K31` + 用户逐字「原本的配置要手动删除」）。
+//!    「查」这一半的产物是 [`render_manual_cleanup_hint`]：**逐行指名 + 一段让他自己动手的提示**，
+//!    产品自己不动手。理由不是保守，是**做不到**：那些行没有围栏，边界只有人知道
+//!    （`K-R57` 现打：用户机器上 10 个真使用者全是裸行）。
+//!
+//! ⚠ **方言不是「猜路径」。** 路径始终由界面上的人选（`ProfileKind::Custom` 一直是产品特性）。
+//! [`flavor_of`] 回答的是**另一个问题**：人选定了这份文件之后，往里写哪种语言。
+//! 把 `function cc { … }` 写进 `~/.bashrc` 在任何情形下都不是对的答案 ——
+//! 而本件之前这条路**只会**写 PowerShell。
 
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
-const BEGIN_MARKER: &str = "# === cc-monitor BEGIN";
-const END_MARKER: &str = "# === cc-monitor END";
+/// ⚠ `K-R62` 起是 `pub(crate)`：`fenced_block::FENCE_SHAPES` 那张账要**指**这一对，
+/// 而不是抄一份字面量过去（抄一份就是第二个住址）。
+pub(crate) const BEGIN_MARKER: &str = "# === cc-monitor BEGIN";
+pub(crate) const END_MARKER: &str = "# === cc-monitor END";
 
 /// cc function 模板源码（含 `{{COMMAND_NAME}}` placeholder）
 const CC_TEMPLATE: &str = include_str!("../scripts/cc.ps1.tpl");
@@ -47,10 +75,282 @@ pub struct ProfileScan {
     pub ccm_block_version: Option<String>,
     /// 已有同名 function（非 ccm 块内的）
     pub conflicting_functions: Vec<String>,
+    /// 🔴 〔`K-R62`〕**「你 rc 里这几行是旧的」那段话。** 空串 = 没有要清的。
+    ///
+    /// 它是 [`render_manual_cleanup_hint`] 的产物：**逐行指名**（行号 + 原文）
+    /// 加一段给用户自己动手的说明。**产品一个字节都不删**（`K31` + 用户逐字
+    /// 「原本的配置要手动删除」）—— 那些行没有围栏，边界只有人知道。
+    ///
+    /// ⚠ **只对 [`ProfileFlavor::PosixRc`] 有内容**；PowerShell 那一侧的遗留由
+    /// [`scan_legacy_profiles`] 按**围栏**答（那是另一件事：它找的是**装错位置的整块**，
+    /// 这一格找的是**根本没有围栏的裸行**）。
+    pub manual_cleanup_hint: String,
     // **C03 大整数策略**：量纲是**字节数**——2^53-1 B ≈ **8 PB**。
     // PowerShell profile 是文本脚本，不可能接近它 ⇒ f64 精度足够。同 `SftpEntry.size` 那条论证。
     #[cfg_attr(test, ts(type = "number"))]
     pub size_bytes: u64,
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// `K-R62`：本机 POSIX 那一半 —— **装**（借远端那一份）与**查**（够得着裸行）
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// 一份 profile 的**方言**：这份文件里该放哪种语言的内容、认哪一对围栏。
+///
+/// 🔴 **它不猜路径。** 路径始终由界面上的人选（`account_aliases` 的 `§0e` 那条理由
+/// 原样适用：`.bashrc` / `.zshrc` / fish 的 `config.fish` 写法不同，替人选一份是最坏的
+/// 那条路）。它回答的是**人选定之后**的那个问题：往这份文件里写哪种语言。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProfileFlavor {
+    /// PowerShell profile。围栏是本模块的 [`BEGIN_MARKER`]/[`END_MARKER`]，
+    /// 内容由 [`render_cc_code`] 按模板渲染。
+    PowerShell,
+    /// POSIX shell 的 rc（`.bashrc` / `.zshrc` / `.profile` …）。
+    /// 围栏与内容**都借远端那一份**，本模块一个字节都不自己造。
+    PosixRc,
+}
+
+/// 按**文件扩展名**定方言：`.ps1` ⇒ PowerShell，其余一律 POSIX rc。
+///
+/// ⚠ 为什么按扩展名而不是按 `cfg!(windows)`：**跑在哪台机器上**与**这份文件是什么**
+/// 是两件事。`ProfileKind::Custom` 允许用户指任意一份 home 内的文件，
+/// 而 PowerShell 的 profile 恒是 `.ps1`（`$PROFILE` 的四种取值全是）。
+/// 按 `cfg` 分还有一个更硬的毛病：**沙箱里跑不到 Windows 那一臂**
+/// （门禁在 Linux 上跑），于是两条臂里恒有一条没人验。
+pub fn flavor_of(path: &Path) -> ProfileFlavor {
+    match path.extension().and_then(|e| e.to_str()) {
+        Some(ext) if ext.eq_ignore_ascii_case("ps1") => ProfileFlavor::PowerShell,
+        _ => ProfileFlavor::PosixRc,
+    }
+}
+
+/// 纯函数：**装**完之后这份文件该长什么样。落盘那一跳在 [`install_to_profile`]。
+///
+/// 🔴 **`PosixRc` 那一臂是 `KR62D1` 的正题**：它一个字节的 snippet 都不生成、
+/// 也没有第二套 merge —— 内容是 `sftp::CCM_WRAPPER_SNIPPET`（= `shared/ccm-aliases.sh`
+/// 本身），合块是 `sftp::merge_profile_block`，围栏是 `sftp::CCM_PROFILE_BEGIN/END`。
+/// ⇒ 本机与远端装进 rc 的**是同一份东西**（`K15` / `K36`），
+/// 而不是「同一件事的第四个形状」（`K-R62 §0c` 那三套）。
+///
+/// `command_name` / `include_cc_function` **只对 PowerShell 那一臂有意义**：
+/// POSIX 那一块的名字（`cc` / `cct`）住在 `shared/ccm-aliases.sh` 里，
+/// 那份文件自己用 `declare -f` 让着用户已有的同名函数 —— 由它说了算，不由这里的参数说了算。
+pub fn plan_install(
+    flavor: ProfileFlavor,
+    existing: &str,
+    command_name: &str,
+    include_cc_function: bool,
+    what: &str,
+) -> Result<String, String> {
+    match flavor {
+        ProfileFlavor::PowerShell => {
+            let code = render_cc_code(command_name, include_cc_function);
+            replace_or_append_block(existing, &code, what)
+        }
+        ProfileFlavor::PosixRc => {
+            crate::sftp::merge_profile_block(existing, crate::sftp::CCM_WRAPPER_SNIPPET, what)
+        }
+    }
+}
+
+/// 纯函数：**卸**完之后这份文件该长什么样。同 [`plan_install`]，POSIX 那一臂借远端那一份。
+pub fn plan_uninstall(flavor: ProfileFlavor, existing: &str, what: &str) -> Result<String, String> {
+    match flavor {
+        ProfileFlavor::PowerShell => strip_block(existing, what),
+        ProfileFlavor::PosixRc => crate::sftp::strip_profile_block(existing, what),
+    }
+}
+
+/// 这份文件里**有没有** cc-monitor 的块，以及块里的版本串。
+///
+/// 两种方言认的是**两对不同的围栏**，一对都不许混：混了就是「装一个把另一个整块替换掉」
+/// （`account_aliases` 那对刻意不同前缀，理由同源）。
+fn block_presence(flavor: ProfileFlavor, content: &str) -> (bool, Option<String>) {
+    match flavor {
+        ProfileFlavor::PowerShell => find_block_version(content),
+        // POSIX 那一对没有版本后缀 ⇒ 恒 `None`。判「在不在」与 PowerShell 同口径：
+        // 只看有没有一行以 BEGIN 打头（**悬空的 BEGIN 也算在**——否则界面会说「未安装」
+        // 且藏起卸载按钮，而点安装却报行号，那正是 T04 审计③ 治过的那一形）。
+        ProfileFlavor::PosixRc => (
+            content
+                .lines()
+                .any(|l| l.trim_start().starts_with(crate::sftp::CCM_PROFILE_BEGIN)),
+            None,
+        ),
+    }
+}
+
+/// rc 里**围栏之外**、指着 `ccm` 的一行是什么形状。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LegacyRcKind {
+    /// `名字() { … ccm … }` —— **真使用者**（`K-R57` 现打：用户机器上那 14 行里的 10 行）。
+    Function,
+    /// 注释行（`#` 打头）。指名它只为让读的人知道「这几行也提到了 ccm」，不催他删。
+    Comment,
+    /// 其它（`alias cc=…` · `export PATH=…/ccm` · 直接调一次 …）。
+    Other,
+}
+
+/// rc 里**围栏之外**、指着 `ccm` 的一行。**原文原样带着**，因为产品要做的是指名，不是改写。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyRcLine {
+    /// 1 起的行号 —— 「逐行指名」的那个「行」。
+    pub line_no: usize,
+    /// **一整行的原文**，一个字节都没动。
+    pub text: String,
+    /// 形状。
+    pub kind: LegacyRcKind,
+    /// 它定义的那个函数名（只有 [`LegacyRcKind::Function`] 有）。
+    pub name: Option<String>,
+}
+
+/// `ccm` 这三个字母在这一行里是不是**一个独立的词**。
+///
+/// ⚠ 要边界，不要裸 `contains`：`~/.cc-monitor/` 里没有 `ccm`，但 `ccmx` / `myccm` 有 ——
+/// 匹配单位比事实小正是本仓那条递减棘轮在数的东西。
+fn mentions_ccm(line: &str) -> bool {
+    let b = line.as_bytes();
+    let word = |c: u8| (c as char).is_ascii_alphanumeric() || c == b'_';
+    let mut from = 0usize;
+    while let Some(k) = line[from..].find("ccm") {
+        let at = from + k;
+        let left_ok = at == 0 || !word(b[at - 1]);
+        let right = at + 3;
+        let right_ok = right >= b.len() || !word(b[right]);
+        if left_ok && right_ok {
+            return true;
+        }
+        from = at + 3;
+    }
+    false
+}
+
+/// 这一行是不是 cc-monitor 自己的围栏标记（三对全认）。
+///
+/// 认的是**共同前缀** `# === cc-monitor`，而不是三对里的某一对 —— 三对分别是
+/// `profile_installer` 的 `BEGIN_MARKER`、`sftp` 的 `CCM_PROFILE_BEGIN`、
+/// `account_aliases` 的 `RC_BEGIN`。这一格问的是「这一行是不是**我们的**边界」，
+/// 那个答案对三对是同一个。
+fn fence_marker(line: &str) -> Option<bool> {
+    let l = line.trim_start();
+    if !l.starts_with("# === cc-monitor") {
+        return None;
+    }
+    if l.contains("BEGIN") {
+        Some(true)
+    } else if l.contains("END") {
+        Some(false)
+    } else {
+        None
+    }
+}
+
+/// 🔴 `KR62D2` 的正题：**扫一份 POSIX rc 里围栏之外的裸行。**
+///
+/// # 为什么不是「给 `scan_legacy_profiles` 的路径表加两行」
+///
+/// 那个函数认的是 [`find_block_version`]（**围栏**）。而 `K-R57` 现打用户本机：
+/// `~/.bashrc` 三种围栏**全部零命中**，那 14 行 ccm 相关**全是裸写的**
+/// ⇒ **加路径解决不了「够不着裸行」**，只会让读数看起来像做完了。
+/// ⇒ 这里换的是**判法**：按行走、跳过我们自己的围栏段、按**词**认 `ccm`。
+///
+/// # 它诚实的边界（写出来，别读大）
+///
+/// - 它认的是「**提到 ccm**」，不是「**这一行是旧的**」。一个在自己函数里调 `ccm` 的用户
+///   （`shared/ccm-aliases.sh` 头注逐字鼓励这么做）也会被指名 —— 所以产物是
+///   [`render_manual_cleanup_hint`] 那种「你自己定」的措辞，**不是** 「请删除」。
+/// - 形状按 `名字() {` 认函数（同 `sftp::builtin_alias_names` 那一形）。
+///   `function cc { … }` 这一写法会落进 [`LegacyRcKind::Other`] —— **漏的是分类，不是那一行**，
+///   它仍然被指名。
+pub fn scan_legacy_rc_lines(content: &str) -> Vec<LegacyRcLine> {
+    let mut out = Vec::new();
+    let mut inside = false;
+    for (i, line) in content.lines().enumerate() {
+        if let Some(open) = fence_marker(line) {
+            inside = open;
+            continue;
+        }
+        if inside || !mentions_ccm(line) {
+            continue;
+        }
+        let l = line.trim_start();
+        let (kind, name) = if l.starts_with('#') {
+            (LegacyRcKind::Comment, None)
+        } else if let Some(n) = function_name_of(l) {
+            (LegacyRcKind::Function, Some(n))
+        } else {
+            (LegacyRcKind::Other, None)
+        };
+        out.push(LegacyRcLine {
+            line_no: i + 1,
+            text: line.to_string(),
+            kind,
+            name,
+        });
+    }
+    out
+}
+
+/// `名字() {` ⇒ `Some("名字")`。形状与 `sftp::builtin_alias_names` 认的那一形逐字相同。
+fn function_name_of(l: &str) -> Option<String> {
+    let (name, rest) = l.split_once("()")?;
+    if !rest.trim_start().starts_with('{') {
+        return None;
+    }
+    let name = name.trim();
+    (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+        .then(|| name.to_string())
+}
+
+/// 🔴 `KR62D2` 的产物：**一段让用户自己动手的提示。** 没有要清的就是空串。
+///
+/// **产品一个字节都不删**（`K31` + 用户逐字「原本的配置要手动删除」）。
+/// 措辞刻意不是「请删除」：见 [`scan_legacy_rc_lines`] 的诚实边界那一节。
+///
+/// 「哪几行会把我们装的那块遮蔽掉」现算自 `sftp::builtin_alias_names()`
+/// （= `shared/ccm-aliases.sh` 本身），**这里不抄一份名字清单**。
+pub fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> String {
+    if hits.is_empty() {
+        return String::new();
+    }
+    let builtin = crate::sftp::builtin_alias_names();
+    let mut shadowed = 0usize;
+    let mut body = String::new();
+    for h in hits {
+        let shadow = h
+            .name
+            .as_deref()
+            .is_some_and(|n| builtin.iter().any(|b| *b == n));
+        if shadow {
+            shadowed += 1;
+        }
+        body.push_str(&format!(
+            "  第 {} 行  {}{}\n",
+            h.line_no,
+            h.text.trim_end(),
+            if shadow {
+                "     ← 会赢过我们那一块"
+            } else {
+                ""
+            }
+        ));
+    }
+    let mut out = format!(
+        "{what} 里有 {} 行提到 ccm，而它们都在 cc-monitor 的围栏之外。\n\
+         围栏删法够不着裸行 —— 边界在哪只有你知道，所以 cc-monitor 一个字节都不会碰它们。\n\
+         要不要删、删哪几行，由你自己定：\n\n{body}",
+        hits.len()
+    );
+    if shadowed > 0 {
+        out.push_str(&format!(
+            "\n标了「会赢过我们那一块」的那 {shadowed} 行：cc-monitor 装的别名块用 `declare -f` \
+             让着你已有的同名函数，而你这几行在它前面 —— 不删掉它们，装了那一块也不生效。\n"
+        ));
+    }
+    out.push_str(&format!(
+        "\n动手的地方：用你自己的编辑器打开 {what}，删掉你决定不要的那几行，再开一个新终端。\n"
+    ));
+    out
 }
 
 /// 解析当前用户实际安装的 PS profile 路径。
@@ -87,6 +387,17 @@ pub struct ProfileScan {
 pub fn fence_profile_path(raw: &str) -> Result<PathBuf, String> {
     let home =
         dirs::home_dir().ok_or_else(|| "找不到 home 目录 —— 拒绝写任何 profile".to_string())?;
+    fence_path_under(&home, raw)
+}
+
+/// 同一道围栏，**home 由调用方给**。
+///
+/// ⚠ `K-R49` 起抽出这一层，理由是**可测性**而不是通用性：调用方拿一个临时目录当 home，
+/// 围栏的四条规则就能在**碰不到真实家目录**的前提下被真跑一遍
+/// （〔用 08-29〕「你只能做产品, 不能动机器」）。上面那个入口一个字节的语义都没变 ——
+/// 它只是把 `dirs::home_dir()` 填进来。
+pub fn fence_path_under(home: &std::path::Path, raw: &str) -> Result<PathBuf, String> {
+    let home = home.to_path_buf();
     let expanded: PathBuf = if raw == "~" {
         home.clone()
     } else if let Some(rest) = raw.strip_prefix("~/").or_else(|| raw.strip_prefix("~\\")) {
@@ -183,7 +494,11 @@ pub fn scan_path(path: &PathBuf, command_name: &str) -> ProfileScan {
     scan_profile(ProfileKind::Custom, path, command_name)
 }
 
-/// 扫描一个 profile 文件：是否存在 / 是否含 ccm 块 / 检测命令名冲突。
+/// 扫描一个 profile 文件：是否存在 / 是否含 ccm 块 / 检测命令名冲突 /
+/// 〔`K-R62`〕POSIX rc 上那几行**围栏之外的裸行**。
+///
+/// 🔴 **只读。** 它一个字节都不写 —— `K31`（只能做产品，不能动机器）在这一条上尤其硬：
+/// 「查」这一半的全部产物是文字（[`ProfileScan::manual_cleanup_hint`]），动手的是用户。
 pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> ProfileScan {
     let path_str = path.to_string_lossy().into_owned();
     if !path.exists() {
@@ -194,13 +509,21 @@ pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> Pr
             has_ccm_block: false,
             ccm_block_version: None,
             conflicting_functions: Vec::new(),
+            manual_cleanup_hint: String::new(),
             size_bytes: 0,
         };
     }
+    let flavor = flavor_of(path);
     let content = std::fs::read_to_string(path).unwrap_or_default();
     let size_bytes = content.len() as u64;
-    let (block_present, block_version) = find_block_version(&content);
-    let conflicts = find_conflicting_functions(&content, command_name);
+    let (block_present, block_version) = block_presence(flavor, &content);
+    let conflicts = find_conflicting_functions(flavor, &content, command_name);
+    let manual_cleanup_hint = match flavor {
+        ProfileFlavor::PowerShell => String::new(),
+        ProfileFlavor::PosixRc => {
+            render_manual_cleanup_hint(&path_str, &scan_legacy_rc_lines(&content))
+        }
+    };
     ProfileScan {
         kind,
         path: path_str,
@@ -208,6 +531,7 @@ pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> Pr
         has_ccm_block: block_present,
         ccm_block_version: block_version,
         conflicting_functions: conflicts,
+        manual_cleanup_hint,
         size_bytes,
     }
 }
@@ -249,7 +573,10 @@ pub fn install_to_profile(
     command_name: &str,
     include_cc_function: bool,
 ) -> Result<(), String> {
-    let code = render_cc_code(command_name, include_cc_function);
+    // 〔`K-R62`〕**写什么**按方言分岔（见 [`plan_install`]），
+    // **怎么落盘**这一整套（备份 → 原子替换 → 读回逐字比对 → 不符回滚）两种方言共用一份。
+    // ⇒ 补上 POSIX 那一格**没有**多出第四套安装器，只是这一台安装器学会了第二种方言。
+    let flavor = flavor_of(path);
 
     let (existing, did_exist) = if path.exists() {
         let raw = std::fs::read_to_string(path)
@@ -275,7 +602,13 @@ pub fn install_to_profile(
         (String::new(), false)
     };
 
-    let updated = replace_or_append_block(&existing, &code, &path.display().to_string())?;
+    let updated = plan_install(
+        flavor,
+        &existing,
+        command_name,
+        include_cc_function,
+        &path.display().to_string(),
+    )?;
 
     // 写之前先备份原文件（即使没动 BEGIN/END 块外的内容，也防 atomic_write 异常）
     let backup_path = if did_exist && !existing.is_empty() {
@@ -354,7 +687,8 @@ pub fn uninstall_from_profile(path: &PathBuf) -> Result<(), String> {
             on_disk_size
         ));
     }
-    let stripped = strip_block(&existing, &path.display().to_string())?;
+    // 〔`K-R62`〕同 [`install_to_profile`]：剥哪一对围栏按方言分岔，落盘那一套共用。
+    let stripped = plan_uninstall(flavor_of(path), &existing, &path.display().to_string())?;
     if stripped == existing {
         return Ok(()); // 没有块，无需写
     }
@@ -409,22 +743,37 @@ fn find_block_version(content: &str) -> (bool, Option<String>) {
 }
 
 /// 扫描 profile 找跟 command_name 同名的 function 定义（在 BEGIN/END 块外的）。
-fn find_conflicting_functions(content: &str, command_name: &str) -> Vec<String> {
+fn find_conflicting_functions(
+    flavor: ProfileFlavor,
+    content: &str,
+    command_name: &str,
+) -> Vec<String> {
     let safe = sanitize_command_name(command_name);
     let mut inside_ccm_block = false;
     let mut hits = Vec::new();
     // 简单 line-based regex 替代：检查 "function <name>" 模式
     for line in content.lines() {
         let l = line.trim_start();
-        if l.starts_with(BEGIN_MARKER) {
-            inside_ccm_block = true;
-            continue;
-        }
-        if l.starts_with(END_MARKER) {
-            inside_ccm_block = false;
+        // 〔`K-R62`〕三对围栏一起认（`fence_marker` 的共同前缀就包含 [`BEGIN_MARKER`]）——
+        // 只认 PowerShell 那一对的话，我们自己装进 rc 的 `cc() { ccm "$@"; }`
+        // 会被当成「用户已有的同名函数」报成冲突。
+        if let Some(open) = fence_marker(line) {
+            inside_ccm_block = open;
             continue;
         }
         if inside_ccm_block {
+            continue;
+        }
+        // 〔`K-R62`〕**两种方言的函数写法不同**：PowerShell 是 `function cc {`，
+        // POSIX sh 是 `cc() {`。此前只认前一形 ⇒ 在 rc 上恒空，
+        // 而「恒空」与「真的没冲突」在界面上一模一样。
+        if flavor == ProfileFlavor::PosixRc {
+            if let Some(name) = function_name_of(l) {
+                if name.eq_ignore_ascii_case(&safe) {
+                    hits.push(safe.clone());
+                    break;
+                }
+            }
             continue;
         }
         // 简化匹配：以 "function" 开头 + 空白 + 同名（后跟空白/{/(）
@@ -942,7 +1291,7 @@ mod tests {
 function Get-Stuff { Write-Host x }
 function cc { Write-Host my-cc }
 "#;
-        let conflicts = find_conflicting_functions(content, "cc");
+        let conflicts = find_conflicting_functions(ProfileFlavor::PowerShell, content, "cc");
         assert_eq!(conflicts, vec!["cc".to_string()]);
     }
 
@@ -955,7 +1304,7 @@ function Get-Stuff { Write-Host x }
 function cc { __ccm_bind; & claude $args }
 # === cc-monitor END ===
 "#;
-        let conflicts = find_conflicting_functions(content, "cc");
+        let conflicts = find_conflicting_functions(ProfileFlavor::PowerShell, content, "cc");
         assert!(conflicts.is_empty());
     }
 
@@ -1263,6 +1612,364 @@ $PSDefaultParameterValues = @{}
                 let _ = std::fs::remove_file(entry.path());
             }
         }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R62`：本机 POSIX 那一格
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 「这份文本里**有整整一行**逐字等于它」。
+    ///
+    /// ⚠ 刻意不是 `contains`：那种比法的**匹配单位（子串）比事实（一整行）小**——
+    /// 一行被截断、或被多贴了半句，子串比法照样绿（同 `account_aliases` 那条纪律）。
+    fn pinned(hay: &str, needle: &str) -> bool {
+        hay.lines().any(|l| l == needle)
+    }
+
+    /// 一份**只有裸行、一个围栏都没有**的 rc —— `K-R57` 现打用户 `~/.bashrc` 的形状。
+    ///
+    /// 那 14 行里 10 行是真使用者，`名字() { ccm <修饰...> "$@"; }`，另 4 行是注释。
+    /// 这里照抄那个形状（名字取同一批），**并且刻意一个 BEGIN/END 都不放**。
+    const BARE_RC: &str = "\
+# 我自己的一些设置
+export EDITOR=vim
+
+# ccm 启动器
+cc()   { ccm \"$@\"; }
+cct()  { ccm --tmux \"$@\"; }
+oo()   { ccm --agent codex \"$@\"; }
+zcc()  { ccm --account z \"$@\"; }
+alias  ccx='ccm --base'
+
+# 与 ccm 无关的一行
+gs() { git status; }
+";
+
+    /// ★★ `KR62D1` 的正题：**本机 POSIX 那条路与远端那个口，产物逐字节相同。**
+    ///
+    /// **死值验**：让本机这一臂改用一份**自己的**副本（或自己写一套 merge）⇒ 这一条当场红，
+    /// 因为它比的不是「像不像」，是**恒等于远端那份实现在同一份输入上的产物**。
+    #[test]
+    fn the_local_posix_port_is_byte_for_byte_the_remote_one() {
+        let what = "/home/u/.bashrc";
+        for existing in ["", "export A=1\n", BARE_RC] {
+            let got = plan_install(ProfileFlavor::PosixRc, existing, "cc", true, what)
+                .expect("本机 POSIX 装口");
+            let want =
+                crate::sftp::merge_profile_block(existing, crate::sftp::CCM_WRAPPER_SNIPPET, what)
+                    .expect("远端那个口");
+            assert_eq!(
+                got, want,
+                "本机 POSIX 装进 rc 的东西与远端那个口不再是同一份 —— \
+                 `KR62D1` 要买的一半正是「补这一格的时候没有变成第四套」。\
+                 若这里改成了一份自己的 snippet / 一套自己的 merge，就把 `K-R62 §0c` 那三套变成了四套。"
+            );
+            // 卸那一半同样恒等（装了又卸回得去，是同一对围栏才可能成立）。
+            let back = plan_uninstall(ProfileFlavor::PosixRc, &got, what).expect("本机 POSIX 卸口");
+            assert_eq!(
+                back,
+                crate::sftp::strip_profile_block(&got, what).expect("远端卸口"),
+                "卸那一半漂了 —— 装与卸必须是同一对围栏，否则装得进去卸不干净"
+            );
+        }
+    }
+
+    /// ★★ `KR62D1`：**全树只有一份 snippet**，而且它不住在本模块。
+    ///
+    /// 上一条比的是「产物一样」，一份**逐字节相同的副本**能骗过它；这一条按源码数**住址**。
+    /// 两条一起才关得住「不许出现第二份 snippet」。
+    #[test]
+    fn the_alias_snippet_has_exactly_one_home_in_the_rust_tree() {
+        let files = guard_core::scan_tree!(
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &["rs"]
+        );
+        // ⚠ needle **拼出来**，本行不留那个宏名加左括号的字面形 —— 留了，
+        //   `cross_half_edge_registry` 会把本处当成一处「解析不出路径的 include」而红
+        //   （它按「宏名 + `(`」数调用，路径解析不出来就逼人登记）。
+        //   判据自己不许在别人的人群里留一个假身影。
+        let needle = format!("{}!(\"../../shared/ccm-aliases.sh\")", "include_str");
+        let mut homes: Vec<String> = Vec::new();
+        for (path, src) in &files {
+            if guard_core::production_code(src).contains(&needle) {
+                homes.push(path.file_name().unwrap().to_string_lossy().into_owned());
+            }
+        }
+        assert_eq!(
+            homes,
+            vec!["sftp.rs".to_string()],
+            "`shared/ccm-aliases.sh` 在 Rust 侧的住址应当**恰好一处**（`sftp.rs` 的 \
+             `CCM_WRAPPER_SNIPPET`），实得 {homes:?}。多一处就是第二份 snippet —— \
+             它们会各自漂，而漂了之后本机与远端装进去的东西就不是同一个了。"
+        );
+    }
+
+    /// ★★ `KR62D1`：**本模块没有第二套 merge/strip，也没有第二对 POSIX 围栏。**
+    ///
+    /// 死值验：在本模块里另写一个 `fn merge_posix_block(...)` 并让 `plan_install` 调它 ⇒
+    /// 下面第一条断言（POSIX 那一臂必须调远端那两个函数）当场红。
+    #[test]
+    fn the_posix_arm_borrows_the_remote_implementation_instead_of_growing_a_second_one() {
+        let src = guard_core::production_code(include_str!("profile_installer.rs"));
+        for call in [
+            "crate::sftp::merge_profile_block(",
+            "crate::sftp::strip_profile_block(",
+            "crate::sftp::CCM_WRAPPER_SNIPPET",
+        ] {
+            assert_eq!(
+                src.matches(call).count(),
+                1,
+                "`{call}` 在本模块的生产段里应当恰好出现 1 次 —— \
+                 0 次 = 本机那条路不再借远端那一份（第四套长出来了）；\
+                 >1 次 = 有第二个调用点，那是下一个漂移源"
+            );
+        }
+        // POSIX 那一对围栏的**字面量**不许在本模块出现：出现即第二个住址。
+        assert!(
+            !src.contains("remote ccm BEGIN"),
+            "本模块里出现了 POSIX 那一对围栏的字面量 —— 它只许有一个住址\
+             （`sftp::CCM_PROFILE_BEGIN`），抄一份进来就是 `K13` 那族「一个性质两把尺子」"
+        );
+    }
+
+    /// ★ `KR62D1` 的落盘那一跳：**装完之后用户原有的每一行都还在，而且块是真的块。**
+    #[test]
+    fn installing_into_a_posix_rc_keeps_every_user_line() {
+        let td = tmpdir("posix-install");
+        let p = td.0.join(".bashrc");
+        std::fs::write(&p, BARE_RC).expect("写夹具");
+        install_to_profile(&p, "cc", true).expect("装进 POSIX rc");
+        let after = std::fs::read_to_string(&p).expect("读回");
+        for line in BARE_RC.lines() {
+            assert!(
+                pinned(&after, line),
+                "用户原来那一行没了：{line:?} —— `K31`：一个字节都不许删用户的行"
+            );
+        }
+        // 装进去的确实是那份 snippet（按整行比，不按子串）。
+        for line in crate::sftp::CCM_WRAPPER_SNIPPET.trim().lines() {
+            assert!(pinned(&after, line), "别名块少了一行：{line:?}");
+        }
+        // 幂等：再装一次一个字节都不变。
+        install_to_profile(&p, "cc", true).expect("再装一次");
+        assert_eq!(
+            std::fs::read_to_string(&p).expect("读回"),
+            after,
+            "第二次安装改了文件 —— 不幂等的安装器会在 rc 里堆出两份块"
+        );
+        // 扫得出「已装」，而且这一格此前在 POSIX 上恒 false。
+        let scan = scan_path(&p, "cc");
+        assert!(
+            scan.has_ccm_block,
+            "装完却扫不出块 —— 界面会说「未安装」且藏起卸载按钮"
+        );
+        // 卸得干净，用户的行还在。
+        uninstall_from_profile(&p).expect("卸");
+        let stripped = std::fs::read_to_string(&p).expect("读回");
+        assert!(
+            !stripped.contains("cc-monitor remote ccm"),
+            "卸完还剩围栏残骸"
+        );
+        for line in BARE_RC.lines() {
+            assert!(pinned(&stripped, line), "卸载吃掉了用户那一行：{line:?}");
+        }
+        for entry in std::fs::read_dir(&td.0).unwrap().filter_map(|e| e.ok()) {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+
+    /// ★ 方言按**文件是什么**定，不按**机器是什么**定；而且路径仍然由人选。
+    #[test]
+    fn the_flavour_follows_the_file_not_the_machine() {
+        use std::path::Path;
+        for ps in [
+            "/home/u/Documents/WindowsPowerShell/Microsoft.PowerShell_profile.ps1",
+            "C:/x/profile.PS1",
+        ] {
+            assert_eq!(flavor_of(Path::new(ps)), ProfileFlavor::PowerShell, "{ps}");
+        }
+        for rc in [
+            "/home/u/.bashrc",
+            "/home/u/.zshrc",
+            "/home/u/.profile",
+            "/home/u/.config/fish/config.fish",
+        ] {
+            assert_eq!(flavor_of(Path::new(rc)), ProfileFlavor::PosixRc, "{rc}");
+        }
+    }
+
+    /// ★★ `KR62D2` 的正题：**一份没有任何围栏的 rc，那些裸行逐行指得出来。**
+    ///
+    /// **死值验**：把查法换回「只认围栏」⇒ 这一条当场红。
+    /// 本条自带那把反向尺子（下面第一段）：**围栏那条路在同一份输入上恒空** ——
+    /// 所以「只加两条路径给 `scan_legacy_profiles`」在这里不可能变绿。
+    #[test]
+    fn bare_lines_with_no_fence_at_all_are_named_line_by_line() {
+        // ① 反向尺子：围栏那条路在这份输入上**什么都看不见**。
+        assert!(
+            !find_block_version(BARE_RC).0,
+            "这份夹具里居然有围栏 —— 那它就证不了「够不着裸行」这件事"
+        );
+        assert_eq!(
+            crate::fenced_block::find_pair(
+                BARE_RC,
+                crate::sftp::CCM_PROFILE_BEGIN,
+                crate::sftp::CCM_PROFILE_END,
+                "夹具"
+            ),
+            Ok(None),
+            "围栏配对在这份输入上必须是「没有」—— 这正是 `K-R57` 现打用户机器的形状"
+        );
+
+        // ② 正题：逐行指名，行号与原文都要对。
+        let hits = scan_legacy_rc_lines(BARE_RC);
+        let got: Vec<(usize, &str)> = hits.iter().map(|h| (h.line_no, h.text.as_str())).collect();
+        assert_eq!(
+            got,
+            vec![
+                (4, "# ccm 启动器"),
+                (5, "cc()   { ccm \"$@\"; }"),
+                (6, "cct()  { ccm --tmux \"$@\"; }"),
+                (7, "oo()   { ccm --agent codex \"$@\"; }"),
+                (8, "zcc()  { ccm --account z \"$@\"; }"),
+                (9, "alias  ccx='ccm --base'"),
+                (11, "# 与 ccm 无关的一行"),
+            ],
+            "逐行指名对不上 —— 行号错一位，用户按着它去删就会删错行"
+        );
+
+        // ③ 分类：四条函数、两条注释、一条 alias。分类错了提示的措辞就会错。
+        let kinds: Vec<LegacyRcKind> = hits.iter().map(|h| h.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                LegacyRcKind::Comment,
+                LegacyRcKind::Function,
+                LegacyRcKind::Function,
+                LegacyRcKind::Function,
+                LegacyRcKind::Function,
+                LegacyRcKind::Other,
+                LegacyRcKind::Comment,
+            ]
+        );
+        assert_eq!(
+            hits.iter()
+                .filter_map(|h| h.name.clone())
+                .collect::<Vec<_>>(),
+            vec!["cc", "cct", "oo", "zcc"]
+        );
+
+        // ④ 与 ccm 无关的行一条都不许进来（`gs() { git status; }` 与 `export EDITOR=vim`）。
+        assert!(
+            !hits.iter().any(|h| h.text.contains("git status")),
+            "把与 ccm 无关的行也指名了 —— 那会让用户去删他自己的东西"
+        );
+    }
+
+    /// ★ `KR62D2`：**我们自己那一块不算「你的旧行」。**
+    ///
+    /// 三对围栏都要认：`profile_installer` 的、`sftp` 的、`account_aliases` 的。
+    /// 认漏一对 ⇒ 装完之后界面立刻回头指着我们自己刚写的那几行说「这是旧的」。
+    #[test]
+    fn our_own_fenced_block_is_never_reported_as_the_users_old_lines() {
+        let what = "/home/u/.bashrc";
+        let installed =
+            plan_install(ProfileFlavor::PosixRc, "export A=1\n", "cc", true, what).expect("装一次");
+        let hits = scan_legacy_rc_lines(&installed);
+        assert!(
+            hits.is_empty(),
+            "刚装完就把自己那一块指名成「你的旧行」了：{:?}",
+            hits.iter().map(|h| h.line_no).collect::<Vec<_>>()
+        );
+        // 另两对围栏同样要让开。
+        let mixed = format!(
+            "# === cc-monitor aliases BEGIN v1 ===\n\
+             if [ -r \"$HOME/.cc-monitor/account-aliases.sh\" ]; then . \"$HOME/.cc-monitor/account-aliases.sh\"; fi\n\
+             # === cc-monitor aliases END ===\n\
+             cc() {{ ccm \"$@\"; }}\n"
+        );
+        let hits = scan_legacy_rc_lines(&mixed);
+        assert_eq!(
+            hits.iter().map(|h| h.line_no).collect::<Vec<_>>(),
+            vec![4],
+            "围栏内外分不开 —— 只有第 4 行那条裸的才是用户自己的"
+        );
+    }
+
+    /// ★★ `KR62D2` 的产物：**一段让用户自己动手的提示，而产品一个字节都不删。**
+    #[test]
+    fn the_hint_names_every_line_and_the_product_deletes_nothing() {
+        let hits = scan_legacy_rc_lines(BARE_RC);
+        let hint = render_manual_cleanup_hint("/home/u/.bashrc", &hits);
+        assert!(!hint.is_empty(), "有裸行却生成了一段空提示");
+        for h in &hits {
+            assert!(
+                hint.contains(&format!("第 {} 行", h.line_no)),
+                "提示里没点名第 {} 行",
+                h.line_no
+            );
+            assert!(
+                pinned(
+                    &hint,
+                    &format!("  第 {} 行  {}", h.line_no, h.text.trim_end())
+                ) || hint.lines().any(|l| l.starts_with(&format!(
+                    "  第 {} 行  {}",
+                    h.line_no,
+                    h.text.trim_end()
+                ))),
+                "提示里那一行的原文被改写了 —— 用户要照着它去自己文件里认行"
+            );
+        }
+        // 「会赢过我们那一块」这一格现算自 `shared/ccm-aliases.sh`，不是抄的名单。
+        let builtin = crate::sftp::builtin_alias_names();
+        assert!(
+            !builtin.is_empty(),
+            "自带别名名单是空的 —— 下面那一格会变成空真"
+        );
+        assert!(
+            hint.contains("会赢过我们那一块"),
+            "夹具里有 `cc()` / `cct()` 两条与自带块同名，提示必须说清「不删就不生效」"
+        );
+        // 措辞：**不许**是「请删除」。产品指名，不替人做决定。
+        assert!(
+            hint.contains("由你自己定"),
+            "措辞必须把决定权留给用户 —— 我们够不着边界，猜一个边界去删是最坏的那条路"
+        );
+        assert!(
+            hint.contains("一个字节都不会碰"),
+            "提示要明说产品不动手（`K31` + 用户逐字「原本的配置要手动删除」）"
+        );
+        // 没有裸行时是空串（界面靠它决定这一块出不出现）。
+        assert!(render_manual_cleanup_hint("/home/u/.bashrc", &[]).is_empty());
+    }
+
+    /// ★★ `K31`：**「查」这一路一个字节都不写。**
+    ///
+    /// 不是读注释读出来的：真落一份夹具、扫一遍、逐字节比 + 比 mtime，
+    /// 并且断言目录里没多出任何文件（备份文件也算「动了机器」）。
+    #[test]
+    fn scanning_a_rc_changes_not_a_single_byte_on_disk() {
+        let td = tmpdir("posix-scan");
+        let p = td.0.join(".bashrc");
+        std::fs::write(&p, BARE_RC).expect("写夹具");
+        let before = std::fs::read(&p).expect("读");
+        let before_n = std::fs::read_dir(&td.0).unwrap().count();
+
+        let scan = scan_path(&p, "cc");
+        assert!(!scan.manual_cleanup_hint.is_empty(), "扫出来的提示是空的");
+        assert!(!scan.has_ccm_block, "这份夹具里没有块");
+        assert_eq!(
+            scan.conflicting_functions,
+            vec!["cc".to_string()],
+            "POSIX 那一形的同名函数（`cc() {{`）此前恒扫不出来 —— 那一格是空的"
+        );
+
+        assert_eq!(std::fs::read(&p).expect("读回"), before, "扫描改了文件内容");
+        assert_eq!(
+            std::fs::read_dir(&td.0).unwrap().count(),
+            before_n,
+            "扫描在目录里留下了东西（备份 / 临时文件）—— 那也是「动机器」"
+        );
     }
 }
 

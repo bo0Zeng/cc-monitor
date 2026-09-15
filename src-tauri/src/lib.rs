@@ -5,6 +5,7 @@
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
 //! State 注册矩阵见 doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
+mod account_aliases; // K-R49：加了账号就给那条命令落盘——写的是 monitor 自己那份别名文件，不是用户的 rc
 mod account_usage; // F10：per-account Claude 订阅计划用量窗口%（一次性探针会话 + capture-pane）
 mod accounts; // A2：多账号（cc-acct-iso）只读查询——账号=一个 CLAUDE_CONFIG_DIR
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
@@ -94,6 +95,8 @@ mod bus_identity_registry; // cc-bus：拿 id 点名 tmux 前必须核身份（�
 mod byte_cap_registry; // audit-0805 F06：字节上限登记表（管什么量 + 超限怎么办 + 跨 crate 对拍）
 mod capability_registry;
 #[cfg(test)]
+mod dial_home_registry; // K-R74：「解耦干净」改述成三样可判的东西 —— 终点二值旗（russh 在不在界面 manifest 里）+ 过程递减棘轮（还没搬走的拨号处数）+ 拨号锚点的唯一住址（整体 #[cfg(test)]）
+#[cfg(test)]
 mod doc_copy_registry; // audit-0805 F18：散文里的数字副本清账（E12 的第二条路变成机检）
 mod e2e_gate_registry; // audit-0805 08-08：每一套 e2e 要么进门禁要么登记为什么不进
 mod exec_site_registry;
@@ -127,6 +130,8 @@ mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只�
 mod rust_timer_registry; // F09：monitor **Rust 侧**周期唤醒清账（`polling_registry` 明确留下的那半）
 mod scanning_guard_registry; // audit-0805 F23：扫描型判据不许裸遍历（自匹配这一族的收口）
 mod session_name_registry; // U11 摸底：会话名产出点清账 + 递减棘轮（账本 S12 的落地形态）
+#[cfg(test)]
+mod sftp_move_ledger; // K-R78：那 14 处 SFTP 拨号今天各自卡在哪（乙为什么没搬 + 甲现打的四条挡路石；整体 cfg(test)）
 #[cfg(test)]
 mod shared_crate_registry; // U8c-1：新增共享 crate 时 CI 三样都要补 —— 从散文变机检
 mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shellcheck 要么登记豁免
@@ -495,6 +500,8 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
             // F05a（定框 C7：没有 daemonless）：起并看住**本机后端进程**。
+            // 〔`K-R59` 09-11：`C7` 的第二格今天补上了 —— 远端那个 `daemonless`
+            //  每机开关整格删除（定框 `K35`），从此**没有「没有后端」这回事**。〕
             //
             // ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10，v3.7.0〕。
             //
@@ -1201,6 +1208,10 @@ pub fn run() {
             // K-H2b `KH2B7`：界面问「这几个**本机**账号走不走中转」。
             // 只答本机不是欠账 —— 中转是每台机器自己的进程，本机这台答不了远端那台。
             relay_routing_for,
+            // K-R49：加了账号就把那条命令也落下来。写的是 monitor 自己那份别名文件
+            // （`~/.cc-monitor/account-aliases.sh`，整份重写）；用户的 rc 最多多一行 `source`，
+            // 而且那份 rc 由界面上的人**选**，本条不猜。
+            write_account_aliases,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
             cc_bus::read_cc_bus_state,
@@ -1281,9 +1292,15 @@ pub fn run() {
             history::list_last_accounts,
             history::resume_history_session,
             history::new_local_session,
+            // 🔴 `K-R109`（09-13）：本机后端产「把终端接进那个会话」那一句（`ccm attach <名>`）。
+            //    `R61` 裁定三〔用 09-13 逐字「归本机后端就好了啊」〕。注册这一行与
+            //    `parity_ledger::LEDGER` 那一行、`src/ipc/commands.ts` 那个包装层
+            //    **是同一拍的事**：拆开任意一处，`commands.vitest.ts` 的 `C04a`
+            //    或 `parity_ledger` 的双向相等当场红（`K-R106` 实测过前一种）。
+            history::render_local_attach,
             usage::aggregate_usage_all,
             remote_history::aggregate_remote_usage_all, // F88a-remote：远端 daemon 用量 fan-out
-            // A2：多账号只读查询（账号=一个 CLAUDE_CONFIG_DIR）。旧 daemon/daemonless
+            // A2：多账号只读查询（账号=一个 CLAUDE_CONFIG_DIR）。旧 daemon
             // 台一律回 available:false，前端降级隐藏账号功能而不是弹错。
             accounts::list_remote_accounts,
             local_accounts::list_local_accounts,
@@ -1312,6 +1329,8 @@ pub fn run() {
             // F08：本机侧同一份载荷、另一个执行面（补平 parity_ledger 的 usage.per-account）。
             account_usage::account_usage_local,
             ccm_probe::probe_ccm_cli,
+            // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
+            ccm_probe::local_ccm_entry_status,
             // Batch15-P1：code-picture 代码全景后端命令族（per-repo Engine 池,只读查询）
             // devbench F03：skill 接入面（列出 / 读 / 写那个「人手写的注入文件」）。
             // ⚠ 写走 `skill_host::resolve_editable` 的三道围栏 + `verified_write` 读回比对。
@@ -1560,11 +1579,10 @@ fn parse_host_obj(
     let host_key_fingerprint = str_field("hostKeyFingerprint").map(str::to_string);
     // Batch14-F56：跳板 label（指向另一台已配置主机的 origin_label）。
     let jump = str_field("jump").map(str::to_string);
-    // Batch14-F59：daemonless 降级读取开关（per-host，缺省 false = 走 daemon 流路径）。
-    let daemonless = obj
-        .get("daemonless")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    // 🔴 `K-R59`（定框 `K35`）：这里原来读 `daemonless`（per-host 降级开关）。
+    //    那个键今天**故意不读** —— 盘上还留着 `true` 的旧配置由界面侧
+    //    （`src/remote-config.ts` 的 `LEGACY_NO_BACKEND_KEY`）认出来、指名告知一次，
+    //    后端这一侧一律按「有后端」走，不再有第二条路。
     // Batch14-F45：备用地址。前端下发数组（addresses: string[]）；也容忍换行文本（历史/手填）。
     let addresses: Vec<String> = match obj.get("addresses") {
         Some(serde_json::Value::Array(arr)) => arr
@@ -1593,7 +1611,6 @@ fn parse_host_obj(
         host_key_fingerprint,
         addresses,
         jump,
-        daemonless,
     })
 }
 
@@ -1738,6 +1755,27 @@ fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
 #[tauri::command]
 fn write_relay_credentials_key(key: String, config_dir: String) -> Result<(), String> {
     creds_store::write_key(&config_dir, &key)
+}
+
+/// `K-R49`：**加了账号，那条命令也该跟着有。**
+///
+/// 前端递过来的是 `buildAliasLine`（全仓唯一那份别名生成器）吐出来的那几行，
+/// 本条只负责**落盘**：整份重写 `~/.cc-monitor/account-aliases.sh`，
+/// 可选地把**一行** `source` 装进用户**自己指定**的那份 rc。
+///
+/// 🔴 三件事在 `account_aliases` 那一侧，别在这里重写：
+/// ① 每一行都要过形状围栏（写进去的是会被 shell 执行的代码）；
+/// ② `dry_run` 时一个字节都不写 —— 界面拿它做预览；
+/// ③ home 由这里解析、由那边当参数收 —— 那边的测试用临时目录当 home，
+///    结构上碰不到真实家目录。
+#[tauri::command]
+fn write_account_aliases(
+    lines: Vec<String>,
+    rc_path: Option<String>,
+    dry_run: bool,
+) -> Result<account_aliases::AccountAliasReport, String> {
+    let home = dirs::home_dir().ok_or_else(|| "找不到 home 目录 —— 拒绝写任何文件".to_string())?;
+    account_aliases::apply(&home, &lines, rc_path.as_deref(), dry_run)
 }
 
 #[tauri::command]

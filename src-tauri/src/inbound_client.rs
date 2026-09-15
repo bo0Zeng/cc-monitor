@@ -596,6 +596,35 @@ pub fn launch_args(
     Value::Object(m)
 }
 
+/// `K-R104`：`capture-pane` 命令的**参数构造器**（monitor 这一侧的契约面）。
+///
+/// 与 [`launch_args`] 同一条理由：字段名一旦与 daemon 的解析器漂开，症状是
+/// 「命令发出去了、daemon 回 `invalid_args` 说缺字段」，而两边各自看都「对」。
+/// 由 [`tests::the_two_tmux_primitive_arg_builders_match_the_daemon_parsers`] 对拍。
+pub fn capture_pane_args(name: &str) -> Value {
+    let mut m = serde_json::Map::new();
+    m.insert("name".into(), Value::String(name.to_string()));
+    Value::Object(m)
+}
+
+/// `K-R104`：`oneshot-session` 命令的**参数构造器**。
+///
+/// `ttl_secs` / `width` / `height` 都是**十进制串**（与 `launch` 的 `width`/`height`
+/// 逐字同型）—— 一条规矩不写第二种表示。
+///
+/// ⚠ **宽高成对**：只给一半时这里两个都不发，让「半个尺寸」在**发出去之前**就不存在
+/// （同 [`LaunchExtras::width`] 那条逐字纪律）。
+pub fn oneshot_session_args(slug: &str, ttl_secs: u32, geom: Option<(u32, u32)>) -> Value {
+    let mut m = serde_json::Map::new();
+    m.insert("slug".into(), Value::String(slug.to_string()));
+    m.insert("ttlSecs".into(), Value::String(ttl_secs.to_string()));
+    if let Some((w, h)) = geom {
+        m.insert("width".into(), Value::String(w.to_string()));
+        m.insert("height".into(), Value::String(h.to_string()));
+    }
+    Value::Object(m)
+}
+
 /// `create-or-attach` **专有**的那三个可选字段〔`K-P2` `D3` 09-03〕。
 ///
 /// # 为什么是一个结构体，不是再挂三个位置参数
@@ -1158,6 +1187,110 @@ mod tests {
             suite, daemon,
             "\ne2e 脚本断言的命令集与 daemon 的 `inbound::COMMANDS` 对不上。\n\
              加/删入方向命令时这两处要一起动 —— 否则新命令在**唯一跑真进程的那一层**漏测。"
+        );
+    }
+
+    /// ★★ `KR104D1` 的跨轨对拍：那两条新原语的参数构造器与 daemon 的解析器对得上。
+    ///
+    /// # 为什么不照抄上面那条 `launch` 的抠法
+    ///
+    /// `launch` 的解析器逐个 `get_str("<key>")`，抠得出来。那两条原语的解析器写法不同
+    /// （`capture-pane` 复用 `kill::parse_name`，`oneshot-session` 用一个局部 `get` 闭包）
+    /// ⇒ 照抄那把尺子会**零命中地绿**。
+    /// ⇒ 这里换一个**共同的、数据级**的真相源：daemon 的 `inbound::REGISTRY` 里那条
+    /// `CommandSpec::fields`（它自己已经被 `protocol_doc_guard` 与 daemon 侧的判据
+    /// 双向钉着，不是第三份手写清单）。
+    ///
+    /// **args 是 fields 的子集**（fields = args ∪ data）⇒ 断的是**包含**，
+    /// 并另加一格「data 那几个键不许出现在 args 里」，免得包含关系退化成空真。
+    #[test]
+    fn the_two_tmux_primitive_arg_builders_match_the_daemon_parsers() {
+        const DAEMON_INBOUND: &str = include_str!("../../remote-daemon-proto/src/inbound.rs");
+        let prod = guard_core::production_code(DAEMON_INBOUND);
+
+        /// 从 daemon 的 `REGISTRY` 里抠出某条命令那一格 `fields: &[…]` 的成员。
+        fn fields_of(prod: &str, cmd: &str) -> Vec<String> {
+            let head = format!("name: \"{cmd}\",");
+            let at = prod.find(&head).unwrap_or_else(|| {
+                panic!("daemon 的 `REGISTRY` 里找不到 `{cmd}` —— 尺子的作用域没了")
+            });
+            let rest = &prod[at..];
+            let f = rest
+                .find("fields: &[")
+                .unwrap_or_else(|| panic!("`{cmd}` 那一格没有 `fields`"));
+            let body_at = f + "fields: &[".len();
+            let end = rest[body_at..]
+                .find(']')
+                .unwrap_or_else(|| panic!("`{cmd}` 的 `fields` 没有收尾 `]`"));
+            let body = &rest[body_at..body_at + end];
+            let mut out: Vec<String> = Vec::new();
+            for piece in body.split('"').skip(1).step_by(2) {
+                out.push(piece.to_string());
+            }
+            out.sort();
+            out
+        }
+
+        // ── `capture-pane` ────────────────────────────────────────────────
+        let cap_fields = fields_of(&prod, "capture-pane");
+        assert_eq!(
+            cap_fields,
+            vec!["name".to_string(), "screen".to_string()],
+            "daemon 侧 `capture-pane` 的 `fields` 变了 —— 两边同拍改"
+        );
+        let cap = capture_pane_args("cc-x");
+        let cap_keys: Vec<String> = cap.as_object().expect("对象").keys().cloned().collect();
+        assert_eq!(
+            cap_keys,
+            vec!["name".to_string()],
+            "`capture_pane_args` 的键变了"
+        );
+        assert!(
+            !cap_keys.iter().any(|k| k == "screen"),
+            "`screen` 是**回**的那一侧，不该出现在请求 args 里"
+        );
+
+        // ── `oneshot-session` ─────────────────────────────────────────────
+        let one_fields = fields_of(&prod, "oneshot-session");
+        assert_eq!(
+            one_fields,
+            vec![
+                "handle".to_string(),
+                "height".to_string(),
+                "session".to_string(),
+                "slug".to_string(),
+                "ttlSecs".to_string(),
+                "width".to_string()
+            ],
+            "daemon 侧 `oneshot-session` 的 `fields` 变了 —— 两边同拍改"
+        );
+        let full = oneshot_session_args("usage-z", 30, Some((200, 50)));
+        let mut got: Vec<String> = full.as_object().expect("对象").keys().cloned().collect();
+        got.sort();
+        assert_eq!(
+            got,
+            vec![
+                "height".to_string(),
+                "slug".to_string(),
+                "ttlSecs".to_string(),
+                "width".to_string()
+            ],
+            "`oneshot_session_args` 发出去的键与 daemon 收的对不上"
+        );
+        for out_only in ["handle", "session"] {
+            assert!(
+                !got.iter().any(|k| k == out_only),
+                "`{out_only}` 是**回**的那一侧，不该出现在请求 args 里"
+            );
+        }
+        // 可选那两格真的可选，而且**成对**。
+        let minimal = oneshot_session_args("usage-z", 30, None);
+        let mkeys: Vec<&String> = minimal.as_object().expect("对象").keys().collect();
+        assert_eq!(mkeys.len(), 2, "最小形态应当只有 slug/ttlSecs：{mkeys:?}");
+        // 数值一律串（与 `launch` 的 width/height 同型）。
+        assert!(
+            full.get("ttlSecs").and_then(|v| v.as_str()) == Some("30"),
+            "`ttlSecs` 不是十进制串 —— 与 `launch` 那两格的表示漂开了"
         );
     }
 

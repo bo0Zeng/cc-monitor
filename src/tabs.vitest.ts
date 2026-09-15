@@ -1044,10 +1044,10 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
   //（回退之后恒 `tmuxName: null`，那条照样绿）⇒ 必须再钉正面：知道的时候要铸、且要避让。
   it("P3t-Y2b 本地 resume：拿到本机 tmux 名单 → 铸一个不撞的名字传给后端", async () => {
     (invoke as unknown as Mock).mockImplementation(async (cmd: string) => {
-      // 基名 `l1abcdef-cc` 已被占 ⇒ `mintTmuxName` 必须让到 `-2`。
+      // `K-R96`：基名从 cwd 派生 ⇒ `/home/u/p` ⇒ `p-cc`。它已被占 ⇒ `mintTmuxName` 必须让到 `-2`。
       if (cmd === "list_local_tmux")
         return [
-          { name: "l1abcdef-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: null },
+          { name: "p-cc", path: "/p", command: "claude", attached: false, windows: 1, sid: null },
           { name: "unrelated", path: "/p", command: "bash", attached: false, windows: 1, sid: null },
         ];
       return undefined;
@@ -1059,9 +1059,10 @@ describe("F41 resumeTab：远端一键拉起 / 本地不变", () => {
       sessionId: "l1abcdef",
       cwd: "/home/u/p",
       launcher: null,
-      // 让到 `-2` 而不是撞上 `l1abcdef-cc` —— 撞上去就是「静默接进第一个会话，
+      // 让到 `-2` 而不是撞上 `p-cc` —— 撞上去就是「静默接进第一个会话，
       // 而用户以为开了新的」（issue #76 那一族，F13 记着同一个坑）。
-      tmuxName: "l1abcdef-cc-2",
+      // `K-R96`：名字里**没有 sid**（`l1abcdef` 一个字都不出现）—— 它骑在 `@ccm_sid` 上。
+      tmuxName: "p-cc-2",
     });
   });
 });
@@ -1131,7 +1132,7 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
       tm as unknown as { resumeTabTmux(sid: string, useBase?: boolean): Promise<void> }
     ).resumeTabTmux("r1", true);
     expect(invoke).not.toHaveBeenCalledWith("list_last_accounts");
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "r1-cc", {
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "proj-cc", {
       configDir: undefined,
       accountName: undefined,
       modelOverride: undefined,
@@ -1141,7 +1142,7 @@ describe("audit-fixes F01 follow-resume pin 现读磁盘（修 B1 内存脏读�
 
 // audit-fixes F03 步骤1（idle-tmux 就地复用，治 #76 根因 + #75 一条）：
 // 目标 sid 的 tmux 还在（@ccm_sid 命中）但 command≠claude（空 shell）→ resumeTabTmux 应**复用原会话名**
-// 就地 resume（runRemoteResumeIntoExistingTmux），而不是 pickFreshTmuxName 起 cc-<sid8>-N 新会话。
+// 就地 resume（runRemoteResumeIntoExistingTmux），而不是铸名口起 `<项目名>-cc-N` 新会话。
 // 变异锚点：删掉 ①.5 idle 分支 → 回落 ② 起新会话 → runRemoteResumeTmux 被调、reuse 没被调 → 红。
 describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
   let tm: TabManager;
@@ -1188,7 +1189,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
   });
 
   it("sid 无对应 tmux（全新/漂移占名）→ 起全新 resume，不就地复用", async () => {
-    // 列表里只有别的 sid 的会话 → 目标 sid 既非 live 也无 idle → 落 pickFreshTmuxName 新起。
+    // 列表里只有别的 sid 的会话 → 目标 sid 既非 live 也无 idle → 落 mintSessionTmuxName 新起。
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
@@ -1228,7 +1229,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
     await (tm as unknown as { resumeTabTmux(sid: string): Promise<void> }).resumeTabTmux("r1");
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "r1-cc", {
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "proj-cc", {
       configDir: "/h/.claude-accts/z",
       accountName: "z",
       modelOverride: undefined,
@@ -1263,7 +1264,7 @@ describe("audit-fixes F03 resumeTabTmux idle-tmux 就地复用", () => {
     tm.ensureTab("r1", "/home/pi/proj", "/p/r1.jsonl", 0, "aya");
     tm.archiveTab("r1");
     await (tm as unknown as { resumeTabTmux(sid: string): Promise<void> }).resumeTabTmux("r1");
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "r1-cc", {
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "proj-cc", {
       configDir: "/h/.claude-accts/z",
       accountName: "z",
       modelOverride: "opus",
@@ -1582,7 +1583,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     await flushMicro();
     await flushMicro();
     // account-ux U3：归档 tmux resume 也走 withAccount follow → 第 6 参 configDir（空 mock → undefined）。
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "r1-cc", {
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "proj-cc", {
       configDir: undefined,
       accountName: undefined,
       modelOverride: undefined,
@@ -1620,7 +1621,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     vi.mocked(invoke).mockImplementation((cmd: string) =>
       cmd === "list_remote_tmux"
         ? Promise.resolve([
-            { name: "r1-cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "drift77" },
+            { name: "proj-cc", path: "/home/pi/proj", command: "claude", attached: true, windows: 1, sid: "drift77" },
           ])
         : Promise.resolve(undefined),
     );
@@ -1631,8 +1632,8 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     await flushMicro();
     await flushMicro();
     expect(runRemoteAttach).not.toHaveBeenCalled();
-    // r1-cc 被漂移会话占着 → 挑 r1-cc-2 新建,保证 --resume r1 落进原会话。
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "r1-cc-2", { configDir: undefined, accountName: undefined, modelOverride: undefined });
+    // proj-cc 被漂移会话占着 → 挑 proj-cc-2 新建,保证 --resume r1 落进原会话。
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "proj-cc-2", { configDir: undefined, accountName: undefined, modelOverride: undefined });
   });
 
   it("F74 tmux 叶子:老 wrapper(整表无 @ccm_sid)→ 起全新 fresh resume,不 attach 不确定会话", async () => {
@@ -1653,7 +1654,7 @@ describe("F09/F52 归档远端 tab 右键：Resume 一级项 + 二级 flyout（t
     // findClaudeTmux 按 cwd 兜底命中 proj_cc,但 live.sid(null)!==sid → **不 attach 不确定的会话**,
     // 起 fresh resume(cc-r1 未被占 → 基名);--resume r1 恒落对会话(§30「找不到就别静默换」)。
     expect(runRemoteAttach).not.toHaveBeenCalled();
-    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "r1-cc", { configDir: undefined, accountName: undefined, modelOverride: undefined });
+    expect(runRemoteResumeTmux).toHaveBeenCalledWith("aya", "r1", "/home/pi/proj", "cct", "proj-cc", { configDir: undefined, accountName: undefined, modelOverride: undefined });
   });
 
   it("归档本地 tab → 仍单「Resume」(无 flyout，无 tmux/直连叶子)", () => {

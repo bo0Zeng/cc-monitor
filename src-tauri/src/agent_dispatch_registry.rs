@@ -155,9 +155,17 @@ mod tests {
         (
             "history.rs",
             Face::Facade,
-            11,
-            "会话记录根 ×4（`records_dir`）+「这个文件是不是会话记录」×6（`has_record_ext`）\
-             + 从路径取 sid ×1 ⇒ 全树最重的一处，而它一根针都不在件计划 `§0` 的四把尺子里",
+            7,
+            "会话记录根 ×3（`records_dir`）+「这个文件是不是会话记录」×4（`has_record_ext`）\
+             ⇒ 全树最重的一处，而它一根针都不在件计划 `§0` 的四把尺子里。\
+             🔴 〔`K-R97` 09-12〕**11 → 8，棘轮往下拧了 3**：`list_history_projects` 改问本机\
+             后端要 `--list-projects`，项目级那一段（`records_dir` ×1 + `has_record_ext` ×1 + \
+             从路径取 sid ×1）连同它唯一的调用点一起删了。⚠ **这不是「收进接口了」那种降** ——\
+             那三处是**整段搬去后端**，桌面侧从此不问这件事；从路径取 sid 那一格因此归零。\
+             🔴 〔`K-R88` 09-13〕**8 → 7**：建分支那条路的源守卫（收路径 → canonicalize → \
+             `has_record_ext`）整个不在了 —— 入参收成 sid，找那份文件走两侧共用的\
+             `branch_core::find_session_file`。⚠ 同样**不是「收进接口了」**：\
+             那一格是**搬进共享 crate**，桌面侧从此不自己问「这个文件是不是会话记录」",
         ),
         (
             "history.rs",
@@ -204,8 +212,11 @@ mod tests {
         (
             "adapter.rs",
             Face::RuntimeDispatch,
-            2,
-            "`records_dir_for` 与 `records_roots` —— per-kind 那一半，**接口正在被正确使用**",
+            3,
+            "`records_dir_for` 与 `records_roots` —— per-kind 那一半，**接口正在被正确使用**。\
+             `K-R93`（09-12）**+1**：`agent_profile_facts(kind)` 里那一句 `for_kind(kind)` ——\
+             前端那份 agent 画像的取数口，它收 kind、按 kind 取适配器，**没有 `active()`**。\
+             ⇒ 这一处进的是第四张脸而不是前三张，`COUPLING_BASELINE` 一动没动",
         ),
         (
             "history.rs",
@@ -219,11 +230,17 @@ mod tests {
     ///
     /// ⚠ 它是「桌面侧那一半差多少」的头条数字。件计划 `§0b` 此前登记的是
     /// 「`active()` 硬编码 6 处 + `for_kind` 真分派 4 处」——**那个读数只盖住 `active()` 那一张脸，
-    /// 而门面那一族（今天 24 处）一根针都没数到**。本条立表时把四张脸一起量了。
+    /// 而门面那一族（立表时 24 处）一根针都没数到**。本条立表时把四张脸一起量了。
+    ///
+    /// 🔴 〔`K-R97` 09-12〕**40 → 37**：`history.rs` 的门面那张脸 11 → 8，
+    /// 因为本机项目列表整段改走后端（详见那条登记）。这是这张棘轮第一次真往下走。
+    ///
+    /// 🔴 〔`K-R88` 09-13〕**37 → 36**：`history.rs` 的门面那张脸 8 → 7，
+    /// 建分支那条路的源守卫随「找文件」一起进了共享 crate（详见那条登记）。
     ///
     /// ⚠ 与 daemon 侧那个 27 **不是同一把尺子，不许相加**（两侧机制不同：那边直呼
     /// `agents::<名>::`，这边走 trait + 门面）。要比较请各自报各自的尺子。
-    const COUPLING_BASELINE: usize = 40;
+    const COUPLING_BASELINE: usize = 36;
 
     /// **抹除 kind 的门面**：`adapter.rs` 里那几个「替调用者把 agent 写死」的自由函数。
     ///

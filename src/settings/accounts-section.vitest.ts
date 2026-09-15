@@ -1,7 +1,8 @@
 // account-ux U7：设置「账号」组的 IA / 渲染分支测试（vitest + jsdom）。
 //
 // 重点不是"长得好不好看"，而是两件会真伤人的事：
-//   ① 四条**降级分支**（无远端 / daemonless / 老 daemon / 未启用）的 DOM 与文案不能被 IA 重排改掉；
+//   ① 三条**降级分支**（无远端 / 老 daemon / 未启用）的 DOM 与文案不能被 IA 重排改掉；
+//     〔`K-R59` 09-11：原先是四条 —— `daemonless` 那一支随定框 `K35` 整档删除。〕
 //   ② 维护区（加账号 / 补链，都会动远端目录）**必须默认折叠**，不能常驻摊在手边。
 // U6 的教训：断言要锚在真契约上，并对关键属性做变异验证（故意改坏看会不会红）。
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -29,12 +30,19 @@ import { readFileSync } from "node:fs";
 import { AccountsSection, renderRelayKeyBlock } from "./accounts-section";
 // `N-F2`：账本与那张清单 —— 本文件末尾那一族要断的正是「面板跑完之后账本里是什么」，
 // 所以取的是**真的** `readStatus` / `computeGaps`，一个桩都不架。
-import { readStatus, LOCAL_MACHINE_KEY, type MachineStatus } from "./machine-status";
+import {
+  readStatus,
+  recordFacet,
+  LOCAL_MACHINE_KEY,
+  type MachineStatus,
+} from "./machine-status";
 import { computeGaps, summarizeGaps } from "./readiness";
 import type { RelayCredentialsStatus } from "../ipc/commands";
 import { showActionFailureToast } from "../error-toast";
 import * as accounts from "../accounts";
 import type { AccountsState, Account } from "../accounts";
+// `K-R49`：命令名的规则只有一个住址 —— 断言里不许再手抄一份 `<名>cc`。
+import { suggestAliasName } from "../launcher-diagnostics";
 
 function acct(p: Partial<Account>): Account {
   return {
@@ -85,7 +93,6 @@ const host = (p: Record<string, unknown> = {}) => ({
   hostKeyFingerprint: "",
   addresses: [],
   jump: "",
-  daemonless: false,
   ...p,
 });
 
@@ -102,7 +109,25 @@ async function mount(): Promise<HTMLElement> {
 beforeEach(() => {
   vi.restoreAllMocks();
   readRemoteConfigMock.mockReset().mockResolvedValue({ enabled: true, hosts: [host()] });
-  invokeMock.mockReset().mockResolvedValue(undefined);
+  // `K-R49`：本机那一支现在会挂一块「按账号生成命令」，它**挂上去就先预览一次**
+  // （`write_account_aliases` + `dryRun`）。默认回 `undefined` 会让它当场 TypeError，
+  // 而那种红长得像「面板坏了」—— 给这一条命令一个形状对的最小答案，其余命令照旧回 `undefined`。
+  invokeMock.mockReset().mockImplementation((cmd: unknown) =>
+    Promise.resolve(
+      cmd === "write_account_aliases"
+        ? {
+            aliasPath: "/h/.cc-monitor/account-aliases.sh",
+            names: [],
+            collisions: [],
+            rcCandidates: [],
+            wroteAliasFile: false,
+            aliasFileUnchanged: false,
+            wroteRc: false,
+            notes: [],
+          }
+        : undefined,
+    ),
+  );
   fetchAccountsMock.mockReset();
   // `N-F1b`：默认给「这台机一个隔离账号都没有」——最保守的一档，
   // 想量别的态的用例自己在里面覆盖掉它。
@@ -149,15 +174,6 @@ describe("account-ux U7 设置账号组：降级分支不被 IA 重排改掉", (
       el.querySelector(".accounts-local"),
       "本机那一支整块没渲染 —— 上面三条会在一屏空白上恒真",
     ).not.toBeNull();
-  });
-
-  it("daemonless 远端 → 安静说明，不渲染表", async () => {
-    fetchAccountsMock.mockResolvedValue(
-      state({ available: false, error: "该远端配置为 daemonless" }),
-    );
-    const el = await mount();
-    expect(el.querySelector(".accounts-info")?.textContent).toContain("daemonless");
-    expectNoReadyChrome(el);
   });
 
   it("老 daemon（不支持账号）→ 提示需更新，不渲染表", async () => {
@@ -391,7 +407,16 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
   });
 });
 
-describe("F10：账号行用量单元格（懒加载 + 五种状态）", () => {
+/**
+ * F10：账号行用量单元格（懒加载）。
+ *
+ * 🔴 **`K-R101`/`R59`（09-13）把「五种状态」压成两种**：`screen`（抓到了那一屏，
+ * **空屏也算**）与 `probe-failed`（`captured=false`）。
+ * `ok` / `not-logged-in` / `cli-missing` / `unrecognized` 那四种**全部来自解析器**，
+ * 而解析层功能已退役（`R59` 逐字「解析层代码保留, 但是功能先退役」）。
+ * ⇒ 那四条用例改成断 `KR101D1`「原文到得了界面」。
+ */
+describe("F10/K-R101：账号行用量单元格（懒加载 + 两种状态）", () => {
   const ready = (): AccountsState =>
     state({ accounts: [acct({ name: "z" })], defaultName: "z" });
 
@@ -418,46 +443,54 @@ describe("F10：账号行用量单元格（懒加载 + 五种状态）", () => {
     expect(invokeMock.mock.calls.some(([cmd]) => cmd === "account_usage")).toBe(false);
   });
 
-  it("点击后：查询中 → ok（含百分比+重置文案）", async () => {
+  /**
+   * 🔴 **`KR101D1`（`R58` 裁定一）在设置面板这一面的判据。**
+   *
+   * ⚠ 失效方向（件文件点名）：判「`raw` 字段还在类型里」。这里断的是 **DOM 上那个 `<pre>`
+   * 的 `textContent` 逐字等于抓回来的那一屏** —— 中途被 `trim` / 截断 / 只塞进 `title`，
+   * 本条都会红。
+   */
+  it("★ KR101D1：点击后 查询中 → 那一屏**原文逐字**摆在单元格里（等宽 · 保留空白）", async () => {
+    const screen = "Current session\n  38% used\nResets in 2h 14m\n  尾部空白  ";
     fetchAccountsMock.mockResolvedValue(ready());
-    mockUsageInvoke({ captured: true, raw: "Current session\n  38%\nResets in 2h 14m" });
+    mockUsageInvoke({ captured: true, raw: screen });
     const el = await mount();
     usageBtn(el)?.click();
     expect(el.querySelector(".accounts-usage-pending")?.textContent).toBe("查询中…");
     await flush();
-    const outcome = el.querySelector(".accounts-usage-outcome");
-    expect(outcome?.textContent).toContain("38%");
-    expect(outcome?.textContent).toContain("重置");
-  });
-
-  it("not-logged-in → 明确短句 + 复制诊断文本按钮（判定基于猜测正则，可能误判）", async () => {
-    fetchAccountsMock.mockResolvedValue(ready());
-    mockUsageInvoke({ captured: true, raw: "Please sign in at console.anthropic.com" });
-    const el = await mount();
-    usageBtn(el)?.click();
-    await flush();
-    expect(el.querySelector(".accounts-usage-outcome")?.textContent).toContain("未登录");
+    const pre = el.querySelector<HTMLElement>(".usage-screen-raw");
+    expect(pre, "单元格里没有那一屏原文 —— 原文在中途被丢了").not.toBeNull();
+    expect(pre!.tagName).toBe("PRE");
+    expect(pre!.style.whiteSpace).toBe("pre-wrap");
+    expect(pre!.textContent).toBe(screen);
     expect(el.querySelector(".accounts-usage-copy-raw")).not.toBeNull();
   });
 
-  it("cli-missing → 明确短句 + 复制诊断文本按钮（判定基于猜测正则，可能误判）", async () => {
+  it("★ KR101D1 ③：抓到空屏也算成功 —— 照样渲染，并明说是空屏（不是失败）", async () => {
     fetchAccountsMock.mockResolvedValue(ready());
-    mockUsageInvoke({ captured: true, raw: "bash: claude: command not found" });
+    mockUsageInvoke({ captured: true, raw: "" });
     const el = await mount();
     usageBtn(el)?.click();
     await flush();
-    expect(el.querySelector(".accounts-usage-outcome")?.textContent).toContain("没有 claude 命令");
+    expect(el.querySelector(".usage-screen-raw")?.textContent).toBe("");
+    expect(el.querySelector(".usage-screen-empty")?.textContent).toContain("空屏");
+    // 「复制这一屏」照给（空屏也可以复制，用户拿它去开 issue）
     expect(el.querySelector(".accounts-usage-copy-raw")).not.toBeNull();
   });
 
-  it("unrecognized → 短句 + 复制诊断文本按钮（不是空白）", async () => {
-    fetchAccountsMock.mockResolvedValue(ready());
-    mockUsageInvoke({ captured: true, raw: "╭─ 全新界面 ─╮" });
-    const el = await mount();
-    usageBtn(el)?.click();
-    await flush();
-    expect(el.querySelector(".accounts-usage-outcome")?.textContent).toContain("暂时读不到");
-    expect(el.querySelector(".accounts-usage-copy-raw")).not.toBeNull();
+  it("★ 生产路零解析：屏上写着 `sign in` / `command not found` 也不再被判成一个态", async () => {
+    for (const raw of ["Please sign in at console.anthropic.com", "bash: claude: command not found"]) {
+      fetchAccountsMock.mockResolvedValue(ready());
+      mockUsageInvoke({ captured: true, raw });
+      const el = await mount();
+      usageBtn(el)?.click();
+      await flush();
+      const outcome = el.querySelector(".accounts-usage-outcome")!;
+      expect(outcome.textContent).not.toContain("未登录");
+      expect(outcome.textContent).not.toContain("没有 claude 命令");
+      // 屏上原文原样给用户，让人自己看出来 —— 这正是 `R58` 买到的那个「人眼兜底」。
+      expect(el.querySelector(".usage-screen-raw")!.textContent).toBe(raw);
+    }
   });
 
   it("probe-failed（Rust 层报错，如无 tmux）→ 显示原始错误文案", async () => {
@@ -931,6 +964,39 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     );
   });
 
+  // ---- `K-R49` 第一跳：**加了账号，这一节要提一句那条命令** ----
+
+  /**
+   * 🔴 `K-R49`：这一条买的是「**接线还在**」。
+   *
+   * 本件之前，别名生成器住在设置面板另一个分组里，与账号这一节**互不相识** ——
+   * 用户 09-10 逐字「我现在添加了一个账号但是没法直接添加命令, 还得手动去改」。
+   * ⚠ 它断的是「那一块在本机这一支里长出来了」，**不是**「它写对了文件」——
+   * 后者归 `account_aliases.rs` 那一族（真跑一趟落盘，拿临时目录当 home）。
+   */
+  it("★ K-R49：本机有账号时，这一节里长出「按账号生成命令」那一块", async () => {
+    noRemotes();
+    fetchLocalAccountsMock.mockResolvedValue(three());
+    const el = await mount();
+    const block = el.querySelector(".ccm-acct-alias");
+    expect(block, "加了账号，这一节仍然一句都没提那条命令 —— 那正是 K-R49 的题面").not.toBeNull();
+    // 行数与账号数对得上（三个号 ⇒ 三条命令），而且命令名是 `<名>cc`。
+    const rows = [...el.querySelectorAll(".ccm-acct-alias-row")].map((r) => r.textContent ?? "");
+    expect(rows.length, "块出来了但一条命令都没有").toBe(3);
+    expect(rows[0]).toContain(`${suggestAliasName(L1)}() { ccm --account`);
+  });
+
+  /**
+   * ⚠ 反面：**一个账号都没有**的那一档不要摆这块。
+   * 那一屏该说的是「先建一个号」，塞一块「给你的账号生成命令」是对着空清单说话。
+   */
+  it("★ K-R49 反面：一个本机账号都没有时，不摆那一块（那一屏该说的是先建一个号）", async () => {
+    noRemotes();
+    fetchLocalAccountsMock.mockResolvedValue(localState({ accounts: [] }));
+    const el = await mount();
+    expect(el.querySelector(".ccm-acct-alias")).toBeNull();
+  });
+
   // ---- `NF1bD1` 反面：旧那句话一个字都不许留 ----
 
   it("★ NF1bD1 反面：旧那句「先在「连接」组配一台远端」一个字都不出现", async () => {
@@ -1012,7 +1078,7 @@ describe("N-F1b 没有远端时：设置面板列得出这台机器的账号", (
     expect(harvested.filter((s) => s.includes("该远端尚未启用多账号"))).toEqual([]);
     // 阴性对照：同一把尺子在**远端**那一支上**认得出**「远端」——它不是恒空。
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host()] });
-    fetchAccountsMock.mockResolvedValue(state({ available: false, error: "该远端配置为 daemonless" }));
+    fetchAccountsMock.mockResolvedValue(state({ available: false, error: "daemon 过旧" }));
     const remoteEl = await mount();
     expect(
       (remoteEl.textContent ?? "").includes("远端"),
@@ -1175,7 +1241,10 @@ describe("N-F2 本机那两格真的被写进账本", () => {
   it("★ NF2D2 地板：本机那条路**跑之前**，账本里本机那一栏是空的（这一族不是空真）", () => {
     // 这条是分母自检。没有它，下面每一条「写进去了」都可能是在断一本本来就有内容的账。
     expect(readStatus(LOCAL_MACHINE_KEY)).toEqual({});
-    // 而那两格是**适用**的：`notApplicable` 只排掉本机的 daemon / connection。
+    // 那两格是**适用**的：`notApplicable` 今天只排掉本机的 connection（Windows 上另加 ccm）。
+    // ⚠ `K-R59`（09-11）**多出第三格 `daemon`**：那条「本机不需要 daemon」的豁免撤了
+    //（`C7` 之后本机也有后端进程）。它**不归本分节写** —— 写点住
+    // `remote-section.ts::noteLocalBackend`，由 `remote-section.vitest.ts` 那一族接。
     const before = computeGaps({
       origins: [LOCAL_MACHINE_KEY],
       statusOf: readStatus,
@@ -1183,8 +1252,8 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     });
     expect(
       before.map((g) => `${g.facet}:${g.kind}`),
-      "本机在 Windows 上的适用格不是恰好这两格 —— 下面几条的题面就得重写",
-    ).toEqual(["acctIso:unknown", "accounts:unknown"]);
+      "本机在 Windows 上的适用格不是恰好这三格 —— 下面几条的题面就得重写",
+    ).toEqual(["daemon:unknown", "acctIso:unknown", "accounts:unknown"]);
   });
 
   // ---- 三档各写各的 ----
@@ -1249,7 +1318,13 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     ).toBe(3);
   });
 
-  it("★ NF2D2 本机侧总账：三档跑完，那两格**没有一档**还停在「没测过」", async () => {
+  /**
+   * ⚠ 射程逐字写清（`K-R59` 09-11 收窄）：本条只管**本分节负责的那两格**
+   * （`acctIso` / `accounts`）。本机的 `daemon` 从 09-11 起也是一格适用的，
+   * 但它的写点在 `remote-section.ts::noteLocalBackend` —— 这一族**一次都没跑过它**，
+   * 把它算进来只会得到一条恒红，而且红的是别人的账。
+   */
+  it("★ NF2D2 本机侧总账：三档跑完，本分节那两格**没有一档**还停在「没测过」", async () => {
     for (const st of [
       threeLocal(),
       localState({ accounts: [] }),
@@ -1263,10 +1338,16 @@ describe("N-F2 本机那两格真的被写进账本", () => {
         hostOs: "windows",
       });
       // 「没测过」= `unknown`。测过了但确认缺（`missing`）是另一回事，这条不管那个。
+      const mine = new Set(["acctIso", "accounts"]);
       expect(
-        gaps.filter((g) => g.kind === "unknown").map((g) => g.facet),
+        gaps
+          .filter((g) => g.kind === "unknown" && mine.has(g.facet))
+          .map((g) => g.facet),
         `跑完之后本机还有格子停在「没测过」（账本：${JSON.stringify(shape(led))}）`,
       ).toEqual([]);
+      // 阴性对照：这把尺子不是恒空 —— 射程外那一格今天确实停在「没测过」，
+      // 而那正是**另一个写点**的活（`remote-section.ts::noteLocalBackend`）。
+      expect(gaps.map((g) => g.facet)).toContain("daemon");
     }
   });
 
@@ -1293,18 +1374,6 @@ describe("N-F2 本机那两格真的被写进账本", () => {
       await remote(() => fetchAccountsMock.mockRejectedValue(new Error("net"))),
       "拉取失败那一支",
     ).toEqual({ accounts: { kind: "fail", detail: "拉取失败" } });
-
-    expect(
-      await remote(() =>
-        fetchAccountsMock.mockResolvedValue(
-          state({ available: false, error: "该主机配置为 daemonless", accounts: [] }),
-        ),
-      ),
-      "daemonless 那一支",
-    ).toEqual({
-      accounts: { kind: "na", detail: "daemonless" },
-      acctIso: { kind: "na", detail: "daemonless" },
-    });
 
     expect(
       await remote(() =>
@@ -1341,14 +1410,19 @@ describe("N-F2 本机那两格真的被写进账本", () => {
   it("★ NF2D3：本机全绿 + 一台远端都没有 ⇒ summarizeGaps 返回 null（那一块整块不出现的前提）", async () => {
     // 分母写清（`NF2D3` 的 acceptor 逐字要求，防「一台机器都没有」蒙混）：
     //   · 机器数 = 1（本机），**不是空清单**；
-    //   · 这台机在 Windows 上的适用格 = { acctIso, accounts }（daemon / connection 不适用、
+    //   · 这台机在 Windows 上的适用格 = { daemon, acctIso, accounts }（connection 不适用、
     //     ccm 的对应物是「终端集成」那块）—— 上面那条「地板」用例已把这个集合逐项断过；
-    //   · 这两格由**真的一次面板运行**写绿，账本不是手工摆出来的。
+    //   · `acctIso` / `accounts` 两格由**真的一次面板运行**写绿，账本不是手工摆出来的。
     const led = await localLedgerAfter(threeLocal());
     expect(shape(led), "前提没成立：这一次面板运行没把两格写绿").toEqual({
       accounts: { kind: "ok", detail: "3 个" },
       acctIso: { kind: "ok", detail: "已启用" },
     });
+    // ⚠ 第三格（`K-R59` 新算数的 `daemon`）**不归本分节写**：它的生产写点是
+    //   `remote-section.ts::noteLocalBackend`，由 `remote-section.vitest.ts` 用真的一次
+    //   面板运行钉着。这里手工补上它，**只是为了让「整块该不该出现」这一跳还量得动** ——
+    //   如实说明：这一格是摆出来的，不是本族跑出来的。
+    recordFacet(LOCAL_MACHINE_KEY, "daemon", { kind: "ok", detail: "已连上" });
     const origins = [LOCAL_MACHINE_KEY];
     expect(origins.length, "分母是空的 —— 下面那条 null 是空真").toBe(1);
     const gaps = computeGaps({ origins, statusOf: readStatus, hostOs: "windows" });
@@ -1359,9 +1433,9 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     ).toBeNull();
   });
 
-  it("★ NF2D3 先证会红：把那两格改回「没测过」⇒ 清单又出现，且逐字写着「没测过」", async () => {
+  it("★ NF2D3 先证会红：把那几格改回「没测过」⇒ 清单又出现，且逐字写着「没测过」", async () => {
     await localLedgerAfter(threeLocal());
-    // 只把本机那一栏抹掉 = 回到本件之前的行为（那两格从来没人写）。
+    // 只把本机那一栏抹掉 = 回到本件之前的行为（那几格从来没人写）。
     localStorage.clear();
     expect(readStatus(LOCAL_MACHINE_KEY)).toEqual({});
     const gaps = computeGaps({
@@ -1369,7 +1443,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
       statusOf: readStatus,
       hostOs: "windows",
     });
-    expect(gaps.map((g) => g.facet)).toEqual(["acctIso", "accounts"]);
+    expect(gaps.map((g) => g.facet)).toEqual(["daemon", "acctIso", "accounts"]);
     const s = summarizeGaps(gaps);
     expect(s).not.toBeNull();
     expect(s, "回到旧行为时它该说「还没测过」").toContain("还没测过");

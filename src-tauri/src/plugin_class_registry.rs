@@ -164,10 +164,13 @@ mod tests {
         },
         Candidate {
             id: "ccm",
-            home: "shared/ccm",
+            // 🔴 〔`K-R48` 第二拍 09-11〕住址从那份已删的 bash `ccm` 换到这里：脚本删了，
+            //    `ccm` 今天是后端二进制的一次性模式（`K33`：「不要有什么单独的 ccm」）。
+            home: "remote-daemon-proto/src/control/ccm",
             semantics: Semantics::BuiltIn,
             shape: Shape::ManagedTool,
-            today: "一套通用骨架 + 一张 per-agent 适配表（`E4b`），能力靠 `--ccm-probe` 报",
+            today: "一套通用骨架 + 一张 per-agent 适配表（`E4b`），能力靠 `--ccm-probe` 报。\
+                    〔`K-R48` 09-11〕它**就是后端本体**的一种跑法，不再是一个独立脚本",
             gap: "无差 —— 本区只借它的协商形状（`E7`），不改它。\
                   ⚠ 但轴二那一格**落不进 `C21` 的三档**：它是受管工具，这件事本身就是读数",
         },
@@ -246,68 +249,78 @@ mod tests {
         out
     }
 
-    /// `shared/ccm` 每个 `agent_*` 适配函数的 **claude 臂 / codex 臂**。
+    /// 🔴 〔`K-R48` 第二拍 09-11〕**这里原来有三个从那份已删的 bash `ccm` 里抠的取法**
+    /// （`ccm_agent_arms` 〔散文墓碑〕 逐个切 `agent_*` 函数的 `case` 臂 · `case_arm` · `ccm_probe_values` 〔散文墓碑〕）。
+    /// 〔用@09-11 `K33`〕那个脚本删了，per-agent 适配表与 probe 那一行搬进了
+    /// `remote-daemon-proto/src/control/ccm/`（Rust）⇒ 取法整块换成读那份源码的 `const`。
     ///
-    /// 取法三步，每步都**界段**，不靠「从文件开头找第一个」：
-    /// ① 行首 `agent_` 且带 `()` 的行是函数起点；
-    /// ② 从起点切到**它自己的** `esac`（段外的 `claude)` 因此读不进来）；
-    /// ③ 段内取 `claude)` / `codex)` 的臂体（到 `;;` 为止）；缺哪一臂就落到 `*)`。
+    /// **为什么运行期读文件而不是 `include_str!`**：后者会在 monitor 与 daemon 之间造一条
+    /// **编译期**跨 crate 边（`cross_half_edge_registry` 那族要单独登记），而本条要的只是一份文本。
+    fn ccm_module_source(file: &str) -> String {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级")
+            .join("remote-daemon-proto/src/control/ccm")
+            .join(file);
+        std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}：{e}", p.display()))
+    }
+
+    /// `control/ccm/mod.rs` 里某个 `&[&str]` 常量的成员。
     ///
-    /// ⚠ ③ 那个「缺就落到 `*)`」不是将就：`agent_has_identity` 与 `agent_needs_bus_id`
-    /// 今天就是这么写的（只列一个 agent，另一个走通配），照 shell 的真实语义取才对。
-    fn ccm_agent_arms() -> Vec<(String, String, String)> {
-        let ccm = guard_core::strip_hash_comment_lines(include_str!("../../shared/ccm"));
-        let head = format!("\n{}_", "agent");
-        let mut out = Vec::new();
-        let mut from = 0usize;
-        while let Some(rel) = ccm[from..].find(head.as_str()) {
-            let at = from + rel + 1;
-            from = at + 1;
-            let tail = &ccm[at..];
-            let Some(paren) = tail.find("()") else {
-                continue;
-            };
-            let name = tail[..paren].trim().to_string();
-            // 「行首那个词就是函数名」—— 带空格说明这行不是函数定义（是调用或散文）。
-            if name.contains(' ') {
-                continue;
-            }
-            let Some(esac) = tail.find("esac") else {
-                continue;
-            };
-            let block = &tail[..esac];
-            out.push((name, case_arm(block, "claude"), case_arm(block, "codex")));
-        }
+    /// 🔴 抠不到 / 抠出空表就 **panic**：回空表会让上层的计数断言变成「零命中地绿」。
+    fn ccm_const_list(name: &str) -> Vec<String> {
+        let src = ccm_module_source("mod.rs");
+        let head = format!("const {name}: &[&str] = &[");
+        assert_eq!(
+            src.matches(head.as_str()).count(),
+            1,
+            "`{name}` 在 `control/ccm/mod.rs` 里不是恰好一处 —— 抠法坏了"
+        );
+        let at = src.find(head.as_str()).unwrap() + head.len();
+        let tail = &src[at..];
+        let end = tail.find("];").expect("那个常量没有收尾 `];`");
+        let out: Vec<String> = tail[..end]
+            .split(',')
+            .filter_map(|s| {
+                let s = s.trim();
+                s.strip_prefix('"')
+                    .and_then(|s| s.strip_suffix('"'))
+                    .map(str::to_string)
+            })
+            .collect();
+        assert!(!out.is_empty(), "`{name}` 抠出来是空表 —— 本条此刻是空转的");
         out
     }
 
-    /// 一个 `case` 段里某个 agent 的臂体（空白归一化）。缺这一臂就取通配臂 `*)`。
-    fn case_arm(case_block: &str, agent: &str) -> String {
-        let pat = format!("{agent})");
-        let seg = match case_block.find(pat.as_str()) {
-            Some(i) => &case_block[i + pat.len()..],
-            None => match case_block.find("*)") {
-                Some(i) => &case_block[i + 2..],
-                None => return String::new(),
-            },
-        };
-        let end = seg.find(";;").unwrap_or(seg.len());
-        seg[..end].split_whitespace().collect::<Vec<_>>().join(" ")
-    }
-
-    /// `--ccm-probe` 那一行里某个 `key=` 的值列表。
+    /// per-agent 适配函数的名字：`control/ccm/mod.rs` 里**按 agent 分支**的那几个。
     ///
-    /// 锚点带上 shell 源码里那个**两字符的 `\n` 转义**（`printf` 串里的换行是写出来的，
-    /// 不是真换行）—— 不带它的话 `capabilities=` 的左边是字母 `n`，
-    /// `find_pinned` 会判成「被撑大的命中」。这一条是写判据时当场撞出来的。
-    fn ccm_probe_values(key: &str) -> Vec<String> {
-        let ccm = guard_core::strip_hash_comment_lines(include_str!("../../shared/ccm"));
-        let anchor = format!("\\n{key}=");
-        segment_after(&ccm, &anchor, "\\n")
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .filter(|s| !s.is_empty())
-            .collect()
+    /// 取法：行首 `pub(crate) fn <名>(agent: &str)` —— 它们的共同形状是
+    /// 「吃一个 agent 名，回这个 agent 的那一份」。⚠ 抠不到就 panic（免得零命中地绿）。
+    ///
+    /// 🔴 **人群只到 `control/ccm/mod.rs` 为止，`agents/mod.rs::account_env_of` 刻意不算**：
+    /// 后者是 daemon **早就有**的东西（「切账号靠改哪个环境变量」），`ccm` 只是**问它要**
+    /// （`mod.rs` 头注逐字「本文件不认识任何 agent 的名字」）。把它数进来，
+    /// 这个数就从「`ccm` 的 per-agent 表有多大」变成「全仓有几个吃 agent 名的函数」——
+    /// **那是另一个量**，而 `E4b` 裁的是前者。〔本拍现打时它真的混进来过一次，读数 6 vs 5。〕
+    fn ccm_per_agent_fns() -> Vec<String> {
+        let mut out: Vec<String> = Vec::new();
+        for line in guard_core::production_code(&ccm_module_source("mod.rs")).lines() {
+            let l = line.trim();
+            let Some(rest) = l.strip_prefix("pub(crate) fn ") else {
+                continue;
+            };
+            let Some((name, args)) = rest.split_once('(') else {
+                continue;
+            };
+            if args.starts_with("agent: &str)") {
+                out.push(format!("mod.rs::{name}"));
+            }
+        }
+        assert!(
+            !out.is_empty(),
+            "一个 per-agent 适配函数都抠不到 —— 抠法坏了"
+        );
+        out
     }
 
     /// cc-bus **专有**的数据布局针（与 daemon 的 `cc_bus_boundary_guard` 同一组）。
@@ -421,11 +434,22 @@ mod tests {
         let bus: Vec<&String> = names.iter().filter(|n| n.starts_with("bus-")).collect();
         assert_eq!(
             bus.len(),
-            3,
-            "daemon 转调 cc-bus 的命令从 3 条变成 {} 条：{bus:?}\n\
-             ⚠ 顺带纠一条读数：`C19` 的 ⚠ 里写的是「`bus-*` **四条**」，\
-             而 `inbound::REGISTRY` 今天实测是**三条**（`bus-list`/`bus-send`/`bus-kill`），\
-             刻意没有 `bus-recv`（`cc-recv` 有副作用，daemon 代读等于把消息从人那里偷走）。",
+            4,
+            "daemon 转调 cc-bus 的命令从 4 条变成 {} 条：{bus:?}\n\
+             今天这四条是 `bus-list` / `bus-send` / `bus-kill` / `bus-state`\
+             （`bus-state` 是 `K-R113` 09-13 补的**具名读命令**：总线名单 ＋ spawn 台账一次回全）。\n\
+             ⚠ **`C19` 的 ⚠ 与实测今天对上了**：那里写的是「`bus-*` 四条」，实测也是四条 ——\
+             ⚠⚠ 而这一句此前**反过来是过期的**（它逐字写着「`C19` 说四条、实测三条」，\
+             `K-R113` 之后实测就是四条了）⇒ 本行是那次订正的订正，别再照旧读。\n\
+             ★ **仍然刻意没有 `bus-recv`**：`cc-recv` 有副作用（推进已读位置），\
+             daemon 代读等于把消息从人那里偷走 —— 这句今天仍是真的，理由全文在\
+             `remote-daemon-proto/src/control/cc_bus.rs` 的模块头注 ①。\n\
+             🔴 **变了要去看什么：不是 `EU3`。** 本行原先写着「变了就该回去看那条待决\
+             （`EU3`：插件的粒度是命令还是包）」，而 `EU3` **今天已经作废** ——\
+             `backend-consolidation/OPEN-PREMISES.md` 逐字「`plugin-split` `EF04` 已撤件、\
+             `EU3` 同时作废」。⇒ 别去读一份不存在的待决。今天这条绊线买到的是\
+             「**daemon 的 cc-bus 命令面长了一条，而 monitor 这张登记表没人看见**」——\
+             改这个数之前，先回本表 `cc-bus` 那一行看它的「今天什么样 / 差在哪」还成不成立。",
             bus.len()
         );
 
@@ -607,71 +631,53 @@ mod tests {
     /// 而它在轴二上**落不进三档**（受管工具）。
     #[test]
     fn ccm_is_one_skeleton_with_a_per_agent_table() {
-        let arms = ccm_agent_arms();
-        let names: Vec<&str> = arms.iter().map(|(n, _, _)| n.as_str()).collect();
+        // 🔴 〔`K-R48` 第二拍 09-11〕**取法换了一次，口径两条都保住，第三条如实降级。**
+        //
+        // 从前这三格读的是那份已删的 bash `ccm` 脚本：5 个 `agent_*` 函数、
+        // 每个函数 `claude)` / `codex)` 两臂的**取值**、`--ccm-probe` 那一行的 token 列表。
+        // 〔用@09-11 `K33`〕脚本删了，这三样搬进了 `control/ccm/`（Rust）。
+        //
+        // ⚠ **「两臂取值不同 5 项 / 同名参数化 1 项」那两格丢了，写清楚**：
+        //   那是 shell `case` **文本**才有的形状（两臂各是一段可比较的字面量）。
+        //   Rust 侧是 `match` 里的表达式 —— 逐字比它们的文本是在比实现细节，不是在比性质。
+        //   ⇒ 本条今天只保住「**per-agent 适配面有几个函数**」这一格（`E4b` 那句
+        //   「通用骨架不动，加一张表的一行」靠的正是它），另两格**如实作废，不假装还在**。
+        //   那条「codex 与 claude 到底哪几项不同」今天由 daemon 侧
+        //   `control::ccm::tests::the_agent_set_has_one_address_and_every_member_is_wired` 逐项钉。
+        let fns = ccm_per_agent_fns();
         assert_eq!(
-            arms.len(),
+            fns.len(),
             5,
-            "`shared/ccm` 的 per-agent 适配函数从 5 个变成 {} 个：{names:?}\n\
+            "per-agent 适配函数从 5 个变成 {} 个：{fns:?}\n\
              ⇒ `E4b` 裁的是「通用骨架不动，加一张表的一行」。多一个函数 = 分叉面变大，\
              那正是该有人过一眼的时刻；少一个 = 要么收敛了（好事，改这个数），\
-             要么抽取器坏了（`agent_` 开头 + `()` + 到自己的 `esac`）。",
-            arms.len()
-        );
-
-        // ★ E4b 那个「4 项不同」的口径：**取值不同**是 5/5，减掉「同名参数化」那一项才是 4。
-        //   两个数都对，量的不是同一件事 —— 所以两个都断言，谁引用谁看得见口径。
-        let mut diverging = 0usize;
-        let mut parameterized: Vec<&str> = Vec::new();
-        for (name, claude, codex) in &arms {
-            if claude == codex {
-                continue;
-            }
-            diverging += 1;
-            // 「同名参数化」= 把 agent 名换成同一个占位符之后两臂逐字相同
-            //（`echo claude` vs `echo codex`：那不是形状分叉，是同一个形状带自己的名字）。
-            if claude.replace("claude", "<agent>") == codex.replace("codex", "<agent>") {
-                parameterized.push(name);
-            }
-        }
-        assert_eq!(
-            diverging, 5,
-            "5 个适配函数里只有 {diverging} 个两臂取值不同 —— \
-             `E4b` 的前提（「codex 是 ccm 但其实是不同形态的」）在这个口径下不再成立。\n\
-             逐条：{arms:?}"
-        );
-        assert_eq!(
-            parameterized.len(),
-            1,
-            "「同名参数化」的适配函数不是 1 个，而是 {}：{parameterized:?}\n\
-             ⇒ `E4b` 写的是「5 项里 codex 有 **4** 项与 claude 不同」。\
-             实测按「取值不同」是 **5** 项；那个 4 = 5 减掉 `agent_default_launcher`\
-             （`echo claude` vs `echo codex` —— 同一个形状带自己的名字，不是形状分叉）。\
-             两个数都对，量的不是同一件事，本条把口径钉下来免得下一个人再对一次。",
-            parameterized.len()
+             要么抽取器坏了（`pub(crate) fn <名>(agent: &str)`，只扫 `control/ccm/mod.rs`）。",
+            fns.len()
         );
 
         // 能力协商面（`E7`/`EL3`）：token 是**集合**，判「会不会做某件事」问集合，不比版本号。
-        let caps = ccm_probe_values("capabilities");
+        let caps = ccm_const_list("CAPABILITIES");
         assert_eq!(
             caps.len(),
-            17,
-            "`--ccm-probe` 的能力 token 从 17 个变成 {}：{caps:?}\n\
+            18,
+            "`--ccm-probe` 的能力 token 从 18 个变成 {}：{caps:?}\n\
              ⇒ 这是插件协商的**样板**（`E7`：一条 probe 子命令 → `key=value` 行 → \
              消费者声明它要哪些 token）。加能力是好事，但今天已有两个真实消费者\
              （`shared/cc-bus/scripts/cc-spawn` 检 4 个 token · `src/launch-render-cli.ts` 的 \
              `CLI_REQUIRED_CAPS` 检 7 个），这个数变了要顺手看一眼它们。\n\
-             ⚠ 16 → 17 是 `K-C1`（08-24）加的 `account-via-daemon`。**PM 落这一格前逐个读过那两个消费者**：\
-             `cc-spawn` 是 `for _c in detach tmux-size tmux-base bus-register` 逐个查逗号列表（**子集检查**）；\
-             `CLI_REQUIRED_CAPS` 是一个 7 元必需列表（**也是子集检查**）⇒ **加 token 安全，删/改名才危险**。\
-             ⇒ 下一个人加 token 时不必重读这两处；**改名或删 token 时必须重读**。",
+             ⚠ 两个消费者**都是子集检查** ⇒ **加 token 安全，删/改名才危险**。\
+             ⇒ 下一个人加 token 时不必重读这两处；**改名或删 token 时必须重读**。\n\
+             〔`K-R61` 09-11：17 → 18，加的是 `base-url-across-tmux`。\
+             『谁在数它』那张表住 `remote-daemon-proto/src/control/ccm/mod.rs` 的 \
+             `CAPABILITIES` 头注，**本条不复述第二份** —— 只提醒：`src-tauri/build.rs` \
+             那个 `extract_capabilities` 抠的是 daemon 流模式那个同名常量，盖不到这里。〕",
             caps.len()
         );
         assert_eq!(
-            ccm_probe_values("agents"),
+            ccm_const_list("AGENTS"),
             vec!["claude".to_string(), "codex".to_string()],
             "`--ccm-probe` 报的 agent 集合变了 —— `E4b` 的 per-agent 表要跟着加行，\
-             而 `E4c` 记着那张表今天有**三份副本**（`golden.tsv` 4 key · ccm 5 函数 · \
+             而 `E4c` 记着那张表今天有**三份副本**（`golden.tsv` 4 key · `control/ccm` 5 函数 · \
              daemon `agents/*/resume.rs`），真相源只覆盖一半。"
         );
 
@@ -748,23 +754,42 @@ mod tests {
         );
     }
 
-    /// 抽取器的**行为**自检：喂人造语料，臂体取法必须只取该取的那一段。
+    /// 抽取器的**行为**自检：喂人造语料，取法必须只取该取的那一段。
     ///
-    /// 没有这条，上面那个 `5 / 1` 只是「今天碰巧数出来的两个数」——
-    /// 取法坏掉（比如把整个 `case` 段当臂体）时它照样可能落在同一个数上。
+    /// 没有这条，上面那几个数只是「今天碰巧数出来的数」—— 取法坏掉时它照样可能落在同一个数上。
+    ///
+    /// 🔴 〔`K-R48` 第二拍 09-11〕**语料从 bash `case` 换成 Rust `const`**：
+    /// 被测对象从那份已删的 bash `ccm` 换成了 `remote-daemon-proto/src/control/ccm/mod.rs`，自检跟着换语言。
+    /// 从前那三格（一臂不许吃到下一臂 / 缺臂落通配 / 段界）随 `case_arm` 一起没了 ——
+    /// **不是丢了，是那个形状不存在了**（Rust 的 `match` 没有 `;;` 这个坑）。
     #[test]
-    fn the_arm_extractor_takes_one_arm_not_the_whole_case() {
-        let block = "case \"$1\" in claude) echo A ;; codex) echo B ;; esac";
-        assert_eq!(case_arm(block, "claude"), "echo A");
-        assert_eq!(case_arm(block, "codex"), "echo B");
-        // 缺这一臂 ⇒ 落到通配臂（`agent_has_identity` 今天就是这个形状）。
-        let wild = "case \"$1\" in claude) return 0 ;; *) return 1 ;; esac";
-        assert_eq!(case_arm(wild, "codex"), "return 1");
-        assert_eq!(case_arm(wild, "claude"), "return 0");
-        // 段界自检：`;;` 之后的东西不许被吃进来。
+    fn the_const_list_extractor_takes_one_list_not_the_whole_file() {
+        // 正向：真去抠一次，成员必须是**这一个**常量的（不是把下一个常量也吃进来）。
+        let agents = ccm_const_list("AGENTS");
+        assert_eq!(agents, vec!["claude".to_string(), "codex".to_string()]);
+        // 段界自检：`AGENTS` 抠出来的里面不许出现 `CAPABILITIES` 的成员
+        //（吃过头的话两张表会合并，而「17 个 token」那一格会静默地变成另一个数）。
+        let caps = ccm_const_list("CAPABILITIES");
         assert!(
-            !case_arm(block, "claude").contains('B'),
-            "臂体取过头了 —— 取到了下一臂，那样两臂永远「相同」，分叉计数会静默归零"
+            !agents
+                .iter()
+                .any(|a| caps.contains(a) && a != "claude" && a != "codex"),
+            "`AGENTS` 抠过头了 —— 吃到了下一个常量：{agents:?}"
+        );
+        assert!(
+            caps.len() > agents.len(),
+            "两张表抠成了同一份 —— 锚点没起作用"
+        );
+        // per-agent 函数那一格：抠出来的每一项都要带住址前缀（免得两份同名函数被数成一个）。
+        let fns = ccm_per_agent_fns();
+        for f in &fns {
+            assert!(f.starts_with("mod.rs::"), "per-agent 函数名没带住址：{f}");
+        }
+        // 段界自检：人群刻意**只到 `control/ccm/mod.rs`** —— `agents/mod.rs::account_env_of`
+        // 是 daemon 早有的东西，混进来这个数就变成另一个量（见 `ccm_per_agent_fns` 头注）。
+        assert!(
+            !fns.iter().any(|f| f.contains("account_env_of")),
+            "人群扩到 `agents/mod.rs` 了：{fns:?} —— 那个数不再是「`ccm` 的 per-agent 表有多大」"
         );
     }
 }

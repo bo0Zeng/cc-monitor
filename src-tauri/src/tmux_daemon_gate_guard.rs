@@ -26,6 +26,11 @@
 //!    **两条命令都必须走 daemon，不许退回**
 //!    （[`tests::kill_now_routes_through_the_daemon`] /
 //!    [`tests::send_keys_now_routes_through_the_daemon`]）。
+//!    ★★ **`K-R72`（09-12）：那两条又各加了一格 —— 回潮闸。**
+//!    `C7` 那条过渡期 SSH 回落**删了**（`K-R54` 裁定表第 1 · 2 处），于是这两条判据
+//!    从「主路必须走 daemon **且回落必须还在**」变成「主路必须走 daemon
+//!    **且盘上不许再有第二条路**」。⚠ 两次翻面的方向是相反的，别读成同一格改了措辞：
+//!    先前那半逐字要求 `connect_and_exec_cmd` **在**，今天逐字要求它**不在**。
 //!    ⚠ F04c 的表达力缺口是**补掉**的、不是绕开的：daemon 多了一个 mode 名
 //!    `send-keys-raw`（发裸键、不附 `Enter`）。**必须是 mode 名而不是字段** ——
 //!    `parse_request` 不 deny unknown fields ⇒ 旧 daemon 会静默忽略字段照样附 `Enter`，
@@ -117,6 +122,13 @@ mod tests {
     }
 
     /// ★ 抽取器自检 A：monitor 那两个函数体真的抽到了。
+    ///
+    /// ⚠ `K-R72`（09-12）**换了哨兵，而且非换不可**：原来那句断的是
+    /// `body.contains("connect_and_exec_cmd")` —— 拿「回落那条 SSH 在不在」当
+    /// 「抽到没抽到」的代理。今天回落删了，那个代理**恒假** ⇒ 这条自检会把
+    /// 「抽取器好好的」报成「抽错了段」。⇒ 改成断 [`DAEMON_CHANNEL_MARKERS`]：
+    /// 那是两条命令**今天唯一那条路**的标志，抽错段一样看得见。
+    /// 🔴 顺带记下这一形：**一条自检的哨兵长在被测实现上，实现一变自检先假**。
     #[test]
     fn the_two_command_bodies_are_actually_extracted() {
         for sig in GUARDED_COMMANDS {
@@ -126,10 +138,12 @@ mod tests {
                 "`{sig}` 只抽到 {} 字节 —— 抽取坏了",
                 body.len()
             );
-            assert!(
-                body.contains("connect_and_exec_cmd"),
-                "`{sig}` 的函数体里没有 `connect_and_exec_cmd` —— 抽错了段，或者它已经改走别的路了"
-            );
+            for m in DAEMON_CHANNEL_MARKERS {
+                assert!(
+                    body.contains(m),
+                    "`{sig}` 的函数体里没有 `{m}` —— 抽错了段，或者它已经改走别的路了"
+                );
+            }
         }
     }
 
@@ -196,55 +210,35 @@ mod tests {
     ///
     /// # 人群与判准（先量后定，量到的都写在这）
     ///
-    /// 人群 = `tmux.rs` 生产段里每一处 `tmux <动词>` 字符串（今天 7 处 / 5 个动词：
-    /// `ls` · `capture-pane` · `display-message` · `kill-session`×2 · `send-keys`×2）。
-    /// 判准 = 动词 ∈ [`READ_ONLY_VERBS`]，或所在函数含 [`GATE_BUILDER`]。
+    /// 人群 = `tmux.rs` 生产段里每一处 `tmux <动词>` 字符串。
     ///
-    /// ⚠ **人群里混了两处错误消息串**（`format!("tmux kill-session: {..}")` 这种）。
-    /// 刻意不去区分「命令串」与「消息串」—— 文本上分不干净，而多算这两处**没有代价**：
-    /// 它们所在的函数本来就走 Gate。真要出问题的形态（**非 Gate 函数里出现破坏性动词**）
-    /// 一次都不会被漏掉。写下来是因为「判据的人群比它自称的略大」也是一种要交代的事。
+    /// # ★★ `K-R72`（09-12）：判准**收紧了一格**，而且是**变强**不是变弱
+    ///
+    /// 原判准是「动词 ∈ [`READ_ONLY_VERBS`] **或**所在函数含 `build_guarded_tmux_cmd`」。
+    /// 今天 monitor 侧那条会拼破坏性 tmux 命令的路整个删了（送键与杀会话只走后端）
+    /// ⇒ 那个「或」的右半**没有成员了**，而**留着一个空的或分支是危险的**：
+    /// 它给「重新长出一个受托者、然后把破坏性动词挂上去」留着一条合法路。
+    /// ⇒ 判准收成一条：**monitor 侧发出的每一条远端 tmux 命令都必须是只读动词。**
+    /// 这比原来严格 —— 原来允许「走 Gate 的破坏性动词」，今天一个都不允许。
+    ///
+    /// ⚠ **人群里仍可能混进错误消息串**（`format!("tmux …: {..}")` 这种）。
+    /// 刻意不去区分「命令串」与「消息串」—— 文本上分不干净。⚠ 但**代价随判准收紧变了**：
+    /// 原先多算没有代价（那些函数本来就走 Gate），今天多算一处含破坏性动词的**消息串**
+    /// 就是一次**误红**。⇒ 现打：`tmux.rs` 生产段里这样的消息串**零处**
+    /// （那两处 `tmux kill-session: {..}` / `tmux send-keys: {..}` 随回落一起走了）。
+    /// 哪天又长出来，正确处置是把那句消息改得不含裸动词，**不是**把动词塞进只读表。
     #[test]
     fn every_remote_tmux_verb_is_either_read_only_or_routed_through_the_gate() {
         let prod = guard_core::production_code(MONITOR_TMUX);
-        // 「走 Gate 的函数」不是手写的一张表，是**派生 + 求闭包**：
-        // 直接含 `build_guarded_tmux_cmd` 的算；调用了这样一个函数的也算。
-        // （今天就有一层间接：`kill_remote_tmux` → `build_kill_session_cmd` → Gate。
-        //  第一版没求闭包，那两处当场误红 —— 留着这句是因为「判据太严」和「判据太松」
-        //  一样会让人去改错的东西：误红最省事的消法是把动词塞进只读表。）
-        let mut gated: Vec<String> = Vec::new();
-        loop {
-            let before = gated.len();
-            let mut from = 0usize;
-            while let Some(rel) = prod[from..].find(GATE_BUILDER) {
-                let i = from + rel;
-                from = i + GATE_BUILDER.len();
-                let (name, _) = enclosing_fn(&prod, i);
-                if !name.is_empty() && !gated.contains(&name) {
-                    gated.push(name);
-                }
-            }
-            for g in gated.clone() {
-                let mut f2 = 0usize;
-                while let Some(rel) = prod[f2..].find(&g) {
-                    let i = f2 + rel;
-                    f2 = i + g.len();
-                    let (name, _) = enclosing_fn(&prod, i);
-                    if !name.is_empty() && !gated.contains(&name) {
-                        gated.push(name);
-                    }
-                }
-            }
-            if gated.len() == before {
-                break;
-            }
-        }
+        // ★ `K-R72`：受托者不许再出现。这一句就是「那个空的或分支」的回潮闸 ——
+        //   有人重新拼一个 `build_guarded_tmux_cmd` 出来，本条当场红。
         assert!(
-            gated.iter().any(|g| g == GATE_BUILDER),
-            "派生「走 Gate 的函数集」时连 `{GATE_BUILDER}` 自己都没找到 —— 抽取器坏了"
+            !prod.contains(GATE_BUILDER),
+            "`tmux.rs` 生产段里又出现了 `{GATE_BUILDER}` —— 那是 monitor 自己拼\n\
+             「原子 verify+act 远端 shell 串」的受托者，`K-R72` 把它连同它唯一的两个消费者\n\
+             （kill / send-keys 的一次性 SSH 回落）一起删了。要恢复它先回 `K-R54` 重新裁定。"
         );
         let mut seen_read_only = 0usize;
-        let mut seen_gated = 0usize;
         let mut bad: Vec<String> = Vec::new();
         let mut from = 0usize;
         while let Some(rel) = prod[from..].find("tmux ") {
@@ -257,32 +251,42 @@ mod tests {
             if verb.is_empty() {
                 continue;
             }
-            let (fname, fbody) = enclosing_fn(&prod, i);
+            let (fname, _) = enclosing_fn(&prod, i);
             if READ_ONLY_VERBS.contains(&verb.as_str()) {
                 seen_read_only += 1;
-            } else if gated.iter().any(|g| fbody.contains(g.as_str())) {
-                seen_gated += 1;
             } else {
                 bad.push(format!("  {fname}() 里的 `tmux {verb}`"));
             }
         }
-        // 抽取器自检：两条分支各自都被走到过，否则本条可能是在空转。
+        // 抽取器自检：一处都没数到 ⇒ 剥生产段或扫描坏了，本条此刻量不到东西。
+        // 🔴 `K-R112`（09-13）：地板 2 → **1**。`tmux capture-pane` 那一处随抓屏改走
+        //    daemon 帧面而不存在了 ⇒ monitor 侧只剩 `tmux … ls`（`list_remote_tmux`）一处。
+        //    ⚠ **这一格快到头了**：`list_remote_tmux` 也改走后端的那天，这个人群会归零，
+        //    而**归零之后本条就是空真**（`bad` 恒空）—— 到那一拍该做的不是把地板改成 0，
+        //    是给它换一份**会漂的活体语料**（同 `tmux.rs::every_target_placeholder_comes_from_exact_target`
+        //    今天的做法：人群 0 + 一份合成坏语料承重）。
         assert!(
-            seen_read_only >= 2 && seen_gated >= 2,
-            "分类只走到一边（只读 {seen_read_only} / 走 Gate {seen_gated}）—— \
-             抽取器或剥生产段那步坏了，本条此刻量不到东西"
+            seen_read_only >= 1,
+            "只数到 {seen_read_only} 处只读动词 —— 抽取器或剥生产段那步坏了，本条此刻空转"
         );
         assert!(
             bad.is_empty(),
-            "有远端 tmux 命令**既不是只读动词、所在函数也不走 Gate**：\n{}\n\
-             §34 的三道门（Gate 1 exact_target · Gate 2 `@ccm_sid` 归属 · Gate 3 `windows==1`）\
-             存在的理由就是「别把破坏性命令发到不属于我们的会话上」。\n\
+            "monitor 侧有**不是只读动词**的远端 tmux 命令：\n{}\n\
+             `K-R72` 起 monitor 只许对远端 tmux 下**只读**命令 —— 改状态的一律走后端\n\
+             （`C5` 逐字：任何改状态的 tmux 命令一律归 `control/`）。\n\
              ⚠ **别把动词加进 `READ_ONLY_VERBS` 来消红** —— 那张表只收真正不改变远端状态的动词。\n\
-             正确动作：让这条命令走 `{GATE_BUILDER}`（它把归属检查与命令拼成一条原子命令，\
-             不给「查完再动手」之间留竞态窗口）。",
+             正确动作：把这条命令搬进 daemon 的 `control/`，让它过 `admit` / `admit_destructive`。",
             bad.join("\n")
         );
     }
+
+    // 〔`K-R72` 09-12 留档〕上一版判准的另一半住在这里 —— **刻意只留话，不留代码**。
+    //
+    // 原来那半逐字是：「直接含 `build_guarded_tmux_cmd` 的函数算走 Gate；调用了这样一个
+    // 函数的也算」（求闭包，因为 `kill_remote_tmux` → `build_kill_session_cmd` → Gate  〔散文墓碑〕
+    // 中间隔了一层；第一版没求闭包，那两处当场误红）。那段派生逻辑今天**没有被测对象**。
+    // 留一段跑不到的代码在这儿，就是本件 `KR72D1` 逐字禁止的那件事的测试侧变体：
+    // **盘上留着一条走不到的路。**⇒ 删干净，理由写在这里。
 
     /// ★ 抽取器自检 B：daemon `control/` 的**递归**扫描面没缩水。
     ///
@@ -448,13 +452,22 @@ mod tests {
              「对**句柄**下手」退回成「对**名字**下手」（TOCTOU 窗口）。\n\
              ⚠ 这不是「换个写法」能满足的判据：C6 那条顺序走到这里就是最后一步。"
         );
-        // ★ 回落那条**必须还在**（C7 逐字写着回落是过渡期的，还没到删它的时候），
-        //   而且必须仍带满三道门 —— 回落不等于降级安全性。
+        // ★★ **`K-R72`（09-12）：这一格翻了面 —— 从「回落必须还在」变成「不许再有」。**
+        //
+        // 原来这里逐字断的是 `body.contains("connect_and_exec_cmd") &&
+        // body.contains("build_kill_session_cmd")`，理由是 `C7`「回落路径在过渡期必须留」。  〔散文墓碑〕
+        // `K-R54` 的裁定表第 2 处把那个过渡期**判结束了**（留 daemon、删回落），
+        // `K-R72` 执行。⇒ 今天这一格是**回潮闸**：那条路再回来就红。
+        //
+        // ⚠ 这不是「放宽」：`C7` 当初买的是「旧版机器上还没有 daemon 时仍杀得掉」，
+        // 而 `K35`（09-11）逐字裁掉了「没有后端」这回事 —— 前提没了，禁令跟着翻面，
+        // 与本模块头注记的那三次翻面同一条规矩（前提变了就回来重裁，不是悄悄绕过）。
         assert!(
-            body.contains("connect_and_exec_cmd") && body.contains("build_kill_session_cmd"),
-            "`kill_remote_tmux` 里没有过渡期回落（或回落不再过 `build_kill_session_cmd`）——\n\
-             C7：回落路径在过渡期必须留（旧版机器上还没有 daemon）；\n\
-             删它归 F11 清理，而且删的时候要先确认「没有 daemon 的远端」这个分支真的没了。"
+            !body.contains("connect_and_exec_cmd"),
+            "`kill_remote_tmux` 里又出现了 `connect_and_exec_cmd` —— 那条一次性 SSH 回落回潮了。\n\
+             它杀的是 `=name:`（**名字**），而 daemon 那条先 `admit_destructive` 拿\n\
+             `#{{session_id}}` **句柄**再杀 —— 破坏性动作对名字下手就把 TOCTOU 窗口留着。\n\
+             ⚠ 要恢复它先回 `K-R54` 重新裁定，别在一次重构里把它带回来。"
         );
     }
 
@@ -471,26 +484,81 @@ mod tests {
     /// 分流规则本体由 `daemon_route::only_the_errors_that_prove_nothing_was_sent_allow_a_fallback`
     /// 钉住（纯函数，F04c 起 `kill` 与 `send-keys` 共用一份）；
     /// 本条钉的是**生产段真的按三态分了流**，而不是把三态压成两态。
+    ///
+    /// # ⚠ `K-R72`（09-12）：**名字里那个「ssh_fallback」今天已经不存在了 —— 本条仍然要**
+    ///
+    /// 回落删了之后，「洗成另一条路的成功」这条具体路径**结构上没有了**。
+    /// 但本条守的从来不是那条路，是**三态不许压成两态**：`Refused`（门做的决定）与
+    /// `NoChannel`（通道不在）今天各自 `return` 一句**不同的话**，
+    /// 而把它们并成一臂（`_ => Err(...)`）会让「你不能动这个会话」与「后端没连上」
+    /// 变成同一个读数 —— 那正是 `KR72D1` 那条边界要的反面。
+    /// ⇒ 本条**加一格**：三条臂都必须自己 `return`，一条都不许穿到函数尾巴上去。
+    /// **名字刻意不改**：它记着这条判据当初为什么立，而那段病史今天仍是读懂它的前提。
+    ///
+    /// # 🔴 `K-R72` 第二拍（09-12）：**上一版这一格是空的 —— 实打逮出来的，不是想出来的**
+    ///
+    /// 上一版用的是「从 `Routed::Refused` 往后取 160 字节，看里面有没有 `Err`」＋
+    /// 「两个 160 字节窗口逐字不许相同」。那两格**都挡不住真正的压平**：
+    /// 把两臂并成 `Routed::Refused(why) | Routed::NoChannel(why) => Err(why),` 之后，
+    /// 两个标记**都还在**、窗口里**都有 `Err`**、两个窗口**起点不同所以逐字也不同**
+    /// ⇒ 三格全绿。**实打读数**（沙箱，`cargo test -p monitor --lib`）：
+    /// 那一刀落在 `kill_remote_tmux` 上 ⇒ `1422 passed; 1 failed`，
+    /// 唯一红的是 `tmux::the_local_kill_never_falls_back_to_ssh`（它红是因为
+    /// `no_channel_message` 从函数体里没了，**属附带命中，不是本条在守**）；
+    /// 同一刀落在 `tmux_send_keys` 上同样只红那一条的 send-keys 版本。
+    /// ⇒ **本条当时并没有在守它自称守的那件事。**
+    ///
+    /// 改法（两处一起改，别只补一格）：
+    /// ① **按 `=>` 切臂**，不再取定长窗口 —— 一条臂 = 从标记到它自己那个 `=>` 之间的文本；
+    ///    那段里出现 `|` 或出现另一个标记 ⇒ 两态被并成一臂，当场红。
+    /// ② **人群从 1 个命令扩到 [`GUARDED_COMMANDS`] 两个** —— 上一版只看 `kill`，
+    ///    而 `tmux_send_keys` 那份的三态分流**从来没有判据**。
     #[test]
     fn a_gate_rejection_is_never_laundered_into_the_ssh_fallback() {
-        let body =
-            guard_core::production_code(&body_of(MONITOR_TMUX, "pub async fn kill_remote_tmux("));
-        for arm in ["Routed::Done", "Routed::Refused", "Routed::NoChannel"] {
+        /// 一条 `match` 臂的模式段：从标记起，到它自己那个 `=>` 为止。
+        fn pattern_of<'a>(body: &'a str, marker: &str) -> &'a str {
+            let at = body.find(marker).expect("调用方已断言过存在");
+            let rest = &body[at..];
+            &rest[..rest.find("=>").expect("这条臂没有 `=>` —— match 形状变了")]
+        }
+        for sig in GUARDED_COMMANDS {
+            let body = guard_core::production_code(&body_of(MONITOR_TMUX, sig));
+            for arm in ["Routed::Done", "Routed::Refused", "Routed::NoChannel"] {
+                assert!(
+                    body.contains(arm),
+                    "`{sig}` 的生产段没有 `{arm}` 分支 —— 三态被压成了两态。\n\
+                     三态的分界线是「能不能**证明**这条命令根本没发出去」，不是「成功/失败」。"
+                );
+            }
+            for (arm_name, other, why) in [
+                (
+                    "Routed::Refused",
+                    "Routed::NoChannel",
+                    "一次 `wrong_owner` / `too_many_windows` 是**门做的决定**",
+                ),
+                (
+                    "Routed::NoChannel",
+                    "Routed::Refused",
+                    "「后端通道不在」是**通道的事**，与门无关",
+                ),
+            ] {
+                let pat = pattern_of(&body, arm_name);
+                assert!(
+                    !pat.contains('|') && !pat.contains(other),
+                    "`{sig}` 里 `{arm_name}` 与别的态并成了同一条臂（{why}）——\n\
+                     「你不能动这个会话」与「后端没连上」从此共用一个读数，\n\
+                     而用户下一步该做的事完全不同。实得这条臂的模式段：{pat:?}"
+                );
+            }
+            // ★ 反向自检：这把尺子在一份**真的压平了**的合成语料上必须分得出来。
+            //   ⚠ 语料里不带本仓任何真实函数名（`6g` 那一族：夹具与断言不许同源）。
+            const FLATTENED: &str = "match r { A::Routed::Done => Ok(()), \
+                 A::Routed::Refused(w) | A::Routed::NoChannel(w) => Err(w), }";
             assert!(
-                body.contains(arm),
-                "`kill_remote_tmux` 的生产段没有 `{arm}` 分支 —— 三态被压成了两态。\n\
-                 三态的分界线是「能不能**证明**这条命令根本没发出去」，不是「成功/失败」。"
+                pattern_of(FLATTENED, "Routed::Refused").contains('|'),
+                "尺子瞎了：一份逐字压平的语料没被认出来"
             );
         }
-        // `Refused` 必须**当场 return Err**，不许穿到下面的回落段。
-        let at = body.find("Routed::Refused").expect("上面已断言过存在");
-        let arm = &body[at..(at + 120).min(body.len())];
-        assert!(
-            arm.contains("return Err"),
-            "`Refused` 那一支没有当场 `return Err` —— 它会穿到下面的 SSH 回落段，\n\
-             于是一次 `wrong_owner` / `too_many_windows` 会被另一条路重试一遍。\n\
-             实得这一段：{arm:?}"
-        );
     }
 
     /// ★ **F04c 起翻面：`send-keys` 也必须走 daemon 通道**（此前钉的是「不许走」）。
@@ -516,18 +584,22 @@ mod tests {
              主路退回了「monitor 自己拼一条 SSH 串往别人会话里打字」，那是 C5 逐字禁止的。\n\
              ⚠ 定框 C6 的顺序到 F04c 已经走完，退回去就是把它走反。"
         );
-        // 回落那条必须还在（C7 过渡期），且仍过 Gate 1/2。
+        // ★★ **`K-R72`（09-12）：这一格翻了面 —— 从「回落必须还在」变成「不许再有」。**
+        // 同 [`kill_now_routes_through_the_daemon`] 那一格的举证；本条对应
+        // `K-R54` 裁定表第 1 处（`K-R56` 09-11 先把两条路的「探了没有」补齐才删得掉）。
         assert!(
-            body.contains("connect_and_exec_cmd") && body.contains("build_send_keys_remote_cmd"),
-            "`tmux_send_keys` 里没有过渡期回落（或回落不再过 `build_send_keys_remote_cmd`）——\n\
-             C7：回落路径在过渡期必须留（旧版机器上还没有 daemon）。"
+            !body.contains("connect_and_exec_cmd"),
+            "`tmux_send_keys` 里又出现了 `connect_and_exec_cmd` —— 那条一次性 SSH 回落回潮了。\n\
+             它在 `cc-*` 形状名上落退化分支（`need_sid`/`need_windows` 双 false），\n\
+             而 daemon 的 `admit` 恒先 `probe` ⇒ 两条路的门不等价。\n\
+             ⚠ 要恢复它先回 `K-R54` 重新裁定。"
         );
         // ★ `enter` 必须真的传给 **daemon 那条路** —— 不传就等于把 `Escape` 也当成「提交」。
         //
         // ⚠ **这条判据的第一版是恒绿的，变异复验才把它抓出来。**
         // 第一版写的是 `body.contains("&keys, enter,") || body.contains("&keys, enter)")` ——
         // 那个 `||` 是为了「容忍 rustfmt 的换行」加的，结果第二个分支命中了**回落那条**
-        // （`build_send_keys_remote_cmd(&target, &keys, enter)?`）⇒ 把 daemon 那处改成
+        // （`build_send_keys_remote_cmd(&target, &keys, enter)?`）⇒ 把 daemon 那处改成  〔散文墓碑〕
         // 硬编码 `true` 时它照样绿。**「扫到了东西，但扫的不是那件事」的又一次**，
         // 而且这次是我自己为了「稳」加的容错造出来的。⇒ 改成**先切出 daemon 那次调用的实参段**
         // 再看，容错去掉。

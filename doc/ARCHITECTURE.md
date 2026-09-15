@@ -98,7 +98,7 @@
 
 ```
   ┌─ 远端主机 ─────────────────────────────┐
-  │  常驻 daemon（remote-daemon-proto）      │
+  │  常驻后端（remote-daemon-proto）      │
   │   observe/watcher  ──► JSONL 帧 ──┐      │
   │   control/{launch,kill,gate}      │      │   ← monitor 从这条**长连接**发控制命令
   └───────────────────────────────────┼──────┘      （inbound_client：请求/应答 + 背压）
@@ -137,29 +137,38 @@
 **远端进程** = `remote-daemon-proto/`（独立 crate，**不是 workspace 成员**，见 2.6）·
 **本机进程** = `src-tauri/src/backend/`。
 
-两侧都该有 `platform/` `observe/` `control/` `common/` 四层。**远端四层齐全；本机只有一层** ——
+两侧都该有 `platform/` `observe/` `control/` `common/` 四层。**远端四层齐全；本机今天两层**
+〔原话逐字：「本机**只有一层**」—— 2026-09-12 `K-R71` 建了 `observe/` 之后不成立〕——
 下表是**今天真实的落地进度**，且**每一格都由判据现场量**
 （`doc_claim_registry::each_registered_status_still_matches_reality`；
 ⚠ 判据**不存这一列的副本**，它从本文件读这一列、再去代码里量，两边不一致就红）：
 
-| backend 分层（定框 §5） | 远端（daemon）有吗 | monitor 侧今天的状态 |
+| backend 分层（定框 §5） | 远端（后端）有吗 | monitor 侧今天的状态 |
 |---|---|---|
 | `control/` | 有 | **已交付** —— 两条改状态的远端 tmux 命令都走它（见 2.3） |
-| `observe/` | 有 | **待做** —— **刻意未建**，谁来叫醒见 2.2 |
+| `observe/` | 有 | **已交付**〔2026-09-12 `K-R71`〕—— 目录建起来了，住户只有传输那一跳，见 2.2 |
 | `platform/` | 有 | **待做** —— 但 backend 那一半今天**零平台面**，所以还不需要它（见 2.4） |
 | `common/` | 有 | **待做** —— **刻意不建**：monitor 侧的共用面住 `src-tauri/crates/*`（见 2.6） |
 
 ⚠ 这张表量的是「**这一层在 monitor 侧落地了没有**」，**不是**「平台原语已经收敛干净了」——
 后者是 C10 的判据（跨 target 编译）的事，今天**不成立**，见 2.4。
 
+⚠ **「落地」这两个字的量法，四格分两种**〔`K-R73` 09-12〕：
+`control/` 与 `observe/` 各有「那个唯一的住户」，量的就是**那份文件在不在**；
+`platform/` 与 `common/` 今天**没有**那个唯一住户（指一个就是替未来的人做决定），
+量的是**目录在 ∧ 里面至少有一个不是 `mod.rs` 的 `.rs`**。
+🔴 **一个只有 `mod.rs` 的空壳目录不算「没落地」，是直接红** ——
+空壳目录本身不说假话，但它让下一个人只要顺手把这一列改成「已交付」就全绿，
+而那正是 `K-R71` 09-12 逮到的那一形（原先四格里有三格是裸「目录存在」）。
+
 **frontend 只剩「在用户桌面上开一个终端窗口」**，窗口里跑什么由 backend 给。
 
 ⚠ **那条搬不动的边界**：最后那次 `exec` **必须**在用户自己的终端进程里
 （pid 要等于 pidfile 名 · tty 与 Ctrl-C 要落在 agent 上 · `tmux attach` 要占住调用者终端）。
 ⇒ 「起一个会话」被拆成 **U8a 三平面**：
-① **计划面**「跑什么命令」→ daemon `control/resolve` ·
-② **远端执行面**「在远端真的建 tmux」→ daemon `control/launch`（**argv 直传、不过 shell**）·
-③ **本机开窗面** → **只能是 monitor**（daemon 在远端，开不了你面前的窗）—— **这条永远搬不走**。
+① **计划面**「跑什么命令」→ 后端 `control/resolve` ·
+② **远端执行面**「在远端真的建 tmux」→ 后端 `control/launch`（**argv 直传、不过 shell**）·
+③ **本机开窗面** → **只能是 monitor**（后端在远端，开不了你面前的窗）—— **这条永远搬不走**。
 
 ⚠ **平面 ③ 在 POSIX 上刻意不开 GUI 终端窗口**：那儿没有「唯一的终端」，挑一个就是平白引入
 一个会在别人机器上错的决定。⚠ 本句原先还接着「而容器一定是 tmux ⇒ 会话留在那儿等 attach」——
@@ -178,24 +187,47 @@
   —— 它不产观测帧）；
 - **只有产出观测帧的读**才归 `observe/`。
 
+⚠ **两侧今天都有机器在管「谁能引用谁」**〔monitor 侧 `K-R73` 09-12 补齐〕：
+后端侧是 `remote-daemon-proto/src/layering_guard.rs`，monitor 侧是 `backend/mod.rs`
+里的 `layering` 模块。两边同一个形 —— **反向（`control → observe`）零容忍**，
+**正向（`observe → control`）许有，但必须逐条列举、条数被等号钉住**。
+monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一次性查询要先问控制面
+「那份 sidecar 在哪」）。
+
 ⚠ 反面很具体：按「读/写」分的话，那次 `@ccm_sid` 探测会被判给 `observe/`，
 而它唯一的调用方在 `control/` ⇒ **凭空造出一条 `control → observe` 的边**，
 而 `layering_guard` 逐字禁止反向依赖（实测：照做时它当场红）。
 
-⚠ **monitor 侧的 `observe/` 今天刻意未建**：那批读面（`config_surface.rs` 1596 行 ·
-`search.rs` 1171 …）正是要**退役**的那批 —— **有几个 reader 刻意不写在这里**，
-以 `local_read_surface_registry` 的机检为准（那条曾写 13，而机器数是 7；点名的
-`local_accounts.rs` 早已不是 reader，它 `:564-565` 自陈「现在问本机后端」）——
-先搬进来再删掉是纯搬运。**谁来叫醒这个决定**：`local_read_surface_registry` 里那条前提触发器
-（`tauri.conf.json` 一出现 `externalBin` 就红）。
+⚠ **monitor 侧的 `observe/` 2026-09-12 建起来了**（`K-R71`，第 4 波 4a）：它今天的**唯一住户**
+是本机一次性查询的传输 `backend/observe/local_query.rs` —— 那份文件从 F10a 起就是读面代码，
+只是先前挂在 `control/` 线上（它自己的头注第一句逐字写着「后端的**读面**是 14 条一次性
+查询子命令」）。⇒ 建这个目录是**把走错门的住户领回家**，不是新起一层。
+
+🔴 **但那批要退役的读面一条都没搬进来**：`config_surface.rs` 1596 行 · `search.rs` 1171 …
+以 `local_read_surface_registry` 的机检为准（**有几个 reader 刻意不写在这里** ——
+那条散文曾写 13，而机器数是 7；点名的 `local_accounts.rs` 早已不是 reader，
+它 `:564-565` 自陈「现在问本机后端」）。挡着它们的是两样有名有姓的东西：后端侧的查询集缺口，
+以及 `tasks.rs` / `search.rs` 今天带着的宿主耦合（`backend/` 有一道宿主无关守卫）。
+⇒ **今天没有触发器**，逐条理由住 `src-tauri/src/backend/mod.rs` 头注最后一节。
+
+〔原话逐字，留作来历：「⚠ **monitor 侧的 `observe/` 今天刻意未建**……先搬进来再删掉是纯搬运。
+**谁来叫醒这个决定**：`local_read_surface_registry` 里那条前提触发器
+（`tauri.conf.json` 一出现 `externalBin` 就红）。」——「未建」今天不成立；
+而那条前提触发器 2026-08-04 就换过靶，今天盯的是**配置文件的形状**，
+`backend/mod.rs` 头注逐字警告过**别**把它当成那批读面退役的闹钟。〕
 
 ### 2.3 控制面今天真的在 backend 了
 
-两条**改状态**的远端 tmux 命令都已切到 daemon：`kill_remote_tmux` → `control/kill.rs` ·
+两条**改状态**的远端 tmux 命令都已切到后端：`kill_remote_tmux` → `control/kill.rs` ·
 `tmux_send_keys` → `control/launch.rs` 的 `send-into` / `send-keys-raw`。
-一次性 SSH 那两条降为**过渡期回落**，且**过门被拒绝一律不回落**
-（回落到 shell 路 = 把一次被门拒绝洗成另一条路的成功）。
-「能不能回落」的判定**只有一份**（`backend/control/daemon_route.rs`）。
+
+🔴 **订正（`K-R106` 2026-09-13 现打）**：这里原来写着「一次性 SSH 那两条降为**过渡期**的
+第二条路」—— 那两条 **`K-R72`（2026-09-12）整块删了**（`K-R54` 裁定表第 1 · 2 处），
+今天**盘上只有后端这一条**；回潮闸住 `tmux_daemon_gate_guard.rs`
+（那两条命令的生产段里再出现 `connect_and_exec_cmd` 就红）。
+「通道不在时怎么办」的判定**只有一份**（`backend/control/daemon_route.rs`，三态
+`Done` / `Refused` / `NoChannel`），而**过门被拒绝一律不另找一条路**
+（另找一条 = 把一次被门拒绝洗成另一条路的成功）。
 
 ### 2.4 `platform/`：backend 那一半今天**零平台面**，所以还不需要它
 
@@ -216,7 +248,7 @@
   「在用户桌面上开一个终端窗口」本身就是平台特定的，把它搬进 `platform/`
   不会让它变可移植，只会让这条纪律变成一句摆设。
 
-⚠ 真正的欠账是**判据形态**那一半：daemon 侧 CI 有一步
+⚠ 真正的欠账是**判据形态**那一半：后端侧 CI 有一步
 `cargo check --all-targets --target x86_64-pc-windows-msvc`（逐字标着「平台线的真判据」），
 **monitor 照抄不了** —— 本机实测 `exit=101`，挡路的不是 monitor 的代码
 （252 个 `.rmeta` 已产出），是某个 C 依赖的 build script 要 `lib.exe`。
@@ -229,7 +261,7 @@
 
 | 账本 | 管哪一块 |
 |---|---|
-| `no_timer_guard`（daemon 侧） | daemon 里不许有「自己醒过来」的构件（零容忍） |
+| `no_timer_guard`（后端侧） | 后端里不许有「自己醒过来」的构件（零容忍） |
 | `polling_registry` | 前端 TS 与 `shared/ccm` |
 | `rust_timer_registry::REGISTERED` | monitor **Rust 级**的 `sleep` / `interval` |
 | `rust_timer_registry::SHELL_WAKES` | monitor Rust **拼出来的 shell 循环**（前三张都看不见它） |
@@ -241,14 +273,14 @@
 ⚠ **唯一登记在案的例外**：预信任的「等信任框」没有内核事件源 ⇒ `control/` 继续以
 **shell 字符串形态**产出它（由目标 shell 执行，因此与「零定时器」共存）。
 
-### 2.6 共享 crate：为什么 daemon **不进** workspace
+### 2.6 共享 crate：为什么后端 **不进** workspace
 
-`src-tauri/crates/*`（6 个）是 monitor 与 daemon 的共同实现落点（判定只许有一个家）。
-而 **daemon crate 刻意不是 workspace 成员** —— 它要能在目标机上**原生构建**。
+`src-tauri/crates/*`（6 个）是 monitor 与后端的共同实现落点（判定只许有一个家）。
+而 **后端 crate 刻意不是 workspace 成员** —— 它要能在目标机上**原生构建**。
 
 ⚠ **代价是实的、要写下来**：在 `src-tauri` 里跑 `cargo fmt --all` / `cargo test`
-**覆不到 daemon**（曾因此漏过一次 fmt 红）⇒ 门禁读数必须**八处分别跑**
-（monitor · daemon · 6 个共享 crate）。
+**覆不到后端**（曾因此漏过一次 fmt 红）⇒ 门禁读数必须**八处分别跑**
+（monitor · 后端 · 6 个共享 crate）。
 
 ### 2.7 逐文件清单去哪了
 
@@ -306,7 +338,7 @@ monitor 与外部进程的所有通信都在 `~/.claude/claudecode-frontend/` �
 每条都是踩过坑总结出来的"为什么不能用别的方案"。
 
 ### 零侵入 = 不写 Claude Code 数据源
-watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。写入均为用户**显式**触发：①历史浏览器 `delete_history_session`（Batch4-F15 起 exists → 双边 canonicalize → canonical 前缀 + `.jsonl` 扩展名四段守卫，`..`/symlink 穿越拒绝）；②F62 `create_branch_session`（从某轮建分支——**只新增** `<new-sid>.jsonl`，`validate_branch_source` 同源守卫 + `create_new` 原子写**绝不覆盖**，原会话零改动，§1 正交非侵入）；③PowerShell profile [安装]（只动 BEGIN/END **块内**内容，块外用户其他代码完全不动）；④**G6 远端分叉**（`remote_branch::create_remote_branch_session` → ssh → daemon 的 `fork_write.rs`）——与②是**同一件事的远端形态**（用户显式点 `⑂` → 只新增一份 `<new-sid>.jsonl`、原会话零改动），区别只在**动手的是 daemon 而不是 monitor**。daemon 的写面被 `readonly_guard` 两层护栏钉死在那**一个**模块上（且必须 `O_EXCL`、禁删/改名/截断/追加/覆盖），细则见 `doc/INVARIANTS.md` §1 的 G6 段与 §41.6。<br>（2026-08-01 Phase G 订正：本枚举原来只有三条 —— 而 `INVARIANTS.md` 那边已经写上了第四条，两份文档口径不一致，而本文是新人先读的那份。）
+watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。写入均为用户**显式**触发：①历史浏览器 `delete_history_session`（Batch4-F15 起 exists → 双边 canonicalize → canonical 前缀 + `.jsonl` 扩展名四段守卫，`..`/symlink 穿越拒绝）；②F62 `create_branch_session`（从某轮建分支——**只新增** `<new-sid>.jsonl`，`create_new` 原子写**绝不覆盖**，原会话零改动，§1 正交非侵入）。〔`K-R88` 2026-09-13〕它的入参从路径收成 **sid**，守卫也跟着换了家：两侧共用 `branch_core::find_session_file`（〔散文墓碑〕原措辞逐字是「`validate_branch_source` 同源守卫」，那个函数今天已经不在了）；③PowerShell profile [安装]（只动 BEGIN/END **块内**内容，块外用户其他代码完全不动）；④**G6 远端分叉**（`remote_branch::create_remote_branch_session` → ssh → 后端的 `fork_write.rs`）——与②是**同一件事的远端形态**（用户显式点 `⑂` → 只新增一份 `<new-sid>.jsonl`、原会话零改动），区别只在**动手的是后端而不是 monitor**。后端的写面被 `readonly_guard` 两层护栏钉死在那**一个**模块上（且必须 `O_EXCL`、禁删/改名/截断/追加/覆盖），细则见 `doc/INVARIANTS.md` §1 的 G6 段与 §41.6。<br>（2026-08-01 Phase G 订正：本枚举原来只有三条 —— 而 `INVARIANTS.md` 那边已经写上了第四条，两份文档口径不一致，而本文是新人先读的那份。）
 
 **为什么**：cc-monitor 是个监控渲染器，写 jsonl 会破坏用户对"数据源 = 我自己的命令痕迹"的认知；profile 写入则是必要的可选副作用（用户显式 opt-in 装 `__ccm_bind`），仍然走完整的 backup + ACL 保留路径。
 
@@ -349,7 +381,7 @@ F40b 上翻补批：active tab 滚到顶部 800px 内自动从 `TailWindow` 弹 
 ### 账号子系统：隔离又同步（A2–A6 / #68/#69）
 **模型**：一个「账号」= 一个 `CLAUDE_CONFIG_DIR`（各自 `.credentials.json`，两号可同时跑、不互踢），而 skills/memory/history/settings/plugins 经 symlink 共享到同一库——**凭据隔离、其余同步**。隔离/同步管线是远端脚本 `cc-acct-iso`（app 内向导 `settings/acct-deploy.ts` 分步驱动）。
 
-**只读边界**：cc-monitor 侧对账号只**读**——后端 `accounts.rs` 三命令（`list_remote_accounts` / `list_remote_session_accounts` / `check_account_trust`，全 `async(origin: String)`、**无 State**）经 daemon 纯只读查（名/邮箱/是否登录 / 某会话属哪个账号 / 目录是否可信）。动凭据（登录/同步/`--apply`）一律走**真实终端窗口**，不由 monitor 直接改。
+**只读边界**：cc-monitor 侧对账号只**读**——后端 `accounts.rs` 三命令（`list_remote_accounts` / `list_remote_session_accounts` / `check_account_trust`，全 `async(origin: String)`、**无 State**）经后端纯只读查（名/邮箱/是否登录 / 某会话属哪个账号 / 目录是否可信）。动凭据（登录/同步/`--apply`）一律走**真实终端窗口**，不由 monitor 直接改。
 
 **前端族**（`src/account-*.ts` + `settings/acct-deploy.ts`）：`account-chip.ts` 徽章 + 切号菜单（mismatch/align 状态）；`account-commands.ts`(A4) 「按会话选账号起/Resume」的 `withAccount`（账号解析 + `lastAccount` 记账）；`account-restart.ts`(A5) 「换号对齐当前会话」的**破坏性**重启编排。
 
@@ -385,7 +417,7 @@ Linux 那行是实测的：本机 6 个真实会话 `procStart` 与 `/proc` 第 
 那是**如实的未实现**：macOS 没有 `/proc`，要走 `sysctl KERN_PROC` 的 FFI，而本仓没有 macOS CI、
 也无法实测 —— 按本仓纪律不写没验过的实现。
 
-为什么返回 `false` 而不是 `unimplemented!()`（daemon 侧那样）：那边是 CLI，panic 是「没人能忽略的信号」；
+为什么返回 `false` 而不是 `unimplemented!()`（后端侧那样）：那边是 CLI，panic 是「没人能忽略的信号」；
 这边是 GUI 常驻进程，panic 会直接崩窗口。`false` 在这里是 **fail-safe**（少显示，而不是显示永不消失的
 僵尸会话），且这条限制写在这里与 README —— **不是静默的谎**。
 
@@ -472,7 +504,7 @@ v1.6.x 试过的"从 claude PID 走 parent chain + WT 进程 + 终端类进程 +
 
 ## 7. 入门读图
 
-- 想理解整体数据流：本文 § 1（**三条链**：本机 / 远端 daemon / POSIX）+ § 5
+- 想理解整体数据流：本文 § 1（**三条链**：本机 / 远端后端 / POSIX）+ § 5
 - 想知道 frontend / backend 的边界在哪、哪一半还没搬完：本文 § 2
   （§2.1 那张表是**今天真实的落地进度**，且由判据现场量 —— 它不会停在某个旧的「今天」）
 - 想加新 jsonl 类型：见 [CONTRIBUTING.md](CONTRIBUTING.md) § 添加 jsonl 类型

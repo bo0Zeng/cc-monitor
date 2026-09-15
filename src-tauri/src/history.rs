@@ -24,9 +24,13 @@
 //! 用户明确选了"物理删除 .jsonl 文件"。前端二次确认后调 `delete_history_session`，
 //! 直接 `std::fs::remove_file`。Claude Code 自己也不再能 resume 这个会话。
 
+use crate::backend::observe::local_query::{self, QueryOutcome};
 use crate::messages::{ApiMessage, JsonlRecord};
 use crate::parser::parse_line;
 use crate::paths;
+use crate::remote_history::{
+    history_project_from_row, log_unknown_reasons, Counted, LivenessOracle, ProjectCounts,
+};
 use crate::session_map::SessionMap;
 use crate::utils::{now_ms, systime_to_ms};
 use serde::{Deserialize, Serialize};
@@ -53,14 +57,19 @@ pub struct HistoryProject {
     /// `stream_history_sessions_in_project` 时传回来作 key
     pub project_dir: String,
     pub session_count: u32,
-    pub starred_count: u32,
-    pub hidden_count: u32,
+    /// `K-R92`：**`None` = 不知道**（没查 / 查不了），`Some(0)` = 查过了，真的一个都没有。
+    /// 这两件事在 09-12 之前是同一个 `0` —— 病灶与全部论证见本文件
+    /// [`the_three_counts_can_say_i_do_not_know`] 与 `remote_history::Counted`。
+    pub starred_count: Option<u32>,
+    /// 同上：`None` = 不知道，`Some(0)` = 查过了是 0。
+    pub hidden_count: Option<u32>,
     /// 该项目下任意 jsonl 文件的最大 mtime（ms）
     // **C03 大整数策略**：量纲是**毫秒时间戳**——2^53-1 ms ≈ **28.5 万年**。
     #[cfg_attr(test, ts(type = "number"))]
     pub last_activity: i64,
-    /// 该项目下是否有 session 当前 PID 还活着
-    pub has_live: bool,
+    /// 该项目下是否有 session 当前还活着。**`None` = 这条路上答不了**
+    /// （远端没有判活真相源 · Codex 无 pidfile），**不是**「没有活会话」。
+    pub has_live: Option<bool>,
     /// issue #16：数据来源。None=本地；Some(host)=远端（前端组头显示 [host] 徽标，
     /// 展开时改调 stream_remote_history_sessions）。
     #[cfg_attr(test, ts(optional))]
@@ -85,7 +94,8 @@ pub struct HistorySessionEntry {
     #[cfg_attr(test, ts(type = "number"))]
     pub updated_at: i64,
     pub jsonl_path: String,
-    pub is_live: bool,
+    /// `K-R92`：**`None` = 这条路上答不了活状态**（远端 / Codex），`Some(false)` = 查过了，没活。
+    pub is_live: Option<bool>,
     pub message_count_approx: u32,
     /// Batch11-F32：CC 后台分身会话（⚙ 徽标——防 resume 误选克隆）。
     pub is_bg: bool,
@@ -106,6 +116,35 @@ pub struct HistorySessionEntry {
     #[cfg_attr(test, ts(optional))]
     #[serde(skip_serializing_if = "Option::is_none")]
     pub origin: Option<String>,
+}
+
+/// `K-R92`：三态排序档 —— **确定有(2) > 不知道(1) > 确定没有(0)**。
+///
+/// # 🔴 为什么不直接 `Option` 的派生序
+///
+/// `Option<bool>` 的派生序是 `None < Some(false) < Some(true)`，按它降序排，
+/// 「不知道」会被排到「确定没有活会话」**后面** —— 那是一句断言：
+/// 「这个项目比一个已经确定没活的项目更不像活着」。**说不出口的话不许说。**
+/// 「不知道」既不许冒充「活着」抢到最前，也不许被当成「确定没活」压到最后 ⇒ 它自成一档，在中间。
+///
+/// ⚠ 这一层与前端 `src/views/counted.ts` 的 `liveRank` / `starRank` **是同一套档位**，
+/// 两侧各有判据钉着（本文件 `unknown_is_its_own_bucket_when_sorting` ·
+/// `src/views/counted.vitest.ts`）。
+pub(crate) fn live_rank(v: Option<bool>) -> u8 {
+    match v {
+        Some(true) => 2,
+        None => 1,
+        Some(false) => 0,
+    }
+}
+
+/// 同 [`live_rank`]：**有星标(2) > 不知道(1) > 查过了一个都没有(0)**。
+pub(crate) fn star_rank(v: Option<u32>) -> u8 {
+    match v {
+        Some(n) if n > 0 => 2,
+        None => 1,
+        Some(_) => 0,
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize, Clone)]
@@ -153,11 +192,105 @@ pub struct MetadataPatch {
 
 // === IPC 命令 ===
 
-/// 项目级元数据列表 —— **不读 jsonl 内容**。首次打开历史浏览器时调。
-/// 每个项目仅 1 个 1-line read（拿 cwd） + N 个文件 stat（拿 mtime / count）。
+/// 本机这条路的**判活真相源**：`SessionMap` 认本机进程的 pid ⇒ 它**答得出真值**。
 ///
-/// v2.2 (issue #12)：改 async + spawn_blocking，避免 sync IO 阻塞 Tauri IPC
-/// 派发线程 —— 加载期间其他 IPC（拉前 / 切设置）能正常响应。
+/// 与远端那个绑定（`remote_history::NoLivenessOracleYet`，恒答「不知道」）是同一个接口的
+/// 两个实现 —— 「谁答得出、谁答不出」因此在类型上说得清，而不是散在两条路的函数体里。
+pub(crate) struct SessionMapLiveness(pub(crate) Arc<SessionMap>);
+
+impl LivenessOracle for SessionMapLiveness {
+    fn is_live(&self, _origin: &str, sid: &str) -> Counted<bool> {
+        // 本机有真相源 ⇒ 一律 `Known`。「不知道」那一档在这个绑定里恒不出现。
+        Counted::Known(self.0.is_session_active(sid))
+    }
+}
+
+/// 本机项目列表的**本体**；「去问本机后端」这件事**是参数**。
+///
+/// # 🔴 为什么查询要作为参数传进来 —— `KR97D3` 判的那个可数的事实
+///
+/// 同 `KR83D3` 的口径：**别判「代码里有没有 for 循环」**（那判的是写法），
+/// 要判**「一次调用里 spawn 了几次」**。真 sidecar 在红线内跑不了 ⇒ 把 spawn 那一步做成入参，
+/// 判据就能拿一个**会计数的假查询**喂进来，直接数出「N 个项目 ⇒ 查询被调了几次」。
+///
+/// 失效方向（本函数存在的理由）：一旦有人为了拿 star/hide 而在下面那个循环里补一句
+/// `--list-sessions`，计数当场从 `1` 涨成 `1 + 项目数`，判据红。
+///
+/// # 三态怎么落地（定框 §5）
+///
+/// 「后端不在」与「后端在但这条查询失败了」**分开报**：前者是今天这台机器上没有对侧
+/// （该提示装 / 该回落），后者是有对侧但它说了不），压成一个 `Err` 就是让上层猜。
+/// 本函数把两者都折成 `Err(带身份的一句话)` 交给前端 toast，**但话不一样** ——
+/// 与 `usage::aggregate_usage_all` 那条路同形。
+pub(crate) fn local_projects_via<Q>(
+    query: Q,
+    metadata: &HistoryMetadata,
+    liveness: &dyn LivenessOracle,
+) -> Result<Vec<(HistoryProject, ProjectCounts)>, String>
+where
+    Q: Fn(&[&str]) -> QueryOutcome,
+{
+    let stdout = match query(&["--list-projects"]) {
+        QueryOutcome::Ok(s) => s,
+        // 诚实降级：把「后端不在」原样交给用户（定框 §5），不假装 0 个项目 ——
+        // 「一个历史项目都没有」与「今天这台机器上没有对侧」是完全不同的处境。
+        QueryOutcome::NoBackend(reason) => {
+            return Err(format!("本机后端不在，拿不到历史项目列表：{reason}"));
+        }
+        QueryOutcome::Failed { code, stderr } => {
+            return Err(format!(
+                "本机后端的项目列表查询失败（退出码 {code:?}）：{}",
+                stderr.trim()
+            ));
+        }
+    };
+    let mut rows = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let v: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            // 单行坏了不该毁掉整张列表（同远端那条路，逐行跳过）。
+            Err(e) => {
+                tracing::warn!("本机 --list-projects 行解析失败（跳过）: {e}: {line}");
+                continue;
+            }
+        };
+        // ★ 与远端 fan-out **同一份**「行 → 项目」的解释（`K-R97` 收成一处）。
+        //   `origin = None` ⇒ 前端看到的仍是「本地项目」。
+        if let Some(row) = history_project_from_row(&v, metadata, None, liveness) {
+            rows.push(row);
+        }
+    }
+    log_unknown_reasons("本机项目列表", &rows);
+    Ok(rows)
+}
+
+/// 项目级元数据列表 —— **不读 jsonl 内容**。首次打开历史浏览器时调。
+///
+/// # 🔴〔`K-R97` 09-12〕它**不再自己遍历 records 根**，改问本机后端
+///
+/// 从前这里 `resolve_claude_dir()` + `records_dir()` + 逐项目 `read_dir`（`analyze_project_dir`，〔散文墓碑〕已删），
+/// 而远端那条路早就是「问那台机器的后端要 `--list-projects`」。⇒ 同一个问题两份实现
+/// （`K-R54` 表第 12 行），且本机那份必然与后端那份漂移。
+/// 今天两条路**吃同一条查询、同一份解释**（`remote_history::history_project_from_row`），
+/// 差别只剩传输：远端多一跳 SSH，本机 exec 一次 sidecar（`backend::observe::local_query`）。
+///
+/// ⚠ **如实记诚实边界，别读成「完全等价」**：
+/// - **`project_dir` 的形状变了**：从前是**绝对路径**，现在是后端给的**编码目录名**
+///   （与远端那条路逐字同形）。前端只把它原样传回，
+///   而 `stream_history_sessions_in_project` 那侧已经跟着改成「按名字在 records 根下解析 + 围栏」。
+/// - **cwd 提取窗口从 30 行变成 40 行、且不再只认 `user` 记录** —— 那是后端那份的口径。
+///   两份实现从前**故意不一致**并被一条判据钉着（`ROADMAP §5`）；本件把 monitor 那份删了，
+///   分歧随之消失（不是「对齐」，是**只剩一处**）。
+/// - **`CLAUDE_CONFIG_DIR` 指向不存在的路径时**：monitor 从前会回落到 `~/.claude`，
+///   sidecar 不会。极少见，但不是零（同 `usage.rs` 那条路记着的差异）。
+/// - **Codex 那半没动**：后端侧今天没有 codex 的项目枚举（`--list-projects` 只服务 claude），
+///   本机仍自己合成（`codex_projects`）—— 那条登记还挂在 `local_read_surface_registry` 上。
+///
+/// v2.2 (issue #12)：async + spawn_blocking，避免 sync IO 阻塞 Tauri IPC 派发线程。
 #[tauri::command]
 pub async fn list_history_projects(
     map: tauri::State<'_, Arc<SessionMap>>,
@@ -165,42 +298,28 @@ pub async fn list_history_projects(
     let map = map.inner().clone();
     tokio::task::spawn_blocking(move || {
         let started = std::time::Instant::now();
-        let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
-        let projects_dir = crate::adapter::records_dir(&claude_dir);
-        if !projects_dir.exists() {
-            return Ok(Vec::new());
-        }
         let metadata = load_metadata().unwrap_or_default();
-
-        let mut out: Vec<HistoryProject> = Vec::new();
-        let proj_iter = match std::fs::read_dir(&projects_dir) {
-            Ok(d) => d,
-            Err(e) => return Err(format!("read {}: {e}", projects_dir.display())),
-        };
-
-        for proj in proj_iter.flatten() {
-            let proj_path = proj.path();
-            if !proj_path.is_dir() {
-                continue;
-            }
-            if let Some(hp) = analyze_project_dir(&proj_path, &metadata, &map) {
-                out.push(hp);
-            }
-        }
+        let liveness = SessionMapLiveness(map);
+        let rows = local_projects_via(
+            |args| local_query::run_query(env!("CCM_TARGET_TRIPLE"), args),
+            &metadata,
+            &liveness,
+        )?;
+        let mut out: Vec<HistoryProject> = rows.into_iter().map(|(p, _)| p).collect();
 
         // Phase 2 F1a-3：追加 Codex 合成项目（按 session_meta.cwd 内存分组；Codex 未启用 → 空、零回归）。
         out.extend(codex_projects());
 
         // live → starred → last_activity desc（同 UI 顺序，前端可再排但默认就是这个）
         out.sort_by(|a, b| {
-            b.has_live
-                .cmp(&a.has_live)
-                .then_with(|| (b.starred_count > 0).cmp(&(a.starred_count > 0)))
+            live_rank(b.has_live)
+                .cmp(&live_rank(a.has_live))
+                .then_with(|| star_rank(b.starred_count).cmp(&star_rank(a.starred_count)))
                 .then(b.last_activity.cmp(&a.last_activity))
         });
 
         tracing::info!(
-            "list_history_projects: {} projects in {}ms",
+            "list_history_projects: {} projects in {}ms（经本机后端）",
             out.len(),
             started.elapsed().as_millis()
         );
@@ -314,11 +433,14 @@ fn codex_projects_from(sessions: Vec<CodexSessionInfo>) -> Vec<HistoryProject> {
                 project_name,
                 project_dir: format!("codex:{cwd}"),
                 session_count: count,
-                starred_count: 0,
-                hidden_count: 0,
+                // `K-R92`：Codex 这条路**没有去数** star/hide（分组只带了 count 与 mtime）——
+                // 那是「不知道」，不是「查过了是 0」。写 `Some(0)` 就是把没查说成查过了。
+                starred_count: None,
+                hidden_count: None,
                 last_activity: last,
-                // Codex 无 pidfile 判活 = F4；F1a 先 false（会话仍可读，只是不显示「活着」）。
-                has_live: false,
+                // Codex 无 pidfile 判活 = F4 ⇒ **答不了**（`K-R92` 之前这里写死 `false`，
+                // 那是一句「这个项目没有活会话」的断言，而根本没人查过）。
+                has_live: None,
                 origin: None,
             }
         })
@@ -347,7 +469,8 @@ fn codex_session_entry(s: &CodexSessionInfo, metadata: &HistoryMetadata) -> Hist
         started_at: s.mtime_ms,
         updated_at: s.mtime_ms,
         jsonl_path: s.path.to_string_lossy().into_owned(),
-        is_live: false, // Codex 判活 = F4（无 pidfile）
+        // `K-R92`：Codex 判活 = F4（无 pidfile）⇒ **答不了**，不是「没活着」。
+        is_live: None,
         message_count_approx: 0,
         is_bg: false,
         starred: meta.starred,
@@ -402,6 +525,10 @@ fn codex_first_user_excerpt(path: &Path) -> String {
 /// 因为本 IPC 在 spawn_blocking 里跑同步 IO，立刻终止下次 send 即可释放资源。
 ///
 /// 返回总计 emit 的 entry 数（前端可拿来对账 / 显示进度终值）。
+///
+/// 〔`K-R97` 09-12〕`project_dir` 的形状变了：**编码目录名**（`codex:<cwd>` 那支除外），
+/// 不再是绝对路径 —— 列表那条路改问本机后端之后，`HistoryProject::project_dir`
+/// 带回来的就是名字，与远端那条路（`stream_remote_history_sessions`）逐字同形。
 #[tauri::command]
 pub async fn stream_history_sessions_in_project(
     project_dir: String,
@@ -427,9 +554,19 @@ pub async fn stream_history_sessions_in_project(
             }
             return Ok(count);
         }
+        // 〔`K-R97` 09-12〕`project_dir` 现在是**编码目录名**，不再是绝对路径 ——
+        // 列表那条路改问后端要 `--list-projects` 之后，它带回来的就是名字（与远端那条逐字同形）。
+        // 🔴 名字里不许有分隔符 / 上跳：`Path::starts_with` 是**按段比**、不做规范化，
+        // `<根>/../etc` 照样 `starts_with(<根>)` ⇒ 只靠下面那道围栏挡不住穿越。
+        // 这道拒绝与后端侧 `observe/history_query.rs::list_sessions` 的第一道检查逐字同形。
+        if project_dir.contains('/') || project_dir.contains('\\') || project_dir.contains("..") {
+            return Err(format!("refuse: invalid project dir name: {project_dir}"));
+        }
         let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
         let projects_dir = crate::adapter::records_dir(&claude_dir);
-        let target = PathBuf::from(&project_dir);
+        let target = projects_dir.join(&project_dir);
+        // ⚠ **围栏刻意留着**（纵深防御，同本文件 `stream_read_session_jsonl` 那道）：
+        // 上面拒了分隔符，这里再核一次「解析出来的落点真的在根之内」。
         if !target.starts_with(&projects_dir) {
             return Err(format!(
                 "refuse: {} outside {}",
@@ -683,31 +820,18 @@ pub struct BranchResult {
     pub jsonl_path: String,
 }
 
-/// 源会话路径守卫（与 `validate_delete_target` 同构，但不改动 delete 那段安全关键代码）。
-/// canonicalize 两边解 `..`/symlink → 必须落在 projects 内 → 扩展名 `.jsonl`。
-fn validate_branch_source(jsonl_path: &str, projects_dir: &Path) -> Result<PathBuf, String> {
-    let target = PathBuf::from(jsonl_path);
-    if !target.exists() {
-        return Err(format!("{} does not exist", target.display()));
-    }
-    let canon_target = target
-        .canonicalize()
-        .map_err(|e| format!("canonicalize {}: {e}", target.display()))?;
-    let canon_projects = projects_dir
-        .canonicalize()
-        .map_err(|e| format!("canonicalize {}: {e}", projects_dir.display()))?;
-    if !canon_target.starts_with(&canon_projects) {
-        return Err(format!(
-            "refuse branch: {} is outside {}",
-            canon_target.display(),
-            canon_projects.display()
-        ));
-    }
-    if !crate::adapter::has_record_ext(&canon_target) {
-        return Err("refuse branch: not a .jsonl file".into());
-    }
-    Ok(canon_target)
-}
+// 🔴〔`K-R88` 09-13〕**源会话那一步的守卫搬走了，连同它的入参形状一起。**
+//
+// 原先这里有一个收**路径**的门（存在性 → 两边 canonicalize → 前缀落在 projects 内 →
+// 扩展名 `.jsonl`），而后端那条路收的是 **sid**。同一件事两个入参形状 ⇒
+// 「查不到怎么办」两边可以各答各的，而没有任何东西会因此变红。
+//
+// 今天两侧都走 `branch_core::find_session_file`：**入参只有 sid**，
+// 而路径由那一份在记录树里枚举出来。⇒ 界外那种入参**连表达都表达不出来**了 ——
+// 这比「表达得出来但被门拦下」强一档（`K-R88` `§0b` 逐字：少一个可被构造的路径入参
+// 就少一条路径穿越面）。
+// 那道门的两条实证判据（`..` 穿越 · 软链逃逸）没有被删，**换成了新形状的同名两条**，
+// 住在本文件测试段里，读的是同一份实现。
 
 /// 读一个 jsonl 文件为逐行 `serde_json::Value`（剥 BOM、跳空行；解析失败的行**保留原样**
 /// 不了了之——建分支只复制祖先链上的记录，坏行若不在链上自然被忽略）。
@@ -731,38 +855,41 @@ fn read_jsonl_values(path: &Path) -> Result<Vec<serde_json::Value>, String> {
 // G1：**记录变换已提成共享 crate** `branch-core` —— monitor 与远端 daemon 共用同一份。
 // 搬走的理由与选型过程见 `.claude/planned-build/branch-anywhere/features/G1-*.md`；
 // 落盘格式的实证判据见该 crate 的 `build_branch_records` 头注。
-// **本文件只留 IO 与路径守卫**（那两样是 monitor 侧特有的）。
+// **本文件只留 IO**（读 jsonl 的口径 ＋ `O_EXCL` 落盘，那两样是 monitor 侧特有的）；
+// 〔`K-R88` 09-13〕「按 sid 找那份源文件」也进了同一个 crate，两侧同一份。
 use branch_core::build_branch_records;
 
 /// F62 IPC：从历史会话的某条消息创建分支。前端点消息卡上的 `⑂` 时调，成功返回新 sid。
 /// 见本段顶部大注释（§1 正交、原生格式、守卫）。薄壳：resolve_claude_dir → 委托 branch_impl。
+///
+/// 🔴〔`K-R88` 09-13〕**入参从路径改成了 sid**，与远端那条
+/// （`remote_branch::create_remote_branch_session`）**形状一致**。
+/// 前端两条路本来就都拿得到 sid（按钮那份上下文里一直有），所以这不是给调用方加负担。
 #[tauri::command]
 pub fn create_branch_session(
-    source_jsonl_path: String,
+    source_session_id: String,
     message_uuid: String,
 ) -> Result<BranchResult, String> {
     let claude_dir = paths::resolve_claude_dir().ok_or("claude dir not found")?;
     let projects_dir = crate::adapter::records_dir(&claude_dir);
-    branch_impl(&source_jsonl_path, &message_uuid, &projects_dir)
+    branch_impl(&source_session_id, &message_uuid, &projects_dir)
 }
 
 /// 建分支核心（可注入 projects_dir 直测，绕开 resolve_claude_dir 全局依赖——同 delete 的
 /// validate_delete_target 测法）。安全承诺全在这层：源零改动、只写新 sid、绝不覆盖。
+///
+/// 「找那份源文件」**不在这里**：走 `branch_core::find_session_file`，与后端同一份（`K-R88`）。
+/// 本函数留下的是 monitor 侧特有的两样：读 jsonl 的口径、以及 `O_EXCL` 落盘。
 fn branch_impl(
-    source_jsonl_path: &str,
+    source_session_id: &str,
     message_uuid: &str,
     projects_dir: &Path,
 ) -> Result<BranchResult, String> {
-    let source = validate_branch_source(source_jsonl_path, projects_dir)?;
-    let src_sid = source
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .ok_or("refuse branch: cannot derive source sid from path")?
-        .to_string();
+    let source = branch_core::find_session_file(projects_dir, source_session_id)?;
 
     let lines = read_jsonl_values(&source)?;
     let new_sid = uuid::Uuid::new_v4().to_string();
-    let records = build_branch_records(&lines, message_uuid, &src_sid, &new_sid)?;
+    let records = build_branch_records(&lines, message_uuid, source_session_id, &new_sid)?;
 
     // 目标写进源会话同目录（projects 内某项目目录），文件名 = 新 sid。
     let parent = source
@@ -771,7 +898,7 @@ fn branch_impl(
     let out_path = parent.join(format!("{new_sid}.jsonl"));
     write_branch_file(&out_path, &records)?;
     tracing::info!(
-        "history: branched sid={new_sid} from {src_sid}@{message_uuid} ({} records)",
+        "history: branched sid={new_sid} from {source_session_id}@{message_uuid} ({} records)",
         records.len()
     );
 
@@ -912,11 +1039,47 @@ fn sanitize_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
     Ok(Some(l.to_string()))
 }
 
-/// F06（unify-launch）：本地路径的动作枚举——与 TS `LaunchAction` 同构（无 `attach` 变体：
-/// 本地会话从无 attach 概念）。
+/// F06（unify-launch）：本地路径的动作枚举——与 TS `LaunchAction` 同构。
+///
+/// # 🔴 `K-R106`〔用@09-13〕：`Attach` 是本轮加的，而它此前那句「不该有」是错的
+///
+/// 这里原来逐字写着「**无 `attach` 变体：本地会话从无 attach 概念**」。
+/// 用户 09-13 亲裁把它推翻了：
+///
+/// > 「新起一个会话之后，把你的终端接进那个会话那一句 `tmux attach`，归谁产？」
+/// > 「**归本机后端就好了啊**」〔用@09-13，`DECISIONS.md#R61` 裁定三〕
+///
+/// ⚠ 那句「本模块**不 attach**，一次都不」（`remote-daemon-proto/src/control/launch.rs`
+/// 头注）**仍然对** —— 它说的是**远端后端**，理由逐字是「在远端，**开不了你面前的窗**」。
+/// 🔴 **本机后端就在用户面前那台机器上** ⇒ 那条位置约束在这一侧不成立。
+/// `R61` 立的就是这件事：**不许再用「daemon」这个词把这两件事压平。**
+///
+/// # ⚠ `Attach` 与另外两个变体**不是同一类动作**，三处边界写在这里
+///
+/// 1. **它不起 agent** ⇒ 不需要 sid、不需要账号、不需要中转前缀、不需要身份 token。
+///    下面每一处 `match` 的 `Attach` 臂都是这句话的一个面，不是「顺手填 `None`」。
+/// 2. **旧路产不出它**（[`local_launch_choice`] 当场拒）：那条路只会拼一个**拉起器**，
+///    渲出来的是「起一个新的 claude」，而不是「接进已有的那个」——
+///    静默产出它比拒绝更坏（用户以为接回了原会话，实际另起一条）。
+/// 3. **它不经 [`launch_local`]**（那里也当场拒）：那条路 `spawn` 出去、stdio 全 null，
+///    而 attach 的正题是把**用户自己的终端**接进去（`§1.3`）。⇒ 只渲染，交给调用方。
+///
+/// # Windows 那一格：变体本身挂 `#[cfg(not(windows))]`
+///
+/// 与 [`render_local_ccm`] / [`render_local_ccm_with`] **同一条 cfg**。
+/// 定框 `C12`〔用 08-12〕逐字「windows不要tmux」⇒ Windows 上没有 tmux 容器，
+/// 也就没有「接进那个容器」这个动作 —— 让它在**编译期就不存在**，
+/// 而不是运行期再判一次（后者是「加个变体不接线」那一形的温床）。
 enum LocalPsAction {
     New,
     Resume(String),
+    /// 🔴 `K-R106`：**接进一个已经存在的 tmux 会话**。
+    ///
+    /// 会话名**不放在变体里**，走 `tmux_name` 那个参数 —— 全仓只有一个地方说得出
+    /// 「这次说的是哪个容器」，两处就会漂（而 `ccm attach` 收的正是容器名本身，
+    /// `ccm_invocation::render_ccm_invocation` 的 attach 分支读的是 `Container::Tmux`）。
+    #[cfg(not(windows))]
+    Attach,
 }
 
 /// 构造本地 PowerShell 命令体（不含 `-EncodedCommand` 编码）——`build_resume_ps_command`/
@@ -981,6 +1144,30 @@ pub enum LaunchAccount {
     Named {
         #[serde(rename = "configDir")]
         config_dir: String,
+        /// `K-R53`：这个账号的**名字**。
+        ///
+        /// # 它为什么要存在（在此之前这一格是空的，而空着的代价是可量的）
+        ///
+        /// CLI 只会 `--account <名字>`。本变体先前**只有目录**
+        /// ⇒ [`render_local_ccm_with`] 对它必然 §35 短路 ⇒ **本机具名账号一条都进不了
+        /// ccm 容器路**。而盘上四个本机拉起入口里有三个只说得出具名账号
+        /// （`src/accounts.ts::localLaunchAccountSync`），⇒ 那三条**在类型上**走不到后端那条路。
+        ///
+        /// # ⚠ 它**不是**从 `config_dir` 推出来的
+        ///
+        /// 推得出一个像样的名字（`cc-acct-iso` 的布局是 `~/.claude-accts/<名字>`，
+        /// [`relay_account_id_of_dir`] 就是那么推的），**但那两处的失效方向相反**：
+        /// 推错一个中转 id ⇒ 表里查不到 ⇒ 逐字节走旧路（保守）；推错一个 `--account`
+        /// ⇒ `ccm` 当场 `die`（`remote-daemon-proto/src/control/ccm/argv.rs` 认不出这个名字 = 退出码 2）
+        /// ⇒ **一次本来能起的会话变成一条报错**。⇒ 这一格只收**调用方说得出**的名字。
+        ///
+        /// 前端那一侧的取值口与 `configDir` 那半**同源**
+        /// （`accounts.ts::localLaunchAccountNameSync`，两半是同一条规则的两侧）。
+        ///
+        /// `None` = **调用方只说得出目录**（例：分叉时源会话是活的，继承的是它的目录、
+        /// 没有名字）⇒ CLI 仍然说不出 `--account` ⇒ 照旧 §35 短路，与本字段加进来之前逐字同。
+        #[serde(default)]
+        name: Option<String>,
     },
 }
 
@@ -1084,7 +1271,7 @@ fn config_dir_prefix_posix(account: Option<&LaunchAccount>) -> Result<String, St
         Some(LaunchAccount::Base) => crate::backend::control::payload::config_dir_prefix_posix(
             Some(&crate::backend::control::payload::Account::Base),
         ),
-        Some(LaunchAccount::Named { config_dir }) => {
+        Some(LaunchAccount::Named { config_dir, .. }) => {
             let d = config_dir.trim();
             // 空串**不是**账号 0，是坏数据（空值 ≠ 未设 —— Z01 起整套设计的支点）。
             if d.is_empty() {
@@ -1108,7 +1295,7 @@ fn config_dir_prefix_ps(account: Option<&LaunchAccount>) -> Result<String, Strin
         None => Ok(String::new()),
         // PS 里把环境变量置 `$null` 就是删掉它（等价于 POSIX 的 `unset`）。
         Some(LaunchAccount::Base) => Ok("$env:CLAUDE_CONFIG_DIR=$null; ".to_string()),
-        Some(LaunchAccount::Named { config_dir }) => {
+        Some(LaunchAccount::Named { config_dir, .. }) => {
             let d = config_dir.trim();
             if d.is_empty() {
                 return Err(
@@ -1133,10 +1320,27 @@ enum LocalLaunchChoice {
     },
 }
 
+/// 🔴 `K-R106`：旧路（[`build_local_posix_command`] / [`build_local_ps_command`]）
+/// 被要求产 attach 时给出的**理由**，而不是一个 `bool` 分支 ——
+/// 与 [`NO_TMUX_NAME`] / [`RELAY_KEEPS_THE_OLD_PATH`] 同一条纪律：
+/// 这条路上「为什么这次没接上」只有降级理由这一个线索。
+#[cfg(not(windows))]
+const OLD_PATH_CANNOT_ATTACH: &str =
+    "旧路产不出 attach —— 它只会拼一个拉起器，渲出来的是「另起一条 claude」而不是     「接进已有的那个」；产得出 attach 的只有 ccm 那条容器路〔`K-R106`，用@09-13     「归本机后端就好了啊」〕";
+
 fn local_launch_choice(
     action: &LocalPsAction,
     launcher: Option<&str>,
 ) -> Result<LocalLaunchChoice, String> {
+    // 🔴 `K-R106`：**旧路产不出 attach，而它必须是「拒」不是「凑一个出来」。**
+    //    本函数唯一会拼的东西是一个**拉起器**（`cc` / `claude` / F34 自定义命令）——
+    //    拿它去表达「接进已有的那个会话」，渲出来的是**另起一条 claude**：
+    //    用户以为回到了原会话，实际上开了第二条，而两条都在跑。
+    //    ⇒ fail-closed。产得出 attach 的只有 ccm 那条容器路（[`render_local_ccm_with`]）。
+    #[cfg(not(windows))]
+    if matches!(action, LocalPsAction::Attach) {
+        return Err(OLD_PATH_CANNOT_ATTACH.into());
+    }
     if let LocalPsAction::Resume(sid) = action {
         let valid = !sid.is_empty()
             && sid
@@ -1152,6 +1356,9 @@ fn local_launch_choice(
         match action {
             LocalPsAction::Resume(sid) => format!("{bin} {} {sid}", agent.resume_flag()),
             LocalPsAction::New => bin.to_string(),
+            // 上面那道 fail-closed 已经把它拦在函数入口 —— 到不了这里。
+            #[cfg(not(windows))]
+            LocalPsAction::Attach => unreachable!("attach 在本函数入口就被拒了"),
         }
     };
     // F34：设了自定义命令就直接用（不再别名自动检测——用户显式选择优先）
@@ -1232,6 +1439,75 @@ fn build_local_posix_command(
 #[cfg(not(windows))]
 const NO_TMUX_NAME: &str = "没有 tmux 会话名（前端未传）—— 名字只许由 `mintTmuxName` 铸";
 
+/// 🔴 `K-R55`（09-11）：**本机 ccm 探测的取值口** —— 与 [`RelayFactSources`] 是同一条缝的形状。
+///
+/// # 它为什么非有不可（不是「为了好看」，是一条判据今天买不到它要的东西）
+///
+/// `a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container` 要证的是
+/// **[`launch_local`] 那一行 `relay.is_empty()` 真的在挡**。要证它，判据必须真的驱动
+/// [`launch_local`]，而 [`launch_local`] 在 POSIX 上一定会经过 [`render_local_ccm`]
+/// ⇒ 一定会问「这台机器装没装 ccm」。
+///
+/// 没有这条缝时，那个问题的答案**由跑判据的那台机器给** ——
+/// 沙箱里没装 ⇒ [`render_local_ccm`] 恒 `Err(NotInstalled)` ⇒ **每一格都回落到旧路**
+/// ⇒ 把生产那道闸翻成恒真也看不出区别。于是判据只剩一条出路：**自己再抄一份那道闸**
+///（先算前缀、自己判空），而那正是本仓判过三次的那一形 —— **证的是它自己那份拷贝**。
+/// PM 09-11 现打：把 `if relay.is_empty()` 换成 `if true`，
+/// 点名单跑 **1 passed**、全量 `cargo --lib` **1472 passed / 0 failed**，一个字都不响。
+///
+/// ⇒ 把「装没装 / 有哪些能力」收进一个可替换的取值口，判据喂一份**确定的** ccm 事实进去，
+/// 于是「走不走得进容器」这件事重新变成由**生产那一行**决定的一维。
+///
+/// # 它买不到什么（如实写）
+///
+/// - **探测自己答得对不对**：那是 `ccm_probe` 自己那几条判据的事（本缝只管「问不问」）。
+/// - **生产上插进这条缝的是不是它**：由
+///   `the_local_launch_really_asks_the_production_ccm_probe` 按**函数地址**对拍，
+///   不是按文本 —— 理由与 [`PRODUCTION_RELAY_FACTS`] 那一条相同。
+/// - **谁绕开这条缝直接调 [`crate::ccm_probe::probe_local_ccm`]**：今天没有人群闸数它
+///   （`RelayFactSources` 那三个取值口有一道，住 `payload.rs`）。**登记，不假装钉住了。**
+#[cfg(not(windows))]
+#[derive(Clone, Copy)]
+pub(crate) struct CcmProbeSource(pub(crate) fn() -> crate::ccm_probe::CcmProbeResult);
+
+/// 生产上这条缝里插的那个取值口。**只有这一处**，判据按地址对拍它。
+#[cfg(not(windows))]
+pub(crate) const PRODUCTION_CCM_PROBE: CcmProbeSource =
+    CcmProbeSource(crate::ccm_probe::probe_local_ccm);
+
+#[cfg(all(test, not(windows)))]
+thread_local! {
+    /// 判据装进来的替身。**线程局部** ⇒ 同进程别的判据不受影响（`cargo test` 是多线程跑的）。
+    static CCM_PROBE_OVERRIDE: std::cell::Cell<Option<CcmProbeSource>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// 装替身，离开作用域自动还原（`assert!` 炸了也还原）。
+#[cfg(all(test, not(windows)))]
+pub(crate) struct CcmProbeGuard(Option<CcmProbeSource>);
+
+#[cfg(all(test, not(windows)))]
+impl Drop for CcmProbeGuard {
+    fn drop(&mut self) {
+        CCM_PROBE_OVERRIDE.with(|c| c.set(self.0));
+    }
+}
+
+#[cfg(all(test, not(windows)))]
+pub(crate) fn override_ccm_probe(src: CcmProbeSource) -> CcmProbeGuard {
+    CcmProbeGuard(CCM_PROBE_OVERRIDE.with(|c| c.replace(Some(src))))
+}
+
+/// 这一跳要用的那个取值口。生产上恒是 [`PRODUCTION_CCM_PROBE`]。
+#[cfg(not(windows))]
+fn ccm_probe_source() -> CcmProbeSource {
+    #[cfg(test)]
+    if let Some(s) = CCM_PROBE_OVERRIDE.with(|c| c.get()) {
+        return s;
+    }
+    PRODUCTION_CCM_PROBE
+}
+
 #[cfg(not(windows))]
 fn render_local_ccm(
     action: &LocalPsAction,
@@ -1251,7 +1527,10 @@ fn render_local_ccm(
     // ★ 探测与渲染**分家**（P3t-Y3）：探测是这台机器的事实，渲染是纯函数。
     // 合在一起时，判据的结论会跟着「跑测试的机器装没装 ccm」变 —— 而「本机恰好没装
     // ⇒ 判据静默 return ⇒ 报绿」与「真的测过了」在输出上完全一样，那是「0 passed 不是绿」同族。
-    let probe = crate::ccm_probe::probe_local_ccm();
+    // ⚠ 走 [`ccm_probe_source`] 而不是直接调 —— 直接调时「这台机器装没装 ccm」是判据
+    //   够不着的一维，于是任何想驱动 [`launch_local`] 的判据都只能自己再抄一份闸
+    //   （理由与失效读数住 [`CcmProbeSource`] 头注）。
+    let probe = (ccm_probe_source().0)();
     let caps: std::collections::BTreeSet<String> = probe.capabilities.iter().cloned().collect();
     render_local_ccm_with(action, launcher, account, tmux_name, &caps, probe.installed)
 }
@@ -1277,36 +1556,76 @@ fn render_local_ccm_with(
     let (sid_owned, cli_action) = match action {
         LocalPsAction::Resume(sid) => (sid.clone(), None),
         LocalPsAction::New => (String::new(), Some(ci::Action::New)),
+        // 🔴 `K-R106`：**这一行就是「本机后端产得出 attach 那一句」的全部接线。**
+        //    `ci::Action::Attach` 那一支在 `render_ccm_invocation` 里**早于维度循环 return**
+        //    （`ccm attach <名>` 不收任何修饰 flag），名字取的是 `Container::Tmux` 那个
+        //    —— 也就是下面 `spec.container` 里的 `name`，与本行这个是**同一个** `&str`。
+        //    ⇒ 「接进去的那个」与「刚建的那个」在类型上就是同一个名字，不是两处各写一遍。
+        LocalPsAction::Attach => (String::new(), Some(ci::Action::Attach { name })),
     };
     let act = cli_action.unwrap_or(ci::Action::Resume { sid: &sid_owned });
 
-    // ★★ 账号那格是本件真正的边界，把它写清楚（P3t-Y2 摸底）。
+    // ★★ 账号那格是本件真正的边界，把它写清楚（P3t-Y2 摸底 · `K-R53` 09-11 重量）。
     //
     // 本机账号是**三态**，而 CLI 的 `account` 维度**恒真**（F05：沉默 = 意外身份切换）
     // ⇒ 每一态都得说得出话来。逐态对：
     //
     // ① `Some(Base)` —— 旧路发 `unset CLAUDE_CONFIG_DIR;`，CLI 发 `--base`。**同义**，可渲染。
-    // ② `Some(Named{config_dir})` —— CLI 只会 `--account <名字>`，而 Rust 这一侧
-    //    **只有 configDir、没有名字**（`LaunchAccount::Named` 就一个字段）。
-    //    ⇒ 说不出 ⇒ §35 短路 ⇒ 降级回旧路（旧路发 `export CLAUDE_CONFIG_DIR='<dir>'`）。
+    // ② `Some(Named{config_dir, name: Some(n)})` —— CLI 发 `--account <n>`。**可渲染**。
+    //    〔`K-R53` 09-11 开的就是这一格〕名字由**调用方**说（`LaunchAccount::Named::name`
+    //    的头注写着为什么不从目录推），前端那一侧与 `configDir` 同源
+    //    （`accounts.ts::localLaunchAccountNameSync`）。
+    //    在这之前本变体只有目录 ⇒ 本机具名账号**一条都进不了容器**，而盘上四个本机拉起
+    //    入口里有三个只说得出具名账号 ⇒ 那三条在类型上到不了后端那条路。
+    // ②′ `Some(Named{name: None})` —— 调用方只说得出目录（例：分叉时源会话是活的，
+    //    继承的是它的目录、没有名字）⇒ 仍然说不出 ⇒ §35 短路 ⇒ 降级回旧路
+    //    （旧路发 `export CLAUDE_CONFIG_DIR='<dir>'`）。
     // ③ `None` —— 旧路发**空前缀**，语义是「继承环境里现有的 `CLAUDE_CONFIG_DIR`」。
     //    ⚠⚠ **这一态绝不能映射成 `Base`**：`--base` 是「显式不注入」，与「继承」不是一回事。
     //    映过去 = 把用户 shell 里已有的账号悄悄清掉 —— 那正是 **#75「resume 在错数据目录
-    //    找不到会话」** 的病灶形状。CLI 语法里**没有「继承」这一态**，所以同样短路。
+    //    找不到会话」** 的病灶形状。**这条今天仍然成立，一个字都不许松。**
     //
-    // ⇒ 今天只有 ① 渲染得出来。这不是接线没接完，是 **CLI 语法在本机账号上真的窄一格**
-    //    （②可补：从 `accounts.json` 反查名字；③是结构性的）。见 ROADMAP `U10`。
-    let acct =
-        match account {
-            Some(LaunchAccount::Base) => ci::CliAccount::Base,
-            // ②：有 configDir 没名字 —— 正是 `CliAccount::Named{name:None}` 这一格存在的理由。
-            Some(LaunchAccount::Named { .. }) => ci::CliAccount::Named { name: None },
-            // ③：`None` 走同一条短路，但**理由不同**（不是「没名字」，是「CLI 说不出继承」）。
-            None => return Err(
-                "本机未表态账号（继承环境）—— CLI 的 account 维度恒真且无「继承」语法，诚实降级"
-                    .into(),
-            ),
-        };
+    //    🔴🔴 **`K-R89` 09-13：这一格今天关掉了 —— 而它是被一条已到的裁定关掉的，不是被绕过去的。**
+    //
+    //    这里此前逐字写着「也不能靠『省略 `--account`』兑现……CLI 语法里今天真的没有
+    //    『继承』这一态」，并把出路记成「**③ 那一格要动的是 ccm 省略时的默认语义
+    //    （产品决定 ＋ `remote-daemon-proto/src/control/ccm/plan.rs`）**」。
+    //    **那句话是陈账：它在等一个 09-12 就已经到了、而且已经落地的决定。**
+    //
+    //    〔`DECISIONS.md#R28`，用户 09-12 逐字：「把调用方选中的号静默换掉 /
+    //     **不要这么做** / 不是有选默认账号吗? **就用那个**」〕
+    //    落地处 `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account`
+    //    （头注挂着 ✅），省略被拆成**两支，两支都是这一裁要的行为**：
+    //      · `CLAUDE_CONFIG_DIR` **非空** ⇒ 保留不覆盖（`R08` 那道 `-z` 闸）= **继承**；
+    //      · 裸终端（都没给）⇒ 落 manifest 的 `isDefault` = 「就用那个」。
+    //
+    //    ⚠⚠ **别把上面那两支压成一句「省略就是继承」** —— 那是本件被反复叮嘱不许照抄的
+    //    那种简写。**说得准的那句是**：省略在这条 CLI 上**有确定语义**，而那个语义
+    //    正是 `R28` 裁定的两支。⇒ 这一维**说得出话了**，于是不必再 §35 短路。
+    //
+    //    ⚠ **本机这条路上「继承」拿到的到底是谁的环境**（现打 09-13，别猜）：
+    //    送法是 `launch::build_local_posix_argv` ⇒ `bash -lic '<cmd>'`（**login ＋
+    //    interactive**）⇒ 用户自己的 rc/profile 先跑，`ccm` 看到的 `CLAUDE_CONFIG_DIR`
+    //    就是**用户 shell 里那一个** —— 与旧路（空前缀 ⇒ 由同一个 shell 决定）**同源**。
+    //    唯一分岔在「rc 里什么都没设」那一支：旧路落 `~/.claude`，这条落 manifest 默认号
+    //    —— **那正是 `R28` 明说要的**（「不是有选默认账号吗? 就用那个」）。
+    //
+    //    🔴 **远端那半不在本件射程内**：远端是 ssh 过去，那台机器上的继承态不是 monitor 的
+    //    环境（`R28` 裁定四逐字）⇒ `WireAccount` 刻意没有对应变体，那一半归 `K-R90`。
+    //
+    // ⇒ 今天 ① · ② · ③ 渲染得出来，**只剩 ②′ 不行**（缺的是「名字」这条信息本身，
+    //    不是语法）。六格今天版逐格住 `tests::THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS`。
+    let acct = match account {
+        Some(LaunchAccount::Base) => ci::CliAccount::Base,
+        // ② / ②′：名字说得出就说，说不出就老实短路 —— `CliAccount::Named{name:None}`
+        //         这一格存在的理由就是后者。
+        Some(LaunchAccount::Named { name, .. }) => ci::CliAccount::Named {
+            name: name.as_deref(),
+        },
+        // ③：`R28` 之后省略有了确定语义 ⇒ **表得出态了**（`Inherit` 渲染成「不加任何
+        //    账号 flag」）。⚠ 不是 `Base`（那是显式清空 = #75），也不是「沉默」。
+        None => ci::CliAccount::Inherit,
+    };
 
     let spec = ci::CliSpec {
         is_ssh: false,
@@ -1330,6 +1649,9 @@ fn render_local_ccm_with(
         ccm_sid: match action {
             LocalPsAction::Resume(sid) => Some(sid.as_str()),
             LocalPsAction::New => None,
+            // attach 不起 agent ⇒ 没有「这次要打哪个 sid 的标」这回事。
+            #[cfg(not(windows))]
+            LocalPsAction::Attach => None,
         },
         model: None,
         launcher: sanitized.as_deref().unwrap_or(default_launcher),
@@ -1372,6 +1694,47 @@ fn render_local_ccm_with(
 /// 拿它反查 sid 是**下一跳**的事（前端 `accounts.ts::sidOfLaunch` 与它旁边那张待回填表），
 /// 而那一跳必然要**等进程真的跑起来**才问得到 —— 时序那一格归 `KP5HD3`。
 ///
+/// `K-R53`：**中转在场时，本机拉起照旧走旧路**的那句降级理由。
+///
+/// 它是一条**降级理由**而不是一个 `bool` 分支，理由与 `render_local_ccm` 的每一条 `Err`
+/// 相同：这条路上「为什么这台机没进 tmux」只有一个线索，就是 `launch_local` 里那行
+/// `tracing::debug!`。把原因写成一个分支条件 ⇒ 那行日志只会说「渲染器降级」而不说是谁降的。
+///
+/// # 🔴 退役条件〔`K-R61` 09-11 重裁 —— **挡的已经不是同一件事了**〕
+///
+/// 上一版这里点的退役条件是「往那份 bash `ccm` 的 `capabilities=` 串里加一个 token」，
+/// 而**那份脚本 `07e4e72` 就删了** ⇒ 判据活着、前提死了，中间没有任何东西会响。
+/// 那正是 `K-R61` 立件的原因。而重裁之后变的**不只是住址，是前提本身**：
+///
+/// - 旧话逐字是「放行会让**装旧 ccm 的机器**静默吃掉它」。`K34`/`K35` 之后
+///   app 自带并自管环境、后端只有一个 ⇒「对面装了**别的** `ccm`」这个概念本身正在退场，
+///   **不许再拿它当理由**；
+/// - 我们自己这份 `ccm` 的容器路**本来就转发** `ANTHROPIC_BASE_URL`
+///   （`remote-daemon-proto/src/control/ccm/plan.rs`，daemon 侧有判据真去驱动它）。
+///
+/// ⇒ 今天的形状是：**转发做到了、也声明了** —— `K-R61` 把 `base-url-across-tmux`
+/// 补进了 `remote-daemon-proto/src/control/ccm/mod.rs` 的 `CAPABILITIES`，
+/// **差的只是下面那一行还没改成探它**。
+///
+/// ⇒ 退役条件因此是**一行 Rust**（不是「等用户升级」）：把 [`launch_local`] 里那句
+/// `relay.is_empty()` 换成「探到 `base-url-across-tmux` 才放行」。
+/// 〔`K-R61 §0e` 逐字裁「**本件不动中转的行为**」⇒ 那一行本轮一个字节不动。〕
+///
+/// ⚠ **为什么本轮不顺手翻掉那一行**（这是一条**可证伪**的条件，不是「以后再说」）：
+/// `ccm_probe` 探的是 **PATH 上那个 `ccm`**，不是仓里这份 ⇒ 翻之前得先有人守住
+/// 「用户机器上跑的就是 app 自己推的那一份」。那一格今天没人守；
+/// 有人守住的那天，这一段与 [`launch_local`] 体内那段一起退役。
+#[cfg(not(windows))]
+const RELAY_KEEPS_THE_OLD_PATH: &str =
+    "这个号走中转，而这一行还没改成「探到 `base-url-across-tmux` 才放行」——\
+     转发做到了、也声明了（`remote-daemon-proto/src/control/ccm/mod.rs`），\
+     差的只是这一行；`K-R61` 只重裁理由，不动行为";
+
+/// 🔴 `K-R106`：[`launch_local`] 被要求 attach 时给出的理由（同上，是理由不是 `bool`）。
+#[cfg(not(windows))]
+const ATTACH_IS_NOT_A_SPAWN: &str =
+    "attach 不经本机拉起那条路：它 spawn 出去、stdio 全 null，接不上任何终端；     `§1.3` 把最终那次 exec 钉在用户自己的终端进程里 ⇒ 本机后端交的是**那一串**     （`render_local_attach`），不是一次 spawn";
+
 /// ⚠ **`Err` 那一支不回 token**：拉起没成功就没有「刚起的那条」可言，
 /// 回一个 token 会让调用方去等一条根本不存在的会话。
 fn launch_local(
@@ -1393,6 +1756,23 @@ fn launch_local(
     };
     #[cfg(not(windows))]
     let base = {
+        // 🔴 `K-R106`：**attach 不走这条路，而这是结构，不是「暂时没接」。**
+        //
+        // 本函数最后一跳是 `(launch_sink().0)(&cmd, cwd)` —— `launch_local_posix` 把命令
+        // `spawn` 出去、**stdio 全 null**。拿它送 `ccm attach <名>` 的结果是：一个看不见、
+        // 摸不着、连不上任何终端的 attach 进程，而用户面前什么都没发生（**还会静默成功**）。
+        // ⇒ attach 的正题是把**用户自己的终端**接进去（`§1.3` 把最终那次 exec 钉在那里）。
+        // 本机后端在这件事上的产物是**那一串**，不是一次 spawn —— [`render_local_attach`] 交它。
+        //
+        // ⚠ **它为什么住在这个块里、而不是函数入口**（量具事故留档，别搬回去）：
+        //   闸带着一个 `#[cfg(not(windows))]` 属性，放在入口就成了本函数里**第一个**
+        //   `#[cfg(not(windows))]`，而六格表「Windows」格的观测口正是
+        //   「`fn launch_local(` 到第一个 `#[cfg(not(windows))]` 之间有没有 `let _ = tmux_name;`」
+        //   ⇒ 现打当场从 `Structural` 翻成 `Closed`（`K-R106` 第一趟门禁真红过一次）。
+        //   **改闸的位置，不改那条观测口** —— 改观测口就是「改判据迁就实现」。
+        if matches!(action, LocalPsAction::Attach) {
+            return Err(ATTACH_IS_NOT_A_SPAWN.into());
+        }
         // ★★ `K-H2b`（08-28 第二拍）：**照旧走 ccm 那条容器路，前缀拼在它外面。**
         //
         // # 第一拍为什么绕开它，第二拍为什么不用绕了
@@ -1402,7 +1782,7 @@ fn launch_local(
         // ⇒ 在 `ccm` 外侧 export 的东西**在 tmux 边界被吃掉** ⇒ 照旧走 ccm
         // = **静默地没注入**。于是它两害相权选了「注入成功但没有容器」。
         //
-        // 那个坑是真的，但**处置选窄了**：`shared/ccm` 里本来就有一段**同形的转发**
+        // 那个坑是真的，但**处置选窄了**：那份已删的 bash `ccm` 里本来就有一段**同形的转发**
         //（R08 那条：把继承来的 `CLAUDE_CONFIG_DIR` 写进载荷**内侧**）。
         // 第二拍照它加了一条 `ANTHROPIC_BASE_URL` 的转发 ⇒ **tmux 边界那一格不再是拦路的那格**。
         //
@@ -1414,31 +1794,51 @@ fn launch_local(
         // 🔴🔴 **订正（`D4 阻-3`）：这里先前逐字写着「于是『走中转』与『有 tmux 容器』
         // 不再互斥」—— 那是假话，今天仍然互斥，只是成因换了。**
         //
-        // 成因不再是「变量在 tmux 边界被吃掉」，而是**具名账号根本进不了 ccm**：
-        // 能推出中转 id 的只有 `LaunchAccount::Named`（`relay_account_id`：`Base` 与缺席
-        // 一律 `None`），而 `render_local_ccm` 对 `Named` **必然** §35 短路
-        //（`Named` 只有 configDir、没有名字，CLI 只会 `--account <名字>`）
-        // ⇒ **带中转前缀的本机拉起，必然落到下面那条 `build_local_posix_command`，
-        // 而那条路没有 tmux 容器；走 ccm 容器路的，`relay` 必然是空串。**
+        // 🔴🔴🔴 **二次订正（`K-R53` 09-11）：成因又换了一次，而互斥**仍然**成立。**
         //
-        // ⇒ 这个事实由 `tests::a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`
-        // **逐格钉住**（三种形状各喂一次）。消掉它要给 `LaunchAccount::Named` 补名字
-        //（改 `LaunchAccount` 与它的前端调用点，都不在本件写区）——**那一天要同一拍改四处**，
-        // 清单写在那条判据的头注里，别只改一处。
+        // `D4` 那一拍的成因是「具名账号根本进不了 ccm」（`Named` 只有目录没有名字）。
+        // **本件把那一格开了** —— `LaunchAccount::Named` 现在带名字，`render_local_ccm`
+        // 对它渲染得出 `--account <名字>`。⇒ 那个成因**今天不成立了**。
         //
-        // ⚠ **`shared/ccm` 那条转发因此今天在本条路上生产不可达**：那段 shell 真的会转发
-        //（`the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` 量的是它），
-        // 但**没有任何生产输入能同时走到中转与容器** ⇒ 它是**为将来那条路预备的**。
-        // 那条判据的头注里也写了这句话，两处别只改一处。
+        // 而互斥没有跟着消失，因为下面这一行**显式**把它保住了。为什么要显式保住：
+        //
+        // 我们自己这份 `ccm`（`remote-daemon-proto/src/control/ccm/plan.rs`）的容器路
+        // 那条 `ANTHROPIC_BASE_URL` 转发是**有的**，而先前 `--ccm-probe` 吐的
+        // `capabilities=` 串里**没有任何 token 声明它** —— **能力在、声明不在**。
+        //
+        // 🔴🔴🔴 **三次订正（`K-R61` 09-11）：声明那一半本件补上了，理由跟着重裁。**
+        //   上一版这里的理由逐字是「放行会让**装着旧 ccm 的机器**静默吃掉这个变量」，
+        //   而 `K34`/`K35` 之后那类机器正在退场 ⇒ **那句话不许再当理由用**。
+        //   `base-url-across-tmux` 已进 `remote-daemon-proto/src/control/ccm/mod.rs`
+        //   的 `CAPABILITIES` ⇒ **转发做到了、也声明了**。
+        //
+        // ⇒ **中转在场就不走 ccm 容器路**，逐字节维持 `K-H2b` 那一拍的行为
+        //   —— `K-R61 §0e` 逐字裁「本件不动中转的行为」，这一行本轮一个字节不动。
+        //   这一格的退役条件因此收成**一行 Rust**：把下面那句 `relay.is_empty()`
+        //   换成「探到 `base-url-across-tmux` 才放行」。清单住
+        //   `tests::a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`。
+        //
+        // ⚠ **为什么本轮不顺手翻**（可证伪，不是「以后再说」）：`ccm_probe` 探的是
+        //   **PATH 上那个 `ccm`**，不是仓里这份 ⇒ 翻之前要先有人守住
+        //   「用户机器上跑的就是 app 自己推的那一份」。那一格今天没人守。
         //
         // ⚠ **这一格没买到的**：「变量真的穿过了一次**真** tmux 边界」要真机 tmux，
-        // 本轮没量 ⇒ 归 e2e；而按上面那条，**今天在本机中转这条路上根本走不到**
+        // 本轮没量 ⇒ 归 e2e；而按上面那条，**今天在本机中转这条路上仍然走不到**
         // —— 不只是「没量」，是「今天量不到」。
         //
         // ⚠ 写法上刻意让 `render_local_ccm(` 与 `build_local_posix_command(` 在本函数体里
         // **各恰好一处** —— `the_local_launch_tries_the_renderer_before_the_old_path`
         // 用它们的相对位置钉「渲染器在前」，两处就管不住顺序了（第一拍被它逮过一次）。
-        match render_local_ccm(action, launcher, account, tmux_name) {
+        //
+        // ⚠ 中转那一格（上面那段）**在渲染器之前**短路，而不是在它之后再判一次：
+        //   在后面判等于「渲染器说了算，我再推翻一次」——两个决定点、两套判据，
+        //   正是 `session-backend.ts` 头注里 #76 那条病的形状。
+        let rendered = if relay.is_empty() {
+            render_local_ccm(action, launcher, account, tmux_name)
+        } else {
+            Err(RELAY_KEEPS_THE_OLD_PATH.to_string())
+        };
+        match rendered {
             Ok(rendered) => rendered,
             Err(why) => {
                 // 与远端那条降级**同一种说法**：走回落是正常且预期的路径（没装 ccm 的机器
@@ -1498,7 +1898,7 @@ fn launch_local(
 /// - 参数缺席（调用方没表态）⇒ `None`，同上。
 fn relay_account_id(account: Option<&LaunchAccount>) -> Option<String> {
     match account {
-        Some(LaunchAccount::Named { config_dir }) => relay_account_id_of_dir(config_dir),
+        Some(LaunchAccount::Named { config_dir, .. }) => relay_account_id_of_dir(config_dir),
         _ => None,
     }
 }
@@ -1757,6 +2157,11 @@ fn relay_prefix_for_launch(
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
         LocalPsAction::New => None,
+        // attach 不起 agent ⇒ 这一跳没有「要往哪个号的中转上指」这个问题。
+        // ⚠ 它今天到不了这里（[`launch_local`] 入口就拒了 attach），本臂是**穷尽性**的一半：
+        //    哪天有人把 attach 接进那条路，编译器会先逼他读一遍上面这句话。
+        #[cfg(not(windows))]
+        LocalPsAction::Attach => None,
     };
     let facts = relay_facts();
     relay_prefix_for(
@@ -1808,6 +2213,9 @@ fn launch_identity_token(action: &LocalPsAction) -> String {
     let sid = match action {
         LocalPsAction::Resume(sid) => Some(sid.as_str()),
         LocalPsAction::New => None,
+        // attach 不起进程 ⇒ 没有「这一次拉起」可以铸身份。同上，本臂今天到不了。
+        #[cfg(not(windows))]
+        LocalPsAction::Attach => None,
     };
     crate::backend::control::payload::route_key_for_session(sid)
 }
@@ -2067,109 +2475,101 @@ pub fn new_local_session(
     Ok(launch_id)
 }
 
-// === 内部：项目级 / jsonl 级扫描 ===
-
-/// 项目级元数据 —— 只扫文件 stat + 读单一 jsonl 的第 1 行 cwd，**不读消息内容**。
-/// 用于初次打开历史浏览器（"只读几条就好"）。
-fn analyze_project_dir(
-    dir: &Path,
-    metadata: &HistoryMetadata,
-    map: &SessionMap,
-) -> Option<HistoryProject> {
-    let project_dir = dir.to_string_lossy().into_owned();
-
-    let entries = std::fs::read_dir(dir).ok()?;
-    let mut jsonls: Vec<(PathBuf, String, i64)> = Vec::new(); // (path, session_id, mtime_ms)
-    for e in entries.flatten() {
-        let p = e.path();
-        // F-MA：记录扩展名走 adapter（此处原不排 subagent，故用 has_record_ext 而非 is_record_file，
-        // 保行为零变化）；sid 从路径按 adapter 约定取。
-        if crate::adapter::has_record_ext(&p) {
-            let sid = match crate::adapter::session_id_from_path(&p) {
-                Some(s) => s,
-                None => continue,
-            };
-            let mtime = p
-                .metadata()
-                .ok()
-                .and_then(|m| m.modified().ok())
-                .map(systime_to_ms)
-                .unwrap_or(0);
-            jsonls.push((p, sid, mtime));
-        }
+/// 🔴 `K-R106`〔用@09-13〕**本机后端产 `attach` 那一句** —— `K-R54` 表第 3 行的收尾。
+///
+/// # 用户逐字，这是本命令的全部依据
+///
+/// > 「新起一个会话之后，把你的终端接进那个会话那一句 `tmux attach`，归谁产？」
+/// > 「**归本机后端就好了啊**」〔`DECISIONS.md#R61` 裁定三〕
+///
+/// # 它**只渲染，不执行**，而这不是偷懒
+///
+/// `§1.3` 把最终那次 exec 钉在**用户自己的终端进程**里。[`launch_local`] 那条路是
+/// `spawn` + stdio 全 null ⇒ 拿它送 attach 等于什么都没发生（还会静默成功）。
+/// ⇒ 本机后端在这件事上的产物就是**那一串**；谁把终端接上去由调用方决定。
+///
+/// # 它走的是**既有那条渲染路**，不是第二条
+///
+/// [`render_local_ccm`] → [`render_local_ccm_with`] → `ccm_invocation::render_ccm_invocation`
+/// —— 与本机 `new` / `resume` 逐字同一条路，同一份能力探测（[`CcmProbeSource`] 那条缝）、
+/// 同一条 `NO_TMUX_NAME`。**没有为 attach 新开任何一个决定点**
+/// （两个决定点、两套判据正是 issue #76 那条病的形状，`session-backend.ts` 头注记着它）。
+///
+/// # 🔴 ⚠ 它今天**不是** `#[tauri::command]`，而这是量出来的，不是选择
+///
+/// 第一版给它挂了 `#[tauri::command]`，想着「注册那一行归 PM」。**门禁当场红两条**
+/// （`src/ipc/commands.vitest.ts` 的 `C04a`）：「这些命令声明了却没注册 ⇒ 前端调不到」
+/// 与「TS 静态看不见的命令集变了」。⇒ 本仓**不接受**「声明了不注册」这个中间态。
+///
+/// 把它接出去要动**四处**，其中三处不在 `K-R106` 的写区：
+///
+/// | 处 | 在写区吗 | 要做什么 |
+/// |---|---|---|
+/// | 本函数 | ✅ | 加回 `#[tauri::command]` |
+/// | `src-tauri/src/lib.rs` 的 `generate_handler!` | ❌ | 注册一行 |
+/// | `src-tauri/src/parity_ledger.rs` 的 `LEDGER` | ✅ | **必须同一拍**加一行，否则它当场判「已注册但没进对账表」 |
+/// | `src/ipc/commands.ts` ＋ `src/ipc/commands.vitest.ts` | ❌ | 加包装层；后者那个**命令总数**是写死的（现打 147），要 +1 |
+///
+/// # 🔴 `K-R109`（09-13）：**接出去了** —— 上面那张「要动四处」的表已经全部落地
+///
+/// 四处逐一：本函数挂回 `#[tauri::command]`（就在下面）· `lib.rs` 的 `generate_handler!`
+/// 注册一行 · `parity_ledger::LEDGER` 同一拍加一行 · `src/ipc/commands.ts` 加包装层。
+/// 前端那条 `↗`（`src/remote-launch-run.ts::runLocalResumeIntoExistingTmux`）改成问它要。
+/// ⇒ 「`Attach` 没有生产构造点」那条诚实边界**本轮消掉**，连带非 test 的 `cargo build`
+/// 那条 `dead_code` 一起（是**注册**杀掉它的，不是接线 —— `generate_handler!` 展开出来的
+/// 那个包装函数就是第一个非 test 调用方；读数与量法住 `evidence/K-R109-deathvalue.md`）。
+///
+/// # 入参为什么是 `String` 而不是 `&str`
+///
+/// 现打（09-13，量具 `evidence/K-R109-ruler.py` 的 `command-params` 一格；
+/// 分母 = 剥掉整行 `//` 注释后 `src-tauri/src/**.rs` 里 `#[tauri::command]` 紧跟着的
+/// **149** 处 `fn`（= 148 个唯一命令名 ＋ `bring_monitor_to_front` 的第二份 cfg 实现））：
+/// **入参出现 `&str` 的 0 处**。⚠ 不剥注释会读成 16 处 —— 那 16 处全是散文里逐字提到
+/// 这个属性、而它下面碰巧跟着一个内部 `fn`（`parity_ledger.rs::registered_commands`
+/// 的头注逐字警告过这个形状）。**一个数不写清它的剥法，就是半句假话。**
+///
+/// 命令入参要从 IPC 那一侧反序列化出来，借用形态在这条路上不是「省一次拷贝」，
+/// 是**给自己找一个只在某些 tauri 版本上成立的前提**。⇒ 与全仓同形，owned。
+/// 判据侧的调用点跟着改一处（`.to_string()`）。
+///
+/// # Windows：拒，而且理由是定框
+///
+/// `C12`〔用 08-12〕逐字「windows不要tmux」⇒ 那台机器上没有 tmux 容器，
+/// 也就没有「接进那个容器」这件事。[`LocalPsAction::Attach`] 这个变体本身就挂着
+/// `#[cfg(not(windows))]`（与 [`render_local_ccm_with`] 同一条 cfg）——**编译期就不存在**。
+///
+/// 🔴 **而本函数不能再整个挂那条 cfg 了，这是注册面逼出来的**：`generate_handler![…]`
+/// 收的是一串**路径**，`#[cfg]` 挂不进去（那个宏不解析属性）⇒ 命令名在 Windows 上必须
+/// 也解析得到，否则 `cargo check --target x86_64-pc-windows-gnu`（门禁 `winchk` 那一格）
+/// 当场编不过。⇒ **cfg 收进函数体**：Windows 那一支直接拒，理由就是 `C12`，
+/// 不是运行期探测。仓里的先例是 `lib.rs::bring_monitor_to_front`（两侧各一份实现）——
+/// 本函数取的是同一条路的另一种写法（一个声明、体内分叉），因为 Windows 那一支
+/// 只有一行、单独立一个同名 `fn` 反而多一处要对齐的签名。
+#[tauri::command]
+pub fn render_local_attach(tmux_name: String) -> Result<String, String> {
+    #[cfg(not(windows))]
+    {
+        render_local_ccm(&LocalPsAction::Attach, None, None, Some(tmux_name.as_str()))
     }
-    if jsonls.is_empty() {
-        return None;
+    #[cfg(windows)]
+    {
+        let _ = tmux_name;
+        Err(WINDOWS_HAS_NO_TMUX_CONTAINER.to_string())
     }
-
-    // 项目 cwd：从任意 jsonl 的首条 user 消息取（按 mtime 最大那个最快有结果）
-    jsonls.sort_by(|a, b| b.2.cmp(&a.2));
-    let cwd = jsonls
-        .iter()
-        .find_map(|(p, _, _)| quick_extract_cwd(p))
-        .unwrap_or_default();
-
-    let project_name = Path::new(&cwd)
-        .file_name()
-        .and_then(|s| s.to_str())
-        .map(str::to_string)
-        .unwrap_or_else(|| {
-            // 实在拿不到就用 dir 名兜底（编码后的）
-            dir.file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("(未知项目)")
-                .to_string()
-        });
-
-    let session_count = jsonls.len() as u32;
-    let last_activity = jsonls.iter().map(|(_, _, m)| *m).max().unwrap_or(0);
-    let has_live = jsonls.iter().any(|(_, sid, _)| map.is_session_active(sid));
-    let mut starred_count = 0u32;
-    let mut hidden_count = 0u32;
-    for (_, sid, _) in &jsonls {
-        if let Some(em) = metadata.entries.get(sid) {
-            if em.starred {
-                starred_count += 1;
-            }
-            if em.hidden {
-                hidden_count += 1;
-            }
-        }
-    }
-
-    Some(HistoryProject {
-        project_path: cwd,
-        project_name,
-        project_dir,
-        session_count,
-        starred_count,
-        hidden_count,
-        last_activity,
-        has_live,
-        origin: None, // 本地扫描路径恒为本地
-    })
 }
 
-/// 只读首条带 cwd 的 user 记录的 cwd 字段，不解析其它行（早返回省 IO）。
-/// jsonl 第 1 行通常就是 user（Claude Code 的固定写入顺序），最多扫 30 行兜底。
-fn quick_extract_cwd(path: &Path) -> Option<String> {
-    let file = File::open(path).ok()?;
-    let reader = BufReader::new(file);
-    for line in reader.lines().map_while(Result::ok).take(30) {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if let Ok(Some(rec)) = parse_line(trimmed) {
-            if let JsonlRecord::User { cwd: Some(c), .. } = rec {
-                if !c.is_empty() {
-                    return Some(c);
-                }
-            }
-        }
-    }
-    None
-}
+/// Windows 上 [`render_local_attach`] 的拒词。**它是定框 `C12` 的字面**，不是一句提示语。
+#[cfg(windows)]
+pub(crate) const WINDOWS_HAS_NO_TMUX_CONTAINER: &str =
+    "Windows 上没有 tmux 容器（定框 `C12`〔用 08-12〕逐字「windows不要tmux」）\
+     ⇒ 也就没有「把终端接进那个容器」这件事。要翻它先回去翻定框。";
+
+// === 内部：jsonl 级扫描 ===
+//
+// 〔`K-R97` 09-12〕项目级那一段（遍历 records 根 + 从头部抠 cwd）**不在这里了** ——
+// 本机的项目列表改问后端要 `--list-projects`，那两件事今天由后端一趟做完。
+// 从头部抠 cwd 这件事从此**全仓只剩一处**（后端那一份）；两份实现之间那道
+// 「窗口 30 vs 40 行、认不认非 user 记录」的登记分歧随之消失。
 
 fn analyze_jsonl(
     path: &Path,
@@ -2306,7 +2706,8 @@ fn analyze_jsonl(
         started_at,
         updated_at,
         jsonl_path: path.to_string_lossy().into_owned(),
-        is_live: map.is_session_active(&session_id),
+        // 本机这条路有真相源 ⇒ `Some`（`K-R92`：远端那条路答不了时给 `None`）。
+        is_live: Some(map.is_session_active(&session_id)),
         message_count_approx: message_count,
         starred: entry_meta.starred,
         custom_title: entry_meta.custom_title.clone(),
@@ -2667,6 +3068,202 @@ mod tests {
             .collect()
     }
 
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R106` `KR106D1`：**本机后端产得出 `attach` 那一句**，而且它落在刚建的那个会话上
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 后端那份 `ccm` 的 **argv 解析**半。跨半边编译期边，登记住
+    /// `cross_half_edge_registry::CROSS_EDGES`。
+    #[cfg(not(windows))]
+    const CCM_ARGV_SRC: &str = include_str!("../../remote-daemon-proto/src/control/ccm/argv.rs");
+
+    /// 后端那份 `ccm` 的 **计划 + 等价 shell 渲染**半。同上。
+    #[cfg(not(windows))]
+    const CCM_PLAN_SRC: &str = include_str!("../../remote-daemon-proto/src/control/ccm/plan.rs");
+
+    /// 后端那份 `ccm` 把 `Plan::Attach` 渲成什么 —— **逐字**。
+    ///
+    /// 钉整行而不是钉 `"tmux attach"` 四个字：`=名:` 那个**精确匹配形**是承重的
+    /// （裸 `-t <名>` 会打到兄弟会话上，`session-backend.ts::exactTarget` 头注记着实测）。
+    /// 只钉动词的话，把 `={name}:` 改成 `{name}` 照样绿，而那一刀的后果是接错会话。
+    #[cfg(not(windows))]
+    const CCM_ATTACH_RENDER: &str =
+        r#"Plan::Attach { name } => format!("tmux attach -t {}", sq(&format!("={name}:")))"#;
+
+    /// 🔴🔴 `KR106D1`〔用@09-13「**归本机后端就好了啊**」〕：
+    /// **本机后端产得出 `attach` 那一句，而且那一句落在它刚建的那个会话上。**
+    ///
+    /// # 它为什么不判「枚举里有 `Attach` 这个词」
+    ///
+    /// 那是本件单子逐字点名的失效方向：**加个变体不接线照样绿**。
+    /// ⇒ 本条一个字都不读源码里的枚举，它**驱动生产渲染路**
+    /// （[`render_local_ccm_with`]，本机 `new`/`resume` 走的同一条），
+    /// 从**渲出来的那两串话本身**里把会话名读回来比。
+    ///
+    /// # 四段各买什么（别读成一段）
+    ///
+    /// | 段 | 它挡住的那一刀 |
+    /// |---|---|
+    /// | ① 名字形状 | `K-R87` 那次 `ccm-oneshot-` 两形都不命中 ⇒ 建出来的是**失管会话** |
+    /// | ② 建/接同名 | attach 那一臂渲成 `ccm attach <sid>` 或干脆掉进 `_ => new` 兜底 |
+    /// | ③ 跨半边 | 我们产的这一串，后端那份 `ccm` 真把它读成「接进这个名字」 |
+    /// | ④ fail-closed | 旧路 / spawn 那条路被要求 attach 时**拒**，不许凑一个出来 |
+    ///
+    /// # ⚠ 它买不到什么（如实写）
+    ///
+    /// - ③ 是**文本级的两侧同形**，不是真跑一次 `ccm`。真跑那一格归 e2e
+    ///   （`ccm-print-parity` 里「attach 到 cc-p1」那条）。**本条不声称跑过。**
+    /// - 🔴 **`K-R109`（09-13）订正：前端在问它要了。** 原文写「前端今天还没在问它要：
+    ///   `src/remote-launch-run.ts` 那条 `↗` 仍问 `SESSION_BACKEND.attach` 要」——
+    ///   那四处接线本轮全部落地（属性 · `generate_handler!` · `LEDGER` · 包装层），
+    ///   `runLocalResumeIntoExistingTmux` 现在 `await commands.render_local_attach(…)`。
+    ///   ⚠ **本条钉的仍然只是「后端产得出」** —— 「有人在用」那一半由前端那一侧的判据钉
+    ///   （`src/remote-launch-run.vitest.ts` 的 `KR109D2` 两条），两处别混成一处。
+    #[test]
+    #[cfg(not(windows))]
+    fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created() {
+        let caps = caps_of_a_current_ccm();
+        // ① 名字不是随手起的：它要过 `gate_core` 那两形之一，否则起出来的会话主路认不出、
+        //    杀不掉 —— `K-R87` 那次 `ccm-oneshot-<x>` 两形都不命中，就是这个坑。
+        const NAME: &str = "s1abcdef-cc";
+        assert!(
+            gate_core::is_ccm_tmux_name(NAME),
+            "本条自己用的名字就过不了 Gate 2 —— 那么下面量到的一切都在量一个失管会话"
+        );
+        // 阴性对照：`K-R87` 那个形状**必须**不过，否则上面那条是空真。
+        let the_r87_shape = format!("ccm-oneshot-{}", "abcdef");
+        assert!(
+            !gate_core::is_ccm_tmux_name(&the_r87_shape),
+            "{the_r87_shape:?} 居然过了 Gate 2 —— 上面那条断言此刻什么都没买到"
+        );
+
+        let acct = LaunchAccount::Base;
+        // 建那一句（今天就产得出的）与接那一句（本轮加的）**走同一条渲染路、同一个名字**。
+        let created = render_local_ccm_with(
+            &LocalPsAction::New,
+            None,
+            Some(&acct),
+            Some(NAME),
+            &caps,
+            true,
+        )
+        .expect("建那一句本来就渲染得出来 —— 渲不出说明本条的前提变了，回来重裁");
+        let attach = render_local_ccm_with(
+            &LocalPsAction::Attach,
+            None,
+            Some(&acct),
+            Some(NAME),
+            &caps,
+            true,
+        )
+        .expect(
+            "本机后端产不出 attach —— `KR106D1` 的正题就是这一句〔用@09-13「归本机后端就好了啊」〕",
+        );
+
+        // ② 会话名从**那两串话本身**里读回来，不是拿常量对常量。
+        let created_target = created
+            .split_whitespace()
+            .find_map(|t| t.strip_prefix("--tmux="))
+            .unwrap_or_else(|| {
+                panic!("建那一句里没有 `--tmux=<名>`，它根本没建容器 —— 下面两条会空转：{created}")
+            });
+        let mut toks = attach.split_whitespace();
+        assert_eq!(
+            toks.next(),
+            Some("ccm"),
+            "attach 那一句不是在调后端的命令行入口（`K26`：`ccm` 就是它）：{attach}"
+        );
+        assert_eq!(
+            toks.next(),
+            Some("attach"),
+            "\n★ 本机后端渲出来的**动作不是 attach**（实得整串：{attach}）。\n\
+             最可能的形状：`Attach` 那一臂掉进了 `render_ccm_invocation` 的 `_ => new` 兜底 ——\n\
+             那一刀的后果不是「没接上」，是**另起一条 claude**，而用户以为回到了原会话。"
+        );
+        let attach_target = toks
+            .next()
+            .unwrap_or_else(|| panic!("attach 那一句没有目标会话名：{attach}"));
+        assert_eq!(
+            toks.next(),
+            None,
+            "`ccm attach <名>` 不收任何修饰 flag（`ccm_invocation` 那一支早于维度循环 return），\
+             多出来的东西说明它走了别的分支：{attach}"
+        );
+        assert_eq!(
+            attach_target, created_target,
+            "\n★★ **接的不是刚建的那个会话**：建的是 {created_target:?}，接的是 {attach_target:?}。\n\
+             这两个名字在生产代码里本来就是同一个 `&str`（`render_local_ccm_with` 的 `name`，\n\
+             同时喂给 `Action::Attach` 与 `Container::Tmux`）—— 它们不相等只有一种可能：\n\
+             有人给 attach 那一臂另开了一个名字来源。"
+        );
+        assert!(
+            gate_core::is_ccm_tmux_name(attach_target),
+            "接进去的那个名字过不了 Gate 2（{attach_target:?}）—— 主路认不出它，杀不掉它"
+        );
+
+        // ③ 跨半边：我们产的这一串，后端那份 `ccm` 真把它读成「接进这个名字」。
+        let argv_prod = guard_core::production_code(CCM_ARGV_SRC);
+        let plan_prod = guard_core::production_code(CCM_PLAN_SRC);
+        assert!(
+            argv_prod.len() > 3_000 && plan_prod.len() > 5_000,
+            "跨半边语料只读进来 {} / {} 字节 —— 下面三条此刻在空转",
+            argv_prod.len(),
+            plan_prod.len()
+        );
+        let attach_verb = format!("\"{}\" => {{", "attach");
+        assert!(
+            argv_prod.contains(attach_verb.as_str()),
+            "后端那份 `ccm` 的 argv 解析里，位置动作 `{attach_verb}` 那一支不见了 —— \
+             我们产的这一句它读不成 attach"
+        );
+        assert!(
+            argv_prod.contains("o.attach_name = v.clone()"),
+            "`ccm attach <名>` 后面那个位置参数不再落进 `attach_name` —— \
+             那么「接哪一个」这条信息在后端那半就断了"
+        );
+        assert!(
+            plan_prod.contains(CCM_ATTACH_RENDER),
+            "\n后端那份 `ccm` 把 `Plan::Attach` 渲成的那一行变了（本条钉的整行：\n  {CCM_ATTACH_RENDER}\n\
+             ）。⚠ 承重的不只是 `tmux attach` 四个字，还有 `=名:` 那个**精确匹配形** ——\n\
+             裸 `-t <名>` 会按「精确名 → 名字开头 → glob」解析，打到兄弟会话上\n\
+             （`src/session-backend.ts::exactTarget` 头注有 tmux 3.6 的实测）。"
+        );
+
+        // ④ fail-closed：旧路与 spawn 那条路被要求 attach 时**拒**。
+        let old = build_local_posix_command(&LocalPsAction::Attach, None, None);
+        assert!(
+            old.as_ref().is_err_and(|e| e.contains("旧路产不出 attach")),
+            "\n★ 旧路（`build_local_posix_command`）居然给 attach 渲出了东西：{old:?}\n\
+             它只会拼一个**拉起器** ⇒ 渲出来的是「另起一条 claude」。\n\
+             **静默产出比拒绝坏得多**：用户以为接回了原会话，实际两条都在跑。"
+        );
+        let spawned = launch_local(&LocalPsAction::Attach, None, None, None, Some(NAME));
+        assert!(
+            spawned.as_ref().is_err_and(|e| e.contains("stdio 全 null")),
+            "\n★ `launch_local` 收下了 attach：{spawned:?}\n\
+             那条路把命令 spawn 出去、stdio 全 null ⇒ 一个接不上任何终端的 attach 进程，\n\
+             而它**还会静默成功**。attach 的正题是把用户自己的终端接进去（`§1.3`）。"
+        );
+
+        // ⑤ **产出口真的走这条路**：本机后端那个出口喂一份确定的 ccm 事实进去，
+        //    拿到的必须与上面那一句**逐字节相同**（不是「长得像」）。
+        fn a_current_ccm() -> crate::ccm_probe::CcmProbeResult {
+            crate::ccm_probe::CcmProbeResult {
+                installed: true,
+                version: Some("0.0.0-判据替身".to_string()),
+                capabilities: caps_of_a_current_ccm().into_iter().collect(),
+                build: None,
+            }
+        }
+        let _probe = override_ccm_probe(CcmProbeSource(a_current_ccm));
+        assert_eq!(
+            render_local_attach(NAME.to_string()).expect("本机后端那个产出口渲不出来"),
+            attach,
+            "\n★ `render_local_attach` 交出去的那一串与渲染路现算的不是同一串 ——\n\
+             那说明产出口自己又走了一条（两个决定点、两套判据，正是 #76 那条病的形状）。"
+        );
+    }
+
     #[test]
     #[cfg(not(windows))]
     fn the_rendered_local_command_really_carries_the_container() {
@@ -2702,12 +3299,33 @@ mod tests {
     /// 本条不是重复它，是把「窄了多少」写成可执行的：今天 `render_local_ccm` 的**三格纯逻辑拒绝**
     /// 决定了生产上谁能进容器。三格全拒 ⇒ 生产行为与 P3t 之前逐字节相同（Y2 是零行为改动的接线）。
     /// Y2b 前端接线之后，第一格会开，那时上面那条的自陈就该改了。
+    ///
+    /// # 🔴 `K-R53` 09-11：**本条的名字今天已经比它测的东西宽了一格，别照名字读它**
+    ///
+    /// 函数名逐字是「前端今天送得出的**每一形**都被拒」——**那句话现在是假的**：
+    /// 具名账号带上名字之后渲染得出来（那正是本件开的那一格）。本条测的仍然都成立，
+    /// 但它的人群已经缩到「**说不出名字的**那几形」：没有会话名 · 未表态账号 · 只有目录。
+    ///
+    /// 🔴 **`K-R89` 09-13：人群又缩了一格，而且这一次连「都被拒」那个动词都不对了。**
+    /// 「未表态账号」那一形**今天渲染得出来**（`R28`：省略 `--account` 有确定语义）——
+    /// 本条的 ② 因此从「必拒」翻成「必渲染得出，且不许带 `--base`/`--account`」。
+    /// ⇒ 今天真正**被拒**的只剩**两形**：没有会话名 · 只有目录没有名字。
+    /// ⚠ **仍然刻意不改名**（同 `K-R53` 那一拍的理由：改判据名要同拍跑 `pb doc`，
+    /// 而本件写区里没有那份生成区）。**全人群那一条仍在继任者手里**
+    /// [`every_local_account_shape_gets_a_named_verdict_from_the_backend_path`]，
+    /// 而「六格今天各自是什么」在 [`THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS`]。
+    ///
+    /// ⚠ **刻意不改名**：改判据的名字要同拍跑 `pb doc`（生成区会连带打红），
+    /// 而本件的写区里没有那份生成区。⇒ 如实登记在这里，并把**全人群**那一条交给继任者
+    /// [`every_local_account_shape_gets_a_named_verdict_from_the_backend_path`]
+    /// （它逐格点名、加变体编译不过）。**两条一起读才是今天的分母。**
     #[test]
     #[cfg(not(windows))]
     fn the_local_renderer_refuses_every_shape_the_front_end_can_send_today() {
         let base = LaunchAccount::Base;
         let named = LaunchAccount::Named {
             config_dir: "/home/u/.claude-accts/z".into(),
+            name: None,
         };
         let act = LocalPsAction::Resume("s1".into());
 
@@ -2728,8 +3346,11 @@ mod tests {
             );
         }
 
-        // ② 未表态账号（`None`）—— 旧路发**空前缀**＝继承环境，而 CLI 的 account 维度恒真、
-        //    没有「继承」这一态。映成 `--base` 会把用户 shell 里已有的账号悄悄清掉 ＝ #75 病灶。
+        // ② 未表态账号（`None`）—— 🔴 **`K-R89` 09-13：这一格从「必拒」翻成「渲染得出来」**。
+        //    翻它的不是本判据的口味，是 `DECISIONS.md#R28`（用户 09-12）：省略 `--account`
+        //    在 `ccm` 上有确定语义（`plan.rs::resolve_account` 的两支）。
+        //    ⚠ **翻的只有「拒不拒」，没翻的那半必须原样守住**：渲染出来的那一串里
+        //    **不许出现 `--base`** —— 那是把「继承环境」偷换成「显式清空」＝ #75 病灶。
         let r = render_local_ccm_with(
             &act,
             None,
@@ -2738,10 +3359,21 @@ mod tests {
             &caps_of_a_current_ccm(),
             true,
         );
+        let cmd = r.as_ref().unwrap_or_else(|e| {
+            panic!(
+                "未表态账号今天必须渲染得出来（`R28` 之后省略有确定语义）。\n\
+                 若它又回到短路，请先回 `DECISIONS.md#R28` 看那一裁是不是被推翻了，\n\
+                 别在这里把闸悄悄加回来。实得降级理由：{e}"
+            )
+        });
         assert!(
-            r.as_ref().is_err_and(|e| e.contains("继承")),
-            "未表态账号必须拒且理由是「说不出继承」—— 若它被渲染成 `--base`，\n\
-             那就是把「继承环境」偷换成「显式清空」，正是 #75「resume 在错数据目录找不到会话」。实得：{r:?}"
+            !cmd.contains("--base"),
+            "未表态账号被渲染成了 `--base` —— 那是把「继承环境」偷换成「显式清空」，\n\
+             正是 #75「resume 在错数据目录找不到会话」。实得：{cmd}"
+        );
+        assert!(
+            !cmd.contains("--account"),
+            "未表态账号被渲染成了 `--account <某个号>` —— 那是替用户挑了一个号。实得：{cmd}"
         );
 
         // ③ 具名账号 —— `LaunchAccount::Named` 只有 configDir、没有名字，而 CLI 只会
@@ -2764,101 +3396,959 @@ mod tests {
         );
     }
 
+    /// ★★★ `K-R53` `KR53D1`：**本机账号的每一形，后端那条路渲染得出来吗** —— 逐格点名。
+    ///
+    /// # 它判的是**分母**，不是可达性
+    ///
+    /// 上面那条 (`the_local_renderer_refuses_every_shape_the_front_end_can_send_today`)
+    /// 钉的是 P3t-Y2 那一刻的事实「**全拒**」。本条是它的继任者：把
+    /// [`LaunchAccount`] 的全部形状加上「参数缺席」逐格喂一次，
+    /// **每一格都要说得出自己该是 `Ok` 还是 `Err`、以及 `Err` 的理由指向哪**。
+    ///
+    /// 失效方向逐字（`KR53D1`）：「再加一个入口而它复用了那个缺一态的旧函数」——
+    /// 加一个变体 ⇒ 下面这张表的 `match` 不穷尽 ⇒ **编译不过**，不是静默漏一格。
+    ///
+    /// # 🔴 缺席那一格：**09-13 `K-R89` 之前是红的，今天是绿的** —— 翻它的是一条裁定，不是一次放宽
+    ///
+    /// 「参数缺席」的语义是**继承环境**（旧路发空前缀）。这里此前逐字写着「三格里没有一格
+    /// 逐字等于『继承』⇒ 那是**产品决定** ＋ 改 `remote-daemon-proto/src/control/ccm/plan.rs`」，
+    /// 并把这一格钉成 `Err`。**那段话在 09-12 就过期了，而它一直挂在盘上等一个已经到了的决定。**
+    ///
+    /// 〔`DECISIONS.md#R28`，用户 09-12 逐字：「把调用方选中的号静默换掉 / **不要这么做** /
+    ///  不是有选默认账号吗? **就用那个**」〕⇒ 那个产品决定做了，而且**落地了**：
+    /// `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account` 头注挂着 ✅，
+    /// 省略被拆成两支，**两支都是这一裁的一部分**：
+    ///
+    /// | 目标 shell 里有没有 `CLAUDE_CONFIG_DIR` | 旧路（空前缀） | ccm 省略 `--account` | ccm `--base` |
+    /// |---|---|---|---|
+    /// | 有，= X | 用 X | **尊重 X**（`R08` 那道 `-z` 闸不触发）= 继承 ✅ | `unset` ⇒ 用 `~/.claude` ❌ |
+    /// | 没有 | 用 `~/.claude` | **落 manifest 默认号** ✅〔`R28`：「就用那个」〕 | 用 `~/.claude` |
+    ///
+    /// ⚠ **第二行那一格从 ❌ 翻成 ✅ 的是「该不该」，不是「是什么」** —— 行为一个字节没动，
+    /// 动的是对它的判断（`R28` 裁定零逐字：「本裁改的不是行为，是『这是不是我们要的』」）。
+    /// ⚠ **别把这张表压成一句「省略就是继承」**：省略是**两支**，只有第一支叫继承。
+    ///
+    /// ⚠ **本机这条路上第一支到底拿谁的环境**（现打 09-13）：送法是
+    /// `launch::build_local_posix_argv` ⇒ `bash -lic '<cmd>'`（login ＋ interactive）
+    /// ⇒ 用户 rc/profile 先跑 ⇒ `ccm` 看到的就是**用户 shell 里那一个**，与旧路同源。
+    ///
+    /// ⇒ **本条今天钉的是**：这一格 `Ok`，且渲染出来的那一串里 `--base` 与 `--account`
+    /// **一个都不许有**。谁哪天把它映成 `--base`，这里当场红 —— 那一刀正是 `#75`
+    ///（把继承偷换成显式清空）；谁把它映成某个具名号，也当场红（那是 `R28` 禁的静默换号）。
+    /// ⚠ **`ccm` 那一侧怎么解释省略，本条一个字都不管** —— 那半的唯一住址是
+    /// `plan.rs::resolve_account`，由 `plan::the_four_ways_an_account_gets_picked` 钉着。
+    #[test]
+    #[cfg(not(windows))]
+    fn every_local_account_shape_gets_a_named_verdict_from_the_backend_path() {
+        let act = LocalPsAction::Resume("s1".into());
+        let caps = caps_of_a_current_ccm();
+        let named_with_name = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/z".into(),
+            name: Some("z".into()),
+        };
+        let named_dir_only = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/z".into(),
+            name: None,
+        };
+        let base = LaunchAccount::Base;
+
+        // 分母 = `LaunchAccount` 的全部形状 + 「参数缺席」。
+        //
+        // ⚠ 标签**只有一处住址**（`label_of` 里那个 `match`）—— 本条第一版在它旁边另写了一份
+        //   `denominator: [&str; 4]` 字面量，那正是 `brief` 第 13b 条禁的「闭集重抄一份」：
+        //   两份字面量迟早漂开，而漂开的那天两边看起来都没错。⇒ 标签一律现算。
+        //
+        // **穷尽性由 `label_of` 那个 `match` 买**：加一个变体而不回来加一行 ⇒ 编译不过，
+        // 不是静默漏一格。这正是 `KR53D1` 的失效方向逐字
+        //（「再加一个入口而它复用了那个缺一态的旧函数」）在 Rust 这一侧的落点。
+        fn label_of(acct: Option<&LaunchAccount>) -> &'static str {
+            match acct {
+                None => "缺席",
+                Some(LaunchAccount::Base) => "Base",
+                Some(LaunchAccount::Named { name: Some(_), .. }) => "Named{有名字}",
+                Some(LaunchAccount::Named { name: None, .. }) => "Named{只有目录}",
+            }
+        }
+        let shapes: [Option<&LaunchAccount>; 4] = [
+            None,
+            Some(&base),
+            Some(&named_with_name),
+            Some(&named_dir_only),
+        ];
+        // 反重复：四格必须**互不相同**，否则「四格都喂过了」是假的
+        //（例：两格都是 `Named{只有目录}` ⇒ 有一种形状根本没被喂过，而条数照样是 4）。
+        let labels: Vec<&str> = shapes.iter().map(|a| label_of(*a)).collect();
+        let mut uniq = labels.clone();
+        uniq.sort_unstable();
+        uniq.dedup();
+        assert_eq!(
+            uniq.len(),
+            labels.len(),
+            "分母这张表里有两格是同一种形状 ⇒ 有一种形状没被喂过。实得：{labels:?}"
+        );
+
+        // 结果**按标签取**，不按下标取 —— 下标取法在 `shapes` 顺序一变时会悄悄换一格来断，
+        // 那是一次静默的假读数（本区最贵的那族）。取不到就 `panic`，不会空转。
+        let verdicts: Vec<(&str, Result<String, String>)> = shapes
+            .iter()
+            .map(|acct| {
+                (
+                    label_of(*acct),
+                    render_local_ccm_with(&act, None, *acct, Some("s1abcdef-cc"), &caps, true),
+                )
+            })
+            .collect();
+        let verdict = |label: &str| -> &Result<String, String> {
+            &verdicts
+                .iter()
+                .find(|(l, _)| *l == label)
+                .unwrap_or_else(|| panic!("分母里没有 `{label}` 这一格 —— 下面那条断言在空转"))
+                .1
+        };
+
+        // ① 缺席 —— 🔴 **`K-R89` 09-13：这一格翻面了。**
+        //    它此前是 `Err` 且理由点着「继承」，依据是头注那张三说法对照表的最后一栏
+        //    「省略 `--account` ⇒ 落 manifest 默认号 ⇒ 同样是静默换号」。
+        //    **那一栏今天不是「病灶」了** —— 用户 09-12 `R28` 逐字裁「不是有选默认账号吗?
+        //    **就用那个**」，并且 `plan.rs::resolve_account` 已经按两支落地（`-z` 闸 ＋ 默认号）。
+        //    ⇒ 缺席这一格现在必须 **`Ok`**，且渲染出来的那一串里**两个账号 flag 都不许有**。
+        let r = verdict("缺席");
+        let cmd = r.as_ref().unwrap_or_else(|e| {
+            panic!(
+                "「参数缺席」= 继承环境，`R28` 之后它渲染得出来（省略 = `plan.rs::resolve_account`\n\
+                 的两支：有继承态就继承 · 裸终端落 manifest 默认号，两支都是那一裁要的）。\n\
+                 若它又短路了，先回 `DECISIONS.md#R28` 确认那一裁是不是被推翻，别在这里加闸。\n\
+                 实得降级理由：{e}"
+            )
+        });
+        assert!(
+            !cmd.contains("--base"),
+            "缺席被渲染成 `--base` —— 那是把「继承」偷换成「显式清空」（#75）。实得：{cmd}"
+        );
+        assert!(
+            !cmd.contains("--account"),
+            "缺席被渲染成 `--account <某号>` —— 那是替调用方挑了一个号，\n\
+             与 `R28` 逐字「不许把调用方选中的号静默换掉」反向。实得：{cmd}"
+        );
+
+        // ② Base —— `Ok`，而且渲染出来的那条真的带 `--base`。
+        let r = verdict("Base");
+        let cmd = r.as_ref().expect("账号 0 是本机一直渲染得出来的那一格");
+        assert!(
+            cmd.contains("--base"),
+            "账号 0 必须显式 `--base`，实得：{cmd}"
+        );
+
+        // ③ Named{有名字} —— **本件要开的就是这一格**：`Ok`，且带 `--account z`。
+        let r = verdict("Named{有名字}");
+        let cmd = r.as_ref().unwrap_or_else(|e| {
+            panic!(
+                "具名账号**说得出名字**时必须渲染得出来 —— 说不出来就意味着盘上四个本机拉起入口里\n\
+                 那三个（`src/tabs.ts` · `src/views/history.ts` 两处）在类型上到不了后端那条路。\n\
+                 实得降级理由：{e}"
+            )
+        });
+        assert!(
+            cmd.contains("--account z"),
+            "具名账号该渲染成 `--account <名字>`，实得：{cmd}"
+        );
+
+        // ④ Named{只有目录} —— 仍然 `Err`：**不许从目录名推一个 `--account` 出来**。
+        //    推错的失效方向是 `ccm` 当场 `die`（退出码 2）= 一次能起的会话变成报错，
+        //    与 `relay_account_id_of_dir` 那条「推错就回落」的保守方向**相反**。
+        let r = verdict("Named{只有目录}");
+        assert!(
+            r.as_ref().is_err_and(|e| e.contains("account")),
+            "只有目录没有名字时必须诚实短路（§35），**不许拿目录名当 `--account`**。实得：{r:?}"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R89` `KR89D1`：**六格的今天版** —— 一张由行为驱动的表，不是一段散文
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 一格今天是什么。**三值，别加第四个而不同时给它一条驱动**（下面那个 `match` 会逼你）。
+    #[cfg(not(windows))]
+    #[derive(PartialEq, Eq, Debug, Clone, Copy)]
+    pub(crate) enum CellToday {
+        /// 后端那条路今天**渲染得出来** —— 这一格关了。
+        Closed,
+        /// 今天仍落回旧路，而**挡路的那样东西说得出名字**（第四列就是它）。
+        StillFallsBack,
+        /// **结构性** —— 不是欠账。翻它要先翻一条定框，不是补一段代码。
+        Structural,
+    }
+
+    /// 🔴🔴 **六格今天版。`parity_ledger.rs` 的 `launch.render-payload` 那一行点的就是这六格。**
+    ///
+    /// `(格名, 今天是什么, 现打的说法, 缺什么 / 谁能关它)`
+    ///
+    /// # 它与账本那一行的分工（别读成两份清单）
+    ///
+    /// 账本那一行是**散文**，它自己记过两次「改了行为没回来改理由」的前科。
+    /// 本表是**同一件事的可执行版**：下面那条判据把每一格**真去驱动一遍**，
+    /// 观测到的状态与本表第二列不符 ⇒ **当场红**。
+    /// ⇒ 「改一格的行为而不改它的说法」在这里做不到 —— 那正是本表存在的理由。
+    ///
+    /// # ⚠ 本表买不到什么（诚实边界，别读大）
+    ///
+    /// - **第三、四列（那两段话）真不真，机器判不了。** 本表钉的是「第二列 == 现打」，
+    ///   以及「有人改了行为就必须回来动这张表」。**一段读着有道理的假理由照样过得去。**
+    /// - **它不是全部降级面**：它只装 `parity_ledger` 那一行点名的这六格。别的降级理由
+    ///   （例：`--base` 那条逃生口、`send-into` 的 #76 防线）不在本表人群里。
+    /// - **Windows 那一格在本树上量不到运行时行为**（本模块整个挂 `#[cfg(not(windows))]`）
+    ///   ⇒ 它的观测是**源码级**的，如实写在驱动里。
+    ///
+    /// # 🔴 `K-R89` 09-13 改了哪一格、为什么（这一段是本轮唯一的行为改动）
+    ///
+    /// 「账号未表态（继承）」从 `StillFallsBack` 翻成 `Closed`。翻它的**不是本件的判断**，
+    /// 是 `DECISIONS.md#R28`（用户 09-12 亲裁）＋ 它在
+    /// `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account` 上的落地。
+    /// 盘上原来有一句陈账逐字写着「③ 那一格要动的是 ccm 省略时的默认语义（**产品决定**
+    /// ＋ `plan.rs`）」—— **它在等一个 09-12 就到了的决定**，本轮一并撤掉。
+    #[cfg(not(windows))]
+    pub(crate) const THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS: &[(&str, CellToday, &str, &str)] = &[
+        (
+            "账号未表态（继承）",
+            CellToday::Closed,
+            "🔴 `K-R89` 09-13 关掉的就是这一格。`CliAccount::Inherit` 渲染成「一个账号 flag 都不加」；\
+             省略在 `ccm` 上有确定语义（`plan.rs::resolve_account` 两支：`CLAUDE_CONFIG_DIR` 非空 ⇒ \
+             保留不覆盖〔`R08` 的 `-z` 闸〕· 裸终端 ⇒ 落 manifest `isDefault`），两支都是 `R28` 要的。",
+            "已关。⚠ **只关了本机那半** —— 远端是 ssh 过去、那台机器上的继承态不是 monitor 的环境\
+             （`R28` 裁定四逐字）⇒ `WireAccount` 刻意没有对应变体，远端那半归 `K-R90`。",
+        ),
+        (
+            "只说得出目录没名字",
+            CellToday::StillFallsBack,
+            "`LaunchAccount::Named{name: None}` ⇒ `CliAccount::Named{name: None}` ⇒ 账号维度\
+             `cli_flags` 回 `None` ⇒ §35 整条降级。理由是「说不出」，不是「不想说」。",
+            "缺的是**名字这条信息本身**，不是 CLI 语法 —— 上游（`accounts.ts` 那个取值口）\
+             说得出名字的那天它自己就关了。🔴 **不许从目录名推一个 `--account` 出来**：\
+             推错的失效方向是 `ccm` 当场 `die`（rc=2），一次能起的会话变成报错。",
+        ),
+        (
+            "没有 tmux 名",
+            CellToday::StillFallsBack,
+            "`NO_TMUX_NAME` —— 名字只许 `remote-launch.ts::mintTmuxName` 铸（F13 那个撞名坑），\
+             Rust 这侧不许补默认值。⚠ **这一格今天是半开的**（现打 09-13）：resume 那条\
+             前端已接线（`views/history.ts::mintLocalTmuxName` · `tabs.ts::mintSessionTmuxName`，\
+             人群由 `src/ipc/commands.vitest.ts` 那条「每处 `resume_history_session` 都带 `tmuxName`」钉着）；\
+             而 `new_local_session` 的 Rust 签名里**根本没有 `tmux_name` 这一格** ⇒ 起新会话恒短路。",
+            "给 `new_local_session` 加一个名字参数 ＋ 前端在那条路上也过一次铸造口。\
+             ⚠ 那要动 `src/ipc/commands.ts` 与两个调用点，**不在 `K-R89` 的写区里**。",
+        ),
+        (
+            "这个号走中转",
+            CellToday::StillFallsBack,
+            "`launch_local` 里那行 `relay.is_empty()` **显式**保住的互斥 —— 不是渲染器拒的\
+             （渲染器单独看已经不再互斥，`K-R53` 开的那一格）。常量是 `RELAY_KEEPS_THE_OLD_PATH`。",
+            "退役条件 `K-R61` 已经收成**一行 Rust**（把 `relay.is_empty()` 换成「探到 \
+             `base-url-across-tmux` 才放行」），但它的前置是「有人守住『用户机器上跑的 `ccm` \
+             就是 app 自己推的那一份』」—— 那一格今天没人守。⚠ 互斥这条性质本身由邻居\
+             那条判据钉，本行只记「这一格今天关没关」。",
+        ),
+        (
+            "这台机没装 ccm",
+            CellToday::StillFallsBack,
+            "`render_ccm_invocation` 的第一行 `if !installed { NotInstalled }`。\
+             探测走 `CcmProbeSource` 那条缝（本判据喂确定值，**不问跑它的这台机器**）。",
+            "**部署面，不是渲染器的欠账**（`K27`/`K34`：部署是产品的一部分，由客户端做）。\
+             远端那条装法 `sftp::install_remote_ccm_helper` 今天就在盘上；本机那条归部署向导。",
+        ),
+        (
+            "Windows",
+            CellToday::Structural,
+            "`render_local_ccm` / `render_local_ccm_with` 整段挂 `#[cfg(not(windows))]` ⇒ \
+             Windows 上那条路**在编译期就不存在**；`launch_local` 的 `#[cfg(windows)]` 那一支\
+             连 `tmux_name` 都不读（读了就是给「Windows 也进容器」开口子）。",
+            "**不是欠账**：定框 `C12`〔用 08-12〕逐字「windows不要tmux」。要翻它先回去翻定框。",
+        ),
+    ];
+
+    /// 🔴🔴 `KR89D1`：**六格逐格现打，观测到的与表上写的不一样就红。**
+    ///
+    /// # 每一格怎么观测的（写在这里，别让读的人去猜）
+    ///
+    /// 五格靠**真去驱动生产函数**（`render_local_ccm_with` / `launch_local`），
+    /// 第六格（Windows）在本树上跑不到运行时，观测是**源码级**的 —— 逐条写在 `observe` 里。
+    ///
+    /// # ⚠ 与邻居 [`a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`] 的分工
+    ///
+    /// 「走中转」那一格两处都会驱动一次 `launch_local`，而**它们量的不是两把尺子**：
+    /// 同一个观测口（[`LaunchSink`] 那条缝上真正交出去的那一串）、同一个判定
+    /// （串里有没有 `--tmux=`）。差别在**结论**：邻居主张的是「两个集合不相交」（互斥），
+    /// 本条只记「这一格今天关没关」。⇒ 谁哪天把中转那一行翻掉，**两条一起红**，
+    /// 而它们要求的后续动作不同（邻居要重裁互斥，本条要改表）。
+    #[test]
+    #[cfg(not(windows))]
+    fn every_one_of_the_six_cells_is_measured_not_narrated() {
+        // 反空真 ①：表得有六行，且**格名互不相同**（重名 ⇒ 有一格根本没被观测过，而条数照样对）。
+        assert_eq!(
+            THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS.len(),
+            6,
+            "账本 `launch.render-payload` 那一行点的是六格。加/删一格 ⇒ 同拍改账本那一行，\
+             并回来给新格写一条驱动。"
+        );
+        let mut names: Vec<&str> = THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS
+            .iter()
+            .map(|(n, ..)| *n)
+            .collect();
+        let n_all = names.len();
+        names.sort_unstable();
+        names.dedup();
+        assert_eq!(
+            names.len(),
+            n_all,
+            "表里有两行是同一个格名 ⇒ 有一格没被观测过"
+        );
+
+        // 反空真 ②：三值**至少两值有人占**。全是同一个值时，下面那条相等断言退化成
+        // 「所有格都一样」——那时把某一格的行为翻掉、再把整列一起改，读起来仍然全绿。
+        let mut kinds: Vec<CellToday> = THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS
+            .iter()
+            .map(|(_, v, ..)| *v)
+            .collect();
+        kinds.sort_by_key(|k| format!("{k:?}"));
+        kinds.dedup();
+        assert!(
+            kinds.len() >= 2,
+            "六格今天是同一个状态（{kinds:?}）—— 先确认这是真的；\
+             真是真的话，本条那条相等断言此刻买不到「逐格」，请改形状。"
+        );
+
+        for (name, want, say, need) in THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS {
+            let got = observe_one_cell(name);
+            assert_eq!(
+                got, *want,
+                "\n★ 六格表第「{name}」格：**现打是 {got:?}，表上写的是 {want:?}**。\n\
+                 ⇒ 有人改了这一格的行为，而没有回来改它的说法 —— 那正是这张表存在的理由。\n\
+                 表上今天写着：{say}\n\
+                 表上今天说缺什么：{need}\n\
+                 ⚠ 改表的同时把 `parity_ledger.rs` 的 `launch.render-payload` 那一行一起读一遍：\
+                 两处说的是同一件事。"
+            );
+        }
+    }
+
+    /// 六格各自的观测口。**一个 `match`，认不出的格名当场 `panic`** ——
+    /// 加一格却不给它驱动时，上面那条判据不会静默少测一格。
+    #[cfg(not(windows))]
+    fn observe_one_cell(name: &str) -> CellToday {
+        let act = LocalPsAction::Resume("s1".into());
+        let caps = caps_of_a_current_ccm();
+        const TMUX: &str = "s1abcdef-cc";
+        let dir_only = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/z".into(),
+            name: None,
+        };
+        // 纯函数半的观测：渲染得出来 = 这一格关了。
+        let pure = |acct: Option<&LaunchAccount>, tmux: Option<&str>, installed: bool| {
+            if render_local_ccm_with(&act, None, acct, tmux, &caps, installed).is_ok() {
+                CellToday::Closed
+            } else {
+                CellToday::StillFallsBack
+            }
+        };
+        match name {
+            // ① 未表态 —— `R28` 之后渲染得出来。
+            "账号未表态（继承）" => pure(None, Some(TMUX), true),
+            // ② 只有目录 —— §35 短路。
+            "只说得出目录没名字" => pure(Some(&dir_only), Some(TMUX), true),
+            // ③ 没有 tmux 名 —— 名字只许铸造口产，Rust 侧不补默认值。
+            //    ⚠ 喂 `Base`（一个**确定渲染得出来**的账号形状）⇒ 这一格观测到的
+            //    「拒」只可能是名字那一维造成的，不会与账号那一维混在一起。
+            "没有 tmux 名" => pure(Some(&LaunchAccount::Base), None, true),
+            // ④ 没装 ccm —— 探测结果由参数喂，**不问跑它的这台机器**。
+            "这台机没装 ccm" => pure(Some(&LaunchAccount::Base), Some(TMUX), false),
+            // ⑤ 走中转 —— 这一格不在纯函数半里（闸在 `launch_local` 体内那行
+            //    `relay.is_empty()`）⇒ 必须真跑一趟拉起，量**交出去的那一串**。
+            "这个号走中转" => {
+                let acct = LaunchAccount::Named {
+                    config_dir: "/home/u/.claude-accts/acct-a".into(),
+                    name: Some("acct-a".into()),
+                };
+                fn rows() -> Vec<String> {
+                    vec!["acct-a".to_string()]
+                }
+                fn running() -> bool {
+                    true
+                }
+                fn not_win() -> bool {
+                    false
+                }
+                let _facts = override_relay_facts(RelayFactSources {
+                    rows,
+                    running,
+                    windows: not_win,
+                });
+                fn a_current_ccm() -> crate::ccm_probe::CcmProbeResult {
+                    crate::ccm_probe::CcmProbeResult {
+                        installed: true,
+                        version: Some("0.0.0-判据替身".to_string()),
+                        capabilities: caps_of_a_current_ccm().into_iter().collect(),
+                        build: None,
+                    }
+                }
+                let _probe = override_ccm_probe(CcmProbeSource(a_current_ccm));
+                thread_local! {
+                    static SEEN: std::cell::RefCell<Vec<String>> =
+                        const { std::cell::RefCell::new(Vec::new()) };
+                }
+                fn recorder(cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
+                    SEEN.with(|v| v.borrow_mut().push(cmd.to_string()));
+                    Ok(())
+                }
+                let _sink = override_launch_sink(LaunchSink(recorder));
+                launch_local(&act, None, None, Some(&acct), Some(TMUX))
+                    .expect("走中转这一趟拉起本身不该失败");
+                let sent = SEEN.with(|v| {
+                    v.borrow()
+                        .last()
+                        .cloned()
+                        .expect("这一趟什么都没送出去 —— 观测口坏了，读数作废")
+                });
+                // 自检：这一趟**真的**走了中转（否则下面那个判定量的是另一件事）。
+                assert!(
+                    sent.contains("ANTHROPIC_BASE_URL"),
+                    "这一趟没拿到中转前缀 —— 替身没生效，本格此刻在量别的东西。实得：{sent}"
+                );
+                if sent.contains("--tmux=") {
+                    CellToday::Closed
+                } else {
+                    CellToday::StillFallsBack
+                }
+            }
+            // ⑥ Windows —— 本模块整个挂 `#[cfg(not(windows))]`，跑不到那一支的运行时。
+            //    ⇒ 观测是**源码级**的，如实写清它量的是什么：
+            //      · `launch_local` 的 `#[cfg(windows)]` 那一支里有 `let _ = tmux_name;`
+            //        （逐字：连读都不读，读了就是给「Windows 也进容器」开口子）；
+            //      · 渲染器那一半挂着 `#[cfg(not(windows))]`（编译期就不给 Windows）。
+            //    两条**都**成立才算「结构性」；少一条就说明有人开了口子。
+            "Windows" => {
+                let prod = guard_core::production_code(include_str!("history.rs"));
+                let at = guard_core::find_pinned(&prod, "fn launch_local(").unwrap_or_else(|e| {
+                    panic!("`fn launch_local(` 不是恰好一处 —— 锚点坏了，本格读数作废：{e}")
+                });
+                let win_arm_keeps_out = prod[at..]
+                    .split_once("#[cfg(not(windows))]")
+                    .map(|(head, _)| head.contains("let _ = tmux_name;"))
+                    .unwrap_or(false);
+                // ⚠ 带 `fn ` 前缀才认得出**定义**那一处 —— 不带的话第一处命中的是
+                //   `render_local_ccm` 体内那次**调用**，而调用点上没有 cfg 属性。
+                let renderer_is_posix_only = prod
+                    .find("fn render_local_ccm_with(")
+                    .map(|i| prod[..i].trim_end().ends_with("#[cfg(not(windows))]"))
+                    .unwrap_or(false);
+                if win_arm_keeps_out && renderer_is_posix_only {
+                    CellToday::Structural
+                } else {
+                    CellToday::Closed
+                }
+            }
+            other => panic!(
+                "六格表里多了一格「{other}」而没有人给它写观测口 —— \
+                 加格与加驱动必须同一拍，否则那一格是**登记了但没量过**。"
+            ),
+        }
+    }
+
     /// ★★★ `D4 阻-3`：**「走中转」与「有 tmux 容器」今天仍然互斥** —— 把这个事实钉住。
     ///
     /// # 它为什么存在：盘上写着「已消掉」，而其实没消掉
     ///
     /// 第一拍报过一条代价「走中转的号拿不到 tmux 容器」（当时的成因：外侧那句 export
-    /// 在 tmux 边界被吃掉）。第二拍照 `R08` 在 `shared/ccm` 里加了一条转发，于是件文件
+    /// 在 tmux 边界被吃掉）。第二拍照 `R08` 在那份已删的 bash `ccm` 里加了一条转发，于是件文件
     /// 与 [`launch_local`] 的头注都写上了**「不再互斥」**。
     /// 🔴 `D4` 现打证伪：**代价原样还在，只是成因换了。**
     ///
+    /// # 🔴🔴 `K-R53` 09-11 **重新裁定**：成因**第二次**换了，而互斥仍然成立
+    ///
+    /// `D4` 那一拍的成因是「具名账号根本进不了 ccm」（`Named` 只有目录、说不出 `--account`）。
+    /// **本件把那一格开了**（[`LaunchAccount::Named::name`]）⇒ **那个成因今天不成立了**：
+    /// 下面第 ⓪ 格现打断言的正是这件事 —— 渲染器**单独看已经不再互斥**。
+    ///
+    /// 今天互斥是由 [`launch_local`] 里那一行 `relay.is_empty()` **显式保住**的
+    /// （理由与退役条件住 [`RELAY_KEEPS_THE_OLD_PATH`]）。
+    ///
+    /// ⚠ 〔`K-R61` 09-11〕这一段先前逐字写着「`capabilities=`（第 624 行，18 个 token）里
+    /// 没有任何 token 声明它 ⇒ 放行会让**装旧 ccm 的机器**静默吃掉」——
+    /// **那个住址与那个理由今天都不成立了**，重裁后的两句都住
+    /// [`RELAY_KEEPS_THE_OLD_PATH`] 的头注，本条不复述第二份。
+    ///
+    /// ⇒ **这一条从「成因是说不出名字」改成「成因是那一行还没改成探那个能力」。**
+    /// 前者是结构性的（只能等改 `LaunchAccount`），后者**有可执行的退役条件**。
+    ///
+    /// # 🔴🔴🔴 `K-R55` 09-11：**上一版自己抄了一份被测逻辑** —— 换成量真正送出去的那一串
+    ///
+    /// 上一版的循环体逐字是：
+    /// ```text
+    /// let prefix = relay_prefix_for_launch(&act, acct).expect(…);
+    /// if !prefix.is_empty() { relayed.push(label); }
+    /// if prefix.is_empty() && renders(acct) { containered.push(label); }
+    /// ```
+    /// —— 那个 `prefix.is_empty() &&` **就是 [`launch_local`] 里那道闸的一份拷贝**。
+    /// ⇒ 它证的是自己那份拷贝，生产那一行翻不翻它都不知道。
+    /// PM 09-11 现打：把生产那行换成 `if true`，**点名单跑 1 passed**；
+    /// 实现方 09-11 在沙箱里复打了同一刀，**全量 `cargo --lib` 1472 passed / 0 failed**
+    /// （量于 `07e4e72` + 那一刀，镜像 `ccmon-devbox:latest`，`CARGO_TARGET_DIR=pm-targets/k-r55`）
+    /// —— 全仓**没有任何一条**判据对那一刀出声。
+    ///
+    /// ⇒ 本条现在**真的驱动 [`launch_local`]**，两个集合都从
+    /// **[`LaunchSink`] 那条缝上收到的那个字符串**里读出来，一个字节的判断逻辑都不自带：
+    /// - 「走中转」= 那一串里有 `ANTHROPIC_BASE_URL`（中转前缀唯一的形状）；
+    /// - 「有容器」= 那一串里有 `--tmux=`（`render_ccm_invocation` 唯一产出它的地方；
+    ///   回落路 `build_local_posix_command` 从不说 tmux）。
+    ///
+    /// 「装没装 ccm」由 [`CcmProbeSource`] 那条缝喂进来（**不问跑判据的这台机器** ——
+    /// 沙箱里没装 ccm，不喂的话四格会一起落到回落路，那时本条又变成空真）。
+    ///
     /// # 今天的成因（本条逐格量出来，不是推的）
     ///
-    /// 分母 = [`LaunchAccount`] 的**全部形状**加上「参数缺席」，共三格：
+    /// 分母 = [`LaunchAccount`] 的**全部形状**加上「参数缺席」，并且**具名那一格喂两个号**
+    /// （一个在中转表里、一个不在 —— 只喂一个的话「中转在不在场」这一维的取值域是 1，
+    /// 那正是 `D6 阻-2` 逮到过的形状）：
     ///
-    /// | 形状 | [`relay_account_id`] | [`render_local_ccm_with`] |
+    /// | 形状 | 送出去那一串带不带中转前缀 | 带不带 `--tmux=`（= [`launch_local`] 的判据） |
     /// |---|---|---|
-    /// | 缺席（`None`） | `None`（不走中转） | `Err`（CLI 说不出「继承」） |
-    /// | `Base`（账号 0） | `None`（不走中转） | `Ok`（**唯一渲得出容器的那一格**） |
-    /// | `Named{config_dir}` | `Some(id)`（**唯一走得了中转的那一格**） | `Err`（§35 短路：有 configDir 没名字） |
-    ///
-    /// ⇒ **能推出中转 id 的那一格，正是 ccm 渲染器拒掉的那一格。**
-    /// 凡是带中转前缀的本机拉起，必然落 [`build_local_posix_command`]（那条路没有 tmux 容器）；
-    /// 凡是走 ccm 容器路的，中转前缀必然是空串。**两条路今天不相交。**
+    /// | 缺席（`None`） | 不带（不走中转） | **是**〔🔴 `K-R89` 09-13 翻的：`R28` 之后省略有确定语义，渲染器说得出「继承」了〕 |
+    /// | `Base`（账号 0） | 不带（不走中转） | **是** |
+    /// | `Named{acct-a}`（**在中转表里**） | 带 | 否 —— `relay.is_empty()` 那一行挡住 |
+    /// | `Named{acct-b}`（不在表里） | 不带 | **是**（`K-R53` 开的就是这一格） |
     ///
     /// # ⚠ 它连带说明了一件别处的事（别让那条判据被读宽）
     ///
-    /// `shared/ccm` 那条 `ANTHROPIC_BASE_URL` 转发（连同钉它的
+    /// 我们自己这份 `ccm` 的容器路那条 `ANTHROPIC_BASE_URL` 转发（连同钉它的
     /// `payload::tests::the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary`
     /// 与件文件里的 `M12`/`M12b`）量的是一条**在本机中转这条路上今天生产不可达**的路：
     /// 那段 shell 真的会转发，而**没有任何生产输入能同时走到中转与容器**。
     /// 它不是假的，它买不到本件要的那一格。**那条判据的头注里也写了这句话，两处别只改一处。**
     ///
-    /// # 🔴 这条前提**本来就该变** —— 变的那天去哪里重新裁定（`testing.md` 三.11 要的那一栏）
+    /// # 🔴 这条前提**还会再变一次** —— 变的那天去哪里重新裁定（`testing.md` 三.11 要的那一栏）
     ///
-    /// 消掉互斥要给 [`LaunchAccount::Named`] 补上**名字**（要改 `LaunchAccount` 与它的前端
-    /// 调用点，都不在 `K-H2b` 的写区）。真做那一天，**同一拍**要做完这四样，缺一样就是又一次
-    /// 「盘上写着已解而其实没解」：
-    ///   ① 本条会红 —— **在这里重新裁定**（改成「不再互斥」并说清新的人群）；
-    ///   ② [`launch_local`] 的头注里那段「互不互斥」跟着改；
-    ///   ③ 件计划 `K-H2b §4` 那条登记跟着改；
-    ///   ④ **`shared/ccm` 的 `capabilities=` 串要加上那个 token** —— 现打 17 个 token 里
-    ///      含 `relay`/`base-url`/`anthropic` 的 **0** 个，而 `ccm_probe` 探的是 PATH 上那个 ccm
-    ///      ⇒ 不加的话，装了旧 ccm 的机器会**静默吃掉**这个变量。
+    /// 〔`K-R61` 09-11 **重裁**〕上一版这里写的是「退役条件今天是**一行 shell**」，
+    /// 点的是那份 bash `ccm` 的第 624 行 —— 而它 `07e4e72` 就删了。
+    /// 今天的前提是：**转发做到了、也声明了**（`base-url-across-tmux` 已在
+    /// `remote-daemon-proto/src/control/ccm/mod.rs` 的 `CAPABILITIES` 里，
+    /// 由那棵树的 `the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it`
+    /// 真去驱动一遍），**差的只是 [`launch_local`] 那一行还没改成探它**。
+    ///
+    /// ⇒ 退役条件收成**一行 Rust**：[`launch_local`] 里那句 `relay.is_empty()`
+    /// 换成「探到 `base-url-across-tmux` 才放行」。真做那一天，**同一拍**这几样：
+    ///   ① 本条会红 —— **在这里重新裁定**；
+    ///   ② [`launch_local`] 的头注与 [`RELAY_KEEPS_THE_OLD_PATH`] 跟着改；
+    ///   ③ 件计划 `K-H2b §4` 那条登记跟着改
+    ///      〔`K-R53` 09-11 报回 PM，**`K-R61` 仍未做**：`K-R61 §0e` 逐字裁「不碰它」〕；
+    ///   ④ `CAPABILITIES` 那个 token —— **`K-R61` 已做**，这一样从此不再是待办。
     #[test]
     #[cfg(not(windows))]
     fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
         let act = LocalPsAction::Resume("s1".into());
-        let named = LaunchAccount::Named {
-            config_dir: "/home/u/.claude-accts/acct-a".into(),
-        };
         let base = LaunchAccount::Base;
-        // 分母就是这三格 —— `LaunchAccount` 今天只有两个变体，加上「参数缺席」。
-        let shapes: [(&str, Option<&LaunchAccount>); 3] = [
-            ("缺席", None),
-            ("Base", Some(&base)),
-            ("Named", Some(&named)),
-        ];
+        // 在中转表里的那个号 —— 名字说得出（本件之后前端就是这么传的）。
+        let acct_a = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/acct-a".into(),
+            name: Some("acct-a".into()),
+        };
+        // 不在中转表里的那个号 —— 「哪个号」这一维的取值域因此是 2，不是 1（`D6 阻-2`）。
+        let acct_b = LaunchAccount::Named {
+            config_dir: "/home/u/.claude-accts/acct-b".into(),
+            name: Some("acct-b".into()),
+        };
+
+        // 中转事实由替身给：表里只有 acct-a、中转在跑、不是 Windows。
+        fn rows_with_only_acct_a() -> Vec<String> {
+            vec!["acct-a".to_string()]
+        }
+        fn relay_is_running() -> bool {
+            true
+        }
+        fn not_windows() -> bool {
+            false
+        }
+        let _guard = override_relay_facts(RelayFactSources {
+            rows: rows_with_only_acct_a,
+            running: relay_is_running,
+            windows: not_windows,
+        });
+
+        // 「这台机器装没装 ccm」也由替身给 —— 本条**不问跑它的那台机器**
+        //（沙箱里没装，不喂的话四格一起落到回落路 ⇒ 本条变成空真）。
+        fn a_current_ccm() -> crate::ccm_probe::CcmProbeResult {
+            crate::ccm_probe::CcmProbeResult {
+                installed: true,
+                version: Some("0.0.0-判据替身".to_string()),
+                capabilities: caps_of_a_current_ccm().into_iter().collect(),
+                build: None,
+            }
+        }
+        let _probe = override_ccm_probe(CcmProbeSource(a_current_ccm));
+
+        // 送法替身：本条量的是 [`launch_local`] **真正交出去的那一串**，不是源码、
+        // 也不是本条自己再算一遍的什么东西。
+        thread_local! {
+            static SENT: std::cell::RefCell<Vec<String>> =
+                const { std::cell::RefCell::new(Vec::new()) };
+        }
+        fn recorder(cmd: &str, _cwd: Option<&str>) -> Result<(), String> {
+            SENT.with(|v| v.borrow_mut().push(cmd.to_string()));
+            Ok(())
+        }
+        let _sink = override_launch_sink(LaunchSink(recorder));
+
+        // 容器名由调用方给（`mintTmuxName` 那一侧的事），这里只要一个合法的名字。
+        const TMUX: &str = "s1abcdef-cc";
+
+        // ⓪ **重新裁定的那一格**：渲染器**单独看**已经不再互斥了 ——
+        //    在中转表里的那个号，渲染器今天渲得出来。互斥不再由它保。
+        //    （这一格红 = `K-R53` 那一刀被退掉了，那时下面几格的理由也就不成立。）
+        //    ⚠ 走的是**生产那个渲染器** [`render_local_ccm`]（探测经缝喂），
+        //    不是它的纯函数半 —— 后者会把「生产上探测这一跳还在不在」漏在射程外。
+        assert!(
+            render_local_ccm(&act, None, Some(&acct_a), Some(TMUX)).is_ok(),
+            "渲染器又对具名账号短路了 —— 那是 `K-R53` 之前的形状，\n\
+             本条头注里那段「成因换成探不到能力」就不再成立，回去重新裁定。"
+        );
 
         let mut relayed = Vec::new();
         let mut containered = Vec::new();
+        let shapes: [(&str, Option<&LaunchAccount>); 4] = [
+            ("缺席", None),
+            ("Base", Some(&base)),
+            ("Named{acct-a·在表里}", Some(&acct_a)),
+            ("Named{acct-b·不在表里}", Some(&acct_b)),
+        ];
         for (label, acct) in shapes {
-            let relay_id = relay_account_id(acct);
-            let renders = render_local_ccm_with(
-                &act,
-                None,
-                acct,
-                Some("s1abcdef-cc"),
-                &caps_of_a_current_ccm(),
-                true,
-            )
-            .is_ok();
-            if relay_id.is_some() {
+            // 🔴 **真去走生产那条路** —— 上一版在这里自己抄了一份 `launch_local` 的闸
+            //    （见头注 `K-R55` 那一节），于是把生产那一行翻掉一个字都不响。
+            launch_local(&act, None, None, acct, Some(TMUX))
+                .unwrap_or_else(|e| panic!("形状 {label} 这一趟拉起本身就失败了：{e}"));
+            let sent = SENT.with(|v| {
+                v.borrow()
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| panic!("形状 {label} 这一趟什么都没送出去"))
+            });
+            // 两个判定都只看**那一串**：`ANTHROPIC_BASE_URL` 只可能来自中转前缀，
+            // `--tmux=` 只可能来自 `render_ccm_invocation`（回落路从不说 tmux）。
+            if sent.contains("ANTHROPIC_BASE_URL") {
                 relayed.push(label);
             }
-            if renders {
+            if sent.contains("--tmux=") {
                 containered.push(label);
             }
         }
         // 反空真：两边**都非空**（都空的话下面那条不相交是空真）。
         assert_eq!(
             relayed,
-            ["Named"],
-            "能推出中转 id 的形状变了 —— 本条的结论要重新裁定（见头注最后一节）"
+            ["Named{acct-a·在表里}"],
+            "真拿到中转前缀的形状变了 —— 本条的结论要重新裁定（见头注最后一节）"
         );
         assert_eq!(
             containered,
-            ["Base"],
-            "能渲染出 ccm 容器的形状变了 —— 本条的结论要重新裁定（见头注最后一节）"
+            ["缺席", "Base", "Named{acct-b·不在表里}"],
+            "能走进 ccm 容器的形状变了 —— 本条的结论要重新裁定（见头注最后一节）。\n\
+             〔`K-R89` 09-13：「缺席」是本轮新进来的一格 —— `R28` 之后省略 `--account` \
+             有确定语义，渲染器不再对它短路。**互斥那条结论没变**，变的是分母。〕"
         );
         // 正题：两个集合不相交 ⇒ 今天没有任何一次本机拉起同时拿到中转前缀与 tmux 容器。
         assert!(
             relayed.iter().all(|l| !containered.contains(l)),
-            "「走中转」与「有 tmux 容器」不再互斥了 —— 那是**好事**，但盘上有四处话要跟着改：\n\
-             ① 本条（重新裁定）② `launch_local` 头注 ③ 件计划 `K-H2b §4` 那条登记\n\
-             ④ `shared/ccm` 的 `capabilities=` 串要加 token（否则装了旧 ccm 的机器静默吃掉那个变量）。\n\
+            "「走中转」与「有 tmux 容器」不再互斥了 —— 那是**好事**，但盘上有三处话要跟着改：\n\
+             ① 本条（重新裁定）② `launch_local` 头注与 `RELAY_KEEPS_THE_OLD_PATH`\n\
+             ③ 件计划 `K-H2b §4` 那条登记。\n\
+             （第四样 —— `remote-daemon-proto/src/control/ccm/mod.rs` 的 `CAPABILITIES` 加\n\
+             `base-url-across-tmux` —— `K-R61` 已经做了：转发做到了、也声明了。）\n\
              实得：走中转的 {relayed:?} · 有容器的 {containered:?}"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // `K-R61`：退役条件那句话 —— **几处说的是同一件事**，而且**它点名的住址真的在盘上**
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// 本组判据的**自剪线**。见 [`r61_hay`]。
+    ///
+    /// ⚠ 这个串在本文件里**必须只出现在这一行**（下面两条判据都靠它切被测面）。
+    const R61_SELF_CUT: &str = "〔K-R61 判据组自剪线〕";
+
+    /// 本组的被测面 = `history.rs` 全文**截到自剪线为止**。
+    ///
+    /// 🔴 为什么要剪：本组的锚点是**逐字串**，而它们在下面两条判据里各有一份字面量副本
+    /// （判据自带清单，与 `ccm_invocation.rs` 那两处「刻意的重复」同一个理由）。
+    /// 不剪的话 [`guard_core::find_pinned`] 会看到两处、当场报「指不明是哪一处」——
+    /// 那是**量具把自己也算进了被测面**。
+    ///
+    /// ⚠ **它买不到的**：自剪线**之后**的文本一律不进射程。有人把同一段话复制到本文件
+    /// 更后面去，本组看不见。射程边界就写在这里，别读宽。
+    fn r61_hay() -> &'static str {
+        let src = include_str!("history.rs");
+        let cut = src
+            .find(R61_SELF_CUT)
+            .expect("自剪线不见了 —— 本组判据此刻在量它自己，读数作废");
+        &src[..cut]
+    }
+
+    /// 「退役条件那句话」在本文件里的**住址表 —— 只有这一处**。
+    ///
+    /// 每一处给一对**逐字锚点**（起 / 止）。两个锚点都由 [`guard_core::find_pinned`]
+    /// 断言**恰好命中一次**，取「起 → 止」之间那一段 ⇒ 窗口**不可能跨到下一条**：
+    /// 止锚点就是紧挨着它的下一个结构物本身。
+    ///
+    /// ⚠ `K-R61 §0a` 那张表登记的是**四处**；本轮现打**五处**。多出来的两处是
+    /// ③（[`launch_local`] 体内那段「为什么要显式保住」）与
+    /// ⑤（互斥判据末尾那条 `assert!` 的诊断文案）—— 它们也在说同一件事，`§0a` 漏了。
+    /// 数字与名单同住这里（纪律 ⑭）：分母 = 本表的长度，成员 = 本表逐行。
+    fn r61_sites() -> Vec<(&'static str, &'static str, &'static str)> {
+        vec![
+            (
+                "① 常量本体 RELAY_KEEPS_THE_OLD_PATH",
+                "const RELAY_KEEPS_THE_OLD_PATH: &str =",
+                "/// ⚠ **`Err` 那一支不回 token**",
+            ),
+            (
+                "② 常量头注的『退役条件』一节",
+                "# 🔴 退役条件〔`K-R61` 09-11 重裁",
+                "const RELAY_KEEPS_THE_OLD_PATH: &str =",
+            ),
+            (
+                "③ launch_local 体内『为什么要显式保住』",
+                "🔴🔴🔴 **三次订正（`K-R61` 09-11）",
+                "let rendered = if relay.is_empty() {",
+            ),
+            (
+                "④ 互斥判据头注『这条前提还会再变一次』",
+                "# 🔴 这条前提**还会再变一次**",
+                "fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {",
+            ),
+            (
+                "⑤ 互斥判据末尾那条 assert! 的诊断文案",
+                "「走中转」与「有 tmux 容器」不再互斥了",
+                "实得：走中转的 {relayed:?}",
+            ),
+        ]
+    }
+
+    /// 按住址表切出那几段。锚点唯一性在这里当场核（切之前，不是切之后）。
+    fn r61_segments() -> Vec<(&'static str, &'static str)> {
+        let hay = r61_hay();
+        r61_sites()
+            .into_iter()
+            .map(|(name, start, end)| {
+                let a = guard_core::find_pinned(hay, start).unwrap_or_else(|e| {
+                    panic!("{name}：起锚点不是恰好一处 —— 形状变了，先修锚点：{e}")
+                });
+                let b = guard_core::find_pinned(hay, end).unwrap_or_else(|e| {
+                    panic!("{name}：止锚点不是恰好一处 —— 形状变了，先修锚点：{e}")
+                });
+                assert!(
+                    a < b && b - a < 4000,
+                    "{name}：切出来的窗口不成形（起 {a} 止 {b}）—— 两个锚点的相对位置变了，\n\
+                     照原样切会切到别人身上，本条此刻的读数一律作废。"
+                );
+                (name, &hay[a..b])
+            })
+            .collect()
+    }
+
+    /// 从一段文本里抽出「反引号括起来、像**仓内路径**的那些串」。
+    ///
+    /// 🔴 **刻意不要求后缀**：`K-R61 §0d` 那把尺子的 `EXT` 白名单正是把**无后缀**的那一形
+    /// 整个滤掉了，于是它一处都数不到本件正在治的那个样本 ——「量一个人群之前，
+    /// 先确认尺子逮得到那个已知的样本」。这里只要求：带 `/` · 不是 URL · 不带空格 ·
+    /// 只由路径字符组成 · 不是绝对路径。行号后缀（`:123` / `:12-34`）当场剥掉。
+    fn r61_paths_in(seg: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut rest = seg;
+        while let Some(a) = rest.find('`') {
+            let after = &rest[a + 1..];
+            let Some(b) = after.find('`') else { break };
+            let raw = after[..b].trim();
+            rest = &after[b + 1..];
+            let tok = match raw.rsplit_once(':') {
+                Some((head, tail))
+                    if !tail.is_empty() && tail.chars().all(|c| c.is_ascii_digit() || c == '-') =>
+                {
+                    head
+                }
+                _ => raw,
+            };
+            if !tok.contains('/') || tok.contains("://") || tok.contains(' ') {
+                continue;
+            }
+            if tok.starts_with('/') || tok.starts_with('~') || tok.starts_with("./") {
+                continue;
+            }
+            if !tok
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "._/+-".contains(c))
+            {
+                continue;
+            }
+            out.push(tok.to_string());
+        }
+        out
+    }
+
+    /// `KR61D1`：**那几处说的是同一件事** —— 同一个前提、同一个住址、同一个 token。
+    ///
+    /// # 它为什么存在
+    ///
+    /// 上一版这几处逐字点着一份 `07e4e72` 就删掉的 bash 脚本，而互斥那条判据一直是绿的
+    /// ⇒ **判据活着、前提死了，中间没有任何东西会响**。本条就是那个「会响的东西」。
+    ///
+    /// # 判的是什么（三条，缺一不可）
+    ///
+    /// 1. **同一个前提**：每一处都要有那句承重话（`转发做到了、也声明了`）。
+    ///    ⇒ 只把住址换新、把理由留在旧版本上（`K-R61 KR61D1` 逐字点名的失效方向
+    ///    「**换地址不换前提**」）在这里当场红。
+    /// 2. **同一个住址**：每一处点的都是 [`R61_ADDR`]，而它**在盘上真的存在**
+    ///    （存在性那一半由 [`every_address_the_retirement_condition_names_is_still_on_disk`] 守）。
+    /// 3. **旧住址一处都不许留**：那份已删的 bash 脚本的旧路径，五段里出现一次就红。
+    ///    ⇒ `KR61D1` 那条死值验（「四处中任意一处改回旧住址 ⇒ 必须红」）由这一条兑现。
+    ///
+    /// # ⚠ 边界（别读宽）
+    ///
+    /// - 本条判的是**这几段文本互相一致**，**不判**「这段话是真的」。
+    ///   「那个文件里真的有那个 token」由 daemon 那棵树的
+    ///   `control::ccm::tests::the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it` 守。
+    /// - 住址表本身（哪几处算「同职」）是**人写的**。有人在别处再写一段同职的话而不登记，
+    ///   本条看不见 —— 那正是 `§0a` 漏掉 ③⑤ 两处的形状。
+    #[test]
+    fn the_retirement_condition_says_the_same_thing_in_every_place_that_states_it() {
+        // 判据自带清单（**不复用生产常量**）：复用的话，谁把生产那一份改了，
+        // 循环跟着改，两边一起漂而没有一格红。
+        const PREMISE: &str = "转发做到了、也声明了";
+        const TOKEN: &str = "base-url-across-tmux";
+
+        let segs = r61_segments();
+        assert_eq!(
+            segs.len(),
+            5,
+            "住址表的长度变了 —— 分母变了就要重新裁定，别让它悄悄变"
+        );
+        // 旧住址：**现搭**，不写成字面量。写成字面量的话本文件里就又多了一处
+        // 「那个已删文件的路径」，而本条自己就是来消灭它的。
+        let retired = format!("shared/{}", "ccm");
+
+        for (name, seg) in &segs {
+            assert!(
+                seg.contains(PREMISE),
+                "{name} 里没有那句承重话「{PREMISE}」。\n\
+                 ⇒ 这正是 `KR61D1` 点名的失效方向：**换地址不换前提**。\n\
+                 今天的前提是「我们自己这份 ccm 转发得了、也声明了，差的只是那一行还没改成探它」，\n\
+                 不是旧话「对面可能是装了别的 ccm 的机器」（`K34`/`K35` 之后那类机器正在退场）。\n\
+                 实得这一段：\n{seg}"
+            );
+            assert!(
+                seg.contains(R61_ADDR),
+                "{name} 点的住址不是 `{R61_ADDR}` —— 几处不再指同一个地方。\n\
+                 实得这一段：\n{seg}"
+            );
+            assert!(
+                seg.contains(TOKEN),
+                "{name} 里没点名那个 token `{TOKEN}` —— 退役条件说不清要探什么。\n\
+                 实得这一段：\n{seg}"
+            );
+            // 旧住址一处都不许留（`-aliases.sh` 那个**还在盘上**，不算）。
+            let stale = seg
+                .match_indices(retired.as_str())
+                .filter(|(i, _)| {
+                    seg[i + retired.len()..]
+                        .chars()
+                        .next()
+                        .is_none_or(|c| c != '-')
+                })
+                .count();
+            assert_eq!(
+                stale, 0,
+                "{name} 里还点着那份已删脚本的旧住址（{stale} 处）—— 那是 `K-R61` 要治的病本身：\n\
+                 它 `07e4e72` 就删了，指着它的话不会有任何东西出声。\n\
+                 实得这一段：\n{seg}"
+            );
+        }
+
+        // 整份文件那一格：不只这五段，全文都不许再点那个旧住址。
+        // （少了这一格，把旧住址挪出这五段的窗口就能躲过去。）
+        let whole = include_str!("history.rs");
+        let left: Vec<&str> = whole
+            .lines()
+            .filter(|l| {
+                l.match_indices(retired.as_str()).any(|(i, _)| {
+                    l[i + retired.len()..]
+                        .chars()
+                        .next()
+                        .is_none_or(|c| c != '-')
+                })
+            })
+            .collect();
+        assert!(
+            left.is_empty(),
+            "本文件里还有 {} 行点着那份已删脚本：\n  {}",
+            left.len(),
+            left.join("\n  ")
+        );
+    }
+
+    /// 退役条件点名的那个住址 —— **本文件里的字面量只有这一处**（`brief` 13b）。
+    const R61_ADDR: &str = "remote-daemon-proto/src/control/ccm/mod.rs";
+
+    /// `KR61D2`：**退役条件点名的仓内住址，不在了就得响。**
+    ///
+    /// 存在性由本条负责，**不由谁记得**。这一条不是给某一个旧名字写的补丁：
+    /// 它把那几段里**每一个**看起来像仓内路径的串都拿去盘上核一次 ⇒
+    /// 下一个被删掉的文件同样会当场红。
+    ///
+    /// # ⚠⚠ 反向本条**不主张**（这一句是 `KR61D2` 点名要写进头注的）
+    ///
+    /// 把住址改成一个**存在但不相干**的文件（比如把 `…/ccm/mod.rs` 换成 `…/ccm/argv.rs`），
+    /// **本条逮不到** —— 它只判「在不在」，不判「这个住址讲的是不是那件事」。
+    /// 别把它读成「住址对不对有人管」。
+    ///
+    /// 那半格今天由**别的东西**兜，而且兜得不全，如实写清：
+    /// - [`the_retirement_condition_says_the_same_thing_in_every_place_that_states_it`]
+    ///   钉着 [`R61_ADDR`] 这**一个**串 ⇒ 换成 `argv.rs` 它会红。但那是**钉死一个字面量**，
+    ///   只护得住这一个住址，护不住下一条退役条件点的下一个住址。
+    /// - 「那个文件里真的有那个 token」由 daemon 那棵树的
+    ///   `the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it` 守。
+    /// - 「这段话说的是不是真的」**没有任何东西守**。
+    ///
+    /// # ⚠ 射程
+    ///
+    /// 只到 [`r61_sites`] 登记的那几段。**本条不是全仓 doc-link 检查器**
+    /// （`K-R61 §0e` 逐字禁的就是顺手做那个）—— 全仓那个人群多大，读数住件文件 `§8`。
+    #[test]
+    fn every_address_the_retirement_condition_names_is_still_on_disk() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("src-tauri 的上级 = 仓根")
+            .to_path_buf();
+
+        let mut checked: Vec<String> = Vec::new();
+        let mut missing: Vec<String> = Vec::new();
+        for (name, seg) in r61_segments() {
+            for p in r61_paths_in(seg) {
+                checked.push(format!("{name} → {p}"));
+                if !root.join(&p).exists() {
+                    missing.push(format!("{name} → `{p}`"));
+                }
+            }
+        }
+        // 反空真：抽不到路径的话下面那条 `is_empty()` 是白过的。
+        assert!(
+            checked.len() >= 4,
+            "只从那几段里抽到 {} 个住址 —— 抽取器坏了，本条此刻在空转。抽到的：{checked:?}",
+            checked.len()
+        );
+        assert!(
+            missing.is_empty(),
+            "退役条件点着 {} 个**盘上没有**的住址：\n  {}\n\
+             ⇒ 这就是 `K-R61` 立件的那个形状：判据活着、前提指着一个已经被删掉的文件，\n\
+             中间没有任何东西会响。**改住址的同时把那句理由也重读一遍** ——\n\
+             `K-R61` 那一轮变的不是住址，是前提本身。\n\
+             本轮核过的全部住址（分母 {}）：{checked:?}",
+            missing.len(),
+            missing.join("\n  "),
+            checked.len()
         );
     }
 
@@ -2967,13 +4457,6 @@ mod tests {
         }
     }
 
-    /// 一行合法的 user 记录（形状照 `messages.rs` 的黄金样本）。
-    fn user_line(cwd: &str) -> String {
-        format!(
-            r#"{{"type":"user","uuid":"u-1","timestamp":"2026-05-20T01:23:45.678Z","cwd":"{cwd}","message":{{"role":"user","content":"hi"}}}}"#
-        )
-    }
-
     /// 〔audit-0805 08-06〕**`read_jsonl_values` 的两个无声决定**：剥 BOM · 静默丢弃坏行。
     ///
     /// 它全仓出现 2 次、所在文件测试段 0 次（先验：只被一处调用的生产函数）。
@@ -3012,126 +4495,312 @@ mod tests {
         assert_eq!(got[2].get("c").and_then(|v| v.as_i64()), Some(3));
     }
 
-    /// 〔audit-0805 08-06〕**同一个问题，本地与远端给两个答案**（E3 + §40）。
+    /// ★★〔`K-R97` 09-12 后继形态〕**「从 jsonl 头部抠 cwd」这件事，全仓只剩一处了。**
     ///
-    /// # 实测到的两处分歧
+    /// # 原形是什么、为什么换
     ///
-    /// 「从 jsonl 头部取 cwd」这件事有两处实现：
-    /// - monitor：`quick_extract_cwd` —— 窗口 **30** 行，且**只认 `JsonlRecord::User`** 且 cwd 非空；
-    /// - daemon：`observe/history_query.rs::extract_cwd_from_head` —— 窗口 **40** 行，
-    ///   且认**任何**带非空 `cwd` 字段的记录。
+    /// 原形叫「两个提取器仍旧照登记的样子不一致」〔audit-0805 08-06〕：同一个问题两处实现 ——
+    /// monitor 窗口 **30** 行且只认 `JsonlRecord::User`，后端窗口 **40** 行且认任何带非空 cwd
+    /// 的记录。后果具体：首个带 cwd 的记录落在第 31–40 行时，**两边给两个答案**。
+    /// 那一版**只钉不改**（走档①：登记 + 钉住），因为「取 30 还是 40」是会改行为的设计决定。
     ///
-    /// 后果是具体的：**首个带 cwd 的记录落在第 31–40 行时，远端报得出 cwd、本地报不出**；
-    /// 若那条记录不是 `user` 类型，差别还要更大。同一份文件、同一个问题、两个答案。
+    /// `K-R97` 把本机项目列表改走后端那条 `--list-projects` ⇒ monitor 那一份**连同它唯一的
+    /// 调用点一起没了**。⚠ **这不是「对齐到 40」**，是那个设计决定**不再需要有人做** ——
+    /// 问题只剩一个实现，也就无从不一致。
     ///
-    /// ⚠ daemon 那边的头注**已经在做这个对照**了 —— 但它只对照了「流式 vs 整读」，
-    /// **没提窗口和记录类型不一样**。⇒ 又一次「订正手头那一处，不等于订正那句话」。
-    ///
-    /// # 为什么本轮只钉不改
-    ///
-    /// §40 是〔用 2026-07-29〕拍的方向（「把本地当成不走 ssh 的远端」），照它推**本地该对齐远端**。
-    /// 但「窗口取 30 还是 40」「要不要放宽到任意记录类型」是**会改变行为**的设计决定
-    /// （放宽后 cwd 可能来自非 user 记录），不该由我顺手定。⇒ 走档①：**登记 + 钉住，不擅自对齐**。
-    /// 差异与解锁条件记在 `ROADMAP §5`；本条保证它**不会再悄悄变宽或变窄**。
+    /// ⇒ 本条换成后继形态：**钉住 monitor 侧不许再长出第二份**，并核后端那一份还在。
+    /// ⚠ **这不是降强度**：原形钉的是两个数的差（谁改了都红），后继钉的是「只剩一处」
+    /// （谁把第二份写回来都红），而后者恰恰是 `K33`「所有命令只许有一处」的形状。
     #[test]
-    fn the_two_cwd_extractors_still_disagree_exactly_as_registered() {
-        // 本地那一侧：从自己的生产段里抽，不写死。
+    fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
+        // ① monitor 生产段：**一个头部窗口读法都不许有**。
         let own = guard_core::production_code(include_str!("history.rs"));
-        let local = own
+        let local: Vec<&str> = own
             .lines()
-            .find(|l| l.contains("reader.lines().map_while(Result::ok).take("))
-            .and_then(|l| l.split(".take(").nth(1))
-            .and_then(|s| s.split(')').next())
-            .and_then(|s| s.trim().parse::<usize>().ok())
-            .expect("抽不到本地那侧的窗口 —— 读法坏了，本条会零命中地绿");
+            .filter(|l| l.contains("reader.lines().map_while(Result::ok).take("))
+            .collect();
+        assert!(
+            local.is_empty(),
+            "monitor 侧又长出了一份 jsonl 头部读法：\n{}\n\n\
+             ⇒ `K-R97` 之后这件事的家在后端（`observe/history_query.rs`）。\n\
+             真要在 monitor 侧读，先回答「为什么这条路问不了后端」，再连同本条一起改。",
+            local.join("\n")
+        );
 
-        // 远端那一侧：读 daemon 源码（同 `agent_profile_parity` 的既有做法）。
+        // ② 后端那一份还在，且窗口是个说得出的数 —— 否则上面那条会零命中地绿
+        //    （「两边都没有」与「只剩一处」在断言上长得一样，这一格就是分开它们的那个）。
         let daemon_src = std::fs::read_to_string(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .parent()
                 .expect("仓根")
                 .join("remote-daemon-proto/src/observe/history_query.rs"),
         )
-        .expect("读不到 daemon 的 history_query.rs");
-        let remote = guard_core::production_code(&daemon_src)
+        .expect("读不到后端的 history_query.rs");
+        let remote: Vec<usize> = guard_core::production_code(&daemon_src)
             .lines()
-            .find(|l| l.contains("reader.lines().map_while(Result::ok).take("))
-            .and_then(|l| l.split(".take(").nth(1))
-            .and_then(|s| s.split(')').next())
-            .and_then(|s| s.trim().parse::<usize>().ok())
-            .expect("抽不到远端那侧的窗口 —— daemon 那边改形了，读法要跟着改");
-
-        // ★ 登记今天的实况。**这不是「应该这样」，是「今天就是这样」** ——
-        //   两边一旦有任何一侧动了，本条就红，逼人做那个被推迟的设计决定。
+            .filter(|l| l.contains("reader.lines().map_while(Result::ok).take("))
+            .filter_map(|l| l.split(".take(").nth(1))
+            .filter_map(|s| s.split(')').next())
+            .filter_map(|s| s.trim().parse::<usize>().ok())
+            .collect();
         assert_eq!(
-            (local, remote),
-            (30, 40),
-            "本地/远端的 cwd 提取窗口变了（实得 本地={local} 远端={remote}）。\n\
-             ⚠ 这两个数今天**故意不一致**且已登记（`ROADMAP §5`）：\n\
-             首个带 cwd 的记录落在第 31–40 行时，远端报得出、本地报不出。\n\
-             §40〔用 2026-07-29〕的方向是「把本地当成不走 ssh 的远端」⇒ 该对齐，\n\
-             但选哪个数、要不要同时放宽记录类型，是会改行为的设计决定。\n\
-             ⇒ 改之前先把那个决定做掉并更新本条，别让它无声地漂到第三个值。"
-        );
-
-        // 记录类型那一半也钉住：本地限定 `User`，远端不限定。
-        assert!(
-            own.contains("JsonlRecord::User { cwd: Some(c), .. }"),
-            "本地那侧不再限定 `JsonlRecord::User` 了 —— 那正是与远端的第二处分歧，\n\
-             它变了就说明有人在对齐（好事），请连同上面那条一起更新。"
+            remote,
+            vec![40],
+            "后端那一份不是「恰好一处、窗口 40 行」了（实得 {remote:?}）。\n\
+             ① 变成 0 处 ⇒ 那件事没人做了，而 monitor 这侧已经不做了；\n\
+             ② 变成 2 处 ⇒ 两份实现在后端里面又长了一次。"
         );
     }
 
-    /// 〔audit-0805 08-06〕**`quick_extract_cwd` 只看前 30 行 —— 这个上限此前无声也无判据。**
+    // ═══════════════════════════════════════════════════════════════════
+    // `K-R97`：本机项目列表改走后端那条 `--list-projects`
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// 一行后端产出（形状照 `observe/history_query.rs::project_row`：5 个字段）。
+    fn r97_row(dir: &str, path: &str, sids: &[&str], last_ms: i64) -> serde_json::Value {
+        serde_json::json!({
+            "dirName": dir,
+            "projectPath": path,
+            "sessionCount": sids.len(),
+            "lastActivityMs": last_ms,
+            "sessionIds": sids,
+        })
+    }
+
+    /// 把几行折成后端的 stdout（逐行 JSON）。
+    fn r97_stdout(rows: &[serde_json::Value]) -> QueryOutcome {
+        QueryOutcome::Ok(
+            rows.iter()
+                .map(|r| r.to_string())
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n",
+        )
+    }
+
+    /// 会答话的假真相源（同 `remote_history` 测试段那两个夹具的形状）。
+    /// ⚠ 它是**夹具**，不是第二份实现：生产那份是 [`SessionMapLiveness`]。
+    struct R97Oracle(&'static [&'static str]);
+    impl LivenessOracle for R97Oracle {
+        fn is_live(&self, _origin: &str, sid: &str) -> Counted<bool> {
+            Counted::Known(self.0.contains(&sid))
+        }
+    }
+
+    /// ★★ `KR97D1`：**本机那条路的数据来自后端** —— 判的是性质，不是写法。
     ///
-    /// 它是「列历史项目时快速拿到 cwd」的探针，`take(30)` 是**成本与命中率的折中**：
-    /// 超出 30 行就放弃、返回 `None`（调用方另有兜底）。
-    /// 问题是这个数**没有任何东西读它** —— 改成 3 或改成 300 都不会红，
-    /// 前者让一批会话拿不到 cwd（表现为「项目名不对」，不是报错），后者让列表变慢。
-    /// ⇒ 钉住边界本身：**第 30 行还在窗口内、第 31 行不在**。
+    /// 第 ① 刀「后端产出变了而本机不跟 ⇒ 红」＋ 第 ② 刀「跟了 ⇒ 绿」都在这里：
+    /// 同一条路喂**两份不同的后端产出**，逐字段看它跟不跟。
+    ///
+    /// ⚠ 逐字**不判**「代码里还有没有 `read_dir`」（那判的是写法，改个写法就瞎）。
+    /// 第 ③ 刀「本机退回自己遍历 records 根 ⇒ 红」由**另一处**接住，而且它更硬：
+    /// `local_read_surface_registry` 的递减棘轮按「文件 → 命中行数」逐行对账，
+    /// 谁把 `resolve_claude_dir()` / `records_dir()` 写回 `history.rs`，那条当场红
+    ///（`K-R97` 之后 `src/history.rs` 登记的处数之和是 **13**，写回去就是 15）。
     #[test]
-    fn quick_extract_cwd_stops_after_the_thirtieth_line() {
+    fn the_local_project_list_is_whatever_the_backend_said() {
+        let md = HistoryMetadata::default();
+        let live = R97Oracle(&[]);
+
+        let a = local_projects_via(
+            |_| r97_stdout(&[r97_row("-w-alpha", "/w/alpha", &["s1", "s2"], 111)]),
+            &md,
+            &live,
+        )
+        .expect("后端答了，这一趟该成");
+        assert_eq!(a.len(), 1, "后端只说了一个项目，本机却给出 {} 个", a.len());
+        assert_eq!(a[0].0.project_name, "alpha");
+        assert_eq!(a[0].0.project_path, "/w/alpha");
+        assert_eq!(a[0].0.session_count, 2);
+        assert_eq!(a[0].0.last_activity, 111);
+        assert_eq!(
+            a[0].0.project_dir, "-w-alpha",
+            "懒加载键要原样带回后端给的名字"
+        );
+        assert_eq!(a[0].0.origin, None, "本机那条路 origin 恒为 None");
+
+        // ★ 换一份后端产出：**同一个项目键**，其余全变。本机的返回必须跟着变。
+        let b = local_projects_via(
+            |_| r97_stdout(&[r97_row("-w-alpha", "/w/beta", &["s1", "s2", "s3"], 222)]),
+            &md,
+            &live,
+        )
+        .expect("后端答了，这一趟该成");
+        assert_eq!(
+            (
+                b[0].0.project_name.as_str(),
+                b[0].0.project_path.as_str(),
+                b[0].0.session_count,
+                b[0].0.last_activity
+            ),
+            ("beta", "/w/beta", 3, 222),
+            "🔴 后端那一行变了，本机的返回没跟着变 —— 那说明这条路的数据**不是**后端给的。\n\
+             这正是本条第 ① 刀：改后端那条的产出，本机跟不跟。"
+        );
+
+        // ★ 后端没说的项目不许冒出来（「数据只来自后端」的另一半）。
+        let none = local_projects_via(|_| QueryOutcome::Ok(String::new()), &md, &live)
+            .expect("空答复也是答复");
+        assert!(
+            none.is_empty(),
+            "后端一行都没说，本机却端出了 {} 个项目",
+            none.len()
+        );
+    }
+
+    /// ★★ `KR97D2`：**「不知道」一路带到本机这条，不被压平。**
+    ///
+    /// `K-R92` 那一形的预防：后端那一行**没带 sid 清单**（旧版后端）时，
+    /// star / hide / 活状态三个数**算不出来** —— 那不是 0、不是「没有星标」、
+    /// 更不是「这个项目没有活会话」。
+    ///
+    /// 第 ① 刀「压平 ⇒ 红」用 `assert_ne!` 逐格钉：`Some(0)` / `Some(false)` 与 `None`
+    /// 在类型上分得开，压平当场红。第 ② 刀「带得过去 ⇒ 绿」是那三个 `None`。
+    #[test]
+    fn an_unknown_from_the_backend_row_is_not_flattened_on_the_local_path() {
+        let md = HistoryMetadata::default();
+        // 旧版后端那一行：**只有 4 个字段**，没有 `sessionIds`。
+        let old_row = serde_json::json!({
+            "dirName": "-w-alpha",
+            "projectPath": "/w/alpha",
+            "sessionCount": 2,
+            "lastActivityMs": 111,
+        });
+        let out = local_projects_via(|_| r97_stdout(&[old_row.clone()]), &md, &R97Oracle(&["s1"]))
+            .expect("行是好的，只是少了一个字段");
+        let p = &out[0].0;
+        assert_eq!(
+            p.starred_count, None,
+            "🔴 算不出来的星标数被说成了一个数 —— 「不知道」在这一段被压平了"
+        );
+        assert_ne!(
+            p.starred_count,
+            Some(0),
+            "🔴 `Some(0)` 是同一句谎话换了个类型说一遍：它读作「查过了，一个星标都没有」"
+        );
+        assert_eq!(p.hidden_count, None, "同上，hidden 那一格");
+        assert_ne!(p.hidden_count, Some(0), "同上，hidden 那一格");
+        assert_eq!(p.has_live, None, "同上，活状态那一格");
+        assert_ne!(
+            p.has_live,
+            Some(false),
+            "🔴 `Some(false)` 读作「查过了，这个项目没有活会话」—— 而根本没人查过"
+        );
+
+        // ★ 反面：带了清单就该**算得出真值**，否则上面三条会变成「反正都是 None」的空转。
+        let md2 = {
+            let mut m = HistoryMetadata::default();
+            m.entries.insert(
+                "s1".to_string(),
+                EntryMetadata {
+                    starred: true,
+                    ..Default::default()
+                },
+            );
+            m
+        };
+        let good = local_projects_via(
+            |_| r97_stdout(&[r97_row("-w-alpha", "/w/alpha", &["s1", "s2"], 111)]),
+            &md2,
+            &R97Oracle(&["s2"]),
+        )
+        .expect("这一行是全的");
+        assert_eq!(
+            good[0].0.starred_count,
+            Some(1),
+            "★ 真值端得动（本机 metadata 按 sid 合）"
+        );
+        assert_eq!(
+            good[0].0.hidden_count,
+            Some(0),
+            "★ 「查过了，是 0」也是一个真值"
+        );
+        assert_eq!(good[0].0.has_live, Some(true), "★ 活状态端得动");
+    }
+
+    /// ★ `KR97D2` 的另一半：**本机这条路的判活真相源答得出真值**，不许跟着远端一起「不知道」。
+    ///
+    /// 远端那个绑定（`NoLivenessOracleYet`）答不出是有理由的（`SessionMap` 只认本机 pid）；
+    /// 本机这个绑定**没有那个理由** —— 它要是也答「不知道」，那就是把一处能查的事说成查不了。
+    #[test]
+    fn the_local_liveness_oracle_answers_known_not_unknown() {
         let tmp = TmpDir::new();
-
-        // ① 正路：靠前的 user 记录能拿到 cwd。
-        let f = tmp.write("early.jsonl", &format!("{}\n", user_line("/w/early")));
+        let (map, _rx) = SessionMap::load_with_changes(tmp.0.clone(), true);
+        let oracle = SessionMapLiveness(map);
         assert_eq!(
-            quick_extract_cwd(&f),
-            Some("/w/early".to_string()),
-            "靠前的记录都拿不到 —— 夹具或解析坏了，下面两条会变成空转"
+            oracle.is_live("", "没有这个会话"),
+            Counted::Known(false),
+            "🔴 本机答得出「查过了，没活」—— 答成 `Unknown` 就是把能查的事说成查不了"
         );
+    }
 
-        // ② 边界：**正好第 30 行**仍在窗口内。
-        let at30 = format!("{}{}\n", "\n".repeat(29), user_line("/w/at30"));
-        let f30 = tmp.write("at30.jsonl", &at30);
+    /// ★★ `KR97D3`：**一次调用里问了后端几次** —— 判的是这个可数的事实，不是有没有 for 循环。
+    ///
+    /// 同 `KR83D3` 的口径。失效方向具体得很：一旦有人为了拿 star/hide 而在那个循环里
+    /// 补一句 `--list-sessions`，计数当场从 `1` 涨成 `1 + 项目数`。
+    #[test]
+    fn one_call_asks_the_backend_exactly_once_no_matter_how_many_projects() {
+        let md = HistoryMetadata::default();
+        let calls = std::cell::Cell::new(0usize);
+        let rows = [
+            r97_row("-p1", "/w/p1", &["a1"], 1),
+            r97_row("-p2", "/w/p2", &["b1", "b2"], 2),
+            r97_row("-p3", "/w/p3", &["c1", "c2", "c3"], 3),
+        ];
+        let out = local_projects_via(
+            |args| {
+                calls.set(calls.get() + 1);
+                assert_eq!(args, &["--list-projects"], "问的不是这条子命令");
+                r97_stdout(&rows)
+            },
+            &md,
+            &R97Oracle(&[]),
+        )
+        .expect("后端答了");
+        assert_eq!(out.len(), 3, "夹具没喂进 3 个项目，下面那条计数就没有意义");
         assert_eq!(
-            at30.lines().count(),
-            30,
-            "夹具没把记录放在第 30 行，边界这条在测别的位置"
+            calls.get(),
+            1,
+            "🔴 3 个项目问了后端 {} 次。一次调用只许问一次 —— \n\
+             逐项目再问一次的话，项目列表这个常开界面会变成 N 次进程 spawn。",
+            calls.get()
         );
-        assert_eq!(
-            quick_extract_cwd(&f30),
-            Some("/w/at30".to_string()),
-            "第 30 行被排除了 —— 窗口比 `take(30)` 小"
-        );
+    }
 
-        // ③ 边界外：第 31 行拿不到（这正是 `take(30)` 的语义）。
-        let at31 = format!("{}{}\n", "\n".repeat(30), user_line("/w/at31"));
-        let f31 = tmp.write("at31.jsonl", &at31);
-        assert_eq!(at31.lines().count(), 31, "夹具没把记录放在第 31 行");
-        assert_eq!(
-            quick_extract_cwd(&f31),
-            None,
-            "第 31 行也被读了 —— 窗口比 `take(30)` 大，列历史会变慢而没人知道"
+    /// ★ 三态诚实降级（定框 §5）：**「后端不在」不是「一个历史项目都没有」。**
+    ///
+    /// 这两件事对用户是完全不同的处境：前者该提示装 / 该修，后者是真的空。
+    /// 压成一个空列表就是 F14 那次「静默回落」的形状。
+    #[test]
+    fn a_missing_backend_is_not_an_empty_project_list() {
+        let md = HistoryMetadata::default();
+        let no_backend = local_projects_via(
+            |_| QueryOutcome::NoBackend("找过 [\"…/cc-monitor-remote\"]".into()),
+            &md,
+            &R97Oracle(&[]),
+        )
+        .expect_err("后端不在时不许返回一个空列表");
+        assert!(
+            no_backend.contains("本机后端不在"),
+            "报错没说清是「后端不在」：{no_backend}"
         );
-
-        // ④ 空 cwd 不算命中，要继续往后找。
-        let mixed = format!("{}\n{}\n", user_line(""), user_line("/w/real"));
-        let fm = tmp.write("mixed.jsonl", &mixed);
-        assert_eq!(
-            quick_extract_cwd(&fm),
-            Some("/w/real".to_string()),
-            "空 cwd 被当成了命中 —— 调用方会拿到空串当项目路径"
+        let failed = local_projects_via(
+            |_| QueryOutcome::Failed {
+                code: Some(2),
+                stderr: "read_dir failed\n".into(),
+            },
+            &md,
+            &R97Oracle(&[]),
+        )
+        .expect_err("查询失败时不许返回一个空列表");
+        assert!(
+            failed.contains("查询失败") && failed.contains("read_dir failed"),
+            "报错没带上后端说的原因：{failed}"
+        );
+        assert_ne!(
+            no_backend, failed,
+            "🔴 「后端不在」与「后端在但这条查询失败了」被说成了同一句话 —— \n\
+             那正是让上层猜的那一形（定框 §5）。"
         );
     }
 
@@ -3140,6 +4809,7 @@ mod tests {
     fn named(d: &str) -> LaunchAccount {
         LaunchAccount::Named {
             config_dir: d.to_string(),
+            name: None,
         }
     }
 
@@ -3357,7 +5027,11 @@ mod tests {
         assert_eq!(proj.last_activity, 300, "组内 max mtime");
         assert_eq!(proj.project_name, "proj", "cwd 末段");
         assert_eq!(proj.project_dir, "codex:/home/u/proj", "键带 codex: 前缀");
-        assert!(!proj.has_live, "Codex 判活=F4，F1a 先 false");
+        assert_eq!(
+            proj.has_live, None,
+            "★ `K-R92`：Codex 判活 = F4（无 pidfile）⇒ 这一格是**不知道**。\n\
+             上一版这里断言的是 `false` —— 那是「查过了，没有活会话」，而根本没人查过。"
+        );
         let unknown = projects
             .iter()
             .find(|p| p.project_path.is_empty())
@@ -3396,17 +5070,19 @@ mod tests {
 
     /// ★★ **建分支入口真的过了围栏吗**〔audit-0805 08-07，Phase G 第 48 件〕。
     ///
-    /// 与删除那条**同一族的第二例**。`validate_branch_source` 有两条穿越防护判据
-    /// （`..` 穿越 · 软链逃逸），都是实的，但主语同样是**围栏本身**。
-    /// 08-07 实测：把 `branch_impl` 里那行换成 `PathBuf::from(source_jsonl_path)`，
-    /// **全仓 979 条判据一条不红** —— 而那条路会去**读**调用方给的任意文件，
-    /// 再把内容拷进 `projects` 目录（该函数头注自陈「安全承诺全在这层」）。
+    /// 与删除那条**同一族的第二例**。08-07 实测：把当时那行守卫换成裸的
+    /// `PathBuf::from(<调用方给的串>)`，**全仓 979 条判据一条不红** ——
+    /// 而那条路会去**读**调用方给的任意文件，再把内容拷进 `projects` 目录。
     ///
     /// ⇒ 一族两例，说明这不是某个人某次疏忽：**「围栏有判据」与「那条路过了围栏」
     /// 是两件事，而写判据的注意力天然落在前者**（后者要跑真路，前者只要调个函数）。
     ///
-    /// 本条比删除那条更干净：`branch_impl` 可注入 `projects_dir` ⇒ 临时目录**同时**
-    /// 充当「projects」与「界外」，一个字节都不碰用户的目录。
+    /// # 🔴〔`K-R88` 09-13〕**围栏换了形状，本条跟着换靶，不是删**
+    ///
+    /// 入参从路径收成 sid 之后，「一个 `projects` 之外的源」**连表达都表达不出来**：
+    /// 一个绝对路径根本不是合法 sid，而合法 sid 只会在记录树里被枚举出来。
+    /// ⇒ 本条今天钉的是**那一步真的经过了形状闸**：喂一个界外的绝对路径，
+    /// 必须在**任何 IO 之前**被拒，且拒的理由要点名它是 sid 形状不合法。
     #[test]
     fn the_branch_entry_point_actually_goes_through_the_fence() {
         let base = std::env::temp_dir().join(format!(
@@ -3421,19 +5097,21 @@ mod tests {
         std::fs::write(&outsider, "{\"type\":\"user\"}\n").expect("造界外源文件");
 
         let r = branch_impl(&outsider.to_string_lossy(), "uuid-x", &projects);
+        let still_there = outsider.exists();
         let _ = std::fs::remove_dir_all(&base);
 
         let err = r.err().unwrap_or_else(|| {
             panic!(
-                "`branch_impl` 接受了一个 **`projects` 之外**的源路径 —— 围栏没接上。\n\
+                "`branch_impl` 接受了一个 **`projects` 之外**的源 —— 围栏没接上。\n\
                  那条路会去读调用方给的任意文件，再把内容拷进 projects 目录。"
             )
         });
-        // 红要红对成因：必须是**围栏**拒的，不是后面某步偶然失败。
+        assert!(still_there, "界外那份被动过了");
+        // 红要红对成因：必须是**形状闸**拒的，不是后面某步偶然失败。
         assert!(
-            err.contains("refuse branch"),
-            "拒绝了，但不是围栏拒的（错误：{err}）—— \
-             本条没真跑到围栏那一步，等于空转。"
+            err.contains("invalid session id"),
+            "拒绝了，但不是形状闸拒的（错误：{err}）—— \
+             本条没真跑到那一步，等于空转。"
         );
     }
 
@@ -3688,15 +5366,17 @@ mod tests {
 
     // === F62：create_branch_session 守卫 + 原生分支格式 ===
 
+    /// `..` 穿越：〔`K-R88`〕**换成 sid 形状之后仍然拒**，且拒得更早（IO 之前）。
     #[test]
     fn branch_source_guard_rejects_dotdot_traversal() {
         let projects = temp_projects("branch-dotdot");
         let root = projects.parent().unwrap();
         let outside = root.join("outside.jsonl");
         std::fs::write(&outside, "{}\n").unwrap();
-        let sneaky = projects.join("..").join("outside.jsonl");
-        let err = validate_branch_source(sneaky.to_str().unwrap(), &projects).unwrap_err();
-        assert!(err.contains("refuse branch"), "got: {err}");
+        for sneaky in ["../outside", "..", "../../etc/passwd"] {
+            let err = branch_impl(sneaky, "u1", &projects).unwrap_err();
+            assert!(err.contains("invalid session id"), "{sneaky:?} ⇒ {err}");
+        }
         assert!(outside.exists());
         std::fs::remove_dir_all(root).ok();
     }
@@ -3732,6 +5412,11 @@ mod tests {
         std::fs::remove_dir_all(dir.parent().unwrap()).ok();
     }
 
+    /// 软链逃逸：记录树里一条指向界外的链接，**按 sid 也找不到它**。
+    ///
+    /// 〔`K-R88`〕原先靠「两边 canonicalize 再比前缀」买这一样；今天靠的是
+    /// 「目录项的类型判定**不跟随**链接」——同一份实现，后端那侧有条同形的
+    /// `fork_write·rs::a_symlink_inside_the_tree_is_not_a_hit`。
     #[cfg(unix)]
     #[test]
     fn branch_source_guard_rejects_symlink_escape() {
@@ -3741,8 +5426,8 @@ mod tests {
         std::fs::write(&outside, "{}\n").unwrap();
         let link = projects.join("innocent.jsonl");
         std::os::unix::fs::symlink(&outside, &link).unwrap();
-        let err = validate_branch_source(link.to_str().unwrap(), &projects).unwrap_err();
-        assert!(err.contains("refuse branch"), "got: {err}");
+        let err = branch_impl("innocent", "u1", &projects).unwrap_err();
+        assert!(err.contains("not found"), "got: {err}");
         assert!(outside.exists());
         std::fs::remove_dir_all(root).ok();
     }
@@ -3777,16 +5462,14 @@ mod tests {
         std::fs::write(&src, &body).unwrap();
         let before = std::fs::read(&src).unwrap();
 
-        let res = branch_impl(src.to_str().unwrap(), "u4", &projects).unwrap();
+        let res = branch_impl("srcsid", "u4", &projects).unwrap();
 
         // 源一字节不改
         assert_eq!(std::fs::read(&src).unwrap(), before, "源文件被改动了");
         // 新文件在源同目录、文件名=新 sid
         let out = PathBuf::from(&res.jsonl_path);
-        // branch_impl 经 validate_branch_source canonicalize 源路径（安全守卫）——
-        // Windows 上会解 8.3 短名(RUNNER~1→runneradmin)并加 `\\?\` 前缀,故 out.parent()
-        // 已是规范形,而 proj 来自 temp_dir() 原样路径。两边都 canonicalize 再比,消除
-        // 平台差异(否则 Windows CI 上 `\\?\…runneradmin…` != `…RUNNER~1…` 恒红)。
+        // 两边都 canonicalize 再比,消除平台差异(Windows 上 temp_dir() 会给 8.3 短名
+        // RUNNER~1，而枚举出来的那份可能是长名，否则 CI 恒红)。
         assert_eq!(
             std::fs::canonicalize(out.parent().unwrap()).unwrap(),
             std::fs::canonicalize(&proj).unwrap(),
@@ -3817,6 +5500,306 @@ mod tests {
         std::fs::remove_dir_all(projects.parent().unwrap()).ok();
     }
 
+    // ═══════════════════════════════════════════════════════════════════
+    // 🔴 `K-R88`：「按 sid 找那份会话文件」收成一份 ＋ 两侧入参形状一致
+    // ═══════════════════════════════════════════════════════════════════
+
+    /// 后端那棵树上某个文件的**生产段**（运行时读，不是 `include_str!`）。
+    ///
+    /// ⚠ 刻意**不用** `include_str!`：那会长出一条**编译期**的跨半边，
+    /// 而 `cross_half_edge_registry` 的头注逐字讲过那条边的代价
+    /// （后端在目标机上 `cargo build` 就咬住旁边这棵树了）。运行时读没有这个代价 ——
+    /// 同 `K-R97` 那条 `extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place`。
+    fn r88_backend_production(rel: &str) -> String {
+        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("仓根")
+            .join(rel);
+        let raw = std::fs::read_to_string(&p)
+            .unwrap_or_else(|e| panic!("读不到后端的 {rel}：{e} —— 先修住址，别绕过本条"));
+        guard_core::production_code(&raw)
+    }
+
+    /// ★★ `KR88D1`：**「按 sid 找那份会话文件」这件事，全仓只剩一份实现，两侧都调它。**
+    ///
+    /// # 它买什么
+    ///
+    /// 收之前两侧各有一份、而且**入参形状都不一样**（这边收路径、那边收 sid）。
+    /// 那不是「重复」这么简单：**「查不到怎么办」两边可以各答各的**，
+    /// 而没有任何东西会因此变红。
+    ///
+    /// # 🔴 它刻意**不**判什么（`KR88D1` 点名的失效方向）
+    ///
+    /// **不判「两边源码文本一样」** —— 那是判写法，而且很容易恒绿
+    /// （两边都没有那段文本时它照样通过）。本条判的是**同一份实现**：
+    /// 唯一那份的**声明只有一处**，两侧各有**恰好一处**调用，
+    /// 且两条分叉路径上**一处目录枚举都不许有**（有 = 有人又自己找了一遍）。
+    ///
+    /// 「改那一份一处、两边行为都跟着变」那一刀是**死值验**，读数落在件文件 `§3-1`：
+    /// 判据不可能替代它 —— 那一刀要真的改一次再看两边红不红。
+    #[test]
+    fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
+        const CALL: &str = "branch_core::find_session_file(";
+
+        // ① 唯一那份：声明只有一处，且住在共享 crate 里。
+        let core = guard_core::production_code(include_str!("../crates/branch-core/src/lib.rs"));
+        let decls = core.matches("pub fn find_session_file").count();
+        assert_eq!(
+            decls, 1,
+            "共享 crate 里 `find_session_file` 的声明有 {decls} 处（该是 1）。\n\
+             0 ⇒ 它被搬走/删了，下面两条会零命中地绿；2 ⇒ 唯一那份自己裂了。"
+        );
+
+        // ② 两侧各有**恰好一处**调用（生产段）。
+        //    0 ⇒ 那一侧又自己找了一遍；2+ ⇒ 一条路上问了两遍，先说清为什么。
+        let mine = guard_core::production_code(include_str!("history.rs"));
+        let theirs = r88_backend_production("remote-daemon-proto/src/control/fork_write.rs");
+        for (who, src) in [
+            ("monitor `history.rs`", &mine),
+            ("后端 `fork_write.rs`", &theirs),
+        ] {
+            let n = src.matches(CALL).count();
+            assert_eq!(
+                n, 1,
+                "{who} 的生产段里 `{CALL}` 有 {n} 处（该是 1）——\n\
+                 0 ⇒ 这一侧不走共享那份了（`K-R88` 收的就是这个）；\n\
+                 2+ ⇒ 同一条路上问了两遍，先回答为什么。"
+            );
+        }
+
+        // ③ 两条分叉路径上**一处目录枚举都没有** —— 「自己又找了一遍」的形状。
+        //
+        // ⚠ 人群按**那几个函数**切，不是整份 `history.rs`：这个文件别处本来就有遍历
+        //（历史列表那一族），拿整份文件当分母的话本条恒红。
+        // ⚠ 针**运行时拼**：本文件的测试段自己落在 `scanning_guard_registry` 的扫描面里，
+        //   把那两个词写成字面量会让本条被算进「裸遍历」的人群（09-13 现打，它当场逮到了）。
+        let needles = [format!("read{}dir(", "_"), format!("Walk{}", "Dir")];
+        let scan = |src: &str| -> Vec<String> {
+            src.lines()
+                .filter(|l| needles.iter().any(|n| l.contains(n.as_str())))
+                .map(|l| l.trim().to_string())
+                .collect()
+        };
+        let local_path = format!(
+            "{}\n{}",
+            r88_fn_body(&mine, "pub fn create_branch_session("),
+            r88_fn_body(&mine, "fn branch_impl(")
+        );
+        // 反向自检：尺子够得着 —— 把针塞进一份副本，量具必须数得出来。
+        let poisoned = format!("{local_path}\n  let _ = std::fs::read{}dir(root);\n", "_");
+        assert_eq!(
+            scan(&poisoned).len(),
+            1,
+            "阳性对照没过 —— 量具此刻无效，下面那条断言是空真"
+        );
+        for (who, src) in [
+            ("monitor 的分叉那条路", local_path.as_str()),
+            ("后端 `fork_write.rs`", theirs.as_str()),
+        ] {
+            let hits = scan(src);
+            assert!(
+                hits.is_empty(),
+                "{who}上又长出了目录枚举：\n{}\n\n\
+                 ⇒ 「按 sid 找那份会话文件」的家在 `branch_core::find_session_file`。\n\
+                 真有第二种找法要立，先回答「为什么这一侧不能问那一份」，再连本条一起改。",
+                hits.join("\n")
+            );
+        }
+    }
+
+    /// 从生产段里切出一个函数（含它的签名与函数体）—— 供上面那条按函数切人群。
+    ///
+    /// 收尾认的是**列 0 的右大括号**（`rustfmt` 保证顶层 item 这么收）。
+    /// 自检两条：切得到 · 切出来的东西有分量（塌成半截时下面的断言会空真）。
+    fn r88_fn_body<'a>(src: &'a str, sig: &str) -> &'a str {
+        let at = src
+            .find(sig)
+            .unwrap_or_else(|| panic!("切不到 `{sig}` —— 先修尺子，别改断言"));
+        let rest = &src[at..];
+        let end = rest.find("\n}\n").map(|i| i + 2).unwrap_or(rest.len());
+        let body = &rest[..end];
+        assert!(
+            body.len() > 120,
+            "`{sig}` 只切出 {} 字节 —— 切法坏了",
+            body.len()
+        );
+        body
+    }
+
+    /// ★★ `KR88D2`（monitor 这一侧）：**给一个查不到的 sid，处置是报错，
+    /// 不是「树上有什么就拿什么」。**
+    ///
+    /// 树上**真的有两份**别的会话 —— 少了这一步，本条在空树上也绿，
+    /// 而「静默取第一个」正是它要逮的那一形。
+    /// 后端那侧的同形判据是
+    /// `fork_write·rs::an_unknown_session_id_is_refused_not_silently_substituted`，
+    /// 两条读的是同一份实现 ⇒ 那份一改，两条一起动。
+    #[test]
+    fn an_unknown_session_id_is_refused_not_silently_substituted() {
+        let projects = temp_projects("branch-unknown");
+        let proj = projects.join("proj-x");
+        std::fs::create_dir_all(&proj).unwrap();
+        let mut body = String::new();
+        for r in &io_sample_session() {
+            body.push_str(&serde_json::to_string(r).unwrap());
+            body.push('\n');
+        }
+        for sid in ["aaa", "bbb"] {
+            std::fs::write(proj.join(format!("{sid}.jsonl")), &body).unwrap();
+        }
+        // 反向自检：树上真有东西可被「随手挑」。
+        assert!(
+            branch_impl("aaa", "u4", &projects).is_ok(),
+            "夹具没造出可被挑中的会话"
+        );
+
+        let err = branch_impl("ccc", "u4", &projects).unwrap_err();
+        assert!(
+            err.contains("not found") && err.contains("ccc"),
+            "查不到的 sid 应当报错并点名，实得：{err}"
+        );
+        std::fs::remove_dir_all(projects.parent().unwrap()).ok();
+    }
+
+    /// ★ `KR88D2`：**两条命令的入参形状一致 —— 都收 sid，都不收路径。**
+    ///
+    /// 判的是两个 `#[tauri::command]` 的签名本身（生产段现读）：
+    /// 本机那条一旦退回收路径，本条当场红。
+    #[test]
+    fn both_branch_commands_take_a_session_id_not_a_path() {
+        let local = guard_core::production_code(include_str!("history.rs"));
+        let remote = guard_core::production_code(include_str!("remote_branch.rs"));
+        for (who, src, sig) in [
+            ("本机", &local, "pub fn create_branch_session("),
+            (
+                "远端",
+                &remote,
+                "pub async fn create_remote_branch_session(",
+            ),
+        ] {
+            let at = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("{who}那条命令的签名找不到（`{sig}`）—— 先修尺子"));
+            let close = src[at..].find(')').expect("签名没有收尾括号");
+            let params = &src[at + sig.len()..at + close];
+            assert!(
+                params.contains("session_id: String"),
+                "{who}那条命令的入参里没有 sid：{params:?}"
+            );
+            assert!(
+                !params.contains("path"),
+                "{who}那条命令又收路径了：{params:?}\n\
+                 ⇒ `K-R88` 收的就是「同一件事两个入参形状」，\n\
+                 而多一个可被构造的路径入参就多一条路径穿越面。"
+            );
+        }
+    }
+
+    // ─────────────────── `KR92D1`：线上那一格分得开「不知道」和「真的是 0」 ───────────────────
+
+    /// 造一个线上项目行，三格全是**「查过了，真的是 0」**；要哪一格变成「不知道」，
+    /// 调用方用 `..` 语法覆盖那一格（这样「只动了一格」在源码上一眼可见）。
+    fn wire_project_all_known_zero() -> HistoryProject {
+        HistoryProject {
+            project_path: "/x/y".into(),
+            project_name: "y".into(),
+            project_dir: "y-enc".into(),
+            session_count: 3,
+            starred_count: Some(0),
+            hidden_count: Some(0),
+            last_activity: 1,
+            has_live: Some(false),
+            origin: Some("pi".into()),
+        }
+    }
+
+    /// ★★ `KR92D1`：**过线之后，下游分得出这三个数是「算过的」还是「不知道」。**
+    ///
+    /// # 判的是性质，不是形状
+    ///
+    /// 本条**逐字不判**那三格长什么样（`null` / tagged union / 并列一个 `*_known` 布尔都行）——
+    /// 它判的是**两份只在「不知道 vs 真的是 0」上不同的行，过线之后字节不同**。
+    /// ⇒ 换一种等价表示（第 ② 刀）本条照常绿；把 `Unknown` 压成 `0`/`false`（第 ① 刀）当场红。
+    ///
+    /// 🔴 **三格逐格分开断**（第 ③ 刀：只修 star/hide 不修 `has_live` ⇒ 必须红）：
+    /// 一次只把一格换成「不知道」，三次都要与「真的是 0」那一份可分。
+    /// 合起来断一次是接不住的 —— 只要有一格治了，整行就已经不同。
+    #[test]
+    fn the_three_counts_can_say_i_do_not_know() {
+        let wire = |p: &HistoryProject| serde_json::to_string(p).expect("序列化");
+        let all_zero = wire(&wire_project_all_known_zero());
+
+        for (格, unknown_row) in [
+            (
+                "starred_count",
+                HistoryProject {
+                    starred_count: None,
+                    ..wire_project_all_known_zero()
+                },
+            ),
+            (
+                "hidden_count",
+                HistoryProject {
+                    hidden_count: None,
+                    ..wire_project_all_known_zero()
+                },
+            ),
+            (
+                "has_live",
+                HistoryProject {
+                    has_live: None,
+                    ..wire_project_all_known_zero()
+                },
+            ),
+        ] {
+            assert_ne!(
+                wire(&unknown_row),
+                all_zero,
+                "🔴 `{格}` 这一格：「不知道」与「查过了，真的是 0」过线之后**长得一模一样**。\n\
+                 那正是 `K-R92` 的题面 —— 后端已经分得开，线上这一格又把它压回去了。\n\
+                 ⚠ 三格是一族：只治 star/hide 不治 `has_live`，本条在 `has_live` 那一轮红。\n\
+                 现打这一行：{}",
+                wire(&unknown_row)
+            );
+        }
+
+        // 对照组：**真的是 0** 与 **真的是 0** 恒同 —— 上面那三条不是靠「随便变点什么」绿的。
+        assert_eq!(
+            all_zero,
+            wire(&wire_project_all_known_zero()),
+            "★ 对照组：同一份输入序列化两次应当逐字节相同"
+        );
+    }
+
+    /// ★★ `KR92D1` 的排序侧：**「不知道」自成一档**，既不冒充「有」，也不被当成「没有」。
+    ///
+    /// 失效方向（本条存在的理由）：`Option` 的派生序是 `None < Some(false) < Some(true)`，
+    /// 谁哪天把 [`live_rank`] 换回 `b.has_live.cmp(&a.has_live)`，「不知道」就被排到
+    /// 「确定没活」后面 —— 那是一句没人查过的断言。
+    #[test]
+    fn unknown_is_its_own_bucket_when_sorting() {
+        assert!(
+            live_rank(Some(true)) > live_rank(None) && live_rank(None) > live_rank(Some(false)),
+            "★ 活：确定有 > 不知道 > 确定没有（现打 {} / {} / {}）",
+            live_rank(Some(true)),
+            live_rank(None),
+            live_rank(Some(false))
+        );
+        assert!(
+            star_rank(Some(2)) > star_rank(None) && star_rank(None) > star_rank(Some(0)),
+            "★ 星标：有 > 不知道 > 查过了一个都没有（现打 {} / {} / {}）",
+            star_rank(Some(2)),
+            star_rank(None),
+            star_rank(Some(0))
+        );
+        assert_ne!(
+            live_rank(None),
+            live_rank(Some(false)),
+            "🔴 把「不知道」和「确定没有活会话」排进同一档 = 排序这一端仍然分不开"
+        );
+        assert_ne!(star_rank(None), star_rank(Some(0)), "🔴 同上，星标那一格");
+    }
+
     /// P1.2 contract test：守护后端 wire 跟前端 TS interface 字段名一致。
     /// 改字段名必须同步改前端 views/history.ts 的 HistoryProject / HistorySessionEntry interface。
     /// 若本测试失败 = 后端 wire 漂移；若 tsc 编译错 = 前端 access 漂移。两边都受保护。
@@ -3827,10 +5810,10 @@ mod tests {
             project_name: "y".into(),
             project_dir: "/y-encoded".into(),
             session_count: 1,
-            starred_count: 2,
-            hidden_count: 3,
+            starred_count: Some(2),
+            hidden_count: Some(3),
             last_activity: 1700_000_000_000,
-            has_live: true,
+            has_live: Some(true),
             origin: Some("pi-host".into()), // issue #16：远端来源也走同一 wire 契约
         };
         let j = serde_json::to_string(&p).unwrap();
@@ -3878,7 +5861,7 @@ mod tests {
             started_at: 1,
             updated_at: 2,
             jsonl_path: "/a.jsonl".into(),
-            is_live: true,
+            is_live: Some(true),
             message_count_approx: 5,
             is_bg: true,
             starred: false,
@@ -4167,6 +6150,7 @@ mod tests {
         let sid = "01998f2a-1234-7abc-9def-0123456789ab";
         let named = LaunchAccount::Named {
             config_dir: "C:\\Users\\z\\.claude-accts\\z".into(),
+            name: None,
         };
         let accounts: [Option<&LaunchAccount>; 3] =
             [None, Some(&LaunchAccount::Base), Some(&named)];
@@ -4326,6 +6310,7 @@ mod tests {
         let rows = vec!["acct-a".to_string()];
         let named = |d: &str| LaunchAccount::Named {
             config_dir: d.to_string(),
+            name: None,
         };
         // ① 表里有行 ⇒ 前缀在（非空对照：证明这把尺子不是恒空串）。
         let id = relay_account_id(Some(&named("/home/u/.claude-accts/acct-a")));
@@ -4442,10 +6427,12 @@ mod tests {
 
         let acct_a = LaunchAccount::Named {
             config_dir: "/h/.claude-accts/acct-a".to_string(),
+            name: None,
         };
         // 🔴 `D6 阻-2`：**第二个号**。「哪个号」这一维的输入域从 1 变成 2。
         let acct_b = LaunchAccount::Named {
             config_dir: "/h/.claude-accts/acct-b".to_string(),
+            name: None,
         };
         let action = LocalPsAction::Resume("sid-1".to_string());
         let _guard = override_relay_facts(RelayFactSources {
@@ -4770,6 +6757,52 @@ mod tests {
         );
     }
 
+    /// ★★★ `K-R55`（09-11）：**本机 ccm 探测那条新缝，生产上插的就是那个真取值口。**
+    ///
+    /// 上一条对拍的是中转那三格与送法；这一条是同一个形状的第四处 ——
+    /// [`CcmProbeSource`] 是本拍为了让
+    /// `a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container`
+    /// 真去走生产那条路才开的，而**开一条缝就欠一条地址对拍**：
+    /// 缝一旦在生产上也指着一份写死的答案（比如「恒装着、能力全有」），
+    /// 那条行为判据**照绿**（它本来就装替身），而生产上「没装 ccm 要诚实降级」整条没了。
+    ///
+    /// 两跳都拍，理由与上一条第二半逐字同一条：只拍 `const` 时，
+    /// 有人把 [`ccm_probe_source`] 改成「不装替身也回一份写死的」就绕过去了。
+    #[test]
+    #[cfg(not(windows))]
+    fn the_local_launch_really_asks_the_production_ccm_probe() {
+        // 反空真排最前：这把尺子分得出「不是那个函数」，否则下面两条恒真。
+        fn not_it() -> crate::ccm_probe::CcmProbeResult {
+            crate::ccm_probe::CcmProbeResult {
+                installed: false,
+                version: None,
+                capabilities: vec![],
+                build: None,
+            }
+        }
+        assert!(
+            !std::ptr::fn_addr_eq(
+                PRODUCTION_CCM_PROBE.0,
+                not_it as fn() -> crate::ccm_probe::CcmProbeResult
+            ),
+            "这把尺子对任何同型函数都说「是」—— 它恒真，本条按红处理"
+        );
+        let production =
+            crate::ccm_probe::probe_local_ccm as fn() -> crate::ccm_probe::CcmProbeResult;
+        // ⚠ **刻意不装替身**（替身住 thread-local ⇒ 别的判据装的那份影响不到这里）。
+        assert!(
+            std::ptr::fn_addr_eq(ccm_probe_source().0, production),
+            "没装替身时 `ccm_probe_source()` 交出来的不是 `ccm_probe::probe_local_ccm` ——\n\
+             生产那一跳被换掉了，而只对拍那个 `const` 的判据看不见（第六层的形状）"
+        );
+        assert!(
+            std::ptr::fn_addr_eq(PRODUCTION_CCM_PROBE.0, production),
+            "生产上「这台机装没装 ccm、有哪些能力」不再由 `ccm_probe::probe_local_ccm` 答 ——\n\
+             换成一份写死的「装着且能力全有」，没装 ccm 的机器会渲出一条带未知 flag 的命令，\n\
+             而那时回落分支已经不在了（`render_local_ccm` 头注里那个 fail-open）"
+        );
+    }
+
     /// ★★★ `D1 阻-6` 刀 C 的反面：**`relay_rows` 真的去读那份文件、真的解析出行。**
     ///
     /// `D1` 实测过：把它整个换成 `Vec::new()`，**1221 passed / 0 failed** ——
@@ -4845,6 +6878,7 @@ mod tests {
         // ★ 与起会话那一侧**同一个规则**：同一个目录，两条路推出同一个 id。
         let named = LaunchAccount::Named {
             config_dir: "/home/u/.claude-accts/acct-a".to_string(),
+            name: None,
         };
         assert_eq!(
             relay_account_id(Some(&named)),
@@ -4958,6 +6992,7 @@ mod tests {
         for (id, dir) in accounts {
             let account = LaunchAccount::Named {
                 config_dir: dir.to_string(),
+                name: None,
             };
             // ① 表里没有这个号 ⇒ 逐字节旧路。这一趟同时是下面那条相等断言的**基准串**。
             answer(&[], true);
@@ -5022,6 +7057,7 @@ mod tests {
         answer(&["acct-a"], false);
         let account = LaunchAccount::Named {
             config_dir: "/h/.claude-accts/acct-a".to_string(),
+            name: None,
         };
         assert!(
             launch_local(&action, None, None, Some(&account), None).is_err(),
@@ -5043,6 +7079,7 @@ mod tests {
         answer(&["acct-a"], true);
         let acct = LaunchAccount::Named {
             config_dir: "/h/.claude-accts/acct-a".to_string(),
+            name: None,
         };
 
         // ⑤ **`New` 那一支**：送出去的那一串必须也带中转注入，且账号段是这次的号。
@@ -5116,9 +7153,12 @@ mod tests {
     /// - **走 ccm 容器那一支身份到不到得了 agent 进程**：到不了。本条喂 `tmux_name = None`
     ///   ⇒ 走的是回落那条路（渲染器早退，见 [`NO_TMUX_NAME`]）。容器那一支上外侧这句 `export`
     ///   会在 tmux 边界被吃掉（与 `K-H2b` 给 `ANTHROPIC_BASE_URL` 踩过的**同一个坑**，
-    ///   那一次的修法是在 `shared/ccm` 的容器载荷内侧补一句转发）——
-    ///   `shared/ccm` **本拍是红线文件**，那一句没补 ⇒ 这一格**今天是个洞**，
-    ///   登记在 `launcher_identity_registry` 的 `L1` 那一行里，别读成「已经全覆盖」。
+    ///   那一次的修法是在容器载荷内侧补一句转发）—— 当时那份 bash `ccm` 是红线文件，
+    ///   那一句没补 ⇒ 这一格当时是个洞，登记在 `launcher_identity_registry` 的 `L1` 那一行里。
+    ///   🔴 〔`K-R61` 09-11 现打〕`remote-daemon-proto/src/control/ccm/plan.rs` 的容器路
+    ///   **今天有** `export CCM_LAUNCH_ID=…` 那一句 ⇒ **那个洞的成因很可能已经不在了**。
+    ///   但「洞补没补上」的落点是 `launcher_identity_registry` 的 `L1`，**不在 `K-R61` 写区**，
+    ///   本轮**没有**去重裁它 —— 已报回 PM。在有人重裁之前，别把这一段读成「已经全覆盖」。
     /// - **读的那一侧**：daemon 从 `/proc/<pid>/environ` 读回来、经 wire 帧发出去 —— 本拍**没有做**
     ///   （面在 `remote-daemon-proto/`，不在本拍写区）。⇒ 今天这个变量**有人写、没人读**。
     /// - **Windows 上的运行时行为**：一行都没量（这台机器是 Linux）。⑤ 买到的只是
@@ -5156,6 +7196,7 @@ mod tests {
         });
         let account = LaunchAccount::Named {
             config_dir: "/h/.claude-accts/acct-a".to_string(),
+            name: None,
         };
 
         // ① resume：身份就是这条会话的 sid，逐字节。
@@ -5365,6 +7406,7 @@ mod tests {
         });
         let account = LaunchAccount::Named {
             config_dir: "/h/.claude-accts/acct-a".to_string(),
+            name: None,
         };
 
         // ① **新开**那一支：回的那个串就是命令里那个值。
@@ -5560,6 +7602,7 @@ mod tests {
         let dir = "/h/.claude-accts/acct-r1";
         let account = LaunchAccount::Named {
             config_dir: dir.to_string(),
+            name: None,
         };
         // 中性名（`brief` 12：断言用的子串不许取自夹具名字里带含义的那半）。
         let cwd = "/p/one";
@@ -5652,6 +7695,7 @@ mod tests {
             Some("cc".to_string()),
             Some(LaunchAccount::Named {
                 config_dir: dir.to_string(),
+                name: None,
             }),
             None,
         )
@@ -5673,6 +7717,7 @@ mod tests {
         //    ⇒ 这一跳换掉五个入参里的**任何一个**（不只是 `account`），本格都红。
         let account = LaunchAccount::Named {
             config_dir: dir.to_string(),
+            name: None,
         };
         resume_impl("sid-r2", cwd, Some("cc"), Some(&account), None).expect("这一趟不该失败");
         let (from_impl, impl_cwd) = entry_last();
@@ -5707,6 +7752,7 @@ mod tests {
             None,
             Some(LaunchAccount::Named {
                 config_dir: dir.to_string(),
+                name: None,
             }),
         )
         .expect("不走中转这一趟不该失败");
@@ -5732,6 +7778,7 @@ mod tests {
             None,
             Some(LaunchAccount::Named {
                 config_dir: dir.to_string(),
+                name: None,
             }),
         )
         .expect("走中转这一趟不该失败");

@@ -98,9 +98,12 @@ beforeEach(() => {
 });
 
 describe("deriveUi 降级矩阵（DESIGN §7）", () => {
-  it("daemonless → hidden", () => {
+  // 🔴 `K-R59`：这里此前有一条「daemonless → hidden」。定框 `K35` 之后
+  //    `accounts.rs::cfg_for` 不再产出那条错误串 ⇒ `AccountsUi` 的 `hidden` 那一档
+  //    **再也到不了**，连档带测一起下岗。
+  it("🔴 K-R59：任何 `available:false` 都落到 needs-update —— 不再有「安静隐藏」那一档", () => {
     const ui = deriveUi(state({ available: false, error: "该主机配置为 daemonless（无 daemon），账号功能不可用" }));
-    expect(ui.kind).toBe("hidden");
+    expect(ui.kind).toBe("needs-update");
   });
   it("旧 daemon → needs-update", () => {
     const ui = deriveUi(state({ available: false, error: "远端 daemon 不支持账号查询（版本过旧）——请更新 daemon" }));
@@ -583,7 +586,7 @@ describe("shouldShowAccountBadge（A4/§7 徽章门控）", () => {
   it("ready 远端 → 显", () => {
     expect(shouldShowAccountBadge("aya", new Set(["aya"]))).toBe(true);
   });
-  it("非 ready 远端（daemonless/未迁移/旧）→ 不显（避免满屏 —）", () => {
+  it("非 ready 远端（未迁移/旧）→ 不显（避免满屏 —）", () => {
     expect(shouldShowAccountBadge("aya", new Set())).toBe(false);
     expect(shouldShowAccountBadge("box2", new Set(["aya"]))).toBe(false);
   });
@@ -1125,6 +1128,7 @@ describe("K-H2b：本机起会话取账号那一口（行为）", () => {
     expect(localLaunchAccountSync(null)).toEqual({
       kind: "named",
       configDir: "/h/.claude-accts/acct-b",
+      name: "acct-b", // `K-R53`：名字与目录一起交出去，理由见下面那条
     });
   });
 
@@ -1156,6 +1160,31 @@ describe("K-H2b：本机起会话取账号那一口（行为）", () => {
     expect(localLaunchAccountSync("s1")).toBeUndefined();
     // 没有 pin 的会话仍然跟当前号（与远端那条 `withAccount` 同形）。
     expect(localLaunchAccountNameSync("s-nopin")).toBe("acct-b");
+  });
+
+  it("★★ `K-R53` `KR53D1`：取值口必须**把名字也说出来** —— 不然那三条主路到不了后端那条路", () => {
+    // # 分母与病灶（现打，住址带逐字校验位）
+    //
+    // 后端那条 ccm 路渲染得出来的条件住 `src-tauri/src/history.rs::render_local_ccm_with`：
+    // 它把 `LaunchAccount` 映成 `ci::CliAccount`，而 CLI 只会 `--account <名字>`。
+    // 本取值口先前只回 `{kind:"named", configDir}` —— **一个字段都没有名字**
+    // ⇒ 后端只能 `CliAccount::Named{name:None}` ⇒ §35 短路 ⇒ 那三条主路
+    //（`tabs.ts` 一处 + `views/history.ts` 两处，人群由本仓 `ipc/commands.vitest.ts`
+    // 那条「起本机会话的调用点恰好 4 处」钉着）**在类型上**只能落第二实现。
+    //
+    // ⚠ 名字这一半**本来就在**（`localLaunchAccountNameSync`，与取 configDir 那半同源）——
+    //   缺的不是数据，是**没往下传**。所以本条断的是「两半一起交出去」，
+    //   不是「再造一个取名字的口」（造第二个口就是这个文件头注禁的那件事）。
+    __setLocalLaunchSnapshotForTests(st([A, B], "acct-b"), {});
+    expect(localLaunchAccountSync(null)).toEqual({
+      kind: "named",
+      configDir: "/h/.claude-accts/acct-b",
+      name: "acct-b",
+    });
+    // 两半必须是**同一条规则**的两侧：名字那半说谁，这半就带谁。
+    __setLocalLaunchSnapshotForTests(st([A, B], "acct-b"), { s1: "acct-a" });
+    expect(localLaunchAccountSync("s1")?.name).toBe(localLaunchAccountNameSync("s1"));
+    expect(localLaunchAccountSync("s1")?.name).toBe("acct-a");
   });
 
   it("★ 取名字与取 configDir 是同一条规则的两半（不许两处各判一次）", () => {

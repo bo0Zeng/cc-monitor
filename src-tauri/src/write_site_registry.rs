@@ -78,13 +78,30 @@ mod spawn_sites {
           `bash -lic` 那层与远端同语义（PATH/别名/函数按交互终端解析），`ccm` 正是靠它才被找到。\
           ⚠ **命令是参数**（D 阶段补审为了能测「挂住」而开）——生产侧唯一实参是 `CCM_PROBE_CMD`，\
           由 `the_only_production_probe_command_is_the_constant` 按源码钉住，别读成「这里能跑任意命令」"),
+        // ── 🔴 `K-R69`：**直接问我们自己放下去的那一份**「你是谁」。
+        ("ccm_probe.rs", "probe_binary_uncached", "`<我们那份 ccm> --ccm-probe`（不经 shell）",
+         "`KR69D2`：本机那条 `ccm` 入口的**身份**。必须起进程的理由与上一行不同 ——\
+          上一行问的是「你 PATH 上那个是谁」（非走登录 shell 不可，PATH 就是 rc 决定的），\
+          这一行问的是「**我们放下去的那一份是谁**」，路径我们自己知道 ⇒ 一个 shell 都不起，\
+          也就不吃用户 rc 的任何影响。两张名片一比才判得出「你 PATH 上那个是旧的」，\
+          而**只比路径认不出同名不同物** —— 那正是本件的题面（用户 `~/.local/bin/ccm` 那份旧 bash）。\
+          ⚠ 参数是**路径**，来自 `local_backend::local_ccm_entry_name()` 拼出来的落点，\
+          不吃任何用户输入；等待 / 读 / 解析与上一行**共用** `probe_spawned`（抄第二份必漂）"),
+        // 🔴 **`K-R112`（09-13）：这一行**留着**，而「留」这个判断是现打出来的，不是默认。**
+        //    本件删掉了查在线那条回落 ⇒ `local_shell_read` 的生产实参从**三个变两个**
+        //    （`build_online_cmd` 整块删了）。⇒ 它**仍然有生产调用方**（读清单 / 读 inbox），
+        //    这一行留着；说法那一列跟着改（下面括号里从「清单 / 在线 / inbox」变成「清单 / inbox」）。
+        //    ⚠ **改了行为不回来改理由，账本当天就开始撒谎** —— 这一行差一点就成了那种样本。
+        //    它什么时候能出表：`read_cc_bus_state` 与 `read_cc_bus_inbox` 都改走 daemon 原语那天
+        //    （前者等 `K-R113` 的 `bus-state`，后者 daemon 侧今天没有读口 —— `K-R111 §C3` 现打）。
         ("cc_bus.rs", "local_shell_read", "`bash -lc <cc-bus 的读串>`",
-         "P4a-Y1：本机 cc-bus 的**读**面（清单 / 在线 / inbox）。必须起进程的理由是\
+         "P4a-Y1：本机 cc-bus 的**读**面（清单 / inbox）。必须起进程的理由是\
           **不许有第二份文件布局知识** —— `CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样，\
           本机若自己 `read_to_string` 那两个文件，仓里就有了同一件事的两种表示，而它们会各自漂。\
           ⇒ 照 `P3t-Y2` 的先例：**同一条串，远端包进 ssh，本机交给 bash**（`C1` 逐字「只是远端走 ssh」）。\
-          ⚠ **命令是参数**，但生产侧的三个实参各有来历：`CC_BUS_CAT_CMD`（常量）· `build_online_cmd` · \
-          `build_inbox_cmd`（两个构造器都过 `is_valid_bus_id`），由 `exec_site_registry` 那条按源码钉住。\
+          ⚠ **命令是参数**，但生产侧的**两个**实参各有来历：`CC_BUS_CAT_CMD`（常量）· \
+          `build_inbox_cmd`（过 `is_valid_bus_id`）。〔`K-R112` 09-13：原文写「三个」，第三个是 \
+          `build_online_cmd` —— 查在线改走帧 `bus-list` 之后它整块删了。〕\
           用 `-lc` 而不是 `-lic`：只要 `$HOME`/`$CC_BUS_HOME`，不需要交互式 rc"),
         ("ssh_source.rs", "spawn_dial_proxy", "`<代理二进制> --dial`（子进程，常驻到某一头断开）",
          "`K-P6b`：**daemon 那条长连接流的 SSH 握手交给这个子进程去跑**，界面只收字节。\
@@ -97,8 +114,10 @@ mod spawn_sites {
           ⚠ 它 `kill_on_drop(true)`：界面退出 = 句柄 drop = 代理跟着走。\
           🔴 **别把这一行读成「拨号搬出去了」**：`connect_session` 的 7 处生产调用点里\
           这条只覆盖 1 处，逐处登记在 `ssh_source::dial_move_judge::DIAL_SITES`"),
-        ("account_usage.rs", "run_local_probe", "`sh -c <载荷>`",
-         "本机用量探针：载荷由 `probe_command_for` 构造并引用过（`exec_site_registry` 里那条 Builder 行管它）"),
+        // 🔴 **`K-R104`（09-13）：`account_usage.rs` 那一行（本机执行面）删了。**
+        //    那个函数不存在了 —— 本机用量探针不再在界面进程里 `sh -c <载荷>`，
+        //    它与远端那条**是同一条路**：往那台机器的后端发几条帧命令。
+        //    ⇒ 界面进程这一侧起进程的面**净少一处**（这是好事，也是本表存在的理由）。
         ("launch.rs", "launch_local_posix_via", "用户配置的终端 argv[0]",
          "在用户的终端里起会话 —— 承接 C13「最后那次 exec 在用户终端里」，这是本产品的主用途"),
         ("launch.rs", "launch_powershell_window", "`wt.exe` / `powershell.exe`",
@@ -118,8 +137,14 @@ mod spawn_sites {
         // ── `K-P1`：常驻那条路 ──────────────────────────────────────────────
         ("local_daemon.rs", "spawn_detached", "被脱离起来的 daemon 二进制",
          "本机后端**脱离宿主**起：`process_group(0)` + stdio 全 null + 协议改走回环监听口。\
-          二进制路径来自 `resolve_daemon_bin`（exe 旁的 sidecar 或释放出来的内嵌那份，\
-          与 `local_backend::start_or_extract` 同一个顺序，由一条对拍判据钉着）。\
+          二进制路径来自 `resolve_daemon_bin`，而**它今天只是个适配器** —— 真正的答案\
+          （exe 旁的 sidecar → 这份产物自己带的那份 → 释放出来）出自\
+          `local_backend::resolve_or_extract` 那**一份共用的解析**，\
+          `local_backend::start_or_extract` 走的也是同一份。\
+          〔`K-R43` 订正：本行原先写「与 `start_or_extract` 同一个顺序，由一条对拍判据钉着」——\
+           那时是**两份手写实现**，而那条判据只对拍顺序，`K-R42` 在它眼皮底下漂过一次仍全程绿。\
+           今天钉的不是「两份同序」，是「**两条路都走那一份，且旁边不许再长出第二份取法**」\
+           （`local_daemon::the_two_resolution_paths_still_agree_on_the_order`，名字没改、机制换了）。〕\
           ⚠ 它必须住在**宿主知识层**而不是 `backend/`：`process_group` 来自 \
           `std::os::unix::process::CommandExt`，而 `std::os::unix` 在 \
           `backend/mod.rs::the_backend_half_stays_platform_agnostic` 的禁针里 —— 写进去当场红，\
@@ -302,8 +327,12 @@ mod tests {
         // ── P2z：单 exe 自释放内嵌 daemon。**不是安装动作** —— 它写的是 monitor 自己的缓存。
         ("local_backend.rs", "extract_embedded_to", None,
          "把内嵌的 daemon 二进制释放到 `~/.cc-monitor/bin/cc-monitor-local-<build_id>`，\
-          供 `start_or_extract` 在 exe 旁没有 sidecar 时起进程。写的是 monitor 自己的目录，\
-          不碰用户既有环境、不注册到任何用户配置里；按 build_id 命名 ⇒ 幂等、不覆盖别的版本"),
+          供 exe 旁没有 sidecar 时起进程。写的是 monitor 自己的目录，\
+          不碰用户既有环境、不注册到任何用户配置里；按 build_id 命名 ⇒ 幂等、不覆盖别的版本。\
+          ⚠ **唯一调用点是 `local_backend::resolve_or_extract`**〔`K-R43` 改：本行原先写\
+          「供 `start_or_extract` …」，那时它是唯一调用点；今天 `start_or_extract` 与\
+          `local_daemon::resolve_daemon_bin` **都经那一份共用的解析**走到这里 ⇒ 写盘这一跳\
+          仍然只有一处，而**吃它的路从一条变成两条**〕"),
         // ── P2t：收掉自己留下的 `.partial` 残骸。**不是安装动作** —— 它只**删**，且只删自己那套命名。
         ("local_backend.rs", "sweep_stale_partials", None,
          "删 `~/.cc-monitor/bin/.<释放名>.<pid>.partial` 里**够老**（≥24h）的残骸 —— \
@@ -314,6 +343,18 @@ mod tests {
           ③ 删不掉就算了，**清扫失败绝不挡住释放**。\
           ★ 为什么会有残骸：临时名从固定名改成**带 pid**（防两个 monitor 写同一个 `.partial`）之后，\
           崩掉的那些不会再被下一次覆盖 ⇒ 得自己收。"),
+        // ── 🔴 `K-R69`：**本机那条 `ccm` 入口**。这是安装动作（`ccm` 这个工具的本机那一半）。
+        ("local_backend.rs", "install_local_ccm_entry", Some("ccm"),
+         "把**后端二进制自己的改名副本**放到 `~/.cc-monitor/bin/ccm`（Windows 上带 `.exe`，\
+          名字的唯一真相源是 `local_backend::local_ccm_entry_name`）。\
+          ⚠ **不是第二份实现**：`control::ccm::intercept` 认 `argv[0]` 的 basename ⇒ \
+          改个名字就是那条入口，零新增 argv 解析（`K33`：所有命令只许有一处）。\
+          🔴 **落点刻意不是 `~/.local/bin/ccm`** —— 那是用户那份旧 `ccm` 住的地方，\
+          `K34` 逐字「原本的配置**要手动删除**」、`K31`「不许动用户机器」\
+          ⇒ 产品一个字节都不动它，只在自己的目录里放一份，并**说得出**\
+          「你 PATH 上那个不是我们装的这一份」（`ccm_probe::classify_path_ccm`）。\
+          写法与 `extract_embedded_to` 同一套（`.partial` + 置可执行位 + `rename`），\
+          唯一调用点是 `local_backend::resolve_or_extract` ⇒ 两条生产路共用这一处。"),
         // ── PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。**这是安装动作**。
         ("cc_bus_deploy.rs", "deploy_into", Some("cc-bus"),
          "写 `<claude_dir>/skills/cc-bus/` 的 17 个文件（内嵌自 `shared/cc-bus/`）。\
@@ -339,7 +380,9 @@ mod tests {
         ("build.rs", "embed_daemons", None,
          "把 `embedded-daemons/cc-monitor-remote-<arch>` 复制进 `OUT_DIR`，\
           供 `include_bytes!` 内嵌。写的是 cargo 自己的构建目录，不碰用户环境；\
-          ⚠ 它读的那份清单由 `sftp.rs` 的身份见证判据守着（`id_from_manifest` 不许写死）"),
+          ⚠ 〔`K-R70` 09-12 订正本行后半句〕它**不再读旁边那份 `.build_id` 清单** —— \
+          身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\
+          由 `sftp.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
         // ── devbench F03：skill 接入面的收件箱写入。**不是安装动作**。
         ("skill_host.rs", "write_skill_file", None,
          "写用户**自己项目里**的 `.claude/planned-build/INBOX.txt`（planned-build skill 的\
@@ -353,6 +396,26 @@ mod tests {
           写本身走 `verified_write::verify_and_rollback`（备份 → 写 → 读回逐字节比对 →\
           不符即回滚），**没有自造第四份写入实现** —— 那个模块头注记着本仓曾有 4 处\
           独立实现且校验强度不一致（两处只比长度）。"),
+        // ── `K-R49`：加了账号就把 `zcc` / `bcc` 那条命令落下来。**两个落点性质完全不同，分两行记。**
+        ("account_aliases.rs", "write_alias_file", None,
+         "整份重写 `~/.cc-monitor/account-aliases.sh`。**不是安装动作** —— 写的是 monitor \
+          自己的目录（与 `local_backend` 的 `bin/`、`local_daemon` 的 `listen-token` 同一个），\
+          用户的 shell 配置一个字节都不碰。\
+          ★ 为什么是「整份重写」而不是往 `~/.bashrc` 追加：追加那条路上，加三个账号就追三次、\
+          删了账号那一行还留着指向一个不存在的号，而**弄坏的代价是 shell 起不来**。\
+          整份重写换来三条：幂等（内容一致时一个字节都不写）· 删了账号它那条当场消失 · \
+          删掉整份文件也只是少几个命令。落盘借 `profile_installer::atomic_write_string`，\
+          写完回读逐字比对，不符就把这份**我们自己的**文件删掉（半截的它比没有它更坏）。"),
+        ("account_aliases.rs", "ensure_rc_source_line", None,
+         "往用户**自己指定**的那份 rc 里装**一行** `source`（BEGIN/END 围栏内）。\
+          ⚠ 它确实写用户既有的环境，但**不是安装动作**：它不装任何 `TOOLS` 里的工具，\
+          只是让上面那份生成文件被 source 到 —— 真正的内容一个字节都不在这里。\
+          🔴 四道：① 路径过 `profile_installer::fence_profile_path`（只许落在 home 之内，\
+          而且那份 rc 由界面上的人**选**，代码不猜）；② 已经 source 过就一个字节都不写（幂等）；\
+          ③ 围栏损坏（有 BEGIN 没 END）**中止**，绝不用后面那个 END 去配对吃掉用户代码；\
+          ④ 先 `fs::copy` 备份、写完回读逐字比对、不符从备份回滚。\
+          ★ 多数人根本走不到这一行：`shared/ccm-aliases.sh` 自带那行 `[ -r … ] && . …`，\
+          装过 ccm 别名块的人加账号之后什么都不用做。"),
         // ── 安装动作：写的是**用户既有的环境/配置**，且对应声明表里的一个工具
         ("profile_installer.rs", "install_to_profile", Some("ccm"),
          "往用户 shell profile 的 BEGIN/END 块里装 ccm 启动器（写前先备份）"),

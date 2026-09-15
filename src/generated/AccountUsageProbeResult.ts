@@ -2,14 +2,18 @@
 
 export type AccountUsageProbeResult = { 
 /**
- * true = 拿到了屏幕文本（不代表内容可解析——解析是 TS 侧纯函数 `parseUsageCapture` 的职责）。
+ * true = 拿到了屏幕文本。
+ *
+ * ⚠ **它不说那屏上是什么** —— `R59` 之后生产路上没有解析层，
+ * `captured=true` 的唯一含义是「抓到了」，**包括抓到一片空白**
+ * （`KR101D1` ③：空屏是成功，把它判成失败是明令禁止的那一形）。
  */
 captured: boolean, 
 /**
- * `captured=true` 时的 capture-pane 原始文本。
+ * `captured=true` 时的抓屏原始文本。
  */
 raw: string | null, 
 /**
- * `captured=false` 时的人话原因（无 tmux / 连接失败 / 超时）。
+ * `captured=false` 时的人话原因（没通道 / 后端太旧 / 远端拒绝 / 超时）。
  */
 error: string | null, };

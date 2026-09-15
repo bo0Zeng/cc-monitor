@@ -115,6 +115,46 @@ describe("账号：知道就照搬，不知道就用用户答的，**绝不自�
     await startForkedSession({ newSessionId: "n", origin: null, source: DEAD }, asDeps(d));
     expect(d.startLocal.mock.calls[0][0].configDir).toBeNull();
   });
+
+  /**
+   * ★★ `K-R53` `KR53D1`：**名字与目录是同一次选择的两半，取法必须同形。**
+   *
+   * 后端那条 ccm 路只会 `--account <名字>`（`shared/ccm:606`）⇒ 分叉这条本机路只给目录时，
+   * 它**结构上**到不了后端那条路，必然落第二实现（没有 tmux 容器）。
+   *
+   * 三格一起断，因为**只断「选了就带上」会漏掉另一半**：
+   *   ① 用户选了某个号 ⇒ 名字跟着下来；
+   *   ② `known`（源会话活着，继承的是它的**目录**）⇒ 名字如实 `null`
+   *      —— 这一格是本条的要害：**不许在这里从目录名推一个名字**
+   *      （推错 ⇒ `shared/ccm` 当场 `die`，一次能起的会话变成一条报错；
+   *       方向与 `relay_account_id_of_dir` 那条「推错就回落」相反）；
+   *   ③ 账号 0 ⇒ `null`（那一态走 `base`，本来就不要名字）。
+   */
+  it("★★ `K-R53`：账号名与 configDir 同形取值（选了就带上 · 继承时如实 null）", async () => {
+    // ① 用户在小窗里选了某个号 ⇒ 两半一起下来。
+    const picked = deps({ ask: async () => ({ configDir: "/acct/b", accountName: "acct-b", useTmux: false }) });
+    await startForkedSession({ newSessionId: "n", origin: null, source: DEAD }, asDeps(picked));
+    expect(picked.startLocal.mock.calls[0][0].configDir).toBe("/acct/b");
+    expect(
+      picked.startLocal.mock.calls[0][0].accountName,
+      "用户挑的号的名字没传下去 —— 后端只会 `--account <名字>`，只给目录 = 这条路到不了后端那条路",
+    ).toBe("acct-b");
+
+    // ② 源会话活着（`known`）⇒ 盘上只有目录、从来没有名字 ⇒ 如实 `null`。
+    const inherited = deps();
+    await startForkedSession({ newSessionId: "n", origin: null, source: LIVE }, asDeps(inherited));
+    expect(inherited.startLocal.mock.calls[0][0].configDir).toBe("/home/u/.claude-accts/z");
+    expect(
+      inherited.startLocal.mock.calls[0][0].accountName,
+      "继承源会话目录时凭空造出了一个名字 —— 那是从目录名反推，推错 ccm 当场 die",
+    ).toBeNull();
+
+    // ③ 账号 0 ⇒ 两半都是 null。
+    const zero = deps({ ask: async () => ({ configDir: null, accountName: null, useTmux: false }) });
+    await startForkedSession({ newSessionId: "n", origin: null, source: DEAD }, asDeps(zero));
+    expect(zero.startLocal.mock.calls[0][0].configDir).toBeNull();
+    expect(zero.startLocal.mock.calls[0][0].accountName).toBeNull();
+  });
 });
 
 describe("G6：本机那条路不问 tmux", () => {
@@ -167,7 +207,7 @@ describe("tmux 名", () => {
       },
       asDeps(d),
     );
-    // Phase G：撞名后缀改成**追加在最后**（`p-fork-cc-2`），与 `pickFreshTmuxName`
+    // Phase G：撞名后缀改成**追加在最后**（`p-fork-cc-2`），与 `mintSessionTmuxName`
     // 写下的同一条规则对齐（「让『第几个』始终是名字的末段」）。原来是 `p-fork2-cc`。
     expect(d.startRemote.mock.calls[0][0].tmuxName).toBe("p-fork-cc-2");
   });

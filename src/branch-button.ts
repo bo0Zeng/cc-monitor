@@ -50,9 +50,10 @@ export function isOffMainCard(el: Element): boolean {
 export interface BranchButtonOptions {
   /** 分叉点消息的 uuid。 */
   uuid: string;
-  /** 源会话 jsonl 的绝对路径。**只有本机那条路用它**（远端的路径 monitor 够不着）。 */
-  jsonlPath: string;
-  /** 源会话 sid。**远端那条路用它** —— daemon 只认 sid 不认路径（见 `remote_branch.rs` 头注）。 */
+  /**
+   * 源会话 sid。**两条路都用它** —— 后端只认 sid 不认路径（见 `remote_branch.ts` 对面那份
+   * Rust 头注）。〔`K-R88` 09-13〕本机那条原先收路径，收成 sid 之后这里少了一个字段。
+   */
   sourceSessionId: string;
   /** 远端 origin；`null`/缺省 = 本机。G6 起远端也能分叉。 */
   origin?: string | null;
@@ -95,9 +96,9 @@ export function attachBranchButton(
     btn.dataset.busy = "1";
     void (async () => {
       try {
-        // G6：本机与远端是**两条不同的 IPC**，不是同一条命令加个 origin 参数 ——
-        // 本机收路径（monitor 自己读写文件），远端收 sid（daemon 自己在那台机器上干活，
-        // 刻意不接受路径入参以少一条路径穿越面）。签名不同，所以命令也不同。
+        // G6：本机与远端仍是**两条不同的 IPC**（活儿在哪台机器上干不一样，远端那条还要
+        // 一个 origin），但〔`K-R88` 09-13〕**入参形状已经一致：两条都收 sid，都不收路径。**
+        // 路径入参是可被构造的，少一个就少一条路径穿越面。
         const res = opts.origin
           ? await commands.create_remote_branch_session({
               origin: opts.origin,
@@ -105,7 +106,7 @@ export function attachBranchButton(
               messageUuid: opts.uuid,
             })
           : await commands.create_branch_session({
-              sourceJsonlPath: opts.jsonlPath,
+              sourceSessionId: opts.sourceSessionId,
               messageUuid: opts.uuid,
             });
         btn.textContent = "✓";

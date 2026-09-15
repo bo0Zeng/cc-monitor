@@ -13,6 +13,24 @@ pub struct CcmProbeResult {
     pub installed: bool,
     pub version: Option<String>,
     pub capabilities: Vec<String>,
+    /// 🔴 `K-R70`：对面**那一份二进制**自报的构建身份（`--ccm-probe` 的 `build=` 那一行）。
+    ///
+    /// # 它与 `version` 不是同一个问题，别合并
+    ///
+    /// `version` 是**CLI 的契约版本**（`control::ccm::CCM_VERSION`：`4` 是最后一版 bash、
+    /// `5` 起是后端本体）—— 它答「你认得哪些参数」。`build` 答「**你是哪一次构建**」。
+    /// 在 `K-R70` 之前，后者只能去读那份二进制**旁边**的 `.build_id` 文本文件，
+    /// 而那是一张从源码常量抄来的标签（三个载体恒等 ⇒ 零证据，`K-R68` · `R26` 裁定零）。
+    ///
+    /// ⚠ **`None` 有两种来历，这里分不开**：对面没装 / 对面是 `p2f-build-stamp` 之前的
+    /// 旧后端（它根本不吐这一行）。要分开得再问一次别的东西 —— 本件不做，如实登记。
+    ///
+    /// ⚠ **它刻意不进 [`classify_path_ccm`] 的判据**：那一格问的是「PATH 上那个是不是
+    /// 我们这一份」，而**同一份后端的两个构建仍然是「我们这一份」**。拿 `build` 去判
+    /// 会把「我们装的比 PATH 上那个新」误报成「PATH 上那个不是我们的」。
+    #[cfg_attr(test, ts(optional))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build: Option<String>,
 }
 
 /// 解析 `ccm --ccm-probe` 的输出。首行非字面 `name=ccm` → 判定未装/不兼容——防止 PATH 里
@@ -24,12 +42,17 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
             installed: false,
             version: None,
             capabilities: vec![],
+            build: None,
         };
     }
-    let (mut version, mut capabilities) = (None, vec![]);
+    let (mut version, mut capabilities, mut build) = (None, vec![], None);
     for line in lines {
         if let Some(v) = line.strip_prefix("version=") {
             version = Some(v.to_string());
+        } else if let Some(b) = line.strip_prefix("build=") {
+            // 🔴 `K-R70`：**这一行来自那个进程自己**（`control::ccm::probe_output` 里
+            // 直接读 `crate::BUILD_ID`），不是我们去读它旁边的哪个文件。
+            build = Some(b.to_string());
         } else if let Some(c) = line.strip_prefix("capabilities=") {
             capabilities = c
                 .split(',')
@@ -42,6 +65,7 @@ fn parse_probe_output(out: &str) -> CcmProbeResult {
         installed: true,
         version,
         capabilities,
+        build,
     }
 }
 
@@ -134,14 +158,52 @@ pub(crate) fn probe_local_ccm_uncached(timeout: std::time::Duration) -> CcmProbe
 /// 生产侧唯一的实参是 [`CCM_PROBE_CMD`]（由 `the_only_production_probe_command_is_the_constant` 钉）。
 #[cfg(not(windows))]
 fn probe_with(timeout: std::time::Duration, cmd: &str) -> CcmProbeResult {
+    probe_spawned(timeout, &|| {
+        std::process::Command::new("bash")
+            .args(["-lic", cmd])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+    })
+}
+
+/// 🔴 `K-R69`：**直接问一个二进制**「你是谁」——`<bin> --ccm-probe`，不经 shell。
+///
+/// # 它与上面那条问的不是同一件事，别混
+///
+/// [`probe_with`] 问的是「**你 PATH 上那个 `ccm` 是谁**」（所以非走登录 shell 不可 ——
+/// 用户的 rc 会改 PATH，`shared/ccm-aliases.sh` 里就有一行往前插 `~/.local/bin`）。
+/// 本条问的是「**我们放下去的那一份是谁**」，路径我们自己知道 ⇒ 一个 shell 都不需要，
+/// 也就不吃用户 rc 的任何影响（那正是它该有的样子：这一份的身份与用户环境无关）。
+///
+/// ⇒ 两条**共用同一段等待与解析**（[`probe_spawned`]），只有「怎么起那个进程」不同。
+/// 两份手写的 wait/read 之间只会漂，而漂开的后果是同一台机器上两个答案。
+pub(crate) fn probe_binary_uncached(
+    bin: &std::path::Path,
+    timeout: std::time::Duration,
+) -> CcmProbeResult {
+    probe_spawned(timeout, &|| {
+        std::process::Command::new(bin)
+            .arg("--ccm-probe")
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+    })
+}
+
+/// 一次探测的**等待 + 读 + 解析**那一半。「怎么起那个进程」由调用方给。
+///
+/// 🔴 `K-R69` 抽出来的：本机那条 `ccm` 入口要被**直接**问一次身份（不经 shell），
+/// 而「起了之后怎么等」那一段有超时、有读线程、有「超时不采信半截输出」——
+/// 抄第二份的话，两条路会在**最难查的那一格**（半截输出）上各说各话。
+fn probe_spawned(
+    timeout: std::time::Duration,
+    spawn: &dyn Fn() -> std::io::Result<std::process::Child>,
+) -> CcmProbeResult {
     use std::io::Read;
-    let spawned = std::process::Command::new("bash")
-        .args(["-lic", cmd])
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .spawn();
-    let Ok(mut child) = spawned else {
+    let Ok(mut child) = spawn() else {
         return parse_probe_output("");
     };
     // ⚠ 读线程必须在**等之前**起：管道缓冲写满时子进程会阻塞在 write 上，
@@ -198,9 +260,295 @@ pub async fn probe_ccm_cli(origin: String) -> Result<CcmProbeResult, String> {
     Ok(parse_probe_output(&String::from_utf8_lossy(&buf)))
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// 🔴 `K-R69` / `KR69D2`：**装了之后，产品说得出「你 PATH 上那个是旧的」**
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// 用户 `K34` 逐字要的是「**原本的配置要手动删除**」——**产品不删，但要说得出**。
+// `K-R62` 已经买到「你 rc 里那几行是旧的」（`profile_installer::scan_legacy_rc_lines`）；
+// 这里是**它的兄弟**：**PATH 上那个 `ccm` 是不是我们装的那一份**。
+//
+// 🔴 **不许只比路径字符串**。比路径认不出「同名不同物」，而本件的题面恰恰就是
+//    「本机上另有一个也叫 `ccm` 的东西」（用户 `~/.local/bin/ccm` 那份旧 bash）。
+//    ⇒ 比的是**两边自报的身份**：`--ccm-probe` 那条握手现成的，`version=` 与
+//    `capabilities=` 就是它交出来的名片。
+
+/// PATH 上那个 `ccm`，与我们装的那一份是什么关系。**四态，没有兜底档。**
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[serde(rename_all = "snake_case")]
+pub enum PathCcmVerdict {
+    /// 终端里敲 `ccm` 走到的就是我们这一份。**没有话要说。**
+    Ours,
+    /// 🔴 PATH 上有一个 `ccm`，**但不是我们这一份** —— 这就是「旧的」那一格。
+    NotOurs,
+    /// PATH 上没有一个答得出 `--ccm-probe` 的 `ccm`。**这不是坏事**：
+    /// 没贴别名块之前本来就没有。
+    Absent,
+    /// **说不出** —— 我们自己那一份都没装 / 探不到，那就没资格判别人。
+    /// （查不了要说成「查不了」，不许说成「缺失」：本仓那条老纪律。）
+    Undetermined,
+}
+
+/// 本机 `ccm` 这一格的全貌：我们那一份 · PATH 上那一份 · 判词 · 那句话。
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+pub struct LocalCcmEntry {
+    /// 我们装的那一份在哪 —— **`$HOME/…` 形态**（别名要用它，写绝对路径会把
+    /// 「换台机器 / 换个用户」堵死）。没装就是 `None`。
+    pub entry: Option<String>,
+    /// 我们那一份自报的身份（直接跑它，不经 shell）。
+    pub ours: CcmProbeResult,
+    /// 你 PATH 上那个自报的身份（经登录 shell，因为 PATH 就是 rc 决定的）。
+    pub on_path: CcmProbeResult,
+    pub verdict: PathCcmVerdict,
+    /// 给人读的那句话。没有话要说时是**空串**（`Ours` 那一档）。
+    pub message: String,
+}
+
+/// **纯函数**：两张名片，判 PATH 上那个是不是我们这一份。
+///
+/// # 判据是「身份」不是「路径」
+///
+/// `version=` 是这套 CLI 的版本号（`control::ccm::CCM_VERSION`：`4` 是最后一版 bash，
+/// `5` 起是后端本体），`capabilities=` 是能力集。两样都相同 ⇒ 判 [`PathCcmVerdict::Ours`]。
+///
+/// ⚠ **诚实边界，写死别读宽**：两份东西的 `version` 与能力集**完全相同**时本条分不开它们。
+/// 那不是漏 —— 那时它们在**行为契约上**就是同一份（消费者按这两样分支，见
+/// `ccm_invocation::CLI_REQUIRED_CAPS` 与前端 `ccm-probe.ts`）。
+/// 要分「同契约但不同文件」得比字节，而那**不是**这一格要买的东西。
+pub fn classify_path_ccm(ours: &CcmProbeResult, on_path: &CcmProbeResult) -> PathCcmVerdict {
+    if !ours.installed {
+        return PathCcmVerdict::Undetermined;
+    }
+    if !on_path.installed {
+        return PathCcmVerdict::Absent;
+    }
+    let same_caps = {
+        let a: std::collections::BTreeSet<&str> =
+            ours.capabilities.iter().map(String::as_str).collect();
+        let b: std::collections::BTreeSet<&str> =
+            on_path.capabilities.iter().map(String::as_str).collect();
+        a == b
+    };
+    if ours.version == on_path.version && same_caps {
+        PathCcmVerdict::Ours
+    } else {
+        PathCcmVerdict::NotOurs
+    }
+}
+
+/// **纯函数**：那句话。措辞刻意**不是**「请删除」——
+/// 产品一个字节都不删（`K31` ＋ 用户 `K34` 逐字「原本的配置要手动删除」），
+/// 边界只有用户自己知道。同 `profile_installer::render_manual_cleanup_hint` 那一族。
+pub fn render_path_ccm_hint(
+    verdict: PathCcmVerdict,
+    ours: &CcmProbeResult,
+    on_path: &CcmProbeResult,
+    entry: Option<&str>,
+) -> String {
+    let ours_card = describe_card(ours);
+    let where_ours = entry.unwrap_or("（还没装下来）");
+    match verdict {
+        PathCcmVerdict::Ours => String::new(),
+        PathCcmVerdict::NotOurs => format!(
+            "🔴 你 PATH 上那个 `ccm` **不是** cc-monitor 装的这一份。\n\
+             · 它自报：{}\n\
+             · 我们这一份：{ours_card}（在 {where_ours}）\n\
+             ⇒ 你在终端里敲 `ccm`（以及任何调 `ccm` 的别名）走到的是**它**，不是我们这一份。\n\
+             产品**不动它**：要不要删、什么时候删，由你自己定。想让终端认我们这一份，\n\
+             要么把它挪开、要么让上面那个目录排在 PATH 前面、要么用下面生成的那条命令\n\
+             （它显式指向我们这一份，不靠 PATH 撞运气）。",
+            describe_card(on_path)
+        ),
+        PathCcmVerdict::Absent => format!(
+            "你 PATH 上没有 `ccm`。我们这一份在 {where_ours}（{ours_card}）——\n\
+             下面生成的那条命令会显式指向它，不需要你改 PATH。"
+        ),
+        PathCcmVerdict::Undetermined => format!(
+            "说不出你 PATH 上那个 `ccm` 是谁 —— **我们自己这一份没探到**（{where_ours}）。\n\
+             这是「查不了」，不是「你缺了什么」。"
+        ),
+    }
+}
+
+/// 一张名片的人话。**不含路径** —— 这一格判的就是「不许只比路径」，
+/// 措辞里混进路径会让读的人以为判据比的是它〔固定项 12 那条 `6g` 的同族〕。
+fn describe_card(r: &CcmProbeResult) -> String {
+    if !r.installed {
+        return "探不到（没有一个答得出 `--ccm-probe` 的 ccm）".to_string();
+    }
+    format!(
+        "version={} · {} 项能力",
+        r.version.as_deref().unwrap_or("(没报版本)"),
+        r.capabilities.len()
+    )
+}
+
+/// 探我们**自己装的那一份**的上限。它是我们的后端、参数只是打印一张名片 ⇒
+/// 不需要 [`LOCAL_PROBE_TIMEOUT`] 那么宽（那一档的宽度是留给用户 rc 的）。
+const OURS_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// 你 PATH 上那个 `ccm` 是谁。**Windows 上今天答不了，如实回 `None`。**
+///
+/// 🔴 **登记一条诚实边界，别读成「做了」**：唯一一条「问 PATH 上那个」的机制是
+/// [`CCM_PROBE_CMD`] ＋ `bash -lic`（非走登录 shell 不可 —— PATH 就是 rc 决定的，
+/// `shared/ccm-aliases.sh` 里那行 `export PATH="$HOME/.local/bin:$PATH"` 就是活例）。
+/// Windows 上没有对应物，而**照着 `PATH` 变量自己走一遍不是同一件事**
+/// （少了 rc 那一层，还要按 `PATHEXT` 判可执行 —— 那一格已经是一条待决 `KU22`）。
+/// ⇒ 这里**不发明第二套机制**，回 `None`，由上面那句话说成「查不了」。
+#[cfg(not(windows))]
+fn probe_path_ccm() -> Option<CcmProbeResult> {
+    Some(probe_local_ccm())
+}
+#[cfg(windows)]
+fn probe_path_ccm() -> Option<CcmProbeResult> {
+    None
+}
+
+/// 🔴 `K-R69` / `KR69D2` 的生产入口：本机 `ccm` 这一格现在是什么样。
+///
+/// 读面：`~/.cc-monitor/bin/<本机 ccm 入口名>` 在不在（`local_read_surface_registry`
+/// 的 `HOME_REACHES` 里登记着 —— 那是 monitor 自己的目录，不是伸手拿用户的东西）。
+/// 起进程面：两次 `--ccm-probe`（`write_site_registry::SPAWNS` 里登记着）。
+/// **一个字节都不写。**
+#[tauri::command]
+pub fn local_ccm_entry_status() -> LocalCcmEntry {
+    let home = dirs::home_dir();
+    let path = home.as_ref().map(|h| {
+        h.join(".cc-monitor")
+            .join("bin")
+            .join(crate::backend::control::local_backend::local_ccm_entry_name())
+    });
+    let installed = path.as_ref().filter(|p| p.is_file());
+    let ours = match installed {
+        Some(p) => probe_binary_uncached(p, OURS_PROBE_TIMEOUT),
+        None => parse_probe_output(""),
+    };
+    // ⚠ **`$HOME/…` 形态，不是绝对路径**：这个串会被别名生成器嵌进用户的 shell 命令里，
+    //   而用户 09-11 明裁「这些命令都是可以自定义的」（`R19`）⇒ 写死绝对路径把自定义堵死，
+    //   换台机器 / 换个用户也当场失效。
+    let entry = installed.map(|_| {
+        format!(
+            "$HOME/.cc-monitor/bin/{}",
+            crate::backend::control::local_backend::local_ccm_entry_name()
+        )
+    });
+    let on_path = probe_path_ccm().unwrap_or_else(|| parse_probe_output(""));
+    let verdict = classify_path_ccm(&ours, &on_path);
+    let message = render_path_ccm_hint(verdict, &ours, &on_path, entry.as_deref());
+    LocalCcmEntry {
+        entry,
+        ours,
+        on_path,
+        verdict,
+        message,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 🔴 `KR69D2`：**「你 PATH 上那个是旧的」这句话真的说得出来**，而且判的不是路径。
+    ///
+    /// # 死值验（`KR69D2` 逐字要的那一格）
+    ///
+    /// 造一个「PATH 上有旧 `ccm`、而我们也装了一份」的场景 ⇒ **必须指名说出来**。
+    /// 把 [`render_path_ccm_hint`] 里 `NotOurs` 那一支的话掏空 ⇒ 本条红。
+    ///
+    /// # 失效方向（本条专门盯着它）
+    ///
+    /// **只比路径**。下面第三格喂的是「两份东西**路径可以完全一样**、身份不同」——
+    /// 本条一个路径字符串都不看，所以那条路走不通。
+    #[test]
+    fn a_stale_ccm_on_path_is_named_out_loud() {
+        let ours = CcmProbeResult {
+            installed: true,
+            version: Some("5".into()),
+            capabilities: vec!["new".into(), "resume".into(), "detach".into()],
+            build: None,
+        };
+        // 用户机器上那份 2026-07-27 的旧 bash：答得出 `--ccm-probe`（所以「在不在」判不了它），
+        // 但版本与能力集都是上一代。
+        let legacy = CcmProbeResult {
+            installed: true,
+            version: Some("4".into()),
+            capabilities: vec!["new".into(), "resume".into()],
+            build: None,
+        };
+        let v = classify_path_ccm(&ours, &legacy);
+        assert_eq!(v, PathCcmVerdict::NotOurs, "旧的没被认出来");
+        let hint = render_path_ccm_hint(v, &ours, &legacy, Some("$HOME/.cc-monitor/bin/ccm"));
+        assert!(
+            hint.contains("不是") && hint.contains("version=4") && hint.contains("version=5"),
+            "那句话没把「它是谁 / 我们是谁」摆出来 —— 只说「不一样」等于没说：\n{hint}"
+        );
+        // 🔴 产品**不删**：措辞里不许出现祈使的「请删除」。
+        assert!(
+            !hint.contains("请删除"),
+            "产品在催用户删他自己的东西 —— `K34` 逐字「原本的配置**要手动删除**」，\n\
+             那是**用户的**动作；`K31` 更不许我们代劳。这一格只许指名。\n{hint}"
+        );
+        // ★ 同版本同能力 ⇒ 判 `Ours`，而且**没有话要说**（免得每次打开都吓人一跳）。
+        assert_eq!(classify_path_ccm(&ours, &ours), PathCcmVerdict::Ours);
+        assert_eq!(
+            render_path_ccm_hint(PathCcmVerdict::Ours, &ours, &ours, None),
+            ""
+        );
+        // ★ 我们自己那份没装 ⇒ **说不出**，不许说成「你 PATH 上那个是旧的」。
+        let nothing = parse_probe_output("");
+        assert_eq!(
+            classify_path_ccm(&nothing, &legacy),
+            PathCcmVerdict::Undetermined,
+            "我们自己都没装，却对别人下了判词 —— 那就是替用户下一个他没做过的结论"
+        );
+        // ★ PATH 上什么都没有 ⇒ `Absent`，与「是旧的」分得开。
+        assert_eq!(classify_path_ccm(&ours, &nothing), PathCcmVerdict::Absent);
+    }
+
+    /// `KR69D2` 的**失效方向那一格**：判词**不看路径**。
+    ///
+    /// 两张名片身份不同，而「它们在哪」这件事本条压根问不到 ——
+    /// [`classify_path_ccm`] 的签名里没有路径。这条断的是**签名**买到的性质：
+    /// 有人想把它改成比路径，得先改签名，那已经是明知故犯了。
+    #[test]
+    fn the_verdict_cannot_be_reached_by_comparing_paths() {
+        let a = CcmProbeResult {
+            installed: true,
+            version: Some("5".into()),
+            capabilities: vec!["new".into()],
+            build: None,
+        };
+        let b = CcmProbeResult {
+            installed: true,
+            version: Some("5".into()),
+            capabilities: vec!["new".into(), "detach".into()],
+            build: None,
+        };
+        // 同版本、能力集差一项 ⇒ 仍判「不是我们那一份」。**路径在这里根本不存在。**
+        assert_eq!(classify_path_ccm(&a, &b), PathCcmVerdict::NotOurs);
+        // 反向：能力集顺序不同不算不同（那是名片的写法，不是身份）。
+        let b2 = CcmProbeResult {
+            installed: true,
+            version: Some("5".into()),
+            capabilities: vec!["detach".into(), "new".into()],
+            build: None,
+        };
+        let a2 = CcmProbeResult {
+            installed: true,
+            version: Some("5".into()),
+            capabilities: vec!["new".into(), "detach".into()],
+            build: None,
+        };
+        assert_eq!(
+            classify_path_ccm(&a2, &b2),
+            PathCcmVerdict::Ours,
+            "同一套能力换个顺序被判成两个东西 —— 那会让用户每次打开都看到一句假警报"
+        );
+    }
 
     #[test]
     fn parses_real_probe_output() {
@@ -210,6 +558,58 @@ mod tests {
         assert_eq!(r.version.as_deref(), Some("1"));
         assert!(r.capabilities.contains(&"tmux".to_string()));
         assert!(r.capabilities.contains(&"ccm-sid".to_string()));
+    }
+
+    /// ★★ 🔴 `KR70D1`（09-12）：**产品从「那个进程自己」手里拿到构建身份。**
+    ///
+    /// # 它买的是哪一格
+    ///
+    /// `K-R68` 摸底的结论逐字：后端二进制的身份今天只能去读它**旁边**那个 `.build_id`
+    /// 文本文件，而那是 `release.yml` 从源码常量抠出来写的一张标签 ——
+    /// 三个载体的标签恒等 ⇒ 一格证据都不提供（`DECISIONS.md#R26` 裁定零）。
+    /// [`probe_binary_uncached`] 这条路是**直接问那个二进制**（`<bin> --ccm-probe`，
+    /// 不经 shell、不读它旁边任何文件），本条钉住那条握手**答得出身份**。
+    ///
+    /// # 三格
+    ///
+    /// ① 有 `build=` ⇒ 拿得到；② 旧后端（没有那一行）⇒ `None`，**不许猜**；
+    /// ③ 它**不参与** [`classify_path_ccm`] 的判词（理由住 `CcmProbeResult::build` 的头注：
+    /// 同一份后端的两个构建仍然是「我们这一份」）。
+    #[test]
+    fn the_probe_carries_the_build_identity_of_the_binary_itself() {
+        let with = parse_probe_output(
+            "name=ccm\nversion=5\nself=/x/ccm\ncapabilities=new\nagents=claude\nbuild=p9-sample\n",
+        );
+        assert_eq!(
+            with.build.as_deref(),
+            Some("p9-sample"),
+            "对面自报了身份而我们没接住 —— 「问一份二进制它是谁」这条路断在解析这一跳"
+        );
+        // ② 旧后端不吐这一行 ⇒ 只许答「不知道」，不许拿别处的值顶上。
+        let without = parse_probe_output(
+            "name=ccm\nversion=5\nself=/x/ccm\ncapabilities=new\nagents=claude\n",
+        );
+        assert_eq!(
+            without.build, None,
+            "对面没说，我们替它编了一个 —— 那正是「把失败面换成假答案」那一族"
+        );
+        // ③ 身份不参与「是不是我们那一份」的判词。
+        let a = CcmProbeResult {
+            installed: true,
+            version: Some("5".into()),
+            capabilities: vec!["new".into()],
+            build: Some("p9-old".into()),
+        };
+        let b = CcmProbeResult {
+            build: Some("p9-new".into()),
+            ..a.clone()
+        };
+        assert_eq!(
+            classify_path_ccm(&a, &b),
+            PathCcmVerdict::Ours,
+            "两个构建的同一份后端被判成「不是我们那一份」—— \n\
+             那会让用户每次打开都看到一句假警报（`CcmProbeResult::build` 头注逐字写着这条边界）"
+        );
     }
 
     /// ★★ **超时那条路真的会返回**〔D 阶段补审 08-12〕。

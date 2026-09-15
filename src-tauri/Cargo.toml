@@ -16,6 +16,7 @@ members = [
     "crates/creds-core",
     "crates/gate-core",
     "crates/guard-core",
+    "crates/search-core",
     "crates/shell-quote-core",
     "crates/usage-core",
 ]
@@ -23,7 +24,7 @@ exclude = ["vendor/code-picture-core"]
 
 [package]
 name = "monitor"
-version = "3.7.0"
+version = "3.8.0"
 description = "cc-monitor — Claude Code 的开发工作台：只读渲染会话输出 + 本机/远端会话管理 + 代码全景 + skill 接入面（Tauri 2 + TypeScript，Windows / Linux）"
 authors = ["cc-monitor contributors"]
 edition = "2021"
@@ -78,6 +79,11 @@ shell-quote-core = { path = "crates/shell-quote-core" }
 # F03：**§34 Gate 2（identity）的唯一实现**——「这个 tmux 会话是不是本工具管的」。
 # monitor 与 daemon 共用同一份判定（定框 C1），防「把 send-keys/kill 搬进后端时静默丢掉一道门」。
 gate-core = { path = "crates/gate-core" }
+
+# K-R100：**历史全文搜索口径的唯一实现**（12 个同名助手 + 4 个口径常量 + snippet 预算）。
+# 收口前 monitor `src/search.rs` 与 daemon `observe/search_query.rs` 各写一遍，逐字相同、
+# 零判据对拍 —— 「今天没漂」不是保障。判据住 `search.rs::the_search_kou_jing_has_exactly_one_home`。
+search-core = { path = "crates/search-core" }
 
 notify = "6"
 notify-debouncer-mini = "0.4"

@@ -5,7 +5,15 @@
  * 一个刚装好、什么都没点过的新用户，不该看到一屏红叉。
  */
 import { describe, it, expect } from "vitest";
-import { computeGaps, summarizeGaps, describeGap, type Gap } from "./readiness";
+import {
+  computeGaps,
+  summarizeGaps,
+  describeGap,
+  GAP_HEAD,
+  NO_BACKEND_GAP_CODE,
+  NO_BACKEND_CONSEQUENCE,
+  type Gap,
+} from "./readiness";
 import { LOCAL_MACHINE_KEY, type MachineStatus } from "./machine-status";
 
 const T = 1_700_000_000_000;
@@ -40,11 +48,45 @@ describe("computeGaps", () => {
     expect(d.severity).toBe("blocking");
   });
 
-  it("★ 本机的 daemon 不算缺（不适用 ≠ 缺）", () => {
+  /**
+   * 🔴 `KR59D1` 第 ⑤ 处载体的**死值验落点**（`K-R59` 09-11，定框 `K35`）。
+   *
+   * # 这一条翻的是哪一面
+   *
+   * 它此前逐字叫「★ 本机的 daemon 不算缺（不适用 ≠ 缺）」，断的是
+   * `computeGaps({origins:[LOCAL_MACHINE_KEY]})` **不产出** `daemon` 那一格 ——
+   * 依据是 `notApplicable` 里 `facet === "daemon"` 那一支，理由写在头注
+   * 「本机不需要 daemon（`watcher.rs` 直读 jsonl）」。
+   *
+   * 那句话在 `C7`〔用 08-03〕之后就**不成立**了：`C7` 逐字「没有 daemonless，
+   * 使用软件就要有后端 ⇒ **本机**也要有后端进程」，`local_backend.rs` 是它的产物。
+   * ⇒ 本机后端**今天真的存在**，而这张「还差什么」的清单当时**永远不会告诉用户它没起来**。
+   *
+   * # 🔴 为什么这一条不许写成 `grep daemonless`
+   *
+   * **那一支里一个 `daemonless` 字样都没有。** `KR59D1` 的失效方向逐字写着：
+   * 「只数 `grep daemonless == 0` —— 那只证明**名字**没了，不证明**那一档**没了」。
+   * 本条断的是**行为**：喂一个 `daemon` 那格空着的本机账本，那一格**必须出现在清单里**，
+   * 而且必须是 `blocking`。把那一支塞回 `notApplicable`（哪怕换个名字写），本条立刻红。
+   */
+  it("🔴 KR59D1⑤：本机的 daemon **算一格** —— 没起来这件事清单必须说得出来", () => {
     const gaps = computeGaps({ origins: [LOCAL_MACHINE_KEY], statusOf: none });
-    expect(gaps.some((g) => g.facet === "daemon")).toBe(false);
+    const daemon = gaps.filter((g) => g.facet === "daemon");
+    expect(
+      daemon.length,
+      "本机的 daemon 又被算成「不适用」了 —— `C7` 之后本机也有后端进程，" +
+        "这一格空着必须说得出来（`KR59D1` 第 ⑤ 处载体）",
+    ).toBe(1);
+    expect(daemon[0]?.origin).toBe(LOCAL_MACHINE_KEY);
+    expect(daemon[0]?.severity).toBe("blocking");
     // 反向自检：本机的**其它**项照常出现（不是整台被跳过了）
     expect(gaps.some((g) => g.facet === "ccm")).toBe(true);
+    // 反向自检：账本里写了 `ok` 就该消失 —— 本条断的是「算不算一格」，不是「恒红一条」。
+    const green = computeGaps({
+      origins: [LOCAL_MACHINE_KEY],
+      statusOf: () => ({ daemon: { kind: "ok", at: T } }),
+    });
+    expect(green.some((g) => g.facet === "daemon")).toBe(false);
   });
 
   it("★ 本机的「连接」不算缺 —— 本地 = 不走 ssh 的远端（INVARIANTS §40）", () => {
@@ -53,8 +95,13 @@ describe("computeGaps", () => {
     // 那句话对本机是假的，是清单里最重的一级，而且没有任何按钮能消掉它。
     const gaps = computeGaps({ origins: [LOCAL_MACHINE_KEY], statusOf: none });
     expect(gaps.some((g) => g.facet === "connection")).toBe(false);
-    // 本机不该有任何 blocking 条目（daemon 与 connection 是仅有的两条 blocking）
-    expect(gaps.some((g) => g.severity === "blocking")).toBe(false);
+    // ⚠ `K-R59` 订正：这里原来还断「本机不该有任何 blocking 条目」，
+    //    依据是「daemon 与 connection 是仅有的两条 blocking，而本机两条都不适用」。
+    //    今天本机的 `daemon` **算一格** ⇒ 那句话不再成立。
+    //    换成**逐格点名**：本机剩下的 blocking 恰好只有 daemon 一条。
+    expect(gaps.filter((g) => g.severity === "blocking").map((g) => g.facet)).toEqual([
+      "daemon",
+    ]);
     // 反向：远端的连接照常算数
     expect(
       computeGaps({ origins: ["aya"], statusOf: none }).some(
@@ -111,16 +158,45 @@ describe("computeGaps", () => {
     expect(gaps.some((g) => g.facet === "daemon")).toBe(false);
   });
 
-  it("★ daemonless 的机器不该被说「缺 daemon」（那是用户显式选的降级）", () => {
+  /**
+   * 🔴 `KR59D3`：旧配置里那个 `true` **不许被静默吞掉**。
+   *
+   * 这一条此前逐字叫「★ daemonless 的机器不该被说「缺 daemon」（那是用户显式选的降级）」，
+   * 断的是注入 `isDaemonless` 之后那台机器的 `daemon` 一格**消失**。
+   * `K35` 把那一档删了 ⇒ 语义整个翻面：那台机器从此**要连后端**，
+   * 而它连不上的时候用户该看见的是「你这台机器本来就是按不装后端配的，去装」，
+   * **不是**一句通用的「没测过」。
+   */
+  it("🔴 KR59D3：盘上还带着旧「不装后端」开关的主机 ⇒ 一条**指名的**告知", () => {
     const gaps = computeGaps({
       origins: ["aya"],
       statusOf: none,
-      isDaemonless: (o) => o === "aya",
+      legacyNoBackend: (o) => o === "aya",
     });
-    expect(gaps.some((g) => g.facet === "daemon")).toBe(false);
-    // 反向：不 daemonless 的机器仍然要说
-    const g2 = computeGaps({ origins: ["aya"], statusOf: none });
-    expect(g2.some((g) => g.facet === "daemon")).toBe(true);
+    const daemon = gaps.filter((g) => g.facet === "daemon");
+    expect(daemon).toHaveLength(1);
+    expect(daemon[0]?.code, "那条告知没有名字 —— 形状抄 `K-P2` 的唯一失败面").toBe(
+      NO_BACKEND_GAP_CODE,
+    );
+    // **有名字还不够**：它得说清「为什么」+「下一步」，而且是 blocking。
+    expect(daemon[0]?.consequence).toBe(NO_BACKEND_CONSEQUENCE);
+    expect(daemon[0]?.severity).toBe("blocking");
+    // 「确认没有」而不是「没测过」—— 盘上那份配置就是证据。
+    expect(daemon[0]?.kind).toBe("missing");
+    // ⚠ **它压过账本**：旧路径把这台机器的两格记成 `na`（「用户显式选的降级」），
+    //   那正是要被撤掉的那句话；账本说 `na` 也照样告知。
+    const over = computeGaps({
+      origins: ["aya"],
+      statusOf: () => ({ daemon: { kind: "na", at: T } }),
+      legacyNoBackend: () => true,
+    });
+    expect(over.filter((g) => g.facet === "daemon")[0]?.code).toBe(NO_BACKEND_GAP_CODE);
+    // 反向自检①：没有旧开关的机器**不带**这个名字（不是恒挂一条）。
+    const plain = computeGaps({ origins: ["aya"], statusOf: none });
+    expect(plain.some((g) => g.code === NO_BACKEND_GAP_CODE)).toBe(false);
+    expect(plain.some((g) => g.facet === "daemon")).toBe(true);
+    // 反向自检②：那条告知**看得见** —— 显示文案里含它的「下一步」。
+    expect(describeGap(daemon[0]!)).toContain("装上后端");
   });
 
   it("★ blocking 排在 optional 前面，且顺序稳定", () => {
@@ -147,7 +223,7 @@ describe("computeGaps", () => {
  * `N-F2` `NF2D3`：**「全绿就整块不出现」那一支从死代码变成走得到。**
  *
  * 它此前是死代码，不是因为这个纯函数错了 —— 恰恰相反，`computeGaps` 一直就把本机
- * 算进去、`notApplicable` 也一直只排掉本机的 `daemon` / `connection`。死的是**写点**：
+ * 算进去、`notApplicable` 当时也只排掉本机的 `daemon` / `connection`。死的是**写点**：
  * 本机的 `acctIso` / `accounts` 全仓没有任何 `recordFacet` 生产者
  * ⇒ 恒 `unknown` ⇒ `summarizeGaps` 恒非 null。
  *
@@ -156,41 +232,50 @@ describe("computeGaps", () => {
  * `accounts-section.vitest.ts` 的 `N-F2` 那一族用**真的一次面板运行**接上。
  */
 describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消失", () => {
-  /** 本机那条路上真会被写绿的两格（`accounts-section.note()` 的两个 facet）。 */
+  /**
+   * 本机那条路上真会被写绿的格子。
+   *
+   * ⚠ `K-R59`（09-11）**从两格变成三格**：`daemon` 那一格此前被 `notApplicable` 排掉
+   * （理由「本机不需要 daemon」，`C7` 之后不成立），今天它算数了，写点是
+   * `remote-section.ts::noteLocalBackend`（问一次本机那把手，`daemon-section` 在同一个
+   * 面板上早就在问同一个命令）。
+   */
   const localGreen: MachineStatus = {
+    daemon: { kind: "ok", at: T },
     acctIso: { kind: "ok", at: T },
     accounts: { kind: "ok", at: T },
   };
 
-  it("★ Windows 本机：适用格恰好是那两格，写绿之后 summarizeGaps 返回 null", () => {
+  it("★ Windows 本机：适用格恰好是那三格，写绿之后 summarizeGaps 返回 null", () => {
     // 分母（`NF2D3` 的 acceptor 逐字要求，防「一台机器都没有」蒙混）：
     //   · 机器数 = 1，**不是空清单**；
-    //   · 先断这台机在这个 OS 上的适用格集合非空、且恰好是我们要写绿的那两格。
+    //   · 先断这台机在这个 OS 上的适用格集合非空、且恰好是我们要写绿的那几格。
     const origins = [LOCAL_MACHINE_KEY];
     expect(origins.length).toBe(1);
     const before = computeGaps({ origins, statusOf: none, hostOs: "windows" });
     expect(
       before.map((g) => g.facet),
-      "适用格不是这两格 —— 那下面这条 null 就不是本件买来的",
-    ).toEqual(["acctIso", "accounts"]);
+      "适用格不是这三格 —— 那下面这条 null 就不是本件买来的",
+    ).toEqual(["daemon", "acctIso", "accounts"]);
 
     const after = computeGaps({ origins, statusOf: () => localGreen, hostOs: "windows" });
     expect(after).toEqual([]);
     expect(summarizeGaps(after)).toBeNull();
   });
 
-  it("★ 先证会红：把那两格改回「没测过」⇒ 清单又出现，且写的是「还没测过」", () => {
+  it("★ 先证会红：把那几格改回「没测过」⇒ 清单又出现，且写的是「还没测过」", () => {
     const gaps = computeGaps({
       origins: [LOCAL_MACHINE_KEY],
-      statusOf: none, // = 本件之前的行为：那两格从来没人写
+      statusOf: none, // = 本件之前的行为：那几格从来没人写
       hostOs: "windows",
     });
     expect(gaps.map((g) => `${g.facet}:${g.kind}`)).toEqual([
+      "daemon:unknown",
       "acctIso:unknown",
       "accounts:unknown",
     ]);
     const s = summarizeGaps(gaps);
-    expect(s).toBe("2 项还没测过");
+    expect(s).toBe("3 项还没测过");
   });
 
   it("★ 诚实边界：非 Windows 本机还剩 `ccm` 一格 —— 本机的 ccm 至今没有任何写点", () => {
@@ -268,5 +353,23 @@ describe("describeGap", () => {
     });
     expect(t).toContain("未测过");
     expect(t).not.toContain("缺");
+  });
+
+  // 🔴 〔`K-R65`〕这一对词今天**有第二个读者**（配置面审计那一页）⇒ 它必须只有一个住址。
+  // 上面两条断的是字面「缺」/「未测过」；本条断的是**那两个字面真的来自 `GAP_HEAD`** ——
+  // 把 `GAP_HEAD` 改掉而 `describeGap` 里又抄了一份，上面两条照绿，本条红。
+  it("「缺」/「未测过」这两个字只有一个住址（GAP_HEAD）", () => {
+    const mk = (kind: Gap["kind"]): Gap => ({
+      origin: "aya",
+      facet: "daemon",
+      kind,
+      consequence: "c",
+      severity: "blocking",
+    });
+    // 反向自检：两个头词不一样（一样的话下面等于空真）
+    expect(GAP_HEAD.missing).not.toBe(GAP_HEAD.unknown);
+    for (const kind of ["missing", "unknown"] as const) {
+      expect(describeGap(mk(kind))).toContain(`${GAP_HEAD[kind]} ——`);
+    }
   });
 });

@@ -79,9 +79,9 @@ powershell -NoProfile -File scripts\run.ps1 dev
   - `src-tauri/Cargo.toml::[package].version`
   - `src-tauri/tauri.conf.json::version`
 - [ ] `Cargo.lock` 提交（Rust 应用必须锁版本）
-- [ ] 若改过 daemon：`remote-daemon-proto/src/main.rs::BUILD_ID` 已 bump（手工标签非哈希！）+ 内嵌二进制一致（tag 发版 CI 自动重编；本地打包须先重编 + 同步 `.build_id` 清单）
+- [ ] 若改过后端：`remote-daemon-proto/src/main.rs::BUILD_ID` 已 bump（手工标签非哈希！）+ 内嵌二进制一致（tag 发版 CI 自动重编；本地打包须先重编 —— 🔴 **`K-R70`（09-12）起不再需要「同步 `.build_id` 清单」那一步**，身份跟着字节走）
       > **这条 2026-08-01 起是机器强制的**，不再靠自觉：`src-tauri/build.rs` 在「内嵌二进制的
-      > `.build_id` 清单 ≠ 源码 `BUILD_ID`」「有二进制但缺清单」「抠不到源码 `BUILD_ID`」三种情况
+      > **字节里问不出身份戳**」「字节自报的身份 ≠ 源码 `BUILD_ID`」「抠不到源码 `BUILD_ID`」三种情况
       > 直接 **panic 掉编译**（原来只有一条比 mtime 的 warning，漏掉了真实发生过的半 bump）。
       > 三条都以「`src-tauri/embedded-daemons/` 里真有二进制」为前提；该目录不存在（干净 clone / CI 常态）
       > 时是优雅降级，那一档由 `ssh_source.rs::embedded_build_id_single_source_wired` 兜。
@@ -279,22 +279,29 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 ### 2.7 改远端会话后端命令（tmux attach / new / send-keys）
 
 > ⚠⚠ **G3 订正（2026-08-04）：本节的「阶段②」已经是现在时了。**
-> 下面第 4 步把「取命令方式转 daemon RPC」写成**未来动作**，而 **F04b（kill）与 F04c（send-keys）
-> 已经把生产主路切到 daemon RPC**：`src-tauri/src/backend/control/daemon_kill.rs` /
+> 下面第 4 步把「取命令方式转后端 RPC」写成**未来动作**，而 **F04b（kill）与 F04c（send-keys）
+> 已经把生产主路切到后端 RPC**：`src-tauri/src/backend/control/daemon_kill.rs` /
 > `daemon_send_keys.rs`（分流判定在 `daemon_route.rs`，三态而非二态）。
-> `src/session-backend.ts` 那条 shell 串**已降级为 C7 过渡期回落**
-> （`tmux_daemon_gate_guard.rs` 反过来钉着「回落必须还在」）。
 >
-> ⇒ **今天要改 kill / send-keys 的行为，先改 Rust 那侧的主路**；
-> 只改 `session-backend.ts` 会改到一条**多数情况下走不到**的路径。
-> ⚠ 但 `attach` / `new-session` 那两条**仍然**走本节原来的路（它们没搬）——
-> **所以本节不是整节作废，是「按命令分叉」**：
+> 🔴 **订正二（`K-R106` 2026-09-13 现打）：这一段原来那两句今天都假了。**
+> 原文逐字是「`src/session-backend.ts` 那条 shell 串**已降级为 C7 过渡期**的第二条路
+> （`tmux_daemon_gate_guard.rs` 反过来钉着**它必须还在**）」——
+> ① `C7` 那条一次性 SSH 的第二条路 **`K-R72`（2026-09-12）整块删了**（`K-R54` 裁定表第 1 · 2 处）；
+> ② `tmux_daemon_gate_guard.rs` 今天钉的是**反向**（回潮闸）：那两条命令的生产段里
+> **再出现** `connect_and_exec_cmd` 就红。两次翻面方向相反，别读成只改了措辞。
+> ③ 而且 `session-backend.ts` 今天**与 kill / send-keys 无关** ——
+> 它只有 `createRunAttach` / `attach` / `runInExistingAttach` 三个方法。
+>
+> ⇒ **今天要改 kill / send-keys 的行为，盘上只有 Rust 那一条路可改。**
+> ⚠ `attach` / `new-session` 那两条**没有整条搬完**，而它今天要**分两半**读
+> —— 所以本节不是整节作废，是「按命令分叉」：
 >
 > | 命令 | 今天的主路 | 改哪里 |
 > |---|---|---|
-> | `kill` | daemon RPC（F04b） | `backend/control/daemon_kill.rs`；`session-backend.ts` 只是回落 |
-> | `send-keys` | daemon RPC（F04c） | `backend/control/daemon_send_keys.rs`；同上 |
-> | `attach` / `new-session` | **仍是** `session-backend.ts` 那条 shell 串 | 照本节原步骤 |
+> | `kill` | 后端 RPC（F04b） | `backend/control/daemon_kill.rs`；**盘上没有第二条路** |
+> | `send-keys` | 后端 RPC（F04c） | `backend/control/daemon_send_keys.rs`；同上 |
+> | `attach`（**本机**） | 🔴 **本机后端**〔`K-R106` 2026-09-13，用户逐字「归本机后端就好了啊」〕 | `src-tauri/src/history.rs::render_local_attach` ⇒ `ccm attach <名>`（走 `render_local_ccm` 那条既有渲染路）。⚠ 前端那条 `↗` 还没改成问它要 |
+> | `attach` / `new-session`（**远端兜底**） | 仍是 `session-backend.ts` 那条 shell 串 | 照本节原步骤。⚠ 它今天靠哪几个消费者站着，两把尺子都在 `launch_wire.rs`（`TS_FALLBACK_KEEPERS` 数处数 · `TS_FALLBACK_REACH` 判有没有生产调用方），**从源码派生，别在这里抄一份数** |
 
 
 **目标**：改「在远端起/接会话」的命令（resume/launcher/attach）。守 **INVARIANTS §31（SS-12）**：
@@ -308,7 +315,7 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 grep -nE "tmux (new-session|send-keys|attach)" src/remote-launch.ts   # 命中的必须全是 ` * ` 注释行
 ```
 3. **保形回归** → `node src/remote-launch.test.ts`（改命令串则同步更新其逐串断言）+ `node src/session-backend.test.ts`。
-4. **加后端**（阶段②，daemon 在场）：先过 §31 最终形态第②③条——**abduco/dtach 没有 send-keys，取命令方式转 daemon RPC**，不是往座里再加一个返回 shell 串的 const（见 `session-backend.ts` 顶注）。
+4. **加后端**（阶段②，后端在场）：先过 §31 最终形态第②③条——**abduco/dtach 没有 send-keys，取命令方式转后端 RPC**，不是往座里再加一个返回 shell 串的 const（见 `session-backend.ts` 顶注）。
 
 ---
 
@@ -319,7 +326,7 @@ grep -nE "tmux (new-session|send-keys|attach)" src/remote-launch.ts   # 命中�
 3. `cargo fmt + cargo clippy + cargo test --workspace --exclude code-picture-core + cargo test -p code-picture-core + npm test + npm run coverage + npm run build` 全绿。
    ⚠ **`--all` 只是 `--workspace` 的弃用别名**，差的是 **vendor 排除** —— 少了 `--exclude code-picture-core` 会把红线里「一字节不动」的 vendor 也跑进来（audit-0805 F18 订正）。
    ⚠ **各项条数与 CI job 数刻意不写在这里**：那些数在仓里曾有 4-5 份拷贝、全部漂成假的。
-   分工照旧：`npm test` = node 纯函数 + vitest DOM = **前端那个 CI job**；后端 / 远端 daemon / e2e 冒烟是**各自独立的 job**，`npm test` 不含它们；动滚动/渲染管线另跑 `e2e/f40-suite.sh`（见 e2e/README.md）
+   分工照旧：`npm test` = node 纯函数 + vitest DOM = **前端那个 CI job**；本机后端 / 远端后端 / e2e 冒烟是**各自独立的 job**，`npm test` 不含它们；动滚动/渲染管线另跑 `e2e/f40-suite.sh`（见 e2e/README.md）
 4. PR 描述：
    - 解决什么问题（链到 issue）
    - 怎么解决（一句话）

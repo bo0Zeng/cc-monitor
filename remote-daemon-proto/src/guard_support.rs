@@ -53,8 +53,24 @@ mod tests {
 
     /// ★ 全 crate 实测：daemon 的每个源文件用列 0 收尾判据都能剥干净。
     ///
-    /// 这条同时是「列 0 大括号够不够用」的持续验证 —— 哪天有人在测试模块里写了一段
-    /// 列 0 含右大括号的原始字符串，这里会红，那时再上真正的大括号配对。
+    // ⟦KR115D3 共用段·起⟧
+    /// 这条同时是「列 0 收尾判据够不够用」的持续验证 —— **而它自己已经守不住那一形了**。
+    ///
+    /// ⚠ 〔`K-R115` 09-14〕上一版这里逐字写着「哪天有人在测试模块里写了一段列 0 含右
+    /// 大括号的原始字符串，**这里会红**」。那句话**两天里假了两次**：
+    /// ① `K-R110`（09-13）现打它**当时就没红** —— 那 31 行漏进生产段，而守门人看不见；
+    /// ② `K-R110` 之后它**永远不会再因此红** —— 那一形已经被
+    ///    `guard_core::assert_test_module_ranges_are_brace_balanced` 正确处理掉了
+    ///    （匹配单位从「行」换成「计数」，区间在原始字符串里收尾会被它当场逮住）。
+    /// ⇒ **今天真正守这一形的是那条判据**；本条经 `assert_tree_strips_clean` 调到它，
+    ///    本条自己守的只剩「这棵树剥得干净 ＋ 文件数没缩水」。
+    ///
+    /// 🔴 **这一段在两棵树里各住一份，逐字必须相同**
+    /// （`remote-daemon-proto/src/guard_support.rs` ＋ `src-tauri/src/structural_scan.rs`）——
+    /// `K-R110` 交回时点名过这个形状：**两个住址、同一句话**，改一处漏一处，
+    /// 下一次还是一处真一处假。钉着它的是
+    /// `guard_support.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
+    // ⟦KR115D3 共用段·止⟧
     #[test]
     fn every_daemon_file_strips_clean() {
         // 地板 = **实测值**（2026-08-02：34 个 .rs）。原先是 10，松了 24 个文件。
@@ -74,5 +90,85 @@ mod tests {
         let r = std::panic::catch_unwind(|| assert_no_test_code("自检", &leaked));
         assert!(r.is_err(), "再导出之后判据形同虚设");
         assert!(production_source("fn a() {}\n").contains("fn a()"));
+    }
+
+    /// 🔴 `K-R115` `KR115D3`：**「两个住址、同一句话」不许再各说各话。**
+    ///
+    /// # 题面
+    ///
+    /// 本文件的 `every_daemon_file_strips_clean` 与 monitor 那一侧的同名判据
+    /// （住 `src-tauri/src/structural_scan.rs`，扫的是另一棵树）头上挂着**同一段散文**。
+    ///
+    /// ⚠ 这里**刻意不写出对侧那个判据的函数名**：`structural_scan.rs` 里的
+    /// `scan_tree!` 按构造摘掉调用者自己那一份 ⇒ 只住在那份文件里的符号**进不了**
+    /// 死名判据的代码侧语料，散文一点名它就被当成「代码里根本不存在的名字」。
+    /// 那是那条判据的一处盲区（`K-R115` 09-14 现打撞到），不是这一句写错了。
+    /// `K-R110` 交回时点名过这个形状：那句话**昨天是假的**（现打它没红）、
+    /// **今天变成另一种假**（那一形已被正确处理，它永远不会再因此红）——
+    /// 而**订正只落在其中一处**的话，下一次仍是一处真一处假。
+    ///
+    /// ⇒ 本条把那一段钉成**逐字相同**：只改一处，当场红。
+    ///
+    /// # ⚠ 它买不到什么（诚实边界，别把绿读宽）
+    ///
+    /// - **不判那句话对不对** —— 两处一起改成同一句假话，本条照样绿（那要读语义）。
+    ///   它买的是「**不会再一处真一处假**」，不是「说的是真话」。
+    /// - **人群写死是两处**。第三处地方再抄一遍同一句话，本条看不见。
+    /// - 抽取靠一对标记；标记被删掉 ⇒ 上面那条 `count() == 1` 先红，
+    ///   **不会退化成「抽了个空串、两边相等、静默绿」**。
+    #[test]
+    fn the_two_strip_clean_notes_stay_one_sentence() {
+        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .expect("remote-daemon-proto 的上级 = 仓根");
+        // 🔴 **运行时拼**：写成字面量的话，本文件里这两行自己就会命中标记，
+        //    下面那条 `count() == 1` 当场变成恒假 —— 而它正是防空真的那一条。
+        let beg = format!("// ⟦KR115D3 共{}", "用段·起⟧");
+        let end = format!("// ⟦KR115D3 共{}", "用段·止⟧");
+        let sites = [
+            "src-tauri/src/structural_scan.rs",
+            "remote-daemon-proto/src/guard_support.rs",
+        ];
+        let mut blocks: Vec<(&str, String)> = Vec::new();
+        for rel in sites {
+            let src = std::fs::read_to_string(repo.join(rel))
+                .unwrap_or_else(|e| panic!("{rel} 读不到：{e} —— 本条判不了，不许当成绿"));
+            for (mark, which) in [(&beg, "起"), (&end, "止")] {
+                assert_eq!(
+                    src.matches(mark.as_str()).count(),
+                    1,
+                    "{rel} 里共用段的「{which}」标记出现 {} 次，应当恰好 1 次 —— \
+                     抽取器指不到唯一那一段时，下面那条「两处相等」就是空真",
+                    src.matches(mark.as_str()).count()
+                );
+            }
+            let i = src.find(beg.as_str()).unwrap() + beg.len();
+            let j = src.find(end.as_str()).unwrap();
+            assert!(i < j, "{rel} 里共用段的两个标记次序反了");
+            blocks.push((rel, src[i..j].to_string()));
+        }
+        // 🔴 运行时拼：写成字面量会被 `needle_anchor_registry` 那条棘轮
+        //    （语料变量上的裸子串匹配，只许降）数进去 —— 那条棘轮不许为了今天好过而调高。
+        let pointer = format!("assert_test_module_ranges_are_brace{}", "_balanced");
+        // 反向自检：抽出来的不许是空的、也不许短到什么都不是（`"" == ""` 照样成立）。
+        for (rel, b) in &blocks {
+            let lines = b.trim().lines().count();
+            assert!(
+                lines >= 10,
+                "{rel} 抽到的共用段只有 {lines} 行 —— 抽空了的话「两处相等」照样绿"
+            );
+            assert!(
+                b.contains(pointer.as_str()),
+                "{rel} 的共用段里没有点名今天真正守这一形的那条判据 —— \
+                 `KR115D3` 要的就是这两处从「这里会红」改成指向它"
+            );
+        }
+        assert_eq!(
+            blocks[0].1, blocks[1].1,
+            "**两个住址、同一句话，而今天它们说的不是同一句。**\n\
+             {} 与 {} 的共用段逐字对不上 ⇒ 有人只改了一处。\n\
+             两处一起改，或者把这一段挪到一处去派生。",
+            blocks[0].0, blocks[1].0
+        );
     }
 }

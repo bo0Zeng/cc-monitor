@@ -16,7 +16,6 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock
 import {
   pickPrimaryOrigin,
   chipLabel,
-  formatUsageSummaryCompact,
   formatUsageSummaryForMenu,
   AccountChip,
 } from "./account-chip";
@@ -57,7 +56,6 @@ function host(p: Partial<RemoteHostConfig>): RemoteHostConfig {
     hostKeyFingerprint: "",
     addresses: [],
     jump: "",
-    daemonless: false,
     resumeCommand: "",
     ...p,
   };
@@ -96,17 +94,16 @@ function state(p: Partial<AccountsState>): AccountsState {
 }
 
 describe("pickPrimaryOrigin", () => {
-  it("取第一台非 daemonless", () => {
+  // 🔴 `K-R59`：这一组此前有两条断「跳过 daemonless 的主机」/「全 daemonless → null」。
+  //    定框 `K35` 把那一档删了 ⇒ **今天一台都不跳**，两条一起下岗。
+  it("取第一台", () => {
     expect(pickPrimaryOrigin([host({ label: "a" }), host({ label: "b" })])).toBe("a");
-  });
-  it("跳过 daemonless", () => {
-    expect(pickPrimaryOrigin([host({ label: "a", daemonless: true }), host({ label: "b" })])).toBe("b");
   });
   it("label 空 → 用 host", () => {
     expect(pickPrimaryOrigin([host({ label: "", host: "aya.local" })])).toBe("aya.local");
   });
-  it("全 daemonless → null", () => {
-    expect(pickPrimaryOrigin([host({ daemonless: true })])).toBeNull();
+  it("label 与 host 都空 → null（那台机器没有身份）", () => {
+    expect(pickPrimaryOrigin([host({ label: "", host: "" })])).toBeNull();
   });
   it("空列表 → null", () => {
     expect(pickPrimaryOrigin([])).toBeNull();
@@ -116,9 +113,6 @@ describe("pickPrimaryOrigin", () => {
 describe("chipLabel", () => {
   it("无 state → 未连远端", () => {
     expect(chipLabel(null)).toBe("未连远端");
-  });
-  it("daemonless（hidden）→ 空串（调用方隐藏）", () => {
-    expect(chipLabel(state({ available: false, error: "该主机 daemonless" }))).toBe("");
   });
   it("旧 daemon → daemon 需更新", () => {
     expect(chipLabel(state({ available: false, error: "版本过旧" }))).toBe("daemon 需更新");
@@ -215,44 +209,19 @@ describe("account-ux U8 chip 头像休眠", () => {
   });
 });
 
-describe("formatUsageSummaryCompact", () => {
-  it("单窗口 → 纯百分比", () => {
-    expect(formatUsageSummaryCompact({ status: "ok", buckets: [{ label: "会话", usedPercent: 38 }] })).toBe("38%");
+// 🔴 `K-R101`/`R59`（09-13）：`formatUsageSummaryCompact` **已删除** ——
+// 它压的是解析出来的百分比，而解析层功能已退役（墓碑住 `src/account-usage-parse.ts`）。
+// 折叠态 chip 从此留空；`10ch` 装不下一屏原文，就地再解析一次等于把退役的那层原地复活。
+describe("formatUsageSummaryForMenu（R59 之后只剩两态）", () => {
+  it("screen → 「已抓到一屏」（不是百分比，也不是空白）", () => {
+    expect(formatUsageSummaryForMenu({ status: "screen", raw: "Current session\n  38%" })).toBe(
+      "已抓到一屏",
+    );
   });
-  it("多窗口 → 斜杠分隔，只带一个尾随 %", () => {
-    expect(
-      formatUsageSummaryCompact({
-        status: "ok",
-        buckets: [
-          { label: "会话", usedPercent: 38 },
-          { label: "每周", usedPercent: 71 },
-        ],
-      }),
-    ).toBe("38/71%");
+  it("★ 空屏也是「已抓到一屏」——captured=true 就是成功（KR101D1 ③）", () => {
+    expect(formatUsageSummaryForMenu({ status: "screen", raw: "" })).toBe("已抓到一屏");
   });
-  it("非 ok 态一律空串（不占地方，不是每次都要展示失败原因）", () => {
-    expect(formatUsageSummaryCompact({ status: "not-logged-in" })).toBe("");
-    expect(formatUsageSummaryCompact({ status: "cli-missing" })).toBe("");
-    expect(formatUsageSummaryCompact({ status: "unrecognized", reason: "x" })).toBe("");
-    expect(formatUsageSummaryCompact({ status: "probe-failed", error: "x" })).toBe("");
-  });
-  it("ok 但零桶（理论不可达，纵深防御）→ 空串", () => {
-    expect(formatUsageSummaryCompact({ status: "ok", buckets: [] })).toBe("");
-  });
-});
-
-// F10 Phase D 审计（UX，重要）：菜单里当前账号那一行富余空间放得下失败短句，不该跟"没查过"
-// 一样空白——`formatUsageSummaryForMenu` 是与折叠态 `formatUsageSummaryCompact` 分开的格式化，
-// 只有 ok 态两者一致，其余四态菜单版本给出可读短句。
-describe("formatUsageSummaryForMenu", () => {
-  it("ok 态与 formatUsageSummaryCompact 一致", () => {
-    const outcome = { status: "ok" as const, buckets: [{ label: "会话", usedPercent: 38 }] };
-    expect(formatUsageSummaryForMenu(outcome)).toBe(formatUsageSummaryCompact(outcome));
-  });
-  it("四种失败态各给可读短句（不是空串）", () => {
-    expect(formatUsageSummaryForMenu({ status: "not-logged-in" })).toBe("未登录");
-    expect(formatUsageSummaryForMenu({ status: "cli-missing" })).toBe("无 claude");
-    expect(formatUsageSummaryForMenu({ status: "unrecognized", reason: "x" })).toBe("读不到");
+  it("probe-failed → 「探测失败」", () => {
     expect(formatUsageSummaryForMenu({ status: "probe-failed", error: "x" })).toBe("探测失败");
   });
 });
@@ -287,14 +256,37 @@ describe("F10 chip 用量摘要：菜单展开懒加载", () => {
     expect(invokeMock.mock.calls.some(([cmd]) => cmd === "account_usage")).toBe(false);
   });
 
-  it("展开菜单 → 懒加载当前账号用量，回填折叠态 chip 与菜单当前账号行", async () => {
-    mockUsageInvoke({ captured: true, raw: "Current session\n  38%\nResets in 2h" });
+  /**
+   * 🔴 **`KR101D1`（`R58` 裁定一）在 chip 这一面的判据**：那一屏**原文**到得了菜单。
+   *
+   * ⚠ 失效方向（件文件点名）：判「`raw` 字段还在类型里」—— 那是判形状，恒绿。
+   * 这里断的是 **DOM 上真的有那几个字**：把 `usageScreenEl(outcome.raw)` 那一句摘掉、
+   * 或者中途把 `raw` 换成空串，本条当场红。
+   */
+  it("★ KR101D1：展开菜单 → 那一屏**原文**落到菜单当前账号行的 DOM 上（折叠态留空）", async () => {
+    const screen = "Current session\n  38% used\nResets in 2h";
+    mockUsageInvoke({ captured: true, raw: screen });
     const chip = await mountReady();
     await chip.openMenu();
     await flush();
-    expect(chip.element.querySelector(".status-account-usage")?.textContent).toBe("38%");
+    // 折叠态：R59 之后没有可压成几个字符的数了 ⇒ 恒空。
+    expect(chip.element.querySelector(".status-account-usage")?.textContent).toBe("");
     const currentRow = document.querySelector(".account-picker-item.current");
-    expect(currentRow?.querySelector(".account-picker-usage")?.textContent).toBe("38%");
+    const pre = currentRow?.querySelector(".usage-screen-raw");
+    expect(pre, "菜单里没有那一屏原文的容器 —— 原文在中途被丢了").not.toBeNull();
+    expect(pre?.textContent).toBe(screen);
+  });
+
+  it("★ KR101D1 ③：抓到空屏也算成功 —— 仍然渲染，并明说它是空屏（不是失败）", async () => {
+    mockUsageInvoke({ captured: true, raw: "" });
+    const chip = await mountReady();
+    await chip.openMenu();
+    await flush();
+    const currentRow = document.querySelector(".account-picker-item.current");
+    expect(currentRow?.textContent).toContain("已抓到一屏");
+    expect(currentRow?.querySelector(".usage-screen-raw")?.textContent).toBe("");
+    expect(currentRow?.querySelector(".usage-screen-empty")?.textContent).toContain("空屏");
+    expect(currentRow?.textContent).not.toContain("探测失败");
   });
 
   it("非当前账号行不懒加载用量（只有当前账号那行探测）", async () => {
@@ -354,7 +346,7 @@ describe("F10 chip 用量摘要：菜单展开懒加载", () => {
     await flush();
     expect(showActionFailureToast).toHaveBeenCalledWith(
       "用量已刷新",
-      expect.stringContaining("50%"),
+      expect.stringContaining("已抓到一屏"),
       expect.objectContaining({ level: "info" }),
     );
   });
@@ -373,31 +365,41 @@ describe("F10 chip 用量摘要：菜单展开懒加载", () => {
     expect(currentRow?.querySelector(".account-picker-usage")?.textContent).not.toBe("…");
   });
 
-  it("F10 Phase D 审计（UX，阻塞）：探测期间切换当前账号 → 姗姗来迟的结果不会误标到新账号的折叠态 chip 上", async () => {
+  /**
+   * F10 Phase D 审计（UX，阻塞）：探测期间切换当前账号 ⇒ 姗姗来迟的结果必须被丢弃。
+   *
+   * 🔴 **`K-R101` 改了它断在哪儿，理由写出来**：原来断的是「折叠态 chip 上不是 `99%`」，
+   * 而 `R59` 之后折叠态 chip **恒空** ⇒ 那条断言会**恒绿**（判据的可观测面被这一刀抽走了）。
+   * 今天还看得见这件事的只有 `notify` 那条 toast ⇒ 判据跟着可观测面搬过来，
+   * **不留一条恒绿的在盘上**。
+   */
+  it("F10 Phase D 审计（UX，阻塞）：探测期间切换当前账号 → 姗姗来迟的结果被丢弃（走 notify 那条可观测路）", async () => {
     let resolveWeiProbe!: (v: unknown) => void;
     invokeMock.mockImplementation((cmd: string) =>
       cmd === "account_usage" ? new Promise((r) => (resolveWeiProbe = r)) : Promise.resolve(undefined),
     );
-    const setDef = vi.spyOn(accountsMod, "setDefaultName").mockResolvedValue(undefined);
-    vi.spyOn(accountsMod, "invalidateAccountsCache").mockImplementation(() => {});
     const chip = await mountReady(); // 当前账号 = wei
-    await chip.openMenu(); // 对 wei 发起探测（挂起，尚未 resolve）
+    (
+      chip as unknown as {
+        loadCurrentAccountUsage: (d: Account, force: boolean, notify: boolean) => void;
+      }
+    ).loadCurrentAccountUsage(acct({ name: "wei" }), true, true);
 
-    // 切到 amy——selectDefault 内部会 closeMenu + refresh(true)，refresh 会先清空 usageSpan。
+    // 切到 amy（探测仍挂起）。
     fetchAccountsMock.mockResolvedValue(
       state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "amy" }),
     );
-    const items = document.querySelectorAll<HTMLButtonElement>(".account-picker-item");
-    const amyRow = [...items].find((b) => b.textContent?.includes("amy"))!;
-    amyRow.click();
-    await flush();
-    expect(setDef).toHaveBeenCalledWith("amy");
-    expect(chip.element.querySelector(".status-account-usage")?.textContent).toBe(""); // 切号后先清空
+    await chip.refresh();
 
-    // wei 那次挂起的探测这时才姗姗来迟地 resolve——不该覆盖折叠态（当前账号已经是 amy）。
-    resolveWeiProbe({ captured: true, raw: "Current session\n  99%\nResets in 1h" });
+    resolveWeiProbe({ captured: true, raw: "WEI-STALE-SCREEN" });
     await flush();
-    expect(chip.element.querySelector(".status-account-usage")?.textContent).not.toBe("99%");
+    expect(showActionFailureToast).toHaveBeenCalledWith(
+      "用量刷新已过期",
+      expect.stringContaining("已切换"),
+      expect.objectContaining({ level: "info" }),
+    );
+    // 那一屏陈旧内容一个字都不许落到 DOM 上。
+    expect(document.body.textContent).not.toContain("WEI-STALE-SCREEN");
   });
 });
 

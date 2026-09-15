@@ -5,7 +5,9 @@
 set -euo pipefail
 # ⚠ `CC_BUS_HOME` 这里**不再读**:三件全搬进 ccm 之后,本脚本不碰总线目录了。
 #   它仍然要**原样传下去**(env 继承) —— ccm 调的 cc-register/cc-spawned-record 认这个变量。
-SELFDIR=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
+# ⚠ 〔`K-R48` 第二拍 09-11〕`SELFDIR` **删了**:它唯一的用途是拼 `$SELFDIR/../../ccm`
+#   去找仓内那个 bash 脚本,而那个文件今天不存在了(见下面查找次序那段)。
+#   留一个没人读的变量比删掉更坏 —— 下一个人会以为本脚本还按「自己住哪」找东西。
 # 旗标可在 <目录> 前任意顺序出现。
 tool=""
 acct=""
@@ -37,32 +39,62 @@ case "$tool" in claude|codex) ;; *) echo "cc-spawn: 未知 --tool '$tool'(应为
 # 启动器:CCSPAWN_LAUNCH 覆盖;否则按 tool 取默认。(可测性钩子:测试时设 mock 命令免起真 CLI)
 LAUNCH="${CCSPAWN_LAUNCH:-$tool}"
 
-# ccm 位置(unify-launch B02):同仓相对路径优先——B01 之后 cc-bus 与 ccm 同住 shared/,
-# `shared/cc-bus/scripts/cc-spawn` 的 ../../ 就是 `shared/`。CCM_BIN 可显式覆盖(测试钩子)。
+# ★★ `K-R48` 第二拍(09-11):**`ccm` 不再是一个脚本,它就是后端二进制。**
+#    〔用@09-11 `K33`〕逐字「后端**只有一个**…**不要有什么 bash 脚本**,**不要有什么单独的 ccm**。
+#    **所有命令只许有一处**,其他都是**根据传参来调用**」。
+#    ⇒ 原来这里找的是 `$SELFDIR/../../ccm`(仓里那个 1592 行的 bash 脚本、部署形态下
+#    落在 `~/.claude/skills/ccm`)。**那个文件今天不存在了**,查找规则整条换成找后端。
 #
-# **真实部署形态下 ../../ 落在哪**(B02 审计重要-7 实测纠正了我原先的注释):软链
-# `~/.local/bin/cc-spawn` 经 `readlink -f` 之后 SELFDIR = `~/.claude/skills/cc-bus/scripts`,
-# 于是 `../../ccm` = **`~/.claude/skills/ccm`** ——碰撞面是 skills 目录,不是 ~/.local/bin。
-# **必须 `-f` 而不能只 `-x`**:`[ -x <目录> ]` 为真,而 `~/.claude/skills/` 下全是目录,
-# 哪天有人装个名叫 `ccm` 的 skill 就会劫持解析(实测报 `是一个目录` 然后整体失败)。
+#    **查找次序**:`$CCM_BIN`(显式) → 部署落点 `~/.cc-monitor/bin/` → PATH 上的
+#    `cc-monitor-remote` → PATH 上的 `ccm`(给「已经把后端软链成 `ccm`」的人用)。
+#    🔴 **刻意不认 `$CCM_DAEMON_BIN`**:那个变量在仓里的 e2e 夹具里指的是**假 daemon**
+#    (`e2e/fake-daemon.sh` 这一族,只会答几条 wire 子命令),拿它当 CLI 叫会得到一个
+#    「答得出话、干不了活」的东西 —— 那正是本仓最贵的一类假信号。显式覆盖走 `CCM_BIN`。
+#    ⚠ **必须 `-f` 而不能只 `-x`**:`[ -x <目录> ]` 为真,而查找次序里那几档都可能是目录
+#    (历史实测:`~/.claude/skills/` 下全是目录,装个名叫 `ccm` 的 skill 就会劫持解析)。
+#    `CCM_BIN` 可显式覆盖(测试钩子),语义一个字没变。
 CCM_BIN="${CCM_BIN:-}"
 if [ -z "$CCM_BIN" ]; then
-  if [ -f "$SELFDIR/../../ccm" ] && [ -x "$SELFDIR/../../ccm" ]; then CCM_BIN="$SELFDIR/../../ccm"
-  elif command -v ccm >/dev/null 2>&1; then CCM_BIN=$(command -v ccm)
-  else echo "cc-spawn: 找不到 ccm(既不在 $SELFDIR/../../ccm,也不在 PATH)" >&2; exit 2; fi
+  for _x in "$HOME/.cc-monitor/bin/cc-monitor-remote" \
+            "$(command -v cc-monitor-remote 2>/dev/null)" \
+            "$(command -v ccm 2>/dev/null)"; do
+    if [ -n "$_x" ] && [ -f "$_x" ] && [ -x "$_x" ]; then CCM_BIN="$_x"; break; fi
+  done
+  unset _x
+  [ -n "$CCM_BIN" ] || {
+    echo "cc-spawn: 找不到后端(~/.cc-monitor/bin/cc-monitor-remote / PATH 上的 cc-monitor-remote 或 ccm 都没有)" >&2
+    echo "  后端由 cc-monitor 客户端自己释放到 ~/.cc-monitor/bin/;或用 CCM_BIN=<路径> 显式指定。" >&2
+    exit 2; }
 fi
 
-# **能力协商**(B02 审计重要-7):cc-spawn 现在硬依赖 ccm 的 `--detach`,而用户盘上的
-# `~/.local/bin/ccm` 完全可能是旧版(实测:这台机器上那份就没有 --detach)。不检查的话
-# 报出来的是 `ccm: 未知选项: --detach` + `建会话失败`,把"版本太旧"说成"建会话失败"。
-# 仓里本就有现成的协商机制(`--ccm-probe` 吐 `capabilities=`,TS 侧 `CLI_REQUIRED_CAPS` 在用),
-# 新的 shell 消费者没理由不用。
-_caps=$("$CCM_BIN" --ccm-probe 2>/dev/null | sed -n 's/^capabilities=//p')
+# **怎么把它当 `ccm` 叫**:后端认两条入口,都只经 `control::ccm::intercept` ——
+#   ① `argv[0]` 的 basename 是 `ccm`(别名/软链指过来);② `cc-monitor-remote ccm <argv…>`。
+# 找到的那份 basename 不是 `ccm` 时走②。**这不是两套实现**,是同一处解析的两条入口。
+ccm_prefix=("$CCM_BIN")
+case "$(basename "$CCM_BIN")" in
+  ccm|ccm.exe) ;;
+  *) ccm_prefix+=(ccm) ;;
+esac
+
+# **能力协商**(B02 审计重要-7):cc-spawn 硬依赖 `--detach` 等四项,而用户盘上 PATH 前面
+# 完全可能还躺着一份**旧的 bash `ccm` 副本**(`~/.local/bin/ccm`,实测那份就没有 --detach)。
+# 不检查的话报出来的是 `ccm: 未知选项: --detach` + `建会话失败`,把"版本太旧"说成"建会话失败"。
+# ⚠ 〔`K-R48` 第二拍〕**这道闸今天比从前更要紧**:查找次序末档就是 PATH 上的 `ccm`,
+#   而那正是旧副本最可能待的地方 —— 它是今天唯一挡得住旧副本的东西。
+# ⚠ **刻意仍按能力协商、不按 `version=` 比大小**:那个号今天是个裸串、没有单调性契约
+#   (`K-R48` `§0-Bx-3㈥` 逐条记着这笔账,归 `KR48D3`)。能力集是**有**契约的那一份。
+# ⚠⚠ **`|| true` 不许省**〔`K-R48` 第二拍 09-11 实测逮到〕:本文件开头是 `set -euo pipefail`,
+#   而**探针失败恰恰是这道闸要处理的那一格**。旧写法能活下来只是因为当时探的那份
+#   总是 rc=0(它认得 `--ccm-probe`);今天走②那条入口时,一份不认 `ccm` 子命令的旧副本
+#   会 rc≠0 ⇒ `pipefail` 把整条赋值判成失败 ⇒ `set -e` **当场静默退出**,
+#   下面那句「版本太旧」一个字都印不出来。**把诊断掐死在诊断之前**,正是本闸要治的病本身。
+_caps=$("${ccm_prefix[@]}" --ccm-probe 2>/dev/null | sed -n 's/^capabilities=//p') || true
 for _c in detach tmux-size tmux-base bus-register; do
   case ",$_caps," in
     *",$_c,"*) ;;
     *) echo "cc-spawn: ccm 版本太旧,缺能力 '$_c'($CCM_BIN)。" >&2
-       echo "  cc-spawn 收编进 ccm 之后依赖它;请把 shared/ccm 同步到 ~/.local/bin/ccm。" >&2
+       echo "  今天的 ccm 就是后端本体(cc-monitor 客户端会把它释放到 ~/.cc-monitor/bin/)。" >&2
+       echo "  PATH 上那份多半是旧的 bash 副本:要么把它挪开,要么 CCM_BIN=<后端路径> 显式指定。" >&2
        exit 2 ;;
   esac
 done
@@ -170,7 +202,7 @@ _rc=0
 #   并发实测:原本 3 个**响亮失败**变成 3 个**假成功**(都报同一个名字,而会话只有 1 个)。
 #   **比修之前更坏** ⇒ 用 `cmd && rc=0 || rc=$?` 这种直接取法。
 for _try in 1 2 3 4 5; do
-  _out=$("$CCM_BIN" "${ccm_args[@]}") && _rc=0 || _rc=$?
+  _out=$("${ccm_prefix[@]}" "${ccm_args[@]}") && _rc=0 || _rc=$?
   [ "$_rc" = 0 ] && break
   [ "$_rc" = 3 ] || break               # 不是撞名 ⇒ 立刻停,别掩盖真错误
   [ "$_try" = 5 ] || sleep 0.2

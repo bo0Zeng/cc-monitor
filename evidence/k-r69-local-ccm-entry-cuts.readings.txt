@@ -1,0 +1,214 @@
+K-R69 · 本机的 `ccm` 入口 —— 死值验读数
+量于：2026-09-12 · 工作树 /home/zbl/文档/claudecode-frontend/.claude/worktrees/k-r69（分支 track/k-r69，基线 79bf97d）
+量具住址：evidence/k-r69-local-ccm-entry-cuts.py（变异台 ＋ 沙箱执行器，收工时合成了一份）
+        · evidence/k-r69-fn-md5.py（逐函数 md5）
+⚠ 登记一处「量具在读数之后动过」：跑这九刀时沙箱那一段是 scratchpad 里一个 8 行的 shell 包装，
+  收工时内联进了变异台（理由：`shell_lint_registry` 当场逮到「仓里多了一个从没被 lint 过的 .sh」，
+  而给 evidence 里的一次性量具开 lint 豁免会把那张只有一条的表变成垃圾桶）。
+  **命令内容逐字未变**，变的只有「谁来起 docker」——理由与逐字比对写在变异台的注释里。
+被测对象：上面那棵工作树本身（**不是**主树 cc-monitor/，也不是别的工作树）。
+跑法：一律进沙箱（镜像 ccmon-devbox:latest，与 .claude/devbox/gate 逐字同一段 docker run，
+     只把末尾那条命令换成参数）⇒ 判别住 DECISIONS.md#R21。
+
+【分母】
+· Rust 那几刀：`cd src-tauri && cargo test -p monitor --lib` —— 未变异时 **1393 passed / 0 failed / 10 ignored**。
+· TS 那几刀：`npx vitest run src/launcher-diagnostics.vitest.ts` —— 未变异时 **49 passed / 0 failed**。
+· 每一刀落地前都断言锚点在目标文件里**恰好命中 1 次**（命中数不对整刀作废、不跑），
+  台子打印「变异已落地 + 锚点命中数」；跑完**无论结果如何都整份还原**（内存快照，不走 git checkout）。
+
+────────────────────────────────────────────────────────────────────────
+KR69D1 本机有一条 `ccm` 落点，且与远端那条同源
+────────────────────────────────────────────────────────────────────────
+刀 D1-a 「摘掉本机那条落点」（`KR69D1` 死值验第一向）
+  切在：tool_registry.rs · `TOOLS` 里 id=`ccm` 那条的第二个 `TouchedFile`（`~/.cc-monitor/bin/ccm*`）
+        —— 加一行 `#[cfg(any())]` 把它整条摘掉（签名/表结构不动）
+  锚点：`            TouchedFile {\n                // ⚠ **末段是 glob 而不是 `ccm`**` · 命中 1 次
+  判定行：test result: FAILED. 1389 passed; 4 failed; 10 ignored
+  红了这 4 条：
+    · tool_registry::the_closed_set_declares_a_ccm_landing_site_on_this_machine_too  ← 本条要买的那一格
+      报文逐字：「闭集里末段是 `ccm` 的落点只有 1 条…实得 [("~/.local/bin/ccm", Remote)]」
+    · tool_registry::the_declared_local_ccm_path_really_matches_the_name_we_install
+    · tool_registry::installable_tools_declare_where_they_land（本轮从「一个落点」拓宽成「一串」）
+    · config_surface::every_host_declaration_is_pinned
+  ⚠ 射程 4 条，**不是最小面**。原因写清：这一格在盘上是**四张表交叉钉**的
+    （落点表 · 落点↔touches 对拍 · 名字对拍 · host 钉死表），摘掉那一条会同时抽掉四张表的输入。
+    我试过更细的刀（把 `host: Client` 翻成 `Remote` / 翻成 `ProjectDir`）—— 最少也是 2~3 条，
+    因为 host 那一格本身就被 `every_host_declaration_is_pinned` 钉着。
+    ⇒ **本格的「最小面」由交叉钉的结构决定，下界不是 1。** 真正 1 条的最小面刀见 D1-b / D1-c。
+
+刀 D1-b 「本机那条改用另一份内容（写一个壳，而不是后端那份字节）」（`KR69D1` 死值验第二向）
+  切在：local_backend.rs · `install_local_ccm_entry` 里那一句
+        `std::fs::copy(backend_bin, &tmp)` → `std::fs::write(&tmp, ccm_entry_shim(...))`
+        ——**这正是 `KR69D1` 逐字点名的失效方向**「在本机再写一个 `ccm` 壳」
+  锚点：`    std::fs::copy(backend_bin, &tmp).map_err(|e| {` · 命中 1 次
+  判定行：test result: FAILED. 1392 passed; 1 failed; 10 ignored
+  红了这 1 条（**最小面**）：
+    · local_backend::the_local_ccm_entry_is_a_copy_of_the_backend_itself
+      —— 它比的是**逐字节相同**，不是「文件在不在」（「在」说不出它是谁，而本机上恰好
+         另有一个也叫 `ccm` 的东西，那正是本件的题面）
+
+刀 D1-c 「把那一跳从生产路上摘掉」（防空转）
+  切在：local_backend.rs · `resolve_or_extract` 体内
+        `install_local_ccm_entry(extract_dir, bin, make_executable)` → `Ok::<PathBuf,String>(bin.clone())`
+  锚点：`        if let Err(e) = install_local_ccm_entry(extract_dir, bin, make_executable) {` · 命中 1 次
+  判定行：test result: FAILED. 1392 passed; 1 failed; 10 ignored
+  红了这 1 条（**最小面**）：
+    · local_backend::the_resolution_path_really_puts_the_local_ccm_entry_down
+  ⚠ 没有这一条会怎样：D1-b 那条喂夹具就能全绿，而**只要没人在生产段调它，本机还是一条 `ccm` 都没有**
+    —— 也就是 `K-R69` 立件时那个读数原封不动。
+
+刀 D1-d 「远端那条改交给另一套 argv 解析」（同源的反向）
+  切在：local_backend.rs · `ccm_entry_shim` 的格式串 `exec {} {CCM_ENTRY_WORD} "$@"` → `exec {} run "$@"`
+  锚点：`exec {} {CCM_ENTRY_WORD} \"$@\"\n"` · 命中 1 次
+  判定行：test result: FAILED. 1391 passed; 2 failed; 10 ignored
+  红了这 2 条：
+    · local_backend::both_ccm_entries_spell_the_word_from_the_same_place （本轮新增）
+    · sftp::the_remote_ccm_entry_is_an_entry_not_an_implementation      （**既有**判据，也咬住了）
+  ⇒ 「两条落点取自同一个词」这件事，新旧两条判据各咬一半。
+
+────────────────────────────────────────────────────────────────────────
+KR69D2 装了之后，产品说得出「你 PATH 上那个是旧的」
+────────────────────────────────────────────────────────────────────────
+刀 D2-a 「把那句话掏空」（`KR69D2` 死值验逐字要的那一格）
+  切在：ccm_probe.rs · `render_path_ccm_hint` 的 `Ours` 臂改成 `Ours | NotOurs => String::new()`
+        （`NotOurs` 那一支从此走不到 —— 只掏那一句话，别的一个字不动）
+  锚点：`        PathCcmVerdict::Ours => String::new(),` · 命中 1 次
+  判定行：test result: FAILED. 1392 passed; 1 failed; 10 ignored
+  红了这 1 条（**最小面**）：ccm_probe::a_stale_ccm_on_path_is_named_out_loud
+
+刀 D2-b 「身份只比版本号，不比能力集」（失效方向的一半）
+  切在：ccm_probe.rs · `classify_path_ccm` 的 `ours.version == on_path.version && same_caps` → 去掉 `&& same_caps`
+  锚点：`    if ours.version == on_path.version && same_caps {` · 命中 1 次
+  判定行：test result: FAILED. 1392 passed; 1 failed; 10 ignored
+  红了这 1 条（**最小面**）：ccm_probe::the_verdict_cannot_be_reached_by_comparing_paths
+  （那一格喂的是「同版本、能力集差一项」—— 只比版本就漏掉它）
+
+刀 D2-c 「判词恒答『就是我们那一份』」（反向自检：它不是恒答的）
+  切在：ccm_probe.rs · `classify_path_ccm` 函数体开头插 `if true { return Ours; }`
+  锚点：`pub fn classify_path_ccm(ours: &CcmProbeResult, on_path: &CcmProbeResult) -> PathCcmVerdict {` · 命中 1 次
+  判定行：test result: FAILED. 1391 passed; 2 failed; 10 ignored
+  红了这 2 条：a_stale_ccm_on_path_is_named_out_loud · the_verdict_cannot_be_reached_by_comparing_paths
+
+  ⚠ **诚实边界（写死，别读宽）**：`classify_path_ccm` 比的是两张 `--ccm-probe` 名片
+    （`version=` ＋ `capabilities=`）。两份东西这两样**完全相同**时本条分不开它们 ——
+    那不是漏：那时它们在**行为契约上**就是同一份（消费者按这两样分支）。
+    要分「同契约但不同文件」得比字节，而那不是这一格要买的东西。
+
+────────────────────────────────────────────────────────────────────────
+KR69D3 别名生成器吐的那句 `ccm`，指得到我们装的那一份
+────────────────────────────────────────────────────────────────────────
+刀 D3-a 「生成器改回恒吐裸名」（`KR69D3` 死值验逐字要的那一格）
+  切在：launcher-diagnostics.ts · `ccmInvocation` 体首插 `if (true) return "ccm";`
+  锚点：`  if (!status || !status.entry || !status.ours.installed) return "ccm";` · 命中 1 次
+  判定行：Tests 3 failed | 46 passed (49)
+  红了这 3 条：
+    · 🔴 PATH 上那个**不是**我们这一份 → 显式指向我们那一份，而且**留一个 `CCM` 的口子**
+    · PATH 上根本没有 `ccm` → 同样显式指向我们那一份
+    · 🔴 PATH 上那个是旧的 → 那句话原样上屏，而且落盘的那几行指的是我们那一份（DOM）
+
+刀 D3-b 「把生成出来那一行改回写死 `ccm`」（不看调用方给的那一份）
+  切在：launcher-diagnostics.ts · `buildAliasLine` 的返回串 `${invocation}` → `ccm`
+  锚点：`  return \`${trimmedName}() { ${invocation}${flagStr ? \` ${flagStr}\` : ""} "$@"; }\`;` · 命中 1 次
+  判定行：Tests 2 failed | 47 passed (49)
+  红了这 2 条：上面第一条与第三条
+
+  ⚠ **本条刻意不写死绝对路径**：用户 09-11 明裁「这些命令都是可以自定义的」（`R19`）。
+    判据里有一格专门断它：`inv.startsWith("/") === false` ＋ `inv` 里必须有 `${CCM:-`（覆盖口）。
+
+────────────────────────────────────────────────────────────────────────
+7u：把实现整个退掉，还有多少条新断言仍绿
+────────────────────────────────────────────────────────────────────────
+退法：**逐处掏空，签名留着**（不走 `git checkout <基线> -- <生产文件>`）。共 7 处：
+  ① local_backend::install_local_ccm_entry —— 体首 `return Ok(dest)`，一个字节都不写
+  ② local_backend::resolve_or_extract —— 摘掉那一跳调用
+  ③ ccm_probe::classify_path_ccm —— 恒 `Undetermined`
+  ④ ccm_probe::render_path_ccm_hint —— 恒空串
+  ⑤ launcher-diagnostics::ccmInvocation —— 恒 `"ccm"`
+  ⑥ launcher-diagnostics::buildAliasLine —— 返回串改回写死 `ccm`
+  ⑦ tool_registry：本机那条 `TouchedFile` 摘掉 ＋ `destination` 退回 `RemoteHomeRelative`
+
+第一趟（只退 ①~⑥，申报留着）：
+  判定行 Rust：test result: FAILED. 1389 passed; 4 failed; 10 ignored
+  判定行 TS  ：Tests 3 failed | 46 passed (49)
+
+第二趟（①~⑦ 全退）：
+  判定行 Rust：test result: FAILED. 1385 passed; 8 failed; 10 ignored
+  判定行 TS  ：Tests 3 failed | 46 passed (49)
+  红的 8 条：the_local_ccm_entry_is_a_copy_of_the_backend_itself ·
+            the_resolution_path_really_puts_the_local_ccm_entry_down ·
+            a_stale_ccm_on_path_is_named_out_loud ·
+            the_verdict_cannot_be_reached_by_comparing_paths ·
+            config_surface::declared_destinations_are_pinned_to_the_real_writers ·
+            config_surface::every_host_declaration_is_pinned ·
+            the_closed_set_declares_a_ccm_landing_site_on_this_machine_too ·
+            the_declared_local_ccm_path_really_matches_the_name_we_install
+
+**全退之后仍绿的新/拓宽断言，逐条给理由（牙在哪一刀）：**
+  1. local_backend::both_ccm_entries_spell_the_word_from_the_same_place  —— 仍绿。
+     牙在 **D1-d**（那一刀让它红）。它钉的是「两条落点的那个词取自同一处」，
+     而 ①~⑦ 一处都没动 `CCM_ENTRY_WORD` 与 `ccm_entry_shim` ⇒ 这不是仪式，是靶不在这一刀上。
+  2. local_backend::two_processes_do_not_share_one_partial_file（本轮拓宽：恰好一处 → 每一处）
+     —— 仍绿。牙在「新增第二个 `.partial` 落点却不带 pid」那一刀上；①只是在函数体首早退，
+     `.partial` 的构造行还在源码里 ⇒ 它看得见、判得对。**这一条本轮是被它自己逮住才拓宽的**
+     （报文逐字「`std::process::id()` 命中 2 处（偏移 …）—— 断言指不明是哪一处」）。
+  3. tool_registry::installable_tools_declare_where_they_land（本轮拓宽：一个落点 → 一串）
+     —— 全退那一趟仍绿（destination 退回 `RemoteHomeRelative` 之后它只要求远端那一条，而它还在）。
+     牙在 **D1-a**（只摘 touches、destination 留着 ⇒ 它当场红）。两刀合起来才盖住这一格。
+  4. TS「PATH 上那个就是我们这一份 → 裸 `ccm`」（单元） —— 仍绿。它是**阴性对照**：
+     恒吐裸名的实现在这一格上恰好答对。它的价值只在与「不是我们那一份」那一格**成对**时兑现，
+     单独看它没有牙 —— 如实登记，不算数。
+  5. TS「我们那一份没装 / 探不到 → 回落裸名」 —— 同上，阴性对照。
+  6. TS「PATH 上那个就是我们这一份 → 一句话都不说」（DOM） —— 同上，阴性对照。
+  7. TS「问不出这一格 → 不许静默」 —— 仍绿。牙在 `loadCcmEntry` 的 catch 那一支，
+     而 ①~⑦ 没有一处动它。要红它得切那一支（本轮**没切**，如实登记）。
+  ⇒ 真有牙、且不是阴性对照的仍绿条目：**1 / 2 / 3 三条，各自的刀在上面点了名**；
+    4/5/6 是阴性对照（成对才算数）；7 缺一刀，登记为未验。
+
+════════════════════════════════════════════════════════════════════════
+补记（09-12，收窗口前）：PM 的刀 T —— **两条判据之间那道缝**，以及补上它的两格
+════════════════════════════════════════════════════════════════════════
+【缝在哪】我用两条判据夹「本机入口」，而**两条都诚实地标了自己的边界**：
+  · `the_local_ccm_entry_is_a_copy_of_the_backend_itself`      —— 喂夹具测**那个函数**；
+  · `the_resolution_path_really_puts_the_local_ccm_entry_down` —— 查源码形态，自标
+    「约定型守卫：挡得住『接线被删掉』，挡不住『换个名字继续错』」。
+⇒ 缝在中间：**接线还在、函数没改，而调用点喂进去的可以不是后端本体。**
+★ 这一刀能切中，靠的是那两句边界话 —— PM 逐字：「边界写得越诚实，缝越好找」。
+
+刀 T（PM 现打）把生产调用点第二个实参 `bin` 换成 `&extract_dir.join("pm-knife-not-the-backend")`
+  判定行：test result: ok. **1393 passed; 0 failed** —— **一条都没红**
+  后果不是编译错，是**静默放下一份不是后端的文件**；而 `--ccm-probe` 探它会失败，
+  **失败长得像「没装」**（那句话正是我自己在另一条判据里写的）。
+
+【补上的两格】（都在 `local_backend.rs`，同一拍改对了那句不完整的边界描述 —— 纪律 ⑲）
+  ① 形态那一半：`the_resolution_path_really_puts_the_local_ccm_entry_down` 多钉一对 —— 
+     `if let Resolved::Found(bin) = &resolved {` 恰好一处 ＋
+     `install_local_ccm_entry(extract_dir, bin, make_executable)` 恰好一处。
+     ⚠ **钉的是这一对，不是两个孤立的串**：分开钉的话，绑定留着、实参换掉照样过。
+  ② 不看拼法那一半（**新判据**）：`the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved`
+     —— 真跑一趟 `resolve_or_extract`（`target_triple` 取盘上必不存在的中性串 ⇒ 必走
+     「释放内嵌那份」那一支），比的是**落下来那份 `ccm` 的字节 == 刚解析出来的那份后端**。
+     三条反向自检：真的 `Found` 了 · 释放出来那份就是喂进去的字节 · 那两个文件不是同一个。
+
+【补完之后重打，基线】test result: ok. **1394 passed; 0 failed; 10 ignored**（＋1 = 新判据 ②）
+
+【刀 T 三形，逐个复打】分母同上（`cargo test -p monitor --lib`，沙箱内）
+  刀 T   实参换成一个**不存在**的路径（rustfmt 会把调用拆成多行）
+         判定行：test result: FAILED. **1392 passed; 2 failed**
+         红：the_resolution_path_hands_the_ccm_entry_the_backend_it_just_resolved（行为，
+             逐字「解析出后端之后，本机那条 `ccm` 入口**没被放下来**」）
+           · the_resolution_path_really_puts_the_local_ccm_entry_down（形态）
+  刀 T′  **留在同一行**换实参（`&knife_t()`）—— 存在的意义是**排除「红是因为换行了」这个混淆**
+         判定行：test result: FAILED. **1392 passed; 2 failed** —— 同样两条
+         ⇒ 形态那一格红的是**实参**，不是排版。
+  刀 T″  喂一份**真的存在**的别的文件（`decoy`，内容 `not the backend`）——
+         这一形**复制会成功**，是三形里最危险的那个：盘上真有一个叫 `ccm` 的可执行文件，
+         而它不是后端 ⇒ 「没装」与「装错了」在用户那边长得一模一样。
+         判定行：test result: FAILED. **1391 passed; 3 failed**
+         红：上面两条（行为那条红在**逐字节比较**上）
+           · write_site_registry::every_write_site_is_declared_and_installers_name_a_real_tool
+             ⚠ **第三条是我这把刀自己的脚手架招来的**（`decoy` 里那句 `fs::write` 没登记），
+             **不算本格的牙** —— 如实标出来，别把它读成「这一格有三条判据盯着」。
+
+【射程 · 最小面】三刀都是 **2 条**（T″ 那条脚手架红不计）。**这一格的最小面下界就是 2**，
+  而且是刻意的：形态那一条挡「源码上被换掉」、行为那一条挡「不论怎么拼都放错了」，
+  **两条合起来才是那道缝，单独任何一条都不够**（这句话写进了判据的头注）。

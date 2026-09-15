@@ -106,6 +106,34 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
     ("control/tmux_hook.rs", include_str!("control/tmux_hook.rs")),
 ];
 
+/// 🔴 **终端命令面**的文件 —— 它们持有 `--旗标` 字面量，但那些**不是 wire 子命令**。
+///
+/// # 为什么要有这张表（`K-R48` 09-11）
+///
+/// `dispatch_registry_is_complete` 的判法是「生产段里出现 `"--` 字面量的文件集
+/// == [`DISPATCH_FILES`]」，而 [`DISPATCH_FILES`] 里的每个 token 都得落进
+/// `doc/IPC-PROTOCOL.md` §10 的代码跨度。那份文档是 **monitor↔daemon 的冻结线上契约**，
+/// 读者在仓外（aterm），改一个字就是改协议。
+///
+/// `ccm` 那套旗标（`--tmux` / `--account` / `--cwd` …）**不属于那份契约**：
+/// 它们是**用户在终端里敲的东西**，消费者是人与 `shared/ccm-aliases.sh` 里那三个别名，
+/// 兼容性义务完全不同。把它们塞进 §10 会让那份文档开始描述一件它不负责的事。
+///
+/// # ⚠ 它**不是**豁免，是换了一格判据
+///
+/// 放进这张表的文件，`dispatch_registry_is_complete` 不再管它，
+/// 但它必须被另一条判据接住 —— 今天那条是
+/// `control::ccm::tests::every_flag_we_accept_has_a_usage_line`
+/// （**每个认得的旗标都要在 `ccm::USAGE` 里说得出**），
+/// 由下面 `every_terminal_surface_file_is_covered_by_its_own_guard` 钉住它真的存在。
+/// 只登记不接住 = 把一片扫描面静默挖空，那正是本文件头注里 D 审计一击即破的那一族。
+const TERMINAL_SURFACE_FILES: &[(&str, &str)] = &[(
+    "control/ccm/argv.rs",
+    "`ccm` 这套终端 argv 的唯一解析口。旗标字面量**只住这一个文件**\
+     （由 `control::ccm::argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 钉），\
+     它们是终端命令面、不是 wire 协议面。",
+)];
+
 /// 分派里出现的所有 `--子命令` / `--选项`（跨 [`DISPATCH_FILES`] 全部文件）。
 pub(crate) fn dispatched_subcommands() -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -140,7 +168,7 @@ pub(crate) fn dispatched_subcommands() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{dispatched_subcommands, DISPATCH_FILES};
+    use super::{dispatched_subcommands, DISPATCH_FILES, TERMINAL_SURFACE_FILES};
 
     const DOC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
 
@@ -526,6 +554,8 @@ mod tests {
             "只扫到 {} 个分派文件 —— 抽取坏了，本断言在空转：{found:?}",
             found.len()
         );
+        // 终端命令面那几份**不进这场对账** —— 它们由另一条判据接住（见那张表的头注）。
+        found.retain(|f| !TERMINAL_SURFACE_FILES.iter().any(|(n, _)| n == f));
         let mut registered: Vec<String> =
             DISPATCH_FILES.iter().map(|(n, _)| n.to_string()).collect();
         registered.sort();
@@ -536,6 +566,44 @@ mod tests {
              而 `every_dispatched_subcommand_appears_in_the_protocol_doc` **照常报绿**。\n\
              把新文件加进 `DISPATCH_FILES`（含 `include_str!`）。"
         );
+    }
+
+    /// 🔴 [`TERMINAL_SURFACE_FILES`] 里的每一份，都必须**真的**被它声称的那条判据接住。
+    ///
+    /// 没有这一条，那张表就退化成一张免检章：往里加一行就能把一整个文件的
+    /// `--旗标` 从两条判据底下同时抽走，而两边都报绿。
+    ///
+    /// ⚠ 它查的是**那条判据存在且扫的就是这份文件**，不查它判得对不对
+    ///（同本文件其余各条那条登记过的边界）。
+    #[test]
+    fn every_terminal_surface_file_is_covered_by_its_own_guard() {
+        assert!(
+            !TERMINAL_SURFACE_FILES.is_empty(),
+            "这张表空了 —— 要么真的没有终端命令面了（那就连同 `found.retain` 一起摘掉），\n             要么是被人掏空了。空表让 `retain` 变成 no-op，本条因此在空转。"
+        );
+        // 今天的接盘判据：`control::ccm` 的用法行判据。它必须①存在 ②扫的是同一份文件。
+        let ccm_mod = crate::control::ccm::own_source();
+        assert!(
+            ccm_mod.contains("fn every_flag_we_accept_has_a_usage_line"),
+            "接盘判据 `every_flag_we_accept_has_a_usage_line` 不在 `control/ccm/mod.rs` 里了 —— \n             `TERMINAL_SURFACE_FILES` 那一格从此没人接，把那份文件放回 `DISPATCH_FILES`，\n             或者给它另找一条判据并把这里改掉。"
+        );
+        // ⚠ 针**运行时拼**：写成字面量的话本文件就多出一处「解析不出路径的 `include_*!`」，
+        //   而 `cross_half_edge_registry` 的抽取器按文本数调用数 —— 那是一次现打逮到的假阳。
+        let needle = format!("include_str{}(\"argv.rs\")", "!");
+        assert!(
+            ccm_mod.contains(&needle),
+            "接盘判据不再扫 `argv.rs` 了 —— 它声称覆盖的那份文件与它实际扫的对不上。"
+        );
+        for (f, why) in TERMINAL_SURFACE_FILES {
+            assert!(
+                f.starts_with("control/ccm/"),
+                "`{f}` 不在 `control/ccm/` 下 —— 今天那条接盘判据只扫得到那一族，\n                 别的文件放进这张表等于没人管它。"
+            );
+            assert!(
+                why.len() > 40,
+                "`{f}` 那行理由太短，说不清它为什么不是 wire 面"
+            );
+        }
     }
 
     /// 文档里所有**反引号代码跨度**内出现的标识符（按非标识符字符切词）。
@@ -945,7 +1013,7 @@ mod tests {
     /// ★ 「别在一张表里混装两种角色」这条纪律**也适用于抽取器本身**。
     fn documented_frame_kinds() -> Vec<String> {
         let sec = DOC
-            .find("## 10. 远端 daemon wire 协议")
+            .find("## 10. 远端后端 wire 协议")
             .expect("文档里找不到 §10");
         let sec_end = DOC[sec..]
             .find("\n## ")
@@ -1144,7 +1212,7 @@ mod tests {
         // 也就是说：**一半的字段就算权威表被删干净，护栏也照样绿。**
         // 子命令那条早已收紧成「必须落进 §10 的两张表之一」，字段这条一直停在全文。
         let sec = DOC
-            .find("## 10. 远端 daemon wire 协议")
+            .find("## 10. 远端后端 wire 协议")
             .expect("文档里找不到 §10 —— 抽取坏了还是文档被大改了？");
         let sec_end = DOC[sec..]
             .find("\n## ")
@@ -1188,7 +1256,7 @@ mod tests {
     #[test]
     fn every_inbound_command_appears_in_the_protocol_doc() {
         let sec = DOC
-            .find("## 10. 远端 daemon wire 协议")
+            .find("## 10. 远端后端 wire 协议")
             .expect("文档里找不到 §10 —— 抽取坏了");
         let sec_end = DOC[sec..]
             .find("\n## ")
@@ -1244,7 +1312,7 @@ mod tests {
         // 那是一份**过期的宣称**，正是本仓最忌讳的那种：护栏自称的强度比实际高一档。
         // （D 设计审计 · 视角 A · P7 点名。字段那条早在 U6a 就收到 §10 了，这条没跟。）
         let sec = DOC
-            .find("## 10. 远端 daemon wire 协议")
+            .find("## 10. 远端后端 wire 协议")
             .expect("文档里找不到 §10 —— 抽取坏了");
         let sec_end = DOC[sec..]
             .find("\n## ")

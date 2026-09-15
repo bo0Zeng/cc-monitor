@@ -36,7 +36,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { resolve, join, sep } from "node:path";
 
 // ── `K-H2b` `D4 阻-2`：文件末尾那一组是**行为**判据，要驱动真的 `views/history.ts`。
 //    mock 骨架照 `views/history-actions.vitest.ts`（路径多一层 `../`）。
@@ -192,7 +192,10 @@ const WRAPPER_FILE = "src/ipc/commands.ts";
  *   只动一个会被那两条子集断言当场逮住。
  */
 /** Rust 侧 `#[tauri::command]` 声明（= `invoke_handler` 注册）的唯一命令名个数。 */
-const RUST_COMMAND_COUNT = 145;
+const RUST_COMMAND_COUNT = 148;
+// **K-R109 +1**（render_local_attach：本机后端产 `ccm attach <名>` 那一句，`R61` 裁定三；
+// 它与 `generate_handler!` 那一行、`parity_ledger::LEDGER` 那一行**必须同一拍**）。
+// **K-R49 +1**（write_account_aliases：加了账号就把 `zcc` / `bcc` 那条命令落盘）。
 // 增量账（谁把这个数推上去的）：**K-H2a +2**（read_relay_credentials_status /
 // write_relay_credentials_key）；U8c-2c-2 +1（render_ccm_launch）；
 // U8a-2c-pre +1（render_launch_payload）；P3t-Y2b +1（local_tmux_names）；
@@ -201,17 +204,35 @@ const RUST_COMMAND_COUNT = 145;
 // **K-H2b +1**（relay_routing_for：界面问「这几个**本机**账号走不走中转」）。
 
 /** TS 侧**字面量** `invoke("…")` 里出现过的唯一命令名个数。 */
-const TS_LITERAL_COMMAND_COUNT = 145;
+const TS_LITERAL_COMMAND_COUNT = 148;
+// **K-R109 +1**（render_local_attach —— 它落进了包装层，所以这个数也 +1）。
+// **K-R49 +1**（write_account_aliases，同上 —— 它落进了包装层，所以 `keys.length` 那个数也 +1）。
 // 增量账：**K-H2a +2**（同上）；devbench F03 +3（skill 接入面三条）；U8c-2c-2 +1；
 // U8a-2c-pre +1；P3t-Y2b +1（local_tmux_names）；**P4c +2**；
 // **P8a +1**（list_plugin_marketplaces）；**PS1 +1**（deploy_local_cc_bus）；**PS2 +1**（cc_bus_install_state）；
 // **K-H2b +1**（relay_routing_for，同上 —— 它落进了包装层，所以 `keys.length` 那个数也 +1）。
 
+/**
+ * `K-R122`（09-14）：**吐出来的路径一律用 `/` 分隔，跟这台机器的 `path.sep` 无关。**
+ *
+ * 🔴 它治的是一条**判据自己的病**，不是产品的病。云端 `Frontend typecheck + build` 那个 job
+ * 跑在 **windows runner** 上，`join()` 给回的是 `src\ipc\local-tmux-name.ts`；
+ * 而本文件下游三处都拿**正斜杠字面量**去认路
+ *（`endsWith("/ipc/commands.ts")` · `endsWith("/ipc/local-tmux-name.ts")` · `endsWith("/remote-launch.ts")`），
+ * 反斜杠那一份一条都剔不掉 ⇒ 「铸名只有一个算法口」那条实得
+ * `["src\\ipc\\local-tmux-name.ts", "src\\remote-launch.ts", "src\\tabs.ts"]`、期望 `["src/tabs.ts"]`
+ * ⇒ vitest `1 failed | 1725 passed`。**产品一个字节没问题，红的是量它的那把尺子。**
+ *
+ * ⚠ **规范化落在这一个点上，不写第二份平台分支**：`split(sep).join("/")` 在 Linux 上
+ * `sep === "/"` ⇒ 恒等（是 no-op，不是「另一条路」），在 Windows 上把 `\` 换成 `/`。
+ * 长度不变 ⇒ 下游那三处 `f.slice(REPO_ROOT.length + 1)` 一个字都不用改。
+ * ⚠ 只规范**吐出去的叶子**；递归仍拿本机形态的 `p` 下探（`readdirSync` 两种都吃）。
+ */
 function walk(dir: string, ext: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) walk(p, ext, out);
-    else if (name.endsWith(ext)) out.push(p);
+    else if (name.endsWith(ext)) out.push(p.split(sep).join("/"));
   }
   return out;
 }
@@ -365,7 +386,7 @@ describe("C04a 命令名钉死", () => {
     }
 
     // 计数自检：C04d 每迁一个模块进来，这个数要跟着涨（红一次提醒更新）
-    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(135) //；**K-H2b +1（relay_routing_for：本件把它落进包装层而不是散在 `accounts.ts` —— 落哪儿会不会红是两个不同的数：散在别处只动上面那两个，进包装层**多动这一个**）** //；**K-H2a +2（read_relay_credentials_status / write_relay_credentials_key）** // P4c +2（cc_bus_broadcast / cc_bus_kill）; // devbench F03 +3（list_skills/read_skill_file/write_skill_file）；U8a-2c-1 +1（daemon_send_into）； Z05 +1；G6 远端分叉 +1、list_remote_tmux 进包装层 +1；U8c-2c-2 +1（render_ccm_launch）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines：每台机一个 daemon 开关，C8）** P3t-Y2b +1（local_tmux_names）；**P8a +1（list_plugin_marketplaces）**；**PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**
+    expect(keys.length, `包装层今天覆盖 ${keys.length} 个`).toBe(138) //；**K-R109 +1（render_local_attach）—— ⚠ 本文件里跟着新命令走的是**三个**数，不是两个：`RUST_COMMAND_COUNT` · `TS_LITERAL_COMMAND_COUNT` · 这一个。派工单只点了前两个** //；**K-R69 +1（local_ccm_entry_status）**//；**K-R49 +1（write_account_aliases）**//；**K-H2b +1（relay_routing_for：本件把它落进包装层而不是散在 `accounts.ts` —— 落哪儿会不会红是两个不同的数：散在别处只动上面那两个，进包装层**多动这一个**）** //；**K-H2a +2（read_relay_credentials_status / write_relay_credentials_key）** // P4c +2（cc_bus_broadcast / cc_bus_kill）; // devbench F03 +3（list_skills/read_skill_file/write_skill_file）；U8a-2c-1 +1（daemon_send_into）； Z05 +1；G6 远端分叉 +1、list_remote_tmux 进包装层 +1；U8c-2c-2 +1（render_ccm_launch）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines：每台机一个 daemon 开关，C8）** P3t-Y2b +1（local_tmux_names）；**P8a +1（list_plugin_marketplaces）**；**PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）**
   });
 
   // 标题里的数原先写着 112，而断言早就是 119 了（Z05 起 120；local-as-remote L3a 起 121）——**标题也是记录**，
@@ -467,6 +488,75 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
         "② 中转那一格拼不出路由键（没有账号 id ⇒ 不注入）。\n" +
         "取值口只有一个：`accounts.ts::localLaunchAccountSync`。",
     ).toEqual([]);
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // `K-R46`：**每一条 `resume_history_session` 都要把 tmux 名说出来**
+  //
+  // 病（09-10 现打，分母在下面）：后端**故意**拒绝自己铸名
+  // （`history.rs` 的 `NO_TMUX_NAME`）⇒ 前端不传 = 会话不进具名容器。
+  // 三个 `resume_history_session` 调用点里**只有 `tabs.ts` 那一处传了**，
+  // `views/history.ts`（历史页 + 搜索卡片）与 `fork-flow.ts`（分叉本机起）都没传。
+  //
+  // ⚠ **`new_local_session` 不在这个分母里，而那不是漏掉**：Rust 侧
+  //   `history.rs::new_local_session` 的签名里**根本没有 `tmux_name` 这一格**
+  //   （函数体给 `launch_local` 的第五个实参硬写 `None`）⇒ 前端传了也没人收。
+  //   补它要同一拍改 `src-tauri/`，**不在 `K-R46` 写区**，已随本件上报。
+  //   ⇒ 本条的分母是**带得了这个参数的那几处**，不是「全部起会话的路」。
+  //
+  // 🔴 **本条只买「那一行字在不在 + 人群」**（与上一条同病，`D4` 两刀证过）：
+  //   把值换成恒 `null`、或把铸名口掏空，本条**照绿**。
+  //   值真的被铸出来、且真的避让了，由 `views/history-actions.vitest.ts` 与
+  //   `fork-flow.vitest.ts` 那两组**行为**判据买。两段合起来才是那条性质。
+  it("★ 每一处 `resume_history_session` 都带 `tmuxName`（分母 = 带得了这个参数的那几处）", () => {
+    const sites = localLaunchCallSites();
+    const resumeSites = sites.filter((s) => s.text.includes("resume_history_session"));
+    // 抽取器自检：分成两族之后任一族空掉 = 上面那个正则坏了，下面在空转。
+    expect(
+      resumeSites.length,
+      `\`resume_history_session\` 的调用点从 3 变成了 ${resumeSites.length}：\n` +
+        resumeSites.map((s) => s.file).join("\n"),
+    ).toBe(3);
+    expect(
+      sites.length - resumeSites.length,
+      "`new_local_session` 的调用点数变了 —— 它今天没有 `tmux_name` 参数位（Rust 侧签名里就没有），" +
+        "变了要回来看是不是后端也开了那一格",
+    ).toBe(1);
+    const missing = resumeSites.filter((s) => !/\btmuxName\b/.test(s.text)).map((s) => s.file);
+    expect(
+      missing,
+      "这些路没把 tmux 会话名传下去 ⇒ 后端 `render_local_ccm` 早退（`NO_TMUX_NAME`）⇒\n" +
+        "如实降级回旧路 ⇒ 起出来的会话**不在具名 tmux 容器里**，于是 `list_local_tmux`\n" +
+        "那一族（右键「杀死会话（kill tmux …）」/「就地 resume（复用空 tmux …）」）对它\n" +
+        "一条都给不出来。名字只许过 `remote-launch.ts::mintTmuxName`（全仓唯一铸造口），\n" +
+        "算法口住 `ipc/local-tmux-name.ts`。",
+    ).toEqual([]);
+  });
+
+  it("★ 铸名只有一个算法口（不许哪条路自己现查一遍 `list_local_tmux` 再拼）", () => {
+    // ⚠ **分母 3，今天 2/3 走口、1/3 内联** —— `src/tabs.ts` 那条 tab 栏 resume 自己
+    //   写着同样的六行，而 `src/tabs.ts` 不在 `K-R46` 的写区 ⇒ 收不进来，如实钉住现状。
+    //   这个 1 只许变小、不许变大：多一条内联的就红。
+    const inline: string[] = [];
+    for (const f of walk(resolve(REPO_ROOT, "src"), ".ts")) {
+      if (f.includes(".test.") || f.includes(".vitest.")) continue;
+      if (f.endsWith("/ipc/local-tmux-name.ts")) continue; // 算法口本体
+      if (f.endsWith("/remote-launch.ts")) continue; // `mintSessionTmuxName` 的定义处
+      const code = stripComments(readFileSync(f, "utf8"), "ts");
+      // ⚠ 用**整个标识符**做匹配单位（`\b` + 收尾括号），不是裸子串 —— 那正是
+      //   `scanning-guard-registry.vitest.ts` 那条递减棘轮盯的东西。
+      //   第一版在这里对语料变量做了一次裸的存在性子串判断，门禁当场把上限 8 顶到 9。
+      //   ⚠⚠ **连这条注释都不许把那个写法逐字抄下来** —— 那个棘轮扫的是**原始源码**、
+      //     不剥注释，散文里写一遍就照样被数进去（本轮实测：改成正则之后仍红 1 处，
+      //     红的就是这句注释里那份逐字副本）。本文件 `:440` 那条头注记的是同一族病。
+      if (/\bmintSessionTmuxName\s*\(/.test(code)) inline.push(f.slice(REPO_ROOT.length + 1));
+    }
+    inline.sort();
+    expect(
+      inline,
+      "本机铸名自己写了一遍的地方变了。算法口是 `src/ipc/local-tmux-name.ts`；\n" +
+        "`src/tabs.ts` 是 `K-R46` 收不进来的那一处（写区外），收掉它要另立一件。",
+    ).toEqual(["src/tabs.ts"]);
   });
 
   it("★★ 本机 resume 那两条也往 pin 里写（`D3 阻-2`：写入口先前结构上只走远端）", () => {
@@ -670,8 +760,10 @@ describe("K-H2b D4 阻-2：主路的账号与 pin 是**行为**判据（驱动�
       payloadOf("resume_history_session").account,
       "resume 的载荷里没有那条会话上次用的账号 ——\n" +
         "① 起会话落到 shell rc 那个默认号上（静默串号）；② 中转那一格拼不出路由键。\n" +
-        "⚠ 这一条是**行为**：`account:` 那行字还在、值是 `undefined` 时它必须红。",
-    ).toEqual({ kind: "named", configDir: DIR_A });
+        "⚠ 这一条是**行为**：`account:` 那行字还在、值是 `undefined` 时它必须红。\n" +
+        "🔴 `K-R53`：**名字也必须在里面** —— 后端那条 ccm 路只会 `--account <名字>`，\n" +
+        "   只给目录 = 这条主路结构上到不了后端那条路，必然落第二实现。",
+    ).toEqual({ kind: "named", configDir: DIR_A, name: "acct-a" });
   });
 
   it("★★ 新开主路：载荷里的 `account` 是**当前账号**（与上一条取到不同的值 ⇒ 不是常量）", async () => {
@@ -681,8 +773,9 @@ describe("K-H2b D4 阻-2：主路的账号与 pin 是**行为**判据（驱动�
     expect(
       payloadOf("new_local_session").account,
       "起新会话的载荷里没有当前账号 —— `D4` 刀 `D2k6` 正是把这一行的值换成 `undefined`，\n" +
-        "而当时全仓 `1502 passed` 全绿。",
-    ).toEqual({ kind: "named", configDir: DIR_B });
+        "而当时全仓 `1502 passed` 全绿。\n" +
+        "🔴 `K-R53`：名字也必须在里面（理由同上一条）。",
+    ).toEqual({ kind: "named", configDir: DIR_B, name: "acct-b" });
   });
 
   it("★★ resume 之后 pin **真的被写进去**（`update_history_metadata` 带那个 sid 与那个名字）", async () => {
@@ -814,8 +907,9 @@ describe("K-H2b D5 阻-2：tab 栏那条本机 resume 也是**行为**判据（�
       "tab 栏那条本机 resume 没把**这条会话上次的账号**传下去 ——\n" +
         "`D5` 刀 `X3b` 正是把这一处换成 `localLaunchAccountSync(null)`（用当前号顶替 pin），\n" +
         "当时全仓 `1509 passed` 全绿。后果是**静默串号**：切过号之后 resume 落到当前号上，\n" +
-        "中转再按那个错的 id 换上**别人那一行的 key**。",
-    ).toEqual({ kind: "named", configDir: DIR_A });
+        "中转再按那个错的 id 换上**别人那一行的 key**。\n" +
+        "🔴 `K-R53`：名字也必须在里面 —— 后端那条 ccm 路只会 `--account <名字>`。",
+    ).toEqual({ kind: "named", configDir: DIR_A, name: "acct-a" });
   });
 
   it("★★ tab 栏 resume 之后 pin **真的被写进去**（带那个 sid 与那个名字）", async () => {

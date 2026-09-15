@@ -126,7 +126,7 @@ pub const EXIT_DIAL_FAILED: i32 = 3;
 /// 界面交给代理的那一行 JSON。
 ///
 /// 字段是 `RemoteConfig` 的**子集**，故意不整份搬：本进程不需要 `label` / `addresses` /
-/// `jump` / `daemonless`（那几样都是界面侧的上游决策，见头注「边界」）。
+/// `jump`（那几样都是界面侧的上游决策，见头注「边界」）。
 ///
 /// ⚠ **蛇形键**（不是界面配置那套 camelCase）：这条管子的两端都是我们自己，
 /// 而 `RemoteConfig` 的 camelCase 是**给前端看的**契约。两者不该被拴在一起 ——

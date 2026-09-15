@@ -66,12 +66,13 @@ export function planResumeTmux(
   }
   // F13（用户 2026-08-03：「要撞名检查」）：**这里原本有一个产名的默认值，已删。**
   //
-  // 它是撞名的根因之一：它产的 `<sid8>-cc` 与 `pickFreshTmuxName` 的基名**逐字相同**，
+  // 它是撞名的根因之一：它产的 `<sid8>-cc` 与那个铸名口（`K-R96` 之前叫 `pickFreshTmuxName`，
+  // 今天是 `mintSessionTmuxName`）的基名**逐字相同**，
   // 而它**不做撞名避让** —— 也就是说另一处精心让出 `<sid8>-cc-2`，这里直接产
   // `<sid8>-cc` 撞上去。旧注释只钉了「两处同源，别只改一边」，没钉「避让也要相同」。
   //
   // 删它是**零行为改动**，但理由要说准（我第一版说错了，`tsc` 当场证伪）：
-  // **生产上三个真实调用点都传了 name**（`tabs.ts` 传 `pickFreshTmuxName(sid, existing)`、
+  // **生产上三个真实调用点都传了 name**（`tabs.ts` 传 `mintSessionTmuxName(cwd, existing)`、
   // `account-restart.ts` 传复用的既有名、`fork-flow.ts` 有 `a.tmuxName` 非空守卫）——
   // 但两个 **wrapper 的类型**（`buildResumeTmuxCmd` / `runRemoteResumeTmux`）当时写的是
   // `name?: string`，所以「省略 name」在**类型上是允许的**，只是碰巧没人这么调。

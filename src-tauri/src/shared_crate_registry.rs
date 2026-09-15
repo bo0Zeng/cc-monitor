@@ -220,10 +220,12 @@ mod tests {
             shared_crate_names()
         );
         // 绝对地板**留着**，但它今天的岗位只有两个：① 反空真（两边同时归零时对拍会「相等」）；
-        // ② 删共享 crate 时的**刻意摩擦**（原注释逐字写的那条）。棘到今天的真值 **7**。
+        // ② 删共享 crate 时的**刻意摩擦**（原注释逐字写的那条）。
+        // 棘紧记录：**7**（`K-H2a` 的 `creds-core`）→ **8**〔`K-R100` 09-13 加 `search-core`〕。
         assert!(
-            n >= 7,
-            "只从 crates/*/Cargo.toml 抽到 {n} 个包名（08-27 实测应为 7）—— 抽取器坏了，\
+            n >= 8,
+            "只从 crates/*/Cargo.toml 抽到 {n} 个包名（`K-R100` 09-13 起实测 8：\
+             上面 7 个 ＋ `search-core`）—— 抽取器坏了，\
              下面那条「三样都在 CI 里」会零命中零失败地绿"
         );
     }
@@ -687,8 +689,24 @@ mod tests {
             ("shellcheck (errors only)", true, "本机装了 shellcheck；步骤体从 `ci.yml` 原样抽出来跑"),
             ("vendored cc-acct-iso self-tests (sandboxed, 294 assertions)", true, "沙箱内自测；vendor 是 `cc-acct-iso` 不是红线点名的 `code-picture-core`"),
             ("python syntax compile", true, "`python3 -m py_compile e2e/*.py`"),
-            ("G-A/G-C 覆盖面地板（23 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
+            // 〔`K-R48` 第二拍 09-11〕标题里那个数从 23 变 21（删了 ccm-acceptance / ccm-pretrust 两套）。
+            ("G-A/G-C 覆盖面地板（20 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
             ("exec-bit guard (shared/** shebang files must be 100755 in git)", true, "`bash e2e/exec-bit-guard.sh`"),
+            // 🔴 **写区外的随动**〔`K-R114` 09-14〕：本轮往 `e2e-smoke` 加了一步，
+            // 而这条判据的题面逐字就是「CI 里加了一步、本地门禁不知道」⇒ 加步骤必须同拍登记。
+            // 本行**只登记事实**（这一步本地跑得动，以及怎么跑），不裁定任何东西。
+            //
+            // 🔴 **〔`K-R124` 09-15〕上一版这一行是一条假登记，订正在这里** ——
+            //    它逐字写着「沙箱镜像里 `python3 -c 'import yaml'` **直接有**」。**那是假的**：
+            //    现打 `docker run --rm ccmon-devbox:latest python3 -c 'import yaml'` 是
+            //    `ModuleNotFoundError: No module named 'yaml'`（2026-09-15）。
+            //    ⚠ **而真正的病不是这句话写错了**：那条守卫当时是用 `yaml.safe_load` 写的
+            //    ⇒ 它**在本地一次都跑不起来**，于是「CI 里有、本地也跑得动」这条登记
+            //    从来没有人真的去兑现过 —— 它坏了一个月（`d1a0552` → `4cf2ec2`）没人看见。
+            //    ⇒ 本轮把判据本体搬出 `ci.yml`、改成不依赖 PyYAML，并在本地门禁里收成一格
+            //    （`scripts/gate.sh` 的 `release-gate`）。**「跑得动」从此是一个有读数的事实，
+            //    不是一句登记。**
+            ("release.yml 发版守卫（KR114D1 ＋ KR124D2）", true, "判据本体住 `evidence/K-R124-ruler.py`（**不依赖 PyYAML**，自带 YAML 子集切块器）；CI 与本地门禁 `release-gate` 那一格跑的是**同一份文件**，不是两份抄件。被测对象由环境变量 `RELEASE_WORKFLOW` 给、整棵树由 `K_R124_ROOT` 给，缺省是本仓 `.github/workflows/release.yml`"),
             // ── 无名步骤（`- run: <命令>`，08-07 人群扩到它们之后才第一次可见）。
             // 标识是命令本身，多个 job 里同一条命令共用这一行登记。
             ("run: npm ci", false, "按 lockfile **重装** node_modules（三个 job 各一条无名步骤）：本地等价物是既有依赖树，重跑改变的是环境不是结论 —— 与上面那条有名字的 `npm ci` 同一个理由"),
@@ -1026,7 +1044,9 @@ mod tests {
     /// | 触发脚本 | 读数 | 带动的 `#[ignore]` |
     /// |---|---|---|
     /// | `local-backend-supervise.sh` | **7 过 / 0 败** | **4 条** |
-    /// | `tmux-guarded-acceptance.sh` | **14 过 / 0 败** | 1 条（`emit_guarded_commands_for_e2e`） |
+    /// | `tmux-guarded-acceptance.sh` | **14 过 / 0 败** | 1 条 —— 🔴 **`K-R72` 09-12：这一行是历史。**
+    ///   那套脚本与它带动的那条 `#[ignore]` 一起删了（输入源是 `tmux.rs` 两条桌面侧 SSH 回落的
+    ///   builder，回落删净 ⇒ 它取不到命令串）。这一行留着是因为**它记着那次读数**，不是现状 |
     /// | `usage-probe-acceptance.sh` | **11 过 / 0 败** | 2 条（F08 段 + 命令串产出） |
     ///
     /// ⇒ **7 条里 7 条都跑过了**（`local_backend` 那 4 条此前一次都没跑过 ——
@@ -1229,25 +1249,90 @@ mod tests {
         );
     }
 
-    /// 〔audit-0805 08-06〕**三条诚实边界压在同一个前提上：「CI 今天不会跑」——把这个前提钉住。**
+    /// 〔audit-0805 08-06 立 · `K-R114` / `R73` 09-14 重判后改措辞〕
+    /// **三条诚实边界压在同一个前提上：「CI 今天不会跑」——把这个前提钉住。**
     ///
-    /// `ROADMAP §5` 的 3w（release.yml 的版本 guard 不触发）· 3x（七条 `#[ignore]` 执行次数为零）·
-    /// 3y（monitor 的 Windows 面没有编译信号），**三条的成立都只因为一件事**：
-    /// 两个 workflow 都只在 `push` / `pull_request` 上触发，而〔用 08-05〕裁定不再 push。
+    /// `ROADMAP §5`（住 `audit-0805` 那个工作区）的 3w（release.yml 的版本 guard 不触发）·
+    /// 3x（七条 `#[ignore]` 执行次数为零）· 3y（monitor 的 Windows 面没有编译信号），
+    /// 三条当初的成立**都只因为一件事**：两个 workflow 都只在 `push` / `pull_request` 上触发，
+    /// 而〔用 08-05〕裁定不再 push。
     ///
     /// 这个前提**没人盯**。谁加一个 `workflow_dispatch`（手点就能跑）或 `schedule`（定时跑），
     /// 三条边界当天就该重判 —— 而在本条之前，它们会**继续以「已登记的诚实边界」的样子留在表里**，
     /// 那正是本会话反复量到的**停滞式腐坏**：世界变了、文本一个字没动。
     ///
-    /// ⚠ 本条**不断言 CI 应该怎么触发**（那是〔用〕的裁决）。它只断言
-    /// 「触发方式没变过」——变了就红，逼人回来把那三条边界重新过一遍。
+    /// # 🔴 09-14：它红过一次，而那一次它红得对 —— 于是本条从「一律禁」变成「禁 ＋ 登记」
+    ///
+    /// `K-R114` 给 `release.yml` 加了 `workflow_dispatch`（`KU27`：在那之前，想验一次发版流水线
+    /// 改得对不对，唯一的办法是真推一个 `v*` tag）⇒ **本条当场红**。
+    /// 那一件**判不了这条**（三条边界住**另一个工作区**，且翻正属重新裁定）⇒ 交 PM。
+    /// 重判落在 `DECISIONS.md#R73`，**依据是那一趟真跑的 CI（run `34861383050`），不是读配置推的**：
+    /// - **`3w` 翻正** —— 那趟**真跑了**版本 guard（逐字 `Version self-consistent: 3.7.0`）；
+    /// - **`3y` 翻正** —— 那趟**真编了** Windows 面；
+    /// - **`3x` 不翻正** —— 它压在 **`ci.yml`** 上，而那一件**一个字没动 `ci.yml`**。
+    ///
+    /// ⇒ 本条因此**不许整条删掉**：删了会把 `3x` 那一半的守卫一起砍掉（**刀不许连量具一起砍**）。
+    /// 今天的形状是：**`ci.yml` 照旧一个自启触发器都不许有**；`release.yml` 上那一个是**裁过的**，
+    /// 进 `ADJUDICATED` 登记并带住址回指裁决口。**谁再往 `ci.yml` 加，照样当场红。**
+    ///
+    /// ⚠ 本条**不断言 CI 应该怎么触发**（那是〔用〕/ PM 的裁决）。它断言的是
+    /// **「自启触发器要么没有，要么有人裁过并留了住址」** —— 两者都不成立就红，逼人回来重判。
+    ///
+    /// ⚠ **诚实边界，三条，别读宽**：
+    /// ① 登记表里那个住址本条**只验形状**（非空 ＋ 形如 `<文件>#<锚点>`），
+    ///    **不去那棵树上核它真的指得到** —— 裁决口住计划仓，本 crate 结构上够不着；
+    /// ② 它认的是 `on:` 段里**有没有那个词**，不解释 GitHub 的触发语义
+    ///    （`schedule` 配一个永不命中的 cron，本条照样算它「有」）；
+    /// ③ 登记一行买到的是「**有人回来过**」，**不是**「那三条边界今天写得对」——
+    ///    后者要读 `audit-0805` 那份 `ROADMAP` 的正文，不在本条射程里。
     #[test]
     fn the_premise_behind_three_honesty_boundaries_still_holds() {
         /// 会让 workflow **在没有 push 的情况下也能跑起来**的触发器。
         const SELF_STARTING: &[&str] = &["workflow_dispatch", "schedule", "repository_dispatch"];
+        /// **裁过的**自启触发器：(workflow 文件 · 触发器 · 裁决口住址)。
+        ///
+        /// 🔴 **一行 = 一次「有人回来把那几条边界重新过了一遍」。没有这一行 = 没人裁过。**
+        /// 加一行之前先问：那几条边界你重判了吗？裁决口在哪？——答不出就别加行，让它红着。
+        const ADJUDICATED: &[(&str, &str, &str)] =
+            &[("release.yml", "workflow_dispatch", "DECISIONS.md#R73")];
+        /// 扫描面 ＋ **每个文件今天还压着哪几条边界**（红了要人去重判的就是这些）。
+        /// 🔴 这一栏不是装饰：诊断里要说得出「你这一下动的是**谁**的前提」。
+        const STILL_RESTING_ON: &[(&str, &str)] = &[
+            (
+                "ci.yml",
+                "3x —— 七条 `#[ignore]` 的 e2e 触发路今天**只有 ci.yml 这一条**，\
+                 09-14 那次重判**刻意没翻它**（`R73` 逐字：K-R114 只动 release.yml）",
+            ),
+            (
+                "release.yml",
+                "3w / 3y —— 09-14 已由 `R73` 依据 run 34861383050 翻正；\
+                 再加**新的**自启触发器，仍要重判一次再登记",
+            ),
+        ];
+
+        // ★ 登记表自检：三条，防「登记了一行却永远轮不到」那一形（那种行只会替真判据挡枪）。
+        let files: Vec<&str> = STILL_RESTING_ON.iter().map(|(f, _)| *f).collect();
+        for (wf, trig, at) in ADJUDICATED {
+            assert!(
+                files.contains(wf),
+                "`ADJUDICATED` 登记了 `{wf}`，而扫描面里没有它（今天扫的是 {files:?}）—— \n\
+                 这一行永远轮不到，等于没登记。"
+            );
+            assert!(
+                SELF_STARTING.contains(trig),
+                "`ADJUDICATED` 登记的 `{trig}` 不在 `SELF_STARTING` 里 —— \n\
+                 那它压根不会被检查，这一行是死的。"
+            );
+            assert!(
+                at.contains('#') && !at.starts_with('#') && !at.ends_with('#'),
+                "`{wf}` / `{trig}` 那一行的裁决口住址 `{at}` 不成形（要 `<文件>#<锚点>`）—— \n\
+                 ⚠ 本条只验形状，不去那棵树上核它真指得到（裁决口住计划仓，本 crate 够不着）。"
+            );
+        }
 
         let root = root().parent().expect("仓根").to_path_buf();
-        for wf in ["ci.yml", "release.yml"] {
+        let mut seen_adjudicated = 0usize;
+        for (wf, resting) in STILL_RESTING_ON {
             let text = std::fs::read_to_string(root.join(".github/workflows").join(wf))
                 .unwrap_or_else(|e| panic!("读不到 {wf}: {e}"));
             // 只看 `on:` 到 `jobs:` 之间那一段，且剔注释 —— 别把说明文字当触发器。
@@ -1278,17 +1363,39 @@ mod tests {
                 seg.len()
             );
             for trig in SELF_STARTING {
-                assert!(
-                    !guard_core::contains_word(&seg, trig),
-                    "{wf} 新增了 `{trig}` 触发器 —— **CI 从此可以在没有 push 的情况下跑起来**。\n\
-                     ⇒ `ROADMAP §5` 的 3w / 3x / 3y 三条诚实边界的**前提当场消失**，必须重判：\n\
-                     · 3w：release.yml 的版本一致性 guard 又会跑了；\n\
-                     · 3x：七条 `#[ignore]` 的 e2e 触发路重新接通；\n\
-                     · 3y：monitor 的 Windows 面重新有编译信号。\n\
-                     本条不反对加触发器 —— 它只是不许**加了而没人回来改那三条**。"
-                );
+                let present = guard_core::contains_word(&seg, trig);
+                let registered = ADJUDICATED.iter().find(|(f, t, _)| f == wf && t == trig);
+                match (present, registered) {
+                    // 有触发器、没人裁过 ⇒ 这就是本条要逮的那一形。
+                    (true, None) => panic!(
+                        "{wf} 新增了 `{trig}` 触发器 —— **它从此可以在没有 push 的情况下跑起来**。\n\
+                         ⇒ 今天压在这个文件上的诚实边界**前提当场消失，必须重判**：\n\
+                         · {resting}\n\
+                         重判完之后把这一行加进 `ADJUDICATED`（带裁决口住址），本条自然绿。\n\
+                         🔴 **不许把本判据删掉或放宽** —— 别的文件那一半的守卫还压在它身上。\n\
+                         （已经裁过的：{ADJUDICATED:?}）"
+                    ),
+                    // 登记还在、触发器没了 ⇒ 登记表在替真判据挡枪，摘掉它。
+                    (false, Some((_, _, at))) => panic!(
+                        "`ADJUDICATED` 里登记着「{wf} 的 `{trig}` 已裁过（{at}）」，\n\
+                         而 `{wf}` 的 `on:` 段里**今天没有它**。\n\
+                         ⇒ 那一行在替真判据挡枪：它一留着，下次谁再加回来就**不会红**。\n\
+                         处置：把那一行摘掉（那条边界随之回到「未裁」，加回来要重判）。"
+                    ),
+                    (true, Some(_)) => seen_adjudicated += 1,
+                    (false, None) => {}
+                }
             }
         }
+        // ★ 地板：「裁过的」那一支今天必须**真的被走过**，否则它是一条零命中的死支
+        //   —— 而零命中的分支在本仓已经连着栽过五次（「新分支平时没人走」）。
+        assert_eq!(
+            seen_adjudicated,
+            ADJUDICATED.len(),
+            "「裁过的」那一支这一趟走了 {seen_adjudicated} 次，而登记表有 {} 行 —— \n\
+             对不上说明有登记行没被行使（上面两条 panic 本该先响；都没响就是扫描面漏了文件）。",
+            ADJUDICATED.len()
+        );
     }
 
     /// 〔audit-0805 08-06〕**跑不了的那批 e2e，静态断言条数只许涨不许掉。**
@@ -1317,9 +1424,38 @@ mod tests {
             // `U-NP④`（08-14）：19 → 26。场景 3b/5ter 从「验 ccm 那条每秒 poller 打 `@ccm_sid`」
             // 改成「验 daemon 打标的那把钥匙（`/proc/<pid>/environ` 的 `TMUX_PANE`）＋按它的算法
             // 打一次」——poller 已整条删除，旧判据测的东西不存在了。**条数是涨的，不是删测试。**
-            ("ccm-acceptance", "ccm-acceptance.sh", "ck", 26),
-            ("ccm-pretrust", "ccm-pretrust-acceptance.sh", "ck", 15),
-            ("tmux-guarded", "tmux-guarded-acceptance.sh", "ck", 14),
+            // 🔴 〔`K-R48` 第二拍 09-11〕**`ccm-acceptance`(26) 与 `ccm-pretrust`(15) 两行摘了 ——
+            //    那两套 e2e 删了。摘的理由要写清，不然这就是「把棘轮往下拧」。**
+            //    它们**只测 `shared/ccm` 那个 bash 脚本的真机行为**：`ccm-pretrust` 测的预信任
+            //    （写 `~/.claude.json` / `~/.codex/config.toml`）`K-R48` 第一拍逐字登记为**没搬**
+            //    （daemon 那个 crate 有「进程自身不许写用户既有数据」的红线 `readonly_guard`）
+            //    ⇒ 它今天**连被测对象都没有**；`ccm-acceptance` 的 31 条里，实测把 `$CCM` 指向
+            //    二进制之后 **13 通过 / 18 失败**，18 条里绝大多数卡在「一次性模式在 tmux 内
+            //    由谁打 `@ccm_sid`」那一格 —— 那一格 `K-R48` 第一拍逐字登记为**没裁**。
+            // ⚠ **如实边界，这是本拍最贵的一笔账 —— 而它比我第一版写的小一格，订正在这里**：
+            //    我原先写「删了之后真起会话 / 真 attach / 真 tmux 那一面**一条 e2e 都没有了**」。
+            //    **那句话是假的**：`e2e/p3t-local-tmux.sh`（10 条）与 `e2e/cc-spawn-uplift.sh`（72 条）
+            //    都在**真 tmux**（私有 `-L` socket）上真建会话，本拍把它们指向二进制之后现打
+            //    10/0 与 71/1（那 1 条是既有的 locale 红，`gate.sh:119-124` 登记着）。
+            //    ⇒ 真丢的是这两套**各自专有**的那一面：`ccm-pretrust` 的预信任写入
+            //    （`~/.claude.json` / `~/.codex/config.toml`，第一拍登记为**没搬**）与
+            //    `ccm-acceptance` 的**身份打标**（`@ccm_sid` 那把钥匙，第一拍登记为**没裁**）。
+            //    ⚠ 而现打验过：原生实现**真的建得出会话**（隔离 socket 上 `ccm --tmux=<名>
+            //    --detach` ⇒ `tmux ls` 看得到）—— 那 18 条红是**夹具形状**的，不是功能回归。
+            //    归 `K-R48` 下一拍（先裁 `@ccm_sid`，再把这套重新指过去）。
+            // 🔴 〔`K-R72` 09-12〕**`tmux-guarded`(14) 这一行摘了 —— 摘的理由**（同 `K-R48`
+            //    那两行的口径：摘棘轮的行必须写清，不然就是「把棘轮往下拧」）：
+            //    那套 e2e 的**输入源**是 `tmux.rs` 里那条 `emit_guarded_commands_for_e2e`，  〔散文墓碑〕
+            //    它 emit 的是 `build_guarded_tmux_cmd` 那条原子远端 shell 串的生产命令。
+            //    ⚠ 刻意**不写成 `文件.rs::符号` 那个住址形**：那个符号今天不在盘上了，
+            //    住址形会被 `structural_scan` 里那条「源码里的符号住址还解析得到吗」当场判红
+            //    （它已经逮过我一次）——**住址是给人去点的，不是给人凭吊的。**
+            //    送键与杀会话的桌面侧 SSH 回落删净之后**那个 builder 不存在了** ⇒
+            //    脚本第一步 `cargo test … --ignored` 就产不出任何命令串，整套跑不起来。
+            //    ⇒ **不是「断言变少了」，是被测对象没了**：脚本本身已从 `e2e/` 删除，
+            //    留在这里的一行只会让本条去读一个不存在的文件（`read_to_string` 直接 panic）。
+            //    真机那一面的等价覆盖在 `daemon-gate2-acceptance.sh`（下面 `NO_STATIC_SIGNAL`
+            //    那张表里，真 daemon + 真 tmux，用例逐行来自同一张 `gate2-golden.tsv`）。
             ("tmux-target", "tmux-target-acceptance.sh", "ck", 26),
             ("usage-probe", "usage-probe-acceptance.sh", "ck", 9),
         ];

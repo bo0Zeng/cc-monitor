@@ -31,42 +31,31 @@ import {
   type AccountsState,
   type Account,
 } from "./accounts";
-import { fetchAccountUsage, OK_USAGE_UNVERIFIED_CAVEAT, type AccountUsageOutcome } from "./account-usage";
+import { fetchAccountUsage, usageScreenEl, type AccountUsageOutcome } from "./account-usage";
 import { accountAvatarEl } from "./account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "./remote-config";
 import { showActionFailureToast } from "./error-toast";
 
 // ------------------------------------------------------------ 纯函数（可测）
 
-/** 选 chip 绑定的"主远端"：第一台非 daemonless 的已配置远端。无 → null（chip 隐藏）。 */
+/** 选 chip 绑定的"主远端"：第一台已配置远端。无 → null（chip 隐藏）。
+ *  ⚠ `K-R59` 之前这里还排掉 `daemonless` 的主机 —— 那一档没了，不再有可排的。 */
 export function pickPrimaryOrigin(hosts: RemoteHostConfig[]): string | null {
-  const h = hosts.find((x) => !x.daemonless && (x.label || x.host));
+  const h = hosts.find((x) => x.label || x.host);
   return h ? h.label || h.host : null;
 }
 
-/** F10：把 `AccountUsageOutcome` 压成**折叠态 chip**（`status-account-usage`，`10ch` 宽的
- *  label 旁边）能放下的极短摘要——"38%"（单窗口）、"38/71/12%"（多窗口,省重复的 % 符号）；
- *  失败态一律空串（不占地方——折叠态空间真的挤不下任何失败短句，"没查过"和"查了但失败"在
- *  这里视觉相同，是空间约束下的取舍，不是遗漏；想看失败原因走 `formatUsageSummaryForMenu`
- *  的菜单行，那里有富余空间）。 */
-export function formatUsageSummaryCompact(outcome: AccountUsageOutcome): string {
-  if (outcome.status !== "ok" || outcome.buckets.length === 0) return "";
-  if (outcome.buckets.length === 1) return `${outcome.buckets[0].usedPercent}%`;
-  return `${outcome.buckets.map((b) => b.usedPercent).join("/")}%`;
-}
-
-/** F10 Phase D 审计（UX，重要）：**菜单里当前账号那一行**的用量摘要——跟折叠态 chip 不一样,
- *  这一行本来就已经在展示名字/邮箱/登录态,富余空间放得下几个字的失败短句,不该跟"没查过"
- *  一样空白。 */
+/**
+ * 菜单里当前账号那一行的**极短**摘要。
+ *
+ * 🔴 `K-R101`/`R59`（09-13）：`formatUsageSummaryCompact` **已删除**，折叠态 chip 不再显示
+ * 用量 —— 它此前显示的是 `38/71/12%` 那种**解析出来的数**，而解析层已经退役，
+ * 今天手上只有「一屏原文」，`10ch` 宽的位置装不下，**也不许在这里就地解析一次**
+ * （那就是把退役掉的那一层原地复活）。
+ * ⇒ 折叠态留空；这一行只说「有没有抓到」，原文由 [`usageScreenEl`] 在菜单里展开给用户看。
+ */
 export function formatUsageSummaryForMenu(outcome: AccountUsageOutcome): string {
-  if (outcome.status === "ok") return formatUsageSummaryCompact(outcome);
-  const short: Record<Exclude<AccountUsageOutcome["status"], "ok">, string> = {
-    "not-logged-in": "未登录",
-    "cli-missing": "无 claude",
-    unrecognized: "读不到",
-    "probe-failed": "探测失败",
-  };
-  return short[outcome.status];
+  return outcome.status === "screen" ? "已抓到一屏" : "探测失败";
 }
 
 /** chip 文本（不含图标）。纯函数，据 UI 状态 + 当前默认账号算。 */
@@ -74,8 +63,6 @@ export function chipLabel(state: AccountsState | null): string {
   if (!state) return "未连远端";
   const ui = deriveUi(state);
   switch (ui.kind) {
-    case "hidden":
-      return ""; // 调用方据空串隐藏
     case "needs-update":
       return "daemon 需更新";
     case "not-enabled":
@@ -184,7 +171,7 @@ export class AccountChip {
     }
     const text = chipLabel(this.state);
     if (!text) {
-      this.element.style.display = "none"; // daemonless 等 → 完全不显示
+      this.element.style.display = "none"; // 文本为空 → 完全不显示
       return;
     }
     this.labelSpan.textContent = text;
@@ -202,7 +189,7 @@ export class AccountChip {
 
   /** account-ux U8：给快捷键用的显式入口。合成 `element.click()` 在 chip 隐藏时照样会派发，
    *  能开出一个 getBoundingClientRect() 全 0、飘到视口外的菜单（看不见却吞点击）——
-   *  今天靠 pickPrimaryOrigin 过滤 daemonless 才碰不到，那是巧合不是设计。这里显式挡住。 */
+   *  今天靠 chipLabel 恒非空才碰不到，那是巧合不是设计。这里显式挡住。 */
   async openMenu(): Promise<void> {
     if (this.element.style.display === "none") return;
     await this.toggleMenu();
@@ -403,26 +390,25 @@ export class AccountChip {
         }
         return;
       }
-      // F10 Phase D 审计（后端架构+UX 均指出，重要）：与 accounts-section.ts 共享同一句
-      // "格式未经真机验证"提示（`OK_USAGE_UNVERIFIED_CAVEAT`）——ok 状态看起来是确定的数字，
-      // 但解析成功不代表百分比方向/数值本身已验证过。
-      const okTitle = outcome.status === "ok" ? OK_USAGE_UNVERIFIED_CAVEAT : "";
-      this.usageSpan.textContent = formatUsageSummaryCompact(outcome);
-      this.usageSpan.title = okTitle;
+      // 🔴 `R58` 裁定一：**抓到的那一屏原文必须留着、用户看得到。**
+      // 折叠态 chip 留空（`10ch` 装不下一屏，理由见 `formatUsageSummaryForMenu` 头注），
+      // 菜单里当前账号那一行**把原文挂上去** —— 这是 chip 这一面的「到得了界面」。
+      this.usageSpan.textContent = "";
+      this.usageSpan.title = "";
       if (this.menuCurrentUsageEl) {
         this.menuCurrentUsageEl.textContent = formatUsageSummaryForMenu(outcome);
-        this.menuCurrentUsageEl.title = okTitle;
+        if (outcome.status === "screen") {
+          this.menuCurrentUsageEl.appendChild(usageScreenEl(outcome.raw));
+        }
       }
       if (notify) {
-        const ok = outcome.status === "ok";
+        const got = outcome.status === "screen";
         showActionFailureToast(
-          ok ? "用量已刷新" : "用量刷新：读不到",
-          ok
-            ? outcome.buckets
-                .map((b) => `${b.label} ${b.usedPercent}%${b.resetIn ? ` · 重置${b.resetIn}` : ""}`)
-                .join("；")
-            : formatUsageSummaryForMenu(outcome),
-          { level: ok ? "info" : "error", durationMs: 5000 },
+          got ? "用量已刷新" : "用量刷新：探测失败",
+          got
+            ? "已抓到一屏 —— 展开账号菜单看那一屏原文（R59 起不再解析成百分比）。"
+            : outcome.error,
+          { level: got ? "info" : "error", durationMs: 5000 },
         );
       }
     });

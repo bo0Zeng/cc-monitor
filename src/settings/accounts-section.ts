@@ -30,12 +30,14 @@ import {
   type AccountsState,
   type Account,
 } from "../accounts";
-import { fetchAccountUsage, OK_USAGE_UNVERIFIED_CAVEAT, type AccountUsageOutcome } from "../account-usage";
+import { fetchAccountUsage, usageScreenEl, type AccountUsageOutcome } from "../account-usage";
 import { pickPrimaryOrigin } from "../account-chip";
 import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
+// `K-R49`：加了账号就把 `zcc` / `bcc` 那条命令也给出来（并真落盘到 cc-monitor 自己那份文件）。
+import { buildAccountAliasBlock, suggestAliasName } from "../launcher-diagnostics";
 import { SETTINGS_APPLIED_EVENT } from "./events";
 // Phase G：这两格此前**没有任何生产者**，见下面 `note()` 的注释。
 // `N-F2`：本机那条路也要写进同一本账 ⇒ 连本机那个 key 一起取，别在这儿长第二个名字。
@@ -271,7 +273,7 @@ export class AccountsSection {
     } catch {
       this.hosts = [];
     }
-    // 填远端下拉（含 daemonless，但标注）
+    // 填远端下拉
     // E59：初值仍取「主 origin」作为**兜底落点**（`RemoteSection` 抛异常时这几块会留在
     // 列表页上，那儿没有页上下文）。正常路径上，`subscribeMachine` 立刻会把它改成页头那台。
     this.origin =
@@ -362,12 +364,8 @@ export class AccountsSection {
     }
     const ui = deriveUi(state);
     switch (ui.kind) {
-      case "hidden":
-        // daemonless **不是缺**：用户显式选的降级，读不到账号是它的定义而非故障。
-        this.note("accounts", { kind: "na", detail: "daemonless" });
-        this.note("acctIso", { kind: "na", detail: "daemonless" });
-        this.info("该远端配置为 daemonless，无法读取账号。");
-        return;
+      // 🔴 `K-R59`：这里原来还有一支 `case "hidden"`，把 `accounts`/`acctIso` 两格
+      //    记成 `na`、理由「用户显式选的降级」。那一档（`daemonless`）整格没了 ⇒ 支也没了。
       case "needs-update":
         this.note("accounts", { kind: "fail", detail: "daemon 需更新" });
         this.info(`远端 daemon 需要更新才能用多账号：${ui.reason}`);
@@ -494,6 +492,18 @@ export class AccountsSection {
     }
     box.appendChild(table);
     AccountsSection.line(box, "accounts-hint accounts-local-hint", LOCAL_ACCOUNTS_COPY.scopeHint);
+    // 🔴 `K-R49` 那两跳里的第一跳：**加了账号，这一节要提一句那条命令。**
+    // 此前这里渲染完就完了 —— 生成器住在设置面板另一个分组里，与这条流程互不相识，
+    // 用户 09-10 逐字「我现在添加了一个账号但是没法直接添加命令, 还得手动去改」。
+    // ⚠ 账号名**从这一支手上这份清单来**，不重新拉一遍：这一支刚刚读到的就是本机那份。
+    //
+    // ⚠⚠ **挂在 `this.body` 上，不是挂在 `box`（`.accounts-local`）里面** —— 这不是排版口味：
+    //   `NF1bD2` 那条判据断的是「`.accounts-local` 子树里的汉字全部来自 `LOCAL_ACCOUNTS_COPY`」，
+    //   而这一块的文案有**自己的家**（它同时挂在设置面板的「行为」组里，两处同一份）。
+    //   塞进那棵子树等于宣称它的文案归账号文案表管，那是把一份文案说成两个主人。
+    this.body.appendChild(
+      buildAccountAliasBlock(async () => state.accounts.map((a) => a.name)),
+    );
   }
 
   /**
@@ -1002,6 +1012,20 @@ export class AccountsSection {
     });
     addForm.append(nameIn, credIn, addBtn, addErr);
     box.appendChild(addForm);
+    // 🔴 `K-R49` 第一跳的另一半：**「加账号」那个按钮旁边要说出下一步。**
+    // 那条终端跑完之后用户回到这里点「刷新」，而在此之前没有任何东西告诉他
+    //「命令」这件事存在。这一行随名字实时变，说的是**他这次要加的那个号**。
+    const nextCmd = document.createElement("div");
+    nextCmd.className = "accounts-maint-nextcmd";
+    const syncNextCmd = (): void => {
+      const alias = suggestAliasName(nameIn.value.trim());
+      nextCmd.textContent = alias
+        ? `加完之后到「设置 → 行为 → 按账号生成命令」里一键写入 —— 这个号的命令会叫 ${alias}。`
+        : "加完之后到「设置 → 行为 → 按账号生成命令」里给每个号一键生成对应命令。";
+    };
+    nameIn.addEventListener("input", syncNextCmd);
+    syncNextCmd();
+    box.appendChild(nextCmd);
     syncAdd();
 
     // 自检 / 补链。
@@ -1026,6 +1050,12 @@ export class AccountsSection {
     ops.append(verifyBtn, syncBtn, rcBtn);
     box.appendChild(ops);
     box.appendChild(rcBox);
+    // 🔴 `K-R49`：**这一条路上刻意只给一句指路话，不把那一块搬过来。**
+    // 这张表显的是**远端那台**的账号，而别名是给**本机 shell** 用的
+    // （`ccm --account <名>` 在这台机器上跑）⇒ 在这里挂那一块就得去读本机账号，
+    // 而 `NF1bD3` 那条判据逐字断的正是「配了远端时，本机那条读口一次都不该被调」。
+    // 它守的是「远端页上不许渲染本机的账号」，那条性质是对的 —— 所以这里让路，
+    // 改成把人指到它真正的家（设置 → 行为）。
     wrap.appendChild(box);
     return wrap;
   }
@@ -1036,8 +1066,19 @@ export class AccountsSection {
    * **单一来源留在 bash**：片段由远端 `cc-acct-iso shellinit` 产出，本文件**不重新生成一份**
    * ——那会多一个跨语言双写点（本工作区反复在治的病）。抓到什么贴什么。
    *
-   * **绝不代写**：只产出文本 + 复制按钮，写 `~/.bashrc` 是用户明令的红线（`paste-block.ts`
-   * 的模块头也写死了「本文件没有、也不得有任何写入路径」）。
+   * **这一块绝不代写**：只产出文本 + 复制按钮（`paste-block.ts` 的模块头也写死了
+   * 「本文件没有、也不得有任何写入路径」）。
+   *
+   * 🔴 `K-R49`（09-10）订正这一段原先那句全称 —— 它逐字写着「**写 `~/.bashrc` 是用户明令
+   * 的红线**」，而那句话今天只对**这一块**成立，别拿它去撤别处的活：
+   * - 仍然成立的是「**不问自取**」那一半：没有用户当次手势就写他的 shell 配置，禁。
+   * - 用户 09-10 逐字要的是反过来的事：「**我现在添加了一个账号但是没法直接添加命令,
+   *   还得手动去改**」⇒ 按账号生成命令那一块（`buildAccountAliasBlock`）**会真落盘**，
+   *   而它把代价压到最小：重写的是 cc-monitor 自己那份文件，用户的 rc 最多多一行 `source`，
+   *   且那份 rc 由他在下拉里自己选。整条推理住 `launcher-diagnostics.ts` 的模块头注。
+   * - **这一块为什么仍然不代写**：它抓的是**远端** `cc-acct-iso shellinit` 的输出，
+   *   而落盘那一侧今天在远端没有主人（`parity_ledger` 的 `alias.account-commands` 那行
+   *   逐条记着欠什么）—— 是**还没做**，不是「不许做」。
    */
   private async renderRcSnippet(btn: HTMLButtonElement, box: HTMLElement): Promise<void> {
     const host = this.currentHost();
@@ -1250,65 +1291,45 @@ export class AccountsSection {
     });
   }
 
-  /** F10：把 `AccountUsageOutcome` 渲染成一个短句 span（+ 未识别态附一个"复制诊断文本"链接，
-   *  方便用户报告；+ 一个"刷新"小按钮，复用 `renderUsageCell(force=true)`）。 */
+  /**
+   * `R58` 裁定一 ＋ `R59`：把结局渲染成一个块。
+   *
+   * 🔴 **两态**：`screen` ⇒ 那一屏**原文**（等宽 · 保留空白，`usageScreenEl` 唯一住址）
+   * ＋「复制这一屏」＋「刷新」；`probe-failed` ⇒ 失败原文 ＋「刷新」。
+   * 「认不出格式 / 未登录 / 无 claude」那三个态**都没有了** —— 它们全部来自解析器，
+   * 而解析层已退役（墓碑住 `src/account-usage-parse.ts` 头部）。
+   * 那三件事今天由**用户自己在那一屏上看出来**：`R58` 逐字「把屏幕预览给我看」。
+   */
   private buildUsageOutcomeEl(a: Account, outcome: AccountUsageOutcome): HTMLElement {
     const wrap = document.createElement("span");
     wrap.className = "accounts-usage-outcome";
-    const text = document.createElement("span");
-    switch (outcome.status) {
-      case "ok":
-        text.textContent = outcome.buckets
-          .map((b) => `${b.label} ${b.usedPercent}%${b.resetIn ? ` · 重置${b.resetIn}` : ""}`)
-          .join("；");
-        // F10 Phase D 审计（后端架构+UX 均指出，重要）：解析成功≠格式已验证——这条 UI 分支是
-        // "parse 成功但语义假设未验证"的隐蔽伪装成功（跟 unrecognized/not-logged-in 等诚实
-        // 降级分支不是一回事）：真机验证前，"已用%"这个方向本身也是训练知识猜测，可能整体
-        // 颠倒。hover 提示这一点，不新增视觉噪音（不影响默认可读性），真机验证完成后可摘掉。
-        text.title = OK_USAGE_UNVERIFIED_CAVEAT;
-        break;
-      case "unrecognized":
-        text.textContent = `暂时读不到（${outcome.reason}）`;
-        text.title = outcome.raw ?? "";
-        break;
-      case "not-logged-in":
-        text.textContent = "该账号未登录，无法读取用量";
-        break;
-      case "cli-missing":
-        text.textContent = "该账号环境里没有 claude 命令";
-        break;
-      case "probe-failed":
-        text.textContent = outcome.error;
-        break;
-    }
-    wrap.appendChild(text);
-    // F10 Phase D 审计（UX，重要）：此前只有 unrecognized 分支给"复制诊断文本"，但
-    // not-logged-in/cli-missing 的判定同样基于训练知识猜测的正则（`NOT_LOGGED_IN_RE`/
-    // `CLI_MISSING_RE`），误判风险不比 unrecognized 低——真机上完全可能出现"其实已登录，但
-    // 屏幕上恰好有个欢迎语含 sign in 字样"这类误判，用户应该有办法把当时抓到的原始文本导出
-    // 来自证/求助。放宽成"任意分支只要带 raw 就给"，不再局限于 unrecognized 这一支。
-    if ("raw" in outcome && outcome.raw) {
+    if (outcome.status === "screen") {
+      const screen = usageScreenEl(outcome.raw);
+      screen.classList.add("accounts-usage-raw");
+      wrap.appendChild(screen);
       const copyBtn = document.createElement("button");
       copyBtn.type = "button";
       copyBtn.className = "accounts-usage-copy-raw";
-      copyBtn.textContent = "复制诊断文本";
+      copyBtn.textContent = "复制这一屏";
       copyBtn.title =
-        "复制这次抓到的原始屏幕文字（可能含界面画框符号，不好看但对排查有用）——如果这个功能" +
-        "读不出你的用量，可以把这段贴到项目的 GitHub issue 里帮忙定位。";
+        "复制这次抓到的原始屏幕文字（可能含界面画框符号，不好看但对排查有用）——如果这一屏上" +
+        "读不出你的用量，可以把它贴到 cc-monitor 的 GitHub issue 里，帮忙定位。";
       copyBtn.addEventListener("click", () => {
-        void navigator.clipboard?.writeText(outcome.raw ?? "").then(
+        void navigator.clipboard?.writeText(outcome.raw).then(
           () =>
             showActionFailureToast(
-              "已复制诊断文本",
-              "这是探测抓到的原始屏幕内容（非隐私信息，只是终端画面文字）。如果这个功能一直读不出" +
-                "用量，可以把它贴到 cc-monitor 的 GitHub issue 里，帮助定位是不是 Claude Code 改了" +
-                " /usage 的显示格式。",
+              "已复制这一屏",
+              "这是探测抓到的原始屏幕内容（非隐私信息，只是终端画面文字）。",
               { level: "info", durationMs: 4000 },
             ),
           () => showActionFailureToast("复制失败", "剪贴板不可用", { level: "error" }),
         );
       });
       wrap.appendChild(copyBtn);
+    } else {
+      const text = document.createElement("span");
+      text.textContent = outcome.error;
+      wrap.appendChild(text);
     }
     const refreshBtn = document.createElement("button");
     refreshBtn.type = "button";

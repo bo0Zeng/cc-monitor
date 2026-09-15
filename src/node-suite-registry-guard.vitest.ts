@@ -74,7 +74,8 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:bash", "src/cards/bash.test.ts", 20],
   ["test:remote-health", "src/remote-health.test.ts", 5],
   // F04b +1：`isValidNewTmuxName` 也禁 `=`（别创建一个主路杀不掉的名字）。
-  ["test:remote-launch", "src/remote-launch.test.ts", 43],
+  // `K-R96` +1（`KR96D3`：名字可读、sid 一个片段都不进去 + `@ccm_sid` 必须还在）。
+  ["test:remote-launch", "src/remote-launch.test.ts", 44],
   ["test:format", "src/format.test.ts", 10],
   ["test:history-cache", "src/views/history-cache.test.ts", 8],
   ["test:history-prefs", "src/views/history-prefs.test.ts", 18],
@@ -84,7 +85,7 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:session-backend", "src/session-backend.test.ts", 10], // P3s-Y2 +1（新造名字必须过铸造口）
   ["test:panorama-session-files", "src/panorama/session-files.test.ts", 7],
   ["test:launch-dimensions", "src/launch-dimensions.test.ts", 28],
-  ["test:launch-render-cli", "src/launch-render-cli.test.ts", 26],
+  ["test:launch-render-cli", "src/launch-render-cli.test.ts", 27], // `K-R53` +1（`KR53D3`：「没探出来」与「真的没装」不许给同一句降级理由）
 ];
 
 /**

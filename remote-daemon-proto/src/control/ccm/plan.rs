@@ -1,0 +1,1615 @@
+//! 从一套 [`Opts`] 算出「这一趟到底要干什么」，以及 `--print` 那条等价命令行。
+//!
+//! # 为什么计划与执行分开
+//!
+//! `--print` 是这套 CLI 的**平价预言机**：它吐的那一行必须与真跑那一趟**同源**，
+//! 否则「print 说的」与「真做的」会各漂各的（`e2e/ccm-contract-parity.sh` 的 A / A′ 两组
+//! 整组就是在钉这一条，07-31 真逮到过一次「print 退回读文件」）。
+//! ⇒ 这里只产出 [`Plan`]，`--print` 与真跑**读同一个 `Plan`**，结构上不可能分叉。
+//!
+//! # 本文件不许出现 ccm 旗标的字面量
+//!
+//! 旗标名的唯一住址是 [`super::argv::flag`]。由
+//! `argv::tests::the_ccm_argv_is_parsed_in_exactly_one_place` 机检（`KR48D2`）。
+
+use super::argv::{flag, parse_size, Action, CwdSpec, Die, Opts};
+// `K-R96`：铸名避让那张 hash 表的**唯一**来源（字段模块私有 ⇒ 这里造不出第二份）。
+use crate::common::session_snapshot::TakenNames;
+use shell_quote_core::posix_quote as sq;
+
+/// 这一趟能看见的**外界**。做成结构体的唯一理由：让整条计划面可以在单测里跑，
+/// **一个字节都不碰这台机器**（`K31`「只能做产品，不能动机器」）。
+#[derive(Debug, Clone, Default)]
+pub(crate) struct Env {
+    pub(crate) home: String,
+    pub(crate) pwd: String,
+    /// `$TMUX` —— 只有**被 attach 的那个进程**才有它。
+    pub(crate) tmux: Option<String>,
+    /// 调用方**继承来的**账号配置目录（`agents::claudecode::paths::CONFIG_DIR_ENV`
+    /// 那个环境变量的值），**不是**本进程设的。
+    ///
+    /// ⚠ 名字刻意不叫 `claude_*`：那会让 `agent_locality_guard` 的 `.claude` 那根针
+    ///   在**字段访问**上命中（`env.claude_config_dir` 里逐字含 `.claude`）——
+    ///   而这个字段装的是「调用方选了哪个号」，不是 Claude 的目录布局。
+    pub(crate) inherited_config_dir: Option<String>,
+    pub(crate) anthropic_base_url: Option<String>,
+    pub(crate) ccm_launch_id: Option<String>,
+    /// 起 agent 前要 eval 的机器级 env 串。
+    pub(crate) ccm_env: String,
+    // 🔴 `K-R58`：这里原来有一个 `workspace: String`（`$CCM_WORKSPACE`，`$HOME` 下裸敲时
+    //    的落点）。它**唯一的消费者**就是 [`resolve_cwd`] 里那一档「站在 $HOME 就跳工作区」，
+    //    那一档按 `K37` 删了 ⇒ 这个字段跟着删，`CCM_WORKSPACE` 这个环境变量**不再被读**。
+    //    留着它会变成「猜」的一个待命开关，而 `KR58D3` 的失效方向逐字就是「把猜挪进别处」。
+    /// 账号库 manifest 的**完整路径**。
+    pub(crate) accts_manifest: String,
+    /// **账号维度的载体**：切账号靠改哪个环境变量。由 `mod.rs` 从
+    /// `agents::account_env_of(<这一趟的 agent>)` 取来 —— 本文件不认识任何 agent 的名字。
+    pub(crate) account_env: String,
+    /// 这一趟的 `argv[0]`（内层载荷要用它把自己再叫一次）。
+    pub(crate) self_path: String,
+    /// `CCM_NO_PRETRUST=1`。
+    pub(crate) no_pretrust: bool,
+    /// cc-bus 脚本目录（`CC_BUS_SCRIPTS`），找不到就空。
+    pub(crate) bus_scripts: Option<String>,
+}
+
+impl Env {
+    /// 从真实进程取一份。**只读环境与那一个配置文件**，不写任何东西。
+    ///
+    /// 优先级逐条照旧：**环境变量 > 配置文件 > 内置默认**（默认值住
+    /// [`super::argv::Defaults`]，这里一个字面量都不许再写）。
+    ///
+    /// ⚠ **配置文件那一层是收窄过的**：旧实现 `. "$CCM_CONFIG"`（真 source 一段 bash，
+    /// 里面可以写任意 shell）；这里只认 `KEY=value`（值两侧的成对引号会被剥掉）。
+    /// **这不是等价**，登记在模块头注。
+    pub(crate) fn from_process() -> Self {
+        use super::argv::Defaults;
+        let home = std::env::var("HOME").unwrap_or_default();
+        let get = |k: &str| std::env::var(k).ok().filter(|v| !v.is_empty());
+        // 🔴 **`$CCM_CONFIG` 这一层本实现不认，而且不许静默不认。**
+        //
+        // 旧实现是 `. "$CCM_CONFIG"` —— 真 source 一段 bash，里面可以写任意 shell。
+        // 在原生实现里没有等价物：要么退化成「只认 `KEY=value`」（那是**换了一套语义**
+        // 而用户不会知道），要么起一个 shell 去 source 它（那就把刚删掉的 bash 请回来了）。
+        // ⇒ 选第三条：**发现它存在就说一句，然后照常跑**。
+        // 静默忽略正是本工作区反复消灭的那类病（写了个配置、看起来生效了、其实被吃掉）。
+        let cfg_path =
+            get("CCM_CONFIG").unwrap_or_else(|| format!("{home}/{}", Defaults::CONFIG_REL));
+        if std::path::Path::new(&cfg_path).is_file() {
+            eprintln!(
+                "ccm: {cfg_path} 在，但本实现**不读它**（旧版是 source 一段 bash，原生实现没有等价物）。\n                 里面那两个值请改成环境变量：CCM_ACCTS_MANIFEST / CCM_ENV。\n                 （`CCM_WORKSPACE` 不用改了：`K-R58` 起 ccm 不再替你跳目录，不给 --cwd 就是当前目录。）"
+            );
+        }
+        let pick = |k: &str, fallback: String| -> String { get(k).unwrap_or(fallback) };
+        Env {
+            pwd: std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_default(),
+            tmux: get("TMUX"),
+            anthropic_base_url: get("ANTHROPIC_BASE_URL"),
+            ccm_launch_id: get("CCM_LAUNCH_ID"),
+            ccm_env: pick("CCM_ENV", Defaults::ENV.to_string()),
+            accts_manifest: pick(
+                "CCM_ACCTS_MANIFEST",
+                format!("{home}/{}", Defaults::ACCTS_MANIFEST_REL),
+            ),
+            // 继承值与载体名一样，要等**解析完 argv 知道是哪一家**才填得了 ⇒ 由 `mod.rs` 补。
+            inherited_config_dir: None,
+            account_env: String::new(),
+            // 🔴 `CCM_SELF` 优先于 `argv[0]`：内层载荷要用**「我是被当作什么叫的」**那个名字。
+            //   `argv[0]` 在「一个二进制多个名字」下拿到的可能是真身路径，而内层要的是
+            //   用户 `PATH` 上那个入口 —— 两者在软链 / 别名下不是同一个东西。
+            self_path: get("CCM_SELF")
+                .unwrap_or_else(|| std::env::args().next().unwrap_or_default()),
+            no_pretrust: std::env::var("CCM_NO_PRETRUST").as_deref() == Ok("1"),
+            bus_scripts: discover_bus_scripts(),
+            home,
+        }
+    }
+}
+
+/// 这个文件在不在、而且**跑得起来**吗。
+///
+/// 🔴 **`is_file()` 不够**〔`K-R48` 第二拍 09-11 实测逮到〕：旧 bash 实现这三处判的全是
+/// `-x`，而首版原生实现写的是 `is_file()` ——「脚本在、但没有执行位」于是被读成「它能用」，
+/// 拼进 seq 里执行时静默失败（整段是 `|| true`）。`e2e/cc-spawn-uplift.sh` 的
+/// 「台账脚本不可执行 ⇒ 明说『不进 spawn 台账』」那两格钉的正是它。
+fn is_exec(p: &std::path::Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        return std::fs::metadata(p)
+            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false);
+    }
+    #[cfg(not(unix))]
+    {
+        p.is_file()
+    }
+}
+
+/// cc-bus 的脚本目录：`CC_BUS_SCRIPTS` → 本二进制旁边的 `cc-bus/scripts` → `PATH`。
+///
+/// 🔴 **第三档（`PATH`）是 `K-R48` 第二拍补回来的，别再删**：旧 bash `ccm` 住在
+/// `shared/`（部署形态下 `~/.claude/skills/ccm`），它的**兄弟目录**正好就是
+/// `cc-bus/scripts` ⇒ 第二档几乎总是命中。今天 `ccm` 是后端二进制、住
+/// `~/.cc-monitor/bin/` —— **它旁边永远没有 `cc-bus/`** ⇒ 第二档在真实部署里**恒不命中**，
+/// 而 `PATH` 那一档是唯一还够得着的。首版漏了它（docstring 写着、实现里没有），
+/// 后果是「`--bus-register` 要了登记，却谁也没登记」。
+fn discover_bus_scripts() -> Option<String> {
+    if let Ok(d) = std::env::var("CC_BUS_SCRIPTS") {
+        if !d.is_empty() && is_exec(&std::path::Path::new(&d).join("cc-register")) {
+            return Some(d);
+        }
+    }
+    if let Some(sibling) = std::env::current_exe()
+        .ok()
+        .and_then(|me| me.parent().map(|p| p.join("cc-bus").join("scripts")))
+    {
+        if is_exec(&sibling.join("cc-register")) {
+            return Some(sibling.to_string_lossy().to_string());
+        }
+    }
+    // `PATH` 上的 `cc-register`（旧实现逐字：`command -v cc-register` 再取 `dirname`）。
+    for dir in std::env::split_paths(&std::env::var_os("PATH")?) {
+        if is_exec(&dir.join("cc-register")) {
+            return Some(dir.to_string_lossy().to_string());
+        }
+    }
+    None
+}
+
+/// 一个账号。manifest 里 `configDir` **键缺席** = 账号 0（不设 `CLAUDE_CONFIG_DIR`）。
+#[derive(Debug, Clone, serde::Deserialize)]
+pub(crate) struct Account {
+    pub(crate) name: String,
+    #[serde(rename = "configDir", default)]
+    pub(crate) config_dir: Option<String>,
+    #[serde(rename = "isDefault", default)]
+    pub(crate) is_default: bool,
+}
+
+#[derive(Debug, Clone, serde::Deserialize, Default)]
+struct Manifest {
+    #[serde(default)]
+    accounts: Vec<Account>,
+}
+
+/// 账号表。**唯一真相源是那份 manifest** —— 从前 `shared/ccm` 要跨一次进程去问 daemon
+/// 才拿得到它（`--list-accounts --accts-dir`），那一整段是 bash 与后端说话的**税**，
+/// 不是功能。同一个二进制之下它整块消失。
+#[derive(Debug, Clone, Default)]
+pub(crate) struct AccountTable(pub(crate) Vec<Account>);
+
+impl AccountTable {
+    /// 读那份 manifest。读不到 / 解析不动 ⇒ **空表**，不是失败
+    ///（「这台机器没有账号库」是一个合法状态：退化为基座启动器，一个字不说）。
+    pub(crate) fn load(manifest_path: &str) -> Self {
+        let raw = match std::fs::read_to_string(manifest_path) {
+            Ok(s) => s,
+            Err(_) => return Self::default(),
+        };
+        let m: Manifest = serde_json::from_str(&raw).unwrap_or_default();
+        Self(
+            m.accounts
+                .into_iter()
+                .filter(|a| !a.name.is_empty())
+                .collect(),
+        )
+    }
+
+    /// 名字 → 存在的 configDir。**目录不存在 ⇒ 当作不可用**
+    ///（「manifest 里写着」与「盘上真有」是两件事）。
+    fn config_dir_of(&self, want: &str) -> Option<String> {
+        let a = self.0.iter().find(|a| a.name == want)?;
+        let c = a.config_dir.as_deref().filter(|c| !c.is_empty())?;
+        std::path::Path::new(c).is_dir().then(|| c.to_string())
+    }
+
+    /// 报「不可用」必须同时告诉用户有哪些可用。⚠ 无尾空格。
+    fn names(&self) -> String {
+        if self.0.is_empty() {
+            return "(无账号库)".to_string();
+        }
+        self.0
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    /// `isDefault: true` 的第一个。
+    fn default_name(&self) -> Option<&str> {
+        self.0
+            .iter()
+            .find(|a| a.is_default)
+            .map(|a| a.name.as_str())
+    }
+}
+
+/// 一趟要干的事。`--print` 与真跑读的是**同一个**。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Plan {
+    /// 不起 agent，直接接回一个既有会话。
+    Attach { name: String },
+    /// 建一个 tmux 容器，把「同一条命令去掉 `--tmux`」送进去。
+    Container(Container),
+    /// 在**本进程**里设好环境、`cd`、然后 `exec`。
+    Direct(Direct),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Container {
+    pub(crate) name: String,
+    pub(crate) cwd: String,
+    pub(crate) agent: String,
+    pub(crate) ccm_sid: String,
+    pub(crate) size: Option<(String, String)>,
+    pub(crate) detach: bool,
+    /// 送进容器的那条内层命令（已经是一整条 POSIX 命令串）。
+    pub(crate) payload: String,
+    /// 要不要挂那段「抓信任框、自动按 Enter」的兜底轮询。
+    pub(crate) trust_poll: bool,
+    // ★★ 〔`K-R96` 09-12〕**`avoid_collision` 这个字段删了** —— 散文墓碑留在这里。
+    //
+    // 它从前的意思是「这个名字撞了要不要退让」，而退让本身发生在 `mod.rs::execute`
+    // ——**只在真跑那条路上**，`--print` 吐的是没退让过的名字。
+    //
+    // 用户 09-12 逐字（`R52` 裁定二）：「**不就是先校验冲突然后取名吗? 搞个 hash 表**不就好了」。
+    // ⇒ 退让搬进 [`build`]：它拿一份 [`TakenNames`]（那张 hash 表，来源只有会话快照一处），
+    //   **算完就把最终名钉进 `Container::name`**。于是：
+    //   ① 「产名」与「避让」不再是两个人干的两件事（前端 `mintTmuxName` 那条纪律的对侧）；
+    //   ② `--print` 与真跑吐的是**同一个名字** —— 平价预言机从此在名字这一维上也是平的；
+    //   ③ `--print` 的「纯」口径改成**相对于快照**：同一份快照 ＋ 同一份输入 ⇒ 同一份输出。
+    //
+    // 三条取名路的态度**仍然不一样，别合并**（判据见
+    // `only_two_of_the_three_naming_paths_step_aside_on_a_collision`）：
+    // - 显式 `--tmux=<名>` ⇒ **不退让**（调用方说的就是要这个名；撞了走 `C14` 响亮失败）；
+    // - `--tmux-base=<基名>` ⇒ **退让**（`C15` 给 cc-spawn 的那条路，它随后要读回真名字）；
+    // - 不给名、从 cwd 派生 ⇒ **退让**（幂等接回同一目录的会话，撞了说明有别人占了）。
+    /// `--bus-register` 要的登记；找不到 cc-bus 脚本就是 `None`（并出一句声）。
+    pub(crate) bus: Option<BusRegister>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BusRegister {
+    pub(crate) scripts_dir: String,
+    pub(crate) note: String,
+    pub(crate) has_spawned_record: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct Direct {
+    /// `CCM_ENV`（机器级 env，先于会话级）。
+    pub(crate) ccm_env: String,
+    /// codex 要的 cc-bus 身份配方（claude 不要 —— 会盖掉 `@cc_id` 细分）。
+    pub(crate) bus_id_recipe: bool,
+    /// 账号维度的载体（环境变量名）—— 见 [`Env::account_env`]。
+    pub(crate) account_env: String,
+    /// 要 export 的账号目录。
+    pub(crate) config_dir: String,
+    /// `--base`：显式 `unset CLAUDE_CONFIG_DIR`。
+    pub(crate) unset_config_dir: bool,
+    pub(crate) model: String,
+    /// 要 unset 的嵌套标记（claude 四个 / codex 零个）。
+    pub(crate) nested: Vec<String>,
+    pub(crate) cwd: String,
+    /// 最终 exec 的 argv。
+    pub(crate) argv: Vec<String>,
+    /// 要不要先问后端「这个会话该怎么起」（`resume` 且没给显式 `--launcher`）。
+    pub(crate) resolve_sid: Option<String>,
+    pub(crate) passthru: Vec<String>,
+    /// 这一趟有没有身份面（claude 有、codex 没有）。
+    pub(crate) has_identity: bool,
+}
+
+/// POSIX argv 元素的**最省引号**写法：能裸写就裸写。
+///
+/// 与 `--print` 的可读性直接相关：`exec claude --resume abc` 比
+/// `exec 'claude' '--resume' 'abc'` 好读，而两者语义相同。
+pub(crate) fn qarg(s: &str) -> String {
+    if s.is_empty()
+        || !s
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || "_@%+=:,./-".contains(c))
+    {
+        sq(s)
+    } else {
+        s.to_string()
+    }
+}
+
+/// 从一个目录派生 tmux 会话名。
+///
+/// 与前端 `src/shell-quote.ts::deriveTmuxName` **逐字同规则**（跨语言双写点）：
+/// basename → 非 `[A-Za-z0-9_-]` 换 `-` → 折叠 → 截 32 → 剥首尾 `-` → 加 `-cc` 后缀。
+/// 同规则 = 终端与 app「开新 Claude」在同一目录造出**同一个名字** ⇒ 幂等接回同一会话。
+pub(crate) fn derive_tmux_name(cwd: &str) -> String {
+    let trimmed = cwd.trim_end_matches('/');
+    let base = trimmed.rsplit('/').next().unwrap_or("");
+    let mut s = String::new();
+    let mut last_dash = false;
+    for c in base.chars() {
+        let c = if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
+            c
+        } else {
+            '-'
+        };
+        if c == '-' {
+            if last_dash {
+                continue;
+            }
+            last_dash = true;
+        } else {
+            last_dash = false;
+        }
+        s.push(c);
+    }
+    let s: String = s.chars().take(32).collect();
+    let s = s.trim_matches('-');
+    if s.is_empty() {
+        "session-cc".to_string()
+    } else {
+        format!("{s}-cc")
+    }
+}
+
+/// 基名撞了就退让：`<基名>` → `<基名>-2` → `<基名>-3` … 取第一个没被占的。
+///
+/// 纯函数（已占用的名字由调用方给）—— 这样「退让规则」测得了。
+///
+/// 〔`K-R96` 09-12〕**谁给那份 `taken`，今天只有一个答案**：[`build`] 从
+/// [`TakenNames`] 里拿，而 `TakenNames` 的字段是 `common::session_snapshot` 模块私有的
+/// ⇒ 「另起一份名字集合」在类型层面就造不出来。`--print` 与真跑用的是同一份。
+fn next_free_name(base: &str, taken: &[String]) -> String {
+    if !taken.iter().any(|t| t == base) {
+        return base.to_string();
+    }
+    let mut k = 2usize;
+    loop {
+        let cand = format!("{base}-{k}");
+        if !taken.iter().any(|t| *t == cand) {
+            return cand;
+        }
+        k += 1;
+    }
+}
+
+/// 会话名的形状校验（**唯一一份** —— 显式名与基名都过这里）。
+pub(crate) fn validate_tmux_name(n: &str) -> Result<(), Die> {
+    if n.is_empty() || n.starts_with('-') {
+        return Err(Die(format!("非法 tmux 会话名（空或以 - 开头）: '{n}'")));
+    }
+    if n.chars().any(|c| "*?.:=".contains(c)) {
+        return Err(Die(format!(
+            "非法 tmux 会话名（含 glob 或 tmux 目标语法 * ? . : =）: '{n}'"
+        )));
+    }
+    if n.chars().any(|c| c.is_control()) {
+        return Err(Die(format!("非法 tmux 会话名（含控制字符）: '{n}'")));
+    }
+    Ok(())
+}
+
+/// 不给 `--cwd` 时的落点。**今天它是恒等**：调用方站在哪儿，会话就起在哪儿。
+///
+/// 🔴 **`K-R58` / `KR58D3`（`K37` 第三条）：这里原来有两档「替用户挑一个目录」，删了。**
+///
+/// 删掉的逐字是这两档（留在这里当墓碑，别再长回来）：
+/// - `pwd == $HOME` ⇒ 跳 `$CCM_WORKSPACE`（默认 `$HOME/claude-conversation`）；
+/// - 往上找得到 `.git` ⇒ 跳**那个仓的父目录**（你在仓里敲，会话起在仓外）。
+///
+/// 〔用@09-11 逐字〕「`cc` 默认就起会话就行，**跳目录是我自己的设置，不要搞进 app**。」
+/// `K37` 的判据：**把这个行为去掉，用户还做不做得到同一件事**？——写 `--cwd <目录>` 照样
+/// 起得了会话 ⇒ 它是**偏好**，不是机制，该出去。而 `K37` 第三条给了新默认的形状：
+/// **诚实的默认 = 恒等 / 不作为 / 沿用调用者已有状态** —— `cwd` 本来就是进程的属性，
+/// 不是从一张表里编出来的。★ **省的是书写，不是语义。**
+///
+/// ⚠ **`resume`/`attach` 那一支一个字都没动，而它今天与 `new` 同值**：
+/// 那两个动作的目标目录由 sid / 会话决定、调用方已经定位好了，再解析一次会把工作目录
+/// 换掉 ⇒ claude 按 `projects/<enc(cwd)>/<sid>.jsonl` **找不到会话**（实测踩过）。
+/// 🔴 **谁要是哪天再往这里加一档非恒等的分支，它必须只对 [`Action::New`] 生效** ——
+/// 今天不留那个 `if`，是因为恒等之下它是死代码，而不是因为那条约束过期了。
+///
+/// 〔一并作废的旧注：从前这里逐字复刻旧 bash `_cc_resolve_target`，并登记着
+/// 「自己往上走找 `.git`」与 `git rev-parse --show-toplevel` 在 `GIT_DIR` /
+/// `GIT_WORK_TREE` / `GIT_CEILING_DIRECTORIES` 上的那一格不等价 —— 那整条路没了，
+/// 那格不等价也跟着没了。〕
+pub(crate) fn resolve_cwd(o: &Opts, env: &Env) -> String {
+    match &o.cwd_spec {
+        CwdSpec::Explicit(d) => d.clone(),
+        CwdSpec::Auto => env.pwd.clone(),
+    }
+}
+
+/// 账号解析。三态，**一个字都没改**（这是从 `shared/ccm:996-1015` 搬过来的语义）：
+///
+/// - 显式 `--account X` ⇒ 必须解析成功，否则**中止**（显式选号绝不静默降级到别的号）。
+/// - 显式 `--base` ⇒ 不注入（issue #75 逃生口）。
+/// - 都不传 ⇒ **只在调用方没有已选定账号时**才落 manifest 的 `isDefault`。
+///
+/// ✅ **最后那一条已经裁了**（用户 09-12，住址 `DECISIONS.md#R28`）——
+/// 逐字：「把调用方选中的号静默换掉 / **不要这么做** / 不是有选默认账号吗? **就用那个**」。
+/// ⇒ 拆成本函数的两支，**两支都是裁定的一部分，缺一条这一裁就没落地**：
+///   · **继承那一支**（`CLAUDE_CONFIG_DIR` 非空 ⇒ 保留，不覆盖）= 「不要静默换掉」。
+///     🔴 **来历不许删**：这道闸是 `R08` 加的（`-z "$CLAUDE_CONFIG_DIR"`），
+///     由一次**真机复现过的静默换号**逼出来 —— 删了来历，下一个人会以为它是可有可无的防御。
+///   · **裸终端那一支**（都没给 ⇒ 落 manifest `isDefault`）= 「就用那个」。
+/// ⚠ **09-11 那三句读法（「已知病灶」/「归待问用户」/「判不了不自批」）已经过期**，
+/// 别再照它把一个定了的问题重新打开。要改行为的落点仍然只在这个函数，别处没有第二处。
+pub(crate) fn resolve_account(
+    o: &Opts,
+    env: &Env,
+    table: &AccountTable,
+) -> Result<(String, String), Die> {
+    if !o.account.is_empty() {
+        return match table.config_dir_of(&o.account) {
+            Some(d) => Ok((d, o.account.clone())),
+            None => Err(Die(format!(
+                "账号 '{}' 不可用（不在 {}，或其目录不存在）。可用: {}",
+                o.account,
+                env.accts_manifest,
+                table.names()
+            ))),
+        };
+    }
+    if o.use_base {
+        return Ok((String::new(), String::new()));
+    }
+    if env
+        .inherited_config_dir
+        .as_deref()
+        .is_some_and(|v| !v.is_empty())
+    {
+        // 调用方已经选好号 ⇒ **尊重它**，不覆盖（`R08`：真机复现过的静默换号）。
+        return Ok((String::new(), String::new()));
+    }
+    let Some(def) = table.default_name().map(|s| s.to_string()) else {
+        return Ok((String::new(), String::new()));
+    };
+    match table.config_dir_of(&def) {
+        Some(d) => Ok((d, def)),
+        None => Err(Die(format!(
+            "默认账号 '{def}' 目录不存在（manifest 说它是 isDefault）。用 --base 起基座，或 --account <名> 指定。"
+        ))),
+    }
+}
+
+/// 从 [`Opts`] ＋ 外界 ⇒ [`Plan`]。**这是计划面的唯一入口。**
+///
+/// `taken` = 那一刻**已被占用的会话名**（`R52` 裁定二那张 hash 表），
+/// 来源只有 `common::session_snapshot` 一处；`None` = **问不到**
+/// （tmux 起不来 / 没装）⇒ **不退让**，与那份已删的 bash `ccm` 那句
+/// `tmux has-session … 2>/dev/null`（问不出来当没占）同义。真撞上了还有
+/// `created:false` ⇒ rc=3 那条响亮失败兜底。
+///
+/// 🔴 **本函数相对 `taken` 是纯的**：同一份快照 ＋ 同一份 `o`/`env`/`table`
+/// ⇒ 同一份 `Plan`（`--print` 的「纯」今天就是这个口径）。
+pub(crate) fn build(
+    o: &Opts,
+    env: &Env,
+    table: &AccountTable,
+    taken: Option<&TakenNames>,
+) -> Result<Plan, Die> {
+    // ── attach：不起 agent，早于容器逻辑就定了 ──────────────────────────
+    if o.action == Action::Attach {
+        // `ccm attach foo --tmux --detach` 从前会**静默吞掉** `--detach` 照样 attach。
+        // 静默忽略正是本工作区反复消灭的病。
+        if o.detach {
+            return Err(Die(
+                "attach 动作与 --detach 矛盾（attach 的语义就是接进去）".into(),
+            ));
+        }
+        if !o.tmux_size.is_empty() {
+            return Err(Die(
+                "attach 动作不支持 --tmux-size（接回既有会话，尺寸归它自己）".into(),
+            ));
+        }
+        return Ok(Plan::Attach {
+            name: o.attach_name.clone(),
+        });
+    }
+
+    let cwd = resolve_cwd(o, env);
+    let (config_dir, account) = resolve_account(o, env, table)?;
+    let launcher = if o.launcher.is_empty() {
+        super::default_launcher(&o.agent).to_string()
+    } else {
+        o.launcher.clone()
+    };
+
+    // ── 已在 tmux 里且没给名 ⇒ 就地起（旧 `cct` 那条分支）────────────────
+    let mut use_tmux = o.use_tmux;
+    if use_tmux && env.tmux.is_some() && o.tmux_name.is_empty() && o.tmux_base.is_empty() {
+        // 这条分支会让 `--detach` / `--tmux-size` 双双落空，而调用方要的是
+        // 「建完就返回」，拿到的却是**阻塞式 exec** —— 语义完全相反。显式 die。
+        if o.detach || !o.tmux_size.is_empty() {
+            return Err(Die(
+                "已在 tmux 内且未给会话名 → 会就地起而非建容器，--detach/--tmux-size 无法生效。请用 --tmux=<显式名>".into(),
+            ));
+        }
+        use_tmux = false;
+    }
+
+    if use_tmux {
+        let (base, step_aside) = if !o.tmux_base.is_empty() {
+            validate_tmux_name(&o.tmux_base)?;
+            (o.tmux_base.clone(), true)
+        } else if !o.tmux_name.is_empty() {
+            validate_tmux_name(&o.tmux_name)?;
+            (o.tmux_name.clone(), false)
+        } else {
+            (derive_tmux_name(&cwd), true)
+        };
+        // ★★ `K-R96`：**退让就在这里发生**，`--print` 与真跑因此拿到同一个名字。
+        let name = match (step_aside, taken) {
+            (true, Some(t)) => next_free_name(&base, t.as_slice()),
+            // 不退让 / 问不到快照 ⇒ 原样（后者是诚实降级，见本函数头注）。
+            _ => base,
+        };
+        // 内层：同一条命令去掉 `--tmux`，并把**继承来的**那几个变量显式化。
+        let mut inner: Vec<String> = vec![env.self_path.clone()];
+        if o.action == Action::Resume {
+            inner.push("resume".into());
+            inner.push(o.sid.clone());
+        }
+        inner.push(flag::CWD.into());
+        inner.push(cwd.clone());
+        inner.push(flag::AGENT.into());
+        inner.push(o.agent.clone());
+        if !account.is_empty() {
+            inner.push(flag::ACCOUNT.into());
+            inner.push(account.clone());
+        }
+        if o.use_base {
+            inner.push(flag::BASE.into());
+        }
+        if !o.model.is_empty() {
+            inner.push(flag::MODEL.into());
+            inner.push(o.model.clone());
+        }
+        if !launcher.is_empty() {
+            inner.push(flag::LAUNCHER.into());
+            inner.push(launcher.clone());
+        }
+        if !o.ccm_sid.is_empty() {
+            inner.push(flag::CCM_SID.into());
+            inner.push(o.ccm_sid.clone());
+        }
+        if !o.passthru.is_empty() {
+            inner.push(flag::END.into());
+            inner.extend(o.passthru.iter().cloned());
+        }
+        let mut payload = inner.iter().map(|a| sq(a)).collect::<Vec<_>>().join(" ");
+        // 🔴 **把继承来的那几个显式化** —— tmux 的 `update-environment` 默认列表不含它们，
+        // 外层那句 `export` 在 tmux 进程边界上会被整个吃掉（账号注入 100% 失效，实测过）。
+        if account.is_empty() && !o.use_base {
+            if let Some(v) = env
+                .inherited_config_dir
+                .as_deref()
+                .filter(|v| !v.is_empty())
+            {
+                payload = format!("export {}={}; {payload}", env.account_env, sq(v));
+            }
+        }
+        if let Some(v) = env.anthropic_base_url.as_deref().filter(|v| !v.is_empty()) {
+            payload = format!("export ANTHROPIC_BASE_URL={}; {payload}", sq(v));
+        }
+        if let Some(v) = env.ccm_launch_id.as_deref().filter(|v| !v.is_empty()) {
+            payload = format!("export CCM_LAUNCH_ID={}; {payload}", sq(v));
+        }
+
+        // 🔴 **要了登记而登记不成，必须出声**〔`K-R48` 第二拍 09-11 补回〕。
+        //
+        // 旧 bash 实现这两处各有一句 stderr：找不到 cc-bus 脚本目录 ⇒「**没有登记**」；
+        // 找得到目录但 `cc-spawned-record` 不可执行 ⇒「**不进 spawn 台账**」。
+        // 首版原生实现把这两句**整个丢了** —— `--bus-register` 于是变成一个
+        // 「要了、没做、也不说」的旗标，而那正是本工作区反复消灭的那类静默降级。
+        // 〔`e2e/cc-spawn-uplift.sh` 的「且没有一声不吭」「明说『不进 spawn 台账』」两组钉着它。〕
+        let bus = if o.bus_register {
+            match env.bus_scripts.as_ref() {
+                None => {
+                    eprintln!(
+                        "ccm: --bus-register 要了登记，但找不到 cc-bus 的脚本（CC_BUS_SCRIPTS / <本程序目录>/cc-bus/scripts / PATH）——**没有登记**"
+                    );
+                    None
+                }
+                Some(d) => {
+                    let has_spawned_record =
+                        is_exec(&std::path::Path::new(d).join("cc-spawned-record"));
+                    if !has_spawned_record {
+                        eprintln!(
+                            "ccm: {d}/cc-spawned-record 不可执行 —— 会话照建、也会登记，但**不进 spawn 台账**（孤儿检测看不到它）"
+                        );
+                    }
+                    Some(BusRegister {
+                        scripts_dir: d.clone(),
+                        note: o.bus_note.clone(),
+                        has_spawned_record,
+                    })
+                }
+            }
+        } else {
+            None
+        };
+
+        return Ok(Plan::Container(Container {
+            name,
+            cwd,
+            agent: o.agent.clone(),
+            ccm_sid: o.ccm_sid.clone(),
+            size: parse_size(&o.tmux_size),
+            detach: o.detach,
+            payload,
+            trust_poll: o.agent == "claude" && !env.no_pretrust,
+            bus,
+        }));
+    }
+
+    // ── 非容器路 ────────────────────────────────────────────────────────
+    let mut argv = vec![launcher.clone()];
+    if o.action == Action::Resume {
+        if let Some(rf) = super::resume_flag(&o.agent) {
+            argv.push(rf.to_string());
+            argv.push(o.sid.clone());
+        }
+    }
+    argv.extend(o.passthru.iter().cloned());
+
+    Ok(Plan::Direct(Direct {
+        ccm_env: env.ccm_env.clone(),
+        bus_id_recipe: super::needs_bus_id(&o.agent),
+        account_env: env.account_env.clone(),
+        config_dir,
+        unset_config_dir: o.use_base,
+        model: o.model.clone(),
+        nested: super::nested_env(&o.agent),
+        cwd,
+        argv,
+        resolve_sid: (o.action == Action::Resume && !o.launcher_explicit).then(|| o.sid.clone()),
+        passthru: o.passthru.clone(),
+        has_identity: super::has_identity(&o.agent),
+    }))
+}
+
+/// `--print`：吐出这一趟的**等价 shell**。
+///
+/// `resolved` = 后端对 `resume` 那一问的答案（没有就 `None`）。它是**唯一**的外部输入，
+/// 其余全部来自 [`Plan`] ⇒ 与真跑同源。
+pub(crate) fn render(plan: &Plan, resolved: Option<&str>) -> String {
+    match plan {
+        Plan::Attach { name } => format!("tmux attach -t {}", sq(&format!("={name}:"))),
+        Plan::Container(c) => render_container(c),
+        Plan::Direct(d) => render_direct(d, resolved),
+    }
+}
+
+fn render_container(c: &Container) -> String {
+    let t = sq(&format!("={}:", c.name));
+    let size = match &c.size {
+        Some((w, h)) => format!(" -x {w} -y {h}"),
+        None => String::new(),
+    };
+    let mut seq = format!(
+        "{{ tmux new-session -d -s {} -c {}{size} 2>/dev/null",
+        sq(&c.name),
+        sq(&c.cwd)
+    );
+    seq.push_str(&format!(
+        " || {{ printf {} {} >&2; exit 3; }}; }}",
+        sq(super::NAME_TAKEN_FMT),
+        sq(&c.name)
+    ));
+    seq.push_str(&format!(
+        " && (tmux set-option -t {t} @ccm_agent {} 2>/dev/null || true)",
+        sq(&c.agent)
+    ));
+    // 通道 A（意图）写 `@ccm_sid_expect`，**不写** `@ccm_sid` —— 后者是通道 B（事实）的，
+    // 破坏性动作只认事实标记，不被「声明了但从未真正跑起来」的会话骗过。
+    if !c.ccm_sid.is_empty() {
+        seq.push_str(&format!(
+            " && (tmux set-option -t {t} @ccm_sid_expect {} 2>/dev/null || true)",
+            sq(&c.ccm_sid)
+        ));
+    }
+    seq.push_str(&format!(
+        " && tmux send-keys -t {t} {} Enter",
+        sq(&c.payload)
+    ));
+    let tail = render_container_tail(c);
+    if !tail.is_empty() {
+        // 收尾那几段在**真跑**那条路上是原样交给 `sh -c` 的（建会话那半已经在进程里做完了）
+        // ⇒ 两条路读的是同一份渲染，不可能分叉。
+        seq.push_str(&tail);
+    }
+    seq
+}
+
+/// 容器路的**收尾**：兜底轮询 · attach · cc-bus 登记。
+///
+/// 建会话与键入载荷在真跑那条路上已经由 [`crate::control::launch`] 在**本进程里**做完了，
+/// 剩下这几件仍是本机的事（attach 尤其：后端开不了你面前的窗）。
+pub(crate) fn render_container_tail(c: &Container) -> String {
+    let t = sq(&format!("={}:", c.name));
+    let mut seq = String::new();
+    // 🔴 下面那条**自带节拍的 shell 串**不是漏进来的，是 `C14` 逐字登记的那个例外
+    //（「预信任的『等信任框』没有内核事件源 …… `C8` 的唯一登记例外：`control/` 继续
+    // 以 shell 字符串形态产出它」）。节拍由**目标 shell** 提供，后端进程自己一个定时器都没有。
+    // ⚠〔`K-R103` 09-13〕`no_timer_guard::f09` 从今天起**扫得到它**（匹配单位从「行」
+    // 改成「表达式」之后，`format!(` 的续行不再掉出人群）⇒ 它在
+    // `no_timer_guard::f09_external_beat::REGISTERED_EXTERNAL_BEATS` 上**签了字**。
+    // 改这一段之前先看那张表：动了这条串的形状，那边会红。
+    if c.trust_poll {
+        seq.push_str(&format!(
+            " && {{ (for _i in 1 2 3 4 5 6; do sleep 0.5; tmux capture-pane -t {t} -p 2>/dev/null | grep -q 'Yes, I trust this folder' && {{ tmux send-keys -t {t} Enter; break; }}; done) || true; }}"
+        ));
+    }
+    if !c.detach {
+        seq.push_str(&format!("; tmux attach -t {t}"));
+    }
+    if let Some(b) = &c.bus {
+        seq.push_str(&format!(
+            "; {{ _p=$(tmux list-panes -t {t} -F '#{{pane_id}}' 2>/dev/null | head -1)"
+        ));
+        seq.push_str(&format!(
+            "; [ -n \"$_p\" ] && TMUX_PANE=\"$_p\" {} {} >/dev/null",
+            sq(&format!("{}/cc-register", b.scripts_dir)),
+            sq(&c.name)
+        ));
+        if b.has_spawned_record {
+            seq.push_str(&format!(
+                "; {} {} {} {} >/dev/null; }} || true",
+                sq(&format!("{}/cc-spawned-record", b.scripts_dir)),
+                sq(&c.name),
+                sq(&c.cwd),
+                sq(&b.note)
+            ));
+        } else {
+            seq.push_str("; } || true");
+        }
+    }
+    seq
+}
+
+fn render_direct(d: &Direct, resolved: Option<&str>) -> String {
+    let mut line = String::new();
+    if !d.ccm_env.is_empty() {
+        line.push_str(&format!("{}; ", d.ccm_env));
+    }
+    if d.bus_id_recipe {
+        line.push_str(super::BUS_ID_RECIPE);
+        line.push(' ');
+    }
+    let cfg_env = &d.account_env;
+    if !d.config_dir.is_empty() {
+        line.push_str(&format!("export {cfg_env}={}; ", sq(&d.config_dir)));
+    }
+    if d.unset_config_dir {
+        line.push_str(&format!("unset {cfg_env}; "));
+    }
+    if !d.model.is_empty() {
+        line.push_str(&format!("export ANTHROPIC_MODEL={}; ", sq(&d.model)));
+    }
+    if !d.nested.is_empty() {
+        line.push_str(&format!("unset {}; ", d.nested.join(" ")));
+    }
+    if !d.cwd.is_empty() {
+        line.push_str(&format!("cd {} && ", sq(&d.cwd)));
+    }
+    let local_exec = std::iter::once("exec".to_string())
+        .chain(d.argv.iter().map(|a| qarg(a)))
+        .collect::<Vec<_>>()
+        .join(" ");
+    match resolved {
+        Some(cmd) if !cmd.is_empty() && d.resolve_sid.is_some() => {
+            // 后端答得出「这个会话该怎么起」⇒ 用它那条，透传参数接在后面。
+            //
+            // 🔴 **`set -f` 不许省。** 后端回的是**一整条命令串**，它要被 shell 拆成词才跑得了
+            // （`exec $cmd` 而不是 `exec "$cmd"`）—— 拆词那一步同时会**做路径展开**：
+            // 命令里一个 `*` 会被当前目录的文件名改写掉。`set -f` 关掉的正是这一步。
+            // ⚠ 它**不**关命令替换：`$(…)` 靠的是「这条串没有再经过 `eval`」，
+            // 而这里也确实没有 —— 两条各守一半，别把其中一条读成两条都买到了。
+            //〔搬自 `e2e/ccm-contract-parity.sh` A′g 那两条；那套 e2e 的 `shared/ccm` 侧
+            //  逐字也是 `set -f; exec $_ccm_c`。〕
+            let pt = d
+                .passthru
+                .iter()
+                .map(|a| qarg(a))
+                .collect::<Vec<_>>()
+                .join(" ");
+            line.push_str("set -f; exec ");
+            line.push_str(cmd);
+            if !pt.is_empty() {
+                line.push(' ');
+                line.push_str(&pt);
+            }
+        }
+        _ => line.push_str(&local_exec),
+    }
+    line
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::control::ccm::argv::{parse, Parsed};
+
+    fn env() -> Env {
+        Env {
+            home: "/home/pi".into(),
+            pwd: "/p".into(),
+            accts_manifest: "/nonexistent/accounts.json".into(),
+            account_env: "CLAUDE_CONFIG_DIR".into(),
+            self_path: "/usr/local/bin/ccm".into(),
+            ..Default::default()
+        }
+    }
+
+    fn plan_of(args: &[&str], env: &Env, t: &AccountTable) -> Plan {
+        plan_of_with(args, env, t, None)
+    }
+
+    /// 造一份**固定快照**的 `TakenNames`。
+    ///
+    /// 🔴 只能这么造 —— `TakenNames` 的字段是 `common::session_snapshot` 私有的，
+    /// 本模块（含测试段）**写不出第二种构造法**。那正是 `KR96D2` 第一刀要的形状：
+    /// 「铸名另起一份名字集合」在这里是**编译不过**，不是靠注释劝阻。
+    fn snapshot_of(names: &[&str]) -> TakenNames {
+        let rows: Vec<crate::common::session_snapshot::SessionRow> = names
+            .iter()
+            .map(|n| crate::common::session_snapshot::SessionRow {
+                name: (*n).to_string(),
+                ccm_sid: String::new(),
+            })
+            .collect();
+        crate::common::session_snapshot::SessionSnapshot::with_prober(move || Ok(rows.clone()))
+            .taken_names()
+            .expect("固定夹具问得到")
+    }
+
+    fn plan_of_with(
+        args: &[&str],
+        env: &Env,
+        t: &AccountTable,
+        taken: Option<&TakenNames>,
+    ) -> Plan {
+        let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        match parse(&a).expect("该解析得动") {
+            Parsed::Opts(o) => build(&o, env, t, taken).expect("该算得出计划"),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    fn printed(args: &[&str]) -> String {
+        render(&plan_of(args, &env(), &AccountTable::default()), None)
+    }
+
+    /// 〔搬自 `ccm-cli`「零修饰」「resume <sid>」「--launcher 覆盖」「--base」「--model」
+    /// 「--agent codex」「-- 透传」与 `ccm-contract-parity` B 组的顺序那几条〕
+    ///
+    /// 这一条钉的是**一条起会话命令长什么样**：段的顺序就是契约
+    /// （CCM_ENV → CC_BUS_ID → 账号目录 → 模型 → 清嵌套 → cd → exec）。
+    #[test]
+    fn the_shape_of_one_launch_command_line() {
+        let nested = "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION";
+        assert_eq!(
+            printed(&["--cwd", "/p"]),
+            format!("{nested}; cd '/p' && exec claude")
+        );
+        assert_eq!(
+            printed(&["resume", "abc-123", "--cwd", "/p", "--launcher", "claude"]),
+            format!("{nested}; cd '/p' && exec claude --resume abc-123")
+        );
+        assert_eq!(
+            printed(&["--cwd", "/p", "--base"]),
+            format!("unset CLAUDE_CONFIG_DIR; {nested}; cd '/p' && exec claude")
+        );
+        assert_eq!(
+            printed(&["--cwd", "/p", "--model", "opus"]),
+            format!("export ANTHROPIC_MODEL='opus'; {nested}; cd '/p' && exec claude")
+        );
+        // codex：换启动器 + **不清** claude 的嵌套标记 + cc-bus 身份配方
+        assert_eq!(
+            printed(&["--cwd", "/p", "--agent", "codex"]),
+            format!("{} cd '/p' && exec codex", super::super::BUS_ID_RECIPE)
+        );
+        // 透传参数含特殊字符 ⇒ 正确 quote
+        assert_eq!(
+            printed(&["--cwd", "/p", "--", "-p", "hi there"]),
+            format!("{nested}; cd '/p' && exec claude -p 'hi there'")
+        );
+    }
+
+    /// 〔搬自 `ccm-contract-parity`「claude 不得被注入 CC_BUS_ID」〕
+    #[test]
+    fn only_codex_gets_the_bus_id_recipe() {
+        assert!(!printed(&["--cwd", "/p"]).contains("CC_BUS_ID"));
+        assert!(printed(&["--cwd", "/p", "--agent", "codex"]).contains("CC_BUS_ID"));
+    }
+
+    /// 〔搬自 `ccm-cli`「--account 与 --model 组合：账号目录先、模型偏好次」〕
+    ///
+    /// **顺序即契约**（见 `launch-dimensions.ts` 的 order）。
+    #[test]
+    fn the_account_dir_comes_before_the_model() {
+        let d = tempdir();
+        let t = table(&[("z", Some(d.as_str()), true)]);
+        let p = plan_of(
+            &["--cwd", "/p", "--account", "z", "--model", "opus"],
+            &env(),
+            &t,
+        );
+        let line = render(&p, None);
+        let i_acct = line.find("CLAUDE_CONFIG_DIR").expect("该有账号目录");
+        let i_model = line.find("ANTHROPIC_MODEL").expect("该有模型");
+        assert!(i_acct < i_model, "账号目录必须排在模型之前：{line}");
+    }
+
+    /// 〔搬自 `ccm-cli` 账号那一族：显式 / 继承 / 默认号 / --base 四条路〕
+    ///
+    /// ✅ 最后那条（裸终端落默认号）**是用户 09-12 裁定要的行为**（`DECISIONS.md#R28`），
+    /// 不是病灶；③ 那条（不许覆盖继承）是同一裁的另一半。见 [`resolve_account`] 头注。
+    #[test]
+    fn the_four_ways_an_account_gets_picked() {
+        let dz = tempdir();
+        let db = tempdir();
+        let t = table(&[
+            ("z", Some(dz.as_str()), true),
+            ("b", Some(db.as_str()), false),
+        ]);
+        let mut e = env();
+        // ① 显式 --account 赢
+        assert!(
+            render(&plan_of(&["--cwd", "/p", "--account", "b"], &e, &t), None)
+                .contains(&format!("export CLAUDE_CONFIG_DIR='{db}'"))
+        );
+        // ② 裸终端（无继承）⇒ 落 manifest 默认号 z
+        assert!(render(&plan_of(&["--cwd", "/p"], &e, &t), None)
+            .contains(&format!("export CLAUDE_CONFIG_DIR='{dz}'")));
+        // ③ 外层已继承 ⇒ **保留继承的**，不被默认号静默覆盖（`R08` 的原病）
+        e.inherited_config_dir = Some(db.clone());
+        let line = render(&plan_of(&["--cwd", "/p"], &e, &t), None);
+        assert!(
+            !line.contains("export CLAUDE_CONFIG_DIR"),
+            "不许覆盖继承：{line}"
+        );
+        // ④ --base 显式清空，不受继承影响
+        assert!(render(&plan_of(&["--cwd", "/p", "--base"], &e, &t), None)
+            .contains("unset CLAUDE_CONFIG_DIR"));
+        // ⑤ 显式 --account 压过继承
+        assert!(
+            render(&plan_of(&["--cwd", "/p", "--account", "z"], &e, &t), None)
+                .contains(&format!("export CLAUDE_CONFIG_DIR='{dz}'"))
+        );
+    }
+
+    /// 〔搬自 `ccm-cli`「账号不存在 → 中止」「可用列表」「无账号库 → 退化为基座」〕
+    #[test]
+    fn picking_an_account_never_falls_back_to_a_different_one() {
+        let dz = tempdir();
+        let t = table(&[("z", Some(dz.as_str()), true), ("f", None, false)]);
+        let a: Vec<String> = ["--cwd", "/p", "--account", "nope"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        let o = match parse(&a).expect("解析得动") {
+            Parsed::Opts(o) => o,
+            other => panic!("{other:?}"),
+        };
+        let Die(msg) = build(&o, &env(), &t, None).expect_err("不存在的账号必须中止");
+        assert!(msg.starts_with("账号 'nope' 不可用"), "{msg}");
+        assert!(
+            msg.contains("可用: z f"),
+            "报不可用必须说出有哪些可用：{msg}"
+        );
+        // 无账号库 ⇒ 一个字都不说，退化为基座（没有 CLAUDE_CONFIG_DIR 注入）
+        let empty = AccountTable::default();
+        assert!(!render(&plan_of(&["--cwd", "/p"], &env(), &empty), None)
+            .contains("CLAUDE_CONFIG_DIR="));
+    }
+
+    /// 〔搬自 `ccm-cli`「deriveTmuxName 对拍」那 5 条（跨语言双写点的**本侧**）〕
+    ///
+    /// ⚠ **如实边界**：bash 那版是拿 `npx tsx` 真跑前端那个函数来对拍的（跨语言）。
+    /// 这里只钉**本侧**的规则，**跨语言那一半没了** —— 登记在件文件 `§8`，不许读成等价。
+    #[test]
+    fn the_session_name_derivation_rule() {
+        assert_eq!(derive_tmux_name("/home/pi/proj"), "proj-cc");
+        assert_eq!(derive_tmux_name("/home/pi/a  b"), "a-b-cc");
+        assert_eq!(derive_tmux_name("/home/pi/proj///"), "proj-cc");
+        assert_eq!(derive_tmux_name("/"), "session-cc");
+        assert_eq!(derive_tmux_name("/home/pi/.hidden.dir"), "hidden-dir-cc");
+        // 截 32 之后再剥首尾 `-`（顺序承重：先剥后截会留下一个尾 `-`）
+        assert_eq!(
+            derive_tmux_name(&format!("/x/{}", "a".repeat(40))),
+            format!("{}-cc", "a".repeat(32))
+        );
+    }
+
+    /// 〔搬自 `ccm-cli` / `cc-spawn-uplift` 的取名那一族〕**三条取名路的退让态度不一样。**
+    ///
+    /// 🔴 这一条是**自查逮到的**（铁律 15 那一拍）：头一版原生实现**整个没有退让**，
+    /// 于是 `--tmux-base=<基名>`（`C15` 给 cc-spawn 的那条路，它的全部意义就是「撞了就退让」）
+    /// **静默退化成了 `--tmux=<名>`** —— 写了个修饰、看起来生效了、实际被吃掉。
+    #[test]
+    fn only_two_of_the_three_naming_paths_step_aside_on_a_collision() {
+        let e = env();
+        let t = AccountTable::default();
+        // 🔴 `K-R96`：量的是**最终名**，不是那个「要不要退让」的布尔。
+        //    原版量布尔 ⇒ 「布尔为 true 而退让根本没被执行」照样绿 ——
+        //    那正好是这条判据当初逮到的那个病（退让被静默吃掉）换个位置复发。
+        let taken = snapshot_of(&["n1", "proj-cc"]);
+        let path = |args: &[&str]| match plan_of_with(args, &e, &t, Some(&taken)) {
+            Plan::Container(c) => c.name,
+            other => panic!("该是容器路：{other:?}"),
+        };
+        // 显式名：**不退让** —— 调用方说的就是要这个名，撞了走 C14 响亮失败
+        assert_eq!(path(&["--tmux=n1", "--cwd", "/p"]), "n1");
+        // 基名：退让（cc-spawn 随后要读回真名字）
+        assert_eq!(path(&["--tmux-base", "n1", "--cwd", "/p"]), "n1-2");
+        // 不给名、从 cwd 派生：退让
+        assert_eq!(path(&["--tmux", "--cwd", "/x/proj"]), "proj-cc-2");
+        // 问不到快照（`None`）⇒ 诚实降级成「不退让」，不是「假装没占」之外的第三种行为
+        assert_eq!(
+            match plan_of_with(&["--tmux", "--cwd", "/x/proj"], &e, &t, None) {
+                Plan::Container(c) => c.name,
+                other => panic!("该是容器路：{other:?}"),
+            },
+            "proj-cc"
+        );
+        // 退让规则本身
+        assert_eq!(next_free_name("n1", &[]), "n1");
+        assert_eq!(next_free_name("n1", &["other".into()]), "n1");
+        assert_eq!(next_free_name("n1", &["n1".into()]), "n1-2");
+        assert_eq!(next_free_name("n1", &["n1".into(), "n1-2".into()]), "n1-3");
+        // 只撞中间那个不影响：2 空着就取 2
+        assert_eq!(next_free_name("n1", &["n1".into(), "n1-3".into()]), "n1-2");
+    }
+
+    /// ★★ **`KR96D2` 死值验第二刀：`--print` 相对于快照是**纯**的。**
+    ///
+    /// 口径由 `§0c` 定死：**同一份快照 ＋ 同一份输入 ⇒ 同一份输出**（不是「不查实时状态」）。
+    /// 判据喂的就是一个**固定夹具快照**。
+    #[test]
+    fn printing_twice_against_the_same_snapshot_gives_the_same_line() {
+        let e = env();
+        let t = AccountTable::default();
+        let taken = snapshot_of(&["proj-cc", "proj-cc-2"]);
+        let once = render(
+            &plan_of_with(&["--tmux", "--cwd", "/x/proj"], &e, &t, Some(&taken)),
+            None,
+        );
+        let twice = render(
+            &plan_of_with(&["--tmux", "--cwd", "/x/proj"], &e, &t, Some(&taken)),
+            None,
+        );
+        assert_eq!(once, twice, "同一份快照喂两次，`--print` 吐了两样东西");
+        assert!(
+            once.contains("proj-cc-3"),
+            "喂进去的快照里 `proj-cc` 与 `proj-cc-2` 都占着，名字该让到 `proj-cc-3`。\n             实得：{once}"
+        );
+    }
+
+    /// ★★ **`KR96D2` 死值验第三刀：快照变了，名字必须跟着变。**
+    ///
+    /// 这一条是上一条的**反面**，缺了它「纯」就退化成「恒定」——
+    /// 一个把名字写死的实现能同时通过「喂两次一样」和「不查实时状态」。
+    #[test]
+    fn a_different_snapshot_moves_the_name() {
+        let e = env();
+        let t = AccountTable::default();
+        let name = |taken: &TakenNames| match plan_of_with(
+            &["--tmux", "--cwd", "/x/proj"],
+            &e,
+            &t,
+            Some(taken),
+        ) {
+            Plan::Container(c) => c.name,
+            other => panic!("该是容器路：{other:?}"),
+        };
+        assert_eq!(name(&snapshot_of(&[])), "proj-cc");
+        assert_eq!(name(&snapshot_of(&["proj-cc"])), "proj-cc-2");
+        assert_eq!(name(&snapshot_of(&["proj-cc", "proj-cc-2"])), "proj-cc-3");
+    }
+
+    /// ★★ **`KR96D3`：名字是 `<项目名>-cc`，sid 一个片段都不许进去；而 `@ccm_sid` 必须还在。**
+    ///
+    /// 第四刀（把 `@ccm_sid` 也一起去掉 ⇒ 必须红）就在下半段：
+    /// sid **必须还在**，只是**不在名字里** —— 它的载体是 tmux 的 `@ccm_sid` 选项。
+    #[test]
+    fn the_session_name_reads_like_a_project_and_the_sid_rides_the_tmux_option() {
+        let e = env();
+        let t = AccountTable::default();
+        const SID: &str = "cb3230f3-dead-beef-0000-111122223333";
+        let plan = plan_of_with(
+            &[
+                "resume",
+                SID,
+                "--ccm-sid",
+                SID,
+                "--tmux",
+                "--cwd",
+                "/home/pi/my-proj",
+            ],
+            &e,
+            &t,
+            Some(&snapshot_of(&[])),
+        );
+        let Plan::Container(c) = plan else {
+            panic!("该是容器路")
+        };
+        assert_eq!(c.name, "my-proj-cc", "名字该读得出是哪个项目");
+        // ① 名字里出现 sid 片段 ⇒ 红。逐字扫**每一个** ≥4 字符的前缀，不是只看 8 位那一种。
+        let mut checked = 0usize;
+        for k in 4..=SID.len() {
+            let frag = &SID[..k];
+            checked += 1;
+            assert!(
+                !c.name.contains(frag),
+                "会话名 {:?} 里带着 sid 片段 {frag:?} —— 用户 `R55` 裁定一逐字：\n                 「**要是可读的名字 / 不要id**」",
+                c.name
+            );
+        }
+        assert!(
+            checked > 30,
+            "只扫了 {checked} 个片段 —— 扫描器坏了，本条在空转"
+        );
+        // ④ 而 sid 本身**必须还在**：它骑在 `@ccm_sid` 上（`P3` 逐字：名字不是 sid 的载体）。
+        assert_eq!(
+            c.ccm_sid, SID,
+            "sid 从计划里消失了 —— 「不进名字」不等于「不要了」。\n             `@ccm_sid` 是它真正的载体，杀会话的菜单与身份判定都认那个。"
+        );
+    }
+
+    /// 〔搬自 `ccm-cli` 名字校验那一族〕—— 会话名会被拼进 tmux 目标语法，是一条注入面。
+    #[test]
+    fn a_session_name_that_would_confuse_tmux_is_refused() {
+        assert!(validate_tmux_name("ok-name").is_ok());
+        for bad in ["", "-lead", "a*b", "a?b", "a.b", "a:b", "a=b", "a\u{1}b"] {
+            assert!(validate_tmux_name(bad).is_err(), "'{bad}' 不该被放行");
+        }
+    }
+
+    /// 〔搬自 `ccm-print-parity` 全 5 个场景 ＋ `ccm-cli` R08 那 5 条〕
+    ///
+    /// 容器路：外层 tmux 编排必须带上会话名 / cwd / 意图标 / 内层载荷，
+    /// 而**内层载荷必须显式带上账号**（不能靠继承穿 tmux 边界 —— `R08` 的原病）。
+    #[test]
+    fn the_container_path_carries_every_intent_inward() {
+        let db = tempdir();
+        let t = table(&[
+            ("z", Some(db.as_str()), true),
+            ("b", Some(db.as_str()), false),
+        ]);
+        let mut e = env();
+        e.inherited_config_dir = Some(db.clone());
+        let p = plan_of(
+            &[
+                "resume",
+                "p1",
+                "--tmux=cc-p1",
+                "--cwd",
+                "/tmp",
+                "--ccm-sid",
+                "p1",
+                "--base",
+            ],
+            &e,
+            &t,
+        );
+        let out = render(&p, None);
+        let Plan::Container(c) = &p else {
+            panic!("该是容器路：{p:?}")
+        };
+        assert!(out.contains("-s 'cc-p1'"), "会话名没进 new-session：{out}");
+        assert!(out.contains("-c '/tmp'"), "cwd 没进 -c：{out}");
+        assert!(out.contains("@ccm_sid_expect 'p1'"), "意图标没打：{out}");
+        assert!(
+            !out.contains("@ccm_sid ") && !out.contains("@ccm_sid'"),
+            "不许写**事实**标记 @ccm_sid（那是通道 B 的，破坏性动作只认它）：{out}"
+        );
+        // 内层载荷：按 argv 元素逐个 quote 过一层，所以判的是 payload 本身
+        assert!(
+            c.payload.contains("'resume' 'p1'"),
+            "resume 没进内层：{}",
+            c.payload
+        );
+        assert!(
+            c.payload.contains("'--base'"),
+            "--base 没进内层（账号维度恒显式表态）：{}",
+            c.payload
+        );
+        assert!(c.payload.contains("'--ccm-sid' 'p1'"), "{}", c.payload);
+        // 〔搬自 `ccm-print-parity` 场景 newTmuxCustomLauncher / resumeTmuxWithModel〕
+        let p4 = plan_of(
+            &[
+                "--tmux=n4",
+                "--cwd",
+                "/p",
+                "--launcher",
+                "CCMPROBE",
+                "--model",
+                "opus",
+            ],
+            &env(),
+            &AccountTable::default(),
+        );
+        let Plan::Container(c4) = &p4 else {
+            panic!("该是容器路")
+        };
+        assert!(
+            c4.payload.contains("'--launcher' 'CCMPROBE'"),
+            "{}",
+            c4.payload
+        );
+        assert!(c4.payload.contains("'--model' 'opus'"), "{}", c4.payload);
+        // 继承账号那条路：内层必须显式 export 继承来的那个目录
+        let p2 = plan_of(&["--tmux=n1", "--cwd", "/p"], &e, &t);
+        let Plan::Container(c2) = &p2 else {
+            panic!("该是容器路")
+        };
+        assert!(
+            c2.payload
+                .starts_with(&format!("export CLAUDE_CONFIG_DIR={}; ", sq(&db))),
+            "内层没把继承来的账号显式化（tmux 边界会吃掉它）：{}",
+            c2.payload
+        );
+        // 而且绝不能落到默认号 z 上
+        assert!(
+            !c2.payload.contains("'--account'"),
+            "不许悄悄换成默认号：{}",
+            c2.payload
+        );
+        // 裸终端（无继承）⇒ 内层仍落默认号 z（粘滞体验）
+        let mut e2 = env();
+        e2.inherited_config_dir = None;
+        let p3 = plan_of(&["--tmux=n1", "--cwd", "/p"], &e2, &t);
+        let Plan::Container(c3) = &p3 else {
+            panic!("该是容器路")
+        };
+        assert!(
+            c3.payload.contains("'--account' 'z'"),
+            "裸终端该落默认号：{}",
+            c3.payload
+        );
+    }
+
+    /// 🔴 **三个变量必须被显式化到载荷内侧** —— tmux 的进程边界会吃掉外层那句 `export`。
+    ///
+    /// # 这一条是 `K-R48` 第二拍补的，补的是**别人家的判据搬过来时空出来的那一格**
+    ///
+    /// 从前盯这件事的是 monitor 侧 `backend/control/payload.rs` 的两条：
+    /// `the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary` 与
+    /// `…_forwards_the_launch_identity_…`。它们的做法是**把 `shared/ccm` 里那段 bash
+    /// 窗口原样交给 `bash` 跑一遍**再读载荷 —— 脚本删了，那两条连被测对象都没有了。
+    ///
+    /// ⚠ **[`the_container_path_carries_every_intent_inward`] 顶不了这一格**：
+    /// 它只钉了 `CLAUDE_CONFIG_DIR`（账号那条），另两个**一个字都没提**。
+    /// 差点就这么丢了 —— 而丢掉的后果逐字住 `K-R48` `§0c`：
+    /// 「`CCM_LAUNCH_ID` 被吃掉 ⇒ 身份 token 丢」（**今天真有生产人群**）。
+    ///
+    /// # 为什么三条一起钉、且要**非空对照**
+    ///
+    /// 「没设那个变量 ⇒ 不加前缀」与「设了 ⇒ 加前缀」必须成对：只钉后者的话，
+    /// 「无条件加一个空 export」也能全绿，而那会把内层的值**清空**（比不转发更坏）。
+    #[test]
+    fn the_container_path_forwards_every_inherited_variable_inward() {
+        let db = tempdir();
+        let base = |e: &Env| -> String {
+            let p = plan_of(&["--tmux=n1", "--cwd", "/p"], e, &AccountTable::default());
+            let Plan::Container(c) = p else {
+                panic!("该是容器路")
+            };
+            c.payload
+        };
+        // 非空对照：三个都没有 ⇒ 载荷就是裸 argv（证明这把尺子不是恒带前缀）。
+        let clean = base(&env());
+        assert!(
+            !clean.contains("export "),
+            "三个变量都没设，载荷却带了 export —— 那会把内层的值清空：{clean}"
+        );
+        // ① 继承来的账号目录（`R08` 07-28，真机复现过的静默换号）。
+        let mut e1 = env();
+        e1.inherited_config_dir = Some(db.clone());
+        assert!(
+            base(&e1).starts_with(&format!("export CLAUDE_CONFIG_DIR={}; ", sq(&db))),
+            "继承来的账号没被显式化：{}",
+            base(&e1)
+        );
+        // ② 中转地址（`K-H2b` 08-28）。
+        let mut e2 = env();
+        e2.anthropic_base_url = Some("https://relay.example/v1".into());
+        assert!(
+            base(&e2).starts_with("export ANTHROPIC_BASE_URL='https://relay.example/v1'; "),
+            "中转地址没被显式化 ⇒ 走 tmux 的会话静默不走中转：{}",
+            base(&e2)
+        );
+        // ③ 身份 token（`K-P5c` 09-02）—— 三个里**今天真有生产人群**的那一个。
+        let mut e3 = env();
+        e3.ccm_launch_id = Some("L-42".into());
+        assert!(
+            base(&e3).starts_with("export CCM_LAUNCH_ID='L-42'; "),
+            "身份 token 没被显式化 ⇒ cc-monitor 认不出这个会话：{}",
+            base(&e3)
+        );
+        // ④ 值必须经 `sq`（带引号 / 空格的值不许把载荷拆断）。
+        let mut e4 = env();
+        e4.ccm_launch_id = Some("it's here".into());
+        assert!(
+            base(&e4).starts_with(&format!("export CCM_LAUNCH_ID={}; ", sq("it's here"))),
+            "转发的值没经 quote：{}",
+            base(&e4)
+        );
+    }
+
+    /// 🔴 **`--bus-register` 要了登记而登记不成，必须出声；而「脚本在」不等于「跑得起来」。**
+    ///
+    /// # 这一条是 `K-R48` 第二拍补的，补的是**三处一起丢掉的东西**
+    ///
+    /// 把 `e2e/cc-spawn-uplift.sh` 的 `$CCM` 指向二进制之后现打：**48 过 / 24 败**。
+    /// 24 条里 22 条是同一族，逐条追下去是首版原生实现丢了三样旧 bash 实现有的东西：
+    ///   ① `discover_bus_scripts` 的**第三档 `PATH`** —— docstring 写着、实现里没有。
+    ///      旧 `ccm` 住 `shared/`（部署形态 `~/.claude/skills/ccm`），**兄弟目录**正好是
+    ///      `cc-bus/scripts` ⇒ 第二档几乎总命中；今天后端住 `~/.cc-monitor/bin/`，
+    ///      **旁边永远没有 `cc-bus/`** ⇒ 第二档在真实部署里**恒不命中**。
+    ///   ② 三处判「这个脚本能不能用」写成 `is_file()`，而旧 bash 判的是 `-x`
+    ///      ⇒「在、但没有执行位」被读成「它能用」，拼进 seq 执行时静默失败（整段是 `|| true`）。
+    ///   ③ 两句 stderr 整个没了：找不到 cc-bus ⇒「**没有登记**」；`cc-spawned-record`
+    ///      不可执行 ⇒「**不进 spawn 台账**」。`--bus-register` 于是成了一个
+    ///      「**要了、没做、也不说**」的旗标 —— 那正是本工作区反复消灭的那类静默降级。
+    ///
+    /// # 它买不到什么
+    ///
+    /// **那两句 stderr 只钉「生产段里有这一句」，没钉「真跑时它真的印出来了」** ——
+    /// 后者要捕获进程的 stderr，而 `build()` 是纯函数、`eprintln!` 直接写 fd 2。
+    /// 行为那一半住 `e2e/cc-spawn-uplift.sh`（**而那套不在出货门禁里**，如实登记）。
+    #[test]
+    fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
+        // ① `is_exec`：**行为**判据 —— 造两个真文件，一个有执行位一个没有。
+        let d = tempdir();
+        let ok = std::path::Path::new(&d).join("cc-register");
+        let bad = std::path::Path::new(&d).join("cc-spawned-record");
+        std::fs::write(&ok, "#!/bin/sh\n").expect("写夹具");
+        std::fs::write(&bad, "#!/bin/sh\n").expect("写夹具");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&ok, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+            std::fs::set_permissions(&bad, std::fs::Permissions::from_mode(0o644)).expect("chmod");
+            assert!(is_exec(&ok), "有执行位的判成不可执行");
+            assert!(
+                !is_exec(&bad),
+                "**在、但没有执行位**被判成「它能用」—— 那正是首版 `is_file()` 的病：\n\
+                 拼进 seq 之后执行时静默失败（整段是 `|| true`），而调用方以为登记好了"
+            );
+        }
+        assert!(
+            !is_exec(&std::path::Path::new(&d).join("根本不存在")),
+            "不存在的文件被判成可执行"
+        );
+        assert!(!is_exec(std::path::Path::new(&d)), "目录被判成可执行文件");
+        let _ = std::fs::remove_dir_all(&d);
+
+        // ② 查找次序**三档都在**：`PATH` 那一档是本拍补回来的，别再删。
+        let me = crate::guard_support::production_code(include_str!("plan.rs"));
+        for anchor in [
+            "std::env::var(\"CC_BUS_SCRIPTS\")",
+            "join(\"cc-bus\").join(\"scripts\")",
+            "std::env::split_paths(&std::env::var_os(\"PATH\")?)",
+        ] {
+            assert!(
+                me.contains(anchor),
+                "`discover_bus_scripts` 少了一档：{anchor}\n\
+                 三档是 `CC_BUS_SCRIPTS` → 本程序目录旁的 `cc-bus/scripts` → `PATH`。\n\
+                 ⚠ 第二档在真实部署里**恒不命中**（后端住 `~/.cc-monitor/bin/`，旁边没有 `cc-bus/`）\n\
+                 ⇒ 删掉 `PATH` 那一档 = `--bus-register` 在生产上永远登记不成。"
+            );
+        }
+
+        // ③ 两句诊断在生产段里（**这一格只钉形状，行为归 e2e**，见头注）。
+        for say in ["**没有登记**", "**不进 spawn 台账**"] {
+            assert!(
+                me.contains(say),
+                "`--bus-register` 登记不成时那句「{say}」不见了 —— \n\
+                 旗标于是变成「要了、没做、也不说」。整段是 `|| true`，**不会有别的东西替它出声**。"
+            );
+        }
+        // 反向锚点：那两句必须在**同一个函数**里（`build()` 的容器分支），
+        // 搬到别处等于「说是说了，但那条路上说不到」。
+        let bus_block = me
+            .split("let bus = if o.bus_register {")
+            .nth(1)
+            .expect("找不到 `--bus-register` 那一段 —— 抽取器坏了，本条会零命中地绿");
+        let head = &bus_block[..bus_block.len().min(1200)];
+        assert!(
+            head.contains("**没有登记**") && head.contains("**不进 spawn 台账**"),
+            "那两句不在 `--bus-register` 那一段里了 —— 它们要在**决定登记不成的那一刻**说出来"
+        );
+    }
+
+    /// 〔搬自 `ccm-print-parity`「含空格 cwd 正确带引号」与 `ccm-cli` 的 quote 那族〕
+    #[test]
+    fn every_value_that_reaches_a_shell_is_quoted() {
+        let out = render(
+            &plan_of(
+                &["--tmux", "--cwd", "/home/pi/my proj"],
+                &env(),
+                &AccountTable::default(),
+            ),
+            None,
+        );
+        assert!(out.contains("-c '/home/pi/my proj'"), "{out}");
+        assert!(out.contains("-s 'my-proj-cc'"), "{out}");
+        assert_eq!(qarg("a b"), "'a b'");
+        assert_eq!(qarg("ok-1.2/x"), "ok-1.2/x");
+        assert_eq!(qarg(""), "''");
+        assert_eq!(qarg("it's"), "'it'\\''s'");
+    }
+
+    /// 〔搬自 `ccm-print-parity`「attach 到 cc-p1」〕—— `=名:` 是 tmux 的**精确匹配**形。
+    #[test]
+    fn attach_uses_the_exact_match_target() {
+        assert_eq!(printed(&["attach", "cc-p1"]), "tmux attach -t '=cc-p1:'");
+    }
+
+    /// 🔴 `KR58D3` —— 不给 `--cwd` 的默认是**恒等**：就是调用方自己的 cwd，一层都不跳。
+    ///
+    /// 〔用@09-11 逐字〕「`cc` 默认就起会话就行，**跳目录是我自己的设置，不要搞进 app**。」
+    /// `K37` 第三条：**诚实的默认 = 恒等 / 不作为 / 沿用调用者已有状态**；
+    /// 从一张表里替他挑一个具体值（工作区 / 仓的父目录）**不诚实**。
+    ///
+    /// 〔本条是上一版那条「auto 有几条分支」的**翻面**，不是它的替补：那一版搬自
+    /// `ccm-cli`「布局 1–5」，断的正是今天被裁掉的那两档。同样那几种布局留在这里，
+    /// 从「证明会跳」变成「证明不跳」—— **射程一格没少**。〕
+    #[test]
+    fn the_default_cwd_is_the_identity_in_every_layout() {
+        let mut e = env();
+        let d = tempdir();
+        // 布局1：站在 $HOME —— 从前跳 `$CCM_WORKSPACE`，今天就是 $HOME。
+        e.pwd = e.home.clone();
+        assert_eq!(cwd_of(&["new"], &e), e.home, "在 $HOME 裸敲不许再跳工作区");
+        // 布局2/3：git 仓根 / 仓的子目录 —— 从前跳**仓的父目录**，今天就是站着的那个目录。
+        std::fs::create_dir_all(format!("{d}/repo/sub")).expect("造夹具");
+        std::fs::write(format!("{d}/repo/.git"), "gitdir: /elsewhere").expect("造夹具");
+        for p in [format!("{d}/repo"), format!("{d}/repo/sub")] {
+            e.pwd = p.clone();
+            assert_eq!(cwd_of(&["new"], &e), p, "在 git 仓里敲不许再跳到仓外");
+        }
+        // 布局4：非 git 目录 —— 一直是它自己（这一档本来就诚实，留着当对照）。
+        e.pwd = d.clone();
+        assert_eq!(cwd_of(&["new"], &e), d);
+        // `resume`/`attach` 那一支**一个字都没动**：它本来就不走 auto，
+        // 再解析一次会让 claude 按 `projects/<enc(cwd)>/<sid>.jsonl` 找不到会话（实测踩过）。
+        e.pwd = format!("{d}/repo");
+        assert_eq!(cwd_of(&["resume", "s"], &e), format!("{d}/repo"));
+        assert_eq!(cwd_of(&["attach", "n"], &e), format!("{d}/repo"));
+        // 显式 `--cwd` 仍然赢 —— 拿掉的是「替用户挑」，不是「用户自己挑」。
+        assert_eq!(cwd_of(&["--cwd", "/x/y"], &e), "/x/y");
+    }
+
+    fn cwd_of(args: &[&str], e: &Env) -> String {
+        let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        match parse(&a).expect("解析得动") {
+            Parsed::Opts(o) => resolve_cwd(&o, e),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// 〔搬自 `ccm-contract-parity` B 组「CCM_ENV 被 eval / --print 里也在 / 早于会话级 env」〕
+    ///
+    /// `CCM_ENV` 是**机器级** env（代理等，旧 `CC_ENV` 的搬家）：它必须排在会话级 env
+    /// **之前**，否则 `--account` 想覆盖它时反而被它盖回去。差分对顺序失明 ⇒ 单钉。
+    #[test]
+    fn the_machine_level_env_comes_first_and_the_session_level_one_wins() {
+        let dz = tempdir();
+        let t = table(&[("z", Some(dz.as_str()), true)]);
+        let mut e = env();
+        e.ccm_env = "export CCM_ENV_PROBE=from-ccm-env".into();
+        let line = render(&plan_of(&["--cwd", "/p", "--account", "z"], &e, &t), None);
+        assert!(
+            line.starts_with("export CCM_ENV_PROBE=from-ccm-env; "),
+            "{line}"
+        );
+        let i_env = line.find("CCM_ENV_PROBE").expect("该有机器级 env");
+        let i_acct = line.find("CLAUDE_CONFIG_DIR").expect("该有账号目录");
+        assert!(i_env < i_acct, "机器级 env 必须排在会话级之前：{line}");
+    }
+
+    /// 🔴 〔搬自 `ccm-contract-parity` A′g 那两条〕**后端回的那条命令串不许被 shell 改写。**
+    ///
+    /// 它要被拆成词才跑得了（`exec $cmd`），而拆词那一步会做路径展开 ——
+    /// 命令里一个 `*` 会被当前目录的文件名顶掉。`set -f` 关掉的正是这一步。
+    #[test]
+    fn a_command_from_the_backend_is_never_rewritten_by_the_shell() {
+        let p = plan_of(
+            &["resume", "abc-123", "--cwd", "/p"],
+            &env(),
+            &AccountTable::default(),
+        );
+        let line = render(&p, Some("claude --resume abc-123 --glob *"));
+        assert!(
+            line.contains("set -f; exec claude --resume abc-123 --glob *"),
+            "少了 `set -f` ⇒ 那个 `*` 会被 cwd 的文件名改写：{line}"
+        );
+        // 反向：没有后端答案时走本地那条，argv 逐个 quote，本来就不经拆词
+        let local = render(&p, None);
+        assert!(!local.contains("set -f"), "本地那条不需要 set -f：{local}");
+        assert!(local.ends_with("exec claude --resume abc-123"), "{local}");
+    }
+
+    /// 〔搬自 `ccm-contract-parity` A / A′ 两组「print↔exec 一致」〕
+    ///
+    /// 从前那两组要**真跑一趟**再与 `--print` 差分，因为两条路是两份代码。
+    /// 今天它们读的是**同一个 [`Plan`]** ⇒ 这条判据钉的是那个结构事实：
+    /// 渲染函数的全部输入只有 `Plan` 与 `resolved`，没有第二个来源。
+    #[test]
+    fn print_and_exec_cannot_drift_because_they_read_the_same_plan() {
+        let p = plan_of(
+            &["--cwd", "/p", "--model", "opus"],
+            &env(),
+            &AccountTable::default(),
+        );
+        assert_eq!(render(&p, None), render(&p, None), "渲染必须是纯函数");
+        let Plan::Direct(d) = &p else {
+            panic!("该是 Direct")
+        };
+        // 真跑那一侧读的就是这几个字段（`run::exec_direct`），逐个在这里点名。
+        assert_eq!(d.model, "opus");
+        assert_eq!(d.cwd, "/p");
+        assert_eq!(d.argv, vec!["claude".to_string()]);
+    }
+
+    // ── 夹具 ────────────────────────────────────────────────────────────
+    fn tempdir() -> String {
+        let p = std::env::temp_dir().join(format!(
+            "ccm-plan-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("时钟")
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&p).expect("造夹具目录");
+        p.to_string_lossy().to_string()
+    }
+
+    fn table(rows: &[(&str, Option<&str>, bool)]) -> AccountTable {
+        AccountTable(
+            rows.iter()
+                .map(|(n, c, d)| Account {
+                    name: (*n).to_string(),
+                    config_dir: c.map(|x| x.to_string()),
+                    is_default: *d,
+                })
+                .collect(),
+        )
+    }
+
+    /// 账号表的**读法只有一处**：那份 manifest。〔承接 `ccm-cli` KCY1 那一族的语义半〕
+    #[test]
+    fn the_account_table_has_exactly_one_source() {
+        let d = tempdir();
+        let m = format!("{d}/accounts.json");
+        std::fs::write(
+            &m,
+            format!(r#"{{"accounts":[{{"name":"z","configDir":"{d}","isDefault":true}}]}}"#),
+        )
+        .expect("造夹具");
+        let t = AccountTable::load(&m);
+        assert_eq!(t.0.len(), 1);
+        assert_eq!(t.default_name(), Some("z"));
+        assert_eq!(t.config_dir_of("z"), Some(d.clone()));
+        // manifest 不在 ⇒ **空表**，不是失败（那台机器就是没有账号库）
+        assert!(AccountTable::load("/nonexistent/accounts.json")
+            .0
+            .is_empty());
+        // manifest 里写着、盘上没有 ⇒ 当作不可用（目录存在性自己判）
+        let m2 = format!("{d}/a2.json");
+        std::fs::write(
+            &m2,
+            r#"{"accounts":[{"name":"g","configDir":"/nonexistent/gone"}]}"#,
+        )
+        .expect("造夹具");
+        assert_eq!(AccountTable::load(&m2).config_dir_of("g"), None);
+    }
+}

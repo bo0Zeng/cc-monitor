@@ -63,7 +63,10 @@ describe("HistoryView 搜索卡片 resume (F85 #44)", () => {
     const btn = card.querySelector<HTMLButtonElement>(".search-session-resume")!;
     expect(btn).toBeTruthy();
     btn.click();
-    await Promise.resolve();
+    // `K-R46`：本机 resume 现在**多一跳 IPC** —— 起会话前要先问一次 `list_local_tmux`
+    // 才铸得出 tmux 会话名（后端故意拒绝自己铸名，见 `ipc/local-tmux-name.ts`）。
+    // ⇒ 一个微任务已经不够了，冲一轮宏任务把链排空（同本文件远端那两条的做法）。
+    await new Promise((r) => setTimeout(r, 0));
     const call = invokeMock.mock.calls.find((c) => c[0] === "resume_history_session");
     expect(call).toBeTruthy();
     expect(call![1]).toMatchObject({ sessionId: "s1", cwd: "/p", launcher: null });

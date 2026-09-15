@@ -24,6 +24,20 @@
 //! `[dev-dependencies]`，不进任何发布二进制）。新增函数请守住这条边界：
 //! **纯文本处理放这里，需要 IO 的只能是守卫断言型（panic 语义、只在测试里跑）。**
 //!
+//! 🔴 **而 IO 里的「写」这一半，本 crate 一处都不许有 —— 连 `#[cfg(test)]` 里也不许。**
+//! 看着它的是 daemon 侧的
+//! `readonly_guard::g6_dependency_signoff::the_clean_verdict_is_re_measured_on_the_tree_every_run`：
+//! 签字表把本 crate 判成「已量 · 未见写面」，而它**按原文行**重扫（`src.lines()`，
+//! **不走 `production_code`**）⇒ 测试夹具里一句 `std` 的写盘调用就会让 daemon 那一格当场红。
+//! ⚠ **连这段散文自己都要小心**：那把尺子是**纯字面**的，`///` 里逐字写出那几个写盘 API 的名字
+//! **一样命中**（09-12 现打过一次：本段第一版把其中一个写进了句子里，daemon 那格逐字点名的正是这一行）
+//! ⇒ 本段刻意只说「写盘调用」，一个 API 名都不写。要看今天有哪几个，读那两张模式表本身。
+//! 〔`K-R75` 09-12 现打：一条需要真目录的树遍历判据写在这里，门禁 `daemon` 那格 `685/1`；
+//!  处置是把那条判据**搬去 monitor 侧的 `structural_scan.rs`**（就挨着
+//!  monitor 那条树遍历；它的名字与死值验写在它自己的头注里 —— 这里刻意不复述那个名字：
+//!  那份文件把自己从死名判据的语料里摘掉了，在这儿点它的名字会被读成一个不存在的符号），
+//!  **不是**去动那把尺子。〕
+//!
 //! # 为什么剥法长这样（daemon 侧的两次实测教训，原样保留）
 //!
 //! 原先**八处**各写一份：
@@ -44,6 +58,23 @@
 //!
 //! ⇒ 只把坑 1 修掉（放宽锚点）会**当场引爆坑 2**。所以本模块的剥法是
 //! 「**逐个剥掉每个 `#[cfg(test)]` 模块**」，不是「第一个之后全砍」。
+//!
+//! # 🔴「剥法认不出的写法」这一族 —— 已经三形，而**头注不是守门人**〔`K-R75` 09-12〕
+//!
+//! 上一节记着第一形（无花括号体）。09-12 又逮到第二形：**可见性前缀**
+//! （`pub(crate) mod tests {` 穿过 `starts_with("mod ")`）。两形的形状不同，
+//! **病是同一个**：判定按「字面前缀」认那一行 ⇒ 下一形照样穿得过去。
+//!
+//! ⇒ 本轮做了两件事，**第二件才是这一族的人数**：
+//!
+//! 1. 判定改成认**形状**（[`strip_visibility`]：`pub` ＋ 可选的一对配平括号，
+//!    那是 Rust `Visibility` 文法定死的闭集）—— 不是再补一张前缀表。
+//! 2. 反向自检补上第二半（[`assert_no_unstripped_test_module`]）：
+//!    生产段里残留「测试期 `cfg` ＋ 带花括号体的 `mod`」就**当场红并点名那份文件**，
+//!    而它的匹配单位（完整的词 `mod`）**与剥法的匹配单位不同** ⇒ 剥法的盲区不是它的盲区。
+//!
+//! ⚠ 第一形当年也是「写在头注里」的，写完之后第二形照样发生了 ——
+//! **写下来的边界不是判据**（`production_code` 头注那句「三次同族」说的就是这件事）。
 //!
 //! # 自指陷阱（本仓连踩五次，别再踩）
 //!
@@ -76,9 +107,22 @@ fn cfg_is_test_only(attr: &str) -> bool {
 /// 剥掉源码里**每一个带花括号体的** `#[cfg(test)] mod X { … }` 块，其余原样保留。
 ///
 /// 收尾判据 = **列 0 的右大括号**（换行紧跟一个右大括号）。测试模块是顶层 item，rustfmt 保证它的收尾大括号
-/// 在列 0，而块内任何嵌套大括号都是缩进的。刻意不做完整的大括号配对：那要连字符串、
-/// 原始字符串、注释一起解析，复杂度远超收益，而列 0 判据在两侧的文件上实测干净
-/// （daemon 侧 `every_daemon_file_strips_clean`、monitor 侧 `every_monitor_file_strips_clean`）。
+/// 在列 0，而块内任何嵌套大括号都是缩进的。**刻意仍然不做完整的大括号配对** —— 变的只是
+/// 「在哪份文本上找那个列 0 的 `}`」：[`test_module_ranges`] 09-13 起在
+/// [`mask_all_literals`] 的**词法掩码**上找它（串 / 原始串 / 注释 / 字符字面量一律抹掉），
+/// 切片仍然切原文。
+///
+/// # 🔴 上一版这里写着的那句话**已被证伪，原样留在这里当账**〔`K-R110`，09-13〕
+///
+/// 逐字是：「列 0 判据在两侧的文件上**实测干净**（daemon 侧 `every_daemon_file_strips_clean`、
+/// monitor 侧 `every_monitor_file_strips_clean`）」。**两半都不成立**：
+/// `remote-daemon-proto/src/plugin/mod.rs` 的测试段里有一段 `r#"…"#`，内容里逐字有一行
+/// `}"#;` ⇒ 区间在**第 657 行**收了尾，而真收尾在 688 行 ⇒ **31 行**测试代码漏进生产段；
+/// 而那两条被点名的判据**一条都没红** —— 漏出去的那 31 行里测试属性恰好 0 个、`mod` 行 0 行。
+/// ⚠ 同族第几次不必再数，形状是同一个：**「写下来的边界」不是判据**。
+/// ⇒ 本轮的处置是两件事：① 锚点搬到词法掩码上找；
+/// ② 补 [`assert_test_module_ranges_are_brace_balanced`]（匹配单位换成**计数**，
+/// 与剥法的「第一处命中」不同 ⇒ 剥法的盲区不是它的盲区）。
 ///
 /// # ★ 必须先确认那一行以左大括号收尾（本函数第一版栽在这里，Phase D 审计当场逮出）
 ///
@@ -108,19 +152,91 @@ pub fn production_source(src: &str) -> String {
     out
 }
 
+/// 剥掉一行开头的**可见性修饰**，返回其后的部分；没有修饰就原样返回。
+///
+/// # 🔴 它认的是**形状**，不是一张前缀表〔`K-R75`，09-12〕
+///
+/// [`test_module_ranges`] 的前一版判定逐字是 `mod_line.starts_with("mod ")` ——
+/// 于是 `pub(crate) mod tests {` 穿了过去，那份文件**整段测试代码留在生产段里**。
+/// `K-R74` 开发中间实打：`ssh_source.rs` 的测试模块加一个 `pub(crate)` 前缀，
+/// monitor 判定行 `1403 passed; 0 failed` 当场变成 `1399 passed; 10 failed`。
+///
+/// **修法不是再列一张前缀表** —— 那是把同一个病换个写法再犯一次
+/// （同族第一形「无花括号体」就写在 [`test_module_ranges`] 的分支注释里）。
+/// Rust 的 `Visibility` 文法本身就是一个**语言定死的闭集**，逐字只有两种形状：
+///
+/// 1. `pub`
+/// 2. `pub` ＋ **一对配平的括号**（`(crate)` · `(self)` · `(super)` · `(in <路径>)`）
+///
+/// ⇒ 本函数认的就是那个形状。`pub(in crate::a::b::c…)` 的路径**任意长**，
+/// 前缀表穷举不了，而形状认得出 —— 判据 `a_test_module_is_recognised_whatever_its_visibility`
+/// 正是拿这一档把「换成前缀表」这条退路钉死的。
+///
+/// ⚠ **不认的一律原样退回**（宁可不剥，不许乱切）：`pub` 后面紧跟标识符字符
+/// （`pubsub`）、括号不配平（`pub(crate mod x {`）都当作「这里没有可见性修饰」。
+///
+/// # 为什么是 `pub`（＝这一族**只许有一个权威源**，本仓 `E3`）
+///
+/// 「一行 item 声明前面那截可见性修饰」在本仓不止一个消费者：除了本 crate 的剥法，
+/// monitor 侧还有判据靠「哪一行是测试模块的开头」来划自己的人群
+/// （`structural_scan.rs` 里那条「每个测试 `fn` 都得真的带属性」）。
+/// 那一处原先也写着 `starts_with("mod ")` —— **同一个病的第二个住址**，
+/// 而它的失效方向更阴：认不出 ⇒ 那份文件**整份掉出人群**，判据照样绿。
+/// ⇒ 09-12 一并接到这一份上来，别再各写一份近似的。
+pub fn strip_visibility(line: &str) -> &str {
+    let Some(rest) = line.strip_prefix("pub") else {
+        return line;
+    };
+    let after = rest.trim_start();
+    // `pub` 之后必须是空白或 `(`。两样都不是 ⇒ `pub` 只是某个标识符的开头。
+    if after.len() == rest.len() && !rest.starts_with('(') {
+        return line;
+    }
+    let Some(inner) = after.strip_prefix('(') else {
+        return after;
+    };
+    let mut depth = 1usize;
+    for (k, c) in inner.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return inner[k + c.len_utf8()..].trim_start();
+                }
+            }
+            _ => {}
+        }
+    }
+    line
+}
+
 /// 每个「带花括号体的 `#[cfg(test)] mod X { … }`」在 `src` 里的字节区间。
 ///
 /// [`production_source`] 与 [`test_source`] **共用这一份判定** —— 它们是同一个事实的
 /// 两半，各写一份迟早漂（本仓 E3：一个事实恰好一个权威源）。
 /// 判定规则与它们各自的头注一致，改这里之前先读那两段。
+///
+/// ⚠ 可见性修饰由 [`strip_visibility`] **按形状**剥掉（`K-R75`）——
+/// 别把那一步改回 `starts_with("pub(crate) mod ")` 这类前缀比对。
+///
+/// ⚠ 两个锚点都在 [`mask_all_literals`] 的**词法掩码**上找（`K-R110`，09-13）——
+/// 别把它改回在裸 `src` 上找：那正是「区间在原始字符串中间收尾」那个活体的成因。
+/// 守着这一条的是 [`assert_test_module_ranges_are_brace_balanced`]。
 fn test_module_ranges(src: &str) -> Vec<(usize, usize)> {
     // 转义写法 ⇒ 与真正的换行不相等 ⇒ 不会匹配到本行自己。
     let open = "\n#[cfg(";
     let close = "\n}";
+    // 🔴 两个锚点都在**词法掩码**上找，切片仍然切**原文**〔`K-R110`，09-13〕。
+    //    掩码等长 ⇒ 偏移一一对应；掩码抹掉的都是**不是代码**的字节
+    //    ⇒ 候选只会变少，收尾只会落在同一处或更靠后（偏向写在 `mask_all_literals` 头注里）。
+    //    兜底（词法崩了）⇒ 退回裸文本，行为退回 09-13 之前那一档，而不是当场乱切。
+    let masked = mask_all_literals(src);
+    let hay: &str = masked.as_deref().unwrap_or(src);
     let mut out = Vec::new();
     let mut i = 0usize;
     loop {
-        let Some(rel) = src[i..].find(open) else {
+        let Some(rel) = hay[i..].find(open) else {
             return out;
         };
         let j = i + rel;
@@ -133,12 +249,12 @@ fn test_module_ranges(src: &str) -> Vec<(usize, usize)> {
         // 属性那一行（不含前导换行）。
         let attr_start = j + 1;
         let attr_end = line_end(attr_start);
-        // 紧接着的那一行必须是 `mod X {` 才是「带花括号体的测试模块」。
+        // 紧接着的那一行必须是 `[可见性] mod X {` 才是「带花括号体的测试模块」。
         let mod_start = (attr_end + 1).min(src.len());
         let mod_end = line_end(mod_start);
         let mod_line = src[mod_start..mod_end].trim();
         let is_test_mod = cfg_is_test_only(&src[attr_start..attr_end])
-            && mod_line.starts_with("mod ")
+            && strip_visibility(mod_line).starts_with("mod ")
             && mod_line.ends_with('{');
         if !is_test_mod {
             // 不是测试模块（非 test 的 cfg / 无花括号体的 `mod x;` 声明 / cfg 挂在别的 item 上）
@@ -147,10 +263,15 @@ fn test_module_ranges(src: &str) -> Vec<(usize, usize)> {
             // ★「无花括号体」那一条是 Phase D 审计逮出来的：`#[cfg(test)] mod guard_support;`
             //   若被当成模块体，「列 0 的右大括号」会一路吞到下一个顶层 item 的收尾，
             //   把中间**全部生产代码**当测试段丢掉（daemon main.rs 曾整段 26–179 行消失）。
+            //
+            // ★★ 第二形（`K-R75`，09-12）：**带可见性前缀的模块声明**。上一版这里逐字写着
+            //   `mod_line.starts_with("mod ")` ⇒ `pub(crate) mod tests {` 从这个 `continue`
+            //   走掉，整段测试代码留在生产段里。今天由 `strip_visibility` **按形状**接住。
+            //   ⇒ 这一族的守门人是 `assert_no_unstripped_test_module`（下一形出现时它会点名那份文件）。
             i = attr_end;
             continue;
         }
-        match src[j..].find(close) {
+        match hay[j..].find(close) {
             // 没收尾 ⇒ 文件结束前都算测试段。
             None => {
                 out.push((j, src.len()));
@@ -425,6 +546,49 @@ fn raw_string_open(sb: &[u8], i: usize) -> Option<(usize, usize)> {
 /// ⚠ 它量的是**那两个单位**，不是「所有单位」—— 别的单位逐处登记在
 /// `evidence/K-R25-D2-unit-alignment.md`。
 fn try_strip_block_comments(src: &str) -> Option<String> {
+    scan_and_blank(src, false)
+}
+
+/// 把**块注释 ＋ 行注释 ＋ 字符串/原始串/字节串的内容 ＋ 字符字面量**一律抹成**等长空格**。
+/// 剥不动时 `None`（与 [`try_strip_block_comments`] **同一条兜底、同一台状态机**）。
+///
+/// # 它为什么存在〔`K-R110`，09-13〕
+///
+/// [`test_module_ranges`] 的收尾针是「列 0 的右大括号」，而它原先在**裸文本**上找 ——
+/// 于是测试模块里一段 `r#"…"#` 的**内容**里出现列 0 的 `}`，那一段就在字符串中间收了尾。
+/// 09-13 现打：全仓 git 跟踪的 `.rs` **235** 份里**恰好 1 份**踩上
+/// （`remote-daemon-proto/src/plugin/mod.rs`，`}"#;` 那一行）——
+/// **31 行测试代码漏进生产段、同样这 31 行从测试段里少掉**，而两条反向自检都看不见它
+/// （那 31 行里测试属性恰好 0 个、`mod` 行 0 行）。
+///
+/// # 🔴 新针的偏向：它只会让收尾**往后挪**，不会往前
+///
+/// 掩码只做一件事：把**不是代码**的那些字节抹掉。⇒ 候选的列 0 `}` 只会**变少**，
+/// 收尾只会**落在同一处或更靠后**。
+/// - 往后挪到**真正的**收尾 ⇒ 这正是本轮要修的。
+/// - 万一词法认错、把真代码当成串/注释 ⇒ 收尾会挪过头，**测试段吞掉生产代码**
+///   （这是 `production_source` 头注里记的那个老病灶的方向）。
+///   看着这一档的是两侧既有的「生产段里必须还找得到某锚点」判据
+///   （daemon `guard_support::main_production_section_keeps_its_load_bearing_items`），
+///   以及本模块的 [`assert_test_module_ranges_are_brace_balanced`]。
+/// - 词法**自己**崩了（收不了口）⇒ 走兜底、退回裸文本，形状退回 09-13 之前那一档，
+///   而 [`assert_block_comment_model_holds`] 与本模块那条新判据都会出声。
+///
+/// ⚠ **它不是「括号配平」**：收尾判据仍然逐字是「列 0 的右大括号」
+/// （`production_source` 头注里那条已登记的边界一个字没改），
+/// 变的只是「在哪份文本上找它」。
+fn mask_all_literals(src: &str) -> Option<String> {
+    scan_and_blank(src, true)
+}
+
+/// [`try_strip_block_comments`] 与 [`mask_all_literals`] **共用的那一台状态机**
+/// （E3：一个事实恰好一个权威源 —— 两份近似的词法器是这一族最贵的病）。
+///
+/// - `blank_all == false` ⇒ 只抹块注释（09-13 之前的行为，**逐字未变**）。
+/// - `blank_all == true`  ⇒ 连行注释、串内容（含定界符）、字符字面量一起抹。
+///
+/// 两档都**等长**（逐字节换成空格），行数与字节偏移一律不动。
+fn scan_and_blank(src: &str, blank_all: bool) -> Option<String> {
     let mut out: Vec<u8> = Vec::with_capacity(src.len());
     let mut depth = 0usize;
     let mut in_str = false;
@@ -446,6 +610,16 @@ fn try_strip_block_comments(src: &str) -> Option<String> {
         let sb = scan.as_bytes();
         // 抹在**原行**上（掩码是等长的 ⇒ 下标一一对应）。
         let mut line: Vec<u8> = raw.as_bytes().to_vec();
+        // `blank_all`：字符字面量也抹掉 —— `'{'` / `'}'` 会污染任何**按花括号计数**的下游
+        // （本仓真有：`.trim_start_matches('{')`）。`mask_char_literals` 已经在 `scan` 上
+        // 把它们换成了 `_`，照着位置抹到 `line` 上就行，不用第二台词法器。
+        if blank_all {
+            for (k, (&m, &r)) in sb.iter().zip(raw.as_bytes()).enumerate() {
+                if m == b'_' && r != b'_' {
+                    line[k] = b' ';
+                }
+            }
+        }
         let mut i = 0usize;
         while i < sb.len() {
             if depth > 0 {
@@ -475,19 +649,34 @@ fn try_strip_block_comments(src: &str) -> Option<String> {
                     && sb[i + 1..i + 1 + h].iter().all(|&c| c == b'#')
                 {
                     raw_hashes = None;
+                    if blank_all {
+                        line[i..i + 1 + h].fill(b' ');
+                    }
                     i += 1 + h;
                     continue;
+                }
+                if blank_all {
+                    line[i] = b' ';
                 }
                 i += 1;
                 continue;
             }
             if in_str {
                 if sb[i] == b'\\' {
+                    if blank_all {
+                        line[i] = b' ';
+                        if i + 1 < line.len() {
+                            line[i + 1] = b' ';
+                        }
+                    }
                     i += 2;
                     continue;
                 }
                 if sb[i] == b'"' {
                     in_str = false;
+                }
+                if blank_all {
+                    line[i] = b' ';
                 }
                 i += 1;
                 continue;
@@ -500,16 +689,26 @@ fn try_strip_block_comments(src: &str) -> Option<String> {
                 } else {
                     raw_hashes = Some(h);
                 }
+                if blank_all {
+                    let stop = (i + consumed).min(line.len());
+                    line[i..stop].fill(b' ');
+                }
                 i += consumed;
                 continue;
             }
             if sb[i] == b'"' {
                 in_str = true;
+                if blank_all {
+                    line[i] = b' ';
+                }
                 i += 1;
                 continue;
             }
             if sb[i] == b'/' && sb.get(i + 1) == Some(&b'/') {
                 // 行注释：本行剩下的一律不看（`//` 那一半归 `strip_trailing_comments`）。
+                if blank_all {
+                    line[i..].fill(b' ');
+                }
                 break;
             }
             if sb[i] == b'/' && sb.get(i + 1) == Some(&b'*') {
@@ -764,11 +963,168 @@ pub fn assert_no_test_code(who: &str, prod: &str) {
     );
 }
 
-/// 遍历一棵源码树，对每个 `.rs` 文件断言 [`assert_no_test_code`]。
+/// 反向自检的**第二半**〔`K-R75` `KR75D2`，09-12〕：
+/// 剥完的文本里不许再出现「**测试期专属 `cfg` ＋ 一个带花括号体的 `mod`**」。
+///
+/// # 它和 [`assert_no_test_code`] 分工在哪，为什么两条都要
+///
+/// [`assert_no_test_code`] 数的是残留的**测试属性**（`#[test]`）。它接得住「测试模块没剥掉
+/// 而里面有测试函数」，**接不住「测试模块没剥掉而里面一个 `#[test]` 都没有」** ——
+/// 而那不是假想：09-12 现打，monitor 树上就有 **3 处** `#[cfg(test)] pub(crate) mod X {`
+/// （`daemon_kill.rs` 的 `creation_detect` · `shared_crate_registry.rs` 的 `ci_yaml` ·
+/// `write_site_registry.rs` 的 `writers`），它们全是**只给测试用的量具模块、里面没有 `#[test]`**
+/// ⇒ 剥法认不出它们、它们整段待在生产段里被各条判据扫，**而反向自检一声不吭**。
+///
+/// # 🔴 为什么它不会和剥法一起瞎掉：**匹配单位不同**
+///
+/// 剥法认的是「行首（剥掉可见性之后）是 `mod `」。本条认的是「这一行里有 `mod` 这个**完整的词**、
+/// 且这一行以 `{` 收尾」（[`contains_word`]）。⇒ 剥法的盲区（前缀多了点什么）**恰好不是**本条的盲区。
+/// 一条把「剥法认不出的写法」这一族数出来的判据，如果和剥法共用同一种匹配单位，
+/// 它就是一个**不会响的闹钟**。
+///
+/// # 它的射程边界，两侧都写出来
+///
+/// - **接得住**：`pub(crate) mod` · `pub(in …) mod` · 同一行的 `#[cfg(test)] mod x {` ·
+///   属性与 `mod` 之间夹了文档注释/别的属性的写法（往下跳过空行、`//`、`#[…]` 再看）。
+/// - **接不住**：① **过剥**（剥多了 —— 那一族由两侧的「生产段里必须还找得到某锚点」判据守，
+///   见 daemon `guard_support` 那条）；② `#[cfg(test)]` 挂在**不是 `mod` 的**花括号体上
+///   （`fn` / `impl` / `enum` / `thread_local!`，09-12 现打两棵树共 **31 处**）——
+///   那不是「剥法漏了」，剥法从来只认 `mod` 块；把它们也判红等于给这条守卫加一族假红。
+/// - **它不数「有没有 `#[test]`」** ⇒ 与 [`assert_no_test_code`] 是并集关系，不是替代。
+///
+/// # Panics
+///
+/// 有残留时 panic，并**逐处点名**（`who` ＋ 行号 ＋ 那一行的逐字内容）。
+pub fn assert_no_unstripped_test_module(who: &str, prod: &str) {
+    // 自指陷阱：needle 运行时拼 ⇒ 本文件自己的生产段里不存在这个字面量。
+    let cfg_open = format!("#[{}(", "cfg");
+    let lines: Vec<&str> = prod.split('\n').collect();
+    let mut offenders: Vec<String> = Vec::new();
+    for (i, raw) in lines.iter().enumerate() {
+        let t = raw.trim();
+        if !t.starts_with(cfg_open.as_str()) || !cfg_is_test_only(t) {
+            continue;
+        }
+        // 同一行就带着 item 体（`#[cfg(test)] mod x {`），或者往下找第一条**实**行。
+        let (at, cand) = if t.ends_with('{') {
+            (i, t)
+        } else {
+            let mut j = i + 1;
+            while j < lines.len() {
+                let s = lines[j].trim();
+                if s.is_empty() || s.starts_with("//") || s.starts_with('#') {
+                    j += 1;
+                    continue;
+                }
+                break;
+            }
+            match lines.get(j) {
+                Some(s) => (j, s.trim()),
+                None => continue,
+            }
+        };
+        if cand.ends_with('{') && contains_word(cand, "mod") {
+            // ⚠ 这个序号是**生产段里的行号，不是原文行号**（调用方多半已经剥过注释 ⇒ 行会少）。
+            //   真正的校验位是后面那段**逐字内容**，拿它去原文里搜。
+            offenders.push(format!("{who} · 生产段第 {} 行 · 逐字 `{cand}`", at + 1));
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "{who}：生产段里残留了 {} 处**剥法没认出来的测试模块** —— 此刻这些判据在扫测试代码：\n{}\n\
+         ★ 这一族已经犯过三形：① 无花括号体的 `mod x;`（daemon main.rs 曾整段 26–179 行消失）\n\
+         ② 可见性前缀 `pub(crate) mod`（`K-R74` 实打：判定行 1403/0 → 1399/10）③ 就是你现在看到的这一处。\n\
+         ⇒ **改的是 `guard_core::test_module_ranges` 的剥法，不是这份文件的写法**；\n\
+         而且**不许再列一张前缀表** —— 要认形状（`strip_visibility` 那一档是范例）。",
+        offenders.len(),
+        offenders.join("\n")
+    );
+}
+
+// ── KR110D1 新判据：切出来的每一段，花括号必须净配平 ──
+/// 反向自检的**第三半**〔`K-R110`，09-13〕：[`test_module_ranges`] 切出的**每一段**，
+/// 按**词法**数的 `{` 与 `}` 必须一样多。
+///
+/// # 它和另外两半分工在哪，为什么非得有第三条
+///
+/// [`assert_no_test_code`] 数残留的**测试属性**；[`assert_no_unstripped_test_module`]
+/// 数残留的「测试期 `cfg` ＋ 带花括号体的 `mod`」。**两条都接不住「区间在字符串中间收了尾」**：
+/// 09-13 现打的活体（`plugin/mod.rs`）里，漏出去的那 31 行**测试属性恰好 0 个、`mod` 行 0 行**
+/// ⇒ 两条都一声不吭，而那份文件上每一条按生产段/测试段扫的判据人群都是错的。
+///
+/// # 🔴 为什么它不会和剥法一起瞎掉：**匹配单位不同**
+///
+/// 剥法认的是「**第一处**列 0 的 `}`」（一次命中就收尾）。本条数的是**整段里的两个计数**。
+/// ⇒ 收尾挪早了（落进字符串/注释里）**必然**留下 `{` 多于 `}`；
+/// 收尾挪晚了吞掉一个顶层 item（那个 item 自身配平）本条**看不见** —— 那一档由
+/// 两侧「生产段里必须还找得到某锚点」的语义钉守，**这条边界写在这里，别读成本条全都接得住**。
+///
+/// # 它的射程边界，两侧都写出来
+///
+/// - **接得住**：区间收在字符串字面量 / 原始串 / 块注释里的那一形（本轮那个活体）；
+///   收在**无花括号体** `mod x;` 之后那一形（历史第一形 —— 那时区间会多吞一个 `}`）。
+/// - **接不住**：① 收尾挪晚、吞掉的恰好是配平的整块（上一段已写）；
+///   ② 它与剥法**共用同一台词法状态机**（[`scan_and_blank`]）——
+///   词法本身认错，两边一起错。看着词法那一档的是 [`assert_block_comment_model_holds`]
+///   与本条的兜底分支（下面那句 panic）。
+/// - **判不了就明说**：掩码走兜底（词法收不了口）⇒ 本条**当场 panic 说「判不了」**，
+///   不许静默当成通过。09-13 现打：全仓 235 份 `.rs` 走兜底的**0 份**。
+///
+/// # Panics
+///
+/// 有不配平的区间时 panic 并**逐段点名**（`who` ＋ 行区间 ＋ 两个计数）；
+/// 词法兜底时也 panic（诊断里逐字写着「判不了」）。
+pub fn assert_test_module_ranges_are_brace_balanced(who: &str, src: &str) {
+    let Some(masked) = mask_all_literals(src) else {
+        panic!(
+            "{who}：词法掩码对这份文本收不了口（`scan_and_blank` 走了兜底）\n\
+             ⇒ **本条对这一份判不了**，不许把它读成通过。同一档还会让\n\
+             `assert_block_comment_model_holds` 出声 —— 先去看那一条说了什么。"
+        )
+    };
+    let mut offenders: Vec<String> = Vec::new();
+    for (start, end) in test_module_ranges(src) {
+        let seg = &masked[start..end];
+        let opens = seg.matches('{').count();
+        let closes = seg.matches('}').count();
+        if opens != closes {
+            offenders.push(format!(
+                "{who} · 第 {}–{} 行这一段：`{{` {opens} 个 / `}}` {closes} 个",
+                src[..start].matches('\n').count() + 1,
+                src[..end].matches('\n').count() + 1
+            ));
+        }
+    }
+    assert!(
+        offenders.is_empty(),
+        "{who}：`test_module_ranges` 切出的 {} 段里有段**花括号不配平**：\n{}\n\
+         ★ 典型成因：收尾判据（列 0 的右大括号）落进了**字符串字面量 / 原始串 / 块注释**里\n\
+         ⇒ 那一段在字符串中间收了尾，后面的测试代码整段漏进生产段，\n\
+         而 `assert_no_test_code` 与 `assert_no_unstripped_test_module` **两条都看不见**\n\
+         （漏出去的那截里测试属性与 `mod` 行都可能恰好是 0）。\n\
+         ⇒ **改的是 `guard_core` 的剥法（在哪份文本上找锚点），不是这份文件的写法**；\n\
+         把那段原始字符串缩进一格只是把症状挪走，下一个 `r#\"` 还会撞上。",
+        offenders.len(),
+        offenders.join("\n")
+    );
+}
+// ── /KR110D1 ──
+
+/// 遍历一棵源码树，对每个 `.rs` 文件断言 [`assert_no_test_code`] **与**
+/// [`assert_no_unstripped_test_module`]（`K-R75` 09-12 补的第二半）。
 ///
 /// 抽出来是因为两侧各有一份一模一样的遍历（daemon `every_daemon_file_strips_clean`、
 /// monitor `every_monitor_file_strips_clean`），而遍历本身也会坏 —— `min_files`
 /// 就是那条计数自检：扫到的文件数低于它，说明**遍历坏了**，不是代码变干净了。
+///
+/// # ⚠ 它的**射程**就是 `root` 那棵树 —— 树外的文件今天没有任何人在看它的生产段
+///
+/// 09-12 现打（`KR75D3`，量法与逐份清单住 `evidence/K-R75-剥法认形状与真静默读数.md`）：
+/// 全仓 git 跟踪的 `.rs` **230** 份，落在本函数三个调用点的根之下的 **198** 份，
+/// **32 份在射程之外**（其中 `src-tauri/vendor/code-picture-core` 23 份、
+/// `src-tauri/crates/*-core` 八份、`src-tauri/build.rs` 一份）。
+/// 那 32 份里加一个剥法认不出的测试模块 —— **实测谁都不红**（死值验读数在同一份 evidence 里）。
+/// 🔴 这是**读数不是现状判词**：要不要把射程铺过去归 PM，别顺手在这里改根。
 ///
 /// # Panics
 ///
@@ -790,12 +1146,25 @@ pub fn assert_tree_strips_clean(root: &std::path::Path, min_files: usize) {
             }
             let src =
                 std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读 {path:?} 失败: {e}"));
-            let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("?");
+            // ★ 点名用**相对 `root` 的路径**，不是文件名〔`K-R75`，09-12〕：
+            //   两棵树里 `mod.rs` 各有好几份（monitor `backend/mod.rs` · `backend/control/mod.rs` …），
+            //   只印一个 `mod.rs` 等于没点名 —— 而「点名那份文件」正是这条反向自检的产出。
+            let who = path
+                .strip_prefix(root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
             // 用 `production_code`（**连注释一起剥**）而不是 `production_source`：
             // 散文里逐字提到测试属性是**正常的**（本文件的头注就在解释它），
             // 那不是「剥法坏了」。U8a-2a 实测：两侧各有一个文件因此假红
             // （`guard-core/src/lib.rs` 自己 + monitor `ccm_cli_contract.rs:181`）。
-            assert_no_test_code(name, &production_code(&src));
+            let prod = production_code(&src);
+            assert_no_test_code(&who, &prod);
+            // 第二半：剥法**认不出**的测试模块（里面可能一个 `#[test]` 都没有 ⇒ 上一条看不见它）。
+            assert_no_unstripped_test_module(&who, &prod);
+            // 第三半〔`K-R110` 09-13〕：区间**花括号净配平**。喂的是**原文**不是 `prod` ——
+            // 它要判的正是「区间切在哪儿」，而 `prod` 已经是切完的产物。
+            assert_test_module_ranges_are_brace_balanced(&who, &src);
             n += 1;
         }
     }
@@ -1851,6 +2220,184 @@ mod tests {
         );
     }
 
+    /// 一份「生产 ＋ 一个测试模块 ＋ 生产」的语料，可见性修饰由调用方给。
+    ///
+    /// 三段都带**只在自己那一段出现**的锚点 ⇒ 剥对了、剥过头了、没剥都分得开。
+    fn vis_fixture(vis: &str) -> String {
+        format!(
+            "fn head_anchor() {{}}\n\
+             #[cfg(test)]\n\
+             {vis}mod t {{\n    \
+                 fn inside_anchor() {{}}\n    \
+                 #[{}]\n    \
+                 fn x() {{}}\n\
+             }}\n\
+             fn tail_anchor() {{}}\n",
+            "test"
+        )
+    }
+
+    /// 🔴 `KR75D1`：剥法认得出**带任何可见性修饰**的测试模块 —— 认的是形状，不是前缀表。
+    ///
+    /// # 这条判据凭什么杀得死「换成一张前缀表」那条退路
+    ///
+    /// 表里前五档（无修饰 · `pub` · `pub(crate)` · `pub(super)` · `pub(self)`）任何一张
+    /// 前缀表都列得出来。承重的是后面那一档：`pub(in crate::…)` 的**路径任意长**，
+    /// 而这里逐档拉到 8 层 —— 前缀表要接住它就得写成无穷张表。
+    /// 再加两档**空白形状**（`pub  (crate)` / `pub(crate)   mod`）：Rust 允许，
+    /// 而按整段字面比对的写法接不住。
+    ///
+    /// **死值验**：把 `test_module_ranges` 里那一句退回 `mod_line.starts_with("mod ")`
+    /// ⇒ 本条必须红（读数落 `evidence/K-R75-剥法认形状与真静默读数.md`）。
+    #[test]
+    fn a_test_module_is_recognised_whatever_its_visibility() {
+        let mut vis: Vec<String> = ["", "pub ", "pub(crate) ", "pub(super) ", "pub(self) "]
+            .iter()
+            .map(|s| (*s).to_string())
+            .collect();
+        for depth in 1..=8 {
+            let path = (0..depth)
+                .map(|k| format!("m{k}"))
+                .collect::<Vec<_>>()
+                .join("::");
+            vis.push(format!("pub(in crate::{path}) "));
+        }
+        // 空白也是形状的一部分（`pub (crate) mod` / `pub(crate)   mod` 都是合法 Rust）。
+        vis.push("pub  (crate) ".to_string());
+        vis.push("pub(crate)   ".to_string());
+        assert!(vis.len() >= 15, "语料退化了：只剩 {} 档", vis.len());
+
+        for v in &vis {
+            let src = vis_fixture(v);
+            let prod = production_source(&src);
+            let test = test_source(&src);
+            assert!(
+                !prod.contains("inside_anchor"),
+                "可见性写成 {v:?} 时测试模块没被剥掉 —— 整段测试代码留在生产段里。\n生产段：{prod:?}"
+            );
+            for keep in ["head_anchor", "tail_anchor"] {
+                assert!(
+                    prod.contains(keep),
+                    "可见性写成 {v:?} 时把 {keep} 也剥掉了（剥过头）：{prod:?}"
+                );
+            }
+            assert!(
+                test.contains("inside_anchor"),
+                "可见性写成 {v:?} 时测试段里没有模块体：{test:?}"
+            );
+            assert_eq!(
+                prod.len() + test.len(),
+                src.len(),
+                "可见性写成 {v:?} 时两半拼不回原文"
+            );
+        }
+    }
+
+    /// [`strip_visibility`] 的**反向那半**：不是可见性修饰的东西一个字都不许切。
+    ///
+    /// 少了这一条，把它写成 `line.trim_start_matches(|c| c != 'm')` 之类的粗刀也能过上一条。
+    #[test]
+    fn strip_visibility_leaves_everything_else_alone() {
+        for line in [
+            "mod tests {",
+            "pubsub_mod tests {", // `pub` 只是标识符的开头
+            "publish mod x {",    // 同上
+            "pub(crate mod x {",  // 括号不配平 ⇒ 不认，原样退回
+            "fn pub_thing() {",
+            "use super::*;",
+            "",
+        ] {
+            assert_eq!(
+                strip_visibility(line),
+                line,
+                "{line:?} 里没有可见性修饰，却被切了"
+            );
+        }
+        assert_eq!(strip_visibility("pub mod x {"), "mod x {");
+        assert_eq!(strip_visibility("pub(crate) mod x {"), "mod x {");
+        assert_eq!(strip_visibility("pub(in crate::a::b) mod x {"), "mod x {");
+    }
+
+    /// 🔴 `KR75D2`：**「剥法认不出的测试模块」这一族有人在数** —— 而且它数得出下一形。
+    ///
+    /// 三组语料，每组都是剥法今天**认不出**的写法（属性与 `mod` 之间夹了东西 / 同一行 /
+    /// 属性写成 `cfg(all(test, …))` 且夹了别的属性）⇒ [`assert_no_unstripped_test_module`]
+    /// 必须逐个咬住，**并把 `who` 印进去**（点名那份文件是这条判据的产出，不是附赠）。
+    ///
+    /// ⚠ 反向那半同样承重：`#[cfg(test)]` 挂在**不是 `mod`** 的花括号体上（`fn`/`impl`/`enum`/
+    /// `thread_local!`）是本仓真盘上 31 处的现状，**不许红**；无花括号体的 `mod x;` 也不许红。
+    #[test]
+    fn the_unstripped_test_module_alarm_names_the_file() {
+        let cfg = format!("#[{}({})]", "cfg", "test");
+        // 这三条都是「剥法认不出」的形状：`production_source` 剥不掉它们。
+        let unseen = [
+            // 属性与 `mod` 之间夹了一行文档注释
+            format!("fn a() {{}}\n{cfg}\n/// 说明\nmod later {{\n    fn z() {{}}\n}}\n"),
+            // 同一行
+            format!("fn a() {{}}\n{cfg} mod inline {{\n    fn z() {{}}\n}}\n"),
+            // 复合 cfg ＋ 夹了另一条属性
+            format!(
+                "fn a() {{}}\n#[{}(all({}, unix))]\n#[allow(dead_code)]\nmod both {{\n    fn z() {{}}\n}}\n",
+                "cfg", "test"
+            ),
+        ];
+        for (k, src) in unseen.iter().enumerate() {
+            let prod = production_source(src);
+            assert!(
+                prod.contains("fn z()"),
+                "第 {k} 组语料本该是「剥法认不出」的，可它被剥掉了 —— 语料失效，本条在空转"
+            );
+            let r = std::panic::catch_unwind(|| {
+                assert_no_unstripped_test_module("某棵树/某文件.rs", &prod)
+            });
+            let e = r.expect_err(&format!("第 {k} 组语料没红 —— 这就是那个不会响的闹钟"));
+            let msg = e.downcast_ref::<String>().cloned().unwrap_or_else(|| {
+                e.downcast_ref::<&str>()
+                    .map(|s| (*s).to_string())
+                    .unwrap_or_default()
+            });
+            assert!(
+                msg.contains("某棵树/某文件.rs"),
+                "第 {k} 组红了但没点名那份文件：{msg}"
+            );
+        }
+        // 反向：这些**不许**红。
+        let quiet = [
+            format!("{cfg}\nmod decl_only;\nfn a() {{}}\n"),
+            format!("{cfg}\nfn helper() {{}}\n"),
+            format!("{cfg}\nimpl Drop for G {{\n    fn drop(&mut self) {{}}\n}}\n"),
+            format!("{cfg}\nenum V {{\n    A,\n}}\n"),
+            format!("{cfg}\nthread_local! {{\n    static X: u8 = 0;\n}}\n"),
+            format!("{cfg}\npub(crate) use m::x;\n"),
+            "fn a() {}\nlet s = \"model_id\";\n".to_string(),
+        ];
+        for (k, src) in quiet.iter().enumerate() {
+            assert_no_unstripped_test_module("不该红", src);
+            let _ = k;
+        }
+    }
+
+    /// `assert_no_unstripped_test_module` 与剥法**不共用匹配单位** —— 这是它不会一起瞎掉的理由。
+    ///
+    /// 用 `modern_thing` / `commodity` 这种**含 `mod` 子串但不是 `mod` 这个词**的行钉住：
+    /// 若哪天有人把它退回裸 `contains("mod")`，本条当场红。
+    #[test]
+    fn the_alarm_matches_mod_as_a_word_not_as_a_substring() {
+        let cfg = format!("#[{}({})]", "cfg", "test");
+        for line in [
+            "fn modern_thing() {",
+            "impl Commodity for X {",
+            "struct Model {",
+        ] {
+            assert_no_unstripped_test_module("不该红", &format!("{cfg}\n{line}\n}}\n"));
+        }
+        // 而真的 `mod` 这个词必须咬住。
+        let r = std::panic::catch_unwind(|| {
+            assert_no_unstripped_test_module("该红", &format!("{cfg}\npub(crate) mod m {{\n}}\n"))
+        });
+        assert!(r.is_err(), "真的 `mod` 没咬住 —— 匹配单位缩得太小了");
+    }
+
     /// ★ `production_source` 与 `test_source` 必须是**互补的两半**。
     ///
     /// 它们共用 `test_module_ranges`，这条钉的是「共用」这件事真的成立：
@@ -1997,6 +2544,147 @@ mod tests {
         let e = pin_line("a\nx\nb\nx\n", "x").expect_err("两行相同必须红");
         assert!(e.contains("有 2 行"), "诊断没说有几行：{e}");
     }
+
+    // ── KR110D1 夹具：区间在「不是代码」的字节上收尾 ──────────────────────
+    //
+    // 三形共一个病：收尾针「列 0 的右大括号」原先在**裸文本**上找。
+    // 三份夹具各自只装一形，撤掉修法（锚点改回裸 `src`）时**三条一起红**。
+
+    /// 一份「生产 ＋ 一个测试模块（里面藏着一个列 0 `}` 的 `x`）＋ 生产」的语料。
+    ///
+    /// `head` / `tail` 两个锚点**只在自己那一段出现** ⇒ 剥对了、剥早了、剥过头了三种都分得开。
+    fn early_close_fixture(inner: &str) -> String {
+        let cfg = format!("#[{}(test)]", "cfg");
+        format!(
+            "fn prod_head_anchor() {{}}\n\
+             {cfg}\n\
+             mod t {{\n    \
+                 fn probe() {{\n\
+             {inner}    \
+                 }}\n    \
+                 fn tail_anchor_only_in_tests() {{}}\n\
+             }}\n\
+             fn prod_tail_anchor() {{}}\n"
+        )
+    }
+
+    /// 三形各判一次：区间**不许**在字符串/注释里的列 0 `}` 上收尾。
+    #[test]
+    fn a_column_zero_brace_that_is_not_code_does_not_close_the_test_module() {
+        let shapes: [(&str, &str); 3] = [
+            (
+                "原始字符串",
+                concat!(
+                    "        let s = r#\"\n",
+                    "fn inner() {\n",
+                    "}\"#;\n",
+                    "        let _ = s;\n",
+                ),
+            ),
+            (
+                "块注释",
+                concat!(
+                    "        /*\n",
+                    "}\n",
+                    "        */\n",
+                    "        let _ = 0;\n",
+                ),
+            ),
+            (
+                "普通串里的真换行",
+                concat!("        let s = \"\n", "}\";\n", "        let _ = s;\n"),
+            ),
+        ];
+        for (what, inner) in shapes {
+            let src = early_close_fixture(inner);
+            let prod = production_source(&src);
+            let test = test_source(&src);
+            assert!(
+                test.contains("tail_anchor_only_in_tests"),
+                "[{what}] 测试段少了尾巴 —— 区间在字符串/注释里提前收尾了：\n{test}"
+            );
+            assert!(
+                !prod.contains("tail_anchor_only_in_tests"),
+                "[{what}] 测试代码漏进生产段 —— 每一条按生产段扫的判据在这份文件上人群都错了：\n{prod}"
+            );
+            for keep in ["fn prod_head_anchor()", "fn prod_tail_anchor()"] {
+                assert!(
+                    prod.contains(keep),
+                    "[{what}] 剥过头了，生产段少了 `{keep}`：\n{prod}"
+                );
+            }
+            assert_eq!(
+                prod.len() + test.len(),
+                src.len(),
+                "[{what}] 两半拼不回原文 —— 区间重叠或漏了"
+            );
+        }
+    }
+
+    /// 掩码只抹「不是代码」的字节，**等长**，而且真的把那几档都抹掉了。
+    #[test]
+    fn the_lexical_mask_blanks_only_non_code_bytes_and_keeps_the_length() {
+        let src = concat!(
+            "let a = \"str{\";\n",
+            "let b = '{';\n",
+            "let c = r#\"raw{\"#;\n",
+            "// line{\n",
+            "/* block{ */\n",
+            "let d = 1; // 尾{\n",
+            "fn f() {}\n",
+        );
+        let m = mask_all_literals(src).expect("这份文本词法收得了口");
+        assert_eq!(m.len(), src.len(), "掩码不等长 ⇒ 所有字节偏移全体错位");
+        assert_eq!(
+            m.matches('{').count(),
+            1,
+            "只该剩下 `fn f() {{}}` 那一个 `{{`，实得：\n{m}"
+        );
+        assert!(m.contains("let a = "), "把代码也抹掉了：\n{m}");
+        assert!(m.contains("fn f() {}"), "把代码也抹掉了：\n{m}");
+        // 兜底那一档：收不了口的原始串 ⇒ `None`，而不是乱抹一气。
+        assert!(
+            mask_all_literals("let x = r#\"never closed\n").is_none(),
+            "词法收不了口却没走兜底"
+        );
+    }
+
+    // ── KR110D1-selftest ──
+    /// 新判据**真的会咬人**：切出来的区间花括号不配平就红，配平就不红。
+    #[test]
+    fn the_brace_balance_check_actually_bites() {
+        let cfg = format!("#[{}(test)]", "cfg");
+        // 收不了尾（文件到头都没有列 0 的 `}`）⇒ 区间一路吞到 EOF ⇒ `{` 比 `}` 多。
+        let unbalanced = format!("fn a() {{}}\n{cfg}\nmod t {{\n    fn x() {{}}\n");
+        let r = std::panic::catch_unwind(|| {
+            assert_test_module_ranges_are_brace_balanced("该红", &unbalanced)
+        });
+        assert!(r.is_err(), "不配平的区间没咬住 —— 本条是安慰剂");
+        // 反向：正常语料不许误报，而且它**真的看过区间**（不是零命中地绿）。
+        let ok = format!("fn a() {{}}\n{cfg}\nmod t {{\n    fn x() {{}}\n}}\nfn b() {{}}\n");
+        assert_eq!(
+            test_module_ranges(&ok).len(),
+            1,
+            "夹具本身没切出区间 ⇒ 下面那句「不许红」是空真"
+        );
+        assert_test_module_ranges_are_brace_balanced("不许红", &ok);
+    }
+
+    /// 词法收不了口时，新判据说的是「**判不了**」，不是静默通过。
+    #[test]
+    fn the_brace_balance_check_says_it_cannot_tell_when_the_lexer_gives_up() {
+        let src = "fn a() {}\nlet x = r#\"never closed\n";
+        let e = std::panic::catch_unwind(|| {
+            assert_test_module_ranges_are_brace_balanced("判不了", src)
+        })
+        .expect_err("词法兜底时必须出声");
+        let msg = e
+            .downcast_ref::<String>()
+            .map(String::as_str)
+            .unwrap_or_default();
+        assert!(msg.contains("判不了"), "诊断没说「判不了」：{msg}");
+    }
+    // ── /KR110D1-selftest ──
 
     /// `assert_tree_strips_clean` 的计数自检真的会咬人。
     #[test]
