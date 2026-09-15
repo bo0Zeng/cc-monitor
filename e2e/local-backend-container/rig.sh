@@ -182,7 +182,9 @@ chk "容器确实在跑（$CT）" "$(docker inspect -f '{{.State.Running}}' "$CT
 #   往一个公网地址发一个 TCP SYN，3 秒超时。`--internal` 之下这一定要失败。
 EGRESS="$(docker exec "$CT" timeout 3 bash -c ': >/dev/tcp/1.1.1.1/443' 2>&1; echo "rc=$?")"
 if printf '%s' "$EGRESS" | grep -q 'rc=0'; then
-  no "容器居然出得了网（$EGRESS）—— `--internal` 没起作用，这就不是隔离"
+  # ⚠ 这一句里**不许用反引号写 --internal**：双引号串里的反引号是命令替换，
+  #   bash 会真的去执行 `--internal`（SC2215 逮的就是它）。用单引号形的排版代替。
+  no "容器居然出得了网（$EGRESS）—— 自建网络的 --internal 没起作用，这就不是隔离"
 else
   ok "容器出不了网（实得 $EGRESS）—— 隔离是量出来的，不是声称的"
 fi
