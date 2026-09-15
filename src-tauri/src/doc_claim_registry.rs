@@ -2181,6 +2181,103 @@ mod tests {
         );
     }
 
+    /// 〔`K-R122`（09-14）`KR122D3`〕**`package-lock.json` 自称的那个版本，
+    /// 必须就是这棵树此刻要发的那个版本号。**
+    ///
+    /// # 它从哪来 —— `K-R119` 推 tag 之前现打逮到的第十、十一处旧号
+    ///
+    /// `K-R119` 在推 `v3.8.0` 之前逐处 grep 了一遍（不是「判据绿了」，是真去看那几行），
+    /// 七处版本号 ＋ `R79` 那两处 README 自称全是 `3.8.0`，而 `package-lock.json`
+    /// 的**顶层两处**仍是 `3.7.0`。读数住 `evidence/K-R119-发版读数.md § 四`。
+    ///
+    /// 🔴 **成因与 `K-R120` 那两处 README 同源，不是「有人改漏了」**：
+    /// 那两处**不在任何判据的人群里** —— 现打 `grep -c 'package-lock' src-tauri/src/` 在本条
+    /// 落地之前是 **0**。`doc/RELEASING.md § 1` 自己逐字记着这一条「**没有任何东西卡它**」。
+    /// ⇒ 「判据在、而它的人群不含这一处」，默认结局是**静默的绿**。
+    ///
+    /// # 🔴 射程刻意很窄：只钉**顶层那两处**，不钉几百个依赖的 `version`
+    ///
+    /// 这份文件里 `"version": "` 这个串现打有 **790** 处 —— 其中 **788** 处是**依赖自己的
+    /// 版本**，它们跟本包的版本号一点关系都没有，跟着改就是把 lockfile 改成假的。
+    /// 本条只钉 npm 自己写的那两处「**这个包是谁、什么版本**」：
+    ///   ① 文件顶层的 `version`（紧跟顶层 `name` 那一个）；
+    ///   ② `packages` 里 `""` 这个键（npm 用它表示**根包自己**）底下的 `version`。
+    /// ⇒ 锚点按**语义**划，不按「碰巧只有它长这样」划（`references/testing.md` 判据硬规则 4）。
+    ///
+    /// # 跟谁比
+    ///
+    /// 与 [`the_changelog_top_section_is_the_version_we_ship`] 和
+    /// [`the_docs_self_reported_release_is_the_version_we_ship`] 同一条路：
+    /// `env!("CARGO_PKG_VERSION")`（＝ `src-tauri/Cargo.toml` 的 `version`，编译期注入），
+    /// **不抠第二份权威源锚点**（`brief` 13b）。它与 `package.json` 那个权威源的一致由
+    /// [`the_release_version_is_the_same_in_all_six_places`] 守。
+    /// ⇒ **三段接起来**才等于「lockfile == `package.json`」；少任何一段都不等于。
+    ///
+    /// # ⚠ 诚实边界（四条，别读宽）
+    ///
+    /// 1. **不判 lockfile 的其余任何一个字节** —— 依赖树对不对、`integrity` 对不对、
+    ///    与 `package.json` 的依赖区间合不合，本条一个字都不问（那是 `npm ci` 的事）。
+    /// 2. 人群是**两处，按锚点点名**。npm 换一种排版（缩进变了 / 键序变了）⇒ 本条**当场红在
+    ///    「锚点命中 0 次」上**，而不是静默地绿。这是有意的，与本模块另外两条 `pick` 同一条纪律。
+    /// 3. 锚点 ② 里带着包名 `cc-monitor`。改包名 ⇒ 本条红在命中 0 次上，
+    ///    **那正是该有人看一眼的时刻**（改包名要同拍改 `package.json`）。
+    /// 4. 🔴 **它不会让构建红，这正是它当初漏掉的原因** —— `K-R119` 那趟演练里
+    ///    `npm ci` 与 `npm install` 两步都 success（读数同上）。lockfile 里这个号是
+    ///    「**这棵树自称的版本**」的一处，不是构建的输入 ⇒ 没有第二个机制会替它出声。
+    #[test]
+    fn the_npm_lockfile_claims_the_version_we_ship() {
+        let shipping = env!("CARGO_PKG_VERSION");
+        let lock = read_repo_file("package-lock.json");
+
+        // 人群：**两处，按锚点点名**。刻意写成函数体里的 `let`（理由同上一条：
+        // 模块级 `const …: &[…]` 要进 `scanning_guard_registry::TABLE_DECLS` 那张闭集）。
+        let places: [(&str, &str); 2] = [
+            ("package-lock.json 顶层的 version", "\n  \"version\": \""),
+            (
+                "package-lock.json 的 packages[\"\"]（npm 用它表示根包自己）",
+                "\n    \"\": {\n      \"name\": \"cc-monitor\",\n      \"version\": \"",
+            ),
+        ];
+
+        let mut off: Vec<String> = Vec::new();
+        for (who, needle) in places {
+            let hits = lock.matches(needle).count();
+            assert_eq!(
+                hits, 1,
+                "在 {who} 里，锚点 {needle:?} 命中 {hits} 次（要求恰好 1 次）——\n\
+                 npm 换了排版、或者包名改了。**先修锚点再谈版本号对不对**，\n\
+                 否则本条会零命中地绿（这份文件里另外那几百个 `version` 字段是依赖的，\n\
+                 锚点一松就会抠到它们身上）。"
+            );
+            let at = lock.find(needle).expect("上面已断言命中一次") + needle.len();
+            let rest = &lock[at..];
+            let end = rest
+                .find(|c: char| !(c.is_ascii_digit() || c == '.'))
+                .unwrap_or(rest.len());
+            let got = &rest[..end];
+            assert!(
+                got.split('.').count() == 3 && got.split('.').all(|s| !s.is_empty()),
+                "{who} 在锚点之后抠到的是 {got:?} —— 形状不像 `X.Y.Z`"
+            );
+            if got != shipping {
+                off.push(format!("  {who}：{got}"));
+            }
+        }
+
+        assert!(
+            off.is_empty(),
+            "这棵树要发的是 `{shipping}`，而 `package-lock.json` **自称**的是别的号：\n{}\n\n\
+             ★ 本条是 `K-R119` 推 tag 之前现打逮到的那个漏的处置：那一拍七处版本号 ＋ 两处 README\n\
+             自称都已经是新号，而这两处**不在任何判据的人群里** ⇒ 这棵树会带着一个旧号的 lockfile 发版。\n\
+             ⚠ 它**不会**让 `npm ci` 红（`K-R119` 演练实测两步都 success）—— 所以没有第二个机制\n\
+             会替它出声，只有本条。\n\n\
+             修法：把 `package-lock.json` **顶层那两处**改成 {shipping}。\n\
+             ⚠ **只改那两处** —— 同一份文件里另外几百个 `version` 是**依赖自己的版本**，\n\
+             跟着改就是把 lockfile 改成假的。",
+            off.join("\n")
+        );
+    }
+
     /// 〔audit-0805 08-06〕**文档里写成 `CONST = 数` 的，代码里那个常量必须真是这个数。**
     ///
     /// **这是定框 E12 自己点名的洞**：E12 的 ⚠ 逐字写着「那四个准确的细节数

@@ -486,22 +486,29 @@ mod tests {
     fn filetime_from_ms(ms: i64) -> std::time::SystemTime {
         std::time::UNIX_EPOCH + std::time::Duration::from_millis(ms as u64)
     }
-    /// 只用 std + libc 设 mtime（本 crate 不引 filetime）。
+    /// 只用 std 设 mtime（本 crate 不引 `filetime`）。
+    ///
+    /// 🔴 `K-R122`（09-14）：**这一处换成了 `std::fs::File::set_times`，加的不是 `cfg`。**
+    /// 上一版走 `unsafe { libc::utimensat(libc::AT_FDCWD, …) }` —— 那两个名字在
+    /// `x86_64-pc-windows-msvc` 上**不存在**（`libc` 的 Windows 侧没有它们），
+    /// 于是 daemon 那条「Windows 编得过」的跨 target check 在 **test 档**上红了 2 个错。
+    ///
+    /// ⚠ **为什么这一处与 `sidecars/codepicture/acquire.rs` 那三条的处置相反**：
+    /// 那三条断的是**只在 unix 上成立的语义**（可执行位 · `chmod` 造出来的 `EACCES`），
+    /// 换个平台连前提都不成立 ⇒ 加 `cfg`；而**「把一份文件的 mtime 设成某个值」在
+    /// Windows 上照样成立**，缺的只是一条跨平台的写法 —— `std` 从 1.75 起就有
+    /// （[`std::fs::FileTimes`]）。⇒ 这一处该换 API，不该加 `cfg`：加了 `cfg`
+    /// 就等于把「预算按最近优先花」那一族判据在 Windows 上整族关掉，而它们本来跑得了。
+    ///
+    /// ⚠ 语义逐字对齐旧版：旧版给 `times[0]`（atime）与 `times[1]`（mtime）**同一个值**，
+    /// 这里同样两个都设。
     fn set_mtime(p: &Path, t: std::time::SystemTime) {
-        let d = t.duration_since(std::time::UNIX_EPOCH).unwrap();
-        let times = [
-            libc::timespec {
-                tv_sec: d.as_secs() as libc::time_t,
-                tv_nsec: d.subsec_nanos() as _,
-            },
-            libc::timespec {
-                tv_sec: d.as_secs() as libc::time_t,
-                tv_nsec: d.subsec_nanos() as _,
-            },
-        ];
-        let c = std::ffi::CString::new(p.as_os_str().as_encoded_bytes()).unwrap();
-        let rc = unsafe { libc::utimensat(libc::AT_FDCWD, c.as_ptr(), times.as_ptr(), 0) };
-        assert_eq!(rc, 0, "utimensat 失败，本条判据的前提没建起来");
+        let f = std::fs::File::options()
+            .write(true)
+            .open(p)
+            .expect("打开要改 mtime 的那份文件失败，本条判据的前提没建起来");
+        f.set_times(std::fs::FileTimes::new().set_accessed(t).set_modified(t))
+            .expect("set_times 失败，本条判据的前提没建起来");
     }
 
     fn run_search(home: &Path, q: &str, limit: usize) -> Vec<Value> {

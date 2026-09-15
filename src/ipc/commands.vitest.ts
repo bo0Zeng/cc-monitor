@@ -36,7 +36,7 @@
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
-import { resolve, join } from "node:path";
+import { resolve, join, sep } from "node:path";
 
 // ── `K-H2b` `D4 阻-2`：文件末尾那一组是**行为**判据，要驱动真的 `views/history.ts`。
 //    mock 骨架照 `views/history-actions.vitest.ts`（路径多一层 `../`）。
@@ -212,11 +212,27 @@ const TS_LITERAL_COMMAND_COUNT = 148;
 // **P8a +1**（list_plugin_marketplaces）；**PS1 +1**（deploy_local_cc_bus）；**PS2 +1**（cc_bus_install_state）；
 // **K-H2b +1**（relay_routing_for，同上 —— 它落进了包装层，所以 `keys.length` 那个数也 +1）。
 
+/**
+ * `K-R122`（09-14）：**吐出来的路径一律用 `/` 分隔，跟这台机器的 `path.sep` 无关。**
+ *
+ * 🔴 它治的是一条**判据自己的病**，不是产品的病。云端 `Frontend typecheck + build` 那个 job
+ * 跑在 **windows runner** 上，`join()` 给回的是 `src\ipc\local-tmux-name.ts`；
+ * 而本文件下游三处都拿**正斜杠字面量**去认路
+ *（`endsWith("/ipc/commands.ts")` · `endsWith("/ipc/local-tmux-name.ts")` · `endsWith("/remote-launch.ts")`），
+ * 反斜杠那一份一条都剔不掉 ⇒ 「铸名只有一个算法口」那条实得
+ * `["src\\ipc\\local-tmux-name.ts", "src\\remote-launch.ts", "src\\tabs.ts"]`、期望 `["src/tabs.ts"]`
+ * ⇒ vitest `1 failed | 1725 passed`。**产品一个字节没问题，红的是量它的那把尺子。**
+ *
+ * ⚠ **规范化落在这一个点上，不写第二份平台分支**：`split(sep).join("/")` 在 Linux 上
+ * `sep === "/"` ⇒ 恒等（是 no-op，不是「另一条路」），在 Windows 上把 `\` 换成 `/`。
+ * 长度不变 ⇒ 下游那三处 `f.slice(REPO_ROOT.length + 1)` 一个字都不用改。
+ * ⚠ 只规范**吐出去的叶子**；递归仍拿本机形态的 `p` 下探（`readdirSync` 两种都吃）。
+ */
 function walk(dir: string, ext: string, out: string[] = []): string[] {
   for (const name of readdirSync(dir)) {
     const p = join(dir, name);
     if (statSync(p).isDirectory()) walk(p, ext, out);
-    else if (name.endsWith(ext)) out.push(p);
+    else if (name.endsWith(ext)) out.push(p.split(sep).join("/"));
   }
   return out;
 }
