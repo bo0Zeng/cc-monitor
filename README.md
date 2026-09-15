@@ -8,7 +8,7 @@
 > ⇒ Claude 的 jsonl/pidfile **永远只读**；用户自己的文件在**明确手势**下可写
 > （SFTP 面板 · planned-build 收件箱），每一处都在 `INVARIANTS` 里有一条同口径的澄清。
 >
-> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v3.7.0
+> [English](./README.en.md) · 中文 | License: MIT | 平台: Windows 10/11 · Linux（.deb） | 当前版本: v3.8.0
 
 把 Claude Code CLI 写入 `~/.claude/projects/*.jsonl` 的实时对话用现代 UI 渲染：Markdown / LaTeX / 代码高亮 / 工具调用折叠卡 / 多 Tab 自动管理 / 历史会话浏览与恢复 / **从历史某轮创建分支**。**对 Claude 的数据只读、零侵入**（不**修改** Claude Code 的 jsonl / pidfile；对它们的显式用户写只有两处：历史里删除会话、从某轮建分支——后者只**新增**一个会话文件，原会话零改动）。⚠ **这句话不覆盖用户自己的文件**：SFTP 面板、planned-build 收件箱、`~/.bashrc` 的 helper 安装、`.mcp.json` 等都是明确手势下的写，逐处登记在 `src-tauri/src/write_site_registry.rs`（本机，21 个「文件::函数」）与 `remote_write_registry.rs`（远端，10 处）。
 
@@ -325,7 +325,7 @@ cc-monitor/
 
 ## 项目当前状态
 
-- **版本**：v3.7.0（Released）
+- **版本**：v3.8.0（Released）
 - **平台**：Windows 10 (1809+) / 11 · **Linux（`.deb`，v3.4.0 起随 release 一起发）**（远端后端跑 Linux x86_64 / aarch64）
 - **测试**：后端 cargo + vendor code-picture-core + 远端后端 + 前端 node 纯函数 + vitest（jsdom）+ e2e 脚本，CI job 全绿（`rust` / `frontend` / `daemon` / `linux-app-build` / `e2e-smoke` / `e2e-tmux` / `e2e-tmux-rust`；eslint/stylelint 是顾问式基线，覆盖率有地板棘轮）。
   ⚠ **各项条数刻意不写在这里**（audit-0805 F18）：这个数在仓里曾有 4-5 份拷贝、全部漂成假的。

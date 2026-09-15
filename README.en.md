@@ -2,7 +2,7 @@
 
 > **Development workbench for Claude Code** — read-only session rendering + local/remote session management + code panorama + skill integration surface — Tauri 2 + Vanilla TypeScript, desktop app (Windows / Linux)
 >
-> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 · Linux (.deb) | Current: v3.7.0
+> English · [中文](./README.md) | License: MIT | Platform: Windows 10/11 · Linux (.deb) | Current: v3.8.0
 
 Renders the real-time conversation written by Claude Code CLI to `~/.claude/projects/*.jsonl` with a modern UI: Markdown / LaTeX / syntax highlighting / collapsible tool-call cards / auto multi-tab management / history browsing & resume / **branch from any past turn**. **Read-only with respect to Claude's own data, zero intrusion** (does not **modify** Claude Code's jsonl / pidfiles; the only two explicit user writes against them are deleting a session and branching from a turn — the latter only **adds** a new session file, leaving the original untouched). ⚠ **This does not cover your own files**: the SFTP panel, the planned-build inbox, the `~/.bashrc` helper install and `.mcp.json` are all writes performed under an explicit user gesture, each registered in `src-tauri/src/write_site_registry.rs` (local) and `remote_write_registry.rs` (remote).
 
