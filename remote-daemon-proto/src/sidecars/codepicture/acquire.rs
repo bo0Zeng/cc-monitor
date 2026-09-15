@@ -505,10 +505,34 @@ pub fn ask(bin: &Path, args: &[&str], deadline_secs: u64) -> Result<Vec<u8>, Unu
     }
     match done.code {
         Some(0) => Ok(done.stdout),
-        code => Err(Unusable::Refused {
-            code,
-            diagnosis: done.diagnosis(),
-        }),
+        code => {
+            let mut diagnosis = done.diagnosis();
+            // 🔴 **`127` 那一格的诊断不许靠 coreutils 的措辞**〔09-15 现打〕。
+            //
+            // `127` = 那条期限命令自己没能 `exec` 掉目标。谁来说「是哪个文件不在」，
+            // 两家 coreutils **不一样**：
+            // · GNU：`timeout: failed to run command 'X': No such file or directory` —— 带名字；
+            // · uutils（Ubuntu 25.10 起的默认 coreutils，本机与 gpd 都是它）：
+            //   `timeout: failed to execute process: No such file or directory (os error 2)`
+            //   —— **不带名字**。
+            // ⇒ 同一段代码在两种机器上给用户**信息量不同**的那句话，而判据钉的正是
+            //   「用户看得见是哪个文件不在」。靠子进程的原话就等于把这条性质**外包**给了
+            //   装的是哪家 coreutils —— 那不是我们控制得了的东西。
+            //
+            // `bin` 就在手上，自己补即可。GNU 上那句话本来就含它 ⇒ 这一段是**无操作**
+            //（`contains` 那一问就是为此）：修的是缺的那一档，不动本来就对的那一档。
+            if code == Some(127) {
+                let who = bin.to_string_lossy();
+                if !diagnosis.contains(who.as_ref()) {
+                    diagnosis = if diagnosis.is_empty() {
+                        format!("起不来：{who}")
+                    } else {
+                        format!("{diagnosis}（起不来的是 {who}）")
+                    };
+                }
+            }
+            Err(Unusable::Refused { code, diagnosis })
+        }
     }
 }
 

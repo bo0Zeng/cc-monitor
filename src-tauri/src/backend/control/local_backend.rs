@@ -1097,9 +1097,22 @@ pub fn local_ccm_entry_name() -> String {
 /// ⇒ 生成器与 [`CCM_ENTRY_WORD`] 一起住在后端层，`sftp.rs` 改成调它。
 /// ⚠ 搬过来**没有**把平台知识带进 `backend/`：它是个纯字符串生成器，
 /// 一处 `cfg`、一处平台原语都没有（`the_backend_half_stays_platform_agnostic` 照旧绿）。
+/// # 🔴 为什么 shim 必须自己传 `CCM_SELF`（09-15 真机逮到）
+///
+/// 容器路（`--tmux`）生成的**内层命令**以 `ccm::plan::Env::self_path` 开头，而那个值是
+/// `CCM_SELF` → 兜底 `argv[0]`。两条入口在这一格上**不对称**：
+/// · 入口①（本机改名副本）：`argv[0]` 的 basename 本来就是 `ccm` ⇒ 内层命令天然对。
+/// · 入口②（远端 shim）：shim `exec` 的是**二进制真身**，`argv[0]` 因此是 `<…>/cc-monitor-remote`
+///   ⇒ 内层命令变成 `cc-monitor-remote --cwd …`，**缺了 `ccm` 这个子命令词**，
+///   被当 daemon 直连口解析，当场 `query error: unknown argument: --cwd`。
+///
+/// 失败长得**不像 shim 的错**：tmux 会话建得出来、`@ccm_agent` 也打上了，
+/// 只有窗格里那一行是红的 —— 而 `--print` 吐的是同一条坏命令，所以平价预言机也不会红。
+/// ⇒ 用 `$0`（`sh` 里就是「我是被当作什么叫的」那个路径，经 PATH 调用时也是绝对路径）
+/// 把入口名补回去，正是 `CCM_SELF` 那条注释写的语义。外部已设则不覆盖。
 pub fn ccm_entry_shim(daemon_path: &str) -> String {
     format!(
-        "#!/bin/sh\n# cc-monitor: {CCM_ENTRY_WORD} = 后端本体的一次性模式（K33：所有命令只许有一处）\nexec {} {CCM_ENTRY_WORD} \"$@\"\n",
+        "#!/bin/sh\n# cc-monitor: {CCM_ENTRY_WORD} = 后端本体的一次性模式（K33：所有命令只许有一处）\n# CCM_SELF：内层载荷要用「我是被当作什么叫的」那个名字，不是二进制真身（容器路靠它）。\nCCM_SELF=\"${{CCM_SELF:-$0}}\" exec {} {CCM_ENTRY_WORD} \"$@\"\n",
         shell_quote_core::posix_quote(daemon_path)
     )
 }
@@ -3093,6 +3106,46 @@ mod tests {
             !CCM_ENTRY_WORD.trim().is_empty()
                 && CCM_ENTRY_WORD.chars().all(|c| c.is_ascii_alphanumeric()),
             "`CCM_ENTRY_WORD` 变成了 {CCM_ENTRY_WORD:?} —— 上面两条会零命中地绿"
+        );
+    }
+
+    /// 远端 shim 必须把**入口名**传下去（`CCM_SELF`）——否则容器路的内层命令缺子命令词。
+    ///
+    /// # 这条钉的是 09-15 真机逮到的那一格
+    ///
+    /// `ccm::plan` 的内层载荷以 `self_path` 开头，取自 `CCM_SELF` → 兜底 `argv[0]`。
+    /// 入口①（改名副本）的 `argv[0]` basename 本来就是 `ccm`；入口②（本 shim）`exec` 的是
+    /// 二进制真身 ⇒ 不传 `CCM_SELF` 的话内层命令是 `<bin> --cwd …`，**没有 `ccm`**，
+    /// 被当 daemon 直连口解析 ⇒ `unknown argument: --cwd`。
+    ///
+    /// ⚠ **为什么这条判据必须存在**：那个失败**不红在任何现有判据上** ——
+    /// tmux 会话建得出来、`@ccm_agent` 打得上、`--print` 吐的是同一条坏命令，
+    /// 只有真去读窗格才看得见。上面那条 `both_ccm_entries_…` 只看 ` ccm "$@"` 这个子串，
+    /// 它在坏版本里**照样命中**（坏的恰恰是 `exec` 之前少了一段）。
+    #[test]
+    fn remote_shim_carries_the_entry_name_for_the_container_path() {
+        let shim = ccm_entry_shim("/x/cc-monitor-remote");
+        assert!(
+            shim.contains("CCM_SELF="),
+            "远端 shim 没有把入口名传下去 ⇒ 容器路（--tmux）的内层命令会缺 `{CCM_ENTRY_WORD}` 子命令：\n{shim}"
+        );
+        // 必须取自 `$0`（「我是被当作什么叫的」），而不是硬编码某个路径。
+        assert!(
+            shim.contains("$0"),
+            "`CCM_SELF` 不是取自 `$0` —— 换个落点就指错入口：\n{shim}"
+        );
+        // 外部已设时不许覆盖（`${CCM_SELF:-$0}` 这一形）。
+        assert!(
+            shim.contains("${CCM_SELF:-$0}"),
+            "`CCM_SELF` 覆盖了调用方已经设好的值：\n{shim}"
+        );
+        // 反向自检：赋值必须在 `exec` **之前**，否则它进不了被 exec 的那个进程的环境。
+        let (assign, exec_part) = shim
+            .split_once("exec ")
+            .expect("shim 里没有 `exec ` —— 这条判据的前提没了");
+        assert!(
+            assign.contains("CCM_SELF=") && !exec_part.contains("CCM_SELF="),
+            "`CCM_SELF` 没有落在 `exec` 之前 ⇒ 传不进后端进程：\n{shim}"
         );
     }
 
