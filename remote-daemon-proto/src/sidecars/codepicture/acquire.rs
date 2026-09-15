@@ -1022,3 +1022,29 @@ mod tests {
         let _ = std::fs::remove_dir_all(&d);
     }
 }
+
+#[cfg(test)]
+mod pm_real_network_e2e {
+    use super::*;
+
+    /// PM 09-11：**带网那一趟**。用生产的 `Net` 对端打真 GitHub release 地址。
+    /// `--ignored`：它要网，门禁沙箱是 `--network none`。
+    #[test]
+    #[ignore]
+    fn pm_real_network_against_a_real_github_release_asset() {
+        let mut net = Net;
+        let url = "https://github.com/bo0Zeng/cc-monitor/releases/download/v3.7.0/cc-monitor-remote-x86_64";
+        let (t, body) = net.get(url, 64 * 1024 * 1024);
+        println!("PM-E2E 首跳 url={url}");
+        println!("PM-E2E 首跳 transport={t:?} body_len={}", body.len());
+        let direct = std::env::var("PM_E2E_SIGNED_URL").unwrap_or_default();
+        if !direct.is_empty() {
+            let (t2, b2) = net.get(&direct, 64 * 1024 * 1024);
+            println!("PM-E2E 跳过去之后 transport={t2:?} body_len={}", b2.len());
+            if !b2.is_empty() {
+                std::fs::write("/tmp/pm-e2e-body.bin", &b2).ok();
+                println!("PM-E2E 跳过去之后 体已落 /tmp/pm-e2e-body.bin（sha256 外部核）");
+            }
+        }
+    }
+}
