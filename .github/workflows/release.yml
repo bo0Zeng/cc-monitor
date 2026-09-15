@@ -422,12 +422,24 @@ jobs:
             ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } |
             Out-File -FilePath "SHA256SUMS.txt" -Encoding utf8
 
+      # 🔴 KR124D2（`K-R124`，2026-09-15）：**正文来源**。本文件两处发布步骤**各跑一次这一步**
+      #   —— 不是「Windows 生成、Linux 沿用」：两个 job 在不同 runner 上，沿用不了。
+      #   生成器只有一个住址（`scripts/release-notes.mjs`），正文取自 `CHANGELOG.md` 里本版那一段
+      #   （`doc/RELEASING.md § 5` 早就写着这条 SOP，只是一直是手工的一步、从 v3.6.0 起没人做）。
+      #   ⚠ 命令刻意写成**不带任何 shell 语法**的一行：本 job 的默认 shell 是 pwsh，
+      #     `>` 重定向的编码在 pwsh 与 bash 上不同 ⇒ 让生成器自己写文件，两个 runner 上同一行。
+      #   ⚠ 它**不回落**：这一版在 CHANGELOG 里没有段、或段太短 ⇒ 生成器退出码 1 ⇒ 本步骤红，
+      #     Release 不会被建出来。**「静默用自动生成那份」正是本条要挡的东西。**
+      - name: Render the Release body (CHANGELOG section for this version)
+        if: env.PUBLISH == 'true'
+        run: node scripts/release-notes.mjs RELEASE_BODY.md
+
       # 🔴 KR114D1：**本文件两处「往 GitHub Release 写」之一**，闸读 `env.PUBLISH`（住址在文件头）。
       - name: Create / update GitHub Release
         if: env.PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
+          body_path: RELEASE_BODY.md
           files: |
             src-tauri/target/release/monitor.exe
             src-tauri/target/release/bundle/nsis/*-setup.exe
@@ -567,11 +579,22 @@ jobs:
       # U5-走查：**裸二进制此前算了 hash 却没上传** —— `SHA256SUMS-linux.txt` 里有它那一行，
       # 而 Release 页上没有那个文件，用户照校验和逐个核就会卡在这儿。
       # 补上传（与 Windows 侧 `monitor.exe` 对称：那边一直是「安装器 + 裸二进制」两样都给）。
+      # 🔴 KR124D2（`K-R124`，2026-09-15）：**正文来源，这一处与 Windows 那一处同源同值**。
+      #   为什么这一处也要给：`action-gh-release` 对一个**已存在**的 release 是 PATCH ——
+      #   本 job 不给正文，那一次 PATCH 会把 Windows 刚写上去的正文按它自己的口径再处理一遍。
+      #   两处给**同一个生成器、同一个版本号**产出的同一份字节 ⇒ 第二次写是幂等的。
+      #   ⚠ **竞态一个字没动**：`needs: [build-daemons, build-windows]` 还在，
+      #     release 仍然由 `build-windows` 创建，本 job 仍然只追加（文件头 `:452` 那段头注的第 ①）。
+      - name: Render the Release body (CHANGELOG section for this version)
+        if: env.PUBLISH == 'true'
+        run: node scripts/release-notes.mjs RELEASE_BODY.md
+
       # 🔴 KR114D1：**本文件两处「往 GitHub Release 写」之二**，闸读 `env.PUBLISH`（住址在文件头）。
       - name: Append Linux artifacts to the release
         if: env.PUBLISH == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          body_path: RELEASE_BODY.md
           files: |
             src-tauri/target/release/bundle/deb/*.deb
             src-tauri/target/release/monitor
