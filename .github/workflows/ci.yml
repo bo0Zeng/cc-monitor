@@ -843,42 +843,38 @@ jobs:
       - name: tmux 目标精确匹配（F01）
         run: bash e2e/assert-pass-floor.sh tmux-target 26
 
-      # 🔴 〔`K-R48` 第二拍 09-11〕264 → 46：`shared/ccm` 删了，本套件的被测对象换成后端二进制。
-      #    逐条判词住 `evidence/K-R48-356-verdicts.tsv`；构成与理由写在 `scripts/gate.sh`
-      #    那两行 `run_e2e` 上方（那是「三处一起改」里说理最全的一处，别在这儿再抄一份）。
-      # ⚠ **跑之前要先 build 后端二进制**（`cargo build --bin cc-monitor-remote`）——
-      #    套件顶上那道 `[ -x ]` 是 fail-closed 的，不 build 就红。
-      - name: ccm CLI 契约（F02）
-        run: bash e2e/assert-pass-floor.sh ccm-cli 46
-
-      - name: ccm --print 平价预言机（F03）
-        run: bash e2e/assert-pass-floor.sh ccm-print-parity 12
+      # ── 🔴 `K-R122`（2026-09-14）：**四步搬走了 —— 它们要的是 Rust 工具链的产物。** ──
+      #
+      # 搬去了下面 `e2e-tmux-rust` 的「build debug daemon」**之后**，四步逐个点名：
+      #   `ccm CLI 契约（F02）` · `ccm --print 平价预言机（F03）` ·
+      #   `ccm 契约差分对拍（U9a · S10 保住清单）` · `cc-spawn 收编等价（B02）`。
+      #
+      # **尺子只有一把，而且是本 job 自己早就写下的那一把**（下面 `CI-J1` 那段逐字）：
+      # 「判「这一步该住哪个 job」的尺子只有一把：**它要不要 Rust 工具链的产物**。」
+      # `K-R48` 第二拍（09-11）把 `ccm` 收成后端的原生命令、删掉 `shared/ccm` 之后，
+      # 这四套的被测对象全部换成 `remote-daemon-proto/target/debug/` 下那个后端二进制，
+      # 各自顶上一道 fail-closed 的 `[ -x ]`（现打：四套各一处；`ccm-rbind-title` 没有）
+      # ⇒ 它们从那一刻起就落进「要 Rust 产物」那一档，而本 job **刻意不装 Rust 工具链、
+      # 不编任何东西** ⇒ 在这里**不可能绿**。`K-R119` 推 tag 那一趟云端实测：本 job 红在
+      # 第 7 步，套件自己印的是「找不到原生入口 …（先 cargo build）」。
+      #
+      # 🔴 **为什么不是「在本 job 补一步 build」** —— 补 build 就要给本 job 装 Rust 工具链，
+      # 那等于把 `CI-J1` 立下的那条拆法（按「要不要 Rust 工具链」拆两个 job）拆掉，
+      # 而那条拆法正是为了同一族缺陷立的。⇒ **搬步骤，不搬工具链。**
+      #
+      # ⚠ **也不是「删掉」** —— 删之前现打问过「题面是不是已经被别的门覆盖了」，答案是**没有**：
+      #   · `scripts/gate.sh` 那四行 `run_e2e` 跑的是 `ccm-print-parity` / `ccm-rbind-title` /
+      #     `ccm-cli` / `ccm-contract-parity`，**不含 `cc-spawn-uplift`**；而且那是**本地出货门禁**，
+      #     不是 CI —— `K-R119` 那一趟的读数逐字就是「本地 16 格全绿 ≠ CI 会绿」。
+      #   · 现打整份 `ci.yml`：这四个套件名各自**只**出现在搬走的那一步上，别的 job 一条都没有。
+      #   ⇒ 删掉 = 把四套真机覆盖从云端交出去。**搬家是唯一不丢覆盖的处置。**
+      #
+      # 本 job 留下的五步（`tmux-target` · `cc-bus-queue-drain` · `restart` · `resume` ·
+      # `ccm-rbind-title`）现打**一条都不碰** `target/debug` ⇒「no Rust」这个名字今天仍然属实。
 
       # 🔴 〔`K-R48` 第二拍 09-11〕原来这里有 `ccm-acceptance 31` 与 `ccm-pretrust 15` 两步，
       #    两套 e2e 本拍删了（它们只测那个 bash 脚本的真机行为，理由逐条写在
       #    `src-tauri/src/shared_crate_registry.rs` 那张棘轮表被摘掉的那两行旁边）。
-
-      # U9a：`--print` 说的 == 真跑做的（S10「保住清单」差分对拍）。
-      # 与上面两套的分工：`ccm-cli` 只跑 `--print`（全 `env -u TMUX`）、`ccm-print-parity`
-      # 验渲染器意图能被接住 —— **都不比对真 exec 路**，而那正是 U9b 搬决策时会漏的地方。
-      # 🔴 〔`K-R48` 第二拍 09-11〕72 → 39，同上。
-      - name: ccm 契约差分对拍（U9a · S10 保住清单）
-        # 🔴 〔`K-R61` 09-11〕39 → 42：C 组加了三格 —— `capabilities=` 里声明
-        #    `base-url-across-tmux`（monitor 侧那条降级理由的退役条件点名的 token）·
-        #    容器载荷内侧真带 `export ANTHROPIC_BASE_URL=`（申报与兑现一起量）· 一格反空真。
-                # 🔴 〔`K-R70` 09-12〕42 → 45：`--ccm-probe` 多吐一行 `build=<BUILD_ID>` ⇒ C 组加三格 ——
-        #    `build=` 行逐字 == daemon 源码里的 `BUILD_ID` · `build=` 与 `version=` 不是同一个值 ·
-        #    抽取器自检。⚠ **本行与 `scripts/gate.sh:951` 的 `run_e2e` 行、以及上面那份清单副本
-        #    共三处，「一起改」是纪律不是判据 —— 今天没有任何东西会在三处分叉时报红。**
-        run: bash e2e/assert-pass-floor.sh ccm-contract-parity 45
-
-      # B02：`cc-spawn` 收编进 `ccm` 的行为等价验收。**本套件自带起飞前自检**——
-      # 它经 PATH 上的 tmux shim 强制 `-L <隔离socket>`（cc-spawn/ccm/cc-register 内部都是
-      # 裸调 tmux，塞不进 -L，只能这样拦），并断言 shim 看不到默认 socket 上的任何会话，
-      # 不过就 exit 9 中止。开发机上有正在运行的 tmux 会话与真实 ~/.cc-bus/，
-      # 这条自检是为了那里；CI 上是干净 runner，自检自然通过。
-      - name: cc-spawn 收编等价（B02）
-        run: bash e2e/assert-pass-floor.sh cc-spawn-uplift 72
 
       # 08-13：`cc-send` 兜底路径的滞留队列补投。**本套件不用 tmux**（收发全走文件）——
       # 于是 `C7i` 那条红线在它身上天然不成立。它起的唯一进程是 `cc-busd` 自己，
@@ -965,15 +961,66 @@ jobs:
       # ⚠ 上面那句刻意不把原调用行（脚本名 + 套件名 + 地板值）原样抄回来 —— 抄了会让
       #   `:660` 那道反向自检在这一套上永远命中，见它头上那段警告。
 
-      - name: 用量探针（F10）
-        run: bash e2e/assert-pass-floor.sh usage-probe 11
-
       # G-C：这三套要一个**真 daemon 二进制**（daemon-wrapper.sh 默认取
       # `remote-daemon-proto/target/debug/cc-monitor-remote`）。主计划把「怎么把 daemon 产物
       # 从 `daemon` job 传过来」记成 G-C 唯一的技术不确定性——**直接在本 job 里编就绕开了**：
       # 本 job 已有 Rust 工具链，而 daemon crate 比它已经在编的 src-tauri 轻得多。
       - name: build debug daemon（供 daemon-frames 三套）
         run: cargo build --manifest-path remote-daemon-proto/Cargo.toml
+
+      # ── 🔴 `K-R122`（2026-09-14）：**本步骤往下挪了 —— 它排在 `build debug daemon` 之前。** ──
+      #
+      # `K-R104`（09-13）把用量探针整条重写：被测面从「monitor 渲染的那条 shell 串」换成
+      # **真 daemon 二进制**（套件 `:29`/`:30` 两行：取 `remote-daemon-proto/target/debug/` 下
+      # 那个后端二进制，`[ -x ]` fail-closed）。而本 job 的编译步骤排在它**后面**
+      # ⇒ 这一步从 `K-R104` 落地那天起就必红。`K-R119` 推 tag 那一趟云端实测：本 job 红在
+      # 第 8 步，套件自己印的逐字是「需要先 build daemon：cd remote-daemon-proto && cargo build」。
+      #
+      # ⚠ **病是「前置没跟上产品变化」，不是「套件写错了」** —— 套件那道硬门是对的
+      #（fail-closed 比静默跳过好）。要改的是**步骤次序**。
+      # ⚠ 处置刻意**不是**在这一步里自己补一句 `cargo build`：本 job 下面已经有那一步，
+      #   再补一句就是同一件事两个住址（下次谁改了其中一处，另一处静默地陈）。
+      - name: 用量探针（F10）
+        run: bash e2e/assert-pass-floor.sh usage-probe 11
+
+      # ── 🔴 `K-R122`（2026-09-14）：**下面这四步是从 `e2e-tmux` 搬过来的。** ──────────
+      #
+      # 搬家的尺子与逐条理由**只写在那一侧**（`e2e-tmux` 里 `tmux 目标精确匹配（F01）`
+      # 之后那一段），这里不抄第二份。一句话：它们要 Rust 工具链的产物（后端二进制），
+      # 而上面那一步刚把它编出来。
+      # ⚠ **必须排在 `build debug daemon` 之后** —— 四套顶上各有一道 fail-closed 的 `[ -x ]`。
+      # 🔴 〔`K-R48` 第二拍 09-11〕264 → 46：`shared/ccm` 删了，本套件的被测对象换成后端二进制。
+      #    逐条判词住 `evidence/K-R48-356-verdicts.tsv`；构成与理由写在 `scripts/gate.sh`
+      #    那两行 `run_e2e` 上方（那是「三处一起改」里说理最全的一处，别在这儿再抄一份）。
+      # ⚠ **跑之前要先 build 后端二进制**（`cargo build --bin cc-monitor-remote`）——
+      #    套件顶上那道 `[ -x ]` 是 fail-closed 的，不 build 就红。
+      - name: ccm CLI 契约（F02）
+        run: bash e2e/assert-pass-floor.sh ccm-cli 46
+
+      - name: ccm --print 平价预言机（F03）
+        run: bash e2e/assert-pass-floor.sh ccm-print-parity 12
+
+      # U9a：`--print` 说的 == 真跑做的（S10「保住清单」差分对拍）。
+      # 与上面两套的分工：`ccm-cli` 只跑 `--print`（全 `env -u TMUX`）、`ccm-print-parity`
+      # 验渲染器意图能被接住 —— **都不比对真 exec 路**，而那正是 U9b 搬决策时会漏的地方。
+      # 🔴 〔`K-R48` 第二拍 09-11〕72 → 39，同上。
+      - name: ccm 契约差分对拍（U9a · S10 保住清单）
+        # 🔴 〔`K-R61` 09-11〕39 → 42：C 组加了三格 —— `capabilities=` 里声明
+        #    `base-url-across-tmux`（monitor 侧那条降级理由的退役条件点名的 token）·
+        #    容器载荷内侧真带 `export ANTHROPIC_BASE_URL=`（申报与兑现一起量）· 一格反空真。
+                # 🔴 〔`K-R70` 09-12〕42 → 45：`--ccm-probe` 多吐一行 `build=<BUILD_ID>` ⇒ C 组加三格 ——
+        #    `build=` 行逐字 == daemon 源码里的 `BUILD_ID` · `build=` 与 `version=` 不是同一个值 ·
+        #    抽取器自检。⚠ **本行与 `scripts/gate.sh:951` 的 `run_e2e` 行、以及上面那份清单副本
+        #    共三处，「一起改」是纪律不是判据 —— 今天没有任何东西会在三处分叉时报红。**
+        run: bash e2e/assert-pass-floor.sh ccm-contract-parity 45
+
+      # B02：`cc-spawn` 收编进 `ccm` 的行为等价验收。**本套件自带起飞前自检**——
+      # 它经 PATH 上的 tmux shim 强制 `-L <隔离socket>`（cc-spawn/ccm/cc-register 内部都是
+      # 裸调 tmux，塞不进 -L，只能这样拦），并断言 shim 看不到默认 socket 上的任何会话，
+      # 不过就 exit 9 中止。开发机上有正在运行的 tmux 会话与真实 ~/.cc-bus/，
+      # 这条自检是为了那里；CI 上是干净 runner，自检自然通过。
+      - name: cc-spawn 收编等价（B02）
+        run: bash e2e/assert-pass-floor.sh cc-spawn-uplift 72
 
       # U8a-2a：入方向（控制通道）的真进程端到端。此前那条通道**从没有真进程验证过**——
       # daemon 侧全是单测夹具，monitor 侧一个字节都没发过。

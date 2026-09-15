@@ -746,6 +746,15 @@ mod tests {
     }
 
     /// ★ **写盘那一跳被真的走到一次**：真落到盘上、字节一样、而且**可执行**。
+    ///
+    /// 🔴 `K-R122`（09-14）**这一条 `#[cfg(unix)]` 不是为了让编译器闭嘴** —— 理由在语义上：
+    /// 本条断言的 `Landing::Landed` ＋「落下来那份带可执行位」，在非 unix 上**根本不成立**：
+    /// [`crate::platform::landing::land_executable`] 的 `#[cfg(not(unix))]` 那一臂
+    /// **不写盘、直接回 `LandFailed::Unsupported`**（那条设计逐字写在它的头注里：
+    /// 「照写并回成功」＝ 假装设置了可执行位，明禁）⇒ 本条在 Windows 上就算编得过也**必红**。
+    /// ⇒ 本条的正确归宿是「unix 专属的一格」，非 unix 那一格由
+    /// `platform/landing.rs` 里那条 `#[cfg(not(unix))]` 的对照测试买。
+    #[cfg(unix)]
     #[test]
     fn the_landing_hop_really_writes_an_executable_file() {
         use std::os::unix::fs::PermissionsExt;
@@ -791,6 +800,14 @@ mod tests {
     }
 
     /// ★ 落点目录不存在 / 不可写，各自出声，**不许静默**。
+    ///
+    /// 🔴 `K-R122`（09-14）同上一条的理由，**外加一条它自己的**：本条造「不可写」靠的是
+    /// `chmod 0o500`，那是 **POSIX 权限位**这个概念；Windows 上没有这个概念的等价物
+    /// （要造同一个前提得走 ACL，那是另一套原语、另一条被测路）。
+    /// 而它断的 `Landing::Io` / `Landing::Denied` 在非 unix 上也一律是 `Unsupported`。
+    /// ⇒ **加 `cfg` 而不是加抽象**：给「chmod」发明一个跨平台抽象，等于替 Windows
+    /// 编一个它没有的语义 —— 正是 `platform/fallback_guard` 头注点名的那一形。
+    #[cfg(unix)]
     #[test]
     fn a_landing_that_cannot_happen_says_so() {
         use std::os::unix::fs::PermissionsExt;
@@ -991,6 +1008,14 @@ mod tests {
     /// ⇒ 这一条造一个**读不进去的目录**，stat 它里面的东西必然报错（`EACCES`）。
     /// 那一格读成 `Missing` 的后果是**每次都重拉**；读成 `Present` 的后果是
     /// **拿一份来历不明的字节去 exec**。两条都不行，所以它必须是自己一格。
+    ///
+    /// 🔴 `K-R122`（09-14）**这一条与上面两条不同源，单独说**：被测的 [`look`] 本身
+    /// 是跨平台的（只用 `std::fs::metadata`），红的是**造前提那一步** ——
+    /// 「让 stat 必然失败」在 unix 上是 `chmod 0o000` 的目录，Windows 上没有同形原语。
+    /// ⇒ 这一格在非 unix 上今天是**判不了**，不是「通过」：如实登记成 unix 专属，
+    /// 别拿一个造得出来但形状不同的前提（比如删掉目录）冒充它 ——
+    /// 那走的是 `Err(NotFound) => Missing` 那一支，正是本条要区分开的另一格。
+    #[cfg(unix)]
     #[test]
     fn a_stat_that_fails_is_unknown_not_missing() {
         use std::os::unix::fs::PermissionsExt;
