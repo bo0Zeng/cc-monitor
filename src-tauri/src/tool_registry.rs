@@ -870,13 +870,6 @@ pub const TOOLS: &[ToolSpec] = &[
 /// 不是「盘上那份**真的**在哪」。两者对不对得上由
 /// `profile_installer` 那条跨文件判据钉住（它去读真正调
 /// `install_local_ccm_entry` 的那一行源码）。
-// 🔴 〔`K-R135` 09-15〕**没有生产调用方是暂时的，而且原因是写区** ——
-// 它的调用方是那一条新 IPC 命令（界面那一格「加 / 撤 / 现在状态」），
-// 而登记一条 IPC 命令要同拍动 `lib.rs` 的 `generate_handler!` 与
-// `parity_ledger.rs` 那张双向相等的表，**两份都在 `K-R135` 的写区之外**。
-// ⇒ 本件把机制与判据做完，那一跳交回 PM（件文件 `§8`）。
-// ⚠ **接上去的那一拍要把这个 `allow` 摘掉** —— 留着它，下一次真的没人用了也看不出来。
-#[allow(dead_code)]
 pub fn local_ccm_bin_dir_rel() -> Option<&'static str> {
     let mut found: Option<&'static str> = None;
     for spec in TOOLS {
@@ -917,13 +910,13 @@ pub fn local_ccm_bin_dir_rel() -> Option<&'static str> {
 /// 在判据里手抄一个 `.local/bin` 就是第二个住址，而那正是本病的成因。
 ///
 /// 两条同名落点 ⇒ 回 `None`（「那个目录」没有唯一答案时**不许猜一个**，同本机那条）。
-// 🔴 〔`K-R135` 09-15〕**没有生产调用方是暂时的，而且原因是写区** ——
-// 它的调用方是那一条新 IPC 命令（界面那一格「加 / 撤 / 现在状态」），
-// 而登记一条 IPC 命令要同拍动 `lib.rs` 的 `generate_handler!` 与
-// `parity_ledger.rs` 那张双向相等的表，**两份都在 `K-R135` 的写区之外**。
-// ⇒ 本件把机制与判据做完，那一跳交回 PM（件文件 `§8`）。
-// ⚠ **接上去的那一拍要把这个 `allow` 摘掉** —— 留着它，下一次真的没人用了也看不出来。
-#[allow(dead_code)]
+// 🔴 〔`K-R135` 09-15〕**它今天的使用者只有判据，所以住在判据档里，而不是挂一个
+// `#[allow(dead_code)]` 把警告压掉。** 两者的差别是**下一个人读得出什么**：
+// `allow` 说的是「有人用，只是编译器看不见」，而这一档说的是「**今天只有判据用它**」——
+// 后者才是实话。⚠ 它不是可有可无的：判据要证「那一行把**两边申报的**目录都放上了 PATH」，
+// 而在判据里手抄一个 `.local/bin` 就是那个落点的第二个住址 —— 正是本病的成因。
+// ⇒ 哪天生产侧真要问「远端那个目录是哪个」，把这一行 `#[cfg(test)]` 摘掉即可。
+#[cfg(test)]
 pub fn remote_ccm_bin_dir_rel() -> Option<&'static str> {
     let mut found: Option<&'static str> = None;
     for spec in TOOLS {

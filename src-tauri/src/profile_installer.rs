@@ -652,13 +652,6 @@ fn encode_for_disk(flavor: ProfileFlavor, content: &str) -> String {
 ///
 /// 目录本身取自 [`crate::tool_registry::local_ccm_bin_dir_rel`]（唯一住址是那张表），
 /// 这里只做一件事：把 `/` 换成 `\`。**本函数体内没有任何目录字面量。**
-// 🔴 〔`K-R135` 09-15〕**没有生产调用方是暂时的，而且原因是写区** ——
-// 它的调用方是那一条新 IPC 命令（界面那一格「加 / 撤 / 现在状态」），
-// 而登记一条 IPC 命令要同拍动 `lib.rs` 的 `generate_handler!` 与
-// `parity_ledger.rs` 那张双向相等的表，**两份都在 `K-R135` 的写区之外**。
-// ⇒ 本件把机制与判据做完，那一跳交回 PM（件文件 `§8`）。
-// ⚠ **接上去的那一拍要把这个 `allow` 摘掉** —— 留着它，下一次真的没人用了也看不出来。
-#[allow(dead_code)]
 fn ccm_bin_dir_windows() -> Option<String> {
     crate::tool_registry::local_ccm_bin_dir_rel().map(|d| d.replace('/', "\\"))
 }
@@ -713,13 +706,6 @@ fn ccm_bin_dir_windows() -> Option<String> {
 /// 这句话**刻意不在这段命令里**（这里只放**能跑的那几行**）——
 /// 它归**显示这段命令的那一侧**（界面那一格）去配说明。
 /// 别把说明混进可执行文本里：混进去，用户复制一整段就会连注释一起跑。
-// 🔴 〔`K-R135` 09-15〕**没有生产调用方是暂时的，而且原因是写区** ——
-// 它的调用方是那一条新 IPC 命令（界面那一格「加 / 撤 / 现在状态」），
-// 而登记一条 IPC 命令要同拍动 `lib.rs` 的 `generate_handler!` 与
-// `parity_ledger.rs` 那张双向相等的表，**两份都在 `K-R135` 的写区之外**。
-// ⇒ 本件把机制与判据做完，那一跳交回 PM（件文件 `§8`）。
-// ⚠ **接上去的那一拍要把这个 `allow` 摘掉** —— 留着它，下一次真的没人用了也看不出来。
-#[allow(dead_code)]
 pub fn render_user_path_setup_command() -> Option<String> {
     let dir = ccm_bin_dir_windows()?;
     Some(format!(
@@ -765,13 +751,6 @@ pub fn render_user_path_setup_command() -> Option<String> {
 ///
 /// ⚠ **要重开终端才看得到** —— 与加那一侧同理，已经开着的进程拿的是自己启动那一刻的
 /// 环境块副本。这句话不放进可执行文本里（放进去，用户复制一整段就会连注释一起跑）。
-// 🔴 〔`K-R135` 09-15〕**没有生产调用方是暂时的，而且原因是写区** ——
-// 它的调用方是那一条新 IPC 命令（界面那一格「加 / 撤 / 现在状态」），
-// 而登记一条 IPC 命令要同拍动 `lib.rs` 的 `generate_handler!` 与
-// `parity_ledger.rs` 那张双向相等的表，**两份都在 `K-R135` 的写区之外**。
-// ⇒ 本件把机制与判据做完，那一跳交回 PM（件文件 `§8`）。
-// ⚠ **接上去的那一拍要把这个 `allow` 摘掉** —— 留着它，下一次真的没人用了也看不出来。
-#[allow(dead_code)]
 pub fn render_user_path_removal_command() -> Option<String> {
     let dir = ccm_bin_dir_windows()?;
     Some(format!(
@@ -808,13 +787,6 @@ pub fn render_user_path_removal_command() -> Option<String> {
 ///
 /// ⚠ `dir_abs` 为空时**恒回 `false`** —— 不然 PATH 上任何一个空项（连着两个 `;`）
 /// 都会与它相等，于是「拿不到目录」会被读成「已经装好了」。
-// 🔴 〔`K-R135` 09-15〕**没有生产调用方是暂时的，而且原因是写区** ——
-// 它的调用方是那一条新 IPC 命令（界面那一格「加 / 撤 / 现在状态」），
-// 而登记一条 IPC 命令要同拍动 `lib.rs` 的 `generate_handler!` 与
-// `parity_ledger.rs` 那张双向相等的表，**两份都在 `K-R135` 的写区之外**。
-// ⇒ 本件把机制与判据做完，那一跳交回 PM（件文件 `§8`）。
-// ⚠ **接上去的那一拍要把这个 `allow` 摘掉** —— 留着它，下一次真的没人用了也看不出来。
-#[allow(dead_code)]
 pub fn user_path_has_our_bin(user_path_raw: &str, dir_abs: &str) -> bool {
     if dir_abs.is_empty() {
         return false;
@@ -822,6 +794,181 @@ pub fn user_path_has_our_bin(user_path_raw: &str, dir_abs: &str) -> bool {
     user_path_raw
         .split(';')
         .any(|seg| seg.eq_ignore_ascii_case(dir_abs))
+}
+
+/// 🔴 `KR135D1`：**问「现在状态」的那条命令**（第三条，只读）。
+///
+/// 它吐两行：**第 1 行是我们那个 bin 目录的绝对路径**（`%USERPROFILE%` 展开之后），
+/// **第 2 行是 `'User'` 那一档的原始 PATH 串**。
+/// 目录路径与 PATH 串都**不可能含换行** ⇒ 按行切是安全的，不需要发明分隔符。
+///
+/// # 为什么要它把目录也一起吐回来
+///
+/// [`user_path_has_our_bin`] 比的是**整格**，而 PATH 上那一格是**绝对路径**；
+/// 我们这一侧只知道 `%USERPROFILE%` **相对**的那一段（`tool_registry` 申报的就是相对路径）。
+/// ⇒ 让**同一个 PowerShell 进程**用 `Join-Path $env:USERPROFILE` 展开，
+/// 与「加」「撤」那两条命令**用的是同一句展开**（三条都写着同一个 `Join-Path`）
+/// —— 在 Rust 这一侧自己拼一次 `%USERPROFILE%` 就是那个值的第二个住址。
+///
+/// # 两个地雷在这一侧同样适用
+///
+/// 它**只读 `'User'` 那一档**：读 `$env:PATH` 会把「机器级上有」读成「用户级上有」，
+/// 于是「撤」那个按钮点下去什么都没发生、而界面还说它撤掉了。
+/// 判据与另外两条走**同一批断言**。
+pub fn render_user_path_probe_command() -> Option<String> {
+    let dir = ccm_bin_dir_windows()?;
+    Some(format!(
+        "$d = Join-Path $env:USERPROFILE '{dir}'\n\
+         Write-Output $d\n\
+         Write-Output ([Environment]::GetEnvironmentVariable('Path', 'User'))\n"
+    ))
+}
+
+/// 用户级 PATH 那一格的**现状**。`R85` 逐字要的三样里的第一样，**现算，不缓存**。
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UserPathStatus {
+    /// 这台机器有没有「用户级 PATH」这一档 —— **它是 Windows 独有的**。
+    /// `false` 时下面三格一律不许被读成「没装」（见 [`user_path_status`] 头注）。
+    pub supported: bool,
+    /// 我们那个 bin 目录的**绝对路径**（探针展开回来的那一行）。探不动 ⇒ `None`。
+    pub dir: Option<String>,
+    /// 在不在用户级 PATH 上。**探不动时恒 `false`，而那时 `error` 非空** ——
+    /// 两者要一起读，别单看这一格。
+    pub on_user_path: bool,
+    /// 「加」那条命令的逐字文本（给不想点按钮的人复制；与按钮跑的**是同一份字节**）。
+    pub add_command: Option<String>,
+    /// 「撤」那条命令的逐字文本。
+    pub remove_command: Option<String>,
+    /// 探不动时的原话。🔴 **探不动 ≠ 不在 PATH 上** —— 界面必须把这一格显示出来，
+    /// 不许把它静默成「未安装」（同 `launcher-diagnostics` 那条「扫不动不许静默」）。
+    pub error: Option<String>,
+}
+
+/// 🔴 `R88` ＋ `KR135D1`：**本模块唯一一处起进程。**
+///
+/// # 为什么产品这一侧要起它（`R85` / `R88`，不是顺手）
+///
+/// `R85` 用户逐字「**应该让用户手动点击加，也能管理删除**」⇒ **点击即执行是允许的**
+/// （`§0c`：`K33` 禁的是产品**替**用户决定，**用户点一下就是用户自己决定**）。
+/// 而「现在状态」那一格**根本不可能靠用户去跑** —— 那正是 `R88` 推翻 `R87`
+/// 「本件不需要起进程」那句假前提的地方。
+///
+/// # 为什么是起 PowerShell，而不是 Rust 直接写注册表
+///
+/// `R88` 裁定（两条，按份量）：
+/// 1. **直接写注册表会造出第二份 PATH 编辑实现** —— 而走 Tauri 命令的理由本身就是
+///    「别给同一族动作另起一条路」。⇒ 这一跳跑的**就是我们生成给用户看的那段字节**，
+///    「点按钮」与「自己复制去跑」**逐字同一份**，实现真的只有一处（`K33`）。
+/// 2. `[Environment]::SetEnvironmentVariable(…,'User')` **自带 `WM_SETTINGCHANGE` 广播**；
+///    自己写注册表就得自己记得广播，忘了的后果是「改了、新开的终端看不到，要重登录」
+///    —— **那正是本件在杀的那个形状**（`R86` 逐字「看起来装好了、换个终端就没了」）。
+///    用一个会重新制造本病的手法去治本病，不行。
+///
+/// # argv 的形状（`write_site_registry::SPAWNS` 那一行逐字记的就是这个）
+///
+/// `powershell.exe -NoProfile -NonInteractive -Command <脚本>`。
+/// - **`-NoProfile` 是承重的**：不读用户自己的 profile ⇒ 这一跳的行为不被用户配置左右
+///   （而且本件刚刚才把我们自己那一段从 profile 里删掉，再去读 profile 是自相矛盾）。
+/// - **`-NonInteractive`**：绝不弹提示等人回车 —— 界面点一下不许挂住。
+/// - `<脚本>` **只可能是本模块那三个 `render_*` 函数的输出**，不吃任何用户输入；
+///   里面唯一的变量是 `tool_registry` 申报的那个目录。判据在数这件事。
+///
+/// 非 Windows 上**不起进程**，直接如实回错 —— 那台机器上根本没有「用户级 PATH」这一档。
+#[cfg(windows)]
+fn run_user_path_powershell(script: &str) -> Result<String, String> {
+    let out = std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .output()
+        .map_err(|e| format!("起不来 powershell.exe：{e}"))?;
+    if !out.status.success() {
+        return Err(format!(
+            "powershell 退出码 {:?}；stderr：{}",
+            out.status.code(),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).to_string())
+}
+
+#[cfg(not(windows))]
+fn run_user_path_powershell(_script: &str) -> Result<String, String> {
+    Err("这台机器上没有「用户级 PATH」这一档 —— 它是 Windows 独有的".to_string())
+}
+
+/// `KR135D1` ①：**现在状态**。每调一次真跑一趟探针，**不缓存**。
+///
+/// 🔴 **探不动时不许假装「不在 PATH 上」**：那时 `on_user_path = false` 而 `error` 非空，
+/// 界面要显示 `error` 那一句。把「问不出来」显示成「没装」，用户会去点「加」，
+/// 而那一下同样会失败 —— 两次失败之间他学不到任何东西。
+pub fn user_path_status() -> UserPathStatus {
+    let add_command = render_user_path_setup_command();
+    let remove_command = render_user_path_removal_command();
+    let probe = match render_user_path_probe_command() {
+        Some(p) => p,
+        None => {
+            return UserPathStatus {
+                supported: cfg!(windows),
+                dir: None,
+                on_user_path: false,
+                add_command,
+                remove_command,
+                error: Some(
+                    "问不出本机 `ccm` 的 bin 目录 —— 它现算自 `tool_registry` 那张表里 \
+                     `ccm` 那条本机载体的落点。取不到 = 那张表被改坏了"
+                        .to_string(),
+                ),
+            };
+        }
+    };
+    if !cfg!(windows) {
+        return UserPathStatus {
+            supported: false,
+            dir: None,
+            on_user_path: false,
+            add_command,
+            remove_command,
+            error: None,
+        };
+    }
+    match run_user_path_powershell(&probe) {
+        Ok(raw) => {
+            let mut lines = raw.lines();
+            let dir = lines.next().unwrap_or("").trim().to_string();
+            let user_path = lines.next().unwrap_or("").trim_end();
+            UserPathStatus {
+                supported: true,
+                on_user_path: user_path_has_our_bin(user_path, &dir),
+                dir: if dir.is_empty() { None } else { Some(dir) },
+                add_command,
+                remove_command,
+                error: None,
+            }
+        }
+        Err(e) => UserPathStatus {
+            supported: true,
+            dir: None,
+            on_user_path: false,
+            add_command,
+            remove_command,
+            error: Some(e),
+        },
+    }
+}
+
+/// `KR135D1` ②：**一个按钮加**。跑的就是 [`render_user_path_setup_command`] 那段字节。
+pub fn user_path_add() -> Result<(), String> {
+    let script = render_user_path_setup_command()
+        .ok_or("问不出本机 `ccm` 的 bin 目录 —— 不发明一个目录往用户 PATH 上写")?;
+    run_user_path_powershell(&script).map(|_| ())
+}
+
+/// `KR135D1` ③：**一个按钮撤**。跑的就是 [`render_user_path_removal_command`] 那段字节
+/// —— **只摘自己那一格**（整格比，不碰用户 PATH 里别的东西）。
+pub fn user_path_remove() -> Result<(), String> {
+    let script = render_user_path_removal_command()
+        .ok_or("问不出本机 `ccm` 的 bin 目录 —— 不拿一个猜出来的目录去改用户 PATH")?;
+    run_user_path_powershell(&script).map(|_| ())
 }
 
 /// 生成将要写入的代码（替换 placeholder）。
@@ -2487,6 +2634,10 @@ gs() { git status; }
     fn the_generated_path_command_edits_only_the_user_scope_and_never_via_setx() {
         let both = [
             (
+                "探",
+                render_user_path_probe_command().expect("生成的「探」命令"),
+            ),
+            (
                 "加",
                 render_user_path_setup_command().expect("生成的「加」命令"),
             ),
@@ -2501,10 +2652,13 @@ gs() { git status; }
                 !cmd.trim().is_empty(),
                 "「{which}」生成出来是空的 —— 下面全是空真"
             );
-            assert!(
-                cmd.contains("SetEnvironmentVariable('Path', ") && cmd.contains("'User')"),
-                "「{which}」没有在写**用户级** PATH：\n{cmd}"
-            );
+            // 「探」那条只读，不写 ⇒ 写那一条只对「加」「撤」成立。
+            if *which != "探" {
+                assert!(
+                    cmd.contains("SetEnvironmentVariable('Path', ") && cmd.contains("'User')"),
+                    "「{which}」没有在写**用户级** PATH：\n{cmd}"
+                );
+            }
             assert!(
                 cmd.contains("GetEnvironmentVariable('Path', 'User')"),
                 "「{which}」的新值不是从**用户级**那一档读出来的 —— 拿 `$env:PATH`\
@@ -2519,13 +2673,13 @@ gs() { git status; }
             }
         }
         // ── 加：幂等（跑两次不许把目录塞两遍）──────────────────────────
-        let add = &both[0].1;
+        let add = &both[1].1;
         assert!(
             add.contains("-notcontains $d"),
             "「加」跑第二次会重复追加：\n{add}"
         );
         // ── 撤：整格，而且**只**摘我们那一格 ──────────────────────────
-        let del = &both[1].1;
+        let del = &both[2].1;
         assert!(
             del.contains("-ne $d"),
             "「撤」不是按**整格**比的 —— 子串口径会把 `<我们那段>-old` 之类一起删掉，\
@@ -2542,25 +2696,113 @@ gs() { git status; }
             "「撤」顺手把 PATH 上的空项也滤掉了 —— 空项在 Windows 上语义是「当前目录」，\
              删它是一次**我们没被要求做的改动**。除我们那一格之外要逐字复原。\n{del}"
         );
-        // ── 产品这一侧今天一个字节都不执行 ────────────────────────────
+        // ── 🔴 〔`R88` 09-15〕**这一条翻正了，不是放宽了** ────────────────
         //
-        // 🔴 **这条断言的理由在 `R85` 之后变了，别照旧读**：上一轮它的理由是
-        //   「产品自己跑它就变成了替用户改他的环境」；`R85` 用户逐字
-        //   「**应该让用户手动点击加**」⇒ **点击即执行是允许的**（`§0c`：`K33` 禁的是
-        //   产品**替**用户决定，用户点一下就是用户自己决定）。
-        //   它今天仍然绿，是因为**那一跳还没接进来** —— 接它要动
-        //   `lib.rs`（`generate_handler!`）· `parity_ledger.rs`（双向相等）·
-        //   `write_site_registry.rs`（`SPAWNS` 默认拒绝），**三份都在 `K-R135` 的写区之外**
-        //   ⇒ 本件把机制与判据做完、那一跳交回 PM（`§8`）。
-        //   ⚠ 接进来的那一拍**必须同拍**改这条断言与那三份登记，别让它继续挡路
-        //   （testing.md 规则 12：出路是重新裁定，不是悄悄删掉）。
+        // 上一轮它是 `!prod.contains("Command::new(")`（生产段一个进程都不许起），
+        // 理由是「产品自己跑就变成了替用户改他的环境」。`R85` 用户逐字
+        // 「**应该让用户手动点击加，也能管理删除**」⇒ **点击即执行是允许的**
+        // （`§0c`：`K33` 禁的是产品**替**用户决定，用户点一下就是用户自己决定），
+        // 而「现在状态」那一格**根本不可能靠用户去跑** ——
+        // `R88` 就是为这件事推翻 `R87`「本件不需要起进程」那句假前提的。
+        // ⇒ `testing.md` 规则 12：反向锚点的出路是**重新裁定**，不是删掉。
+        //
+        // 🔴 **先量人群再翻正**（`R88` 点名要求的那一步）：上一轮那条断言的分母
+        // **不是整份文件，是 `production_code()` 剥完之后的生产段**。现打：整份文件
+        // 4 处 `Command::new(`，**落在生产段的 0 处** —— 另外那几处（`icacls` 两处、
+        // 夹具起 `bash` 一处、本断言自己的字符串一处）全在 `#[cfg(test)]` 里。
+        // ⇒ 那条断言当时是**对的、也够得着**，不是一条空转的判据。
+        //
+        // **翻正之后钉的是三件事**，比原来那条更紧：
+        // ① 生产段起进程的地方**恰好一处**（不是「不许起」，是「只许这一处」）；
+        // ② 那一处起的是 `powershell.exe`，且带 `-NoProfile` / `-NonInteractive`；
+        // ③ **写 PATH 的地方恰好两处**，而它们**就是那两个 `render_*` 函数** ——
+        //    这一条守的是 `K33`「实现只许有一处」：谁要在别处再拼一段改 PATH 的
+        //    PowerShell（哪怕拼得对），这里当场红。
         let prod = guard_core::production_code(include_str!("profile_installer.rs"));
-        assert!(
-            !prod.contains("Command::new("),
-            "本模块的生产段里起了进程。今天这一条仍然成立是因为**执行那一跳还没接进来**；\
-             真要接（`R85` 允许点击即执行），同拍要做的三件事逐字写在本断言上面那段注释里 —— \
-             改了这里却没改那三份登记，门禁会在别的格子红，而红的原因读起来与这里无关。"
+        let spawns = prod.matches("Command::new(").count();
+        assert_eq!(
+            spawns, 1,
+            "生产段里起进程的地方应当**恰好一处**（`run_user_path_powershell`），实得 {spawns} 处。\n\
+             0 处 = 那一跳被删了 ⇒ 「现在状态」与两个按钮都成了摆设；\n\
+             >1 处 = 有第二个地方在起进程 —— 它也得去 `write_site_registry::SPAWNS` 报到，\
+             而那张表是**默认拒绝**的。"
         );
+        assert!(
+            prod.contains("Command::new(\"powershell.exe\")"),
+            "那一处起的不是 `powershell.exe` —— 本模块唯一许可的起进程对象就是它\
+             （`R88`：跑的必须是我们生成给用户看的那段字节）"
+        );
+        for flag in ["-NoProfile", "-NonInteractive"] {
+            assert!(
+                prod.contains(flag),
+                "argv 里少了 `{flag}`。`-NoProfile` 是承重的：不读用户自己的 profile ——\
+                 本件刚把我们那一段从 profile 里删掉，再回头去读 profile 是自相矛盾；\
+                 `-NonInteractive` 保证它不会弹提示等人回车，把界面挂住。"
+            );
+        }
+        let writers = prod.matches("SetEnvironmentVariable").count();
+        assert_eq!(
+            writers, 2,
+            "生产段里「写环境变量」的地方应当**恰好两处**（`render_user_path_setup_command` \
+             与 `render_user_path_removal_command` 各一处），实得 {writers} 处。\n\
+             多一处 = 有人在别处又拼了一段改 PATH 的 PowerShell ⇒ **同一件事有了第二份实现**，\
+             而那正是 `K33`「所有命令只许有一处」禁的；也正是 `R88` 否掉「Rust 直接写注册表」\
+             那条路的第一理由。"
+        );
+    }
+
+    /// ★★ 〔`KR135D1` 09-15〕**线上字段名与前端那份手写接口逐字对得上。**
+    ///
+    /// # 它补的是一处**有意的例外**，让这处例外不比生成物弱
+    ///
+    /// `src/ipc/commands.ts` 头注那「三桶」规则说：TS 侧真消费字段的命令（桶③）该用
+    /// **生成物**类型。`ccm_user_path_status` 破了这条 —— 生成物要落进 `src/generated/`，
+    /// 而那份目录**不在 `K-R135` 的写区里**。⇒ 手写一份，并用这条判据钉住它：
+    /// 生成物买的是「Rust 改了、TS 自动跟着变」，这一条买的是
+    /// 「**Rust 改了、TS 没跟 ⇒ 当场红**」。⚠ 它买不到「TS 多写了一个 Rust 没有的字段」
+    /// （那一形 `tsc` 也不会红，因为多出来的字段只是永远 `undefined`）—— 如实记，不假装。
+    ///
+    /// # 人群怎么来的：**现算，不是在判据里手抄一份字段名单**
+    ///
+    /// 把一个样本实例 `serde_json` 序列化一遍再读它的 key —— 那就是**线上**真正的字段名
+    /// （`rename_all = "camelCase"` 已经生效过了）。在这里手抄一份名单，
+    /// 就又是同一个病：**一个事实两个住址**。
+    ///
+    /// # 死值验（`KR135D1` 刀⑨）
+    ///
+    /// 给 `UserPathStatus` 加一个字段而不改 `commands.ts` ⇒ 本条红。
+    #[test]
+    fn the_user_path_status_wire_fields_match_the_hand_written_ts() {
+        let sample = UserPathStatus {
+            supported: true,
+            dir: Some("d".into()),
+            on_user_path: true,
+            add_command: Some("a".into()),
+            remove_command: Some("r".into()),
+            error: Some("e".into()),
+        };
+        let v = serde_json::to_value(&sample).expect("序列化");
+        let keys: Vec<String> = v.as_object().expect("是个对象").keys().cloned().collect();
+        assert!(
+            !keys.is_empty(),
+            "一个线上字段都没算出来 —— 判据够不着被测对象了，先修判据"
+        );
+        let ts = include_str!("../../src/ipc/commands.ts");
+        // 地板：那份接口真的在（否则下面每一条都靠「找不到也不出声」蒙混过去）。
+        assert!(
+            ts.contains("export interface UserPathStatus {"),
+            "`src/ipc/commands.ts` 里那份手写接口不见了 —— 要么它换成了生成物\
+             （那就把本判据删掉，并把 `commands.ts` 那条注释一起改），要么有人顺手删了它"
+        );
+        for k in &keys {
+            assert!(
+                ts.contains(&format!("\n  {k}")),
+                "线上字段 `{k}` 在前端那份**手写**接口里找不到。\n\
+                 改了 Rust 侧的 `UserPathStatus` 就要同拍改 `src/ipc/commands.ts` —— \
+                 这一处没有生成物替你跟（理由住那条注释）。\n\
+                 线上字段现算是这几个：{keys:?}"
+            );
+        }
     }
 
     /// ★★ 〔`KR135D1` 09-15〕**那一格的「现在状态」：`~/.cc-monitor\bin` 在不在

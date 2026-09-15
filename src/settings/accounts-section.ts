@@ -37,7 +37,7 @@ import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
 import { showActionFailureToast } from "../error-toast";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件（Z05 复用它）
 // `K-R49`：加了账号就把 `zcc` / `bcc` 那条命令也给出来（并真落盘到 cc-monitor 自己那份文件）。
-import { buildAccountAliasBlock, suggestAliasName } from "../launcher-diagnostics";
+import { buildAccountAliasBlock, buildUserPathBlock, suggestAliasName } from "../launcher-diagnostics";
 import { SETTINGS_APPLIED_EVENT } from "./events";
 // Phase G：这两格此前**没有任何生产者**，见下面 `note()` 的注释。
 // `N-F2`：本机那条路也要写进同一本账 ⇒ 连本机那个 key 一起取，别在这儿长第二个名字。
@@ -504,6 +504,13 @@ export class AccountsSection {
     this.body.appendChild(
       buildAccountAliasBlock(async () => state.accounts.map((a) => a.name)),
     );
+    // 🔴 `K-R135`（`R85`）：用户级 PATH 那一格，挨着上面那个 rc 围栏块放 ——
+    //    两者是**同一个问题的两条路**（「怎么让这台机器上敲得到 ccm」：
+    //    POSIX 走 rc 围栏块，Windows 走用户级 PATH），分开放会让人以为只有一条。
+    // ⚠ **同样挂在 `this.body` 上，不是挂进 `box`（`.accounts-local`）** ——
+    //    理由与上面那一块逐字相同：`NF1bD2` 断的是「`.accounts-local` 子树里的汉字
+    //    全部来自 `LOCAL_ACCOUNTS_COPY`」，而这一块的文案有自己的家。
+    this.body.appendChild(buildUserPathBlock());
   }
 
   /**

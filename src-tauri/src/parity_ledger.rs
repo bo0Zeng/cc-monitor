@@ -229,6 +229,11 @@ mod tests {
         ("install_remote_ccm_helper", "ccm.install", Side::Remote),
         ("cc_integration_uninstall", "ccm.uninstall", Side::Local),
         ("uninstall_remote_ccm_helper", "ccm.uninstall", Side::Remote),
+        // 🔴 `K-R135`（`R85`/`R87`）：用户级 PATH 那一格。只有本机一侧，理由见
+        //    `ASYMMETRY_REASONS` 里 `ccm.user-path` 那一条。
+        ("ccm_user_path_status", "ccm.user-path", Side::Local),
+        ("ccm_user_path_add", "ccm.user-path", Side::Local),
+        ("ccm_user_path_remove", "ccm.user-path", Side::Local),
         ("cc_integration_preview", "ccm.install-ui", Side::Local),
         ("cc_integration_scan_path", "ccm.install-ui", Side::Local),
         ("create_branch_session", "history.branch", Side::Local),
@@ -441,6 +446,7 @@ mod tests {
 
     /// **不对称能力的理由**。键集合必须**恰好等于**从 `LEDGER` 算出来的不对称集合。
     const ASYMMETRY_REASONS: &[(&str, Asym, &str)] = &[
+        ("ccm.user-path", Asym::NaturallyAsymmetric, "🔴 `K-R135`：「把我们那个 bin 目录放上**用户级** PATH」。**天然只有本机一侧，而且这一条的『天然』是可证的，不是图省事**：① **远端那一侧同一件事已经有答案，只是载体不同** —— 远端 `ccm` 落 `~/.local/bin`，而把它放上 PATH 的是写进远端 rc 的那个围栏块（`install_remote_ccm_helper` ＋ `shared/ccm-aliases.sh` 里那一行 —— 那一行正是 `K-R135` 本轮修的：它此前只加 `~/.local/bin`，对本机那一边是错的）。⇒ 欠的不是「远端没有这项能力」，是**两边的机制本来就不同**。② **「用户级 PATH」这一档是 Windows 独有的**（注册表 `HKCU` 下那个 `Environment` 键），而远端按 `K32` 是 Linux ⇒ 那台机器上根本没有这一档可改，补一条对侧命令只能是个空壳。⚠ **诚实边界**：哪天真出现「远端是 Windows」这一形，本条要回来重裁 —— 那时它就不再是 `NaturallyAsymmetric`，而是 `ParityDebt`。今天不给它发明一条够不着的对侧。"),
         ("accounts.trust", Asym::ParityDebt, "同 accounts.list：预信任检查只有远端有 —— 命令面实测只有 `check_account_trust`（`Side::Remote`），本机零对侧。归 L3。"),
         ("acct-iso.check", Asym::ParityDebt, "本机同样需要「这台装没装 cc-acct-iso」的检测（切号要靠它），今天只能查远端 —— 命令面实测只有 `check_remote_acct_iso`，本机零对侧；而本机确实**用得着**它：`local_accounts.rs` 头注逐字说这份数据有三个读者，其中写侧就是 `cc-acct-iso`。归 L3。"),
         ("acct-iso.deploy", Asym::NaturallyAsymmetric, "vendored 副本要**传到**远端才能用（`deploy_remote_acct_iso`）；本地就在本机、不存在传输这一步。⚠⚠ **P3b 标疑（08-12）：这条理由属于「从未被验证过」那一类，别当它已经核过。** 「不存在传输」是真的，但**「不存在安装」没人量过** —— 实测本机 `~/.local/bin` 下确实躺着 `cc-acct-iso`（`config_surface.rs:1062` 记着那 12 条 `cc-*`），而它是**怎么到那儿的**、要不要 monitor 管，本表从来没答过。⇒ 若答案是「要 monitor 管」，这条就该从 `natural` 变 `ParityDebt`。归 `P3b` 的后续或 `L3`。"),
@@ -791,6 +797,11 @@ mod tests {
         // - F08 的 `account_usage_local` **+1** —— 它补平了 `usage.per-account` 那条 ParityDebt；
         // - P2s 的 `set_daemon_kill_on_exit` / `daemon_status` / `daemon_start` / `daemon_stop`
         //   **+4**，都是 `Both` —— per-host daemon 策略与状态，本机 origin 是 `<local>`（C1）；
+        // - 🔴 `K-R135`（`R85`/`R87`）的 `ccm_user_path_status` / `ccm_user_path_add` /
+        //   `ccm_user_path_remove` **+3**，都是 `Local` —— 用户级 PATH 那一格
+        //   （现在状态 · 加 · 撤）。**只有本机一侧是天然的**，理由住 `ASYMMETRY_REASONS`
+        //   里 `ccm.user-path` 那一条（远端那一侧同一件事由写进远端 rc 的围栏块办，
+        //   而「用户级 PATH」这一档是 Windows 独有的，远端按 `K32` 是 Linux）；
         // - P8a 的 `list_plugin_marketplaces` **+1**，`Local` —— marketplace 只读枚举今天只有
         //   本机口，欠的那半写在 `plugins.marketplaces` 那行上；
         // - K-H2a **+2**（`read_relay_credentials_status` / `write_relay_credentials_key`，都 `Local`）；
@@ -813,7 +824,7 @@ mod tests {
         //   命令总数 +1、能力总数不动、不对称数不动，**只有这个数跟着 +1**。
         //   ⚠ 派工单点名的是「`commands.vitest.ts` 两个 147 ＋ `LEDGER` 一行」三处，
         //   **这个数是第四处** —— 它不在任何一份派工单里，是本轮自己量出来的。
-        const EXPECTED_LOCAL_OR_BOTH: usize = 93;
+        const EXPECTED_LOCAL_OR_BOTH: usize = 96;
         assert_eq!(
             checked, EXPECTED_LOCAL_OR_BOTH,
             "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\
@@ -1028,13 +1039,16 @@ mod tests {
         // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
         // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
         // 归属错了就不如没有。**
-        assert_eq!(LEDGER.len(), 148, "命令总数变了"); // **K-R109 +1（render_local_attach，Local；归已有能力 `session.launch` ⇒ 能力数与不对称数都不动，理由逐条写在那一行旁边）** // **K-R69 +1（local_ccm_entry_status，Local；归已有能力 `ccm.status` ⇒ 能力数与不对称数都不动）** // **K-R49 +1（write_account_aliases，Local-only；新能力 `alias.account-commands`，`ParityDebt`）** // **K-H2a +2（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）** // **P8a +1（list_plugin_marketplaces，#70）** // **PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）** // **K-H2b +1（relay_routing_for，Local-only；新能力 `relay.routing`，`NaturallyAsymmetric`）**
+        assert_eq!(LEDGER.len(), 151, "命令总数变了"); // **K-R109 +1（render_local_attach，Local；归已有能力 `session.launch` ⇒ 能力数与不对称数都不动，理由逐条写在那一行旁边）** // **K-R69 +1（local_ccm_entry_status，Local；归已有能力 `ccm.status` ⇒ 能力数与不对称数都不动）** // **K-R49 +1（write_account_aliases，Local-only；新能力 `alias.account-commands`，`ParityDebt`）** // **K-H2a +2（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）** // **P8a +1（list_plugin_marketplaces，#70）** // **PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）** // **K-H2b +1（relay_routing_for，Local-only；新能力 `relay.routing`，`NaturallyAsymmetric`）** // **`K-R135` +3（ccm_user_path_status / ccm_user_path_add / ccm_user_path_remove，都 Local；新能力 `ccm.user-path`，`NaturallyAsymmetric` —— 理由见 ASYMMETRY_REASONS 那一行）**
         let sides = capability_sides();
-        assert_eq!(sides.len(), 66, "能力总数变了"); // **K-R109 +1（launch.render-attach，Local-only；⚠ 派工单猜的是「能力数 65 不动」，实打不成立 —— 两个「归已有能力」的归法各被一条判据顶回来了，逐条见 `LEDGER` 里那一行旁边）** // **K-R49 +1（alias.account-commands，Local-only）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy）**；**PS2 +1（cc-bus.install-state）**；**K-H2b +1（relay.routing，Local-only）**
+        assert_eq!(sides.len(), 67, "能力总数变了"); // **K-R109 +1（launch.render-attach，Local-only；⚠ 派工单猜的是「能力数 65 不动」，实打不成立 —— 两个「归已有能力」的归法各被一条判据顶回来了，逐条见 `LEDGER` 里那一行旁边）** // **K-R49 +1（alias.account-commands，Local-only）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy）**；**PS2 +1（cc-bus.install-state）**；**K-H2b +1（relay.routing，Local-only）**；**`K-R135` +1（ccm.user-path，Local-only：`R85` 那一格「加/撤/现在状态」；远端那一侧同一件事由 rc 围栏块办，而「用户级 PATH」这一档是 Windows 独有的 ⇒ `NaturallyAsymmetric`）**
         let asym = asymmetric_capabilities();
-        assert_eq!(asym.len(), 27, "不对称能力数变了"); // **K-R109 +1（launch.render-attach，NaturallyAsymmetric）** // **K-R49 +1（alias.account-commands，ParityDebt）** // **K-H2b +1（relay.routing，NaturallyAsymmetric）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
+        assert_eq!(asym.len(), 28, "不对称能力数变了"); // **K-R109 +1（launch.render-attach，NaturallyAsymmetric）** // **K-R49 +1（alias.account-commands，ParityDebt）** // **K-H2b +1（relay.routing，NaturallyAsymmetric）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
                                                         // P3t-Y2b +1（tmux.local-census）；**P3b -1（launch.send-into 结清：P3 刀 3 让本机真的在用它 ⇒ Both，不再不对称）**
                                                         // **P7c-1 -1（subagent.load 结清：远端展开做出来了 ⇒ Both）** —— daemon 只列候选，挑选留本侧（C1）
+                                                        // **`K-R135` +1（ccm.user-path，`NaturallyAsymmetric`）** —— 见 ASYMMETRY_REASONS 里那一行：
+                                                        // 它的「天然」是可证的（远端同一件事由 rc 围栏块办 ＋ 那一档只有 Windows 有），
+                                                        // 不是图省事；哪天真出现「远端是 Windows」，回来把它改成 `ParityDebt`。
         let mut kinds: BTreeMap<&str, usize> = BTreeMap::new();
         for (_, k, _) in ASYMMETRY_REASONS {
             *kinds
@@ -1045,7 +1059,7 @@ mod tests {
                 })
                 .or_default() += 1;
         }
-        assert_eq!(kinds.get("natural"), Some(&12), "天然不对称条数变了"); // **K-R109 +1（launch.render-attach —— 记 `natural` 记的是「远端由 `render_ccm_launch` 一并产、不需要单独命令名」，不是「远端还没做」）** // U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）。★ P3t-Y4：这两条的**理由**换过（原来引 §36 说「本地不经 IR」——§36 只绑 Windows，且那个理由已被本机探针实测证伪），但 `natural` 的**条数没变**。P3t-Y2b +1（tmux.name-census）。**K-H2b +1（relay.routing）—— 记 `natural` 记的是「回环自指 ⇒ 这个问题问错了机器」，不是「远端还没做」；把 key 送到远端那笔账在 `creds.relay-key` 那行（`debt`），两者别混。**
+        assert_eq!(kinds.get("natural"), Some(&13), "天然不对称条数变了"); // **`K-R135` +1（ccm.user-path：远端同一件事由 rc 围栏块办 ＋ 那一档只有 Windows 有 ⇒ 天然，不是欠账；哪天远端是 Windows 就回来改成 `debt`）** // **K-R109 +1（launch.render-attach —— 记 `natural` 记的是「远端由 `render_ccm_launch` 一并产、不需要单独命令名」，不是「远端还没做」）** // U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）。★ P3t-Y4：这两条的**理由**换过（原来引 §36 说「本地不经 IR」——§36 只绑 Windows，且那个理由已被本机探针实测证伪），但 `natural` 的**条数没变**。P3t-Y2b +1（tmux.name-census）。**K-H2b +1（relay.routing）—— 记 `natural` 记的是「回环自指 ⇒ 这个问题问错了机器」，不是「远端还没做」；把 key 送到远端那笔账在 `creds.relay-key` 那行（`debt`），两者别混。**
         assert_eq!(kinds.get("debt"), Some(&12), "平价欠账条数变了"); // **K-R49 +1（alias.account-commands：远端那半只有「吐待贴文本」那半条路，落盘没有主人）** // **K-H2a +1（creds.relay-key：本机能配、远端那侧还没有路 —— 而且不能照抄 SFTP 上传，理由见那一行）** // F08 -1（usage.per-account 补平） // G6 -1；E79 -1；**P7c-1 -1（subagent.load 结清：远端展开做出来了）**；**P8a +1（plugins.marketplaces：新开的本机口，远端那半要等 daemon 的 `--list-marketplaces`）**
         assert_eq!(kinds.get("undecided"), Some(&3), "未裁定条数变了"); // devbench F03 +1（skill.inbox：远端项目的收件箱要不要能编辑，没人裁定过） // U8a-2c-1 +1（launch.send-into：本机该不该有后端进程未裁定）
                                                                         // P3b -1（launch.send-into：它的「还没裁定」被 C1/C8 + P2 + P3 刀 3 三重证伪）
