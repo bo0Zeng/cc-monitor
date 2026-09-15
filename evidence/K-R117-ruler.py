@@ -32,6 +32,18 @@
      `tmux.manage` 那条散文 · 钉那句散文的判据名）。少一处红 —— 那意味着 `K-R115` 交回的
      代价读数已经不是今天的形状。
 
+〔`K-R128` 09-15 加的三条 —— 第三块（S1–S5）开工前那两条「说了但没有闸」的判定〕：
+  R8 切件分组表的**闭集判定**（`KR128D1`）：`SPLIT_GROUPS` 五组的并集**逐字等于**现打人群
+     （两向点名）· 五组**两两交集为空**。防的是「切件方案与量具各说各话」。
+  R9 前端落点**棘轮**（`KR128D2`）：每组现打落点名单 **==** `FRONTEND_PIN` 钉住的名单。
+     🔴 钉的是**名单**，份数一律 `len()` 现算（表里一个基数字面量都没有）；判 `==` 不判 `<=`。
+     🔴 **落点只认调用形状 `.<命令>(`** —— 只在注释 / 散文里提到命令名的那一份不算落点，
+        否则这把尺子可以**靠删一条注释变绿**，而「落点收到 1」正是 S1–S5 的收工判据。
+  R10 **纪律 A 的闸**（`KR128D3`）：`R10a` 22 条在 `src/ipc/commands.ts` 里逐条有包装层入口
+     （TS 键 ＋ `invoke` 线上串两侧都在）· `R10b` `claims()` 每个装 / 卸符号要么是真
+     `#[tauri::command]`、要么在 `CLAIMS_NON_COMMAND_SYMBOLS` 明示名单里。
+     🔴 钉的是**命令名**不是文件字节 ⇒ 往那三份里加一条**与这 22 条无关**的新命令**不红**。
+
 **不判**（诚实边界，逐条写死）：
   B1 **不判归属对不对**。`CAP_ARCHIVE` 的每一格是**人的判断**（依据写在那一格的 `why` 里），
      本尺子只保证「没有一条命令没人回答过」，不保证「回答得对」。
@@ -48,6 +60,16 @@
   B5 解析是**文本解析**，不是 `syn`。它认的是本仓 rustfmt 之后的那几种固定形状
      （见每个 parser 的 docstring）；形状一变就会掉到地板断言上（R1）——
      **宁可 CRASH，不许静默少数几条**。
+  B6 〔`K-R128`〕**`src-tauri/src/parity_ledger.rs` 这一份 `R10` 判不了，而且是结构性的**：
+     那 22 条命令名就是从它解析出来的（`parse_ledger`）⇒ 拿它回头判它恒真（空真）。
+     它的闸在 `R8`（现打人群变了，而 `SPLIT_GROUPS` 是字面量名单、不会跟着变 ⇒ 两向红）。
+     ⇒ **别把 `§S5e` 读成「三份共用文件都判了」。**
+  B7 〔`K-R128`〕`R9` 只认**一种**调用形状（`.<命令>(`）。别的形状（`invoke("<名>")` 直呼 ·
+     先解构再裸调）本尺子**看不见**。为了让它不静默，`§S5d` 把「只提到、没有调用形状」
+     那一档**逐处 `文件:行号` 印出来**（只出读数、不判红）——
+     哪天有人换了调用形状，那一份会从「落点」掉进第二档，在读数面上当场可见。
+  B8 〔`K-R128`〕`R9` 度量的是「**几份文件**」，不是「几处引用」⇒ 往一份**已经在名单里**的
+     文件里再加一处引用，**不红**。这是刻意的：第三块的目标就是把引用收进那几份留下来的文件。
 """
 
 from __future__ import annotations
@@ -194,6 +216,165 @@ SITE_ARCHIVE = {
 
 # `§0b` 里点名、而 `WRITE_SITES` 的 tool id 是 `None` 的那几行 —— 单列，别混进「带 id」那个数。
 SITE_TOOLID_NONE_BUT_ARCHIVED = ("build.rs::embed_daemons",)
+
+# ══════════════════════════════════════════════════════════════════════════════
+# `K-R128`（09-15）—— 第三块（S1–S5）开工前，那两条「说了但没有闸」的判定
+#
+# 🔴 这一整块是 `K-R128` 新加的；`K-R117` 第一拍那七条（`R1`–`R7`）**一个字节没动**，
+#    `§S5b` 那段读数的输出也**逐字不变**（只把它那段目录遍历抽成了 `collect_ts()`，
+#    好让本块与它**共用同一个分母**——两处各写一遍 `os.walk` 正是本文件头注点名的
+#    「同一件事的第二份表示，而它们会各自漂」）。
+#
+# 为什么要有这一块（两条，失效方向不一样）：
+#   甲 `K-R117` `§3-3` 的**收工判据**逐字要「该件那一组的前端落点数恒等于 1」，
+#      而 `§S5b` 今天**只出读数、不判红** ⇒ 那句话没有闸。
+#   乙 **纪律 A**（「第二拍全程不改命令名 ⇒ 三份共用文件一字不动 ⇒ 五件写区才真不相交」）
+#      今天**完全建立在纪律上，没有任何东西在盘它**，而 S1 / S5 是方案里唯一许并跑的一对。
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── 分组表（`KR128D1`）—— **人的判断住这里**，逐行写死出处 ────────────────────
+#
+# 出处：`K-R117` 件文件 `features/K-R117-安装面收成三处.md#§3-3` 那张五行表。
+# ⚠ **那张表没有逐条列命令名** —— 它每一行给的是「后端写区 · 前端写区 · 收几条」。
+#   下面这五行是从「归处（①②③）＋ 后端写区那一列 ＋ 收几条那一列」派生出来的
+#   **人的判断**，派生依据逐行写在第三栏。**派生对不对由 `R8` 盘**（闭集两向 ＋ 交集空）。
+#
+# ⚠ **刻意没有拿「今天住哪」去盘这张表**，理由写出来别当省略：`§3-3` 的「写区（后端）」
+#   那一列写的是**搬过去之后**的落点，不是今天的住址 —— S4 那一行现打就对不上
+#   （它写 `account_aliases.rs` · `profile_installer.rs`，而那两条命令今天住
+#   `acct_iso_deploy.rs:126` 与 `lib.rs:1772`）。拿住址当判据会把「计划」读成「现状」。
+#
+# 🔴 **这张表是本块唯一的字面量名单**，它不是「人群」的第二住址：人群现打从 `LEDGER`
+#    ＋ `CAP_ARCHIVE` 派生（就是 `§S5` 那 22 条），这张表只回答「那一条归五件里的哪一件」。
+#    两边任何一侧漂了，`R8a`/`R8b` 当场红。
+SPLIT_GROUPS: "OrderedDict[str, tuple]" = OrderedDict([
+    ("S1", ("①-远端半", (
+        "deploy_remote_daemon",
+        "install_remote_ccm_helper",
+        "uninstall_remote_ccm_helper",
+        "uninstall_remote_daemon",
+    ), "§3-3 第一行：后端写区 `sftp.rs`，收 4 条 —— 括号里逐字「`daemon.deploy`×2 ＋ "
+       "`ccm.install`/`ccm.uninstall` 的远端半」。现打这四条的住址恰好都在 `sftp.rs`")),
+    ("S2", ("①-本机半", (
+        "cc_integration_install",
+        "cc_integration_preview",
+        "cc_integration_scan_path",
+        "cc_integration_status",
+        "cc_integration_uninstall",
+        "local_ccm_entry_status",
+        "probe_ccm_cli",
+    ), "§3-3 第二行：后端写区 `lib.rs`（逐字限定 `cc_integration_*`）· `ccm_probe.rs`，"
+       "收 7 条 = `lib.rs` 里五条 `cc_integration_*` ＋ `ccm_probe.rs` 里两条。"
+       "⚠ 限定词承重：`lib.rs` 里还住着 `write_account_aliases`，那条归 S4")),
+    ("S3", ("①-account 半", (
+        "check_remote_acct_iso",
+        "deploy_remote_acct_iso",
+    ), "§3-3 第三行：后端写区 `acct_iso_deploy.rs` ＋ 本机装口新落点，收「2 条 ＋ 1 条欠口」。"
+       "① 里住 `acct_iso_deploy.rs` 的恰好这两条（同文件的 `remote_acct_iso_shellinit` 归 ②）；"
+       "那「1 条欠口」今天盘上还不存在 ⇒ 不进闭集")),
+    ("S4", ("②生成 rc 片段", (
+        "remote_acct_iso_shellinit",
+        "write_account_aliases",
+    ), "§3-3 第四行：件 = ②，收「2 条 ＋ 4 处写盘落点」。② 这一处现打恰好 2 条命令"
+       "（`§S5` 归处栏）；那 4 处写盘落点不是命令，住 `SITE_ARCHIVE`，不进本闭集")),
+    ("S5", ("③装 MCP/skill", (
+        "cc_bus_install_state",
+        "deploy_local_cc_bus",
+        "remove_project_mcp_server",
+        "remove_remote_mcp_server",
+        "write_project_mcp_server",
+        "write_remote_mcp_server",
+        "write_skill_file",
+    ), "§3-3 第五行：件 = ③，收「7 条 ＋ 2 处写盘落点」。③ 这一处现打恰好 7 条命令；"
+       "那 2 处写盘落点同样住 `SITE_ARCHIVE`，不进本闭集")),
+])
+
+# ── 前端落点棘轮（`KR128D2`）—— 钉的是**名单**，份数由 `len()` 现算 ───────────
+#
+# 🔴 **为什么是棘轮、不是「恒等于 1」**（件文件 `§0c`）：目标是每组收成 1 份、全盘 3 份，
+#    而今天全盘 8 份。把「恒等于 1」直接打开 ⇒ 当场全红，而且要红到第三块做完 ——
+#    那不是闸，那是把门禁钉死。⇒ 钉**今天这一刻的名单**，判**逐字相等**：
+#    第一天装上就是绿的；任何人往上**加一份落点**，或者把这张表**改馊**，当场红。
+#
+# 🔴 **判 `==` 不判 `<=`**（`§0c` 逐字）：`<=` 只防涨、不防「悄悄记错」，
+#    而本区最贵的病正是「数与名单不同句」。⇒ 这里**只钉名单**，份数一律 `len()` 现算，
+#    表里一个基数字面量都不许有（`brief` 13b）。
+#
+# 🔴 **它挡路的时候，合法出路只有一条**（`references/testing.md` 判据硬规则 11/12）：
+#    S1–S5 哪一件把自己那一组的落点收掉了，**同一拍**把那一件那一行的名单改小 ——
+#    「降不动就是没做完」。**不许改成 `<=`、不许把名单改大来让今天好过。**
+#    ⇒ 重裁落点逐行写在第三栏。
+#
+# 每行：组 -> (钉住的落点名单, 这个数是哪天量的 · 用什么量的, 该变的时候谁来改)
+FRONTEND_PIN: "OrderedDict[str, tuple]" = OrderedDict([
+    ("S1", (("src/settings/machine-card.ts",),
+            "量于 09-15 · `K-R128` 实现方现打（本文件 `§S5d`，被测树 = `--root`）",
+            "S1 收完远端半那一拍改这一行（目标：空）")),
+    ("S2", (("src/ccm-probe.ts",
+             "src/launcher-diagnostics.ts",
+             "src/settings/cc_integration.ts"),
+            "量于 09-15 · 同上",
+            "S2 收完本机半那一拍改这一行（目标：收成 1 份）。"
+            "⚠ `src/settings/panel.ts` **不在**这张名单里：它今天只在一句注释里提到 "
+            "`cc_integration_status`，不是调用点（见 `§S5d` 第二档）")),
+    ("S3", (("src/settings/accounts-section.ts",),
+            "量于 09-15 · 同上",
+            "S3 那一拍改这一行。⚠ 现打**已经只剩 1 份** —— S3 的活在后端与那条欠口，"
+            "前端这一维今天就到位了（`§3-3` 写「S3 今天 2」是把 `src/accounts.ts` 那条"
+            "**注释里的提名**算成了落点，见 `§S5d` 第二档）")),
+    ("S4", (("src/launcher-diagnostics.ts",
+             "src/settings/accounts-section.ts"),
+            "量于 09-15 · 同上",
+            "S4 那一拍改这一行（目标：收成 1 份）")),
+    ("S5", (("src/settings/cc-bus-section.ts",
+             "src/settings/mcp-section.ts",
+             "src/views/inbox-view.ts"),
+            "量于 09-15 · 同上",
+            "S5 那一拍改这一行（目标：收成 1 份）")),
+])
+
+# 收工的目标形状（`K-R117` `§3-3` 逐字「该件那一组的前端落点数恒等于 1」）。
+# ⚠ **只印，不判** —— 判它就是 `§0c` 点名不许装的那个恒红闸。
+FRONTEND_GOAL_PER_GROUP = 1
+
+# ── 纪律 A 的闸（`KR128D3`）—— 三份共用文件 ───────────────────────────────────
+#
+# 纪律 A 逐字：「第二拍全程不改命令名」⇒ 三份共用文件一个字节都不用动 ⇒ 五件写区才真不相交。
+# ⚠ **钉的是命令名，不是文件的字节**（件文件 `§0b`/`KR128D3` 逐字）：那三份里还住着
+#   别的东西，按字节钉会把无关改动也判红，那种闸三天内就会被人绕过去。
+#
+# 三份各自怎么判、以及**哪一份判不了**，逐份写死（`brief` 17：判不了就写判不了）：
+#
+#   · `src/ipc/commands.ts`（包装层）—— **判**。22 条逐条要有包装层入口，
+#     而且**两侧都要在**：TS 键 与 `invoke("…")` 的线上串。这一格是**跨语言对拍**
+#     （Rust 侧的 `LEDGER` ↔ TS 侧的包装层），两边同源的可能性为零 ⇒ 不是空真。
+#
+#   · `src-tauri/src/tool_registry.rs` —— **判**。`claims()` 的每一个装 / 卸实现符号，
+#     要么解析得到一条真 `#[tauri::command]`，要么在下面 `CLAIMS_NON_COMMAND_SYMBOLS`
+#     这张**明示**名单里。⚠ 这一格补的是一个真漏：`§S5` 那段种子表用
+#     `if sym in ledger_cmds` 把解析不到的符号**静默丢掉** ⇒ 在 `tool_registry.rs` 里
+#     改一个命令名，今天种子表只会**少一条**，一声不响。
+#
+#   · `src-tauri/src/parity_ledger.rs` —— 🔴 **本尺子判不了，而且是结构性的**：
+#     那 22 条命令名**就是从这份文件解析出来的**（`parse_ledger`）⇒ 拿它回头判这份文件
+#     恒真，是教科书式的空真（`references/testing.md` 判据硬规则 7）。
+#     **它的闸在别处**：`§S5c` 的闭集判定 —— 在 `parity_ledger.rs` 里改掉一个命令名，
+#     现打人群就变了，而 `SPLIT_GROUPS` 是**字面量名单**、不会跟着变 ⇒ `R8a` 两向点名当场红。
+#     ⇒ 这一份**有闸，只是闸不在本节**。本节逐字印出这句话，别让它读成「三份都判了」。
+#
+# key = "文件::函数"（与 `claims()` 印出来的住址同形）。
+CLAIMS_NON_COMMAND_SYMBOLS = {
+    "profile_installer.rs::install_to_profile":
+        "② 那一族的**落盘实现**，本来就不是 Tauri 命令（它住 `WRITE_SITES`，"
+        "归档在 `SITE_ARCHIVE`）—— `posix-rc-aliases` / `powershell-profile` 两个工具共用它",
+    "profile_installer.rs::uninstall_from_profile":
+        "同上，摘那一侧",
+}
+
+# `src/ipc/commands.ts` 包装层的**形状地板**：整份文件里「键: (」这一形现打有多少条。
+# ⚠ 它不是判据，是**反向自检**：形状一变（比如包装层改写成 class 方法），
+#   下面那 22 条会齐刷刷判不到 ⇒ 那时该 CRASH（形状坏了），不该印 22 条红。
+WRAPPER_KEY_FLOOR = 100
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 解析器（全部只读文本；每个都有地板断言）
@@ -393,6 +574,278 @@ def head(t: str) -> str:
     return "\n" + "─" * 78 + f"\n{t}\n" + "─" * 78
 
 
+# ══════════════════════════════════════════════════════════════════════════════
+# `K-R128` 的三节（`§S5c` 分组闭集 · `§S5d` 落点棘轮 · `§S5e` 纪律 A）
+# ══════════════════════════════════════════════════════════════════════════════
+
+PASSED: list = []
+
+
+def ok(msg: str) -> None:
+    """记一条**过了**的判定。门禁那一格靠 `len(PASSED)` 认「这一格真的跑了」。
+
+    ⚠ 它只收 `§S5c`/`§S5d`/`§S5e` 三节；`R1`–`R7` 那七条**不进这个数**
+    （它们只在红的时候出声，没有逐条的「过了」事件）⇒ 报这个数时分母要这么写。
+    """
+    PASSED.append(msg)
+
+
+def collect_ts(root: str):
+    """`src/**.ts` 的分母（`§S5b` 与 `§S5c`–`§S5e` **共用这一份**，别各写一遍）。
+
+    排除 `*.vitest.ts` 与 `src/generated/`。返回 `{相对路径: 正文}`，
+    遍历次序 = `os.walk` ＋ 每层 `sorted(files)`（定序，别让读数随文件系统漂）。
+    """
+    out = OrderedDict()
+    ts_root = os.path.join(root, "src")
+    if not os.path.isdir(ts_root):
+        return out
+    for base, _d, files in os.walk(ts_root):
+        if os.sep + "generated" in base:
+            continue
+        for fn in sorted(files):
+            if fn.endswith(".ts") and not fn.endswith(".vitest.ts"):
+                p = os.path.join(base, fn)
+                out[os.path.relpath(p, root).replace("\\", "/")] = slurp(p)
+    return out
+
+
+def frontend_landing(texts, cmds, wrapper: str):
+    """把 `src/**.ts` 里对这几条命令的出现分成**两档**：调用点 · 只提到没调用。
+
+    落点（第一档）= 有**调用形状**的那一份文件。调用形状逐字只认一种：`.<命令>(`
+    —— 本仓前端一律经包装层调（`commands.<名>({…})`，含换行的链式 `.<名>({…})`）。
+
+    🔴 **为什么第二档非分不可**（本件最要防的形状）：只在注释 / 散文 / 字符串里写了
+    命令名的那一份**不是用户入口**。把它算成落点，这把尺子就**可以靠删一条注释变绿** ——
+    而「落点数收到 1」正是 S1–S5 的收工判据 ⇒ 那等于给第三块发了一条假出口。
+    现打就有两份是这一形（`src/accounts.ts` · `src/settings/panel.ts`，逐处印在下面）。
+
+    ⚠ **买不到什么**：别的调用形状（`invoke("<名>")` 直呼 · 先解构再裸调）本函数**看不见**。
+      为了让它**不静默**，第二档逐处 `文件:行号` 印出来：哪天有人换了调用形状，
+      那一份会从「落点」掉进「只提到」那一档，**在读数面上当场可见**（不是判红，是点名）。
+
+    ⚠ `wrapper`（`src/ipc/commands.ts`）**不算落点** —— 22 条逐条都在它里面，
+      它是共用包装层，不是「散在各处的用户入口」。它另有 `§S5e` 专门判。
+
+    返回 `(calls, mentions)`：
+      `calls`    `{命令 -> (相对路径, …)}`（定序）
+      `mentions` `[(相对路径, 行号, 命令), …]`（定序）—— 只提到没调用的那一档
+    """
+    calls, mentions = OrderedDict(), []
+    for cmd in cmds:
+        call_re = re.compile(r"\." + re.escape(cmd) + r"\s*\(")
+        word_re = re.compile(r"\b" + re.escape(cmd) + r"\b")
+        hit = []
+        for rel, text in texts.items():
+            if rel == wrapper:
+                continue
+            if call_re.search(text):
+                hit.append(rel)
+            elif word_re.search(text):
+                for i, ln in enumerate(text.split("\n"), 1):
+                    if word_re.search(ln):
+                        mentions.append((rel, i, cmd))
+        calls[cmd] = tuple(sorted(hit))
+    return calls, sorted(mentions)
+
+
+def wrapper_entries(text: str, cmds):
+    """包装层两侧：TS 键（`  <名>: (`）与线上串（`invoke…("<名>"`）各命中几次。
+
+    形状取自本仓今天 `src/ipc/commands.ts` 的固定写法，逐字两例：
+      `  probe_ccm_cli: (args: { origin: string }) => invoke<CcmProbeResult>("probe_ccm_cli", args),`
+      `  write_skill_file: (args: {…}) =>` ＋ 下一行 `    invoke<void>("write_skill_file", args),`
+    ⇒ 键与串**允许不在同一行**，两侧分别数。
+    ⚠ 形状一变（改写成 class 方法 / 改用别的桥）会让 22 条齐刷刷判不到 ⇒
+      由 `WRAPPER_KEY_FLOOR` 那条反向自检先 CRASH，不许印 22 条红。
+    """
+    out = OrderedDict()
+    for cmd in cmds:
+        key = len(re.findall(r"^ +" + re.escape(cmd) + r"\s*:\s*\(", text, re.M))
+        wire = len(re.findall(r"invoke[^(\n]*\(\s*\"" + re.escape(cmd) + r"\"", text))
+        out[cmd] = (key, wire)
+    return out
+
+
+def section_split_closure(cmds_now):
+    """`§S5c`（`KR128D1`）：`S1..S5 → 命令名集合` 的分组表 ＋ **闭集判定**。
+
+    判两样：`R8a` 并集**逐字等于**现打人群（两向点名）· `R8b` 五组两两**交集为空**。
+    这一条就是在防「切件方案与量具各说各话」。
+    """
+    print(head("§S5c 切件分组表 S1–S5 ＋ 闭集判定〔`K-R128` `KR128D1`〕"))
+    print("  ⚠ 分组表是**人的判断**（出处 `features/K-R117-安装面收成三处.md#§3-3` 那五行），"
+          "人群是**现打派生**（`LEDGER` ＋ `CAP_ARCHIVE` ⇒ 就是 `§S5` 那张表）。"
+          "下面判的是这两侧**对不对得上**。")
+    union, dupes = [], OrderedDict()
+    for g, (label, members, why) in SPLIT_GROUPS.items():
+        print(f"  {g} {label:<16s}{len(members)} 条：{', '.join(sorted(members))}")
+        print(f"      依据：{why}")
+        for m in members:
+            dupes.setdefault(m, []).append(g)
+        union.extend(members)
+    now = set(cmds_now)
+    uni = set(union)
+    print(f"  ⇒ 五组并集 **{len(uni)} 条**（逐条出现 {len(union)} 次）· "
+          f"现打人群 **{len(now)} 条**（分母 = `§S5` 归处非「{NA}」的那几行）")
+
+    only_table = sorted(uni - now)
+    only_now = sorted(now - uni)
+    if only_table:
+        red("R8a", "分组表里这些命令**今天的人群里找不到**（`§S5b` 那 22 条里没有它）："
+                   + ", ".join(only_table)
+                   + " —— ⚠ **别改表去凑**：要么是切件方案指了一条盘上不存在的命令，"
+                     "要么是有人改了命令名（纪律 A 被破了）。两种都要人回来裁")
+    if only_now:
+        red("R8a", "现打人群里这些命令**五件谁都没认领**：" + ", ".join(only_now)
+                   + " —— 新长出一条安装面命令而切件方案没覆盖它，"
+                     "或者有人改了命令名 ⇒ 第三块的写区当场不完整")
+    if not only_table and not only_now:
+        ok(f"R8a 分组表并集逐字等于现打人群（{len(uni)} 条，两向差集都空）")
+        print(f"  ✓ R8a 并集逐字相等，两向差集都是空的（表→人群 0 · 人群→表 0）")
+
+    overlap = {m: gs for m, gs in dupes.items() if len(gs) > 1}
+    if overlap:
+        for m in sorted(overlap):
+            red("R8b", f"命令 `{m}` 同时被 {', '.join(overlap[m])} 认领 —— "
+                       f"五件的写区就是这么撞上的")
+    else:
+        ok(f"R8b 五组两两交集为空（{len(SPLIT_GROUPS)} 组 / {len(union)} 条名额）")
+        print(f"  ✓ R8b 两两交集为空（{len(union)} 条名额没有一条被两件认领）")
+    for m in sorted(uni & now):
+        ok(f"R8 命令 `{m}` 恰好归入一组")
+
+
+def section_frontend_ratchet(texts, cmds_now, wrapper: str):
+    """`§S5d`（`KR128D2`）：前端落点**棘轮** —— 钉名单、判逐字相等、份数现算。
+
+    `R9` 每组现打落点名单 **==** `FRONTEND_PIN` 钉住的名单。
+    不等就红，并点名**是哪一组、哪一份文件、往哪个方向变的**。
+    """
+    print(head("§S5d 前端落点棘轮〔`K-R128` `KR128D2`〕"))
+    if len(texts) < 30:
+        print(f"  （`src` 下只有 {len(texts)} 份 .ts —— 本节跳过，"
+              f"多半是 `--root` 指到了只有 src-tauri 的夹具）")
+        return
+    calls, mentions = frontend_landing(texts, cmds_now, wrapper)
+    print("  ⚠ **落点 = 有调用形状 `.<命令>(` 的那一份 `.ts`**；只在注释 / 散文 / 字符串里"
+          "提到命令名的**不算**（第二档单列）。⇒ 这把尺子**不能靠删一条注释变绿**。")
+    print("  ⚠ 判的是**名单逐字相等**（不是 `<=`，也不是只比份数）—— 份数一律 `len()` 现算。")
+    print(f"  {'组':<5s}{'现打':<5s}{'钉住':<5s}{'目标':<5s}名单（现打）")
+    total_now = set()
+    for g, (label, members, _why) in SPLIT_GROUPS.items():
+        pin, when, whoi = FRONTEND_PIN[g]
+        now = tuple(sorted({f for m in members for f in calls.get(m, ())}))
+        total_now |= set(now)
+        want = tuple(sorted(pin))
+        print(f"  {g:<5s}{len(now):<5d}{len(want):<5d}{FRONTEND_GOAL_PER_GROUP:<5d}"
+              f"{', '.join(now) if now else '（零）'}")
+        print(f"        钉于：{when}")
+        print(f"        该降的时候谁来改：{whoi}")
+        if now == want:
+            ok(f"R9 {g} 落点名单逐字相等（{len(now)} 份）")
+            continue
+        grew = sorted(set(now) - set(want))
+        shrank = sorted(set(want) - set(now))
+        if grew:
+            red("R9a", f"{g}（{label}）**多出落点**：{', '.join(grew)} —— "
+                       f"钉住的是 {', '.join(want) if want else '（零）'}。"
+                       f"有人往上加了一份前端落点 ⇒ 第三块那一件的写区变大了，"
+                       f"**不许靠把表改大让它绿**（`§0c`）")
+        if shrank:
+            red("R9b", f"{g}（{label}）**少了落点**：{', '.join(shrank)} —— "
+                       f"钉住的是 {', '.join(want)}，现打 "
+                       f"{', '.join(now) if now else '（零）'}。"
+                       f"要么这一件真收干净了（那就**同一拍**把 `FRONTEND_PIN['{g}']` 降下来），"
+                       f"要么那一处是被别的改动顺手带没的 ⇒ 回来裁")
+    print(f"  ⇒ 全盘并集 **{len(total_now)} 份**（目标 3）：{', '.join(sorted(total_now))}")
+    print(f"  ── 第二档：**只提到、没有调用形状** 现打 {len(mentions)} 处 "
+          f"（只出读数、不判红；它在这里是为了让「换了调用形状」不静默）──")
+    for rel, ln, cmd in mentions:
+        print(f"    {rel}:{ln}  提到 `{cmd}`")
+
+
+def section_discipline_a(texts, cmds_now, claims, cmd_addr, wrapper: str):
+    """`§S5e`（`KR128D3`）：**纪律 A 的闸** —— 三份共用文件的命令名。
+
+    判两份、明说第三份判不了（逐份理由见 `CLAIMS_NON_COMMAND_SYMBOLS` 上面那段头注）：
+      `R10a` `src/ipc/commands.ts`：22 条逐条要有包装层入口，TS 键与线上串**两侧都在**。
+      `R10b` `tool_registry.rs`：`claims()` 每个装 / 卸符号要么是真 `#[tauri::command]`，
+             要么在明示的非命令名单里。
+      `parity_ledger.rs`：**判不了（空真）**，它的闸在 `§S5c`。
+
+    🔴 **钉的是命令名，不是文件字节** —— 往这三份里加一条**与这 22 条无关**的新命令
+       **不许红**（否则以后没人敢动这三份文件）。本节每一条判定都只在这 22 个名字上取值。
+    """
+    print(head("§S5e 纪律 A 的闸 —— 三份共用文件的命令名〔`K-R128` `KR128D3`〕"))
+    print("  纪律 A 逐字：「第二拍全程不改命令名 ⇒ 三份共用文件一字不动 ⇒ 五件写区才真不相交」。"
+          "S1 / S5 是方案里唯一许并跑的一对 ⇒ 这条纪律破了，两件当场撞车。")
+    print("  🔴 判的是**命令名集合**，不是文件字节：往这三份里加一条与这 22 条无关的新命令"
+          "**不红**（按字节钉的闸三天内就会被人绕过去）。")
+
+    # ① `src/ipc/commands.ts`
+    if len(texts) < 30:
+        print(f"\n  ① `{wrapper}` —— 本档**跳过**（`src` 下只有 {len(texts)} 份 .ts，"
+              f"多半是 `--root` 指到了只有 src-tauri 的夹具）。"
+              f"⚠ 跳过**不是过了**：这一趟这一档一条读数都没有。")
+    else:
+        wtext = texts.get(wrapper)
+        if wtext is None:
+            crash(f"`{wrapper}` 不在 `src/**.ts` 的分母里 —— 包装层没了，`§S5e` ① 的分母塌了")
+        floor = len(re.findall(r"^ +[A-Za-z_][A-Za-z0-9_]*\s*:\s*\(", wtext, re.M))
+        print(f"\n  ① `{wrapper}`（包装层）—— 形状地板：整份现打 {floor} 条「键: (」"
+              f"（地板 {WRAPPER_KEY_FLOOR}）")
+        if floor < WRAPPER_KEY_FLOOR:
+            crash(f"`{wrapper}` 里「键: (」现打 {floor} < 地板 {WRAPPER_KEY_FLOOR} —— "
+                  f"包装层的写法变了，本档那 {len(cmds_now)} 条会齐刷刷判不到"
+                  f"（那是形状坏了，不是 {len(cmds_now)} 条红）")
+        ent = wrapper_entries(wtext, cmds_now)
+        bad = [(c, k, w) for c, (k, w) in ent.items() if k != 1 or w != 1]
+        for c, k, w in sorted(bad):
+            red("R10a", f"`{c}` 在 `{wrapper}` 里的包装层入口不完整：TS 键命中 {k} 次 · "
+                        f"`invoke(\"…\")` 线上串命中 {w} 次（各应当恰好 1 次）—— "
+                        f"{'命令名被改过' if (k == 0 or w == 0) else '同名入口出现了不止一处'}，"
+                        f"**纪律 A 破了**")
+        for c in sorted(c for c, (k, w) in ent.items() if k == 1 and w == 1):
+            ok(f"R10a `{c}` 包装层两侧都在")
+        print(f"     {len(cmds_now)} 条里两侧都在的 **{len(ent) - len(bad)} 条**"
+              f"（分母 = `§S5` 现打人群 {len(cmds_now)} 条；两侧 = TS 键 ＋ `invoke` 线上串）")
+
+    # ② `src-tauri/src/tool_registry.rs`
+    addrs = OrderedDict()
+    for tool, ins, unins in claims:
+        for a in (ins, unins):
+            if a and "::" in a:
+                addrs.setdefault(a, []).append(tool)
+    print(f"\n  ② `src-tauri/src/tool_registry.rs` —— `claims()` 现打 {len(addrs)} 个"
+          f"不同的装 / 卸实现符号：")
+    for a in sorted(addrs):
+        sym = a.split("::")[-1]
+        if sym in cmd_addr:
+            mark = f"→ 真 `#[tauri::command]`（住 {cmd_addr[sym]}）"
+            ok(f"R10b `{a}` 解析到真 `#[tauri::command]`")
+        elif a in CLAIMS_NON_COMMAND_SYMBOLS:
+            mark = f"→ 明示的非命令实现：{CLAIMS_NON_COMMAND_SYMBOLS[a]}"
+            ok(f"R10b `{a}` 在明示的非命令名单里")
+        else:
+            mark = "→ ✗ 两头落空"
+            red("R10b", f"`claims()` 里的装 / 卸符号 `{a}` **既不是一条真 "
+                        f"`#[tauri::command]`，也不在 `CLAIMS_NON_COMMAND_SYMBOLS` 里** —— "
+                        f"多半是有人在 `tool_registry.rs` 里改了命令名（纪律 A 破了）。"
+                        f"⚠ 这一格补的正是 `§S5` 那张种子表的静默漏：它用 "
+                        f"`if sym in ledger_cmds` 把解析不到的符号直接丢掉，只会少一条、不出声")
+        print(f"     {a:<52s}{mark}")
+
+    # ③ `src-tauri/src/parity_ledger.rs`
+    print(f"\n  ③ `src-tauri/src/parity_ledger.rs` —— 🔴 **本节判不了，而且是结构性的**：")
+    print(f"     那 {len(cmds_now)} 条命令名**就是从这份文件解析出来的**（`parse_ledger`）"
+          f"⇒ 拿它回头判这份文件恒真，是空真。")
+    print(f"     **它的闸在 `§S5c`**：在这份文件里改掉一个命令名 ⇒ 现打人群变，"
+          f"而 `SPLIT_GROUPS` 是字面量名单、不会跟着变 ⇒ `R8a` 两向点名当场红。")
+    print(f"     ⇒ 这一份**有闸，只是闸不在本节** —— 别把本节读成「三份都判了」。")
+
+
 def main() -> int:
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser()
@@ -580,20 +1033,16 @@ def main() -> int:
     print("  ⚠ 分母 = `<root>/src` 下的 `.ts`，**排除** `*.vitest.ts` 与 `src/generated/`；"
           "`src/ipc/commands.ts` 是**共用包装层**（每条都在它里面），单列不重复印。")
     ts_root = os.path.join(root, "src")
-    ts_files = []
-    if os.path.isdir(ts_root):
-        for base, _d, files in os.walk(ts_root):
-            if os.sep + "generated" in base:
-                continue
-            for fn in sorted(files):
-                if fn.endswith(".ts") and not fn.endswith(".vitest.ts"):
-                    ts_files.append(os.path.join(base, fn))
+    # 〔`K-R128` 09-15〕这一段目录遍历抽成了 `collect_ts()` —— **本节输出逐字不变**，
+    # 改它只为一件事：让 `§S5c`–`§S5e` 与本节**共用同一份分母**。两处各写一遍 `os.walk`
+    # 正是本文件头注点名的「同一件事的第二份表示，而它们会各自漂」。
+    texts = collect_ts(root)
+    ts_files = list(texts)
+    wrapper = "src/ipc/commands.ts"
     if len(ts_files) < 30:
         print(f"  （`{ts_root}` 下只有 {len(ts_files)} 份 .ts —— 本节跳过，"
               f"多半是 `--root` 指到了只有 src-tauri 的夹具）")
     else:
-        texts = {os.path.relpath(f, root).replace("\\", "/"): slurp(f) for f in ts_files}
-        wrapper = "src/ipc/commands.ts"
         by_file = {}
         for _b, _cap, cmd, _s, _a, _w in rows:
             hits = [rel for rel, t in texts.items()
@@ -606,6 +1055,13 @@ def main() -> int:
         print(f"  ⇒ 前端落点 **{len(by_file)} 份文件**（不含共用包装层 `{wrapper}`）：")
         for f in sorted(by_file):
             print(f"    {f:<40s} {len(by_file[f]):2d} 条：{', '.join(sorted(by_file[f]))}")
+
+    # ── `K-R128` 三节：切件闭集 · 落点棘轮 · 纪律 A ─────────────────────────────
+    # 人群 = `§S5` 归处非「非装面」的那几行的**命令名**（现打派生，不是手抄的名单）。
+    cmds_now = [r_[2] for r_ in rows]
+    section_split_closure(cmds_now)
+    section_frontend_ratchet(texts, cmds_now, wrapper)
+    section_discipline_a(texts, cmds_now, claims, cmd_addr, wrapper)
 
     # ── §S6 `Side` 栏复量（D4：只量代价，不许翻） ───────────────────────────────
     print(head("§S6 `Side` 栏 —— 复量（纯数据那一半；派生那一半见 docstring 的 B3）"))
@@ -670,13 +1126,20 @@ def main() -> int:
 
     # ── 裁决 ──────────────────────────────────────────────────────────────────
     print(head("裁决"))
+    # 🔴 门禁那一格的读数行：`run_gate` 靠「N passed」认这一格**真的跑了**
+    #   （`0 passed 不是绿` 是它的另一条判定）。〔`K-R128` 09-15 加〕
+    print(f"  installface: {len(PASSED)} passed（分母 = `§S5c`/`§S5d`/`§S5e` 三节逐条记下的"
+          f"**过了**的判定条数，`len()` 现算 —— ⚠ `R1`–`R7` 那七条**不在这个数里**："
+          f"它们只在红的时候出声，没有逐条的「过了」事件 ⇒ 这个数**不是**"
+          f"「本尺子judge过的全部条数」）")
     if RED:
         for tag, msg in RED:
             print(f"  RED [{tag}] {msg}")
         print(f"\nRULER: FAIL（{len(RED)} 条）")
         return 1
-    print("  没有红。⚠ 「没有红」只说明上面那七条判定过了，**不说明归档表的每一格判断是对的**"
-          "（诚实边界 B1）。")
+    print("  没有红。⚠ 「没有红」只说明上面那**十**条判定过了（`R1`–`R7` ＋ `K-R128` 的 "
+          "`R8`/`R9`/`R10`），**不说明归档表的每一格判断是对的**（诚实边界 B1），"
+          "也**不说明 `parity_ledger.rs` 被 `§S5e` 判过**（那一份逐字判不了，闸在 `§S5c`）。")
     print("\nRULER: OK")
     return 0
 
