@@ -384,6 +384,7 @@ jobs:
           FILES=$(printf '%s\n' e2e/*.sh shared/cc-bus/scripts/* \
             e2e/fake-claude \
             e2e/weak-net/*.sh \
+            e2e/local-backend-container/*.sh \
             scripts/*.sh \
             src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso \
             src-tauri/vendor/cc-acct-iso/scripts/lib.sh \
@@ -478,7 +479,19 @@ jobs:
           #    今天实测构成（**逐组现打，不倒推**，量于工作树 `k-r72`）：
           #    **57 = e2e/*.sh 30 + e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14
           #           + scripts 3 + vendored 4 + hooks/pre-commit 1**。
-          [ "$N" -ge 57 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 57）"; exit 1; }
+          # **2026-09-15 `K-R139` 棘到 60**，同时补进 `e2e/local-backend-container/*.sh`。
+          # ★ 与 `W-F1`（09-05 那次补 `e2e/weak-net/`）**同一形，不是地板落后**：
+          # `e2e/local-backend-container/` 是个**新目录**，而 `e2e/*.sh` 那个 glob **不跨 `/`**
+          # ⇒ 干净 Linux 容器台架那 3 个脚本落在所有分组之外，一次都不会被 lint，
+          # 而计数一个都不少 ⇒ 光看 `shellcheck` 印的那个数会以为「lint 过了没问题」，
+          # 真相是「**根本没被 lint 到**」。逮住它的是 `shell_lint_registry` 那条恒等判据。
+          # ⚠ **刻意不走「登记豁免」那条**：这 3 个脚本是本轮新写的、没有任何历史包袱，
+          #   豁免是给改不动的老债留的。
+          # 今天实测构成（**逐组现打，不倒推** —— 倒推凑过一次假账）：
+          # **60 = e2e/*.sh 30 + e2e/weak-net/*.sh 4 + e2e/local-backend-container/*.sh 3
+          #        + fake-claude 1 + cc-bus 14 + scripts 3 + vendored 4 + hooks/pre-commit 1**。
+          # ⚠ 那个目录里还有一份 `Dockerfile`（**不是 `.sh`，不进这个人群**）。
+          [ "$N" -ge 60 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 60）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
