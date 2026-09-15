@@ -843,6 +843,59 @@ pub const TOOLS: &[ToolSpec] = &[
     },
 ];
 
+/// 🔴 `K-R132`：本机那条 `ccm` 入口**所在的目录**（home 相对，`/` 分隔，不带末尾斜杠）。
+///
+/// # 它**不是**一个新的字面量〔`13b`：闭集只许有一个住址〕
+///
+/// 它从 [`TOOLS`] 里 `ccm` 那条**本机载体**的落点**现算**
+/// （`LocalHomeRelative(".cc-monitor/bin/ccm*")` ⇒ `".cc-monitor/bin"`）。
+/// 本函数体内一个 `.cc-monitor` 都没有 —— 改了上面那张表，这里跟着变。
+///
+/// # 为什么要有它：**PATH 上要写的那个目录，必须与我们真放下去的那个是同一个**
+///
+/// `K-R129` 在真机上证实的缺陷是「装上了、能跑、用户敲不到」——
+/// `ccm.exe` 真在 `%USERPROFILE%\.cc-monitor\bin\`，而那个目录不在 PATH 上。
+/// 补 PATH 的那一步（`profile_installer::render_cc_code`）**不许自己写一个目录字面量**：
+/// 写了，它与真落点就是两个住址，哪天落点搬家，PATH 会指着一个空目录，
+/// 而「指着空目录」与「根本没补」在终端上一模一样。
+///
+/// # 取不到就是 `None`，**不兜默认值**
+///
+/// 兜一个默认值 = 上面那张表被改坏了也看不出来，而那正是本函数要买的东西。
+/// 调用方拿到 `None` 时**不发明一个目录**，它宁可少吐那一行（`profile_installer` 就是这么做的），
+/// 而少吐那一行会被 `the_powershell_block_puts_our_ccm_bin_dir_on_the_session_path` 当场逮到。
+///
+/// ⚠ **诚实边界**：它答的是「**表里申报的**本机落点在哪个目录」，
+/// 不是「盘上那份**真的**在哪」。两者对不对得上由
+/// `profile_installer` 那条跨文件判据钉住（它去读真正调
+/// `install_local_ccm_entry` 的那一行源码）。
+pub fn local_ccm_bin_dir_rel() -> Option<&'static str> {
+    let mut found: Option<&'static str> = None;
+    for spec in TOOLS {
+        // ⚠ `"ccm"` 这里是**这张表自己的键**（上面那条 `ToolSpec { id: "ccm", … }`），
+        //    **不是** `local_backend::CCM_ENTRY_WORD` 那个命令名的第二个住址。
+        //    两者今天字面相同是巧合 —— 拿命令名来查表，是把「注册表的键」与
+        //    「终端里敲的那个词」当成同一件事，那正是本工作区最贵的那个病
+        //    （一个值装了两件事）。
+        if spec.id != "ccm" {
+            continue;
+        }
+        for carrier in spec.carriers {
+            if let ToolDestination::LocalHomeRelative(p) = carrier.destination {
+                // 末段是文件名（可能带 glob，见那一条的 `path` 注释）⇒ 砍掉它。
+                let (dir, _last) = p.rsplit_once('/')?;
+                if found.is_some() {
+                    // 同一个工具声明了两条本机落点 ⇒ 「那个目录」这个问题没有唯一答案，
+                    // 而**猜一个**正是这一格不许做的事。
+                    return None;
+                }
+                found = Some(dir);
+            }
+        }
+    }
+    found
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // `K-R60`：**环境清单的闭集** —— 「app 要的东西齐了没有」这个问题的人群
 // ═══════════════════════════════════════════════════════════════════════════
