@@ -1552,11 +1552,41 @@ mod tests {
             "远端 ccm 入口里出现了第二条可执行语句 —— 那就是第二处实现了（K33）。\n\
              它只许有一行 `exec <后端> ccm \"$@\"`。现打：{code:?}"
         );
-        assert!(
-            code[0].starts_with("exec "),
-            "唯一那一行必须是 `exec`（不许起子进程再包一层：那会吃掉退出码与信号）。现打：{}",
-            code[0]
+        // 唯一那一行必须**就是一次 exec**（不许起子进程再包一层：那会吃掉退出码与信号）。
+        //
+        // 🔴 09-15 放宽了这一条的**形状**，没放宽它的**性质**：允许 `exec` 前挂
+        // POSIX 的「一次性环境变量赋值」前缀（`VAR=值 exec …`）。那一形仍然是
+        // 同一个进程被 `exec` 掉 —— 退出码与信号照样透传，`K33` 的「只许有一处实现」
+        // 也没破（赋值不是分支、不是第二处实现）。
+        // 为什么需要它：容器路要靠 `CCM_SELF` 知道「我是被当作什么叫的」，
+        // 而那个值**必须在 `exec` 之前**进环境，否则进不了后端进程。
+        // ⚠ 只放这一形：下面三条把「真正会吃掉退出码 / 长出第二处实现」的写法全挡住。
+        let head = code[0];
+        let after_assigns = head
+            .split_whitespace()
+            .skip_while(|w| {
+                w.split_once('=').is_some_and(|(n, _)| {
+                    !n.is_empty() && n.chars().all(|c| c.is_ascii_uppercase() || c == '_')
+                })
+            })
+            .next()
+            .unwrap_or("");
+        assert_eq!(
+            after_assigns, "exec",
+            "唯一那一行不是「（可选的大写环境变量赋值）+ `exec`」——\
+             起子进程再包一层会吃掉退出码与信号。现打：{head}"
         );
+        assert_eq!(
+            head.matches("exec ").count(),
+            1,
+            "出现了不止一次 `exec` —— 那不再是「转交」而是逻辑。现打：{head}"
+        );
+        for forbidden in ["$(", "`", ";", "&&", "||", "|", "if ", "case "] {
+            assert!(
+                !head.contains(forbidden),
+                "唯一那一行里出现了 `{forbidden}` —— shim 长出了第二处实现（K33）。现打：{head}"
+            );
+        }
         // ③ 路径必须经 POSIX quote（daemon_path 是用户填的，可能带空格 / 引号）。
         let tricky = ccm_entry_shim("/home/用户/带 空格/it's");
         assert!(

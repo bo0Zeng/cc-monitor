@@ -1261,6 +1261,21 @@ pub fn scan_tree_excluding_self(
         for entry in rd {
             let path = entry.expect("dir entry").path();
             if path.is_dir() {
+                // ★ **不下到构建产物目录里**〔09-15 现打逮到〕。
+                //
+                // 上面那条「空 `exts` = 整棵树」的能力有个没写出来的前提：**树里全是文本**。
+                // 一旦某个 crate 目录里躺着 `target/`（谁在 crate 里直接跑过一次 cargo 就会有），
+                // 遍历就会走进 `.fingerprint/dep-lib-*` 这种二进制，下面那个 `read_to_string`
+                // 当场 panic：`stream did not contain valid UTF-8`。
+                // 失败长得**像判据自己坏了**，而真相是「它扫到了不该扫的东西」——
+                // 而且它**只在那些目录存在的机器上红**，CI 干净树上一路绿。
+                //
+                // ⚠ 判据用的是 `CACHEDIR.TAG` 而不是「目录名叫 target」：那是 cargo
+                // 自己往每个构建目录里写的标记（`std::fs` 看得见），
+                // 按名字判会误伤真叫 `target` 的源码目录，按标记判不会。
+                if path.join("CACHEDIR.TAG").is_file() {
+                    continue;
+                }
                 stack.push(path);
                 continue;
             }
@@ -1285,8 +1300,25 @@ pub fn scan_tree_excluding_self(
             if path_suffix_matches(&path.to_string_lossy().replace('\\', "/"), &caller_norm) {
                 continue; // ← 就是这一行：调用者自己那份进不来
             }
-            let src =
-                std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读 {path:?} 失败: {e}"));
+            // ★ **读不动 = panic（守卫语义照旧）；不是文本 = 跳过**〔09-15 现打〕。
+            //
+            // `read_to_string` 把两件事压成了一个 `Err`：**IO 真的失败**（权限 / 坏盘 ——
+            // 那是判据该嚷的）与**这个文件不是 UTF-8 文本**（`.pyc`、`.png`、cargo 指纹……）。
+            // 压在一起的后果：判据在有生成物的机器上 panic，消息长得像它自己坏了
+            // （`stream did not contain valid UTF-8`），而 CI 干净树上一路绿 ——
+            // **一个只在某些机器上红、且红得看不出原因的判据**。
+            //
+            // 拆开之后语义是准的：本函数收的是**文本**语料，
+            // 而一个非 UTF-8 的字节流**不可能**含调用方要找的那些标识符 ⇒ 跳过它零损失。
+            // ⚠ 刻意**不**按目录名拉黑单（`target` / `__pycache__` / `node_modules` …）：
+            // 那种名单只会越拉越长，而且每漏一个就复现一次同样的假失败。
+            let bytes = match std::fs::read(&path) {
+                Ok(b) => b,
+                Err(e) => panic!("读 {path:?} 失败: {e}"),
+            };
+            let Ok(src) = String::from_utf8(bytes) else {
+                continue; // 不是文本 ⇒ 不是语料
+            };
             out.push((path, src));
         }
     }
