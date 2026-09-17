@@ -66,7 +66,7 @@ const QUIESCENCE_POLL_INTERVAL_MS: u64 = 500;
 /// 判定"画面稳定"所需的**连续无变化次数**（× 间隔 = 静止时长）。6 × 0.5s = 3s。
 ///
 /// ★ **这是 E42 的真正修复点**，且是唯一有实测支撑的那一半
-/// （`e2e/usage-probe-acceptance.sh` 场景 4：把它调回 1 就红，其余场景全绿）。
+/// （`tests/e2e/usage-probe-acceptance.sh` 场景 4：把它调回 1 就红，其余场景全绿）。
 /// 之所以是"静止时长"而不是"画面变过没有"：`send-keys '/usage'` 打进去的字符**会被终端
 /// 回显**，屏幕在毫秒级就变了 —— 任何"变过就算数"的判据都会被回显自己满足
 /// （我第一版修法就是这么错的，已在真 tmux 上证伪）。**能区分"渲染完了"和"还在等"的
@@ -103,7 +103,7 @@ const USAGE_SLASH_COMMAND: &str = "/usage";
 /// 会话名后缀的前半段 —— daemon 铸名时会在它前面加 `ccm-oneshot-`、后面加 `-cc`。
 const PROBE_SLUG_PREFIX: &str = "usage-";
 
-/// `e2e/usage-probe-acceptance.sh` 里那个**由脚本替换成真名字**的占位 token。
+/// `tests/e2e/usage-probe-acceptance.sh` 里那个**由脚本替换成真名字**的占位 token。
 ///
 /// 会话名由 daemon 在运行期铸，编译期给不出 ⇒ 那套 e2e 的输入源印这个 token，
 /// 脚本拿到 `oneshot-session` 的应答之后原样替换。
@@ -1118,9 +1118,9 @@ mod tests {
         }
     }
 
-    /// `e2e/usage-probe-acceptance.sh` 的**输入源**（`K-R104` 起换成帧行）。
+    /// `tests/e2e/usage-probe-acceptance.sh` 的**输入源**（`K-R104` 起换成帧行）。
     ///
-    /// 惯例来自 `e2e/inbound-daemon-frames.sh` 那条逐字：喂进去的行必须是
+    /// 惯例来自 `tests/e2e/inbound-daemon-frames.sh` 那条逐字：喂进去的行必须是
     /// **monitor 自己的编码器的产物**，否则那套 e2e 只证明「daemon 认得我手写的 JSON」，
     /// 证明不了「monitor 真会发的那种 JSON」。
     ///

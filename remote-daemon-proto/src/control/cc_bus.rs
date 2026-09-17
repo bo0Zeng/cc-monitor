@@ -177,7 +177,7 @@ fn run(name: &str, args: &[&str]) -> Result<Done, CmdErr> {
 /// ⚠ **代价落在这里**：本插件族此前是靠**继承**拿到自己的配置的
 /// （`CC_BUS_HOME` · `CCBUS_POLICY_MODE` · 不带 `from` 那一趟的 `CC_BUS_ID`），
 /// 而本模块**一个都没显式交办过**。现打读数：只加 `env_clear()` 那一刀之后
-/// `e2e/daemon-cc-bus.sh` 从 `PASS=50 FAIL=0` 掉到 `PASS=31 FAIL=19`，
+/// `tests/e2e/daemon-cc-bus.sh` 从 `PASS=50 FAIL=0` 掉到 `PASS=31 FAIL=19`，
 /// 其中最重的一格是 `[15]`：`CC_BUS_HOME` 一没，`cc-kill` 就照着一份**空台账**
 /// 判「这个名字还是原来那个人吗」，判成「是」，**把同名的无辜会话连进程一起杀了**。
 ///
@@ -821,7 +821,7 @@ mod tests {
     /// 钉的是**数据流**，不是「函数存在」：两条命令必须落到同一个 `agents_via_cc_list`，
     /// 否则 `bus-state.agents` 与 `bus-list.agents` 会各自漂。
     /// ⚠ 起子进程那一步在沙箱里跑不了（没装 cc-bus）⇒ 本条扫的是生产段的**接线**，
-    /// 真跑由 `e2e/daemon-cc-bus.sh` 那一族负责。
+    /// 真跑由 `tests/e2e/daemon-cc-bus.sh` 那一族负责。
     #[test]
     fn bus_state_answers_both_halves_from_one_call() {
         let prod = crate::guard_support::production_code(include_str!("cc_bus.rs"));
@@ -938,7 +938,7 @@ mod tests {
     /// `P4f-Y4`：找不到时要说**查过哪儿**。
     ///
     /// ⚠ 拼那句话的活搬去通用口了，**这一格没跟着搬**：它核的是 cc-bus 自己那三样
-    ///（两处固定位置的形状 + [`NOT_INSTALLED_HINT`] 这句尾巴），而 `e2e/daemon-cc-bus.sh` 的
+    ///（两处固定位置的形状 + [`NOT_INSTALLED_HINT`] 这句尾巴），而 `tests/e2e/daemon-cc-bus.sh` 的
     /// 第 6 组逐字 `grep` 的正是这三条。搬走它等于把那三条 e2e 的单测对位丢掉。
     #[test]
     fn the_not_installed_message_names_the_places_it_looked() {

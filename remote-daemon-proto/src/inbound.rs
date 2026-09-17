@@ -387,7 +387,7 @@ pub(crate) struct CommandSpec {
     /// 它换了扇门回来，因为守它的判据是**恒真**的（`fields.is_empty()` ⟺ `!reads_stdin`
     /// 两边是同一个表达式，两个分支都不可能红）。
     ///
-    /// ⇒ 改成每条命令自己说。真不真由**行为**判据验（`e2e/daemon-cc-bus.sh`：
+    /// ⇒ 改成每条命令自己说。真不真由**行为**判据验（`tests/e2e/daemon-cc-bus.sh`：
     /// 声明无输入的命令，在 stdin 不关时必须秒回）。
     pub(crate) takes_input: bool,
     pub(crate) run: Run,
@@ -1436,7 +1436,7 @@ mod structure_guards {
     ///
     /// # 为什么还留着这面镜子
     ///
-    /// monitor 侧 `inbound_client.rs` 与 `e2e/inbound-daemon-frames.sh` 都在**文本抽取**
+    /// monitor 侧 `inbound_client.rs` 与 `tests/e2e/inbound-daemon-frames.sh` 都在**文本抽取**
     /// `const COMMANDS`（拿它做跨轨对拍）。把它换成运行时派生会同时打断那两处。
     /// ⇒ 保留字面量，由本条钉住它不漂。
     #[test]

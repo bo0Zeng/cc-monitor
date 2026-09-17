@@ -46,7 +46,7 @@
  *
  * ⚠ `container: "none"` 那一格（下面 `renderEnvOps + cd + argv` 那支）**生产已不可达**
  * （U8a-2c-pre 切到 `backend::control::payload`），今天由 `remote-launch.ts` 的五个 builder、
- * `e2e/resume-cmd-driver.ts` 与 `launch-payload-golden.ts` 消费。**如实登记，不假装它是活的。**
+ * `tests/e2e/resume-cmd-driver.ts` 与 `launch-payload-golden.ts` 消费。**如实登记，不假装它是活的。**
  */
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import {

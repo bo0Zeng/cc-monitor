@@ -8,7 +8,7 @@
  *
  * F03：6 个 executor 收敛为「构造 {ctx,plan} → `renderLaunchCommand` 挑渲染器 → 执行」。
  * **对外签名/返回值语义逐字不变**——`account-restart.ts`/`tabs.ts`/`views/history.ts` 零改动
- * （`runRemoteResumeTmux` 的位置参数签名被 `e2e/restart-cmd-driver.ts` 经 `account-restart.ts`
+ * （`runRemoteResumeTmux` 的位置参数签名被 `tests/e2e/restart-cmd-driver.ts` 经 `account-restart.ts`
  * 传递性锁死）。
  */
 // ⚠ 仓里有**两个 `LOCAL_ORIGIN`**：这个是 daemon origin（`"<local>"`，与 Rust

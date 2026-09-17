@@ -64,7 +64,7 @@ function argv(token: string): string {
  *  `src/generated/launch-render-facts.ts` 里已经有这份清单了，改成读它是一行的事 ——
  *  **卡住的不是设计，是两条判据**，而两个文件都不在本件写区：
  *
- *  - `e2e/ccm-contract-parity.sh:291` 逐字
+ *  - `tests/e2e/ccm-contract-parity.sh:291` 逐字
  *    `sed -n 's/^const CLI_REQUIRED_CAPS = \[\(.*\)\] as const;$/\1/p' src/launch-render-cli.ts`
  *    —— 它**按文件路径 ＋ 单行数组字面量**抽这份清单，去比真 `ccm --ccm-probe` 的
  *    `capabilities=`（还配了「抽到 ≥5 项」的抽取器自检）。搬走 ⇒ 抽到 0 项 ⇒ 那条当场红。

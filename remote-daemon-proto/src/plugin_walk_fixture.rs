@@ -88,8 +88,8 @@
 //! # 诚实边界（写在这里，因为它们删了不会红）
 //!
 //! - 跳①③⑨ **本地验不了**，不是「以后再说」：它们要一个真 daemon 收发帧。今天真跑过那条路的
-//!   是 `e2e/daemon-cc-bus.sh`（CI 地板 **50**，`.github/workflows/ci.yml:646` 逐字
-//!   `run: bash e2e/assert-pass-floor.sh daemon-cc-bus 50`）——⚠ **它不在门禁九格里**
+//!   是 `tests/e2e/daemon-cc-bus.sh`（CI 地板 **50**，`.github/workflows/ci.yml:646` 逐字
+//!   `run: bash tests/e2e/assert-pass-floor.sh daemon-cc-bus 50`）——⚠ **它不在门禁九格里**
 //!   （`grep -c daemon-cc-bus scripts/gate.sh` ⇒ **0**，09-04 现打），而且它测的是
 //!   **那个既有插件**，不是「加一个新插件」。
 //! - 本文件**不证明**「加一个插件，宿主零改动」。它证的是「**这几样知识凑得出一条真跑得动的路**」，

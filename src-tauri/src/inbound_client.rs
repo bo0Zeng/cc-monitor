@@ -114,7 +114,7 @@ enum Outcome {
 /// 关掉写半边 = 让 daemon 的入方向 reader 见 EOF 寿终；一次性探测想要这个收尾，
 /// 长连接不想要（那头之后还要能发命令）。两种语义必须分开表达。
 ///
-/// ⚠ **不要以为关写半边就能让 daemon 退出。** e2e 实测（`e2e/inbound-daemon-frames.sh` 第 9 条）：
+/// ⚠ **不要以为关写半边就能让 daemon 退出。** e2e 实测（`tests/e2e/inbound-daemon-frames.sh` 第 9 条）：
 /// stdin EOF 只结束 daemon 的入方向 reader **task**，进程照活。daemon 只在
 /// ① `writer_task` 结束（stdout 关了）或 ② 收到停机信号 时退出（见其 `main.rs` 的 select）。
 /// `ssh_source::probe_daemon` 里那句「daemon 看到 EOF 自行退出」的老注释是错的 ——
@@ -1021,7 +1021,7 @@ mod tests {
         );
     }
 
-    /// ★ **跨轨对拍**：`e2e/inbound-daemon-frames.sh` 喂给真 daemon 的那条 ping 行，
+    /// ★ **跨轨对拍**：`tests/e2e/inbound-daemon-frames.sh` 喂给真 daemon 的那条 ping 行，
     /// 必须**逐字节**等于本模块编码器的产物。
     ///
     /// 没有这条，那套 e2e 只证明了「daemon 认得我手写的那串 JSON」，
@@ -1029,7 +1029,7 @@ mod tests {
     /// 而生产里一条命令都发不出去。同 `removal_cause_wire_literal_stays_in_sync` 的思路。
     #[test]
     fn the_e2e_ping_line_is_exactly_what_the_encoder_produces() {
-        const SUITE: &str = include_str!("../../e2e/inbound-daemon-frames.sh");
+        const SUITE: &str = include_str!("../../tests/e2e/inbound-daemon-frames.sh");
         let key = "INBOUND_PING_LINE='";
         let at = SUITE
             .find(key)
@@ -1096,7 +1096,7 @@ mod tests {
     /// 而 `launch_args` 的键名/键序一改，e2e 会继续全绿而生产里一条命令都发不出去。
     #[test]
     fn the_e2e_send_into_line_is_exactly_what_the_encoder_produces() {
-        const SUITE: &str = include_str!("../../e2e/inbound-daemon-frames.sh");
+        const SUITE: &str = include_str!("../../tests/e2e/inbound-daemon-frames.sh");
         let key = "INBOUND_SEND_INTO_LINE='";
         let at = SUITE
             .find(key)
@@ -1133,7 +1133,7 @@ mod tests {
     /// 加一条新命令时 e2e 不会红 —— 只是**悄悄漏测**，而 e2e 恰恰是唯一跑真进程的那一层。
     #[test]
     fn the_e2e_command_list_matches_the_daemon_command_table() {
-        const SUITE: &str = include_str!("../../e2e/inbound-daemon-frames.sh");
+        const SUITE: &str = include_str!("../../tests/e2e/inbound-daemon-frames.sh");
         const DAEMON_INBOUND: &str = include_str!("../../remote-daemon-proto/src/inbound.rs");
 
         // daemon 侧：`pub const COMMANDS: &[&str] = &["cancel", "ping", "resolve"];`

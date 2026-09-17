@@ -52,7 +52,7 @@ export default tseslint.config(
     },
   },
   {
-    // E83（2026-08-01）：`e2e/` 下那些 `.mjs`（wdio 配置、restart-shims、spec）**此前从没被 lint 过**。
+    // E83（2026-08-01）：`tests/e2e/` 下那些 `.mjs`（wdio 配置、restart-shims、spec）**此前从没被 lint 过**。
     //
     // 病灶不是「它们脏」，是**作用面与配置意图对不上**：本文件的 `ignores` 明明是**仓级**的
     // （逐条列出 dist / node_modules / src-tauri / remote-daemon-proto / coverage），
@@ -63,11 +63,11 @@ export default tseslint.config(
     //
     // ⇒ 补上 globals（node + wdio 的 mocha 风格全局），并把 `npm run lint` 放开到 `eslint .`。
     // 补完实测：全仓 7 个，与 `eslint src` 的基线**一致** —— 基线数字不变，覆盖面变大。
-    files: ["e2e/**/*.mjs"],
+    files: ["tests/e2e/**/*.mjs"],
     languageOptions: {
       globals: {
         ...globals.node,
-        ...globals.mocha, // wdio 的 describe/it/before（`e2e/tier2/**`）
+        ...globals.mocha, // wdio 的 describe/it/before（`tests/e2e/tier2/**`）
         // `browser.execute(() => …)` 的**函数体在页面里跑**，所以 DOM 全局在这里是真实存在的
         // （不是漏声明）。wdio 自己注入的 `browser`/`$`/`$$` 同理。
         ...globals.browser,
@@ -101,7 +101,7 @@ export default tseslint.config(
     // 而 `eslint.config.js` 与 `ci.yml` 里那两句「全仓实测仍是 7 项」**没人回来改**。
     //
     // ⇒ 这不是「E83 修漏了」，是**修法本身的形状问题**：`ignores` 是仓级的（全集），
-    // 而 globals 是**按目录枚举**的（`src/**`、`e2e/**`）—— 于是每新增一个带脚本的目录，
+    // 而 globals 是**按目录枚举**的（`src/**`、`tests/e2e/**`）—— 于是每新增一个带脚本的目录，
     // 洞就复发一次，且**没有任何判据数着那个基线**（对比 shellcheck 的文件数被
     // `shell_lint_registry` 钉成等号、e2e 套数被 `e2e_gate_registry` 四份副本对拍）。
     // 补这一块只是止血；钉住「下次再有新目录」那半在 `eslint-baseline.vitest.ts`。

@@ -633,11 +633,11 @@ mod tests {
     /// **行号是快照** —— `brief` 12 逐字：「带具体读数的与描述盘上现状的话都是那一刻的快照，
     /// 引用前重打，别当常量」；`K-R9` `§3` 记的是同一个病：「**谁再在上方加注释就会把它推馊**」。
     /// **它真的馊过一次**：`K-G3` 09-01 往 `scripts/gate.sh` 加了门六、往
-    /// `e2e/local-backend-supervise.sh` 加了头注，行号整体往下推
+    /// `tests/e2e/local-backend-supervise.sh` 加了头注，行号整体往下推
     /// ⇒ 本表与下面 `§12.2` 那几处引它们的行号**当天全部指到注释行**。
     /// **09-02 现打的读数**（分母 = 本文件当时全部 23 条 `文件:行号` 引用）：**8 条馊了**，
     /// 分处 5 个地方 —— 引 `scripts/gate.sh` 的 6 条（本表 2 条、下面 `§12.2` 4 条：那条 cargo 命令 ·
-    /// `run_gate_sum()` 的行段 · `set -uo pipefail` 两处）与引 `e2e/local-backend-supervise.sh`
+    /// `run_gate_sum()` 的行段 · `set -uo pipefail` 两处）与引 `tests/e2e/local-backend-supervise.sh`
     /// 的 2 条。**它们今天全部指到注释行**（其中一条指到一个光秃秃的 `#`）。
     /// 🔴 **本轮一处都不再写行号** —— 连「今天它搬到第几行」都不写：那个数下一次加注释又会假。
     /// ⚠ **量具**（可重跑）：`evidence/K-R5-C-line-refs.py` —— 把本文件里每一条 `文件:行号`
@@ -647,13 +647,13 @@ mod tests {
     /// | 发起面 | 谁从这里发起 cargo（认**这条命令**，不认行号） |
     /// |---|---|
     /// | 仓根 `.` | `ci.yml` 的 `e2e-tmux-rust` job（**没有** `working-directory` ⇒ cwd = 仓根；那一条是 `cargo build --manifest-path remote-daemon-proto/Cargo.toml`）· `scripts/run.ps1` 的 `"check"` 分支（`cargo check --manifest-path src-tauri\Cargo.toml`）。它同时是下面两个的**祖先** —— 往上找一定路过 |
-    /// | `src-tauri/` | `scripts/gate.sh` 的 `run_gate_sum cargo 8 …`（`cd src-tauri && cargo test --workspace --exclude code-picture-core --lib`）· `package.json` 的 `gen:types` · `ci.yml` 里**两处** `working-directory: src-tauri`（`rust` job 与 `linux-app-build` job）· `e2e/` 三个脚本共 **4 处**（`usage-probe-acceptance.sh` 的 `emit_usage_probe_frames_for_e2e` · `local-backend-supervise.sh` 的 `local_backend` 与 `local_daemon` 两条 `cargo test --lib -- --ignored` · `p3t-local-tmux.sh` 的 `P3T_E2E_SID=…` 那一条）。⚠ **这个数只降不升过两次，两次都是随被测面退役**：`K-R72` 09-12 前是**四个脚本 6 处**（`tmux-guarded-acceptance.sh` 那一处随它的输入源 —— `tmux.rs` 两条桌面侧 SSH 回落的 builder —— 一起删了）；`K-R104` 09-13 从 5 降到 4（`usage-probe-acceptance.sh` 整条重写成帧面验收，输入源从「那条 shell 串」换成「那几行帧」，而它原先另有一处本机执行面的 `--ignored` 调用，那个执行面随编排搬上后端而不存在了）|
-    /// | `remote-daemon-proto/` | `scripts/gate.sh` 的 `run_gate daemon …`（`cd remote-daemon-proto && cargo test`）· `ci.yml` 的 `daemon` job（`working-directory: remote-daemon-proto`）· `release.yml` 里**三处** `working-directory: remote-daemon-proto`（`build-daemons` · `build-windows` · `build-linux` 三个 job）· `e2e/daemon-fork-session.sh` 的 `cd "$ROOT/remote-daemon-proto" && cargo build` |
+    /// | `src-tauri/` | `scripts/gate.sh` 的 `run_gate_sum cargo 8 …`（`cd src-tauri && cargo test --workspace --exclude code-picture-core --lib`）· `package.json` 的 `gen:types` · `ci.yml` 里**两处** `working-directory: src-tauri`（`rust` job 与 `linux-app-build` job）· `tests/e2e/` 三个脚本共 **4 处**（`usage-probe-acceptance.sh` 的 `emit_usage_probe_frames_for_e2e` · `local-backend-supervise.sh` 的 `local_backend` 与 `local_daemon` 两条 `cargo test --lib -- --ignored` · `p3t-local-tmux.sh` 的 `P3T_E2E_SID=…` 那一条）。⚠ **这个数只降不升过两次，两次都是随被测面退役**：`K-R72` 09-12 前是**四个脚本 6 处**（`tmux-guarded-acceptance.sh` 那一处随它的输入源 —— `tmux.rs` 两条桌面侧 SSH 回落的 builder —— 一起删了）；`K-R104` 09-13 从 5 降到 4（`usage-probe-acceptance.sh` 整条重写成帧面验收，输入源从「那条 shell 串」换成「那几行帧」，而它原先另有一处本机执行面的 `--ignored` 调用，那个执行面随编排搬上后端而不存在了）|
+    /// | `remote-daemon-proto/` | `scripts/gate.sh` 的 `run_gate daemon …`（`cd remote-daemon-proto && cargo test`）· `ci.yml` 的 `daemon` job（`working-directory: remote-daemon-proto`）· `release.yml` 里**三处** `working-directory: remote-daemon-proto`（`build-daemons` · `build-windows` · `build-linux` 三个 job）· `tests/e2e/daemon-fork-session.sh` 的 `cd "$ROOT/remote-daemon-proto" && cargo build` |
     ///
     /// ⚠ **为什么这里只能用锚点、不能用「函数名 + 行号」两样都给**〔`K-R5` `§4` 那一问的答〕：
     /// `ci.yml` / `release.yml` 那几处逐字都是同一句 `working-directory: <目录>`，**行号是它们
     /// 今天唯一的区分**；所以这里改成**按 job 名**指路（job 名是 yml 自己的标识符，改名会连带改
-    /// 那一段的语义，不会被「上面加两行注释」推馊）。`e2e/` 那几处同理，用**测试名 / 变量名**。
+    /// 那一段的语义，不会被「上面加两行注释」推馊）。`tests/e2e/` 那几处同理，用**测试名 / 变量名**。
     /// ⇒ **一处都不靠行号**；代价是「共几处」这个数要人回来数，那个数本身也写在表里了。
     ///
     /// ⚠ **尺子没覆盖到的**（写下来免得把它读成穷举）：① `cargo tauri build` 那种**由工具

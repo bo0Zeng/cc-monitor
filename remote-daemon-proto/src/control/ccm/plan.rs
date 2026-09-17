@@ -3,7 +3,7 @@
 //! # 为什么计划与执行分开
 //!
 //! `--print` 是这套 CLI 的**平价预言机**：它吐的那一行必须与真跑那一趟**同源**，
-//! 否则「print 说的」与「真做的」会各漂各的（`e2e/ccm-contract-parity.sh` 的 A / A′ 两组
+//! 否则「print 说的」与「真做的」会各漂各的（`tests/e2e/ccm-contract-parity.sh` 的 A / A′ 两组
 //! 整组就是在钉这一条，07-31 真逮到过一次「print 退回读文件」）。
 //! ⇒ 这里只产出 [`Plan`]，`--print` 与真跑**读同一个 `Plan`**，结构上不可能分叉。
 //!
@@ -112,7 +112,7 @@ impl Env {
 ///
 /// 🔴 **`is_file()` 不够**〔`K-R48` 第二拍 09-11 实测逮到〕：旧 bash 实现这三处判的全是
 /// `-x`，而首版原生实现写的是 `is_file()` ——「脚本在、但没有执行位」于是被读成「它能用」，
-/// 拼进 seq 里执行时静默失败（整段是 `|| true`）。`e2e/cc-spawn-uplift.sh` 的
+/// 拼进 seq 里执行时静默失败（整段是 `|| true`）。`tests/e2e/cc-spawn-uplift.sh` 的
 /// 「台账脚本不可执行 ⇒ 明说『不进 spawn 台账』」那两格钉的正是它。
 fn is_exec(p: &std::path::Path) -> bool {
     #[cfg(unix)]
@@ -605,7 +605,7 @@ pub(crate) fn build(
         // 找得到目录但 `cc-spawned-record` 不可执行 ⇒「**不进 spawn 台账**」。
         // 首版原生实现把这两句**整个丢了** —— `--bus-register` 于是变成一个
         // 「要了、没做、也不说」的旗标，而那正是本工作区反复消灭的那类静默降级。
-        // 〔`e2e/cc-spawn-uplift.sh` 的「且没有一声不吭」「明说『不进 spawn 台账』」两组钉着它。〕
+        // 〔`tests/e2e/cc-spawn-uplift.sh` 的「且没有一声不吭」「明说『不进 spawn 台账』」两组钉着它。〕
         let bus = if o.bus_register {
             match env.bus_scripts.as_ref() {
                 None => {
@@ -809,7 +809,7 @@ fn render_direct(d: &Direct, resolved: Option<&str>) -> String {
             // 命令里一个 `*` 会被当前目录的文件名改写掉。`set -f` 关掉的正是这一步。
             // ⚠ 它**不**关命令替换：`$(…)` 靠的是「这条串没有再经过 `eval`」，
             // 而这里也确实没有 —— 两条各守一半，别把其中一条读成两条都买到了。
-            //〔搬自 `e2e/ccm-contract-parity.sh` A′g 那两条；那套 e2e 的 `shared/ccm` 侧
+            //〔搬自 `tests/e2e/ccm-contract-parity.sh` A′g 那两条；那套 e2e 的 `shared/ccm` 侧
             //  逐字也是 `set -f; exec $_ccm_c`。〕
             let pt = d
                 .passthru
@@ -1346,7 +1346,7 @@ mod tests {
     ///
     /// # 这一条是 `K-R48` 第二拍补的，补的是**三处一起丢掉的东西**
     ///
-    /// 把 `e2e/cc-spawn-uplift.sh` 的 `$CCM` 指向二进制之后现打：**48 过 / 24 败**。
+    /// 把 `tests/e2e/cc-spawn-uplift.sh` 的 `$CCM` 指向二进制之后现打：**48 过 / 24 败**。
     /// 24 条里 22 条是同一族，逐条追下去是首版原生实现丢了三样旧 bash 实现有的东西：
     ///   ① `discover_bus_scripts` 的**第三档 `PATH`** —— docstring 写着、实现里没有。
     ///      旧 `ccm` 住 `shared/`（部署形态 `~/.claude/skills/ccm`），**兄弟目录**正好是
@@ -1362,7 +1362,7 @@ mod tests {
     ///
     /// **那两句 stderr 只钉「生产段里有这一句」，没钉「真跑时它真的印出来了」** ——
     /// 后者要捕获进程的 stderr，而 `build()` 是纯函数、`eprintln!` 直接写 fd 2。
-    /// 行为那一半住 `e2e/cc-spawn-uplift.sh`（**而那套不在出货门禁里**，如实登记）。
+    /// 行为那一半住 `tests/e2e/cc-spawn-uplift.sh`（**而那套不在出货门禁里**，如实登记）。
     #[test]
     fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
         // ① `is_exec`：**行为**判据 —— 造两个真文件，一个有执行位一个没有。

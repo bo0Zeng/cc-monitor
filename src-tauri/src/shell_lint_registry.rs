@@ -3,14 +3,14 @@
 //! # 洞：人群是手写分组，地板只会数数
 //!
 //! `ci.yml` 的 shellcheck 步骤用一条手写的 `FILES=$(printf …)` 取人群
-//!（`e2e/*.sh` · `shared/cc-bus/scripts/*` · `shared/ccm` · `scripts/*.sh` + vendored 四个），
+//!（`tests/e2e/*.sh` · `shared/cc-bus/scripts/*` · `shared/ccm` · `scripts/*.sh` + vendored 四个），
 //! 后面跟一条**计数地板**（`[ "$N" -ge <数> ]`）。⚠ 那个数**刻意不抄在这里** ——
 //! 它的家是 `ci.yml`，而下面第二条判据每次都去读它；抄一份在注释里，
 //! 下次棘紧时这里就成了本区一直在治的那种过期散文。两件事它都挡不住：
 //!
 //! - **新脚本落在任何一个分组之外 ⇒ 静默不被 lint**，而计数一个都不少 ⇒ 地板照过。
 //!   08-08 实测：全仓 46 个 shell 脚本，那条表达式覆盖 44 —— 漏的是
-//!   `e2e/fake-claude`（e2e 的 claude shim，那一组的 glob 是 `e2e/*.sh`，它没有后缀）
+//!   `tests/e2e/fake-claude`（e2e 的 claude shim，那一组的 glob 是 `tests/e2e/*.sh`，它没有后缀）
 //!   与 `shared/ccm-aliases.sh`。
 //! - **地板会落后**：它自己的注释逐字承认「这已经是同一条地板**第三次**落后
 //!   （37→39→41 每次都是事后补）」。⇒ 本模块把地板钉成**等于**今天真实覆盖数，
@@ -140,7 +140,7 @@ mod tests {
     const POWERSHELL_TODAY: &[(&str, &str)] = &[
         ("scripts/run.ps1", "Windows 上的本地跑法入口"),
         (
-            "e2e/tier2/run-in-session1.ps1",
+            "tests/e2e/tier2/run-in-session1.ps1",
             "tier2 e2e：跳到已登录 session1 里跑（SSH 落 session0 没有桌面）",
         ),
     ];

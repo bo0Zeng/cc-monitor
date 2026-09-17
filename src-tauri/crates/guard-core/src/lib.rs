@@ -1348,7 +1348,7 @@ pub fn strip_hash_comment_lines(src: &str) -> String {
 ///
 /// 判「是不是 shell 脚本」按**两种真实形态**取，不按后缀一种取：
 /// `*.sh`，**或**「没有扩展名 + 首行 shebang 里带 `sh`」。后者不是边角料 ——
-/// `shared/ccm`、`e2e/fake-claude`、vendored `cc-acct-iso` 都是这一形，
+/// `shared/ccm`、`tests/e2e/fake-claude`、vendored `cc-acct-iso` 都是这一形，
 /// 而 CI 的 shellcheck 列表里逐个手写着它们。
 ///
 /// ⚠ 与 [`scan_tree_excluding_self`] 不同，**本函数不摘除调用者**：调用者是 `.rs`，

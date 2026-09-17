@@ -479,7 +479,7 @@ monitor 记进一张 sid 表，用它 ① 拦掉 `↗` 并给出正确说法 ②
 | 能力门控 | 客户端 | `hello.commands` 里没有的命令**直接拒**，一个字节都不发。旧后端无该字段 ⇒ 空集 ⇒ 不发任何入方向命令 |
 | 关写半边 | 客户端 | 显式指令（`close_write`），**只有一次性探测该调**。⚠ 关它**不会让后端退出** ——stdin EOF 只结束后端的入方向 reader task；进程只在 stdout 关掉或收到停机信号时退出 |
 
-真进程端到端在 `e2e/inbound-daemon-frames.sh`（15 条断言，进 CI 带地板）——
+真进程端到端在 `tests/e2e/inbound-daemon-frames.sh`（15 条断言，进 CI 带地板）——
 它喂给真后端的那条 ping 行**逐字节**由 monitor 的编码器钉住
 （`the_e2e_ping_line_is_exactly_what_the_encoder_produces`），否则那套件只是在验证一个
 monitor 永远不会发的形状。
@@ -1201,7 +1201,7 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
      ② 流开着的时候 monitor 底下**有没有**一个 `cc-monitor-remote.exe --dial` 子进程。
      两样一致才算数；再各跑一趟**不填 `keyPath`** 的对照，把回落②那一支也钉住。
 
-  ⚠ **今天没有任何自动化会碰到这一格**：`CCM_DIAL_PROXY` 在 `e2e/` 与 `scripts/` 下**零命中**，
+  ⚠ **今天没有任何自动化会碰到这一格**：`CCM_DIAL_PROXY` 在 `tests/e2e/` 与 `scripts/` 下**零命中**，
   ⇒ 走代理那一支**没有 e2e**，门禁全绿证不出它在真机上通。
 
   ★ 已经有读数的只有**代理二进制自己**那一环（2026-09-10 现打，**Linux gnu debug 构建**，

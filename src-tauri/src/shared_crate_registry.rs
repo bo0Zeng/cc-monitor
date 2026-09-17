@@ -652,7 +652,7 @@ mod tests {
                  `local_daemon`（`K-P1` 常驻那条路，2 条）—— 都真起 daemon 进程。\
                  ⚠ **只许带 tmux 隔离跑**：被起的 daemon 一上来就往它连得到的 tmux server 装三条\
                  **全局** hook（固定槽位 `[50]`，没有关掉它的开关）⇒ 裸跑就是去改用户真实 tmux 的状态。\
-                 隔离走 `e2e/tmux-shim.sh`（`C7i` 的唯一原语：shim 强插 `-L`，\
+                 隔离走 `tests/e2e/tmux-shim.sh`（`C7i` 的唯一原语：shim 强插 `-L`，\
                  **不是** `TMUX_TMPDIR` —— `$TMUX` 一有值就压过它，08-11 那次事故正是这个机制）。\
                  ⚠ 收尾顺序是承重的：**先收进程、再删 shim**；漏网的 daemon 在 shim 没了之后\
                  重装 hook 会落到真 tmux 上（08-26 实测发生过一次）。",
@@ -688,10 +688,10 @@ mod tests {
             // ── job e2e-smoke
             ("shellcheck (errors only)", true, "本机装了 shellcheck；步骤体从 `ci.yml` 原样抽出来跑"),
             ("vendored cc-acct-iso self-tests (sandboxed, 294 assertions)", true, "沙箱内自测；vendor 是 `cc-acct-iso` 不是红线点名的 `code-picture-core`"),
-            ("python syntax compile", true, "`python3 -m py_compile e2e/*.py`"),
+            ("python syntax compile", true, "`python3 -m py_compile tests/e2e/*.py`"),
             // 〔`K-R48` 第二拍 09-11〕标题里那个数从 23 变 21（删了 ccm-acceptance / ccm-pretrust 两套）。
             ("G-A/G-C 覆盖面地板（20 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
-            ("exec-bit guard (shared/** shebang files must be 100755 in git)", true, "`bash e2e/exec-bit-guard.sh`"),
+            ("exec-bit guard (shared/** shebang files must be 100755 in git)", true, "`bash tests/e2e/exec-bit-guard.sh`"),
             // 🔴 **写区外的随动**〔`K-R114` 09-14〕：本轮往 `e2e-smoke` 加了一步，
             // 而这条判据的题面逐字就是「CI 里加了一步、本地门禁不知道」⇒ 加步骤必须同拍登记。
             // 本行**只登记事实**（这一步本地跑得动，以及怎么跑），不裁定任何东西。
@@ -715,21 +715,21 @@ mod tests {
             // 「没人守着」与「碰巧没坏」是两回事，本仓第二次在同一句话上撞到实例。
             ("run: npx tsc --noEmit", true, "`npx tsc --noEmit`（仓根）—— 本区门禁固定项之一"),
             // ── job weak-net〔`W-F1` 09-05，**PM 落的登记**〕
-            // 这两条是弱网台架（`e2e/weak-net/`）的 CI 落点。实现方按写区划分没碰本文件，
+            // 这两条是弱网台架（`tests/e2e/weak-net/`）的 CI 落点。实现方按写区划分没碰本文件，
             // 而这条判据要求「新 CI 步骤同拍登记」⇒ 这一格由 PM 补，属**登记家务**，不是功能代码。
             // ⚠ 名字里**不带** `[weak-net]` 那个前缀：判据报错时印的是 `[{job}] {步骤名}`，
             // 而它比对的只有步骤名。带前缀照抄进来会**一个都匹配不上**（PM 09-05 实测红过一趟）。
             (
                 "建弱网台架镜像（装包这一步，也只有这一步，用宿主 netns）",
                 true,
-                "`bash e2e/weak-net/build-image.sh`（幂等：镜像已在就跳过）。\
+                "`bash tests/e2e/weak-net/build-image.sh`（幂等：镜像已在就跳过）。\
                  ⚠ 它是全仓**唯一**一处刻意用宿主网络的地方 —— 这台机的容器上不了外网，\
                  只能借宿主代理装包；**跑台架那一步一律自建 docker 网络**（定框 `W3`，`guard-run-netns.sh` 钉着）",
             ),
             (
                 "弱网台架四维 + SSH（改前/改后两个读数，带断言数地板）",
                 true,
-                "`bash e2e/weak-net/assert-floor.sh 26` —— 要 docker 与 `NET_ADMIN`，实测 `PASS=26`",
+                "`bash tests/e2e/weak-net/assert-floor.sh 26` —— 要 docker 与 `NET_ADMIN`，实测 `PASS=26`",
             ),
         ];
 
@@ -890,7 +890,7 @@ mod tests {
     /// 与上一条是同一族的**另一个方向**：那条问「CI 有的步骤本地数过没有」，
     /// 本条问「**仓里写好的套件，有没有谁会去跑**」。
     ///
-    /// **为什么建它**（实测撞见的，不是设想）：`e2e/graylight-suite.sh` 是一整套
+    /// **为什么建它**（实测撞见的，不是设想）：`tests/e2e/graylight-suite.sh` 是一整套
     /// 跨进程整链 e2e（130 行，驱 gray-light 生命周期、断言 `[e2e] tab-state` 序列），
     /// 而 **CI 一次都不跑它** —— CI 跑的是名字很像的另一个 `graylight-daemon-frames.sh`。
     /// 它的前置逐字写着「Xvfb 上跑着 `npx tauri dev`」⇒ 结构上确实进不了 CI，这没问题；
@@ -917,7 +917,7 @@ mod tests {
             ),
             (
                 "test:graylight",
-                "同 f40 契约（脚本头注逐字「前置同 e2e/f40-suite.sh」）⇒ 同样进不了 CI。\
+                "同 f40 契约（脚本头注逐字「前置同 tests/e2e/f40-suite.sh」）⇒ 同样进不了 CI。\
                  ⚠ 但**发版清单里此前没有它** —— 这条例外就是那笔欠账的落点：\
                  谁要删这条例外，得先说清楚它改由谁来跑。\
                  ★ 08-06 实测：带 tmux 桩跑，**第一次碰 tmux 就被拒（exit 99）** ⇒ 它要真 tmux；\
@@ -965,7 +965,7 @@ mod tests {
             if ci.contains(&format!("npm run {name}")) {
                 return true;
             }
-            // ① `assert-pass-floor.sh <后缀>`；② CI 直接 `bash e2e/xxx.sh`（`exec-bits` 就是这样）。
+            // ① `assert-pass-floor.sh <后缀>`；② CI 直接 `bash tests/e2e/xxx.sh`（`exec-bits` 就是这样）。
             if let Some(suffix) = name.strip_prefix("test:") {
                 if ci.contains(&format!("assert-pass-floor.sh {suffix} ")) {
                     return true;
@@ -990,12 +990,12 @@ mod tests {
         // 哪天它改用临时目录，这条理由就消失、它可能变成本机跑得动的 —— 必须回来重判。
         {
             let f40 =
-                std::fs::read_to_string(root().parent().expect("仓根").join("e2e/f40-suite.sh"))
-                    .expect("读不到 e2e/f40-suite.sh");
+                std::fs::read_to_string(root().parent().expect("仓根").join("tests/e2e/f40-suite.sh"))
+                    .expect("读不到 tests/e2e/f40-suite.sh");
             assert!(
                 f40.lines()
                     .any(|l| !l.trim_start().starts_with('#') && l.contains("$HOME/.claude/")),
-                "`e2e/f40-suite.sh` 不再往 `$HOME/.claude/` 写了 —— \n\
+                "`tests/e2e/f40-suite.sh` 不再往 `$HOME/.claude/` 写了 —— \n\
                  那么「它撞红线所以本机绝不能跑」这个理由就没了，请重新判它能不能进本地门禁\n\
                  （另一半理由「需 Xvfb + 跑着的 tauri dev」要单独核，别一起默认还成立）。"
             );
@@ -1021,7 +1021,7 @@ mod tests {
     /// 本族第三条（前两条：CI 步骤本地数过没有 · 套件有没有人调）。这条问最里面那层：
     /// **被 `#[ignore]` 挡在常规门禁之外的测试，说好的那个「触发者」还在吗。**
     ///
-    /// **为什么建它**：这七条的头注都写着「由 `e2e/xxx.sh` 驱动」，而那是一句**散文**。
+    /// **为什么建它**：这七条的头注都写着「由 `tests/e2e/xxx.sh` 驱动」，而那是一句**散文**。
     /// e2e 脚本靠 `cargo test --lib -- --ignored <过滤串>` 点名它们 ——
     /// **改个测试名，过滤串就一个都匹配不上，而 `cargo test` 跑零条测试是 exit 0**。
     /// 于是链断了、两边都绿。本条把那句散文变成会红的东西。
@@ -1101,8 +1101,8 @@ mod tests {
 
         // ── 收 e2e 脚本里的触发过滤串
         let mut filters: Vec<(String, String)> = Vec::new();
-        for e in std::fs::read_dir(repo.join("e2e"))
-            .expect("读不到 e2e/")
+        for e in std::fs::read_dir(repo.join("tests").join("e2e"))
+            .expect("读不到 tests/e2e/")
             .flatten()
         {
             let p = e.path();
@@ -1139,7 +1139,7 @@ mod tests {
         //   实际是抽取器坏了。两种坏法要能分开。
         assert!(
             filters.len() >= 3,
-            "从 `e2e/*.sh` 只收到 {} 个 `--ignored` 触发过滤串 —— 抽取器坏了（建判据当天实测 4 个）：{filters:?}",
+            "从 `tests/e2e/*.sh` 只收到 {} 个 `--ignored` 触发过滤串 —— 抽取器坏了（建判据当天实测 4 个）：{filters:?}",
             filters.len()
         );
 
@@ -1434,7 +1434,7 @@ mod tests {
             //    由谁打 `@ccm_sid`」那一格 —— 那一格 `K-R48` 第一拍逐字登记为**没裁**。
             // ⚠ **如实边界，这是本拍最贵的一笔账 —— 而它比我第一版写的小一格，订正在这里**：
             //    我原先写「删了之后真起会话 / 真 attach / 真 tmux 那一面**一条 e2e 都没有了**」。
-            //    **那句话是假的**：`e2e/p3t-local-tmux.sh`（10 条）与 `e2e/cc-spawn-uplift.sh`（72 条）
+            //    **那句话是假的**：`tests/e2e/p3t-local-tmux.sh`（10 条）与 `tests/e2e/cc-spawn-uplift.sh`（72 条）
             //    都在**真 tmux**（私有 `-L` socket）上真建会话，本拍把它们指向二进制之后现打
             //    10/0 与 71/1（那 1 条是既有的 locale 红，`gate.sh:119-124` 登记着）。
             //    ⇒ 真丢的是这两套**各自专有**的那一面：`ccm-pretrust` 的预信任写入
@@ -1452,7 +1452,7 @@ mod tests {
             //    （它已经逮过我一次）——**住址是给人去点的，不是给人凭吊的。**
             //    送键与杀会话的桌面侧 SSH 回落删净之后**那个 builder 不存在了** ⇒
             //    脚本第一步 `cargo test … --ignored` 就产不出任何命令串，整套跑不起来。
-            //    ⇒ **不是「断言变少了」，是被测对象没了**：脚本本身已从 `e2e/` 删除，
+            //    ⇒ **不是「断言变少了」，是被测对象没了**：脚本本身已从 `tests/e2e/` 删除，
             //    留在这里的一行只会让本条去读一个不存在的文件（`read_to_string` 直接 panic）。
             //    真机那一面的等价覆盖在 `daemon-gate2-acceptance.sh`（下面 `NO_STATIC_SIGNAL`
             //    那张表里，真 daemon + 真 tmux，用例逐行来自同一张 `gate2-golden.tsv`）。
@@ -1472,10 +1472,10 @@ mod tests {
             ("resume-daemon-frames.sh", "ok", 1, 7),
         ];
 
-        let e2e = root().parent().expect("仓根").join("e2e");
+        let e2e = root().parent().expect("仓根").join("tests").join("e2e");
         let count = |script: &str, helper: &str| -> (usize, String) {
             let txt = std::fs::read_to_string(e2e.join(script))
-                .unwrap_or_else(|e| panic!("读不到 e2e/{script}: {e}"));
+                .unwrap_or_else(|e| panic!("读不到 tests/e2e/{script}: {e}"));
             let n = txt
                 .lines()
                 .filter(|l| {
@@ -1491,12 +1491,12 @@ mod tests {
             // ★ 自检：助手还在定义。改了名字会让计数掉成 0，那时该看到的是这句而不是「掉了」。
             assert!(
                 txt.contains(&format!("{helper}()")),
-                "`e2e/{script}` 里找不到断言助手 `{helper}()` 的定义 —— 它被改名了，\n\
+                "`tests/e2e/{script}` 里找不到断言助手 `{helper}()` 的定义 —— 它被改名了，\n\
                  本条的计数会跟着失真。先把登记里的助手名改对，再谈条数。"
             );
             assert!(
                 n >= *base,
-                "`{suite}`（e2e/{script}）的断言从 {base} 条掉到 {n} 条。\n\
+                "`{suite}`（tests/e2e/{script}）的断言从 {base} 条掉到 {n} 条。\n\
                  ⚠ 这一批是**仓里最没人看着的断言**：它们的运行期地板住在 `ci.yml`，\n\
                  而停推后 CI 一次没跑；本机也跑不了（真 tmux / 写 `~/.claude/`）。\n\
                  ⇒ 删掉它们在本地与 CI **都不会红**，只有本条会。\n\
@@ -1512,7 +1512,7 @@ mod tests {
             let (n, _) = count(script, helper);
             assert!(
                 n < *floor,
-                "`e2e/{script}` 的静态断言数已达 {n}（当初 {base}，CI 地板 {floor}）——\n\
+                "`tests/e2e/{script}` 的静态断言数已达 {n}（当初 {base}，CI 地板 {floor}）——\n\
                  「静态计数不是那个量的代理」这个理由不成立了：它多半改成了内联写法。\n\
                  ⇒ 把它从 `NO_STATIC_SIGNAL` 挪进 `RATCHET`，让它也受棘轮保护。"
             );

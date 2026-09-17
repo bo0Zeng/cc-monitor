@@ -194,7 +194,7 @@ pub(crate) fn parse_request(args: &serde_json::Value) -> Result<LaunchRequest, C
     // 而本机那条**一直是接受换行的**（`tmux send-keys -t X '第一行<换行>第二行' Enter`）。
     // 用@09-04「统一走后端」把退路删了 ⇒ 那条拒收从「挡住新路」变成**挡住这次调用**，
     // 于是「多行任务」这个**真实能力**整个没了。
-    // 现打：`e2e/cc-spawn-uplift.sh` 的「多行任务」一族 **4 条**当场红
+    // 现打：`tests/e2e/cc-spawn-uplift.sh` 的「多行任务」一族 **4 条**当场红
     //（仍上总线 / 台账恰好一行 / 那行仍是 4 列 / 换行被转义信息没丢）。
     // ⇒ 这不是判据要不要改的问题，是**能力回归**。修它，不是翻它。
     //

@@ -50,7 +50,7 @@ export {
 };
 // F03：7 个 builder 的意图构造 + 校验逐字搬进 launch-requests.ts（LaunchContext/LaunchPlan
 // 翻译层）；本文件的每个导出现在只是「调那边 + 交渲染器」的薄适配器，位置参数签名逐字不变
-// （e2e/resume-cmd-driver.ts 直接 import 这几个符号，e2e/restart-cmd-driver.ts 经
+// （tests/e2e/resume-cmd-driver.ts 直接 import 这几个符号，tests/e2e/restart-cmd-driver.ts 经
 // account-restart.ts 传递性锁死 runRemoteResumeTmux 的签名）。
 import { renderFallback } from "./launch-render-fallback.ts";
 import {
@@ -196,7 +196,7 @@ export function mintSessionTmuxName(cwd: string, existing: ReadonlySet<string>):
  * 折叠连字符、截 32 → `<safe>-cc`;空 → `session-cc`。「开新 Claude」弹框留空会话名时用它。
  *
  * **S4b-3b（用户 2026-07-31）：`cc-` 前缀改成 `-cc` 后缀。** 与 `shared/ccm::derive_tmux_name`
- * 逐字同规则（跨语言双写点，由 `e2e/ccm-cli.test.sh` 的真值对拍钉住，见 E49）。
+ * 逐字同规则（跨语言双写点，由 `tests/e2e/ccm-cli.test.sh` 的真值对拍钉住，见 E49）。
  *
  * ⚠ **F13 定位：它只产「基名建议」，不产最终名。** 最终名一律过 [`mintTmuxName`]
  * （那里才有撞名避让）。摸底实测：`machine-card` 的「开新 Claude」此前直接拿它当最终名

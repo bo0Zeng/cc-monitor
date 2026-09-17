@@ -1121,7 +1121,7 @@ fn watch_loop(
                 //     （`control::identity_tag::tag`，就在本文件 `process_session_added` 里）；
                 //   · 而 `tag()` 是**同步**跑完的、在重探线程 spawn 之前 ⇒ 这次探测
                 //     **必然**抓到**新** tag，不是「很可能仍是旧的」。
-                // ⚠ 留这条订正是因为那句话不是无害的陈账：`e2e/graylight-daemon-frames.sh`
+                // ⚠ 留这条订正是因为那句话不是无害的陈账：`tests/e2e/graylight-daemon-frames.sh`
                 // 就是照着它写的（「本 fixture 没有那个 poller ⇒ 标签恒为最初 sid」），
                 // 于是那套夹具从 08-14 起一格红一格恒真，而云端从 08-05 起没跑到过这一步
                 // ⇒ 09-09 才被逮到。**一句过期的注释，教出了一套错的判据。**
@@ -3873,7 +3873,7 @@ mod tests {
     /// # 这条判据够得到什么、够不到什么（先说清）
     ///
     /// 够不到：**它真的听得见新 inode 吗** —— 那是 inotify 的运行期事实，
-    /// 只有真起 daemon、真删目录才验得出来（`e2e/daemon-sessions-rewatch.sh` 四组对照）。
+    /// 只有真起 daemon、真删目录才验得出来（`tests/e2e/daemon-sessions-rewatch.sh` 四组对照）。
     /// 够得到：**那两件事还在不在代码里**。删掉任一件，e2e 会红 —— 但 e2e 不在 `cargo test` 里，
     /// 有人只跑单测就会以为没事。⇒ 这条是给「改到这附近的人」的第一道提醒。
     ///

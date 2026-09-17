@@ -797,7 +797,7 @@ set-option / show-options / kill-session / has-session / attach **全部**动词
 **四处同源**（F02 新增第四处，照 §I8 `TMUX_LS_FMT` 双写范式立条）：
 1. `src/session-backend.ts` 的 `exactTarget()` —— 前端 shell 渲染面
 2. `src-tauri/src/tmux.rs` 的 `exact_target()` —— IPC 控制面
-3. `e2e/restart-shims/core.mjs` —— Tauri IPC 边界的 mock，**结构上无法 import Rust，去重不可能**；
+3. `tests/e2e/restart-shims/core.mjs` —— Tauri IPC 边界的 mock，**结构上无法 import Rust，去重不可能**；
    必须**与生产同构**，否则 e2e 对这条假绿
 4. `shared/ccm`（F02 统一启动 CLI）—— 独立的 tmux 命令构造器（不复用前三处，语言/执行环境不同）；
    守卫见 `src-tauri/src/sftp.rs` 的 `ccm_cli_has_required_elements`：**结构性扫描**每个 `-t ` 目标
@@ -807,7 +807,7 @@ e2e 的 shell 探针（`has-session` / `set-option` / `kill-session`）同样要
 （只剩 `X-2` 时 `has-session -t X` 返 0，"会话还在"假阳；`set-option -t $S` 会把 `@ccm_sid` 写到错的会话上、
 直接污染 fixture）。F01 的整个论点就是"前缀匹配会说谎"，探针不能例外。
 
-**漂移守卫**：`session-backend.test.ts` 有一条读 `e2e/restart-shims/core.mjs` 的断言把 shim 形态与座钉在一起；
+**漂移守卫**：`session-backend.test.ts` 有一条读 `tests/e2e/restart-shims/core.mjs` 的断言把 shim 形态与座钉在一起；
 Rust 侧 `tmux_targets_use_exact_match` 钉死三个命令构造点（且显式断言**不含**裸目标，防被"简化"回去）。
 
 **第二道防线**：`isValidNewTmuxName`（**仅创建路径**）禁 glob 字符 `*`/`?` —— 本工具永远不把 glob 建进名字。
@@ -891,7 +891,7 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
 ## 33a. `ccm --print` 是平价预言机——它对**环境变量**说的必须逐条等于真跑做的（U9a / unified-backend）
 
 **它是什么**：`shared/ccm` 的 `--print` 打印「将要执行的命令」而不执行。整个仓把它当
-**离线预言机**用——`e2e/ccm-print-parity.sh` 的头注写着，这是「唯一能在没有真远端机器的
+**离线预言机**用——`tests/e2e/ccm-print-parity.sh` 的头注写着，这是「唯一能在没有真远端机器的
 场景下验证 CLI 渲染器真的会让 ccm 干对事」的手段。`ccm-cli` 的 44 条契约断言也全建立在它上面。
 
 **病根**：`--print` 那段与真 exec 那段（`do_print` 分支 vs 其后的「非容器路径」段）是
@@ -914,7 +914,7 @@ attach 已有会话走宽松的 `isValidTmuxName`：那些名字不是我们建�
    于是 `ccm-cli` 的 codex 黄金串在开发者的 tmux 里与 CI 上不一样 ——
    我当时的「修法」是给测试加 `env -u TMUX`，**那是为实现让路去改判据**。改成配方形态后，
    那条补丁不再需要，已撤销。
-3. 判据是 `e2e/ccm-contract-parity.sh`（A 组差分 + 绝对断言 + B 组 `CCM_ENV` + C 组 probe 契约）。
+3. 判据是 `tests/e2e/ccm-contract-parity.sh`（A 组差分 + 绝对断言 + B 组 `CCM_ENV` + C 组 probe 契约）。
    **差分不能单独用**（三条独立理由，都是审计变异实证的）：
    - 两份副本**一起**坏掉时差分是绿的 ⇒ 每条保住项**同时**要有一条绝对断言；
    - 两边**都为空**时差分也是绿的 ⇒ 每条 `pair` 先跑一条「真跑确实产出了环境」自检；
@@ -1012,7 +1012,7 @@ U8c-1 摸底后拆成三步：
 本节自己写着「订正一句假话时，先把它的全部副本找出来」，而 `K-R59`（09-11）那一拍的订正**只落在下面那张表的 ③ 行里** ⇒ 08-04 这一段又活了一轮。逐条现打（量于 `89ce650`，量具 `evidence/K-R89-ruler.py`，人群 = `src/**` 去掉 `*.test.ts`/`*.vitest.ts`，剥法与 `launch_wire::production_ts` 同口径）：
 - 「daemonless 的远端」**那类主机不存在了**（定框 `K35` ＋ `K-R59` 整格删除，三条回潮闸钉着）；
 - 「没装 ccm 的远端」**存在**，而**产品自带装它的路**（`sftp::install_remote_ccm_helper`，`K27`/`K34`）⇒ 它今天也不是「没路走」，是「还没装」；
-- **今天真正撑着那两个文件的是消费者，不是主机类别**：**尺子A**（剥完注释的生产段里那个标识符出现几次）逐处住 `launch_wire.rs::TS_FALLBACK_KEEPERS`，登记表与现打逐格相同 —— 🔴〔`K-R105` 09-13〕**这里原来抄着两个基数（11 / 7），撤了**：那张表由判据从源码派生，散文抄一份就是第二个家。而**尺子B**（有没有生产调用方）今天也有自己的家 `launch_wire.rs::TS_FALLBACK_REACH`，同样派生。两把尺子的读数差着一个数量级，下面这一段说的就是尺子B：`remote-launch.ts` 那 5 个 builder **生产调用方是 0**（只有 `e2e/resume-cmd-driver.ts` · `e2e/tmux-target-emit.mts` · `remote-launch.test.ts` 在调）⇒ **真正让 `renderFallback` 站在生产路上的只有 `remote-launch-run.ts::renderLaunchCommand` 最后那一行**，加上同文件里那处 `SESSION_BACKEND.attach`（把 `↗` 交给用户自己的终端那一跳，`K-R59 §0c` 明写**不做**：后端在远端开不了你面前的窗，那是结构不是退路）。🔴 **`K-R109` 09-13 订正后半句**：那条「明写不做」讲的是**远端**（`R61` 裁定三之后不许再用「后端」把两侧压平）；**本机**就地 resume 那一处后端就在用户面前那台机器上 ⇒ 本轮接过去了，同文件里那处 `SESSION_BACKEND.attach` **不在了**。前半句（`renderLaunchCommand` 最后那一行）**没变**，它今天仍是那条路唯一的生产入口。
+- **今天真正撑着那两个文件的是消费者，不是主机类别**：**尺子A**（剥完注释的生产段里那个标识符出现几次）逐处住 `launch_wire.rs::TS_FALLBACK_KEEPERS`，登记表与现打逐格相同 —— 🔴〔`K-R105` 09-13〕**这里原来抄着两个基数（11 / 7），撤了**：那张表由判据从源码派生，散文抄一份就是第二个家。而**尺子B**（有没有生产调用方）今天也有自己的家 `launch_wire.rs::TS_FALLBACK_REACH`，同样派生。两把尺子的读数差着一个数量级，下面这一段说的就是尺子B：`remote-launch.ts` 那 5 个 builder **生产调用方是 0**（只有 `tests/e2e/resume-cmd-driver.ts` · `tests/e2e/tmux-target-emit.mts` · `remote-launch.test.ts` 在调）⇒ **真正让 `renderFallback` 站在生产路上的只有 `remote-launch-run.ts::renderLaunchCommand` 最后那一行**，加上同文件里那处 `SESSION_BACKEND.attach`（把 `↗` 交给用户自己的终端那一跳，`K-R59 §0c` 明写**不做**：后端在远端开不了你面前的窗，那是结构不是退路）。🔴 **`K-R109` 09-13 订正后半句**：那条「明写不做」讲的是**远端**（`R61` 裁定三之后不许再用「后端」把两侧压平）；**本机**就地 resume 那一处后端就在用户面前那台机器上 ⇒ 本轮接过去了，同文件里那处 `SESSION_BACKEND.attach` **不在了**。前半句（`renderLaunchCommand` 最后那一行）**没变**，它今天仍是那条路唯一的生产入口。
 - ⚠ 顺带一条**分母订正**：`daemon_kill.rs::CREATION_PATHS` **今天是 3 条**（`K-R104` 09-13 把 `account_usage.rs` 那行删了，留着墓碑）⇒ 删得动 `session-backend.ts` 的话是 **3 → 2**，不是「4 → 3」。🔴〔`K-R106` 09-13 复量，量具 `evidence/K-R106-ruler.py`〕**登记 3 条、遍历实得 3 条、两边逐格相同** —— 这个数**别在这里抄第二遍**，它的家是那张表。
 
 🔴 **`K-R106` 2026-09-13 第六次订正 —— 「删不删得掉」这一问的今天版：仍然删不掉，而拦路的换成了一条可以指名道姓的链。**
@@ -1173,13 +1173,13 @@ TOCTOU 窗口没关干净；`K-R54` 表第 1 · 2 处据此判「留后端」。
 **不是存在性探测**（`K-R56` 2026-09-11 订正：那两件事此前被压成了一件，于是
 `cc-*` 名的 send-keys 成了全仓唯一一条不探会话就动手的写路径）。今天所有形态都恒先 probe 一次。
 
-**验证**：后端侧的真机验收 `e2e/daemon-gate2-acceptance.sh`（真后端二进制 + 真 tmux
+**验证**：后端侧的真机验收 `tests/e2e/daemon-gate2-acceptance.sh`（真后端二进制 + 真 tmux
 server，隔离 `-L` socket，用例逐行来自唯一那张判定表 `gate2-golden.tsv`）。
 Rust 单测只锁判定，真机验收锁"真后端收到请求之后在真 tmux 上到底干了什么"
 （R1 教训：门禁全绿过仍放行过一个让 send-keys 完全失效的改动，字符串断言测不出真实行为）。
 🔴 **`K-R72` 同拍清掉的一颗哑弹，如实写**：monitor 侧那套真机验收
-`e2e/tmux-guarded-acceptance.sh`（14 项）的输入源就是那个已被删掉的 builder
-⇒ **它今天取不到命令串、跑不起来**。⇒ **整套删了**，连同它在 `e2e/README.md` ·
+`tests/e2e/tmux-guarded-acceptance.sh`（14 项）的输入源就是那个已被删掉的 builder
+⇒ **它今天取不到命令串、跑不起来**。⇒ **整套删了**，连同它在 `tests/e2e/README.md` ·
 `package.json` · `.github/workflows/ci.yml`（清单 + 调用步骤）·
 `src-tauri/src/shared_crate_registry.rs`（`dormant_e2e_suites_keep_their_assertions` 的棘轮行）·
 `src-tauri/src/capability_registry.rs` 五处的登记。

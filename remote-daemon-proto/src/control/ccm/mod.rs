@@ -69,7 +69,7 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 ///   只红上一行那条。⇒ 两处**各自最小面 1 条**，而它们是仅有的两处「数个数」的。〕
 /// - `src-tauri/src/backend/control/ccm_invocation.rs` —— `CLI_REQUIRED_CAPS`
 ///   与判据自带的 `STATIC_CAPS_EXPECTED`，两处都是**子集检查** ⇒ 加 token 安全。
-/// - `e2e/ccm-contract-parity.sh` —— 数 `capabilities=` 覆不覆盖 TS 那一份，同样是**⊇**。
+/// - `tests/e2e/ccm-contract-parity.sh` —— 数 `capabilities=` 覆不覆盖 TS 那一份，同样是**⊇**。
 /// - `src-tauri/build.rs` 的 `extract_capabilities` —— ⚠ **它盖不到这里**：
 ///   它按 `const CAPABILITIES` 这一行去 `remote-daemon-proto/src/main.rs` 里抠，
 ///   抠的是 daemon **流模式**那个同名常量（`bg` / `tail-only`），与本常量无关。

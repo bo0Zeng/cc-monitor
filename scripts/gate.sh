@@ -37,10 +37,10 @@
 # │ 〔自述·点名〕hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · installface ·
 # │   fmt · fmt-daemon ·
 # │   winchk · winchk-daemon · cargo · deadcode · generated · daemon · tsc · npm ·
-# │   ccm e2e/ccm-print-parity · ccm e2e/ccm-rbind-title · ccm e2e/ccm-cli ·
-# │   ccm e2e/ccm-contract-parity · pb check
-# │ 〔自述·现物〕四套 e2e 的被测文件：`e2e/ccm-print-parity.sh` · `e2e/ccm-rbind-title.sh` ·
-# │   `e2e/ccm-cli.test.sh` · `e2e/ccm-contract-parity.sh`；判法一律走 `e2e/assert-pass-floor.sh`。
+# │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
+# │   ccm tests/e2e/ccm-contract-parity · pb check
+# │ 〔自述·现物〕四套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
+# │   `tests/e2e/ccm-cli.test.sh` · `tests/e2e/ccm-contract-parity.sh`；判法一律走 `tests/e2e/assert-pass-floor.sh`。
 # │ 〔自述·现物〕`copy2` 那一格的判据本体：`evidence/K-R115-ruler.py`（`K-R115` 09-14 第 14 格）。
 # │ 〔自述·现物〕`shellcheck` 那一格没有独立的判据文件 —— 它的**人群与地板都从
 # │   `.github/workflows/ci.yml` 现读**（那一段 `FILES=` ＋ 它下面那条覆盖面地板行），
@@ -67,7 +67,7 @@
 #
 # 🔴 **〔量于 09-12·`K-R91`〕下面凡是点名 `ccm-acceptance` / `ccm-pretrust` 的段落，一律是
 #   量于 09-01 / 09-03 / 09-04 的历史账 —— 那两套 09-11 `K-R48` 第二拍随 `shared/ccm`
-#   一起删了，`e2e/` 下现打双 `No such file`。**
+#   一起删了，`tests/e2e/` 下现打双 `No such file`。**
 #   旧读数**刻意不删**（它们记着「当初为什么只挂两套」「`jq` 那块拦路石怎么解开的」），
 #   但每一段的**首行**都补上了 `〔量于 …〕` —— **自述与历史读数在散文里长得一模一样，
 #   标一个，`C5b` 才分得开。** ⚠ 那个标记买不到「标着历史、内容却是今天的自述」那一形
@@ -121,7 +121,7 @@
 #
 #   · 🔴 **地板本拍重打，不沿用 09-01 那两个数**（主干此后动了很多次，那两个数已经馊了）。
 #     量于 **`b8a6ecd`**（= 本件基点 `4558394` + 一次纯 `evidence/` 提交，`scripts/` 与
-#     `e2e/` 一个字节没动），沙箱 `644ea0ce5c3d`，连打**两趟**、两趟同值：
+#     `tests/e2e/` 一个字节没动），沙箱 `644ea0ce5c3d`，连打**两趟**、两趟同值：
 #       `ccm-cli` **126 PASS / 0 FAIL**（6.78 秒） ·
 #       `ccm-contract-parity` **68 PASS / 0 FAIL**（5.58 秒） —— 两套 **0 条 SKIP**。
 #     ⇒ 重打的结果与 09-01 那两个数**相等**，但**那是重打出来的相等，不是沿用**。
@@ -131,7 +131,7 @@
 #     `ci.yml` 里 `assert-pass-floor.sh ccm-cli <地板>` · `… ccm-contract-parity <地板>` 那两行。
 #     ⚠ **09-03 `K-P2 D2` 把这里的行号拆掉了，那不是洁癖**：原文写的是 `ci.yml:559` / `:574`，
 #       而本拍在 `ci.yml` 那两行**上方**加了一段棘轮注释 ⇒ 两个行号当场双双失真
-#       （**559 → 575** · **574 → 590**）。**按名字指，不写行号**（`e2e/ccm-cli.test.sh` 头注同一条纪律）。
+#       （**559 → 575** · **574 → 590**）。**按名字指，不写行号**（`tests/e2e/ccm-cli.test.sh` 头注同一条纪律）。
 #       ★ **这两个数在本拍之内就漂了两次**：写这段话时量到的是 571 / 586，
 #         而后来又往那段棘轮注释里补了 4 行 ⇒ 再漂成 575 / 590。
 #         **「行号会失真」这句话在同一拍里自己被验了一遍。**
@@ -176,7 +176,7 @@
 #     `cc-spawn-uplift` 67/5→**71/1**：那 1 条是**沙箱的既有红**（非 ASCII 目录名在容器里
 #     被搞成 `__ ____ ______`，locale 的事），**与 `shared/ccm` 无关** ——
 #     现打对照：同一份新夹具喂**旧** `shared/ccm` 也是 **71/1**，逐字相同。
-#     买到这些的是一份**可复用的假后端** `e2e/fake-daemon.sh`（六套共用一份，不是六份各写一遍）。
+#     买到这些的是一份**可复用的假后端** `tests/e2e/fake-daemon.sh`（六套共用一份，不是六份各写一遍）。
 #
 #   🔴 **给 `K-G` 的建议（只写建议，本件不挂）**〔量于 09-04；`ccm-acceptance` 09-11 已删，
 #      这条建议随之作废 —— 留着是因为它记着「不挂的理由当时只剩没人重量过」〕：
@@ -270,7 +270,7 @@ fails=()
 #        `^test result: FAILED` 那一格的合计（几过几败）
 #        `^ *Running`          正在跑哪个测试二进制 —— **被杀那一形唯一能说明「死在哪个包」的行**
 #        `^npm error` `^npm ERR!` npm 两代前缀
-#        `^::error::`          `e2e/assert-pass-floor.sh` 自己的诊断
+#        `^::error::`          `tests/e2e/assert-pass-floor.sh` 自己的诊断
 #        `^ *(FAIL|BROKEN|×|✗)` 本仓 bash e2e 与 `pb check` 自己的失败行
 #        `^Diff in `           `cargo fmt --check` 指哪个文件哪一行不合排版
 #                              〔09-10 补：fmt 那道门第一次被刀切红时，模式表**一条都没匹配上**
@@ -582,11 +582,11 @@ run_gate_sum() {
 #       另写一份独立复算 = 「盘上有 ≠ 被走到」的假绿 · 造一次 `git diff` 非空要**改工作树**
 #       （`NG2D5` 硬边界明禁）。⇒ **做不到**，不硬凑。
 #     · `run_e2e` 的「抓不到「合计 PASS=」」那条（`5924b91:634`）—— 立它要 `rc=0` **且**抓不到那行，
-#       而 `e2e/assert-pass-floor.sh` **只有跑完一整套 npm 套件才退 0** ⇒ 立它就得每趟真跑一套。
+#       而 `tests/e2e/assert-pass-floor.sh` **只有跑完一整套 npm 套件才退 0** ⇒ 立它就得每趟真跑一套。
 #       ⇒ **没立**（代价与自检段「不碰 npm」那条承诺直接冲突）。
 #
 # 🔴 **探针不许改工作树**（`NG2D5` 硬边界）：这十条一个 git 写操作都没有、不往工作树落文件、
-#   不碰 `~/.claude`。⚠ 一条例外如实写：探针⑩ **读**了 `e2e/assert-pass-floor.sh`（起一个 `bash`）
+#   不碰 `~/.claude`。⚠ 一条例外如实写：探针⑩ **读**了 `tests/e2e/assert-pass-floor.sh`（起一个 `bash`）
 #   ⇒ 上面那句「不碰文件系统」**对它不成立**，头注已改。它在**地板参数校验**那一步就 `exit 2`，
 #   而那一步排在 `npm run` 与 `mktemp` **之前** ⇒ 走不到 npm、也不落任何文件。
 #   ⚠ 它因此**依赖写区外一份文件的一行措辞**（那句 `地板必须是非负整数，实得：$FLOOR` 会把
@@ -731,7 +731,7 @@ run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族（copy2 · 
 #
 # `K-R119`（09-14）推 `v3.8.0` 那一趟被 `release.yml` 自己的 `ci-gate` 拦下，
 # CI 五条红里有一条就是它：`e2e-smoke` job 的 `shellcheck --severity=error`
-# 报 `SC1081` 六处，全在 `e2e/usage-probe-acceptance.sh`（一个叫 `FOR` 的函数，
+# 报 `SC1081` 六处，全在 `tests/e2e/usage-probe-acceptance.sh`（一个叫 `FOR` 的函数，
 # 它按「大小写写错的关键字」判 error）。
 # 而同一棵树上本门禁 **16 格全绿** —— 〔量于 09-14 本件落地之前〕
 # `grep -c -i shellcheck scripts/gate.sh` = **0**。
@@ -747,7 +747,7 @@ run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族（copy2 · 
 # 而且 `src-tauri/src/shell_lint_registry.rs` 那条恒等判据就是靠**解析它**来钉
 # 「每个 shell 脚本要么进 shellcheck 要么登记豁免」。
 # ⇒ 在本文件里抄一份 = 同一个闭集第三个住址，三处必漂（本仓那笔账写在
-#   `e2e/assert-pass-floor.sh` 的地板纪律里，已经栽过两次）。
+#   `tests/e2e/assert-pass-floor.sh` 的地板纪律里，已经栽过两次）。
 # ⇒ 本格**解析那一段**取人群、**解析那条地板行**取地板，一个数都不写死。
 #
 # ⚠ **fail-closed 的三条**（缺一条它就会在「解析坏了」的时候静默地绿）：
@@ -1179,7 +1179,7 @@ run_gate daemon '单包 remote-daemon-proto，只有一行 test result ⇒ 最�
 #
 # `tsc --noEmit` 在一个**空程序**上退出码是 **0** —— 把 `tsconfig.json` 的 `include` 改小 /
 # 改错，「一个文件都没检」与「全检过了」在退出码上**一模一样**。
-# ⇒ 本格把 `--listFiles` 真读进程序的那批文件数出来，与**盘上现打**的 `src/` ＋ `e2e/` 下
+# ⇒ 本格把 `--listFiles` 真读进程序的那批文件数出来，与**盘上现打**的 `src/` ＋ `tests/e2e/` 下
 #   `.ts`/`.tsx`/`.mts` 份数对账，**两个数在同一趟里现打**，一个都不写死
 #   （写死一个数，加一份文件就红，那种格三天就会被人调宽）。
 run_gate tsc '不是「几条断言过了」：这个数是**这一趟真读进 tsc 程序**的仓内 `.ts`/`.tsx`/`.mts` 份数（`tsconfig.json` 的 include = `src` ＋ `e2e`），并与盘上现打的份数**恒等对账**。⚠ 只判类型（`npm run build` 的前一半）；`vite build` 与 `cargo tauri build` 那两段、以及仓根那几份不在 include 里的 `.ts`（`vite.config.ts` / `vitest.config.ts`），本行一概盖不到' \
@@ -1201,7 +1201,7 @@ run_gate npm '17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字�
 #    而在本行落地之前 `grep -c ccm scripts/gate.sh` = **0** ⇒ 出货那一刀**一条都不看**。
 #    头注那句「出货前的**唯一闸门**」与这个 0 对不上，`丙1-f1` 就是这笔账。
 #
-# ★ **判法不自造，复用 `e2e/assert-pass-floor.sh`** —— CI 的 26 条 e2e 步骤用的就是它，
+# ★ **判法不自造，复用 `tests/e2e/assert-pass-floor.sh`** —— CI 的 26 条 e2e 步骤用的就是它，
 #   地板值也照抄 `ci.yml` 那两行（`ccm-print-parity 12` · `ccm-rbind-title 8`）。
 #   一个性质两个量法就是本区最贵那族病（`K13`）；这里刻意只留一份。
 #   它自己 fail-closed 的三条（头注逐字）：非零退出 ⇒ 红 · 抓不到「合计 PASS=」⇒ 红
@@ -1244,23 +1244,23 @@ run_gate npm '17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字�
 run_e2e() {
   local suite="$1"; local floor="$2"
   local out rc n
-  out="$(bash e2e/assert-pass-floor.sh "$suite" "$floor" exact 2>&1)"
+  out="$(bash tests/e2e/assert-pass-floor.sh "$suite" "$floor" exact 2>&1)"
   rc=$?
   n="$(printf '%s' "$out" | grep -oE '合计 PASS=[0-9]+' | grep -oE '[0-9]+' | tail -1)"
   if [ "$rc" -ne 0 ]; then
-    fails+=("ccm e2e/$suite（退出码 $rc；实得 PASS=${n:-<抓不到>}，地板 $floor，判法 exact。\
+    fails+=("ccm tests/e2e/$suite（退出码 $rc；实得 PASS=${n:-<抓不到>}，地板 $floor，判法 exact。\
 诊断原文见上方本套件自己的输出）")
     # K-R22：原来这里是裸 `tail -20`。换成共用的 `gate_diag` 有两处不是排版：
     #   ① 套件自己的 `::error::` 诊断行**可能落在尾部 20 行之外**（`assert-pass-floor.sh`
     #      先 `cat` 整份输出再打诊断，一套失败几十条时那行就被顶出去了）—— 模式表把它捞回来；
     #   ② 加了 `  | ` 前缀，套件输出里的 `PASS=`/`FAIL=` 行不再混进本脚本的裁决面。
-    gate_diag "e2e/$suite" "$out"
+    gate_diag "tests/e2e/$suite" "$out"
   elif [ -z "$n" ]; then
-    fails+=("ccm e2e/$suite（退出码 0 但抓不到「合计 PASS=<n>」—— 门没跑与门跑了结果是空\
+    fails+=("ccm tests/e2e/$suite（退出码 0 但抓不到「合计 PASS=<n>」—— 门没跑与门跑了结果是空\
 在终端上一模一样，判不了，不许当成绿）")
     # K-R22 D1 #9：这一支原来一个字都不印，而「门没跑」与「门跑了结果是空」
     # **恰恰只能靠那段输出分开** —— 不印等于把这条判据自己那句话作废。
-    gate_diag "e2e/$suite" "$out"
+    gate_diag "tests/e2e/$suite" "$out"
   else
     printf '  ok   %-14s %-22s PASS=%s（地板 %s，恒等）\n' "ccm e2e" "$suite" "$n" "$floor"
   fi
@@ -1273,7 +1273,7 @@ run_e2e() {
 #   把 `run_e2e` 的定义整块前移、或把 `gate_selftest` 的调用点后移，都是为了一条探针去动
 #   本文件的结构。⇒ **让这一条住在它盯的那道门旁边**，`gate_assert_judged` 与取法仍是同一份。
 #
-# 只有它拦得住：给一个**非数字的地板** ⇒ `e2e/assert-pass-floor.sh` 在**参数校验**那一步
+# 只有它拦得住：给一个**非数字的地板** ⇒ `tests/e2e/assert-pass-floor.sh` 在**参数校验**那一步
 #   `exit 2`，并把那个参数**原样回显**；参数里带着 `合计 PASS=7` ⇒ `run_e2e` 抓得到读数
 #   ⇒ 「抓不到「合计 PASS=」」那条**已被满足**，掏掉退出码那条就一路落到绿行。
 # ⚠ 那一步排在 `npm run` 与 `mktemp` **之前** ⇒ 不跑 npm、不落文件（见上面自检段头注）。
@@ -1310,7 +1310,7 @@ run_e2e ccm-rbind-title  8
 #   ＋ `D2` 的 `WIRE` 30 条（真发请求那一半：落盘式假 daemon，「发了」与「发对了」分两族判）。
 #   量于 `65b2792`、同一份 devbox 镜像，`PASS=203 FAIL=0`。
 #   🔴 **顺带如实登记这一格是怎么被逮到的**：`D1` 交回时实得 **173**、地板还停在 **126**，
-#   而 `e2e/assert-pass-floor.sh:56` 是 `n -lt FLOOR` ⇒ **只挡缩水、不挡「涨了不跟」**
+#   而 `tests/e2e/assert-pass-floor.sh:56` 是 `n -lt FLOOR` ⇒ **只挡缩水、不挡「涨了不跟」**
 #   ⇒ 那 47 条在地板眼里等于不存在，**没有任何东西会说一句话**（「静默不涨」）。
 #   那个**机制**（地板该不该恒等 / 自动棘轮）归 `K-G8`；这里只是把这一次的数棘上去。
 # ★★ **`K-P2` `D` 阶段第三拍（09-03，生产接线）：`ccm-cli` 再棘 `203` → `242`**。
