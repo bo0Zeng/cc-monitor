@@ -68,7 +68,7 @@ function argv(token: string): string {
  *    `sed -n 's/^const CLI_REQUIRED_CAPS = \[\(.*\)\] as const;$/\1/p' src/launch-render-cli.ts`
  *    —— 它**按文件路径 ＋ 单行数组字面量**抽这份清单，去比真 `ccm --ccm-probe` 的
  *    `capabilities=`（还配了「抽到 ≥5 项」的抽取器自检）。搬走 ⇒ 抽到 0 项 ⇒ 那条当场红。
- *  - `src/launch-render-cli.vitest.ts` 同族（按措辞 grep 本文件源码）。
+ *  - `test/launch-render-cli.vitest.ts` 同族（按措辞 grep 本文件源码）。
  *
  *  ⚠ 那正是 `KR95D1` 点名的失效方向（**判写法**）—— 而它今天在承重。
  *  ⇒ 本件的处置：**清单留在这里，但不许它自己漂**。
@@ -155,7 +155,7 @@ export function tryRenderCli(
     // 只在真触发时才要求这个能力"是结构保证，不再需要渲染器里给 model 开特判（F08 那条已删）。
     for (const cap of dim.requiredCaps?.(ctx) ?? []) {
       if (!probe.capabilities.has(cap)) {
-        // 🔴 `K-R95` 搬不动的两句之一 —— **不是漏了**。`src/launch-render-cli.vitest.ts`
+        // 🔴 `K-R95` 搬不动的两句之一 —— **不是漏了**。`test/launch-render-cli.vitest.ts`
         // 那两条判据是**按措辞 grep 本文件源码**钉的（「各恰好一处」+ 必须是
         // `` return { ok: false, reason: `…` } `` 这个模板形），而那个文件不在本件写区。
         // ⇒ 措辞留在这里，但**不许它自己漂**：`launch_cli_parity.rs` 的

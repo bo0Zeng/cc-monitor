@@ -1,6 +1,6 @@
 /**
  * session-backend.ts 纯函数断言：TMUX_BACKEND 命令语法精确输出 + SESSION_BACKEND 同一性。
- * 跑法：`node src/session-backend.test.ts` 或 `npm run test:session-backend`。
+ * 跑法：`node test/session-backend.test.ts` 或 `npm run test:session-backend`。
  */
 
 import { readFileSync } from "node:fs";

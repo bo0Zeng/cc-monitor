@@ -1023,7 +1023,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
   // —— 后者会把 `localRelayStateFor` 那一格整个绕过去。
   //
   // ⚠ **取数那一跳（`invoke`）今天还没接上**，卡点写在 `accounts.ts` 那段头注里
-  // （`src/ipc/commands.vitest.ts` 的两个钉死计数不在本件写区）。⇒ 本组买的是**规则**，
+  // （`test/ipc/commands.vitest.ts` 的两个钉死计数不在本件写区）。⇒ 本组买的是**规则**，
   // 不是「界面上真的显出来了」。
   it("★ 产出方：问的是 `relay_routing_for`，入参是那几个 configDir", async () => {
     invokeMock.mockResolvedValue({ routed: ["/h/.claude-accts/acct-a"], running: true });

@@ -15,7 +15,7 @@
  * `--base`，而 `shared/ccm` 收到 `--base` 是 **`unset CLAUDE_CONFIG_DIR`**（`:674` + `:709`），
  * 落 `~/.claude` 而**不是**「登录时已有的那个」。
  * ⇒ **本条规则不变**（「基座」仍不许出现在用户文案里）；变的是它当初用来举例的那句话。
- * 「说什么词」由本条管，「说的是不是真的」由 `src/account-base-semantics.vitest.ts` 管，
+ * 「说什么词」由本条管，「说的是不是真的」由 `test/account-base-semantics.vitest.ts` 管，
  * 两条互补。★ 记这一笔是因为**一条判据的理由里也会藏假话**，而理由是没人检查的。
  *
  * # 这条守卫扫什么

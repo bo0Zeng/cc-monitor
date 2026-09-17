@@ -39,8 +39,8 @@ import { resolve } from "node:path";
 const ROOT = REPO_ROOT;
 const read = (p: string) => readFileSync(resolve(ROOT, p), "utf8");
 
-// C04a：剥注释的实现**抽到了 `src/test-support/strip-comments.ts`**——本文件与
-// `src/ipc/commands.vitest.ts` 两个守卫都要用它，而两份手抄的剥注释语义一旦漂移
+// C04a：剥注释的实现**抽到了 `test/test-support/strip-comments.ts`**——本文件与
+// `test/ipc/commands.vitest.ts` 两个守卫都要用它，而两份手抄的剥注释语义一旦漂移
 // 就是**静默削弱守卫**（那正是本工作区在治的病）。按 ≥2 那把尺子抽成单一实现。
 //
 // 本文件栽过两轮、C03/C04a 又各栽一次，四次都是「拿注释当代码判据」——
@@ -552,7 +552,7 @@ describe("C01 边界生成物", () => {
     );
   });
 
-  it("生产代码不许 import `src/test-support/`（那是守卫专用，进 bundle 就等于把测试代码发出去）", () => {
+  it("生产代码不许 import `test/test-support/`（那是守卫专用，进 bundle 就等于把测试代码发出去）", () => {
     const offenders = productionTsFiles().filter((f) => /test-support\//.test(code(read(f))));
     // `strip-comments.ts` 自称「只被 *.vitest.ts 引用 ⇒ 进不了 bundle」。
     // 那是一条**约定**，而 eslint 在本仓是 advisory ⇒ 指望不上，机检掉。

@@ -1,6 +1,6 @@
 /**
  * pricing.ts 纯函数断言：contextLimit / normalizeModel / contextPercent。
- * 跑法：`node src/views/pricing.test.ts` 或 `npm run test:pricing`。
+ * 跑法：`node test/views/pricing.test.ts` 或 `npm run test:pricing`。
  */
 
 import {

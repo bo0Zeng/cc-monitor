@@ -17,7 +17,7 @@
  * `session-viewer-scroll.vitest.ts`（`KR45D0`）与 `session-viewer-user-inputs.vitest.ts`
  * （`KR45D1`）各带过一套**逐字重复**的桩：IPC（`@tauri-apps/api/core` 的 `invoke` /
  * `Channel`）· `ResizeObserver` · `CSS.escape` · `requestAnimationFrame` · `scrollIntoView`。
- * 上一轮 `src/test-support/` 在写区外，只能各写一份并把它**申报成债**。
+ * 上一轮 `test/test-support/` 在写区外，只能各写一份并把它**申报成债**。
  *
  * 债的形状不是「重复代码难看」，是：**两份一旦漂了，两个套件量的就不是同一个台子** ——
  * 而两边都以「我测的是真渲染管线」自居，谁漂了从输出面上看不出来。

@@ -1,6 +1,6 @@
 /**
  * launch-dimensions.ts / launch-plan.ts 纯函数断言：每个维度的 applies/apply/cliFlags 独立行为
- * + 顺序不变量 + buildLaunchPlan 端到端摊平。跑法：`tsx src/launch-dimensions.test.ts`。
+ * + 顺序不变量 + buildLaunchPlan 端到端摊平。跑法：`tsx test/launch-dimensions.test.ts`。
  */
 import {
   IDENTITY_DIMENSION,

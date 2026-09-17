@@ -1496,7 +1496,7 @@ mod tests {
     ///
     ///    两个方向相反的断言各自被钉住，别把任一侧"改成一致"：
     ///      · 本函数下方的 needle 扫描：`shared/ccm` **必须**写 `@ccm_sid_expect`；
-    ///      · `src/session-backend.test.ts`（"#72 + F03.4甲′"那条黄金串）：兜底渲染器
+    ///      · `test/session-backend.test.ts`（"#72 + F03.4甲′"那条黄金串）：兜底渲染器
     ///        **必须**写裸 `@ccm_sid`。已实测：把兜底侧改成 `_expect` 会让后者转红。
     ///    **成功标准④ 不受此例外影响**——终端起会话那条路径的意图声明全程在 `shared/ccm` 内
     ///    （写 expect；事实由 daemon 提升，见 `U-NP④`），与兜底渲染器无交集。

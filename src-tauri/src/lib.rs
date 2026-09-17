@@ -1703,7 +1703,7 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 ///
 /// ⚠ **本结构刻意不走 `ts-rs`**：`RelayCredentialsStatus` 的先例逐字记着理由 ——
 /// 导出会在 `src/generated/` **新增一个文件**，而那个目录的清单由
-/// `src/generated-boundary-guard.vitest.ts` 逐项等号对拍，那个文件不在本件写区。
+/// `test/generated-boundary-guard.vitest.ts` 逐项等号对拍，那个文件不在本件写区。
 /// ⇒ TS 侧那份是**手写镜像**（`src/accounts.ts::RelayRoutingView`），两侧字段名手动同步。
 /// **如实记：这一格今天没有判据对拍**（`RelayCredentialsStatus` 那条有，本条没有）。
 #[derive(serde::Serialize, Debug, Clone, Default)]
@@ -1753,7 +1753,7 @@ fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
 ///
 /// ⇒ 这条命令**只收 `configDir`，由 Rust 推 id**。收 `name`、或让 TS 自己
 /// `split('/').pop()`，都是在长出**第二份**规则，而那正是 `KH2C1` 红字禁的那件事
-/// （前端那一侧由 `src/settings/accounts-section.vitest.ts` 里那条机检钉着 ——
+/// （前端那一侧由 `test/settings/accounts-section.vitest.ts` 里那条机检钉着 ——
 /// 标题以「KH2C1 机检：前端一个字都不推账号 id」打头的那个 `it`，
 /// 它扫整份 `accounts-section.ts` 找「自己从路径取末段名」的四种写法）。
 /// ⚠ 〔`K-R20` 订正 09-03〕原先点的是

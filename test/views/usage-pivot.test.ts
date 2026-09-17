@@ -1,6 +1,6 @@
 /**
  * usage-pivot.ts 纯函数断言：pivotUsage 四维聚合 + sumAll + totalTokens。
- * 跑法：`node src/views/usage-pivot.test.ts` 或 `npm run test:usage-pivot`。
+ * 跑法：`node test/views/usage-pivot.test.ts` 或 `npm run test:usage-pivot`。
  * 同 history-cache.test.ts：零依赖、失败 throw 作门禁；tsc --noEmit 类型检查。
  */
 
