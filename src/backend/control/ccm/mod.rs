@@ -60,7 +60,7 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 ///
 /// - `src-tauri/src/plugin_class_registry.rs` —— 数**个数**（那条断言里逐字写着
 ///   「这个数变了要顺手看一眼它们」）。加 token ⇒ **那个数要跟着改**，否则当场红。
-/// - `remote-daemon-proto/src/plugin/probe.rs` 的
+/// - `src/backend/plugin/probe.rs` 的
 ///   [`crate::plugin::probe::tests::the_required_list_is_checked_against_what_the_real_plugin_declares`]
 ///   —— 它拿 [`probe_output`] **真吐出来的那一行** `capabilities=` 当活体语料，再数**个数**。
 ///   加 token ⇒ **那个数要跟着改**（与上一行同形，是本树内的第二处计数）。
@@ -71,7 +71,7 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 ///   与判据自带的 `STATIC_CAPS_EXPECTED`，两处都是**子集检查** ⇒ 加 token 安全。
 /// - `tests/e2e/ccm-contract-parity.sh` —— 数 `capabilities=` 覆不覆盖 TS 那一份，同样是**⊇**。
 /// - `src-tauri/build.rs` 的 `extract_capabilities` —— ⚠ **它盖不到这里**：
-///   它按 `const CAPABILITIES` 这一行去 `remote-daemon-proto/src/main.rs` 里抠，
+///   它按 `const CAPABILITIES` 这一行去 `src/backend/main.rs` 里抠，
 ///   抠的是 daemon **流模式**那个同名常量（`bg` / `tail-only`），与本常量无关。
 ///   〔这句话是本轮实测的，不是推的：加了下面那个 token 之后 `DAEMON_CAPABILITIES` 逐字不变。〕
 ///

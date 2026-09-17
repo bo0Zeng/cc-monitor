@@ -79,7 +79,7 @@ pub const AUTH_KINDS: [&str; 2] = [AUTH_KIND_SUBSCRIPTION, AUTH_KIND_API_KEY];
 /// - 缺席（旧 manifest / 写侧还没加这个键）⇒ [`AUTH_KIND_SUBSCRIPTION`]。
 ///   这不是猜：K-A1 Bx 复量过，`ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` /
 ///   `ANTHROPIC_BASE_URL` / `apiKeyHelper` 四个针在 `src/` + `src-tauri/src/` +
-///   `shared/` + `remote-daemon-proto/src/` 下**全为零命中** ⇒ 今天存量账号**全部**是订阅号。
+///   `shared/` + `src/backend/` 下**全为零命中** ⇒ 今天存量账号**全部**是订阅号。
 /// - 认不出的值（比如将来写侧先加了 `bedrock` 而读侧还没升）⇒ 也落
 ///   [`AUTH_KIND_SUBSCRIPTION`]，**这是刻意选的保守方向**：订阅这一档**保留**
 ///   「缺凭据 ⇒ 不可选」那道保护，用户看到的是「未登录」（看得见、可修），

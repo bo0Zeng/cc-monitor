@@ -14,7 +14,7 @@
  *    的模式；硬套会让 #76（claude 已退出但 tmux 还在时短路跳过 send-keys、把用户 attach 进空
  *    shell）以 CLI 路径的新形式复发。**诚实放弃，不近似**。
  *    **`attach-only` 不在此列**——`ccm attach <名>` 与 `ccm` 源码核对（今天住
- *    `remote-daemon-proto/src/control/ccm/`），就是
+ *    `src/backend/control/ccm/`），就是
  *    `exec tmux attach -t "=$名:"`，与兜底渲染器的 `SESSION_BACKEND.attach()` 逐字同构，没有
  *    #76 那种「建还是接」的歧义，可以安全走 CLI 渲染器（F03 Phase D
  *    架构审计发现：早期实现把这两种模式并入同一把闸门，导致 `renderCli` 的 attach 分支和

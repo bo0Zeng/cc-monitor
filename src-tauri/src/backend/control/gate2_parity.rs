@@ -5,7 +5,7 @@
 //! | 轨道 | 谁 | 读法 |
 //! |---|---|---|
 //! | monitor（Rust） | **本模块** | `include_str!` + `gate_core::gate2` |
-//! | daemon（Rust） | `remote-daemon-proto/src/control/gate.rs` 的测试 | 跨仓相对路径 `include_str!` |
+//! | daemon（Rust） | `src/backend/control/gate.rs` 的测试 | 跨仓相对路径 `include_str!` |
 //! | 真二进制（bash） | `tests/e2e/daemon-gate2-acceptance.sh` | `cut -f`，跑真 daemon + 真 tmux |
 //!
 //! ⚠ **绝不许一侧在运行时去调另一侧** —— 那样两侧一起错也全绿。

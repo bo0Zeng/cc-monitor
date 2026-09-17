@@ -3,7 +3,7 @@
 //! # 为什么要这个 crate
 //!
 //! 在它之前，同一套口径写了两遍：`src-tauri/src/usage.rs::accumulate_usage`（monitor，
-//! 走 `parse_line`/`JsonlRecord`）与 `remote-daemon-proto/src/observe/usage_query.rs::analyze_session`
+//! 走 `parse_line`/`JsonlRecord`）与 `src/backend/observe/usage_query.rs::analyze_session`
 //! （daemon，在裸 `serde_json::Value` 上抽取）。后者的头注逐字写着
 //! **「改口径必须同步改本地 usage.rs（双写点）」**。
 //!

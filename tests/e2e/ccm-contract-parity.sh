@@ -314,7 +314,7 @@ ck "agents= 行列出 claude 与 codex" "1" \
 # ⚠ **左值取自源码那一处唯一住址，不手抄** —— 手抄一个 `p2f-…` 进来，
 #   下次 bump 时这一格会以「假红」的形式提醒错人（而且它测的会变成「我抄对了没有」）。
 SRC_BUILD_ID="$(sed -n 's/^const BUILD_ID: &str = "\([^"]*\)";$/\1/p' \
-                 "$REPO/remote-daemon-proto/src/main.rs")"
+                 "$REPO/src/backend/main.rs")"
 ck "抽取器自检：从 daemon 源码抠得到 BUILD_ID（空 ⇒ 下面两格会零命中地绿）" "yes" \
    "$([ -n "$SRC_BUILD_ID" ] && echo yes || echo no)"
 ck "build= 行报的就是这一份二进制自己的 BUILD_ID（不看它旁边任何文件）" "$SRC_BUILD_ID" \

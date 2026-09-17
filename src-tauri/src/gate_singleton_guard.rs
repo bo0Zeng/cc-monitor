@@ -78,7 +78,7 @@ mod tests {
         for base in [
             "src-tauri/src",
             "src-tauri/crates",
-            "remote-daemon-proto/src",
+            "src/backend",
         ] {
             walk(&root.join(base), &mut out);
         }

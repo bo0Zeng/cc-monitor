@@ -383,7 +383,7 @@ mod kou_jing_singleton {
         for (name, raw, must_call) in [
             (
                 "daemon observe/usage_query.rs",
-                include_str!("../../remote-daemon-proto/src/observe/usage_query.rs"),
+                include_str!("../../src/backend/observe/usage_query.rs"),
                 &["usage_core::accumulate"][..],
             ),
             (
@@ -393,7 +393,7 @@ mod kou_jing_singleton {
             ),
             (
                 "daemon agents/codex/parse.rs",
-                include_str!("../../remote-daemon-proto/src/agents/codex/parse.rs"),
+                include_str!("../../src/backend/agents/codex/parse.rs"),
                 &["usage_core::codex_delta"][..],
             ),
             // ⚠ `S2`（08-14）把 daemon 的 Codex **累加点**从 `observe/usage_query.rs` 搬进了
@@ -402,7 +402,7 @@ mod kou_jing_singleton {
             // 失配不同：**那个是编译错，这个是无声的覆盖面缩水**。⇒ 搬到哪，人群跟到哪。
             (
                 "daemon agents/codex/usage.rs",
-                include_str!("../../remote-daemon-proto/src/agents/codex/usage.rs"),
+                include_str!("../../src/backend/agents/codex/usage.rs"),
                 &[][..],
             ),
             // 提取器：收口后它一个口径函数都不该调（累加点在 usage.rs）。

@@ -221,7 +221,7 @@ describe("turn-end 判定的跨语言对拍（audit-0805 F12）", () => {
     const { fileURLToPath } = await import("node:url");
     const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const rs = readFileSync(
-      resolve(ROOT, "remote-daemon-proto/src/observe/turn_detect.rs"),
+      resolve(ROOT, "src/backend/observe/turn_detect.rs"),
       "utf8",
     );
     // ⚠ **必须剥注释**。第一版没剥，于是变异「连字段带判定一起删」照样绿 ——

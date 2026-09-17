@@ -29,7 +29,7 @@
 //! 到 08-25 为止，这里钉的是「**`control/cc_bus.rs` 里恰好一处** `Command::new(`」，
 //! 理由逐字是 `E5` 的默认「插件调用**复用**这一处口」。
 //! `K-W1A`（08-26）做的正是那句「复用」：把那一处口从 **cc-bus 专用的转调壳**里
-//! 抽到**通用调用口** `remote-daemon-proto/src/plugin/invoke.rs`。
+//! 抽到**通用调用口** `src/backend/plugin/invoke.rs`。
 //! ⇒ 旧断言当场红了，panic 逐字是「`Command::new(` 一处都找不到 —— 事实没了，
 //! 或者抽取面画错了」。**那是钉子干对了活**：它没让这次搬家在无声中发生
 //!（同型先例：`guard_support` 的锚点在 U3 拆层时红过一次，账上判的也是「钉子干对了活」）。
@@ -65,7 +65,7 @@
 //!
 //! # 与已有判据的分工（**不重造**）
 //!
-//! · daemon 不许碰 cc-bus 的**数据布局** → `remote-daemon-proto/src/cc_bus_boundary_guard.rs`；
+//! · daemon 不许碰 cc-bus 的**数据布局** → `src/backend/cc_bus_boundary_guard.rs`；
 //! · daemon 生产段的**起进程点总数** → `readonly_guard::spawn_registry`（相等断言，今天 9 处）；
 //! · 全景引擎的**取用口恰好一处** → `panorama_seam_registry`；
 //! · daemon 协议面**零全景** → `protocol_doc_guard`（它只扫 `inbound.rs` + `wire.rs`）。
@@ -166,7 +166,7 @@ mod tests {
             id: "ccm",
             // 🔴 〔`K-R48` 第二拍 09-11〕住址从那份已删的 bash `ccm` 换到这里：脚本删了，
             //    `ccm` 今天是后端二进制的一次性模式（`K33`：「不要有什么单独的 ccm」）。
-            home: "remote-daemon-proto/src/control/ccm",
+            home: "src/backend/control/ccm",
             semantics: Semantics::BuiltIn,
             shape: Shape::ManagedTool,
             today: "一套通用骨架 + 一张 per-agent 适配表（`E4b`），能力靠 `--ccm-probe` 报。\
@@ -233,7 +233,7 @@ mod tests {
 
     /// daemon 命令注册表里的**每一条命令名**（`REGISTRY` 那张表内，段界之内）。
     fn daemon_command_names() -> Vec<String> {
-        let prod = rust_production("remote-daemon-proto/src/inbound.rs", 10_000);
+        let prod = rust_production("src/backend/inbound.rs", 10_000);
         let seg = segment_after(&prod, "const REGISTRY: &[CommandSpec] = &[", "\n];");
         let mut out = Vec::new();
         let key = format!("name{} \"", ':');
@@ -252,7 +252,7 @@ mod tests {
     /// 🔴 〔`K-R48` 第二拍 09-11〕**这里原来有三个从那份已删的 bash `ccm` 里抠的取法**
     /// （`ccm_agent_arms` 〔散文墓碑〕 逐个切 `agent_*` 函数的 `case` 臂 · `case_arm` · `ccm_probe_values` 〔散文墓碑〕）。
     /// 〔用@09-11 `K33`〕那个脚本删了，per-agent 适配表与 probe 那一行搬进了
-    /// `remote-daemon-proto/src/control/ccm/`（Rust）⇒ 取法整块换成读那份源码的 `const`。
+    /// `src/backend/control/ccm/`（Rust）⇒ 取法整块换成读那份源码的 `const`。
     ///
     /// **为什么运行期读文件而不是 `include_str!`**：后者会在 monitor 与 daemon 之间造一条
     /// **编译期**跨 crate 边（`cross_half_edge_registry` 那族要单独登记），而本条要的只是一份文本。
@@ -260,7 +260,7 @@ mod tests {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("src-tauri 的上级")
-            .join("remote-daemon-proto/src/control/ccm")
+            .join("src/backend/control/ccm")
             .join(file);
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}：{e}", p.display()))
     }
@@ -443,7 +443,7 @@ mod tests {
              `K-R113` 之后实测就是四条了）⇒ 本行是那次订正的订正，别再照旧读。\n\
              ★ **仍然刻意没有 `bus-recv`**：`cc-recv` 有副作用（推进已读位置），\
              daemon 代读等于把消息从人那里偷走 —— 这句今天仍是真的，理由全文在\
-             `remote-daemon-proto/src/control/cc_bus.rs` 的模块头注 ①。\n\
+             `src/backend/control/cc_bus.rs` 的模块头注 ①。\n\
              🔴 **变了要去看什么：不是 `EU3`。** 本行原先写着「变了就该回去看那条待决\
              （`EU3`：插件的粒度是命令还是包）」，而 `EU3` **今天已经作废** ——\
              `backend-consolidation/OPEN-PREMISES.md` 逐字「`plugin-split` `EF04` 已撤件、\
@@ -457,7 +457,7 @@ mod tests {
         //    「两条命令共用这一处口」。⚠ 08-26 `K-W1A` 把这处口从转调壳搬到了通用层，
         //    所以这一格由**两条一起**守：口那边恰好一处 · 壳这边零处。少哪一条都会漏掉
         //    一种真实的坏形状（多起一处 / 壳里又长回一处 = 绕开通用口）。
-        let port = rust_production("remote-daemon-proto/src/plugin/invoke.rs", 5_000);
+        let port = rust_production("src/backend/plugin/invoke.rs", 5_000);
         guard_core::find_pinned(&port, "Command::new(").unwrap_or_else(|e| {
             panic!(
                 "通用调用口 `plugin/invoke.rs` 里的起进程口不是恰好一处：{e}\n\
@@ -469,7 +469,7 @@ mod tests {
                  找不到 `timeout` 时如实降级并写进头注。"
             )
         });
-        let shell = rust_production("remote-daemon-proto/src/control/cc_bus.rs", 5_000);
+        let shell = rust_production("src/backend/control/cc_bus.rs", 5_000);
         assert_eq!(
             occurrences(&shell, "Command::new("),
             0,
@@ -483,7 +483,7 @@ mod tests {
 
         // ④ 「零文件格式耦合」这句话**靠谁**成立 —— 那条判据还在，且针没缩。
         let boundary = guard_core::strip_comment_lines(&must_read(
-            "remote-daemon-proto/src/cc_bus_boundary_guard.rs",
+            "src/backend/cc_bus_boundary_guard.rs",
             1_000,
         ));
         let needles = segment_after(&boundary, "let needles = [", "];");
@@ -551,7 +551,7 @@ mod tests {
         // ③ daemon 侧**整棵源码树**：零命中（第二层 —— 这一层 `protocol_doc_guard` 够不到，
         //    它只扫协议面那两个文件）。
         let root = repo_root();
-        let files = guard_core::scan_tree!(&root.join("remote-daemon-proto/src"), &["rs"]);
+        let files = guard_core::scan_tree!(&root.join("src/backend"), &["rs"]);
         assert!(
             files.len() >= 30,
             "只遍历到 {} 个 daemon 源文件 —— 遍历坏了，本条此刻是空转的（08-14 实测 53）",
@@ -668,7 +668,7 @@ mod tests {
              ⚠ 两个消费者**都是子集检查** ⇒ **加 token 安全，删/改名才危险**。\
              ⇒ 下一个人加 token 时不必重读这两处；**改名或删 token 时必须重读**。\n\
              〔`K-R61` 09-11：17 → 18，加的是 `base-url-across-tmux`。\
-             『谁在数它』那张表住 `remote-daemon-proto/src/control/ccm/mod.rs` 的 \
+             『谁在数它』那张表住 `src/backend/control/ccm/mod.rs` 的 \
              `CAPABILITIES` 头注，**本条不复述第二份** —— 只提醒：`src-tauri/build.rs` \
              那个 `extract_capabilities` 抠的是 daemon 流模式那个同名常量，盖不到这里。〕",
             caps.len()
@@ -717,7 +717,7 @@ mod tests {
         let root = repo_root();
         let mut files = guard_core::scan_tree!(&root.join("src-tauri/src"), &["rs"]);
         files.extend(guard_core::scan_tree!(
-            &root.join("remote-daemon-proto/src"),
+            &root.join("src/backend"),
             &["rs"]
         ));
         assert!(
@@ -759,7 +759,7 @@ mod tests {
     /// 没有这条，上面那几个数只是「今天碰巧数出来的数」—— 取法坏掉时它照样可能落在同一个数上。
     ///
     /// 🔴 〔`K-R48` 第二拍 09-11〕**语料从 bash `case` 换成 Rust `const`**：
-    /// 被测对象从那份已删的 bash `ccm` 换成了 `remote-daemon-proto/src/control/ccm/mod.rs`，自检跟着换语言。
+    /// 被测对象从那份已删的 bash `ccm` 换成了 `src/backend/control/ccm/mod.rs`，自检跟着换语言。
     /// 从前那三格（一臂不许吃到下一臂 / 缺臂落通配 / 段界）随 `case_arm` 一起没了 ——
     /// **不是丢了，是那个形状不存在了**（Rust 的 `match` 没有 `;;` 这个坑）。
     #[test]

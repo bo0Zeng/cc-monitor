@@ -482,7 +482,10 @@ mod tests {
     fn the_guards_that_keep_the_accurate_numbers_accurate_still_exist() {
         let root = repo_root();
         let mut all = String::new();
-        for sub in ["src-tauri/src", "remote-daemon-proto/src", "src"] {
+        // 〔搬树 2026-09-17〕**这里没有 `"src/backend"`，不是漏了**：后端树搬到
+        // `<repo>/src/backend` 之后它已经是 `"src"` 的**子目录**，两个都列会把
+        // 后端的每个文件数两遍（搬家前 `remote-daemon-proto/src` 与 `src` 是互斥的）。
+        for sub in ["src-tauri/src", "src"] {
             collect(&root.join(sub), &mut all);
         }
         assert!(

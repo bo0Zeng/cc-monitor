@@ -19,7 +19,7 @@
 //!
 //! # 为什么当年是第三份实现（历史；那一段代码今天仍在，理由见 [`list_from_dir`]）
 //!
-//! `remote-daemon-proto/src/observe/accounts_query.rs` 已经有一份完整的 Rust manifest 读取器
+//! `src/backend/observe/accounts_query.rs` 已经有一份完整的 Rust manifest 读取器
 //! （直接读文件系统）。当年**复用不了**，理由是结构性的：
 //!
 //! - 那个 crate 是 **bin-only**（无 `[lib]`），且 `Cargo.toml` 注释写明**刻意不进 workspace**
@@ -810,7 +810,7 @@ mod tests {
     /// 喂的是 `acct_core::auth_kind_parity_manifest`（daemon 那半喂的是**同一个函数**
     /// 的输出），断的是 `acct_core::AUTH_KIND_PARITY_CASES` 里手写的金样。
     /// ⇒ 两个生产者里任意一个自己填一个默认值，它那半当场红。
-    /// daemon 那半住 `remote-daemon-proto/src/observe/accounts_query.rs::
+    /// daemon 那半住 `src/backend/observe/accounts_query.rs::
     /// tests::auth_kind_parity_daemon_side`。
     ///
     /// ⚠ 射程如实写（`KA6c`）：**只覆盖 `authKind` / `authReady` 这一维**。

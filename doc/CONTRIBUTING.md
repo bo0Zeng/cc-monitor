@@ -79,7 +79,7 @@ powershell -NoProfile -File scripts\run.ps1 dev
   - `src-tauri/Cargo.toml::[package].version`
   - `src-tauri/tauri.conf.json::version`
 - [ ] `Cargo.lock` 提交（Rust 应用必须锁版本）
-- [ ] 若改过后端：`remote-daemon-proto/src/main.rs::BUILD_ID` 已 bump（手工标签非哈希！）+ 内嵌二进制一致（tag 发版 CI 自动重编；本地打包须先重编 —— 🔴 **`K-R70`（09-12）起不再需要「同步 `.build_id` 清单」那一步**，身份跟着字节走）
+- [ ] 若改过后端：`src/backend/main.rs::BUILD_ID` 已 bump（手工标签非哈希！）+ 内嵌二进制一致（tag 发版 CI 自动重编；本地打包须先重编 —— 🔴 **`K-R70`（09-12）起不再需要「同步 `.build_id` 清单」那一步**，身份跟着字节走）
       > **这条 2026-08-01 起是机器强制的**，不再靠自觉：`src-tauri/build.rs` 在「内嵌二进制的
       > **字节里问不出身份戳**」「字节自报的身份 ≠ 源码 `BUILD_ID`」「抠不到源码 `BUILD_ID`」三种情况
       > 直接 **panic 掉编译**（原来只有一条比 mtime 的 warning，漏掉了真实发生过的半 bump）。

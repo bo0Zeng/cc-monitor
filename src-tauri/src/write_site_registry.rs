@@ -189,7 +189,7 @@ mod spawn_sites {
     /// ★ 为什么非把 `build.rs` 并进来：本表问的是「**谁能碰这台机器**」，
     /// 而构建脚本每次 `cargo build`／`cargo check` 都在开发者机器上真跑
     /// （它起 `sh` 与 `git`、往 `OUT_DIR` 复制内嵌 daemon）。
-    /// 08-08 实测：全仓所有登记表/守卫的扫描根都是 `src-tauri/src` · `remote-daemon-proto/src`
+    /// 08-08 实测：全仓所有登记表/守卫的扫描根都是 `src-tauri/src` · `src/backend`
     /// · `src-tauri/crates` · `src` · `doc` —— **`src-tauri/build.rs` 一张表都没扫到**，
     /// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。
     fn corpus() -> Vec<(PathBuf, String)> {
@@ -604,7 +604,7 @@ mod tests {
     /// ★ 为什么非把 `build.rs` 并进来：本表问的是「**谁能碰这台机器**」，
     /// 而构建脚本每次 `cargo build`／`cargo check` 都在开发者机器上真跑
     /// （它起 `sh` 与 `git`、往 `OUT_DIR` 复制内嵌 daemon）。
-    /// 08-08 实测：全仓所有登记表/守卫的扫描根都是 `src-tauri/src` · `remote-daemon-proto/src`
+    /// 08-08 实测：全仓所有登记表/守卫的扫描根都是 `src-tauri/src` · `src/backend`
     /// · `src-tauri/crates` · `src` · `doc` —— **`src-tauri/build.rs` 一张表都没扫到**，
     /// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。
     fn corpus() -> Vec<(PathBuf, String)> {

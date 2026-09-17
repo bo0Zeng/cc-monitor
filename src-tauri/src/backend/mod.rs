@@ -46,7 +46,7 @@
 //!
 //! ⚠ 墓碑第一段里另有三处已经不成立的事实，一并记下（同族，S11「描述当下的字段最易腐」）：
 //! `local_accounts.rs` 的读面**已经退役了**，它不再是「U7 要退役的那批」；
-//! `history_query.rs` **不在 monitor 侧** —— 它住 `remote-daemon-proto/src/observe/history_query.rs`，
+//! `history_query.rs` **不在 monitor 侧** —— 它住 `src/backend/observe/history_query.rs`，
 //! 是 daemon 的文件，monitor 从来没有过这个文件（`git log --all` 对该路径零提交）；
 //! 「30KB」今天是 62KB。
 //!
@@ -685,7 +685,7 @@ mod tests {
 //
 // 上面那两条只管「文件**住在哪条线上**」（`every_file_under_backend_lives_on_a_capability_line`
 // 逐条比登记的能力线与路径前缀）。**「线与线之间谁能引用谁」此前一条判据都没有。**
-// daemon 侧同一条纪律由 `remote-daemon-proto/src/layering_guard.rs` 管，它有**两样**：
+// daemon 侧同一条纪律由 `src/backend/layering_guard.rs` 管，它有**两样**：
 // ① `ALLOWED_OBSERVE_TO_CONTROL` —— 正向逐条列举、条数被钉住；
 // ② `control_layer_must_not_reference_observe` —— 反向零容忍。
 // `K-R71` 把 `observe/` 建出来、当场造出 monitor 侧第一条跨能力线的边之后，

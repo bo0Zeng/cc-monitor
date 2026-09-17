@@ -907,7 +907,7 @@ mod spawn_registry {
              逮那一格的是本模块 argv 逐元素那条判据（脚本是常量 · 变量全走位置参数）。\
              \n🔴 **搬家欠账登记之二〔`K-R110` `KR110D3`，09-13〕**：这条路是 **POSIX-only**\
              （`setsid` ＋ `sh` ＋ `sleep`），按 `K33` 裁定二「平台差异只许住适配层」它该住 `platform/`，\
-             **今天没住** —— 住址逐字是 `remote-daemon-proto/src/control/oneshot_session.rs`\
+             **今天没住** —— 住址逐字是 `src/backend/control/oneshot_session.rs`\
              （`WATCHDOG_LAUNCHER` 与它那段常量脚本），来历住 \
              `features/K-R87-daemon侧没有「带看门狗的一次性会话」模式.md#§8` 第 13 条。\
              **今天为什么没搬**：① 它要**新造一条适配层原语**（现成的 `platform/shell.rs::posix_shell` \
@@ -2151,7 +2151,7 @@ mod g6_scope_pins {
 ///
 /// 🔴 **搬家欠账登记之一〔`K-R110` `KR110D3`，09-13 复核：今天仍然没搬〕**
 ///
-/// - **欠的是什么**：本模块（`mod error_envelope_registry`）该住 `remote-daemon-proto/src/error_envelope_guard.rs`。
+/// - **欠的是什么**：本模块（`mod error_envelope_registry`）该住 `src/backend/error_envelope_guard.rs`。
 /// - **今天为什么没搬**：`K-R110` 的写区里同样没有「新建文件」这一项 ——
 ///   件文件 `features/K-R110-量具自己的人群是错的（提前收尾＋47处按行匹配）.md` 的 `§2`
 ///   逐字把「**新建 guard 文件**」列进了「明令不在写区」。⇒ 本轮**只登记、不搬**。
@@ -2462,7 +2462,7 @@ mod error_envelope_registry {
 #[cfg(test)]
 mod g6_dependency_signoff {
     /// 本 crate 的清单。**编译期读**，而且是本半自己那一份。
-    const MANIFEST: &str = include_str!("../Cargo.toml");
+    const MANIFEST: &str = include_str!("../../remote-daemon-proto/Cargo.toml");
 
     /// 清单里**带依赖的段**，逐段登记（**相等**对拍，不是子集）。
     ///

@@ -773,7 +773,7 @@ mod tests {
         (
             "expose_for_auth_header(",
             1,
-            "remote-daemon-proto/src/relay/server.rs",
+            "src/backend/relay/server.rs",
         ),
         (
             "expose_for_persisting(",
@@ -786,7 +786,7 @@ mod tests {
     const PLAINTEXT_SCAN_TREES: &[&str] = &[
         "src-tauri/src",
         "src-tauri/crates",
-        "remote-daemon-proto/src",
+        "src/backend",
     ];
 
     /// ★★★ **`KS2` 的人群那一格〔D1 阻-1 回修，08-27〕：三棵树全扫，不是一个文件、也不是一个 crate。**

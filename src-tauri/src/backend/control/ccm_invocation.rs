@@ -118,7 +118,7 @@ pub enum CliAccount<'a> {
     ///
     /// 既不发 `--account` 也不发 `--base`。这**不是**「这一维沉默了」（F05 禁的那个），
     /// 是「**省略在这条 CLI 上有确定语义**」—— 语义的唯一住址是
-    /// `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account`，它把省略拆成两支：
+    /// `src/backend/control/ccm/plan.rs::resolve_account`，它把省略拆成两支：
     ///
     /// - `CLAUDE_CONFIG_DIR` **非空** ⇒ 保留不覆盖（`R08` 那道 `-z` 闸，
     ///   由一次真机复现过的静默换号逼出来）= **继承**；
@@ -567,7 +567,7 @@ mod tests {
             CLI_REQUIRED_CAPS, STATIC_CAPS_EXPECTED,
             "静态能力清单变了。改它是改「装了哪种 ccm 才肯走 CLI 形态」的门槛，\
              要同步 TS 的 CLI_REQUIRED_CAPS 与 \
-             remote-daemon-proto/src/control/ccm/mod.rs 的 CAPABILITIES\n\
+             src/backend/control/ccm/mod.rs 的 CAPABILITIES\n\
              〔`K-R61` 09-11：这里原先点的是那份 bash `ccm` 的 `--ccm-probe` —— \
              那个文件 `07e4e72` 就删了，与 `K-R61` 治的是同一种悬空引用。\
              本清单是**子集检查** ⇒ 对面加 token 不影响本条；删/改名才影响。〕"
@@ -883,7 +883,7 @@ mod tests {
     /// 上面那条会红、本条也会红，而**本条红在生产渲染器的出口上**。
     ///
     /// ⚠ **本条不管 `ccm` 拿到这条命令之后怎么解释省略** —— 那一半的唯一住址是
-    /// `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account`（`R08` 的 `-z` 闸
+    /// `src/backend/control/ccm/plan.rs::resolve_account`（`R08` 的 `-z` 闸
     /// ＋ manifest 默认号两支），由那边的
     /// `plan::the_four_ways_an_account_gets_picked` 钉着。**两侧各钉各的，别压成一句。**
     #[test]

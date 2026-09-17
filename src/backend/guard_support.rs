@@ -40,7 +40,7 @@ pub(crate) use guard_core::{assert_no_test_code, production_code, production_sou
 /// ⚠ 本函数**不覆盖** `.join("Cargo.toml")` 那 3 处 —— 它们跟着 **manifest** 走，
 /// 不跟着源码树走，搬树时本来就不该动。两件事别混成一件。
 pub(crate) fn src_root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/backend")
 }
 
 #[cfg(test)]
@@ -112,7 +112,7 @@ mod tests {
     ///    本条自己守的只剩「这棵树剥得干净 ＋ 文件数没缩水」。
     ///
     /// 🔴 **这一段在两棵树里各住一份，逐字必须相同**
-    /// （`remote-daemon-proto/src/guard_support.rs` ＋ `src-tauri/src/structural_scan.rs`）——
+    /// （`src/backend/guard_support.rs` ＋ `src-tauri/src/structural_scan.rs`）——
     /// `K-R110` 交回时点名过这个形状：**两个住址、同一句话**，改一处漏一处，
     /// 下一次还是一处真一处假。钉着它的是
     /// `guard_support.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
@@ -173,7 +173,7 @@ mod tests {
         let end = format!("// ⟦KR115D3 共{}", "用段·止⟧");
         let sites = [
             "src-tauri/src/structural_scan.rs",
-            "remote-daemon-proto/src/guard_support.rs",
+            "src/backend/guard_support.rs",
         ];
         let mut blocks: Vec<(&str, String)> = Vec::new();
         for rel in sites {

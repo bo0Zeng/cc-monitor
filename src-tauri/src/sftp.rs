@@ -645,7 +645,7 @@ fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
 ///
 /// 找的是 daemon 那侧那段 `#[used] static CC_MONITOR_BUILD_STAMP`：
 /// `<开>` ＋ `BUILD_ID` ＋ `<关>`，两个界标的**唯一住址**在
-/// `remote-daemon-proto/src/main.rs`（`BUILD_STAMP_OPEN` / `BUILD_STAMP_CLOSE`），
+/// `src/backend/main.rs`（`BUILD_STAMP_OPEN` / `BUILD_STAMP_CLOSE`），
 /// 由 `build.rs` 抠出来经 `DAEMON_STAMP_OPEN` / `DAEMON_STAMP_CLOSE` 交到这里
 /// ⇒ 本文件里**不许出现那两个字面量**
 /// （`the_embedded_identity_comes_from_the_bytes_not_from_a_label` 在数它）。
@@ -1790,7 +1790,7 @@ mod tests {
             assert!(
                 !prod.contains(&format!("\"{mark}\"")),
                 "本文件生产段里出现了界标字面量 `{mark}` —— 闭集唯一住址在\n\
-                 `remote-daemon-proto/src/main.rs`（`BUILD_STAMP_OPEN`/`CLOSE`），\n\
+                 `src/backend/main.rs`（`BUILD_STAMP_OPEN`/`CLOSE`），\n\
                  这里只许 `env!(\"DAEMON_STAMP_OPEN\")` / `env!(\"DAEMON_STAMP_CLOSE\")` 取。"
             );
         }

@@ -245,7 +245,7 @@ mod tests {
         let mut files = Vec::new();
         for sub in [
             "src-tauri/src",
-            "remote-daemon-proto/src",
+            "src/backend",
             "src-tauri/crates",
         ] {
             files.extend(guard_core::scan_tree!(&root.join(sub), &["rs"]));

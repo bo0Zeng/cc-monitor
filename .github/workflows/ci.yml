@@ -671,7 +671,7 @@ jobs:
           #   · `daemon-gate2` 由 36 降到 35，同日第二拍再由 35 降到 34 —— 那是一条**从 `F20`
           #     （08-06）起就没成立过**的地板（`meta_colon` 必然走登记豁免，可达上限一直是 35；
           #     `meta_dollar` 09-09 查穿根因后成为第二条登记豁免 ⇒ 34），新口径是
-          #     「总槽位 − 已登记豁免数」，由 `remote-daemon-proto/src/control/gate.rs` 两侧夹住。
+          #     「总槽位 − 已登记豁免数」，由 `src/backend/control/gate.rs` 两侧夹住。
           #   两条的完整理由都写在**各自的调用行上方**，这里不重抄 —— 这张清单是副本，不是真相源。
           #   ⚠⚠ **这几行注释刻意不把那句报错原样抄全**：下面那个 `grep -q` 搜的是**整份
           #   `ci.yml`、不剔注释** ⇒ 注释里只要出现一次逐字的
@@ -997,7 +997,7 @@ jobs:
       #      （套件非零退出时，地板那一步压根轮不到读数）。`meta_dollar`（根因至今未知）
       #      照旧在那里疼。地板扛的是另一件事：**断言数缩水**。
       #    ⇒ 新口径：**地板 = 总槽位 − 已登记豁免数**，由
-      #      `remote-daemon-proto/src/control/gate.rs` 的 `the_gate2_floor_still_makes_a_skip_hurt`
+      #      `src/backend/control/gate.rs` 的 `the_gate2_floor_still_makes_a_skip_hurt`
       #      **两侧夹住**（低了＝有一格被静默不验；高了＝又造一条够不到的地板）。
       #      ⇒ 想降这个数，唯一的路是**登记一条带书面理由的豁免**；想省掉一条豁免，
       #      这个数就得涨回去。**两边都不再靠散文。**

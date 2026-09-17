@@ -70,7 +70,7 @@ mod tests {
             //    「正常派生」写在同一行（`printf '%s-cc'` 一处），Rust 版拆成了
             //    `"session-cc"`（空名回落）与 `format!("{s}-cc")` 两行 —— **同一个函数体内**，
             //    尺子是按**行**数的。两行都在 `derive_tmux_name` 里，自检段界钉着这一点。
-            "remote-daemon-proto/src/control/ccm/plan.rs",
+            "src/backend/control/ccm/plan.rs",
             "producer-duplicate",
             2,
             "`derive_tmux_name` 的原生副本（与前端 `deriveTmuxName` 同义），**一个函数体内两行**。\
@@ -151,7 +151,7 @@ mod tests {
         // 🔴 〔`K-R48` 第二拍 09-11〕`shared/ccm` 删了 ⇒ 换成后端那份原生实现。
         //    `collect_rs` 只扫 `src-tauri/`，够不着 `remote-daemon-proto/` ⇒ 仍按 extra 点名。
         for extra in [
-            "remote-daemon-proto/src/control/ccm/plan.rs",
+            "src/backend/control/ccm/plan.rs",
             "shared/cc-bus/scripts/cc-spawn",
         ] {
             files.push(root.join(extra));
@@ -248,7 +248,7 @@ mod tests {
         for f in [
             "src-tauri/src/tmux.rs",
             "src-tauri/crates/gate-core/src/lib.rs",
-            "remote-daemon-proto/src/control/ccm/plan.rs",
+            "src/backend/control/ccm/plan.rs",
             "shared/cc-bus/scripts/cc-spawn",
         ] {
             let n = fs::read_to_string(root.join(f))

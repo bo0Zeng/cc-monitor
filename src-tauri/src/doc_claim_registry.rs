@@ -318,13 +318,13 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
         EnvKeyClaim::Asserts,
     ),
     (
-        "remote-daemon-proto/src/observe/accounts_query.rs",
+        "src/backend/observe/accounts_query.rs",
         "//! - `/proc/<pid>/environ`",
         EnvKeyClaim::Asserts,
     ),
     // `K-P5f` 同一拍新写的第五份 —— 它自己就是「订正的同时又添一份副本」的活证据。
     (
-        "remote-daemon-proto/src/observe/accounts_query.rs",
+        "src/backend/observe/accounts_query.rs",
         "守的性质：",
         EnvKeyClaim::Asserts,
     ),
@@ -369,17 +369,17 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     ),
     // ── 在引述那句话本身的那几份（逐字带着旧说法是故意的）────────────────
     (
-        "remote-daemon-proto/src/observe/accounts_query.rs",
+        "src/backend/observe/accounts_query.rs",
         "文档那一行把",
         EnvKeyClaim::Quotes,
     ),
     (
-        "remote-daemon-proto/src/observe/accounts_query.rs",
+        "src/backend/observe/accounts_query.rs",
         "那句诚实边界：文档与本文件头注",
         EnvKeyClaim::Quotes,
     ),
     (
-        "remote-daemon-proto/src/observe/accounts_query.rs",
+        "src/backend/observe/accounts_query.rs",
         "里没点名",
         EnvKeyClaim::Quotes,
     ),
@@ -390,7 +390,7 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     ),
     // ── 同句式、别的主语 ──────────────────────────────────────────────────
     (
-        "remote-daemon-proto/src/observe/accounts_query.rs",
+        "src/backend/observe/accounts_query.rs",
         "从出参 `json!`",
         EnvKeyClaim::OtherSubject,
     ),
@@ -687,7 +687,7 @@ mod tests {
             ),
             (
                 "control/launch.rs（daemon argv）",
-                root.join("remote-daemon-proto/src/control/launch.rs")
+                root.join("src/backend/control/launch.rs")
                     .is_file(),
             ),
             (
@@ -706,7 +706,7 @@ mod tests {
                 //    ⇒ `INVARIANTS §33b` 那句「四个产出方，一个都没退役」**仍然成立**，
                 //    只是第四个的住址从 `shared/ccm` 变成了 `control/ccm/plan.rs`。
                 "control/ccm/plan.rs（用户终端那条路）",
-                root.join("remote-daemon-proto/src/control/ccm/plan.rs")
+                root.join("src/backend/control/ccm/plan.rs")
                     .is_file(),
             ),
         ];
@@ -782,7 +782,7 @@ mod tests {
         );
         let ccm: String = ["mod.rs", "argv.rs", "plan.rs"]
             .iter()
-            .map(|f| prod_rs(&format!("remote-daemon-proto/src/control/ccm/{f}")))
+            .map(|f| prod_rs(&format!("src/backend/control/ccm/{f}")))
             .collect::<Vec<_>>()
             .join("\n");
         assert!(
@@ -833,7 +833,7 @@ mod tests {
         };
         // ★ 反向锚点：daemon 那条「不 attach」的结构事实还在。它没了，② 的两档都说不清。
         // 🔴 **钉整行，不是子串**（`needle_anchor_registry` 治的那一族：匹配单位比事实小）。
-        let launch_rs = read("remote-daemon-proto/src/control/launch.rs");
+        let launch_rs = read("src/backend/control/launch.rs");
         let no_attach = "//! 开不了你面前的窗）。所以本模块**不 attach**，一次都不。";
         assert!(
             guard_core::pin_line(&launch_rs, no_attach).is_ok(),
@@ -1303,7 +1303,7 @@ mod tests {
             in_doc.len()
         );
         let daemon =
-            std::fs::read_to_string(repo_root().join("remote-daemon-proto/src/inbound.rs"))
+            std::fs::read_to_string(repo_root().join("src/backend/inbound.rs"))
                 .expect("读不到 daemon 的 inbound.rs");
         let prod = guard_core::production_code(&daemon);
         let missing: Vec<&&str> = in_doc
@@ -1376,7 +1376,7 @@ mod tests {
         for root in [
             "src-tauri/src",
             "src-tauri/crates",
-            "remote-daemon-proto/src",
+            "src/backend",
         ] {
             srcs.extend(guard_core::scan_tree!(&repo_root().join(root), &["rs"]));
         }
@@ -1543,7 +1543,7 @@ mod tests {
     /// 与上一条（`file.rs::symbol`）同族、更宽一档：符号那条只看得见 `.rs`，
     /// 而 `doc/` 里点名的还有 `.ts` / `.sh` / `.mjs` / `.json` / `.yml`。
     /// 建判据当天实测 **119 处**带目录的路径引用，逐条核完**真腐 1 处**：
-    /// `INVARIANTS.md` 里的 `remote-daemon-proto/src/accounts_query.rs`
+    /// `INVARIANTS.md` 里的 `src/backend/observe/accounts_query.rs`
     /// —— 那个文件早已搬进 `observe/`，而**没有任何东西会因此变红**（本条即为此建）。
     ///
     /// ⚠ **解析口径用 `git ls-files` 而不是磁盘**：磁盘会把「本机生成、CI 里还不存在」的
@@ -1551,7 +1551,7 @@ mod tests {
     /// 而**结论随环境变的判据比没有判据更坏**。生成物走例外表，理由写明。
     ///
     /// ⚠ 匹配用**后缀**：文档常按「隐含根」写（`control/gate.rs` 指的是
-    /// `remote-daemon-proto/src/control/gate.rs`）。第一版用全路径相等，
+    /// `src/backend/control/gate.rs`）。第一版用全路径相等，
     /// 一口气误报 36 处 —— 又一次**匹配单位比事实小**。
     #[test]
     fn every_repo_path_named_in_the_docs_still_resolves() {
@@ -2382,7 +2382,7 @@ mod tests {
         for root in [
             "src-tauri/src",
             "src-tauri/crates",
-            "remote-daemon-proto/src",
+            "src/backend",
         ] {
             srcs.extend(guard_core::scan_tree!(&repo_root().join(root), &["rs"]));
         }
@@ -2684,7 +2684,7 @@ mod tests {
     /// ★ 这个数**只有一个家**（那段生产代码）：不是本文件里的常量，也不是文档里那个词。
     /// 这正是本模块头注那条手法：「判据不自己写那个数 —— 它把数抽出来，再与现场量的比」。
     fn env_keys_actually_read() -> usize {
-        let p = repo_root().join("remote-daemon-proto/src/observe/accounts_query.rs");
+        let p = repo_root().join("src/backend/observe/accounts_query.rs");
         let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}：{e}"));
         assert!(
             raw.len() > 20_000,

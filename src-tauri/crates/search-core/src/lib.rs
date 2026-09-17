@@ -1,5 +1,5 @@
 //! 历史全文搜索**口径**的唯一实现 —— monitor 的内存索引（`src-tauri/src/search.rs`）
-//! 与 daemon 的 `--search`（`remote-daemon-proto/src/observe/search_query.rs`）共用这一份。
+//! 与 daemon 的 `--search`（`src/backend/observe/search_query.rs`）共用这一份。
 //!
 //! # 它治的是「今天没漂，而没人拦着它漂」
 //!

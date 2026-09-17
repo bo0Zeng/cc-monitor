@@ -432,14 +432,14 @@ pub const RELAY_ROUTE_PREFIX: &str = "/s/";
 /// 本机中转的端口。**monitor 这一侧是权威** —— 起中转时以 `CCM_RELAY_PORT`
 /// 显式交给子进程（`local_daemon::start_local_relay`），注入侧用同一个常量拼 URL。
 ///
-/// ⚠ 它与 `remote-daemon-proto/src/relay/server.rs::DEFAULT_PORT` 是**同一个数字的两处写法**，
+/// ⚠ 它与 `src/backend/relay/server.rs::DEFAULT_PORT` 是**同一个数字的两处写法**，
 /// 而两处**今天不由任何东西对拍**。之所以不疼：起中转那条路**显式传** `CCM_RELAY_PORT`
 /// ⇒ 子进程用的是这里这个值，daemon 那个默认值在这条路上根本不参与。
 /// **端口通告面本件不做**（`§0e` 裁五，跟进件 `己1-f26`）——
 /// ⇒ 「同机两个 monitor」这一形今天是：第二个中转绑不上、**退 2 并出声**，不静默。
 pub const RELAY_PORT: u16 = 8788;
 
-/// 一段路由键里允许的字符 —— **与 `remote-daemon-proto/src/relay/route.rs::segment_is_safe`
+/// 一段路由键里允许的字符 —— **与 `src/backend/relay/route.rs::segment_is_safe`
 /// 是同一条规则**（白名单，不是黑名单；`.` 与 `/` 都不在里面 ⇒ `..` 构造不出来）。
 ///
 /// # ⚠ 它是**第二份实现**，这件事必须说清楚，不许读成「共用了一份」
@@ -1359,7 +1359,7 @@ mod tests {
     // 🔴 〔`K-R48` 第二拍 09-11〕**这里原来是那条中转转发的判据**
     //   （`the_ccm_container_path_forwards_the_relay_base_url_across_the_tmux_boundary`），
     //   做法是把 `shared/ccm` 那段 bash 窗口交给 `bash` 跑一遍。脚本删了 ⇒ 连同它上面那整段
-    //   诚实边界一起摘掉。新家：`remote-daemon-proto/src/control/ccm/plan.rs` 的
+    //   诚实边界一起摘掉。新家：`src/backend/control/ccm/plan.rs` 的
     //   `tests::the_container_path_forwards_every_inherited_variable_inward`。
     // ⚠ 那段诚实边界里有一句**今天仍然成立、而且没有别处写着**，抬到这里别丢：
     //   本机中转这条路上**没有任何生产输入能走到它** —— 能推出中转 id 的只有
@@ -1455,7 +1455,7 @@ mod tests {
         out
     }
 
-    /// 容器路那份**源码**的住址：`remote-daemon-proto/src/control/ccm/plan.rs`。
+    /// 容器路那份**源码**的住址：`src/backend/control/ccm/plan.rs`。
     ///
     /// 🔴 〔`K-R48` 第二拍 09-11〕从前这里是 `include_str!("../../../../shared/ccm")`。
     /// 那个 bash 脚本删了（`K33`：「不要有什么 bash 脚本」），容器路整条搬进了 daemon 那个 crate。
@@ -1466,7 +1466,7 @@ mod tests {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("src-tauri 的上级")
-            .join("remote-daemon-proto/src/control/ccm/plan.rs");
+            .join("src/backend/control/ccm/plan.rs");
         std::fs::read_to_string(&p)
             .unwrap_or_else(|e| panic!("读不到容器路那份源码 {}：{e}", p.display()))
     }
@@ -1598,7 +1598,7 @@ mod tests {
     //   窗口**原样交给 `bash` 跑一遍**再读载荷 —— 那个脚本删了，连被测对象都没有了。
     //
     // ⚠ **它们守的那件事没丢，新家点名**：
-    //   `remote-daemon-proto/src/control/ccm/plan.rs` 的
+    //   `src/backend/control/ccm/plan.rs` 的
     //   `tests::the_container_path_forwards_every_inherited_variable_inward`
     //   —— 三条转发（`CLAUDE_CONFIG_DIR` / `ANTHROPIC_BASE_URL` / `CCM_LAUNCH_ID`）
     //   逐条钉 ＋ 一条**非空对照**（三个都没设 ⇒ 载荷不许带任何 `export`）。

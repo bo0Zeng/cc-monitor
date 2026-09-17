@@ -174,7 +174,7 @@ mod tests {
         //    `F15` 给它加的 `=`）。〔用@09-11 `K33`〕那个脚本删了 ⇒ **这条路没有第二个实现了**，
         //    它的原生副本就是下面那条 `control/ccm/plan.rs`。表从 5 条回到 4 条。
         (
-            "remote-daemon-proto/src/control/launch.rs",
+            "src/backend/control/launch.rs",
             CreationVerdict::UpstreamValidated,
             "名字来自入方向 `parse_request`，它自己就拒 `:`/`=`（那正是本判据的字符集来源）",
         ),
@@ -182,7 +182,7 @@ mod tests {
             // 〔`K-R48` 09-11〕**`ccm` 那条创建路径今天唯一的实现**：`ccm` 变成后端二进制
             // 自己的命令之后，`--print` 吐的那条 tmux 编排与真跑读的是同一个 `Plan`。
             //（第一拍它与 `shared/ccm` 并存、表是 5 条；第二拍脚本删了，回到 4 条。）
-            "remote-daemon-proto/src/control/ccm/plan.rs",
+            "src/backend/control/ccm/plan.rs",
             CreationVerdict::ValidatesItself,
             "显式 `--tmux=<名>` / `--tmux-base=<基名>` 两条都先过 `validate_tmux_name`，\
              它逐字拒 `* ? . : =` 与控制字符（禁字集自 `shared/ccm` 那条 bash `case` 逐字承接）；\
@@ -238,7 +238,7 @@ mod tests {
         //    （bash `case` 校验，`F15` 给它加的 `=`）。脚本删了 ⇒ 只剩下面那条原生的。
         (
             // 〔`K-R48` 09-11〕原 `shared/ccm` 那条校验的**原生副本**：同一串禁字，换了语言。
-            "remote-daemon-proto/src/control/ccm/plan.rs",
+            "src/backend/control/ccm/plan.rs",
             "\"*?.:=\"",
             "`validate_tmux_name` 的禁字集 —— 与上面那条 bash `case` **逐字同一串字符**，\
              刻意写成一个字符串字面量而不是 `matches!(c, '*' | '?' | …)`，\
@@ -264,7 +264,7 @@ mod tests {
 
         // ── ① 反向锚点：daemon 那条形状门还在（它没了本判据就在空转）──────────
         let kill_prod = guard_core::production_code(include_str!(
-            "../../../../remote-daemon-proto/src/control/kill.rs"
+            "../../../../src/backend/control/kill.rs"
         ));
         let forbidden: Vec<char> = [':', '=']
             .into_iter()
@@ -285,7 +285,10 @@ mod tests {
         let mut found: Vec<String> = Vec::new();
         let mut scanned = 0usize;
         let mut stack: Vec<std::path::PathBuf> =
-            ["src-tauri/src", "remote-daemon-proto/src", "src", "shared"]
+            // 〔搬树 2026-09-17〕**这里没有 `"src/backend"`，不是漏了**：后端树搬到
+            // `<repo>/src/backend` 之后它已经是 `"src"` 的**子目录**，两个都列会把
+            // 后端的每个文件数两遍（搬家前 `remote-daemon-proto/src` 与 `src` 是互斥的）。
+            ["src-tauri/src", "src", "shared"]
                 .iter()
                 .map(|d| root.join(d))
                 .collect();

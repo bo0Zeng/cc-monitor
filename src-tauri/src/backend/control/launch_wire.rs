@@ -101,7 +101,7 @@ pub enum WireContainer {
 /// 🔴 **它比 [`CliAccount`] 少一态，那不是漏，是边界**〔`K-R89` 09-13〕。
 ///
 /// `CliAccount` 09-13 起有第三态 `Inherit`（省略 `--account`，语义由
-/// `DECISIONS.md#R28` 定、由 `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account`
+/// `DECISIONS.md#R28` 定、由 `src/backend/control/ccm/plan.rs::resolve_account`
 /// 落地）。**本 wire 刻意没有对应变体** ——
 /// 这条 IPC **只有远端会走**（前端的闸是 `ctx.transport.kind === "ssh"`），
 /// 而远端是 ssh 过去，**那台机器上的继承态不是 monitor 的环境**（`R28` 裁定四逐字：
@@ -712,14 +712,14 @@ mod f07_main_path_tests {
         // ★★ 第二棵树〔`K-P2` 08-29 立，`K-R48` 第二拍 09-11 换住址〕。
         //    它原来是 `shared/ccm`（那份 bash 脚本），理由是「`§0d` 裁定的接线路落在那里，
         //    而上面那棵树够不到它」。〔用@09-11 `K33`〕脚本删了 ⇒ 换成
-        //    `remote-daemon-proto/src/control/ccm/`：**接线路还在那条边上，只是换了语言**。
+        //    `src/backend/control/ccm/`：**接线路还在那条边上，只是换了语言**。
         //    ⚠ needle 仍用**带边界的词**（不是 Rust 那边的带引号字面量）：
         //    它在两侧可能长在字面量里、也可能长在 JSON 串里，带边界两种形态都收得到。
         let word = format!("create-or-{}", "attach");
         let ccm_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("src-tauri 的上级")
-            .join("remote-daemon-proto/src/control/ccm");
+            .join("src/backend/control/ccm");
         let ccm: String = ["mod.rs", "argv.rs", "plan.rs"]
             .iter()
             .map(|f| {

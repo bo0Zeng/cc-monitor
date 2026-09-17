@@ -172,7 +172,7 @@ fn extract_backtick_after(text: &str, label: &str) -> Option<String> {
     Some(after[start..start + rel_end].to_string())
 }
 
-/// 从 daemon 源码（`remote-daemon-proto/src/main.rs`）提取 `const BUILD_ID`，emit 成编译期
+/// 从 daemon 源码（`src/backend/main.rs`）提取 `const BUILD_ID`，emit 成编译期
 /// env `DAEMON_BUILD_ID`，让 monitor 的 `EXPECTED_DAEMON_BUILD_ID` 与内嵌二进制的 build_id
 /// **单一事实源**（SS-B：消除 F06 时的手工同步）。
 fn emit_daemon_build_id() {
@@ -313,8 +313,8 @@ fn emit_daemon_capabilities() {
 /// 含这个串的行**恰好 1 行**）。
 ///
 /// ⚠ 仓里**还有两个同名常量**，本函数一个都盖不到：
-/// `remote-daemon-proto/src/control/ccm/mod.rs`（`ccm` 的能力 token）与
-/// `remote-daemon-proto/src/agents/fake/mod.rs`（假 agent 的）。
+/// `src/backend/control/ccm/mod.rs`（`ccm` 的能力 token）与
+/// `src/backend/agents/fake/mod.rs`（假 agent 的）。
 /// `K-R61` 往前者加了一个 token，实测 `DAEMON_CAPABILITIES` **逐字不变**（仍是 `bg,tail-only`）
 /// —— 这是量出来的，不是推的。谁在数 `ccm` 那一份，清单住它自己的头注。
 fn extract_capabilities(src: &str) -> Option<String> {
@@ -417,7 +417,7 @@ fn embed_daemons() {
                      可能是：① 它不是这套源码编出来的（太旧 —— `p2f-build-stamp` 之前的\
                      daemon 根本没有戳）；② 它被改过 / 截断了；③ 界标抠错了\
                      （现打读到 open=`{stamp_open}` close=`{stamp_close}`，空串 = 从\
-                     `remote-daemon-proto/src/main.rs` 抠失败，先修 `build.rs` 那一处）。\n\
+                     `src/backend/main.rs` 抠失败，先修 `build.rs` 那一处）。\n\
                      🔴 **别去写一个 `.build_id` 旁文件来糊它** —— `K-R70` 之后没有任何东西\
                      读那个文件了，写一份只是把标签换个地方抄。\n\
                      出路：重跑 `cargo zigbuild --target {arch}-unknown-linux-musl` 重编，\

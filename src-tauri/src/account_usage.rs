@@ -971,7 +971,7 @@ mod tests {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("仓根")
-            .join("remote-daemon-proto/src/inbound.rs");
+            .join("src/backend/inbound.rs");
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}: {e}", p.display()))
     }
 
@@ -980,7 +980,7 @@ mod tests {
         let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("仓根")
-            .join("remote-daemon-proto/src/main.rs");
+            .join("src/backend/main.rs");
         let src =
             std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}: {e}", p.display()));
         let head = "const SUBCOMMANDS: &[&str] = &[";

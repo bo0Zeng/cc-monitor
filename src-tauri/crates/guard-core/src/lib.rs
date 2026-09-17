@@ -116,7 +116,7 @@ fn cfg_is_test_only(attr: &str) -> bool {
 ///
 /// 逐字是：「列 0 判据在两侧的文件上**实测干净**（daemon 侧 `every_daemon_file_strips_clean`、
 /// monitor 侧 `every_monitor_file_strips_clean`）」。**两半都不成立**：
-/// `remote-daemon-proto/src/plugin/mod.rs` 的测试段里有一段 `r#"…"#`，内容里逐字有一行
+/// `src/backend/plugin/mod.rs` 的测试段里有一段 `r#"…"#`，内容里逐字有一行
 /// `}"#;` ⇒ 区间在**第 657 行**收了尾，而真收尾在 688 行 ⇒ **31 行**测试代码漏进生产段；
 /// 而那两条被点名的判据**一条都没红** —— 漏出去的那 31 行里测试属性恰好 0 个、`mod` 行 0 行。
 /// ⚠ 同族第几次不必再数，形状是同一个：**「写下来的边界」不是判据**。
@@ -516,7 +516,7 @@ fn raw_string_open(sb: &[u8], i: usize) -> Option<(usize, usize)> {
 ///    那之后的 `/*` 根本不进眼。少了这一条，一句解释性散文就能把它后面整份文件吃掉。
 /// 5. **原始串 / 字节串按真语法跟踪**（`r"…"` · `r#"…"#` · `b"…"` · `br#"…"#`，
 ///    井号个数配平、可跨行）。⚠ 这一条是**现打出来的**，不是防御性编程：
-///    `remote-daemon-proto/src/relay/server.rs` 的 `STUB_LAUNCHER` 是一段 shell，
+///    `src/backend/relay/server.rs` 的 `STUB_LAUNCHER` 是一段 shell，
 ///    里面逐字有 `hostport=${rest%%/*}` 与 `path=/${rest#*/}` —— 一个 `/*` 一个 `*/`。
 ///    按 [`strip_trailing_comments`] 那种「含 `r#` 的**那一行**整行不动」的便宜办法，
 ///    跨行原始串**内部**的行照样被当代码扫 ⇒ 那 18 个字节会被当块注释抹掉，
@@ -557,7 +557,7 @@ fn try_strip_block_comments(src: &str) -> Option<String> {
 /// [`test_module_ranges`] 的收尾针是「列 0 的右大括号」，而它原先在**裸文本**上找 ——
 /// 于是测试模块里一段 `r#"…"#` 的**内容**里出现列 0 的 `}`，那一段就在字符串中间收了尾。
 /// 09-13 现打：全仓 git 跟踪的 `.rs` **235** 份里**恰好 1 份**踩上
-/// （`remote-daemon-proto/src/plugin/mod.rs`，`}"#;` 那一行）——
+/// （`src/backend/plugin/mod.rs`，`}"#;` 那一行）——
 /// **31 行测试代码漏进生产段、同样这 31 行从测试段里少掉**，而两条反向自检都看不见它
 /// （那 31 行里测试属性恰好 0 个、`mod` 行 0 行）。
 ///

@@ -152,7 +152,7 @@ export function tmuxNameSegment(raw: string): string {
 /**
  * ★ F04b 追加 `=`：**别创建一个主路杀不掉的名字。**
  *
- * kill 的主路从 F04b 起走 daemon（`remote-daemon-proto/src/control/kill.rs`），
+ * kill 的主路从 F04b 起走 daemon（`src/backend/control/kill.rs`），
  * 而它的形状门逐字拒绝 `:` 与 `=`（「它们是 tmux 目标语法」）。
  * `isValidTmuxName` 已经禁了 `:`，但 **`=` 是允许的** —— 于是一个像 `proj=x-cc`
  * 的名字**建得出来、却在主路上杀不掉**（daemon 回 `invalid_args`）。

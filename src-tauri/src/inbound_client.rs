@@ -49,7 +49,7 @@ use tokio::sync::{mpsc, oneshot};
 ///
 /// 超时**不摘登记**（见 [`InboundClient::call`]），所以一个死掉但没断连的 daemon
 /// 会让登记表只涨不落。这条上限把它变成「新命令快速失败」而不是「内存无界增长」。
-/// 取值与 daemon 侧应答通道容量同量级（`remote-daemon-proto/src/inbound.rs` 的
+/// 取值与 daemon 侧应答通道容量同量级（`src/backend/inbound.rs` 的
 /// `REPLY_CHANNEL_CAPACITY = 256`）—— 那头一次也只缓 256 条应答。
 pub const MAX_PENDING: usize = 256;
 
@@ -539,7 +539,7 @@ struct RequestLine<'a> {
 
 /// 把一条命令编成线上的一行（含行尾 `\n`）。**纯函数。**
 ///
-/// 对侧是 `remote-daemon-proto/src/wire.rs::Request`（`{id, cmd, args}`，`args` 可缺省）。
+/// 对侧是 `src/backend/wire.rs::Request`（`{id, cmd, args}`，`args` 可缺省）。
 ///
 /// # 为什么可以 `expect`
 ///
@@ -1134,7 +1134,7 @@ mod tests {
     #[test]
     fn the_e2e_command_list_matches_the_daemon_command_table() {
         const SUITE: &str = include_str!("../../tests/e2e/inbound-daemon-frames.sh");
-        const DAEMON_INBOUND: &str = include_str!("../../remote-daemon-proto/src/inbound.rs");
+        const DAEMON_INBOUND: &str = include_str!("../../src/backend/inbound.rs");
 
         // daemon 侧：`pub const COMMANDS: &[&str] = &["cancel", "ping", "resolve"];`
         let i = DAEMON_INBOUND
@@ -1205,7 +1205,7 @@ mod tests {
     /// 并另加一格「data 那几个键不许出现在 args 里」，免得包含关系退化成空真。
     #[test]
     fn the_two_tmux_primitive_arg_builders_match_the_daemon_parsers() {
-        const DAEMON_INBOUND: &str = include_str!("../../remote-daemon-proto/src/inbound.rs");
+        const DAEMON_INBOUND: &str = include_str!("../../src/backend/inbound.rs");
         let prod = guard_core::production_code(DAEMON_INBOUND);
 
         /// 从 daemon 的 `REGISTRY` 里抠出某条命令那一格 `fields: &[…]` 的成员。
@@ -1299,7 +1299,7 @@ mod tests {
     /// 漂开的症状是「命令发出去了、daemon 回 `bad_request` 说缺字段」，而两边各自看都对。
     #[test]
     fn launch_args_field_names_match_the_daemon_parser() {
-        const DAEMON_LAUNCH: &str = include_str!("../../remote-daemon-proto/src/control/launch.rs");
+        const DAEMON_LAUNCH: &str = include_str!("../../src/backend/control/launch.rs");
         let prod = guard_core::production_code(DAEMON_LAUNCH);
         // daemon 侧逐个 `get_str("<key>")` 抠出来。
         let key = "get_str(\"";

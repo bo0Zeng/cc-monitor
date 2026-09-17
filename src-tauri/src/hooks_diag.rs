@@ -545,7 +545,7 @@ pub async fn diagnose_remote_cc_bus_hooks(origin: String) -> Result<HooksReport,
     let read = async {
         let stream = crate::ssh_source::connect_and_exec_cmd(&cfg, REMOTE_HOOKS_CMD).await?;
         let mut buf = Vec::new();
-        // `+ 1` 见 remote-daemon-proto/src/common/fs.rs：截断的 settings.json 解析失败之后
+        // `+ 1` 见 src/backend/common/fs.rs：截断的 settings.json 解析失败之后
         // 用户看到的是「解析失败」而不是「超限」，那是误导性的错误。
         stream
             .take(REMOTE_SETTINGS_CAP + 1)

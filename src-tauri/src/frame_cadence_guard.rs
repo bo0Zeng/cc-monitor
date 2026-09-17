@@ -109,7 +109,7 @@ mod tests {
         // 而 F01 建它时的普查**只看了 Rust**。⇒ 「同一句假话住四处」那次普查本身
         // 就漏了一整个目录，而**耐久文档恰恰是那句话最有害的住处**（它是权威）。
         // ★ 「扫描面画小了」在本仓第四次；这一次漏的不是一个文件，是一个**目录族**。
-        for base in ["src-tauri/src", "remote-daemon-proto/src", "doc"] {
+        for base in ["src-tauri/src", "src/backend", "doc"] {
             walk(&root.join(base), &mut out);
         }
         out
@@ -152,7 +152,7 @@ mod tests {
     /// 头注里逐字解释了「节拍没了，但首轮这一拍要留」。那段没了 = 真相源没了。
     #[test]
     fn the_real_cadence_is_still_documented_somewhere() {
-        let w = fs::read_to_string(repo_root().join("remote-daemon-proto/src/observe/watcher.rs"))
+        let w = fs::read_to_string(repo_root().join("src/backend/observe/watcher.rs"))
             .expect("读不到 daemon watcher.rs");
         assert!(
             w.len() > 10_000,

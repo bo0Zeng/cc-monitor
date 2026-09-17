@@ -73,7 +73,7 @@ const TMUX_LS_FMT_FIELDS: usize = 6;
 /// # ★★ K-R12 下一拍（09-04）：**这一份为什么留在这里** —— 两条路各自的论据
 ///
 /// daemon 那两份上一拍是三份里的两份，本拍已经归位到**一个家**
-/// （`remote-daemon-proto/src/common/tmux_utf8.rs`，`control/` 与 `observe/` 两层各自 `use` 它，
+/// （`src/backend/common/tmux_utf8.rs`，`control/` 与 `observe/` 两层各自 `use` 它，
 /// 编译器兜住、漂不了）。本份是**第三份**，它跨的是二进制，两条路都量过：
 ///
 /// - **乙 · 放进某个已有的 `*-core` 共享 crate**（那是本仓治「五份逐字节相同」的成方，
@@ -113,7 +113,7 @@ const UTF8_CLIENT_FLAG: &str = "-u";
 /// ⇒ 一条判据同时盖住「分隔符被吞」与「内容被改写」两半，**格式串一个字节不用动**。
 ///
 /// ⚠ **K-R12 下一拍（09-04）订正这条边界**：daemon 那两份已经归位到**一个家**
-/// （`remote-daemon-proto/src/common/tmux_utf8.rs::tab_underflow`）——
+/// （`src/backend/common/tmux_utf8.rs::tab_underflow`）——
 /// 上一拍这里写的「各另有一份」今天只剩**跨仓那一份**（就是本函数）。
 /// 两侧同形由 `utf8_client_kou_jing_has_one_home_and_this_side_matches_it` 对拍着
 /// （它把本函数的**函数体**当成被比的东西，不是名字）。
@@ -231,7 +231,7 @@ const USAGE_PROBE_NAME_PREFIX: &str = "ccm-usage-";
 ///
 /// 编排搬上 daemon 帧面之后，探针会话**不再由 monitor 自己建**，而是由 daemon 的
 /// `oneshot-session` 原语**铸**出来 —— 名字形状是 `ccm-oneshot-<slug>-cc`
-/// （唯一住址 `remote-daemon-proto/src/control/oneshot_session.rs::ONESHOT_PREFIX`
+/// （唯一住址 `src/backend/control/oneshot_session.rs::ONESHOT_PREFIX`
 /// ＋ `ONESHOT_GATE_SUFFIX`）。
 ///
 /// ⚠ **不扩面的后果不是「少过滤一个前缀」**：那条 `-cc` 尾巴让它**过得了** §34 Gate 2
@@ -493,7 +493,7 @@ const CAPTURE_PANE: &str = "capture-pane";
 /// 「抓屏本身失败」四件事里有三件被压进 `NO_PANE` 一个读数 ——
 /// 它们的下一步各不相同（装 tmux / 那台机器上没有会话在跑 / 刷新列表 / 看 tmux 原话）。
 /// 那五个码是 daemon 按**退出码 ＋ stderr 命中哪张针表**分出来的
-/// （`remote-daemon-proto/src/control/capture_pane.rs` 头注那张表），不是这一侧猜的。
+/// （`src/backend/control/capture_pane.rs` 头注那张表），不是这一侧猜的。
 ///
 /// ⚠ **认不出的码不许猜**：原样带出去。「压成一个具体而错误的答案」正是 daemon 那侧
 /// 兜底档（`capture_failed` ＋ stderr 原样回包）写下来要避免的形状 —— 这一侧照抄那条纪律。
@@ -569,7 +569,7 @@ fn gate1_reject_empty(target: &str) -> Result<(), String> {
 // 「把回落改成恒失败的桩留在原地 —— 那不是删，那是把一份实现变成一句谎话」）。
 //
 // 🔴 **那条「必须精确匹配」的性质今天真正在跑的那一份住 daemon**：
-// `remote-daemon-proto/src/control/capture_pane.rs::capture_on` 逐字
+// `src/backend/control/capture_pane.rs::capture_on` 逐字
 // 「Gate 1（`=name:` 精确匹配）—— 裸 `-t <名>` 会被 tmux 按『精确名 → 名字开头 → glob』解析」，
 // 它调的是 daemon 自己那份 `launch::exact_target`，与 `kill` 共用同一份。
 //
@@ -878,7 +878,7 @@ fn is_ccm_tmux_name(name: &str) -> bool {
 /// **这类硬路径在 daemon 重构时会一起断，而且断的是编译期**。
 ///
 /// U3 把 `watcher.rs` 搬进 `observe/` 时它**当场兑现** —— `cargo test --lib` 直接
-/// `couldn't read src/../../remote-daemon-proto/src/watcher.rs`。
+/// `couldn't read src/../../src/backend/observe/watcher.rs`。
 /// 好消息是它**响**（编译错，不是静默假绿）；坏消息是它有两处、还散着。收进一个常量，
 /// 下次 daemon 再搬家只改这一行。
 ///
@@ -890,7 +890,7 @@ fn is_ccm_tmux_name(name: &str) -> bool {
 #[cfg(test)]
 macro_rules! daemon_watcher_src {
     () => {
-        "../../remote-daemon-proto/src/observe/watcher.rs"
+        "../../src/backend/observe/watcher.rs"
     };
 }
 
@@ -1205,7 +1205,7 @@ mod tests {
     /// daemon 侧那个「一个口径一个家」的家（相对**仓根**）—— 跨仓对拍的被读对象。
     ///
     /// 单一落点：路径写死在这里一处，daemon 再搬家只改这一行。
-    const DAEMON_KOU_JING_HOME: &str = "remote-daemon-proto/src/common/tmux_utf8.rs";
+    const DAEMON_KOU_JING_HOME: &str = "src/backend/common/tmux_utf8.rs";
 
     /// ★★ **K-R12 下一拍（09-04）：「同一个口径只有一个家 + 另一侧引用它或有对拍」——
     /// 本 const 走的是**对拍**那一支。**
@@ -1234,7 +1234,7 @@ mod tests {
     ///   `cross_half_edge_registry::CROSS_EDGES` 逐条登记着（多一条就红），
     ///   **那个文件不在本拍写区**。运行期读在本仓是**既有做法**、不是绕道：
     ///   `cross_half_edge_registry` 自己就是运行期遍历 daemon 那棵树的
-    ///   （`both_halves()` 扫 `remote-daemon-proto/src`），`scanning_guard_registry::PENDING`
+    ///   （`both_halves()` 扫 `src/backend`），`scanning_guard_registry::PENDING`
     ///   里也直接列着 daemon 的文件。而且它在该登记表关心的那一维上**更轻**：
     ///   daemon 换布局时这里是一句说得清的运行期失败，不是 `cargo test` 编不过。
     ///   ⚠ 代价如实写下：这条边因此**不出现在** `CROSS_EDGES` 里。
@@ -1242,7 +1242,7 @@ mod tests {
     ///   ① 把下面那句运行期读换成编译期读（`include_str!` 配 `concat!` / `env!` 拼路径，
     ///      形状照本文件已有的 `daemon_watcher_src` 那个单一落点宏）；
     ///   ② 同轮在 `CROSS_EDGES` 里加一条 `monitor→daemon` 的登记
-    ///      （读者 `src-tauri/src/tmux.rs` · 被读 `remote-daemon-proto/src/common/tmux_utf8.rs` ·
+    ///      （读者 `src-tauri/src/tmux.rs` · 被读 `src/backend/common/tmux_utf8.rs` ·
     ///      理由「跨轨对拍：口径的家在对面，本侧那一份必须与它逐字相等」）。
     ///   🔴 只动 ① 会让那张表的条数当场对不上 —— 它是**两个方向都查**的。
     /// - **不管什么**：它不证明「那个旗真的被走到了」（「盘上有 ≠ 被走到」）。
@@ -1480,7 +1480,7 @@ mod tests {
             "生产段又出现了把目标插进 tmux 命令串的地方：{:?}\n\
              —— 那条路 `K-R72`/`K-R112` 已经收干净了（三条命令全走后端帧面）。\n\
              真要新增一处，`exact_target` 今天只住 daemon 侧\n\
-             （`remote-daemon-proto/src/control/launch.rs`），别在这里重新长一份。",
+             （`src/backend/control/launch.rs`），别在这里重新长一份。",
             found.iter().map(|(n, _)| n).collect::<Vec<_>>()
         );
         // ★ 反向自检：同一把尺子在**合成的坏语料**上必须红。
@@ -1969,7 +1969,7 @@ mod tests {
     #[test]
     fn the_oneshot_prefix_matches_the_daemon_side() {
         const DAEMON: &str =
-            include_str!("../../remote-daemon-proto/src/control/oneshot_session.rs");
+            include_str!("../../src/backend/control/oneshot_session.rs");
         let line = DAEMON
             .lines()
             .find(|l| {
@@ -2109,7 +2109,7 @@ mod tests {
     #[test]
     fn tmux_ls_fmt_double_write_point_stays_in_sync() {
         // F08a：TMUX_LS_FMT 双写点断言（红线 I8 的机器化护栏）。monitor(本 const) 与 daemon
-        // (`remote-daemon-proto/src/observe/watcher.rs`) 分属两个独立 crate、不能共享 const，但两侧
+        // (`src/backend/observe/watcher.rs`) 分属两个独立 crate、不能共享 const，但两侧
         // `tmux ls -F` 格式串**必须逐字一致**（否则 daemon 推的列 monitor 解错位）。编译期
         // include_str! 读 daemon 源，把本 const 的真 TAB 折回源码里的 `\t` 转义再断言 daemon 源
         // 含该带引号字面量——**双向**：改 monitor 或 daemon 任一侧忘同步，本测即红。
