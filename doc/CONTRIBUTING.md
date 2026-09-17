@@ -314,7 +314,7 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 ```bash
 grep -nE "tmux (new-session|send-keys|attach)" src/remote-launch.ts   # 命中的必须全是 ` * ` 注释行
 ```
-3. **保形回归** → `node src/remote-launch.test.ts`（改命令串则同步更新其逐串断言）+ `node src/session-backend.test.ts`。
+3. **保形回归** → `node test/remote-launch.test.ts`（改命令串则同步更新其逐串断言）+ `node test/session-backend.test.ts`。
 4. **加后端**（阶段②，后端在场）：先过 §31 最终形态第②③条——**abduco/dtach 没有 send-keys，取命令方式转后端 RPC**，不是往座里再加一个返回 shell 串的 const（见 `session-backend.ts` 顶注）。
 
 ---

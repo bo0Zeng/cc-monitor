@@ -1,5 +1,5 @@
 /**
- * F70 collectEditedFiles 纯函数断言（node 轨，跑法 `npx tsx src/panorama/session-files.test.ts`）。
+ * F70 collectEditedFiles 纯函数断言（node 轨，跑法 `npx tsx test/panorama/session-files.test.ts`）。
  * 零 node 依赖（项目无 @types/node）：自带计数 + eq，失败 throw 让 tsx 非零退出。
  */
 import { collectEditedFiles } from "../../src/panorama/session-files.ts";

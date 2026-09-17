@@ -129,7 +129,7 @@ pub struct HistorySessionEntry {
 ///
 /// ⚠ 这一层与前端 `src/views/counted.ts` 的 `liveRank` / `starRank` **是同一套档位**，
 /// 两侧各有判据钉着（本文件 `unknown_is_its_own_bucket_when_sorting` ·
-/// `src/views/counted.vitest.ts`）。
+/// `test/views/counted.vitest.ts`）。
 pub(crate) fn live_rank(v: Option<bool>) -> u8 {
     match v {
         Some(true) => 2,
@@ -2498,7 +2498,7 @@ pub fn new_local_session(
 /// # 🔴 ⚠ 它今天**不是** `#[tauri::command]`，而这是量出来的，不是选择
 ///
 /// 第一版给它挂了 `#[tauri::command]`，想着「注册那一行归 PM」。**门禁当场红两条**
-/// （`src/ipc/commands.vitest.ts` 的 `C04a`）：「这些命令声明了却没注册 ⇒ 前端调不到」
+/// （`test/ipc/commands.vitest.ts` 的 `C04a`）：「这些命令声明了却没注册 ⇒ 前端调不到」
 /// 与「TS 静态看不见的命令集变了」。⇒ 本仓**不接受**「声明了不注册」这个中间态。
 ///
 /// 把它接出去要动**四处**，其中三处不在 `K-R106` 的写区：
@@ -2508,7 +2508,7 @@ pub fn new_local_session(
 /// | 本函数 | ✅ | 加回 `#[tauri::command]` |
 /// | `src-tauri/src/lib.rs` 的 `generate_handler!` | ❌ | 注册一行 |
 /// | `src-tauri/src/parity_ledger.rs` 的 `LEDGER` | ✅ | **必须同一拍**加一行，否则它当场判「已注册但没进对账表」 |
-/// | `src/ipc/commands.ts` ＋ `src/ipc/commands.vitest.ts` | ❌ | 加包装层；后者那个**命令总数**是写死的（现打 147），要 +1 |
+/// | `src/ipc/commands.ts` ＋ `test/ipc/commands.vitest.ts` | ❌ | 加包装层；后者那个**命令总数**是写死的（现打 147），要 +1 |
 ///
 /// # 🔴 `K-R109`（09-13）：**接出去了** —— 上面那张「要动四处」的表已经全部落地
 ///
@@ -3118,7 +3118,7 @@ mod tests {
     ///   那四处接线本轮全部落地（属性 · `generate_handler!` · `LEDGER` · 包装层），
     ///   `runLocalResumeIntoExistingTmux` 现在 `await commands.render_local_attach(…)`。
     ///   ⚠ **本条钉的仍然只是「后端产得出」** —— 「有人在用」那一半由前端那一侧的判据钉
-    ///   （`src/remote-launch-run.vitest.ts` 的 `KR109D2` 两条），两处别混成一处。
+    ///   （`test/remote-launch-run.vitest.ts` 的 `KR109D2` 两条），两处别混成一处。
     #[test]
     #[cfg(not(windows))]
     fn the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created() {
@@ -3632,7 +3632,7 @@ mod tests {
             "`NO_TMUX_NAME` —— 名字只许 `remote-launch.ts::mintTmuxName` 铸（F13 那个撞名坑），\
              Rust 这侧不许补默认值。⚠ **这一格今天是半开的**（现打 09-13）：resume 那条\
              前端已接线（`views/history.ts::mintLocalTmuxName` · `tabs.ts::mintSessionTmuxName`，\
-             人群由 `src/ipc/commands.vitest.ts` 那条「每处 `resume_history_session` 都带 `tmuxName`」钉着）；\
+             人群由 `test/ipc/commands.vitest.ts` 那条「每处 `resume_history_session` 都带 `tmuxName`」钉着）；\
              而 `new_local_session` 的 Rust 签名里**根本没有 `tmux_name` 这一格** ⇒ 起新会话恒短路。",
             "给 `new_local_session` 加一个名字参数 ＋ 前端在那条路上也过一次铸造口。\
              ⚠ 那要动 `src/ipc/commands.ts` 与两个调用点，**不在 `K-R89` 的写区里**。",
@@ -7365,7 +7365,7 @@ mod tests {
     ///
     /// - **拿这个 token 真能反查出 sid**：那要一条真的跑起来的会话 + 一个真 daemon。
     ///   本条只买到「token 到了调用方手上」，反查那一跳的判据在前端
-    ///   （`src/accounts.vitest.ts` 的 `K-P5h` 那一组，`KP5HD2`）。
+    ///   （`test/accounts.vitest.ts` 的 `K-P5h` 那一组，`KP5HD2`）。
     /// - **走 ccm 容器那一支**：与老判据同一个洞（喂 `tmux_name = None` ⇒ 走回落那条路），
     ///   登记在 `launcher_identity_registry` 的 `L1` 那一行里。
     /// - **Windows 上的运行时行为**：④ 那一格按平台各自取基准串，但这台机器是 Linux，
@@ -7512,7 +7512,7 @@ mod tests {
     // `D8` 三刀实打（三处调用点各写一次 `account.filter(|_| false)`）：
     // **全量门禁四个数一格不动（`1328 / 一致 / 493 / 1512`）、`GATE: OK`，而中转前缀恒空。**
     //
-    // 🔴 **而看起来在守它的那把尺子，作用域对不上事实**：`src/ipc/commands.vitest.ts:402`
+    // 🔴 **而看起来在守它的那把尺子，作用域对不上事实**：`test/ipc/commands.vitest.ts:402`
     //「每一处起本机会话的调用都带 `account`」守的是 **TS 那一侧**（`D8` 的 `E4` 实测：
     // 在前端调用点上下同一形状的刀，`npm` 那道门当场红）。
     // **同一根链的 Rust 这一侧三跳，一格都没守。** —— 「两条路只修了一条」。

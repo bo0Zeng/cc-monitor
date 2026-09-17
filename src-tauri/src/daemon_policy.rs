@@ -25,7 +25,7 @@
 //! 并让它在 Linux 上**真脱离**（`process_group(0)` + stdio 全 null + 协议改走那个口）
 //! ⇒ 「勾掉开关」在那一支上**真的**是「继续跑」。
 //!
-//! ⇒ 禁令换成**按状态分档**（`K-P1 KPY4`，由 `src/settings/daemon-section.vitest.ts` 机检）：
+//! ⇒ 禁令换成**按状态分档**（`K-P1 KPY4`，由 `test/settings/daemon-section.vitest.ts` 机检）：
 //! 用户可见的那四句话有**唯一一个家**（`src/daemon-policy.ts`），
 //! Rust 这一侧把同样的四条字面量放在下面，由 [`tests::the_exit_copy_is_the_same_string_on_both_sides`]
 //! 逐字对拍 —— 形状抄 `the_local_origin_is_the_same_string_on_both_sides`。
@@ -1140,7 +1140,7 @@ mod tests {
 
     /// ★ `KP3C` 的另一半：那三支**真的写在 TS 那份文件里**。
     ///
-    /// ⚠ **诚实边界**：本件够不着 vitest 的写区（`src/daemon-policy.vitest.ts` 不在写区，
+    /// ⚠ **诚实边界**：本件够不着 vitest 的写区（`test/daemon-policy.vitest.ts` 不在写区，
     /// `settings/daemon-section.vitest.ts` 也不在）⇒ TS 那侧的**运行时**行为今天没有判据，
     /// 这一条只证「那三支写在那儿」。要真判它得在前端加一个测试文件，交回里点名了。
     #[test]

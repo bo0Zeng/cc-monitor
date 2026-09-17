@@ -1,7 +1,7 @@
 /**
  * history-prefs.ts 纯函数断言脚本：来源折叠默认/解析/反污染 + 持久化防御性解析。
  *
- * 跑法：`node src/views/history-prefs.test.ts` 或 `npm run test:history-prefs`。
+ * 跑法：`node test/views/history-prefs.test.ts` 或 `npm run test:history-prefs`。
  * 同 history-cache.test.ts：零 node 依赖、失败 throw 非零退出作门禁；tsc --noEmit 类型检查。
  *
  * 为什么值得锁：F86（#45）折叠偏好的判定核心。「首见默认 vs 用户显式偏好」的反污染写入

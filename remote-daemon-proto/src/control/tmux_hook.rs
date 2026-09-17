@@ -173,7 +173,7 @@ mod tests {
     /// 生产段**再剥掉注释**。本模块的头注**逐字解释**了那两个坑（`#{@ccm_sid}` 陷阱、
     /// 被 `readonly_guard` 拦下的 `fs::create_dir`）—— 不剥的话，两条守卫会被
     /// **解释它们自己的那段散文**命中而恒红（实测：两条一起红）。
-    /// 与 `src/paste-block-guard.vitest.ts` 同一处置（那边也是「把注释当代码」栽过）。
+    /// 与 `test/paste-block-guard.vitest.ts` 同一处置（那边也是「把注释当代码」栽过）。
     fn prod_code() -> String {
         prod_src()
             .lines()

@@ -2,7 +2,7 @@
  * launch-render-cli.ts 纯函数断言：诚实边界 + token 产出。
  * R04①：`canRenderCli`/`renderCli` 已合成单一 `tryRenderCli`；下面两个薄 shim 让既有断言
  * （尤其 9 条黄金串）**逐字节不变**地经新入口走一遍——断言内容没放松，只是入口变了。
- * 跑法：`tsx src/launch-render-cli.test.ts`。
+ * 跑法：`tsx test/launch-render-cli.test.ts`。
  */
 import { tryRenderCli } from "../src/launch-render-cli.ts";
 import { buildLaunchPlan } from "../src/launch-plan.ts";

@@ -1,7 +1,7 @@
 /**
  * 纯 diff 核心（diff.ts 上半，DOM-free 层）的断言脚本。
  *
- * 跑法：`npx tsx src/cards/diff.test.ts` 或 `npm run test:diff`。
+ * 跑法：`npx tsx test/cards/diff.test.ts` 或 `npm run test:diff`。
  * 不是 CI 接线的测试套件（前端无 JS test runner，详 DEVELOPMENT.md）——
  * 这是守护 diff 唯一非平凡逻辑的**手动 pre-push 门禁**。tsc --noEmit 会自动
  * 类型检查本文件（在 src/ 下），所以类型漂移 CI 也能挡。

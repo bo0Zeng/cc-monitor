@@ -22,7 +22,7 @@ const EXPECT_CASES: usize = 16;
 /// # 为什么还留着（这是登记在案的边界，不是漏了）
 ///
 /// 本件把八句降级理由里的六句搬进生成物 `src/generated/launch-render-facts.ts`。
-/// 剩下两句（两条「维度 …」闸门）搬不动 —— `src/launch-render-cli.vitest.ts` 那两条判据
+/// 剩下两句（两条「维度 …」闸门）搬不动 —— `test/launch-render-cli.vitest.ts` 那两条判据
 /// 是**按措辞 grep 源码**钉的（「各恰好一处」＋ 必须是 `` return { ok: false, reason: `…` } ``
 /// 这个模板形），而那个文件不在本件写区。⇒ 搬走它们会让那两条判据当场假红。
 ///

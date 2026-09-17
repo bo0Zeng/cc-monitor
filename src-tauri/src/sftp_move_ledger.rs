@@ -143,7 +143,7 @@ mod tests {
             "Channel<TransferProgress>",
             "它是 **tauri 的 IPC channel**，而 `TransferProgress` 还带 `ts_rs` 那个 `TS` 派生、\
              导出给前端。⚠ 上一句刻意**不写**那个派生的全限定名（模块路径 ＋ `::` ＋ 类型名）——\
-             `src/generated-boundary-guard.vitest.ts::tsDerivingSources` 按**整仓文本子串**取人群，\
+             `test/generated-boundary-guard.vitest.ts::tsDerivingSources` 按**整仓文本子串**取人群，\
              本文件写全了就会被当成「又一份派生了它的源文件」而把那条计数判据顶红。\
              〔09-12 实打撞到过：npm 那格 `实得 33 … expected 33 to be 32`。〕\
              ⇒ 搬进后端要先回答「一条 tauri channel 怎么跨进程」：\

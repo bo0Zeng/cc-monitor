@@ -1,7 +1,7 @@
 /**
  * format.ts 纯函数断言脚本：formatBytes / formatTimestampSmart / formatTimestampShort。
  *
- * 跑法：`node src/format.test.ts` 或 `npm run test:format`。
+ * 跑法：`node test/format.test.ts` 或 `npm run test:format`。
  * 同 remote-health.test.ts：零 node 依赖、失败 throw 非零退出作 pre-push 门禁；tsc --noEmit 类型检查。
  *
  * 为什么值得锁：format.ts 是 formatTime/formatBytes 各两份漂移后的收口点（见文件顶部注释）——

@@ -1,7 +1,7 @@
 /**
  * api-error.ts 纯逻辑（describeRetryError 双 shape 解析）断言脚本。issue #21。
  *
- * 跑法：`node src/cards/api-error.test.ts` 或 `npm run test:api-error`。
+ * 跑法：`node test/cards/api-error.test.ts` 或 `npm run test:api-error`。
  * 同 diff.test.ts / branching.test.ts：零 node 依赖、失败 throw 非零退出作
  * pre-push 门禁；tsc --noEmit 自动类型检查本文件。
  *

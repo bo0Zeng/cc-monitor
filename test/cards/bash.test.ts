@@ -1,7 +1,7 @@
 /**
  * bash.ts / slash.ts 纯逻辑断言脚本（Batch4-F16）。
  *
- * 跑法：`node src/cards/bash.test.ts` 或 `npm run test:bash`。
+ * 跑法：`node test/cards/bash.test.ts` 或 `npm run test:bash`。
  * 同 api-error.test.ts / diff.test.ts：零 node 依赖、失败非零退出作 pre-push
  * 门禁；只测解析纯函数，不碰 DOM 构建（那部分归 tsc + 目检）。
  *

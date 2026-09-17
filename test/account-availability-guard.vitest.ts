@@ -24,7 +24,7 @@
  * 5. **它扫不到测试侧的第二份实现。** 扫描面（`productionTsFiles`）**按构造**排掉
  *    `.vitest.` / `.test.` —— 那一行正是「让判据读不到自己」的机制，代价是一份**手抄进
  *    测试文件里的** `isSelectable` 结构上看不见（K-A1 第四轮 `R4` 就是这一形：
- *    `src/settings/cc-bus-section.vitest.ts` 那份 `vi.mock` 替身当时已与真身语义相反）。
+ *    `test/settings/cc-bus-section.vitest.ts` 那份 `vi.mock` 替身当时已与真身语义相反）。
  *    ⇒ 那一维靠「测试侧不许手抄纯函数，要么 `vi.importActual` 要么不 mock 它」这条纪律，
  *    本文件不钉。
  *

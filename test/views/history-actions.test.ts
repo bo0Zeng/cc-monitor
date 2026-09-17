@@ -1,7 +1,7 @@
 /**
  * history-actions.ts 纯函数断言脚本：动作表判定（actionsFor / enabled / label）。
  *
- * 跑法：`node src/views/history-actions.test.ts` 或 `npm run test:history-actions`。
+ * 跑法：`node test/views/history-actions.test.ts` 或 `npm run test:history-actions`。
  * 同 history-cache/history-prefs.test.ts：零依赖、失败 throw 作门禁；tsc --noEmit 类型检查。
  *
  * 为什么值得锁：F96（#62）③块动作表。搜索卡片（hasEntry:false）必须只出 resume/new-session

@@ -1,6 +1,6 @@
 /**
  * remote-launch.ts 纯逻辑断言脚本。Batch14-F41（接替 remote-resume-cmd.test.ts）。
- * 跑法：`node src/remote-launch.test.ts` 或 `npm run test:remote-launch`。
+ * 跑法：`node test/remote-launch.test.ts` 或 `npm run test:remote-launch`。
  * 同 api-error.test.ts：零 node 依赖、失败 throw 非零退出。
  */
 

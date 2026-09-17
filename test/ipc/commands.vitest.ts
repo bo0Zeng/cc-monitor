@@ -71,7 +71,7 @@ vi.mock("../../src/remote-launch-run", () => ({
 
 // ── `K-H2b` `D5 阻-2`：文件末尾再加一组行为判据，驱动**真的 `TabManager`**。
 //    `tabs.ts` 的模块图很重（stream / cards / 渲染族），这几条 mock 是**为了让它能在
-//    jsdom 里实例化**，形状照 `src/tabs.vitest.ts`（那边路径少一层 `../`）。
+//    jsdom 里实例化**，形状照 `test/tabs.vitest.ts`（那边路径少一层 `../`）。
 //    ⚠ 与上面那组同一条纪律：本文件其余判据一条都不经过被 mock 的这几个模块
 //      （它们全是「读源码文本 + 数命令名」），入场/交回各打一次全量核过读数。
 vi.mock("@tauri-apps/plugin-opener", () => ({

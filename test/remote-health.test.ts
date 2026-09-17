@@ -1,7 +1,7 @@
 /**
  * remote-health.ts 节流纯逻辑（shouldShowHealthToast）断言脚本。issue #32（SS-F）。
  *
- * 跑法：`node src/remote-health.test.ts` 或 `npm run test:remote-health`。
+ * 跑法：`node test/remote-health.test.ts` 或 `npm run test:remote-health`。
  * 同 api-error.test.ts：零 node 依赖、失败 throw 非零退出作 pre-push 门禁；
  * tsc --noEmit 自动类型检查本文件。
  *

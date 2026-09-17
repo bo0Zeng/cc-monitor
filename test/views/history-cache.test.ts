@@ -1,7 +1,7 @@
 /**
  * history-cache.ts 纯函数断言脚本：shouldRefetchRemote（TTL 门控）。
  *
- * 跑法：`node src/views/history-cache.test.ts` 或 `npm run test:history-cache`。
+ * 跑法：`node test/views/history-cache.test.ts` 或 `npm run test:history-cache`。
  * 同 format.test.ts：零 node 依赖、失败 throw 非零退出作门禁；tsc --noEmit 类型检查。
  *
  * 为什么值得锁：F76（#46）来源缓存的判定核心。TTL 边界 / null / 时钟回拨最易错——

@@ -2378,7 +2378,7 @@ mod tests {
     /// **整行注释与行尾注释都剥，而且字符串安全**（`"http://host"` 不会被切短）。
     ///
     /// 🔴 **行尾注释必须算注释**，这是 `K-R19` 实测出来的坑：它第一版尺子只认整行注释，
-    /// 于是 `src/ipc/commands.vitest.ts` 那行「代码 + 行尾注释」被判成「代码里有这个名字」
+    /// 于是 `test/ipc/commands.vitest.ts` 那行「代码 + 行尾注释」被判成「代码里有这个名字」
     /// ⇒ 旗舰活体 `local_tmux_names` **一次都没进人群**。
     ///
     /// `.md` 整份算散文（它不定义任何符号）；其余一律**整份算代码**（最保守：
@@ -2493,7 +2493,7 @@ mod tests {
     ///   同一份文件里处数不变的话本条**看不见**。它拦的是「顺手又写一个」，不是恶意。
     /// · **本文件自己的散文没人看**（语料按构造摘掉调用者）——见 `dead_name_corpus` 头注。
     /// · **只看反引号里的裸符号引用**。`（local_tmux_names）` 这种**不带反引号**的写法
-    ///   本条看不见 —— 现打 `src/ipc/commands.vitest.ts` 里就有三处这样的，
+    ///   本条看不见 —— 现打 `test/ipc/commands.vitest.ts` 里就有三处这样的，
     ///   如实登记成射程外，**不假装覆盖了**。
     #[test]
     fn every_dead_name_named_in_the_prose_is_declared_dead() {
@@ -2773,12 +2773,12 @@ mod tests {
                 1,
             ),
             (
-                "src/agent-profile-parity.vitest.ts",
+                "test/agent-profile-parity.vitest.ts",
                 "the_gaps_are_named_not_forgotten",
                 1,
             ),
             (
-                "src/daemon-policy.vitest.ts",
+                "test/daemon-policy.vitest.ts",
                 "the_boot_path_really_pushes_the_daemon_policy",
                 1,
             ),
@@ -2788,7 +2788,7 @@ mod tests {
                 1,
             ),
             (
-                "src/settings/daemon-section.vitest.ts",
+                "test/settings/daemon-section.vitest.ts",
                 "the_unattended_wording_is_actually_present",
                 1,
             ),

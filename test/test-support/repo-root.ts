@@ -11,7 +11,7 @@
  * 抄错的后果是 `readFileSync` 的 ENOENT **硬失败**（不是静默假绿），所以这不是洞、是效率问题
  * ——但既然本文件所在目录是固定的，让每个守卫自己数 `..` 就没有意义。
  *
- * **本函数的 `import.meta.dirname` 恒等于 `<repo>/src/test-support`，与调用方在哪无关**
+ * **本函数的 `import.meta.dirname` 恒等于 `<repo>/test/test-support`，与调用方在哪无关**
  * ——这正是它能当单一来源的原因。实现上仍然向上找 `package.json` 而不是硬编码两个 `..`，
  * 这样万一 `test-support/` 被搬走也不会静默指错地方。
  */
