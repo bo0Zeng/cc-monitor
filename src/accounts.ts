@@ -162,7 +162,7 @@ export function currentWorkingAccount(state: AccountsState): Account | null {
  * K-A1：**鉴权方式这一维不再阻塞这个号被选中吗。**
  *
  * 这是全仓**唯一**读 `loggedIn` 的地方（`KAY4` 的零命中守卫钉住这句话，
- * 判据住 `test/account-availability-guard.vitest.ts`）。
+ * 判据住 `tests/account-availability-guard.vitest.ts`）。
  *
  * 规则本身**不在这儿** —— 它住 `acct_core::auth_ready`，两个 Rust 生产者调它、
  * 把结果放进 `authReady` 字段。本函数只做一件事：**对面没说时回落到旧行为**。
@@ -255,7 +255,7 @@ export type AccountRelayState =
  *
  * ★〔第四拍〕**取数那一跳接上了**：走包装层 `commands.relay_routing_for`。
  * ⚠ 经过如实记：第三拍它退回过一次 —— 注册一条命令会同时动两个钉死计数
- * （`parity_ledger.rs` 5 个数 + `test/ipc/commands.vitest.ts` 两处 `144`），
+ * （`parity_ledger.rs` 5 个数 + `tests/ipc/commands.vitest.ts` 两处 `144`），
  * 而后者当时不在写区。**那两个数是联动的**：注册了不调 ⇒ 前一个红；调了没注册 ⇒ 编不过。
  *
  * ⚠ **两个字段各自的射程，别读宽**：`routed` 说的是「中转表里有这一行」，
@@ -1153,7 +1153,7 @@ export const LOCAL_ORIGIN = "__local__";
  *
  * # 🔴 这里的每一句都不许出现「远端」两个字
  *
- * 判据住 `test/settings/accounts-section.vitest.ts` 里 `NF1bD2` 那一族：
+ * 判据住 `tests/settings/accounts-section.vitest.ts` 里 `NF1bD2` 那一族：
  * 一条量**这张表**（人群 = `Object.values` 现算，不写死条数），
  * 一条量**真渲染出来的 DOM**（人群 = 本机那一支的叶子文本 + 全部 title）。
  * 两条都在，是因为「表里干净」与「用户看到的干净」是两件事：

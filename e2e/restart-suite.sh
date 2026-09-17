@@ -8,7 +8,7 @@
 # Windows→回退剪贴板、绝不执行)。本套件测的是**真编排逻辑 + 真 tmux 效果 + 真账号解析**,唯一替换的
 # 是那道无法在 Linux 触达、本该由后端 Rust 执行 tmux 的 IPC 边界(见 e2e/README + resume-suite.sh 头注)。
 # 批量对齐 alignAllToCurrentAccount 的 idle/busy 分桶是 TabManager DOM 方法,其诚实天花板 = DOM(jsdom)级,
-# 由 test/tabs.vitest.ts「account-ux U6」块覆盖(单独 vitest 跑);本套件在**命令级**钉 confirm 闸门
+# 由 tests/tabs.vitest.ts「account-ux U6」块覆盖(单独 vitest 跑);本套件在**命令级**钉 confirm 闸门
 # (放行 / 拦下,B4/B1/B2),两者互补。
 #
 # 红线:daemon 零改(不跑它) / 隔离 CLAUDE_CONFIG_DIR 绝不碰真 ~/.claude / 只 kill 本套件建的 cc-<sid8>。

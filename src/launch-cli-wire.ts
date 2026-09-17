@@ -5,7 +5,7 @@
  * 那边带 `deny_unknown_fields` —— **多送一个字段会被拒**，不静默吞。
  *
  * ⚠ 这是一份**手写镜像**（不是 ts-rs 生成的）。保证它与 Rust 一致的是
- * `test/launch-cli-wire.vitest.ts`：它读 Rust 源码、逐字段比对。
+ * `tests/launch-cli-wire.vitest.ts`：它读 Rust 源码、逐字段比对。
  */
 export type CliWireAction =
   | { kind: "new" }

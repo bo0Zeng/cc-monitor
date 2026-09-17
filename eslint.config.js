@@ -24,9 +24,9 @@ export default tseslint.config(
   ...tseslint.configs.recommended,
   {
     // 前端源码：浏览器全局（DOM/window/document）。
-    // 〔src/test 分离〕`test/**` 一并纳入 —— vitest 跑在 jsdom 里，测试文件同样用
+    // 〔src/test 分离〕`tests/**` 一并纳入 —— vitest 跑在 jsdom 里，测试文件同样用
     // `document`/`window`。漏掉它会让 18 条 `no-undef` 一次性涌进来（实测 7 → 25）。
-    files: ["src/**/*.ts", "test/**/*.ts"],
+    files: ["src/**/*.ts", "tests/**/*.ts"],
     languageOptions: {
       globals: { ...globals.browser },
     },
@@ -46,7 +46,7 @@ export default tseslint.config(
   },
   {
     // 测试文件（tsx node 的 *.test.ts / jsdom 的 *.vitest.ts）：补 node 全局。
-    files: ["test/**/*.test.ts", "test/**/*.vitest.ts"],
+    files: ["tests/**/*.test.ts", "tests/**/*.vitest.ts"],
     languageOptions: {
       globals: { ...globals.node },
     },

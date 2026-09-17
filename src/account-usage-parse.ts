@@ -8,8 +8,8 @@
  * 「**这样也好做其他agent兼容**」。
  * ⇒ 生产路（`src/account-usage.ts` → chip / usage-view / accounts-section）上**零调用**；
  *   点「用量」直接展示 `capture-pane` 抓到的那一屏原文（`account-usage.ts::usageScreenEl`）。
- * ⚠ **退役不是删除**：本文件 ＋ `test/account-usage-parse.vitest.ts` ＋
- *   `test/__fixtures__/usage-capture-2026-07-31.txt` **三样都留在盘上、那套测试继续跑**。
+ * ⚠ **退役不是删除**：本文件 ＋ `tests/account-usage-parse.vitest.ts` ＋
+ *   `tests/__fixtures__/usage-capture-2026-07-31.txt` **三样都留在盘上、那套测试继续跑**。
  *
  * # 二 · 复活条件 —— **什么成立了才该把它接回生产路**
  *
@@ -30,7 +30,7 @@
  *
  * **「对那份 2026-07-31 的冻结夹具有效」，不证明「对真机 `/usage` 有效」。**
  *
- * 理由现打：那份夹具（`test/__fixtures__/usage-capture-2026-07-31.txt`）是**用户截图的逐字
+ * 理由现打：那份夹具（`tests/__fixtures__/usage-capture-2026-07-31.txt`）是**用户截图的逐字
  * 转录**，而本仓开发环境**不启动真实已认证的 claude 子进程**（消耗真实订阅额度、且与用户
  * 当前会话交互不可控）。退役之后**再没有真实输入流经它**，而 Claude Code 的 `/usage` 格式
  * 会继续漂 —— 它**已经漂过一次**：`Current week (Opus)` → `Current week (Fable)`，
@@ -47,7 +47,7 @@
  * 任何真机验证」——那句是诚实的，而它预告的失败**真的发生了**：用户实测报「抓到了屏幕但认不出
  * 格式」。真机抓屏由用户以截图提供（本仓库开发环境**不**启动真实已认证的 claude 子进程，
  * 那会消耗真实订阅额度且与用户当前会话交互不可控），转录存于
- * `test/__fixtures__/usage-capture-2026-07-31.txt`，测试直接读它。
+ * `tests/__fixtures__/usage-capture-2026-07-31.txt`，测试直接读它。
  *
  * 那次验证改掉的**不只是正则字面量，而是形状**：窗口从「硬编码 3 条枚举」改成「结构性扫描」，
  * 因为真机第三块是 `Current week (Fable)` —— 括号里是**会变的模型名**，枚举天然追不上。
@@ -78,7 +78,7 @@ export type AccountUsageParseResult =
 /**
  * ★ 2026-07-31 真机验证后重写（本文件头注要求的那次验证，用户提供了真实抓屏）。
  *
- * **真实形态**（`test/__fixtures__/usage-capture-2026-07-31.txt`，逐字转录）：
+ * **真实形态**（`tests/__fixtures__/usage-capture-2026-07-31.txt`，逐字转录）：
  * ```
  * Current session
  * ███████░░░░  12% used

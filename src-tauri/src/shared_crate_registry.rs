@@ -900,7 +900,7 @@ mod tests {
     /// ⚠ 顺带澄清一处容易误读的历史：最后改它的提交叫「G-C：三族 e2e 进 CI」，
     /// 查过那次 diff —— 进 CI 的是 `graylight-frames` 等五条，**不含本套件**，提交没说假话。
     ///
-    /// 与 `test/node-suite-registry-guard.vitest.ts` 不冲突（E3）：那条钉的是
+    /// 与 `tests/node-suite-registry-guard.vitest.ts` 不冲突（E3）：那条钉的是
     /// 「16 个 tsx 套件各自有断言地板」，本条钉的是「套件有没有人调」——两个事实。
     #[test]
     fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {

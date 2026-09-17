@@ -9,7 +9,7 @@
 //! # 为什么不是自洽夹具（U7-4 的病根）
 //!
 //! 夹具**入库**，两侧各自与它比：
-//! - TS 侧 `test/launch-payload-golden.vitest.ts` 断言「入库的 == 现场渲染的」⇒ 改 TS 不重生成 ⇒ 红；
+//! - TS 侧 `tests/launch-payload-golden.vitest.ts` 断言「入库的 == 现场渲染的」⇒ 改 TS 不重生成 ⇒ 红；
 //! - 本模块断言「Rust 渲染的 == 入库的」⇒ 改 Rust ⇒ 红。
 //!
 //! 没有任何一侧在运行时去调另一侧 —— 挡住的是 U7-4 那种**自洽夹具**（夹具由被测代码
@@ -33,7 +33,7 @@ const FIXTURE: &str = include_str!("fixtures/payload-golden.json");
 /// 夹具本身有 `include_str!` 保护（删了就编译失败），但阻止「夹具变陈旧」的唯一机制是那个
 /// vitest 文件 —— 把它改名成 `.spec.ts` 就同时从 vitest 的 glob 和 `npm test` 里消失，
 /// 之后两种语言可以**永远静默分家**。改名/删除 ⇒ 这里编译失败。
-const TS_HALF: &str = include_str!("../../../../test/launch-payload-golden.vitest.ts");
+const TS_HALF: &str = include_str!("../../../../tests/launch-payload-golden.vitest.ts");
 
 /// 用例数。夹具被清空/截断时，逐条循环会「零命中零失败」地绿 —— 这条挡的正是那个。
 ///

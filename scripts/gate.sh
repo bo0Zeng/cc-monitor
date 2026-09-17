@@ -388,7 +388,7 @@ gate_diag() {
 #
 # ★ **分母现打（`K-G3` 09-01，跑了一趟真 `npm test` 数命中行，不是抽样）**：
 #   整趟输出里命中 `([0-9]+) (passed|个测试)` 的**只有 3 行** ——
-#   `test:diff` 的 `17 passed, 0 failed`（`test/cards/diff.test.ts:234`）·
+#   `test:diff` 的 `17 passed, 0 failed`（`tests/cards/diff.test.ts:234`）·
 #   vitest 的 `117 passed`（Test Files）与 `1480 passed`（Tests）。
 #   ⇒ **16 个 tsx 套件里有 15 个不带数字**（`all X tests passed` 那一形），**第 16 个（`diff`）带**，
 #   但它的 17 被 `sort -rn` 吃掉 ⇒ **`n` 仍恒等于 `test:dom` 那一个数**。
@@ -1093,7 +1093,7 @@ fi
 #
 # ⚠ 射程如实写（它**抓不到**什么，三条）：
 #   1. 它判**已跟踪文件的 diff** ⇒ 一个**全新**的生成物文件是 untracked，`git diff` 看不见。
-#      那一格由 `test/generated-boundary-guard.vitest.ts` 的目录清单**逐项等号对拍**钉住
+#      那一格由 `tests/generated-boundary-guard.vitest.ts` 的目录清单**逐项等号对拍**钉住
 #      （它对 `src/generated/` 做 `readdirSync` + 等号比对，新增文件必然让它红一次）。
 #   2. 它不判生成物**内容对不对**（该不该 `ts(optional)` 之类）—— 那也是上面那一族的活。
 #   3. 它判的是**工作树**，不判「你有没有真把它 commit 上去」（那一维归 `npm run verify:committed`，
