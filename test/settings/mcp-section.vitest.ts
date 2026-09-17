@@ -1,0 +1,384 @@
+// F87（#50+#51）MCP 管理纯函数断言：groupByScope / serverSummary / parseServerConfig。
+import { describe, it, expect, vi, beforeEach } from "vitest";
+vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
+vi.mock("../../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
+
+// jsdom 无 scrollIntoView（McpSection.beginEdit 会调它，真 webview 有）→ 补空实现，免 uncaught。
+if (!("scrollIntoView" in Element.prototype)) {
+  (Element.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = () => {};
+}
+
+import {
+  groupByScope,
+  serverSummary,
+  parseServerConfig,
+  stableStringify,
+  catalogKey,
+  McpSection,
+  type McpServerEntry,
+} from "../../src/settings/mcp-section";
+import { invoke } from "@tauri-apps/api/core";
+import { setCurrentMachine } from "../../src/settings/machine-context";
+
+const ent = (scope: McpServerEntry["scope"], name: string, server: unknown): McpServerEntry => ({
+  scope,
+  name,
+  server,
+  sourcePath: "",
+});
+
+describe("F87 groupByScope", () => {
+  it("按 scope 分组、保序、忽略未知 scope", () => {
+    const g = groupByScope([
+      ent("project", "p1", {}),
+      ent("user", "u1", {}),
+      ent("project", "p2", {}),
+      // C04d 批 5b：**原来这里挂着 `@ts-expect-error`**——因为手写的 `McpServerEntry.scope`
+      // 被窄化成三值 union，而这条测试要构造的恰恰是**真实会从线上来的**未知 scope。
+      // 换成生成物（Rust 侧就是 `String`）后，这个构造本来就合法，抑制指令成了多余。
+      // ⇒ **类型说了实话，测试就不必撒谎。**
+      ent("weird", "w", {}),
+    ]);
+    expect(g.user.map((e) => e.name)).toEqual(["u1"]);
+    expect(g.project.map((e) => e.name)).toEqual(["p1", "p2"]); // 保序
+    expect(g.local).toEqual([]);
+  });
+});
+
+describe("F87 serverSummary", () => {
+  it("远程型：type · url（缺 type 默认 http）", () => {
+    expect(serverSummary({ type: "sse", url: "https://x" })).toBe("sse · https://x");
+    expect(serverSummary({ url: "https://y" })).toBe("http · https://y");
+  });
+  it("stdio 型：stdio · command args", () => {
+    expect(serverSummary({ command: "npx", args: ["-y", "@x/mcp"] })).toBe("stdio · npx -y @x/mcp");
+    expect(serverSummary({ command: "server" })).toBe("stdio · server");
+  });
+  it("未知形态 / 非对象 → (未知形态)", () => {
+    expect(serverSummary({})).toBe("(未知形态)");
+    expect(serverSummary(null)).toBe("(未知形态)");
+    expect(serverSummary("x")).toBe("(未知形态)");
+  });
+});
+
+describe("F87 parseServerConfig", () => {
+  it("合法对象 → ok", () => {
+    const r = parseServerConfig('{ "command": "npx" }');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect((r.value as { command: string }).command).toBe("npx");
+  });
+  it("空 / 无效 JSON / 非对象 / 数组 → error", () => {
+    expect(parseServerConfig("").ok).toBe(false);
+    expect(parseServerConfig("  ").ok).toBe(false);
+    expect(parseServerConfig("{bad").ok).toBe(false);
+    expect(parseServerConfig("42").ok).toBe(false);
+    expect(parseServerConfig('"str"').ok).toBe(false);
+    expect(parseServerConfig("[1,2]").ok).toBe(false);
+  });
+});
+
+// F87b-fix(batch18)：编辑 project 条目时**锁名**——防「改名再存 = 后端 insert 新 key 静默生副本」脚枪。
+describe("F87b-fix 编辑锁名", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  it("点编辑 → 名 readonly + 横幅 + JSON 预填；取消 → 复位", async () => {
+    document.body.replaceChildren();
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "read_mcp_servers")
+        return [
+          { scope: "project", name: "srv1", server: { command: "npx" }, sourcePath: "/proj/.mcp.json" },
+        ];
+      return []; // list_mcp_project_dirs / list_remote_mcp_origins
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush(); // 构造期 reload 完成
+    // 设项目目录（writable 需 dir）并「读取」重渲染出带「编辑」钮的 project 条目
+    const dirInput = section.element.querySelector<HTMLInputElement>('input[placeholder^="项目目录"]')!;
+    dirInput.value = "/proj";
+    [...section.element.querySelectorAll("button")].find((b) => b.textContent === "读取")!.click();
+    await flush();
+
+    const nameInput = section.element.querySelector<HTMLInputElement>('input[placeholder="server 名"]')!;
+    const jsonInput = section.element.querySelector<HTMLTextAreaElement>(".mcp-json-input")!;
+    const banner = section.element.querySelector<HTMLElement>(".mcp-edit-banner")!;
+    expect(nameInput.readOnly).toBe(false);
+    expect(banner.style.display).toBe("none");
+
+    // 点「编辑」
+    [...section.element.querySelectorAll("button")].find((b) => b.textContent === "编辑")!.click();
+    expect(nameInput.value).toBe("srv1");
+    expect(nameInput.readOnly).toBe(true); // 锁名 = 编辑只改配置、不改名
+    expect(banner.style.display).not.toBe("none");
+    expect(banner.textContent).toContain("srv1");
+    expect(jsonInput.value).toContain("npx"); // JSON 预填
+
+    // 点「取消编辑」→ 复位
+    [...section.element.querySelectorAll("button")].find((b) => b.textContent === "取消编辑")!.click();
+    expect(nameInput.readOnly).toBe(false);
+    expect(nameInput.value).toBe("");
+    expect(banner.style.display).toBe("none");
+  });
+});
+
+describe("F89b catalog dedup 纯函数", () => {
+  it("stableStringify: 键序无关、递归", () => {
+    expect(stableStringify({ a: 1, b: 2 })).toBe(stableStringify({ b: 2, a: 1 }));
+    expect(stableStringify({ x: { p: 1, q: 2 } })).toBe(stableStringify({ x: { q: 2, p: 1 } }));
+    expect(stableStringify([1, { a: 1, b: 2 }])).toBe(stableStringify([1, { b: 2, a: 1 }]));
+    expect(stableStringify(null)).toBe("null");
+    expect(stableStringify("s")).toBe('"s"');
+  });
+  it("catalogKey: 同配置不同键序 → 同键；不同配置/名 → 异键", () => {
+    expect(catalogKey("s", { command: "x", args: ["-y"] })).toBe(
+      catalogKey("s", { args: ["-y"], command: "x" }),
+    );
+    expect(catalogKey("s", { command: "x" })).not.toBe(catalogKey("s", { command: "y" }));
+    expect(catalogKey("s1", { command: "x" })).not.toBe(catalogKey("s2", { command: "x" }));
+  });
+});
+
+// F89a：远端项目级 MCP——空/新远端项目仍须出加表单（否则无法建第一条 server；审计逮到的阻塞）。
+describe("F89a 远端项目管理", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  it("空远端项目 → 仍渲染 project scope + 加表单（可建首条）", async () => {
+    document.body.replaceChildren();
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["pi"];
+      if (cmd === "read_remote_project_mcp") return []; // 空远端项目 .mcp.json
+      return []; // list_remote_mcp_project_dirs / read_mcp_servers / read_remote_mcp_servers
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+    // 切到远端 pi
+    section.element
+      .querySelectorAll<HTMLElement>(".mcp-machine-btn")
+      .forEach((b) => b.textContent === "pi" && b.click());
+    await flush();
+    // 填远端项目目录并「读取」→ 走 reloadRemoteProject（空）
+    const dirInput = section.element.querySelector<HTMLInputElement>('input[placeholder^="项目目录"]')!;
+    dirInput.value = "/remote/proj";
+    [...section.element.querySelectorAll("button")].find((b) => b.textContent === "读取")!.click();
+    await flush();
+    // 阻塞修：空远端项目也出加表单（否则建不了第一条）
+    expect(section.element.querySelector(".mcp-add-form")).not.toBeNull();
+    // 且「添加/更新」钮可用（有 dir）
+    const save = [...section.element.querySelectorAll("button")].find(
+      (b) => b.textContent === "添加/更新到 .mcp.json",
+    ) as HTMLButtonElement | undefined;
+    expect(save && !save.disabled).toBe(true);
+  });
+});
+
+describe("F89b 库 UI（累积 + 已在本项目 + 注册）", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  it("跨项目累积；当前项目已有 → 标注；不在 → 注册钮写入", async () => {
+    document.body.replaceChildren();
+    const writes: { projectDir?: string; name?: string }[] = [];
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      const a = args as { projectDir?: string; name?: string } | undefined;
+      if (cmd === "read_mcp_servers") {
+        if (a?.projectDir === "/p1")
+          return [{ scope: "project", name: "a", server: { command: "x" }, sourcePath: "" }];
+        if (a?.projectDir === "/p2")
+          return [{ scope: "project", name: "b", server: { command: "y" }, sourcePath: "" }];
+        return [];
+      }
+      if (cmd === "write_project_mcp_server") {
+        writes.push({ projectDir: a?.projectDir, name: a?.name });
+        return undefined;
+      }
+      return []; // list_* / origins
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+    const dirInput = section.element.querySelector<HTMLInputElement>('input[placeholder^="项目目录"]')!;
+    const readBtn = () =>
+      [...section.element.querySelectorAll("button")].find((b) => b.textContent === "读取")!;
+    // 读 /p1 → 库 {a}；a 已在本项目 → 标注、无注册钮
+    dirInput.value = "/p1";
+    readBtn().click();
+    await flush();
+    expect(section.element.querySelector(".mcp-catalog")).not.toBeNull();
+    expect(section.element.querySelectorAll(".mcp-catalog-here").length).toBe(1); // a 已在本项目
+    expect(section.element.querySelectorAll(".mcp-catalog-reg").length).toBe(0);
+    // 读 /p2 → 库 {a,b}；b 已在 /p2 标注，a 不在 → 注册钮
+    dirInput.value = "/p2";
+    readBtn().click();
+    await flush();
+    const regBtns = section.element.querySelectorAll<HTMLButtonElement>(".mcp-catalog-reg");
+    expect(regBtns.length).toBe(1); // 只有 a 可注册
+    regBtns[0].click();
+    await flush();
+    expect(writes.some((w) => w.name === "a" && w.projectDir === "/p2")).toBe(true); // a 注册进 /p2
+  });
+});
+
+// ===== P6b：工作目录做成可浏览的清单 =====
+//
+// ★ 判据钉的是**可见清单**，不是 `datalist` 的 option 数 —— 后者今天就有，钉它等于什么都没验。
+
+describe("P6b MCP 工作目录清单", () => {
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+  // ⚠ `machine-context` 的当前机器是**模块级共享状态**，跨测试残留。
+  // 不归位的话，上一条测完停在 `"aya"` ⇒ 下一条里的 `setCurrentMachine("aya")`
+  // 是个**空操作**（`selectMachine` 第一句就是 `if (origin === this.origin) return`）
+  // ⇒ 判据测的是一次根本没发生的切换。实测栽过一次。
+  beforeEach(() => setCurrentMachine(null));
+  const chips = (root: HTMLElement) =>
+    [...root.querySelectorAll<HTMLButtonElement>(".mcp-dir-chip")].map((b) => b.textContent);
+
+  it("★ P6b-Y1：本机的工作目录逐条列出来，点一条 = 填进输入框并读取", async () => {
+    document.body.replaceChildren();
+    const reads: string[] = [];
+    vi.mocked(invoke).mockImplementation(async (cmd: string, args?: unknown) => {
+      if (cmd === "list_mcp_project_dirs") return ["/a/proj1", "/b/proj2"];
+      if (cmd === "read_mcp_servers") {
+        reads.push(String((args as { projectDir?: string } | undefined)?.projectDir ?? ""));
+        return [];
+      }
+      return [];
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+
+    // 清单是**可见元素**，不是 datalist 的 option。
+    expect(chips(section.element)).toEqual(["/a/proj1", "/b/proj2"]);
+    // datalist 仍要喂（手填时的自动补全没被砍掉）。
+    expect(section.element.querySelectorAll("#mcp-project-dirs option").length).toBe(2);
+
+    reads.length = 0;
+    section.element.querySelectorAll<HTMLButtonElement>(".mcp-dir-chip")[1].click();
+    await flush();
+    const dirInput = section.element.querySelector<HTMLInputElement>('input[placeholder^="项目目录"]')!;
+    expect(dirInput.value).toBe("/b/proj2");
+    // 点了要**真的去读那一格** —— 只填输入框不读，等于让用户再点一次「读取」。
+    expect(reads).toContain("/b/proj2");
+  });
+
+  it("★ P6b-Y1b：一个目录都没有 ⇒ 说清是「没用过」，不是「加载失败」", async () => {
+    document.body.replaceChildren();
+    vi.mocked(invoke).mockImplementation(async () => []);
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+    expect(chips(section.element)).toEqual([]);
+    const empty = section.element.querySelector(".mcp-dirs-empty");
+    expect(empty?.textContent).toContain("还没有用过的项目目录");
+  });
+
+  it("★ P6b-Y2b：**本机那条**同样要守 —— 迟到的本机结果不许盖住远端的清单", async () => {
+    document.body.replaceChildren();
+    // ⚠ 这一条是**变异逼出来的**：只测「远端迟到」时，把本机那条守卫拿掉照样全绿
+    //（本机 mock 立即 resolve，根本没有可切走的窗口）。
+    // 而本机那条今天也是 `await`，共用 store 是别处也能改的 ⇒ 窗口真实存在。
+    let releaseLocal: (v: string[]) => void = () => {};
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "list_remote_mcp_project_dirs") return ["/remote/dir"];
+      if (cmd === "list_mcp_project_dirs")
+        return new Promise<string[]>((r) => {
+          releaseLocal = r;
+        });
+      return [];
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush(); // 本机枚举挂住
+
+    setCurrentMachine("aya");
+    await flush();
+    expect(chips(section.element)).toEqual(["/remote/dir"]);
+
+    releaseLocal(["/local/late"]); // 本机那次现在才回来
+    await flush();
+    expect(chips(section.element)).toEqual(["/remote/dir"]);
+  });
+
+  it("★ P6b-E：读不到清单 ⇒ 说「读不到」，不许说成「没用过」，更不许永远停在「读取中」", async () => {
+    document.body.replaceChildren();
+    // 两件事的下一步完全不同：「没用过」⇒ 手填一个新路径；「没读到」⇒ 去看那台机器连没连上。
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "list_mcp_project_dirs") throw new Error("boom-local");
+      if (cmd === "list_remote_mcp_project_dirs") throw new Error("boom-remote");
+      return [];
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+    const txt = () => section.element.querySelector(".mcp-dirs")?.textContent ?? "";
+    expect(txt()).toContain("读不到");
+    expect(txt()).not.toContain("还没有用过");
+
+    setCurrentMachine("aya");
+    await flush();
+    expect(txt()).toContain("读不到");
+    // 最要紧的一条：不许**永远停在**「读取中…」。
+    expect(txt()).not.toContain("读取中");
+  });
+
+  it("★ P6b-D：切了机器、结果还没回来的这段时间，**不许还挂着上一台的路径**", async () => {
+    document.body.replaceChildren();
+    // `selectMachine` 的注释逐字：「本机/远端项目路径**不通用**，切机器清空」——
+    // 它清了输入框，却没清候选。改之前那是不可见的 datalist；P6b 把它变成了
+    // **可见且可点**的清单 ⇒ 切到 B 机后仍展示 A 机的路径，点一下就是拿 A 的路径去读 B。
+    let releaseRemote: (v: string[]) => void = () => {};
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "list_mcp_project_dirs") return ["/local/a", "/local/b"];
+      if (cmd === "list_remote_mcp_project_dirs")
+        return new Promise<string[]>((r) => {
+          releaseRemote = r;
+        });
+      return [];
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+    expect(chips(section.element)).toEqual(["/local/a", "/local/b"]);
+
+    setCurrentMachine("aya");
+    await flush();
+    // 远端还没回来 —— 此刻一条本机路径都不许还挂在那儿。
+    expect(chips(section.element)).toEqual([]);
+    expect(section.element.querySelector(".mcp-dirs")?.textContent).toContain("读取中");
+
+    releaseRemote(["/remote/x"]);
+    await flush();
+    expect(chips(section.element)).toEqual(["/remote/x"]);
+  });
+
+  it("★ P6b-Y2：切走之后，迟到的枚举结果不许覆盖新机器的清单", async () => {
+    document.body.replaceChildren();
+    // 让**远端**那次枚举挂住，好复现真实形状：那是一整趟 SSH（30s 超时），
+    // 在这期间切机器是完全正常的操作。本机那条是本地读文件，测不出这个竞态。
+    let releaseRemote: (v: string[]) => void = () => {};
+    vi.mocked(invoke).mockImplementation(async (cmd: string) => {
+      if (cmd === "list_remote_mcp_origins") return ["aya"];
+      if (cmd === "list_mcp_project_dirs") return ["/local/only"];
+      if (cmd === "list_remote_mcp_project_dirs")
+        return new Promise<string[]>((r) => {
+          releaseRemote = r;
+        });
+      return [];
+    });
+    const section = new McpSection();
+    document.body.appendChild(section.element);
+    await flush();
+    expect(chips(section.element)).toEqual(["/local/only"]);
+
+    setCurrentMachine("aya"); // 去远端（枚举挂住）
+    await flush();
+    setCurrentMachine(null); // 还没回来就切回本机
+    await flush();
+    expect(chips(section.element)).toEqual(["/local/only"]);
+
+    releaseRemote(["/remote/late"]); // 远端那次现在才回来
+    await flush();
+    // 它属于**已经切走的那台机器** —— 一条都不许出现。
+    expect(chips(section.element)).toEqual(["/local/only"]);
+  });
+});

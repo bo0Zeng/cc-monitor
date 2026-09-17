@@ -2,12 +2,12 @@
 import { defineConfig } from "vitest/config";
 
 // DOM 单元测试（jsdom 环境）。**只挑 *.vitest.ts**，与既有手写 node 测试（*.test.ts，
-// 由 `node src/X.test.ts` 跑纯函数）分流，互不干扰。新增需 DOM/模块 mock 的测试写成
+// 由 `tsx test/X.test.ts` 跑纯函数）分流，互不干扰。新增需 DOM/模块 mock 的测试写成
 // `<name>.vitest.ts` 即自动纳入。
 export default defineConfig({
   test: {
     environment: "jsdom",
-    include: ["src/**/*.vitest.ts"],
+    include: ["test/**/*.vitest.ts"],
     // F08b：覆盖率**设地板阈值（下方 thresholds）**——`npm run coverage` 与 CI 的 `coverage floor`
     // 步骤（ci.yml，**无 `|| true`=真·阻断门禁**）都吃它，低于地板即红。**不是** advisory、不是只报告。
     // 只设「地板」不追「85% 全局」：覆盖只统计本 vitest(jsdom) 套件，`*.test.ts`(tsx node) 不计入，
@@ -20,13 +20,12 @@ export default defineConfig({
       reporter: ["text-summary", "json-summary"],
       include: ["src/**/*.ts"],
       exclude: [
-        "src/**/*.test.ts",
-        "src/**/*.vitest.ts",
+        // 〔src/test 分离后〕测试与 test-support 已整体搬到 `test/`，
+        // 而 `include` 只圈 `src/**` ⇒ 原先那四条（`*.test.ts` / `*.vitest.ts` /
+        // `test-support/**`）**已无对象可排**，删掉而不是留成死规则。
+        // 留下的这两条仍有对象：`.d.ts` 与 `types.ts` 都住在 `src/` 里。
         "src/**/*.d.ts",
         "src/**/types.ts",
-        // 守卫专用的辅助模块：进不了 bundle（没有生产文件 import 它，
-        // 由 `generated-boundary-guard.vitest.ts` 机检），所以也不该计入生产覆盖率地板。
-        "src/test-support/**",
       ],
       // 地板棘轮（非追高目标）：设在当前值下方 ~2-3% 吸收环境/v8 版本差，只挡**明显回归**
       // （如新增大块无测代码）。注：只统计 `*.vitest.ts`；`*.test.ts`(tsx node) 不计入
