@@ -7,7 +7,7 @@
  * 保证两者一致的必须是判据，不是注释。
  *
  * ⚠ **ok 与 refusal 两类都要覆盖**：只比 ok 的话，「该降级却渲染出来了」这一类抓不到 ——
- * 而那正是 `doc/INVARIANTS.md` §33 铁律要防的形态（CLI 渲染器对表达不了的东西必须放弃、
+ * 而那正是 `src/doc/INVARIANTS.md` §33 铁律要防的形态（CLI 渲染器对表达不了的东西必须放弃、
  * 不得近似）。夹具里因此**两类各占一半**。
  */
 import { buildLaunchPlan } from "./launch-plan.ts";

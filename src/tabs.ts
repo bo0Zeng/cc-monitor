@@ -267,7 +267,7 @@ export interface Tab {
   fillHandler: (() => void) | null;
   /**
    * issue #26：已处理记录的 uuid 集——onLine 入口的 at-least-once 幂等
-   * （违反此约束见 doc/INVARIANTS.md § 25）。截断重读换新 seq 重投时 seenSeqs 放行，
+   * （违反此约束见 src/doc/INVARIANTS.md § 25）。截断重读换新 seq 重投时 seenSeqs 放行，
    * 若不按 uuid 拒掉，每条记录会以更大的 seq 在 timeline 末尾再渲染一遍（整段内容
    * 翻倍），且 trackAgents/unread 等副作用也会被重投误触发——故在入口整体拒掉。
    * 无 uuid 的记录（ai-title/mode 等元信息）不占集合、照常处理（它们本身幂等；
@@ -1123,7 +1123,7 @@ export class TabManager {
    * E73：attach / `↗` / 「杀死空 tmux」这几个动作对这个会话有没有意义。
    *
    * **默认 true**：没说就是可以。判据只认 daemon 明说的 `attachable:false`
-   *（源头是 pidfile 的同名布尔，契约见 `doc/IPC-PROTOCOL.md` §9.3）。
+   *（源头是 pidfile 的同名布尔，契约见 `src/doc/IPC-PROTOCOL.md` §9.3）。
    */
   isAttachable(sid: string): boolean {
     return !this.notAttachableSids.has(sid);

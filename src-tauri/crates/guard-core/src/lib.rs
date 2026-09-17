@@ -544,7 +544,7 @@ fn raw_string_open(sb: &[u8], i: usize) -> Option<(usize, usize)> {
 /// ① 调用方**先剥整份、再切块**，别反（次序的理由写在 [`test_attr_chunks`] 头注里）；
 /// ② 看门判据把「块」也当一个单位去量（现在它两个单位各判一遍）。
 /// ⚠ 它量的是**那两个单位**，不是「所有单位」—— 别的单位逐处登记在
-/// `evidence/K-R25-D2-unit-alignment.md`。
+/// `tests/evidence/K-R25-D2-unit-alignment.md`。
 fn try_strip_block_comments(src: &str) -> Option<String> {
     scan_and_blank(src, false)
 }
@@ -809,7 +809,7 @@ pub fn test_attr_chunks(src: &str) -> Vec<String> {
 /// ⚠ **射程，写清（别读成全称）**：它看着的是**这两个单位**。
 /// 别的单位 —— 函数体窗口（`body_of(..)` / `brace_block(..)`）· 任意切片 `&src[a..b]` ·
 /// `.lines().take(n)` 行窗口 —— **它一个都看不见**。今天全仓这样的调用点逐处点了名，
-/// 数与住址在 `evidence/K-R25-D2-unit-alignment.md`（量具 `evidence/K-R25-D1-strip-input-unit-census.py`）。
+/// 数与住址在 `tests/evidence/K-R25-D2-unit-alignment.md`（量具 `tests/evidence/K-R25-D1-strip-input-unit-census.py`）。
 /// **别把「两个单位」读成「所有单位」。**
 ///
 /// `min_files` / `min_blocks` 与 [`assert_tree_strips_clean`] 的 `min_files` 同职：
@@ -1119,7 +1119,7 @@ pub fn assert_test_module_ranges_are_brace_balanced(who: &str, src: &str) {
 ///
 /// # ⚠ 它的**射程**就是 `root` 那棵树 —— 树外的文件今天没有任何人在看它的生产段
 ///
-/// 09-12 现打（`KR75D3`，量法与逐份清单住 `evidence/K-R75-剥法认形状与真静默读数.md`）：
+/// 09-12 现打（`KR75D3`，量法与逐份清单住 `tests/evidence/K-R75-剥法认形状与真静默读数.md`）：
 /// 全仓 git 跟踪的 `.rs` **230** 份，落在本函数三个调用点的根之下的 **198** 份，
 /// **32 份在射程之外**（其中 `src-tauri/vendor/code-picture-core` 23 份、
 /// `src-tauri/crates/*-core` 八份、`src-tauri/build.rs` 一份）。
@@ -1281,7 +1281,7 @@ pub fn scan_tree_excluding_self(
             }
             // ★ **空列表 = 不按扩展名筛**〔`PS1` 08-13 补的能力〕。
             //
-            // 为什么非补不可：`shared/cc-bus/` 那 17 个文件里，脚本（`cc-send` / `cc-spawn` / …）
+            // 为什么非补不可：`src/shared/cc-bus/` 那 17 个文件里，脚本（`cc-send` / `cc-spawn` / …）
             // **没有扩展名**。原来空列表会退化成「一个都不要」——于是想扫那棵树的判据
             // 只能自己 `read_dir`，而那正是 `scanning_guard_registry` 那条**递减棘轮**禁的，
             // 且它逐字「**不许把上限调上去让今天好过**」。
@@ -1970,10 +1970,10 @@ mod tests {
     /// 误伤一：**字符串字面量里的 `/*` 不是注释**。
     ///
     /// 语料取自本仓真形：`shared_crate_registry.rs` 里逐字有 `crates/*/Cargo.toml`
-    /// 与 `shared/**`，`relay/server.rs` 里有 shell 的 `${rest%%/*}`。
+    /// 与 `src/shared/**`，`relay/server.rs` 里有 shell 的 `${rest%%/*}`。
     #[test]
     fn a_block_open_inside_a_string_literal_is_not_a_comment() {
-        let src = "fn a() {\n    let g = \"crates/*/Cargo.toml\";\n    let h = \"shared/** files\";\n    keep_me();\n}\n";
+        let src = "fn a() {\n    let g = \"crates/*/Cargo.toml\";\n    let h = \"src/shared/** files\";\n    keep_me();\n}\n";
         let prod = production_code(src);
         assert!(
             prod.contains("\"crates/*/Cargo.toml\""),
@@ -2133,7 +2133,7 @@ mod tests {
     /// `/*` 落在 A 块里、`*/` 落在 B 块里 —— **整份文件配平、单块不配平**。
     /// 对 rustc 这就是一条普通的跨行块注释（编得过），所以
     /// **看门判据的文件那一半在它上面是绿的**，而块那一半会红。
-    /// 这一形是 `K-R9` 落定拍在真仓上实打出来的（`evidence/K-R9-R2-fallback-watch-scope.md §C 刀 2`：
+    /// 这一形是 `K-R9` 落定拍在真仓上实打出来的（`tests/evidence/K-R9-R2-fallback-watch-scope.md §C 刀 2`：
     /// 那一趟两条判据全绿、全量 monitor `1278 passed; 0 failed`）。
     ///
     /// ⚠ **谁退掉哪一格会让本条红**：兜底改成「照剥」⇒ ② 断；
@@ -2280,7 +2280,7 @@ mod tests {
     /// 而按整段字面比对的写法接不住。
     ///
     /// **死值验**：把 `test_module_ranges` 里那一句退回 `mod_line.starts_with("mod ")`
-    /// ⇒ 本条必须红（读数落 `evidence/K-R75-剥法认形状与真静默读数.md`）。
+    /// ⇒ 本条必须红（读数落 `tests/evidence/K-R75-剥法认形状与真静默读数.md`）。
     #[test]
     fn a_test_module_is_recognised_whatever_its_visibility() {
         let mut vis: Vec<String> = ["", "pub ", "pub(crate) ", "pub(super) ", "pub(self) "]

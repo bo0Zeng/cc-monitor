@@ -65,7 +65,7 @@
 //! 那两条是下面的 `every_file_under_backend_is_registered_with_a_reason`（自陈「目录与登记表
 //! **两个方向都查**」）与 `every_file_under_backend_lives_on_a_capability_line`
 //! （它**认** `observe/`，也只认 `control` / `observe` 两条线）。
-//! 09-12 的实测读数（每一刀最小面、逐条住 `evidence/K-R71-observe归位.md`）：
+//! 09-12 的实测读数（每一刀最小面、逐条住 `tests/evidence/K-R71-observe归位.md`）：
 //!
 //! - 往 `observe/` 下多放一份不登记的文件 ⇒ 前者**红**（方向：盘上多、表上无）；
 //! - `BACKEND_FILES` 里留一条指向不存在文件的条目 ⇒ 前者**也红**（方向：表上有、盘上无）
@@ -958,7 +958,7 @@ mod layering {
              **先别急着加例外** —— daemon 侧摸底时那条反向边的正解是\
              「被引的那个函数根本不属于观测面」，搬走之后边就没了。\n\
              先问：被引用的那个东西，是不是只是个放错地方的通用工具？\n\
-             ⚠ 另一条常见正解见 `doc/ARCHITECTURE.md` 2.2：**只喂控制决策的只读查询一律归 \
+             ⚠ 另一条常见正解见 `src/doc/ARCHITECTURE.md` 2.2：**只喂控制决策的只读查询一律归 \
              `control/`** —— 按「读/写」分层会凭空造出这种反向边。",
             bad.join("\n  ")
         );

@@ -76,7 +76,7 @@ async function renderLaunchCommand(
     // ⚠ 〔U8c-3-r2 08-14 复裁〕那一拍的结论是「三问一条都没过期到可以放行」——
     // 🔴 **那是 08-14 的读数，今天不成立**：③ 已随定框 `K35` / `K-R59`（09-11）退役，
     // ① 也在 `K-P2 D3`（09-03）之后变过一次。三问的**今天版**只有一个家：
-    // `doc/INVARIANTS.md §33b` 那张表（由 `doc_claim_registry` 逐问与现场对拍，
+    // `src/doc/INVARIANTS.md §33b` 那张表（由 `doc_claim_registry` 逐问与现场对拍，
     // 改行为不改答案当场红）。**别在这儿复述那三问，复述就会漂。**
     //
     // 🔴 〔`K-R105` 09-13〕**这一处删不得的理由**：本行是 `renderFallback` 今天
@@ -491,7 +491,7 @@ export async function runLocalResumeIntoExistingTmux(
   //   命令用 `=name:` 精确形态（§31a）。
   //
   // ★★ 〔`P9` 08-12〕这里原本**手写** `tmux attach -t '=<name>:'` —— 那违反
-  //   `doc/INVARIANTS.md §31` 最终形态第①条逐字「**前端绝不硬编码后端命令**
+  //   `src/doc/INVARIANTS.md §31` 最终形态第①条逐字「**前端绝不硬编码后端命令**
   //   （不准出现可执行的字面 `tmux attach` / `tmux new-session` / `tmux send-keys`）
   //   → **问一层要**」。改成问座要，产物**逐字同构**（座的 `attach({kind:"quoted"})`
   //   出的就是 `tmux attach -t '=<name>:'`），换的是**谁拥有这条语法**。

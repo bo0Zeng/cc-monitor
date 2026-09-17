@@ -324,7 +324,7 @@ pub fn get_over<S: Read + Write>(
     let code = match status_of(&all[..cut]) {
         Some(c) => c,
         // ⚠ 「状态行读不懂」在这里与「连不上」**合成同一张脸**，如实记（同 `Net::get` 那一格）：
-        // 失败面是个闭集，而给它加一个成员要**同轮**改 `doc/IPC-PROTOCOL.md`（判据双向对账钉着），
+        // 失败面是个闭集，而给它加一个成员要**同轮**改 `src/doc/IPC-PROTOCOL.md`（判据双向对账钉着），
         // 那份文件不在本轮写区。⇒ 今天合着，**归 PM 裁要不要给它自己一张脸**。
         // 承重的那一半守住了：**它绝不会被当成 200**。
         None => return (Transport::Offline, Vec::new()),
@@ -416,7 +416,7 @@ pub fn land(path: &Path, bytes: &[u8]) -> Landing {
 /// 🔴 **它刻意不进 [`Face`]**：`Face` 是「把那个二进制拿到手」这条路的闭集，
 /// 而这一跳发生在那条路**之后** ——「拿到了、但它跑不起来」与「没拿到」是两件事，
 /// 用户该做的也不一样。
-/// ⚠ 而且给 `Face` 加成员要**同轮**改 `doc/IPC-PROTOCOL.md`（判据双向对账钉着），
+/// ⚠ 而且给 `Face` 加成员要**同轮**改 `src/doc/IPC-PROTOCOL.md`（判据双向对账钉着），
 /// 那份文件不在本轮写区 ⇒ 本轮如实把它放在 `Face` 之外。**归 PM 裁要不要合。**
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Unusable {

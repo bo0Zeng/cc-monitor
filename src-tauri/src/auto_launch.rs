@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct AutoLaunchConfig {
     /// UI toggle 控制：cc function 在 monitor 没跑时是否主动启动它
     #[serde(default)]

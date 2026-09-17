@@ -468,7 +468,7 @@ describe("K-R62 本机 POSIX 那一格：装 ccm 别名块 + 逐行指名旧的�
     for (let i = 0; i < 8; i += 1) await Promise.resolve();
     expect(seen).toEqual([
       "scan:/h/.bashrc",
-      // `includeCcFunction: false` —— POSIX 那一块的名字住在 shared/ccm-aliases.sh 里，
+      // `includeCcFunction: false` —— POSIX 那一块的名字住在 src/shared/ccm-aliases.sh 里，
       // 不由界面这个参数说了算。
       "install:/h/.bashrc:false",
       "scan:/h/.bashrc",

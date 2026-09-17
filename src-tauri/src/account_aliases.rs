@@ -18,7 +18,7 @@
 //!
 //! # 用户的 shell 配置里最多只多**一行** `source`，而且多数人连这一行都不用加
 //!
-//! `shared/ccm-aliases.sh`（装 ccm 别名块时写进 rc 的那一份）本轮起自带一行
+//! `src/shared/ccm-aliases.sh`（装 ccm 别名块时写进 rc 的那一份）本轮起自带一行
 //! `if [ -r … ]; then . …; fi` 指向这份生成文件 ⇒ **已经装了 ccm 别名块的人，加账号之后什么都不用做**。
 //! 没装的人可以让本模块把那一行 `source` 写进**他自己指定**的那份 rc（[`apply`] 的 `rc`
 //! 参数）—— 路径由界面上的人选，本模块**不猜**（`§0e`：`.bashrc` / `.zshrc` /
@@ -76,7 +76,7 @@ const RC_CANDIDATES: &[&str] = &[".bashrc", ".zshrc", ".bash_profile", ".profile
 /// 一份候选 rc 的状态。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct AccountAliasRc {
     /// 绝对路径。
@@ -88,7 +88,7 @@ pub struct AccountAliasRc {
 /// 一次生成的结果 —— **预览与真写走同一个返回形状**，差别只在 `wrote_*` 那两格。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct AccountAliasReport {
     /// 生成文件的绝对路径。
@@ -120,7 +120,7 @@ pub fn alias_file_in(home: &Path) -> PathBuf {
 /// 而不是让用户每开一个终端就看见一行 `No such file or directory`。
 ///
 /// ⚠ 写成 `if … then … fi` 而不是 `[ -r … ] && . …`，理由是**退出码**：
-/// 后者在文件不存在时整行返回 1，而这一行在 `shared/ccm-aliases.sh` 里是**最后一行**
+/// 后者在文件不存在时整行返回 1，而这一行在 `src/shared/ccm-aliases.sh` 里是**最后一行**
 /// ⇒ `source` 那份片段会以非零收场。多数 rc 里无害，但「无害」不是理由 ——
 /// `if` 那一形恒返回 0，而它一个字都不难读。
 pub fn source_line(alias_path: &Path) -> String {
@@ -248,7 +248,7 @@ pub fn render_file(lines: &[String]) -> String {
 /// 这个名字是不是已经被占了。**只出声、不拦** —— 见 `§0c 问三`。
 ///
 /// 两条路各查一次，报出来的话里带住址，用户才知道自己在盖掉什么：
-/// ① `shared/ccm-aliases.sh` 里自带的那几个（今天是 `cc` / `cct`；`K-R58` 删掉了 `cch`）——
+/// ① `src/shared/ccm-aliases.sh` 里自带的那几个（今天是 `cc` / `cct`；`K-R58` 删掉了 `cch`）——
 ///    **问的是那份文件本身**（`sftp::CCM_WRAPPER_SNIPPET` 就是它 `include_str!` 进来的），
 ///    不在这里抄一份名字清单；
 /// ② `PATH` 上真有一个同名程序 —— 🔴 `cc` 在多数机器上是 C 编译器
@@ -259,7 +259,7 @@ pub fn render_file(lines: &[String]) -> String {
 pub fn collision_note(name: &str) -> Option<String> {
     if crate::sftp::CCM_WRAPPER_SNIPPET.contains(&format!("\n{name}()")) {
         return Some(format!(
-            "`{name}`：cc-monitor 自带的别名块（shared/ccm-aliases.sh）里已经有同名函数 —— \
+            "`{name}`：cc-monitor 自带的别名块（src/shared/ccm-aliases.sh）里已经有同名函数 —— \
              那一份用 `declare -f` 让着你，所以你这条会赢；确认这就是你要的"
         ));
     }
@@ -280,7 +280,7 @@ pub fn collision_note(name: &str) -> Option<String> {
 /// 候选 rc 的现状。**只列盘上真实存在的那几份**，不存在的不列（不许猜一个出来）。
 pub fn rc_candidates_in(home: &Path) -> Vec<AccountAliasRc> {
     // 🔴 认 [`ALIAS_FILE_REL`] 而不是展开后的绝对路径 —— 理由与
-    // [`ensure_rc_source_line`] 里那段红字是同一条：`shared/ccm-aliases.sh` 里那一行
+    // [`ensure_rc_source_line`] 里那段红字是同一条：`src/shared/ccm-aliases.sh` 里那一行
     // 写的是 `$HOME/.cc-monitor/…`（没展开）。按绝对路径认，装了 ccm 别名块的人
     // 会被界面告知「还没 source 过」。
     let needle = ALIAS_FILE_REL;
@@ -339,7 +339,7 @@ fn ensure_rc_source_line(home: &Path, rc_raw: &str, line: &str) -> Result<bool, 
         std::fs::read_to_string(&path).map_err(|e| format!("读不到 {}：{e}", path.display()))?;
     // 🔴 认的是 [`ALIAS_FILE_REL`]，**不是那一整行**。
     //
-    // 这一处栽过：`shared/ccm-aliases.sh` 里那一行写的是 `$HOME/.cc-monitor/…`（**没展开**），
+    // 这一处栽过：`src/shared/ccm-aliases.sh` 里那一行写的是 `$HOME/.cc-monitor/…`（**没展开**），
     // 而这里手上的 `line` 带的是展开后的绝对路径 ⇒ 按整行比，
     // **一个已经装了 ccm 别名块的人会被判成「还没 source 过」，于是又被追加一行** ——
     // 那正是本件开头列的第一条病（重复追加）。
@@ -675,7 +675,7 @@ mod tests {
 
     /// 🔴 **装了 ccm 别名块的人，不许再被追加一行。**
     ///
-    /// `shared/ccm-aliases.sh` 里那一行写的是 `$HOME/.cc-monitor/…`（**没展开**），
+    /// `src/shared/ccm-aliases.sh` 里那一行写的是 `$HOME/.cc-monitor/…`（**没展开**），
     /// 而 [`source_line`] 手上是展开后的绝对路径。按整行比，这个人会被判成
     /// 「还没 source 过」，于是又被追加一行 —— **那正是本件开头列的第一条病**。
     /// 本条把那个形状原样喂进去。
@@ -683,7 +683,7 @@ mod tests {
     fn an_rc_that_already_sources_it_via_home_var_is_recognized() {
         let h = tmp_home("homevar");
         let rc = h.0.join(".bashrc");
-        // 逐字取自 `shared/ccm-aliases.sh` 的最后一行（`$HOME` 没展开）。
+        // 逐字取自 `src/shared/ccm-aliases.sh` 的最后一行（`$HOME` 没展开）。
         let ccm_block = "if [ -r \"$HOME/.cc-monitor/account-aliases.sh\" ]; then . \"$HOME/.cc-monitor/account-aliases.sh\"; fi\n";
         std::fs::write(&rc, format!("# mine\n{ccm_block}")).expect("写 rc");
         let before = std::fs::read(&rc).expect("读原文");
@@ -764,7 +764,7 @@ mod tests {
     /// 🔴 `§0c 问三`：`cc` 在多数机器上是 C 编译器 —— 撞了要**出声**。
     ///
     /// ⚠ 这一条断的是「自带别名块里那几个名字会被认出来」，人群取自
-    /// `sftp::CCM_WRAPPER_SNIPPET`（= `shared/ccm-aliases.sh` 本身），**不抄第二份名单** ——
+    /// `sftp::CCM_WRAPPER_SNIPPET`（= `src/shared/ccm-aliases.sh` 本身），**不抄第二份名单** ——
     /// `KR58D1` 起这句话**真的兑现了**：人群由 `sftp::builtin_alias_names()` 现算，
     /// 上一版这里手写着 `["cc", "cch", "cct"]`，那就是第二个住址。
     #[test]
@@ -800,7 +800,7 @@ mod tests {
     fn cch_is_gone_and_the_name_is_free_for_the_user() {
         assert!(
             !crate::sftp::builtin_alias_names().contains(&"cch"),
-            "`cch` 还定义在 shared/ccm-aliases.sh 里 —— 用户逐字说的是「这个不要。删掉。」"
+            "`cch` 还定义在 src/shared/ccm-aliases.sh 里 —— 用户逐字说的是「这个不要。删掉。」"
         );
         if let Some(note) = collision_note("cch") {
             assert!(

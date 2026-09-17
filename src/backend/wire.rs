@@ -266,7 +266,7 @@ pub enum Frame {
         ///
         /// `false` = 别给 attach / ↗ / 「杀死空 tmux」这几个动作。
         /// **省略 = `true`**（存量会话与旧 daemon 一律照旧，零迁移）。
-        /// 来源：pidfile 的 `attachable` 布尔字段（契约见 `doc/IPC-PROTOCOL.md` §9.3）。
+        /// 来源：pidfile 的 `attachable` 布尔字段（契约见 `src/doc/IPC-PROTOCOL.md` §9.3）。
         #[serde(skip_serializing_if = "Option::is_none")]
         attachable: Option<bool>,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -366,7 +366,7 @@ pub enum Frame {
         /// **为什么需要它**：P1 之前 `raw` 的空串同时意味着「零会话」和「`tmux ls` 出错被
         /// `|| true` 吞了」，两者不可分 ⇒ monitor 只能一律保守跳过 ⇒ 当被杀的是该 origin
         /// 最后一个 tmux 会话时（server 随之退出、`tmux ls` 回空）对账整段跳过 ⇒ idle 灰灯
-        /// **卡到断连 flush 才清**（`doc/INVARIANTS.md` §24bis 预先登记的残留 bug）。
+        /// **卡到断连 flush 才清**（`src/doc/INVARIANTS.md` §24bis 预先登记的残留 bug）。
         ///
         /// **旧 monitor 忽略本字段**：它看到空 `raw` ⇒ 空 backend ⇒ 保守跳过 = 今天的行为，
         /// 无回归。新 monitor 读本字段才能安全 retire。取值集与 monitor
@@ -1268,7 +1268,7 @@ mod tests {
 
     /// **present 形**（多 agent 的 daemon）：新字段在线上、snake_case、值域正确。
     ///
-    /// ⚠ **测试名刻意不改**〔`S4`〕：`doc/IPC-PROTOCOL.md` 与**仓外 aterm** 都按这个名字
+    /// ⚠ **测试名刻意不改**〔`S4`〕：`src/doc/IPC-PROTOCOL.md` 与**仓外 aterm** 都按这个名字
     /// 引用它当 fixture 真值，改名等于在跨仓契约上制造一处找不着。
     /// 它钉的东西没变（「present 形的精确字节」），变的只是承载 agent 维度的字段 ——
     /// `S4` 把 `codex_dir` + `kinds` 换成了通用的 `homes`（`D3`：agent 名只许在值里）。

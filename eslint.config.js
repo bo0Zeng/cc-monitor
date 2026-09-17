@@ -95,7 +95,7 @@ export default tseslint.config(
     //
     // ⚠ 时间线是这条的全部要害（`git log` 实测，不是推的）：
     // E83 在 **07-31**（`a02f340`）把 `npm run lint` 从 `eslint src` 放开到 `eslint .`，
-    // 当场实测「全仓 7 个，与 `eslint src` 的基线一致」；而 `scripts/assert-coverage-floors.mjs`
+    // 当场实测「全仓 7 个，与 `eslint src` 的基线一致」；而 `tests/scripts/assert-coverage-floors.mjs`
     // 是 **08-06**（`cab8a75`）才新建的 —— **晚 6 天**。它一进来就带 7 条 `no-undef`
     // （`console`/`process`，纯缺一段 globals），基线**从 7 静默变成 14**，
     // 而 `eslint.config.js` 与 `ci.yml` 里那两句「全仓实测仍是 7 项」**没人回来改**。
@@ -108,7 +108,7 @@ export default tseslint.config(
     //
     // ★ 最该记住的一点：那 7 条**长在覆盖率门禁自己的执行体上** ——
     // 替我们数别人的那个脚本，自己没被数。
-    files: ["scripts/**/*.mjs"],
+    files: ["tests/scripts/**/*.mjs"],
     languageOptions: {
       globals: { ...globals.node },
     },

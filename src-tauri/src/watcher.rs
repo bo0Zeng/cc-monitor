@@ -305,7 +305,7 @@ fn process_file(
     }
     if truncated {
         // issue #25：截断重读 = 全文件换新 seq 重投（下面 seq 不重置的注释），即
-        // at-least-once 投递的唯一已知本地触发点（doc/INVARIANTS.md § 25；
+        // at-least-once 投递的唯一已知本地触发点（src/doc/INVARIANTS.md § 25；
         // Batch4-F14 前还有第二个：len 快照 < 读到的真实 EOF 时 offset 回退重投，
         // 现 offset 改按实际消费推进后消除）。前端
         // 折叠层（#25）与渲染层（#26）均已按 uuid 幂等。必须留痕——曾因静默无日志

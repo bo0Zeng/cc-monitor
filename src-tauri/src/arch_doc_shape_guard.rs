@@ -2,7 +2,7 @@
 //!
 //! # 病：真架构住进了 1517 行的 INVARIANTS，顶层文档在讲文件清单
 //!
-//! F19 摸底实测（重写前的 `doc/ARCHITECTURE.md`，437 行）：
+//! F19 摸底实测（重写前的 `src/doc/ARCHITECTURE.md`，437 行）：
 //!
 //! - **`backend` 这个词全文只出现 1 次**，而且指的是**前端**的 `session-backend.ts`；
 //! - **「轮询」0 次** —— 本工作区两条主线（backend 边界 · 零轮询）在顶层文档里**根本不存在**；
@@ -77,7 +77,7 @@ mod tests {
     }
 
     fn arch_doc() -> String {
-        let p = repo_root().join("doc/ARCHITECTURE.md");
+        let p = repo_root().join("src/doc/ARCHITECTURE.md");
         assert!(
             p.is_file(),
             "读不到 {} —— 读不到的文件只会静默返回空串，那会让本模块零命中地绿",
@@ -126,7 +126,7 @@ mod tests {
         let missing = uncovered(&arch_doc());
         assert!(
             missing.is_empty(),
-            "`doc/ARCHITECTURE.md` 丢了结构性事实：{missing:?}\n\
+            "`src/doc/ARCHITECTURE.md` 丢了结构性事实：{missing:?}\n\
              ⚠ **别改这张表来求绿** —— 表里每条都写着「缺了会怎样」，\n\
              那几句是从重写前那份文档的实测病灶来的（`backend` 1 次 / 「轮询」0 次）。\n\
              要么把事实写回文档，要么先证明那条事实已经不成立了。"
@@ -210,7 +210,7 @@ mod tests {
 
     /// ★ 形状钉之二：**State 注册表的摘要不许长回来。**
     ///
-    /// 〔F19〕原 §3 有一张 7 行的 State 表，而 `doc/STATE-MATRIX.md` 里有**严格更全的同一张**
+    /// 〔F19〕原 §3 有一张 7 行的 State 表，而 `src/doc/STATE-MATRIX.md` 里有**严格更全的同一张**
     /// （多三列 + 逐命令 consumer），且原文自己就写着「详细矩阵 → STATE-MATRIX.md」——
     /// **自己承认家在那边、又存了一份摘要**。⇒ 摘要删除、只留指针，本条钉住它不再长回来。
     ///
@@ -226,8 +226,8 @@ mod tests {
             .collect();
         assert!(
             rows.is_empty(),
-            "`doc/ARCHITECTURE.md` 里又出现了 {} 行 State 表（{rows:?}）——\
-             那张表的唯一的家是 `doc/STATE-MATRIX.md`，这里只该有指针。",
+            "`src/doc/ARCHITECTURE.md` 里又出现了 {} 行 State 表（{rows:?}）——\
+             那张表的唯一的家是 `src/doc/STATE-MATRIX.md`，这里只该有指针。",
             rows.len()
         );
         assert!(
@@ -307,7 +307,7 @@ mod tests {
         );
         assert!(
             rows.len() <= 25,
-            "`doc/ARCHITECTURE.md` 里「用表格枚举代码单元」的行涨到 {} 行（天花板 25，实测 12）——\n\
+            "`src/doc/ARCHITECTURE.md` 里「用表格枚举代码单元」的行涨到 {} 行（天花板 25，实测 12）——\n\
              逐**模块**清单正在长回来。它与逐**文件**清单是同一个病：\n\
              顶层文档不该靠列代码单元来解释自己，那些清单的家是各目录 README 与 `BACKEND_FILES`。\n\
              ⚠ 别把这条的天花板调上去 —— 隔壁那条按后缀数的判据看不见模块表，\n\
@@ -339,7 +339,7 @@ mod tests {
         }
         assert!(
             mentions <= 70,
-            "`doc/ARCHITECTURE.md` 里的文件名提及涨到 {mentions} 处（天花板 70，重写后实测 49）——\n\
+            "`src/doc/ARCHITECTURE.md` 里的文件名提及涨到 {mentions} 处（天花板 70，重写后实测 49）——\n\
              逐文件清单正在长回来。它的家是 `src-tauri/README.md` / `src/README.md` / \n\
              `backend/mod.rs` 的 `BACKEND_FILES`，顶层文档只该指过去。"
         );
@@ -361,7 +361,7 @@ mod tests {
     ///
     /// # 裁的是什么
     ///
-    /// `doc/INVARIANTS.md` §36 的标题后半句就是它的全部内容 ——
+    /// `src/doc/INVARIANTS.md` §36 的标题后半句就是它的全部内容 ——
     /// 「嵌套 env 污染保护已在进程启动期做完，**别在本地渲染器里重复实现**」，
     /// 铁律那段逐字禁的是「给本地渲染器补一段读 `plan.env`、把 `unset` 翻成 PowerShell
     /// `Remove-Item Env:\X` 的代码」；整节的论证（`config_dir_prefix_ps` /

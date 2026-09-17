@@ -12,7 +12,7 @@
 #
 # # 它做什么、不做什么
 #
-# **做**：认 `shared/ccm` 真正会发的那三条一次性子命令，各按 `doc/IPC-PROTOCOL.md` 的形状答：
+# **做**：认 `shared/ccm` 真正会发的那三条一次性子命令，各按 `src/doc/IPC-PROTOCOL.md` 的形状答：
 #   · `--list-accounts --accts-dir <d>`：把 `<d>/accounts.json` **原样翻成帧形状**；
 #   · `--launch`（stdin 一条 JSON）：**真的**去 `tmux` 建会话 / 打标 / `send-keys`；
 #   · `--resolve`（stdin 一条 JSON）：按 `FAKE_DAEMON_RESOLVE` 给的答案回，不给就回空。

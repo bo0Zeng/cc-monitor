@@ -2,7 +2,7 @@
 //!
 //! # 报告说「4 份 / 两种语义」，核实之后那不是漂移
 //!
-//! `doc/INVARIANTS.md §4` 逐字写着「**profile 等用户文件**写入 = ReplaceFileW + backup + 写后校验」，
+//! `src/doc/INVARIANTS.md §4` 逐字写着「**profile 等用户文件**写入 = ReplaceFileW + backup + 写后校验」，
 //! 而两处 `MoveFileExW` 写的都是 **monitor 自己的文件**（`config.json` / 日志轮转）。
 //! `mcp.rs::write_json_atomic` 的头注还专门写着「**不**用 config 的 `MoveFileExW`（§4 明令）」。
 //! ⇒ **这是「两类文件两种语义」的刻意分工，不是无人察觉的漂移。**
@@ -16,7 +16,7 @@
 //!
 //! # ⚠ 08-06 订正：这张表此前只覆盖了 §4 规则的三分之二
 //!
-//! `doc/INVARIANTS.md §4` 那句话的原文是「不能用 **`std::fs::rename`** / `MoveFileExW`
+//! `src/doc/INVARIANTS.md §4` 那句话的原文是「不能用 **`std::fs::rename`** / `MoveFileExW`
 //! 直接覆盖用户文件」，而本登记表原来只扫两个 **Win32** 符号 ——
 //! **规则里第一个被点名的写法根本不在人群里**。
 //! 于是「把 §4 从散文变成机检」（定框 E12）这件事，只做到了它自己声称的一部分。
@@ -41,7 +41,7 @@ mod tests {
 
     /// 选择规则 —— 判据红的时候原样打给写代码的人。
     const RULE: &str = "\
-选哪一套（`doc/INVARIANTS.md §4`）：\n\
+选哪一套（`src/doc/INVARIANTS.md §4`）：\n\
   · 写**用户的**文件（PowerShell profile / MCP 配置 / auto-launch.json …）\n\
     ⇒ `ReplaceFileW(dst, tmp, NULL, REPLACEFILE_WRITE_THROUGH, …)`\n\
       理由：它**保留 dst 原有的 ACL/ADS/创建时间**。`MoveFileExW` 会把 tmp 的\n\
@@ -191,7 +191,7 @@ mod tests {
     /// 改名了也不会静默失效：新名字会以「未登记」的身份出现在下面那条里。
     /// 被扫的原子替换原语：`(显示名, 匹配串)`。
     ///
-    /// 〔audit-0805 08-06〕**补上 `rename`** —— `doc/INVARIANTS.md §4` 那条规则的原话是
+    /// 〔audit-0805 08-06〕**补上 `rename`** —— `src/doc/INVARIANTS.md §4` 那条规则的原话是
     /// 「不能用 `std::fs::rename` / `MoveFileExW` 直接覆盖用户文件」，
     /// 而本登记表此前只扫两个 **Win32** 符号 ⇒ **规则里第一个被点名的写法根本不在人群里**。
     /// 于是「把 §4 从散文变成机检」（定框 E12）这件事只做到了三分之二。
@@ -315,7 +315,7 @@ mod tests {
         assert!(
             mv > 0 && rp > 0,
             "登记表里只剩一套语义（MoveFileExW {mv} 条 / ReplaceFileW {rp} 条）—— \
-             「两类文件两种语义」这条分工是否还成立？回去重读 `doc/INVARIANTS.md §4`"
+             「两类文件两种语义」这条分工是否还成立？回去重读 `src/doc/INVARIANTS.md §4`"
         );
     }
 
@@ -328,13 +328,13 @@ mod tests {
             Path::new(env!("CARGO_MANIFEST_DIR"))
                 .parent()
                 .expect("仓根")
-                .join("doc/INVARIANTS.md"),
+                .join("src/doc/INVARIANTS.md"),
         )
-        .expect("doc/INVARIANTS.md 读不到 —— 路径变了就把这条一起改");
+        .expect("src/doc/INVARIANTS.md 读不到 —— 路径变了就把这条一起改");
         let sec = doc
             .split("## 4. ")
             .nth(1)
-            .expect("`doc/INVARIANTS.md` 里找不到 §4 —— 本注册表的全部依据都在那一节");
+            .expect("`src/doc/INVARIANTS.md` 里找不到 §4 —— 本注册表的全部依据都在那一节");
         let sec = sec.split("\n---").next().unwrap_or(sec);
         for want in ["ReplaceFileW", "MoveFileExW", "backup", "ACL"] {
             assert!(

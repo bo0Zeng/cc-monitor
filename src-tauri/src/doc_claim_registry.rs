@@ -45,7 +45,7 @@ const STATUS_CELLS: &[(&str, &str)] = &[
     ("U8c-2c-1", "ccm-invocation-kernel-exists"),
     ("U8c-2c-2", "production-ts-calls-the-rust-renderers"),
     ("U8c-3", "ts-renderer-still-there"),
-    // 〔F19〕`doc/ARCHITECTURE.md` §2.1 的「backend 四层在 monitor 侧落地到哪一步」表。
+    // 〔F19〕`src/doc/ARCHITECTURE.md` §2.1 的「backend 四层在 monitor 侧落地到哪一步」表。
     // ⚠ 它是**本条判据族第一次被一张新表触发**：F19 往 ARCHITECTURE 写下这张表时，
     // `the_doc_scan_actually_reads_the_durable_docs` 当场红（表张数 1 → 2），
     // 逼着这四格各配一条现场量法 —— 那正是这条判据存在的目的。
@@ -265,7 +265,7 @@ const FALLS_SHORT_CEILING: usize = 5;
 // 「**订正手头那一处，不等于订正那句话**」。
 //
 // 第三次是 `K-P5f`（09-02）：`/proc/<pid>/environ` 从读一个环境变量变成读两个，
-// 那一拍把「读几个」这句话改对了三处、**漏了 `doc/INVARIANTS.md` 那一处**，
+// 那一拍把「读几个」这句话改对了三处、**漏了 `src/doc/INVARIANTS.md` 那一处**，
 // 而且同一拍还给这句话**新写了第五份副本**（`accounts_query.rs` 里那条判据的头注）。
 //
 // # 🔴 为什么那句假话活得下来：**它不在任何一张登记表里**
@@ -308,12 +308,12 @@ const ENV_KEY_CLAIM_SITES: &[(&str, &str, EnvKeyClaim)] = &[
     // ── 断言当下的那几份 ──────────────────────────────────────────────────
     // 🔴 `K-P5f` 漏的就是这一份：铁律那一节，全树寿命最长的文档。
     (
-        "doc/INVARIANTS.md",
+        "src/doc/INVARIANTS.md",
         "绝不回传整个环境快照",
         EnvKeyClaim::Asserts,
     ),
     (
-        "doc/IPC-PROTOCOL.md",
+        "src/doc/IPC-PROTOCOL.md",
         "`--session-accounts [--accts-dir <p>]`",
         EnvKeyClaim::Asserts,
     ),
@@ -404,7 +404,7 @@ mod tests {
     };
     use std::path::{Path, PathBuf};
 
-    const INVARIANTS: &str = include_str!("../../doc/INVARIANTS.md");
+    const INVARIANTS: &str = include_str!("../../src/doc/INVARIANTS.md");
 
     fn repo_root() -> PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -419,7 +419,7 @@ mod tests {
     /// 所以那不是活缺陷；但**新建一个 `doc/design/` 就整目录隐形**，而且不会有任何信号。
     fn doc_files() -> Vec<PathBuf> {
         let mut v: Vec<PathBuf> = Vec::new();
-        let mut stack = vec![repo_root().join("doc")];
+        let mut stack = vec![repo_root().join("src/doc")];
         while let Some(d) = stack.pop() {
             let Ok(rd) = std::fs::read_dir(&d) else {
                 continue;
@@ -535,7 +535,7 @@ mod tests {
             "`doc/` 总共只剩 {total} 行 —— 路径或读法坏了（摸底实测 4158 行）"
         );
         let tables = status_tables();
-        // 〔F19〕1 → **2**：`doc/ARCHITECTURE.md` §2.1 新增「backend 四层落地」表。
+        // 〔F19〕1 → **2**：`src/doc/ARCHITECTURE.md` §2.1 新增「backend 四层落地」表。
         // ⚠ 这不是「为了绿而改数字」——改数字的**前提**是那张表的每一格都已登记进
         // `STATUS_CELLS` 并配了现场量法（本条的报错文案逐字要求的就是这件事）。
         assert_eq!(
@@ -617,8 +617,8 @@ mod tests {
     fn the_doc_number_for_production_launch_calls_matches_reality() {
         let marker = "〔机检〕生产段 `.call(\"launch\")` 处数：";
         // ⚠ **F12 扩扫描面**：第一版只读 `INVARIANTS.md` 一份 ⇒
-        // `/full-audit` 逮到**第四份副本**住在 `doc/IPC-PROTOCOL.md:584`（「生产路径今天还没切过来」），
-        // 而它**结构上永远不会红**。⇒ 先扫全 `doc/**`，任何一份里出现同一句旧断言都要红。
+        // `/full-audit` 逮到**第四份副本**住在 `src/doc/IPC-PROTOCOL.md:584`（「生产路径今天还没切过来」），
+        // 而它**结构上永远不会红**。⇒ 先扫全 `src/doc/**`，任何一份里出现同一句旧断言都要红。
         {
             let stale = "生产路径今天还没切过来";
             let mut offenders: Vec<String> = Vec::new();
@@ -1035,7 +1035,7 @@ mod tests {
             !residents.is_empty(),
             "`{}` 建出来了，可里面一个住户都没有（只有 `mod.rs` 也算没有）。\n\
              ⚠ 一个空的能力线目录是**装饰**：它自己不说假话，但它让下一个人\n\
-             只要顺手把 `doc/ARCHITECTURE.md` 那一格改成「已交付」就全绿。\n\
+             只要顺手把 `src/doc/ARCHITECTURE.md` 那一格改成「已交付」就全绿。\n\
              两条出路，别默认第一条：① 把那个住户真的搬进来；\n\
              ② 这一层其实还不需要 ⇒ 把目录删掉，让「待做」继续是真的。",
             dir.display()
@@ -1248,7 +1248,7 @@ mod tests {
     ///
     /// Phase G 的全局变异抽样里，把 daemon `inbound.rs` 的 `unknown_command`
     /// **三处一起改名**成 `unknown_cmd` —— **daemon 253 条全绿**。
-    /// 而 `doc/IPC-PROTOCOL.md` 逐条列着六个**协议级**错误码，语义是
+    /// 而 `src/doc/IPC-PROTOCOL.md` 逐条列着六个**协议级**错误码，语义是
     /// 「客户端代码写错了，别重试」—— 那是**仓外可见的契约**（`resolve` 那条已经与 aterm 冻结）。
     ///
     /// ⚠ F11 建这个登记表时扫的是「状态列」与「可数的实测断言」两族，
@@ -1260,7 +1260,7 @@ mod tests {
     /// ⇒ 这条也是 skill 那句「**变异存活分布不会说谎**」在本工作区拿到的实货。
     #[test]
     fn the_protocol_level_error_codes_in_the_doc_are_the_ones_the_daemon_uses() {
-        const IPC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
+        const IPC: &str = include_str!("../../src/doc/IPC-PROTOCOL.md");
         let marker = "**协议级**由 `inbound.rs` 独占 ——";
         let at = IPC.find(marker).unwrap_or_else(|| {
             panic!(
@@ -1710,7 +1710,7 @@ mod tests {
 
     /// 〔audit-0805 08-06〕**发版版本号六处必须一致**（`package.json` 是权威源，其余对拍）。
     ///
-    /// **为什么建它**：`doc/RELEASING.md` 自己逐字记着 ——
+    /// **为什么建它**：`src/doc/RELEASING.md` 自己逐字记着 ——
     /// 「v3.1→v3.4 **连续四次**发版漏改 README，于是 README 的『当前版本』长期落后一个大版本；
     /// BACKLOG 早把『checklist 里没有 README 这一条』点名为**机制性根因**，
     /// 而根因没修 ⇒ 第四次照样复发」。
@@ -1905,7 +1905,7 @@ mod tests {
             off.is_empty(),
             "版本号对不上。权威源 `package.json` = {authority}，而这几处是别的数：\n{}\n\n\
              ⚠ 这个位置**已经连续腐过四次**（v3.1→v3.4 每次发版都漏改 README，\n\
-             `doc/RELEASING.md` 自己记着这件事）。当时的修法是往 checklist 里加一行散文，\n\
+             `src/doc/RELEASING.md` 自己记着这件事）。当时的修法是往 checklist 里加一行散文，\n\
              而第四次复发时那行散文已经在了 —— 所以现在由本条判据接着。\n\
              修法：把落后的那几处改成 {authority}（`RELEASING.md § 1` 的 checklist 列了全部落点）。",
             off.join("\n")
@@ -1937,10 +1937,10 @@ mod tests {
     ///
     /// # 它从哪来 —— 一条**现打出来**的缺口，不是设想
     ///
-    /// `K-R118` 的死值验第 ⑦ 刀（刀具住 `evidence/K-R118-cut.py` 的 `d7`）：
+    /// `K-R118` 的死值验第 ⑦ 刀（刀具住 `tests/evidence/K-R118-cut.py` 的 `d7`）：
     /// 把版本号那六处 ＋ `src-tauri/Cargo.lock` **一起** bump，而 `CHANGELOG.md`
     /// 一个字不动 ⇒ 实测 `GATE: OK —— 16 格全绿，一条都没红`
-    /// （逐字读数住 `evidence/K-R118-deathvalue.md#§E3`，本条不抄那份快照）。
+    /// （逐字读数住 `tests/evidence/K-R118-deathvalue.md#§E3`，本条不抄那份快照）。
     /// ⇒ 「**版本号 bump 了而 CHANGELOG 没跟**」这一形当时**没有任何东西在守**。
     /// 它的后果正是本区最贵的那一族：一次**静默的行为改变** —— 用户拿到的包只涨了小版本号，
     /// 而里面有几条会让他原来的用法当场失效。
@@ -2029,7 +2029,7 @@ mod tests {
                  `Cargo.lock` 由 `cargo check --locked` 看着）。\n\n\
              ⚠ **这条前提本来就该变的时候去哪里重裁**：顶上挂一个 `## [Unreleased]` 会让本条红。\n\
              本仓至今没用过那种写法（所以这里没有那一档豁免，也就没有一条没夹具的分支）；\n\
-             真要用，去 `doc/RELEASING.md` 把发版次序整个重裁一次 —— 别在这里加一行豁免。"
+             真要用，去 `src/doc/RELEASING.md` 把发版次序整个重裁一次 —— 别在这里加一行豁免。"
         );
 
         // ── 第二条判定：breaking 段不许被埋在列表里 ──────────────────────────
@@ -2188,11 +2188,11 @@ mod tests {
     ///
     /// `K-R119` 在推 `v3.8.0` 之前逐处 grep 了一遍（不是「判据绿了」，是真去看那几行），
     /// 七处版本号 ＋ `R79` 那两处 README 自称全是 `3.8.0`，而 `package-lock.json`
-    /// 的**顶层两处**仍是 `3.7.0`。读数住 `evidence/K-R119-发版读数.md § 四`。
+    /// 的**顶层两处**仍是 `3.7.0`。读数住 `tests/evidence/K-R119-发版读数.md § 四`。
     ///
     /// 🔴 **成因与 `K-R120` 那两处 README 同源，不是「有人改漏了」**：
     /// 那两处**不在任何判据的人群里** —— 现打 `grep -c 'package-lock' src-tauri/src/` 在本条
-    /// 落地之前是 **0**。`doc/RELEASING.md § 1` 自己逐字记着这一条「**没有任何东西卡它**」。
+    /// 落地之前是 **0**。`src/doc/RELEASING.md § 1` 自己逐字记着这一条「**没有任何东西卡它**」。
     /// ⇒ 「判据在、而它的人群不含这一处」，默认结局是**静默的绿**。
     ///
     /// # 🔴 射程刻意很窄：只钉**顶层那两处**，不钉几百个依赖的 `version`
@@ -2471,7 +2471,7 @@ mod tests {
     ///
     /// # 逮到的是一条「找不到」的缺陷
     ///
-    /// 08-06 实测：`scripts/` 有三个脚本，而 `scripts/README.md` 的表**只列了 `run.ps1`**。
+    /// 08-06 实测：`scripts/` 有三个脚本，而 `tests/scripts/README.md` 的表**只列了 `run.ps1`**。
     /// 漏掉的两个里有 `verify-committed-state.sh` —— 它的头注逐字写着
     /// 「本仓不 push ⇒ CI 从来没见过这些 commit，**所以这道门必须在本机跑**」。
     /// ⇒ 一个「必须本机跑」的门，**照目录 README 是找不到的**；
@@ -2484,9 +2484,9 @@ mod tests {
     /// （本模块头注记着 `STATUS_CELLS` 那次教训）。要读细节去看脚本自己的头注。
     #[test]
     fn every_script_in_the_directory_is_listed_in_its_readme() {
-        let dir = repo_root().join("scripts");
+        let dir = repo_root().join("tests/scripts");
         let readme =
-            std::fs::read_to_string(dir.join("README.md")).expect("读不到 scripts/README.md");
+            std::fs::read_to_string(dir.join("README.md")).expect("读不到 tests/scripts/README.md");
         let mut files: Vec<String> = std::fs::read_dir(&dir)
             .expect("读不到 scripts/")
             .flatten()
@@ -2506,7 +2506,7 @@ mod tests {
             .collect();
         assert!(
             missing.is_empty(),
-            "`scripts/` 里这些文件在 `scripts/README.md` 里查不到：{missing:?}\n\n\
+            "`scripts/` 里这些文件在 `tests/scripts/README.md` 里查不到：{missing:?}\n\n\
              ⚠ 这不会让任何测试变红，也不会让任何人报错 —— 它只是让**下一个人找不到**。\n\
              08-06 实测：那张表当时只有 `run.ps1`，于是照它找不到 `verify-committed-state.sh`，\n\
              而那是全仓**唯一量「提交状态」且必须在本机跑**的门。\n\
@@ -2518,7 +2518,7 @@ mod tests {
     ///
     /// # 逮到的是「照它做会少测」
     ///
-    /// `doc/DEVELOPMENT.md` 的「跑测试」节此前逐字写着
+    /// `src/doc/DEVELOPMENT.md` 的「跑测试」节此前逐字写着
     /// `cargo test --lib          # 全部单元测试` —— 而 `--lib` **只覆盖根包**，
     /// 六个共享 crate 一条都不跑。新人照入口文档做，得到的是一个**少测**的读数，
     /// 而它长得和全量读数一模一样（都是「ok. N passed」）。
@@ -2557,11 +2557,11 @@ mod tests {
             })
             .to_string();
 
-        let dev = std::fs::read_to_string(repo_root().join("doc/DEVELOPMENT.md"))
-            .expect("读不到 doc/DEVELOPMENT.md");
+        let dev = std::fs::read_to_string(repo_root().join("src/doc/DEVELOPMENT.md"))
+            .expect("读不到 src/doc/DEVELOPMENT.md");
         assert!(
             dev.lines().any(|l| l.contains(cmd.as_str())),
-            "`doc/DEVELOPMENT.md` 的「跑测试」节里没有 CI 那条命令：\n  {cmd}\n\n\
+            "`src/doc/DEVELOPMENT.md` 的「跑测试」节里没有 CI 那条命令：\n  {cmd}\n\n\
              ⚠ 它此前写的是 `cargo test --lib` 并标成「全部单元测试」——\n\
              而 `--lib` **只覆盖根包**，六个共享 crate 一条都不跑。\n\
              新人照入口文档做会得到一个**少测**的读数，而它长得和全量读数一模一样。\n\
@@ -2747,7 +2747,7 @@ mod tests {
         );
         // 锚点：数量地板对「收的是不是同一类东西」是瞎的（本模块另一条判据现打过这一课）。
         // 🔴 用 `K-P5f` 漏掉的那一处当锚点 —— 它不在场就说明这条判据没在看该看的地方。
-        const CANARY: &str = "doc/INVARIANTS.md";
+        const CANARY: &str = "src/doc/INVARIANTS.md";
         assert!(
             hits.iter().any(|(f, _, _)| f == CANARY),
             "扫到了 {} 份，但**锚点 `{CANARY}` 不在里面** —— 收的多半不是那句话了",
@@ -2912,9 +2912,9 @@ mod tests {
 // `daemon_*` 函数名、`--daemon-probe` 这类子命令、`daemon-gate2` 这类 e2e 套件名，
 // 一个都不改）。**「这个词出现几次」与「该改几处」是两个数**，下面第一道闸就长在这条线上。
 //
-// 本轮现打（量具 `evidence/K-R116-ruler.py`，人群 = `git ls-files '*.md'` 95 份）：
+// 本轮现打（量具 `tests/evidence/K-R116-ruler.py`，人群 = `git ls-files '*.md'` 95 份）：
 // 改之前**出现 2098 次**，其中**该改 358 处**；改完之后写区里 `该改` 归零。
-// 两个数差在哪，逐档读数落在 `evidence/K-R116-census.md`。
+// 两个数差在哪，逐档读数落在 `tests/evidence/K-R116-census.md`。
 // ══════════════════════════════════════════════════════════════════════════════
 
 /// 闸一：**那 9 份散文里不许再有人读的 `daemon`**（`K-R116` `KR116D1` 的机器面）。
@@ -2961,10 +2961,10 @@ mod daemon_wording_registry {
     /// 🔴 表名起成 `SITES` 是 `scanning_guard_registry::TABLE_DECLS` 那条纪律要的
     /// （「新写一条『扫描面 ＋ 常量表』型的判据，那张表要起成 `TABLE_DECLS` 里已有的名字之一」）。
     const SITES: &[&str] = &[
-        "doc/IPC-PROTOCOL.md",
-        "doc/INVARIANTS.md",
-        "doc/ARCHITECTURE.md",
-        "doc/CONTRIBUTING.md",
+        "src/doc/IPC-PROTOCOL.md",
+        "src/doc/INVARIANTS.md",
+        "src/doc/ARCHITECTURE.md",
+        "src/doc/CONTRIBUTING.md",
         "README.md",
         "README.en.md",
         "tests/e2e/README.md",
@@ -2974,29 +2974,29 @@ mod daemon_wording_registry {
 
     /// 写区里**裸着的 `daemon`，而它一个字都不许动** —— `(文件, 逐字片段, 理由)`。
     ///
-    /// 🔴 **这是本仓这个闭集的唯一住址**：量具 `evidence/K-R116-ruler.py` 不抄一份，
+    /// 🔴 **这是本仓这个闭集的唯一住址**：量具 `tests/evidence/K-R116-ruler.py` 不抄一份，
     /// 它**解析本表**（`--apply` 与本闸因此不可能对不上）。
     ///
     /// 每条片段必须在那份文件里**恰好命中一次** —— 命中 0 次 = 那句话被改过了、这条例外
     /// 此刻在空转；命中多次 = 片段太短，说不清点的是哪一处。两侧都由下面的判据断言。
     const EXEMPT: &[(&str, &str, &str)] = &[
-        ("doc/INVARIANTS.md", "「**ccm做到必须走daemon**」",
+        ("src/doc/INVARIANTS.md", "「**ccm做到必须走daemon**」",
          "用户 08-14 逐字裁定的原话 —— 引文改了就不是引文了"),
-        ("doc/IPC-PROTOCOL.md", "「ccm 做到必须走 daemon」",
+        ("src/doc/IPC-PROTOCOL.md", "「ccm 做到必须走 daemon」",
          "同上，用户 08-14 逐字裁定在本文件里的第二处引用"),
-        ("doc/INVARIANTS.md", "**原措辞**：「daemon 对被观测文件系统必须只读，绝不写。」",
+        ("src/doc/INVARIANTS.md", "**原措辞**：「daemon 对被观测文件系统必须只读，绝不写。」",
          "§41.6 的**原措辞留档**（2026-07-31 收窄前那句）—— 历史句，改它等于篡改沿革；而它旁边那句「现措辞」正是本轮改的那一处"),
-        ("doc/INVARIANTS.md", "「daemonless 降级读取（无需 daemon）」",
+        ("src/doc/INVARIANTS.md", "「daemonless 降级读取（无需 daemon）」",
          "已删掉的那个界面 checkbox 的**逐字标签**（`K-R59` 09-11 整格删除，这里是墓碑）"),
-        ("doc/INVARIANTS.md", "「**daemon 结构上产不出它**：`control/launch.rs` 头注逐字",
+        ("src/doc/INVARIANTS.md", "「**daemon 结构上产不出它**：`control/launch.rs` 头注逐字",
          "`K-R106` 订正段里**逐字回抄的原文**（下一句就是「那句被用户当场推翻了一半」）"),
-        ("doc/INVARIANTS.md", "不许再用「daemon」这个词把「远端常驻的那份」与「后端」压成一个",
+        ("src/doc/INVARIANTS.md", "不许再用「daemon」这个词把「远端常驻的那份」与「后端」压成一个",
          "`R61` 裁定三本身 —— 它说的就是这个词，把词换掉这句话就没有指称对象了"),
-        ("doc/CONTRIBUTING.md", "REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-daemon-二进制f08b",
-         "markdown **锚点**，指向 `doc/REMOTE-PHASE0-DEPLOY.md` 的标题；那份文件不在本轮写区 ⇒ 标题不动，锚点跟着不许动，否则链接当场断"),
-        ("doc/IPC-PROTOCOL.md", "= CC 2.1.x daemon 后台任务",
+        ("src/doc/CONTRIBUTING.md", "REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-daemon-二进制f08b",
+         "markdown **锚点**，指向 `src/doc/REMOTE-PHASE0-DEPLOY.md` 的标题；那份文件不在本轮写区 ⇒ 标题不动，锚点跟着不许动，否则链接当场断"),
+        ("src/doc/IPC-PROTOCOL.md", "= CC 2.1.x daemon 后台任务",
          "这一处的 `daemon` 指的是 **Claude Code 自己**那个 `--fork-session` 后台模式，不是本仓的后端 —— 换了词就把两个不同的东西压成一个（`R61` 治的正是这一形，反方向）"),
-        ("doc/IPC-PROTOCOL.md", "（`daemon-协议-v1 §3`）",
+        ("src/doc/IPC-PROTOCOL.md", "（`daemon-协议-v1 §3`）",
          "与仓外 aterm **冻结在 2026-07-18** 的那份契约文档的**名字**，不是散文"),
         ("README.md", "`rust` / `frontend` / `daemon` / `linux-app-build` / `e2e-smoke`",
          "`.github/workflows/ci.yml` 里的 **job 名**，改它 CI 就对不上"),
@@ -3061,7 +3061,7 @@ mod daemon_wording_registry {
         //   **按名字**跑（不看类型），而本文件里 `text` / `b` / `lower` 这几个短名
         //   早就被别的判据用着 —— 在这里复用一个，就会把同文件里
         //   `name.starts_with("README")` 那一族**早已存在**的匹配一起卷进它的人群，
-        //   那条递减棘轮当场 33 → 34。〔09-14 实打逮到过一次，读数在 `evidence/K-R116-deathvalue.md`〕
+        //   那条递减棘轮当场 33 → 34。〔09-14 实打逮到过一次，读数在 `tests/evidence/K-R116-deathvalue.md`〕
         let folded_haystack = haystack.to_ascii_lowercase();
         let folded_bytes = folded_haystack.as_bytes();
         let width = NEEDLE.len();
@@ -3203,7 +3203,7 @@ mod daemon_wording_registry {
 ///
 /// # 🔴 理由（`KR116D2` 逐字要它写进头注）
 ///
-/// `evidence/**` 是**死值验留档**，`CHANGELOG.md` 是发版墓碑 —— 两者装的都是
+/// `tests/evidence/**` 是**死值验留档**，`CHANGELOG.md` 是发版墓碑 —— 两者装的都是
 /// 「**某年某月现打是多少**」。谁哪天顺手把里面的 `daemon` 批量替换成「后端」，
 /// 那些读数就**改错了改不回来**：`brief` 第 12 条逐字「变异台上的数字就是证据，
 /// **写错一个数等于伪造一次读数**」。
@@ -3219,8 +3219,8 @@ mod daemon_wording_registry {
 ///
 /// # 人群 · 分母 · 它够不着什么
 ///
-/// [`REGISTERED`] 是**量于 `897afec`（2026-09-14）**的那 69 份 `evidence/*.md` ＋ `CHANGELOG.md`。
-/// 之后新长出来的 `evidence/*.md` **不在逐文件那一档里** —— 接它们的是下面那条
+/// [`REGISTERED`] 是**量于 `897afec`（2026-09-14）**的那 69 份 `tests/evidence/*.md` ＋ `CHANGELOG.md`。
+/// 之后新长出来的 `tests/evidence/*.md` **不在逐文件那一档里** —— 接它们的是下面那条
 /// **整棵树的合计地板**（`EVIDENCE_DAEMON_FLOOR`）。
 ///
 /// ⚠ 两侧都写出来：
@@ -3241,7 +3241,7 @@ mod frozen_daemon_census {
             .to_path_buf()
     }
 
-    /// 整棵 `evidence/*.md` 的 `daemon` 合计地板 —— **量于 `897afec`，2026-09-14，69 份**。
+    /// 整棵 `tests/evidence/*.md` 的 `daemon` 合计地板 —— **量于 `897afec`，2026-09-14，69 份**。
     ///
     /// 🔴 **只许涨，不许把这个数调下来让今天好过。** 调下来 = 把「有人抹掉了历史读数」
     /// 这件事直接注销掉，而那正是本闸唯一要接的东西。
@@ -3254,75 +3254,75 @@ mod frozen_daemon_census {
     ///
     /// 🔴 表名起成 `REGISTERED` 是 `scanning_guard_registry::TABLE_DECLS` 那条纪律要的。
     const REGISTERED: &[(&str, usize, usize)] = &[
-        ("evidence/K-P6-readings.md", 26, 2),
-        ("evidence/K-P6b-readings.md", 29, 0),
-        ("evidence/K-P7-readings.md", 82, 1),
-        ("evidence/K-R100-deathvalue.md", 19, 1),
-        ("evidence/K-R101-deathvalue.md", 20, 1),
-        ("evidence/K-R102-deathvalue.md", 37, 6),
-        ("evidence/K-R103-deathvalue.md", 7, 5),
-        ("evidence/K-R104-deathvalue.md", 43, 4),
-        ("evidence/K-R105-deathvalue.md", 10, 2),
-        ("evidence/K-R106-deathvalue.md", 13, 16),
-        ("evidence/K-R109-deathvalue.md", 5, 4),
-        ("evidence/K-R110-census.md", 10, 1),
-        ("evidence/K-R110-deathvalue.md", 16, 8),
-        ("evidence/K-R111-census.md", 39, 31),
-        ("evidence/K-R112-deathvalue.md", 41, 3),
-        ("evidence/K-R113-deathvalue.md", 43, 0),
-        ("evidence/K-R114-deathvalue.md", 16, 20),
-        ("evidence/K-R114-真机清单.md", 31, 37),
-        ("evidence/K-R115-deathvalue.md", 16, 9),
-        ("evidence/K-R118-deathvalue.md", 13, 14),
-        ("evidence/K-R12-deathvalue.md", 0, 9),
-        ("evidence/K-R12-locale-lab.md", 0, 7),
-        ("evidence/K-R24-D1-premise-census.md", 5, 3),
-        ("evidence/K-R24-D5-home-axis-census.md", 4, 3),
-        ("evidence/K-R24-D6-locale-axis-census.md", 5, 8),
-        ("evidence/K-R24-D7-etxtbsy.md", 8, 2),
-        ("evidence/K-R24-D8-load-axis.md", 12, 1),
-        ("evidence/K-R25-D2-unit-alignment.md", 44, 1),
-        ("evidence/K-R25-D4-nine-uncovered-files.md", 6, 0),
-        ("evidence/K-R26-readings.md", 17, 5),
-        ("evidence/K-R27-parked-tense-audit.md", 38, 1),
-        ("evidence/K-R56-deathvalue.md", 10, 1),
-        ("evidence/K-R67-依赖脊柱与顺序.md", 14, 24),
-        ("evidence/K-R68-三种载体摸底.md", 79, 21),
-        ("evidence/K-R70-身份从字节里读得出.md", 29, 11),
-        ("evidence/K-R71-observe归位.md", 5, 3),
-        ("evidence/K-R72-deathvalue.md", 53, 2),
-        ("evidence/K-R73-monitor侧层间方向判据.md", 9, 5),
-        ("evidence/K-R74-拨号住址与递减棘轮.md", 5, 2),
-        ("evidence/K-R75-剥法认形状与真静默读数.md", 27, 5),
-        ("evidence/K-R76-三处假话与裸行号的刀.md", 21, 0),
-        ("evidence/K-R77-拆最后那道绕道与恒零棘轮.md", 30, 0),
-        ("evidence/K-R78-readings.md", 22, 5),
-        ("evidence/K-R79-远端写那一层与判档第四档.md", 22, 2),
-        ("evidence/K-R80-gate-daemon-fmt.md", 66, 25),
-        ("evidence/K-R81-一个后端两处使用.md", 37, 12),
-        ("evidence/K-R82-hooks-gate.md", 10, 5),
-        ("evidence/K-R83-deathvalue.md", 11, 1),
-        ("evidence/K-R85-摸底.md", 20, 2),
-        ("evidence/K-R86-deathvalue.md", 33, 6),
-        ("evidence/K-R87-deathvalue.md", 43, 10),
-        ("evidence/K-R88-deathvalue.md", 11, 0),
-        ("evidence/K-R89-deathvalue.md", 28, 26),
-        ("evidence/K-R9-R2-fallback-watch-scope.md", 16, 1),
-        ("evidence/K-R92-deathvalue.md", 2, 0),
-        ("evidence/K-R93-deathvalue.md", 2, 1),
-        ("evidence/K-R94-deathvalue.md", 0, 2),
-        ("evidence/K-R95-deathvalue.md", 6, 10),
-        ("evidence/K-R96-deathvalue.md", 12, 39),
-        ("evidence/K-R97-deathvalue.md", 2, 0),
-        ("evidence/K-R98-deathvalue.md", 15, 0),
-        ("evidence/K-W1B-D1-agent-coupling-census.md", 12, 1),
-        ("evidence/K-W1C-D1-edges.md", 1, 0),
-        ("evidence/K-W1C-D3D4-deathvalue.md", 0, 0),
-        ("evidence/K-W1C-D4-reachability.md", 0, 5),
-        ("evidence/K-W2E-readings.md", 17, 2),
-        ("evidence/K-W4-D1-rename-surface.md", 5, 1),
-        ("evidence/K-W4-D4-build-id-split.md", 50, 1),
-        ("evidence/K-W4b-readings.md", 8, 6),
+        ("tests/evidence/K-P6-readings.md", 26, 2),
+        ("tests/evidence/K-P6b-readings.md", 29, 0),
+        ("tests/evidence/K-P7-readings.md", 82, 1),
+        ("tests/evidence/K-R100-deathvalue.md", 19, 1),
+        ("tests/evidence/K-R101-deathvalue.md", 20, 1),
+        ("tests/evidence/K-R102-deathvalue.md", 37, 6),
+        ("tests/evidence/K-R103-deathvalue.md", 7, 5),
+        ("tests/evidence/K-R104-deathvalue.md", 43, 4),
+        ("tests/evidence/K-R105-deathvalue.md", 10, 2),
+        ("tests/evidence/K-R106-deathvalue.md", 13, 16),
+        ("tests/evidence/K-R109-deathvalue.md", 5, 4),
+        ("tests/evidence/K-R110-census.md", 10, 1),
+        ("tests/evidence/K-R110-deathvalue.md", 16, 8),
+        ("tests/evidence/K-R111-census.md", 39, 31),
+        ("tests/evidence/K-R112-deathvalue.md", 41, 3),
+        ("tests/evidence/K-R113-deathvalue.md", 43, 0),
+        ("tests/evidence/K-R114-deathvalue.md", 16, 20),
+        ("tests/evidence/K-R114-真机清单.md", 31, 37),
+        ("tests/evidence/K-R115-deathvalue.md", 16, 9),
+        ("tests/evidence/K-R118-deathvalue.md", 13, 14),
+        ("tests/evidence/K-R12-deathvalue.md", 0, 9),
+        ("tests/evidence/K-R12-locale-lab.md", 0, 7),
+        ("tests/evidence/K-R24-D1-premise-census.md", 5, 3),
+        ("tests/evidence/K-R24-D5-home-axis-census.md", 4, 3),
+        ("tests/evidence/K-R24-D6-locale-axis-census.md", 5, 8),
+        ("tests/evidence/K-R24-D7-etxtbsy.md", 8, 2),
+        ("tests/evidence/K-R24-D8-load-axis.md", 12, 1),
+        ("tests/evidence/K-R25-D2-unit-alignment.md", 44, 1),
+        ("tests/evidence/K-R25-D4-nine-uncovered-files.md", 6, 0),
+        ("tests/evidence/K-R26-readings.md", 17, 5),
+        ("tests/evidence/K-R27-parked-tense-audit.md", 38, 1),
+        ("tests/evidence/K-R56-deathvalue.md", 10, 1),
+        ("tests/evidence/K-R67-依赖脊柱与顺序.md", 14, 24),
+        ("tests/evidence/K-R68-三种载体摸底.md", 79, 21),
+        ("tests/evidence/K-R70-身份从字节里读得出.md", 29, 11),
+        ("tests/evidence/K-R71-observe归位.md", 5, 3),
+        ("tests/evidence/K-R72-deathvalue.md", 53, 2),
+        ("tests/evidence/K-R73-monitor侧层间方向判据.md", 9, 5),
+        ("tests/evidence/K-R74-拨号住址与递减棘轮.md", 5, 2),
+        ("tests/evidence/K-R75-剥法认形状与真静默读数.md", 27, 5),
+        ("tests/evidence/K-R76-三处假话与裸行号的刀.md", 21, 0),
+        ("tests/evidence/K-R77-拆最后那道绕道与恒零棘轮.md", 30, 0),
+        ("tests/evidence/K-R78-readings.md", 22, 5),
+        ("tests/evidence/K-R79-远端写那一层与判档第四档.md", 22, 2),
+        ("tests/evidence/K-R80-gate-daemon-fmt.md", 66, 25),
+        ("tests/evidence/K-R81-一个后端两处使用.md", 37, 12),
+        ("tests/evidence/K-R82-hooks-gate.md", 10, 5),
+        ("tests/evidence/K-R83-deathvalue.md", 11, 1),
+        ("tests/evidence/K-R85-摸底.md", 20, 2),
+        ("tests/evidence/K-R86-deathvalue.md", 33, 6),
+        ("tests/evidence/K-R87-deathvalue.md", 43, 10),
+        ("tests/evidence/K-R88-deathvalue.md", 11, 0),
+        ("tests/evidence/K-R89-deathvalue.md", 28, 26),
+        ("tests/evidence/K-R9-R2-fallback-watch-scope.md", 16, 1),
+        ("tests/evidence/K-R92-deathvalue.md", 2, 0),
+        ("tests/evidence/K-R93-deathvalue.md", 2, 1),
+        ("tests/evidence/K-R94-deathvalue.md", 0, 2),
+        ("tests/evidence/K-R95-deathvalue.md", 6, 10),
+        ("tests/evidence/K-R96-deathvalue.md", 12, 39),
+        ("tests/evidence/K-R97-deathvalue.md", 2, 0),
+        ("tests/evidence/K-R98-deathvalue.md", 15, 0),
+        ("tests/evidence/K-W1B-D1-agent-coupling-census.md", 12, 1),
+        ("tests/evidence/K-W1C-D1-edges.md", 1, 0),
+        ("tests/evidence/K-W1C-D3D4-deathvalue.md", 0, 0),
+        ("tests/evidence/K-W1C-D4-reachability.md", 0, 5),
+        ("tests/evidence/K-W2E-readings.md", 17, 2),
+        ("tests/evidence/K-W4-D1-rename-surface.md", 5, 1),
+        ("tests/evidence/K-W4-D4-build-id-split.md", 50, 1),
+        ("tests/evidence/K-W4b-readings.md", 8, 6),
         ("CHANGELOG.md", 90, 79),
     ];
 
@@ -3332,7 +3332,7 @@ mod frozen_daemon_census {
     /// `needle_anchor_registry::corpus_vars` 按「`let X = …read_to_string(…)`」播种语料变量，
     /// 而它的传递闭包**按名字**跑一层 —— 在本文件里播一个 `body` 出去，
     /// 会把同文件别处 `name.starts_with("README")` 这类**早就存在**的匹配一起卷进人群，
-    /// 那条递减棘轮当场从 33 涨到 34。〔09-14 实打过一次，读数在 `evidence/K-R116-deathvalue.md`〕
+    /// 那条递减棘轮当场从 33 涨到 34。〔09-14 实打过一次，读数在 `tests/evidence/K-R116-deathvalue.md`〕
     fn read_frozen(root: &Path, rel: &str) -> String {
         std::fs::read_to_string(root.join(rel)).unwrap_or_else(|e| {
             panic!(
@@ -3381,14 +3381,14 @@ mod frozen_daemon_census {
             }
         }
 
-        // ── 整棵树那一档：新长出来的 `evidence/*.md` 由它兜 ──
+        // ── 整棵树那一档：新长出来的 `tests/evidence/*.md` 由它兜 ──
         //
         // ⚠ 用 `scan_tree!` 而不是裸 `read_dir`：`scanning_guard_registry` 那条元判据
         // 逐字禁裸遍历（判据在自己那份里找到自己 ⇒ 恒绿）。
         let mut n_files = 0usize;
         let mut sum_d = 0usize;
         let mut sum_c = 0usize;
-        for (_, evidence_text) in guard_core::scan_tree!(&root.join("evidence"), &["md"]) {
+        for (_, evidence_text) in guard_core::scan_tree!(&root.join("tests/evidence"), &["md"]) {
             n_files += 1;
             sum_d += count(&evidence_text, DAEMON, true);
             sum_c += count(&evidence_text, CCM, false);
@@ -3411,7 +3411,7 @@ mod frozen_daemon_census {
         assert!(
             shrunk.is_empty(),
             "有人把历史读数里的 `daemon` / `ccm` 抹掉了：\n{}\n\n\
-             ★ `evidence/**` 是死值验留档、`CHANGELOG.md` 是发版墓碑，两者装的都是\n\
+             ★ `tests/evidence/**` 是死值验留档、`CHANGELOG.md` 是发版墓碑，两者装的都是\n\
              「**某年某月现打是多少**」—— 改它 = **伪造一次读数**（`brief` 第 12 条）。\n\
              `K-R116` 那一轮把散文里的 `daemon` 全换成了「后端」，**这两档刻意不在射程里**。\n\
              ⚠ 真要动（比如一份留档整个作废）：先在 `REGISTERED` 里改行并写清为什么，\n\

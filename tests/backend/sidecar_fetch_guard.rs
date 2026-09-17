@@ -232,7 +232,7 @@ mod tests {
 
     /// 协议文档那一份。
     fn doc() -> &'static str {
-        const DOC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
+        const DOC: &str = include_str!("../../src/doc/IPC-PROTOCOL.md");
         assert!(
             DOC.len() > 10_000,
             "只读到 {} 字节的 IPC-PROTOCOL.md —— 本条在空转",
@@ -285,13 +285,13 @@ mod tests {
         let missing: Vec<&String> = codes.iter().filter(|c| !in_doc.contains(c)).collect();
         assert!(
             missing.is_empty(),
-            "这些失败面没有落进 `doc/IPC-PROTOCOL.md`：{missing:?}\n\
+            "这些失败面没有落进 `src/doc/IPC-PROTOCOL.md`：{missing:?}\n\
              客户端要把 code 翻成人话，翻不出来的那几个对用户就是一句「未知错误」。"
         );
         let ghosts: Vec<&String> = in_doc.iter().filter(|c| !codes.contains(c)).collect();
         assert!(
             ghosts.is_empty(),
-            "`doc/IPC-PROTOCOL.md` 里写着这些 code，而代码一个都产不出来：{ghosts:?}"
+            "`src/doc/IPC-PROTOCOL.md` 里写着这些 code，而代码一个都产不出来：{ghosts:?}"
         );
     }
 

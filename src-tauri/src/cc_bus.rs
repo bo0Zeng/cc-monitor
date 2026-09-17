@@ -34,7 +34,7 @@ pub fn is_valid_bus_id(s: &str) -> bool {
 /// `agents.tsv` 的一行：id / pane 地址 / 登记时间。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct CcBusAgent {
     pub id: String,
     pub pane: String,
@@ -44,7 +44,7 @@ pub struct CcBusAgent {
 /// `spawned.tsv` 的一行：id / 工作目录 / spawn 时间 / 初始任务。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct CcBusSpawned {
     pub id: String,
     pub dir: String,
@@ -55,7 +55,7 @@ pub struct CcBusSpawned {
 /// 一次读回的完整状态。`skipped` = 两个文件里被跳过的坏行总数。
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct CcBusState {
     pub agents: Vec<CcBusAgent>,
     pub spawned: Vec<CcBusSpawned>,
@@ -523,7 +523,7 @@ fn build_spawn_cmd(
 /// 只取渲染要用的四个——多取一个字段就多一处要跟着 cc-bus 演进的耦合。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct CcBusMessage {
     pub from: String,
     pub ts: String,
@@ -2278,7 +2278,7 @@ mod tests {
     /// 取 `fn <name>` 的函数体：从签名那行起，**到下一个顶格行为止**。
     ///
     /// ⚠ 第一版写成「到下一个顶格 `fn ` 为止」，于是 `build_spawn_cmd` 的体一路吃到了
-    /// 它下面那个 struct 的属性里，把 `"../../src/generated/"` 当成了命令模板（出现 4 次）。
+    /// 它下面那个 struct 的属性里，把 `"../../src/generated"` 当成了命令模板（出现 4 次）。
     /// **同一族的错第 N 次**：我以为的那个对象，与切片实际圈住的那个对象不是同一个。
     /// 顶格行 = 函数自己的收尾行，或下一个顶层项 —— 两者都是正确的边界。
     ///
@@ -3756,7 +3756,7 @@ b_cc	b_cc:0.0	ts	12345
             vec!["cc_bus_spawn".to_string(), "read_cc_bus_inbox".to_string()],
             "还在问远端配置的 cc-bus 命令变了。\n\
              **少了** ⇒ 有人把它改走了原语（好事）：把它从这条判据的期望里挪掉，\n\
-             并去 `evidence/K-R111-ruler.py` 把那条的刻度一起拧下来。\n\
+             并去 `tests/evidence/K-R111-ruler.py` 把那条的刻度一起拧下来。\n\
              **多了** ⇒ 新长出一条远端专属的路，它必须先分本机。"
         );
         // 逐条：本机分支要排在 `cfg_of` 之前，而且要说清在做哪件事。

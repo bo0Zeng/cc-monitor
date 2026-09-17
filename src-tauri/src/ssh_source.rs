@@ -411,7 +411,7 @@ const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(45);
 /// HostKey 触发即隐含 TCP+KEX 已过）。
 #[derive(Serialize, Clone, Debug)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ConnectStage {
     /// 某地址开始拨号（TCP+握手）。
@@ -1352,7 +1352,7 @@ mod stream_flag_gate_tests {
 /// 解析到二进制只是两个条件里的一个，另一个是这一行**配了 `keyPath`**
 /// （代理只会 publickey）—— 而「装完之后配了 `keyPath` 的那台到底走没走代理」，
 /// 今天**一台机器上都没人跑出过读数**。**要什么才测得了**逐条写在
-/// `doc/IPC-PROTOCOL.md` §10 那一格，**这里刻意不抄第二份**。
+/// `src/doc/IPC-PROTOCOL.md` §10 那一格，**这里刻意不抄第二份**。
 ///
 /// ⇒ 今天还说得死的只有一句：**开发树上 `resolve_beside_this_exe` 恒空**
 /// （`externalBin` 不进基础配置 ⇒ `cargo run` / `npm run tauri dev` 两处都空），
@@ -3273,7 +3273,7 @@ pub enum InboundFrame {
         sid: String,
         session_kind: Option<String>,
         /// E73（additive）：attach 进去对人有没有意义。缺席 = true（存量零迁移）。
-        /// 语义与来源见 `src/backend/wire.rs` 的同名字段 + `doc/IPC-PROTOCOL.md` §9.3。
+        /// 语义与来源见 `src/backend/wire.rs` 的同名字段 + `src/doc/IPC-PROTOCOL.md` §9.3。
         attachable: Option<bool>,
         cwd: Option<String>,
         name: Option<String>,
@@ -5721,7 +5721,7 @@ mod f032_idle_tests {
 /// serde camelCase：host / port / user / keyPath，与前端 fill 逻辑对齐。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedHost {
     pub host: String,
@@ -5910,7 +5910,7 @@ fn parse_ssh_g_output(stdout: &str, alias: &str) -> ResolvedHost {
 /// F57：一个来源别名 + 其 HostName/port/proxyjump（供前端「拆分」精确还原成独立机）。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct ImportMember {
     pub alias: String,
@@ -5922,7 +5922,7 @@ pub struct ImportMember {
 /// F57：批量导入预览的一组——聚合后的一台建议主机（含多地址与来源成员）。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct ImportGroup {
     pub label: String,
@@ -6024,7 +6024,7 @@ pub async fn import_ssh_hosts() -> Result<Vec<ImportGroup>, String> {
 /// （如「SSH 连上了，但 daemon 没响应/未部署」）。仅参数级硬错误才返回 Err。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct ConnTestResult {
     /// SSH 连接 + 鉴权是否成功。

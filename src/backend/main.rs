@@ -1204,7 +1204,7 @@ const SUBCOMMANDS: &[&str] = &[
     //
     // 〔订正 2026-09-10 —— 本格原话逐字：「配置从 stdin 第一行进 ——不走 argv，因为 argv
     //  在同机任何用户的 `ps` 里都看得见。」它记的是**第一版**的形状，代码早就改掉了。
-    //  这是同一次文档漂移的**第三份副本**（前两份在 `doc/IPC-PROTOCOL.md` §10，09-10 已订正）。
+    //  这是同一次文档漂移的**第三份副本**（前两份在 `src/doc/IPC-PROTOCOL.md` §10，09-10 已订正）。
     //  🔴 它**不是**同族的「前提翻了」，是纯粹的漂移：没有任何前提翻，只是这一处没跟着改。
     //
     //  证据（09-10 在本树现打的读数，不是从代码推的）：本仓 debug 构建的
@@ -1686,7 +1686,7 @@ async fn run_over_stdio(hello: Frame, agent_home: PathBuf, with_bg: bool, tail_o
     // U6b-3 起它**编译期不可表示**：`inbound::spawn` 要一个 `wire::HelloFlushed` 见证，
     // 而那个见证只能由 `write_and_flush_hello` 产出 —— 上一行拿到的就是它。
     // （此前是一条比较 `main.rs` 里两个字符串字节位置的机检，被一次普通的函数抽取绕过，已删。
-    //  U8a-2a 顺带订正了本注释与 `doc/IPC-PROTOCOL.md` 里对那条已删机检的指名。）
+    //  U8a-2a 顺带订正了本注释与 `src/doc/IPC-PROTOCOL.md` 里对那条已删机检的指名。）
     //
     // 应答走**独立通道**：出方向丢一条**内容帧**可恢复（行还在远端 jsonl 里），
     // ⚠ 而**状态增量帧**丢了别处没有 —— 那半靠 `Overflow.lost` 带身份让客户端重同步（audit-0805 F03），

@@ -3,7 +3,7 @@
 //! `run()` 在 `tauri::Builder` 之前先 `logging::init`（tracing 全局 dispatcher 必须最先 init），
 //! 然后注册 single-instance plugin（须为链上第一个）、`setup()` 里 spawn watcher / 各后台线程
 //! 并 `app.manage` 所有 Arc-shared State，最后注册 `invoke_handler`（IPC 命令清单）。
-//! State 注册矩阵见 doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
+//! State 注册矩阵见 src/doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
 mod account_aliases; // K-R49：加了账号就给那条命令落盘——写的是 monitor 自己那份别名文件，不是用户的 rc
 mod account_usage; // F10：per-account Claude 订阅计划用量窗口%（一次性探针会话 + capture-pane）
@@ -165,7 +165,7 @@ use tauri::{Emitter, Listener, Manager};
 /// ⚠ 勿把上面"子会话不注册 pidfile"泛化：CC 2.1.x 的 daemon **后台任务**
 /// (--fork-session) 会写 pidfile（kind:"bg" + jobId）——那类由 session_map /
 /// 远端 daemon 的 kind 交互性过滤处理（Batch6-F21），与本处嵌套环境清洗无关。
-/// 完整排查：doc/DEVELOPMENT.md 常见问题节。
+/// 完整排查：src/doc/DEVELOPMENT.md 常见问题节。
 ///
 /// 返回实际清掉的 key（供 caller 在 logging 就绪后留痕——本函数必须在任何线程
 /// spawn 之前调用，那时 logging 还没初始化、不能直接打 log）。
@@ -317,7 +317,7 @@ pub fn run() {
     // issue #9：single-instance lock。**必须是第一个 plugin**（Tauri 官方 plugin 要求）。
     // 第二个 cc-monitor 实例启动 → 触发本回调（在第一个实例里跑）→ 把主窗口
     // unminimize + show + set_focus → 第二个实例立即退出（plugin 内部处理）。
-    // 详 doc/INVARIANTS.md § 16。
+    // 详 src/doc/INVARIANTS.md § 16。
     #[allow(unused_mut)]
     let mut builder = tauri::Builder::default();
     #[cfg(windows)]
@@ -778,7 +778,7 @@ pub fn run() {
             // 覆盖不到）。唯一写者是下面的 remote-session-emitter（daemon 的
             // added/removed 与断连 flush 走同一 remote_tx 通道，集合恒等于"前端当前
             // 应视为 live 的远端 sid"）。无远端配置时恒空，对账自然 no-op。
-            // 违反此约束见 doc/INVARIANTS.md § 24。
+            // 违反此约束见 src/doc/INVARIANTS.md § 24。
             let remote_active: Arc<parking_lot::Mutex<std::collections::HashSet<String>>> =
                 Arc::new(parking_lot::Mutex::new(std::collections::HashSet::new()));
 
@@ -2130,7 +2130,7 @@ async fn bring_remote_terminal_to_front(
 
 #[derive(serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 struct CcStatusResponse {
     profiles: Vec<profile_installer::ProfileScan>,
     active_registrations: u32,
@@ -2143,7 +2143,7 @@ struct CcStatusResponse {
 
 #[derive(serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 struct LegacyProfileEntry {
     kind: profile_installer::ProfileKind,
     path: String,
@@ -2190,7 +2190,7 @@ async fn cc_integration_status(
 
 #[derive(serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 struct CcPreviewResponse {
     code: String,
 }

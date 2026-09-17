@@ -62,7 +62,7 @@ use search_core::{MAIN_CAP, TOOL_CAP};
 
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResponse {
     /// "ready" | "indexing"
@@ -85,7 +85,7 @@ pub struct SearchResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionHits {
     pub session_id: String,
@@ -123,7 +123,7 @@ pub struct SessionHits {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct Hit {
     /// 消息 uuid，前端打开 viewer 后据此滚动定位 + 高亮
@@ -144,7 +144,7 @@ pub struct Hit {
 
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchIndexStatus {
     pub ready: bool,
@@ -803,7 +803,7 @@ mod tests {
     use super::*;
 
     // ⚠ `K-R100` 的性能台架（同进程配对：`search_core::make_snippet` vs 收口前那份
-    // 逐字相同的本地副本）**跑完就删了**，读数落在 `evidence/K-R100-deathvalue.md`。
+    // 逐字相同的本地副本）**跑完就删了**，读数落在 `tests/evidence/K-R100-deathvalue.md`。
     // 它是一次性量具，不该留在门禁里（留下就成了一条没人跑、也没人维护的 `#[ignore]`）。
 
     #[test]

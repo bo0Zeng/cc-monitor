@@ -15,7 +15,7 @@
 //! 🔴 **`K-R104`（09-13）订正上一句的时态**：那一处**已经退役**（探针编排整条搬上后端帧面，
 //! monitor 今天一个 shell 字符都不渲染）⇒ 外层今天是**三个产出方 ＋ 一个墓碑**，
 //! 而**本模块的结论一个字没变**：`launch` 那条仍然不 attach，外层没有整个退役。
-//! 逐格实况与量法见 `doc/INVARIANTS.md` §33b。
+//! 逐格实况与量法见 `src/doc/INVARIANTS.md` §33b。
 //!
 //! # 它为什么住在这里（P4b，§1.4b）
 //!
@@ -290,7 +290,7 @@ fn apply_wraps(inner: String, wraps: &[WrapSpec]) -> String {
 /// TS 侧把 `""` 当「没有」（`plan.cwd ? … : ""`），Rust 侧不跟 —— 两种产物在生产里都是坏的：
 /// `cd '' && …` 会短路让 launcher 起不来，`CLAUDE_CONFIG_DIR=''` 是**静默串号**。
 /// ⇒ 本 crate 对 `Some("")` / `value: ""` 回 `Err`。**这是与 TS 的一处刻意分歧**，
-/// 记在 `doc/INVARIANTS.md` §33b；U8c-2/3 收编 TS 时要一并把那边也改成 fail-closed。
+/// 记在 `src/doc/INVARIANTS.md` §33b；U8c-2/3 收编 TS 时要一并把那边也改成 fail-closed。
 ///
 /// # `args` 的盲区已经闭掉（U8c-2a）
 ///
@@ -563,7 +563,7 @@ pub fn relay_env_prefix_posix(base_url: &str) -> String {
 ///
 /// ⚠⚠ **本函数只到「编得过」** —— Windows 上的运行时行为本轮**一格都没量**
 /// （`K-H2` 的同一条登记原样延续）。
-/// ⚠ `doc/INVARIANTS.md §36` 那条铁律**只绑 Windows**（`P3t` 收窄过），而本函数正是
+/// ⚠ `src/doc/INVARIANTS.md §36` 那条铁律**只绑 Windows**（`P3t` 收窄过），而本函数正是
 /// Windows 那一侧，所以要说清它没被放宽：本函数**不**给本地渲染器补一段读 `plan.env`
 /// 的代码，它只把一个调用方已经算好的串拼上去。
 pub fn relay_env_prefix_ps(base_url: &str) -> String {

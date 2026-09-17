@@ -17,7 +17,7 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-CCSPAWN="$REPO/shared/cc-bus/scripts/cc-spawn"
+CCSPAWN="$REPO/src/shared/cc-bus/scripts/cc-spawn"
 SOCK="ccmB02e2e$$"
 # **`exit 1` 而不是 `exit 0`**（Phase G 审阅阻塞）：这里原先是 `echo "SKIP: 未装 tmux"; exit 0`,
 # 于是在没有 tmux 的环境里 20 条断言一条不跑、套件报绿。同类的另外 7 套一律 `exit 1`。
@@ -73,7 +73,7 @@ export CCM_BIN="$CCMDIR/ccm"
 # ⚠ 这不是把判据改绿：本套件测的是「cc-spawn 有没有把活交给 ccm」，
 #   「这台机器上 cc-bus 装在哪」从来不是它的变量（与 tmux shim / 假 launcher 同一条纪律）。
 #   查找次序本身由下面 [13]（`CC_BUS_SCRIPTS=/nonexistent` ⇒ 明说「没有登记」）钉着。
-export CC_BUS_SCRIPTS="$REPO/shared/cc-bus/scripts"
+export CC_BUS_SCRIPTS="$REPO/src/shared/cc-bus/scripts"
 CCM="$CCMDIR/ccm"     # 本套件里那几处**直接叫 ccm**（不经 cc-spawn）的调用点
 
 # ⚠⚠ **`set +e` 是这里的第一条**〔08-13 实测〕：本套件在 `:338` 之后 `set -e` 是**开着**的，
@@ -373,7 +373,7 @@ echo "[18] 【08-13】边界：cc-bus 脚本**不可执行** · 初始任务**�
 # ★ 这两格钉的都是**失败面**——`C15` 那批新代码的失败路径基本没被真跑过，
 #   而失败面正是「假成功」最爱藏的地方（本轮已在这条路上逮到三次）。
 TB="$(mktemp -d)"
-cp "$REPO/shared/cc-bus/scripts/cc-register" "$REPO/shared/cc-bus/scripts/cc-spawned-record" "$TB/"
+cp "$REPO/src/shared/cc-bus/scripts/cc-register" "$REPO/src/shared/cc-bus/scripts/cc-spawned-record" "$TB/"
 chmod -x "$TB/cc-spawned-record"
 chk "台账脚本不可执行 ⇒ 明说「不进 spawn 台账」" \
   "$(CC_BUS_SCRIPTS="$TB" "$CCM" new --tmux-base=q --detach --bus-register \
@@ -407,14 +407,14 @@ mkdir -p "$WORK/reg"
 for _n in ra rb rc; do
   tmux new-session -d -s "$_n" -c /tmp 'sleep 300'
   _p="$(tmux list-panes -t "=$_n" -F '#{pane_id}' | head -1)"
-  TMUX_PANE="$_p" bash "$REPO/shared/cc-bus/scripts/cc-register" "${_n}_cc" >/dev/null 2>&1
+  TMUX_PANE="$_p" bash "$REPO/src/shared/cc-bus/scripts/cc-register" "${_n}_cc" >/dev/null 2>&1
 done
 chk "对照：三个不同 pane 各占一行" \
   "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -c '^r[abc]_cc$')" "3"
 tmux new-session -d -s rd -c /tmp 'sleep 300'
 _pd="$(tmux list-panes -t '=rd' -F '#{pane_id}' | head -1)"
 chmod 000 "$CC_BUS_HOME/agents.tsv"
-TMUX_PANE="$_pd" bash "$REPO/shared/cc-bus/scripts/cc-register" rd_cc > /dev/null 2>&1 || true
+TMUX_PANE="$_pd" bash "$REPO/src/shared/cc-bus/scripts/cc-register" rd_cc > /dev/null 2>&1 || true
 chmod 644 "$CC_BUS_HOME/agents.tsv"
 chk "★ 旧表读不动时**拒绝登记**，别人的地址一条不少" \
   "$(cut -f1 "$CC_BUS_HOME/agents.tsv" | grep -c '^r[abc]_cc$')" "3"
@@ -428,20 +428,20 @@ echo "[20] 【08-13】敲门不许打进**别人的**屏幕"
 #   把敲门整个删掉也能"通过"。
 tmux new-session -d -s live_cc -c /tmp 'cat'; sleep 0.4
 _lp="$(tmux list-panes -t '=live_cc' -F '#{pane_id}' | head -1)"
-TMUX_PANE="$_lp" bash "$REPO/shared/cc-bus/scripts/cc-register" live_cc >/dev/null 2>&1
+TMUX_PANE="$_lp" bash "$REPO/src/shared/cc-bus/scripts/cc-register" live_cc >/dev/null 2>&1
 chk "登记行带第 4 列（pane 根进程 pid，纯数字）" \
   "$(awk -F'\t' '$1=="live_cc"{print ($4 ~ /^[0-9]+$/) ? "yes" : "no"}' "$CC_BUS_HOME/agents.tsv")" "yes"
-bash "$REPO/shared/cc-bus/scripts/cc-send" live_cc "给活着的它" >/dev/null 2>&1
+bash "$REPO/src/shared/cc-bus/scripts/cc-send" live_cc "给活着的它" >/dev/null 2>&1
 sleep 1.2
 chk "★ 方向一：活着的 agent **照样被敲**" \
   "$( [ "$(tmux capture-pane -t 'live_cc:0.0' -p | grep -c '🔔 cc-bus')" -gt 0 ] && echo yes || echo no)" "yes"
 
 tmux new-session -d -s reuse_cc -c /tmp 'cat'; sleep 0.4
 _rp="$(tmux list-panes -t '=reuse_cc' -F '#{pane_id}' | head -1)"
-TMUX_PANE="$_rp" bash "$REPO/shared/cc-bus/scripts/cc-register" alpha_cc >/dev/null 2>&1
+TMUX_PANE="$_rp" bash "$REPO/src/shared/cc-bus/scripts/cc-register" alpha_cc >/dev/null 2>&1
 tmux kill-session -t '=reuse_cc'; sleep 0.3
 tmux new-session -d -s reuse_cc -c /tmp 'cat'; sleep 0.5     # 陌生占用者，同名会话
-bash "$REPO/shared/cc-bus/scripts/cc-send" alpha_cc "只该给 alpha_cc 看的" >/dev/null 2>&1
+bash "$REPO/src/shared/cc-bus/scripts/cc-send" alpha_cc "只该给 alpha_cc 看的" >/dev/null 2>&1
 sleep 1.2
 chk "★ 方向二：同名会话被陌生人占着 ⇒ **零打扰**" \
   "$(tmux capture-pane -t 'reuse_cc:0.0' -p | grep -c '🔔 cc-bus')" "0"
@@ -459,7 +459,7 @@ chk "  投递不受影响（收件箱照收）" \
 # **不许**把它们全判成 stale（那等于把所有存量 agent 的敲门一次性关掉）。
 tmux new-session -d -s old_cc -c /tmp 'cat'; sleep 0.4
 printf 'old_cc\told_cc:0.0\t2026-07-18T07:26:31-07:00\n' > "$CC_BUS_HOME/agents.tsv"
-bash "$REPO/shared/cc-bus/scripts/cc-send" old_cc "老表照样要敲" >/dev/null 2>&1
+bash "$REPO/src/shared/cc-bus/scripts/cc-send" old_cc "老表照样要敲" >/dev/null 2>&1
 sleep 1.2
 chk "★ 老 3 列表（无第 4 列）**仍被敲到**" \
   "$( [ "$(tmux capture-pane -t 'old_cc:0.0' -p | grep -c '🔔 cc-bus')" -gt 0 ] && echo yes || echo no)" "yes"
@@ -474,9 +474,9 @@ echo "[21] 【08-13】收掉 agent 时**不许杀掉占了同一个名字的无�
 # ⚠ 两个方向都要钉：真的那个必须照杀，无辜的必须一根汗毛不动。
 tmux new-session -d -s realk_cc -c /tmp 'sleep 300'; sleep 0.3
 TMUX_PANE="$(tmux list-panes -t '=realk_cc' -F '#{pane_id}' | head -1)" \
-  bash "$REPO/shared/cc-bus/scripts/cc-register" realk_cc >/dev/null 2>&1
+  bash "$REPO/src/shared/cc-bus/scripts/cc-register" realk_cc >/dev/null 2>&1
 _rp="$(tmux list-panes -t '=realk_cc' -F '#{pane_pid}' | head -1)"
-bash "$REPO/shared/cc-bus/scripts/cc-kill" realk_cc >/dev/null 2>&1
+bash "$REPO/src/shared/cc-bus/scripts/cc-kill" realk_cc >/dev/null 2>&1
 sleep 0.4
 chk "★ 方向一：真的那个 agent 照样杀得掉（会话）" \
   "$(tmux has-session -t '=realk_cc' 2>/dev/null && echo 在 || echo 没了)" "没了"
@@ -485,12 +485,12 @@ chk "  连进程树一起（cc-kill 的正题）" \
 
 tmux new-session -d -s innoc_cc -c /tmp 'sleep 300'; sleep 0.3
 TMUX_PANE="$(tmux list-panes -t '=innoc_cc' -F '#{pane_id}' | head -1)" \
-  bash "$REPO/shared/cc-bus/scripts/cc-register" innoc_cc >/dev/null 2>&1
+  bash "$REPO/src/shared/cc-bus/scripts/cc-register" innoc_cc >/dev/null 2>&1
 printf '一条没读的消息\n' > "$CC_BUS_HOME/inbox/innoc_cc.jsonl"
 tmux kill-session -t '=innoc_cc'; sleep 0.3
 tmux new-session -d -s innoc_cc -c /tmp 'sleep 999'; sleep 0.4    # 同名的无辜占用者
 _ip="$(tmux list-panes -t '=innoc_cc' -F '#{pane_pid}' | head -1)"
-bash "$REPO/shared/cc-bus/scripts/cc-kill" innoc_cc >/dev/null 2>&1
+bash "$REPO/src/shared/cc-bus/scripts/cc-kill" innoc_cc >/dev/null 2>&1
 sleep 0.4
 chk "★★ 方向二：名字被占时**无辜进程不许被杀**" \
   "$(ps -p "$_ip" >/dev/null 2>&1 && echo 在 || echo 被杀了)" "在"
@@ -512,11 +512,11 @@ chk "  ★ 收件箱**不许删**（还不知道那个 agent 是不是真没了�
 #   ⇒ 改成问 agents.tsv 第 2 列那个**完整地址**（`sess:win.pane`），与敲门那条一致。
 tmux new-session -d -s mwin_cc -c /tmp 'sleep 300'; sleep 0.3
 TMUX_PANE="$(tmux list-panes -t '=mwin_cc' -F '#{pane_id}' | head -1)" \
-  bash "$REPO/shared/cc-bus/scripts/cc-register" mwin_cc >/dev/null 2>&1
+  bash "$REPO/src/shared/cc-bus/scripts/cc-register" mwin_cc >/dev/null 2>&1
 tmux new-window -t '=mwin_cc' 'sleep 300'; sleep 0.3
 chk "台架自检：这个 agent 现在有 2 个窗口" \
   "$(tmux display-message -p -t '=mwin_cc:' '#{session_windows}')" "2"
-_kout="$(bash "$REPO/shared/cc-bus/scripts/cc-kill" mwin_cc 2>&1)"
+_kout="$(bash "$REPO/src/shared/cc-bus/scripts/cc-kill" mwin_cc 2>&1)"
 sleep 0.3
 chk "★ 自己的 agent 开了新窗口，仍认得出是它（照杀，不误判成「别人占了」）" \
   "$(tmux has-session -t '=mwin_cc' 2>/dev/null && echo 还在 || echo 杀了)" "杀了"
@@ -528,16 +528,16 @@ echo "[22] 【08-13】cc-agents 的「活」也不许只看名字（同一族第
 # ★ 三态而不是两态：把「核不了」并进「活」正是今天这一族所有事故的共同起点。
 tmux new-session -d -s areal_cc -c /tmp 'sleep 300'; sleep 0.3
 TMUX_PANE="$(tmux list-panes -t '=areal_cc' -F '#{pane_id}' | head -1)" \
-  bash "$REPO/shared/cc-bus/scripts/cc-register" areal_cc >/dev/null 2>&1
+  bash "$REPO/src/shared/cc-bus/scripts/cc-register" areal_cc >/dev/null 2>&1
 tmux new-session -d -s aghost_cc -c /tmp 'sleep 300'; sleep 0.3
 TMUX_PANE="$(tmux list-panes -t '=aghost_cc' -F '#{pane_id}' | head -1)" \
-  bash "$REPO/shared/cc-bus/scripts/cc-register" aghost_cc >/dev/null 2>&1
+  bash "$REPO/src/shared/cc-bus/scripts/cc-register" aghost_cc >/dev/null 2>&1
 tmux kill-session -t '=aghost_cc'; sleep 0.2
 tmux new-session -d -s aghost_cc -c /tmp 'sleep 999'; sleep 0.3   # 同名的无辜占用者
 tmux new-session -d -s anoreg_cc -c /tmp 'sleep 300'; sleep 0.3   # 有会话但没登记过
 printf 'areal_cc\t/tmp\tts\t任务A\naghost_cc\t/tmp\tts\t任务B\nanoreg_cc\t/tmp\tts\t任务C\n' \
   > "$CC_BUS_HOME/spawned.tsv"
-_ag="$(bash "$REPO/shared/cc-bus/scripts/cc-agents")"
+_ag="$(bash "$REPO/src/shared/cc-bus/scripts/cc-agents")"
 _st() { printf '%s' "$_ag" | awk -v id="$1" '$1==id{print $2}'; }
 chk "★ 身份核过的 ⇒ 活" "$(_st areal_cc)" "活"
 chk "★★ 名字被别人占了 ⇒ **已退**（不再假报活）" "$(_st aghost_cc)" "已退"

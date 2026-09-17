@@ -27,7 +27,7 @@ contains() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
 #   ⇒ 终端里敲的 `ccm` 就是 `cc-monitor-remote`（`argv[0]` 的 basename 是 `ccm` 就进一次性模式）。
 #   **本套件 12 条断言一个字都没改** —— 它测的一直是「renderCli 渲出来的那行，被真 `ccm`
 #   解析后展开成什么」，那是后端今天仍要保证的命令契约，与用什么语言实现无关。
-#   依据是 `K-R48` 第一拍的逐字节对拍（`evidence/K-R48-native-vs-bash-parity.py`，SAME=27/DIFF=2）。
+#   依据是 `K-R48` 第一拍的逐字节对拍（`tests/evidence/K-R48-native-vs-bash-parity.py`，SAME=27/DIFF=2）。
 # 🔴 **fail-closed**：二进制没 build 就**响亮退出**，不许静默回落到 PATH 上碰巧有的那一份
 #   —— 那正是本段头注第一句要治的病。
 CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-remote"

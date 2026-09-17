@@ -15,7 +15,7 @@ use std::path::{Path, PathBuf};
 /// 一条 MCP server 展示项。`server` 原样保留（宽容，未知字段不丢）。camelCase 上 wire。
 #[derive(serde::Serialize, Debug, PartialEq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct McpServerEntry {
     /// `"user"` | `"local"` | `"project"`

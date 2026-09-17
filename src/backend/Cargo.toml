@@ -162,7 +162,7 @@ webpki-roots = "1"
 # ⇒ **`cargo` 在解析这一步拒绝选它**（`=0.7.3` 硬钉也照拒），实打退 101。
 # `cargo` 只在**解析**时拒 yanked，不在「lock 里已经写着」时拒 ——
 # `../src-tauri/Cargo.lock` 今天就锁着 `crypto-bigint 0.7.3`（在 yank 之前锁进去的），
-# monitor 侧因此断网构建得动。⇒ 本 crate 的 lock 由 `evidence/K-P6b-r3-lock-prime.py`
+# monitor 侧因此断网构建得动。⇒ 本 crate 的 lock 由 `tests/evidence/K-P6b-r3-lock-prime.py`
 # 把 monitor 那份里 `russh` 可达的包块搬过来，处境与 monitor 侧对齐。
 # 🔴 **代价写明**：本 crate 从此也钉在一个 **yanked** 的 `crypto-bigint 0.7.3` 上
 # （与 monitor 侧同一份）。哪天 `russh` 升到能用 `0.7.5` 的版本，两侧一起挪。

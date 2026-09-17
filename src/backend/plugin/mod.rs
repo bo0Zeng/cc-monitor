@@ -6,7 +6,7 @@
 //! # 这一层装什么、不装什么（**由两个真实实现反推，不是设计出来的**，`E9`）
 //!
 //! 反推样本是仓里今天真有的两处：`control/cc_bus.rs`（Rust，宿主调 cc-bus）与
-//! `shared/cc-bus/scripts/cc-spawn`（shell，宿主调 ccm）。逐段量过之后：
+//! `src/shared/cc-bus/scripts/cc-spawn`（shell，宿主调 ccm）。逐段量过之后：
 //!
 //! | 段 | 两处的形状 | 落在哪 |
 //! |---|---|---|

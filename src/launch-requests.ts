@@ -170,7 +170,7 @@ export function planLauncher(
  * "TS 构造 IR、Rust 只做 `Get-Command` 那一步补全"。真正支撑否决的是 F06 §3.2 实现期修正：
  * **`plan.action`/`plan.cwd` 在当前维度注册表下恒等于输入，取回来没有信息增量**
  * （`plan.launcher` 更是恒 `""`，因为本地不传 `launcherOverride`）。
- * 即"不接"是因为**接了也拿不到新东西**，不是因为技术上不可能。见 `doc/INVARIANTS.md` §36。
+ * 即"不接"是因为**接了也拿不到新东西**，不是因为技术上不可能。见 `src/doc/INVARIANTS.md` §36。
  */
 export function validateLocalLaunch(action: LaunchAction, cwd: string | null): void {
   void cwd; // 保留在签名里：调用点按「动作 + 目录」成对传，未来若加 cwd 校验就落在这

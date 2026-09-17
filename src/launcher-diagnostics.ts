@@ -195,7 +195,7 @@ export function suggestAliasName(account: string): string {
  *
  * # 用户的 shell 配置最多多**一行**，而且多数人连这一行都不用管
  *
- * `shared/ccm-aliases.sh` 自带一行 `if [ -r … ]; then . …; fi` 指向那份生成文件 ⇒
+ * `src/shared/ccm-aliases.sh` 自带一行 `if [ -r … ]; then . …; fi` 指向那份生成文件 ⇒
  * 装过 ccm 别名块的人**什么都不用做**。没装的人可以在下拉里**自己选**一份 rc，
  * 由后端把那一行 `source` 装进围栏里（备份 + 原子替换 + 写后回读 + 幂等）。
  * ⚠ 下拉的默认项是「**不动我的 shell 配置**」—— 界面不替人选那份文件。
@@ -207,7 +207,7 @@ export function suggestAliasName(account: string): string {
  * 在界面上**一个装口都够不着**，别名块只能自己贴。
  *
  * 补在这里而不是另起一块，理由是它们本来就是同一段话的两半：上面那一行 `source`
- * 之所以「多数人连这一行都不用加」，正是因为 `shared/ccm-aliases.sh` 里自带它 ——
+ * 之所以「多数人连这一行都不用加」，正是因为 `src/shared/ccm-aliases.sh` 里自带它 ——
  * 那份文件就是这两个按钮装的东西，而且**与远端「装 ccm 助手」推过去的是同一个常量**
  * （`sftp::CCM_WRAPPER_SNIPPET`，本机与远端同一份实现、同一对围栏）。
  *
@@ -274,7 +274,7 @@ export function buildAccountAliasBlock(
   // 为什么挂在这一块下面而不是「终端集成」那一块：后者整篇是 PowerShell，
   // 而且 `panel.ts` 用 `hostOsAllows` 把它**只留给 Windows**（Linux 上换成一行说明）。
   // 于是本机 POSIX 用户在界面上**一个装口都够不着** —— 那正是 `K-R62 §0b` 那个 🔴。
-  // 这一块本来就在问「你要不要把 cc-monitor 的东西加进这份 rc」，而 `shared/ccm-aliases.sh`
+  // 这一块本来就在问「你要不要把 cc-monitor 的东西加进这份 rc」，而 `src/shared/ccm-aliases.sh`
   // 自带那行 source **正是**上面那份生成文件被接上的方式 ⇒ 同一个旅程的两半，挨着放。
   //
   // ⚠ **默认什么都不做**：下拉停在「不动我的 shell 配置」时整块 `hidden`，
@@ -292,7 +292,7 @@ export function buildAccountAliasBlock(
   installBtn.className = "ccm-rc-block-install";
   installBtn.textContent = "装 ccm 别名块";
   installBtn.title =
-    "把 cc / cct 那一块（shared/ccm-aliases.sh，与「装 ccm 助手」推给远端的是同一份）" +
+    "把 cc / cct 那一块（src/shared/ccm-aliases.sh，与「装 ccm 助手」推给远端的是同一份）" +
     "装进你选的那份 rc：BEGIN/END 围栏内，写前先备份、写后回读比对、不符回滚，" +
     "块外一个字节都不动。";
   const uninstallBtn = document.createElement("button");
@@ -450,7 +450,7 @@ export function buildAccountAliasBlock(
   installBtn.addEventListener("click", () => {
     void runRc("装", (path) =>
       // `commandName` / `includeCcFunction` 只对 PowerShell 那一臂有意义；
-      // POSIX 那一块的名字住在 `shared/ccm-aliases.sh` 里，由它说了算。
+      // POSIX 那一块的名字住在 `src/shared/ccm-aliases.sh` 里，由它说了算。
       commands.cc_integration_install({
         path,
         commandName: "cc",

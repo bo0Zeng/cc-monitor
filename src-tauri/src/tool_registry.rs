@@ -102,7 +102,7 @@
 pub enum ToolSource {
     /// 仓内文件，编译期 `include_str!` 进二进制（`ccm`）。
     EmbeddedText { repo_path: &'static str },
-    /// 仓内目录，运行期读（`cc-bus` 的 `shared/cc-bus/`）。
+    /// 仓内目录，运行期读（`cc-bus` 的 `src/shared/cc-bus/`）。
     RepoDir { repo_path: &'static str },
     /// vendored 目录 + 指纹（`cc-acct-iso`、`code-picture-core`）。
     Vendored {
@@ -489,7 +489,7 @@ pub const TOOLS: &[ToolSpec] = &[
         // ★★ **不是「实现一下就能翻 true」——落点被只读铁律排除**〔PS1 重摸底 08-12〕。
         //
         // 原注释只写「部署尚未实现（B01 只做了"搬进仓固化为基线"）」，那是**浅一层**的理由，
-        // 会让下一个人以为补个递归拷贝就行。真实的墙在 `doc/INVARIANTS.md` 开头：
+        // 会让下一个人以为补个递归拷贝就行。真实的墙在 `src/doc/INVARIANTS.md` 开头：
         // 「`monitor` 对 `<claude_dir>/…` **只读**」，后附**穷举**的 6 条例外 ——
         // **没有一条覆盖「往 `~/.claude/skills/` 装东西」**，而第 2 条逐字写着
         // 「只写 cc-monitor 自己的 bin 目录，**绝不碰** `~/.claude/`」。
@@ -500,7 +500,7 @@ pub const TOOLS: &[ToolSpec] = &[
         //
         // ★★ **08-13 用户裁：开**（`U10b`）。⇒ `installable` 从 `false` 翻成 `true`，
         // 实现在 `cc_bus_deploy.rs`，那四个配套**逐条落地**（模块头注里四个 `★` 一一对应），
-        // 例外本身写成 `doc/INVARIANTS.md` 的第 7 条。
+        // 例外本身写成 `src/doc/INVARIANTS.md` 的第 7 条。
         // ⚠ `uninstallable` **仍是 `false`** —— 卸载没做，如实声明（不因为「装做了」就顺手标 true）。
         //
         // ⚠ 这堵墙今天已经在收账：`P4b` 改的是仓内那份 `cc-spawn`，而 `~/.local/bin/cc-*`
@@ -522,9 +522,9 @@ pub const TOOLS: &[ToolSpec] = &[
         // 一个载体（仓内目录整份铺过去）—— `cc-bus` 不是「同一份字节两处使用」那一族，
         // 这里一条 `Carrier` 就够；载体这一维只在真有几份的那几条上才多。
         carriers: &[Carrier {
-            what: "仓里那份 `shared/cc-bus`（整目录），装到 Claude Code 那台机器的 skills 下",
+            what: "仓里那份 `src/shared/cc-bus`（整目录），装到 Claude Code 那台机器的 skills 下",
             source: ToolSource::RepoDir {
-                repo_path: "shared/cc-bus",
+                repo_path: "src/shared/cc-bus",
             },
             destination: ToolDestination::LocalHomeRelative(".claude/skills/cc-bus"),
             touches: &[
@@ -653,7 +653,7 @@ pub const TOOLS: &[ToolSpec] = &[
         //   只是这一次错在**少报**那一边（`K-R60` 那次是多报）。
         uninstallable: true,
         // 🔴 〔`K-R81` 09-12〕**同一份后端，三种载体、三个落点** —— `K-R68` 摸底现打
-        // （`evidence/K-R68-三种载体摸底.md#§B`）。在本件之前闭集里只有中间那一条，
+        // （`tests/evidence/K-R68-三种载体摸底.md#§B`）。在本件之前闭集里只有中间那一条，
         // 另外两条**一格都没有**：读者分不出「没有」与「有人忘了写」。
         // ⚠ 三者是**同一份代码**的三种载体，不是三个工具（`R24` 裁定一 / `K25` / `K33` / `K36`）；
         //   ①③ 是同一次 `cargo build` 的同一个文件拷两份，② 结构上不可能同字节
@@ -758,11 +758,11 @@ pub const TOOLS: &[ToolSpec] = &[
         installable: true,
         uninstallable: true,
         carriers: &[Carrier {
-            what: "仓里那份别名脚本（`shared/ccm-aliases.sh`），合进你自己选的那份 rc",
+            what: "仓里那份别名脚本（`src/shared/ccm-aliases.sh`），合进你自己选的那份 rc",
             // 装进去的内容**就是仓里那份文件**（`sftp::CCM_WRAPPER_SNIPPET` 是它的
             // `include_str!`）。远端那条 `ccm` 用的是同一份 —— 那正是本件不许出现第二份的东西。
             source: ToolSource::EmbeddedText {
-                repo_path: "shared/ccm-aliases.sh",
+                repo_path: "src/shared/ccm-aliases.sh",
             },
             // 🔴 **路径由人选，产品不猜** —— 这一格用占位符而不是 `~/.bashrc`，
             // 理由与后端那条 `$DAEMON_PATH` 逐字同源：申报一个我们其实没在用的常量，
@@ -904,7 +904,7 @@ pub fn local_ccm_bin_dir_rel() -> Option<&'static str> {
 ///
 /// # 为什么本机那个不够用，非要把远端这个也取出来
 ///
-/// `shared/ccm-aliases.sh` 是**一份文件、两个消费者**（本机 rc 与远端 rc 合的是
+/// `src/shared/ccm-aliases.sh` 是**一份文件、两个消费者**（本机 rc 与远端 rc 合的是
 /// 逐字同一份文本），而两边的落点**不是同一个目录** ⇒ 那一行里两个目录都得在。
 /// 判据要判「两个都在」，就得两个都能从这张表问出来 ——
 /// 在判据里手抄一个 `.local/bin` 就是第二个住址，而那正是本病的成因。
@@ -1046,7 +1046,7 @@ impl Provisioning {
 /// 「要么给它一个成员，**要么把这一档从 EnvTier 里删掉**」⇒ 删。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub enum EnvTier {
     /// **app 装的** —— 该我们装，而且今天真有装口。
     AppInstalls,
@@ -2092,7 +2092,7 @@ mod tests {
     /// ★ PS1（重摸底 08-12）：cc-bus 的 `installable: false` **必须写着深一层的理由**。
     ///
     /// 浅理由（「部署尚未实现」）会让下一个人以为补个递归拷贝就能翻 true；
-    /// 而真实的墙是 `doc/INVARIANTS.md` 那条只读铁律 —— 落点 `~/.claude/skills/` 不在
+    /// 而真实的墙是 `src/doc/INVARIANTS.md` 那条只读铁律 —— 落点 `~/.claude/skills/` 不在
     /// 它穷举的 6 条例外里。**那是裁定，不是实现工作。**
     ///
     /// 这是「禁词守卫」的反面：**必需词**守卫。删掉那段话的人会被拦一次。

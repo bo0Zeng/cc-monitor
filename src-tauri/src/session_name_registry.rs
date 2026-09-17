@@ -78,7 +78,7 @@ mod tests {
              **这就是 `== 2` 今天钉不上的直接原因**。",
         ),
         (
-            "shared/cc-bus/scripts/cc-spawn",
+            "src/shared/cc-bus/scripts/cc-spawn",
             "producer-duplicate",
             1,
             "`<basename>_cc` —— ⚠ **下划线不是连字符**，全仓其余都用 `-cc` ⇒ \
@@ -152,7 +152,7 @@ mod tests {
         //    `collect_rs` 只扫 `src-tauri/`，够不着 `src/backend/` ⇒ 仍按 extra 点名。
         for extra in [
             "src/backend/control/ccm/plan.rs",
-            "shared/cc-bus/scripts/cc-spawn",
+            "src/shared/cc-bus/scripts/cc-spawn",
         ] {
             files.push(root.join(extra));
         }
@@ -249,7 +249,7 @@ mod tests {
             "src-tauri/src/tmux.rs",
             "src-tauri/crates/gate-core/src/lib.rs",
             "src/backend/control/ccm/plan.rs",
-            "shared/cc-bus/scripts/cc-spawn",
+            "src/shared/cc-bus/scripts/cc-spawn",
         ] {
             let n = fs::read_to_string(root.join(f))
                 .map(|s| s.len())

@@ -184,7 +184,7 @@ jobs:
       # 「收紧留后续按核心 DOM 模块 per-file」，这一步就是那个「后续」。
       # ⚠ 同样**无 `|| true`**：它是真阻断，不是 advisory。
       - name: coverage per-file floors + zero-coverage ratchet
-        run: node scripts/assert-coverage-floors.mjs
+        run: node tests/scripts/assert-coverage-floors.mjs
 
       # vite build 验证产物可生成（不打包 exe，那个 5+ 分钟太慢；
       # 完整 tauri build 留给 tag 触发的 release 工作流）
@@ -348,10 +348,10 @@ jobs:
     timeout-minutes: 15      # 实测 0m（09-10 三趟）；口径见 `rust` 那一格的头注
     steps:
       - uses: actions/checkout@v4
-      # B01 审计 I5：搬进来的 `shared/cc-bus/` 有 1107 行 shell，此前**零 lint 覆盖**——
+      # B01 审计 I5：搬进来的 `src/shared/cc-bus/` 有 1107 行 shell，此前**零 lint 覆盖**——
       # 唯一门禁是下面那条 exec-bit 守卫。扩进来实测今天就是绿的（severity=error 零告警），
       # 零成本。`shared/ccm` 一并纳入：它被 `sftp.rs:538` include_str! 进二进制，是生产件。
-      # **刻意不含 `shared/ccm-aliases.sh`**：那是个供 source 的片段、无 shebang，
+      # **刻意不含 `src/shared/ccm-aliases.sh`**：那是个供 source 的片段、无 shebang，
       # SC2148 是它的构造性属性；而它会被写进用户 shell profile、并在 UI 面板里展示供手动复制，
       # 为过 lint 往里塞 `# shellcheck shell=bash` 等于往用户配置和界面文案里掺 lint 噪音。
       # G-B：vendored `cc-acct-iso` 的 1348 行 bash 纳入。同一条论证：它被
@@ -367,8 +367,8 @@ jobs:
       # 改名/挪走脚本时若不同步这里，shellcheck 会少扫几个文件而**照样绿**——地板挡的正是这个。
       # 08-13 棘 52 → 53：新增 `tests/e2e/cc-bus-queue-drain.sh`（cc-send 滞留队列补投）。
       # 实测构成（本机 `shopt -s nullglob` 后逐组数）：
-      #   tests/e2e/*.sh 31 + shared/cc-bus/scripts/* 14 + shared/ccm 1 + tests/e2e/fake-claude 1
-      #   + scripts/*.sh 2 + vendor/cc-acct-iso 那 4 个 = **53**。
+      #   tests/e2e/*.sh 31 + src/shared/cc-bus/scripts/* 14 + shared/ccm 1 + tests/e2e/fake-claude 1
+      #   + tests/scripts/*.sh 2 + vendor/cc-acct-iso 那 4 个 = **53**。
       # 08-13 再棘 53 → 54：新增 `tests/e2e/daemon-cc-bus.sh`（P4f）⇒ tests/e2e/*.sh 变 32。
       # ⚠ 我第一版把构成写成「tests/e2e/*.sh 37 + …」——**那是凑出 53 的假账**，
       #   总数对得上不等于构成对得上。数字要逐组数出来，别倒推。
@@ -376,21 +376,21 @@ jobs:
         run: |
           set -euo pipefail
           # ⚠ `nullglob`：不开的话，某一组 glob 一个都不匹配时 bash 会**留下字面量**
-          # （如 `scripts/*.sh`）⇒ `grep -c .` 照数 1、地板照过，只有 shellcheck 自己会红，
+          # （如 `tests/scripts/*.sh`）⇒ `grep -c .` 照数 1、地板照过，只有 shellcheck 自己会红，
           # 而它报的是「文件不存在」、与「覆盖面缩水」这条诊断完全对不上。
           # `scripts` 那组今天只有 1 个文件 ⇒ 归零就是整组消失，正是地板该挡的场景。
-          # （Phase D 审计实测：`shellcheck 'scripts/*.sh'` → openBinaryFile does not exist, RC=2）
+          # （Phase D 审计实测：`shellcheck 'tests/scripts/*.sh'` → openBinaryFile does not exist, RC=2）
           shopt -s nullglob
-          FILES=$(printf '%s\n' tests/e2e/*.sh shared/cc-bus/scripts/* \
+          FILES=$(printf '%s\n' tests/e2e/*.sh src/shared/cc-bus/scripts/* \
             tests/e2e/fake-claude \
             tests/e2e/weak-net/*.sh \
             tests/e2e/local-backend-container/*.sh \
-            scripts/*.sh \
+            tests/scripts/*.sh \
             src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso \
             src-tauri/vendor/cc-acct-iso/scripts/lib.sh \
             src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh \
             src-tauri/vendor/cc-acct-iso/scripts/test/run-tests.sh \
-            hooks/pre-commit)
+            tests/hooks/pre-commit)
           N=$(printf '%s\n' "$FILES" | grep -c .)
           echo "shellcheck 覆盖 $N 个文件"
           # 地板：2026-07-30 实测 37（e2e 19 + cc-bus 13 + ccm 1 + vendored 4）；
@@ -402,10 +402,10 @@ jobs:
           # cc-bus 13 + ccm 1 + vendored 4 未变）。
           # **2026-08-02 U9a 棘到 41** —— 实测 41（e2e 23：新增 `ccm-contract-parity.sh`；
           # 其余三组未变）。
-          # **2026-08-05 audit-0805 F01 棘到 44**，同时补进 `scripts/*.sh`。两件事：
+          # **2026-08-05 audit-0805 F01 棘到 44**，同时补进 `tests/scripts/*.sh`。两件事：
           # ① **地板又落后了 2**：写下 41 之后 e2e 从 23 长到 **25**，那段时间可以少扫 2 个文件而不报警
           #    —— 这已经是同一条地板第三次落后（37→39→41 每次都是事后补），⇒ 见 `audit-0805` I-8。
-          # ② ★ **`scripts/verify-committed-state.sh` 此前既没被 lint 也没被测**，而
+          # ② ★ **`tests/scripts/verify-committed-state.sh` 此前既没被 lint 也没被测**，而
           #    `shared_crate_registry.rs:155-167` 逐字称它是「**CI 的本地替身**」——
           #    一个被当作门禁替身的脚本自己在所有门禁之外。今天实测构成：
           #    **44 = e2e 25 + cc-bus 13 + ccm 1 + scripts 1 + vendored 4**。
@@ -416,7 +416,7 @@ jobs:
           # **45 = e2e 25 + fake-claude 1 + cc-bus 13 + ccm 1 + scripts 1 + vendored 4**。
           # ⇒ 这条地板此后由 `shell_lint_registry` 钉成**等号**（不是「≥」）：
           #   「≥」正是它落后三次的成因 —— 加脚本时它不响，于是没人回来棘。
-          # ⚠ 两个 `.ps1` 仍**零 lint**（全仓无 PowerShell linter）：`scripts/run.ps1` 与
+          # ⚠ 两个 `.ps1` 仍**零 lint**（全仓无 PowerShell linter）：`tests/scripts/run.ps1` 与
           #    `tests/e2e/tier2/run-in-session1.ps1` ⇒ 记为诚实边界（`audit-0805/ROADMAP §5`）。
           # **2026-08-11 P3t-Y5 棘到 46**：新增 `tests/e2e/p3t-local-tmux.sh`（本机拉起真的建出 tmux 会话）。
           # ★ 这次**不是事后补**——改成等号之后它当场就红了，加脚本的同一拍就回来棘。
@@ -424,7 +424,7 @@ jobs:
           #   今天实测构成：**48 = e2e 28 + fake-claude 1 + cc-bus 13 + ccm 1 + scripts 1 + vendored 4**
           #   〔`P0b` 08-12 +1：`tests/e2e/reap-orphan-daemons.sh`；`P0e` 08-12 +1：`tests/e2e/tmux-shim.sh`
           #    —— `C7i` 隔离原语抽成一份，原本在三个套件里各抄一份〕。
-          #   **2026-08-13 P4b①③ 棘到 49**：新增 `shared/cc-bus/scripts/cc-spawned-record`
+          #   **2026-08-13 P4b①③ 棘到 49**：新增 `src/shared/cc-bus/scripts/cc-spawned-record`
           #   （`C15` 把台账收进 `ccm` 时，**格式仍归 cc-bus** ⇒ 那段 flock 追加从 `cc-spawn`
           #    抽成 cc-bus 自己的一个脚本，`ccm --bus-register` 调它）。
           #   今天实测构成：**49 = e2e 28 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 1 + vendored 4**。
@@ -436,13 +436,13 @@ jobs:
           #   （daemon 起得比 tmux server 早时，后来的会话看不看得见 —— `#60` 的根因形状，
           #    只有真起 daemon + 真建 tmux server 才验得出）。
           #   今天实测构成：**51 = e2e 30 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 1 + vendored 4**。
-          #   **2026-08-13 棘到 52**：新增 `scripts/gate.sh`（出货前的唯一闸门 —— 它自己也要被 lint）。
+          #   **2026-08-13 棘到 52**：新增 `tests/scripts/gate.sh`（出货前的唯一闸门 —— 它自己也要被 lint）。
           #   今天实测构成：**52 = e2e 30 + fake-claude 1 + cc-bus 14 + ccm 1 + scripts 2 + vendored 4**。
-          # **2026-08-14 棘到 55** —— 新增 `hooks/pre-commit`（C7 的机器挡，默认不启用：
+          # **2026-08-14 棘到 55** —— 新增 `tests/hooks/pre-commit`（C7 的机器挡，默认不启用：
           # 要 `git config core.hooksPath hooks` 才生效）。它是被 `shell_lint_registry`
           # **当场逮住的**：文件建出来就没进这条表达式，而计数地板照旧绿 ——
           # 那条登记表的诊断逐字说中了「地板只会数它扫到的那些，数不出它没扫的那些」。
-          # 实测构成：55 = 上一轮 54 + hooks/pre-commit 1。
+          # 实测构成：55 = 上一轮 54 + tests/hooks/pre-commit 1。
           # **2026-09-05 `W-F1` 棘到 60**，同时补进 `tests/e2e/weak-net/*.sh`。★ 这一次同样**不是事后补**：
           # `tests/e2e/weak-net/` 是个**新目录**，而上面 `tests/e2e/*.sh` 那个 glob **不跨 `/`**
           # ⇒ 弱网台架那 4 个脚本落在所有分组之外，一次都不会被 lint，而计数一个都不少。
@@ -451,7 +451,7 @@ jobs:
           #（「补进 `ci.yml` 的 `FILES=$(printf …)`（记得同步地板数）」）。
           # 今天实测构成（**逐组现打，不倒推** —— 上一轮就是倒推凑出过一次假账）：
           # **60 = tests/e2e/*.sh 33 + tests/e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14 + ccm 1
-          #        + scripts 2 + vendored 4 + hooks/pre-commit 1**。
+          #        + scripts 2 + vendored 4 + tests/hooks/pre-commit 1**。
           # 🔴 **2026-09-11 `K-R48` 第二拍：60 → 57，这是本仓第一次**往下**拧这个地板，
           #    所以理由要比往上棘时写得更清楚**：
           #    〔用@09-11 `K33`〕逐字「后端只有一个…**不要有什么 bash 脚本**」⇒ 本轮删了
@@ -460,16 +460,16 @@ jobs:
           #    ⇒ `shared/ccm` 那一项也从上面的 `FILES=` 表达式里摘了（留着它
           #    `shellcheck` 会报「文件不存在」rc=2，而那条诊断与「覆盖面缩水」完全对不上）。
           #    实测构成：**57 = tests/e2e/*.sh 31 + tests/e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14
-          #             + scripts 2 + vendored 4 + hooks/pre-commit 1**（ccm 那 1 个没了）。
+          #             + scripts 2 + vendored 4 + tests/hooks/pre-commit 1**（ccm 那 1 个没了）。
           #    ⚠ **别把这一次当先例**：往下拧的合法理由只有「那几个文件真的不在了」，
           #    不是「今天数不够」。`shell_lint_registry` 那条恒等判据会替你分辨这两件事。
-          # **2026-09-12 `K-R82` 棘到 58**：新增 `scripts/hooks-are-runnable.sh`
+          # **2026-09-12 `K-R82` 棘到 58**：新增 `tests/scripts/hooks-are-runnable.sh`
           #（门禁第 13 格 `hooks` 的判据本体）。★ 与 08-11 那次同形，**不是事后补**：
           # 文件建出来的同一拍 `shell_lint_registry` 那条恒等判据当场红，诊断逐字给出「该写几」。
-          # ⚠ 它落在 `scripts/*.sh` 那个 glob 里 ⇒ **人群没漏**，只是计数要跟。
+          # ⚠ 它落在 `tests/scripts/*.sh` 那个 glob 里 ⇒ **人群没漏**，只是计数要跟。
           # 今天实测构成（**逐组现打，不倒推**，量于工作树 `k-r82`）：
           # **58 = tests/e2e/*.sh 31 + tests/e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14
-          #        + scripts 3 + vendored 4 + hooks/pre-commit 1**。
+          #        + scripts 3 + vendored 4 + tests/hooks/pre-commit 1**。
           # 🔴 **2026-09-12 `K-R72`：58 → 57，本仓第二次**往下**拧这个地板**（第一次是
           #    `K-R48` 第二拍，理由同族）：删了 `tests/e2e/tmux-guarded-acceptance.sh` 一个文件 ——
           #    它的输入源（`tmux.rs` 两条桌面侧 SSH 回落的 builder）随 `K-R54` 表第 1 · 2 · 5 处
@@ -478,7 +478,7 @@ jobs:
           #    （`shell_lint_registry` 那条恒等判据当场红并逐字给出「该写几」）。
           #    今天实测构成（**逐组现打，不倒推**，量于工作树 `k-r72`）：
           #    **57 = tests/e2e/*.sh 30 + tests/e2e/weak-net/*.sh 4 + fake-claude 1 + cc-bus 14
-          #           + scripts 3 + vendored 4 + hooks/pre-commit 1**。
+          #           + scripts 3 + vendored 4 + tests/hooks/pre-commit 1**。
           # **2026-09-15 `K-R139` 棘到 60**，同时补进 `tests/e2e/local-backend-container/*.sh`。
           # ★ 与 `W-F1`（09-05 那次补 `tests/e2e/weak-net/`）**同一形，不是地板落后**：
           # `tests/e2e/local-backend-container/` 是个**新目录**，而 `tests/e2e/*.sh` 那个 glob **不跨 `/`**
@@ -489,7 +489,7 @@ jobs:
           #   豁免是给改不动的老债留的。
           # 今天实测构成（**逐组现打，不倒推** —— 倒推凑过一次假账）：
           # **60 = tests/e2e/*.sh 30 + tests/e2e/weak-net/*.sh 4 + tests/e2e/local-backend-container/*.sh 3
-          #        + fake-claude 1 + cc-bus 14 + scripts 3 + vendored 4 + hooks/pre-commit 1**。
+          #        + fake-claude 1 + cc-bus 14 + scripts 3 + vendored 4 + tests/hooks/pre-commit 1**。
           # ⚠ 那个目录里还有一份 `Dockerfile`（**不是 `.sh`，不进这个人群**）。
           [ "$N" -ge 60 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 60）"; exit 1; }
           # shellcheck disable=SC2086
@@ -522,7 +522,7 @@ jobs:
       - name: python syntax compile
         run: python3 -m py_compile tests/e2e/*.py
 
-      # B01：`shared/**` 里带 shebang 的文件在 **git 里**必须是 100755。
+      # B01：`src/shared/**` 里带 shebang 的文件在 **git 里**必须是 100755。
       # 本仓 `core.fileMode=false` → git 忽略文件系统的可执行位，于是"盘上 755 但 git 记 644"
       # 在本地**永远看不出来**（本地跑的是盘上那份），只有干净 checkout 才炸。已踩过两次：
       # R00 的 `shared/ccm`（CI 上 Permission denied，e2e 连红三轮）与 B01 的 13 个 cc-bus 脚本。
@@ -612,14 +612,14 @@ jobs:
       #    ⇒ **纪律**：改任何一套的地板 = 改**调用行 + 这张清单**两处，一拍做完。
       # ★★ **2026-09-03 `K-G8`：这条纪律的第三处，以及它今天为什么开始有牙。**
       #    `K-G7`（09-03）之后，`ccm` 那四套（`ccm-print-parity` · `ccm-rbind-title` ·
-      #    `ccm-cli` · `ccm-contract-parity`）的地板**还有第三处**登记：`scripts/gate.sh`
+      #    `ccm-cli` · `ccm-contract-parity`）的地板**还有第三处**登记：`tests/scripts/gate.sh`
       #    的 `run_e2e` 行 —— 那是**出货门禁真跑**的那一份。⇒ 那四套改地板要**三处**一起改。
       #    🔴 **本拍一个地板值都没改**（`ccm-cli 242` 等 23 条调用行、下面那张 `pair` 清单
       #    逐字未动）。改的只有**判法**，而且**只改了 `gate.sh` 那 4 条**：
       #      · `tests/e2e/assert-pass-floor.sh` 加了个**可选的第三个参数** ——
       #        `at-least`（**不给就是它**，`n < 地板` 红，**与本文件这 23 条调用行今天的行为逐字同义**）
       #        / `exact`（恒等：`n < 地板` 红 **外加** `n > 地板` 也红）。
-      #      · `scripts/gate.sh` 的 `run_e2e` 传 `exact`；**本文件这 23 条调用行一条都没传**
+      #      · `tests/scripts/gate.sh` 的 `run_e2e` 传 `exact`；**本文件这 23 条调用行一条都没传**
       #        ⇒ **CI 侧行为零变化。**
       #    🔴 **为什么本文件这 19 条（23 − gate 那 4 条）不跟着改**（`K-G8` 摸底现打、PM 复核）：
       #      本文件的触发器只有 `push`（`main` / `v*`）与 `pull_request`，而
@@ -654,7 +654,7 @@ jobs:
           #     ⇒ **副本漂了不是「注释过期」，是流水线直接红。**
           #   · ⇒ **纪律（第三次写在这里了）：改任何一套的地板 = 同一拍改两处 ——
           #     调用行 + 这张清单。** `ccm-print-parity` / `ccm-rbind-title` / `ccm-cli` /
-          #     `ccm-contract-parity` 这四套还有**第三处**（`scripts/gate.sh` 的 `run_e2e` 行，
+          #     `ccm-contract-parity` 这四套还有**第三处**（`tests/scripts/gate.sh` 的 `run_e2e` 行，
           #     见 `:521` 那段 `K-G8`）⇒ 那四套是**三处**一起改。
           #
           # ⚠ **2026-09-09 `CI-J2` 订正三处已漂的**（`ccm-cli 242→264` · `ccm-acceptance 29→31` ·
@@ -700,7 +700,7 @@ jobs:
           done
           echo "20 套逐个对上（套件名 + 地板值）"  # 〔`K-R48` 第二拍〕23 → 21：删了 ccm-acceptance / ccm-pretrust；〔`K-R72`〕21 → 20：删了 tmux-guarded
 
-      - name: exec-bit guard (shared/** shebang files must be 100755 in git)
+      - name: exec-bit guard (src/shared/** shebang files must be 100755 in git)
         run: bash tests/e2e/exec-bit-guard.sh
 
       # ── `release.yml` 发版守卫（`KR114D1` 09-14 立 · `KR124D2` 09-15 加第三件）────
@@ -711,9 +711,9 @@ jobs:
       #   ② **手工触发默认不发布** —— 有了触发器而没有这个开关，随手点一下「Run workflow」
       #      就是**误发一个版**。误发比触发不了贵：发出去收不回来。
       #   ③ **两处发布步骤都带正文来源** —— 没有它，真发出去的正文是 GitHub 自动生成的
-      #      那份提交列表，我们写的一个字都不在上面（`evidence/K-R123-发版读数.md § 4.5`）。
+      #      那份提交列表，我们写的一个字都不在上面（`tests/evidence/K-R123-发版读数.md § 4.5`）。
       #
-      # ⚠ 判据本体住 `evidence/K-R124-ruler.py`，**它的射程与买不到的东西逐条写在那份文件的
+      # ⚠ 判据本体住 `tests/evidence/K-R124-ruler.py`，**它的射程与买不到的东西逐条写在那份文件的
       #   头注里**，这里不复述一份（复述就会漂 —— 与 `ci-e2e-prereq` 那一格同一条取法）。
       #   放在那儿也是为了能对着变异过的副本跑死值验（`K_R124_ROOT=<副本>`），
       #   不必去动真工作树。
@@ -721,13 +721,13 @@ jobs:
       #   病灶逐字：runner 会把 `run:` 里的 `${{ … }}` **先求值再交给 shell** ⇒ 原版判据
       #   要比的那个字面在渲染之后变成 `"false"`（tag / push 上是 `"true"`），
       #   与盘上那串模板在**三个触发器上都必不相等** ⇒ **它从加进去那天起就不可能过**。
-      #   云端实打读数住 `evidence/K-R123-发版读数.md § 1.3`（run `34928839471`）。
-      #   ⇒ 整段搬进 `evidence/K-R124-ruler.py`：`.py` 不经 GitHub 的表达式渲染器。
+      #   云端实打读数住 `tests/evidence/K-R123-发版读数.md § 1.3`（run `34928839471`）。
+      #   ⇒ 整段搬进 `tests/evidence/K-R124-ruler.py`：`.py` 不经 GitHub 的表达式渲染器。
       #   顺带治掉第二件：原版用 `yaml.safe_load` 写，而沙箱镜像里没有 PyYAML
       #   ⇒ 它**在本地一次都跑不起来**，坏了一个月没人看见（`KR124D3`）。
-      #   本地落点是 `scripts/gate.sh` 的 `release-gate` 那一格，与本步骤**同一份判据本体**。
+      #   本地落点是 `tests/scripts/gate.sh` 的 `release-gate` 那一格，与本步骤**同一份判据本体**。
       - name: release.yml 发版守卫（KR114D1 ＋ KR124D2）
-        run: python3 evidence/K-R124-ruler.py
+        run: python3 tests/evidence/K-R124-ruler.py
 
   # R00③：**真机行为验收进 CI**。**E82（2026-08-01）订正这段散文里的数**：地板值本身一直是对的
   # （下面有逐个 grep 的反向自检兜着），只是这几行注释没跟 —— 实际调用行是
@@ -799,7 +799,7 @@ jobs:
       # 而那条拆法正是为了同一族缺陷立的。⇒ **搬步骤，不搬工具链。**
       #
       # ⚠ **也不是「删掉」** —— 删之前现打问过「题面是不是已经被别的门覆盖了」，答案是**没有**：
-      #   · `scripts/gate.sh` 那四行 `run_e2e` 跑的是 `ccm-print-parity` / `ccm-rbind-title` /
+      #   · `tests/scripts/gate.sh` 那四行 `run_e2e` 跑的是 `ccm-print-parity` / `ccm-rbind-title` /
       #     `ccm-cli` / `ccm-contract-parity`，**不含 `cc-spawn-uplift`**；而且那是**本地出货门禁**，
       #     不是 CI —— `K-R119` 那一趟的读数逐字就是「本地 16 格全绿 ≠ CI 会绿」。
       #   · 现打整份 `ci.yml`：这四个套件名各自**只**出现在搬走的那一步上，别的 job 一条都没有。
@@ -926,7 +926,7 @@ jobs:
       # 而上面那一步刚把它编出来。
       # ⚠ **必须排在 `build debug daemon` 之后** —— 四套顶上各有一道 fail-closed 的 `[ -x ]`。
       # 🔴 〔`K-R48` 第二拍 09-11〕264 → 46：`shared/ccm` 删了，本套件的被测对象换成后端二进制。
-      #    逐条判词住 `evidence/K-R48-356-verdicts.tsv`；构成与理由写在 `scripts/gate.sh`
+      #    逐条判词住 `tests/evidence/K-R48-356-verdicts.tsv`；构成与理由写在 `tests/scripts/gate.sh`
       #    那两行 `run_e2e` 上方（那是「三处一起改」里说理最全的一处，别在这儿再抄一份）。
       # ⚠ **跑之前要先 build 后端二进制**（`cargo build --bin cc-monitor-remote`）——
       #    套件顶上那道 `[ -x ]` 是 fail-closed 的，不 build 就红。
@@ -946,7 +946,7 @@ jobs:
         #    容器载荷内侧真带 `export ANTHROPIC_BASE_URL=`（申报与兑现一起量）· 一格反空真。
                 # 🔴 〔`K-R70` 09-12〕42 → 45：`--ccm-probe` 多吐一行 `build=<BUILD_ID>` ⇒ C 组加三格 ——
         #    `build=` 行逐字 == daemon 源码里的 `BUILD_ID` · `build=` 与 `version=` 不是同一个值 ·
-        #    抽取器自检。⚠ **本行与 `scripts/gate.sh:951` 的 `run_e2e` 行、以及上面那份清单副本
+        #    抽取器自检。⚠ **本行与 `tests/scripts/gate.sh:951` 的 `run_e2e` 行、以及上面那份清单副本
         #    共三处，「一起改」是纪律不是判据 —— 今天没有任何东西会在三处分叉时报红。**
         run: bash tests/e2e/assert-pass-floor.sh ccm-contract-parity 45
 

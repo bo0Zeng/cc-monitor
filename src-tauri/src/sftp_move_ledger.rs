@@ -48,7 +48,7 @@ mod tests {
     const SFTP_SRC: &str = include_str!("sftp.rs");
     const MCP_SRC: &str = include_str!("mcp.rs");
     const ACCT_SRC: &str = include_str!("acct_iso_deploy.rs");
-    const INVARIANTS: &str = include_str!("../../doc/INVARIANTS.md");
+    const INVARIANTS: &str = include_str!("../../src/doc/INVARIANTS.md");
     const PROFILE_SRC: &str = include_str!("profile_installer.rs");
     const LOCAL_DAEMON_SRC: &str = include_str!("local_daemon.rs");
     const BACKEND_SRC: &str = include_str!("backend/mod.rs");
@@ -225,7 +225,7 @@ mod tests {
             "别名 snippet 只许有一个家",
             "vec![\"sftp.rs\".to_string()]",
             "`profile_installer.rs::the_alias_snippet_has_exactly_one_home_in_the_rust_tree` \
-             断言 `shared/ccm-aliases.sh` 在 monitor `src` 树里**恰好一处**，就是 \
+             断言 `src/shared/ccm-aliases.sh` 在 monitor `src` 树里**恰好一处**，就是 \
              `sftp.rs::CCM_WRAPPER_SNIPPET`；同文件 \
              `the_posix_arm_borrows_the_remote_implementation_instead_of_growing_a_second_one` \
              另断言**本机**那条 POSIX 路借的就是远端这一份（三个符号各恰好 1 次）。\
@@ -471,7 +471,7 @@ mod tests {
             ("进度通道", "sftp_pool.rs"),
             ("per-origin 连接池", "sftp_pool.rs"),
             ("死连接重建重试", "sftp_pool.rs"),
-            ("daemon 只读铁律 I7", "doc/INVARIANTS.md"),
+            ("daemon 只读铁律 I7", "src/doc/INVARIANTS.md"),
             ("别名 snippet 只许有一个家", "profile_installer.rs"),
             ("要部署的那份字节住在界面这一侧", "local_daemon.rs"),
             ("SFTP 写原语是三类共用的", "sftp.rs"),
@@ -492,7 +492,7 @@ mod tests {
                 "sftp.rs" => production_code(SFTP_SRC),
                 "profile_installer.rs" => PROFILE_SRC.to_string(),
                 "local_daemon.rs" => production_code(LOCAL_DAEMON_SRC),
-                "doc/INVARIANTS.md" => INVARIANTS.to_string(),
+                "src/doc/INVARIANTS.md" => INVARIANTS.to_string(),
                 other => panic!("没有这份语料：{other}"),
             };
             assert!(

@@ -60,7 +60,7 @@ DEB="${LBC_DEB:-cc-monitor_3.8.0_amd64.deb}"
 
 # 产品侧的两个落点（**只写在这里一处**，下面全部引用它）。
 DIR_REAL='.cc-monitor/bin'      # install_local_ccm_entry 的真落点（local_backend.rs:1657）
-DIR_SNIPPET='.local/bin'        # shared/ccm-aliases.sh 那行 PATH 加的那个
+DIR_SNIPPET='.local/bin'        # src/shared/ccm-aliases.sh 那行 PATH 加的那个
 
 # 产品写 rc 时用的围栏（`src-tauri/src/sftp.rs` 的 CCM_PROFILE_BEGIN / _END 逐字）。
 FENCE_BEGIN='# === cc-monitor remote ccm BEGIN ==='
@@ -259,11 +259,11 @@ note "rc 里有没有产品的围栏：$(tsh "grep -c 'cc-monitor remote ccm BEG
 line
 
 # ══════════════════════════════════════════════════════════════════
-echo "== P8 把产品那段 rc 片段装进去（逐字 shared/ccm-aliases.sh + 产品的围栏），再敲"
+echo "== P8 把产品那段 rc 片段装进去（逐字 src/shared/ccm-aliases.sh + 产品的围栏），再敲"
 # ⚠ 这一步模拟的是**用户在设置面板里点了「装 ccm 别名块」**之后 rc 的样子。
-#   片段取自**本树的** `shared/ccm-aliases.sh`（后端 `sftp.rs` 也是 `include_str!` 同一份文件
+#   片段取自**本树的** `src/shared/ccm-aliases.sh`（后端 `sftp.rs` 也是 `include_str!` 同一份文件
 #   ⇒ 这里与产品写进去的那一份同源），**一个字节都不改**。
-SNIPPET="$HERE/../../../shared/ccm-aliases.sh"
+SNIPPET="$HERE/../../../src/shared/ccm-aliases.sh"
 if [ -f "$SNIPPET" ]; then
   note "rc 片段取自 $SNIPPET（md5 $(md5sum "$SNIPPET" | awk '{print $1}')）"
   docker cp "$SNIPPET" "$CT:/tmp/ccm-aliases.sh" >/dev/null 2>&1
@@ -282,7 +282,7 @@ if docker exec "$CT" sh -c '[ -f /tmp/ccm-aliases.sh ]' 2>/dev/null; then
   note "真敲 cc（退出码 + 首行）：$(tsh 'cc --help >/dev/null 2>&1; echo rc=$?')"
   note "真敲 ccm（退出码）：$(tsh 'ccm --help >/dev/null 2>&1; echo rc=$?')"
 else
-  no "本树里没有 shared/ccm-aliases.sh（找的是 $SNIPPET）—— P8 整段没跑"
+  no "本树里没有 src/shared/ccm-aliases.sh（找的是 $SNIPPET）—— P8 整段没跑"
 fi
 line
 

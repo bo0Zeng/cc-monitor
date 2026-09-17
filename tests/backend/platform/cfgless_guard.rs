@@ -78,7 +78,7 @@
 //! - 🔴 **它不是跨 target 编译的替代品。** 真判据一直是
 //!   `cargo check --all-targets --target x86_64-pc-windows-msvc`（CI 的 daemon job 那一步，
 //!   带 zig 的三个环境变量）。本模块买到的是**在那道门跑不到的地方也能出声**
-//!   —— 本机那道 `scripts/verify-committed-state.sh` 的 `daemon-win` 今天卡在 `ring`
+//!   —— 本机那道 `tests/scripts/verify-committed-state.sh` 的 `daemon-win` 今天卡在 `ring`
 //!   的构建脚本上（现打：EXIT=101、`failed to find tool "lib.exe"`、
 //!   `Checking cc-monitor-remote` 命中 **0** ⇒ 根本走不到我们的代码），
 //!   而 CI 那道只看 `origin/main`，本仓的红线是**不 push**。

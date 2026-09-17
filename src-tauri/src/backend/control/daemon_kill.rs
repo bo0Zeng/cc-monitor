@@ -496,16 +496,16 @@ mod tests {
     ///
     /// 🔴 **`K-R72`（09-12）：它真的响了，而且响得对。**
     /// 那一刀删掉 `kill_remote_tmux` 的一次性 SSH 回落，本条**当场红**，
-    /// 逼着把 `doc/IPC-PROTOCOL.md` 那两处「过渡期」的说法一起改成「已删」。
+    /// 逼着把 `src/doc/IPC-PROTOCOL.md` 那两处「过渡期」的说法一起改成「已删」。
     /// ⇒ 今天两侧都是 `false`：代码里没有回落，文档里也不再说有。
     /// **本条不因此作废** —— 它两个方向都咬：谁把回落加回来不改文档、
     /// 或谁把那句话写回文档而代码里没有，都会红。
     ///
     /// # 🔴🔴 `K-R106`（09-13）`KR106D3`：**人群从一份文档扩到整棵 `doc/`**
     ///
-    /// 本条此前只 `include_str!` **一份** `doc/IPC-PROTOCOL.md` ——
+    /// 本条此前只 `include_str!` **一份** `src/doc/IPC-PROTOCOL.md` ——
     /// 而同一句话当时在盘上还有**另外三份副本**，它们**结构上够不着**：
-    /// `doc/CONTRIBUTING.md`（正文 ＋ 同节表格两处）· `doc/ARCHITECTURE.md` ·
+    /// `src/doc/CONTRIBUTING.md`（正文 ＋ 同节表格两处）· `src/doc/ARCHITECTURE.md` ·
     /// `doc/账号用量-usage抓取方案.md`。`K-R72` 那次「响得对」只响到了它看得见的那一份，
     /// 于是它逼人改的也只有那一份 —— **一条判据挡住的，只有它人群里的那些**。
     ///
@@ -518,7 +518,7 @@ mod tests {
     /// - **人群是 `doc/` 这棵树**，按「耐久文档的家」这条语义划，不是「碰巧只有它们长这样」。
     ///   仓根那几份 `.md`（`README*` / `CHANGELOG` / 复盘报告）与 `evidence/` **不在人群里**：
     ///   前者不是耐久设计文档；后者是**死值验留档**，逐字记着历史上那一刀砍的是什么，
-    ///   它**本来就该**提到那句话（现打 09-13：`evidence/K-R72-deathvalue.md` 正是这一形）。
+    ///   它**本来就该**提到那句话（现打 09-13：`tests/evidence/K-R72-deathvalue.md` 正是这一形）。
     ///   ⇒ 把它们扫进来买到的不是更严，是一条必然误报的闸。
     /// - **它按整串 `contains` 判** ⇒ 想在耐久文档里给这句话立一块**墓碑**（「历史上有过、
     ///   已经删了」）就会被它拦下。今天的出路是**换一种说法**（本轮三份副本都是这么改的）。
@@ -541,7 +541,7 @@ mod tests {
         let needle = format!("过渡期{}", "回落");
         let mut scanned: Vec<String> = Vec::new();
         let mut said: Vec<String> = Vec::new();
-        let mut stack = vec![root.join("doc")];
+        let mut stack = vec![root.join("src/doc")];
         while let Some(d) = stack.pop() {
             let rd = std::fs::read_dir(&d).unwrap_or_else(|e| {
                 panic!("读不到 {} —— 人群空了本条会零命中地绿：{e}", d.display())
@@ -572,14 +572,14 @@ mod tests {
         // ★ 抽取器自检：人群塌成 0 时，下面那条相等断言会**空真地**绿。
         assert!(
             scanned.len() >= 8,
-            "只扫到 {} 份耐久文档（`doc/**/*.md`）—— 遍历坏了，本条此刻在空转：{scanned:?}",
+            "只扫到 {} 份耐久文档（`src/doc/**/*.md`）—— 遍历坏了，本条此刻在空转：{scanned:?}",
             scanned.len()
         );
         // ★ 地板的第二半：人群里必须**真的有**那份 `K-R72` 逼着改过的文档，
         //   否则「扫到 8 份」也可能扫的是另外八份。
         assert!(
             scanned.iter().any(|f| f.ends_with("IPC-PROTOCOL.md")),
-            "人群里没有 `doc/IPC-PROTOCOL.md` —— 本条原来唯一看得见的那一份掉出去了：{scanned:?}"
+            "人群里没有 `src/doc/IPC-PROTOCOL.md` —— 本条原来唯一看得见的那一份掉出去了：{scanned:?}"
         );
         said.sort();
         assert_eq!(

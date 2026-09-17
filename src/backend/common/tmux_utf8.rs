@@ -2,8 +2,8 @@
 //!
 //! # 先答那一问：`-u` 与 `LC_ALL=C.UTF-8` 是**一个口径的两种表示**，不是两个口径
 //!
-//! 三条实测（配方与原始输出在 `evidence/K-R12-locale-lab.md` 与
-//! `evidence/K-R12-deathvalue.md`，容器内 tmux 3.4 + `-S` 私有 socket + `od -c` 读字节）：
+//! 三条实测（配方与原始输出在 `tests/evidence/K-R12-locale-lab.md` 与
+//! `tests/evidence/K-R12-deathvalue.md`，容器内 tmux 3.4 + `-S` 私有 socket + `od -c` 读字节）：
 //!
 //! 1. **它们拨的是同一个开关。** tmux 判「客户端是不是 UTF-8」只有一个内部标志；
 //!    `-u` 直接置它，`LC_ALL`/`LC_CTYPE`/`LANG` 取第一个非空值做一次**大小写不敏感的

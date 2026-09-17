@@ -105,11 +105,11 @@ mod tests {
     fn scanned_sources(root: &Path) -> Vec<PathBuf> {
         let mut out = Vec::new();
         // ⚠ **F12 加 `doc/`**：`/full-audit` 逮到 —— 本守卫要杀的两句
-        // （「每 ~8s 推」「帧最长 8s 陈旧」）**活在 `doc/INVARIANTS.md:478/:492`**，
+        // （「每 ~8s 推」「帧最长 8s 陈旧」）**活在 `src/doc/INVARIANTS.md:478/:492`**，
         // 而 F01 建它时的普查**只看了 Rust**。⇒ 「同一句假话住四处」那次普查本身
         // 就漏了一整个目录，而**耐久文档恰恰是那句话最有害的住处**（它是权威）。
         // ★ 「扫描面画小了」在本仓第四次；这一次漏的不是一个文件，是一个**目录族**。
-        for base in ["src-tauri/src", "src/backend", "doc"] {
+        for base in ["src-tauri/src", "src/backend", "src/doc"] {
             walk(&root.join(base), &mut out);
         }
         out
@@ -139,10 +139,10 @@ mod tests {
     fn the_scan_actually_reads_both_crates() {
         let n = scanned_sources(&repo_root()).len();
         // 地板按「排除本文件后」的实测值定。
-        // F12：扫描面加了 `doc/**.md`（11 份）⇒ 地板从 90 抬到 100。
+        // F12：扫描面加了 `src/doc/**.md`（11 份）⇒ 地板从 90 抬到 100。
         assert!(
             n >= 100,
-            "只扫到 {n} 个源文件（.rs + doc/**.md，F12 实测应 >110）—— 扫描器坏了"
+            "只扫到 {n} 个源文件（.rs + src/doc/**.md，F12 实测应 >110）—— 扫描器坏了"
         );
     }
 

@@ -35,15 +35,15 @@ mod tests {
         "README.md",
         "README.en.md",
         "src-tauri/README.md",
-        "doc/CONTRIBUTING.md",
-        "doc/DEVELOPMENT.md",
-        "doc/ARCHITECTURE.md",
+        "src/doc/CONTRIBUTING.md",
+        "src/doc/DEVELOPMENT.md",
+        "src/doc/ARCHITECTURE.md",
         // F18 下半新纳入的四份 —— 上半只覆盖了 V6 十六行里前五行涉及的文件，
         // 而剩下十一行的副本大半住在这四份里（`doc_claim_registry` 的文件集
         // 只有 `doc/` **直接子层**，`tests/e2e/README.md` 连它都够不着）。
-        "doc/INVARIANTS.md",
-        "doc/IPC-PROTOCOL.md",
-        "doc/REMOTE-PHASE0-DEPLOY.md",
+        "src/doc/INVARIANTS.md",
+        "src/doc/IPC-PROTOCOL.md",
+        "src/doc/REMOTE-PHASE0-DEPLOY.md",
         "tests/e2e/README.md",
     ];
 
@@ -62,7 +62,7 @@ mod tests {
                 "后端 cargo ",
                 // 🔴 〔`K-R116` 09-14〕**两条并列，别删上面那条**：`R61` 的措辞收干净把
                 // 写区那 9 份散文里下面那个旧前缀全换成了「远端后端」，而 `PROSE_FILES`
-                // 里还有**不在那一轮写区**的文件（`doc/REMOTE-PHASE0-DEPLOY.md`）仍写旧词。
+                // 里还有**不在那一轮写区**的文件（`src/doc/REMOTE-PHASE0-DEPLOY.md`）仍写旧词。
                 // 只换不加 ⇒ 旧词那半静默掉出人群；只加不留 ⇒ 新词那半没人看。
                 "远端 daemon ",
                 "远端后端 ",
@@ -73,7 +73,7 @@ mod tests {
                 "code-picture-core ",
             ],
             "条数以实跑为准",
-            "实跑 + `doc/DEVELOPMENT.md` 那张表给命令；CI 侧的地板行在 `ci.yml`（那些有判据看着）",
+            "实跑 + `src/doc/DEVELOPMENT.md` 那张表给命令；CI 侧的地板行在 `ci.yml`（那些有判据看着）",
         ),
         (
             "CI job 数",

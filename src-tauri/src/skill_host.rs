@@ -163,7 +163,7 @@ pub const SKILLS: &[SkillSpec] = &[
             // 「相对工作目录」。★ **这正是第二份声明验出来的第一个 schema 缺口**，
             // 已如实记进 F02 的摸底：本轮用仓内那份脚本目录当 root（它确实在工作目录下），
             // 而「运行时总线目录」那个概念本 schema today 装不下。
-            root: "cc-monitor/shared/cc-bus",
+            root: "cc-monitor/src/shared/cc-bus",
             instance_marker: "SKILL.md",
         },
         // cc-bus 没有「人手写的注入文件」这种东西 —— 它的 inbox 是程序写的 jsonl。
@@ -180,7 +180,7 @@ pub const SKILLS: &[SkillSpec] = &[
 /// 1. **两条 skill 一条都装不了。** `planned-build` 是 `Install::NotSupported`
 ///    （用户自己装的，我们只读它的产物）；`cc-bus` 是 `ManagedTool("cc-bus")`，
 ///    而 `TOOLS` 里那条 `installable: false` —— 深理由写在 `tool_registry.rs` 那条上：
-///    **落点 `~/.claude/skills/cc-bus` 被只读铁律排除**（`doc/INVARIANTS.md` 穷举的 6 条例外
+///    **落点 `~/.claude/skills/cc-bus` 被只读铁律排除**（`src/doc/INVARIANTS.md` 穷举的 6 条例外
 ///    没有一条覆盖它，第 2 条逐字「**绝不碰** `~/.claude/`」）。
 ///    ⇒ 做出来的按钮**恒灰或骗人**。要开口子得先裁 —— 待决 `U10b`。
 ///
@@ -293,7 +293,7 @@ pub fn editable_paths(spec: &SkillSpec, cwd: &Path) -> Vec<PathBuf> {
 /// 2. **集合判定**，不是一串 `if` —— 集合来自声明（[`editable_paths`]），
 ///    所以「能写哪些」这件事的真相源只有声明表一处。
 /// 3. **过 `is_protected_claude_data_path`** —— 纵深防御。即使声明写歪了，
-///    也不许碰 Claude 的 jsonl/pidfile（`doc/INVARIANTS.md:11` 那条只读铁律的对象）。
+///    也不许碰 Claude 的 jsonl/pidfile（`src/doc/INVARIANTS.md:11` 那条只读铁律的对象）。
 ///
 /// ⚠ 目标文件**必须已存在**才让写：本功能是「编辑收件箱」，不是「创建任意文件」。
 /// 不存在就拒 —— 那让写面严格等于「声明里那几个真实文件」，而不是「那几个路径名」。
@@ -327,7 +327,7 @@ pub fn resolve_editable(spec: &SkillSpec, cwd: &Path, requested: &Path) -> Resul
     if crate::sftp_pool::is_protected_claude_data_path(&as_str) {
         return Err(format!(
             "拒绝写入：{} 是 Claude 的数据文件（jsonl/pidfile）。\n\
-             那是 `doc/INVARIANTS.md` 只读铁律的对象 —— 声明表把它列进 editable 也不行。",
+             那是 `src/doc/INVARIANTS.md` 只读铁律的对象 —— 声明表把它列进 editable 也不行。",
             real.display()
         ));
     }
@@ -865,7 +865,7 @@ mod tests {
             std::fs::write(pb.join("README.md"), b"").expect("造旁邻文件失败");
 
             // ── cc-bus（`editable` 是空的，只把根搭出来，让两份声明都落得下来）──
-            let bus = root.join("cc-monitor").join("shared").join("cc-bus");
+            let bus = root.join("cc-monitor").join("src").join("shared").join("cc-bus");
             std::fs::create_dir_all(&bus).expect("造 cc-bus 夹具失败");
             std::fs::write(bus.join("SKILL.md"), b"").expect("造 cc-bus 标记失败");
 

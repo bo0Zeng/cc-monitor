@@ -43,7 +43,7 @@
 //! 成功 exit 0；`--account-trust` 的硬错误 exit 2 + stderr 纯 `{code,message}` JSON
 //! （照 `resolve_query` 的结构化错误约定，客户端可整段 parse）。
 //!
-//! # 只读铁律（doc/INVARIANTS.md §1）
+//! # 只读铁律（src/doc/INVARIANTS.md §1）
 //! 本模块只 `read` / `read_dir` / `metadata`，**零写入**，且**不 shell out**
 //! （daemon 是非登录 shell、PATH 很瘦；直接读 manifest 文件即可，省掉 PATH 依赖
 //! 与"让只读组件去跑写工具"的争议面）。
@@ -1646,16 +1646,16 @@ mod tests {
     /// （它的整段论证在它自己的头注里，这里不复述）。
     ///
     /// 发生率**现打**〔09-11，沙箱 `ccmon-devbox:latest`；量具
-    /// `evidence/K-R55-fixture-shape-probe.py` —— 照本条的夹具形状复刻一遍、
+    /// `tests/evidence/K-R55-fixture-shape-probe.py` —— 照本条的夹具形状复刻一遍、
     /// 只量丙那一格，不跑 Rust〕：**空载 200 趟 0 次 · 加载（`nproc`×4 条忙循环）200 趟 2 次**。
     /// ⇒ 这个窗口**确实开着**，且确实只在有负载时开。
     ///
     /// ## ② 而「它就是那 1/16」—— **没复现出来，所以判不了**
     ///
     /// 把下面那段屏障**整段摘掉**（`K-R55` 刀 D），在同一个沙箱里现打：
-    /// · 点名单跑 + 满载忙循环，**400 趟红 0 趟**（`evidence/K-R55-flaky-loop.py`）；
+    /// · 点名单跑 + 满载忙循环，**400 趟红 0 趟**（`tests/evidence/K-R55-flaky-loop.py`）；
     /// · 照门禁的真实条件（全量并行的那个测试二进制）**连跑 32 趟，红 0 趟**
-    ///   （`evidence/K-R55-fullsuite-loop.py`）。
+    ///   （`tests/evidence/K-R55-fullsuite-loop.py`）。
     /// ⇒ 缺口补上了，**但我没有把那条 flaky 复现出来一次** ⇒ 不许写成「根因找到了」。
     ///
     /// 🔴 **差什么才判得了**：那一趟红的 **panic 原文**（哪一格断言先红）。
@@ -2263,16 +2263,16 @@ mod tests {
     /// 解释）它一个字都判不了 —— 那是评审的活。
     #[test]
     fn the_protocol_doc_row_for_session_accounts_matches_what_we_emit() {
-        const DOC: &str = include_str!("../../../doc/IPC-PROTOCOL.md");
+        const DOC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
         assert!(
             DOC.len() > 20_000,
-            "只读到 {} 字节的 `doc/IPC-PROTOCOL.md` —— include_str! 没读到，本条在空转",
+            "只读到 {} 字节的 `src/doc/IPC-PROTOCOL.md` —— include_str! 没读到，本条在空转",
             DOC.len()
         );
         let row = DOC
             .lines()
             .find(|l| l.starts_with("- `--session-accounts "))
-            .expect("`doc/IPC-PROTOCOL.md` 里找不到 `--session-accounts` 那一行 —— 锚点挪了");
+            .expect("`src/doc/IPC-PROTOCOL.md` 里找不到 `--session-accounts` 那一行 —— 锚点挪了");
 
         // ── ① 出参字段表：从生产段把 `json!` 的键抠出来，与文档里那个花括号表对拍 ──
         let prod = production_text();
@@ -2304,7 +2304,7 @@ mod tests {
         let table = format!("{{{}}}", keys.join(","));
         assert!(
             row.contains(&table),
-            "\n★★ `doc/IPC-PROTOCOL.md` 的 `--session-accounts` 那一行里找不到字段表 {table:?}。\n\
+            "\n★★ `src/doc/IPC-PROTOCOL.md` 的 `--session-accounts` 那一行里找不到字段表 {table:?}。\n\
              出参加了字段 / 改了名 / 换了顺序，而文档没跟着改 —— **盘上留了一句假话**，\n\
              而这条路撞 0 道机检，除了本条没有任何东西会说。\n\
              文档那一行现在写的是：\n  {row}"
@@ -2322,7 +2322,7 @@ mod tests {
             header.len()
         );
         for (what, hay) in [
-            ("doc/IPC-PROTOCOL.md 那一行", row),
+            ("src/doc/IPC-PROTOCOL.md 那一行", row),
             ("本文件头注", header.as_str()),
         ] {
             for key in ["CLAUDE_CONFIG_DIR", LAUNCH_ID_ENV] {

@@ -87,7 +87,7 @@ pass=0; fail=0; skip=0; waived=0
 #     ② 真要删这条豁免时**不用记得改地板**：删掉这条臂 ⇒ 登记数 2→1 ⇒ `reachable` 34→35
 #        ⇒ `gate.rs` 的 `floor >= reachable` **当场红**，诊断直接说该棘到几；
 #     ③ 「PASS 涨了而地板没跟」这个一般形态**不是本件新开的洞**，它有主：`K-G8`/`K-G3` 的
-#        `exact` 判法（今天只在 `scripts/gate.sh` 那 4 条上生效，CI 这 23 条仍是 `at-least`，
+#        `exact` 判法（今天只在 `tests/scripts/gate.sh` 那 4 条上生效，CI 这 23 条仍是 `at-least`，
 #        理由逐字在 `.github/workflows/ci.yml` 那段 `K-G8` 里：谁在跑那把尺子，谁才配换判法）。
 #     **解锁条件一句话**：CI 的 runner 上 `tmux -V` ≥ 3.5 之后，删掉 `meta_dollar` 这条臂，
 #     让 ② 那条判据把地板逼到 35。

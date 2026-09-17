@@ -2,7 +2,7 @@
 //!
 //! # 这条路本来是被**只读铁律**堵死的
 //!
-//! `doc/INVARIANTS.md` 开头那条：「`monitor` 对 `<claude_dir>/…` **只读**」，后附**穷举**的
+//! `src/doc/INVARIANTS.md` 开头那条：「`monitor` 对 `<claude_dir>/…` **只读**」，后附**穷举**的
 //! 例外。`PS1` 摸底（08-12）逐条读完 —— **没有一条覆盖「往 `~/.claude/skills/` 装东西」**，
 //! 于是本件当时缩成「一条待裁 + 一处如实登记」，待决 `U10b`。
 //!
@@ -13,7 +13,7 @@
 //! # 为什么源是**内嵌**的而不是读仓
 //!
 //! 装了的 app 身边**没有仓**。照 `acct_iso_deploy` 的既定做法 `include_bytes!` 内嵌
-//! （那份头注逐字：「故直接 `include_bytes!` 内嵌」）。⇒ 单一事实源仍是 `shared/cc-bus/`，
+//! （那份头注逐字：「故直接 `include_bytes!` 内嵌」）。⇒ 单一事实源仍是 `src/shared/cc-bus/`，
 //! 编译期把它固化进二进制。
 //!
 //! # `U9`② 顺带有答案了（实测，不是投票）
@@ -25,79 +25,79 @@
 
 use std::path::{Path, PathBuf};
 
-/// 内嵌的那 17 个文件。**单一事实源 = `shared/cc-bus/`**，这里只是编译期固化。
+/// 内嵌的那 17 个文件。**单一事实源 = `src/shared/cc-bus/`**，这里只是编译期固化。
 ///
 /// ⚠ 加文件要同时加到这里 —— 判据 `the_embedded_file_list_matches_the_repo` 会对拍，
 /// 少一个当场红（否则装出去的是个**缺件的** skill，而那比不装更糟）。
 const FILES: &[(&str, &[u8])] = &[
-    ("SKILL.md", include_bytes!("../../shared/cc-bus/SKILL.md")),
+    ("SKILL.md", include_bytes!("../../src/shared/cc-bus/SKILL.md")),
     (
         "examples/cc-busd.service",
-        include_bytes!("../../shared/cc-bus/examples/cc-busd.service"),
+        include_bytes!("../../src/shared/cc-bus/examples/cc-busd.service"),
     ),
     (
         "examples/config",
-        include_bytes!("../../shared/cc-bus/examples/config"),
+        include_bytes!("../../src/shared/cc-bus/examples/config"),
     ),
     (
         "examples/policy.tsv",
-        include_bytes!("../../shared/cc-bus/examples/policy.tsv"),
+        include_bytes!("../../src/shared/cc-bus/examples/policy.tsv"),
     ),
     (
         "scripts/cc-agents",
-        include_bytes!("../../shared/cc-bus/scripts/cc-agents"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-agents"),
     ),
     (
         "scripts/cc-broadcast",
-        include_bytes!("../../shared/cc-bus/scripts/cc-broadcast"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-broadcast"),
     ),
     (
         "scripts/cc-bus-install.sh",
-        include_bytes!("../../shared/cc-bus/scripts/cc-bus-install.sh"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-bus-install.sh"),
     ),
     (
         "scripts/cc-bus-lib.sh",
-        include_bytes!("../../shared/cc-bus/scripts/cc-bus-lib.sh"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-bus-lib.sh"),
     ),
     (
         "scripts/cc-bus-stop-hook",
-        include_bytes!("../../shared/cc-bus/scripts/cc-bus-stop-hook"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-bus-stop-hook"),
     ),
     (
         "scripts/cc-busd",
-        include_bytes!("../../shared/cc-bus/scripts/cc-busd"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-busd"),
     ),
     (
         "scripts/cc-kill",
-        include_bytes!("../../shared/cc-bus/scripts/cc-kill"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-kill"),
     ),
     (
         "scripts/cc-list",
-        include_bytes!("../../shared/cc-bus/scripts/cc-list"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-list"),
     ),
     (
         "scripts/cc-recv",
-        include_bytes!("../../shared/cc-bus/scripts/cc-recv"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-recv"),
     ),
     (
         "scripts/cc-register",
-        include_bytes!("../../shared/cc-bus/scripts/cc-register"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-register"),
     ),
     (
         "scripts/cc-send",
-        include_bytes!("../../shared/cc-bus/scripts/cc-send"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-send"),
     ),
     (
         "scripts/cc-spawned-record",
-        include_bytes!("../../shared/cc-bus/scripts/cc-spawned-record"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-spawned-record"),
     ),
     (
         "scripts/cc-spawn",
-        include_bytes!("../../shared/cc-bus/scripts/cc-spawn"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-spawn"),
     ),
     (
         "scripts/cc-whoami",
-        include_bytes!("../../shared/cc-bus/scripts/cc-whoami"),
+        include_bytes!("../../src/shared/cc-bus/scripts/cc-whoami"),
     ),
 ];
 
@@ -105,7 +105,7 @@ const FILES: &[(&str, &[u8])] = &[
 /// 合并的话用户点一次看不出到底动没动盘。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct CcBusDeployReport {
     /// 落点绝对路径（给用户看，也便于他自己去查）。
     pub dest: String,
@@ -239,7 +239,7 @@ pub fn deploy_into(claude_dir: &Path) -> Result<CcBusDeployReport, String> {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub enum CcBusInstallState {
     /// 落点不存在（或一个内嵌文件都没有）。
     NotInstalled,
@@ -374,7 +374,7 @@ fn local_ccm_too_old_warning() -> Option<String> {
     ))
 }
 
-/// `cc-spawn` 开头那段能力协商要的东西 —— **与 `shared/cc-bus/scripts/cc-spawn` 同一份清单**。
+/// `cc-spawn` 开头那段能力协商要的东西 —— **与 `src/shared/cc-bus/scripts/cc-spawn` 同一份清单**。
 /// 改那边就要改这里（`the_deploy_precheck_lists_what_cc_spawn_negotiates` 钉住两边一致）。
 const CC_SPAWN_NEEDS: &[&str] = &["detach", "tmux-size", "tmux-base", "bus-register"];
 
@@ -427,13 +427,13 @@ mod tests {
         let root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
-            .join("shared/cc-bus");
+            .join("src/shared/cc-bus");
         // ⚠ 走 `guard_core::scan_tree!(&root, &[])` —— **空列表 = 不筛扩展名**，
         //   那个能力是本件 08-13 补进原语的：cc-bus 的脚本（`cc-send` / …）**没有扩展名**，
         //   而原语此前按扩展名筛 ⇒ 想扫这棵树只能自己 `read_dir`，
         //   那又撞 `scanning_guard_registry` 的递减棘轮（「不许把上限调上去让今天好过」）。
         //   ⇒ **缺的是原语的能力，不是纪律的例外。**
-        // ⚠ 本条扫的是 `shared/cc-bus/`（另一棵树，不含 `.rs`）⇒ 按构造读不到自己。
+        // ⚠ 本条扫的是 `src/shared/cc-bus/`（另一棵树，不含 `.rs`）⇒ 按构造读不到自己。
         let mut on_disk: Vec<String> = guard_core::scan_tree!(&root, &[])
             .into_iter()
             .map(|(p, _)| {
@@ -448,7 +448,7 @@ mod tests {
         embedded.sort();
         assert_eq!(
             embedded, on_disk,
-            "内嵌清单与 `shared/cc-bus/` 对不上 —— 加了文件就要加到 `FILES` 里，\
+            "内嵌清单与 `src/shared/cc-bus/` 对不上 —— 加了文件就要加到 `FILES` 里，\
              否则装出去的是个**缺件的** skill"
         );
     }
@@ -496,7 +496,7 @@ mod tests {
     /// ★ 幂等：装两次，第二次**一个字节都不写**、也不留备份。
     /// ★★ **内嵌清单不许漏掉仓里的脚本**〔08-13〕。
     ///
-    /// `FILES` 是手写的 `include_bytes!` 清单，而 `shared/cc-bus/scripts/` 是真相源。
+    /// `FILES` 是手写的 `include_bytes!` 清单，而 `src/shared/cc-bus/scripts/` 是真相源。
     /// 08-13 往那个目录**新建过一个脚本**（`cc-spawned-record`）—— 漏进清单的后果是：
     /// 编译照过、测试照绿，而**装出去的 cc-bus 少一个文件**，
     /// 在用户机器上表现成「新版 cc-spawn 调一个不存在的命令」。
@@ -508,14 +508,14 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("仓根")
-            .join("shared/cc-bus/scripts");
+            .join("src/shared/cc-bus/scripts");
         let mut on_disk: Vec<String> = guard_core::shell_scripts(
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .parent()
                 .expect("仓根"),
         )
         .into_iter()
-        .filter(|p| p.replace('\\', "/").contains("shared/cc-bus/scripts/"))
+        .filter(|p| p.replace('\\', "/").contains("src/shared/cc-bus/scripts/"))
         .filter_map(|p| {
             std::path::Path::new(&p)
                 .file_name()
@@ -608,7 +608,7 @@ mod tests {
     /// 装完 `cc-spawn` 直接 `exit 2`，而部署那步一声不吭地成功了。
     #[test]
     fn the_deploy_precheck_lists_what_cc_spawn_negotiates() {
-        let spawn = include_str!("../../shared/cc-bus/scripts/cc-spawn");
+        let spawn = include_str!("../../src/shared/cc-bus/scripts/cc-spawn");
         let line = spawn
             .lines()
             .find(|l| l.trim_start().starts_with("for _c in "))

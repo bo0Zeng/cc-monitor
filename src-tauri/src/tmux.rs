@@ -32,7 +32,7 @@ const TMUX_LS_FMT_FIELDS: usize = 6;
 /// 模块头注那条「格式串不解释字面 `\t`、必须给真 TAB」说的是**我们怎么写**；
 /// 这一条说的是**tmux 怎么打**。tmux 对输出通道做 sanitize：**客户端不是 UTF-8 时，
 /// 控制字符与非 ASCII 一律换成 `_`**（按**显示宽度**替换，不按字节数：实测 `文`(3B)→`__`）。
-/// 我们靠来分列的真 TAB（0x09）首当其冲。沙箱实测（`evidence/K-R12-locale-lab.md`，
+/// 我们靠来分列的真 TAB（0x09）首当其冲。沙箱实测（`tests/evidence/K-R12-locale-lab.md`，
 /// 容器内 tmux 3.4 + 私有 socket + `od -c` 读字节）：POSIX 客户端下 `TMUX_LS_FMT`
 /// 那**六列塌成 1 段** ⇒ [`parse_tmux_ls`] 的 `f.len() != 6` 把**每一行**都丢掉
 /// ⇒ **右键菜单里一个 tmux 会话都没有，而 rc=0、stderr 空、一条日志都没有。**
@@ -128,7 +128,7 @@ fn tmux_tab_underflow(line: &str, expected: usize) -> bool {
 /// 顺手把手抄那份也换成生成物。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct TmuxSession {
     pub name: String,
@@ -205,7 +205,7 @@ pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
                 // 只认合法 sid 字符集 [A-Za-z0-9_-]:空串(未设 @ccm_sid)当 None;含别的字符也当
                 // None——**极老 tmux(<3.0)可能不展开 `#{@ccm_sid}`、原样保留字面 `#{@ccm_sid}`**
                 // (含 `#{}`),若当成 sid 会让 `findClaudeTmux` 的 anySidKnown 恒真 → 老 wrapper 用户
-                // 永远走不到 cwd 回退。字符集校验一并挡掉未展开格式串与任何杂质(§30 见 doc/INVARIANTS.md)。
+                // 永远走不到 cwd 回退。字符集校验一并挡掉未展开格式串与任何杂质(§30 见 src/doc/INVARIANTS.md)。
                 sid: if !f[5].is_empty()
                     && f[5]
                         .chars()
@@ -949,7 +949,7 @@ mod tests {
     }
 
     /// ★ P1 的回归测试（**这条在修之前是红的**）：daemon 确证零会话 ⇒ 必须是**有效观测（空集）**，
-    /// 不是跳过。这就是 `doc/INVARIANTS.md` §24bis 那条残留 bug 的机理：
+    /// 不是跳过。这就是 `src/doc/INVARIANTS.md` §24bis 那条残留 bug 的机理：
     /// 杀掉某 origin 仅剩的 tmux 会话 → server 随之退出 → `tmux ls` 回空 →
     /// 旧代码保守跳过 → idle 灰灯卡到断连 flush 才清。
     #[test]
@@ -1173,7 +1173,7 @@ mod tests {
     /// `rc=1 + unknown flag -u`，而这条串把 stderr 与 rc 都丢了 ⇒ 静默退化。
     ///
     /// ⚠ **本条扫的是源码**（那条串拼在 `async fn` 里、外面取不到），如实标注：
-    /// **盘上有 ≠ 被走到**。行为那一半的死值在 `evidence/K-R12-deathvalue.md` ②/S5
+    /// **盘上有 ≠ 被走到**。行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md` ②/S5
     /// （真 tmux 3.4，改前段数 1 / 改后段数 6）。
     #[test]
     fn the_surviving_cross_ssh_tmux_read_asks_for_a_utf8_client_before_the_subcommand() {
@@ -1246,7 +1246,7 @@ mod tests {
     ///      理由「跨轨对拍：口径的家在对面，本侧那一份必须与它逐字相等」）。
     ///   🔴 只动 ① 会让那张表的条数当场对不上 —— 它是**两个方向都查**的。
     /// - **不管什么**：它不证明「那个旗真的被走到了」（「盘上有 ≠ 被走到」）。
-    ///   行为那一半的死值在 `evidence/K-R12-deathvalue.md`（真 tmux 3.4 私有 socket）。
+    ///   行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md`（真 tmux 3.4 私有 socket）。
     #[test]
     fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
         let prod = guard_core::production_code(include_str!("tmux.rs"));
@@ -1367,7 +1367,7 @@ mod tests {
 
     /// ★★ **K-R12 `J1` 死值验（monitor 这一侧）：段数下溢必须被判废。**
     ///
-    /// 死值取自 `evidence/K-R12-deathvalue.md` ①/S5：真 tmux 3.4 + POSIX 客户端，
+    /// 死值取自 `tests/evidence/K-R12-deathvalue.md` ①/S5：真 tmux 3.4 + POSIX 客户端，
     /// 六列塌成 1 段，连 `文档` 都按显示宽度变成了 `____`。
     ///
     /// 这一条同时把 `§5.4` 点名的那条**误伤**钉成一个可见的读数：**过溢的行今天照样被丢掉**。
@@ -1806,7 +1806,7 @@ mod tests {
     ///     「用户理论上可以把某台远端机器的 label 起成这个名字……**不做防御**」。
     ///   ⚠ **09-11 自查回打（`K-R56`）**：这一段第一版点的是一个**编出来的**判据名（盘上零处），
     ///     被 `structural_scan.rs` 那条「散文点名的名字必须在代码里」的机检当场逮住。
-    ///     🔴 那个假名字与两趟判定行逐字抄在 `evidence/K-R56-deathvalue.md`，
+    ///     🔴 那个假名字与两趟判定行逐字抄在 `tests/evidence/K-R56-deathvalue.md`，
     ///     刻意不抄在这里：抄回来就又是一处「散文点名一个不存在的名字」。
     #[test]
     fn the_local_send_keys_never_falls_back_to_ssh() {

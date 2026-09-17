@@ -46,7 +46,7 @@ use std::sync::Arc;
 /// P1.2：全字段 camelCase wire，前端 TS interface 字段名一致。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryProject {
     /// 真实工作目录路径（从某个 jsonl 的首条 user 消息的 cwd 取）
@@ -79,7 +79,7 @@ pub struct HistoryProject {
 
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct HistorySessionEntry {
     pub session_id: String,
@@ -157,7 +157,7 @@ pub struct HistoryMetadata {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct EntryMetadata {
     #[serde(default)]
     pub starred: bool,
@@ -812,7 +812,7 @@ pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<
 /// `remote_branch` 直接反序列化成本类型 —— 两条路一个类型，前端的成功处理才只有一份。
 #[derive(Debug, Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct BranchResult {
     #[serde(rename = "sessionId")]
     pub session_id: String,
@@ -2063,11 +2063,11 @@ fn relay_prefix_for(
 ///    而**本 crate 今天就有这个手法的先例**（`local_daemon::become_host_with_home` 里那行
 ///    `std::env::set_var("HOME", …)`）⇒ **写得出来，一个字节都不用动 `paths.rs`**。
 ///    **真代价**是这种判据必须 `--test-threads=1` ⇒ 只能住 `#[ignore]` 的 e2e 那条道
-///    ⇒ **进不了 `scripts/gate.sh`**。重新裁定的落点就是这一栏 + 件文件 `§4`。
+///    ⇒ **进不了 `tests/scripts/gate.sh`**。重新裁定的落点就是这一栏 + 件文件 `§4`。
 ///    🔴 **裁定（`D8 §4` 第 1 条，PM 08-29 采纳，第九轮照抄进这一栏）：
 ///    这一格是「买得到」，不是「做不到」。** 买法**不在判据这一侧** ——
-///    是给 `scripts/gate.sh` 加一条**单线程道**，把 `#[ignore]` 那一族纳进第五个数。
-///    🔴 `scripts/gate.sh` **不在 `K-H2b` 的写区** ⇒ 第九轮**没做**，抬给 PM（上报口有一条）。
+///    是给 `tests/scripts/gate.sh` 加一条**单线程道**，把 `#[ignore]` 那一族纳进第五个数。
+///    🔴 `tests/scripts/gate.sh` **不在 `K-H2b` 的写区** ⇒ 第九轮**没做**，抬给 PM（上报口有一条）。
 ///    ⚠ 别再把这一栏读成「做不到」：那正是 `D8 §10 裁一` 判过两次的那一形。
 /// ㈡ [`platform_is_windows`] 自己的体（`cfg!(windows)`）。在 Linux 上把它写死成 `false`
 ///    是一次**恒等变换** ⇒ **任何运行时判据都分不出来**（它只在 Windows 上有区别，而
@@ -2517,11 +2517,11 @@ pub fn new_local_session(
 /// 前端那条 `↗`（`src/remote-launch-run.ts::runLocalResumeIntoExistingTmux`）改成问它要。
 /// ⇒ 「`Attach` 没有生产构造点」那条诚实边界**本轮消掉**，连带非 test 的 `cargo build`
 /// 那条 `dead_code` 一起（是**注册**杀掉它的，不是接线 —— `generate_handler!` 展开出来的
-/// 那个包装函数就是第一个非 test 调用方；读数与量法住 `evidence/K-R109-deathvalue.md`）。
+/// 那个包装函数就是第一个非 test 调用方；读数与量法住 `tests/evidence/K-R109-deathvalue.md`）。
 ///
 /// # 入参为什么是 `String` 而不是 `&str`
 ///
-/// 现打（09-13，量具 `evidence/K-R109-ruler.py` 的 `command-params` 一格；
+/// 现打（09-13，量具 `tests/evidence/K-R109-ruler.py` 的 `command-params` 一格；
 /// 分母 = 剥掉整行 `//` 注释后 `src-tauri/src/**.rs` 里 `#[tauri::command]` 紧跟着的
 /// **149** 处 `fn`（= 148 个唯一命令名 ＋ `bring_monitor_to_front` 的第二份 cfg 实现））：
 /// **入参出现 `&str` 的 0 处**。⚠ 不剥注释会读成 16 处 —— 那 16 处全是散文里逐字提到

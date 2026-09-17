@@ -109,7 +109,7 @@ test("SESSION_BACKEND === TMUX_BACKEND（阶段①唯一活跃后端）", () => 
 // **结构上无法 import Rust，去重不可能**，只能靠守卫钉住：它一旦退回裸目标，e2e 会对
 // 「杀错会话 / 按键投错会话」这条整类 bug 假绿（生产已精确、探针仍前缀匹配 → 测不出差异）。
 test("F01 漂移守卫：e2e shim 的 tmux 目标与本座同构（=名: 形态）", () => {
-  const shim = readFileSync(new URL("../tests/e2e/restart-shims/core.mjs", import.meta.url), "utf8");
+  const shim = readFileSync(new URL("e2e/restart-shims/core.mjs", import.meta.url), "utf8");
   eq(shim.includes("`=${target}:`"), true, "shim 必须用 =名: 精确形态（见 INVARIANTS §31a）");
   eq(
     /\[\s*"send-keys",\s*"-t",\s*target\b/.test(shim),

@@ -3,7 +3,7 @@
 //! # 洞：人群是手写分组，地板只会数数
 //!
 //! `ci.yml` 的 shellcheck 步骤用一条手写的 `FILES=$(printf …)` 取人群
-//!（`tests/e2e/*.sh` · `shared/cc-bus/scripts/*` · `shared/ccm` · `scripts/*.sh` + vendored 四个），
+//!（`tests/e2e/*.sh` · `src/shared/cc-bus/scripts/*` · `src/shared/ccm` · `tests/scripts/*.sh` + vendored 四个），
 //! 后面跟一条**计数地板**（`[ "$N" -ge <数> ]`）。⚠ 那个数**刻意不抄在这里** ——
 //! 它的家是 `ci.yml`，而下面第二条判据每次都去读它；抄一份在注释里，
 //! 下次棘紧时这里就成了本区一直在治的那种过期散文。两件事它都挡不住：
@@ -11,20 +11,20 @@
 //! - **新脚本落在任何一个分组之外 ⇒ 静默不被 lint**，而计数一个都不少 ⇒ 地板照过。
 //!   08-08 实测：全仓 46 个 shell 脚本，那条表达式覆盖 44 —— 漏的是
 //!   `tests/e2e/fake-claude`（e2e 的 claude shim，那一组的 glob 是 `tests/e2e/*.sh`，它没有后缀）
-//!   与 `shared/ccm-aliases.sh`。
+//!   与 `src/shared/ccm-aliases.sh`。
 //! - **地板会落后**：它自己的注释逐字承认「这已经是同一条地板**第三次**落后
 //!   （37→39→41 每次都是事后补）」。⇒ 本模块把地板钉成**等于**今天真实覆盖数，
 //!   而不是「≥」：落后这件事从此当场红。
 //!
 //! # 「刻意不含」不能只是散文（E12）
 //!
-//! `shared/ccm-aliases.sh` 的排除是**有理由的、先核过的**：它是供 `source` 的片段、
+//! `src/shared/ccm-aliases.sh` 的排除是**有理由的、先核过的**：它是供 `source` 的片段、
 //! 没有 shebang（SC2148 是它的构造性属性），而它会被写进用户 shell profile、
 //! 还在 UI 面板里展示供手动复制 —— 为过 lint 往里塞 `# shellcheck shell=bash`
 //! 等于往用户配置和界面文案里掺 lint 噪音。理由成立，**但它只写在 `ci.yml` 的注释里**。
 //! 本模块把它登记成一条**豁免**：默认拒绝，豁免要写理由，且豁免行不许变成死行。
 //!
-//! ⚠ 如实记一笔量到的事：`shellcheck -s bash shared/ccm-aliases.sh` 今天**零 error**
+//! ⚠ 如实记一笔量到的事：`shellcheck -s bash src/shared/ccm-aliases.sh` 今天**零 error**
 //! —— 也就是说那条豁免是**可以撤销**的（代价是上面说的用户可见噪音）。
 //! 写在这里是为了让下一个人不必重量一次，**不是**在建议撤销。
 
@@ -36,7 +36,7 @@ mod tests {
     ///
     /// 默认拒绝：不在这里、又不被 CI 那条表达式覆盖的脚本，正题判据会点名。
     const EXEMPT: &[(&str, &str)] = &[(
-        "shared/ccm-aliases.sh",
+        "src/shared/ccm-aliases.sh",
         "供 source 的片段、无 shebang（SC2148 是构造性属性）；它会被写进用户 shell profile \
          并在 UI 面板里展示供手动复制 ⇒ 塞 `# shellcheck shell=bash` 等于往用户配置与界面文案里掺 lint 噪音",
     )];
@@ -51,7 +51,7 @@ mod tests {
     /// 从 `e2e-smoke` job 里抠出那条 `FILES=$(printf …)` 的**各个 pattern**。
     ///
     /// ⚠ 用 `ci_yaml::job_block`（E3：`ci.yml` 的读取与切块只有一个家），它**剔注释** ——
-    /// 这里非剔不可：同一段注释里逐字写着 `scripts/*.sh`、`src-tauri/vendor/.../scripts/**`
+    /// 这里非剔不可：同一段注释里逐字写着 `tests/scripts/*.sh`、`src-tauri/vendor/.../scripts**`
     /// 这些 pattern，整份 `contains` 会把注释里的写法当成真的在扫。
     fn shellcheck_patterns() -> Vec<String> {
         let block = crate::shared_crate_registry::ci_yaml::job_block("e2e-smoke");
@@ -88,7 +88,7 @@ mod tests {
 
     /// bash 在**不开 globstar** 时的匹配语义：`*` 不跨 `/`。
     ///
-    /// ⚠ 这一点不是细节 —— `ci.yml` 那段注释逐字记着：写成 `.../scripts/**` 时
+    /// ⚠ 这一点不是细节 —— `ci.yml` 那段注释逐字记着：写成 `.../scripts**` 时
     /// `**` 等价于 `*`，会把目录喂给 shellcheck 而恒红。判据要和它**同一套语义**，
     /// 否则我这边算出的「覆盖」和 CI 真扫的不是一回事。
     fn matches(pattern: &str, path: &str) -> bool {
@@ -138,7 +138,7 @@ mod tests {
     /// 多出第三个 `.ps1` 时，① 那个新脚本一行 lint 也没有；② `§5 1c` 那句「两个」当天过期。
     /// 两件事都不会有人发现 —— 除非这里红一次。
     const POWERSHELL_TODAY: &[(&str, &str)] = &[
-        ("scripts/run.ps1", "Windows 上的本地跑法入口"),
+        ("tests/scripts/run.ps1", "Windows 上的本地跑法入口"),
         (
             "tests/e2e/tier2/run-in-session1.ps1",
             "tier2 e2e：跳到已登录 session1 里跑（SSH 落 session0 没有桌面）",

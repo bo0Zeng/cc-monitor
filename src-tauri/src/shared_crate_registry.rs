@@ -37,7 +37,7 @@
 //! |---|---|---|---|
 //! | 1 | `src-tauri/Cargo.toml` 的 `[workspace] members` | **静默少跑**（`--workspace` 覆不到非成员，那个 crate 的测试从门禁里消失，不是失败是不存在） | `every_shared_crate_is_a_workspace_member` |
 //! | 2 | `git add` 那个 crate 的 `Cargo.toml` | 别人（和 CI）检出会直接编不过，而你的工作树一切正常 | `every_path_dependency_is_actually_committed` |
-//! | 3 | **`scripts/gate.sh` 的 `run_gate_sum cargo <N>`** | `gate` 当场红，但报文说「有包掉出了 `--workspace`」—— **指错方向** | `the_gate_package_count_tracks_the_number_of_shared_crates`（本轮新加） |
+//! | 3 | **`tests/scripts/gate.sh` 的 `run_gate_sum cargo <N>`** | `gate` 当场红，但报文说「有包掉出了 `--workspace`」—— **指错方向** | `the_gate_package_count_tracks_the_number_of_shared_crates`（本轮新加） |
 //! | 4 | ~~两条自检的地板~~ | ~~余量被撑大，「少认一个 crate」不会红~~ | **已消掉**：两条自检改成**两个独立来源对拍**，自动跟上 |
 //!
 //! ★ 第 4 行**划掉**是本轮最要紧的一格：它原来是「要记得回来 +1」，
@@ -235,7 +235,7 @@ mod tests {
     ///
     /// # 它补的是清单里**新漏的那一处**，而那一处是本件自己造出来的
     ///
-    /// `K-H2a` 给 `scripts/gate.sh` 加了 `run_gate_sum cargo <N>` —— `N` 是**包数相等断言**
+    /// `K-H2a` 给 `tests/scripts/gate.sh` 加了 `run_gate_sum cargo <N>` —— `N` 是**包数相等断言**
     /// （立它的理由是「合计变小与『有测试没跑』在终端上一模一样」）。
     /// 但那个 `N` 是**手写的 8**：**再加第 8 个共享 crate，`gate` 会当场红**，
     /// 而红的报文说的是「有包静默掉出了 --workspace」——**指错方向**，
@@ -254,8 +254,8 @@ mod tests {
     /// 论证（`C7` 逐字「vendor `code-picture-core` 不动」）看着，**没有判据**。
     #[test]
     fn the_gate_package_count_tracks_the_number_of_shared_crates() {
-        let gate = fs::read_to_string(root().parent().expect("仓根").join("scripts/gate.sh"))
-            .expect("读不到 scripts/gate.sh —— 抽取器坏了，本条会零命中地绿");
+        let gate = fs::read_to_string(root().parent().expect("仓根").join("tests/scripts/gate.sh"))
+            .expect("读不到 tests/scripts/gate.sh —— 抽取器坏了，本条会零命中地绿");
         let at = guard_core::find_pinned(&gate, "run_gate_sum cargo ")
             .expect("`gate.sh` 里找不到（或不止一处）`run_gate_sum cargo ` —— 本条按红处理");
         let n: usize = gate[at + "run_gate_sum cargo ".len()..]
@@ -267,7 +267,7 @@ mod tests {
         assert_eq!(
             n,
             want,
-            "`scripts/gate.sh` 里 `run_gate_sum cargo {n}`，而今天应当是 **{want}**\n\
+            "`tests/scripts/gate.sh` 里 `run_gate_sum cargo {n}`，而今天应当是 **{want}**\n\
              （1 个根包 `monitor` + {} 个共享 crate）。\n\
              ⚠ 加/删共享 crate 时**这个数要跟着改** —— 不改的话 `npm run gate` 会红，\n\
              但它的报文说的是「有包静默掉出了 --workspace」，**指错方向**。",
@@ -328,7 +328,7 @@ mod tests {
     ///
     /// # 它是那个真事故的**结构性**修法
     ///
-    /// 事故原文（`scripts/verify-committed-state.sh` 头注）：`gate-core` 这条依赖
+    /// 事故原文（`tests/scripts/verify-committed-state.sh` 头注）：`gate-core` 这条依赖
     /// **从没被提交过** ⇒ **committed `main` 连续约 20 轮编不过**，而每一次「全绿」
     /// 都来自我的工作树。根因是「排除用户改动」那半做了、「blob-replay 我方那几行」那半没做。
     ///
@@ -378,7 +378,7 @@ mod tests {
             untracked.is_empty(),
             "这些 path 依赖的 `Cargo.toml` **没有被 git 跟踪**：{untracked:?}\n\
              ⇒ 别人（和 CI）检出这个提交会直接编不过，而你的工作树一切正常。\n\
-             这正是 `scripts/verify-committed-state.sh` 头注记的那个真事故\n\
+             这正是 `tests/scripts/verify-committed-state.sh` 头注记的那个真事故\n\
              （`gate-core` 从没被提交，committed main 连续约 20 轮编不过）。"
         );
     }
@@ -673,7 +673,7 @@ mod tests {
             ("stylelint (advisory, baseline)", true, "同上，也带 `|| true`"),
             ("unit tests (node pure-fn + vitest DOM)", true, "`npm test`"),
             ("coverage floor (vitest jsdom)", true, "`npm run coverage`"),
-            ("coverage per-file floors + zero-coverage ratchet", true, "`node scripts/assert-coverage-floors.mjs`"),
+            ("coverage per-file floors + zero-coverage ratchet", true, "`node tests/scripts/assert-coverage-floors.mjs`"),
             ("vite build (dist/)", true, "`npm run build`"),
             // ── job daemon
             ("cargo fmt --check", true, "`cd src/backend && cargo fmt --check`"),
@@ -691,7 +691,7 @@ mod tests {
             ("python syntax compile", true, "`python3 -m py_compile tests/e2e/*.py`"),
             // 〔`K-R48` 第二拍 09-11〕标题里那个数从 23 变 21（删了 ccm-acceptance / ccm-pretrust 两套）。
             ("G-A/G-C 覆盖面地板（20 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
-            ("exec-bit guard (shared/** shebang files must be 100755 in git)", true, "`bash tests/e2e/exec-bit-guard.sh`"),
+            ("exec-bit guard (src/shared/** shebang files must be 100755 in git)", true, "`bash tests/e2e/exec-bit-guard.sh`"),
             // 🔴 **写区外的随动**〔`K-R114` 09-14〕：本轮往 `e2e-smoke` 加了一步，
             // 而这条判据的题面逐字就是「CI 里加了一步、本地门禁不知道」⇒ 加步骤必须同拍登记。
             // 本行**只登记事实**（这一步本地跑得动，以及怎么跑），不裁定任何东西。
@@ -704,9 +704,9 @@ mod tests {
             //    ⇒ 它**在本地一次都跑不起来**，于是「CI 里有、本地也跑得动」这条登记
             //    从来没有人真的去兑现过 —— 它坏了一个月（`d1a0552` → `4cf2ec2`）没人看见。
             //    ⇒ 本轮把判据本体搬出 `ci.yml`、改成不依赖 PyYAML，并在本地门禁里收成一格
-            //    （`scripts/gate.sh` 的 `release-gate`）。**「跑得动」从此是一个有读数的事实，
+            //    （`tests/scripts/gate.sh` 的 `release-gate`）。**「跑得动」从此是一个有读数的事实，
             //    不是一句登记。**
-            ("release.yml 发版守卫（KR114D1 ＋ KR124D2）", true, "判据本体住 `evidence/K-R124-ruler.py`（**不依赖 PyYAML**，自带 YAML 子集切块器）；CI 与本地门禁 `release-gate` 那一格跑的是**同一份文件**，不是两份抄件。被测对象由环境变量 `RELEASE_WORKFLOW` 给、整棵树由 `K_R124_ROOT` 给，缺省是本仓 `.github/workflows/release.yml`"),
+            ("release.yml 发版守卫（KR114D1 ＋ KR124D2）", true, "判据本体住 `tests/evidence/K-R124-ruler.py`（**不依赖 PyYAML**，自带 YAML 子集切块器）；CI 与本地门禁 `release-gate` 那一格跑的是**同一份文件**，不是两份抄件。被测对象由环境变量 `RELEASE_WORKFLOW` 给、整棵树由 `K_R124_ROOT` 给，缺省是本仓 `.github/workflows/release.yml`"),
             // ── 无名步骤（`- run: <命令>`，08-07 人群扩到它们之后才第一次可见）。
             // 标识是命令本身，多个 job 里同一条命令共用这一行登记。
             ("run: npm ci", false, "按 lockfile **重装** node_modules（三个 job 各一条无名步骤）：本地等价物是既有依赖树，重跑改变的是环境不是结论 —— 与上面那条有名字的 `npm ci` 同一个理由"),
@@ -894,7 +894,7 @@ mod tests {
     /// 跨进程整链 e2e（130 行，驱 gray-light 生命周期、断言 `[e2e] tab-state` 序列），
     /// 而 **CI 一次都不跑它** —— CI 跑的是名字很像的另一个 `graylight-daemon-frames.sh`。
     /// 它的前置逐字写着「Xvfb 上跑着 `npx tauri dev`」⇒ 结构上确实进不了 CI，这没问题；
-    /// **问题是 `doc/RELEASING.md` 里零处提到它**：`test:f40` 好歹进了发版手测清单，它没有。
+    /// **问题是 `src/doc/RELEASING.md` 里零处提到它**：`test:f40` 好歹进了发版手测清单，它没有。
     /// ⇒ 于是这套件的唯一触发条件是「有人想起来」。
     ///
     /// ⚠ 顺带澄清一处容易误读的历史：最后改它的提交叫「G-C：三族 e2e 进 CI」，
@@ -909,7 +909,7 @@ mod tests {
             (
                 "test:f40",
                 "需 Xvfb 上跑着 `npx tauri dev`（真 WebView）⇒ 结构上进不了 CI；\
-                 `doc/RELEASING.md § 1` 已把它列进发版手测清单。\
+                 `src/doc/RELEASING.md § 1` 已把它列进发版手测清单。\
                  ★ **08-06 实测补一条更硬的理由**：它 `PROJ_DIR=\"$HOME/.claude/projects/-tmp-e2e-fork\"`、\
                  `PIDFILE=\"$HOME/.claude/sessions/…\"` —— **固有地往 `~/.claude/` 写**，\
                  而本区红线是「`~/.claude/` 只读」⇒ **本机绝不能跑它，带不带 tmux 桩都不行**。\
@@ -1521,7 +1521,7 @@ mod tests {
 
     /// 〔audit-0805 08-06〕**唯一量「提交状态」的那道门，本身没人守着。**
     ///
-    /// `scripts/verify-committed-state.sh` 的头注逐字写着它为什么必须存在：
+    /// `tests/scripts/verify-committed-state.sh` 的头注逐字写着它为什么必须存在：
     /// 2026-08-04 实测，`gate-core` 那条 path 依赖**一次都没落盘**，
     /// 提交状态的 `main` 在任何平台上都编不过，**持续了约二十轮** ——
     /// 而每一轮的 `cargo test` / fmt / clippy 读数**都是真的**，
@@ -1543,7 +1543,7 @@ mod tests {
         let path = root()
             .parent()
             .expect("仓根")
-            .join("scripts/verify-committed-state.sh");
+            .join("tests/scripts/verify-committed-state.sh");
         let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
         // ★ 抽取器自检：文件被掏空/改名时，下面三条会零命中地绿。
         assert!(
@@ -1613,7 +1613,7 @@ mod tests {
         let path = root()
             .parent()
             .expect("仓根")
-            .join("scripts/verify-committed-state.sh");
+            .join("tests/scripts/verify-committed-state.sh");
         let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
         // ⚠ **只看非注释行**：本脚本的头注里逐字引用着那句成功结论（讲的就是这次事故），
         // 连注释一起数，下面「恰好一处」当场变成两处 —— 08-08 写这条时就差点踩上。

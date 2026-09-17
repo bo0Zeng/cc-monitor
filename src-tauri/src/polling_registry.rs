@@ -2,7 +2,7 @@
 //! 尽量不要轮询，既然都收编了那就尽量在内部进行事件驱动」）。
 //!
 //! ⚠ **08-10（devbench F07）扩面**：本行原写「前端 + `shared/ccm`」，而扫描面确实只
-//! `push` 了 `shared/ccm` **一个写死的文件名** ⇒ `shared/cc-bus/` 那棵树整个在账外，
+//! `push` 了 `shared/ccm` **一个写死的文件名** ⇒ `src/shared/cc-bus/` 那棵树整个在账外，
 //! 其中 `cc-busd` 是个长驻 broker、每 0.5s 扫一次队列目录（它自己的注释承认「本实现恒轮询,
 //! 未用 inotify」）。★ **这不是「另一个仓不该管」**：同仓的 `shell_lint_registry` 与
 //! `session_name_registry` **都**已把那棵树算进人群，只有本表没跟上 —— 这是「判据的人群
@@ -82,7 +82,7 @@
 //! ⚠⚠ **08-10 订正：那个数今天是 4，不是 2。** devbench F07 把 `recv_timeout` 收进那张表的针
 //! 之后，又上账两条：`watcher.rs` 的 **100ms（10Hz，全仓最快的一处）** 与 `session_map.rs` 的 2s。
 //! ★ **它们在那之前一直在跑** —— 只是那张表的针（当时只有 `sleep`/`interval`）看不见它们，
-//! 而 `doc/INVARIANTS.md:1379` 与 daemon 侧 `no_timer_guard` 的扫描面**都早已点名 `recv_timeout`**
+//! 而 `src/doc/INVARIANTS.md:1379` 与 daemon 侧 `no_timer_guard` 的扫描面**都早已点名 `recv_timeout`**
 //! ⇒ 缺的不是认知，是针没跟上。这两条的退役各有归属（devbench F11 / F12）。
 //!
 //! ⚠⚠⚠ **上面那句「今天是 4」当天就过期了 —— 08-10 收官时是 3**〔G 审计逮到〕。
@@ -159,14 +159,14 @@ mod tests {
              驱动，零新增节拍）。所以本文件今天**不再是两类**，是一类。\
              钉住「它真的没了」的是本模块的 `the_identity_poller_is_gone_for_good`。",
         ),
-        // ★★ **08-10（devbench F07）扩面后逮到的一族**：`shared/cc-bus/scripts/`。
+        // ★★ **08-10（devbench F07）扩面后逮到的一族**：`src/shared/cc-bus/scripts/`。
         // 本表原来的人群是「`src/**/*.ts` + 写死的 `shared/ccm` 一个文件名」⇒ 这棵树整个在账外。
         // ⚠ 第四类 `one-shot` 是这次新加的：shell 那条针是宽的（`contains("sleep ")`），
         // 一次性 sleep 也会命中。**刻意不收窄针**（宁可宽松让人判断，也不要用严格的错误引入噪声）
         // —— 收窄会漏掉「新加一个 `sleep 1` 在循环里」那种真轮询。代价是一次性的也要登记一行，
         // 而那正是「默认拒绝」想要的：新加一处就得回答它是哪一类。
         (
-            "shared/cc-bus/scripts/cc-busd",
+            "src/shared/cc-bus/scripts/cc-busd",
             "data-poll",
             "★ **本表扩面当天逮到的唯一真轮询**：长驻 broker 进程，`while [ \"$running\" = 1 ]` \
              里每 0.5s 醒一次扫队列目录（`:101` `sleep \"$POLL\"`；`:99` 是「一整轮没进展」的退避）。\
@@ -179,18 +179,18 @@ mod tests {
              —— 那是 wait-for-condition（上限 ~3s，注释自陈「轮询确认最多 ~3s」），不是节拍器。",
         ),
         (
-            "shared/cc-bus/scripts/cc-bus-lib.sh",
+            "src/shared/cc-bus/scripts/cc-bus-lib.sh",
             "one-shot",
             "`:238` 的 `sleep 0.3` 夹在 `tmux send-keys <文本>` 与 `tmux send-keys Enter` 之间 —— \
              **键入节奏**，一次性。不是周期唤醒：它不在任何循环的每轮上，前后是一对 send-keys。",
         ),
         (
-            "shared/cc-bus/scripts/cc-kill",
+            "src/shared/cc-bus/scripts/cc-kill",
             "one-shot",
             "`:18` `kill $procs; sleep 0.3; kill -9 $procs` —— **优雅退出与强杀之间的宽限**，一次性。",
         ),
         (
-            "shared/cc-bus/scripts/cc-spawn",
+            "src/shared/cc-bus/scripts/cc-spawn",
             "one-shot",
             "`:146` `sleep 1.5` —— **启动让路**（等被 spawn 的 agent 把自己登记上来）。一次性；\
              同文件 `:145` 注释逐字「显式保留而非默默删掉——原先 pretrusted 成功路径上就是 \
@@ -373,12 +373,12 @@ mod tests {
     ///
     /// ⚠ **08-10（devbench F07）扩面**：原来这里是 `files.push(root.join("shared/ccm"))`
     /// —— **一个写死的文件名**。头注当时写的范围「TS 与 `shared/ccm`」在写下时是对的，
-    /// 而 `shared/cc-bus/` 进仓之后就成了一个没人管的角落：`shared/cc-bus/scripts/cc-busd`
+    /// 而 `src/shared/cc-bus/` 进仓之后就成了一个没人管的角落：`src/shared/cc-bus/scripts/cc-busd`
     /// 是个**长驻 broker 进程**，每 0.5s 醒一次扫队列目录，它自己的注释逐字承认
     /// 「队列空时轮询间隔秒(**本实现恒轮询,未用 inotify**)」—— 而本表看不见它。
     ///
     /// ★ 这不是「另一个仓不该管」：同仓的 `shell_lint_registry`（扫描面含
-    /// `shared/cc-bus/scripts/*`）与 `session_name_registry`（点名 `cc-spawn`）**都**已经
+    /// `src/shared/cc-bus/scripts/*`）与 `session_name_registry`（点名 `cc-spawn`）**都**已经
     /// 把那棵树算进人群了，**只有轮询这张表没跟上**。⇒ 人群改成**遍历**，
     /// 加一个脚本自动进人群，不用谁记得回来 push 一行。
     fn scan() -> Vec<(String, usize)> {
@@ -386,7 +386,7 @@ mod tests {
         let mut files: Vec<PathBuf> = Vec::new();
         collect_ts(&root.join("src"), &mut files);
         files.sort();
-        let mut shells = collect_shell(&root.join("shared"));
+        let mut shells = collect_shell(&root.join("src/shared"));
         shells.sort();
         files.extend(shells);
         // 🔴 〔`K-R48` 第二拍 09-11〕**容器路那段 shell 今天由 Rust 渲出来** ——
@@ -820,7 +820,7 @@ mod tests {
     //   形状面四格（身份分支真去查 daemon · 找不到就 `die` · 逃生口会说话 · 前置检查排在
     //   任何 `tmux` 调用之前）。〔用@09-11 `K33`〕「后端只有一个」之后，
     //   **「找不到 daemon」这个概念不存在了**：敲的那个命令就是后端。
-    //   `evidence/K-R48-356-verdicts.tsv` 第 67–81 行那 15 条 e2e 判的是同一件事，判词同为 `N`。
+    //   `tests/evidence/K-R48-356-verdicts.tsv` 第 67–81 行那 15 条 e2e 判的是同一件事，判词同为 `N`。
     //
     // ⚠ **如实边界，别读成「这条风险没了」**：`K-R48` 第一拍逐字登记着一格**没裁**的 ——
     //   「一次性模式在 tmux 内由谁去打 `@ccm_sid`」。今天一次性模式**一个字都不说**

@@ -37,7 +37,7 @@
     自己跑一次，与点按钮是**逐字同一份字节**。
   - `cmd` 不读任何 profile ⇒ 用户级 PATH 是三种终端（PowerShell / cmd / Git Bash）里
     唯一都生效的那条路。
-  - Linux / 远端那一臂：`shared/ccm-aliases.sh` 里那行 PATH 此前只加 `~/.local/bin`
+  - Linux / 远端那一臂：`src/shared/ccm-aliases.sh` 里那行 PATH 此前只加 `~/.local/bin`
     —— 对远端对、对本机错（本机落点是 `~/.cc-monitor/bin`）。改成两个都加、本机那个赢。
   - PowerShell 那一臂的 `cc` 从直呼 `claude` 翻正成走 `ccm`。
 
@@ -843,7 +843,7 @@
 ### 修复：远端 ↗/反引号拉起终端在 tmux 下不工作
 
 - 一键安装的 ccm 助手在 tmux 里（最常见形态）标题 marker 被截在 pane title 层、拉起必然失败。现 ccm **注册与启动分离**：`__ccm_rbind` 注册原语自动对当前 tmux session 开标题直通（不写 tmux.conf），可嵌入你自己的启动器；`ccm` 便捷薄壳**不再覆盖你已有的同名函数**（旧版会覆盖）。旧 ccm 块需在设置面板重装一次。
-- 注册/拉起全链路文档化：`doc/IPC-PROTOCOL.md` §11。
+- 注册/拉起全链路文档化：`src/doc/IPC-PROTOCOL.md` §11。
 
 ## [2.17.0] — 2026-07-03
 
@@ -1118,7 +1118,7 @@ cc-monitor 是只读监视窗口，主视图不接受文本输入，组合键多
 
 - **聚合**：本地 jsonl-watcher 照常跑，远端是**附加**数据源（不替代本地）；只显示**活跃**会话（远端 `sessions/<PID>.json` + 进程存活，镜像本地判活逻辑），不拉历史会话。
 - **设置 → 远端 (SSH)**：从 `~/.ssh/config` **下拉选主机别名**自动填 host/port/user/key（走 `ssh -G`）；**测试连接**按钮（显示 host key 指纹 + 一键固化为严格校验）；支持 **ssh-agent**（免填私钥路径）。
-- 远端需一个轻量 daemon（在目标机原生 `cargo build`，见 [`doc/REMOTE-PHASE0-DEPLOY.md`](doc/REMOTE-PHASE0-DEPLOY.md)）。**只读、零侵入**，仅 publickey / agent 认证。
+- 远端需一个轻量 daemon（在目标机原生 `cargo build`，见 [`src/doc/REMOTE-PHASE0-DEPLOY.md`](src/doc/REMOTE-PHASE0-DEPLOY.md)）。**只读、零侵入**，仅 publickey / agent 认证。
 - **实验性边界**：断线不自动重连（断开后远端 Tab 自动归档，需重启重连）；远端的历史浏览 / 全文搜索暂仍读**本地**数据；不支持密码登录。后续版本补齐（见 issue #15 的 Phase 1 backlog）。
 
 ### 新增 — Edit/Write/MultiEdit 工具调用渲染为行级 diff 卡（issue #14）
@@ -1641,7 +1641,7 @@ Tool 调用结果展开后顶部新加 [文本 | Markdown] 切换 toolbar：
   - 根因：v2.1.0 issue #8 的 `computeMainBranch` 用真递归 (`dfsLatest` + `walkMain`) 算主线。Claude session 的 parent 链典型几乎线性，递归深度 = 链长度。WebView2 (Chromium) 默认 JS stack 在 ~1000 frames 附近触底 → BranchFolder.recordAdded 抛 RangeError → events.ts 的 drain 异常逃逸 → 后续 record 永久滞留 queue 不渲染。
   - 修法：
     1. `src/branching.ts`：两个 DFS 都改迭代。`latestDescTs` 用 Kahn 拓扑序自底向上累加 O(N) 无递归；`walkMain` 本来就是 tail-recursive，改 `while` 循环深度 1 帧。
-    2. `src/events.ts`：drain 加 try/catch 包单条 `onLine` —— 防御未来类似的单条记录处理异常冻死整个 replay queue（详 [`doc/INVARIANTS.md § 17`](doc/INVARIANTS.md)）。
+    2. `src/events.ts`：drain 加 try/catch 包单条 `onLine` —— 防御未来类似的单条记录处理异常冻死整个 replay queue（详 [`src/doc/INVARIANTS.md § 17`](src/doc/INVARIANTS.md)）。
 
 ## [2.1.0] — 2026-05-25
 
@@ -1655,7 +1655,7 @@ Tool 调用结果展开后顶部新加 [文本 | Markdown] 切换 toolbar：
   - 折叠/展开状态本地持有，刷新（F5）不丢。
   - 详 [`src/branching.ts`](src/branching.ts)、[`src/branch-fold.ts`](src/branch-fold.ts)。
 
-- **single-instance lock**（issue #9）：同一个用户同一台机器只允许一个 cc-monitor 进程。第二次双击 `cc-monitor.exe`（或装多份 exe 双击别处那份）→ 第二个实例立即退出，第一个窗口被 unminimize + show + set_focus 拉到前台。修复历史上"两个 monitor 同时跑导致双重渲染 + cc 集成 race"的混乱。底层走 Tauri 官方 [`tauri-plugin-single-instance`](https://v2.tauri.app/plugin/single-instance/)，user-scoped mutex，跨用户登录不冲突。详 [`doc/INVARIANTS.md § 16`](doc/INVARIANTS.md)。
+- **single-instance lock**（issue #9）：同一个用户同一台机器只允许一个 cc-monitor 进程。第二次双击 `cc-monitor.exe`（或装多份 exe 双击别处那份）→ 第二个实例立即退出，第一个窗口被 unminimize + show + set_focus 拉到前台。修复历史上"两个 monitor 同时跑导致双重渲染 + cc 集成 race"的混乱。底层走 Tauri 官方 [`tauri-plugin-single-instance`](https://v2.tauri.app/plugin/single-instance/)，user-scoped mutex，跨用户登录不冲突。详 [`src/doc/INVARIANTS.md § 16`](src/doc/INVARIANTS.md)。
 
 ### 改进
 
@@ -1757,7 +1757,7 @@ v1.7.12 改 right-anchored 后，靠左的 `?`（如"PowerShell 集成"标题旁
 
 - **删未用依赖**：`Cargo.toml` 的 `anyhow` + `thiserror` 全仓 grep 0 引用，纯死依赖。删了减编译时间 + 包体积。
 - **`opener:allow-open-path` scope** 维持 `**`：考虑过收紧到 `$DOCUMENT/WindowsPowerShell/**` 但会破坏"Custom 路径"功能（用户可能选 Documents 外的位置）。
-- 文档更新：发版后另起一次文档大重整（doc/CONTRIBUTING.md / ARCHITECTURE.md / IPC-PROTOCOL.md / INVARIANTS.md / STATE-MATRIX.md / DEVELOPMENT.md / BUILDING.md / RELEASING.md 等），覆盖测试列表 + 关键设计理由 + 跨进程协议 schema + 全局不变量。
+- 文档更新：发版后另起一次文档大重整（src/doc/CONTRIBUTING.md / ARCHITECTURE.md / IPC-PROTOCOL.md / INVARIANTS.md / STATE-MATRIX.md / DEVELOPMENT.md / BUILDING.md / RELEASING.md 等），覆盖测试列表 + 关键设计理由 + 跨进程协议 schema + 全局不变量。
 
 ## [1.7.12] — 2026-05-24
 
@@ -1857,11 +1857,11 @@ v1.7.9 及更早版本在用户**已有内容的 PowerShell profile** 上点 [�
 
 ### 文档
 
-- 新增 `doc/ARCHITECTURE.md`：数据流图 + State 矩阵摘要 + 跨进程文件 IPC 协议表 + 设计分层 + 历史踩坑表。新贡献者第一站。
+- 新增 `src/doc/ARCHITECTURE.md`：数据流图 + State 矩阵摘要 + 跨进程文件 IPC 协议表 + 设计分层 + 历史踩坑表。新贡献者第一站。
 - `README.md` 新增"PowerShell 集成（可选）"章节，写清楚装 / 不装的影响，反映 v1.7.9 默认不勾选 wrapper 的新行为。
 - `README.md` 安装包名示例从 `1.5.0` 改成 `<version>` 占位，避免每次 bump 都得改 README。
 - `src-tauri/README.md` IPC 清单补全 v1.7 的 7 个命令（`bring_terminal_to_front` / `cc_integration_*` / `cc_*auto_launch`）；模块表加 `bind.rs` / `profile_installer.rs` / `auto_launch.rs`；不变量节加握手协议 + UTF-8 无 BOM 约束；工程坑节补 v1.7.0–1.7.1 profile.ps1 错位 + v1.7.8 BOM。
-- `scripts/README.md` 提 `src-tauri/scripts/cc.ps1.tpl` 模板的存在。
+- `tests/scripts/README.md` 提 `src-tauri/scripts/cc.ps1.tpl` 模板的存在。
 
 ## [1.7.8] — 2026-05-24
 
@@ -1894,7 +1894,7 @@ v1.7.9 及更早版本在用户**已有内容的 PowerShell profile** 上点 [�
 
 `tracing::warn!("bind: parse ... failed")` 在 GUI app（windows-subsystem = "windows"）
 里**用户看不到**——v1.7.0 起这个 warn 一直在打，但没人能看到。下次必须给 GUI 加
-本地 log 文件或者 IPC log 命令。**已加入** `doc/CONTRIBUTING.md` § 1.5 发版前 checklist。
+本地 log 文件或者 IPC log 命令。**已加入** `src/doc/CONTRIBUTING.md` § 1.5 发版前 checklist。
 
 ## [1.7.7] — 2026-05-24
 
