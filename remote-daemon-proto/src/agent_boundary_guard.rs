@@ -33,7 +33,7 @@
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     /// **已经宣称"通用"的文件**（相对 `src/`）。不在表里的今天不扫。
     ///
@@ -178,7 +178,7 @@ mod tests {
     )];
 
     fn src_dir() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+        crate::guard_support::src_root()
     }
 
     /// 针 —— **运行时拼**。

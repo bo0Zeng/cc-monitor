@@ -672,7 +672,7 @@ mod tests {
 
     /// daemon 的 `src/` 根。
     fn src_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+        crate::guard_support::src_root()
     }
 
     /// 那个真适配层今天的生产段（活体对拍语料，不是手抄的 fixture）。

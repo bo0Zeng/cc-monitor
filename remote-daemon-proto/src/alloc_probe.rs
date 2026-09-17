@@ -207,7 +207,7 @@ mod tests {
     /// 而调用点必然带括号。这是 F23/F24 两族的教训 —— 匹配单位要对得上事实。
     #[test]
     fn every_test_that_uses_this_probe_stays_single_threaded() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         let files = guard_core::scan_tree!(&root, &["rs"]);
         assert!(
             files.len() >= 10,

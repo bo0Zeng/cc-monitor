@@ -46,11 +46,11 @@
 #[cfg(test)]
 mod tests {
     use crate::guard_support::production_code;
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     /// 本 crate 的 `src/`。
     fn src_dir() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+        crate::guard_support::src_root()
     }
 
     /// sidecar 那一层的树根。

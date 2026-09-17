@@ -159,8 +159,7 @@ mod layer_guard {
     /// 这一格今天不承重 —— `mod.rs` 的生产段就是那几行 `mod` 声明（本文件里除了它们全是
     /// 注释与 `#[cfg(test)]`），针藏不进去；但它是**真实的射程缺口**，写在这里别让人以为它全覆盖。
     fn plugin_sources() -> Vec<(String, String)> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src")
+        let root = crate::guard_support::src_root()
             .join("plugin");
         let mut out: Vec<(String, String)> = guard_core::scan_tree!(&root, &["rs"])
             .into_iter()

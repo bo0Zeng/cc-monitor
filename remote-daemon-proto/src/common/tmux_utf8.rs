@@ -193,7 +193,7 @@ mod tests {
 
     /// 本 crate 生产段语料（**摘除本文件自己** —— 家在这里，不摘就人人都是「第二个家」）。
     fn crate_production_sources() -> Vec<(String, String)> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(p, raw)| {

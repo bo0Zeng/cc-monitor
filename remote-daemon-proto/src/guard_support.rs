@@ -14,9 +14,55 @@
 
 pub(crate) use guard_core::{assert_no_test_code, production_code, production_source};
 
+/// 本 crate **源码树根**的唯一住址。
+///
+/// # 为什么是一个函数而不是 45 处各写一行
+///
+/// 这条形状此前在 33 个文件里出现 **45 次**（`Path::new(env!("CARGO_MANIFEST_DIR"))` 接
+/// `.join("src")`；这里刻意**不写成完整的可替换形**，理由见下面那条⚠）。
+/// 那在「源码树就住在 `Cargo.toml` 旁边」时成立 —— 而仓库重组要把这棵树搬到
+/// `<repo>/src/backend/`，`Cargo.toml` 留在原处 ⇒ 那 45 处**同时失效**。
+///
+/// 🔴 **失效的形态比「报错」坏得多**：`CARGO_MANIFEST_DIR/src` 搬走后是个**不存在的目录**，
+/// 而扫描型守卫拿不到文件时多半**扫了个空集 ⇒ 恒绿**，不是红。按本仓自己的说法
+/// 「恒绿看起来和真绿一模一样」—— 33 个守卫会一起变成装饰品，而门禁全绿。
+/// ⇒ 一个东西一个住址，搬树时只改这一行。前端侧同形同理（`tests/test-support/repo-root.ts`
+/// 的 `srcDirOf`，那边是 14 个消费者）。
+///
+/// ⚠⚠ **建这个住址的那一轮，机械替换把本函数的函数体也换成了对自己的调用** ——
+/// 无限递归，`cargo test` 以**栈溢出**（SIGABRT）现形，而不是断言失败。同一趟还把上面
+/// 那句「此前的形状长什么样」一并替换了，于是那句话变成「旧形状 ＝ 新形状」的废话。
+/// ⇒ 这是本仓「**尺子量到了自己**」那一族的又一例，而且是最容易中的一种：抽住址时，
+/// **新住址的定义本身就是旧形状的最后一个实例**，任何按形状扫全树的改法都会吃掉它。
+/// 教训落成纪律：**抽住址时把定义处排除在替换人群之外**；引用旧形状的文字也不写成
+/// 能被同一条规则命中的完整形。
+///
+/// ⚠ 本函数**不覆盖** `.join("Cargo.toml")` 那 3 处 —— 它们跟着 **manifest** 走，
+/// 不跟着源码树走，搬树时本来就不该动。两件事别混成一件。
+pub(crate) fn src_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// ★ 反空真：`src_root()` 必须指到**真的**源码树。
+    ///
+    /// 它是 45 处扫描的共同入口 —— 一旦它指错（搬树时漏改这一行就会），
+    /// 下游那些守卫不会红，会**扫空集然后全绿**。这条把「指错」变成一条会红的机检。
+    #[test]
+    fn the_src_root_address_points_at_a_real_tree() {
+        let root = src_root();
+        assert!(root.is_dir(), "src_root() 不是目录：{}", root.display());
+        assert!(
+            root.join("main.rs").is_file(),
+            "src_root() 下没有 main.rs —— 它指到了别的地方：{}",
+            root.display()
+        );
+        let n = std::fs::read_dir(&root).expect("读 src_root 失败").count();
+        assert!(n >= 20, "src_root() 下只有 {n} 个条目，扫描面疑似塌了");
+    }
 
     /// ★ 语义钉：`main.rs` 的生产段必须含这几样东西。
     ///
@@ -75,7 +121,7 @@ mod tests {
     fn every_daemon_file_strips_clean() {
         // 地板 = **实测值**（2026-08-02：34 个 .rs）。原先是 10，松了 24 个文件。
         guard_core::assert_tree_strips_clean(
-            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &crate::guard_support::src_root(),
             // ★ audit-0805 F16：34 → **37**（今日实测）。余量 3 恰好等于
             // `platform/pidwatch/` 的文件数 —— 那一整个目录掉出去也不会红。
             37,

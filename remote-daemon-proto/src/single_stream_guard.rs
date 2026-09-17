@@ -279,7 +279,7 @@ mod tests {
     /// 递归这件事由 `scan_tree!` 自己保证；`no_timer_guard::daemon_sources` 头注记着
     /// 不递归的实测后果：**目录没有扩展名于是被整个跳过**，护栏一行业务代码都没扫还全绿。
     fn crate_sources() -> Vec<(String, String)> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         guard_core::scan_tree!(&root, &["rs"])
             .into_iter()
             .map(|(path, src)| {
@@ -294,8 +294,7 @@ mod tests {
     }
 
     fn source_of(rel: &str) -> String {
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src")
+        let p = crate::guard_support::src_root()
             .join(rel);
         production_code(
             &std::fs::read_to_string(&p)
@@ -392,7 +391,7 @@ mod tests {
     #[test]
     fn no_daemon_file_falls_back_to_leaving_block_comments_in() {
         guard_core::assert_block_comment_model_holds(
-            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &crate::guard_support::src_root(),
             70,
             500,
         );

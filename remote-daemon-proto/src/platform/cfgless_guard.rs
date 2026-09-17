@@ -95,7 +95,7 @@ mod tests {
     // ══════════════════════════ 人群 ══════════════════════════
 
     fn src_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+        crate::guard_support::src_root()
     }
 
     fn rel_of(p: &Path, root: &Path) -> String {

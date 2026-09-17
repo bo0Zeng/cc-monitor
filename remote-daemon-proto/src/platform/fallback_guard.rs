@@ -143,8 +143,7 @@ mod tests {
     }
 
     pub(super) fn platform_sources() -> Vec<(String, String)> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("src")
+        let root = crate::guard_support::src_root()
             .join("platform");
         let mut out = Vec::new();
         let mut stack = vec![root.clone()];

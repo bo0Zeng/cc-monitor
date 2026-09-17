@@ -297,7 +297,7 @@ mod tests {
         // ⚠ **必须走 `scan_tree!`，不许自己 `read_dir`** —— 它按构造摘掉调用者自己那一份。
         //   裸遍历会让判据在**自己的语料**里找到自己 ⇒ 恒绿；
         //   那条纪律由 monitor 侧 `scanning_guard_registry` 机检（本条第一版就是这么红的）。
-        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let src_dir = crate::guard_support::src_root();
         let mut checked = 0usize;
         let mut hits: Vec<String> = Vec::new();
         for (path, raw) in guard_core::scan_tree!(&src_dir, &["rs"]) {

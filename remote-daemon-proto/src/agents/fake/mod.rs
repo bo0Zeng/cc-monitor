@@ -970,7 +970,7 @@ mod tests {
         );
         // ② 模块声明必须带 `#[cfg(test)]` —— 生产二进制里零字节。
         let mod_rs = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/agents/mod.rs"),
+            crate::guard_support::src_root().join("agents/mod.rs"),
         )
         .expect("读 agents/mod.rs");
         let decl = format!("mod {AGENT_KIND};");

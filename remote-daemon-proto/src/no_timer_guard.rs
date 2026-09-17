@@ -280,7 +280,7 @@ mod f09_external_beat {
 
     /// 后端生产段里**产出给别人执行的 shell 串** —— 逐条 `(文件, 那一行逐字, 串的内容)`。
     fn shell_string_literals() -> Vec<(String, String, String)> {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let dir = crate::guard_support::src_root();
         let mut out = Vec::new();
         let mut stack = vec![dir.clone()];
         while let Some(d) = stack.pop() {
@@ -737,7 +737,7 @@ mod tests {
     /// 而当时的地板 `files.len() >= 5` **照样满足** ⇒ 护栏一行业务代码都没扫、全绿。
     /// 那正是本仓在「守卫范围 ≠ 性质范围」上栽过的第四次。
     pub(super) fn daemon_sources() -> Vec<(String, String)> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         let mut out = Vec::new();
         let mut stack = vec![root.clone()];
         while let Some(dir) = stack.pop() {
@@ -843,7 +843,7 @@ mod tests {
     /// 刻意与 `daemon_sources` 分开写：那边还要读文件、剥生产段、跳过自身，
     /// 这边只做「树上有几个 `.rs`」这一件事，两者对不上就说明采集环节漏了东西。
     fn count_rs_in_tree() -> usize {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         let mut n = 0usize;
         let mut stack = vec![root];
         while let Some(dir) = stack.pop() {
@@ -891,7 +891,7 @@ mod tests {
         // 这条专门钉住「有人把遍历改回非递归」——那正是 U-1 修的那个 bug 的形状。
         // **要求子目录里真有 `.rs`**（Phase D 审计 S1）：否则一个空目录 / `snapshots/` /
         // `testdata/` 就会把它打成误红，那种守卫最后会被人删掉。
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         let has_rs_subdir = std::fs::read_dir(&root)
             .expect("read src dir")
             .filter_map(|e| e.ok())

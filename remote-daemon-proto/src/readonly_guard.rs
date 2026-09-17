@@ -400,7 +400,7 @@ mod tests {
     /// 承重的性质**一个字没松** —— 它仍然是相等断言，只是分母改成现算的表长。
     #[test]
     fn daemon_write_capability_is_confined_to_the_registered_modules() {
-        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let src_dir = crate::guard_support::src_root();
         let (default_scanned, whitelisted) = scan(&src_dir);
         assert!(
             default_scanned >= 5,
@@ -429,7 +429,7 @@ mod tests {
     /// ⚠ 它**不检查**那条 `why` 说得对不对（同 `spawn_registry` 那条边界）。
     #[test]
     fn every_registered_write_module_is_really_on_the_tree_and_really_writes() {
-        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let src_dir = crate::guard_support::src_root();
         assert!(
             !WRITE_WHITELIST_MODULES.is_empty(),
             "白名单表空了 —— 那会让上面那条相等断言变成「0 == 0」，恒绿"
@@ -469,7 +469,7 @@ mod tests {
     /// 孤立大括号改成中文名词）。
     #[test]
     fn no_test_code_leaks_into_any_production_section() {
-        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let src_dir = crate::guard_support::src_root();
         let mut stack = vec![src_dir];
         let mut leaks: Vec<(String, usize)> = Vec::new();
         while let Some(dir) = stack.pop() {
@@ -590,7 +590,7 @@ mod tests {
             // ⚠ 与它同族的 `set_permissions` **不在**表里，那条仍然是写、仍然会红。
             "PermissionsExt",
         ];
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         let mut bad: Vec<String> = Vec::new();
         // ★〔audit-0805 08-06〕**先堵逃生口**：把 `std::fs` 的条目导入进作用域，
         // 调用点就不再带 `fs::` 前缀，下面那套按 `fs::` / `File::` 锚定的白名单**整条看不见**。
@@ -1025,7 +1025,7 @@ mod spawn_registry {
         // 实测：**它不在表里 ⇒ 这条护栏根本扫不到它**，加一个未登记的起进程点全绿。
         // 这正是本仓「扫描面画小了」那一族的第五次，而且是**我自己**在 D1 那轮埋的。
         // 同文件上方 `scan()` 早就因为同样的理由改成递归了（Phase G 审计），这里没跟。
-        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let src_dir = crate::guard_support::src_root();
         let mut stack = vec![src_dir.clone()];
         let mut files: Vec<(String, String)> = Vec::new();
         while let Some(dir) = stack.pop() {
@@ -1206,7 +1206,7 @@ mod spawn_registry {
     ///   不会红（同一个洞的另一面）。
     #[test]
     fn every_registered_entry_is_backed_by_a_real_spawn_site() {
-        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let src_dir = crate::guard_support::src_root();
         // 与上面那条**分开走一遍树**：那边还要分类、比数，这边只回答「表里这一条今天还在吗」。
         let mut stack = vec![src_dir.clone()];
         let mut found: Vec<(String, String)> = Vec::new();
@@ -1898,7 +1898,7 @@ mod g6_staged_zero {
     /// `(相对路径, 原文, 生产段)`。**走 `scan_tree!`** —— 它按构造摘除调用者自己那一份，
     /// 否则本表里逐字写着的那些名字会把自己算成「有人指向它」（本仓记过五次的恒绿形状）。
     fn daemon_files() -> Vec<(String, String, String)> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         let mut out = Vec::new();
         for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
             let rel = path
@@ -2267,7 +2267,7 @@ mod error_envelope_registry {
     }
 
     fn src_root() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+        crate::guard_support::src_root()
     }
 
     /// 全树一趟：每一处信封的 `(文件相对路径, 那一行逐字, 该行起三行的窗口)`。
@@ -3639,7 +3639,7 @@ mod remote_write_layer {
     /// 这里**刻意不补回来**，理由与 `super::tests::scan` 跳过本文件逐字同一条：
     /// 本文件整体在 `#[cfg(test)]` 内、生产段是空的，而它的锚点表本身就是一串会自匹配的字面量。
     fn production_tree() -> Vec<(String, String)> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         let mut out: Vec<(String, String)> = Vec::new();
         for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
             let rel = path

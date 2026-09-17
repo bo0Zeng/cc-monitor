@@ -37,7 +37,7 @@
 mod tests {
     #[test]
     fn no_non_loopback_bind_literal_in_relay_production_code() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/relay");
+        let dir = crate::guard_support::src_root().join("relay");
         // 针**运行时拼**：直接写字面量的话本文件自己就是命中源
         //（而 `scan_tree!` 已经摘掉了本文件 —— 两道保险，别只靠一道）。
         let needles = [

@@ -192,14 +192,14 @@ mod tests {
     ];
 
     fn relay_dir() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/relay")
+        crate::guard_support::src_root().join("relay")
     }
 
     /// 整个 daemon crate 的生产段（逐文件）。`KS2` 的人群是**整个 crate**，不是 `relay/` ——
     /// 「取明文的地方恰好一处」这句话的分母如果只到 `relay/`，
     /// 那么有人在 `observe/` 里再取一次就不会红。**人群要恰好等于性质。**
     fn crate_production() -> Vec<(String, String)> {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let dir = crate::guard_support::src_root();
         guard_core::scan_tree!(&dir, &["rs"])
             .into_iter()
             .map(|(p, raw)| (p.display().to_string(), production_code(&raw)))

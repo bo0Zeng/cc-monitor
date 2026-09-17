@@ -482,7 +482,7 @@ mod tests {
     /// ⇒ 本函数把自己那一份**显式**用 `include_str!` 补回来，两半各司其职：
     /// **树扫描管「别处有没有」**（它摘掉自己正好），**`include_str!` 管「自己有没有」**。
     fn crate_sources() -> Vec<(String, String)> {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         let mut out: Vec<(String, String)> = Vec::new();
         for (path, src) in guard_core::scan_tree!(&root, &["rs"]) {
             let rel = path
