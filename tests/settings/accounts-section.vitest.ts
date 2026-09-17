@@ -1297,7 +1297,7 @@ describe("N-F2 本机那两格真的被写进账本", () => {
     // 分母：**面板看得见的那三档**（读出来了 / 后端不在 / 读不动），逐档各跑一次真面板。
     // ⚠ 诚实边界：后端那侧其实是三档（`Listed` / `NoBackend` / `Unreadable`），
     // 而 `NoBackend` 与 `Unreadable` 到前端都变成 `available:false` + 一句 error 文案，
-    // 前端分不出来 —— 分开它们要后端多带一个字段回来（`src-tauri`，本件射程外）。
+    // 前端分不出来 —— 分开它们要后端多带一个字段回来（`src/bridge`，本件射程外）。
     const cases: Array<[string, AccountsState | Error]> = [
       ["读出来了", threeLocal()],
       ["后端不在", localState({ available: false, error: "x", accounts: [] })],

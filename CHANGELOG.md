@@ -1367,8 +1367,8 @@ assistant 消息渲染出的 markdown 链接（`https://` / `http://` / `mailto:
 **根因**：Claude Code v2.1.x 把 JSONL 里的标题记录从 `"type":"ai-title"` / `aiTitle` 字段改成了 `"type":"custom-title"` / `customTitle`。monitor 后端 `JsonlRecord` 枚举只认旧名字，全部 custom-title 记录被 fallthrough 到 `Unknown` 变体 → 不 emit → 前端永远拿不到标题。
 
 **修复**：保留旧 ai-title 兼容路径（旧 jsonl 历史文件仍可能有），同时新增 custom-title 路径，两者共用同一个 Tab 标题字段（`tab.aiTitle`）：
-- `src-tauri/src/messages.rs` — `JsonlRecord::CustomTitle { custom_title, session_id }` 变体 + `is_displayable()` 收录
-- `src-tauri/src/history.rs` — 历史扫描 match 加 CustomTitle 分支，与 AiTitle 同样写到 `ai_title` 字段（让历史浏览器列表里 v2.1.x 之后的会话也有标题）
+- `src/bridge/src/messages.rs` — `JsonlRecord::CustomTitle { custom_title, session_id }` 变体 + `is_displayable()` 收录
+- `src/bridge/src/history.rs` — 历史扫描 match 加 CustomTitle 分支，与 AiTitle 同样写到 `ai_title` 字段（让历史浏览器列表里 v2.1.x 之后的会话也有标题）
 - `src/cards/index.ts` — JsonlRecord union 加 custom-title 类型
 - `src/tabs.ts` — onLine 加 custom-title → applyAiTitle 分支
 
@@ -1549,7 +1549,7 @@ Claude Code CLI 终端底部的 task tracker（`TaskCreate` / `TaskUpdate` / `Ta
 
 ### 实现
 
-后端新增 `src-tauri/src/tasks.rs`：
+后端新增 `src/bridge/src/tasks.rs`：
 - `read_session_tasks(tasks_root, sid)` 扫 `<claude_dir>/tasks/<sid>/<id>.json`
   - 跳过 `.lock` / `.highwatermark` / 非 `<digits>.json` 命名
   - 半截 JSON 单条 catch 跳过（写者持锁中途读到 → 下次 debounce 自然修正），不会冻死整次重读
@@ -1578,7 +1578,7 @@ Claude Code CLI 终端底部的 task tracker（`TaskCreate` / `TaskUpdate` / `Ta
 - 前端 localStorage 所有 `cc-monitor.*` keys + value（折叠 / 渲染模式 / profile 选项 / task panel 状态等）
 - 卸载说明：NSIS 默认不清这些数据，想彻底清除手动删
 
-后端新模块 `src-tauri/src/data_paths.rs`（4 个单元测试）+ IPC `get_data_paths`（async + spawn_blocking，stat 不递归算大小避免大目录卡 IPC）。前端 `src/settings/data-section.ts` 渲染分类卡片。
+后端新模块 `src/bridge/src/data_paths.rs`（4 个单元测试）+ IPC `get_data_paths`（async + spawn_blocking，stat 不递归算大小避免大目录卡 IPC）。前端 `src/settings/data-section.ts` 渲染分类卡片。
 
 ### 新增 — Tool result 渲染模式切换 + 长 output 性能修复
 
@@ -1717,7 +1717,7 @@ Tool 调用结果展开后顶部新加 [文本 | Markdown] 切换 toolbar：
 | `open_log_dir` | — | `()` | 用资源管理器打开 log 目录 |
 
 ### 新增前端 / 后端模块
-- `src-tauri/src/logging.rs` —— tracing init + 滚动 appender + EnvFilter reload + ErrorEmitterLayer + DiagnosticsConfig R/W（含 8 个单元测试）
+- `src/bridge/src/logging.rs` —— tracing init + 滚动 appender + EnvFilter reload + ErrorEmitterLayer + DiagnosticsConfig R/W（含 8 个单元测试）
 - `src/error-toast.ts` —— listen `monitor-error` 弹堆叠 toast
 - `src/settings/diagnostics-section.ts` —— 设置面板「诊断」区
 
@@ -1796,7 +1796,7 @@ v1.7.12 改 right-anchored 后，靠左的 `?`（如"PowerShell 集成"标题旁
 打开失败: opener.open_path not allowed. Permissions associated with this command: opener:allow-open-path
 ```
 
-**根因**：`src-tauri/capabilities/default.json` 里只有 `opener:default`，而它**不含** `allow-open-path`（实测 `gen/schemas/acl-manifests.json` 中 default permission set 是 `["allow-open-url", "allow-reveal-item-in-dir", "allow-default-urls"]`）。Tauri runtime 在 invoke `plugin:opener|open_path` 时直接拒。
+**根因**：`src/bridge/capabilities/default.json` 里只有 `opener:default`，而它**不含** `allow-open-path`（实测 `gen/schemas/acl-manifests.json` 中 default permission set 是 `["allow-open-url", "allow-reveal-item-in-dir", "allow-default-urls"]`）。Tauri runtime 在 invoke `plugin:opener|open_path` 时直接拒。
 
 **进一步坑**：单独加 `"opener:allow-open-path"` 仍不工作——`allow-open-path` 的 description 写明 "Enables the open_path command **without any pre-configured scope**"，默认 scope 为空 = 没有任何路径被允许打开。
 
@@ -1860,8 +1860,8 @@ v1.7.9 及更早版本在用户**已有内容的 PowerShell profile** 上点 [�
 - 新增 `src/doc/ARCHITECTURE.md`：数据流图 + State 矩阵摘要 + 跨进程文件 IPC 协议表 + 设计分层 + 历史踩坑表。新贡献者第一站。
 - `README.md` 新增"PowerShell 集成（可选）"章节，写清楚装 / 不装的影响，反映 v1.7.9 默认不勾选 wrapper 的新行为。
 - `README.md` 安装包名示例从 `1.5.0` 改成 `<version>` 占位，避免每次 bump 都得改 README。
-- `src-tauri/README.md` IPC 清单补全 v1.7 的 7 个命令（`bring_terminal_to_front` / `cc_integration_*` / `cc_*auto_launch`）；模块表加 `bind.rs` / `profile_installer.rs` / `auto_launch.rs`；不变量节加握手协议 + UTF-8 无 BOM 约束；工程坑节补 v1.7.0–1.7.1 profile.ps1 错位 + v1.7.8 BOM。
-- `tests/scripts/README.md` 提 `src-tauri/scripts/cc.ps1.tpl` 模板的存在。
+- `src/bridge/README.md` IPC 清单补全 v1.7 的 7 个命令（`bring_terminal_to_front` / `cc_integration_*` / `cc_*auto_launch`）；模块表加 `bind.rs` / `profile_installer.rs` / `auto_launch.rs`；不变量节加握手协议 + UTF-8 无 BOM 约束；工程坑节补 v1.7.0–1.7.1 profile.ps1 错位 + v1.7.8 BOM。
+- `tests/scripts/README.md` 提 `src/bridge/scripts/cc.ps1.tpl` 模板的存在。
 
 ## [1.7.8] — 2026-05-24
 
@@ -2106,7 +2106,7 @@ v1.7.2 已安装 + 自定义 cc 被覆盖的用户：
     - 已在跑（按绝对路径比对 Get-Process 的 .Path）→ 跳过启动
     - 任何检查失败 → fail-open（仍走握手，超时后 fail-open 启动 claude）
 - 新 IPC：`cc_get_auto_launch` / `cc_set_auto_launch`
-- 新模块 `src-tauri/src/auto_launch.rs`（含 3 个单测）
+- 新模块 `src/bridge/src/auto_launch.rs`（含 3 个单测）
 
 ### 改动
 
@@ -2210,7 +2210,7 @@ v1.7.2 已安装 + 自定义 cc 被覆盖的用户：
     `showBringTerminalToast` + Tab 上的 ↗ 按钮 + `main.ts` 的 Ctrl+\` 快捷键 +
     `styles.css` 的 `.tab-focus` / `#bring-terminal-toast` /
     `.status-msg.status-error`
-  - 文档：删 `src-tauri/src/README.md`（专讲拉终端机制的设计文档）
+  - 文档：删 `src/bridge/src/README.md`（专讲拉终端机制的设计文档）
 - 保留 `SessionInfo.name` 字段（标记 `#[allow(dead_code)]`），为 v1.7 注入式
   绑定方案准备。
 

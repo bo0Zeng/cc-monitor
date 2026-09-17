@@ -17,7 +17,7 @@
 
 ```bash
 # 假设撤掉 BindRegistry State + cc_integration_status IPC
-cd src-tauri
+cd src/bridge
 
 # 1. State 消费者全 grep
 grep -rn 'State<.*Arc<BindRegistry>>' src/
@@ -33,10 +33,10 @@ grep -rn 'cc_integration_status' src/
 cd .. && grep -rn 'invoke<.*"cc_integration_status"' src/
 
 # 5. 跨进程文件 IO 全 grep（如果撤的是文件协议）
-grep -rn 'ps-await\|ps-registry' src-tauri/src/ src/
+grep -rn 'ps-await\|ps-registry' src/bridge/src/ src/
 
 # 6. 删完跑：
-cd src-tauri && cargo check && cargo test --workspace --exclude code-picture-core
+cd src/bridge && cargo check && cargo test --workspace --exclude code-picture-core
 cd .. && npm run build
 
 # !! cargo check 不能挡 State 漏 manage 的运行时 panic !!
@@ -50,7 +50,7 @@ powershell -NoProfile -File scripts\run.ps1 dev
 
 修改 [IPC-PROTOCOL.md](IPC-PROTOCOL.md) 定义的任一文件 schema 都要：
 
-- [ ] 改 **写入方** 代码（PS 端模板 `src-tauri/scripts/cc.ps1.tpl` 或 Rust 端 `bind.rs` / `profile_installer.rs`）
+- [ ] 改 **写入方** 代码（PS 端模板 `src/bridge/scripts/cc.ps1.tpl` 或 Rust 端 `bind.rs` / `profile_installer.rs`）
 - [ ] 改 **读取方** 代码（serde struct）
 - [ ] 更新 [IPC-PROTOCOL.md](IPC-PROTOCOL.md) 字段定义
 - [ ] **向后兼容性**：旧文件应能被新版本读取（serde `#[serde(default)]` 字段新增 OK，删字段需 RFC）
@@ -66,8 +66,8 @@ powershell -NoProfile -File scripts\run.ps1 dev
 
 ### 1.4 改 Tauri capability / permission
 
-- [ ] 改 `src-tauri/capabilities/default.json`
-- [ ] cargo build 后看 `src-tauri/gen/schemas/acl-manifests.json` 实际 permission set 内容确认
+- [ ] 改 `src/bridge/capabilities/default.json`
+- [ ] cargo build 后看 `src/bridge/gen/schemas/acl-manifests.json` 实际 permission set 内容确认
 - [ ] dev mode 实测涉及的 IPC 不报 `Permission xxx not allowed`
 
 **警示**：plugin 的 `<plugin>:default` permission set 通常**不包含所有** `allow-*`；某些 allow 默认空 scope 需要 inline 给 path/url pattern。详 [DEVELOPMENT.md § 查 capability 报错](DEVELOPMENT.md#查-capability-报错)。
@@ -76,14 +76,14 @@ powershell -NoProfile -File scripts\run.ps1 dev
 
 - [ ] 改 **版本号三处对齐**（必做）：
   - `package.json::version`
-  - `src-tauri/Cargo.toml::[package].version`
-  - `src-tauri/tauri.conf.json::version`
+  - `src/bridge/Cargo.toml::[package].version`
+  - `src/bridge/tauri.conf.json::version`
 - [ ] `Cargo.lock` 提交（Rust 应用必须锁版本）
 - [ ] 若改过后端：`src/backend/main.rs::BUILD_ID` 已 bump（手工标签非哈希！）+ 内嵌二进制一致（tag 发版 CI 自动重编；本地打包须先重编 —— 🔴 **`K-R70`（09-12）起不再需要「同步 `.build_id` 清单」那一步**，身份跟着字节走）
-      > **这条 2026-08-01 起是机器强制的**，不再靠自觉：`src-tauri/build.rs` 在「内嵌二进制的
+      > **这条 2026-08-01 起是机器强制的**，不再靠自觉：`src/bridge/build.rs` 在「内嵌二进制的
       > **字节里问不出身份戳**」「字节自报的身份 ≠ 源码 `BUILD_ID`」「抠不到源码 `BUILD_ID`」三种情况
       > 直接 **panic 掉编译**（原来只有一条比 mtime 的 warning，漏掉了真实发生过的半 bump）。
-      > 三条都以「`src-tauri/embedded-daemons/` 里真有二进制」为前提；该目录不存在（干净 clone / CI 常态）
+      > 三条都以「`src/bridge/embedded-daemons/` 里真有二进制」为前提；该目录不存在（干净 clone / CI 常态）
       > 时是优雅降级，那一档由 `ssh_source.rs::embedded_build_id_single_source_wired` 兜。
       > 详见 [REMOTE-PHASE0-DEPLOY.md § 发版构建](REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-daemon-二进制f08b)。
 - [ ] [CHANGELOG.md](../../CHANGELOG.md) 加新版本段（写法见 [RELEASING.md](RELEASING.md)）
@@ -122,20 +122,20 @@ powershell -NoProfile -File scripts\run.ps1 dev
 
 **步骤**：
 
-1. **后端** `src-tauri/src/lib.rs`（或独立 module 如 `stats.rs`）：
+1. **后端** `src/bridge/src/lib.rs`（或独立 module 如 `stats.rs`）：
 
 ```rust
 #[tauri::command]
 async fn monitor_get_active_ids(
     session_map: tauri::State<'_, std::sync::Arc<session_map::SessionMap>>,
 ) -> Result<Vec<String>, String> {
-    // SessionMap 提供哪些公开 API 见 src-tauri/src/session_map.rs；
+    // SessionMap 提供哪些公开 API 见 src/bridge/src/session_map.rs；
     // 这里假设你需要的方法已存在，否则先在 session_map.rs 暴露一个。
     Ok(session_map.list_active_session_ids())
 }
 ```
 
-⚠️ **示例 API 是说明性的**，落地前必须 `cargo check` 确认 `SessionMap` 上真有 `list_active_session_ids()`，没有就先在 `session_map.rs` 暴露。当前 `SessionMap` 公开方法见 `documentSymbol src-tauri/src/session_map.rs` 或 `pub fn` grep。
+⚠️ **示例 API 是说明性的**，落地前必须 `cargo check` 确认 `SessionMap` 上真有 `list_active_session_ids()`，没有就先在 `session_map.rs` 暴露。当前 `SessionMap` 公开方法见 `documentSymbol src/bridge/src/session_map.rs` 或 `pub fn` grep。
 
 2. **注册到 invoke_handler**（`lib.rs::run()` 内）：
 
@@ -166,7 +166,7 @@ const activeIds = await invoke<string[]>("monitor_get_active_ids");
 
 **步骤**：
 
-1. **后端** `src-tauri/src/messages.rs::JsonlRecord` enum 加 variant：
+1. **后端** `src/bridge/src/messages.rs::JsonlRecord` enum 加 variant：
 
 ```rust
 #[serde(rename = "memory_recall")]
@@ -257,7 +257,7 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 
 **步骤**：
 
-1. **cargo build 一次** 让 `src-tauri/gen/schemas/acl-manifests.json` 重新生成。
+1. **cargo build 一次** 让 `src/bridge/gen/schemas/acl-manifests.json` 重新生成。
 2. **看 plugin-X 的 `permissions`** 找具体 `allow-foo` 的定义，看 description 是否需要 scope。
 3. **`capabilities/default.json` 加 permission**：
 
@@ -280,7 +280,7 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 
 > ⚠⚠ **G3 订正（2026-08-04）：本节的「阶段②」已经是现在时了。**
 > 下面第 4 步把「取命令方式转后端 RPC」写成**未来动作**，而 **F04b（kill）与 F04c（send-keys）
-> 已经把生产主路切到后端 RPC**：`src-tauri/src/backend/control/daemon_kill.rs` /
+> 已经把生产主路切到后端 RPC**：`src/bridge/src/backend/control/daemon_kill.rs` /
 > `daemon_send_keys.rs`（分流判定在 `daemon_route.rs`，三态而非二态）。
 >
 > 🔴 **订正二（`K-R106` 2026-09-13 现打）：这一段原来那两句今天都假了。**
@@ -300,7 +300,7 @@ dispatcher.bind("app.open-command-bar", () => commandBar.toggle());
 > |---|---|---|
 > | `kill` | 后端 RPC（F04b） | `backend/control/daemon_kill.rs`；**盘上没有第二条路** |
 > | `send-keys` | 后端 RPC（F04c） | `backend/control/daemon_send_keys.rs`；同上 |
-> | `attach`（**本机**） | 🔴 **本机后端**〔`K-R106` 2026-09-13，用户逐字「归本机后端就好了啊」〕 | `src-tauri/src/history.rs::render_local_attach` ⇒ `ccm attach <名>`（走 `render_local_ccm` 那条既有渲染路）。⚠ 前端那条 `↗` 还没改成问它要 |
+> | `attach`（**本机**） | 🔴 **本机后端**〔`K-R106` 2026-09-13，用户逐字「归本机后端就好了啊」〕 | `src/bridge/src/history.rs::render_local_attach` ⇒ `ccm attach <名>`（走 `render_local_ccm` 那条既有渲染路）。⚠ 前端那条 `↗` 还没改成问它要 |
 > | `attach` / `new-session`（**远端兜底**） | 仍是 `session-backend.ts` 那条 shell 串 | 照本节原步骤。⚠ 它今天靠哪几个消费者站着，两把尺子都在 `launch_wire.rs`（`TS_FALLBACK_KEEPERS` 数处数 · `TS_FALLBACK_REACH` 判有没有生产调用方），**从源码派生，别在这里抄一份数** |
 
 

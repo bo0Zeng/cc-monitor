@@ -1,0 +1,2720 @@
+//! SS-D：统一 SFTP 会话层（issue #29 自动部署 F08；F11 用户数据写 / F10 profile 写已复用）。
+//!
+//! 复用 `ssh_source::connect_session` 的全套 host-key 指纹校验 + publickey/agent 鉴权，
+//! 在一条已鉴权的 russh 连接上 `request_subsystem("sftp")` 起 SFTP 子系统（russh-sftp，
+//! transport-agnostic，吃 channel 的 AsyncRead+AsyncWrite 流）。
+//!
+//! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `src/doc/INVARIANTS.md §1`
+//! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
+//! - **F08**：自部署 daemon 二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
+//! - **F11**：用户**主动**删除远端会话 jsonl（`remove_remote_file`，`is_safe_remote_jsonl` + `canonicalize`）。
+//! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`（`mcp::write_remote_mcp_server` 等，字符串守卫
+//!   `is_safe_remote_mcp_json`：绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸；经本模块 `upload_atomic` 原子写）。
+//!   **SS-14**：写面**只** `.mcp.json`，非 Claude 会话数据。
+//! - **F10**：cc(m) 助手装/卸——**本模块 `install_remote_ccm_helper`/`uninstall_remote_ccm_helper` 写远端 `~/.bashrc`**
+//!   （BEGIN/END 块 + 备份 + 写后校验回滚）；本机 profile 写在 `profile_installer`。（batch20 审计修：原「非远端」措辞误——本模块确写远端 `~/.bashrc`。）
+//! - **F50**：`pubkey::push_public_key` 经 SSH-exec 追加公钥到远端 `~/.ssh/authorized_keys`（不在本模块，登记于此备查）。
+//!
+//! `upload_atomic`（F89a 审计后加固）：tmp 用 **EXCLUDE** 创建（防 symlink 预置 clobber）+ 旧目标先备份到
+//! `.bak` 再 rename（失败可恢复、成功即清），不留垃圾。
+//!
+//! ## 原子写
+//! russh-sftp 无 `posix-rename@openssh.com` 扩展，标准 SFTP `rename` 不覆盖已存在目标。
+//! 故 [`upload_atomic`] 用「写 `<path>.tmp` → 旧目标 **rename 成 `.bak`** → rename tmp→目标
+//! → 清 `.bak`」近似原子（单写者、低频部署场景足够）。
+//!
+//! **是备份不是删除**：F89a 审计改的就是这一点 —— 「先删旧」一旦后续 rename 失败就**丢原件**，
+//! 而先备份则最坏情况下原内容仍在 `.bak` 里。（本节此前仍写着「删旧」，2026-07-31 随 DN-7 一并订正。）
+
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use russh::client;
+use russh_sftp::client::SftpSession;
+use russh_sftp::protocol::{FileAttributes, OpenFlags};
+use tokio::io::AsyncWriteExt;
+
+use crate::ssh_source::{connect_session, ClientHandler, RemoteConfig};
+
+/// 一条 SFTP 连接：持有底层 russh `Handle`（**必须与 SFTP 会话同生命周期**——Handle 一 drop
+/// 整条 SSH 连接就断）+ SFTP 会话本身。
+pub struct SftpConn {
+    /// 保活：底层 SSH 连接句柄。下划线 = 仅持有不直接用，但绝不能提前 drop。
+    _session: client::Handle<ClientHandler>,
+    pub sftp: SftpSession,
+}
+
+/// 打开到远端的 SFTP 会话（复用 connect_session 全套指纹/鉴权）。
+pub async fn connect_sftp(cfg: &RemoteConfig) -> Result<SftpConn, String> {
+    let (session, _fp) = connect_session(cfg, None, None).await?;
+    let channel = session
+        .channel_open_session()
+        .await
+        .map_err(|e| format!("打开 SFTP channel 失败: {e}"))?;
+    channel
+        .request_subsystem(true, "sftp")
+        .await
+        .map_err(|e| format!("请求 sftp 子系统失败（远端 sshd 未开 sftp?）: {e}"))?;
+    let sftp = SftpSession::new(channel.into_stream())
+        .await
+        .map_err(|e| format!("初始化 sftp 会话失败: {e}"))?;
+    Ok(SftpConn {
+        _session: session,
+        sftp,
+    })
+}
+
+/// 原子上传 `bytes` 到 `remote_path`，权限 `mode`（八进制如 0o700）。
+///
+/// 流程：写 `<remote_path>.tmp`（**EXCLUDE** 创建，防 symlink 预置 clobber）
+/// → 旧目标 **rename 成 `.bak`（不是删掉）** → rename tmp→目标 → 成功后清 `.bak`。
+/// 中途失败时旧内容仍在 `.bak` 里可恢复。
+///
+/// `mode` **只在 open-create 的 attrs 里设一次**。
+///
+/// ⚠ **rename 之后绝不 `set_metadata` 兜底 chmod** —— 真机 e2e 实证：OpenSSH sftp-server 上
+/// setstat（即便只设 permissions、`size=None`）会把刚 rename 好的文件**截断成 0 字节**，
+/// daemon 因此不可 exec → 连接 EOF → marker 变空 → 无限重部署。理由详见函数末尾那段注释。
+///
+/// （2026-07-31 修：本注释此前写的是「删旧 → rename」+「rename 后 set_metadata 兜底」，
+/// **两句都与函数体相反**，而且照它实现正好复活上面那个把 daemon 变砖的 bug。
+/// 由 aterm 侧交叉核对时发现〔DN-7〕。）
+pub async fn upload_atomic(
+    sftp: &SftpSession,
+    remote_path: &str,
+    bytes: &[u8],
+    mode: u32,
+) -> Result<(), String> {
+    let tmp = format!("{remote_path}.tmp");
+    let attrs = FileAttributes {
+        permissions: Some(mode),
+        ..Default::default()
+    };
+    // 安全（F89a 审计·重要）：先删可能残留/被预置的 tmp（remove_file 删链本身、不写穿 target），
+    // 再用 **EXCLUDE**（SSH_FXF_EXCL）创建——若删后被抢先重放 symlink，EXCLUDE 令 open 失败而非跟随，
+    // 杜绝「tmp 是 symlink → CREATE|TRUNCATE 跟随截断、越写到 `.mcp.json` 之外的用户文件」的 clobber 逃逸。
+    let _ = sftp.remove_file(tmp.clone()).await; // best-effort 清残留/预置（不存在则忽略）
+    let mut file = sftp
+        .open_with_flags_and_attributes(
+            tmp.clone(),
+            OpenFlags::CREATE | OpenFlags::EXCLUDE | OpenFlags::WRITE,
+            attrs,
+        )
+        .await
+        .map_err(|e| format!("创建 {tmp} 失败: {e}"))?;
+    file.write_all(bytes)
+        .await
+        .map_err(|e| format!("写 {tmp} 失败: {e}"))?;
+    // russh-sftp 的 `write_all` 只把 WRITE 包入队（write_nowait），ack 只在 `flush`/`shutdown`
+    // 的 poll_drain_writes 里 drain。用 `flush()`（**始终** drain，不像 sync_all 在服务器无
+    // `fsync@openssh` 时 noop 不 drain）+ **传播错误**，确保数据真正落服务器、失败不静默。
+    file.flush()
+        .await
+        .map_err(|e| format!("flush {tmp} 失败（写未确认）: {e}"))?;
+    file.shutdown()
+        .await
+        .map_err(|e| format!("关闭 {tmp} 失败: {e}"))?;
+    drop(file);
+
+    // 数据安全（F89a 审计·重要）：russh-sftp `rename` 不覆盖 → 旧目标**先 rename 成 `.bak`（不 delete）**，
+    // 再 rename tmp→目标；tmp→目标失败时旧内容仍在 `.bak`（可恢复），不像「先删旧」失败即丢原件。
+    // 成功后即删 `.bak`（不留垃圾——大文件如 daemon 二进制不堆备份）。
+    let bak = if sftp
+        .try_exists(remote_path.to_string())
+        .await
+        .unwrap_or(false)
+    {
+        let b = format!("{remote_path}.bak");
+        let _ = sftp.remove_file(b.clone()).await; // 清旧 bak（rename 不覆盖）
+        sftp.rename(remote_path.to_string(), b.clone())
+            .await
+            .map_err(|e| format!("备份旧文件 {remote_path} → {b} 失败: {e}"))?;
+        Some(b)
+    } else {
+        None
+    };
+    sftp.rename(tmp.clone(), remote_path.to_string())
+        .await
+        .map_err(|e| format!("rename {tmp} → {remote_path} 失败: {e}"))?;
+    if let Some(b) = bak {
+        let _ = sftp.remove_file(b).await; // 成功替换 → 清备份
+    }
+    // **绝不**在这里 `set_metadata(permissions)` 兜底 chmod —— 真机 e2e 诊断确证：在 OpenSSH
+    // sftp-server 上 setstat（即便只设 permissions、size=None）会把刚 rename 好的文件**截断成
+    // 0 字节**（tmp 写后 size 正确、rename 直后 size 正确，唯独 set_metadata 之后变 0）。daemon
+    // 因此变 0 字节不可 exec → 连接 EOF，marker 变空 → 无限重部署。权限已在 open-create 的 attrs
+    // 里设好（OpenSSH 按 SSH_FXP_OPEN attrs 建文件：0o700 可执行 / 0o600）、rename 保留权限，无需
+    // 也不能再 set_metadata。
+    Ok(())
+}
+
+/// 读远端文件，不存在 / 读失败 → None。
+/// 判定一次远端上传的读回结果。**纯函数，可测**——远端往返塞不进单测，
+/// 但"读回的字节该不该判通过"这条判据可以，而它正是此前完全缺失的那一环。
+///
+/// 按字节而不是按字符串：`deploy_remote_daemon` 上传的是**可执行二进制**，
+/// `String::from_utf8` 会失败。这也是没直接复用 `verified_write::verify_readback`
+/// （它是 `&str`）的原因——判据同源（逐字节相同才算通过），载体不同。
+pub fn verify_uploaded_bytes(
+    path: &str,
+    expected: &[u8],
+    actual: Option<&[u8]>,
+) -> Result<(), String> {
+    let Some(actual) = actual else {
+        return Err(format!(
+            "上传后读不回 {path}——无法确认写对了。已中止，未写入版本标记（下次会重新部署）。"
+        ));
+    };
+    if actual == expected {
+        return Ok(());
+    }
+    if actual.len() == expected.len() {
+        let at = expected
+            .iter()
+            .zip(actual)
+            .position(|(a, b)| a != b)
+            .unwrap_or(0);
+        return Err(format!(
+            "上传后校验失败：{path} 长度相同（{} 字节）但内容不同，首个差异在第 {at} 字节。\
+             这类损坏（传输截断后补齐 / 编码变形）只比长度是查不出来的。\
+             已中止，未写入版本标记（下次会重新部署）。",
+            expected.len()
+        ));
+    }
+    Err(format!(
+        "上传后校验失败：{path} 长度不匹配（期望 {} 字节，读回 {} 字节）。\
+         已中止，未写入版本标记（下次会重新部署）。",
+        expected.len(),
+        actual.len()
+    ))
+}
+
+/// 上传 + **读回逐字节比对**。
+///
+/// ## 为什么这个函数此前不存在（T04 审计①）
+///
+/// `deploy_remote_daemon` 与 `deploy_remote_acct_iso` 的**全部** `upload_atomic`
+/// ——1 个 daemon 可执行二进制 + 6 个远端脚本（含 0755 的 `cc-acct-iso` / `lib.sh` /
+/// install.sh）——写完**直接写版本标记**，中间没有任何读回。`upload_atomic` 自己
+/// 只做 flush/shutdown/rename，不读回（实测 `grep -c` = 0）。
+///
+/// 而 T04 第二步我论证「备份→写→读回比对→回滚这个范式已共享（5 处），所以不用抽」
+/// ——**那 5 处全在 profile/CLI 那条线上，压根没覆盖这两条 deploy 路**。
+/// 我那套"五套机制"框架恰好把这个洞盖住了：把"范式已共享"当成了"范式已覆盖"。
+///
+/// 后果具体：传输损坏的 daemon 二进制照样被写上正确的 `.build_id` 标记 →
+/// 下次 `deploy_decision` 判「已是最新，跳过」→ **坏二进制永久驻留**，
+/// 而用户看到的是部署成功。标记写在校验之后，就断了这条链。
+pub(crate) async fn upload_atomic_verified(
+    sftp: &SftpSession,
+    remote_path: &str,
+    bytes: &[u8],
+    mode: u32,
+) -> Result<(), String> {
+    upload_atomic(sftp, remote_path, bytes, mode).await?;
+    let back = read_optional(sftp, remote_path).await;
+    verify_uploaded_bytes(remote_path, bytes, back.as_deref())
+}
+
+pub(crate) async fn read_optional(sftp: &SftpSession, path: &str) -> Option<Vec<u8>> {
+    sftp.read(path.to_string()).await.ok()
+}
+
+/// **远端 profile 的读取结论**（Phase G 审阅修复）：把 `read_optional` 的 `Option<Vec<u8>>`
+/// 拆成三态，取代原先的 `read_optional(..).map(from_utf8_lossy).unwrap_or_default()`。
+///
+/// 那一行有两个各自独立的数据丢失口，而**本机侧同一操作两个口都堵着**
+/// （`profile_installer::install_to_profile`：`read_to_string` 遇非 UTF-8 直接 `Err`；
+/// `on_disk_size > 0 && raw.is_empty()` 直接 `Err`，后者是 v1.7.9 事故的修法）：
+///
+/// 1. **`unwrap_or_default()` 把「读不出来」当成「文件是空的」**。于是 install 走
+///    `if !existing.is_empty()` 时**跳过备份**、把用户整份 `.bashrc` 换成只含 ccm 块的
+///    `merged`，无任何可恢复副本；uninstall 则 `stripped == existing` 成立 →
+///    对着一份读不出来的文件回「没有 ccm 块，无需卸载」——正是
+///    `strip_profile_block` 头注亲自定义为 bug 的形态（"它主动告诉用户没问题"），
+///    上一轮只修到纯函数一层，根因在这个读取行。
+/// 2. **`from_utf8_lossy` 在有损字符串空间里做读-改-写**。非 UTF-8 字节（GBK 注释、
+///    latin-1 人名、误粘的 `\xa0`）变 U+FFFD → **备份写的是已经有损的那份**，原字节
+///    从此不可恢复；而读回校验拿同样有损的两份比对，**逐字节相同、校验通过**，
+///    整套「备份 + 读回 + 回滚」为这次损坏出具合格证。`verify_uploaded_bytes` 的头注
+///    自己写着"按字节而不是按字符串"，那条纪律只落到了 daemon 二进制那条路。
+///
+/// 修法与本机侧对齐成 **fail-safe**：说不清就 `Err` 中止、不动原文件。
+/// `Ok(None)` = 文件真的不存在（`try_exists` 明确说 false）；`Ok(Some(s))` = 读到了且是
+/// 合法 UTF-8；`Err` = 读不出来 / 非 UTF-8 / 有字节数却读到空。
+pub(crate) fn interpret_profile_read(
+    what: &str,
+    bytes: Option<&[u8]>,
+    exists: Option<bool>,
+    size: Option<u64>,
+) -> Result<Option<String>, String> {
+    let Some(bytes) = bytes else {
+        // read 失败。只有 `try_exists` **明确说不存在**才当新建；"问不出来"归到 Err，
+        // 因为把无权限/被占用当成空文件正是上面第 1 条的病灶。
+        return if exists == Some(false) {
+            Ok(None)
+        } else {
+            Err(format!(
+                "读不出 {what}（文件可能存在但无权限 / 被占用 / 传输失败）。已取消，未改动任何文件。"
+            ))
+        };
+    };
+    if bytes.is_empty() {
+        if let Some(n) = size.filter(|n| *n > 0) {
+            return Err(format!(
+                "{what} 在远端有 {n} 字节，但读回来是空的。已取消，未改动任何文件——\
+                 继续走会用「空内容 + ccm 块」覆盖掉那 {n} 字节。"
+            ));
+        }
+        return Ok(Some(String::new()));
+    }
+    String::from_utf8(bytes.to_vec()).map(Some).map_err(|e| {
+        format!(
+            "{what} 不是合法 UTF-8（前 {} 字节合法，之后不是）。ccm 块的合并/删除是按文本做的，\
+             按有损文本写回会把这些字节永久换成 U+FFFD，连备份一起坏掉。已取消，未改动任何文件。",
+            e.utf8_error().valid_up_to()
+        )
+    })
+}
+
+/// **回滚措辞必须与实际发生的事一致**（Phase G 审阅修复）：install 的两个失败分支都写
+/// `if !existing.is_empty() { 回滚 }`，但错误文案是无条件的「已尝试回滚原文件」——
+/// `existing` 为空（首次安装 / 原文件是空文件）时那个 `if` 一条也不执行，用户却被告知
+/// 回滚过了，而一份校验不通过的 profile 正留在远端等着下次开终端时执行。
+/// 这与两条阻塞是同一类病：**机制声称做了它没做的事**。
+///
+/// 本函数只负责措辞。真正的"首次安装失败就删掉新建的文件"是行为新增（要在远端 `remove`），
+/// 已登记为未收项，不在验收轮里做。
+pub(crate) fn rollback_note(existing_was_empty: bool) -> &'static str {
+    if existing_was_empty {
+        "原文件此前不存在或为空，没有可回滚的内容；刚写入的内容仍在远端，请手动清理后重试。"
+    } else {
+        "已尝试回滚原文件。"
+    }
+}
+
+/// [`interpret_profile_read`] 的异步取样：read 成功就直接判，**只在需要时**才补问
+/// `try_exists`（区分"真不存在"与"读不出来"）/ `metadata`（区分"真空文件"与"有字节读到空"），
+/// 不为常见路径多加往返。
+async fn read_profile_text(
+    sftp: &SftpSession,
+    path: &str,
+    what: &str,
+) -> Result<Option<String>, String> {
+    let bytes = read_optional(sftp, path).await;
+    let (exists, size) = match &bytes {
+        Some(b) if b.is_empty() => (
+            None,
+            sftp.metadata(path.to_string())
+                .await
+                .ok()
+                .and_then(|m| m.size),
+        ),
+        Some(_) => (None, None),
+        None => (sftp.try_exists(path.to_string()).await.ok(), None),
+    };
+    interpret_profile_read(what, bytes.as_deref(), exists, size)
+}
+
+/// mkdir -p：逐级创建 `dir`（绝对或相对），已存在则跳过，创建失败容忍（并发/权限留给上传报错）。
+pub(crate) async fn ensure_dir_all(sftp: &SftpSession, dir: &str) {
+    let mut cur = String::new();
+    for comp in dir.split('/').filter(|c| !c.is_empty()) {
+        cur.push('/');
+        cur.push_str(comp);
+        if !sftp.try_exists(cur.clone()).await.unwrap_or(false) {
+            let _ = sftp.create_dir(cur.clone()).await;
+        }
+    }
+}
+
+/// 内嵌的 daemon 二进制（F08b 由 `include_bytes!` 填充）。`build_id` 与
+/// `ssh_source::EXPECTED_DAEMON_BUILD_ID` 同源（SS-B）。
+pub struct DaemonBinary {
+    /// 🔴 `K-R70`：**这份字节自报的身份**（`build.rs` 从二进制里扫 `CC_MONITOR_BUILD_STAMP`
+    /// 得来，不是从旁边那个 `.build_id` 文本文件抄的）。
+    ///
+    /// 〔墓碑 —— 本结构此前还有一格 `id_from_manifest: bool`，逐字注释是
+    ///  「build_id 是否来自 .build_id 清单（true=字节真实身份可信）」。那句话把**标签**
+    ///  说成了**真实身份**：清单是 `release.yml` 从源码常量抠出来写的，三个载体恒等
+    ///  ⇒ 一格证据都不提供（`K-R68` · `DECISIONS.md#R26` 裁定零）。
+    ///  今天身份**只有一条来路**（字节），于是那个见证布尔没有了对立面，删掉；
+    ///  它守的那件事换成了 [`bytes_carry_build_stamp`] 在部署路上**无条件**跑一遍。〕
+    pub build_id: &'static str,
+    pub bytes: &'static [u8],
+}
+
+/// 部署决策（纯函数，可单测）。
+#[derive(Debug, PartialEq, Eq)]
+pub enum DeployAction {
+    /// 远端版本与期望一致 → 无需部署。
+    Skip,
+    /// 需要部署，附人读原因。
+    Deploy(String),
+}
+
+/// 比对远端版本标记与期望 build_id，决定是否（重）部署。
+///
+/// ⚠ **这个函数只回答「版本对不对」一件事**，它的入参里根本没有落点那个文件
+/// ——「那个文件在不在」由 [`TargetBinary`] 单独取样、在 [`deploy_decision_at`] 里
+/// 与本判定合并。daemon 那条路**只许走 `deploy_decision_at`**（见它的头注）；
+/// 本函数留给 `acct_iso_deploy` 那条按目录取标记的路，那里标记与内容同一次上传、
+/// 且落点是目录不是单个文件。
+pub fn deploy_decision(remote_build_id: Option<&str>, expected: &str) -> DeployAction {
+    match remote_build_id {
+        None => DeployAction::Deploy("远端无 daemon / 无版本标记".to_string()),
+        Some(r) if r.trim() != expected => {
+            DeployAction::Deploy(format!("版本不符（远端 {} ≠ 期望 {expected}）", r.trim()))
+        }
+        Some(_) => DeployAction::Skip,
+    }
+}
+
+/// 部署落点那个文件**本身**的取样结论（`deploy_decision_at` 的第二个输入）。
+///
+/// 与 [`interpret_profile_read`] 同一条纪律：**「问不出来」不许读成上面任何一个确定答案**
+/// ——把无权限/传输失败当成「不在」会变成每次连接都重传（把版本门控拆了），
+/// 当成「在」则退回本枚举要治的那个静默。**所以它不是 `bool`。**
+/// ⚠ 成员就在下面，别在散文里复述一份基数 —— 那份字面量会在加成员那天变成假话。
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum TargetBinary {
+    /// stat 说它在，且有字节。
+    Present,
+    /// stat **明确说**它不在。
+    Missing,
+    /// stat 说它在，但是 **0 字节** —— 不是假想形态：本模块 `upload_atomic` 里
+    /// 「绝不 set_metadata」那条注释记的就是真机 e2e 实测把 daemon 截成 0 字节、
+    /// 不可 exec 的那次事故。`try_exists` 会把它算成「在」。
+    Empty,
+    /// 问不出来（无权限 / 传输失败 / 服务器不给属性）—— 不许读成上面任何一个。
+    Unknown,
+}
+
+/// 版本这一侧的事实用一句话说出来（给 `Deploy` 的人读原因用）。
+/// 单独抽出来是因为**两侧的事实要各自有各自的话**：落点没文件时，
+/// 版本可能是对的、不符的、或压根没标记，三种都要说得出来。
+fn marker_phrase(remote_build_id: Option<&str>, expected: &str) -> String {
+    match remote_build_id {
+        None => "且无版本标记".to_string(),
+        Some(r) if r.trim() != expected => {
+            format!("版本标记也不符（远端 {} ≠ 期望 {expected}）", r.trim())
+        }
+        Some(_) => format!("而版本标记说它已是 {expected}"),
+    }
+}
+
+/// 部署决策 —— **两个各自独立的事实合起来判**：`.build_id` 说的「版本对不对」
+/// 与落点那个文件的「在不在」。
+///
+/// ## 为什么不能只看 `.build_id`（K-W4 `§0c`）
+///
+/// `.build_id` 是 **目录级** 的（[`marker_path`] 把它放在二进制的同目录，
+/// 路径里不带二进制名），而 [`deploy_decision`] **只读它、从不 stat 二进制本身**。
+/// 于是那一个读数今天同时被当成两件事用：「版本对不对」**和**「那个文件在不在」。
+/// 已部署且 build 未变的机器上，二进制被删 / 被截成 0 字节 / `daemonPath` 被改到
+/// 同目录另一个文件名，标记照旧匹配 ⇒ 判 `Skip` ⇒ 新的字节**永远不会上传**，
+/// 而 exec 走的是那个不存在的路径。
+///
+/// ⚠ **那时用户看到什么，逐字**（`ssh_source.rs` 的连接面）：
+/// 「SSH 连上了，但 daemon 在超时内未回 hello（未部署 / 路径错 / 启动失败？）。」
+/// —— 一个**三选一的猜测**。★ 病灶正在这里：**手里握着一条 SFTP 会话、能一问就知道
+/// 那个文件在不在的这一层，什么都没说**；而要去猜的是**够不着那个事实**的那一层。
+/// 本函数买的就是让前一层把它知道的那半句说出来。
+///
+/// ⚠ **本条没实测过的部分**：上面那句是从源码摘的逐字串（住址在 `ssh_source.rs` 里
+/// `未回 hello` 那一处），**不是**真机跑出来的截图 —— 本轮不碰真远端。
+///
+/// 本模块此前只断掉了这条链的**上传那一段**（`upload_atomic_verified` 的头注：
+/// 「标记写在校验之后，就断了这条链」）—— 那管的是「我们自己传坏了」，
+/// **管不到部署成功之后那个文件再出事**。这里补的是后半段。
+///
+/// ## 边界：不是「每次都重传」
+/// 只有落点**明确**没文件 / 是 0 字节才越过版本门控。`Present` 与 `Unknown`
+/// 一律交回 [`deploy_decision`]，Batch8/9 那套 stale 防御一个字节没动。
+pub fn deploy_decision_at(
+    remote_build_id: Option<&str>,
+    expected: &str,
+    target: TargetBinary,
+) -> DeployAction {
+    match target {
+        TargetBinary::Missing => DeployAction::Deploy(format!(
+            "落点没有 daemon 二进制（{}）",
+            marker_phrase(remote_build_id, expected)
+        )),
+        TargetBinary::Empty => DeployAction::Deploy(format!(
+            "落点的 daemon 二进制是 0 字节（{}）",
+            marker_phrase(remote_build_id, expected)
+        )),
+        // 「在」与「问不出来」都退回版本门控 —— 后者刻意保守：宁可与今天同答，
+        // 也不拿一次 stat 失败换一次全量重传。
+        TargetBinary::Present | TargetBinary::Unknown => deploy_decision(remote_build_id, expected),
+    }
+}
+
+/// 远端路径的父目录（远端恒为 POSIX `/` 分隔，不用 std::path）。
+fn remote_parent(path: &str) -> &str {
+    match path.rfind('/') {
+        Some(0) => "/",
+        Some(i) => &path[..i],
+        None => ".",
+    }
+}
+
+/// 版本标记文件路径：daemon 二进制同目录下 `.build_id`。
+///
+/// ⚠ **目录级** —— 路径里不带二进制名。所以它认不出「同目录里换了个文件名」，
+/// 那半个事实由 [`probe_target_binary`] 单独取样（K-W4 `§0c`）。
+fn marker_path(daemon_path: &str) -> String {
+    let dir = remote_parent(daemon_path);
+    if dir == "/" {
+        "/.build_id".to_string()
+    } else {
+        format!("{dir}/.build_id")
+    }
+}
+
+/// [`probe_target_binary`] 那两次取样的**解释**（纯函数，可单测 —— K-W4b）。
+///
+/// 与 [`interpret_profile_read`] 同一形状：**吃两次调用各自的结果，不吃会话**。
+/// 拆出来的理由是一个具体缺陷，不是行数：解释这一半原先焊在 async 体里，
+/// 四个状态的映射规则因此一条判据都没有 —— 把那个体换成恒答 `Present`，
+/// 全量 cargo **0 红**（09-06 沙箱实测，`tests/evidence/K-W4b-readings.md`），
+/// 而部署决策当场退回「只看 `.build_id`」的老病。
+///
+/// 入参就是两次调用**降解之后**的结果（与 [`read_profile_text`] 传给
+/// [`interpret_profile_read`] 的那几个入参同一路数）：
+/// - `metadata_size`：`None` = `metadata` 那次调用失败；`Some(inner)` = 成功，
+///   `inner` 是服务器给的 size —— ⚠ `Some(None)` 是**服务器没给 size**，不是 0 字节。
+/// - `exists`：`metadata` 失败时补问 `try_exists` 的结果（`None` = 它也答不出来）。
+///   `metadata` 成功那一路根本不问它（不为常见路径多加一次往返），那时它恒为 `None`
+///   而本函数在那一路也不看它。
+///
+/// 四态各自的含义住 [`TargetBinary`] 的成员注释，映射规则住下面这个 `match`
+/// —— 两处都不在散文里复述第二份。
+pub(crate) fn interpret_target_probe(
+    metadata_size: Option<Option<u64>>,
+    exists: Option<bool>,
+) -> TargetBinary {
+    match metadata_size {
+        Some(Some(0)) => TargetBinary::Empty,
+        // 服务器不给 size（`Some(None)`）≠ 0 字节：存在是确定的，别把「没说」读成「空」。
+        Some(_) => TargetBinary::Present,
+        None => match exists {
+            Some(false) => TargetBinary::Missing,
+            Some(true) => TargetBinary::Present,
+            None => TargetBinary::Unknown,
+        },
+    }
+}
+
+/// [`deploy_decision_at`] 的异步取样：**只问落点那个文件在不在 / 有没有字节**。
+///
+/// 不 `read` 它 —— 那是 2.3 MB 的二进制，为判存在把它拉回来是白花带宽；
+/// `metadata` 一次往返就够。取样与判定分开（纯函数可单测）是本模块既有的形状，
+/// 见 [`read_profile_text`] / [`interpret_profile_read`]；本函数只取样，
+/// 四态怎么映射住 [`interpret_target_probe`]。
+///
+/// `metadata` 失败才补问 `try_exists`：要区分「明确不在」与「问不出来」，
+/// 而这两者在 `metadata` 的 `Err` 里长得一模一样。
+async fn probe_target_binary(sftp: &SftpSession, path: &str) -> TargetBinary {
+    let metadata_size = sftp
+        .metadata(path.to_string())
+        .await
+        .ok()
+        .map(|attrs| attrs.size);
+    let exists = match metadata_size {
+        // `metadata` 成功就够判了，不多问一次。
+        Some(_) => None,
+        None => sftp.try_exists(path.to_string()).await.ok(),
+    };
+    interpret_target_probe(metadata_size, exists)
+}
+
+/// 探测远端 CPU 架构（`uname -m`）以选对应的内嵌 daemon 二进制（F08b）。一次性 exec。
+async fn probe_remote_arch(cfg: &RemoteConfig) -> Result<String, String> {
+    use tokio::io::{AsyncBufReadExt, BufReader};
+    let stream = crate::ssh_source::connect_and_exec_cmd(cfg, "uname -m").await?;
+    let mut reader = BufReader::new(stream);
+    let mut line = String::new();
+    reader
+        .read_line(&mut line)
+        .await
+        .map_err(|e| format!("读 uname -m 失败: {e}"))?;
+    let arch = line.trim().to_string();
+    if arch.is_empty() {
+        return Err("uname -m 空输出".to_string());
+    }
+    Ok(arch)
+}
+
+/// 连接前确保远端 daemon 已（自动）部署到 `cfg.daemon_path`（issue #29）。
+///
+/// 流程：① S-2 守卫（daemon_path 含 `~` → 跳过，SFTP 不展开 `~`）；② 探测远端 arch 选内嵌
+/// 二进制（[`daemon_binary`]）——无对应 arch 内嵌（F08b 未嵌入该 arch）则**优雅 no-op**；
+/// ③ 开 SFTP、读版本标记、[`deploy_decision`]、需要则 mkdir -p + 原子上传 + 写标记。
+///
+/// **best-effort**：调用方（ssh_source::run）对 Err 仅 warn 不阻断——手动部署的 daemon 仍可连。
+/// 返回值（Batch7-F24）：`Ok(Some(build_id))` = 已**确认**远端 daemon 版本
+/// （Deploy 成功或 Skip-版本相符）；`Ok(None)` = 无法确认（`~` 路径 / arch 探测失败 /
+/// 无内嵌二进制等 no-op 路径——手动部署的 daemon，版本未知）。调用方据此决定
+/// 是否传新版才认识的流模式参数（如 `--with-bg`）——未确认一律降级不传，
+/// 避免旧 daemon 把未知参数当一次性查询处理后退出（无 hello 死循环）。
+pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>, String> {
+    // S-2（审计）：SFTP 无 shell 不展开 `~`，而 daemon exec 路径会展开——daemon_path 含 `~`
+    // 会两边错位。含 `~` 直接跳过自动部署（用户应填绝对路径），手动部署的 daemon 仍可连。
+    if cfg.daemon_path.contains('~') {
+        tracing::debug!(
+            "daemon_path 含 ~（SFTP 不展开），跳过自动部署：{}",
+            cfg.daemon_path
+        );
+        return Ok(None);
+    }
+    // 探测 arch 选内嵌二进制；探测失败 / 无该 arch 内嵌 → 优雅 no-op（沿用手动部署）。
+    let arch = match probe_remote_arch(cfg).await {
+        Ok(a) => a,
+        Err(e) => {
+            tracing::debug!("远端 arch 探测失败，跳过自动部署: {e}");
+            return Ok(None);
+        }
+    };
+    let Some(bin) = daemon_binary(&arch) else {
+        tracing::debug!("无 {arch} 的内嵌 daemon 二进制（F08b 未嵌入该 arch?），跳过自动部署");
+        return Ok(None);
+    };
+    // 🔴 `K-R70`：**把这几 MB 字节推到别人机器上之前，先让它自己说一遍它是谁。**
+    //
+    // 〔墓碑 —— 原来这里逐字写着：「首选 .build_id 清单（bin.build_id 即字节真实身份）……
+    //  无清单（旧产物）时才用 bytes_contain 启发式兜底——注意它可能误拒正品」，
+    //  条件是 `!bin.id_from_manifest && !bytes_contain(bin.bytes, bin.build_id.as_bytes())`。
+    //  两处病：① 括号里那句「清单即字节真实身份」是假的（清单从源码常量抄，见 `K-R68`）；
+    //  ② 有清单时这道闸**整个跳过** ⇒ 真正会出事的那一形（有人手工塞了别的字节、
+    //  清单照旧）恰恰不检查。〕
+    //
+    // 今天判据**无条件**跑，而且不再是启发式：戳是一段 `#[used] static [u8; N]`，
+    // 连续、拆不成立即数（daemon 侧 `CC_MONITOR_BUILD_STAMP`）。
+    if !bytes_carry_build_stamp(bin.bytes, bin.build_id) {
+        tracing::warn!(
+            "内嵌 daemon 的字节里问不出 `{}` 这个身份戳——按身份未知跳过自动部署\
+             （这份字节不是这套源码编出来的，或它太旧、还没有身份戳；重跑 zigbuild 重铺）",
+            bin.build_id
+        );
+        return Ok(None);
+    }
+    let conn = connect_sftp(cfg).await?;
+    let sftp = &conn.sftp;
+
+    let marker = marker_path(&cfg.daemon_path);
+    let remote_id = read_optional(sftp, &marker)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).trim().to_string());
+    // K-W4 §0c：标记是目录级的，光凭它判 Skip 会在「标记还在、二进制没了」时静默跳过。
+    let target = probe_target_binary(sftp, &cfg.daemon_path).await;
+
+    match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
+        DeployAction::Skip => {
+            tracing::info!(
+                "远端 [{}] daemon 已是 {}，跳过部署",
+                cfg.origin_label(),
+                bin.build_id
+            );
+        }
+        DeployAction::Deploy(reason) => {
+            tracing::info!(
+                "远端 [{}] 自动部署 daemon（{reason}）→ {}",
+                cfg.origin_label(),
+                cfg.daemon_path
+            );
+            ensure_dir_all(sftp, remote_parent(&cfg.daemon_path)).await;
+            upload_atomic_verified(sftp, &cfg.daemon_path, bin.bytes, 0o700).await?;
+            upload_atomic(sftp, &marker, bin.build_id.as_bytes(), 0o600).await?;
+            tracing::info!(
+                "远端 [{}] daemon 部署完成：{}",
+                cfg.origin_label(),
+                bin.build_id
+            );
+        }
+    }
+    Ok(Some(bin.build_id.to_string()))
+}
+
+/// 朴素子串搜索（8MB × 16B 一次性毫秒级；不为此引 memchr 依赖）。
+fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
+    !needle.is_empty() && haystack.windows(needle.len()).any(|w| w == needle)
+}
+
+/// 🔴 `K-R70`：**这份字节自己说得出它是 `build_id` 吗** —— 不看它旁边任何文件。
+///
+/// 找的是 daemon 那侧那段 `#[used] static CC_MONITOR_BUILD_STAMP`：
+/// `<开>` ＋ `BUILD_ID` ＋ `<关>`，两个界标的**唯一住址**在
+/// `src/backend/main.rs`（`BUILD_STAMP_OPEN` / `BUILD_STAMP_CLOSE`），
+/// 由 `build.rs` 抠出来经 `DAEMON_STAMP_OPEN` / `DAEMON_STAMP_CLOSE` 交到这里
+/// ⇒ 本文件里**不许出现那两个字面量**
+/// （`the_embedded_identity_comes_from_the_bytes_not_from_a_label` 在数它）。
+///
+/// # 它买到的与买不到的
+///
+/// ✅ 买到：「这份字节是不是 `build_id` 那一次构建的产物」——**戳与字节同生共死**，
+///    改一份旁文件、换一张清单都动不了它。
+/// ⚠ 买不到：**防篡改**。谁都能往一段字节里塞一个假戳。它防的是漂移与手滑
+///    （拿错文件 / 铺了旧产物 / 只 bump 源码没重编），不防恶意 —— 那要签名，不是戳。
+pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
+    if build_id.is_empty() {
+        return false;
+    }
+    let stamp = format!(
+        "{}{build_id}{}",
+        env!("DAEMON_STAMP_OPEN"),
+        env!("DAEMON_STAMP_CLOSE")
+    );
+    bytes_contain(bytes, stamp.as_bytes())
+}
+
+/// 按远端 arch 选内嵌的 daemon 二进制（F08b）。build.rs 把交叉编译的 musl 二进制复制进
+/// OUT_DIR 并置 `embedded_daemons` cfg 时，这里 `include_bytes!` 内嵌并按 arch 返回；二进制
+/// 未就位（无 cfg）→ 返回 None（ensure_daemon_deployed 优雅跳过，沿用手动部署）。
+/// `build_id` 取编译期 env —— 🔴 `K-R70` 起那个 env 由 `build.rs` **从二进制字节里扫出来**。
+pub fn daemon_binary(arch: &str) -> Option<&'static DaemonBinary> {
+    #[cfg(embedded_daemons)]
+    {
+        // 🔴 `K-R70`：`DAEMON_EMBEDDED_ID_<ARCH>` = `build.rs` 从**这份字节**里扫出的身份戳。
+        //
+        // 〔墓碑 —— 原来这里有一个 `pick()`：清单为空就退回 `env!("DAEMON_BUILD_ID")`（源码 id）。
+        //  那是「问不出来就拿源码的答案顶上」——把一个失败面换成一个假答案（`brief` 里
+        //  `sidecar_fetch_guard` 那张禁词表逐字点名的第三条）。今天它不需要了：
+        //  `build.rs` 在**任一 arch 的字节里扫不出身份时当场 panic**，扫得出才置
+        //  `embedded_daemons` cfg ⇒ 走到这里的路径上，这两个 env 结构上不可能是空串。
+        //  「结构上不可能」不许当成不检查的理由 ⇒ 下面 `deploy_embedded_daemon` 出门前
+        //  仍无条件跑一遍 `bytes_carry_build_stamp`，本文件的判据也钉住这两处取值口。〕
+        //
+        // 身份与期望（`EXPECTED_DAEMON_BUILD_ID` = 源码）**仍然分离**：陈旧内嵌 =
+        // 身份 p1f ≠ 期望 p1g → 部署照做（远端至少拿到 p1f）但 confirmed=p1f
+        // → 降级不传新 flag，比「拒部署」更平滑。
+        static X86: DaemonBinary = DaemonBinary {
+            build_id: env!("DAEMON_EMBEDDED_ID_X86_64"),
+            bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-x86_64")),
+        };
+        static ARM: DaemonBinary = DaemonBinary {
+            build_id: env!("DAEMON_EMBEDDED_ID_AARCH64"),
+            bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-aarch64")),
+        };
+        match arch {
+            "x86_64" | "amd64" => Some(&X86),
+            "aarch64" | "arm64" => Some(&ARM),
+            _ => None,
+        }
+    }
+    #[cfg(not(embedded_daemons))]
+    {
+        let _ = arch;
+        None
+    }
+}
+
+// ============================================================================
+// F08c：手动安装 / 卸载 daemon（设置面板两个按钮）。安装逻辑同自动部署、但返回人读结果；
+// 卸载删 daemon 二进制 + 同目录 .build_id（is_safe_remote_daemon_path 守卫）。
+// ============================================================================
+
+/// 远端受管路径的安全谓词。**T04 审计⑤：两个消费者、5 个条件里 4 个逐字相同，
+/// 只差"必须含哪个标记词"** —— 正好达到我为 `fenced_block::find_pair` 立的 ≥2 门槛，
+/// 所以按同一把尺子抽出来（`acct_iso_deploy::is_safe_remote_acct_iso_dir` 是第 2 个消费者）。
+///
+/// 判据：非空 · 绝对路径 · 不含 `..` · 不是根 · 含 `markers` 里任一标记词。
+/// 最后一条是**防误删的关键**：它把"这是 cc-monitor 管的目录"变成路径本身的性质，
+/// 而不是靠调用方记得。
+pub(crate) fn is_safe_remote_managed_path(path: &str, markers: &[&str]) -> bool {
+    let p = path.trim();
+    !p.is_empty()
+        && p.starts_with('/')
+        && !p.contains("..")
+        && p != "/"
+        && markers.iter().any(|m| p.contains(m))
+}
+
+/// 远端 daemon 路径安全守卫（卸载用，纯函数可单测）：绝对、无 `..`、非根、且含 `cc-monitor`
+/// （约定 `~/.cc-monitor/bin/cc-monitor-remote`）—— 杜绝把卸载误用成删任意远端文件。
+fn is_safe_remote_daemon_path(path: &str) -> bool {
+    is_safe_remote_managed_path(path, &["cc-monitor"])
+}
+
+/// 手动安装 / 更新远端 daemon（设置面板「安装 daemon」按钮）。逻辑同自动部署
+/// [`ensure_daemon_deployed`]，但**返回人读结果**，且把自动部署里「优雅跳过」的几种情况
+/// （路径含 `~` / 探测不到 arch / 无该 arch 内嵌）显式报错——手动触发时用户要反馈。
+#[tauri::command]
+pub async fn deploy_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {
+    let path = cfg.daemon_path.trim().to_string();
+    if path.is_empty() {
+        return Err(
+            "请先填 daemon 路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-remote）"
+                .into(),
+        );
+    }
+    if path.contains('~') {
+        return Err("daemon 路径含 ~（SFTP 不展开 ~），请改用绝对路径".into());
+    }
+    let arch = probe_remote_arch(&cfg)
+        .await
+        .map_err(|e| format!("探测远端架构失败（uname -m）: {e}"))?;
+    let Some(bin) = daemon_binary(&arch) else {
+        return Err(format!(
+            "本 monitor 构建未内嵌 {arch} 架构的 daemon，无法一键安装。请用内嵌了该架构的发布版，或手动把 daemon 放到 {path}。"
+        ));
+    };
+    let conn = connect_sftp(&cfg).await?;
+    let sftp = &conn.sftp;
+    let marker = marker_path(&path);
+    let remote_id = read_optional(sftp, &marker)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).trim().to_string());
+    // K-W4 §0c：手动「安装 daemon」按钮此前也只看标记 —— 落点文件被删/截断时，
+    // 它会对着一个不存在的文件回「已是最新，无需重装」。同一条病，同一处修法。
+    let target = probe_target_binary(sftp, &path).await;
+    match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
+        DeployAction::Skip => Ok(format!(
+            "远端已是最新 daemon（{}，{arch}）：{path}，无需重装。",
+            bin.build_id
+        )),
+        DeployAction::Deploy(reason) => {
+            ensure_dir_all(sftp, remote_parent(&path)).await;
+            upload_atomic_verified(sftp, &path, bin.bytes, 0o700).await?;
+            upload_atomic(sftp, &marker, bin.build_id.as_bytes(), 0o600).await?;
+            tracing::info!(
+                "远端 [{}] 手动部署 daemon 完成：{}",
+                cfg.origin_label(),
+                bin.build_id
+            );
+            Ok(format!(
+                "已安装 daemon（{}，{arch}）到 {path}（{reason}）。重连远端即可用。",
+                bin.build_id
+            ))
+        }
+    }
+}
+
+/// 卸载远端 daemon（设置面板「卸载 daemon」按钮）：删 daemon 二进制 + 同目录 `.build_id`。
+/// [`is_safe_remote_daemon_path`] 守卫。只读铁律豁免（SS-G）：用户显式触发的删。
+/// 注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
+#[tauri::command]
+pub async fn uninstall_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {
+    let path = cfg.daemon_path.trim().to_string();
+    if path.contains('~') {
+        return Err("daemon 路径含 ~（SFTP 不展开），请改用绝对路径后再卸载".into());
+    }
+    if !is_safe_remote_daemon_path(&path) {
+        return Err(format!(
+            "拒绝删除可疑 daemon 路径（须为含 cc-monitor 的绝对路径、无 ..）: {path}"
+        ));
+    }
+    let conn = connect_sftp(&cfg).await?;
+    let sftp = &conn.sftp;
+    let marker = marker_path(&path);
+    let mut removed = Vec::new();
+    for f in [path.clone(), marker.clone()] {
+        if sftp.remove_file(f.clone()).await.is_ok() {
+            removed.push(f);
+        }
+    }
+    tracing::info!(
+        "远端 [{}] 卸载 daemon：删除 {removed:?}",
+        cfg.origin_label()
+    );
+    if removed.is_empty() {
+        Ok(format!(
+            "没有可删的 daemon 文件（{path} 及其 .build_id 都不在，可能已卸载）。"
+        ))
+    } else {
+        Ok(format!(
+            "已删除 {} 个文件：{}。注意：若本机器仍勾选「启用」，自动部署会在下次连接时把 daemon 装回——彻底移除请取消该机器启用 / 删除该机器后重启 monitor。",
+            removed.len(),
+            removed.join("、")
+        ))
+    }
+}
+
+// ============================================================================
+// F11：远端用户数据写（删除远端历史 jsonl）。SS-G item 3 的唯一 SFTP 用户数据写。
+// ============================================================================
+
+/// 远端历史 jsonl 删除路径的安全守卫（纯函数，可单测）。
+///
+/// 仅允许删除**远端 claude_dir 下符合会话 jsonl 结构的文件**。会话 jsonl 的真实结构恒为
+/// `<claude_dir>/projects/<encoded_cwd 单层目录>/<sid>.jsonl`，故要求：
+/// - 不含 `..`（防上跳）；
+/// - 最后一个 `/projects/` 之后**正好是 `<一层目录>/<name>.jsonl`**（split 后恰 2 段、
+///   首段非空非 `.`、末段以 `.jsonl` 结尾且不只是 `.jsonl`）。
+///
+/// 这比裸 `contains("/projects/")` 强：挡住 `/tmp/projects/x.jsonl`（projects 下直接放
+/// jsonl）、`/a/projects/b/c/x.jsonl`（层级不符）这类伪造路径；且**不硬编码 `.claude`**，
+/// 兼容 `CLAUDE_CONFIG_DIR` 自定义目录（审计 S-1：`/.claude/projects/` 会误伤自定义目录）。
+///
+/// 残留（审计登记，后续加固）：完全锚定需远端 daemon 上报的 `claude_dir`（一次性删除连接
+/// 无 hello）。但威胁仅「**已被攻陷的 daemon** 喂伪造路径」——而被攻陷 daemon 本就能在远端
+/// 任意删文件，monitor 删一个 `projects/*.jsonl` 不增加其能力（非提权）；叠加用户**二次确认**，
+/// 残留风险为纵深防御层面。
+pub fn is_safe_remote_jsonl(path: &str) -> bool {
+    if path.contains("..") || !path.ends_with(".jsonl") {
+        return false;
+    }
+    let Some(idx) = path.rfind("/projects/") else {
+        return false;
+    };
+    let rest = &path[idx + "/projects/".len()..];
+    let parts: Vec<&str> = rest.split('/').collect();
+    parts.len() == 2
+        && !parts[0].is_empty()
+        && parts[0] != "."
+        && parts[1].len() > ".jsonl".len()
+        && parts[1].ends_with(".jsonl")
+}
+
+/// 删除远端文件（issue 未拆，F11）：**仅**用于用户主动删除远端历史 jsonl。
+///
+/// 双重守卫：① 入参先过 [`is_safe_remote_jsonl`]；② SFTP `canonicalize`（realpath，解 symlink）
+/// 后**再**校验 canonical 仍含 `/projects/` 且以 `.jsonl` 结尾——挡住 projects/ 内指向外部的
+/// symlink 逃逸。只读铁律豁免（SS-G）：仅此一处对远端 `~/.claude/` 的写，且用户显式触发。
+pub async fn remove_remote_file(cfg: &RemoteConfig, remote_path: &str) -> Result<(), String> {
+    if !is_safe_remote_jsonl(remote_path) {
+        return Err(format!(
+            "拒绝删除非法远端路径（须为 projects/ 下 .jsonl）: {remote_path}"
+        ));
+    }
+    let conn = connect_sftp(cfg).await?;
+    let sftp = &conn.sftp;
+    // realpath 解析 symlink 后二次校验，防 projects/ 内 symlink 指向外部文件。
+    let canon = sftp
+        .canonicalize(remote_path.to_string())
+        .await
+        .map_err(|e| format!("解析远端路径失败: {e}"))?;
+    if !is_safe_remote_jsonl(&canon) {
+        return Err(format!(
+            "拒绝删除：canonical 路径越出 projects/ 或非 jsonl: {canon}"
+        ));
+    }
+    sftp.remove_file(canon.clone())
+        .await
+        .map_err(|e| format!("删除远端文件失败: {e}"))?;
+    tracing::info!("远端 [{}] 已删除历史会话: {canon}", cfg.origin_label());
+    Ok(())
+}
+
+// ============================================================================
+// F10：远端 cc/bash 集成——一键把 ccm wrapper 装进远端 ~/.bashrc（SS-H）。
+// 写 ~/.bashrc 不是 Claude 数据（不触 INVARIANT §1），与本地 PowerShell profile 安装同性质。
+// ============================================================================
+
+/// 远端 ccm 块的 BEGIN/END 标记（镜像本地 profile_installer 的 `# === cc-monitor BEGIN/END`）。
+/// 重装时整块替换、卸载时整块删；用户在块外的内容绝不动。
+///
+/// ⚠ `K-R62` 起是 `pub(crate)`：**本机 POSIX 那条路装的是同一个块**
+/// （`profile_installer::plan_install` 的 `PosixRc` 臂走 [`merge_profile_block`]）。
+/// 在那边抄一对同样的字符串就是第二个住址 —— 而「同一件事有两个住址」正是
+/// `KR62D1` 那条「不许变成第四套」要挡的东西。名字里的 `remote` 是历史，
+/// 今天它的意思是「**POSIX rc 里那一对围栏**」，本机远端共用。
+pub(crate) const CCM_PROFILE_BEGIN: &str = "# === cc-monitor remote ccm BEGIN ===";
+pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
+
+/// 远端 ↗ 拉前用的 `ccm` wrapper（**后端拥有**，install 写它而非前端传入——见审计 S-1：
+/// 写进 ~/.bashrc 的是被 shell **执行**的代码，绝不能让前端注入任意 bash）。
+///
+/// **必须与前端 `remote-section.ts::CCM_WRAPPER_SNIPPET`（面板展示/手动复制用）逐字一致。**
+/// **单一来源**：`src/shared/ccm-aliases.sh`——前端 `remote-section.ts` 经 `?raw` import
+/// 同一文件（修复历史漂移：Batch7 重构时只改了前端展示版，装进远端的还是老版）。
+///
+/// **F02 起本块只剩「别名层」**；`K-R48` 第二拍起它指向的那个 `ccm` 是 [`ccm_entry_shim`]
+/// （三行入口，转给后端本体），不再是一份 bash 实现。
+/// 理由：shell 函数**优先于 PATH**，装成函数则与用户已有同名函数硬冲突且必然被遮蔽（实测）；
+/// 且远端是 zsh/fish 时 `.bashrc` 根本不被 source，函数形态拿不到（审计 D2）。
+/// ⚠ `K-R49` 起它是 `pub(crate)`：`account_aliases::collision_note` 要问
+/// 「`cc` / `cct` 这几个名字是不是已经被自带的别名块占了」，
+/// 而那个答案**只有这份文件说了算** —— 在那边抄一份名字清单就是第二个住址。
+/// 〔`K-R58` 09-11：`cch` 从这份文件里删了 ⇒ 它**不再**被当作「已被占用」，
+/// 用户可以自己定义一个 `cch`。**多一格自由，不是回归。**〕
+pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-aliases.sh");
+
+/// 自带别名块里**今天定义了哪几个名字** —— 现算，不写死（`13b`：闭集只许有一个住址，
+/// 那个住址就是 `src/shared/ccm-aliases.sh` 自己）。
+///
+/// `account_aliases` 的撞名判据与本文件的文档对账判据都拿它当人群，
+/// 于是「删/加一个别名」这件事**不需要同时去改两份名单**（改漏一份正是 `KR58D1`
+/// 的失效方向）。
+///
+/// 🔴 〔`K-R62` 09-11〕**它从 `#[cfg(test)]` 转正了**，因为多了一个生产使用者：
+/// `profile_installer::render_manual_cleanup_hint` 要回答「你 rc 里那几行裸的
+/// `cc()` / `cct()`，会不会把我们装的那一块遮蔽掉」—— 那个答案**只有这份文件说了算**，
+/// 在提示文案里抄一份名字清单就是第二个住址。转正**没有放宽任何东西**：
+/// 它仍然现算自 [`CCM_WRAPPER_SNIPPET`]，一个字节的名单都没写死。
+///
+/// ⚠ **它认的形状写死在这里**：`<名>() {`（`()` 与 `{` 之间允许空白）。
+/// 注释行里那两条示例（`#   zcc()  { … }`）靠「名字只许 `[A-Za-z0-9_]`」被剔掉 ——
+/// 换一种写法（`function cc {`）它会**漏**，而漏出来的形状是「人群变空」，
+/// 调用处一律先断 `!is_empty()`，不让它静默变成空真。
+pub(crate) fn builtin_alias_names() -> Vec<&'static str> {
+    let mut v: Vec<&'static str> = CCM_WRAPPER_SNIPPET
+        .lines()
+        .filter_map(|l| {
+            let (name, rest) = l.split_once("()")?;
+            if !rest.trim_start().starts_with('{') {
+                return None;
+            }
+            let name = name.trim();
+            (!name.is_empty() && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+                .then_some(name)
+        })
+        .collect();
+    v.sort_unstable();
+    v.dedup();
+    v
+}
+
+/// 🔴 **`K-R48` 第二拍（09-11）：`CCM_CLI_SCRIPT` 没了，这里是它的墓碑。**
+///
+/// 原来这一行是 `pub(crate) const CCM_CLI_SCRIPT: &str = include_str!("../../shared/ccm");`
+/// —— 把那个 1592 行的 bash 启动器整份编进产物，再 SFTP 推到远端 `~/.local/bin/ccm`。
+/// 〔用@09-11 `K33`〕逐字：「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。
+/// **所有命令只许有一处**，其他都是**根据传参来调用**」⇒ 那个文件删了。
+///
+/// **`KR48D1` 盯的就是这一行**：那句 `include_str!` 在 = 脚本仍是产品的一部分。今天 0。
+///
+/// 远端那份 `~/.local/bin/ccm` 换成 [`ccm_entry_shim`] —— **三行、零实现**，
+/// 只把 argv 原样转给已经部署好的后端（`intercept` 的第二条入口 `<bin> ccm <argv…>`）。
+fn _kr48d1_tombstone() {}
+
+/// 远端 `~/.local/bin/ccm` 的内容：**一个入口，不是一份实现**。
+///
+/// 🔴 **`K-R69` 09-12：这个生成器搬到了 `backend/control/local_backend.rs`。**
+/// 理由是它有了**第二个读者** —— 本机也要一条 `ccm` 入口，而「本机那条与远端那条同源」
+/// 这句话只有在两边取自**同一处**时才是结构性的（各写一份就只是巧合，而巧合会漂）。
+/// ⇒ 本文件不再自己拼那三行，改成调它；`ccm` 这个词的唯一住址是
+/// [`crate::backend::control::local_backend::CCM_ENTRY_WORD`]。
+/// 头注（不许有第二个 `case` / 为什么不是软链）逐字跟着搬过去了，别在这里再写一份。
+use crate::backend::control::local_backend::ccm_entry_shim;
+
+/// CLI 在远端的落点（SFTP 相对路径 = home 相对）。
+const CCM_CLI_REMOTE_PATH: &str = ".local/bin/ccm";
+
+/// 纯函数：把 `snippet` 合进 profile 内容的 BEGIN/END 块（可单测）。
+/// - 已有**配对**块（BEGIN 后能找到 END）→ **整块替换**（幂等：`merge(merge(x))==merge(x)`）。
+/// - 无 BEGIN → **追加**（块外内容原样保留）。
+/// - **有 BEGIN 但其后无 END（损坏/截断/上次安装中断）→ `Err` 中止**（审计 B1：绝不用独立
+///   `find` 误配前面的 END 而吞掉用户内容；宁可报错让用户手修，也不破坏文件）。
+pub fn merge_profile_block(existing: &str, snippet: &str, what: &str) -> Result<String, String> {
+    // **T04 第二步：配对判定改走 `fenced_block::find_pair`，与本机 profile 共用同一条规则。**
+    //
+    // **更正我原话「判定本身是对的…判定没变」——被实测证伪，9 个边界里 3 个变了**
+    // （T04 审计②，它把旧 byte-find 实现逐字复制成 `old_merge` 并列对拍）：
+    //   1. **行内 marker**（用户 profile 里有 `echo "…BEGIN…"` / `echo "…END…"`）：
+    //      旧实现会**切断那个 echo 行、并把第二个 echo 行整行吃掉** —— 远端侧一个
+    //      **我未申报就修掉了的数据丢失**。新实现按行 `trim_start().starts_with` 判，改成追加。
+    //   2. **BEGIN 与 END 同一行**：旧能正确替换该行 → 新直接 Err（`find_pair` 认到 BEGIN
+    //      就 `continue`，同行的 END 被跳过）。**这是退化**，虽符合"宁可报错"但当时未文档化未测试。
+    //   3. **缩进 marker**：旧"保留 BEGIN 行缩进、丢 END 缩进"（不自洽）→ 新统一归一到列 0。
+    // 三条现在都有测试锁死（见 `remote_merge_boundary_semantics_after_migration`）。
+    //
+    // 原实现是自己 `find(BEGIN)` 再在其后 `find(END)`——
+    // 但本机侧漏了同一道保护，于是两侧对"围栏损坏"处置不一致、本机那边会**吃掉用户内容**。
+    // 现在两侧同一个函数，判定不可能再漂移。
+    let block = format!(
+        "{CCM_PROFILE_BEGIN}\n{}\n{CCM_PROFILE_END}\n",
+        snippet.trim()
+    );
+    match crate::fenced_block::find_pair(existing, CCM_PROFILE_BEGIN, CCM_PROFILE_END, what)? {
+        Some((begin_line, end_line)) => {
+            // 行下标 → 字节切片：`split_inclusive('\n')` 与 `.lines()` 索引一致
+            let lines: Vec<&str> = existing.split_inclusive('\n').collect();
+            let before: String = lines[..begin_line].concat();
+            let after: String = if end_line + 1 < lines.len() {
+                lines[(end_line + 1)..].concat()
+            } else {
+                String::new()
+            };
+            Ok(format!("{before}{block}{after}"))
+        }
+        None => {
+            // 无块 → 追加（原内容不以换行结尾则补一个，保证块独占起行）。
+            let mut out = existing.to_string();
+            if !out.is_empty() && !out.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(&block);
+            Ok(out)
+        }
+    }
+}
+
+/// 纯函数：从 profile 内容删掉 cc-monitor 的 BEGIN/END 块（可单测）。
+/// - 有**配对**块（BEGIN 后找得到 END）→ 整块删，块前后用户内容原样保留。
+/// - 无 BEGIN，或 BEGIN 后无 END（损坏）→ **原样返回**（宁可不删也不破坏文件）。
+pub fn strip_profile_block(existing: &str, what: &str) -> Result<String, String> {
+    // **T04 审计阻塞：这里原先没迁移，于是「卸」那半边被我从"两侧一致"改成了"两侧不一致"。**
+    // 原实现在悬空 BEGIN 时 `return existing.to_string()` → 调用方判 `stripped == existing`
+    // → 打印「远端 {profile} 里没有 ccm 块，无需卸载」。**那正是我在同一个 commit 里
+    // 定义为 bug 的形态**，而且比本机那边更糟：它主动告诉用户"没问题"。
+    //
+    // 更要紧的是这是我**新造的漂移**：`af21ffb~1` 时两侧卸载都"原样返回"（一致），
+    // `af21ffb` 之后本机 Err、远端静默 no-op（不一致）。我 commit 里那句
+    // 「两侧不可能再漂移」**只对 install 半边成立，对 uninstall 半边方向相反**。
+    // 现在两侧的装与卸四条路全走 `find_pair`。
+    let Some((begin_line, end_line)) =
+        crate::fenced_block::find_pair(existing, CCM_PROFILE_BEGIN, CCM_PROFILE_END, what)?
+    else {
+        return Ok(existing.to_string());
+    };
+    let lines: Vec<&str> = existing.split_inclusive('\n').collect();
+    let before: String = lines[..begin_line].concat();
+    let after: String = if end_line + 1 < lines.len() {
+        lines[(end_line + 1)..].concat()
+    } else {
+        String::new()
+    };
+    Ok(format!("{before}{after}"))
+}
+
+/// 卸载远端 ccm 助手（设置面板「卸载 ccm」按钮）：从 profile 删 BEGIN/END 块。
+/// 镜像 [`install_remote_ccm_helper`]：read → `strip_profile_block` → 无变化 no-op；否则
+/// **先备份**（timestamped `.ccm-backup-<ms>`）→ 写 → **读回精确比对**，不符则回滚。
+#[tauri::command]
+pub async fn uninstall_remote_ccm_helper(
+    cfg: RemoteConfig,
+    profile: String,
+) -> Result<String, String> {
+    let profile = {
+        let p = profile.trim();
+        if p.is_empty() {
+            ".bashrc".to_string()
+        } else {
+            p.to_string()
+        }
+    };
+    if profile.contains('/') || profile.contains('\\') || profile.contains("..") {
+        return Err("profile 只能是 home 下的文件名（如 .bashrc / .zshrc）".to_string());
+    }
+
+    let conn = connect_sftp(&cfg).await?;
+    let sftp = &conn.sftp;
+
+    let what = format!("远端 ~/{profile}");
+    // fail-safe 读取（见 `interpret_profile_read`）：读不出来 → `?` 中止，**不再**回
+    // 「没有 ccm 块，无需卸载」。
+    let Some(existing) = read_profile_text(sftp, &profile, &what).await? else {
+        return Ok(format!("远端 {profile} 不存在，没有 ccm 块可卸载。"));
+    };
+    let stripped = strip_profile_block(&existing, &what)?;
+    if stripped == existing {
+        return Ok(format!("远端 {profile} 里没有 ccm 块，无需卸载。"));
+    }
+
+    let ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let backup = format!("{profile}.ccm-backup-{ms}");
+    upload_atomic(sftp, &backup, existing.as_bytes(), 0o600)
+        .await
+        .map_err(|e| format!("备份远端 {profile} 失败（未改动原文件）: {e}"))?;
+
+    upload_atomic(sftp, &profile, stripped.as_bytes(), 0o644)
+        .await
+        .map_err(|e| format!("写远端 {profile} 失败: {e}"))?;
+
+    // T01：判定走统一的 `verify_readback`（与本机侧同一套语义与措辞）。
+    // **「读不回来」与「内容不符」要分开报**：原先 `unwrap_or_default()` 把读失败变成空串，
+    // 于是 SSH 抖一下会被报成"内容与期望不符"，把用户往错误方向引。
+    let verify = read_optional(sftp, &profile)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).into_owned());
+    let Some(verify) = verify else {
+        let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
+        return Err(format!(
+            "写后读不回 {profile}（无法确认写对了），已尝试回滚原文件。"
+        ));
+    };
+    if let crate::verified_write::WriteVerdict::Mismatch { detail } =
+        crate::verified_write::verify_readback(&stripped, &verify)
+    {
+        let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
+        return Err(format!("写后校验失败：{detail} 已尝试回滚原文件。"));
+    }
+
+    tracing::info!("远端 [{}] 已卸载 ccm 助手（{profile}）", cfg.origin_label());
+    Ok(format!(
+        "已从远端 {profile} 删除 ccm 块（原文件已备份为 {backup}）。"
+    ))
+}
+
+/// 一键把 `ccm` wrapper 装进远端 bash profile（F10，SS-H）。
+///
+/// `profile` 默认 `.bashrc`（SFTP 相对路径解析到 home；拒 `/`、`\`、`..` 防写 home 外）。
+/// 写入的 snippet 是**后端拥有**的 [`CCM_WRAPPER_SNIPPET`]（审计 S-1：不接受前端传入可执行
+/// bash）。安全范式镜像本地 `profile_installer`：read → `merge_profile_block`（损坏块 → Err
+/// 中止，绝不吞内容）→ 相同则 no-op；否则**先备份**（timestamped `.ccm-backup-<ms>`）→ 写 →
+/// **读回精确比对**（== merged，比仅查 BEGIN 强，兼防传输损坏）→ 失败**回滚**原文件。
+///
+/// 注：profile 统一写 `0o644`（.bashrc 惯例）；若用户原本 `chmod 600`，重装会归一到 644。
+#[tauri::command]
+pub async fn install_remote_ccm_helper(
+    cfg: RemoteConfig,
+    profile: String,
+) -> Result<String, String> {
+    let profile = {
+        let p = profile.trim();
+        if p.is_empty() {
+            ".bashrc".to_string()
+        } else {
+            p.to_string()
+        }
+    };
+    if profile.contains('/') || profile.contains('\\') || profile.contains("..") {
+        return Err("profile 只能是 home 下的文件名（如 .bashrc / .zshrc）".to_string());
+    }
+
+    let conn = connect_sftp(&cfg).await?;
+    let sftp = &conn.sftp;
+
+    // ① 先部署 CLI 本体（0755 可执行文件）。**先于写 profile**——别名块引用 `ccm`，
+    //    若先写块再部署失败，用户会拿到一堆指向不存在命令的别名。
+    //    逐级建目录（相对 home；`ensure_dir_all` 走绝对路径，这里用相对，故手动逐级）。
+    //    已存在时 create_dir 失败——容忍，真正的失败由下面的 upload 报出来。
+    {
+        let mut cur = String::new();
+        for comp in CCM_CLI_REMOTE_PATH
+            .split('/')
+            .filter(|c| !c.is_empty())
+            .take(
+                CCM_CLI_REMOTE_PATH
+                    .split('/')
+                    .filter(|c| !c.is_empty())
+                    .count()
+                    - 1,
+            )
+        {
+            if !cur.is_empty() {
+                cur.push('/');
+            }
+            cur.push_str(comp);
+            let _ = sftp.create_dir(cur.clone()).await;
+        }
+    }
+    // 🔴 `K-R48` 第二拍：推的不再是那个 1592 行的 bash 启动器，是 [`ccm_entry_shim`]
+    //    —— 三行、零实现，只把 argv 转给**已经部署好的后端**（`ensure_daemon_deployed`
+    //    把它推到 `cfg.daemon_path`，默认约定 `~/.cc-monitor/bin/cc-monitor-remote`）。
+    // ⚠ **入口与后端本体的部署是两条路，这里刻意不合并**：本函数是「装 shell 便捷层」，
+    //   后端本体由连接流程自己保证；合并就等于在这条路上再造一次部署逻辑（第二处实现）。
+    let shim = ccm_entry_shim(&cfg.daemon_path);
+    upload_atomic(sftp, CCM_CLI_REMOTE_PATH, shim.as_bytes(), 0o755)
+        .await
+        .map_err(|e| format!("部署 ccm 入口到远端 ~/{CCM_CLI_REMOTE_PATH} 失败: {e}"))?;
+    // 读回精确比对（兼防传输损坏）——CLI 是可执行文件，写坏比 profile 写坏更危险。
+    let cli_back = read_optional(sftp, CCM_CLI_REMOTE_PATH)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).into_owned());
+    let Some(cli_back) = cli_back else {
+        return Err(format!(
+            "写后读不回 ~/{CCM_CLI_REMOTE_PATH}（无法确认写对了）。未改动 {profile}。"
+        ));
+    };
+    // **登记未改**（T01 §5 P5）：这一处**不回滚**，而另两处回滚。原因是部署前没有取旧 CLI 的
+    // 备份，想回滚得先多一次读往返。留着不动是因为：加备份是这条部署路径上的行为变更，
+    // 而它被 12 条 print-parity + 15 条 acceptance 真机断言盯着，风险/收益不划算。
+    // 但要如实说清后果——见下方错误措辞：**损坏的 CLI 会留在远端**。
+    if let crate::verified_write::WriteVerdict::Mismatch { detail } =
+        crate::verified_write::verify_readback(&shim, &cli_back)
+    {
+        return Err(format!(
+            "ccm 入口写后校验失败：{detail} 未改动 {profile}；\
+             但 ~/{CCM_CLI_REMOTE_PATH} 已被写入且内容不对，请手动删除或重新部署。"
+        ));
+    }
+
+    // ② 再把别名块合进 profile。
+    let what = format!("远端 ~/{profile}");
+    // fail-safe 读取（见 `interpret_profile_read`）：读不出来 → `?` 中止。**这一处最要紧**——
+    // 原先读失败会变成 `existing = ""`，于是下方 `if !existing.is_empty()` 跳过备份、
+    // `merged`（= 只有 ccm 块）整份覆盖用户 `.bashrc`，无任何可恢复副本。
+    let existing = read_profile_text(sftp, &profile, &what)
+        .await?
+        .unwrap_or_default();
+    // 损坏块（BEGIN 无 END）→ merge 返回 Err，直接中止，不动原文件。
+    let merged = merge_profile_block(&existing, CCM_WRAPPER_SNIPPET, &what)?;
+    if merged == existing {
+        return Ok(format!(
+            "ccm CLI 已部署到远端 ~/{CCM_CLI_REMOTE_PATH}；{profile} 的别名块已是最新，无需改动。"
+        ));
+    }
+
+    // 备份原文件（非空才备份），失败则不动原文件直接返回。
+    let mut backup_note = String::new();
+    if !existing.is_empty() {
+        let ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let backup = format!("{profile}.ccm-backup-{ms}");
+        upload_atomic(sftp, &backup, existing.as_bytes(), 0o600)
+            .await
+            .map_err(|e| format!("备份远端 {profile} 失败（未改动原文件）: {e}"))?;
+        backup_note = format!("（原文件已备份为 {backup}）");
+    }
+
+    upload_atomic(sftp, &profile, merged.as_bytes(), 0o644)
+        .await
+        .map_err(|e| format!("写远端 {profile} 失败: {e}"))?;
+
+    // 读回比对：不等于期望内容（写坏 / 传输损坏）→ 回滚原文件。判定同上走 `verify_readback`。
+    let verify = read_optional(sftp, &profile)
+        .await
+        .map(|b| String::from_utf8_lossy(&b).into_owned());
+    let Some(verify) = verify else {
+        if !existing.is_empty() {
+            let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
+        }
+        return Err(format!(
+            "写后读不回 {profile}（无法确认写对了）。{}",
+            rollback_note(existing.is_empty())
+        ));
+    };
+    if let crate::verified_write::WriteVerdict::Mismatch { detail } =
+        crate::verified_write::verify_readback(&merged, &verify)
+    {
+        if !existing.is_empty() {
+            let _ = upload_atomic(sftp, &profile, existing.as_bytes(), 0o644).await;
+        }
+        return Err(format!(
+            "写后校验失败：{detail} {}",
+            rollback_note(existing.is_empty())
+        ));
+    }
+
+    tracing::info!(
+        "远端 [{}] 已装 ccm CLI + 别名块到 {profile}",
+        cfg.origin_label()
+    );
+    Ok(format!(
+        "已部署 ccm CLI 到 ~/{CCM_CLI_REMOTE_PATH}，别名块已写入 {profile}{backup_note}。\
+         重连远端 ssh 终端后可用：`ccm`（起会话）/ `ccm --tmux`（tmux 里起）/ \
+         `ccm --account <名>`（指定账号）。`ccm --help` 看全部修饰。"
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+
+    fn probe_cfg() -> crate::ssh_source::RemoteConfig {
+        crate::ssh_source::RemoteConfig {
+            host: "这个主机一定不存在-audit0805".into(),
+            label: "probe".into(),
+            port: 1,
+            user: "nobody".into(),
+            key_path: None,
+            daemon_path: "/tmp/nope".into(),
+            host_key_fingerprint: None,
+            addresses: Vec::new(),
+            jump: None,
+        }
+    }
+
+    /// ★★ **删远端文件的入口真的过了围栏吗**〔audit-0805 08-08，Phase G 第 53 件〕。
+    ///
+    /// 本文件有三条 `is_safe_remote_*` 围栏，各自都有直接的行为判据 ——
+    /// **但主语是围栏本身**。08-08 实测：把 `uninstall_remote_daemon` 与
+    /// `remove_remote_file` 里那三处 `if !is_safe_…` 全部短路，
+    /// **全仓 984 条判据一条不红**。而那两条路紧接着是
+    /// `sftp.remove_file(...)` —— **删用户远端机器上的文件**。
+    /// 与 F47（本机删除路）/ F48（建分支路）同一族，这次在远端。
+    ///
+    /// # 这条能跑真路
+    ///
+    /// 第一道围栏在 `connect_sftp` **之前**：喂一个非法远端路径 ⇒ 应当在
+    /// **零网络**的情况下被拒。围栏没接上的话，它会往下走去连一个不存在的主机，
+    /// 报的是连接错 —— 两句话分得开。
+    ///
+    /// ⚠ 第二道围栏（`canonicalize` **之后**那处）跑不了真路：要到那一步得先连上。
+    /// 那半只能靠源码判，已写在下面并如实标注。
+    #[tokio::test]
+    async fn the_remote_delete_entry_point_actually_goes_through_the_fence() {
+        let cfg = probe_cfg();
+        let err = remove_remote_file(&cfg, "/etc/passwd")
+            .await
+            .expect_err("非法远端路径竟然没被拒 —— 围栏没接上");
+        assert!(
+            err.contains("refuse") || err.contains("jsonl"),
+            "拒绝了，但不是围栏拒的（错误：{err}）—— \
+             说明它已经越过围栏去连主机了，而下一步是 `sftp.remove_file`。"
+        );
+    }
+
+    /// ★ 第二道围栏（canonicalize 之后）与卸载路的围栏：**源码层**判据。
+    ///
+    /// ⚠ 跑不了真路（要先连上远端 / 红线不许起真连接）⇒ 只判「那行还在」。
+    /// **判源码是代理不是标的**（F41 记过）：挡得住「短路 / 删掉」，
+    /// 挡不住「围栏还在但被喂了洗过的路径」。后者进 `ROADMAP §5`。
+    #[test]
+    fn both_remote_path_sinks_still_ask_their_fence() {
+        let prod = guard_core::production_code(include_str!("sftp.rs"));
+        for (f, fence) in [
+            ("uninstall_remote_daemon", "is_safe_remote_daemon_path"),
+            ("remove_remote_file", "is_safe_remote_jsonl"),
+        ] {
+            let at = prod
+                .find(&format!("fn {f}"))
+                .unwrap_or_else(|| panic!("生产段里没有 `{f}` —— 抽取器坏了，本条此刻无效"));
+            let mut body = Vec::new();
+            for (i, line) in prod[at..].lines().enumerate() {
+                let cont = line.starts_with("where") || line.starts_with(')') || line.trim() == "{";
+                if i > 0 && !line.is_empty() && !line.starts_with(char::is_whitespace) && !cont {
+                    break;
+                }
+                body.push(line);
+            }
+            let body = body.join("\n");
+            // ⚠ **整行形状**，不是「提到过」。第一版写 `contains("!{fence}(")`，
+            //   于是 `if false && !is_safe_…(…)` 这种短路**照样绿** —— 变异当场证伪。
+            //   F24 那一族：我要的事实是「围栏在做判定」，而我匹配了「围栏出现过」。
+            // ⚠ **每一处调用都必须是判定行**，不是「有一处就行」。
+            //   `remove_remote_file` 是**双重守卫**（canonicalize 前后各一道）；
+            //   第一版写 `.any(...)`，于是短路其中一道、另一道还在 ⇒ 照样绿。
+            //   **同一条判据在同一轮里被变异证伪两次**（先是「提到过 vs 在判定」，
+            //   再是「有一处 vs 每一处」）—— 记在这里，因为两次都是我先写完才发现的。
+            let calls = body
+                .lines()
+                .filter(|l| l.contains(&format!("{fence}(")))
+                .count();
+            let gates = body
+                .lines()
+                .filter(|l| l.trim().starts_with(&format!("if !{fence}(")))
+                .count();
+            assert!(
+                calls >= 1 && gates == calls,
+                "`{f}` 里 `{fence}` 被调 {calls} 次，其中只有 {gates} 次是判定行。\n\
+                 围栏要么被删了，要么被短路了\n\
+                 （`if false && !…` 这种改法留着调用、却不再判定）。\n\
+                 它下一步会去删用户远端机器上的文件。\n\
+                 ⚠ 本条只看「那一行的形状」（源码层，理由见头注）：\n\
+                 挡得住删除与短路，**挡不住**「围栏还在但被喂了洗过的路径」。"
+            );
+        }
+    }
+    use super::*;
+
+    /// 单一来源漂移守卫①：写进远端 profile 的**别名块**。
+    /// F02 起本块只剩组合层别名；`K-R48` 第二拍起实现住后端本体
+    /// （远端那个 `~/.local/bin/ccm` 是 [`ccm_entry_shim`]，见下一条判据）。
+    #[test]
+    fn ccm_aliases_snippet_has_required_elements() {
+        for needle in [
+            ".local/bin", // CLI 落点必须进 PATH，否则别名全指向不存在的命令
+            "cc()",       // 裸起（`K-R58` 起 = 就在当前目录，ccm 不再替用户挑）
+            "cct()",      // tmux 版
+            "ccm --tmux", // 别名只做组合，不自己建容器
+            "declare -f", // 防覆盖用户已有同名函数
+        ] {
+            assert!(
+                CCM_WRAPPER_SNIPPET.contains(needle),
+                "别名块缺关键要素: {needle}"
+            );
+        }
+        // 别名块**不得**再含实现（那是 CLI 的事；混回来就又变成两套实现）。
+        for forbidden in ["__ccm_rbind()", "exec claude", "tmux new-session"] {
+            assert!(
+                !CCM_WRAPPER_SNIPPET.contains(forbidden),
+                "别名块不该含实现细节 {forbidden}——实现属于 ~/.local/bin/ccm"
+            );
+        }
+    }
+
+    /// `KR58D2` —— `src/doc/IPC-PROTOCOL.md` §11 里描述别名块的那一句，**行数与名单同句**。
+    ///
+    /// 本区最高频的那条病就是「数与名单同句、只改一半」⇒ 这里**两样一起对**，
+    /// 而且两样都**现算**自真相源 [`CCM_WRAPPER_SNIPPET`]（= `src/shared/ccm-aliases.sh` 本身），
+    /// 判据里不抄第二份名单、不写死行数。
+    ///
+    /// ⚠ **它买到的射程只有这一句**：§11 其余部分（`shared/ccm` · `CCM_CLI_SCRIPT`）
+    /// 在 `K-R48` 第二拍之后已经是**存量馊话**，本判据够不着，也不假装够得着。
+    ///
+    /// ⚠ 判据够不着被测对象时必须**响亮地红**，不许变成空真 ⇒ 找不到那一句就 panic。
+    #[test]
+    fn the_protocol_doc_sentence_about_the_alias_block_matches_the_file() {
+        const IPC_DOC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
+        let want_names = crate::sftp::builtin_alias_names();
+        assert!(
+            !want_names.is_empty(),
+            "从 src/shared/ccm-aliases.sh 里一个别名都没解析出来 —— 判据够不着被测对象了，先修判据"
+        );
+        let want_lines = CCM_WRAPPER_SNIPPET.lines().count();
+
+        let sent = IPC_DOC
+            .lines()
+            .find(|l| l.contains("src/shared/ccm-aliases.sh`，**"))
+            .expect(
+                "src/doc/IPC-PROTOCOL.md 里描述别名块的那一句找不到了 —— \
+                 要么它被改写了、要么被删了；无论哪种，这条对账现在是瞎的",
+            );
+        let bold = sent
+            .split("**")
+            .nth(1)
+            .expect("那一句里的粗体段没了 —— 对账抓不到数与名单");
+
+        assert!(
+            bold.contains(&format!("{want_lines} 行")),
+            "行数对不上：src/shared/ccm-aliases.sh 现在 {want_lines} 行，而文档那句写的是「{bold}」"
+        );
+        assert!(
+            bold.contains(&format!("这 {} 个", want_names.len())),
+            "别名个数对不上：现在 {} 个（{}），而文档那句写的是「{bold}」",
+            want_names.len(),
+            want_names.join(" / ")
+        );
+        let mut doc_names: Vec<&str> = bold.split('`').skip(1).step_by(2).collect();
+        doc_names.sort_unstable();
+        assert_eq!(
+            doc_names, want_names,
+            "名单对不上：文档那句列的是 {doc_names:?}，盘上真有的是 {want_names:?}"
+        );
+    }
+
+    /// 单一来源漂移守卫②：部署为远端 `~/.local/bin/ccm` 的 **CLI 本体**。
+    ///
+    /// 这些不是"要素清单"而是**血的教训清单**，每条对应一个真实踩过的坑：
+    ///  - `=%s:` / `=$` ：tmux `-t` 必须精确匹配（INVARIANTS §31a）。裸目标会杀错/打错兄弟会话；
+    ///    `=名` 无尾冒号则在 send-keys/capture-pane/set-option 上 rc=1 完全失效。
+    ///  - `exec` ：不能省。⚠ **理由在 `U-NP④`（08-14）之后换了一条**：旧理由是
+    ///    「身份 poller 读 `sessions/$PID.json`，不 exec 则 PID 对不上」，而那条 poller 已删
+    ///    （身份改由 daemon 打，认的是 pidfile 自己的名字 = claude 的 PID）。今天留着它的
+    ///    理由是「不在 agent 与终端之间多一层 shell」＋ 本 needle 本身就是部署契约。
+    ///  - `@ccm_sid` / `@ccm_agent` ：身份随行，cc-monitor 靠它精确认会话。
+    ///  - `@ccm_sid_expect` ：F04——通道A（建时/exec 时立即声明"打算跑这个 sid"）写这个 key，
+    ///    与通道B（独立读会话文件确认后才写的 `@ccm_sid`；`U-NP④` 之后由 **daemon** 写）分离。破坏性动作只认 `@ccm_sid`，
+    ///    不被"声明了但从未真正跑起来"的会话骗过（旧审计 D6 的坑）。
+    ///
+    ///    **R09 复核订正（2026-07-28）——这条分离的作用域是「`shared/ccm` 内部」，不是全仓。**
+    ///    此前多处写作"通道B 是 `@ccm_sid` 唯一写者"，那句话不准确：全仓有**两个**写者。
+    ///    另一个是 `src/session-backend.ts::TMUX_BACKEND.createRunAttach`——**兜底渲染器**
+    ///    自己拼 tmux 命令时，在 create 分支**直写裸 `@ccm_sid`**。
+    ///
+    ///    那不是漏改，是 F04 Phase B 方案A 的明确取舍：兜底路径**不经 ccm**，
+    ///    因而没有"意图→事实"的提升机制；若那里改写 `@ccm_sid_expect`，这个 key 将
+    ///    **永远不会被提升**，于是 Gate 2 的 `@ccm_sid` 半支永久判不出它 → 该会话变得不可 kill
+    ///    （向后兼容回归，正是 §5.1 第 3 条要防的）。所以两侧**故意写不同的 key**。
+    ///
+    ///    两个方向相反的断言各自被钉住，别把任一侧"改成一致"：
+    ///      · 本函数下方的 needle 扫描：`shared/ccm` **必须**写 `@ccm_sid_expect`；
+    ///      · `tests/session-backend.test.ts`（"#72 + F03.4甲′"那条黄金串）：兜底渲染器
+    ///        **必须**写裸 `@ccm_sid`。已实测：把兜底侧改成 `_expect` 会让后者转红。
+    ///    **成功标准④ 不受此例外影响**——终端起会话那条路径的意图声明全程在 `shared/ccm` 内
+    ///    （写 expect；事实由 daemon 提升，见 `U-NP④`），与兜底渲染器无交集。
+    ///  - `CLAUDE_CONFIG_DIR` ：账号注入必须在**最终 exec 的那个 shell 里**设。
+    ///  - `--print` / `--ccm-probe` ：F03 的渲染等价断言 + 安装自检/降级判据依赖它们。
+    #[test]
+    fn ccm_cli_has_required_elements() {
+        // U1a（2026-08-01）：三张表 + `-t` 扫描口径搬进 `crate::ccm_cli_contract`。
+        // **判据一条没改、没加、没减** —— 搬出去只是为了让 U9 迁到 `control/` 时
+        // 改的是「喂哪份脚本文本」，而不是把这些断言重写一遍（账本 S11：迁移是强度
+        // 悄悄下降的经典时机）。强度读数的基线对拍在那个模块的
+        // `ccm_cli_strength_is_at_or_above_baseline` 〔散文墓碑〕。
+        use crate::ccm_cli_contract as contract;
+
+        // 🔴 〔`K-R48` 第二拍 09-11〕**这里原来还有五段断言，全部打在 `CCM_CLI_SCRIPT` 上，
+        //    随 `shared/ccm` 一起删了**：住址账本两条循环（`ledger.needles` / `ledger.channel_a`）·
+        //    `pin_t_def` 〔散文墓碑〕（`$t` 只许被赋值一次）· `scan_t_targets(...).require(floor, …)`
+        //    （tmux 目标必须是 `=名:` 形态，`INVARIANTS §31a`）。
+        //    它们量的全是「**那个 bash 脚本怎么写的**」，被测对象没了就没了。
+        //
+        // ⚠ **它们守的性质没有一条被丢掉，逐条给新住址**：
+        //    · `=名:` 精确目标 ⇒ `control::ccm::plan` 的渲染判据（`--print` 黄金串里每个
+        //      `-t` 都是 `'=名:'`，变异刀 #8「attach 目标退回裸名字」当场红）;
+        //    · 通道A 写**意图**标记 `@ccm_sid_expect` ⇒ 变异刀 #7「写事实标记而非意图标记」;
+        //    · `$t` 不许二次赋值 ⇒ 那是 bash 变量的病，Rust 里没有那个形状（`Plan` 里是字段）。
+        //    ⚠ 「跨语言那一半」（TS 侧 `deriveTmuxName` 对拍 · `capabilities ⊇ CLI_REQUIRED_CAPS`）
+        //      仍**只**住 e2e（`ccm-cli.test.sh` 5 条 · `ccm-contract-parity.sh` 5 条），别当 Rust 判据能顶。
+    }
+
+    /// `K-R48` 第二拍：远端 `~/.local/bin/ccm` 今天是**入口**，不是实现。
+    ///
+    /// 🔴 **这一条的岗位是「别让它长回去」**：`K33` 逐字「所有命令只许有一处，其他都是
+    /// 根据传参来调用」。一个 shim 里只要出现第二个分支，那句话就又破了 ——
+    /// 而破的时候没有任何别的判据会出声（它不进任何 e2e，没有一台真远端可跑）。
+    #[test]
+    fn the_remote_ccm_entry_is_an_entry_not_an_implementation() {
+        let shim = ccm_entry_shim("/home/pi/.cc-monitor/bin/cc-monitor-remote");
+        // ① 真的把 argv 转给后端，且走的是 `intercept` 的第二条入口（子命令形）。
+        assert!(
+            shim.contains("exec '/home/pi/.cc-monitor/bin/cc-monitor-remote' ccm \"$@\"")
+                || shim.contains("exec /home/pi/.cc-monitor/bin/cc-monitor-remote ccm \"$@\""),
+            "shim 没把 argv 原样转给后端的 `ccm` 子命令：\n{shim}"
+        );
+        // ② **零实现**：除了 shebang、一行注释、一行 exec，不许有别的可执行行。
+        let code: Vec<&str> = shim
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+            .collect();
+        assert_eq!(
+            code.len(),
+            1,
+            "远端 ccm 入口里出现了第二条可执行语句 —— 那就是第二处实现了（K33）。\n\
+             它只许有一行 `exec <后端> ccm \"$@\"`。现打：{code:?}"
+        );
+        // 唯一那一行必须**就是一次 exec**（不许起子进程再包一层：那会吃掉退出码与信号）。
+        //
+        // 🔴 09-15 放宽了这一条的**形状**，没放宽它的**性质**：允许 `exec` 前挂
+        // POSIX 的「一次性环境变量赋值」前缀（`VAR=值 exec …`）。那一形仍然是
+        // 同一个进程被 `exec` 掉 —— 退出码与信号照样透传，`K33` 的「只许有一处实现」
+        // 也没破（赋值不是分支、不是第二处实现）。
+        // 为什么需要它：容器路要靠 `CCM_SELF` 知道「我是被当作什么叫的」，
+        // 而那个值**必须在 `exec` 之前**进环境，否则进不了后端进程。
+        // ⚠ 只放这一形：下面三条把「真正会吃掉退出码 / 长出第二处实现」的写法全挡住。
+        let head = code[0];
+        let after_assigns = head
+            .split_whitespace()
+            .skip_while(|w| {
+                w.split_once('=').is_some_and(|(n, _)| {
+                    !n.is_empty() && n.chars().all(|c| c.is_ascii_uppercase() || c == '_')
+                })
+            })
+            .next()
+            .unwrap_or("");
+        assert_eq!(
+            after_assigns, "exec",
+            "唯一那一行不是「（可选的大写环境变量赋值）+ `exec`」——\
+             起子进程再包一层会吃掉退出码与信号。现打：{head}"
+        );
+        assert_eq!(
+            head.matches("exec ").count(),
+            1,
+            "出现了不止一次 `exec` —— 那不再是「转交」而是逻辑。现打：{head}"
+        );
+        for forbidden in ["$(", "`", ";", "&&", "||", "|", "if ", "case "] {
+            assert!(
+                !head.contains(forbidden),
+                "唯一那一行里出现了 `{forbidden}` —— shim 长出了第二处实现（K33）。现打：{head}"
+            );
+        }
+        // ③ 路径必须经 POSIX quote（daemon_path 是用户填的，可能带空格 / 引号）。
+        let tricky = ccm_entry_shim("/home/用户/带 空格/it's");
+        assert!(
+            tricky.contains(&shell_quote_core::posix_quote("/home/用户/带 空格/it's")),
+            "daemon_path 没经 `shell_quote_core::posix_quote` —— 带空格的路径会被拆成两个词。\n{tricky}"
+        );
+    }
+
+    #[test]
+    fn merge_profile_block_append_replace_idempotent() {
+        let snippet = "ccm() { :; }";
+        // 空 existing → 仅块。
+        let m1 = merge_profile_block("", snippet, "远端 ~/.bashrc").unwrap();
+        assert!(m1.contains(CCM_PROFILE_BEGIN));
+        assert!(m1.contains("ccm() { :; }"));
+        assert!(m1.contains(CCM_PROFILE_END));
+
+        // 无块 → 追加，原内容保留在前。
+        let existing = "export PATH=/x\nalias ll='ls -l'\n";
+        let m2 = merge_profile_block(existing, snippet, "远端 ~/.bashrc").unwrap();
+        assert!(m2.starts_with(existing), "块外内容保留在前");
+        assert!(m2.contains(CCM_PROFILE_BEGIN));
+
+        // 幂等：同 snippet 再 merge 不变。
+        assert_eq!(
+            merge_profile_block(&m2, snippet, "远端 ~/.bashrc").unwrap(),
+            m2,
+            "merge∘merge == merge"
+        );
+
+        // 重装（换 snippet 内容）→ 整块替换，只有一个块，块外内容仍保留。
+        let m3 = merge_profile_block(&m2, "ccm() { echo new; }", "远端 ~/.bashrc").unwrap();
+        assert!(m3.starts_with(existing), "重装仍保留块外内容");
+        assert!(
+            m3.contains("echo new") && !m3.contains("{ :; }"),
+            "块被整块替换"
+        );
+        assert_eq!(m3.matches(CCM_PROFILE_BEGIN).count(), 1, "重装不重复加块");
+    }
+
+    /// 审计 B1 回归：块外内容（含块**后**的用户内容）在替换时绝不丢。
+    #[test]
+    fn merge_profile_block_preserves_content_after_block() {
+        let existing =
+            format!("head_line\n{CCM_PROFILE_BEGIN}\nold()\n{CCM_PROFILE_END}\ntail_user_line\n");
+        let m = merge_profile_block(&existing, "ccm() { echo new; }", "远端 ~/.bashrc").unwrap();
+        assert!(m.contains("head_line"), "块前内容保留");
+        assert!(
+            m.contains("tail_user_line"),
+            "块后用户内容保留（B1 不能吞掉）"
+        );
+        assert!(m.contains("echo new") && !m.contains("old()"), "块整块替换");
+        assert_eq!(m.matches(CCM_PROFILE_BEGIN).count(), 1);
+    }
+
+    /// 审计 B1 核心：BEGIN 存在但其后无 END（损坏/截断）→ Err 中止，**绝不**误配前面的 END
+    /// 而吞掉用户内容。
+    #[test]
+    fn merge_profile_block_aborts_on_orphan_begin() {
+        // END 在前、孤立 BEGIN 在后无配对 END：独立 find 会误配 → 旧实现吞内容。新实现报错。
+        let corrupt = format!("{CCM_PROFILE_END}\nuser_a\n{CCM_PROFILE_BEGIN}\nuser_b\n");
+        assert!(
+            merge_profile_block(&corrupt, "ccm() { :; }", "远端 ~/.bashrc").is_err(),
+            "孤立 BEGIN（其后无 END）必须中止而非吞内容"
+        );
+        // 纯孤立 BEGIN（截断的安装）→ Err。
+        let truncated = format!("user_x\n{CCM_PROFILE_BEGIN}\nhalf");
+        assert!(merge_profile_block(&truncated, "ccm() { :; }", "远端 ~/.bashrc").is_err());
+    }
+
+    /// F08b：仅当交叉编译产物已放进 embedded-daemons/（build.rs 置了 `embedded_daemons` cfg）
+    /// 才编译/运行——证实内嵌真生效：按 arch 取到 ELF 二进制 + build_id 非空。CI 无二进制时
+    /// 本测试被 cfg 掉，不误报。
+    #[cfg(embedded_daemons)]
+    #[test]
+    fn embedded_daemon_binaries_present_and_valid() {
+        for arch in ["x86_64", "aarch64"] {
+            let bin = daemon_binary(arch).expect("内嵌二进制应存在");
+            assert!(!bin.build_id.is_empty(), "build_id 非空");
+            assert_eq!(&bin.bytes[..4], b"\x7fELF", "{arch} 应是 ELF");
+            assert!(bin.bytes.len() > 100_000, "{arch} 体积应非平凡");
+        }
+        assert!(daemon_binary("riscv64").is_none(), "未知 arch → None");
+    }
+
+    /// 🔴 `K-R70`：**那道身份见证真的会咬人** —— 四格（纯函数，不依赖内嵌产物在不在）。
+    ///
+    /// ⚠ 这一条与上面那条判据分工：那条钉**接线**（有没有无条件跑），这条钉**行为**
+    /// （跑了会不会说真话）。少任何一条，另一条都能被一个恒答 `true` 的实现骗过去。
+    #[test]
+    fn the_build_stamp_witness_actually_bites() {
+        let (o, c) = (env!("DAEMON_STAMP_OPEN"), env!("DAEMON_STAMP_CLOSE"));
+        let real = format!("头部随便什么{o}p9-sample{c}尾部随便什么");
+        assert!(
+            super::bytes_carry_build_stamp(real.as_bytes(), "p9-sample"),
+            "带着自己那个戳的字节被判「问不出身份」—— 见证会误拒正品"
+        );
+        assert!(
+            !super::bytes_carry_build_stamp(real.as_bytes(), "p9-other"),
+            "戳写着 `p9-sample` 而问它是不是 `p9-other`，它答了「是」—— 见证形同虚设"
+        );
+        assert!(
+            !super::bytes_carry_build_stamp(b"no stamp at all", "p9-sample"),
+            "一段没有戳的字节被判「身份可信」—— 那正是老启发式的失效面"
+        );
+        assert!(
+            !super::bytes_carry_build_stamp(real.as_bytes(), ""),
+            "空身份必须判假：空串会让「戳」退化成两个界标挨着，而那一形是噪音不是身份"
+        );
+        // ⚠ 反向自检：**戳不是随便一处提到 build_id 就算**。
+        //   旧启发式 `bytes_contain(bytes, build_id)` 会被裸出现的 id 喂饱 —— 而 daemon
+        //   的 hello 帧里本来就带着这个串 ⇒ 那条判据在任何一份 daemon 上都恒真。
+        assert!(
+            !super::bytes_carry_build_stamp(b"...p9-sample...", "p9-sample"),
+            "裸出现一次 id 就被当成身份戳 —— 那退回了 `K-R70` 之前那条恒真的启发式"
+        );
+    }
+
+    /// ★★ 🔴 `K-R70`（09-12）：**内嵌那份的身份只许来自它自己的字节。**
+    ///
+    /// # 它取代了什么，以及为什么不是「换个写法」
+    ///
+    /// 〔散文墓碑〕〔本条原名 `the_identity_witness_is_derived_from_the_manifest_not_written_by_hand`，
+    ///  钉的是那个见证布尔 `id_from_manifest` 只能由「那份清单在不在」推出来、不许写死 `true`
+    ///  （写死会让 `deploy_embedded_daemon` 里那道 `bytes_contain` 兜底整个跳过；
+    ///   08-08 实测写死 x86_64 那处，monitor 1004 一条都不红）。
+    ///  **它守的动作是对的，守的东西是错的**：那个「见证」见证的是**一份旁挂清单在不在**，
+    ///  而清单是 `release.yml` 从源码常量 `const BUILD_ID` 抠出来写的 ——
+    ///  三个载体的清单**恒等**，恒等的东西一格证据都不提供
+    ///  （`K-R68` 摸底 · `DECISIONS.md#R26` 裁定零：那是把标签当成了指纹）。〕
+    ///
+    /// 今天身份**只有一条来路**：`build.rs` 从二进制字节里扫 `CC_MONITOR_BUILD_STAMP`。
+    /// 于是本条钉三件事：
+    ///
+    /// 1. 两个 `DaemonBinary` 的 `build_id` **只许**是 `env!("DAEMON_EMBEDDED_ID_<ARCH>")`
+    ///    —— 出现字面量、或退回源码 id（老 `pick()` 那条「问不出就拿源码顶上」的路）都红；
+    /// 2. 部署路上**真的**跑了 [`bytes_carry_build_stamp`]，而且**不带前置条件**
+    ///    （老写法 `!bin.id_from_manifest && …` 正是「有清单就整个跳过」）；
+    /// 3. 界标那两个字面量**不许**在本文件里出现第二份（闭集唯一住址在 daemon 源码）。
+    ///
+    /// 顺带钉住 arch 那条跨文件契约的**另一半**：`build.rs` 期待的每个 arch，
+    /// 这里都必须真有一份 `DaemonBinary`（漏一个 ⇒ `daemon_binary()` 对它返回 `None`，
+    /// 远端自动部署对那个 arch **悄悄关闭** —— 与上一条判据守的是同一个事故形状的两端）。
+    #[test]
+    fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let src = std::fs::read_to_string(root.join("src/sftp.rs")).expect("读不到 sftp.rs");
+        let prod = guard_core::production_code(&src);
+        // 运行时拼，免得命中本条自己的说明文字。
+        let field = format!("{}_id:", "build");
+        let inits: Vec<&str> = prod
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with(&field) && l.contains("env!"))
+            .collect();
+        assert_eq!(
+            inits.len(),
+            2,
+            "生产段里找到 {} 处 `{field}` 的 env 取值（应当 2：X86 / ARM）—— \
+             抽取器坏了或那两个 static 被改写了，本条会零命中地绿：{inits:?}",
+            inits.len()
+        );
+        for l in &inits {
+            assert!(
+                l.contains("env!(\"DAEMON_EMBEDDED_ID_"),
+                "这一格的身份不是从**字节**来的：{l}\n\
+                 ★ 只有 `DAEMON_EMBEDDED_ID_<ARCH>` 是 `build.rs` 从这份二进制的字节里\n\
+                 扫出来的（`CC_MONITOR_BUILD_STAMP`）。退回 `DAEMON_BUILD_ID`（源码 id）\n\
+                 就是「问不出就拿源码的答案顶上」—— 把一个失败面换成一个假答案；\n\
+                 写一份 `.build_id` 旁文件再读它，是把标签换个地方抄（`KR70D1` 逐字点名的失效方向）。"
+            );
+        }
+        // ② 部署路真的跑了那道见证，而且**不带前置条件**。
+        let witness = format!("{}_carry_build_stamp(", "bytes");
+        let calls: Vec<&str> = prod
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.contains(&witness) && !l.starts_with("pub fn"))
+            .collect();
+        assert_eq!(
+            calls.len(),
+            1,
+            "生产段里 `{witness}` 的调用处有 {} 个（应当恰好 1：`deploy_embedded_daemon` 出门前那一道）：{calls:?}",
+            calls.len()
+        );
+        assert_eq!(
+            calls[0], "if !bytes_carry_build_stamp(bin.bytes, bin.build_id) {",
+            "那道见证被加了前置条件或换了形状：{}\n\
+             ★ 老写法 `!bin.id_from_manifest && !bytes_contain(…)` 的病就在前半句：\n\
+             **有清单时整道闸跳过**，而会出事的那一形（有人塞了别的字节、清单照旧）\n\
+             恰恰在那一支里。⇒ 它必须无条件跑。",
+            calls[0]
+        );
+        // ③ 界标闭集只有一个住址（在 daemon 源码里），本文件只许 `env!` 取。
+        for mark in [env!("DAEMON_STAMP_OPEN"), env!("DAEMON_STAMP_CLOSE")] {
+            assert!(
+                !mark.is_empty(),
+                "`DAEMON_STAMP_OPEN/CLOSE` 是空串 —— `build.rs` 从 daemon 源码抠界标失败了，\n\
+                 而空界标会让 `bytes_carry_build_stamp` 恒答 false ⇒ 自动部署整个静默关闭。"
+            );
+            assert!(
+                !prod.contains(&format!("\"{mark}\"")),
+                "本文件生产段里出现了界标字面量 `{mark}` —— 闭集唯一住址在\n\
+                 `src/backend/main.rs`（`BUILD_STAMP_OPEN`/`CLOSE`），\n\
+                 这里只许 `env!(\"DAEMON_STAMP_OPEN\")` / `env!(\"DAEMON_STAMP_CLOSE\")` 取。"
+            );
+        }
+
+        // 跨文件契约的另一半：`build.rs` 期待的每个 arch，这里都要真有一份。
+        let build_rs = std::fs::read_to_string(root.join("build.rs")).expect("读不到 build.rs");
+        let arches: Vec<String> = build_rs
+            .lines()
+            .find_map(|l| {
+                let rest = l.trim().strip_prefix("for arch in [")?;
+                Some(
+                    rest.trim_end_matches(|c| c == '{' || c == ' ' || c == ']')
+                        .split(',')
+                        .map(|s| s.trim().trim_matches('"').to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .unwrap_or_else(|| {
+                panic!("`build.rs` 里找不到 `for arch in [...]` —— 与上一条判据同一个锚点，一起修")
+            });
+        assert!(
+            arches.len() >= 2,
+            "从 `build.rs` 只抠到 {} 个 arch",
+            arches.len()
+        );
+        for arch in &arches {
+            assert!(
+                prod.contains(&format!("DAEMON_EMBEDDED_ID_{}", arch.to_uppercase())),
+                "`build.rs` 会为 `{arch}` 嵌入二进制并发 `DAEMON_EMBEDDED_ID_{}`，\n\
+                 而 `sftp.rs` 生产段里没有对应的 `DaemonBinary` ⇒ `daemon_binary(\"{arch}\")` 返回 `None`，\n\
+                 **远端自动部署对这个 arch 悄悄关闭**（`build.rs` 那侧只 `cargo:warning=`，不会红）。\n\
+                 与「发版流水线要为每个 arch 备料」那条守的是同一个事故形状的两端。",
+                arch.to_uppercase()
+            );
+        }
+    }
+
+    /// ★★ **发版流水线必须为 `build.rs` 期待的每一个 arch 都备好料**〔audit-0805 08-08〕。
+    ///
+    /// # 缺一个 arch 的后果是**静默的**，而且已经出货过
+    ///
+    /// `build.rs` 的 `embed_daemons` 缺件时只 `cargo:warning=`（**不是 error**）：
+    ///
+    /// > 缺少内嵌 daemon {arch} —— 远端自动部署将关闭
+    ///
+    /// 而它旁边的注释逐字记着这条路的历史：「原来这里**连 warn 都没有** —— 缺二进制就
+    /// 静默不置 cfg、`daemon_binary()` 返回 None、远端自动部署整个消失而无人知晓。
+    /// **那正是 v2.19–v2.22 那批安装包的事故形状**」。
+    ///
+    /// 警告是**刻意**的（本机开发树本来就常常只有一个 arch —— 今天就是：
+    /// `embedded-daemons/` 里只有 x86_64）。⇒ **保证「出货的那份两个 arch 都在」的，
+    /// 只剩 `release.yml` 一处**，而在本条之前没有任何判据读它那几行。
+    ///
+    /// # 人群从 `build.rs` 派生
+    ///
+    /// 不手写 `["x86_64", "aarch64"]`（隔壁 `embedded_daemon_binaries_present_and_valid`
+    /// 就是手写的，而且它带 `#[cfg(embedded_daemons)]` —— 本机缺一个 arch 时**整条不编译**，
+    /// 平时没人走）。这里读 `build.rs` 那个 `for arch in [...]`：**谁将来加第三个 arch，
+    /// 本条当天就会要求流水线跟上**。
+    #[test]
+    fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
+        let build_rs = std::fs::read_to_string(root.join("build.rs")).expect("读不到 build.rs");
+        // ⚠ **只看非注释行**〔08-08 变异逼出来的〕：第一版读原文，于是把那行
+        // `cargo zigbuild --target aarch64-…` **注释掉**，本条照样绿 —— 它命中的是
+        // 那行注释自己。「判据看的是围栏，还是围栏的说明书」，本会话第三次。
+        let rel = guard_core::strip_hash_comment_lines(
+            &std::fs::read_to_string(
+                root.parent()
+                    .expect("仓根")
+                    .join(".github/workflows/release.yml"),
+            )
+            .expect("读不到 release.yml"),
+        );
+
+        // 人群：`embed_daemons` 里那个 `for arch in [...]`。
+        let arches: Vec<String> = build_rs
+            .lines()
+            .find_map(|l| {
+                let t = l.trim();
+                let rest = t.strip_prefix("for arch in [")?;
+                Some(
+                    rest.trim_end_matches(|c| c == '{' || c == ' ' || c == ']')
+                        .split(',')
+                        .map(|s| s.trim().trim_matches('"').to_string())
+                        .filter(|s| !s.is_empty())
+                        .collect::<Vec<_>>(),
+                )
+            })
+            .unwrap_or_else(|| {
+                panic!("`build.rs` 里找不到 `for arch in [...]` —— 写法变了，本条会零命中地绿")
+            });
+        // 抽取器自检：抠不到就别拿一个空表去「全部通过」。
+        assert!(
+            arches.len() >= 2,
+            "从 `build.rs` 只抠到 {} 个 arch（08-08 实测 2：x86_64 / aarch64）—— 抽取器坏了",
+            arches.len()
+        );
+        assert!(
+            rel.lines().count() >= 100,
+            "`release.yml` 只剩 {} 行 —— 读法坏了或流水线被掏空",
+            rel.lines().count()
+        );
+
+        for arch in &arches {
+            for (needle, why) in [
+                (
+                    format!("--target {arch}-unknown-linux-musl"),
+                    "没有为这个 arch 交叉编译",
+                ),
+                (
+                    format!("staged/cc-monitor-remote-{arch}"),
+                    "编了但没按 `build.rs` 期待的名字放进 staged/",
+                ),
+                // 🔴 〔`K-R70` 09-12〕这里原来还有第三条：`staged/cc-monitor-remote-<arch>.build_id`，
+                //    理由逐字「少了旁挂的 .build_id 清单（没有它，运行时只能回退到会误拒正品的启发式）」。
+                //    **那条清单没有了**（它是从源码常量抠出来的标签，不是指纹 ——
+                //    `K-R68` · `DECISIONS.md#R26` 裁定零），身份改从字节里扫。
+                //    ⇒ 接替它的不是一条**按 arch** 的判据（校验那一步是 `foreach ($a in …)`，
+                //      路径里带的是变量不是字面 arch，按 arch 去 grep 只会零命中地红），
+                //      而是这个 arch 出现在那个 `foreach` 的清单里 ＋ 循环外那两条（见下）。
+                (
+                    format!("\"{arch}\""),
+                    "这个 arch 不在校验那一步的 `foreach` 清单里 ⇒ 它的字节**没有人问过身份**",
+                ),
+            ] {
+                assert!(
+                    rel.contains(&needle),
+                    "`release.yml` 里找不到 `{needle}` —— {why}。\n\
+                     ★ 后果是**静默的**：`build.rs` 缺件时只 `cargo:warning=`（刻意如此，\n\
+                     因为本机开发树常常只有一个 arch），于是**安装包照出，只是远端自动部署\n\
+                     对这个 arch 悄悄关闭** —— v2.19–v2.22 那批安装包就是这个形状。\n\
+                     ⚠ 人群是从 `build.rs` 的 `for arch in [...]` 派生的：要么让流水线跟上，\n\
+                     要么先把那一行改掉（改它会逼你想清楚「不再支持这个 arch」这件事）。"
+                );
+            }
+        }
+
+        // ── 🔴 〔`K-R70` 09-12〕**流水线真的去问过那份字节** ─────────────────────
+        //
+        // 上面那条按 arch 的清单只买到「它在校验的名单里」；这两条买的是**校验本身还在**。
+        // 两个锚各自不可替代：
+        //   · `ReadAllBytes` —— 它**真的把那份二进制读进来了**（不是 stat、不是读旁边的谁）；
+        //   · `const BUILD_STAMP_OPEN` —— 界标是**从 daemon 源码抠的**，不是在 yml 里手抄一份
+        //     （手抄那一份哪天与源码漂开，校验会以「假红」的形式提醒错人）。
+        for (needle, why) in [
+            (
+                "ReadAllBytes",
+                "校验那一步没有把二进制的字节读进来 —— 那它验的就不是这份字节，\
+                 而是它旁边的某个文件（`K-R70` 整件治的就是这个）",
+            ),
+            (
+                "const BUILD_STAMP_OPEN",
+                "身份戳的界标不是从 daemon 源码抠的 —— 手抄一份就多一个会漂的住址；\
+                 漂开那天校验会红，而红的原因与真病无关",
+            ),
+        ] {
+            assert!(
+                rel.contains(needle),
+                "`release.yml` 里找不到 `{needle}` —— {why}。\n\
+                 ⚠ 后果与下面 `if-no-files-found` 那条同族：**静默** —— \n\
+                 安装包照出，只是内嵌的那份没人问过它是谁。"
+            );
+        }
+
+        // fail-closed 那一半：一个都没 stage 到时，上传步骤必须当场失败而不是传个空包。
+        assert!(
+            rel.contains("if-no-files-found: error"),
+            "上传 `embedded-daemons` 的那一步没有 `if-no-files-found: error` —— \n\
+             staged/ 空了它会**成功地上传一个空 artifact**，下游 job 下载到空目录，\n\
+             最后出的安装包不带任何内嵌 daemon。这正是本条要挡的那个事故的上游一环。"
+        );
+    }
+
+    #[test]
+    fn deploy_decision_truth_table() {
+        // 无标记 → 部署
+        assert!(matches!(
+            deploy_decision(None, "p1b-overflow"),
+            DeployAction::Deploy(_)
+        ));
+        // 版本不符 → 部署
+        assert!(matches!(
+            deploy_decision(Some("p1a-history"), "p1b-overflow"),
+            DeployAction::Deploy(_)
+        ));
+        // 一致（含尾随空白）→ 跳过
+        assert_eq!(
+            deploy_decision(Some("p1b-overflow"), "p1b-overflow"),
+            DeployAction::Skip
+        );
+        assert_eq!(
+            deploy_decision(Some("p1b-overflow\n"), "p1b-overflow"),
+            DeployAction::Skip,
+            "标记文件可能带尾随换行，trim 后比对"
+        );
+    }
+
+    /// K-W4 `§0c` 那条断裂：`.build_id` 是**目录级**的，光凭它判不出落点那个文件在不在。
+    ///
+    /// 这一格钉的是**两件事不许再压在一个读数上**：喂**同一份**版本事实
+    /// （标记在、且与期望相符），只让「落点那个文件」这一侧变，判定必须跟着变。
+    /// 它红的时候说明 `deploy_decision_at` 又把 `Missing` 当成了「版本对就跳过」——
+    /// 那正是「新名/被删的二进制永远不会上传，而用户看到的是连不上」那个静默。
+    #[test]
+    fn a_matching_marker_no_longer_speaks_for_a_binary_that_is_not_there() {
+        const EXPECT: &str = "p1b-overflow";
+        // 版本这一侧两个世界完全相同（标记在、逐字相符）——只有文件那一侧不同。
+        assert_eq!(
+            deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Present),
+            DeployAction::Skip,
+            "文件在 + 版本对 ⇒ 仍然跳过（这一半是今天的行为，不许动）"
+        );
+        let missing = deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Missing);
+        let DeployAction::Deploy(reason) = &missing else {
+            panic!(
+                "标记相符但落点没有二进制，判定仍是 Skip —— \
+                 一个 `.build_id` 又同时替「版本对不对」和「那个文件在不在」两件事说了话"
+            );
+        };
+        // 「说得出是哪种坏」：这一句必须谈那个文件，而不是谈版本。
+        assert!(
+            reason.contains("落点没有 daemon 二进制"),
+            "原因没说清是「那个文件不在」：{reason}"
+        );
+        assert!(
+            !reason.contains("版本不符"),
+            "版本明明是相符的，别把「文件不在」说成「版本不符」：{reason}"
+        );
+        // 两侧的事实各自有各自的话 —— 同一句里也要说清版本这一侧是什么状态。
+        assert!(
+            reason.contains(EXPECT),
+            "同一句话里没带上版本那一侧的事实：{reason}"
+        );
+        // 三种版本状态下，「文件不在」这句话都要说得出来（不是只在版本相符时才说）。
+        for (marker, what) in [
+            (Some(EXPECT), "版本相符"),
+            (Some("p1a-history"), "版本不符"),
+            (None, "无标记"),
+        ] {
+            let DeployAction::Deploy(r) = deploy_decision_at(marker, EXPECT, TargetBinary::Missing)
+            else {
+                panic!("{what} + 文件不在 ⇒ 竟然跳过");
+            };
+            assert!(r.contains("落点没有 daemon 二进制"), "{what}: {r}");
+        }
+    }
+
+    /// 反向那一刀：**没有顺手改成「每次都重传」**。
+    /// `sftp.rs` 那套 Batch8/9 stale 防御是买来的——版本门控必须仍然是承重的，
+    /// 且「stat 问不出来」不许被读成「文件不在」（那等于每次连接都重传 2.3MB）。
+    #[test]
+    fn splitting_the_two_facts_did_not_dismantle_the_version_gate() {
+        const EXPECT: &str = "p1b-overflow";
+        // ① 文件在 + 版本对 ⇒ Skip（门控还在，不是每次都传）
+        assert_eq!(
+            deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Present),
+            DeployAction::Skip
+        );
+        assert_eq!(
+            deploy_decision_at(Some("p1b-overflow\n"), EXPECT, TargetBinary::Present),
+            DeployAction::Skip,
+            "trim 语义不许在合并判定里丢掉"
+        );
+        // ② 问不出来 ⇒ 与今天同答（Skip），不许当成「不在」
+        assert_eq!(
+            deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Unknown),
+            DeployAction::Skip,
+            "stat 问不出来被读成「文件不在」⇒ 一次 stat 失败换一次全量重传，门控就废了"
+        );
+        // ③ 版本不符 ⇒ 照旧 Deploy，且说的是版本（presence 没把版本门控短路掉）
+        let DeployAction::Deploy(reason) =
+            deploy_decision_at(Some("p1a-history"), EXPECT, TargetBinary::Present)
+        else {
+            panic!("版本不符 + 文件在 ⇒ 竟然跳过，stale 防御被拆了");
+        };
+        assert!(
+            reason.contains("版本不符"),
+            "文件在而版本不符，这一句该谈版本：{reason}"
+        );
+        // ④ 无标记 ⇒ 照旧 Deploy
+        assert!(matches!(
+            deploy_decision_at(None, EXPECT, TargetBinary::Present),
+            DeployAction::Deploy(_)
+        ));
+    }
+
+    /// 0 字节那一格 **不是假想形态**：本模块 `upload_atomic` 里「绝不 set_metadata」
+    /// 那条注释记的就是真机 e2e 把 daemon 截成 0 字节、不可 exec 的那次事故。
+    /// 而 `try_exists` 会把它算成「在」⇒ 只问存在性的修法在这一形上仍然静默。
+    #[test]
+    fn a_zero_byte_daemon_is_not_a_deployed_daemon() {
+        const EXPECT: &str = "p1b-overflow";
+        let DeployAction::Deploy(reason) =
+            deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Empty)
+        else {
+            panic!("标记相符 + 落点是 0 字节 ⇒ 竟然跳过（那个文件不可 exec）");
+        };
+        assert!(
+            reason.contains("0 字节"),
+            "原因没说清是「那个文件是空的」：{reason}"
+        );
+        assert!(
+            !reason.contains("版本不符"),
+            "版本是相符的，别说成版本不符：{reason}"
+        );
+    }
+
+    /// **防空转**：上面三格全在纯函数上，实现只要不接到调用点就是死代码，而三格照样绿。
+    /// 这一格钉的是**两条 daemon 部署路真的去问了那个文件**：
+    /// `ensure_daemon_deployed`（自动部署）与 `deploy_remote_daemon`（手动按钮）。
+    ///
+    /// ⚠ 射程：只到 daemon 那两条路。`acct_iso_deploy` 那条**刻意不在分母里**——
+    /// 它的标记落在目录上、内容是同一次上传的一批脚本，是另一种形状（见
+    /// `deploy_decision` 的头注）；那条路今天有没有同族的病，本格判不了。
+    #[test]
+    fn both_daemon_deploy_paths_ask_the_file_itself_not_only_the_marker() {
+        fn body<'a>(src: &'a str, sig: &str) -> &'a str {
+            let i = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
+            let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
+            &src[i..j]
+        }
+        let src = include_str!("sftp.rs");
+        for sig in [
+            "pub async fn ensure_daemon_deployed(",
+            "pub async fn deploy_remote_daemon(",
+        ] {
+            let code = body(src, sig)
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            // 反向自检：真取到函数体了（不然下面两条断言在空串上恒假、这一格变成假红/假绿源）
+            assert!(
+                code.contains("marker_path("),
+                "{sig}: 取到的体里连版本标记都没读，守卫在空转"
+            );
+            assert!(
+                code.contains("probe_target_binary("),
+                "{sig}: 没有取样落点那个文件在不在 —— 判定只拿到了版本这一半事实"
+            );
+            assert!(
+                code.contains("deploy_decision_at("),
+                "{sig}: 仍在用只看版本的判定"
+            );
+            assert!(
+                !code.contains("deploy_decision("),
+                "{sig}: 还留着裸 `deploy_decision(` 调用 —— 两条判定并存迟早分叉"
+            );
+        }
+    }
+
+    // ── K-W4b：取样层那四个状态的**映射规则**逐格各一条 ─────────────────────
+    // 上面那几格买的是「判定那一半」与「两条路真的去问了」；取样这一半（`metadata` /
+    // `try_exists` 的答案怎么变成 `TargetBinary`）09-06 之前一条判据都没有：
+    // 把 `probe_target_binary` 的体换成恒答 `Present`，全量 cargo **0 红**（沙箱实测）。
+    // 下面五格逐格钉一条规则，第六格是反向自检（证明它们不是恒真）。
+
+    /// 映射规则①：`metadata` 说它在、且**有字节** ⇒ `Present`。
+    #[test]
+    fn probe_metadata_with_bytes_maps_to_present() {
+        assert_eq!(
+            interpret_target_probe(Some(Some(2_300_000)), None),
+            TargetBinary::Present
+        );
+        assert_eq!(
+            interpret_target_probe(Some(Some(1)), None),
+            TargetBinary::Present,
+            "1 字节也是「有字节」—— 只有恰好 0 才是 Empty 那一格"
+        );
+    }
+
+    /// 映射规则②：`metadata` 说它在、size **恰好 0** ⇒ `Empty`，不是 `Present`。
+    /// 0 字节不是假想形态：`upload_atomic` 那条「绝不 set_metadata」注释记的就是
+    /// 真机 e2e 把 daemon 截成 0 字节、不可 exec 的那次事故，而 `try_exists` 会把它算成「在」。
+    #[test]
+    fn probe_metadata_saying_zero_bytes_maps_to_empty() {
+        assert_eq!(
+            interpret_target_probe(Some(Some(0)), None),
+            TargetBinary::Empty
+        );
+        assert_ne!(
+            interpret_target_probe(Some(Some(0)), None),
+            interpret_target_probe(Some(Some(1)), None),
+            "0 字节与有字节判成了同一格 ⇒ deploy_decision_at 的 Empty 那一臂永远走不到"
+        );
+    }
+
+    /// 映射规则③（本件的承重格）：`metadata` 成功而**服务器不给 size**（`Some(None)`）
+    /// ⇒ 仍是 `Present`。
+    /// `TargetBinary` 与取样壳的头注逐字：「服务器不给 size（size=None）≠ 0 字节」——
+    /// 把「没说」读成「空」，等于对着一台好机器每次连接都重传 2.3MB。
+    #[test]
+    fn probe_a_server_that_gives_no_size_is_not_the_empty_cell() {
+        assert_eq!(
+            interpret_target_probe(Some(None), None),
+            TargetBinary::Present
+        );
+        assert_ne!(
+            interpret_target_probe(Some(None), None),
+            TargetBinary::Empty,
+            "「服务器没给 size」被读成了「0 字节」"
+        );
+    }
+
+    /// 映射规则④：`metadata` 失败、补问 `try_exists` **明确答不在** ⇒ `Missing`。
+    #[test]
+    fn probe_stat_failed_and_try_exists_says_no_maps_to_missing() {
+        assert_eq!(
+            interpret_target_probe(None, Some(false)),
+            TargetBinary::Missing
+        );
+    }
+
+    /// 映射规则⑤：`metadata` 失败、`try_exists` **也答不出来** ⇒ `Unknown`。
+    /// 不许滑成 `Missing`（一次 stat 失败换一次全量重传，版本门控就废了），
+    /// 也不许滑成 `Present`（那正是本枚举要治的那个静默）。
+    #[test]
+    fn probe_stat_failed_and_try_exists_cannot_answer_maps_to_unknown() {
+        assert_eq!(interpret_target_probe(None, None), TargetBinary::Unknown);
+        assert_ne!(
+            interpret_target_probe(None, None),
+            interpret_target_probe(None, Some(false)),
+            "「问不出来」与「明确不在」判成了同一格 —— 这两者正是要分开的那两件事"
+        );
+    }
+
+    /// **反向自检**：上面五格每一条都可能是恒真的（函数恒答那一张脸，断言照样绿）。
+    /// 这一格喂**全部六种输入**，钉的是「每一格只由它自己那条规则命中」——
+    /// 任何一臂被改到别的状态，下面必有一行不等。
+    #[test]
+    fn probe_no_cell_answers_in_place_of_another() {
+        let table: [(Option<Option<u64>>, Option<bool>, TargetBinary, &str); 6] = [
+            (Some(Some(9)), None, TargetBinary::Present, "有字节"),
+            (Some(Some(0)), None, TargetBinary::Empty, "恰好 0 字节"),
+            (Some(None), None, TargetBinary::Present, "服务器不给 size"),
+            (
+                None,
+                Some(false),
+                TargetBinary::Missing,
+                "stat 失败 + try_exists 说不在",
+            ),
+            (
+                None,
+                Some(true),
+                TargetBinary::Present,
+                "stat 失败 + try_exists 说在",
+            ),
+            (
+                None,
+                None,
+                TargetBinary::Unknown,
+                "stat 失败 + try_exists 也答不出",
+            ),
+        ];
+        for (size, exists, want, what) in table {
+            assert_eq!(interpret_target_probe(size, exists), want, "{what}");
+        }
+        // 四个状态一个不少地被这张表喂到 —— 少一行就等于那一格没人看。
+        for want in [
+            TargetBinary::Present,
+            TargetBinary::Missing,
+            TargetBinary::Empty,
+            TargetBinary::Unknown,
+        ] {
+            assert!(
+                table.iter().any(|(_, _, w, _)| *w == want),
+                "{want:?} 这一格没有输入喂给它"
+            );
+        }
+        // 恒答任何一张脸都会被这三对逮住（不是「函数存在」那种空真）。
+        assert_ne!(
+            interpret_target_probe(Some(Some(0)), None),
+            interpret_target_probe(Some(Some(9)), None)
+        );
+        assert_ne!(
+            interpret_target_probe(Some(None), None),
+            interpret_target_probe(Some(Some(0)), None)
+        );
+        assert_ne!(
+            interpret_target_probe(None, Some(false)),
+            interpret_target_probe(None, None)
+        );
+    }
+
+    /// **防空转**（K-W4b）：上面六格全在纯函数上，取样壳只要不接到它就是死代码，
+    /// 而六格照样绿 —— 那正是 09-06 之前那个洞（`probe_target_binary` 体恒答 `Present`
+    /// ⇒ 全量 cargo 0 红）。这一格钉的是取样壳**真的走**那个纯解释函数、
+    /// 并且**没有**把状态直接写死在 async 体里。
+    ///
+    /// 形状照抄同文件的 `both_daemon_deploy_paths_ask_the_file_itself_not_only_the_marker`
+    /// （含它那种反向自检）。
+    ///
+    /// ⚠ 射程：它看的是**源码文本**，不是运行期。挡得住「体被换成常量 / 纯函数没接上」，
+    /// 挡不住「调了纯函数但把返回值扔了」——那一形由上面六格与类型系统一起管。
+    #[test]
+    fn the_probe_shell_really_goes_through_the_pure_interpreter() {
+        fn body<'a>(src: &'a str, sig: &str) -> &'a str {
+            let i = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
+            let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
+            &src[i..j]
+        }
+        const SIG: &str = "async fn probe_target_binary(";
+        let src = include_str!("sftp.rs");
+        let code = body(src, SIG)
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        // 反向自检：**真取到体了**。取不到（空串）时下面那条 `!contains` 会恒真地全绿，
+        // 这一格就从守卫变成假绿源 ⇒ 先用一条正向断言把空串挡在外面。
+        assert!(
+            code.contains(SIG) && code.contains("sftp"),
+            "取到的不是 probe_target_binary 的体（拿到 {} 字节）",
+            code.len()
+        );
+        assert!(
+            code.contains("interpret_target_probe("),
+            "取样壳没走那个纯解释函数 —— 四态映射的那几格全成了死代码，掏空它一条都不会红"
+        );
+        assert!(
+            !code.contains("TargetBinary::"),
+            "取样壳里直接写死了状态 —— 映射规则又回到了不可测的 async 体里"
+        );
+    }
+
+    #[test]
+    fn is_safe_remote_jsonl_guard() {
+        // 合法：projects/<单层目录>/<sid>.jsonl
+        assert!(is_safe_remote_jsonl(
+            "/home/pi/.claude/projects/proj/abc-123.jsonl"
+        ));
+        // 兼容 CLAUDE_CONFIG_DIR 自定义目录（不硬编码 .claude）
+        assert!(is_safe_remote_jsonl(
+            "/opt/claude-data/projects/-home-pi-x/sid.jsonl"
+        ));
+        // 非 .jsonl → 拒
+        assert!(!is_safe_remote_jsonl(
+            "/home/pi/.claude/projects/proj/note.txt"
+        ));
+        assert!(!is_safe_remote_jsonl(
+            "/home/pi/.claude/projects/proj/abc.json"
+        ));
+        // 不在 projects/ → 拒
+        assert!(!is_safe_remote_jsonl("/home/pi/.ssh/id_ed25519.jsonl"));
+        assert!(!is_safe_remote_jsonl("/etc/passwd.jsonl"));
+        // 含 .. 上跳 → 拒
+        assert!(!is_safe_remote_jsonl(
+            "/home/pi/.claude/projects/../../../etc/x.jsonl"
+        ));
+        // 审计 S-1：projects 下直接放 jsonl（无中间目录层）→ 拒
+        assert!(!is_safe_remote_jsonl("/tmp/projects/x.jsonl"));
+        // 层级过深（≠ <dir>/<sid>.jsonl）→ 拒
+        assert!(!is_safe_remote_jsonl("/a/projects/b/c/x.jsonl"));
+        // 文件名只是 ".jsonl" → 拒
+        assert!(!is_safe_remote_jsonl("/x/projects/dir/.jsonl"));
+        // 空中间目录段 → 拒
+        assert!(!is_safe_remote_jsonl("/x/projects//abc.jsonl"));
+    }
+
+    #[test]
+    fn remote_parent_and_marker() {
+        assert_eq!(
+            remote_parent("/home/pi/.cc-monitor/bin/cc-monitor-remote"),
+            "/home/pi/.cc-monitor/bin"
+        );
+        assert_eq!(remote_parent("/x"), "/");
+        assert_eq!(remote_parent("rel/path"), "rel");
+        assert_eq!(remote_parent("noslash"), ".");
+        assert_eq!(
+            marker_path("/home/pi/.cc-monitor/bin/cc-monitor-remote"),
+            "/home/pi/.cc-monitor/bin/.build_id"
+        );
+        assert_eq!(marker_path("/x"), "/.build_id");
+    }
+
+    #[test]
+    fn strip_removes_paired_block_keeps_surrounding() {
+        let s = format!("head\n{CCM_PROFILE_BEGIN}\nccm() {{ :; }}\n{CCM_PROFILE_END}\ntail\n");
+        let out = strip_profile_block(&s, "远端 ~/.bashrc").unwrap();
+        assert_eq!(out, "head\ntail\n");
+        assert!(!out.contains(CCM_PROFILE_BEGIN));
+        // 幂等：再 strip 不变
+        assert_eq!(strip_profile_block(&out, "远端 ~/.bashrc").unwrap(), out);
+    }
+
+    #[test]
+    fn strip_noop_when_no_block() {
+        let s = "just user content\nno block here\n";
+        assert_eq!(strip_profile_block(s, "远端 ~/.bashrc").unwrap(), s);
+    }
+
+    /// **T04 审计⑤**：抽出来的谓词要对两个消费者都成立，且**标记词是必需条件**
+    /// ——那是防误删的关键（把"这是 cc-monitor 管的目录"变成路径本身的性质）。
+    #[test]
+    fn safe_managed_path_requires_a_marker() {
+        // 四条通用条件
+        for bad in ["", "  ", "relative/x", "/a/../b/cc-monitor", "/"] {
+            assert!(
+                !is_safe_remote_managed_path(bad, &["cc-monitor"]),
+                "{bad:?} 不该通过"
+            );
+        }
+        // **没有标记词一律不通过**——哪怕是个完全正常的绝对路径
+        assert!(!is_safe_remote_managed_path(
+            "/home/u/.local/bin/x",
+            &["cc-monitor"]
+        ));
+        assert!(is_safe_remote_managed_path(
+            "/home/u/.cc-monitor/d",
+            &["cc-monitor"]
+        ));
+        // 多标记词：任一命中即可（acct-iso 就是两个）
+        let m = &["cc-acct-iso", ".cc-monitor"];
+        assert!(is_safe_remote_managed_path("/opt/cc-acct-iso", m));
+        assert!(is_safe_remote_managed_path("/home/u/.cc-monitor/ai", m));
+        assert!(!is_safe_remote_managed_path("/opt/other", m));
+    }
+
+    /// **T04 审计②：迁移后远端这三个边界的语义确实变了，逐条锁死。**
+    /// 我原话"判定没变"已被实测证伪——写在这里免得下次又当成"没变"。
+    #[test]
+    fn remote_merge_boundary_semantics_after_migration() {
+        let snip = "ccm() { :; }";
+        // ① 行内 marker 不再命中 → 追加，且**用户那两行 echo 一个字节都不动**
+        //    （旧实现会切断第一行、吃掉第二行——远端一个未申报就修掉的数据丢失）
+        let inline =
+            format!("a\necho \"{CCM_PROFILE_BEGIN}\"\necho \"{CCM_PROFILE_END}\"\nuser code\n");
+        let got = merge_profile_block(&inline, snip, "远端 ~/.bashrc").unwrap();
+        assert!(got.starts_with(&inline), "块外内容必须逐字保留：{got}");
+        assert!(got.contains(snip));
+        // ② BEGIN 与 END 同一行 → 现在 Err（**退化，如实记**：旧实现能替换该行）
+        let same_line = format!("a\n{CCM_PROFILE_BEGIN} {CCM_PROFILE_END}\nb\n");
+        let e = merge_profile_block(&same_line, snip, "远端 ~/.bashrc").unwrap_err();
+        assert!(e.contains("找不到配对的 END"), "{e}");
+        // ③ 缩进 marker → 归一到列 0（旧实现保留 BEGIN 缩进、丢 END 缩进，不自洽）
+        let indented = format!("a\n  {CCM_PROFILE_BEGIN}\nold\n\t{CCM_PROFILE_END}\nb\n");
+        let got = merge_profile_block(&indented, snip, "远端 ~/.bashrc").unwrap();
+        assert!(
+            got.contains(&format!("\n{CCM_PROFILE_BEGIN}\n")),
+            "缩进应归一到列 0：{got}"
+        );
+        assert!(
+            got.starts_with("a\n") && got.ends_with("b\n"),
+            "块外保留：{got}"
+        );
+    }
+
+    // ===== T04 审计① 上传读回判据（此前这条路完全没有读回）=====
+
+    #[test]
+    fn upload_verify_catches_same_length_corruption() {
+        let want = b"#!/bin/sh\nexec ccm \"$@\"\n";
+        // 等长但一字节不同——**只比长度是查不出来的**，而此前连长度都没比
+        let mut bad = want.to_vec();
+        let k = bad.len() / 2;
+        bad[k] ^= 0x01;
+        let e = verify_uploaded_bytes("/r/x", want, Some(&bad)).unwrap_err();
+        assert!(e.contains("长度相同"), "{e}");
+        assert!(e.contains("首个差异在第"), "要指出位置：{e}");
+        // **关键**：措辞必须说清标记没写，否则用户不知道下次会重试
+        assert!(e.contains("未写入版本标记"), "{e}");
+    }
+
+    #[test]
+    fn upload_verify_catches_truncation_and_unreadable() {
+        let want = b"0123456789";
+        let e = verify_uploaded_bytes("/r/x", want, Some(b"01234")).unwrap_err();
+        assert!(e.contains("长度不匹配"), "{e}");
+        assert!(e.contains("期望 10 字节"), "{e}");
+        // 读不回来 ≠ 写对了
+        let e2 = verify_uploaded_bytes("/r/x", want, None).unwrap_err();
+        assert!(e2.contains("读不回"), "{e2}");
+        assert!(e2.contains("未写入版本标记"), "{e2}");
+    }
+
+    #[test]
+    fn upload_verify_passes_on_exact_bytes() {
+        // 二进制（含 NUL 与非 UTF-8）也要过——daemon 是可执行文件，String 路线走不通
+        let bin = &[0x7f, b'E', b'L', b'F', 0x00, 0xff, 0xfe];
+        assert!(verify_uploaded_bytes("/r/d", bin, Some(bin)).is_ok());
+        assert!(verify_uploaded_bytes("/r/d", b"", Some(b"")).is_ok());
+    }
+
+    /// Phase G 阻塞①：**「读不出来」绝不能变成「文件是空的」**。
+    ///
+    /// 旧代码是 `read_optional(..).map(from_utf8_lossy).unwrap_or_default()`，
+    /// 读失败 → `existing = ""` → install 跳过备份 + 整份覆盖用户 `.bashrc`；
+    /// uninstall 回「没有 ccm 块，无需卸载」。
+    #[test]
+    fn read_failure_is_not_an_empty_file() {
+        // 读失败 + 明确不存在 → 当新建（这条是**反向自检**：不能一律 Err，否则首次安装就废了）
+        assert_eq!(
+            interpret_profile_read("远端 ~/.bashrc", None, Some(false), None),
+            Ok(None)
+        );
+        // 读失败 + 文件确实在 → 必须 Err
+        let e = interpret_profile_read("远端 ~/.bashrc", None, Some(true), None).unwrap_err();
+        assert!(e.contains("读不出"), "{e}");
+        assert!(e.contains("未改动任何文件"), "{e}");
+        // 读失败 + 连"在不在"都问不出来 → 也必须 Err（不许乐观当新建）
+        let e2 = interpret_profile_read("远端 ~/.bashrc", None, None, None).unwrap_err();
+        assert!(e2.contains("读不出"), "{e2}");
+    }
+
+    /// Phase G 阻塞②：**非 UTF-8 的 profile 必须拒绝，不许有损重写**。
+    ///
+    /// 有损路线的恶性在于它**自带合格证**：备份写的是已经变成 U+FFFD 的那份，
+    /// 读回校验两边同样有损 → 逐字节相同 → 校验通过。所以这里断言的是"根本不进那条路"。
+    #[test]
+    fn non_utf8_profile_is_refused_instead_of_lossily_rewritten() {
+        // GBK 的「中」= 0xD6 0xD0，单独出现不是合法 UTF-8
+        let gbk = b"# \xd6\xd0\xce\xc4\nexport PATH=$PATH\n";
+        let e = interpret_profile_read("远端 ~/.bashrc", Some(gbk), None, None).unwrap_err();
+        assert!(e.contains("不是合法 UTF-8"), "{e}");
+        assert!(e.contains("前 2 字节合法"), "偏移要说清，实得：{e}");
+        assert!(e.contains("未改动任何文件"), "{e}");
+        // 有损重写会把它变成什么——写在这里，好让人一眼看到丢了什么
+        assert_ne!(
+            String::from_utf8_lossy(gbk).into_owned().as_bytes(),
+            gbk,
+            "这条测试的前提没了：这串本来就该是有损的"
+        );
+
+        // **反向自检**：合法的多字节 UTF-8（中文注释）必须原样通过、往返零损失
+        let utf8 = "# 中文注释\nexport PATH=$PATH\n";
+        assert_eq!(
+            interpret_profile_read("远端 ~/.bashrc", Some(utf8.as_bytes()), None, None),
+            Ok(Some(utf8.to_string()))
+        );
+    }
+
+    /// Phase G：本机侧 v1.7.9 的那道防线（磁盘有字节却读到空）补到远端侧。
+    #[test]
+    fn bytes_on_disk_but_read_empty_is_refused() {
+        let e = interpret_profile_read("远端 ~/.bashrc", Some(b""), None, Some(120)).unwrap_err();
+        assert!(e.contains("有 120 字节"), "{e}");
+        assert!(e.contains("未改动任何文件"), "{e}");
+        // 反向自检：真的空文件（size 0 / 问不到 size）不能被拦
+        assert_eq!(
+            interpret_profile_read("远端 ~/.bashrc", Some(b""), None, Some(0)),
+            Ok(Some(String::new()))
+        );
+        assert_eq!(
+            interpret_profile_read("远端 ~/.bashrc", Some(b""), None, None),
+            Ok(Some(String::new()))
+        );
+    }
+
+    /// **结构性守卫**：两处 profile 读-改-写的**初始读取**必须走 fail-safe 读取器。
+    ///
+    /// 范围**只覆盖「喂给文本变换的那一次读取」**，即函数体开头到
+    /// `merge_profile_block`/`strip_profile_block` 之间那一段。
+    ///
+    /// 第一版写成"整个函数体不许出现 `read_optional(sftp, &profile)`"，**当场被自己抓红**：
+    /// 同一函数里的**写后读回校验**正当地用它，而且那处用 lossy 也是安全的——写进去的一定是
+    /// 合法 UTF-8，传输损坏会变成 U+FFFD → 与期望不符 → Mismatch → 回滚，方向 fail-safe。
+    /// 收窄了**两次**才对上，两次都是自己抓自己：
+    /// ① 初版扫整个函数体 → 撞上写后读回校验那处正当的 `read_optional(sftp, &profile)`；
+    /// ② 收到"变换之前"后仍假红 → `install` 的读取段里还有一处正当的 `read_optional`，
+    ///    读的是刚部署的 **ccm CLI 脚本**（`CCM_CLI_REMOTE_PATH`），不是 profile。
+    /// 所以禁的必须是**读 profile 那一次**的确切形态，不是"任何 `read_optional`"。
+    /// 守卫范围必须等于性质范围；本会话第三次栽在同一形状上，故把订正过程留在注释里。
+    #[test]
+    fn profile_read_modify_write_goes_through_the_failsafe_reader() {
+        fn body<'a>(src: &'a str, sig: &str) -> &'a str {
+            let i = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
+            let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
+            &src[i..j]
+        }
+        let src = include_str!("sftp.rs");
+        let mut checked = 0usize;
+        for (sig, transform) in [
+            (
+                "pub async fn uninstall_remote_ccm_helper(",
+                "strip_profile_block(",
+            ),
+            (
+                "pub async fn install_remote_ccm_helper(",
+                "merge_profile_block(",
+            ),
+        ] {
+            let code = body(src, sig)
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            // 反向自检①：真取到函数体了（不是空串在空转）
+            assert!(code.contains("upload_atomic("), "{sig}: 取到的体里没有上传");
+            let cut = code
+                .find(transform)
+                .unwrap_or_else(|| panic!("{sig}: 找不到 {transform}——守卫失效了"));
+            let before = &code[..cut];
+            // 反向自检②：截出来的前半段非空，且确实是读取段
+            assert!(
+                before.len() > 40 && before.contains("profile"),
+                "{sig}: 截出的读取段不像读取段（{} 字节）",
+                before.len()
+            );
+            assert!(
+                before.contains("read_profile_text(sftp, &profile"),
+                "{sig}: 喂给 {transform} 的 profile 读取没走 fail-safe 读取器"
+            );
+            assert!(
+                !before.contains("read_optional(sftp, &profile)"),
+                "{sig}: 又直接拿 read_optional 读 profile 了——那会把「读不出来」当成空文件，\
+                 于是跳过备份 + 整份覆盖 / 谎报无需卸载"
+            );
+            checked += 1;
+        }
+        assert_eq!(checked, 2, "期望恰好两个 profile 命令，实得 {checked}");
+    }
+
+    /// Phase G：回滚措辞必须与实际发生的事一致（机制不许声称做了它没做的事）。
+    #[test]
+    fn rollback_note_matches_what_actually_happened() {
+        assert!(rollback_note(false).contains("已尝试回滚"));
+        let n = rollback_note(true);
+        assert!(n.contains("没有可回滚的内容"), "{n}");
+        assert!(!n.contains("已尝试回滚"), "空 existing 时不许说回滚过：{n}");
+        assert!(n.contains("请手动清理"), "要给出恢复路径：{n}");
+    }
+
+    /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
+    ///
+    /// 范围只覆盖 `deploy_remote_daemon` 与 `deploy_remote_acct_iso` 两个函数体
+    /// ——**第一版写成"全文件不许有裸 upload_atomic"，当场被自己抓**：
+    /// ccm helper 那条路（`&profile, stripped/merged`）**故意**用裸上传，
+    /// 因为它下游紧接着自己的读回 + 回滚（`sftp.rs` 那三处 `verify_readback`）。
+    /// 守卫范围比性质宽 = 假红 = 会被人关掉。
+    ///
+    /// 版本标记允许裸上传：它是"校验通过"的凭证，必须最后写。
+    #[test]
+    fn deploy_paths_use_verified_upload_for_content() {
+        fn body<'a>(src: &'a str, sig: &str) -> &'a str {
+            let i = src
+                .find(sig)
+                .unwrap_or_else(|| panic!("找不到 {sig}——守卫失效了"));
+            let j = src[i..].find("\n}\n").map(|k| i + k).unwrap_or(src.len());
+            &src[i..j]
+        }
+        let checks = [
+            (
+                body(
+                    include_str!("sftp.rs"),
+                    "pub async fn deploy_remote_daemon(",
+                ),
+                "deploy_remote_daemon",
+            ),
+            (
+                body(
+                    include_str!("acct_iso_deploy.rs"),
+                    "pub async fn deploy_remote_acct_iso(",
+                ),
+                "deploy_remote_acct_iso",
+            ),
+        ];
+        let mut verified_total = 0usize;
+        for (b, what) in checks {
+            let code = b
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            // 反向自检：真取到函数体了
+            assert!(
+                code.contains("upload_atomic"),
+                "{what}: 取到的体里没有上传，守卫在空转"
+            );
+            verified_total += code.matches("upload_atomic_verified(").count();
+            for l in code.lines() {
+                if !l.contains("upload_atomic(") {
+                    continue;
+                }
+                assert!(
+                    l.contains("marker"),
+                    "{what}: 内容上传仍走裸 upload_atomic —— {}",
+                    l.trim()
+                );
+            }
+        }
+        // 计数自检：2 处 daemon 二进制 + 6 个 acct-iso 脚本
+        assert_eq!(
+            verified_total, 7,
+            "期望 1(daemon 体内) + 6(acct-iso)，实得 {verified_total}"
+        );
+    }
+
+    #[test]
+    fn strip_aborts_on_malformed_begin_without_end() {
+        // **这条测试原先把 bug 编码进去了**（T04 审计阻塞）：它断言悬空 BEGIN 时
+        // strip 是 no-op，而调用方据此打印「远端 … 没有 ccm 块，无需卸载」——
+        // 那正是同一个 commit 里被定义为 bug 的形态，只是发生在「卸」这半边。
+        // 现在两侧的装与卸四条路全走 `find_pair`，此处必须 Err 中止。
+        let corrupt = format!("a\n{CCM_PROFILE_BEGIN}\nccm() {{ :; }}\nuser code\n");
+        let e = strip_profile_block(&corrupt, "远端 ~/.bashrc").unwrap_err();
+        assert!(e.contains("找不到配对的 END"), "{e}");
+        assert!(e.contains("已中止"), "要让用户知道我们没动文件：{e}");
+        assert!(e.contains("远端 ~/.bashrc"), "要说清是哪个文件：{e}");
+        // 而**没有** BEGIN 时仍是正常的 no-op（别把这条也变成错误）
+        assert_eq!(
+            strip_profile_block("just user code\n", "远端 ~/.bashrc").unwrap(),
+            "just user code\n"
+        );
+    }
+
+    #[test]
+    fn safe_daemon_path_accepts_convention_rejects_suspicious() {
+        assert!(is_safe_remote_daemon_path(
+            "/home/pi/.cc-monitor/bin/cc-monitor-remote"
+        ));
+        assert!(!is_safe_remote_daemon_path("")); // 空
+        assert!(!is_safe_remote_daemon_path("relative/cc-monitor")); // 非绝对
+        assert!(!is_safe_remote_daemon_path("/")); // 根
+        assert!(!is_safe_remote_daemon_path("/etc/passwd")); // 不含 cc-monitor
+        assert!(!is_safe_remote_daemon_path(
+            "/home/pi/.cc-monitor/../../../etc/x"
+        )); // 含 ..
+    }
+}

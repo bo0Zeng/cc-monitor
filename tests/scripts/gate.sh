@@ -448,7 +448,7 @@ run_gate() {
 # 那是一道**我们满足不了的闸**，比没有闸更坏。
 #
 # ⚠ 另记一条**反直觉**的读数（`己1-f9` 独立跟进，本处不修）：
-# `src-tauri/Cargo.toml:22` **明明写着** `exclude = ["vendor/code-picture-core"]`，
+# `src/bridge/Cargo.toml:22` **明明写着** `exclude = ["vendor/code-picture-core"]`，
 # **而 cargo 不认** —— `cargo metadata --no-deps` 的权威 member 名单 9 个里就有它。
 # ⇒「配置里写了 exclude」**≠**「cargo 认它被排除了」，所以这里必须再显式排一次。
 #
@@ -744,7 +744,7 @@ run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族（copy2 · 
 # ## 🔴 人群**从 `.github/workflows/ci.yml` 现读**，本文件不写第二份清单
 #
 # 那份清单（`FILES=$(printf …)` 那一段 ＋ 它下面那条覆盖面地板）今天已经有唯一住址，
-# 而且 `src-tauri/src/shell_lint_registry.rs` 那条恒等判据就是靠**解析它**来钉
+# 而且 `src/bridge/src/shell_lint_registry.rs` 那条恒等判据就是靠**解析它**来钉
 # 「每个 shell 脚本要么进 shellcheck 要么登记豁免」。
 # ⇒ 在本文件里抄一份 = 同一个闭集第三个住址，三处必漂（本仓那笔账写在
 #   `tests/e2e/assert-pass-floor.sh` 的地板纪律里，已经栽过两次）。
@@ -877,7 +877,7 @@ run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PAS
 #
 # ⚠ 射程与买不到的东西逐条写在 `tests/evidence/K-R117-ruler.py` 的头注里（`B1`–`B8`），
 #   这里不复述一份（复述就会漂 —— 与上面两格同一条取法）。其中要在这儿点一句的只有一条：
-#   **`src-tauri/src/parity_ledger.rs` 那一份 `§S5e` 判不了**（那 22 条命令名就是从它解析出来的
+#   **`src/bridge/src/parity_ledger.rs` 那一份 `§S5e` 判不了**（那 22 条命令名就是从它解析出来的
 #   ⇒ 空真），它的闸在 `§S5c` 的闭集判定 —— 别把这一格读成「三份共用文件都判了」。
 run_gate installface '判过的条数（`§S5c`/`§S5d`/`§S5e` 三节逐条印出来的 PASS：22 条命令各归一组 ＋ 闭集并集两向 ＋ 五组交集空 ＋ 5 组前端落点棘轮 ＋ 22 条包装层入口两侧 ＋ `claims()` 10 个装/卸符号各有着落）。⚠ `ruler.py` 原有的 `R1`–`R7` **不在这个数里**（它们只在红的时候出声，没有逐条的「过了」事件）⇒ 这个数**不是**「那把尺子判过的全部条数」。⚠ 落点只认**调用形状** `.<命令>(`，只在注释/散文里提到命令名的**不算落点**（否则这把尺子可以靠删一条注释变绿）；别的调用形状（`invoke("<名>")` 直呼）它看不见，那一档逐处印在 `§S5d` 第二档里只出读数。⚠ 度量的是「几**份**文件」不是「几处引用」⇒ 往一份已经在名单里的文件里再加一处引用**不红**。⚠ `parity_ledger.rs` 那一份 `§S5e` **判不了**（空真），闸在 `§S5c`' \
          python3 tests/evidence/K-R117-ruler.py
@@ -906,12 +906,12 @@ run_gate installface '判过的条数（`§S5c`/`§S5d`/`§S5e` 三节逐条印�
 #   · 它买的是「**排版与 rustfmt 一致**」，**买不到**「代码对」。
 #   · 头注那条 ① （Windows 那半编不编得过，要 `--target x86_64-pc-windows-msvc`）
 #     **今天仍然没买到** —— 沙箱镜像仍没装那个 target。**别把这一格读成两条都补上了。**
-#   · 它跑在 `src-tauri` 上（`--all` = 那个 workspace 的全部成员）；
+#   · 它跑在 `src/bridge` 上（`--all` = 那个 workspace 的全部成员）；
 #     `src/backend` 是**另一个 workspace**，本行盖不到它。
 #     🔴 **`K-R80`（09-12）：那句话一个字没改，改的是它后面缺的那一格** ——
 #     那棵树今天由下面 `fmt-daemon` 那一行盖。**别再把这一句读成处置。**
-run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src-tauri` 那个 workspace 的全部成员；`src/backend` 是另一个 workspace，本行盖不到（那一棵由下面 fmt-daemon 那一格盖）' \
-         bash -c 'cd src-tauri && cargo fmt --all --check 2>&1 && echo "fmt: 1 passed"'
+run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/bridge` 那个 workspace 的全部成员；`src/backend` 是另一个 workspace，本行盖不到（那一棵由下面 fmt-daemon 那一格盖）' \
+         bash -c 'cd src/bridge && cargo fmt --all --check 2>&1 && echo "fmt: 1 passed"'
 
 # ── daemon 那棵树的格式漂移（`K-R80` 09-12）──────────────────────────────────
 #
@@ -927,7 +927,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #
 # ## 为什么是**多一格**，不是**并成一棵**
 #
-# 把 `src/backend` 塞进 `src-tauri` 那个 workspace 就能「顺便盖到」——
+# 把 `src/backend` 塞进 `src/bridge` 那个 workspace 就能「顺便盖到」——
 # **不许**。`K25` 裁的是「一份代码、每平台一份原生二进制」，而那棵树的 standalone
 # 是**真架构约束**（它自己的 `Cargo.toml` 头注逐字：一个 workspace 会把这个 Linux-only 的
 # daemon 拖进 Windows CI 的 `cargo test --all`）。为一格排版去动两棵树的依赖关系，
@@ -938,10 +938,10 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 # **这一条是现打出来的，别顺手加 `--all` 去「对齐上面那一格」**（`K-R80` 09-12，
 # 沙箱 `ccmon-devbox:latest`，`cargo fmt --all --check -v` 读它真喂给 rustfmt 的那串文件）：
 # 在 `src/backend` 下加 `--all`，rustfmt 实收 **12 个 crate 根**，其中 **11 个不在这棵树里** ——
-# `src-tauri/build.rs` · `src-tauri/src/lib.rs` · `src-tauri/src/main.rs` ·
+# `src/bridge/build.rs` · `src/bridge/src/lib.rs` · `src/bridge/src/main.rs` ·
 # `crates/{acct,branch,creds,gate,guard,shell-quote,usage}-core/src/lib.rs`，
-# 以及 🔴 **`src-tauri/vendor/code-picture-core/src/lib.rs`**。
-#（成因：那棵树的 path 依赖指进 `../../src-tauri`，`cargo fmt --all` 顺着它们走出去；
+# 以及 🔴 **`src/bridge/vendor/code-picture-core/src/lib.rs`**。
+#（成因：那棵树的 path 依赖指进 `../../src/bridge`，`cargo fmt --all` 顺着它们走出去；
 #  `cargo metadata --no-deps` 的 `workspace_members` 现打**只有 1 个**，两者不是一回事。）
 # ⇒ 加 `--all` 会把 vendor 那棵**我们无权修**的树拉进出货门禁 —— 与下面 `cargo` 那一格
 #   `--exclude code-picture-core` 要避开的是同一件事（`C7` 逐字「vendor `code-picture-core` **不动**」）：
@@ -957,7 +957,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #     `cargo fmt --check`，`working-directory: src/backend`）⇒ 本行**不是新买一条判据**，
 #     是把「本机门禁不是云端的超集」这个已知缺口在这一维上补平。⚠ 因此 `ci.yml` **不用改**，
 #     上面那条「三处一起改」的纪律与本行无关。
-run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的唯一成员 `cc-monitor-remote`；`src-tauri` 与 `vendor/code-picture-core` 由上面 fmt 那一格与它自己的 exclude 管，本行盖不到（刻意不加 --all，理由见上方注释）' \
+run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的唯一成员 `cc-monitor-remote`；`src/bridge` 与 `vendor/code-picture-core` 由上面 fmt 那一格与它自己的 exclude 管，本行盖不到（刻意不加 --all，理由见上方注释）' \
          bash -c 'cd src/backend && cargo fmt --check 2>&1 && echo "fmt-daemon: 1 passed"'
 
 # ── Windows 那半编不编得过 ──────────────────────────────────────────────────
@@ -969,7 +969,7 @@ run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红�
 # cc-monitor v1 是 **Windows 专供**，而 **Windows 上编不过这件事在 08-13 到 09-09 之间
 # 没有任何人发现**（云端 CI 自 08-05 起红在第一步，后面全部 `skipped`）——
 # 09-09 那一趟修出来 **17 个互不相同的编译错地址**。
-# 本机门禁跑在 Linux 上，那 `#[cfg(windows)]` 的 **67 处**（`src-tauri/src`，现打 09-10）
+# 本机门禁跑在 Linux 上，那 `#[cfg(windows)]` 的 **67 处**（`src/bridge/src`，现打 09-10）
 # **根本不参与编译** ⇒ 它一次都没看见。
 #
 # ## 🔴 铁律 12 的刀（**这一格不是推的，是切出来的**）
@@ -999,8 +999,8 @@ run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红�
 # ⚠ 依赖沙箱镜像装了 `mingw-w64` 与 `x86_64-pc-windows-gnu`（`.claude/devbox/Dockerfile`，
 #   仓外、不进版本控制）。没装的机器上这一格会红在「找不到 target」——**那是对的**：
 #   fail-closed 比静默跳过好。
-run_gate winchk '不是数出来的数：`cargo check --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 一个包（`src-tauri/src` 的 67 处 `cfg(windows)`）；`src/backend` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
-         bash -c 'cd src-tauri && cargo check --locked -p monitor --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
+run_gate winchk '不是数出来的数：`cargo check --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 一个包（`src/bridge/src` 的 67 处 `cfg(windows)`）；`src/backend` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
+         bash -c 'cd src/bridge && cargo check --locked -p monitor --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
 
 # ── `winchk-daemon`：**daemon 那棵树在 Windows 上编不编得过**（`K-R122` `KR122D2` 甲，09-14，第 18 格）──
 #
@@ -1033,15 +1033,15 @@ run_gate winchk '不是数出来的数：`cargo check --target x86_64-pc-windows
 #   仓外、不进版本控制）。没装的机器上本格红在「找不到 target」—— fail-closed，那是对的。
 # ⚠ 刻意**不带** `--locked`：CI 那一步也没带（`src/backend` 的锁文件由它自己的
 #   `cargo test` 那一步管）。一个性质两把尺子是本区最贵那族病。
-run_gate winchk-daemon '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src-tauri` 那棵树由上面 winchk 那一格盖' \
+run_gate winchk-daemon '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src/bridge` 那棵树由上面 winchk 那一格盖' \
          bash -c 'cd src/backend && cargo check --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-daemon: 1 passed"'
 
 # 8 个包 = `monitor` + 7 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
-run_gate_sum cargo 9 bash -c 'cd src-tauri && cargo test --workspace --exclude code-picture-core --lib 2>&1'
+run_gate_sum cargo 9 bash -c 'cd src/bridge && cargo test --workspace --exclude code-picture-core --lib 2>&1'
 
-# ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src-tauri/embedded-daemons/` 铺没铺。
+# ★★ `K-G3`（09-01）：上面那个合计**还缺一个分母** —— `src/bridge/embedded-daemons/` 铺没铺。
 #
-# `build.rs:376` 只有在 `src-tauri/embedded-daemons/` 里两个 arch 的二进制**都在且 build_id 对得上**
+# `build.rs:376` 只有在 `src/bridge/embedded-daemons/` 里两个 arch 的二进制**都在且 build_id 对得上**
 # 时才 `println!("cargo:rustc-cfg=embedded_daemons")`；那个目录被 `.gitignore` 挡着
 # ⇒ **它跟着「铺没铺」走，不跟着 git 走**。挂 `#[cfg(embedded_daemons)]` 的那一族全是
 # 「本地后端真的能起来吗」：`sftp::embedded_daemon_binaries_present_and_valid` ·
@@ -1057,16 +1057,16 @@ run_gate_sum cargo 9 bash -c 'cd src-tauri && cargo test --workspace --exclude c
 #   铺了与没铺**本来就该是两个数**，钉死任何一个都会把另一种铺法误判成红。
 #   真要买成判据得先有一张「铺法 ⇒ 应有条数」的映射，那张表今天盘上没有 ⇒ 交回 PM。
 # ⚠ 行首刻意**不是** `ok` —— 它不判任何东西，写成 `ok` 就是把一条诊断伪装成一格绿。
-if [ -d src-tauri/embedded-daemons ]; then
-  printf '  分母 %-14s %s\n' "cargo" "本树铺了 src-tauri/embedded-daemons/ ⇒ embedded_daemons cfg 会置上，「本地后端真的能起来吗」那一族在跑"
+if [ -d src/bridge/embedded-daemons ]; then
+  printf '  分母 %-14s %s\n' "cargo" "本树铺了 src/bridge/embedded-daemons/ ⇒ embedded_daemons cfg 会置上，「本地后端真的能起来吗」那一族在跑"
 else
-  printf '  分母 %-14s %s\n' "cargo" "本树未铺 src-tauri/embedded-daemons/ ⇒ embedded_daemons cfg 不置 ⇒ 上面那个合计里少了「本地后端真的能起来吗」那一族（4 条，逐个点名见上方注释）"
+  printf '  分母 %-14s %s\n' "cargo" "本树未铺 src/bridge/embedded-daemons/ ⇒ embedded_daemons cfg 不置 ⇒ 上面那个合计里少了「本地后端真的能起来吗」那一族（4 条，逐个点名见上方注释）"
 fi
 
 # ★ 生成物漂移（K-A1 第四轮 `R1`）：**改了 Rust 不跑生成，这里红。**
 #
 # 形状照 `.github/workflows/ci.yml` 那条「生成物必须最新（C05）」来 —— 它逐字是
-# `git diff --exit-code -- ../../src/generated`（那一步在 `src-tauri` 目录下跑，所以带 `../`；
+# `git diff --exit-code -- ../../src/generated`（那一步在 `src/bridge` 目录下跑，所以带 `../`；
 # 本脚本开头已经 `cd` 到仓根，所以不带），失败时印一句 `::error::` 提示「请跑
 # npm run gen:types 并把 src/generated/ 一起提交」再 `git diff --stat`。
 # ⚠ 那条 CI 步骤的头注还写明了它**排除了什么**：它只买「已提交的生成物 == 从 Rust 源生成的」
@@ -1076,7 +1076,7 @@ fi
 #
 # ⚠⚠ **位置是承重的：它必须排在上面那道 `cargo` 门之后。**
 # `ts-rs` 的导出测试就住 `cargo test --lib` 里（`package.json` 的 `gen:types` 逐字就是
-# `cd src-tauri && cargo test --lib export_bindings`）⇒ 跑过那道门，`src/generated/**` 已经被
+# `cd src/bridge && cargo test --lib export_bindings`）⇒ 跑过那道门，`src/generated/**` 已经被
 # 按当前 Rust 源重写了一遍，这里的 `git diff` 才是「Rust 源 与 已提交版本」的差。
 # 排在它**之前** ⇒ 检查的是一棵还没被重写的树，**恒绿 = 假绿**。
 #
@@ -1123,7 +1123,7 @@ esac
 # ⇒ `KR115D2` 二选一：收进门禁，或明写「本门禁不看它」。本格选的是**收进来**。
 #
 # ⚠ **射程如实写**：`-p monitor` 一个包的**非 test** 构建。
-#   `src/backend` 那棵树、`src-tauri` 的其余成员、`#[cfg(test)]` 里的死代码，
+#   `src/backend` 那棵树、`src/bridge` 的其余成员、`#[cfg(test)]` 里的死代码，
 #   本行**一概盖不到**。
 # ⚠ **判法是恒等，不是「不超过某个上限」** —— 这一条承重，理由是死值验逼出来的：
 #   本格第一趟落地时写的是「≤ 54」（照抄 `K-R109` 09-13 的读数），而**本趟现打是 41** ⇒
@@ -1142,7 +1142,7 @@ esac
 #   本格是 `--message-format=short`、不 touch，而且量于另一个主干尖。
 deadcode_t0=$(date +%s)
 run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 41，理由见上方注释）。射程只有 monitor 一个包的生产段；daemon 那棵树与 cfg(test) 里的死代码本行盖不到' \
-         bash -c 'cd src-tauri && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
+         bash -c 'cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \

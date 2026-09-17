@@ -2,7 +2,7 @@
 
 Vanilla TypeScript + Vite + Tauri 2 IPC。不引入框架（React/Vue 都没有）—— ~12K 行 TS 的中型应用（根 README 口径），原生 DOM 依旧足够——分层靠模块边界与本导览维持。
 
-本文件做"开发者打开 src/ 后第一眼看到的导航"。后端结构见 [`../src-tauri/README.md`](../src-tauri/README.md)。
+本文件做"开发者打开 src/ 后第一眼看到的导航"。后端结构见 [`../src/bridge/README.md`](../src/bridge/README.md)。
 
 ## 入口
 
@@ -46,7 +46,7 @@ index.html  ─> /src/main.ts (defer)
 | **format.ts** ⭐ v2.6 | 时间 / 字节格式化合并：消息卡用 `formatTimestampShort`（永远 hh:mm）；历史浏览器用 `formatTimestampSmart`（当天 hh:mm，跨天加日期）；`formatBytes` 统一精度 | `formatTimestampShort / formatTimestampSmart / formatBytes` |
 | **remote-launch.ts** (B14-F41) | 远端命令构造纯函数（sid 白名单 / launcher denylist / POSIX 引号 / 嵌套 env unset）：`buildResumeDirectCmd` + F48 `buildOpenTerminalCmd` + F51 `buildAttachCmd`/`isValidTmuxName` + F52 `buildResumeTmuxCmd` + F53 `buildLauncherCmd`/`deriveTmuxName`。DOM-free，`remote-launch.test.ts` 锁 | `buildResumeDirectCmd / buildResumeTmuxCmd / buildLauncherCmd / buildAttachCmd / posixQuote / isValidSessionId` |
 | **remote-launch-run.ts** (B14-F41) | 远端拉起执行器：`invoke('launch_remote_terminal')` → 失败回退把命令复制到剪贴板 + toast 提示（happy-path 拉终端，degrade-path 复制） | `runRemoteResume / runRemoteResumeTmux / runRemoteLauncher / runRemoteAttach` |
-| **agent-profile.ts** (F-MA) | 前端侧 agent 画像——把散落在 `cards/*` / `tabs.ts` 的 **Claude Code 专属工具名 / 进程名 / 嵌套 env** 常量收敛到一处（对应 Rust `src-tauri/src/adapter`）。第一刀值不变、行为零变化，接第二个具体 agent 时这里按 agent 切换；只收敛「工具名字符串」，不拆记录模型 | `AGENT_PROFILE`（agentTools / interactiveTools / diffTools / mdTools / livenessProcessNames 常量集） |
+| **agent-profile.ts** (F-MA) | 前端侧 agent 画像——把散落在 `cards/*` / `tabs.ts` 的 **Claude Code 专属工具名 / 进程名 / 嵌套 env** 常量收敛到一处（对应 Rust `src/bridge/src/adapter`）。第一刀值不变、行为零变化，接第二个具体 agent 时这里按 agent 切换；只收敛「工具名字符串」，不拆记录模型 | `AGENT_PROFILE`（agentTools / interactiveTools / diffTools / mdTools / livenessProcessNames 常量集） |
 | **session-backend.ts** (F90 SS-12 #48) | **会话后端**前端座——把 remote-launch.ts 里硬编码的 `tmux …` 命令字面量收敛到一处（守 INVARIANTS §31「一端起的会话另一端能接」）。与 agent-profile.ts 两轴正交（**哪个 AI** vs **哪个多路复用器**），皆纯模块被 remote-launch.ts 消费。**阶段①只做形状**：唯一后端 = tmux、`SESSION_BACKEND ≡ TMUX_BACKEND`、无运行时后端选择（abduco/dtach + daemon RPC = 阶段②） | `SessionBackend / TMUX_BACKEND / SESSION_BACKEND` |
 | **turn-notify.ts** (B14-F42) | 完成一轮系统通知：`turnEndNotifier` 单例 `observe(sid, tabTitle, payload, inBatch)` 判 turn-end 弹通知，四门（批量 / 新鲜度 / 防抖 / 聚焦）+ 插件权限懒检查；`turn-notify.vitest.ts` 锁 | `turnEndNotifier.observe(...)` |
 | **remote-health.ts** (SS-F #32) | listen `remote-health` 事件，按 `(origin,kind)` 节流后弹灰色 info toast：`overflow`（拥塞丢行）/ `version`（旧 daemon 降级）/ `degraded`（B14-F59 daemonless 降级模式，`headlineFor` 映射「远端降级模式」）。`remote-health.test.ts` 锁纯逻辑 | `bindRemoteHealth() / headlineFor(kind)` |

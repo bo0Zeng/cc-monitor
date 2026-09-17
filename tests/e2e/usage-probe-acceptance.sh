@@ -10,7 +10,7 @@
 #   读它 stdout 的应答帧，在**真 tmux**（隔离 socket）上看结果。
 #
 # 输入 = 真编码器产出的帧行（`cargo test --lib -- --ignored --nocapture
-# emit_usage_probe_frames_for_e2e`，见 `src-tauri/src/account_usage.rs` 对应测试头注）——
+# emit_usage_probe_frames_for_e2e`，见 `src/bridge/src/account_usage.rs` 对应测试头注）——
 # 不手搓等价 JSON。会话名由 daemon 铸，脚本按 `E2E_SESSION_PLACEHOLDER` 替换。
 #
 # ## 为什么必须有真跑这一层（同 `tests/e2e/daemon-cc-bus.sh` 头注那条）
@@ -74,12 +74,12 @@ export PATH="$BIN:$PATH"
 
 # ── 输入源：真编码器产的帧行 ────────────────────────────────────────────────
 LINES="$SP/frames.tsv"
-(cd "$REPO/src-tauri" && cargo test --lib -- --ignored --nocapture emit_usage_probe_frames_for_e2e 2>/dev/null) \
+(cd "$REPO/src/bridge" && cargo test --lib -- --ignored --nocapture emit_usage_probe_frames_for_e2e 2>/dev/null) \
   | grep -P '^[a-z-]+\t\{' > "$LINES"
 [ -s "$LINES" ] || { echo "cargo test 未产出任何帧行——检查上游 emit_usage_probe_frames_for_e2e 是否编译/运行成功"; exit 1; }
 LINE() { grep -P "^$1\t" "$LINES" | cut -f2-; }
 # 占位符**从 Rust 常量现读**，不在这里再写一份字面量（两侧各写一份就会漂）。
-PLACEHOLDER="$(grep -oP 'E2E_SESSION_PLACEHOLDER: &str = "\K[^"]+' "$REPO/src-tauri/src/account_usage.rs")"
+PLACEHOLDER="$(grep -oP 'E2E_SESSION_PLACEHOLDER: &str = "\K[^"]+' "$REPO/src/bridge/src/account_usage.rs")"
 [ -n "$PLACEHOLDER" ] || { echo "读不到 E2E_SESSION_PLACEHOLDER —— 那个常量改名了？"; exit 1; }
 # `K-R122`（09-14）：**这个函数原来叫 `FOR`，改名是因为 `shellcheck` 判它 error。**
 # `SC1081` 逐字「Scripts are case sensitive. Use 'for', not 'FOR'」—— 它按「大小写写错的

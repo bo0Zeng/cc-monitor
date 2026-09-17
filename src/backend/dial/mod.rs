@@ -22,13 +22,13 @@
 //! - ⚠ **「默认装机走不走得到这条路」——两个答案，别混**（这一格我第一版判错过，订正如下）：
 //!   - **发版包里走得到。** 现打四环（我自己逐份读的原文，**点符号不点行号**）：
 //!     ① `local_backend.rs::SIDECAR_STEM` 逐字 `pub const SIDECAR_STEM: &str = "cc-monitor-remote";`；
-//!     ② `src-tauri/tauri.sidecar.conf.json` 逐字 `"externalBin": ["binaries/cc-monitor-remote"]`
+//!     ② `src/bridge/tauri.sidecar.conf.json` 逐字 `"externalBin": ["binaries/cc-monitor-remote"]`
 //!        —— **同一个名字**；
 //!     ③ `.github/workflows/release.yml` 的 `build-windows` 里两步 ——
 //!        `Build local backend sidecar (native)`（`working-directory: src/backend`
 //!        · `cargo build --release`）＋ `Stage sidecar for externalBin`
 //!        （拷成 `cc-monitor-remote-<triple>.exe`），随后
-//!        `npx tauri build --config src-tauri/tauri.sidecar.conf.json`；
+//!        `npx tauri build --config src/bridge/tauri.sidecar.conf.json`；
 //!        `build-linux` 那个 job 三步同形；
 //!     ④ 同一份 workflow 的那段头注逐字写着 daemon **在 Windows 上真编得过**
 //!        （2026-08-04 真机实测 exit=0、release 2.6 MB、跑起来发完整 hello）。
@@ -37,7 +37,7 @@
 //!     `tauri.sidecar.conf.json`、只在发版那一步注入 ⇒ `cargo run` / `npm run tauri dev`
 //!     两处都空 ⇒ **回落到进程内拨号**。
 //!   🔴 **我第一版把后者写成了全称**，理由正是本仓那条老病：**查的是开发树，
-//!   得到的是一个只在开发树上为真的答案**（`src-tauri/src/local_accounts.rs` 里
+//!   得到的是一个只在开发树上为真的答案**（`src/bridge/src/local_accounts.rs` 里
 //!   那条登记自己就写着同一句）。**这条边界的射程是「开发树」，不是「默认装机」。**
 //! - ⚠ **另一条真会让它回落的**：本代理只会 **publickey** 一种鉴权
 //!   ⇒ 配置里没填 `keyPath`（Windows 上走 ssh-agent 那一档）时，界面**不走代理**。
@@ -391,7 +391,7 @@ mod tests {
     //! # 甲半在哪
     //!
     //! 甲半（界面这一侧：daemon 那条长连接流不再自己拨号）住
-    //! `../src-tauri/src/ssh_source.rs` 的测试模块 —— **两侧各扫各的 crate**，
+    //! `../../bridge/src/ssh_source.rs` 的测试模块 —— **两侧各扫各的 crate**，
     //! 刻意不从这里 `include_str!` 伸到对面去（那会新增一条跨轨编译期边，
     //! 而那张登记表不在本轮写区里）。
 

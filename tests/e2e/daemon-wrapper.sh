@@ -13,7 +13,7 @@
 #   app 当场判「远端无版本标记」⇒ **把本脚本覆盖成内嵌二进制**,于是 daemon 用**真** `~/.claude`
 #   起来了(只读铁律没破,但沙箱意图整个落空)。这一行写清楚,省得下一个人再踩。
 #   (内容 = app 期望的 daemon build_id,如 `p1p-tmux-frame`),再把 daemonPath 指向它 →
-#   deploy_decision=Skip、脚本存活。(见 src-tauri/src/sftp.rs::deploy_decision +
+#   deploy_decision=Skip、脚本存活。(见 src/bridge/src/sftp.rs::deploy_decision +
 #   ssh_source EXPECTED_DAEMON_BUILD_ID)
 E2E_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO=$(CDPATH= cd -- "$E2E_DIR/../.." && pwd)

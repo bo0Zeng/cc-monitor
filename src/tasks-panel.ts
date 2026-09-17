@@ -26,7 +26,7 @@ import { dispatcher } from "./keybindings/registry";
 import { commands } from "./ipc/commands";
 import { LS_KEYS, safeGet, safeSet } from "./local-storage";
 
-// C02：改成从生成物 re-export（源：`src-tauri/src/tasks.rs` 的 `TaskEntry`）。
+// C02：改成从生成物 re-export（源：`src/bridge/src/tasks.rs` 的 `TaskEntry`）。
 // 保持 `export` 名字不变 ⇒ 别的模块的 import 一行都不用改。
 import type { TaskEntry } from "./generated/TaskEntry";
 // 本文件内部也用 `TaskEntry`（4 处），所以 import + re-export 都要有

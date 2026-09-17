@@ -202,14 +202,14 @@ mod tests {
     /// 本解析器改了切法 ⇒ 同一条样例切出别的段 ⇒ **也是本条红**。
     /// 「两半漂开而两边都不红」这一形，从这一刀起不成立。
     ///
-    /// ⚠ 这条**跨半边编译期边已登记**在 `src-tauri/src/cross_half_edge_registry.rs`
+    /// ⚠ 这条**跨半边编译期边已登记**在 `src/bridge/src/cross_half_edge_registry.rs`
     /// （那张表默认拒绝：不登记就红），并且它**只长在判据里** ——
     /// `no_cross_half_edge_lives_in_production_code` 钉着「一条都不许长到生产段」。
     #[test]
     fn the_shape_the_injection_side_builds_lands_in_the_slots_this_parser_expects() {
         // ★ 跨半边：读 monitor 那一侧的**源码**，把它的样例常量抠出来。
         const MONITOR_PAYLOAD_RS: &str =
-            include_str!("../../../src-tauri/src/backend/control/payload.rs");
+            include_str!("../../../src/bridge/src/backend/control/payload.rs");
         let key = "pub const RELAY_ROUTE_SAMPLE: &str = \"";
         let at = MONITOR_PAYLOAD_RS.find(key).expect(
             "monitor 侧找不到 `RELAY_ROUTE_SAMPLE` —— 抽取器坏了或那个常量被改名了，\n\

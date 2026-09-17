@@ -21,7 +21,7 @@
 #   · `local_daemon::tests::the_local_daemon_can_be_stopped_and_started_again`
 #   · `backend::control::local_backend::tests::the_local_daemon_really_registers_an_inbound_client`
 #
-# ⇒ **任何人在铺了 `src-tauri/embedded-daemons/` 的树上跑一次 `cargo test`**（包括用户自己
+# ⇒ **任何人在铺了 `src/bridge/embedded-daemons/` 的树上跑一次 `cargo test`**（包括用户自己
 # clone 下来跑一遍）**都会改这台机器的 tmux 全局状态**。已经真发生过三次
 # （08-26 实现方 · 08-27 PM · 08-29 PM）。
 # ⇒ 两条都改成 `#[ignore]` + `CCM_E2E_TMUX_SHIM_BIN` fail-closed，**并接到本脚本这条带 shim 的路上**。
@@ -96,7 +96,7 @@ OUT="$WORK/rust.log"
 : > "$OUT"
 RC=0
 (
-  cd "$REPO/src-tauri" && \
+  cd "$REPO/src/bridge" && \
   CCM_E2E_DAEMON="$DAEMON" \
   CCM_E2E_TMUX_SHIM_BIN="$TMUX_SHIM_BIN" \
   CCM_E2E_CLAUDE_DIR="$CLAUDE_DIR" \
@@ -104,7 +104,7 @@ RC=0
   cargo test --lib -- --ignored --nocapture --test-threads=1 local_backend
 ) >>"$OUT" 2>&1 || RC=$?
 (
-  cd "$REPO/src-tauri" && \
+  cd "$REPO/src/bridge" && \
   CCM_E2E_DAEMON="$DAEMON" \
   CCM_E2E_TMUX_SHIM_BIN="$TMUX_SHIM_BIN" \
   CCM_E2E_CLAUDE_DIR="$CLAUDE_DIR" \

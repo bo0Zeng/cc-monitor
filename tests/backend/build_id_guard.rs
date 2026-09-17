@@ -487,7 +487,7 @@ mod tests {
     /// ⚠ 不证：**发版那份 release 二进制**也如此 —— 那是另一套 profile
     ///   （`lto` / `strip` / `opt-level`）。开工时在沙箱里用一份 `lto=true, strip=true`
     ///   的 release 壳单独打过一趟、同样扫出恰好一处，**但那是一次实验不是一条常驻判据**；
-    ///   常驻的那条在 `src-tauri/build.rs`：内嵌任何一个载体之前都要从**它的字节**里
+    ///   常驻的那条在 `src/bridge/build.rs`：内嵌任何一个载体之前都要从**它的字节**里
     ///   把身份扫出来，扫不出当场 panic ⇒ release 那一侧由发版路自己守。
     #[test]
     fn the_build_stamp_is_byte_scannable_in_this_very_binary() {
@@ -599,7 +599,7 @@ mod tests {
         assert_eq!(
             decls, 1,
             "`main.rs` 里 `const BUILD_ID` 的声明有 {decls} 处（应当 1）—— \n\
-             ⚠ `src-tauri/build.rs::extract_build_id` 与 `release.yml` 两处都按\n\
+             ⚠ `src/bridge/build.rs::extract_build_id` 与 `release.yml` 两处都按\n\
              「含 `const BUILD_ID` 的那一行」去抠它；0 处 ⇒ 抠出 `unknown`，\n\
              多处 ⇒ 抠到哪一个看运气。"
         );

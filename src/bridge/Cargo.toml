@@ -1,0 +1,183 @@
+# G2（Phase G 代码工程审计）：**这六个 crate 此前不是真 workspace member。**
+# 实测 `cargo metadata` 的 `workspace_members` 只有 `monitor` 一项 —— `cargo test -p branch-core`
+# 之所以能跑，靠的是 cargo 允许 `-p` 选中**依赖图里的非 member 包**，不是 workspace 机制。
+# 代价：门禁得在八个地方分别跑（~17 条 `--manifest-path`/`-p`），且每个 crate 单独 test 时
+# 会各落一个游离 `Cargo.lock`（`.gitignore` 为此打过补丁）。
+#
+# ⚠ `vendor/code-picture-core` **刻意 exclude**：它是 vendor 进来的第三方内核，
+# 不该被 `--workspace` 的 fmt/clippy/test 扫到（也不该因为我们的 lint 设置而红）。
+# ⚠ `src/backend` **不在这里** —— 它有自己独立的 `Cargo.lock`，
+# 那条隔离是真架构约束（Linux/Windows CI runner），见它自己的 `Cargo.toml` 头注。
+[workspace]
+members = [
+    ".",
+    "crates/acct-core",
+    "crates/branch-core",
+    "crates/creds-core",
+    "crates/gate-core",
+    "crates/guard-core",
+    "crates/search-core",
+    "crates/shell-quote-core",
+    "crates/usage-core",
+]
+exclude = ["vendor/code-picture-core"]
+
+[package]
+name = "monitor"
+version = "3.8.1"
+description = "cc-monitor — Claude Code 的开发工作台：只读渲染会话输出 + 本机/远端会话管理 + 代码全景 + skill 接入面（Tauri 2 + TypeScript，Windows / Linux）"
+authors = ["cc-monitor contributors"]
+edition = "2021"
+license = "MIT"
+readme = "../../README.md"
+repository = "https://github.com/local/cc-monitor"
+homepage = "https://github.com/local/cc-monitor"
+keywords = ["claude", "claude-code", "monitor", "tauri", "viewer"]
+categories = ["development-tools", "visualization"]
+
+[lib]
+name = "monitor_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+# tray-icon feature 实际没用（前端不调系统托盘 API），移除以减小依赖体积。
+# 未来若加托盘菜单，重新启用 features = ["tray-icon"] 即可
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+# Batch14-F42：turn-end 系统通知（Windows toast / Linux notify）
+tauri-plugin-notification = "2"
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# F62：从历史某轮创建分支（写 <new-sid>.jsonl）时生成新 sessionId。
+# uuid 1.x 已在 Cargo.lock（tauri 传递依赖）+ 本地 registry 缓存，加 v4 feature 离线可编。
+uuid = { version = "1", features = ["v4"] }
+
+# Batch15-P0：code-picture 代码全景可视化内核（vendor 进仓,见 vendor/code-picture-core/VENDOR.md）。
+# 只读查询 + tree-sitter 符号索引 + rusqlite(bundled) 侧车索引;引 crate use Engine(不走 MCP)。
+code-picture-core = { path = "vendor/code-picture-core" }
+# G1（branch-anywhere）：分叉的记录变换，与远端 daemon 共用同一份实现。
+branch-core = { path = "crates/branch-core" }
+usage-core = { path = "crates/usage-core" }
+acct-core = { path = "crates/acct-core" }
+# K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端 daemon 共用。
+# ★ `features = ["harden"]` —— **monitor 是唯一会写这份文件的一侧**，所以只有这里开它。
+# daemon 那侧刻意**不开**（`K-H2a` 裁四：daemon 只许读；`readonly_guard.rs` 扫它的生产段
+# 断言不含任何文件系统变更调用，白名单恰好一个模块 `control/fork_write.rs`）。
+# ⇒ 「daemon 写不了这份文件」是**编译器**兜的，不是一条判据兜的。
+creds-core = { path = "crates/creds-core", features = ["harden"] }
+
+# P4c：**POSIX 单引号 quote 的唯一 Rust 实现**（P4b 之前叫 `launch-core`，那时它还持有
+# 载荷编译器与 ccm 调用行的决策内核 —— 那两样 P4b 已归位 `src/backend/control/`）。
+# ⚠ 原注释说「daemon 侧刻意还没加这条依赖」已经过期两轮：U8c-2b-0 起 daemon 的
+# `control/tmux_hook.rs::sq` 就在调它，那也是它今天唯一的 daemon 用量。
+shell-quote-core = { path = "crates/shell-quote-core" }
+# F03：**§34 Gate 2（identity）的唯一实现**——「这个 tmux 会话是不是本工具管的」。
+# monitor 与 daemon 共用同一份判定（定框 C1），防「把 send-keys/kill 搬进后端时静默丢掉一道门」。
+gate-core = { path = "crates/gate-core" }
+
+# K-R100：**历史全文搜索口径的唯一实现**（12 个同名助手 + 4 个口径常量 + snippet 预算）。
+# 收口前 monitor `src/search.rs` 与 daemon `observe/search_query.rs` 各写一遍，逐字相同、
+# 零判据对拍 —— 「今天没漂」不是保障。判据住 `search.rs::the_search_kou_jing_has_exactly_one_home`。
+search-core = { path = "crates/search-core" }
+
+notify = "6"
+notify-debouncer-mini = "0.4"
+walkdir = "2"
+
+# SSH-remote Phase 0 (issue #15) S3：先证明 russh 能在 windows-msvc 下编译 + LTO 链接。
+# 默认 crypto backend 是 aws-lc-rs（需 NASM/cmake，windows 上易失败）；
+# 改用 default-features=false + ring 纯 Rust/汇编后端规避（见 ssh_source.rs 顶部注释）。
+# flate2/rsa 是 russh 默认开的非 crypto-backend feature，手动保留以维持等价行为。
+russh = { version = "0.61.1", default-features = false, features = ["ring", "flate2", "rsa"] }
+# SFTP 写（issue #29 自动部署 / #28 后续）：russh-sftp 是 transport-agnostic（吃 channel
+# 的 AsyncRead+AsyncWrite 流），与 russh 版本解耦——只需 request_subsystem("sftp") 后把
+# channel.into_stream() 交给它。注意 v2.3.0 **无** posix-rename@openssh 扩展，故 sftp.rs
+# 的近似原子写走「写 .tmp → 删旧 → rename」（见 sftp.rs 模块文档「原子写」）。
+russh-sftp = "2"
+# 版本钉死规避 pre-release 解析地雷：russh 的 ECDSA 走 p256/p521 0.14.0-rc.9，
+# 它们要 primefield 0.14.0-rc.9。但 cargo 默认会在 0.14.0-rc.* 区间内取最新
+# = primefield 0.14.0-rc.10（2026-06-04 刚发），rc.10 改了 ff trait 拆分
+# （primefield::ff::Field vs elliptic_curve::Field），与 rc.9 的 p256/p521 不兼容
+# → p256/p521 编译失败（E0277 FieldElement: elliptic_curve::Field not satisfied）。
+# 我们不直接用 primefield，这里仅作为 resolver 杠杆把它钉回 rc.9。
+# 详见 ssh_source.rs 顶部 crypto-backend 注释 + issue #15 S3 报告。
+primefield = "=0.14.0-rc.9"
+
+tokio = { version = "1", features = ["full"] }
+# 远端 fan-out 并发（R9）：join_all 同时查所有已配置远端，借用不需 'static/Send。
+# 已在 lockfile（russh 传递依赖），此处提升为直接依赖。
+futures = "0.3"
+parking_lot = "0.12"
+
+dirs = "5"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# v2.0.0 issue #4：滚动 log 文件 + non_blocking writer，给 GUI app（无 stderr）一个用户可见的诊断通道
+tracing-appender = "0.2"
+
+[dev-dependencies]
+# C01（rust-ts-boundary）：**故意只在 dev 侧**。`ts-rs` 是 codegen 工具，
+# 导出本来就走 `cargo test`（`#[ts(export)]` 生成的是一个测试），
+# 所以它没有理由进发布二进制。派生用 `#[cfg_attr(test, ...)]` 挂在 test cfg 上。
+#
+# **这是个会被复制 127 次的策略决定**（Phase D 审计 I4 点出），所以现在定比 C04 再定便宜。
+# 供应链增量本来就小（`ts-rs` + `ts-rs-macros` + `termcolor`，后两者是 proc-macro/构建期），
+# 但「codegen 工具不进产物」是正确的依赖方向。
+ts-rs = "12.0.1"
+# U8a-2a：源码扫描型守卫的「只留生产段」剥法，与远端 daemon 共用同一份。
+# **必须是 dev-dependency** —— 守卫全在 `cfg(test)` 里，它没有理由进发布二进制。
+# 起因：monitor 侧的守卫此前各写便宜近似（`split("\n#[cfg(test)]").next()`），
+# 那个近似在 `ssh_source.rs` 上会把扫描面砍掉三分之二（详见 guard-core 头注）。
+guard-core = { path = "crates/guard-core" }
+
+[target.'cfg(windows)'.dependencies]
+# v1.7.0：cc 注入式绑定恢复 ToolHelp（claude.exe 的 parent_pid 反查 PS） +
+# UI_WindowsAndMessaging（EnumWindows 找 title marker、SetForegroundWindow 拉前）。
+# ProcessStatus 仍不需要（v1.6 拉前算法时也没真用）。
+windows = { version = "0.56", features = [
+    "Win32_Foundation",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+    # ccbus-win 09-10 第七拍：`cc_bus::reap_whole_tree_on_drop` 要 Job Object
+    # （`CreateJobObjectW` / `SetInformationJobObject` / `AssignProcessToJobObject`）。
+    # 起因是一条有云端读数的真缺陷：Windows 上 `Git\bin\bash.exe` 是外壳，起完真 bash
+    # 自己就退，`kill_on_drop` 的 `TerminateProcess` 打在一个已经死了的 pid 上 ⇒
+    # 每次本机读超时（以及「读够了就掐断」那条常规路径）都漏下一个真 shell 进程。
+    # ⚠ **不新增 crate**，只是把这个已在依赖里的 crate 的一个模块打开 ——
+    #   本机现打确认（`cargo check -p monitor --target x86_64-pc-windows-gnu`）：
+    #   不加这一行时 `windows::Win32::System::JobObjects` 是 `E0432 unresolved import`，
+    #   编译器自己指出「the item is gated behind the `Win32_System_JobObjects` feature」。
+    "Win32_System_JobObjects",
+    "Win32_UI_WindowsAndMessaging",
+    # v2.4.2 issue #2: keybd_event 模拟 Alt 按键让 OS 视当前进程为
+    # "刚有用户输入"，配合 AttachThreadInput 突破 Win10/11 前台抢焦限制。
+    "Win32_UI_Input_KeyboardAndMouse",
+] }
+# K-H2a `KS5`：`Win32_Security` / `Win32_Security_Authorization` 两个 feature **不加在这里**。
+# 用到它们的 Win32 调用（设 / 读凭据文件的 DACL）住 `crates/creds-core`——
+# 那是「一个安全性质只许有一个实现」的落点（`K-H2a` 裁三），monitor 与 daemon 共用同一份。
+# 本 crate 只是它的**调用点之一**（`src/platform_fs.rs`），不直接碰 Win32。
+# ⚠ cargo 对同一版本的 `windows` 做 feature 合并 ⇒ 本 crate 的构建里那两个 feature 事实上是开的，
+# 但**声明住在真正用它的那个 crate**，别在这里重复一份（两处声明 = 下一个漂移源）。
+# issue #9：single-instance lock。第二个 cc-monitor 实例启动时立即退出，
+# 第一个窗口拉到前台。Tauri 官方 plugin，user-scoped mutex，跨 user session 不冲突。
+tauri-plugin-single-instance = "2"
+# F12 nudge 加固：resize 稳定后直接调 WebView2 controller COM 接口
+# （SetBounds / NotifyParentWindowPositionChanged / SetIsVisible）修合成层错位。
+# RECT/BOOL 参数类型必须来自 wry 依赖树里 webview2-com 0.38 配对的 windows 0.61
+# ——与上面项目自用的 windows 0.56 **类型不互通**，故 package rename 引入；
+# 版本收敛到 lock 里已有的 0.61.3，不新增依赖树条目。
+windows-wv2 = { package = "windows", version = "0.61", features = ["Win32_Foundation"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

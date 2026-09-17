@@ -1852,7 +1852,7 @@ mod g6_staged_zero {
     /// `(住址, 符号或判据名, 被钉的那个「零」逐字是什么, 今天钉它的判据（`—` = 今天没有）, 本 crate 够不够得着)`
     const STAGED_ZERO: &[(&str, &str, &str, &str, &str)] = &[
         (
-            "src-tauri/src/backend/control/launch_wire.rs",
+            "src/bridge/src/backend/control/launch_wire.rs",
             "the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold",
             "生产段**不发** `create-or-attach` 这个 mode 串（运行时拼串防自指，配抽取器自检）",
             "自己就是那条判据",
@@ -1955,7 +1955,7 @@ mod g6_staged_zero {
         assert!(
             out_of_reach <= 1,
             "有 {out_of_reach} 条标着 `跨 crate` —— 本判据住 daemon crate（它刻意不属于 workspace），\
-             够不着 `src-tauri`。标的条数超过 1 就说明这张表的家选错了，\
+             够不着 `src/bridge`。标的条数超过 1 就说明这张表的家选错了，\
              该按 `Bx` 说的另立一处两侧都够得着的落点。"
         );
     }

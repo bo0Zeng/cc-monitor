@@ -21,7 +21,7 @@ import { enumeratePrefix } from "../local-storage";
 import { formatBytes } from "../format";
 
 // C01（rust-ts-boundary）：这两个类型**改成从生成物 import**，不再手写。
-// 生成源是 `src-tauri/src/data_paths.rs` 的 `#[derive(ts_rs::TS)]`，产出 `src/generated/`。
+// 生成源是 `src/bridge/src/data_paths.rs` 的 `#[derive(ts_rs::TS)]`，产出 `src/generated/`。
 //
 // **换过来当场发现两处手写与 Rust 不一致**，都记在 C01 计划的 §7：
 // ① `sizeBytes` 手写成 `number`，而 Rust 是 `u64` ⇒ **静默有损**（JS number 是 f64，

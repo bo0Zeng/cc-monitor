@@ -2,7 +2,7 @@
 //!
 //! # 剥法本体已搬进共享 crate（U8a-2a）
 //!
-//! 实现在 [`guard_core`]（`src-tauri/crates/guard-core`），本模块只是**再导出** +
+//! 实现在 [`guard_core`]（`src/bridge/crates/guard-core`），本模块只是**再导出** +
 //! 存放 daemon 专属的那两条语义钉。搬家的理由：monitor 侧够不着 daemon 的 `cfg(test)`
 //! 模块，于是它的守卫各自写了便宜近似（`src.split("\n#[cfg(test)]").next()`）——
 //! 那个近似在 `ssh_source.rs` 这种「第一个测试模块在 804 行、要扫的代码在 1771 行」的文件上
@@ -167,7 +167,7 @@ mod tests {
     ///    本条自己守的只剩「这棵树剥得干净 ＋ 文件数没缩水」。
     ///
     /// 🔴 **这一段在两棵树里各住一份，逐字必须相同**
-    /// （`src/backend/guard_support.rs` ＋ `src-tauri/src/structural_scan.rs`）——
+    /// （`src/backend/guard_support.rs` ＋ `src/bridge/src/structural_scan.rs`）——
     /// `K-R110` 交回时点名过这个形状：**两个住址、同一句话**，改一处漏一处，
     /// 下一次还是一处真一处假。钉着它的是
     /// `guard_support.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
@@ -198,7 +198,7 @@ mod tests {
     /// # 题面
     ///
     /// 本文件的 `every_daemon_file_strips_clean` 与 monitor 那一侧的同名判据
-    /// （住 `src-tauri/src/structural_scan.rs`，扫的是另一棵树）头上挂着**同一段散文**。
+    /// （住 `src/bridge/src/structural_scan.rs`，扫的是另一棵树）头上挂着**同一段散文**。
     ///
     /// ⚠ 这里**刻意不写出对侧那个判据的函数名**：`structural_scan.rs` 里的
     /// `scan_tree!` 按构造摘掉调用者自己那一份 ⇒ 只住在那份文件里的符号**进不了**
@@ -225,7 +225,7 @@ mod tests {
         let beg = format!("// ⟦KR115D3 共{}", "用段·起⟧");
         let end = format!("// ⟦KR115D3 共{}", "用段·止⟧");
         let sites = [
-            "src-tauri/src/structural_scan.rs",
+            "src/bridge/src/structural_scan.rs",
             "src/backend/guard_support.rs",
         ];
         let mut blocks: Vec<(&str, String)> = Vec::new();

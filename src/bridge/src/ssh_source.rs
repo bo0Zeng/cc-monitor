@@ -1,0 +1,8647 @@
+//! SSH-remote 数据源（issue #15）。
+//!
+//! 本模块是**活代码**：从 lib.rs 的 `setup()` 调用（`remote.enabled=true` 且配置完整时）。
+//! 它提供三块能力：
+//! - **russh client 数据源**：[`run`] 连远端、exec daemon、把 daemon stdout 的
+//!   line-delimited JSON 帧解析后走与本地 watcher 相同的出口（`batch_to_payloads` →
+//!   `on_line_batch`），session 增减走专用 `session_changes` 通道。与本地 jsonl-watcher
+//!   **并行**作为附加数据源（远端行带 origin=host 标签）。
+//! - **ssh-config 导入**：[`list_ssh_host_aliases`] / [`resolve_ssh_host`]（`ssh -G`）
+//!   供前端「从 ~/.ssh/config 导入」自动填连接参数。
+//! - **测试连接**：[`test_remote_connection`] 实连一次，回 SSH ✓/✗ + host key 指纹 +
+//!   daemon ✓/✗（hello），供 UI 分级展示 + TOFU→strict 指纹固化。
+//!
+//! 上述三个 `#[tauri::command]` 在 lib.rs 的 invoke_handler! 里注册。
+//!
+//! ## Crypto backend 选择（S3 的核心风险点）
+//!
+//! russh 0.61 默认 crypto backend 是 `aws-lc-rs`，它在 windows-msvc 上构建需要
+//! NASM（汇编器）+ 有时 cmake，CI / 开发机上常缺失导致整条依赖链编译失败。
+//! 为规避这一构建风险，Cargo.toml 里用
+//! `default-features = false, features = ["ring", "flate2", "rsa"]`
+//! 切到 `ring` 后端（自带预编译/纯汇编路径，windows-msvc 无外部汇编器依赖）。
+//! `flate2` / `rsa` 是 russh 默认开的非 crypto-backend feature，手动保留以维持
+//! 与默认配置等价的功能面（压缩 + RSA key 支持）。
+
+// S5 起本模块从 setup() 调用（remote.enabled=true 时）。run() / parse_frame /
+// InboundFrame 都是活代码；connect_and_exec 的 ClientHandler 等仍是骨架但已被 run 串起。
+// 个别仅 S6+ 才读的字段（RemoteConfig 反序列化派生）保留 dead_code 容忍。
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+use russh::client;
+use russh::keys::{load_secret_key, HashAlg, PrivateKeyWithHashAlg, PublicKey};
+use serde::{Deserialize, Serialize};
+use tauri::Emitter;
+use tokio::io::{AsyncBufReadExt, BufReader};
+
+use crate::event_replay::EventReplay;
+use crate::session_map::{RemovalCause, RemovedSid, SessionChange};
+
+/// S0 **跨语言双写点**：daemon 那侧 `RemovalCause::Superseded` 的 serde 线上名。
+/// 改这里必须同步 `src/backend/wire.rs`（同 `TMUX_LS_FMT` 的纪律）。
+const REMOVAL_CAUSE_SUPERSEDED: &str = "superseded";
+use crate::watcher::JsonlLine;
+
+/// 重连退避下界：每次连接掉线后至少等这么久再重连（也是连上过之后的快速重连值）。
+const RECONNECT_MIN: Duration = Duration::from_secs(2);
+/// 重连退避上界：指数退避封顶，避免长断网时无意义地拉长重连间隔。
+const RECONNECT_MAX: Duration = Duration::from_secs(30);
+
+/// ★ **「本次连接算不算健康」的最短存活时长**〔audit-0805 F05 / 报告 I-1〕。
+///
+/// # 为什么不能拿「收到过 hello」当健康
+///
+/// `connected` 是在**收到 daemon hello 的那一刻**置位的（`stream_loop` 里那句
+/// `connected.store(true)`）。于是一个「发完 hello 就死」的 daemon —— 比如小机器上
+/// 整读 jsonl 触发 OOM 被杀 —— 每一轮都算「连上过」⇒ 退避每次都被重置回 2 秒
+/// ⇒ **永远不增长**。而每次重连要付 3 次完整 SSH 登录（arch 探测 / SFTP 预检 / 起流），
+/// 折算约 **90 次握手/分钟/台**，正好压在那台已经撑不住的机器上。
+///
+/// ⇒ 判据换成「**这条连接活过了多久**」：hello 只说明握手成功，活过 30 秒才说明它真站住了。
+///
+/// ⚠ 30 秒的取法：要明显长于「起流 + 首批帧」的正常耗时（冷启动实测约 0.9 s @30ms RTT、
+/// 约 6 s @200ms RTT，见 `ROADMAP §5`），又要短到不至于让一次真实的网络抖动被当成 flapping。
+const MIN_HEALTHY_UPTIME: Duration = Duration::from_secs(30);
+
+/// 纯函数：本轮连接结束后，退避该不该重置回 [`RECONNECT_MIN`]。
+///
+/// 两个条件**都要满足**：握手成功过（`saw_hello`）**且**这条连接活过 [`MIN_HEALTHY_UPTIME`]。
+/// 只看前者就是 I-1 那个自激循环；只看后者会把「连了很久但从没握手成功」也当健康。
+fn should_reset_backoff(saw_hello: bool, lived: Duration) -> bool {
+    saw_hello && lived >= MIN_HEALTHY_UPTIME
+}
+
+/// 冷启动预检的**自证记忆**〔audit-0805 F05 下半，报告「可选 12」〕。
+///
+/// # 冷启动今天付三条 SSH 连接，其中两条常常是白付的
+///
+/// 实测（08-06 读码逐条对上）：
+///
+/// | # | 连接 | 谁发起 |
+/// |---|---|---|
+/// | ① | `uname -m` 一次性 exec（选内嵌二进制的 arch） | `sftp::probe_remote_arch` |
+/// | ② | SFTP 连接（读远端 `.build_id` marker） | `sftp::connect_sftp` |
+/// | ③ | exec daemon 起流 | `connect_and_exec` |
+///
+/// ①② 同属 `ensure_daemon_deployed`。**即使远端已经是当前 build、什么都不用部署，
+/// 每次重连也照付这两条**（各含一次 TCP + 握手 + 指纹校验 + auth）。
+///
+/// # 记什么：hello **自报**的 build_id，不是预检算出来的结论
+///
+/// 报告的原提法是「把 `arch`/`build_id` 记进 memo」。**记预检结论是猜，记 hello 是自证** ——
+/// 只有 daemon 自己说「我是 D」才写进来。于是这份记忆的含义是
+/// 「**这台机器上一次真的跑起来的 daemon 就是当前期望的那个**」，
+/// 而不是「上一次我们检查时它看起来是对的」。
+///
+/// # 为什么这样跳预检是保守的
+///
+/// 跳的条件**只有一个**：记忆里那台机器的 build_id **恰好等于** [`EXPECTED_DAEMON_BUILD_ID`]。
+/// 其余一律照跑（无记忆 / 记的是别的 build）—— 那些情况本来就**可能需要部署**，不能跳。
+///
+/// ⚠ 功能件 §8 把「缓存 miss 时 caps 决策必须保守」写成了这件事的阻塞。
+/// 逐字复核之后：那句话约束的是 **miss 路径**，而 miss 路径的答案**早就在代码里** ——
+/// `caps` 的三级阶梯（`hello_confirmed` → 部署侧确认 → **空集全降级**）本身就是保守的。
+/// ⇒ 它挡住的是一部分（miss 怎么办），**不是整件**（hit 能不能跳）。
+///
+/// # 记忆过期怎么办（**如实写在这里**）
+///
+/// 远端二进制被人删掉/换旧、而记忆还说「是期望 build」时，本轮会跳过预检直接起流 ⇒
+/// **exec 失败**。失败路径清掉记忆 ⇒ **下一轮重新预检并重新部署**。
+/// 代价是**多一次重连**，不是永久坏掉。这是本设计唯一的退化，写下来不藏着。
+static VERIFIED_BUILD: Mutex<Option<std::collections::HashMap<String, String>>> = Mutex::new(None);
+
+/// 纯函数：这一轮**能不能跳过**那两条预检连接。
+///
+/// `verified` = [`VERIFIED_BUILD`] 里这台机器的记录（`None` = 没记过）。
+/// 判据是**逐字相等**，不是包含 —— 前缀相等会让 `abc123` 与 `abc123-dirty` 混为一谈
+/// （本区 F24 那一族）。
+fn preflight_can_be_skipped(verified: Option<&str>, expected: &str) -> bool {
+    matches!(verified, Some(v) if v == expected)
+}
+
+/// 读这台机器的自证记录。
+fn verified_build_of(origin: &str) -> Option<String> {
+    VERIFIED_BUILD.lock().ok()?.as_ref()?.get(origin).cloned()
+}
+
+/// 记下「这台机器上一次真的跑起来的 daemon 是 `build_id`」。
+///
+/// ⚠ **只许在收到 hello 的那一处调**（daemon 自报）。别处调就把「自证」变回了「猜」。
+fn record_verified_build(origin: &str, build_id: &str) {
+    if let Ok(mut g) = VERIFIED_BUILD.lock() {
+        g.get_or_insert_with(std::collections::HashMap::new)
+            .insert(origin.to_string(), build_id.to_string());
+    }
+}
+
+/// 抹掉这台机器的自证记录（连接没起来 / daemon 换了身份）。
+fn forget_verified_build(origin: &str) {
+    if let Ok(mut g) = VERIFIED_BUILD.lock() {
+        if let Some(m) = g.as_mut() {
+            m.remove(origin);
+        }
+    }
+}
+
+/// 纯函数：把当前退避翻倍并封顶到 [`RECONNECT_MAX`]。run() 的重连循环在"仍未连上"时调用。
+fn next_backoff(cur: Duration) -> Duration {
+    (cur * 2).min(RECONNECT_MAX)
+}
+
+/// 远端 daemon 的连接配置。S5 会从 monitor 的 config 文件反序列化出来；
+/// Tier 1（issue #15）的「测试连接」命令直接收前端传来的同形对象（camelCase）。
+///
+/// **serde camelCase 必须与前端 RemoteHostConfig / lib.rs::load_remote_configs 严格一致**：
+/// host / port / user / keyPath / daemonPath / hostKeyFingerprint / label（多机 #30，
+/// 可选，缺省回退 host）。前端多发的 `enabled`
+/// 字段被忽略（serde 默认丢弃未知字段，测试连接不关心 enabled）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteConfig {
+    pub host: String,
+    /// 稳定的机器标识（origin tag，多机 #30）。空 = 回退用 `host`（见 `origin_label`）。
+    /// 用作 Tab 前缀 / 历史分组 / 选台 key。前端可不传（serde default）。
+    #[serde(default)]
+    pub label: String,
+    #[serde(default = "default_ssh_port")]
+    pub port: u16,
+    pub user: String,
+    /// 私钥文件路径（OpenSSH 格式）。None / 空 = 走 ssh-agent（见 connect_session）。
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    pub key_path: Option<String>,
+    /// 远端要 exec 的 daemon 命令（含参数前缀由 S5 决定）。
+    pub daemon_path: String,
+    /// 期望的 server host key 指纹（`SHA256:...` 形式）。
+    /// Some = 严格校验（TOFU 之后固化）；None = 首次连接 TOFU 接受并 LOUD warn。
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    pub host_key_fingerprint: Option<String>,
+    /// Batch14-F45：备用地址（happy-eyeballs 竞发）。每项 `host` / `host:port` /
+    /// `[IPv6]:port` / 裸 IPv6。空 = 仅用 `host`（老配置零迁移）。首选地址仍是 `host`
+    /// 字段（见 [`RemoteConfig::endpoints`]，host 排首）。
+    #[serde(default)]
+    pub addresses: Vec<String>,
+    /// Batch14-F56：跳板 ProxyJump——指向另一台已配置主机的 `origin_label`。Some = 经该跳板
+    /// 机 `channel_open_direct_tcpip` 隧道连本机（fail-closed，跳板缺失/连不上即报错不直连）；
+    /// None/空 = 直连。v1 单跳（跳板自身的 jump 忽略）+ 防自引用环。
+    #[serde(default, deserialize_with = "empty_string_as_none")]
+    pub jump: Option<String>,
+}
+
+/// Batch14-F45：单个连接目标（host + port）。竞发把 [`RemoteConfig::endpoints`] 的每项
+/// 并发拨号，首个握手成功者胜。
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Endpoint {
+    pub host: String,
+    pub port: u16,
+}
+
+/// 解析一行地址 → [`Endpoint`]。支持四形态（与 android-terminal `parseAddressLine` 同语义）：
+/// - `host`               → default_port
+/// - `host:port`          → 显式端口
+/// - `[IPv6]:port`        → 方括号 IPv6 + 端口
+/// - `[IPv6]` / 裸 `IPv6` → default_port（裸 IPv6 靠「>1 个冒号」判定，不误当 host:port）
+///
+/// 空白/空串 → None；端口非法 → None（拒绝而非静默默认，防配置笔误）。
+pub fn parse_address_line(line: &str, default_port: u16) -> Option<Endpoint> {
+    let s = line.trim();
+    if s.is_empty() {
+        return None;
+    }
+    // 方括号形态：[v6] 或 [v6]:port
+    if let Some(rest) = s.strip_prefix('[') {
+        let (host, after) = rest.split_once(']')?;
+        if host.is_empty() {
+            return None;
+        }
+        let port = match after {
+            "" => default_port,
+            p => p.strip_prefix(':')?.parse().ok()?,
+        };
+        return Some(Endpoint {
+            host: host.to_string(),
+            port,
+        });
+    }
+    // 裸 IPv6（>1 个冒号且无方括号）→ 整体是 host，无端口。
+    if s.matches(':').count() > 1 {
+        return Some(Endpoint {
+            host: s.to_string(),
+            port: default_port,
+        });
+    }
+    // host:port 或 host
+    match s.split_once(':') {
+        Some((host, port)) if !host.is_empty() => Some(Endpoint {
+            host: host.to_string(),
+            port: port.parse().ok()?,
+        }),
+        Some(_) => None, // ":port" 无 host
+        None => Some(Endpoint {
+            host: s.to_string(),
+            port: default_port,
+        }),
+    }
+}
+
+impl RemoteConfig {
+    /// origin 标签 = 稳定身份。`label` 为空时回退用 `host`（向后兼容：旧配置 / 前端
+    /// 未传 label 时与单机时代 `origin = host` 行为一致）。多机 #30 用作 Tab 前缀 /
+    /// 历史分组 / `load_remote_config_by_label` 选台 key。
+    pub fn origin_label(&self) -> String {
+        if self.label.is_empty() {
+            self.host.clone()
+        } else {
+            self.label.clone()
+        }
+    }
+
+    /// Batch14-F45：所有连接目标，`host` 排首，`addresses` 依次追加，按 (host,port) 去重
+    /// 保序。竞发按此顺序（配合 last-good 重排）拨号。空 addresses → `[host]`（老行为）。
+    pub fn endpoints(&self) -> Vec<Endpoint> {
+        let mut out: Vec<Endpoint> = Vec::new();
+        let mut seen: std::collections::HashSet<Endpoint> = std::collections::HashSet::new();
+        let mut push = |ep: Endpoint| {
+            if seen.insert(ep.clone()) {
+                out.push(ep);
+            }
+        };
+        push(Endpoint {
+            host: self.host.clone(),
+            port: self.port,
+        });
+        for line in &self.addresses {
+            if let Some(ep) = parse_address_line(line, self.port) {
+                push(ep);
+            }
+        }
+        out
+    }
+}
+
+fn default_ssh_port() -> u16 {
+    22
+}
+
+/// 前端可选字段以空字符串下发（见 remote-section.ts 注释）；反序列化时把 `""` 归一成
+/// `None`，与 lib.rs::parse_host_obj 的 `.filter(|s| !s.is_empty())` 语义一致。
+fn empty_string_as_none<'de, D>(de: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let opt: Option<String> = Option::deserialize(de)?;
+    Ok(opt.filter(|s| !s.is_empty()))
+}
+
+/// russh client handler：负责 host key 校验（check_server_key）。
+///
+/// 持有期望指纹，`check_server_key` 据此决定接受 / 拒绝（见该方法注释）。
+/// 另持有一个共享 cell（`observed_fingerprint`），**无论接受 / 拒绝**都把实际看到的
+/// server key 指纹写进去 —— Tier 1（issue #15）的「测试连接」据此向用户展示指纹、
+/// 供 TOFU→严格校验固化（known_hosts 式）。
+/// F58：已鉴权的 SSH 客户端会话句柄别名（端口转发把它存注册表保活 + 开 direct-tcpip channel）。
+pub(crate) type SshSession = client::Handle<ClientHandler>;
+
+pub(crate) struct ClientHandler {
+    expected_fingerprint: Option<String>,
+    /// check_server_key 观察到的实际指纹回传通道（与调用方共享）。
+    observed_fingerprint: Arc<Mutex<Option<String>>>,
+    /// F46：分阶段事件 emitter（仅测试连接路径 Some）。check_server_key 命中 emit HostKey。
+    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,
+    /// F46：本 handler 对应的拨号地址（`host:port`），emit 时标注泳道。
+    endpoint: Option<String>,
+}
+
+impl client::Handler for ClientHandler {
+    type Error = russh::Error;
+
+    /// host key 校验（russh 0.61 签名：`&mut self, &PublicKey -> Result<bool, Error>`，async）。
+    ///
+    /// 返回 `Ok(true)` = 接受该 host key，`Ok(false)` = 拒绝（russh 会中止握手）。
+    ///
+    /// 策略：
+    /// - `expected_fingerprint = Some(fp)`：计算 server key 的 SHA256 指纹，**仅**在
+    ///   匹配时返回 `Ok(true)`，否则 `Ok(false)` 拒绝（防 MITM / key 轮换未同步）。
+    /// - `expected_fingerprint = None`：trust-on-first-use 暂行接受，但发一条**显眼**的
+    ///   `tracing::warn!` 说明这是未经验证的 host key（S5 应把首次拿到的指纹固化回 config，
+    ///   之后转入严格校验）。**绝不**静默接受任意 key。
+    async fn check_server_key(
+        &mut self,
+        server_public_key: &PublicKey,
+    ) -> Result<bool, Self::Error> {
+        let actual = server_public_key.fingerprint(HashAlg::Sha256).to_string();
+        // 无论后续接受 / 拒绝，都先把实际指纹写回共享 cell（测试连接据此展示 + 固化）。
+        if let Ok(mut slot) = self.observed_fingerprint.lock() {
+            *slot = Some(actual.clone());
+        }
+        // F46：到 host key 校验 = 该地址 TCP+KEX 已过,emit HostKey 泳道事件。
+        if let Some(ep) = &self.endpoint {
+            emit_stage(
+                &self.stage_emitter,
+                ConnectStage::HostKey {
+                    endpoint: ep.clone(),
+                    fingerprint: actual.clone(),
+                },
+            );
+        }
+        match &self.expected_fingerprint {
+            Some(expected) => {
+                // FIX 7：比对前 trim 掉存储指纹两侧的换行/空白，否则配置里残留的尾随
+                // 空白会让一个本应匹配的指纹永远被拒（误判 MITM）。
+                if actual == expected.trim() {
+                    tracing::info!("ssh host key fingerprint verified: {actual}");
+                    Ok(true)
+                } else {
+                    // F43：失配时附上实际 key 的算法——诊断里区分「合法换 key 类型」
+                    // （如 ed25519→rsa，算法不同）与「同类型 key 被换（真 MITM 疑点）」;
+                    // 措辞指向重置入口（服务器合法轮换 host key 后走它解锁，而非误判永锁）。
+                    let alg = server_public_key.algorithm();
+                    tracing::error!(
+                        "ssh host key MISMATCH: expected {expected}, got {actual} (alg={alg}); \
+                         rejecting connection. 若确系服务器合法更换过 host key（重装/轮换），\
+                         请在设置里「重置为 TOFU」后重连;否则可能是中间人攻击。"
+                    );
+                    Ok(false)
+                }
+            }
+            None => {
+                // 明确标注的 TOFU stopgap：接受但大声 warn，不静默。
+                tracing::warn!(
+                    "ssh host key NOT verified (trust-on-first-use): accepting unverified key {actual}; \
+                     S5 应把该指纹固化进 config 并转严格校验"
+                );
+                Ok(true)
+            }
+        }
+    }
+}
+
+/// `default_ssh_agent_pipe` —— Windows OpenSSH agent 的命名管道路径。
+///
+/// Win10+/Win11 自带的 OpenSSH agent 监听 `\\.\pipe\openssh-ssh-agent`（SSH_AUTH_SOCK
+/// 在 Windows 上不是标准；OpenSSH-for-Windows 用固定命名管道）。非 Windows 留 `None`
+/// （Tier 1 的 agent 仅在 Windows 上尝试；Unix 走 key_path 即可，本 app 也只发 Windows）。
+#[cfg(windows)]
+fn default_ssh_agent_pipe() -> Option<&'static str> {
+    Some(r"\\.\pipe\openssh-ssh-agent")
+}
+
+/// 连接 + 鉴权的共享实现：被 [`connect_and_exec`]（长连接数据源）和
+/// [`test_remote_connection`]（一次性探活）复用。
+///
+/// 返回已鉴权的 session + 共享的 `observed_fingerprint` cell（握手时 check_server_key 已
+/// 把实际 server key 指纹写进去，调用方可读出展示 / 固化）。
+///
+/// 鉴权策略（Tier 1, issue #15）：
+/// - `cfg.key_path = Some(path)`：publickey 鉴权（既有默认路径，最稳）。
+/// - `cfg.key_path = None`：尝试 ssh-agent（Windows 命名管道），枚举 agent 身份逐个
+///   `authenticate_publickey_with`。agent 不可用 / 无匹配身份 → 返回清晰 Err。
+/// Batch14-F45：happy-eyeballs 竞发阶梯（第 i 个地址延迟 i*STAGGER 起拨，首个成功者胜后
+/// 其余在飞连接被 abort）。250ms 是 RFC 8305 常用值。
+const RACE_STAGGER: Duration = Duration::from_millis(250);
+/// 握手看门狗默认上限（长连接 inactivity_timeout=None 时用）——黑洞地址 TCP 连上后
+/// 握手无限阻塞时兜底,到点整批 abort（drop 关 socket）。
+const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(45);
+
+/// Batch14-F46：连接分阶段事件（测试连接时经 Tauri Channel 流给前端做泳道日志）。
+/// 只在 `test_remote_connection` 路径 emit（emitter=Some）;daemon 流/exec/SFTP 传 None,
+/// 零开销零事件。阶段取 russh 能干净观测的粒度——不含 KEX（russh 不暴露 KEX 回调,
+/// HostKey 触发即隐含 TCP+KEX 已过）。
+#[derive(Serialize, Clone, Debug)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ConnectStage {
+    /// 某地址开始拨号（TCP+握手）。
+    Dialing { endpoint: String },
+    /// 某地址握手到 host key 校验（带指纹;隐含 TCP+KEX 已过）。
+    HostKey {
+        endpoint: String,
+        fingerprint: String,
+    },
+    /// 某地址连接失败（reason = 粗分类 + 原始错误）。
+    Failed { endpoint: String, reason: String },
+    /// 竞发胜出地址（其余在飞已 abort）。
+    Won { endpoint: String },
+    /// 鉴权结果。
+    Auth { ok: bool, detail: Option<String> },
+    /// 连接就绪（握手+鉴权全过）。
+    Established,
+}
+
+/// F46：把 russh 连接错误串粗分类成阶段标签（前端泳道用不同图标/文案）。
+/// 保守分类:命中关键词才归类,否则 `other`。
+pub fn classify_stage(err: &str) -> &'static str {
+    let e = err.to_ascii_lowercase();
+    if e.contains("refused") || e.contains("no route") || e.contains("unreachable") {
+        "tcp" // TCP 层拒绝/不可达
+    } else if e.contains("timeout") || e.contains("超时") || e.contains("timed out") {
+        "timeout"
+    } else if e.contains("key") || e.contains("mismatch") || e.contains("指纹") {
+        // host key 校验失败/不匹配（russh 拒绝 host key 报 "Unknown server key"）。
+        "hostkey"
+    } else {
+        "other"
+    }
+}
+
+/// F46：安全 emit（emitter=None 直接 no-op;send 失败仅 warn 不阻断连接）。
+fn emit_stage(emitter: &Option<tauri::ipc::Channel<ConnectStage>>, stage: ConnectStage) {
+    if let Some(ch) = emitter {
+        if let Err(e) = ch.send(stage) {
+            tracing::warn!("connect stage emit failed: {e}");
+        }
+    }
+}
+
+/// F45：per-origin「上次成功地址」——竞发时排首（下次大概率同一条路最快），赢家更新。
+/// 进程内软状态,丢了只是少一次优化,不影响正确性。
+fn last_good_store() -> &'static Mutex<std::collections::HashMap<String, Endpoint>> {
+    static STORE: std::sync::OnceLock<Mutex<std::collections::HashMap<String, Endpoint>>> =
+        std::sync::OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+fn last_good_for(origin: &str) -> Option<Endpoint> {
+    last_good_store().lock().ok()?.get(origin).cloned()
+}
+
+fn record_last_good(origin: &str, ep: &Endpoint) {
+    if let Ok(mut m) = last_good_store().lock() {
+        m.insert(origin.to_string(), ep.clone());
+    }
+}
+
+/// F45：当前应向该 origin 拨号的首选地址（PowerShell resume/attach 命令用它，而非盲取
+/// `cfg.host`）。已连过 → last-good 胜者;否则 → endpoints 首个（= `host`）。永不 None
+/// （endpoints 至少含 host）。
+pub fn winner_address(cfg: &RemoteConfig) -> Endpoint {
+    let origin = cfg.origin_label();
+    if let Some(lg) = last_good_for(&origin) {
+        // last-good 仍在当前配置里才用（配置改过则失效）。
+        if cfg.endpoints().iter().any(|e| e == &lg) {
+            return lg;
+        }
+    }
+    cfg.endpoints().into_iter().next().unwrap_or(Endpoint {
+        host: cfg.host.clone(),
+        port: cfg.port,
+    })
+}
+
+/// F45：竞发拨号顺序 = last-good 排首（若它仍在 endpoints 里），其余保序。纯函数,可测。
+fn winner_order(endpoints: Vec<Endpoint>, last_good: Option<&Endpoint>) -> Vec<Endpoint> {
+    let Some(lg) = last_good else {
+        return endpoints;
+    };
+    if !endpoints.iter().any(|e| e == lg) {
+        return endpoints; // last-good 已从配置移除 → 无视
+    }
+    let mut out = Vec::with_capacity(endpoints.len());
+    out.push(lg.clone());
+    for e in endpoints {
+        if &e != lg {
+            out.push(e);
+        }
+    }
+    out
+}
+
+/// F45：happy-eyeballs 竞发——按 `order` 阶梯并发拨号（每个 `client::connect` = TCP+SSH
+/// 握手+host key 校验,各自独立 handler+cell）,首个握手成功者胜、立即 abort 其余在飞
+/// （drop 关 socket,trap #6/#8）,鉴权留给调用方只对胜者做一次。整体 `deadline` 看门狗兜
+/// 黑洞地址。全部失败 → 聚合各地址错误（trap #3）;被 abort 的输家不计入错误（trap #2）。
+///
+/// aterm F20 陷阱 #1(disconnect 不清 configs/sessions 致 map 无界增长)与 #5(在飞重连
+/// 被 disconnect 后完成的纪元幽灵)对本实现**不适用**:每次 connect 自建一个局部 JoinSet、
+/// 无跨调用持久竞发态或共享 channel(晚到 task 随 set drop 弃),唯一跨调用状态 `last_good_store`
+/// 按 origin 键、有界,既非无界 disconnect map 也无纪元计数器。
+async fn race_connect(
+    config: Arc<client::Config>,
+    expected_fp: Option<String>,
+    order: Vec<Endpoint>,
+    deadline: Duration,
+    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,
+) -> Result<
+    (
+        client::Handle<ClientHandler>,
+        Arc<Mutex<Option<String>>>,
+        Endpoint,
+    ),
+    String,
+> {
+    use tokio::task::JoinSet;
+
+    let addr_list = order
+        .iter()
+        .map(|e| format!("{}:{}", e.host, e.port))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    let race = async move {
+        let mut set: JoinSet<Result<_, String>> = JoinSet::new();
+        for (i, ep) in order.into_iter().enumerate() {
+            let config = Arc::clone(&config);
+            let fp = expected_fp.clone();
+            let emitter = stage_emitter.clone();
+            set.spawn(async move {
+                if i > 0 {
+                    tokio::time::sleep(RACE_STAGGER * i as u32).await;
+                }
+                let ep_label = format!("{}:{}", ep.host, ep.port);
+                emit_stage(
+                    &emitter,
+                    ConnectStage::Dialing {
+                        endpoint: ep_label.clone(),
+                    },
+                );
+                let cell: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+                let handler = ClientHandler {
+                    expected_fingerprint: fp,
+                    observed_fingerprint: Arc::clone(&cell),
+                    stage_emitter: emitter.clone(),
+                    endpoint: Some(ep_label.clone()),
+                };
+                match client::connect(config, (ep.host.as_str(), ep.port), handler).await {
+                    Ok(h) => Ok((h, cell, ep)),
+                    Err(e) => {
+                        emit_stage(
+                            &emitter,
+                            ConnectStage::Failed {
+                                endpoint: ep_label.clone(),
+                                reason: format!("[{}] {e}", classify_stage(&e.to_string())),
+                            },
+                        );
+                        Err(format!("{ep_label} {e}"))
+                    }
+                }
+            });
+        }
+
+        let mut errors: Vec<String> = Vec::new();
+        while let Some(joined) = set.join_next().await {
+            match joined {
+                Ok(Ok(winner)) => {
+                    // 首个成功者胜；drop set → abort 其余在飞（关 socket，不等死地址超时）。
+                    set.abort_all();
+                    emit_stage(
+                        &stage_emitter,
+                        ConnectStage::Won {
+                            endpoint: format!("{}:{}", winner.2.host, winner.2.port),
+                        },
+                    );
+                    return Ok(winner);
+                }
+                Ok(Err(e)) => errors.push(e),
+                // trap #2 的真正实现是「首个 Ok 即 return、根本不收集输家错误」；此分支
+                // 防御性存在(当前控制流下不可达:abort_all 后立即 return,不再 join_next),
+                // 显式声明取消不算错误、防未来重构改动早返回结构时回归。
+                Err(je) if je.is_cancelled() => {}
+                Err(je) => errors.push(format!("拨号任务异常: {je}")),
+            }
+        }
+        Err(if errors.is_empty() {
+            "无可用地址".to_string()
+        } else {
+            format!("所有地址连接失败: {}", errors.join("; "))
+        })
+    };
+
+    match tokio::time::timeout(deadline, race).await {
+        Ok(r) => r,
+        Err(_) => Err(format!("所有地址握手超时（{addr_list}）")),
+    }
+}
+
+/// F56：持有跳板机 session,让 direct-tcpip 隧道在目标连接存活期间不被 drop 关闭
+/// （drop 跳板 Handle → russh 关跳板连接 → 隧道 channel 死 → 目标断）。按**目标 origin** 键——
+/// 每次经跳板重连替换旧 holder（drop 旧跳板连接），按配置的被跳板目标数有界。
+fn jump_holders() -> &'static Mutex<std::collections::HashMap<String, client::Handle<ClientHandler>>>
+{
+    static STORE: std::sync::OnceLock<
+        Mutex<std::collections::HashMap<String, client::Handle<ClientHandler>>>,
+    > = std::sync::OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+
+/// F56：经跳板机隧道连目标。连+鉴权跳板（复用 `connect_session`，白嫖跳板多地址竞速+指纹校验+
+/// 鉴权）→ `channel_open_direct_tcpip` 到目标主地址 → `connect_stream` 在隧道流上跑目标 SSH 握手
+/// （同 `ClientHandler` 验目标指纹）→ 跳板 session 存 `jump_holders` 保活。**fail-closed**：
+/// 环/查无/连不上 → Err（绝不回退直连目标）。v1 单跳（忽略跳板自身的 jump）。
+async fn connect_via_jump(
+    jump_label: &str,
+    target: &RemoteConfig,
+    config: Arc<client::Config>,
+    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,
+) -> Result<
+    (
+        client::Handle<ClientHandler>,
+        Arc<Mutex<Option<String>>>,
+        Endpoint,
+    ),
+    String,
+> {
+    if jump_label == target.origin_label() {
+        return Err("跳板配置指向自己（环）".to_string());
+    }
+    let mut jump_cfg = crate::load_remote_config_by_label(jump_label)
+        .ok_or_else(|| format!("跳板配置未找到: {jump_label}"))?;
+    jump_cfg.jump = None; // v1 单跳：忽略跳板自身的 jump，防链式递归/环
+    emit_stage(
+        &stage_emitter,
+        ConnectStage::Dialing {
+            endpoint: format!("跳板 {}", jump_cfg.origin_label()),
+        },
+    );
+    // 复用 connect_session 连+鉴权跳板。Box::pin：递归 async 需装箱定尺寸。
+    let (jump_session, _jump_fp) = Box::pin(connect_session(&jump_cfg, None, None))
+        .await
+        .map_err(|e| format!("跳板 {} 连接失败: {e}", jump_cfg.origin_label()))?;
+    // 经跳板开 direct-tcpip 到目标主地址（v1 单地址，不经跳板对目标多地址竞速）。
+    let channel = jump_session
+        .channel_open_direct_tcpip(
+            target.host.clone(),
+            target.port as u32,
+            "127.0.0.1".to_string(),
+            0,
+        )
+        .await
+        .map_err(|e| format!("经跳板开隧道到 {}:{} 失败: {e}", target.host, target.port))?;
+    let stream = channel.into_stream();
+    // 隧道流上跑目标 SSH 握手（同 ClientHandler 验目标指纹）。
+    let cell: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let handler = ClientHandler {
+        expected_fingerprint: target.host_key_fingerprint.clone(),
+        observed_fingerprint: Arc::clone(&cell),
+        stage_emitter: stage_emitter.clone(),
+        endpoint: Some(format!("{}:{}（经跳板）", target.host, target.port)),
+    };
+    let session = client::connect_stream(config, stream, handler)
+        .await
+        .map_err(|e| format!("目标 SSH 握手失败（经跳板）: {e}"))?;
+    // 跳板 session 保活（否则 drop 关连接 → 隧道死）。按目标 origin 键，替换旧的。
+    if let Ok(mut m) = jump_holders().lock() {
+        m.insert(target.origin_label(), jump_session);
+    }
+    let winner = Endpoint {
+        host: target.host.clone(),
+        port: target.port,
+    };
+    Ok((session, cell, winner))
+}
+
+pub(crate) async fn connect_session(
+    cfg: &RemoteConfig,
+    inactivity_timeout: Option<Duration>,
+    stage_emitter: Option<tauri::ipc::Channel<ConnectStage>>,
+) -> Result<(client::Handle<ClientHandler>, Arc<Mutex<Option<String>>>), String> {
+    // FIX 1（issue #15 review）：长连接数据源**绝不**靠 inactivity_timeout 兜底死链——
+    // russh 0.61 的 inactivity timer 在没有 keepalive 时会在到点直接拆掉一条**健康的**
+    // 空闲连接（idle 1h 的 Claude 会话很常见）。改用 SSH 层 keepalive：每 30s 无收包就
+    // 发一个 keepalive，连发 keepalive_max(默认 3) 次无回应才判死（≈90s 探活）。死链由
+    // keepalive 超时 + daemon EOF 检出，inactivity_timeout 对长连接置 None。
+    // 测试连接（短命探活）仍可传 Some(短超时)，故 keepalive 与 inactivity 同时支持。
+    let keepalive_interval = inactivity_timeout
+        .is_none()
+        .then(|| Duration::from_secs(30));
+    let config = Arc::new(client::Config {
+        inactivity_timeout,
+        keepalive_interval,
+        ..Default::default()
+    });
+
+    // F45：多地址 happy-eyeballs 竞发（单地址时退化为一次直连，行为等价老实现）。
+    // 竞发只到 TCP+握手+host key 校验；鉴权只对胜者做一次（防 agent 并发 MaxAuthTries）。
+    // 同一 host_key_fingerprint 跨地址钉身份：错连别机的 endpoint 因指纹失配自 reject 出局。
+    // F56：cfg.jump 有值 → 经跳板隧道连（fail-closed，不回退直连）；否则 → 多地址竞速直连。
+    // 两路都产出 (session, observed_fingerprint, winner)，汇合到下方同一鉴权块。
+    let origin = cfg.origin_label();
+    // ★ F05 下半：**SSH 握手这一段**（TCP + 握手 + host key 校验 + 鉴权）。
+    // 它被 `connect_and_exec` 那条埋点整个包在里面 —— 分开量才知道
+    //「起流慢」到底慢在登录还是慢在 daemon 起来。
+    let t_handshake = std::time::Instant::now();
+    let (mut session, observed_fingerprint, winner) =
+        match cfg.jump.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+            Some(jump_label) => {
+                connect_via_jump(jump_label, cfg, Arc::clone(&config), stage_emitter.clone())
+                    .await?
+            }
+            None => {
+                let order = winner_order(cfg.endpoints(), last_good_for(&origin).as_ref());
+                let deadline = inactivity_timeout.unwrap_or(HANDSHAKE_DEADLINE);
+                race_connect(
+                    Arc::clone(&config),
+                    cfg.host_key_fingerprint.clone(),
+                    order,
+                    deadline,
+                    stage_emitter.clone(),
+                )
+                .await?
+            }
+        };
+
+    // RSA key 需要协商出 server 支持的 hash alg；非 RSA key 时 flatten 成 None。
+    let best_hash = session
+        .best_supported_rsa_hash()
+        .await
+        .map_err(|e| format!("协商 rsa hash 失败: {e}"))?
+        .flatten();
+
+    // F46：鉴权阶段——失败时 emit Auth{ok:false}+错误,便于泳道定位「卡在鉴权」。
+    let auth_result: Result<(), String> = async {
+        match cfg.key_path.as_ref() {
+            Some(key_path) => {
+                let key_pair = load_secret_key(key_path, None)
+                    .map_err(|e| format!("加载私钥 {key_path} 失败: {e}"))?;
+                let authenticated = session
+                    .authenticate_publickey(
+                        &cfg.user,
+                        PrivateKeyWithHashAlg::new(Arc::new(key_pair), best_hash),
+                    )
+                    .await
+                    .map_err(|e| format!("publickey 鉴权失败: {e}"))?;
+                if !authenticated.success() {
+                    return Err(format!("publickey 鉴权被拒（user={}）", cfg.user));
+                }
+                Ok(())
+            }
+            None => authenticate_via_agent(&mut session, &cfg.user, best_hash).await,
+        }
+    }
+    .await;
+    if let Err(e) = auth_result {
+        emit_stage(
+            &stage_emitter,
+            ConnectStage::Auth {
+                ok: false,
+                detail: Some(e.clone()),
+            },
+        );
+        return Err(e);
+    }
+    emit_stage(
+        &stage_emitter,
+        ConnectStage::Auth {
+            ok: true,
+            detail: None,
+        },
+    );
+
+    // D 审计建议-1：last-good = 上次**完整成功**（握手+鉴权）的地址。放在鉴权成功后,
+    // 避免 TOFU×异机误配时「粘住」一个连得上但认证失败的地址（下次仍先拨它、仍失败,
+    // 真机永不被试）。正常固化下 A/B 同机同 key,放前放后等价;此处取更严谨语义。
+    record_last_good(&origin, &winner);
+    emit_stage(&stage_emitter, ConnectStage::Established);
+
+    tracing::info!(
+        "[perf] ssh_source [{origin}] SSH 握手+鉴权 {}ms（TCP+握手+指纹校验+auth；\
+         winner={winner:?}）",
+        t_handshake.elapsed().as_millis()
+    );
+    Ok((session, observed_fingerprint))
+}
+
+/// ssh-agent 鉴权（Tier 1 便利路径，issue #15 Part 3）。
+///
+/// 连到 Windows OpenSSH agent 命名管道，`request_identities` 枚举身份，逐个
+/// `authenticate_publickey_with`（签名委托给 agent）。任一成功即返回 Ok。
+///
+/// 全程 best-effort：agent 连不上 / 没身份 / 全被拒 → 返回带原因的 Err（测试连接会把它
+/// 映射成可读的 message，不 panic）。
+#[cfg(windows)]
+async fn authenticate_via_agent(
+    session: &mut client::Handle<ClientHandler>,
+    user: &str,
+    best_hash: Option<HashAlg>,
+) -> Result<(), String> {
+    use russh::keys::agent::client::AgentClient;
+
+    let pipe = default_ssh_agent_pipe()
+        .ok_or_else(|| "未配置私钥路径，且本平台无 ssh-agent 支持".to_string())?;
+    let mut agent = AgentClient::connect_named_pipe(pipe).await.map_err(|e| {
+        format!(
+            "未配置私钥路径(keyPath)，尝试 ssh-agent 失败：连不上 {pipe}（agent 未运行？）: {e}"
+        )
+    })?;
+
+    let identities = agent
+        .request_identities()
+        .await
+        .map_err(|e| format!("ssh-agent 枚举身份失败: {e}"))?;
+    if identities.is_empty() {
+        return Err("ssh-agent 没有任何身份（ssh-add 了吗？），且未配置 keyPath".to_string());
+    }
+
+    let mut last_err: Option<String> = None;
+    for id in identities {
+        let pubkey = id.public_key().into_owned();
+        match session
+            .authenticate_publickey_with(user, pubkey, best_hash, &mut agent)
+            .await
+        {
+            Ok(res) if res.success() => return Ok(()),
+            Ok(_) => last_err = Some(format!("agent 身份被拒（user={user}）")),
+            Err(e) => last_err = Some(format!("agent 签名鉴权出错: {e}")),
+        }
+    }
+    Err(last_err.unwrap_or_else(|| "ssh-agent 所有身份均鉴权失败".to_string()))
+}
+
+/// 非 Windows：本 app 只发 Windows，且 Unix 走 key_path 即可。无 agent 时直接报缺 keyPath。
+#[cfg(not(windows))]
+async fn authenticate_via_agent(
+    _session: &mut client::Handle<ClientHandler>,
+    _user: &str,
+    _best_hash: Option<HashAlg>,
+) -> Result<(), String> {
+    // TODO(Phase 1): 非 Windows 的 ssh-agent（SSH_AUTH_SOCK / UnixStream）。
+    Err("未配置私钥路径(keyPath)，且本平台暂不支持 ssh-agent".to_string())
+}
+
+/// 连接远端、鉴权、开 session channel、exec `cfg.daemon_path`，
+/// 返回 channel 的双向流（`AsyncRead + AsyncWrite`）——读端即 daemon 的 stdout 数据。
+///
+/// 鉴权委托给 [`connect_session`]（publickey 或 ssh-agent）。
+/// 错误统一 map 成 `String`（本 crate 未直接依赖 anyhow，不为骨架引入新依赖）。
+/// F66（#58③）流模式门控决策（纯函数，矩阵单测）：**从 daemon 声明的能力 token 决定
+/// 发哪些 flag**，不再靠 build_id 精确匹配（Batch7-F24/Batch8-F26 的旧机制）。
+///
+/// - `capabilities` = daemon hello 自报的能力集（旧 daemon 无声明 → 空集）。
+/// - 空集（旧 daemon / 尚未确认）→ `(false, false)`：全降级 = 2.18.0 行为，功能退化但
+///   连接正常。
+/// - `tail_only`（历史改走旁路快照，拥塞根除）需 daemon 声明 `"tail-only"`。
+/// - `with_bg`（放行 bg 会话）需 daemon 声明 `"bg"` **且**用户开了 `show_bg`。
+///
+/// **§26 死循环护栏靠声明本身保住**：旧 daemon 把未知 flag 当一次性查询 → 退出 → 无
+/// hello → 重连死循环。而只有**会先剥离该 flag** 的 daemon 才声明对应能力（见 daemon
+/// `CAPABILITIES` 注释），故「声明了 = 发该 flag 安全」——比 build_id 精确匹配更强更干净，
+/// 且直接闭合 2026-07-09「身份确认不了就全降级」事故（能力由 daemon 自报，不靠脆弱身份链）。
+/// monitor **认识**的能力 token。
+///
+/// U-CC1：它与 [`decide_stream_flags`] 是同一份事实 —— 由
+/// `known_capability_tokens_match_decide_stream_flags` 钉住。
+/// 有它才能回答「daemon 声明了一个我们不认识的能力」这个问题（漂移记账的第四个面）。
+const KNOWN_CAPABILITY_TOKENS: &[&str] = &["bg", "tail-only"];
+
+fn decide_stream_flags(capabilities: &[String], show_bg: bool) -> (bool, bool) {
+    let has = |c: &str| capabilities.iter().any(|t| t == c);
+    (show_bg && has("bg"), has("tail-only"))
+}
+
+/// F66（#58③）★ 防无限重连的收敛判据（纯函数，穷举单测）：收到 daemon 能力声明后，
+/// **是否值得重连一轮升级流模式**。`cur` = 本轮实际发的 `(with_bg, tail_only)`；`next` =
+/// 据 daemon 自报能力算出的下一轮 flag。
+///
+/// **仅当下一轮会开一个本轮关着的 flag** 才重连——每次重连严格增开 flag，flag 数有限（2）
+/// ⟹ 最多 2 轮收敛，绝不无限重连。**关键定理**：一旦记账 `hello_confirmed=Some(D)`，下一轮
+/// `caps=D` ⟹ `next==cur` ⟹ 本函数两项皆自相矛盾（`next_tail && !cur_tail` 与
+/// `next_bg && !cur_bg` 在 next==cur 时恒 false）⟹ 恒 `false`，不再重连。
+///
+/// 两项都写全 `&& !cur_*`（不靠调用点的外层 `!tail_only` guard），使收敛不变式在函数内自洽、
+/// 可独立穷举测试（审计：原 `next_tail` 裸项隐含依赖外层 guard，读者需回连才懂）。
+fn should_upgrade_reconnect(cur: (bool, bool), next: (bool, bool)) -> bool {
+    let ((cur_bg, cur_tail), (next_bg, next_tail)) = (cur, next);
+    (next_tail && !cur_tail) || (next_bg && !cur_bg)
+}
+
+#[cfg(test)]
+mod coldstart_preflight_guard {
+    //! ★〔audit-0805 F05 下半，报告「可选 12」〕**冷启动的三条 SSH 连接合并**。
+    //!
+    //! 正题见 [`super::VERIFIED_BUILD`] 的头注。本模块钉三件事：
+    //! 判定本身（纯函数真值表）· 记忆**只在 hello 那一处写**· 失败路径**真的抹掉**。
+    //!
+    //! ⚠ **钉不了「真的少连了两次」** —— 那要真 SSH（红线禁）。
+    //! 本模块钉的是**结构**：那两条连接被一个门控包着、门控的输入只来自 hello 自证。
+    //! **别把它读成性能判据**（同 `coldstart_perf_guard` 的边界）。
+
+    use super::{
+        forget_verified_build, preflight_can_be_skipped, record_verified_build, verified_build_of,
+        EXPECTED_DAEMON_BUILD_ID,
+    };
+
+    fn prod() -> String {
+        let f = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/ssh_source.rs");
+        guard_core::production_source(&std::fs::read_to_string(f).expect("读不到本文件"))
+    }
+
+    /// ★ 纯函数真值表：**只有逐字相等才许跳**。
+    #[test]
+    fn only_an_exact_build_match_may_skip_the_preflight() {
+        let e = "abc123";
+        assert!(
+            preflight_can_be_skipped(Some("abc123"), e),
+            "自证过就是期望 build ⇒ 该跳"
+        );
+        assert!(
+            !preflight_can_be_skipped(None, e),
+            "没记过 ⇒ 必须跑（可能要部署）"
+        );
+        assert!(
+            !preflight_can_be_skipped(Some("def456"), e),
+            "记的是**别的** build ⇒ 必须跑 —— 那台机器上装的不是当前版本，正是要部署的情形"
+        );
+        // ★ F24 那一族：前缀相等不算相等。
+        assert!(
+            !preflight_can_be_skipped(Some("abc123-dirty"), e),
+            "`abc123-dirty` 被当成了 `abc123` —— 判据写成了前缀/包含匹配。\
+             那会让一个**改过的** daemon 冒充期望 build 并跳过部署"
+        );
+        assert!(
+            !preflight_can_be_skipped(Some("abc"), e),
+            "反方向的前缀也不许 —— `abc` 不是 `abc123`"
+        );
+    }
+
+    /// 记忆的存 / 取 / 抹。
+    #[test]
+    fn the_memo_round_trips_and_can_be_forgotten() {
+        let host = "f05-guard-host";
+        forget_verified_build(host);
+        assert_eq!(verified_build_of(host), None, "起点该是空的");
+        record_verified_build(host, "build-X");
+        assert_eq!(verified_build_of(host).as_deref(), Some("build-X"));
+        forget_verified_build(host);
+        assert_eq!(
+            verified_build_of(host),
+            None,
+            "抹不掉的话，一台 daemon 被删的机器会**每一轮都跳预检、每一轮都失败**"
+        );
+    }
+
+    /// ★ **写入点恰好一处**，而且在收到 hello 之后。
+    ///
+    /// 记忆的全部安全性都压在「它只记 daemon **自报**的身份」上。
+    /// 多一处写入 = 把自证换回了猜。
+    #[test]
+    fn the_memo_is_written_in_exactly_one_place() {
+        let prod = prod();
+        guard_core::find_pinned(&prod, "record_verified_build(&host_label, &build_id);")
+            .unwrap_or_else(|e| {
+                panic!(
+                    "自证记忆的写入点不是恰好一处：{e}\n\
+                     ★ 这份记忆的全部安全性压在「只记 daemon **自报**的身份」上 —— \n\
+                     多一处写入就把自证换回了猜（比如拿预检结论去写）。"
+                )
+            });
+        // 反向：它得在 hello 分支里（`build_id` 这个变量只有那里有）。
+        assert!(
+            guard_core::contains_word(&prod, "build_id"),
+            "`build_id` 不在生产段里了 —— 上面那条锚点还在，说明它锚的不是 hello 那一处"
+        );
+    }
+
+    /// ★ 跳过预检时，`confirmed_build` **必须**给期望值。
+    ///
+    /// 给 `None` 的话 caps 阶梯会掉进「③ 空集全降级」—— 省两条连接换来
+    /// **一轮降级 + 一轮升级重连**，比不跳还糟。
+    #[test]
+    fn skipping_the_preflight_still_feeds_the_capability_ladder() {
+        let prod = prod();
+        // ⚠ 用 `pin_line`（整行相等）而不是 `find_pinned`（子串 + 标识符边界）〔08-06，§5 3u〕：
+        //   这个 needle 以 `)` 收尾 —— **不是标识符字符**，于是 `find_pinned` 的边界检查对它
+        //   根本不起作用。实测对照（同一处撑大 `.map(|s| s)`）：`find_pinned` **通过**，
+        //   `pin_line` **红**并报「没有任何一行 trim 之后等于…」。
+        //   生产段那一行整行就是这个串，所以整行相等是**能用且更强**的写法。
+        guard_core::pin_line(&prod, "Some(EXPECTED_DAEMON_BUILD_ID.to_string())").unwrap_or_else(
+            |e| {
+                panic!(
+                    "跳过预检那一支没有把 `confirmed_build` 置成期望值：{e}\n\
+                     ★ 置 `None` 会让 caps 掉进「空集全降级」⇒ 省下两条连接、换来一轮降级\n\
+                     加一轮升级重连（`should_upgrade_reconnect`）—— **比不跳还糟**。"
+                )
+            },
+        );
+    }
+
+    /// ★ 失败路径必须抹记忆，而且**不止一处**（起流失败 + hello 身份不符）。
+    #[test]
+    fn every_failure_path_forgets_the_memo() {
+        let prod = prod();
+        let n = prod.matches("forget_verified_build(&host_label)").count();
+        assert!(
+            n >= 2,
+            "生产段只有 {n} 处 `forget_verified_build` —— 该有两处：\n\
+             ① 跳过预检后**起流失败**（daemon 被删/被换旧）；\n\
+             ② 收到 hello 但 **build_id 不是期望值**（装的不是当前 build）。\n\
+             少一处，那台机器就会一直跳预检、一直失败，永远等不到重新部署。"
+        );
+    }
+
+    /// 期望 build_id 不是空串（否则真值表全塌）。
+    #[test]
+    fn the_expected_build_id_is_not_empty() {
+        assert!(
+            !EXPECTED_DAEMON_BUILD_ID.is_empty(),
+            "`EXPECTED_DAEMON_BUILD_ID` 是空串 —— 上面那些判据会退化"
+        );
+    }
+}
+
+#[cfg(test)]
+mod coldstart_perf_guard {
+    //! ★〔audit-0805 F05 下半，报告 §4.3〕**冷启动最贵的三段必须各有一条 `[perf]`**。
+    //!
+    //! 实测（08-06）：`[perf]` 在前端 13 处、monitor Rust 14 处，而**本文件 0 处** ——
+    //! 偏偏它是「点开应用 → 看见远端会话」之间唯一的那条链。
+    //! 后果不是「不知道快慢」：报告 §4.3 里那些 50-200ms 的数字**是外部常识值不是本仓证据**，
+    //! `ROADMAP §5-6` 那条诚实边界就挂在这上面。
+    //!
+    //! ⚠ 本条**只钉「埋点在不在、在不在对的函数里」**，钉不了「量出来的数对不对」——
+    //! 那要真 SSH（红线禁）。**别把它读成性能判据。**
+
+    /// `(阶段名, 必须出现在哪个函数体里, **完整** needle)`。
+    ///
+    /// ⚠ needle **存完整串、不用前缀拼**：第一版是 `format!("… {phase}")`，
+    /// 而「起流」是「起流程」的**前缀** —— 把埋点改名成「起流程」时判据**照样绿**（变异实测）。
+    /// 前缀匹配在中文短词上尤其危险。
+    const PHASES: &[(&str, &str, &str)] = &[
+        (
+            "部署预检",
+            "async fn stream_loop",
+            "[perf] ssh_source [{host_label}] 部署预检 {}ms（",
+        ),
+        (
+            "起流",
+            "async fn stream_loop",
+            "[perf] ssh_source [{host_label}] 起流 {}ms（",
+        ),
+        (
+            "首个 hello",
+            "async fn stream_loop",
+            "[perf] ssh_source [{host_label}] 首个 hello T+{}ms（",
+        ),
+        (
+            "SSH 握手+鉴权",
+            "pub(crate) async fn connect_session",
+            "[perf] ssh_source [{origin}] SSH 握手+鉴权 {}ms（",
+        ),
+    ];
+
+    /// 抠出某个函数的函数体。
+    ///
+    /// ⚠ **锚点必须带换行与左括号**（`\n{sig}(`）：不带的话 `src.find(sig)` 会先命中
+    /// **本模块 `PHASES` 表里的那个字符串字面量**，于是抽出来的是守卫自己的函数体 ——
+    /// 实测第一次跑就栽在这里，诊断说「`stream_loop` 里没有埋点」而埋点明明在。
+    /// ★ 这是本区**第四次**「判据匹配到自己」（F12 注释 · F13 `RULE` 常量 ·
+    /// F18 自己的登记表 · 本条自己的阶段表）。**判据要读的东西和判据本身写在同一片文本里时，
+    /// 锚点必须能把两者分开。**
+    fn body_of(src: &str, sig: &str) -> String {
+        let anchored = format!("\n{sig}(");
+        let at = src.find(&anchored).unwrap_or_else(|| {
+            panic!("找不到函数定义 `{anchored:?}` —— 它被改写或搬走了，本条会零命中地绿")
+        });
+        let rest = &src[at..];
+        // 到下一个顶层 `\n}\n` 为止：本仓 rustfmt 风格下这就是函数结尾。
+        let end = rest.find("\n}\n").unwrap_or(rest.len());
+        rest[..end].to_string()
+    }
+
+    #[test]
+    fn the_three_most_expensive_cold_start_phases_each_emit_a_perf_line() {
+        let src = include_str!("ssh_source.rs");
+        assert!(
+            src.len() > 100_000,
+            "只读到 {} 字节 —— 抽取器坏了",
+            src.len()
+        );
+        for (phase, sig, needle) in PHASES {
+            let body = body_of(src, sig);
+            assert!(
+                body.contains(needle),
+                "冷启动阶段「{phase}」在 `{sig}` 里没有 `[perf]` 埋点（找的是 `{needle}`）。\n\
+                 ★ 报告 §4.3 说的就是这件事：**最贵的三段恰好一个埋点都没有**，\n\
+                 而前端与 Rust 别处都有完整分段埋点（08-06 实测 13 + 14 处）。\n\
+                 没有它，「冷启动三连接合并省了多少」这句话永远只能靠推 ——\n\
+                 `ROADMAP §5-6` 那条诚实边界（那些 50-200ms 是外部常识值）就挂在这上面。"
+            );
+        }
+    }
+
+    /// 本文件的 `[perf]` 条数不许降（**递减棘轮**：埋点只许多不许少）。
+    #[test]
+    fn the_perf_probes_in_this_file_only_grow() {
+        let src = include_str!("ssh_source.rs");
+        // ⚠ 只数**发射点所在的那一行**（trim 后以那个字面量开头）——
+        // 本模块自己的源码里也有这串（`needle` 的 `format!`、以及这行 `starts_with` 的参数），
+        // 直接 `src.matches(...)` 会**数到自己**：实测数到 6 而真实发射点只有 4。
+        // ★ 本区**第五次**「判据匹配到自己」，同一轮里第二次
+        //（前一次是 `body_of` 的锚点命中了 `PHASES` 表里的字符串）。
+        let n = src
+            .lines()
+            .filter(|l| l.trim_start().starts_with("\"[perf] ssh_source [{"))
+            .count();
+        assert!(
+            n >= 4,
+            "本文件只剩 {n} 条 `[perf]` 发射点（08-06 埋下 4 条：部署预检 / 起流 / 首个 hello / \
+             SSH 握手+鉴权）。删埋点前先证明它没用 —— 定框 **E11** 那条「删判据前先证明它恒绿」\
+             同样适用：**删之前先说清「这一段现在靠什么知道快慢」**。"
+        );
+    }
+}
+
+#[cfg(test)]
+mod stream_flag_gate_tests {
+    use super::decide_stream_flags;
+
+    fn caps(items: &[&str]) -> Vec<String> {
+        items.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// F66 DoD：能力门控矩阵——空集（旧 daemon/未确认）恒 (false,false)；
+    /// 声明 bg+tail-only 后 tail_only 恒开、with_bg 随 showBgSessions；
+    /// 部分声明只开对应位；未知 token 忽略。
+    /// ★ U-CC1：`KNOWN_CAPABILITY_TOKENS` 与 `decide_stream_flags` 必须是同一份事实。
+    ///
+    /// 漂开的后果是**漂移记账说谎**：daemon 声明了一个我们其实认识的 token，诊断面却把它
+    /// 报成「不认识」；或者反过来，真的新 token 被当成已知、一声不吭。
+    #[test]
+    fn known_capability_tokens_match_decide_stream_flags() {
+        for t in super::KNOWN_CAPABILITY_TOKENS {
+            let one = vec![t.to_string()];
+            assert_ne!(
+                super::decide_stream_flags(&one, true),
+                (false, false),
+                "`{t}` 在名单里，但 decide_stream_flags 根本不看它 —— 两份事实漂了"
+            );
+        }
+        for junk in ["nope", "future-thing", ""] {
+            assert_eq!(
+                super::decide_stream_flags(&[junk.to_string()], true),
+                (false, false),
+                "`{junk}` 不在名单里却影响了 flag —— 名单漏登记了一个真能力"
+            );
+        }
+        assert!(
+            super::KNOWN_CAPABILITY_TOKENS.len() >= 2,
+            "名单只剩 {} 个 —— 维护坏了，本断言在空转",
+            super::KNOWN_CAPABILITY_TOKENS.len()
+        );
+    }
+
+    #[test]
+    fn capability_gate_matrix() {
+        // 空集 = 旧 daemon / 尚未收到 hello → 全降级
+        assert_eq!(decide_stream_flags(&caps(&[]), true), (false, false));
+        assert_eq!(decide_stream_flags(&caps(&[]), false), (false, false));
+        // 全能力声明
+        assert_eq!(
+            decide_stream_flags(&caps(&["bg", "tail-only"]), true),
+            (true, true)
+        );
+        assert_eq!(
+            decide_stream_flags(&caps(&["bg", "tail-only"]), false),
+            (false, true),
+            "关 showBgSessions 只关 with_bg，tail-only 照开"
+        );
+        // 部分声明：只有 tail-only → with_bg 恒 false（即便 show_bg）
+        assert_eq!(
+            decide_stream_flags(&caps(&["tail-only"]), true),
+            (false, true),
+            "daemon 没声明 bg → 即便用户想看也不发 --with-bg"
+        );
+        // 部分声明：只有 bg
+        assert_eq!(
+            decide_stream_flags(&caps(&["bg"]), true),
+            (true, false),
+            "daemon 没声明 tail-only → 不发 --tail-only（历史走全量推流）"
+        );
+        // 未知 token 忽略（加法式向前兼容：未来 daemon 声明我们还不认识的能力）
+        assert_eq!(
+            decide_stream_flags(&caps(&["bg", "tail-only", "future-x"]), true),
+            (true, true),
+            "未知能力 token 不影响已知门控"
+        );
+    }
+
+    use super::should_upgrade_reconnect as up;
+
+    /// F66 ★ 防无限重连：`should_upgrade_reconnect` 只在「下一轮严格增开一个本轮关着的
+    /// flag」时才 true——保证收敛。这条测试是收 hello 自愈升级那段的回归护栏
+    /// （审计阻塞：那段防死循环逻辑此前零测试；抽成纯函数后在此穷举）。
+    #[test]
+    fn upgrade_reconnect_converges() {
+        // 升级值得：本轮全关，下一轮能开
+        assert!(up((false, false), (true, true)), "全关→全开 该升级");
+        assert!(up((false, false), (false, true)), "开 tail 该升级");
+        assert!(up((false, false), (true, false)), "开 bg 该升级");
+        // ★ 关键收敛点：记账后本轮 caps=声明集 → next==cur → 恒不再重连
+        assert!(!up((true, true), (true, true)), "记账后 next==cur 不再重连");
+        assert!(
+            !up((true, false), (true, false)),
+            "只 bg：记账后不抖（!cur_bg 挡住）"
+        );
+        assert!(!up((false, true), (false, true)), "只 tail：记账后不抖");
+        // 本轮已开 bg、下一轮又加 tail → tail 项触发升级（严格增开）
+        assert!(
+            up((true, false), (true, true)),
+            "本轮 bg、下一轮加 tail → 升级"
+        );
+        // 下一轮反而关了某 flag（不该发生，但函数须安全）→ 不重连
+        assert!(!up((true, true), (false, false)), "下一轮更弱 → 不重连");
+        // swap 边角（本轮 bg、下一轮只 tail）：tail 项触发（靠 tail latch 后续收敛）
+        assert!(up((true, false), (false, true)), "swap：新开 tail 该升级");
+    }
+
+    /// F66：确认 `build.rs::emit_daemon_capabilities` 那条单源管道真的通（非空、含当前
+    /// token）——否则乐观路径静默退化成「第一轮降级 + hello 自愈」（仍正确，只慢一轮）。
+    /// 用 `contains` 而非精确相等：daemon 将来加 token 时本测试仍过，不误红。
+    ///
+    /// 〔`K-R19` 订正 09-03〕这一句原先点的是 `EMBEDDED_DAEMON_CAPABILITIES`，**全仓零定义**
+    /// ——管道上三个真名依次是：`build.rs::emit_daemon_capabilities` → 编译期 env
+    /// `DAEMON_CAPABILITIES` → `ssh_source.rs::embedded_daemon_capabilities`。
+    #[test]
+    fn embedded_capabilities_single_source_wired() {
+        let caps = super::embedded_daemon_capabilities();
+        assert!(caps.contains(&"bg".to_string()), "单源应含 bg：{caps:?}");
+        assert!(
+            caps.contains(&"tail-only".to_string()),
+            "单源应含 tail-only：{caps:?}"
+        );
+    }
+
+    /// U-1（2026-08-01）：**`build_id` 那半单源管道一直没有等价断言。**
+    ///
+    /// `build.rs::emit_daemon_build_id` 抠不到就 `unwrap_or_else(|| "unknown")` —— **静默退化**。
+    /// 一旦 daemon crate 改名 / `BUILD_ID` 挪出 `main.rs` / `const` 写法换行，
+    /// `EXPECTED_DAEMON_BUILD_ID` 会变成 `"unknown"`，而**编译通过、测试全绿**，
+    /// 运行期把每台远端 daemon 都判成 `StaleBuild` → 无限重装。
+    ///
+    /// capabilities 那半有 `embedded_capabilities_single_source_wired` 兜着，这半没有。
+    /// U13 的仓库级重命名**必须**先有这条，否则那次重命名是静默失败。
+    ///
+    /// 判据刻意宽松（不写死具体 id）：只要不是兜底值、且长得像一个 build id 就行 ——
+    /// 写死 id 会让每次正常 bump 都误红，那种守卫最后会被人删掉。
+    #[test]
+    fn embedded_build_id_single_source_wired() {
+        let id = super::EXPECTED_DAEMON_BUILD_ID;
+        assert_ne!(
+            id, "unknown",
+            "`build.rs::emit_daemon_build_id` 没抠到 daemon 的 `const BUILD_ID` —— \
+             多半是路径失效（crate 改名 / 文件搬家）或 `const` 写法变了。\
+             它是**静默退化**：不修的话每台远端都会被判 StaleBuild 并无限重装。"
+        );
+        assert!(
+            !id.is_empty() && id.len() <= 64,
+            "build_id 形状可疑：{id:?}"
+        );
+        assert!(
+            id.chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.'),
+            "build_id 含意外字符（多半是抠错了行）：{id:?}"
+        );
+    }
+}
+
+// ═══════════ `K-P6b`：daemon 那条长连接流的拨号，搬进一个由界面起的子进程 ═══════════
+//
+// # 🔴 先写死它买到了多少（`D2` 改窄后的原话，别读大）
+//
+// 买到的是：**`daemon 那条长连接流` 的那一跳 SSH 握手，可以不发生在界面进程里。**
+//
+// **没买到的，同段写死**：
+//
+// - 🔴 **界面进程仍然自己拨号 —— 7 处里搬走的是 1 处。**
+//   `connect_session` 的生产调用点 **7 处 / 3 份**，逐处登记在
+//   [`dial_move_judge::DIAL_SITES`]（**机检**，不是散文）：本条覆盖 daemon 长连接流那 1 处，
+//   SFTP · 端口转发 · 跳板 · 其余一次性 exec 与测试连接**一处都没动**。
+//   ⇒ **任何地方都不许把它写成「拨号搬出去了」。**
+// - ⚠ **回落有两条，都登记在 `dial_move_judge::FALLBACKS` 里（机检），不是散文**：
+//   ① **拿不到代理二进制**。`resolve_dial_proxy` 只认两处：环境变量 `CCM_DIAL_PROXY`
+//      与 exe 旁的 sidecar。
+//      🔴 **这一条的射程是「开发树」，不是「默认装机」——我第一版判错过。**
+//      现打四环（逐份读的原文，**点符号不点行号**）：`local_backend.rs::SIDECAR_STEM`
+//      逐字 `"cc-monitor-remote"`
+//      · `src/bridge/tauri.sidecar.conf.json` 的 `"externalBin": ["binaries/cc-monitor-remote"]`
+//      · `.github/workflows/release.yml` 的 `build-windows` 三步（Windows 原生编 daemon → 拷成
+//      `cc-monitor-remote-<triple>.exe` → `tauri build --config …sidecar.conf.json`）
+//      · Linux job 同形（`:270/:273/:283`）⇒ **发版包里 sidecar 就在 exe 旁边，命中。**
+//      而 `externalBin` **不住 `tauri.conf.json`**、只在发版那一步注入 ⇒ **开发树上恒空**。
+//      ⇒ 「查开发树得到一个只在开发树为真的答案」正是 `local_accounts.rs` 里那条登记
+//      （`externalBin` 在开发树现打零命中）说的同一个病。
+//   ② **配置里没填 `keyPath`**。代理只会 publickey 一种鉴权（`ssh-agent` 那条界面侧
+//      只在 Windows 有实现、且是命名管道）⇒ 走 agent 的用户**必须**留在进程内那条路，
+//      否则本件就把一批今天能用的人弄坏了。**这不是懒，是射程。**
+// - 🔴 **`D3③`：Windows 上关掉界面，那个代理进程跟着走。** 它是界面起的子进程、
+//   `kill_on_drop(true)`，而且那条管子一断它自己也收工。
+//   **别让下一个人以为「搬出去了」就等于「它独立跑着」** —— 用户对这一格知情、押后。
+// - **`K-P7` 定的那三样原样继承**：**界面仍解帧**（代理只搬字节）· **凭据面 `K11` 挡着**
+//   （给代理的是私钥**路径**，不是私钥）· **`ConnectStage` 那 6 格过不去**
+//   （代理不发分阶段事件 ⇒ 走代理这条路时那 6 格是空的，与走进程内那条**不等价**）。
+// - **musl 交叉编译没验**：代理二进制由 `src/backend` 出，CI 要把它 `zigbuild`
+//   到两个 musl target，而沙箱门禁只做本机 gnu 构建 ⇒ **门禁全绿证不出那两个 target 编得过**。
+
+/// 拨号代理二进制的**显式住址**（环境变量名）。
+///
+/// 🔴 **「没有它这条路一台机器上都走不到」—— 2026-09-10 起判不了，别当它还有答案。**
+///
+/// 〔墓碑，原话逐字：「为什么要有它：今天安装包里没有 sidecar（F05b），没有这个变量的话
+///  这条路**一台机器上都走不到**，那就成了一份「编得过但永远不跑」的代码。」〕
+///
+/// **前提翻了（这一格有读数）**：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe
+/// 各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe`
+/// **2 个进程在跑**、裸 `monitor.exe` 那份 **0 个** ⇒ 「安装包里没有 sidecar」不成立
+/// （`externalBin` 住 `src/bridge/tauri.sidecar.conf.json`，发版那一步 `--config` 注入，
+/// **刻意不进基础 `tauri.conf.json`** ⇒「基础配置里没有」≠「没配」）。
+/// ⇒ 在装出来那份上，`resolve_dial_proxy` 的**第二处**（exe 旁那份）本来就有东西可认，
+/// 这个变量**不是**唯一入口。
+///
+/// 🔴 **但「那条路到底走没走得到」不跟着翻，本注也不替它下一个新结论。**
+/// 解析到二进制只是两个条件里的一个，另一个是这一行**配了 `keyPath`**
+/// （代理只会 publickey）—— 而「装完之后配了 `keyPath` 的那台到底走没走代理」，
+/// 今天**一台机器上都没人跑出过读数**。**要什么才测得了**逐条写在
+/// `src/doc/IPC-PROTOCOL.md` §10 那一格，**这里刻意不抄第二份**。
+///
+/// ⇒ 今天还说得死的只有一句：**开发树上 `resolve_beside_this_exe` 恒空**
+/// （`externalBin` 不进基础配置 ⇒ `cargo run` / `npm run tauri dev` 两处都空），
+/// 所以在**开发树**上，这个变量仍然是走到这条路的**唯一**入口。
+pub(crate) const DIAL_PROXY_ENV: &str = "CCM_DIAL_PROXY";
+
+/// 解析拨号代理二进制。**只读、只认两处、不写盘、不伸手进家目录。**
+///
+/// ⚠ **刻意不去 `~/.cc-monitor/bin/` 找那份已释放的本机后端** —— 那要一次
+/// `dirs::home_dir()`，而本机读面是 `local_read_surface_registry` 按「生产段里的
+/// `home_dir()`」取人群的一张表，本轮写区里没有它。**少买一格，不去动别人的表。**
+pub(crate) fn resolve_dial_proxy() -> Option<std::path::PathBuf> {
+    if let Some(raw) = std::env::var_os(DIAL_PROXY_ENV) {
+        let p = std::path::PathBuf::from(raw);
+        if p.is_file() {
+            return Some(p);
+        }
+        tracing::warn!(
+            "{DIAL_PROXY_ENV} 指向 {} —— 那不是一个文件。**不猜别的路径**，本轮回落到进程内拨号。",
+            p.display()
+        );
+        return None;
+    }
+    match crate::backend::control::local_backend::resolve_beside_this_exe(env!("CCM_TARGET_TRIPLE"))
+    {
+        crate::backend::control::local_backend::Resolved::Found(p) => Some(p),
+        crate::backend::control::local_backend::Resolved::Missing { .. } => None,
+    }
+}
+
+/// 一条**跑在别的进程里**的 daemon 流：读写两半都是那个子进程的管子。
+///
+/// `kill_on_drop(true)` 在 [`spawn_dial_proxy`] 里设，本结构只负责把 `Child` 一起持有着
+/// —— 丢掉这个结构 = 丢掉那个 `Child` = 代理进程被收掉。**`D3③` 那一句的落点就在这里。**
+pub struct ProxyStream {
+    /// 只为持有生命周期；`kill_on_drop` 让「界面走了代理跟着走」成为类型层面的事，
+    /// 不是一条要人记得去调的清理。
+    _child: tokio::process::Child,
+    w: tokio::process::ChildStdin,
+    /// ⚠ **必须是 `BufReader` 本体**：握手那一行是 `read_line` 读的，它很可能已经
+    /// 把后面的字节预读进缓冲里了。把裸 `ChildStdout` 交出去 = 丢掉那一段。
+    r: tokio::io::BufReader<tokio::process::ChildStdout>,
+}
+
+impl tokio::io::AsyncRead for ProxyStream {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        tokio::io::AsyncRead::poll_read(std::pin::Pin::new(&mut self.r), cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for ProxyStream {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        tokio::io::AsyncWrite::poll_write(std::pin::Pin::new(&mut self.w), cx, buf)
+    }
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        tokio::io::AsyncWrite::poll_flush(std::pin::Pin::new(&mut self.w), cx)
+    }
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        tokio::io::AsyncWrite::poll_shutdown(std::pin::Pin::new(&mut self.w), cx)
+    }
+}
+
+/// daemon 那条长连接流的两种承载。**上层一个字都不用改** ——
+/// `inbound_client::split_and_park` 本来就是泛型的（`S: AsyncRead + AsyncWrite + Send`）。
+pub enum DaemonStream {
+    /// 拨号发生在**界面进程里**（今天的回落路径）。
+    InProcess(russh::ChannelStream<client::Msg>),
+    /// 拨号发生在**代理进程里**（`K-P6b` 买到的那一格）。
+    Proxied(ProxyStream),
+}
+
+impl tokio::io::AsyncRead for DaemonStream {
+    fn poll_read(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            DaemonStream::InProcess(s) => {
+                tokio::io::AsyncRead::poll_read(std::pin::Pin::new(s), cx, buf)
+            }
+            DaemonStream::Proxied(s) => {
+                tokio::io::AsyncRead::poll_read(std::pin::Pin::new(s), cx, buf)
+            }
+        }
+    }
+}
+
+impl tokio::io::AsyncWrite for DaemonStream {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            DaemonStream::InProcess(s) => {
+                tokio::io::AsyncWrite::poll_write(std::pin::Pin::new(s), cx, buf)
+            }
+            DaemonStream::Proxied(s) => {
+                tokio::io::AsyncWrite::poll_write(std::pin::Pin::new(s), cx, buf)
+            }
+        }
+    }
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            DaemonStream::InProcess(s) => {
+                tokio::io::AsyncWrite::poll_flush(std::pin::Pin::new(s), cx)
+            }
+            DaemonStream::Proxied(s) => {
+                tokio::io::AsyncWrite::poll_flush(std::pin::Pin::new(s), cx)
+            }
+        }
+    }
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            DaemonStream::InProcess(s) => {
+                tokio::io::AsyncWrite::poll_shutdown(std::pin::Pin::new(s), cx)
+            }
+            DaemonStream::Proxied(s) => {
+                tokio::io::AsyncWrite::poll_shutdown(std::pin::Pin::new(s), cx)
+            }
+        }
+    }
+}
+
+/// 装那份请求 JSON 的环境变量名 —— 与 `dial::REQUEST_ENV` 逐字相同。
+///
+/// **为什么走环境变量**：`argv` 在同机**任何**用户的 `ps` 里都看得见，而
+/// `/proc/<pid>/environ` 只有本人读得到。**也不走 stdin 第一行** ——
+/// 那要求本文件往一条流里写，而 `write_half_guard` 逐字禁止它自己写流
+/// （写的能力在 `U8a-2a` 整个交给了 `inbound_client`）。
+/// ⇒ 换成环境变量之后子进程的 `stdin` **纯粹**是 daemon 那条通道，一个字节带外数据都没有。
+pub(crate) const DIAL_REQUEST_ENV: &str = "CCM_DIAL_REQUEST";
+
+/// 请求的键名 —— **蛇形**，与 `src/backend/dial/mod.rs::DialRequest` 对齐。
+///
+/// ⚠ 刻意不复用 `RemoteConfig` 的 serde（那套是 camelCase、是**给前端的**契约）：
+/// 这条管子两端都是我们自己，不该被前端字段名拴住。两侧各钉一半 ——
+/// 那边钉「按蛇形读得动」，这边钉「按蛇形写出去」。
+///
+/// 🔴 **只放路径，不放私钥本体**（凭据面 `K11` 挡着）—— 判据钉着这一句。
+fn dial_request_json(cfg: &RemoteConfig, cmd: &str) -> String {
+    serde_json::json!({
+        "host": cfg.host,
+        "port": cfg.port,
+        "user": cfg.user,
+        "key_path": cfg.key_path,
+        "host_key_fingerprint": cfg.host_key_fingerprint,
+        "command": cmd,
+    })
+    .to_string()
+}
+
+/// 起代理进程、把请求行递进去、等它那一行 ack。**回 `Ok` 就是这条流真的通了。**
+///
+/// 为什么要等 ack：`connect_and_exec` 的契约是「回 `Ok` = 流建起来了」。没有 ack 的话，
+/// 「连不上」与「连上了但远端还没说话」在管子上一模一样 —— 那正是本仓治过很多次的
+/// 「两件事在终端上同形」。
+async fn spawn_dial_proxy(
+    bin: &std::path::Path,
+    cfg: &RemoteConfig,
+    cmd: &str,
+) -> Result<ProxyStream, String> {
+    let mut child = tokio::process::Command::new(bin)
+        .arg("--dial")
+        .env(DIAL_REQUEST_ENV, dial_request_json(cfg, cmd))
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        // ★ 代理的 stderr **不接管**：它的诊断（拨号失败原因、TOFU 警告）就该跟着
+        //   界面进程的 stderr 走同一个地方。接管它就得再起一条泵，而那是又一条要看住的路。
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("起拨号代理 {} 失败: {e}", bin.display()))?;
+
+    let w = child
+        .stdin
+        .take()
+        .ok_or_else(|| "拨号代理没有 stdin 管子".to_string())?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "拨号代理没有 stdout 管子".to_string())?;
+    let mut r = BufReader::new(stdout);
+
+    // ★ **有上限的一行读**。对端是另一个进程 —— 它坏掉、或压根不是我们的代理，
+    //   一条没有换行的巨流会把无界读变成无界堆分配（daemon 侧实测过：512 MiB 无换行
+    //   ⇒ RSS 6 MiB → 518 MiB，见 `src/backend/inbound.rs` 头注）。
+    //   ack 正常 < 200 字节，64 KiB 是五个数量级的余量。
+    //   ⚠ 上限写成字面量而不是具名常量：具名的尺寸常量要去 `byte_cap_registry` 那张表上
+    //   签字，而那张表不在本轮写区。**如实记，不装成风格选择。**
+    // ⚠ **必须写成 `.take(` 这个点调用**：`byte_cap_registry` 那条判据的窗口启发式
+    //   认的是 `.take(`，UFCS 写法（`AsyncReadExt::take(&mut r, …)`）它一个字看不见
+    //   ⇒ 上限**真的加了**而判据照旧报「无界读」。本轮实打撞到过这一格。
+    //   这条导入逐字在 `write_half_guard::ALLOWED_IO_IMPORTS` 里（它不带写能力）。
+    use tokio::io::AsyncReadExt;
+    let mut ack = String::new();
+    let mut limited = (&mut r).take(64 * 1024);
+    let n = limited
+        .read_line(&mut ack)
+        .await
+        .map_err(|e| format!("读拨号代理 ack 失败: {e}"))?;
+    drop(limited);
+    if n == 0 {
+        return Err("拨号代理一个字节都没回就走了（它自己的 stderr 上有原因）".to_string());
+    }
+    let v: serde_json::Value = serde_json::from_str(ack.trim())
+        .map_err(|e| format!("拨号代理的 ack 不是 JSON: {e}（原文 {ack:?}）"))?;
+    if v.get("ok").and_then(serde_json::Value::as_bool) != Some(true) {
+        let why = v
+            .get("error")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("(代理没说原因)");
+        return Err(format!("拨号代理拨不通: {why}"));
+    }
+    tracing::info!(
+        "K-P6b: daemon 流的拨号跑在代理进程里（{}），指纹 {:?}",
+        bin.display(),
+        v.get("fingerprint").and_then(serde_json::Value::as_str)
+    );
+    Ok(ProxyStream {
+        _child: child,
+        w,
+        r,
+    })
+}
+
+pub async fn connect_and_exec(
+    cfg: &RemoteConfig,
+    with_bg: bool,
+    tail_only: bool,
+) -> Result<DaemonStream, String> {
+    // 与 jsonl-watcher 不同，daemon 是长连接：inactivity_timeout=None → connect_session
+    // 自动启用 30s keepalive（见 FIX 1 注释），靠 keepalive + EOF 检死链，不靠定时拆链。
+    // Batch7-F24/Batch8-F26：两个流模式 flag 都由调用方决定（run_stream 里绑定
+    // "部署确认为当前版本"，见该处注释）。tail_only=true → daemon 不重放历史
+    // （历史由本侧旁路 --read-session 快照拉取），实时通道流量趋零。
+    let mut cmd = shell_quote(&cfg.daemon_path);
+    if with_bg {
+        cmd.push_str(" --with-bg");
+    }
+    if tail_only {
+        cmd.push_str(" --tail-only");
+    }
+    // ★ `K-P6b`：两个条件都满足才把这一跳交出去；否则**出声**回落。
+    //   两条路的差别只在「谁跑 SSH 握手」，交给上层的东西（一条双工字节流）一模一样。
+    let has_key = cfg
+        .key_path
+        .as_deref()
+        .is_some_and(|s| !s.trim().is_empty());
+    // ⚠ **只解析一次**：判据钉着「走不走代理这个判断只许有一个地方做」，
+    //   而下面 `warn` 里要回显它 —— 再调一次就成了两次判断，两次之间还可能不一致。
+    let proxy = resolve_dial_proxy();
+    match proxy.as_ref().filter(|_| has_key) {
+        Some(bin) => spawn_dial_proxy(bin, cfg, &cmd)
+            .await
+            .map(DaemonStream::Proxied),
+        None => {
+            // 🔴 **这一句是「这一台机器上拨号仍在界面进程里」的运行期证据。**
+            //    别把它降成 `info` —— 它是用户侧唯一看得见这一格的地方。
+            tracing::warn!(
+                "K-P6b: 不走拨号代理（有二进制={} · 配了 keyPath={has_key}）\
+                 ⇒ **daemon 流的拨号仍然发生在界面进程里**。\
+                 前者为假多半是在开发树里跑（`externalBin` 只在发版那一步注入，\
+                 见 `tauri.sidecar.conf.json`），或 {DIAL_PROXY_ENV} 没设；\
+                 后者为假 = 这台走的是 ssh-agent，而代理今天只会 publickey。",
+                proxy.is_some()
+            );
+            connect_and_exec_cmd(cfg, &cmd)
+                .await
+                .map(DaemonStream::InProcess)
+        }
+    }
+}
+
+// 🔴 **这个模块的 `pub(crate)` 是 `K-R74` 的承重件，别顺手收回私有**〔09-12〕：
+// `dial_home_registry`（另一份文件）那条递减棘轮拿 `DIAL_SITES` 里 `moved == false` 的
+// **处数合计**当今天的读数；收回成私有那一边就编不过，抄一份数字过去则是「同一个值两个家」。
+//
+// 〔`K-R76` 09-12〕**这里原先多一道绕道，现在拆掉了**：模块写成私有 `mod`，再在文件顶层
+// 加一行 `pub(crate) use dial_move_judge::DIAL_SITES;` 重导出一次。那道绕道**不是品味**，
+// 它当时有一个真理由：`guard_core::test_module_ranges` 按**字面前缀**认 `mod ` ⇒
+// 写成 `pub(crate) mod` 那一刻本文件整个测试段**不再被剥掉**（`K-R74` 09-12 实打：
+// `cargo test -p monitor --lib` 从 `1403 passed; 0 failed` 变成 `1399 passed; 10 failed`，
+// 红的是本文件的 `six_of_the_seven_dial_sites_are_still_in_this_process` 与
+// `write_half_guard` 三条，外加 `structural_scan` · `cross_half_edge_registry` ·
+// `exec_site_registry` · `local_read_surface_registry` · `byte_cap_registry`
+// 那几份里「扫生产段」的判据 —— 它们那一刻扫的是测试代码）。
+// `K-R75`（09-12）把那一步换成**按形状**剥可见性修饰（`guard_core::strip_visibility`）之后
+// **那个理由不再成立** ⇒ 绕道拆掉，模块写回它本来的样子。
+// ⚠ 「今天剥法真的接得住 `pub(crate) mod`」这句话**由机检守着，不靠这段散文**：
+//   住 `local_daemon.rs` 的 `the_strip_rule_this_file_leans_on_is_still_on_disk`
+//   （`K-R76` `KR76D2`，拿一段逐字校验位去核 `guard-core` 那一行）。
+#[cfg(test)]
+pub(crate) mod dial_move_judge {
+    //! `K-P6b` `D2` 判据的**甲半**（界面这一侧）＋ 它的反向自检。
+    //!
+    //! # 它断的是哪一个性质
+    //!
+    //! **「daemon 那条长连接流」的那一跳 SSH 握手，由谁去跑。**
+    //!
+    //! 🔴 **它断的不是「`russh` 这个词还在不在」** —— `K-P6` 那一拍已经证过后者会量错集合
+    //! （**14 份在往外拨的文件里，11 份的 `russh` 代码态是 0**）。
+    //! 🔴 **它断的也不是「`connect_session` 这个名字还在不在」** —— 那个名字**一处都没少**：
+    //! 它的 7 处生产调用点里本件只覆盖 1 处，而覆盖的方式是**让入口不再走到它**，
+    //! 不是删掉它。量名字量到的会是「什么都没变」。
+    //!
+    //! ⇒ 判据落在**入口函数的函数体**上：`connect_and_exec` 里有没有一条把这一跳交出去的路，
+    //! 以及**回落那一条有没有被登记出来**。
+    //!
+    //! # 乙半在哪
+    //!
+    //! 乙半（代理这一侧：拨号只许住 `dial/`）住 `src/backend/dial/mod.rs`
+    //! 的测试模块。**两侧各扫各的 crate**，刻意不互相 `include_str!`
+    //! —— 那会新增一条跨轨编译期边，而那张登记表（`cross_half_edge_registry`）
+    //! 不在本轮写区里。**两侧各钉一半**，与 `build_id_guard` / `protocol_doc_guard` 同形。
+
+    use guard_core::production_code;
+
+    use super::RemoteConfig;
+
+    /// 界面进程里**每一处**往外拨号的入口，逐处登记。
+    ///
+    /// `(文件, 生产段里的调用点处数, 这一处的拨号搬走了没有, 它是什么, 解锁条件)`
+    ///
+    /// 🔴 **`pub(crate)` 是承重的，别顺手收回去**〔`K-R74` 09-12〕：
+    /// `dial_home_registry` 那条递减棘轮拿本表 `moved == false` 的**处数合计**当今天的读数，
+    /// 再对着 `ssh_source.rs` 的 git 历史比「历史上出现过的最低档」。
+    /// 收回成私有 ⇒ 那条棘轮编不过；改成在那边抄一份数字 ⇒ 同一个值两个家，本区最贵的那条病。
+    ///
+    /// 🔴 **这张表就是「7 处里搬走 1 处」那句话的机器形态。** 第三栏 `false` 的每一行
+    /// 都是一句「本件**没有**买到这里」——散文里那句话可以腐烂，这张表不行：
+    /// 处数由下面的判据**从源码派生**再逐格比对，多一处少一处都红。
+    pub(crate) const DIAL_SITES: &[(&str, usize, bool, &str, &str)] = &[
+        (
+            "ssh_source.rs",
+            4,
+            false,
+            "跳板（`connect_via_jump`）· 一次性 exec（`connect_and_exec_cmd`）· \
+             收全输出的 exec（`connect_and_exec_capture`）· 测试连接。\
+             ⚠ **`connect_and_exec` 不在这 4 处里** —— 它调的是 `connect_and_exec_cmd`，\
+             而 `K-P6b` 动的正是「它还走不走那一条」，不是把 `connect_session` 从这几处删掉。\
+             〔`K-R59` 09-11：**5 → 4**，退役的是 `daemonless` 轮询流那一处。\
+             ⚠ **那不是「拨号搬走了」**，是那条路整个不存在了 ⇒ 第三栏仍是 `false`。〕",
+            "第三阶段（收那 18 处 `connect_and_exec_cmd` 调用点）落地、\
+             或测试连接那条也改走代理的那天。**本件明写不做**（`§2.1`）。",
+        ),
+        (
+            "sftp.rs",
+            1,
+            false,
+            "SFTP 会话（部署 / 传文件）。它要的是**原始字节**，而消费者不是界面 ⇒ 另一形状。",
+            "`§2.2` 那条「不动 SFTP 与端口转发」被撤销、并且有人先答出\
+             「SFTP 的字节怎么跨进程交回来」的那天。",
+        ),
+        (
+            "port_forward.rs",
+            1,
+            false,
+            "端口转发（每条转发一条独立 SSH 会话 + `channel_open_direct_tcpip`）。同上：\
+             要原始字节，消费者不是界面。",
+            "同 `sftp.rs` 那一条，两条一起解锁 —— `K-P7` 把它们判成同一形状。",
+        ),
+    ];
+
+    /// 🔴 **回落条件逐条登记** —— 「这台机器上拨号仍在界面进程里」的每一种成因。
+    ///
+    /// `(判断它的源码片段, 它说的是什么, 解锁条件)`
+    ///
+    /// 少了这张表，回落就成了一条只写在注释里的话；而注释腐烂之后，
+    /// 「本件把拨号搬出去了」这句过头话就没人拦得住。
+    const FALLBACKS: &[(&str, &str, &str)] = &[
+        (
+            "resolve_dial_proxy()",
+            "拿不到代理二进制。⚠ **射程是「开发树」，不是「默认装机」**：\
+             `externalBin` 住 `tauri.sidecar.conf.json`、只在发版那一步注入 ⇒ \
+             `cargo run` 恒空；而发版包里 sidecar 就在 exe 旁边（`release.yml` 的 \
+             `Build local backend sidecar (native)` + `Stage sidecar for externalBin`）⇒ 命中。",
+            "把 `externalBin` 并进主配置的那天（今天刻意不并 —— \
+             `release.yml` 头注写着并进去会让 `cargo test` 也要一份 daemon 二进制）。",
+        ),
+        (
+            "has_key",
+            "配置里没填 `keyPath` ⇒ 这台走的是 ssh-agent，而代理今天只会 publickey。\
+             不回落就等于把一批今天能用的 Windows 用户弄坏。",
+            "代理那侧把 ssh-agent 鉴权补上的那天（Windows 是命名管道、Unix 是 \
+             `SSH_AUTH_SOCK`，界面侧今天也只有 Windows 那一半）。",
+        ),
+    ];
+
+    /// 语料地板：低于这个字节数就判「语料没喂进来」，而不是「一处都没有」。
+    ///
+    /// 🔴 这条与函数体那条地板一起，是 `P6bM4` 的被测对象。
+    const CORPUS_FLOOR_BYTES: usize = 100_000;
+    /// 入口函数体的地板：切不出函数体（或切出个空壳）时判据必须**自己先红**。
+    const BODY_FLOOR_BYTES: usize = 200;
+
+    /// 语料：三份文件的**生产段**（剥掉 `#[cfg(test)]` 段）。
+    fn corpus() -> Vec<(&'static str, String)> {
+        vec![
+            (
+                "ssh_source.rs",
+                production_code(include_str!("ssh_source.rs")),
+            ),
+            ("sftp.rs", production_code(include_str!("sftp.rs"))),
+            (
+                "port_forward.rs",
+                production_code(include_str!("port_forward.rs")),
+            ),
+        ]
+    }
+
+    /// `connect_session(` 的**调用点**处数 —— 剔掉定义行本身（`fn connect_session(`）。
+    ///
+    /// ⚠ 这把尺子**数不到**：`use` 别名、函数指针、宏里拼出来的调用。
+    /// 与 `K-P6-dial-census.py` 头注是同一个洞，**不声称堵住**。
+    fn call_sites(code: &str) -> usize {
+        let needle = "connect_session(";
+        let mut n = 0usize;
+        let mut from = 0usize;
+        while let Some(rel) = code[from..].find(needle) {
+            let at = from + rel;
+            from = at + needle.len();
+            if code[..at].ends_with("fn ") {
+                continue; // 定义行，不是调用点
+            }
+            n += 1;
+        }
+        n
+    }
+
+    /// 按**行**取一个函数体：从 `head` 那一行起，到第一行**恰好是 `}`** 为止。
+    ///
+    /// 与 `local_daemon.rs::body_of` 同形 —— 本仓已经在用这一把尺子，不另发明一把。
+    fn body_of(code: &str, head: &str) -> String {
+        let Some(at) = code.find(head) else {
+            return String::new();
+        };
+        let mut out = String::new();
+        for line in code[at..].lines() {
+            out.push_str(line);
+            out.push('\n');
+            if line == "}" {
+                break;
+            }
+        }
+        out
+    }
+
+    /// 🔴 **甲半判据本体。纯函数** —— 语料由调用方给 ⇒ 阳性/阴性两个方向都切得动。
+    ///
+    /// 传进来的是 `connect_and_exec` 那个函数体。返回 `Err(说法)` = 判据红。
+    fn daemon_stream_dial_verdict(body: &str) -> Result<(), String> {
+        if body.len() < BODY_FLOOR_BYTES {
+            return Err(format!(
+                "切出来的入口函数体只有 {} 字节（地板 {BODY_FLOOR_BYTES}）—— 本判据此刻在空转。\n\
+                 「函数体里一处都没有」与「压根没切出函数体」在终端上一模一样，\
+                 这条地板就是把它们分开的那一刀。",
+                body.len()
+            ));
+        }
+        let count = |p: &str| body.matches(p).count();
+        let n_resolve = count("resolve_dial_proxy()");
+        let n_proxy = count("spawn_dial_proxy(");
+        let n_inproc = count("connect_and_exec_cmd(");
+        let n_direct = count("connect_session(");
+
+        if n_direct != 0 {
+            return Err(format!(
+                "入口函数体里直接出现了 {n_direct} 处 `connect_session(` —— \
+                 那是**界面进程自己拨号**，本件要断的正是这一格。"
+            ));
+        }
+        if n_proxy != 1 {
+            return Err(format!(
+                "入口函数体里 `spawn_dial_proxy(` 有 {n_proxy} 处（应当恰好 1 处）。\n\
+                 0 处 ⇒ **拨号那一跳退回界面进程了**，`K-P6b` 买到的那一格没了；\n\
+                 ≥2 处 ⇒ 有第二条交出去的路，而回落登记只认得一条。"
+            ));
+        }
+        if n_resolve != 1 {
+            return Err(format!(
+                "入口函数体里 `resolve_dial_proxy()` 有 {n_resolve} 处（应当恰好 1 处）——\
+                 「走不走代理」这个判断只许有一个地方做。"
+            ));
+        }
+        // 🔴 回落那一条**必须在**，而且必须**登记出来**：它就是「默认装机上搬走 0 处」的落点。
+        //
+        // 〔订正 2026-09-10（v3.7.0）—— 动的是**失败文案**，不是判据。
+        //  墓碑，原文逐字：「0 处 ⇒ 代理拿不到二进制时 daemon 流会直接断
+        //  （**今天安装包没有 sidecar，那是 F05b**）」。括号里那句今天不成立。
+        //  证伪它的读数：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）——
+        //  装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe` **2 个进程在跑**、
+        //  裸 `monitor.exe` 那份 **0 个** ⇒ 发版包里 sidecar 就在 exe 旁边
+        //  （本模块头注回落①那四环记的就是这件事，只是这条文案没跟着改）。
+        //
+        //  ⚠ **判据守的那个性质没跟着过期，仍然成立** —— 过期的只是文案里用来论证它的那个理由。
+        //  「回落必须在、且恰好一条」今天仍有真人群，而且是**三**批，一批都不靠 F05b：
+        //  ① 走 ssh-agent 的用户（`has_key` 为假 —— 代理只会 publickey，这条 F05b 一个字没动，
+        //     登记在 `FALLBACKS` 的 `has_key` 那一行）；
+        //  ② 开发树（`externalBin` 刻意不进基础 `tauri.conf.json` ⇒ `cargo run` 上 resolve 恒空）；
+        //  ③ `CCM_DIAL_PROXY` 指到一个不是文件的路径（`resolve_dial_proxy` 出声后回 `None`）。
+        //  ⇒ 删掉回落照旧是「把主平台弄坏」，只是弄坏的从「所有人」缩成这三批 ——
+        //  **人群变窄了，性质没变**，所以这条不换靶。
+        //
+        //  ★ 与 `local_backend.rs` 那条「换靶」**不同形**，别读混：那条的**目的**随 F05b 过期
+        //  （没人再需要「补上它」），必须换掉；本条的触发条件仍是 `n_inproc != 1`，一格没挪，
+        //  改的只是红了之后说给人听的那句话。〕
+        if n_inproc != 1 {
+            return Err(format!(
+                "入口函数体里 `connect_and_exec_cmd(` 有 {n_inproc} 处（应当恰好 1 处 = 那条**回落**）。\n\
+                 0 处 ⇒ 代理拿不到二进制（开发树 · `CCM_DIAL_PROXY` 指错）、\
+                 或这台走 ssh-agent 时，daemon 流会直接断 \
+                 —— 那不是「搬出去了」，那是把主平台弄坏了；\n\
+                 ≥2 处 ⇒ 回落不止一条，而这张表只认得一条。"
+            ));
+        }
+        let (Some(i_proxy), Some(i_inproc)) = (
+            body.find("spawn_dial_proxy("),
+            body.find("connect_and_exec_cmd("),
+        ) else {
+            return Err("上面数到了，这里却找不到位置 —— 抽取器自相矛盾".to_string());
+        };
+        if i_proxy > i_inproc {
+            return Err(
+                "回落那一条排在代理那一条**前面** —— 那等于默认走进程内拨号，代理成了死代码。"
+                    .to_string(),
+            );
+        }
+        Ok(())
+    }
+
+    /// ★ 甲半：**daemon 那条长连接流的入口，把拨号交给了代理进程；回落那一条被登记着。**
+    #[test]
+    fn the_daemon_stream_entry_hands_the_dial_to_another_process() {
+        let (_, prod) = corpus()
+            .into_iter()
+            .find(|(n, _)| *n == "ssh_source.rs")
+            .expect("语料里没有 ssh_source.rs");
+        let body = body_of(&prod, "pub async fn connect_and_exec(");
+        if let Err(e) = daemon_stream_dial_verdict(&body) {
+            panic!("{e}");
+        }
+    }
+
+    /// ★ **「7 处里搬走 1 处」是机器数的，不是散文。**
+    ///
+    /// 这一条与上一条是**两半**：上一条证「入口交出去了」，本条证
+    /// 「**别处一处都没搬**」。少了本条，「拨号搬出去了」这句话就没人拦得住。
+    #[test]
+    fn six_of_the_seven_dial_sites_are_still_in_this_process() {
+        let c = corpus();
+        let bytes: usize = c.iter().map(|(_, s)| s.len()).sum();
+        assert!(
+            bytes >= CORPUS_FLOOR_BYTES,
+            "语料只有 {bytes} 字节（地板 {CORPUS_FLOOR_BYTES}）—— 抽取坏了，本条在空转"
+        );
+        let mut total = 0usize;
+        for (file, want, _moved, what, _unlock) in DIAL_SITES {
+            let (_, code) = c
+                .iter()
+                .find(|(n, _)| n == file)
+                .unwrap_or_else(|| panic!("语料里没有 {file} —— 登记表指向一份不在的文件"));
+            let got = call_sites(code);
+            assert_eq!(
+                got, *want,
+                "{file} 里 `connect_session(` 的调用点有 {got} 处，登记的是 {want} 处。\n\
+                 那一处是什么：{what}\n\
+                 🔴 **这个数变了要先回答「搬走了没有」**：搬走了就把第三栏改成 `true` \
+                 并在件文件里同轮改掉「7 处里搬走 1 处」那句话；只是重构就把数字改掉。"
+            );
+            total += got;
+        }
+        assert_eq!(
+            total, 6,
+            "界面侧拨号调用点总数是 {total}，登记的是 **6**。\n\
+             这两个数必须一起动 —— 本表就是那句话的家。\n\
+             ⚠ 棘轮史：**7**（`K-P6b` 件文件 09-06 现打，逐处点名）→ **6**〔`K-R59` 09-11〕：\n\
+             `daemonless` 轮询流那一处**退役**（`K35`：没有「没有后端」这回事）。\n\
+             🔴 **本函数的名字里那个 `seven` 是 09-06 那一刻的数，刻意没改** ——\n\
+             改名会打断 `K-P6b` 件文件（`:652` / `:803`）与 `audits/K-P6b-PM.md:281` 三处\n\
+             按名字的引用，而那三份不在 `K-R59` 的写区里。**活的数住在本断言里，不在名字里。**"
+        );
+        let moved = DIAL_SITES.iter().filter(|(_, _, m, ..)| *m).count();
+        assert_eq!(
+            moved, 0,
+            "登记表说有 {moved} 处的拨号已经搬走了。\n\
+             🔴 **别把 `connect_and_exec` 那一处算进来** —— 它调的是 `connect_and_exec_cmd`，\
+             那 5 处一处都没少；本件买到的是「入口不再无条件走到它」，\
+             那一格由 `the_daemon_stream_entry_hands_the_dial_to_another_process` 钉，不由本表钉。"
+        );
+    }
+
+    /// 登记表每条都要有非空理由与**解锁条件**（同 `no_timer_guard` 那张表的纪律）。
+    #[test]
+    fn every_registered_dial_site_says_what_it_is_and_when_it_could_go() {
+        for (file, _n, _moved, what, unlock) in DIAL_SITES {
+            assert!(
+                what.chars().count() >= 20,
+                "{file} 的说法太短，说不清那一处是什么"
+            );
+            assert!(
+                unlock.trim().chars().count() >= 20,
+                "{file} 没写**解锁条件** —— 要写的是「什么条件满足之后这一行就能删」，\
+                 不是「为什么现在不能删」"
+            );
+        }
+        for (needle, what, unlock) in FALLBACKS {
+            assert!(what.chars().count() >= 20, "回落 `{needle}` 的说法太短");
+            assert!(
+                unlock.trim().chars().count() >= 20,
+                "回落 `{needle}` 没写解锁条件"
+            );
+        }
+    }
+
+    /// ★ **每一条登记的回落，在入口函数体里都真的有一个判断在做它。**
+    ///
+    /// 这一条防的是「表在腐烂」的反方向：代码里把某条回落悄悄删了（于是那批用户被弄坏），
+    /// 而表还写着「我们照顾了他们」。
+    #[test]
+    fn every_registered_fallback_is_actually_decided_in_the_entry() {
+        let (_, prod) = corpus()
+            .into_iter()
+            .find(|(n, _)| *n == "ssh_source.rs")
+            .expect("语料里没有 ssh_source.rs");
+        let body = body_of(&prod, "pub async fn connect_and_exec(");
+        assert!(
+            body.len() >= BODY_FLOOR_BYTES,
+            "切不出入口函数体（{} 字节）—— 本条在空转",
+            body.len()
+        );
+        for (needle, what, _unlock) in FALLBACKS {
+            assert!(
+                body.contains(needle),
+                "入口函数体里找不到 `{needle}` —— 这条回落被删了？\n\
+                 它照顾的是：{what}\n\
+                 真要删，先答「那批用户从此怎么办」，再把本表这一行一起删。"
+            );
+        }
+    }
+
+    /// 🔴 **本件改动之前**的 `connect_and_exec` 函数体，**逐字冻结**。
+    ///
+    /// 出处：`git show f10581c:src/bridge/src/ssh_source.rs` 的 `:1304-1321`
+    /// （分支尖 `f10581c` = 本件第二轮的最后一个提交，那时生产段一个字节都还没动）。
+    ///
+    /// ⚠ **为什么不在测试里跑 `git show`**：那会让判据依赖「测试跑在一棵有 `.git` 的树里」，
+    /// 而门禁那个沙箱里跑测试的条件不该多这一条。**冻结的历史文本不会腐烂** ——
+    /// 它是已经被删掉的代码，没有第二个版本去和它漂。
+    ///
+    /// 🔴 **为什么逐行存而不是一个 `r#"…"#`**：那份原文里有一行**列 0 的 `}`**，
+    /// 而本仓共用的剥法（`guard_core`）正是按「列 0 的右大括号」找测试模块的结尾
+    /// —— 一个原始字符串里塞进这么一行，**整棵树的剥法当场坏掉**
+    /// （实打：`structural_scan` / `cross_half_edge_registry` / `write_half_guard` 三族
+    /// 一起红，报的都是 `guard_core` 里那条剥法的断言）。
+    /// `guard_support` 那条 `every_daemon_file_strips_clean` 的头注逐字预告过这一形，
+    /// **这一轮把它撞出来了**。逐行存 ⇒ 那个 `}` 永远带着缩进，剥法看不见它。
+    const BODY_BEFORE_THIS_ITEM_LINES: &[&str] = &[
+        "pub async fn connect_and_exec(",
+        "    cfg: &RemoteConfig,",
+        "    with_bg: bool,",
+        "    tail_only: bool,",
+        ") -> Result<russh::ChannelStream<client::Msg>, String> {",
+        "    // 与 jsonl-watcher 不同，daemon 是长连接：inactivity_timeout=None → connect_session",
+        "    // 自动启用 30s keepalive（见 FIX 1 注释），靠 keepalive + EOF 检死链，不靠定时拆链。",
+        "    // Batch7-F24/Batch8-F26：两个流模式 flag 都由调用方决定（run_stream 里绑定",
+        "    // 部署确认为当前版本，见该处注释）。tail_only=true → daemon 不重放历史",
+        "    // （历史由本侧旁路 --read-session 快照拉取），实时通道流量趋零。",
+        "    let mut cmd = shell_quote(&cfg.daemon_path);",
+        "    if with_bg {",
+        "        cmd.push_str(\" --with-bg\");",
+        "    }",
+        "    if tail_only {",
+        "        cmd.push_str(\" --tail-only\");",
+        "    }",
+        "    connect_and_exec_cmd(cfg, &cmd).await",
+        "}",
+    ];
+
+    /// 上面那份逐行快照拼回一段文本。
+    fn body_before_this_item() -> String {
+        let mut s = BODY_BEFORE_THIS_ITEM_LINES.join("\n");
+        s.push('\n');
+        s
+    }
+
+    /// ★ 反向自检 · **阳性方向**：把改动之前那份函数体喂给判据，它必须**红并点名**。
+    ///
+    /// 这一条买的是「判据真的会咬人」。少了它，上面那条绿只证明了
+    /// 「今天的代码没让它红」，证不出「它红得起来」。
+    #[test]
+    fn the_shape_before_this_item_is_caught_and_named() {
+        // 先确认反例语料**真的是**那个旧形状（免得哪天有人把它改成新形状而没人发现）。
+        let before = body_before_this_item();
+        assert!(
+            before.contains("connect_and_exec_cmd(cfg, &cmd).await"),
+            "冻结的反例语料已经不是旧形状了 —— 它是历史文本，不该被改"
+        );
+        assert!(
+            !before.contains("spawn_dial_proxy("),
+            "冻结的反例语料里居然有代理调用 —— 那它就不是「改动之前」了"
+        );
+        let e =
+            daemon_stream_dial_verdict(&before).expect_err("旧形状（界面进程自己拨号）居然判绿了");
+        assert!(
+            e.contains("spawn_dial_proxy("),
+            "判据红了，但**没点名是哪一处** —— 只说「有问题」的诊断等于没有诊断。实得：{e}"
+        );
+        assert!(
+            e.contains("0 处"),
+            "诊断没说清是「0 处」还是「多处」，那两种要修的东西完全不同。实得：{e}"
+        );
+    }
+
+    /// ★ 反向自检 · **阴性方向**（`P6bM4`）：喂空输入，判据必须**自己先红**。
+    #[test]
+    fn an_empty_body_makes_the_judge_red_by_itself() {
+        let e = daemon_stream_dial_verdict("").expect_err("空函数体居然判绿 —— 地板断言没接上");
+        assert!(
+            e.contains("空转"),
+            "空输入红了，但红的理由不是「空转」—— 说明它被别的分支拦下了，地板没生效。实得：{e}"
+        );
+        // 再补一刀：非空但远小于地板，同样要以「空转」红。
+        let e2 = daemon_stream_dial_verdict("fn f() {}\n").expect_err("小输入居然判绿");
+        assert!(e2.contains("空转"), "小输入红的理由不对：{e2}");
+    }
+
+    /// ★ `P6bM1` 的**粗细追问**：只改一个注释字，判据**不许**红。
+    ///
+    /// 照红 ⇒ 刀太粗（它其实在钉「这段文本一个字都不许动」，而不是钉那个性质）。
+    #[test]
+    fn a_comment_only_edit_does_not_move_the_verdict() {
+        let (_, prod) = corpus()
+            .into_iter()
+            .find(|(n, _)| *n == "ssh_source.rs")
+            .expect("语料里没有 ssh_source.rs");
+        let body = body_of(&prod, "pub async fn connect_and_exec(");
+        daemon_stream_dial_verdict(&body).expect("真身就该是绿的");
+        let edited = body.replace(
+            "    let mut cmd = shell_quote(&cfg.daemon_path);",
+            "    // 这一行是本判据现加的注释，只为证明它不按文本相等判\n\
+             \x20   let mut cmd = shell_quote(&cfg.daemon_path);",
+        );
+        assert_ne!(edited, body, "注释没插进去 —— 本条在空转");
+        daemon_stream_dial_verdict(&edited)
+            .expect("只加了一行注释，判据就红了 ⇒ 刀太粗，它钉的是文本不是性质");
+    }
+
+    /// 请求行按**蛇形键**写出去。**两侧各钉一半** —— 那边钉「按蛇形读得动」。
+    #[test]
+    fn the_request_line_is_written_with_snake_case_keys() {
+        let cfg = RemoteConfig {
+            host: "h".into(),
+            label: String::new(),
+            port: 2222,
+            user: "u".into(),
+            key_path: Some("/k".into()),
+            daemon_path: "/d".into(),
+            host_key_fingerprint: Some("SHA256:x".into()),
+            addresses: Vec::new(),
+            jump: None,
+        };
+        let line = super::dial_request_json(&cfg, "/d --tail-only");
+        assert_eq!(
+            line.matches('\n').count(),
+            0,
+            "请求 JSON 里有换行 —— 它要塞进一个环境变量，换行只会让下一个人以为它还是行协议：{line:?}"
+        );
+        let v: serde_json::Value = serde_json::from_str(&line).expect("请求不是合法 JSON");
+        assert_eq!(v["host"], "h");
+        assert_eq!(v["port"], 2222);
+        assert_eq!(v["user"], "u");
+        assert_eq!(v["key_path"], "/k");
+        assert_eq!(v["host_key_fingerprint"], "SHA256:x");
+        assert_eq!(v["command"], "/d --tail-only");
+        // 🔴 **私钥本体一个字节都不许出现在这一行里** —— 凭据面 `K11` 挡着，
+        //    给代理的只有**路径**。这一条钉的是那句话，不是措辞。
+        assert!(
+            v.get("key").is_none() && v.get("private_key").is_none(),
+            "请求行里出现了私钥字段：{line}"
+        );
+        // camelCase 一个都不许有（免得哪天有人「顺手」改成前端那套而两端悄悄漂开）。
+        assert!(
+            v.get("keyPath").is_none() && v.get("hostKeyFingerprint").is_none(),
+            "请求行里出现了 camelCase 键 —— 两端的键名契约是蛇形独占：{line}"
+        );
+    }
+
+    /// 代理二进制的解析面**只有两处**，而且都不伸手进家目录。
+    ///
+    /// 钉它的理由：多加一处「聪明」的查找（比如去 `~/.cc-monitor/bin/` 翻）会
+    /// 新增一处本机读面，而那张表（`local_read_surface_registry`）按
+    /// 「生产段里的 `home_dir()`」取人群 —— 本条让那件事在这里先红一次。
+    #[test]
+    fn the_proxy_is_resolved_from_exactly_two_places_and_never_from_home() {
+        let (_, prod) = corpus()
+            .into_iter()
+            .find(|(n, _)| *n == "ssh_source.rs")
+            .expect("语料里没有 ssh_source.rs");
+        let body = body_of(&prod, "pub(crate) fn resolve_dial_proxy()");
+        assert!(
+            body.len() > BODY_FLOOR_BYTES,
+            "切不出 `resolve_dial_proxy` 的函数体（{} 字节）—— 本条在空转",
+            body.len()
+        );
+        assert_eq!(
+            body.matches("DIAL_PROXY_ENV").count(),
+            2,
+            "环境变量那一处的形状变了（一次 `var_os`、一次诊断里回显）：{body}"
+        );
+        assert_eq!(
+            body.matches("resolve_beside_this_exe(").count(),
+            1,
+            "exe 旁那一处不再是恰好一次：{body}"
+        );
+        assert!(
+            !body.contains("home_dir("),
+            "`resolve_dial_proxy` 伸手进家目录了 —— 那会新增一处本机读面，\
+             而 `local_read_surface_registry` 是按 `home_dir()` 取人群的。\
+             真要加，先去那张表上登记。"
+        );
+    }
+}
+
+// === Batch8-F26：旁路快照拉取（"每管道一个对话，完就断"——用户设计） ===
+//
+// tail-only 下 daemon 不再重放历史；每个已宣告会话的完整历史由这里经**独立
+// SSH 连接**跑 `--read-session` 一次性查询拉回，按行号编 seq 灌进与 tail 行
+// 完全相同的管线（flush_lines → on_line_batch_awaited）。两路 seq 同处行号
+// 空间：重叠区是精确重复的 (sid,seq)，被前端既有去重吸收（MASTERPLAN-batch8 §2）。
+// 并发 ≤SNAPSHOT_CONCURRENCY（不抢 tail 通道带宽）；F19 priority sid 优先出队。
+
+const SNAPSHOT_CONCURRENCY: usize = 2;
+/// 单会话快照体量上限（防御：远端超巨文件不无界拉取；超限截断 warn——
+/// 历史浏览器按需查询不受此限）。
+const SNAPSHOT_MAX_BYTES: u64 = 512 * 1024 * 1024;
+const SNAPSHOT_CHUNK_LINES: usize = 500;
+/// Batch9-F30：尾部优先——最新 N 行先到（第一批 emit 即最新内容），旧历史回填。
+const SNAPSHOT_TAIL_LINES: usize = 500;
+const SNAPSHOT_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(60);
+
+/// 每连接一个：待拉快照队列。sid 幂等（重复宣告不重拉）；`cancel(sid)`
+/// （SessionRemoved 时调）摘除排队项 + 给 inflight 打取消标记 + 从 seen 摘除
+/// （同连接内 removed→re-added 可重拉，审计 D-S4）；close（断连）**立即作废**
+/// 未开拉的排队项——重连会重建队列重拉，断连后继续拉只会把行灌在归档清算
+/// 之后（审计 D-B1 僵尸复活）。
+struct SnapshotQueue {
+    pending: std::sync::Mutex<SnapshotPending>,
+    notify: tokio::sync::Notify,
+    closed: std::sync::atomic::AtomicBool,
+}
+
+struct SnapshotPending {
+    queue: std::collections::VecDeque<SnapshotItem>,
+    seen: std::collections::HashSet<String>,
+    /// 已取消（会话已 removed）的 sid——inflight fetch 每个 chunk 边界查它中止。
+    cancelled: std::collections::HashSet<String>,
+}
+
+/// Batch9：已宣告会话的元数据缓存——归档清算（keys）+ F28 frontend-ready 重发
+/// （payload+最新 status）+ F27 status 写回。
+#[derive(Clone)]
+pub(crate) struct AnnouncedMeta {
+    pub(crate) payload: crate::bridge::RemoteSessionAddedPayload,
+    pub(crate) status: Option<String>,
+    pub(crate) waiting_for: Option<String>,
+}
+
+/// Batch9-F28：全局宣告账本 origin → (sid → meta)。写者 = 各主机 stream_loop
+/// （added/status/removed + 连接退出清本 host）；读者 = frontend-ready 重发
+/// （F5 后重建远端骨架/bg 元数据/初始灯——remote-session-added 不进 replay
+/// buffer，Batch5 I-1 留档的缺口由此补上）。
+static REMOTE_ANNOUNCED: std::sync::OnceLock<
+    std::sync::Mutex<
+        std::collections::HashMap<String, std::collections::HashMap<String, AnnouncedMeta>>,
+    >,
+> = std::sync::OnceLock::new();
+
+fn announced_registry() -> &'static std::sync::Mutex<
+    std::collections::HashMap<String, std::collections::HashMap<String, AnnouncedMeta>>,
+> {
+    REMOTE_ANNOUNCED.get_or_init(Default::default)
+}
+
+/// B2：全局 tmux 状态账本 origin → 最新 `tmux ls` 原文（daemon `TmuxSessions` 帧推来）。写者 = 各主机
+/// stream_loop（收 TmuxSessions 帧更新 / 连接退出清本 host）；读者 = tmux 对账 poller
+/// （[`snapshot_tmux_by_origin`] 读 + `tmux::parse_tmux_ls` 解析），**替掉每 8s 新建 SSH 的
+/// `list_remote_tmux` 轮询**（B2 治远端 sshd 日志刷屏）。
+static REMOTE_TMUX_RAW: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, String>>,
+> = std::sync::OnceLock::new();
+
+fn tmux_raw_registry() -> &'static std::sync::Mutex<std::collections::HashMap<String, String>> {
+    REMOTE_TMUX_RAW.get_or_init(Default::default)
+}
+
+/// B2：快照「origin → 最新 tmux ls 原文」，供 tmux 对账 poller 读（零 SSH）。缺该 origin = 尚未推来
+/// tmux 状态（daemon 未发 / 连接刚起 / 断连已清）→ poller 本轮跳过该 origin（同「观测无效不累计缺失」）。
+///
+/// # ⚠ 刻意**不开** IPC 出口〔devbench F08, 08-10〕
+///
+/// 有人（包括一份审计清单）会看到「daemon 推来的 `tmux_sessions` 帧只进这张表、前端却每 1s
+/// 新建一条 SSH 跑 `list_remote_tmux`」，然后得出「开个 `#[tauri::command]` 把它暴露给前端
+/// 就能消掉那条轮询」。**那个因果不成立**，理由是这份快照的**刷新时机**：
+///
+/// - daemon 的 `TmuxProbeDue` **只在 `initial_tmux_probe` 发一次**（一次性初探）；
+///   之后每一拍由 `Poke` 驱动，而 `Poke` 来自 tmux hook，**hook 只有 3 条**：
+///   `session-created` / `session-closed` / `session-renamed`（`control/tmux_hook.rs::HOOK_EVENTS`）。
+/// - 而 `tabs.ts` 的 `awaitExitFor` 等的是「**pane 前台命令从 claude 变回 shell**」——
+///   会话还在，只是里面的命令换了。**那个变化不触发任何一条 hook** ⇒ 这份快照在那个场景下
+///   **永不刷新** ⇒ 改读它 = 每次都等到 10s 超时再降级 kill，**功能退化**。
+///
+/// ⇒ 今天开出口**没有消费者**：另两个真实调用点（`fork-flow.ts` · `settings/machine-card.ts`）
+/// 是**一次性查询**、不是轮询，走 SSH 没问题。开一个没人用的出口是装饰。
+///
+/// **解锁条件**（真出现了再回来开，别提前开）：
+/// 先有一个「pane 前台命令变化」的事件源 —— tmux 没有这种 hook，能想到的路只有
+/// 轮询 `capture-pane`（拿一个轮询换另一个）或让 claude 自己上报。
+/// 那条轮询的账在 `polling_registry` 的 `src/tabs.ts` 一条里，**已如实登记为未排期**，
+/// 本处只指过去、不抄一份。
+/// **这张表唯一的写入口**（P3 刀 1）。
+///
+/// # 为什么要收成一个函数
+///
+/// 原来远端那处是就地 `tmux_raw_registry().lock().unwrap().insert(host_label, raw)`。
+/// 刀 1 要让**本机**也写这张表，两处各写各的迟早分叉（一边存原文一边存解析后的、
+/// 一边清一边不清）。⇒ 收成一个口，两侧共用 —— 这正是 `C1` 在数据面上的样子。
+///
+/// `origin` 的取值域**只有两类**：远端的 `host_label`/`origin_label`，
+/// 或本机的 [`crate::inbound_client::LOCAL_ORIGIN`]。
+/// 由 `ssh_source.rs::the_tmux_cache_has_one_writer_and_only_origin_keys` 钉住。
+///
+/// 〔`K-R19` 订正 09-03〕这一句原先点的是
+/// `the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache`。
+/// 那个名字**本文件里那条判据自己的 `///` 就写着「名字换过一次」**（原名今天主动误导：
+/// 本地 sid 已经进表了），而这一句仍**当成现状在说**——同一份文件里两句话互相矛盾。
+/// ⚠ 它之所以没人管：`K-R17` 的 ㈠ 只收 `文件.rs::符号` 形，**裸 `符号` 形不进人群**。
+pub(crate) fn record_tmux_raw(origin: &str, raw: String) {
+    // ⚠ **中毒也要拿到锁**〔D 阶段补审 08-11 修，B3〕。
+    //
+    // 原来是 `.lock().unwrap()`。本函数**跑在本机消费者那条裸 `std::thread` 上**
+    // （`local_backend::local_stdio_consumer`），而那个线程没有 `catch_unwind`：
+    // 一次锁中毒 panic 会 unwind 出整个消费者闭包 ⇒ `child` 锁里还留着活的 `Child`、
+    // `pid` 没归 0、`unregister` 被跳过 ⇒ 没人再读 daemon 的 stdout ⇒ 管道缓冲填满
+    // ⇒ **daemon 阻塞在 write 上冻死**；而 `daemon_status` 照回 `channel: true` + 一个活 pid，
+    // `start_local_backend` 也会以「已经在跑」拒绝重起。**全绿的死锁态，没有一处会响。**
+    //
+    // 处置对齐本仓既定做法（`inbound_client` 的两处 `unwrap_or_else(|e| e.into_inner())`）：
+    // 一条陈旧的 `tmux ls` 原文远好过把整条读帧路炸掉。
+    tmux_raw_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .insert(origin.to_string(), raw);
+}
+
+/// 这张表唯一的**清除口**（与 [`record_tmux_raw`] 并列）。
+///
+/// # 为什么必须有它，且必须两侧都调
+///
+/// 断连 / 后端停掉之后那份 `tmux ls` 原文就是**陈旧证据**：
+/// `find_tmux_origin_for_sid` 仍会按它返回 `Some(origin)`，
+/// 而 `classify_removed(Some(_), Gone)` = `Idle` = **那个「永远消不掉、也 attach 不上的灰点」**。
+///
+/// ⚠ **补审 08-11 逮到本机那半从来不清**：远端断连走这条路（Batch9-F28 就写着），
+/// 而本机消费者流结束时只 `unregister` 入方向 client、不碰这张表 ⇒
+/// 停掉本机 daemon 之后 `<local>` 那份原文**永久留着**。
+/// 判据当时没发现，因为它只数 `insert`（`.remove(` 也是写者，见那条判据的订正）。
+pub(crate) fn forget_tmux_raw(origin: &str) {
+    tmux_raw_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(origin);
+}
+
+pub fn snapshot_tmux_by_origin() -> std::collections::HashMap<String, String> {
+    tmux_raw_registry().lock().unwrap().clone()
+}
+
+/// 只取**一个** origin 的那份原文〔D 阶段补审 08-12〕。
+///
+/// 两处与 [`snapshot_tmux_by_origin`] 不同，都是补审逼出来的：
+/// ① **中毒也要拿到锁**。写入口 `record_tmux_raw` 早就是 `unwrap_or_else(|e| e.into_inner())`
+///    （B3 那条：它跑在本机消费者那条没有 `catch_unwind` 的裸线程上，一次中毒 panic
+///    会滚成「全绿的死锁态」）。而这个读口若还是 `.unwrap()`，中毒之后
+///    `tmux.rs::list_local_tmux` 就变成必 panic 的 tauri 命令 —— 等于把写侧刚补好的那道又从读侧漏掉。
+///    〔`K-R19` 订正 09-03〕这里原先写的是 `local_tmux_names`，**全仓零定义**：
+///    真名从来就是 `list_local_tmux`（`lib.rs` 的注册表与 `commands.ts` 的包装层都是这个）。
+/// ② **不克隆整张表**。调用方只要本机那一份，`snapshot_tmux_by_origin` 会把所有 origin 的
+///    `tmux ls` 原文全拷一遍；那是每次本机 resume 都白付一次的钱。
+pub(crate) fn tmux_raw_for(origin: &str) -> Option<String> {
+    tmux_raw_registry()
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(origin)
+        .cloned()
+}
+
+/// audit-fixes F03.2：idle-tmux 账本 origin → idle sids（claude 退出但 tmux 会话尚在）。
+/// **唯一写者 = remote-session-emitter**（`mark_idle`/`clear_idle` 只在 lib.rs emitter 调）；读者 =
+/// 收帧收割器（`snapshot_idle_for_origin`）、断连 flush、F5 对账（`snapshot_idle_by_origin`）均**只读**。
+/// 守 §24：idle 是 `remote_active` **之外**的第三态，此账本与 remote_active 正交、不互写。
+static REMOTE_IDLE: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, std::collections::HashSet<String>>>,
+> = std::sync::OnceLock::new();
+
+fn idle_registry(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, std::collections::HashSet<String>>>
+{
+    REMOTE_IDLE.get_or_init(Default::default)
+}
+
+/// F03.2：标记 sid 在 origin 上进入 idle-tmux。**只由 emitter 调**（唯一写者）。
+pub fn mark_idle(origin: &str, sid: &str) {
+    idle_registry()
+        .lock()
+        .unwrap()
+        .entry(origin.to_string())
+        .or_default()
+        .insert(sid.to_string());
+}
+
+/// F03.2：清 sid 的 idle 标记（跨 origin，sid 全局唯一）。**只由 emitter 调**（added / archived 时）。幂等。
+pub fn clear_idle(sid: &str) {
+    let mut reg = idle_registry().lock().unwrap();
+    for sids in reg.values_mut() {
+        sids.remove(sid);
+    }
+    reg.retain(|_, sids| !sids.is_empty());
+}
+
+/// F03.2：读某 origin 的 idle sid 集（收帧收割器把 idle 并入 tracked，使其能被去抖归档）。只读。
+pub fn snapshot_idle_for_origin(origin: &str) -> std::collections::HashSet<String> {
+    idle_registry()
+        .lock()
+        .unwrap()
+        .get(origin)
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// F03.2：读全部 idle 账本（F5 对账：把 idle sid 排除出"死"判据 + 重发 SESSION_IDLE）。只读。
+pub fn snapshot_idle_by_origin(
+) -> std::collections::HashMap<String, std::collections::HashSet<String>> {
+    idle_registry().lock().unwrap().clone()
+}
+
+/// audit-fixes F03.2（**纯函数**，idle 判定核心，Linux 可单测）：给「origin → tmux ls 原文」账本，
+/// 找 `@ccm_sid == sid` 出现在哪个 origin 的帧里。**只认 @ccm_sid 列**（`parse_tmux_ls` 的 `sid`
+/// 字段），**不看 command**——command-agnostic：`TmuxSessions` 帧的新鲜度**由 hook 决定**（P5 后零定时器；
+/// hook 覆盖到的近乎即时，覆盖不到的可能**永不刷新** —— 见 `classify_removed` 头注那个 `/branch` 洞），claude 退出瞬间那帧
+/// 的 command 列可能仍是 claude，卡 `command!=claude` 会正常退出高频误判 archived、丢灰灯。故改用
+/// 「claude 死」由 daemon-removed（emitter 触发边沿）判、「tmux 在」由 `@ccm_sid` present 判（claude
+/// 退出后 wrapper watcher 停写但**不 unset**，session 级 option 恒 present——aya 已实测）。`NO_TMUX`/空跳过。
+fn tmux_origin_for_sid(
+    by_origin: &std::collections::HashMap<String, String>,
+    sid: &str,
+) -> Option<String> {
+    for (origin, raw) in by_origin {
+        if crate::tmux::parse_tmux_ls(raw)
+            .iter()
+            .any(|s| s.sid.as_deref() == Some(sid))
+        {
+            return Some(origin.clone());
+        }
+    }
+    None
+}
+
+/// F03.2：`tmux_origin_for_sid` 的公开包装——读当前 tmux 快照后调纯函数。emitter 判 idle vs archived 用。
+/// ★★ `P0b-Y2` 第十七拍〔08-13〕：从一份 `tmux ls` 原文里**摘掉**某个会话那一行。
+///
+/// # 为什么需要它（`#60` 现象 2：永久灰点）
+///
+/// 会话关闭帧到达时 `ssh_source` 会 retire 那个 sid；而下游 `classify_removed` 要查
+/// 「这个 sid 的 tmux 还在不在」——它读的是**同一份还没更新的快照** ⇒ 仍看得见那个会话
+/// ⇒ 判 `Idle`（灰）而不是 `Archive`（归档）⇒ **永久灰点、按旧 sid 也 attach 不上**。
+///
+/// 08-13 全链实测（灰灯修好之后那一跑）：`tmux 会话 cc-b471a22f 关闭 ⇒ 立刻 retire`
+/// 紧接着 `remote removed 到达 … tmux_origin=Some("e2e-loopback")` → `remote session idle-tmux`。
+/// ★ `lib.rs` 那段头注早就写下过同一个病（当时针对 `Superseded`）：
+/// 「查快照必然误判成灰点，且那份快照在 P5 删掉 ticker 之后**没有任何事件路径会刷新它**」。
+///
+/// # 为什么是「摘一行」而不是「重新探一次」
+///
+/// 重新探要跨 SSH、要等，而**我们已经知道结论了**（daemon 的正向死亡帧就是结论）。
+/// 摘一行是**把已知事实写进账本**，不是猜。
+/// ⚠ 只按**第一列（会话名）逐字相等**摘 —— 不做前缀匹配（`cc-a` 与 `cc-ab` 会互相误伤）。
+pub fn remove_tmux_line(raw: &str, name: &str) -> String {
+    let mut out: Vec<&str> = raw
+        .lines()
+        .filter(|l| l.split('\t').next() != Some(name))
+        .collect();
+    // 原文以 `\n` 结尾（`tmux ls` 的形状）—— 保持它，免得下游按行切时多出一格空行差异。
+    if raw.ends_with('\n') && !out.is_empty() {
+        out.push("");
+    }
+    out.join("\n")
+}
+
+pub fn find_tmux_origin_for_sid(sid: &str) -> Option<String> {
+    tmux_origin_for_sid(&snapshot_tmux_by_origin(), sid)
+}
+
+/// audit-fixes F03.2（D 审计②覆盖缺口）：daemon-removed 到达时的分流决策。emitter 收 removed 后
+/// 据「该 sid 的 tmux 是否仍在」（`find_tmux_origin_for_sid` 的 Option）择一：
+/// `Idle{origin}`=tmux 会话尚在 → 灰灯（mark_idle + emit SESSION_IDLE + **不 forget**）；
+/// `Archive`=tmux 也没了 → 归档（clear_idle + forget + emit SESSION_ENDED）。
+#[derive(Debug, PartialEq, Eq)]
+pub enum RemovedDisposition {
+    Idle { origin: String },
+    Archive,
+}
+
+/// **纯决策**（可单测，锁住「Some/None 不写反」——emitter 里的实际接线在 run() 闭包内无法单测，
+/// 抽出映射层给最易犯的分支互换上变异锚点）。
+///
+/// ★ S0：**`cause` 先于快照裁决**。
+/// - [`RemovalCause::Superseded`]（同 pidfile 原地换 sid = `/branch`）⇒ 恒 `Archive`，
+///   **根本不看 `tmux_origin`**。原因是那个入参对这个场景恒错：旧 sid 的 tmux 格子还在，
+///   但它现在挂的是**新** sid；而 `tmux_origin` 读的是缓存的 `tmux ls` 原文，那份缓存
+///   在 P5 删掉 8s ticker 之后**没有任何事件路径会因 /branch 去刷新它**。
+///   ⇒ 判成 Idle 就是一个永远消不掉、也 attach 不上的灰点（用户 2026-07-30 实测）。
+/// - [`RemovalCause::Gone`] ⇒ 维持原语义：Some(origin)→Idle；None→Archive。
+pub fn classify_removed(tmux_origin: Option<String>, cause: RemovalCause) -> RemovedDisposition {
+    if cause == RemovalCause::Superseded {
+        return RemovedDisposition::Archive;
+    }
+    match tmux_origin {
+        Some(origin) => RemovedDisposition::Idle { origin },
+        None => RemovedDisposition::Archive,
+    }
+}
+
+// audit-fixes F03.2：`snapshot_announced_by_origin` 已删——其唯一读者是已删的 8s poller。
+// 收帧收割器直接用 stream_loop 本连接的 `announced` 局部（keys=live sids），不需全局快照。
+
+/// audit-fixes F03.2（**纯函数**，收帧收割器的 tracked 集）：收割器要对账「哪些 sid 该在 tmux 后端里」
+/// = 本连接 announced（live 会话）**∪** 本 origin idle 会话。**idle 必须并进来**——否则 idle→archived
+/// 无产出者：idle sid 一旦离开 announced，就不再被 reconcile 追踪，tmux 真没了也永不 retire = 灰灯永久
+/// 卡死关不掉（三轮独立复审的红线④）。抽成纯函数即为给这条不变量上单测（变异：只 announced 不并 idle→红）。
+fn reaper_tracked(
+    announced_sids: impl Iterator<Item = String>,
+    idle: &std::collections::HashSet<String>,
+) -> std::collections::HashSet<String> {
+    let mut tracked: std::collections::HashSet<String> = announced_sids.collect();
+    tracked.extend(idle.iter().cloned());
+    tracked
+}
+
+/// F28：frontend-ready 时重发所有已宣告远端会话（骨架 + 初始灯）。幂等
+/// （createSkeletonTab/updateActivity 均幂等）；宣告先于该会话 replay 行 emit
+/// 由调用方保证（lib.rs 在 replay 之前调本函数）。
+pub fn reannounce_all(app: &tauri::AppHandle) {
+    // F5 电平同步（先于骨架重发——batch 调度信号越早越好）
+    emit_snapshot_inflight_level(app);
+    let snapshot = {
+        let reg = announced_registry().lock().unwrap();
+        collect_reannounce(&reg)
+    };
+    if snapshot.is_empty() {
+        return;
+    }
+    tracing::info!(
+        "F28 reannounce: {} 个远端会话（F5 骨架/灯重建）",
+        snapshot.len()
+    );
+    for meta in snapshot {
+        let sid = meta.payload.session_id.clone();
+        if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, &meta.payload) {
+            tracing::warn!("reannounce remote-session-added emit failed: {e}");
+        }
+        let act = crate::bridge::SessionActivityPayload {
+            session_id: sid,
+            status: meta.status,
+            waiting_for: meta.waiting_for,
+        };
+        if let Err(e) = app.emit(crate::bridge::events::SESSION_ACTIVITY, &act) {
+            tracing::warn!("reannounce session-activity emit failed: {e}");
+        }
+    }
+}
+
+#[derive(Clone)]
+struct SnapshotItem {
+    sid: String,
+    path: String,
+    /// daemon prime 时的完整行数 L（p1f 帧 `lines`）——完整性校验：快照行数
+    /// < L = 中途断/daemon 报错 → 判失败重试（审计 D-I2：exit status 拿不到）。
+    expected_lines: Option<u64>,
+}
+
+/// stream_loop 退出（重连/EOF/错误任何路径）时关队列。
+struct SnapshotQueueCloser(std::sync::Arc<SnapshotQueue>);
+impl Drop for SnapshotQueueCloser {
+    fn drop(&mut self) {
+        self.0.close();
+    }
+}
+
+impl SnapshotQueue {
+    fn new() -> std::sync::Arc<Self> {
+        std::sync::Arc::new(SnapshotQueue {
+            pending: std::sync::Mutex::new(SnapshotPending {
+                queue: std::collections::VecDeque::new(),
+                seen: std::collections::HashSet::new(),
+                cancelled: std::collections::HashSet::new(),
+            }),
+            notify: tokio::sync::Notify::new(),
+            closed: std::sync::atomic::AtomicBool::new(false),
+        })
+    }
+
+    fn push(&self, item: SnapshotItem) {
+        {
+            let mut p = self.pending.lock().unwrap();
+            // 重新宣告 = 会话回来了：解除既往取消标记（cancel 时 seen 已摘，
+            // 这里 insert 成功才入队）。
+            p.cancelled.remove(&item.sid);
+            if !p.seen.insert(item.sid.clone()) {
+                return; // 本连接内已拉/在拉
+            }
+            p.queue.push_back(item);
+        }
+        self.notify.notify_one();
+    }
+
+    /// SessionRemoved：摘排队项 + 标记 inflight 取消 + 允许 re-added 重拉。
+    fn cancel(&self, sid: &str) {
+        let mut p = self.pending.lock().unwrap();
+        p.queue.retain(|it| it.sid != sid);
+        p.seen.remove(sid);
+        p.cancelled.insert(sid.to_string());
+    }
+
+    /// inflight fetch 的取消/作废检查（chunk 边界调）：会话已 removed 或连接
+    /// 已断（断连后继续灌行会落在归档清算之后——B1）。
+    fn is_cancelled(&self, sid: &str) -> bool {
+        self.closed.load(std::sync::atomic::Ordering::SeqCst)
+            || self.pending.lock().unwrap().cancelled.contains(sid)
+    }
+
+    fn close(&self) {
+        self.closed.store(true, std::sync::atomic::Ordering::SeqCst);
+        self.notify.notify_waiters();
+    }
+
+    /// 出队：priority sid（若在队中）优先，否则 FIFO。**closed 即 None**（未开
+    /// 拉的排队项作废，重连重拉）。
+    ///
+    /// 丢失唤醒防护（审计 D-I1）：`notify_waiters` 不给未注册者存 permit——
+    /// 必须**先注册**（`enable`）再检查状态，close/push 发生在注册后必被捕获、
+    /// 发生在注册前则状态检查看得到。
+    async fn pop(&self, priority: Option<String>) -> Option<SnapshotItem> {
+        loop {
+            let notified = self.notify.notified();
+            tokio::pin!(notified);
+            notified.as_mut().enable();
+            if self.closed.load(std::sync::atomic::Ordering::SeqCst) {
+                return None;
+            }
+            {
+                let mut p = self.pending.lock().unwrap();
+                if let Some(pri) = priority.as_deref() {
+                    if let Some(i) = p.queue.iter().position(|it| it.sid == pri) {
+                        return p.queue.remove(i);
+                    }
+                }
+                if let Some(item) = p.queue.pop_front() {
+                    return Some(item);
+                }
+            }
+            notified.await;
+        }
+    }
+}
+
+/// 分发器：每连接一个 task。并发 ≤SNAPSHOT_CONCURRENCY 地把队列里的会话交给
+/// [`fetch_snapshot`]；每项失败重试 1 次（间隔 1s），仍败 → remote-health toast
+/// （该 tab 只有实时行，历史浏览器兜底可看全量）。取消（会话 removed/断连）
+/// 不算失败、不重试不 toast。
+async fn snapshot_dispatcher(
+    q: std::sync::Arc<SnapshotQueue>,
+    cfg: RemoteConfig,
+    replay: Arc<EventReplay>,
+    app: tauri::AppHandle,
+    host_label: String,
+) {
+    let sem = std::sync::Arc::new(tokio::sync::Semaphore::new(SNAPSHOT_CONCURRENCY));
+    loop {
+        let Ok(permit) = sem.clone().acquire_owned().await else {
+            return; // semaphore closed（不可达，防御）
+        };
+        let Some(item) = q.pop(replay.priority_sid()).await else {
+            return; // 队列已关（排队项作废，重连重拉）
+        };
+        let q = q.clone();
+        let cfg = cfg.clone();
+        let replay = replay.clone();
+        let app = app.clone();
+        let host_label = host_label.clone();
+        // incr 在 spawn 之前（审计 D：上一 task 归零与下一 task 起跑之间的
+        // 瞬时 0 窗口会让 300ms 定时器恰好放行 batch）
+        snapshot_inflight_change(&app, 1);
+        tauri::async_runtime::spawn(async move {
+            let _permit = permit;
+            struct InflightGuard(tauri::AppHandle);
+            impl Drop for InflightGuard {
+                fn drop(&mut self) {
+                    snapshot_inflight_change(&self.0, -1);
+                }
+            }
+            let _inflight = InflightGuard(app.clone());
+            let sid_short: String = item.sid.chars().take(8).collect();
+            let mut last_err = String::new();
+            for attempt in 1..=2 {
+                match fetch_snapshot(&q, &cfg, &item, &host_label, &replay, &app).await {
+                    Ok(FetchOutcome::Done(lines)) => {
+                        tracing::info!(
+                            "snapshot [{host_label}] {sid_short}: {lines} 行历史就位（attempt {attempt}）"
+                        );
+                        return;
+                    }
+                    Ok(FetchOutcome::Cancelled) => {
+                        // 会话已 removed / 连接已断：静默中止（补偿归档已在
+                        // fetch 内 emit），不重试不 toast。
+                        tracing::info!(
+                            "snapshot [{host_label}] {sid_short}: 取消（会话结束/断连）"
+                        );
+                        return;
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            "snapshot [{host_label}] {sid_short} attempt {attempt} 失败: {e}"
+                        );
+                        last_err = e;
+                        if attempt == 1 {
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                        }
+                    }
+                }
+            }
+            let payload = crate::bridge::RemoteHealthPayload {
+                origin: Some(host_label.clone()),
+                kind: "snapshot".to_string(),
+                message: format!(
+                    "会话 {sid_short} 的历史快照拉取失败（{last_err}）——该 Tab 暂只有实时消息，可从历史浏览器查看完整内容。"
+                ),
+            };
+            if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                tracing::warn!("snapshot remote-health emit failed: {e}");
+            }
+        });
+    }
+}
+
+/// Batch9-F30：全局快照 inflight 计数——前端 batch mode 的事件驱动信号
+/// （回填在途时不提前退出 batch 模式，见 events.ts）。
+/// 计数 + emit 在同一把锁下串行（审计 D：原子操作与 emit 分离时，两个并发
+/// task 收尾的 emit 可乱序——{count:0} 先到、{count:1} 后到 → 前端计数粘在
+/// 非零、batch 被压满 5min 防呆）。低频（每快照 2 次），锁开销可忽略。
+static SNAPSHOT_INFLIGHT: std::sync::Mutex<usize> = std::sync::Mutex::new(0);
+
+fn snapshot_inflight_change(app: &tauri::AppHandle, delta: isize) {
+    let mut n = SNAPSHOT_INFLIGHT.lock().unwrap();
+    *n = if delta > 0 {
+        *n + 1
+    } else {
+        n.saturating_sub(1)
+    };
+    let count = *n;
+    // 持锁 emit：保证事件到达序 == 计数变化序（emit 是入队非阻塞，临界区极短）
+    if let Err(e) = app.emit(
+        crate::bridge::events::SNAPSHOT_INFLIGHT,
+        &serde_json::json!({ "count": count }),
+    ) {
+        tracing::warn!("snapshot-inflight emit failed: {e}");
+    }
+    drop(n);
+}
+
+/// F28 重发收集（纯函数，单测锚定）：拍平全部主机的已宣告元数据并按
+/// (origin, sid) 稳定排序——HashMap 迭代序每次 F5 洗牌 tab 栏（审计 D）。
+fn collect_reannounce(
+    reg: &std::collections::HashMap<String, std::collections::HashMap<String, AnnouncedMeta>>,
+) -> Vec<AnnouncedMeta> {
+    let mut v: Vec<AnnouncedMeta> = reg.values().flat_map(|m| m.values().cloned()).collect();
+    v.sort_by(|a, b| {
+        (&a.payload.origin, &a.payload.session_id).cmp(&(&b.payload.origin, &b.payload.session_id))
+    });
+    v
+}
+
+/// F5 电平同步（审计 D）：inflight 是变化沿事件，重载后前端初值 0——回填在途
+/// 时 F5 会退回纯 300ms 启发式。frontend-ready（reannounce）时补发当前电平。
+pub fn emit_snapshot_inflight_level(app: &tauri::AppHandle) {
+    let count = *SNAPSHOT_INFLIGHT.lock().unwrap();
+    if let Err(e) = app.emit(
+        crate::bridge::events::SNAPSHOT_INFLIGHT,
+        &serde_json::json!({ "count": count }),
+    ) {
+        tracing::warn!("snapshot-inflight level emit failed: {e}");
+    }
+}
+
+/// fetch 的三态结果：完成（行数）/ 被取消（不重试）。错误走 Err。
+enum FetchOutcome {
+    Done(u64),
+    Cancelled,
+}
+
+/// 判定快照流的一行是否计入行号（**必须与 daemon `read_new_lines` 一字一致**：
+/// BOM + 全空白的行跳过且不消耗 seq——两路 seq 同处行号空间的前提）。
+fn snapshot_line_countable(line: &str) -> bool {
+    !line.trim_start_matches('\u{feff}').trim().is_empty()
+}
+
+/// 拉取单个会话的完整历史快照并灌进既有管线。
+///
+/// 读取是 **fill_buf 字节级**（审计 D-I3/S2/S5）：超时打在"单次底层读无进展"
+/// 而非整行（多 MB 的 base64 图片行在慢链路上不再假超时）；`from_utf8_lossy`
+/// 解码对齐 daemon（坏字节不再让该会话历史永不可得）；EOF 处无 `\n` 的残行
+/// 丢弃不计 seq（与 daemon `read_new_lines` 的 F14 语义一字一致）。
+///
+/// 每个 chunk 边界查取消（会话 removed / 连接断）——中止并**补偿 emit 一次
+/// session-ended**：若某个已 flush 的 chunk 恰把归档 tab"见行复活"，这里把它
+/// 压回 archived（审计 D-B1 僵尸复活的封口；archiveTab 幂等，重复无害）。
+///
+/// 完整性校验（审计 D-I2）：p1f 帧带 prime 时的行数 L——拉到的行数 < L 即
+/// 判失败（daemon exit 2 时 stdout 零字节、512MB take 截断等都会在此兜住）。
+async fn fetch_snapshot(
+    q: &std::sync::Arc<SnapshotQueue>,
+    cfg: &RemoteConfig,
+    item: &SnapshotItem,
+    host_label: &str,
+    replay: &Arc<EventReplay>,
+    app: &tauri::AppHandle,
+) -> Result<FetchOutcome, String> {
+    let sid = &item.sid;
+    let path = &item.path;
+    // Batch9-F30：尾部优先变体（p1g；快照仅在 confirmed 时运行故无兼容分支，
+    // meta 解析仍留防御回退）。
+    let cmd = format!(
+        "{} --read-session-tail {} {SNAPSHOT_TAIL_LINES}",
+        shell_quote(&cfg.daemon_path),
+        shell_quote(path)
+    );
+    let stream = connect_and_exec_cmd(cfg, &cmd).await?;
+    use tokio::io::AsyncBufReadExt;
+    let mut reader = tokio::io::BufReader::new(stream);
+    let mut acc: Vec<u8> = Vec::new();
+    let mut total_bytes: u64 = 0;
+    // Batch9-F30：arrived = 可计行到达序号；meta 到手后两段映射成行号 seq
+    // （前 total-tail_from 行 = tail_from+i，其余 = i-seg1）。meta 缺失
+    // （防御，理论不可达）→ seq=arrived 旧行为。
+    let mut arrived: u64 = 0;
+    let mut tail_map: Option<(u64, u64)> = None; // (total, tail_from)
+    let mut first_countable = true;
+    let mut chunk: Vec<JsonlLine> = Vec::with_capacity(SNAPSHOT_CHUNK_LINES);
+    let mut cancelled = false;
+    'read: loop {
+        // 无进展超时：计时对象是单次底层读（fill_buf），不是一整行。
+        let n = {
+            let buf = tokio::time::timeout(SNAPSHOT_READ_TIMEOUT, reader.fill_buf())
+                .await
+                .map_err(|_| "快照读取超时（60s 无数据进展）".to_string())?
+                .map_err(|e| format!("快照读取失败: {e}"))?;
+            if buf.is_empty() {
+                break 'read; // EOF；acc 里的无 \n 残行按 F14 语义丢弃
+            }
+            acc.extend_from_slice(buf);
+            buf.len()
+        };
+        reader.consume(n);
+        total_bytes += n as u64;
+        if total_bytes > SNAPSHOT_MAX_BYTES {
+            // 防御上限：不再继续拉（完整性校验会把截断判为失败 → toast）。
+            tracing::warn!(
+                "snapshot [{host_label}] {sid}: 超过 {SNAPSHOT_MAX_BYTES} 字节上限，截断"
+            );
+            break 'read;
+        }
+        // 切出 acc 中所有完整行
+        while let Some(pos) = acc.iter().position(|&b| b == b'\n') {
+            let line_bytes: Vec<u8> = acc.drain(..=pos).collect();
+            let line = String::from_utf8_lossy(&line_bytes[..line_bytes.len() - 1]);
+            let line = line.trim_end_matches('\r');
+            if !snapshot_line_countable(line) {
+                continue;
+            }
+            if first_countable {
+                first_countable = false;
+                if let Some(m) = parse_snapshot_meta(line) {
+                    tail_map = Some(m);
+                    continue;
+                }
+            }
+            let seq = match tail_map {
+                Some((total, tail_from)) => tail_seq(arrived, total, tail_from),
+                None => arrived,
+            };
+            chunk.push(JsonlLine {
+                session_id: sid.to_string(),
+                path: std::path::PathBuf::from(path),
+                seq,
+                raw: line.to_string(),
+            });
+            arrived += 1;
+            if chunk.len() >= SNAPSHOT_CHUNK_LINES {
+                if q.is_cancelled(sid) {
+                    cancelled = true;
+                    break 'read;
+                }
+                flush_lines(replay, app, host_label, std::mem::take(&mut chunk)).await;
+            }
+        }
+    }
+    if cancelled || q.is_cancelled(sid) {
+        // 补偿归档（见 doc comment）；丢弃未 flush 的 chunk。
+        let payload = crate::bridge::SessionEndedPayload {
+            session_id: sid.to_string(),
+        };
+        if let Err(e) = app.emit(crate::bridge::events::SESSION_ENDED, payload) {
+            tracing::warn!("snapshot 补偿归档 emit failed: {e}");
+        }
+        return Ok(FetchOutcome::Cancelled);
+    }
+    if !chunk.is_empty() {
+        flush_lines(replay, app, host_label, chunk).await;
+    }
+    // 完整性校验：meta.total 精确对账（F30）；无 meta 退回帧 lines 下界校验
+    if let Some((total, _)) = tail_map {
+        if arrived != total {
+            return Err(format!(
+                "快照不完整：{arrived}/{total} 行（连接中断或 daemon 报错）"
+            ));
+        }
+    } else if let Some(expected) = item.expected_lines {
+        if arrived < expected {
+            return Err(format!(
+                "快照不完整：{arrived}/{expected} 行（连接中断或 daemon 报错）"
+            ));
+        }
+    }
+    Ok(FetchOutcome::Done(arrived))
+}
+
+/// Batch9-F30：解析快照流首行的 meta。非 meta（普通 jsonl 行）/ 关系非法
+/// （tail_from > total——自家 daemon saturating_sub 不可达，但 meta 是远端
+/// 进程输出，防御式拒收退回旧编号，审计 D）→ None。
+fn parse_snapshot_meta(line: &str) -> Option<(u64, u64)> {
+    let v: serde_json::Value = serde_json::from_str(line).ok()?;
+    if v.get("kind")?.as_str()? != "snapshot_meta" {
+        return None;
+    }
+    let total = v.get("total")?.as_u64()?;
+    let tail_from = v.get("tail_from")?.as_u64()?;
+    if tail_from > total {
+        tracing::warn!("snapshot_meta 非法（tail_from {tail_from} > total {total}），按旧格式处理");
+        return None;
+    }
+    Some((total, tail_from))
+}
+
+/// 两段编号映射（纯函数，与测试共用——审计 D：原测试在测试体内重实现映射，
+/// 锤不到生产代码）：到达序 → 行号。前 total-tail_from 行是尾段（最新），
+/// 其余是头段回填。调用方保证 tail_from <= total（parse_snapshot_meta 校验）。
+fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
+    let seg1 = total.saturating_sub(tail_from);
+    if arrived < seg1 {
+        tail_from + arrived
+    } else {
+        arrived - seg1
+    }
+}
+
+/// [`connect_and_exec`] 的通用形态：exec 任意命令行（issue #16：历史查询走
+/// `<daemon_path> --list-projects` 等一次性命令，与流式 daemon 同一连接建立逻辑、
+/// 各自独立连接互不影响）。
+pub async fn connect_and_exec_cmd(
+    cfg: &RemoteConfig,
+    cmd: &str,
+) -> Result<russh::ChannelStream<client::Msg>, String> {
+    // 长连接/exec 路径不 emit 分阶段事件（F46 仅测试连接路径,避免每次重连刷屏）。
+    let (session, _fp) = connect_session(cfg, None, None).await?;
+
+    let channel = session
+        .channel_open_session()
+        .await
+        .map_err(|e| format!("打开 session channel 失败: {e}"))?;
+
+    // want_reply = true：等远端确认 exec 成功再继续。
+    channel
+        .exec(true, cmd.as_bytes())
+        .await
+        .map_err(|e| format!("exec {cmd} 失败: {e}"))?;
+
+    // into_stream 把 channel 变成 AsyncRead+AsyncWrite；读端就是 daemon stdout 流。
+    Ok(channel.into_stream())
+}
+
+/// 一次远端 exec 的**完整**结果：stdout、stderr、退出码。
+///
+/// # 为什么需要它（而不是继续用 `connect_and_exec_cmd`）
+///
+/// `Channel::into_stream()` 只搬 `ChannelMsg::Data` —— **`ExtendedData`（= stderr）
+/// 与 `ExitStatus` 都被丢掉**（russh 0.61 `channels/io/mod.rs`）。所以既有的
+/// `run_list_query` 那条路只能看见 stdout：远端命令失败时它读到 0 行，
+/// 与「查询成功但结果为空」**在类型上不可区分**。
+///
+/// 列举类查询忍得了（空结果本来就合法），但 `--fork-session` 忍不了 ——
+/// 分叉失败必须让用户看见原因，而 daemon 恰恰把原因写在 **stderr + exit 2** 上。
+/// 所以这里直接驱动 `channel.wait()` 收全三样。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemoteExec {
+    pub stdout: String,
+    pub stderr: String,
+    /// `None` = 远端没送 exit-status（连接被掐 / 服务端不守规矩）。
+    /// **不许把 `None` 当成 0** —— 那正好会把「没跑成」读成「跑成了」。
+    pub exit_status: Option<u32>,
+}
+
+/// stdout/stderr 各自的收集上限。查询类输出都是一行 JSON 量级；
+/// 上限只是防「远端吐无穷字节」吃爆内存，正常路径远够不到。
+const EXEC_CAPTURE_MAX_BYTES: usize = 4 * 1024 * 1024;
+
+/// daemon **出方向单行**的字节上限〔devbench F10b〕。
+///
+/// # ★ 这个数**刻意不等于** daemon 侧的 `inbound::MAX_LINE_BYTES`（1 MiB）
+///
+/// 那一条限的是**入方向命令信封**（`inbound.rs` 逐字「命令信封比 `ResumeSpec` 还小，
+/// 1 MiB 已是极宽松的上限」）。本条限的是**出方向内容帧** —— 一帧 = 一条 Claude jsonl 行。
+/// **两者不是同一个量**，抄过来就是把不同的东西按数字凑到一起
+/// （`byte_cap_registry` 头注对账本 S3 那次订正逐字写过这句）。
+///
+/// 实测本机 `~/.claude/projects/**/*.jsonl` 全量 **525,132 行**：最长一行
+/// **3,117,370 字节（2.97 MiB）**，其中 **78 行超过 1 MiB**
+/// （> 1 MiB 且 ≤ 2 MiB 有 75 条，> 2 MiB 有 3 条）。
+/// ⇒ 抄 1 MiB 会在本机丢掉 78 条**真实**行，而超限语义是「丢弃 + 报告」——
+/// 用户会看到一条「丢了帧」的健康提示，而那不是拥塞，是我们自己把上限设小了。
+///
+/// 取 64 MiB = 实测最长行的 21 倍。留这么大余量的理由有两条：
+/// 帧内换行被 daemon 转义成 `\n` 两字符（最坏接近翻倍），以及工具输出体量只会变大。
+///
+/// # 超限语义：**丢弃 + 带身份报告**，不许静默
+///
+/// 走 `REMOTE_HEALTH` + `kind: "line_too_long"`，与 `overflow_health_message` 那条
+/// 现成的路同一个出口（定框 E4：静默失败要给身份、且抬到调用方能判定的那一层）。
+pub(crate) const DAEMON_FRAME_LINE_CAP: usize = 64 * 1024 * 1024;
+
+/// 一次有界读行的结果。
+#[derive(Debug)]
+pub(crate) enum CappedLine {
+    /// 读到一行（内容在 `buf` 里，**不含**行尾 `\n`；可能是 EOF 前的残行）。
+    Line,
+    /// 这一行超过 [`DAEMON_FRAME_LINE_CAP`]，**已整行丢弃**。
+    /// 带上它到底有多少字节 —— 超限之后只数不存，所以这个数是准的而内存是 O(上限) 的。
+    TooLong(u64),
+    /// 对端关了写半边，且没有残行。
+    Eof,
+}
+
+/// 按 `\n` 读一行，**上限在读的时候生效**。
+///
+/// # ★ 为什么不是 `read_line` 加一句长度判断
+///
+/// 那是 daemon 侧栽过的坑，逐字记在 `src/backend/inbound.rs` 头注里：
+/// 第一版用无界 `read_until`、读完再看长度，D 审计实测**喂 512 MiB 无换行的流 ⇒
+/// RSS 从 6 MiB 涨到 518 MiB**，而它照样回了一条 `line_too_long`「看起来对」。
+/// ⇒ 机制必须是 `fill_buf`/`consume`：超限之后**只找换行、不再往 buf 里塞字节**，
+/// 整行的内存占用与行长无关。本函数是那段机制在 monitor 侧的同构实现
+/// （**上限值不同、机制相同** —— 见 [`DAEMON_FRAME_LINE_CAP`] 头注）。
+///
+/// ⚠ **不是 cancellation-safe**：中途取消会丢掉 `overflowed`/计数状态，
+/// 而 `buf` 里的半行留着。调用方要么把它放进独立 task（主帧读那样），
+/// 要么取消之后就**不再复用这个 reader**（探测那两处那样）。
+///
+/// ★ `cap` **是参数而不是直接读常量**：生产调用点全传 [`DAEMON_FRAME_LINE_CAP`]，
+/// 而测试要能传一个小数。否则「超限之后内存不涨」这条性质就只能靠量 RSS 来证
+/// （daemon 侧当年正是那么发现问题的），而**那种证法进不了单测**。
+/// 传小 cap 之后同一条性质可以直接判：见 `over_limit_stops_growing_the_buffer`。
+pub(crate) async fn read_capped_line<R>(
+    rd: &mut R,
+    buf: &mut Vec<u8>,
+    cap: usize,
+) -> std::io::Result<CappedLine>
+where
+    R: tokio::io::AsyncBufRead + Unpin,
+{
+    // `fill_buf`/`consume` 走文件顶部那条 `AsyncBufReadExt` 导入 ——
+    // ⚠ 别在这里再本地 `use` 一次：本文件有一条判据把 `tokio::io` 导入清单钉死了
+    // （`ALLOWED_IO_IMPORTS`，含反向锚点「放行清单不许留死行」），
+    // 顶部那条一旦没人用就会被 `unused_imports` 逼着删，而删掉它那条判据当场红。
+    buf.clear();
+    let mut overflowed = false;
+    let mut seen: u64 = 0;
+    loop {
+        let chunk = rd.fill_buf().await?;
+        if chunk.is_empty() {
+            // EOF。有残行就当一行交出去（`read_line` 旧行为逐字如此），否则报 EOF。
+            return Ok(if seen == 0 {
+                CappedLine::Eof
+            } else if overflowed {
+                CappedLine::TooLong(seen)
+            } else {
+                CappedLine::Line
+            });
+        }
+        let (take, done) = match chunk.iter().position(|&c| c == b'\n') {
+            Some(i) => (i, true),
+            None => (chunk.len(), false),
+        };
+        seen += take as u64;
+        if !overflowed {
+            if buf.len() + take > cap {
+                overflowed = true;
+                buf.clear();
+                buf.shrink_to_fit();
+            } else {
+                buf.extend_from_slice(&chunk[..take]);
+            }
+        }
+        let consumed = if done { take + 1 } else { take };
+        rd.consume(consumed);
+        if done {
+            return Ok(if overflowed {
+                CappedLine::TooLong(seen)
+            } else {
+                CappedLine::Line
+            });
+        }
+    }
+}
+
+/// 超限那一行的用户可见说法。**抽成纯函数**的理由与 [`overflow_health_message`] 逐字相同：
+/// 消费点要真 `AppHandle` 测不了，而措辞对不对恰恰是要钉的东西。
+fn line_too_long_health_message(host_label: &str, bytes: u64) -> String {
+    format!(
+        "远端 [{host_label}] 发来一行 {bytes} 字节，超过单行上限 {DAEMON_FRAME_LINE_CAP} 字节，\
+         这一行**已整行丢弃**。这不是网络拥塞 —— 要么该会话里有异常巨大的一条记录，\
+         要么对端不是本工具的 daemon。重开该会话可看完整历史。"
+    )
+}
+
+/// exec 一条命令并**收全** stdout / stderr / 退出码（见 [`RemoteExec`]）。
+///
+/// 与 `connect_and_exec_cmd` 一样每次独立连接（一次性查询语义），
+/// 不影响长连接流路径。超时由调用方套 `tokio::time::timeout`。
+///
+/// `abort_marker`：stdout 里一出现这个子串就**立刻收工返回**。存在的理由只有一个 ——
+/// **不认参数的旧 daemon 会掉进流模式**（长连接、永不 EOF）。老老实实收到通道关闭，
+/// 就只能等调用方的超时兜底，而超时会把「daemon 版本过旧」这条最有用的诊断吞成
+/// 一句「超时」。给调用方一个字符串就能提前抽身。`None` = 收到底。
+pub async fn connect_and_exec_capture(
+    cfg: &RemoteConfig,
+    cmd: &str,
+    abort_marker: Option<&str>,
+) -> Result<RemoteExec, String> {
+    let (session, _fp) = connect_session(cfg, None, None).await?;
+    let mut channel = session
+        .channel_open_session()
+        .await
+        .map_err(|e| format!("打开 session channel 失败: {e}"))?;
+    channel
+        .exec(true, cmd.as_bytes())
+        .await
+        .map_err(|e| format!("exec {cmd} 失败: {e}"))?;
+
+    let mut out: Vec<u8> = Vec::new();
+    let mut err: Vec<u8> = Vec::new();
+    let mut status: Option<u32> = None;
+    // EOF 之后服务端才送 exit-status，所以**不能见 Eof 就 break**；
+    // 收到 Close / 通道关闭（wait 返回 None）才算结束。
+    while let Some(msg) = channel.wait().await {
+        match msg {
+            russh::ChannelMsg::Data { data } => {
+                if out.len() < EXEC_CAPTURE_MAX_BYTES {
+                    out.extend_from_slice(&data);
+                }
+                if let Some(marker) = abort_marker {
+                    if String::from_utf8_lossy(&out).contains(marker) {
+                        break;
+                    }
+                }
+            }
+            russh::ChannelMsg::ExtendedData { data, .. } => {
+                if err.len() < EXEC_CAPTURE_MAX_BYTES {
+                    err.extend_from_slice(&data);
+                }
+            }
+            russh::ChannelMsg::ExitStatus { exit_status } => status = Some(exit_status),
+            russh::ChannelMsg::Close => break,
+            _ => {}
+        }
+    }
+
+    Ok(RemoteExec {
+        stdout: String::from_utf8_lossy(&out).into_owned(),
+        stderr: String::from_utf8_lossy(&err).into_owned(),
+        exit_status: status,
+    })
+}
+
+/// POSIX shell 单引号转义（issue #16：历史查询的路径参数经远端 shell 解析，
+/// 含空格/特殊字符必须包引号；单引号本身按 `'\''` 规则逃逸）。
+pub fn shell_quote(s: &str) -> String {
+    // U8c-2b-0（账本 S5）：实现收进 `shell-quote-core`（P4c 前叫 `launch-core`），
+    // 此处只留名字（`pub`，全仓多处在用）。
+    shell_quote_core::posix_quote(s)
+}
+
+/// daemon→client 的一帧（解析后的 inbound 表示）。
+///
+/// 对应 `src/backend::wire::Frame`（外部 `kind` tag，snake_case）。这里**不**
+/// 直接 import 那个 crate（它刻意不在 workspace 里、不被 root Cargo 引用，见其 README），
+/// 而是用 schema-agnostic 的方式（serde_json::Value + 读 `kind`）解析，只取 Phase-0 需要的
+/// 字段。这样：协议演进（daemon 加 `build_id` / 加新 kind）不会 break 解析 —— 未知 kind /
+/// 多余字段一律忽略（见 `parse_frame`）。
+/// 一条**丢了就不可恢复**的帧的身份〔audit-0805 F21〕。
+///
+/// 与 daemon 侧 `wire::LostFrame` 对应。**故意不共用类型**：那是 daemon crate 的私有 wire
+/// 形状，monitor 这边是从 JSON 现解的，共用会把两个 crate 绑死在一个结构体上，
+/// 而 additive 演进恰恰要求两边能各自容忍对方多/少字段。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LostFrameInfo {
+    pub kind: String,
+    pub subject: Option<String>,
+}
+
+/// `hello.homes` 的一项 —— **某个 agent 在那台远端机器上的 home 目录**〔daemon-split `S4`〕。
+///
+/// 与 daemon 侧 `wire::AgentHome` 对称（这一侧刻意不依赖那个 crate，照 `InboundFrame`
+/// 一贯的做法自己解析 JSON）。字段名里没有任何一个 agent 的名字：agent 维度住在
+/// `agent_kind` 这个**值**里 —— daemon 那边 `D3` 逐字要求的形状。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentHome {
+    pub agent_kind: String,
+    pub path: String,
+}
+
+/// 从 hello 帧里解析出「Claude 的 home 目录」—— **优先 `homes`、回退 `claude_dir`**。
+///
+/// 这是 `S4` additive 迁移在消费侧的那一半。两个字段的关系：
+/// - `homes`（新，通用）：`[{agent_kind, path}]`，agent 维度在**值**里；
+/// - `claude_dir`（旧，冻结兼容）：字段名里带 agent 名，daemon 侧登记在
+///   `agent_boundary_guard::FROZEN_COMPAT`，**解锁条件是 monitor 与 aterm 都改读 `homes`**。
+///
+/// ⇒ 本函数就是 monitor 那半的兑现：从今往后 monitor **不再依赖** `claude_dir` 的存在语义，
+/// 它只是回退路径。`claude_dir` 的删除因此只卡在仓外 aterm 上，我们这边不欠。
+///
+/// ⚠ 今天的 daemon `homes` 恒空（DG1 未接线）⇒ 实际走的一直是回退分支。
+/// 这不是"没接上"，是 additive 迁移的正常中间态：先让消费侧认得新字段，
+/// 生产侧（`S5`）再开始发 —— 反过来做会有一段时间新字段被丢掉。
+pub(crate) fn claude_home_from_hello<'a>(homes: &'a [AgentHome], claude_dir: &'a str) -> &'a str {
+    homes
+        .iter()
+        .find(|h| h.agent_kind == "claude")
+        .map(|h| h.path.as_str())
+        .unwrap_or(claude_dir)
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum InboundFrame {
+    /// 握手帧：连接建立后 daemon 发一次。`v` = 协议大版本，`build_id` = daemon 构建标识
+    /// （#33 版本协商捕获 + 比对），host_arch / claude_dir 用于 log 证明 daemon 真的在远端
+    /// 跑起来了。多余字段仍忽略（向前兼容）。
+    Hello {
+        v: u64,
+        build_id: String,
+        host_arch: String,
+        /// ⚠ **原样的线上值**，不做回退解析 —— 要「Claude 的 home」请走
+        /// [`claude_home_from_hello`]（优先 `homes`）。两者分开是刻意的：
+        /// 这个字段是**冻结兼容面**（仓外 aterm 还在读它），
+        /// 把回退结果写回这里会让"daemon 到底发了什么"变得不可观测。
+        claude_dir: String,
+        /// daemon-split `S4`（additive）：远端各 agent 的 home 目录表。
+        /// 旧 daemon（含今天所有已部署的）无此字段 ⇒ 空表 ⇒ 回退 `claude_dir`。
+        /// 非数组 / 元素缺字段一律滤掉，绝不 panic（同 `capabilities` 口径）。
+        homes: Vec<AgentHome>,
+        /// F66（#58③）：daemon 声明的能力 token 集。旧 daemon 无此字段 → 空集
+        /// （保守：按最小能力集待它，不发流模式 flag）。monitor 按此决定发
+        /// `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配。
+        capabilities: Vec<String>,
+        /// U6b-2 / U8a-2a：daemon 声明**接受哪些入方向命令**（`inbound::COMMANDS`）。
+        /// `capabilities` 说的是「我认识哪些流 flag」（出方向），这一条说的是入方向 ——
+        /// 两者正交。旧 daemon 无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
+        commands: Vec<String>,
+    },
+    /// 一行从远端 session jsonl 尾随读到的原始行。字段语义与本地 `watcher::JsonlLine` 对齐。
+    Line {
+        session_id: String,
+        path: String,
+        seq: u64,
+        raw: String,
+    },
+    /// 远端新出现一个 session 文件。Batch7-F24：p1e daemon 附带 pidfile 元信息
+    /// （additive）；旧 daemon 缺字段 → None（保守视为交互）。
+    SessionAdded {
+        sid: String,
+        session_kind: Option<String>,
+        /// E73（additive）：attach 进去对人有没有意义。缺席 = true（存量零迁移）。
+        /// 语义与来源见 `src/backend/wire.rs` 的同名字段 + `src/doc/IPC-PROTOCOL.md` §9.3。
+        attachable: Option<bool>,
+        cwd: Option<String>,
+        name: Option<String>,
+        /// Batch8-F25：远端 jsonl 绝对路径（p1f daemon 起有值）——旁路快照用。
+        path: Option<String>,
+        /// Batch8 D-I2：daemon prime 时的完整行数 L（快照完整性校验）。
+        lines: Option<u64>,
+        /// Batch9-F27：宣告时的初始 status/waitingFor（连接建立灯就对）。
+        status: Option<String>,
+        waiting_for: Option<String>,
+    },
+    /// Batch9-F27：会话 status 变化（p1g daemon；远端红绿灯）。
+    SessionStatus {
+        sid: String,
+        status: Option<String>,
+        waiting_for: Option<String>,
+    },
+    /// 远端一个 session 文件消失。
+    SessionRemoved {
+        sid: String,
+        /// S0：daemon 明说的移除原因（缺字段 ⇒ [`RemovalCause::Gone`]，与旧 daemon 兼容）。
+        cause: RemovalCause,
+    },
+    /// issue #32：远端 daemon 发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）。
+    /// monitor 收到后经 SS-F remote-health 通道提示用户。
+    ///
+    /// ★ `lost` / `lost_truncated`〔audit-0805 F21，additive〕：那批丢帧里**不可恢复**的
+    /// 那些的身份。⚠ **它们的有无决定了要对用户说哪句话** —— 丢内容帧「重开会话可看完整
+    /// 历史」是真的；丢状态增量帧**不是**（它是一次差分的结果、别处不存在）。
+    /// 旧 daemon 不发这两个字段 ⇒ 空集 / false，行为退回从前。
+    Overflow {
+        dropped: u64,
+        lost: Vec<LostFrameInfo>,
+        lost_truncated: bool,
+    },
+    /// B2：daemon 在远端本地跑 `tmux ls` 的原始 stdout（或哨兵 `NO_TMUX`）——喂 tmux 对账，
+    /// 替掉每 8s 新建 SSH 的刷屏轮询。`raw` 由 `tmux::parse_tmux_ls` 解析（`NO_TMUX`→无 tmux）。
+    ///
+    /// P1（zero-poll-liveness）：`observation` = daemon 的**显式观测分类**（additive；旧 daemon
+    /// 为 `None`）。分类判定见 `tmux::classify_tmux_observation`——它把「确证零会话」与
+    /// 「观测失败」分开，这是修掉 §24bis 灰灯卡死的关键（空 `raw` 在旧协议里两义不可分）。
+    /// P5：daemon 差分算出的**正向死亡帧**——某个 tmux 会话确定关闭了。
+    /// 收到即 retire、绕过 miss 计数（快照 + miss 那条路原样保留作兜底）。
+    TmuxSessionClosed { name: String },
+    TmuxSessions {
+        raw: String,
+        observation: Option<String>,
+    },
+    /// U6b-1 / U8a-2a：**入方向命令的应答**。`id` 是 monitor 自己生成的不透明串，
+    /// daemon 原样回显。由 `inbound_client` 按 `id` 路由回请求方。
+    Reply {
+        id: String,
+        ok: bool,
+        code: Option<String>,
+        message: Option<String>,
+        data: Option<serde_json::Value>,
+    },
+    /// U6b-1 / U8a-2a：某条在跑的入方向命令**已被取消**。
+    Cancelled { id: String },
+}
+
+/// 拥塞提示的**措辞**：有没有不可恢复的丢失，说法完全不同〔audit-0805 F21〕。
+///
+/// # 为什么要一个纯函数
+///
+/// 这句话是**用户唯一能看到的东西**，而它此前是错的（对状态增量帧说「重开会话可看完整
+/// 历史」）。抽成纯函数是为了让它**可判据** —— 消费点那一整块要真 `AppHandle`、
+/// 测不了；措辞对不对却恰恰是本件的正题。
+///
+/// 三档（定框 **E4**：静默失败要给身份、且要抬到调用方能判定的那一层）：
+/// - **只丢了内容帧**（`lost` 空）：老说法成立，行还在远端 jsonl 里。
+///   ⚠ 旧 daemon（`p1x` 之前）不发 `lost` ⇒ 也落这一档，**行为与从前逐字相同**。
+/// - **有不可恢复的丢失**：点名主体，并**明说重开会话补不回来**。
+/// - **身份表还被截断了**：再加一句「清单不全」，暗示理性做法是整体重取。
+fn overflow_health_message(
+    host_label: &str,
+    dropped: u64,
+    lost: &[LostFrameInfo],
+    lost_truncated: bool,
+) -> String {
+    if lost.is_empty() {
+        return format!(
+            "远端 [{host_label}] 管道拥塞，可能丢失约 {dropped} 条实时行；重开该会话可看完整历史。"
+        );
+    }
+    // 主体去重后点名（同一个会话可能连丢好几帧）。
+    let mut subjects: Vec<&str> = lost.iter().filter_map(|l| l.subject.as_deref()).collect();
+    subjects.sort_unstable();
+    subjects.dedup();
+    let named = if subjects.is_empty() {
+        String::new()
+    } else {
+        format!("（{}）", subjects.join(" / "))
+    };
+    let truncated_note = if lost_truncated {
+        "；受影响清单**不全**，建议刷新该来源"
+    } else {
+        ""
+    };
+    format!(
+        "远端 [{host_label}] 管道拥塞，丢了约 {dropped} 条帧，其中 {} 条是**会话状态变化**{named}\
+         —— 这部分**重开会话补不回来**，请手动刷新该来源{truncated_note}。",
+        lost.len()
+    )
+}
+
+/// 把 daemon 发来的一行（已去掉行尾 `\n`）解析成 [`InboundFrame`]。
+///
+/// **纯函数 + 绝不 panic**：
+/// - 非 JSON / JSON 不是 object → `None`
+/// - 缺 `kind` 或 `kind` 不是字符串 → `None`
+/// - 已知 kind 但必需字段缺失 / 类型不对 → `None`（坏帧当 garbage 跳过）
+/// - **未知 kind**（如未来新增的 `{"kind":"future_thing"}`）→ `None`（向前兼容，调用方 warn+skip）
+/// - **多余 / 未知字段**（如 hello 里的 `build_id`）→ 忽略，不影响解析
+///
+/// 调用方（[`run`]）对 `None` 一律 `tracing::warn!` 后 continue，永不中断流。
+pub fn parse_frame(line: &str) -> Option<InboundFrame> {
+    let value: serde_json::Value = serde_json::from_str(line).ok()?;
+    let obj = value.as_object()?;
+    let kind = obj.get("kind")?.as_str()?;
+    match kind {
+        "hello" => {
+            let v = obj.get("v")?.as_u64()?;
+            // #33：捕获 build_id 做版本协商（既有 daemon 一直在发，故按必需字段解析）。
+            let build_id = obj.get("build_id")?.as_str()?.to_string();
+            let host_arch = obj.get("host_arch")?.as_str()?.to_string();
+            let claude_dir = obj.get("claude_dir")?.as_str()?.to_string();
+            // daemon-split `S4`（additive）：`homes` = 远端各 agent 的 home 目录表
+            // （`[{agent_kind, path}]`）。旧 daemon **全部**没有这个字段 ⇒ 空表 ⇒
+            // 消费侧回退 `claude_dir`（见 `claude_home_from_hello`）。
+            // ⚠ 逐项要求 `agent_kind` 与 `path` 都是字符串，坏的那一项**单独丢掉**、
+            //   不是丢整张表 —— 同 `capabilities` 的「非数组 / 元素类型不对一律滤掉」口径。
+            //   整帧 `None` 是留给「已知 kind 但必需字段缺失」的，`homes` 不是必需字段。
+            let homes: Vec<AgentHome> = obj
+                .get("homes")
+                .and_then(|h| h.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| {
+                            let o = x.as_object()?;
+                            Some(AgentHome {
+                                agent_kind: o.get("agent_kind")?.as_str()?.to_string(),
+                                path: o.get("path")?.as_str()?.to_string(),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            // F66（#58③，additive）：旧 daemon 无 `capabilities` 字段 → 空集（保守缺省，
+            // 同 §27「status 缺失恒未知」族）。非数组 / 元素非字符串一律滤掉，绝不 panic。
+            let capabilities = obj
+                .get("capabilities")
+                .and_then(|c| c.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            // U8a-2a：入方向能力协商（additive，同上口径）。旧 daemon 无此字段 ⇒ 空集
+            // ⇒ `inbound_client` 一条入方向命令都不发。
+            let commands = obj
+                .get("commands")
+                .and_then(|c| c.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default();
+            Some(InboundFrame::Hello {
+                v,
+                build_id,
+                host_arch,
+                claude_dir,
+                homes,
+                capabilities,
+                commands,
+            })
+        }
+        "line" => {
+            let session_id = obj.get("session_id")?.as_str()?.to_string();
+            let path = obj.get("path")?.as_str()?.to_string();
+            let seq = obj.get("seq")?.as_u64()?;
+            let raw = obj.get("raw")?.as_str()?.to_string();
+            Some(InboundFrame::Line {
+                session_id,
+                path,
+                seq,
+                raw,
+            })
+        }
+        "session_added" => {
+            let sid = obj.get("sid")?.as_str()?.to_string();
+            // Batch7-F24 附加字段（旧 daemon 缺失 → None）
+            let opt = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
+            Some(InboundFrame::SessionAdded {
+                sid,
+                session_kind: opt("session_kind"),
+                // E73：**只认真正的布尔**。字符串 "false" 之类当没写（缺席 = true）——
+                // 宁可少一次门控，也不要把一个拼错的值读成「不可 attach」而把功能吞掉。
+                attachable: obj.get("attachable").and_then(|x| x.as_bool()),
+                cwd: opt("cwd"),
+                name: opt("name"),
+                path: opt("path"),
+                lines: obj.get("lines").and_then(|v| v.as_u64()),
+                status: opt("status"),
+                waiting_for: opt("waiting_for"),
+            })
+        }
+        "session_status" => {
+            let sid = obj.get("sid")?.as_str()?.to_string();
+            let opt = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
+            Some(InboundFrame::SessionStatus {
+                sid,
+                status: opt("status"),
+                waiting_for: opt("waiting_for"),
+            })
+        }
+        "session_removed" => {
+            let sid = obj.get("sid")?.as_str()?.to_string();
+            // ★ S0（additive）：`cause` 缺省 = `Gone`，旧 daemon 原样工作。
+            // **双写点**：字面量与 daemon `src/backend/wire.rs::RemovalCause`
+            // 的 serde 名逐字一致，由 `removal_cause_wire_literal_stays_in_sync` 钉住。
+            // 未知取值也退回 `Gone`（宁可保守判活，不可凭一个不认识的词直接归档）。
+            let cause = match obj.get("cause").and_then(|v| v.as_str()) {
+                Some(REMOVAL_CAUSE_SUPERSEDED) => RemovalCause::Superseded,
+                _ => RemovalCause::Gone,
+            };
+            Some(InboundFrame::SessionRemoved { sid, cause })
+        }
+        "overflow" => {
+            // issue #32：dropped 必需且为数字；缺/错则当坏帧跳过（不 panic）。
+            let dropped = obj.get("dropped")?.as_u64()?;
+            // 〔audit-0805 F21〕additive：**缺字段必须仍能解析** —— 旧 daemon 还在跑，
+            // 把它们当必需会让整帧变成坏帧、连 `dropped` 都丢掉，比不认识更糟。
+            let lost: Vec<LostFrameInfo> = obj
+                .get("lost")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|it| {
+                            let o = it.as_object()?;
+                            Some(LostFrameInfo {
+                                kind: o.get("kind")?.as_str()?.to_string(),
+                                subject: o
+                                    .get("subject")
+                                    .and_then(|x| x.as_str())
+                                    .map(str::to_string),
+                            })
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            let lost_truncated = obj
+                .get("lost_truncated")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            Some(InboundFrame::Overflow {
+                dropped,
+                lost,
+                lost_truncated,
+            })
+        }
+        // P5：additive 新帧。缺 `name` / 非字符串 → 坏帧跳过（不 panic），
+        // 与其余帧同一口径。**旧 daemon 不发它** ⇒ 这条分支永不命中，行为退回快照+miss。
+        "tmux_session_closed" => {
+            let name = obj.get("name")?.as_str()?.to_string();
+            Some(InboundFrame::TmuxSessionClosed { name })
+        }
+        "tmux_sessions" => {
+            // B2：raw = tmux ls 原文（或 NO_TMUX）。缺/非字符串 → 坏帧跳过。
+            let raw = obj.get("raw")?.as_str()?.to_string();
+            // P1：observation 是 additive 可选字段——**缺失/非字符串都当 None**（不是坏帧）。
+            // 旧 daemon 没有它；非字符串是坏 daemon，退化成旧判据即今天的保守行为。
+            let observation = obj
+                .get("observation")
+                .and_then(|v| v.as_str())
+                .map(str::to_string);
+            Some(InboundFrame::TmuxSessions { raw, observation })
+        }
+        // U8a-2a：入方向应答，**真消费** —— 由 `inbound_client` 按 `id` 路由回请求方。
+        // `id`/`ok` 必需（缺则坏帧跳过，同其余帧的口径）；`code`/`message`/`data` 可选。
+        "reply" => {
+            let id = obj.get("id")?.as_str()?.to_string();
+            let ok = obj.get("ok")?.as_bool()?;
+            let opt = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
+            Some(InboundFrame::Reply {
+                id,
+                ok,
+                code: opt("code"),
+                message: opt("message"),
+                data: obj.get("data").cloned(),
+            })
+        }
+        "cancelled" => {
+            let id = obj.get("id")?.as_str()?.to_string();
+            Some(InboundFrame::Cancelled { id })
+        }
+
+        // ── `turn_end` **认识但刻意不消费**（U7-1）。──────────────────────────
+        //
+        // 「认识」与「消费」是两件事。落进 `_ => None` 的后果不是「忽略」，是
+        // **每帧刷一条 `skipping unparseable/unknown frame` 的 warn** —— 那既是噪声，
+        // 也让真正的坏帧淹没在里面。
+        //
+        // daemon 的 `EMITS` 里**登记了、也真在发**（`watcher.rs` 每轮对话一帧），
+        // 而 monitor 此前**根本不认它** —— 实测是 `EMITS` 八个 kind 里唯一一个漏的。
+        // monitor 不需要它：轮次边界由本地 `parse_line` 管线从 `line` 帧的原始 jsonl 自己推。
+        // 它是发给 **aterm** 的（aterm 按 `emits` 门控消费）。
+        "turn_end" => None,
+
+        // 未知 kind：向前兼容，跳过（调用方 warn）。绝不 panic。
+        _ => None,
+    }
+}
+
+/// 本 monitor **认识**的全部帧 kind（消费 + 刻意不消费）。
+///
+/// 与 `parse_frame` 的 match 臂是同一份事实 —— 由
+/// `every_kind_the_daemon_emits_is_known_to_the_monitor` 与
+/// `known_kinds_matches_parse_frame` 两条钉住。
+#[cfg(test)]
+const KNOWN_FRAME_KINDS: &[&str] = &[
+    "cancelled",
+    "hello",
+    "line",
+    "overflow",
+    "reply",
+    "session_added",
+    "session_removed",
+    "session_status",
+    "tmux_session_closed",
+    "tmux_sessions",
+    "turn_end",
+];
+
+/// U7-1：**daemon 的产出面 ↔ monitor 的消费面**对拍。
+///
+/// # 这条抓到的第一个真缺陷
+///
+/// daemon 的 `EMITS` 是一份**承诺**（那个常量的注释逐条写着「登记 = 承诺真发，已接线」），
+/// monitor 的 `parse_frame` 是**实际消费面**。两者此前**没有任何对拍** ——
+/// 实测 `turn_end` 是 daemon 承诺发、也真在发、而 monitor 压根不认的那一个：
+/// 每轮对话刷一条 `skipping unparseable/unknown frame` 的 warn。
+///
+/// 「读面合流」的第一步不是搬代码，是**让消费面追上产出面并钉住**。
+#[cfg(test)]
+mod emits_parity {
+    /// daemon `main.rs` 的 `EMITS` 常量（编译期内嵌 daemon 源码，同 `build_id` 那套单源思路）。
+    const DAEMON_MAIN: &str = include_str!("../../backend/main.rs");
+
+    fn daemon_emits() -> Vec<String> {
+        let i = DAEMON_MAIN
+            .find("const EMITS")
+            .expect("daemon main.rs 里找不到 EMITS —— 抽取坏了，本断言在空转");
+        let j = DAEMON_MAIN[i..]
+            .find("];")
+            .map(|k| i + k)
+            .expect("EMITS 没有收尾");
+        let mut out: Vec<String> = DAEMON_MAIN[i..j]
+            .split('"')
+            .skip(1)
+            .step_by(2)
+            .filter(|s| !s.is_empty() && s.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+            .map(str::to_string)
+            .collect();
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    /// ★ daemon 承诺发的每个 kind，monitor 都必须**认识**（消费或刻意不消费）。
+    #[test]
+    fn every_kind_the_daemon_emits_is_known_to_the_monitor() {
+        let emits = daemon_emits();
+        assert!(
+            emits.len() >= 6,
+            "只抽到 {} 个 EMITS —— 抽取坏了，本断言在空转：{emits:?}",
+            emits.len()
+        );
+        let unknown: Vec<&String> = emits
+            .iter()
+            .filter(|k| !super::KNOWN_FRAME_KINDS.contains(&k.as_str()))
+            .collect();
+        assert!(
+            unknown.is_empty(),
+            "daemon 的 `EMITS` 承诺发这些 kind，但 monitor 的 `parse_frame` 不认：{unknown:?}\n\
+             后果不是「忽略」，是**每帧刷一条 warn** 并丢弃 —— 真正的坏帧会淹没在里面。\n\
+             要么加一条消费臂，要么加进那条「认识但刻意不消费」的臂**并写明理由**。"
+        );
+    }
+
+    /// ★ `KNOWN_FRAME_KINDS` 必须与 `parse_frame` 的 match 臂**完全一致**。
+    ///
+    /// 两份名单必然漂移 —— 这条让它们只能是同一份（同 daemon 侧
+    /// `inbound.rs::the_commands_mirror_matches_the_registry` 的思路）。
+    ///
+    /// 〔`K-R19` 订正 09-03〕这一句原先点的是 `hello_commands_match_the_dispatch_table`，
+    /// **全仓零定义**——那是 daemon 侧那条判据的**上一版**名字（`U8a-2d` 换掉的），
+    /// 而这一句仍当成现状在说。
+    #[test]
+    fn known_kinds_matches_parse_frame() {
+        let src = include_str!("ssh_source.rs");
+        let at = src
+            .find("fn parse_frame")
+            .expect("找不到 parse_frame —— 抽取坏了");
+        let end = src[at..]
+            .find("\n/// 本 monitor **认识**的全部帧 kind")
+            .map(|k| at + k)
+            .expect("找不到 parse_frame 的收尾锚点");
+        let body = &src[at..end];
+        let mut arms: Vec<String> = body
+            .match_indices("\" =>")
+            .filter_map(|(i, _)| {
+                let head = &body[..i];
+                let q = head.rfind('"')?;
+                let name = &head[q + 1..];
+                (!name.is_empty() && name.chars().all(|c| c.is_ascii_lowercase() || c == '_'))
+                    .then(|| name.to_string())
+            })
+            .collect();
+        // 多 pattern 合并的臂（`"a" | "b" =>`）上面只会抓到最后一个，补齐。
+        // U8a-2a：`reply`/`cancelled` 已各自独立成臂并**真消费**，只剩 `turn_end` 是
+        // 「认识但刻意不消费」的那一条。
+        for extra in ["turn_end"] {
+            if body.contains(&format!("\"{extra}\"")) && !arms.contains(&extra.to_string()) {
+                arms.push(extra.to_string());
+            }
+        }
+        arms.sort();
+        arms.dedup();
+        assert!(
+            arms.len() >= 8,
+            "只切出 {} 条 kind 分支 —— 抽取坏了，本断言在空转：{arms:?}",
+            arms.len()
+        );
+        let mut known: Vec<String> = super::KNOWN_FRAME_KINDS
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        known.sort();
+        assert_eq!(
+            arms, known,
+            "\n`KNOWN_FRAME_KINDS` 与 `parse_frame` 的 match 臂对不上 —— 两份名单已经漂了。"
+        );
+    }
+}
+
+/// U8a-2a：**握手完成 ⇒ 写半边解冻。**
+///
+/// 见证只能由一帧真的 Hello 换出来（`DaemonHello::from_hello_frame`）⇒
+/// 「hello 之前不许写」在 monitor 侧是类型上的事实，不是一条纪律。
+/// 第二次 hello（不该有）时 `parked` 已被 `take` 走，静默跳过。
+///
+/// **抽成函数是为了让它可测**：D 审计变异 MU13 —— 把这段逻辑整个删掉（写半边永不解冻、
+/// 客户端永不登记）⇒ `cargo test` **全绿**。它埋在 `stream_loop` 中段时没有任何判据碰得到。
+fn attach_inbound_client<W>(
+    host_label: &str,
+    parked: &mut Option<crate::inbound_client::ParkedWriter<W>>,
+    frame: Option<&InboundFrame>,
+) -> Option<std::sync::Arc<crate::inbound_client::InboundClient>>
+where
+    W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let witness = crate::inbound_client::DaemonHello::from_hello_frame(frame?)?;
+    let client = parked.take()?.into_client(witness);
+    crate::inbound_client::register(host_label, client.clone());
+    Some(client)
+}
+
+/// U8a-2a：把一帧入方向应答路由回请求方。返回是否真的交到了某个等待者手上。
+///
+/// 没有客户端 = daemon 在 hello 之前就回了应答（协议倒错），照实报、不静默。
+///
+/// **抽成函数同样是为了可测**（D 审计变异 MU12：把 `route_reply` 换成丢弃 ⇒ 全绿）。
+fn route_inbound_frame(
+    host_label: &str,
+    client: Option<&std::sync::Arc<crate::inbound_client::InboundClient>>,
+    frame: InboundFrame,
+) -> bool {
+    let (kind, id) = match &frame {
+        InboundFrame::Reply { id, .. } => ("reply", id.clone()),
+        InboundFrame::Cancelled { id } => ("cancelled", id.clone()),
+        other => {
+            tracing::warn!("route_inbound_frame 收到非入方向帧，忽略：{other:?}");
+            return false;
+        }
+    };
+    let Some(c) = client else {
+        tracing::warn!(
+            "ssh_source [{host_label}] 收到 {kind}(id={id})，但本连接还没有入方向客户端 —— daemon 在 hello 之前就回应答了？"
+        );
+        return false;
+    };
+    match frame {
+        InboundFrame::Reply {
+            id,
+            ok,
+            code,
+            message,
+            data,
+        } => c.route_reply(&id, ok, code, message, data),
+        InboundFrame::Cancelled { id } => c.route_cancelled(&id),
+        _ => false,
+    }
+}
+
+/// U8a-2a：`stream_loop` 那条**接缝**的判据。
+///
+/// # 为什么单独立一个模块
+///
+/// D 审计做了三次变异，三次 `cargo test` **全绿**：
+/// - MU13：hello 臂里不 `into_client`/不 `register`（写半边永不解冻）
+/// - MU12：`reply` 臂里不 `route_reply`（应答收到就扔）
+/// - MU14：`probe_control_channel` 直接返回 `"control=ok(0ms)"`，一个字节都不发
+///
+/// 也就是「把发送端接上」这件事本身删掉之后 CI 一片绿 —— `inbound_client` 的单测走的是
+/// 自造客户端，e2e 走的是真 daemon 二进制，**两者之间的接缝没有任何判据**。
+/// 这个模块就是那条接缝。
+#[cfg(test)]
+mod seam_tests {
+    use super::*;
+    use crate::inbound_client;
+    use std::time::Duration;
+    use tokio::io::{AsyncBufReadExt, BufReader};
+
+    fn hello_line(commands: &str) -> String {
+        format!(
+            r#"{{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":{commands}}}"#
+        )
+    }
+
+    /// MU13 的回归钉：收到 hello ⇒ 写半边解冻 + 客户端登记进注册表。
+    #[tokio::test]
+    async fn a_hello_frame_thaws_the_write_half_and_registers_the_client() {
+        let (mine, _theirs) = tokio::io::duplex(4096);
+        let mut parked = Some(inbound_client::park(mine));
+        let origin = "seam-attach-origin";
+
+        // 非 hello 帧不解冻。
+        let not_hello = parse_frame(r#"{"kind":"overflow","dropped":1}"#);
+        assert!(
+            attach_inbound_client(origin, &mut parked, not_hello.as_ref()).is_none(),
+            "非 hello 帧居然把写半边解冻了"
+        );
+        assert!(parked.is_some(), "写半边被误消耗了");
+        assert!(inbound_client::client_for(origin).is_none());
+
+        // hello ⇒ 解冻 + 登记，且 daemon 声明的命令集透传到客户端。
+        let hello = parse_frame(&hello_line(r#"["ping"]"#));
+        let client = attach_inbound_client(origin, &mut parked, hello.as_ref())
+            .expect("hello 应当换出客户端");
+        assert!(client.accepts("ping"));
+        assert!(!client.accepts("launch"));
+        assert!(parked.is_none(), "写半边应当已被 take 走");
+        assert!(
+            inbound_client::client_for(origin).is_some_and(|c| std::sync::Arc::ptr_eq(&c, &client)),
+            "客户端没登记进注册表 —— 2b 的 launch 会取不到"
+        );
+
+        // 第二次 hello（不该有）：静默跳过，不会再造一个客户端。
+        let again = parse_frame(&hello_line(r#"["ping"]"#));
+        assert!(attach_inbound_client(origin, &mut parked, again.as_ref()).is_none());
+
+        inbound_client::unregister(origin, &client);
+        assert!(inbound_client::client_for(origin).is_none());
+    }
+
+    /// ★★ **有不可恢复的丢失时，不许再对用户说「重开会话可看完整历史」**〔audit-0805 F21，E4〕。
+    ///
+    /// 那句话对**内容帧**是真的（行还在远端 jsonl 里），对**状态增量帧**是**假的** ——
+    /// 它是一次差分的结果、别处不存在。这句 message 是用户唯一看得见的东西，
+    /// 所以它对不对本身就是本件的正题。
+    #[test]
+    fn the_overflow_message_stops_lying_when_state_was_lost() {
+        let lost = vec![
+            super::LostFrameInfo {
+                kind: "session_removed".into(),
+                subject: Some("sid-a".into()),
+            },
+            super::LostFrameInfo {
+                kind: "session_added".into(),
+                subject: Some("sid-b".into()),
+            },
+        ];
+        let m = super::overflow_health_message("box1", 7, &lost, false);
+        assert!(
+            !m.contains("重开该会话可看完整历史"),
+            "丢了状态增量帧还说「重开会话可看完整历史」—— 那是假话。实得：{m}"
+        );
+        assert!(
+            m.contains("sid-a") && m.contains("sid-b"),
+            "要点名受影响的会话：{m}"
+        );
+        assert!(m.contains("补不回来"), "要说清这部分补不回来：{m}");
+        assert!(!m.contains("清单**不全**"), "没截断就别说截断：{m}");
+    }
+
+    /// 只丢内容帧时**逐字沿用老说法** —— 旧 daemon（`p1x` 之前）不发 `lost`，
+    /// 也落这一档，行为必须与从前一字不差。
+    #[test]
+    fn the_overflow_message_is_byte_identical_when_only_lines_were_lost() {
+        let m = super::overflow_health_message("box1", 3, &[], false);
+        assert_eq!(
+            m,
+            "远端 [box1] 管道拥塞，可能丢失约 3 条实时行；重开该会话可看完整历史。"
+        );
+    }
+
+    /// 身份表被截断时要**再说一句**（暗示理性做法是整体重取）。
+    #[test]
+    fn the_overflow_message_says_so_when_the_identity_list_was_truncated() {
+        let lost = vec![super::LostFrameInfo {
+            kind: "session_removed".into(),
+            subject: Some("sid-a".into()),
+        }];
+        let m = super::overflow_health_message("box1", 99, &lost, true);
+        assert!(m.contains("不全"), "截断了就要说出来：{m}");
+    }
+
+    /// ★ **旧 daemon 的 overflow 帧必须照旧能解析**〔additive 的真正代价在这里〕。
+    ///
+    /// 把 `lost` 当必需字段会让整帧变成坏帧、**连 `dropped` 都丢掉** —— 比不认识新字段更糟。
+    #[test]
+    fn overflow_from_an_old_daemon_still_parses() {
+        match parse_frame(r#"{"kind":"overflow","dropped":5}"#) {
+            Some(InboundFrame::Overflow {
+                dropped,
+                lost,
+                lost_truncated,
+            }) => {
+                assert_eq!(dropped, 5);
+                assert!(lost.is_empty(), "旧 daemon 不发 lost ⇒ 空集");
+                assert!(!lost_truncated);
+            }
+            other => panic!("旧 daemon 的 overflow 解析不出来了：{other:?}"),
+        }
+    }
+
+    /// 新 daemon 的 `lost` / `lost_truncated` 要真的被读进来。
+    #[test]
+    fn overflow_identity_fields_are_actually_parsed() {
+        let json = r#"{"kind":"overflow","dropped":2,"lost":[{"kind":"session_removed","subject":"sid-x"},{"kind":"tmux_sessions"}],"lost_truncated":true}"#;
+        match parse_frame(json) {
+            Some(InboundFrame::Overflow {
+                dropped,
+                lost,
+                lost_truncated,
+            }) => {
+                assert_eq!(dropped, 2);
+                assert!(lost_truncated);
+                assert_eq!(lost.len(), 2, "两条身份都要收进来");
+                assert_eq!(lost[0].kind, "session_removed");
+                assert_eq!(lost[0].subject.as_deref(), Some("sid-x"));
+                assert_eq!(lost[1].subject, None, "没有 subject 的那条也要留住 kind");
+            }
+            other => panic!("带身份的 overflow 解析失败：{other:?}"),
+        }
+    }
+
+    /// MU12 的回归钉：`reply` / `cancelled` 真的被路由回等待者。
+    #[tokio::test]
+    async fn reply_and_cancelled_frames_reach_the_waiting_caller() {
+        let (mine, theirs) = tokio::io::duplex(4096);
+        let mut peer = BufReader::new(theirs);
+        let mut parked = Some(inbound_client::park(mine));
+        let origin = "seam-route-origin";
+        let hello = parse_frame(&hello_line(r#"["ping","cancel"]"#));
+        let client = attach_inbound_client(origin, &mut parked, hello.as_ref()).expect("客户端");
+
+        let c = client.clone();
+        let caller = tokio::spawn(async move {
+            c.call("ping", serde_json::Value::Null, Duration::from_secs(5))
+                .await
+        });
+        let mut line = String::new();
+        tokio::time::timeout(Duration::from_secs(5), peer.read_line(&mut line))
+            .await
+            .expect("等请求行超时")
+            .expect("读到请求行");
+        let id = serde_json::from_str::<serde_json::Value>(line.trim_end()).expect("JSON")["id"]
+            .as_str()
+            .expect("id")
+            .to_string();
+
+        // 走的是 stream_loop 真正调的那个函数，不是直接调 route_reply。
+        let frame = parse_frame(&format!(
+            r#"{{"kind":"reply","id":"{id}","ok":true,"data":{{"pong":1}}}}"#
+        ))
+        .expect("reply 帧");
+        assert!(
+            route_inbound_frame(origin, Some(&client), frame),
+            "应答没被路由回等待者"
+        );
+        assert_eq!(
+            caller.await.expect("task").expect("call 成功"),
+            Some(serde_json::json!({ "pong": 1 }))
+        );
+
+        inbound_client::unregister(origin, &client);
+    }
+
+    /// 没有客户端时（daemon 在 hello 之前回应答）不 panic、返回 false。
+    #[test]
+    fn routing_without_a_client_is_reported_not_panicked() {
+        let frame = parse_frame(r#"{"kind":"reply","id":"x","ok":true}"#).expect("reply");
+        assert!(!route_inbound_frame("no-client-origin", None, frame));
+        // 非入方向帧误传进来也不 panic。
+        let other = parse_frame(r#"{"kind":"overflow","dropped":3}"#).expect("overflow");
+        assert!(!route_inbound_frame("no-client-origin", None, other));
+    }
+
+    /// MU14 的回归钉：`probe_control_channel` 必须**真发一条 ping 并等应答**。
+    ///
+    /// 用内存双工管道扮 daemon：读到请求行就回一条 `reply`。
+    #[tokio::test]
+    async fn the_control_probe_really_sends_a_ping_and_measures_the_round_trip() {
+        // mon_w → dae_r：monitor 写 / 假 daemon 读；dae_w → mon_r：假 daemon 写 / monitor 读。
+        let (mon_w, mut dae_r) = tokio::io::duplex(4096);
+        let (mut dae_w, mon_r) = tokio::io::duplex(4096);
+        let fake_daemon = tokio::spawn(async move {
+            use tokio::io::AsyncWriteExt;
+            let mut rd = BufReader::new(&mut dae_r);
+            let mut line = String::new();
+            rd.read_line(&mut line).await.expect("读到请求");
+            let req: serde_json::Value =
+                serde_json::from_str(line.trim_end()).expect("请求是合法 JSON");
+            let id = req["id"].as_str().expect("id").to_string();
+            dae_w
+                .write_all(
+                    format!("{{\"kind\":\"reply\",\"id\":\"{id}\",\"ok\":true}}\n").as_bytes(),
+                )
+                .await
+                .expect("回应答");
+            dae_w.flush().await.expect("flush");
+            line
+        });
+
+        let hello = parse_frame(&hello_line(r#"["ping"]"#)).expect("hello");
+        let out =
+            probe_control_channel(inbound_client::park(mon_w), BufReader::new(mon_r), &hello).await;
+        assert!(
+            out.starts_with("control=ok("),
+            "探测应当报成功往返，实得：{out}"
+        );
+        let sent = fake_daemon.await.expect("假 daemon task");
+        assert!(
+            sent.contains(r#""cmd":"ping""#),
+            "假 daemon 收到的不是 ping：{sent}"
+        );
+    }
+
+    /// 旧 daemon（`commands` 空集）：不发任何字节，直接报 unsupported。
+    #[tokio::test]
+    async fn the_control_probe_writes_nothing_to_an_old_daemon() {
+        let (mon_w, mut dae_r) = tokio::io::duplex(4096);
+        let (_dae_w, mon_r) = tokio::io::duplex(4096);
+        let hello = parse_frame(&hello_line("[]")).expect("hello");
+        let out =
+            probe_control_channel(inbound_client::park(mon_w), BufReader::new(mon_r), &hello).await;
+        assert!(out.starts_with("control=unsupported"), "实得：{out}");
+        let mut buf = [0u8; 16];
+        let read = tokio::time::timeout(
+            Duration::from_millis(80),
+            tokio::io::AsyncReadExt::read(&mut dae_r, &mut buf),
+        )
+        .await;
+        // 只可能是「超时没数据」或「对端已关（0 字节）」——**不许有真数据**。
+        match read {
+            Err(_) => {}
+            Ok(Ok(0)) => {}
+            Ok(other) => panic!("对旧 daemon 发了字节：{other:?}"),
+        }
+    }
+}
+
+/// U8a-2a：**写半边只许经 `inbound_client::park` 出手。**
+///
+/// 这条护栏存在的理由是它守的东西刚变过：这个文件从「只读一条流」变成了「双工」。
+/// 一旦有人为了图省事在这里直接 `write_all` 一行，`ParkedWriter` 那层
+/// 「Hello 之前不许写」的类型保证就被绕过了 —— 而且是**静默**绕过（编译、测试全绿）。
+#[cfg(test)]
+mod write_half_guard {
+    use crate::structural_scan::ScanReport;
+
+    /// 生产段。**用共享的 `guard_core::production_code`，不自己写便宜近似。**
+    ///
+    /// 这不是洁癖：本文件第一个 `#[cfg(test)]` 模块在 800 行附近，而本护栏要扫的
+    /// `parse_frame` / `stream_loop` / `probe_daemon` 全在它**后面**。
+    /// monitor 侧此前流行的那个近似（`split("\n#[cfg(test)]").next()`）会把扫描面
+    /// 砍掉三分之二 —— 下面第一条测试把这个差距**实测**出来，免得它变成一句口号。
+    fn prod() -> String {
+        let p = guard_core::production_code(include_str!("ssh_source.rs"));
+        guard_core::assert_no_test_code("ssh_source.rs", &p);
+        p
+    }
+
+    /// ★ 扫描面自检：共享剥法留住了要扫的部分，而便宜近似留不住。
+    #[test]
+    fn the_shared_stripper_keeps_the_part_this_guard_must_scan() {
+        let me = include_str!("ssh_source.rs");
+        let cheap = me.split("\n#[cfg(test)]").next().unwrap_or(me);
+        let good = prod();
+        for anchor in [
+            "fn parse_frame",
+            "async fn stream_loop",
+            "async fn probe_daemon",
+        ] {
+            assert!(
+                good.contains(anchor),
+                "共享剥法把 `{anchor}` 剥掉了 —— 本护栏此刻扫不到它"
+            );
+            assert!(
+                !cheap.contains(anchor),
+                "便宜近似居然也留住了 `{anchor}` —— 这条对照失去意义，重新确认文件结构"
+            );
+        }
+        assert!(
+            good.len() > cheap.len() * 2,
+            "共享剥法只留了 {} 字节，便宜近似 {} 字节 —— 差距没有预期那么大，检查剥法",
+            good.len(),
+            cheap.len()
+        );
+    }
+
+    /// ★ 本文件**自己不许切流** —— 切与停必须由 `inbound_client::split_and_park` 一步做完。
+    ///
+    /// # 判据形状换过一次（D 审计打的）
+    ///
+    /// 上一版是「每处 `tokio::io::split(` 后面 240 字符内要出现 `park`」。审计用两种**普通写法**
+    /// 绕过，两次全绿：
+    /// - 在那一行加一句**尾随注释**提 `park`，写半边交给别的函数
+    ///   （`guard_core::production_code` 只剥**行首**注释，行尾的留在扫描面里）；
+    /// - `split()` 之后先 `w.write(b"early\n").await` 再 `park(w)` —— 那就是一次
+    ///   **Hello 之前的写**，而窗口判据看不见。
+    ///
+    /// 处置按第 6 条纪律：不往判据上加正则，让违规不可表示。切分入口收成一个函数之后，
+    /// 这条判据变成**零命中型** —— 尾随注释再怎么写都改变不了「这里出现了 `tokio::io::split(`」。
+    #[test]
+    fn ssh_source_never_splits_a_stream_itself() {
+        // 运行时拼，避免命中本行自己。
+        //
+        // ⚠⚠ **08-07：原来只有这一个 needle，而它只认「一种切法」。**
+        // `TcpStream` 自带 `into_split()` / `split()`，那才是更常用的写法 ——
+        // 实测往生产段加一处 `stream.into_split()`，全仓 **976 条判据一条不红**。
+        // ⇒ 与上一件（写流判据漏 `tokio::io::copy`）同一族：
+        // **动作类判据锚在「这个动作长什么样」上，就会漏掉别的做法。**
+        //
+        // 补两路，两路都不是「枚举拼写」：
+        // · **切法**是 tokio 的封闭上游集合（自由函数 + `TcpStream` 的两个方法）；
+        // · **持有物**才是这条判据真正关心的东西 —— 它的诊断自己写着
+        //   「中间留 `WriteHalf` 就等于留了一个『Hello 之前能写』的窗口」。
+        //   类型名这一路能接住「用 `let (r, w) = …` 推导、一个切法名都不写」的情形。
+        let split_apis: Vec<String> = vec![
+            format!("tokio::io::spl{}", "it("),
+            format!(".into_spl{}", "it("),
+            format!("TcpStream::spl{}", "it("),
+        ];
+        let half_types: Vec<String> = vec![
+            format!("Owned{}Half", "Write"),
+            format!("Owned{}Half", "Read"),
+        ];
+        let prod = prod();
+        // 匹配器自检：**独立手写**的样本，不用 needle 自己拼。
+        for (sample, why) in [
+            ("let (r, w) = tokio::io::split(stream);", "自由函数切法"),
+            (
+                "let (r, w) = stream.into_split();",
+                "TcpStream 的 owned 切法",
+            ),
+            (
+                "let (r, w) = tokio::net::TcpStream::split(&mut s);",
+                "TcpStream 的借用切法",
+            ),
+        ] {
+            assert!(
+                split_apis.iter().any(|n| sample.contains(n.as_str())),
+                "切法匹配器漏了「{why}」：{sample:?} —— 那条路照旧能切出 WriteHalf"
+            );
+        }
+        for (sample, why) in [
+            ("fn f(w: OwnedWriteHalf) {}", "持有 owned 写半边"),
+            ("let r: OwnedReadHalf = x;", "持有 owned 读半边"),
+        ] {
+            assert!(
+                half_types.iter().any(|n| sample.contains(n.as_str())),
+                "持有物匹配器漏了「{why}」：{sample:?}"
+            );
+        }
+        let mut split_hits: Vec<String> = split_apis
+            .iter()
+            .chain(half_types.iter())
+            .filter(|n| prod.contains(n.as_str()))
+            .cloned()
+            .collect();
+        split_hits.dedup();
+        assert!(
+            split_hits.is_empty(),
+            "ssh_source 的生产段自己切流 / 自己持有流的一半了（{split_hits:?}）。\n\
+             切分与停放必须是同一步（`inbound_client::split_and_park`）—— 中间留一个 \
+             写半边就等于留了一个「Hello 之前能写」的窗口，而那正是那一步要消掉的东西。\n\
+             ⚠ 08-07 起本条同时认**切法**与**持有物**：只堵一种切法挡不住 `into_split()`。"
+        );
+        assert!(
+            !prod.contains(split_apis[0].as_str()),
+            "ssh_source 的生产段自己切流了。\n\
+             切分与停放必须是同一步（`inbound_client::split_and_park`）—— 中间留一个裸\n\
+             `WriteHalf` 就等于留了一个「Hello 之前能写」的窗口，而那正是本轮要消灭的东西。"
+        );
+        // 反面：切分入口必须真的被用着（否则上面那条零命中是因为**根本没有双工流**）。
+        let mut checked = 0usize;
+        for (_i, _) in prod.match_indices("inbound_client::split_and_park(") {
+            checked += 1;
+        }
+        ScanReport {
+            checked,
+            violations: Vec::new(),
+        }
+        .require(
+            2,
+            "本文件应有两处双工切分（stream_loop 的长连接 + probe_daemon 的一次性探测）",
+        )
+        .expect("split_and_park 用量");
+    }
+
+    /// ★ 本文件的生产段**一个字节都不许自己往流里写**。
+    ///
+    /// 写的能力整个交给了 `inbound_client`。这条是白名单的反面（「这里一处都不该有」），
+    /// 所以它必须自带**匹配器自检** —— 否则「零命中」既可能是干净，也可能是名单漏了写法。
+    #[test]
+    fn ssh_source_never_writes_to_a_stream_itself() {
+        // 运行时拼，避免命中本文件里这几行自己。
+        let needles: Vec<String> = [
+            "write", // 覆盖 .write( / .write_all( / .write_buf( / .write_all_buf( / .write_vectored( / .write_u8(
+            "shutdown",
+        ]
+        .iter()
+        .map(|s| format!(".{s}"))
+        .collect();
+        let ufcs = format!("AsyncWrite{}::", "Ext");
+        // ★★ **把流交给别人写**也算自己写〔audit-0805 08-07〕。
+        //
+        // 上面两个 needle 认的是「点调用」，`ufcs` 认的是 UFCS —— 三者都盯着
+        // **写这个动作长什么样**。而 `tokio::io::copy(&mut src, stream)` 一个字都不沾，
+        // 却实实在在把字节写进了流。08-07 实测：加这么一处，全仓 **976 条判据一条不红**。
+        //
+        // ⚠ 这次为什么可以枚举：`copy` 家族是 **tokio 的一个封闭上游 API 集合**
+        // （`copy` / `copy_buf` / `copy_bidirectional` / `copy_bidirectional_with_sizes`），
+        // 版本升级才会变，而且变了会**编译期**报出来。
+        // 这与「枚举写法拼写」不是一回事 —— 后者的空间是无限的，这个是有边界的。
+        let copy_family: Vec<String> = ["copy", "copy_buf", "copy_bidirectional"]
+            .iter()
+            .map(|f| format!("io::{f}("))
+            .collect();
+
+        // ── 匹配器自检 ────────────────────────────────────────────────────────
+        //
+        // 上一版的自检是 `let planted = format!("…{}…", needles[0]); assert!(needles.any(…))`
+        // —— 用 needle 自己拼出来的样本，**数学上不可能失败**（D 审计点名）。
+        // 现在样本是**独立手写**的真实写法清单，名单漏一种写法这里就红。
+        let samples = [
+            "let _ = w.write(b\"x\").await;",
+            "let _ = w.write_all(b\"x\").await;",
+            "let _ = w.write_all_buf(&mut b).await;",
+            "let _ = w.write_vectored(&bufs).await;",
+            "let _ = w.write_u8(1).await;",
+            "let _ = w.shutdown().await;",
+        ];
+        // copy 家族的独立样本（同样**手写**，不用 needle 自己拼 —— 那种自检数学上不会失败）。
+        let copy_samples = [
+            "let n = tokio::io::copy(&mut src, stream).await?;",
+            "tokio::io::copy_buf(&mut r, &mut w).await?;",
+            "let (a, b) = tokio::io::copy_bidirectional(&mut x, &mut y).await?;",
+        ];
+        for sample in copy_samples {
+            assert!(
+                copy_family.iter().any(|n| sample.contains(n.as_str())),
+                "copy 家族的匹配器漏了这种写法：{sample:?} —— 那条路照旧能把流写满"
+            );
+        }
+        for sample in samples {
+            assert!(
+                needles.iter().any(|n| sample.contains(n.as_str())),
+                "匹配器漏了这种写法：{sample:?} —— 下面那句「零命中」对它毫无意义"
+            );
+        }
+        // 反面：不该被这些 needle 命中的普通代码（防止 needle 宽到人人都红、逼人删护栏）。
+        for innocent in ["let n = buf.len();", "tracing::warn!(\"x\");"] {
+            assert!(
+                !needles.iter().any(|n| innocent.contains(n.as_str())),
+                "needle 宽过头了，普通代码 {innocent:?} 也命中"
+            );
+        }
+
+        let prod = prod();
+        let mut hits: Vec<String> = needles
+            .iter()
+            .filter(|n| prod.contains(n.as_str()))
+            .cloned()
+            .collect();
+        // UFCS 写法（`AsyncWriteExt::write_all(&mut w, …)`）绕开点调用，单列。
+        if prod.contains(ufcs.as_str()) {
+            hits.push(ufcs);
+        }
+        // 把流交给 copy 家族去写，同样算。
+        hits.extend(
+            copy_family
+                .iter()
+                .filter(|n| prod.contains(n.as_str()))
+                .cloned(),
+        );
+        // ★ 堵逃生口：`use tokio::io::copy;` 之后裸写 `copy(..)`，上面三路都认不出。
+        // 今天全文件只有一处 `use tokio::io::{AsyncBufReadExt, BufReader};`（都不是写能力）
+        // ⇒ 这条零误红。放行清单写死在这里，新导入必须有人看一眼。
+        // ★ 堵逃生口：`use tokio::io::copy;` 之后裸写 `copy(..)`，上面三路都认不出。
+        //
+        // ⚠ 放行清单是**用判据自己的 `prod()` 量出来的**。我第一版用「首个 `#[cfg(test)]`
+        //   切生产段」去量，只得到一条 —— 本文件有多个测试模块，那个切法在本工作区
+        //   已记过四次。**量具要用被测者那一套**，这是第五次。
+        const ALLOWED_IO_IMPORTS: &[&str] = &[
+            "use tokio::io::{AsyncBufReadExt, BufReader};",
+            "use tokio::io::AsyncBufReadExt;",
+            "use tokio::io::AsyncReadExt;",
+        ];
+        let io_imports: Vec<&str> = prod
+            .lines()
+            .map(str::trim)
+            .filter(|l| l.starts_with("use ") && l.contains("tokio::io"))
+            .collect();
+        // 自检：一条都没扫到 ⇒ 下面那句「不许有没登记的」是空转。
+        assert!(
+            !io_imports.is_empty(),
+            "生产段里一条 `tokio::io` 导入都没扫到 —— 剥法坏了，本段此刻无效"
+        );
+        let bad_imports: Vec<&&str> = io_imports
+            .iter()
+            .filter(|l| !ALLOWED_IO_IMPORTS.contains(l))
+            .collect();
+        assert!(
+            bad_imports.is_empty(),
+            "本文件新增/改动了 `tokio::io` 导入：{bad_imports:?}\n\
+             ⚠ 条目导入会让写能力变成**裸名字**（`use tokio::io::copy;` 之后 `copy(..)`），\n\
+             上面那三路匹配器一个都认不出。要么用全路径 `tokio::io::xxx(`，\n\
+             要么确认这条导入不带写能力之后把它加进 `ALLOWED_IO_IMPORTS`。"
+        );
+        // 反向锚点：放行清单不许留死行 —— 腐掉的清单看着像有人守，实则没有。
+        for allowed in ALLOWED_IO_IMPORTS {
+            assert!(
+                io_imports.contains(allowed),
+                "放行清单里的 {allowed:?} 在生产段里已经不存在了 —— 删掉它，\
+                 否则下次有人写出同名导入会被静默放行。"
+            );
+        }
+
+        assert!(
+            hits.is_empty(),
+            "ssh_source 的生产段又开始自己写流了（{hits:?}）。\n\
+             写的能力在 U8a-2a 整个交给了 `inbound_client`：`ParkedWriter` 拿不到 Hello 见证\n\
+             就换不出能写的东西。在这里直接写 = **静默绕过**那条类型保证。\n\
+             真要发命令，走 `inbound_client::InboundClient::call`。"
+        );
+    }
+}
+
+// ============================================================================
+// 版本协商（issue #33）：连接时比对 daemon 的 hello.v / hello.build_id。
+// ============================================================================
+
+/// 本 monitor 期望的流式 wire 协议大版本。与 daemon 的 `PROTO_VERSION` 对齐（语义同值）。
+/// 类型用 `u64` 而非 daemon 侧的 `u32`：JSON 数字无符号宽度之分，`parse_frame` 用
+/// `as_u64()` 读 `v`，这里与之同宽以便直接比较，无需转换。
+const EXPECTED_PROTO_V: u64 = 1;
+
+/// 本 monitor 期望的 daemon build_id。
+///
+/// **SS-B（issue #33/#29）已单源**：值来自编译期 env `DAEMON_BUILD_ID`，由 `build.rs` 从
+/// `src/backend/main.rs::BUILD_ID` 抠出 emit——与 daemon 源码、F08b 内嵌二进制的
+/// build_id **同一事实源**，无需手工同步（F08b 消除了 F06 时的手工同步债）。
+const EXPECTED_DAEMON_BUILD_ID: &str = env!("DAEMON_BUILD_ID");
+
+/// F66（#58③）：monitor **内嵌** daemon 声明的能力 token（= daemon `main.rs::CAPABILITIES`）。
+///
+/// 用途：部署侧确认「装的是当前内嵌 build」（`confirmed_build == EXPECTED_DAEMON_BUILD_ID`）
+/// 时，第一次连接还没收到 hello，用这份常量预知 daemon 能力、直接发对应 flag——省一轮
+/// 「降级→收 hello→重连升级」的往返（等价旧 build_id 门控的乐观路径，但换成能力粒度）。
+/// 收到真实 hello 后一律以 daemon **自报**的 `capabilities` 为准（见 `hello_confirmed`）。
+///
+/// **单一事实源（SS-B，同 `EXPECTED_DAEMON_BUILD_ID`）**：值来自 `build.rs::emit_daemon_
+/// capabilities` 从 daemon `main.rs::CAPABILITIES` 抠出的编译期 env `DAEMON_CAPABILITIES`
+/// （逗号分隔）——**不再手抄**（审计 B1/S1：手抄副本漂移时乐观路径可能声明当前 daemon
+/// 不剥离的 flag → §26 死循环窄窗；单源杜绝之）。
+fn embedded_daemon_capabilities() -> Vec<String> {
+    env!("DAEMON_CAPABILITIES")
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
+/// 版本协商结论（纯函数 [`negotiate_version`] 的产物）。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VersionVerdict {
+    /// 协议版本 + build_id 都匹配 —— 无需提示。
+    Ok,
+    /// 协议版本相同，但 build_id 不同 —— daemon 偏旧/偏新，建议更新（非阻断，F08 将自动重推）。
+    StaleBuild { reported: String },
+    /// 协议大版本不符 —— 渲染可能异常，醒目提示需更新 daemon（仍不 hard-disconnect：
+    /// 解析器向前兼容，能解析的仍照常呈现）。
+    Incompatible { reported_v: u64 },
+}
+
+/// 纯函数版本协商：协议版本优先于 build_id（协议不兼容是更严重的问题）。
+///
+/// - `reported_v != EXPECTED_PROTO_V` → `Incompatible`（无论 build_id）。
+/// - 协议同、`reported_build_id != EXPECTED_DAEMON_BUILD_ID` → `StaleBuild`。
+/// - 全同 → `Ok`。
+fn negotiate_version(reported_v: u64, reported_build_id: &str) -> VersionVerdict {
+    if reported_v != EXPECTED_PROTO_V {
+        VersionVerdict::Incompatible { reported_v }
+    } else if reported_build_id != EXPECTED_DAEMON_BUILD_ID {
+        VersionVerdict::StaleBuild {
+            reported: reported_build_id.to_string(),
+        }
+    } else {
+        VersionVerdict::Ok
+    }
+}
+
+/// 把协商结论变成给用户看的提示文案（`None` = 兼容、无需提示）。`label` 是出问题的远端机器。
+fn version_warning(reported_v: u64, reported_build_id: &str, label: &str) -> Option<String> {
+    match negotiate_version(reported_v, reported_build_id) {
+        VersionVerdict::Ok => None,
+        VersionVerdict::StaleBuild { reported } => Some(format!(
+            "远端 [{label}] daemon 版本 {reported} 与本机期望 {EXPECTED_DAEMON_BUILD_ID} 不一致，建议更新 daemon（后续将支持自动部署）。"
+        )),
+        VersionVerdict::Incompatible { reported_v } => Some(format!(
+            "远端 [{label}] daemon 协议版本 v={reported_v} 与本机期望 v={EXPECTED_PROTO_V} 不兼容，渲染可能异常，请更新 daemon。"
+        )),
+    }
+}
+
+/// SSH-remote 数据源主循环（S5）。
+///
+/// 连接远端、exec daemon、把 daemon stdout 的 line-delimited JSON 帧逐行解析后分发：
+/// - `hello` → log（证明 daemon runtime 起来了）+ 置 `connected`（标记本次连接已健康，
+///   供重连循环判定是否重置退避）。
+/// - `line` → 组 [`JsonlLine`] 走 **与本地 watcher 完全相同的出口**：
+///   `crate::batch_to_payloads(...)` → `replay.on_line_batch(&app, ...)`。Phase-0 用最简正确
+///   做法：每帧一条 batch（前端按 seq 自动排序，单条 emit 语义与本地小 batch 一致）。
+/// - `session_added` / `session_removed` → 走**专用** remote `session_changes` 通道
+///   （`SessionChange{added,removed}`），由 lib.rs 那个 remote-session-emitter 线程消费：
+///   removed → emit session-ended（远端 Tab 归档）；added 无操作（远端 Tab 由 line 帧
+///   经前端 ensureTab 创建，无本地 jsonl 可重扫、无本地 HWND 可绑定）。
+/// - 未知 kind / garbage → `tracing::warn!` 跳过，绝不中断流。
+///
+/// stdout EOF / 读错误 → 返回 `Err`，调用方（S8/S9）据此大声报"connection dropped"，
+/// 不静默冻结。
+pub async fn run(
+    cfg: RemoteConfig,
+    replay: Arc<EventReplay>,
+    app: tauri::AppHandle,
+    session_changes: std::sync::mpsc::Sender<SessionChange>,
+    connected: Arc<AtomicBool>,
+) -> Result<(), String> {
+    tracing::info!(
+        "ssh_source connecting to {}@{}:{} (daemon={})",
+        cfg.user,
+        cfg.host,
+        cfg.port,
+        cfg.daemon_path
+    );
+
+    // FIX 2（issue #15 review）：跟踪当前**已向前端宣告**的远端 sid。stream_loop 在每条
+    // SessionAdded forward 时 insert、SessionRemoved forward 时 remove。无论 stream_loop
+    // 因 EOF / 读错误 / connect 失败 / 正常返回哪条路径退出，下面都把 announced 里**仍存活**
+    // 的 sid 一次性当 removed flush 出去 → lib.rs 的 remote-session-emitter emit SESSION_ENDED
+    // → 对应远端 Tab 归档，不再永久卡在虚假 "live"。announced 每轮重连都新建（fresh per
+    // iteration），故只归档本次连接残留。
+    //
+    // 重连循环：每轮跑一次 stream_loop。失败/掉线后按指数退避（2→4→8→16→30s 封顶）重连；
+    // 本轮**连上过**（收到 daemon hello，connected=true）则下次立即以 MIN 快速重连。
+    // INVARIANT §10：唯一的等待是 tokio::time::sleep（async、非阻塞），绝不 std::thread::sleep。
+    let mut backoff = RECONNECT_MIN;
+    // v2.22.1 hello 自愈账本:上一轮 hello 自证 daemon==当前版本时记账,下一轮以此
+    // 越过「部署侧确认失败」的降级(内嵌清单缺失的 CI 安装包 v2.19-v2.22 全中招)。
+    // 若带 flag 的一轮连 hello 都没收到(真·旧 daemon 把未知参数当一次性查询退出),
+    // 清账回退降级,防止 flagged 重连死循环。
+    // F66（#58③）：hello 自愈账本——存上一轮 daemon **自报的能力 token 集**（原为
+    // build_id）。None = 尚未收到能力声明；Some(caps) = 下一轮据此发 flag 升级。
+    // 回退清账语义（`:is_some()` 那段）不变。
+    let mut hello_confirmed: Option<Vec<String>> = None;
+    loop {
+        connected.store(false, Ordering::Release);
+        // F05：本轮连接的起点。退避重置的判据是「活过多久」，不是「握没握上手」。
+        let conn_started = std::time::Instant::now();
+        // Batch9 账本：HashSet → HashMap<sid, AnnouncedMeta>（F27 status 写回 +
+        // F28 frontend-ready 重发的数据源）。归档清算语义不变（keys = 存活 sid）。
+        let mut announced: std::collections::HashMap<String, AnnouncedMeta> =
+            std::collections::HashMap::new();
+        // 🔴 `K-R59`（定框 `K35`）：这里原来是**顶层二选一** —— `cfg.daemonless` 为真时
+        //    走纯 exec tail 轮询（`daemonless_stream_loop`），否则走 daemon 流。
+        //    那一档整个没了 ⇒ **只剩一条路**：连后端。
+        let result = stream_loop(
+            &cfg,
+            &replay,
+            &app,
+            &session_changes,
+            &connected,
+            &mut announced,
+            &mut hello_confirmed,
+        )
+        .await;
+        if hello_confirmed.is_some() && !connected.load(Ordering::Acquire) {
+            tracing::warn!("ssh_source hello 自愈轮未收到 hello,回退降级模式(daemon 可能被换旧)");
+            hello_confirmed = None;
+        }
+        // Batch9-F28：连接结束清本 host 的 registry（断连=骨架不该再被 F5 重建；
+        // 重连宣告会重新填充）。
+        announced_registry()
+            .lock()
+            .unwrap()
+            .remove(&cfg.origin_label());
+        // B2：断连也清本 host 的 tmux 状态——防重连后、daemon 首个 TmuxSessions 帧到达前，
+        // 对账 poller 读到陈旧 tmux 状态误灰（重连后由新帧重新填充）。
+        forget_tmux_raw(&cfg.origin_label());
+        // 每轮都归档本次连接残留的 announced sid（保持原 FIX 2 归档契约）+ audit-fixes F03.2：本 origin
+        // 的 idle-tmux sid 也一并归档（断连=tmux 状态已清[上方 :1853]，idle 会话也该 archived；emitter
+        // 处理这些 removed 时 tmux_raw 本 host 已空 → find_tmux_origin_for_sid=None → archived+clear_idle）。
+        // **§24 单写者不破**：run() 只**读** snapshot_idle_for_origin，REMOTE_IDLE 的写（clear_idle）仍只在 emitter。
+        let idle_here = snapshot_idle_for_origin(&cfg.origin_label());
+        if !announced.is_empty() || !idle_here.is_empty() {
+            let mut removed: Vec<String> = announced.into_keys().collect();
+            removed.extend(idle_here);
+            tracing::info!(
+                "ssh_source connection ended; archiving {} remote session(s)",
+                removed.len()
+            );
+            if let Err(e) = session_changes.send(SessionChange {
+                added: vec![],
+                // 连接断了兜底归档 = 真死（不是被顶替）。
+                removed: removed.into_iter().map(RemovedSid::gone).collect(),
+                status_changed: vec![], // 本分支无状态变化（F27 起 status 走 SessionAdded/SessionStatus 臂）
+            }) {
+                tracing::warn!("ssh_source final session archival send failed: {e}");
+            }
+        }
+        match &result {
+            Ok(()) => tracing::warn!("ssh_source stream returned Ok unexpectedly; reconnecting"),
+            Err(e) => tracing::warn!("ssh_source remote source ended: {e}"),
+        }
+        // 两段式（非冗余）：先按**当前** backoff 睡，再在仍没连上时翻倍。这样首次失败也只等
+        // MIN，退避序列是 2→4→8→16→30；若收成单个 if/else（睡前就翻倍），首次失败会直接等 4s。
+        // sleep 期间 `connected` 不会变（其唯一写者 stream_loop 已返回），故两次 load 读到同值。
+        // F05（报告 I-1）：**「连上过」不等于「站住了」**。判据从「收到过 hello」换成
+        // 「这条连接活过 MIN_HEALTHY_UPTIME」——hello-then-die 的 daemon 此前每轮都算连上过，
+        // 退避永远重置回 2s、每分钟约 90 次 SSH 握手砸在那台已经撑不住的机器上。
+        if should_reset_backoff(connected.load(Ordering::Acquire), conn_started.elapsed()) {
+            backoff = RECONNECT_MIN; // 本次真站住过 → 下次立即快速重连
+        }
+        tracing::info!("ssh_source reconnecting in {:?}", backoff);
+        tokio::time::sleep(backoff).await;
+        if !connected.load(Ordering::Acquire) {
+            backoff = next_backoff(backoff); // 仍没连上 → 指数退避增长
+        }
+    }
+}
+
+/// Line 帧攒批缓冲（Batch5-F17）。
+///
+/// daemon 线协议没有批量帧（一行一帧），首连 snapshot 的几千行历史若逐帧调
+/// `on_line_batch(vec![1条])`，恒 1 < INCREMENTAL_BATCH_THRESHOLD → 全部走
+/// 逐条 jsonl-line live 渲染管线（v2.4.2 给本地修掉的逐行刷屏在远端重现）。
+/// 客户端把**连续到达**的 Line 帧聚合成批再交 on_line_batch：snapshot 密集
+/// 连发天然聚成大批 → 自动跨过阈值复用本地 chunked 回放路径；日常单行增量
+/// 只多一个静默窗口（~30ms）的延迟。时序判定（静默窗口）留在 stream_loop 的
+/// `tokio::time::timeout` 里；本结构只管容量与顺序，纯逻辑可直测。
+struct Batcher {
+    pending: Vec<JsonlLine>,
+    cap: usize,
+    /// 首行入缓冲的时刻——批龄上限用（F17 审计 R3：帧间隔持续 < 静默窗口时
+    /// 永不静默，首行可见延迟无界；批龄到点强制 flush 双保险）。
+    born: Option<std::time::Instant>,
+}
+
+impl Batcher {
+    fn new(cap: usize) -> Self {
+        Self {
+            pending: Vec::new(),
+            cap,
+            born: None,
+        }
+    }
+
+    /// 收一行；达容量上限或批龄超限则返回整批待发（防无界内存/无界延迟）。
+    fn push(&mut self, line: JsonlLine) -> Option<Vec<JsonlLine>> {
+        if self.pending.is_empty() {
+            self.born = Some(std::time::Instant::now());
+        }
+        self.pending.push(line);
+        let over_age = self
+            .born
+            .is_some_and(|b| b.elapsed().as_millis() as u64 >= BATCH_MAX_AGE_MS);
+        if self.pending.len() >= self.cap || over_age {
+            return self.take();
+        }
+        None
+    }
+
+    /// 取走全部待发行（空则 None）。到达顺序 = 发出顺序（daemon per-file seq
+    /// 单调，前端按 seq 排序，跨 session 混流不需要拆分）。
+    fn take(&mut self) -> Option<Vec<JsonlLine>> {
+        self.born = None;
+        if self.pending.is_empty() {
+            None
+        } else {
+            Some(std::mem::take(&mut self.pending))
+        }
+    }
+}
+
+/// 攒批静默窗口：一行到达后最多再等这么久看有没有后续行。首连 snapshot 帧间
+/// 隔远小于此值 → 聚合；live 单行只付一次窗口的延迟（对流式渲染无感）。
+const BATCH_QUIET_MS: u64 = 30;
+/// 单批行数上限（与本地 replay CHUNK_SIZE 同量级，控制单次 IPC 体积）。
+const BATCH_CAP: usize = 600;
+/// 批龄上限：无论帧流多密集，首行入缓冲后最迟这么久必 flush（见 Batcher.born）。
+const BATCH_MAX_AGE_MS: u64 = 200;
+
+/// 攒批出口（Batch5-F17）：与本地 watcher 完全相同（batch_to_payloads →
+/// on_line_batch），但用 **awaited 变体**——大批的块序列发完才返回，保证行
+/// emit 严格先于随后的 SessionRemoved/断连归档（审计 R1：spawn 化的行若晚于
+/// session-ended 到达前端，会把刚归档的远端 Tab 复活成僵尸 live），同时对
+/// daemon 帧流形成天然背压。
+async fn flush_lines(
+    replay: &Arc<EventReplay>,
+    app: &tauri::AppHandle,
+    host_label: &str,
+    lines: Vec<JsonlLine>,
+) {
+    let payloads = crate::batch_to_payloads(lines, Some(host_label.to_string()));
+    replay.on_line_batch_awaited(app, payloads).await;
+}
+
+/// [`run`] 的内层流循环：connect → exec daemon → 逐帧 dispatch。**所有**提前返回
+/// （`?` / EOF / 读错误）都把 result 冒泡给 [`run`]，由后者统一做最终 sid 归档 flush
+/// （见 FIX 2 注释），故本函数自身不负责归档。
+#[allow(clippy::too_many_arguments)]
+async fn stream_loop(
+    cfg: &RemoteConfig,
+    replay: &Arc<EventReplay>,
+    app: &tauri::AppHandle,
+    session_changes: &std::sync::mpsc::Sender<SessionChange>,
+    connected: &Arc<AtomicBool>,
+    announced: &mut std::collections::HashMap<String, AnnouncedMeta>,
+    hello_confirmed: &mut Option<Vec<String>>,
+) -> Result<(), String> {
+    // issue #15 / #30：远端行的 origin 标签 = 该机器的稳定身份（label，默认 host）。
+    // 前端据此给该 Tab 标题加 `[label]` 前缀以区分本地/各远端机器。进 loop 前 clone。
+    let host_label = cfg.origin_label();
+
+    // ★〔audit-0805 F05 下半，报告 §4.3〕**冷启动最贵的三段此前一个 `[perf]` 都没有**。
+    //
+    // 实测（08-06）：全仓 `[perf]` 前端 13 处、monitor Rust 14 处，而 `ssh_source.rs` **0 处** ——
+    // 偏偏这里是「用户点开应用到看见远端会话」之间**唯一**的那条链。
+    // 后果不是「不知道快慢」，是**报告里那些 50-200ms 的数字是外部常识值、不是本仓证据**
+    //（`ROADMAP §5-6` 那条诚实边界就挂在这上面）。没有埋点，「冷启动三连接合并省了多少」
+    // 这句话永远只能靠推。
+    //
+    // ⚠ 埋点本身**不改任何行为**，也不该改：它只是让下一次讨论有数可依。
+    let t_connect_start = std::time::Instant::now();
+
+    // issue #29（F08）：连接前确保远端 daemon 已（自动）部署到 cfg.daemon_path。
+    // 嵌入二进制就位前（F08b 未做）daemon_binary() 返回 None → ensure_daemon_deployed
+    // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的 daemon 仍可连。
+    // ★ F05 下半：**上一次这台机器的 daemon 自报过就是期望 build ⇒ 跳过预检那两条连接**。
+    // 判据与记忆的语义见 `VERIFIED_BUILD` 头注（记的是 hello 自证，不是预检结论）。
+    // 跳过时 `confirmed_build` 直接给 `EXPECTED` —— 若给 `None`，下面的 caps 阶梯会掉进
+    // ③ 空集全降级，那就**比不跳还糟**（省两条连接换来一轮降级 + 一轮升级重连）。
+    let verified = verified_build_of(&host_label);
+    let skip_preflight = preflight_can_be_skipped(verified.as_deref(), EXPECTED_DAEMON_BUILD_ID);
+    let confirmed_build = if skip_preflight {
+        Some(EXPECTED_DAEMON_BUILD_ID.to_string())
+    } else {
+        match crate::sftp::ensure_daemon_deployed(cfg).await {
+            Ok(c) => c,
+            Err(e) => {
+                tracing::warn!(
+                    "ssh_source [{host_label}] daemon 自动部署失败（继续尝试连接已有 daemon）: {e}"
+                );
+                None
+            }
+        }
+    };
+    tracing::info!(
+        "[perf] ssh_source [{host_label}] 部署预检 {}ms（ensure_daemon_deployed；\
+         confirmed_build={:?}；skip={skip_preflight}）",
+        t_connect_start.elapsed().as_millis(),
+        confirmed_build.as_deref()
+    );
+
+    // F66（#58③）流模式门控：**从 daemon 声明的能力 token 决定发哪些 flag**，不再靠
+    // build_id 精确匹配。旧 daemon 会把未知参数当一次性查询处理后退出（无 hello → 重连
+    // 死循环，§26），故只对**声明了对应能力**的 daemon 发 flag（声明 = 自证会剥离该 flag）。
+    // 能力两条来源，hello 自愈账本优先：
+    //   ① `hello_confirmed`（上一轮 daemon **自报**的能力）—— 最权威，收过真 hello 才有。
+    //   ② 否则部署侧确认了当前内嵌 build（`confirmed_build == EXPECTED`）→ 用内嵌 daemon 的
+    //      能力常量**预知**，省第一轮「降级→收 hello→重连升级」往返（乐观路径）。
+    //   ③ 都没有 → 空集 → 全降级（= 2.18.0 行为，连接正常、功能退化）。
+    // **hello 优先**于部署侧（②可能是陈旧内嵌的身份 ≠ 期望 → 空集 → 靠 hello 自愈救，
+    //  见 v2.22.1 无限重连教训；`hello_confirmed` 只在收到真声明时写入，优先采纳恒安全）。
+    let caps: Vec<String> = hello_confirmed.clone().unwrap_or_else(|| {
+        if confirmed_build.as_deref() == Some(EXPECTED_DAEMON_BUILD_ID) {
+            embedded_daemon_capabilities()
+        } else {
+            Vec::new()
+        }
+    });
+    let (with_bg, tail_only) = decide_stream_flags(&caps, crate::load_show_bg_sessions());
+    let t_exec = std::time::Instant::now();
+    // ★ F05 下半：起流失败就抹掉自证记忆 —— 否则一台 daemon 被删/被换旧的机器会
+    // **每一轮都跳预检、每一轮都失败**，永远等不到重新部署。代价是多一次重连，
+    // 那正是 `VERIFIED_BUILD` 头注里如实写下的那个退化。
+    let stream = match connect_and_exec(cfg, with_bg, tail_only).await {
+        Ok(s) => s,
+        Err(e) => {
+            if skip_preflight {
+                tracing::warn!(
+                    "ssh_source [{host_label}] 跳过预检后起流失败，抹掉自证记忆，下一轮重新预检: {e}"
+                );
+                forget_verified_build(&host_label);
+            }
+            return Err(e);
+        }
+    };
+    tracing::info!(
+        "[perf] ssh_source [{host_label}] 起流 {}ms（SSH 登录 + exec daemon；\
+         with_bg={with_bg} tail_only={tail_only}）· 自本轮连接开始 T+{}ms",
+        t_exec.elapsed().as_millis(),
+        t_connect_start.elapsed().as_millis()
+    );
+
+    // U8a-2a：这条 channel 是**双工**的，此前只用了读半边。`split_and_park` 一步切开并
+    // 把写半边停住 —— `ParkedWriter` 身上没有任何写方法，要等收到 hello 才换得出能发命令的
+    // 客户端。切与停必须是同一步：中间留一个裸 `WriteHalf` 就等于留了一个「Hello 之前能写」
+    // 的窗口（D 审计实测过那个窗口，两条护栏都拦不住）。见 `inbound_client` 头注。
+    let (stream, parked) = crate::inbound_client::split_and_park(stream);
+    let mut parked = Some(parked);
+    // 本连接的入方向客户端（收到 hello 后才有）。函数任何退出路径经 guard 摘除注册表
+    // 并叫醒还在等应答的调用方 —— 同 `SnapshotQueueCloser` 的形状。
+    let mut inbound: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
+    struct InboundCloser(
+        String,
+        Option<std::sync::Arc<crate::inbound_client::InboundClient>>,
+    );
+    impl Drop for InboundCloser {
+        fn drop(&mut self) {
+            if let Some(c) = self.1.take() {
+                crate::inbound_client::unregister(&self.0, &c);
+            }
+        }
+    }
+    let mut inbound_guard = InboundCloser(host_label.clone(), None);
+
+    // Batch8-F26：旁路快照基础设施（仅 tail-only 生效；每连接一套，函数任何
+    // 退出路径经 guard 关闭队列——已入队项仍会被分发器拉完，独立连接自灭）。
+    let snapshots = SnapshotQueue::new();
+    let _snapshots_guard = SnapshotQueueCloser(snapshots.clone());
+    if tail_only {
+        tauri::async_runtime::spawn(snapshot_dispatcher(
+            snapshots.clone(),
+            cfg.clone(),
+            replay.clone(),
+            app.clone(),
+            host_label.clone(),
+        ));
+    }
+
+    // Batch5-F17：帧读取挪进独立 task、经 channel 交回——攒批需要"带静默窗口
+    // 的读"，而 tokio 的 read_line **不是 cancellation-safe**（timeout 取消会
+    // 丢 buffer 里的半帧）；mpsc::Receiver::recv 是 cancel-safe 的，超时打在
+    // recv 上帧零丢失。reader task 在 EOF/读错时投递 Err 后退出；本函数返回
+    // （重连）时 rx drop → task 的 send 失败 → task 自然退出，不泄漏。
+    let (frame_tx, mut frame_rx) = tokio::sync::mpsc::channel::<Result<String, String>>(1024);
+    let reader_app = app.clone();
+    let reader_host = host_label.clone();
+    tauri::async_runtime::spawn(async move {
+        let mut reader = BufReader::new(stream);
+        // 按 `\n` 切（协议保证每帧一行、帧内换行已被 daemon 转义成 `\n` 两字符，
+        // 见 src/backend/wire.rs）。
+        // ★ F10b：从无界 `read_line` 换成 [`read_capped_line`] —— 无界读遇「一条永远不结束
+        // 的行」就是无界堆分配，而对端是**远端进程**（它坏掉或不是我们的 daemon 都可能）。
+        let mut buf: Vec<u8> = Vec::new();
+        loop {
+            match read_capped_line(&mut reader, &mut buf, DAEMON_FRAME_LINE_CAP).await {
+                Ok(CappedLine::Eof) => {
+                    // EOF：daemon 退出 / channel 关闭。明确报错，不静默冻结。
+                    let _ = frame_tx
+                        .send(Err(
+                            "ssh daemon stdout closed (EOF / connection dropped)".to_string()
+                        ))
+                        .await;
+                    break;
+                }
+                Ok(CappedLine::TooLong(bytes)) => {
+                    // 超限语义 = **丢弃 + 带身份报告**，绝不静默（定框 E4）。
+                    // ⚠ 走 REMOTE_HEALTH 而不是 frame_tx 的 Err 臂 —— Err 会被主循环
+                    // 当成致命错误去重连，而超长行只是**这一行**坏了，连接本身没问题。
+                    tracing::warn!(
+                        "ssh_source remote [{reader_host}] line too long: {bytes} bytes \
+                         (cap {DAEMON_FRAME_LINE_CAP}); line dropped"
+                    );
+                    let payload = crate::bridge::RemoteHealthPayload {
+                        origin: Some(reader_host.clone()),
+                        kind: "line_too_long".to_string(),
+                        message: line_too_long_health_message(&reader_host, bytes),
+                    };
+                    if let Err(e) = reader_app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                        tracing::warn!("ssh_source line-too-long emit failed: {e}");
+                    }
+                }
+                Ok(CappedLine::Line) => {
+                    // 非 UTF-8 不该让整条连接死掉（与全批 exec 输出读取同一取舍）。
+                    let text = String::from_utf8_lossy(&buf);
+                    let line = text.trim_end_matches(['\n', '\r']);
+                    if line.is_empty() {
+                        continue;
+                    }
+                    if frame_tx.send(Ok(line.to_string())).await.is_err() {
+                        break; // 主循环已退出（重连中）
+                    }
+                }
+                Err(e) => {
+                    let _ = frame_tx
+                        .send(Err(format!("ssh daemon stdout read error: {e}")))
+                        .await;
+                    break;
+                }
+            }
+        }
+    });
+
+    let mut batcher = Batcher::new(BATCH_CAP);
+    // audit-fixes F03.2：收帧驱动的 tmux 存活收割器状态（跨帧累计缺失，随本连接存活；断连=函数返回、
+    // 自然重置=清账）。取代已删的 8s poller（甲-evented 零轮询）。
+    let mut reconcile_state = crate::tmux_reconcile::ReconcileState::default();
+    // P8c：上一帧的观测分类（`None` = 还没收过帧）。**只用来判「变了没有」，不参与任何决策** ——
+    // 决策仍然只看 `classify_tmux_observation` 的结果，这个字段是纯观测。
+    let mut last_observation_kind: Option<String> = None;
+
+    loop {
+        // pending 非空 → 带静默窗口收帧：窗口内没有新帧就先 flush 再回到阻塞收。
+        let msg = if batcher.pending.is_empty() {
+            frame_rx.recv().await
+        } else {
+            match tokio::time::timeout(
+                std::time::Duration::from_millis(BATCH_QUIET_MS),
+                frame_rx.recv(),
+            )
+            .await
+            {
+                Ok(m) => m,
+                Err(_) => {
+                    if let Some(lines) = batcher.take() {
+                        flush_lines(replay, app, &host_label, lines).await;
+                    }
+                    continue;
+                }
+            }
+        };
+        let Some(msg) = msg else {
+            // reader task 没投 Err 就消失（理论不可达）——同样明确报错走重连。
+            if let Some(lines) = batcher.take() {
+                flush_lines(replay, app, &host_label, lines).await;
+            }
+            return Err("ssh daemon frame channel closed".to_string());
+        };
+        let line = match msg {
+            Ok(l) => l,
+            Err(e) => {
+                // EOF/读错：flush 残余（at-least-once 安全；重连会从 seq 0 重放，
+                // 但没有理由主动丢已收到的行）**并等它发完**再报错——run() 随后的
+                // 断连归档（announced 清算）必须晚于这些行到达前端（审计 R1）。
+                if let Some(lines) = batcher.take() {
+                    flush_lines(replay, app, &host_label, lines).await;
+                }
+                return Err(e);
+            }
+        };
+        let line = line.as_str();
+
+        let frame = parse_frame(line);
+        // SessionRemoved 是唯一顺序敏感的攒批边界：它的行必须先落前端，否则
+        // 归档后迟到的行把 Tab 复活成僵尸 live（审计 R1/R2）。SessionAdded /
+        // Hello / Overflow / 坏帧**不再**作边界——多小会话的 snapshot 才能聚
+        // 成大批跨过阈值（行先于 Added 到达无妨：前端 ensureTab 见行即建）。
+        if matches!(frame, Some(InboundFrame::SessionRemoved { .. })) {
+            if let Some(lines) = batcher.take() {
+                flush_lines(replay, app, &host_label, lines).await;
+            }
+        }
+
+        // U8a-2a：**握手完成 ⇒ 写半边解冻。** 放在 match 之前是因为 Hello 那条臂按值解构了帧。
+        if let Some(client) = attach_inbound_client(&host_label, &mut parked, frame.as_ref()) {
+            inbound_guard.1 = Some(client.clone());
+            inbound = Some(client);
+        }
+
+        match frame {
+            Some(InboundFrame::Hello {
+                v,
+                build_id,
+                host_arch,
+                claude_dir,
+                homes,
+                capabilities,
+                commands,
+            }) => {
+                // `S4`：日志报的是**解析后**的 Claude home（优先 `homes`、回退 `claude_dir`），
+                // 同时把原样的 `homes` 一起打出来 —— 排障时要能一眼看出
+                // 「这台 daemon 到底发没发新字段」，那正是 additive 迁移期最常问的问题。
+                let claude_home = claude_home_from_hello(&homes, &claude_dir);
+                tracing::info!(
+                    "ssh_source daemon hello: v={v} build_id={build_id} host_arch={host_arch} claude_home={claude_home} homes={homes:?} caps={capabilities:?} cmds={commands:?}"
+                );
+                // U-CC1：记下**我们不认识的**能力 token。多半是远端 daemon 比 monitor 新
+                // （自动部署会把它拉回同一个 build，但手工装 / 关了自动部署的用户会长期不一致）。
+                // 只记账，行为一字不改：不认识的 token 本来就按保守缺省忽略。
+                for t in &capabilities {
+                    if !KNOWN_CAPABILITY_TOKENS.contains(&t.as_str()) {
+                        crate::drift_ledger::record(
+                            crate::drift_ledger::DriftFace::UnknownDaemonToken,
+                            &format!("capabilities:{t}"),
+                            Some(&format!("build_id={build_id}")),
+                        );
+                    }
+                }
+                // 标记本次连接已健康(收到 daemon hello)，供 run() 重连循环判定是否重置退避。
+                connected.store(true, Ordering::Release);
+                // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示（前端
+                // headlineFor 已含 version case，零前端改动）。不 hard-disconnect（向前兼容）。
+                if let Some(msg) = version_warning(v, &build_id, &host_label) {
+                    tracing::warn!("ssh_source remote [{host_label}] version: {msg}");
+                    let payload = crate::bridge::RemoteHealthPayload {
+                        origin: Some(host_label.clone()),
+                        kind: "version".to_string(),
+                        message: msg,
+                    };
+                    if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                        tracing::warn!("ssh_source remote-health (version) emit failed: {e}");
+                    }
+                }
+                // F66（#58③）：本轮若跑在降级模式（未开 tail_only）——用 daemon **自报的
+                // 能力**判断能否升级，不再靠 build_id 精确匹配（闭合 2026-07-09 事故）：
+                // ① daemon 声明了**能开本轮没开的 flag** 的能力 → 记 hello 自愈账（存能力集）,
+                //    立即重连升级（connected 已置 true → 退避重置 MIN,~2s 内带 flag 回来）。
+                //    **防无限循环**：仅当「下一轮据此算出的 flag 严格优于本轮」才重连——flag 数
+                //    有限（2）、每次升级严格增开，最多 2 轮收敛。
+                // ② daemon 无任何能力声明（真旧 daemon）→ 降级可见化（否则用户看到「bg 会话
+                //    消失+拥塞复发」却无从归因，实测连环误诊）——经 remote-health 提示。
+                tracing::info!(
+                    "[perf] ssh_source [{host_label}] 首个 hello T+{}ms（自本轮连接开始）· \
+                     caps={capabilities:?}",
+                    t_connect_start.elapsed().as_millis()
+                );
+                // ★ F05 下半：**自证记忆的唯一写入点**。daemon 自己说它是谁，我们才记。
+                // build_id 不是期望值 ⇒ **抹掉**（这台机器上装的不是当前 build，
+                // 下一轮必须照跑预检去部署），不是「留着上次的」。
+                if build_id == EXPECTED_DAEMON_BUILD_ID {
+                    record_verified_build(&host_label, &build_id);
+                } else {
+                    forget_verified_build(&host_label);
+                }
+                if !tail_only {
+                    let show_bg = crate::load_show_bg_sessions();
+                    let next = decide_stream_flags(&capabilities, show_bg);
+                    if should_upgrade_reconnect((with_bg, tail_only), next) {
+                        *hello_confirmed = Some(capabilities.clone());
+                        return Err(format!(
+                            "daemon hello 声明能力({capabilities:?})——重连升级流模式(tail-only/with-bg)"
+                        ));
+                    }
+                    if capabilities.is_empty() {
+                        let payload = crate::bridge::RemoteHealthPayload {
+                            origin: Some(host_label.clone()),
+                            kind: "degraded".to_string(),
+                            message: format!(
+                                "远端 daemon 为旧版本({build_id},当前 {EXPECTED_DAEMON_BUILD_ID}),本连接降级运行:后台(bg)会话不可见、历史全量推流(易拥塞)。请在设置里重装该机器的 daemon。"
+                            ),
+                        };
+                        if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                            tracing::warn!("ssh_source remote-health (degraded) emit failed: {e}");
+                        }
+                    }
+                }
+            }
+            Some(InboundFrame::Line {
+                session_id,
+                path,
+                seq,
+                raw,
+            }) => {
+                // Batch5-F17：进攒批缓冲（达 cap/批龄立即整批出）；静默窗口/
+                // SessionRemoved 边界触发的 flush 在循环头。
+                if let Some(full) = batcher.push(JsonlLine {
+                    session_id,
+                    path: std::path::PathBuf::from(path),
+                    seq,
+                    raw,
+                }) {
+                    flush_lines(replay, app, &host_label, full).await;
+                }
+            }
+            Some(InboundFrame::SessionAdded {
+                sid,
+                session_kind,
+                attachable,
+                cwd,
+                name,
+                path,
+                lines,
+                status,
+                waiting_for,
+            }) => {
+                // Batch5-F18：透传前端建骨架 Tab——协议序保证本帧先于该会话的
+                // 内容行，这里同步 emit（先于行 flush），骨架必先于内容出现。
+                let payload = crate::bridge::RemoteSessionAddedPayload {
+                    session_id: sid.clone(),
+                    origin: host_label.clone(),
+                    kind: session_kind,
+                    attachable,
+                    cwd,
+                    name,
+                };
+                // Batch9 审计 D：先入 registry 再 emit——反序时 F5 恰落在中间
+                // 会直发丢失且 reannounce 读不到（亚毫秒缝，一并闭合）
+                let meta_for_registry = AnnouncedMeta {
+                    payload: payload.clone(),
+                    status: status.clone(),
+                    waiting_for: waiting_for.clone(),
+                };
+                announced_registry()
+                    .lock()
+                    .unwrap()
+                    .entry(host_label.clone())
+                    .or_default()
+                    .insert(sid.clone(), meta_for_registry);
+                // ★★ 〔`P0b` 08-13〕**这一跳此前是静默的** —— 只有 emit **失败**才打日志，
+                // 成功一个字不留。于是全链台架报「30s 内未见灰灯 tab-state」时，
+                // 日志**回答不了**最基本的那一问：**帧到 monitor 了吗？**
+                //
+                // 实测（连续两跑、四格自证全绿、读数逐字一致）：帧级套件 `graylight-daemon-frames`
+                // **12 过 / 0 败**（daemon 那侧发得对），而全链 **1 过 / 2 败**、前端
+                // `建卡 rendered=0 · drained=0`（一条会话载荷都没收到）⇒ 断点在这两者之间，
+                // 而这里正是那段路上唯一的分叉点。
+                //
+                // ⚠ 射程：本行只说「**收到了、并已 emit**」。emit 之后前端有没有建出 tab
+                // 是另一跳（那要看前端的 `[e2e] tab-state` 探针）。**别把它读成「tab 建出来了」。**
+                // ⚠ 量级：`SessionAdded` 是**每个会话一次**，不是每帧一次 ⇒ 不会淹日志
+                //（与 `tmux-observation` 那条只记变化的理由不同：那条是逐帧的）。
+                tracing::info!("session-added: [{host_label}] sid={sid} → 已 emit 给前端");
+                if let Err(e) = app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, &payload) {
+                    tracing::warn!("ssh_source remote-session-added emit failed: {e}");
+                }
+                // Batch8-F26：tail-only 下历史改走旁路快照——宣告带 path 即入队
+                // （无 path = 会话刚起还没写 jsonl → 无历史可拉，后续行天然从
+                // tail 全量到达，无需快照）。队列按 sid 幂等（重复宣告不重拉）。
+                if tail_only {
+                    if let Some(p) = path {
+                        snapshots.push(SnapshotItem {
+                            sid: sid.clone(),
+                            path: p,
+                            expected_lines: lines,
+                        });
+                    }
+                }
+                // FIX 2：记下已宣告的 sid + 元数据（Batch9：连接结束统一归档 +
+                // F28 frontend-ready 重发数据源；F27 status 后续变化写回）。
+                announced.insert(
+                    sid.clone(),
+                    AnnouncedMeta {
+                        payload: payload.clone(),
+                        status: status.clone(),
+                        waiting_for: waiting_for.clone(),
+                    },
+                );
+                // Batch9-F27：初始 status 一并透传（连接建立灯就对；None=旧 CC/
+                // 旧 daemon → 前端"未知不加类"，与本地一字一致）。
+                if let Err(e) = session_changes.send(SessionChange {
+                    added: vec![sid.clone()],
+                    removed: vec![],
+                    status_changed: vec![crate::session_map::SessionActivity {
+                        session_id: sid,
+                        status,
+                        waiting_for,
+                    }],
+                }) {
+                    tracing::warn!("ssh_source session_added send failed: {e}");
+                }
+            }
+            Some(InboundFrame::SessionStatus {
+                sid,
+                status,
+                waiting_for,
+            }) => {
+                // Batch9-F27：写回 announced（F28 重发时灯是最新的）+ 透传前端。
+                if let Some(meta) = announced.get_mut(&sid) {
+                    meta.status = status.clone();
+                    meta.waiting_for = waiting_for.clone();
+                }
+                if let Some(hm) = announced_registry().lock().unwrap().get_mut(&host_label) {
+                    if let Some(meta) = hm.get_mut(&sid) {
+                        meta.status = status.clone();
+                        meta.waiting_for = waiting_for.clone();
+                    }
+                }
+                // ★★〔08-14 实机排障补〕**这一跳与 `session_removed` 那条是同一个盲区**，
+                // 而那条已经补过、理由逐字写在下面（「分不清『收到了但没转发』与『根本没收到』」）。
+                // 本条当时漏了，代价在 08-14 兑现：用户报「Windows 前端上会话全是绿灯」，
+                // 而**绿灯正是 `status` 缺席时的默认值**（`src/session-status.ts` 逐字：
+                // `busy` / `null` → 默认绿点）⇒ 「全绿」既可能是"都在忙"，也可能是
+                // "status 一条都没到"，**两者在日志里长得一模一样**，排障当场卡死在这里。
+                // ⚠ 量级与那条一致：**每次状态变化一行**（CC 仅在状态转换时重写 pidfile，
+                // 天然稀疏），不是每帧一行 ⇒ 不会淹日志。
+                tracing::info!(
+                    "session-status: [{host_label}] sid={sid} status={status:?} \
+                     waiting_for={waiting_for:?} → 已 emit 给前端"
+                );
+                if let Err(e) = session_changes.send(SessionChange {
+                    added: vec![],
+                    removed: vec![],
+                    status_changed: vec![crate::session_map::SessionActivity {
+                        session_id: sid,
+                        status,
+                        waiting_for,
+                    }],
+                }) {
+                    tracing::warn!("ssh_source session_status send failed: {e}");
+                }
+            }
+            Some(InboundFrame::SessionRemoved { sid, cause }) => {
+                // ★★ `P0b-Y2` 第十拍〔08-13〕：**这一跳原先是不可观测的。**
+                //
+                // `#60`（灰灯不出现）问的正是「死亡这件事走到哪一步丢了」，而全链实测时
+                // daemon 侧 tap 里明明有 `session_removed`、monitor 日志里**一个字都没有**
+                // ⇒ 分不清「收到了但没转发」与「根本没收到」。加了这一行才分得清。
+                // ⚠ 量级同 `SessionAdded` 那条：**每个会话一次**，不是每帧一次 ⇒ 不会淹日志。
+                // `cause` 一起打：灰灯与归档走的是**不同的 cause**（`Superseded` 直接归档），
+                // 少了它，看见一行「removed」仍答不出 UI 该变成什么样。
+                tracing::info!(
+                    "session-removed: [{host_label}] sid={sid} cause={cause:?} → 已 emit 给前端"
+                );
+                // FIX 2：已显式 removed 的 sid 从 announced 摘掉，避免连接结束时重复归档。
+                announced.remove(&sid);
+                if let Some(hm) = announced_registry().lock().unwrap().get_mut(&host_label) {
+                    hm.remove(&sid);
+                }
+                // Batch8 D-B1：摘除排队中的快照 + 标记 inflight 取消——归档后
+                // 迟到的快照行会经"见行复活"造出关不掉的僵尸 live tab。
+                snapshots.cancel(&sid);
+                if let Err(e) = session_changes.send(SessionChange {
+                    added: vec![],
+                    // ★ S0：cause 由 daemon 说了算，monitor 不猜（原先靠查会陈旧的 tmux 快照）。
+                    removed: vec![RemovedSid { sid, cause }],
+                    status_changed: vec![],
+                }) {
+                    tracing::warn!("ssh_source session_removed send failed: {e}");
+                }
+            }
+            Some(InboundFrame::Overflow {
+                dropped,
+                lost,
+                lost_truncated,
+            }) => {
+                // issue #32：远端管道拥塞丢了 dropped 帧。warn + 经 SS-F remote-health
+                // 通道提示用户（前端按 origin 节流弹 toast）。
+                //
+                // ★〔audit-0805 F21〕**这里此前对用户说了一句假话**：「重开该会话可看完整
+                // 历史」只对**内容帧**成立。状态增量帧（session_added/session_removed/
+                // tmux_session_closed/session_status）是一次差分的结果、**别处不存在**，
+                // 重开会话补不回来 —— 那正是 B-3 的正题。daemon 从 `p1x` 起会把这些帧的
+                // 身份放进 `Overflow.lost`；有身份就说实话，并点名是哪几个会话。
+                tracing::warn!(
+                    "ssh_source remote [{host_label}] overflow: daemon dropped {dropped} frame(s), \
+                     {} unrecoverable{}",
+                    lost.len(),
+                    if lost_truncated { " (list truncated)" } else { "" }
+                );
+                let message = overflow_health_message(&host_label, dropped, &lost, lost_truncated);
+                let payload = crate::bridge::RemoteHealthPayload {
+                    origin: Some(host_label.clone()),
+                    kind: "overflow".to_string(),
+                    message,
+                };
+                if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
+                    tracing::warn!("ssh_source remote-health emit failed: {e}");
+                }
+            }
+            // P5：正向死亡帧 —— daemon 已经**确定**这个会话没了（它与上一份快照差分算出来的），
+            // 不需要 monitor 再靠「连续两次没看见」去猜。
+            //
+            // **为什么仍然按名字反查 sid 而不是让 daemon 带上**：`#{@ccm_sid}` 在 hook 上下文
+            // 取不到（P0 实测拿到空 ⇒ 会把活会话判灰）；而 name→sid 的映射 monitor 这边本来
+            // 就有（最新那份 `tmux ls` 原文）。让知道的人去查，比让不知道的人硬传更稳。
+            //
+            // **快照路径与 `RETIRE_MISS_THRESHOLD` 原样保留**：重同步 / 旧 daemon 降级都靠它。
+            // 同一 sid 两条路都可能到 ⇒ retire 必须幂等（`SidTrack.retired` 本就是）。
+            Some(InboundFrame::TmuxSessionClosed { name }) => {
+                let sid = {
+                    let reg = tmux_raw_registry().lock().unwrap();
+                    reg.get(&host_label).and_then(|raw| {
+                        crate::tmux::parse_tmux_ls(raw)
+                            .into_iter()
+                            .find(|e| e.name == name)
+                            .and_then(|e| e.sid)
+                    })
+                };
+                match sid {
+                    Some(sid) => {
+                        // ★★ `P0b-Y2` 第十七拍：**先把这一格从账本摘掉，再 retire。**
+                        //   顺序反了的话下游 `classify_removed` 查到的还是「tmux 还在」
+                        //   ⇒ 判灰不判归档 ⇒ **永久灰点**（`#60` 现象 2，08-13 全链实测）。
+                        // ⚠ **走既有写口 `record_tmux_raw`，不新开第二个** ——
+                        //   `the_tmux_cache_has_one_writer_and_only_origin_keys` 只许两处写口，
+                        //   而它报得对：账本一旦有第三个写点，「一边存原文一边存解析后的、
+                        //   一边清一边不清」就会长出来（首版就是内联 `get_mut`，当场被拦）。
+                        // ⚠ 读-改-写不是原子的：并发的整份快照更新可能覆盖这次摘除。
+                        //   那是**良性**的 —— 下一份快照本来就是权威，它会说出同样的事实。
+                        if let Some(raw) = snapshot_tmux_by_origin().get(&host_label) {
+                            record_tmux_raw(&host_label, remove_tmux_line(raw, &name));
+                        }
+                        tracing::info!(
+                            "tmux 会话 {name} 关闭（daemon 死亡帧）⇒ 已从账本摘除 + 立刻 retire sid={sid}"
+                        );
+                        if let Err(e) = session_changes.send(SessionChange {
+                            added: vec![],
+                            // tmux 会话关了 = 那一格没了，真死。
+                            removed: vec![RemovedSid::gone(sid)],
+                            status_changed: vec![],
+                        }) {
+                            tracing::warn!("ssh_source tmux_session_closed send failed: {e}");
+                        }
+                    }
+                    // 查不到 sid 的两种正常情形：① 那个会话本就没绑过 `@ccm_sid`
+                    //（never-bound：bg / 直起 claude）② 快照还没到过。两者都**不该猜**——
+                    // 交给快照 + miss 那条兜底路，它对 never-bound 有专门的不误判逻辑。
+                    None => tracing::debug!(
+                        "tmux 会话 {name} 关闭，但最新快照里查不到它的 sid ⇒ 交给对账兜底"
+                    ),
+                }
+            }
+            Some(InboundFrame::TmuxSessions { raw, observation }) => {
+                // audit-fixes F03.2（收帧驱动 tmux 存活收割器，取代已删的 8s poller = 甲-evented 零轮询）：
+                // daemon **事件驱动**推本 origin 最新 `tmux ls` 原文（tmux hook → SIGUSR1 → Poke）；收到即对账——把 tmux 后端已消失的 tracked
+                // sid 去抖 retire → 当 removed 送 emitter（emitter 再判 None→archived+clear_idle）。tracked =
+                // 本连接 announced（live 会话）∪ 本 origin idle 会话（后者使 idle→archived 有产出者，补齐红线④）。
+                //
+                // P1（zero-poll-liveness）：原先这里内联着
+                // `if raw.trim() != "NO_TMUX" { … if !backend.is_empty() { … } }`——**把五种语义
+                // 不同的观测压成两条路**，其中「daemon 确证零会话」被误并进「观测失败」一律跳过
+                // ⇒ 杀掉某 origin 最后一个 tmux 会话时灰灯卡到断连（§24bis 预登记的残留 bug）。
+                // 现在判断提成纯函数 `tmux::classify_tmux_observation`（可 CI 单测，生产与测试
+                // 同一条路径），空集也是**有效观测**、照常累计缺失。
+                // ★★ P8c（`U3`〔自批 08-11〕的裁定）：**把这一维记进日志，让它变得可测**。
+                //
+                // `U3` 的读数逐字：「`Unobservable` 计数 = 0，而**那个 0 是瞎的** ——
+                // 日志根本不记这一维 ⇒ 分母不存在。『0 次』与『记不下来』在这份数据里
+                // 长得一模一样，而后者才是事实」。⇒ 裁定是「先补一行可观测性，再拿真实使用量去裁 `#82`」。
+                //
+                // ⚠ **只记「变化」，不是每帧都记**：帧由 tmux hook 驱动，逐帧记会把日志淹掉
+                // （而淹掉的日志与没有日志一样不可读）。记变化反而更有用 —— 它给的是
+                // 「何时进入不可观测、何时恢复」，那比一个计数更能回答 `#82`。
+                //
+                // ⚠⚠ **射程如实登记**〔D 阶段补审〕：这条日志给的是**区间**，不是**帧计数**。
+                // 要问「多大比例的帧是 unobservable」得再加一个计数器 —— 本件**不做**，
+                // 因为 `U3` 要的是「让这个数变得可测」，而区间对 `#82`（控制模式值不值得做）
+                // 更直接：它回答的是「不可观测**持续了多久**」。
+                // **别把本件读成「频率已经可测了」。**
+                let verdict = crate::tmux::classify_tmux_observation(&raw, observation.as_deref());
+                let kind = match &verdict {
+                    crate::tmux::TmuxObservation::Backend(_) => "backend",
+                    crate::tmux::TmuxObservation::Skip(r) => r.as_str(),
+                };
+                if last_observation_kind.as_deref() != Some(kind) {
+                    tracing::info!(
+                        "tmux-observation: [{host_label}] {} → {kind}",
+                        last_observation_kind.as_deref().unwrap_or("<首帧>")
+                    );
+                    last_observation_kind = Some(kind.to_string());
+                }
+                if let crate::tmux::TmuxObservation::Backend(backend) = verdict {
+                    let idle = snapshot_idle_for_origin(&host_label);
+                    let tracked = reaper_tracked(announced.keys().cloned(), &idle);
+                    // idle 集当 pre_bound 传入：@ccm_sid 证明绑过 tmux，播种 ever_bound，免跨线程
+                    // 缝漏置导致 idle→archived 无产出者（D 审计②修，见 reconcile_step 注释）。
+                    let retire = crate::tmux_reconcile::reconcile_step(
+                        &mut reconcile_state,
+                        &tracked,
+                        &backend,
+                        &idle,
+                        crate::tmux_reconcile::RETIRE_MISS_THRESHOLD,
+                    );
+                    if !retire.is_empty() {
+                        tracing::info!(
+                            "tmux-reconcile(收帧): [{host_label}] retire {} sid(s)（tmux 后端已不在）",
+                            retire.len()
+                        );
+                        if let Err(e) = session_changes.send(SessionChange {
+                            added: vec![],
+                            // 对账收割 = tmux 后端已不见它，真死。
+                            removed: retire.into_iter().map(RemovedSid::gone).collect(),
+                            status_changed: vec![],
+                        }) {
+                            tracing::warn!("ssh_source tmux-reconcile(收帧) send failed: {e}");
+                        }
+                    }
+                }
+                // 存最新一份原文（emitter 判 idle/archived 时经 snapshot_tmux_by_origin 读；仅存最新）。
+                record_tmux_raw(&host_label, raw);
+            }
+            // U8a-2a：入方向应答 —— 交给本连接的客户端按 `id` 路由回请求方。
+            Some(f @ (InboundFrame::Reply { .. } | InboundFrame::Cancelled { .. })) => {
+                route_inbound_frame(&host_label, inbound.as_ref(), f);
+            }
+            None => {
+                // 未知 kind / 坏帧 / 非 JSON：跳过，绝不 panic、绝不中断流。
+                tracing::warn!("ssh_source skipping unparseable/unknown frame: {line}");
+            }
+        }
+    }
+}
+
+// ============================================================================
+// 🔴 `K-R59`（09-11，定框 `K35`）：**`daemonless` 降级读取整段删除。**
+//
+// 这里原来住着 Batch14-F59 的那一整段：`DAEMONLESS_POLL_INTERVAL` 2s 轮询 · `find` 发现
+// 最近 30 分钟活跃的 jsonl · `tail -c +offset` 增量读 · `DlCursor` · `emit_degraded` /
+// `announce_daemonless` / `archive_daemonless` / `daemonless_stream_loop`，
+// 由 `run()` 顶层 `if cfg.daemonless` 二选一。
+//
+// `K35` 逐字：「**不要有 daemonless。没有没有后端的情况。前端应该就是去调用远程后端的。**」
+// ⇒ 它不是「一条传输」，是**一个模式**：删的是开关 · 顶层分支 · 这一段轮询 · 界面那一格 ·
+//   以及 `settings/readiness.ts` 里那条**不含这个词**的本机豁免。**五处一起走。**
+//
+// ⚠ 一起下岗的账（别只删代码不拧账本，那会让下一个人以为它们还在跑）：
+//   · `rust_timer_registry` 的 ticker 从 **3 → 2**（那 2s 是本仓抓到的第二个真节拍器）；
+//   · `byte_cap_registry` 少两条（`DAEMONLESS_READ_CAP` / `DAEMONLESS_DISCOVER_CAP`）；
+//   · `dial_move_judge::DIAL_SITES` 里 `ssh_source.rs` 那格从 **5 → 4**、总数 **7 → 6**；
+//   · `local_read_surface_registry` 里 `ssh_source.rs` 那条从 **10 → 9**（远端目录串少一行；
+//     ⚠ 这个 9 是**跑出来的**，不是估的 —— 那条判据自己会红在「多一处/少一处」上）。
+//
+// ⚠ **没有一起走的**（`§0a-2`：删的是模式，不是传输）：russh 数据源 · `ssh -G` 导入 ·
+//   测试连接 · `connect_and_exec_cmd` / `shell_quote` 的现有消费者，一个不少。
+// ============================================================================
+
+#[cfg(test)]
+mod f032_idle_tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    // TMUX_LS_FMT: name\tpath\tcommand\tattached\twindows\t@ccm_sid（6 列真 TAB 分隔）
+    fn raw(name: &str, cmd: &str, sid: &str) -> String {
+        format!("{name}\t/p\t{cmd}\t0\t1\t{sid}")
+    }
+
+    #[test]
+    fn tmux_origin_for_sid_matches_ccm_sid_column_command_agnostic() {
+        // @ccm_sid==目标 + command=bash（claude 已退）→ 命中 origin
+        let by = HashMap::from([("A".to_string(), raw("cc-x", "bash", "target-full"))]);
+        assert_eq!(
+            tmux_origin_for_sid(&by, "target-full"),
+            Some("A".to_string())
+        );
+        // command-agnostic：command 仍是 claude（帧陈旧）也命中——**变异锚点**：改看 command 则此断言红
+        let by2 = HashMap::from([("A".to_string(), raw("cc-x", "claude", "target-full"))]);
+        assert_eq!(
+            tmux_origin_for_sid(&by2, "target-full"),
+            Some("A".to_string())
+        );
+    }
+
+    #[test]
+    fn tmux_origin_for_sid_only_ccm_sid_column_not_name_or_command() {
+        // sid 只作 name/command 出现、@ccm_sid 列是别的 → 不命中（不误把 name/command 当 sid）
+        let by = HashMap::from([("A".to_string(), raw("target", "target", "other-sid"))]);
+        assert_eq!(tmux_origin_for_sid(&by, "target"), None);
+    }
+
+    #[test]
+    fn tmux_origin_for_sid_no_tmux_empty_missing() {
+        let by = HashMap::from([
+            ("A".to_string(), "NO_TMUX".to_string()),
+            ("B".to_string(), String::new()),
+        ]);
+        assert_eq!(tmux_origin_for_sid(&by, "x"), None);
+    }
+
+    #[test]
+    fn tmux_origin_for_sid_multi_origin_routes() {
+        let by = HashMap::from([
+            ("A".to_string(), raw("cc-a", "bash", "sid-a")),
+            ("B".to_string(), raw("cc-b", "bash", "sid-b")),
+        ]);
+        assert_eq!(tmux_origin_for_sid(&by, "sid-b"), Some("B".to_string()));
+        assert_eq!(tmux_origin_for_sid(&by, "sid-z"), None);
+    }
+
+    #[test]
+    fn classify_removed_some_is_idle_none_is_archive() {
+        // audit-fixes F03.2（D 审计②）：分流映射的变异锚点——把 Some/None 两臂写反则本测红。
+        assert_eq!(
+            classify_removed(Some("pi".to_string()), RemovalCause::Gone),
+            RemovedDisposition::Idle {
+                origin: "pi".to_string()
+            }
+        );
+        assert_eq!(
+            classify_removed(None, RemovalCause::Gone),
+            RemovedDisposition::Archive
+        );
+    }
+
+    /// ★ **F01b → P3 刀 0 → 刀 1：这张表的三代裁定，都留在这里。**
+    ///
+    /// # 名字换过一次（原 `the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache`）
+    ///
+    /// 那个名字现在**主动误导** —— 本地 sid **已经进表了**（刀 1 故意让它进的）。
+    /// 换名不是换判据：下面三条性质是原来那两条的**超集**。
+    ///
+    /// # 三代的账
+    ///
+    /// | 代 | 本地路径为什么安全 | 本条钉什么 |
+    /// |---|---|---|
+    /// | F01b | **巧合**：本地 sid 进不了这张表 ⇒ `find_tmux_origin_for_sid` 恒 `None` | 写入点只在远端 + 本地不产 `Superseded` |
+    /// | 刀 0 | 本地**自己判得出** `Superseded` | 锚点翻正：本地**确实**产 `Superseded` |
+    /// | 刀 1 | 本地进表了，靠的是刀 0 那条真保证 | 写入口**唯一** + 键的取值域只有 origin |
+    ///
+    /// ★ 每一代都是**上一代的失败信息叫我来改的** ——
+    /// F01b 那条逐字写着「回 F01b 重新裁定」，这是它多写那三句话的全部价值。
+    ///
+    /// # 为什么钉「唯一写入口」而不是「每处写入都按远端标签做键」
+    ///
+    /// 后者是上一代的形态，它今天**必然红**（本机那处的键就不是远端标签）。
+    /// 但真正要防的东西没变：**这张表的键必须是 origin**，不许是裸 sid、不许是常量。
+    /// ⇒ 收成一个写入口 + 钉住那个口的调用方，比「逐处看键长什么样」更硬。
+    #[test]
+    fn the_tmux_cache_has_one_writer_and_only_origin_keys() {
+        let src = guard_core::production_code(include_str!("ssh_source.rs"));
+        // 抽取器自检：真的抽到了那张表。
+        let touches = src.matches("tmux_raw_registry()").count();
+        assert!(
+            touches >= 3,
+            "只抽到 {touches} 处 `tmux_raw_registry()` —— 抽取器坏了，本条会零命中地绿"
+        );
+
+        // ① 写口唯一 —— **写包括清**〔D 阶段补审 08-11 订正〕。
+        //
+        // 原版只数 `insert`。而 `.remove(` 同样是写者：远端断连处早就在清表，
+        // 判据看不见它 ⇒ 它自陈要防的「**一边清一边不清**」当时**就是事实**
+        //（远端清、本机从来不清 ⇒ `<local>` 那份原文永久陈旧 ⇒ 灰点）。
+        // ⇒ 三种写法一起数，允许的家有两个：`record_tmux_raw`（写）与 `forget_tmux_raw`（清）。
+        const WRITE_VERBS: &[&str] = &["insert", "remove", "clear"];
+        let mut writes = 0usize;
+        for seg in src.split("tmux_raw_registry()").skip(1) {
+            let head = &seg[..seg.len().min(160)];
+            if WRITE_VERBS.iter().any(|v| head.contains(v)) {
+                writes += 1;
+            }
+        }
+        assert_eq!(
+            writes, 2,
+            "`tmux_raw_registry` 的写口有 {writes} 处 —— 只许两处：\n\
+             `record_tmux_raw`（写）与 `forget_tmux_raw`（清）。\n\
+             多一处就意味着有人绕过这两个口各写各的：一边存原文一边存解析后的、一边清一边不清。"
+        );
+        // ⚠ 这一段第一版是**空转**的：写成 `src.find(…).unwrap_or(usize::MAX)` 再比大小 ——
+        // 找不到时 `usize::MAX > at` 恒真 ⇒ 断言永远过。改成**按行切函数体**再看。
+        let at = guard_core::find_pinned(&src, "pub(crate) fn record_tmux_raw(")
+            .expect("唯一写入口 `record_tmux_raw` 不在了 —— 名字改了就来改本条");
+        let body: String = src[at..]
+            .lines()
+            .skip(1)
+            // ⚠ 收尾行**不写字面量右花括号** —— 本仓有判据用「花括号配平」剥测试段
+            // （`ssh_source::strip_cfg_test`），源码里多一个孤立的右花括号会让它**提前闭合**（`b'…'` 的字符字面量也算，我第一次「修」时就还带着一个），
+            // 测试段整段泄漏进「生产段」⇒ 别的判据当场误报（08-11 实测：单写者守卫红了）。
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(
+            body.len() > 20,
+            "`record_tmux_raw` 切出来的函数体只有 {} 字节 —— 切错了，本条在空转",
+            body.len()
+        );
+        guard_core::find_pinned(&body, "tmux_raw_registry()").unwrap_or_else(|e| {
+            panic!(
+                "写入口 `record_tmux_raw` 里没有恰好一处 `tmux_raw_registry()`（{e}）——\n\
+                 那么上面数出来的写口在别的地方。"
+            )
+        });
+        // ② 清除口也必须在它自己的家里。
+        let forget_at = guard_core::find_pinned(&src, "pub(crate) fn forget_tmux_raw(")
+            .expect("清除口 `forget_tmux_raw` 不在了 —— 没有它，断连/停机之后那份原文就是陈旧证据");
+        let forget_body: String = src[forget_at..]
+            .lines()
+            .skip(1)
+            .take_while(|l| *l != "\u{7d}")
+            .collect::<Vec<_>>()
+            .join("\n");
+        guard_core::find_pinned(&forget_body, "tmux_raw_registry()").expect(
+            "`forget_tmux_raw` 里没有恰好一处 `tmux_raw_registry()` —— 切错了或它不再清那张表",
+        );
+
+        // ③ **两侧都要清** —— 远端断连清了、本机不清，就是补审逮到的那个真 bug。
+        let lb = guard_core::production_code(include_str!("backend/control/local_backend.rs"));
+        guard_core::find_pinned(&lb, "forget_tmux_raw(").unwrap_or_else(|e| {
+            panic!(
+                "本机那条路不清 `tmux_raw_registry`（{e}）。\n\
+                 远端断连早就清了（Batch9-F28 那处）；本机若只摘入方向 client 不清这张表，\n\
+                 停掉本机 daemon 之后 `<local>` 那份 `tmux ls` 原文**永久留着**，\n\
+                 成了「tmux 还在」的陈旧证据 ⇒ `classify_removed(Some(_), Gone)` = `Idle`\n\
+                 = 那个「永远消不掉、也 attach 不上的灰点」（F01b 那个 bug）。"
+            )
+        });
+
+        // ② 键的取值域：调用方只许传远端标签或本机那个常量。
+        let local_origin = crate::inbound_client::LOCAL_ORIGIN;
+        for f in [
+            guard_core::production_code(include_str!("ssh_source.rs")),
+            guard_core::production_code(include_str!("backend/control/local_backend.rs")),
+        ] {
+            for seg in f.split("record_tmux_raw(").skip(1) {
+                let head = &seg[..seg.len().min(120)];
+                let ok = head.contains("host_label")
+                    || head.contains("origin_label")
+                    || head.contains("LOCAL_ORIGIN")
+                    || head.contains("origin: &str"); // 定义那一行
+                assert!(
+                    ok,
+                    "有人拿一个既不是远端标签也不是 `{local_origin}` 的键写这张表：\n{head}\n\
+                     ⇒ 键的取值域一破，`find_tmux_origin_for_sid` 就会按一个没人认识的 origin 返回值，\n\
+                     而下游 `classify_removed` 拿它当「有 tmux 格子」用。"
+                );
+            }
+        }
+
+        // ③ 本地进表的**前置**必须还在：本地要判得出 `Superseded`。
+        let sm = guard_core::production_code(include_str!("session_map.rs"));
+        let verb = format!("RemovedSid::{}", "superseded");
+        assert!(
+            sm.contains(verb.as_str()),
+            "`session_map.rs` 不产 `Superseded` 了，而本地 sid **已经在这张表里**。\n\
+             ⇒ `/branch` 会走 `(Some(<local>), Gone)` = `Idle` ⇒ 「永远消不掉、也 attach 不上的灰点」回来。\n\
+             这正是 F01b 当年那个 bug。刀 0 是刀 1 的硬前置，**不许只回退刀 0**。"
+        );
+    }
+
+    /// ★ S0：`Superseded` 恒归档 —— **且不看 tmux 快照**。
+    ///
+    /// 这条钉的是用户 2026-07-30 实测的那个 bug：`/branch` 之后原 tab 变成一个永远
+    /// 消不掉、也 attach 不上的灰点。四象限里出问题的就是 `(Some(origin), Superseded)`
+    /// 这一格 —— 快照说「tmux 还在」（对的，格子确实在），但那一格已经改挂新 sid 了。
+    #[test]
+    fn superseded_always_archives_even_when_tmux_snapshot_still_shows_the_sid() {
+        // ★ 关键格：快照有它、但它是被顶替的 ⇒ 必须归档，不能灰点。
+        assert_eq!(
+            classify_removed(Some("pi".to_string()), RemovalCause::Superseded),
+            RemovedDisposition::Archive
+        );
+        // 快照里没有时当然也归档（这格两个 cause 同答案，单独列出来是为了说明
+        // Superseded 的判定**与快照无关**，不是碰巧和 Gone 一致）。
+        assert_eq!(
+            classify_removed(None, RemovalCause::Superseded),
+            RemovedDisposition::Archive
+        );
+        // 反向对照：同一份「快照里有」的输入，Gone 仍然是灰点 —— 证明上面第一条不是
+        // 因为把灰点分支整个删了才绿的（那种"修法"会把真正的 idle-tmux 功能砸掉）。
+        assert_eq!(
+            classify_removed(Some("pi".to_string()), RemovalCause::Gone),
+            RemovedDisposition::Idle {
+                origin: "pi".to_string()
+            }
+        );
+    }
+
+    /// ★ S0 跨语言双写点：monitor 认的字面量必须与 daemon 发的逐字一致。
+    ///
+    /// 照本仓既有纪律（`TMUX_LS_FMT` / 观测取值那几条）：**读另一侧的源文件 + 锚定那一行**。
+    /// 漂了的表现是**静默失效**——monitor 认不出 `cause`、退回 `Gone`、灰点 bug 悄悄复活，
+    /// 而两侧各自的测试都是绿的。
+    #[test]
+    fn removal_cause_wire_literal_stays_in_sync() {
+        let daemon_wire = include_str!("../../backend/wire.rs");
+        // 反向自检：真读到了那个文件，且它确实是那个 enum 所在的文件。
+        assert!(daemon_wire.len() > 2000, "没读到 daemon wire.rs");
+        assert!(
+            daemon_wire.contains("pub enum RemovalCause"),
+            "daemon 侧 RemovalCause 不在预期文件里，双写点锚点已失效"
+        );
+        // daemon 用 `#[serde(rename_all = "snake_case")]` + 变体名 `Superseded`
+        // ⇒ 线上就是 "superseded"。两个锚点都钉住，任一侧改名都红。
+        assert!(
+            daemon_wire.contains(r#"#[serde(rename_all = "snake_case")]"#),
+            "daemon 侧 RemovalCause 的 serde 命名策略变了，线上字面量可能已不是 snake_case"
+        );
+        assert_eq!(REMOVAL_CAUSE_SUPERSEDED, "superseded");
+        assert!(
+            daemon_wire.contains("    Superseded,"),
+            "daemon 侧变体名 Superseded 变了 ⇒ 线上字面量跟着变，monitor 会认不出"
+        );
+    }
+
+    #[test]
+    fn idle_registry_mark_clear_snapshot() {
+        mark_idle("f032_origX", "f032_sidX");
+        assert!(snapshot_idle_for_origin("f032_origX").contains("f032_sidX"));
+        assert!(snapshot_idle_by_origin().get("f032_origX").is_some());
+        clear_idle("f032_sidX"); // 幂等 + 跨 origin
+        assert!(!snapshot_idle_for_origin("f032_origX").contains("f032_sidX"));
+        clear_idle("f032_sidX"); // 再清一次不报错
+    }
+
+    #[test]
+    fn remote_idle_single_writer_guard() {
+        // §24bis 机器护栏（Phase G / full-audit Agent1「重要」结构化）：REMOTE_IDLE 唯一写者 =
+        // lib.rs 的 remote-session-emitter。`mark_idle`/`clear_idle` 是 pub fn、全 crate 可达——
+        // 单写者此前靠注释约定、`cargo check` 抓不住（同 §8「漏 manage 带病 5 版本」失败类）。本测把
+        // 约定机器化：扫 src/bridge 生产源码（剥 cfg(test) 块 + 跳注释/定义行），断言对 mark_idle/
+        // clear_idle 的**调用**只出现在 lib.rs。emitter 之外新增写者 → 本测红。
+        fn strip_cfg_test(src: &str) -> String {
+            // 括号配平剥掉 `#[cfg(test)]` 修饰的块（同 daemon readonly_guard 的证明过的做法）。
+            let mut out = String::new();
+            let mut rest = src;
+            while let Some(pos) = rest.find("#[cfg(test)]") {
+                out.push_str(&rest[..pos]);
+                let after = &rest[pos..];
+                match after.find('{') {
+                    Some(brace) => {
+                        let b = after.as_bytes();
+                        let (mut depth, mut end) = (0i32, brace);
+                        while end < after.len() {
+                            match b[end] {
+                                b'{' => depth += 1,
+                                b'}' => {
+                                    depth -= 1;
+                                    if depth == 0 {
+                                        end += 1;
+                                        break;
+                                    }
+                                }
+                                _ => {}
+                            }
+                            end += 1;
+                        }
+                        rest = &after[end..];
+                    }
+                    None => rest = &after["#[cfg(test)]".len()..],
+                }
+            }
+            out.push_str(rest);
+            out
+        }
+        fn is_comment(l: &str) -> bool {
+            let t = l.trim_start();
+            t.starts_with("//") || t.starts_with('*') || t.starts_with("/*")
+        }
+        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut stack = vec![src_dir];
+        let mut offenders: Vec<String> = Vec::new();
+        while let Some(dir) = stack.pop() {
+            for entry in std::fs::read_dir(&dir).expect("read src dir") {
+                let path = entry.expect("dir entry").path();
+                if path.is_dir() {
+                    stack.push(path);
+                    continue;
+                }
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                let fname = path
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or("")
+                    .to_string();
+                let prod = strip_cfg_test(&std::fs::read_to_string(&path).expect("read rs"));
+                for line in prod.lines() {
+                    if is_comment(line) {
+                        continue;
+                    }
+                    let t = line.trim_start();
+                    // 跳过定义行（mark_idle/clear_idle 定义在 ssh_source.rs）。
+                    if t.starts_with("pub fn mark_idle")
+                        || t.starts_with("fn mark_idle")
+                        || t.starts_with("pub fn clear_idle")
+                        || t.starts_with("fn clear_idle")
+                    {
+                        continue;
+                    }
+                    if (line.contains("mark_idle(") || line.contains("clear_idle("))
+                        && fname != "lib.rs"
+                    {
+                        offenders.push(format!("{fname}: {}", t.trim_end()));
+                    }
+                }
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "§24bis 违规：REMOTE_IDLE 写者 mark_idle/clear_idle 只准 lib.rs 的 remote-session-emitter 调用；\
+             发现 emitter 之外的调用点（如确需，先想清楚是否破坏单写者不变量）：{offenders:?}"
+        );
+    }
+
+    #[test]
+    fn reaper_tracked_unions_announced_and_idle() {
+        let announced = ["live-a".to_string(), "live-b".to_string()].into_iter();
+        let idle = std::collections::HashSet::from(["idle-c".to_string()]);
+        let tracked = reaper_tracked(announced, &idle);
+        assert!(tracked.contains("live-a"));
+        assert!(tracked.contains("live-b"));
+        // **变异锚点**：idle sid 必须在 tracked 里——否则 idle→archived 无产出者=灰灯卡死。
+        // 若把实现改成「只 announced 不并 idle」，此断言红。
+        assert!(tracked.contains("idle-c"));
+        assert_eq!(tracked.len(), 3);
+    }
+
+    #[test]
+    fn reaper_tracked_empty_idle_is_just_announced() {
+        let announced = ["live-a".to_string()].into_iter();
+        let tracked = reaper_tracked(announced, &std::collections::HashSet::new());
+        assert_eq!(
+            tracked,
+            std::collections::HashSet::from(["live-a".to_string()])
+        );
+    }
+}
+
+// ============================================================================
+// Tier 1 SSH 连接 UX（issue #15）：~/.ssh/config 导入 + 测试连接 + 指纹固化。
+// 下列 #[tauri::command] 在 lib.rs 的 invoke_handler! 里注册（漏注册=运行时
+// "command not found"，非编译错，已 double-check）。
+// ============================================================================
+
+/// `~/.ssh/config` 解析出的一个 host 的有效连接参数（`resolve_ssh_host` 的产物）。
+///
+/// serde camelCase：host / port / user / keyPath，与前端 fill 逻辑对齐。
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[serde(rename_all = "camelCase")]
+pub struct ResolvedHost {
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    /// 第一个**存在**的 IdentityFile（`~` 已展开）。无则 None（用户可改走 agent）。
+    pub key_path: Option<String>,
+    /// Batch14-F57：`ssh -G` 的 `proxyjump`（"none" → None）。批量导入时映射到 RemoteConfig.jump。
+    pub proxy_jump: Option<String>,
+}
+
+/// 列出 `~/.ssh/config` 里的 host 别名（供前端「从 config 导入」下拉）。
+///
+/// 解析规则（保守、宽松）：
+/// - 逐行扫，匹配以 `Host`（大小写不敏感）开头的指令行；其后所有 token 都是别名。
+/// - **排除** 含通配符的 pattern：包含 `*` 或 `?` 的 token，以及字面量 `*`。
+/// - 去重、保留首次出现顺序。
+/// - 文件不存在 → 返回空 Vec（不是错误：用户没有 config 是正常的）。
+///
+/// 不展开 `Include`、不解析 `Match`（Tier 1 只要给用户一份「可点的别名清单」，真正的
+/// 参数解析交给 `ssh -G`，它会完整处理 Include/Match/通配）。
+#[tauri::command]
+pub async fn list_ssh_host_aliases() -> Result<Vec<String>, String> {
+    // FIX 3（INVARIANT §10）：同步 fs 读也别卡 runtime 线程——挪进 spawn_blocking。
+    tokio::task::spawn_blocking(|| {
+        let path = match dirs::home_dir() {
+            Some(h) => h.join(".ssh").join("config"),
+            None => return Vec::new(),
+        };
+        match std::fs::read_to_string(&path) {
+            Ok(content) => parse_host_aliases(&content),
+            // 文件不存在 / 读不了 → 空列表（前端据此提示「没有可导入的别名」）。
+            Err(_) => Vec::new(),
+        }
+    })
+    .await
+    .map_err(|e| format!("读取 ~/.ssh/config 任务调度失败: {e}"))
+}
+
+/// 从 `~/.ssh/config` 文本里抽出非通配的 host 别名（纯函数，便于单测）。
+/// 规则见 [`list_ssh_host_aliases`] 文档。
+fn parse_host_aliases(content: &str) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut aliases = Vec::new();
+    for line in content.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        // `Host` 指令：关键字大小写不敏感，关键字与别名间可用空白或 `=` 分隔。
+        let mut parts = trimmed.splitn(2, |c: char| c.is_whitespace() || c == '=');
+        let keyword = parts.next().unwrap_or("");
+        if !keyword.eq_ignore_ascii_case("host") {
+            continue;
+        }
+        let rest = parts.next().unwrap_or("").trim();
+        for tok in rest.split_whitespace() {
+            // 排除通配 pattern（`*` / `?`）和反向否定 pattern（`!...`）。
+            if tok.contains('*') || tok.contains('?') || tok.starts_with('!') {
+                continue;
+            }
+            if seen.insert(tok.to_string()) {
+                aliases.push(tok.to_string());
+            }
+        }
+    }
+    aliases
+}
+
+/// 别名 allowlist：只允许 host 别名的安全字符，挡住 ssh 选项/参数注入
+/// （别名里不会有空格 / `-` 开头会被下面单独防、`=` 等危险字符直接拒）。
+fn is_safe_alias(alias: &str) -> bool {
+    !alias.is_empty()
+        && alias
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '@' | ':' | '-'))
+}
+
+/// 把以 `~` 开头的路径展开为绝对路径（`~` / `~/...`）。其余原样返回。
+fn expand_tilde(path: &str) -> std::path::PathBuf {
+    if let Some(rest) = path.strip_prefix('~') {
+        if rest.is_empty() || rest.starts_with('/') || rest.starts_with('\\') {
+            if let Some(home) = dirs::home_dir() {
+                let rest = rest.trim_start_matches(['/', '\\']);
+                return if rest.is_empty() {
+                    home
+                } else {
+                    home.join(rest)
+                };
+            }
+        }
+    }
+    std::path::PathBuf::from(path)
+}
+
+/// 用系统 `ssh -G <alias>` 解析一个别名的有效连接参数（OpenSSH client 在 Win10+/Win11
+/// 自带）。`ssh -G` 会完整处理 Include / Match / 通配 / 默认值，比自己解析 config 可靠得多。
+///
+/// **注入防护**：别名先过 [`is_safe_alias`] allowlist（`^[A-Za-z0-9._@:-]+$`），再额外挡掉
+/// 以 `-` 开头的值（否则会被 ssh 当成选项）。参数以独立 arg 传给 Command（不经 shell），
+/// 配合 allowlist 杜绝 arg/option 注入。
+///
+/// 解析 stdout（每行 `key value`，key 小写）：
+/// - `hostname <X>` → host
+/// - `port <N>`     → port（u16）
+/// - `user <U>`     → user
+/// - 第一个**展开后存在**的 `identityfile <path>` → key_path（None = 都不存在）
+#[tauri::command]
+pub async fn resolve_ssh_host(alias: String) -> Result<ResolvedHost, String> {
+    let alias = alias.trim().to_string();
+    if !is_safe_alias(&alias) {
+        return Err(format!("非法的 host 别名（含不安全字符）: {alias}"));
+    }
+    if alias.starts_with('-') {
+        return Err("host 别名不能以 '-' 开头".to_string());
+    }
+
+    // FIX 3（INVARIANT §10）：`Command::output()` 是同步阻塞调用，直接在 async fn 里跑会
+    // 卡住 tokio runtime 线程。挪进 spawn_blocking（allowlist 守卫已在上方先过，不进线程池）。
+    let alias_for_exec = alias.clone();
+    let output = tokio::task::spawn_blocking(move || {
+        std::process::Command::new("ssh")
+            .arg("-G")
+            .arg(&alias_for_exec)
+            .output()
+    })
+    .await
+    .map_err(|e| format!("ssh -G 任务调度失败: {e}"))?
+    .map_err(|e| format!("运行 ssh -G 失败（OpenSSH client 装了吗？）: {e}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("ssh -G {alias} 退出非 0: {}", stderr.trim()));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    Ok(parse_ssh_g_output(&stdout, &alias))
+}
+
+/// F57：解析 `ssh -G <alias>` 的输出为 ResolvedHost（纯逻辑,便于单测）。识别 hostname/port/
+/// user/identityfile（第一个**展开后存在**的）/proxyjump（`none` → None）。hostname 缺省回退别名。
+/// identityfile 的「存在性」检查依赖文件系统,单测里非存在路径 → key_path=None,不影响其余字段判定。
+fn parse_ssh_g_output(stdout: &str, alias: &str) -> ResolvedHost {
+    let mut host: Option<String> = None;
+    let mut port: Option<u16> = None;
+    let mut user: Option<String> = None;
+    let mut key_path: Option<String> = None;
+    let mut proxy_jump: Option<String> = None;
+
+    for line in stdout.lines() {
+        let mut it = line.splitn(2, char::is_whitespace);
+        let key = it.next().unwrap_or("").trim().to_ascii_lowercase();
+        let val = it.next().unwrap_or("").trim();
+        if val.is_empty() {
+            continue;
+        }
+        match key.as_str() {
+            "hostname" => host = Some(val.to_string()),
+            "port" => port = val.parse::<u16>().ok(),
+            "user" => user = Some(val.to_string()),
+            "identityfile" if key_path.is_none() => {
+                // 第一个**展开后存在**的 identityfile 才采用。
+                let expanded = expand_tilde(val);
+                if expanded.exists() {
+                    key_path = Some(expanded.to_string_lossy().to_string());
+                }
+            }
+            // F57：proxyjump 值通常是另一别名（`none` = 无跳板）。
+            "proxyjump" if !val.eq_ignore_ascii_case("none") => {
+                proxy_jump = Some(val.to_string());
+            }
+            _ => {}
+        }
+    }
+
+    ResolvedHost {
+        // hostname 缺省回退到别名本身（ssh -G 通常总会给 hostname，但稳妥兜底）。
+        host: host.unwrap_or_else(|| alias.to_string()),
+        port: port.unwrap_or(22),
+        user: user.unwrap_or_default(),
+        key_path,
+        proxy_jump,
+    }
+}
+
+/// F57：一个来源别名 + 其 HostName/port/proxyjump（供前端「拆分」精确还原成独立机）。
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[serde(rename_all = "camelCase")]
+pub struct ImportMember {
+    pub alias: String,
+    pub host: String,
+    pub port: u16,
+    pub proxy_jump: Option<String>,
+}
+
+/// F57：批量导入预览的一组——聚合后的一台建议主机（含多地址与来源成员）。
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[serde(rename_all = "camelCase")]
+pub struct ImportGroup {
+    pub label: String,
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub key_path: Option<String>,
+    /// F45 备用地址：组内除 host 外的其余 HostName（去重）。单机组为空。
+    pub addresses: Vec<String>,
+    /// F56 跳板：组内首个非空 proxyjump（别名）。
+    pub jump: Option<String>,
+    /// 来源成员（别名+HostName）：预览展示；用户「拆分」时据此建独立机。
+    pub members: Vec<ImportMember>,
+}
+
+/// F57：别名基名前缀——首个 `-`/`_`/`.` 前的段（`aya-lan` → `aya`；`pi` → `pi`）。同机聚合判据之一。
+fn alias_base(alias: &str) -> String {
+    alias
+        .split(|c| c == '-' || c == '_' || c == '.')
+        .next()
+        .unwrap_or(alias)
+        .to_string()
+}
+
+/// F57：智能聚合——同 `(keyPath, user, 基名前缀)` 的多别名判为**同一台机的多地址**，聚合成 1 组
+/// （host=首 HostName、addresses=其余 HostName 去重、label=基名、jump=组内首个 proxyjump）；否则各自
+/// 独立。保序（按别名首次出现）。纯函数便于单测；聚合激进/保守由前端预览「拆分/勾选」兜底。
+pub fn aggregate_ssh_hosts(hosts: Vec<(String, ResolvedHost)>) -> Vec<ImportGroup> {
+    type GKey = (Option<String>, String, String); // (keyPath, user, base)
+    let mut groups: Vec<(GKey, ImportGroup)> = Vec::new();
+    for (alias, r) in hosts {
+        let gkey: GKey = (r.key_path.clone(), r.user.clone(), alias_base(&alias));
+        let member = ImportMember {
+            alias,
+            host: r.host.clone(),
+            port: r.port,
+            proxy_jump: r.proxy_jump.clone(),
+        };
+        if let Some((k, g)) = groups.iter_mut().find(|(k, _)| *k == gkey) {
+            // 副地址：端口与组首端口不同则存 `host:port`（F45 支持），否则裸 host；去重。
+            let addr = if r.port == g.port {
+                r.host.clone()
+            } else {
+                format!("{}:{}", r.host, r.port)
+            };
+            if r.host != g.host && !g.addresses.contains(&addr) {
+                g.addresses.push(addr);
+            }
+            g.members.push(member);
+            if g.jump.is_none() {
+                g.jump = r.proxy_jump.clone();
+            }
+            let _ = k;
+        } else {
+            groups.push((
+                gkey,
+                ImportGroup {
+                    label: alias_base(&member.alias),
+                    host: r.host.clone(),
+                    port: r.port,
+                    user: r.user.clone(),
+                    key_path: r.key_path.clone(),
+                    addresses: Vec::new(),
+                    jump: r.proxy_jump.clone(),
+                    members: vec![member],
+                },
+            ));
+        }
+    }
+    // F57-1（D 修）：单成员组用**完整别名**当 label（否则 `prod-web`/`prod-db` 异 key 拆成两组却都叫
+    // `prod`，前端落卡时同名碰撞会丢一台）；仅真·多地址聚合组用基名前缀。
+    let mut out: Vec<ImportGroup> = groups.into_iter().map(|(_, g)| g).collect();
+    for g in &mut out {
+        if g.members.len() == 1 {
+            g.label = g.members[0].alias.clone();
+        }
+    }
+    out
+}
+
+/// F57：批量从 `~/.ssh/config` 导入——列全部别名、逐个 `ssh -G` 解析（保序）、智能聚合成预览组。
+/// resolve 失败的别名跳过（best-effort）；无 config/无别名 → 空。前端弹预览可拆分/勾选再落。
+#[tauri::command]
+pub async fn import_ssh_hosts() -> Result<Vec<ImportGroup>, String> {
+    let aliases = list_ssh_host_aliases().await?;
+    let mut resolved: Vec<(String, ResolvedHost)> = Vec::new();
+    for alias in aliases {
+        // 顺序 resolve 保序（聚合按别名首次出现）；ssh -G 快（本地 config 解析），别名数通常个位。
+        if let Ok(r) = resolve_ssh_host(alias.clone()).await {
+            resolved.push((alias, r));
+        }
+    }
+    Ok(aggregate_ssh_hosts(resolved))
+}
+
+/// 「测试连接」的结果（issue #15 Part 2）。serde camelCase 与前端渲染对齐。
+///
+/// 偏好「返回 populated 结果 + message」而非 Err：让 UI 能展示部分成功
+/// （如「SSH 连上了，但 daemon 没响应/未部署」）。仅参数级硬错误才返回 Err。
+#[derive(Debug, Clone, Serialize)]
+#[cfg_attr(test, derive(ts_rs::TS))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[serde(rename_all = "camelCase")]
+pub struct ConnTestResult {
+    /// SSH 连接 + 鉴权是否成功。
+    pub ssh_ok: bool,
+    /// 握手时观察到的 server host key 指纹（`SHA256:...`）。用于展示 + TOFU 固化。
+    pub fingerprint: Option<String>,
+    /// F45 / D 审计重要-1：竞发胜出的地址（`host:port`）。多地址 TOFU 首连时,让用户明确
+    /// 自己正在固化**哪条路径**观察到的指纹（而非盲信「最快那条」）。单地址时即该地址。
+    pub endpoint: Option<String>,
+    /// daemon 是否在 SHORT timeout 内回了可解析的 hello 帧。
+    pub daemon_ok: bool,
+    /// daemon hello 的人读摘要（`v=.. arch=.. claude_home=..`）。
+    /// ⚠ `S4` 起 `claude_home` 是**解析后**的值（优先 `homes`、回退 `claude_dir`），
+    /// 不是某个线上字段的原样照抄。
+    pub daemon_hello: Option<String>,
+    /// 人读的总体状态 / 失败原因。
+    pub message: String,
+}
+
+/// 测试一条远端配置：连 SSH → 读指纹 → exec daemon → 等首行 hello（SHORT timeout）。
+///
+/// 步骤化、每步把结果填进 [`ConnTestResult`]：
+/// 1. `connect_session`（publickey 或 agent）。失败 → ssh_ok=false + message，返回 Ok。
+/// 2. 成功 → ssh_ok=true，从 observed cell 读指纹。
+/// 3. channel_open + exec daemon + 读首行 stdout（`tokio::time::timeout` 8s）。
+///    解析成 hello → daemon_ok=true + 摘要；否则 message 说明 daemon 未响应/未部署。
+///
+/// 只有"无法构造测试"这类硬错才返回 Err；连接/鉴权/daemon 失败都收进结果里，UI 据此分级展示。
+#[tauri::command]
+pub async fn test_remote_connection(
+    cfg: RemoteConfig,
+    on_stage: tauri::ipc::Channel<ConnectStage>,
+) -> Result<ConnTestResult, String> {
+    let mut result = ConnTestResult {
+        ssh_ok: false,
+        fingerprint: None,
+        endpoint: None,
+        daemon_ok: false,
+        daemon_hello: None,
+        message: String::new(),
+    };
+
+    // 1. 连接 + 鉴权（短 inactivity：测试连接不需要长保活）。F46：传 Some(on_stage) 让
+    //    竞发/握手/鉴权按地址泳道流式 emit 到前端「连接过程」日志。
+    let (session, observed) =
+        match connect_session(&cfg, Some(Duration::from_secs(30)), Some(on_stage)).await {
+            Ok(s) => s,
+            Err(e) => {
+                // 握手失败（含 host key 不匹配被拒）。check_server_key 可能已写过指纹，但
+                // connect_session 在 Err 路径不回传 cell，这里只报失败原因即可。
+                result.ssh_ok = false;
+                result.message = format!("SSH 连接/鉴权失败：{e}");
+                return Ok(result);
+            }
+        };
+    result.ssh_ok = true;
+    result.fingerprint = observed.lock().ok().and_then(|g| g.clone());
+    // 连接成功 → last-good 已记为胜者;回传给前端展示「你正连上/将固化哪个地址」。
+    let win = winner_address(&cfg);
+    result.endpoint = Some(format!("{}:{}", win.host, win.port));
+
+    // 3. exec daemon 并等首行 hello。
+    let daemon_path = cfg.daemon_path.clone();
+    match probe_daemon(&session, &daemon_path).await {
+        Ok(Some(probe)) => {
+            result.daemon_ok = true;
+            result.message = if probe.control_ok {
+                "SSH 与 daemon 均正常（含控制通道往返）。".to_string()
+            } else if probe.control_unsupported {
+                "SSH 与 daemon 正常，但该 daemon **不支持控制通道**（旧版本）——                 远端起会话等功能不可用，请在设置里重装该机器的 daemon。"
+                    .to_string()
+            } else {
+                // 控制通道真失败：**不许报「均正常」**。这一步就是为了让它在这里显形。
+                "SSH 与 daemon 正常，但**控制通道不通**（详见下方摘要的 control=… 段）——                 远端起会话会失败。"
+                    .to_string()
+            };
+            result.daemon_hello = Some(probe.summary);
+        }
+        Ok(None) => {
+            result.message =
+                "SSH 连上了，但 daemon 在超时内未回 hello（未部署 / 路径错 / 启动失败？）。"
+                    .to_string();
+        }
+        Err(e) => {
+            result.message = format!("SSH 连上了，但 daemon 探测失败：{e}");
+        }
+    }
+
+    // 礼貌关闭 session（best-effort，忽略错误）。
+    let _ = session
+        .disconnect(russh::Disconnect::ByApplication, "", "")
+        .await;
+    Ok(result)
+}
+
+/// [`probe_daemon`] 的结果。**不是一个摘要串** —— 顶层结论要能分辨「控制通道通不通」，
+/// 否则 D 审计点名的那件事会再发生一次：控制通道不通时仍然报「SSH 与 daemon 均正常」，
+/// 失败只藏在括号里，而这一步的立项理由恰恰是「别让用户在全绿之后才发现起不了会话」。
+struct DaemonProbe {
+    /// 人读摘要（进 `ConnTestResult::daemon_hello`）。
+    summary: String,
+    /// 控制通道 ping 往返成功。
+    control_ok: bool,
+    /// 旧 daemon：没声明任何入方向命令（不是失败，是能力缺失）。
+    control_unsupported: bool,
+}
+
+/// exec daemon、读首行 stdout、若是 hello 帧再**探一次控制通道往返**。
+///
+/// 三步（第三步是 U8a-2a 新增）：
+///
+/// 1. exec + 读首行，超时 8s；
+/// 2. 解析成 `hello` 帧 → 人读摘要；
+/// 3. 用同一条 channel 发一条 `ping` 等应答，超时 [`CONTROL_PROBE_TIMEOUT`]。
+///
+/// **时间预算是两段串联**：最坏 8s + 5s = 13s，只在「daemon 发了 hello、声明了 `ping`、
+/// 却不回应答」时吃满；旧 daemon（未声明入方向）走 `control=unsupported` 立即返回。
+///
+/// 返回：
+///
+/// - `Ok(Some(probe))` —— 读到并解析成 hello（`probe.control_*` 说明控制通道结论）。
+/// - `Ok(None)`        —— 超时 / EOF / 非 hello（daemon 未正常响应）。
+/// - `Err(_)`          —— channel/exec/IO 硬错误。
+async fn probe_daemon(
+    session: &client::Handle<ClientHandler>,
+    daemon_path: &str,
+) -> Result<Option<DaemonProbe>, String> {
+    let channel = session
+        .channel_open_session()
+        .await
+        .map_err(|e| format!("打开 session channel 失败: {e}"))?;
+    channel
+        .exec(true, daemon_path.as_bytes())
+        .await
+        .map_err(|e| format!("exec {daemon_path} 失败: {e}"))?;
+
+    // U8a-2a：切成两半，写半边同一步停住（见 `inbound_client::split_and_park`）。
+    let (rh, parked) = crate::inbound_client::split_and_park(channel.into_stream());
+    let mut reader = BufReader::new(rh);
+
+    // ★ F10b：与主帧读同一个量（daemon 出方向单行）⇒ 同一个上限、同一个机制。
+    // 取消（超时）之后本函数直接返回，reader 不再复用 ⇒ 满足 `read_capped_line` 的使用条件。
+    let mut line: Vec<u8> = Vec::new();
+    let read = tokio::time::timeout(
+        Duration::from_secs(8),
+        read_capped_line(&mut reader, &mut line, DAEMON_FRAME_LINE_CAP),
+    )
+    .await;
+
+    match read {
+        Err(_elapsed) => Ok(None), // 超时
+        Ok(Err(e)) => Err(format!("读 daemon stdout 出错: {e}")),
+        Ok(Ok(CappedLine::Eof)) => Ok(None), // EOF（daemon 立即退出 / 未输出）
+        // 握手行超限 ⇒ 与「非 hello 帧」同一档：daemon 未正常握手。
+        // ⚠ 这里**不**发 REMOTE_HEALTH —— 探测阶段还没有 host_label 语境，
+        // 且返回 `None` 本身就会被调用方当成「没握上手」如实报出去。
+        Ok(Ok(CappedLine::TooLong(bytes))) => {
+            tracing::warn!("probe_daemon: hello 行 {bytes} 字节超上限，判未握手");
+            Ok(None)
+        }
+        Ok(Ok(CappedLine::Line)) => {
+            let text = String::from_utf8_lossy(&line);
+            let trimmed = text.trim_end_matches(['\n', '\r']);
+            match parse_frame(trimmed) {
+                Some(frame @ InboundFrame::Hello { .. }) => {
+                    let head = describe_hello(&frame);
+                    let control = probe_control_channel(parked, reader, &frame).await;
+                    Ok(Some(DaemonProbe {
+                        control_ok: control.starts_with("control=ok("),
+                        control_unsupported: control.starts_with("control=unsupported"),
+                        summary: format!("{head} {control}"),
+                    }))
+                }
+                // 非 hello 帧 → daemon 未正常握手。写半边随 `parked` 一起 drop。
+                _ => Ok(None),
+            }
+        }
+    }
+}
+
+/// hello 帧的人读摘要。
+fn describe_hello(frame: &InboundFrame) -> String {
+    match frame {
+        InboundFrame::Hello {
+            v,
+            build_id,
+            host_arch,
+            claude_dir,
+            homes,
+            capabilities,
+            commands,
+        } => format!(
+            "v={v} build={build_id} arch={host_arch} claude_home={} caps={capabilities:?} cmds={commands:?}",
+            claude_home_from_hello(homes, claude_dir)
+        ),
+        other => format!("(非 hello 帧: {other:?})"),
+    }
+}
+
+/// 探测 `ping` 往返的超时。测试连接是人在等着看结果，别让它挂太久。
+const CONTROL_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// U8a-2a：**入方向（控制通道）往返探测** —— 「测试连接」的第三步。
+///
+/// # 为什么加这一步
+///
+/// 此前「测试连接」只证明了两件事：SSH 通、daemon 会说 hello。它**没有**证明
+/// 反方向能走 —— 而 U8a-2b 之后起会话正是走那条反方向。少了这一步，用户会在
+/// 「测试连接全绿」之后才在真起会话时发现控制通道根本不通，且无从归因。
+///
+/// 探测用 `ping`：daemon 侧它是空操作（`Ok(None)`），零副作用、零写入。
+///
+/// 结果只追加进 `daemon_hello` 摘要串（前端已有展示位），不新增字段 ⇒ 零 TS 绑定改动。
+async fn probe_control_channel<R, W>(
+    parked: crate::inbound_client::ParkedWriter<W>,
+    reader: BufReader<R>,
+    hello: &InboundFrame,
+) -> String
+where
+    R: tokio::io::AsyncRead + Unpin + Send + 'static,
+    W: tokio::io::AsyncWrite + Unpin + Send + 'static,
+{
+    let Some(witness) = crate::inbound_client::DaemonHello::from_hello_frame(hello) else {
+        // 不可达（调用方已确认是 Hello），但不 panic —— 探测路径宁可少报一行。
+        return "control=n/a".to_string();
+    };
+    let client = parked.into_client(witness);
+    if !client.accepts("ping") {
+        client.close_write();
+        return "control=unsupported(daemon 未声明入方向命令)".to_string();
+    }
+    // 应答走的是同一条流的读半边 —— 起一个只做路由的泵，探完就撤。
+    let pump = {
+        let c = client.clone();
+        tauri::async_runtime::spawn(pump_inbound_replies(reader, c))
+    };
+    let t0 = std::time::Instant::now();
+    let out = match client
+        .call("ping", serde_json::Value::Null, CONTROL_PROBE_TIMEOUT)
+        .await
+    {
+        Ok(_) => format!("control=ok({}ms)", t0.elapsed().as_millis()),
+        Err(e) => format!("control=failed({e})"),
+    };
+    pump.abort();
+    // 探测专用：告诉 daemon 我们不会再发命令了（关写半边 ⇒ 它的入方向 reader 寿终）。
+    // ⚠ 这**不会**让 daemon 退出 —— 那句流传已久的注释是错的，e2e 第 9 条实测钉住。
+    // 探测真正的收尾是本函数返回后整条 SSH channel 被 drop（stdout 断 ⇒ writer_task 结束 ⇒ exit）。
+    client.close_write();
+    out
+}
+
+/// 只做一件事：把读到的 `reply`/`cancelled` 路由给客户端。其余帧丢弃（探测不关心）。
+async fn pump_inbound_replies<R>(
+    mut reader: BufReader<R>,
+    client: std::sync::Arc<crate::inbound_client::InboundClient>,
+) where
+    R: tokio::io::AsyncRead + Unpin,
+{
+    // ★ F10b：同一个量（daemon 出方向单行）⇒ 同一个上限。
+    // 超限那一行**丢掉继续泵** —— 它不可能是本泵关心的 `reply`/`cancelled`
+    // （那两种帧都是几百字节量级），而整个泵是探测期临时物、`pump.abort()` 就撤。
+    let mut buf: Vec<u8> = Vec::new();
+    loop {
+        let text = match read_capped_line(&mut reader, &mut buf, DAEMON_FRAME_LINE_CAP).await {
+            Ok(CappedLine::Eof) | Err(_) => break,
+            Ok(CappedLine::TooLong(bytes)) => {
+                tracing::warn!("pump_inbound_replies: 丢掉一行 {bytes} 字节（超上限）");
+                continue;
+            }
+            Ok(CappedLine::Line) => String::from_utf8_lossy(&buf).into_owned(),
+        };
+        match parse_frame(text.trim_end_matches(['\n', '\r'])) {
+            Some(InboundFrame::Reply {
+                id,
+                ok,
+                code,
+                message,
+                data,
+            }) => {
+                client.route_reply(&id, ok, code, message, data);
+            }
+            Some(InboundFrame::Cancelled { id }) => {
+                client.route_cancelled(&id);
+            }
+            // 〔audit-0805 08-06，定框 E4〕**静默失败一律给身份**。
+            // 原来这里是 `_ => {}`：这条泵只认 Reply/Cancelled，其余帧**一声不响地丢掉** ——
+            // 而它的兄弟 `route_inbound_frame` 对同一情况是 `warn!` 报身份。
+            // 同一件事两条路一条报一条不报，正是本区反复记的不对称。
+            Some(other) => {
+                tracing::warn!("入方向应答泵收到非应答帧，忽略：{other:?}");
+            }
+            None => {}
+        }
+    }
+}
+
+#[cfg(test)]
+mod batcher_tests {
+    use super::*;
+
+    fn line(sid: &str, seq: u64) -> JsonlLine {
+        JsonlLine {
+            session_id: sid.to_string(),
+            path: std::path::PathBuf::from(format!("/fake/{sid}.jsonl")),
+            seq,
+            raw: format!("{{\"seq\":{seq}}}"),
+        }
+    }
+
+    #[test]
+    fn push_below_cap_accumulates_take_drains_in_order() {
+        let mut b = Batcher::new(600);
+        assert!(b.push(line("s1", 0)).is_none());
+        assert!(b.push(line("s2", 0)).is_none()); // 跨 session 混流不拆
+        assert!(b.push(line("s1", 1)).is_none());
+        let out = b.take().expect("non-empty");
+        assert_eq!(
+            out.iter()
+                .map(|l| (l.session_id.as_str(), l.seq))
+                .collect::<Vec<_>>(),
+            vec![("s1", 0), ("s2", 0), ("s1", 1)],
+            "到达顺序 = 发出顺序"
+        );
+        assert!(b.take().is_none(), "drained");
+    }
+
+    #[test]
+    fn cap_triggers_immediate_full_flush() {
+        let mut b = Batcher::new(3);
+        assert!(b.push(line("s", 0)).is_none());
+        assert!(b.push(line("s", 1)).is_none());
+        let full = b.push(line("s", 2)).expect("cap reached → full batch out");
+        assert_eq!(full.len(), 3);
+        assert!(b.take().is_none(), "buffer empty after cap flush");
+        // 继续攒下一批不受影响
+        assert!(b.push(line("s", 3)).is_none());
+        assert_eq!(b.take().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn take_on_empty_is_none() {
+        let mut b = Batcher::new(600);
+        assert!(b.take().is_none());
+    }
+}
+
+#[cfg(test)]
+mod parse_frame_tests {
+    use super::*;
+
+    /// hello 帧解析：取 v / build_id / host_arch / claude_dir（#33 起捕获 build_id）。
+    #[test]
+    fn parses_hello_and_captures_build_id() {
+        let line = r#"{"kind":"hello","v":1,"build_id":"abc123","host_arch":"aarch64","claude_dir":"/home/pi/.claude"}"#;
+        let frame = parse_frame(line).expect("hello must parse");
+        assert_eq!(
+            frame,
+            InboundFrame::Hello {
+                v: 1,
+                build_id: "abc123".to_string(),
+                host_arch: "aarch64".to_string(),
+                claude_dir: "/home/pi/.claude".to_string(),
+                // `S4`：本样本无 `homes` 字段（= 今天所有已部署的 daemon）→ 空表 ⇒ 回退 `claude_dir`。
+                homes: Vec::new(),
+                // F66：旧 daemon（本样本无 capabilities 字段）→ 空集（保守缺省）
+                capabilities: Vec::new(),
+                // U8a-2a：同理，无 commands 字段 → 空集 ⇒ 一条入方向命令都不发。
+                commands: Vec::new(),
+            }
+        );
+    }
+
+    /// ★ `S4`：`hello.homes` 的**解析 + 回退**必须有判据 —— 四种形态一次钉住。
+    ///
+    /// 它防的是 `commands` 那次同款的病（见下一条的 D 审计变异 B1）：
+    /// 字段名漂一个字母 ⇒ `homes` 永远空 ⇒ 永远走回退 ⇒ **一切照常绿**，
+    /// 而 additive 迁移实际上没发生。所以这里逐形态断言，不只断言"不 panic"。
+    #[test]
+    fn parses_hello_homes_and_falls_back_to_claude_dir() {
+        // ① 无 `homes`（= 今天所有已部署的 daemon）⇒ 空表 ⇒ 回退 `claude_dir`。
+        let old = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/old/.claude"}"#;
+        match parse_frame(old).expect("hello must parse") {
+            InboundFrame::Hello {
+                homes, claude_dir, ..
+            } => {
+                assert!(homes.is_empty(), "旧 daemon 不该凭空长出 homes");
+                assert_eq!(
+                    claude_home_from_hello(&homes, &claude_dir),
+                    "/old/.claude",
+                    "无 homes 时必须回退 claude_dir —— 这条一坏，所有已部署的 daemon 当场失去 home"
+                );
+            }
+            other => panic!("expected Hello, got {other:?}"),
+        }
+
+        // ② 有 `homes` 且含 claude 项 ⇒ **homes 优先**（`claude_dir` 故意给个不同的值，
+        //    这样"优先"是真的被验到了，而不是两边碰巧相等）。
+        let new = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/legacy/.claude","homes":[{"agent_kind":"claude","path":"/new/.claude"},{"agent_kind":"codex","path":"/new/.codex"}]}"#;
+        match parse_frame(new).expect("hello must parse") {
+            InboundFrame::Hello {
+                homes, claude_dir, ..
+            } => {
+                assert_eq!(homes.len(), 2, "两项都该解析出来：{homes:?}");
+                assert_eq!(homes[1].agent_kind, "codex");
+                assert_eq!(homes[1].path, "/new/.codex");
+                assert_eq!(
+                    claude_home_from_hello(&homes, &claude_dir),
+                    "/new/.claude",
+                    "有 homes 时必须**优先**读它 —— 回退值是 /legacy/.claude，读到它就说明优先级反了"
+                );
+            }
+            other => panic!("expected Hello, got {other:?}"),
+        }
+
+        // ③ 有 `homes` 但**没有 claude 那一项**（只服务别的 agent）⇒ 仍回退 `claude_dir`。
+        let other_only = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/legacy/.claude","homes":[{"agent_kind":"codex","path":"/new/.codex"}]}"#;
+        match parse_frame(other_only).expect("hello must parse") {
+            InboundFrame::Hello {
+                homes, claude_dir, ..
+            } => assert_eq!(
+                claude_home_from_hello(&homes, &claude_dir),
+                "/legacy/.claude",
+                "homes 非空但没有 claude 项时，不许把别的 agent 的 home 当成 claude 的"
+            ),
+            other => panic!("expected Hello, got {other:?}"),
+        }
+
+        // ④ 坏数据：非数组 / 元素不是对象 / 缺字段 / 字段类型不对
+        //    ⇒ **逐项丢掉、整帧仍解析**（`homes` 不是必需字段，坏它不该让整条 hello 变 garbage）。
+        let junk = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","homes":"not-an-array"}"#;
+        match parse_frame(junk).expect("非数组的 homes 不该让整帧变 None") {
+            InboundFrame::Hello { homes, .. } => assert!(homes.is_empty()),
+            other => panic!("expected Hello, got {other:?}"),
+        }
+        let mixed = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","homes":[7,null,{"agent_kind":"claude"},{"path":"/p"},{"agent_kind":"codex","path":42},{"agent_kind":"codex","path":"/ok"}]}"#;
+        match parse_frame(mixed).expect("坏项不该让整帧变 None") {
+            InboundFrame::Hello { homes, .. } => {
+                assert_eq!(
+                    homes,
+                    vec![AgentHome {
+                        agent_kind: "codex".to_string(),
+                        path: "/ok".to_string(),
+                    }],
+                    "只有完整且类型正确的那一项该留下：{homes:?}"
+                );
+            }
+            other => panic!("expected Hello, got {other:?}"),
+        }
+    }
+
+    /// ★ U8a-2a：`hello.commands` 的**解析**必须有判据。
+    ///
+    /// D 审计变异 B1：把 `obj.get("commands")` 改成 `obj.get("commandz")`（两侧字段名漂移
+    /// 或一个笔误）⇒ `cargo test` 与 e2e **双双全绿**，而后果是 `commands` 永远空集 ⇒
+    /// `InboundClient::accepts()` 永远假 ⇒ **一条入方向命令都发不出去**，
+    /// 也就是 U8a-2a 要修的那个「通道不可达」原地复活。
+    ///
+    /// e2e 挡不住的原因：它 `grep` 的是整行 hello，daemon 把 `ping` 放哪个键里都绿。
+    #[test]
+    fn parses_hello_commands_across_the_three_shapes() {
+        let with = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","ping","resolve"]}"#;
+        match parse_frame(with).expect("hello must parse") {
+            InboundFrame::Hello { commands, .. } => {
+                assert_eq!(
+                    commands,
+                    vec!["cancel", "ping", "resolve"],
+                    "声明的命令集没解出来"
+                );
+            }
+            other => panic!("不是 hello：{other:?}"),
+        }
+        // 旧 daemon：无该字段 → 空集（保守缺省，不发任何入方向命令）。
+        let without =
+            r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d"}"#;
+        match parse_frame(without).expect("hello must parse") {
+            InboundFrame::Hello { commands, .. } => assert!(commands.is_empty()),
+            other => panic!("不是 hello：{other:?}"),
+        }
+        // 坏 daemon：非数组 / 元素非字符串 → 滤成空集，**绝不 panic**（同 capabilities 口径）。
+        let junk = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":"ping"}"#;
+        match parse_frame(junk).expect("hello must parse") {
+            InboundFrame::Hello { commands, .. } => assert!(commands.is_empty()),
+            other => panic!("不是 hello：{other:?}"),
+        }
+        let mixed = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["ping",7,null]}"#;
+        match parse_frame(mixed).expect("hello must parse") {
+            InboundFrame::Hello { commands, .. } => assert_eq!(commands, vec!["ping"]),
+            other => panic!("不是 hello：{other:?}"),
+        }
+    }
+
+    /// ★ U8a-2a：`reply` 帧的**字段**解析必须有判据。
+    ///
+    /// D 审计变异 I1：`ok` 改成 `unwrap_or(true)`（错误应答变成成功）+ `data` 从 `payload`
+    /// 键取 ⇒ 全绿。`known_kinds_matches_parse_frame` 只钉「有没有这条臂」，不看臂里取什么。
+    #[test]
+    fn parses_reply_and_cancelled_field_by_field() {
+        let ok_line = r#"{"kind":"reply","id":"a-1","ok":true,"data":{"pong":1}}"#;
+        assert_eq!(
+            parse_frame(ok_line).expect("reply must parse"),
+            InboundFrame::Reply {
+                id: "a-1".into(),
+                ok: true,
+                code: None,
+                message: None,
+                data: Some(serde_json::json!({ "pong": 1 })),
+            }
+        );
+        let err_line =
+            r#"{"kind":"reply","id":"a-2","ok":false,"code":"bad_request","message":"缺 sid"}"#;
+        assert_eq!(
+            parse_frame(err_line).expect("reply must parse"),
+            InboundFrame::Reply {
+                id: "a-2".into(),
+                ok: false,
+                code: Some("bad_request".into()),
+                message: Some("缺 sid".into()),
+                data: None,
+            }
+        );
+        // daemon 对**协议级**错误回空 id（它那时还不知道 id）——空串是合法值，不是坏帧。
+        let proto_err =
+            r#"{"kind":"reply","id":"","ok":false,"code":"line_too_long","message":"x"}"#;
+        assert!(matches!(
+            parse_frame(proto_err),
+            Some(InboundFrame::Reply { ok: false, .. })
+        ));
+        // 必需字段缺失 / 类型不对 → 坏帧跳过（与其余帧同一口径），**绝不当成 ok**。
+        for bad in [
+            r#"{"kind":"reply","ok":true}"#,
+            r#"{"kind":"reply","id":"a-3"}"#,
+            r#"{"kind":"reply","id":"a-3","ok":"true"}"#,
+            r#"{"kind":"reply","id":7,"ok":true}"#,
+        ] {
+            assert!(parse_frame(bad).is_none(), "坏 reply 却解出来了：{bad}");
+        }
+        assert_eq!(
+            parse_frame(r#"{"kind":"cancelled","id":"a-4"}"#).expect("cancelled must parse"),
+            InboundFrame::Cancelled { id: "a-4".into() }
+        );
+        assert!(parse_frame(r#"{"kind":"cancelled"}"#).is_none());
+    }
+
+    /// #33：hello 缺 build_id → None（按必需字段，坏帧跳过；既有 daemon 总在发它）。
+    #[test]
+    fn hello_missing_build_id_returns_none() {
+        let line = r#"{"kind":"hello","v":1,"host_arch":"x86_64","claude_dir":"/c"}"#;
+        assert_eq!(parse_frame(line), None);
+    }
+
+    /// F66（#58③）wire 契约：hello 的 `capabilities` 字段。
+    /// ① 缺字段（旧 daemon）→ 空集（向后兼容，保守缺省，同 §27 族）。
+    /// ② 声明数组 → 原样解析（monitor 按此决定发哪些 flag）。
+    /// ③ 非数组 / 元素非字符串 → 滤成空集，绝不 panic（宽容解析，§18）。
+    #[test]
+    fn hello_capabilities_backward_compat_and_declared() {
+        // ① 旧 daemon：无 capabilities → 空集
+        let old =
+            r#"{"kind":"hello","v":1,"build_id":"p1e","host_arch":"x86_64","claude_dir":"/c"}"#;
+        match parse_frame(old).unwrap() {
+            InboundFrame::Hello { capabilities, .. } => {
+                assert!(capabilities.is_empty(), "旧 daemon 无声明 → 空集");
+            }
+            _ => panic!("expected Hello"),
+        }
+        // ② 新 daemon：声明能力
+        let new = r#"{"kind":"hello","v":1,"build_id":"p1h","host_arch":"x86_64","claude_dir":"/c","capabilities":["bg","tail-only"]}"#;
+        match parse_frame(new).unwrap() {
+            InboundFrame::Hello { capabilities, .. } => {
+                assert_eq!(
+                    capabilities,
+                    vec!["bg".to_string(), "tail-only".to_string()]
+                );
+            }
+            _ => panic!("expected Hello"),
+        }
+        // ③ 畸形 capabilities（非数组 / 混入非字符串）→ 不 panic，滤成空/仅字符串
+        let bad = r#"{"kind":"hello","v":1,"build_id":"p1x","host_arch":"x86_64","claude_dir":"/c","capabilities":"not-array"}"#;
+        match parse_frame(bad).unwrap() {
+            InboundFrame::Hello { capabilities, .. } => {
+                assert!(capabilities.is_empty(), "非数组 capabilities → 空集，不崩");
+            }
+            _ => panic!("expected Hello"),
+        }
+        let mixed = r#"{"kind":"hello","v":1,"build_id":"p1x","host_arch":"x86_64","claude_dir":"/c","capabilities":["bg",42,null,"tail-only"]}"#;
+        match parse_frame(mixed).unwrap() {
+            InboundFrame::Hello { capabilities, .. } => {
+                assert_eq!(
+                    capabilities,
+                    vec!["bg".to_string(), "tail-only".to_string()],
+                    "非字符串元素被滤掉，字符串保留"
+                );
+            }
+            _ => panic!("expected Hello"),
+        }
+    }
+
+    /// #33：版本协商真值表。协议不符优先于 build 差异。
+    #[test]
+    fn negotiate_version_truth_table() {
+        // 全同 → Ok。
+        assert_eq!(
+            negotiate_version(EXPECTED_PROTO_V, EXPECTED_DAEMON_BUILD_ID),
+            VersionVerdict::Ok
+        );
+        // 协议同、build 异 → StaleBuild（带上报值）。
+        assert_eq!(
+            negotiate_version(EXPECTED_PROTO_V, "p1a-history"),
+            VersionVerdict::StaleBuild {
+                reported: "p1a-history".to_string()
+            }
+        );
+        // 协议异 → Incompatible，且即便 build 也不同，协议优先。
+        assert_eq!(
+            negotiate_version(999, "whatever"),
+            VersionVerdict::Incompatible { reported_v: 999 }
+        );
+        assert_eq!(
+            negotiate_version(999, EXPECTED_DAEMON_BUILD_ID),
+            VersionVerdict::Incompatible { reported_v: 999 },
+            "协议不符时即使 build 匹配也算不兼容"
+        );
+    }
+
+    /// #33：version_warning 文案——Ok→None，其余→Some 且含 label。
+    #[test]
+    fn version_warning_messages() {
+        assert_eq!(
+            version_warning(EXPECTED_PROTO_V, EXPECTED_DAEMON_BUILD_ID, "pi"),
+            None
+        );
+        let stale = version_warning(EXPECTED_PROTO_V, "p1a-history", "pi").expect("stale warns");
+        assert!(stale.contains("pi") && stale.contains("p1a-history"));
+        let incompat = version_warning(2, EXPECTED_DAEMON_BUILD_ID, "wsl").expect("incompat warns");
+        assert!(incompat.contains("wsl") && incompat.contains("不兼容"));
+    }
+
+    /// 两条 line 帧：逐字段断言 session_id / path / seq / raw 都原样取出。
+    #[test]
+    fn parses_two_line_frames_with_all_fields() {
+        let l0 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":0,"raw":"{\"type\":\"user\"}"}"#;
+        let l1 = r#"{"kind":"line","session_id":"s-1","path":"/home/pi/.claude/projects/p/s-1.jsonl","seq":1,"raw":"second"}"#;
+
+        let f0 = parse_frame(l0).expect("line 0 must parse");
+        assert_eq!(
+            f0,
+            InboundFrame::Line {
+                session_id: "s-1".to_string(),
+                path: "/home/pi/.claude/projects/p/s-1.jsonl".to_string(),
+                seq: 0,
+                raw: r#"{"type":"user"}"#.to_string(),
+            }
+        );
+
+        let f1 = parse_frame(l1).expect("line 1 must parse");
+        match f1 {
+            InboundFrame::Line { seq, raw, .. } => {
+                assert_eq!(seq, 1);
+                assert_eq!(raw, "second");
+            }
+            other => panic!("expected Line, got {other:?}"),
+        }
+    }
+
+    // ---------- P5（zero-poll-liveness）：正向死亡帧的解析 ----------
+
+    #[test]
+    fn tmux_session_closed_parses() {
+        assert_eq!(
+            parse_frame(r#"{"kind":"tmux_session_closed","name":"cc-abc123"}"#),
+            Some(InboundFrame::TmuxSessionClosed {
+                name: "cc-abc123".to_string()
+            })
+        );
+    }
+
+    /// 缺 `name` / 非字符串 ⇒ 坏帧跳过（`None`），**不 panic**，与其余帧同一口径。
+    #[test]
+    fn tmux_session_closed_bad_payload_is_skipped() {
+        assert_eq!(parse_frame(r#"{"kind":"tmux_session_closed"}"#), None);
+        assert_eq!(
+            parse_frame(r#"{"kind":"tmux_session_closed","name":42}"#),
+            None
+        );
+    }
+
+    /// 未知 kind（协议向前演进新增的帧类型）→ None，调用方 warn+skip，绝不 panic。
+    #[test]
+    fn unknown_kind_returns_none() {
+        let line = r#"{"kind":"future_thing","x":1}"#;
+        assert_eq!(parse_frame(line), None);
+    }
+
+    /// 完全非 JSON 的 garbage 行 → None，绝不 panic。
+    #[test]
+    fn garbage_non_json_returns_none() {
+        assert_eq!(parse_frame("not json"), None);
+        assert_eq!(parse_frame(""), None);
+        // 合法 JSON 但不是 object（数组 / 标量）也 → None
+        assert_eq!(parse_frame("[1,2,3]"), None);
+        assert_eq!(parse_frame("42"), None);
+        // object 但缺 kind
+        assert_eq!(parse_frame(r#"{"v":1}"#), None);
+    }
+
+    /// 已知 kind + 额外未知字段：仍正常解析，多余字段被忽略（不 fail）。
+    #[test]
+    fn known_kind_with_extra_fields_still_parses() {
+        let line = r#"{"kind":"session_added","sid":"s-9","extra":"ignored","nested":{"a":1}}"#;
+        let frame = parse_frame(line).expect("session_added with extras must parse");
+        assert_eq!(
+            frame,
+            InboundFrame::SessionAdded {
+                sid: "s-9".to_string(),
+                session_kind: None,
+                attachable: None,
+                cwd: None,
+                name: None,
+                path: None,
+                lines: None,
+                status: None,
+                waiting_for: None,
+            }
+        );
+    }
+
+    /// Batch7-F24：p1e daemon 的 session_added 附加元信息正确解析；
+    /// 旧 daemon 缺字段 → None（上一测试已覆盖）。
+    #[test]
+    fn session_added_metadata_parses() {
+        let line = r#"{"kind":"session_added","sid":"s-bg","session_kind":"bg","cwd":"/proj/x","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl","lines":42}"#;
+        let frame = parse_frame(line).expect("must parse");
+        assert_eq!(
+            frame,
+            InboundFrame::SessionAdded {
+                sid: "s-bg".to_string(),
+                session_kind: Some("bg".to_string()),
+                attachable: None,
+                cwd: Some("/proj/x".to_string()),
+                name: Some("评估任务".to_string()),
+                path: Some("/home/u/.claude/projects/p/s-bg.jsonl".to_string()),
+                lines: Some(42),
+                status: None,
+                waiting_for: None,
+            }
+        );
+    }
+
+    /// Batch9-F27：session_status 帧解析 + session_added 初始 status。
+    #[test]
+    fn session_status_frame_parses() {
+        let line = r#"{"kind":"session_status","sid":"s-1","status":"waiting","waiting_for":"permission prompt"}"#;
+        assert_eq!(
+            parse_frame(line),
+            Some(InboundFrame::SessionStatus {
+                sid: "s-1".to_string(),
+                status: Some("waiting".to_string()),
+                waiting_for: Some("permission prompt".to_string()),
+            })
+        );
+        // 缺 waiting_for → None
+        let line = r#"{"kind":"session_status","sid":"s-2","status":"busy"}"#;
+        assert_eq!(
+            parse_frame(line),
+            Some(InboundFrame::SessionStatus {
+                sid: "s-2".to_string(),
+                status: Some("busy".to_string()),
+                waiting_for: None,
+            })
+        );
+    }
+
+    /// session_removed 映射到对应 variant。
+    #[test]
+    fn parses_session_removed() {
+        let line = r#"{"kind":"session_removed","sid":"s-dead"}"#;
+        let frame = parse_frame(line).expect("session_removed must parse");
+        assert_eq!(
+            frame,
+            InboundFrame::SessionRemoved {
+                sid: "s-dead".to_string(),
+                // ★ S0 向后兼容：**旧 daemon 不发 cause** ⇒ 必须解析成 Gone，
+                // 即维持今天的行为（查快照判灰点）。
+                cause: RemovalCause::Gone,
+            }
+        );
+    }
+
+    /// ★ S0：带 cause 的帧解析 + 未知取值的降级方向。
+    #[test]
+    fn parses_session_removed_cause() {
+        assert_eq!(
+            parse_frame(r#"{"kind":"session_removed","sid":"s","cause":"superseded"}"#),
+            Some(InboundFrame::SessionRemoved {
+                sid: "s".to_string(),
+                cause: RemovalCause::Superseded,
+            })
+        );
+        // 未知取值退回 Gone：宁可保守判活（可能多留一个灰点），也不能凭一个不认识的词
+        // 直接归档掉一个其实还活着的会话——归档是**破坏性**的（forget 绑定 + 关 tab）。
+        assert_eq!(
+            parse_frame(r#"{"kind":"session_removed","sid":"s","cause":"从未见过的词"}"#),
+            Some(InboundFrame::SessionRemoved {
+                sid: "s".to_string(),
+                cause: RemovalCause::Gone,
+            })
+        );
+    }
+
+    /// issue #32：overflow 帧解析出 dropped 计数；缺/错 dropped 当坏帧跳过（None）。
+    #[test]
+    fn parses_overflow_and_rejects_bad_dropped() {
+        let frame = parse_frame(r#"{"kind":"overflow","dropped":12}"#).expect("overflow parses");
+        assert_eq!(
+            frame,
+            InboundFrame::Overflow {
+                dropped: 12,
+                lost: Vec::new(),
+                lost_truncated: false
+            }
+        );
+        // 缺 dropped → None
+        assert_eq!(parse_frame(r#"{"kind":"overflow"}"#), None);
+        // dropped 类型错（字符串）→ None
+        assert_eq!(parse_frame(r#"{"kind":"overflow","dropped":"12"}"#), None);
+    }
+
+    /// B2：tmux_sessions 帧解析出 raw（tmux ls 原文，含转义 TAB）；缺/错 raw 当坏帧跳过（None）。
+    #[test]
+    fn parses_tmux_sessions_and_rejects_bad_raw() {
+        let frame = parse_frame(
+            "{\"kind\":\"tmux_sessions\",\"raw\":\"s1\\t/p\\tclaude\\t1\\t2\\tsid-a\"}",
+        )
+        .expect("tmux_sessions parses");
+        assert_eq!(
+            frame,
+            InboundFrame::TmuxSessions {
+                raw: "s1\t/p\tclaude\t1\t2\tsid-a".to_string(),
+                // P1：旧 daemon 无该字段 ⇒ None（**不是**坏帧）。
+                observation: None,
+            }
+        );
+        // NO_TMUX 哨兵也是合法 raw。
+        assert!(matches!(
+            parse_frame(r#"{"kind":"tmux_sessions","raw":"NO_TMUX"}"#),
+            Some(InboundFrame::TmuxSessions { .. })
+        ));
+        // 缺 raw / raw 非字符串 → None（坏帧跳过）。
+        assert_eq!(parse_frame(r#"{"kind":"tmux_sessions"}"#), None);
+        assert_eq!(parse_frame(r#"{"kind":"tmux_sessions","raw":5}"#), None);
+        // P1（additive 字段）：observation 存在则读出；**非字符串不是坏帧**、退化成 None
+        // （坏 daemon 也只该让 monitor 退回保守判据，不该让整帧被丢）。
+        assert_eq!(
+            parse_frame(r#"{"kind":"tmux_sessions","raw":"","observation":"zero_sessions"}"#),
+            Some(InboundFrame::TmuxSessions {
+                raw: String::new(),
+                observation: Some("zero_sessions".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_frame(r#"{"kind":"tmux_sessions","raw":"","observation":7}"#),
+            Some(InboundFrame::TmuxSessions {
+                raw: String::new(),
+                observation: None,
+            }),
+            "observation 类型错只该退化成 None，不该把整帧当坏帧丢掉"
+        );
+    }
+
+    /// 已知 kind 但必需字段缺失 / 类型错 → None（坏帧当 garbage 跳过，不 panic）。
+    #[test]
+    fn known_kind_missing_or_wrong_field_returns_none() {
+        // line 缺 seq
+        assert_eq!(
+            parse_frame(r#"{"kind":"line","session_id":"s","path":"/p","raw":"x"}"#),
+            None
+        );
+        // seq 类型错（字符串而非数字）
+        assert_eq!(
+            parse_frame(r#"{"kind":"line","session_id":"s","path":"/p","seq":"0","raw":"x"}"#),
+            None
+        );
+        // session_added 缺 sid
+        assert_eq!(parse_frame(r#"{"kind":"session_added"}"#), None);
+    }
+
+    /// 模拟一段帧序列逐行喂入：hello → 两条 line → 未知 → garbage → session_removed。
+    /// 断言 dispatch 正确性 + 未知/garbage 为 None（不 panic）。
+    #[test]
+    fn dispatch_over_a_frame_sequence() {
+        let lines = [
+            r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/c"}"#,
+            r#"{"kind":"line","session_id":"s","path":"/p","seq":0,"raw":"a"}"#,
+            r#"{"kind":"line","session_id":"s","path":"/p","seq":1,"raw":"b"}"#,
+            r#"{"kind":"future_thing","x":1}"#,
+            "not json",
+            r#"{"kind":"session_removed","sid":"s"}"#,
+        ];
+        let parsed: Vec<Option<InboundFrame>> = lines.iter().map(|l| parse_frame(l)).collect();
+
+        assert!(matches!(parsed[0], Some(InboundFrame::Hello { v: 1, .. })));
+        assert!(matches!(parsed[1], Some(InboundFrame::Line { seq: 0, .. })));
+        assert!(matches!(parsed[2], Some(InboundFrame::Line { seq: 1, .. })));
+        assert_eq!(parsed[3], None, "unknown kind → None");
+        assert_eq!(parsed[4], None, "garbage → None");
+        assert!(matches!(
+            parsed[5],
+            Some(InboundFrame::SessionRemoved { .. })
+        ));
+    }
+}
+
+#[cfg(test)]
+mod tier1_tests {
+    use super::*;
+
+    /// ★★ **本机 `~/.ssh` 的读面：恰好一处，且只读 `config`**〔audit-0805 08-08，Phase G 第 85 件〕。
+    ///
+    /// # 「谁能读」这一侧此前只有半张表
+    ///
+    /// 本会话把「谁能**写**」（`write_site_registry`）、「谁能**执行**」
+    /// （`exec_site_registry` / 本机起进程 / 构建期执行面）都钉成了默认拒绝，
+    /// 而**读**那一侧只有两块：daemon 的 `readonly_guard`（整个 crate 不许写），
+    /// 与 monitor 的 `local_read_surface_registry` —— 而后者的人群是**五个手写针**，
+    /// 全部对着 **claude 目录**（`claude_dir` / `CLAUDE_CONFIG_DIR` / `.claude` …）。
+    ///
+    /// ⇒ 用户机器上**别的**敏感目录不在任何人群里。08-08 实测：monitor 生产段里
+    /// 碰本机 `.ssh` 的只有**一处**（本文件读 `~/.ssh/config` 列别名给前端），
+    /// 而**没有任何判据钉住它保持一处** —— 加一句读 `~/.ssh/id_ed25519` 或
+    /// `known_hosts`，全仓判据一条不会红。
+    ///
+    /// ⚠ `pubkey.rs` 里那段 `$HOME/.ssh` **刻意不在人群里**：它是拼给**远端**执行的
+    /// shell 串（往远端 `authorized_keys` 追加公钥），归 `exec_site_registry` 管。
+    /// 人群只取**本机路径构造**（`join(".ssh")` / `expand_tilde("~/.ssh`），
+    /// 不取字符串里出现的 `.ssh` —— 否则「远端的事」会被算成「读了用户本机的东西」。
+    #[test]
+    fn the_local_ssh_read_surface_is_exactly_one_site() {
+        /// `(文件, 碰的是谁的 `.ssh`, 读/写的是什么, 为什么可以)`。**默认拒绝**。
+        ///
+        /// ⚠ 人群按**目录名本身**取（下面用 `contains_word(".ssh")`），
+        /// 不按「路径是怎么拼的」取 —— 08-08 第一版按 `join(".ssh"` / `~/.ssh` 两种**写法**
+        /// 取样，被 `needle_anchor` 棘轮当场判为「语料上的裸匹配」。棘轮是对的：
+        /// 按写法取样正是本工作区一直在治的病（`join(SSH_DIR)` 换个常量就绕过去了）。
+        /// ⇒ 人群取「谁提到了这个目录」，**本机还是远端由登记回答**，不由语法判。
+        const SSH_SITES: &[(&str, &str, &str, &str)] = &[
+            (
+                "ssh_source.rs",
+                "本机（用户自己的机器）",
+                "读 `~/.ssh/config`",
+                "Tier 1 的「导入别名」：只解析 Host 行拿到一份可点的别名清单，\
+                 不展开 Include、不解析 Match、**不碰任何密钥文件**；真正的参数解析交给 `ssh -G`",
+            ),
+            (
+                "pubkey.rs",
+                "**远端**（用户的服务器）",
+                "拼一段往远端 `~/.ssh/authorized_keys` 追加公钥的 shell 串",
+                "免密登录的安装动作；命令串本身由 `exec_site_registry` 管（它是 `Builder` 类），\
+                 这里登记是为了让「谁碰 .ssh」这张表**没有沉默的第二类**",
+            ),
+        ];
+
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let files = guard_core::scan_tree!(&root, &["rs"]);
+        assert!(
+            files.len() >= 40,
+            "只扫到 {} 个 .rs —— 遍历坏了，本条会零命中地绿",
+            files.len()
+        );
+        // 本文件被 `scan_tree!` 按构造摘掉了（它是调用者）⇒ 手动补回：人群里必须有它。
+        // ⚠ **变量名刻意不叫 `me`**：`needle_anchor` 棘轮按**文件文本**推断「语料变量」，
+        // 而本文件另一条判据里有一句刻意演示旧近似的 `me.split("\n#[cfg(test)]")`（见 2890 行附近）。
+        // 叫 `me` 会让那处旧 split 被算成「语料变量上的裸匹配」，棘轮当场红 —— 08-08 实测过。
+        // 名字影响判据结果，这件事本身值得写下来。
+        let self_src = std::fs::read_to_string(root.join("ssh_source.rs")).expect("读不到本文件");
+        let mut corpus: Vec<(String, String)> = files
+            .iter()
+            .map(|(p, s)| {
+                (
+                    p.file_name().unwrap().to_string_lossy().to_string(),
+                    s.clone(),
+                )
+            })
+            .collect();
+        corpus.push(("ssh_source.rs".to_string(), self_src));
+
+        let dot = format!(".{}", "ssh");
+        let mut found: Vec<String> = Vec::new();
+        for (name, src) in &corpus {
+            for l in guard_core::production_code(src).lines() {
+                // `contains_word`：`.sshx` 之类不算，而 `~/.ssh/config`、`join(".ssh")`、
+                // `"$HOME/.ssh"` 都算 —— 它认的是**那个目录名**，不是某一种拼法。
+                if guard_core::contains_word(l, &dot) {
+                    found.push(name.clone());
+                }
+            }
+        }
+        found.sort();
+        found.dedup();
+        let mut declared: Vec<String> =
+            SSH_SITES.iter().map(|(f, _, _, _)| f.to_string()).collect();
+        declared.sort();
+        assert_eq!(
+            found, declared,
+            "本机 `~/.ssh` 的读面变了。\n\
+             实测：{found:?}    登记：{declared:?}\n\
+             ★ 多出来的：那是**用户机器上最敏感的目录之一** —— 私钥、`known_hosts`、\n\
+             `authorized_keys` 都在里面。要读就登记，并说清「读的是什么、为什么可以读」。\n\
+             ⚠ 少了的：本文件那一处若被改写/挪走，说明「导入别名」这条路变了形，\n\
+             上面那三条 `parse_host_aliases` 的行为判据可能已经不在生产路径上。\n\
+             ⚠ 人群按**目录名**取，本机/远端由登记的第二列回答 —— \n\
+             别再退回按拼法取样（那是 `needle_anchor` 棘轮 08-08 当场拦下的写法）。"
+        );
+    }
+
+    /// ★ 那一处读出来的东西**只许是别名**：配置里的敏感值一个都不许流出去。
+    ///
+    /// 既有三条行为判据钉的是「别名抽得对」；本条钉反面 ——
+    /// 把 `IdentityFile` / `HostName` / `ProxyCommand` / `User` 一起喂进去，
+    /// 输出里**不许出现它们的值**。改法一旦变成「收集每条指令的第二个 token」，
+    /// 私钥路径与跳板机命令就会经 `list_ssh_host_aliases` 一路到前端。
+    #[test]
+    fn parse_host_aliases_never_leaks_sensitive_values() {
+        let cfg = "\
+Host box
+    HostName 10.0.0.7
+    User alice
+    IdentityFile ~/.ssh/id_ed25519_secret
+    ProxyCommand ssh -W %h:%p jump.example.com
+    Port 2222
+";
+        let aliases = parse_host_aliases(cfg);
+        assert_eq!(aliases, vec!["box"], "只该抽出别名本身");
+        for leak in [
+            "10.0.0.7",
+            "alice",
+            "id_ed25519_secret",
+            "jump.example.com",
+            "2222",
+        ] {
+            assert!(
+                !aliases.iter().any(|a| a.contains(leak)),
+                "别名清单里出现了 `{leak}` —— 那是 `~/.ssh/config` 里的敏感值，\n\
+                 它会经 `list_ssh_host_aliases` 直接到前端（并被渲染/记日志）。\n\
+                 抽取规则只该看 `Host` 行。"
+            );
+        }
+    }
+
+    /// host 别名解析：取 Host 行 token、排除通配 / `!`、去重保序、跳过非 Host 指令。
+    #[test]
+    fn parse_host_aliases_basics() {
+        let cfg = "\
+# comment
+Host pi server1 server2
+    HostName 1.2.3.4
+    User pi
+
+Host=eqsign
+    Port 2222
+
+Host *.internal wild*card prod ?q !neg
+    User admin
+
+Host prod
+    User dup
+";
+        let aliases = parse_host_aliases(cfg);
+        // pi/server1/server2 来自第一块；eqsign 用 `=` 分隔；prod 出现两次只留一次；
+        // `*.internal` / `wild*card` / `?q` / `!neg` 全被通配/否定规则排除。
+        assert_eq!(aliases, vec!["pi", "server1", "server2", "eqsign", "prod"]);
+    }
+
+    /// 排除字面量 `*`（catch-all）。
+    #[test]
+    fn parse_host_aliases_excludes_star() {
+        let aliases = parse_host_aliases("Host *\n    User x\n");
+        assert!(aliases.is_empty());
+    }
+
+    /// 没有任何 Host 指令 → 空。
+    #[test]
+    fn parse_host_aliases_empty_when_no_host() {
+        let aliases = parse_host_aliases("# just comments\nUser nobody\nPort 22\n");
+        assert!(aliases.is_empty());
+    }
+
+    // === F57：智能聚合 ===
+
+    fn rh(host: &str, key: Option<&str>, user: &str, pj: Option<&str>) -> ResolvedHost {
+        ResolvedHost {
+            host: host.into(),
+            port: 22,
+            user: user.into(),
+            key_path: key.map(String::from),
+            proxy_jump: pj.map(String::from),
+        }
+    }
+
+    #[test]
+    fn alias_base_variants() {
+        assert_eq!(alias_base("aya-lan"), "aya");
+        assert_eq!(alias_base("aya_wan"), "aya");
+        assert_eq!(alias_base("aya.internal"), "aya");
+        assert_eq!(alias_base("pi"), "pi");
+    }
+
+    #[test]
+    fn aggregate_same_machine_multi_address() {
+        // aya-lan / aya-wan 同 key+user+基名 → 聚合成 1 台多地址;pi 基名不同 → 独立。
+        let groups = aggregate_ssh_hosts(vec![
+            ("aya-lan".into(), rh("10.0.0.2", Some("/k"), "zbl", None)),
+            (
+                "aya-wan".into(),
+                rh("aya.example.com", Some("/k"), "zbl", None),
+            ),
+            ("pi".into(), rh("pi.local", Some("/k"), "zbl", None)),
+        ]);
+        assert_eq!(groups.len(), 2);
+        assert_eq!(groups[0].label, "aya");
+        assert_eq!(groups[0].host, "10.0.0.2");
+        assert_eq!(groups[0].addresses, vec!["aya.example.com".to_string()]);
+        let aliases: Vec<&str> = groups[0].members.iter().map(|m| m.alias.as_str()).collect();
+        assert_eq!(aliases, vec!["aya-lan", "aya-wan"]);
+        assert_eq!(groups[1].label, "pi");
+        assert!(groups[1].addresses.is_empty(), "单机组无备用地址");
+    }
+
+    #[test]
+    fn aggregate_different_key_not_merged() {
+        // 同基名但不同 key → 不聚合(一把 key 一台机)。
+        let groups = aggregate_ssh_hosts(vec![
+            ("web-a".into(), rh("1.1.1.1", Some("/ka"), "u", None)),
+            ("web-b".into(), rh("2.2.2.2", Some("/kb"), "u", None)),
+        ]);
+        assert_eq!(groups.len(), 2, "不同 key → 独立");
+        // F57-1：单成员组用**完整别名**当 label(否则都叫 web → 前端落卡碰撞丢一台)。
+        assert_eq!(groups[0].label, "web-a");
+        assert_eq!(groups[1].label, "web-b");
+    }
+
+    #[test]
+    fn parse_ssh_g_proxyjump_and_fields() {
+        let with = parse_ssh_g_output(
+            "hostname 1.2.3.4\nport 2222\nuser pi\nproxyjump bastion\n",
+            "a",
+        );
+        assert_eq!(with.host, "1.2.3.4");
+        assert_eq!(with.port, 2222);
+        assert_eq!(with.user, "pi");
+        assert_eq!(with.proxy_jump.as_deref(), Some("bastion"));
+        // none(大小写不敏感)→ 无跳板;无 proxyjump 行 → None。
+        assert_eq!(
+            parse_ssh_g_output("hostname h\nproxyjump None\n", "a").proxy_jump,
+            None
+        );
+        assert_eq!(
+            parse_ssh_g_output("hostname h\nuser u\n", "a").proxy_jump,
+            None
+        );
+        // hostname/port 缺 → 回退别名 / 22。
+        let fb = parse_ssh_g_output("user u\n", "myalias");
+        assert_eq!(fb.host, "myalias");
+        assert_eq!(fb.port, 22);
+    }
+
+    #[test]
+    fn aggregate_proxyjump_and_dedup() {
+        // 同 host 去重;jump 取组内首个非空 proxyjump。
+        let groups = aggregate_ssh_hosts(vec![
+            (
+                "aya-lan".into(),
+                rh("10.0.0.2", Some("/k"), "u", Some("bastion")),
+            ),
+            ("aya-wan".into(), rh("10.0.0.2", Some("/k"), "u", None)),
+        ]);
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].jump.as_deref(), Some("bastion"));
+        assert!(groups[0].addresses.is_empty(), "同 host → 去重无额外地址");
+    }
+
+    /// allowlist：合法字符通过，含空格 / 选项前缀 / shell 元字符的别名被拒。
+    #[test]
+    fn is_safe_alias_allowlist() {
+        assert!(is_safe_alias("pi"));
+        assert!(is_safe_alias("my-host.example.com"));
+        assert!(is_safe_alias("user@host:22"));
+        assert!(is_safe_alias("a_b.c-1"));
+
+        assert!(!is_safe_alias(""));
+        assert!(!is_safe_alias("has space"));
+        assert!(!is_safe_alias("a;b")); // shell metachar
+        assert!(!is_safe_alias("a$b"));
+        assert!(!is_safe_alias("a/b")); // 路径分隔不在 allowlist
+        assert!(!is_safe_alias("a&b"));
+        // 以 `-` 开头本身在 allowlist 内（`-` 是合法字符），option-injection 由
+        // resolve_ssh_host 里单独的 starts_with('-') 检查兜住，这里只验字符集。
+        assert!(is_safe_alias("-oProxyCommand"));
+    }
+
+    /// `~` 展开：`~` / `~/x` 展开到 home；非 `~` 前缀原样。
+    #[test]
+    fn expand_tilde_basics() {
+        let home = dirs::home_dir().expect("home dir for test");
+        assert_eq!(expand_tilde("~"), home);
+        assert_eq!(
+            expand_tilde("~/.ssh/id_ed25519"),
+            home.join(".ssh/id_ed25519")
+        );
+        // 非 ~ 前缀原样（不是 home-relative）。
+        assert_eq!(
+            expand_tilde("/etc/ssh/key"),
+            std::path::PathBuf::from("/etc/ssh/key")
+        );
+        // `~user` 形式（非 `~/`）不展开（我们只处理自己的 home）。
+        assert_eq!(
+            expand_tilde("~otheruser/key"),
+            std::path::PathBuf::from("~otheruser/key")
+        );
+    }
+
+    /// RemoteConfig 反序列化：camelCase key + 空串可选字段归 None + port 默认 22 + 忽略 enabled。
+    #[test]
+    fn remote_config_deserializes_frontend_shape() {
+        // 前端 collect() 的形状：所有字段都在，可选字段可能是空串，外加 enabled。
+        let json = r#"{
+            "enabled": true,
+            "host": "pi.local",
+            "port": 2200,
+            "user": "pi",
+            "keyPath": "",
+            "daemonPath": "/home/pi/cc-monitor-remote",
+            "hostKeyFingerprint": ""
+        }"#;
+        let cfg: RemoteConfig = serde_json::from_str(json).expect("must deserialize");
+        assert_eq!(cfg.host, "pi.local");
+        assert_eq!(cfg.port, 2200);
+        assert_eq!(cfg.user, "pi");
+        assert_eq!(cfg.key_path, None, "空串 keyPath → None");
+        assert_eq!(cfg.daemon_path, "/home/pi/cc-monitor-remote");
+        assert_eq!(cfg.host_key_fingerprint, None, "空串指纹 → None");
+    }
+
+    /// RemoteConfig：缺 port 时默认 22，非空可选字段保留为 Some。
+    #[test]
+    fn remote_config_defaults_and_some() {
+        let json = r#"{
+            "host": "h",
+            "user": "u",
+            "keyPath": "C:\\k",
+            "daemonPath": "d",
+            "hostKeyFingerprint": "SHA256:abc"
+        }"#;
+        let cfg: RemoteConfig = serde_json::from_str(json).expect("must deserialize");
+        assert_eq!(cfg.port, 22, "缺 port → 默认 22");
+        assert_eq!(cfg.key_path.as_deref(), Some("C:\\k"));
+        assert_eq!(cfg.host_key_fingerprint.as_deref(), Some("SHA256:abc"));
+    }
+
+    /// ★★ **hello-then-die 的 daemon 不许把退避永远按在 2 秒**〔audit-0805 F05 / 报告 I-1〕。
+    ///
+    /// `connected` 是收到 hello 的那一刻置位的。一个「发完 hello 就死」的 daemon
+    /// （小机器整读 jsonl 触发 OOM 被杀，正是本区 F04 治的那条链）每轮都算「连上过」
+    /// ⇒ 退避每次重置回 2 秒 ⇒ **永远不增长**，而每次重连要付 3 次完整 SSH 登录
+    /// ⇒ 约 **90 次握手/分钟/台**，正好砸在那台已经撑不住的机器上。
+    ///
+    /// ⇒ 判据必须是「**活过多久**」，不是「握没握上手」。
+    #[test]
+    fn a_daemon_that_dies_right_after_hello_does_not_keep_resetting_the_backoff() {
+        // hello 收到了，但连接只活了 1 秒 —— 这正是 hello-then-die。
+        assert!(
+            !should_reset_backoff(true, Duration::from_secs(1)),
+            "收到 hello 但只活了 1 秒就重置退避 —— 那是 I-1 那个自激循环：\n\
+             每分钟约 90 次 SSH 握手砸在一台已经 OOM 的机器上。"
+        );
+        // 活够了才算站住。
+        assert!(
+            should_reset_backoff(true, MIN_HEALTHY_UPTIME),
+            "活过 MIN_HEALTHY_UPTIME 还不重置 —— 正常的长连接会被误当成 flapping"
+        );
+        assert!(should_reset_backoff(true, Duration::from_secs(600)));
+        // 从没握上手的，活多久都不算健康（否则「连了很久但一直没 hello」会被当成好连接）。
+        assert!(
+            !should_reset_backoff(false, Duration::from_secs(600)),
+            "没收到过 hello 却算健康 —— 两个条件是**与**不是或"
+        );
+    }
+
+    /// next_backoff：翻倍直到封顶 RECONNECT_MAX(30s)，封顶后饱和不再增长。
+    #[test]
+    fn next_backoff_doubles_then_caps() {
+        assert_eq!(next_backoff(Duration::from_secs(2)), Duration::from_secs(4));
+        assert_eq!(next_backoff(Duration::from_secs(4)), Duration::from_secs(8));
+        // 16s*2=32s 被封顶到 30s。
+        assert_eq!(
+            next_backoff(Duration::from_secs(16)),
+            Duration::from_secs(30)
+        );
+        // 已在上界 → 翻倍后仍被 min 拉回 30s（饱和）。
+        assert_eq!(
+            next_backoff(Duration::from_secs(30)),
+            Duration::from_secs(30)
+        );
+    }
+
+    // F43：check_server_key 三分支——匹配接受 / 失配拒绝 / 无期望指纹 TOFU 接受，
+    // 且无论哪支都把实际指纹写回 observed cell（测试连接据此展示 + 固化）。
+    use russh::client::Handler as _; // check_server_key 是 trait 方法
+
+    fn handler_with(expected: Option<&str>) -> (ClientHandler, Arc<Mutex<Option<String>>>) {
+        let observed = Arc::new(Mutex::new(None));
+        let h = ClientHandler {
+            expected_fingerprint: expected.map(String::from),
+            observed_fingerprint: Arc::clone(&observed),
+            stage_emitter: None,
+            endpoint: None,
+        };
+        (h, observed)
+    }
+
+    /// 固定 ed25519 公钥 + 其 SHA256 指纹（ssh-keygen 一次性生成后固化进测试，
+    /// SAMPLE_FP 可用 `ssh-keygen -lf` 对 SAMPLE_PUB 独立复算核对）。
+    const SAMPLE_PUB: &str =
+        "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEwdsNpXeLF3bjmkjNIpFsbGCxLntS8RsfA6BPOv/Ykv f43";
+    const SAMPLE_FP: &str = "SHA256:fPFSH7moeRu2I96lFjdo8lO2iB7KgVLtL4LXvHVZWDk";
+
+    fn sample_key() -> PublicKey {
+        PublicKey::from_openssh(SAMPLE_PUB).expect("parse sample pubkey")
+    }
+
+    #[tokio::test]
+    async fn check_server_key_matching_fingerprint_accepts() {
+        let (mut h, observed) = handler_with(Some(SAMPLE_FP));
+        assert!(h.check_server_key(&sample_key()).await.unwrap());
+        assert_eq!(observed.lock().unwrap().as_deref(), Some(SAMPLE_FP));
+    }
+
+    #[tokio::test]
+    async fn check_server_key_matching_tolerates_trailing_whitespace() {
+        let padded = format!("{SAMPLE_FP}\n  ");
+        let (mut h, _observed) = handler_with(Some(&padded));
+        assert!(
+            h.check_server_key(&sample_key()).await.unwrap(),
+            "尾随空白不应误判 MITM"
+        );
+    }
+
+    #[tokio::test]
+    async fn check_server_key_mismatch_rejects_but_records() {
+        let (mut h, observed) =
+            handler_with(Some("SHA256:deadbeefwrongfingerprintvalueAAAAAAAAAAAA"));
+        assert!(
+            !h.check_server_key(&sample_key()).await.unwrap(),
+            "失配必须拒绝"
+        );
+        // 失配也把实际指纹写回 cell（供「重置为 TOFU / 重新固化」）。
+        assert_eq!(observed.lock().unwrap().as_deref(), Some(SAMPLE_FP));
+    }
+
+    #[tokio::test]
+    async fn check_server_key_no_expected_tofu_accepts() {
+        let (mut h, observed) = handler_with(None);
+        assert!(
+            h.check_server_key(&sample_key()).await.unwrap(),
+            "TOFU 首连接受"
+        );
+        assert_eq!(observed.lock().unwrap().as_deref(), Some(SAMPLE_FP));
+    }
+
+    // === F45：地址解析 + endpoints ===
+
+    fn ep(host: &str, port: u16) -> Endpoint {
+        Endpoint {
+            host: host.into(),
+            port,
+        }
+    }
+
+    #[test]
+    fn parse_address_line_four_forms() {
+        assert_eq!(parse_address_line("pi.local", 22), Some(ep("pi.local", 22)));
+        assert_eq!(
+            parse_address_line("10.0.0.2:2222", 22),
+            Some(ep("10.0.0.2", 2222))
+        );
+        // [IPv6]:port 与 [IPv6]
+        assert_eq!(
+            parse_address_line("[fe80::1]:2200", 22),
+            Some(ep("fe80::1", 2200))
+        );
+        assert_eq!(parse_address_line("[::1]", 22), Some(ep("::1", 22)));
+        // 裸 IPv6（trap #7：>1 冒号不误当 host:port）
+        assert_eq!(parse_address_line("::1", 22), Some(ep("::1", 22)));
+        assert_eq!(parse_address_line("fe80::1", 22), Some(ep("fe80::1", 22)));
+    }
+
+    #[test]
+    fn parse_address_line_rejects_garbage() {
+        assert_eq!(parse_address_line("", 22), None);
+        assert_eq!(parse_address_line("   ", 22), None);
+        assert_eq!(parse_address_line("h:notaport", 22), None);
+        assert_eq!(parse_address_line(":2222", 22), None); // 无 host
+        assert_eq!(parse_address_line("[", 22), None); // 未闭合方括号
+        assert_eq!(parse_address_line("[]:22", 22), None); // 空 host
+        assert_eq!(parse_address_line("[fe80::1]:bad", 22), None); // 端口非法
+    }
+
+    #[test]
+    fn endpoints_host_first_dedup_preserve_order() {
+        let cfg = RemoteConfig {
+            host: "pi.local".into(),
+            label: "pi".into(),
+            port: 22,
+            user: "pi".into(),
+            key_path: None,
+            daemon_path: "d".into(),
+            host_key_fingerprint: None,
+            addresses: vec![
+                "10.0.0.2".into(),
+                "pi.local".into(),    // 与 host 重复 → 去重
+                "10.0.0.2:22".into(), // 与上面同 (host,port) → 去重
+                "pub.example.com:2222".into(),
+                "".into(), // 空行跳过
+            ],
+            jump: None,
+        };
+        assert_eq!(
+            cfg.endpoints(),
+            vec![
+                ep("pi.local", 22),
+                ep("10.0.0.2", 22),
+                ep("pub.example.com", 2222),
+            ]
+        );
+    }
+
+    #[test]
+    fn endpoints_empty_addresses_is_just_host() {
+        let cfg = RemoteConfig {
+            host: "h".into(),
+            label: String::new(),
+            port: 2200,
+            user: "u".into(),
+            key_path: None,
+            daemon_path: "d".into(),
+            host_key_fingerprint: None,
+            addresses: vec![],
+            jump: None,
+        };
+        assert_eq!(cfg.endpoints(), vec![ep("h", 2200)]);
+    }
+
+    // === F45：winner_order（last-good 排首）===
+
+    #[test]
+    fn winner_order_puts_last_good_first() {
+        let eps = vec![ep("a", 22), ep("b", 22), ep("c", 22)];
+        // last-good = b → b 排首，其余保序
+        assert_eq!(
+            winner_order(eps.clone(), Some(&ep("b", 22))),
+            vec![ep("b", 22), ep("a", 22), ep("c", 22)]
+        );
+        // last-good = 已移除的 endpoint → 无视，原序
+        assert_eq!(
+            winner_order(eps.clone(), Some(&ep("gone", 22))),
+            eps.clone()
+        );
+        // 无 last-good → 原序
+        assert_eq!(winner_order(eps.clone(), None), eps);
+        // last-good 已在首位 → 幂等
+        assert_eq!(winner_order(eps.clone(), Some(&ep("a", 22))), eps);
+    }
+
+    // === F45：race_connect 编排（可控 mock，不依赖真 SSH）===
+    // 用一个内存 TCP listener 模拟「快地址」（accept 即断=握手必失败但 TCP 连得上），
+    // 及不存在端口模拟「立即拒绝」；**本地静默对端**（`spawn_silent_peer`）模拟握手挂起。
+    // 断言编排语义：首个可用者决定结果、全失败聚合、看门狗生效。注：这些测走 race_connect
+    // 的错误路径（无真 SSH server 故握手都失败），验证的是编排（顺序/聚合/超时/取消），
+    // 非握手成功路径。
+    //
+    // 🔴 **本段的前提纪律**〔`K-R24` 09-04〕：这几条判据要的对端一律**自己起在 loopback 上**。
+    // 不许再靠「这台机器到某个外部地址是什么反应」—— 那是一条**没人建立、也没人检查**的
+    // 环境前提，前提不成立时它吐的红与「被测的东西真坏了」**长得一模一样**。
+    // ⚠ 判据不是靠一张「禁用哪些 IP」的词表守的（那种表迟早腐）：守它的是**门禁自己的
+    // 默认口径 `--network none`** —— 断网下还能绿，才说明这条判据的前提是它自己建立的。
+
+    use tokio::net::TcpListener;
+
+    async fn dead_port() -> u16 {
+        // 绑后立即释放 → 该端口大概率无监听 → connect 立即 RST（快速失败）。
+        let l = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let p = l.local_addr().unwrap().port();
+        drop(l);
+        p
+    }
+
+    /// 一个「TCP 接了，但**永不吐 SSH 版本串**」的本地对端 —— 看门狗那条判据的前提。
+    ///
+    /// # 为什么不是黑洞 IP〔`K-R24`〕
+    ///
+    /// 旧写法拨 `10.255.255.1:22`，靠「这台机器到那个地址**有路由**、且包被静默丢弃」
+    /// 让 connect 挂起。那条前提是**环境性的，而它既不建立、也不检查**：沙箱默认
+    /// `--network none` 里没有那条路由 ⇒ connect 立刻 `ENETUNREACH` ⇒ 内层瞬间跑完
+    /// ⇒ 走 `race_connect` 的**聚合失败**支而不是 deadline 支
+    /// ⇒ 「看门狗坏了」与「本机没有到黑洞的路由」共用了同一个红。
+    ///
+    /// # 它挂在哪一段（这一格是本修的要害）
+    ///
+    /// 本对端 `accept()` 之后**一个字节都不回**。russh `client::connect_stream` 的次序是
+    /// **先写出自己的 `SSH-2.0-…` 标识，再停在「读对端标识」那一步等着**，而
+    /// `client::Config::default()` 的 `inactivity_timeout` 是 `None`（无客户端侧超时）
+    /// ⇒ 卡住的是**握手**，不是 TCP 连接。
+    /// （那一步的上游函数名此处刻意不点：它是仓外符号，点了就要进 `structural_scan` 的
+    /// 仓外名字登记表，而那张表不在本件写区 —— 机制上面已经说全，不靠那个名字承重。）
+    /// ★ 这才对得上断言原文那句「握手超时」—— 黑洞地址连 TCP connect 都没完成过，
+    ///   它驱动的其实是「连接挂起」那条路，措辞却是「握手」那条路的。
+    ///
+    /// 返回 `(地址, 痕迹)`。痕迹让**前提本身可被断言**，见 `PeerTrace`。
+    async fn spawn_silent_peer() -> (Endpoint, Arc<Mutex<PeerTrace>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let trace: Arc<Mutex<PeerTrace>> = Arc::new(Mutex::new(PeerTrace::default()));
+        let trace_w = Arc::clone(&trace);
+        tokio::spawn(async move {
+            // 只接一条。收下之后读一次（记下对端的 SSH 标识），然后**攥着不放** ——
+            // 既不回字节、也不主动关，让对端一直卡在「读对端标识」那一步。
+            if let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 128];
+                if let Ok(n) = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await {
+                    let mut t = trace_w.lock().unwrap();
+                    t.banner = Some(String::from_utf8_lossy(&buf[..n]).into_owned());
+                    t.banner_at = Some(std::time::Instant::now());
+                }
+                // 继续读，但**永远不回一个字节** —— 客户端挂在「读对端标识」那一步时这一读
+                // 一直 pend；等 `race_connect` 胜出/到点后 `abort_all` 把在飞那一路 drop 掉、
+                // socket 随之关闭，这一读才以 EOF（或 reset）返回。
+                // ⇒ 记下这一刻 = 记下「那条连接一直挂到被整批收走为止」。
+                // ⚠ 循环而不是只读一次：客户端可能在标识之后紧跟着又写了 KEXINIT，
+                //   只读一次会把「又来了几个字节」误读成「客户端还没走」。
+                let mut sink = [0u8; 256];
+                loop {
+                    match tokio::io::AsyncReadExt::read(&mut stream, &mut sink).await {
+                        Ok(0) | Err(_) => {
+                            trace_w.lock().unwrap().client_went_away_at =
+                                Some(std::time::Instant::now());
+                            break;
+                        }
+                        Ok(_) => continue,
+                    }
+                }
+                std::future::pending::<()>().await;
+            }
+        });
+        (ep("127.0.0.1", addr.port()), trace)
+    }
+
+    /// 静默对端**被走到了什么程度**的痕迹〔`K-R24` 下一拍〕。
+    ///
+    /// # 为什么判据不能只断言结果
+    ///
+    /// `race_live_server_wins_when_a_hung_peer_is_first` 要证的是「首地址挂起也不吊死整批」。
+    /// 但它的**结果**（live 胜出）**从来不随环境翻转** —— 首地址不管是挂住、还是瞬间
+    /// `ENETUNREACH`、还是被 RST 拒了，live 都照样赢。⇒ **只断言结果的判据，在
+    /// 「那半根本没被驱动」时也是绿的** —— 那不是「红说不清是什么红」，是**「绿说不清测没测到」**。
+    ///
+    /// ⇒ 出路不是把断言写得更狠，是**让夹具记下它被走到了什么程度**，判据去断言那个痕迹。
+    #[derive(Default, Clone)]
+    struct PeerTrace {
+        /// 对端读到的首批字节（正常即客户端的 `SSH-2.0-…` 标识）。
+        /// 有它 ⇒ TCP 早已连上、且卡的是**握手**那一段，不是 TCP 连接那一段。
+        banner: Option<String>,
+        /// 读到那批字节的时刻 —— 用来断言这事发生在竞速**进行中**，而不是事后。
+        banner_at: Option<std::time::Instant>,
+        /// 客户端那一侧先撒手了（socket 关掉 ⇒ 这边读到 EOF / reset）的时刻。
+        /// 🔴 本夹具**自己从不主动关、也从不回一个字节** ⇒ 这一格有值 **⇔**
+        /// 那条连接从收到标识起一直挂着，直到被 `race_connect` 的 `abort_all` 收走。
+        /// **这才是「首地址真的挂住了」那件事本身**，而不是它的后果。
+        client_went_away_at: Option<std::time::Instant>,
+    }
+
+    /// 等一个条件成立，最多 ~2s（立刻成立就立刻返回，不花这 2s）。
+    /// 用在断言「前提确已建立」之前 —— 免得把**调度抖动**读成「前提不成立」。
+    async fn settled(mut cond: impl FnMut() -> bool) -> bool {
+        for _ in 0..200 {
+            if cond() {
+                return true;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        false
+    }
+
+    fn test_config() -> Arc<client::Config> {
+        Arc::new(client::Config::default())
+    }
+
+    /// race_connect 的 Ok 分支持有不实现 Debug 的 Handle,不能直接 unwrap_err；
+    /// 这个 helper 压成错误串便于断言错误路径。
+    fn race_err(
+        r: Result<
+            (
+                client::Handle<ClientHandler>,
+                Arc<Mutex<Option<String>>>,
+                Endpoint,
+            ),
+            String,
+        >,
+    ) -> String {
+        match r {
+            Ok(_) => panic!("expected Err, got a live connection"),
+            Err(e) => e,
+        }
+    }
+
+    #[tokio::test]
+    async fn race_all_dead_aggregates_errors() {
+        let p1 = dead_port().await;
+        let p2 = dead_port().await;
+        let order = vec![ep("127.0.0.1", p1), ep("127.0.0.1", p2)];
+        let err =
+            race_err(race_connect(test_config(), None, order, Duration::from_secs(5), None).await);
+        // trap #3：聚合报告，含「所有地址连接失败」且提到两个地址（至少首个立即失败）。
+        assert!(err.contains("所有地址连接失败"), "应聚合: {err}");
+        assert!(err.contains(&p1.to_string()), "应含首地址: {err}");
+    }
+
+    /// 看门狗：到点整批 abort、不吊死。对端是**本地静默 listener**（握手挂起）。
+    ///
+    /// 🔴 这条判据的前提由它**自己建立**（`spawn_silent_peer`），并且**自己断言**。
+    /// 从前「红」这一个读数装着三件事，现在三件各有各的话：
+    ///   ① **前提没建立**（对端没收到客户端标识）⇒ 「前提不成立……这条今天判不了」；
+    ///   ② **看门狗吊死**（deadline 根本不兑现）⇒ 「3 秒内没返回」，当场红而不是把测试二进制挂住；
+    ///   ③ **走错了支**（快速失败顺路带出措辞 / 措辞变了）⇒ 「没等到 deadline」或「应超时」。
+    #[tokio::test]
+    async fn race_watchdog_times_out_on_a_silent_peer() {
+        let (silent, trace) = spawn_silent_peer().await;
+        let start = std::time::Instant::now();
+        // 外层再兜一道 3s：看门狗真坏时**当场红并说清楚**，而不是把整个测试二进制吊死。
+        // （原来那条 `elapsed < 3s` 的上界改由这一道守 —— 上界没丢，换了个说得出话的地方。）
+        let raced = tokio::time::timeout(
+            Duration::from_secs(3),
+            race_connect(
+                test_config(),
+                None,
+                vec![silent],
+                Duration::from_millis(400),
+                None,
+            ),
+        )
+        .await;
+        let elapsed = start.elapsed();
+        let Ok(inner) = raced else {
+            panic!("看门狗没兑现：deadline 给的是 400ms，3 秒内 race_connect 没返回 —— 它吊死了");
+        };
+        let err = race_err(inner);
+
+        // ① 前提这一半：对端确实收到了客户端的 SSH 标识 ⇒ TCP 连上了、卡的是**握手**那一段。
+        assert!(
+            settled(|| trace.lock().unwrap().banner.is_some()).await,
+            "前提不成立：该卡住的那个静默对端一个字节都没收到 —— 拨的根本不是它？\
+             本机 loopback 不通？总之这条今天判不了，**它不是「看门狗坏了」**"
+        );
+        let banner = trace.lock().unwrap().banner.clone().unwrap_or_default();
+        assert!(
+            banner.starts_with("SSH-2.0-"),
+            "前提不成立：对端收到的不是 SSH 标识而是 {banner:?} —— 卡住的不是握手，\
+             这条今天判不了，**它不是「看门狗坏了」**"
+        );
+
+        // ② 被测性质这一半：到点走 deadline 支（那句「握手超时」只在那一支出现）。
+        assert!(err.contains("握手超时"), "应超时: {err}");
+        // ③ 它是**等到 deadline 才**返回的 —— 不靠措辞一条腿站着：快速失败那一支
+        //    （`ENETUNREACH` / RST）会在几毫秒内返回，这一条把那种情形直接判红。
+        assert!(
+            elapsed >= Duration::from_millis(400),
+            "只花了 {elapsed:?} 就返回 —— 没等到 400ms deadline，走的是快速失败那一支，\
+             不是看门狗那一支"
+        );
+    }
+
+    #[tokio::test]
+    async fn race_single_endpoint_dead_reports_that_endpoint() {
+        // 单地址退化路径：错误里报该地址（保留老实现的可诊断性）。
+        let p = dead_port().await;
+        let order = vec![ep("127.0.0.1", p)];
+        let err =
+            race_err(race_connect(test_config(), None, order, Duration::from_secs(5), None).await);
+        assert!(err.contains(&p.to_string()), "单地址错误应含该地址: {err}");
+    }
+
+    #[tokio::test]
+    async fn race_empty_order_errors_cleanly() {
+        let err =
+            race_err(race_connect(test_config(), None, vec![], Duration::from_secs(1), None).await);
+        assert!(err.contains("无可用地址"), "空 order: {err}");
+    }
+
+    // === F45 / D 审计 R-1：胜者 happy-path（live server 胜、慢地址被弃）===
+    // 起一个 mock russh server（run_stream 自动完成 KEX/握手,握手成功即客户端 Ok——race
+    // 只到握手,不需要真鉴权）。expected_fp=None 走 TOFU 接受该 mock key。
+
+    /// mock server 用的固定 ed25519 host key（ssh-keygen 生成）。
+    const MOCK_SERVER_KEY: &str = "\
+-----BEGIN OPENSSH PRIVATE KEY-----
+b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW
+QyNTUxOQAAACABVcXnVsSgWL3RAZE1r7ebLdEi510GsSqfaTYYzM26GwAAAJiEWV/KhFlf
+ygAAAAtzc2gtZWQyNTUxOQAAACABVcXnVsSgWL3RAZE1r7ebLdEi510GsSqfaTYYzM26Gw
+AAAEDRp5kloww4Jpr8K56RETPX0tLdId9XD8a+yNz5Tx0XOQFVxedWxKBYvdEBkTWvt5st
+0SLnXQaxKp9pNhjMzbobAAAAD2Y0NS1tb2NrLXNlcnZlcgECAwQFBg==
+-----END OPENSSH PRIVATE KEY-----";
+
+    struct MockServer;
+    impl russh::server::Handler for MockServer {
+        type Error = russh::Error;
+    }
+
+    fn mock_server_config() -> Arc<russh::server::Config> {
+        let key = russh::keys::PrivateKey::from_openssh(MOCK_SERVER_KEY).expect("parse mock key");
+        Arc::new(russh::server::Config {
+            keys: vec![key],
+            ..Default::default()
+        })
+    }
+
+    /// 起一个只接一条连接的 mock SSH server,返回其监听地址。
+    async fn spawn_mock_server() -> Endpoint {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            if let Ok((stream, _)) = listener.accept().await {
+                let _ = russh::server::run_stream(mock_server_config(), stream, MockServer).await;
+            }
+        });
+        ep("127.0.0.1", addr.port())
+    }
+
+    /// 从 race_connect 的 Ok 分支取胜者 Endpoint（Handle 不实现 Debug,丢弃即关连接）。
+    fn race_win(
+        r: Result<
+            (
+                client::Handle<ClientHandler>,
+                Arc<Mutex<Option<String>>>,
+                Endpoint,
+            ),
+            String,
+        >,
+    ) -> Endpoint {
+        match r {
+            Ok((_h, _cell, ep)) => ep,
+            Err(e) => panic!("expected a winner, got Err: {e}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn race_live_server_wins_when_first() {
+        let live = spawn_mock_server().await;
+        // live 排 i=0 立即拨、静默对端 i=1 延迟 → live 握手先成功即胜。
+        // （i=1 那位通常根本没被拨到就被 abort 了 ⇒ 这里不断言它的前提，见下一条。）
+        let (silent, _trace) = spawn_silent_peer().await;
+        let order = vec![live.clone(), silent];
+        let win =
+            race_win(race_connect(test_config(), None, order, Duration::from_secs(5), None).await);
+        assert_eq!(win, live, "live server 应胜出");
+    }
+
+    /// 静默对端排首(i=0 立即拨,卡在握手永不完成)、live 排 i=1(250ms 后拨)——慢地址被弃,live 仍胜。
+    /// 佐证 trap #8:首地址挂起不吊死整批,后位可达地址照样赢。
+    ///
+    /// # 🔴 这条判据治的是「**绿说不清测没测到**」〔`K-R24` D1 边界 + 下一拍〕
+    ///
+    /// 它的**判决从来不随环境翻转，翻转的是它有没有测到东西**：旧写法拨黑洞 IP，
+    /// 断网下那个地址**瞬间报错**而不是挂起 ⇒ live 照样胜 ⇒ **判决仍绿，
+    /// 而「首地址挂起也不吊死整批」这半再没被驱动过**。
+    ///
+    /// ⚠⚠ **所以承重的不是那句 `assert_eq!(win, live)`** —— 首地址无论是挂住、
+    /// 瞬间 `ENETUNREACH`、还是被 RST 拒了，live 都赢。**只断言结果 = 什么都没断言。**
+    /// 要断言的是**「首地址真的挂住了」这件事本身**，下面两条腿各自独立地证它：
+    ///
+    /// · **腿①（生产侧，不靠夹具记账）**：阶段事件流里首地址有 `dialing`、
+    ///   **且自始至终没有 `failed`**，而 `won` 落在 live 上 ⇒ 首地址那一路**既没成也没败**，
+    ///   是被 `abort_all` 收走的 —— **整批解决的那一刻它正挂着**。
+    ///   （首地址若是快速失败，`race_connect:576` 会给它 emit 一条 `failed`。）
+    /// · **腿②（夹具侧痕迹，`PeerTrace`）**：对端记下它收到了客户端的 `SSH-2.0-` 标识
+    ///   （⇒ TCP 早连上、卡的是握手那一段），且那条连接**一直攥到客户端被收走**才断 ——
+    ///   而这个夹具自己从不主动关、从不回一个字节。
+    ///
+    /// ★ 两条腿**不共用证据**：腿① 读的是被测函数自己吐的事件，腿② 读的是对端看到的字节。
+    #[tokio::test]
+    async fn race_live_server_wins_when_a_hung_peer_is_first() {
+        let live = spawn_mock_server().await;
+        let (hung, trace) = spawn_silent_peer().await;
+        let hung_label = format!("{}:{}", hung.host, hung.port);
+        let live_label = format!("{}:{}", live.host, live.port);
+        let (ch, events) = collecting_channel();
+        let order = vec![hung, live.clone()];
+        let win = race_win(
+            race_connect(test_config(), None, order, Duration::from_secs(5), Some(ch)).await,
+        );
+        let race_returned_at = std::time::Instant::now();
+
+        // 结果那半 —— 它不随环境翻转，所以它**不是**承重的那条腿。
+        assert_eq!(win, live, "首地址挂起时后位 live 仍应胜出");
+
+        // ── 腿①：首地址那一路「既没成也没败」，是被整批 abort 收走的 ──
+        let ev = events.lock().unwrap().clone();
+        let (Some(i_dial), Some(i_won)) = (
+            ev.iter()
+                .position(|(k, e)| k == "dialing" && *e == hung_label),
+            ev.iter().position(|(k, e)| k == "won" && *e == live_label),
+        ) else {
+            panic!(
+                "前提不成立：首地址压根没被拨、或 live 没胜出 —— 「首地址挂起也不吊死整批」\
+                 这半没被驱动，这一条此刻是**绿得没有意义**的。事件流：{ev:?}"
+            );
+        };
+        assert!(
+            i_dial < i_won,
+            "首地址是在 live 胜出之后才被拨的 —— 竞速期间它并没挂在那儿：{ev:?}"
+        );
+        assert!(
+            !ev.iter().any(|(k, e)| k == "failed" && *e == hung_label),
+            "首地址那一路**自己失败了**（不是挂住）—— live 照样胜、这条照样绿，\
+             但「首地址挂起也不吊死整批」这半没被驱动。事件流：{ev:?}"
+        );
+
+        // ── 腿②：夹具痕迹 —— 走到了握手，并且一直挂到客户端被收走 ──
+        assert!(
+            settled(|| trace.lock().unwrap().banner.is_some()).await,
+            "前提不成立：首地址那个对端一个字节都没收到 —— 「首地址挂起也不吊死整批」\
+             这半没被驱动，这一条此刻是**绿得没有意义**的"
+        );
+        let t = trace.lock().unwrap().clone();
+        let banner = t.banner.clone().unwrap_or_default();
+        assert!(
+            banner.starts_with("SSH-2.0-"),
+            "首地址那个对端收到的不是 SSH 标识而是 {banner:?} —— 卡住的不是握手那一段"
+        );
+        assert!(
+            t.banner_at.is_some_and(|at| at < race_returned_at),
+            "首地址那一路是在竞速**结束之后**才走到握手的 —— 竞速进行时它并没挂在那儿"
+        );
+        assert!(
+            settled(|| trace.lock().unwrap().client_went_away_at.is_some()).await,
+            "首地址那条连接**不是被整批 abort 收走的** —— 它没挂住（自己先断了 / 从没真连上）。\
+             ⚠ 注意这一条与上面那句 `assert_eq!(win, live)` 的区别：live 照样胜、结果照样对，\
+             但「首地址挂起也不吊死整批」这半没被驱动"
+        );
+    }
+
+    // === F46：连接分阶段事件 ===
+
+    #[test]
+    fn classify_stage_buckets() {
+        assert_eq!(classify_stage("Connection refused (os error 111)"), "tcp");
+        assert_eq!(classify_stage("No route to host"), "tcp");
+        assert_eq!(classify_stage("operation timed out"), "timeout");
+        assert_eq!(classify_stage("握手超时"), "timeout");
+        assert_eq!(classify_stage("host key mismatch"), "hostkey");
+        assert_eq!(classify_stage("Unknown server key"), "hostkey");
+        assert_eq!(classify_stage("something else entirely"), "other");
+    }
+
+    /// 收集 Channel emit 的阶段事件（send→on_message(InvokeResponseBody::Json)），
+    /// 逐条记 `(kind, endpoint)`、**保序**。
+    ///
+    /// ⚠ 从前这里只记 `kind`。带上 `endpoint` 是 `K-R24` 下一拍要的：
+    /// 「首地址那一路怎么了」与「后位那一路怎么了」在只有 `kind` 的流上**分不开**，
+    /// 而那正是 `race_live_server_wins_when_a_hung_peer_is_first` 要断言的东西。
+    /// `endpoint` 那一格对 `auth` / `established` 这类不带地址的阶段是空串。
+    fn collecting_channel() -> (
+        tauri::ipc::Channel<ConnectStage>,
+        Arc<Mutex<Vec<(String, String)>>>,
+    ) {
+        let sink = Arc::new(Mutex::new(Vec::<(String, String)>::new()));
+        let s2 = Arc::clone(&sink);
+        let ch = tauri::ipc::Channel::new(move |body: tauri::ipc::InvokeResponseBody| {
+            if let tauri::ipc::InvokeResponseBody::Json(json) = body {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&json) {
+                    if let Some(k) = v.get("kind").and_then(|k| k.as_str()) {
+                        let endpoint = v
+                            .get("endpoint")
+                            .and_then(|e| e.as_str())
+                            .unwrap_or_default()
+                            .to_string();
+                        s2.lock().unwrap().push((k.to_string(), endpoint));
+                    }
+                }
+            }
+            Ok(())
+        });
+        (ch, sink)
+    }
+
+    /// 只要 kind 那一维（给那两条不关心是哪个地址的判据用）。
+    fn stage_kinds(sink: &Arc<Mutex<Vec<(String, String)>>>) -> Vec<String> {
+        sink.lock()
+            .unwrap()
+            .iter()
+            .map(|(k, _)| k.clone())
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn race_emits_dialing_hostkey_won_for_live_server() {
+        let live = spawn_mock_server().await;
+        let (ch, sink) = collecting_channel();
+        let _ = race_win(
+            race_connect(
+                test_config(),
+                None,
+                vec![live],
+                Duration::from_secs(5),
+                Some(ch),
+            )
+            .await,
+        );
+        let kinds = stage_kinds(&sink);
+        assert!(
+            kinds.contains(&"dialing".to_string()),
+            "缺 dialing: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&"hostKey".to_string()),
+            "缺 hostKey: {kinds:?}"
+        );
+        assert!(kinds.contains(&"won".to_string()), "缺 won: {kinds:?}");
+    }
+
+    #[tokio::test]
+    async fn race_emits_dialing_and_failed_for_dead_address() {
+        let p = dead_port().await;
+        let (ch, sink) = collecting_channel();
+        let _ = race_err(
+            race_connect(
+                test_config(),
+                None,
+                vec![ep("127.0.0.1", p)],
+                Duration::from_secs(3),
+                Some(ch),
+            )
+            .await,
+        );
+        let kinds = stage_kinds(&sink);
+        assert!(
+            kinds.contains(&"dialing".to_string()),
+            "缺 dialing: {kinds:?}"
+        );
+        assert!(
+            kinds.contains(&"failed".to_string()),
+            "缺 failed: {kinds:?}"
+        );
+        assert!(
+            !kinds.contains(&"won".to_string()),
+            "死地址不应 won: {kinds:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn race_emitter_none_still_works() {
+        // emitter=None 路径不 panic、与 F45 行为等价（此处验死地址聚合）。
+        let p = dead_port().await;
+        let err = race_err(
+            race_connect(
+                test_config(),
+                None,
+                vec![ep("127.0.0.1", p)],
+                Duration::from_secs(3),
+                None,
+            )
+            .await,
+        );
+        assert!(err.contains(&p.to_string()));
+    }
+
+    // === F45：winner_address（喂 remote-launch 的拨号地址）===
+
+    fn cfg_with(label: &str, host: &str, port: u16, addresses: Vec<String>) -> RemoteConfig {
+        RemoteConfig {
+            host: host.into(),
+            label: label.into(),
+            port,
+            user: "u".into(),
+            key_path: None,
+            daemon_path: "d".into(),
+            host_key_fingerprint: None,
+            addresses,
+            jump: None,
+        }
+    }
+
+    #[test]
+    fn winner_address_falls_back_to_host_when_no_last_good() {
+        let cfg = cfg_with("wa-none", "h.example", 2200, vec!["10.0.0.9".into()]);
+        assert_eq!(winner_address(&cfg), ep("h.example", 2200));
+    }
+
+    #[test]
+    fn winner_address_uses_last_good_then_invalidates_on_config_change() {
+        // 用独立 origin 避免与其它测试共享的 last-good store 串味。
+        let cfg = cfg_with("wa-lg", "h.example", 22, vec!["10.0.0.9".into()]);
+        record_last_good("wa-lg", &ep("10.0.0.9", 22));
+        assert_eq!(
+            winner_address(&cfg),
+            ep("10.0.0.9", 22),
+            "已连过 → last-good 胜者"
+        );
+        // 配置改掉备用地址 → 旧 last-good 不在 endpoints 里 → 回退 host。
+        let cfg2 = cfg_with("wa-lg", "h.example", 22, vec![]);
+        assert_eq!(
+            winner_address(&cfg2),
+            ep("h.example", 22),
+            "配置变更失效 last-good"
+        );
+    }
+}
+
+#[cfg(test)]
+mod reannounce_tests {
+    use super::{collect_reannounce, AnnouncedMeta};
+    use std::collections::HashMap;
+
+    fn meta(origin: &str, sid: &str, status: Option<&str>) -> AnnouncedMeta {
+        AnnouncedMeta {
+            payload: crate::bridge::RemoteSessionAddedPayload {
+                session_id: sid.into(),
+                origin: origin.into(),
+                kind: None,
+                attachable: None,
+                cwd: Some("/p".into()),
+                name: None,
+            },
+            status: status.map(str::to_string),
+            waiting_for: None,
+        }
+    }
+
+    /// F28 DoD：重发快照收集——拍平 + (origin, sid) 稳定排序 + status 保真。
+    #[test]
+    fn collect_flattens_sorts_and_preserves_status() {
+        let mut reg: HashMap<String, HashMap<String, AnnouncedMeta>> = HashMap::new();
+        reg.entry("pi".into())
+            .or_default()
+            .insert("sid-b".into(), meta("pi", "sid-b", Some("busy")));
+        reg.entry("pi".into())
+            .or_default()
+            .insert("sid-a".into(), meta("pi", "sid-a", None));
+        reg.entry("aya".into())
+            .or_default()
+            .insert("sid-z".into(), meta("aya", "sid-z", Some("waiting")));
+        let out = collect_reannounce(&reg);
+        let keys: Vec<(String, String)> = out
+            .iter()
+            .map(|m| (m.payload.origin.clone(), m.payload.session_id.clone()))
+            .collect();
+        assert_eq!(
+            keys,
+            vec![
+                ("aya".into(), "sid-z".into()),
+                ("pi".into(), "sid-a".into()),
+                ("pi".into(), "sid-b".into()),
+            ],
+            "稳定 (origin, sid) 排序"
+        );
+        assert_eq!(out[0].status.as_deref(), Some("waiting"));
+        assert_eq!(out[2].status.as_deref(), Some("busy"));
+        assert!(collect_reannounce(&HashMap::new()).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tail_tests {
+    use super::parse_snapshot_meta;
+
+    #[test]
+    fn meta_parses_and_content_lines_dont() {
+        assert_eq!(
+            parse_snapshot_meta(r#"{"kind":"snapshot_meta","total":100,"tail_from":95}"#),
+            Some((100, 95))
+        );
+        // 普通 jsonl 行（含 kind 字段的行也不行——kind 值不匹配）
+        assert_eq!(parse_snapshot_meta(r#"{"type":"user","uuid":"u1"}"#), None);
+        assert_eq!(parse_snapshot_meta(r#"{"kind":"line","seq":0}"#), None);
+        assert_eq!(parse_snapshot_meta("not json"), None);
+    }
+
+    /// 两段编号映射（真函数）：到达序 → 行号（尾段先到）。
+    #[test]
+    fn tail_numbering_maps_arrival_to_line_numbers() {
+        use super::tail_seq;
+        // 到达序：尾段 [3,4]，头段 [0,1,2]
+        assert_eq!(
+            (0..5).map(|i| tail_seq(i, 5, 3)).collect::<Vec<_>>(),
+            vec![3, 4, 0, 1, 2],
+            "全部行号恰覆盖 0..total 且顺序=尾部优先"
+        );
+        // 全尾（tail_from=0）与空文件退化
+        assert_eq!(
+            (0..3).map(|i| tail_seq(i, 3, 0)).collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        assert_eq!(tail_seq(0, 0, 0), 0);
+    }
+
+    /// meta 关系防御：tail_from > total 拒收（防远端损坏输出打乱 seq 空间）。
+    #[test]
+    fn malformed_meta_rejected() {
+        use super::parse_snapshot_meta;
+        assert_eq!(
+            parse_snapshot_meta(r#"{"kind":"snapshot_meta","total":5,"tail_from":10}"#),
+            None
+        );
+    }
+}
+
+#[cfg(test)]
+mod frame_dispatch_shape {
+    /// ★ **daemon 帧的消费分派不许有兜底臂**〔audit-0805 08-06〕。
+    ///
+    /// # 它钉的是「谁是被偶然守住的」那一类（第三例）
+    ///
+    /// `stream_loop` 里那条 `match frame` 今天用**九条具名臂**盖住 `InboundFrame`
+    /// 的全部 10 个变体（`Reply` 与 `Cancelled` 合用一条）＋ 一条 `None`，
+    /// **没有兜底臂** ⇒ daemon 新加一种帧、monitor 忘了处理时**编译失败**。
+    ///
+    /// ⚠ 那是个没人盯的前提：谁加一条兜底臂，穷尽性当场消失，
+    /// 新帧从此被**静默丢弃** —— 而 monitor 侧既有判据一条都不会因此变红
+    /// （它们各测各的帧）。后果不是报错，是**功能默默不生效**：
+    /// 用户看到的是「daemon 明明发了，界面没反应」。
+    /// ★ 赌注比前两例高：这条流**同时被仓外的 aterm 消费**（承接 D6：
+    /// 暴露给第三方 = 契约冻结成本），而 monitor 是它的参考实现。
+    ///
+    /// 与 `watcher.rs`（daemon 七路信号）、`config_surface.rs`（审计页解析形态）同型。
+    #[test]
+    fn the_daemon_frame_dispatch_has_no_catch_all_arm() {
+        // ⚠ **不能按首个 cfg-test 切**：本文件有十几个测试模块，第一个在 915 行，
+        //   而要守的那条分派在 3552 行 —— 第一版就是这么写的，
+        //   抽取器自检当场报「只扫到 0 条臂」。用共享原语剥全部测试段。
+        let prod = guard_core::production_code(include_str!("ssh_source.rs"));
+        let lines: Vec<&str> = prod.lines().collect();
+        let ind = |l: &str| l.len() - l.trim_start().len();
+        let mut arms = 0usize;
+        let mut offenders: Vec<usize> = Vec::new();
+        for (n, l) in lines.iter().enumerate() {
+            let s = l.trim_start();
+            if s.starts_with("Some(InboundFrame::") || s.starts_with("Some(f @ (InboundFrame::") {
+                arms += 1;
+                continue;
+            }
+            if !s.starts_with("_ =>") {
+                continue;
+            }
+            let d = ind(l);
+            for k in (0..n).rev() {
+                let prev = lines[k];
+                if prev.trim().is_empty() {
+                    continue;
+                }
+                if ind(prev) < d {
+                    break;
+                }
+                if ind(prev) == d && prev.trim_start().starts_with("Some(InboundFrame::") {
+                    offenders.push(n + 1);
+                    break;
+                }
+            }
+        }
+        assert!(
+            arms >= 8,
+            "只扫到 {arms} 条 `Some(InboundFrame::` 臂（08-06 实测 9）—— 抽取坏了，本条此刻是空转的"
+        );
+        // 豁免登记（**默认拒绝**：不在这张表里的兜底臂一律红）。按**函数名**登记，不按行号。
+        const ALLOWED: &[(&str, &str)] = &[(
+            "route_inbound_frame",
+            "它上面紧挨着另一条 match，已用具名臂 `other =>` 把非入方向帧拦下并 `warn!` \
+             报了身份（E4）。到这条 match 时只可能是 Reply/Cancelled，兜底臂不可达，不吞新帧。",
+        )];
+        let fn_of = |line_no: usize| -> String {
+            lines[..line_no.min(lines.len())]
+                .iter()
+                .rev()
+                .find_map(|l| {
+                    let s = l.trim_start();
+                    s.strip_prefix("fn ")
+                        .or_else(|| s.strip_prefix("pub fn "))
+                        .or_else(|| s.strip_prefix("async fn "))
+                        .or_else(|| s.strip_prefix("pub async fn "))
+                        .map(|r| {
+                            r.chars()
+                                .take_while(|c| c.is_ascii_alphanumeric() || *c == '_')
+                                .collect::<String>()
+                        })
+                })
+                .unwrap_or_default()
+        };
+        let offenders: Vec<usize> = offenders
+            .into_iter()
+            .filter(|n| !ALLOWED.iter().any(|(f, _)| *f == fn_of(*n)))
+            .collect();
+        for (f, _) in ALLOWED {
+            assert!(
+                prod.contains(&format!("fn {f}(")),
+                "豁免表里的 `{f}` 已经不在生产段里 —— 登记该删了"
+            );
+        }
+        assert!(
+            offenders.is_empty(),
+            "daemon 帧的消费分派里出现了兜底臂（生产段第 {offenders:?} 行）。\n\
+             ⚠ 后果不是报错，是**新帧被静默丢弃** —— 用户看到的是\n\
+             「daemon 明明发了，界面没反应」，而既有判据一条都不会红。\n\
+             这条流同时被仓外 aterm 消费（D6：契约冻结成本）。\n\
+             新增帧请写成具名臂；确实不处理也请显式写出来并加一句为什么。"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tmux_snapshot_exposure_tests {
+    /// ★ **前提触发器：`snapshot_tmux_by_origin` 刻意没有 IPC 出口。**
+    ///
+    /// # 它的价值不在「拦住谁」，在**它红的时候会说什么**
+    ///
+    /// 这是一条「今天没有」型断言 —— 没人加出口它就一直绿，天然容易被读成仪式。
+    /// 但真有人去开那个出口时（一份审计清单就会这么建议），诊断要立刻把
+    /// 「**快照不刷新、`awaitExitFor` 用不了**」摆到他眼前，逼他先回答「消费者是谁」。
+    ///
+    /// ⚠ 如实记：它**挡不住**「有人加了出口且顺手把这条判据也改了」——那时只剩评审。
+    #[test]
+    fn the_tmux_snapshot_stays_out_of_the_ipc_surface() {
+        let src = guard_core::production_code(include_str!("ssh_source.rs"));
+        let needle = "fn snapshot_tmux_by_origin";
+        let at = src
+            .find(needle)
+            .expect("找不到 `snapshot_tmux_by_origin` —— 它被改名或删了，本条会零命中地绿");
+        // 往前看 200 字节：`#[tauri::command]` 属性若存在，必然紧贴在函数签名之前。
+        let before = &src[at.saturating_sub(200)..at];
+        assert!(
+            !before.contains("tauri::command"),
+            "`snapshot_tmux_by_origin` 被包成 Tauri 命令了。\n\
+             \n\
+             ⚠ **开这个出口之前先回答：消费者是谁？**\n\
+             最常见的动机是「让 `tabs.ts` 的 `awaitExitFor` 改读快照，省掉每 1s 一条 SSH」——\n\
+             **那条路走不通**：daemon 的 `TmuxProbeDue` 只在初探发一次，之后每一拍靠 tmux hook，\n\
+             而 hook 只有 session-created/closed/renamed 三条。`awaitExitFor` 等的是\n\
+             「pane 前台命令从 claude 变回 shell」——**那个变化一条 hook 都不覆盖** ⇒\n\
+             快照在那个场景下永不刷新 ⇒ 改读它 = 每次等到 10s 超时再降级 kill，**功能退化**。\n\
+             \n\
+             解锁条件：先有一个「pane 前台命令变化」的事件源。那条轮询的账已在\n\
+             `polling_registry` 的 `src/tabs.ts` 一条里如实登记为未排期。\n\
+             详见 `snapshot_tmux_by_origin` 的头注与 devbench F08。"
+        );
+    }
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+
+    /// 行计数口径必须与 daemon read_new_lines 一字一致：BOM+全空白跳过。
+    #[test]
+    fn snapshot_line_countable_matches_daemon_semantics() {
+        assert!(snapshot_line_countable(r#"{"a":1}"#));
+        assert!(snapshot_line_countable("\u{feff}{\"a\":1}")); // BOM+内容 → 计
+        assert!(!snapshot_line_countable("")); // 空行 → 跳
+        assert!(!snapshot_line_countable("   ")); // 全空白 → 跳
+        assert!(!snapshot_line_countable("\u{feff}")); // 纯 BOM → 跳
+        assert!(!snapshot_line_countable("\u{feff}  \t")); // BOM+空白 → 跳
+    }
+
+    /// 队列语义：sid 幂等、priority 优先出队、close 后清空账再 None。
+    #[tokio::test]
+    async fn snapshot_queue_priority_idempotent_and_close() {
+        fn item(sid: &str, path: &str) -> SnapshotItem {
+            SnapshotItem {
+                sid: sid.into(),
+                path: path.into(),
+                expected_lines: None,
+            }
+        }
+        let q = SnapshotQueue::new();
+        q.push(item("s1", "/p1"));
+        q.push(item("s2", "/p2"));
+        q.push(item("s3", "/p3"));
+        q.push(item("s2", "/p2-dup")); // 幂等：不重拉
+                                       // priority=s2 → 先出 s2
+        let got = q.pop(Some("s2".into())).await.unwrap();
+        assert_eq!((got.sid.as_str(), got.path.as_str()), ("s2", "/p2"));
+        // priority 不在队 → FIFO
+        let got = q.pop(Some("nope".into())).await.unwrap();
+        assert_eq!(got.sid, "s1");
+        // Batch8 审计 D-B1：cancel 摘排队项 + 标记取消 + seen 可重入队
+        q.cancel("s3");
+        assert!(q.is_cancelled("s3"), "cancel 后 inflight 检查命中");
+        q.push(item("s3", "/p3-again")); // removed→re-added：解除取消、重新入队
+        assert!(!q.is_cancelled("s3"), "重新宣告解除取消标记");
+        let got = q.pop(None).await.unwrap();
+        assert_eq!(got.path, "/p3-again");
+        // Batch8 审计 D-B1：close 立即作废排队项（不清账）
+        q.push(item("s4", "/p4"));
+        q.close();
+        assert!(q.pop(None).await.is_none(), "close 后排队项作废");
+        assert!(q.is_cancelled("s4"), "close 后 inflight 检查也命中（作废）");
+    }
+
+    /// close 唤醒等待中的 pop（分发器不悬挂）。
+    #[tokio::test]
+    async fn snapshot_queue_close_wakes_waiting_pop() {
+        let q = SnapshotQueue::new();
+        let q2 = q.clone();
+        let waiter = tokio::spawn(async move { q2.pop(None).await });
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        q.close();
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_secs(2), waiter)
+                .await
+                .expect("pop 必须被 close 唤醒")
+                .unwrap()
+                .is_none()
+        );
+    }
+}
+
+/// 有界读行的**行为**对拍〔devbench F10b〕。
+///
+/// # 为什么必须有这一组
+///
+/// 判据那半（`byte_cap_registry` 的四条）钉的全是**形态**：常量进表了没、
+/// 处置臂说话了没。它们**判不出**「上限到底生不生效」——
+/// 而 daemon 侧栽的那次正是这个缺口：上限写着 1 MiB、`line_too_long` 也回了，
+/// 可它是**读完再判**，实测 RSS 从 6 MiB 涨到 518 MiB。头注逐字记着
+/// 「常数抄了先例，**机制没抄**」。
+///
+/// ⇒ 本组直接喂 reader，用**小 cap**，把那条「超限之后内存不涨」判成断言。
+#[cfg(test)]
+mod capped_line_tests {
+    /// ★ P8c：**收帧那条路真的记了观测分类**，且只记变化、只作观测。
+    ///
+    /// 钉源码形状而不是跑一条真流：那条臂住在需要真远端连接的 `async fn` 里
+    ///（`classify_tmux_observation` 当年被提成纯函数正是因为这个）。
+    ///
+    /// ⚠ 全程用 `find_pinned`（恰好一处 + 两侧有边界），**不用裸 `contains`** ——
+    /// `needle_anchor_registry` 是条**递减棘轮**，它逐字写着「不许把上限调上去让今天好过」。
+    /// `P0b`：`SessionAdded` 那一跳**不许再是静默的**。
+    ///
+    /// # 它为什么值得一条判据
+    ///
+    /// 08-13 全链台架终于可信（连续两跑、四格全绿、读数一致），报的是
+    /// 「30s 内未见灰灯 tab-state」。而当时日志**回答不了最基本的那一问：帧到 monitor 了吗？**
+    /// —— 因为这一臂只有 emit **失败**才打日志，成功一个字不留。
+    /// 帧级套件 `graylight-daemon-frames` 同期 **12 过 / 0 败**（daemon 那侧发得对），
+    /// 前端 `建卡 rendered=0`（一条都没收到）⇒ 断点就在这两者之间，而这里是那段路上的分叉点。
+    ///
+    /// ⚠ **位置性质**：日志要排在 `app.emit` **之前**。排在后面的话，emit 那一跳若卡住/panic，
+    /// 就连「收到了」这件事都没留下 —— 而那正是最需要知道的一格。
+    #[test]
+    fn the_session_added_arm_is_not_silent() {
+        let prod = guard_core::production_code(include_str!("ssh_source.rs"));
+        let at = guard_core::find_pinned(&prod, "session-added: [{host_label}] sid={sid}")
+            .expect("`SessionAdded` 那一臂必须留下一行「收到了」——否则全链失败时问不出帧到没到");
+        // ⚠ **改成局部窗口，不求全局唯一**：那句 emit 生产段有 2 处（另一处是**重宣告**那条路），
+        //   `find_pinned` 当场拒收并逐字提醒「把 needle 扩到能唯一确定那个事实的大小」。
+        //   而本条要钉的性质本来就是**局部**的（「这行日志的紧后面就是那次 emit」）
+        //   ⇒ 用窗口比硬造一个全局唯一的针更贴事实。
+        // ⚠ 窗口 400 字符是启发式：够覆盖日志与 emit 之间那几行，又不至于跨到别的臂。
+        // ⚠⚠ 窗口内也**不许裸 `contains`** —— `needle_anchor_registry` 那条递减棘轮当场拦下了
+        //   第一版（它逐字：「不许把上限调上去让今天好过」）。⇒ 在窗口这个**小语料**上
+        //   仍走 `find_pinned`：恰好一处 + 两侧有边界。窗口小到只含本臂 ⇒ 唯一性天然成立。
+        let window = &prod[at..(at + 400).min(prod.len())];
+        assert!(
+            guard_core::find_pinned(
+                window,
+                "app.emit(crate::bridge::events::REMOTE_SESSION_ADDED, &payload)"
+            )
+            .is_ok(),
+            "那行日志与它要守的那次 `app.emit` 之间隔太远（或被排到了后面）——\
+             排在 emit 后面的话，emit 卡住时就连「收到了」都没留下"
+        );
+    }
+
+    /// ★ `P0b-Y2` 第十七拍：摘的必须是**那一格**，不许误伤前缀相同的邻居。
+    #[test]
+    fn remove_tmux_line_takes_out_exactly_that_session() {
+        // `tmux ls` 的形状：6 列、制表符分隔、以 \n 结尾。
+        let raw = "cc-a\t/x\tclaude\t0\t1\tsid-a\ncc-ab\t/y\tbash\t0\t1\tsid-ab\n";
+        let out = super::remove_tmux_line(raw, "cc-a");
+        assert!(
+            !out.lines().any(|l| l.split('\t').next() == Some("cc-a")),
+            "该摘的那一格还在：{out:?}"
+        );
+        // ⚠ **不许误伤前缀相同的邻居** —— `cc-a` 与 `cc-ab` 是两个会话。
+        assert!(
+            out.lines().any(|l| l.split('\t').next() == Some("cc-ab")),
+            "把前缀相同的邻居一起摘掉了：{out:?}"
+        );
+        assert!(out.ends_with('\n'), "尾部换行没保住：{out:?}");
+        // 摘不存在的名字 = 原样返回（幂等：同一 sid 两条路都可能到）。
+        assert_eq!(super::remove_tmux_line(raw, "cc-zzz"), raw);
+    }
+
+    /// ★ `P0b-Y2` 第十七拍：**先摘账、再 retire** 的顺序不许反。
+    ///
+    /// 反了的话下游 `classify_removed` 查到的还是「tmux 还在」⇒ 判灰不判归档
+    /// ⇒ **永久灰点**（`#60` 现象 2）。这条钉的是**位置**，不是「那行代码在」。
+    ///
+    /// ⚠ 针要钉**当下的形状**：首版钉 `*raw = remove_tmux_line(...)`（内联 `get_mut` 那版），
+    /// 而实现随后改成走 `record_tmux_raw` ⇒ 针过期，两条变异**双双存活**而判据照绿。
+    /// ★「判据的针跟不上实现」与「判据钉得太小」是同一族的两面。
+    #[test]
+    fn the_ledger_is_pruned_before_the_retire_is_sent() {
+        let prod = guard_core::production_code(include_str!("ssh_source.rs"));
+        let at = guard_core::find_pinned(
+            &prod,
+            "record_tmux_raw(&host_label, remove_tmux_line(raw, &name))",
+        )
+        .expect("会话关闭那一臂必须先把这一格从 tmux 账本里摘掉（且走既有写口）");
+        let send_at = prod[at..]
+            .find("removed: vec![RemovedSid::gone(sid)]")
+            .expect("找不到那次 retire —— 抽取面画错了");
+        assert!(
+            send_at < 900,
+            "摘账与 retire 隔了 {send_at} 字符 —— 中间插了别的东西？\n             \
+             这两件事必须紧挨着且**摘账在前**，否则下游查到的还是「tmux 还在」。"
+        );
+    }
+
+    /// ★ 与上一条**成对**：`SessionRemoved` 那一臂也不许静默〔`P0b-Y2` 第十拍 08-13〕。
+    ///
+    /// # 为什么成对才有用
+    ///
+    /// `#60` 问的是**灰灯**，而灰灯是「死亡」这件事的 UI 表现。只给 `added` 加日志，
+    /// 全链失败时能回答「上线那跳到没到」，**答不出「死亡那跳到没到」** ——
+    /// 08-13 实测当场撞上：daemon 侧 tap 里明明有 `session_removed`，monitor 日志里
+    /// 一个字都没有，于是「收到了没转发」与「根本没收到」分不开。补上这一行才分得开
+    /// （补完立刻量到：`cause=Gone`，两跳都通）。
+    ///
+    /// ⚠ 差点漏掉 `#[test]`：搬动代码块时属性留在了上一条身上，`cargo test` **一声不吭地
+    /// 少跑一条**（`4 passed` 里没有它）。⇒ 加判据之后要核**名字出现在跑的清单里**，
+    /// 不是只看「全绿」——本仓「0 passed 不是绿」的同一族。
+    #[test]
+    fn the_session_removed_arm_is_not_silent() {
+        let prod = guard_core::production_code(include_str!("ssh_source.rs"));
+        let at = guard_core::find_pinned(&prod, "session-removed: [{host_label}] sid={sid}")
+            .expect(
+                "`SessionRemoved` 那一臂必须留下一行「收到了」——`#60`（灰灯不出现）问的正是\n             \
+                 「死亡这件事走到哪一步丢了」，而 08-13 全链实测时 daemon 侧 tap 里明明有\n             \
+                 `session_removed`、monitor 日志里一个字都没有 ⇒ 分不清「收到了没转发」与「根本没收到」。",
+            );
+        // `cause` 必须一起打：灰灯与归档走**不同的 cause**（`Superseded` 直接归档，
+        // `Gone` 才是灰灯那条）。少了它，看见一行「removed」仍答不出 UI 该变成什么样。
+        // ⚠ 窗口内也**不许裸 `contains`**：`needle_anchor_registry` 那条递减棘轮当场拦下
+        //   第一版（与 added 那条判据 08-13 早些时候踩的是同一个坑，头注里逐字记着）。
+        let window = &prod[at..(at + 200).min(prod.len())];
+        assert!(
+            guard_core::find_pinned(window, "cause={cause:?}").is_ok(),
+            "那行日志没带 `cause` —— 灰灯与归档是两条路，只报 sid 分不出该走哪条。"
+        );
+        // 与 added 那条同样的时序要求：日志排在转发**之前**。
+        let fwd = &prod[at..(at + 700).min(prod.len())];
+        assert!(
+            guard_core::find_pinned(fwd, "session_changes.send(SessionChange {").is_ok(),
+            "那行日志与它要守的那次转发之间隔太远（或被排到了后面）——\
+             排在后面的话，转发卡住时就连「收到了」都没留下"
+        );
+    }
+
+    #[test]
+    fn the_frame_arm_logs_the_observation_kind() {
+        let prod = guard_core::production_code(include_str!("ssh_source.rs"));
+        let log_at =
+            guard_core::find_pinned(&prod, "\"tmux-observation: [{host_label}] {} → {kind}\"")
+                .unwrap_or_else(|e| {
+                    panic!(
+                    "{e}\n收 `TmuxSessions` 帧时不再记观测分类 —— `U3` 裁定的那一行可观测性没了，\n\
+                     而它存在的全部理由是：不记就分不清『0 次』与『记不下来』。"
+                )
+                });
+        // 只记**变化** —— 帧由 tmux hook 驱动，逐帧记会把日志淹掉（淹掉的日志与没有一样不可读）。
+        let gate_at =
+            guard_core::find_pinned(&prod, "if last_observation_kind.as_deref() != Some(kind) {")
+                .unwrap_or_else(|e| panic!("{e}\n变成逐帧记了 —— 那会把日志淹掉"));
+        assert!(gate_at < log_at, "那条日志不在「变了才记」的门里面");
+        // 它是**纯观测**：决策仍只看 `classify_tmux_observation` 的结果（`verdict`）。
+        let decide_at = guard_core::find_pinned(
+            &prod,
+            "if let crate::tmux::TmuxObservation::Backend(backend) = verdict {",
+        )
+        .unwrap_or_else(|e| panic!("{e}\n对账不再直接吃分类结果 —— 观测与决策的界线糊了"));
+        assert!(
+            log_at < decide_at,
+            "记日志排在决策**之后** —— 那样决策路径提前 return 时这一维就丢了"
+        );
+    }
+
+    use super::{read_capped_line, CappedLine};
+    use tokio::io::BufReader;
+
+    /// 正常一行：内容不含行尾 `\n`。
+    #[tokio::test]
+    async fn a_normal_line_comes_back_without_its_newline() {
+        let data: &[u8] = b"hello\n";
+        let mut rd = BufReader::new(data);
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 64).await.unwrap(),
+            CappedLine::Line
+        ));
+        assert_eq!(buf, b"hello");
+    }
+
+    /// **恰好等于上限**的一行必须过 —— 边界差一格就是「合法数据被丢」。
+    #[tokio::test]
+    async fn a_line_exactly_at_the_cap_is_still_accepted() {
+        let line = vec![b'x'; 16];
+        let mut data = line.clone();
+        data.push(b'\n');
+        let mut rd = BufReader::new(&data[..]);
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::Line
+        ));
+        assert_eq!(buf.len(), 16);
+    }
+
+    /// 超一个字节就该丢，且**报出真实字节数**。
+    #[tokio::test]
+    async fn one_byte_over_the_cap_is_dropped_and_counted() {
+        let mut data = vec![b'x'; 17];
+        data.push(b'\n');
+        let mut rd = BufReader::new(&data[..]);
+        let mut buf = Vec::new();
+        match read_capped_line(&mut rd, &mut buf, 16).await.unwrap() {
+            CappedLine::TooLong(n) => assert_eq!(n, 17, "报出的字节数要是真实长度"),
+            other => panic!("该判超限，实得 {other:?}"),
+        }
+        assert!(buf.is_empty(), "超限的行不许留在 buf 里被当数据用");
+    }
+
+    /// ★ **超限之后不许继续往 buf 里塞字节**（daemon 那次 518 MiB 的正题）。
+    ///
+    /// 喂一条 100_000 字节的行、上限 16。若机制是「读完再判」，
+    /// `buf` 的容量会涨到 10 万量级；正确实现下它应当在超限那一刻就被清掉并归还。
+    #[tokio::test]
+    async fn over_limit_stops_growing_the_buffer() {
+        let mut data = vec![b'x'; 100_000];
+        data.push(b'\n');
+        let mut rd = BufReader::new(&data[..]);
+        let mut buf = Vec::new();
+        match read_capped_line(&mut rd, &mut buf, 16).await.unwrap() {
+            CappedLine::TooLong(n) => assert_eq!(n, 100_000),
+            other => panic!("该判超限，实得 {other:?}"),
+        }
+        assert!(
+            buf.capacity() < 1024,
+            "超限之后 buf 容量涨到了 {} —— 说明字节还在往里塞（那正是 daemon 侧 518 MiB 的形状）",
+            buf.capacity()
+        );
+    }
+
+    /// ★ **超限之后的下一行必须还读得到** —— 丢一行不许连带丢掉整条流。
+    ///
+    /// ⚠ 超长那一行**必须跨多个 `fill_buf` 块**（这里 20_000 > `BufReader` 默认 8 KiB）。
+    /// 第一版用 50 字节，一次 `fill_buf` 就连着 `\n` 一起读完了 ——
+    /// 于是「超限之后继续找换行」那条**续读路径压根没被走到**：
+    /// 实测把机制改成「超限就立刻返回」，本条照样绿，只有 100_000 那条抓住了。
+    /// ⇒ 短数据让本条退化成了 `one_byte_over_the_cap_is_dropped_and_counted` 的副本。
+    #[tokio::test]
+    async fn the_line_after_an_over_long_one_is_still_delivered() {
+        let mut data = vec![b'x'; 20_000];
+        data.push(b'\n');
+        data.extend_from_slice(b"after\n");
+        let mut rd = BufReader::new(&data[..]);
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::TooLong(20_000)
+        ));
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::Line
+        ));
+        assert_eq!(buf, b"after");
+    }
+
+    /// 流尽而无残行 ⇒ `Eof`；有残行（末尾没 `\n`）⇒ 当一行交出去（`read_line` 旧行为）。
+    #[tokio::test]
+    async fn eof_and_trailing_partial_keep_the_old_read_line_behaviour() {
+        let empty: &[u8] = b"";
+        let mut rd = BufReader::new(empty);
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::Eof
+        ));
+
+        let partial: &[u8] = b"tail";
+        let mut rd = BufReader::new(partial);
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::Line
+        ));
+        assert_eq!(buf, b"tail");
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::Eof
+        ));
+    }
+
+    /// 空行（连着两个 `\n`）不该被当成 EOF。
+    #[tokio::test]
+    async fn an_empty_line_is_a_line_not_an_eof() {
+        let data: &[u8] = b"\nx\n";
+        let mut rd = BufReader::new(data);
+        let mut buf = Vec::new();
+        assert!(matches!(
+            read_capped_line(&mut rd, &mut buf, 16).await.unwrap(),
+            CappedLine::Line
+        ));
+        assert!(buf.is_empty());
+    }
+}

@@ -48,10 +48,10 @@ import { UserInputPanel } from "./user-input-panel";
  *
  * 🔴 **它为什么还住在这个文件里，而不是一个中立的 `views/card-jump.ts`** ——
  * 这是一处**登记在案的将就，不是设计**：本仓有一条 Rust 侧判据
- * （`src-tauri/src/polling_registry.rs::every_scheduling_call_site_is_classified`）
+ * （`src/bridge/src/polling_registry.rs::every_scheduling_call_site_is_classified`）
  * 按「文件 × API × 处数」精确对账**全部** `requestAnimationFrame` / `setTimeout` 调用点。
  * 把下面这 2 处 rAF + 1 处 setTimeout 搬进新文件，就必须同时改那张表 ——
- * 而 `src-tauri/` 不在本轮写区。**实测过**：搬进 `views/card-jump.ts` 后全量门禁
+ * 而 `src/bridge/` 不在本轮写区。**实测过**：搬进 `views/card-jump.ts` 后全量门禁
  * cargo 那格当场红（逐字读数在件 `§5.6`）。
  * ⇒ 照 `brief` 第 2 / 17 条：不越界、不糊过去，**抬上来请裁**。
  *

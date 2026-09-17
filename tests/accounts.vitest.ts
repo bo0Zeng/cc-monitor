@@ -1165,7 +1165,7 @@ describe("K-H2b：本机起会话取账号那一口（行为）", () => {
   it("★★ `K-R53` `KR53D1`：取值口必须**把名字也说出来** —— 不然那三条主路到不了后端那条路", () => {
     // # 分母与病灶（现打，住址带逐字校验位）
     //
-    // 后端那条 ccm 路渲染得出来的条件住 `src-tauri/src/history.rs::render_local_ccm_with`：
+    // 后端那条 ccm 路渲染得出来的条件住 `src/bridge/src/history.rs::render_local_ccm_with`：
     // 它把 `LaunchAccount` 映成 `ci::CliAccount`，而 CLI 只会 `--account <名字>`。
     // 本取值口先前只回 `{kind:"named", configDir}` —— **一个字段都没有名字**
     // ⇒ 后端只能 `CliAccount::Named{name:None}` ⇒ §35 短路 ⇒ 那三条主路

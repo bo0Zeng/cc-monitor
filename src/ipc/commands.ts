@@ -122,7 +122,7 @@ import type { DataPathsResponse } from "../generated/DataPathsResponse";
 // **panorama 一族的返回类型指向 `src/panorama/types.ts` 的手写类型，不是生成物。**
 // 不是漏了——那 10 个类型（`Overview`/`NodeView`/`SubGraph`/`Edge`/`ImpactSet`/`Symbol`/
 // `DocLink`/`Annotation`/`DriftItem`/`IndexStats`）住在 **vendored** 的
-// `src-tauri/vendor/code-picture-core/src/model.rs`，而 `VENDOR.md` 有一条明写的铁律：
+// `src/bridge/vendor/code-picture-core/src/model.rs`，而 `VENDOR.md` 有一条明写的铁律：
 // 「**副本是上游的镜子，不是分身**（SS-10）：只照上游改，绝不在副本里改出自己的版本」。
 // 给它们加 `ts_rs::TS` 派生就是在副本里改出自己的版本；而「先改上游再 re-vendor」要动
 // `code-picture` 仓——**本会话在册的红线**。⇒ 按 §5 那条「名字钉死是普遍的、类型生成是按需的」，

@@ -43,7 +43,7 @@ function unescapeRust(lit: string): string {
 
 function rustCases(): Array<{ input: string; expected: string }> {
   const src = readFileSync(
-    resolve(__dirname, "../src-tauri/crates/shell-quote-core/src/lib.rs"),
+    resolve(__dirname, "../src/bridge/crates/shell-quote-core/src/lib.rs"),
     "utf-8",
   );
   const out: Array<{ input: string; expected: string }> = [];

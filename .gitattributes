@@ -22,7 +22,7 @@
 *.msi   binary
 *.dll   binary
 
-# C01（rust-ts-boundary）：ts-rs 生成物，diff 默认折叠。源是 src-tauri/src/**.rs 的
+# C01（rust-ts-boundary）：ts-rs 生成物，diff 默认折叠。源是 src/bridge/src/**.rs 的
 # #[cfg_attr(test, derive(ts_rs::TS))]，重新生成走 `npm run gen:types`。
 #
 # **别把这条保证挂在 vitest 守卫上**（Phase D 审计 B2 实测：手改生成物、甚至插一个 Rust 侧

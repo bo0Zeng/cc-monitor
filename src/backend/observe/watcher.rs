@@ -24,7 +24,7 @@
 //! synchronous, `std::sync::mpsc`-based API) and talks to the async writer
 //! through `tokio::sync::mpsc`.
 //!
-//! # Parity with `../src-tauri/src/watcher.rs`
+//! # Parity with `../../bridge/src/watcher.rs`
 //!
 //! The incremental read mirrors `process_file`: a per-file [`ReadCursor`],
 //! read from `cursor.consumed` up to the **last `\n`** in the new region — a
@@ -280,7 +280,7 @@ fn initial_tmux_probe(tx: &std::sync::mpsc::Sender<WatchEvent>) {
 /// drops frames with a warning (Phase-0 gap, see module docs).
 pub const CHANNEL_CAPACITY: usize = 10_000;
 
-/// notify-debouncer-mini debounce window, matching `../src-tauri/src/watcher.rs`.
+/// notify-debouncer-mini debounce window, matching `../../bridge/src/watcher.rs`.
 const DEBOUNCE_MS: u64 = 100;
 
 /// B2：`tmux ls -F` 格式串——**与 monitor `tmux::TMUX_LS_FMT` 逐字对齐**（真 TAB 分列，monitor
@@ -314,7 +314,7 @@ use crate::common::tmux_utf8::{tab_underflow, UTF8_CLIENT_ENV};
 
 // ---------- P1（zero-poll-liveness）：`TmuxSessions.observation` 的取值 ----------
 //
-// **双写点**：与 monitor `src-tauri/src/tmux.rs` 的同名 const 逐字节一致，由 monitor 侧
+// **双写点**：与 monitor `src/bridge/src/tmux.rs` 的同名 const 逐字节一致，由 monitor 侧
 // `observation_tokens_double_write_point_stays_in_sync` 测试钉住（`include_str!` 读本文件 +
 // 锚定 const 定义行）。**改本处必须同步 monitor**，同 `TMUX_LS_FMT` 的纪律。
 /// daemon 确证零会话（rc=0 但 stdout 空 = `exit-empty off`；或 rc=1 = server 不在）。
@@ -1384,7 +1384,7 @@ pub struct ReadCursor {
 /// seqs assigned) and the updated cursor. The seq for each kept line comes
 /// from `seqs.next(key)`, so it is per-path monotonic and **never reset**.
 ///
-/// Mirrors `../src-tauri/src/watcher.rs` `process_file`:
+/// Mirrors `../../bridge/src/watcher.rs` `process_file`:
 ///
 /// - read from `cursor.consumed`, but only consume **complete lines** — bytes
 ///   up to and including the last `\n` in the new region. A torn tail without
@@ -2237,7 +2237,7 @@ fn is_session_json(p: &Path) -> bool {
 }
 
 /// subagent JSONL is excluded: any path containing a `subagents` segment.
-/// Mirrors `../src-tauri/src/watcher.rs::is_subagent_path`.
+/// Mirrors `../../bridge/src/watcher.rs::is_subagent_path`.
 fn is_subagent_path(p: &Path) -> bool {
     p.components()
         .any(|c| c.as_os_str().eq_ignore_ascii_case("subagents"))

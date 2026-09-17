@@ -142,7 +142,7 @@ const PROBE_FMT: &str = "#{session_id}\t#{@ccm_sid}\t#{session_windows}";
 /// （`$<数字>` / `[A-Za-z0-9_-]` / 正整数）。
 /// ⇒ 本处的**过溢只可能来自「有人手工把 `@ccm_sid` 设成含 TAB 的值」或格式串被改**，
 /// 那两种都该拒 ⇒ 既有的 fail-closed 处置是对的，**本拍不动它**。
-/// 那条误伤是真的、但只在 `src-tauri/src/tmux.rs::parse_tmux_ls` 那一处（见该处头注）。
+/// 那条误伤是真的、但只在 `src/bridge/src/tmux.rs::parse_tmux_ls` 那一处（见该处头注）。
 const PROBE_FMT_FIELDS: usize = 3;
 
 /// 跑一次 `tmux display-message -p -t <target> '<fmt>'` 并把 stdout 取回来。
@@ -489,7 +489,7 @@ mod tests {
 
     /// 判定表的**唯一真相源**，三条轨道各自独立读它（见文件头注）。
     const GOLDEN: &str =
-        include_str!("../../../src-tauri/src/backend/control/fixtures/gate2-golden.tsv");
+        include_str!("../../../src/bridge/src/backend/control/fixtures/gate2-golden.tsv");
 
     fn golden_rows() -> Vec<(String, String, Option<String>, String)> {
         GOLDEN
@@ -811,7 +811,7 @@ mod tests {
             .expect("地板值解析不出来 —— 调用行的形状变了");
 
         let golden = std::fs::read_to_string(
-            root.join("src-tauri/src/backend/control/fixtures/gate2-golden.tsv"),
+            root.join("src/bridge/src/backend/control/fixtures/gate2-golden.tsv"),
         )
         .expect("判定表读不到");
         let rows = golden

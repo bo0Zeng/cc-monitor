@@ -17,7 +17,7 @@ npx tauri build
 约 3-8 分钟。输出（`<version>` 是 `tauri.conf.json` 里的版本号）：
 
 ```
-src-tauri/target/release/
+src/bridge/target/release/
 ├── cc-monitor.exe                                       ← 主程序（需 WebView2）
 └── bundle/
     ├── msi/
@@ -42,7 +42,7 @@ src-tauri/target/release/
 
 ## NSIS 配置
 
-`src-tauri/tauri.conf.json::bundle.windows.nsis` 关键字段：
+`src/bridge/tauri.conf.json::bundle.windows.nsis` 关键字段：
 
 - **installMode**: `perMachine`（默认）→ 装到 `C:\Program Files\cc-monitor\` 需管理员
 - 改 `perUser` → 装到 `%LOCALAPPDATA%`，不需要管理员，但每个 user 各自一份
@@ -72,7 +72,7 @@ MSI **企业部署友好**：
 - Win11 自带 WebView2 → 用户无需任何操作
 - Win10 用户首次启动报"WebView2 Runtime not found" → 需要自己装
 
-**要内置 Bootstrap installer**（首次启动自动下载安装）：在 `src-tauri/tauri.conf.json::bundle.windows` 加：
+**要内置 Bootstrap installer**（首次启动自动下载安装）：在 `src/bridge/tauri.conf.json::bundle.windows` 加：
 
 ```json
 "webviewInstallMode": {
@@ -98,7 +98,7 @@ MSI **企业部署友好**：
 接入位置：
 
 ```json
-// src-tauri/tauri.conf.json
+// src/bridge/tauri.conf.json
 {
   "bundle": {
     "windows": {
@@ -123,7 +123,7 @@ MSI **企业部署友好**：
 | `linker link.exe not found` | 没注入 vcvars | 用 `scripts\run.ps1 build` 而非 `cargo build` |
 | `Microsoft Visual C++ 14.0 is required` | 缺 MSVC 或缺 VCTools workload | VS Installer 加 workload |
 | 卡在 `Compiling cc-monitor` | Rust 首次编译慢 ~5 min | 等。后续增量 < 1 min |
-| NSIS `MakeNSIS exited with code 1` | 图标 `.ico` 损坏 / 路径含中文 | 检查 `src-tauri/icons/icon.ico` |
+| NSIS `MakeNSIS exited with code 1` | 图标 `.ico` 损坏 / 路径含中文 | 检查 `src/bridge/icons/icon.ico` |
 | MSI 报 `WiX is not installed` | Tauri 自动下载到 `%LOCALAPPDATA%\tauri\WixTools3`；网络不通时手装 | 检查网络或手装 WiX |
 | `EACCES: permission denied ::1:24174`（或任意 dev 端口） | dev 端口被 Hyper-V 保留 | 这是 dev 错误不是 build 错误 → [DEVELOPMENT.md § 端口冲突](DEVELOPMENT.md#端口冲突) |
 

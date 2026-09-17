@@ -13,7 +13,7 @@
  *    ⇒ 真正的地板不是本文件，是 **`isSelectable` 是唯一出口**这件事本身；
  *    本文件只让「又开一条」这个动作**被看见**。
  * 2. **它是 vitest，扫不到 Rust 侧。** Rust 那边的同类绕过由两条同名判据各守自己那份：
- *    `src-tauri/src/local_accounts.rs::tests::the_auth_dimension_has_exactly_one_computation_path`
+ *    `src/bridge/src/local_accounts.rs::tests::the_auth_dimension_has_exactly_one_computation_path`
  *    与 `src/backend/observe/accounts_query.rs::tests::（同名）`。
  * 3. **它不判语义。** 一个文件即使不提 `loggedIn`，也可以自己写
  *    `a.mode === "isolated" && a.exists` 冒充可用性判据 —— 那一格今天不钉

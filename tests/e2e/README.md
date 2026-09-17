@@ -32,7 +32,7 @@ trap 'tmux_shim_cleanup' EXIT
 
 **绝不用 `TMUX_TMPDIR` 做隔离** —— `$TMUX` 一有值就压过它。2026-08-11 一条探针就是这么把
 用户**9 个真实 tmux 会话**打没的；`C7i` 因此逐字禁掉那条路。机检在
-`src-tauri/src/e2e_gate_registry.rs`（零容忍、零例外）。
+`src/bridge/src/e2e_gate_registry.rs`（零容忍、零例外）。
 
 ⚠ 要把隔离**传给被你拉起的子进程**（比如被监护的后端自己会跑 `tmux ls`）时，
 传的是 **shim 目录**、让它进子进程的 `PATH`，**不是**传 `TMUX_TMPDIR`

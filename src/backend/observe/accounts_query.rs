@@ -119,7 +119,7 @@ struct Manifest {
 /// 重定向/通配/控制字符 + 视觉欺骗类 Unicode。
 fn is_safe_config_dir(p: &str) -> bool {
     // 🔴 `N-F1c`：这个判据被**拆成两半**了。拆法逐字照 monitor 那份同名实现的模块头注
-    // （`src-tauri/src/local_accounts.rs` 顶部那一节，逐字：「判据落在性质上，不落在表面
+    // （`src/bridge/src/local_accounts.rs` 顶部那一节，逐字：「判据落在性质上，不落在表面
     // 特征上 —— 照抄 `starts_with('/')` 是抄了形式、丢了性质」）：
     //   ① shell 元字符与视觉欺骗字符 = **平台无关的安全性质**，两侧逐字同一套；
     //   ② 「是绝对路径」= **平台相关的形式**，各写各的。
@@ -365,8 +365,8 @@ fn session_process_identity_ok(pid: u32, pidfile: &serde_json::Value) -> bool {
 ///
 /// # 🔴 双写点，且**共享不了常量** —— 界在这里说清楚
 ///
-/// monitor 侧的家是 `src-tauri/src/history.rs::LAUNCH_ID_VAR`，而
-/// `src/backend` 是**另一个 crate、另一份 `Cargo.lock`**（`src-tauri/Cargo.toml`
+/// monitor 侧的家是 `src/bridge/src/history.rs::LAUNCH_ID_VAR`，而
+/// `src/backend` 是**另一个 crate、另一份 `Cargo.lock`**（`src/bridge/Cargo.toml`
 /// 的 workspace members 里逐字没有它）⇒ 两侧不可能 `use` 同一个 `const`。
 /// 与 `CREDENTIALS_NAME` 那个双写点（Rust ↔ bash）同形，处置也照它：
 /// **由测试对拍**（[`tests::the_launch_id_env_var_matches_the_monitor_side_home`]，
@@ -2138,7 +2138,7 @@ mod tests {
     /// `//` 开头的行），`structural_scan::every_comment_stripping_transformer_is_registered`
     /// 当场逮住它，逐字问：「先问共享原语为什么不够 —— 答得出来就登记，答不出来就改成调它」。
     /// **答不出来**（`production_code` 做的就是这两件事）⇒ 改成调它。
-    /// ⚠ 那张登记表住 `src-tauri/src/structural_scan.rs`，**不在本拍写区** ——
+    /// ⚠ 那张登记表住 `src/bridge/src/structural_scan.rs`，**不在本拍写区** ——
     /// 而它给的第一条出路本来就不需要动登记表。〔与 `launcher_identity_registry` 头注
     /// 记的那一次是同一条：那一次也是这条判据逮的，处置也一样。〕
     fn production_text() -> String {
@@ -2162,7 +2162,7 @@ mod tests {
 
     /// ★★ **双写点对拍**：身份变量名两侧必须逐字一致。
     ///
-    /// monitor 侧的家是 `src-tauri/src/history.rs::LAUNCH_ID_VAR`，而这里是
+    /// monitor 侧的家是 `src/bridge/src/history.rs::LAUNCH_ID_VAR`，而这里是
     /// [`LAUNCH_ID_ENV`] —— 两个 crate、两份 `Cargo.lock`，**共享不了常量**
     /// （同 `CREDENTIALS_NAME` 那个 Rust ↔ bash 的双写点，处置照它：由测试钉住）。
     ///
@@ -2170,7 +2170,7 @@ mod tests {
     ///
     /// 本 crate 已有的跨树先例（`control/launch.rs` 钉 `TMUX_LS_FMT` 那个双写点）走的是
     /// 编译期那条。**本条刻意不走**：编译期那一形是「两半之间的编译期边」，
-    /// 由 `src-tauri/src/cross_half_edge_registry.rs` 的登记表逐条数着（多一条 ⇒ 红），
+    /// 由 `src/bridge/src/cross_half_edge_registry.rs` 的登记表逐条数着（多一条 ⇒ 红），
     /// 而**那张表不在本拍写区**。实打过：第一版用编译期那条，那条判据当场红
     /// （`实得 18，登记 16`）。⇒ 改成运行时读，代价与补偿如实写：
     /// - **代价**：文件不在 / 路径挪了时，编译期那条编不过（响亮），运行时这条只有本条红；
@@ -2181,7 +2181,7 @@ mod tests {
     /// 五格的活，本条不重复买。
     #[test]
     fn the_launch_id_env_var_matches_the_monitor_side_home() {
-        let monitor_history_path = crate::guard_support::repo_root().join("src-tauri/src/history.rs");
+        let monitor_history_path = crate::guard_support::repo_root().join("src/bridge/src/history.rs");
         let monitor_history = std::fs::read_to_string(&monitor_history_path)
             .unwrap_or_else(|e| panic!("读不到 {monitor_history_path:?}：{e}"));
         assert!(

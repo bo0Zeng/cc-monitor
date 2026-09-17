@@ -57,8 +57,8 @@
 //!
 //! 本 crate 内的两个消费者（`control/gate.rs` · `observe/watcher.rs`）**引用**这里，
 //! 编译器兜住，漂不了。monitor 是**另一个二进制**：两个 crate 不共享源码树，
-//! 而共享 crate 的落点（`src-tauri/crates/*-core`）没有一个的职责装得下
-//! 「怎么起 tmux」这件事 ⇒ 那一份只能留在 `src-tauri/src/tmux.rs`，
+//! 而共享 crate 的落点（`src/bridge/crates/*-core`）没有一个的职责装得下
+//! 「怎么起 tmux」这件事 ⇒ 那一份只能留在 `src/bridge/src/tmux.rs`，
 //! 由它那侧的**跨仓对拍**读本文件把两边焊住（判据名与作用域写在那边的头注里）。
 
 /// **UTF-8 客户端旗（argv 形）** —— 一个口径两种表示里的那个**旗**。

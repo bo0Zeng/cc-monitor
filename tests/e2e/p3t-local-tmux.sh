@@ -136,7 +136,7 @@ ok "C7d 前置：登录 shell 里的 $LAUNCHER 是假 launcher（$GOT_LAUNCHER�
 #     那样 ccm 根本不会去 PATH 上找 `claude`，「真 claude 不许被起」就不再依赖 PATH 顺序。
 
 # ── 取生产渲染器的真输出
-RAW="$(cd "$REPO/src-tauri" && P3T_E2E_SID="$SID" P3T_E2E_TMUX="$TMUXNAME" P3T_E2E_LAUNCHER="$LAUNCHER" \
+RAW="$(cd "$REPO/src/bridge" && P3T_E2E_SID="$SID" P3T_E2E_TMUX="$TMUXNAME" P3T_E2E_LAUNCHER="$LAUNCHER" \
   cargo test --no-default-features --lib -- --ignored --nocapture emit_local_launch_command_for_e2e 2>/dev/null)"
 CMD="$(printf '%s' "$RAW" | sed -n 's/.*P3T_CMD<<<\(.*\)>>>.*/\1/p')"
 if [ -z "$CMD" ]; then

@@ -36,6 +36,6 @@ Set-Location (Resolve-Path "$PSScriptRoot\..")
 switch ($Cmd) {
     "dev"   { npx tauri dev @Extra }
     "build" { npx tauri build @Extra }
-    "check" { cargo check --manifest-path src-tauri\Cargo.toml @Extra }
-    "clean" { cargo clean --manifest-path src-tauri\Cargo.toml @Extra }
+    "check" { cargo check --manifest-path src/bridge\Cargo.toml @Extra }
+    "clean" { cargo clean --manifest-path src/bridge\Cargo.toml @Extra }
 }

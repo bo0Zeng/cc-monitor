@@ -33,7 +33,7 @@ powershell -NoProfile -File scripts\run.ps1 dev          # 弹 1100x800 窗口
 ### dev 模式的特殊行为
 
 - **自动打开 DevTools**（`lib.rs::setup()` 内 `#[cfg(debug_assertions)] window.open_devtools()`），可看前端 console
-- **HMR**：保存 `src/` 下 TS / CSS 会触发 vite HMR 自动刷新前端；保存 `src-tauri/` 下 Rust 会触发增量 cargo build + 重启 monitor
+- **HMR**：保存 `src/` 下 TS / CSS 会触发 vite HMR 自动刷新前端；保存 `src/bridge/` 下 Rust 会触发增量 cargo build + 重启 monitor
 - **`main.ts` 强制 full reload**：HMR 检测到任何 TS 改动直接 `location.reload()`，不做部分热替换。避免长跑监控时旧 listener 与新代码并存导致消息重复 / event_replay 状态不一致
 
 ### 其它常用命令
@@ -110,8 +110,8 @@ DevTools Network tab 看不到 Tauri IPC（不走 HTTP）。要看 IPC：
 
 报 `Permission xxx not allowed`：
 
-1. 看 `src-tauri/gen/schemas/acl-manifests.json` 确认 plugin 的 permission set 实际内容
-2. 看 `src-tauri/capabilities/default.json` 当前 grant 了哪些
+1. 看 `src/bridge/gen/schemas/acl-manifests.json` 确认 plugin 的 permission set 实际内容
+2. 看 `src/bridge/capabilities/default.json` 当前 grant 了哪些
 3. 通常需要加 inline scoped permission，详 [CONTRIBUTING § 2.6](CONTRIBUTING.md#26-添加新-tauri-capability-permission)
 
 ---
@@ -119,7 +119,7 @@ DevTools Network tab 看不到 Tauri IPC（不走 HTTP）。要看 IPC：
 ## 跑测试
 
 ```powershell
-cd src-tauri
+cd src/bridge
 cargo test --workspace --exclude code-picture-core   # ★ 后端全量（见下方警告）
 cargo test --lib profile_installer                   # 单个模块
 cargo test --lib -- --nocapture                      # 看 println! 输出
@@ -131,7 +131,7 @@ cargo test --lib -- --nocapture                      # 看 println! 输出
 > 由 `doc_claim_registry.rs::the_backend_test_command_in_the_docs_matches_ci` 钉住。
 >
 > **本机还必须跑的（CI 里有、或 CI 根本跑不到的）**：
-> - `cargo fmt --all --check`（两侧：`src-tauri/` 与 `src/backend/`）—— CI 第一个 Rust 步骤；
+> - `cargo fmt --all --check`（两侧：`src/bridge/` 与 `src/backend/`）—— CI 第一个 Rust 步骤；
 > - `tests/scripts/verify-committed-state.sh` —— 全仓**唯一量「提交状态」**的门（其余都量工作树）。
 >   本仓不 push ⇒ CI 见不到这些 commit，**这道门只能在本机跑**，理由见它自己的头注；
 > - `node tests/scripts/assert-coverage-floors.mjs` —— 逐文件覆盖率地板 + 0% 文件递减棘轮；
@@ -166,7 +166,7 @@ $env:RUST_LOG = "debug"; powershell -NoProfile -File scripts\run.ps1 dev
 $env:RUST_LOG = "monitor=debug,tauri=warn"; ...
 ```
 
-生产 build 没 stdout（`windows_subsystem = "windows"`）→ 看不到 tracing 输出。**已在 v2.0.0+ 实现**：tracing 输出到 `<monitor_data_dir>/logs/monitor.YYYY-MM-DD.log` 文件 + 设置面板 → 诊断区可调日志级别 + ERROR 级 toast 反馈。详 `src-tauri/src/logging.rs` + 设置面板。
+生产 build 没 stdout（`windows_subsystem = "windows"`）→ 看不到 tracing 输出。**已在 v2.0.0+ 实现**：tracing 输出到 `<monitor_data_dir>/logs/monitor.YYYY-MM-DD.log` 文件 + 设置面板 → 诊断区可调日志级别 + ERROR 级 toast 反馈。详 `src/bridge/src/logging.rs` + 设置面板。
 
 ---
 

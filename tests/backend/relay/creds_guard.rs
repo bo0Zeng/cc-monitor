@@ -267,7 +267,7 @@ mod tests {
         // ★ 非空对照：同一把尺子量 monitor 那份 manifest，**必须数得到** `harden`。
         //   没有这一格，上面那个 0 可能只是因为尺子瞎了。
         let theirs = std::fs::read_to_string(
-            crate::guard_support::repo_root().join("src-tauri/Cargo.toml"),
+            crate::guard_support::repo_root().join("src/bridge/Cargo.toml"),
         )
         .expect("读不到 monitor 的 Cargo.toml");
         let theirs = guard_core::strip_hash_comment_lines(&theirs);

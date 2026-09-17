@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const read = (p: string) => readFileSync(resolve(__dirname, "..", p), "utf8");
-const RUST = read("src-tauri/src/backend/control/launch_wire.rs");
+const RUST = read("src/bridge/src/backend/control/launch_wire.rs");
 const WIRE = read("src/launch-cli-wire.ts");
 const RUN = read("src/remote-launch-run.ts");
 

@@ -441,7 +441,7 @@ describe("K-A1（第二轮）chip 菜单的账号状态（DOM 层）", () => {
 
   it("★ Y2：api-key 号（缺订阅凭据）在菜单里写「api-key（未配置端点）」——不是「已登录」，也不是「未登录 ⚠」", async () => {
     // `authReady: true` 不是我编的：`acct_core::auth_ready` 对 api-key 那一支逐字 `=> true`
-    //（`src-tauri/crates/acct-core/src/lib.rs:95-100`），线上 daemon 出的就是这个形。
+    //（`src/bridge/crates/acct-core/src/lib.rs:95-100`），线上 daemon 出的就是这个形。
     const kk = acct({ name: "kk", authKind: "api-key", loggedIn: false, authReady: true });
     const items = await menuRows([acct({ name: "wei" }), kk], "wei");
     const row = rowOf(items, "kk");

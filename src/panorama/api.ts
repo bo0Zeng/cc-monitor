@@ -5,7 +5,7 @@
  * 与项目惯例一致）。所有命令都带 `repo`（活跃 tab 的 cwd）——后端 `panorama.rs` 按仓
  * 惰性建/缓存 Engine（per-repo 池）。返回类型是 core 直出的 snake_case 结构体（见 types.ts）。
  *
- * 后端命令族（`src-tauri/src/panorama.rs`）：index/reindex/status/overview/node/subgraph/
+ * 后端命令族（`src/bridge/src/panorama.rs`）：index/reindex/status/overview/node/subgraph/
  * callers/callees/impact/search/docs_for/touching。
  */
 import { commands } from "../ipc/commands";

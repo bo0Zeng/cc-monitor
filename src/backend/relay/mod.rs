@@ -97,7 +97,7 @@
 //!
 //! ⚠ 先说清**这一节不是什么**：`K-H1` 把 `relay/` 立起来时，
 //! 「谁能引谁」这件事**一条判据都没有** —— 开工前现打
-//! `grep -c relay ../layering_guard.rs` = **0**。这与 `KY5` 头注治过的是同一族病
+//! `grep -c relay ../../../tests/backend/layering_guard.rs` = **0**。这与 `KY5` 头注治过的是同一族病
 //!（新立一层而分层护栏没跟上），**同区第二次**。这一节配的判据住
 //! `layering_guard.rs`，三条：`relay_layer_must_not_reference_the_semantic_layers` ·
 //! `no_layer_may_reach_into_relay_internals` · `relay_and_plugin_must_not_reference_each_other`。

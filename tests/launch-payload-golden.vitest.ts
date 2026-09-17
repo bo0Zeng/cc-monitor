@@ -2,7 +2,7 @@
  * U8c-1：夹具**入库版 == 现场渲染版**。
  *
  * 这是跨语言对拍的 TS 那一半（另一半是
- * `src-tauri/src/backend/control/launch_payload_parity.rs`）。
+ * `src/bridge/src/backend/control/launch_payload_parity.rs`）。
  * 它挡的是唯一一种能让对拍静默失效的改法：**改了 TS 渲染器但没重生成夹具** ——
  * 那时 Rust 侧仍与旧夹具一致、全绿，而两种语言其实已经分家了。
  */
@@ -17,12 +17,12 @@ import { renderCliGoldenFixture } from "../src/launch-cli-golden.ts";
 const FIXTURE_PATH = resolve(
   __dirname,
   "..",
-  "src-tauri/src/backend/control/fixtures/payload-golden.json",
+  "src/bridge/src/backend/control/fixtures/payload-golden.json",
 );
 const CLI_FIXTURE_PATH = resolve(
   __dirname,
   "..",
-  "src-tauri/src/backend/control/fixtures/cli-golden.json",
+  "src/bridge/src/backend/control/fixtures/cli-golden.json",
 );
 
 describe("载荷黄金串夹具（U8c-1 跨语言对拍的 TS 半边）", () => {

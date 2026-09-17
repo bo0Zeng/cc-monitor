@@ -25,7 +25,7 @@
  * `export CLAUDE_CONFIG_DIR=<默认账号>`（`cc-acct-iso shellinit` 生成的就是这一句），
  * 于是**用户以为在起账号 0，实际烧的是默认账号的额度**。UI 上完全看不出来。
  *
- * 做法照 `src-tauri/src/tmux.rs::tmux_ls_fmt_double_write_point_stays_in_sync`：
+ * 做法照 `src/bridge/src/tmux.rs::tmux_ls_fmt_double_write_point_stays_in_sync`：
  * 读**另一侧的源文件** + 锚定那几行。`shared/ccm` 是红线（不改本体），
  * 本文件**只读**它。
  *

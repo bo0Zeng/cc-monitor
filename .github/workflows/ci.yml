@@ -52,7 +52,7 @@ jobs:
     timeout-minutes: 35
     defaults:
       run:
-        working-directory: src-tauri
+        working-directory: src/bridge
     steps:
       - uses: actions/checkout@v4
         # 🔴 `fetch-depth: 0` 在这个 job 上是**判据的输入**，不是习惯问题。
@@ -73,11 +73,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: src/bridge
 
       # fmt 已经过项目历史校准，强制约束
       # G2（Phase G 代码工程审计）：这六个共享 crate 现在是**真 workspace member**
-      # （`src-tauri/Cargo.toml` 的 `[workspace]`）。收敛前它们只是 path 依赖 ——
+      # （`src/bridge/Cargo.toml` 的 `[workspace]`）。收敛前它们只是 path 依赖 ——
       # `cargo metadata` 的 `workspace_members` 只有 `monitor` 一项，`-p` 能跑靠的是
       # cargo 允许选中依赖图里的非 member 包，**不是 workspace 机制**。
       # ⇒ 原来 ~17 条 `--manifest-path`/`-p` 收敛成下面三条。
@@ -154,7 +154,7 @@ jobs:
       # 让告警可见但不红 CI；新代码作者本地 `npm run lint` 自查。
       #
       # **E83（2026-08-01）：作用面从 `eslint src` 放开到 `eslint .`。** 本仓 `eslint.config.js`
-      # 的 `ignores` 一直是**仓级**写法（逐条列 dist / node_modules / src-tauri / …），
+      # 的 `ignores` 一直是**仓级**写法（逐条列 dist / node_modules / src/bridge / …），
       # 而脚本只跑 `src` ⇒ 那份意图从没兑现，`tests/e2e/**/*.mjs` 里 39 个 `no-undef` 永远没人看得到，
       # 且它们一个真问题都不是（纯缺一段 node/browser globals）。补完 globals 后
       # **全仓实测仍是 7 项**，基线数字不变、覆盖面变大。
@@ -231,7 +231,7 @@ jobs:
       #
       # ⚠ 为什么用 `uses:` 装而不是加一步 `run:`：`shared_crate_registry::
       # every_ci_run_step_is_classified_as_local_or_unrunnable` 要求本文件里**每一条 `run:` 步骤**
-      # 都在 `src-tauri/src/shared_crate_registry.rs` 的 `STEPS` 表里登记过；`uses:` 步骤不进那个人群。
+      # 都在 `src/bridge/src/shared_crate_registry.rs` 的 `STEPS` 表里登记过；`uses:` 步骤不进那个人群。
       # ⚠ 版本与 `release.yml` 那步**刻意保持一致**（`mlugg/setup-zig@v1` + zig `0.14.0`）：
       # 那一步已经在本仓 CI 上跑过，少一个会自己变的量。
       - uses: mlugg/setup-zig@v1
@@ -314,7 +314,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: src/bridge
 
       # Tauri v2 在 Linux 上的构建期依赖。**逐个都是编译 app 必需**（不是打包才要的）：
       # webkit2gtk-4.1 = WebView；gtk-3 = 窗口；ayatana-appindicator3 = 托盘；rsvg2 = 图标。
@@ -335,7 +335,7 @@ jobs:
         run: npm run build
 
       - name: cargo build (full app binary, not --lib)
-        working-directory: src-tauri
+        working-directory: src/bridge
         run: cargo build
 
   # F09：e2e 脚本**健康冒烟**（非真 e2e）。真 e2e（Xvfb + tauri dev 全量 app + xdotool，见
@@ -359,7 +359,7 @@ jobs:
       # ——与当初把 `shared/ccm` 纳入的理由一字不差。实测（2026-07-30）`--severity=error`
       # 零告警，连默认档（含 warning/info/style）也是零（脚本自带 `# shellcheck disable=` 指令）。
       #
-      # **不要写成 `src-tauri/vendor/cc-acct-iso/scripts/**`**：不开 globstar 时 `**` 等价于 `*`，
+      # **不要写成 `src/bridge/vendor/cc-acct-iso/scripts/**`**：不开 globstar 时 `**` 等价于 `*`，
       # 会把 `scripts/test`（目录）喂给 shellcheck ⇒ `openBinaryFile: inappropriate type` ⇒ 恒红。
       # 主计划账本原文就是那个 pattern，G-B 开工实测踩出来的。故显式列四个文件。
       #
@@ -386,10 +386,10 @@ jobs:
             tests/e2e/weak-net/*.sh \
             tests/e2e/local-backend-container/*.sh \
             tests/scripts/*.sh \
-            src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso \
-            src-tauri/vendor/cc-acct-iso/scripts/lib.sh \
-            src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh \
-            src-tauri/vendor/cc-acct-iso/scripts/test/run-tests.sh \
+            src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso \
+            src/bridge/vendor/cc-acct-iso/scripts/lib.sh \
+            src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh \
+            src/bridge/vendor/cc-acct-iso/scripts/test/run-tests.sh \
             tests/hooks/pre-commit)
           N=$(printf '%s\n' "$FILES" | grep -c .)
           echo "shellcheck 覆盖 $N 个文件"
@@ -509,7 +509,7 @@ jobs:
       - name: vendored cc-acct-iso self-tests (sandboxed, 294 assertions)
         run: |
           set -euo pipefail
-          OUT=$(bash src-tauri/vendor/cc-acct-iso/scripts/test/run-tests.sh 2>&1) || {
+          OUT=$(bash src/bridge/vendor/cc-acct-iso/scripts/test/run-tests.sh 2>&1) || {
             echo "$OUT"; exit 1; }
           echo "$OUT" | tail -3
           N=$(printf '%s' "$OUT" | grep -oE '全绿:[0-9]+' | grep -oE '[0-9]+' | tail -1)
@@ -755,7 +755,7 @@ jobs:
   #
   # 按「要不要 Rust 工具链」拆两个 job：多数套件只要 tmux+node，秒级；只有 2 套要从真 builder
   # 取命令串（教训清单第 2 条：验收输入必须从真 builder 取，绝不手搓等价命令），
-  # 它们得编译 src-tauri，而 src-tauri 依赖 tauri v2 → Linux 上需要 webkit2gtk 一套系统库。
+  # 它们得编译 src/bridge，而 src/bridge 依赖 tauri v2 → Linux 上需要 webkit2gtk 一套系统库。
   # 拆开的好处：快的那个先给信号，不被慢的 Linux Tauri 构建挡住。
   e2e-tmux:
     name: E2E real-machine (tmux, no Rust)
@@ -810,7 +810,7 @@ jobs:
 
       # 🔴 〔`K-R48` 第二拍 09-11〕原来这里有 `ccm-acceptance 31` 与 `ccm-pretrust 15` 两步，
       #    两套 e2e 本拍删了（它们只测那个 bash 脚本的真机行为，理由逐条写在
-      #    `src-tauri/src/shared_crate_registry.rs` 那张棘轮表被摘掉的那两行旁边）。
+      #    `src/bridge/src/shared_crate_registry.rs` 那张棘轮表被摘掉的那两行旁边）。
 
       # 08-13：`cc-send` 兜底路径的滞留队列补投。**本套件不用 tmux**（收发全走文件）——
       # 于是 `C7i` 那条红线在它身上天然不成立。它起的唯一进程是 `cc-busd` 自己，
@@ -861,11 +861,11 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: src/bridge
 
       # **E67④（2026-08-01）订正**：原注释写着「这两套只从 Rust 侧取命令串、不跑前端，无需 node」
       # ——**不成立**。`resume-daemon-frames.sh` 第 3 步要跑 `npx tsx tests/e2e/resume-cmd-driver.ts`
-      # 拿**真源** resume 命令串，而那个 driver `import "../src/accounts.ts"`（第 25 行），
+      # 拿**真源** resume 命令串，而那个 driver `import "../../src/accounts.ts"`（第 25 行），
       # `accounts.ts` 顶层 `import { invoke } from "@tauri-apps/api/core"` ⇒ 没有 node_modules
       # 就是 `ERR_MODULE_NOT_FOUND`。
       #
@@ -877,7 +877,7 @@ jobs:
           cache: npm
       - run: npm ci
 
-      # src-tauri 依赖 tauri v2；Linux 上编译它需要 webkit2gtk/soup 一套开发库
+      # src/bridge 依赖 tauri v2；Linux 上编译它需要 webkit2gtk/soup 一套开发库
       # （Windows job 不需要，故只在这里装）。
       # ⚠ **`jq` 是 `CI-J1` 搬家带过来的真依赖**，不是顺手加的：`tests/e2e/daemon-cc-bus.sh:33`
       #   是 `command -v jq || exit 1` 的硬门（它整套断言都拿 `jq` 读回帧）。
@@ -900,7 +900,7 @@ jobs:
       # G-C：这三套要一个**真 daemon 二进制**（daemon-wrapper.sh 默认取
       # `.build/backend/debug/cc-monitor-remote`）。主计划把「怎么把 daemon 产物
       # 从 `daemon` job 传过来」记成 G-C 唯一的技术不确定性——**直接在本 job 里编就绕开了**：
-      # 本 job 已有 Rust 工具链，而 daemon crate 比它已经在编的 src-tauri 轻得多。
+      # 本 job 已有 Rust 工具链，而 daemon crate 比它已经在编的 src/bridge 轻得多。
       - name: build debug daemon（供 daemon-frames 三套）
         run: cargo build --manifest-path src/backend/Cargo.toml
 
@@ -975,7 +975,7 @@ jobs:
         run: bash tests/e2e/assert-pass-floor.sh inbound-frames 33
 
       # F03：§34 Gate 2 在 daemon 侧的真机验收。用例逐行来自那张唯一的判定表
-      # `src-tauri/src/backend/control/fixtures/gate2-golden.tsv`（三条轨道同一份）。
+      # `src/bridge/src/backend/control/fixtures/gate2-golden.tsv`（三条轨道同一份）。
       # ★★ **2026-09-09 `CI-J3`：地板 `36` → `35`，而且这个数从此不再由人手写。**
       #
       #    这条地板**从 `58b1312`（F20，08-06）起就没有一次成立过**，而云端 08-05 之后
@@ -1017,7 +1017,7 @@ jobs:
       # 数字地板**只在这一行**（定框 §4：同一个数不许两侧各写一份）；脚本里只有导出式自检。
       # ★★ `K-P1` 08-26：**7 → 14**。多出来的 7 条是常驻那条路的真进程判据
       #    （`KPY2` 认已有实例 5 条含一条**非空对照** · `KPY3` 不留僵尸 2 条），
-      #    它们住 `src-tauri/src/local_daemon.rs`，由本套件**第二趟** `--ignored` 拉起。
+      #    它们住 `src/bridge/src/local_daemon.rs`，由本套件**第二趟** `--ignored` 拉起。
       #    ⚠ 不棘的话那 7 条明天能被整族删掉而 CI 照样绿 —— 那正是
       #    `assert-pass-floor.sh` 头注写的失效模式：**不是变红，是静默缩水**。
       - name: 本机后端监护真进程验收（F05a + K-P1 常驻）

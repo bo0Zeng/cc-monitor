@@ -55,9 +55,9 @@ ALLOWLIST=(
 # 顺带说明**为什么改模式不算违反镜子铁律**：`.vendor_id` 是**内容** sha256（VENDOR.md §8），
 # 恢复可执行位不动内容、指纹不变；丢可执行位本身是 vendor 那一步的失手，补回去是**向上游看齐**。
 VENDOR_ALLOWLIST=(
-  src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso
-  src-tauri/vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh
-  src-tauri/vendor/cc-acct-iso/scripts/test/run-tests.sh
+  src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso
+  src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso-install.sh
+  src/bridge/vendor/cc-acct-iso/scripts/test/run-tests.sh
 )
 
 fail=0
@@ -158,7 +158,7 @@ fi
 echo "===== 合计 PASS（受检 $checked），带 shebang 的文件在 git 里均为 100755 ====="
 
 # ---------------------------------------------------------------------------
-# 漂移软警告（非阻断）。照抄 `src-tauri/build.rs::check_vendor_freshness` 的形状：
+# 漂移软警告（非阻断）。照抄 `src/bridge/build.rs::check_vendor_freshness` 的形状：
 # 上游缺席 → no-op；有差异 → 警告但**不改退出码**。
 #
 # 为什么现在就要：仓内 `src/shared/cc-bus/` 今天是**死副本**（无 include_str!、无部署代码

@@ -38,7 +38,7 @@ import { sanitizeRemoteLauncher } from "./shell-quote.ts";
 import { AGENT_PROFILE } from "./agent-profile.ts";
 import type { CcmProbeResult } from "./ccm-probe.ts";
 // 🔴 `K-R95`（`K28`）：八句降级理由里的**六句**改从后端取。生成物的源是
-// `src-tauri/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`。
+// `src/bridge/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`。
 // 剩下两句（两条「维度 …」闸门）与下面那份能力清单为什么还留在本文件里，
 // 逐字写在它们各自那一处上方 —— 三处都由 Rust 侧判据**逐字节钉在后端那一份上**。
 import { CLI_REFUSAL_REASON } from "./generated/launch-render-facts";
