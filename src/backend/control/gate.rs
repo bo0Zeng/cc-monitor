@@ -380,7 +380,7 @@ mod tests {
     /// 本模块的两处是 **argv 直传**（`Command::new("tmux")`），没有 builder 能把命令行取回来，
     /// 也没有办法在不污染整个测试进程 `PATH` 的前提下把它指向一个假 tmux
     /// （`Command::new` 走进程级 `PATH`，`std::env::set_var` 会波及并行跑的别的测试）。
-    /// ⇒ **行为那一半的死值不在 cargo 里**，在 `evidence/K-R12-deathvalue.md`：
+    /// ⇒ **行为那一半的死值不在 cargo 里**，在 `tests/evidence/K-R12-deathvalue.md`：
     /// 同样这两条 argv 对真 tmux 3.4 私有 socket 打过，改前 `段数=1`、改后 `段数=3`。
     ///
     /// 🔴 **本条守的是「别漏、别搬错位置」，不是「它真的生效了」**（「盘上有 ≠ 被走到」）。
@@ -459,7 +459,7 @@ mod tests {
 
     /// ★★ **K-R12 `J1` 死值验（本模块这一侧）：段数下溢必须红。**
     ///
-    /// 死值取自 `evidence/K-R12-deathvalue.md` ①：真 tmux 3.4 + POSIX 客户端下，
+    /// 死值取自 `tests/evidence/K-R12-deathvalue.md` ①：真 tmux 3.4 + POSIX 客户端下，
     /// `list-sessions` 那三列打出来是 `kr12_$0_cc-deadval1`、
     /// `display-message` 那三列打出来是 `$0_cc-deadval1_1` —— **TAB 全没了，段数 1**。
     ///
@@ -774,7 +774,7 @@ mod tests {
     //   ② 真去删那条臂时**不用记得改地板**：登记数 2→1 ⇒ `reachable` 34→35
     //      ⇒ 下面 `floor >= reachable` **当场红**，诊断直接说该棘到几；
     //   ③ 「`PASS` 涨了而地板没跟」这个**一般形态不是本件新开的洞**，它有主：
-    //      `K-G8`/`K-G3` 的 `exact` 判法（今天只在 `scripts/gate.sh` 那 4 条上生效，
+    //      `K-G8`/`K-G3` 的 `exact` 判法（今天只在 `tests/scripts/gate.sh` 那 4 条上生效，
     //      CI 那 23 条仍是 `at-least`，理由逐字在 `ci.yml` 那段 `K-G8` 里）。
     //   **解锁条件一句话**：runner 上 `tmux -V` ≥ 3.5 之后删掉 `meta_dollar` 那条臂，让 ② 把地板逼到 35。
 

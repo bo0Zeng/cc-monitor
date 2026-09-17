@@ -78,7 +78,7 @@ pub mod events {
 /// Notes: session fork (`/branch`) 创建新 jsonl 文件 → 新 session_id，timeline 独立。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct JsonlLinePayload {
     pub session_id: String,
     pub cwd: Option<String>,
@@ -111,7 +111,7 @@ pub struct JsonlLinePayload {
 /// `chunk_total == 1` = 不切块（小数据单次 emit，无切块开销）。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct JsonlBatchPayload {
     /// 0-based 块序号
@@ -123,7 +123,7 @@ pub struct JsonlBatchPayload {
 
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct SessionEndedPayload {
     pub session_id: String,
 }
@@ -132,7 +132,7 @@ pub struct SessionEndedPayload {
 /// `SessionEndedPayload`）便于 grep 与语义分离——idle ≠ ended。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct SessionIdlePayload {
     pub session_id: String,
 }
@@ -142,7 +142,7 @@ pub struct SessionIdlePayload {
 /// ensureTab 建成无标注普通 tab——与远端 remote-session-added 对称补上元信息通道）。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct SessionStartedPayload {
     pub session_id: String,
     /// Batch7-F24：pidfile 元信息（lookup 不到时 None——纯 revive 场景照旧）。
@@ -162,7 +162,7 @@ pub struct SessionStartedPayload {
 /// 到达**。低频、可自愈补救（F5 对账），暂不为此引入统一 lifecycle 通道。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct RemoteSessionAddedPayload {
     pub session_id: String,
     /// 机器标签（`[label]` Tab 前缀）。
@@ -188,7 +188,7 @@ pub struct RemoteSessionAddedPayload {
 /// 解析失败 → None（旧行为；viewer 窗口不发此事件）。
 #[derive(Debug, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct FrontendReadyPayload {
     #[serde(rename = "prioritySid")]
     pub priority_sid: Option<String>,
@@ -199,7 +199,7 @@ pub struct FrontendReadyPayload {
 /// [`RemoteSessionAddedPayload`] 事件。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 // **刻意不加 `#[serde(rename_all = "camelCase")]`**：本 struct 在线上就是 snake_case
 // （`main.ts` 读的是 `s.session_id`），生成物必须忠实于**线上契约**而不是风格偏好。
 // 顺手统一成 camelCase 是行为改动 —— 本工作区每个 commit 的硬判据是「行为逐字节不变」。
@@ -218,7 +218,7 @@ pub struct ActiveSessionPayload {
 /// 直接展示给用户的人读说明。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteHealthPayload {
     pub origin: Option<String>,
@@ -231,7 +231,7 @@ pub struct RemoteHealthPayload {
 /// `waiting_for` 仅 status=="waiting" 时有（"permission prompt" / "dialog open" …）。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct SessionActivityPayload {
     pub session_id: String,
     pub status: Option<String>,
@@ -243,7 +243,7 @@ pub struct SessionActivityPayload {
 /// 避免 diff 算法 + 防止漏掉删除事件。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct TasksUpdatePayload {
     pub session_id: String,

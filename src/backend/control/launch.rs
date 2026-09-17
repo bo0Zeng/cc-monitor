@@ -1222,7 +1222,7 @@ mod tests {
                     !body.contains(confirm),
                     "`{f}` 里出现了 `{confirm}` —— 看起来加了第二种确认。\n\
                      ★ 那是**好事**，但契约与注释此刻还写着「只有退出码那么强」：\n\
-                     `doc/IPC-PROTOCOL.md` 的 `typed` 那几行 · 本文件 `LaunchOutcome::typed` \n\
+                     `src/doc/IPC-PROTOCOL.md` 的 `typed` 那几行 · 本文件 `LaunchOutcome::typed` \n\
                      · monitor 侧 `daemon_launch.rs::SendIntoResponse::typed`。**一起改。**"
                 );
             }
@@ -1237,7 +1237,7 @@ mod tests {
     #[test]
     fn the_contract_says_how_strong_typed_actually_is() {
         let root = crate::guard_support::repo_root();
-        let doc = std::fs::read_to_string(root.join("doc/IPC-PROTOCOL.md"))
+        let doc = std::fs::read_to_string(root.join("src/doc/IPC-PROTOCOL.md"))
             .expect("IPC-PROTOCOL.md 读不到");
         assert!(
             doc.len() > 10_000,
@@ -1268,7 +1268,7 @@ mod tests {
         let root = crate::guard_support::repo_root();
         let overclaim = format!("{}键入了", "真的");
         let files = [
-            "doc/IPC-PROTOCOL.md",
+            "src/doc/IPC-PROTOCOL.md",
             "src-tauri/src/backend/control/daemon_launch.rs",
         ];
         let mut total = 0usize;

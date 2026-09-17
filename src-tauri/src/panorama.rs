@@ -111,7 +111,7 @@ where
 /// 索引状态（cc-monitor 自建 DTO → camelCase;core 直出类型保持 snake_case,见手册 §7.3）。
 #[derive(serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct PanoramaStatus {
     stale: bool,

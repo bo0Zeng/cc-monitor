@@ -62,7 +62,7 @@ fn is_old_daemon_hello(line: &str) -> bool {
 }
 
 const OLD_DAEMON_MSG: &str =
-    "远端 daemon 版本过旧（不支持历史查询）——请按 doc/REMOTE-PHASE0-DEPLOY.md 重新构建部署";
+    "远端 daemon 版本过旧（不支持历史查询）——请按 src/doc/REMOTE-PHASE0-DEPLOY.md 重新构建部署";
 
 /// 跑一条列举类查询，收集全部输出行（带整体超时 + 旧版检测）。
 pub(crate) async fn run_list_query(cfg: &RemoteConfig, args: &str) -> Result<Vec<String>, String> {
@@ -336,7 +336,7 @@ pub(crate) trait LivenessOracle: Send + Sync {
 ///
 /// ① monitor 的 `SessionMap` —— 认的是**本机进程的 pid**，远端会话不在里面。
 /// ② `lib.rs` 的 `run` 里那个 `remote_active` —— setup 闭包里的**局部** `Arc`，
-///    没有 `manage` 出去，`#[tauri::command]` 够不着；`doc/INVARIANTS.md` §24 还钉着单写者。
+///    没有 `manage` 出去，`#[tauri::command]` 够不着；`src/doc/INVARIANTS.md` §24 还钉着单写者。
 /// ③ `ssh_source::announced_registry`（origin → sid → meta）—— 形状对得上，
 ///    **但它按 origin 的那个快照读口已经被删过一次**（`ssh_source.rs` 里那条注释逐字：
 ///    「其唯一读者是已删的 8s poller」），而且它只在**流式连接活着**时有效：
@@ -544,7 +544,7 @@ pub(crate) fn log_unknown_reasons(what: &str, rows: &[(HistoryProject, ProjectCo
 /// 时**不冻结 TTL 缓存**（下次 open 重试失败台），避免瞬断台的项目在缓存里消失整个 TTL 窗口。
 #[derive(serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteProjectsResult {
     pub projects: Vec<HistoryProject>,

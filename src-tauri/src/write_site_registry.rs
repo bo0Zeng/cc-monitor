@@ -380,7 +380,7 @@ mod tests {
           唯一调用点是 `local_backend::resolve_or_extract` ⇒ 两条生产路共用这一处。"),
         // ── PS1：把内嵌的 cc-bus 装到 `<claude_dir>/skills/cc-bus/`。**这是安装动作**。
         ("cc_bus_deploy.rs", "deploy_into", Some("cc-bus"),
-         "写 `<claude_dir>/skills/cc-bus/` 的 17 个文件（内嵌自 `shared/cc-bus/`）。\
+         "写 `<claude_dir>/skills/cc-bus/` 的 17 个文件（内嵌自 `src/shared/cc-bus/`）。\
           ⚠ 这是本仓**第一处往 `<claude_dir>` 写的地方** —— 只读铁律原本禁它，\
           `U10b`〔用@08-13〕裁「开」之后写成 `INVARIANTS` 的**第 7 条例外**，四个配套一条不省：\
           ① **用户显式动作**（只由设置页按钮调，绝不在启动/后台路径上跑）；\
@@ -410,7 +410,7 @@ mod tests {
         ("skill_host.rs", "write_skill_file", None,
          "写用户**自己项目里**的 `.claude/planned-build/INBOX.txt`（planned-build skill 的\
           「结构化注入」进件口）。**不碰 Claude 的数据、不碰用户环境、不装任何东西。**\n\
-          分界沿用 `doc/INVARIANTS.md:23` 那条 F47 澄清的口径：用户亲自驱动、\
+          分界沿用 `src/doc/INVARIANTS.md:23` 那条 F47 澄清的口径：用户亲自驱动、\
           每次写都是面板内一次直接手势、写的不是 Claude 的 jsonl/pidfile。\n\
           三道围栏（`skill_host::resolve_editable`）：① 路径 `canonicalize` **之后**\
           做集合判定（集合来自声明表的 `editable`，不是一串 if）② 过\
@@ -437,7 +437,7 @@ mod tests {
           而且那份 rc 由界面上的人**选**，代码不猜）；② 已经 source 过就一个字节都不写（幂等）；\
           ③ 围栏损坏（有 BEGIN 没 END）**中止**，绝不用后面那个 END 去配对吃掉用户代码；\
           ④ 先 `fs::copy` 备份、写完回读逐字比对、不符从备份回滚。\
-          ★ 多数人根本走不到这一行：`shared/ccm-aliases.sh` 自带那行 `[ -r … ] && . …`，\
+          ★ 多数人根本走不到这一行：`src/shared/ccm-aliases.sh` 自带那行 `[ -r … ] && . …`，\
           装过 ccm 别名块的人加账号之后什么都不用做。"),
         // ── 安装动作：写的是**用户既有的环境/配置**，且对应声明表里的一个工具
         ("profile_installer.rs", "install_to_profile", Some("ccm"),

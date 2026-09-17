@@ -3235,7 +3235,7 @@ pub(crate) mod tests {
     /// `resolve_beside_this_exe` 找到的 sidecar，**不是我们刚写出来的那个文件**
     /// （`extract_embedded_to` 的产物它够不着）⇒ 那条路上不存在这个竞态的必要条件。
     /// 全树起进程的落点现打 21 处、其中 monitor 侧 12 处（量具
-    /// `evidence/K-R28-spawn-site-census.py`，与 `write_site_registry::tests::SPAWNS` 对拍相同）——
+    /// `tests/evidence/K-R28-spawn-site-census.py`，与 `write_site_registry::tests::SPAWNS` 对拍相同）——
     /// 本条只管其中的 **2** 处。
     #[test]
     fn both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict() {
@@ -3827,7 +3827,7 @@ pub(crate) mod tests {
     ///    真调用与那行合规的 `PATH` 写位**都躺在注释里**、活着的只有一个桩值，
     ///    于是 **本条判「合规」· 看门判据绿 · 全量 monitor `1278 passed; 0 failed`**。
     ///    ⇒ **别把下面这段读成「这一族已经没有了」** —— 它今天仍然开着，只是换了单位。
-    ///    读数与三刀逐字落在 `evidence/K-R9-R2-fallback-watch-scope.md`。
+    ///    读数与三刀逐字落在 `tests/evidence/K-R9-R2-fallback-watch-scope.md`。
     ///
     ///    ★★★ **09-04 `K-R25` 再就地订正一次：上面那句「它今天仍然开着」现在不成立了。**
     ///    `K-R25` 把**两把尺子的单位对齐**了，两条一起改（写区就是这三个文件）：
@@ -3838,10 +3838,10 @@ pub(crate) mod tests {
     ///      （整份文件 ＋ 按 `#[test]` 切出的每一块）⇒ 「整份配平、单块不配平」那一形
     ///      **它自己就会红并点名到块**。
     ///    ⇒ 上面那一形今天有**两个独立的红源**，逐格单断的读数在
-    ///    `evidence/K-R25-D2-unit-alignment.md`（连「只退掉一侧」的两趟一起贴）。
+    ///    `tests/evidence/K-R25-D2-unit-alignment.md`（连「只退掉一侧」的两趟一起贴）。
     ///    ⚠ **仍然不是全称**：对齐的是这两个单位。别的单位（函数体窗口 `body_of(..)` ·
     ///    任意切片 `&src[a..b]`）今天全仓逐处点了名，其中**只有本文件那两处在写区**，
-    ///    其余走了上报口、一个字没动（量具 `evidence/K-R25-D1-strip-input-unit-census.py`）。
+    ///    其余走了上报口、一个字没动（量具 `tests/evidence/K-R25-D1-strip-input-unit-census.py`）。
     ///
     ///    关它的**不是**本条加了钉，而是共用剥法 `guard_core::production_code` 补上了块注释
     ///    （`guard-core/src/lib.rs::try_strip_block_comments`）。⇒ 块注释的内容被抹成等长空格，
@@ -4051,7 +4051,7 @@ pub(crate) mod tests {
              `no_monitor_file_falls_back_to_leaving_block_comments_in` 今天量**两个单位**\
              （整份文件 ＋ 每一块）⇒ 「分落两块」那一形**两个独立红源**各红一次。\n      \
              ⚠ **射程仍然不是全称**：对齐的是这两个单位；函数体窗口 / 任意切片那些单位\
-             逐处点名在 `evidence/K-R25-D2-unit-alignment.md`。\n      \
+             逐处点名在 `tests/evidence/K-R25-D2-unit-alignment.md`。\n      \
              ⚠ 边界**换了地方没有消失**：剥法词法与交进去的那段文本对不上时**一个字都不剥**（兜底），\
              那一段上这个洞会重开 —— 由 `no_monitor_file_falls_back_to_leaving_block_comments_in` 看着\
              （⚠ 它量的是**文件 ＋ `#[test]` 块**这两个单位，别的单位它看不见）";
@@ -4097,7 +4097,7 @@ pub(crate) mod tests {
         // ⇒ 那一块掉进剥法的**静默兜底**（一个字都不剥）⇒ `asks_itself` 在**注释里的文本**上
         // 为真 ⇒ 本条判「合规」，而看门判据**还是绿的**（它看的是整份文件，整份是配平的）。
         // 实测于 `4eb271f`：本条绿 · 看门判据绿 · 全量 monitor `1278 passed; 0 failed`
-        // 〔`evidence/K-R9-R2-fallback-watch-scope.md §C 刀 2`〕。
+        // 〔`tests/evidence/K-R9-R2-fallback-watch-scope.md §C 刀 2`〕。
         //
         // ⇒ **现在的次序**：整份文件先过 `guard_core::strip_comment_lines`，**再**切块。
         //   块注释的开合状态在整份文件上一定配平（能编译的 Rust 一定配平）
@@ -5149,7 +5149,7 @@ pub(crate) mod tests {
     /// **105 份 / 走兜底 0 份**，与上一拍逐字相同 —— 但这是量出来的，不是抄的
     /// （分母 = `find src-tauri/src -name '*.rs'`，与本条的遍历同语义）。daemon 侧 **73 / 0** 同样成立。
     ///
-    /// **死值验两刀**（逐字落在 `evidence/K-R9-R2-fallback-watch-scope.md`）：
+    /// **死值验两刀**（逐字落在 `tests/evidence/K-R9-R2-fallback-watch-scope.md`）：
     ///
     /// · **刀一 · 本条有牙**：塞一行能编译的 `(br"\", "/*")` 让本文件真的走进兜底
     ///   —— 本条**当场红并逐份点名**，同一状态下全量 monitor 是 `1276 passed; 1 failed`
@@ -5176,7 +5176,7 @@ pub(crate) mod tests {
     /// ⇒ 它掉进兜底的话，三条判据一条都不会响。
     /// 〔那一拍写区只有本文件，收口要动 guard-core / 那两条守卫的切法 ⇒ 只登记，没动手。
     ///  **`K-R25`（09-04）答清了那 9 份各是什么**，逐份带住址与「要不要拉进来」的裁定，
-    ///  落在 `evidence/K-R25-D4-nine-uncovered-files.md` —— 那一件是**只答不改**。〕
+    ///  落在 `tests/evidence/K-R25-D4-nine-uncovered-files.md` —— 那一件是**只答不改**。〕
     ///
     /// # ★★★ 09-04（`K-R25`）：**刀二那个缺口关上了 —— 本条现在两个单位各量一遍**
     ///
@@ -5187,12 +5187,12 @@ pub(crate) mod tests {
     /// 而被它看着的那条守卫（[`tests::every_test_that_starts_the_real_daemon_demands_a_private_tmux`]）
     /// 同一拍把次序改成**先剥整份、再切块** ⇒ 两把尺子的单位**现在是同一个**。
     /// ⇒ 这一形今天有**两个独立的红源**（本条的块那一半 · 那条守卫落回 `MISS_LOCK2`），
-    /// 逐格单断的读数在 `evidence/K-R25-D2-unit-alignment.md`。
+    /// 逐格单断的读数在 `tests/evidence/K-R25-D2-unit-alignment.md`。
     ///
     /// ⚠ **射程仍然不是全称，别读大**：两个单位以外的单位它一个都看不见 ——
     /// 函数体窗口（`body_of(..)` / `brace_block(..)`）· 任意切片 `&src[a..b]`。
-    /// 今天全仓这样的调用点**逐处点了名**（量具 `evidence/K-R25-D1-strip-input-unit-census.py`，
-    /// 读数与住址在 `evidence/K-R25-D2-unit-alignment.md`）；其中**只有本文件那两处在 `K-R25` 的写区**，
+    /// 今天全仓这样的调用点**逐处点了名**（量具 `tests/evidence/K-R25-D1-strip-input-unit-census.py`，
+    /// 读数与住址在 `tests/evidence/K-R25-D2-unit-alignment.md`）；其中**只有本文件那两处在 `K-R25` 的写区**，
     /// 其余逐处走了上报口，**一个字没动**。
     ///
     /// ⚠ 两个地板各自量、各自报（**块数不是文件数**）：`min_files` 挡「遍历坏了」，

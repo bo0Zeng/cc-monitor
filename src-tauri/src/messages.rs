@@ -24,7 +24,7 @@ use serde::{Deserialize, Serialize};
 /// `analyze_jsonl` 取首条 forkedFrom 的 sessionId 认 parent，故只需前缀共享 sessionId 即可。
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct ForkedFrom {
     #[serde(rename = "sessionId")]
     pub session_id: String,
@@ -34,7 +34,7 @@ pub struct ForkedFrom {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(tag = "type")]
 pub enum JsonlRecord {
     #[serde(rename = "user")]
@@ -251,7 +251,7 @@ pub enum JsonlRecord {
 
 #[derive(Debug, Deserialize, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct ApiMessage {
     pub role: String,
     // 同上：`unknown` 逼前端先做形状判断（`cards/index.ts` 的 `ContentBlock` 就是那层解释模型）。
@@ -274,7 +274,7 @@ pub struct ApiMessage {
 
 #[derive(Debug, Deserialize, Serialize, Clone, Default)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct Usage {
     #[serde(default)]
     pub input_tokens: u32,

@@ -70,7 +70,7 @@ tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，�
 | `daemon-fork-session` | 10 过 / 0 败 | |
 | `p3t-local-tmux` | 10 过 / 0 败 | |
 | `cc-spawn-uplift` | **72 过 / 0 败**（08-13 更新） | ★ 修前 19/2 —— 它还在测 `P4b` 删掉的行为；`C15` 收编后 +10 条；08-13 再 +7（地址簿不许被抹 · 敲门不许打进别人屏幕） |
-| `exec-bit-guard` | RC=0 | ⚠ 打了非阻断警告：`shared/cc-bus` 与 `~/.claude/skills/cc-bus` **已漂移** |
+| `exec-bit-guard` | RC=0 | ⚠ 打了非阻断警告：`src/shared/cc-bus` 与 `~/.claude/skills/cc-bus` **已漂移** |
 | `daemon-sessions-rewatch` | 4 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：`sessions/` 被换 inode / 起初不存在 / 重建后立刻写 |
 | `daemon-tmux-late-server` | 2 过 / 0 败 | ★ 08-13 新增（`P0b-Y2`）：**后端起得比 tmux server 早**（`#60` 现象 1 的根因） |
 | `cc-bus-queue-drain` | 43 过 / 0 败 | ★ 08-13 新增：`cc-send` **消息没到时必须有人说话**——滞留队列没人管 + 收件人根本不存在。**本套不用 tmux** |
@@ -176,7 +176,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 > 互斥），**所以这里刻意不写一个具体条数** —— 本文件正文刚因为「抄来的数字过期」被订正过两次。
 
 > **它此前是 `tests/e2e/*.sh` 里唯一一个连 npm 脚本都没有的套件** —— 只能 `bash tests/e2e/f40-suite.sh` 裸跑，
-> 于是 `doc/RELEASING.md:21`「动过滚动/渲染管线就跑一遍」那条 checklist 在肌肉记忆上比别的都难执行。
+> 于是 `src/doc/RELEASING.md:21`「动过滚动/渲染管线就跑一遍」那条 checklist 在肌肉记忆上比别的都难执行。
 > U0 补了 `npm run test:f40`。**补脚本 ≠ 进 CI**：它仍然是手动套件，前置照旧。
 
 ### tmux 隔离（E41 已解，2026-07-30）

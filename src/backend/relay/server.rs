@@ -1141,7 +1141,7 @@ mod tests {
     ///
     /// 注入把「错**什么时候**来」这一维整个拿掉：判据要钉的本来就不是内核的时序，
     /// 而是**收场那一档的策略**（对端走了 ⇒ 只丢这条连接；别的错 ⇒ 照旧大声炸）。
-    /// 有机那一半没有丢，它住在 `evidence/K-R126-deathvalue.md` 的复现台面上：
+    /// 有机那一半没有丢，它住在 `tests/evidence/K-R126-deathvalue.md` 的复现台面上：
     /// 修前收场 ＋ 复现刀 ⇒ CI 上红的那两条**逐趟必红 5/5**。
     #[derive(Clone, Copy)]
     struct StubFault {
@@ -1380,7 +1380,7 @@ mod tests {
     /// 有机那一版**自己就是一个 flake 源**，实测：`--test-threads=1` 跑 200 趟 0 红，
     /// 而整族 16 线程跑 10 趟**红 5 趟** —— 「对端已经走了」要等 `RST` 投递到桩这一侧
     /// 才看得见，机器一忙桩的四次写全都先写完了。见 [`StubFault`] 头注与
-    /// `evidence/K-R126-deathvalue.md`。有机那一半没有丢：它是那份文档里的**复现台面**
+    /// `tests/evidence/K-R126-deathvalue.md`。有机那一半没有丢：它是那份文档里的**复现台面**
     /// （修前收场 ＋ 复现刀 ⇒ CI 上红的那两条 5/5 必红）。
     #[test]
     fn a_peer_that_left_costs_the_stub_one_connection_not_its_listener() {

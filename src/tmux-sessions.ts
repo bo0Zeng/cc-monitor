@@ -10,7 +10,7 @@
  * 搬的是**判据**，不是缓存策略 —— `TMUX_CACHE_TTL_MS` 与 `tmuxCache` 仍住在 `TabManager` 里，
  * 它们是那个类的取数策略，不是「哪个 tmux 跑着哪个会话」这个问题的答案。
  *
- * 契约见 doc/INVARIANTS.md §30（靠 `@ccm_sid` 精确匹配，不靠名字/目录反推）。
+ * 契约见 src/doc/INVARIANTS.md §30（靠 `@ccm_sid` 精确匹配，不靠名字/目录反推）。
  * `tabs.ts` 原样 re-export 这几个符号，既有 import 面（含 `tabs.vitest.ts`）零改动。
  */
 
@@ -36,7 +36,7 @@ export function isClaudeTmuxCommand(cmd: string): boolean {
  * `path===cwd` 猜（向后兼容）。只要有会话带了 sid、却没一个等于目标 sid，就说明目标会话不在
  * 任何 tmux 里（已结束 / 已漂移到别的 sid）——此时**绝不**按 cwd 抓一个同目录的别的 claude
  * （那正是撞错会话的老 bug），宁可返 undefined（SS-5/SS-9：找不到就报「不在」，不静默换一个）。
- * 契约与铁律见 doc/INVARIANTS.md §30。
+ * 契约与铁律见 src/doc/INVARIANTS.md §30。
  */
 /**
  * F04（R10 根治）：`@ccm_sid` 精确命中该 sid 的**全部**活 claude 会话（不折叠成第一个）。

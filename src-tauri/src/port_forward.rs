@@ -29,7 +29,7 @@ pub struct ForwardSpec {
 /// 转发状态(列表展示)。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct ForwardStatus {
     pub id: String,

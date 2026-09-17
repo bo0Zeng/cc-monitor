@@ -4,7 +4,7 @@
 //! 在一条已鉴权的 russh 连接上 `request_subsystem("sftp")` 起 SFTP 子系统（russh-sftp，
 //! transport-agnostic，吃 channel 的 AsyncRead+AsyncWrite 流）。
 //!
-//! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `doc/INVARIANTS.md §1`
+//! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `src/doc/INVARIANTS.md §1`
 //! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
 //! - **F08**：自部署 daemon 二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
 //! - **F11**：用户**主动**删除远端会话 jsonl（`remove_remote_file`，`is_safe_remote_jsonl` + `canonicalize`）。
@@ -477,7 +477,7 @@ fn marker_path(daemon_path: &str) -> String {
 /// 与 [`interpret_profile_read`] 同一形状：**吃两次调用各自的结果，不吃会话**。
 /// 拆出来的理由是一个具体缺陷，不是行数：解释这一半原先焊在 async 体里，
 /// 四个状态的映射规则因此一条判据都没有 —— 把那个体换成恒答 `Present`，
-/// 全量 cargo **0 红**（09-06 沙箱实测，`evidence/K-W4b-readings.md`），
+/// 全量 cargo **0 红**（09-06 沙箱实测，`tests/evidence/K-W4b-readings.md`），
 /// 而部署决策当场退回「只看 `.build_id`」的老病。
 ///
 /// 入参就是两次调用**降解之后**的结果（与 [`read_profile_text`] 传给
@@ -916,7 +916,7 @@ pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// 写进 ~/.bashrc 的是被 shell **执行**的代码，绝不能让前端注入任意 bash）。
 ///
 /// **必须与前端 `remote-section.ts::CCM_WRAPPER_SNIPPET`（面板展示/手动复制用）逐字一致。**
-/// **单一来源**：`shared/ccm-aliases.sh`——前端 `remote-section.ts` 经 `?raw` import
+/// **单一来源**：`src/shared/ccm-aliases.sh`——前端 `remote-section.ts` 经 `?raw` import
 /// 同一文件（修复历史漂移：Batch7 重构时只改了前端展示版，装进远端的还是老版）。
 ///
 /// **F02 起本块只剩「别名层」**；`K-R48` 第二拍起它指向的那个 `ccm` 是 [`ccm_entry_shim`]
@@ -928,10 +928,10 @@ pub(crate) const CCM_PROFILE_END: &str = "# === cc-monitor remote ccm END ===";
 /// 而那个答案**只有这份文件说了算** —— 在那边抄一份名字清单就是第二个住址。
 /// 〔`K-R58` 09-11：`cch` 从这份文件里删了 ⇒ 它**不再**被当作「已被占用」，
 /// 用户可以自己定义一个 `cch`。**多一格自由，不是回归。**〕
-pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../shared/ccm-aliases.sh");
+pub(crate) const CCM_WRAPPER_SNIPPET: &str = include_str!("../../src/shared/ccm-aliases.sh");
 
 /// 自带别名块里**今天定义了哪几个名字** —— 现算，不写死（`13b`：闭集只许有一个住址，
-/// 那个住址就是 `shared/ccm-aliases.sh` 自己）。
+/// 那个住址就是 `src/shared/ccm-aliases.sh` 自己）。
 ///
 /// `account_aliases` 的撞名判据与本文件的文档对账判据都拿它当人群，
 /// 于是「删/加一个别名」这件事**不需要同时去改两份名单**（改漏一份正是 `KR58D1`
@@ -1420,10 +1420,10 @@ mod tests {
         }
     }
 
-    /// `KR58D2` —— `doc/IPC-PROTOCOL.md` §11 里描述别名块的那一句，**行数与名单同句**。
+    /// `KR58D2` —— `src/doc/IPC-PROTOCOL.md` §11 里描述别名块的那一句，**行数与名单同句**。
     ///
     /// 本区最高频的那条病就是「数与名单同句、只改一半」⇒ 这里**两样一起对**，
-    /// 而且两样都**现算**自真相源 [`CCM_WRAPPER_SNIPPET`]（= `shared/ccm-aliases.sh` 本身），
+    /// 而且两样都**现算**自真相源 [`CCM_WRAPPER_SNIPPET`]（= `src/shared/ccm-aliases.sh` 本身），
     /// 判据里不抄第二份名单、不写死行数。
     ///
     /// ⚠ **它买到的射程只有这一句**：§11 其余部分（`shared/ccm` · `CCM_CLI_SCRIPT`）
@@ -1432,19 +1432,19 @@ mod tests {
     /// ⚠ 判据够不着被测对象时必须**响亮地红**，不许变成空真 ⇒ 找不到那一句就 panic。
     #[test]
     fn the_protocol_doc_sentence_about_the_alias_block_matches_the_file() {
-        const IPC_DOC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
+        const IPC_DOC: &str = include_str!("../../src/doc/IPC-PROTOCOL.md");
         let want_names = crate::sftp::builtin_alias_names();
         assert!(
             !want_names.is_empty(),
-            "从 shared/ccm-aliases.sh 里一个别名都没解析出来 —— 判据够不着被测对象了，先修判据"
+            "从 src/shared/ccm-aliases.sh 里一个别名都没解析出来 —— 判据够不着被测对象了，先修判据"
         );
         let want_lines = CCM_WRAPPER_SNIPPET.lines().count();
 
         let sent = IPC_DOC
             .lines()
-            .find(|l| l.contains("shared/ccm-aliases.sh`，**"))
+            .find(|l| l.contains("src/shared/ccm-aliases.sh`，**"))
             .expect(
-                "doc/IPC-PROTOCOL.md 里描述别名块的那一句找不到了 —— \
+                "src/doc/IPC-PROTOCOL.md 里描述别名块的那一句找不到了 —— \
                  要么它被改写了、要么被删了；无论哪种，这条对账现在是瞎的",
             );
         let bold = sent
@@ -1454,7 +1454,7 @@ mod tests {
 
         assert!(
             bold.contains(&format!("{want_lines} 行")),
-            "行数对不上：shared/ccm-aliases.sh 现在 {want_lines} 行，而文档那句写的是「{bold}」"
+            "行数对不上：src/shared/ccm-aliases.sh 现在 {want_lines} 行，而文档那句写的是「{bold}」"
         );
         assert!(
             bold.contains(&format!("这 {} 个", want_names.len())),

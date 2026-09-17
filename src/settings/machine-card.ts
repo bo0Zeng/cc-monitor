@@ -163,7 +163,7 @@ const DAEMON_PATH_PLACEHOLDER =
   "/home/<user>/.cc-monitor/bin/cc-monitor-remote";
 /**
  * 按远端用户名生成 daemonPath 默认值（与自动部署的约定路径一致，
- * 见 doc/REMOTE-PHASE0-DEPLOY.md）。root 的 home 不在 /home 下，特判。
+ * 见 src/doc/REMOTE-PHASE0-DEPLOY.md）。root 的 home 不在 /home 下，特判。
  * 只是预填——远端 home 不标准（如 macOS /Users）时用户可改，「测试连接」会暴露问题。
  */
 export function defaultDaemonPathFor(user: string): string {

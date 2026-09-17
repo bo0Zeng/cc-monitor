@@ -88,7 +88,7 @@ const WALK_FORMS = ["readdirSync", "globSync", "readdir("];
  * `continue`），而它自己正是 `.vitest.ts` ⇒ **扫的树不含自己**，是本文件立的第一条判准。
  * 它另排掉 `session-backend.ts`（那是被守的「座」本身）与 `generated/`（生成物）。
  *
- * ⚠ 它为什么值得占这一格（棘轮要的是论证，不是禁令）：它把 `doc/INVARIANTS.md §31`
+ * ⚠ 它为什么值得占这一格（棘轮要的是论证，不是禁令）：它把 `src/doc/INVARIANTS.md §31`
  * 最终形态第①条从**散文里的一条手工 grep** 变成机检 —— 而那条手工 grep **只盯
  * `remote-launch.ts` 一个文件**，`remote-launch-run.ts` 从它拆出去之后门禁没跟着拆，
  * 于是那边躺了一句手写的 `tmux attach -t …`（`P9` 摸底当场逮到，已改成问座要）。

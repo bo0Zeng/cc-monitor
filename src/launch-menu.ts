@@ -1,7 +1,7 @@
 /**
  * F09（unify-launch）：UI 层"枚举当前可用修饰"的独立发现层——不是 `LaunchDimension` 的一部分。
  *
- * R12 决策（见 `doc/INVARIANTS.md` §38、`.claude/planned-build/unify-launch/features/
+ * R12 决策（见 `src/doc/INVARIANTS.md` §38、`.claude/planned-build/unify-launch/features/
  * F09-ui-convergence.md` §0）：`container`/`agent` 两条轴**不**收进 `LAUNCH_DIMENSIONS` 注册表，
  * 继续硬编码。`account` 组虽然已经是注册表维度（`ACCOUNT_DIMENSION`），但 `LaunchDimension` 接口
  * 本身从未回答过"这个维度当前有哪些可选值"——那向来是 `src/accounts.ts::fetchAccounts` 现查的活。

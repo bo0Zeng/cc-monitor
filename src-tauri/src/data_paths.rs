@@ -21,12 +21,12 @@ use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
-// **那个 `../../` 里有一级是「幻影目录」**（Phase D 审计 S1 查清 `ts-rs` 源码）：
+// **那个 `../..` 里有一级是「幻影目录」**（Phase D 审计 S1 查清 `ts-rs` 源码）：
 // 有效路径 = `cwd` / `export_dir` / `export_to`，而 `export_dir` 默认是 `./bindings`
 // ——**那个目录永不被创建**，它只是被 `../` 抵消掉的一级。所以从 `src-tauri/` 跑测试时：
-//   `src-tauri/` + `bindings/` + `../../src/generated/` = `<repo>/src/generated/` ✓
+//   `src-tauri/` + `bindings/` + `../../src/generated` = `<repo>/src/generated/` ✓
 // 基准是**测试二进制的 cwd**（`std::env::current_dir()`，不是 `CARGO_MANIFEST_DIR`），
 // 而 cargo 会把它设成 package root ⇒ `cargo test` 与
 // `cargo test --manifest-path src-tauri/Cargo.toml` 都落对（审计双向实测过）。
@@ -89,7 +89,7 @@ pub struct DataPathInfo {
 
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct DataPathsResponse {
     pub monitor_data_dir: String,

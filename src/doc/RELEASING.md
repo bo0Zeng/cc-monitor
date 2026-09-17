@@ -17,7 +17,7 @@
       > 那次 run 现打核过）⇒ 版本号这一格与 `npm ci` 的同步性检查无关。
       > 修法是**跑一次 `npm install`**（bump 完 `package.json` 之后），它会顺手对齐；
       > 纯手改版本号一定漏掉这一处。
-- [ ] [CHANGELOG.md](../CHANGELOG.md) 加新版本段（写法见 § 3）
+- [ ] [CHANGELOG.md](../../CHANGELOG.md) 加新版本段（写法见 § 3）
 - [ ] **改 README 的版本号**。⚠ **不是「两处」，也不是「四处」——2026-09-09 现打是
       `README.md` 三处 + `README.en.md` 两处，共五处。**逐处：
       `README.md` ① 抬头那行「当前版本: vX.Y.Z」· ② 「项目状态」那段里「当前发布 **vX.Y.Z**」·
@@ -236,7 +236,7 @@ Linux 打包）全部不起。
 🔴 **〔`K-R124` 2026-09-15〕这一节的第一句话从「手工复制」变成了「流水线自己做」。**
 `release.yml` 两处发布步骤（`build-windows` 的 `Create / update GitHub Release` ·
 `build-linux` 的 `Append Linux artifacts to the release`）现在各跑一次
-`node scripts/release-notes.mjs RELEASE_BODY.md`，并把 `body_path` 指向它 ——
+`node tests/scripts/release-notes.mjs RELEASE_BODY.md`，并把 `body_path` 指向它 ——
 正文就是下面这句 SOP 说的那份：**`CHANGELOG.md` 对应版本段**。
 ⚠ 在这之前两处一处写着 `generate_release_notes: true`、另一处连 `body` 都没有
 ⇒ **真发出去的正文一直是 GitHub 自动生成的提交列表**（这一节从 v3.6.0 起没人执行过）。
@@ -245,7 +245,7 @@ Linux 打包）全部不起。
 ⚠ 下面那张「下载」模板**生成器刻意不抄**（资产名今天已经有两个住址，再抄第三份必漂；
 Release 页本来就会把资产逐个列出来）—— 要它就手工加，别让机器再立一份副本。
 
-GitHub Releases 描述用 [CHANGELOG.md](../CHANGELOG.md) 对应版本段的复制 + 加：
+GitHub Releases 描述用 [CHANGELOG.md](../../CHANGELOG.md) 对应版本段的复制 + 加：
 
 ```markdown
 **下载**

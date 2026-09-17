@@ -450,7 +450,7 @@ pub enum SpawnFailure {
 /// # 这个数的**出处**（`K-R30`，09-06 沙箱实测）
 ///
 /// 〔出处·K-R30〕上面几节是**理由**，不是读数。`K-R30` 去把读数打了出来：
-/// 量具 `evidence/K-R30-etxtbsy-window.py`（读数落在同名 `.out`）。
+/// 量具 `tests/evidence/K-R30-etxtbsy-window.py`（读数落在同名 `.out`）。
 /// 台架 = 真造那个竞态：一个进程攥着目标文件的写 fd（`fork` 继承来的 —— `CLOEXEC` 要到它
 /// `execve` 那一刻才生效），我们自己那把立刻关掉，然后**立即重试**到 `execve` 成功，
 /// 量「从关掉写 fd 到 exec 成功」。容器内 · Linux 7.0.0-30 · glibc 2.39 · nproc 16 ·
@@ -1899,7 +1899,7 @@ mod tests {
             panic!(
                 "这个数的**出处段**不在它头注里了（{e}）。\n\
                  `K-R30` 之前它只有理由、没有读数；出处一删，它当场退回「一个判断」。\n\
-                 要换出处就连读数一起换（量具 evidence/K-R30-etxtbsy-window.py）。"
+                 要换出处就连读数一起换（量具 tests/evidence/K-R30-etxtbsy-window.py）。"
             )
         });
         let origin = &head[at..];
@@ -1961,7 +1961,7 @@ mod tests {
     /// ⚠ **形态表是枚举，不是全称**：表外的写法（自己 `clone(2)` · 换一个装 fd 的 crate ·
     /// 走 `nix`）**本条一个都看不见**。这条边界也写进失败文案，别读成「这一族已经封死」。
     /// 立本条时逐条现打过一趟：除 `pre_exec` 那 3 行注释外，表里其余六种**全树零命中**
-    /// （分母 216 份 `.rs`，量具 `evidence/K-R31-fork-exec-forms.py`）。
+    /// （分母 216 份 `.rs`，量具 `tests/evidence/K-R31-fork-exec-forms.py`）。
     ///
     /// # 反向那半（没有它，本条会在空串上恒真地绿）
     ///
@@ -3525,7 +3525,7 @@ mod tests {
         let dir = spelled("NATIVE_DAEMON_DIR");
         let file = spelled("NATIVE_DAEMON_FILE");
         let prod = guard_core::production_code(include_str!("local_backend.rs"));
-        let want = format!("\"../../../{dir}/{file}\"");
+        let want = format!("\"../../..{dir}/{file}\"");
         assert!(
             prod.contains(&want),
             "`build.rs` 铺的是 `src-tauri/{dir}/{file}`，而本文件的 `include_bytes!` \

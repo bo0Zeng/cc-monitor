@@ -104,8 +104,8 @@ const REMOTE_INFO_TEXT =
  * 失败，而 tmux 恰是远端最常见形态。原语内自动对**当前 session** 开直通
  * （session 级选项，不写 tmux.conf、不影响其它 session）。
  */
-// 单一来源：shared/ccm-aliases.sh（后端 sftp.rs include_str! 同一文件，杜绝漂移）
-import CCM_WRAPPER_SNIPPET from "../../shared/ccm-aliases.sh?raw";
+// 单一来源：src/shared/ccm-aliases.sh（后端 sftp.rs include_str! 同一文件，杜绝漂移）
+import CCM_WRAPPER_SNIPPET from "../shared/ccm-aliases.sh?raw";
 import { buildPasteBlock } from "../paste-block"; // T03：待贴文本统一组件
 
 /**

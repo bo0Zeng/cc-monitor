@@ -13,13 +13,13 @@
 //! # 怎么进到这里
 //!
 //! 两条，**都只经 [`intercept`] 这一处**：
-//! ① `argv[0]` 的 basename 是 `ccm`（别名 / 软链 / 改名拷贝指过来；`shared/ccm-aliases.sh`
+//! ① `argv[0]` 的 basename 是 `ccm`（别名 / 软链 / 改名拷贝指过来；`src/shared/ccm-aliases.sh`
 //!    里 `cc` / `cct` 那几个别名调的就是它）；
 //! ② 显式子命令 `cc-monitor-remote ccm <argv…>`（给「二进制没改名」的场合，
 //!    也给判据一个不依赖文件名的入口）。
 //!
 //! ⚠ **它不是一条 wire 子命令**，所以**不进 `main::SUBCOMMANDS`**、也不进
-//! `doc/IPC-PROTOCOL.md` §10：那份文档是 monitor↔daemon 的**冻结线上契约**，
+//! `src/doc/IPC-PROTOCOL.md` §10：那份文档是 monitor↔daemon 的**冻结线上契约**，
 //! 而这里是**用户终端**的命令面，两者的读者与兼容性义务都不同。
 //! 这个决定不是靠「没人查」成立的 —— `protocol_doc_guard::TERMINAL_SURFACE_FILES`
 //! 把它登记成一个受管例外，并**另立一格**（每个旗标都要能在 [`USAGE`] 里找到）。

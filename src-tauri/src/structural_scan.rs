@@ -658,7 +658,7 @@ mod tests {
     ///  处置是**搬家**，不是去动那把尺子 —— 那把尺子同时守着 daemon 本体两层判据。〕
     ///
     /// **死值验**：把 `guard_core::assert_tree_strips_clean` 里的 `strip_prefix(root)`
-    /// 退回 `path.file_name()` ⇒ 本条必须红（读数落 `evidence/K-R75-剥法认形状与真静默读数.md`）。
+    /// 退回 `path.file_name()` ⇒ 本条必须红（读数落 `tests/evidence/K-R75-剥法认形状与真静默读数.md`）。
     #[test]
     fn the_tree_walk_names_the_file_by_path_not_by_basename() {
         let root = std::env::temp_dir().join(format!(
@@ -2512,12 +2512,12 @@ mod tests {
         /// ⚠ 加行之前先问一遍：**这个名字今天真的存在吗？** 不存在就先改话，别先加行。
         /// ⚠ **不许**靠贴墓碑把存量抹平 —— 墓碑只给「本轮真的改过的那几处订正段」。
         const INVENTORY: &[(&str, &str, usize)] = &[
-            ("doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1),
-            ("doc/CONTRIBUTING.md", "list_active_session_ids", 1),
-            ("doc/INVARIANTS.md", "every_monitor_file_strips_clean", 1),
-            ("doc/INVARIANTS.md", "path_shell_safe", 1),
-            ("doc/INVARIANTS.md", "snapshot_announced_by_origin", 1),
-            ("doc/STATE-MATRIX.md", "read_session_jsonl", 1),
+            ("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1),
+            ("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1),
+            ("src/doc/INVARIANTS.md", "every_monitor_file_strips_clean", 1),
+            ("src/doc/INVARIANTS.md", "path_shell_safe", 1),
+            ("src/doc/INVARIANTS.md", "snapshot_announced_by_origin", 1),
+            ("src/doc/STATE-MATRIX.md", "read_session_jsonl", 1),
             (
                 "src/backend/agents/claudecode/accounts.rs",
                 "trust_of_claude_json",
@@ -2574,7 +2574,7 @@ mod tests {
                 1,
             ),
             // 🔴 `K-R77` 09-12 加这一行 —— **它不是一处「判不了真伪」，是本条的一个结构性盲区**，
-            // 与下面 `guard-core/src/lib.rs` 那两行、`doc/INVARIANTS.md` 那一行**同一形**：
+            // 与下面 `guard-core/src/lib.rs` 那两行、`src/doc/INVARIANTS.md` 那一行**同一形**：
             // 名字住在**本文件**里，而 `dead_name_corpus` 按构造摘掉调用者自己
             // ⇒ 凡是别处散文点名住在这里的判据，本条一律读成「代码里根本不存在」。
             // ⚠ 那句话**真的有人核**：它在 `readonly_guard.rs` 里写成
@@ -2816,7 +2816,7 @@ mod tests {
             //    点名它们的句子留着是有用的**（它们说的正是「这个东西为什么不在了」）
             //    ⇒ 按第②条出路走：加 `PROSE_NAME_TOMBSTONE` 标记 ＋ 在这里记一笔账。
             (
-                "doc/IPC-PROTOCOL.md",
+                "src/doc/IPC-PROTOCOL.md",
                 "the_local_launch_recipe_is_reachable_only_from_print",
                 1,
             ),
@@ -2872,7 +2872,7 @@ mod tests {
             //    **是设计好要在这一天主动红的** ⇒ 散文里那几处点名它的句子留着才说得清
             //    「它红过、红完之后换了谁」。按第②条出路：贴墓碑 ＋ 在这里记一笔账。
             (
-                "doc/INVARIANTS.md",
+                "src/doc/INVARIANTS.md",
                 "the_daemonless_remote_still_needs_the_ts_fallback_renderer",
                 1,
             ),
@@ -2915,17 +2915,17 @@ mod tests {
                 1,
             ),
             (
-                "doc/IPC-PROTOCOL.md",
+                "src/doc/IPC-PROTOCOL.md",
                 "handlers_never_run_on_the_reader_task",
                 1,
             ),
             (
-                "doc/IPC-PROTOCOL.md",
+                "src/doc/IPC-PROTOCOL.md",
                 "hello_commands_match_the_dispatch_table",
                 1,
             ),
             (
-                "doc/IPC-PROTOCOL.md",
+                "src/doc/IPC-PROTOCOL.md",
                 "hello_is_flushed_before_the_inbound_reader_starts",
                 1,
             ),
@@ -2950,9 +2950,9 @@ mod tests {
             //    `gate_guard_expr`）与两条判据在散文里被逐字点着 —— 而那些句子说的正是
             //    **「这个东西为什么不在了 / 它守的性质今天住哪」**，删掉的是线索不是病。
             //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-            ("doc/INVARIANTS.md", "build_kill_session_cmd", 1),
-            ("doc/INVARIANTS.md", "build_send_keys_remote_cmd", 1),
-            ("doc/INVARIANTS.md", "gate_guard_expr", 1),
+            ("src/doc/INVARIANTS.md", "build_kill_session_cmd", 1),
+            ("src/doc/INVARIANTS.md", "build_send_keys_remote_cmd", 1),
+            ("src/doc/INVARIANTS.md", "gate_guard_expr", 1),
             ("src-tauri/src/tmux.rs", "build_kill_session_cmd", 3),
             ("src-tauri/src/tmux.rs", "build_send_keys_remote_cmd", 3),
             ("src-tauri/src/tmux.rs", "gate_guard_expr", 1),
@@ -3015,17 +3015,17 @@ mod tests {
             //    接住、钉的是两条）。散文里那几句说的正是**「它们为什么不在了」**
             //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
             (
-                "doc/远端支持方案-agent查看器与代码全景图.md",
+                "src/doc/远端支持方案-agent查看器与代码全景图.md",
                 "derive_subagent_dir",
                 2,
             ),
             (
-                "doc/远端支持方案-agent查看器与代码全景图.md",
+                "src/doc/远端支持方案-agent查看器与代码全景图.md",
                 "list_meta_matches",
                 2,
             ),
             (
-                "doc/远端支持方案-agent查看器与代码全景图.md",
+                "src/doc/远端支持方案-agent查看器与代码全景图.md",
                 "load_subagent_remote",
                 1,
             ),
@@ -3039,8 +3039,8 @@ mod tests {
             //    （入参从路径收成 sid，找那一步走 `branch_core::find_session_file`，两侧同一份）。
             //    这两句散文说的正是**「那道门原先长什么样、为什么今天不需要它了」** ——
             //    删掉的是线索不是病 ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
-            ("doc/ARCHITECTURE.md", "validate_branch_source", 1),
-            ("doc/INVARIANTS.md", "validate_branch_source", 1),
+            ("src/doc/ARCHITECTURE.md", "validate_branch_source", 1),
+            ("src/doc/INVARIANTS.md", "validate_branch_source", 1),
             // 🔴 〔`K-R112` 09-13〕同一形，第四件：**cc-bus 三条与抓屏改走 daemon 原语之后，
             //    它们各自那个 shell 命令构造器整块删了**（`build_broadcast_cmd` /
             //    `build_kill_cmd` / `build_capture_pane_cmd`；`build_online_cmd` 不在这里 ——

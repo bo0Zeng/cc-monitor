@@ -83,7 +83,7 @@ export const ACCOUNT_DIMENSION: LaunchDimension = {
   // 而改造前的静态列表是无条件检查的。**这是刻意放宽、不是回退**——`ccm attach <名>` 不接受
   // `--account`/`--base`/`--model` 任何修饰 flag，对一次纯 attach 要求这些能力是过度收紧
   // （`INVENTORY.md` §A #6 已把"attach 不带账号"写成设计而非缺口）。豁免范围与理由见
-  // `doc/INVARIANTS.md` §33，测试见 `launch-render-cli.test.ts` 的 attach 豁免组。
+  // `src/doc/INVARIANTS.md` §33，测试见 `launch-render-cli.test.ts` 的 attach 豁免组。
   requiredCaps: () => ["account"],
 };
 

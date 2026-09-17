@@ -8,7 +8,7 @@ use tokio::io::{AsyncReadExt, BufReader};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct CcmProbeResult {
     pub installed: bool,
     pub version: Option<String>,
@@ -173,7 +173,7 @@ fn probe_with(timeout: std::time::Duration, cmd: &str) -> CcmProbeResult {
 /// # 它与上面那条问的不是同一件事，别混
 ///
 /// [`probe_with`] 问的是「**你 PATH 上那个 `ccm` 是谁**」（所以非走登录 shell 不可 ——
-/// 用户的 rc 会改 PATH，`shared/ccm-aliases.sh` 里就有一行往前插 `~/.local/bin`）。
+/// 用户的 rc 会改 PATH，`src/shared/ccm-aliases.sh` 里就有一行往前插 `~/.local/bin`）。
 /// 本条问的是「**我们放下去的那一份是谁**」，路径我们自己知道 ⇒ 一个 shell 都不需要，
 /// 也就不吃用户 rc 的任何影响（那正是它该有的样子：这一份的身份与用户环境无关）。
 ///
@@ -276,7 +276,7 @@ pub async fn probe_ccm_cli(origin: String) -> Result<CcmProbeResult, String> {
 /// PATH 上那个 `ccm`，与我们装的那一份是什么关系。**四态，没有兜底档。**
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "snake_case")]
 pub enum PathCcmVerdict {
     /// 终端里敲 `ccm` 走到的就是我们这一份。**没有话要说。**
@@ -294,7 +294,7 @@ pub enum PathCcmVerdict {
 /// 本机 `ccm` 这一格的全貌：我们那一份 · PATH 上那一份 · 判词 · 那句话。
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct LocalCcmEntry {
     /// 我们装的那一份在哪 —— **`$HOME/…` 形态**（别名要用它，写绝对路径会把
     /// 「换台机器 / 换个用户」堵死）。没装就是 `None`。
@@ -395,7 +395,7 @@ const OURS_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3
 ///
 /// 🔴 **登记一条诚实边界，别读成「做了」**：唯一一条「问 PATH 上那个」的机制是
 /// [`CCM_PROBE_CMD`] ＋ `bash -lic`（非走登录 shell 不可 —— PATH 就是 rc 决定的，
-/// `shared/ccm-aliases.sh` 里那行 `export PATH="$HOME/.local/bin:$PATH"` 就是活例）。
+/// `src/shared/ccm-aliases.sh` 里那行 `export PATH="$HOME/.local/bin:$PATH"` 就是活例）。
 /// Windows 上没有对应物，而**照着 `PATH` 变量自己走一遍不是同一件事**
 /// （少了 rc 那一层，还要按 `PATHEXT` 判可执行 —— 那一格已经是一条待决 `KU22`）。
 /// ⇒ 这里**不发明第二套机制**，回 `None`，由上面那句话说成「查不了」。

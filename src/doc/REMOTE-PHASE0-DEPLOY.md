@@ -41,7 +41,7 @@ copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src-tauri\e
 # 🔴 K-R70（09-12）：**没有第三步了** —— 不必再写 .build_id 清单，身份跟着字节走。
 #   想自己核一眼这两份是谁（不看它旁边任何文件）：
 #     Select-String -Path ..\src-tauri\embedded-daemons\cc-monitor-remote-x86_64 -Pattern 'ccm-build-id' -Encoding ascii
-#   Linux/macOS 上：grep -ao '<<ccm-build-id:[^>]*>>' ../src-tauri/embedded-daemons/cc-monitor-remote-x86_64
+#   Linux/macOS 上：grep -ao '<<ccm-build-id:[^>]*>>' ../../src-tauri/embedded-daemons/cc-monitor-remote-x86_64
 ```
 
 > **不想装 zig 也行（U-1 实测，零安装）**：`rust-lld` 随 rustc 自带，两个 musl target 都能链：

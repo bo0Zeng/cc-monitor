@@ -4,14 +4,14 @@
 # ## 它治的是什么
 #
 # `K-R80` 的转置读数逐字：**`hooks/` · `evidence/` · 仓根文件三棵树，12 格里 0 格覆盖**。
-# 而 `hooks/` 与另两棵**性质不同** —— `hooks/pre-commit` 是**会被 git 执行**的东西，
+# 而 `hooks/` 与另两棵**性质不同** —— `tests/hooks/pre-commit` 是**会被 git 执行**的东西，
 # 跑在**每一次提交**上，**能改仓**。它坏了不是读数错，是**提交路坏了**。
 #
 # ★ **两种坏法的形状不一样，现打过，别凭印象写**（`git version 2.43.0`，沙箱
 #   `ccmon-devbox:latest`，合成仓 + `core.hooksPath hooks`，读数落在
-#   `evidence/K-R82-hooks-gate.md` `§1`）：
+#   `tests/evidence/K-R82-hooks-gate.md` `§1`）：
 #     · **没有可执行位** ⇒ git **忽略这个 hook 并照常提交**：`rc=0`，提交真的进去了，
-#       只在 stderr 上留一句 `hint: The 'hooks/pre-commit' hook was ignored because
+#       只在 stderr 上留一句 `hint: The 'tests/hooks/pre-commit' hook was ignored because
 #       it's not set as executable.` —— 而那句 hint **`git config advice.ignoredHook false`
 #       就能关掉**，且它是提示不是失败。⇒ **闸门整个不在了，而退出码看起来一切正常。**
 #       ⚠ 上一版本文件的头注这里写的是「一个字都不印」—— **那句是错的**，现打推翻，已订正。
@@ -27,7 +27,7 @@
 #   · **盘上跑不跑得起来** —— `test -x`。它跟着**这一棵工作树的 checkout** 走。
 #   · **库里记没记** —— index 里的 mode（`100755` / `100644`）。它跟着**提交**走。
 # 两者能长期不一致而没人发现：`K-R82` 落地前盘上现打就是这一形 ——
-# 主树 `cc-monitor` 里 `hooks/pre-commit` 是 `-rwxrwxr-x`（能跑），
+# 主树 `cc-monitor` 里 `tests/hooks/pre-commit` 是 `-rwxrwxr-x`（能跑），
 # 而 `git ls-files -s hooks/` 是 **`100644`**（没记）⇒ **任何一棵新开的工作树 checkout 出来都是 644**，
 # 那份 hook 在那些树里**静默地不跑**。本文件把这两句各判一条，红的时候也分开说。
 #
@@ -56,7 +56,7 @@
 #
 # 不给参数就用本文件的上一级目录。给参数是为了**对着变异过的副本跑**（死值验）：
 # 那个副本得是个真 git 仓（`index` 那条判据要 `git ls-files -s`），造法见
-# `evidence/K-R82-hooks-gate.md`。
+# `tests/evidence/K-R82-hooks-gate.md`。
 
 set -uo pipefail
 

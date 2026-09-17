@@ -1,6 +1,6 @@
 /**
  * F90（#48）：**会话后端**前端座——把 `remote-launch.ts` 里硬编码的 `tmux …` 命令字面量收敛到一处
- * （照 F-MA `agent-profile.ts` 纯画像范式）。守 **doc/INVARIANTS.md §31（SS-12）**「一端起的会话
+ * （照 F-MA `agent-profile.ts` 纯画像范式）。守 **src/doc/INVARIANTS.md §31（SS-12）**「一端起的会话
  * 另一端必须能接」的第①条：**前端绝不硬编码后端命令**，改问这一层要。
  *
  * ★ **两轴正交**（呼应 SS-11）：

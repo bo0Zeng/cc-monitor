@@ -244,7 +244,7 @@ fn which_exists(cmd: &str) -> bool {
 ///   （带 `--tmux` 的别名是 `cct`），而 `shared/ccm` 的 `use_tmux` 默认 0
 ///   ⇒ 走的是非容器分支 `exec "${argv[@]}"`。加上这里 stdio 全 null，
 ///   **产出的是一个无 tty、无 tmux 的进程**，不是「留在 tmux 里等 attach」。
-///   ★ 同一条推理本仓在别处写对过：`doc/IPC-PROTOCOL.md` 逐字
+///   ★ 同一条推理本仓在别处写对过：`src/doc/IPC-PROTOCOL.md` 逐字
 ///   「决定性的事实是 `stdin` 不接键盘（`stdin=DEVNULL`）—— 用户敲进去的字会被脚本吃掉」。
 ///   ★★ **P3t（2026-08-11）已经改了一半，本段随之更新。**
 ///   `history.rs::launch_local` 现在**先过 CLI 渲染器**（`render_local_ccm`），渲得出来就带
@@ -436,7 +436,7 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
 /// 只剥 `#[cfg(test)] mod X { }` 段与注释（整行的与行尾的都剥 —— 行尾那一半是 `K-R3`
 /// 09-01 才补上的），**它不剥任何 `cfg`** ⇒ 本函数体在**文本**这一层原样在场。
 ///
-/// 现打（量具 `evidence/K-H2b-C10-cfgwin-visibility.py`，喂的是本工作树的
+/// 现打（量具 `tests/evidence/K-H2b-C10-cfgwin-visibility.py`，喂的是本工作树的
 /// `src-tauri/src/launch.rs`，09-02；量具先拿本文件那条真判据钉的三个等号自检过
 /// 复刻对不对得上 —— 对不上它就拒绝出读数）：
 ///
@@ -474,7 +474,7 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
 ///
 /// ⇒ 买**这一半**要 CI 上一条 Windows job（或交叉编译 ＋ `cargo test --target`），
 /// 落点 `.github/workflows/ci.yml`，**不在 `K-H2b` 的写区** ⇒ 归 PM 立跟进件。
-/// ⚠ `scripts/gate.sh` 头注自陈「本地门禁比 CI 严」，而**这一格恰是反过来的那一格**，
+/// ⚠ `tests/scripts/gate.sh` 头注自陈「本地门禁比 CI 严」，而**这一格恰是反过来的那一格**，
 /// 别把那句话读成全称。
 ///
 /// ## 🔴 `阻-4`：这里不许再写全称，要写清是哪一类
@@ -759,7 +759,7 @@ mod tests {
     /// 不许出现」—— 那比它实际做的宽。实测两个洞：
     /// ① **同义改写不认**：往被扫文件里写「远端会话的容器一定是 tmux」，本条**不红**
     ///    （needle 是一个精确短语，不是「无条件说法」这个语义）；
-    /// ② **扫描面是洞**（已修）：把**原句**写进 `doc/DEVELOPMENT.md`（原先只扫三份）也**不红**。
+    /// ② **扫描面是洞**（已修）：把**原句**写进 `src/doc/DEVELOPMENT.md`（原先只扫三份）也**不红**。
     ///
     /// ①**刻意不追**，理由是量过的：想把它翻成本仓偏好的枚举式白名单
     /// （「每一行同时出现『容器』与 tmux 的散文都必须说清是哪条路」），
@@ -789,14 +789,14 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("仓根");
-        // 〔08-06 扩面〕原来只扫三份。实测：把**原句**写进 `doc/DEVELOPMENT.md`
+        // 〔08-06 扩面〕原来只扫三份。实测：把**原句**写进 `src/doc/DEVELOPMENT.md`
         // （不在那三份里）**不会红** —— 扫描面本身就是个洞。⇒ 改成「全 `doc/` + 两份 README + 本文件」。
         //
         // ⚠ 用 `scan_tree!` 而**不是裸 `read_dir`**：`scanning_guard_registry` 那条元判据
         // 当场把裸遍历拦下了（理由是「判据在自己那份里找到自己 ⇒ 恒绿」，实测五次）。
         // 这里扫的是 `doc/` 的 md、与本文件不同族，但**规矩就是规矩** —— 而且它本来就更省事。
         let mut files: Vec<(String, String)> = Vec::new();
-        for (q, body) in guard_core::scan_tree!(&root.join("doc"), &["md"]) {
+        for (q, body) in guard_core::scan_tree!(&root.join("src/doc"), &["md"]) {
             files.push((
                 format!("doc/{}", q.file_name().expect("文件名").to_string_lossy()),
                 body,
@@ -1485,7 +1485,7 @@ mod tests {
                     // 🔴 **出声**（本波派工单逐字要的那一格）：重试**不许静默** ——
                     //    静默的重试会让「这条前提今天被破了几次」变成一个**没人量得到的数**，
                     //    而那正是本件在治的病换个地方长。这一行同时是量具的读数来源
-                    //   （`evidence/K-R24-D7-load-axis-stress.py` 数的就是它）。
+                    //   （`tests/evidence/K-R24-D7-load-axis-stress.py` 数的就是它）。
                     eprintln!(
                         "[K-R24] 前提被破了一次：exec 假终端撞上 ETXTBSY（第 {} 次），\
                          上限 {tries} 次内重试；逐字：{e}",
@@ -1695,7 +1695,7 @@ mod tests {
     /// - **它复现的不是真实那条时序**：真实成因是别的线程 fork 出来的子进程**短暂**继承了写 fd，
     ///   本条是**自己长时间攥着**。两者对 execve 是同一件事（都是「有人开着写」），
     ///   但本条**不证明**那条 fork 竞态真的发生过 —— 那一格由病历里那两趟读数与
-    ///   `evidence/K-R24-D7-load-axis-stress.py` 那份量具承重，如实登记。
+    ///   `tests/evidence/K-R24-D7-load-axis-stress.py` 那份量具承重，如实登记。
     /// - **不证明重试上限选得对**：上限是宽的，那是取舍，不是判据。
     #[cfg(not(windows))]
     #[test]

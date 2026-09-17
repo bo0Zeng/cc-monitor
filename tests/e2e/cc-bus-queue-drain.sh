@@ -36,7 +36,7 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-S="$REPO/shared/cc-bus/scripts"
+S="$REPO/src/shared/cc-bus/scripts"
 command -v jq >/dev/null 2>&1 || { echo "需要 jq"; exit 1; }
 command -v flock >/dev/null 2>&1 || { echo "需要 flock"; exit 1; }
 

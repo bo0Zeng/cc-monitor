@@ -8,7 +8,7 @@ Rust + Tauri 2。crate 名 `monitor`（lib 名 `monitor_lib`）。
 >
 > 它住 **`src-tauri/src/backend/mod.rs` 的 `BACKEND_FILES` 登记表** —— 那是**机检**的：
 > 往 `backend/` 加文件而不在表里写明「属哪条能力线、为什么在这里」，`cargo test` **当场红**
-> （`every_file_under_backend_is_registered_with_a_reason`）。`doc/ARCHITECTURE.md §2.7` 就是这么分派的。
+> （`every_file_under_backend_is_registered_with_a_reason`）。`src/doc/ARCHITECTURE.md §2.7` 就是这么分派的。
 >
 > ⇒ **本文件刻意不复制那份清单**：复制出来的第二份没有机检看着，
 > 而本仓反复治的正是「同一个事实两处各写一份然后漂移」。
@@ -100,7 +100,7 @@ src-tauri/
 | **port_forward.rs** (B14-F58) | 本地端口转发(-L)管理台后端:每转发一条独立 `connect_session`（继承竞速/跳板）+ 本地 `TcpListener` + accept 循环,每连接开 `channel_open_direct_tcpip` + `copy_bidirectional`；session 存 `Arc` 注册表保活（russh Handle 不 Clone）；停 = abort accept + **`session.disconnect` 主动断连**（仅 drop 关不掉连接:Handle::drop no-op + 在飞连接持 sender clone,D 审计实证）。v1 即席不持久化 | `start_forward()/stop_forward()/list_forwards()` + 同名 IPC |
 | **tmux.rs** (B14-F51/F60) | tmux 反查（tab 右键 attach）+ **F60 画面预览**：`parse_tmux_ls`（**真 TAB 分列**，调研 03 §3.1 坑）+ `list_remote_tmux`（`command -v tmux` 门控→哨兵 NO_TMUX 返 None）+ **`capture_remote_pane`（`tmux capture-pane -p -t <会话>` 抓当前屏只读快照，`command -v tmux` 门控 + `\|\| printf NO_PANE` 兜会话不存在，`classify_capture_output` 纯函数判哨兵）**；均走 `connect_and_exec_cmd` 只消费不改形，target 经 `shell_quote`。前端按 cwd+`pane_current_command∈{claude,node}` 反查，命中并列「Attach」+「预览画面」。（F52 resume-tmux 短路门未扩本模块） | `parse_tmux_ls() / classify_capture_output()` + IPC `list_remote_tmux / capture_remote_pane` |
 | **tmux_reconcile.rs** (F74c issue #60-A) | tmux 存活对账 poller：补一条独立 tmux 存活信号，让带外（`Ctrl-b &` / `tmux kill-session`）杀掉某会话 tmux 后端时对应 tab 有界变灰。**§24 单写者不破**——retire 的 sid 当 `SessionChange{removed}` 送进 `remote_tx` 的一个 clone、由唯一写者处理；source-agnostic（`reconcile_step` 吃裸 HashSet，F90 可整段 lift）；三重防误判（ever_bound 门 + debounce + /branch 漂移剔除） | `reconcile_step()`（纯函数）+ poller |
-| **sftp.rs** (SS-D, issue #29) | 统一 SFTP 写层（复用 ssh_source 鉴权起 sftp 子系统）：F08 后端自动部署（arch 探测 + build_id 版本门控 + 原子上传）+ F11 远端历史 jsonl 删除（双重路径白名单 + realpath 防 symlink 逃逸）+ F10 远端 ccm 装进 `~/.bashrc`（BEGIN/END 块 + 备份 + 写后校验）+ **F89a 远端项目 `.mcp.json` 增改删（`mcp.rs` 经 `upload_atomic`，`is_safe_remote_mcp_json` 守卫，SS-14 只 .mcp.json）**。`upload_atomic` 加固：tmp 用 EXCLUDE 防 symlink clobber + 旧目标备份 `.bak`（失败可恢复、成功即清）。只读铁律豁免（穷举）见 `doc/INVARIANTS.md §1` + 模块文档 | `ensure_daemon_deployed() / remove_remote_file() / upload_atomic()` + IPC `install_remote_ccm_helper` / `write_remote_mcp_server` |
+| **sftp.rs** (SS-D, issue #29) | 统一 SFTP 写层（复用 ssh_source 鉴权起 sftp 子系统）：F08 后端自动部署（arch 探测 + build_id 版本门控 + 原子上传）+ F11 远端历史 jsonl 删除（双重路径白名单 + realpath 防 symlink 逃逸）+ F10 远端 ccm 装进 `~/.bashrc`（BEGIN/END 块 + 备份 + 写后校验）+ **F89a 远端项目 `.mcp.json` 增改删（`mcp.rs` 经 `upload_atomic`，`is_safe_remote_mcp_json` 守卫，SS-14 只 .mcp.json）**。`upload_atomic` 加固：tmp 用 EXCLUDE 防 symlink clobber + 旧目标备份 `.bak`（失败可恢复、成功即清）。只读铁律豁免（穷举）见 `src/doc/INVARIANTS.md §1` + 模块文档 | `ensure_daemon_deployed() / remove_remote_file() / upload_atomic()` + IPC `install_remote_ccm_helper` / `write_remote_mcp_server` |
 | **tasks.rs** (v2.3.0 issue #11) | Claude Code CLI 的 task 列表读取 + watcher：扫 `<claude_dir>/tasks/<sid>/<id>.json` 跳过 `.lock`/`.highwatermark`/非数字命名；notify-debouncer 100ms 监听整个 tasks 目录递归；变更 → 反推 sid → 重读整目录 → emit `task-update`。tasks_root 不存在时静默不 spawn；半截 JSON 单条 catch 跳过 | `read_session_tasks() / spawn_task_watcher()` + IPC `get_session_tasks` |
 | **data_paths.rs** (v2.3.0 issue #3 A) | 透明化展示：枚举 monitor 所有持久路径（config / sid-hwnd-cache / auto-launch / history-metadata / ps-await / ps-registry / logs）+ WebView2 UserDataFolder（用 `app_local_data_dir().join("EBWebView")` 推断）+ PowerShell profile 备份目录。stat 不递归算大小，避免大目录卡 IPC | `collect()` + IPC `get_data_paths` |
 | **config.rs** | monitor 自己的 config.json R/W（Windows MoveFileExW 原子） | IPC `load_config / save_config` |
@@ -234,13 +234,13 @@ src-tauri/
 |---|---|
 | `frontend-ready` | 触发 event_replay 完整回放历史。Batch5-F19 起 payload 带 `{prioritySid}`（`FrontendReadyPayload`，bridge.rs）——replay 按 session 分组、该 tab 的块先发；缺省 → 不分组。（"持锁严格按序"已废：v2.6 起 snapshot 出锁 emit、前端按 seq 排） |
 
-详 [doc/IPC-PROTOCOL.md](../doc/IPC-PROTOCOL.md)（跨进程文件协议）与 [doc/ARCHITECTURE.md § 5](../doc/ARCHITECTURE.md#5-关键设计选择--理由)（事件设计理由）。
+详 [src/doc/IPC-PROTOCOL.md](../src/doc/IPC-PROTOCOL.md)（跨进程文件协议）与 [src/doc/ARCHITECTURE.md § 5](../src/doc/ARCHITECTURE.md#5-关键设计选择--理由)（事件设计理由）。
 
 ---
 
 ## 不变量
 
-完整清单在 [doc/INVARIANTS.md](../doc/INVARIANTS.md)，本模块特别相关：
+完整清单在 [src/doc/INVARIANTS.md](../src/doc/INVARIANTS.md)，本模块特别相关：
 
 - § 1 — 零侵入（watcher 只读 projects/ + sessions/；history 物理删除是显式例外）
 - § 2 — monitor data dir 永远 `~/.claude/claudecode-frontend/`，不跟 claudeDir
@@ -268,7 +268,7 @@ jsonl 行先于 `sessions/<PID>.json` 落地时，`active_filter` 返 false → 
 `std::fs::rename` 在 Windows 上 dst 存在时失败（POSIX rename atomic overwrite 行为在 Windows 上没有）。MoveFileExW 是 Windows 原生原子替换 API，专门设计来实现"覆盖现有文件"语义。
 
 ### `profile_installer::atomic_write_string` 用 `ReplaceFileW` 而非 `MoveFileExW`
-`MoveFileExW(tmp, dst)` 用 tmp 的 ACL 覆盖 dst → 用户 explicit ACE 丢失（Documents 重定向到非默认盘的用户读不了自己的 profile）。**ReplaceFileW 专门设计来保留 dst 的 ACL/ADS/创建时间**。这是 Windows 文档明确推荐用于"替换配置文件"的 API。详 [doc/INVARIANTS § 4](../doc/INVARIANTS.md#4-profile-等用户文件写入--replacefilew--backup--写后校验)。
+`MoveFileExW(tmp, dst)` 用 tmp 的 ACL 覆盖 dst → 用户 explicit ACE 丢失（Documents 重定向到非默认盘的用户读不了自己的 profile）。**ReplaceFileW 专门设计来保留 dst 的 ACL/ADS/创建时间**。这是 Windows 文档明确推荐用于"替换配置文件"的 API。详 [doc/INVARIANTS § 4](../src/doc/INVARIANTS.md#4-profile-等用户文件写入--replacefilew--backup--写后校验)。
 
 ### `history::resume_impl` 用 `powershell.exe -NoExit -EncodedCommand`（v2.8.1 修复）
 旧版用 `cmd /K "claude --resume <sid>"`，有两个 bug：(1) cmd.exe 不是 PowerShell、**更不加载用户 profile** → `cc` wrapper / `__ccm_bind` / 代理 env 全不生效，跑的是裸 `claude`；(2) 退出 claude 后那个壳是 cmd，不认 `cc`。旧注释还把 `pwsh.exe`（PS7，需装）和 `powershell.exe`（PS5.1，系统自带）混为一谈才退回 cmd。
@@ -299,13 +299,13 @@ PowerShell 进程**不直接拥有终端窗口**（Windows Terminal 是单独进
 
 ## 添加新功能入口
 
-详细 cookbook 见 [doc/CONTRIBUTING.md § 2](../doc/CONTRIBUTING.md#2-添加新东西-cookbook)。速查：
+详细 cookbook 见 [src/doc/CONTRIBUTING.md § 2](../src/doc/CONTRIBUTING.md#2-添加新东西-cookbook)。速查：
 
 | 需求 | 入口文件 |
 |---|---|
 | 新 jsonl 记录类型 | `messages.rs:JsonlRecord` enum 加 variant |
 | 新 IPC 命令 | 新建模块 `<feature>.rs` → 在 `lib.rs::run().invoke_handler![]` 注册 |
 | 新事件 | `bridge.rs::events` 加常量 + payload 结构 |
-| 新跨进程协议文件 | 见 [doc/IPC-PROTOCOL.md § 添加新的跨进程协议文件](../doc/IPC-PROTOCOL.md#添加新的跨进程协议文件) |
+| 新跨进程协议文件 | 见 [src/doc/IPC-PROTOCOL.md § 添加新的跨进程协议文件](../src/doc/IPC-PROTOCOL.md#添加新的跨进程协议文件) |
 | 新 Win32 调用 | `Cargo.toml::[target.cfg(windows)].dependencies.windows.features` 加 feature；用 `#[cfg(windows)]` 包裹 |
-| 改 release 打包配置 | `tauri.conf.json::bundle`；详 [doc/BUILDING.md](../doc/BUILDING.md) |
+| 改 release 打包配置 | `tauri.conf.json::bundle`；详 [src/doc/BUILDING.md](../src/doc/BUILDING.md) |

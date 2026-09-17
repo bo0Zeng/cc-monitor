@@ -15,7 +15,7 @@
  * 1. **手改生成物，本文件抓不到。** 审计实测：手工插一个 Rust 侧根本不存在的字段
  *    ⇒ **5 条守卫全绿、`tsc` 全绿**。
  *    → **C05 已堵**：`rust` job 在 `cargo test --all` 之后跑
- *    `git diff --exit-code -- ../src/generated/`。CI 从 commit checkout，
+ *    `git diff --exit-code -- ../src/generated`。CI 从 commit checkout，
  *    重新生成会产出正确版 ⇒ **已提交的**手改必然 diff 非空。
  *    （未提交的本地手改会被重新生成静默冲掉，**从来到不了仓库**，不构成漏洞。
  *    这一条我第一次测错过：在工作树里手改后直接跑检查得到绿，

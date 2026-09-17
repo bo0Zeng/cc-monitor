@@ -282,7 +282,7 @@ describe("覆盖率那两步的有效性", () => {
 
 // ★★ **覆盖率地板的「只许降」纪律本身是散文**〔audit-0805 08-08，Phase G 第 68 件〕。
 //
-// `scripts/assert-coverage-floors.mjs` 是一条递减棘轮：逐文件地板 + 0% 文件数上限，
+// `tests/scripts/assert-coverage-floors.mjs` 是一条递减棘轮：逐文件地板 + 0% 文件数上限，
 // 头注逐字写着「**只许降**」「地板设在**当前值下方 ~5 点**」「实测值一起写下，
 // 只改数字不写实测，下一个人看不出它过期没过期」。
 //
@@ -308,10 +308,10 @@ describe("覆盖率地板表的自洽", () => {
     const { resolve, dirname } = await import("node:path");
     const { fileURLToPath } = await import("node:url");
     const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-    const src = readFileSync(resolve(ROOT, "scripts/assert-coverage-floors.mjs"), "utf8");
+    const src = readFileSync(resolve(ROOT, "tests/scripts/assert-coverage-floors.mjs"), "utf8");
 
     const decl = /const ZERO_COUNT_CEILING = (\d+);/.exec(src);
-    expect(decl, "`scripts/assert-coverage-floors.mjs` 里找不到 `ZERO_COUNT_CEILING` 的声明了").not.toBeNull();
+    expect(decl, "`tests/scripts/assert-coverage-floors.mjs` 里找不到 `ZERO_COUNT_CEILING` 的声明了").not.toBeNull();
     const ceiling = Number(decl![1]);
 
     // 递减记录 = 声明**紧上方**那段注释里的箭头链（`17→16`、`16→…→14→13`）。
@@ -347,7 +347,7 @@ describe("覆盖率地板表的自洽", () => {
     const { resolve, dirname } = await import("node:path");
     const { fileURLToPath } = await import("node:url");
     const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-    const src = readFileSync(resolve(ROOT, "scripts/assert-coverage-floors.mjs"), "utf8");
+    const src = readFileSync(resolve(ROOT, "tests/scripts/assert-coverage-floors.mjs"), "utf8");
     // 人群 = 表里每一行 `["<路径>", 语句地板, 实测, 分支地板, 实测],`
     const rows = [...src.matchAll(/\[\s*"([^"]+)"\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*\]/g)];
     expect(
@@ -383,7 +383,7 @@ describe("覆盖率地板表的自洽", () => {
 // 实测往 `tests/e2e/tmux-target-emit.mts` 塞一个类型错，`tsc --noEmit` 当场报 TS2322）。
 //
 // 而 `.mjs` **不在**：`allowJs` 没开 ⇒ tsc 整类不看。实测把
-// `scripts/assert-coverage-floors.mjs` 结尾塞一个不闭合的对象字面量，
+// `tests/scripts/assert-coverage-floors.mjs` 结尾塞一个不闭合的对象字面量，
 // **tsc 绿、vitest 1294 全绿** —— 而那个文件是 CI 覆盖率门禁的执行体。
 //
 // ⚠ 「CI 会跑它、跑挂了就知道」这句话在本仓**不成立**：〔用 08-05〕裁定不再 push，

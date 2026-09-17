@@ -327,7 +327,7 @@ mod tests {
     /// 判据本体从 `control/gate.rs` 随 `list-sessions` 这处调用点一起搬来
     /// （那边今天只剩 `display-message` 一处，它那条判据也随之收成一个动词）。
     /// 为什么这一条只能是「扫源码」、以及它守不住什么，见 `control/gate.rs` 同名判据的头注
-    /// （行为那一半的死值在 `evidence/K-R12-deathvalue.md`）。
+    /// （行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md`）。
     #[test]
     fn the_one_list_sessions_call_asks_for_a_utf8_client_before_the_subcommand() {
         const FLAG_IDENT: &str = "UTF8_CLIENT_FLAG";

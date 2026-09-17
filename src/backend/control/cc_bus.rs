@@ -266,7 +266,7 @@ pub(crate) fn parse_list(text: &str) -> Vec<serde_json::Value> {
 
 /// `cc-agents` 状态列的三个字面量 —— **它们是 cc-bus 的输出契约，不是我们的枚举**。
 ///
-/// 逐字取自 `shared/cc-bus/scripts/cc-agents`（09-13 现打）：`活` / `活?` / `已退`，
+/// 逐字取自 `src/shared/cc-bus/scripts/cc-agents`（09-13 现打）：`活` / `活?` / `已退`，
 /// 它那张表的头注逐字写着为什么是三态而不是两态 ——「把『核不了』并进『活』是今天
 /// 这一族所有事故的共同起点」。
 ///
@@ -295,7 +295,7 @@ fn spawned_live_of(state: &str) -> Option<serde_json::Value> {
 
 /// 把 `cc-agents` 的**人类可读表**变成结构化的行 —— 纯函数。
 ///
-/// 今天的形状（`shared/cc-bus/scripts/cc-agents` 现打）：
+/// 今天的形状（`src/shared/cc-bus/scripts/cc-agents` 现打）：
 /// 表头 `ID 状态 目录 初始任务` ＋ 每行 `printf '%-18s %-6s %-40s %s\n' id 状态 目录 任务`。
 ///
 /// ⚠⚠ **这一层有一处认不准，写在这里而不是藏起来**：定宽 `printf` 的列之间只有空格，

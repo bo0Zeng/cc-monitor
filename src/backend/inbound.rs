@@ -355,7 +355,7 @@ pub(crate) enum Run {
 pub(crate) struct CommandSpec {
     /// 线上命令名。
     pub(crate) name: &'static str,
-    /// 它在 `doc/IPC-PROTOCOL.md` §10 里那一小节的标题**逐字**；`None` = 没有自己的小节
+    /// 它在 `src/doc/IPC-PROTOCOL.md` §10 里那一小节的标题**逐字**；`None` = 没有自己的小节
     /// （只要求名字出现在「入方向」节里）。**有 `fields` 就必须有小节** —— 由机检钉住。
     ///
     /// ⚠ **这是约定不是事实**：护栏只能查「标题在、字段名在它下面出现」，查不了写得对不对。

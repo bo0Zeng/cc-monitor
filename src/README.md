@@ -136,7 +136,7 @@ replay 一次性 emit 整个 history Vec，前端用 BATCH_SIZE=40 + BATCH_MS=8 
 拖 color picker `input` 事件 ~60Hz 高频。`applyThemeToken(key, value)` 只动一个 CSS var，比 `applyTheme(全部)` 便宜 ~14 倍。否则每帧 setProperty 14 次会触发整棵 :root 子树重算。
 
 ### `info-icon.ts` 真挂 body 实现 portal
-父 `.settings-panel` 有 `transform`，按 CSS spec 会让 `position: fixed` 的 containing block 从 viewport 重置到 panel → fixed 元素相对 panel 定位而非屏幕。挂 body 脱离 transform 子树是唯一可靠路径。详 [doc/INVARIANTS § 13](../doc/INVARIANTS.md#13-css-portal-元素必须真挂-body)。
+父 `.settings-panel` 有 `transform`，按 CSS spec 会让 `position: fixed` 的 containing block 从 viewport 重置到 panel → fixed 元素相对 panel 定位而非屏幕。挂 body 脱离 transform 子树是唯一可靠路径。详 [doc/INVARIANTS § 13](doc/INVARIANTS.md#13-css-portal-元素必须真挂-body)。
 
 ### `renderMessage` 是纯函数
 给定 record + ctx 返回 RenderResult，无副作用（除写 ctx.toolUseElements 配 tool_use ↔ tool_result）。实时 Tab 和历史只读视图复用同一套渲染，保证视觉一致。
@@ -154,7 +154,7 @@ replay 一次性 emit 整个 history Vec，前端用 BATCH_SIZE=40 + BATCH_MS=8 
 - **MessageStream 一个实例对应一个 Tab**：closeTab 必须调 stream.dispose() 释放 ResizeObserver
 - **批量 jsonl-line 事件让出主线程**：events.ts 不能改成 sync 派发（会让 replay 卡死光标）
 
-全局约束（前端必读，定义在 [`doc/INVARIANTS.md`](../doc/INVARIANTS.md)）：
+全局约束（前端必读，定义在 [`src/doc/INVARIANTS.md`](doc/INVARIANTS.md)）：
 
 - § 12 — alert 不算错误反馈，关键失败用状态栏 toast
 - § 13 — portal 浮层（tooltip/modal/dropdown）必须真挂 `document.body`
@@ -167,7 +167,7 @@ replay 一次性 emit 整个 history Vec，前端用 BATCH_SIZE=40 + BATCH_MS=8 
 
 ## 添加新功能的入口
 
-详细 cookbook 见 [doc/CONTRIBUTING.md § 2](../doc/CONTRIBUTING.md#2-添加新东西-cookbook)。速查：
+详细 cookbook 见 [src/doc/CONTRIBUTING.md § 2](doc/CONTRIBUTING.md#2-添加新东西-cookbook)。速查：
 
 | 需求 | 入口文件 |
 |---|---|

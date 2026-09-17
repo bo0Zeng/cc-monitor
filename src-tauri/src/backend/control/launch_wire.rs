@@ -7,11 +7,11 @@
 //!
 //! - **CLI 那支是真在跑的那支**（U8c-2b-0 摸底：装了 ccm 就直接 return，兜底根本不执行）；
 //! - **兜底那支切不动**：`container: tmux` 时它要外层 tmux 命令（`session-backend.ts`），
-//!   而 `doc/INVARIANTS.md` §33b 写死了「删/搬 `session-backend.ts` 前必须先回答三件事」。
+//!   而 `src/doc/INVARIANTS.md` §33b 写死了「删/搬 `session-backend.ts` 前必须先回答三件事」。
 //!   🔴 **那三问今天不是当年那三问了**（`K-R105` 09-13 第四次复裁）：第三问
 //!   （daemonless 的远端要不要能起会话）**已随定框 `K35` / `K-R59` 退役**，
 //!   第一问的答案也在 `K-P2 D3`（09-03）之后变过一次。**三问的今天版只有一个家**：
-//!   `doc/INVARIANTS.md §33b` 那张表，由 `doc_claim_registry` 逐问与现场对拍
+//!   `src/doc/INVARIANTS.md §33b` 那张表，由 `doc_claim_registry` 逐问与现场对拍
 //!   —— 别在这里复述它们，复述就会漂（这一行原来就复述着一份，已撤）。
 //!
 //! ⇒ 本件切 CLI 支，兜底支原样留在 TS。**两支的判据都还在**（各自的黄金串夹具）。
@@ -296,7 +296,7 @@ mod f07_main_path_tests {
     //! 剩下的**只有「删 TS 那两个渲染器」**，而那是 U8c-3 的题目、不是 F07 的
     //! —— F07 要的是「走 backend」，不是「删旧的」。
     //!
-    //! # ⚠ 摸底在 `doc/INVARIANTS.md §33b` 里抓到**两处过期陈述**
+    //! # ⚠ 摸底在 `src/doc/INVARIANTS.md §33b` 里抓到**两处过期陈述**
     //!
     //! **过期一**：那张表把 **U8c-2c-2 写成「待做」** —— 实测已交付
     //! （两条 tauri 命令注册 + 生产 TS 三处在调 + `parity_ledger` 两条能力）。

@@ -112,7 +112,7 @@ pub(crate) const E2E_SESSION_PLACEHOLDER: &str = "CCM-E2E-SESSION";
 
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 #[serde(rename_all = "camelCase")]
 pub struct AccountUsageProbeResult {
     /// true = 拿到了屏幕文本。

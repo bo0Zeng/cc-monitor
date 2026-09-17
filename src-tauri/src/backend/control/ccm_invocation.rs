@@ -326,7 +326,7 @@ pub fn render_ccm_invocation(
     //
     // # 原来这里是「一律拒本机」，而那比 §36（只绑 Windows）说的宽
     //
-    // `doc/INVARIANTS.md` 的 §36 逐字是「本地（**Windows**）路径不经 IR」，
+    // `src/doc/INVARIANTS.md` 的 §36 逐字是「本地（**Windows**）路径不经 IR」，
     // 而 `launch_wire.rs` 的注释写成泛指的「本机」、代码按注释的宽度实现。三者不一致。
     // §36 那一行的「说明」列讲的全是 Windows 分支（`config_dir_prefix_ps` /
     // `validate_config_dir_ps`）与「`\` 与盘符」问题 —— **那些理由在 POSIX 上一条都不适用**。
@@ -337,7 +337,7 @@ pub fn render_ccm_invocation(
     // 不放行 ⇒ 本机走 `history.rs` 那条旧路 ⇒ 产出 `cc --resume <sid>` **不带 `--tmux`**
     // ⇒ ccm 走非容器分支 `exec`，加上 `launch_local_posix` 的 stdio 全 null
     // ⇒ **一个无 tty、无 tmux 的 claude 进程，用户敲进去的字会被脚本吃掉**
-    //（`launch_local_posix` 头注与 `doc/IPC-PROTOCOL.md` 各记了一份）。
+    //（`launch_local_posix` 头注与 `src/doc/IPC-PROTOCOL.md` 各记了一份）。
     // ⇒ 本件不是「加个容器求平价」，是**修一个今天就坏的东西**。
     if !spec.is_ssh && !spec.local_posix {
         return Err(Refusal::NotSsh);
@@ -435,7 +435,7 @@ mod tests {
         assert!(
             render(&s).is_ok(),
             "POSIX 本机仍被拒 —— 那么本机还是走旧路，产出的是一个**无 tty、无 tmux** 的进程，\n\
-             用户敲进去的字会被脚本吃掉（`launch_local_posix` 头注与 `doc/IPC-PROTOCOL.md` 各记了一份）。"
+             用户敲进去的字会被脚本吃掉（`launch_local_posix` 头注与 `src/doc/IPC-PROTOCOL.md` 各记了一份）。"
         );
 
         // ③ 本机 + 非 POSIX（Windows）：**仍拒**

@@ -131,7 +131,7 @@ mod sealed {
         ///   ⚠ **这里刻意不写「盘上有几条字面量是这一路」那个数**：初稿抄了摸底那一拍的
         ///   「全部 9 条」，而**本件自己新加的判据里就有带路径的字面量** ⇒ 那个数在
         ///   写下它的同一个 commit 里就馊了。要现打就跑
-        ///   `evidence/K-R1-B1-auth-style-and-base-path-census.py` 的第 ⑦c/⑦d 格
+        ///   `tests/evidence/K-R1-B1-auth-style-and-base-path-census.py` 的第 ⑦c/⑦d 格
         ///   （它自己印两个分母：生产段 / 含测试段）。〔`brief` 13：别抄快照，指住址。〕
         /// - 🔴 **它不查重、不合并重复的段**：配 `https://h/v1` 而客户端发 `/v1/messages`
         ///   的人会得到 `/v1/v1/messages`。**这是有意的** —— 「顺手把重复的段合掉」

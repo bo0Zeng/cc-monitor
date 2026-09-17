@@ -137,7 +137,7 @@ mod tests {
     const REGISTERED: &[Candidate] = &[
         Candidate {
             id: "cc-bus",
-            home: "shared/cc-bus/scripts",
+            home: "src/shared/cc-bus/scripts",
             semantics: Semantics::CarrierIsAPlugin,
             shape: Shape::Plugin,
             today: "一族 shell 脚本；daemon 只经命令面转调它，且那唯一一处起进程口\
@@ -156,7 +156,7 @@ mod tests {
         },
         Candidate {
             id: "cc-spawn",
-            home: "shared/cc-bus/scripts/cc-spawn",
+            home: "src/shared/cc-bus/scripts/cc-spawn",
             semantics: Semantics::Plugin,
             shape: Shape::Plugin,
             today: "已经是 `ccm` 的前端：走 `CCM_BIN` + `--ccm-probe` 能力协商，且不碰总线目录",
@@ -414,7 +414,7 @@ mod tests {
     #[test]
     fn cc_bus_is_reached_only_through_its_command_surface_today() {
         // ① 脚本族：`shell_scripts` 走的是「`.sh` 或 shebang 带 sh」，不是按后缀一种取。
-        let scripts = guard_core::shell_scripts(&repo_root().join("shared/cc-bus/scripts"));
+        let scripts = guard_core::shell_scripts(&repo_root().join("src/shared/cc-bus/scripts"));
         assert_eq!(
             scripts.len(),
             14,
@@ -594,7 +594,7 @@ mod tests {
     #[test]
     fn cc_spawn_is_a_frontend_of_ccm_and_touches_no_bus_data() {
         let spawn = guard_core::strip_hash_comment_lines(include_str!(
-            "../../shared/cc-bus/scripts/cc-spawn"
+            "../../src/shared/cc-bus/scripts/cc-spawn"
         ));
         assert!(
             spawn.len() > 1_000,
@@ -663,7 +663,7 @@ mod tests {
             "`--ccm-probe` 的能力 token 从 18 个变成 {}：{caps:?}\n\
              ⇒ 这是插件协商的**样板**（`E7`：一条 probe 子命令 → `key=value` 行 → \
              消费者声明它要哪些 token）。加能力是好事，但今天已有两个真实消费者\
-             （`shared/cc-bus/scripts/cc-spawn` 检 4 个 token · `src/launch-render-cli.ts` 的 \
+             （`src/shared/cc-bus/scripts/cc-spawn` 检 4 个 token · `src/launch-render-cli.ts` 的 \
              `CLI_REQUIRED_CAPS` 检 7 个），这个数变了要顺手看一眼它们。\n\
              ⚠ 两个消费者**都是子集检查** ⇒ **加 token 安全，删/改名才危险**。\
              ⇒ 下一个人加 token 时不必重读这两处；**改名或删 token 时必须重读**。\n\

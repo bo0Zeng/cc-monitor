@@ -6,7 +6,7 @@
  * E83（07-31 `a02f340`）把 `npm run lint` 从 `eslint src` 放开到 `eslint .`，当场实测
  * 「全仓 7 个，与 `eslint src` 的基线一致」，并把这句话**同时写进** `eslint.config.js`
  * 与 `.github/workflows/ci.yml`。六天后（08-06 `cab8a75`）新建的
- * `scripts/assert-coverage-floors.mjs` 一进来就带 7 条 `no-undef`（`console`/`process`，
+ * `tests/scripts/assert-coverage-floors.mjs` 一进来就带 7 条 `no-undef`（`console`/`process`，
  * 纯缺一段 globals）⇒ 基线**从 7 静默变成 14**，而那两句散文一句都没人回来改。
  * `/full-audit` 是**第一次有人真跑 `npx eslint .`**，才把这个数量出来。
  *
@@ -73,9 +73,9 @@ type EslintJsonResult = { filePath: string; errorCount: number; warningCount: nu
  *   `CreateProcess`，**不套 PATHEXT** ⇒ 恒 `spawnSync npx ENOENT`（`errno -4058`）。
  *   同一批调用里的 `git`（见 ②）没事，因为它是真 `git.exe`——**坏的只是 `.cmd`/`.bat` 这层包装器**。
  * - `{ shell: true }`：能让它跑起来，但要把 argv 交回给 shell 去重新解析。本仓有一条一以贯之的
- *   口径反对这件事——`doc/IPC-PROTOCOL.md`「**不过 shell。** …⇒ 引号 / 转义 / 注入这一整类问题
+ *   口径反对这件事——`src/doc/IPC-PROTOCOL.md`「**不过 shell。** …⇒ 引号 / 转义 / 注入这一整类问题
  *   在这条路上**不存在**，不是『被挡住了』」，`control/launch.rs` 头注「★ argv，不过 shell」，
- *   `doc/ARCHITECTURE.md:161`、`plugin/invoke.rs`、`control/cc_bus.rs` 同调。
+ *   `src/doc/ARCHITECTURE.md:161`、`plugin/invoke.rs`、`control/cc_bus.rs` 同调。
  *   ⚠ 如实登记：**这条口径的住址全在 Rust／远端执行面那侧**，TS 侧此前没有一句话写过它——
  *   但它在这儿同样成立（本行的路径含 `REPO_ROOT`，即用户目录，可能有空格／非 ASCII／元字符，
  *   正是那条口径要躲的形状），且全仓 `shell: true` **零命中**，走它等于开本仓第一例。

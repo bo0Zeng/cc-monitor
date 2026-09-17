@@ -5,7 +5,7 @@
 // ——**那句是假的**。4 个生产调用点全部把返回值当语句丢弃，真命令由 Rust 独立构造
 // （`history.rs::build_local_ps_command`）。本地路径**借** IR 做校验，但**不消费**它的输出，
 // 而且这是 F06 论证过的设计（`Get-Command` 探测是 render-time 决策、只能在目标机做），
-// 不是半成品。函数已随之改名并返回 `void`，见 `doc/INVARIANTS.md` §36。
+// 不是半成品。函数已随之改名并返回 `void`，见 `src/doc/INVARIANTS.md` §36。
 import { describe, it, expect } from "vitest";
 import { validateLocalLaunch, planResumeDirect, planResumeTmux } from "../src/launch-requests";
 import { buildLaunchPlan } from "../src/launch-plan.ts";
@@ -29,7 +29,7 @@ describe("validateLocalLaunch（本地路径的前置校验；F06 引入、R07 �
 });
 
 // R07：这一组的被测对象**不是** `validateLocalLaunch`，是**维度注册表在 `transport:local` 下的行为**
-// ——它是 `doc/INVARIANTS.md` §36 那两条主张的证据。
+// ——它是 `src/doc/INVARIANTS.md` §36 那两条主张的证据。
 //
 // 为什么单独成组：`validateLocalLaunch` 现在**根本不构造 IR**（R07 Phase D 审计发现它内部那遍
 // `buildLaunchPlan` 零门禁守护、且与生产无关，已删）。所以这些断言必须直接冲着 `buildLaunchPlan` 去，
@@ -125,7 +125,7 @@ describe("R03：修饰只能以命名字段传入（类型层）", () => {
 
 // ═══ audit-0805 F08 下半：远端 resume 的**会话容器** ═══════════════════════
 //
-// 本仓有三处散文（`README.md` · `doc/ARCHITECTURE.md` · `launch.rs` 的 POSIX 桩头注）
+// 本仓有三处散文（`README.md` · `src/doc/ARCHITECTURE.md` · `launch.rs` 的 POSIX 桩头注）
 // 拿「会话容器反正是 tmux」当**理由**，去解释 POSIX 上为什么不开终端窗口。
 // 代码说的相反：POSIX 远端 `↺` 走 `runRemoteResume` → `planResumeDirect`，
 // 而那里逐字是 `container: { kind: "none" }`。

@@ -21,7 +21,7 @@
 //!
 //! 这条边界背后的判据不是「daemon 不许碰文件系统」，而是
 //! **「daemon 不许改动用户既有数据」**。`O_EXCL` 新建一个此前不存在的文件不违反后者
-//! —— 详见 `doc/INVARIANTS.md` I7 与 `.claude/planned-build/branch-anywhere/MASTERPLAN.md §4`。
+//! —— 详见 `src/doc/INVARIANTS.md` I7 与 `.claude/planned-build/branch-anywhere/MASTERPLAN.md §4`。
 //!
 //! # 变换逻辑不在这里
 //!

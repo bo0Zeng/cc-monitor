@@ -17,7 +17,7 @@
  * 「**首刀只列只读命令**（**开 overlay** / 窗口操作 / 导航）；resume/new-session/attach/
  * kill/delete 等**写/驱动动作首刀排除**」——「**开 overlay**」明确在允许列表里。
  * ⇒ 走命令面板**不撞那条纪律**：写动作发生在本 overlay 内部的「保存」上，
- * 那是 F47 口径里的「面板内一次直接用户手势」（`doc/INVARIANTS.md:23`）。
+ * 那是 F47 口径里的「面板内一次直接用户手势」（`src/doc/INVARIANTS.md:23`）。
  *
  * # 安全判断**不在这里**
  *

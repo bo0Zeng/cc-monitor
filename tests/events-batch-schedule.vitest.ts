@@ -360,7 +360,7 @@ describe("bindEvents 的接线", () => {
 //
 // 而没人钉它：`tabs.vitest.ts` 钉的是**单元**（`switchTo` 写回 + `persistLastActive` 开关），
 // 而这件事是 `main.ts` 里的**接线顺序**；`main.ts` 又正好在 0% 覆盖那一族里
-//（`scripts/assert-coverage-floors.mjs` 的 `ZERO_TODAY` 第一行就是它）。
+//（`tests/scripts/assert-coverage-floors.mjs` 的 `ZERO_TODAY` 第一行就是它）。
 // ⇒ 把 `safeGet` 挪到建骨架之后、或删掉那句抑制写回：**tsc 绿、vitest 绿，而「恢复上次
 // 活跃 tab」在最常见的场景下静默失效**。
 //

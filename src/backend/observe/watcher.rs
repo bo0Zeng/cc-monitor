@@ -329,7 +329,7 @@ const OBS_UNOBSERVABLE: &str = "unobservable";
 /// **为什么要一个专用 rc 而不是让脚本 `printf 'NO_TMUX'`**：P1 之前脚本用
 /// `tmux ls … || true` 把 tmux 自己的 rc **吞掉了**，于是「零会话」「`tmux ls` 出错」
 /// 「exec 失败」三种语义全压成同一个空串，monitor 只能一律保守跳过 ⇒ 就是
-/// `doc/INVARIANTS.md` §24bis 那条残留 bug 的根。改成 `exec tmux …` 让 tmux 的 rc
+/// `src/doc/INVARIANTS.md` §24bis 那条残留 bug 的根。改成 `exec tmux …` 让 tmux 的 rc
 /// 原样成为 `sh` 的 rc，无 tmux 那格才需要一个不与 tmux 冲突的自定义值。
 ///
 /// 97 是任意选的哨兵值（tmux 只用 0/1）。
@@ -3147,7 +3147,7 @@ mod tests {
     /// # 死值从哪来（不是我编的）
     ///
     /// `DIRTY` 是 09-04 在**零挂载容器**里对真 tmux 3.4 私有 socket 打出来的字节
-    /// （`evidence/K-R12-deathvalue.md` ①/S5，`od -c` 逐字节复核）：POSIX 客户端下
+    /// （`tests/evidence/K-R12-deathvalue.md` ①/S5，`od -c` 逐字节复核）：POSIX 客户端下
     /// 六个真 TAB 全变 `_`，连 `文档`（3 字节/字）都按**显示宽度**变成了 `____`。
     /// `CLEAN` 是同一台 server、同一条命令、只加了本拍那条口径之后的输出（同文件 ②/S5）。
     ///
@@ -3264,7 +3264,7 @@ mod tests {
     /// 那一处的 env 归那一处自己管，本条**看不见它** —— 如实登记，别读宽。
     ///
     /// 🔴 **本条守的是「别漏」，不是「它真的生效了」**（「盘上有 ≠ 被走到」）。
-    /// 行为那一半的死值在 `evidence/K-R12-deathvalue.md`：同样这两条脚本对真 tmux 3.4
+    /// 行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md`：同样这两条脚本对真 tmux 3.4
     /// 私有 socket 打过，改前段数 1、改后各回各的 N。
     #[test]
     fn every_sh_call_site_in_this_module_carries_the_utf8_env() {

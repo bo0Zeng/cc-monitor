@@ -21,7 +21,7 @@
 //! 原因是那道真判据在本机与 CI
 //! 上各有一个够不着的理由，两条都是现打的读数、不是推断：
 //!
-//! - **本机**：`scripts/verify-committed-state.sh` 的 `daemon-win` 卡在 `ring` 的 C 构建脚本上
+//! - **本机**：`tests/scripts/verify-committed-state.sh` 的 `daemon-win` 卡在 `ring` 的 C 构建脚本上
 //!   （09-11 沙箱实测：EXIT=101 · `failed to find tool "lib.exe"` ·
 //!   `Checking cc-monitor-remote` 命中 **0** ⇒ 根本没走到我们的代码）。
 //!   而沙箱门禁那道 `winchk` 射程逐字是 `-p monitor`，**不含本 crate**。

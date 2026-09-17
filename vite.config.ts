@@ -9,7 +9,7 @@ const host = process.env.TAURI_DEV_HOST;
 // 49152 起；故选 24174 这个「保留段之上、ephemeral 之下」的冷门高位端口，最不容易被占。
 // 历史上踩过：1420（Tauri 默认，落 1366-1465 保留段）、5174（落 5110-5209 保留段）。
 // 若 24174 仍被占，设环境变量例：$env:VITE_PORT=24500 后重跑，并把
-// src-tauri/tauri.conf.json 的 devUrl 改成同一端口。详见 doc/DEVELOPMENT.md。
+// src-tauri/tauri.conf.json 的 devUrl 改成同一端口。详见 src/doc/DEVELOPMENT.md。
 // @ts-expect-error process is a nodejs global
 const port = Number(process.env.VITE_PORT) || 24174;
 const hmrPort = port + 1;

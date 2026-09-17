@@ -11,14 +11,14 @@
 //! 搬进来的是**已经在生产段上被调用**的传输层（`usage.rs` 与 `local_accounts.rs` 都在调它），
 //! 不是「先占个坑等以后」。⇒ 这是**搬运**，不是装饰。
 //!
-//! # 什么该进来：**按用途分，不按读写分**（`doc/ARCHITECTURE.md` §2.2）
+//! # 什么该进来：**按用途分，不按读写分**（`src/doc/ARCHITECTURE.md` §2.2）
 //!
 //! - **任何改状态的 tmux 命令**一律归 `control/`；
 //! - **只喂控制决策的只读查询也归 `control/`**（daemon 侧 `control/gate.rs` 探 `@ccm_sid`
 //!   就是这一形 —— 它不产观测帧）；
 //! - **只有产出观测帧的读**才归这里。
 //!
-//! ⚠ 反面很具体，`doc/ARCHITECTURE.md` §2.2 逐字：按「读/写」分的话，那次 `@ccm_sid` 探测
+//! ⚠ 反面很具体，`src/doc/ARCHITECTURE.md` §2.2 逐字：按「读/写」分的话，那次 `@ccm_sid` 探测
 //! 会被判给 `observe/`，而它唯一的调用方在 `control/` ⇒ **凭空造出一条
 //! `control → observe` 的边**，而 daemon 侧的 `layering_guard` 逐字禁止反向依赖。
 //!

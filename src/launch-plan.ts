@@ -144,7 +144,7 @@ export interface LaunchPlan {
  * `planXxx` 正是这个转换发生的地方。
  *
  * 刻意**不**收 `name`（tmux 会话名）：容器轴按 R12 已决策维持为一等硬编码字段、不进维度注册表
- * （`doc/INVARIANTS.md` §38），混进"修饰 bag"会与那条决策矛盾。
+ * （`src/doc/INVARIANTS.md` §38），混进"修饰 bag"会与那条决策矛盾。
  */
 export interface LaunchModifiers {
   /** A4：账号目录，兜底渲染器据此 `export CLAUDE_CONFIG_DIR`。 */
@@ -189,7 +189,7 @@ export interface LaunchDimension {
    * 此前 CLI 渲染器里有两套并存的机制：一个静态的 `CLI_REQUIRED_CAPS` 列表（语义是
    * "每一次调用都要求"，只对 `applies` 恒真的维度成立），外加一条给 `model` 的**针对性特判**
    * （因为 `MODEL_DIMENSION.applies` 是条件式，塞进静态列表会误伤所有未配模型偏好的会话，
-   * 见 F08 计划 §3.2 与 `doc/INVARIANTS.md` §37）。
+   * 见 F08 计划 §3.2 与 `src/doc/INVARIANTS.md` §37）。
    *
    * 那条特判本身是对的，但它把"这个维度需要远端 ccm 支持什么"这件知识放在了**渲染器里**
    * ——离维度定义很远，且下一个条件式维度的作者不会知道要去那里加一行。

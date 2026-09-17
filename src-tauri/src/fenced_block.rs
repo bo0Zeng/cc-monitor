@@ -121,7 +121,7 @@ pub const FENCE_SHAPES: &[FenceShape] = &[
     FenceShape {
         id: "remote-posix-block",
         host: "远端 POSIX 的 ~/<用户选的那份 rc>",
-        what_goes_in: "整块别名 snippet（shared/ccm-aliases.sh）",
+        what_goes_in: "整块别名 snippet（src/shared/ccm-aliases.sh）",
         begin_marker: crate::sftp::CCM_PROFILE_BEGIN,
         install_site: "sftp.rs::install_remote_ccm_helper",
         uninstall_site: Some("sftp.rs::uninstall_remote_ccm_helper"),

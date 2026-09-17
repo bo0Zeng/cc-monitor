@@ -19,7 +19,7 @@
 #
 # ┌─ 〔自述·射程〕本脚本此刻跑哪几格 ─────────────────────────────────────────────
 # │
-# │ 🔴 **这一段由 `evidence/K-R80-gate-cell-coverage.py` 的 `C5b` 逐字对拍**（`K-R91` 09-12）：
+# │ 🔴 **这一段由 `tests/evidence/K-R80-gate-cell-coverage.py` 的 `C5b` 逐字对拍**（`K-R91` 09-12）：
 # │   格数三方对拍（这一段的数 · 下面裁决行的数 · 现打的判定格数）＋ 逐格点名**集合相等**
 # │   ＋ **这一段里点名的每一条住址现打得存在**。
 # │
@@ -41,17 +41,17 @@
 # │   ccm tests/e2e/ccm-contract-parity · pb check
 # │ 〔自述·现物〕四套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
 # │   `tests/e2e/ccm-cli.test.sh` · `tests/e2e/ccm-contract-parity.sh`；判法一律走 `tests/e2e/assert-pass-floor.sh`。
-# │ 〔自述·现物〕`copy2` 那一格的判据本体：`evidence/K-R115-ruler.py`（`K-R115` 09-14 第 14 格）。
+# │ 〔自述·现物〕`copy2` 那一格的判据本体：`tests/evidence/K-R115-ruler.py`（`K-R115` 09-14 第 14 格）。
 # │ 〔自述·现物〕`shellcheck` 那一格没有独立的判据文件 —— 它的**人群与地板都从
 # │   `.github/workflows/ci.yml` 现读**（那一段 `FILES=` ＋ 它下面那条覆盖面地板行），
 # │   判定逐字写在下面那个 `gate_shellcheck` 函数里（`K-R122` 09-14 第 17 格）。
-# │ 〔自述·现物〕`ci-e2e-prereq` 那一格的判据本体：`evidence/K-R122-ruler.py`（`K-R122` 09-14 第 18 格）。
-# │ 〔自述·现物〕`release-gate` 那一格的判据本体：`evidence/K-R124-ruler.py`（`K-R124` 09-15 第 20 格）
+# │ 〔自述·现物〕`ci-e2e-prereq` 那一格的判据本体：`tests/evidence/K-R122-ruler.py`（`K-R122` 09-14 第 18 格）。
+# │ 〔自述·现物〕`release-gate` 那一格的判据本体：`tests/evidence/K-R124-ruler.py`（`K-R124` 09-15 第 20 格）
 # │   —— 它与 `.github/workflows/ci.yml` 里那一步跑的是**同一份文件**，不是两份抄件；
 # │   被测对象是 `.github/workflows/release.yml`，它顺带调 `scripts/release-notes.mjs --check`。
-# │ 〔自述·现物〕`installface` 那一格的判据本体：`evidence/K-R117-ruler.py`（`K-R128` 09-15
+# │ 〔自述·现物〕`installface` 那一格的判据本体：`tests/evidence/K-R117-ruler.py`（`K-R128` 09-15
 # │   第 21 格）—— 它同时是 `K-R117` 第一拍摸底的那把尺子，本件只往它上面加了 `R8`/`R9`/`R10`
-# │   三条判定（`R1`–`R7` 一个字节没动）。死值验 16 刀住 `evidence/K-R128-deathvalue.md`。
+# │   三条判定（`R1`–`R7` 一个字节没动）。死值验 16 刀住 `tests/evidence/K-R128-deathvalue.md`。
 # │ 〔自述·现物〕`winchk-daemon` 那一格没有独立的判据文件 —— 它就是一趟
 # │   `cargo check --all-targets`，target 是 `x86_64-pc-windows-gnu`，跑在
 # │   `src/backend` 那个 workspace 上（`K-R122` 09-14 第 18 格）。
@@ -155,7 +155,7 @@
 #
 #   ⚠⚠ **`K-P2 F` 拍（09-04）订正上面那句的一半，并报一条它买不到的东西。**〔量于 09-04〕
 #     现打（沙箱 `ccmon-devbox:latest`，工作树 `k-p2f` @ `d305ffa` 的 `shared/ccm`，
-#     量具 `evidence/K-P2-F-suites.py`）：
+#     量具 `tests/evidence/K-P2-F-suites.py`）：
 #       · `ccm-acceptance`  **29 PASS / 0 FAIL（rc=0）** —— **它今天是绿的**，
 #         上面那句「各红 1 条」对它**已经馊了**（那是 09-01 在一份探针镜像上量的 28/1）；
 #       · `ccm-pretrust`    **14 PASS / 1 FAIL（rc=1）** —— 这一半仍然属实。
@@ -305,7 +305,7 @@ GATE_DIAG_PAT='^(error|npm error|npm ERR!|thread .+ panicked|failures:|test resu
 #   `N-F1b` / `N-F2` 两件的实现方连着两次在交回里写「关键行**一条都没匹配上**」
 #   ⇒ 每一件的死值验都只剩「红了几条」，**是哪几条只能靠推断**。
 #
-#   `NG1D1` 的量法（量具住 `evidence/N-G1-diag-match.py`，模式表从本文件现读，不复述）：
+#   `NG1D1` 的量法（量具住 `tests/evidence/N-G1-diag-match.py`，模式表从本文件现读，不复述）：
 #   在沙箱里故意让一条前端判据红，把 `out="$(npm test 2>&1)"` 那一份**原始** stdout+stderr
 #   拿去 `od -c` —— ⚠ **不是**门禁已经加过 `  | ` 前缀的日志（PM 就在那上面栽过一次）。
 #
@@ -347,7 +347,7 @@ GATE_DIAG_PAT='^(error|npm error|npm ERR!|thread .+ panicked|failures:|test resu
 #   `fails+=` 的条件、包数自检、`0 passed 不是绿`，逐字原样。本段仍然只改「印什么」。
 #   ★ **这句话有读数，不是自称**：`run_gate` / `run_gate_sum` / `run_e2e` 三块**整块 md5**
 #     在 `333fcde` 与本拍之间**逐字节相同**（`8d0ac685b949` / `a2da94965516` / `48f1c09cf1b0`），
-#     量具住 `evidence/N-G1-gate-fn-md5.py`（可复跑）。
+#     量具住 `tests/evidence/N-G1-gate-fn-md5.py`（可复跑）。
 #   ⚠ **一处别读窄**：本文件全文 `fails+=(` 从 **15** 涨到 **16**，涨的那一处**在 `gate_selftest` 里**
 #     （下面新加的自检④）—— 与 `K-R22` 立探针①②③ 时同一个说法：**新加的一格自检，
 #     不是改了哪一道旧门**。「逐字原样」说的是那五道门的判红条件，不是「全文一处没加」。
@@ -502,7 +502,7 @@ run_gate_sum() {
 #
 # ⚠ **成本与副作用 —— `N-G2`（09-05）现打，把上一版那句话改掉了两处。**
 #   上一版逐字：「四条探针合计 ≈ 10 毫秒：**不碰 cargo / npm / 网络 / 文件系统**」。
-#   量具 `evidence/N-G2-selftest-cost.py`（把自检段真正会走到的那几块**原样切下来**跑，
+#   量具 `tests/evidence/N-G2-selftest-cost.py`（把自检段真正会走到的那几块**原样切下来**跑，
 #   不复算），沙箱 `ccmon-devbox:latest` 里各 9 趟交替跑、取中位数：
 #     · **本拍十条（①–⑩）≈ 131 ms**（135.1 ms 减去 4.5 ms 的空跑基线 = **130.6 ms**）
 #       ⚠ 同一把尺子隔一会儿复打一次得 **128.6 ms** ⇒ 噪声带大致 **129–131 ms**，
@@ -515,7 +515,7 @@ run_gate_sum() {
 #   ⇒ 「不碰 cargo / npm / 网络」**仍然成立**；**「不碰文件系统」对探针⑩ 不成立**（见下）。
 # ⚠ 上面 `N-G1` 那段头注里「全文 `fails+=(` 从 **15** 涨到 **16**」是**那一拍的快照**，
 #   今天已经不是全文的数了。本拍现打 **17 处真的 `fails+=`** = 门那侧 **11** ＋ 探针那侧 **6**
-#   （口径与量具住 `evidence/N-G2-verdict-md5.py` 的【覆盖自证】，它按「整行 strip 后以 `#` 打头」
+#   （口径与量具住 `tests/evidence/N-G2-verdict-md5.py` 的【覆盖自证】，它按「整行 strip 后以 `#` 打头」
 #    剔注释）。⚠ 裸 `grep -c` 会比它多几处 —— 多出来的是**头注里引它当主尺的那几行**，
 #   **本行自己就是其中一行** ⇒ 那个数每写一句话就变一次，别拿它当读数。
 # ⚠ 它们跑在**子 shell**（`$( )`）里 ⇒ 里面那几个 `fails+=` 落在数组副本上，
@@ -572,7 +572,7 @@ run_gate_sum() {
 # ⚠ **射程如实写：11 条判定盖住 6 条，盖不住 5 条。**
 #   🔴 下面这几个行号**钉在 `5924b91` 上**（本件基点），**不是本文件此刻的行号** ——
 #     本段一落地它们就往下推了。本文件此刻的行号**现算**：
-#     `python3 evidence/N-G2-verdict-md5.py <基点>` 的【覆盖自证】每趟都把五块的行范围
+#     `python3 tests/evidence/N-G2-verdict-md5.py <基点>` 的【覆盖自证】每趟都把五块的行范围
 #     与那 11 条各自的行号印出来，**那份才是当下的读数**。
 #   盖住：`run_gate` 两条（`5924b91:352` `:355`）· `run_gate_sum` 三条（`:409` `:413` `:418`）·
 #         `run_e2e` 的退出码那条（`:626`）。
@@ -677,15 +677,15 @@ gate_selftest
 # ── `hooks/` 里那份**会被执行**的东西，跑不跑得起来（`K-R82` 09-12，第 13 格）──────
 #
 # ★★ 题面是 `K-R80` 的转置读数（`DECISIONS.md#R42` 裁定四）：**12 格里 0 格看着 `hooks/`**，
-#   而 `hooks/pre-commit` 与另两棵 0 覆盖的树（`evidence/` · 仓根文件）**性质不同** ——
+#   而 `tests/hooks/pre-commit` 与另两棵 0 覆盖的树（`evidence/` · 仓根文件）**性质不同** ——
 #   它**会被 git 执行**、跑在**每一次提交**上、**能改仓**（它挡的是 `C7` 那条
 #   「`[profile.dev]` 不许进提交」）。
 #
 # 🔴 **本格落地那一趟就逮到一条真的**（现打，不是合成的）：
-#   `hooks/pre-commit` 在 index 里是 **`100644`** ⇒ 本仓 `core.filemode=false`，
+#   `tests/hooks/pre-commit` 在 index 里是 **`100644`** ⇒ 本仓 `core.filemode=false`，
 #   `chmod +x` 从来没进过 git ⇒ **每一棵新 checkout 出来的工作树里它都是 644**，
 #   而 git 对 644 的 hook 的处置是**忽略它并照常提交**（`rc=0` ＋ 一句可关掉的 advice hint，
-#   现打读数在 `evidence/K-R82-hooks-gate.md` `§1`）⇒ **那道挡在那些树里等于不在。**
+#   现打读数在 `tests/evidence/K-R82-hooks-gate.md` `§1`）⇒ **那道挡在那些树里等于不在。**
 #   本拍用 `git update-index --chmod=+x` 把它记进库里，本格从此盯着它不再掉。
 #
 # ⚠ **两句话分开判**（记忆条 `filemode-false-chmod-invisible`）：
@@ -716,14 +716,14 @@ run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里
 #   （造夹具 · 拷读数文件 · 把二进制搬进临时目录），那些一个都不该红。
 #   判的是**这一次复制的目的地落不落在「被 git 跟踪的工作树内容」上** —— 落在那儿，
 #   你在还原被测源码；落在临时目录 / 一个 git 里一份文件都没有的暂存目录，你在造夹具或备份。
-# ⚠ 判据本体住 `evidence/K-R115-ruler.py`（`--census` 只印人群表不判，供死值验对照）。
+# ⚠ 判据本体住 `tests/evidence/K-R115-ruler.py`（`--census` 只印人群表不判，供死值验对照）。
 #   它的**诚实边界**（看不见 shell 串里的 `cp -a`、看不见 `tarfile`、判落点不判意图）
 #   逐条写在那份文件的头注里，**这里不复述一份**（复述就会漂）。
 # ⚠ 本格是**唯一一格盖到 `evidence/`** 的门。那棵树在 `K-R80` 的登记里此前是
 #   「0 格覆盖，而这正是它的用途」（`[J3 陈账]` 死锁的泄压口）—— 本格落地之后那条登记要跟着改，
-#   随动逐处交回 PM，`evidence/K-R115-deathvalue.md` 里点名。
-run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族（copy2 · copytree · copystat）的**调用点**数，逐处判目的地；绿行那个数就是判过的调用点数。⚠ 〔`K-R122` 09-14 订正〕本行原先写着「现打 176 份」——那是从判据本体那句现算的分母**手抄**过来的第二份，而本件落地前盘上已经是 183、落地后 185 ⇒ **摘掉那个抄来的数**，份数以 `evidence/K-R115-ruler.py` 自己印的那一行为准。⚠ 只看 `evidence/` 下的 `.py`，别的目录、别的语言、shell 串里的 `cp -a` 本行一概盖不到' \
-         bash -c 'python3 evidence/K-R115-ruler.py'
+#   随动逐处交回 PM，`tests/evidence/K-R115-deathvalue.md` 里点名。
+run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族（copy2 · copytree · copystat）的**调用点**数，逐处判目的地；绿行那个数就是判过的调用点数。⚠ 〔`K-R122` 09-14 订正〕本行原先写着「现打 176 份」——那是从判据本体那句现算的分母**手抄**过来的第二份，而本件落地前盘上已经是 183、落地后 185 ⇒ **摘掉那个抄来的数**，份数以 `tests/evidence/K-R115-ruler.py` 自己印的那一行为准。⚠ 只看 `evidence/` 下的 `.py`，别的目录、别的语言、shell 串里的 `cp -a` 本行一概盖不到' \
+         bash -c 'python3 tests/evidence/K-R115-ruler.py'
 
 # ── `shellcheck`：**CI 独有的那一格收进门禁**（`K-R122` `KR122D2` 甲，09-14，第 17 格）──
 #
@@ -825,11 +825,11 @@ run_gate shellcheck '不是「几条断言过了」：这个数是**从 `.github
 # ⇒ 这一格把「**前置齐不齐**」本身变成判据：它不跑任何 e2e，只读 `ci.yml` ＋ `package.json`
 #   ＋ 那些 `.sh`，对账「每一套硬门后端二进制的 e2e，同 job 里都有一条 build 排在它前面」。
 #
-# ⚠ 判据本体住 `evidence/K-R122-ruler.py`，**它的射程与买不到的东西逐条写在那份文件的头注里**，
+# ⚠ 判据本体住 `tests/evidence/K-R122-ruler.py`，**它的射程与买不到的东西逐条写在那份文件的头注里**，
 #   这里不复述一份（复述就会漂）。放在那儿也是为了能对着变异过的副本跑死值验
 #   （`K_R122_ROOT=<副本>`），不必去动真工作树 —— 与 `hooks` 那一格同一条取法。
 run_gate ci-e2e-prereq '判过的 e2e 调用行数（`ci.yml` 的 `steps:` 里形如 `assert-pass-floor.sh <套件> <地板>` 的 `run:`，现打 20 条），其中「被测对象是后端二进制」的那几条逐条要求同 job 里有一条 `cargo build` 排在它前面。⚠ 它**不跑任何 e2e**，只读盘上三份文本 ⇒ 「前置齐了」不等于「那一套会绿」；⚠ 认「要不要二进制」靠一个字面量、认「有 build」靠 `cargo build` 四个字，两处的失效形状逐条写在判据本体的头注里' \
-         python3 evidence/K-R122-ruler.py
+         python3 tests/evidence/K-R122-ruler.py
 
 # ── `release-gate`：**发版那条流水线的两件事**（`K-R124` `KR124D1`/`KR124D2`，09-15，第 20 格）──
 #
@@ -838,20 +838,20 @@ run_gate ci-e2e-prereq '判过的 e2e 调用行数（`ci.yml` 的 `steps:` 里�
 # `K-R114`（09-14，`d1a0552`）在 `ci.yml` 里加了「`release.yml` 手工触发守卫」，判据本体
 # 整段写在 `run: |` 块里。而 **runner 会把 `run:` 里的 `${{ … }}` 先求值再交给 shell**
 # ⇒ 它要比的那个字面渲染后变成 `"false"`，与盘上那串模板**在三个触发器上都必不相等**。
-# 云端实打读数住 `evidence/K-R123-发版读数.md § 1.3`。
+# 云端实打读数住 `tests/evidence/K-R123-发版读数.md § 1.3`。
 #
 # 🔴 **为什么坏了一个月没人看见**（这一半才是本格存在的理由）：那段判据用 `yaml.safe_load`
 #   写，而沙箱镜像里 `python3 -c 'import yaml'` 是 `ModuleNotFoundError`
 #   ⇒ **它在本地一次都跑不起来**；而 `ci.yml` 里它前面那一步（shellcheck）先红，
 #   `-e` 带着它一起没执行 ⇒ 云端也**从来没露过面**。两头都看不见。
-# ⇒ 本格把它收进本地门禁：判据本体搬到 `evidence/K-R124-ruler.py`（不依赖 PyYAML，
+# ⇒ 本格把它收进本地门禁：判据本体搬到 `tests/evidence/K-R124-ruler.py`（不依赖 PyYAML，
 #   自带 YAML 子集切块器），**CI 那一步与本格跑的是同一份文件**，不是两份抄件。
 #
 # ⚠ 射程与买不到的东西逐条写在那份文件的头注里，这里不复述一份（复述就会漂 ——
 #   与上面 `ci-e2e-prereq` 那一格同一条取法）。放在那儿也是为了能对着变异过的副本跑死值验
 #   （`K_R124_ROOT=<副本>` / `RELEASE_WORKFLOW=<某份 release.yml>`），不必去动真工作树。
 run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：三条地板 ＋ ①触发得了 ②手工默认不发布 ③`env.PUBLISH` 字面 ④两处发布步骤的闸 ⑤CI 门的闸 ⑥两处发布步骤各自的正文来源 ⑦生成器排在发布步骤前面 ⑧生成器吐得出本版正文）。⚠ 它**不执行 GitHub 的表达式求值器**，也**不跑那条流水线** ⇒ 「盘上这份文本满足这几条」不等于「云端那一趟会绿」；⚠ 「往 Release 上写」只认两种形状（`softprops/action-gh-release` 的 `uses:` · `run:` 里的 `gh release`/`gh api …/releases`），换第三种路子上传它看不见；⚠ 正文**写得对不对**它一个字都不判' \
-         python3 evidence/K-R124-ruler.py
+         python3 tests/evidence/K-R124-ruler.py
 
 # ── `installface`：**安装面切件方案与量具的对账**（`K-R128`，09-15，第 21 格）──────
 #
@@ -875,12 +875,12 @@ run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PAS
 #   ⇒ 任何人往上加一份落点、或把表改馊，**当场红**；某一件真收干净了，
 #   **同一拍**把它那一行降下来 —— 降不动就是没做完。**不许改成 `<=`、不许把名单改大让今天好过。**
 #
-# ⚠ 射程与买不到的东西逐条写在 `evidence/K-R117-ruler.py` 的头注里（`B1`–`B8`），
+# ⚠ 射程与买不到的东西逐条写在 `tests/evidence/K-R117-ruler.py` 的头注里（`B1`–`B8`），
 #   这里不复述一份（复述就会漂 —— 与上面两格同一条取法）。其中要在这儿点一句的只有一条：
 #   **`src-tauri/src/parity_ledger.rs` 那一份 `§S5e` 判不了**（那 22 条命令名就是从它解析出来的
 #   ⇒ 空真），它的闸在 `§S5c` 的闭集判定 —— 别把这一格读成「三份共用文件都判了」。
 run_gate installface '判过的条数（`§S5c`/`§S5d`/`§S5e` 三节逐条印出来的 PASS：22 条命令各归一组 ＋ 闭集并集两向 ＋ 五组交集空 ＋ 5 组前端落点棘轮 ＋ 22 条包装层入口两侧 ＋ `claims()` 10 个装/卸符号各有着落）。⚠ `ruler.py` 原有的 `R1`–`R7` **不在这个数里**（它们只在红的时候出声，没有逐条的「过了」事件）⇒ 这个数**不是**「那把尺子判过的全部条数」。⚠ 落点只认**调用形状** `.<命令>(`，只在注释/散文里提到命令名的**不算落点**（否则这把尺子可以靠删一条注释变绿）；别的调用形状（`invoke("<名>")` 直呼）它看不见，那一档逐处印在 `§S5d` 第二档里只出读数。⚠ 度量的是「几**份**文件」不是「几处引用」⇒ 往一份已经在名单里的文件里再加一处引用**不红**。⚠ `parity_ledger.rs` 那一份 `§S5e` **判不了**（空真），闸在 `§S5c`' \
-         python3 evidence/K-R117-ruler.py
+         python3 tests/evidence/K-R117-ruler.py
 
 # ── 格式漂移 ────────────────────────────────────────────────────────────────
 #
@@ -941,7 +941,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 # `src-tauri/build.rs` · `src-tauri/src/lib.rs` · `src-tauri/src/main.rs` ·
 # `crates/{acct,branch,creds,gate,guard,shell-quote,usage}-core/src/lib.rs`，
 # 以及 🔴 **`src-tauri/vendor/code-picture-core/src/lib.rs`**。
-#（成因：那棵树的 path 依赖指进 `../src-tauri/`，`cargo fmt --all` 顺着它们走出去；
+#（成因：那棵树的 path 依赖指进 `../../src-tauri`，`cargo fmt --all` 顺着它们走出去；
 #  `cargo metadata --no-deps` 的 `workspace_members` 现打**只有 1 个**，两者不是一回事。）
 # ⇒ 加 `--all` 会把 vendor 那棵**我们无权修**的树拉进出货门禁 —— 与下面 `cargo` 那一格
 #   `--exclude code-picture-core` 要避开的是同一件事（`C7` 逐字「vendor `code-picture-core` **不动**」）：
@@ -1066,7 +1066,7 @@ fi
 # ★ 生成物漂移（K-A1 第四轮 `R1`）：**改了 Rust 不跑生成，这里红。**
 #
 # 形状照 `.github/workflows/ci.yml` 那条「生成物必须最新（C05）」来 —— 它逐字是
-# `git diff --exit-code -- ../src/generated/`（那一步在 `src-tauri` 目录下跑，所以带 `../`；
+# `git diff --exit-code -- ../../src/generated`（那一步在 `src-tauri` 目录下跑，所以带 `../`；
 # 本脚本开头已经 `cd` 到仓根，所以不带），失败时印一句 `::error::` 提示「请跑
 # npm run gen:types 并把 src/generated/ 一起提交」再 `git diff --stat`。
 # ⚠ 那条 CI 步骤的头注还写明了它**排除了什么**：它只买「已提交的生成物 == 从 Rust 源生成的」
@@ -1159,7 +1159,7 @@ run_gate daemon '单包 src/backend，只有一行 test result ⇒ 最大值 = �
 #
 # `tauri build` 的第一步是 `npm run build` ＝ `tsc && vite build`。09-14 `K-R114` 去**真编一次
 # 发版产物**，那一步在 `src/views/history.ts` 上红了 6 条 `TS2322` —— 而同一棵树的门禁
-# **15 格全绿**（现打，`evidence/K-R118-deathvalue.md#§A` 的 `M0`）。
+# **15 格全绿**（现打，`tests/evidence/K-R118-deathvalue.md#§A` 的 `M0`）。
 #
 # 🔴 **两条路同时断，这一格补的是第一条**：
 #   ① 门禁 `npm` 那一格跑的是 `npm test`（16 个 tsx 套件 + `vitest run`）—— **不含 `tsc`**。
@@ -1237,7 +1237,7 @@ run_gate npm '17 个套件（16 tsx + 1 vitest）里只有 2 个打得出数字�
 #     换镜像 `kg3-devbox-full:probe` 一趟 · 换网络 `--network host` 且带并发负载一趟）
 #     ⇒ **23/23 逐套 `(PASS, FAIL, rc)` 三元组全同值**，这 4 套在内。
 #     ⚠ 那是「4 趟里没抓到不稳」，**不是「恒稳」**；CI runner / Windows 上**未知，不是稳**。
-#     尺子留在 `evidence/K-G8-stability-diff.py`（可复算）。
+#     尺子留在 `tests/evidence/K-G8-stability-diff.py`（可复算）。
 #
 #   ⚠ **`exact` 是第三个参数、fail-closed**：拼错 ⇒ `exit 2`，**不回落 `at-least`**。
 #     回落等于把「拼错了」静默降级成旧行为 —— 那正是这道闸要治的那一族。
@@ -1338,9 +1338,9 @@ run_e2e ccm-rbind-title  8
 #   **这是本门第一次往下拧地板，所以理由要比往上棘时写得更细。**
 #
 # 用户 09-11 逐字：「那就把这个门禁删了，**bash 脚本直接删**」。PM 第一拍的对拍读数
-#（`evidence/K-R48-native-vs-bash-parity.py`，SAME=27 / DIFF=2）买到的结论是
+#（`tests/evidence/K-R48-native-vs-bash-parity.py`，SAME=27 / DIFF=2）买到的结论是
 #「那四套多半不必重写，只要把 `$CCM` 指向二进制」⇒ 本拍**没有删套件**，是
-#**逐条判了那 356 条断言**（`evidence/K-R48-356-verdicts.tsv`）再把没有指称对象的删掉。
+#**逐条判了那 356 条断言**（`tests/evidence/K-R48-356-verdicts.tsv`）再把没有指称对象的删掉。
 #
 # 四格实测（本拍现打，沙箱 `ccmon-devbox:latest`）：
 #   · `ccm-print-parity`   12 → **12**（0 删；断言一个字没改，只把 PATH 上那个 `ccm` 换成软链）
@@ -1441,7 +1441,7 @@ fi
 # ## 题面：那一行今天**不带射程**，而它不等于「CI 会绿」
 #
 # `K-R119`（09-14）：同一棵树上本门禁 **16 格全绿**，推 tag 那一趟云端 **8 个 job 里 5 个红**
-#（读数住 `evidence/K-R119-发版读数.md § 六`）。四条差异里三条落在门禁自己**逐格印出来**的
+#（读数住 `tests/evidence/K-R119-发版读数.md § 六`）。四条差异里三条落在门禁自己**逐格印出来**的
 # 射程之外 —— 读数在那儿，而**没有人把它读成「所以这三件事没人管」**；
 # 第四条更直接：`shellcheck` 当时 16 格里**一格都没有**。
 # ⇒ 本件甲那一半已经把其中两条收成了格（`shellcheck` · `winchk-daemon`）。
@@ -1450,7 +1450,7 @@ fi
 # ## 形状：`键|说明`，而**键是有牙的那一半**
 #
 # 说明是给人读的散文；**键**（`|` 左边那个小写标识）进机检：
-# `evidence/K-R80-gate-cell-coverage.py` 的 `C5c` 对拍三件事 ——
+# `tests/evidence/K-R80-gate-cell-coverage.py` 的 `C5c` 对拍三件事 ——
 #   ① 这张表非空、每一项形状对、键不重复；
 #   ② **键集合与现打的判定格名互不相交** —— 哪天有人把某一维收成了格而这里还自称「不看」，
 #      当场红（那正是「买到了却还在说不看」那一形，和 `C5b` 治的腐同源）；
@@ -1479,7 +1479,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   # 🔴 `K-R80`（09-12）：**这一行原来逐字是「三道门 + 生成物漂移 + pb check + 四套 ccm e2e」
   #   —— 那是 09-10 加 `fmt`/`winchk` 之前的点名，盘上现打 11 格时它只点得出 9 格。**
   #   本拍加了第 12 格（`fmt-daemon`），顺手把它订正到今天，并且**不让它再自己烂下去**：
-  #   下面这个 `12` 与「本文件里到底有几格判定」由 `evidence/K-R80-gate-cell-coverage.py`
+  #   下面这个 `12` 与「本文件里到底有几格判定」由 `tests/evidence/K-R80-gate-cell-coverage.py`
   #   三方对拍（本行的数 · 本文件真有的判定格 · 那份覆盖登记的条数），对不上就红。
   #   ⚠ 那把尺子**不在本脚本里跑** —— 它是登记的机检，不是出货闸的一格。
   # 🔴 `K-R82`（09-12）：**12 → 13**，加的是 `hooks` 那一格（上面 `gate_selftest` 之后那一段）。

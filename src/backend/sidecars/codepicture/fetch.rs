@@ -332,7 +332,7 @@ pub enum Transport {
 /// `K-R52` 那一拍在这里逐字登记过一笔债：「非 unix 平台上这一跳没有实现」当时并进了
 /// [`Landing::Io`]，而 [`Face::LandingIo`] 那一句用户文案说的是磁盘满 / 目录不存在 / 残骸，
 /// **一个字都没提这第四种** ⇒ 它自己把状态写成「**不撒谎，但说得不够准**」。
-/// 加成员要同拍改 `doc/IPC-PROTOCOL.md`（[`crate::sidecar_fetch_guard`] 双向对账钉着），
+/// 加成员要同拍改 `src/doc/IPC-PROTOCOL.md`（[`crate::sidecar_fetch_guard`] 双向对账钉着），
 /// 而那份文件不在 `K-R52` 的写区。
 ///
 /// ⇒ `K-R55` 把它开成独立成员，**不是把那一句文案改宽**：

@@ -424,15 +424,15 @@ jobs:
 
       # 🔴 KR124D2（`K-R124`，2026-09-15）：**正文来源**。本文件两处发布步骤**各跑一次这一步**
       #   —— 不是「Windows 生成、Linux 沿用」：两个 job 在不同 runner 上，沿用不了。
-      #   生成器只有一个住址（`scripts/release-notes.mjs`），正文取自 `CHANGELOG.md` 里本版那一段
-      #   （`doc/RELEASING.md § 5` 早就写着这条 SOP，只是一直是手工的一步、从 v3.6.0 起没人做）。
+      #   生成器只有一个住址（`tests/scripts/release-notes.mjs`），正文取自 `CHANGELOG.md` 里本版那一段
+      #   （`src/doc/RELEASING.md § 5` 早就写着这条 SOP，只是一直是手工的一步、从 v3.6.0 起没人做）。
       #   ⚠ 命令刻意写成**不带任何 shell 语法**的一行：本 job 的默认 shell 是 pwsh，
       #     `>` 重定向的编码在 pwsh 与 bash 上不同 ⇒ 让生成器自己写文件，两个 runner 上同一行。
       #   ⚠ 它**不回落**：这一版在 CHANGELOG 里没有段、或段太短 ⇒ 生成器退出码 1 ⇒ 本步骤红，
       #     Release 不会被建出来。**「静默用自动生成那份」正是本条要挡的东西。**
       - name: Render the Release body (CHANGELOG section for this version)
         if: env.PUBLISH == 'true'
-        run: node scripts/release-notes.mjs RELEASE_BODY.md
+        run: node tests/scripts/release-notes.mjs RELEASE_BODY.md
 
       # 🔴 KR114D1：**本文件两处「往 GitHub Release 写」之一**，闸读 `env.PUBLISH`（住址在文件头）。
       - name: Create / update GitHub Release
@@ -587,7 +587,7 @@ jobs:
       #     release 仍然由 `build-windows` 创建，本 job 仍然只追加（文件头 `:452` 那段头注的第 ①）。
       - name: Render the Release body (CHANGELOG section for this version)
         if: env.PUBLISH == 'true'
-        run: node scripts/release-notes.mjs RELEASE_BODY.md
+        run: node tests/scripts/release-notes.mjs RELEASE_BODY.md
 
       # 🔴 KR114D1：**本文件两处「往 GitHub Release 写」之二**，闸读 `env.PUBLISH`（住址在文件头）。
       - name: Append Linux artifacts to the release

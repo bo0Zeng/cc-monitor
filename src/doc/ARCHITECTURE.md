@@ -2,7 +2,7 @@
 
 新贡献者第一站。读完应该能回答：数据从哪儿来、经过谁、停在哪儿、为什么这么分。
 
-每个模块的"当下设计 + 为什么"详见各子目录 README — [`../src/README.md`](../src/README.md)、[`../src-tauri/README.md`](../src-tauri/README.md)、[`../scripts/README.md`](../scripts/README.md)。
+每个模块的"当下设计 + 为什么"详见各子目录 README — [`../README.md`](../README.md)、[`../../src-tauri/README.md`](../../src-tauri/README.md)、[`../../tests/scripts/README.md`](../../tests/scripts/README.md)。
 
 跨切面文档：
 - 全局不变量 → [INVARIANTS.md](INVARIANTS.md)

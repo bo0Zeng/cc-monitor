@@ -52,7 +52,7 @@ const CC_TEMPLATE: &str = include_str!("../scripts/cc.ps1.tpl");
 /// PowerShell profile 类型标签。v1.7.2 起 UI 只用作显示提示，实际安装传 path。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub enum ProfileKind {
     /// Windows PowerShell 5.1（Windows 自带）→ Microsoft.PowerShell_profile.ps1
     Ps51,
@@ -64,7 +64,7 @@ pub enum ProfileKind {
 
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated/"))]
+#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
 pub struct ProfileScan {
     pub kind: ProfileKind,
     pub path: String,
@@ -127,13 +127,13 @@ pub fn flavor_of(path: &Path) -> ProfileFlavor {
 /// 纯函数：**装**完之后这份文件该长什么样。落盘那一跳在 [`install_to_profile`]。
 ///
 /// 🔴 **`PosixRc` 那一臂是 `KR62D1` 的正题**：它一个字节的 snippet 都不生成、
-/// 也没有第二套 merge —— 内容是 `sftp::CCM_WRAPPER_SNIPPET`（= `shared/ccm-aliases.sh`
+/// 也没有第二套 merge —— 内容是 `sftp::CCM_WRAPPER_SNIPPET`（= `src/shared/ccm-aliases.sh`
 /// 本身），合块是 `sftp::merge_profile_block`，围栏是 `sftp::CCM_PROFILE_BEGIN/END`。
 /// ⇒ 本机与远端装进 rc 的**是同一份东西**（`K15` / `K36`），
 /// 而不是「同一件事的第四个形状」（`K-R62 §0c` 那三套）。
 ///
 /// `command_name` / `include_cc_function` **只对 PowerShell 那一臂有意义**：
-/// POSIX 那一块的名字（`cc` / `cct`）住在 `shared/ccm-aliases.sh` 里，
+/// POSIX 那一块的名字（`cc` / `cct`）住在 `src/shared/ccm-aliases.sh` 里，
 /// 那份文件自己用 `declare -f` 让着用户已有的同名函数 —— 由它说了算，不由这里的参数说了算。
 pub fn plan_install(
     flavor: ProfileFlavor,
@@ -257,7 +257,7 @@ fn fence_marker(line: &str) -> Option<bool> {
 /// # 它诚实的边界（写出来，别读大）
 ///
 /// - 它认的是「**提到 ccm**」，不是「**这一行是旧的**」。一个在自己函数里调 `ccm` 的用户
-///   （`shared/ccm-aliases.sh` 头注逐字鼓励这么做）也会被指名 —— 所以产物是
+///   （`src/shared/ccm-aliases.sh` 头注逐字鼓励这么做）也会被指名 —— 所以产物是
 ///   [`render_manual_cleanup_hint`] 那种「你自己定」的措辞，**不是** 「请删除」。
 /// - 形状按 `名字() {` 认函数（同 `sftp::builtin_alias_names` 那一形）。
 ///   `function cc { … }` 这一写法会落进 [`LegacyRcKind::Other`] —— **漏的是分类，不是那一行**，
@@ -308,7 +308,7 @@ fn function_name_of(l: &str) -> Option<String> {
 /// 措辞刻意不是「请删除」：见 [`scan_legacy_rc_lines`] 的诚实边界那一节。
 ///
 /// 「哪几行会把我们装的那块遮蔽掉」现算自 `sftp::builtin_alias_names()`
-/// （= `shared/ccm-aliases.sh` 本身），**这里不抄一份名字清单**。
+/// （= `src/shared/ccm-aliases.sh` 本身），**这里不抄一份名字清单**。
 pub fn render_manual_cleanup_hint(what: &str, hits: &[LegacyRcLine]) -> String {
     if hits.is_empty() {
         return String::new();
@@ -588,7 +588,7 @@ pub fn scan_profile(kind: ProfileKind, path: &PathBuf, command_name: &str) -> Pr
 // **`ccm` 照旧找不到**。回头查：`$ccmBinDir` 是空的，而 `$env:PATH` 前面多了一个 `;`
 // ⇒ 赋值那一行**根本没执行**，而 `if` 那一行执行了。
 //
-// 用 PowerShell 自己的 `Get-Content` 读回来（真机逐字，住 `evidence/K-R132-摸底.md`）：
+// 用 PowerShell 自己的 `Get-Content` 读回来（真机逐字，住 `tests/evidence/K-R132-摸底.md`）：
 //
 // ```text
 // line 88 : # cc-monitor锛氳 `ccm` 鍦ㄨ繖涓?PowerShell …銆擪-R132銆曘€?$ccmBinDir = Join-Path …
@@ -992,7 +992,7 @@ pub fn user_path_remove() -> Result<(), String> {
 /// 1. `K33` 逐字「**所有命令只许有一处**，其他都是根据传参来调用」＋ `K28`
 ///    「前端不许自己发明对外行为 —— 一切对外都经后端」⇒ 答案本来就没有悬念。
 /// 2. 翻正之前，同一个名字 `cc` 在 PowerShell 与 POSIX
-///    （`shared/ccm-aliases.sh` 的 `cc() { ccm "$@"; }`）上是**两个不同的东西**：
+///    （`src/shared/ccm-aliases.sh` 的 `cc() { ccm "$@"; }`）上是**两个不同的东西**：
 ///    账号 / 工作目录 / agent 选择这几维在 Windows 上整条够不着。
 /// 3. 它第一条暂缓理由是「`& ccm` 要 `ccm` 找得到，而那个前提刚修完没复验」——
 ///    本件把那个前提从「profile 里一段只管本进程的 PATH」换成**用户级 PATH**
@@ -1009,10 +1009,10 @@ pub fn user_path_remove() -> Result<(), String> {
 /// 那一句上 —— 本轮现打，那个随动的前提是假的**：那一句只在 **POSIX rc** 那一臂印
 /// （它的下拉只遍历 `AccountAliasReport::rc_candidates`，而那张表现算自
 /// `account_aliases::RC_CANDIDATES`，**一份 PowerShell profile 都没有**），
-/// 而那一臂的 `cct` 是**真有**的（`shared/ccm-aliases.sh` 里就定义着）。
+/// 而那一臂的 `cct` 是**真有**的（`src/shared/ccm-aliases.sh` 里就定义着）。
 /// PowerShell 那一臂是另一份文件（`src/settings/cc_integration.ts` 的 `renderScanResult`），
 /// 现打 `cct` **零命中**。⇒ **Windows 文案里今天一个 `cct` 都没有，没有东西要摘。**
-/// 读数 · 量法 · 分母住 `evidence/K-R135-摸底.md`。
+/// 读数 · 量法 · 分母住 `tests/evidence/K-R135-摸底.md`。
 pub fn render_cc_code(command_name: &str, include_cc_function: bool) -> String {
     let safe_name = sanitize_command_name(command_name);
     let cc_block = if include_cc_function {
@@ -2172,7 +2172,7 @@ gs() { git status; }
         //   `cross_half_edge_registry` 会把本处当成一处「解析不出路径的 include」而红
         //   （它按「宏名 + `(`」数调用，路径解析不出来就逼人登记）。
         //   判据自己不许在别人的人群里留一个假身影。
-        let needle = format!("{}!(\"../../shared/ccm-aliases.sh\")", "include_str");
+        let needle = format!("{}!(\"../../src/shared/ccm-aliases.sh\")", "include_str");
         let mut homes: Vec<String> = Vec::new();
         for (path, src) in &files {
             if guard_core::production_code(src).contains(&needle) {
@@ -2182,7 +2182,7 @@ gs() { git status; }
         assert_eq!(
             homes,
             vec!["sftp.rs".to_string()],
-            "`shared/ccm-aliases.sh` 在 Rust 侧的住址应当**恰好一处**（`sftp.rs` 的 \
+            "`src/shared/ccm-aliases.sh` 在 Rust 侧的住址应当**恰好一处**（`sftp.rs` 的 \
              `CCM_WRAPPER_SNIPPET`），实得 {homes:?}。多一处就是第二份 snippet —— \
              它们会各自漂，而漂了之后本机与远端装进去的东西就不是同一个了。"
         );
@@ -2404,7 +2404,7 @@ gs() { git status; }
                 "提示里那一行的原文被改写了 —— 用户要照着它去自己文件里认行"
             );
         }
-        // 「会赢过我们那一块」这一格现算自 `shared/ccm-aliases.sh`，不是抄的名单。
+        // 「会赢过我们那一块」这一格现算自 `src/shared/ccm-aliases.sh`，不是抄的名单。
         let builtin = crate::sftp::builtin_alias_names();
         assert!(
             !builtin.is_empty(),
@@ -2465,13 +2465,13 @@ gs() { git status; }
     // `K-R129` 那一形（**真装完、真开一个终端、真敲一次**）**这四条一条都盘不住**，
     // 而且不是「今天还没写」，是**在构造上盘不住**：它要一台 Windows、要真跑一遍
     // NSIS `/S` / MSI `/qn`、要开一个新会话。本门禁的 npm / tsc / e2e / cargo
-    // 全跑在 Linux 沙箱里 —— `scripts/gate.sh` 的 `GATE_BLIND` 里
+    // 全跑在 Linux 沙箱里 —— `tests/scripts/gate.sh` 的 `GATE_BLIND` 里
     // `windows-runner` 那一条早就逐字写着这件事。
     //
     // ⇒ **这四条盘的是「片段生成」那一半**：我们**要写进用户 profile 的那几行**
     // 长不长得对、指不指得到真落点、有没有踩 Windows 改 PATH 的那两个经典地雷。
     // **「写进去之后终端里敲得到吗」仍然只有真机答得了**，本件的真机读数住
-    // `evidence/K-R132-摸底.md`。
+    // `tests/evidence/K-R132-摸底.md`。
     //
     // ⚠ 别把这段话读成「所以这几条没用」：`K-R129` 那条缺陷的**直接死因**就是
     // 「这几行里根本没有 PATH 这回事」，而那一半恰好是这里盘得住的。
@@ -2872,7 +2872,7 @@ gs() { git status; }
     ///
     /// # 病是什么（`R80 §二` 的 `R2`，现打出来的，不是推理）
     ///
-    /// `shared/ccm-aliases.sh` 是**一份文件、两个消费者**：本机走
+    /// `src/shared/ccm-aliases.sh` 是**一份文件、两个消费者**：本机走
     /// [`plan_install`] 的 POSIX 方言合进用户选的那份 rc，远端走
     /// `sftp::install_remote_ccm_helper` 合进远端 rc —— **合进去的是逐字同一份文本**。
     /// 而两边的 `ccm` 落点**不是同一个目录**（`tool_registry::TOOLS` 现算：
@@ -3072,7 +3072,7 @@ gs() { git status; }
     ///
     /// # 这不是风格，是真机上一条「静默吞掉一行代码」的路
     ///
-    /// win11 真机现打（读数住 `evidence/K-R132-摸底.md`）：
+    /// win11 真机现打（读数住 `tests/evidence/K-R132-摸底.md`）：
     /// 本块写成不带 BOM 的 UTF-8 之后，Windows PowerShell 5.1 按系统 ANSI 代码页
     /// （那台机器是 GBK）解它，一行 CJK 注释**把它下面那一行吃掉** ——
     /// `$ccmBinDir = …` 落进了注释里，于是 `$env:PATH` 被赋成 `";" + 原值`，
@@ -3143,7 +3143,7 @@ gs() { git status; }
     }
 }
 
-/// U6a：把 **PS↔monitor 握手**的顺序与数字钉在 `doc/IPC-PROTOCOL.md` 上。
+/// U6a：把 **PS↔monitor 握手**的顺序与数字钉在 `src/doc/IPC-PROTOCOL.md` 上。
 ///
 /// # 为什么需要这个
 ///
@@ -3158,9 +3158,9 @@ gs() { git status; }
 /// 只有合起来看才错。
 #[cfg(test)]
 mod handshake_doc_guard {
-    const IPC_DOC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
+    const IPC_DOC: &str = include_str!("../../src/doc/IPC-PROTOCOL.md");
     const BIND_RS_RAW: &str = include_str!("bind.rs");
-    const ARCH_DOC: &str = include_str!("../../doc/ARCHITECTURE.md");
+    const ARCH_DOC: &str = include_str!("../../src/doc/ARCHITECTURE.md");
 
     /// ★ **判据一律看剥掉注释之后的代码**。
     ///
@@ -3206,7 +3206,7 @@ mod handshake_doc_guard {
         assert!(
             title < write,
             "cc.ps1.tpl 把顺序换回了「先写文件、后设标题」—— 那正是 v2.21 \
-             『每个新 shell 首次 cc 固定烧满超时』的成因（doc/IPC-PROTOCOL.md \
+             『每个新 shell 首次 cc 固定烧满超时』的成因（src/doc/IPC-PROTOCOL.md \
              § 跨进程握手时序图 有整段说明）。设标题@{title} 写文件@{write}"
         );
     }
@@ -3221,12 +3221,12 @@ mod handshake_doc_guard {
         // 这两个数曾双双漂移：文档停在 800ms，实现早已 3000ms。
         assert!(
             IPC_DOC.contains(&format!("{deadline}ms")),
-            "PS 握手 deadline 是 {deadline}ms，但 doc/IPC-PROTOCOL.md 里没有 `{deadline}ms` \
+            "PS 握手 deadline 是 {deadline}ms，但 src/doc/IPC-PROTOCOL.md 里没有 `{deadline}ms` \
              —— 文档还停在旧数字上（上一次是 800ms）"
         );
         assert!(
             IPC_DOC.contains(&format!("{poll}ms")),
-            "PS 轮询步长是 {poll}ms，但 doc/IPC-PROTOCOL.md 里没有 `{poll}ms`"
+            "PS 轮询步长是 {poll}ms，但 src/doc/IPC-PROTOCOL.md 里没有 `{poll}ms`"
         );
     }
 
@@ -3237,7 +3237,7 @@ mod handshake_doc_guard {
     /// ★ **每一份描述这个握手的文档**都必须写当前顺序，不只 IPC-PROTOCOL.md。
     ///
     /// U6a 实测：同一个顺序被写在**五处** —— `cc.ps1.tpl`（真相）· `bind.rs` 模块头 ·
-    /// `doc/IPC-PROTOCOL.md` 时序图 · `doc/ARCHITECTURE.md` · `cc_integration.ts` 的 UI 文案。
+    /// `src/doc/IPC-PROTOCOL.md` 时序图 · `src/doc/ARCHITECTURE.md` · `cc_integration.ts` 的 UI 文案。
     /// v2 反转顺序时**只改了真相那一处**，另外四处全停在旧顺序上。
     /// 只钉一份文档，剩下几份照样把人教回旧写法。
     #[test]
@@ -3247,8 +3247,8 @@ mod handshake_doc_guard {
         // 必须从**描述握手那一节**起算，不能拿全文首次出现比 —— IPC-PROTOCOL.md 有一整节
         // 就叫 `ps-await/<PID>.json`，排在时序图**之前**，全文首现比法会恒红（实测踩到）。
         for (name, doc, anchor) in [
-            ("doc/IPC-PROTOCOL.md", IPC_DOC, "## 跨进程握手时序图"),
-            ("doc/ARCHITECTURE.md", ARCH_DOC, "### marker 握手"),
+            ("src/doc/IPC-PROTOCOL.md", IPC_DOC, "## 跨进程握手时序图"),
+            ("src/doc/ARCHITECTURE.md", ARCH_DOC, "### marker 握手"),
         ] {
             let at = doc
                 .find(anchor)
@@ -3272,7 +3272,7 @@ mod handshake_doc_guard {
     /// # 为什么「数字出现在文档里」不够
     ///
     /// D 审计实测：把 deadline 从 3000 退回 **800**，上面那条护栏**不红** ——
-    /// 因为 `doc/IPC-PROTOCOL.md` 自己的沿革括号里就写着「v2 之前 deadline 是 800ms」。
+    /// 因为 `src/doc/IPC-PROTOCOL.md` 自己的沿革括号里就写着「v2 之前 deadline 是 800ms」。
     /// **文档的 changelog 把旧值供着，判据就被它喂饱了。**
     ///
     /// 那条护栏的立项理由是「文档停在 800、实现早已 3000」—— 它管的是**文档滞后**。
@@ -3281,7 +3281,7 @@ mod handshake_doc_guard {
     /// # 改这些数怎么办
     ///
     /// 它们是**协议的一部分**（PS 与 monitor 两侧必须对齐，且旧模板用户靠重试兜底）。
-    /// 要改就三处一起改：实现 · 本 pin · `doc/IPC-PROTOCOL.md` 的时序图。
+    /// 要改就三处一起改：实现 · 本 pin · `src/doc/IPC-PROTOCOL.md` 的时序图。
     /// 本 pin 红了不是"更新一下数字"，是提醒你**这是一次协议变更**。
     #[test]
     fn handshake_timings_match_their_pinned_values() {
@@ -3331,7 +3331,7 @@ mod handshake_doc_guard {
             between(&bind, "new_debouncer(Duration::from_millis(", ")").expect("找不到 debouncer");
         assert!(
             IPC_DOC.contains(&format!("{debounce}ms")),
-            "notify debouncer 是 {debounce}ms，doc/IPC-PROTOCOL.md 里没有 —— \
+            "notify debouncer 是 {debounce}ms，src/doc/IPC-PROTOCOL.md 里没有 —— \
              图上曾长期写着 100ms"
         );
 
@@ -3352,7 +3352,7 @@ mod handshake_doc_guard {
         assert!(
             IPC_DOC.contains(&format!("{total}ms")) && IPC_DOC.contains(&format!("{n} × {step}")),
             "monitor 找不到窗口时重试 {n} × {step}ms = {total}ms，\
-             doc/IPC-PROTOCOL.md 必须同时写出总时长 `{total}ms` 和拆分 `{n} × {step}`（当前缺其一）"
+             src/doc/IPC-PROTOCOL.md 必须同时写出总时长 `{total}ms` 和拆分 `{n} × {step}`（当前缺其一）"
         );
     }
 

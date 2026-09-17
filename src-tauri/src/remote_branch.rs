@@ -47,7 +47,7 @@ fn looks_like_old_daemon(stdout: &str) -> bool {
 }
 
 const OLD_DAEMON_MSG: &str =
-    "远端 daemon 版本过旧（不支持远端分叉）——请重新部署 daemon 后再试（doc/REMOTE-PHASE0-DEPLOY.md）";
+    "远端 daemon 版本过旧（不支持远端分叉）——请重新部署 daemon 后再试（src/doc/REMOTE-PHASE0-DEPLOY.md）";
 
 /// daemon 失败时 stderr 上的信封。字段少写/多写都容忍不了 —— 认不出就退回展示原文，
 /// **绝不**把「认不出的错误」静默成成功。

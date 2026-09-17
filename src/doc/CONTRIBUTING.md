@@ -86,7 +86,7 @@ powershell -NoProfile -File scripts\run.ps1 dev
       > 三条都以「`src-tauri/embedded-daemons/` 里真有二进制」为前提；该目录不存在（干净 clone / CI 常态）
       > 时是优雅降级，那一档由 `ssh_source.rs::embedded_build_id_single_source_wired` 兜。
       > 详见 [REMOTE-PHASE0-DEPLOY.md § 发版构建](REMOTE-PHASE0-DEPLOY.md#发版构建交叉编译--内嵌-daemon-二进制f08b)。
-- [ ] [CHANGELOG.md](../CHANGELOG.md) 加新版本段（写法见 [RELEASING.md](RELEASING.md)）
+- [ ] [CHANGELOG.md](../../CHANGELOG.md) 加新版本段（写法见 [RELEASING.md](RELEASING.md)）
 - [ ] `cargo fmt --all --check + cargo check + cargo test --workspace --exclude code-picture-core + npm run build` 全绿
       （`.github/workflows/ci.yml` 第一步就是 `cargo fmt --check` 严格 verify；
       本地写完代码先 `cargo fmt` 一次再发版，避免 tag 推完才发现 CI 红需要补

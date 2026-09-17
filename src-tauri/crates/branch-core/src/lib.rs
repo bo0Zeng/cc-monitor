@@ -141,7 +141,7 @@ pub const SESSION_LOOKUP_DEPTH: usize = 2;
 ///
 /// 它挡掉 `..`、`/`、`\` 与任何能拼出别处路径的字符。理由不是「防手滑」：
 /// 后端是被远程调起来的，**少一个可被构造的路径入参就少一条路径穿越面**
-/// （`doc/INVARIANTS.md` §41.6 三条收窄里的第 3 条）。
+/// （`src/doc/INVARIANTS.md` §41.6 三条收窄里的第 3 条）。
 pub fn is_plain_sid(s: &str) -> bool {
     !s.is_empty() && s.len() <= 64 && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '-')
 }

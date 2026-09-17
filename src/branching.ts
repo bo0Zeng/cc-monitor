@@ -13,7 +13,7 @@
  * user root（/compact 的 system root、完整对话历史都保留）。
  *
  * **幂等**（issue #25）：`computeMainBranch` 入口按 uuid 去重（保首见）——行投递是
- * at-least-once（doc/INVARIANTS.md § 25），重复输入不得毒化 Kahn 拓扑。caller 可以
+ * at-least-once（src/doc/INVARIANTS.md § 25），重复输入不得毒化 Kahn 拓扑。caller 可以
  * 依赖这层兜底。
  *
  * **不在这里处理**：
@@ -73,7 +73,7 @@ export function computeMainBranch(rawRecords: ReadonlyArray<BranchRecord>): Set<
   if (rawRecords.length === 0) return new Set();
 
   // issue #25：入口按 uuid 去重（保首见）——算法对重复输入必须幂等。
-  // 投递层是 at-least-once（违反此约束见 doc/INVARIANTS.md § 25）：watcher 截断
+  // 投递层是 at-least-once（违反此约束见 src/doc/INVARIANTS.md § 25）：watcher 截断
   // 重读（watcher.rs::process_file）会把整个文件换新 seq 重投，tab.seenSeqs（#17）
   // 只防同 seq。重复记录一旦进入下面的 childrenOf，同一 child 被计两次 → Kahn 的
   // remaining 永远扣不到 0 → 重复点的全部祖先落 leftover fallback（latestDescTs=

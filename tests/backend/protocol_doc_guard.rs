@@ -1,4 +1,4 @@
-//! U6a（2026-08-02）：**`doc/IPC-PROTOCOL.md` 与真实协议面的对拍。**
+//! U6a（2026-08-02）：**`src/doc/IPC-PROTOCOL.md` 与真实协议面的对拍。**
 //!
 //! # 为什么需要它
 //!
@@ -112,11 +112,11 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
 ///
 /// `dispatch_registry_is_complete` 的判法是「生产段里出现 `"--` 字面量的文件集
 /// == [`DISPATCH_FILES`]」，而 [`DISPATCH_FILES`] 里的每个 token 都得落进
-/// `doc/IPC-PROTOCOL.md` §10 的代码跨度。那份文档是 **monitor↔daemon 的冻结线上契约**，
+/// `src/doc/IPC-PROTOCOL.md` §10 的代码跨度。那份文档是 **monitor↔daemon 的冻结线上契约**，
 /// 读者在仓外（aterm），改一个字就是改协议。
 ///
 /// `ccm` 那套旗标（`--tmux` / `--account` / `--cwd` …）**不属于那份契约**：
-/// 它们是**用户在终端里敲的东西**，消费者是人与 `shared/ccm-aliases.sh` 里那三个别名，
+/// 它们是**用户在终端里敲的东西**，消费者是人与 `src/shared/ccm-aliases.sh` 里那三个别名，
 /// 兼容性义务完全不同。把它们塞进 §10 会让那份文档开始描述一件它不负责的事。
 ///
 /// # ⚠ 它**不是**豁免，是换了一格判据
@@ -170,7 +170,7 @@ pub(crate) fn dispatched_subcommands() -> Vec<String> {
 mod tests {
     use super::{dispatched_subcommands, DISPATCH_FILES, TERMINAL_SURFACE_FILES};
 
-    const DOC: &str = include_str!("../../doc/IPC-PROTOCOL.md");
+    const DOC: &str = include_str!("../../src/doc/IPC-PROTOCOL.md");
 
     /// ★★ `P7c-2`〔用@08-13 的解耦约束〕：**全景协议只许暴露查询语义。**
     ///
@@ -1066,7 +1066,7 @@ mod tests {
     ///
     /// # 而它的**定义与值对不上**
     ///
-    /// `doc/IPC-PROTOCOL.md` 原本把它定义成「本 daemon **会发射的帧 kind 集**」，
+    /// `src/doc/IPC-PROTOCOL.md` 原本把它定义成「本 daemon **会发射的帧 kind 集**」，
     /// 而 `EMITS` 8 项**不含** `hello`/`reply`/`cancelled` —— 这三个 daemon **确实会发**。
     /// ⇒ 按字面读，它是错的；按意图读，它是「**门控用**帧集」（握手与应答不需要门控：
     /// `hello` 是首帧、客户端必然收；`reply`/`cancelled` 是**应答**，只在你发过命令之后才来）。
@@ -1233,7 +1233,7 @@ mod tests {
         let missing: Vec<&String> = fields.iter().filter(|f| !documented.contains(*f)).collect();
         assert!(
             missing.is_empty(),
-            "这些 wire 字段不在 `doc/IPC-PROTOCOL.md` **§10 wire 协议节**里：{missing:?}\n\
+            "这些 wire 字段不在 `src/doc/IPC-PROTOCOL.md` **§10 wire 协议节**里：{missing:?}\n\
              那份文档是 daemon↔monitor↔aterm 的权威契约。字段加进代码却没进文档，\n\
              下游只能靠读源码或抓包才知道它存在。"
         );
@@ -1290,7 +1290,7 @@ mod tests {
         let missing: Vec<&&str> = cmds.iter().filter(|c| !documented.contains(**c)).collect();
         assert!(
             missing.is_empty(),
-            "这些入方向命令不在 `doc/IPC-PROTOCOL.md` §10 里：{missing:?}\n\
+            "这些入方向命令不在 `src/doc/IPC-PROTOCOL.md` §10 里：{missing:?}\n\
              客户端是照文档发命令的 —— 文档说一个名字、daemon 只认另一个，\n\
              表现是 `unknown_command`，而两边各自看都「对」。"
         );
@@ -1330,7 +1330,7 @@ mod tests {
             .collect();
         assert!(
             missing.is_empty(),
-            "这些子命令没有落进 `doc/IPC-PROTOCOL.md` §10 的代码跨度里：{missing:?}\n\
+            "这些子命令没有落进 `src/doc/IPC-PROTOCOL.md` §10 的代码跨度里：{missing:?}\n\
              （在散文里提一句不算 —— §10 是给仓外读的冻结契约，命令要出现在表里。）"
         );
     }

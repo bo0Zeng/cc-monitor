@@ -9,13 +9,13 @@
 //!
 //! 删掉的 22 条判据与三张表（`REQUIRED_NEEDLES` / `LEDGER` / `BACKEND_BACKED_PATHS`、
 //! `measure` / `scan_t_targets` / `pin_t_def` 〔散文墓碑〕 / `BASELINE`）逐条判词住
-//! `evidence/K-R48-356-verdicts.tsv` 的同族条目；它们守的**性质**去了哪里，逐条写在
+//! `tests/evidence/K-R48-356-verdicts.tsv` 的同族条目；它们守的**性质**去了哪里，逐条写在
 //! 件文件 `features/K-R48-…md` 的 `§8c`。
 //!
 //! # 留下来的这 7 条为什么留
 //!
-//! 它们**一条都不读那份脚本** —— 读的是 `shared/cc-bus/scripts/cc-spawn` 与
-//! `shared/cc-bus/SKILL.md`。钉的是「**别人怎么找到并使唤 `ccm`**」这条边：
+//! 它们**一条都不读那份脚本** —— 读的是 `src/shared/cc-bus/scripts/cc-spawn` 与
+//! `src/shared/cc-bus/SKILL.md`。钉的是「**别人怎么找到并使唤 `ccm`**」这条边：
 //! 解析错了、名字自己拍了、撞名乱重试了，后面整条 CLI 契约都无从谈起。
 //! 那条边今天仍然存在，只是另一头从「一个 bash 脚本」换成了「后端本体」。
 //!
@@ -26,7 +26,7 @@
 //!
 //! 实测：`~/.local/bin/cc-*` 全是指向 `~/.claude/skills/cc-bus/scripts/` 的 symlink，
 //! 而那份是 07-18 的；仓内这份是另一份。`tool_registry.rs` 声明了
-//! `shared/cc-bus` → `.claude/skills/cc-bus` 的部署映射，但那是**纯声明表**，
+//! `src/shared/cc-bus` → `.claude/skills/cc-bus` 的部署映射，但那是**纯声明表**，
 //! **没有任何东西真的按它部署**。
 //! ⇒ 本文件里所有判据**证明的是仓内那份的性质，不是本机行为**。别读成「机器上就是这样」。
 //! 〔`K-R48` 第一拍 PM 审计逐字复核过这一格：「**工具是，文件不是**」。〕
@@ -53,7 +53,7 @@ mod tests {
         std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("src-tauri 的上级")
-            .join("shared/cc-bus/scripts/cc-spawn")
+            .join("src/shared/cc-bus/scripts/cc-spawn")
     }
 
     /// ★ P4b-Y1/Y2（`C14`〔用 08-12〕「spawn 就是起, 就是 creat」）。
@@ -120,7 +120,7 @@ mod tests {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("src-tauri 的上级")
-            .join("shared/cc-bus/SKILL.md");
+            .join("src/shared/cc-bus/SKILL.md");
         let src = std::fs::read_to_string(&path).expect("读 cc-bus SKILL.md");
         assert!(
             src.lines().count() >= 20,

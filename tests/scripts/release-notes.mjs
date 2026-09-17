@@ -5,11 +5,11 @@
 //
 // `release.yml` 两处「往 Release 上写」此前一处写着 `generate_release_notes: true`、
 // 另一处连 `body` 都没有 ⇒ **真发出去的正文是 GitHub 自动生成的那份提交列表**，
-// 不是我们写的任何一个字。读数住 `evidence/K-R123-发版读数.md § 4.5`。
+// 不是我们写的任何一个字。读数住 `tests/evidence/K-R123-发版读数.md § 4.5`。
 //
 // # 正文取自哪儿 —— `CHANGELOG.md` 里本版那一段，不另立第二份
 //
-// `doc/RELEASING.md § 5「Release Notes」`**早就写着**这条 SOP，逐字：
+// `src/doc/RELEASING.md § 5「Release Notes」`**早就写着**这条 SOP，逐字：
 // 「GitHub Releases 描述用 CHANGELOG.md 对应版本段的复制 + 加：…」。
 // 它一直是**手工**的一步，而手工的那一步从 v3.6.0 起一次都没人做 ⇒ 本文件把它自动化。
 // ⇒ **不新开一份发版说明文件**：正文与 `CHANGELOG.md` 同源，两份必漂
@@ -18,7 +18,7 @@
 // # ⚠ 它刻意不做的事
 //
 // · **不抄那张下载清单**。资产名今天已经有两个住址（`release.yml` 两处 `files:` ＝ 权威，
-//   `doc/RELEASING.md § 2.2` ＝ 它的快照，那份文件自己逐字警告过「改一处要两处一起改」）。
+//   `src/doc/RELEASING.md § 2.2` ＝ 它的快照，那份文件自己逐字警告过「改一处要两处一起改」）。
 //   再抄第三份就是再立一处会漂的副本 —— 而 Release 页本来就会把资产逐个列出来。
 // · **不判正文写得对不对**。它只保证「这一版在 CHANGELOG 里有一段、那段非空」。
 //

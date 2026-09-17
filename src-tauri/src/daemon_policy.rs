@@ -196,7 +196,7 @@ pub enum Outcome {
 ///
 /// ⚠ 这一维是 2026-07-09 那次事故的**判别式**：未知 flag ⇒ daemon `exit 2`、
 /// **一个字节都不输出、没有 hello** ⇒ monitor 看到的和「daemon 崩了」无法区分
-/// ⇒ 重连 ⇒ 发同一个 flag ⇒ **死循环**（`doc/IPC-PROTOCOL.md` 与
+/// ⇒ 重连 ⇒ 发同一个 flag ⇒ **死循环**（`src/doc/IPC-PROTOCOL.md` 与
 /// `src/backend/main.rs` 两处逐字）。
 /// **分开这两件事的就是它。**
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

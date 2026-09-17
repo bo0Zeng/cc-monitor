@@ -632,23 +632,23 @@ mod tests {
     /// 🔴 **这张表一律用「内容锚点」指路，不写行号**〔`K-R5` 09-02 订正，全表 8 处〕。
     /// **行号是快照** —— `brief` 12 逐字：「带具体读数的与描述盘上现状的话都是那一刻的快照，
     /// 引用前重打，别当常量」；`K-R9` `§3` 记的是同一个病：「**谁再在上方加注释就会把它推馊**」。
-    /// **它真的馊过一次**：`K-G3` 09-01 往 `scripts/gate.sh` 加了门六、往
+    /// **它真的馊过一次**：`K-G3` 09-01 往 `tests/scripts/gate.sh` 加了门六、往
     /// `tests/e2e/local-backend-supervise.sh` 加了头注，行号整体往下推
     /// ⇒ 本表与下面 `§12.2` 那几处引它们的行号**当天全部指到注释行**。
     /// **09-02 现打的读数**（分母 = 本文件当时全部 23 条 `文件:行号` 引用）：**8 条馊了**，
-    /// 分处 5 个地方 —— 引 `scripts/gate.sh` 的 6 条（本表 2 条、下面 `§12.2` 4 条：那条 cargo 命令 ·
+    /// 分处 5 个地方 —— 引 `tests/scripts/gate.sh` 的 6 条（本表 2 条、下面 `§12.2` 4 条：那条 cargo 命令 ·
     /// `run_gate_sum()` 的行段 · `set -uo pipefail` 两处）与引 `tests/e2e/local-backend-supervise.sh`
     /// 的 2 条。**它们今天全部指到注释行**（其中一条指到一个光秃秃的 `#`）。
     /// 🔴 **本轮一处都不再写行号** —— 连「今天它搬到第几行」都不写：那个数下一次加注释又会假。
-    /// ⚠ **量具**（可重跑）：`evidence/K-R5-C-line-refs.py` —— 把本文件里每一条 `文件:行号`
+    /// ⚠ **量具**（可重跑）：`tests/evidence/K-R5-C-line-refs.py` —— 把本文件里每一条 `文件:行号`
     /// 引用拿到盘上现打一次，印出那一行今天长什么样。它**判不了「引用的意图对不对」**，只印原文；
     /// 它也**不是判据**（没有机器口径的对错），是一把尺子。跑一次就知道这一栏有没有回潮。
     ///
     /// | 发起面 | 谁从这里发起 cargo（认**这条命令**，不认行号） |
     /// |---|---|
-    /// | 仓根 `.` | `ci.yml` 的 `e2e-tmux-rust` job（**没有** `working-directory` ⇒ cwd = 仓根；那一条是 `cargo build --manifest-path src/backend/Cargo.toml`）· `scripts/run.ps1` 的 `"check"` 分支（`cargo check --manifest-path src-tauri\Cargo.toml`）。它同时是下面两个的**祖先** —— 往上找一定路过 |
-    /// | `src-tauri/` | `scripts/gate.sh` 的 `run_gate_sum cargo 8 …`（`cd src-tauri && cargo test --workspace --exclude code-picture-core --lib`）· `package.json` 的 `gen:types` · `ci.yml` 里**两处** `working-directory: src-tauri`（`rust` job 与 `linux-app-build` job）· `tests/e2e/` 三个脚本共 **4 处**（`usage-probe-acceptance.sh` 的 `emit_usage_probe_frames_for_e2e` · `local-backend-supervise.sh` 的 `local_backend` 与 `local_daemon` 两条 `cargo test --lib -- --ignored` · `p3t-local-tmux.sh` 的 `P3T_E2E_SID=…` 那一条）。⚠ **这个数只降不升过两次，两次都是随被测面退役**：`K-R72` 09-12 前是**四个脚本 6 处**（`tmux-guarded-acceptance.sh` 那一处随它的输入源 —— `tmux.rs` 两条桌面侧 SSH 回落的 builder —— 一起删了）；`K-R104` 09-13 从 5 降到 4（`usage-probe-acceptance.sh` 整条重写成帧面验收，输入源从「那条 shell 串」换成「那几行帧」，而它原先另有一处本机执行面的 `--ignored` 调用，那个执行面随编排搬上后端而不存在了）|
-    /// | `src/backend/` | `scripts/gate.sh` 的 `run_gate daemon …`（`cd src/backend && cargo test`）· `ci.yml` 的 `daemon` job（`working-directory: src/backend`）· `release.yml` 里**三处** `working-directory: src/backend`（`build-daemons` · `build-windows` · `build-linux` 三个 job）· `tests/e2e/daemon-fork-session.sh` 的 `cd "$ROOT/src/backend" && cargo build` |
+    /// | 仓根 `.` | `ci.yml` 的 `e2e-tmux-rust` job（**没有** `working-directory` ⇒ cwd = 仓根；那一条是 `cargo build --manifest-path src/backend/Cargo.toml`）· `tests/scripts/run.ps1` 的 `"check"` 分支（`cargo check --manifest-path src-tauri\Cargo.toml`）。它同时是下面两个的**祖先** —— 往上找一定路过 |
+    /// | `src-tauri/` | `tests/scripts/gate.sh` 的 `run_gate_sum cargo 8 …`（`cd src-tauri && cargo test --workspace --exclude code-picture-core --lib`）· `package.json` 的 `gen:types` · `ci.yml` 里**两处** `working-directory: src-tauri`（`rust` job 与 `linux-app-build` job）· `tests/e2e/` 三个脚本共 **4 处**（`usage-probe-acceptance.sh` 的 `emit_usage_probe_frames_for_e2e` · `local-backend-supervise.sh` 的 `local_backend` 与 `local_daemon` 两条 `cargo test --lib -- --ignored` · `p3t-local-tmux.sh` 的 `P3T_E2E_SID=…` 那一条）。⚠ **这个数只降不升过两次，两次都是随被测面退役**：`K-R72` 09-12 前是**四个脚本 6 处**（`tmux-guarded-acceptance.sh` 那一处随它的输入源 —— `tmux.rs` 两条桌面侧 SSH 回落的 builder —— 一起删了）；`K-R104` 09-13 从 5 降到 4（`usage-probe-acceptance.sh` 整条重写成帧面验收，输入源从「那条 shell 串」换成「那几行帧」，而它原先另有一处本机执行面的 `--ignored` 调用，那个执行面随编排搬上后端而不存在了）|
+    /// | `src/backend/` | `tests/scripts/gate.sh` 的 `run_gate daemon …`（`cd src/backend && cargo test`）· `ci.yml` 的 `daemon` job（`working-directory: src/backend`）· `release.yml` 里**三处** `working-directory: src/backend`（`build-daemons` · `build-windows` · `build-linux` 三个 job）· `tests/e2e/daemon-fork-session.sh` 的 `cd "$ROOT/src/backend" && cargo build` |
     ///
     /// ⚠ **为什么这里只能用锚点、不能用「函数名 + 行号」两样都给**〔`K-R5` `§4` 那一问的答〕：
     /// `ci.yml` / `release.yml` 那几处逐字都是同一句 `working-directory: <目录>`，**行号是它们
@@ -659,7 +659,7 @@ mod tests {
     /// ⚠ **尺子没覆盖到的**（写下来免得把它读成穷举）：① `cargo tauri build` 那种**由工具
     /// 再去起 cargo** 的，cwd 由 tauri CLI 定，本条没现打；② 人手临时 `cd` 到任意目录敲的
     /// cargo —— 那个分母没人数得出，也不是一条判据守得住的。
-    /// ③ `scripts/verify-committed-state.sh` 的 `run monitor-lib` / `run daemon` / `run daemon-win`
+    /// ③ `tests/scripts/verify-committed-state.sh` 的 `run monitor-lib` / `run daemon` / `run daemon-win`
     /// 三条在**另开的临时工作树**里跑，相对目录仍是这两个，不新增发起面。
     ///
     /// **为什么是 6 不是 7**：往下没有第 4 个发起面 —— `src-tauri/crates/*` 与
@@ -729,7 +729,7 @@ mod tests {
     ///      **在同一片面上数出 41 支，08-29 逐支现打 24 红 17 绿**（17 绿逐支都在**整道 cargo 门**
     ///      这个宽分母上复打：`rc=0` · 包数 **8** · 合计 **1303**）。
     ///    · 🔴 **`K-R5` 09-02 把这 41 支在今天的主干上从头数了一遍、逐支重打**（**一个旧数都没沿用**）：
-    ///      分母仍是 **41**（量具 `evidence/K-R5-C-r7-census.py --census`，逐支锚点现打命中 1 次，
+    ///      分母仍是 **41**（量具 `tests/evidence/K-R5-C-r7-census.py --census`，逐支锚点现打命中 1 次，
     ///      41/41 命中），逐支读数仍是 **24 红 17 绿**，**而 17 绿那一组的成员逐支相同**。
     ///      ⚠ **门那四个数变了**：08-29 是 `rc=0` · 包数 **8** · 合计 **1303**，
     ///      09-02 是 `rc=0` · 包数 **8** · 合计 **1313** —— 主干这几天动过，
@@ -951,11 +951,11 @@ mod tests {
     /// 正确的说法要**分形说**〔PM 08-28 裁定的三形表；`D3` 逐形实打、`D4` 08-29 独立复核；
     /// **形 2s 是 `D5` 08-29 加的第四形**，我 08-29 复打。
     /// ⚠ **哪一行是哪一拍量的、开没开 pipefail，看最后一列的署名** ——
-    /// `K-G2` 那几拍的量具是 `/home/zbl/.cache/kg2r6/gatedoor.sh`（逐字复刻 `scripts/gate.sh` 里
+    /// `K-G2` 那几拍的量具是 `/home/zbl/.cache/kg2r6/gatedoor.sh`（逐字复刻 `tests/scripts/gate.sh` 里
     /// **`run_gate_sum cargo 8 …` 那条 cargo 命令**与 **`run_gate_sum()` 那个函数**，
     /// ⚠ **连 `gate.sh` 顶上那一行 `set -uo pipefail` 一起复刻**，
     /// 被测对象是本工作树、`CARGO_TARGET_DIR` 独立）。
-    /// ⚠ **`K-R5` 09-02 那一拍换了一把**：`evidence/K-R5-C-r7-door.py`（同样是复刻那三样，
+    /// ⚠ **`K-R5` 09-02 那一拍换了一把**：`tests/evidence/K-R5-C-r7-door.py`（同样是复刻那三样，
     /// 但**跑在沙箱里**、`CARGO_TARGET_DIR` 落 `.claude/pm-targets/`，
     /// 并且复刻了 `.claude/devbox/gate` 里那句 `mkdir -p "$HOME/.claude/projects"` ——
     /// 少了它 `history` 那条围栏判据会因为「目录不存在」被拒，基线**假红**；09-02 现打过这个反例）。
@@ -985,7 +985,7 @@ mod tests {
     /// `-ne 1` ⇒ 第二支 · **整支删掉** ⇒ **第三支**接住。
     /// 非空对照：同一把尺子喂形 0 的输出 ⇒ **绿**（`1303 passed`／8 个包）⇒ 尺子不是恒红。
     ///
-    /// ⚠ **口径一格，复打前先看**：`scripts/gate.sh` 顶上那一行逐字是 `set -uo pipefail`
+    /// ⚠ **口径一格，复打前先看**：`tests/scripts/gate.sh` 顶上那一行逐字是 `set -uo pipefail`
     /// （**认这一行的字面，别认行号** —— 09-02 现打，它已经从 `:22` 被推到 `:72`）
     /// ⇒ 形 1 那条 `n=` 管道里 `grep` 无命中让整条管道失败、`|| echo 0` 兜出 **`"0"`**，
     /// 接住形 1 的是第三支的 **`[ "$n" -eq 0 ]`** 这个子条件，报文逐字
@@ -995,7 +995,7 @@ mod tests {
     /// **两种都红**，差的只是哪个子条件先真；复打这条读数时要连「pipefail 开没开」一起写。
     ///
     /// ⇒ 真正只剩独木桥的，是**退出码那一支在这一形上完全失效**这件事本身。
-    /// ⚠ 这几支都住 `scripts/gate.sh`，**不在本条的射程内**，本条只如实记这几句 ——
+    /// ⚠ 这几支都住 `tests/scripts/gate.sh`，**不在本条的射程内**，本条只如实记这几句 ——
     /// 它归门禁自己那一件（`K-G3`），**别在这里修它，也别把它算成本条的覆盖**。
     /// 🔴 `K-G3` 注意：**别照「独木桥」那句去修一个不存在的洞** —— 那一支松掉/删掉，
     /// 第三支当场接住（上面四种松法的读数就是它的单证）。

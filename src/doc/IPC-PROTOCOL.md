@@ -5,8 +5,8 @@ cc-monitor 跟外部进程（PowerShell `__ccm_bind` helper、Claude Code CLI）
 本文档定义每个文件的字段、编码约束、写入方原子性语义、读取方反序列化容错策略，以及握手时序图。
 
 不在本文档范围：
-- Tauri 内部 IPC（前后端 `invoke` / `emit`）— 见 [`../src-tauri/README.md`](../src-tauri/README.md) IPC 清单
-- monitor 自己的 user config — `config.json` schema 在 TS 端 [`../src/config.ts`](../src/config.ts) 定义
+- Tauri 内部 IPC（前后端 `invoke` / `emit`）— 见 [`../../src-tauri/README.md`](../../src-tauri/README.md) IPC 清单
+- monitor 自己的 user config — `config.json` schema 在 TS 端 [`../config.ts`](../config.ts) 定义
 
 ---
 
@@ -16,7 +16,7 @@ cc-monitor 跟外部进程（PowerShell `__ccm_bind` helper、Claude Code CLI）
 
 1. **UTF-8 无 BOM**。PS 5.1 `Out-File -Encoding utf8` 会写 BOM（前 3 字节 `EF BB BF`），导致 `serde_json::from_str` 失败。源头：PS 端用 `[System.IO.File]::WriteAllText(path, json, [System.Text.UTF8Encoding]::new($false))`。接收端 Rust：`raw.trim_start_matches('\u{feff}')` 兜底剥任何 BOM 再 parse。
 2. **原子写**。两种实现：
-   - **Rust 端**：写 `<path>.tmp` → `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` 一步替换。`std::fs::rename` 在 Windows 上 dst 存在会失败，必须用 `MoveFileExW`。详 [`config.rs::atomic_replace`](../src-tauri/src/config.rs)。
+   - **Rust 端**：写 `<path>.tmp` → `MoveFileExW(MOVEFILE_REPLACE_EXISTING)` 一步替换。`std::fs::rename` 在 Windows 上 dst 存在会失败，必须用 `MoveFileExW`。详 [`config.rs::atomic_replace`](../../src-tauri/src/config.rs)。
    - **PS 端**：直接 `[System.IO.File]::WriteAllText` 即可，单调用本身原子。
 
    **作用范围**：本条 `MoveFileExW` 路径**仅适用于** `~/.claude/claudecode-frontend/` 下 monitor 自己产物（`config.json` / `sid-hwnd-cache.json` / `auto-launch.json` / `history-metadata.json` / `ps-registry/<PID>.json` 等）。**写用户文件**（PowerShell profile 等 monitor data dir 之外的文件）**必须**改走 `ReplaceFileW + backup + 写后校验`——理由是保留 dst 的 ACL/ADS/创建时间 + OneDrive placeholder 风险，详 [INVARIANTS.md § 4](INVARIANTS.md)。两者边界由 INVARIANT § 2（monitor data dir 永远在 `~/.claude/claudecode-frontend/`）锁定，不会漂移。
@@ -1289,12 +1289,12 @@ arch 取值与 release 上挂的那两份一致）。⚠ **没有「取最新那
 文件系统，注册信道改走**终端窗口标题**（OSC 转义经 tmux/ssh 透传到本地），monitor
 按标题扫窗口。全部代码：远端 **`shared/ccm`**（部署为 `~/.local/bin/ccm`，字节源是
 `sftp.rs` 的 `CCM_CLI_SCRIPT`）—— **不是** `remote-section.ts::CCM_WRAPPER_SNIPPET`，
-那个其实是 `shared/ccm-aliases.sh`，**36 行、别名只有 `cc`/`cct` 这 2 个**，
+那个其实是 `src/shared/ccm-aliases.sh`，**36 行、别名只有 `cc`/`cct` 这 2 个**，
 无任何 rbind / 标题 / poller 逻辑（`sftp.rs` 的守卫①明令该块不得含实现）+ 本地 `bind.rs::RemoteHwndCache` + `lib.rs::bring_remote_terminal_to_front`。
 
 > ⚠ **上面那句里的「N 行」与那份名单由机器对账**（`KR58D2`，判据住
 > `src-tauri/src/sftp.rs::tests::the_protocol_doc_sentence_about_the_alias_block_matches_the_file`）：
-> 两样都现算自 `shared/ccm-aliases.sh` 自己，**改一半会当场红**。本区最高频的那条病
+> 两样都现算自 `src/shared/ccm-aliases.sh` 自己，**改一半会当场红**。本区最高频的那条病
 > 就是「数与名单同句、只改一半」，09-11 现打逮到的活体正是这一句 ——
 > 它当时写着「29 行」而文件已经 35 行。
 >
@@ -1469,4 +1469,4 @@ deadline 是 **3000ms**（v2 从 800ms 提上来，覆盖 monitor 冷启动；�
 4. **原子写**：双端都用原子机制（PS `[IO.File]::WriteAllText` / Rust `MoveFileExW`）
 5. **反序列化容错**：未知字段忽略（serde `#[serde(default)]` + `#[serde(other)]` enum variant）
 6. **生命周期**：明确"短暂 vs 持久"，短暂的要明确超时机制
-7. **更新 [`../src-tauri/README.md`](../src-tauri/README.md) 模块表 + [INVARIANTS.md](INVARIANTS.md)**
+7. **更新 [`../../src-tauri/README.md`](../../src-tauri/README.md) 模块表 + [INVARIANTS.md](INVARIANTS.md)**

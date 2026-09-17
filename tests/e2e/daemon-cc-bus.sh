@@ -62,7 +62,7 @@ if "$REALTMUX" -L default has-session -t "=$_canary" 2>/dev/null; then
 fi
 tmux kill-session -t "=$_canary" 2>/dev/null || true
 
-SCRIPTS="$REPO/shared/cc-bus/scripts"
+SCRIPTS="$REPO/src/shared/cc-bus/scripts"
 [ -x "$SCRIPTS/cc-list" ] || { echo "仓内没有 cc-list：$SCRIPTS"; exit 1; }
 
 pass=0; fail=0

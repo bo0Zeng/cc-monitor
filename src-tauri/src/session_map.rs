@@ -675,7 +675,7 @@ fn proc_stat_starttime(raw: &str) -> Option<&str> {
 /// 为什么返回 `false` 而不是像 daemon 侧那样 `unimplemented!()`：
 /// 那边是 CLI，panic 是「没人能忽略的信号」；这边是 GUI 常驻进程，panic 会直接崩掉窗口。
 /// `false` 在这里是 **fail-safe**（少显示，而不是显示永不消失的僵尸会话），
-/// 且这条限制已写进 `doc/ARCHITECTURE.md` 与双语 README —— **不是静默的谎**。
+/// 且这条限制已写进 `src/doc/ARCHITECTURE.md` 与双语 README —— **不是静默的谎**。
 #[cfg(all(unix, not(target_os = "linux")))]
 fn is_process_alive(_pid: u32, _expected_proc_start: Option<&str>) -> bool {
     false

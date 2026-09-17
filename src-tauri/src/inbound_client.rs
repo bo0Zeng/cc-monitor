@@ -315,7 +315,7 @@ impl InboundClient {
     ///   → call() **无视自己的 timeout 永久挂起**
     /// ```
     ///
-    /// 而 `doc/IPC-PROTOCOL.md` 把「超时归客户端」写成了契约。所以两段共用**一个 deadline**。
+    /// 而 `src/doc/IPC-PROTOCOL.md` 把「超时归客户端」写成了契约。所以两段共用**一个 deadline**。
     ///
     /// # 超时为什么**不摘登记**（只对「等应答」那一段成立）
     ///

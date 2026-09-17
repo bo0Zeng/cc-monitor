@@ -37,7 +37,7 @@
 **★★ 第 7 条例外：往 `<claude_dir>/skills/cc-bus/` 装 cc-monitor 自带的 skill（用户 2026-08-13 裁定「开」）**：
 `PS1` 摸底逐条读完上面那 6 条例外，**没有一条覆盖它** —— 于是它当时停成一条待裁（`U10b`）。
 用户 08-13 裁「开」。⇒ 本条是**例外**，不是澄清：它**真的往 `<claude_dir>` 写**。
-落点唯一：`<claude_dir>/skills/cc-bus/`（17 个文件，`include_bytes!` 内嵌自 `shared/cc-bus/`）。
+落点唯一：`<claude_dir>/skills/cc-bus/`（17 个文件，`include_bytes!` 内嵌自 `src/shared/cc-bus/`）。
 四个配套要求**一条都不许省**，实现在 `src-tauri/src/cc_bus_deploy.rs`：
 1. **用户显式动作** —— 只由设置页那个按钮调，**绝不**在启动/后台路径上跑；
 2. **独立 realpath 白名单** —— `fenced_dest`：`canonicalize` 之后必须仍在 `claude_dir` 底下，
@@ -184,7 +184,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 - `MoveFileExW(tmp, dst)` 用 tmp 的 ACL（继承父目录）覆盖 dst → 用户 explicit ACE 丢失 → Documents 重定向到非默认盘的用户读不了自己 profile。**ReplaceFileW 专门设计来保留 dst 的 ACL/ADS/创建时间**。
 - OneDrive online-only placeholder / 杀软可能让 `read_to_string` 返 `Ok("")` 即"磁盘有内容读到空"，纯写就是清空用户内容 → backup + 校验是双保险。
 
-详 [`profile_installer.rs`](../src-tauri/src/profile_installer.rs)。
+详 [`profile_installer.rs`](../../src-tauri/src/profile_installer.rs)。
 
 ---
 
@@ -322,7 +322,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 
 **为什么不能松动**：log 是诊断辅助，不是核心功能。"装了 monitor 但 log 文件没法写所以打不开" 是用户最反感的反讨厌设计。INVARIANT § 2 说 monitor data dir 永远在 `~/.claude/claudecode-frontend/`——log dir 是 `<data_dir>/logs/`，data dir 解析永远应该成功（dirs::home_dir 在 Windows 99.99% 有值），剩下唯一失败路径是文件系统级 error 必须容忍。
 
-详 [`logging.rs`](../src-tauri/src/logging.rs) 的 `init()` 函数。
+详 [`logging.rs`](../../src-tauri/src/logging.rs) 的 `init()` 函数。
 
 ---
 
@@ -331,7 +331,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 同 user / 同机器同时只允许一个 cc-monitor 进程。由 [`tauri-plugin-single-instance`](https://v2.tauri.app/plugin/single-instance/) 强制 —— **必须是 Builder 链上第一个 plugin**（plugin 文档约束）。第二个实例启动时：
 
 1. plugin 通过 OS mutex 检测到第一个实例存在
-2. 通知第一个实例的回调（在 [`lib.rs::run()`](../src-tauri/src/lib.rs) 里 `unminimize + show + set_focus` 主窗口）
+2. 通知第一个实例的回调（在 [`lib.rs::run()`](../../src-tauri/src/lib.rs) 里 `unminimize + show + set_focus` 主窗口）
 3. 第二个实例自身立即退出
 
 **为什么不能松动**：cc-monitor 全局共享多个文件状态 —— `auto-launch.json`、`ps-await/`、`ps-registry/`、`sid-hwnd-cache.json`、jsonl watcher、`logs/monitor.YYYY-MM-DD.log`。两个 monitor 同时跑会触发：
@@ -352,7 +352,7 @@ data dir 里两类东西**语义上一刀两断**，别搅混到「迁移/重建
 
 ### 17a. drain 必须 try/catch 单条 record
 
-[`src/events.ts`](../src/events.ts) 的 `drain` 循环每次 `handlers.onLine(p)` 必须 try/catch。单条 record 处理抛错时**只**记 log + 跳过该条，**不能**让异常逃出 while 循环 —— 否则后续上千条 record 永远滞留 queue 不被处理，前端看上去就停止刷新了。
+[`src/events.ts`](../events.ts) 的 `drain` 循环每次 `handlers.onLine(p)` 必须 try/catch。单条 record 处理抛错时**只**记 log + 跳过该条，**不能**让异常逃出 while 循环 —— 否则后续上千条 record 永远滞留 queue 不被处理，前端看上去就停止刷新了。
 
 ### 17b. 用户数据深度的遍历必须迭代而非递归
 
@@ -452,7 +452,7 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 ## 21. 启动重放滚动稳定性（贴底不抖）
 
-`MessageStream`（[`src/stream.ts`](../src/stream.ts)）维持贴底时必须遵守三条，违反任一条都会让启动重放期间"最新消息整行高频上下微抖"回归：
+`MessageStream`（[`src/stream.ts`](../stream.ts)）维持贴底时必须遵守三条，违反任一条都会让启动重放期间"最新消息整行高频上下微抖"回归：
 
 1. **`snap()` 必须守卫**：只在 `scrollHeight - clientHeight - scrollTop > 1`（确实落后底部）时才写 `scrollTop`。**禁止**每帧无脑 `scrollTop = scrollHeight`。
 2. **「视口上方」插入不手动补偿 scrollTop**：`insertNode` 对 anchor≠null（插到中间/上方）的情况不调整 scrollTop，交给浏览器原生 CSS `overflow-anchor`（默认 auto，**禁止**给 `.stream` 设 `overflow-anchor: none`——补批在**同一同步任务内**的临时关闭是唯一豁免类——两个实现点：`tabs.fillAbove`（F40b）与 `session-viewer.maybeFillAbove`（F39），见第 3 条，且还原必须在 finally）维持视觉稳定。手动补偿 + anchoring 会 double-shift。
@@ -477,7 +477,7 @@ let h = windows::Win32::Foundation::HWND(hwnd_value);      // 0.56 HWND
 
 ## 23. 复用 `.stream` 容器的非-Tab 视图必须显式恢复可见
 
-基类 `.stream`（[`src/styles.css`](../src/styles.css)）默认 `visibility: hidden` + `pointer-events: none`，仅 `.stream.active` 才可见——这是**多 Tab 机制**：N 个 tab 各持一个 `.stream`，TabManager 只给当前 tab 加 `.active`。
+基类 `.stream`（[`src/styles.css`](../styles.css)）默认 `visibility: hidden` + `pointer-events: none`，仅 `.stream.active` 才可见——这是**多 Tab 机制**：N 个 tab 各持一个 `.stream`，TabManager 只给当前 tab 加 `.active`。
 
 任何**复用 `.stream` 样式但不归 TabManager 管的视图**（`SessionViewer` 应用内只读查看器、未来别的只读流）**必须在自己的 CSS 里显式 `visibility: visible`**，因为它们的元素永远不会拿到 `.active` 类。
 
@@ -1009,20 +1009,20 @@ U8c-1 摸底后拆成三步：
 两类主机的起会话能力直接删掉，而那两类今天都还成立。
 
 🔴 **`K-R89` 2026-09-13 第五次订正 —— 上面那句「那两类今天都还成立」今天只剩一类，而且拦路的已经不是「哪类主机没路走」。**
-本节自己写着「订正一句假话时，先把它的全部副本找出来」，而 `K-R59`（09-11）那一拍的订正**只落在下面那张表的 ③ 行里** ⇒ 08-04 这一段又活了一轮。逐条现打（量于 `89ce650`，量具 `evidence/K-R89-ruler.py`，人群 = `src/**` 去掉 `*.test.ts`/`*.vitest.ts`，剥法与 `launch_wire::production_ts` 同口径）：
+本节自己写着「订正一句假话时，先把它的全部副本找出来」，而 `K-R59`（09-11）那一拍的订正**只落在下面那张表的 ③ 行里** ⇒ 08-04 这一段又活了一轮。逐条现打（量于 `89ce650`，量具 `tests/evidence/K-R89-ruler.py`，人群 = `src/**` 去掉 `*.test.ts`/`*.vitest.ts`，剥法与 `launch_wire::production_ts` 同口径）：
 - 「daemonless 的远端」**那类主机不存在了**（定框 `K35` ＋ `K-R59` 整格删除，三条回潮闸钉着）；
 - 「没装 ccm 的远端」**存在**，而**产品自带装它的路**（`sftp::install_remote_ccm_helper`，`K27`/`K34`）⇒ 它今天也不是「没路走」，是「还没装」；
 - **今天真正撑着那两个文件的是消费者，不是主机类别**：**尺子A**（剥完注释的生产段里那个标识符出现几次）逐处住 `launch_wire.rs::TS_FALLBACK_KEEPERS`，登记表与现打逐格相同 —— 🔴〔`K-R105` 09-13〕**这里原来抄着两个基数（11 / 7），撤了**：那张表由判据从源码派生，散文抄一份就是第二个家。而**尺子B**（有没有生产调用方）今天也有自己的家 `launch_wire.rs::TS_FALLBACK_REACH`，同样派生。两把尺子的读数差着一个数量级，下面这一段说的就是尺子B：`remote-launch.ts` 那 5 个 builder **生产调用方是 0**（只有 `tests/e2e/resume-cmd-driver.ts` · `tests/e2e/tmux-target-emit.mts` · `remote-launch.test.ts` 在调）⇒ **真正让 `renderFallback` 站在生产路上的只有 `remote-launch-run.ts::renderLaunchCommand` 最后那一行**，加上同文件里那处 `SESSION_BACKEND.attach`（把 `↗` 交给用户自己的终端那一跳，`K-R59 §0c` 明写**不做**：后端在远端开不了你面前的窗，那是结构不是退路）。🔴 **`K-R109` 09-13 订正后半句**：那条「明写不做」讲的是**远端**（`R61` 裁定三之后不许再用「后端」把两侧压平）；**本机**就地 resume 那一处后端就在用户面前那台机器上 ⇒ 本轮接过去了，同文件里那处 `SESSION_BACKEND.attach` **不在了**。前半句（`renderLaunchCommand` 最后那一行）**没变**，它今天仍是那条路唯一的生产入口。
-- ⚠ 顺带一条**分母订正**：`daemon_kill.rs::CREATION_PATHS` **今天是 3 条**（`K-R104` 09-13 把 `account_usage.rs` 那行删了，留着墓碑）⇒ 删得动 `session-backend.ts` 的话是 **3 → 2**，不是「4 → 3」。🔴〔`K-R106` 09-13 复量，量具 `evidence/K-R106-ruler.py`〕**登记 3 条、遍历实得 3 条、两边逐格相同** —— 这个数**别在这里抄第二遍**，它的家是那张表。
+- ⚠ 顺带一条**分母订正**：`daemon_kill.rs::CREATION_PATHS` **今天是 3 条**（`K-R104` 09-13 把 `account_usage.rs` 那行删了，留着墓碑）⇒ 删得动 `session-backend.ts` 的话是 **3 → 2**，不是「4 → 3」。🔴〔`K-R106` 09-13 复量，量具 `tests/evidence/K-R106-ruler.py`〕**登记 3 条、遍历实得 3 条、两边逐格相同** —— 这个数**别在这里抄第二遍**，它的家是那张表。
 
 🔴 **`K-R106` 2026-09-13 第六次订正 —— 「删不删得掉」这一问的今天版：仍然删不掉，而拦路的换成了一条可以指名道姓的链。**
 `R61` 裁定三之后，②「attach 归谁产」那一格**本机那半有承接方了**（`history.rs::render_local_attach`）。
-于是「删 `session-backend.ts`」这件事第一次可以问得很具体 —— 现打（量具 `evidence/K-R106-ruler.py`，人群 = `src/**` 去掉 `*.test.ts`/`*.vitest.ts`，剥法与 `launch_wire::production_ts` 同口径）：
+于是「删 `session-backend.ts`」这件事第一次可以问得很具体 —— 现打（量具 `tests/evidence/K-R106-ruler.py`，人群 = `src/**` 去掉 `*.test.ts`/`*.vitest.ts`，剥法与 `launch_wire::production_ts` 同口径）：
 - 🔴 **`K-R109` 09-13 订正：这两条今天各只对一半。** 原文写「座今天有**两个**生产消费者文件：`launch-render-fallback.ts` 与 `remote-launch-run.ts`」＋「`remote-launch-run.ts` 那一处差的只是把前端接过去」。**接过去了** —— 那一处现在问 `commands.render_local_attach` 要（注册面三处同一拍落地）⇒ **`remote-launch-run.ts` 不再是座的消费者**。⚠ **数字不在这儿抄**：逐格处数的家是 `launch_wire.rs::TS_FALLBACK_KEEPERS`，而「有没有多出一个没登记的消费者」由同一条判据的第 ⑤ 格（`K-R109` 加的**反向闭合**）从源码派生 —— 本行只留住址；
 - 🔴 **`launch-render-fallback.ts` 那一处不是「差接线」，是差一个承接方**：它要座产的是 `container: tmux` 的 **`create` / `send-into` / `attach`** 三格外层 tmux 命令，而它被走到的**前提**恰恰是「后端那条渲染器拒了」（探测 unknown / 没装 ccm / 有维度说不出 CLI 语法）—— **那时按定义就没有后端命令行入口可问**。
 ⇒ **删掉座 = 把那条兜底路整条删掉**，而那是「没装 ccm 的远端」那一格的事（六格表第 ⑤ 格，`K27`/`K34` 判它是**部署面**），不是 attach 这一格的事。
 ⚠ **两件事别再压平**：`K-R54` 表第 3 行问的是「attach 归谁产」，它今天在本机这一侧**答完了**；而「座能不能删」还压着**另一格**（部署）。
-⇒ **结论仍然没变（今天删不得），但理由第五次换人了。** 逐处读数与量法住 `evidence/K-R89-deathvalue.md`；六格今天版住 `src-tauri/src/history.rs::tests::THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS`（由 `every_one_of_the_six_cells_is_measured_not_narrated` 逐格**真去驱动**，改了行为不改说法当场红）。
+⇒ **结论仍然没变（今天删不得），但理由第五次换人了。** 逐处读数与量法住 `tests/evidence/K-R89-deathvalue.md`；六格今天版住 `src-tauri/src/history.rs::tests::THE_SIX_WAYS_THE_OLD_PATH_STILL_WINS`（由 `every_one_of_the_six_cells_is_measured_not_narrated` 逐格**真去驱动**，改了行为不改说法当场红）。
 **U8c-3 的真前置不是文档，是 U8a-2c 与 U12 两件功能** —— ⚠ **F11 订正：U8a-2c 是「未做完」不是「未做」**（`send-into` 那一格 U8a-2c-1 已交付；剩 `create-or-attach` 与 attach）。
 ⚠ **本节这三处（914 · 925 末 · 本段）与 F07 订正的那一处说的是同一句话。**F07 只订正了手头那一处 ⇒ **同族的三处又活了一轮**。**订正一句假话时，先把它的全部副本找出来**（F01 的四处「每 ~8s」是同一个病）——这条纪律由 `doc_claim_registry` 把可数的那部分变成机检。
 
@@ -1055,7 +1055,7 @@ U8c-1 摸底后拆成三步：
 ### 2026-09-13 第四次复裁（`K-R105`）：**结论第四次不变，而这次三问里过期了两问**
 
 前三次复裁每次都以「一条都没过期到可以放行」收尾。**这一次不是。**
-逐条现打（量于主干 `38168d7`，量具 `evidence/K-R105-ruler.py`，人群与剥法与
+逐条现打（量于主干 `38168d7`，量具 `tests/evidence/K-R105-ruler.py`，人群与剥法与
 `launch_wire::production_ts` 同口径；判词由 `doc_claim_registry` 现算并与上面那张表对拍）：
 
 | # | 08-14 说的 | 09-13 现打 | 差在哪 |
