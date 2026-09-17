@@ -1,0 +1,11 @@
+# 🔴 构建输出**不许落在 `src/backend/target/`**。
+#
+# 后端的判据有一族是「走一遍源码树、收所有 `.rs`」（`no_timer_guard::daemon_sources`
+# · `count_rs_in_tree` · `plugin_walk_fixture` · `guard_support::src_root` 的反空真）。
+# `target/` 里有成千上万个由 build script 生成的 `.rs` —— 它一旦落在源码树里，
+# 那些判据的人群会被生成代码淹没：**不是报错，是安静地扫错东西**。
+#
+# ⇒ 输出改落仓根的隐藏目录（`.gitignore` 已忽略 `/.build/`）。
+# 相对路径以本文件的上级（即 `src/backend/`）为基准。
+[build]
+target-dir = "../../.build/backend"

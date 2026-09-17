@@ -224,7 +224,7 @@ mod tests {
 
     /// 本仓自己会把 cargo 的 cwd 落在这几个目录（相对仓根）。依据见
     /// [`the_build_time_execution_surface_stays_registered`] 头注那张表。
-    const CARGO_CFG_DIRS: &[&str] = &[".", "src-tauri", "remote-daemon-proto"];
+    const CARGO_CFG_DIRS: &[&str] = &[".", "src-tauri", "src/backend"];
 
     /// cargo 认的两种配置文件名（无扩展名那个是老写法，仍然照读）。
     const CARGO_CFG_NAMES: &[&str] = &["config.toml", "config"];
@@ -593,7 +593,7 @@ mod tests {
     ///   构建瘦身）的配置**执行不了任何东西**，却照样把它判红。08-27 真发生过：
     ///   用户本机那份瘦身配置搬进 `src-tauri/.cargo/config.toml` 之后，
     ///   这一条在用户主树上**恒红**，而它守的执行面一寸也没被碰。
-    /// - **人群比性质小**：它列了 5 个路径，漏掉 `remote-daemon-proto/.cargo/config`
+    /// - **人群比性质小**：它列了 5 个路径，漏掉 `src/backend/.cargo/config`
     ///   —— 那一格 cargo **照读**（见下）。
     ///
     /// ⇒ 现在①**收窄性质**：读文件内容，只有真的设了 `runner`/`linker`/`rustflags`
@@ -646,9 +646,9 @@ mod tests {
     ///
     /// | 发起面 | 谁从这里发起 cargo（认**这条命令**，不认行号） |
     /// |---|---|
-    /// | 仓根 `.` | `ci.yml` 的 `e2e-tmux-rust` job（**没有** `working-directory` ⇒ cwd = 仓根；那一条是 `cargo build --manifest-path remote-daemon-proto/Cargo.toml`）· `scripts/run.ps1` 的 `"check"` 分支（`cargo check --manifest-path src-tauri\Cargo.toml`）。它同时是下面两个的**祖先** —— 往上找一定路过 |
+    /// | 仓根 `.` | `ci.yml` 的 `e2e-tmux-rust` job（**没有** `working-directory` ⇒ cwd = 仓根；那一条是 `cargo build --manifest-path src/backend/Cargo.toml`）· `scripts/run.ps1` 的 `"check"` 分支（`cargo check --manifest-path src-tauri\Cargo.toml`）。它同时是下面两个的**祖先** —— 往上找一定路过 |
     /// | `src-tauri/` | `scripts/gate.sh` 的 `run_gate_sum cargo 8 …`（`cd src-tauri && cargo test --workspace --exclude code-picture-core --lib`）· `package.json` 的 `gen:types` · `ci.yml` 里**两处** `working-directory: src-tauri`（`rust` job 与 `linux-app-build` job）· `tests/e2e/` 三个脚本共 **4 处**（`usage-probe-acceptance.sh` 的 `emit_usage_probe_frames_for_e2e` · `local-backend-supervise.sh` 的 `local_backend` 与 `local_daemon` 两条 `cargo test --lib -- --ignored` · `p3t-local-tmux.sh` 的 `P3T_E2E_SID=…` 那一条）。⚠ **这个数只降不升过两次，两次都是随被测面退役**：`K-R72` 09-12 前是**四个脚本 6 处**（`tmux-guarded-acceptance.sh` 那一处随它的输入源 —— `tmux.rs` 两条桌面侧 SSH 回落的 builder —— 一起删了）；`K-R104` 09-13 从 5 降到 4（`usage-probe-acceptance.sh` 整条重写成帧面验收，输入源从「那条 shell 串」换成「那几行帧」，而它原先另有一处本机执行面的 `--ignored` 调用，那个执行面随编排搬上后端而不存在了）|
-    /// | `remote-daemon-proto/` | `scripts/gate.sh` 的 `run_gate daemon …`（`cd remote-daemon-proto && cargo test`）· `ci.yml` 的 `daemon` job（`working-directory: remote-daemon-proto`）· `release.yml` 里**三处** `working-directory: remote-daemon-proto`（`build-daemons` · `build-windows` · `build-linux` 三个 job）· `tests/e2e/daemon-fork-session.sh` 的 `cd "$ROOT/remote-daemon-proto" && cargo build` |
+    /// | `src/backend/` | `scripts/gate.sh` 的 `run_gate daemon …`（`cd src/backend && cargo test`）· `ci.yml` 的 `daemon` job（`working-directory: src/backend`）· `release.yml` 里**三处** `working-directory: src/backend`（`build-daemons` · `build-windows` · `build-linux` 三个 job）· `tests/e2e/daemon-fork-session.sh` 的 `cd "$ROOT/src/backend" && cargo build` |
     ///
     /// ⚠ **为什么这里只能用锚点、不能用「函数名 + 行号」两样都给**〔`K-R5` `§4` 那一问的答〕：
     /// `ci.yml` / `release.yml` 那几处逐字都是同一句 `working-directory: <目录>`，**行号是它们
@@ -1117,8 +1117,8 @@ mod tests {
         );
         // 探针⑨：**人群的身份**，不是它的个数〔`K-G2` `D3` 补，08-28；`K22`〕。
         // ⚠ 上面那条 `slots.len() == 6` 是一个**表面量**（`testing.md` 硬规则 6）——
-        //   `D3` 现打：把 `CARGO_CFG_DIRS` 的 `remote-daemon-proto` 换成 `e2e`，格数仍是 6
-        //   ⇒ 上面那条照过，而**真 `runner` 放进 `remote-daemon-proto/.cargo/config.toml`
+        //   `D3` 现打：把 `CARGO_CFG_DIRS` 的 `src/backend` 换成 `e2e`，格数仍是 6
+        //   ⇒ 上面那条照过，而**真 `runner` 放进 `src/backend/.cargo/config.toml`
         //   判据也照绿** —— 那一格正是 `KG2B` 这一件买来的。
         //   ⇒ 人群必须按**字面量逐格**钉住，个数只是它的副产品。
         let want_slots: &[&str] = &[
@@ -1126,8 +1126,8 @@ mod tests {
             "./.cargo/config",
             "src-tauri/.cargo/config.toml",
             "src-tauri/.cargo/config",
-            "remote-daemon-proto/.cargo/config.toml",
-            "remote-daemon-proto/.cargo/config",
+            "src/backend/.cargo/config.toml",
+            "src/backend/.cargo/config",
         ];
         assert_eq!(
             slots.iter().map(String::as_str).collect::<Vec<_>>(),

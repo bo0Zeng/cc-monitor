@@ -779,10 +779,7 @@ mod tests {
     //   **解锁条件一句话**：runner 上 `tmux -V` ≥ 3.5 之后删掉 `meta_dollar` 那条臂，让 ② 把地板逼到 35。
 
     fn repo_root() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根")
-            .to_path_buf()
+        crate::guard_support::repo_root()
     }
 
     /// ★ `daemon-gate2` 的地板必须**恰好等于这套件今天够得到的那个数**：

@@ -25,7 +25,7 @@
 //!     ② `src-tauri/tauri.sidecar.conf.json` 逐字 `"externalBin": ["binaries/cc-monitor-remote"]`
 //!        —— **同一个名字**；
 //!     ③ `.github/workflows/release.yml` 的 `build-windows` 里两步 ——
-//!        `Build local backend sidecar (native)`（`working-directory: remote-daemon-proto`
+//!        `Build local backend sidecar (native)`（`working-directory: src/backend`
 //!        · `cargo build --release`）＋ `Stage sidecar for externalBin`
 //!        （拷成 `cc-monitor-remote-<triple>.exe`），随后
 //!        `npx tauri build --config src-tauri/tauri.sidecar.conf.json`；

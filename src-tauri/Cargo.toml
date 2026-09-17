@@ -6,7 +6,7 @@
 #
 # ⚠ `vendor/code-picture-core` **刻意 exclude**：它是 vendor 进来的第三方内核，
 # 不该被 `--workspace` 的 fmt/clippy/test 扫到（也不该因为我们的 lint 设置而红）。
-# ⚠ `remote-daemon-proto` **不在这里** —— 它有自己独立的 `Cargo.lock`，
+# ⚠ `src/backend` **不在这里** —— 它有自己独立的 `Cargo.lock`，
 # 那条隔离是真架构约束（Linux/Windows CI runner），见它自己的 `Cargo.toml` 头注。
 [workspace]
 members = [

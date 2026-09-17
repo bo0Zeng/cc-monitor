@@ -9,7 +9,7 @@
 //! | 何处 | needle | 撑大成 | 后果 |
 //! |---|---|---|---|
 //! | F05 | `起流` | `起流程` | 阶段埋点判据认错阶段 |
-//! | F16 | `remote-daemon-proto` | `remote-daemon-proto-X` | 「跨 target check 走 daemon 的 lock」这个前提没了却不红 |
+//! | F16 | `src/backend` | `src/backend-X` | 「跨 target check 走 daemon 的 lock」这个前提没了却不红 |
 //! | F19 | `exe_suffix: &str` | 另一个函数的**同名参数** | 断言指的不是它自称的那个函数 |
 //! | 本轮 | `sleep 1` | `sleep 10` | `polling_registry` 整段头注按「每秒」算代价，周期改了不红 |
 //!

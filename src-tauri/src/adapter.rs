@@ -13,7 +13,7 @@ pub mod codex;
 use std::path::{Path, PathBuf};
 
 /// Phase 2（Codex 泛化）：受支持的 agent 种类。Claude Code 是第一个、Codex 是「第二个样本」
-/// （SS-1 说好的第二刀触发点）。monitor 先定义；daemon（`remote-daemon-proto`）与 frontend
+/// （SS-1 说好的第二刀触发点）。monitor 先定义；daemon（`src/backend`）与 frontend
 /// 各自镜像（双写 parity，同 `turn_detect`/`usage` 现状）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentKind {

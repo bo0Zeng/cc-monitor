@@ -149,7 +149,7 @@ mod tests {
         collect_rs(&root.join("src-tauri/src"), &mut files);
         collect_rs(&root.join("src-tauri/crates"), &mut files);
         // 🔴 〔`K-R48` 第二拍 09-11〕`shared/ccm` 删了 ⇒ 换成后端那份原生实现。
-        //    `collect_rs` 只扫 `src-tauri/`，够不着 `remote-daemon-proto/` ⇒ 仍按 extra 点名。
+        //    `collect_rs` 只扫 `src-tauri/`，够不着 `src/backend/` ⇒ 仍按 extra 点名。
         for extra in [
             "src/backend/control/ccm/plan.rs",
             "shared/cc-bus/scripts/cc-spawn",

@@ -48,7 +48,7 @@
 /// ★ `ci.yml` 的**读取与切块只有一个家**〔audit-0805 08-07，定框 E3〕。
 ///
 /// 抽出来的原因是实测撞见的：`lockfile_conflict_guard` 的前提判据要问的是
-/// 「跨 target check **和** `working-directory: remote-daemon-proto` 在不在同一个 job」，
+/// 「跨 target check **和** `working-directory: src/backend` 在不在同一个 job」，
 /// 而它当时只能在整份文件里各找一次字符串 ⇒ 两件事各自成立、关系没人钉。
 /// 要钉那个关系就得会切 job 块，而切块的实现当时住在本文件的 `mod tests` 里、别人够不着 ——
 /// **判据之间借不到量具，就会各写一份近似的**，那正是 E3 要防的。
@@ -443,8 +443,8 @@ mod tests {
             block.lines().count()
         );
         assert!(
-            block.contains("working-directory: remote-daemon-proto"),
-            "切出来的块里没有 `working-directory: remote-daemon-proto` —— 切错 job 了，本条会零命中地绿"
+            block.contains("working-directory: src/backend"),
+            "切出来的块里没有 `working-directory: src/backend` —— 切错 job 了，本条会零命中地绿"
         );
         // 只取真会被执行的那些行（`run: <单行命令>`），并剥成纯命令。
         let runs: Vec<&str> = block
@@ -676,7 +676,7 @@ mod tests {
             ("coverage per-file floors + zero-coverage ratchet", true, "`node scripts/assert-coverage-floors.mjs`"),
             ("vite build (dist/)", true, "`npm run build`"),
             // ── job daemon
-            ("cargo fmt --check", true, "`cd remote-daemon-proto && cargo fmt --check`"),
+            ("cargo fmt --check", true, "`cd src/backend && cargo fmt --check`"),
             ("cargo check（跨 target：Windows 编得过 —— 平台线的真判据）", true, "E7 的真判据；本机装了 `x86_64-pc-windows-msvc` target，实测跑得通"),
             ("cargo clippy", true, "同名命令"),
             ("cargo test", true, "同名命令"),

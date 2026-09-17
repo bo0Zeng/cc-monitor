@@ -2642,7 +2642,7 @@ mod tests {
     ///   的文件名约定、`tauri.sidecar.conf.json` 的 `externalBin`、`build.rs` 的清单
     ///   与 CI —— 而件文件 `§0d` 逐字「**不改发版流水线**（`KU26` 那一步归 `K-R42`）」。
     ///   ⇒ 它是**住址**，不是名字；名字改对了，住址跟着搬是另一件事。
-    /// - **`remote-daemon-proto/` 那棵树**（另一个 workspace）与**前端 `src/**.ts`**
+    /// - **`src/backend/` 那棵树**（另一个 workspace）与**前端 `src/**.ts`**
     ///   不在本尺子的面里。⚠ 这是**判不了**，不是「那边干净」——
     ///   现打：前端 30 余处、daemon 树 26 处，逐条读数落在 `evidence/K-R81-….md`。
     ///
@@ -3657,7 +3657,7 @@ mod environment_tests {
         use crate::structural_scan::pin_definition;
 
         /// 那一层的取件实现。**跨 crate 读源码在本仓有先例**
-        /// （`usage.rs` / `polling_registry.rs` 都这么钉 `remote-daemon-proto` 那侧）。
+        /// （`usage.rs` / `polling_registry.rs` 都这么钉 `src/backend` 那侧）。
         const SIDECAR_ACQUIRE: &str =
             include_str!("../../src/backend/sidecars/codepicture/acquire.rs");
 

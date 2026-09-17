@@ -147,7 +147,7 @@ mod tests {
              本文件写全了就会被当成「又一份派生了它的源文件」而把那条计数判据顶红。\
              〔09-12 实打撞到过：npm 那格 `实得 33 … expected 33 to be 32`。〕\
              ⇒ 搬进后端要先回答「一条 tauri channel 怎么跨进程」：\
-             daemon 那棵树**根本没有 tauri 这个依赖**（现打：`remote-daemon-proto/Cargo.toml` \
+             daemon 那棵树**根本没有 tauri 这个依赖**（现打：`src/backend/Cargo.toml` \
              的 `[dependencies]` 里一条 tauri 都没有），\
              而 monitor 侧 `backend/` 那道宿主无关守卫 `the_backend_layer_stays_host_agnostic` \
              的禁词表里已经有 `Emitter` / `State<` / `.emit(` 一族。",

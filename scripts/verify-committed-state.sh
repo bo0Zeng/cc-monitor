@@ -58,7 +58,7 @@ run() { # run <名字> <目录> <命令...>
 }
 
 run monitor-lib   "$WT/src-tauri"           cargo check --lib
-run daemon        "$WT/remote-daemon-proto" cargo check --all-targets
+run daemon        "$WT/src/backend" cargo check --all-targets
 
 # ── 跨 target（`daemon-win`）：**这一格的前提早就作废了，08-25 起** 〔`K-R52` 09-11 订正〕──
 #
@@ -80,7 +80,7 @@ run daemon        "$WT/remote-daemon-proto" cargo check --all-targets
 #   它存在只是为了让 build script 走完、好让检查走到我们的代码。
 #
 # 🔴 **判绿的口径不是退出码，是「它有没有走到我们的代码」**：
-#   needle 用**包名** `cc-monitor-remote`，不是目录名 `remote-daemon-proto`
+#   needle 用**包名** `cc-monitor-remote`，不是目录名 `src/backend`
 #   （拿目录名当 needle 会永远数出 0 —— CI 那一步的头注逐字记着这个坑）。
 #   三种结局，**各自不同的结论**：
 #     · 走到了 + exit 0        ⇒ ok，这一格真的量到了东西
@@ -102,7 +102,7 @@ if rustup target list --installed | grep -q x86_64-pc-windows-msvc; then
       AR_x86_64_pc_windows_msvc="zig lib")
   fi
   win_fail_before="$fail"
-  run daemon-win  "$WT/remote-daemon-proto" "${winenv[@]}" cargo check --all-targets --target x86_64-pc-windows-msvc
+  run daemon-win  "$WT/src/backend" "${winenv[@]}" cargo check --all-targets --target x86_64-pc-windows-msvc
   # 🔴 **重判**：`run` 只看退出码，而退出码在这一格上说明不了事（见上面那一段）。
   #    没走到我们的代码 ⇒ 把 `run` 刚记下的那一笔**撤回**，改记成「没有读数」。
   if ! grep -q 'Checking cc-monitor-remote' "$WT/.verify-daemon-win.log"; then

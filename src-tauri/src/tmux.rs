@@ -594,7 +594,7 @@ fn gate1_reject_empty(target: &str) -> Result<(), String> {
 /// ⇒ 留下这个壳，`#[allow(dead_code)]` 明写「今天没人调」，**不假装它在路上**
 /// （形状抄 `K-R72` 给 `is_ccm_tmux_name` 那个转调壳留的先例）。
 ///
-/// ⚠ **想真删它，得先在 daemon 那棵树上给那条对拍换个锚点** —— `remote-daemon-proto/**`
+/// ⚠ **想真删它，得先在 daemon 那棵树上给那条对拍换个锚点** —— `src/backend/**`
 /// 不在本件写区（归 `K-R113`）。**已上报，别当它没有主人。**
 #[allow(dead_code)]
 pub(crate) fn exact_target(target: &str) -> Result<String, String> {
@@ -1920,7 +1920,7 @@ mod tests {
         let daemon = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("src-tauri 的上一级")
-            .join("remote-daemon-proto")
+            .join("src/backend")
             .join("src")
             .join("control");
         let mut checked = 0usize;

@@ -1319,7 +1319,7 @@ pub(crate) fn describe_broadcast(plan: &BroadcastPlan, ok: usize, failed: &[Stri
 /// cc-monitor 自己在总线上的身份 —— **发消息时用它，别让收信人看到 `unknown`**。
 pub(crate) const MONITOR_BUS_ID: &str = "cc-monitor";
 
-/// daemon 那条发消息原语的名字（`P4f`；实现住 `remote-daemon-proto` 的 `control/cc_bus.rs`）。
+/// daemon 那条发消息原语的名字（`P4f`；实现住 `src/backend` 的 `control/cc_bus.rs`）。
 const BUS_SEND: &str = "bus-send";
 
 /// daemon 那条**列总线成员**原语的名字（`P4f`；三态在线就出自它的 `live` 字段）。

@@ -366,7 +366,7 @@ fn session_process_identity_ok(pid: u32, pidfile: &serde_json::Value) -> bool {
 /// # 🔴 双写点，且**共享不了常量** —— 界在这里说清楚
 ///
 /// monitor 侧的家是 `src-tauri/src/history.rs::LAUNCH_ID_VAR`，而
-/// `remote-daemon-proto` 是**另一个 crate、另一份 `Cargo.lock`**（`src-tauri/Cargo.toml`
+/// `src/backend` 是**另一个 crate、另一份 `Cargo.lock`**（`src-tauri/Cargo.toml`
 /// 的 workspace members 里逐字没有它）⇒ 两侧不可能 `use` 同一个 `const`。
 /// 与 `CREDENTIALS_NAME` 那个双写点（Rust ↔ bash）同形，处置也照它：
 /// **由测试对拍**（[`tests::the_launch_id_env_var_matches_the_monitor_side_home`]，
@@ -2181,10 +2181,7 @@ mod tests {
     /// 五格的活，本条不重复买。
     #[test]
     fn the_launch_id_env_var_matches_the_monitor_side_home() {
-        let monitor_history_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("remote-daemon-proto 的上级 = 仓根")
-            .join("src-tauri/src/history.rs");
+        let monitor_history_path = crate::guard_support::repo_root().join("src-tauri/src/history.rs");
         let monitor_history = std::fs::read_to_string(&monitor_history_path)
             .unwrap_or_else(|e| panic!("读不到 {monitor_history_path:?}：{e}"));
         assert!(

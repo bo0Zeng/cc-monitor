@@ -2462,7 +2462,7 @@ mod error_envelope_registry {
 #[cfg(test)]
 mod g6_dependency_signoff {
     /// 本 crate 的清单。**编译期读**，而且是本半自己那一份。
-    const MANIFEST: &str = include_str!("../../remote-daemon-proto/Cargo.toml");
+    const MANIFEST: &str = include_str!("../../src/backend/Cargo.toml");
 
     /// 清单里**带依赖的段**，逐段登记（**相等**对拍，不是子集）。
     ///

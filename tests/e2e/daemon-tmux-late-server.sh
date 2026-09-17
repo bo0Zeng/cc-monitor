@@ -20,7 +20,7 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-D="${CCM_E2E_DAEMON_BIN:-$REPO/remote-daemon-proto/target/debug/cc-monitor-remote}"
+D="${CCM_E2E_DAEMON_BIN:-$REPO/.build/backend/debug/cc-monitor-remote}"
 [ -x "$D" ] || { echo "需要 daemon 二进制：$D（先 cargo build -p cc-monitor-remote）"; exit 1; }
 command -v tmux >/dev/null 2>&1 || { echo "需要 tmux"; exit 1; }
 REALTMUX="$(command -v tmux)"

@@ -596,7 +596,7 @@ mod tests {
     fn deserializes_daemon_usage_row_shape_origin_defaults_none() {
         // F88a-remote：daemon `--usage` 每会话一行 camelCase JSON（不带 origin）→ 反序列化成
         // SessionUsageRow、origin 缺省 None，供 remote fan-out 盖主机 label。形状须与
-        // remote-daemon-proto/usage_query.rs 的 json! 输出严格一致（双写点对齐）。
+        // src/backend/usage_query.rs 的 json! 输出严格一致（双写点对齐）。
         let line = r#"{"sessionId":"s1","projectPath":"/home/u/p","projectName":"p","buckets":[{"model":"m","day":"2026-07-17","totals":{"input":2,"cacheCreation":8518,"cacheRead":19059,"output":484,"msgs":1}}]}"#;
         let row: SessionUsageRow = serde_json::from_str(line).expect("daemon 行应可反序列化");
         assert_eq!(row.session_id, "s1");

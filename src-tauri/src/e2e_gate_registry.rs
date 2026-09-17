@@ -258,7 +258,7 @@ mod tests {
     ///
     /// # 它防的是一个实测出来的洞
     ///
-    /// 那一格原来只数 `remote-daemon-proto/target/...`，而 08-12 实测：盘上活着的 daemon
+    /// 那一格原来只数 `.build/backend/...`，而 08-12 实测：盘上活着的 daemon
     /// 走的是**部署落点** `~/.cc-monitor/bin/cc-monitor-remote`（`sftp::ensure_daemon_deployed`
     /// 的落点）—— **那一族当时根本不在人群里**，计数器却会安心地报 0。
     /// 这正是 `needle_anchor_registry` 那条：**匹配单位不许比事实小**。
@@ -274,7 +274,7 @@ mod tests {
         let raw = read_e2e("graylight-suite.sh");
         let src = strip_comments(&raw);
         for expr in [
-            "pgrep -fc 'remote-daemon-proto/target/[^ ]*/cc-monitor-remote'",
+            "pgrep -fc '.build/backend/[^ ]*/cc-monitor-remote'",
             "pgrep -fc '\\.cc-monitor/bin/cc-monitor-remote'",
         ] {
             assert!(

@@ -36,7 +36,7 @@ edition = "2021"
 
 [[bin]]
 name = "cc-monitor-remote"
-path = "../src/backend/main.rs"
+path = "main.rs"
 
 [dependencies]
 # Versions pinned to whatever ../src-tauri/Cargo.lock already resolved so the
@@ -55,9 +55,9 @@ path = "../src/backend/main.rs"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # G1：分叉的记录变换与 monitor 共用同一份（单向 path 依赖；不会把本 crate 拖进 monitor 的 workspace）。
-branch-core = { path = "../src-tauri/crates/branch-core" }
-usage-core = { path = "../src-tauri/crates/usage-core" }
-acct-core = { path = "../src-tauri/crates/acct-core" }
+branch-core = { path = "../../src-tauri/crates/branch-core" }
+usage-core = { path = "../../src-tauri/crates/usage-core" }
+acct-core = { path = "../../src-tauri/crates/acct-core" }
 # K-H2a：第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。
 # ★★ **刻意不开 `harden`**：那个 feature 才带「把文件收窄」的平台原语，而
 # `K-H2a` 裁四逐字定死 daemon **只许读那份文件，不许写** ——
@@ -67,16 +67,16 @@ acct-core = { path = "../src-tauri/crates/acct-core" }
 #   写不出来比事后检测更强（`scanning_guard_registry` 头注逐字：「让它写不出来，而不是再检测一遍」）。
 # ⚠ 代价如实记：不开 `harden` ⇒ Windows 上 `perm::probe` 读不了 DACL，返回 `Undetermined`。
 #   那**不是**绿灯（`judge` 把它判成要出声），但确实是「查不出来」。daemon 今天的运行目标是 Linux。
-creds-core = { path = "../src-tauri/crates/creds-core" }
+creds-core = { path = "../../src-tauri/crates/creds-core" }
 # U8c-2b-0：POSIX 单引号 quote 的唯一实现（账本 S5 收口）。
 # 本 crate 只用它一处（`control/tmux_hook::sq`）；U8c-2c 起载荷渲染也走它。
-shell-quote-core = { path = "../src-tauri/crates/shell-quote-core" }
+shell-quote-core = { path = "../../src-tauri/crates/shell-quote-core" }
 # K-R100：历史全文搜索口径的唯一实现（本 crate 的 `observe/search_query.rs` 全靠它）。
 # 与 monitor 同一份 —— 两侧的 snippet 预算顺序、截断口径、文本抽取从此不可能各走各的。
-search-core = { path = "../src-tauri/crates/search-core" }
+search-core = { path = "../../src-tauri/crates/search-core" }
 # F03：§34 Gate 2 的唯一实现。**生产依赖**——这道门要在 `control/` 的生产段真的执行，
 # 不是只在测试里比对（那样就成了「门在测试里、路在生产里」）。
-gate-core = { path = "../src-tauri/crates/gate-core" }
+gate-core = { path = "../../src-tauri/crates/gate-core" }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",
@@ -172,7 +172,7 @@ webpki-roots = "1"
 # （拿 monitor 那份 lock 播种）。这一段讲**今天**。
 #
 # ① **今天钉着哪个版本 —— 本轮现打**（09-06，量于 `97a4714`，两份 lock 各一把同样的尺子
-#    `grep -c '^name = "crypto-bigint"$' <lock>`）：`remote-daemon-proto/Cargo.lock` ⇒ **1** 处、
+#    `grep -c '^name = "crypto-bigint"$' <lock>`）：`src/backend/Cargo.lock` ⇒ **1** 处、
 #    版本 **`0.7.3`**；`../src-tauri/Cargo.lock` ⇒ **1** 处、版本也是 **`0.7.3`**。**两侧同一份。**
 #
 # ② 🔴 **后果一句话：「今天编得过」不等于「明天还编得过」。**
@@ -210,4 +210,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [dev-dependencies]
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
 # 故是 dev-dependency —— 不进发布二进制）。
-guard-core = { path = "../src-tauri/crates/guard-core" }
+guard-core = { path = "../../src-tauri/crates/guard-core" }

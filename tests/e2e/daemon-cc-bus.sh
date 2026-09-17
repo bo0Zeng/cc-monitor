@@ -28,8 +28,8 @@
 set -o pipefail
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
-D="$REPO/remote-daemon-proto/target/debug/cc-monitor-remote"
-[ -x "$D" ] || { echo "需要先 build daemon：cd remote-daemon-proto && cargo build"; exit 1; }
+D="$REPO/.build/backend/debug/cc-monitor-remote"
+[ -x "$D" ] || { echo "需要先 build daemon：cd src/backend && cargo build"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "需要 jq"; exit 1; }
 TIMEOUT="$(command -v timeout)" || { echo "需要 timeout"; exit 1; }
 REALTMUX="$(command -v tmux)" || { echo "需要 tmux（[10] 的身份空间对账要它）"; exit 1; }

@@ -1,0 +1,3 @@
+# 构建输出已改落 `<repo>/.build/backend`（见 .cargo/config.toml）；
+# 保留这一条是为了防手动 `--target-dir` 或旧 cargo 在这里落 target。
+/target

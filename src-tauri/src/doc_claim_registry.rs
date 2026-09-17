@@ -2908,7 +2908,7 @@ mod tests {
 // `R61`〔用@09-13〕逐字：「**不要有 daemon 这个说法了 / daemon 就是常驻后端，后端就是
 // daemon**」；`R63` 要「全仓改措辞」；`R64` 逐字收窄「**ccm 不改**」。
 //
-// ⇒ 改的是**人读的散文**，**不是代码标识符**（`remote-daemon-proto` 这个 crate 名、
+// ⇒ 改的是**人读的散文**，**不是代码标识符**（`src/backend` 这个 crate 名、
 // `daemon_*` 函数名、`--daemon-probe` 这类子命令、`daemon-gate2` 这类 e2e 套件名，
 // 一个都不改）。**「这个词出现几次」与「该改几处」是两个数**，下面第一道闸就长在这条线上。
 //
@@ -2969,7 +2969,7 @@ mod daemon_wording_registry {
         "README.en.md",
         "tests/e2e/README.md",
         "src-tauri/README.md",
-        "remote-daemon-proto/README.md",
+        "src/backend/README.md",
     ];
 
     /// 写区里**裸着的 `daemon`，而它一个字都不许动** —— `(文件, 逐字片段, 理由)`。
@@ -3031,7 +3031,7 @@ mod daemon_wording_registry {
     ///
     /// ⚠ 按**字节**走：`-` `.` `/` `:` 只在它另一侧紧跟 ASCII 标识符字符时才吃 ——
     /// 于是 `ccm做到必须走daemon` 切出裸词（汉字挡住了扩张），
-    /// 而 `remote-daemon-proto` / `daemon_send_keys.rs` 切出整条。
+    /// 而 `src/backend` / `daemon_send_keys.rs` 切出整条。
     fn token_at(s: &[u8], mut a: usize, mut b: usize) -> (usize, usize) {
         while a > 0
             && (is_ident(s[a - 1])
@@ -3106,7 +3106,7 @@ mod daemon_wording_registry {
             //   而那张账数的是「还没改的措辞」，一处**自检夹具**混进去会把它读成一笔真债。
             ("常驻 daemon 的 stdin", true),
             ("ccm做到必须走daemon", true),
-            ("remote-daemon-proto", false),
+            ("src/backend", false),
             ("daemon_send_keys.rs", false),
             ("--daemon-probe", false),
             ("daemonPath", false),
@@ -3192,7 +3192,7 @@ mod daemon_wording_registry {
              ② 它**真的**不该改（用户逐字引用 · 历史原措辞留档 · markdown 锚点 ·\n\
              命令行占位符 · CI job 名 · 界面按钮的逐字文案 · 指的是 Claude Code 自己那个\n\
              daemon）⇒ 往 `EXEMPT` 加一行**并写清理由**，同一拍把 `EXEMPT_HITS` 调上去。\n\
-             ⚠ **代码标识符本来就不该红**（`remote-daemon-proto` · `daemon_*` · `--daemon-probe`）——\n\
+             ⚠ **代码标识符本来就不该红**（`src/backend` · `daemon_*` · `--daemon-probe`）——\n\
              它红了说明 token 切法出问题了，先看上面那几条自检。",
             offenders.join("\n")
         );

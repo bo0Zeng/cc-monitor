@@ -16,7 +16,7 @@
 /binaries/
 # K-R42（09-10 合入）：**裸 exe 自己带着的那份本机后端**，构建期产物，不进 git。
 # 谁产的：`.github/workflows/release.yml` 的 “Stage native daemon for self-extract” 那一步
-# （Windows job），把 `remote-daemon-proto/target/release/cc-monitor-remote.exe` 拷成三个文件 ——
+# （Windows job），把 `.build/backend/release/cc-monitor-remote.exe` 拷成三个文件 ——
 # `cc-monitor-native`（字节本身）· `cc-monitor-native.build_id`（身份）· `cc-monitor-native.target`
 # （给哪个 triple 编的）；名字定死在 `src-tauri/build.rs` 的 NATIVE_DAEMON_DIR/NATIVE_DAEMON_FILE。
 # 谁吃的：`build.rs::embed_native_daemon` 用**字面量路径** `include_bytes!` 嵌进 exe，

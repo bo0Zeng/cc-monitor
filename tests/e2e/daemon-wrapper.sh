@@ -18,7 +18,7 @@
 E2E_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 REPO=$(CDPATH= cd -- "$E2E_DIR/../.." && pwd)
 : "${CCM_E2E_CLAUDE_DIR:=/tmp/e2e-remote-claude}"
-: "${CCM_E2E_DAEMON:=$REPO/remote-daemon-proto/target/debug/cc-monitor-remote}"
+: "${CCM_E2E_DAEMON:=$REPO/.build/backend/debug/cc-monitor-remote}"
 # ★★ 〔`P0b` 第十拍 08-13〕**同目录的 `daemon-path` 文件优先于下面的自愈**。
 #
 # 病:全链跑法要求把**本脚本的副本**放进一个目录(见上面的部署告警),而副本一旦离开仓,
@@ -35,7 +35,7 @@ fi
 if [ ! -x "$CCM_E2E_DAEMON" ]; then
   # 顺序:仓内 release > app 已部署 bin/(随 app 更新,较新) > e2e/(可能陈旧,或缺 tmux_sessions 帧)。
   for c in \
-    "$REPO/remote-daemon-proto/target/release/cc-monitor-remote" \
+    "$REPO/.build/backend/release/cc-monitor-remote" \
     "$HOME/.cc-monitor/bin/cc-monitor-remote" \
     "$HOME/.cc-monitor/e2e/cc-monitor-remote"; do
     if [ -x "$c" ]; then CCM_E2E_DAEMON="$c"; break; fi

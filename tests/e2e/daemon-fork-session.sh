@@ -21,8 +21,8 @@ cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT
 
 echo "== 构建 daemon =="
-( cd "$ROOT/remote-daemon-proto" && cargo build --quiet )
-BIN="$ROOT/remote-daemon-proto/target/debug/cc-monitor-remote"
+( cd "$ROOT/src/backend" && cargo build --quiet )
+BIN="$ROOT/.build/backend/debug/cc-monitor-remote"
 [ -x "$BIN" ] || { echo "daemon 二进制没构建出来: $BIN"; exit 1; }
 
 CLAUDE_DIR="$WORK/claude"

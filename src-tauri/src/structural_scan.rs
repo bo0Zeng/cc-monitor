@@ -918,9 +918,9 @@ mod tests {
     ///
     /// 闸**住在 monitor 这棵树上**（门禁 `cargo` 那一格 = `cargo test --workspace --lib`），
     /// 靠**读盘上的 `src/backend`** 够到 daemon。
-    /// ⇒ 🔴 **daemon 自己那一格（门禁 `daemon` = `cd remote-daemon-proto && cargo test`）
+    /// ⇒ 🔴 **daemon 自己那一格（门禁 `daemon` = `cd src/backend && cargo test`）
     /// 今天没有这道闸**：只跑 daemon 那一格的人新写一道绕道，**不会红**。
-    /// 两棵树是两个 workspace（`remote-daemon-proto/Cargo.toml` 头注逐字写着 standalone），
+    /// 两棵树是两个 workspace（`src/backend/Cargo.toml` 头注逐字写着 standalone），
     /// 而「daemon 那一格要不要也跑一条同形的判据」不是本件能决定的事 —— 交回 PM。
     #[test]
     fn the_detour_ratchet_reaches_both_trees() {
@@ -929,7 +929,7 @@ mod tests {
         let mut daemon = 0usize;
         for (p, _) in &corpus {
             let rel = detour_addr(p);
-            if rel.starts_with("remote-daemon-proto/") {
+            if rel.starts_with("src/backend/") {
                 daemon += 1;
             } else if rel.starts_with("src-tauri/") {
                 monitor += 1;
@@ -2250,7 +2250,7 @@ mod tests {
             "src-tauri/crates",
             // 〔搬树 2026-09-17〕**这里没有 `"src/backend"`，不是漏了**：后端树搬到
             // `<repo>/src/backend` 之后它已经是 `"src"` 的**子目录**，两个都列会把
-            // 后端的每个文件数两遍（搬家前 `remote-daemon-proto/src` 与 `src` 是互斥的）。
+            // 后端的每个文件数两遍（搬家前 `src/backend` 与 `src` 是互斥的）。
             "src",
             "doc",
             // 〔e2e 并入 tests/，2026-09-17〕这一格**从 `"e2e"` 换成 `"tests"`**，不是换成
