@@ -136,7 +136,7 @@ export function isValidTmuxName(name: string): boolean {
  * ⇒ 拿 cwd 当基名」这条路会产出 `/home/pi/proj-fork-cc`，被 `planResumeTmux` 的
  * `/^[A-Za-z0-9_][A-Za-z0-9_-]*$/` 当场拒掉。两处共用同一个净化器，那条路就不可能再产非法名。
  *
- * 规则与 `shared/ccm::derive_tmux_name` 逐字同源（跨语言双写点，由 `e2e/ccm-cli.test.sh`
+ * 规则与 `shared/ccm::derive_tmux_name` 逐字同源（跨语言双写点，由 `tests/e2e/ccm-cli.test.sh`
  * 的真值对拍钉住）：取末段路径 → 非 `[A-Za-z0-9_-]` 换 `-` → 折叠连字符 → 截 32 → 剥首尾 `-`。
  * 结果可能是**空串**（如输入全是分隔符），调用方负责给一个兜底名。
  */

@@ -117,7 +117,7 @@ mod tests {
     ///
     /// # 它为什么还留在前端（登记在案，不是漏了）
     ///
-    /// `e2e/ccm-contract-parity.sh:291` 逐字按**文件路径 ＋ 单行数组字面量**从
+    /// `tests/e2e/ccm-contract-parity.sh:291` 逐字按**文件路径 ＋ 单行数组字面量**从
     /// `src/launch-render-cli.ts` 抽这份清单（还配了「抽到 ≥5 项」的抽取器自检），
     /// 去比真 `ccm --ccm-probe` 吐的 `capabilities=`。搬走 ⇒ 它抽到 0 项 ⇒ 当场红。
     /// 而那个文件不在本件写区。
@@ -140,7 +140,7 @@ mod tests {
             TS_CLI_RENDERER.contains(&want),
             "`src/launch-render-cli.ts` 里那份能力清单与后端的不是同一份。\n\
              后端说它该逐字是：\n  {want}\n\
-             ⚠ 顺序也算：`e2e/ccm-contract-parity.sh` 按这一行的**字面量**抽它去比真 ccm 的 \
+             ⚠ 顺序也算：`tests/e2e/ccm-contract-parity.sh` 按这一行的**字面量**抽它去比真 ccm 的 \
              `capabilities=`，两份分了家 = 一台装了 ccm 的机器静默退回兜底渲染器（丢账号保真度）。"
         );
     }

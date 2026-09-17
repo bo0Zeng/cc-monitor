@@ -2164,7 +2164,7 @@ pub(crate) mod tests {
                  （固定槽位 [50]，**没有关掉它的开关**）⇒ 不隔离就是去改用户真实 tmux 的状态。\n\
                  ⚠ 这不是理论：08-11 打没过用户 9 个真实会话；08-26 / 08-27 / 08-29 各盖过一次 [50]。\n\
                  ⇒ 必须 **fail closed**：拿不到 shim 就炸，**绝不降级裸跑**。\n\
-                 跑法：bash e2e/local-backend-supervise.sh"
+                 跑法：bash tests/e2e/local-backend-supervise.sh"
             ),
         }
     }
@@ -2227,7 +2227,7 @@ pub(crate) mod tests {
     ///
     /// | 跑法 | ③ 买到什么 | 为什么 |
     /// |---|---|---|
-    /// | **文档指定的那条**：`bash e2e/local-backend-supervise.sh` | **冗余** | `e2e/tmux-shim.sh` 里那句 `export PATH="$TMUX_SHIM_BIN:$PATH"` 已经把 shim 挂进了**测试进程自己的 `PATH`**，而 `supervise_with_stdio` 只做 `env_remove("TMUX")` + 逐条 `env(k, v)`、**从不 `env_clear()`** ⇒ 子进程本来就继承那份带 shim 的 `PATH` |
+    /// | **文档指定的那条**：`bash tests/e2e/local-backend-supervise.sh` | **冗余** | `tests/e2e/tmux-shim.sh` 里那句 `export PATH="$TMUX_SHIM_BIN:$PATH"` 已经把 shim 挂进了**测试进程自己的 `PATH`**，而 `supervise_with_stdio` 只做 `env_remove("TMUX")` + 逐条 `env(k, v)`、**从不 `env_clear()`** ⇒ 子进程本来就继承那份带 shim 的 `PATH` |
     /// | **手工 `cargo test -- --ignored`**（变量设上、但 shim 不在自己 `PATH` 上） | ★ **这一格是真的** | 没有 ③ 的话，daemon 继承的是那个人的真 `PATH` ⇒ 沿真 `PATH` 找到真 tmux ⇒ 盖用户的 `[50]` |
     ///
     /// ⇒ **③ 值得留，但别把它读成「e2e 那条路上也靠它挡着」** —— 那条路上挡住的是 shim 的继承。
@@ -2272,7 +2272,7 @@ pub(crate) mod tests {
     ///    ⇒ **那个归因对不上源码**。现象是真的，归因不是。
     #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
     #[test]
-    #[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 e2e/local-backend-supervise.sh 那条带 shim 的路"]
+    #[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 tests/e2e/local-backend-supervise.sh 那条带 shim 的路"]
     fn the_local_daemon_can_be_stopped_and_started_again() {
         use std::path::Path;
         use std::sync::Arc;
@@ -2344,7 +2344,7 @@ pub(crate) mod tests {
             .and_then(|v| v.as_u64())
             .expect("起来了却没有 pid") as u32;
         assert!(alive(pid1), "状态给了 pid={pid1}，但 /proc 里没有这个进程");
-        // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `e2e/local-backend-supervise.sh` 驱动，
+        // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `tests/e2e/local-backend-supervise.sh` 驱动，
         //   而那个脚本的收尾自检是「**标记数 < 跑成的测试数 ⇒ 有测试提前退出**」
         //   ⇒ 不打标记的话，它一进那条 `--ignored` 路就会把套件判红，
         //   而红的理由是**假的**（不是断言没走完，是本条从来不打标记）。
@@ -3462,7 +3462,7 @@ pub(crate) mod tests {
     /// # 为什么是纯函数而不是去动环境变量
     ///
     /// `cargo test` 一个进程里跑很多线程，改进程级环境变量会跟别人打架；
-    /// 而且 `e2e/local-backend-supervise.sh` 那条路**是设了**这个变量的
+    /// 而且 `tests/e2e/local-backend-supervise.sh` 那条路**是设了**这个变量的
     /// ⇒ 「按环境当场试一把」的写法会让读数随跑法翻面。
     /// [`require_tmux_shim`] 收的是 `Result`，所以这一格**与环境无关**，两条路上读数相同。
     ///
@@ -5211,7 +5211,7 @@ pub(crate) mod tests {
     //
     // 只在 CI 的 `E2E real-machine` job 里跑（`ci.yml` 的
     // `assert-pass-floor.sh local-backend <地板>`），入口是
-    // `e2e/local-backend-supervise.sh`。本机 `npm run gate` **看不见它们**
+    // `tests/e2e/local-backend-supervise.sh`。本机 `npm run gate` **看不见它们**
     // —— 这句话是 `§1` 那张「在哪一步会被执行」表逐字要求写明的。
     // ══════════════════════════════════════════════════════════════════
 

@@ -12,7 +12,7 @@
  *
  * 源：`ccm_invocation::CLI_REQUIRED_CAPS`。
  *
- * ⚠ `K-R95` 交回时**前端还没能改读这一格**：`e2e/ccm-contract-parity.sh`
+ * ⚠ `K-R95` 交回时**前端还没能改读这一格**：`tests/e2e/ccm-contract-parity.sh`
  * 按 `src/launch-render-cli.ts` 的单行数组字面量抽它，搬走那条 e2e 当场红，
  * 而那个文件不在本件写区。⇒ 前端那一份今天由
  * `launch_cli_parity.rs` 逐字节（含顺序）钉在后端这一份上。

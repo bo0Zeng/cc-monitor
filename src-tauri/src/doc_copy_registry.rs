@@ -40,11 +40,11 @@ mod tests {
         "doc/ARCHITECTURE.md",
         // F18 下半新纳入的四份 —— 上半只覆盖了 V6 十六行里前五行涉及的文件，
         // 而剩下十一行的副本大半住在这四份里（`doc_claim_registry` 的文件集
-        // 只有 `doc/` **直接子层**，`e2e/README.md` 连它都够不着）。
+        // 只有 `doc/` **直接子层**，`tests/e2e/README.md` 连它都够不着）。
         "doc/INVARIANTS.md",
         "doc/IPC-PROTOCOL.md",
         "doc/REMOTE-PHASE0-DEPLOY.md",
-        "e2e/README.md",
+        "tests/e2e/README.md",
     ];
 
     /// 已按 **E12 第二条路**处置（删副本、只留指针）的事实。
@@ -98,7 +98,7 @@ mod tests {
                 "graylight-frames ",
             ],
             "套数与地板值一律不抄在这里",
-            "`ci.yml` 里 `run: bash e2e/assert-pass-floor.sh <套件> <地板>` 那 19 行",
+            "`ci.yml` 里 `run: bash tests/e2e/assert-pass-floor.sh <套件> <地板>` 那 19 行",
         ),
         (
             "`backend/` 下 `.rs` 的个数",
@@ -540,7 +540,7 @@ mod tests {
         }
     }
 
-    /// ★ 把 `e2e/README.md` 那句「**只能靠这条提醒**」变成一条会红的判据〔F18 下半〕。
+    /// ★ 把 `tests/e2e/README.md` 那句「**只能靠这条提醒**」变成一条会红的判据〔F18 下半〕。
     ///
     /// 那份表原先连**套数**带**逐套地板**一起抄，并在旁边逐字写着
     /// 「副本漂了不会让任何东西变红，所以只能靠这条提醒」—— 然后它漂了三次
@@ -552,7 +552,7 @@ mod tests {
     #[test]
     fn the_e2e_readme_suite_list_matches_ci() {
         let ci = read(".github/workflows/ci.yml");
-        let mark = "run: bash e2e/assert-pass-floor.sh ";
+        let mark = "run: bash tests/e2e/assert-pass-floor.sh ";
         let in_ci: BTreeSet<String> = ci
             .lines()
             .filter_map(|l| l.trim().strip_prefix(mark))
@@ -567,7 +567,7 @@ mod tests {
             in_ci.len()
         );
 
-        let readme = read("e2e/README.md");
+        let readme = read("tests/e2e/README.md");
         let in_doc: BTreeSet<String> = readme
             .lines()
             .filter(|l| l.starts_with("| `e2e-tmux"))
@@ -583,7 +583,7 @@ mod tests {
             .collect();
         assert!(
             in_doc.len() >= 15,
-            "从 `e2e/README.md` 的表里只解析出 {} 个套件名 —— 表的形状变了就把本条一起改：{in_doc:?}",
+            "从 `tests/e2e/README.md` 的表里只解析出 {} 个套件名 —— 表的形状变了就把本条一起改：{in_doc:?}",
             in_doc.len()
         );
 
@@ -591,7 +591,7 @@ mod tests {
         let extra: Vec<&String> = in_doc.difference(&in_ci).collect();
         assert!(
             missing.is_empty() && extra.is_empty(),
-            "`e2e/README.md` 的套件表与 `ci.yml` 的调用行对不上。\n\
+            "`tests/e2e/README.md` 的套件表与 `ci.yml` 的调用行对不上。\n\
              CI 有而文档没有：{missing:?}\n\
              文档有而 CI 没有：{extra:?}\n\
              ★ 地板值**不在**本条管辖内 —— 那些已按 E12 第二条路删掉副本，\

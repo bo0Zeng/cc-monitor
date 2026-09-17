@@ -321,7 +321,7 @@ cc-monitor/
 | [src-tauri/README.md](src-tauri/README.md) | 后端开发 | 后端模块导览 + IPC 清单 |
 | [remote-daemon-proto/README.md](remote-daemon-proto/README.md) | 远端后端开发 | 只读后端模块导览 + wire 协议 |
 | [scripts/README.md](scripts/README.md) | 用脚本的人 | 脚本说明 |
-| [e2e/README.md](e2e/README.md) | E2E | 套件与 DEV 探针：跑法 / 前置 / 人工场景（WebView2 复核） |
+| [tests/e2e/README.md](tests/e2e/README.md) | E2E | 套件与 DEV 探针：跑法 / 前置 / 人工场景（WebView2 复核） |
 
 ## 项目当前状态
 

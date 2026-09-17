@@ -365,7 +365,7 @@ mod tests {
     /// 而判据写的是「`fields` 空 ⇒ 不读 stdin；非空 ⇒ 读」—— 两个分支各自是同一个表达式的
     /// 复述，**永远不可能红**。`bus-list` 挂死那次它一声没吭。
     /// ⇒ 现在钉的是**登记表与声明对不对得上**（两个独立来源），且真不真由行为判据验
-    ///（`e2e/daemon-cc-bus.sh`：声明无输入的命令，stdin 不关时必须秒回）。
+    ///（`tests/e2e/daemon-cc-bus.sh`：声明无输入的命令，stdin 不关时必须秒回）。
     #[test]
     fn the_no_input_commands_are_registered_and_declared_consistently() {
         /// 不收入方向载荷的命令。**加一条就来这里写一行**。

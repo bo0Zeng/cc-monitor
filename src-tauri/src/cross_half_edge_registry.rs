@@ -284,10 +284,10 @@ mod tests {
         out
     }
 
-    /// 哪一半：`monitor` / `daemon` / 其它（`doc/` `shared/` `e2e/` `src/` …）。
+    /// 哪一半：`monitor` / `daemon` / 其它（`doc/` `shared/` `tests/e2e/` `src/` …）。
     ///
     /// ⚠ 只有 monitor ↔ daemon 这两个方向算「两半互相咬」。
-    /// 读 `doc/` `shared/` `e2e/` 与前端 `src/*.ts` 的边**另有 13 处**，它们不是这件的标的 ——
+    /// 读 `doc/` `shared/` `tests/e2e/` 与前端 `src/*.ts` 的边**另有 13 处**，它们不是这件的标的 ——
     /// 那些是「判据去读文档/脚本/前端源」，两半的关系不在其中。
     /// ⚠ 这条口径是**量出来的**：全仓 123 处 `include_*!`，跨侧 24 处，
     /// 其中 monitor↔daemon 恰好 **8 + 2**。别把 24 当成这件的数。

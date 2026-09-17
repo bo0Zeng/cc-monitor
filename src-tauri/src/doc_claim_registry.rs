@@ -1433,7 +1433,7 @@ mod tests {
         // ── 收 doc/ 里的 `file.rs::symbol`
         let mut refs: Vec<(String, usize, String, String)> = Vec::new();
         // 〔08-06 扩面〕**不止 `doc/`**：各目录的 `README.md` 同样在教人「去看哪条判据」，
-        // 而它们此前不在扫描面里 —— 我当天就在 `e2e/README.md` 里写下一个指针，
+        // 而它们此前不在扫描面里 —— 我当天就在 `tests/e2e/README.md` 里写下一个指针，
         // 于是那个指针**没有任何东西守着**。⇒ 把入口 README 一并收进来。
         // 实测扩面当日：这些 README 里共 11 处这种引用，**解析不到 0 处**（不误红）。
         let mut targets: Vec<PathBuf> = doc_files();
@@ -1447,7 +1447,7 @@ mod tests {
         );
         for p in targets {
             // ⚠ 用**仓相对路径**而不是裸文件名：扩面后有七个 `README.md`，
-            // 裸名会让诊断把 `e2e/README.md` 打印成 `doc/README.md` —— 指错地方的诊断
+            // 裸名会让诊断把 `tests/e2e/README.md` 打印成 `doc/README.md` —— 指错地方的诊断
             // 比没有诊断更费时间（本会话反复吃过「读诊断」的亏）。
             let fname = p
                 .strip_prefix(repo_root())
@@ -1566,7 +1566,7 @@ mod tests {
                 "**历史句**：原文逐字写着「取代已删除的 …」——删掉它反而丢掉「今天为什么没有 wrapper」",
             ),
             (
-                "e2e/tmux-guarded-acceptance.sh",
+                "tests/e2e/tmux-guarded-acceptance.sh",
                 "**历史句**〔`K-R72` 09-12〕：`INVARIANTS §34` 那一段逐字在说「这套 e2e 的输入源是\
                  那个已被删掉的 builder ⇒ 整套删了」——它点这个路径正是为了说清**哪一套没了**；\
                  删掉这句话，读的人只会看见「三道门少了一层真机验收」而不知道为什么",
@@ -2967,7 +2967,7 @@ mod daemon_wording_registry {
         "doc/CONTRIBUTING.md",
         "README.md",
         "README.en.md",
-        "e2e/README.md",
+        "tests/e2e/README.md",
         "src-tauri/README.md",
         "remote-daemon-proto/README.md",
     ];
@@ -3000,7 +3000,7 @@ mod daemon_wording_registry {
          "与仓外 aterm **冻结在 2026-07-18** 的那份契约文档的**名字**，不是散文"),
         ("README.md", "`rust` / `frontend` / `daemon` / `linux-app-build` / `e2e-smoke`",
          "`.github/workflows/ci.yml` 里的 **job 名**，改它 CI 就对不上"),
-        ("e2e/README.md", "<daemon>",
+        ("tests/e2e/README.md", "<daemon>",
          "shell 命令里的**占位符** `<daemon>`（要替进去的是那个二进制的路径）"),
         ("src-tauri/README.md", "设置面板「安装 daemon」",
          "**逐字引用界面上那个按钮的文案** —— 文案住 `src/settings/machine-card.ts`（本轮写区之外）；只改文档不改界面，文档当场说假话。UI 文案那一档整体交回 PM 另派"),

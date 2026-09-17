@@ -80,11 +80,11 @@
 //! ⚠ 三句话别混：① 旁边有没有（[`resolve_with`]）· ② 这份产物带没带（[`native_embedded_daemon`]）
 //! · ③ 放不放得下来（[`extraction_failure_reason`]）。09-10 那一形的病根就是把三件事说成一件。
 //!
-//! 真进程行为由 `e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
+//! 真进程行为由 `tests/e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
 //! [`supervise`]，并强制私有 tmux 隔离，绝不碰用户真实 tmux server。
 //! ⚠ 〔`P0e` 08-12〕隔离**换过机制**：原来靠私有 `TMUX_TMPDIR`，而 `$TMUX` 一有值就压过它
 //! （08-11 就是这么打没用户 9 个真实会话的）⇒ `C7i` 逐字禁掉那条路。
-//! 现在给 daemon 一条**前面挂着 shim 的 PATH**（`e2e/tmux-shim.sh`），它 shell out 的 tmux
+//! 现在给 daemon 一条**前面挂着 shim 的 PATH**（`tests/e2e/tmux-shim.sh`），它 shell out 的 tmux
 //! 被强插 `-L` —— **显式选择器压得过 `$TMUX`**。
 
 use std::path::{Path, PathBuf};
@@ -112,7 +112,7 @@ pub const SIDECAR_STEM: &str = "cc-monitor-remote";
 ///
 /// ⚠ **ccm 那一半已接**〔F06b-1c〕：旧 `shared/ccm` 的 `resolve_from_daemon` 〔散文墓碑〕（函数，exec 路用）
 /// 与 `resolve_recipe`（文本，print 路用），照该文件里 `derive_bus_id`/`BUS_ID_RECIPE` 的先例写；
-/// 一致性由 `e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
+/// 一致性由 `tests/e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
 ///
 /// ⚠ **monitor 这一半还没接**：本 `const` 今天**没有生产调用点**（只有判据读它，
 /// 于是 `dead_code` 警告仍在 —— 那个警告就是「没接上」的诚实标记，刻意不 `#[allow]`）。
@@ -699,7 +699,7 @@ pub fn supervise_with_stdio(
             // F05b 随 v3.7.0 发出去了：装出来那份现打有 2 个后端进程在跑（读数住模块头注）
             // ⇒ 这条路**在装了安装包的机器上已经生效**，不再是「差一个配置项」。
             // 也就是说这个修不是预防性的，它今天就在挡真事。〕
-            // `e2e/local-backend-supervise.sh` 那条真进程路径也一直在跑它。
+            // `tests/e2e/local-backend-supervise.sh` 那条真进程路径也一直在跑它。
             // ⇒ `io::copy` 到 `io::sink()`：**EOF 语义完全不变**，但一个字节都不留。
             let report = match (&stdio, out, in_) {
                 // P2：消费者**负责把 stdout 读到底** —— 它返回就等于流结束。
@@ -2348,7 +2348,7 @@ mod tests {
     ///
     /// 本条原来在测试体里现场造 shim（`exec 真tmux -S <私有 sock>`）——形态是对的，
     /// 但那是 `C7i` 那条红线原语在 Rust 侧的**第二份实现**。
-    /// `e2e/tmux-shim.sh` 的头注逐字写过为什么它要被抽成共享文件：
+    /// `tests/e2e/tmux-shim.sh` 的头注逐字写过为什么它要被抽成共享文件：
     /// 「红线的落地**不该有三份实现**：改一处漏两处」。
     /// ⇒ 改成问 `CCM_E2E_TMUX_SHIM_BIN` 要那一份（`$BIN/tmux` 强插 `-L`），
     /// **同时**让本条的人群判据与那两条同族测试**变成同一条**（见
@@ -2369,7 +2369,7 @@ mod tests {
 
         // ★★★ 「用户真实的 tmux」这一问**必须绕开 PATH 上的 shim**〔`K-R7` 08-31，实测逼出来的〕。
         //
-        // 本条由 `e2e/local-backend-supervise.sh` 驱动，而那个脚本把 shim 目录挂在
+        // 本条由 `tests/e2e/local-backend-supervise.sh` 驱动，而那个脚本把 shim 目录挂在
         // **本测试进程自己的 `PATH`** 最前面（`tmux-shim.sh` 里那句 `export PATH=…`）
         // ⇒ 裸 `Command::new("tmux")` 解析到的是 **shim**，问到的是 e2e 自己那台 server，
         // **根本不是用户那台**。
@@ -2424,7 +2424,7 @@ mod tests {
         assert!(
             shim_tmux.exists(),
             "`CCM_E2E_TMUX_SHIM_BIN` 指的目录里没有 `tmux` —— \
-             那不是 `e2e/tmux-shim.sh` 造出来的那份，隔离无从谈起：{shim_tmux:?}"
+             那不是 `tests/e2e/tmux-shim.sh` 造出来的那份，隔离无从谈起：{shim_tmux:?}"
         );
         let tmux = |args: &[&str]| {
             let mut c = std::process::Command::new(&shim_tmux);
@@ -2656,7 +2656,7 @@ mod tests {
     ///
     /// ⚠⚠ **第三道锁的射程要分两格看**〔`D1` 审计 08-31 查实，阻塞 4 的另一半〕——
     /// 与 `local_daemon.rs::the_local_daemon_can_be_stopped_and_started_again` 头注里那张表**同一份**：
-    /// 走 `bash e2e/local-backend-supervise.sh` 时 `tmux-shim.sh` 已经把 shim 挂进
+    /// 走 `bash tests/e2e/local-backend-supervise.sh` 时 `tmux-shim.sh` 已经把 shim 挂进
     /// **测试进程自己的 `PATH`**，而 `supervise_with_stdio` **从不 `env_clear()`**
     /// ⇒ 第三道锁在**那条跑法上是冗余的**；它真正买的是「**手工 `cargo test -- --ignored`、
     /// 变量设上但 shim 不在自己 `PATH` 上**」那一格。别把两格混着读。
@@ -2682,7 +2682,7 @@ mod tests {
     /// 其中「`rerun-if-changed` 只在文件存在时登记」那条**现打对不上源码**（那一行是无条件的）。
     #[cfg(all(embedded_daemons, target_os = "linux", target_arch = "x86_64"))]
     #[test]
-    #[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 e2e/local-backend-supervise.sh 那条带 shim 的路"]
+    #[ignore = "K-R7：起真 daemon ⇒ 会装全局 tmux hook。走 tests/e2e/local-backend-supervise.sh 那条带 shim 的路"]
     fn the_local_daemon_really_registers_an_inbound_client() {
         // ★★ **fail closed，而且排在一切之前** —— 见上面头注第三段。
         let shim = crate::local_daemon::tests::demand_tmux_shim(
@@ -2747,7 +2747,7 @@ mod tests {
                  `resolve_claude_dir()` 是 `$CLAUDE_CONFIG_DIR` 优先、`$HOME/.claude` 兜底，\n\
                  两个都要设。（只设 HOME 那版跑起来一切正常，隔离却是假的。）"
             );
-            // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `e2e/local-backend-supervise.sh` 驱动，
+            // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `tests/e2e/local-backend-supervise.sh` 驱动，
             //   而那个脚本的收尾自检是「标记数 < 跑成的测试数 ⇒ 有测试提前退出」。
             println!("E2E-OK P2 daemon 自陈的 claude_dir 就在沙箱里（隔离是断言，不是假设）");
         }
@@ -4188,7 +4188,7 @@ mod tests {
         );
     }
 
-    // ── 真进程（`#[ignore]`，由 e2e/local-backend-supervise.sh 驱动）──────────
+    // ── 真进程（`#[ignore]`，由 tests/e2e/local-backend-supervise.sh 驱动）──────────
 
     /// ★★ **起真 daemon 的 e2e 必须 fail-closed 地要一个私有 tmux 目录**
     /// 〔audit-0805 08-08，Phase G 第 51 件〕。

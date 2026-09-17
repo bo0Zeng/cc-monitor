@@ -381,7 +381,7 @@ mod tests {
         }
     }
 
-    /// 〔搬自 `e2e/ccm-cli.test.sh`「resume <sid>」「`--resume <sid>` 等价」「`--resume=<sid>`」〕
+    /// 〔搬自 `tests/e2e/ccm-cli.test.sh`「resume <sid>」「`--resume <sid>` 等价」「`--resume=<sid>`」〕
     ///
     /// 三种写法**必须**落到同一套意图上 —— cc-monitor 今天发的就是 `--resume <sid>`。
     #[test]

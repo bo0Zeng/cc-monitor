@@ -1138,7 +1138,7 @@ mod tests {
             // 混进一条不是剥法的，下一个人会照它去找一份并不存在的实现。
             (
                 "e2e_gate_registry.rs::strip_comments",
-                "**别的注释语法**：语料是 shell 脚本（`e2e/*.sh`），注释是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 语义上刻意只剥**整行注释**、不碰行尾注释（shell 里 `#` 可以出现在字符串中间，                 按 marker 截断会误伤 `pgrep` 模式里的 `#`）。要收口的正确做法是给共享原语加一个                 「注释前缀」参数，那是另一件事。",
+                "**别的注释语法**：语料是 shell 脚本（`tests/e2e/*.sh`），注释是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 语义上刻意只剥**整行注释**、不碰行尾注释（shell 里 `#` 可以出现在字符串中间，                 按 marker 截断会误伤 `pgrep` 模式里的 `#`）。要收口的正确做法是给共享原语加一个                 「注释前缀」参数，那是另一件事。",
             ),
             (
                 "cc_bus.rs::non_test_code",
@@ -1314,7 +1314,7 @@ mod tests {
             ),
             (
                 "e2e_gate_registry.rs",
-                "**别的注释语法**：语料是 shell 脚本（`e2e/*.sh`），注释前缀是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 刻意只剥**整行**：shell 里 `#` 会出现在字符串中间（本处语料就有 `pgrep` 模式），                 按 marker 截断会误伤。收口的正确做法是给共享原语加一个「注释前缀」参数，那是另一件事。",
+                "**别的注释语法**：语料是 shell 脚本（`tests/e2e/*.sh`），注释前缀是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 刻意只剥**整行**：shell 里 `#` 会出现在字符串中间（本处语料就有 `pgrep` 模式），                 按 marker 截断会误伤。收口的正确做法是给共享原语加一个「注释前缀」参数，那是另一件事。",
             ),
         ];
 
@@ -2251,7 +2251,12 @@ mod tests {
             "remote-daemon-proto/src",
             "src",
             "doc",
-            "e2e",
+            // 〔e2e 并入 tests/，2026-09-17〕这一格**从 `"e2e"` 换成 `"tests"`**，不是换成
+            // `"tests/e2e"`：前端测试此前住在 `src/` 里、被上面那个 `"src"` 顺带收着；
+            // 搬去 `tests/` 之后**这个语料面悄悄缩了一大块**，而本族的反空真检查只管
+            // 「本文件不在语料里」，管不了「少了一棵树」⇒ 会安静地少扫，不会红。
+            // 收 `"tests"` 一并把前端测试与 `tests/e2e/` 都拿回来。
+            "tests",
         ] {
             for (p, src) in guard_core::scan_tree!(&root.join(sub), &[] as &[&str]) {
                 let rel = dead_name_rel(&root, &p);

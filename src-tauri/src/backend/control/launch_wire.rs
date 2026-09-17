@@ -505,7 +505,7 @@ mod f07_main_path_tests {
             "src/launch-payload-golden.ts",
             &["renderGoldenFixture", "GOLDEN_CASES"],
             Reach::OffProductionPath,
-            "`npm run gen:payload-golden`（`e2e/launch-payload-golden-emit.mts`）\
+            "`npm run gen:payload-golden`（`tests/e2e/launch-payload-golden-emit.mts`）\
              与它自己那份 vitest。**生产运行时零调用**，但它产的入库夹具是 Rust 那条\
              逐字节对拍的**左边** ⇒ 删它要先给那条对拍换一个真相源。",
         ),
@@ -519,8 +519,8 @@ mod f07_main_path_tests {
                 "buildAttachCmd",
             ],
             Reach::OffProductionPath,
-            "只有 `remote-launch.test.ts` · `e2e/resume-cmd-driver.ts` · \
-             `e2e/tmux-target-emit.mts` 在调（`K-R89` 的 PM 审计现打核过：生产调用方 0）。\
+            "只有 `remote-launch.test.ts` · `tests/e2e/resume-cmd-driver.ts` · \
+             `tests/e2e/tmux-target-emit.mts` 在调（`K-R89` 的 PM 审计现打核过：生产调用方 0）。\
              ⚠ 同一份文件里 `mintTmuxName` / `deriveTmuxName` / `buildOpenTerminalCmd` \
              **是生产在跑的** —— 本行判的是上面那五个 builder，不是这个文件。",
         ),
@@ -1518,7 +1518,7 @@ mod k_r95_launch_render_facts {
     //! # 🔴 没搬动的那三处，卡的是**判据**不是设计
     //!
     //! 能力清单 ＋ 两条「维度 …」闸门的措辞，各自被一条**按源码字面量/措辞 grep** 的判据
-    //! 钉在 `src/launch-render-cli.ts` 里：`e2e/ccm-contract-parity.sh:291`（按文件路径 ＋
+    //! 钉在 `src/launch-render-cli.ts` 里：`tests/e2e/ccm-contract-parity.sh:291`（按文件路径 ＋
     //! 单行数组字面量抽清单，还配了「抽到 ≥5 项」的自检）· `tests/launch-render-cli.vitest.ts`
     //! （两条闸门各按措辞钉「恰好一处」）。**两个文件都不在本件写区**，搬走会让它们假红。
     //! ⇒ 处置：留在前端，但由 `launch_cli_parity.rs` 那两条判据**逐字节钉在后端这一份上**
@@ -1681,7 +1681,7 @@ mod k_r95_launch_render_facts {
                 " *",
                 " * 源：`ccm_invocation::CLI_REQUIRED_CAPS`。",
                 " *",
-                " * ⚠ `K-R95` 交回时**前端还没能改读这一格**：`e2e/ccm-contract-parity.sh`",
+                " * ⚠ `K-R95` 交回时**前端还没能改读这一格**：`tests/e2e/ccm-contract-parity.sh`",
                 " * 按 `src/launch-render-cli.ts` 的单行数组字面量抽它，搬走那条 e2e 当场红，",
                 " * 而那个文件不在本件写区。⇒ 前端那一份今天由",
                 " * `launch_cli_parity.rs` 逐字节（含顺序）钉在后端这一份上。",

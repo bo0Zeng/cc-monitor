@@ -543,7 +543,7 @@ mod tests {
         }
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         // 头注里写住址有四种形态：本 crate 内的裸文件名 · `relay/xxx.rs` 这种 crate 内相对路径 ·
-        // `src-tauri/src/xxx.rs` / `e2e/xxx.sh` 这种从仓根写起的 ·
+        // `src-tauri/src/xxx.rs` / `tests/e2e/xxx.sh` 这种从仓根写起的 ·
         // **monitor 侧的裸文件名**（`daemon_policy.rs` —— 跨半个仓引用在本仓是常态）。四个根都试。
         let roots = [
             manifest.join("src"),
@@ -597,7 +597,7 @@ mod tests {
     /// ★★ **只听回环** —— 与 `relay::server` 那条同一个理由，同一个形状。
     ///
     /// 它单独存在时是安慰剂（`bind_guard` 头注自陈过），所以行为那半由
-    /// `e2e/local-backend-supervise.sh` 的真进程用例兜。
+    /// `tests/e2e/local-backend-supervise.sh` 的真进程用例兜。
     #[test]
     fn the_listen_address_is_loopback_and_it_is_a_literal() {
         assert_eq!(LOOPBACK, IpAddr::V4(Ipv4Addr::LOCALHOST));

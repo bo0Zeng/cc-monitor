@@ -5,7 +5,7 @@
 //! `ci.yml` 自己逐字记着（G-C 那段）：
 //!
 //! > Phase G 审计：G2 新增的这套**只有 npm 脚本、没进任何门禁**。它已具备入网条件
-//! > （…），只是当时**忘了接线**。对比 `graylight-suite` 的排除在 `e2e/README.md` 里
+//! > （…），只是当时**忘了接线**。对比 `graylight-suite` 的排除在 `tests/e2e/README.md` 里
 //! > 是有论证的，这两套什么都没写 —— 那正是**「新东西入网漏一拍」的形状**。
 //!
 //! 那一次是**人**发现的。今天守着这件事的是 `ci.yml` 里那条
@@ -13,7 +13,7 @@
 //! 它挡得住「已登记的那 19 套被改回裸 `npm run` 或被删」，
 //! **挡不住「第 20 套根本没登记」**：`N` 还是 19，19 对也全对得上，CI 照旧绿。
 //!
-//! ⇒ 人群改从 **`package.json` 派生**（哪些 `test:*` 真的在跑 `e2e/`），默认拒绝。
+//! ⇒ 人群改从 **`package.json` 派生**（哪些 `test:*` 真的在跑 `tests/e2e/`），默认拒绝。
 //!
 //! # 三条出路，第三条要写理由
 //!
@@ -23,7 +23,7 @@
 //! 3. 登记在 [`EXEMPT`]，**并写清为什么**。
 //!
 //! ★ **先核（E1）救了一次**：`graylight-suite` 与 `f40-suite` 看起来是两个洞，
-//! 而它们的排除**在 `e2e/README.md` 里是有论证的**（要 Xvfb 上跑着 `npx tauri dev`
+//! 而它们的排除**在 `tests/e2e/README.md` 里是有论证的**（要 Xvfb 上跑着 `npx tauri dev`
 //! 的真 app、断言源是运行中 app 写的日志、不打印「合计 PASS=」）——理由成立。
 //! 它们不是「忘了接线」，是**结构上进不了无头 CI**。⇒ 登记，不是「顺手补进去」。
 //!
@@ -44,13 +44,13 @@ mod tests {
         (
             "graylight",
             "全链级：断言源是 Xvfb 上**正在跑的 dev app**（`npx tauri dev`）写的 monitor 日志，\
-             无头 CI 里没有那个 app；论证写在 `e2e/README.md`「`graylight-suite`（全链级）不在上表那些套件里」",
+             无头 CI 里没有那个 app；论证写在 `tests/e2e/README.md`「`graylight-suite`（全链级）不在上表那些套件里」",
         ),
         (
             "f40",
             "渲染/滚动管线级：同 `graylight-suite` 的规格（要跑着的 dev app + Xvfb），\
              且它**不打印「合计 PASS=」**、断言数随环境分支变 ⇒ 连 `assert-pass-floor` 的度量口径都不成立；\
-             论证写在 `e2e/README.md`（U0 2026-08-01 补写那两段）",
+             论证写在 `tests/e2e/README.md`（U0 2026-08-01 补写那两段）",
         ),
     ];
 
@@ -62,7 +62,7 @@ mod tests {
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}: {e}"))
     }
 
-    /// 人群：`package.json` 里**真的在跑 `e2e/` 的** `test:*` 脚本 → `(套名, 脚本路径)`。
+    /// 人群：`package.json` 里**真的在跑 `tests/e2e/` 的** `test:*` 脚本 → `(套名, 脚本路径)`。
     ///
     /// ⚠ 按「这条 npm 脚本跑的是不是 e2e 套」取，不按名字前缀取：
     /// `test:` 下面也有纯 node/vitest 的套，而 `gen:payload-golden` 这种**生成器**
@@ -82,10 +82,10 @@ mod tests {
                 .trim_start_matches('"')
                 .trim_end_matches(',')
                 .trim_end_matches('"');
-            if !cmd.contains("e2e/") {
+            if !cmd.contains("tests/e2e/") {
                 continue;
             }
-            let Some(path) = cmd.split_whitespace().find(|w| w.starts_with("e2e/")) else {
+            let Some(path) = cmd.split_whitespace().find(|w| w.starts_with("tests/e2e/")) else {
                 continue;
             };
             out.push((name.to_string(), path.to_string()));
@@ -110,7 +110,7 @@ mod tests {
         let mut out = Vec::new();
         for line in live.lines() {
             let t = line.trim();
-            let Some(rest) = t.split_once("run: bash e2e/assert-pass-floor.sh ") else {
+            let Some(rest) = t.split_once("run: bash tests/e2e/assert-pass-floor.sh ") else {
                 continue;
             };
             let mut it = rest.1.split_whitespace();
@@ -371,6 +371,7 @@ mod tests {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
+            .join("tests")
             .join("e2e");
         let mut scanned = 0usize;
         let mut bad: Vec<String> = Vec::new();
@@ -453,7 +454,7 @@ mod tests {
         assert!(
             bad.is_empty(),
             "这些套件的 tmux 隔离不合 `C7i`：\n{}\n\
-             ⇒ 改用共享原语 `e2e/tmux-shim.sh`（`TMUX_SHIM_SOCK=<私有名>` + `.` 进来），\
+             ⇒ 改用共享原语 `tests/e2e/tmux-shim.sh`（`TMUX_SHIM_SOCK=<私有名>` + `.` 进来），\
              它把 shim 放进 PATH 最前并**强插 `-L`** —— 调用点一个字都不用改。\n\
              ⚠ 裸调那几条同理：**要么挂 shim，要么每一处自带 `-L`/`-S`**。\n\
              08-13 实测过后果：fixture 会话建到了用户的默认 socket 上。",
@@ -518,10 +519,11 @@ mod tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .parent()
                 .unwrap()
+                .join("tests")
                 .join("e2e")
                 .join(name),
         )
-        .unwrap_or_else(|e| panic!("读不到 e2e/{name}：{e}"))
+        .unwrap_or_else(|e| panic!("读不到 tests/e2e/{name}：{e}"))
     }
 
     /// shell 的「剥生产段」：只留可执行行。

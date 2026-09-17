@@ -197,7 +197,7 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "control/gate2_parity.rs",
         "control",
         "F03：§34 Gate 2 判定表（`fixtures/gate2-golden.tsv`）在 monitor 这一侧的独立对拍。\
-         同一张表另有两个读者：daemon 的 `control/gate.rs` 与 `e2e/daemon-gate2-acceptance.sh`",
+         同一张表另有两个读者：daemon 的 `control/gate.rs` 与 `tests/e2e/daemon-gate2-acceptance.sh`",
     ),
     (
         "control/launch_cli_parity.rs",

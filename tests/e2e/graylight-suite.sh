@@ -1,0 +1,318 @@
+#!/usr/bin/env bash
+# auto-e2e F-E1(全链级):驱 gray-light 生命周期,断言 monitor 日志里的 `[e2e] tab-state` 序列。
+# **前置**(同 tests/e2e/f40-suite.sh 契约,见 tests/e2e/README):
+#   - Xvfb 上跑着 dev 实例(`npx tauri dev`,DEV 探针内建);
+#   - config.json 配了一个 loopback 远端,daemonPath 指向 tests/e2e/daemon-wrapper.sh
+#     (把 daemon 的 CLAUDE_CONFIG_DIR 钉到隔离 fixture 目录,防与本地会话双 tab);
+#   - 本机可读 monitor 日志(fe_perf/[e2e] 行是断言数据源)。
+# 序列(跨进程整链,单测碰不到):
+#   建 fixture(fake-claude 活 + @ccm_sid) → app 经 daemon SessionAdded 建 live 远端 tab
+#   → kill fake-claude(留 tmux shell) → daemon SessionRemoved + TmuxSessions 仍带 @ccm_sid
+#     → emitter 判 Idle → SESSION_IDLE → tabs.markTmuxIdle → `[e2e] tab-state … status=live tmuxIdle=1`(灰)
+#   → tmux kill-session(另留一个无关 cc-* 防空 backend 卡灰,§24bis) → @ccm_sid 消失
+#     → 收割/对账 retire → SESSION_ENDED → tabs.archiveTab → `[e2e] tab-state … status=archived`
+# **status=live tmuxIdle=1 这一行同时证明**:该 tab 变灰前是 live(status 字段)+ 此刻进灰(tmuxIdle=1)。
+set -euo pipefail
+
+# ── G-C（解 BACKLOG E41）：把整套件钉在**自己的 tmux server** 上 ──────────────────
+# 此前这套件裸调 tmux ⇒ 在开发者机器上会**直接操作默认 socket 上的真实会话**，
+# 所以它既进不了 CI 也不敢在有活会话的机器上跑（E41）。
+#
+# ⚠⚠ **这里原有一整段头注，逐字写着「两件事都必须做，缺一就不隔离」（`unset TMUX` +
+# `TMUX_TMPDIR`）—— 已删，因为那段话把一个会出事的形态写成了纪律。** 它自己都记着
+# 「设了 `TMUX_TMPDIR` 仍在默认 socket 上建出了会话」，结论却是「所以两件都要做」；
+# 而正确的结论是「**别靠环境变量做隔离**」。08-11 的事故正是漏了那两件里的一件。
+# 保留这几行是为了让下一个人知道**为什么不能改回去**。
+#
+# ★★★ **C7i 红线改造〔08-12〕：隔离改成 `-L` shim，不再靠环境变量。**
+#
+# 上面那段（已删）逐字写着「两件事都必须做，缺一就不隔离」——`unset TMUX` + `TMUX_TMPDIR`。
+# **那个形态本身就是病灶**：2026-08-11 实测事故 —— 一条探针写了 `TMUX_TMPDIR=… tmux kill-server`
+# 却漏了 `unset TMUX`，`$TMUX` 有值时 tmux **按它给的 socket 走、`TMUX_TMPDIR` 完全不起作用**
+# ⇒ 那条命令打到用户真实 server 上，**9 个真实 tmux 会话没了**。
+#
+# ⇒ C7i 立为红线：**tmux 命令一律带 socket 选择器（`-S <绝对路径>` 或 `-L <名>`），
+#   禁止靠 `TMUX_TMPDIR`/`unset TMUX` 做隔离。**
+#
+# 现在的形态：把 `$BIN/tmux` 放进 PATH 最前，它 `exec` 真 tmux 并**强插 `-L e2eGray`**。
+# · 漏什么环境变量都打不偏 —— 选择器写死在 shim 里，不依赖「记得清某个变量」；
+# · 零调用点改动的好处**原样保留**：套件里的裸 `tmux` 一个不用改，
+#   连它 shell out 出去的东西（`ccm` / `cc-spawn` 内部也裸调 tmux）也一并覆盖；
+# · `unset TMUX` **仍然保留**，但它现在只是「让被测行为发生」（tmux 内会退化成就地起），
+#   **不再是隔离手段** —— 隔离由 shim 独自负责。
+unset TMUX TMUX_PANE
+_GC_SOCK="e2eGray"
+_GC_REAL_TMUX="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
+_GC_BIN="$(mktemp -d /tmp/e2e-tmuxshim.XXXXXX)"
+printf '#!/bin/sh\nexec %s -L %s "$@"\n' "$_GC_REAL_TMUX" "$_GC_SOCK" > "$_GC_BIN/tmux"
+chmod +x "$_GC_BIN/tmux"
+export PATH="$_GC_BIN:$PATH"
+
+# ★ 前置断言**经登录 shell 问** —— 08-12 实测教训：在外层 shell 量 `command -v tmux` 会报 PASS，
+#   而命令真正跑在 `bash -lic` 里（PATH 被 profile 重排过）⇒「隔离没生效」以 PASS 的形式呈现。
+_gc_probe="$(bash -lic 'command -v tmux' 2>/dev/null | tail -1)"
+if [ "$_gc_probe" != "$_GC_BIN/tmux" ]; then
+  echo "  ABORT 隔离没生效：登录 shell 里的 tmux 是 '$_gc_probe'，不是 shim $_GC_BIN/tmux"
+  echo "        绝不降级裸跑 —— 那会打到用户真实 tmux server 上（C7i 红线）。"
+  rm -rf -- "$_GC_BIN"
+  exit 2
+fi
+
+# 收尾：只收自己那台（`-L` 选择器在，绝不裸 `kill-server`）。
+_gc_sock_cleanup() {
+  set +e
+  [ -n "${_GC_REAL_TMUX:-}" ] && "$_GC_REAL_TMUX" -L "$_GC_SOCK" kill-server 2>/dev/null
+  [ -n "${_GC_BIN:-}" ] && rm -rf -- "$_GC_BIN"
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
+DISPLAY="${E2E_DISPLAY:-:80}"; export DISPLAY
+REPO="$(cd "$(dirname "$0")/../.." && pwd)"
+LOG="${E2E_LOG:-$(ls -t "$HOME"/.claude/claudecode-frontend/logs/monitor.*.log 2>/dev/null | head -1)}"
+CLAUDE_DIR="${CCM_E2E_CLAUDE_DIR:-/tmp/e2e-remote-claude}"
+GRAY_WAIT="${E2E_GRAY_WAIT:-30}"    # 灰:daemon 判活轮询(2s)+ TmuxSessions 帧(≤8s)+ emitter
+ARCH_WAIT="${E2E_ARCH_WAIT:-40}"    # 归档:kill-session 后 TmuxSessions 帧 + 对账去抖
+
+[ -f "$LOG" ] || { echo "monitor 日志不存在:$LOG(dev 实例在跑吗?)"; exit 1; }
+
+# ★★★ **开跑前自证台架**〔P0b 08-12〕。**不满足一律 `ABORT`（exit 2），不许 FAIL。**
+#
+# 病史：查 #60 时**连着六次**跑出「1 过 2 败」，而**每一次的成因都不是 #60** ——
+#   ① 陈旧 pidfile（读到上一跑的残骸，kill 打给死 pid）
+#   ② `daemonPath` 指向真 daemon 而非本 wrapper（daemon 盯 `~/.claude` 不是 fixture）
+#   ③ wrapper 副本搬出仓外后 `$REPO` 推错 ⇒ 回落到陈旧 daemon
+#   ④ 跑的是 `target/debug/monitor` 而非 `npx tauri dev` ⇒ **DEV 探针整支被 vite 消除**
+#   ⑤ `P0d` 换 socket 隔离后 daemon 与套件**分家**（daemon 在 SSH 那头，不吃 shim）
+#   ⑥ dev 实例在跑套件之前就挂了
+#
+# ★ 它们**失败起来长得一模一样**（都是「没变灰」）⇒ 「测不到」一路伪装成「测到了缺陷」，
+#   而每修好一条只会露出下一条。**这就是为什么台架有效性必须每跑自证，不能靠一次推断**
+#   （`P0` 当初那句「台架处于有效状态」正是那样的一次推断）。
+#
+# 三格，各挡上面一族：
+_abort() { echo "  ABORT $1"; echo "        —— 台架不成立，本跑测不到任何东西。**这不是 FAIL**。"; exit 2; }
+
+# 甲：app 活着且**正在写这份日志**（挡 ⑥）。日志尾行时间戳与现在差太远 = 它已经不写了。
+_last_ts="$(tail -200 "$LOG" | grep -oE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:]{8}' | tail -1)"
+if [ -n "$_last_ts" ]; then
+  _age=$(( $(date +%s) - $(date -u -d "${_last_ts}Z" +%s 2>/dev/null || echo 0) ))
+  [ "$_age" -lt 600 ] || _abort "monitor 日志已 ${_age}s 没有新行（dev 实例挂了？）：$LOG"
+fi
+
+# 乙：daemon **握手过且盯的是 fixture 目录**（挡 ②③⑤）。
+_hello="$(grep 'daemon hello' "$LOG" | tail -1)"
+[ -n "$_hello" ] || _abort "日志里一条 daemon hello 都没有 —— 远端没连上，本跑与 #60 无关"
+case "$_hello" in
+  *"claude_dir=$CLAUDE_DIR"*) : ;;
+  *) _abort "daemon 盯的不是 fixture 目录（要 $CLAUDE_DIR）：$_hello" ;;
+esac
+
+# 丙：跑的是 **dev 实例**（挡 ④）。DEV 探针（`import.meta.env.DEV` 门控）是本套件两条主断言的
+#     唯一数据源，生产构建里整支被 vite 消除 ⇒ 断言永不可能通过。
+#
+# ⚠ **不能拿「日志里有没有 `[e2e]` 行」当判据** —— 08-12 实测栽过一次：
+#   那些行**全是事件驱动**的（tab 状态转移时才打），刚起的 dev 实例一条都没有
+#   ⇒ 那条判据会把**健康的 dev 实例**判成「探针不存在」。
+#   **它想验「探针存在」，量的却是「探针已经打过」** —— 射程错了一格。
+# ⇒ 改量**结构性信号**：`tauri.conf.json` 的 `devUrl` 端口上有没有 vite。
+#   只有 `npx tauri dev` 会起它；生产构建走 `frontendDist`，那个端口是空的。
+_devport="$(grep -oE '"devUrl"[^0-9]*([0-9]+)' "$REPO/src-tauri/tauri.conf.json" | grep -oE '[0-9]+$')"
+if [ -n "$_devport" ]; then
+  curl -s -o /dev/null --max-time 3 "http://localhost:$_devport" \
+    || _abort "devUrl 端口 $_devport 上没有 vite —— 跑的不是 \`npx tauri dev\`？DEV 探针会被 vite 整支消除，两条主断言永不可能通过"
+fi
+
+# 丁：**没有孤儿 daemon**（08-12 实测第七条：污染源是我自己）。
+#
+# daemon 是 app 经 SSH exec 起的 ⇒ **杀 app 不会带走它**。反复起停 app 之后盘上会攒下
+# 一堆还挂着 SSH 会话的 daemon，实测攒到 5 个、每分钟贡献 8 次 SSH 登录 ——
+# 而那个现象**看起来像「产品在疯狂重连」**，我在它上面连猜错三次。
+# ⇒ 开跑前数一次；多于一个（本轮 app 自己那个）就 ABORT，让人先清干净。
+# ⚠⚠ **人群补齐**〔P0b 08-12 实测〕：本格原来只数 `remote-daemon-proto/target/...` 那一族，
+#     而实测盘上活着的 daemon 走的是**部署落点** `~/.cc-monitor/bin/cc-monitor-remote`
+#     （`sftp::ensure_daemon_deployed` 的落点）——**那一族当时根本不在人群里**，
+#     计数器却会安心地报 0。⇒ 两族都数。
+#     （`needle_anchor_registry` 管的就是这个：**匹配单位不许比事实小**。）
+# ★★★ **`U10g` 落地〔08-13 自批，举证见下〕：判别从「按个数」换成「按身份」。**
+#
+# 待决 `U10g` 原文写着「真正的判别该收窄成什么（多半是按 hello 里的 `claude_dir`）」。
+# 08-13 实测：**身份信号是现成的，而且不用等 hello** —— daemon 的
+# `/proc/<pid>/environ` 里就有 `CLAUDE_CONFIG_DIR`（wrapper 用 `env` 传的那个）。
+#
+# ⇒ 只数**盯着本跑 fixture 的**那些。别人的 daemon（用户自己的 cc-monitor、
+# 别的工作区的台架）盯的是别的目录 ⇒ **天然不在人群里**，不再挡路。
+#
+# ★ 为什么这比「按个数 + 手工点名」强：
+# · 按个数是 fail-closed 但**误报**（这一轮三次被无关 daemon 挡住，每次都要人工核 pid）；
+# · 手工点名（`E2E_ACK_DAEMONS`）把「多余的那个是谁」从机器手里接了过来 ——
+#   08-13 实测当场吃过亏：点名一个之后，另一个陈旧 daemon 藏在计数里过去了，读数被污染。
+# · 按身份两头都对：**与本跑无关的不计**，而**盯着本跑目录的多一个就是真问题**。
+#
+# ⚠ 射程如实写：读不到 environ 的（权限/进程刚没）**当作「盯着本跑」计入** ——
+#   宁可多报一次 ABORT，不可漏掉一个真的在搅局的。
+_count_our_daemons() {
+  local n=0 pid env_dir
+  for pid in $(pgrep -f 'remote-daemon-proto/target/[^ ]*/cc-monitor-remote' 2>/dev/null) \
+             $(pgrep -f '\.cc-monitor/bin/cc-monitor-remote' 2>/dev/null); do
+    # ⚠ **按 exe 复核，不信 cmdline**：`pgrep -f` 会匹配到**任何命令行里含这个模式的进程**
+    #   —— 08-13 实测它数进了**我自己那条正在跑的 shell**。这与本轮五次 `pkill -f` 自伤
+    #   同一族（`reap-orphan-daemons.sh` 早就改成按 exe 判，这里跟上）。
+    case "$(readlink -f "/proc/$pid/exe" 2>/dev/null)" in
+      *cc-monitor-remote) : ;;
+      *) continue ;;
+    esac
+    # 身份 = 它盯哪个 claude_dir。三态**语义不同，必须分开**（08-13 实测把后两态混过一次）：
+    #   · 值 == 本跑的 fixture      ⇒ 是我们的，计入
+    #   · 值 != 本跑的              ⇒ 别人的（别的工作区/别的台架），不计
+    #   · **变量不存在**            ⇒ 它盯的是默认 `~/.claude`，**不是我们的**（本台架的
+    #     wrapper 一律 `exec env CLAUDE_CONFIG_DIR=… daemon`，我们的那个必定带着它）
+    #   · environ **真的读不到**    ⇒ 不知道 ⇒ **计入**（宁可多报一次 ABORT）
+    if [ -r "/proc/$pid/environ" ]; then
+      env_dir="$(tr '\0' '\n' < "/proc/$pid/environ" | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -1)"
+      [ "$env_dir" = "$CLAUDE_DIR" ] && n=$(( n + 1 ))
+    else
+      n=$(( n + 1 ))
+    fi
+  done
+  printf '%s' "$n"
+}
+_dev_daemons=$(pgrep -fc 'remote-daemon-proto/target/[^ ]*/cc-monitor-remote' 2>/dev/null || echo 0)
+_dep_daemons=$(pgrep -fc '\.cc-monitor/bin/cc-monitor-remote' 2>/dev/null || echo 0)
+_daemons=$(_count_our_daemons)
+# ★★ **降级档，不动判定**〔`P0b` 第三拍 08-13，待决 `U10g` 未裁前的过渡〕：
+#
+# 补齐人群之后本格变成 fail-closed —— 好处是「读数被别人污染」不会再无声通过，
+# 代价是**只要开发机上有别人的 daemon（比如用户自己的 cc-monitor），台架就永远起不来**。
+# 08-13 实测被一个跑了 8.9h、父进程是**活 sshd** 的 daemon 挡住。
+#
+# ⇒ 过渡办法：操作者可以**点名**他已经逐个核过、确认与本跑无关的 pid。
+# ⚠ 这**不是**放宽判定，是把「我核过了」写下来：
+#   · 没点名的多余 daemon **照旧 ABORT**（纪律一个字没松）；
+#   · 每个被点名的都**打印出它的 cmdline**，理由留在日志里，事后可查；
+#   · pid 不存在就**不算数**（防止拿一串陈旧 pid 蒙混过去）。
+# ⚠⚠ **代价 08-13 当场显形**：点名一个，就等于把「多余的那个是谁」从机器手里接过来。
+#   那一跑盘上还有一个**陈旧** daemon（我自己配错沙箱那轮留下的、盯着用户真实目录），
+#   它就藏在计数里过去了 —— 读数因此被污染，清干净重跑才敢信。
+#   ⇒ 用它之前**先跑一遍 `reap-orphan-daemons.sh` 干跑，把每个还活着的都看一眼**。
+# ⇒ 真正的判别该收窄成什么（多半是按 hello 里的 `claude_dir`），是待决 `U10g`。
+if [ -n "${E2E_ACK_DAEMONS:-}" ]; then
+  for _p in $(printf '%s' "$E2E_ACK_DAEMONS" | tr ',' ' '); do
+    if _args="$(ps -o args= -p "$_p" 2>/dev/null)" && [ -n "$_args" ]; then
+      echo "  ACK  已核过、与本跑无关的 daemon：pid=$_p  ${_args%% *}"
+      _daemons=$(( _daemons - 1 ))
+    else
+      echo "  ⚠ E2E_ACK_DAEMONS 里的 pid=$_p 已不存在 —— **不计入**（陈旧 pid 蒙混不过去）"
+    fi
+  done
+fi
+# ⚠ 处置**不再教人裸 `pkill -f`**：模式杀没有「只杀我起的那些」这个概念
+#   （`P5L` 那拍 `pkill -f xdg-terminal-exec` 把我自己的 shell 打死过）。
+#   `tests/e2e/reap-orphan-daemons.sh` 只收 `PPID == 1` 的那些，**默认干跑**，且逐个打印。
+[ "$_daemons" -le 1 ] || _abort "有 $_daemons 个 daemon **盯着本跑的 $CLAUDE_DIR**（盘上共 dev $_dev_daemons + 部署 $_dep_daemons），孤儿？—— 它们会贡献额外的 SSH 登录，把读数搅浑。先跑 \`bash tests/e2e/reap-orphan-daemons.sh\`（干跑）看清楚，再 \`--yes\`"
+
+echo "  OK   台架自证通过（app 在写日志 · daemon 盯 $CLAUDE_DIR · dev 实例在 :$_devport · **盯本跑的** daemon $_daemons 个；盘上共 dev $_dev_daemons + 部署 $_dep_daemons）"
+
+SID="$(cat /proc/sys/kernel/random/uuid)"; SID8="${SID:0:8}"
+SESSION="cc-$SID8"; KEEP="cc-e2ekeep-$$"
+
+pass=0; fail=0
+ok()  { echo "  PASS $1"; pass=$((pass+1)); }
+bad() { echo "  FAIL $1"; fail=$((fail+1)); }
+
+cleanup() {
+  set +e
+  if [ -n "${FAKE_PID:-}" ]; then kill "$FAKE_PID" 2>/dev/null; fi
+  tmux kill-session -t "=$SESSION:" 2>/dev/null
+  tmux kill-session -t "=$KEEP:" 2>/dev/null
+}
+trap 'cleanup; _gc_sock_cleanup' EXIT
+
+# 等 monitor 日志(从 start 行之后)出现匹配 pattern 的行,回显之;超时非零。
+wait_log() {  # <startline> <grep-ere> <timeout-s>
+  local start="$1" pat="$2" to="$3" i hit
+  for ((i=0; i<to*2; i++)); do
+    hit="$(tail -n "+$((start+1))" "$LOG" | grep -E "$pat" | tail -1 || true)"
+    if [ -n "$hit" ]; then echo "$hit"; return 0; fi
+    sleep 0.5
+  done
+  return 1
+}
+
+echo "== F-E1 full-chain gray-light 套件(display $DISPLAY)=="
+echo "sid=$SID session=$SESSION claude_dir=$CLAUDE_DIR"
+echo "log=$LOG"
+
+# 无关 keepalive tmux 会话(kill fixture 后 backend 仍非空)
+tmux new-session -d -s "$KEEP" "exec sh"
+
+MARK="$(wc -l <"$LOG")"
+
+# ── 建 live fixture(隔离目录,与 daemon-wrapper 一致)──────────────────────────
+CLAUDE_CONFIG_DIR="$CLAUDE_DIR" CCM_E2E_FAKE_CLAUDE="$REPO/tests/e2e/fake-claude" \
+  bash "$REPO/tests/e2e/gen-idle-tmux.sh" "$SID" >/dev/null
+echo "-- fixture 已建:$SESSION(等 fake-claude 落 pidfile → app 经 daemon 建 live tab)--"
+
+# fake-claude 在 tmux 内**异步**起,pidfile 晚于 gen-idle-tmux 返回 → 必须**轮询等它出现**
+# 再读 pid(否则 glob 竞态读空 → 杀不到 → 不变灰,首跑实测踩中)。pidfile 落地 = live 前置成立。
+#
+# ★★★ **P0b 实测（08-12）：这里原来是 `ls …/*.json | head -1` —— 取目录里字典序第一个，
+#     既不认本跑的 sid、也不验那个进程还活不活。**
+#
+# 后果是整套**空真**：`/tmp/e2e-remote-claude/sessions/` 不跨跑清理，于是
+#   ① 「pidfile 落地」PASS —— 但拿到的是**上一跑的残骸**（实测两跑读到同一个 pid=1667736，
+#      而两个 pid 早就都死了）；
+#   ② 「kill fake-claude」打给一个已死的 pid ⇒ **no-op**；
+#   ③ 「30s 内未见灰灯」FAIL —— 而 claude **根本没在这一跑里死过**。
+# ⇒ **一次什么都没测的跑，失败起来和真的 #60 一模一样。**
+#
+# 这也意味着：凡是拿这套件读数当前提的结论（含 `P0` 那两跑推出的
+# 「daemon 发出 → monitor 收到 那一段有缺口」），**台架有效性都还没被证成**。
+#
+# 修法两条，缺一不可：
+#   · **先清**本跑要用的目录（陈旧 pidfile 是这一族的根）；
+#   · 认 pidfile 只认**本跑的 sid**，并**校验进程还活着**（`kill -0`）——
+#     两道都要，因为清理可能被上一跑的 trap 漏掉（那正是 08-12 撞到的形态）。
+rm -rf -- "$CLAUDE_DIR/sessions"
+mkdir -p "$CLAUDE_DIR/sessions"
+FAKE_PID=""
+for _ in $(seq 1 20); do
+  for PF in "$CLAUDE_DIR"/sessions/*.json; do
+    [ -f "$PF" ] || continue
+    grep -q "\"$SID\"" "$PF" 2>/dev/null || continue   # 只认本跑的 sid
+    _pid="$(awk -F'[:,]' '{for(i=1;i<=NF;i++) if($i ~ /"pid"/){print $(i+1); exit}}' "$PF")"
+    # ★ 进程必须**真的活着** —— 陈旧 pidfile 会让整套空真（见上）。
+    if [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null; then FAKE_PID="$_pid"; break; fi
+  done
+  [ -n "$FAKE_PID" ] && break
+  sleep 0.5
+done
+[ -n "$FAKE_PID" ] \
+  && ok "live 前置:fake-claude pidfile 落地 pid=$FAKE_PID(app 经 daemon SessionAdded 建 live tab)" \
+  || bad "10s 内 fake-claude 未落 pidfile 到隔离目录(fixture 失败)"
+
+# **必须等 app 收到一帧含 @ccm_sid=sid 的 TmuxSessions**(daemon 每 8s 才发一次)再杀 claude,
+# 否则 SessionRemoved 到达时 app 的 tmux 账本还没这条 → emitter classify_removed 找不到 @ccm_sid
+# → 判 Archive(直接归档)而非 Idle(灰),灰灯永不出现(首跑实测踩中)。留足 > 一个 8s 发帧周期。
+TMUX_SETTLE="${E2E_TMUX_SETTLE:-14}"
+echo "-- 等 ${TMUX_SETTLE}s 让 app 收到含 @ccm_sid 的 TmuxSessions 帧(daemon 8s 发一次)--"
+sleep "$TMUX_SETTLE"
+
+# ── GRAY:kill fake-claude(留 tmux)→ 灰灯 tab-state(status=live tmuxIdle=1)────
+echo "-- kill fake-claude pid=${FAKE_PID:-?}(claude 退,tmux shell 留)--"
+[ -n "${FAKE_PID:-}" ] && kill "$FAKE_PID" 2>/dev/null || true
+FAKE_PID=""
+GRAY="$(wait_log "$MARK" "\[e2e\] tab-state sid=$SID8 status=live tmuxIdle=1" "$GRAY_WAIT")" \
+  && ok "灰灯(live→gray):$GRAY" \
+  || bad "${GRAY_WAIT}s 内未见灰灯 tab-state(sid=$SID8 status=live tmuxIdle=1)"
+
+# ── ARCHIVE:tmux kill-session → archived tab-state ───────────────────────────
+echo "-- tmux kill-session $SESSION(@ccm_sid 消失 → 归档)--"
+tmux kill-session -t "=$SESSION:" 2>/dev/null || true
+ARCH="$(wait_log "$MARK" "\[e2e\] tab-state sid=$SID8 status=archived" "$ARCH_WAIT")" \
+  && ok "归档(gray→archived):$ARCH" \
+  || bad "${ARCH_WAIT}s 内未见归档 tab-state(sid=$SID8 status=archived)"
+
+echo "== 结果:$pass 过 / $fail 败 =="
+# G-C：与另外 8 套逐字一致的收尾格式，好让 `tests/e2e/assert-pass-floor.sh` 用同一条正则抓。
+echo "===== 合计 PASS=$pass FAIL=$fail ====="
+[ "$fail" -eq 0 ]

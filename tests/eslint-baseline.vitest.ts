@@ -101,11 +101,14 @@ const ESLINT_BIN: string = (() => {
 /**
  * eslint 报的是**本机绝对路径**（Windows 上形如 `D:\a\cc-monitor\cc-monitor\scripts\x.mjs`），
  * 而本条两处判据要的都是**仓相对、`/` 分隔**的路径：① 拿它印逐文件清单，
- * ② 拿 `split("/")[0]` 取顶层目录、再去 `eslint.config.js` 里找 `"<目录>/**\/*.mjs"`。
+ * ② 拿它与 `eslint.config.js` 里抽出的**认领目录**做前缀匹配。
  *
  * ⚠ 原先这里是 `` filePath.replace(`${REPO_ROOT}/`, "") ``：那个硬写的 `/` 与 Windows 真实路径里的
- * `\` 对不上 ⇒ 替换**静默地什么都不做**（不报错、不空手），于是 ② 的 `topDir` 会变成整条绝对路径，
- * 还要被拼进 `new RegExp(...)`——`\a`/`\s` 在那里会被当成正则转义 ⇒ **恒不认领、恒红**。
+ * `\` 对不上 ⇒ 替换**静默地什么都不做**（不报错、不空手），于是 ② 拿到的会是整条绝对路径
+ * ⇒ **恒不认领、恒红**。
+ * ⚠ 那一段当年还把它拼进 `new RegExp(...)`（`\a`/`\s` 会被当成正则转义，雪上加霜）——
+ *   **那个拼法 2026-09-17 已经不在了**：e2e 并进 `tests/` 后「顶层目录」这个启发式本身就不成立，
+ *   ② 换成了按认领目录前缀真匹配。这里保留这段历史，是因为 `repoRel` 存在的**理由**没变。
  * 改用 `relative()`：它在 win32 上把 `/` 和 `\` **都**当分隔符，两边形状不一致也算得对；
  * 末尾再统一成 `/`，让 `split("/")` 与配置里的 glob 是同一种分隔符。
  */
@@ -214,18 +217,29 @@ describe("V7-3：eslint 基线与作用面", () => {
         .filter((p) => p.endsWith(".mjs")),
     );
 
-    const unclaimed = [...linted].filter((p) => {
-      const topDir = p.split("/")[0];
-      // 认领 = 配置里存在一个覆盖该顶层目录 .mjs 的 `files:` 模式。
-      return !new RegExp(`"${topDir}/\\*\\*/\\*\\.mjs"`).test(cfg);
-    });
+    // 〔e2e 并入 tests/ 之后改写〕**原实现取的是「顶层目录」**：
+    //   const topDir = p.split("/")[0];  →  去配置里找 `"<topDir>/**/*.mjs"`
+    // 那在每个 `.mjs` 人群都住在仓根某个一级目录下时成立。`e2e/` 并进 `tests/e2e/` 之后
+    // 顶层目录变成了 `tests`，而配置里写的是 `"tests/e2e/**/*.mjs"`
+    // ⇒ **五个文件一齐被判成「没人认领」，而它们其实认领得好好的。**
+    //
+    // 🔴 这是**判据自己的形状与事实对不上**，不是被守的东西坏了。
+    // 别靠加一条 `"tests/**/*.mjs"` 去迎合那个启发式 —— 那会顺带把 `tests/` 下**任何**
+    // 将来新增的 `.mjs` 都默认放过，正好废掉本条要接的那个机制（「新目录进来时没人管」）。
+    // ⇒ 换成**按认领目录前缀真匹配**，与目录深几层无关。
+    const claimedDirs = [...cfg.matchAll(/"([A-Za-z0-9._/-]+)\/\*\*\/\*\.mjs"/g)].map((m) => m[1]);
+    expect(
+      claimedDirs.length,
+      '`eslint.config.js` 里抽不出任何 `"<目录>/**/*.mjs"` 的 files: 块 —— 抽取器坏了，本条会零命中地绿',
+    ).toBeGreaterThan(0);
+    const unclaimed = [...linted].filter((p) => !claimedDirs.some((d) => p.startsWith(`${d}/`)));
 
     expect(
       unclaimed,
       `这些 .mjs 在 eslint 的作用面里，但 eslint.config.js 没有任何 files: 块给它们配 globals：\n` +
         `  ${unclaimed.join("\n  ")}\n` +
         `⇒ 它们会整批报 no-undef（console/process），把基线数顶上去 —— V7-3 的复发形态。\n` +
-        `修法：照 e2e/scripts 那两块的样子加一段 { files: ["<目录>/**/*.mjs"], languageOptions: { globals } }。`,
+        `修法：照 tests/e2e/ 与 scripts/ 那两块的样子加一段 { files: ["<目录>/**/*.mjs"], languageOptions: { globals } }。`,
     ).toEqual([]);
   }, TIMEOUT_MS);
 });

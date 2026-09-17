@@ -551,7 +551,7 @@ mod tests {
     /// ★ 生产接线：`admit` 通过之后回的是**句柄**，不是名字 —— TOCTOU 那条的落点。
     ///
     /// 这里只钉「解析出来的形状」；真 tmux 上的行为由
-    /// `e2e/daemon-gate2-acceptance.sh` 钉（那才是真二进制那一轨）。
+    /// `tests/e2e/daemon-gate2-acceptance.sh` 钉（那才是真二进制那一轨）。
     #[test]
     fn a_probe_line_parses_into_a_handle_and_a_sid() {
         // 直接构造探测输出的解析结果，不起进程（起进程是 e2e 的事）。
@@ -638,7 +638,7 @@ mod tests {
     ///   `no_such_session`，而放行交出的是**探回来的句柄** `p.session_id`，
     ///   不是调用方给的名字。
     /// - **不判**：「探对了」。那要真 tmux，本区口径禁（`K-R56#§0d`）。
-    ///   行为那一半在 `e2e/daemon-gate2-acceptance.sh`（真 daemon 二进制 + 真 tmux server，
+    ///   行为那一半在 `tests/e2e/daemon-gate2-acceptance.sh`（真 daemon 二进制 + 真 tmux server，
     ///   用例逐行来自同一张 `gate2-golden.tsv`）。
     /// - ⚠ **约定型守卫**：扫的是本文件自己的源码形态，挡得住「顺手把 probe 挪到动作后面 /
     ///   删掉 `else` 那一支」，挡不住「换个名字继续错」。**比没有强，别读成证明。**
@@ -737,7 +737,7 @@ mod tests {
     //   · 而 `938635b`（08-13）之后有了**第三种结局**：登记豁免 —— 既不进 `pass` 也不进 `skip`。
     //     `meta_colon`（`cc-a:b`）在**任何会把 `:` 改写成 `_` 的 tmux** 上必然走它
     //     （脚本 `:53-55` 逐字记着本机 tmux 3.6 实测 `cc-a:b → cc-a_b`）
-    //     ⇒ 可达 PASS 上限是 **35**，而地板一直写着 36。`e2e/README.md:64` 那份 08-13 全量台账
+    //     ⇒ 可达 PASS 上限是 **35**，而地板一直写着 36。`tests/e2e/README.md:64` 那份 08-13 全量台账
     //     逐字记着这套 **35 过 / 0 败**。
     //     ⚠ 09-09 第二拍：`meta_dollar` 根因查穿后成为**第二条**登记豁免（见上）
     //     ⇒ 在 tmux ≤3.4 上可达上限再少一格 = **34**，CI 地板同拍跟到 34。
@@ -830,7 +830,7 @@ mod tests {
         // ── 输入 ②：**已登记豁免数，从套件自己的 `waiver_reason()` 现数** ────────────
         //
         // 不在本文件抄一份。抄一份就又是「同一个量两处各写一份」，而下面两条治的正是那个形状。
-        let sh = std::fs::read_to_string(root.join("e2e/daemon-gate2-acceptance.sh"))
+        let sh = std::fs::read_to_string(root.join("tests/e2e/daemon-gate2-acceptance.sh"))
             .expect("e2e 脚本读不到");
         // ⚠ 刻意**不复用**上面那个 `at`（那是 ci.yml 里的偏移）—— 两个不同的量不共一个名字。
         //
@@ -895,7 +895,7 @@ mod tests {
         // `send-keys-raw` 过同一道门 1 · 只设 `@ccm_sid_expect` 仍拒 1 ·
         // Gate 3 五条 5 · kill 目标不存在 1 · kill 形状门 1 = **11**。
         // ⇒ 总槽位 = 判定表行数 + 11（08-06 是 25 + 11 = 36，与本文件原来那个 `FLOOR_TODAY`
-        //   以及 `e2e/README.md:64` 的 08-13 台账「35 过」＋当时 1 条登记豁免，两份独立读数都对得上）。
+        //   以及 `tests/e2e/README.md:64` 的 08-13 台账「35 过」＋当时 1 条登记豁免，两份独立读数都对得上）。
         // ⚠ **加/删判定表之外的场景时同拍改这里**；加判定表用例**不用**动它（那一半是现数的）。
         const FIXED_SLOTS: usize = 11;
         let slots = rows + FIXED_SLOTS;
@@ -938,7 +938,7 @@ mod tests {
     /// 那正是 F20 上半修掉的东西。
     #[test]
     fn the_selfevidencing_skip_branch_is_still_there() {
-        let sh = std::fs::read_to_string(repo_root().join("e2e/daemon-gate2-acceptance.sh"))
+        let sh = std::fs::read_to_string(repo_root().join("tests/e2e/daemon-gate2-acceptance.sh"))
             .expect("e2e 脚本读不到");
         for needle in ["has-session -t \"=$name:\"", "实际会话："] {
             assert!(
