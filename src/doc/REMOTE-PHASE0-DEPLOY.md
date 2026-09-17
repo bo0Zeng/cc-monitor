@@ -14,7 +14,7 @@
 
 ## 发版构建：交叉编译 + 内嵌 daemon 二进制（F08b）
 
-打包 cc-monitor.exe 前，需把 daemon 交叉编译成两份 musl 二进制放进 `src-tauri/embedded-daemons/`。
+打包 cc-monitor.exe 前，需把 daemon 交叉编译成两份 musl 二进制放进 `src/bridge/embedded-daemons/`。
 🔴 **`K-R70`（09-12）：旁边那份同名 `.build_id` 清单不要了。** 身份住在二进制**自己的字节**里
 （`main.rs::CC_MONITOR_BUILD_STAMP`，一段 `#[used] static [u8; N]`，形如 `<<ccm-build-id:<id>:ccm-build-id>>`），
 `build.rs` 直接扫它。〔为什么换：清单是从**源码常量**抠出来写的一张标签，三个载体的清单**恒等**，
@@ -34,14 +34,14 @@ cargo zigbuild --release --target x86_64-unknown-linux-musl
 cargo zigbuild --release --target aarch64-unknown-linux-musl
 
 # 放进内嵌目录（build.rs 会 include_bytes 进 exe）
-mkdir ..\src-tauri\embedded-daemons
-copy target\x86_64-unknown-linux-musl\release\cc-monitor-remote   ..\src-tauri\embedded-daemons\cc-monitor-remote-x86_64
-copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src-tauri\embedded-daemons\cc-monitor-remote-aarch64
+mkdir ..\src/bridge\embedded-daemons
+copy target\x86_64-unknown-linux-musl\release\cc-monitor-remote   ..\src/bridge\embedded-daemons\cc-monitor-remote-x86_64
+copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src/bridge\embedded-daemons\cc-monitor-remote-aarch64
 
 # 🔴 K-R70（09-12）：**没有第三步了** —— 不必再写 .build_id 清单，身份跟着字节走。
 #   想自己核一眼这两份是谁（不看它旁边任何文件）：
-#     Select-String -Path ..\src-tauri\embedded-daemons\cc-monitor-remote-x86_64 -Pattern 'ccm-build-id' -Encoding ascii
-#   Linux/macOS 上：grep -ao '<<ccm-build-id:[^>]*>>' ../../src-tauri/embedded-daemons/cc-monitor-remote-x86_64
+#     Select-String -Path ..\src/bridge\embedded-daemons\cc-monitor-remote-x86_64 -Pattern 'ccm-build-id' -Encoding ascii
+#   Linux/macOS 上：grep -ao '<<ccm-build-id:[^>]*>>' ../../src/bridge/embedded-daemons/cc-monitor-remote-x86_64
 ```
 
 > **不想装 zig 也行（U-1 实测，零安装）**：`rust-lld` 随 rustc 自带，两个 musl target 都能链：
@@ -70,12 +70,12 @@ copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src-tauri\e
 >
 > 原来只有一条比 mtime 的 `cargo:warning`。它漏掉了真实发生过的那次：源码已 bump 到
 > `p1v-attachable`、清单还是 `p1u-fork-session`，而二进制 mtime **更新**——mtime 判据完全不响。
-> 不想重编就 `rm -rf src-tauri/embedded-daemons/`：自动部署诚实关闭，编译立刻恢复。
+> 不想重编就 `rm -rf src/bridge/embedded-daemons/`：自动部署诚实关闭，编译立刻恢复。
 >
 > **⚠ 这三条挡不住「根本没有内嵌目录」那一档**（Phase E 审计 R3 订正）。干净 clone / CI 里
 > `embedded-daemons/` 不存在 ⇒ 三条 panic 一条都够不着，`DAEMON_BUILD_ID` 静默变 `"unknown"`。
 > 兜这一档的**不是** `build.rs`，是 monitor 侧的
-> `src-tauri/src/ssh_source.rs::embedded_build_id_single_source_wired`（断言它 ≠ `"unknown"`）。
+> `src/bridge/src/ssh_source.rs::embedded_build_id_single_source_wired`（断言它 ≠ `"unknown"`）。
 > 发版链上二者都够得着：`release.yml` 的 `build-daemons` 现场生成二进制**并写清单**
 > （`:56-58` 从源码抠 `BUILD_ID`），`build-windows` `:113-118` 还会再对拍一次。
 
@@ -122,7 +122,7 @@ sudo apt-get update && sudo apt-get install -y build-essential pkg-config
 
 ## 2. 把 daemon 源码弄到目标机
 
-只需要仓库里的 `src/backend/` 这一个目录（它是独立 crate，不依赖 src-tauri）。任选其一：
+只需要仓库里的 `src/backend/` 这一个目录（它是独立 crate，不依赖 src/bridge）。任选其一：
 
 ```bash
 # 方式 1：在目标机 git clone（推荐——以后好更新）

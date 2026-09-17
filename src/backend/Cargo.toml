@@ -5,8 +5,8 @@ name = "cc-monitor-remote"
 # 这一行**不是忘了填**，也**不许**顺手换成一个「像样」的数字。
 #
 # · 它不参加 `release.yml` 那道「四处版本号与 tag 一致」的检查（那四处是
-#   `package.json` / `src-tauri/tauri.conf.json` / `src-tauri/Cargo.toml` /
-#   `src-tauri/Cargo.lock` 的 `monitor` 包）—— 后端**不随 app 的 tag 走**：
+#   `package.json` / `src/bridge/tauri.conf.json` / `src/bridge/Cargo.toml` /
+#   `src/bridge/Cargo.lock` 的 `monitor` 包）—— 后端**不随 app 的 tag 走**：
 #   `K25`/`K36` 裁的是「一份代码、每平台一份原生二进制」，而它换不换由**行为变没变**决定
 #   （`BUILD_ID` 的 bump 纪律），不由发版节奏决定。给它一个跟 tag 走的版本号 = 给后端
 #   造**第二个身份**，那正是 `K33`「后端只有一个」在身份这一维要避开的事。
@@ -25,8 +25,8 @@ edition = "2021"
 #
 # F20（2026-08-04）：「standalone」到底 standalone 到什么程度 —— 实测答案，别再猜：
 #   · `cargo build`  **真的独立**。把两条 daemon→monitor 的 `include_str!` 路径打断，
-#     `cargo build` 仍然 exit=0 / 0 error ⇒ 目标机原生构建**不需要**旁边那棵 `src-tauri/`。
-#   · `cargo test`   **不独立**。它需要 `../src-tauri/` 在 —— 两条判据要跨轨对拍
+#     `cargo build` 仍然 exit=0 / 0 error ⇒ 目标机原生构建**不需要**旁边那棵 `src/bridge/`。
+#   · `cargo test`   **不独立**。它需要 `../src/bridge/` 在 —— 两条判据要跨轨对拍
 #     （`control/gate.rs` 读 Gate 2 的黄金夹具 · `control/launch.rs` 读 monitor 的
 #     `tmux.rs` 断言 `format!("={target}:")` 两侧同形）。打断后 `cargo test --no-run`
 #     exit=101，两条都被逐字点名。
@@ -39,14 +39,14 @@ name = "cc-monitor-remote"
 path = "main.rs"
 
 [dependencies]
-# Versions pinned to whatever ../src-tauri/Cargo.lock already resolved so the
+# Versions pinned to whatever ../bridge/Cargo.lock already resolved so the
 # local cargo cache serves these offline (serde 1.0.228 / serde_json 1.0.x,
 # tokio 1.52.x, notify 6.1.x, notify-debouncer-mini 0.4.x, walkdir 2.5.x,
 # tracing 0.1.x). Keep this list minimal.
 #
 # ⚠ 订正〔回修轮 08-25，承接 D1 `重要-4` / `漂-2`〕：**上面这句话只管它点名的那几条。**
-# `rustls` / `webpki-roots`（K-H1 加的，见本表末尾）**不在** `../src-tauri/Cargo.lock` 里 ——
-# 同一把尺子 `grep -c '^name = "rustls"$' ../src-tauri/Cargo.lock` ⇒ **0**，`webpki-roots` ⇒ **0**
+# `rustls` / `webpki-roots`（K-H1 加的，见本表末尾）**不在** `../bridge/Cargo.lock` 里 ——
+# 同一把尺子 `grep -c '^name = "rustls"$' ../bridge/Cargo.lock` ⇒ **0**，`webpki-roots` ⇒ **0**
 # （而上面点名的 serde / serde_json / tokio / notify / notify-debouncer-mini / walkdir /
 #  tracing / tracing-subscriber / libc 逐个量都是 1）。
 # ⇒ 这两条**没有**被 pin 到 monitor 那份 lock，**也不能**靠「monitor 早就下过」变成离线可用。
@@ -55,9 +55,9 @@ path = "main.rs"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 # G1：分叉的记录变换与 monitor 共用同一份（单向 path 依赖；不会把本 crate 拖进 monitor 的 workspace）。
-branch-core = { path = "../../src-tauri/crates/branch-core" }
-usage-core = { path = "../../src-tauri/crates/usage-core" }
-acct-core = { path = "../../src-tauri/crates/acct-core" }
+branch-core = { path = "../bridge/crates/branch-core" }
+usage-core = { path = "../bridge/crates/usage-core" }
+acct-core = { path = "../bridge/crates/acct-core" }
 # K-H2a：第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。
 # ★★ **刻意不开 `harden`**：那个 feature 才带「把文件收窄」的平台原语，而
 # `K-H2a` 裁四逐字定死 daemon **只许读那份文件，不许写** ——
@@ -67,16 +67,16 @@ acct-core = { path = "../../src-tauri/crates/acct-core" }
 #   写不出来比事后检测更强（`scanning_guard_registry` 头注逐字：「让它写不出来，而不是再检测一遍」）。
 # ⚠ 代价如实记：不开 `harden` ⇒ Windows 上 `perm::probe` 读不了 DACL，返回 `Undetermined`。
 #   那**不是**绿灯（`judge` 把它判成要出声），但确实是「查不出来」。daemon 今天的运行目标是 Linux。
-creds-core = { path = "../../src-tauri/crates/creds-core" }
+creds-core = { path = "../bridge/crates/creds-core" }
 # U8c-2b-0：POSIX 单引号 quote 的唯一实现（账本 S5 收口）。
 # 本 crate 只用它一处（`control/tmux_hook::sq`）；U8c-2c 起载荷渲染也走它。
-shell-quote-core = { path = "../../src-tauri/crates/shell-quote-core" }
+shell-quote-core = { path = "../bridge/crates/shell-quote-core" }
 # K-R100：历史全文搜索口径的唯一实现（本 crate 的 `observe/search_query.rs` 全靠它）。
 # 与 monitor 同一份 —— 两侧的 snippet 预算顺序、截断口径、文本抽取从此不可能各走各的。
-search-core = { path = "../../src-tauri/crates/search-core" }
+search-core = { path = "../bridge/crates/search-core" }
 # F03：§34 Gate 2 的唯一实现。**生产依赖**——这道门要在 `control/` 的生产段真的执行，
 # 不是只在测试里比对（那样就成了「门在测试里、路在生产里」）。
-gate-core = { path = "../../src-tauri/crates/gate-core" }
+gate-core = { path = "../bridge/crates/gate-core" }
 tokio = { version = "1", features = [
     "rt-multi-thread",
     "macros",
@@ -117,8 +117,8 @@ libc = "0.2"
 # 而下面两行同时写着「`ring` 已经在」—— **同一段注释自相矛盾**，且前半句是假的。
 # 根子是两个词混着用了，分清楚：
 #   · **依赖图**（谁的 Cargo.lock / cargo tree 里有它）：`ring 0.17.14` 在本件**之前**就已在
-#     monitor 的依赖图里 —— `git show c3cf193:src-tauri/Cargo.lock | grep -c '^name = "ring"$'` ⇒ **1**，
-#     `cargo tree -i ring --manifest-path ../src-tauri/Cargo.toml` ⇒ `ring └── russh └── monitor`。
+#     monitor 的依赖图里 —— `git show c3cf193:src/bridge/Cargo.lock | grep -c '^name = "ring"$'` ⇒ **1**，
+#     `cargo tree -i ring --manifest-path ../bridge/Cargo.toml` ⇒ `ring └── russh └── monitor`。
 #     同一把尺子量 **daemon 自己**那份 lock 的同一个尖 ⇒ **0** —— 所以「**daemon 侧**第一条」是真话。
 #   · **本机 cargo 缓存**（`~/.cargo/registry/cache/` 里有没有那个 `.crate` 文件）：**只说这台机器**，
 #     与依赖图是两件事。缓存里有不等于依赖图里有，反过来也一样。
@@ -134,10 +134,10 @@ webpki-roots = "1"
 # ── `K-P6b`（候选 E）：`--dial` 那条代理臂的 SSH 客户端 ──────────────────────
 #
 # 🔴 **它只服务 `src/dial/`那一份**（`dial_locality` 那条判据把「谁许 `use russh`」钉在文件维上）。
-# 版本与 feature 集**逐字照抄** `../src-tauri/Cargo.toml`（`0.61.1` · `default-features = false`
+# 版本与 feature 集**逐字照抄** `../bridge/Cargo.toml`（`0.61.1` · `default-features = false`
 # · `["ring", "flate2", "rsa"]`）—— 理由不是省事：**两侧握出来的必须是同一套算法集**，
 # 一侧多开一个 feature 就意味着「界面拨得通、代理拨不通」这种只在某台远端上才现形的分叉。
-# `primefield` 那条 `=` 钉同理，逐字理由住 `../src-tauri/Cargo.toml`（p256/p521 的 rc.9/rc.10 不兼容）。
+# `primefield` 那条 `=` 钉同理，逐字理由住 `../bridge/Cargo.toml`（p256/p521 的 rc.9/rc.10 不兼容）。
 #
 # ⚠⚠ **两条如实登记的代价，别读成「没问题」**：
 #   ① **`C18`「依赖树零 C」这条本 crate 早就不成立**（`rustls`/`ring` 08-25 就进来了，
@@ -161,7 +161,7 @@ webpki-roots = "1"
 # ⇒ `--offline` 把候选集限成「已下载的那几份」⇒ 唯一候选是 yanked 的那份
 # ⇒ **`cargo` 在解析这一步拒绝选它**（`=0.7.3` 硬钉也照拒），实打退 101。
 # `cargo` 只在**解析**时拒 yanked，不在「lock 里已经写着」时拒 ——
-# `../src-tauri/Cargo.lock` 今天就锁着 `crypto-bigint 0.7.3`（在 yank 之前锁进去的），
+# `../bridge/Cargo.lock` 今天就锁着 `crypto-bigint 0.7.3`（在 yank 之前锁进去的），
 # monitor 侧因此断网构建得动。⇒ 本 crate 的 lock 由 `tests/evidence/K-P6b-r3-lock-prime.py`
 # 把 monitor 那份里 `russh` 可达的包块搬过来，处境与 monitor 侧对齐。
 # 🔴 **代价写明**：本 crate 从此也钉在一个 **yanked** 的 `crypto-bigint 0.7.3` 上
@@ -173,7 +173,7 @@ webpki-roots = "1"
 #
 # ① **今天钉着哪个版本 —— 本轮现打**（09-06，量于 `97a4714`，两份 lock 各一把同样的尺子
 #    `grep -c '^name = "crypto-bigint"$' <lock>`）：`src/backend/Cargo.lock` ⇒ **1** 处、
-#    版本 **`0.7.3`**；`../src-tauri/Cargo.lock` ⇒ **1** 处、版本也是 **`0.7.3`**。**两侧同一份。**
+#    版本 **`0.7.3`**；`../bridge/Cargo.lock` ⇒ **1** 处、版本也是 **`0.7.3`**。**两侧同一份。**
 #
 # ② 🔴 **后果一句话：「今天编得过」不等于「明天还编得过」。**
 #    今天编得过，**是因为 lock 里已经写着** —— `cargo` 只在**解析**那一步挡 yanked。
@@ -210,4 +210,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 [dev-dependencies]
 # U8a-2a：源码扫描型守卫的「只留生产段」剥法，与 monitor 共用同一份（守卫全在 cfg(test)，
 # 故是 dev-dependency —— 不进发布二进制）。
-guard-core = { path = "../../src-tauri/crates/guard-core" }
+guard-core = { path = "../bridge/crates/guard-core" }

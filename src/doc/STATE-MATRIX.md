@@ -8,7 +8,7 @@
 
 ## 1. 所有注册的 State 类型
 
-`src-tauri/src/lib.rs` 的 setup() 闭包 `app.manage()` 调用。**任何 IPC 命令接受的 `State<...>` 类型必须在这里有对应注册**。
+`src/bridge/src/lib.rs` 的 setup() 闭包 `app.manage()` 调用。**任何 IPC 命令接受的 `State<...>` 类型必须在这里有对应注册**。
 
 | State 类型 | 注册位置 | 创建位置 | Arc 所有权 |
 |---|---|---|---|
@@ -95,7 +95,7 @@ Arc 不只通过 State 共享，还通过 `.clone()` 喂给 spawn 出去的线�
 **全套必做步骤**：
 
 ```bash
-cd src-tauri
+cd src/bridge
 
 # 1. 找所有 State<Arc<X>> 引用
 grep -rn 'State<.*Arc<BindRegistry>>' src/
@@ -110,7 +110,7 @@ grep -rn 'app.manage(bind_registry' src/
 cd .. && grep -rn 'invoke<.*"cc_integration_status"\|"bring_terminal_to_front"' src/
 
 # 5. 删完跑：
-cd src-tauri && cargo check && cargo test --all
+cd src/bridge && cargo check && cargo test --all
 # !! cargo check 不能挡 State 漏 manage 的运行时 panic !!
 # 必须额外起 dev mode 实测每个会消费 X 的 IPC 命令的前端入口
 ```

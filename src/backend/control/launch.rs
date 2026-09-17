@@ -781,7 +781,7 @@ mod tests {
     fn exact_target_shape_matches_the_monitor_side() {
         assert_eq!(exact_target("cc-abc"), "=cc-abc:");
         // 跨轨对拍：monitor `tmux.rs` 里那条 `format!("={target}:")`。
-        const MONITOR_TMUX: &str = include_str!("../../../src-tauri/src/tmux.rs");
+        const MONITOR_TMUX: &str = include_str!("../../../src/bridge/src/tmux.rs");
         let prod = crate::guard_support::production_code(MONITOR_TMUX);
         // 运行时拼，避免命中本文件自己。
         let shape = format!("=%s{}", "target}:");
@@ -1269,7 +1269,7 @@ mod tests {
         let overclaim = format!("{}键入了", "真的");
         let files = [
             "src/doc/IPC-PROTOCOL.md",
-            "src-tauri/src/backend/control/daemon_launch.rs",
+            "src/bridge/src/backend/control/daemon_launch.rs",
         ];
         let mut total = 0usize;
         let mut hits = Vec::new();

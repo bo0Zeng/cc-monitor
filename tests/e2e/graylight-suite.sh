@@ -116,7 +116,7 @@ esac
 #   **它想验「探针存在」，量的却是「探针已经打过」** —— 射程错了一格。
 # ⇒ 改量**结构性信号**：`tauri.conf.json` 的 `devUrl` 端口上有没有 vite。
 #   只有 `npx tauri dev` 会起它；生产构建走 `frontendDist`，那个端口是空的。
-_devport="$(grep -oE '"devUrl"[^0-9]*([0-9]+)' "$REPO/src-tauri/tauri.conf.json" | grep -oE '[0-9]+$')"
+_devport="$(grep -oE '"devUrl"[^0-9]*([0-9]+)' "$REPO/src/bridge/tauri.conf.json" | grep -oE '[0-9]+$')"
 if [ -n "$_devport" ]; then
   curl -s -o /dev/null --max-time 3 "http://localhost:$_devport" \
     || _abort "devUrl 端口 $_devport 上没有 vite —— 跑的不是 \`npx tauri dev\`？DEV 探针会被 vite 整支消除，两条主断言永不可能通过"

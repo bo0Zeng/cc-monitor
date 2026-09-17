@@ -8,7 +8,7 @@
 # 门禁只锁判定不锁行为是 R1 的教训（三门禁全绿仍放行过一个让 send-keys 完全失效的改动）。
 #
 # ★ **跨轨钉**：用例不是手搓的，**逐行来自那张唯一的判定表**
-#   `src-tauri/src/backend/control/fixtures/gate2-golden.tsv` —— 与另两条轨道同一份。
+#   `src/bridge/src/backend/control/fixtures/gate2-golden.tsv` —— 与另两条轨道同一份。
 #   表变了三条轨道一起变；某一轨偷偷放宽，与表的差异当场可见。
 #
 # 红线：**绝不碰用户真实的 tmux server**（unset TMUX + 私有 TMUX_TMPDIR）；不碰真 ~/.claude。
@@ -28,7 +28,7 @@ TMUX_BIN="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
 DAEMON="${CCM_E2E_DAEMON:-$REPO/.build/backend/debug/cc-monitor-remote}"
-GOLDEN="$REPO/src-tauri/src/backend/control/fixtures/gate2-golden.tsv"
+GOLDEN="$REPO/src/bridge/src/backend/control/fixtures/gate2-golden.tsv"
 WORK="$(mktemp -d /tmp/e2e-gate2.XXXXXX)"
 IN="$WORK/in.fifo"; OUT="$WORK/out.jsonl"; ERR="$WORK/daemon.stderr"
 

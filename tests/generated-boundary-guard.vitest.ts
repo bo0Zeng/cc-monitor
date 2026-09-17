@@ -100,7 +100,7 @@ function tsDerivingSources(): string[] {
       else if (e.name.endsWith(".rs") && read(rel).includes("ts_rs::TS")) out.push(rel);
     }
   };
-  walk("src-tauri/src");
+  walk("src/bridge/src");
   return out.sort();
 }
 
@@ -220,14 +220,14 @@ describe("C01 边界生成物", () => {
       "Usage.ts", //                  C04c（messages.rs 的 token 计数，**不是** usage.rs 的 UsageTotals）
       "UsageBucket.ts", //            C04d 批3（→ UsageTotals 是 **C03 生成的**，传递依赖已就位）
       "UsageTotals.ts", //            C03
-      // 🔴 `K-R93`（09-12）：**这一份不是 ts-rs 生成的**，是 `src-tauri/src/adapter.rs` 的
+      // 🔴 `K-R93`（09-12）：**这一份不是 ts-rs 生成的**，是 `src/bridge/src/adapter.rs` 的
       // `export_bindings_agent_profile_table` 写出来的**值表**（ts-rs 只生成类型、不生成值）。
       // 它照样被 `npm run gen:types`（= `cargo test --lib export_bindings`）重跑、
       // 照样被门禁第六格 `generated` 的 `git diff --exit-code` 盖住。
       // ⚠ 排在最后不是分组：`files.sort()` 是默认排序，小写字母排在大写之后。
       "agent-profile-table.ts",
       // 🔴 `K-R95`（09-12）：**第二份值表**，源是
-      // `src-tauri/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`。
+      // `src/bridge/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`。
       // 三格：`ccm` 调用行每次无条件要求的能力集 · 八句降级理由的措辞 ·
       // 本机拉起载荷里「哪个号」那一格的 wire 键名。三格此前都在前端各写一份
       //（定框 `K28`：前端不许自己发明对外行为）。
@@ -239,8 +239,8 @@ describe("C01 边界生成物", () => {
     // `K-R95`：第三种标记 —— 值表生成器不止 `adapter.rs` 一个了。
     const GENERATED_BY = [
       TS_RS_HEADER,
-      "src-tauri/src/adapter.rs",
-      "src-tauri/src/backend/control/launch_wire.rs",
+      "src/bridge/src/adapter.rs",
+      "src/bridge/src/backend/control/launch_wire.rs",
     ];
     for (const f of files) {
       const src = read(`src/generated/${f}`);
@@ -471,7 +471,7 @@ describe("C01 边界生成物", () => {
 
   it("`u64` 的映射与运行时一致，且属性真的在源码里（不是被注释喂饱）", () => {
     const info = code(read("src/generated/DataPathInfo.ts"));
-    const rust = rustCode(read("src-tauri/src/data_paths.rs")); // ← 审计 B1：这里以前是裸 read
+    const rust = rustCode(read("src/bridge/src/data_paths.rs")); // ← 审计 B1：这里以前是裸 read
     expect(info, "剥过头了").toContain("export type DataPathInfo");
     expect(rust, "剥过头了").toContain("pub struct DataPathInfo");
 
@@ -576,7 +576,7 @@ describe("C01 边界生成物", () => {
  */
 describe("C02 事件名钉死", () => {
   it("bridge.rs 的 10 个事件名常量，TS 侧字面量逐个对上", () => {
-    const rust = rustCode(read("src-tauri/src/bridge.rs"));
+    const rust = rustCode(read("src/bridge/src/bridge.rs"));
     expect(rust, "剥过头了").toContain("pub const");
 
     // 从源码抠出 `pub const X: &str = "y";` 的所有对

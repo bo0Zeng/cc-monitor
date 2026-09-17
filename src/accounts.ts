@@ -17,13 +17,13 @@ import { isValidModelName } from "./shell-quote";
 import type { LaunchModifiers } from "./launch-plan";
 // 🔴 `K-R95`（定框 `K28`：前端不许自己发明对外行为）：本机拉起载荷里「哪个号」那一格的
 // **wire 键名从后端来**，前端不再自己写 `{ kind: "named", configDir, name }` 这三个字面量。
-// 源：`src-tauri/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`
+// 源：`src/bridge/src/backend/control/launch_wire.rs::export_bindings_launch_render_facts`
 // （它每次生成都跑一遍 `history.rs::LaunchAccount` 的生产反序列化器验一次）。
 import { LOCAL_LAUNCH_ACCOUNT_WIRE } from "./generated/launch-render-facts";
 
 // ---- 账号的形状是**生成物**（K-A1），不再是一份手抄 ----
 //
-// 这里原先是一份手写 `interface Account` + 一行「对齐 A2（src-tauri/src/accounts.rs）的
+// 这里原先是一份手写 `interface Account` + 一行「对齐 A2（src/bridge/src/accounts.rs）的
 // 返回结构」的注释。那句注释是**纪律，不是判据**：往任一侧加一个字段，全仓没有一条门禁会红
 // （K-A1 Bx 复量确认：`RemoteAccount` 当时没有 `ts_rs::TS` derive，`src/generated/` 底下
 // 也没有对应文件）。现在两侧由 `src/generated/RemoteAccount.ts` 对齐 ——
@@ -68,7 +68,7 @@ export interface SessionAccount {
   /**
    * `K-P5f`：起会话方铸进这条会话进程环境的**身份 token**（`CCM_LAUNCH_ID`），由 daemon 从
    * `/proc/<pid>/environ` 读回来。`null` = **不作数**（没设 / 形状不合格 / 同一 token 落在
-   * 一条以上活会话上 / 进程已死，四种原因刻意合并，见 `src-tauri/src/accounts.rs`
+   * 一条以上活会话上 / 进程已死，四种原因刻意合并，见 `src/bridge/src/accounts.rs`
    * 的 `SessionAccount::launch_id`）。
    *
    * ⚠ **可选是因为老 daemon 的出参里逐字节没有这个键**（additive）。本机那条路来的行是
@@ -230,7 +230,7 @@ export interface AccountStatusBadge {
  *
  * ⚠⚠ **诚实边界（本件没做完的那一格）**：`{scope:"local"}` 那三档今天**没有生产调用方** ——
  * 要把「表里有没有这一行」「中转在不在跑」端到前端，得注册一条**只答本机**的 tauri 命令，
- * 而新注册一条命令会让 `src-tauri/src/parity_ledger.rs` 的
+ * 而新注册一条命令会让 `src/bridge/src/parity_ledger.rs` 的
  * `every_tauri_command_is_declared_in_the_ledger` 当场红（本轮实测过，报文点名了那条命令），
  * 那个文件不在 `K-H2b` 的写区。⇒ 两个生产调用点今天分别传 `{scope:"remote"}`（设置里那张表
  * 是**远端专用**的：`accounts-section.ts` 的 `reload` 对 `origin` 为空时直接早退）与
@@ -752,7 +752,7 @@ export function shouldShowAccountBadge(
  *
  * # 为什么这件事今天只有 token 答得出
  *
- * `CCM_LAUNCH_ID` 全树**只有一处写**（`src-tauri/src/history.rs` 里那个
+ * `CCM_LAUNCH_ID` 全树**只有一处写**（`src/bridge/src/history.rs` 里那个
  * `LAUNCH_ID_VAR`，`launcher_identity_registry` 那张棘轮表数着它，多一处就红）
  * ⇒ 进程环境里带着它，就说明这条会话是从本工具这条路起来的。
  * 而 `--session-accounts` 出参里其余每一格（`configDir` / `account` / `bare` /

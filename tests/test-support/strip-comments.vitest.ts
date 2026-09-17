@@ -44,7 +44,7 @@ describe("stripComments", () => {
   });
 
   it("回归：`config_surface.rs` 剥完行数不变，且被吞过的那一段仍在", () => {
-    const raw = readFileSync(resolve(REPO_ROOT, "src-tauri/src/config_surface.rs"), "utf8");
+    const raw = readFileSync(resolve(REPO_ROOT, "src/bridge/src/config_surface.rs"), "utf8");
     const out = stripComments(raw, "rust");
     expect(out.split("\n"), "行结构必须逐行对齐").toHaveLength(raw.split("\n").length);
     // 旧实现从 :775 的 "~/.local/*/bin" 一路吞到 :1296，521 行隐形

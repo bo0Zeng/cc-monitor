@@ -25,7 +25,7 @@ import { isValidConfigDir } from "../src/shell-quote.ts";
 /** 从 `is_deceptive_char` 的 `matches!` 体里解析出所有码位。 */
 function rustDeceptiveCodePoints(): number[] {
   const src = readFileSync(
-    resolve(__dirname, "..", "src-tauri/crates/acct-core/src/lib.rs"),
+    resolve(__dirname, "..", "src/bridge/crates/acct-core/src/lib.rs"),
     "utf8",
   );
   const start = src.indexOf("pub fn is_deceptive_char");

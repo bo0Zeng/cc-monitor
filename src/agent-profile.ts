@@ -3,7 +3,7 @@
  *
  * # `K-R93`（09-12）：这里从此不写死任何一格
  *
- * 立件时本文件是一份**手写常量**（`AGENT_PROFILE`），而后端 `src-tauri/src/adapter.rs`
+ * 立件时本文件是一份**手写常量**（`AGENT_PROFILE`），而后端 `src/bridge/src/adapter.rs`
  * 另有一份（claude ＋ codex）—— 同一件事两份实现，`K-R54` 表**第 11 行**。
  * 🔴 而且前端这一份**只认 claude** ⇒ 接上后端的同一刻，codex 那一格也补上了
  * （**那不是回归，是把一格漏的补上**）。
@@ -11,7 +11,7 @@
  * 取值链，一句话：
  *
  * ```text
- * src-tauri/src/adapter.rs::agent_profile_facts     ← 唯一的值源
+ * src/bridge/src/adapter.rs::agent_profile_facts     ← 唯一的值源
  *   └─（cargo test --lib export_bindings ＝ npm run gen:types）→
  *      src/generated/agent-profile-table.ts         ← 生成物，不许手改
  *        └─（本文件）→ AGENT_PROFILE / lookupAgentProfile / listAgents

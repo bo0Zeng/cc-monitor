@@ -17,7 +17,7 @@
 //! # 今天的读数（就是下面那两张登记表的内容，别在这段散文里复述第二遍）
 //!
 //! 人群 = 本仓今天的两个 `Cargo.lock`（monitor 那棵 · daemon 那棵）+ 两棵源码树的生产段
-//! + `src-tauri/crates/` 下每个共享 crate 的 manifest。
+//! + `src/bridge/crates/` 下每个共享 crate 的 manifest。
 //!
 //! # ⚠ 它认不出什么（逐条写，别读成全覆盖）
 //!
@@ -30,8 +30,8 @@
 //!   新的树、一份新的 lock。本条的人群是**登记的那两份 lock**
 //!   ⇒ **「有人加了第三棵树却没登记」这一格本条买不到**。那正是件文件 `§0f` 第 4 条
 //!   要求「每一条按树切的判据都重新问一遍」的那一问，落点在 `KW2D4`（不在本条）。
-//!   本条能买到的是：第三棵树**若走 `src-tauri/crates/` 那个现成的家**，当场红。
-//! - **不认 vendor 本体**（`C7`：`src-tauri/vendor/code-picture-core/` 不动）。
+//!   本条能买到的是：第三棵树**若走 `src/bridge/crates/` 那个现成的家**，当场红。
+//! - **不认 vendor 本体**（`C7`：`src/bridge/vendor/code-picture-core/` 不动）。
 //!   引擎自己的 manifest 里那行 `[package] name` 不是一条依赖声明，采集器按**键的形状**认，
 //!   不按「文件里出现过这个名字」认 —— 同一条形状让
 //!   `exclude = ["vendor/code-picture-core"]`（那是 workspace 成员身份，不是依赖）
@@ -89,14 +89,14 @@ mod tests {
     ///
     /// 键是**仓根相对路径**；`Cargo.lock` 里列的是**整个依赖图**（含传递依赖）
     /// ⇒ 比读 manifest 严一档：有人经由第三个 crate 把引擎间接链进 daemon，这里也看得见。
-    const LOCKS: &[&str] = &["src-tauri/Cargo.lock", "src/backend/Cargo.lock"];
+    const LOCKS: &[&str] = &["src/bridge/Cargo.lock", "src/backend/Cargo.lock"];
 
     /// **登记表②**：上面那几份里，**允许**含引擎那个包的是哪几份。
     ///
     /// 今天恰好一份 —— monitor 那棵。它就是「解析发生在 monitor 进程里」这句话的账面形态。
     /// ⚠ 这是一道**相等断言**，不是地板：多一份（daemon 也链了）与少一份（monitor 不再链了）
     /// 都会红，而两种红各有各的处置，诊断里分开写。
-    const ENGINE_LINKED_BY: &[&str] = &["src-tauri/Cargo.lock"];
+    const ENGINE_LINKED_BY: &[&str] = &["src/bridge/Cargo.lock"];
 
     /// 读一份仓内文件，**读不到就 panic，不许静默成空串地绿**。
     fn read_pinned(rel: &str, floor: usize) -> String {
@@ -237,7 +237,7 @@ mod tests {
     /// 与 monitor 侧那条的差别写在本模块头注最后一段（那边看一个文件，这边量整棵树）。
     #[test]
     fn the_monitor_tree_keeps_exactly_one_parse_entrance() {
-        let root = repo_root().join("src-tauri").join("src");
+        let root = repo_root().join("src/bridge").join("src");
         let files = guard_core::scan_tree!(&root, &["rs"]);
         // 反空真：monitor 那棵树读不到（路径挪了 / 只剩几个文件）⇒ 下面会零命中地绿。
         // 地板 90 · 现打 105（量于本件基点 `d305ffa`）—— 留 15 的余量，
@@ -262,14 +262,14 @@ mod tests {
 
     /// ★ 正题④（**第三棵树最便宜的那个家**）：共享 crate 一个都不许把引擎链进来。
     ///
-    /// 为什么单立一条：`src-tauri/crates/` 是本仓今天现成的「第三棵树」的家
+    /// 为什么单立一条：`src/bridge/crates/` 是本仓今天现成的「第三棵树」的家
     /// （7 个共享 crate 都住那儿），而两侧都 `path` 依赖着它们
     /// ⇒ 往任何一个里塞引擎依赖，等于**同时**把引擎链进两个地址空间，
     /// 而上面那条相等断言看的是 lock、要等 lock 重新解析才看得见。
     #[test]
     fn no_shared_crate_pulls_the_engine_into_a_second_address_space() {
         let (dashed, underscored) = engine_names();
-        let root = repo_root().join("src-tauri").join("crates");
+        let root = repo_root().join("src/bridge").join("crates");
         let mans = guard_core::scan_tree!(&root, &["toml"]);
         assert!(
             mans.len() >= 5,
@@ -324,7 +324,7 @@ mod tests {
 
         // ② 针二单断（manifest 键的形状）：真依赖行认得出，两种写法都要。
         for line in [
-            format!("{dashed} = {{ path = \"../src-tauri/vendor/{dashed}\" }}"),
+            format!("{dashed} = {{ path = \"../src/bridge/vendor/{dashed}\" }}"),
             format!("{underscored} = \"0.1\""),
         ] {
             assert!(

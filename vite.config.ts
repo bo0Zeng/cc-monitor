@@ -9,7 +9,7 @@ const host = process.env.TAURI_DEV_HOST;
 // 49152 起；故选 24174 这个「保留段之上、ephemeral 之下」的冷门高位端口，最不容易被占。
 // 历史上踩过：1420（Tauri 默认，落 1366-1465 保留段）、5174（落 5110-5209 保留段）。
 // 若 24174 仍被占，设环境变量例：$env:VITE_PORT=24500 后重跑，并把
-// src-tauri/tauri.conf.json 的 devUrl 改成同一端口。详见 src/doc/DEVELOPMENT.md。
+// src/bridge/tauri.conf.json 的 devUrl 改成同一端口。详见 src/doc/DEVELOPMENT.md。
 // @ts-expect-error process is a nodejs global
 const port = Number(process.env.VITE_PORT) || 24174;
 const hmrPort = port + 1;
@@ -21,6 +21,13 @@ export default defineConfig(async () => ({
   //
   // 1. prevent Vite from obscuring rust errors
   clearScreen: false,
+  // 〔仓库重组 2026-09-17〕构建输出挪出仓根，与两个 cargo target 同处 `.build/`
+  //（理由住 `.cargo/config.toml` 头注：`src/` 里不许有生成代码，否则扫源码树的判据会
+  // 安静地扫错东西）。`src/bridge/tauri.conf.json` 的 `frontendDist` 同拍改成 `../../.build/dist`。
+  build: {
+    outDir: ".build/dist",
+    emptyOutDir: true,
+  },
   // 2. tauri expects a fixed port, fail if that port is not available
   server: {
     port,
@@ -34,8 +41,8 @@ export default defineConfig(async () => ({
         }
       : undefined,
     watch: {
-      // 3. tell Vite to ignore watching `src-tauri`
-      ignored: ["**/src-tauri/**"],
+      // 3. tell Vite to ignore watching `src/bridge`
+      ignored: ["**/src/bridge/**"],
     },
   },
 }));

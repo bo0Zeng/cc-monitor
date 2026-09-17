@@ -18,7 +18,7 @@ session-0（普通 SSH 非交互会话）**起不来 WebView2**（无桌面 / �
 
 - `tauri-driver.exe` = `%USERPROFILE%\.cargo\bin\tauri-driver.exe`（`cargo install tauri-driver`）
 - `msedgedriver.exe` —— 版本匹配 VM 的 WebView2 Runtime；放 `%USERPROFILE%\.cargo\bin\` 或填 `MSEDGEDRIVER` env
-- app exe：`C:/Users/vm260726/cc-monitor/src-tauri/target/debug/monitor.exe`（KVM_cc build 出，可用 `APP_EXE` 覆盖）
+- app exe：`C:/Users/vm260726/cc-monitor/src/bridge/target/debug/monitor.exe`（KVM_cc build 出，可用 `APP_EXE` 覆盖）
 - wdio devDeps：repo 根 `npm install` 后 `node_modules` 会被 Node 从 `tests/e2e/tier2/` 向上解析到；
   或复用 VM 上已缓存 node_modules 的目录（把本目录内容拷进去即可）。
 

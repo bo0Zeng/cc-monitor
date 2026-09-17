@@ -41,7 +41,7 @@ import { showActionFailureToast } from "../error-toast";
 // === Rust 端 JsonlRecord 的 TS 镜像 ===
 //
 // **C04c 起不再是「镜像」了：`JsonlRecord` / `ApiMessage` / `Usage` 三个都由 `ts-rs`
-// 从 `src-tauri/src/messages.rs` 生成**——那个 enum **就是**线定义
+// 从 `src/bridge/src/messages.rs` 生成**——那个 enum **就是**线定义
 // （wire == `serde_json::to_string(JsonlRecord)`），所以它才是唯一的源。
 //
 // 手抄版被删掉时暴露的三处漂移（都是**手写版更宽或更窄**，无声地）：

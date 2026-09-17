@@ -173,7 +173,7 @@ export function mintTmuxName(base: string, existing: ReadonlySet<string>): strin
  *
  * sid 真正的载体是 tmux 的 **`@ccm_sid`** 选项（`ccm` 建会话时 `set-option` 写上去）。
  * 「按 `<sid8>-cc` 前缀认会话」这件事**本仓从来没有人做**：杀会话的菜单与身份判定
- * 都只问 `@ccm_sid`（`src-tauri/src/tmux.rs` 那段逐字：「本条的两个消费者都不问那个」）。
+ * 都只问 `@ccm_sid`（`src/bridge/src/tmux.rs` 那段逐字：「本条的两个消费者都不问那个」）。
  * ⇒ 名字里去掉 sid **不会**弄坏任何认领逻辑；而 `@ccm_sid` **一格都不许动**
  * （`KR96D3` 第四刀：把它一起去掉必须红）。
  *

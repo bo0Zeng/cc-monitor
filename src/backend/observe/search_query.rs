@@ -6,13 +6,13 @@
 //! 形状严格一致，可直接反序列化）：
 //! `{sessionId,projectPath,projectName,jsonlPath,title,updatedAt,hitCount,hits:[{uuid,tsMs,kind,before,matched,after}]}`
 //!
-//! 🔴 语义与本地 `../src-tauri/src/search.rs` **不是「对齐」，是同一份**〔`K-R100` 09-13〕：
+//! 🔴 语义与本地 `../../bridge/src/search.rs` **不是「对齐」，是同一份**〔`K-R100` 09-13〕：
 //! 抽取 / 匹配 / snippet 的 12 个助手、4 个口径常量、snippet 预算与预算顺序全部住
-//! `../src-tauri/crates/search-core`，两侧都调它。
+//! `../src/bridge/crates/search-core`，两侧都调它。
 //! 收口前本文件各写了一遍那 12 个（`K-R85` 实测逐字相同），而 monitor 的
 //! `cross_half_edge_registry::CROSS_EDGES` 17 条跨轨边里 **search 零命中** ⇒
 //! **没有任何判据在拦着它们漂开**。判据现在有了，住
-//! `../src-tauri/src/search.rs::the_search_kou_jing_has_exactly_one_home`。
+//! `../../bridge/src/search.rs::the_search_kou_jing_has_exactly_one_home`。
 //! daemon 无 `parse_line`，故仍直接在 `serde_json::Value` 上抽取 —— 那是**取数**的差别，
 //! 不是**口径**的差别。
 //!
@@ -331,7 +331,7 @@ fn build_session_hits(
 // 🔴 那 12 个助手（`extract_text_blocks` · `extract_tool_text` · `stringify_json` ·
 // `clean_user_text` · `make_snippet` · `find_ci` · `tail_chars` · `head_chars` ·
 // `collapse_ws` · `collapse_ws_keep_ellipsis` · `truncate_plain` · `truncate_excerpt`）
-// 与它们的单元测试全部住 `../src-tauri/crates/search-core`。monitor 调它，本文件也调它
+// 与它们的单元测试全部住 `../src/bridge/crates/search-core`。monitor 调它，本文件也调它
 // —— **同一份**。别在这里「顺手再写一个小的」：那就是收口前的形状（两份、逐字同、零判据）。
 
 /// 解析 Claude 的 ISO8601 时间戳 `YYYY-MM-DDTHH:MM:SS(.fff)?Z` → epoch ms。
@@ -380,7 +380,7 @@ mod tests {
     use super::*;
 
     // ⚠ `extract_*` / `clean_user_text` / `find_ci` / `make_snippet` 那 4 条单元测试
-    // **已随实现搬进 `../src-tauri/crates/search-core`**（`K-R100`）。
+    // **已随实现搬进 `../src/bridge/crates/search-core`**（`K-R100`）。
     // 在这里再抄一份 = 又在本文件养出一个「口径的家」，正是本件要治的形状。
 
     #[test]

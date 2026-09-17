@@ -4,9 +4,9 @@
 # # 为什么需要它（这不是仪式，它逮到过一次二十轮没人发现的事故）
 #
 # 2026-08-04 实测：`gate-core = { path = "crates/gate-core" }` 这条依赖是 F03 加进
-# `src-tauri/Cargo.toml` 的，而那个文件里同时有**用户自己的** `[profile.dev]` 改动。
+# `src/bridge/Cargo.toml` 的，而那个文件里同时有**用户自己的** `[profile.dev]` 改动。
 # 定框 §5 的红线写着「不许提交用户那段；必须带我方改动时用 blob-replay 只提交我方那几行」。
-# 而实际做法只做了「排除」那半（`git restore --staged src-tauri/Cargo.toml`），
+# 而实际做法只做了「排除」那半（`git restore --staged src/bridge/Cargo.toml`），
 # blob-replay 那半从没做过 ⇒ **我方对该文件的改动一次都没落盘**，
 # 提交状态的 `main` 在任何平台上都编不过，而这持续了约二十轮。
 #
@@ -39,7 +39,7 @@ echo "== 从 $REF 检出到 $WT =="
 echo "   $(git -C "$WT" log --oneline -1)"
 
 # ★ 中间量自检：这份检出必须**不含**工作树里那些未提交的东西，否则本脚本在量错的东西。
-if grep -q '^\[profile\.dev\]' "$WT/src-tauri/Cargo.toml"; then
+if grep -q '^\[profile\.dev\]' "$WT/src/bridge/Cargo.toml"; then
   echo "!! 检出里出现了 [profile.dev] —— 那是用户未提交的改动，说明 REF 不是提交状态" >&2
   exit 3
 fi
@@ -57,7 +57,7 @@ run() { # run <名字> <目录> <命令...>
   fi
 }
 
-run monitor-lib   "$WT/src-tauri"           cargo check --lib
+run monitor-lib   "$WT/src/bridge"           cargo check --lib
 run daemon        "$WT/src/backend" cargo check --all-targets
 
 # ── 跨 target（`daemon-win`）：**这一格的前提早就作废了，08-25 起** 〔`K-R52` 09-11 订正〕──

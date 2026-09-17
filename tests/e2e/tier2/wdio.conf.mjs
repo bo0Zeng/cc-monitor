@@ -16,7 +16,7 @@ let tauriDriver;
 // 被测 app 产物 exe（KVM_cc build 出的 debug monitor.exe）。可用 APP_EXE 覆盖。
 const APP =
   process.env.APP_EXE ||
-  "C:/Users/vm260726/cc-monitor/src-tauri/target/debug/monitor.exe";
+  "C:/Users/vm260726/cc-monitor/src/bridge/target/debug/monitor.exe";
 
 // `cargo install tauri-driver` 默认落 %USERPROFILE%\.cargo\bin\tauri-driver.exe
 const TAURI_DRIVER =

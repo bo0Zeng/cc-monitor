@@ -62,7 +62,7 @@ DEB="${LBC_DEB:-cc-monitor_3.8.0_amd64.deb}"
 DIR_REAL='.cc-monitor/bin'      # install_local_ccm_entry 的真落点（local_backend.rs:1657）
 DIR_SNIPPET='.local/bin'        # src/shared/ccm-aliases.sh 那行 PATH 加的那个
 
-# 产品写 rc 时用的围栏（`src-tauri/src/sftp.rs` 的 CCM_PROFILE_BEGIN / _END 逐字）。
+# 产品写 rc 时用的围栏（`src/bridge/src/sftp.rs` 的 CCM_PROFILE_BEGIN / _END 逐字）。
 FENCE_BEGIN='# === cc-monitor remote ccm BEGIN ==='
 FENCE_END='# === cc-monitor remote ccm END ==='
 

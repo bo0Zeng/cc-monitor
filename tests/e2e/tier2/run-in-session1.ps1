@@ -12,7 +12,7 @@ Set-Location $PSScriptRoot
 $log = Join-Path $PSScriptRoot 'wdio.log'
 
 # 显式路径（可用同名 env 覆盖）。非交互会话 PATH 可能不含 .cargo\bin，故内嵌绝对路径。
-if (-not $env:APP_EXE)      { $env:APP_EXE      = 'C:/Users/vm260726/cc-monitor/src-tauri/target/debug/monitor.exe' }
+if (-not $env:APP_EXE)      { $env:APP_EXE      = 'C:/Users/vm260726/cc-monitor/src/bridge/target/debug/monitor.exe' }
 if (-not $env:TAURI_DRIVER) { $env:TAURI_DRIVER = "$env:USERPROFILE\.cargo\bin\tauri-driver.exe" }
 if (-not $env:MSEDGEDRIVER) { $env:MSEDGEDRIVER = "$env:USERPROFILE\.cargo\bin\msedgedriver.exe" }
 

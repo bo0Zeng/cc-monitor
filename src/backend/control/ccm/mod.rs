@@ -58,7 +58,7 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 /// 〔`K-R61` 09-11 现打过一次：初版这里只写了四处，漏的正是 `plugin/probe.rs` 那一行 ——
 /// 而那一处本轮**真改过、也报过 PM**，就是没落进表里。PM 的刀 `P` 逮到它。〕
 ///
-/// - `src-tauri/src/plugin_class_registry.rs` —— 数**个数**（那条断言里逐字写着
+/// - `src/bridge/src/plugin_class_registry.rs` —— 数**个数**（那条断言里逐字写着
 ///   「这个数变了要顺手看一眼它们」）。加 token ⇒ **那个数要跟着改**，否则当场红。
 /// - `src/backend/plugin/probe.rs` 的
 ///   [`crate::plugin::probe::tests::the_required_list_is_checked_against_what_the_real_plugin_declares`]
@@ -67,10 +67,10 @@ pub(crate) const AGENTS: &[&str] = &["claude", "codex"];
 ///   〔依据：PM 刀 `P`（09-11）往本常量再加一个 token、别处一字不改，daemon 套
 ///   `682 → 681 passed / 1 failed`，**只红这一条**；monitor 套同刀 `1381 → 1380 / 1`，
 ///   只红上一行那条。⇒ 两处**各自最小面 1 条**，而它们是仅有的两处「数个数」的。〕
-/// - `src-tauri/src/backend/control/ccm_invocation.rs` —— `CLI_REQUIRED_CAPS`
+/// - `src/bridge/src/backend/control/ccm_invocation.rs` —— `CLI_REQUIRED_CAPS`
 ///   与判据自带的 `STATIC_CAPS_EXPECTED`，两处都是**子集检查** ⇒ 加 token 安全。
 /// - `tests/e2e/ccm-contract-parity.sh` —— 数 `capabilities=` 覆不覆盖 TS 那一份，同样是**⊇**。
-/// - `src-tauri/build.rs` 的 `extract_capabilities` —— ⚠ **它盖不到这里**：
+/// - `src/bridge/build.rs` 的 `extract_capabilities` —— ⚠ **它盖不到这里**：
 ///   它按 `const CAPABILITIES` 这一行去 `src/backend/main.rs` 里抠，
 ///   抠的是 daemon **流模式**那个同名常量（`bg` / `tail-only`），与本常量无关。
 ///   〔这句话是本轮实测的，不是推的：加了下面那个 token 之后 `DAEMON_CAPABILITIES` 逐字不变。〕

@@ -502,7 +502,7 @@ export async function runLocalResumeIntoExistingTmux(
   // 🔴🔴 〔`K-R109` 2026-09-13〕**接过去了 —— 这一处不再问座要。**
   //   用户逐字裁「新起一个会话之后，把你的终端接进那个会话那一句 `tmux attach`，
   //   归谁产？」→「**归本机后端就好了啊**」（`DECISIONS.md#R61` 裁定三）。
-  //   本机后端那一侧 `K-R106` 就产得出了（`src-tauri/src/history.rs::render_local_attach`
+  //   本机后端那一侧 `K-R106` 就产得出了（`src/bridge/src/history.rs::render_local_attach`
   //   ⇒ `ccm attach <名>`，走本机 `new`/`resume` 同一条渲染路）；`K-R109` 补的是**注册面**
   //   （`generate_handler!` ＋ `parity_ledger::LEDGER` ＋ 上面那个包装层，三处同一拍）。
   //   ⚠ 那条「本模块**不 attach**，一次都不」仍然对，它说的是**远端**后端

@@ -7,7 +7,7 @@
 //!
 //! 在它之前 daemon 会建会话（[`super::launch`]）、会杀会话（[`super::kill`]），
 //! **而「建出来的这个到点自己没」这件事一处都没有** —— monitor 侧的用量探针
-//! （`src-tauri/src/account_usage.rs`）今天靠一条穿过 SSH 的 shell 串自己编排它，
+//! （`src/bridge/src/account_usage.rs`）今天靠一条穿过 SSH 的 shell 串自己编排它，
 //! 那条串里那一句 `setsid sh -c 'sleep N; tmux kill-session …'` 就是本模块要接过来的东西。
 //!
 //! ⚠ **它只是原语。** monitor 那条探针一个字节没动 —— 本件**不接线**。
@@ -33,7 +33,7 @@
 //! 本模块**不渲染串**：脚本是一个**常量**（[`WATCHDOG_SCRIPT`]），会话名 · 秒数 · socket ·
 //! 句柄全部作为**位置参数**交给 `sh`，脚本里用 `"$1"` / `"$@"` 取。
 //! ⇒ 这条路上**没有一处需要 quote**，也因此**不许**在这里长出第五份 POSIX quote
-//! （`src-tauri/src/quote_singleton_guard.rs` 数着那件事，唯一实现住 `shell-quote-core`）。
+//! （`src/bridge/src/quote_singleton_guard.rs` 数着那件事，唯一实现住 `shell-quote-core`）。
 //! 由本模块测试段的 `the_watchdog_hands_the_shell_a_constant_script_and_positional_arguments` 钉住。
 //!
 //! # 名字：**前缀专属，撞名不接回**（`KR87D2`）
@@ -146,7 +146,7 @@ pub(crate) const MAX_SLUG_CHARS: usize = 64;
 /// ⚠ **代价如实登记**：秒数给得足够大时，「到点自己会死」这条性质就**接近空**
 /// （它仍然成立，只是那个「点」在很远的地方）。**那一格由调用方负责** ——
 /// daemon 这一侧能给的机制是「到你给的那一刻它会死」，选那一刻是调用方的事。
-/// ⚠ 另一条出路（PM 若认为上界该留）：往 `src-tauri/src/byte_cap_registry.rs` 的
+/// ⚠ 另一条出路（PM 若认为上界该留）：往 `src/bridge/src/byte_cap_registry.rs` 的
 /// `NOT_A_SIZE_CAP` 加一行说明「它量的是时间（秒），不是体量」——
 /// **那份文件不在本件写区**，所以本轮走的是上面那条。
 pub(crate) const MIN_TTL_SECS: u32 = 1;

@@ -41,8 +41,8 @@ import { toUserInputEntry, type UserInputEntry } from "./views/user-input-index"
 import { UserInputPanel } from "./views/user-input-panel";
 // ⚠ **实时窗口 import 历史查看器，方向是别扭的 —— 这是写区逼出来的将就，不是惯例。**
 // 共用的只有 `revealCard`（找卡→展开→滚，两条路的卡由同一份渲染器建）。把它搬进中立文件
-// 要同时改 `src-tauri/src/polling_registry.rs` 的调度点分类账（rAF/setTimeout 按文件精确对账），
-// 而 `src-tauri/` 不在本轮写区 —— 实测搬了就红。理由与读数在 `revealCard` 的头注 + 件 `§5.6`。
+// 要同时改 `src/bridge/src/polling_registry.rs` 的调度点分类账（rAF/setTimeout 按文件精确对账），
+// 而 `src/bridge/` 不在本轮写区 —— 实测搬了就红。理由与读数在 `revealCard` 的头注 + 件 `§5.6`。
 import { revealCard } from "./views/session-viewer";
 import {
   renderContentRecord,

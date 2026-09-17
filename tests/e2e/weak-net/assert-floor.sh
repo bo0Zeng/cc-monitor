@@ -12,7 +12,7 @@
 #   · 它**不在** `ci.yml` 那张「23 套真机套件都必须带断言数地板」的清单里
 #     —— 那张清单只数 `run: bash tests/e2e/assert-pass-floor.sh` 这种调用行，本文件不是。
 #     本套件的地板因此**只有一处住址**（`ci.yml` 的调用行），没有反向自检替它兜底。
-#   · 它也不在 `src-tauri/src/e2e_gate_registry.rs` 的人群里 —— 那张表**从 `package.json`
+#   · 它也不在 `src/bridge/src/e2e_gate_registry.rs` 的人群里 —— 那张表**从 `package.json`
 #     派生**，没有 npm 脚本就不进人群，于是「这套没进门禁」这件事**没有判据会喊**。
 #   ⇒ 两处都指向同一个后续动作：**等 `package.json` 进了谁的写区，就把本套件收进
 #     `test:weak-net` + `assert-pass-floor.sh`，并把本文件删掉。**在那之前这是一处诚实边界，

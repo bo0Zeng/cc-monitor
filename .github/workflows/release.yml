@@ -4,7 +4,7 @@ name: Release
 #  0. ci-gate：**同一个 commit 上的 CI 必须绿过**，否则后面一步都不起（R1，2026-09-09 加）。
 #  1. build-daemons (ubuntu)：用 cargo-zigbuild 交叉编译 aarch64 / x86_64 musl 远端 daemon，
 #     作为 artifact 传给 Windows 作业 —— 让发布安装包内嵌 daemon、自动部署 (#29) 可用。
-#  2. build-windows：下载 daemon 放进 src-tauri/embedded-daemons/ → cargo tauri build →
+#  2. build-windows：下载 daemon 放进 src/bridge/embedded-daemons/ → cargo tauri build →
 #     把 NSIS / MSI bundle 作为 GitHub Release 附件上传。
 #  3. build-linux：同一批 daemon artifact → tauri build --bundles deb → 追加进同一个 Release。
 # 注意：默认 build 会尝试下载 WiX toolset 来打 MSI，若网络不稳定可临时改 --bundles nsis。
@@ -173,7 +173,7 @@ jobs:
           tool: cargo-zigbuild@0.23.0
 
       # cc-monitor-remote 是独立 crate（无 workspace），静态编译成 musl。
-      # build_id 由源码 const BUILD_ID 决定（src-tauri/build.rs 同源解析），从源码编译天然版本一致。
+      # build_id 由源码 const BUILD_ID 决定（src/bridge/build.rs 同源解析），从源码编译天然版本一致。
       #
       # ⚠ **`--locked` 不是可选的**（2026-09-09 加）：两份 `Cargo.lock` 今天都钉着
       # `crypto-bigint 0.7.3`，而 **`0.7.0…0.7.4` 在 crates.io 上全部 yanked、只有 `0.7.5` 没被 yank**
@@ -190,7 +190,7 @@ jobs:
           cargo zigbuild --release --locked --target x86_64-unknown-linux-musl
           cargo zigbuild --release --locked --target aarch64-unknown-linux-musl
 
-      # 命名成 src-tauri/build.rs embed_daemons 期望的 cc-monitor-remote-<arch>。
+      # 命名成 src/bridge/build.rs embed_daemons 期望的 cc-monitor-remote-<arch>。
       #
       # 🔴 **K-R70（09-12）：不再旁挂 `.build_id` 清单 —— 身份跟着字节走。**
       # 〔墓碑，本步原话逐字：「Batch9：旁挂 .build_id 清单 = 字节真实身份（编译器可能把
@@ -198,7 +198,7 @@ jobs:
       #  提取点生成，与刚编出的字节天然同源）」。**最后半句正是病灶**：清单从**源码**抠，
       #  所以三个载体的清单**恒等**，而恒等的东西一格证据都不提供（K-R68 · DECISIONS#R26 裁定零）。〕
       # 今天 daemon 自己带着一段 `#[used] static` 的身份戳（main.rs::CC_MONITOR_BUILD_STAMP），
-      # 连续、拆不成立即数 ⇒ 下游（src-tauri/build.rs）直接从字节里扫，不需要任何旁文件。
+      # 连续、拆不成立即数 ⇒ 下游（src/bridge/build.rs）直接从字节里扫，不需要任何旁文件。
       - name: Stage binaries
         run: |
           mkdir -p staged
@@ -230,7 +230,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: src/bridge
 
       - name: Download cross-compiled daemons
         uses: actions/download-artifact@v4
@@ -255,11 +255,11 @@ jobs:
       - name: Place + verify embedded daemons
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force src-tauri/embedded-daemons | Out-Null
+          New-Item -ItemType Directory -Force src/bridge/embedded-daemons | Out-Null
           foreach ($a in "x86_64","aarch64") {
             $f = Get-ChildItem -Recurse daemon-artifacts -Filter "cc-monitor-remote-$a" | Select-Object -First 1
             if (-not $f) { Write-Error "daemon artifact cc-monitor-remote-$a 缺失——内嵌失败，自动部署会被禁用"; exit 1 }
-            Copy-Item $f.FullName "src-tauri/embedded-daemons/cc-monitor-remote-$a" -Force
+            Copy-Item $f.FullName "src/bridge/embedded-daemons/cc-monitor-remote-$a" -Force
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
           }
           $main = "src/backend/main.rs"
@@ -270,7 +270,7 @@ jobs:
           $want = "$open$src$close"
           Write-Host "expecting stamp: $want"
           foreach ($a in "x86_64","aarch64") {
-            $bytes = [System.IO.File]::ReadAllBytes("src-tauri/embedded-daemons/cc-monitor-remote-$a")
+            $bytes = [System.IO.File]::ReadAllBytes("src/bridge/embedded-daemons/cc-monitor-remote-$a")
             $text  = [System.Text.Encoding]::Latin1.GetString($bytes)
             if ($text.IndexOf($want) -lt 0) { Write-Error "内嵌 daemon $a 的字节里问不出身份戳 $want —— 它不是这套源码编出来的"; exit 1 }
             Write-Host "stamp $a = $src (从字节里扫出来的，不是从旁边抄的)"
@@ -286,10 +286,10 @@ jobs:
         run: |
           $tag = "${{ github.ref_name }}" -replace '^v',''
           $pkg = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $conf = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          $cargo = (Select-String -Path src-tauri/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          $conf = (Get-Content src/bridge/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $cargo = (Select-String -Path src/bridge/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
           # Cargo.lock 里 monitor 包：`name = "monitor"` 紧跟的 version 行
-          $lockRaw = Get-Content src-tauri/Cargo.lock -Raw
+          $lockRaw = Get-Content src/bridge/Cargo.lock -Raw
           $lock = if ($lockRaw -match '(?m)^name = "monitor"\r?\nversion = "([^"]+)"') { $Matches[1] } else { '<missing>' }
           # ── KR114D1：这一步拆成**两半**，因为手工触发时 `github.ref_name` 是**分支名**，
           #    拿它当版本号比，演练必然红在这里，而红的原因与「版本漂了」毫无关系。
@@ -350,10 +350,10 @@ jobs:
         shell: pwsh
         run: |
           $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
-          New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
+          New-Item -ItemType Directory -Force src/bridge/binaries | Out-Null
           Copy-Item .build/backend/release/cc-monitor-remote.exe `
-            "src-tauri/binaries/cc-monitor-remote-$triple.exe" -Force
-          Get-ChildItem src-tauri/binaries | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
+            "src/bridge/binaries/cc-monitor-remote-$triple.exe" -Force
+          Get-ChildItem src/bridge/binaries | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
 
       # ── K-R42：**同一份二进制再铺一处** —— 让**裸 `monitor.exe`** 也带得上本机后端 ──────
       #
@@ -365,7 +365,7 @@ jobs:
       # `externalBin` 仍然只住 `tauri.sidecar.conf.json`、仍然只在下面 `tauri build` 那行
       # 用 `--config` 注入（进主配置会让 `cargo test` 也要求当前 target 的二进制存在，
       # 那是 C2 反面钉住的）。本步**只是把同一个产物再拷一份到 `embedded-daemons/`**，
-      # 由 `src-tauri/build.rs::embed_native_daemon` `include_bytes!` 进 exe。
+      # 由 `src/bridge/build.rs::embed_native_daemon` `include_bytes!` 进 exe。
       #
       # ⚠ **落点刻意不是 `embedded-daemons/`**，理由住 `build.rs` 的 `NATIVE_DAEMON_DIR` 头注
       # （一句话：那个目录名是另一条判据认「谁会起真 daemon」用的来历串，
@@ -393,7 +393,7 @@ jobs:
         shell: pwsh
         run: |
           $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
-          $dir = "src-tauri/native-daemon"
+          $dir = "src/bridge/native-daemon"
           $dst = "$dir/cc-monitor-native"
           New-Item -ItemType Directory -Force $dir | Out-Null
           Copy-Item .build/backend/release/cc-monitor-remote.exe $dst -Force
@@ -405,19 +405,19 @@ jobs:
 
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
       #
-      # ⚠ `--config src-tauri/tauri.sidecar.conf.json` 是 F05b 刻意选的形态：`externalBin`
+      # ⚠ `--config src/bridge/tauri.sidecar.conf.json` 是 F05b 刻意选的形态：`externalBin`
       # **不进主配置** —— `tauri-build` 要求当前 target 的 sidecar 在**编译期**就存在，
       # 进主配置会让 `cargo test` 也需要一份 daemon 二进制（实测报错
       # `resource path binaries/cc-monitor-remote-<triple> doesn't exist`），
       # 那等于把两半在构建期绑死，正是 C2 反面禁的事。⇒ 只在发版这一步注入。
       - name: tauri build
-        run: npx tauri build --config src-tauri/tauri.sidecar.conf.json --bundles nsis,msi
+        run: npx tauri build --config src/bridge/tauri.sidecar.conf.json --bundles nsis,msi
 
       - name: Compute SHA256 checksums
         shell: pwsh
         run: |
-          $bundleDir = "src-tauri\target\release\bundle"
-          Get-ChildItem -Path "$bundleDir\nsis\*-setup.exe", "$bundleDir\msi\*.msi", "src-tauri\target\release\monitor.exe" -ErrorAction SilentlyContinue |
+          $bundleDir = "src/bridge\target\release\bundle"
+          Get-ChildItem -Path "$bundleDir\nsis\*-setup.exe", "$bundleDir\msi\*.msi", "src/bridge\target\release\monitor.exe" -ErrorAction SilentlyContinue |
             Get-FileHash -Algorithm SHA256 |
             ForEach-Object { "$($_.Hash)  $($_.Path | Split-Path -Leaf)" } |
             Out-File -FilePath "SHA256SUMS.txt" -Encoding utf8
@@ -441,9 +441,9 @@ jobs:
         with:
           body_path: RELEASE_BODY.md
           files: |
-            src-tauri/target/release/monitor.exe
-            src-tauri/target/release/bundle/nsis/*-setup.exe
-            src-tauri/target/release/bundle/msi/*.msi
+            src/bridge/target/release/monitor.exe
+            src/bridge/target/release/bundle/nsis/*-setup.exe
+            src/bridge/target/release/bundle/msi/*.msi
             SHA256SUMS.txt
 
   # ────────────────────────────────────────────────────────────────────────────
@@ -472,7 +472,7 @@ jobs:
   #    （Ubuntu 24.04 已不默认提供）——在一个**没法在本地验证**的 job 上，
   #    那是两个额外的失败面。deb 用 Tauri 自带的纯 Rust 打包器，零外部工具。
   #    ⇒ **先把 deb 跑通，AppImage 留作后续**（已登记）。
-  # 4. **不动 `src-tauri/tauri.conf.json` 的 `bundle.targets`**（那是 Windows 主路径共享的
+  # 4. **不动 `src/bridge/tauri.conf.json` 的 `bundle.targets`**（那是 Windows 主路径共享的
   #    最高风险面）；格式在命令行上给。
   build-linux:
     name: Build Linux artifacts (deb)
@@ -492,7 +492,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: src/bridge
 
       # 同 ci.yml::linux-app-build 那四个（构建期必需，不是打包才要）。
       - name: Install Linux build deps
@@ -518,11 +518,11 @@ jobs:
       - name: Place embedded daemons
         run: |
           set -euo pipefail
-          mkdir -p src-tauri/embedded-daemons
+          mkdir -p src/bridge/embedded-daemons
           for a in x86_64 aarch64; do
             bin=$(find daemon-artifacts -name "cc-monitor-remote-$a" -type f | head -1)
             [ -n "$bin" ] || { echo "daemon artifact 缺失（$a）"; exit 1; }
-            cp "$bin" "src-tauri/embedded-daemons/cc-monitor-remote-$a"
+            cp "$bin" "src/bridge/embedded-daemons/cc-monitor-remote-$a"
             echo "embedded $a placed"
           done
 
@@ -540,13 +540,13 @@ jobs:
         run: |
           set -euo pipefail
           triple=$(rustc -vV | sed -n 's/^host: //p')
-          mkdir -p src-tauri/binaries
+          mkdir -p src/bridge/binaries
           cp .build/backend/release/cc-monitor-remote \
-             "src-tauri/binaries/cc-monitor-remote-$triple"
-          ls -l src-tauri/binaries
+             "src/bridge/binaries/cc-monitor-remote-$triple"
+          ls -l src/bridge/binaries
 
       - name: tauri build (deb)
-        run: npx tauri build --config src-tauri/tauri.sidecar.conf.json --bundles deb
+        run: npx tauri build --config src/bridge/tauri.sidecar.conf.json --bundles deb
 
       - name: Compute SHA256 checksums (Linux)
         run: |
@@ -554,7 +554,7 @@ jobs:
           : > SHA256SUMS-linux.txt
           # 二进制名是 cargo 包名 `monitor`（不是 productName `cc-monitor`）——
           # 与 build-windows 里的 `monitor.exe` 同源，本地 `target/debug/monitor` 已核实。
-          for f in src-tauri/target/release/bundle/deb/*.deb src-tauri/target/release/monitor; do
+          for f in src/bridge/target/release/bundle/deb/*.deb src/bridge/target/release/monitor; do
             [ -f "$f" ] || continue
             # 只把**路径**收成 basename，别顺手把 hash 也剥了
             #（`sed 's#.*/##'` 是贪婪的，会把 "hash  path/to/" 整段吃掉）。
@@ -596,8 +596,8 @@ jobs:
         with:
           body_path: RELEASE_BODY.md
           files: |
-            src-tauri/target/release/bundle/deb/*.deb
-            src-tauri/target/release/monitor
+            src/bridge/target/release/bundle/deb/*.deb
+            src/bridge/target/release/monitor
             SHA256SUMS-linux.txt
             daemon-artifacts/cc-monitor-remote-x86_64
             daemon-artifacts/cc-monitor-remote-aarch64

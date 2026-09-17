@@ -159,7 +159,7 @@ pub(crate) struct TeeSink {
 
 /// tee 队列能排多少**行**。
 ///
-/// ⚠ **是条数不是体量** —— 它已在 `src-tauri/src/byte_cap_registry.rs` 的 `NOT_A_SIZE_CAP` 里
+/// ⚠ **是条数不是体量** —— 它已在 `src/bridge/src/byte_cap_registry.rs` 的 `NOT_A_SIZE_CAP` 里
 /// 登记为「不是字节上限」（那张表默认拒绝：尺寸类常量不登记就红）。
 const TEE_QUEUE_LINES: usize = 1024;
 

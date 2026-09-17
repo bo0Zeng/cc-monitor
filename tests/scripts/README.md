@@ -14,11 +14,11 @@
 > 它是补出来的：08-06 之前这张表**只有 `run.ps1`**，于是照 README 找不到
 > 「唯一量提交状态、且必须本机跑」的那道门。
 
-另有一份 PowerShell 模板存在 `src-tauri/scripts/`（编译时 `include_str!` 进 Rust 二进制，不在本目录）：
+另有一份 PowerShell 模板存在 `src/bridge/scripts/`（编译时 `include_str!` 进 Rust 二进制，不在本目录）：
 
 | 模板 | 作用 |
 |---|---|
-| `../../src-tauri/scripts/cc.ps1.tpl` | cc 集成 PowerShell 块模板。设置面板装 cc 集成时把这段（含 `__ccm_bind` helper + 可选 `function cc`）写入用户 profile 的 `# === cc-monitor BEGIN === ... # === cc-monitor END ===` 块内 |
+| `../../src/bridge/scripts/cc.ps1.tpl` | cc 集成 PowerShell 块模板。设置面板装 cc 集成时把这段（含 `__ccm_bind` helper + 可选 `function cc`）写入用户 profile 的 `# === cc-monitor BEGIN === ... # === cc-monitor END ===` 块内 |
 
 ---
 
@@ -41,7 +41,7 @@ powershell -NoProfile -File scripts\run.ps1 [dev|build|check|clean]
 | `dev` | `npx tauri dev`（弹 1100x800 窗口，HMR） |
 | `build` | `npx tauri build`（产 msi + nsis + exe） |
 | `check` | `cargo check`（不编 release） |
-| `clean` | `cargo clean`（清 `src-tauri/target/`） |
+| `clean` | `cargo clean`（清 `src/bridge/target/`） |
 
 ### 前置依赖
 

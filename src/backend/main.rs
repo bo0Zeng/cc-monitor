@@ -218,7 +218,7 @@ const PROTO_VERSION: u32 = 1;
 ///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
 ///   （p1r / p1t / G2 / p2d / p2e 那五次的同一个形状）。
 ///   ★ 同 `p2d` / `p2e` 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
-///   本轮**没做**（本工作树也没铺 `src-tauri/embedded-daemons/`）。
+///   本轮**没做**（本工作树也没铺 `src/bridge/embedded-daemons/`）。
 ///   🔴 **别把它读成「远端画面预览通了」**：本件只出 daemon 这一侧的原语，
 ///   monitor 那条 `capture_remote_pane` 一个字节没动 —— 欠账换了个名字，没有被结掉。
 ///
@@ -232,7 +232,7 @@ const PROTO_VERSION: u32 = 1;
 ///   ⇒ 不 bump 就不判 stale、不重装，整条能力在已部署的远端休眠
 ///   （p1r / p1t / G2 / p2d / p2e / p2g 那六次的同一个形状）。
 ///   ★ 同 p2d / p2e / p2g 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
-///   归发版那一拍，本轮**没做**（本工作树也没铺 `src-tauri/embedded-daemons/`）。
+///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/bridge/embedded-daemons/`）。
 ///   🔴 **别把它读成「用量探针搬进后端了」**：本件只出 daemon 这一侧的原语，
 ///   monitor 的 `account_usage` 那条 shell 串编排**一个字节没动**。
 ///
@@ -259,13 +259,13 @@ const PROTO_VERSION: u32 = 1;
 ///   那七次的 `unknown argument` + exit 2；帧面那半是 p2i 那次的 `hello.commands` 里没有它
 ///   ⇒ monitor 的 `InboundClient::accepts` 判 `Unsupported`、一个字节都不发。
 ///   ★ 同 p2d / p2e / p2g / p2h / p2i 如实登记：这一半是**源码半**，re-embed（CI 交叉编译）
-///   归发版那一拍，本轮**没做**（本工作树也没铺 `src-tauri/embedded-daemons/` ⇒ 不涉及 re-embed）。
+///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/bridge/embedded-daemons/` ⇒ 不涉及 re-embed）。
 ///   🔴 **别把它读成「驾驶舱那条读面接上后端了」**：本件只出后端这一侧的命令，
 ///   monitor 的 `read_cc_bus_state` **一个字节没动**（那是下一件）。
 const BUILD_ID: &str = "p2j-bus-state";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
-/// `src-tauri/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
+/// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
 /// 再经 `DAEMON_STAMP_OPEN` / `DAEMON_STAMP_CLOSE` 交给 monitor 生产段。
 /// **别在第二处写这两个字面量。**
 pub(crate) const BUILD_STAMP_OPEN: &str = "<<ccm-build-id:";
@@ -315,7 +315,7 @@ const fn build_stamp() -> [u8; BUILD_STAMP_LEN] {
 ///
 /// 拿到一份字节（内嵌的 / 装出来的 / 推到远端的那份都算），**不看它旁边任何文件**，
 /// 搜 [`BUILD_STAMP_OPEN`] 就问得出它是谁。消费者：
-/// `src-tauri/build.rs`（内嵌两条路的构建期校验）· `src-tauri/src/sftp.rs`
+/// `src/bridge/build.rs`（内嵌两条路的构建期校验）· `src/bridge/src/sftp.rs`
 /// （推远端之前的运行期见证）· 本 crate `build_id_guard` 的自扫判据。
 ///
 /// `#[used]` ＋ `#[no_mangle]`：前者挡「没人读它就优化掉」，后者让它在符号表里也留个名
@@ -2376,7 +2376,7 @@ mod argv_table_guard {
     ///
     /// 「今天谁在双路上」遍历得出来；「**它为什么必须留着自己那条臂**」遍历不出来 ——
     /// 那是一次裁定。**两种角色的发现机制不同 ⇒ 分两张表**，
-    /// 抄 `src-tauri/src/backend/control/daemon_kill.rs` 的 `CREATION_PATHS`／`VALIDATORS`
+    /// 抄 `src/bridge/src/backend/control/daemon_kill.rs` 的 `CREATION_PATHS`／`VALIDATORS`
     /// （逐字：「一张表混装两种角色是它自己会红的那种错」）。
     ///
     /// 没有这一张，[`every_listed_subcommand_has_a_live_dispatch_route`] 在双路那几条上
@@ -2419,7 +2419,7 @@ mod argv_table_guard {
     ///   ③ `_` 兜底臂交给 `observe::history_query::run`，它认哪几条由**那份文件里
     ///      它自己那个 `match` 块**判。
     ///
-    /// 分表这一形抄 `src-tauri/src/backend/control/daemon_kill.rs` 的
+    /// 分表这一形抄 `src/bridge/src/backend/control/daemon_kill.rs` 的
     /// `CREATION_PATHS`／`VALIDATORS`（逐字：「一张表混装两种角色是它自己会红的那种错，
     /// 因为两种角色的发现机制不同」），不自己重发明。
     ///

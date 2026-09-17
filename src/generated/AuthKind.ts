@@ -13,9 +13,9 @@
  *
  * 两个字面量（`subscription` / `api-key`）住 `acct_core::AUTH_KIND_*`，
  * 本枚举的 serde 名与它们由 `tests::the_wire_names_match_the_shared_contract` 钉住。
- * 为什么不直接把这个枚举也搬进 `acct-core`：`ts_rs` 是 `src-tauri` 的 **dev 依赖**，
- * 而 `generated-boundary-guard` 的扫描面逐字是 `walk("src-tauri/src")`
- * ⇒ 派生放到 `src-tauri/crates/` 底下，那条守卫的两条通用性质对它**整个失效**
+ * 为什么不直接把这个枚举也搬进 `acct-core`：`ts_rs` 是 `src/bridge` 的 **dev 依赖**，
+ * 而 `generated-boundary-guard` 的扫描面逐字是 `walk("src/bridge/src")`
+ * ⇒ 派生放到 `src/bridge/crates/` 底下，那条守卫的两条通用性质对它**整个失效**
  * （那正是它 C04d 批 3 栽过的那个坑）。⇒ 派生留在扫描面内，字面量共享。
  */
 export type AuthKind = "subscription" | "api-key";

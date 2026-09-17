@@ -33,7 +33,7 @@
  * ⇒ 删本文件 = 把「没装 ccm 的远端」那类主机的 `↗` 直接删掉。
  * 🔴 **而「本文件还删不删得」今天不靠上面这几条依据答** —— `K-R59` 起改由**消费者**答：
  * 逐处住址、处数、以及「它今天还站不站在生产路上」全在
- * `src-tauri/src/backend/control/launch_wire.rs` 的 `TS_FALLBACK_KEEPERS`（尺子A：处数）
+ * `src/bridge/src/backend/control/launch_wire.rs` 的 `TS_FALLBACK_KEEPERS`（尺子A：处数）
  * 与 `TS_FALLBACK_REACH`（尺子B：有没有生产调用方），**两张都从源码派生，少一处就红**。
  * **前提退役了，这条路没退役 —— 它另有消费者。**
  *

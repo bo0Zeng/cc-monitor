@@ -427,7 +427,7 @@ export class AccountsSection {
    *
    * ⚠ **诚实边界**：前端分不出后端那三档里的 `NoBackend` 与 `Unreadable`
    *（`local_accounts.rs` 把两者一起塞进 `available:false` + 一句 `error` 文案）。
-   * 要在格子上分开它们，得让后端多带一个字段回来 —— 那是 `src-tauri` 那一侧的事，
+   * 要在格子上分开它们，得让后端多带一个字段回来 —— 那是 `src/bridge` 那一侧的事，
    * 不在本件射程里。所以这里的档名说的是**面板看得见的那三档**，不是 Rust 那个枚举。
    */
   private async reloadLocal(force: boolean): Promise<void> {

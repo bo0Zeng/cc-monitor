@@ -13,7 +13,7 @@ use std::collections::HashMap;
 /// Serializes with an external `kind` tag, e.g.
 /// `{"kind":"hello","v":1,...}` or `{"kind":"session_added","sid":"..."}`.
 /// [`Frame::SessionRemoved`] 的原因。**双写点**：字面量 `"superseded"` 与 monitor
-/// `src-tauri/src/ssh_source.rs` 的解析处逐字一致，由 monitor 侧
+/// `src/bridge/src/ssh_source.rs` 的解析处逐字一致，由 monitor 侧
 /// `removal_cause_wire_literal_stays_in_sync` 钉住（同 `TMUX_LS_FMT` 的纪律）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -370,7 +370,7 @@ pub enum Frame {
         ///
         /// **旧 monitor 忽略本字段**：它看到空 `raw` ⇒ 空 backend ⇒ 保守跳过 = 今天的行为，
         /// 无回归。新 monitor 读本字段才能安全 retire。取值集与 monitor
-        /// `src-tauri/src/tmux.rs` 的 `OBS_*` const 是**双写点**（有守卫钉住）。
+        /// `src/bridge/src/tmux.rs` 的 `OBS_*` const 是**双写点**（有守卫钉住）。
         #[serde(skip_serializing_if = "Option::is_none")]
         observation: Option<String>,
     },
@@ -561,7 +561,7 @@ pub async fn write_and_flush_hello<W: tokio::io::AsyncWrite + Unpin>(
 /// Per-file monotonic sequence counter.
 ///
 /// Faithful port of the per-file seq semantics in
-/// `../src-tauri/src/watcher.rs` (process_file): the counter is keyed by file
+/// `../bridge/src/watcher.rs` (process_file): the counter is keyed by file
 /// path, returns the current value then increments by 1 (so the first line of
 /// a file gets seq 0, then 1, 2, ...), is monotonic across calls, and is never
 /// reset — there is no truncation handling here, the counter only ever climbs
@@ -1462,7 +1462,7 @@ mod tests {
 
     /// ★ S0：`cause` 的线上表现 —— `Gone` **不写字段**（additive，旧 monitor 原样工作），
     /// 只有 `Superseded` 才出现。这条同时是**跨语言双写点**的本侧锚：字面量
-    /// `"superseded"` 与 monitor `src-tauri/src/ssh_source.rs` 的解析处逐字一致。
+    /// `"superseded"` 与 monitor `src/bridge/src/ssh_source.rs` 的解析处逐字一致。
     #[test]
     fn removal_cause_is_additive_on_the_wire() {
         let gone = to_line(&Frame::SessionRemoved {

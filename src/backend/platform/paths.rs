@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 /// Case-fold the path on Windows so notify's NTFS case variance does not double
 /// emit; on other platforms keep the path verbatim.
 ///
-/// 与 monitor 侧 `src-tauri/src/watcher.rs` 的同名两分支同规则。
+/// 与 monitor 侧 `src/bridge/src/watcher.rs` 的同名两分支同规则。
 /// **原注释写的是「Mirrors `watcher.rs`」** —— U2 把本函数搬进 daemon 的 `platform/` 之后，
 /// 读者会去看**本 crate** 的 `watcher.rs`，而那里已经没有 `path_key` 了。写全路径，别留悬空指向。
 #[cfg(windows)]

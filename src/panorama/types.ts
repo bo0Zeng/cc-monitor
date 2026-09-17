@@ -7,7 +7,7 @@
  * /`unresolved_calls`…）。这些类型**照抄 core 的 snake_case**，本模块局部不与项目 camelCase
  * 惯例统一（手册推荐做法，省一层 DTO 样板）。
  *
- * 唯一例外：`PanoramaStatus` 是 cc-monitor 侧新建的 DTO（`src-tauri/src/panorama.rs`），
+ * 唯一例外：`PanoramaStatus` 是 cc-monitor 侧新建的 DTO（`src/bridge/src/panorama.rs`），
  * 带 `#[serde(rename_all="camelCase")]` → 这里用 **camelCase**（`indexedAt`）。
  */
 

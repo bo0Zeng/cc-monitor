@@ -1,0 +1,18 @@
+# 🔴 构建输出**不许落在 `src/` 里**。
+#
+# 仓库重组把两个 Cargo 工程都搬进了 `src/`（`src/bridge` = Tauri app · `src/backend` = 后端）。
+# 而本仓有一族判据「走一遍源码树、收所有 `.rs`」—— 它们的人群里现在含 `src` 整棵树。
+# `target/` 下有成千上万个 build script 生成的 `.rs`：一旦落在 `src/` 里，
+# 那些判据的人群会被生成代码淹没。**不是报错，是安静地扫错东西**
+# （本仓自己的说法：「恒绿看起来和真绿一模一样」）。
+#
+# ⚠ 为什么放在仓根而不是 `src/bridge/.cargo/`：那个目录被 `src/bridge/.gitignore` 整体忽略
+# （里面是「本机个人构建配置，不进 git」—— 理由住那份文件的头注，与 `C7` 那条纪律有关）。
+# 放进去就进不了 git，别人 clone 下来 target 照样落在 `src/` 里。
+#
+# ⚠ `src/backend/.cargo/config.toml` 有更深的同名键（`../../.build/backend`），按 cargo
+# 的配置合并规则**它覆盖本文件** —— 两个工程各自一个 target 目录，不共用。
+#
+# 相对路径以本文件的上级（仓根）为基准。`.gitignore` 忽略 `/.build/`。
+[build]
+target-dir = ".build/bridge"

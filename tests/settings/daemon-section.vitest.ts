@@ -89,7 +89,7 @@ import {
 } from "../../src/daemon-policy";
 
 /** 人群：这一区的用户可见文案今天住在哪几个文件里。**扩人群是翻转的一半。** */
-const COPY_POPULATION = ["daemon-section.ts", "../daemon-policy.ts"] as const;
+const COPY_POPULATION = ["daemon-section.ts", "../../src/daemon-policy.ts"] as const;
 
 function readPopulation(): { name: string; src: string }[] {
   return COPY_POPULATION.map((rel) => ({
@@ -177,7 +177,7 @@ describe("P2s daemon 开关区", () => {
         homes,
         `「${lit.slice(0, 16)}…」出现在 ${homes.length} 个文件里：${homes.join(" / ")}\n` +
           "★ 那四句的唯一一个家是 `daemon-policy.ts`。抄进别处 = 下一次只改一处。",
-      ).toEqual(["../daemon-policy.ts"]);
+      ).toEqual(["../../src/daemon-policy.ts"]);
     }
     // 反过来：这一区必须**真的在用**那个家，而不是自己拼一份。
     const section = files.find((f) => f.name === "daemon-section.ts")!.src;
@@ -196,7 +196,7 @@ describe("P2s daemon 开关区", () => {
     expect(
       hits.map((x) => x.name),
       "人群里一处「无人监护」都没有 —— 常驻做了、而界面没说，那正是 `K14` 点名不许的那一半。",
-    ).toEqual(["../daemon-policy.ts"]);
+    ).toEqual(["../../src/daemon-policy.ts"]);
   });
 
   it("本机永远在第一行——它不是另一种机器，只是不走 ssh 的那一台", async () => {

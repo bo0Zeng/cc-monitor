@@ -104,7 +104,7 @@ test("SESSION_BACKEND === TMUX_BACKEND（阶段①唯一活跃后端）", () => 
   eq(SESSION_BACKEND, TMUX_BACKEND);
 });
 
-// F01 漂移守卫（INVARIANTS §31a）：`=名:` 精确目标形态编码在三处——本座、`src-tauri/src/tmux.rs`
+// F01 漂移守卫（INVARIANTS §31a）：`=名:` 精确目标形态编码在三处——本座、`src/bridge/src/tmux.rs`
 // 的 `exact_target()`、以及 `tests/e2e/restart-shims/core.mjs`。shim 是 Tauri IPC 边界的 mock，
 // **结构上无法 import Rust，去重不可能**，只能靠守卫钉住：它一旦退回裸目标，e2e 会对
 // 「杀错会话 / 按键投错会话」这条整类 bug 假绿（生产已精确、探针仍前缀匹配 → 测不出差异）。

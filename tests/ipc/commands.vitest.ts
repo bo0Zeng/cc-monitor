@@ -249,7 +249,7 @@ function walk(dir: string, ext: string, out: string[] = []): string[] {
  */
 function rustCommands(): Set<string> {
   const out = new Set<string>();
-  for (const f of walk(resolve(REPO_ROOT, "src-tauri/src"), ".rs")) {
+  for (const f of walk(resolve(REPO_ROOT, "src/bridge/src"), ".rs")) {
     const code = stripComments(readFileSync(f, "utf8"), "rust");
     for (const m of code.matchAll(/#\[tauri::command\b[^\]]*\]/g)) {
       const tail = code.slice(m.index, m.index + 120);
@@ -269,7 +269,7 @@ function rustCommands(): Set<string> {
  * 「声明了却没注册」。注释已剥 ⇒ body 里只剩注册项，按逗号切就够。
  */
 function registeredCommands(): Set<string> {
-  const code = stripComments(readFileSync(resolve(REPO_ROOT, "src-tauri/src/lib.rs"), "utf8"), "rust");
+  const code = stripComments(readFileSync(resolve(REPO_ROOT, "src/bridge/src/lib.rs"), "utf8"), "rust");
   const handlers = [...code.matchAll(/generate_handler!\[/g)];
   expect(handlers, "`generate_handler![` 不是恰好一处——守卫只会守住其中一半").toHaveLength(1);
   const start = handlers[0].index;
@@ -501,7 +501,7 @@ describe("K-H2b D1 阻-1：本机起会话的主路都传了账号", () => {
   // ⚠ **`new_local_session` 不在这个分母里，而那不是漏掉**：Rust 侧
   //   `history.rs::new_local_session` 的签名里**根本没有 `tmux_name` 这一格**
   //   （函数体给 `launch_local` 的第五个实参硬写 `None`）⇒ 前端传了也没人收。
-  //   补它要同一拍改 `src-tauri/`，**不在 `K-R46` 写区**，已随本件上报。
+  //   补它要同一拍改 `src/bridge/`，**不在 `K-R46` 写区**，已随本件上报。
   //   ⇒ 本条的分母是**带得了这个参数的那几处**，不是「全部起会话的路」。
   //
   // 🔴 **本条只买「那一行字在不在 + 人群」**（与上一条同病，`D4` 两刀证过）：

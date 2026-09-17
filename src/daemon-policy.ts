@@ -42,7 +42,7 @@ export const DEFAULT_KILL_ON_EXIT = false;
  * ⇒ 文案搬家 / 拼串 / 进一张 i18n 表就**零命中地绿**。
  * 翻转时同轮扩了人群（daemon-section.ts + daemon-policy.ts），并配了一个今天真会红的反向锚点。
  *
- * ⚠ Rust 侧 `src-tauri/src/daemon_policy.rs` 有同名同值的四条 const，
+ * ⚠ Rust 侧 `src/bridge/src/daemon_policy.rs` 有同名同值的四条 const，
  * 由 `the_exit_copy_is_the_same_string_on_both_sides` 逐字对拍
  * （形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。**两边漂了不会报错。**
  */

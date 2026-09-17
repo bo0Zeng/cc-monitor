@@ -7,7 +7,7 @@
 //! `{sessionId, projectPath, projectName, buckets:[{model, day, totals:{input,cacheCreation,cacheRead,output,msgs}}]}`
 //!
 //! ★ **口径的唯一实现在共享 crate `usage-core`**（`usage_core::accumulate`）——
-//! 本文件与本地 `src-tauri/src/usage.rs` **都调它**，不各写一遍。
+//! 本文件与本地 `src/bridge/src/usage.rs` **都调它**，不各写一遍。
 //! 抽取仍在 `serde_json::Value` 上做（daemon 不引 `JsonlRecord`），同 `search.rs`↔`search_query.rs`。
 //! **per-requestId（缺→uuid）逐字段 MAX**——一次 API 请求在 jsonl 落成多行时取各字段最大值；
 //! `cache_*` 请求级逐行重复、`output` 流式（前占位、终结记录真总量）；`msgs` 每请求 +1。
@@ -92,7 +92,7 @@ fn analyze_session(path: &Path, seen_requests: &mut HashSet<String>) -> Option<V
     let content = std::fs::read_to_string(path).ok()?;
 
     // U7-2：口径**不在这里**了 —— 唯一实现在共享 crate `usage-core`，monitor 侧
-    // （`src-tauri/src/usage.rs`）用的是同一个函数。
+    // （`src/bridge/src/usage.rs`）用的是同一个函数。
     //
     // 此前这里与 monitor 各写一遍，本文件头注逐字写着「改口径必须同步改本地 usage.rs
     // （双写点）」，而那个双写**没有任何护栏**：名叫
