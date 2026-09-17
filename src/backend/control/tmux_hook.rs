@@ -256,7 +256,7 @@ mod tests {
         // 函数体清空、名字原样留着 ⇒ 本触发器**照样绿**，而本模块就只剩下面那张黑名单了。
         // 「符号在 ≠ 它还在做那件事」——本区 08-08 在两条前提触发器上连撞两次。
         // ⇒ 三条腿：名字在 · 它还在堵**导入逃生口**（`is_hatch`）· 它还有**默认拒绝**那半。
-        let guard = include_str!("../readonly_guard.rs");
+        let guard = include_str!("../../../tests/backend/readonly_guard.rs");
         for (needle, why) in [
             (
                 "fn every_fs_call_in_daemon_production_is_read_only",

@@ -43,6 +43,25 @@ pub(crate) fn src_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/backend")
 }
 
+/// 后端**测试树**根的唯一住址 —— [`src_root`] 的配对。
+///
+/// # 为什么必须有这一个
+///
+/// 测试整体搬出 `src/` 之后，凡是「**人群 ＝ 源码树**」的判据都会**安静地少一块人群**：
+/// 它们仍然扫得到东西（所以不红），只是扫不到搬走的那 19 个文件。
+/// 🔴 「扫不全」与「扫得对」在断言上长得一模一样 —— 除非那条判据自己带着
+/// 「采集到的 ＋ 跳过的 ＝ 树上全部」这类**总量对账**。本轮正是那几条对账把它逮住的
+/// （`no_timer_guard` 的数量相等 · `plugin_walk_fixture` 的集合相等 · `listen` 的住址存在性）。
+/// ⇒ 凡是「全体后端代码」的人群，用 [`code_roots`]，不要只用 [`src_root`]。
+pub(crate) fn tests_root() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/backend")
+}
+
+/// **全体后端代码**的两棵树：生产（`src/backend`）＋ 测试（`tests/backend`）。
+pub(crate) fn code_roots() -> [std::path::PathBuf; 2] {
+    [src_root(), tests_root()]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -60,8 +79,30 @@ mod tests {
             "src_root() 下没有 main.rs —— 它指到了别的地方：{}",
             root.display()
         );
-        let n = std::fs::read_dir(&root).expect("读 src_root 失败").count();
-        assert!(n >= 20, "src_root() 下只有 {n} 个条目，扫描面疑似塌了");
+        // ⚠ 原先数的是**顶层条目数**（`>= 20`）—— 19 个纯测试文件搬去 `tests/backend/`
+        //   之后顶层当场掉到 20 以下。那个数本来就不该是顶层的：它要挡的是「树塌了」，
+        //   而树的大小是**递归**的 .rs 数。改成递归数，并把两棵树都钉住。
+        let count_rs = |r: &std::path::Path| -> usize {
+            let mut n = 0usize;
+            let mut stack = vec![r.to_path_buf()];
+            while let Some(d) = stack.pop() {
+                for e in std::fs::read_dir(&d).expect("读目录失败").flatten() {
+                    let p = e.path();
+                    if p.is_dir() {
+                        stack.push(p);
+                    } else if p.extension().and_then(|x| x.to_str()) == Some("rs") {
+                        n += 1;
+                    }
+                }
+            }
+            n
+        };
+        let np = count_rs(&root);
+        assert!(np >= 50, "src_root() 下只有 {np} 个 .rs，生产树疑似塌了");
+        let t = tests_root();
+        assert!(t.is_dir(), "tests_root() 不是目录：{}", t.display());
+        let nt = count_rs(&t);
+        assert!(nt >= 15, "tests_root() 下只有 {nt} 个 .rs，测试树疑似塌了");
     }
 
     /// ★ 语义钉：`main.rs` 的生产段必须含这几样东西。

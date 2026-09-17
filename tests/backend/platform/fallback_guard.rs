@@ -639,7 +639,7 @@ mod g6_reach {
         // ③ 曾经的那个活体今天**真的**是诚实取值了，不是被绕开、也不是判红条件被改松。
         //    🔴 这一条是 `K-R52` 摘活体那一拍补的：没有它，上面两条在
         //    「判红条件被改松」时也会全绿，而那与「病治好了」在输出上一模一样。
-        let discover = production_code(include_str!("../plugin/discover.rs"));
+        let discover = production_code(include_str!("../../../src/backend/plugin/discover.rs"));
         let body = block_of(&discover, "#[cfg(not(unix))]");
         assert!(
             fabricates(&body).is_empty(),

@@ -677,7 +677,7 @@ mod tests {
 
     /// 那个真适配层今天的生产段（活体对拍语料，不是手抄的 fixture）。
     fn real_adapter_production() -> String {
-        crate::guard_support::production_code(include_str!("control/cc_bus.rs"))
+        crate::guard_support::production_code(include_str!("../../src/backend/control/cc_bus.rs"))
     }
 
     /// 通用调用口那一层今天的生产段，逐文件。
@@ -1447,7 +1447,22 @@ mod tests {
             "本文件的测试段里找不到 `{needle}` —— 抽取坏了，下面那条天花板在空转"
         );
         let mut others: Vec<String> = Vec::new();
-        for (p, raw) in guard_core::scan_tree!(&src_root(), &["rs"]) {
+        // 〔搬测试 2026-09-17〕本条数的是**测试段**里经通用调用口起进程的文件，
+        // 而测试段今天有一半住 `tests/backend/` ⇒ 只扫 `src_root()` 会漏掉它们，
+        // 下面那条集合相等当场红（这正是它该有的反应）。
+        let mut pop: Vec<(std::path::PathBuf, String)> =
+            guard_core::scan_tree!(&src_root(), &["rs"]).into_iter().collect();
+        pop.extend(guard_core::scan_tree!(&crate::guard_support::tests_root(), &["rs"]));
+        // 🔴 `scan_tree!` **按构造摘掉调用者自己** —— 而本文件搬去第二棵树之后，
+        //    扫 `tests_root()` 那一趟宏认不出它是调用者 ⇒ 把本文件也收了进来，
+        //    而上面第一条断言刚刚证明过「本文件的测试段含这个 needle」⇒ 必然多出一项。
+        //    ⇒ 显式摘掉自己。住址由 `file!()` 给，改名了它自己会说不出话。
+        let own_name = std::path::Path::new(file!())
+            .file_name()
+            .expect("file!() 没有文件名")
+            .to_owned();
+        pop.retain(|(p, _)| p.file_name() != Some(own_name.as_os_str()));
+        for (p, raw) in pop {
             if guard_core::test_source(&raw).contains(needle.as_str()) {
                 others.push(
                     p.file_name()
@@ -1657,7 +1672,7 @@ mod tests {
              （摘了它 `discover` 的兜底档就自相矛盾：找得到插件却跑不动）。"
         );
         // ③ 的另一半：源码面 —— 清环境这个动作**在**，而且只有一处。
-        let invoke_prod = crate::guard_support::production_code(include_str!("plugin/invoke.rs"));
+        let invoke_prod = crate::guard_support::production_code(include_str!("../../src/backend/plugin/invoke.rs"));
         assert_eq!(
             invoke_prod.matches("env_clear").count(),
             1,

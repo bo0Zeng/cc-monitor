@@ -170,7 +170,7 @@ mod tests {
 
     /// `fetch.rs` 的**代码文本**（本模块几条判据共用的语料）。
     fn fetch_code() -> String {
-        let src = include_str!("sidecars/codepicture/fetch.rs");
+        let src = include_str!("../../src/backend/sidecars/codepicture/fetch.rs");
         assert!(
             src.len() > 4_000,
             "只读到 {} 字节的 fetch.rs —— include_str! 没读到，下面几条在空转",
@@ -297,7 +297,7 @@ mod tests {
 
     /// `wire.rs` 里 `Unavailable` 那个结构的体。
     fn unavailable_struct_body() -> String {
-        let src = production_code(include_str!("wire.rs"));
+        let src = production_code(include_str!("../../src/backend/wire.rs"));
         let head = "pub struct Unavailable {";
         let at = src
             .find(head)

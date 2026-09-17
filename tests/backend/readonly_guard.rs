@@ -1170,11 +1170,11 @@ mod spawn_registry {
                 unlock.trim().chars().count()
             );
         }
-        let hook = crate::guard_support::production_code(include_str!("control/tmux_hook.rs"));
+        let hook = crate::guard_support::production_code(include_str!("../../src/backend/control/tmux_hook.rs"));
         // 🔴 `K-R55`（09-11）：这一处的住址从 `observe/watcher.rs` 换成了
         //    `platform/shell.rs` —— 起 shell 那一跳搬进适配层（`K33` 裁定二）。
         //    ⚠ 换的是**住址**，不是判据：核的仍是「登记的那一条在生产段里真的找得到」。
-        let shell = crate::guard_support::production_code(include_str!("platform/shell.rs"));
+        let shell = crate::guard_support::production_code(include_str!("../../src/backend/platform/shell.rs"));
         assert!(
             hook.contains("Command::new(\"tmux\")"),
             "清单登记了 tmux_hook 起 tmux，但生产段里找不到了 —— 幽灵条目"
@@ -1301,7 +1301,7 @@ mod capture_is_read_only {
 
     /// 被测对象：那一处抓屏的**生产段**。
     fn site() -> String {
-        production_code(include_str!("control/capture_pane.rs"))
+        production_code(include_str!("../../src/backend/control/capture_pane.rs"))
     }
 
     /// 会改 tmux 状态的动词 / 旗，`(针, 为什么它算改状态)`。
@@ -1712,7 +1712,7 @@ mod g6_reach {
     /// 反例表的语料。**住址与语料在这里对死** —— 加一行反例而不接语料，这里当场 panic。
     fn source_of(rel: &str) -> &'static str {
         match rel {
-            "control/cc_bus.rs" => include_str!("control/cc_bus.rs"),
+            "control/cc_bus.rs" => include_str!("../../src/backend/control/cc_bus.rs"),
             other => panic!("反例表里出现了没接语料的住址：{other}"),
         }
     }

@@ -19,12 +19,20 @@
 //!   inotify reader. This split is the single most-cited Phase-0 accident
 //!   source; keeping it real is the point.
 
+#[cfg(test)]
+#[path = "../../tests/backend/agent_boundary_guard.rs"]
 mod agent_boundary_guard; // S1：通用层不许知道任何 agent 的名字与文件格式（整体 #[cfg(test)]）
+#[cfg(test)]
+#[path = "../../tests/backend/agent_locality_guard.rs"]
 mod agent_locality_guard; // S2：codex 的格式知识只许住 agents/codex/ + kind 派发点逐条登记（整体 #[cfg(test)]）
 mod agents; // S2/S3：agent 适配层——每个 agent 一份，装它专属的知识（codex + claudecode）
 #[cfg(test)]
 mod alloc_probe; // U-2：线程级内存量具（F22：`VmHWM` 是进程级的，会把邻居测试算进来）
+#[cfg(test)]
+#[path = "../../tests/backend/build_id_guard.rs"]
 mod build_id_guard; // E77：加了子命令必须 bump BUILD_ID（内部整体 #[cfg(test)]，生产构建为空）
+#[cfg(test)]
+#[path = "../../tests/backend/cc_bus_boundary_guard.rs"]
 mod cc_bus_boundary_guard; // P4f-Y2：daemon 不许碰 cc-bus 的数据布局（整体 #[cfg(test)]）
 mod common; // U2：两边都要、又不含平台原语的纯工具（§0.5-6 打掉了「三分够用」那个判断）
 mod control; // U3：控制面 —— 会改变世界（写盘 / 改 tmux server / 发信号），或产出改变世界的计划
@@ -32,20 +40,38 @@ mod dial; // K-P6b：`--dial` 代理进程 —— daemon 那条长连接流的 S
 #[cfg(test)]
 mod guard_support; // U-1：各条源码扫描型守卫共用的「只留生产段」剥法（仅测试构建）
 mod inbound; // U6b-1：流连接上的入方向（信封 / 分派 / 取消）
+#[cfg(test)]
+#[path = "../../tests/backend/layering_guard.rs"]
 mod layering_guard; // U3：§1.1 第二条解耦线的机器判据（observe↔control 方向与条数）
 mod listen; // K-P1：常驻监听口 —— 脱离宿主之后还能被找到 / 被问到 / 被接上（纯判定住这里，接受循环住 main.rs）
+#[cfg(test)]
+#[path = "../../tests/backend/no_timer_guard.rs"]
 mod no_timer_guard; // P6：零定时器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod observe; // U3：观测面 —— 读，不改变世界
+#[cfg(test)]
+#[path = "../../tests/backend/panorama_locus_guard.rs"]
 mod panorama_locus_guard; // K-W2D KW2D3：全景的解析发生在哪个进程的地址空间（整体 #[cfg(test)]）
 mod platform; // U2：唯一允许平台原语与平台 cfg 的层（§1.1 第一条解耦线）
 mod plugin; // K-W1A：插件通用调用口 —— 找它 / 传 argv 起它 / 问它会什么（方向由 layering_guard 钉）
+#[cfg(test)]
+#[path = "../../tests/backend/plugin_walk_fixture.rs"]
 mod plugin_walk_fixture; // K-W2E：最小假插件走通全流程（夹具 + 判据，整个文件级 cfg(test)，生产构建为空）
+#[cfg(test)]
+#[path = "../../tests/backend/protocol_doc_guard.rs"]
 mod protocol_doc_guard; // U6a：IPC-PROTOCOL.md 与真实协议面的对拍
+#[cfg(test)]
+#[path = "../../tests/backend/ratchet_guard.rs"]
 mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言那几行**逐字没动（整体 #[cfg(test)]）
+#[cfg(test)]
+#[path = "../../tests/backend/readonly_guard.rs"]
 mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
+#[cfg(test)]
+#[path = "../../tests/backend/sidecar_fetch_guard.rs"]
 mod sidecar_fetch_guard; // K-W2D R2④：按需拉取那条路的四格机器判据（整体 #[cfg(test)]）
 mod sidecars; // K6 裁定一：我们自己出、自己装、自己调的那几个独立进程（与 agents/ 对称）
+#[cfg(test)]
+#[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
 mod wire;
 
