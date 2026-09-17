@@ -1447,7 +1447,7 @@ macro_rules! scan_tree {
 /// 一个字符算不算「标识符的一部分」——匹配单位的边界由它定义。
 ///
 /// 含**非 ASCII 字母**（`起流` 的下一个字 `程` 必须算，否则中文短语一律判成有边界）
-/// 与**连字符**（`remote-daemon-proto` 的下一段 `-X` 必须算，crate 名/YAML 值大量是连字符形）。
+/// 与**连字符**（`src/backend` 的下一段 `-X` 必须算，crate 名/YAML 值大量是连字符形）。
 ///
 /// ⚠ 与 [`cfg_is_test_only`] 里那个 ASCII 版**刻意不共用**：那里判的是 Rust 属性里的标识符
 /// （只可能是 ASCII），这里判的是任意源码文本里的「词」。合成一个会让其中一处变松。
@@ -1466,7 +1466,7 @@ fn ident_char(c: char) -> bool {
 /// | 何处 | needle | 撑大成 | 后果 |
 /// |---|---|---|---|
 /// | F05 | `起流` | `起流程` | 阶段埋点判据认错阶段 |
-/// | F16 | `remote-daemon-proto` | `remote-daemon-proto-X` | 「跨 target check 走 daemon 的 lock」这个前提没了却不红 |
+/// | F16 | `src/backend` | `src/backend-X` | 「跨 target check 走 daemon 的 lock」这个前提没了却不红 |
 /// | F19 | `exe_suffix: &str` | 另一个函数的**同名参数** | 断言指的不是它自称的那个函数 |
 ///
 /// ★ **三次没有一次是被「判据变红」发现的**，全靠变异。这一族的默认结局同样是恒绿。
@@ -1626,7 +1626,7 @@ pub fn strip_comment_lines(src: &str) -> String {
 /// **把一个事实钉成一整行**（trim 后逐字相等，且恰好一行）〔audit-0805 F24〕。
 ///
 /// [`find_pinned`] 的边界判据挡不住「同一行被加长」中的一类：分隔符不是标识符字符时
-/// （`working-directory: remote-daemon-proto` 后面接 `/sub`）边界看起来是干净的。
+/// （`working-directory: src/backend` 后面接 `/sub`）边界看起来是干净的。
 /// 凡事实本身就是「**某个文件里有这么一行**」，用本函数，别用子串。
 ///
 /// 返回命中的**行号（0 基）**。
@@ -2493,15 +2493,15 @@ mod tests {
         assert!(find_pinned("[perf] 起流 耗时", "起流").is_ok());
     }
 
-    /// ★ F16 的形状：连字符续接（`remote-daemon-proto` ⊂ `remote-daemon-proto-X`）。
+    /// ★ F16 的形状：连字符续接（`src/backend` ⊂ `src/backend-X`）。
     #[test]
     fn a_hyphen_extension_is_rejected() {
-        let hay = "working-directory: remote-daemon-proto-X\n";
-        assert!(hay.contains("remote-daemon-proto"), "对照组前提不成立");
-        assert!(find_pinned(hay, "remote-daemon-proto").is_err());
+        let hay = "working-directory: src/backend-X\n";
+        assert!(hay.contains("src/backend"), "对照组前提不成立");
+        assert!(find_pinned(hay, "src/backend").is_err());
         assert!(find_pinned(
-            "working-directory: remote-daemon-proto\n",
-            "remote-daemon-proto"
+            "working-directory: src/backend\n",
+            "src/backend"
         )
         .is_ok());
     }
@@ -2551,19 +2551,19 @@ mod tests {
     /// ★ `pin_line`：`find_pinned` 的边界判据挡不住「同一行被加长」中分隔符非标识符的那类。
     #[test]
     fn pin_line_catches_what_the_boundary_check_cannot() {
-        let hay = "defaults:\n  working-directory: remote-daemon-proto/sub\n";
+        let hay = "defaults:\n  working-directory: src/backend/sub\n";
         // `/` 不是标识符字符 ⇒ 边界看起来是干净的，`find_pinned` 会放过。
         assert!(
-            find_pinned(hay, "working-directory: remote-daemon-proto").is_ok(),
+            find_pinned(hay, "working-directory: src/backend").is_ok(),
             "本条的前提是 find_pinned 在这里放过 —— 前提变了就把这条一起改"
         );
         let e =
-            pin_line(hay, "working-directory: remote-daemon-proto").expect_err("整行判据必须红");
+            pin_line(hay, "working-directory: src/backend").expect_err("整行判据必须红");
         assert!(e.contains("撑大"), "诊断没点明事实被撑大：{e}");
         assert!(
             pin_line(
-                "  working-directory: remote-daemon-proto\n",
-                "working-directory: remote-daemon-proto"
+                "  working-directory: src/backend\n",
+                "working-directory: src/backend"
             )
             .is_ok(),
             "trim 之后相等的行不许红"

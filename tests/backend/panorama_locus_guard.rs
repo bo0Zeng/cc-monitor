@@ -60,17 +60,14 @@
 mod tests {
     use std::path::{Path, PathBuf};
 
-    /// 仓根（`remote-daemon-proto` 的上级）。
+    /// 仓根（`src/backend` 的上级）。
     ///
     /// ⚠ 跨树那几份是**运行时读**，不走 `include_str!`：编译期读会给
     /// `cross_half_edge_registry` 添一条新的跨半边，而那张表的口径是「必须编译期读才登记」。
     /// 同一棵树上的先例逐字写着这个取舍（`observe/accounts_query.rs` 那条读 monitor
     /// `history.rs` 的判据）：代价是「文件挪了只有本条红」，补偿是 `expect` + 字节地板。
     fn repo_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("remote-daemon-proto 的上级 = 仓根")
-            .to_path_buf()
+        crate::guard_support::repo_root()
     }
 
     /// 引擎那个包的两种写法（**运行时拼** —— 直接写字面量会让本文件变成别的判据的语料，
@@ -92,7 +89,7 @@ mod tests {
     ///
     /// 键是**仓根相对路径**；`Cargo.lock` 里列的是**整个依赖图**（含传递依赖）
     /// ⇒ 比读 manifest 严一档：有人经由第三个 crate 把引擎间接链进 daemon，这里也看得见。
-    const LOCKS: &[&str] = &["src-tauri/Cargo.lock", "remote-daemon-proto/Cargo.lock"];
+    const LOCKS: &[&str] = &["src-tauri/Cargo.lock", "src/backend/Cargo.lock"];
 
     /// **登记表②**：上面那几份里，**允许**含引擎那个包的是哪几份。
     ///

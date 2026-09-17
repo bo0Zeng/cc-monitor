@@ -98,7 +98,7 @@
 
 ```
   ┌─ 远端主机 ─────────────────────────────┐
-  │  常驻后端（remote-daemon-proto）      │
+  │  常驻后端（src/backend）      │
   │   observe/watcher  ──► JSONL 帧 ──┐      │
   │   control/{launch,kill,gate}      │      │   ← monitor 从这条**长连接**发控制命令
   └───────────────────────────────────┼──────┘      （inbound_client：请求/应答 + 背压）
@@ -134,7 +134,7 @@
 ### 2.1 两半：frontend 与 backend
 
 **backend = 读（`observe/`）+ 控制（`control/`）**，**一份代码、两种承载**：
-**远端进程** = `remote-daemon-proto/`（独立 crate，**不是 workspace 成员**，见 2.6）·
+**远端进程** = `src/backend/`（独立 crate，**不是 workspace 成员**，见 2.6）·
 **本机进程** = `src-tauri/src/backend/`。
 
 两侧都该有 `platform/` `observe/` `control/` `common/` 四层。**远端四层齐全；本机今天两层**

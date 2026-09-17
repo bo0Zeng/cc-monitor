@@ -287,7 +287,7 @@ mod tests {
         let mut stack: Vec<std::path::PathBuf> =
             // 〔搬树 2026-09-17〕**这里没有 `"src/backend"`，不是漏了**：后端树搬到
             // `<repo>/src/backend` 之后它已经是 `"src"` 的**子目录**，两个都列会把
-            // 后端的每个文件数两遍（搬家前 `remote-daemon-proto/src` 与 `src` 是互斥的）。
+            // 后端的每个文件数两遍（搬家前 `src/backend` 与 `src` 是互斥的）。
             ["src-tauri/src", "src", "shared"]
                 .iter()
                 .map(|d| root.join(d))

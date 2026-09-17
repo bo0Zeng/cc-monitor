@@ -128,7 +128,7 @@ fi
 # 一堆还挂着 SSH 会话的 daemon，实测攒到 5 个、每分钟贡献 8 次 SSH 登录 ——
 # 而那个现象**看起来像「产品在疯狂重连」**，我在它上面连猜错三次。
 # ⇒ 开跑前数一次；多于一个（本轮 app 自己那个）就 ABORT，让人先清干净。
-# ⚠⚠ **人群补齐**〔P0b 08-12 实测〕：本格原来只数 `remote-daemon-proto/target/...` 那一族，
+# ⚠⚠ **人群补齐**〔P0b 08-12 实测〕：本格原来只数 `.build/backend/...` 那一族，
 #     而实测盘上活着的 daemon 走的是**部署落点** `~/.cc-monitor/bin/cc-monitor-remote`
 #     （`sftp::ensure_daemon_deployed` 的落点）——**那一族当时根本不在人群里**，
 #     计数器却会安心地报 0。⇒ 两族都数。
@@ -152,7 +152,7 @@ fi
 #   宁可多报一次 ABORT，不可漏掉一个真的在搅局的。
 _count_our_daemons() {
   local n=0 pid env_dir
-  for pid in $(pgrep -f 'remote-daemon-proto/target/[^ ]*/cc-monitor-remote' 2>/dev/null) \
+  for pid in $(pgrep -f '.build/backend/[^ ]*/cc-monitor-remote' 2>/dev/null) \
              $(pgrep -f '\.cc-monitor/bin/cc-monitor-remote' 2>/dev/null); do
     # ⚠ **按 exe 复核，不信 cmdline**：`pgrep -f` 会匹配到**任何命令行里含这个模式的进程**
     #   —— 08-13 实测它数进了**我自己那条正在跑的 shell**。这与本轮五次 `pkill -f` 自伤
@@ -176,7 +176,7 @@ _count_our_daemons() {
   done
   printf '%s' "$n"
 }
-_dev_daemons=$(pgrep -fc 'remote-daemon-proto/target/[^ ]*/cc-monitor-remote' 2>/dev/null || echo 0)
+_dev_daemons=$(pgrep -fc '.build/backend/[^ ]*/cc-monitor-remote' 2>/dev/null || echo 0)
 _dep_daemons=$(pgrep -fc '\.cc-monitor/bin/cc-monitor-remote' 2>/dev/null || echo 0)
 _daemons=$(_count_our_daemons)
 # ★★ **降级档，不动判定**〔`P0b` 第三拍 08-13，待决 `U10g` 未裁前的过渡〕：

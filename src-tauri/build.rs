@@ -14,7 +14,7 @@ fn main() {
 /// 抽出来的理由与 `local_extract_name` 同族：四份手抄的路径迟早有一份被漏改。
 fn daemon_main_rs() -> PathBuf {
     Path::new("..")
-        .join("remote-daemon-proto")
+        .join("src/backend")
         .join("src")
         .join("main.rs")
 }
@@ -452,8 +452,8 @@ fn embed_daemons() {
                     "内嵌 daemon {arch} 的 build_id 是 `{embedded_id}`，而 daemon 源码是 `{expected}` —— \
                      **半 bump**。装上去会被 monitor 永远判 StaleBuild 并无限重装。\n\
                      出路二选一：\n\
-                     ① 重编。两步都在 `remote-daemon-proto/` 目录下跑：\n\
-                        cd remote-daemon-proto\n\
+                     ① 重编。两步都在 `src/backend/` 目录下跑：\n\
+                        cd src/backend\n\
                         cargo build --release --target {arch}-unknown-linux-musl \\\n\
                           --config 'target.{arch}-unknown-linux-musl.linker=\"rust-lld\"'\n\
                         cp target/{arch}-unknown-linux-musl/release/cc-monitor-remote \\\n\
@@ -632,7 +632,7 @@ fn embed_native_daemon() {
              可能是：① 它不是这套源码编出来的（`p2f-build-stamp` 之前的 daemon 没有戳）；\
              ② 被改过 / 截断；③ 界标抠失败（现打 open=`{stamp_open}` close=`{stamp_close}`）。\n\
              🔴 **别去补一个 `.build_id` 旁文件** —— `K-R70` 之后没人读它，那只是把标签换个地方抄。\n\
-             出路：在 `remote-daemon-proto/` 下 `cargo build --release` 重编并重铺，\
+             出路：在 `src/backend/` 下 `cargo build --release` 重编并重铺，\
              或 `rm -rf src-tauri/{}`：自释放诚实关闭，编译立刻恢复。",
             src.display(),
             NATIVE_DAEMON_DIR
@@ -644,7 +644,7 @@ fn embed_native_daemon() {
              —— **半 bump**。\n\
              这一份会以 `cc-monitor-local-{embedded_id}` 之名落到用户盘上，而 monitor 这一侧\
              按 `{expected}` 谈能力：能力协商按源码谈、跑起来的是另一个。\n\
-             出路二选一：① 重编并重铺（在 `remote-daemon-proto/` 下 `cargo build --release`，\
+             出路二选一：① 重编并重铺（在 `src/backend/` 下 `cargo build --release`，\
              产物铺成 `src-tauri/{}` 那两个文件：二进制 ＋ `.target`）；\
              ② `rm -rf src-tauri/{}`：自释放诚实关闭，编译立刻恢复。",
             src.display(),

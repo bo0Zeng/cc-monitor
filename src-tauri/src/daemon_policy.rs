@@ -161,7 +161,7 @@ pub fn set_daemon_kill_on_exit(origin: String, kill: bool) -> Result<(), String>
 //    `local_daemon.rs::spawn_detached` 现打 `.stdout(Stdio::null())` + `.stderr(Stdio::null())`
 //    ⇒ 脱离那条路上 daemon 的 `tracing` 全部进 `/dev/null`。
 //    ⚠ 这一条比第 1 条更硬：**它不是权限问题，是那句话没有听众。**
-// 3. **宿主叫不动 daemon 那侧的代码。** `remote-daemon-proto` 只有 `[[bin]]`、没有 `[lib]`
+// 3. **宿主叫不动 daemon 那侧的代码。** `src/backend` 只有 `[[bin]]`、没有 `[lib]`
 //    （`Cargo.toml` 那段 standalone 头注），⇒ 住在那个 crate 里的判据只有 daemon 自己用得上，
 //    而**唯一观测得到 daemon 之死的位置是它的父进程 = 宿主**（`§0-4` 的结论）。
 //

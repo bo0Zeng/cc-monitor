@@ -177,7 +177,7 @@ jobs:
       #
       # ⚠ **`--locked` 不是可选的**（2026-09-09 加）：两份 `Cargo.lock` 今天都钉着
       # `crypto-bigint 0.7.3`，而 **`0.7.0…0.7.4` 在 crates.io 上全部 yanked、只有 `0.7.5` 没被 yank**
-      #（09-09 现打 crates.io API 核实过 —— `remote-daemon-proto/Cargo.toml` 里 `K-R34` 那段
+      #（09-09 现打 crates.io API 核实过 —— `src/backend/Cargo.toml` 里 `K-R34` 那段
       #  留着的问号「本轮没核，判不了」，这次核了：`yanked=true`）。
       # cargo **只在解析那一步**挡 yanked，lock 里已经写着的照用 ⇒ 今天编得过。
       # 但凡有什么让它**重走解析**（换机器 / 改依赖 / lock 与 manifest 对不上），后果二选一，
@@ -185,7 +185,7 @@ jobs:
       # ② 拿不到 `0.7.5`（离线 / 缓存里只有那份 yanked 的）时当场退 101。
       # `--locked` 把这两种都变成**一条响亮的失败**：lock 要动就报错，绝不静默换依赖。
       - name: Cross-compile daemon for both musl targets
-        working-directory: remote-daemon-proto
+        working-directory: src/backend
         run: |
           cargo zigbuild --release --locked --target x86_64-unknown-linux-musl
           cargo zigbuild --release --locked --target aarch64-unknown-linux-musl
@@ -202,8 +202,8 @@ jobs:
       - name: Stage binaries
         run: |
           mkdir -p staged
-          cp remote-daemon-proto/target/x86_64-unknown-linux-musl/release/cc-monitor-remote staged/cc-monitor-remote-x86_64
-          cp remote-daemon-proto/target/aarch64-unknown-linux-musl/release/cc-monitor-remote staged/cc-monitor-remote-aarch64
+          cp .build/backend/x86_64-unknown-linux-musl/release/cc-monitor-remote staged/cc-monitor-remote-x86_64
+          cp .build/backend/aarch64-unknown-linux-musl/release/cc-monitor-remote staged/cc-monitor-remote-aarch64
           file staged/* || true
 
       - uses: actions/upload-artifact@v4
@@ -312,24 +312,24 @@ jobs:
           }
           # ── 🔴 K-R70（09-12）：**第五处刻意不参加，而它从此被点名核过。** ──────────
           #
-          # `remote-daemon-proto/Cargo.toml` 的 version 逐字是 `0.0.0`，**故意的** ——
+          # `src/backend/Cargo.toml` 的 version 逐字是 `0.0.0`，**故意的** ——
           # 后端换不换由行为变没变决定（BUILD_ID 的 bump 纪律），不由发版节奏决定；
           # 给它一个跟 tag 走的版本号 = 给后端造第二个身份（K33「后端只有一个」在身份这一维）。
           # 理由全文住那一行上方的注释，机检住 build_id_guard 的
           # the_crate_version_is_deliberately_zero_and_the_real_identity_has_a_home。
           # ⇒ 这里不比它与 tag，而是**盯住它别被人顺手改成一个假数字**，
           #   并确认真身份（BUILD_ID）在这一版里是**说得出**的。
-          $dv = (Select-String -Path remote-daemon-proto/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
+          $dv = (Select-String -Path src/backend/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
           $did = (Select-String -Path src/backend/main.rs -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
           if ($dv -ne '0.0.0') {
-            Write-Error "remote-daemon-proto 的 version 现在是 $dv —— 它刻意是 0.0.0（真身份是 BUILD_ID）。改它之前先答：谁在数这个新数字？"
+            Write-Error "src/backend 的 version 现在是 $dv —— 它刻意是 0.0.0（真身份是 BUILD_ID）。改它之前先答：谁在数这个新数字？"
             exit 1
           }
           if (-not $did) {
             Write-Error "抠不到 daemon 的 const BUILD_ID —— 后端这一版说不出自己是谁，不许发出去"
             exit 1
           }
-          Write-Host "Backend identity OK: remote-daemon-proto version=0.0.0 (deliberate), BUILD_ID=$did"
+          Write-Host "Backend identity OK: src/backend version=0.0.0 (deliberate), BUILD_ID=$did"
 
       # F05b：**本机后端 sidecar**（C7「没有 daemonless，本机也要有后端进程」）。
       #
@@ -341,17 +341,17 @@ jobs:
       # release 2.6 MB，且跑起来发完整 hello；tmux 那半诚实发 `observation:"unobservable"`）。
       # ⚠ 名字必须带 target triple —— Tauri 的 sidecar 约定是「构建期带 triple、打包时剥掉」，
       # 而消费侧 `local_backend::resolve_with` 正是先找带 triple 的、再找裸名。
-      # `--locked` 的理由与 build-daemons 那步同源（同一份 `remote-daemon-proto/Cargo.lock`、
+      # `--locked` 的理由与 build-daemons 那步同源（同一份 `src/backend/Cargo.lock`、
       # 同一个 yanked 的 `crypto-bigint 0.7.3`），逐字见那里的头注 —— 这里不抄第二份。
       - name: Build local backend sidecar (native)
-        working-directory: remote-daemon-proto
+        working-directory: src/backend
         run: cargo build --release --locked
       - name: Stage sidecar for externalBin
         shell: pwsh
         run: |
           $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
           New-Item -ItemType Directory -Force src-tauri/binaries | Out-Null
-          Copy-Item remote-daemon-proto/target/release/cc-monitor-remote.exe `
+          Copy-Item .build/backend/release/cc-monitor-remote.exe `
             "src-tauri/binaries/cc-monitor-remote-$triple.exe" -Force
           Get-ChildItem src-tauri/binaries | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
 
@@ -396,7 +396,7 @@ jobs:
           $dir = "src-tauri/native-daemon"
           $dst = "$dir/cc-monitor-native"
           New-Item -ItemType Directory -Force $dir | Out-Null
-          Copy-Item remote-daemon-proto/target/release/cc-monitor-remote.exe $dst -Force
+          Copy-Item .build/backend/release/cc-monitor-remote.exe $dst -Force
           Set-Content -Path "$dst.target" -Value $triple
           foreach ($f in $dst, "$dst.target") {
             if (-not (Test-Path $f)) { Write-Error "本机内嵌 daemon 没铺全（缺 $f）——裸 exe 会回到「0 个本机后端进程」那个读数"; exit 1 }
@@ -534,14 +534,14 @@ jobs:
       # 的那份二进制存在；少了它这一步会以 `resource path ... doesn't exist` 直接失败。
       # `--locked` 同上：理由住 build-daemons 那步的头注，这里不抄第二份。
       - name: Build local backend sidecar (native)
-        working-directory: remote-daemon-proto
+        working-directory: src/backend
         run: cargo build --release --locked
       - name: Stage sidecar for externalBin
         run: |
           set -euo pipefail
           triple=$(rustc -vV | sed -n 's/^host: //p')
           mkdir -p src-tauri/binaries
-          cp remote-daemon-proto/target/release/cc-monitor-remote \
+          cp .build/backend/release/cc-monitor-remote \
              "src-tauri/binaries/cc-monitor-remote-$triple"
           ls -l src-tauri/binaries
 

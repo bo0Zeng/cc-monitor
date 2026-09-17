@@ -40,7 +40,7 @@ pub(crate) use guard_core::{assert_no_test_code, production_code, production_sou
 /// ⚠ 本函数**不覆盖** `.join("Cargo.toml")` 那 3 处 —— 它们跟着 **manifest** 走，
 /// 不跟着源码树走，搬树时本来就不该动。两件事别混成一件。
 pub(crate) fn src_root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src/backend")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).to_path_buf()
 }
 
 /// 后端**测试树**根的唯一住址 —— [`src_root`] 的配对。
@@ -54,12 +54,26 @@ pub(crate) fn src_root() -> std::path::PathBuf {
 /// （`no_timer_guard` 的数量相等 · `plugin_walk_fixture` 的集合相等 · `listen` 的住址存在性）。
 /// ⇒ 凡是「全体后端代码」的人群，用 [`code_roots`]，不要只用 [`src_root`]。
 pub(crate) fn tests_root() -> std::path::PathBuf {
-    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../tests/backend")
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/backend")
 }
 
 /// **全体后端代码**的两棵树：生产（`src/backend`）＋ 测试（`tests/backend`）。
 pub(crate) fn code_roots() -> [std::path::PathBuf; 2] {
     [src_root(), tests_root()]
+}
+
+/// **仓库根**的唯一住址。
+///
+/// 此前有 6 处各自写 `Path::new(env!("CARGO_MANIFEST_DIR")).parent()` —— 那在
+/// `Cargo.toml` 住仓根下一层时成立。manifest 一挪，6 处偏移**各自都要改**，
+/// 而它们分散在 4 个文件里、每处的 `.parent()` 层数还不一样。
+/// ⇒ 与 [`src_root`] / [`tests_root`] 同一条纪律：**一个东西一个住址**，挪 manifest 只改这里。
+pub(crate) fn repo_root() -> std::path::PathBuf {
+    src_root()
+        .parent()
+        .and_then(|p| p.parent())
+        .expect("src/backend 的上两级 = 仓根")
+        .to_path_buf()
 }
 
 #[cfg(test)]
@@ -205,9 +219,7 @@ mod tests {
     ///   **不会退化成「抽了个空串、两边相等、静默绿」**。
     #[test]
     fn the_two_strip_clean_notes_stay_one_sentence() {
-        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("remote-daemon-proto 的上级 = 仓根");
+        let repo = crate::guard_support::repo_root();
         // 🔴 **运行时拼**：写成字面量的话，本文件里这两行自己就会命中标记，
         //    下面那条 `count() == 1` 当场变成恒假 —— 而它正是防空真的那一条。
         let beg = format!("// ⟦KR115D3 共{}", "用段·起⟧");

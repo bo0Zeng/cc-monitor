@@ -450,7 +450,7 @@ mod engine_port_scope {
         let mut dirs: Vec<String> = Vec::new();
         for (manifest_rel, home) in [
             ("src-tauri/Cargo.toml", "src-tauri"),
-            ("remote-daemon-proto/Cargo.toml", "remote-daemon-proto"),
+            ("src/backend/Cargo.toml", "src/backend"),
         ] {
             let manifest = std::fs::read_to_string(root.join(manifest_rel))
                 .unwrap_or_else(|e| panic!("读不到 {manifest_rel}: {e}"));

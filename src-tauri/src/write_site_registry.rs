@@ -105,7 +105,7 @@ mod spawn_sites {
           用 `-lc` 而不是 `-lic`：只要 `$HOME`/`$CC_BUS_HOME`，不需要交互式 rc"),
         ("ssh_source.rs", "spawn_dial_proxy", "`<代理二进制> --dial`（子进程，常驻到某一头断开）",
          "`K-P6b`：**daemon 那条长连接流的 SSH 握手交给这个子进程去跑**，界面只收字节。\
-          起的是什么：`cc-monitor-remote`（本仓 `remote-daemon-proto` 的产物）——\
+          起的是什么：`cc-monitor-remote`（本仓 `src/backend` 的产物）——\
           发版包里它就在 `monitor.exe` 旁边（`externalBin` sidecar），\
           解析口 `resolve_dial_proxy` 只认两处：环境变量 `CCM_DIAL_PROXY` 与 exe 旁那份。\
           **argv 只有一个常量 flag，零插值**；主机名 / 用户名 / 私钥**路径**走环境变量 \

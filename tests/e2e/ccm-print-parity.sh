@@ -30,9 +30,9 @@ contains() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
 #   依据是 `K-R48` 第一拍的逐字节对拍（`evidence/K-R48-native-vs-bash-parity.py`，SAME=27/DIFF=2）。
 # 🔴 **fail-closed**：二进制没 build 就**响亮退出**，不许静默回落到 PATH 上碰巧有的那一份
 #   —— 那正是本段头注第一句要治的病。
-CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/remote-daemon-proto/target}/debug/cc-monitor-remote"
+CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-remote"
 [ -x "$CCM_NATIVE" ] || {
-  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd remote-daemon-proto && cargo build --bin cc-monitor-remote\`" >&2
+  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-remote\`" >&2
   exit 2
 }
 BIN="$(mktemp -d)"; trap 'rm -rf "$BIN"' EXIT

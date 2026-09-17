@@ -47,3 +47,6 @@ __pycache__/
 
 # planned-build agent worktrees (transient, never commit)
 .claude/worktrees/
+
+# 后端与 app 的构建输出（挪出源码树，见 src/backend/.cargo/config.toml）
+/.build/

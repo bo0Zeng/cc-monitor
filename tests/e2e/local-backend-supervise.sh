@@ -47,7 +47,7 @@ TMUX_SHIM_SOCK=e2eLocalBackend
 . "$(cd "$(dirname "$0")" && pwd)/tmux-shim.sh"
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
-DAEMON="${CCM_E2E_DAEMON:-$REPO/remote-daemon-proto/target/debug/cc-monitor-remote}"
+DAEMON="${CCM_E2E_DAEMON:-$REPO/.build/backend/debug/cc-monitor-remote}"
 WORK="$(mktemp -d /tmp/e2e-lb.XXXXXX)"
 CLAUDE_DIR="$WORK/claude"; mkdir -p "$CLAUDE_DIR/projects"
 
@@ -72,7 +72,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-[ -x "$DAEMON" ] || { echo "daemon 二进制不存在/不可执行：$DAEMON（先 cd remote-daemon-proto && cargo build）"; exit 1; }
+[ -x "$DAEMON" ] || { echo "daemon 二进制不存在/不可执行：$DAEMON（先 cd src/backend && cargo build）"; exit 1; }
 
 echo "== F05a 本机后端监护 · 真进程验收 =="
 echo "daemon     : $DAEMON"

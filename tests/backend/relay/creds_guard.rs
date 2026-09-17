@@ -216,7 +216,7 @@ mod tests {
     /// `harden` 上，daemon 不开它 ⇒ 那两个函数在本 crate 里**根本不存在**。
     ///
     /// ⚠ 而「不开」这件事本身，此前**只是 manifest 上的一行约定**。
-    /// `E` 阶段实打：给 `remote-daemon-proto/Cargo.toml` 那一行加上 `features = ["harden"]`
+    /// `E` 阶段实打：给 `src/backend/Cargo.toml` 那一行加上 `features = ["harden"]`
     /// ⇒ **daemon 474 passed / 0 failed，一条都没红**（我自己复打确认，读数逐字相同），
     /// 顺带依赖树 **96 → 101**、`windows*` 条目 **21 → 26**。
     /// ⇒ 五轮买来的那格「性质由编译器买」，整个挂在这一行上，而没人看着它。
@@ -232,7 +232,7 @@ mod tests {
     ///
     /// ⚠ 它**认不出**什么：`--features harden` 从**命令行**传进来（`cargo test -p … --features`）。
     /// 那条路不经 manifest，本条看不见；今天没有任何脚本这么跑 daemon（`gate.sh` 里
-    /// daemon 那道门逐字是 `cd remote-daemon-proto && cargo test`，零 `--features`）。
+    /// daemon 那道门逐字是 `cd src/backend && cargo test`，零 `--features`）。
     #[test]
     fn this_crate_never_turns_on_the_write_half_of_the_credentials_crate() {
         let mine = std::fs::read_to_string(
@@ -267,7 +267,7 @@ mod tests {
         // ★ 非空对照：同一把尺子量 monitor 那份 manifest，**必须数得到** `harden`。
         //   没有这一格，上面那个 0 可能只是因为尺子瞎了。
         let theirs = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../src-tauri/Cargo.toml"),
+            crate::guard_support::repo_root().join("src-tauri/Cargo.toml"),
         )
         .expect("读不到 monitor 的 Cargo.toml");
         let theirs = guard_core::strip_hash_comment_lines(&theirs);

@@ -26,8 +26,8 @@ set -o pipefail
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
-DAEMON="${CCM_E2E_DAEMON:-$REPO/remote-daemon-proto/target/debug/cc-monitor-remote}"
-[ -x "$DAEMON" ] || { echo "需要先 build daemon：cd remote-daemon-proto && cargo build"; exit 1; }
+DAEMON="${CCM_E2E_DAEMON:-$REPO/.build/backend/debug/cc-monitor-remote}"
+[ -x "$DAEMON" ] || { echo "需要先 build daemon：cd src/backend && cargo build"; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "需要 jq"; exit 1; }
 REALTMUX="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
 

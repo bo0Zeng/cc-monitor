@@ -138,7 +138,7 @@ mod tests {
     /// 不是本判据给的；而 monitor 那侧的同职断言当时**真的绿着** ——
     /// `const UTF8_CLIENT_ENV` 是 `const UTF8_CLIENT_ENVX` 的**前缀**，裸 `contains` 照样命中。
     /// 那正是本仓「**匹配单位比事实小**」那一族（`find_pinned` 的头注逐字记着
-    /// `remote-daemon-proto` 被 `remote-daemon-proto-X` 撑大那个活体）。
+    /// `src/backend` 被 `src/backend-X` 撑大那个活体）。
     /// 收在 `:` / `(` 上之后，「被撑大」这一形按构造不可能发生。
     ///
     /// # 表里存的是**标识符**，锚点由 [`decl_anchor`] 现拼

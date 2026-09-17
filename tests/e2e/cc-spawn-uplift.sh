@@ -61,9 +61,9 @@ export CCM_ACCTS_MANIFEST="$SANDBOX/no-accts/accounts.json"
 #   ⇒ `cc-spawn` 的查找次序刻意**不认** `$CCM_DAEMON_BIN`（它在仓里指的是假 daemon），
 #   所以这里用 `CCM_BIN` 显式钉住本工作树刚 build 出来的那一份。
 # 🔴 **fail-closed**：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份。
-CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/remote-daemon-proto/target}/debug/cc-monitor-remote"
+CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-remote"
 [ -x "$CCM_NATIVE" ] || {
-  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd remote-daemon-proto && cargo build --bin cc-monitor-remote\`" >&2
+  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-remote\`" >&2
   exit 2; }
 CCMDIR="$(mktemp -d)"
 ln -s "$CCM_NATIVE" "$CCMDIR/ccm"

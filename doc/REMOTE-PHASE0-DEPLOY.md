@@ -28,8 +28,8 @@ rustup target add x86_64-unknown-linux-musl aarch64-unknown-linux-musl
 scoop install zig                 # 或官网下 zig
 cargo install cargo-zigbuild
 
-# 交叉编译（在 remote-daemon-proto/ 下）
-cd remote-daemon-proto
+# 交叉编译（在 src/backend/ 下）
+cd src/backend
 cargo zigbuild --release --target x86_64-unknown-linux-musl
 cargo zigbuild --release --target aarch64-unknown-linux-musl
 
@@ -122,17 +122,17 @@ sudo apt-get update && sudo apt-get install -y build-essential pkg-config
 
 ## 2. 把 daemon 源码弄到目标机
 
-只需要仓库里的 `remote-daemon-proto/` 这一个目录（它是独立 crate，不依赖 src-tauri）。任选其一：
+只需要仓库里的 `src/backend/` 这一个目录（它是独立 crate，不依赖 src-tauri）。任选其一：
 
 ```bash
 # 方式 1：在目标机 git clone（推荐——以后好更新）
 git clone <your-cc-monitor-repo-url> ~/cc-monitor-src
-cd ~/cc-monitor-src/remote-daemon-proto
+cd ~/cc-monitor-src/src/backend
 
 # 方式 2：从 Windows scp 过去（只传那一个目录）
 #   在 Windows 上：
-#   scp -r "<cc-monitor 仓库根>\remote-daemon-proto" user@host:~/remote-daemon-proto
-#   然后目标机：cd ~/remote-daemon-proto
+#   scp -r "<cc-monitor 仓库根>\src/backend" user@host:~/src/backend
+#   然后目标机：cd ~/src/backend
 ```
 
 ---
@@ -140,7 +140,7 @@ cd ~/cc-monitor-src/remote-daemon-proto
 ## 3. 原生编译
 
 ```bash
-cd remote-daemon-proto       # 进到 crate 目录
+cd src/backend       # 进到 crate 目录
 cargo build --release        # aarch64 编 aarch64 / x86_64 编 x86_64，零交叉编译
 ```
 
@@ -242,8 +242,8 @@ ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 ## 9. 更新 daemon（改了 wire/逻辑后）
 
 ```bash
-cd ~/cc-monitor-src && git pull          # 或重新 scp remote-daemon-proto/
-cd remote-daemon-proto && cargo build --release
+cd ~/cc-monitor-src && git pull          # 或重新 scp src/backend/
+cd src/backend && cargo build --release
 cp target/release/cc-monitor-remote ~/.cc-monitor/bin/   # 覆盖
 # 重启 cc-monitor（它会重新 exec daemon）
 ```

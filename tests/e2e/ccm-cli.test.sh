@@ -14,9 +14,9 @@ REPO="$(cd "$HERE/../.." && pwd)"
 #   `intercept` 认的是 `argv[0]` 的 basename ⇒ 做一条叫 `ccm` 的软链指过去。
 # 🔴 **fail-closed**：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份
 #   （那正是本文件全篇隔离纪律要治的那一族：测试结果不许随「是谁在跑测试」而漂移）。
-CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/remote-daemon-proto/target}/debug/cc-monitor-remote"
+CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-remote"
 [ -x "$CCM_NATIVE" ] || {
-  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd remote-daemon-proto && cargo build --bin cc-monitor-remote\`" >&2
+  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-remote\`" >&2
   exit 2; }
 CCMDIR="$(mktemp -d)"; trap 'rm -rf "$CCMDIR"' EXIT
 ln -s "$CCM_NATIVE" "$CCMDIR/ccm"

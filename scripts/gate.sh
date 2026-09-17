@@ -54,7 +54,7 @@
 # │   三条判定（`R1`–`R7` 一个字节没动）。死值验 16 刀住 `evidence/K-R128-deathvalue.md`。
 # │ 〔自述·现物〕`winchk-daemon` 那一格没有独立的判据文件 —— 它就是一趟
 # │   `cargo check --all-targets`，target 是 `x86_64-pc-windows-gnu`，跑在
-# │   `remote-daemon-proto` 那个 workspace 上（`K-R122` 09-14 第 18 格）。
+# │   `src/backend` 那个 workspace 上（`K-R122` 09-14 第 18 格）。
 # │ 〔自述·现物〕`deadcode` 那一格没有独立的判据文件 —— 它就是一趟 `cargo check -p monitor`
 # │   加一个递减棘轮，判定逐字写在下面那一行 `run_gate deadcode` 的内联脚本里（第 15 格）。
 # │ 〔自述·现物〕`tsc` 那一格没有独立的判据文件 —— 它就是一趟 `tsc --noEmit`
@@ -907,10 +907,10 @@ run_gate installface '判过的条数（`§S5c`/`§S5d`/`§S5e` 三节逐条印�
 #   · 头注那条 ① （Windows 那半编不编得过，要 `--target x86_64-pc-windows-msvc`）
 #     **今天仍然没买到** —— 沙箱镜像仍没装那个 target。**别把这一格读成两条都补上了。**
 #   · 它跑在 `src-tauri` 上（`--all` = 那个 workspace 的全部成员）；
-#     `remote-daemon-proto` 是**另一个 workspace**，本行盖不到它。
+#     `src/backend` 是**另一个 workspace**，本行盖不到它。
 #     🔴 **`K-R80`（09-12）：那句话一个字没改，改的是它后面缺的那一格** ——
 #     那棵树今天由下面 `fmt-daemon` 那一行盖。**别再把这一句读成处置。**
-run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src-tauri` 那个 workspace 的全部成员；`remote-daemon-proto` 是另一个 workspace，本行盖不到（那一棵由下面 fmt-daemon 那一格盖）' \
+run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src-tauri` 那个 workspace 的全部成员；`src/backend` 是另一个 workspace，本行盖不到（那一棵由下面 fmt-daemon 那一格盖）' \
          bash -c 'cd src-tauri && cargo fmt --all --check 2>&1 && echo "fmt: 1 passed"'
 
 # ── daemon 那棵树的格式漂移（`K-R80` 09-12）──────────────────────────────────
@@ -919,7 +919,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #
 # ## 病不是「没人知道」，是「知道了而没人补」
 #
-# 上面那一格的分母里逐字写着「`remote-daemon-proto` 是另一个 workspace，本行盖不到」，
+# 上面那一格的分母里逐字写着「`src/backend` 是另一个 workspace，本行盖不到」，
 # 而那句话**每趟门禁都印在终端上** —— 它不是静默失效，是**一格「我盖不到那儿」的注释
 # 被当成了处置**。`K-R79` 交回时报出：daemon 那棵树 `cargo fmt --check` **在基点上就是红的**，
 # PM 现打复核 **6 处 / 3 文件**（`agents/mod.rs` 1 · `control/ccm/argv.rs` 4 · `protocol_doc_guard.rs` 1）。
@@ -927,7 +927,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #
 # ## 为什么是**多一格**，不是**并成一棵**
 #
-# 把 `remote-daemon-proto` 塞进 `src-tauri` 那个 workspace 就能「顺便盖到」——
+# 把 `src/backend` 塞进 `src-tauri` 那个 workspace 就能「顺便盖到」——
 # **不许**。`K25` 裁的是「一份代码、每平台一份原生二进制」，而那棵树的 standalone
 # 是**真架构约束**（它自己的 `Cargo.toml` 头注逐字：一个 workspace 会把这个 Linux-only 的
 # daemon 拖进 Windows CI 的 `cargo test --all`）。为一格排版去动两棵树的依赖关系，
@@ -937,7 +937,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #
 # **这一条是现打出来的，别顺手加 `--all` 去「对齐上面那一格」**（`K-R80` 09-12，
 # 沙箱 `ccmon-devbox:latest`，`cargo fmt --all --check -v` 读它真喂给 rustfmt 的那串文件）：
-# 在 `remote-daemon-proto` 下加 `--all`，rustfmt 实收 **12 个 crate 根**，其中 **11 个不在这棵树里** ——
+# 在 `src/backend` 下加 `--all`，rustfmt 实收 **12 个 crate 根**，其中 **11 个不在这棵树里** ——
 # `src-tauri/build.rs` · `src-tauri/src/lib.rs` · `src-tauri/src/main.rs` ·
 # `crates/{acct,branch,creds,gate,guard,shell-quote,usage}-core/src/lib.rs`，
 # 以及 🔴 **`src-tauri/vendor/code-picture-core/src/lib.rs`**。
@@ -954,11 +954,11 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #   · 分母是**一个包** `cc-monitor-remote`，射程 = 从 `src/main.rs` 顺 `mod` 走得到的那些文件；
 #     那棵树里**走不到的 `.rs` 文件本格看不见**（今天没有这样的文件，但那是事实不是判据）。
 #   · `.github/workflows/ci.yml` 的 `daemon` job **早就有这一步**（逐字同一条命令
-#     `cargo fmt --check`，`working-directory: remote-daemon-proto`）⇒ 本行**不是新买一条判据**，
+#     `cargo fmt --check`，`working-directory: src/backend`）⇒ 本行**不是新买一条判据**，
 #     是把「本机门禁不是云端的超集」这个已知缺口在这一维上补平。⚠ 因此 `ci.yml` **不用改**，
 #     上面那条「三处一起改」的纪律与本行无关。
-run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `remote-daemon-proto` 那个 workspace 的唯一成员 `cc-monitor-remote`；`src-tauri` 与 `vendor/code-picture-core` 由上面 fmt 那一格与它自己的 exclude 管，本行盖不到（刻意不加 --all，理由见上方注释）' \
-         bash -c 'cd remote-daemon-proto && cargo fmt --check 2>&1 && echo "fmt-daemon: 1 passed"'
+run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的唯一成员 `cc-monitor-remote`；`src-tauri` 与 `vendor/code-picture-core` 由上面 fmt 那一格与它自己的 exclude 管，本行盖不到（刻意不加 --all，理由见上方注释）' \
+         bash -c 'cd src/backend && cargo fmt --check 2>&1 && echo "fmt-daemon: 1 passed"'
 
 # ── Windows 那半编不编得过 ──────────────────────────────────────────────────
 #
@@ -999,14 +999,14 @@ run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红�
 # ⚠ 依赖沙箱镜像装了 `mingw-w64` 与 `x86_64-pc-windows-gnu`（`.claude/devbox/Dockerfile`，
 #   仓外、不进版本控制）。没装的机器上这一格会红在「找不到 target」——**那是对的**：
 #   fail-closed 比静默跳过好。
-run_gate winchk '不是数出来的数：`cargo check --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 一个包（`src-tauri/src` 的 67 处 `cfg(windows)`）；`remote-daemon-proto` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
+run_gate winchk '不是数出来的数：`cargo check --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 一个包（`src-tauri/src` 的 67 处 `cfg(windows)`）；`src/backend` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
          bash -c 'cd src-tauri && cargo check --locked -p monitor --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
 
 # ── `winchk-daemon`：**daemon 那棵树在 Windows 上编不编得过**（`K-R122` `KR122D2` 甲，09-14，第 18 格）──
 #
 # ## 题面：上面那一行自己写着「盖不到」，而那句话 09-14 兑现成了发版被拦
 #
-# 上面 `winchk` 那一行的分母逐字写着「`remote-daemon-proto` 那 17 处与 `creds-core` 那 2 处
+# 上面 `winchk` 那一行的分母逐字写着「`src/backend` 那 17 处与 `creds-core` 那 2 处
 # 本行盖不到」。`K-R119` 推 `v3.8.0` 那一趟，云端 `Remote daemon (Linux) lint + test`
 # 那个 job 正是红在它的第 7 步（`cargo check --all-targets --target x86_64-pc-windows-msvc`）：
 # **10 个编译错，全在 test 档**。⇒ **射程印在那一行上，而没有任何东西替它出声。**
@@ -1031,10 +1031,10 @@ run_gate winchk '不是数出来的数：`cargo check --target x86_64-pc-windows
 #   不加这个 flag，本格会在这一族缺陷上**全绿**。
 # ⚠ 依赖沙箱镜像装了 `x86_64-pc-windows-gnu` 这个 target（现打在；`.claude/devbox/Dockerfile`
 #   仓外、不进版本控制）。没装的机器上本格红在「找不到 target」—— fail-closed，那是对的。
-# ⚠ 刻意**不带** `--locked`：CI 那一步也没带（`remote-daemon-proto` 的锁文件由它自己的
+# ⚠ 刻意**不带** `--locked`：CI 那一步也没带（`src/backend` 的锁文件由它自己的
 #   `cargo test` 那一步管）。一个性质两把尺子是本区最贵那族病。
-run_gate winchk-daemon '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `remote-daemon-proto` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src-tauri` 那棵树由上面 winchk 那一格盖' \
-         bash -c 'cd remote-daemon-proto && cargo check --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-daemon: 1 passed"'
+run_gate winchk-daemon '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `src/backend` 这一个 crate 的**生产段 ＋ test 档**（云端那 10 个错全在 test 档，所以 `--all-targets` 是承重的）。⚠ 本格用的是 `-gnu`，云端用的是 `-msvc`（沙箱里没有 zig，`ring` 的 build script 缺 `lib.exe`）⇒ **MSVC ABI 专属的那一类本行盖不到**；`src-tauri` 那棵树由上面 winchk 那一格盖' \
+         bash -c 'cd src/backend && cargo check --all-targets --target x86_64-pc-windows-gnu 2>&1 && echo "winchk-daemon: 1 passed"'
 
 # 8 个包 = `monitor` + 7 个共享 crate（`vendor/code-picture-core` 已被上面那条 `--exclude` 排掉）。
 run_gate_sum cargo 9 bash -c 'cd src-tauri && cargo test --workspace --exclude code-picture-core --lib 2>&1'
@@ -1123,7 +1123,7 @@ esac
 # ⇒ `KR115D2` 二选一：收进门禁，或明写「本门禁不看它」。本格选的是**收进来**。
 #
 # ⚠ **射程如实写**：`-p monitor` 一个包的**非 test** 构建。
-#   `remote-daemon-proto` 那棵树、`src-tauri` 的其余成员、`#[cfg(test)]` 里的死代码，
+#   `src/backend` 那棵树、`src-tauri` 的其余成员、`#[cfg(test)]` 里的死代码，
 #   本行**一概盖不到**。
 # ⚠ **判法是恒等，不是「不超过某个上限」** —— 这一条承重，理由是死值验逼出来的：
 #   本格第一趟落地时写的是「≤ 54」（照抄 `K-R109` 09-13 的读数），而**本趟现打是 41** ⇒
@@ -1151,8 +1151,8 @@ if [ "$n" -lt 41 ]; then printf "deadcode: never used 只数到 %s 条，钉的�
 printf "deadcode: %s passed（never used %s 条，恒等钉在 41）\n" "$n" "$n"'
 printf '  分母 %-14s %s\n' "deadcode" "本格墙钟 $(( $(date +%s) - deadcode_t0 )) 秒（现打，与门禁基线相减就是加这一格的代价）"
 
-run_gate daemon '单包 remote-daemon-proto，只有一行 test result ⇒ 最大值 = 合计' \
-         bash -c 'cd remote-daemon-proto && cargo test 2>&1'
+run_gate daemon '单包 src/backend，只有一行 test result ⇒ 最大值 = 合计' \
+         bash -c 'cd src/backend && cargo test 2>&1'
 # ── `tsc`：**发版产物编不编得出来**，此前门禁一格都没有（`K-R118` `KR118D1` ②，09-14，第 16 格）──
 #
 # ## 题面：一条缺陷 09-12 进来、09-14 才被发现，而发现它的不是任何判据
@@ -1297,7 +1297,7 @@ gate_selftest_e2e
 # ⚠ 它**不进判定面**：build 失败时下面四格会各自红并说清原因（fail-closed），
 #   这里再加一层判定只会让同一件事报两遍。
 printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（四套 ccm e2e 的被测对象）"
-( cd remote-daemon-proto && cargo build --bin cc-monitor-remote >/dev/null 2>&1 ) || true
+( cd src/backend && cargo build --bin cc-monitor-remote >/dev/null 2>&1 ) || true
 
 run_e2e ccm-print-parity 12
 run_e2e ccm-rbind-title  8

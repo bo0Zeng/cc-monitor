@@ -131,7 +131,7 @@ cargo test --lib -- --nocapture                      # 看 println! 输出
 > 由 `doc_claim_registry.rs::the_backend_test_command_in_the_docs_matches_ci` 钉住。
 >
 > **本机还必须跑的（CI 里有、或 CI 根本跑不到的）**：
-> - `cargo fmt --all --check`（两侧：`src-tauri/` 与 `remote-daemon-proto/`）—— CI 第一个 Rust 步骤；
+> - `cargo fmt --all --check`（两侧：`src-tauri/` 与 `src/backend/`）—— CI 第一个 Rust 步骤；
 > - `scripts/verify-committed-state.sh` —— 全仓**唯一量「提交状态」**的门（其余都量工作树）。
 >   本仓不 push ⇒ CI 见不到这些 commit，**这道门只能在本机跑**，理由见它自己的头注；
 > - `node scripts/assert-coverage-floors.mjs` —— 逐文件覆盖率地板 + 0% 文件递减棘轮；

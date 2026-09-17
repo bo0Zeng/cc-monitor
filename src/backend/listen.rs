@@ -541,19 +541,17 @@ mod tests {
                 "`{name}` 的头注只有几行 —— 它被搬空了，本条对这一份在空转"
             );
         }
-        let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         // 头注里写住址有四种形态：后端树内的裸文件名 · `relay/xxx.rs` 这种树内相对路径 ·
         // `src-tauri/src/xxx.rs` / `tests/e2e/xxx.sh` 这种从仓根写起的 ·
-        // **monitor 侧的裸文件名**（`daemon_policy.rs` —— 跨半个仓引用在本仓是常态）。五个根都试。
+        // **monitor 侧的裸文件名**（`daemon_policy.rs` —— 跨半个仓引用在本仓是常态）。四个根都试。
         let roots = [
             // 〔搬树 2026-09-17〕后端源码树从 `src/backend` 搬到 `<repo>/src/backend`，
             // manifest 留在原处 ⇒ 这一格不再是 `manifest/src`。走那个唯一住址。
             crate::guard_support::src_root(),
             // 〔搬测试 2026-09-17〕头注里点名的很多是判据文件，它们今天住第二棵树。
             crate::guard_support::tests_root(),
-            manifest.join(".."),
-            manifest.to_path_buf(),
-            manifest.join("../src-tauri/src"),
+            crate::guard_support::repo_root(),
+            crate::guard_support::repo_root().join("src-tauri/src"),
         ];
         let mut checked = 0usize;
         for word in head.split(|c: char| !(c.is_ascii_alphanumeric() || "_./-".contains(c))) {
@@ -564,7 +562,7 @@ mod tests {
             checked += 1;
             assert!(
                 roots.iter().any(|r| r.join(w).exists()),
-                "头注指着 `{w}`，而五个根下都找不到它（后端生产树 · 后端测试树 · 仓根 · crate 根 · monitor `src-tauri/src/`）——\n\
+                "头注指着 `{w}`，而四个根下都找不到它（后端生产树 · 后端测试树 · 仓根 · monitor `src-tauri/src/`）——\n\
                  ★ 指了住址而住址是假的：读者会以为那一格有人守着，去找的时候什么都没有。\n\
                  ⇒ 要么改成真名，要么把那句话删掉；**别留一个假住址**。"
             );

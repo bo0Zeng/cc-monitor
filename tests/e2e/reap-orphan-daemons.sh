@@ -3,14 +3,14 @@
 #
 # ## 为什么不能裸 pkill
 #
-# 原建议逐字是「先 `pkill -f remote-daemon-proto/target`」。两条问题：
+# 原建议逐字是「先 `pkill -f .build/backend`」。两条问题：
 #
 # ① **模式杀会打到不该打的东西**。本仓吃过一次：`P5L` 那拍我跑
 #    `pkill -f xdg-terminal-exec`，**把我自己的 shell 打死了**（模式命中了我自己的命令行）。
 #    模式杀没有"只杀我起的那些"这个概念。
 # ② **它挑错了人群**。08-12 实测：盘上活着的 daemon 走的是**部署路径**
 #    `~/.cc-monitor/bin/cc-monitor-remote`（`sftp::ensure_daemon_deployed` 的落点），
-#    而那句 `pkill` 与 gate 丁 的计数器都只认 `remote-daemon-proto/target/...`。
+#    而那句 `pkill` 与 gate 丁 的计数器都只认 `.build/backend/...`。
 #    ⇒ 真正在攒的那一族**可能根本不在人群里**，而计数器会安心地报 0。
 #    （`needle_anchor_registry` 管的就是这个：**匹配单位不许比事实小**。）
 #
@@ -72,7 +72,7 @@ fi
 
 # 两族都要数（这正是 gate 丁 原本漏掉的那一半）。
 PATTERNS=(
-  'remote-daemon-proto/target/[^ ]*/cc-monitor-remote'   # dev/target 那一族
+  '.build/backend/[^ ]*/cc-monitor-remote'   # dev/target 那一族
   '\.cc-monitor/bin/cc-monitor-remote'                   # 部署落点那一族
 )
 

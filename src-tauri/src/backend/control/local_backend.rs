@@ -3788,7 +3788,7 @@ mod tests {
     /// # 题面（`K-R68` 现打，`DECISIONS.md#R26` 裁定一）
     ///
     /// 发版流水线里同一个文件被拷了两次：
-    /// `remote-daemon-proto/target/release/cc-monitor-remote.exe`
+    /// `.build/backend/release/cc-monitor-remote.exe`
     /// → `src-tauri/binaries/…`（载体③，Tauri `externalBin`，装机那份）
     /// → `src-tauri/native-daemon/cc-monitor-native`（载体①，自释放那份）。
     /// 两步之间**一条 `cargo` 都没有** ⇒ 它们逐字节相同，是最强的那种同源。
@@ -3828,7 +3828,7 @@ mod tests {
         let src = std::fs::read_to_string(&wf).expect("读不到 release.yml");
         let lines: Vec<&str> = src.lines().collect();
         // 锚：那个**原生产物**的路径。运行时拼，免得命中本条自己的说明文字。
-        let artifact = format!("remote-daemon-proto/target/release/{}", super::SIDECAR_STEM);
+        let artifact = format!(".build/backend/release/{}", super::SIDECAR_STEM);
         // job 边界：`jobs:` 下**两空格缩进**的那一层键。
         let job_at = |i: usize| -> &str {
             lines[..=i]

@@ -1330,7 +1330,7 @@ mod stream_flag_gate_tests {
 // - **`K-P7` 定的那三样原样继承**：**界面仍解帧**（代理只搬字节）· **凭据面 `K11` 挡着**
 //   （给代理的是私钥**路径**，不是私钥）· **`ConnectStage` 那 6 格过不去**
 //   （代理不发分阶段事件 ⇒ 走代理这条路时那 6 格是空的，与走进程内那条**不等价**）。
-// - **musl 交叉编译没验**：代理二进制由 `remote-daemon-proto` 出，CI 要把它 `zigbuild`
+// - **musl 交叉编译没验**：代理二进制由 `src/backend` 出，CI 要把它 `zigbuild`
 //   到两个 musl target，而沙箱门禁只做本机 gnu 构建 ⇒ **门禁全绿证不出那两个 target 编得过**。
 
 /// 拨号代理二进制的**显式住址**（环境变量名）。
@@ -3185,7 +3185,7 @@ pub fn shell_quote(s: &str) -> String {
 
 /// daemon→client 的一帧（解析后的 inbound 表示）。
 ///
-/// 对应 `remote-daemon-proto::wire::Frame`（外部 `kind` tag，snake_case）。这里**不**
+/// 对应 `src/backend::wire::Frame`（外部 `kind` tag，snake_case）。这里**不**
 /// 直接 import 那个 crate（它刻意不在 workspace 里、不被 root Cargo 引用，见其 README），
 /// 而是用 schema-agnostic 的方式（serde_json::Value + 读 `kind`）解析，只取 Phase-0 需要的
 /// 字段。这样：协议演进（daemon 加 `build_id` / 加新 kind）不会 break 解析 —— 未知 kind /

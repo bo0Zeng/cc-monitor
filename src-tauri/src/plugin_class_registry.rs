@@ -526,7 +526,7 @@ mod tests {
         //    **规矩没变，换的是理由** —— 新理由（`C21` ＋ 实测代价）写在下面两条的失败文案里，
         //    刻意各写一份：谁踩到哪一条，就只看得到哪一段字。
         let daemon_cargo =
-            guard_core::strip_hash_comment_lines(&must_read("remote-daemon-proto/Cargo.toml", 500));
+            guard_core::strip_hash_comment_lines(&must_read("src/backend/Cargo.toml", 500));
         assert!(
             !guard_core::contains_word(&daemon_cargo, "code-picture-core"),
             "daemon 的**依赖树**里出现了 vendor 全景引擎（`code-picture-core`）——\

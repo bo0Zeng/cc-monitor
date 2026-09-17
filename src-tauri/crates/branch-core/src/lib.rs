@@ -12,7 +12,7 @@
 //!
 //! # 硬约束：不能把 daemon 拖进 monitor 的 workspace
 //!
-//! `remote-daemon-proto` 是**独立 crate、刻意不在 workspace 里** —— 否则 Windows CI 的
+//! `src/backend` 是**独立 crate、刻意不在 workspace 里** —— 否则 Windows CI 的
 //! `cargo test --all` 会去构建这个 Linux-only 的 daemon 并炸掉。
 //! 本 crate 位于 monitor 的 workspace 内（`cargo test --all` 会跑它的测试），
 //! 而 daemon 只是**单向 path 依赖**过来 —— 依赖不会反向制造 workspace 成员关系。

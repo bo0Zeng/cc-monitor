@@ -1236,9 +1236,7 @@ mod tests {
     /// 而消费方默认会按字面把 `typed:true` 读成确凿落地 —— 那正是报告 I-3 的起点。
     #[test]
     fn the_contract_says_how_strong_typed_actually_is() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根");
+        let root = crate::guard_support::repo_root();
         let doc = std::fs::read_to_string(root.join("doc/IPC-PROTOCOL.md"))
             .expect("IPC-PROTOCOL.md 读不到");
         assert!(
@@ -1267,9 +1265,7 @@ mod tests {
     /// ⚠ needle **运行时拼**，否则本条会在自己的注释里找到它而恒红（F23 那一族的镜像）。
     #[test]
     fn no_doc_claims_the_payload_really_landed() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根");
+        let root = crate::guard_support::repo_root();
         let overclaim = format!("{}键入了", "真的");
         let files = [
             "doc/IPC-PROTOCOL.md",

@@ -601,7 +601,7 @@ mod tests {
     ///
     /// 买不到「点了保存按钮之后」那一跳（那是 IPC 与 UI 那两堵墙，由
     /// `the_ui_hands_the_write_command_a_config_dir_not_a_name` 与 `PLAINTEXT_HOPS` 那条分管），
-    /// 也买不到「那一发请求真的到了上游」（那是 `KH2C2`，住 `remote-daemon-proto`）。
+    /// 也买不到「那一发请求真的到了上游」（那是 `KH2C2`，住 `src/backend`）。
     #[test]
     fn what_the_write_side_wrote_is_exactly_the_row_the_launch_side_looks_for() {
         let dir = tmpdir("same-source");

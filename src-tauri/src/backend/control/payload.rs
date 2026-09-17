@@ -444,7 +444,7 @@ pub const RELAY_PORT: u16 = 8788;
 ///
 /// # ⚠ 它是**第二份实现**，这件事必须说清楚，不许读成「共用了一份」
 ///
-/// 两侧分家的原因是结构性的：`remote-daemon-proto` 依赖 `src-tauri/crates/*`（单向），
+/// 两侧分家的原因是结构性的：`src/backend` 依赖 `src-tauri/crates/*`（单向），
 /// 反向依赖不存在 ⇒ 除非把这条规则搬进一个**共享 crate**，否则 monitor 够不着 daemon 那份。
 /// 本件的写区里**没有任何共享 crate** ⇒ 本轮只能各写一份，并**用判据把它们焊住**：
 ///

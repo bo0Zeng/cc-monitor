@@ -11,7 +11,7 @@
 //! # 顶层架构里它是谁
 //!
 //! 「后端 = 一份代码、两种宿主（本机进程 / 远端进程）」。**这个目录是本机那种宿主**；
-//! `remote-daemon-proto/` 是远端那种。两边**同一套分解**：读（observe）与控制（control）。
+//! `src/backend/` 是远端那种。两边**同一套分解**：读（observe）与控制（control）。
 //!
 //! # `observe/` 那个决定：🔴 **它已经被叫醒了，只是没人听见**〔订正 2026-09-10〕
 //!
@@ -461,7 +461,7 @@ mod tests {
         // ⚠ 锚点要**不含糊**：第一版写的是 `"exe_suffix: &str"`，而同文件的
         // `sidecar_candidates` 也有同名参数 ⇒ 把 `resolve_with` 的参数改名，
         // 判据**照样绿**（变异实测）。改成多行签名片段。
-        // ★ 与 F05「起流/起流程」、F16「remote-daemon-proto/-X」同族：**匹配单位比事实小**。
+        // ★ 与 F05「起流/起流程」、F16「src/backend/-X」同族：**匹配单位比事实小**。
         "pub fn resolve_with(\n    exe_dir: &Path,\n    target_triple: &str,\n    exe_suffix: &str,",
     )];
 

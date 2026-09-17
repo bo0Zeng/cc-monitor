@@ -6,7 +6,7 @@ description = "K-H2a：第三方 API key 的**唯一**住址——装它的类�
 
 # ★★ **本 crate 存在的理由是「一个安全性质只许有一个实现」**〔`K-H2a` 裁三，PM 08-27〕。
 #
-# 中转住 `cc-monitor-remote`（`remote-daemon-proto/`），它**不依赖 `src-tauri` 整体**，
+# 中转住 `cc-monitor-remote`（`src/backend/`），它**不依赖 `src-tauri` 整体**，
 # 只经 path 依赖吃 `src-tauri/crates/` 下的共享 crate。所以 key 这件事有三种落点，前两种都是病：
 #   · 只放 `src-tauri` ⇒ 中转拿不到，`KS9②`（不开前端也能配）做不成；
 #   · 两个 crate 各写一份 ⇒ **一个安全性质两个实现**，什么时候漂开没有任何东西会说。
@@ -34,7 +34,7 @@ description = "K-H2a：第三方 API key 的**唯一**住址——装它的类�
 [dependencies]
 # 与 `branch-core` / `usage-core` 逐字同形（两者都是 `serde_json = "1"`）。
 # 现打（08-27）：`serde_json` 在**两份** lock 里各已有 1 条
-# （`grep -c '^name = "serde_json"'`：`src-tauri/Cargo.lock` ⇒ 1 · `remote-daemon-proto/Cargo.lock` ⇒ 1）
+# （`grep -c '^name = "serde_json"'`：`src-tauri/Cargo.lock` ⇒ 1 · `src/backend/Cargo.lock` ⇒ 1）
 # ⇒ 本条**不给任何一份 lock 新增条目**。
 serde_json = "1"
 

@@ -27,12 +27,12 @@ TMUX_BIN="$(command -v tmux)" || { echo "需要 tmux"; exit 1; }
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
-DAEMON="${CCM_E2E_DAEMON:-$REPO/remote-daemon-proto/target/debug/cc-monitor-remote}"
+DAEMON="${CCM_E2E_DAEMON:-$REPO/.build/backend/debug/cc-monitor-remote}"
 GOLDEN="$REPO/src-tauri/src/backend/control/fixtures/gate2-golden.tsv"
 WORK="$(mktemp -d /tmp/e2e-gate2.XXXXXX)"
 IN="$WORK/in.fifo"; OUT="$WORK/out.jsonl"; ERR="$WORK/daemon.stderr"
 
-[ -x "$DAEMON" ] || { echo "daemon 二进制不存在/不可执行：$DAEMON（先 cd remote-daemon-proto && cargo build）"; exit 1; }
+[ -x "$DAEMON" ] || { echo "daemon 二进制不存在/不可执行：$DAEMON（先 cd src/backend && cargo build）"; exit 1; }
 [ -s "$GOLDEN" ]  || { echo "判定表读不到：$GOLDEN"; exit 1; }
 
 cleanup() {

@@ -33,7 +33,7 @@ _sock_cleanup() { tmux_shim_cleanup; }
 
 E2E_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$E2E_DIR/../.." && pwd)"
-DAEMON="${CCM_E2E_DAEMON:-$REPO/remote-daemon-proto/target/debug/cc-monitor-remote}"
+DAEMON="${CCM_E2E_DAEMON:-$REPO/.build/backend/debug/cc-monitor-remote}"
 WORK="$(mktemp -d /tmp/e2e-inbound.XXXXXX)"
 CLAUDE_DIR="$WORK/claude"
 IN="$WORK/in.fifo"

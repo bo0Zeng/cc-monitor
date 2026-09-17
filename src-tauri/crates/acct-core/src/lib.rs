@@ -134,7 +134,7 @@ pub struct AuthKindParityCase {
 ///
 /// # 为什么住在生产 crate 里而不是一个 `fixtures/` 文件
 ///
-/// 两个生产者住在**两个不同的 crate**（`remote-daemon-proto` 是 bin-only、刻意不进
+/// 两个生产者住在**两个不同的 crate**（`src/backend` 是 bin-only、刻意不进
 /// workspace），它们唯一共享的东西就是本 crate。夹具放文件里要各写一份读法与各自的路径，
 /// 那正是本 crate 存在的理由所反对的（「双写点必须有守卫」不如「让双写不可表示」）。
 /// 代价如实写：这张表会编进两个二进制（约 300 字节的静态数据）。

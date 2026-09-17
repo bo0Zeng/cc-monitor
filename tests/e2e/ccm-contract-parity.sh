@@ -56,9 +56,9 @@ REPO="$(cd "$HERE/../.." && pwd)"
 # ★★ `K-R48` 第二拍：被测对象 = 后端二进制，**名字必须是 `ccm`**（`intercept` 认的是
 #   `argv[0]` 的 basename）⇒ 在一次性目录里做一条叫 `ccm` 的软链指过去。
 # 🔴 **fail-closed**：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份。
-CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/remote-daemon-proto/target}/debug/cc-monitor-remote"
+CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-remote"
 [ -x "$CCM_NATIVE" ] || {
-  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd remote-daemon-proto && cargo build --bin cc-monitor-remote\`" >&2
+  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-remote\`" >&2
   exit 2; }
 CCMDIR="$(mktemp -d)"
 ln -s "$CCM_NATIVE" "$CCMDIR/ccm"

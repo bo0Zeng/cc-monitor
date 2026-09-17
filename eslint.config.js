@@ -14,7 +14,7 @@ export default tseslint.config(
       "dist/**",
       "node_modules/**",
       "src-tauri/**",
-      "remote-daemon-proto/**",
+      "src/backend/**",
       "coverage/**",
       "*.config.js",
       "*.config.ts",
@@ -55,7 +55,7 @@ export default tseslint.config(
     // E83（2026-08-01）：`tests/e2e/` 下那些 `.mjs`（wdio 配置、restart-shims、spec）**此前从没被 lint 过**。
     //
     // 病灶不是「它们脏」，是**作用面与配置意图对不上**：本文件的 `ignores` 明明是**仓级**的
-    // （逐条列出 dist / node_modules / src-tauri / remote-daemon-proto / coverage），
+    // （逐条列出 dist / node_modules / src-tauri / src/backend / coverage），
     // 而 `npm run lint` 只跑 `eslint src` ⇒ 那份仓级意图从来没被兑现，
     // `npx eslint .` 是 46 个告警、比 `eslint src` 的 7 个多出 39 个，
     // **全在这几个文件里、全是 `no-undef: process/console/it`（纯缺一段 globals）**。

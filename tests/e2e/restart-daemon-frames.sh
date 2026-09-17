@@ -76,8 +76,8 @@ DRV="$E2E/restart-cmd-driver.ts"
 DAEMON="${CCM_E2E_DAEMON:-}"
 if [ -z "$DAEMON" ]; then
   for c in \
-    "$REPO/remote-daemon-proto/target/debug/cc-monitor-remote" \
-    "$REPO/remote-daemon-proto/target/release/cc-monitor-remote" \
+    "$REPO/.build/backend/debug/cc-monitor-remote" \
+    "$REPO/.build/backend/release/cc-monitor-remote" \
     "$HOME/.cc-monitor/bin/cc-monitor-remote" \
     "$HOME/.cc-monitor/e2e/cc-monitor-remote"; do
     [ -x "$c" ] && { DAEMON="$c"; break; }

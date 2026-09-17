@@ -11,7 +11,7 @@
 //!
 //! # 那 2 条为什么要紧
 //!
-//! `ci.yml` 的 daemon job 有 `defaults.run.working-directory: remote-daemon-proto`
+//! `ci.yml` 的 daemon job 有 `defaults.run.working-directory: src/backend`
 //! ⇒ 那条**跨 target Windows check** 走的是 **daemon 的 lock**；
 //! 而 monitor 真编在 `src-tauri` 下 ⇒ 走**它自己的 lock**。
 //!
@@ -73,7 +73,7 @@ mod tests {
     #[test]
     fn the_two_lockfiles_have_no_real_version_conflict() {
         let m = parse_lock("src-tauri/Cargo.lock");
-        let d = parse_lock("remote-daemon-proto/Cargo.lock");
+        let d = parse_lock("src/backend/Cargo.lock");
         let common: Vec<&String> = m.keys().filter(|k| d.contains_key(*k)).collect();
         // 抽取器自检：解析坏了的时候 `common` 会是空的，下面那条就成了一句废话。
         assert!(
@@ -98,7 +98,7 @@ mod tests {
             conflicts.is_empty(),
             "两份 lockfile 有**真冲突**（daemon 解析出的版本不在 monitor 的集合里）：\n{}\n\n\
              ★ 后果不是「多编一遍」：`ci.yml` 的 daemon job 有 \
-             `defaults.run.working-directory: remote-daemon-proto` ⇒ 那条**跨 target Windows check** \n\
+             `defaults.run.working-directory: src/backend` ⇒ 那条**跨 target Windows check** \n\
              走的是 **daemon 的 lock**，而 monitor 真编走**它自己的**。\n\
              而 `branch-core` / `usage-core` 既是 daemon 生产依赖、又是 monitor workspace member \n\
              ⇒ **同一份源码分别编进两个版本**，那条 check 证明的依赖树与真编的不是同一棵。\n\
@@ -110,7 +110,7 @@ mod tests {
         );
     }
 
-    /// ★ 上面那套论证的**前提**：跨 target check 确实跑在 `remote-daemon-proto` 下。
+    /// ★ 上面那套论证的**前提**：跨 target check 确实跑在 `src/backend` 下。
     ///
     /// 这个 `working-directory` 一改，「两份 lock 编的不是同一棵树」这句话就不成立了 ——
     /// 那时该回来重判整条，而不是留着一条论证已经落空的判据。
@@ -121,7 +121,7 @@ mod tests {
     /// 两刀都让本模块整套论证**反过来**，而本条**一声不吭**（三条全绿）。
     ///
     /// ★ 两刀确实各有别的判据红了 —— 但读它们的诊断：说的是
-    /// 「切出来的块里没有 `working-directory: remote-daemon-proto` —— **切错 job 了，本条会零命中地绿**」，
+    /// 「切出来的块里没有 `working-directory: src/backend` —— **切错 job 了，本条会零命中地绿**」，
     /// 那是 `ci_actually_runs_the_daemon_four_steps` 的**抽取器自检**在说话。
     /// 照它去修，人会去查切块逻辑，而真实事件是 **daemon job 换了工作目录**。
     /// ⇒ **「有别的判据接住」不等于「有人把这件事讲对了」** —— 本条才是该讲这句话的那条。
@@ -132,9 +132,9 @@ mod tests {
     fn the_cross_target_check_still_runs_under_the_daemon_lock() {
         use crate::shared_crate_registry::ci_yaml;
         const CHECK: &str = "cargo check --all-targets --target x86_64-pc-windows-msvc";
-        // ⚠ **行锚定**，不能用 `contains` 裸匹配：`remote-daemon-proto` 是
-        // `remote-daemon-proto-X` 的**前缀** —— 变异实测过，裸 `contains` 照样绿。
-        const WD: &str = "working-directory: remote-daemon-proto";
+        // ⚠ **行锚定**，不能用 `contains` 裸匹配：`src/backend` 是
+        // `src/backend-X` 的**前缀** —— 变异实测过，裸 `contains` 照样绿。
+        const WD: &str = "working-directory: src/backend";
 
         let block = ci_yaml::job_block("daemon");
         // 抽取器自检：切不出块时下面两条会零命中地绿。
@@ -156,7 +156,7 @@ mod tests {
             "跨 target Windows check 不在 `daemon:` job 里了（它是 `ci.yml` 自称的\n\
              「平台线唯一真判据」）。要么它被删了（那是个更大的问题），\n\
              要么它被搬进了别的 job —— 而别的 job 的 `working-directory` 不是\n\
-             `remote-daemon-proto` ⇒ 它改走 **monitor 的 lock**，本模块整套论证反过来。\n\
+             `src/backend` ⇒ 它改走 **monitor 的 lock**，本模块整套论证反过来。\n\
              ⚠ 08-07 变异实测：这一刀之前本条是绿的。"
         );
     }
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn a_monitor_superset_is_not_a_conflict() {
         let m = parse_lock("src-tauri/Cargo.lock");
-        let d = parse_lock("remote-daemon-proto/Cargo.lock");
+        let d = parse_lock("src/backend/Cargo.lock");
         let supersets: Vec<&String> = m
             .keys()
             .filter(|k| d.contains_key(*k))
