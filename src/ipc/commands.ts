@@ -6,7 +6,7 @@
  * `ts-rs` 只生成**类型**，不生成命令签名（主计划 §8 的选型订正说明了这一点：
  * `tauri-specta` 会生成签名，但它对 Tauri 2 只有 `2.0.0-rc.1`，而本仓是要 Windows 打包发版的
  * 生产应用 ⇒ 不引入预发布依赖）。所以签名这一层手写，**漂移由守卫兜**
- * （`test/ipc/commands.vitest.ts`）。
+ * （`tests/ipc/commands.vitest.ts`）。
  *
  * ## 成文规则（主计划 §5）：名字钉死是普遍的，类型生成是按需的
  *
@@ -58,7 +58,7 @@ import { invoke, type Channel } from "@tauri-apps/api/core";
  *
  * ⚠ **本类型是手写的**（不是 ts-rs 生成）—— 照 `SkillView` 的先例。
  * 走手写而不是 `#[ts(export)]` 的理由是现打的（08-27）：`ts-rs` 导出会在 `src/generated/`
- * **新增一个文件**，而那个目录的清单由 `test/generated-boundary-guard.vitest.ts`
+ * **新增一个文件**，而那个目录的清单由 `tests/generated-boundary-guard.vitest.ts`
  * 逐项等号对拍，那个文件不在 `K-H2a` 的写区。
  * ⇒ 字段与 Rust 侧 `creds_store::RelayCredentialsStatus`（serde 默认 snake_case）
  * **必须手动同步**，由 Rust 侧 `the_ts_status_type_matches_this_struct` **双向**对拍

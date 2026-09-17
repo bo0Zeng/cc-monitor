@@ -65,7 +65,7 @@ pub struct CliRenderRequest {
     ///
     /// ⚠ **本件没修它**，不是没看见：补第三态要给这个结构加一个字段，而那要同步改
     /// `src/launch-cli-wire.ts`（TS 那份**手写镜像**，由
-    /// `test/launch-cli-wire.vitest.ts` 的「字段集相等」钉着）与
+    /// `tests/launch-cli-wire.vitest.ts` 的「字段集相等」钉着）与
     /// `remote-launch-run.ts::buildCliRenderRequest`（真正填它的地方）——
     /// **两个文件都不在 `K-R95` 的写区**。⇒ 交回里作 `〔R95b〕` 报给 PM。
     ///
@@ -1519,7 +1519,7 @@ mod k_r95_launch_render_facts {
     //!
     //! 能力清单 ＋ 两条「维度 …」闸门的措辞，各自被一条**按源码字面量/措辞 grep** 的判据
     //! 钉在 `src/launch-render-cli.ts` 里：`e2e/ccm-contract-parity.sh:291`（按文件路径 ＋
-    //! 单行数组字面量抽清单，还配了「抽到 ≥5 项」的自检）· `test/launch-render-cli.vitest.ts`
+    //! 单行数组字面量抽清单，还配了「抽到 ≥5 项」的自检）· `tests/launch-render-cli.vitest.ts`
     //! （两条闸门各按措辞钉「恰好一处」）。**两个文件都不在本件写区**，搬走会让它们假红。
     //! ⇒ 处置：留在前端，但由 `launch_cli_parity.rs` 那两条判据**逐字节钉在后端这一份上**
     //! （它们此前一条判据都没有，只有两侧互指的注释）。这一条报给 PM，不许自己解开。

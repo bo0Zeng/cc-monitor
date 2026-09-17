@@ -52,7 +52,7 @@
 //!
 //! ⚠⚠ **TS 那一轨的描述原先整句两半都假**〔devbench F04, 08-10 订正〕。原文写着
 //! 「TS 那轨由 `test/agent-profile.vitest.ts` 自己读同一份夹具」——
-//! ① 那个文件**不存在**（真实文件名是 `test/agent-profile-parity.vitest.ts`）；
+//! ① 那个文件**不存在**（真实文件名是 `tests/agent-profile-parity.vitest.ts`）；
 //! ② 它也**不读这份夹具** —— 它 `readFileSync` 读的是 `adapter/claude_code.rs` 的**源码**，
 //!    从里面抽字段值来对拍。夹具（`fixtures/agent-profile-golden.tsv`）只被 Rust 这一侧读。
 //! ⇒ 如实改写：**TS 那轨与 Rust 这轨走的是两条不同的对拍路径**，

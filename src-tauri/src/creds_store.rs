@@ -49,7 +49,7 @@ pub(crate) fn resolve_path() -> Option<PathBuf> {
 /// 由 Rust 侧一条判据读那个文件的源码逐个字段对拍，漏一个就红）。
 ///
 /// **为什么不走 `ts-rs`**（现打 08-27）：`#[ts(export)]` 会在 `src/generated/` 新增一个文件，
-/// 而那个目录的**清单等号对拍**住 `test/generated-boundary-guard.vitest.ts`
+/// 而那个目录的**清单等号对拍**住 `tests/generated-boundary-guard.vitest.ts`
 /// （`readdirSync` + 逐项比对，新增文件必然让它红一次）——**那个文件不在本轮写区**。
 /// ⇒ 走手写 + 对拍，等价的牙由 `the_ts_status_type_matches_this_struct` 买。
 #[derive(serde::Serialize, Clone, Debug, PartialEq)]

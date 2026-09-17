@@ -72,7 +72,7 @@ import type { ImportMember } from "../generated/ImportMember";
 // （`remote-section → machine-card → remote-section`）。今天不炸只是因为两边的用点都在
 // 方法体里、模块求值期不触发，属 TDZ 型隐患；而本仓的 eslint 没有 `import/no-cycle`，
 // 环在这里是**结构性不可见**的（Phase G 代码工程视角独立写 DFS 才扫出来）。
-// ⇒ 把只有一个消费者的东西搬到那个消费者身边，环就没了。环守卫见 `test/import-cycle-guard.vitest.ts`。
+// ⇒ 把只有一个消费者的东西搬到那个消费者身边，环就没了。环守卫见 `tests/import-cycle-guard.vitest.ts`。
 
 // F12：`RemoteHostConfig` / `RemoteConfig` / `parseAddressLines` / `sftpEligibleHosts` 已移入
 // `src/remote-config.ts`（数据层），本文件从那里 import（见顶部）。

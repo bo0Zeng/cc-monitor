@@ -407,7 +407,7 @@ mod tests {
         (
             "设置面板的折叠分组数",
             &[" 大折叠分组"],
-            "家在 `test/settings/panel-groups.vitest.ts`",
+            "家在 `tests/settings/panel-groups.vitest.ts`",
             "`panel-groups.vitest.ts` 的逐页完整清单（完整相等断言，搬丢一块会红）",
         ),
         (
