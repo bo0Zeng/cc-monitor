@@ -55,7 +55,11 @@
 //! 现在返回 `bool` 由调用方丢弃。语义等价（两条路径旧版都返回 `0`，那个 `return` 是纯提前返回），
 //! 但「逐字搬来」这句话覆盖不到它，故单列。
 
+#[cfg(test)]
+#[path = "../../../tests/backend/platform/cfgless_guard.rs"]
 mod cfgless_guard;
+#[cfg(test)]
+#[path = "../../../tests/backend/platform/fallback_guard.rs"]
 mod fallback_guard;
 pub(crate) mod landing;
 pub(crate) mod liveness;

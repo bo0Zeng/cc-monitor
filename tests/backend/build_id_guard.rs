@@ -284,7 +284,7 @@ mod tests {
     /// 通道那面**有**单一真相源常量 ⇒ 直接引用它更强：**没有抽取器可坏**，
     /// 改名/增删会自动反映到指纹里。两半的取法不同是刻意的，不是遗漏。
     fn subcommand_fingerprint() -> String {
-        let prod = production_code(include_str!("main.rs"));
+        let prod = production_code(include_str!("../../src/backend/main.rs"));
         // 反向自检：剥完还得剩下真代码，否则下面数出来的空集会「恰好等于」某个错误期望。
         assert!(
             prod.len() > 3_000,
@@ -591,7 +591,7 @@ mod tests {
              `0.0.0` 于是退回成一个**没人解释过的假值**，而下一个人看到它只会顺手改掉。"
         );
         // ── ③ 真身份的住址逐个还在 ─────────────────────────────────────────
-        let main_rs = include_str!("main.rs");
+        let main_rs = include_str!("../../src/backend/main.rs");
         let decls = main_rs
             .lines()
             .filter(|l| l.trim_start().starts_with("const BUILD_ID"))

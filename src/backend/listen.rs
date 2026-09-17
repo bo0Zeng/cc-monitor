@@ -519,9 +519,9 @@ mod tests {
             ("listen.rs", include_str!("listen.rs")),
             (
                 "single_stream_guard.rs",
-                include_str!("single_stream_guard.rs"),
+                include_str!("../../tests/backend/single_stream_guard.rs"),
             ),
-            ("ratchet_guard.rs", include_str!("ratchet_guard.rs")),
+            ("ratchet_guard.rs", include_str!("../../tests/backend/ratchet_guard.rs")),
         ];
         let head: String = heads
             .iter()
@@ -544,11 +544,13 @@ mod tests {
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
         // 头注里写住址有四种形态：后端树内的裸文件名 · `relay/xxx.rs` 这种树内相对路径 ·
         // `src-tauri/src/xxx.rs` / `tests/e2e/xxx.sh` 这种从仓根写起的 ·
-        // **monitor 侧的裸文件名**（`daemon_policy.rs` —— 跨半个仓引用在本仓是常态）。四个根都试。
+        // **monitor 侧的裸文件名**（`daemon_policy.rs` —— 跨半个仓引用在本仓是常态）。五个根都试。
         let roots = [
             // 〔搬树 2026-09-17〕后端源码树从 `src/backend` 搬到 `<repo>/src/backend`，
             // manifest 留在原处 ⇒ 这一格不再是 `manifest/src`。走那个唯一住址。
             crate::guard_support::src_root(),
+            // 〔搬测试 2026-09-17〕头注里点名的很多是判据文件，它们今天住第二棵树。
+            crate::guard_support::tests_root(),
             manifest.join(".."),
             manifest.to_path_buf(),
             manifest.join("../src-tauri/src"),
@@ -562,7 +564,7 @@ mod tests {
             checked += 1;
             assert!(
                 roots.iter().any(|r| r.join(w).exists()),
-                "头注指着 `{w}`，而四个根下都找不到它（daemon `src/` · 仓根 · crate 根 · monitor `src-tauri/src/`）——\n\
+                "头注指着 `{w}`，而五个根下都找不到它（后端生产树 · 后端测试树 · 仓根 · crate 根 · monitor `src-tauri/src/`）——\n\
                  ★ 指了住址而住址是假的：读者会以为那一格有人守着，去找的时候什么都没有。\n\
                  ⇒ 要么改成真名，要么把那句话删掉；**别留一个假住址**。"
             );
@@ -581,7 +583,7 @@ mod tests {
             "头注不再指名那条「多客户端的流」触发器 —— `K-P1 §2` 明确不做的那一半就只剩一句散文"
         );
         assert!(
-            include_str!("single_stream_guard.rs")
+            include_str!("../../tests/backend/single_stream_guard.rs")
                 .contains("fn the_single_stream_shape_is_still_exactly_one_client"),
             "`single_stream_guard.rs` 里那条触发器不见了 —— 头注在替一个不存在的性质背书"
         );

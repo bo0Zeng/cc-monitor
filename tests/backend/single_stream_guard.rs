@@ -652,7 +652,7 @@ mod tests {
     /// （两份实现迟早分叉 —— 本仓最贵的那一族）。
     #[test]
     fn the_hello_witness_pin_still_lives_where_this_module_says_it_does() {
-        let wire = include_str!("wire.rs");
+        let wire = include_str!("../../src/backend/wire.rs");
         assert!(
             wire.contains("fn the_hello_witness_has_exactly_one_way_to_exist"),
             "本模块头注指着 `wire.rs` 的那条见证判据，而它已经不在了 ——\n\

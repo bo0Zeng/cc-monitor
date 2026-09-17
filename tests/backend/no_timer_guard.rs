@@ -535,7 +535,7 @@ mod f09_external_beat {
     /// 形状照 `readonly_guard::capture_is_read_only`（那一条同样自陈「只盖一份文件」）。
     #[test]
     fn the_oneshot_watchdog_script_carries_no_loop() {
-        let prod = guard_core::production_code(include_str!("control/oneshot_session.rs"));
+        let prod = guard_core::production_code(include_str!("../../src/backend/control/oneshot_session.rs"));
         // 反空真①：读到的得是真代码，不是一份被剥空的壳。
         assert!(
             prod.len() > 3_000,
@@ -737,9 +737,13 @@ mod tests {
     /// 而当时的地板 `files.len() >= 5` **照样满足** ⇒ 护栏一行业务代码都没扫、全绿。
     /// 那正是本仓在「守卫范围 ≠ 性质范围」上栽过的第四次。
     pub(super) fn daemon_sources() -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root();
+        // 〔搬测试 2026-09-17〕人群是「**全体后端代码**」，而它今天住两棵树。
+        // 只走 `src_root()` 会安静地少 19 个文件 —— 下面那条「采集 ＋ 跳过 ＝ 树上全部」
+        // 正是因此红的（它跳过的 `no_timer_guard.rs` 自己就搬去了第二棵树）。
+        let roots = crate::guard_support::code_roots();
+        let root = roots[0].clone();
         let mut out = Vec::new();
-        let mut stack = vec![root.clone()];
+        let mut stack: Vec<std::path::PathBuf> = roots.to_vec();
         while let Some(dir) = stack.pop() {
             for entry in std::fs::read_dir(&dir).expect("read src dir") {
                 let path = entry.expect("dir entry").path();
@@ -757,6 +761,7 @@ mod tests {
                 }
                 let rel = path
                     .strip_prefix(&root)
+                    .or_else(|_| path.strip_prefix(&roots[1]))
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .replace('\\', "/");
@@ -843,9 +848,9 @@ mod tests {
     /// 刻意与 `daemon_sources` 分开写：那边还要读文件、剥生产段、跳过自身，
     /// 这边只做「树上有几个 `.rs`」这一件事，两者对不上就说明采集环节漏了东西。
     fn count_rs_in_tree() -> usize {
-        let root = crate::guard_support::src_root();
+        // 两棵树 —— 与 `daemon_sources()` 同一个人群，否则那条「数量相等」在对拍两个不同的集合。
         let mut n = 0usize;
-        let mut stack = vec![root];
+        let mut stack: Vec<std::path::PathBuf> = crate::guard_support::code_roots().to_vec();
         while let Some(dir) = stack.pop() {
             for entry in std::fs::read_dir(&dir).expect("read src dir") {
                 let path = entry.expect("dir entry").path();

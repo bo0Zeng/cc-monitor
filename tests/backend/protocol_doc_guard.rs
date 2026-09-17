@@ -75,35 +75,35 @@
 /// 「抽取面画小了」是比「少写一条」更隐蔽的失效：护栏照常报绿，而它压根没看那片地方。
 /// 所以下面 `dispatch_registry_is_complete` 会**反向核对**这份名单没漏文件。
 const DISPATCH_FILES: &[(&str, &str)] = &[
-    ("main.rs", include_str!("main.rs")),
+    ("main.rs", include_str!("../../src/backend/main.rs")),
     // P4f：`control/cc_bus.rs` 里有一个 `"--"` 字面量（调 `cc-send` 时显式结束旗标，
     // 免得收件人以 `--` 开头被当成选项）。派生的文件集按「生产段里出现 `"--`」收人，
     // 于是把它扫了进来 —— 那条判据自己写着「宁可多登记几个文件」。登记，不改判据。
-    ("control/cc_bus.rs", include_str!("control/cc_bus.rs")),
+    ("control/cc_bus.rs", include_str!("../../src/backend/control/cc_bus.rs")),
     // P4d：控制面的 CLI 入口。它**不做 match 分派**（认哪些 flag 由
     // `cli_control::spec_for` 从 `inbound::REGISTRY` 派生），但它持有
     // `PROBE_FLAG = "--daemon-probe"` 这个字面量 —— 派生的文件集因此把它扫了进来。
     // ⇒ 登记在这里，`--daemon-probe` 才受 IPC-PROTOCOL.md 对拍约束。
     (
         "control/cli_control.rs",
-        include_str!("control/cli_control.rs"),
+        include_str!("../../src/backend/control/cli_control.rs"),
     ),
     (
         "observe/history_query.rs",
-        include_str!("observe/history_query.rs"),
+        include_str!("../../src/backend/observe/history_query.rs"),
     ),
     (
         "observe/accounts_query.rs",
-        include_str!("observe/accounts_query.rs"),
+        include_str!("../../src/backend/observe/accounts_query.rs"),
     ),
     (
         "observe/search_query.rs",
-        include_str!("observe/search_query.rs"),
+        include_str!("../../src/backend/observe/search_query.rs"),
     ),
     // 它不做 match 分派，只在用法串里提自己的名字 —— 但 D 审计正是把一个
     // `pub const CTRL_FLAG: &str = "--ccm-hidden-ctrl";` 藏在这里绕过了护栏。
     // 放宽后的探测把它揪了出来。
-    ("control/tmux_hook.rs", include_str!("control/tmux_hook.rs")),
+    ("control/tmux_hook.rs", include_str!("../../src/backend/control/tmux_hook.rs")),
 ];
 
 /// 🔴 **终端命令面**的文件 —— 它们持有 `--旗标` 字面量，但那些**不是 wire 子命令**。
@@ -196,8 +196,8 @@ mod tests {
     /// ⚠ 这条比用户原话**窄**。窄的那部分不是被砍掉的，是它本来就不在这一层。
     #[test]
     fn the_panorama_protocol_would_only_expose_query_semantics() {
-        let inbound = include_str!("inbound.rs");
-        let wire = include_str!("wire.rs");
+        let inbound = include_str!("../../src/backend/inbound.rs");
+        let wire = include_str!("../../src/backend/wire.rs");
         // ⚠ 剥注释用**共享原语**（`guard_core::production_code`，daemon 侧经 `guard_support` 再导出）。
         //   本会话已经栽过一次：自己内联一份 `#` 剥法，被 `structural_scan` 的
         //   「剥注释实现只许一份」当场逮住，而答案是「共享原语早就有了，我只是没找」。
@@ -270,7 +270,7 @@ mod tests {
 
     /// 每个 `derive(Serialize|Deserialize)` 的类型：(类型声明行, 体是否含字段, 抽到的字段)。
     fn serializable_types() -> Vec<(String, bool, Vec<String>)> {
-        let src = crate::guard_support::production_code(include_str!("wire.rs"));
+        let src = crate::guard_support::production_code(include_str!("../../src/backend/wire.rs"));
         let b = src.as_bytes();
         let mut out: Vec<(String, bool, Vec<String>)> = Vec::new();
         let mut from = 0usize;
@@ -474,7 +474,7 @@ mod tests {
     /// | **enum** 上的 `rename_all_fields` | **红** | 这个才是改 variant 里的字段 |
     #[test]
     fn wire_rs_has_no_serde_rename_on_fields() {
-        let src = crate::guard_support::production_code(include_str!("wire.rs"));
+        let src = crate::guard_support::production_code(include_str!("../../src/backend/wire.rs"));
         let lines: Vec<&str> = src.lines().map(str::trim).collect();
         let mut offenders: Vec<String> = Vec::new();
         for (i, l) in lines.iter().enumerate() {
@@ -768,44 +768,44 @@ mod tests {
         ];
 
         let files: &[(&str, &str)] = &[
-            ("control/launch.rs", include_str!("control/launch.rs")),
+            ("control/launch.rs", include_str!("../../src/backend/control/launch.rs")),
             (
                 "control/resolve_query.rs",
-                include_str!("control/resolve_query.rs"),
+                include_str!("../../src/backend/control/resolve_query.rs"),
             ),
             (
                 "control/fork_write.rs",
-                include_str!("control/fork_write.rs"),
+                include_str!("../../src/backend/control/fork_write.rs"),
             ),
-            ("control/tmux_hook.rs", include_str!("control/tmux_hook.rs")),
-            ("observe/watcher.rs", include_str!("observe/watcher.rs")),
+            ("control/tmux_hook.rs", include_str!("../../src/backend/control/tmux_hook.rs")),
+            ("observe/watcher.rs", include_str!("../../src/backend/observe/watcher.rs")),
             (
                 "observe/accounts_query.rs",
-                include_str!("observe/accounts_query.rs"),
+                include_str!("../../src/backend/observe/accounts_query.rs"),
             ),
             (
                 "observe/history_query.rs",
-                include_str!("observe/history_query.rs"),
+                include_str!("../../src/backend/observe/history_query.rs"),
             ),
             (
                 "observe/search_query.rs",
-                include_str!("observe/search_query.rs"),
+                include_str!("../../src/backend/observe/search_query.rs"),
             ),
             (
                 "observe/usage_query.rs",
-                include_str!("observe/usage_query.rs"),
+                include_str!("../../src/backend/observe/usage_query.rs"),
             ),
             (
                 "agents/codex/parse.rs",
-                include_str!("agents/codex/parse.rs"),
+                include_str!("../../src/backend/agents/codex/parse.rs"),
             ),
             (
                 "agents/codex/usage.rs",
-                include_str!("agents/codex/usage.rs"),
+                include_str!("../../src/backend/agents/codex/usage.rs"),
             ),
             (
                 "observe/turn_detect.rs",
-                include_str!("observe/turn_detect.rs"),
+                include_str!("../../src/backend/observe/turn_detect.rs"),
             ),
         ];
 
@@ -892,16 +892,16 @@ mod tests {
         ];
         // 逐个文件扫 `control/`（`observe/` 不产 code，不在本条范围）。
         let files: &[(&str, &str)] = &[
-            ("control/launch.rs", include_str!("control/launch.rs")),
+            ("control/launch.rs", include_str!("../../src/backend/control/launch.rs")),
             (
                 "control/resolve_query.rs",
-                include_str!("control/resolve_query.rs"),
+                include_str!("../../src/backend/control/resolve_query.rs"),
             ),
             (
                 "control/fork_write.rs",
-                include_str!("control/fork_write.rs"),
+                include_str!("../../src/backend/control/fork_write.rs"),
             ),
-            ("control/tmux_hook.rs", include_str!("control/tmux_hook.rs")),
+            ("control/tmux_hook.rs", include_str!("../../src/backend/control/tmux_hook.rs")),
         ];
         // 匹配器自检：独立手写的样本必须命中。
         for sample in ["Err((\"unknown_command\", x))", "code: \"not_cancellable\""] {
@@ -943,7 +943,7 @@ mod tests {
     /// ⚠ **必须先框段界再数**：`wire.rs` 里不止一个枚举，
     /// 摸底时用「行首缩进 + 大写开头」的正则数出 **14**，真值 **11** —— 多出来的是别的枚举。
     fn frame_variants() -> Vec<String> {
-        let src = crate::guard_support::production_code(include_str!("wire.rs"));
+        let src = crate::guard_support::production_code(include_str!("../../src/backend/wire.rs"));
         // 运行时拼，免得命中本文件自己的说明文字。
         let needle = format!("pub enum {}", "Frame");
         let at = src
@@ -1084,7 +1084,7 @@ mod tests {
         );
 
         // 从 main.rs 生产段抠 `const EMITS: &[&str] = &[ "a", "b", … ];`
-        let prod = guard_core::production_code(include_str!("main.rs"));
+        let prod = guard_core::production_code(include_str!("../../src/backend/main.rs"));
         let start = prod
             .find("const EMITS")
             .expect("找不到 `const EMITS` —— 抽取器坏了，本条会零命中地绿");

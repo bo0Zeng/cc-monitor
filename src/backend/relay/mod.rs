@@ -161,14 +161,22 @@
 //!   伸手进 `relay::table::…` 这一形，**今天没有判据挡着**（`mod relay;` 声明在 `main.rs`，
 //!   它写的是**裸** `relay::…`，锚点对不上）。如实登记，别读成「全体没有」。
 
+#[cfg(test)]
+#[path = "../../../tests/backend/relay/bind_guard.rs"]
 mod bind_guard; // `DoD-4㈠`：零命中守卫单住一个文件（理由见它的头注）
 mod creds; // `K-H2a`：中转从哪儿拿 key（**只读**）+ 读之前查一次权限
+#[cfg(test)]
+#[path = "../../../tests/backend/relay/creds_guard.rs"]
 mod creds_guard; // `K-H2a` `KS2`/`KS4`：明文出口恰好一处 · 记日志走白名单（整体 #[cfg(test)]）
 mod http1;
+#[cfg(test)]
+#[path = "../../../tests/backend/relay/nodelay_guard.rs"]
 mod nodelay_guard; // `重要-5`：Nagle 零命中守卫，同样单住一个文件
 mod route;
 mod server;
 mod table; // `K-H2`：路由表 —— 账号段 → **上游与 key 焊死的一个值**（`Row` 住私有 `mod sealed`）
+#[cfg(test)]
+#[path = "../../../tests/backend/relay/table_guard.rs"]
 mod table_guard; // `K-H2` `KH1`：决定点三条腿里的两条（焊接点 · 开上游连接点），整体 #[cfg(test)]
 mod tee;
 mod upstream;
