@@ -88,7 +88,7 @@
 
 #[cfg(test)]
 mod tests {
-    use std::path::{Path, PathBuf};
+    use std::path::PathBuf;
 
     /// **所有** agent 家的前缀（相对 `src/`）。加一个 agent = 加一行。
     ///
@@ -450,7 +450,7 @@ mod tests {
 
     /// 整棵 `src/` 的 `(相对路径, 生产段)`。`scan_tree!` **按构造摘掉调用者自己**。
     fn sources() -> Vec<(String, String)> {
-        let src_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let src_dir = crate::guard_support::src_root();
         let files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_dir, &["rs"]);
         files
             .into_iter()

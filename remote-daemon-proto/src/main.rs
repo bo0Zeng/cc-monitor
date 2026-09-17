@@ -1050,7 +1050,7 @@ mod window_raise_guard {
     /// 文件是今天唯一能机检的「一处」；更细的粒度要语法树。
     #[test]
     fn window_raising_lives_in_one_file_and_only_behind_cfg_windows() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         // ⚠ 走 `scan_tree!` 而不是自己 `read_dir`：`scanning_guard_registry` 那条棘轮要求如此，
         //   而它按构造摘掉**调用者自己那份**（`main.rs`）⇒ 下面必须把 `main.rs` 补回来，
         //   否则「拉窗写进 main.rs」这一格逃得掉，而逃掉之后看起来和守住一模一样。

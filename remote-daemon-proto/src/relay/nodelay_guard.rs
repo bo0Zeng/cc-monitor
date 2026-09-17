@@ -49,7 +49,7 @@
 mod tests {
     #[test]
     fn no_relay_production_code_turns_nagle_back_on() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/relay");
+        let dir = crate::guard_support::src_root().join("relay");
         // 针**运行时拼**：直接写字面量的话本文件自己就是命中源
         //（`scan_tree!` 已经摘掉了本文件 —— 两道保险，别只靠一道）。
         let off = format!("set_nodelay({})", false);

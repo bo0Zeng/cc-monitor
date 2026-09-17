@@ -544,7 +544,7 @@ mod tests {
                 }
             }
         }
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         let mut found = Vec::new();
         walk(&root, &mut found, &root);
         found.sort();

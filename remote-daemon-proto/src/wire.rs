@@ -645,7 +645,7 @@ mod tests {
                  与 write_and_flush_hello 同一个性质：那一刻这条连接上还没有第二个写者。",
             ),
         ];
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         let verb = format!("write_{}(", "all");
         let mut found: Vec<(String, usize)> = Vec::new();
         // ⚠ `scan_tree!` **刻意摘除调用者自己**（那是它防「守卫扫不到自己」的设计），

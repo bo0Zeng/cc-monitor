@@ -95,7 +95,7 @@ mod tests {
     /// 「决定点只有一处」这句话的分母如果只到 `relay/`，那么有人在 `observe/` 里
     /// 再开一条上游连接就不会红。**人群要恰好等于性质。**
     fn crate_production() -> Vec<(String, String)> {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let dir = crate::guard_support::src_root();
         guard_core::scan_tree!(&dir, &["rs"])
             .into_iter()
             .map(|(p, raw)| (p.display().to_string(), production_code(&raw)))

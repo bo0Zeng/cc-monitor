@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn the_daemon_tree_never_parses_in_its_own_address_space() {
         let (_, underscored) = engine_names();
-        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let root = crate::guard_support::src_root();
         let opens = open_sites(&root, &open_needle());
         assert!(
             opens.is_empty(),

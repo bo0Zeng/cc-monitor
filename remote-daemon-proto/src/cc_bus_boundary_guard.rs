@@ -24,7 +24,7 @@ mod tests {
         // ★ `scan_tree!` 而不是自己 `read_dir`：它按构造摘除**调用者自己**那一份
         //（`scanning_guard_registry` 逼的，治「判据在自己的语料里找到自己 ⇒ 恒绿」那族）。
         // ⇒ 本判据因此**不能**住在 `control/cc_bus.rs` 里 —— 那正是最该被扫的文件。
-        let src_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let src_dir = crate::guard_support::src_root();
         let files: Vec<(String, String)> = guard_core::scan_tree!(&src_dir, &["rs"])
             .into_iter()
             .map(|(p, s)| {
