@@ -237,7 +237,7 @@ mod tests {
             "拒收+回错",
         ),
         (
-            "remote-daemon-proto/src/listen.rs",
+            "src/backend/listen.rs",
             "ATTACH_LINE_CAP",
             8 * 1024,
             "daemon 读一行 attach 请求 —— `{\"attach\":\"<32 位十六进制>\"}` 本机实测 51 字节。\
@@ -264,7 +264,7 @@ mod tests {
             "拒收+回错",
         ),
         // 🔴 `K-R100`：这两条**原本两侧各登记一份**（`src-tauri/src/search.rs` 与
-        // `remote-daemon-proto/src/observe/search_query.rs`），靠下面「对 D」那条判据
+        // `src/backend/observe/search_query.rs`），靠下面「对 D」那条判据
         // 钉住它们相等。收口之后它们只有一个家 ⇒ **「两侧漂开」这件事在结构上没了**，
         // 那条对拍随之删掉（见 `the_cross_crate_twins_are_machine_checked_not_hand_copied`）。
         (
@@ -291,7 +291,7 @@ mod tests {
         // ★ 更要紧的是：它们的超限语义此前**全是「静默截断」** —— `.take(N).read_to_end()`
         // 读满就停、缓冲区里是半份数据，而调用方拿它当完整的用。那正是本表这个封闭集合
         // **刻意排除**的那一种。⇒ 六处一律改成「多读一个字节 + 超了就回错」
-        // （形态照抄 `remote-daemon-proto/src/common/fs.rs` 那条既有注释）。
+        // （形态照抄 `src/backend/common/fs.rs` 那条既有注释）。
         (
             "src-tauri/src/cc_bus.rs",
             "CC_BUS_TSV_CAP",
@@ -353,35 +353,35 @@ mod tests {
         ),
         // ---- daemon 侧 ----
         (
-            "remote-daemon-proto/src/control/fork_write.rs",
+            "src/backend/control/fork_write.rs",
             "MAX_SESSION_JSONL_BYTES",
             256 * 1024 * 1024,
             "分叉时读源会话 jsonl",
             "硬报错",
         ),
         (
-            "remote-daemon-proto/src/control/launch.rs",
+            "src/backend/control/launch.rs",
             "MAX_FIELD_BYTES",
             8 * 1024,
             "启动请求单字段（载荷/名字/cwd）",
             "拒收+回错",
         ),
         (
-            "remote-daemon-proto/src/control/resolve_query.rs",
+            "src/backend/control/resolve_query.rs",
             "MAX_RESOLVE_STDIN",
             1 << 20,
             "`--resolve` 的 stdin",
             "截断+说清",
         ),
         (
-            "remote-daemon-proto/src/control/cli_control.rs",
+            "src/backend/control/cli_control.rs",
             "MAX_CLI_STDIN",
             1 << 20,
             "控制面 CLI 子命令（`--launch`/`--kill`/…）的 stdin args JSON",
             "拒收+回错",
         ),
         (
-            "remote-daemon-proto/src/inbound.rs",
+            "src/backend/inbound.rs",
             "MAX_LINE_BYTES",
             1 << 20,
             "入方向单行",
@@ -391,21 +391,21 @@ mod tests {
         // `agents/claudecode/` 之后，常量跟着换了住址与名字，而本表按「文件+常量名」定位 ⇒
         // 两格同时红（「有上限没登记」+「登记的那个算不出值」）。**登记表的键随搬迁同轮改。**
         (
-            "remote-daemon-proto/src/agents/claudecode/accounts.rs",
+            "src/backend/agents/claudecode/accounts.rs",
             "MAX_CONFIG_BYTES",
             32 * 1024 * 1024,
             "读 Claude 的账号配置文件",
             "硬报错",
         ),
         (
-            "remote-daemon-proto/src/observe/accounts_query.rs",
+            "src/backend/observe/accounts_query.rs",
             "MAX_MANIFEST_BYTES",
             8 * 1024 * 1024,
             "daemon 侧读账号 manifest",
             "硬报错",
         ),
         (
-            "remote-daemon-proto/src/observe/accounts_query.rs",
+            "src/backend/observe/accounts_query.rs",
             "MAX_SESSION_FILE_BYTES",
             1024 * 1024,
             "读单个 `sessions/<PID>.json`",
@@ -424,7 +424,7 @@ mod tests {
         //      `read_head` 的头注早在回修轮（08-25）就订正过，它现在逐字写的是
         //      「超了返回 `None`」并说明两个调用点各自回 400 / 502 —— 与本表一致，没有分歧了。
         (
-            "remote-daemon-proto/src/relay/server.rs",
+            "src/backend/relay/server.rs",
             "HEAD_CAP",
             65536,
             "一次 HTTP 请求/响应的**头部**字节数（不是体）",
@@ -437,7 +437,7 @@ mod tests {
         // 不走 unwind ⇒ `catch_unwind` 接不住；而中转是「一个进程服务 N 个会话」
         // ⇒ 打掉的是**当时所有会话的在途流**。
         (
-            "remote-daemon-proto/src/relay/server.rs",
+            "src/backend/relay/server.rs",
             "BODY_CAP",
             67108864,
             "一条下游 HTTP 请求的**请求体**字节数（`Content-Length` 那个值）",
@@ -447,7 +447,7 @@ mod tests {
         // 这一条防「按真实收到的字节无界增长」（上游发一条永不换行的 `data:` 行 /
         // 永不结束的块长度行）。丢的只是 **tee 那一路**，下游拿到的字节一个不少。
         (
-            "remote-daemon-proto/src/relay/server.rs",
+            "src/backend/relay/server.rs",
             "TEE_DECODE_CAP",
             8388608,
             "tee 侧解码缓冲攒着的那截（SSE 半行 / chunked 还没成形的块长度行）",
@@ -466,7 +466,7 @@ mod tests {
         // ★ 超限那一支**一个字节都不落盘**（`Transport::Oversize` ⇒ `Face::Oversize`），
         //   所以是「拒收+回错」而不是任何一种截断。
         (
-            "remote-daemon-proto/src/sidecars/codepicture/acquire.rs",
+            "src/backend/sidecars/codepicture/acquire.rs",
             "ASSET_BYTE_CAP",
             64 * 1024 * 1024,
             "按需拉取代码全景 sidecar 时，一趟 HTTP GET 收进内存的那一整份**响应体**",
@@ -479,7 +479,7 @@ mod tests {
         // 一个上限罩着两个量，超限那一刻分不出被截的是谁。
         // ⇒ 两个量两个数。它与上面那条是**一对**，别单看其中一个。
         (
-            "remote-daemon-proto/src/sidecars/codepicture/acquire.rs",
+            "src/backend/sidecars/codepicture/acquire.rs",
             "RESPONSE_HEAD_BYTE_CAP",
             8 * 1024,
             "同一趟里那份 HTTP 响应的**头部**字节数（不是体）",
@@ -551,7 +551,7 @@ mod tests {
         // 报的方向还是错的。
         for sub in [
             "src-tauri/src",
-            "remote-daemon-proto/src",
+            "src/backend",
             "src-tauri/crates",
         ] {
             for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
@@ -650,7 +650,7 @@ mod tests {
         // 这里自己又走了一遍。⇒ **改扫描面要两处一起改**（本轮就是漏了这一处才红的）。
         for sub in [
             "src-tauri/src",
-            "remote-daemon-proto/src",
+            "src/backend",
             "src-tauri/crates",
         ] {
             for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
@@ -784,7 +784,7 @@ mod tests {
         // 对 A：注释逐字「与 daemon 侧**同值**」⇒ 钉相等。
         let a1 = by("src-tauri/src/local_accounts.rs", "MANIFEST_CAP");
         let a2 = by(
-            "remote-daemon-proto/src/observe/accounts_query.rs",
+            "src/backend/observe/accounts_query.rs",
             "MAX_MANIFEST_BYTES",
         );
         assert_eq!(
@@ -797,7 +797,7 @@ mod tests {
         // 对 B：两边都是「一整份会话 jsonl」这同一个量 ⇒ 钉相等。
         let b1 = by("src-tauri/src/remote_history.rs", "MAX_SESSION_BYTES");
         let b2 = by(
-            "remote-daemon-proto/src/control/fork_write.rs",
+            "src/backend/control/fork_write.rs",
             "MAX_SESSION_JSONL_BYTES",
         );
         assert_eq!(
@@ -809,7 +809,7 @@ mod tests {
 
         // 对 D（搜索索引封顶）🔴 **这一对没了，是被解决掉的，不是被删掉的**〔`K-R100` 09-13〕。
         //
-        // 原文：`src-tauri/src/search.rs` 与 `remote-daemon-proto/src/observe/search_query.rs`
+        // 原文：`src-tauri/src/search.rs` 与 `src/backend/observe/search_query.rs`
         // 各写一个 `MAIN_CAP`/`TOOL_CAP`，本条钉它们相等。收口后两个字面量只剩一份
         // （`search-core`）⇒ **「两侧漂开」在结构上不再可能**，一条对拍相等的判据也就无从谈起
         // （它会变成「同一个数等于它自己」，恒绿）。
@@ -820,7 +820,7 @@ mod tests {
 
         // 对 C：注释写的是「同**量级**」，而且**今天就不等** ⇒ 钉比值，不钉相等。
         let c1 = by(
-            "remote-daemon-proto/src/control/launch.rs",
+            "src/backend/control/launch.rs",
             "MAX_FIELD_BYTES",
         );
         let c2 = by("src-tauri/src/launch.rs", "MAX_REMOTE_CMD");
@@ -847,7 +847,7 @@ mod tests {
         // 里常量的排除会被本条判成「死木」—— 而它其实活着，只是本条看不见它。
         for sub in [
             "src-tauri/src",
-            "remote-daemon-proto/src",
+            "src/backend",
             "src-tauri/crates",
         ] {
             for (_, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
@@ -1038,7 +1038,7 @@ mod tests {
              （`INBOX_READ_CAP` / `CONTROL_REPLY_CAP` ×2），那三个已在 `CAPS` 里。",
         ),
         (
-            "remote-daemon-proto/src/common/fs.rs",
+            "src/backend/common/fs.rs",
             "cap + 1",
             "`read_file_capped` 是 daemon 侧共用的有界读助手，上限是入参；\
              调用方给的是 `MAX_CONFIG_BYTES` / `MAX_MANIFEST_BYTES` 等具名常量。",
@@ -1051,7 +1051,7 @@ mod tests {
         //    ★ 顺序是这一格的**全部**：`if n > cap { return Ok(None); }` 在 `take(n)` **之前** ——
         //    颠倒过来 `take` 就会按敌手给的数去长。死值验 `MU2` 打的正是这个顺序（1 红）。
         (
-            "remote-daemon-proto/src/relay/http1.rs",
+            "src/backend/relay/http1.rs",
             "n as u64",
             "`read_exact_body` 的 `n` 是**请求体声明长度**（下游 `Content-Length`，敌手可控），\
              它**不是上限**；上限是同一函数的 `cap` 入参，唯一调用点给的是具名常量 `BODY_CAP`\
@@ -1062,7 +1062,7 @@ mod tests {
         // 〔`K-W2D` 09-10〕与上面第一、第二条**同族**（上限是入参、调用方给具名常量），
         // 与第三条不同族（那条的 `n` 是敌手可控的声明长度）。
         (
-            "remote-daemon-proto/src/sidecars/codepicture/acquire.rs",
+            "src/backend/sidecars/codepicture/acquire.rs",
             "ceiling",
             "`get_over` 是 sidecar 拉取那一跳的 HTTP 读。`ceiling` 是**同一趟里两个量的和**：\
              `RESPONSE_HEAD_BYTE_CAP`（具名常量，已在 `CAPS` 里）＋ 体的上限（入参）＋ 1。\
@@ -1209,7 +1209,7 @@ mod tests {
         const READS: &[&str] = &[".read_to_end", ".read_exact", ".read_to_string"];
         let root = repo_root();
         let mut out = Vec::new();
-        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+        for sub in ["src-tauri/src", "src/backend"] {
             for (path, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let prod = guard_core::production_code(&src);
                 let rel = path
@@ -1300,7 +1300,7 @@ mod tests {
             .iter()
             .map(|m| format!(".read_{m}("))
             .collect();
-        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+        for sub in ["src-tauri/src", "src/backend"] {
             for (path, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let prod = guard_core::production_code(&src);
                 let rel = path
@@ -1352,7 +1352,7 @@ mod tests {
              ★ 对端是**远端进程** —— 它坏掉、或者压根不是我们的 daemon，都会让\n\
              「无界读」变成「无界堆分配」。daemon 侧为此栽过一次实测：\n\
              喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB\n\
-             （见 `remote-daemon-proto/src/inbound.rs` 头注）。\n\
+             （见 `src/backend/inbound.rs` 头注）。\n\
              两条路：① 加上限（`.take(CAP + 1)` + 超了回错，形态见 `common/fs.rs`）；\n\
              ② 登记进 `UNCAPPED_STREAM_READS` 并写明**谁退役它**。",
             orphans.join("\n")

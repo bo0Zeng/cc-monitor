@@ -194,7 +194,7 @@ mod sealed {
         /// # 两个出口各自只许住在哪儿（**这一段是判据的转述，不是承诺** —— 住址逐条给）
         ///
         /// - [`SecretKey::expose_for_auth_header`]：**调用点恰好 1 处**，在
-        ///   `remote-daemon-proto/src/relay/server.rs`（中转换头那一行）。
+        ///   `src/backend/relay/server.rs`（中转换头那一行）。
         /// - `expose_for_persisting`（本方法）：**调用点恰好 1 处**，在
         ///   `src-tauri/crates/creds-core/src/store.rs`（`merge_key`）。
         ///
@@ -215,7 +215,7 @@ mod sealed {
         ///    `Deref` / `AsRef<str>` 这一类一句话就能开的后门；
         /// 3. **调用面 + 人群**：`creds_store::the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees`
         ///    （`src-tauri/src/creds_store.rs`）—— 扫 **`src-tauri/src` · `src-tauri/crates` ·
-        ///    `remote-daemon-proto/src` 三棵树**的生产段，两个出口各自的调用点数与住址都钉死。
+        ///    `src/backend` 三棵树**的生产段，两个出口各自的调用点数与住址都钉死。
         /// 另有 daemon 那个 crate 内部的一格单断：`relay::creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`。
         pub fn expose_for_persisting(&self) -> &str {
             &self.0
@@ -374,7 +374,7 @@ mod tests {
         (
             "expose_for_auth_header",
             Handling::HandsOut,
-            "唯一的**换头**出口。调用点恰好 1 处，在 `remote-daemon-proto/src/relay/server.rs`",
+            "唯一的**换头**出口。调用点恰好 1 处，在 `src/backend/relay/server.rs`",
         ),
         (
             "expose_for_persisting",

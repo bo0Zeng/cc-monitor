@@ -496,7 +496,7 @@ mod tests {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("仓根");
-        let p = root.join("remote-daemon-proto/src/platform/pidwatch/fallback.rs");
+        let p = root.join("src/backend/platform/pidwatch/fallback.rs");
         let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| {
             panic!(
                 "{} 读不到：{e}\n                 ★ 文件搬走/删掉本身就可能意味着 U4b 落地了 —— 回去读 F12。",

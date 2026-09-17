@@ -183,7 +183,7 @@ mod tests {
              🔴 **这是用户拍的红线，实现方不自批** —— `DECISIONS.md#R32` 通篇没有处置这一格。\
              ⚠ 更要紧的是：`readonly_guard` 的模式表全是 `fs::` / `File::` / `OpenOptions` \
              命名空间（本模块**没有机检**这一句，住址 \
-             `remote-daemon-proto/src/readonly_guard.rs::FS_MUTATION_PATTERNS`）⇒ \
+             `src/backend/readonly_guard.rs::FS_MUTATION_PATTERNS`）⇒ \
              SFTP 那套写**一条都不匹配** ⇒ 真搬过去，**机检不会红**，是一次静默越线。\
              〔🔴 `K-R79`（09-12）订正，**原文一个字没动，是历史不是错误**：\
              最后那半句「真搬过去，机检不会红」**今天不成立了**。\
@@ -203,7 +203,7 @@ mod tests {
             "",
             "daemon 那棵树只有 `russh`，**没有** `russh-sftp`（现打：`russh-sftp = \"2\"` \
              只在 `src-tauri/Cargo.toml`）。加它 ⇒ \
-             `remote-daemon-proto/src/readonly_guard.rs::g6_dependency_signoff::SIGNED` \
+             `src/backend/readonly_guard.rs::g6_dependency_signoff::SIGNED` \
              必须同拍加一行（「新加一条而没签字 ⇒ 当场红」）。\
              而那张表的判档是**闭集三档**（`已量·有写面` / `已量·未见写面` / `未量·靠用法签字`），\
              `已量·有写面` 那一档的定义逐字要求写清「**凭什么进不了发布二进制**」—— \
@@ -212,7 +212,7 @@ mod tests {
              〔🔴 `K-R79`（09-12）订正，**原文一个字没动**：最后那句\
              「没有一档容得下」**今天不成立了** —— 判档闭集已从三档加到四档，\
              第四档逐字叫 `已量·有写面·就是要它写`，住 \
-             `remote-daemon-proto/src/readonly_guard.rs::g6_dependency_signoff::VERDICTS`。\
+             `src/backend/readonly_guard.rs::g6_dependency_signoff::VERDICTS`。\
              ⚠ **加档不等于开了口子**：那一档自带两条机检的边界 ——\
              ① 签字里必须逐字点名一条**本文件里真存在**的判据（`边界判据：` ＋ 反引号名）；\
              ② 名字里带远端写协议词（`sftp`/`scp`/`rsync`/`webdav`）的依赖**不许**判进\

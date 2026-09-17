@@ -6,7 +6,7 @@
 //! 把来历留在这儿，是为了让下一个人**不要再把它改回去**：
 //!
 //! 1. **daemon 那棵树里已经有一个 `agent_boundary_guard`**
-//!    （`remote-daemon-proto/src/agent_boundary_guard.rs`，`S1`：通用层不许知道任何 agent 的
+//!    （`src/backend/agent_boundary_guard.rs`，`S1`：通用层不许知道任何 agent 的
 //!    名字与文件格式，人群由它的 `CORE_FILES` **opt-in** 列举）。**本模块不是它的桌面版**：
 //!    那一条判「通用层提没提 agent 的名字/布局」，本条数「通用层认不认得出**具体哪一个**
 //!    adapter」—— 形态照的是 daemon 侧**另一条**，`agent_locality_guard` 的判据④

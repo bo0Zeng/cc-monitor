@@ -110,7 +110,7 @@ pub(crate) const LISTEN_HANDSHAKE_LINE_CAP: usize = 8 * 1024;
 
 /// daemon 那侧收「听哪个口」的 env 名。
 ///
-/// ⚠ **跨 crate 字面量**：daemon 那边是 `remote-daemon-proto/src/listen.rs::ENV_PORT`。
+/// ⚠ **跨 crate 字面量**：daemon 那边是 `src/backend/listen.rs::ENV_PORT`。
 /// 两边漂了**不会报错** —— 起出来的 daemon 会当成「没设」而走 stdio 那条路，
 /// 于是宿主等在一个永远不会有人 bind 的口上，日志里只有一句「连不上」。
 /// 由 `the_listen_env_names_are_the_same_string_on_both_sides` 逐字对拍
@@ -1480,7 +1480,7 @@ pub fn local_pid_and_attempts() -> Result<(Option<u32>, Option<u32>), String> {
 //
 // # 为什么走「再监护一个进程」而不是「折进常驻 daemon」（两条路里选的这一条，理由写下来）
 //
-// `--relay` 今天住 `remote-daemon-proto/src/main.rs` 的**一次性子命令分派臂**，
+// `--relay` 今天住 `src/backend/main.rs` 的**一次性子命令分派臂**，
 // `relay/mod.rs` 头注自陈**是独立进程**，`serve()` **永不返回**。
 // ⇒ 折进常驻 daemon 要动的是 daemon 的进程模型（那条 wire 流与中转的 stdout 会撞，
 //   `relay/mod.rs` 头注逐字记着「谁在同一个进程里既跑流式又跑中转，今天没有任何判据挡着」）。
@@ -3108,7 +3108,7 @@ pub(crate) mod tests {
     /// 已登记在 `cross_half_edge_registry`（它自己那条判据管着「不许长到生产段」）。
     #[test]
     fn the_listen_env_names_are_the_same_string_on_both_sides() {
-        let daemon = include_str!("../../remote-daemon-proto/src/listen.rs");
+        let daemon = include_str!("../../src/backend/listen.rs");
         for (rust_name, ours) in [
             ("ENV_PORT", LISTEN_PORT_ENV),
             ("ENV_TOKEN", LISTEN_TOKEN_ENV),
@@ -3605,8 +3605,8 @@ pub(crate) mod tests {
     ///    - **`embedded-daemons` 在 8 个 `.rs` 里**：本文件 · `local_backend.rs` ·
     ///      `src-tauri/build.rs`（`Path::new("embedded-daemons")`，**是代码不是散文**）·
     ///      `src-tauri/src/tool_registry.rs`（登记表数据）· `src-tauri/src/sftp.rs` ·
-    ///      `src-tauri/src/write_site_registry.rs` · `remote-daemon-proto/src/main.rs` ·
-    ///      `remote-daemon-proto/src/build_id_guard.rs`（后四个是文档注释 / 错误文案）。
+    ///      `src-tauri/src/write_site_registry.rs` · `src/backend/main.rs` ·
+    ///      `src/backend/build_id_guard.rs`（后四个是文档注释 / 错误文案）。
     ///    ⇒ **结论不变**（那 6 个文件里一条起真 daemon 的测试都没有，逐个看过），
     ///    **坏的是论证的分母** —— 而那句话是本条关于「人群完整性今天够用」的**唯一**正面论证。
     ///    今天它只能说到这里：扫描面是这两个文件，别处**没有守**。

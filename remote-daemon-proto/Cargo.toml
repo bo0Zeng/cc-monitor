@@ -36,7 +36,7 @@ edition = "2021"
 
 [[bin]]
 name = "cc-monitor-remote"
-path = "src/main.rs"
+path = "../src/backend/main.rs"
 
 [dependencies]
 # Versions pinned to whatever ../src-tauri/Cargo.lock already resolved so the

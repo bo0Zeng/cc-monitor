@@ -40,7 +40,7 @@
 //!
 //! # 这个家今天选在哪，以及它会不会随 `K-P6` 搬走
 //!
-//! daemon 侧 `remote-daemon-proto/src/dial/mod.rs` 的 `dial_locality` 逐字
+//! daemon 侧 `src/backend/dial/mod.rs` 的 `dial_locality` 逐字
 //! 「本 crate 里**唯一**允许出现拨号锚点的地方」，它的家是**一元闭集** `dial/`。
 //! monitor 侧今天**没有**这一条 —— 本模块补上，而它与 daemon 那份**有两处刻意的不同**，
 //! 两处都是读数逼出来的，不是口味：

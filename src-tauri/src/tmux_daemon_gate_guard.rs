@@ -76,7 +76,7 @@ mod tests {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("src-tauri 的上级")
-            .join("remote-daemon-proto/src/control")
+            .join("src/backend/control")
     }
 
     /// daemon `control/` 下**全部** `.rs` 的生产段。

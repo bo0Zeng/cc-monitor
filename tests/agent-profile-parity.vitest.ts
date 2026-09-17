@@ -9,7 +9,7 @@
  * |---|---|
  * | `src-tauri/…/fixtures/agent-profile-golden.tsv` | 自称「agent 适配表的**唯一真相源**」，8 行 / 4 个 key |
  * | `shared/ccm` 的 `agent_*` 五函数 | POSIX shell |
- * | `remote-daemon-proto/src/agents/{claudecode,codex}/resume.rs` | Rust |
+ * | `src/backend/agents/{claudecode,codex}/resume.rs` | Rust |
  *
  * 改一处，另两处**不会有任何信号**。
  *
@@ -93,9 +93,9 @@ const GOLDEN = "src-tauri/src/backend/control/fixtures/agent-profile-golden.tsv"
 // 🔴 〔`K-R48` 第二拍 2026-09-11〕`shared/ccm` 那个 bash 脚本删了
 // （〔用@09-11 `K33`〕「后端只有一个…**不要有什么 bash 脚本**」），
 // per-agent 适配表搬进了后端本体。**三写点还是三个，第二份换了语言与住址。**
-const CCM = "remote-daemon-proto/src/control/ccm/mod.rs";
+const CCM = "src/backend/control/ccm/mod.rs";
 const DAEMON_RESUME = (agent: string) =>
-  `remote-daemon-proto/src/agents/${agent}/resume.rs`;
+  `src/backend/agents/${agent}/resume.rs`;
 
 /** 本条覆盖的 agent。加第三个 agent 时这里不改 ⇒ 下面的行数自检会红。 */
 const AGENTS = ["claude", "codex"] as const;
@@ -147,7 +147,7 @@ function ccmTable(fn: string): Record<string, string> {
     // `argv::flag::RESUME` 这种**引用**：去它的住址取字面量（判据不许在这里抄第二份）。
     const ref = inner.match(/^argv::flag::([A-Z_]+)$/);
     if (ref) {
-      const argv = read("remote-daemon-proto/src/control/ccm/argv.rs");
+      const argv = read("src/backend/control/ccm/argv.rs");
       const m = argv.match(new RegExp(`const ${ref[1]}: &str = "([^"]*)";`));
       expect(m, `在 argv.rs 里抠不到 \`${ref[1]}\` 的字面量 —— 住址变了`).toBeTruthy();
       return m?.[1] ?? "";

@@ -283,13 +283,13 @@ mod tests {
     /// 🔴 〔`K-R48` 第二拍 09-11〕**住址换了：`shared/ccm` → `control/ccm/`（daemon crate）。**
     ///
     /// 〔用@09-11 `K33`〕「不要有什么 bash 脚本」⇒ 那个脚本删了，它那几个 `agent_*` 决策
-    /// 整条搬进了 `remote-daemon-proto/src/control/ccm/`（Rust）。
+    /// 整条搬进了 `src/backend/control/ccm/`（Rust）。
     /// 本文件那两条判据问的是「**那两个决策今天住在哪一侧**」—— 问题没变，读的文本换了语言。
     fn read_ccm() -> String {
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .expect("src-tauri 的上级")
-            .join("remote-daemon-proto/src/control/ccm");
+            .join("src/backend/control/ccm");
         let s: String = ["mod.rs", "argv.rs", "plan.rs"]
             .iter()
             .map(|f| {

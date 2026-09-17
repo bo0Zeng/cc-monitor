@@ -60,7 +60,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→daemon",
         "src-tauri/src/usage.rs",
-        "remote-daemon-proto/src/observe/usage_query.rs",
+        "src/backend/observe/usage_query.rs",
         "★ **跨轨对拍**：`the_usage_kou_jing_has_exactly_one_home` 要断言\
          「两侧都调 `usage_core::accumulate`、且都不再自己解析 token 字段」。\
          那是一条**关于两侧同形**的性质，只能同时读两侧的源码才验得了 —— \
@@ -71,7 +71,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→daemon",
         "src-tauri/src/usage.rs",
-        "remote-daemon-proto/src/agents/codex/parse.rs",
+        "src/backend/agents/codex/parse.rs",
         "★ **跨轨对拍**（同上那条的 Codex 半）：口径判据的人群原本只有「累加点」，\
          而 Codex 的口径住在**提取器**里 —— daemon 这个文件与 monitor 的 \
          `codex_record.rs` 各写一遍 `input−cached`。收口进 `usage_core::codex_delta` 后，\
@@ -84,14 +84,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→daemon",
         "src-tauri/src/usage.rs",
-        "remote-daemon-proto/src/agents/codex/usage.rs",
+        "src/backend/agents/codex/usage.rs",
         "★〔`S2` 08-14 新增〕daemon 的 Codex **累加点**搬进适配层后，口径判据的人群\
          跟着扩到这里。不跟 ⇒ 那半静默掉出覆盖面（文件名还在表里、内容已经搬走一半）。",
     ),
     (
         "monitor→daemon",
         "src-tauri/src/tmux.rs",
-        "remote-daemon-proto/src/observe/watcher.rs",
+        "src/backend/observe/watcher.rs",
         "★〔audit-0805 08-06 新发现，此前整条不在本表里〕两条对拍守卫读 daemon 的 \
          `watcher.rs`：`tmux ls` 的 `-F` 格式串双写点、以及那个 const 的 TAB 转义。\
          **路径藏在 `macro_rules! daemon_watcher_src` 里** —— `include_str!` 只接字面量 token，\
@@ -103,38 +103,38 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→daemon",
         "src-tauri/src/backend/control/daemon_kill.rs",
-        "remote-daemon-proto/src/control/kill.rs",
+        "src/backend/control/kill.rs",
         "拒绝文案两侧逐字同形：daemon 那边改了措辞，monitor 的用户可见提示就跟着变",
     ),
     (
         "monitor→daemon",
         "src-tauri/src/backend/control/daemon_launch.rs",
-        "remote-daemon-proto/src/inbound.rs",
+        "src/backend/inbound.rs",
         "本通道发的字段由 daemon 的登记表说了算 —— 读它才能断言两侧字段集一致",
     ),
     (
         "monitor→daemon",
         "src-tauri/src/backend/control/daemon_send_keys.rs",
-        "remote-daemon-proto/src/control/launch.rs",
+        "src/backend/control/launch.rs",
         "两个 mode 名必须是 daemon 真能 parse 的那两个（`parse_request` 不 deny unknown \
          fields ⇒ 打错字会被静默忽略、照样附 Enter）",
     ),
     (
         "monitor→daemon",
         "src-tauri/src/inbound_client.rs",
-        "remote-daemon-proto/src/inbound.rs",
+        "src/backend/inbound.rs",
         "入方向帧的种类与错误码两侧同形",
     ),
     (
         "monitor→daemon",
         "src-tauri/src/inbound_client.rs",
-        "remote-daemon-proto/src/control/launch.rs",
+        "src/backend/control/launch.rs",
         "launch 请求的字段名两侧同形",
     ),
     (
         "monitor→daemon",
         "src-tauri/src/tmux.rs",
-        "remote-daemon-proto/src/control/oneshot_session.rs",
+        "src/backend/control/oneshot_session.rs",
         "★〔`K-R104` 09-13〕**一次性会话的名字前缀两侧必须是同一个串。** \
          用量探针的会话从此由 daemon 铸名（前缀 `ccm-oneshot-` ＋ slug ＋ 过 Gate 2 的那截尾巴），\
          而 monitor 这一侧\
@@ -146,14 +146,14 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→daemon",
         "src-tauri/src/polling_registry.rs",
-        "remote-daemon-proto/src/control/tmux_hook.rs",
+        "src/backend/control/tmux_hook.rs",
         "C14 那条登记在案的例外（预信任的等信任框以 shell 字符串形态产出）真实存在的证据 —— \
          它是「零轮询」那条零命中守卫的反向锚点",
     ),
     (
         "monitor→daemon",
         "src-tauri/src/tool_registry.rs",
-        "remote-daemon-proto/src/sidecars/codepicture/acquire.rs",
+        "src/backend/sidecars/codepicture/acquire.rs",
         "★ 〔`K-R65` 09-11〕**「app 自带的是哪几样」那个人群的第二条死值验。**\
          monitor 侧的环境闭集申报了一项 `code-picture-sidecar`（`Provisioning::AppShips`），\
          而**我们随产品分发二进制的那一层住在 daemon 那半** —— \
@@ -167,19 +167,19 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→daemon",
         "src-tauri/src/ssh_source.rs",
-        "remote-daemon-proto/src/main.rs",
+        "src/backend/main.rs",
         "daemon 的启动契约（身份清单 / hello）两侧同形",
     ),
     (
         "monitor→daemon",
         "src-tauri/src/ssh_source.rs",
-        "remote-daemon-proto/src/wire.rs",
+        "src/backend/wire.rs",
         "wire 帧的形状两侧同形",
     ),
     (
         "monitor→daemon",
         "src-tauri/src/local_daemon.rs",
-        "remote-daemon-proto/src/listen.rs",
+        "src/backend/listen.rs",
         "★〔`K-P1` 08-26〕**跨 crate 字面量对拍**：常驻监听口那两个 env 名\
          （`CCM_LISTEN_PORT` / `CCM_LISTEN_TOKEN`）宿主与 daemon 各声明一份，\
          而两边漂了**不会报错** —— daemon 会把它当成「没设」走 stdio 那条路，\
@@ -189,7 +189,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→daemon",
         "src-tauri/src/search.rs",
-        "remote-daemon-proto/src/observe/search_query.rs",
+        "src/backend/observe/search_query.rs",
         "★★〔`K-R100` 09-13 新增〕**搜索口径的跨轨对拍** —— \
          `kou_jing_guard::the_search_kou_jing_has_exactly_one_home` 要断言两侧都**只调** \
          `search-core`、都不许自己再有一份那 12 个助手与 4 个口径常量。\
@@ -201,33 +201,33 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→daemon",
         "src-tauri/src/history.rs",
-        "remote-daemon-proto/src/control/ccm/argv.rs",
+        "src/backend/control/ccm/argv.rs",
         "★★〔`K-R106` 09-13 新增〕**「本机后端产的那一句 attach，后端那份 `ccm` 真读得懂」** ——          `history::tests::the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created`          的第 ③ 段。monitor 这一侧产的是一串 argv（`ccm attach <名>`），         而「它是不是真的被读成 attach、那个位置参数是不是真的落进 `attach_name`」         只有 daemon 这一侧的解析器说得出 —— 那是一条**关于两侧同形**的性质，         只能同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**，不是真跑一次 `ccm`（真跑归 e2e `ccm-print-parity`）。",
     ),
     (
         "monitor→daemon",
         "src-tauri/src/history.rs",
-        "remote-daemon-proto/src/control/ccm/plan.rs",
+        "src/backend/control/ccm/plan.rs",
         "★★〔`K-R106` 09-13 新增〕上一条的**下半程**：读懂之后它接进**哪一个**会话。         钉的是 `Plan::Attach` 那一行的**整行渲染**，而承重的不只是 `tmux attach` 四个字，         还有 `=名:` 那个**精确匹配形** —— 裸 `-t <名>` 按「精确名 → 名字开头 → glob」解析，         会打到兄弟会话上（`src/session-backend.ts::exactTarget` 头注有 tmux 3.6 实测）。         ⇒ 「接进刚建的那个会话」这句话的后半截只有读 daemon 源码才验得了。",
     ),
     // ── daemon → monitor（2 条）：daemon 的判据去读 monitor ────────────────────
     (
         "daemon→monitor",
-        "remote-daemon-proto/src/control/gate.rs",
+        "src/backend/control/gate.rs",
         "src-tauri/src/backend/control/fixtures/gate2-golden.tsv",
         "§34 Gate 2 的黄金夹具**只有一个家**（定框 §4：同一个数不许两侧各写一份）—— \
          daemon 与 monitor 各自独立读同一张表",
     ),
     (
         "daemon→monitor",
-        "remote-daemon-proto/src/control/launch.rs",
+        "src/backend/control/launch.rs",
         "src-tauri/src/tmux.rs",
         "★ 跨轨对拍：`format!(\"={target}:\")` 这个精确匹配形状两侧必须同形 —— \
          F01 实测过，一边写裸 `-t` 就会打到兄弟会话上，而另一边不会，排查极难",
     ),
     (
         "daemon→monitor",
-        "remote-daemon-proto/src/relay/route.rs",
+        "src/backend/relay/route.rs",
         "src-tauri/src/backend/control/payload.rs",
         "★★〔`K-H2b` `KH2B4` 08-28 新增〕**中转路由键 `/s/<agent>/<account>/<key>/…` \
          的两侧对拍**：注入侧（monitor 的 `relay_route_path`）拼、中转侧（daemon 的 \
@@ -259,7 +259,7 @@ mod tests {
     fn both_halves() -> Vec<String> {
         let root = repo_root();
         let mut out = Vec::new();
-        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+        for sub in ["src-tauri/src", "src/backend"] {
             let mut stack = vec![root.join(sub)];
             while let Some(d) = stack.pop() {
                 let Ok(rd) = std::fs::read_dir(&d) else {
@@ -392,7 +392,7 @@ mod tests {
                     // 〔audit-0805 08-06〕**参数是同文件里的单臂宏时，把它展开**。
                     //
                     // `tmux.rs` 有两处 `include_str!(daemon_watcher_src!())`，
-                    // 而那个宏展开成 `"../../remote-daemon-proto/src/observe/watcher.rs"` ——
+                    // 而那个宏展开成 `"../../src/backend/observe/watcher.rs"` ——
                     // **两条真的 monitor→daemon 跨界边**，此前整条不在登记表里。
                     // 讽刺的是 `tmux.rs` 自己写着为什么要用宏：`include_str!` 只接字面量 token，
                     // 用宏是为了「单一落点」—— 一个为了减少重复的好做法，
@@ -496,7 +496,7 @@ mod tests {
     /// 抽取器要求宏参数是**字面量**（`(` 之后跳过空白必须是 `"`）。
     /// 不是字面量的（`concat!(env!("OUT_DIR"), "/x")` 这种）**被静默跳过** ——
     /// 跳过是对的，但**没有任何东西记着跳过了几处**。
-    /// 于是 `include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../remote-daemon-proto/src/wire.rs"))`
+    /// 于是 `include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../src/backend/wire.rs"))`
     /// 这样一条**真的跨界边**会整条隐形，而它与今天已经在用的写法只差一个路径。
     ///
     /// ⚠ 这不是假想形态：本仓**今天就有两处** `include_bytes!(concat!(env!("OUT_DIR"), …))`。

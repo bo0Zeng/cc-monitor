@@ -129,7 +129,7 @@ mod tests {
     #[test]
     fn both_mode_names_are_ones_the_daemon_actually_parses() {
         let daemon = guard_core::production_code(include_str!(
-            "../../../../remote-daemon-proto/src/control/launch.rs"
+            "../../../../src/backend/control/launch.rs"
         ));
         for m in [mode_for(true), mode_for(false)] {
             let needle = format!("\"{m}\" => Some(Mode::");

@@ -113,7 +113,7 @@
 //!
 //! ★ **订正**（`K-R31` `D5⑵`，09-06 现打）：最后一格括号里原先写的是
 //! 「**全 crate 唯一起进程口就在那儿**」—— **那是假的**。
-//! 现打（基点 `6f7ab21`，`git grep -n 'Command::new' -- 'remote-daemon-proto/src/*.rs'`）：
+//! 现打（基点 `6f7ab21`，`git grep -n 'Command::new' -- 'src/backend/*.rs'`）：
 //! 本 crate 的 `src/` 里 `Command::new` 共 **55 行 / 15 份文件**，而 `plugin/invoke.rs`
 //! **只占 1 行**。反例逐行读过，随手四个（**点符号不点行号**，行号下一轮就变成假话）：
 //! `control/kill.rs::run` 里逐字 `let out = Command::new("tmux")` ·

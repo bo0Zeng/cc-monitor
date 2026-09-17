@@ -947,7 +947,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #   `--exclude code-picture-core` 要避开的是同一件事（`C7` 逐字「vendor `code-picture-core` **不动**」）：
 #   **一道我们满足不了的闸，比没有闸更坏。**
 # ⚠ 不加 `--all` 时 `cargo metadata` 那 11 个一个都不进来（同一趟 `-v` 现打：rustfmt 只收
-#   `remote-daemon-proto/src/main.rs` 一个根），读数 6 处不变 ⇒ **少的只有别人家那棵树。**
+#   `src/backend/main.rs` 一个根），读数 6 处不变 ⇒ **少的只有别人家那棵树。**
 #
 # ## ⚠ 诚实边界，别读宽
 #   · 它买的是「**排版与 rustfmt 一致**」，**买不到**「代码对」——与上面那一格同一句话。

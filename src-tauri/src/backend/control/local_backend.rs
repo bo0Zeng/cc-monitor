@@ -1946,7 +1946,7 @@ mod tests {
     ///
     /// # 它扫的是什么、扫不到什么
     ///
-    /// 扫描面 = `src-tauri/src` · `remote-daemon-proto/src` · `src-tauri/crates` 三棵树的
+    /// 扫描面 = `src-tauri/src` · `src/backend` · `src-tauri/crates` 三棵树的
     /// `.rs`，逐份过 [`guard_core::production_code`]（剥测试段 + 剥块注释 + 剥整行与行尾 `//`）。
     /// ⇒ 本条那张形态表住 `#[cfg(test)]` 里、那几段前提住 `///` 里，**按构造都进不了扫描面**
     /// —— `scanning_guard_registry` 头注四类里的第二类（「剥生产段（构造性摘除）」）。
@@ -2039,7 +2039,7 @@ mod tests {
         let mut corpus: Vec<(String, String)> = vec![(self_rel.to_string(), me.to_string())];
         for sub in [
             "src-tauri/src",
-            "remote-daemon-proto/src",
+            "src/backend",
             "src-tauri/crates",
         ] {
             for (f, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {

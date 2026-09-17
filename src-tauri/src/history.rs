@@ -1049,7 +1049,7 @@ fn sanitize_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
 /// > 「新起一个会话之后，把你的终端接进那个会话那一句 `tmux attach`，归谁产？」
 /// > 「**归本机后端就好了啊**」〔用@09-13，`DECISIONS.md#R61` 裁定三〕
 ///
-/// ⚠ 那句「本模块**不 attach**，一次都不」（`remote-daemon-proto/src/control/launch.rs`
+/// ⚠ 那句「本模块**不 attach**，一次都不」（`src/backend/control/launch.rs`
 /// 头注）**仍然对** —— 它说的是**远端后端**，理由逐字是「在远端，**开不了你面前的窗**」。
 /// 🔴 **本机后端就在用户面前那台机器上** ⇒ 那条位置约束在这一侧不成立。
 /// `R61` 立的就是这件事：**不许再用「daemon」这个词把这两件事压平。**
@@ -1158,7 +1158,7 @@ pub enum LaunchAccount {
         /// 推得出一个像样的名字（`cc-acct-iso` 的布局是 `~/.claude-accts/<名字>`，
         /// [`relay_account_id_of_dir`] 就是那么推的），**但那两处的失效方向相反**：
         /// 推错一个中转 id ⇒ 表里查不到 ⇒ 逐字节走旧路（保守）；推错一个 `--account`
-        /// ⇒ `ccm` 当场 `die`（`remote-daemon-proto/src/control/ccm/argv.rs` 认不出这个名字 = 退出码 2）
+        /// ⇒ `ccm` 当场 `die`（`src/backend/control/ccm/argv.rs` 认不出这个名字 = 退出码 2）
         /// ⇒ **一次本来能起的会话变成一条报错**。⇒ 这一格只收**调用方说得出**的名字。
         ///
         /// 前端那一侧的取值口与 `configDir` 那半**同源**
@@ -1589,12 +1589,12 @@ fn render_local_ccm_with(
     //
     //    这里此前逐字写着「也不能靠『省略 `--account`』兑现……CLI 语法里今天真的没有
     //    『继承』这一态」，并把出路记成「**③ 那一格要动的是 ccm 省略时的默认语义
-    //    （产品决定 ＋ `remote-daemon-proto/src/control/ccm/plan.rs`）**」。
+    //    （产品决定 ＋ `src/backend/control/ccm/plan.rs`）**」。
     //    **那句话是陈账：它在等一个 09-12 就已经到了、而且已经落地的决定。**
     //
     //    〔`DECISIONS.md#R28`，用户 09-12 逐字：「把调用方选中的号静默换掉 /
     //     **不要这么做** / 不是有选默认账号吗? **就用那个**」〕
-    //    落地处 `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account`
+    //    落地处 `src/backend/control/ccm/plan.rs::resolve_account`
     //    （头注挂着 ✅），省略被拆成**两支，两支都是这一裁要的行为**：
     //      · `CLAUDE_CONFIG_DIR` **非空** ⇒ 保留不覆盖（`R08` 那道 `-z` 闸）= **继承**；
     //      · 裸终端（都没给）⇒ 落 manifest 的 `isDefault` = 「就用那个」。
@@ -1710,10 +1710,10 @@ fn render_local_ccm_with(
 ///   app 自带并自管环境、后端只有一个 ⇒「对面装了**别的** `ccm`」这个概念本身正在退场，
 ///   **不许再拿它当理由**；
 /// - 我们自己这份 `ccm` 的容器路**本来就转发** `ANTHROPIC_BASE_URL`
-///   （`remote-daemon-proto/src/control/ccm/plan.rs`，daemon 侧有判据真去驱动它）。
+///   （`src/backend/control/ccm/plan.rs`，daemon 侧有判据真去驱动它）。
 ///
 /// ⇒ 今天的形状是：**转发做到了、也声明了** —— `K-R61` 把 `base-url-across-tmux`
-/// 补进了 `remote-daemon-proto/src/control/ccm/mod.rs` 的 `CAPABILITIES`，
+/// 补进了 `src/backend/control/ccm/mod.rs` 的 `CAPABILITIES`，
 /// **差的只是下面那一行还没改成探它**。
 ///
 /// ⇒ 退役条件因此是**一行 Rust**（不是「等用户升级」）：把 [`launch_local`] 里那句
@@ -1727,7 +1727,7 @@ fn render_local_ccm_with(
 #[cfg(not(windows))]
 const RELAY_KEEPS_THE_OLD_PATH: &str =
     "这个号走中转，而这一行还没改成「探到 `base-url-across-tmux` 才放行」——\
-     转发做到了、也声明了（`remote-daemon-proto/src/control/ccm/mod.rs`），\
+     转发做到了、也声明了（`src/backend/control/ccm/mod.rs`），\
      差的只是这一行；`K-R61` 只重裁理由，不动行为";
 
 /// 🔴 `K-R106`：[`launch_local`] 被要求 attach 时给出的理由（同上，是理由不是 `bool`）。
@@ -1802,14 +1802,14 @@ fn launch_local(
         //
         // 而互斥没有跟着消失，因为下面这一行**显式**把它保住了。为什么要显式保住：
         //
-        // 我们自己这份 `ccm`（`remote-daemon-proto/src/control/ccm/plan.rs`）的容器路
+        // 我们自己这份 `ccm`（`src/backend/control/ccm/plan.rs`）的容器路
         // 那条 `ANTHROPIC_BASE_URL` 转发是**有的**，而先前 `--ccm-probe` 吐的
         // `capabilities=` 串里**没有任何 token 声明它** —— **能力在、声明不在**。
         //
         // 🔴🔴🔴 **三次订正（`K-R61` 09-11）：声明那一半本件补上了，理由跟着重裁。**
         //   上一版这里的理由逐字是「放行会让**装着旧 ccm 的机器**静默吃掉这个变量」，
         //   而 `K34`/`K35` 之后那类机器正在退场 ⇒ **那句话不许再当理由用**。
-        //   `base-url-across-tmux` 已进 `remote-daemon-proto/src/control/ccm/mod.rs`
+        //   `base-url-across-tmux` 已进 `src/backend/control/ccm/mod.rs`
         //   的 `CAPABILITIES` ⇒ **转发做到了、也声明了**。
         //
         // ⇒ **中转在场就不走 ccm 容器路**，逐字节维持 `K-H2b` 那一拍的行为
@@ -3075,11 +3075,11 @@ mod tests {
     /// 后端那份 `ccm` 的 **argv 解析**半。跨半边编译期边，登记住
     /// `cross_half_edge_registry::CROSS_EDGES`。
     #[cfg(not(windows))]
-    const CCM_ARGV_SRC: &str = include_str!("../../remote-daemon-proto/src/control/ccm/argv.rs");
+    const CCM_ARGV_SRC: &str = include_str!("../../src/backend/control/ccm/argv.rs");
 
     /// 后端那份 `ccm` 的 **计划 + 等价 shell 渲染**半。同上。
     #[cfg(not(windows))]
-    const CCM_PLAN_SRC: &str = include_str!("../../remote-daemon-proto/src/control/ccm/plan.rs");
+    const CCM_PLAN_SRC: &str = include_str!("../../src/backend/control/ccm/plan.rs");
 
     /// 后端那份 `ccm` 把 `Plan::Attach` 渲成什么 —— **逐字**。
     ///
@@ -3411,12 +3411,12 @@ mod tests {
     /// # 🔴 缺席那一格：**09-13 `K-R89` 之前是红的，今天是绿的** —— 翻它的是一条裁定，不是一次放宽
     ///
     /// 「参数缺席」的语义是**继承环境**（旧路发空前缀）。这里此前逐字写着「三格里没有一格
-    /// 逐字等于『继承』⇒ 那是**产品决定** ＋ 改 `remote-daemon-proto/src/control/ccm/plan.rs`」，
+    /// 逐字等于『继承』⇒ 那是**产品决定** ＋ 改 `src/backend/control/ccm/plan.rs`」，
     /// 并把这一格钉成 `Err`。**那段话在 09-12 就过期了，而它一直挂在盘上等一个已经到了的决定。**
     ///
     /// 〔`DECISIONS.md#R28`，用户 09-12 逐字：「把调用方选中的号静默换掉 / **不要这么做** /
     ///  不是有选默认账号吗? **就用那个**」〕⇒ 那个产品决定做了，而且**落地了**：
-    /// `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account` 头注挂着 ✅，
+    /// `src/backend/control/ccm/plan.rs::resolve_account` 头注挂着 ✅，
     /// 省略被拆成两支，**两支都是这一裁的一部分**：
     ///
     /// | 目标 shell 里有没有 `CLAUDE_CONFIG_DIR` | 旧路（空前缀） | ccm 省略 `--account` | ccm `--base` |
@@ -3603,7 +3603,7 @@ mod tests {
     ///
     /// 「账号未表态（继承）」从 `StillFallsBack` 翻成 `Closed`。翻它的**不是本件的判断**，
     /// 是 `DECISIONS.md#R28`（用户 09-12 亲裁）＋ 它在
-    /// `remote-daemon-proto/src/control/ccm/plan.rs::resolve_account` 上的落地。
+    /// `src/backend/control/ccm/plan.rs::resolve_account` 上的落地。
     /// 盘上原来有一句陈账逐字写着「③ 那一格要动的是 ccm 省略时的默认语义（**产品决定**
     /// ＋ `plan.rs`）」—— **它在等一个 09-12 就到了的决定**，本轮一并撤掉。
     #[cfg(not(windows))]
@@ -3928,7 +3928,7 @@ mod tests {
     /// 〔`K-R61` 09-11 **重裁**〕上一版这里写的是「退役条件今天是**一行 shell**」，
     /// 点的是那份 bash `ccm` 的第 624 行 —— 而它 `07e4e72` 就删了。
     /// 今天的前提是：**转发做到了、也声明了**（`base-url-across-tmux` 已在
-    /// `remote-daemon-proto/src/control/ccm/mod.rs` 的 `CAPABILITIES` 里，
+    /// `src/backend/control/ccm/mod.rs` 的 `CAPABILITIES` 里，
     /// 由那棵树的 `the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it`
     /// 真去驱动一遍），**差的只是 [`launch_local`] 那一行还没改成探它**。
     ///
@@ -4056,7 +4056,7 @@ mod tests {
             "「走中转」与「有 tmux 容器」不再互斥了 —— 那是**好事**，但盘上有三处话要跟着改：\n\
              ① 本条（重新裁定）② `launch_local` 头注与 `RELAY_KEEPS_THE_OLD_PATH`\n\
              ③ 件计划 `K-H2b §4` 那条登记。\n\
-             （第四样 —— `remote-daemon-proto/src/control/ccm/mod.rs` 的 `CAPABILITIES` 加\n\
+             （第四样 —— `src/backend/control/ccm/mod.rs` 的 `CAPABILITIES` 加\n\
              `base-url-across-tmux` —— `K-R61` 已经做了：转发做到了、也声明了。）\n\
              实得：走中转的 {relayed:?} · 有容器的 {containered:?}"
         );
@@ -4290,7 +4290,7 @@ mod tests {
     }
 
     /// 退役条件点名的那个住址 —— **本文件里的字面量只有这一处**（`brief` 13b）。
-    const R61_ADDR: &str = "remote-daemon-proto/src/control/ccm/mod.rs";
+    const R61_ADDR: &str = "src/backend/control/ccm/mod.rs";
 
     /// `KR61D2`：**退役条件点名的仓内住址，不在了就得响。**
     ///
@@ -4533,7 +4533,7 @@ mod tests {
             std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                 .parent()
                 .expect("仓根")
-                .join("remote-daemon-proto/src/observe/history_query.rs"),
+                .join("src/backend/observe/history_query.rs"),
         )
         .expect("读不到后端的 history_query.rs");
         let remote: Vec<usize> = guard_core::production_code(&daemon_src)
@@ -5553,7 +5553,7 @@ mod tests {
         // ② 两侧各有**恰好一处**调用（生产段）。
         //    0 ⇒ 那一侧又自己找了一遍；2+ ⇒ 一条路上问了两遍，先说清为什么。
         let mine = guard_core::production_code(include_str!("history.rs"));
-        let theirs = r88_backend_production("remote-daemon-proto/src/control/fork_write.rs");
+        let theirs = r88_backend_production("src/backend/control/fork_write.rs");
         for (who, src) in [
             ("monitor `history.rs`", &mine),
             ("后端 `fork_write.rs`", &theirs),
@@ -7155,7 +7155,7 @@ mod tests {
     ///   会在 tmux 边界被吃掉（与 `K-H2b` 给 `ANTHROPIC_BASE_URL` 踩过的**同一个坑**，
     ///   那一次的修法是在容器载荷内侧补一句转发）—— 当时那份 bash `ccm` 是红线文件，
     ///   那一句没补 ⇒ 这一格当时是个洞，登记在 `launcher_identity_registry` 的 `L1` 那一行里。
-    ///   🔴 〔`K-R61` 09-11 现打〕`remote-daemon-proto/src/control/ccm/plan.rs` 的容器路
+    ///   🔴 〔`K-R61` 09-11 现打〕`src/backend/control/ccm/plan.rs` 的容器路
     ///   **今天有** `export CCM_LAUNCH_ID=…` 那一句 ⇒ **那个洞的成因很可能已经不在了**。
     ///   但「洞补没补上」的落点是 `launcher_identity_registry` 的 `L1`，**不在 `K-R61` 写区**，
     ///   本轮**没有**去重裁它 —— 已报回 PM。在有人重裁之前，别把这一段读成「已经全覆盖」。

@@ -2,7 +2,7 @@
 #
 # 读它的三方：
 #   1. monitor  src-tauri/src/backend/control/gate2_parity.rs   （Rust，调 gate_core）
-#   2. daemon   remote-daemon-proto/src/control/gate.rs 的测试   （Rust，调 gate_core）
+#   2. daemon   src/backend/control/gate.rs 的测试   （Rust，调 gate_core）
 #   3. e2e      tests/e2e/daemon-gate2-acceptance.sh                   （bash，跑真 daemon 二进制 + 真 tmux）
 #
 # ⚠ **绝不许一侧在运行时去调另一侧** —— 那样两侧一起错也全绿。三方都只跟这张表对。

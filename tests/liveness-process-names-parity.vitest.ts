@@ -47,7 +47,7 @@ function stripLineComments(src: string): string {
 }
 
 /** daemon 侧判活词表今天的住址（`S3` 08-14 从 `watcher.rs` 搬来）。 */
-const DAEMON_LIVENESS = "remote-daemon-proto/src/agents/claudecode/liveness.rs";
+const DAEMON_LIVENESS = "src/backend/agents/claudecode/liveness.rs";
 
 /**
  * 从 daemon 的判活词表里抠出 token。
@@ -114,7 +114,7 @@ describe("livenessProcessNames 跨语言 token 对拍（audit-0805 F13，E3）",
         "会误杀活会话。缺数据放行是这一侧刻意的方向（前端相反）。",
     ).toBe(true);
     const caller = stripLineComments(
-      readFileSync(resolve(REPO, "remote-daemon-proto/src/observe/watcher.rs"), "utf8"),
+      readFileSync(resolve(REPO, "src/backend/observe/watcher.rs"), "utf8"),
     );
     const callAt = caller.indexOf("cmdline_may_be_agent(&lower)");
     expect(

@@ -109,7 +109,7 @@
 //!   ⇒ **把 `K-R31` 那条判据的阳性对照整个删掉，本条照样绿**（09-06 变异实打，读数在件文件里）。
 //!   本条买到的是「它进了人群、数得着」，**不是**「它的反向那半被逐条守着」。
 //! - **射程只有 `src-tauri/src` 一棵树**（`scan_tree!` 的实参就写在那儿）：
-//!   `remote-daemon-proto/src` 里的登记表这条元判据一份也没看。
+//!   `src/backend` 里的登记表这条元判据一份也没看。
 //!   🔴 **这一条 `K-R37`（09-06）已经治了** —— 今天的实参是**两棵树**，
 //!   逐条读数与「还差哪几棵」见下面 `K-R37` 那一节。**这一行留着是账，不是现状。**
 //! - **`D1②` 现打的真数**（09-06，分母 = 三棵树 `*_registry.rs`/`*_guard.rs` 共 47 份、
@@ -174,7 +174,7 @@
 //! ## 🔴 它买到的红是 **0** —— 这一句必须写在最前面
 //!
 //! `D1` 现打（量具 `evidence/K-R37-daemon-tree-census.py`，读数与**逐条判词**在
-//! `K-R37` 件文件 `§8`）：`remote-daemon-proto/src` 那 77 份 `.rs` 里，
+//! `K-R37` 件文件 `§8`）：`src/backend` 那 77 份 `.rs` 里，
 //! `TABLE_DECLS` 那四个名字**一处都没有出现过**（分母 = 整份文件文本，比测试段还宽）
 //! ⇒ 扩射程之后，文件级人群 +0、判据级 +0、新红 **+0**。
 //!
@@ -201,7 +201,7 @@
 //!
 //! ## 射程今天到哪儿为止（逐字写明还差哪几棵）
 //!
-//! 覆盖：`src-tauri/src` · `remote-daemon-proto/src`。
+//! 覆盖：`src-tauri/src` · `src/backend`。
 //! **仍然没看的（09-06 现打，本仓 `.rs` 的其余落点）**：
 //! `src-tauri/crates`（9 份）· `src-tauri/vendor`（23 份）· `src-tauri/build.rs`（1 份）。
 //! ⚠ 那三处闭集命中同样是 0（现打）⇒ 今天补进来也是 +0 红；
@@ -340,12 +340,12 @@ mod tests {
         "src-tauri/src/ssh_source.rs",
         "src-tauri/src/tmux_daemon_gate_guard.rs",
         "src-tauri/src/utils.rs",
-        "remote-daemon-proto/src/layering_guard.rs",
-        "remote-daemon-proto/src/no_timer_guard.rs",
-        "remote-daemon-proto/src/observe/watcher.rs",
-        "remote-daemon-proto/src/platform/fallback_guard.rs",
-        "remote-daemon-proto/src/protocol_doc_guard.rs",
-        "remote-daemon-proto/src/readonly_guard.rs",
+        "src/backend/layering_guard.rs",
+        "src/backend/no_timer_guard.rs",
+        "src/backend/observe/watcher.rs",
+        "src/backend/platform/fallback_guard.rs",
+        "src/backend/protocol_doc_guard.rs",
+        "src/backend/readonly_guard.rs",
     ];
 
     /// 存量上限（**递减棘轮**）。
@@ -544,13 +544,13 @@ mod tests {
         let mut per_guard: Vec<String> = Vec::new();
         let mut missing_guards: Vec<String> = Vec::new();
         // 🔴 `K-R37` 09-06：**逐子树循环**。上一版这里的实参逐字只有
-        // `&root.join("src-tauri/src")` 一棵树 ⇒ `remote-daemon-proto/src` 那 77 份 `.rs`
+        // `&root.join("src-tauri/src")` 一棵树 ⇒ `src/backend` 那 77 份 `.rs`
         // 本条**一份也没打开过**，而它的失败文案**只点它采到的文件、没采到的一个字都不提**
         // ⇒ 「没红」与「没看」在输出上一模一样（本模块从头到尾在治的正是这个形状）。
         // ★ 形状不是发明的：本模块 [`raw_walkers`] 从一开始就是这么写的（逐字同一份清单）。
         let mut scanned: Vec<(&str, usize)> = Vec::new();
         let mut seen: Vec<String> = Vec::new();
-        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+        for sub in ["src-tauri/src", "src/backend"] {
             let files = guard_core::scan_tree!(&root.join(sub), &["rs"]);
             scanned.push((sub, files.len()));
             for (f, src) in files {
@@ -612,7 +612,7 @@ mod tests {
         // 抄一份的话，「清单少一棵」与「钉子少一条」会被同一次编辑一起改掉 ⇒ 恒真。
         // 形状照上面的 [`MUST_BE_RECOGNISED`]：拿**盘上真有的那一份**当见证。
         const MUST_BE_IN_REACH: &[(&str, &str)] = &[(
-            "remote-daemon-proto/src/wire.rs",
+            "src/backend/wire.rs",
             "daemon 那棵树的见证 —— `K-R37` 之前本条的实参逐字只有 `src-tauri/src`，\
              那棵树的 `.rs` 一份也没被打开过",
         )];
@@ -933,7 +933,7 @@ mod tests {
     fn raw_walkers() -> Vec<String> {
         let root = repo_root();
         let mut out = Vec::new();
-        for sub in ["src-tauri/src", "remote-daemon-proto/src"] {
+        for sub in ["src-tauri/src", "src/backend"] {
             // ★ 本模块自己也走 `scan_tree!` —— 它就是那条规矩的第一个遵守者。
             //
             // ⚠ **摘除在这里今天不是承重的**（变异实测）：把 `scan_tree!` 换成一个匹配不上的

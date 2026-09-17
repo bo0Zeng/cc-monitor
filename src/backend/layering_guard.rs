@@ -711,7 +711,7 @@ mod tests {
     /// # 先报摸底读数（`brief` 第 12 条：分母怎么数的一起写）
     ///
     /// 09-02 现打，量具住 `evidence/K-G4-C-relay-layer-census.py`（被测对象写死指向
-    /// `worktrees/k-g4/remote-daemon-proto/src`）：
+    /// `worktrees/k-g4/src/backend`）：
     ///
     /// | 方向 | 违规处数 | 分母 |
     /// |---|---|---|

@@ -35,7 +35,7 @@
 //!
 //! 抽取 / 匹配 / snippet 的 12 个助手、4 个口径常量、snippet 预算与预算顺序，
 //! **一份都不在本文件**：它们住 `crates/search-core`，daemon 的 `--search`
-//! （`remote-daemon-proto/src/observe/search_query.rs`）调的是**同一份**。
+//! （`src/backend/observe/search_query.rs`）调的是**同一份**。
 //! 本文件只剩「怎么扫盘、怎么建索引、怎么组装 wire 类型」这些**本地特有**的活。
 //! 收口前两侧各写一遍那 12 个助手（`K-R85` 实测逐字相同），而 `CROSS_EDGES` 里
 //! search 零命中 ⇒ **没有任何判据在拦着它们漂开**。判据现在有了：
@@ -691,7 +691,7 @@ pub async fn rebuild_search_index(
 /// 第 ③ 刀（「改 core 一处、两侧行为都跟着变」）**不在这里** —— 那是行为，
 /// 判不了源码。它由两侧各一条**期望值取自 core、实际值来自本侧生产管线**的行为判据承担：
 /// `tests::the_snippet_window_comes_from_core`（monitor）
-/// ＋ `remote-daemon-proto/src/observe/search_query.rs` 里的同名那条（daemon）。
+/// ＋ `src/backend/observe/search_query.rs` 里的同名那条（daemon）。
 #[cfg(test)]
 mod kou_jing_guard {
     /// 收口前在两侧**各写一遍**的那 12 个助手（`K-R85` 逐条实测同名同形）。
@@ -766,7 +766,7 @@ mod kou_jing_guard {
             ("monitor src/search.rs", include_str!("search.rs")),
             (
                 "daemon observe/search_query.rs",
-                include_str!("../../remote-daemon-proto/src/observe/search_query.rs"),
+                include_str!("../../src/backend/observe/search_query.rs"),
             ),
         ] {
             let prod = guard_core::production_code(raw);

@@ -262,7 +262,7 @@ jobs:
             Copy-Item $f.FullName "src-tauri/embedded-daemons/cc-monitor-remote-$a" -Force
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
           }
-          $main = "remote-daemon-proto/src/main.rs"
+          $main = "src/backend/main.rs"
           $src   = (Select-String -Path $main -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
           $open  = (Select-String -Path $main -Pattern 'const BUILD_STAMP_OPEN: &str = "([^"]+)"').Matches[0].Groups[1].Value
           $close = (Select-String -Path $main -Pattern 'const BUILD_STAMP_CLOSE: &str = "([^"]+)"').Matches[0].Groups[1].Value
@@ -320,7 +320,7 @@ jobs:
           # ⇒ 这里不比它与 tag，而是**盯住它别被人顺手改成一个假数字**，
           #   并确认真身份（BUILD_ID）在这一版里是**说得出**的。
           $dv = (Select-String -Path remote-daemon-proto/Cargo.toml -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches.Groups[1].Value
-          $did = (Select-String -Path remote-daemon-proto/src/main.rs -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
+          $did = (Select-String -Path src/backend/main.rs -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
           if ($dv -ne '0.0.0') {
             Write-Error "remote-daemon-proto 的 version 现在是 $dv —— 它刻意是 0.0.0（真身份是 BUILD_ID）。改它之前先答：谁在数这个新数字？"
             exit 1

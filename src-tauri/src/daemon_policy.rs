@@ -148,12 +148,12 @@ pub fn set_daemon_kill_on_exit(origin: String, kill: bool) -> Result<(), String>
 // **都是自愈把一次确定性失败放大了**，而两条同一根：
 // **死亡判据分不清崩了 / 拒绝了 / 读坏了。** ⇒ 先买判据，重起是它的下游。
 //
-// # 为什么这一档住在宿主侧，而不是预批的 `remote-daemon-proto/src/death_ledger.rs`
+// # 为什么这一档住在宿主侧，而不是预批的 `src/backend/death_ledger.rs`
 //
 // 三条现打，逐条给住址（PM 补充里预批了那个新文件 + `main.rs` 一行 `mod`，本件**都没用**）：
 //
 // 1. **daemon 写不了盘，而放宽写盘口是第二档的事。**
-//    `remote-daemon-proto/src/readonly_guard.rs` 的默认层禁掉本 crate 生产段里
+//    `src/backend/readonly_guard.rs` 的默认层禁掉本 crate 生产段里
 //    全部 `fs::write` / `File::create` / `OpenOptions` …，白名单**恰好一个模块**
 //    （`control/fork_write.rs`，`assert_eq!(whitelisted, 1)`）⇒ 在 daemon 侧开第二个
 //    写盘口 = 动一条相等断言 = **放宽**，而 `§0-7` 那张表把「零断言放宽」写进了第一档。
@@ -197,7 +197,7 @@ pub enum Outcome {
 /// ⚠ 这一维是 2026-07-09 那次事故的**判别式**：未知 flag ⇒ daemon `exit 2`、
 /// **一个字节都不输出、没有 hello** ⇒ monitor 看到的和「daemon 崩了」无法区分
 /// ⇒ 重连 ⇒ 发同一个 flag ⇒ **死循环**（`doc/IPC-PROTOCOL.md` 与
-/// `remote-daemon-proto/src/main.rs` 两处逐字）。
+/// `src/backend/main.rs` 两处逐字）。
 /// **分开这两件事的就是它。**
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Handshake {
@@ -481,7 +481,7 @@ fn ledger() -> &'static Mutex<HashMap<String, Health>> {
 
 /// ★★ `K-P3b KP3W3`：[`record_death`] 的**生产调用点逐处点名**。
 ///
-/// 形状照 `remote-daemon-proto/src/readonly_guard.rs::ALLOWED` 那种
+/// 形状照 `src/backend/readonly_guard.rs::ALLOWED` 那种
 /// 「**逐处点名 + 相等**」，不是地板 —— 地板在变大方向上是瞎的
 /// （那张表的报错文案逐字：「不许改回地板」）。
 ///

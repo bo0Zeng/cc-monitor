@@ -308,7 +308,7 @@ mod tests {
     /// daemon 改字段名或把 launch 摘掉，这条红。
     #[test]
     fn the_fields_this_channel_sends_are_declared_by_the_daemon_registry() {
-        const INBOUND: &str = include_str!("../../../../remote-daemon-proto/src/inbound.rs");
+        const INBOUND: &str = include_str!("../../../../src/backend/inbound.rs");
         let at = INBOUND
             .find("name: \"launch\",")
             .expect("daemon 的 REGISTRY 里找不到 launch —— 抽取坏了，本断言在空转");

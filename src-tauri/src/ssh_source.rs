@@ -41,7 +41,7 @@ use crate::event_replay::EventReplay;
 use crate::session_map::{RemovalCause, RemovedSid, SessionChange};
 
 /// S0 **跨语言双写点**：daemon 那侧 `RemovalCause::Superseded` 的 serde 线上名。
-/// 改这里必须同步 `remote-daemon-proto/src/wire.rs`（同 `TMUX_LS_FMT` 的纪律）。
+/// 改这里必须同步 `src/backend/wire.rs`（同 `TMUX_LS_FMT` 的纪律）。
 const REMOVAL_CAUSE_SUPERSEDED: &str = "superseded";
 use crate::watcher::JsonlLine;
 
@@ -1507,7 +1507,7 @@ impl tokio::io::AsyncWrite for DaemonStream {
 /// ⇒ 换成环境变量之后子进程的 `stdin` **纯粹**是 daemon 那条通道，一个字节带外数据都没有。
 pub(crate) const DIAL_REQUEST_ENV: &str = "CCM_DIAL_REQUEST";
 
-/// 请求的键名 —— **蛇形**，与 `remote-daemon-proto/src/dial/mod.rs::DialRequest` 对齐。
+/// 请求的键名 —— **蛇形**，与 `src/backend/dial/mod.rs::DialRequest` 对齐。
 ///
 /// ⚠ 刻意不复用 `RemoteConfig` 的 serde（那套是 camelCase、是**给前端的**契约）：
 /// 这条管子两端都是我们自己，不该被前端字段名拴住。两侧各钉一半 ——
@@ -1559,7 +1559,7 @@ async fn spawn_dial_proxy(
 
     // ★ **有上限的一行读**。对端是另一个进程 —— 它坏掉、或压根不是我们的代理，
     //   一条没有换行的巨流会把无界读变成无界堆分配（daemon 侧实测过：512 MiB 无换行
-    //   ⇒ RSS 6 MiB → 518 MiB，见 `remote-daemon-proto/src/inbound.rs` 头注）。
+    //   ⇒ RSS 6 MiB → 518 MiB，见 `src/backend/inbound.rs` 头注）。
     //   ack 正常 < 200 字节，64 KiB 是五个数量级的余量。
     //   ⚠ 上限写成字面量而不是具名常量：具名的尺寸常量要去 `byte_cap_registry` 那张表上
     //   签字，而那张表不在本轮写区。**如实记，不装成风格选择。**
@@ -1684,7 +1684,7 @@ pub(crate) mod dial_move_judge {
     //!
     //! # 乙半在哪
     //!
-    //! 乙半（代理这一侧：拨号只许住 `dial/`）住 `remote-daemon-proto/src/dial/mod.rs`
+    //! 乙半（代理这一侧：拨号只许住 `dial/`）住 `src/backend/dial/mod.rs`
     //! 的测试模块。**两侧各扫各的 crate**，刻意不互相 `include_str!`
     //! —— 那会新增一条跨轨编译期边，而那张登记表（`cross_half_edge_registry`）
     //! 不在本轮写区里。**两侧各钉一半**，与 `build_id_guard` / `protocol_doc_guard` 同形。
@@ -3038,7 +3038,7 @@ pub(crate) enum CappedLine {
 ///
 /// # ★ 为什么不是 `read_line` 加一句长度判断
 ///
-/// 那是 daemon 侧栽过的坑，逐字记在 `remote-daemon-proto/src/inbound.rs` 头注里：
+/// 那是 daemon 侧栽过的坑，逐字记在 `src/backend/inbound.rs` 头注里：
 /// 第一版用无界 `read_until`、读完再看长度，D 审计实测**喂 512 MiB 无换行的流 ⇒
 /// RSS 从 6 MiB 涨到 518 MiB**，而它照样回了一条 `line_too_long`「看起来对」。
 /// ⇒ 机制必须是 `fill_buf`/`consume`：超限之后**只找换行、不再往 buf 里塞字节**，
@@ -3273,7 +3273,7 @@ pub enum InboundFrame {
         sid: String,
         session_kind: Option<String>,
         /// E73（additive）：attach 进去对人有没有意义。缺席 = true（存量零迁移）。
-        /// 语义与来源见 `remote-daemon-proto/src/wire.rs` 的同名字段 + `doc/IPC-PROTOCOL.md` §9.3。
+        /// 语义与来源见 `src/backend/wire.rs` 的同名字段 + `doc/IPC-PROTOCOL.md` §9.3。
         attachable: Option<bool>,
         cwd: Option<String>,
         name: Option<String>,
@@ -3496,7 +3496,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         "session_removed" => {
             let sid = obj.get("sid")?.as_str()?.to_string();
             // ★ S0（additive）：`cause` 缺省 = `Gone`，旧 daemon 原样工作。
-            // **双写点**：字面量与 daemon `remote-daemon-proto/src/wire.rs::RemovalCause`
+            // **双写点**：字面量与 daemon `src/backend/wire.rs::RemovalCause`
             // 的 serde 名逐字一致，由 `removal_cause_wire_literal_stays_in_sync` 钉住。
             // 未知取值也退回 `Gone`（宁可保守判活，不可凭一个不认识的词直接归档）。
             let cause = match obj.get("cause").and_then(|v| v.as_str()) {
@@ -3624,7 +3624,7 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
 #[cfg(test)]
 mod emits_parity {
     /// daemon `main.rs` 的 `EMITS` 常量（编译期内嵌 daemon 源码，同 `build_id` 那套单源思路）。
-    const DAEMON_MAIN: &str = include_str!("../../remote-daemon-proto/src/main.rs");
+    const DAEMON_MAIN: &str = include_str!("../../src/backend/main.rs");
 
     fn daemon_emits() -> Vec<String> {
         let i = DAEMON_MAIN
@@ -4351,7 +4351,7 @@ const EXPECTED_PROTO_V: u64 = 1;
 /// 本 monitor 期望的 daemon build_id。
 ///
 /// **SS-B（issue #33/#29）已单源**：值来自编译期 env `DAEMON_BUILD_ID`，由 `build.rs` 从
-/// `remote-daemon-proto/src/main.rs::BUILD_ID` 抠出 emit——与 daemon 源码、F08b 内嵌二进制的
+/// `src/backend/main.rs::BUILD_ID` 抠出 emit——与 daemon 源码、F08b 内嵌二进制的
 /// build_id **同一事实源**，无需手工同步（F08b 消除了 F06 时的手工同步债）。
 const EXPECTED_DAEMON_BUILD_ID: &str = env!("DAEMON_BUILD_ID");
 
@@ -4763,7 +4763,7 @@ async fn stream_loop(
     tauri::async_runtime::spawn(async move {
         let mut reader = BufReader::new(stream);
         // 按 `\n` 切（协议保证每帧一行、帧内换行已被 daemon 转义成 `\n` 两字符，
-        // 见 remote-daemon-proto/src/wire.rs）。
+        // 见 src/backend/wire.rs）。
         // ★ F10b：从无界 `read_line` 换成 [`read_capped_line`] —— 无界读遇「一条永远不结束
         // 的行」就是无界堆分配，而对端是**远端进程**（它坏掉或不是我们的 daemon 都可能）。
         let mut buf: Vec<u8> = Vec::new();
@@ -5565,7 +5565,7 @@ mod f032_idle_tests {
     /// 而两侧各自的测试都是绿的。
     #[test]
     fn removal_cause_wire_literal_stays_in_sync() {
-        let daemon_wire = include_str!("../../remote-daemon-proto/src/wire.rs");
+        let daemon_wire = include_str!("../../src/backend/wire.rs");
         // 反向自检：真读到了那个文件，且它确实是那个 enum 所在的文件。
         assert!(daemon_wire.len() > 2000, "没读到 daemon wire.rs");
         assert!(

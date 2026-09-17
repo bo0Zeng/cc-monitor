@@ -129,8 +129,8 @@ mod tests {
             //    一次性模式（`exec_or_spawn`：POSIX 上 `CommandExt::exec`，非 unix 退成
             //    「起它 + 等它 + 透传退出码」）。**这一处今天仍然没落身份**，理由见 `why`。
             anchors: &[
-                ("remote-daemon-proto/src/control/ccm/mod.rs", "fn exec_or_spawn(", 1),
-                ("remote-daemon-proto/src/control/ccm/mod.rs", ".exec()", 1),
+                ("src/backend/control/ccm/mod.rs", "fn exec_or_spawn(", 1),
+                ("src/backend/control/ccm/mod.rs", ".exec()", 1),
             ],
             plants: false,
             why: "今天没落，理由**换了一条，而且比原来那条硬**。原来写的是「`shared/ccm` 是 \

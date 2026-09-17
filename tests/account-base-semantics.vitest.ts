@@ -131,7 +131,7 @@ describe("「不指定账号」的文案必须与 --base 的真实语义对上�
     //   （那一行代码）小，把事实撑大的改动（`unset_config_dir: o.use_base && never()`）
     //   会从缝里溜过去而判据照样绿。`scanning-guard-registry.vitest.ts` 的递减棘轮
     //   盯的正是这一形 —— 本条第一版就是裸 `.includes`，被它当场逮住。
-    const planLines = read("remote-daemon-proto/src/control/ccm/plan.rs")
+    const planLines = read("src/backend/control/ccm/plan.rs")
       .split("\n")
       .map((l) => l.trim());
     expect(

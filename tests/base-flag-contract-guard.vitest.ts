@@ -11,7 +11,7 @@
  * ⇒ `shared/ccm` 那个 1592 行的 bash 删了，`ccm` 今天是后端二进制的一次性模式。
  * **本文件钉的那条跨语言契约一个字没变**（monitor 发 `--base` ⇒ 另一侧必须 unset），
  * 变的是「另一侧的源文件」住在哪、锚点长什么样：
- * `shared/ccm` → `remote-daemon-proto/src/control/ccm/{argv,plan}.rs`。
+ * `shared/ccm` → `src/backend/control/ccm/{argv,plan}.rs`。
  *
  * ⚠ **两处落点合并成一处了，这不是判据放宽**：bash 那版 send-keys 载荷与进程自身 env
  * 是**两段手写副本**（所以要钉两处，缺一处就漏）；原生实现里 `--print` 与真跑
@@ -44,7 +44,7 @@ import type { LaunchContext } from "../src/launch-plan";
 
 const ROOT = resolve(__dirname, "..");
 /** 另一侧的源文件 —— `K-R48` 第二拍起是 Rust，不再是 bash。**只读，不改**。 */
-const CCM_DIR = resolve(ROOT, "remote-daemon-proto/src/control/ccm");
+const CCM_DIR = resolve(ROOT, "src/backend/control/ccm");
 const ccmArgv = readFileSync(resolve(CCM_DIR, "argv.rs"), "utf8");
 const ccmPlan = readFileSync(resolve(CCM_DIR, "plan.rs"), "utf8");
 const ccm = `${ccmArgv}\n${ccmPlan}`;

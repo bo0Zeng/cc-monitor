@@ -12,7 +12,7 @@
 //!
 //! `K-H1` 的中转（`relay/server.rs`）已经把这条路上的东西买齐了：`LOOPBACK` 字面量常量
 //! + 非回环 bind 的零命中守卫 + 在途上界 + 出声的拒绝。本模块**抄它的形状**。
-//! 现打（`K-P1 §0b-2㈠`，分母 = `remote-daemon-proto/src` ∪ `src-tauri/src` 下 169 个 `.rs`）：
+//! 现打（`K-P1 §0b-2㈠`，分母 = `src/backend` ∪ `src-tauri/src` 下 169 个 `.rs`）：
 //! `UnixListener` 0 处 · daemon 侧 `NamedPipe` 0 处 ⇒ 走 Unix socket / 命名管道都要**从零立**一套。
 //!
 //! ⚠ **代价如实记，这是一条真裁决不是实现细节**：回环 TCP 上**同机任何本地进程都连得上**，
@@ -542,11 +542,13 @@ mod tests {
             );
         }
         let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        // 头注里写住址有四种形态：本 crate 内的裸文件名 · `relay/xxx.rs` 这种 crate 内相对路径 ·
+        // 头注里写住址有四种形态：后端树内的裸文件名 · `relay/xxx.rs` 这种树内相对路径 ·
         // `src-tauri/src/xxx.rs` / `tests/e2e/xxx.sh` 这种从仓根写起的 ·
         // **monitor 侧的裸文件名**（`daemon_policy.rs` —— 跨半个仓引用在本仓是常态）。四个根都试。
         let roots = [
-            manifest.join("src"),
+            // 〔搬树 2026-09-17〕后端源码树从 `src/backend` 搬到 `<repo>/src/backend`，
+            // manifest 留在原处 ⇒ 这一格不再是 `manifest/src`。走那个唯一住址。
+            crate::guard_support::src_root(),
             manifest.join(".."),
             manifest.to_path_buf(),
             manifest.join("../src-tauri/src"),

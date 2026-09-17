@@ -616,7 +616,7 @@ mod tests {
     ///    本条自己守的只剩「这棵树剥得干净 ＋ 文件数没缩水」。
     ///
     /// 🔴 **这一段在两棵树里各住一份，逐字必须相同**
-    /// （`remote-daemon-proto/src/guard_support.rs` ＋ `src-tauri/src/structural_scan.rs`）——
+    /// （`src/backend/guard_support.rs` ＋ `src-tauri/src/structural_scan.rs`）——
     /// `K-R110` 交回时点名过这个形状：**两个住址、同一句话**，改一处漏一处，
     /// 下一次还是一处真一处假。钉着它的是
     /// `guard_support.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
@@ -917,7 +917,7 @@ mod tests {
     /// # ⚠ 它买不到什么 —— `KR77D3` 要的那个诚实读数，写在这里
     ///
     /// 闸**住在 monitor 这棵树上**（门禁 `cargo` 那一格 = `cargo test --workspace --lib`），
-    /// 靠**读盘上的 `remote-daemon-proto/src`** 够到 daemon。
+    /// 靠**读盘上的 `src/backend`** 够到 daemon。
     /// ⇒ 🔴 **daemon 自己那一格（门禁 `daemon` = `cd remote-daemon-proto && cargo test`）
     /// 今天没有这道闸**：只跑 daemon 那一格的人新写一道绕道，**不会红**。
     /// 两棵树是两个 workspace（`remote-daemon-proto/Cargo.toml` 头注逐字写着 standalone），
@@ -945,7 +945,7 @@ mod tests {
         assert!(
             daemon >= 80,
             "🔴 daemon 那棵树只收到 {daemon} 份 .rs（09-12 现打 88）—— \
-             `remote-daemon-proto/src` 掉出语料面了。\n\
+             `src/backend` 掉出语料面了。\n\
              那一刻上面那条棘轮照样绿，而它只守着一棵树 —— \
              **报「已守住」而分母只有一棵树**，正是本条要挡的形状。"
         );
@@ -953,7 +953,7 @@ mod tests {
         let names: std::collections::BTreeSet<String> =
             corpus.iter().map(|(p, _)| detour_addr(p)).collect();
         for want in [
-            "remote-daemon-proto/src/readonly_guard.rs",
+            "src/backend/readonly_guard.rs",
             "src-tauri/src/ssh_source.rs",
             "src-tauri/src/local_daemon.rs",
         ] {
@@ -1208,7 +1208,7 @@ mod tests {
         for sub in [
             "src-tauri/src",
             "src-tauri/crates",
-            "remote-daemon-proto/src",
+            "src/backend",
         ] {
             for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let file = f
@@ -1640,7 +1640,7 @@ mod tests {
             .to_path_buf();
         let mut files = guard_core::scan_tree!(&root.join("src-tauri/src"), &["rs"]);
         files.extend(guard_core::scan_tree!(
-            &root.join("remote-daemon-proto/src"),
+            &root.join("src/backend"),
             &["rs"]
         ));
 
@@ -1754,7 +1754,7 @@ mod tests {
         for sub in [
             "src-tauri/src",
             "src-tauri/crates",
-            "remote-daemon-proto/src",
+            "src/backend",
         ] {
             out.extend(guard_core::scan_tree!(&root.join(sub), &["rs"]));
         }
@@ -2248,7 +2248,9 @@ mod tests {
         for sub in [
             "src-tauri/src",
             "src-tauri/crates",
-            "remote-daemon-proto/src",
+            // 〔搬树 2026-09-17〕**这里没有 `"src/backend"`，不是漏了**：后端树搬到
+            // `<repo>/src/backend` 之后它已经是 `"src"` 的**子目录**，两个都列会把
+            // 后端的每个文件数两遍（搬家前 `remote-daemon-proto/src` 与 `src` 是互斥的）。
             "src",
             "doc",
             // 〔e2e 并入 tests/，2026-09-17〕这一格**从 `"e2e"` 换成 `"tests"`**，不是换成
@@ -2517,57 +2519,57 @@ mod tests {
             ("doc/INVARIANTS.md", "snapshot_announced_by_origin", 1),
             ("doc/STATE-MATRIX.md", "read_session_jsonl", 1),
             (
-                "remote-daemon-proto/src/agents/claudecode/accounts.rs",
+                "src/backend/agents/claudecode/accounts.rs",
                 "trust_of_claude_json",
                 1,
             ),
             (
-                "remote-daemon-proto/src/alloc_probe.rs",
+                "src/backend/alloc_probe.rs",
                 "the_probe_sees_allocations_made_by_the_reader_task",
                 1,
             ),
             (
-                "remote-daemon-proto/src/inbound.rs",
+                "src/backend/inbound.rs",
                 "handlers_never_run_on_the_reader_task",
                 1,
             ),
             (
-                "remote-daemon-proto/src/inbound.rs",
+                "src/backend/inbound.rs",
                 "hello_commands_match_the_dispatch_table",
                 3,
             ),
             (
-                "remote-daemon-proto/src/inbound.rs",
+                "src/backend/inbound.rs",
                 "hello_is_flushed_before_the_inbound_reader_starts",
                 1,
             ),
             (
-                "remote-daemon-proto/src/listen.rs",
+                "src/backend/listen.rs",
                 "frozen_single_client_guard",
                 1,
             ),
             (
-                "remote-daemon-proto/src/observe/accounts_query.rs",
+                "src/backend/observe/accounts_query.rs",
                 "credential_filename_matches_native_identity_declaration",
                 2,
             ),
             (
-                "remote-daemon-proto/src/observe/accounts_query.rs",
+                "src/backend/observe/accounts_query.rs",
                 "every_comment_stripping_transformer_is_registered",
                 1,
             ),
             (
-                "remote-daemon-proto/src/observe/accounts_query.rs",
+                "src/backend/observe/accounts_query.rs",
                 "path_shell_safe",
                 1,
             ),
             (
-                "remote-daemon-proto/src/observe/watcher.rs",
+                "src/backend/observe/watcher.rs",
                 "spawn_tmux_ticker",
                 2,
             ),
             (
-                "remote-daemon-proto/src/protocol_doc_guard.rs",
+                "src/backend/protocol_doc_guard.rs",
                 "hello_commands_match_the_dispatch_table",
                 1,
             ),
@@ -2582,37 +2584,37 @@ mod tests {
             // **不是**「这句话没人守」。根因怎么治（要不要把本文件的**声明**单独补进 `in_code`）
             // 归 PM，本件不自批。
             (
-                "remote-daemon-proto/src/readonly_guard.rs",
+                "src/backend/readonly_guard.rs",
                 "the_cfg_test_reexport_detour_stays_extinct",
                 1,
             ),
             (
-                "remote-daemon-proto/src/relay/http1.rs",
+                "src/backend/relay/http1.rs",
                 "handle_alloc_error",
                 1,
             ),
             (
-                "remote-daemon-proto/src/relay/http1.rs",
+                "src/backend/relay/http1.rs",
                 "head_cap_is_enforced",
                 1,
             ),
             (
-                "remote-daemon-proto/src/relay/nodelay_guard.rs",
+                "src/backend/relay/nodelay_guard.rs",
                 "both_directions_disable_nagle_in_relay_production_code",
                 1,
             ),
             (
-                "remote-daemon-proto/src/relay/server.rs",
+                "src/backend/relay/server.rs",
                 "handle_alloc_error",
                 1,
             ),
             (
-                "remote-daemon-proto/src/relay/server.rs",
+                "src/backend/relay/server.rs",
                 "the_relay_entry_reads_each_env_var_into_its_own_config_slot",
                 1,
             ),
             (
-                "remote-daemon-proto/src/relay/upstream.rs",
+                "src/backend/relay/upstream.rs",
                 "tls_client_config_builds_and_carries_roots",
                 1,
             ),
@@ -2928,7 +2930,7 @@ mod tests {
                 1,
             ),
             (
-                "remote-daemon-proto/src/wire.rs",
+                "src/backend/wire.rs",
                 "hello_bytes_for_claude_are_frozen",
                 1,
             ),
@@ -2982,7 +2984,7 @@ mod tests {
             // 换住址钉在今天唯一那处实现上（`control/gate.rs::both_gates_always_probe_before_they_act`），
             // 而那一段散文必须逐字点出它的旧名字才说得清「接的是谁」。
             (
-                "remote-daemon-proto/src/control/gate.rs",
+                "src/backend/control/gate.rs",
                 "the_ssh_fallback_always_probes_before_it_acts",
                 1,
             ),

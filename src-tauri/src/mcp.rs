@@ -202,7 +202,7 @@ async fn fetch_remote_claude_json(
     let read = async {
         let stream = crate::ssh_source::connect_and_exec_cmd(cfg, CMD).await?;
         let mut buf = Vec::new();
-        // `+ 1` 见 remote-daemon-proto/src/common/fs.rs：不多读一个字节就分不清
+        // `+ 1` 见 src/backend/common/fs.rs：不多读一个字节就分不清
         // 「刚好读满」与「其实还有」。⚠ 截断的 JSON 会在下面解析失败，用户看到的是
         // 「解析失败」而不是「超限」—— 那是**误导性的错误**，不是诚实的降级。
         stream

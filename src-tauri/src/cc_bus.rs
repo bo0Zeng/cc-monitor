@@ -232,7 +232,7 @@ async fn fetch_remote_cc_bus(cfg: &crate::ssh_source::RemoteConfig) -> Result<St
     let read = async {
         let stream = crate::ssh_source::connect_and_exec_cmd(cfg, CC_BUS_CAT_CMD).await?;
         let mut buf = Vec::new();
-        // `+ 1` 的用意见 remote-daemon-proto/src/common/fs.rs 那条既有注释：
+        // `+ 1` 的用意见 src/backend/common/fs.rs 那条既有注释：
         // 多读一个字节就能分辨「刚好读满」与「其实还有」，否则超限会**静默截断**
         // ——而截断的 TSV 会被下面的解析当成一份完整清单，最后一行悄悄少掉或变形。
         stream
@@ -599,7 +599,7 @@ async fn exec_read(
         let stream = crate::ssh_source::connect_and_exec_cmd(cfg, cmd).await?;
         let mut buf = Vec::new();
         let mut overflowed = false;
-        // `+ 1` 见 remote-daemon-proto/src/common/fs.rs：不多读一个字节就分不清
+        // `+ 1` 见 src/backend/common/fs.rs：不多读一个字节就分不清
         // 「刚好读满」与「其实还有」，而**分不清就只能静默截断**。
         stream
             .take(cap + 1)

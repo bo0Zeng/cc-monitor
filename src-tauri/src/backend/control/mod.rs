@@ -7,7 +7,7 @@
 //!
 //! §1.3 把最终 exec 钉在**用户自己的终端进程**里（pid 必须等于 pidfile 名、tty/Ctrl-C
 //! 必须落在 agent 上）；而 U8a-2b 把 daemon 的执行面定成 **argv 直传、不过 shell**
-//! （`remote-daemon-proto/src/control/launch.rs` 头注逐字写着「这条路根本不过 shell」）。
+//! （`src/backend/control/launch.rs` 头注逐字写着「这条路根本不过 shell」）。
 //! ⇒ **「渲染一条 shell 命令串」永远属于开终端的那一侧。** 这不是权宜之计，
 //! 也不是「将来还要搬去 daemon」—— 是它本来的归属地（P4a 摸底把这条理由换硬了）。
 

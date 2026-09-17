@@ -148,7 +148,7 @@ mod tests {
             //    里那句 `for _i in 1 2 3 4 5 6; do sleep 0.5; …`）。
             //    ⇒ 扫描面也跟着加了它一份（见 `scan()`）：**产出那段 shell 的人换了，
             //    那个节拍本身一个字没变**。
-            "remote-daemon-proto/src/control/ccm/plan.rs",
+            "src/backend/control/ccm/plan.rs",
             "wait-for-condition",
             "**只剩一处**：预信任对话框等待（6 × 0.5s，**§1.3 登记在案的例外** —— 那个对话框\
              没有内核事件源，只能看屏）。\
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn the_hook_coverage_that_these_reasons_rest_on_has_not_changed() {
         const DAEMON_HOOKS: &str =
-            include_str!("../../remote-daemon-proto/src/control/tmux_hook.rs");
+            include_str!("../../src/backend/control/tmux_hook.rs");
         let prod = guard_core::production_code(DAEMON_HOOKS);
         // 判据串运行时拼，免得命中本文件自己上面那两段说明。
         let want: Vec<String> = ["created", "closed", "renamed"]
@@ -395,7 +395,7 @@ mod tests {
         //    「登记表里的 xx 已经没有周期唤醒了」，而那是**假读数**。
         //    ⚠ 它按 `is_shell` 那条针认（`contains("sleep ")`）—— 那正对：
         //    本表要认的是**那段 shell 里的 sleep**，不是 Rust 自己的节拍。
-        files.push(root.join("remote-daemon-proto/src/control/ccm/plan.rs"));
+        files.push(root.join("src/backend/control/ccm/plan.rs"));
         let mut out = Vec::new();
         for f in files {
             let rel = f
@@ -458,7 +458,7 @@ mod tests {
             ts.len()
         );
         assert!(
-            fs::read_to_string(root.join("remote-daemon-proto/src/control/ccm/plan.rs"))
+            fs::read_to_string(root.join("src/backend/control/ccm/plan.rs"))
                 .map(|s| s.len())
                 .unwrap_or(0)
                 > 10_000,
@@ -475,7 +475,7 @@ mod tests {
         //   都不剥 ⇒ 这里**不许**断言「它剥掉了东西」（那不是它对 shell 语料的契约）。
         //   今天被抹掉的 9 行全是 shell 的 `*)` case 分支 —— 那是 `scan()` 在 ccm 上的
         //   真实行为，是另一件事，不是本条该钉的性质。
-        let ccm = fs::read_to_string(root.join("remote-daemon-proto/src/control/ccm/plan.rs"))
+        let ccm = fs::read_to_string(root.join("src/backend/control/ccm/plan.rs"))
             .unwrap_or_default();
         assert!(
             !guard_core::strip_comment_lines(&ccm).trim().is_empty(),
@@ -741,7 +741,7 @@ mod tests {
     /// 用户 08-14 裁定「**可以动ccm. 不要轮询**」＋「**ccm做到必须走daemon**」
     /// ⇒ 那件「未做」被做掉了，做法不是给 ccm 上 inotify（破「纯 POSIX shell、零第三方」，
     /// 而 ccm 要经 `include_str!` 部署到任意远端），而是**把通道 B 整条搬去 daemon**
-    ///（`remote-daemon-proto/src/control/identity_tag.rs`，由它已有的 pidfile inotify 驱动）。
+    ///（`src/backend/control/identity_tag.rs`，由它已有的 pidfile inotify 驱动）。
     /// ⇒ 「醒来的代价」这个量**不再存在**，钉它的判据必须换成钉「它真的没了」。
     ///
     /// # 为什么不是零命中的空守卫
@@ -760,7 +760,7 @@ mod tests {
         let raw: String = ["mod.rs", "plan.rs"]
             .iter()
             .map(|f| {
-                fs::read_to_string(root.join("remote-daemon-proto/src/control/ccm").join(f))
+                fs::read_to_string(root.join("src/backend/control/ccm").join(f))
                     .unwrap_or_else(|e| {
                         panic!("control/ccm/{f} 读不到 —— 路径变了就把这条一起改：{e}")
                     })

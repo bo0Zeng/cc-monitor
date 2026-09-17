@@ -1286,7 +1286,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     // 数出这两样，**这一项是用户当拍凭记忆点出来的**（「不是还有 code picture 吗」）。
     // ⇒ 「app 自带的是哪几样」这个人群此前**真的没有住址**，这一条就是那句话的证据。
     //
-    // 它的身份来自 `remote-daemon-proto/src/sidecars/` 那一层的头注逐字：
+    // 它的身份来自 `src/backend/sidecars/` 那一层的头注逐字：
     // 「**我们自己出、我们自己装、我们自己调**的那几个独立进程……
     //   这一层装的是**我们随产品分发**的东西」⇒ 这就是 `Provisioning::AppShips` 的定义。
     //
@@ -1450,7 +1450,7 @@ pub const NOT_MANAGED: &[(&str, &str)] = &[
          ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\
          用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。\n\
          🔴 **〔`K-R65` 09-11 补〕这个名字今天有第三个身份，本条此前一个字都没提**：\
-         `remote-daemon-proto/src/sidecars/codepicture/` 那一层的**独立进程**——\
+         `src/backend/sidecars/codepicture/` 那一层的**独立进程**——\
          那一层头注逐字「我们自己出、我们自己装、我们自己调……随产品分发」。\
          它**是** app 自带的东西，已经进环境闭集（id `code-picture-sidecar`，\
          `Provisioning::AppShips`）。⇒ 本条那句「不是「装到别处的工具」」\
@@ -3659,7 +3659,7 @@ mod environment_tests {
         /// 那一层的取件实现。**跨 crate 读源码在本仓有先例**
         /// （`usage.rs` / `polling_registry.rs` 都这么钉 `remote-daemon-proto` 那侧）。
         const SIDECAR_ACQUIRE: &str =
-            include_str!("../../remote-daemon-proto/src/sidecars/codepicture/acquire.rs");
+            include_str!("../../src/backend/sidecars/codepicture/acquire.rs");
 
         // 反向自检：`pin_definition` 真的会说「不在」（否则下面是空真）。
         assert!(pin_definition("fn a() {}\n", "fn b() {}", "fn b", "自检").is_err());
