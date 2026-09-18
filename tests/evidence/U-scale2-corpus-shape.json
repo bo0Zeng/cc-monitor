@@ -1,0 +1,62 @@
+{
+  "note": "秤 2 语料的形状指纹。`src` = 真机原记录，`out` = 落盘语料。两者必须逐项相同 —— 这就是「结构照真的，内容一律合成」那句话的可验证形式。",
+  "generatedAt": "2026-09-18T23:48:29.252Z",
+  "records": 69,
+  "sourceFiles": [
+    "00af3f99-416c-4868-905e-fe8df8edf26d.jsonl：静态文件（mtime 4281 分钟前），全读 5 行",
+    "5a2f8ab4-a54e-47f3-97d8-91eb0f8d7faa.jsonl：正在被写（mtime 0 分钟前）⇒ 只读冻结前缀 4000/15465 行",
+    "b50b9e87-c020-4aae-bd80-b8120c3589f2.jsonl：静态文件（mtime 3940 分钟前），全读 980 行"
+  ],
+  "src": {
+    "chars": 244505,
+    "lines": 5061,
+    "words": 21170,
+    "cjk": 60919,
+    "latin": 88972,
+    "digits": 9650,
+    "fences": 164,
+    "tableRows": 629,
+    "maxLine": 3836
+  },
+  "out": {
+    "chars": 244505,
+    "lines": 5061,
+    "words": 21170,
+    "cjk": 60919,
+    "latin": 88972,
+    "digits": 9650,
+    "fences": 164,
+    "tableRows": 629,
+    "maxLine": 3836
+  },
+  "keptVerbatim": {
+    "note": "落盘语料里仅有的逐字保留词汇。审这份语料泄不泄漏，看的就是这张表。",
+    "protocolLiterals": [
+      "task-notification",
+      "system-reminder",
+      "local-command-caveat",
+      "local-command-stdout",
+      "command-name",
+      "command-message",
+      "command-args",
+      "bash-input",
+      "bash-stdout",
+      "bash-stderr",
+      "synthetic"
+    ],
+    "toolNames": [
+      "Agent",
+      "Bash",
+      "Edit",
+      "Read",
+      "Skill",
+      "ToolSearch",
+      "Write",
+      "mcp__code-picture__overview"
+    ],
+    "models": [
+      "<synthetic>",
+      "claude-opus-5"
+    ]
+  }
+}

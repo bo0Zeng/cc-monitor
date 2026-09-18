@@ -452,6 +452,7 @@ jobs:
             tests/e2e/fake-claude \
             tests/e2e/weak-net/*.sh \
             tests/e2e/local-backend-container/*.sh \
+            tests/evidence/*.sh \
             tests/scripts/*.sh \
             src/bridge/vendor/cc-acct-iso/scripts/cc-acct-iso \
             src/bridge/vendor/cc-acct-iso/scripts/lib.sh \
@@ -571,7 +572,21 @@ jobs:
           #        + tests/e2e/local-backend-container/*.sh 3 + tests/scripts/*.sh 3
           #        + vendored cc-acct-iso 4 + fake-claude 1 + tests/hooks/pre-commit 1**。
           # ⚠ `local-backend-container/` 里还有一份 `Dockerfile`（**不是 `.sh`，不进这个人群**）。
-          [ "$N" -ge 60 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 60）"; exit 1; }
+          # **2026-09-18 棘到 62**，同时补进 `tests/evidence/*.sh`。★ 与 `W-F1`（09-05 补 weak-net）
+          # 和 `K-R139`（09-15 补 local-backend-container）**同一形**：`tests/evidence/` 是个**新目录**，
+          # 而 `tests/e2e/*.sh` / `tests/scripts/*.sh` 那两个 glob **都不跨 `/`**
+          # ⇒ 秤 2 的两个复算脚本（`U-scale2-run.sh` 真浏览器取真高 · `U-scale2-mutation.sh` 变异自检）
+          # 落在所有分组之外，一次都不会被 lint，而计数一个都不少 ⇒ 地板照过。
+          # 逮住它的还是 `shell_lint_registry` 那条恒等判据。
+          # ⚠ **刻意不走「登记豁免」那条**：这 2 个脚本是本轮新写的、没有历史包袱，
+          #   豁免是给改不动的老债留的（同 `K-R139` 那次的论证）。
+          # ⚠ 实测：`shellcheck -s bash` 对这两个文件**零告警**（连默认档也是零），补进来零成本。
+          # 今天实测构成（**逐组现打，不倒推**）：
+          # **62 = tests/e2e/*.sh 30 + src/shared/cc-bus/scripts/* 14 + tests/e2e/weak-net/*.sh 4
+          #        + tests/e2e/local-backend-container/*.sh 3 + tests/evidence/*.sh 2
+          #        + tests/scripts/*.sh 3 + vendored cc-acct-iso 4 + fake-claude 1
+          #        + tests/hooks/pre-commit 1**。
+          [ "$N" -ge 62 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 62）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
