@@ -288,7 +288,7 @@ pub fn launch_local_posix(cmd: &str, cwd: Option<&str>) -> Result<(), String> {
 /// 别把「我们交出去的那一份是对的」读成「窗口真开出来了」。
 #[cfg(not(windows))]
 fn launch_local_posix_via(cmd: &str, cwd: Option<&str>, term: Option<&str>) -> Result<(), String> {
-    use std::os::unix::process::CommandExt;
+    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     use std::process::{Command, Stdio};
 
     // ★★ `K-H2b` `D6` 第九拍：**「跑什么」整段收成一个纯函数**，本函数只剩「怎么起」。
@@ -325,14 +325,22 @@ fn launch_local_posix_via(cmd: &str, cwd: Option<&str>, term: Option<&str>) -> R
     {
         builder.env(k, v);
     }
-    builder
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .process_group(0);
-    let mut child = builder
-        .spawn()
-        .map_err(|e| format!("spawn 本地命令失败: {e}"))?;
+    builder.stdin(Stdio::null()).stdout(Stdio::null());
+    // 三条策略（`00 §1.5.2`）：
+    // · `Hidden` —— POSIX 上没有「控制台窗口」这回事，这一条在这儿是空的；
+    //   **窗口是 `program` 自己开的**（`local_posix_spawn_plan` 选出来的那个终端出口），
+    //   不是 `CreateProcess` 的 flag 开的。别把它读成「这条路不开窗」。
+    // · `Detached` —— 先前那句 `process_group(0)` 就是这一条：否则终端里 Ctrl-C 的
+    //   SIGINT 会打到整个前台进程组，monitor 和用户刚开的会话一起走。
+    // · `Null` —— 它的 stdio 本来就全 null（stdin/stdout 在上面），真正说话的是它开出来的
+    //   那个终端窗口；接进我们的滚动日志只会把终端的噪声灌进去。
+    let mut child = spawn_managed_cmd(
+        &mut builder,
+        ConsolePolicy::Hidden,
+        Lifetime::Detached,
+        StderrSink::Null,
+    )
+    .map_err(|e| format!("spawn 本地命令失败: {e}"))?;
     std::thread::spawn(move || {
         let _ = child.wait();
     });
@@ -498,9 +506,8 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
 ///   `payload.rs::nobody_reaches_the_relay_take_points_without_going_through_the_seam`。
 #[cfg(windows)]
 pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
+    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     use std::process::Command;
-    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
 
     // 仅当是本地存在的目录才作为起始目录（远端路径/无效路径一律忽略）。
     let start_dir = local_cwd.filter(|c| std::path::Path::new(c).is_dir());
@@ -535,7 +542,23 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     if let Some((k, v)) = daemon_env.clone() {
         wt.env(k, v);
     }
-    if wt.spawn().is_ok() {
+    // ★★ 三条策略（`00 §1.5.2`）。**Plan A 与 Plan B 只有第一格不同，而那是照着盘面写的：**
+    //   · `Inherit`（本处，Plan A）—— 🔴 `wt.exe` 今天**一个 creation flag 都没带**，
+    //     而且它多半只是把请求转交给**已在跑的** Windows Terminal 进程（这一格的诚实边界
+    //     上面那段注释已经写过一次）⇒ 真正开窗的不是这次 `CreateProcess`。
+    //     ⚠ 刻意**不**顺手改成 `NewVisible`：那是一次**没有任何 Windows 读数支持**的
+    //     行为改动，而这条路正是本产品的主用途。本轮只搬「谁来写这三格」，不动盘面。
+    //   · `Detached` —— 用户的终端**不该随 monitor 一起死**：关掉界面不等于关掉他正在
+    //     敲字的那个会话 ⇒ 绝不能进 `JobKillOnClose` 那个 Job。
+    //   · `Inherit` —— 窗口里的话说给用户听，不该灌进我们的滚动日志。
+    if spawn_managed_cmd(
+        &mut wt,
+        ConsolePolicy::Inherit,
+        Lifetime::Detached,
+        StderrSink::Inherit,
+    )
+    .is_ok()
+    {
         tracing::info!("launch: powershell window via wt.exe");
         return Ok(());
     }
@@ -543,7 +566,6 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     // Plan B：powershell.exe + CREATE_NEW_CONSOLE，conhost 兜底。
     let mut builder = Command::new("powershell.exe");
     builder.args(ps_args);
-    builder.creation_flags(CREATE_NEW_CONSOLE);
     // F06b-1d（C9）：同上。这一格是**真新起的进程**，env 一定继承。
     if let Some((k, v)) = daemon_env {
         builder.env(k, v);
@@ -551,9 +573,17 @@ pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Re
     if let Some(d) = start_dir {
         builder.current_dir(d);
     }
-    builder
-        .spawn()
-        .map_err(|e| format!("spawn powershell failed: {e}"))?;
+    // ★★ 第一格与 Plan A 不同，也是照着盘面写的：先前那句 `creation_flags(CREATE_NEW_CONSOLE)`
+    // 逐字就是 `ConsolePolicy::NewVisible`。**全仓唯一一处 `NewVisible`，而且是刻意的** ——
+    // 设计稿逐字：「别把 `launch.rs` 的 `CREATE_NEW_CONSOLE` 一起改掉……这正说明为什么要
+    // 唯一出口 + 显式声明，而不是全局加一个 flag」。后两格与 Plan A 相同。
+    spawn_managed_cmd(
+        &mut builder,
+        ConsolePolicy::NewVisible,
+        Lifetime::Detached,
+        StderrSink::Inherit,
+    )
+    .map_err(|e| format!("spawn powershell failed: {e}"))?;
     tracing::info!("launch: powershell window via fallback console");
     Ok(())
 }
@@ -604,11 +634,25 @@ pub const POSIX_NO_TERMINAL_WINDOW: &str =
 /// "not recognized"（spawn 本身成功→前端误报成功）——预检失败直接 Err 走剪贴板回退。
 #[cfg(windows)]
 fn ssh_client_available() -> bool {
-    std::process::Command::new("where.exe")
-        .arg("ssh")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    let mut cmd = std::process::Command::new("where.exe");
+    cmd.arg("ssh").stdout(std::process::Stdio::piped());
+    // 三条策略（`00 §1.5.2`）：
+    // · `Hidden` —— 🔴 **这处先前是裸 `.output()`，也就是没人回答过这个问题**：
+    //   monitor 是 `windows_subsystem = "windows"` 的 GUI app，起一个控制台子系统的
+    //   `where.exe` 而不带 `CREATE_NO_WINDOW` ⇒ 用户桌面上会闪一个黑框。
+    //   这正是「唯一出口」顺手关掉的那一族。
+    // · `JobKillOnClose` —— 一次性探测，我们就地等它退；掐断时不许留后代。
+    // · `Captured` —— 它的输出**是返回值**（`status.success()` 那一格），不是被丢了。
+    spawn_managed_cmd(
+        &mut cmd,
+        ConsolePolicy::Hidden,
+        Lifetime::JobKillOnClose,
+        StderrSink::Captured,
+    )
+    .and_then(|c| c.wait_with_output())
+    .map(|o| o.status.success())
+    .unwrap_or(false)
 }
 
 /// 通用「远端终端拉起」命令（账本最终形态；F41 resume / F51 attach / F52 tmux /

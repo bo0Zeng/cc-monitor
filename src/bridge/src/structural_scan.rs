@@ -3138,6 +3138,15 @@ mod tests {
             //    也随之不存在了 —— 帧面把「答案」与「屏幕内容」分开走，
             //    「屏幕上恰好只有 NO_PANE 这几个字」这个误判形状跟着消失。
             ("src/bridge/src/tmux.rs", "classify_capture_output", 1),
+            // 🔴 〔`15 §5.1 A3` 09-18〕`spawn_managed` 那个唯一出口把仓里三份**各自长着的**
+            //    正确做法收编了，其中两份连符号一起没了：`local_daemon::hide_console_window`
+            //    （`00 §1.5.1` 步 1 的止血，它自己的头注就写着「A3 落地时它会被换成注入参数」）
+            //    与 `cc_bus` 的 `reap_whole_tree_on_drop` / `KillTreeGuard`。
+            //    ⇒ 两处散文逐字引用旧名字，说的正是「这三样不是新发明的」——
+            //    删掉就删掉了「同一形状出现三次」这条线索，而那是立项理由本身。
+            //    按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记账。
+            ("src/bridge/src/local_daemon.rs", "hide_console_window", 1),
+            ("src/bridge/src/spawn_managed.rs", "hide_console_window", 1),
         ];
 
         let corpus = dead_name_corpus();

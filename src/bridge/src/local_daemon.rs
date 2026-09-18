@@ -99,61 +99,20 @@ impl StartOutcome {
 // ⇒ 落点只能是这里，形状照 `platform_fs::make_executable` 那个**注入**先例。
 // ══════════════════════════════════════════════════════════════════════════
 
-/// `CreateProcess` 的 `CREATE_NO_WINDOW`。**不是字节上限**（登记在
-/// `byte_cap_registry` 的排除表里，那张表按名字全等排，两处同名共用一条登记）。
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
-/// **不给这条子进程开控制台窗口。**〔`设计/00 §1.5.1` 步 1 —— 那张表里唯一一条
-/// 「用户**现在**就受影响」的〕
-///
-/// # 它解掉的是什么（`真相源/70` 那条 BUG 的链，逐环）
-///
-/// monitor 是 `windows_subsystem = "windows"` 的 GUI app ⇒ **它自己没有控制台**。
-/// 起本机后端时不带这个 flag，Windows 就**给子进程新开一个控制台窗口**：
-/// ① 用户桌面上凭空弹一个黑框；② 那个框是**可关的** —— 用户一关，
-/// 控制台把 `CTRL_CLOSE_EVENT` 发给附在它上面的进程 ⇒ **后端被杀**
-/// ⇒ 中转不再监听 ⇒ 会话读不到，而界面上只显示一句「本机后端起不来」。
-/// ⇒ 一个 flag 同时解掉三个症状：**弹窗 · 报失败 · 本机后端不工作**。
-///
-/// # 🔴 为什么这个函数住在这里，而不住在起进程的那一行旁边
-///
-/// 起进程那一行住 `backend/control/local_backend.rs`，而
-/// `backend/mod.rs::the_backend_half_stays_platform_agnostic` 的禁针含
-/// `#[cfg(windows)` 与 `std::os::windows` ⇒ **写进 `backend/` 当场红**；
-/// 而「加一条平台例外」被**递减棘轮**堵着（`PLATFORM_EXCEPTIONS.len() <= 1`，今天正好 1 条）。
-/// ⇒ 与上面 `process_group(0)` 那一段**同一条理由、同一个落点**：宿主知识层。
-///
-/// # ⚠ 它是止血，不是终局 —— 终局是 `15 §5.1 A3` / `00 §1.5.2`
-///
-/// 正确形状是 `spawn_managed(bin, args, ConsolePolicy, Lifetime, StderrSink)` ——
-/// 三个参数都**没有 `Default`**，于是全仓 20 处 `Command::new` 在**编译期**被迫各自回答
-/// 「要不要窗口」。本函数是那个枚举的 `Hidden` 分支**提前落一处**，
-/// 代价写明：`backend/` 这一侧因此多了一条 `crate::local_daemon::` 的反向边
-///（A3 落地时它会被换成注入参数，和 `make_executable` 一样）。
-///
-/// ⚠ **别把它铺到 `launch.rs::launch_powershell_window` 那处**（它的 Plan B 那一跳，
-/// 用的是自己那个 `CREATE_NEW_CONSOLE` 常量）—— 那处是**刻意的**：
-/// 给用户的 claude 会话开一个**真终端**。它就是 `ConsolePolicy::NewVisible`。
-/// 「全局加一个 flag」会把那处一起改掉，那正是 A3 要唯一出口而不要全局开关的理由。
-///
-/// ⚠⚠ **诚实边界：本条今天没有任何机器验过。** 宿主是 Linux，`#[cfg(windows)]` 那一支
-/// 在这里连编译都不参与（本仓自己的读数逐字：「`#[cfg(windows)]` 里的变异在 Linux 上
-/// 连编译错误都不报」）。「编得过」由门禁 `winchk`（`--target x86_64-pc-windows-gnu`）买；
-/// 「**真的不弹窗了**」要一台真 Windows（`99 §4.5.8` 的 `G2a`）。⇒ 别把绿读成验过。
-pub(crate) fn hide_console_window(cmd: &mut std::process::Command) {
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    #[cfg(not(windows))]
-    {
-        // 非 Windows 上没有「控制台窗口」这个东西；参数照收，签名两边一致
-        //（形状照 `platform_fs::make_executable` 的 `#[cfg(not(unix))]` 那一支）。
-        let _ = cmd;
-    }
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// 🪦〔散文墓碑〕 `CREATE_NO_WINDOW` / `hide_console_window` **搬走了**〔`15 §5.1 A3`，09-18〕
+//
+// 那是 `00 §1.5.1` 步 1 的止血，它自己的头注逐字写着终局：
+// 「正确形状是 `spawn_managed(bin, args, ConsolePolicy, Lifetime, StderrSink)` ……
+//   本函数是那个枚举的 `Hidden` 分支**提前落一处**，代价写明：`backend/` 这一侧因此
+//   多了一条 `crate::local_daemon::` 的反向边（A3 落地时它会被换成注入参数，
+//   和 `make_executable` 一样）。」
+//
+// ⇒ 今天就是那一天：`ConsolePolicy::Hidden` 住 `spawn_managed.rs`，
+// 那条反向边换成了 `local_backend::supervise_with_stdio` 的 `spawn` 注入参数。
+// ⚠ 那条止血头注里的另一句也一起搬过去了，一个字没丢：
+// **别把 `Hidden` 铺到 `launch.rs::launch_powershell_window` 头上** —— 它是 `NewVisible`。
+// ═══════════════════════════════════════════════════════════════════════════
 
 /// 握手那一行（hello / attach 应答）的字节上限。
 ///
@@ -594,8 +553,8 @@ fn spawn_detached(
     port: u16,
     token: &str,
     extra_env: &[(String, String)],
-) -> Result<std::process::Child, String> {
-    use std::os::unix::process::CommandExt;
+) -> Result<crate::spawn_managed::ManagedChild, String> {
+    use crate::spawn_managed::{managed_spawner, ConsolePolicy, Lifetime, StderrSink};
     let mut cmd = std::process::Command::new(bin);
     for (k, v) in extra_env {
         cmd.env(k, v);
@@ -608,14 +567,23 @@ fn spawn_detached(
         .env(LISTEN_PORT_ENV, port.to_string())
         .env(LISTEN_TOKEN_ENV, token)
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .process_group(0);
+        .stdout(std::process::Stdio::null());
+    // ★★ 三条策略（`00 §1.5.2`）—— 「三样一起才叫脱离」里的两样现在写在这儿：
+    // · `Hidden` —— 脱离起来的后端**绝不该**在用户桌面上留一个黑框（那个框可关，
+    //   一关就是 `CTRL_CLOSE_EVENT` ⇒ 常驻当场没了，而它的全部意义就是「常驻」）。
+    //   🔴 这一格**先前没人回答过**：这条路上一个 creation flag 都没有。
+    // · `Detached` —— 先前那句 `process_group(0)` 就是它：否则终端里 Ctrl-C 的 SIGINT
+    //   会打到整个前台进程组，monitor 和这个常驻实例一起走。
+    //   ⚠ 它**不改变父子关系** ⇒ 不 `wait` 就留僵尸，收尸仍走 `reap_detached`。
+    // · `Null` —— stdio 全 null 是**刻意**的：`Stdio::piped()` 之后宿主一退读端就断，
+    //   它在 **153 毫秒**内 broken-pipe 退出（`daemon_policy.rs` 头注实测）。
+    //   stdin/stdout 那两根在上面一行，stderr 这一根由策略说了算。
+    let spawn = managed_spawner(ConsolePolicy::Hidden, Lifetime::Detached, StderrSink::Null);
     // ★★ `K-R28`：与 `supervise_with_stdio` **同一份分类**（住 `local_backend`，不各写一份）。
     //    这条路 exec 的正是 `resolve_daemon_bin` 刚拿到的那个文件 —— 而它可能是
     //    `extract_embedded_to` 刚写出来的那一份（`K-R43` 之后经 `resolve_or_extract` 走）
     //    ⇒ 它是本仓两处「写了一个文件、随后 exec 它」的落点之一。
-    local_backend::spawn_with_etxtbsy_retry(&mut cmd).map_err(|f| match f {
+    local_backend::spawn_with_etxtbsy_retry(&mut cmd, &*spawn).map_err(|f| match f {
         // 这一刻恰好撞上了会自己过去的竞态 —— 那句话也是共用的那一份。
         local_backend::SpawnFailure::TransientBusy { tries, last } => {
             local_backend::etxtbsy_gave_up_reason(bin, tries, &last)
@@ -633,7 +601,7 @@ fn spawn_detached(
     _port: u16,
     _token: &str,
     _extra_env: &[(String, String)],
-) -> Result<std::process::Child, String> {
+) -> Result<crate::spawn_managed::ManagedChild, String> {
     Err(format!(
         "本平台没有脱离那条路（{}）—— 如实降级，不假装起了一个常驻的",
         bin.display()
@@ -650,7 +618,7 @@ pub struct DetachedHandle {
     /// ⚠ **「是不是我们起的」不另存一个 `bool`**：那样同一个事实就有了两份表示，
     /// 而两份表示会漂（本区最贵的那一族：「一个值装了两件事」的近亲）。
     /// 要问这句话就问 `child.is_some()`。
-    child: Option<std::process::Child>,
+    child: Option<crate::spawn_managed::ManagedChild>,
     /// 那个二进制的路径。杀它之前拿它核对 `/proc/<pid>/exe`（防 pid 复用误伤）。
     /// 接管来的那个从 pid 文件的第二行读回；读不回就是空的，而空的**不许杀**。
     bin: std::path::PathBuf,
@@ -1283,14 +1251,23 @@ fn kill_adopted(_pid: u32, _bin: &std::path::Path) -> Result<(), String> {
 /// 参数是**我们自己算出来的 pid**，不吃任何用户输入。
 #[cfg(target_os = "linux")]
 fn signal_term(pid: u32) -> Result<(), String> {
-    let st = std::process::Command::new("kill")
-        .arg("-TERM")
+    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    let mut cmd = std::process::Command::new("kill");
+    cmd.arg("-TERM")
         .arg(pid.to_string())
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map_err(|e| format!("起不来 kill：{e}"))?;
+        .stdout(std::process::Stdio::null());
+    // 三条策略（`00 §1.5.2`）：`Hidden`（本函数只在 Linux 上编译，这一格是空的，
+    // 但**得有人回答**）· `JobKillOnClose`（就地等它退，别留后代）·
+    // `Null`（`kill(1)` 的抱怨这里用不上：结论在退出码里，下面那句 `退出码 {st}` 就是它）。
+    let st = spawn_managed_cmd(
+        &mut cmd,
+        ConsolePolicy::Hidden,
+        Lifetime::JobKillOnClose,
+        StderrSink::Null,
+    )
+    .and_then(|c| c.wait_for_status())
+    .map_err(|e| format!("起不来 kill：{e}"))?;
     if st.success() {
         Ok(())
     } else {
@@ -1499,6 +1476,8 @@ pub fn start_local_backend() -> StartOutcome {
         &crate::platform_fs::make_executable,
         // ★ `K-P3b`：daemon 这条监护路的死亡账**就记在这个闭包里**（见它的头注）。
         daemon_supervise_events(),
+        // ★ `15 §5.1 A3`：起进程那一下的三条答案由**宿主**给（backend 那半不认识平台）。
+        crate::spawn_managed::local_backend_supervised(),
     );
     if let Some(h) = sup {
         *g = Some(h);
@@ -1696,6 +1675,11 @@ pub fn start_local_relay(bin: std::path::PathBuf) -> bool {
             }
             other => tracing::info!("本机中转: {other:?}"),
         }),
+        // ★ `15 §5.1 A3`：中转是**另一个进程**，它的三条答案与 daemon 那条逐字相同
+        //   —— 同一个 `local_backend_supervised()`，不在这里另写一份。
+        //   ⚠ 上面那一大段注释里「中转所有诊断都写 stderr、生产上一句都到不了人」
+        //   的解药就是它的第三格（`StderrSink::ToLog`）。
+        crate::spawn_managed::local_backend_supervised(),
     );
     // ⚠ 写法刻意不用 `*g = Some(h);` —— `local_backend` 那条接线判据用它当**锚点针**，
     //   而那条针要求全文件**恰好一处**（它的报文逐字：「断言指不明是哪一处」）。
@@ -2388,6 +2372,7 @@ pub(crate) mod tests {
                 now(),
                 Arc::new(|e| println!("[P2s 实测] {e:?}")),
                 Some(Arc::new(local_backend::local_stdio_consumer)),
+                crate::spawn_managed::local_backend_supervised(),
             )
         };
         let wait_channel = |want: bool| -> bool {
@@ -2809,8 +2794,16 @@ pub(crate) mod tests {
         // ⚠ 后两个针是**常量名**不是那两个串：串本身住在常量声明里，
         //   而它与 daemon 那侧逐字一致由 `the_listen_env_names_are_the_same_string_on_both_sides` 管。
         //   钉「这里用的是那个常量」而不是「这里出现了那个串」，正好挡住「顺手在这里写死一个串」。
+        // 🔴〔`15 §5.1 A3` 09-18〕**第一针从 `process_group(0)` 换成 `Lifetime::Detached`。**
+        //   换的是**谁写它**，不是写不写：那句平台原语现在住 `spawn_managed.rs`
+        //   （唯一出口），这一处声明的是**策略**。⚠ 换针之后这条判据仍然数得出同一件事 ——
+        //   把这一行的 `Detached` 改成 `JobKillOnClose`（脱离当场失效、行为全变）⇒ 本条红。
+        //   ⚠ **第二针 `Stdio::null()` 照旧留着**：stdin/stdout 那两根仍由本函数自己写，
+        //   而「stdio 全 null」里 stderr 那一根由第三条策略（`StderrSink::Null`）管
+        //   ⇒ 两针合起来才盖得住原来那一句话，所以它也单独成针。
         for needle in [
-            "process_group(0)",
+            "Lifetime::Detached",
+            "StderrSink::Null",
             "Stdio::null()",
             "LISTEN_PORT_ENV",
             "LISTEN_TOKEN_ENV",
@@ -2818,8 +2811,10 @@ pub(crate) mod tests {
             assert!(
                 spawn.contains(needle),
                 "`spawn_detached` 体内找不到 `{needle}`。\n\
-                 三样一起才叫脱离：`process_group(0)`（否则 Ctrl-C 的 SIGINT 打到整个前台进程组）\
-                 + stdio 全 null（今天它 153ms 内死掉的**真正原因**就是那对管子）\
+                 三样一起才叫脱离：`Lifetime::Detached`（先前那句 `process_group(0)`；\
+                 否则 Ctrl-C 的 SIGINT 打到整个前台进程组）\
+                 + stdio 全 null（今天它 153ms 内死掉的**真正原因**就是那对管子；\
+                 stdin/stdout 在本函数里，stderr 由 `StderrSink::Null` 管）\
                  + 协议改走监听口（管子没了总得有别的说话方式）。"
             );
         }
@@ -3321,7 +3316,10 @@ pub(crate) mod tests {
                 "local_daemon.rs::spawn_detached",
                 &daemon_side,
                 "fn spawn_detached(\n    bin: &std::path::Path,\n    port: u16,",
-                "process_group(0)",
+                // 〔`15 §5.1 A3` 09-18〕锚点从 `process_group(0)` 换成 `Lifetime::Detached`：
+                // 那句平台原语搬进唯一出口了，这一处留下的是**它声明的策略**。
+                // 锚点的职责没变 —— 证明「切出来的体真的是这一段」。
+                "Lifetime::Detached",
             ),
         ] {
             let body = body_of(prod, head);
@@ -5294,7 +5292,7 @@ pub(crate) mod tests {
         work: std::path::PathBuf,
         /// 本轮起过的那些进程。**一交出 `DETACHED` 就立刻塞进这里**，
         /// 中间不留任何「拿在手里但没人管」的窗口 —— 那个窗口正是 08-26 漏网的机制。
-        kept: std::sync::Mutex<Vec<std::process::Child>>,
+        kept: std::sync::Mutex<Vec<crate::spawn_managed::ManagedChild>>,
     }
 
     #[cfg(target_os = "linux")]
@@ -5378,7 +5376,7 @@ pub(crate) mod tests {
             // （「有扫描型判据在测试段里裸遍历目录」），而且按 exe 路径杀是**按模式杀** ——
             // 这台机器上还跑着用户自己的真 daemon，那种收法迟早会误伤。
             // ⇒ 只收**我们自己起出来的那几个句柄**，一个不多一个不少。
-            let mut all: Vec<std::process::Child> =
+            let mut all: Vec<crate::spawn_managed::ManagedChild> =
                 std::mem::take(&mut *self.kept.lock().unwrap_or_else(|e| e.into_inner()));
             if let Some(h) = DETACHED.lock().unwrap_or_else(|e| e.into_inner()).take() {
                 all.extend(h.child);
@@ -5819,6 +5817,7 @@ pub(crate) mod tests {
             Arc::new(|| 0),
             daemon_supervise_events(),
             Some(Arc::new(local_backend::local_stdio_consumer)),
+            crate::spawn_managed::local_backend_supervised(),
         );
         let a = wait_for("崩了", &|h| {
             h.crashed > base.crashed || h.refused > base.refused
@@ -5841,6 +5840,7 @@ pub(crate) mod tests {
             Arc::new(|| 0),
             daemon_supervise_events(),
             Some(Arc::new(local_backend::local_stdio_consumer)),
+            crate::spawn_managed::local_backend_supervised(),
         );
         let b = wait_for("被拒了", &|h| {
             h.refused > a.refused || h.crashed > a.crashed
@@ -5872,6 +5872,7 @@ pub(crate) mod tests {
             Arc::new(|| 0),
             daemon_supervise_events(),
             Some(broken),
+            crate::spawn_managed::local_backend_supervised(),
         );
         let c = wait_for("读坏了", &|h| {
             h.misread > b.misread || h.crashed > b.crashed

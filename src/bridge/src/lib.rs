@@ -67,6 +67,10 @@ mod remote_history;
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod search;
 mod session_map;
+// `15 §5.1 A3` / `00 §1.5.2`：起子进程的**唯一出口**（三个策略都没有 Default）。
+// 住宿主知识层是硬的：平台原语进不了 `backend/`（那侧的禁针 + 递减棘轮），
+// `backend/` 的两个落点收注入参数（`ManagedSpawn`）。
+mod spawn_managed;
 // devbench F02：skill 接入面（一份声明 + 通用宿主）。
 // ⚠ **今天零生产消费者**（UI 归 F03）—— 照 `tool_registry` 的先例如实登记并写处置条件：
 // F03 接上之后删掉那个模块级 `#[allow(dead_code)]`；若 F03 收工时它仍零消费者，
@@ -2372,33 +2376,46 @@ async fn open_log_dir(state: tauri::State<'_, Arc<logging::LoggingState>>) -> Re
 /// 跨平台调系统默认 opener。Windows 用 `cmd /C start ""` 兜 path 中的空格。
 /// 复用 tauri-plugin-opener 也行（前端就是走它），但这里在 Rust 端直接调更直接。
 fn open_with_os(path_or_dir: &str) -> Result<(), String> {
+    use crate::spawn_managed::{spawn_managed, ConsolePolicy, Lifetime, StderrSink};
+    // 「用哪个程序打开」是平台差异，**留在这儿**；「怎么起它」三条策略走唯一出口。
+    //
+    // ★ 这一处走的是 `spawn_managed(bin, args, …)` 那个**五参数形态**（`00 §1.5.2`
+    //   逐字写的那个签名），而不是它的内层 `spawn_managed_cmd` —— 因为这一跳**真的
+    //   只有「一个二进制 ＋ 一串 argv」**：不设 env、不设 cwd、三根 stdio 一根都不碰。
+    //   ⚠ 别把这读成「别处偷懒了」：别处要 env / cwd / stdin / stdout，那些不属于
+    //   那三条策略，硬塞进这个签名只会长出第七、第八个参数。
     #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        std::process::Command::new("cmd")
-            .args(["/C", "start", "", path_or_dir])
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .map_err(|e| format!("start failed: {e}"))?;
-        Ok(())
-    }
+    // `cmd /C start ""` 兜 path 里的空格；第一个空串是 `start` 的窗口标题位。
+    let (bin, args) = (
+        "cmd",
+        vec![
+            "/C".to_string(),
+            "start".to_string(),
+            String::new(),
+            path_or_dir.to_string(),
+        ],
+    );
     #[cfg(target_os = "macos")]
-    {
-        std::process::Command::new("open")
-            .arg(path_or_dir)
-            .spawn()
-            .map_err(|e| format!("open failed: {e}"))?;
-        Ok(())
-    }
+    let (bin, args) = ("open", vec![path_or_dir.to_string()]);
     #[cfg(all(unix, not(target_os = "macos")))]
-    {
-        std::process::Command::new("xdg-open")
-            .arg(path_or_dir)
-            .spawn()
-            .map_err(|e| format!("xdg-open failed: {e}"))?;
-        Ok(())
-    }
+    let (bin, args) = ("xdg-open", vec![path_or_dir.to_string()]);
+    // 三条策略（`00 §1.5.2`）：
+    // · `Hidden` —— 这一跳只是转交给系统默认 opener，**先前那个 `CREATE_NO_WINDOW`
+    //   就是这一条**（设计稿逐字点名它是「仓里有、却用在最不需要的那处」的那一份）；
+    // · `Detached` —— fire-and-forget：我们不等它，也不该在自己退出时把用户刚打开的
+    //   文件管理器一起收掉 ⇒ **绝不能是 `JobKillOnClose`**（那会在本函数返回、
+    //   句柄一丢的瞬间把它杀掉）；
+    // · `Inherit` —— 它的抱怨跟着界面进程的 stderr 走。接进滚动日志要多一条泵，
+    //   而这一跳失败时用户当场就看得见（东西没打开）。
+    spawn_managed(
+        std::path::Path::new(bin),
+        &args,
+        ConsolePolicy::Hidden,
+        Lifetime::Detached,
+        StderrSink::Inherit,
+    )
+    .map(|_| ())
+    .map_err(|e| format!("{bin} failed: {e}"))
 }
 
 #[cfg(test)]

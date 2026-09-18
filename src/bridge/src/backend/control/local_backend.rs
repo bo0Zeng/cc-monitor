@@ -277,7 +277,7 @@ pub struct SuperviseHandle {
     stopping: Arc<AtomicBool>,
     /// 当前子进程。**留在锁里**（不被等待线程独占）正是为了让 [`Self::stop`] 能 kill 它 ——
     /// 等待走的是 stdout 的 EOF，见模块头注。
-    child: Arc<Mutex<Option<std::process::Child>>>,
+    child: Arc<Mutex<Option<crate::spawn_managed::ManagedChild>>>,
     pid: Arc<AtomicU32>,
     attempts: Arc<AtomicU32>,
 }
@@ -545,12 +545,19 @@ pub fn spawn_retrying_etxtbsy<T>(
 /// 原样进诚实边界。
 ///
 /// `backoff` 这个注入点是**特意留着的**：PM 裁定之后，接上去只改这一行。
+/// ⚠ **`spawn` 是注入进来的**〔`15 §5.1 A3`，09-18〕：起进程那一下要回答三个问题
+/// （要不要窗口 · 要不要随我死 · 错误往哪去），而那三个答案要落成**平台原语**
+/// （`creation_flags` / `process_group` / Job Object）—— 它们进不了本层
+/// （`the_backend_half_stays_platform_agnostic` 的禁针，而平台例外表有递减棘轮）。
+/// ⇒ 本层只知道「起进程这一下由宿主给的这个东西来做」，形状照
+/// [`start_or_extract`] 的 `make_executable: &dyn Fn(...)`。
 pub fn spawn_with_etxtbsy_retry(
     cmd: &mut std::process::Command,
-) -> Result<std::process::Child, SpawnFailure> {
+    spawn: &crate::spawn_managed::ManagedSpawn,
+) -> Result<crate::spawn_managed::ManagedChild, SpawnFailure> {
     spawn_retrying_etxtbsy(
         SPAWN_ETXTBSY_TRIES,
-        || cmd.spawn().map_err(|e| e.to_string()),
+        || spawn(cmd).map_err(|e| e.to_string()),
         // 今天是空的 —— 理由见上方那一段，**不是忘了写**。
         |_| {},
     )
@@ -612,7 +619,7 @@ const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开
 ///
 /// ⚠ 非 UTF-8 走 `from_utf8_lossy`，不走 `read_line` —— 后者遇到非法字节返回
 /// `InvalidData`，那会把本函数踢出循环，于是约束 1 当场失守（读的一侧停了，子进程会卡）。
-fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u32) {
+pub(crate) fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u32) {
     use std::io::{BufRead, Read};
     let mut reader = std::io::BufReader::new(err);
     let mut budget = STDERR_LOG_BUDGET_BYTES;
@@ -666,8 +673,9 @@ pub fn supervise(
     limits: CrashLimits,
     now_ms: Arc<dyn Fn() -> u64 + Send + Sync>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
+    spawn: Arc<crate::spawn_managed::ManagedSpawn>,
 ) -> SuperviseHandle {
-    supervise_with_stdio(bin, args, envs, limits, now_ms, on_event, None)
+    supervise_with_stdio(bin, args, envs, limits, now_ms, on_event, None, spawn)
 }
 
 /// 见 [`StdioSink`]。`stdio` 为 `None` 时与 [`supervise`] 逐字等价。
@@ -680,9 +688,10 @@ pub fn supervise_with_stdio(
     now_ms: Arc<dyn Fn() -> u64 + Send + Sync>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
     stdio: Option<StdioSink>,
+    spawn: Arc<crate::spawn_managed::ManagedSpawn>,
 ) -> SuperviseHandle {
     let stopping = Arc::new(AtomicBool::new(false));
-    let child: Arc<Mutex<Option<std::process::Child>>> = Arc::new(Mutex::new(None));
+    let child: Arc<Mutex<Option<crate::spawn_managed::ManagedChild>>> = Arc::new(Mutex::new(None));
     let pid = Arc::new(AtomicU32::new(0));
     let attempts = Arc::new(AtomicU32::new(0));
     let handle = SuperviseHandle {
@@ -707,17 +716,17 @@ pub fn supervise_with_stdio(
             // ⇒ 这里无条件清掉：daemon 该按自己的 `TMUX_TMPDIR`（或默认 socket）解析，
             // 而不是继承「monitor 恰好从哪个 tmux 里被启动」这个偶然。
             cmd.env_remove("TMUX");
-            // ★★ `00 §1.5.1` 步 1：**不给它开控制台窗口**（Windows 上的一行止血）。
+            // ★★ `00 §1.5.1` 步 1（不开控制台窗口）与 `15 §5.1 A2`（stderr 接进滚动日志）
+            //    **都已经不在这一层了**〔A3 落地，09-18〕。
             //
-            // 不带这个 flag 时 Windows 会给子进程新开一个控制台 ⇒ 桌面上弹一个黑框，
-            // 而那个框**可关**：一关就是 `CTRL_CLOSE_EVENT` 打到后端 ⇒ 后端死 ⇒
-            // 中转不再监听 ⇒ 会话读不到，界面上只剩一句「本机后端起不来」。
+            // 先前这里有两段平台/宿主知识：一句 `crate::local_daemon::hide_console_window(&mut cmd)`
+            // （那是 A3 之前的止血，它自己的头注逐字写着「A3 落地时它会被换成注入参数，
+            // 和 `make_executable` 一样」），加一句 `.stderr(Stdio::piped())` ＋ 下面一条泵。
+            // ⇒ 今天两样都是 `spawn` 这个注入参数说了算：宿主那侧声明
+            // `ConsolePolicy::Hidden` ＋ `StderrSink::ToLog`，本层一个平台原语都不认识。
             //
-            // ⚠ 平台原语**不许落在 `backend/`**（`the_backend_half_stays_platform_agnostic`
-            //   的禁针含 `#[cfg(windows)` 与 `std::os::windows`，而平台例外表有递减棘轮）
-            //   ⇒ 实现住宿主知识层，这里只有这一行调用。理由与终局形态（A3 的
-            //   `ConsolePolicy`）逐字写在 `local_daemon::hide_console_window` 的头注里。
-            crate::local_daemon::hide_console_window(&mut cmd);
+            // ⚠ 剩下的 `stdin` / `stdout` **仍归本层**：那两根管子是本模块的协议
+            //（stdout 的 EOF 是「进程死了」这个事件的唯一来源），不是三条策略里的任何一条。
             cmd.args(&args)
                 // P2：有消费者才接 stdin。无消费者时**逐字维持 `null`** ——
                 // 「本机 daemon 收不了入方向命令」是 C4 量出来的缺口，
@@ -728,24 +737,7 @@ pub fn supervise_with_stdio(
                     std::process::Stdio::null()
                 })
                 // ★ stdout 必须是管道：它的 EOF 就是「进程死了」这个事件的来源。
-                .stdout(std::process::Stdio::piped())
-                // ★★ `15 §5.1 A2` / `00 §1.5.3` 那一格：**先前这里是 `Stdio::null()`。**
-                //
-                // 后端整层 91 处 `tracing::{warn,error,info}!` 的**唯一出口**就是 stderr
-                //（它自己不写日志文件：`tracing_subscriber::fmt().with_writer(stderr)`）
-                // ⇒ 这一行先前是「后端每次死前说的话，无条件丢弃，全平台」。
-                // 具体被丢掉的都是**事件源失效的告知**：`watch failed for {agent_home}` ·
-                // 装 hook 失败那两条（它们的头注逐字写着「装不上 hook 不是致命错，**但要说出来**，
-                // 否则『hook 通路没生效』会变成静默降级」—— 说出来了，**没人听**）。
-                // 而中转那条路更直接：`local_daemon::start_local_relay` 的注释逐字记着
-                // 「中转**所有**诊断都写 stderr……那几句话生产上一句都到不了人」。
-                //
-                // 🔴 `logging.rs` 的模块头注已经用**七个带病版本**为这条原理付过学费
-                //（v1.7.0–1.7.7「cc 集成装上没用」：一直 `tracing::warn!`，而 GUI app 没有
-                // stderr 控制台，没人看得到）。⇒ 那次的解药只装在 **monitor 自己的进程里**；
-                // 子进程的 stderr 是 OS 级 fd、不过 subscriber，**这个病在子进程上一个字都没治**。
-                // 这一行就是把它治到子进程上：接出来 → 进 monitor 的滚动日志。
-                .stderr(std::process::Stdio::piped());
+                .stdout(std::process::Stdio::piped());
             for (k, v) in &envs {
                 cmd.env(k, v);
             }
@@ -753,7 +745,7 @@ pub fn supervise_with_stdio(
             //    先前这里是一句裸 `cmd.spawn()` + 一个桶装所有失败 + 当场 `return`，
             //    于是「这台机器上它就是起不来」与「这一刻恰好撞上了一个会自己过去的竞态」
             //    同一句话、同一个结局。**分类那一份是共用的，不在这里再写一遍。**
-            let mut spawned = match spawn_with_etxtbsy_retry(&mut cmd) {
+            let mut spawned = match spawn_with_etxtbsy_retry(&mut cmd, &*spawn) {
                 Ok(c) => c,
                 // 这一刻恰好撞上了 —— 而且试到了上限。换一句话，别说成「起不来」。
                 Err(SpawnFailure::TransientBusy { tries, last }) => {
@@ -775,15 +767,9 @@ pub fn supervise_with_stdio(
             let out = spawned.stdout.take();
             // P2：只有接了消费者时这里才是 Some（上面 `stdin(…)` 按 `stdio` 分流）。
             let in_ = spawned.stdin.take();
-            // ★★ `A2`：把 stderr 也拿走，交给一条**只干这一件事**的线程接进滚动日志。
-            //
-            // ⚠ 必须在 `*g = Some(spawned)` 之前 take —— 之后它就在锁里了。
-            // ⚠ 为什么另起一条线程而不是在本线程读：本线程接下来要阻塞在 stdout 上等 EOF
-            //   （那是「进程死了」这个事件的唯一来源），两根管子不能由一条线程串着读 ——
-            //   串着读的那一刻，没被读的那根写满就把子进程**卡死**。
-            if let Some(e) = spawned.stderr.take() {
-                std::thread::spawn(move || drain_child_stderr_into_log(e, this_pid));
-            }
+            // ★★ `A2` 那条泵（stderr → 滚动日志）**现在由 `StderrSink::ToLog` 在唯一出口里起**
+            //    —— 实现仍是本模块的 [`drain_child_stderr_into_log`]（那三条设计约束都在它头注里），
+            //    只是「谁在什么时候把它接上」收成了一处。本层因此连 `stderr` 这个字都不用再提。
             pid.store(this_pid, Ordering::SeqCst);
             if let Ok(mut g) = child.lock() {
                 *g = Some(spawned);
@@ -1371,6 +1357,7 @@ pub fn extraction_failure_reason(dir: &Path, err: &str) -> String {
 pub fn start_if_present(
     target_triple: &str,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
+    spawn: Arc<crate::spawn_managed::ManagedSpawn>,
 ) -> (Resolved, Option<SuperviseHandle>) {
     let r = resolve_beside_this_exe(target_triple);
     let Resolved::Found(bin) = &r else {
@@ -1391,6 +1378,7 @@ pub fn start_if_present(
         }),
         on_event,
         Some(Arc::new(local_stdio_consumer_guarded)),
+        spawn,
     );
     (r, Some(h))
 }
@@ -1808,6 +1796,7 @@ pub fn start_or_extract(
     embedded: Option<(&str, &[u8])>,
     make_executable: &dyn Fn(&Path) -> Result<(), String>,
     on_event: Arc<dyn Fn(SuperviseEvent) + Send + Sync>,
+    spawn: Arc<crate::spawn_managed::ManagedSpawn>,
 ) -> (Resolved, Option<SuperviseHandle>) {
     let resolved = resolve_or_extract(target_triple, extract_dir, embedded, make_executable);
     let Resolved::Found(bin) = resolved else {
@@ -1829,6 +1818,7 @@ pub fn start_or_extract(
         }),
         on_event,
         Some(Arc::new(local_stdio_consumer_guarded)),
+        spawn,
     );
     (Resolved::Found(bin), Some(h))
 }
@@ -2596,6 +2586,7 @@ mod tests {
             }),
             Arc::new(|e| println!("[P3 实测] {e:?}")),
             Some(Arc::new(local_stdio_consumer_guarded)),
+            crate::spawn_managed::local_backend_supervised(),
         );
 
         let mut seen = false;
@@ -2882,6 +2873,7 @@ mod tests {
             }),
             Arc::new(|e| println!("[P2 实测] {e:?}")),
             Some(Arc::new(local_stdio_consumer_guarded)),
+            crate::spawn_managed::local_backend_supervised(),
         );
 
         // 轮询而不是睡死：进程起来 + 发 hello 的耗时不确定，睡固定值要么慢要么飘。
@@ -4525,6 +4517,7 @@ mod tests {
             CrashLimits::default(),
             Arc::new(|| 0),
             Arc::new(move |e| ev.lock().expect("ev").push(e)),
+            crate::spawn_managed::local_backend_supervised(),
         );
         let first = spin(|| h.current_pid()).expect("10s 内没起来");
         println!("E2E-OK 真 daemon 起来了 pid={first}");
@@ -4577,6 +4570,7 @@ mod tests {
             },
             Arc::new(|| 1),
             Arc::new(move |e| ev.lock().expect("ev").push(e)),
+            crate::spawn_managed::local_backend_supervised(),
         );
         let gave_up = spin(|| {
             events.lock().expect("ev").iter().find_map(|e| match e {
@@ -4849,6 +4843,7 @@ mod tests {
             Arc::new(move |e| {
                 let _ = tx.send(e);
             }),
+            crate::spawn_managed::local_backend_supervised(),
         );
         let mut saw_exit = None;
         for _ in 0..6 {
@@ -4910,6 +4905,7 @@ mod tests {
             Arc::new(move |e| {
                 let _ = tx.send(e);
             }),
+            crate::spawn_managed::local_backend_supervised(),
         );
         // 等它真的起来（否则我们可能在 spawn 之前就 stop，测不到那条链）。
         match rx.recv_timeout(std::time::Duration::from_secs(20)) {
