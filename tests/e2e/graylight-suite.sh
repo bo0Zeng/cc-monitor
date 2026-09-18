@@ -102,8 +102,16 @@ fi
 # 乙：daemon **握手过且盯的是 fixture 目录**（挡 ②③⑤）。
 _hello="$(grep 'daemon hello' "$LOG" | tail -1)"
 [ -n "$_hello" ] || _abort "日志里一条 daemon hello 都没有 —— 远端没连上，本跑与 #60 无关"
+# 🔴 〔2026-09-18 修陈旧〕这里匹配的是**人读日志那一行的文本**，而那行的字段名被
+#    `17924e9e`（「S4：协议去 agent 名 —— codex_dir/kinds 换成通用 homes，claude_dir 冻结兼容」）
+#    从 `claude_dir=` 改成了 `claude_home=`（wire 上的 JSON 字段仍叫 `claude_dir`，
+#    人读那行打的是派生值 `claude_home_from_hello(&homes, &claude_dir)`）。
+#    ⇒ 本格从此**恒 ABORT**，而 ABORT 长得像「台架没搭好」，不像「判据过期了」
+#    ——于是它在 ABORT 里藏了下来，没人看见。这正是本套件头注那条
+#    「判据看的是围栏，还是围栏的说明书」的又一例：**锚在日志文案上，改文案即失效。**
+#    两个名字都收：新的是今天的，旧的留给还没升的树。
 case "$_hello" in
-  *"claude_dir=$CLAUDE_DIR"*) : ;;
+  *"claude_home=$CLAUDE_DIR"* | *"claude_dir=$CLAUDE_DIR"*) : ;;
   *) _abort "daemon 盯的不是 fixture 目录（要 $CLAUDE_DIR）：$_hello" ;;
 esac
 

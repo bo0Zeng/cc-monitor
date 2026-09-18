@@ -55,9 +55,7 @@ mod tests {
     ];
 
     fn package_json() -> String {
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根")
+        let p = crate::guard_support::repo_root()
             .join("package.json");
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}: {e}"))
     }
@@ -368,9 +366,7 @@ mod tests {
             "`echo` 里的文字被误判成调用"
         );
 
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
+        let dir = crate::guard_support::repo_root()
             .join("tests")
             .join("e2e");
         let mut scanned = 0usize;
@@ -516,9 +512,7 @@ mod tests {
 
     fn read_e2e(name: &str) -> String {
         std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .unwrap()
+            crate::guard_support::repo_root()
                 .join("tests")
                 .join("e2e")
                 .join(name),

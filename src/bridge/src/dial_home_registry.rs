@@ -106,10 +106,8 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     fn repo_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根")
-            .to_path_buf()
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::repo_root()
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -585,9 +583,31 @@ mod tests {
     fn ratchet_history(root: &Path) -> (Vec<(String, usize)>, usize) {
         let mut rows = Vec::new();
         let mut unparsed = 0usize;
-        for sha in git_read(root, &["log", "--format=%h", "--", DIAL_SITES_REL]).split_whitespace()
-        {
-            let spec = format!("{sha}:{DIAL_SITES_REL}");
+        // 🔴 `--follow` ＋ **按「当时的路径」取 blob** —— 两件都是必须的：
+        // 搬树（2026-09-17）给本文件改了名，于是
+        //   ① `git log -- <新路径>` 只看得到改名之后的提交（现打：1 份 vs 92 份）；
+        //   ② 即便用 `--follow` 拿回了 sha，`git show <老sha>:<新路径>` 也读不到
+        //      —— 那些提交里它叫**旧名字**（现打：92 份里 91 份读不出来）。
+        // ⇒ 用 `--name-only` 让 git 顺带报出每个提交里**当时的**路径，成对取。
+        // 少任何一半，这条棘轮都会「历史面一空 ⇒ 下面几格恒真地绿」。
+        let log = git_read(
+            root,
+            &["log", "--follow", "--format=%h", "--name-only", "--", DIAL_SITES_REL],
+        );
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        let mut cur: Option<String> = None;
+        for line in log.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            match cur.take() {
+                None => cur = Some(line.to_string()),
+                Some(sha) => pairs.push((sha, line.to_string())),
+            }
+        }
+        for (sha, path_then) in pairs {
+            let spec = format!("{sha}:{path_then}");
             let blob = std::process::Command::new("git")
                 .current_dir(root)
                 .args(["show", &spec])

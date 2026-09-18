@@ -57,10 +57,8 @@ pub(crate) mod ci_yaml {
     use std::path::Path;
 
     fn repo_root() -> std::path::PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级 = 仓根")
-            .to_path_buf()
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::repo_root()
     }
 
     pub(crate) fn yml() -> String {
@@ -254,7 +252,7 @@ mod tests {
     /// 论证（`C7` 逐字「vendor `code-picture-core` 不动」）看着，**没有判据**。
     #[test]
     fn the_gate_package_count_tracks_the_number_of_shared_crates() {
-        let gate = fs::read_to_string(root().parent().expect("仓根").join("tests/scripts/gate.sh"))
+        let gate = fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
             .expect("读不到 tests/scripts/gate.sh —— 抽取器坏了，本条会零命中地绿");
         let at = guard_core::find_pinned(&gate, "run_gate_sum cargo ")
             .expect("`gate.sh` 里找不到（或不止一处）`run_gate_sum cargo ` —— 本条按红处理");
@@ -365,7 +363,7 @@ mod tests {
             let manifest = format!("src/bridge/{rel}/Cargo.toml");
             let out = std::process::Command::new("git")
                 .args(["ls-files", "--error-unmatch", "--", &manifest])
-                .current_dir(root().parent().expect("仓根"))
+                .current_dir(crate::guard_support::repo_root())
                 .output();
             match out {
                 Ok(o) if o.status.success() => {}
@@ -925,7 +923,7 @@ mod tests {
             ),
         ];
 
-        let pkg = std::fs::read_to_string(root().parent().unwrap().join("package.json"))
+        let pkg = std::fs::read_to_string(crate::guard_support::repo_root().join("package.json"))
             .expect("读不到 package.json");
         // 只取顶层 "scripts" 里 `"test…": "…"` 这种行，不引 json 依赖。
         let scripts: Vec<(String, String)> = pkg
@@ -990,7 +988,7 @@ mod tests {
         // 哪天它改用临时目录，这条理由就消失、它可能变成本机跑得动的 —— 必须回来重判。
         {
             let f40 =
-                std::fs::read_to_string(root().parent().expect("仓根").join("tests/e2e/f40-suite.sh"))
+                std::fs::read_to_string(crate::guard_support::repo_root().join("tests/e2e/f40-suite.sh"))
                     .expect("读不到 tests/e2e/f40-suite.sh");
             assert!(
                 f40.lines()
@@ -1063,7 +1061,7 @@ mod tests {
              跑法写在自己的头注里，属于「改 F63 解析时人工重算的台账」",
         )];
 
-        let repo = root().parent().expect("仓根").to_path_buf();
+        let repo = crate::guard_support::repo_root().to_path_buf();
         // ── 收 `#[ignore]` 测试：(文件名 stem, fn 名)
         let mut ignored: Vec<(String, String)> = Vec::new();
         for (path, src) in guard_core::scan_tree!(&repo.join("src/bridge/src"), &["rs"]) {
@@ -1330,7 +1328,7 @@ mod tests {
             );
         }
 
-        let root = root().parent().expect("仓根").to_path_buf();
+        let root = crate::guard_support::repo_root().to_path_buf();
         let mut seen_adjudicated = 0usize;
         for (wf, resting) in STILL_RESTING_ON {
             let text = std::fs::read_to_string(root.join(".github/workflows").join(wf))
@@ -1472,7 +1470,7 @@ mod tests {
             ("resume-daemon-frames.sh", "ok", 1, 7),
         ];
 
-        let e2e = root().parent().expect("仓根").join("tests").join("e2e");
+        let e2e = crate::guard_support::repo_root().join("tests").join("e2e");
         let count = |script: &str, helper: &str| -> (usize, String) {
             let txt = std::fs::read_to_string(e2e.join(script))
                 .unwrap_or_else(|e| panic!("读不到 tests/e2e/{script}: {e}"));
@@ -1540,9 +1538,7 @@ mod tests {
     /// 写在这里让下一个人看得见。
     #[test]
     fn the_only_gate_that_measures_committed_state_still_does_all_three_checks() {
-        let path = root()
-            .parent()
-            .expect("仓根")
+        let path = crate::guard_support::repo_root()
             .join("tests/scripts/verify-committed-state.sh");
         let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
         // ★ 抽取器自检：文件被掏空/改名时，下面三条会零命中地绿。
@@ -1610,9 +1606,7 @@ mod tests {
     /// 挡不住的是「`run` 函数本身坏掉但文本还在」。
     #[test]
     fn a_skipped_windows_check_cannot_look_like_a_full_pass() {
-        let path = root()
-            .parent()
-            .expect("仓根")
+        let path = crate::guard_support::repo_root()
             .join("tests/scripts/verify-committed-state.sh");
         let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
         // ⚠ **只看非注释行**：本脚本的头注里逐字引用着那句成功结论（讲的就是这次事故），
