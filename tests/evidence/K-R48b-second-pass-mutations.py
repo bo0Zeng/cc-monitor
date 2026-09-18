@@ -26,7 +26,7 @@ import re
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 # (刀号, 说明, 相对路径, 锚点, 期望命中数, 替换成什么, 该红的判据, 怎么跑)
 #   怎么跑：("daemon", <cargo test 过滤串>) / ("monitor", <过滤串>) / ("vitest", <文件>)

@@ -40,7 +40,7 @@ SCOPE_CAVEAT = """\
      自己也起 tmux，那不在本件射程里（本件管的是 **daemon 装 hook 那一跳**）。
 """
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 DAEMON_SRC = REPO / "remote-daemon-proto" / "src"
 
 TMUX_A = re.compile(r'Command::new\("tmux"\)')

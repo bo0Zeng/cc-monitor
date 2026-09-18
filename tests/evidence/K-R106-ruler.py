@@ -20,7 +20,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 
 # ── 剥注释：Rust 生产段（近似 `guard_core::production_code` 的整行 + 行尾两步）──

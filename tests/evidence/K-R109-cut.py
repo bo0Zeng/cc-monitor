@@ -25,7 +25,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 BACKUP = ROOT / "evidence" / ".K-R109-cut-backup.json"
 
 # 本件的基点（`.dispatch.json` 写的那个）。退版刀退到它。

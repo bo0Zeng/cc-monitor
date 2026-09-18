@@ -241,11 +241,7 @@ mod tests {
     fn bare_contains_on_disk_corpora_only_goes_down() {
         let root = repo_root();
         let mut files = Vec::new();
-        for sub in [
-            "src/bridge/src",
-            "src/backend",
-            "src/bridge/crates",
-        ] {
+        for sub in ["src/bridge/src", "src/backend", "src/bridge/crates"] {
             files.extend(guard_core::scan_tree!(&root.join(sub), &["rs"]));
         }
         // 抽取器自检 ①：遍历活着。

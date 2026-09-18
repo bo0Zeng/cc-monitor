@@ -33,7 +33,7 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 BACKUP = ROOT / "evidence" / ".K-R110-cut-backup.json"
 
 PLUGIN = "remote-daemon-proto/src/plugin/mod.rs"

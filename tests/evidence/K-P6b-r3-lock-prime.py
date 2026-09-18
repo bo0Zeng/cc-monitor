@@ -38,7 +38,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 SRC_LOCK = ROOT / "src-tauri" / "Cargo.lock"
 DST_LOCK = ROOT / "remote-daemon-proto" / "Cargo.lock"
 ROOT_OF_SUBTREE = "russh"

@@ -286,8 +286,7 @@ mod tests {
     /// 整条搬进了 `src/backend/control/ccm/`（Rust）。
     /// 本文件那两条判据问的是「**那两个决策今天住在哪一侧**」—— 问题没变，读的文本换了语言。
     fn read_ccm() -> String {
-        let dir = crate::guard_support::repo_root()
-            .join("src/backend/control/ccm");
+        let dir = crate::guard_support::repo_root().join("src/backend/control/ccm");
         let s: String = ["mod.rs", "argv.rs", "plan.rs"]
             .iter()
             .map(|f| {

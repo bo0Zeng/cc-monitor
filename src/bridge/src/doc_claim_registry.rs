@@ -1303,9 +1303,8 @@ mod tests {
              unknown_command · duplicate_id · handler_panicked · not_cancellable。",
             in_doc.len()
         );
-        let daemon =
-            std::fs::read_to_string(repo_root().join("src/backend/inbound.rs"))
-                .expect("读不到 daemon 的 inbound.rs");
+        let daemon = std::fs::read_to_string(repo_root().join("src/backend/inbound.rs"))
+            .expect("读不到 daemon 的 inbound.rs");
         let prod = guard_core::production_code(&daemon);
         let missing: Vec<&&str> = in_doc
             .iter()
@@ -1374,11 +1373,7 @@ mod tests {
 
         // ── 收全仓声明：符号名 → 它出现在哪些文件名里
         let mut srcs: Vec<(PathBuf, String)> = Vec::new();
-        for root in [
-            "src/bridge/src",
-            "src/bridge/crates",
-            "src/backend",
-        ] {
+        for root in ["src/bridge/src", "src/bridge/crates", "src/backend"] {
             srcs.extend(guard_core::scan_tree!(&repo_root().join(root), &["rs"]));
         }
         // 〔08-06 第二次补扫描面〕**把本文件自己也收进来**。
@@ -1780,8 +1775,7 @@ mod tests {
     fn the_linux_job_still_inherits_the_version_guard() {
         let rel = guard_core::strip_hash_comment_lines(
             &std::fs::read_to_string(
-                crate::guard_support::repo_root()
-                    .join(".github/workflows/release.yml"),
+                crate::guard_support::repo_root().join(".github/workflows/release.yml"),
             )
             .expect("读不到 release.yml"),
         );
@@ -2378,11 +2372,7 @@ mod tests {
         let mut defined: std::collections::BTreeMap<String, std::collections::BTreeSet<String>> =
             std::collections::BTreeMap::new();
         let mut srcs: Vec<(PathBuf, String)> = Vec::new();
-        for root in [
-            "src/bridge/src",
-            "src/bridge/crates",
-            "src/backend",
-        ] {
+        for root in ["src/bridge/src", "src/bridge/crates", "src/backend"] {
             srcs.extend(guard_core::scan_tree!(&repo_root().join(root), &["rs"]));
         }
         for (_, raw) in &srcs {

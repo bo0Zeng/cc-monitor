@@ -22,7 +22,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 REL = "remote-daemon-proto/src/readonly_guard.rs"
 
 # `(名字, 块头锚点, 开括号, 闭括号, 期望)` —— 锚点之后第一个开括号起，配平到闭括号止。

@@ -4318,8 +4318,7 @@ mod tests {
     /// （`K-R61 §0e` 逐字禁的就是顺手做那个）—— 全仓那个人群多大，读数住件文件 `§8`。
     #[test]
     fn every_address_the_retirement_condition_names_is_still_on_disk() {
-        let root = crate::guard_support::repo_root()
-            .to_path_buf();
+        let root = crate::guard_support::repo_root().to_path_buf();
 
         let mut checked: Vec<String> = Vec::new();
         let mut missing: Vec<String> = Vec::new();
@@ -4528,8 +4527,7 @@ mod tests {
         // ② 后端那一份还在，且窗口是个说得出的数 —— 否则上面那条会零命中地绿
         //    （「两边都没有」与「只剩一处」在断言上长得一样，这一格就是分开它们的那个）。
         let daemon_src = std::fs::read_to_string(
-            crate::guard_support::repo_root()
-                .join("src/backend/observe/history_query.rs"),
+            crate::guard_support::repo_root().join("src/backend/observe/history_query.rs"),
         )
         .expect("读不到后端的 history_query.rs");
         let remote: Vec<usize> = guard_core::production_code(&daemon_src)
@@ -5507,8 +5505,7 @@ mod tests {
     /// （后端在目标机上 `cargo build` 就咬住旁边这棵树了）。运行时读没有这个代价 ——
     /// 同 `K-R97` 那条 `extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place`。
     fn r88_backend_production(rel: &str) -> String {
-        let p = crate::guard_support::repo_root()
-            .join(rel);
+        let p = crate::guard_support::repo_root().join(rel);
         let raw = std::fs::read_to_string(&p)
             .unwrap_or_else(|e| panic!("读不到后端的 {rel}：{e} —— 先修住址，别绕过本条"));
         guard_core::production_code(&raw)

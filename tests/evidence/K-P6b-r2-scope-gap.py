@@ -37,7 +37,7 @@ import re
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parents[1]
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 # 第二轮派工单 §二 逐字那 6 项（**目录项按前缀认**）。
 WRITE_AREA = [

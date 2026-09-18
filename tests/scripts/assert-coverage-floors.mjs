@@ -32,7 +32,7 @@ import { readFileSync } from "node:fs";
 import { resolve, dirname, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const REPO = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const SUMMARY = resolve(REPO, "coverage/coverage-summary.json");
 
 /**

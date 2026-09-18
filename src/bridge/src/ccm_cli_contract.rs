@@ -50,8 +50,7 @@ mod tests {
     }
 
     fn cc_spawn_path() -> std::path::PathBuf {
-        crate::guard_support::repo_root()
-            .join("src/shared/cc-bus/scripts/cc-spawn")
+        crate::guard_support::repo_root().join("src/shared/cc-bus/scripts/cc-spawn")
     }
 
     /// ★ P4b-Y1/Y2（`C14`〔用 08-12〕「spawn 就是起, 就是 creat」）。
@@ -115,8 +114,7 @@ mod tests {
     /// 这正是本仓一路在治的「散文与代码说的不是一件事」。⇒ 立一条禁词守卫。
     #[test]
     fn the_cc_bus_skill_no_longer_teaches_session_reuse() {
-        let path = crate::guard_support::repo_root()
-            .join("src/shared/cc-bus/SKILL.md");
+        let path = crate::guard_support::repo_root().join("src/shared/cc-bus/SKILL.md");
         let src = std::fs::read_to_string(&path).expect("读 cc-bus SKILL.md");
         assert!(
             src.lines().count() >= 20,

@@ -47,7 +47,7 @@ import shutil
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 BACKUP = ROOT / ".k-r118-cut-backup.json"
 
 COUNTED = "src/views/counted.ts"

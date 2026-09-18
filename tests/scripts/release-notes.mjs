@@ -34,7 +34,7 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
-const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 
 // 段落地板：少于这么多非空行就判「这一版没有真正写过发版说明」。
 // 现打（2026-09-15，`CHANGELOG.md` 的 `[3.8.0]` 段）：98 非空行。

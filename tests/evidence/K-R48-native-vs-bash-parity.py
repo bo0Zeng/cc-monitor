@@ -36,7 +36,7 @@ import subprocess
 import sys
 import tempfile
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 BIN = pathlib.Path(
     os.environ.get("CARGO_TARGET_DIR", str(ROOT / "remote-daemon-proto" / "target"))
 ) / "debug" / "cc-monitor-remote"

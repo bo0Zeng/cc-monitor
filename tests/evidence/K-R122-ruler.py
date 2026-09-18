@@ -55,7 +55,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(os.environ.get("K_R122_ROOT") or Path(__file__).resolve().parent.parent)
+ROOT = Path(os.environ.get("K_R122_ROOT") or Path(__file__).resolve().parents[2])
 CI = ROOT / ".github" / "workflows" / "ci.yml"
 PKG = ROOT / "package.json"
 

@@ -592,7 +592,14 @@ mod tests {
         // 少任何一半，这条棘轮都会「历史面一空 ⇒ 下面几格恒真地绿」。
         let log = git_read(
             root,
-            &["log", "--follow", "--format=%h", "--name-only", "--", DIAL_SITES_REL],
+            &[
+                "log",
+                "--follow",
+                "--format=%h",
+                "--name-only",
+                "--",
+                DIAL_SITES_REL,
+            ],
         );
         let mut pairs: Vec<(String, String)> = Vec::new();
         let mut cur: Option<String> = None;

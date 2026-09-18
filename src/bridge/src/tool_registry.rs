@@ -3658,8 +3658,7 @@ mod environment_tests {
 
         /// 那一层的取件实现。**跨 crate 读源码在本仓有先例**
         /// （`usage.rs` / `polling_registry.rs` 都这么钉 `src/backend` 那侧）。
-        const SIDECAR_ACQUIRE: &str =
-            include_str!("../../backend/sidecars/codepicture/acquire.rs");
+        const SIDECAR_ACQUIRE: &str = include_str!("../../backend/sidecars/codepicture/acquire.rs");
 
         // 反向自检：`pin_definition` 真的会说「不在」（否则下面是空真）。
         assert!(pin_definition("fn a() {}\n", "fn b() {}", "fn b", "自检").is_err());

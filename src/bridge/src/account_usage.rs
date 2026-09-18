@@ -968,15 +968,13 @@ mod tests {
 
     /// daemon 那棵树的 `inbound.rs` 原文（现打，不抄名单）。
     fn daemon_inbound_rs() -> String {
-        let p = crate::guard_support::repo_root()
-            .join("src/backend/inbound.rs");
+        let p = crate::guard_support::repo_root().join("src/backend/inbound.rs");
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}: {e}", p.display()))
     }
 
     /// daemon `main.rs` 的 `SUBCOMMANDS`（CLI 那一面，现算）。
     fn daemon_subcommands() -> Vec<String> {
-        let p = crate::guard_support::repo_root()
-            .join("src/backend/main.rs");
+        let p = crate::guard_support::repo_root().join("src/backend/main.rs");
         let src =
             std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}: {e}", p.display()));
         let head = "const SUBCOMMANDS: &[&str] = &[";

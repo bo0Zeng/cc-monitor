@@ -19,7 +19,7 @@
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 SRC = ROOT / "src-tauri" / "src"
 
 FILES = ["sftp.rs", "sftp_pool.rs", "mcp.rs", "acct_iso_deploy.rs"]

@@ -1170,11 +1170,15 @@ mod spawn_registry {
                 unlock.trim().chars().count()
             );
         }
-        let hook = crate::guard_support::production_code(include_str!("../../src/backend/control/tmux_hook.rs"));
+        let hook = crate::guard_support::production_code(include_str!(
+            "../../src/backend/control/tmux_hook.rs"
+        ));
         // 🔴 `K-R55`（09-11）：这一处的住址从 `observe/watcher.rs` 换成了
         //    `platform/shell.rs` —— 起 shell 那一跳搬进适配层（`K33` 裁定二）。
         //    ⚠ 换的是**住址**，不是判据：核的仍是「登记的那一条在生产段里真的找得到」。
-        let shell = crate::guard_support::production_code(include_str!("../../src/backend/platform/shell.rs"));
+        let shell = crate::guard_support::production_code(include_str!(
+            "../../src/backend/platform/shell.rs"
+        ));
         assert!(
             hook.contains("Command::new(\"tmux\")"),
             "清单登记了 tmux_hook 起 tmux，但生产段里找不到了 —— 幽灵条目"

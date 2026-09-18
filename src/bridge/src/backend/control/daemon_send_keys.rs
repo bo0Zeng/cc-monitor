@@ -128,9 +128,8 @@ mod tests {
     /// 那正是这一整族「切了路由但其实没切」最难发现的形状。
     #[test]
     fn both_mode_names_are_ones_the_daemon_actually_parses() {
-        let daemon = guard_core::production_code(include_str!(
-            "../../../../backend/control/launch.rs"
-        ));
+        let daemon =
+            guard_core::production_code(include_str!("../../../../backend/control/launch.rs"));
         for m in [mode_for(true), mode_for(false)] {
             let needle = format!("\"{m}\" => Some(Mode::");
             assert!(

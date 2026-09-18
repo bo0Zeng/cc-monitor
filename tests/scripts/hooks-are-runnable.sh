@@ -60,7 +60,7 @@
 
 set -uo pipefail
 
-ROOT="${1:-$(cd "$(dirname "$0")/.." && pwd)}"
+ROOT="${1:-$(cd "$(dirname "$0")/../.." && pwd)}"
 
 fails=()
 passed=0

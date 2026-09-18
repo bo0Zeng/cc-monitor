@@ -535,7 +535,9 @@ mod f09_external_beat {
     /// 形状照 `readonly_guard::capture_is_read_only`（那一条同样自陈「只盖一份文件」）。
     #[test]
     fn the_oneshot_watchdog_script_carries_no_loop() {
-        let prod = guard_core::production_code(include_str!("../../src/backend/control/oneshot_session.rs"));
+        let prod = guard_core::production_code(include_str!(
+            "../../src/backend/control/oneshot_session.rs"
+        ));
         // 反空真①：读到的得是真代码，不是一份被剥空的壳。
         assert!(
             prod.len() > 3_000,

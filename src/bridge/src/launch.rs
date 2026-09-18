@@ -829,7 +829,10 @@ mod tests {
                 // 写全了会被本条与死名那条各命中一次（`调研/设计/16 §5.5`：
                 // 注释里引用旧形状时，不要写成能被同一条规则命中的完整形）。
                 // 实测：第一版注释把两者都写全了，当场多出两条假阳。
-                if q.to_string_lossy().replace('\\', "/").contains("/evidence/") {
+                if q.to_string_lossy()
+                    .replace('\\', "/")
+                    .contains("/evidence/")
+                {
                     continue;
                 }
                 files.push((

@@ -521,7 +521,10 @@ mod tests {
                 "single_stream_guard.rs",
                 include_str!("../../tests/backend/single_stream_guard.rs"),
             ),
-            ("ratchet_guard.rs", include_str!("../../tests/backend/ratchet_guard.rs")),
+            (
+                "ratchet_guard.rs",
+                include_str!("../../tests/backend/ratchet_guard.rs"),
+            ),
         ];
         let head: String = heads
             .iter()

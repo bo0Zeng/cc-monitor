@@ -61,7 +61,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 NEEDLE = "@ccm_sid"
 # 层①：取回的两种句法。`#{@ccm_sid}` / `#{?@ccm_sid,…}` 是 tmux 格式串；

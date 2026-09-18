@@ -79,7 +79,10 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
     // P4f：`control/cc_bus.rs` 里有一个 `"--"` 字面量（调 `cc-send` 时显式结束旗标，
     // 免得收件人以 `--` 开头被当成选项）。派生的文件集按「生产段里出现 `"--`」收人，
     // 于是把它扫了进来 —— 那条判据自己写着「宁可多登记几个文件」。登记，不改判据。
-    ("control/cc_bus.rs", include_str!("../../src/backend/control/cc_bus.rs")),
+    (
+        "control/cc_bus.rs",
+        include_str!("../../src/backend/control/cc_bus.rs"),
+    ),
     // P4d：控制面的 CLI 入口。它**不做 match 分派**（认哪些 flag 由
     // `cli_control::spec_for` 从 `inbound::REGISTRY` 派生），但它持有
     // `PROBE_FLAG = "--daemon-probe"` 这个字面量 —— 派生的文件集因此把它扫了进来。
@@ -103,7 +106,10 @@ const DISPATCH_FILES: &[(&str, &str)] = &[
     // 它不做 match 分派，只在用法串里提自己的名字 —— 但 D 审计正是把一个
     // `pub const CTRL_FLAG: &str = "--ccm-hidden-ctrl";` 藏在这里绕过了护栏。
     // 放宽后的探测把它揪了出来。
-    ("control/tmux_hook.rs", include_str!("../../src/backend/control/tmux_hook.rs")),
+    (
+        "control/tmux_hook.rs",
+        include_str!("../../src/backend/control/tmux_hook.rs"),
+    ),
 ];
 
 /// 🔴 **终端命令面**的文件 —— 它们持有 `--旗标` 字面量，但那些**不是 wire 子命令**。
@@ -768,7 +774,10 @@ mod tests {
         ];
 
         let files: &[(&str, &str)] = &[
-            ("control/launch.rs", include_str!("../../src/backend/control/launch.rs")),
+            (
+                "control/launch.rs",
+                include_str!("../../src/backend/control/launch.rs"),
+            ),
             (
                 "control/resolve_query.rs",
                 include_str!("../../src/backend/control/resolve_query.rs"),
@@ -777,8 +786,14 @@ mod tests {
                 "control/fork_write.rs",
                 include_str!("../../src/backend/control/fork_write.rs"),
             ),
-            ("control/tmux_hook.rs", include_str!("../../src/backend/control/tmux_hook.rs")),
-            ("observe/watcher.rs", include_str!("../../src/backend/observe/watcher.rs")),
+            (
+                "control/tmux_hook.rs",
+                include_str!("../../src/backend/control/tmux_hook.rs"),
+            ),
+            (
+                "observe/watcher.rs",
+                include_str!("../../src/backend/observe/watcher.rs"),
+            ),
             (
                 "observe/accounts_query.rs",
                 include_str!("../../src/backend/observe/accounts_query.rs"),
@@ -892,7 +907,10 @@ mod tests {
         ];
         // 逐个文件扫 `control/`（`observe/` 不产 code，不在本条范围）。
         let files: &[(&str, &str)] = &[
-            ("control/launch.rs", include_str!("../../src/backend/control/launch.rs")),
+            (
+                "control/launch.rs",
+                include_str!("../../src/backend/control/launch.rs"),
+            ),
             (
                 "control/resolve_query.rs",
                 include_str!("../../src/backend/control/resolve_query.rs"),
@@ -901,7 +919,10 @@ mod tests {
                 "control/fork_write.rs",
                 include_str!("../../src/backend/control/fork_write.rs"),
             ),
-            ("control/tmux_hook.rs", include_str!("../../src/backend/control/tmux_hook.rs")),
+            (
+                "control/tmux_hook.rs",
+                include_str!("../../src/backend/control/tmux_hook.rs"),
+            ),
         ];
         // 匹配器自检：独立手写的样本必须命中。
         for sample in ["Err((\"unknown_command\", x))", "code: \"not_cancellable\""] {

@@ -770,11 +770,7 @@ mod tests {
     ///
     /// `(方法名, 期望总处数, 期望它住在哪个文件的路径尾巴)`。**默认拒绝**：对不上就红。
     const PLAINTEXT_EXIT_SITES: &[(&str, usize, &str)] = &[
-        (
-            "expose_for_auth_header(",
-            1,
-            "src/backend/relay/server.rs",
-        ),
+        ("expose_for_auth_header(", 1, "src/backend/relay/server.rs"),
         (
             "expose_for_persisting(",
             1,
@@ -783,11 +779,7 @@ mod tests {
     ];
 
     /// 本判据扫哪几棵树。**这就是「取明文恰好 N 处」那句全称的分母。**
-    const PLAINTEXT_SCAN_TREES: &[&str] = &[
-        "src/bridge/src",
-        "src/bridge/crates",
-        "src/backend",
-    ];
+    const PLAINTEXT_SCAN_TREES: &[&str] = &["src/bridge/src", "src/bridge/crates", "src/backend"];
 
     /// ★★★ **`KS2` 的人群那一格〔D1 阻-1 回修，08-27〕：三棵树全扫，不是一个文件、也不是一个 crate。**
     ///
@@ -815,8 +807,7 @@ mod tests {
     /// **三格一起才成立**：定义面（有几个出口）· 调用面（每个出口被调几次、在哪）· 本条（人群覆盖三棵树）。
     #[test]
     fn the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees() {
-        let root = crate::guard_support::repo_root()
-            .to_path_buf();
+        let root = crate::guard_support::repo_root().to_path_buf();
 
         let mut files: Vec<(String, String)> = Vec::new();
         for sub in PLAINTEXT_SCAN_TREES {
@@ -1085,10 +1076,9 @@ mod tests {
         );
 
         // TS 侧：从 `src/ipc/commands.ts` 里切出接口体，派生字段名。
-        let ts = std::fs::read_to_string(
-            crate::guard_support::repo_src_root().join("ipc/commands.ts"),
-        )
-        .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
+        let ts =
+            std::fs::read_to_string(crate::guard_support::repo_src_root().join("ipc/commands.ts"))
+                .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
         let tat = guard_core::find_pinned(&ts, "export interface RelayCredentialsStatus {")
             .expect("TS 侧找不到那个接口 —— 它被改名或删了");
         let tbody = brace_block(&ts, tat).expect("接口没闭合 —— 按红处理");

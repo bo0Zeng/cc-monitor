@@ -43,7 +43,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SIX_RULER = ROOT / "evidence" / "K-R118-ruler.py"
 LOCK = "src-tauri/Cargo.lock"
 CARGO = "src-tauri/Cargo.toml"
