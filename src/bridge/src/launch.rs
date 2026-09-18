@@ -786,9 +786,7 @@ mod tests {
     #[test]
     fn no_prose_claims_the_session_container_is_always_tmux() {
         let needle = format!("会话容器{}是 tmux", "本来就");
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根");
+        let root = crate::guard_support::repo_root();
         // 〔08-06 扩面〕原来只扫三份。实测：把**原句**写进 `src/doc/DEVELOPMENT.md`
         // （不在那三份里）**不会红** —— 扫描面本身就是个洞。⇒ 改成「全 `doc/` + 两份 README + 本文件」。
         //
@@ -816,8 +814,24 @@ mod tests {
         //
         // ⇒ **这不是巧合**：扫描面按「想到哪扫哪」长出来，而假话按「写在哪就在哪」分布。
         // 两者的形状不一样，所以「上次扩过了」不等于「这次够了」。
-        for (dir, exts) in [("tests/e2e", &["ts", "sh", "md"][..]), ("src", &["ts"][..])] {
+        // 〔搬树 2026-09-18〕**这一格从 `"tests/e2e"` 换成整棵 `"tests"`** —— 与
+        // `structural_scan` 那边同一个判断：前端测试此前住在 `src/` 里、被下面那个 `"src"`
+        // 顺带收着；搬去 `tests/` 之后**这个语料面悄悄缩了一大块**，而本条的反空真检查
+        // 只管「某一族够不够」，管不了「少了一棵树」⇒ 会安静地少扫，不会红。
+        for (dir, exts) in [("tests", &["ts", "sh", "md"][..]), ("src", &["ts"][..])] {
             for (q, body) in guard_core::scan_tree!(&root.join(dir), exts) {
+                // 🔴 〔2026-09-18〕**`evidence/` 要排掉。** 它是量具与记录，
+                // 里面的审计表会**逐字引用探针自己的那句话**（实发一例：一份 deathvalue
+                // 记录里有一行在复述本条的探针串）⇒ 收进来等于**把探针的串喂给探针**，
+                // 当场一条假阳。`structural_scan` 那边排掉它是同一条理由。
+                //
+                // ⚠ 本注释**刻意不复述那句探针串、也不写出那边那个函数名**：
+                // 写全了会被本条与死名那条各命中一次（`调研/设计/16 §5.5`：
+                // 注释里引用旧形状时，不要写成能被同一条规则命中的完整形）。
+                // 实测：第一版注释把两者都写全了，当场多出两条假阳。
+                if q.to_string_lossy().replace('\\', "/").contains("/evidence/") {
+                    continue;
+                }
                 files.push((
                     format!("{dir}/{}", q.file_name().expect("文件名").to_string_lossy()),
                     body,
@@ -839,7 +853,11 @@ mod tests {
         // 总数只做一个「明显坏了」的兜底。人群不同质 ⇒ 自检也不该只有一个数。
         {
             let by = |pre: &str| files.iter().filter(|(f, _)| f.starts_with(pre)).count();
-            for (pre, floor) in [("doc/", 8usize), ("tests/e2e/", 20), ("src/", 250)] {
+            // 〔2026-09-18 重设地板〕现打：`src/doc/*.md` 10 · `tests/**` 150 个 .ts ＋
+            // `tests/e2e` 的 sh/md · `src/**.ts` 213。
+            // `src/` 那格从 **250 下调到 200**：**不是扫描面塌了**，是 143 份前端测试
+            // 合法搬到了 `tests/`（它们现在由上面那一族数着）。
+            for (pre, floor) in [("doc/", 8usize), ("tests/", 100), ("src/", 200)] {
                 let n = by(pre);
                 assert!(
                     n >= floor,

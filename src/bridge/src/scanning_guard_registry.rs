@@ -340,12 +340,12 @@ mod tests {
         "src/bridge/src/ssh_source.rs",
         "src/bridge/src/tmux_daemon_gate_guard.rs",
         "src/bridge/src/utils.rs",
-        "src/backend/layering_guard.rs",
-        "src/backend/no_timer_guard.rs",
+        "tests/backend/layering_guard.rs",
+        "tests/backend/no_timer_guard.rs",
         "src/backend/observe/watcher.rs",
-        "src/backend/platform/fallback_guard.rs",
-        "src/backend/protocol_doc_guard.rs",
-        "src/backend/readonly_guard.rs",
+        "tests/backend/platform/fallback_guard.rs",
+        "tests/backend/protocol_doc_guard.rs",
+        "tests/backend/readonly_guard.rs",
     ];
 
     /// 存量上限（**递减棘轮**）。
@@ -465,10 +465,8 @@ mod tests {
     }
 
     fn repo_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根")
-            .to_path_buf()
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::repo_root()
     }
 
     /// 抠出所有 `#[cfg(test)]` 段（到下一个顶层 `}` 为止）。
@@ -550,7 +548,10 @@ mod tests {
         // ★ 形状不是发明的：本模块 [`raw_walkers`] 从一开始就是这么写的（逐字同一份清单）。
         let mut scanned: Vec<(&str, usize)> = Vec::new();
         let mut seen: Vec<String> = Vec::new();
-        for sub in ["src/bridge/src", "src/backend"] {
+        // 🔴 〔搬树 2026-09-18 补 `"tests"`〕19 份纯测试文件从后端树搬到了
+        // `<repo>/tests/backend/` ⇒ 原来那两棵树**一份也够不着它们**，
+        // 而本模块治的正是「没红与没看在输出上一模一样」那个形状。
+        for sub in ["src/bridge/src", "src/backend", "tests"] {
             let files = guard_core::scan_tree!(&root.join(sub), &["rs"]);
             scanned.push((sub, files.len()));
             for (f, src) in files {
@@ -587,15 +588,25 @@ mod tests {
         // ⚠ 诚实边界：路径**不存在**那一形其实不靠本格 —— `scan_tree_excluding_self`
         // 自己会 `panic!("读目录 … 失败")`。本格接的是**存在、但采不到东西**那一形
         //（后缀写错 · 指到一个几乎空的子目录）。两形各有各的接手人，别把本格读大。
-        const SUBTREE_FLOOR: usize = 40;
+        // 🔴 **地板按子树各给一个**，不是一个数管三棵。
+        // 〔2026-09-18〕`"tests"` 是新加的那棵，而它只有 **19 份 `.rs`**
+        // （另外 150 份是 `.ts`，不在本条的后缀里）⇒ 一个 40 的通用地板会**假红**，
+        // 而假红正是本仓记过账的那件事：「假阳会训练人绕过判据」。
+        // 现打：`src/bridge/src` 111 · `src/backend` 72 · `tests` 19。
+        let floor_of = |sub: &str| -> usize {
+            match sub {
+                "tests" => 15,
+                _ => 40,
+            }
+        };
         let starved: Vec<String> = scanned
             .iter()
-            .filter(|(_, n)| *n < SUBTREE_FLOOR)
-            .map(|(sub, n)| format!("  {sub} —— 只采到 {n} 份"))
+            .filter(|(sub, n)| *n < floor_of(sub))
+            .map(|(sub, n)| format!("  {sub} —— 只采到 {n} 份（地板 {}）", floor_of(sub)))
             .collect();
         assert!(
             starved.is_empty(),
-            "这几棵子树的采集量低于地板 {SUBTREE_FLOOR}：\n{}\n\
+            "这几棵子树的采集量低于它自己那条地板：\n{}\n\
              ⇒ 那个实参此刻**几乎什么都没采到**，而本条对它「全绿」——\n\
              那正是「没红」与「没看」在输出上一模一样的那一格。\n\
              ⇒ 先核实参（路径拼对了吗 · 后缀过滤对吗），别调地板让今天好过。\n\
@@ -933,7 +944,10 @@ mod tests {
     fn raw_walkers() -> Vec<String> {
         let root = repo_root();
         let mut out = Vec::new();
-        for sub in ["src/bridge/src", "src/backend"] {
+        // 🔴 〔搬树 2026-09-18 补 `"tests"`〕19 份纯测试文件从后端树搬到了
+        // `<repo>/tests/backend/` ⇒ 原来那两棵树**一份也够不着它们**，
+        // 而本模块治的正是「没红与没看在输出上一模一样」那个形状。
+        for sub in ["src/bridge/src", "src/backend", "tests"] {
             // ★ 本模块自己也走 `scan_tree!` —— 它就是那条规矩的第一个遵守者。
             //
             // ⚠ **摘除在这里今天不是承重的**（变异实测）：把 `scan_tree!` 换成一个匹配不上的
@@ -1121,8 +1135,31 @@ mod tests {
     fn ratchet_history(root: &Path) -> (Vec<(String, usize, usize)>, usize) {
         let mut rows = Vec::new();
         let mut unparsed = 0usize;
-        for sha in git_read(root, &["log", "--format=%h", "--", SELF_REL]).split_whitespace() {
-            let spec = format!("{sha}:{SELF_REL}");
+        // 🔴 `--follow` ＋ **按「当时的路径」取 blob** —— 两件都是必须的：
+        // 搬树（2026-09-17）给本文件改了名，于是
+        //   ① `git log -- <新路径>` 只看得到改名之后的提交（现打：1 份 vs 92 份）；
+        //   ② 即便用 `--follow` 拿回了 sha，`git show <老sha>:<新路径>` 也读不到
+        //      —— 那些提交里它叫**旧名字**（现打：92 份里 91 份读不出来）。
+        // ⇒ 用 `--name-only` 让 git 顺带报出每个提交里**当时的**路径，成对取。
+        // 少任何一半，这条棘轮都会「历史面一空 ⇒ 下面几格恒真地绿」。
+        let log = git_read(
+            root,
+            &["log", "--follow", "--format=%h", "--name-only", "--", SELF_REL],
+        );
+        let mut pairs: Vec<(String, String)> = Vec::new();
+        let mut cur: Option<String> = None;
+        for line in log.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            match cur.take() {
+                None => cur = Some(line.to_string()),
+                Some(sha) => pairs.push((sha, line.to_string())),
+            }
+        }
+        for (sha, path_then) in pairs {
+            let spec = format!("{sha}:{path_then}");
             let blob = git_read(root, &["show", &spec]);
             match (ceiling_in(&blob), pending_count_in(&blob)) {
                 (Some(c), Some(p)) => rows.push((sha.to_string(), c, p)),

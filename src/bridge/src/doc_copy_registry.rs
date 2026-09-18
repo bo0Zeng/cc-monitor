@@ -24,10 +24,8 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     fn repo_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根")
-            .to_path_buf()
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::repo_root()
     }
 
     /// 散文文件集 —— 数字副本只在这些地方治（源码注释另有各自的判据）。
@@ -487,7 +485,11 @@ mod tests {
         // 后端的每个文件数两遍（搬家前 `src/backend` 与 `src` 是互斥的）。
         // 〔搬 src-tauri 2026-09-17〕**这里没有 `"src/bridge/src"`，不是漏了**：
         // 它已经是 `"src"` 的子目录，两个都列会把每个文件数两遍。
-        for sub in ["src"] {
+        // 🔴 〔搬树 2026-09-18 补 `"tests"`〕`HAS_A_GUARD` 里点名的符号有一部分
+        // 住在测试文件里（例：`NODE_SUITES` 今天在 `tests/node-suite-registry-guard.vitest.ts`），
+        // 而那些文件从 `src/` 搬到了 `<repo>/tests/` ⇒ 只扫 `"src"` 会把它们读成
+        // **「判据已经不在源码里了」**，而那是假的（本轮实发一次）。
+        for sub in ["src", "tests"] {
             collect(&root.join(sub), &mut all);
         }
         assert!(

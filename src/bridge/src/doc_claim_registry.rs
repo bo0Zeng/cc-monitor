@@ -407,10 +407,8 @@ mod tests {
     const INVARIANTS: &str = include_str!("../../doc/INVARIANTS.md");
 
     fn repo_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级")
-            .to_path_buf()
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::repo_root()
     }
 
     /// `doc/` 下**递归**收 `.md`。
@@ -517,9 +515,12 @@ mod tests {
     #[test]
     fn the_doc_scan_actually_reads_the_durable_docs() {
         let files = doc_files();
+        // 〔2026-09-18 下调 11 → 10〕不是遍历坏了：`306c862e`（退役三份旧设计文档、
+        // 设计与真相源归并到 `调研/`）删掉了 `doc/账号用量-usage抓取方案.md`。
+        // 现打 `src/doc/*.md` = 10，`git ls-files` 同为 10 ⇒ **没有文件丢，是地板没跟着改**。
         assert!(
-            files.len() >= 11,
-            "`doc/` 只扫到 {} 个 .md —— 遍历坏了（F11 摸底实测 11 个）",
+            files.len() >= 10,
+            "`doc/` 只扫到 {} 个 .md —— 遍历坏了（2026-09-18 现打 10 个）",
             files.len()
         );
         let total: usize = files
@@ -1779,9 +1780,7 @@ mod tests {
     fn the_linux_job_still_inherits_the_version_guard() {
         let rel = guard_core::strip_hash_comment_lines(
             &std::fs::read_to_string(
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .parent()
-                    .expect("仓根")
+                crate::guard_support::repo_root()
                     .join(".github/workflows/release.yml"),
             )
             .expect("读不到 release.yml"),
@@ -2950,10 +2949,8 @@ mod daemon_wording_registry {
     use std::path::{Path, PathBuf};
 
     fn repo_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级")
-            .to_path_buf()
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::repo_root()
     }
 
     /// 本闸的扫描面 —— `K-R116` 写区里那 9 份散文。**闭集，按住址点名。**
@@ -3106,7 +3103,13 @@ mod daemon_wording_registry {
             //   而那张账数的是「还没改的措辞」，一处**自检夹具**混进去会把它读成一笔真债。
             ("常驻 daemon 的 stdin", true),
             ("ccm做到必须走daemon", true),
-            ("src/backend", false),
+            // 🔴 〔2026-09-18 修复〕这一格原是 `("remote-daemon-proto", false)` ——
+            //   一个**故意构造的夹具**：`daemon` 出现在更长的 token 里。
+            //   重组的机械改名把它换成了 `"src/backend"`，而那串里**一个 `daemon` 都没有**
+            //   ⇒ 夹具失去意义、本条当场红。这正是 `调研/设计/16 §5.3` 记的那类假阳性：
+            //   **机械替换会砸坏刻意构造的测试夹具**。
+            //   换成 `embedded-daemons/`（活的目录名，同样是「非裸词」那一形）。
+            ("embedded-daemons/", false),
             ("daemon_send_keys.rs", false),
             ("--daemon-probe", false),
             ("daemonPath", false),
@@ -3235,10 +3238,8 @@ mod frozen_daemon_census {
     use std::path::{Path, PathBuf};
 
     fn repo_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级")
-            .to_path_buf()
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::repo_root()
     }
 
     /// 整棵 `tests/evidence/*.md` 的 `daemon` 合计地板 —— **量于 `897afec`，2026-09-14，69 份**。

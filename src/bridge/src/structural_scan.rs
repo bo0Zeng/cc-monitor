@@ -927,12 +927,15 @@ mod tests {
         let corpus = addr_corpus();
         let mut monitor = 0usize;
         let mut daemon = 0usize;
+        let mut tests = 0usize;
         for (p, _) in &corpus {
             let rel = detour_addr(p);
             if rel.starts_with("src/backend/") {
                 daemon += 1;
             } else if rel.starts_with("src/bridge/") {
                 monitor += 1;
+            } else if rel.starts_with("tests/") {
+                tests += 1;
             }
         }
         // 地板逐棵树各一条 —— 合起来一条挡不住「一棵塌了另一棵涨了」。
@@ -942,18 +945,28 @@ mod tests {
             monitor >= 100,
             "monitor 那棵树只收到 {monitor} 份 .rs（09-12 现打 118）—— 分母缩水了"
         );
+        // 〔2026-09-18 下调 80 → 65〕不是分母缩水：搬树把 **19 份纯测试文件**从
+        // 后端树移到了 `<repo>/tests/backend/`。现打 `src/backend/**.rs` = 72
+        // （`tests/backend` 另有 19）⇒ 72 + 19 = 91，与 09-12 的 88 同量级。
         assert!(
-            daemon >= 80,
-            "🔴 daemon 那棵树只收到 {daemon} 份 .rs（09-12 现打 88）—— \
+            daemon >= 65,
+            "🔴 后端那棵树只收到 {daemon} 份 .rs（2026-09-18 现打 72，另有 19 份在 tests/backend）—— \
              `src/backend` 掉出语料面了。\n\
              那一刻上面那条棘轮照样绿，而它只守着一棵树 —— \
              **报「已守住」而分母只有一棵树**，正是本条要挡的形状。"
+        );
+        // 〔2026-09-18 新增〕测试树也要有自己的地板 —— 它是第三棵，现打 19 份。
+        assert!(
+            tests >= 15,
+            "测试那棵树只收到 {tests} 份 .rs（2026-09-18 现打 19）—— \
+             `tests/` 掉出语料面了，而上面两条照样绿。"
         );
         // 点名：三份真长过绕道的文件必须都在语料里（地板是数，这一条是**住址**）。
         let names: std::collections::BTreeSet<String> =
             corpus.iter().map(|(p, _)| detour_addr(p)).collect();
         for want in [
-            "src/backend/readonly_guard.rs",
+            // 〔搬树 2026-09-17〕它是纯测试文件，搬到了 `tests/backend/`。
+            "tests/backend/readonly_guard.rs",
             "src/bridge/src/ssh_source.rs",
             "src/bridge/src/local_daemon.rs",
         ] {
@@ -1201,9 +1214,7 @@ mod tests {
             ),
         ];
 
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根");
+        let root = crate::guard_support::repo_root();
         let mut found: Vec<String> = Vec::new();
         for sub in [
             "src/bridge/src",
@@ -1634,9 +1645,7 @@ mod tests {
     /// 这是本工作区反复吃亏的地方（人群取宽 ⇒ 逼人往豁免表里塞条目 ⇒ 判据变废纸）。
     #[test]
     fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根")
+        let root = crate::guard_support::repo_root()
             .to_path_buf();
         let mut files = guard_core::scan_tree!(&root.join("src/bridge/src"), &["rs"]);
         files.extend(guard_core::scan_tree!(
@@ -1734,9 +1743,7 @@ mod tests {
     /// 算错了却被人补了一个假落点 ⇒ 判据变绿而它证明的事根本不成立。
     /// 形状与 `frame_cadence_guard.rs` 里那条同源（本仓已有先例）。
     fn addr_repo_root() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级 = 仓根")
+        crate::guard_support::repo_root()
             .to_path_buf()
     }
 
@@ -1751,10 +1758,15 @@ mod tests {
     fn addr_corpus() -> Vec<(std::path::PathBuf, String)> {
         let root = addr_repo_root();
         let mut out: Vec<(std::path::PathBuf, String)> = Vec::new();
+        // 🔴 〔搬树 2026-09-18 补 `"tests"`〕19 份纯测试文件从后端树搬到了
+        // `<repo>/tests/backend/` ⇒ 原来那三棵树**一份也够不着它们**，
+        // 而下面那些「符号地址 / 行号地址 / 死名」判据的人群就少了那一块 ——
+        // **少扫不会红，只会零命中地绿**。
         for sub in [
             "src/bridge/src",
             "src/bridge/crates",
             "src/backend",
+            "tests",
         ] {
             out.extend(guard_core::scan_tree!(&root.join(sub), &["rs"]));
         }
@@ -2245,14 +2257,17 @@ mod tests {
     fn dead_name_corpus() -> Vec<(String, String)> {
         let root = addr_repo_root();
         let mut out: Vec<(String, String)> = Vec::new();
+        // 🔴 〔搬树 2026-09-18〕**两棵根，互不包含。** 上一版列了五个根，其中
+        // `"src/bridge/src"` · `"src/bridge/crates"` · `"src/doc"` 在搬树之后**全都是
+        // `"src"` 的子目录** ⇒ 那些文件被**数两遍**，于是「盘上 N 处」全部翻倍，
+        // 而登记表写的是搬家前的真数 ⇒ 一片假红（本轮实发：`local_is_posix` 1→2 之类）。
+        //
+        // ⚠ 那一版的注释**已经点出了这个形状**（「后端树已经是 `src` 的子目录，
+        // 两个都列会把每个文件数两遍」）—— 但只对 `"src/backend"` 那一格落实了，
+        // 另外三格漏了。⇒ 教训：**发现一个形状之后，要把同形的全找一遍**，
+        // 不是只修当场那一个。
         for sub in [
-            "src/bridge/src",
-            "src/bridge/crates",
-            // 〔搬树 2026-09-17〕**这里没有 `"src/backend"`，不是漏了**：后端树搬到
-            // `<repo>/src/backend` 之后它已经是 `"src"` 的**子目录**，两个都列会把
-            // 后端的每个文件数两遍（搬家前 `src/backend` 与 `src` 是互斥的）。
             "src",
-            "doc",
             // 〔e2e 并入 tests/，2026-09-17〕这一格**从 `"e2e"` 换成 `"tests"`**，不是换成
             // `"tests/e2e"`：前端测试此前住在 `src/` 里、被上面那个 `"src"` 顺带收着；
             // 搬去 `tests/` 之后**这个语料面悄悄缩了一大块**，而本族的反空真检查只管
@@ -2262,6 +2277,30 @@ mod tests {
         ] {
             for (p, src) in guard_core::scan_tree!(&root.join(sub), &[] as &[&str]) {
                 let rel = dead_name_rel(&root, &p);
+                // 🔴 〔搬树 2026-09-18〕**`evidence/` 必须排掉** —— 本函数头注逐字写着
+                // 它「刻意不收」，理由是「那是量具与记录，散文里逐字写着一堆死名；
+                // 收进来 = 代码侧被本族自己的记录喂饱，旗舰活体当场从人群里消失」。
+                // 那句话当时靠的是**位置**（`evidence/` 不在当年那几个根下）。
+                // 搬树把它变成 `tests/evidence/` ⇒ 跟着 `"tests"` **自己回来了**，
+                // 而那条设计意图一个字都没改。⇒ 把"靠位置"换成**一条明写的排除**。
+                // 🔴 〔搬树 2026-09-18〕两条按位置生效的射程边界，都被搬树悄悄取消了：
+                //
+                // ① `evidence/` —— 本函数头注逐字写着它「刻意不收」：那是量具与记录，
+                //    散文里逐字写着一堆死名；收进来 = **代码侧被本族自己的记录喂饱**，
+                //    旗舰活体当场从人群里消失。搬成 `tests/evidence/` 后跟着 `"tests"` 回来了。
+                //
+                // ② `vendor/` —— 第三方 vendored 代码。它原住 `src-tauri/vendor/`（当年的根之外），
+                //    现在 `src/bridge/vendor/` 落进了 `"src"` ⇒ **第三方代码在给我们的
+                //    「这个名字还活着吗」投票**。实发四条假账：`path_shell_safe` 定义在
+                //    vendored 的 `cc-acct-iso/scripts/lib.sh` 里、`guard_doc_rel` 与
+                //    `symbols_in_file` 定义在 vendored 的 `code-picture-core` 里
+                //    ⇒ 三个真死名被读成「活的」，登记表被判成腐了。
+                //
+                // ⚠ 教训：**「靠位置生效的边界」在搬树时会静默失效** —— 它不会报错，
+                //    只会让射程悄悄变大或变小。换成明写的排除。
+                if rel.starts_with("tests/evidence/") || rel.contains("/vendor/") {
+                    continue;
+                }
                 out.push((rel, src));
             }
         }
@@ -2569,7 +2608,7 @@ mod tests {
                 2,
             ),
             (
-                "src/backend/protocol_doc_guard.rs",
+                "tests/backend/protocol_doc_guard.rs",
                 "hello_commands_match_the_dispatch_table",
                 1,
             ),
@@ -2584,7 +2623,7 @@ mod tests {
             // **不是**「这句话没人守」。根因怎么治（要不要把本文件的**声明**单独补进 `in_code`）
             // 归 PM，本件不自批。
             (
-                "src/backend/readonly_guard.rs",
+                "tests/backend/readonly_guard.rs",
                 "the_cfg_test_reexport_detour_stays_extinct",
                 1,
             ),
@@ -2599,7 +2638,7 @@ mod tests {
                 1,
             ),
             (
-                "src/backend/relay/nodelay_guard.rs",
+                "tests/backend/relay/nodelay_guard.rs",
                 "both_directions_disable_nagle_in_relay_production_code",
                 1,
             ),
@@ -2619,6 +2658,9 @@ mod tests {
                 1,
             ),
             (
+                // 〔2026-09-18〕**这里一度被我改成 2，那是错的** —— 那个 2 是语料根互相
+                // 包含造成的**重复计数**假象（`src/bridge/crates` 是 `src` 的子目录）。
+                // 根去重之后真数仍是 1。⇒ 看到「盘上比登记多一倍」先怀疑语料面，别改账。
                 "src/bridge/crates/acct-core/src/lib.rs",
                 "contract_matches_the_daemon_implementation",
                 1,
@@ -2800,6 +2842,16 @@ mod tests {
                 1,
             ),
             ("src/tabs.ts", "local_tmux_names", 1),
+            // 🔴 〔搬树 2026-09-18 新增四条〕**不是新长出来的债，是语料面变大了**：
+            // 这份 README 原住 `src-tauri/README.md`，而本族的语料根里没有 `src-tauri`
+            // ⇒ 它**按构造在射程外**。改名成 `src/bridge/README.md` 之后落进了 `"src"`
+            // 那一棵，于是它散文里点名的死名第一次被看见。
+            // 现打核实：这四个名字在 `src/` 与 `tests/` 里**定义数都是 0**（真死名）
+            // ⇒ 如实记账，而不是给它们编一个「还活着」的说法。
+            ("src/bridge/README.md", "classify_capture_output", 2),
+            ("src/bridge/README.md", "drain_complete_lines", 1),
+            ("src/bridge/README.md", "exec_on_session", 1),
+            ("src/bridge/README.md", "plan_file_read", 1),
         ];
 
         /// **墓碑登记**：`(仓根相对路径, 名字, 带 [`PROSE_NAME_TOMBSTONE`] 的处数)`。
