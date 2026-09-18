@@ -62,7 +62,7 @@ use search_core::{MAIN_CAP, TOOL_CAP};
 
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResponse {
     /// "ready" | "indexing"
@@ -85,7 +85,7 @@ pub struct SearchResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionHits {
     pub session_id: String,
@@ -123,7 +123,7 @@ pub struct SessionHits {
 
 #[derive(Debug, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct Hit {
     /// 消息 uuid，前端打开 viewer 后据此滚动定位 + 高亮
@@ -144,7 +144,7 @@ pub struct Hit {
 
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SearchIndexStatus {
     pub ready: bool,

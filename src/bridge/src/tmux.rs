@@ -128,7 +128,7 @@ fn tmux_tab_underflow(line: &str, expected: usize) -> bool {
 /// 顺手把手抄那份也换成生成物。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct TmuxSession {
     pub name: String,
@@ -1256,9 +1256,7 @@ mod tests {
         let decl_prefix = format!("{}: &str =", "UTF8_CLIENT_FLAG");
         guard_core::find_pinned(&prod, &decl_prefix)
             .unwrap_or_else(|e| panic!("本文件生产段里 `{decl_prefix}` 不是恰好一处：{e}"));
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级 = 仓根");
+        let root = crate::guard_support::repo_root();
         let others = guard_core::scan_tree!(&root.join("src/bridge/src"), &["rs"]);
         assert!(
             others.len() >= 60,
@@ -1917,12 +1915,9 @@ mod tests {
         // Gate 1：空 target 必须被拒（`=:` 会被 tmux 解析成「当前会话」）。
         assert!(exact_target("").is_err(), "空 target 必须被 Gate 1 拒绝");
         // ② 那条性质的新住址：daemon 侧抓屏与杀会话**都**过 `exact_target`。
-        let daemon = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上一级")
-            .join("src/backend")
-            .join("src")
-            .join("control");
+        // 〔搬树 2026-09-17〕后端树从 `remote-daemon-proto/src/` 搬到 `<repo>/src/backend/`
+        // ⇒ **中间那层 `src` 没了**。原来是 `.join("src/backend").join("src").join("control")`。
+        let daemon = crate::guard_support::backend_src_root().join("control");
         let mut checked = 0usize;
         for (file, why) in [("capture_pane.rs", "抓屏"), ("kill.rs", "杀会话")] {
             let p = daemon.join(file);

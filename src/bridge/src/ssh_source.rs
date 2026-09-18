@@ -411,7 +411,7 @@ const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(45);
 /// HostKey 触发即隐含 TCP+KEX 已过）。
 #[derive(Serialize, Clone, Debug)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum ConnectStage {
     /// 某地址开始拨号（TCP+握手）。
@@ -5721,7 +5721,7 @@ mod f032_idle_tests {
 /// serde camelCase：host / port / user / keyPath，与前端 fill 逻辑对齐。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct ResolvedHost {
     pub host: String,
@@ -5910,7 +5910,7 @@ fn parse_ssh_g_output(stdout: &str, alias: &str) -> ResolvedHost {
 /// F57：一个来源别名 + 其 HostName/port/proxyjump（供前端「拆分」精确还原成独立机）。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct ImportMember {
     pub alias: String,
@@ -5922,7 +5922,7 @@ pub struct ImportMember {
 /// F57：批量导入预览的一组——聚合后的一台建议主机（含多地址与来源成员）。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct ImportGroup {
     pub label: String,
@@ -6024,7 +6024,7 @@ pub async fn import_ssh_hosts() -> Result<Vec<ImportGroup>, String> {
 /// （如「SSH 连上了，但 daemon 没响应/未部署」）。仅参数级硬错误才返回 Err。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct ConnTestResult {
     /// SSH 连接 + 鉴权是否成功。

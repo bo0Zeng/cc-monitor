@@ -37,7 +37,7 @@ const FILES: &[(&str, &[u8])] = &[
     ),
     (
         "examples/config",
-        include_bytes!("../../src/shared/cc-bus/examples/config"),
+        include_bytes!("../../shared/cc-bus/examples/config"),
     ),
     (
         "examples/policy.tsv",
@@ -45,11 +45,11 @@ const FILES: &[(&str, &[u8])] = &[
     ),
     (
         "scripts/cc-agents",
-        include_bytes!("../../src/shared/cc-bus/scripts/cc-agents"),
+        include_bytes!("../../shared/cc-bus/scripts/cc-agents"),
     ),
     (
         "scripts/cc-broadcast",
-        include_bytes!("../../src/shared/cc-bus/scripts/cc-broadcast"),
+        include_bytes!("../../shared/cc-bus/scripts/cc-broadcast"),
     ),
     (
         "scripts/cc-bus-install.sh",
@@ -61,43 +61,43 @@ const FILES: &[(&str, &[u8])] = &[
     ),
     (
         "scripts/cc-bus-stop-hook",
-        include_bytes!("../../src/shared/cc-bus/scripts/cc-bus-stop-hook"),
+        include_bytes!("../../shared/cc-bus/scripts/cc-bus-stop-hook"),
     ),
     (
         "scripts/cc-busd",
-        include_bytes!("../../src/shared/cc-bus/scripts/cc-busd"),
+        include_bytes!("../../shared/cc-bus/scripts/cc-busd"),
     ),
     (
         "scripts/cc-kill",
-        include_bytes!("../../src/shared/cc-bus/scripts/cc-kill"),
+        include_bytes!("../../shared/cc-bus/scripts/cc-kill"),
     ),
     (
         "scripts/cc-list",
-        include_bytes!("../../src/shared/cc-bus/scripts/cc-list"),
+        include_bytes!("../../shared/cc-bus/scripts/cc-list"),
     ),
     (
         "scripts/cc-recv",
-        include_bytes!("../../src/shared/cc-bus/scripts/cc-recv"),
+        include_bytes!("../../shared/cc-bus/scripts/cc-recv"),
     ),
     (
         "scripts/cc-register",
-        include_bytes!("../../src/shared/cc-bus/scripts/cc-register"),
+        include_bytes!("../../shared/cc-bus/scripts/cc-register"),
     ),
     (
         "scripts/cc-send",
-        include_bytes!("../../src/shared/cc-bus/scripts/cc-send"),
+        include_bytes!("../../shared/cc-bus/scripts/cc-send"),
     ),
     (
         "scripts/cc-spawned-record",
-        include_bytes!("../../src/shared/cc-bus/scripts/cc-spawned-record"),
+        include_bytes!("../../shared/cc-bus/scripts/cc-spawned-record"),
     ),
     (
         "scripts/cc-spawn",
-        include_bytes!("../../src/shared/cc-bus/scripts/cc-spawn"),
+        include_bytes!("../../shared/cc-bus/scripts/cc-spawn"),
     ),
     (
         "scripts/cc-whoami",
-        include_bytes!("../../src/shared/cc-bus/scripts/cc-whoami"),
+        include_bytes!("../../shared/cc-bus/scripts/cc-whoami"),
     ),
 ];
 
@@ -105,7 +105,7 @@ const FILES: &[(&str, &[u8])] = &[
 /// 合并的话用户点一次看不出到底动没动盘。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct CcBusDeployReport {
     /// 落点绝对路径（给用户看，也便于他自己去查）。
     pub dest: String,
@@ -239,7 +239,7 @@ pub fn deploy_into(claude_dir: &Path) -> Result<CcBusDeployReport, String> {
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(tag = "state", rename_all = "snake_case")]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub enum CcBusInstallState {
     /// 落点不存在（或一个内嵌文件都没有）。
     NotInstalled,
@@ -424,9 +424,7 @@ mod tests {
     /// 敲某条命令时才发现没有。
     #[test]
     fn the_embedded_file_list_matches_the_repo() {
-        let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .unwrap()
+        let root = crate::guard_support::repo_root()
             .join("src/shared/cc-bus");
         // ⚠ 走 `guard_core::scan_tree!(&root, &[])` —— **空列表 = 不筛扩展名**，
         //   那个能力是本件 08-13 补进原语的：cc-bus 的脚本（`cc-send` / …）**没有扩展名**，
@@ -505,14 +503,10 @@ mod tests {
     /// 不影响能不能跑），要钉得单独论证。**判据的人群等于它真正证明的那件事。**
     #[test]
     fn every_script_in_the_repo_is_embedded_for_deployment() {
-        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根")
+        let dir = crate::guard_support::repo_root()
             .join("src/shared/cc-bus/scripts");
         let mut on_disk: Vec<String> = guard_core::shell_scripts(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .expect("仓根"),
+            &crate::guard_support::repo_root(),
         )
         .into_iter()
         .filter(|p| p.replace('\\', "/").contains("src/shared/cc-bus/scripts/"))
@@ -608,7 +602,7 @@ mod tests {
     /// 装完 `cc-spawn` 直接 `exit 2`，而部署那步一声不吭地成功了。
     #[test]
     fn the_deploy_precheck_lists_what_cc_spawn_negotiates() {
-        let spawn = include_str!("../../src/shared/cc-bus/scripts/cc-spawn");
+        let spawn = include_str!("../../shared/cc-bus/scripts/cc-spawn");
         let line = spawn
             .lines()
             .find(|l| l.trim_start().starts_with("for _c in "))

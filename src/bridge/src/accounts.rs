@@ -53,7 +53,7 @@ pub struct AccountsMeta {
 /// （那正是它 C04d 批 3 栽过的那个坑）。⇒ 派生留在扫描面内，字面量共享。
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "kebab-case")]
 pub enum AuthKind {
     /// 订阅登录：可用性看 `.credentials.json` 在不在（**逐字节旧行为**）。
@@ -75,7 +75,7 @@ pub enum AuthKind {
 /// `generated-boundary-guard` + CI 的 `git diff --exit-code -- src/generated/` 会红。
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteAccount {
     pub name: String,
@@ -228,7 +228,7 @@ pub(crate) fn degraded_notice(meta: &AccountsMeta, accounts: &[RemoteAccount]) -
 /// 而本机版查询（`list_local_session_accounts`）要经包装层返回它，正好把手抄那份换掉。
 #[derive(serde::Serialize, serde::Deserialize, Debug, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionAccount {
     pub pid: u32,
@@ -271,7 +271,7 @@ pub struct SessionAccount {
 
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionAccountsResult {
     pub available: bool,

@@ -544,7 +544,7 @@ pub(crate) fn log_unknown_reasons(what: &str, rows: &[(HistoryProject, ProjectCo
 /// 时**不冻结 TTL 缓存**（下次 open 重试失败台），避免瞬断台的项目在缓存里消失整个 TTL 窗口。
 #[derive(serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteProjectsResult {
     pub projects: Vec<HistoryProject>,

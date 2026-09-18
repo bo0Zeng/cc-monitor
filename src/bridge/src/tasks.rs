@@ -33,7 +33,7 @@ use tauri::{AppHandle, Emitter};
 /// 的 status 值（如 `cancelled` 等），前端做 icon 映射时兜底显示原文。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct TaskEntry {
     pub id: String,

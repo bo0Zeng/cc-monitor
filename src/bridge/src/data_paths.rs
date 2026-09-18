@@ -21,7 +21,7 @@ use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 // **那个 `../..` 里有一级是「幻影目录」**（Phase D 审计 S1 查清 `ts-rs` 源码）：
 // 有效路径 = `cwd` / `export_dir` / `export_to`，而 `export_dir` 默认是 `./bindings`
@@ -89,7 +89,7 @@ pub struct DataPathInfo {
 
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct DataPathsResponse {
     pub monitor_data_dir: String,

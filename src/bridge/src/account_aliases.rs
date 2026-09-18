@@ -76,7 +76,7 @@ const RC_CANDIDATES: &[&str] = &[".bashrc", ".zshrc", ".bash_profile", ".profile
 /// 一份候选 rc 的状态。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct AccountAliasRc {
     /// 绝对路径。
@@ -88,7 +88,7 @@ pub struct AccountAliasRc {
 /// 一次生成的结果 —— **预览与真写走同一个返回形状**，差别只在 `wrote_*` 那两格。
 #[derive(Debug, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct AccountAliasReport {
     /// 生成文件的绝对路径。

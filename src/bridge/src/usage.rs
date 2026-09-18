@@ -20,7 +20,7 @@ use tauri::ipc::Channel;
 /// `Deserialize` 供 F88a-remote 反序列化 daemon `--usage` 回传的行（`remote_history::aggregate_remote_usage_all`）。
 #[derive(serde::Serialize, serde::Deserialize, Clone, Default, PartialEq, Debug)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct UsageTotals {
     /// **C03：四个字段都显式收窄成 `number`。**
@@ -42,7 +42,7 @@ pub struct UsageTotals {
 /// 一条会话在某 (模型, 天) 下的用量。
 #[derive(serde::Serialize, serde::Deserialize, Clone, PartialEq, Debug)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct UsageBucket {
     pub model: String,
@@ -55,7 +55,7 @@ pub struct UsageBucket {
 /// `#[serde(default)]` 使缺 origin 反序列化为 None，monitor 收到后盖主机 label）。
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SessionUsageRow {
     pub session_id: String,
