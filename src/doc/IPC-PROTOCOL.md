@@ -1276,7 +1276,7 @@ arch 取值与 release 上挂的那两份一致）。⚠ **没有「取最新那
 
 ⚠ **一种坏法只有一个 `code`、只有一句话**：没有「悄悄跳过」的那一支，也没有
 「在 `PATH` 上再找一份顶上」的第二条路。这张表与代码里那个闭集由
-`src/backend/sidecar_fetch_guard.rs` **双向对账**（这里多一行或少一行都会红）。
+`tests/backend/sidecar_fetch_guard.rs` **双向对账**（这里多一行或少一行都会红）。
 
 ⚠ **今天这条路一步都没接线**：`panorama` 那一族命令还没进 `inbound::COMMANDS`，
 `hello.unavailable` 生产段仍恒空（见 §10 那一节），真正的下载与落盘也还没写。

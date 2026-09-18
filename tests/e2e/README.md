@@ -77,8 +77,36 @@ tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，�
 | `daemon-cc-bus` | 50 过 / 0 败 | ★ 08-13 新增（`P4f`）：后端的 `--bus-list` / `--bus-send` 真跑（含身份空间对账三态）。`CLAUDE_CONFIG_DIR` 与 `CC_BUS_HOME` 双沙箱；用到 tmux 的那格经 shim 强制 `-L` |
 | **`graylight-suite`** | **3 过 / 0 败**（08-13） | ★★ 它**不再是「跑不了」的** —— 跑法见下方 `§ 全链套件怎么跑` |
 
-**跑不了的（本机缺条件，不是没跑）**：`f40-suite` / `restart-daemon-frames` /
-`ccm-cli.test`（要 Xvfb + 跑着的 dev app）· `ccm-rbind-title`（要 Windows 的 `wt.exe`）。
+**跑不了的（本机缺条件，不是没跑）**：`ccm-rbind-title`（要 Windows 的 `wt.exe`）。
+
+🔴 **2026-09-18 更新：台架有脚本了 —— `tests/e2e/tier2-rig.sh`。**
+下面那份散文配方仍留着当说明，但**不要照着手搓** —— 手搓会踩它自己列的第 2 条坑
+（`.build_id` 名字写错 ⇒ 后端用**真** `~/.claude` 起来）。本仓定框 E12：散文纪律等于没有纪律。
+
+```
+bash tests/e2e/tier2-rig.sh setup     # 沙箱 ＋ config.json ＋ Xvfb（会自证 loopback ssh / 后端二进制 / build_id）
+bash tests/e2e/tier2-rig.sh dev &     # dev 实例（HOME 指沙箱）
+bash tests/e2e/tier2-rig.sh run       # graylight-suite ＋ f40-suite
+bash tests/e2e/tier2-rig.sh teardown  # 按 pid 收 dev ＋ vite ＋ Xvfb
+```
+
+台架跑起来之后**逮到两件**：
+
+1. 🔴 **本套件的 gate 乙 一直是陈旧的** —— 它匹配日志文本 `claude_dir=`，而那行的字段名被
+   `17924e9e`（「S4：协议去 agent 名」）改成了 `claude_home=`（wire 上的 JSON 仍叫 `claude_dir`，
+   人读那行打的是派生值）。⇒ 本格**恒 ABORT**，而 ABORT 长得像「台架没搭好」、不像
+   「判据过期了」，于是它在 ABORT 里藏了下来。**锚在日志文案上，改文案即失效。**已修。
+2. 🟡 **`f40-suite` 4 格里过 3 格，第 4 格是仪器不是产品** —— 「中键点状态栏触发快照」这一步
+   在本机**完全不触发**（`[e2e] snapshot` 零行）。已排除的：窗口在且 `IsViewable`（1100x800）·
+   指针确实落在 app 的子窗口里 · 装了 openbox 之后指针与窗口关联正常 · 探针模块已加载
+   （`[e2e] jitter` 有 3 行）· 试过 4 个底边偏移 ＋ 先左键取焦点。
+   ⚠ **没验证的一个猜测**：`window.addEventListener("auxclick")` 在当前 WebKitGTK（2.52.6）上
+   可能不再收中键 —— 要改成 `mousedown` 判 `button===1` 才收。**这只是猜测，没有证据**，
+   验它要动 `src/e2e-probe.ts` 再重建。⇒ 这一格今天的状态是**「判不了」**，不是「产品坏了」。
+
+⚠ 另记：**这份配方没提窗口管理器，而没有 WM 时 `xdotool getmouselocation` 报 `window:0`**
+（指针与窗口关联不上）。装 `openbox` 才正常。08-13 那次能跑，说明当时的环境有 WM 或
+WebKitGTK 行为不同 —— **成因没查清，不编说法**。
 ⚠ `graylight-suite` **08-13 起不在这一行里了** —— 它跑通了（3 过 / 0 败），跑法见下。
 
 ## 全链套件（`graylight-suite`）怎么跑〔08-13 实测记录〕
