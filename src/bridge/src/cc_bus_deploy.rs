@@ -424,8 +424,7 @@ mod tests {
     /// 敲某条命令时才发现没有。
     #[test]
     fn the_embedded_file_list_matches_the_repo() {
-        let root = crate::guard_support::repo_root()
-            .join("src/shared/cc-bus");
+        let root = crate::guard_support::repo_root().join("src/shared/cc-bus");
         // ⚠ 走 `guard_core::scan_tree!(&root, &[])` —— **空列表 = 不筛扩展名**，
         //   那个能力是本件 08-13 补进原语的：cc-bus 的脚本（`cc-send` / …）**没有扩展名**，
         //   而原语此前按扩展名筛 ⇒ 想扫这棵树只能自己 `read_dir`，
@@ -503,20 +502,18 @@ mod tests {
     /// 不影响能不能跑），要钉得单独论证。**判据的人群等于它真正证明的那件事。**
     #[test]
     fn every_script_in_the_repo_is_embedded_for_deployment() {
-        let dir = crate::guard_support::repo_root()
-            .join("src/shared/cc-bus/scripts");
-        let mut on_disk: Vec<String> = guard_core::shell_scripts(
-            &crate::guard_support::repo_root(),
-        )
-        .into_iter()
-        .filter(|p| p.replace('\\', "/").contains("src/shared/cc-bus/scripts/"))
-        .filter_map(|p| {
-            std::path::Path::new(&p)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .map(|s| s.to_string())
-        })
-        .collect();
+        let dir = crate::guard_support::repo_root().join("src/shared/cc-bus/scripts");
+        let mut on_disk: Vec<String> =
+            guard_core::shell_scripts(&crate::guard_support::repo_root())
+                .into_iter()
+                .filter(|p| p.replace('\\', "/").contains("src/shared/cc-bus/scripts/"))
+                .filter_map(|p| {
+                    std::path::Path::new(&p)
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.to_string())
+                })
+                .collect();
         on_disk.sort();
         assert!(
             on_disk.len() >= 10,

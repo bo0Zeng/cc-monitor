@@ -143,8 +143,7 @@ mod tests {
     }
 
     pub(super) fn platform_sources() -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root()
-            .join("platform");
+        let root = crate::guard_support::src_root().join("platform");
         let mut out = Vec::new();
         let mut stack = vec![root.clone()];
         while let Some(dir) = stack.pop() {

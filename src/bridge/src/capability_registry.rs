@@ -1062,11 +1062,8 @@ mod tests {
             "postpack",
         ];
         let pkg: serde_json::Value = serde_json::from_str(
-            &std::fs::read_to_string(
-                crate::guard_support::repo_root()
-                    .join("package.json"),
-            )
-            .expect("读不到 package.json"),
+            &std::fs::read_to_string(crate::guard_support::repo_root().join("package.json"))
+                .expect("读不到 package.json"),
         )
         .expect("package.json 不是合法 JSON");
         let scripts = pkg
@@ -1095,8 +1092,7 @@ mod tests {
 
         // ③ cargo 配置：红不红取决于**文件里有没有那三个键**，不取决于文件在不在。
         //    人群 = 3 个发起面 × cargo 认的 2 种文件名 = 6 格（依据见本条头注那张表）。
-        let root = crate::guard_support::repo_root()
-            .to_path_buf();
+        let root = crate::guard_support::repo_root().to_path_buf();
         let mut slots: Vec<String> = Vec::new();
         for dir in CARGO_CFG_DIRS {
             for name in CARGO_CFG_NAMES {

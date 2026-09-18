@@ -18,7 +18,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 # ── 剥法 ────────────────────────────────────────────────────────────────────
 # 与 `launch_wire.rs::production_ts` 同口径：块注释 → 整行 `//` / `*` / `/*` → 行尾 `//`。

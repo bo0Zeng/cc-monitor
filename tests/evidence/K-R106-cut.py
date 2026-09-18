@@ -20,7 +20,7 @@ import shutil
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 BACKUP = ROOT / "evidence" / ".K-R106-cut-backup.json"
 
 HIST = "src-tauri/src/history.rs"

@@ -68,11 +68,27 @@ mod tests {
     fn every_address_points_at_something_we_can_name() {
         for (name, dir, probes) in [
             ("crate_root", crate_root(), &["Cargo.toml", "build.rs"][..]),
-            ("crate_src_root", crate_src_root(), &["lib.rs", "main.rs"][..]),
-            ("repo_root", repo_root(), &["package.json", "tsconfig.json", "vite.config.ts"][..]),
-            ("repo_src_root", repo_src_root(), &["main.ts", "backend", "bridge"][..]),
+            (
+                "crate_src_root",
+                crate_src_root(),
+                &["lib.rs", "main.rs"][..],
+            ),
+            (
+                "repo_root",
+                repo_root(),
+                &["package.json", "tsconfig.json", "vite.config.ts"][..],
+            ),
+            (
+                "repo_src_root",
+                repo_src_root(),
+                &["main.ts", "backend", "bridge"][..],
+            ),
             ("tests_root", tests_root(), &["backend", "e2e"][..]),
-            ("backend_src_root", backend_src_root(), &["main.rs", "Cargo.toml"][..]),
+            (
+                "backend_src_root",
+                backend_src_root(),
+                &["main.rs", "Cargo.toml"][..],
+            ),
         ] {
             assert!(dir.is_dir(), "{name}() = {dir:?}，不是目录");
             for probe in probes {

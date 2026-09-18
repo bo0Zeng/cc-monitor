@@ -713,10 +713,7 @@ mod tests {
         // ② 两棵树的生产段里，没有任何文件引用本模块。
         let root = repo_root();
         let mut files = guard_core::scan_tree!(&root.join("src/bridge/src"), &["rs"]);
-        files.extend(guard_core::scan_tree!(
-            &root.join("src/backend"),
-            &["rs"]
-        ));
+        files.extend(guard_core::scan_tree!(&root.join("src/backend"), &["rs"]));
         assert!(
             files.len() >= 100,
             "只扫到 {} 个源文件 —— 遍历坏了，本条此刻是空转的（08-14 实测 135+）",

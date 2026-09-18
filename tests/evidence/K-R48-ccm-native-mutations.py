@@ -13,7 +13,7 @@ import pathlib
 import subprocess
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 CRATE = ROOT / "remote-daemon-proto"
 
 # (刀名, 文件, 锚点, 锚点该命中几次, 换成什么, 该打红的判据, 切在哪)

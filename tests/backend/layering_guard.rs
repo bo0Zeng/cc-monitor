@@ -99,8 +99,7 @@ mod tests {
 
     /// 收集某一层下所有 `.rs` 的 `(相对路径, 生产段)`。
     fn layer_sources(layer: &str) -> Vec<(String, String)> {
-        let root = crate::guard_support::src_root()
-            .join(layer);
+        let root = crate::guard_support::src_root().join(layer);
         layer_sources_at(&root, layer)
     }
 
@@ -285,8 +284,7 @@ mod tests {
     /// ⇒ 改成**数量相等**：独立走一遍目录树数 `.rs`，与采集到的条数比。
     /// 它对「文件增删」免疫（那是正常演进），只对「采集漏了」敏感 —— 而后者才是要防的。
     fn assert_collection_is_complete(layer: &str, files: &[(String, String)]) {
-        let root = crate::guard_support::src_root()
-            .join(layer);
+        let root = crate::guard_support::src_root().join(layer);
         assert_collection_is_complete_at(&root, layer, files);
     }
 

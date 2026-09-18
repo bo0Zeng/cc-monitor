@@ -33,7 +33,7 @@ import shutil
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 BACKUP = REPO / "evidence" / ".kr101-cut-backup"
 STATE = BACKUP / "state.json"
 

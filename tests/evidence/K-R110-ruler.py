@@ -26,7 +26,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 
 # `guard_core::assert_tree_strips_clean` 今天的三个调用根（住址在下面三处）：
 #   remote-daemon-proto/src/guard_support.rs:61 · src-tauri/src/structural_scan.rs:611 / 667

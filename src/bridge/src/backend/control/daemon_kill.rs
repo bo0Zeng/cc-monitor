@@ -261,9 +261,8 @@ mod tests {
         let root = crate::guard_support::repo_root();
 
         // ── ① 反向锚点：daemon 那条形状门还在（它没了本判据就在空转）──────────
-        let kill_prod = guard_core::production_code(include_str!(
-            "../../../../backend/control/kill.rs"
-        ));
+        let kill_prod =
+            guard_core::production_code(include_str!("../../../../backend/control/kill.rs"));
         let forbidden: Vec<char> = [':', '=']
             .into_iter()
             .filter(|c| kill_prod.contains(&format!("name.contains('{c}')")))

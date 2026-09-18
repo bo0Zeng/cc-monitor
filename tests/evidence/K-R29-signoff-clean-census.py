@@ -29,7 +29,7 @@ import re
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 GUARD = ROOT / "remote-daemon-proto" / "src" / "readonly_guard.rs"
 MANIFEST = ROOT / "remote-daemon-proto" / "Cargo.toml"
 

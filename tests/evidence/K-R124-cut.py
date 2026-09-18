@@ -25,7 +25,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 WORK = Path(os.environ.get("K_R124_WORK") or (ROOT.parent / "k-r124-cuts"))
 
 #: 副本里要有的那几份 —— 判据本体 ＋ 它的全部被测对象。

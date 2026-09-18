@@ -44,13 +44,13 @@ mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制�
 mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monitor 独占）+ 读侧只回掩码
 mod daemon_control; // P2s（C8）：每台机一个开关的命令层——只认 origin，不认 ssh 也不认进程监护
 mod daemon_policy; // P2s（C8）：每台机一份 daemon 策略（生效值住内存，持久化归前端）
+#[cfg(test)]
+mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
 mod inbound_client;
 mod launch;
 mod local_accounts; // L3a：本机多账号枚举（只读）——`accounts.rs` 的本地对侧
 mod local_daemon; // P2s（C8）：本机 daemon 的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod local_origin_registry;
-#[cfg(test)]
-mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
 mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
 mod messages;

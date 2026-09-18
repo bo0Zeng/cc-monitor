@@ -102,7 +102,11 @@ mod tests {
             (
                 "tests_root",
                 tests_root(),
-                &["readonly_guard.rs", "build_id_guard.rs", "no_timer_guard.rs"][..],
+                &[
+                    "readonly_guard.rs",
+                    "build_id_guard.rs",
+                    "no_timer_guard.rs",
+                ][..],
             ),
         ] {
             assert!(dir.is_dir(), "{name}() 不是目录：{}", dir.display());
@@ -115,7 +119,12 @@ mod tests {
             }
         }
         // 子目录也各点一个，免得整棵子树消失而顶层还在。
-        for rel in ["control/mod.rs", "observe/mod.rs", "relay/server.rs", "platform/mod.rs"] {
+        for rel in [
+            "control/mod.rs",
+            "observe/mod.rs",
+            "relay/server.rs",
+            "platform/mod.rs",
+        ] {
             assert!(
                 src_root().join(rel).is_file(),
                 "src_root() 下缺 {rel} —— 生产树疑似塌了一块"

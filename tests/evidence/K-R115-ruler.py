@@ -71,7 +71,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(os.environ.get("K_R115_ROOT") or Path(__file__).resolve().parent.parent)
+ROOT = Path(os.environ.get("K_R115_ROOT") or Path(__file__).resolve().parents[2])
 EVIDENCE = ROOT / "evidence"
 
 # `shutil` 里会把源文件的 mtime 一起搬到目的地的那几个名字。

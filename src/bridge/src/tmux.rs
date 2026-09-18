@@ -1963,8 +1963,7 @@ mod tests {
     /// `include_str!` 读对面那份、抠出字面量、逐字比。
     #[test]
     fn the_oneshot_prefix_matches_the_daemon_side() {
-        const DAEMON: &str =
-            include_str!("../../backend/control/oneshot_session.rs");
+        const DAEMON: &str = include_str!("../../backend/control/oneshot_session.rs");
         let line = DAEMON
             .lines()
             .find(|l| {

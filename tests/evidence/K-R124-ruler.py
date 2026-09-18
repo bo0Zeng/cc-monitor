@@ -68,7 +68,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(os.environ.get("K_R124_ROOT") or Path(__file__).resolve().parent.parent)
+ROOT = Path(os.environ.get("K_R124_ROOT") or Path(__file__).resolve().parents[2])
 TARGET = Path(os.environ.get("RELEASE_WORKFLOW") or (ROOT / ".github" / "workflows" / "release.yml"))
 
 #: 🔴 **闭集只有这一个住址**：`release.yml` 里「发不发布」那个闸的字面，钉在这两个常量上。
@@ -76,7 +76,9 @@ CANON_ENV = "${{ github.event_name == 'push' || inputs.publish == true }}"
 CANON_IF = "env.PUBLISH == 'true'"
 
 #: 正文生成器的住址（相对仓根）。`release.yml` 两处发布步骤的 `body_path` 都由它产出。
-RENDERER = "scripts/release-notes.mjs"
+# 〔搬树 2026-09-18〕`scripts/` 并进了 `tests/scripts/`。`release.yml` 已经改对，
+# 是本守卫这个常量没跟 —— 而它红的那条诊断（「生成器不在盘上」）指的方向是对的。
+RENDERER = "tests/scripts/release-notes.mjs"
 
 
 # ── YAML 子集切块器 ──────────────────────────────────────────────────────────

@@ -36,7 +36,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 REG = ROOT / "src-tauri/src/doc_claim_registry.rs"
 FN = "fn the_release_version_is_the_same_in_all_six_places()"
 

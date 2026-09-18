@@ -259,8 +259,7 @@ mod tests {
     /// 那属于外部世界，本仓钉不了。**比没有强，别读成证明。**
     #[test]
     fn the_hook_coverage_that_these_reasons_rest_on_has_not_changed() {
-        const DAEMON_HOOKS: &str =
-            include_str!("../../backend/control/tmux_hook.rs");
+        const DAEMON_HOOKS: &str = include_str!("../../backend/control/tmux_hook.rs");
         let prod = guard_core::production_code(DAEMON_HOOKS);
         // 判据串运行时拼，免得命中本文件自己上面那两段说明。
         let want: Vec<String> = ["created", "closed", "renamed"]
@@ -473,8 +472,8 @@ mod tests {
         //   都不剥 ⇒ 这里**不许**断言「它剥掉了东西」（那不是它对 shell 语料的契约）。
         //   今天被抹掉的 9 行全是 shell 的 `*)` case 分支 —— 那是 `scan()` 在 ccm 上的
         //   真实行为，是另一件事，不是本条该钉的性质。
-        let ccm = fs::read_to_string(root.join("src/backend/control/ccm/plan.rs"))
-            .unwrap_or_default();
+        let ccm =
+            fs::read_to_string(root.join("src/backend/control/ccm/plan.rs")).unwrap_or_default();
         assert!(
             !guard_core::strip_comment_lines(&ccm).trim().is_empty(),
             "剥注释后 `control/ccm/plan.rs` 一个非空白字节都不剩（原文 {} 字节）。两个可能的真因：\n\
@@ -758,10 +757,9 @@ mod tests {
         let raw: String = ["mod.rs", "plan.rs"]
             .iter()
             .map(|f| {
-                fs::read_to_string(root.join("src/backend/control/ccm").join(f))
-                    .unwrap_or_else(|e| {
-                        panic!("control/ccm/{f} 读不到 —— 路径变了就把这条一起改：{e}")
-                    })
+                fs::read_to_string(root.join("src/backend/control/ccm").join(f)).unwrap_or_else(
+                    |e| panic!("control/ccm/{f} 读不到 —— 路径变了就把这条一起改：{e}"),
+                )
             })
             .collect::<Vec<_>>()
             .join("\n");

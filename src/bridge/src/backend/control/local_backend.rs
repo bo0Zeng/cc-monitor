@@ -2035,11 +2035,7 @@ mod tests {
         // ④ 剥法自检：剥完还残留测试属性 ⇒ 上面那张 `FORMS` 表自己就进了扫描面。
         guard_core::assert_no_test_code(self_rel, &guard_core::production_code(me));
         let mut corpus: Vec<(String, String)> = vec![(self_rel.to_string(), me.to_string())];
-        for sub in [
-            "src/bridge/src",
-            "src/backend",
-            "src/bridge/crates",
-        ] {
+        for sub in ["src/bridge/src", "src/backend", "src/bridge/crates"] {
             for (f, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let rel = f
                     .strip_prefix(&root)

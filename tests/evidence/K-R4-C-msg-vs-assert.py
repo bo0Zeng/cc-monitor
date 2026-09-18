@@ -45,7 +45,7 @@ import sys
 import json
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parents[2]
 
 SKIP_DIRS = {"node_modules", "target", ".git", "dist", "gen"}
 

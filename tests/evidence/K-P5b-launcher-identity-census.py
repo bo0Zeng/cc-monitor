@@ -19,7 +19,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 
 # ── 与判据同源的口径（判据在 Rust 那侧，这里是它的可读副本；两边漂开时以判据为准）──
 LAUNCH_CAPS = {"session.launch", "launch.send-into"}

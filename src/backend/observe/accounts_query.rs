@@ -2181,7 +2181,8 @@ mod tests {
     /// 五格的活，本条不重复买。
     #[test]
     fn the_launch_id_env_var_matches_the_monitor_side_home() {
-        let monitor_history_path = crate::guard_support::repo_root().join("src/bridge/src/history.rs");
+        let monitor_history_path =
+            crate::guard_support::repo_root().join("src/bridge/src/history.rs");
         let monitor_history = std::fs::read_to_string(&monitor_history_path)
             .unwrap_or_else(|e| panic!("读不到 {monitor_history_path:?}：{e}"));
         assert!(

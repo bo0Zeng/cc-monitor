@@ -34,7 +34,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(__file__).resolve().parents[2]
 LIB = ROOT / "src-tauri" / "src" / "lib.rs"
 LEDGER_RS = ROOT / "src-tauri" / "src" / "parity_ledger.rs"
 OUT = []

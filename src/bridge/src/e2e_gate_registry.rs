@@ -55,8 +55,7 @@ mod tests {
     ];
 
     fn package_json() -> String {
-        let p = crate::guard_support::repo_root()
-            .join("package.json");
+        let p = crate::guard_support::repo_root().join("package.json");
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {p:?}: {e}"))
     }
 
@@ -366,9 +365,7 @@ mod tests {
             "`echo` 里的文字被误判成调用"
         );
 
-        let dir = crate::guard_support::repo_root()
-            .join("tests")
-            .join("e2e");
+        let dir = crate::guard_support::repo_root().join("tests").join("e2e");
         let mut scanned = 0usize;
         let mut bad: Vec<String> = Vec::new();
         // ⚠ 走 `guard_core::scan_tree!` 而不是自己 `read_dir`（`scanning_guard_registry` 的规矩：

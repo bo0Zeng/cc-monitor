@@ -1216,11 +1216,7 @@ mod tests {
 
         let root = crate::guard_support::repo_root();
         let mut found: Vec<String> = Vec::new();
-        for sub in [
-            "src/bridge/src",
-            "src/bridge/crates",
-            "src/backend",
-        ] {
+        for sub in ["src/bridge/src", "src/bridge/crates", "src/backend"] {
             for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let file = f
                     .file_name()
@@ -1645,13 +1641,9 @@ mod tests {
     /// 这是本工作区反复吃亏的地方（人群取宽 ⇒ 逼人往豁免表里塞条目 ⇒ 判据变废纸）。
     #[test]
     fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
-        let root = crate::guard_support::repo_root()
-            .to_path_buf();
+        let root = crate::guard_support::repo_root().to_path_buf();
         let mut files = guard_core::scan_tree!(&root.join("src/bridge/src"), &["rs"]);
-        files.extend(guard_core::scan_tree!(
-            &root.join("src/backend"),
-            &["rs"]
-        ));
+        files.extend(guard_core::scan_tree!(&root.join("src/backend"), &["rs"]));
 
         let mut population = 0usize;
         let mut bad: Vec<String> = Vec::new();
@@ -1743,8 +1735,7 @@ mod tests {
     /// 算错了却被人补了一个假落点 ⇒ 判据变绿而它证明的事根本不成立。
     /// 形状与 `frame_cadence_guard.rs` 里那条同源（本仓已有先例）。
     fn addr_repo_root() -> std::path::PathBuf {
-        crate::guard_support::repo_root()
-            .to_path_buf()
+        crate::guard_support::repo_root().to_path_buf()
     }
 
     /// 地址判据的**语料面**：四个根下的全部 `.rs` + 本文件自己。
@@ -2025,7 +2016,11 @@ mod tests {
             ("single_stream_guard.rs", "main.rs", 585),
             ("single_stream_guard.rs", "observe/watcher.rs", 77),
             ("single_stream_guard.rs", "relay/tee.rs", 169),
-            ("single_stream_guard.rs", "src/bridge/src/backend/mod.rs", 22),
+            (
+                "single_stream_guard.rs",
+                "src/bridge/src/backend/mod.rs",
+                22,
+            ),
             ("table.rs", "server.rs", 24),
         ];
 
@@ -2553,7 +2548,11 @@ mod tests {
         const INVENTORY: &[(&str, &str, usize)] = &[
             ("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1),
             ("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1),
-            ("src/doc/INVARIANTS.md", "every_monitor_file_strips_clean", 1),
+            (
+                "src/doc/INVARIANTS.md",
+                "every_monitor_file_strips_clean",
+                1,
+            ),
             ("src/doc/INVARIANTS.md", "path_shell_safe", 1),
             ("src/doc/INVARIANTS.md", "snapshot_announced_by_origin", 1),
             ("src/doc/STATE-MATRIX.md", "read_session_jsonl", 1),
@@ -2582,11 +2581,7 @@ mod tests {
                 "hello_is_flushed_before_the_inbound_reader_starts",
                 1,
             ),
-            (
-                "src/backend/listen.rs",
-                "frozen_single_client_guard",
-                1,
-            ),
+            ("src/backend/listen.rs", "frozen_single_client_guard", 1),
             (
                 "src/backend/observe/accounts_query.rs",
                 "credential_filename_matches_native_identity_declaration",
@@ -2602,11 +2597,7 @@ mod tests {
                 "path_shell_safe",
                 1,
             ),
-            (
-                "src/backend/observe/watcher.rs",
-                "spawn_tmux_ticker",
-                2,
-            ),
+            ("src/backend/observe/watcher.rs", "spawn_tmux_ticker", 2),
             (
                 "tests/backend/protocol_doc_guard.rs",
                 "hello_commands_match_the_dispatch_table",
@@ -2627,26 +2618,14 @@ mod tests {
                 "the_cfg_test_reexport_detour_stays_extinct",
                 1,
             ),
-            (
-                "src/backend/relay/http1.rs",
-                "handle_alloc_error",
-                1,
-            ),
-            (
-                "src/backend/relay/http1.rs",
-                "head_cap_is_enforced",
-                1,
-            ),
+            ("src/backend/relay/http1.rs", "handle_alloc_error", 1),
+            ("src/backend/relay/http1.rs", "head_cap_is_enforced", 1),
             (
                 "tests/backend/relay/nodelay_guard.rs",
                 "both_directions_disable_nagle_in_relay_production_code",
                 1,
             ),
-            (
-                "src/backend/relay/server.rs",
-                "handle_alloc_error",
-                1,
-            ),
+            ("src/backend/relay/server.rs", "handle_alloc_error", 1),
             (
                 "src/backend/relay/server.rs",
                 "the_relay_entry_reads_each_env_var_into_its_own_config_slot",
@@ -2774,7 +2753,11 @@ mod tests {
                 "the_one_real_ticker",
                 1,
             ),
-            ("src/bridge/src/shared_crate_registry.rs", "ci_live_lines", 1),
+            (
+                "src/bridge/src/shared_crate_registry.rs",
+                "ci_live_lines",
+                1,
+            ),
             (
                 "src/bridge/src/ssh_source.rs",
                 "copy_bidirectional_with_sizes",

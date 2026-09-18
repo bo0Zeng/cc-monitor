@@ -23,7 +23,7 @@ M 又分两形，**别混**：
 import pathlib
 import sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 BASE = ROOT / "evidence" / "K-R48-356-baseline.tsv"
 
 # (起, 止, 判词, 形, 理由)  —— 闭区间，1 起数，与 baseline.tsv 的行号一一对应

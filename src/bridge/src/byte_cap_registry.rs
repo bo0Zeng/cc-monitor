@@ -547,11 +547,7 @@ mod tests {
         // 那两条上限会从本表的扫描面里静默消失 —— 表里还登记着、盘上再也扫不到，
         // 而 `the_registered_numbers_still_match_the_source` 会以「算不出来」的形态红，
         // 报的方向还是错的。
-        for sub in [
-            "src/bridge/src",
-            "src/backend",
-            "src/bridge/crates",
-        ] {
+        for sub in ["src/bridge/src", "src/backend", "src/bridge/crates"] {
             for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let body = guard_core::production_source(&raw);
                 let rel = f
@@ -646,11 +642,7 @@ mod tests {
         // ——搜索的两条封顶已收进共享 crate `search-core`。
         // ⚠ 上面 `size_typed_consts` 的头注说「两者共用同一份遍历」，**盘上不是**：
         // 这里自己又走了一遍。⇒ **改扫描面要两处一起改**（本轮就是漏了这一处才红的）。
-        for sub in [
-            "src/bridge/src",
-            "src/backend",
-            "src/bridge/crates",
-        ] {
+        for sub in ["src/bridge/src", "src/backend", "src/bridge/crates"] {
             for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 // ★ 只扫**生产段**〔08-06〕：本条原来扫整份文件，于是**测试里的夹具常量**
                 // 也被当成生产上限（`common/fs.rs` 的顺序判据里那个 `const CAP` 当场被误报）。
@@ -817,10 +809,7 @@ mod tests {
         // ⇒ 这两个数搬回任何一侧，当场红。
 
         // 对 C：注释写的是「同**量级**」，而且**今天就不等** ⇒ 钉比值，不钉相等。
-        let c1 = by(
-            "src/backend/control/launch.rs",
-            "MAX_FIELD_BYTES",
-        );
+        let c1 = by("src/backend/control/launch.rs", "MAX_FIELD_BYTES");
         let c2 = by("src/bridge/src/launch.rs", "MAX_REMOTE_CMD");
         let (hi, lo) = if c1 >= c2 { (c1, c2) } else { (c2, c1) };
         assert!(
@@ -843,11 +832,7 @@ mod tests {
         // 🔴 `K-R100` 09-13 加 `src/bridge/crates`：排除表的语料面必须与**产生上限的那个语料面**
         // 一致（`size_typed_consts()` / `scan()` 都已含它）。不一致的话，一条针对共享 crate
         // 里常量的排除会被本条判成「死木」—— 而它其实活着，只是本条看不见它。
-        for sub in [
-            "src/bridge/src",
-            "src/backend",
-            "src/bridge/crates",
-        ] {
+        for sub in ["src/bridge/src", "src/backend", "src/bridge/crates"] {
             for (_, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let body = guard_core::production_source(&raw);
                 all.push_str(&body);

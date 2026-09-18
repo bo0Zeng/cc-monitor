@@ -2499,11 +2499,7 @@ mod tests {
         let hay = "working-directory: src/backend-X\n";
         assert!(hay.contains("src/backend"), "对照组前提不成立");
         assert!(find_pinned(hay, "src/backend").is_err());
-        assert!(find_pinned(
-            "working-directory: src/backend\n",
-            "src/backend"
-        )
-        .is_ok());
+        assert!(find_pinned("working-directory: src/backend\n", "src/backend").is_ok());
     }
 
     /// ★ `polling_registry` 的活样本：`sleep 1` ⊂ `sleep 10`。
@@ -2557,8 +2553,7 @@ mod tests {
             find_pinned(hay, "working-directory: src/backend").is_ok(),
             "本条的前提是 find_pinned 在这里放过 —— 前提变了就把这条一起改"
         );
-        let e =
-            pin_line(hay, "working-directory: src/backend").expect_err("整行判据必须红");
+        let e = pin_line(hay, "working-directory: src/backend").expect_err("整行判据必须红");
         assert!(e.contains("撑大"), "诊断没点明事实被撑大：{e}");
         assert!(
             pin_line(

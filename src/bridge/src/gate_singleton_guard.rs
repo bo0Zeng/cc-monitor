@@ -73,11 +73,7 @@ mod tests {
 
     fn rust_sources(root: &Path) -> Vec<PathBuf> {
         let mut out = Vec::new();
-        for base in [
-            "src/bridge/src",
-            "src/bridge/crates",
-            "src/backend",
-        ] {
+        for base in ["src/bridge/src", "src/bridge/crates", "src/backend"] {
             walk(&root.join(base), &mut out);
         }
         out

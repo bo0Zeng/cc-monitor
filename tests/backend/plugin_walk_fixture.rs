@@ -1451,8 +1451,13 @@ mod tests {
         // 而测试段今天有一半住 `tests/backend/` ⇒ 只扫 `src_root()` 会漏掉它们，
         // 下面那条集合相等当场红（这正是它该有的反应）。
         let mut pop: Vec<(std::path::PathBuf, String)> =
-            guard_core::scan_tree!(&src_root(), &["rs"]).into_iter().collect();
-        pop.extend(guard_core::scan_tree!(&crate::guard_support::tests_root(), &["rs"]));
+            guard_core::scan_tree!(&src_root(), &["rs"])
+                .into_iter()
+                .collect();
+        pop.extend(guard_core::scan_tree!(
+            &crate::guard_support::tests_root(),
+            &["rs"]
+        ));
         // 🔴 `scan_tree!` **按构造摘掉调用者自己** —— 而本文件搬去第二棵树之后，
         //    扫 `tests_root()` 那一趟宏认不出它是调用者 ⇒ 把本文件也收了进来，
         //    而上面第一条断言刚刚证明过「本文件的测试段含这个 needle」⇒ 必然多出一项。
@@ -1672,7 +1677,9 @@ mod tests {
              （摘了它 `discover` 的兜底档就自相矛盾：找得到插件却跑不动）。"
         );
         // ③ 的另一半：源码面 —— 清环境这个动作**在**，而且只有一处。
-        let invoke_prod = crate::guard_support::production_code(include_str!("../../src/backend/plugin/invoke.rs"));
+        let invoke_prod = crate::guard_support::production_code(include_str!(
+            "../../src/backend/plugin/invoke.rs"
+        ));
         assert_eq!(
             invoke_prod.matches("env_clear").count(),
             1,

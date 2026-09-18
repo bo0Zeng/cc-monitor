@@ -41,7 +41,7 @@ import json
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 BACKUP = ROOT / ".k-r122-cut-backup.json"
 
 ACQ = "remote-daemon-proto/src/sidecars/codepicture/acquire.rs"

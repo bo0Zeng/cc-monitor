@@ -294,8 +294,7 @@ mod tests {
     }
 
     fn source_of(rel: &str) -> String {
-        let p = crate::guard_support::src_root()
-            .join(rel);
+        let p = crate::guard_support::src_root().join(rel);
         production_code(
             &std::fs::read_to_string(&p)
                 .unwrap_or_else(|e| panic!("读不到 {} —— 文件搬家了就来改本表：{e}", p.display())),
@@ -390,11 +389,7 @@ mod tests {
     /// 由 `tests/evidence/K-R25-D2-unit-alignment.md` 逐条手核）—— 不是「所有写法」的全称。
     #[test]
     fn no_daemon_file_falls_back_to_leaving_block_comments_in() {
-        guard_core::assert_block_comment_model_holds(
-            &crate::guard_support::src_root(),
-            70,
-            500,
-        );
+        guard_core::assert_block_comment_model_holds(&crate::guard_support::src_root(), 70, 500);
     }
 
     /// ★ 正题：三处「恰好一个客户端」的锚点**逐个按次数**对上。

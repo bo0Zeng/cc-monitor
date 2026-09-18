@@ -714,8 +714,7 @@ mod f07_main_path_tests {
         //    ⚠ needle 仍用**带边界的词**（不是 Rust 那边的带引号字面量）：
         //    它在两侧可能长在字面量里、也可能长在 JSON 串里，带边界两种形态都收得到。
         let word = format!("create-or-{}", "attach");
-        let ccm_dir = crate::guard_support::repo_root()
-            .join("src/backend/control/ccm");
+        let ccm_dir = crate::guard_support::repo_root().join("src/backend/control/ccm");
         let ccm: String = ["mod.rs", "argv.rs", "plan.rs"]
             .iter()
             .map(|f| {

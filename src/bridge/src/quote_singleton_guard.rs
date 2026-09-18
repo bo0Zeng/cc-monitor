@@ -75,11 +75,7 @@ mod tests {
     /// 扫 monitor + daemon + 共享 crate 的**所有** `.rs`（`target/` 与 vendor 除外）。
     fn rust_sources(root: &Path) -> Vec<PathBuf> {
         let mut out = Vec::new();
-        for base in [
-            "src/bridge/src",
-            "src/bridge/crates",
-            "src/backend",
-        ] {
+        for base in ["src/bridge/src", "src/bridge/crates", "src/backend"] {
             walk(&root.join(base), &mut out);
         }
         out

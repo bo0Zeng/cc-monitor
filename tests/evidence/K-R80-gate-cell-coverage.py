@@ -66,7 +66,7 @@ from pathlib import Path
 
 # `K_R80_ROOT` 只为**死值验**存在：把本文件拷进 scratchpad 变异之后，仓根仍要指回真工作树。
 # ⚠ 它不是配置项，日常跑一律不带。
-ROOT = Path(os.environ.get("K_R80_ROOT") or Path(__file__).resolve().parent.parent)
+ROOT = Path(os.environ.get("K_R80_ROOT") or Path(__file__).resolve().parents[2])
 GATE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "scripts" / "gate.sh"
 
 # ── 树的全集 ────────────────────────────────────────────────────────────────

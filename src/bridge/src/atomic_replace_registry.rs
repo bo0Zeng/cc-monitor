@@ -325,11 +325,9 @@ mod tests {
     /// 且 `MoveFileExW` 仍被明令排除 —— 否则本模块整套论证的前提就没了。
     #[test]
     fn the_doc_rule_this_registry_rests_on_is_still_there() {
-        let doc = fs::read_to_string(
-            crate::guard_support::repo_root()
-                .join("src/doc/INVARIANTS.md"),
-        )
-        .expect("src/doc/INVARIANTS.md 读不到 —— 路径变了就把这条一起改");
+        let doc =
+            fs::read_to_string(crate::guard_support::repo_root().join("src/doc/INVARIANTS.md"))
+                .expect("src/doc/INVARIANTS.md 读不到 —— 路径变了就把这条一起改");
         let sec = doc
             .split("## 4. ")
             .nth(1)
