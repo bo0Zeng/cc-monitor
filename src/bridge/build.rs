@@ -13,10 +13,11 @@ fn main() {
 /// daemon 源码的住址 —— 本文件里**四处**要它（build_id · capabilities · mtime · 内嵌校验）。
 /// 抽出来的理由与 `local_extract_name` 同族：四份手抄的路径迟早有一份被漏改。
 fn daemon_main_rs() -> PathBuf {
-    Path::new("..")
-        .join("src/backend")
-        .join("src")
-        .join("main.rs")
+    // build.rs 的 cwd 是本包根（`src/bridge/`）⇒ `..` 是 `src/`。
+    // 2026-09-18：仓库重组把后端树从 `remote-daemon-proto/src/` 搬到 `src/backend/`，
+    // 这一处漏改了（原为 `../src/backend/src/main.rs`，解出 `src/src/backend/src/main.rs`）。
+    // 它没有当场现形，唯一的原因是**本包在本机从未编过** —— 装齐 Tauri 栈后头一次 check 就炸了。
+    Path::new("..").join("backend").join("main.rs")
 }
 
 /// daemon 源码里那个 `const BUILD_ID`。**这是本机与远端两条内嵌路共用的期望值。**
