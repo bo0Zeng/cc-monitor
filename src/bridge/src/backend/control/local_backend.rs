@@ -2028,9 +2028,7 @@ mod tests {
              ⇒ 本条会被**它自己要守的那句话**喂饱（那段头注里逐字写着这些词），于是恒红或恒瞎。"
         );
 
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级 = 仓根");
+        let root = crate::guard_support::repo_root();
         // 🔴 `scan_tree!` 摘掉调用者自己那份，而**最该被扫的就是本文件** ⇒ 单独喂一遍。
         let self_rel = "src/bridge/src/backend/control/local_backend.rs";
         let me = include_str!("local_backend.rs");
@@ -2044,7 +2042,7 @@ mod tests {
         ] {
             for (f, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
                 let rel = f
-                    .strip_prefix(root)
+                    .strip_prefix(&root)
                     .unwrap_or(&f)
                     .to_string_lossy()
                     .replace('\\', "/");
@@ -3525,7 +3523,13 @@ mod tests {
         let dir = spelled("NATIVE_DAEMON_DIR");
         let file = spelled("NATIVE_DAEMON_FILE");
         let prod = guard_core::production_code(include_str!("local_backend.rs"));
-        let want = format!("\"../../..{dir}/{file}\"");
+        // 🔴 〔2026-09-18 修笔误〕原来是 `"\"../../..{dir}/{file}\""` —— **`../../..` 与
+        // `{dir}` 之间少一个 `/`**，拼出来是 `"../../..native-daemon/…"`，而代码里是
+        // `"../../../native-daemon/…"` ⇒ `contains` 永远不成立。
+        // ⚠ 如实说：**我解释不了它以前怎么过的** —— 常量近 6 个提交都是 `"native-daemon"`
+        // （无前导斜杠），本测试也没有平台门控，而 CI 的 Windows job 会跑它。
+        // 可能是那条 job 有一段时间没绿过；没有证据就不编一个说法。
+        let want = format!("\"../../../{dir}/{file}\"");
         assert!(
             prod.contains(&want),
             "`build.rs` 铺的是 `src/bridge/{dir}/{file}`，而本文件的 `include_bytes!` \
@@ -3740,9 +3744,7 @@ mod tests {
     /// ⚠ 中间量自检：先断言真的找到了 `tauri build` 调用（找不到 = 抽取器坏了，本条零命中地绿）。
     #[test]
     fn every_bundle_job_stages_the_sidecar_before_building() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级");
+        let root = crate::guard_support::repo_root();
         let wf = root.join(".github/workflows/release.yml");
         let src = std::fs::read_to_string(&wf).expect("读不到 release.yml");
         // 运行时拼，免得命中本文件自己的说明文字。
@@ -3821,9 +3823,7 @@ mod tests {
     /// 真出现那一形要另加一条判据。**这是登记的射程，不是穷举过的全称。**
     #[test]
     fn the_two_carriers_are_copies_of_one_build_with_nothing_rebuilt_between() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级");
+        let root = crate::guard_support::repo_root();
         let wf = root.join(".github/workflows/release.yml");
         let src = std::fs::read_to_string(&wf).expect("读不到 release.yml");
         let lines: Vec<&str> = src.lines().collect();

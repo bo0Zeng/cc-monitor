@@ -1089,7 +1089,7 @@ mod tests {
     #[test]
     fn the_ts_view_type_matches_this_struct() {
         let ts = std::fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ipc/commands.ts"),
+            crate::guard_support::repo_src_root().join("ipc/commands.ts"),
         )
         .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
         let at = ts

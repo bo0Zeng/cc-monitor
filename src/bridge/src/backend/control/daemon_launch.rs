@@ -437,9 +437,7 @@ mod tests {
     /// Rust 说了 `may_fall_back:false`，TS 不读它就等于没说。
     #[test]
     fn refused_never_falls_back_to_the_whole_string() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级");
+        let root = crate::guard_support::repo_root();
         let read = |rel: &str| {
             let p = root.join(rel);
             assert!(p.is_file(), "读不到 {rel} —— 读不到的文件只会静默返回空串");

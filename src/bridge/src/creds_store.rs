@@ -815,9 +815,7 @@ mod tests {
     /// **三格一起才成立**：定义面（有几个出口）· 调用面（每个出口被调几次、在哪）· 本条（人群覆盖三棵树）。
     #[test]
     fn the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级 = 仓根")
+        let root = crate::guard_support::repo_root()
             .to_path_buf();
 
         let mut files: Vec<(String, String)> = Vec::new();
@@ -1088,7 +1086,7 @@ mod tests {
 
         // TS 侧：从 `src/ipc/commands.ts` 里切出接口体，派生字段名。
         let ts = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../ipc/commands.ts"),
+            crate::guard_support::repo_src_root().join("ipc/commands.ts"),
         )
         .expect("读不到 `src/ipc/commands.ts` —— 抽取器坏了，本条会零命中地绿");
         let tat = guard_core::find_pinned(&ts, "export interface RelayCredentialsStatus {")

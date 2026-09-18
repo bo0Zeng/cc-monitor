@@ -181,7 +181,8 @@ mod spawn_sites {
     ];
 
     fn src_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::crate_src_root()
     }
 
     /// 语料 = `src/` 整棵树 **+ `build.rs`**〔audit-0805 08-08〕。
@@ -596,7 +597,8 @@ mod tests {
     }
 
     fn src_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::crate_src_root()
     }
 
     /// 语料 = `src/` 整棵树 **+ `build.rs`**〔audit-0805 08-08〕。
