@@ -188,7 +188,7 @@
 - **只有产出观测帧的读**才归 `observe/`。
 
 ⚠ **两侧今天都有机器在管「谁能引用谁」**〔monitor 侧 `K-R73` 09-12 补齐〕：
-后端侧是 `src/backend/layering_guard.rs`，monitor 侧是 `backend/mod.rs`
+后端侧是 `tests/backend/layering_guard.rs`，monitor 侧是 `backend/mod.rs`
 里的 `layering` 模块。两边同一个形 —— **反向（`control → observe`）零容忍**，
 **正向（`observe → control`）许有，但必须逐条列举、条数被等号钉住**。
 monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一次性查询要先问控制面

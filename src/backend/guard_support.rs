@@ -86,37 +86,42 @@ mod tests {
     /// 下游那些守卫不会红，会**扫空集然后全绿**。这条把「指错」变成一条会红的机检。
     #[test]
     fn the_src_root_address_points_at_a_real_tree() {
-        let root = src_root();
-        assert!(root.is_dir(), "src_root() 不是目录：{}", root.display());
-        assert!(
-            root.join("main.rs").is_file(),
-            "src_root() 下没有 main.rs —— 它指到了别的地方：{}",
-            root.display()
-        );
-        // ⚠ 原先数的是**顶层条目数**（`>= 20`）—— 19 个纯测试文件搬去 `tests/backend/`
-        //   之后顶层当场掉到 20 以下。那个数本来就不该是顶层的：它要挡的是「树塌了」，
-        //   而树的大小是**递归**的 .rs 数。改成递归数，并把两棵树都钉住。
-        let count_rs = |r: &std::path::Path| -> usize {
-            let mut n = 0usize;
-            let mut stack = vec![r.to_path_buf()];
-            while let Some(d) = stack.pop() {
-                for e in std::fs::read_dir(&d).expect("读目录失败").flatten() {
-                    let p = e.path();
-                    if p.is_dir() {
-                        stack.push(p);
-                    } else if p.extension().and_then(|x| x.to_str()) == Some("rs") {
-                        n += 1;
-                    }
-                }
+        // ⚠ 判据**点名具体文件**，不数 `.rs` 个数。两次改法的账都记在这里：
+        // ① 最早数的是**顶层条目数**（`>= 20`）—— 19 个纯测试文件搬去 `tests/backend/`
+        //    之后顶层当场掉到 20 以下。那个数本来就不该是顶层的。
+        // ② 接着改成**递归数 `.rs`**，能挡树塌，但它靠 `std::fs::read_dir` 裸遍历 ——
+        //    而 `scanning_guard_registry` 那条元判据禁止测试段里裸遍历目录
+        //    （理由：判据在自己那份语料里找到自己 ⇒ 恒绿），且那张存量清单**只许变短**。
+        // ⇒ 换成点名式：**不遍历，而且比数个数更硬**（一个装了别的东西的目录数也能过）。
+        for (name, dir, probes) in [
+            (
+                "src_root",
+                src_root(),
+                &["main.rs", "inbound.rs", "listen.rs", "Cargo.toml"][..],
+            ),
+            (
+                "tests_root",
+                tests_root(),
+                &["readonly_guard.rs", "build_id_guard.rs", "no_timer_guard.rs"][..],
+            ),
+        ] {
+            assert!(dir.is_dir(), "{name}() 不是目录：{}", dir.display());
+            for probe in probes {
+                assert!(
+                    dir.join(probe).exists(),
+                    "{name}() 下没有 {probe} —— 它指到了别的地方：{}",
+                    dir.display()
+                );
             }
-            n
-        };
-        let np = count_rs(&root);
-        assert!(np >= 50, "src_root() 下只有 {np} 个 .rs，生产树疑似塌了");
-        let t = tests_root();
-        assert!(t.is_dir(), "tests_root() 不是目录：{}", t.display());
-        let nt = count_rs(&t);
-        assert!(nt >= 15, "tests_root() 下只有 {nt} 个 .rs，测试树疑似塌了");
+        }
+        // 子目录也各点一个，免得整棵子树消失而顶层还在。
+        for rel in ["control/mod.rs", "observe/mod.rs", "relay/server.rs", "platform/mod.rs"] {
+            assert!(
+                src_root().join(rel).is_file(),
+                "src_root() 下缺 {rel} —— 生产树疑似塌了一块"
+            );
+        }
+        assert_ne!(src_root(), tests_root(), "两棵树的住址撞了");
     }
 
     /// ★ 语义钉：`main.rs` 的生产段必须含这几样东西。
