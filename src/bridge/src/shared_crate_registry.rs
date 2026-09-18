@@ -666,6 +666,25 @@ mod tests {
             ("cargo test（整个 workspace，vendor 除外）", true, "本区门禁主命令"),
             ("生成物必须最新（C05；改了 Rust 就得重新生成并提交）", true, "`git diff --exit-code -- ../src/generated/`"),
             ("cargo test (vendor code-picture-core)", true, "只**读地跑**；实测跑完 `git status` 对 vendor 零改动 ⇒ 不违反红线"),
+            // ── job rust-linux〔`15 §5.2 B4`〕
+            // 🔴 **写区外的随动**，与 `K-R114` 09-14 那条同一形（见下面 `e2e-smoke` 那一格的注释）：
+            // 这条判据的题面逐字就是「CI 里加了一步、本地门禁不知道」⇒ **加步骤必须同拍登记**。
+            // 本行只登记事实（本地跑不跑得动、怎么跑），不裁定任何东西。
+            //
+            // ⚠ 那个 job 的 `Install Linux build deps` **不在这里** —— 它与 `linux-app-build`
+            //   那一步**同名**，而本表按**步骤名**匹配 ⇒ 已有的那条登记同时盖住两处
+            //   （`run: npm ci` 是同一形：一条登记，三个 job）。再加一条同名的反而会让
+            //   `stale` 那半永远找得到、`unregistered` 那半永远看不出差别。
+            (
+                "cargo test（整个 workspace，vendor 除外；Linux 执行面）",
+                true,
+                "`cd src/bridge && cargo test --workspace --exclude code-picture-core` —— \
+                 与 `rust` job 那条**逐字同一条命令**，只是 runner 从 windows 换成 ubuntu。\
+                 ⚠ 本地门禁 `gate.sh` 那格带 `--lib`（丢 doctest 与 bin 档）⇒ **本地跑得动，\
+                 但本地今天跑的不是同一把尺子**；这一格买的正是 `15 §2.6` 漏洞 3 点名的\
+                 「monitor 的 Linux 行为云端执行面 = 0」。\
+                 ⚠⚠ 它**从没在云端跑过**（加它这一趟不推）⇒ 「配置写对了」≠「验过了」",
+            ),
             // ── job frontend
             ("npm audit (production deps, high)", true, "同名命令"),
             ("eslint (advisory, baseline)", true, "同名命令。⚠ 它带 `|| true` ⇒ **结构上不会红**；登记它是为了别把「不会红」误当成「跑过了」"),
@@ -689,7 +708,7 @@ mod tests {
             ("vendored cc-acct-iso self-tests (sandboxed, 294 assertions)", true, "沙箱内自测；vendor 是 `cc-acct-iso` 不是红线点名的 `code-picture-core`"),
             ("python syntax compile", true, "`python3 -m py_compile tests/e2e/*.py`"),
             // 〔`K-R48` 第二拍 09-11〕标题里那个数从 23 变 21（删了 ccm-acceptance / ccm-pretrust 两套）。
-            ("G-A/G-C 覆盖面地板（20 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
+            ("G-A/G-C 覆盖面地板（19 套真机套件都必须带断言数地板）", true, "纯 `grep` 数 `ci.yml` 自己，不需要 tmux"),
             ("exec-bit guard (src/shared/** shebang files must be 100755 in git)", true, "`bash tests/e2e/exec-bit-guard.sh`"),
             // 🔴 **写区外的随动**〔`K-R114` 09-14〕：本轮往 `e2e-smoke` 加了一步，
             // 而这条判据的题面逐字就是「CI 里加了一步、本地门禁不知道」⇒ 加步骤必须同拍登记。
@@ -1457,7 +1476,16 @@ mod tests {
             //    真机那一面的等价覆盖在 `daemon-gate2-acceptance.sh`（下面 `NO_STATIC_SIGNAL`
             //    那张表里，真 daemon + 真 tmux，用例逐行来自同一张 `gate2-golden.tsv`）。
             ("tmux-target", "tmux-target-acceptance.sh", "ck", 26),
-            ("usage-probe", "usage-probe-acceptance.sh", "ck", 9),
+            // 🔴 〔`设计/50` 删用量〕**`usage-probe`(9) 这一行摘了 —— 摘的理由**（同上面
+            //    `tmux-guarded` 那条的口径：摘棘轮的行必须写清）：
+            //    用量 ②③ 两轴整轴退役 ⇒ **被测对象没了**，`tests/e2e/usage-probe-acceptance.sh`
+            //    整份删除。留在这里的一行只会让本条去读一个不存在的文件（`read_to_string` 直接 panic）。
+            //    ⚠ 它对应的 CI 通过下限（`ci.yml` 的 `assert-pass-floor.sh usage-probe 11`）
+            //    要**同拍**整条删掉 —— 〔09-18 接力〕**已删**：那一步（`e2e-tmux-rust` 的
+            //    「用量探针（F10）」）整步摘了，上面 `for pair` 那张地板清单里的同名一条也摘了
+            //    （20 → 19）。⚠ 本表（`shared_crate_registry` 的 `STEPS`）**本来就没有它的登记**
+            //    —— `e2e-tmux-rust` 整个 job 吃 `BLANKET` 豁免 ⇒ 删它不必动 `STEPS`，
+            //    `stale` 那半也不会因此变红（删前删后现打都是绿的）。
         ];
         /// 静态计数不是那个量的代理的套件 —— `(脚本名, 助手, 当日静态数, CI 地板)`。
         const NO_STATIC_SIGNAL: &[(&str, &str, usize, usize)] = &[

@@ -913,6 +913,100 @@ describe("TabManager 生命周期", () => {
     expect(t.stream.contentElement.querySelector(".stream-more-above")).toBeNull();
   });
 
+  /**
+   * ★ 步 3（`设计/10 §6`）：**「够不够一屏」读的是真实布局，不是 `scrollHeight`。**
+   *
+   * # 这一格为什么能红
+   *
+   * 造的正是用户报的那一屏：**`scrollHeight` 说"滚得动"，而屏幕上是半屏空的**。
+   * 成因不是假设 —— 每张顶层卡都带 `contain-intrinsic-size: auto <估值>`
+   * （`height-estimate.ts`），没渲染过的卡按**估值**计入 `scrollHeight`。
+   * 旧判据 `scrollHeight - clientHeight > 1` 在第 1 轮就成立 ⇒ 补批当场停手（只补 150 条）；
+   * 新判据问的是「最后一张卡的底边到没到容器下沿」⇒ 该补的 4 轮补满（600 条）。
+   *
+   * # 量的是条数，不是像素
+   *
+   * jsdom 没有布局引擎 ⇒ 这里的 rect 与 `scrollHeight` 全是**显式桩**。
+   * 所以这一格断的是「判据读了哪一个数」，**不是**「真机上到底满没满屏」——
+   * 后者要真渲染，登记在报告里那条诚实边界上。
+   */
+  it("★ 步 3：scrollHeight 说滚得动、但最后一张卡没够到下沿 ⇒ 照样补批", async () => {
+    await spyRender();
+    tm.onLine(mkContent("fillHead", 1, "fh-1")); // 首个 tab → active
+    tm.onBatchStart();
+    for (let s = 100; s < 800; s++) tm.onLine(mkContent("fillBody", s, `fb-${s}`)); // 后台收纳 700
+    tm.onBatchEnd();
+    const t = peek(tm).tabs.get("fillBody")!;
+    expect(t.window.pendingCount).toBe(700);
+
+    // ① 视口：高 600，下沿在 600。
+    t.streamEl.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 600, height: 600, left: 0, right: 900, width: 900 }) as DOMRect;
+    // ② `scrollHeight` 被估值撑到 2000 ⇒ **旧判据在这里恒说"滚得动"**。
+    Object.defineProperty(t.streamEl, "scrollHeight", { value: 2000, configurable: true });
+    Object.defineProperty(t.streamEl, "clientHeight", { value: 600, configurable: true });
+    // ③ 真实布局：最后一张卡的底边只到 120 —— 屏幕下面 480px 是空的。
+    const card = document.createElement("div");
+    card.getBoundingClientRect = () =>
+      ({ top: 80, bottom: 120, height: 40, left: 0, right: 780, width: 780 }) as DOMRect;
+    t.stream.contentElement.appendChild(card);
+
+    tm.switchTo("fillBody"); // virgin ⇒ 同步物化，停手条件就是本格的被测对象
+    expect(
+      t.window.pendingCount,
+      "读 scrollHeight 的话第 1 轮就停手（余 550）；读真实布局才会补满 4 轮（余 100）",
+    ).toBe(100);
+  });
+
+  /**
+   * ★ 步 3 下半：**视口自己变大 ⇒ 重新补批。**
+   *
+   * `fillAbove` 挂在 scroll 事件上，而不可滚的元素**不产生 scroll 事件**
+   * ⇒ 把窗口从半屏拉到全屏时，多出来那块空白之前没有任何入口去补。
+   * 这一格量的是消费端那三道门（active / 账本非空 / 还没满屏）与「真会补」。
+   * 观察端（RO 到底有没有观察 `scrollEl`）在 `stream-viewport-resize.vitest.ts`
+   * —— 本文件把 `MessageStream` 整个 mock 掉了，**盖不住那一形**。
+   */
+  it("★ 步 3：视口变大 ⇒ 重新补批；非 active / 已满屏都不补", async () => {
+    await spyRender();
+    tm.onLine(mkContent("rzHead", 1, "rh-1")); // active
+    tm.onBatchStart();
+    for (let s = 100; s < 500; s++) tm.onLine(mkContent("rzBody", s, `rb-${s}`)); // 后台 400
+    tm.onBatchEnd();
+    const t = peek(tm).tabs.get("rzBody")!;
+    const fire = (): void => t.stream.onViewportResize?.();
+    expect(t.stream.onViewportResize, "宿主必须挂上这个消费端，否则观察了也没人管").toBeTypeOf(
+      "function",
+    );
+
+    // ① 非 active ⇒ 一条都不补（后台 tab 的 0×0 → 真实尺寸那一跳不是"用户拉窗口"）。
+    const before = t.window.pendingCount;
+    expect(before, "前置：要有账才谈得上补").toBe(400);
+    fire();
+    expect(t.window.pendingCount, "非 active 不许补").toBe(before);
+
+    // ⚠ 直接置活跃，**不走 `switchTo`** —— 那条路自带 virgin 物化 + R-2 踢链，
+    //   会把账先清空，剩下的两格就都成了空真。
+    (peek(tm) as unknown as { activeId: string }).activeId = "rzBody";
+    const pending = t.window.pendingCount;
+
+    // ② 已经满屏（最后一张卡的底边到了下沿）⇒ 不补。
+    t.streamEl.getBoundingClientRect = () =>
+      ({ top: 0, bottom: 600, height: 600, left: 0, right: 900, width: 900 }) as DOMRect;
+    const card = document.createElement("div");
+    let cardBottom = 600;
+    card.getBoundingClientRect = () =>
+      ({ top: 0, bottom: cardBottom, height: cardBottom, left: 0, right: 780, width: 780 }) as DOMRect;
+    t.stream.contentElement.appendChild(card);
+    fire();
+    expect(t.window.pendingCount, "已满屏还补 = 每次 RO 都白干一轮").toBe(pending);
+
+    // ③ 窗口拉高（卡还是那么高，下面空出来一块）⇒ 补。
+    cardBottom = 120;
+    fire();
+    expect(t.window.pendingCount, "视口变大之后没有任何东西去补那块空白").toBeLessThan(pending);
+  });
+
   // === v2.22.2:同 sid kind 冲突消解(bg-spare 谎报父 sid) ===
 
   it("kind 升格:bg 骨架先到,interactive 宣告后到 → 升格为宿主并重锚孤儿 bg", () => {
@@ -3309,6 +3403,70 @@ describe("P7a-2 栏内拖动排序（真拖拽）", () => {
       new MouseEvent("mouseup", { clientX: 9999, clientY: 100, bubbles: true }),
     );
     expect(order(), "撕窗口那一路不许顺带重排").toEqual(before);
+  });
+
+  /**
+   * ★ 6d（条 54）：**拖到一半，tab 不许自己跳位置。**
+   *
+   * # 机制（已核实，不是推测）
+   *
+   * `refreshTabBar` 全身**没有任何 `this.drag` 守卫**，而它挂在活动路上：
+   * `updateActivity` / `archiveTab` / `ensureTab` 末尾都无条件调它。
+   * ⇒ 拖到一半来一条活动事件，第 4 段那个「排序」循环就照 `orderedIds` 重排一次 DOM，
+   * **指针底下的那个 tab 当场被换掉** —— 用户松手落到的不是他瞄的那一格。
+   *
+   * # 🔴 为什么注入的是「会话结束」而不是一条 `updateActivity`
+   *
+   * 反空真自检（`设计/01 §7.4`「扫到空集时要红，不是绿」）：
+   * 一条**不改 `orderedIds`、不改归档归属**的 `updateActivity`，
+   * 走完 `refreshTabBar` 之后 `refs.root === targetNext` 恒成立 ⇒ 一次 `insertBefore` 都不会发生
+   * ⇒ 那样写出来的判据**拿掉守卫也是绿的**，等于没买。
+   * 真会动 DOM 顺序的活动事件有两类，这里取第一类（第二类见下一格）：
+   *   ① **会话跑完 ⇒ 归档** —— 归档抽屉是 `barEl` 的**兄弟**（`ensureArchiveUi`），
+   *      那个 tab 会整个**离开** `#tab-bar`，它下面的全部上移一格；
+   *   ② **新会话/新 bg 宣告** —— `placeInOrder` 把 bg 锚在宿主之后 ⇒ 从**中间**插进去。
+   *
+   * # 判据钉的是「顺序一次都不变」，不是「最终顺序对不对」
+   *
+   * 最终顺序在 `mouseup` 之后本来就会对（那时重画照样发生）。
+   * 坏的是**拖拽窗口之内**那一次重排 —— 所以快照要在 `mouseup` 之前比。
+   */
+  it("★ 6d：拖拽进行中来一条活动事件 ⇒ mouseup 之前 #tab-bar 子节点顺序一次都不变", () => {
+    tm.ensureTab("a", "/c1", "p", 0, null); // 首个 tab ⇒ 它是 active（`switchTo(_, "auto")`）
+    tm.ensureTab("b", "/c2", "p", 0, null);
+    tm.ensureTab("c", "/c3", "p", 0, null);
+    flushBar();
+    stubRects();
+    // 主栏子节点的「长相顺序」。用 textContent 而不是下标 —— 少一个、换一个都要能看出来。
+    const barSnap = (): string =>
+      [...bar.children].map((e) => `${e.className}#${e.textContent ?? ""}`).join(" | ");
+
+    const roots = [...bar.children].filter((e) => e.classList.contains("tab")) as HTMLElement[];
+    // 拖最后那个（c），指针停在第一条（a，0..40）的上半 ⇒ 落点 = a 之前。
+    roots[2].dispatchEvent(
+      new MouseEvent("mousedown", { button: 0, clientX: 10, clientY: 0, bubbles: true }),
+    );
+    document.dispatchEvent(
+      new MouseEvent("mousemove", { buttons: 1, clientX: 10, clientY: 10, bubbles: true }),
+    );
+    const during = barSnap();
+    expect(during, "前置：三个 tab 都还在主栏里").toContain("tab ");
+
+    // ⬇ 拖拽进行中注入一次活动事件：b（**不是 active、在被拖的 c 上面**）的会话跑完了。
+    tm.archiveTab("b");
+
+    expect(barSnap(), "拖拽中 tab 不许自己跳位置：松手前 #tab-bar 的子节点顺序一次都不许变").toBe(
+      during,
+    );
+
+    // ⬇ 松手之后**必须补上**那一次重画 —— 守卫不是「把刷新永久吞掉」。
+    document.dispatchEvent(
+      new MouseEvent("mouseup", { clientX: 10, clientY: 10, bubbles: true }),
+    );
+    expect(barSnap(), "松手后归档那一格要落实，否则守卫就成了静默丢刷新").not.toBe(during);
+    const archived = document.querySelector<HTMLElement>(".tab-archive-list")!;
+    expect(archived.children.length, "b 应已搬进归档抽屉").toBe(1);
+    expect(order(), "拖动本身的结果照常落实").toEqual(["c", "a", "b"]);
   });
 });
 

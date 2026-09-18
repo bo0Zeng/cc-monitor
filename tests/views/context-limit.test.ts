@@ -1,15 +1,13 @@
 /**
- * pricing.ts 纯函数断言：contextLimit / normalizeModel / contextPercent。
- * 跑法：`node tests/views/pricing.test.ts` 或 `npm run test:pricing`。
+ * context-limit.ts 纯函数断言：contextLimit / normalizeModel / contextPercent。
+ * 跑法：`node tests/views/context-limit.test.ts` 或 `npm run test:context-limit`。
  */
 
 import {
   contextLimit,
   normalizeModel,
   contextPercent,
-  equivalentInputTokens,
-  RELATIVE_COST,
-} from "../../src/views/pricing.ts";
+} from "../../src/views/context-limit.ts";
 
 let failed = 0;
 function test(name: string, fn: () => void): void {
@@ -25,7 +23,7 @@ function eq(a: unknown, b: unknown, msg?: string): void {
   if (a !== b) throw new Error(`${msg ?? "eq"}: expected ${JSON.stringify(b)}, got ${JSON.stringify(a)}`);
 }
 
-console.log("pricing.test.ts");
+console.log("context-limit.test.ts");
 
 test("contextLimit: [1m] 变体 → 1M（本项目模型）", () => {
   eq(contextLimit("claude-opus-4-8[1m]"), 1_000_000);
@@ -62,21 +60,8 @@ test("contextPercent: input+cache ÷ 上限", () => {
   eq(contextPercent(null, 100_000), null);
 });
 
-test("F88d equivalentInputTokens: 各档 × 相对系数求和", () => {
-  // input1 + cache写1.25 + cache读0.1 + output5 —— 与 contextLimit override 全解耦
-  eq(RELATIVE_COST.output, 5);
-  // 纯 input → 恒等
-  eq(equivalentInputTokens({ input: 100, cacheCreation: 0, cacheRead: 0, output: 0 }), 100);
-  // output 权重 5×：100 output = 500 等效
-  eq(equivalentInputTokens({ input: 0, cacheCreation: 0, cacheRead: 0, output: 100 }), 500);
-  // cache 读 0.1×：1000 cache_read = 100 等效（体现 cache_read 便宜，不再与 output 等权直加）
-  eq(equivalentInputTokens({ input: 0, cacheCreation: 0, cacheRead: 1000, output: 0 }), 100);
-  // 混合：input10 + 写8(×1.25=10) + 读1000(×0.1=100) + output20(×5=100) = 220
-  eq(equivalentInputTokens({ input: 10, cacheCreation: 8, cacheRead: 1000, output: 20 }), 220);
-});
-
 if (failed > 0) {
-  console.error(`\n${failed} pricing test(s) failed`);
-  throw new Error(`pricing.test.ts: ${failed} failed`);
+  console.error(`\n${failed} context-limit test(s) failed`);
+  throw new Error(`context-limit.test.ts: ${failed} failed`);
 }
-console.log("\nall pricing tests passed");
+console.log("\nall context-limit tests passed");

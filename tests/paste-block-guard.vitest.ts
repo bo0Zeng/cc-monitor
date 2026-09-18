@@ -24,9 +24,8 @@ const FAMILY_B = [
   "src/settings/drift-ledger-section.ts", // U-CC1 复制漂移诊断文本（同族 B：复制完就完事，不贴进任何配置）
   "src/main.ts",
   "src/remote-launch-run.ts", // 回退：复制命令让用户自己跑
-  // S10：用量视图里 plan 窗口读不出来时，把抓到的原始屏交给用户复制去报障。
-  // **是族 B**（复制完就完事），不是待贴配置文本——没人要把它贴进任何文件。
-  "src/views/usage-view.ts",
+  // 〔`设计/50`〕原先这里还有 `src/views/usage-view.ts`（用量视图里「复制这一屏」）——
+  // 用量 ② 轴整轴退役，那份文件整删。
   "src/paste-block.ts", // 组件自己
 ];
 
@@ -45,9 +44,11 @@ const FAMILY_B = [
 const FAMILY_AB: Array<{ file: string; writeTextUses: number; why: string }> = [
   {
     file: "src/settings/accounts-section.ts",
-    // 2026-07-30 实测：复制命令(:300) / 复制路径(:703) / 复制诊断文本(:799)。
-    writeTextUses: 3,
-    why: "族 B 三处（复制命令/路径/诊断）+ Z05 的 rc 片段待贴块（走组件）",
+    // 2026-07-30 实测：复制命令 / 复制路径 / 复制诊断文本 三处。
+    // 🔴 〔`设计/50` 09-18〕**3 → 2**：那一处「复制这一屏」随账号表的用量单元格整块删了
+    // （用量 ③ 轴退役）。**计数下降 = 手搓的复制按钮少了一个**，正是这张表要看见的方向。
+    writeTextUses: 2,
+    why: "族 B 两处（复制路径/诊断）+ Z05 的 rc 片段待贴块（走组件）",
   },
 ];
 

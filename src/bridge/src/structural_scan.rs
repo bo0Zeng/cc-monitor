@@ -2680,6 +2680,20 @@ mod tests {
                 "the_local_and_remote_probe_ask_the_same_question",
                 1,
             ),
+            // 🔴 〔`设计/50` 09-18〕这两个是 **Codex 自己的 wire 字段名**（仓外：它的
+            //    `token_count` 事件里那个 token 用量子对象的键），本仓一处声明都没有 ——
+            //    散文里点它们是为了说清「入参长什么样 / 哪些字段刻意不单列」。
+            //    ⚠ 它们在改名前住 `crates/usage-core/src/lib.rs`，这张表按路径认键 ⇒ 随改名换住址。
+            (
+                "src/bridge/crates/codex-token-core/src/lib.rs",
+                "reasoning_output_tokens",
+                1,
+            ),
+            (
+                "src/bridge/crates/codex-token-core/src/lib.rs",
+                "total_token_usage",
+                2,
+            ),
             ("src/bridge/src/codex_record.rs", "token_usage_fields", 1),
             (
                 "src/bridge/src/config_surface.rs",
@@ -3007,7 +3021,7 @@ mod tests {
                 "the_four_outer_layer_producers_are_all_still_there",
                 1,
             ),
-            ("src/account-usage.ts", "probe_command_for", 1),
+            // 〔`设计/50` 09-18〕`src/account-usage.ts` 整份删除（用量 ③ 轴退役）⇒ 这一行随它出表。
             // 🔴 〔`K-R104` 09-13〕`src/bridge/src/account_usage.rs` 那两行墓碑账**删了** ——
             //    不是撕墓碑，是**被墓碑的那段散文随整条编排一起走了**：那份文件里
             //    「用量探针的 shell 串」整段不存在了（编排搬上后端帧面），
@@ -3050,21 +3064,6 @@ mod tests {
             //    接住、钉的是两条）。散文里那几句说的正是**「它们为什么不在了」**
             //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
             (
-                "src/doc/远端支持方案-agent查看器与代码全景图.md",
-                "derive_subagent_dir",
-                2,
-            ),
-            (
-                "src/doc/远端支持方案-agent查看器与代码全景图.md",
-                "list_meta_matches",
-                2,
-            ),
-            (
-                "src/doc/远端支持方案-agent查看器与代码全景图.md",
-                "load_subagent_remote",
-                1,
-            ),
-            (
                 "src/bridge/src/subagent.rs",
                 "the_remote_path_actually_asks_the_daemon",
                 1,
@@ -3082,6 +3081,56 @@ mod tests {
             //    它在 `write_site_registry.rs` 的一段**字符串字面量**里还有代码侧出现）。
             //    散文里点名它们的那几句说的正是**「它们为什么不在了」**
             //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+            // 🔴 〔`设计/50` 删用量 09-18〕同一形，第五件：**用量 ②③ 两轴整轴退役。**
+            //    下面这几处散文全是**订正段** —— 它们逐字引用被删掉的命令名/函数名/判据名，
+            //    为的是说清「那一格的数为什么从 X 变成 Y」「那条判据为什么不在了」。
+            //    删掉这些句子＝删掉这一刀的账，而这一刀正是 `设计/50 §7` 点名要记账的那一刀。
+            //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里逐条记账。
+            (
+                "src/bridge/src/capability_registry.rs",
+                "emit_usage_probe_frames_for_e2e",
+                1,
+            ),
+            ("src/bridge/README.md", "aggregate_remote_usage_all", 1),
+            (
+                "src/bridge/crates/codex-token-core/src/lib.rs",
+                "kou_jing_singleton",
+                1,
+            ),
+            (
+                "src/bridge/src/backend/control/payload.rs",
+                "usage_probe_payload",
+                1,
+            ),
+            (
+                "src/bridge/src/inbound_client.rs",
+                "the_two_tmux_primitive_arg_builders_match_the_daemon_parsers",
+                1,
+            ),
+            (
+                "src/bridge/src/local_origin_registry.rs",
+                "account_usage_local",
+                1,
+            ),
+            ("tests/ipc/commands.vitest.ts", "account_usage_local", 1),
+            (
+                "tests/ipc/commands.vitest.ts",
+                "aggregate_remote_usage_all",
+                1,
+            ),
+            ("tests/ipc/commands.vitest.ts", "aggregate_usage_all", 1),
+            ("src/bridge/src/parity_ledger.rs", "account_usage_local", 4),
+            (
+                "src/bridge/src/parity_ledger.rs",
+                "aggregate_remote_usage_all",
+                2,
+            ),
+            ("src/bridge/src/parity_ledger.rs", "aggregate_usage_all", 2),
+            (
+                "tests/backend/no_timer_guard.rs",
+                "the_oneshot_watchdog_script_carries_no_loop",
+                1,
+            ),
             ("src/bridge/src/cc_bus.rs", "build_broadcast_cmd", 2),
             ("src/bridge/src/cc_bus.rs", "build_kill_cmd", 3),
             ("src/bridge/src/tmux.rs", "build_capture_pane_cmd", 4),

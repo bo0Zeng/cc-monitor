@@ -270,14 +270,18 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
     }
   });
 
-  // 布局契约：styles.css 的 .accounts-table 定了 **8** 条列轨道（F10 加了用量列），行用
-  // subgrid 继承。往 accountRow 里多 append 一个元素而不改 CSS，列就整体错位——jsdom 测不了
-  // 布局，但能测这个数。
-  it("每行子元素数 == grid 列数(8)：改一处必须改另一处", async () => {
+  // 布局契约：styles.css 的 .accounts-table 定了列轨道，行用 subgrid 继承。
+  // 往 accountRow 里多 append 一个元素而不改 CSS，列就整体错位——jsdom 测不了布局，
+  // 但能测这个数。
+  // 🔴 〔`设计/50` 09-18〕**8 → 7**：F10 加的那条用量列随用量 ③ 轴整轴退役。
+  // ⚠ **CSS 那一半不在本轮写区里**（`styles.css` 归另一路）：`.accounts-table` 的
+  //    `grid-template-columns` 今天仍是 8 条轨道 ⇒ **最后一条轨道会空着**。
+  //    已随本件上报，改 CSS 的那一拍要把这两处一起看。
+  it("每行子元素数 == grid 列数(7)：改一处必须改另一处", async () => {
     fetchAccountsMock.mockResolvedValue(ready());
     const el = await mount();
     for (const row of el.querySelectorAll(".accounts-row")) {
-      expect(row.children.length).toBe(8);
+      expect(row.children.length).toBe(7);
     }
   });
 
@@ -407,112 +411,17 @@ describe("account-ux U7 已启用态：横幅 / 表格 / 维护区", () => {
   });
 });
 
-/**
- * F10：账号行用量单元格（懒加载）。
- *
- * 🔴 **`K-R101`/`R59`（09-13）把「五种状态」压成两种**：`screen`（抓到了那一屏，
- * **空屏也算**）与 `probe-failed`（`captured=false`）。
- * `ok` / `not-logged-in` / `cli-missing` / `unrecognized` 那四种**全部来自解析器**，
- * 而解析层功能已退役（`R59` 逐字「解析层代码保留, 但是功能先退役」）。
- * ⇒ 那四条用例改成断 `KR101D1`「原文到得了界面」。
- */
-describe("F10/K-R101：账号行用量单元格（懒加载 + 两种状态）", () => {
-  const ready = (): AccountsState =>
-    state({ accounts: [acct({ name: "z" })], defaultName: "z" });
-
-  /** `account_usage` 走 invoke，与本文件其余 IPC（如 `check_remote_acct_iso`）共用同一个
-   *  invokeMock——按命令名分流，别互相污染。 */
-  function mockUsageInvoke(resp: { captured: boolean; raw?: string | null; error?: string | null }): void {
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "account_usage"
-        ? Promise.resolve({ captured: resp.captured, raw: resp.raw ?? null, error: resp.error ?? null })
-        : Promise.resolve(undefined),
-    );
-  }
-  const usageBtn = (el: HTMLElement): HTMLButtonElement | null =>
-    el.querySelector<HTMLButtonElement>(".accounts-usage-btn");
-  const flush = (): Promise<void> => new Promise((r) => setTimeout(r, 0));
-
-  it("初始态是「查看用量」按钮，不自动探测", async () => {
-    fetchAccountsMock.mockResolvedValue(ready());
-    invokeMock.mockResolvedValue(undefined);
+// 〔`设计/50` 删用量〕原先这里是「F10/K-R101：账号行用量单元格（懒加载 + 两种状态）」整组
+// （「查看用量」按钮 · 查询中占位 · 那一屏原文逐字渲染 · 空屏 · 探测失败 · 刷新）。
+// 用量 ③ 轴（探针）整轴退役 ⇒ **被测对象没了**，不是断言变少了。
+// 换成一条**翻面**判据：账号表里不许再长出那个单元格，也不许再发那条命令。
+describe("设计/50：账号表上的用量单元格已退役（翻面判据）", () => {
+  it("挂载后没有用量单元格 / 「查看用量」按钮，也没发任何 invoke", async () => {
+    fetchAccountsMock.mockResolvedValue(state({ accounts: [acct({ name: "z" })], defaultName: "z" }));
     const el = await mount();
-    expect(usageBtn(el)?.textContent).toBe("查看用量");
-    // invoke 只应有 check_remote_acct_iso 这类既有调用被间接触发过（本组件 init 时可能调用），
-    // 断言的重点是 account_usage 这个命令名从未被叫到——不自动探测。
+    expect(el.querySelector(".accounts-row-usage")).toBeNull();
+    expect(el.querySelector(".accounts-usage-btn")).toBeNull();
     expect(invokeMock.mock.calls.some(([cmd]) => cmd === "account_usage")).toBe(false);
-  });
-
-  /**
-   * 🔴 **`KR101D1`（`R58` 裁定一）在设置面板这一面的判据。**
-   *
-   * ⚠ 失效方向（件文件点名）：判「`raw` 字段还在类型里」。这里断的是 **DOM 上那个 `<pre>`
-   * 的 `textContent` 逐字等于抓回来的那一屏** —— 中途被 `trim` / 截断 / 只塞进 `title`，
-   * 本条都会红。
-   */
-  it("★ KR101D1：点击后 查询中 → 那一屏**原文逐字**摆在单元格里（等宽 · 保留空白）", async () => {
-    const screen = "Current session\n  38% used\nResets in 2h 14m\n  尾部空白  ";
-    fetchAccountsMock.mockResolvedValue(ready());
-    mockUsageInvoke({ captured: true, raw: screen });
-    const el = await mount();
-    usageBtn(el)?.click();
-    expect(el.querySelector(".accounts-usage-pending")?.textContent).toBe("查询中…");
-    await flush();
-    const pre = el.querySelector<HTMLElement>(".usage-screen-raw");
-    expect(pre, "单元格里没有那一屏原文 —— 原文在中途被丢了").not.toBeNull();
-    expect(pre!.tagName).toBe("PRE");
-    expect(pre!.style.whiteSpace).toBe("pre-wrap");
-    expect(pre!.textContent).toBe(screen);
-    expect(el.querySelector(".accounts-usage-copy-raw")).not.toBeNull();
-  });
-
-  it("★ KR101D1 ③：抓到空屏也算成功 —— 照样渲染，并明说是空屏（不是失败）", async () => {
-    fetchAccountsMock.mockResolvedValue(ready());
-    mockUsageInvoke({ captured: true, raw: "" });
-    const el = await mount();
-    usageBtn(el)?.click();
-    await flush();
-    expect(el.querySelector(".usage-screen-raw")?.textContent).toBe("");
-    expect(el.querySelector(".usage-screen-empty")?.textContent).toContain("空屏");
-    // 「复制这一屏」照给（空屏也可以复制，用户拿它去开 issue）
-    expect(el.querySelector(".accounts-usage-copy-raw")).not.toBeNull();
-  });
-
-  it("★ 生产路零解析：屏上写着 `sign in` / `command not found` 也不再被判成一个态", async () => {
-    for (const raw of ["Please sign in at console.anthropic.com", "bash: claude: command not found"]) {
-      fetchAccountsMock.mockResolvedValue(ready());
-      mockUsageInvoke({ captured: true, raw });
-      const el = await mount();
-      usageBtn(el)?.click();
-      await flush();
-      const outcome = el.querySelector(".accounts-usage-outcome")!;
-      expect(outcome.textContent).not.toContain("未登录");
-      expect(outcome.textContent).not.toContain("没有 claude 命令");
-      // 屏上原文原样给用户，让人自己看出来 —— 这正是 `R58` 买到的那个「人眼兜底」。
-      expect(el.querySelector(".usage-screen-raw")!.textContent).toBe(raw);
-    }
-  });
-
-  it("probe-failed（Rust 层报错，如无 tmux）→ 显示原始错误文案", async () => {
-    fetchAccountsMock.mockResolvedValue(ready());
-    mockUsageInvoke({ captured: false, error: "远端未安装 tmux" });
-    const el = await mount();
-    usageBtn(el)?.click();
-    await flush();
-    expect(el.querySelector(".accounts-usage-outcome")?.textContent).toContain("远端未安装 tmux");
-  });
-
-  it("「刷新」按钮重新触发探测（force，不走缓存）", async () => {
-    fetchAccountsMock.mockResolvedValue(ready());
-    mockUsageInvoke({ captured: true, raw: "50%\nResets in 1h" });
-    const el = await mount();
-    usageBtn(el)?.click();
-    await flush();
-    const before = invokeMock.mock.calls.filter(([cmd]) => cmd === "account_usage").length;
-    el.querySelector<HTMLButtonElement>(".accounts-usage-refresh")?.click();
-    await flush();
-    const after = invokeMock.mock.calls.filter(([cmd]) => cmd === "account_usage").length;
-    expect(after).toBe(before + 1);
   });
 });
 
@@ -530,30 +439,10 @@ describe("Z01 账号 0 在设置账号表里的呈现", () => {
     expect(dirs[1]).not.toBe("");
   });
 
-  // Z01 时这里钉的是「明说暂不支持」的占位；**Z03 把它做通了** ⇒ 契约变了，断言跟着变：
-  // 账号 0 现在**真的会探**，而且载荷必须是 `unset CLAUDE_CONFIG_DIR; ` 打头（不是裸载荷）。
-  // U8c-2a：载荷不再走 IPC（由 Rust 内核编译）⇒ 这里改钉「账号 0 的**表态**真的送出去了」。
-  // 「显式 unset、绝不裸载荷」那条 fail-closed 纪律由
-  // `backend::control::payload 的 usage_probe_payload_is_two_states_and_never_bare` 钉住（两态都断言带前缀）。
-  it("账号 0 的用量会真的去探，且送的是账号 0 的显式表态（configDir === null）", async () => {
-    fetchAccountsMock.mockResolvedValue(state({ accounts: [zero], defaultName: null }));
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "account_usage"
-        ? Promise.resolve({ captured: true, raw: "42%\nResets in 2h", error: null })
-        : Promise.resolve(undefined),
-    );
-    const el = await mount();
-    el.querySelector<HTMLButtonElement>(".accounts-usage-btn")?.click();
-    await new Promise((r) => setTimeout(r, 0));
-    const calls = invokeMock.mock.calls.filter(([c]) => c === "account_usage");
-    expect(calls).toHaveLength(1);
-    const args = calls[0][1] as Record<string, unknown>;
-    // 字面 null = 账号 0 的**显式**表态。省掉这个键在 Rust 侧同样落 `None`，
-    // 但那是巧合不是契约 —— 钉字面 null 让「有没有表态」在这一层就可见。
-    expect("configDir" in args).toBe(true);
-    expect(args.configDir).toBeNull();
-    expect(args).not.toHaveProperty("launchPayload");
-  });
+  // 〔`设计/50` 删用量〕原先这里还有一条「账号 0 的用量会真的去探，且送的是账号 0 的
+  // 显式表态（configDir === null）」—— 它钉的是 `Z03` 做通的那件事。
+  // 用量 ③ 轴整轴退役 ⇒ 那条路没了。⚠ **「空值 ≠ 未设」这条纪律没丢**：
+  // 它在起会话那条路上由 `backend::control::payload` 的两态断言继续钉着。
 
   it("降级说明会被渲染成显眼的一条（绝不静默）", async () => {
     fetchAccountsMock.mockResolvedValue(

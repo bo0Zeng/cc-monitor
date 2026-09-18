@@ -1,5 +1,5 @@
 /**
- * K-R45：「我说过的 N 句」那块**界面**，两条路共用一份。
+ * K-R45：「大纲」（原名「我说过的 N 句」，`设计/10 §2.2b` 改名）那块**界面**，两条路共用一份。
  *
  * # 为什么是共用而不是各写一份
  *
@@ -31,6 +31,23 @@
  */
 import type { UserInputEntry } from "./user-input-index";
 
+/**
+ * 这块界面的名字 —— **`大纲`**（`设计/10 §2.2b ③` 定名，步 2）。
+ *
+ * 原来叫「我说过的 N 句」，三个毛病叠在一起：
+ * ① **app 用第一人称替用户说话** —— 那个「我」指的是用户，可话是 app 说的；
+ * ② **「句」这个量词是错的** —— 数的是消息/轮次，一条输入可能是 20 行代码；
+ * ③ **计数塞进了控件标签** —— `我说过的 37 句` 是一句旁白，不是一个控件。
+ *   控件的标签该说「点我干什么」。
+ *
+ * 🔴 **为什么不叫「目录」**：`.tab-cwd` 那个 📂 的 tooltip 逐字是「打开**工作目录**」
+ * ⇒「目录」在这个界面里已经有一个意思（文件系统路径）。撞名。
+ *
+ * ⚠ 一个住址。两条路（历史查看器 / 实时窗口）共用这份界面，名字也只有这一份 ——
+ * 改名那天两边一起改，不会有一边还叫旧名。
+ */
+const OUTLINE_LABEL = "大纲";
+
 /** 宿主要提供的两件事 —— 「怎么跳」和「跳空了怎么跟人解释」。 */
 export interface UserInputPanelHost {
   /**
@@ -56,6 +73,8 @@ export class UserInputPanel {
     this.toggle = document.createElement("button");
     this.toggle.type = "button";
     this.toggle.className = "user-inputs-toggle";
+    // 标签只有两个字 ⇒ 用 tooltip 说清它是干什么的（`设计/10 §2.2b ③` 的「最终形状」）。
+    this.toggle.title = "按你的输入跳转";
     this.toggle.addEventListener("click", () => this.toggleOpen());
     this.panel = document.createElement("div");
     this.panel.className = "user-inputs";
@@ -76,7 +95,11 @@ export class UserInputPanel {
       const old = this.panel.children[i] as HTMLButtonElement | undefined;
       if (old && old.dataset.inputUuid === entries[i].uuid) {
         // 同一条：只刷序号+摘要。**不碰 `title`** —— 它可能正挂着「跳不过去」那句。
-        old.textContent = `${i + 1}. ${entries[i].excerpt}`;
+        // `设计/17 §2.9`：这里原先**无条件重写**，而实时那条路每来一句调一次
+        // ⇒ 全程 O(n²) 次 `textContent` 写（最大会话 585 条 ⇒ Σ(1..585) = 17.1 万次）。
+        // 写前比一次 ⇒ append 场景每次写 0 行，全程降到 O(n)。
+        const next = `${i + 1}. ${entries[i].excerpt}`;
+        if (old.textContent !== next) old.textContent = next;
         continue;
       }
       const row = this.buildRow(entries[i], i);
@@ -84,7 +107,9 @@ export class UserInputPanel {
       else this.panel.appendChild(row);
     }
     while (this.panel.children.length > entries.length) this.panel.lastElementChild!.remove();
-    this.toggle.textContent = `我说过的 ${entries.length} 句`;
+    // `设计/10 §2.2b`：标签只说「点我干什么」，计数用间隔点挂在后面、0 条时不挂。
+    this.toggle.textContent =
+      entries.length > 0 ? `${OUTLINE_LABEL} · ${entries.length}` : OUTLINE_LABEL;
     // 一条都没有 ⇒ 禁用。不给一个点了没反应的入口。
     this.toggle.disabled = entries.length === 0;
   }
@@ -93,7 +118,7 @@ export class UserInputPanel {
   clear(): void {
     this.panel.replaceChildren();
     this.panel.hidden = true;
-    this.toggle.textContent = "我说过的 0 句";
+    this.toggle.textContent = OUTLINE_LABEL;
     this.toggle.disabled = true;
     this.toggle.setAttribute("aria-expanded", "false");
   }

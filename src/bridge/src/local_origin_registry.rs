@@ -66,9 +66,9 @@ const REMOTE_ONLY: &[(&str, &str, &str)] = &[];
 /// 多一条同样会红（新增的必须走 `REMOTE_ONLY` 或者去加本机分支）。
 #[cfg(test)]
 const TRIAGE_DEBT: &[(&str, &str)] = &[
-    // 🔴 **`K-R104`（09-13）：`account_usage.rs::account_usage` 这一行还掉了，不是删掉。**
+    // 🔴 **`K-R104`（09-13）：用量探针那一行还掉了，不是删掉。**
     //    它欠的是「这一处**够不够得到本机**没人量过」。今天量得出来了，而且答案变了：
-    //    编排搬上后端帧面之后，`account_usage`（远端）与 `account_usage_local`（本机）
+    //    编排搬上后端帧面之后，`account_usage`（远端）与 `account_usage_local`（本机）  〔散文墓碑〕
     //    **是同一个函数**，只差一个 origin —— `<local>` 也是一个 origin，`client_for` 两侧都答得出。
     //    ⇒ 它不再是「只服务远端」的那一族。**表只许变短，这一次它真的短了。**
     ("accounts.rs", "cfg_for"),
@@ -245,8 +245,9 @@ mod tests {
         // 地板在「变大」这个方向上是瞎的 —— 这个仓因为这件事栽过三次
         // （`shell_lint_registry` 的账逐字：「`≥` 正是它落后三次的成因」）。
         // K-R56（09-11）：16 → 15，`tmux.rs::tmux_send_keys` 真去分了本机。
-        // 🔴 `K-R104`（09-13）：15 → **14**。`account_usage.rs::account_usage` 那一条
+        // 🔴 `K-R104`（09-13）：15 → **14**。用量探针那一条
         //    随编排搬上帧面而**真的还掉了**（理由逐字在表里那条注释）。
+        //    〔`设计/50`：那一族今天连功能都不在了 —— 这个数**不动**，因为它当时就已经出表了。〕
         //    ★ 这是本表第二次往下走，而「变少 ⇒ 好事」正是它自己报错文案里写的那一句。
         const TRIAGE_DEBT_TODAY: usize = 14;
         assert_eq!(

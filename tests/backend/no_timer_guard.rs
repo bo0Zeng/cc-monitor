@@ -516,69 +516,13 @@ mod f09_external_beat {
         );
     }
 
-    /// ★〔`K-R87` 09-13〕**看门狗那条 argv 形的 shell 串，也不许自带节拍。**
-    ///
-    /// # 为什么要单独一条：上面那条**结构上看不见它**（`K-R103` 改完匹配单位之后**仍然看不见**）
-    ///
-    /// [`shell_string_literals`] 认的是「一条**含针的表达式**里的字符串字面量」
-    /// （针 = [`NEEDLES`]）。而 `K-R87` 的看门狗走的是 **argv 直传**：脚本是一个**常量**、
-    /// `sh` 与 `-c` 是两个独立的 argv 元素 ⇒ 那三根针**一根都不落在那条常量声明上**。
-    ///
-    /// 🔴 `K-R103` 把匹配单位从「行」改成「表达式」，关掉的是
-    /// **`format!(` 续行**那个盲区（`control/ccm/plan.rs` 那条因此进了人群）；
-    /// **argv 形常量**是另一个盲区，那一改**没有**顺带关掉它 —— 两个盲区不是一回事，
-    /// 别把「上一条变严了」读成「这一条可以撤了」。
-    /// ⚠ 那条 argv 形的另一面（它是 POSIX-only、按 `K33` 该住 `platform/`）由
-    /// `platform/cfgless_guard` 的 `posix-shell-sh` 那根针接住 —— `K-R103` 把它一并放宽到
-    /// 「整条字面量就是 `sh`」这一形，本模块不重复守那一格。
-    /// ⇒ 本条**只盖 `control/oneshot_session.rs` 这一份文件**，
-    /// 形状照 `readonly_guard::capture_is_read_only`（那一条同样自陈「只盖一份文件」）。
-    #[test]
-    fn the_oneshot_watchdog_script_carries_no_loop() {
-        let prod = guard_core::production_code(include_str!(
-            "../../src/backend/control/oneshot_session.rs"
-        ));
-        // 反空真①：读到的得是真代码，不是一份被剥空的壳。
-        assert!(
-            prod.len() > 3_000,
-            "剥完 `control/oneshot_session.rs` 只剩 {} 字节 —— 读错文件或剥过头了，\
-             下面几格在空转",
-            prod.len()
-        );
-        // 反空真②：本条声称在盯的那个常量真的在生产段里。
-        let decl = format!("const WATCHDOG{}", "_SCRIPT");
-        assert!(
-            prod.contains(&decl),
-            "生产段里找不到 `{decl}` —— 看门狗那条脚本换了住址或换了写法，回来重判本条"
-        );
-        // ★ 正题：那条脚本里没有任何一个循环关键字。
-        let script = crate::control::oneshot_session::WATCHDOG_SCRIPT;
-        for w in loop_words() {
-            assert!(
-                !script.contains(w.as_str()),
-                "看门狗脚本里出现了循环关键字 `{w}` —— 那就从「到点一次」变成了\
-                 「靠外部 shell 提供节拍」，也就是 C12 的 ⚠ 点名的那一形。实得：{script:?}"
-            );
-        }
-        // ★ 反向自检：判定真的会咬人（否则上面那圈可能是「什么都认不出」地绿）。
-        let synthetic = format!("{}:; do sleep 1; done", loop_words()[0]);
-        assert!(
-            loop_words().iter().any(|w| synthetic.contains(w.as_str())),
-            "合成的带循环样本没被逮到 —— 上面那圈此刻是空转的：{synthetic:?}"
-        );
-        // ★ 那份文件把东西交给 shell 的口**恰好一处**（常量声明 1 ＋ 用它那一处 1）。
-        //   多出来一处 ⇒ 有第二条串在往 shell 里送，而本条只盯着上面那个常量。
-        const SHELL_HANDOFFS_TODAY: usize = 2;
-        let flag = format!("SHELL_SCRIPT{}", "_FLAG");
-        let n = prod.matches(flag.as_str()).count();
-        assert_eq!(
-            n, SHELL_HANDOFFS_TODAY,
-            "`control/oneshot_session.rs` 生产段里 `{flag}` 出现 {n} 次（登记 {SHELL_HANDOFFS_TODAY} \
-             次 = 常量声明一处 ＋ 组 argv 那一处）。\n\
-             变多 ⇒ 那份文件多了一条交给 shell 的路，而本条只盯着那一个常量 ⇒ 回来重判；\n\
-             变少 ⇒ 那条路换了写法，本条此刻盯的是一个没人用的常量。"
-        );
-    }
+    // 〔`设计/50` 删用量〕**`the_oneshot_watchdog_script_carries_no_loop` 这一条整删。**  〔散文墓碑〕
+    // 它自陈「**本条只盖 `control/oneshot_session.rs` 这一份文件**」，而那份文件随用量 ③ 轴
+    // （探针会话）整轴退役而整删 ⇒ **守卫没有标的了**，不是放宽。
+    // ⚠ 它守的性质（「交给 shell 的那条串不许自带节拍」）没有失去主人：
+    //   `platform/cfgless_guard` 的 `posix-shell-sh` 那根针仍盖着 argv 形的 `sh -c`，
+    //   而本模块上面那条 `shell_string_literals` 仍盖着含针表达式里的字面量。
+    //   今天本 crate 生产段里**一处 argv 形看门狗都没有**。
 }
 
 #[cfg(test)]

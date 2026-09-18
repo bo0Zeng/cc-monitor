@@ -1,6 +1,11 @@
 /**
  * F88b（#52）：模型 context 上限表 + 模型串归一化。**纯模块**（零 import，node 可测）。
  *
+ * 🔴 〔`设计/50` §5 步 12 · 09-18〕**原名 `views/pricing.ts`**。费用/$ 那半早被 F88c 砍掉，
+ * 用量 ② 轴退役后 `RELATIVE_COST` / `equivalentInputTokens` 也一起走了 ⇒ 这份文件只剩
+ * 「context 上限」这一件事，`pricing` 这个名字是名不副实的历史残留。消费者两处：
+ * `tabs.ts`（会话行 ctx%）与 `usage-hud.ts`（状态栏 ctx% chip）。
+ *
  * 只做「上限」（给 context 占用% 用）；**不做费用/$**（用户 2026-07-17 拍板只显 token，F88c 砍掉）。
  *
  * 上限现实：Claude 标准 context = **200k**；**`[1m]` 后缀变体 = 1M**（本项目自己的模型就是
@@ -53,32 +58,4 @@ export function contextPercent(
   const lim = contextLimit(model, overrides);
   if (lim == null || lim <= 0) return null;
   return (latestPromptTokens / lim) * 100;
-}
-
-/**
- * F88d：token 类型的**相对成本权重**（相对 `input`=1）。**不是绝对 $**——只反映 token 档位的相对贵贱，
- * 这个**比例结构跨 Claude 模型稳定、不随定价调整过期、不需 API key**。用于把不同价档 token 折成一个可比数，
- * 让「按项目/模型」比较反映相对成本（而非把价差 10× 的 `cache_read` 与 `output` 直接相加求和）。
- * 系数（Claude 定价常见比例）：cache 写 ≈1.25×input、cache 读 ≈0.1×input、output ≈5×input。
- */
-export const RELATIVE_COST = {
-  input: 1,
-  cacheCreation: 1.25,
-  cacheRead: 0.1,
-  output: 5,
-} as const;
-
-/** 折算「等效 input token」= Σ(各档 token × 相对系数)。纯函数，node 可测。**相对量、非绝对 $。** */
-export function equivalentInputTokens(t: {
-  input: number;
-  cacheCreation: number;
-  cacheRead: number;
-  output: number;
-}): number {
-  return Math.round(
-    t.input * RELATIVE_COST.input +
-      t.cacheCreation * RELATIVE_COST.cacheCreation +
-      t.cacheRead * RELATIVE_COST.cacheRead +
-      t.output * RELATIVE_COST.output,
-  );
 }

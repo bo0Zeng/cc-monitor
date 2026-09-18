@@ -639,30 +639,6 @@ mod tests {
              而这一处**没有门**，归 PM（要么进适配层，要么随那一格一起裁）。",
         ),
         (
-            "control/oneshot_session.rs",
-            "const POSIX_SHELL",
-            "真漏",
-            "`K-R87` 的一次性会话看门狗走 **argv 直传**：`setsid sh -c <常量脚本> …`，\
-             `sh` 是一个具名常量的值、不是 `Command::new` 的实参 ⇒ 上一版那根针看不见它\
-             （那份文件的头注在 09-13 之前逐字登记着这条盲区，交 PM 定夺）。\
-             `K-R103` 把针放宽成「整条字面量恰好是 `sh`」之后，它进了人群。\
-             🔴 **它该搬进 `platform/`**（`K33` 裁定二）：整条路是 POSIX-only\
-             （`setsid` ＋ `sh` ＋ `sleep`），而 [`super::shell::posix_shell`] 备的是\
-             一条 `sh -c <脚本>` 的 `Command`、**形状对不上**（看门狗要的是把 `sh` 当\
-             **参数**递给 launcher）⇒ 要在适配层新造一条原语。\
-             **`K-R103` 的写区不含 `platform/shell.rs` 与 `platform/mod.rs`**\
-             ⇒ 本轮只签字、不搬，归 PM 排。",
-        ),
-        (
-            "control/oneshot_session.rs",
-            "const WATCHDOG_LAUNCHER",
-            "真漏",
-            "上一行那条路的**另一半**：`setsid` 是把看门狗放进新会话的 launcher\
-             （「看门狗必须活得比起它的人久，这就是它存在的全部理由」—— 那份文件的常量头注逐字）。\
-             它与 `sh` 一起构成 `K-R87` 那条 POSIX-only 的路 ⇒ 一起搬、一起归 PM。\
-             `K-R103` 只是让它**第一次被看见**：上一版盘上没有任何一根针落在它身上。",
-        ),
-        (
             "agents/fake/mod.rs",
             "cmdline(\"/usr/bin/vim\")",
             "合法线外",
@@ -970,8 +946,12 @@ mod tests {
                 bad.push(format!("  {rel}：{why}\n      {what}"));
             }
         }
+        // 🔴 〔`设计/50` 删用量 09-18〕地板 60 → **57**（现打 59，留 2 份余量，与立表时同margin）：
+        // 本刀删掉本 crate **三份** `.rs`（`observe/usage_query.rs` · `control/oneshot_session.rs` ·
+        // `agents/codex/usage.rs`）⇒ 人群真的小了 3。**这不是遍历坏了**，
+        // 两者的读数长得一样，所以降地板必须逐条写清删的是哪三份。
         assert!(
-            scanned >= 60,
+            scanned >= 57,
             "`platform/` 之外只扫到 {scanned} 份 `.rs` —— 人群塌了，本条此刻在空转"
         );
         assert_eq!(
@@ -992,8 +972,9 @@ mod tests {
     #[test]
     fn the_population_is_not_silently_empty() {
         let (all, files) = scan_tree();
+        // 🔴 〔`设计/50` 09-18〕地板 70 → **67**（现打 69）：同上一条，本刀删了三份 `.rs`。
         assert!(
-            files >= 70,
+            files >= 67,
             "只扫到 {files} 份 `.rs`（`scan_tree!` 已摘除本文件）—— 遍历坏了，\
              上面那几条此刻全在空转"
         );

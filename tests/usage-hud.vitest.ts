@@ -1,7 +1,7 @@
 // F88b（#52）用量 HUD chip 的 jsdom 测试：setActive 算 context% / 未知模型显 ?/
 // 无 usage 隐藏 / ≥80% 高亮 / 点击回调。
 
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { UsageHud } from "../src/usage-hud";
 
 describe("UsageHud (F88b #52)", () => {
@@ -52,11 +52,18 @@ describe("UsageHud (F88b #52)", () => {
     expect(hud.summaryElement.textContent).toBe("ctx ?");
   });
 
-  it("onClick 注册的 handler 点击时触发", () => {
+  // 〔`设计/50` 删用量〕原先这里是「`onClick` 注册的 handler 点击时触发」——
+  // chip 点下去打开的那个跨会话聚合视图（`views/usage-view.ts`）整轴退役了，
+  // `onClick` 随之从 `UsageHud` 上删掉。**这一条翻面**：钉住 chip 今天是**纯只读**的。
+  // ⚠ 翻面不是放宽：它挡的是「有人顺手把点击行为加回来却没有对面」。
+  it("chip 是纯只读：没有挂任何点击监听，也不长成可点的样子", () => {
     const hud = new UsageHud();
-    const spy = vi.fn();
-    hud.onClick(spy);
+    hud.setActive("claude-opus-4-8", 10_000);
+    expect(hud.summaryElement.style.cursor).toBe("default");
+    expect((hud as unknown as { onClick?: unknown }).onClick).toBeUndefined();
+    // 点它不许抛，也不许有任何副作用可观察 —— 文本在点击前后逐字不变。
+    const before = hud.summaryElement.textContent;
     hud.summaryElement.click();
-    expect(spy).toHaveBeenCalledOnce();
+    expect(hud.summaryElement.textContent).toBe(before);
   });
 });

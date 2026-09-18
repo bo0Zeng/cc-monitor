@@ -7,7 +7,7 @@
 | [`verify-committed-state.sh`](verify-committed-state.sh) | 从**提交状态**（不是工作树）编一次。★ **本仓不 push ⇒ CI 见不到这些 commit，这道门只能在本机跑**；理由与那次「约二十轮编不过」的事故见它自己的头注 |
 | [`hooks-are-runnable.sh`](hooks-are-runnable.sh) | 门禁第 13 格（`K-R82`）：`hooks/` 下**会被 git 执行**的每一个脚本，盘上有没有可执行位 · 库里记没记那个位 · 语法过不过它自己声明的解释器。★ 两句话分开判 —— 本仓 `core.filemode=false`，`chmod +x` 进不了 git，于是「这棵树里跑得起来」与「新 checkout 出来也跑得起来」是两个互不相干的事实（落地那趟就现打逮到 index 里是 `100644`）。自带 8 条阳性对照（三把尺子正反各一条）。跑法与射程见它自己的头注 |
 | [`assert-coverage-floors.mjs`](assert-coverage-floors.mjs) | 逐文件覆盖率地板 + 0% 文件递减棘轮（聚合阈值看不见单模块归零）。跑法与登记见它自己的头注 |
-| [`release-notes.mjs`](release-notes.mjs) | GitHub Release 的**正文生成器**（`K-R124`）：从 `CHANGELOG.md` 里本版那一段生成 `RELEASE_BODY.md`，`release.yml` **两处**发布步骤各跑一次、都用它当 `body_path`。★ 在它之前两处发布步骤一处写着 `generate_release_notes: true`、另一处连 `body` 都没有 ⇒ **真发出去的正文是 GitHub 自动生成的提交列表**，我们写的一个字都不在上面。`src/doc/RELEASING.md § 5` 早就写着「用 CHANGELOG 对应版本段」这条 SOP，只是一直是手工的一步、从 v3.6.0 起没人做。`--check` 只验不写，本地门禁 `release-gate` 那一格调它。跑法与射程见它自己的头注 |
+| [`release-notes.mjs`](release-notes.mjs) | GitHub Release 的**正文生成器**（`K-R124`）：从 `CHANGELOG.md` 里本版那一段生成 `RELEASE_BODY.md`，`release.yml` **两处**发布步骤各跑一次、都用它当 `body_path`。★ 在它之前两处发布步骤一处写着 `generate_release_notes: true`、另一处连 `body` 都没有 ⇒ **真发出去的正文是 GitHub 自动生成的提交列表**，我们写的一个字都不在上面。`src/`src/doc/RELEASING.md` § 5` 早就写着「用 CHANGELOG 对应版本段」这条 SOP，只是一直是手工的一步、从 v3.6.0 起没人做。`--check` 只验不写，本地门禁 `release-gate` 那一格调它。跑法与射程见它自己的头注 |
 
 > ⚠ **这张表由判据钉住**：`doc_claim_registry.rs::every_script_in_the_directory_is_listed_in_its_readme`
 > —— 往 `scripts/` 放新文件而不登记就会红。
@@ -63,4 +63,4 @@ powershell -NoProfile -File scripts\run.ps1 [dev|build|check|clean]
 4. npx tauri $Cmd
 ```
 
-详 [`../../src/doc/DEVELOPMENT.md`](../../src/doc/DEVELOPMENT.md)。
+详 [`../../src/`src/doc/DEVELOPMENT.md`](../../src/`src/doc/DEVELOPMENT.md`)。

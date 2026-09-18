@@ -198,17 +198,11 @@ mod tests {
         // 两档结果都只渲染成给用户的一句话 —— 但**照样走分流器**：
         // 分流规则有第二份实现的那天，「被门拒绝」就会在某一份里被洗成「换条路重做」。
         ("cc_bus.rs", Verdict::UsesRouter),
-        // ★ `K-R104` 09-13：**第六个发送端** —— 用量探针整条编排搬上帧面之后，
-        //   `account_usage.rs` 在一条通道上连发 `oneshot-session` / `launch` /
-        //   `capture-pane` × N / `kill`。
-        //   它**没有第二条路可回落**（那正是 `KR104D2` ① 要的：编排退回 CLI 面就是红），
-        //   但**照样走分流器** —— 理由与 `cc_bus.rs` 那条逐字相同：
-        //   本模块的两档（`NothingWasSent` / `Refused`）是从 `Routed` 搬过来的，
-        //   不是它自己 match 一遍 `CallError`。第一版我就是自己 match 的，本条会当场逮住。
-        ("account_usage.rs", Verdict::UsesRouter),
         // ★ `K-R112` 09-13：**第七个发送端** —— 抓屏（`tmux.rs::capture_via_daemon`）
         //   改走帧面 `capture-pane`。它**没有第二条路可回落**（那条一次性 SSH 本件删净了），
-        //   但**照样走分流器**，理由与 `cc_bus.rs` / `account_usage.rs` 那两条逐字相同：
+        //   但**照样走分流器**，理由与 `cc_bus.rs` 那条逐字相同：
+        //   〔`设计/50`：原话还并列了 `account_usage.rs`（`K-R104` 的第六个发送端）——
+        //    用量 ③ 轴整轴退役，那个发送端不存在了，发送端从七个变回六个。〕
         //   本模块的三态是从 `Routed` 搬过来的，不是它自己 match 一遍错误枚举。
         //   ⚠ 它回的是 `Result<String, Routed>` —— 「拿到了那一屏」与「三态里的另外两态」
         //   在类型上分得开，怎么对用户说由调用方 `capture_remote_pane` 决定。

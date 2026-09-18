@@ -59,37 +59,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // ── monitor → daemon：monitor 的判据去读 daemon 的源码 ─────────────────
     (
         "monitor→daemon",
-        "src/bridge/src/usage.rs",
-        "src/backend/observe/usage_query.rs",
-        "★ **跨轨对拍**：`the_usage_kou_jing_has_exactly_one_home` 要断言\
-         「两侧都调 `usage_core::accumulate`、且都不再自己解析 token 字段」。\
-         那是一条**关于两侧同形**的性质，只能同时读两侧的源码才验得了 —— \
-         正是本表第四列认可的那种理由（不是「顺手方便」）。\
-         ⚠ 这条边是 08-06 加那条判据时**由本护栏当场逮出来的**（实得 12 / 登记 11），\
-         而不是我记得来登记的 —— 那正是这张表存在的意义。",
-    ),
-    (
-        "monitor→daemon",
-        "src/bridge/src/usage.rs",
-        "src/backend/agents/codex/parse.rs",
-        "★ **跨轨对拍**（同上那条的 Codex 半）：口径判据的人群原本只有「累加点」，\
-         而 Codex 的口径住在**提取器**里 —— daemon 这个文件与 monitor 的 \
-         `codex_record.rs` 各写一遍 `input−cached`。收口进 `usage_core::codex_delta` 后，\
-         要断言 daemon 提取器**确实调了**那个唯一权威源，就必须读它的源码。\
-         ⚠ 这条边同样是 08-07 加判据时**由本护栏当场逮出来的**（实得 13 / 登记 12）。\
-         〔`S2` 08-14〕文件从 `observe/codex.rs` 搬去了 `agents/codex/parse.rs`——\
-         **本表的键是文件对，搬迁必须同轮改键**，否则这条边会以「登记了一个不存在的文件」\
-         的形式烂在表里。",
-    ),
-    (
-        "monitor→daemon",
-        "src/bridge/src/usage.rs",
-        "src/backend/agents/codex/usage.rs",
-        "★〔`S2` 08-14 新增〕daemon 的 Codex **累加点**搬进适配层后，口径判据的人群\
-         跟着扩到这里。不跟 ⇒ 那半静默掉出覆盖面（文件名还在表里、内容已经搬走一半）。",
-    ),
-    (
-        "monitor→daemon",
         "src/bridge/src/tmux.rs",
         "src/backend/observe/watcher.rs",
         "★〔audit-0805 08-06 新发现，此前整条不在本表里〕两条对拍守卫读 daemon 的 \
@@ -130,18 +99,6 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "src/bridge/src/inbound_client.rs",
         "src/backend/control/launch.rs",
         "launch 请求的字段名两侧同形",
-    ),
-    (
-        "monitor→daemon",
-        "src/bridge/src/tmux.rs",
-        "src/backend/control/oneshot_session.rs",
-        "★〔`K-R104` 09-13〕**一次性会话的名字前缀两侧必须是同一个串。** \
-         用量探针的会话从此由 daemon 铸名（前缀 `ccm-oneshot-` ＋ slug ＋ 过 Gate 2 的那截尾巴），\
-         而 monitor 这一侧\
-         要把它挡在用户的会话列表之外（`is_usage_probe_session`）。\
-         🔴 **漂开不会有任何东西报错** —— daemon 照旧铸它的名字，monitor 照旧过滤它以为的\
-         那个前缀，症状是探针会话开始在列表里闪现。⇒ 只能读对面的源码逐字比\
-         （`tests::the_oneshot_prefix_matches_the_daemon_side`，形状照 `LOCAL_ORIGIN` 那条）。",
     ),
     (
         "monitor→daemon",

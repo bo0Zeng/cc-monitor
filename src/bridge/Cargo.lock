@@ -675,6 +675,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "codex-token-core"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "combine"
 version = "4.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2830,6 +2837,7 @@ dependencies = [
  "acct-core",
  "branch-core",
  "code-picture-core",
+ "codex-token-core",
  "creds-core",
  "dirs 5.0.1",
  "futures",
@@ -2856,7 +2864,6 @@ dependencies = [
  "tracing-appender",
  "tracing-subscriber",
  "ts-rs",
- "usage-core",
  "uuid",
  "walkdir",
  "windows 0.56.0",
@@ -5958,13 +5965,6 @@ dependencies = [
  "serde",
  "unic-ucd-ident",
  "url",
-]
-
-[[package]]
-name = "usage-core"
-version = "0.1.0"
-dependencies = [
- "serde_json",
 ]
 
 [[package]]

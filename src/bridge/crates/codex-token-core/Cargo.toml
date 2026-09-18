@@ -1,0 +1,16 @@
+[package]
+name = "codex-token-core"
+version = "0.1.0"
+edition = "2021"
+description = "Codex 的 token_count 事件 → token 增量的唯一映射（无 IO、无平台依赖）。"
+
+# **依赖只有 serde_json，这是本 crate 能被两侧共用的前提。**
+# 同 branch-core 的约束：daemon 是 Linux-only 的静态 musl 二进制、且刻意不在
+# monitor 的 workspace 里；一旦这里引入 tauri / tokio / 平台相关的东西，共享就破了。
+#
+# 🔴 它原来叫 `usage-core`，装着 Claude 用量口径的累加器（`Totals` / `SessionUsage` /
+# `accumulate`）＋ Codex 这半。`设计/50`（删用量）把前者的两个消费者
+# （`src/bridge/src/usage.rs` · `src/backend/observe/usage_query.rs`）同时删了
+# ⇒ 那半整块退役，crate 随之改名。理由住 `src/lib.rs` 头注。
+[dependencies]
+serde_json = "1"

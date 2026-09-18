@@ -15,8 +15,8 @@
  * - **返回类型**：分**三桶**（Phase D 审计 Z2 订正——原来只写两桶，会把 34 个
  *   返回 `()` 的命令判成 `unknown`，那是净退化）：
  *   ① Rust 返回 `()` / `Result<(), _>` ⇒ `Promise<void>`（**34 个**）；
- *   ② 有 payload 但 TS 侧不读字段 ⇒ `unknown` **并在那一行注明**（**4 个**：
- *      `sftp_stat` · `rebuild_search_index` · `start_forward` · `aggregate_usage_all`）；
+ *   ② 有 payload 但 TS 侧不读字段 ⇒ `unknown` **并在那一行注明**（**3 个**：
+ *      `sftp_stat` · `rebuild_search_index` · `start_forward`）；
  *   ③ TS 侧真消费字段 ⇒ 生成物类型（**81 个**）。
  *
  * ## 本文件今天覆盖多少
@@ -99,7 +99,6 @@ import type {
 } from "../launch-cli-wire.ts";
 
 import type { AccountAliasReport } from "../generated/AccountAliasReport";
-import type { AccountUsageProbeResult } from "../generated/AccountUsageProbeResult";
 import type { AcctIsoStatus } from "../generated/AcctIsoStatus";
 import type { ActiveSessionPayload } from "../generated/ActiveSessionPayload";
 import type { AutoLaunchConfig } from "../generated/AutoLaunchConfig";
@@ -162,7 +161,6 @@ import type { LogFileInfo } from "../generated/LogFileInfo";
 import type { McpServerEntry } from "../generated/McpServerEntry";
 import type { RestartHint } from "../generated/RestartHint";
 import type { SessionAccountsResult } from "../generated/SessionAccountsResult";
-import type { SessionUsageRow } from "../generated/SessionUsageRow";
 import type { SubagentLoadResult } from "../generated/SubagentLoadResult";
 import type { TaskEntry } from "../generated/TaskEntry";
 
@@ -197,39 +195,6 @@ export interface UserPathStatus {
 }
 
 export const commands = {
-  /**
-   * 起一个 tmux 会话跑 `/usage` 并 capture-pane 抓屏。返回值字段被真消费 ⇒ 生成物（桶③）。
-   * `captured=true` 只代表**拿到了文本**（包括空屏）。
-   * 🔴 〔`K-R101`/`R59` 09-13 订正〕原话接着写「解析是 TS 侧纯函数 `parseUsageCapture`
-   * 的职责」——**那半句今天是假的**：解析层功能已退役（墓碑住 `src/account-usage-parse.ts`
-   * 头部），生产路上抓到的那一屏**原样**交给界面。
-   */
-  // U8c-2a：收**结构化账号表态**，不再收渲染好的载荷串。
-  // `configDir: null` = 账号 0（Rust 侧产出 `unset CLAUDE_CONFIG_DIR; `），不是「不表态」。
-  account_usage: (args: { origin: string; accountName: string; configDir: string | null }) =>
-    invoke<AccountUsageProbeResult>("account_usage", args),
-  // F08：**本机**那一侧（补平 `parity_ledger` 的 `usage.per-account`）。
-  // 与远端逐字用同一条命令串，只换执行面 —— 故**没有 `origin` 参数**（本机就是这台机）。
-  account_usage_local: (args: { accountName: string; configDir: string | null }) =>
-    invoke<AccountUsageProbeResult>("account_usage_local", args),
-
-  /**
-   * 远端 daemon 服务端聚合的用量行（非流式，一次返 `Vec`）。返回值字段被真消费 ⇒ 生成物（桶③）。
-   * **注意它没有 `Result` 包装**——Rust 签名是 `-> Vec<SessionUsageRow>`，失败在 Rust 内部吞成空表。
-   */
-  aggregate_remote_usage_all: () => invoke<SessionUsageRow[]>("aggregate_remote_usage_all"),
-
-  /**
-   * 本地用量聚合，**经 `Channel` 流式**逐行推（第一个进包装层的 Channel 参数）。
-   *
-   * Rust 返回 `Result<u32, String>`（处理了多少行）。TS 侧今天**不读它**——
-   * 但按 §5 桶② 写 `unknown` 在这里是**过度**的：桶② 的用意是「不为没人消费的
-   * **payload 结构**生成类型」，而这是个**原始类型**，写 `number` 零成本且更诚实。
-   * **这是对三桶规则的一处细化**，已记进 C04d 计划。
-   */
-  aggregate_usage_all: (args: { onRow: Channel<SessionUsageRow> }) =>
-    invoke<number>("aggregate_usage_all", args),
-
   /** 往 bus 上某个 agent 发一条消息。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
   cc_bus_send: (args: { origin: string; id: string; text: string }) =>
     invoke<string>("cc_bus_send", args),

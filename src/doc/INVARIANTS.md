@@ -4,6 +4,18 @@
 
 每条都给出"理由"——为什么这条不能松动。
 
+> ## ⚠ 读之前：两处会误导你的旧称
+>
+> 1. 🔴 **`shared/ccm` 这个文件已经不存在了** —— 那 1592 行 bash 启动器删于 `e8f9e08e`
+>    （`K-R48` 第二拍④，同拍清零了 19 处 `include_str!`）。今天这条路走的是**后端的 `ccm`**
+>    （Rust，`src/backend/control/ccm/`），别名文本在 `src/shared/ccm-aliases.sh`。
+>    ⇒ **下文凡是提到 `shared/ccm` 的地方都是历史**，留着是为了解释「今天为什么长这样」，
+>    不是现状。看到它请读成「当年那个 bash 启动器」。
+> 2. **目录名**：2026-09-17 重组之后顶层**只有 `src/` 与 `tests/`**。
+>    `src-tauri/` → `src/bridge/` · `remote-daemon-proto/` → `src/backend/` ·
+>    `doc/` → `src/doc/` · `e2e/`·`evidence/`·`scripts/`·`hooks/` → `tests/` 下。
+>    下文若出现旧名，同样按历史读。
+
 ---
 
 ## 1. monitor 零侵入 Claude Code 数据源
@@ -27,7 +39,7 @@
 **A2 多账号只读查询是本约的「读」面延伸（澄清，非例外/非松动）**：`src/backend/observe/accounts_query.rs` + `src/bridge/src/accounts.rs` 为「按会话切账号」新增三条**纯只读**远端查询（`--list-accounts` / `--session-accounts` / `--account-trust`），**零写入**、**不 shell out**。它把后端的读面从 `<claude_dir>` 扩到三处新位置，各自有硬边界:
 
 1. **`$ACCTS_DIR/accounts.json`**（cc-acct-iso 的 manifest，契约 v1）—— 只读整份 JSON;`configDir` 视为**不可信字符串**，逐条过 shell-safe 白名单（与 cc-acct-iso 的 `path_shell_safe` 同一套字符集），不合格的账号直接丢弃。
-2. **`/proc/<pid>/environ`** —— **只抠两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`），绝不回传整个环境快照（那里面有用户全部的密钥类环境变量）。pid 来自 `<claude_dir>/sessions/<PID>.json` 的文件名。⚠ **第二个键是 `K-P5f` 加的**（会话身份 token，写侧住 `history.rs::LAUNCH_ID_VAR`）；**变的只是那个计数词，这条铁律一格都没松**：键名**不是参数**（后端侧两个常量），所以这条查询仍然不是「任意环境变量读」原语，也仍然绝不回传整个快照。⚠ 这句话在盘上**散着好几份副本**（`doc/IPC-PROTOCOL.md` 的 `--session-accounts` 那一行、后端侧 `accounts_query.rs` 头注、monitor 侧 `local_accounts.rs`）——`K-P5f` 改了其中三处、**漏了本处**，`K-P5g` 补上并把这一族副本登记进 `doc_claim_registry.rs`（那张表的判据从生产代码里数出今天真读几个键，再与每一份副本的计数词对拍）。
+2. **`/proc/<pid>/environ`** —— **只抠两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`），绝不回传整个环境快照（那里面有用户全部的密钥类环境变量）。pid 来自 `<claude_dir>/sessions/<PID>.json` 的文件名。⚠ **第二个键是 `K-P5f` 加的**（会话身份 token，写侧住 `history.rs::LAUNCH_ID_VAR`）；**变的只是那个计数词，这条铁律一格都没松**：键名**不是参数**（后端侧两个常量），所以这条查询仍然不是「任意环境变量读」原语，也仍然绝不回传整个快照。⚠ 这句话在盘上**散着好几份副本**（`src/doc/IPC-PROTOCOL.md` 的 `--session-accounts` 那一行、后端侧 `accounts_query.rs` 头注、monitor 侧 `local_accounts.rs`）——`K-P5f` 改了其中三处、**漏了本处**，`K-P5g` 补上并把这一族副本登记进 `doc_claim_registry.rs`（那张表的判据从生产代码里数出今天真读几个键，再与每一份副本的计数词对拍）。
 3. **`<configDir>/.claude.json`** —— **只取 `projects[<cwd>].hasTrustDialogAccepted` 一个布尔**，绝不回传文件内容（内含 `mcpServers` 的环境变量，可能有 API key）。且 `configDir` **必须逐字等于 manifest 里某个账号的 configDir**，否则拒绝——否则 `--account-trust` 就退化成任意文件读原语。
 
 **`.credentials.json` 只 stat 存在性、永不读内容**（`loggedIn` 字段就是这么来的）。**动凭据的部署操作（`cc-acct-iso … --apply`）绝不经后端**——那会往只读组件里塞写权限;一律由 cc-monitor 拼好命令后弹一个**用户可见的终端窗口**执行（`launch_remote_terminal`，同时也是 `/login` 必须走 TTY 的唯一出路）。见 `.claude/planned-build/account-isolation/DESIGN-account-switching.md` §6。
@@ -958,7 +970,6 @@ U8c-1 摸底后拆成三步：
 | 件 | 内容 | 状态 |
 |---|---|---|
 | **U8c-1** | 载荷编译器进共享 crate `launch-core` + 跨语言逐字节对拍；`history.rs` POSIX 分支改调内核 | **2026-08-02 已交付**。⚠ **P4b 起内核不在共享 crate 里了** —— 它在 `src/bridge/src/backend/control/payload.rs`（后端对它零引用，放共享 crate 的真实原因是 monitor 当时没有 `backend/` 边界）；那个 crate P4c 改名 `shell-quote-core`，只剩 `posix_quote` |
-| **U8c-2a** ✅ | 用量探针的载荷进内核（`render_payload` 的第一个生产调用方） | 2026-08-02 |
 | **U8c-2b-0** ✅ | 账本 S5：POSIX quote 五处合一 + 零命中守卫 | 2026-08-02 |
 | **U8c-2c-1** ✅ | **ccm 调用行**进内核（**P4b 起**在 `backend::control::ccm_invocation::render_ccm_invocation`；交付时在共享 crate 的 `launch_core::cli`）+ 跨语言对拍。**不切生产** | 2026-08-02 |
 | **U8c-2c-2** | 生产切换：`remote-launch-run.ts` 改调 Rust（需 tauri 命令 + IR 上线形状） | **已交付**（F07 2026-08-04 实测订正：本列此前写「待做」，是**过期陈述** —— 实测两条 tauri 命令 `render_ccm_launch`/`render_launch_payload` 都已注册，生产 TS 三处在调（`remote-launch-run.ts:72,96,301`），`parity_ledger` 也有 `launch.render-cli`/`launch.render-payload` 两条能力） |
@@ -974,17 +985,21 @@ U8c-1 摸底后拆成三步：
 用量探针那条（`account_usage.rs::build_usage_probe_cmd`）随「探针编排整条搬上后端帧面」
 而**整个不存在了**：今天 monitor 一个 shell 字符都不渲染，那几步各发一条帧命令
 （`oneshot-session` / `launch send-into` / `capture-pane` / `kill`）。
-⇒ 今天是**三个产出方 ＋ 一个已退役的墓碑**；那一格由
+⇒ 当时是**三个产出方 ＋ 一个已退役的墓碑**；那一格曾由
 `doc_claim_registry::the_outer_layer_producers_are_in_the_state_the_doc_claims`
-**翻面**钉着（从「必须在」变成「必须不在」—— 退役了又长回来同样红）。
+**翻面**钉着（从「必须在」变成「必须不在」）。
+🔴 **2026-09-18（`设计/50` 删用量）第二次订正**：用量 ②③ 两轴整轴退役 ⇒
+**`account_usage.rs` 这份文件本身也没了**，那条翻面的量法（读那份文件 ＋ 断言函数不在）
+会因为读不到文件而恒红 ⇒ 已整删。**今天是三个产出方，没有墓碑那一格。**
+⚠ **如实登记为射程边界**：挡「有人重新在 monitor 里拼一条 tmux 编排串」的，
+今天只有「那个功能整个不存在」这个事实，**没有判据**。
 ⚠ **它不改本节的结论**：U8c-3 的两条硬障碍（`create-or-attach` 与 attach 两格未切）
 与用量探针无关，一个字都没动。
 
 | 产出方 | 实况 |
 |---|---|
 | `session-backend.ts`（TS） | **生产远端主路**，天天在跑 |
-| `control/launch.rs`（Rust argv，U8a-2b 建的） | ⚠ **F11 2026-08-04 订正：这一格原写「零生产调用方 —— 全仓 `.call("launch", …)` 只有一处且在 `#[cfg(test)]` 里」，那句已经假了。**〔机检〕生产段 `.call("launch")` 处数：2 处（`backend/control/daemon_launch.rs` 的 `send-into` = U8a-2c-1 · `backend/control/daemon_send_keys.rs` 的 send-keys = F04c）。⚠ **这两处都不是「又切了一格起会话」**——`create-or-attach` 与 attach 两格仍未切。⚠ `ssh_source.rs` 那条 `!client.accepts("launch")` 仍在，但它断言的是「某个 hello 没声明 launch」，**不是「生产不调 launch」**（F07 已订正过同一句话在三问表里的那一份 —— **这一格当时漏了**）。🔴〔`K-R105` 09-13〕**这里原来钉着 `:2208` 这个行号 —— 现打那一行是 `SNAPSHOT_MAX_BYTES`，那条断言今天住在别处、而且住在 `#[cfg(test)]` 里**。⇒ 行号撤掉，改指符号（`doc/INVARIANTS.md` 里指进本树的行号，要么带逐字校验位，要么别写）。⚠ 那个「2」**只有这一个家**：`doc_claim_registry::the_doc_number_for_production_launch_calls_matches_reality` 从这里把它读出来与现场数比，多一处调用而不改这里就红 |
-| ~~`account_usage.rs::build_usage_probe_cmd`（Rust shell 串）~~ | 🔴 **`K-R104` 2026-09-13 退役** —— 用量探针的整条编排搬上后端帧面（`oneshot-session` / `launch send-into` / `capture-pane` / `kill`，一条连接上多次往返）。**这一格今天断的是「它不许回来」**，量法住 `doc_claim_registry`。退役的**结构性理由**：走 CLI 面每抓一屏一次 SSH 握手 ⇒ 最多 36 次 vs 25s 硬超时 ⇒ 结构上超时 |
+| `control/launch.rs`（Rust argv，U8a-2b 建的） | ⚠ **F11 2026-08-04 订正：这一格原写「零生产调用方 —— 全仓 `.call("launch", …)` 只有一处且在 `#[cfg(test)]` 里」，那句已经假了。**〔机检〕生产段 `.call("launch")` 处数：2 处（`backend/control/daemon_launch.rs` 的 `send-into` = U8a-2c-1 · `backend/control/daemon_send_keys.rs` 的 send-keys = F04c）。⚠ **这两处都不是「又切了一格起会话」**——`create-or-attach` 与 attach 两格仍未切。⚠ `ssh_source.rs` 那条 `!client.accepts("launch")` 仍在，但它断言的是「某个 hello 没声明 launch」，**不是「生产不调 launch」**（F07 已订正过同一句话在三问表里的那一份 —— **这一格当时漏了**）。🔴〔`K-R105` 09-13〕**这里原来钉着 `:2208` 这个行号 —— 现打那一行是 `SNAPSHOT_MAX_BYTES`，那条断言今天住在别处、而且住在 `#[cfg(test)]` 里**。⇒ 行号撤掉，改指符号（`src/doc/INVARIANTS.md` 里指进本树的行号，要么带逐字校验位，要么别写）。⚠ 那个「2」**只有这一个家**：`doc_claim_registry::the_doc_number_for_production_launch_calls_matches_reality` 从这里把它读出来与现场数比，多一处调用而不改这里就红 |
 | `shared/ccm` | 用户终端那条路 |
 
 且 `control/launch.rs` **结构上不覆盖 attach** —— 它的模块头注逐字写着「本模块**不 attach**」（平面 ③）。
@@ -1261,7 +1276,7 @@ plan，只要满足其余 CLI 渲染条件，会被 `renderCli` 吐成一条**�
 接上去拿到的是 `--tmux`，也就是本机旧路结构上产不出来的**会话容器**。
 （那句话对**载荷 IR** 仍然成立 —— `plan.action`/`plan.cwd` 恒等于输入。两者别混着引。）
 不放行的代价不是「不够对齐」，是本机产出的是一个**无 tty、无 tmux** 的进程，
-`doc/IPC-PROTOCOL.md` 逐字：「`stdin` 不接键盘 ⇒ 用户敲进去的字会被脚本吃掉」。
+`src/doc/IPC-PROTOCOL.md` 逐字：「`stdin` 不接键盘 ⇒ 用户敲进去的字会被脚本吃掉」。
 
 **机检**：`arch_doc_shape_guard::every_citation_of_invariant_36_says_which_platform_it_binds` ——
 全树每一处引 `§36` 的**句子**必须在同一句里写出 `Windows`。
@@ -1418,7 +1433,7 @@ IR 的 wrap 负责"，别两边都做（那会 rbind 两次）。
 加新的不变量时：
 
 1. 加到本文档对应位置 + 编号
-2. 在 `src/` 或 `src/bridge/` 对应模块的 doc comment 里加引用 `// 违反此约束见 doc/INVARIANTS.md § N`
+2. 在 `src/` 或 `src/bridge/` 对应模块的 doc comment 里加引用 `// 违反此约束见 `src/doc/INVARIANTS.md` § N`
 3. 如果不变量需要 grep checklist（如 State 注册），加到 [CONTRIBUTING.md](CONTRIBUTING.md) 对应 checklist
 
 删除某条不变量（极少）：

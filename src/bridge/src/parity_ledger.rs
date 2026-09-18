@@ -12,9 +12,9 @@
 //! 开工时两个看起来现成的判据都实测**不成立**：
 //!
 //! - **名字带 `remote`**：27 条。漏掉 10 条真远端命令（`cc_bus_*`、`tmux_send_keys`、
-//!   `account_usage`、`probe_ccm_cli`、`check_account_trust`、`resolve_ssh_host`）。
+//!   `probe_ccm_cli`、`check_account_trust`、`resolve_ssh_host`）。
 //! - **吃 `origin` / host 参数**：25 条。漏掉 12 条——它们吃的是 `RemoteConfig` 结构体，
-//!   或者干脆不吃参数（`aggregate_remote_usage_all` 这类是「枚举所有远端」）。
+//!   或者干脆不吃参数（「枚举所有已配置远端」那一族）。
 //!
 //! 两者都是**表面特征**。真正要回答的问题是「这项能力在两侧都有吗」，而那是判断，
 //! 不是能从代码推出来的东西（本地需不需要 SFTP 面板？不需要——但没有任何语法能说明这点）。
@@ -190,12 +190,6 @@ mod tests {
         (
             "delete_remote_history_session",
             "history.delete",
-            Side::Remote,
-        ),
-        ("aggregate_usage_all", "usage.aggregate", Side::Local),
-        (
-            "aggregate_remote_usage_all",
-            "usage.aggregate",
             Side::Remote,
         ),
         ("read_mcp_servers", "mcp.read", Side::Local),
@@ -409,9 +403,6 @@ mod tests {
             Side::Local,
         ),
         ("check_account_trust", "accounts.trust", Side::Remote),
-        ("account_usage", "usage.per-account", Side::Remote),
-        // F08：补平那条 ParityDebt —— 与远端**逐字用同一条命令串**，只换执行面。
-        ("account_usage_local", "usage.per-account", Side::Local),
         ("deploy_remote_acct_iso", "acct-iso.deploy", Side::Remote),
         ("check_remote_acct_iso", "acct-iso.check", Side::Remote),
         (
@@ -474,7 +465,7 @@ mod tests {
         ("sftp.file-panel", Asym::NaturallyAsymmetric, "§40 天然不对称白名单第 1 条：本地有操作系统的文件管理器，不需要它。"),
         ("ssh.host-config", Asym::NaturallyAsymmetric, "本地按 §40 的定义就是「**不走 ssh** 的远端」⇒ ssh 目标的枚举/解析/导入/连通性测试/公钥推送在本地没有对应物。"),
 
-        ("tmux.manage", Asym::ParityDebt, "★★ **P3b E 阶段重量（08-12）：那句预言「POSIX 本地落地后自动就有」——三分之三对、四分之一错。** 原文只写「`ccm` 全套修饰本地『无』」+ 那句预言，没说是哪几条命令。逐条量：① `list_remote_tmux` ⇒ **本机已有对侧** `list_local_tmux`（P3t-Y2b + P3 刀2-UI，读 daemon 推来的快照）；② `kill_remote_tmux` ⇒ **本机已通**（P3 刀 2 后端：`daemon_kill` 传输无关，且本机专属错误文案已加）；③ `tmux_send_keys` ⇒ **本机已通**（同款 `daemon_route` 分流）；④ `capture_remote_pane` ⇒ **仍无本机对侧**。⚠ **P4d-Y5（08-12）改了它的一半**：原文接着写「它 `load_remote_config_by_label(&origin)`，对 `<local>` 会报「未找到远端配置」」—— **那半句今天已经假了**，本机分支已补上，报的是真实原因（本机 tmux 快照只带会话名不带屏幕内容，要预览得现抓一次 pane）。⇒ 假话没了，**欠账没结**：能不能预览这件事一点没变，仍等 daemon 出原语〔`K-R86` 09-13：**这半句今天假了**，订正在本行末尾〕。★ 这条订正本身是 `P3b §0b` 的 A 类（过期）活样本，而制造它的正是 P4d 那一刀 —— 改了行为不回来改理由，账本当天就开始撒谎。⇒ 欠账**只剩画面预览这一格**，而它不是「自动就有」的：预览要么现跑 `capture-pane`（本机可以，但那是第二条取数路），要么等 daemon 出原语（`P4d`）〔`K-R86` 09-13：同上，**这半句今天也假了**〕。归 **P4d**，不再归 L1/L2。★★ **K-R56（09-11）再订正一次，而这次订正的是上面 ③ 那一格**：③ 逐字写的是「`tmux_send_keys` ⇒ **本机已通**（同款 `daemon_route` 分流）」—— **那句话本身是真的**（PM 单子叮嘱「账本不许直接信」，本轮现打逐字复核过住址：分流确实同款，`daemon_send_keys` 也确实传输无关）。**假的是它旁边那句没写出来的话**：② 给 `kill_remote_tmux` 特地记了「**且本机专属错误文案已加**」，③ 没有那半句 —— 而**它不是省略，是当时真的没有**。⇒ 通道不在时 `tmux_send_keys` 会掉进 SSH 回落、报「未找到远端配置: `<local>`」，与 ①②④ 那一族**一模一样的假话**。K-R56 把那条早退补上了（`tmux.rs::tmux_send_keys` 的 `Routed::NoChannel` 臂，逐字抄 `kill` 那条先例），判据 `tmux::tests::the_local_send_keys_never_falls_back_to_ssh`（走生产入口本体，不是扫源码），存量登记 `local_origin_registry::TRIAGE_DEBT` 同轮 16 → 15。⚠ **「能不能 send-keys」这件事一个字没变** —— 变的只是**通道不在时它说什么**。⇒ 本格的欠账**仍然只剩画面预览那一格**，K-R56 没有结掉任何一笔账，它结的是一句假话。★★ **`K-R86`（09-13）第三次订正，而这次假掉的是上面那两处「仍等 daemon 出原语」**：daemon 侧今天**有**那条原语了 —— `--capture-pane <会话名>`，住 `src/backend/control/capture_pane.rs`（`tmux -u capture-pane -p -t '=名:'`，argv 直传不过 shell，只读；起进程登记在 `readonly_guard::spawn_registry::ALLOWED`，「它只读」由 `readonly_guard::capture_is_read_only` 逐元素钉 argv；协议面见 `src/doc/IPC-PROTOCOL.md` §10；`BUILD_ID` p2f → p2g）。🔴 **而这一格的欠账一格都没结，只是换了个名字** —— 本件**只出 daemon 那一侧的原语**，monitor 的 `capture_remote_pane`（`src/bridge/src/tmux.rs`）**一个字节没动**，对 `<local>` 仍然没有本机对侧 ⇒ `Side::Remote` 这一格不许改。⇒ 欠账从「**等 daemon 出原语**」（`K-R86` 之前）变成「**等 monitor 侧接上去**」（`K-R86` 之后），归 `K-R87` 之后的接线那一件。⚠ 别把 `BUILD_ID` 的 bump 读成「远端已经有这条命令了」：那一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，本轮没做。★ 本行「那句话今天还成不成立」从此有人在数：`parity_ledger::tests::the_tmux_manage_row_stops_waiting_for_a_daemon_primitive` —— 它要求每一处「等 daemon 出原语」前后都挂着 `K-R86` 这个订正标记，**且不许靠删掉整行兑现**（同 `KR53D4` 那条的形状）。★★ **`K-R101`（09-13）第四次订正 —— 而这一次订正的是「归谁」那半，欠账仍然一格没结**：上面写着这笔账「归 `K-R87` 之后的接线那一件」。那一件立起来了（`K-R101`，`K-R54` 表第 7 行的本体），**而它没有结掉这一格**。现打的理由，不是推辞：monitor 今天够得着 daemon 的只有**帧面**（`inbound::REGISTRY` 上的 `launch` / `kill` 那几条，走 `inbound_client`），而 `--capture-pane` 与 `--oneshot-session` 是 **CLI 面独有**的（`src/backend/main.rs` 的一次性分派臂，`inbound::REGISTRY` 里没有它们）⇒ 要接上去，要么给帧面新增那两条小原语（`inbound.rs` ＋ `src/doc/IPC-PROTOCOL.md` 的命令小节 ＋ `BUILD_ID` bump ＋ monitor 侧两个新发送端），要么让 monitor 每抓一屏起一次 SSH exec（现打：两段轮询上限 12+20 轮 ⇒ 单次探测最多 36 次 SSH 握手，撑破 `EXEC_TIMEOUT_SECS` = 25s）。⇒ **这一格的欠账从「等 monitor 侧接上去」细化成「等帧面上有那两条小原语」**，读数与三条候选的比价住 `.claude/planned-build/backend-consolidation/features/K-R101-用量探针的tmux编排整条搬进daemon.md#§8`。⚠ **别把 `K-R101` 已签收读成这一格结了** —— 那一件交的是「原文到得了界面 ＋ 解析层退役」，与本格是两件事。★★ **`K-R104`（09-13）第五次订正 —— 上一段那句「等帧面上有那两条小原语」今天假了，而这一格**仍然**没结**：帧面今天**有**它们了（`inbound::REGISTRY` 8 → 10，`ch:capture-pane` ＋ `ch:oneshot-session`，`BUILD_ID` p2h → p2i），monitor 侧也真的在用（`account_usage.rs` 整条编排改走帧面：一次拨号 ＋ 一条通道上 N 次往返，握手从最多 36 次降到 **1** 次）。🔴 **而本格问的不是那件事**：这一格问的是 `capture_remote_pane`（`src/bridge/src/tmux.rs`）—— **那个函数一个字节没动**，对 `<local>` 仍然没有本机对侧，所以 `Side::Remote` 这一格照旧不许改。⇒ 欠账从「**等帧面上有那两条小原语**」变成「**等 `capture_remote_pane` 自己改走帧面的 `capture-pane`**」——那是一次纯接线（原语在了、发送端在了、`inbound_client::capture_pane_args` 也在了），**但它不在 `K-R104` 的写区里**，归后续一件。⚠ 同样别把 `BUILD_ID` 的 bump 读成「远端已经有这两条了」：那一半是**源码半**，re-embed 归发版那一拍。"),
+        ("tmux.manage", Asym::ParityDebt, "★★ **P3b E 阶段重量（08-12）：那句预言「POSIX 本地落地后自动就有」——三分之三对、四分之一错。** 原文只写「`ccm` 全套修饰本地『无』」+ 那句预言，没说是哪几条命令。逐条量：① `list_remote_tmux` ⇒ **本机已有对侧** `list_local_tmux`（P3t-Y2b + P3 刀2-UI，读 daemon 推来的快照）；② `kill_remote_tmux` ⇒ **本机已通**（P3 刀 2 后端：`daemon_kill` 传输无关，且本机专属错误文案已加）；③ `tmux_send_keys` ⇒ **本机已通**（同款 `daemon_route` 分流）；④ `capture_remote_pane` ⇒ **仍无本机对侧**。⚠ **P4d-Y5（08-12）改了它的一半**：原文接着写「它 `load_remote_config_by_label(&origin)`，对 `<local>` 会报「未找到远端配置」」—— **那半句今天已经假了**，本机分支已补上，报的是真实原因（本机 tmux 快照只带会话名不带屏幕内容，要预览得现抓一次 pane）。⇒ 假话没了，**欠账没结**：能不能预览这件事一点没变，仍等 daemon 出原语〔`K-R86` 09-13：**这半句今天假了**，订正在本行末尾〕。★ 这条订正本身是 `P3b §0b` 的 A 类（过期）活样本，而制造它的正是 P4d 那一刀 —— 改了行为不回来改理由，账本当天就开始撒谎。⇒ 欠账**只剩画面预览这一格**，而它不是「自动就有」的：预览要么现跑 `capture-pane`（本机可以，但那是第二条取数路），要么等 daemon 出原语（`P4d`）〔`K-R86` 09-13：同上，**这半句今天也假了**〕。归 **P4d**，不再归 L1/L2。★★ **K-R56（09-11）再订正一次，而这次订正的是上面 ③ 那一格**：③ 逐字写的是「`tmux_send_keys` ⇒ **本机已通**（同款 `daemon_route` 分流）」—— **那句话本身是真的**（PM 单子叮嘱「账本不许直接信」，本轮现打逐字复核过住址：分流确实同款，`daemon_send_keys` 也确实传输无关）。**假的是它旁边那句没写出来的话**：② 给 `kill_remote_tmux` 特地记了「**且本机专属错误文案已加**」，③ 没有那半句 —— 而**它不是省略，是当时真的没有**。⇒ 通道不在时 `tmux_send_keys` 会掉进 SSH 回落、报「未找到远端配置: `<local>`」，与 ①②④ 那一族**一模一样的假话**。K-R56 把那条早退补上了（`tmux.rs::tmux_send_keys` 的 `Routed::NoChannel` 臂，逐字抄 `kill` 那条先例），判据 `tmux::tests::the_local_send_keys_never_falls_back_to_ssh`（走生产入口本体，不是扫源码），存量登记 `local_origin_registry::TRIAGE_DEBT` 同轮 16 → 15。⚠ **「能不能 send-keys」这件事一个字没变** —— 变的只是**通道不在时它说什么**。⇒ 本格的欠账**仍然只剩画面预览那一格**，K-R56 没有结掉任何一笔账，它结的是一句假话。★★ **`K-R86`（09-13）第三次订正，而这次假掉的是上面那两处「仍等 daemon 出原语」**：daemon 侧今天**有**那条原语了 —— `--capture-pane <会话名>`，住 `src/backend/control/capture_pane.rs`（`tmux -u capture-pane -p -t '=名:'`，argv 直传不过 shell，只读；起进程登记在 `readonly_guard::spawn_registry::ALLOWED`，「它只读」由 `readonly_guard::capture_is_read_only` 逐元素钉 argv；协议面见 `src/doc/IPC-PROTOCOL.md` §10；`BUILD_ID` p2f → p2g）。🔴 **而这一格的欠账一格都没结，只是换了个名字** —— 本件**只出 daemon 那一侧的原语**，monitor 的 `capture_remote_pane`（`src/bridge/src/tmux.rs`）**一个字节没动**，对 `<local>` 仍然没有本机对侧 ⇒ `Side::Remote` 这一格不许改。⇒ 欠账从「**等 daemon 出原语**」（`K-R86` 之前）变成「**等 monitor 侧接上去**」（`K-R86` 之后），归 `K-R87` 之后的接线那一件。⚠ 别把 `BUILD_ID` 的 bump 读成「远端已经有这条命令了」：那一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，本轮没做。★ 本行「那句话今天还成不成立」从此有人在数：`parity_ledger::tests::the_tmux_manage_row_stops_waiting_for_a_daemon_primitive` —— 它要求每一处「等 daemon 出原语」前后都挂着 `K-R86` 这个订正标记，**且不许靠删掉整行兑现**（同 `KR53D4` 那条的形状）。★★ **`K-R101`（09-13）第四次订正 —— 而这一次订正的是「归谁」那半，欠账仍然一格没结**：上面写着这笔账「归 `K-R87` 之后的接线那一件」。那一件立起来了（`K-R101`，`K-R54` 表第 7 行的本体），**而它没有结掉这一格**。现打的理由，不是推辞：monitor 今天够得着 daemon 的只有**帧面**（`inbound::REGISTRY` 上的 `launch` / `kill` 那几条，走 `inbound_client`），而 `--capture-pane` 与 `--oneshot-session` 是 **CLI 面独有**的（`src/backend/main.rs` 的一次性分派臂，`inbound::REGISTRY` 里没有它们）⇒ 要接上去，要么给帧面新增那两条小原语（`inbound.rs` ＋ `src/doc/IPC-PROTOCOL.md` 的命令小节 ＋ `BUILD_ID` bump ＋ monitor 侧两个新发送端），要么让 monitor 每抓一屏起一次 SSH exec（现打：两段轮询上限 12+20 轮 ⇒ 单次探测最多 36 次 SSH 握手，撑破 `EXEC_TIMEOUT_SECS` = 25s）。⇒ **这一格的欠账从「等 monitor 侧接上去」细化成「等帧面上有那两条小原语」**，读数与三条候选的比价住 `.claude/planned-build/backend-consolidation/features/K-R101-用量探针的tmux编排整条搬进daemon.md#§8`。⚠ **别把 `K-R101` 已签收读成这一格结了** —— 那一件交的是「原文到得了界面 ＋ 解析层退役」，与本格是两件事。★★ **`K-R104`（09-13）第五次订正 —— 上一段那句「等帧面上有那两条小原语」今天假了，而这一格**仍然**没结**：帧面今天**有**它们了（`inbound::REGISTRY` 8 → 10，`ch:capture-pane` ＋ `ch:oneshot-session`，`BUILD_ID` p2h → p2i），monitor 侧也真的在用（`account_usage.rs` 整条编排改走帧面：一次拨号 ＋ 一条通道上 N 次往返，握手从最多 36 次降到 **1** 次）。🔴 **而本格问的不是那件事**：这一格问的是 `capture_remote_pane`（`src/bridge/src/tmux.rs`）—— **那个函数一个字节没动**，对 `<local>` 仍然没有本机对侧，所以 `Side::Remote` 这一格照旧不许改。⇒ 欠账从「**等帧面上有那两条小原语**」变成「**等 `capture_remote_pane` 自己改走帧面的 `capture-pane`**」——那是一次纯接线（原语在了、发送端在了、`inbound_client::capture_pane_args` 也在了），**但它不在 `K-R104` 的写区里**，归后续一件。⚠ 同样别把 `BUILD_ID` 的 bump 读成「远端已经有这两条了」：那一半是**源码半**，re-embed 归发版那一拍。★★ **`设计/50`（删用量）第六次订正 —— 这一次假掉的不是某个半句，是上面第四、第五层**整段**的主语**：用量 ②③ 两轴（后端用量查询 ＋ 探针会话）**整轴退役**，于是第四层里那句「要么给帧面新增那两条小原语」所指的 `--oneshot-session`、第五层里的 `ch:oneshot-session` 与 `account_usage.rs` 那条编排，**今天全都不存在**。🔴 **这不是把欠账结掉了** —— 本格问的始终是 `capture_remote_pane`（`src/bridge/src/tmux.rs`）对 `<local>` 有没有本机对侧，而那个函数**这一刀里一个字节没动**：`capture-pane` 那条帧面原语**还在**（daemon 侧 `control/capture_pane.rs` ＋ `inbound::REGISTRY` 的 `ch:capture-pane` ＋ monitor 侧 `inbound_client::capture_pane_args`，都是这一刀**刻意保留**的 —— `设计/50 §2` 逐字「`capture-pane` **不是**孤儿 —— 拉屏预览真在用」，那个消费者是 `tmux.rs::capture_via_daemon`）⇒ `Side::Remote` 这一格照旧不许改，欠账仍是「**等 `capture_remote_pane` 自己改走帧面的 `capture-pane`**」。⚠ **上面第四、第五层从此是考古**：它们讲的是一个已经不在盘上的功能（用量探针）当初怎么一层层推动这一格换名字。`设计/50 §7` 把这一格点成本刀「最该被记住的一件事」的活样本 —— **账本的成本也要记账**：一条 7000 字、五层订正的理由，在它引用的功能被删掉之后，**留下的不是错误而是考古**，而删掉它会同时删掉「这一格为什么换过四次名字」这条线索。⇒ 逐层留着、在末尾标明哪几层是考古。"),
 
     ];
 
@@ -794,7 +785,7 @@ mod tests {
         // - E79 的 `list_local_session_accounts` **+1**；
         // - U-CC1 的 `drift_ledger_report` **+1**，`Both` —— 本地行与远端行都经同一个
         //   `parse_line` 喂进同一个进程内账本；
-        // - F08 的 `account_usage_local` **+1** —— 它补平了 `usage.per-account` 那条 ParityDebt；
+        // - F08 的 `account_usage_local` **+1** —— 它补平了 `usage.per-account` 那条 ParityDebt；  〔散文墓碑〕
         // - P2s 的 `set_daemon_kill_on_exit` / `daemon_status` / `daemon_start` / `daemon_stop`
         //   **+4**，都是 `Both` —— per-host daemon 策略与状态，本机 origin 是 `<local>`（C1）；
         // - 🔴 `K-R135`（`R85`/`R87`）的 `ccm_user_path_status` / `ccm_user_path_add` /
@@ -824,7 +815,7 @@ mod tests {
         //   命令总数 +1、能力总数不动、不对称数不动，**只有这个数跟着 +1**。
         //   ⚠ 派工单点名的是「`commands.vitest.ts` 两个 147 ＋ `LEDGER` 一行」三处，
         //   **这个数是第四处** —— 它不在任何一份派工单里，是本轮自己量出来的。
-        const EXPECTED_LOCAL_OR_BOTH: usize = 96;
+        const EXPECTED_LOCAL_OR_BOTH: usize = 94; // `设计/50` −2（`aggregate_usage_all` Local · `account_usage_local` Local）  〔散文墓碑〕
         assert_eq!(
             checked, EXPECTED_LOCAL_OR_BOTH,
             "检到 {checked} 条 Local/Both 命令（Local {n_local} + Both {n_both}），\
@@ -1039,9 +1030,9 @@ mod tests {
         // 而 U8a-2c-pre（`57dba2a`）把这四个数各 +1 时，只改了数、一条尾注都没动。
         // ⇒ 尾注把 U8a-2c-pre 的增量记在了 U8c-2c-2 名下。**尾注的用处就是说清「谁加的」，
         // 归属错了就不如没有。**
-        assert_eq!(LEDGER.len(), 151, "命令总数变了"); // **K-R109 +1（render_local_attach，Local；归已有能力 `session.launch` ⇒ 能力数与不对称数都不动，理由逐条写在那一行旁边）** // **K-R69 +1（local_ccm_entry_status，Local；归已有能力 `ccm.status` ⇒ 能力数与不对称数都不动）** // **K-R49 +1（write_account_aliases，Local-only；新能力 `alias.account-commands`，`ParityDebt`）** // **K-H2a +2（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）** // **P8a +1（list_plugin_marketplaces，#70）** // **PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）** // **K-H2b +1（relay_routing_for，Local-only；新能力 `relay.routing`，`NaturallyAsymmetric`）** // **`K-R135` +3（ccm_user_path_status / ccm_user_path_add / ccm_user_path_remove，都 Local；新能力 `ccm.user-path`，`NaturallyAsymmetric` —— 理由见 ASYMMETRY_REASONS 那一行）**
+        assert_eq!(LEDGER.len(), 147, "命令总数变了"); // **`设计/50` −4（`aggregate_usage_all` / `aggregate_remote_usage_all` / `account_usage` / `account_usage_local`：用量 ②③ 两轴整轴退役）** // **K-R109 +1（render_local_attach，Local；归已有能力 `session.launch` ⇒ 能力数与不对称数都不动，理由逐条写在那一行旁边）** // **K-R69 +1（local_ccm_entry_status，Local；归已有能力 `ccm.status` ⇒ 能力数与不对称数都不动）** // **K-R49 +1（write_account_aliases，Local-only；新能力 `alias.account-commands`，`ParityDebt`）** // **K-H2a +2（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +3（list_skills / read_skill_file / write_skill_file：skill 接入面） // F08 +1（account_usage_local：补平 usage.per-account） // U8a-2c-1 +1（daemon_send_into）； G6 +1；E79 +1；U-CC1 +1（drift_ledger_report）；U8c-2c-2 +1（render_ccm_launch）；U8a-2c-pre +1（render_launch_payload）；**P2s +5（set_daemon_kill_on_exit / daemon_status / daemon_start / daemon_stop / daemon_machines，C8）**；P3t-Y2b +1（list_local_tmux）；**P4c +2（cc_bus_broadcast / cc_bus_kill，#77/#78）** // **P8a +1（list_plugin_marketplaces，#70）** // **PS1 +1（deploy_local_cc_bus）**；**PS2 +1（cc_bus_install_state）** // **K-H2b +1（relay_routing_for，Local-only；新能力 `relay.routing`，`NaturallyAsymmetric`）** // **`K-R135` +3（ccm_user_path_status / ccm_user_path_add / ccm_user_path_remove，都 Local；新能力 `ccm.user-path`，`NaturallyAsymmetric` —— 理由见 ASYMMETRY_REASONS 那一行）**  〔散文墓碑〕
         let sides = capability_sides();
-        assert_eq!(sides.len(), 67, "能力总数变了"); // **K-R109 +1（launch.render-attach，Local-only；⚠ 派工单猜的是「能力数 65 不动」，实打不成立 —— 两个「归已有能力」的归法各被一条判据顶回来了，逐条见 `LEDGER` 里那一行旁边）** // **K-R49 +1（alias.account-commands，Local-only）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy）**；**PS2 +1（cc-bus.install-state）**；**K-H2b +1（relay.routing，Local-only）**；**`K-R135` +1（ccm.user-path，Local-only：`R85` 那一格「加/撤/现在状态」；远端那一侧同一件事由 rc 围栏块办，而「用户级 PATH」这一档是 Windows 独有的 ⇒ `NaturallyAsymmetric`）**
+        assert_eq!(sides.len(), 65, "能力总数变了"); // **`设计/50` −2（`usage.aggregate` 与 `usage.per-account` 两条能力整条退役 —— 两条**原本都对称**，所以不对称数不动）** // **K-R109 +1（launch.render-attach，Local-only；⚠ 派工单猜的是「能力数 65 不动」，实打不成立 —— 两个「归已有能力」的归法各被一条判据顶回来了，逐条见 `LEDGER` 里那一行旁边）** // **K-R49 +1（alias.account-commands，Local-only）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox，Local-only） // U8a-2c-1 +1（launch.send-into，Remote-only）； U-CC1 +1（audit.drift-ledger）；U8c-2c-2 +1（launch.render-cli，Remote-only：**只是没有本机那条 IPC 命令** —— P3t-Y4 起理由不再是 §36「本机不经 IR」那条，§36 只绑 Windows，详见 ASYMMETRY_REASONS 里那行）；U8a-2c-pre +1（launch.render-payload，同 Remote-only）；**P2s +3（app.daemon-policy / daemon.status / daemon.lifecycle，都是 Both）**；P3t-Y2b +1（tmux.local-census，Local-only：把远端本来就有的那一格在本机补上）；**P8a +1（plugins.marketplaces，Local-only）**；**PS1 +1（cc-bus.deploy）**；**PS2 +1（cc-bus.install-state）**；**K-H2b +1（relay.routing，Local-only）**；**`K-R135` +1（ccm.user-path，Local-only：`R85` 那一格「加/撤/现在状态」；远端那一侧同一件事由 rc 围栏块办，而「用户级 PATH」这一档是 Windows 独有的 ⇒ `NaturallyAsymmetric`）**
         let asym = asymmetric_capabilities();
         assert_eq!(asym.len(), 28, "不对称能力数变了"); // **K-R109 +1（launch.render-attach，NaturallyAsymmetric）** // **K-R49 +1（alias.account-commands，ParityDebt）** // **K-H2b +1（relay.routing，NaturallyAsymmetric）** // **K-H2a +1（creds.relay-key，Local-only：远端那侧的欠账理由见 ASYMMETRY_REASONS 那一行）** // devbench F03 +1（skill.inbox） // F08 -1（usage.per-account 补平） // U8a-2c-1 +1（launch.send-into）； G6 -1；E79 accounts.session-accounts 补平 -1；U8c-2c-2 +1（launch.render-cli）；U8a-2c-pre +1（launch.render-payload）
                                                         // P3t-Y2b +1（tmux.local-census）；**P3b -1（launch.send-into 结清：P3 刀 3 让本机真的在用它 ⇒ Both，不再不对称）**
@@ -1086,10 +1077,11 @@ mod tests {
     //    09-14 现打 **7 条命中，7 条全是假阳**（`read_cc_bus_state` / `read_cc_bus_inbox` /
     //    `list_local_tmux` / `daemon_start` / `load_subagent` / `read_skill_file` /
     //    `write_skill_file` —— 它们**两条路都有**，标记只看得见远端那条）。⇒ 这个方向不接。
-    // 3. **正向也有一条假阳**：`account_usage` 派生出来是「帧面·origin 无关」，
-    //    而它的 `Side::Remote` **没说假话** —— 本机那一侧另有一条命令
-    //    （`account_usage_local` 逐字拿 `LOCAL_ORIGIN` 调它），`usage.per-account`
-    //    在表上已经是 `{Local, Remote}` 对称。⇒ **候选要人签，不能机器直接判红。**
+    // 3. **正向也有一条假阳**：〔`设计/50`：这条读数的样本是 `account_usage` —— 它派生出来是
+    //    「帧面·origin 无关」，而它的 `Side::Remote` 没说假话，因为本机那一侧另有一条命令
+    //    （`account_usage_local`）。用量 ②③ 两轴整轴退役之后**那两条命令都没了**，  〔散文墓碑〕
+    //    于是这个样本今天不在盘上了。**结论没变、样本没了** —— 留着这段是因为它是
+    //    「为什么候选要人签、不能机器直接判红」的论证，不是在描述今天的盘面。〕
     //
     // ⇒ 落 **乙**：这一栏**明写靠人签字**，而**「什么时候必须回来签」由机器算**：
     //   · **没签字红** —— 一条 `Side::Remote` 的行不在签字表里（新增的、或改成 `Remote` 的）；
@@ -1322,8 +1314,8 @@ mod tests {
     ///
     /// 〔量于 09-14，本工作树 `track/k-r115`，`command_dispatch_class()` 现打〕
     const REMOTE_SIDE_SIGNOFF: &[(Derived, usize)] = &[
-        (Derived::RemoteOnly, 39),
-        (Derived::FramePlane, 6),
+        (Derived::RemoteOnly, 38), // `设计/50` −1（`aggregate_remote_usage_all`）  〔散文墓碑〕
+        (Derived::FramePlane, 5),  // `设计/50` −1（`account_usage`）
         (Derived::Mixed, 0),
         (Derived::Unclassified, 10),
     ];
@@ -1349,14 +1341,6 @@ mod tests {
     ///    在没跑过的前提下把它写上去，是拿一句没验过的话换一格好看的表。
     /// ⇒ **登记成欠账，归后续一件**；本条保证的是**它从此不会静默**。
     const FRAME_PLANE_VERDICTS: &[(&str, FrameVerdict, &str)] = &[
-        (
-            "account_usage",
-            FrameVerdict::SecondCommandServesLocal,
-            "本机那一侧另有命令名 `account_usage_local` —— 它逐字拿 `inbound_client::LOCAL_ORIGIN` \
-             调本条（`account_usage.rs` 里那两行紧挨着，判据 `account_usage_local` 那条窗口断言钉着）。\
-             ⇒ `usage.per-account` 在 `capability_sides()` 里已经是 `{Local, Remote}`、对称，\
-             本行的 `Remote` 说的是「这个命令名给远端用」，没说假话。",
-        ),
         (
             "capture_remote_pane",
             FrameVerdict::LiesTodayOwedACorrection,

@@ -34,8 +34,10 @@
 //! ② **不只是「有后端可切」，是已经切过两次**：`local_read_surface_registry` 的棘轮史逐字
 //!    记着 `11 → 10`（F10b 第一批，`usage.rs` 改走本机后端的 `--usage`）→ `9`
 //!    → `8`（F10b 第二批·下半，`local_accounts.rs` 改走 sidecar 的 `--session-accounts`）
-//!    → `7` → `8`（`P8a` 新增）。接线点今天就在生产段上：`usage.rs::aggregate_usage_all`
-//!    （一个 `#[tauri::command]`）直接调 `backend::observe::local_query::run_query(…, ["--usage"])`。
+//!    → `7` → `8`（`P8a` 新增）。接线点今天就在生产段上：`local_accounts.rs::list_local_session_accounts`
+//!    （一个 `#[tauri::command]`）直接调 `backend::observe::local_query::run_query(…, ["--list-accounts"])`。
+//!    〔`设计/50`：这段原先举的例子是用量那一轴（那个命令与它调的 `--usage` 今天都不存在了）——
+//!     换成同形的账号那一轴，**论点一个字没变**。〕
 //! ③ 🔴 **`backend/` 里已经住着读面代码，而它当时挂在 `control` 线上** ——
 //!    那个住户头注第一句逐字是「daemon 的**读面**是 14 条一次性查询子命令」。
 //!    ⇒ 「只建一个空目录是装饰」那条反对理由**不成立**：`observe/` 一建出来就有真住户。
@@ -183,8 +185,9 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
          的棘轮跟着往下拧」。**两句今天都不成立**：那条触发器 2026-08-04 就已经响过一次并\
          换成了后继形态（`every_caller_of_this_transport_is_already_off_the_read_surface_ledger`，\
          改成「每个调用方都必须已经从棘轮账上下来」）；而生产调用方 09-10 现打**不是零** —— \
-         `usage.rs::aggregate_usage_all` 与 `local_accounts.rs::list_local_session_accounts` \
-         都在调它。⇒ 这里不再写「有几个调用方」这种会腐的数，那个数的家在那条判据里〕",
+         `local_accounts.rs::list_local_session_accounts` 等在调它\
+         （原话还并列了用量那一轴，`设计/50` 把它整轴删了）。\
+         ⇒ 这里不再写「有几个调用方」这种会腐的数，那个数的家在那条判据里〕",
     ),
     (
         "control/agent_profile_parity.rs",
@@ -833,8 +836,8 @@ mod layering {
     /// - **测试段不受管**（下面走 `production_code` 剥掉）。这是**有意**的：
     ///   分层是生产架构的性质，测试跨线构造夹具是正常的。
     /// - 更曲折的间接（先 `pub use` 到第三个模块再引）扫不到 —— 那要上 `syn` 级解析。
-    /// - **`backend/` 之外的文件不在人群里**：`usage.rs` 与 `local_accounts.rs` 今天
-    ///   都在调 `backend::observe::local_query`，它们既不住 `control/` 也不住 `observe/`，
+    /// - **`backend/` 之外的文件不在人群里**：`local_accounts.rs` 等今天
+    ///   在调 `backend::observe::local_query`，它们既不住 `control/` 也不住 `observe/`，
     ///   本护栏一个字都看不见它们。那是「前端那一半怎么用后端」的问题，另有其人。
     fn refs_to_layer(code: &str, layer: &str) -> Vec<String> {
         let mut hits: Vec<String> = Vec::new();

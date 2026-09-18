@@ -127,6 +127,73 @@ jobs:
       - name: cargo test (vendor code-picture-core)
         run: cargo test -p code-picture-core
 
+  # ── `15 §5.2 B4`：**monitor 这棵树在 Linux 上的行为，云端一次都没有被执行过** ──────
+  #
+  # ## 题面（`设计/15 §2.6` 漏洞 3 逐字）
+  #
+  # 上面 `rust` job 是**唯一**跑 `cargo test --workspace` 的地方，而它 `runs-on: windows-latest`；
+  # Linux 侧对 `src/bridge` 今天只有 `linux-app-build` 那一条 `cargo build` ——
+  # **「编得过」不等于「跑得对」**。⇒ monitor 那批 `#[cfg(unix)]` 门控的测试
+  # **云端执行面 = 0**，它们只在开发机的本地门禁（`tests/scripts/gate.sh`）里跑过。
+  #
+  # ## 它是谁的安全网（为什么它排在这一波第一个）
+  #
+  # `15 §5.1 A1`（526 个 `#[cfg(test)]` 块搬兄弟文件）· `§5.2 B2`（clippy 换掉 ~3500 行文本扫描）·
+  # `§5.2 B3`（退役两个守卫）三件都是**拿行为测试去换文本判据**。
+  # 换之前必须先有人**真跑过**那些行为测试 —— 否则裁掉的是尺子，换来的是一句没人验过的话。
+  #
+  # ## 🔴 它买不到什么（写死，别读宽）
+  #
+  #   · **买不到「这个 job 是绿的」这个事实** —— 加进来这一趟不推，它在云端**一次都没跑过**。
+  #     今天它的状态是「**配置写对了**」，不是「**验过了**」。第一次真跑出来的红
+  #     有两种读法（真缺陷 / 这一面第一次被看见），**在有读数之前别挑顺手的那一种**。
+  #   · 买不到 Windows 那一面（那是 `rust` job），也买不到 `src/backend`（那是 `daemon` job）。
+  #   · 买不到「本地门禁与云端同一把尺子」：本地 `gate.sh` 那格带 `--lib`（丢 doctest 与 bin 档），
+  #     这里**刻意不带** —— 与 `rust` job 逐字同一条命令。同一个性质两把长度不同的尺子
+  #     是本区最贵那族病（`15 §2.6` 漏洞 2 就是它），所以跨平台这两格用同一把。
+  #
+  # ⚠ `fetch-depth: 0` 与 `rust` job **同一条理由**，不是抄习惯：
+  #   `scanning_guard_registry::the_pending_ratchet_never_turns_backwards` 与 `dial_home_registry`
+  #   那条都拿 **git 历史**当权威，浅克隆下它们的诊断第一句逐字就是
+  #   「浅克隆把历史截掉了（要 `fetch-depth: 0`）」。同一套测试搬到这里，那个需求跟着搬。
+  #
+  # ⚠ apt 那四个包与 `linux-app-build` 逐字同一份：monitor 是 Tauri app crate，
+  #   `cargo test` 也得先把它编出来 ⇒ 缺 webkit2gtk 的 pkg-config 会红在走到我们代码之前。
+  #   步骤名刻意与那个 job **一字不差** —— `shared_crate_registry` 的 `STEPS` 按**步骤名**登记，
+  #   同一件事共用一条登记（三条 `- run: npm ci` 是同一形）。
+  #
+  # ⚠ `timeout-minutes` 这个数**没有 Linux 读数**：`rust` 那个 35 是 09-10 三趟 windows runner
+  #   量出来的。这里借它的上界，**不现编一个** —— 真跑起来之后要回来重量一次（口径见 `rust` 头注）。
+  rust-linux:
+    name: Rust test (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    defaults:
+      run:
+        working-directory: src/bridge
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src/bridge
+
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev
+
+      - name: cargo test（整个 workspace，vendor 除外；Linux 执行面）
+        run: cargo test --workspace --exclude code-picture-core
+
   frontend:
     name: Frontend typecheck + build
     runs-on: windows-latest
@@ -492,12 +559,19 @@ jobs:
           # ⇒ **人群没漏，是真多了一个文件**，与 `W-F1`/`K-R139` 那两次「新目录落在所有分组之外」
           # 不同形。逮住它的还是 `shell_lint_registry` 那条恒等判据 —— 而且它是**提交之后**才红的：
           # 那条判据数的是 `git ls-files`，文件没被跟踪时它看不见。⇒ 新增脚本要连地板一起提。
+          # （那一拍的实测构成：61 = tests/e2e/*.sh 31 + cc-bus 14 + weak-net 4
+          #   + local-backend-container 3 + scripts 3 + vendored 4 + fake-claude 1 + pre-commit 1。）
+          # 🔴 **2026-09-18 `61 → 60`，本仓第三次**往下**拧这个地板**（前两次是 `K-R48` 第二拍
+          #    与 `K-R72`，理由同族）：用量（usage）整条产品面删干净，随之删掉
+          #    `tests/e2e/usage-probe-acceptance.sh` ⇒ 它落在 `tests/e2e/*.sh` 那个 glob 里，
+          #    **人群没漏，是文件真的不在了**（`shell_lint_registry` 那条恒等判据当场红，
+          #    并逐字给出「地板写着 61，而那条表达式今天真实覆盖 60 个文件」）。
           # 今天实测构成（**逐组现打，不倒推** —— 倒推凑过一次假账）：
-          # **61 = tests/e2e/*.sh 31 + src/shared/cc-bus/scripts/* 14 + tests/e2e/weak-net/*.sh 4
+          # **60 = tests/e2e/*.sh 30 + src/shared/cc-bus/scripts/* 14 + tests/e2e/weak-net/*.sh 4
           #        + tests/e2e/local-backend-container/*.sh 3 + tests/scripts/*.sh 3
           #        + vendored cc-acct-iso 4 + fake-claude 1 + tests/hooks/pre-commit 1**。
           # ⚠ `local-backend-container/` 里还有一份 `Dockerfile`（**不是 `.sh`，不进这个人群**）。
-          [ "$N" -ge 61 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 61）"; exit 1; }
+          [ "$N" -ge 60 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 60）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
@@ -541,7 +615,9 @@ jobs:
       #    两条桌面侧 SSH 回落的 builder，回落删净 ⇒ 它连命令串都取不到、跑不起来。
       #    ★ 四处这次是 `e2e_gate_registry::the_suite_count_is_the_same_number_in_all_four_places`
       #    当场逮出来的（我先只改了 `echo` 那一处）—— **那条判据买的正是这一刻。**
-      # G-A **覆盖面地板**：20 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
+      # G-A **覆盖面地板**：19 套真机套件必须**每一套**都经 `assert-pass-floor.sh` 跑。
+      #      〔用量下线 09-18〕20 → 19：删了 `usage-probe`。⚠ 这是那个数的**第四份** ——
+      #      判据自己警告过「同一个数在 `ci.yml` 里存了四份，别只改报错的那一处」，本次就是漏跟这一份。
       # （U0 2026-08-01 订正：本行与下面 `:313` 原写「8」，是 E82 订正下方散文时漏跟的两处，
       #  与紧邻的步骤名和 `-ge N` 自相矛盾。真值以本步骤的 grep 计数为准。
       #  U8a-2a 2026-08-02：新增 inbound-frames ⇒ 15 → 16，三处一起改。
@@ -637,7 +713,7 @@ jobs:
       #      那一格同一笔账：**先得有人在跑这把尺子，地板定多少才谈得上是不是判据。**
       #    ⚠ 那次「涨了而地板没跟」的活体就在上面几行（`D1` 实得 173 / 地板 126，绿着挂了一整拍）
       #      —— `exact` 治的正是它，但**只在 `gate.sh` 那 4 条上治住了**。**4/23。**
-      - name: G-A/G-C 覆盖面地板（20 套真机套件都必须带断言数地板）
+      - name: G-A/G-C 覆盖面地板（19 套真机套件都必须带断言数地板）
         run: |
           set -euo pipefail
           # 只数**真正的调用行**（`run: bash tests/e2e/…`）——本步骤自己那几行 grep 也含这个脚本名，
@@ -646,7 +722,7 @@ jobs:
           echo "带地板的 e2e 步骤数 = ${N:-0}"
           # **2026-08-13 P0b-Y2 棘到 21**：两套新增的全链前置套件此前是**裸 `run:`**——
           # 没有地板 ⇒ 断言被删空照样绿，正是这套机制立起来要防的那件事（我自己刚犯了一次）。
-          [ "${N:-0}" -ge 20 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 20）——有套件被改回裸 npm run 或被删掉"; exit 1; }
+          [ "${N:-0}" -ge 19 ] || { echo "::error::只有 ${N:-0} 套带地板（应 >= 19）——有套件被改回裸 npm run 或被删掉"; exit 1; }
           # 反向自检：地板值必须**逐个**出现在调用行上，不能只有脚本名对了而地板被抹成 0。
           #
           # 🔴🔴 **读这张清单之前先读这四行 —— 这里是本仓「同一个量不许两处各写一份」
@@ -695,7 +771,7 @@ jobs:
           #    在 `daemon-gate2` 那一套（真 daemon + 真 tmux，用例逐行来自同一张
           #    gate2-golden.tsv）。⚠ 地板值刻意不在这里重抄，理由见上面那段警告。
           for pair in "tmux-target 26" "ccm-cli 46" "ccm-print-parity 12" \
-                      "cc-spawn-uplift 72" "usage-probe 11" \
+                      "cc-spawn-uplift 72" \
                       "restart 24" "resume 17" "graylight-frames 12" "restart-frames 5" "resume-frames 7" \
                       "ccm-rbind-title 8" "daemon-fork 10" "inbound-frames 33" \
                       "ccm-contract-parity 45" "daemon-gate2 34" "local-backend 14" \
@@ -704,7 +780,7 @@ jobs:
             grep -q "assert-pass-floor.sh $pair\b" .github/workflows/ci.yml \
               || { echo "::error::找不到调用行 'assert-pass-floor.sh $pair' —— 套件或地板被改了"; exit 1; }
           done
-          echo "20 套逐个对上（套件名 + 地板值）"  # 〔`K-R48` 第二拍〕23 → 21：删了 ccm-acceptance / ccm-pretrust；〔`K-R72`〕21 → 20：删了 tmux-guarded
+          echo "19 套逐个对上（套件名 + 地板值）"  # 〔`K-R48` 第二拍〕23 → 21：删了 ccm-acceptance / ccm-pretrust；〔`K-R72`〕21 → 20：删了 tmux-guarded；〔用量下线 09-18〕20 → 19：删了 usage-probe
 
       - name: exec-bit guard (src/shared/** shebang files must be 100755 in git)
         run: bash tests/e2e/exec-bit-guard.sh
@@ -910,20 +986,16 @@ jobs:
       - name: build debug daemon（供 daemon-frames 三套）
         run: cargo build --manifest-path src/backend/Cargo.toml
 
-      # ── 🔴 `K-R122`（2026-09-14）：**本步骤往下挪了 —— 它排在 `build debug daemon` 之前。** ──
-      #
-      # `K-R104`（09-13）把用量探针整条重写：被测面从「monitor 渲染的那条 shell 串」换成
-      # **真 daemon 二进制**（套件 `:29`/`:30` 两行：取 `.build/backend/debug/` 下
-      # 那个后端二进制，`[ -x ]` fail-closed）。而本 job 的编译步骤排在它**后面**
-      # ⇒ 这一步从 `K-R104` 落地那天起就必红。`K-R119` 推 tag 那一趟云端实测：本 job 红在
-      # 第 8 步，套件自己印的逐字是「需要先 build daemon：cd src/backend && cargo build」。
-      #
-      # ⚠ **病是「前置没跟上产品变化」，不是「套件写错了」** —— 套件那道硬门是对的
-      #（fail-closed 比静默跳过好）。要改的是**步骤次序**。
-      # ⚠ 处置刻意**不是**在这一步里自己补一句 `cargo build`：本 job 下面已经有那一步，
-      #   再补一句就是同一件事两个住址（下次谁改了其中一处，另一处静默地陈）。
-      - name: 用量探针（F10）
-        run: bash tests/e2e/assert-pass-floor.sh usage-probe 11
+      # ── 🔴〔用量下线 2026-09-18〕**「用量探针（F10）」那一步整步删了。** ────────────
+      # 它跑的是 `tests/e2e/usage-probe-acceptance.sh`（套件名 `usage-probe`，地板 11），
+      # 而用量整条产品面（含那份套件文件）本拍删干净 ⇒ 步骤留着就会红在「文件不存在」上。
+      # 同拍摘掉的还有：上面 `for pair` 那张地板清单里的那一条（20 → 19）。
+      # ⚠ `shared_crate_registry.rs` 的 `STEPS` 里**没有**它的登记，删它也不必动那张表 ——
+      #   本 job（`e2e-tmux-rust`）整个吃 `BLANKET` 豁免（红线：真 tmux server），
+      #   BLANKET 里的 job 的步骤按设计就不逐条登记 ⇒ 这一步从来没进过 `STEPS`，
+      #   `stale` 那半也就无从变红。（现打验过：删前删后那条判据都是绿的。）
+      # 它原先带的那段 `K-R122` 步骤次序散文（「必须排在 `build debug daemon` 之后」）随步走 ——
+      # 同一条次序约束今天由下面四步顶上那段继续管着。
 
       # ── 🔴 `K-R122`（2026-09-14）：**下面这四步是从 `e2e-tmux` 搬过来的。** ──────────
       #

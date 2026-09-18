@@ -116,12 +116,6 @@ mod tests {
     /// ⚠ `adapter.rs` 自己那几行**也在表里** —— 见模块头注「本条比 daemon 侧那条少一个洞」。
     const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
         (
-            "account_usage.rs",
-            Face::Active,
-            1,
-            "用量探针要 `nested_env_to_scrub` + `default_launcher` ⇒ 拿「活跃那个」的键表与启动器",
-        ),
-        (
             "adapter.rs",
             Face::Active,
             6,
@@ -238,9 +232,14 @@ mod tests {
     /// 🔴 〔`K-R88` 09-13〕**37 → 36**：`history.rs` 的门面那张脸 8 → 7，
     /// 建分支那条路的源守卫随「找文件」一起进了共享 crate（详见那条登记）。
     ///
+    /// 🔴 〔`设计/50` 删用量〕**36 → 35**：`account_usage.rs` 那张 `Active` 脸（1 处，
+    /// 「用量探针要 `nested_env_to_scrub` + `default_launcher`」）随用量 ③ 轴整轴退役。
+    /// ⚠ **这一格不是「收进接口了」，是「那件事不做了」** —— 两种都让棘轮往下走，
+    /// 但只有前者算把耦合还清；如实写在这里，别让下一个人把它读成进展。
+    ///
     /// ⚠ 与 daemon 侧那个 27 **不是同一把尺子，不许相加**（两侧机制不同：那边直呼
     /// `agents::<名>::`，这边走 trait + 门面）。要比较请各自报各自的尺子。
-    const COUPLING_BASELINE: usize = 36;
+    const COUPLING_BASELINE: usize = 35;
 
     /// **抹除 kind 的门面**：`adapter.rs` 里那几个「替调用者把 agent 写死」的自由函数。
     ///

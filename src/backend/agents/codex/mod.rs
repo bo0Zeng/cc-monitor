@@ -3,7 +3,6 @@
 //! | 子模块 | 装什么 | 从哪搬来的 |
 //! |---|---|---|
 //! | [`parse`] | rollout 记录的信封与字段抽取、会话目录定位 | `observe/codex.rs`（整体） |
-//! | [`usage`] | 扫 rollout 树 + 按 (model, day) 聚合用量 | `observe/usage_query.rs` 的 `aggregate_codex`/`analyze_codex_session` |
 //! | [`resume`] | resume 的**命令形状**与会话名前缀、默认命令名 | `control/resolve_query.rs` 的 `is_codex` 分支 |
 //!
 //! # 接口面：**四类能力里的三类**，第四类今天是空的
@@ -23,7 +22,14 @@
 
 pub(crate) mod parse;
 pub(crate) mod resume;
-pub(crate) mod usage;
+// 〔`设计/50` 删用量〕**原 `pub(crate) mod usage;` 删了。**
+// `agents/codex/usage.rs` 是用量**聚合轴**（②）的 Codex 半：它的唯一调用方是
+// 用量聚合那条一次性查询的入口（Claude 段之后硬接的那一句），而那份文件随 ② 轴整轴退役。
+// 同一刀还带走了它的类型依赖：桶累加器用的 `usage_core::Totals` 住在
+// `crates/usage-core` 的 Claude 半，那半也删了（crate 改名 `codex-token-core`）。
+// ⇒ 它**不是被顺手删的，是编译器指着删的**：文件留着连编都编不过。
+// ⚠ **token 字段映射本身没动**：`parse.rs::last_token_delta` → `codex_token_core::codex_delta`
+//   仍在，`codex_delta` 那三条单测照旧绿（`设计/50 §6` 钩子 6）。
 
 /// 本 agent 在 wire 上的 **`agent_kind` 值**〔`S5`〕。
 ///

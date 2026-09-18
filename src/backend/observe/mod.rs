@@ -24,5 +24,4 @@ pub(crate) mod fs;
 pub(crate) mod history_query;
 pub(crate) mod search_query;
 pub(crate) mod turn_detect;
-pub(crate) mod usage_query;
 pub(crate) mod watcher;

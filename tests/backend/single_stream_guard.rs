@@ -366,7 +366,9 @@ mod tests {
     /// 而上面两条判据一个数都不会动。**本条就是看着那件事的那道判据。**
     ///
     /// 现打（09-04，本工作树，**未铺** `src/bridge/embedded-daemons/`）：daemon `src/` 下
-    /// **73 份 `.rs`，走兜底 0 份**。地板 70 是计数自检（遍历坏了要红，不是静默扫 0 份通过）。
+    /// **73 份 `.rs`，走兜底 0 份**。地板是计数自检（遍历坏了要红，不是静默扫 0 份通过）。
+    /// 🔴 〔`设计/50` 09-18〕地板 70 → **67**（现打 69）：本刀删了本 crate 三份 `.rs`
+    /// （`observe/usage_query.rs` · `control/oneshot_session.rs` · `agents/codex/usage.rs`）。
     ///
     /// # ★★ 09-04（`K-R25`）：**上面那句「本模块所有计数的分母」要带单位**
     ///
@@ -389,7 +391,7 @@ mod tests {
     /// 由 `tests/evidence/K-R25-D2-unit-alignment.md` 逐条手核）—— 不是「所有写法」的全称。
     #[test]
     fn no_daemon_file_falls_back_to_leaving_block_comments_in() {
-        guard_core::assert_block_comment_model_holds(&crate::guard_support::src_root(), 70, 500);
+        guard_core::assert_block_comment_model_holds(&crate::guard_support::src_root(), 67, 500);
     }
 
     /// ★ 正题：三处「恰好一个客户端」的锚点**逐个按次数**对上。

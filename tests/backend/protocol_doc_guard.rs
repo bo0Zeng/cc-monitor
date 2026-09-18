@@ -807,16 +807,8 @@ mod tests {
                 include_str!("../../src/backend/observe/search_query.rs"),
             ),
             (
-                "observe/usage_query.rs",
-                include_str!("../../src/backend/observe/usage_query.rs"),
-            ),
-            (
                 "agents/codex/parse.rs",
                 include_str!("../../src/backend/agents/codex/parse.rs"),
-            ),
-            (
-                "agents/codex/usage.rs",
-                include_str!("../../src/backend/agents/codex/usage.rs"),
             ),
             (
                 "observe/turn_detect.rs",

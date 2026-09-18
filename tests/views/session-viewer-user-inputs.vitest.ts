@@ -120,7 +120,7 @@ describe("KR45D1 清单挂进查看器：条数 = 主线用户输入条数（子
     expect(rows.length).toBe(2); // 分母 = 7 条记录里的 2 条主线用户输入
     expect(rows.map((r) => r.dataset.inputUuid)).toEqual(["u1", "u7"]);
     expect(rows[0].textContent).toBe("1. 第一句");
-    expect(toggleOf(v).textContent).toBe("我说过的 2 句");
+    expect(toggleOf(v).textContent).toBe("大纲 · 2");
   });
 
   it("面板默认收着，点开关才展开（默认收着 ⇒ 对既有布局零影响）", async () => {
@@ -136,7 +136,7 @@ describe("KR45D1 清单挂进查看器：条数 = 主线用户输入条数（子
     const v = await mount([assistantLine(1, "a1", "只有回复")]);
     expect(rowsOf(v).length).toBe(0);
     expect(toggleOf(v).disabled).toBe(true);
-    expect(toggleOf(v).textContent).toBe("我说过的 0 句");
+    expect(toggleOf(v).textContent).toBe("大纲"); // 0 条不挂计数
   });
 });
 
@@ -225,7 +225,7 @@ describe("KR45D1 点一下跳过去", () => {
     expectLoaded(v.element);
 
     expect(rowsOf(v).map((r) => r.dataset.inputUuid)).toEqual(["n1"]);
-    expect(toggleOf(v).textContent).toBe("我说过的 1 句");
+    expect(toggleOf(v).textContent).toBe("大纲 · 1");
   });
 });
 
@@ -275,6 +275,11 @@ describe("KR45 债二：清单的样式住 styles.css，不再内联", () => {
     );
     expect(cssLines, "「跳不过去那一条变灰」没有宿主 ⇒ 标记还在、但用户看不出来").toContain(
       ".user-input-row[data-unjumpable] {",
+    );
+    // `设计/10` 步 2：开关按钮在这之前**全仓零条规则** ⇒ 暗色界面上一个白底默认按钮。
+    // 那三条共用规则都被钉住了，唯独它没有 —— 这一格补上。
+    expect(cssLines, "开关按钮没有 CSS 宿主 ⇒ 暗色主题上退回浏览器默认按钮（浅底黑字）").toContain(
+      ".user-inputs-toggle {",
     );
 
     // 🔴 面板规则里**绝不许出现 `display`**：面板靠 `el.hidden` 收起，而 `hidden` 就是

@@ -72,7 +72,7 @@ index.html  ─> /src/main.ts (defer)
 | **views/panorama.ts** (Batch15-P2) | 代码全景视图（纯 canvas 自研，零图库依赖）：顶栏「全景」→ body-level overlay，对当前本地会话 cwd 建 code-picture 索引 → 画代码库地图（子系统聚类气泡 + 脊柱文件圆 + 入口点描环）+ 覆盖信号 banner + 符号搜索 + 节点详情侧栏；`close()` 只 `display:none` 不卸载、同仓重开复用已算布局 | `PanoramaView.open() / close()` |
 | **panorama/** (Batch15-P2) | 全景前端纯逻辑（无 DOM，vitest 可测）：`api.ts`（后端全景命令 invoke 封装，参数 camelCase）+ `layout.ts`（坐标变换 / 命中测试 / 气泡打包 / 覆盖文案）+ `types.ts`（core 直出 snake_case 类型镜像）+ `session-files.ts`（F70 从 jsonl Edit/Write 抽本轮改动文件喂高亮） | `api.index/overview/node/callers/callees/impact/search + layout / session-files 纯函数` |
 | **agents-panel.ts** (issue #23) | 当前会话 subagent 列表 + 每 agent 状态灯：status-bar 一枚 chip（`N agents (M 运行中)`，0 隐藏）+ 点击展开 popover，每行一 agent（🟢 运行中 / ✓ 完成 / ✗ 中止 + [类型] 描述）。数据纯前端推断（TabManager 配对 Task/Agent 的 tool_use↔tool_result，会话 idle/归档时仍 running 标 aborted 防僵尸绿灯）；折叠状态 localStorage | `new AgentsPanel().setSession(sid, agents)` |
-| **usage-hud.ts** (F88b #52) | 用量 HUD chip（挂 status-bar）：显活跃会话 **context 占用%**（最新一轮 assistant 的 input+cache token ÷ 模型上限），≥80% 高亮预警。纯前端零后端（数据来自 live 流 TabManager onLine）；**只 token 不 $**；模型上限表在 `views/pricing.ts`（未知模型显 `?`） | `new UsageHud().setActive(model, promptTokens) / onClick()` |
+| **usage-hud.ts** (F88b #52) | 用量 HUD chip（挂 status-bar）：显活跃会话 **context 占用%**（最新一轮 assistant 的 input+cache token ÷ 模型上限），≥80% 高亮预警。纯前端零后端（数据来自 live 流 TabManager onLine）；**只 token 不 $**；模型上限表在 `views/pricing.ts`（未知模型显 `?`） | `new UsageHud().setActive(model, promptTokens)`（〔`设计/50`〕`onClick()` 已删 —— 它点开的那个跨会话聚合视图随用量 ② 轴退役，chip 今天是纯只读） |
 | **session-status.ts** (F91 #27) | 会话活动状态的**共享纯逻辑**（零 import，node 可测）：红绿灯类名映射（`idle`/`shell`=红、`waiting`=黄、`busy`/未知=绿）+ 跨会话监控快照 DTO。此前红绿灯语义内联在 tabs.ts `updateTabButton`，F91 抽出让 **tab-bar 灯与 grid cell 共用**一套（对 tab-bar 是逐字节等价重构） | `activityLightClass(status) / GridSessionSnapshot` |
 | **tasks-panel.ts** (v2.3.0 issue #11) | Tab stream 顶部 sticky 折叠卡：显示 Claude Code CLI 的 task 列表（`~/.claude/tasks/<sid>/`）。完整 replace 渲染（无 diff），0 task 时整 panel 隐藏。折叠状态 localStorage 全局持久 (`cc-monitor.tasks-panel.collapsed`) | `new TasksPanel().update(tasks) / fetchSessionTasks(sid)` |
 | **settings/data-section.ts** (v2.3.0 issue #3 A) | 设置面板「数据存储」折叠分组：调 `get_data_paths` 拉所有持久路径 + WebView2 UserDataFolder + localStorage keys；每项配 [打开] 按钮调 opener。纯展示，无危险操作 | `new DataSection({ headless }).element / refresh()` |
@@ -136,7 +136,7 @@ replay 一次性 emit 整个 history Vec，前端用 BATCH_SIZE=40 + BATCH_MS=8 
 拖 color picker `input` 事件 ~60Hz 高频。`applyThemeToken(key, value)` 只动一个 CSS var，比 `applyTheme(全部)` 便宜 ~14 倍。否则每帧 setProperty 14 次会触发整棵 :root 子树重算。
 
 ### `info-icon.ts` 真挂 body 实现 portal
-父 `.settings-panel` 有 `transform`，按 CSS spec 会让 `position: fixed` 的 containing block 从 viewport 重置到 panel → fixed 元素相对 panel 定位而非屏幕。挂 body 脱离 transform 子树是唯一可靠路径。详 [doc/INVARIANTS § 13](doc/INVARIANTS.md#13-css-portal-元素必须真挂-body)。
+父 `.settings-panel` 有 `transform`，按 CSS spec 会让 `position: fixed` 的 containing block 从 viewport 重置到 panel → fixed 元素相对 panel 定位而非屏幕。挂 body 脱离 transform 子树是唯一可靠路径。详 [doc/INVARIANTS § 13](`src/doc/INVARIANTS.md`#13-css-portal-元素必须真挂-body)。
 
 ### `renderMessage` 是纯函数
 给定 record + ctx 返回 RenderResult，无副作用（除写 ctx.toolUseElements 配 tool_use ↔ tool_result）。实时 Tab 和历史只读视图复用同一套渲染，保证视觉一致。
@@ -154,7 +154,7 @@ replay 一次性 emit 整个 history Vec，前端用 BATCH_SIZE=40 + BATCH_MS=8 
 - **MessageStream 一个实例对应一个 Tab**：closeTab 必须调 stream.dispose() 释放 ResizeObserver
 - **批量 jsonl-line 事件让出主线程**：events.ts 不能改成 sync 派发（会让 replay 卡死光标）
 
-全局约束（前端必读，定义在 [`src/doc/INVARIANTS.md`](doc/INVARIANTS.md)）：
+全局约束（前端必读，定义在 [`src/`src/doc/INVARIANTS.md`](`src/doc/INVARIANTS.md`)）：
 
 - § 12 — alert 不算错误反馈，关键失败用状态栏 toast
 - § 13 — portal 浮层（tooltip/modal/dropdown）必须真挂 `document.body`
@@ -167,7 +167,7 @@ replay 一次性 emit 整个 history Vec，前端用 BATCH_SIZE=40 + BATCH_MS=8 
 
 ## 添加新功能的入口
 
-详细 cookbook 见 [src/doc/CONTRIBUTING.md § 2](doc/CONTRIBUTING.md#2-添加新东西-cookbook)。速查：
+详细 cookbook 见 [src/`src/doc/CONTRIBUTING.md` § 2](`src/doc/CONTRIBUTING.md`#2-添加新东西-cookbook)。速查：
 
 | 需求 | 入口文件 |
 |---|---|

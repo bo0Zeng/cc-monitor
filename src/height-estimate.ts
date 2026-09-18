@@ -8,7 +8,7 @@
  * 浏览器记住真实尺寸,估值只影响"从未渲染过的卡片"贡献的滚动条精度,不影响正确性。
  * 所以这里追求"够准 + 绝不抛错",不追求像素级真值。
  *
- * 文本估高用 pretext(@chenglou/pretext,**精确钉版 0.0.8**——上游 0.0.x 属
+ * 文本估高用 pretext(@chenglou/pretext,**精确钉版 0.0.9**——上游 0.0.x 属
  * pre-stable,API 与折行语义可能不打招呼地变;本模块的常数是对着该版本的 layout
  * 行为标定的,解钉升级须重跑估值精度对照再动):prepare() 一次分词+canvas
  * 测宽,layout() 纯算术出高度,不触 DOM 不 reflow。pretext 不可用(canvas 缺失、
@@ -16,6 +16,12 @@
  *
  * 宽度/字体常数镜像 styles.css tokens(--stream-max-width/--font-*):780px 定宽
  * 列是本模块成立的前提(宽度不变 → 高度长期有效),若列宽 token 改动需同步这里。
+ *
+ * ⚠ 上面那句「解钉升级须重跑估值精度对照」在 0.0.8 → 0.0.9 这一跳**没有被执行**:
+ * 本模块今天**没有任何「估值 vs 真实布局高度」的读数**(`height-estimate.vitest.ts`
+ * 全部是自一致测试——拿估算函数的输出跟它自己的常数比;jsdom 无布局引擎也比不了)。
+ * 该对照表是 `设计/17 §6` 的「秤 2」,要真浏览器 e2e 才做得出来,尚未落地。
+ * ⇒ 本模块所有常数的准确度,目前状态是**未测**,不是「已验证」。
  */
 
 // 镜像 styles.css 的字体 token(canvas font 接受完整 fallback 栈——必须逐字同栈,
@@ -36,6 +42,20 @@ const CODE_MARGIN = 24; // .code-block margin 12×0(上下)
 const CARD_HEADER_H = 22; // .card-header 一行 + 间距
 const BLOCK_GAP = 10; // 块间 margin 均摊
 const P_GAP = 12; // 段落/列表项之间的 margin 均摊(浏览器默认 p margin 1em 折叠后 ~15px,取偏保守)
+
+// 下面三条细条卡常数补的是「建得出卡、估不出高」的三个 class ——
+// 它们此前全部走 `return null` ⇒ 由 styles.css:1599 的 `contain-intrinsic-size: auto 120px`
+// 接管。⚠ 这三条是**候选成因**不是已证实的根因:`设计/17 §2.2` 那条「虚高 ⇒ 提前停止补批
+// ⇒ 只渲染半屏」的链条是**手算**的(按 CSS token 推真高、按视口 800px 推轮次),
+// 而「估得准不准」今天零读数(同文档 §5.3)。装上秤 2(估值 vs 真值 e2e 对照表)之后再判
+// 这三条改动到底修没修掉半屏 —— 在那之前,它们只是「把没估的估上」,不是「已修复」。
+const BASH_OUTPUT_HEADER_H = 19; // .bash-output-header 单行 flex:12px × 1.55 ≈ 18.6
+const BASH_OUTPUT_BODY_MARGIN = 6; // .bash-output-body margin: 6px 0 0
+/** `buildOutputPre` 超 30 行只展示头 20 行(cards/bash.ts OUTPUT_HEAD_LINES) */
+const BASH_OUTPUT_MAX_LINES = 20;
+const BASH_STDERR_LABEL_H = 23; // .bash-stderr-label margin-top 6 + 11px × 1.55
+const BASH_EMPTY_H = 23; // .bash-output-empty margin-top 4 + 12px × 1.55
+const SHOW_FULL_BTN_H = 43; // .block-body-show-full margin 6+10 + padding 4×2 + border 2 + 11px × 1.55
 
 /** 超长文本只测前缀、按长度比例外推——防 pretext prepare 开销失控(HN 实测大批量偏慢) */
 const MEASURE_PREFIX_CHARS = 2400;
@@ -178,6 +198,50 @@ function blockHeight(el: Element): number {
 }
 
 /**
+ * `设计/17 §2.2` 修法②:card-bash-output = header + Σ min(行数, 20) × mono 行高 + 几个细条行。
+ * 行数数的是 DOM 里**已经被 `buildOutputPre` 截过**的 pre,所以不需要知道原始输出多长;
+ * `.bash-output-body` 另有 `max-height: 480px` 硬顶(≈23 个 mono 行),20 这个上限落在它之内。
+ */
+function bashOutputHeight(el: Element): number {
+  let h = BASH_OUTPUT_HEADER_H;
+  for (const pre of Array.from(el.querySelectorAll("pre.bash-output-body"))) {
+    const t = pre.textContent ?? "";
+    const lines = t ? t.split("\n").length : 1;
+    h += Math.min(lines, BASH_OUTPUT_MAX_LINES) * LH_MONO + BASH_OUTPUT_BODY_MARGIN;
+  }
+  if (el.querySelector(".bash-stderr-label")) h += BASH_STDERR_LABEL_H;
+  if (el.querySelector(".bash-output-empty")) h += BASH_EMPTY_H;
+  h += el.querySelectorAll(".block-body-show-full").length * SHOW_FULL_BTN_H;
+  return h;
+}
+
+/**
+ * 认不出的 class 在 DEV 下每个只喊一次(`设计/17 §2.2` 修法③)。
+ * 为什么要喊:不喊的话,下次加新卡型又会静默落回 CSS 的 120px 兜底,
+ * 而 120px 兜底与真高的偏差**今天没有任何读数**(§5.3),没人会发现。
+ * 模块级 Set:同一 class 刷屏一次就够;生产构建整支被 vite 消除。
+ */
+const unknownCardClassesSeen = new Set<string>();
+
+function warnUnknownCard(el: HTMLElement): void {
+  if (!import.meta.env.DEV) return;
+  // 取第一个 `card-*` 类名当身份;没有就用 tagName,保证一定报得出个东西
+  const key =
+    Array.from(el.classList).find((c) => c.startsWith("card-")) ?? `<${el.tagName.toLowerCase()}>`;
+  if (unknownCardClassesSeen.has(key)) return;
+  unknownCardClassesSeen.add(key);
+  console.warn(
+    `[height-estimate] 估不出高的卡型:${key} —— 落 CSS 兜底 contain-intrinsic-size: auto 120px。` +
+      "若它是细条卡,120px 会虚高数倍并污染「够不够一屏」的判据(设计/17 §2.2)。",
+  );
+}
+
+/** 导出仅为单测(要能在一个用例里从干净状态起算「每 class 只喊一次」)。 */
+export function __resetUnknownCardWarnings(): void {
+  unknownCardClassesSeen.clear();
+}
+
+/**
  * 顶层卡片估高。认不出的形态返回 null(CSS 兜底 120px + 渲染后 auto 记忆)。
  */
 export function estimateStreamNodeHeight(el: HTMLElement): number | null {
@@ -195,6 +259,13 @@ export function estimateStreamNodeHeight(el: HTMLElement): number | null {
   // 高频细条卡:120px 兜底偏大 3 倍,常数更准(渲染后 auto 记忆接管)
   if (el.classList.contains("card-api-error")) return 40;
   if (el.classList.contains("card-slash")) return 34;
+  // `设计/17 §2.2` 修法①:两行常数。card-api-retry 是"重试风暴"时成批出现的那一种。
+  if (el.classList.contains("card-api-retry")) return 24;
+  if (el.classList.contains("card-bash-input")) return 32;
+  // `设计/17 §2.2` 修法②:card-bash-output 按 header + min(行数, 20) 算。
+  // 行数直接数 DOM 里**已经截过的** pre(cards/bash.ts 超 30 行只留头 20 行),
+  // 所以这里不需要知道原始输出多长。stderr 标签/展开按钮/空态各算一个细条行。
+  if (el.classList.contains("card-bash-output")) return bashOutputHeight(el);
 
   if (el.classList.contains("card-assistant")) {
     let h = CARD_HEADER_H;
@@ -204,6 +275,7 @@ export function estimateStreamNodeHeight(el: HTMLElement): number | null {
     return h;
   }
 
+  warnUnknownCard(el);
   return null;
 }
 

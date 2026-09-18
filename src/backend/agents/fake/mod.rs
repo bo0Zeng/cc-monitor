@@ -60,7 +60,6 @@
 //! | 账号信任判定 | `.claude.json` → `projects[cwd].hasTrustDialogAccepted` | `fake-config.json` → `trusted[cwd]` |
 //! | 判活 cmdline | 含 `claude` / `node` | 含 `fakeagent` |
 //! | 解析本机 home | `$CLAUDE_CONFIG_DIR` 否则 `$HOME/.claude`（**恒有值**） | `$CCM_FAKE_AGENT_HOME`，**没有默认** |
-//! | 用量聚合 | `usage_core` 扫 `projects/**/*.jsonl` | 扫 `convos/**/*.ndjson` |
 //! | resume 默认命令 | `claude` | `fakeagent` |
 //! | resume 命令形 | `<base> --resume <sid>`（flag） | `<base> revive <sid>`（子命令） |
 //! | resume 会话名前缀 | `cc` | `fk` |
@@ -146,60 +145,12 @@ pub(crate) fn cmdline_may_be_agent(lower: &str) -> bool {
     lower.trim().is_empty() || lower.contains("fakeagent")
 }
 
-/// 能力 9：用量聚合 —— 扫会话记录根，每有 token 的会话出一行。
-///
-/// 刻意只做**最小**的一件事（把两个 token 字段加起来），因为本件要证的是
-/// 「通用层有没有地方收这个能力」，不是「聚合算得对不对」。
-pub(crate) fn usage_rows(home: &Path) -> Vec<String> {
-    let root = records_root(home);
-    let mut out = Vec::new();
-    let Ok(projects) = std::fs::read_dir(&root) else {
-        return out;
-    };
-    let mut dirs: Vec<PathBuf> = projects.flatten().map(|e| e.path()).collect();
-    dirs.sort();
-    for dir in dirs {
-        let Ok(files) = std::fs::read_dir(&dir) else {
-            continue;
-        };
-        let mut paths: Vec<PathBuf> = files.flatten().map(|e| e.path()).collect();
-        paths.sort();
-        for p in paths {
-            if !p.is_file() || !is_session_file(&p) {
-                continue;
-            }
-            let Ok(text) = std::fs::read_to_string(&p) else {
-                continue;
-            };
-            let mut total = 0i64;
-            for line in text.lines() {
-                let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
-                    continue;
-                };
-                if let Some(u) = v.pointer("/usage") {
-                    total += u.get("in").and_then(serde_json::Value::as_i64).unwrap_or(0);
-                    total += u
-                        .get("out")
-                        .and_then(serde_json::Value::as_i64)
-                        .unwrap_or(0);
-                }
-            }
-            if total > 0 {
-                let sid = p
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .and_then(|n| n.strip_prefix("sess-"))
-                    .and_then(|n| n.strip_suffix(".ndjson"))
-                    .unwrap_or_default();
-                out.push(format!(
-                    "{}",
-                    serde_json::json!({"sessionId": sid, "agentKind": AGENT_KIND, "tokens": total})
-                ));
-            }
-        }
-    }
-    out
-}
+// 〔`设计/50` 删用量〕**原「能力 9：用量聚合」整条去掉了。**
+// 它模拟的是「通用层有没有地方收这个能力」，而通用层那一处（`observe/usage_query.rs`）
+// 随用量 ② 轴整轴退役 ⇒ **这一格没有对面了**：留着它会让 `agent_locality_guard` 的
+// 「能力数 == 卡点数」两个方向漂开（那条判据逐字：「少一种 = 要么那种能力真的收进接口了…」）。
+// ⚠ 编号**刻意不重排**（下面仍是「能力 10/11/12」）：编号是给人对照上面那张表用的住址，
+// 重排会让所有引用过它的散文一起变成假话。
 
 /// 能力 10：无 `launchCandidate` 时的默认命令基底。
 pub(crate) const DEFAULT_COMMAND: &str = "fakeagent";
@@ -228,7 +179,6 @@ pub(crate) const CAPABILITIES: &[&str] = &[
     "账号信任判定",
     "判活 cmdline",
     "解析本机 home",
-    "用量聚合",
     "resume 默认命令",
     "resume 命令形",
     "resume 会话名前缀",
@@ -250,7 +200,6 @@ pub(crate) struct FakeCaps {
     pub(crate) trust_of_config: Option<fn(&Path, &str) -> Result<bool, String>>,
     pub(crate) cmdline_may_be_agent: Option<fn(&str) -> bool>,
     pub(crate) home: Option<fn() -> Option<PathBuf>>,
-    pub(crate) usage_rows: Option<fn(&Path) -> Vec<String>>,
     pub(crate) default_command: Option<&'static str>,
     pub(crate) resume_command: Option<fn(&str, &str) -> String>,
     pub(crate) session_name_prefix: Option<&'static str>,
@@ -268,7 +217,6 @@ impl FakeCaps {
             self.trust_of_config.is_some(),
             self.cmdline_may_be_agent.is_some(),
             self.home.is_some(),
-            self.usage_rows.is_some(),
             self.default_command.is_some(),
             self.resume_command.is_some(),
             self.session_name_prefix.is_some(),
@@ -289,7 +237,6 @@ impl FakeCaps {
             trust_of_config: Some(trust_of_config),
             cmdline_may_be_agent: Some(cmdline_may_be_agent),
             home: Some(home),
-            usage_rows: Some(usage_rows),
             default_command: Some(DEFAULT_COMMAND),
             resume_command: Some(resume_command),
             session_name_prefix: Some(SESSION_NAME_PREFIX),
@@ -314,7 +261,6 @@ impl FakeCaps {
             "账号信任判定" => c.trust_of_config = None,
             "判活 cmdline" => c.cmdline_may_be_agent = None,
             "解析本机 home" => c.home = None,
-            "用量聚合" => c.usage_rows = None,
             "resume 默认命令" => c.default_command = None,
             "resume 命令形" => c.resume_command = None,
             "resume 会话名前缀" => c.session_name_prefix = None,
@@ -331,14 +277,13 @@ pub(crate) const STAGES: &[&str] = &[
     "读会话",
     "判活",
     "账号",
-    "用量",
     "resume",
 ];
 
 /// 流程停下来的原因 —— **两种都必须说得出话**。
 ///
 /// ⚠ 这个枚举本身就是 `S6` 的正题：件里逐字要求「不许静默当成"这个 agent 没有会话"」。
-/// 而通用层今天对同一情形的反应恰恰是**静默**（`usage_query::run` 在一个布局不同的 home 上
+/// 而通用层今天对同一情形的反应恰恰是**静默**（用量聚合那条查询在一个布局不同的 home 上
 /// rc=0、零输出），实测读数见 `PR-S6.md`。两者的差别就是 `L2` 那组接口要补上的东西。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Stop {
@@ -355,7 +300,7 @@ pub(crate) enum Stop {
 ///
 /// 前两段（`发现` / `宣告`）**真的调用通用层的机器**：
 /// [`crate::agents::visible_among`] 的判准与 [`crate::wire::Frame::Hello`] 的序列化。
-/// 后五段（`读会话`/`判活`/`账号`/`用量`/`resume`）**没有过通用层** ——
+/// 后四段（`读会话`/`判活`/`账号`/`resume`）**没有过通用层** ——
 /// 通用层今天在这五段上直呼 `crate::agents::claudecode::…`（27 处里的 22 处），
 /// 没有任何入口收第二种布局。⇒ 这五段是假 agent 拿自己的知识自问自答。
 ///
@@ -493,39 +438,26 @@ pub(crate) fn walk(caps: &FakeCaps, fixture_home: &Path) -> Result<Vec<&'static 
     }
     done.push(STAGES[4]);
 
-    // ── ⑥ 用量。
-    let usage = caps.usage_rows.ok_or(Stop::MissingCapability {
-        stage: STAGES[5],
-        capability: "用量聚合",
-    })?;
-    if usage(fixture_home).is_empty() {
-        return Err(Stop::MissingCapability {
-            stage: STAGES[5],
-            capability: "用量聚合",
-        });
-    }
-    done.push(STAGES[5]);
-
-    // ── ⑦ resume：默认命令 + 命令形 + 会话名前缀。
+    // ── ⑥ resume：默认命令 + 命令形 + 会话名前缀。
     let base = caps.default_command.ok_or(Stop::MissingCapability {
-        stage: STAGES[6],
+        stage: STAGES[5],
         capability: "resume 默认命令",
     })?;
     let cmd = caps.resume_command.ok_or(Stop::MissingCapability {
-        stage: STAGES[6],
+        stage: STAGES[5],
         capability: "resume 命令形",
     })?;
     let prefix = caps.session_name_prefix.ok_or(Stop::MissingCapability {
-        stage: STAGES[6],
+        stage: STAGES[5],
         capability: "resume 会话名前缀",
     })?;
     if base.trim().is_empty() || prefix.trim().is_empty() || !cmd(base, sid).contains(sid) {
         return Err(Stop::MissingCapability {
-            stage: STAGES[6],
+            stage: STAGES[5],
             capability: "resume 命令形",
         });
     }
-    done.push(STAGES[6]);
+    done.push(STAGES[5]);
 
     Ok(done)
 }
@@ -813,7 +745,7 @@ mod tests {
     ///    对每个洞都会"红"，那种红是假的。
     ///
     /// ⚠ 对照着看的是**通用层今天的反应**：同样是"这家的布局它不认识"，
-    /// `usage_query::run` / `search_query::run` / `--session-accounts` 一律 **rc=0 + 零输出**
+    /// 用量聚合那条查询 / `search_query::run` / `--session-accounts` 一律 **rc=0 + 零输出**
     /// （实测读数见 `PR-S6.md`）—— 那正是**静默**。两者的差就是 `L2` 要补的东西。
     #[test]
     fn removing_any_one_capability_stops_the_flow_somewhere_that_can_name_it() {
