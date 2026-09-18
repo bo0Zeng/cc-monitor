@@ -12,6 +12,12 @@ export default tseslint.config(
       // C01：ts-rs 生成物，没人该手动去修它（Phase D 审计 S5）
       "src/generated/**",
       "dist/**",
+      // 🔴 2026-09-18：构建输出已统一改到 `.build/`（`vite.config.ts` 的 `outDir` ＋
+      //   两份 `.cargo/config.toml` 的 `target-dir`）⇒ 上面那条 `dist/**` 从此**罩不住任何东西**。
+      //   漏掉这一条的症状：`npx eslint .` 从 7 个错涨到 **4092 个**，其中 4085 个全在
+      //   `.build/dist/assets/*.js`（打包产物）与 `.build/bridge/**/out/*.js`（Tauri 生成的 API 壳）。
+      //   这正是本文件下面那段注释预言的形状：「每新增一个带脚本的目录，洞就复发一次」。
+      ".build/**",
       "node_modules/**",
       "src/bridge/**",
       "src/backend/**",
