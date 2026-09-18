@@ -115,14 +115,14 @@ describe("KR45D2 账本：实时窗口第一次有「我说过的每一句」", 
 
     expect(rowsOf().map((r) => r.dataset.inputUuid)).toEqual(["u1", "u7"]);
     expect(rowsOf()[0].textContent).toBe("1. 第一句"); // 分母 = 7 条记录里的 2 条主线用户输入
-    expect(toggleOf().textContent).toBe("我说过的 2 句");
+    expect(toggleOf().textContent).toBe("大纲 · 2");
   });
 
   it("一条用户输入都没有 ⇒ 开关禁用（不给一个点了没反应的入口）", () => {
     feed(assistantLine(1, "a1", "只有回复"));
     expect(rowsOf().length).toBe(0);
     expect(toggleOf().disabled).toBe(true);
-    expect(toggleOf().textContent).toBe("我说过的 0 句");
+    expect(toggleOf().textContent).toBe("大纲"); // 0 条不挂计数
   });
 
   it("同一条记录重投（SSH 重连 / 截断重读）不许在清单里记两遍", () => {

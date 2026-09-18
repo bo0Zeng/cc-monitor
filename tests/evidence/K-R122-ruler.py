@@ -64,13 +64,16 @@ BINARY_NEEDLE = "debug/cc-monitor-remote"
 #: 「这一步真编了东西」的认法。射程写在头注第 3 条。
 BUILD_NEEDLE = "cargo build"
 #: e2e 调用行的形状。
-CALL_RE = re.compile(r"bash\s+e2e/assert-pass-floor\.sh\s+(\S+)\s+(\d+)")
+# 〔2026-09-18〕09-17 重组把 e2e/ 搬进 tests/。这里写成**可选前缀**而不是直接改死：
+# 旧写法若哪天冒出来也照样抽得到 ⇒ 不会因为一次搬家就静默抽到零（那正是本尺子
+# 报「抽取器坏了，判不了」要防的事）。
+CALL_RE = re.compile(r"bash\s+(?:tests/)?e2e/assert-pass-floor\.sh\s+(\S+)\s+(\d+)")
 #: 顶层 job 键：恰好两个空格 + 名字 + 冒号（与 `shared_crate_registry` 那把切法同口径）。
 JOB_RE = re.compile(r"^  ([A-Za-z0-9_-]+):\s*$")
 #: 一条步骤的起点。
 STEP_RE = re.compile(r"^      - ")
 #: 脚本里逐字点名的 `e2e/*.sh` 助手（只跟一层，够不着的写在头注里）。
-HELPER_RE = re.compile(r"e2e/([A-Za-z0-9._-]+\.sh)")
+HELPER_RE = re.compile(r"(?:tests/)?e2e/([A-Za-z0-9._-]+\.sh)")
 
 
 def ci_steps(text):
@@ -138,7 +141,10 @@ def suite_script(scripts, suite):
     cmd = scripts.get(f"test:{suite}")
     if not cmd:
         return None
-    m = re.search(r"(e2e/[A-Za-z0-9._-]+)", cmd)
+    # 〔2026-09-18〕重组后 npm 脚本里写的是 `tests/e2e/…`。前缀写成**可选并一起捕获**，
+    # 这样返回的 rel 对新旧两种写法都能被 `ROOT / rel` 解对 —— 旧写法照样抽得到，
+    # 不会因为一次搬家就让整条判据静默落空（那正是本尺子的「判不了」在防的事）。
+    m = re.search(r"((?:tests/)?e2e/[A-Za-z0-9._-]+)", cmd)
     return m.group(1) if m else None
 
 
@@ -150,7 +156,10 @@ def needs_binary(rel):
     text = p.read_text(encoding="utf-8", errors="replace")
     blob = text
     for h in sorted(set(HELPER_RE.findall(text))):
-        hp = ROOT / "e2e" / h
+        # 〔2026-09-18〕重组后助手住 tests/e2e/；两处都试，旧的留着不会静默抽零。
+        hp = ROOT / "tests" / "e2e" / h
+        if not hp.exists():
+            hp = ROOT / "e2e" / h
         if hp.exists():
             blob += hp.read_text(encoding="utf-8", errors="replace")
     return (BINARY_NEEDLE in blob), None

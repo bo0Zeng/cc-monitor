@@ -136,13 +136,66 @@ type QueueItem =
     };
 
 /**
- * 批量调度参数：每个事件循环 tick 处理至多 BATCH_SIZE 条或耗时 BATCH_MS 毫秒，
- * 之后用 setTimeout(0) 让出主线程。replay 会一次性 emit 数千条 jsonl-line，
- * 同步处理会阻塞 click 派发数秒（鼠标光标卡死、滚动可用——native 滚动绕过主线程）。
- * 批量 + 让出后，单批 ≤ BATCH_MS 仍能在 1 帧内完成，UI 响应不再被压垮。
+ * 批量调度参数。replay 会一次性 emit 数千条 jsonl-line，同步处理会阻塞 click 派发数秒
+ * （鼠标光标卡死、滚动可用——native 滚动绕过主线程）。分批 + 让出后 UI 响应不再被压垮。
+ *
+ * - `BATCH_SIZE` / `BATCH_MS`：**猜出来的固定预算**，只在问不到「有没有人在操作」时用
+ *   （见 {@link makeInputPendingProbe}）。
+ * - `BATCH_MS_MAX`：能问的时候的**硬上限**。`isInputPending()` 只报告**输入**事件，
+ *   它不知道"该画一帧了" ⇒ 只听它的话，一个没人碰鼠标的长队列能把主线程占住几秒而它一路说"不急"。
  */
 const BATCH_SIZE = 40;
 const BATCH_MS = 8;
+const BATCH_MS_MAX = 50;
+
+/**
+ * ★ 步 4（`设计/10 §2.4`）：**让开的方式换成不会被规范钳制的那一种。**
+ *
+ * 原来是 `setTimeout(drain, 0)` 重新排自己。HTML 规范对**嵌套超过 5 层**的 timer
+ * 强制最小 4ms ⇒ 真实节奏是「干 8ms、被迫歇 4ms」，利用率只有 2/3；
+ * 上万条记录光排队就要好几秒。`MessageChannel` 同为宏任务，规范**没有**给它这条钳制。
+ *
+ * ⚠ **必须带特性探测**（`§2.4` 逐字要求）。两个生产壳（WebView2 / WebKitGTK）都有它，
+ * 但本模块也在 jsdom / node 里被跑，而且"两个壳都有"是**今天**的事实，不是一条不变量。
+ * 探不到就退回 `setTimeout` —— 慢，但不会静默地一条都不排（那是重放整个停摆）。
+ */
+function makeYieldToMain(run: () => void): () => void {
+  if (typeof MessageChannel === "function") {
+    try {
+      const ch = new MessageChannel();
+      ch.port1.onmessage = (): void => run();
+      return (): void => ch.port2.postMessage(null);
+    } catch {
+      // 建不出来（某些受限环境）⇒ 落到下面的降级，不抛。
+    }
+  }
+  return (): void => {
+    setTimeout(run, 0);
+  };
+}
+
+/**
+ * ★ 步 4：**「干多久」从猜改成问。**
+ *
+ * `navigator.scheduling.isInputPending()` **只有 Chromium 有**
+ * ⇒ Windows 的 WebView2 有、Linux 的 WebKitGTK **没有** ⇒ 探不到就退回固定预算。
+ * 返回 `null` = 这台机器问不了。
+ */
+function makeInputPendingProbe(): (() => boolean) | null {
+  if (typeof navigator === "undefined") return null;
+  const sched = (
+    navigator as Navigator & { scheduling?: { isInputPending?: () => boolean } }
+  ).scheduling;
+  if (!sched || typeof sched.isInputPending !== "function") return null;
+  return (): boolean => {
+    try {
+      return sched.isInputPending!();
+    } catch {
+      // 问不动了就当"有人在操作"——宁可多让一次，也不要把一次异常变成一直干下去。
+      return true;
+    }
+  };
+}
 
 /**
  * v2.3 (issue #1 性能修): 启动重放的 jsonl-batch 后，后端 EventReplay 释放锁，
@@ -318,21 +371,33 @@ export async function bindEvents(
     }
   };
 
+  // 步 4：这台机器能不能问「有没有输入事件在排队」。探一次，之后每条记录问一下
+  //（`isInputPending` 本身很便宜，贵的是猜错）。`null` = 问不了 ⇒ 走固定预算。
+  const askInputPending = makeInputPendingProbe();
+  // 步 4：`drain → drain` 那条自链的让开方式。**只建一次**——
+  // 每批新建一个 `MessageChannel` 是两个 port 的垃圾，且端口不关就是泄漏。
+  const yieldToDrain = makeYieldToMain((): void => drain());
+
   const drain = (): void => {
     const start = performance.now();
     let processed = 0;
-    while (
-      queue.length > 0 &&
-      processed < BATCH_SIZE &&
-      performance.now() - start < BATCH_MS
-    ) {
+    while (queue.length > 0) {
       const item = queue.shift();
       if (item) dispatchItem(item);
       processed += 1;
+      const elapsed = performance.now() - start;
+      if (askInputPending) {
+        // ★ 步 4②：**能问就别猜。** 8ms 之前连问都不问（让开本身要花一次宏任务跳），
+        // 之后一路干到「真有输入事件在排队」或撞上硬上限。
+        if (elapsed >= BATCH_MS && (askInputPending() || elapsed >= BATCH_MS_MAX)) break;
+      } else if (processed >= BATCH_SIZE || elapsed >= BATCH_MS) {
+        // 问不了（WebKitGTK 没有 `isInputPending`）⇒ 退回原来那套固定预算，一字不动。
+        break;
+      }
     }
     if (queue.length > 0) {
-      // 让出主线程一帧再处理下一批
-      setTimeout(drain, 0);
+      // 让出主线程一跳再处理下一批（`MessageChannel`，探不到才退回 `setTimeout`）
+      yieldToDrain();
     } else {
       scheduled = false;
       // Batch5-F17：突发检测进入的 batch 模式没有 batch-end 哨兵可依赖——
@@ -344,11 +409,19 @@ export async function bindEvents(
     }
   };
 
+
   const ensureScheduled = (): void => {
     if (scheduled || queue.length === 0) return;
     scheduled = true;
-    // 用 setTimeout(0) 而非 queueMicrotask，确保批与批之间真正让出
-    // （microtask 同一 tick 内连续清空，无让出效果）
+    // 用宏任务而非 queueMicrotask，确保批与批之间真正让出
+    // （microtask 同一 tick 内连续清空，无让出效果）。
+    //
+    // 🔴 **这一跳仍然是 `setTimeout`，不是 `MessageChannel`** —— 不是漏改：
+    // 规范的 4ms 钳制只打**嵌套层级 > 5** 的 timer，而层级是从「当前正在跑的任务」继承的。
+    // 这一跳是从事件回调里排的（层级 1）⇒ **它本来就不被钳**。
+    // 被钳的只有 `drain → drain` 那条自链，换掉的也正是那一条（见 `yieldToDrain`）。
+    // ⇒ 入口保持 `setTimeout` 还白得一样东西：它在假定时器下是**决定性**的，
+    //    而 `MessagePort` 的投递时机不归假定时器管（实测：`advanceTimersByTime` 推不动它）。
     setTimeout(drain, 0);
   };
 

@@ -63,7 +63,7 @@ tmux server（跑前跑后 `tmux -L default ls` 逐字对比，**9 个会话，�
 | `graylight-daemon-frames` | 12 过 / 0 败 | |
 | `daemon-gate2-acceptance` | 35 过 / 0 败 | ★ 修了它自己开的方子（登记豁免），此前每跑必 RC=1 |
 | `local-backend-supervise` | 7 过 / 0 败 | ★ 修前 7/1 —— 那条 `#[ignore]` 首跑就红，见 `P3 §0h-2` |
-| `usage-probe-acceptance` | 11 过 / 0 败 | |
+| ~~`usage-probe-acceptance`~~ | — | 🔴 〔`设计/50` 09-18〕**整套删了**：用量 ②③ 两轴整轴退役 ⇒ 被测对象没了（不是断言变少了）。CI 里那条 `assert-pass-floor.sh` 的通过下限同拍**整条**摘掉（地板值的家在 `ci.yml` 的调用行，这里不存副本）|
 | `ccm-print-parity` | 12 过 / 0 败 | |
 | `ccm-contract-parity` | 61 过 / 0 败 | |
 | `tmux-target-acceptance` | 26 过 / 0 败 | |
@@ -165,7 +165,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 | job | 套件 |
 |---|---|
 | `e2e-tmux` | tmux-target · ccm-cli · ccm-print-parity · ccm-contract-parity · cc-spawn-uplift · cc-bus-queue-drain · restart · resume · ccm-rbind-title |
-| `e2e-tmux-rust` | usage-probe · inbound-frames · daemon-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · daemon-fork · daemon-sessions-rewatch · daemon-tmux-late-server · daemon-cc-bus |
+| `e2e-tmux-rust` | inbound-frames · daemon-gate2 · local-backend · graylight-frames · restart-frames · resume-frames · daemon-fork · daemon-sessions-rewatch · daemon-tmux-late-server · daemon-cc-bus |
 
 > 〔`K-R72` 09-12〕`tmux-guarded-acceptance.sh` **整套删了**：它的输入源是 `tmux.rs` 那两条
 > 桌面侧 SSH 回落的 builder，回落删净之后它连命令串都取不到 ⇒ 跑不起来。三道门的真机覆盖
@@ -175,7 +175,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 **这些套件刻意都不进本地 `npm test`**（`gate-integrity` 开放问题 1 的决定）：
 `npm test` 要保持「不需要 tmux / 不需要后端就能跑」，否则每个开发动作都变重。
 
-> **代价，如实写在这里**：**本地改了 `shared/ccm`（或 `src/account-restart.ts` /
+> **代价，如实写在这里**：**本地改了 `shared/ccm`（已删，见 `e8f9e08e`；今天是后端的 `ccm`）（或 `src/account-restart.ts` /
 > `src/remote-launch.ts` 这类被上面套件驱动的真源）时，`npm test` 不会有任何反应。**
 > 要拿到信号得手跑，例如 `npm run test:restart` / `npm run test:ccm-cli`；
 > 想连地板一起验就 `bash tests/e2e/assert-pass-floor.sh restart 24`。
@@ -204,7 +204,7 @@ DISPLAY=:80 CCM_NO_DEVTOOLS=1 npx tauri dev &   # 等编译完、窗口出现
 > 互斥），**所以这里刻意不写一个具体条数** —— 本文件正文刚因为「抄来的数字过期」被订正过两次。
 
 > **它此前是 `tests/e2e/*.sh` 里唯一一个连 npm 脚本都没有的套件** —— 只能 `bash tests/e2e/f40-suite.sh` 裸跑，
-> 于是 `src/doc/RELEASING.md:21`「动过滚动/渲染管线就跑一遍」那条 checklist 在肌肉记忆上比别的都难执行。
+> 于是 `src/`src/doc/RELEASING.md`:21`「动过滚动/渲染管线就跑一遍」那条 checklist 在肌肉记忆上比别的都难执行。
 > U0 补了 `npm run test:f40`。**补脚本 ≠ 进 CI**：它仍然是手动套件，前置照旧。
 
 ### tmux 隔离（E41 已解，2026-07-30）

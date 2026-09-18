@@ -85,7 +85,6 @@
   --icon-settings: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 6h5.2a3 3 0 0 1 5.6 0H21v2h-7.2a3 3 0 0 1-5.6 0H3V6zm0 10h11.2a3 3 0 0 1 5.6 0H21v2h-1.2a3 3 0 0 1-5.6 0H3v-2z'/%3E%3C/svg%3E");
   --icon-history: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm-1 3v6l5 3 .9-1.6L13 12V7h-2z'/%3E%3C/svg%3E");
   --icon-panorama: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 4.5 13.6 8l-.5 1.9-7.6-3.5.5-1.9zM7.6 12.6l6-3.3 1 1.8-6 3.3-1-1.8z'/%3E%3Ccircle cx='5' cy='5.5' r='3'/%3E%3Ccircle cx='16' cy='9.5' r='3'/%3E%3Ccircle cx='7' cy='16.5' r='3'/%3E%3Ccircle cx='18' cy='19' r='3'/%3E%3Cpath d='M9.4 15.4l6.6 2.6-.7 1.9-6.6-2.6.7-1.9z'/%3E%3C/svg%3E");
-  --icon-usage: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M4 20V10h4v10H4zm6 0V4h4v16h-4zm6 0v-7h4v7h-4z'/%3E%3C/svg%3E");
   --icon-grid: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z'/%3E%3C/svg%3E");
   --icon-folder: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 5h6.6l2 2H21a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z'/%3E%3C/svg%3E");
   --icon-keyboard: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 6h20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zm3 3v2h2V9H5zm4 0v2h2V9H9zm4 0v2h2V9h-2zm4 0v2h2V9h-2zM5 13v2h2v-2H5zm4 0v2h6v-2H9zm8 0v2h2v-2h-2z'/%3E%3C/svg%3E");
@@ -148,7 +147,6 @@ body.viewer-mode #tab-bar-resizer,
 body.viewer-mode .settings-trigger,
 body.viewer-mode .history-trigger,
 body.viewer-mode .panorama-trigger,
-body.viewer-mode .usage-trigger,
 body.viewer-mode .sftp-trigger,
 body.viewer-mode .grid-monitor-trigger {
   display: none;
@@ -385,7 +383,6 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 .settings-trigger::before,
 .history-trigger::before,
 .panorama-trigger::before,
-.usage-trigger::before,
 .grid-monitor-trigger::before,
 .sftp-trigger::before,
 .status-cmdk-icon::before {
@@ -421,11 +418,6 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 .panorama-trigger::before {
   -webkit-mask-image: var(--icon-panorama);
   mask-image: var(--icon-panorama);
-}
-/* 用量：柱状图 */
-.usage-trigger::before {
-  -webkit-mask-image: var(--icon-usage);
-  mask-image: var(--icon-usage);
 }
 /* 多 agent 监控：2×2 网格 */
 .grid-monitor-trigger::before {
@@ -491,30 +483,6 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   z-index: 2;
 }
 .panorama-trigger:hover {
-  background: var(--overlay-hover);
-  color: var(--text);
-}
-
-/* F88a：用量视图入口——顶栏，全景按钮左边（right 再 +32）。 */
-.usage-trigger {
-  position: absolute;
-  top: 4px;
-  right: 104px;
-  width: 28px;
-  height: 28px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: transparent;
-  border: none;
-  color: var(--text-2);
-  cursor: pointer;
-  border-radius: 4px;
-  font: inherit;
-  font-size: 15px;
-  z-index: 2;
-}
-.usage-trigger:hover {
   background: var(--overlay-hover);
   color: var(--text);
 }
@@ -595,111 +563,9 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   background: var(--overlay-hover);
 }
 
-/* F88a：用量视图 overlay（照 history-view 的 body-level fixed 范式）。 */
-.usage-view {
-  position: fixed;
-  inset: 0;
-  z-index: 50;
-  background: var(--bg);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-.usage-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--border-strong);
-  flex-shrink: 0;
-}
-.usage-back,
-.usage-dim-btn {
-  background: transparent;
-  border: 1px solid var(--border-strong);
-  color: var(--text-2);
-  cursor: pointer;
-  font: inherit;
-  font-size: var(--font-size-small);
-  padding: 4px 10px;
-  border-radius: 4px;
-}
-.usage-dim-btn:hover {
-  background: var(--overlay-hover);
-  color: var(--text);
-}
-.usage-dim-btn.active {
-  background: var(--overlay-hover);
-  color: var(--text);
-  border-color: var(--text-2);
-}
-.usage-note {
-  padding: 6px 14px;
-  font-size: var(--font-size-xs);
-  color: var(--text-faint);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.usage-status {
-  padding: 6px 14px;
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  flex-shrink: 0;
-}
-.usage-list {
-  flex: 1;
-  overflow: auto;
-  padding: 0 14px 14px;
-}
-.usage-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: var(--font-size-small);
-}
-.usage-table th,
-.usage-table td {
-  padding: 4px 10px;
-  border-bottom: 1px solid var(--border);
-  text-align: right;
-  white-space: nowrap;
-}
-.usage-table th {
-  position: sticky;
-  top: 0;
-  background: var(--bg-2);
-  color: var(--text-2);
-  z-index: 1;
-}
-/* #67：表头可点排序——给出可点提示(手型 + hover)，当前排序列高亮(带 ▼/▲)。 */
-.usage-table th.usage-th-sortable {
-  cursor: pointer;
-  user-select: none;
-}
-.usage-table th.usage-th-sortable:hover {
-  color: var(--text);
-  /* 审计:原写 var(--bg-3, var(--bg-2)) —— `--bg-3` 全仓未定义、回退值恰等于表头自身底色 → hover 无底色反馈。
-     改用仓内既有的 hover 令牌(与 tab / 列表项等一致)。 */
-  background: var(--overlay-hover);
-}
-.usage-table th.usage-th-sortable.active {
-  color: var(--text);
-  font-weight: 600;
-}
-.usage-table td.usage-key,
-.usage-table th:first-child {
-  text-align: left;
-  max-width: 340px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  font-family: var(--font-mono);
-}
-.usage-table .usage-total-row td {
-  font-weight: 600;
-  border-top: 2px solid var(--border-strong);
-  color: var(--text);
-}
-
-/* F91（#27）：多 agent 监控 —— 全屏 overlay（照 usage-view 范式）。 */
+/* F91（#27）：多 agent 监控 —— 全屏 overlay。
+   〔墓碑 2026-09-18〕原文写「照 usage-view 范式」，而 `.usage-view` 已随用量 ②③ 两轴整轴退役
+   （`设计/50`）。那个范式指的是「全屏 overlay ＋ 表格」这一套；今天同形的活体是 `.panorama-*`。 */
 .grid-monitor {
   position: fixed;
   inset: 0;
@@ -3054,7 +2920,6 @@ body.settings-window-mode .settings-panel {
 body.settings-window-mode .settings-trigger,
 body.settings-window-mode .history-trigger,
 body.settings-window-mode .panorama-trigger,
-body.settings-window-mode .usage-trigger,
 body.settings-window-mode .sftp-trigger,
 body.settings-window-mode .grid-monitor-trigger {
   display: none;
@@ -3158,36 +3023,6 @@ body.settings-window-mode .grid-monitor-trigger {
 .remote-status-na,
 .remote-status-unknown {
   color: var(--text-3, var(--text-2));
-}
-/* S10：用量视图里的「账号 plan 窗口」块（按需读取）。 */
-.usage-plan {
-  border-bottom: 1px solid var(--border, var(--bg-2));
-  margin-bottom: 10px;
-  padding: 8px 14px;
-}
-.usage-plan-label {
-  color: var(--text-2);
-  font-size: var(--font-size-small);
-  margin-bottom: 6px;
-}
-.usage-plan-result {
-  margin-top: 8px;
-}
-.usage-plan-who {
-  color: var(--text-2);
-  font-size: var(--font-size-small);
-}
-.usage-plan-row {
-  padding: 2px 0;
-}
-/* 失败要看得见 —— 这一块的全部意义就是「宁可说不知道，也不给错数字」。 */
-.usage-plan-fail {
-  color: var(--danger, var(--text));
-}
-.usage-plan-raw {
-  display: block;
-  margin: 6px 0;
-  width: 100%;
 }
 
 /* S7：「有改动待重启」常驻条。空时 `hidden`，不占位。
@@ -4715,6 +4550,34 @@ body.settings-window-mode .grid-monitor-trigger {
   opacity: 0.55;
 }
 
+/* 🔴 `设计/10` 步 2：开关按钮的样式 —— 在这之前它**全仓零条规则**
+   （`grep -c '\.user-inputs-toggle' styles.css` = 0），于是在暗色主题上以浏览器默认按钮
+   渲染：浅灰底、黑字、系统边框。那不是"没来得及美化"，是**一处白底控件贴在深色界面上**。
+   ⚠ 长相本身在沙箱里验不了（jsdom 无布局无渲染）—— 与 `.live-user-inputs` 同一条诚实边界。
+   有判据的只有「规则在不在」。
+   ⚠ 声明与 `.tab-archive-toggle` 同族（同一套 token、同样的 2px/8px 小按钮），
+   刻意不抽公共类：那两个按钮住在两个不相干的界面里，抽出来只会让下一个改其中一个的人
+   连带改坏另一个。 */
+.user-inputs-toggle {
+  background: var(--bg-2);
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  color: var(--text-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 8px;
+}
+.user-inputs-toggle:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--overlay-hover);
+}
+/* 0 条 ⇒ `disabled`（JS 那侧已有这个行为，这里只是让它看起来也像禁用）。 */
+.user-inputs-toggle:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* === K-R45 乙：实时窗口那一侧的**位置**（只有位置，长相还是上面那三条共用规则） ===
    实时 tab 没有查看器那样的顶栏可以塞开关 —— 每个 tab 只有一个 `.stream`
    （`position:absolute; inset:0`，叠在 `#message-stream` 里）。⇒ 开关 + 面板做成一块
@@ -4722,9 +4585,16 @@ body.settings-window-mode .grid-monitor-trigger {
    🔴 `visibility` 而不是 `display`：与 `.stream` 同一套机制（切 tab 0 reflow，见上面那段注释）。
    ⚠ **长相在沙箱里验不了**（jsdom 无布局、无真渲染）—— 与上一轮
    `.session-viewer-inputs-toggle` 同一条诚实边界，登记在件 `§5.6`。 */
+/* 🔴 `设计/10` 步 2（`§3` 的 E2）：**挪到按钮行之下。**
+   原来是 `top: 8px` —— 而顶栏那六个入口（`.settings-trigger` 一族）是 `#app` 的绝对定位子节点，
+   带宽 `top:4px` + `height:28px` ⇒ 占 **4…32px**，`z-index: 2`。
+   这一层 `z-index: 3` 且 `.active` 时 `pointer-events: auto`
+   ⇒ 它**压住那六个按钮，连点击一起吃掉**（用户点设置/历史没反应的根因）。
+   ⇒ `top` 改成 **40px**：按钮行底边 32px 之下再留 8px 呼吸位，两者不再有任何重叠带。
+   ⚠ 这一步只止血。独立悬浮层本身在步 6 并进 Ctrl+F 那块面板时整个删掉（`§2.2b ④`）。 */
 .live-user-inputs {
   position: absolute;
-  top: 8px;
+  top: 40px;
   right: 24px;
   z-index: 3;
   max-width: min(420px, 60%);
@@ -6153,12 +6023,6 @@ body.settings-window-mode .grid-monitor-trigger {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* F10：折叠态用量摘要——菜单展开懒加载完当前账号用量后才有内容，空串时不占视觉重量。 */
-.status-account-usage {
-  font-size: var(--font-size-small);
-  color: var(--text-faint);
-  white-space: nowrap;
-}
 /* account-ux U6：chip 上的 ⚠k 不一致计数（k 个活会话不在当前账号）。仅信息，点 chip
    进菜单才有对齐入口 → 不做成按钮、不抢眼，只用 warn 色示意。 */
 .account-picker-action.danger {
@@ -6256,12 +6120,6 @@ body.settings-window-mode .grid-monitor-trigger {
       ⇒ 谁来统一，先决定统一到哪一个，并且知道它同时改 chip 与设置两处的健康态。 */
 .account-picker-status.warn {
   color: var(--warn);
-}
-/* F10：菜单里当前账号行的用量摘要——只在懒加载完成后才有内容。 */
-.account-picker-usage {
-  flex: none;
-  color: var(--text-faint);
-  font-size: 0.85em;
 }
 .account-picker-info {
   padding: 6px 8px;
@@ -6459,7 +6317,7 @@ body.settings-window-mode .grid-monitor-trigger {
   overflow-wrap: anywhere;
 }
 
-/* 账号表：CSS Grid 定列 —— ★ / 头像 / 名 / 邮箱 / 状态 / 用量(F10) / 路径 / 操作。
+/* 账号表：CSS Grid 定列 —— ★ / 头像 / 名 / 邮箱 / 状态 / 路径 / 操作。
    路径列吃掉剩余宽度并单行省略（全文在 title 里），操作列右对齐。 */
 /* 列定义放在**表**上、行用 subgrid 继承它 —— 否则每行各自是一个独立 grid，`auto`/`fr` 轨道
    按各自那一行的内容算宽，列**跨行对不齐**（当前账号那行没有「设为当前账号」按钮、in-place 账号
@@ -6469,10 +6327,12 @@ body.settings-window-mode .grid-monitor-trigger {
   display: grid;
   /* 邮箱权重 > 路径：isolated 账号的 configDir 就是 <acctsDir>/<name>，行与行之间往往只差最后
      一个字符，前几十字符逐行重复；而邮箱才是分辨"学校号/私人号"的字段。路径要全文有 title，
-     也有「复制路径」按钮兜着。F10：用量列（懒加载"查看用量"按钮/结果短句）权重给 1fr——
-     结果文案长度不定（"会话窗口 38%·重置2h14m"这类），比路径列更需要弹性空间。 */
+     也有「复制路径」按钮兜着。
+     🔴 〔`设计/50` 09-18〕**8 轨道 → 7**：F10 那条用量列（原第 6 条 `minmax(0, 1fr)`）随用量
+     ③ 轴整轴退役 —— 行里的用量单元格已经不渲染了，留着它就是最后一条轨道空着、整表右偏。
+     条数契约由 `tests/settings/accounts-section.vitest.ts`「每行子元素数 == grid 列数(7)」守。 */
   grid-template-columns:
-    14px 16px minmax(0, auto) minmax(0, 1.2fr) auto minmax(0, 1fr)
+    14px 16px minmax(0, auto) minmax(0, 1.2fr) auto
     minmax(0, 0.8fr) auto;
   border: 1px solid var(--border-strong);
   border-radius: 6px;
@@ -6547,29 +6407,6 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 .accounts-row-badge.warn {
   color: var(--warn);
-}
-/* F10：用量单元格——懒加载按钮/结果短句，字号与其余状态类列（badge/dir）一致，不额外抢眼。 */
-.accounts-row-usage {
-  font-size: var(--font-size-small);
-  color: var(--text-faint);
-  overflow-wrap: anywhere;
-  min-width: 0;
-}
-.accounts-usage-btn,
-.accounts-usage-refresh,
-.accounts-usage-copy-raw {
-  font-size: var(--font-size-small);
-  padding: 1px 6px;
-}
-.accounts-usage-pending {
-  color: var(--text-faint);
-  font-style: italic;
-}
-.accounts-usage-outcome {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex-wrap: wrap;
 }
 .accounts-row-actions {
   display: flex;

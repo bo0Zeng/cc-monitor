@@ -26,7 +26,6 @@ import { HistoryView } from "./views/history";
 import { SessionViewer } from "./views/session-viewer"; // F77：点 agent 看记录复用只读会话查看器
 import { PanoramaView } from "./views/panorama";
 import { InboxView } from "./views/inbox-view";
-import { UsageView } from "./views/usage-view";
 import { CcBusView } from "./views/cc-bus-view";
 import { GridMonitorView } from "./views/grid-monitor";
 import { CommandBarView, type Command } from "./views/command-bar";
@@ -177,7 +176,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   document.getElementById("app")?.appendChild(agentsPanel.popoverElement);
 
   // F88b（#52）：context% HUD chip——活跃会话「最新一轮 prompt token ÷ 模型上限」实时占用。
-  // 挂 agents chip 旁；TabManager.onActiveUsageChanged 喂数据；点击打开用量视图（下方注入）。
+  // 挂 agents chip 旁；TabManager.onActiveUsageChanged 喂数据。**只读 chip，不可点** ——
+  // 它当初点开的那个跨会话聚合视图（`views/usage-view.ts`）已随 `设计/50` 退役。
   const usageHud = new UsageHud();
   status.appendChild(usageHud.summaryElement);
 
@@ -485,24 +485,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
   document.getElementById("app")?.appendChild(panoramaTrigger);
 
-  // F88a：用量视图入口 —— 顶栏右侧，紧邻全景按钮左边。自挂 body 作 fixed overlay。
-  // 只 token 不 $（已花费≠配额，本地推不出配额）。
-  const usageView = new UsageView();
-  const usageTrigger = document.createElement("button");
-  usageTrigger.type = "button";
-  usageTrigger.className = "usage-trigger";
-  usageTrigger.title = "用量（token 已花费）";
-  usageTrigger.setAttribute("aria-label", "打开用量视图");
-  usageTrigger.addEventListener("click", () => {
-    if (usageView.isVisible()) usageView.close();
-    else void usageView.open();
-  });
-  document.getElementById("app")?.appendChild(usageTrigger);
-  // F88b：点 context% HUD chip → 也开用量视图（chip 是活跃会话实时占用，视图是跨会话汇总，互补）
-  usageHud.onClick(() => {
-    if (!usageView.isVisible()) void usageView.open();
-  });
-
   // F91（#27）：多 agent 并排监控入口 —— 顶栏右侧一排（🗂 左边，right:168px）。跨机器只读
   // mission-control 状态板（一屏看所有会话实时状态，点卡片跳会话；只读——不派发/不驱动 agent）。
   const gridMonitorView = new GridMonitorView(tabs);
@@ -550,7 +532,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       { id: "open-panorama", title: "打开代码全景", keywords: "panorama 全景 code", hint: chordHint("app.toggle-panorama"), run: () => { if (!panoramaView.isVisible()) void panoramaView.open(); } },
       // devbench F03b：**开 overlay 属命令面板首刀允许的只读动作**（写发生在 overlay 内的保存上）。
       { id: "open-inbox", title: "打开收件箱", keywords: "inbox 收件箱 计划 planned-build 注入", run: () => { if (!inboxView.isVisible()) void inboxView.open(); } },
-      { id: "open-usage", title: "打开用量视图", keywords: "usage token 用量", run: () => { if (!usageView.isVisible()) void usageView.open(); } },
       { id: "open-cc-bus", title: "打开 cc-bus 驾驶舱", keywords: "cc-bus bus agent 驾驶舱 通信", run: () => { if (!ccBusView.isVisible()) ccBusView.open(); } },
       { id: "open-grid", title: "打开多 agent 监控", keywords: "grid monitor 监控 agent 并排", run: () => { if (!gridMonitorView.isVisible()) gridMonitorView.open(); } },
       { id: "open-settings", title: "打开设置", keywords: "settings 设置 preferences", hint: chordHint("app.open-settings"), run: () => void commands.open_settings_window() },

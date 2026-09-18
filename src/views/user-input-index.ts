@@ -96,9 +96,22 @@ function plainText(content: unknown): string {
   return "";
 }
 
-/** 把多行/多空白压成一行，再按 `EXCERPT_MAX` 截断（清单一行一条，别把布局撑爆）。 */
+/**
+ * 把多行/多空白压成一行，再按 `EXCERPT_MAX` 截断（清单一行一条，别把布局撑爆）。
+ *
+ * `设计/17 §2.1`：这里原本是**整条正文**过一遍 `/\s+/g`，只为取 80 个字 ——
+ * 【现打】44 万字符 **11.56 ms**，是那一轮全部现打读数里最大的单条开销；
+ * 而且它在窗口门控**之前**跑，收纳不建卡的记录也照付。
+ * 改法（§2.1 逐字）：**先截断再折叠**，O(len) → O(1)。
+ */
 function toExcerpt(text: string): string {
-  const flat = text.replace(/\s+/g, " ").trim();
+  const head = text.length > EXCERPT_MAX * 8 ? text.slice(0, EXCERPT_MAX * 8) : text;
+  let flat = head.replace(/\s+/g, " ").trim();
+  // 边界：前缀里若几乎全是空白（640 个空格 + 正文），截过再折叠会少字。
+  // 折叠后仍不够长就退回整条 ⇒ 摘要语义**逐字不变**。这一支只在病态输入上走。
+  if (flat.length < EXCERPT_MAX && head.length < text.length) {
+    flat = text.replace(/\s+/g, " ").trim();
+  }
   return flat.length > EXCERPT_MAX ? `${flat.slice(0, EXCERPT_MAX)}…` : flat;
 }
 

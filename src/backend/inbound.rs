@@ -84,7 +84,6 @@ pub const COMMANDS: &[&str] = &[
     "capture-pane",
     "kill",
     "launch",
-    "oneshot-session",
     "ping",
     "resolve",
 ];
@@ -479,22 +478,6 @@ pub(crate) const REGISTRY: &[CommandSpec] = &[
         takes_input: true,
         run: Run::Blocking(|r| {
             crate::control::capture_pane::capture_for_inbound(&r.args).map(Some)
-        }),
-    },
-    CommandSpec {
-        name: "oneshot-session",
-        doc_anchor: Some("#### `oneshot-session`"),
-        codes: &[
-            "invalid_args",
-            "no_tmux",
-            "name_taken",
-            "create_failed",
-            "watchdog_failed",
-        ],
-        fields: &["handle", "height", "session", "slug", "ttlSecs", "width"],
-        takes_input: true,
-        run: Run::Blocking(|r| {
-            crate::control::oneshot_session::start_for_inbound(&r.args).map(Some)
         }),
     },
     // F04a：**第一条破坏性命令。** 三道门在 `control/gate::admit_destructive`，
@@ -1077,7 +1060,6 @@ mod tests {
             "bus-kill",
             "bus-state",
             "capture-pane",
-            "oneshot-session",
         ] {
             assert!(
                 matches!(d(c), Disposition::SpawnBlocking(..)),
@@ -1097,7 +1079,6 @@ mod tests {
             "bus-kill",
             "bus-state",
             "capture-pane",
-            "oneshot-session",
         ];
         let missing: Vec<&&str> = COMMANDS.iter().filter(|c| !covered.contains(c)).collect();
         assert!(
@@ -1490,7 +1471,6 @@ mod structure_guards {
                     | "bus-kill"
                     | "bus-state"
                     | "capture-pane"
-                    | "oneshot-session"
             );
             let is_blocking = matches!(spec.run, Run::Blocking(_));
             assert_eq!(
@@ -1520,7 +1500,6 @@ mod structure_guards {
             "bus-kill",
             "bus-state",
             "capture-pane",
-            "oneshot-session",
         ];
         let missing: Vec<&str> = super::REGISTRY
             .iter()

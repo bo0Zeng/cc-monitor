@@ -18,7 +18,8 @@
  * ② **把收尾的 `if (failed > 0) … throw` 删掉** ⇒ 测试还在跑、还在打 `✗`，退出码照样 0。
  *
  * ②比①更重（表面上一切正常），而且**一行编辑就能重开**。Phase D 审计实测：
- * 删掉 `pricing.test.ts` 的收尾 + 让一条断言必然失败 ⇒ `npm run test:pricing` **RC=0**。
+ * 删掉 `context-limit.test.ts`（当时叫 `pricing.test.ts`）的收尾 + 让一条断言必然失败 ⇒
+ * `npm run test:context-limit` **RC=0**。
  * 15 套 e2e 早有 `assert-pass-floor.sh` 的运行期 PASS 数地板兜这一类，这 16 套 **242 条**一直没有。
  *
  * > 主计划把它记成「既无断言地板又被 `coverage.exclude` 排掉，双重不设防」——
@@ -80,8 +81,15 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
   ["test:history-cache", "tests/views/history-cache.test.ts", 8],
   ["test:history-prefs", "tests/views/history-prefs.test.ts", 18],
   ["test:history-actions", "tests/views/history-actions.test.ts", 10],
-  ["test:usage-pivot", "tests/views/usage-pivot.test.ts", 14],
-  ["test:pricing", "tests/views/pricing.test.ts", 6],
+  // 🔴 〔`设计/50` 删用量 09-18〕原先这里有 `["test:usage-pivot", "tests/views/usage-pivot.test.ts", 14]`。
+  // 用量 ② 轴整轴退役 ⇒ 套件文件整删（**被测对象没了**，不是把测试删光了）。
+  // ⚠ **`package.json` 那一半不在本轮写区里**：`test:usage-pivot` 与 `test:usage-probe`
+  //    两条 script、以及 `test` 那条 `&&` 链里的 `npm run test:usage-pivot`，要由
+  //    改 `package.json` 的那一路同拍摘掉 —— 在那之前本文件的 b/c 两条会红，已随本件上报。
+  // `设计/50` §5 步 12：`views/pricing.ts` → `views/context-limit.ts`（只剩 context 上限那半，
+  // 名字名不副实），套件与脚本名同拍改。条数 6 → 5：`equivalentInputTokens` 那一例随 ② 轴
+  // 退役（`RELATIVE_COST` 的唯一消费者是用量视图）。
+  ["test:context-limit", "tests/views/context-limit.test.ts", 5],
   ["test:session-backend", "tests/session-backend.test.ts", 10], // P3s-Y2 +1（新造名字必须过铸造口）
   ["test:panorama-session-files", "tests/panorama/session-files.test.ts", 7],
   ["test:launch-dimensions", "tests/launch-dimensions.test.ts", 28],
@@ -95,7 +103,11 @@ const NODE_SUITES: readonly (readonly [string, string, number])[] = [
  * 这是它相对 a 条的全部价值：a 比的是「文件 vs 登记」，登记本身是可编辑的；
  * 这条比的是「磁盘 vs 一个常量」。
  */
-const TOTAL_FLOOR = 244; // F13：242 → 244（棘轮往上拧 = 加强）
+// 🔴 〔`设计/50` 删用量 09-18〕**244 → 237**，本条**第一次往下走**，写清为什么它不是放宽：
+// `tests/views/usage-pivot.test.ts` 整份删除（14 条）＋ `context-limit.test.ts` 少一条（6 → 5）
+// = −15；而同期别处 +8（现打全仓 237）。⚠ **这个数下降只有一种正当理由：被测对象没了。**
+// 复算命令：遍历 `tests/**/*.test.ts` 数行首 `test(`（本文件 `allTestTsFiles` 用的同一把尺子）。
+const TOTAL_FLOOR = 237;
 
 /** 判定一条 npm 命令是不是「用 tsx 跑某个 `.test.ts`」。`tsx …` 与 `npx tsx …` 都算。 */
 const TSX_SUITE_CMD = /(^|\s)(npx\s+)?tsx\s+(--\S+\s+)*(\S+\.test\.ts)\s*$/;

@@ -262,7 +262,23 @@ const PROTO_VERSION: u32 = 1;
 ///   归发版那一拍，本轮**没做**（本工作树也没铺 `src/bridge/embedded-daemons/` ⇒ 不涉及 re-embed）。
 ///   🔴 **别把它读成「驾驶舱那条读面接上后端了」**：本件只出后端这一侧的命令，
 ///   monitor 的 `read_cc_bus_state` **一个字节没动**（那是下一件）。
-const BUILD_ID: &str = "p2j-bus-state";
+///
+/// - p2k-usage-retired〔`设计/50` 删用量〕：**减法那一侧的第一条** —— 两条子命令与一条帧面命令
+///   同拍**退役**（`SUBCOMMANDS` 27 → 25：`--usage` ＋ `--oneshot-session`；
+///   `inbound::REGISTRY` 与 `COMMANDS` **11 → 10**：`oneshot-session`）。
+///   起因是产品裁定：用量的**聚合轴**（后端服务端聚合 `--usage`）与**探针轴**
+///   （一次性会话跑 `/usage` 抓屏）两轴整轴不做了；`oneshot-session` 这条原语当初
+///   （`K-R87`）就是为探针建的，探针没了它零生产调用方 ⇒ 随之退役。
+///   ⚠ **`capture-pane` 不在这一刀里**：拉屏预览真在用它（`tmux.rs::capture_via_daemon`）。
+///   ⚠ **必须 bump，而这一次的理由与前九次相反**：前九次是「新能力在旧 daemon 上休眠」，
+///   这一次是**旧 daemon 上那三条还在**，而新 monitor 不再调它们 ——
+///   真正会出事的是**反向**：一台装着新 daemon 的远端，旧 monitor 仍会去调
+///   `--usage` / `ch:oneshot-session`，得到 `unknown argument` / `Unsupported`。
+///   判「这台机上的 daemon 是不是我们这一版」看的就是 build_id ⇒ 减法同样要 bump，
+///   否则「它变了」这件事在协议面上无人可知。
+///   ★ 同 p2d / p2e / p2g / p2h / p2i / p2j 如实登记：这一半是**源码半**，
+///   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**。
+const BUILD_ID: &str = "p2k-usage-retired";
 
 /// 身份戳的两个界标。**闭集只有这一处住址**（`brief` 13b）——
 /// `src/bridge/build.rs` 从本文件的源码里抠这两个串（同 `extract_build_id` 那条既有机制），
@@ -639,10 +655,13 @@ mod fourth_face_tests {
         //    各自登记了 `no_tmux`（它们都要起 tmux），**这张表是从 `codes` 派生的**
         //    ⇒ 它们自动进表。这正是本条报错文案里逐字预言的那一形：
         //    「本条红未必是错……那就把这里的期望值补上」。
+        //    🔴 〔`设计/50` 删用量〕**4 → 3**：`oneshot-session` 随用量 ③ 轴整轴退役
+        //    （`control/oneshot_session.rs` 整删、`inbound::REGISTRY` 11 → 10）。
+        //    `capture-pane` **留着**（拉屏预览在用），别把两条一起读成退役。
         //    ⚠ 顺序按 `REGISTRY` 的排列，不是字典序。
         assert_eq!(
             names,
-            vec!["capture-pane", "oneshot-session", "kill", "launch"],
+            vec!["capture-pane", "kill", "launch"],
             "没有 tmux 的那台机器上，做不到的恰好是 `REGISTRY` 里登记了 `{NO_TMUX}` 的那几条。\n\
              ⚠ 本条红**未必是错**：你要是新加了一条会回 `{NO_TMUX}` 的命令，它已经自动进表了\n\
              （这张表是从 `codes` 派生的，不是手写的）—— 那就把这里的期望值补上。\n\
@@ -694,6 +713,7 @@ mod fourth_face_tests {
             //   这一步才是「不是编译期常量」的正面证据 —— 上面两组各自都只证了一半。
             // 🔴 `K-R104`：`2` → **4**（`capture-pane` / `oneshot-session` 也登记了
             //    `no_tmux`，这张表从 `codes` 派生 ⇒ 自动进表）。
+            // 🔴 〔`设计/50`〕**4 → 3**：`oneshot-session` 随用量 ③ 轴退役。
             //    ⚠ 这个数**不许写成地板** —— 「有 tmux 的机器上一条都不报」那一半是
             //    `is_empty()`，而这一半要的是「恰好是登记了 `no_tmux` 的那几条」。
             let today = unavailable_from(Some(false)).len();
@@ -772,11 +792,11 @@ mod fourth_face_tests {
         .map(|u| u.command.clone())
         .collect();
         // 🔴 `K-R104`：同上一条，2 → **4**（`capture-pane` / `oneshot-session` 自动进表）。
+        // 🔴 〔`设计/50`〕**4 → 3**：`oneshot-session` 随用量 ③ 轴退役。
         assert_eq!(
             names,
             vec![
                 "capture-pane".to_string(),
-                "oneshot-session".to_string(),
                 "kill".to_string(),
                 "launch".to_string()
             ],
@@ -1230,10 +1250,6 @@ const SUBCOMMANDS: &[&str] = &[
     "--list-subagents",
     "--list-projects",
     "--list-sessions",
-    // `K-R87`：带看门狗的一次性会话。登记在这里的理由与上面那几条逐字相同 ——
-    // `is_query_mode` 那道**闸门**读的就是本表，不在表里 ⇒ 被当未知 flag ⇒
-    // 打一行 warn 之后**照常进流模式**，调用方拿到一堆 jsonl 行而不是那个会话名。
-    "--oneshot-session",
     "--ping",
     "--read-session",
     "--read-session-from-offset",
@@ -1245,7 +1261,6 @@ const SUBCOMMANDS: &[&str] = &[
     "--search",
     "--session-accounts",
     "--tmux-notify",
-    "--usage",
 ];
 
 /// ③ 子命令自己的选项：只在某条 [`SUBCOMMANDS`] 之后才有意义，daemon 顶层不解释它们。
@@ -1412,42 +1427,6 @@ mod stream_flag_tests {
             )
         });
     }
-
-    /// ★★ `KR87D1` 的**接线那一半**：`--oneshot-session` 真的**够得到**那条原语。
-    ///
-    /// # 失效方向（件文件逐字点名的那个）：**别判「串里有 `setsid` / `sleep` 字面量」**
-    ///
-    /// `control/ccm/plan.rs` 今天就有一条同形的串（信任框那条兜底），按字面量判会**恒绿**。
-    /// 本条断的是两处**承重点**，两处都不是「某个字面量出现过」：
-    ///
-    /// 1. **闸门**：`is_query_mode` 认它。不认 ⇒ 被当未知 flag ⇒ 打一行 warn 之后
-    ///    **照常进流模式**，CLI 面看上去「存在」却永远调不到（`p2b` 08-13 实测过这个形状）。
-    /// 2. **分派臂**：生产段里那一行**整行**就是「把它交给原语本体」。
-    ///    整行相等（`pin_line`）比 `contains` 强一格：撑大成别的表达式时那一行就不见了。
-    ///
-    /// ⚠ 「那个会话到点真的不在了」不在本条射程内 —— 那一格由
-    /// `control::oneshot_session::tests::the_session_is_gone_at_its_deadline_while_its_neighbour_stays`
-    /// 在**真 tmux**（隔离 socket）上断，且带一个同台 server 的阴性对照。两条合起来才是 `KR87D1`。
-    #[test]
-    fn the_oneshot_session_subcommand_is_actually_reachable() {
-        let flag = "--oneshot-session".to_string();
-        assert!(
-            super::is_query_mode(std::slice::from_ref(&flag)),
-            "`--oneshot-session` 没进 `is_query_mode` 的闸门 —— 它会静默变成「起了个流」"
-        );
-        let prod = crate::guard_support::production_code(include_str!("main.rs"));
-        guard_core::pin_line(
-            &prod,
-            "Some(\"--oneshot-session\") => control::oneshot_session::run(&args),",
-        )
-        .unwrap_or_else(|e| {
-            panic!(
-                "一次性查询的分派里没有那条把 `--oneshot-session` 交给原语本体的臂：{e}\n\
-                 ⇒ 闸门放它进查询模式，而下面没人接 ⇒ 它落进 `_` 臂走历史查询、\n\
-                 报 `unknown argument` + exit 2。"
-            )
-        });
-    }
 }
 
 #[tokio::main]
@@ -1491,7 +1470,7 @@ async fn main() {
     let (args_rest, with_bg, tail_only) = split_stream_flags(args);
     let args = args_rest;
     if is_query_mode(&args) {
-        // 一次性查询模式：--search 全文搜索（#28）/ --usage 用量聚合（F88a-remote）/
+        // 一次性查询模式：--search 全文搜索（#28）/
         // --resolve advisor（daemon-04，读 stdin ResumeSpec→stdout CommandPlan），其余走历史查询（#16）。
         let code = match args.first().map(String::as_str) {
             // P4b：hook 子进程走这条 —— 校验身份后给 daemon 发 SIGUSR1，**不碰文件系统**。
@@ -1501,11 +1480,9 @@ async fn main() {
             Some("--capture-pane") => control::capture_pane::run(&args),
             // `K-R87`：起一个到点自己会死的一次性会话。看门狗是**外部进程**，
             // 不在本 crate 的源码文本里 —— 零定时器铁律的人群逐字排除「被起进程的行为」。
-            Some("--oneshot-session") => control::oneshot_session::run(&args),
             Some("--search") => observe::search_query::run(&agent_home, &args),
             // P7c-1：列一个父会话的 subagent 候选。**只列不挑**（匹配与排序留在 monitor）。
             Some("--list-subagents") => observe::history_query::list_subagents(&agent_home, &args),
-            Some("--usage") => observe::usage_query::run(&agent_home, &args),
             Some("--resolve") => control::resolve_query::run(&agent_home, &args),
             // G2（branch-anywhere）：从指定消息处分叉出一个新会话文件。
             // **daemon 唯一的写盘入口**，护栏白名单层单独盯着它（readonly_guard）。
@@ -2387,10 +2364,6 @@ mod argv_table_guard {
         (
             "--capture-pane",
             "`K-R86` 的只读抓屏原语：一次性 exec 直接调本体，不绕 CLI 面那层信封",
-        ),
-        (
-            "--oneshot-session",
-            "`K-R87` 的一次性会话原语：理由与上面那条逐字相同",
         ),
         (
             "--resolve",

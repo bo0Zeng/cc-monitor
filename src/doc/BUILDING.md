@@ -60,7 +60,7 @@ MSI **企业部署友好**：
 - 卸载：`msiexec /x cc-monitor_<ver>_x64_en-US.msi /qn`
 > ⚠ 〔09-10 订正〕本节先前三处都写 `zh-CN`，而实际产物逐字是 `en-US`（`tauri.conf.json`
 > 没配 WiX 语言 ⇒ 走默认）。**照着敲这两条命令会报「找不到文件」。**
-> 同一个事实 `doc/RELEASING.md` 早就写对了 —— 是本文件与 `README.md` 没跟。
+> 同一个事实 `src/doc/RELEASING.md` 早就写对了 —— 是本文件与 `README.md` 没跟。
 - 适合 Intune / SCCM / Group Policy
 
 ---

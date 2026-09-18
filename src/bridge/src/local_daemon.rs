@@ -99,6 +99,62 @@ impl StartOutcome {
 // ⇒ 落点只能是这里，形状照 `platform_fs::make_executable` 那个**注入**先例。
 // ══════════════════════════════════════════════════════════════════════════
 
+/// `CreateProcess` 的 `CREATE_NO_WINDOW`。**不是字节上限**（登记在
+/// `byte_cap_registry` 的排除表里，那张表按名字全等排，两处同名共用一条登记）。
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+/// **不给这条子进程开控制台窗口。**〔`设计/00 §1.5.1` 步 1 —— 那张表里唯一一条
+/// 「用户**现在**就受影响」的〕
+///
+/// # 它解掉的是什么（`真相源/70` 那条 BUG 的链，逐环）
+///
+/// monitor 是 `windows_subsystem = "windows"` 的 GUI app ⇒ **它自己没有控制台**。
+/// 起本机后端时不带这个 flag，Windows 就**给子进程新开一个控制台窗口**：
+/// ① 用户桌面上凭空弹一个黑框；② 那个框是**可关的** —— 用户一关，
+/// 控制台把 `CTRL_CLOSE_EVENT` 发给附在它上面的进程 ⇒ **后端被杀**
+/// ⇒ 中转不再监听 ⇒ 会话读不到，而界面上只显示一句「本机后端起不来」。
+/// ⇒ 一个 flag 同时解掉三个症状：**弹窗 · 报失败 · 本机后端不工作**。
+///
+/// # 🔴 为什么这个函数住在这里，而不住在起进程的那一行旁边
+///
+/// 起进程那一行住 `backend/control/local_backend.rs`，而
+/// `backend/mod.rs::the_backend_half_stays_platform_agnostic` 的禁针含
+/// `#[cfg(windows)` 与 `std::os::windows` ⇒ **写进 `backend/` 当场红**；
+/// 而「加一条平台例外」被**递减棘轮**堵着（`PLATFORM_EXCEPTIONS.len() <= 1`，今天正好 1 条）。
+/// ⇒ 与上面 `process_group(0)` 那一段**同一条理由、同一个落点**：宿主知识层。
+///
+/// # ⚠ 它是止血，不是终局 —— 终局是 `15 §5.1 A3` / `00 §1.5.2`
+///
+/// 正确形状是 `spawn_managed(bin, args, ConsolePolicy, Lifetime, StderrSink)` ——
+/// 三个参数都**没有 `Default`**，于是全仓 20 处 `Command::new` 在**编译期**被迫各自回答
+/// 「要不要窗口」。本函数是那个枚举的 `Hidden` 分支**提前落一处**，
+/// 代价写明：`backend/` 这一侧因此多了一条 `crate::local_daemon::` 的反向边
+///（A3 落地时它会被换成注入参数，和 `make_executable` 一样）。
+///
+/// ⚠ **别把它铺到 `launch.rs::launch_powershell_window` 那处**（它的 Plan B 那一跳，
+/// 用的是自己那个 `CREATE_NEW_CONSOLE` 常量）—— 那处是**刻意的**：
+/// 给用户的 claude 会话开一个**真终端**。它就是 `ConsolePolicy::NewVisible`。
+/// 「全局加一个 flag」会把那处一起改掉，那正是 A3 要唯一出口而不要全局开关的理由。
+///
+/// ⚠⚠ **诚实边界：本条今天没有任何机器验过。** 宿主是 Linux，`#[cfg(windows)]` 那一支
+/// 在这里连编译都不参与（本仓自己的读数逐字：「`#[cfg(windows)]` 里的变异在 Linux 上
+/// 连编译错误都不报」）。「编得过」由门禁 `winchk`（`--target x86_64-pc-windows-gnu`）买；
+/// 「**真的不弹窗了**」要一台真 Windows（`99 §4.5.8` 的 `G2a`）。⇒ 别把绿读成验过。
+pub(crate) fn hide_console_window(cmd: &mut std::process::Command) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    #[cfg(not(windows))]
+    {
+        // 非 Windows 上没有「控制台窗口」这个东西；参数照收，签名两边一致
+        //（形状照 `platform_fs::make_executable` 的 `#[cfg(not(unix))]` 那一支）。
+        let _ = cmd;
+    }
+}
+
 /// 握手那一行（hello / attach 应答）的字节上限。
 ///
 /// hello 帧本机实测 ~1.1 KB（能力集 + emits + commands 三张表）。8 KiB 给了 7 倍余量，
@@ -1593,13 +1649,22 @@ pub fn start_local_relay(bin: std::path::PathBuf) -> bool {
         }),
         // `KH2B2`②的一半：**起不来要出声**。`GaveUp` 单独抬到 `warn`
         // —— 它是「这台机器上的 api-key 号今天都发不出请求」的唯一线索。
-        // ★★ `D2 阻-6`：**中转子进程的 stderr 被 `supervise` null 掉了**
+        // ★★ `D2 阻-6` 的题面（**上半已经办掉了，留着是为了记住这一格为什么在**）：
+        //
+        // 〔原话逐字：「**中转子进程的 stderr 被 `supervise` null 掉了**
         //（`local_backend::supervise_with_stdio` 里那行 `.stderr(Stdio::null())`），
         // 而中转**所有**诊断都写 stderr：启动 announce · 重载 announce ·
         // `cannot bind loopback port`。⇒ 那几句话**生产上一句都到不了人**。
+        // ⚠ 那一行不在本件写区（改它会同时改掉 daemon 那条监护路）⇒ **抬进上报口**。」〕
         //
-        // ⚠ 那一行不在本件写区（改它会同时改掉 daemon 那条监护路）⇒ **抬进上报口**。
-        // 这里做的是**在写区内能做的那一半**：把监护器**已经交给我的事件**用起来 ——
+        // 🔴 **那一行 `15 §5.1 A2` 改掉了**：今天它是 `Stdio::piped()`，
+        // 由 `local_backend::drain_child_stderr_into_log` 接进 monitor 的滚动日志
+        //（`~/.claude/claudecode-frontend/logs/monitor.<日期>.log`，级别 `warn`、不弹 toast）。
+        // ⇒ 上面那句「一句都到不了人」**今天不成立了**，别再照它下判断。
+        //
+        // 而下面这两支**照旧留着**，理由没变：日志文件是「事后查得到」，
+        // 这两支管的是「**当场的状态与用户看得见的说法**」——
+        // 这里做的是把监护器**已经交给我的事件**用起来 ——
         // ① `Exited` 带着退出码（中转的「起不来」恒是退 2）⇒ 出声；
         // ② `GaveUp` 时**把句柄从表里摘掉**，让 `relay_running()` 从此说真话。
         //    没有②的话：监护器已经放弃了，而句柄还在表里 ⇒ `relay_running()` 恒真 ⇒
@@ -1626,7 +1691,7 @@ pub fn start_local_relay(bin: std::path::PathBuf) -> bool {
                 tracing::warn!(
                     "本机中转退出（第 {attempt} 次，退出码 {code:?}）—— \
                      中转的 `--relay` 起不来时恒退 2（端口被占 / 上游基址解析不了）。\
-                     ⚠ 它自己的 stderr 被监护器 null 掉了，这一行是今天唯一的线索"
+                     具体是哪一样，看同一份日志里它自己那几行（`本机后端[pid …]` 开头）"
                 );
             }
             other => tracing::info!("本机中转: {other:?}"),
@@ -1841,8 +1906,11 @@ pub(crate) mod tests {
         // 那条二进制根本 spawn 不了 ⇒ 监护线程立刻 `GaveUp`。
         // 在本轮之前，`GaveUp` **只写一行日志**，句柄留在表里 ⇒ `relay_running()` **恒真**
         // ⇒ 起会话那一侧不再拒 ⇒ 那条 api-key 会话被静默地起成一条连不上中转的会话。
-        // ⚠ 而中转自己的 stderr 被监护器 null 掉了（那一行不在本件写区）
-        //   ⇒ **这一格是用户今天唯一看得见的说法**。
+        // ⚠ 〔订正：原话「而中转自己的 stderr 被监护器 null 掉了（那一行不在本件写区）
+        //   ⇒ **这一格是用户今天唯一看得见的说法**」—— `15 §5.1 A2` 之后**不成立了**，
+        //   那一行今天是 `piped()` 并接进滚动日志。〕
+        //   这一格守的仍然是**状态**那一半：日志里说了不等于 `relay_running()` 说了实话，
+        //   而「起会话那一侧拒不拒」只读后者。
         let mut cleared = false;
         for _ in 0..400 {
             if !relay_running() {
@@ -5172,7 +5240,9 @@ pub(crate) mod tests {
     ///
     /// ⚠ **覆盖面另有缺口，一并登记**：本条 105 ＋ daemon 侧 73 ＋ guard-core 自检 1 = **179 份**，
     /// 而排掉 vendor 的全仓是 **188 份**。差的 9 份里，`crates/usage-core/src/lib.rs`
-    /// **确实被 `guard_core::production_code` 吃**（`usage.rs::tests::the_usage_kou_jing_has_exactly_one_home`）
+    /// **确实被 `guard_core::production_code` 吃**〔墓碑 2026-09-18：原文点名 `usage.rs` 里那条
+    /// 「口径只有一个家」的判据，而 `usage.rs` 已随用量 ②③ 两轴整轴退役（`设计/50`）⇒ 那条判据
+    /// **今天不存在**，本句只剩「剥生产段这件事本身」这一半仍成立〕
     /// ⇒ 它掉进兜底的话，三条判据一条都不会响。
     /// 〔那一拍写区只有本文件，收口要动 guard-core / 那两条守卫的切法 ⇒ 只登记，没动手。
     ///  **`K-R25`（09-04）答清了那 9 份各是什么**，逐份带住址与「要不要拉进来」的裁定，

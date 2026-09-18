@@ -123,27 +123,6 @@ mod tests {
              （而它也顺手把 `EADDRINUSE` 挪到宿主手里）。",
         ),
         (
-            "src/account_usage.rs",
-            "wait-for-condition",
-            1,
-            "★★ 🔴 **`K-R104`（09-13）：这两处是从 `SHELL_WAKES` 那张表搬过来的** —— \
-             用量探针的画面稳定轮询（`settle`）。搬之前它是 monitor 在 Rust 里**拼出来的一段 \
-             shell**（`while [ $i -lt N ]; do sleep 0.5; tmux capture-pane …`，跑在远端登录 shell 里）；\
-             编排搬上 daemon 帧面之后，同一件事变成本进程的 `tokio::time::sleep` ＋ 一条 \
-             `capture-pane` 帧命令。**周期唤醒这件事一点没少，它换了住址与形态** —— \
-             所以它从那张表出去、进这张表，两张表各红一次。\
-             **处数 1，而等待有两段**：`settle` 是同一个函数、被调两次，本表按 `wake_hits` 的\
-             **源码处数**数（那一处 `sleep` 语句被两段共用）。⚠ 这两个数不是一回事，别读混。\
-             上限：startup 12 轮 / render 20 轮 × 0.5s（6s / 10s），装在 `EXEC_TIMEOUT_SECS` = 25s 里，\
-             由 `account_usage::tests::time_budget_ordering_holds` 钉住。\
-             ⚠ **为什么非轮询不可**：tmux **没有**「pane 内容变化」这种 hook —— \
-             `rust_timer_registry` 的 `SHELL_WAKES` 那两行退役前逐字记着同一句，**事件源今天仍不存在**。\
-             🔴 **为什么它必须留在调用方、不许收回 daemon**：`K37`〔用 09-11〕逐字\
-             「后端只给机制，不给偏好」，而 `K-R101` 已按它判定「等画面稳定多久算稳」是**偏好** \
-             ⇒ 出去。daemon 侧 `no_timer_guard` 零容忍地钉着这一格。\
-             **退役归**：哪天 tmux（或 claude）给得出「这一屏画完了」的事件源 —— **今天没有，未排期**。",
-        ),
-        (
             "src/search.rs",
             "startup-delay",
             1,
@@ -550,6 +529,8 @@ mod tests {
     ///
     /// # 它补的是哪个洞（F12 的 `/full-audit` 逮到的）
     ///
+    /// 〔`设计/50`：下面这段讲的 `account_usage.rs` 已整删，留着是因为它解释的是
+    /// **本表为什么要另开一张**，不是在描述今天的盘面。〕
     /// `account_usage.rs` 在 Rust 里**拼出**一条 shell 轮询循环
     /// （`while [ $i -lt N ]; do sleep 0.5; tmux capture-pane …`），而：
     ///
@@ -578,6 +559,10 @@ mod tests {
         //    `tokio::time::sleep`（**归 `REGISTERED`**，不再是 shell 形态），
         //    看门狗那一半整个搬进 daemon（`control/oneshot_session.rs` 的外部进程）。
         //    **认领人来了。**
+        // 〔`设计/50`〕上面整段是**考古**：用量 ③ 轴（探针）整轴退役 ⇒ 那两处唤醒
+        //    连同它们的新住址一起没了（`REGISTERED` 里那条 `account_usage.rs` 已删、
+        //    daemon 的 `control/oneshot_session.rs` 也已删）。本表**仍然是空的**，
+        //    而空的理由从「搬走了」变成「那件事不做了」。零命中守卫照旧管这一族。
         // ★ 与 `watcher.rs`（F11）· `ssh_source.rs` 的 daemonless（`K-R59`）同形：
         //   **退役的验收证据就是本表先红在「少一处 = 退役了」上，删掉登记才绿。**
         //   不是靠人说「我改好了」。

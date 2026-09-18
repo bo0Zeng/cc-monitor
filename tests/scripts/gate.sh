@@ -239,7 +239,13 @@
 #     `rustfmt` / `mingw-w64` + 那个 target），不是因为那句话过时了。
 set -uo pipefail
 
-cd "$(dirname "$0")/.." || exit 2
+# 🔴 **仓根 = 本脚本的上两级**（`tests/scripts/gate.sh` ⇒ `../..`）。
+# 〔2026-09-18 修〕原文是 `/..`，那是脚本还住顶层时的写法；09-17 重组把它搬进
+# `tests/scripts/` 之后少了一级 ⇒ 它 `cd` 到的是 `<repo>/tests`，于是 `src/backend`、
+# `tests/e2e/*.sh`、`node_modules/.bin` 全部解错 ⇒ **十几格一起红，而且红的形状是
+# 「找不到文件 / 退出码 127」，看起来像代码坏了**。同族的 45 个脚本在 `78bcb195`
+# 那一笔里修过了，**唯独漏了门禁自己** —— 一个「检查别人的东西」自己没被检查。
+cd "$(dirname "$0")/../.." || exit 2
 fails=()
 
 # ── 失败诊断（`K-R22` 09-04）：**红的那一格必须自带「为什么红」** ────────────────
@@ -437,8 +443,15 @@ run_gate() {
 # 而 `cargo` 那个数**一条没涨**（1195 → 1195）。它正是 `KP3` 那个形状：
 # 「有生成物 / 有判据」**不等于**「本地门禁拦得住」。
 # 现打的分母（08-27，`cargo test -p <名> --lib` 逐个数）：
-#   `guard-core 24 · creds-core 18 · usage-core 11 · acct-core 9 · branch-core 8 ·
-#    gate-core 8 · shell-quote-core 1` ⇒ **79 条**，其中 **61 条是本件之前就有的存量**。
+#   `guard-core 24 · creds-core 18 · codex-token-core 3 · acct-core 9 · branch-core 8 ·
+#    gate-core 8 · shell-quote-core 1` ⇒ **71 条**，其中 **53 条是本件之前就有的存量**。
+#   ⚠〔09-18〕原文第三项是 `usage-core 11`，合计 **79**、存量 **61** —— 用量下线后那个 crate
+#     改建成 `codex-token-core`，现打 `cargo test -p codex-token-core --lib` = **3 条**
+#     ⇒ 合计 71、存量 53（存量 = 合计 − `K-H2a` 新开的 `creds-core` 18，两组数各自自洽）。
+#     （`--exclude` 与**包数都不变**：不是减 crate，是同一格换了被测对象 ⇒ 下面那条
+#      cargo 合计行里的包数 **9** 不动。⚠ 刻意不把那条调用的**逐字前缀**抄进本注释：
+#      `shared_crate_registry::the_gate_package_count_tracks_the_number_of_shared_crates`
+#      用 `find_pinned` 钉的就是那个前缀、**要求全文唯一**，抄一次它当场判红。现打栽过。）
 #
 # ⚠⚠ **`--exclude code-picture-core` 是承重的，不许删成裸 `--workspace`。**
 # PM 08-27 现打三个数：`--lib` **1195** · 裸 `--workspace --lib` **1299** ·
@@ -699,7 +712,7 @@ gate_selftest
 # ⚠ 本格的数是**数出来的**（每个 hook 文件 3 条 ＋ 8 条阳性对照），跟 `fmt` 那几格的
 #   「只有绿/红两态」不同 —— 往 `hooks/` 里加一份 hook，这个数会涨，那是对的。
 run_gate hooks '每个被跟踪的 hook 文件 3 条（盘上可执行 · 库里记着可执行位 · 语法过得了它自己声明的解释器）＋ 8 条阳性对照；现打 hooks/ 下 1 个文件 ⇒ 11。hooks/ 之外的任何一棵树本行都盖不到' \
-         bash scripts/hooks-are-runnable.sh
+         bash tests/scripts/hooks-are-runnable.sh
 
 # ── 量具的**还原那一跳**有没有把旧 mtime 搬回被测树（`K-R115` `KR115D1`，09-14，第 14 格）──
 #
@@ -729,10 +742,17 @@ run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族（copy2 · 
 #
 # ## 题面：这一格在本门禁里**一格都没有**，而它在 CI 里是独立一个 job
 #
-# `K-R119`（09-14）推 `v3.8.0` 那一趟被 `release.yml` 自己的 `ci-gate` 拦下，
+# 〔散文墓碑 · 2026-09-18〕**下面这段立项理由今天已不成立，原话照留。**
+# 原话：「`K-R119`（09-14）推 `v3.8.0` 那一趟被 `release.yml` 自己的 `ci-gate` 拦下，
 # CI 五条红里有一条就是它：`e2e-smoke` job 的 `shellcheck --severity=error`
 # 报 `SC1081` 六处，全在 `tests/e2e/usage-probe-acceptance.sh`（一个叫 `FOR` 的函数，
-# 它按「大小写写错的关键字」判 error）。
+# 它按「大小写写错的关键字」判 error）。」
+# 🔴 **今天不成立的是「全在」那个住址**：用量整条产品面下线，
+# `tests/e2e/usage-probe-acceptance.sh` **整份删了** ⇒ 那六处 `SC1081` 连同宿主一起没了，
+# 这条立项理由指着一个不存在的文件。**留着原话是因为它是本格当初为什么存在的唯一记录**
+# （「那一趟被拦下」这件事发生过，不因文件删除而变假）。
+# ⚠ **立项理由作废 ≠ 本格作废**：本格钉的是「这一维在本门禁里有没有格」，
+#   而那个答案今天仍是「有了才对」——人群从 ci.yml 现读（见下），一格都不许再回到零。
 # 而同一棵树上本门禁 **16 格全绿** —— 〔量于 09-14 本件落地之前〕
 # `grep -c -i shellcheck scripts/gate.sh` = **0**。
 # ⇒ 这不是「射程印出来了没人读」，是**这一维根本没有格**。
@@ -939,7 +959,7 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 # 沙箱 `ccmon-devbox:latest`，`cargo fmt --all --check -v` 读它真喂给 rustfmt 的那串文件）：
 # 在 `src/backend` 下加 `--all`，rustfmt 实收 **12 个 crate 根**，其中 **11 个不在这棵树里** ——
 # `src/bridge/build.rs` · `src/bridge/src/lib.rs` · `src/bridge/src/main.rs` ·
-# `crates/{acct,branch,creds,gate,guard,shell-quote,usage}-core/src/lib.rs`，
+# `crates/{acct,branch,codex-token,creds,gate,guard,shell-quote}-core/src/lib.rs`，
 # 以及 🔴 **`src/bridge/vendor/code-picture-core/src/lib.rs`**。
 #（成因：那棵树的 path 依赖指进 `../../src/bridge`，`cargo fmt --all` 顺着它们走出去；
 #  `cargo metadata --no-deps` 的 `workspace_members` 现打**只有 1 个**，两者不是一回事。）
@@ -999,8 +1019,26 @@ run_gate fmt-daemon '不是数出来的数：`cargo fmt --check` 只有绿/红�
 # ⚠ 依赖沙箱镜像装了 `mingw-w64` 与 `x86_64-pc-windows-gnu`（`.claude/devbox/Dockerfile`，
 #   仓外、不进版本控制）。没装的机器上这一格会红在「找不到 target」——**那是对的**：
 #   fail-closed 比静默跳过好。
-run_gate winchk '不是数出来的数：`cargo check --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 一个包（`src/bridge/src` 的 67 处 `cfg(windows)`）；`src/backend` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
-         bash -c 'cd src/bridge && cargo check --locked -p monitor --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
+# ⚠⚠ **`--all-targets` 是 `15 §5.1 A5` 补的，它把本格的射程从「生产段」扩到「生产段 ＋ test 档」。**
+#
+# 题面逐字（`15 §2.6` 漏洞 2）：「**`winchk` 少 `--all-targets`，而兄弟格 `winchk-daemon` 有**，
+# 并注明『云端那 10 个错**全在 test 档**，所以 `--all-targets` 是**承重的**』
+# ⇒ **同一个性质两把不同长度的尺子**。修它只要一个词。」
+#
+# ⇒ 本行加上之后，两格量的是**同一件事的同一个面**，只是包不同：
+#   · `winchk`        = `src/bridge` 的 `-p monitor` 一个包，生产段 ＋ test 档
+#   · `winchk-daemon` = `src/backend` 一个 crate，生产段 ＋ test 档
+#
+# ⚠ **它买不到的仍然一个字没变**（别因为射程变长就把这句读松）：
+#   · 买的是「**编得过**」，**不是「行为对」**——那要一台真 Windows（`99 §4.5.8` 的 `G2a`）。
+#   · 本格是 `-gnu`，**MSVC ABI 专属的那一类照旧盖不到**（`check` 不链接，且沙箱里没有 zig）。
+#   · **包**这一维没变：8 个共享 crate 仍然只有 `-p monitor` 依赖图里的那几个被顺带 check 到，
+#     `creds-core` 的 `--features harden` 那 2 处**本行还是盖不到**（`15 §2.6` 漏洞 4 还欠着）。
+# ⚠ `--locked` 照旧带着：本格同时是 `src/bridge/Cargo.toml ↔ Cargo.lock` 那条对账的落点
+#   （`doc_claim_registry` 两处逐字点名「门禁 `winchk` 那一格的 `cargo check --locked`」）。
+#   与 `winchk-daemon` 刻意不带 `--locked` 的差别是**另一维**，别顺手抹平。
+run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86_64-pc-windows-gnu` 只有绿/红两态。射程 = `-p monitor` 一个包的**生产段 ＋ test 档**（`src/bridge/src` 的 67 处 `cfg(windows)`；`--all-targets` 是 `A5` 补的，与兄弟格 `winchk-daemon` 对齐 —— 那一格的读数逐字「云端那 10 个错全在 test 档」）；`src/backend` 那 17 处与 `creds-core` 那 2 处本行盖不到' \
+         bash -c 'cd src/bridge && cargo check --locked --all-targets -p monitor --target x86_64-pc-windows-gnu 2>&1 && echo "winchk: 1 passed"'
 
 # ── `winchk-daemon`：**daemon 那棵树在 Windows 上编不编得过**（`K-R122` `KR122D2` 甲，09-14，第 18 格）──
 #
@@ -1141,13 +1179,20 @@ esac
 #   `touch src/history.rs src/lib.rs && cargo check -p monitor`（默认 message-format），
 #   本格是 `--message-format=short`、不 touch，而且量于另一个主干尖。
 deadcode_t0=$(date +%s)
-run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 41，理由见上方注释）。射程只有 monitor 一个包的生产段；daemon 那棵树与 cfg(test) 里的死代码本行盖不到' \
+# 🔴 **2026-09-18：41 → 33，降的 8 条逐条记在这里**（本格自己要求「回来把数改小，**并写清降的是哪几条**」）。
+# 起因：用量 ②③ 两轴整轴退役（`设计/50`）⇒ `usage.rs` · `account_usage.rs` ·
+# `observe/usage_query.rs` · `agents/codex/usage.rs` 等整删，它们里面那 8 条死代码**随文件一起消失**，
+# 不是有人去修的。⇒ 这是「真清掉了」那一支，不是「cargo 没重编」那一支 —— 证据：现打 33 条里
+# **一条都不含用量相关符号**（逐条核过）。
+# ⚠ `codex_record.rs` 的 `token_usage_last` / `turn_context_model` **仍在这 33 条里**，那是
+# 「codex 后面单独做」（用户 2026-09-18 拍板）的**已知代价**，不是删漏 —— 别顺手清掉。
+run_gate deadcode '`cargo check -p monitor` 的非 test 构建里 `never used` 的条数（**恒等**钉在 33，理由见上方注释）。射程只有 monitor 一个包的生产段；daemon 那棵树与 cfg(test) 里的死代码本行盖不到' \
          bash -c 'cd src/bridge && out=$(cargo check -p monitor --message-format=short 2>&1); rc=$?; \
 n=$(printf "%s\n" "$out" | grep -c "never used"); \
 printf "%s\n" "$out" | tail -5; \
 if [ "$rc" -ne 0 ]; then printf "deadcode: cargo check 退出码 %s —— 判不了\n" "$rc"; exit "$rc"; fi; \
-if [ "$n" -gt 41 ]; then printf "deadcode: never used %s 条，钉的是 41 —— 有人写了新的死代码；修掉它，或者说清为什么留着、再来改这个数\n" "$n"; exit 1; fi; \
-if [ "$n" -lt 41 ]; then printf "deadcode: never used 只数到 %s 条，钉的是 41 —— 要么真清掉了几条（好事：回来把 41 改小，并写清降的是哪几条），要么这一趟 cargo 根本没重编 / 没重放警告。两者在终端上一模一样，所以一律按红记\n" "$n"; exit 1; fi; \
+if [ "$n" -gt 33 ]; then printf "deadcode: never used %s 条，钉的是 33 —— 有人写了新的死代码；修掉它，或者说清为什么留着、再来改这个数\n" "$n"; exit 1; fi; \
+if [ "$n" -lt 33 ]; then printf "deadcode: never used 只数到 %s 条，钉的是 33 —— 要么真清掉了几条（好事：回来把 41 改小，并写清降的是哪几条），要么这一趟 cargo 根本没重编 / 没重放警告。两者在终端上一模一样，所以一律按红记\n" "$n"; exit 1; fi; \
 printf "deadcode: %s passed（never used %s 条，恒等钉在 41）\n" "$n" "$n"'
 printf '  分母 %-14s %s\n' "deadcode" "本格墙钟 $(( $(date +%s) - deadcode_t0 )) 秒（现打，与门禁基线相减就是加这一格的代价）"
 
@@ -1184,7 +1229,7 @@ run_gate daemon '单包 src/backend，只有一行 test result ⇒ 最大值 = �
 #   （写死一个数，加一份文件就红，那种格三天就会被人调宽）。
 run_gate tsc '不是「几条断言过了」：这个数是**这一趟真读进 tsc 程序**的仓内 `.ts`/`.tsx`/`.mts` 份数（`tsconfig.json` 的 include = `src` ＋ `e2e`），并与盘上现打的份数**恒等对账**。⚠ 只判类型（`npm run build` 的前一半）；`vite build` 与 `cargo tauri build` 那两段、以及仓根那几份不在 include 里的 `.ts`（`vite.config.ts` / `vitest.config.ts`），本行一概盖不到' \
          bash -c 'out=$(node_modules/.bin/tsc --noEmit --listFiles 2>&1); rc=$?; \
-want=$(find src e2e -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.mts" \) | wc -l | tr -d " "); \
+want=$(find src tests/e2e -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.mts" \) | wc -l | tr -d " "); \
 got=$(printf "%s\n" "$out" | grep -v "/node_modules/" | grep -cE "/(src|e2e)/.*\.(ts|tsx|mts)$"); \
 printf "tsc: 盘上现打 %s 份仓内 .ts，这一趟真读进程序的 %s 份\n" "$want" "$got"; \
 printf "%s\n" "$out" | grep -E "error TS" | head -60; \
@@ -1407,34 +1452,20 @@ run_e2e ccm-contract-parity   45
 # ⚠ 名字**给错**那一侧不用在这里再判：`pb.py` 今天就已经 fail-closed
 #   （不存在的目录 rc=3 · 没 `features/` rc=2 · 空目录 rc=2，三种都试过）⇒
 #   在这里补一层「目录存不存在」是仪式。本处只治**同一性**（查的是不是你那个），不治存在性。
-if [ -z "${PB_WS:-}" ]; then
-  fails+=("pb check（没给 PB_WS —— 这道门查哪个计划工作区必须由调用方指定；\
-不许回落默认值：硬写一个名字正是 K-R10 治的那个 bug）")
-else
-  # ★ `K-R22`（09-04）：**判定那一行一个字没动，改的只是「红了印什么」。**
-  #   原来是 `pb_out="$(python3 … | tail -1)"` ⇒ 其余几十行在**进变量之前**就没了，
-  #   红的时候终端上只剩一句 `FAIL=1 BROKEN=0`：**几条红一目了然，是哪一条一个字都没有。**
-  #   ⚠ 本件收官前自己被它咬了一口：那个 `FAIL=1` 查出来是 `[J3 陈账] INDEX.md 比源文件旧`，
-  #     而那一趟门禁**没有任何一个字**指得到它 —— 又赔进去一趟重跑。
-  #
-  # ⚠ **为什么是落文件，而不是 `printf '%s\n' "$(…)" | tail -1`** —— 这一步承重，别「简化」：
-  #   `$(cmd | tail -1)` 与 `$(tail -1 文件)` 对命令替换而言**逐字等价**（两者都是对 `tail`
-  #   的输出做替换）；而 `printf '%s\n' "$(cmd)" | tail -1` **不等价** ——
-  #   命令替换会先把结尾的空行吃掉。合成命令现打（输出 `a\nb\n\n\n`）：
-  #   `$(cmd|tail -1)` 得 **``**（空），`printf '%s\n' "$(cmd)"|tail -1` 得 **`b`**。
-  #   ⇒ 那一格差别能**把一条本该红的判据变绿**（空串匹配不上 `FAIL=0 BROKEN=0` ⇒ 红；
-  #     换成 `b` 就可能匹配上 ⇒ 绿）。所以这里走文件，不走那个写法。
-  pb_raw="$(mktemp)"
-  python3 "$HOME/.claude-accts/z/skills/planned-build/bin/pb.py" check \
-          "../.claude/planned-build/$PB_WS" >"$pb_raw" 2>&1
-  pb_out="$(tail -1 "$pb_raw")"
-  case "$pb_out" in
-    *"FAIL=0 BROKEN=0"*) printf '  ok   %-14s [%s] %s\n' "pb check" "$PB_WS" "$pb_out" ;;
-    *) fails+=("pb check[$PB_WS]（$pb_out）")
-       gate_diag "pb check[$PB_WS]" "$(cat "$pb_raw")" ;;
-  esac
-  rm -f -- "$pb_raw"
-fi
+# 〔墓碑 2026-09-18 —— `pb check` 那一格整格退役，用户拍板「不管他，把他删了」〕
+#
+# 原来这里是一道「查 planned-build 工作区」的门：没给 `PB_WS` 就红，理由逐字是
+# 「这道门查哪个计划工作区必须由调用方指定；不许回落默认值：硬写一个名字正是 `K-R10`
+# 治的那个 bug」。那条**拒绝猜**的纪律本身没错，今天不成立的是它的**对象**：
+#
+#   ① 本仓**没有** `.claude/planned-build/` —— 今天的设计与排期走的是仓外的 `调研/` 那一族文档；
+#   ② 它调的 `~/.claude-accts/z/skills/planned-build/bin/pb.py` **今天不在盘上**
+#      ⇒ 就算给了 `PB_WS`，这道门也跑不起来。
+#
+# ⇒ 它不是「红」，是**没有可判的对象**。而让一道门在没有对象时自己闭嘴（跳过/回落）
+#   正是本仓反复记账的那种病 ⇒ 不加「没目录就跳过」的口子，**整格删掉**。
+# ⚠ 若哪天本仓真用起 planned-build，复活它要连同 `tests/evidence/N-G2-verdict-md5.py`
+#   那份登记一起回来（那份尺子把本格登记成一个「行内格」）。
 
 # ── 〔裁决·射程〕`GATE: OK` 那一行**不对什么负责**（`K-R122` `KR122D2` 乙，09-14）──────
 #

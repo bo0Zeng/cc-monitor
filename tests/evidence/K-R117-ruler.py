@@ -204,8 +204,10 @@ CAP_ARCHIVE: "OrderedDict[str, tuple]" = OrderedDict([
     ("terminal.focus", (NA, "—", "把终端提到前台")),
     ("tmux.local-census", (NA, "—", "列 tmux 会话")),
     ("tmux.manage", (NA, "—", "tmux 会话管理")),
-    ("usage.aggregate", (NA, "—", "用量")),
-    ("usage.per-account", (NA, "—", "用量")),
+    # 〔墓碑 2026-09-18〕`usage.aggregate` / `usage.per-account` 两条能力随用量 ②③ 两轴
+    # 整轴退役（`设计/50`）⇒ 它们已不在 `LEDGER` 里。本表是**归档表**，留一个指向不存在
+    # 的 id 会让 `R3b`（「表在腐烂」）恒红 ⇒ 整条摘掉，理由留在这里。
+    # ⚠ 摘掉的合法理由只有这一个：**那两条能力真的不在了**，不是「这条判据太吵」。
 ])
 
 # 同一个能力 id 里读写两性质时，按命令名覆盖。**key 必须在 `LEDGER` 里**（R3 的第三向）。
@@ -1087,12 +1089,13 @@ def section_discipline_a(texts, cmds_now, claims, cmd_addr, wrapper: str):
 def main() -> int:
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser()
-    ap.add_argument("--root", default=os.path.dirname(here),
-                    help="被测树的根（默认 = 本文件所在目录的父目录）")
+    # 〔2026-09-18〕09-17 重组把本尺子搬进 `tests/evidence/` ⇒ 仓根是**上两级**，不是上一级。
+    ap.add_argument("--root", default=os.path.dirname(os.path.dirname(here)),
+                    help="被测树的根（默认 = 本文件所在目录的**上两级**：tests/evidence/ ⇒ 仓根）")
     args = ap.parse_args()
     root = os.path.abspath(args.root)
 
-    src_dir = os.path.join(root, "src-tauri", "src")
+    src_dir = os.path.join(root, "src", "bridge", "src")
     if not os.path.isdir(src_dir):
         crash(f"`{src_dir}` 不存在 —— `--root` 指错树了")
     try:

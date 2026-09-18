@@ -72,7 +72,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(os.environ.get("K_R115_ROOT") or Path(__file__).resolve().parents[2])
-EVIDENCE = ROOT / "evidence"
+EVIDENCE = ROOT / "tests" / "evidence"  # 〔2026-09-18〕09-17 重组把 evidence/ 搬进 tests/；ROOT 本身已对
 
 # `shutil` 里会把源文件的 mtime 一起搬到目的地的那几个名字。
 # 🔴 闭集只许有一个住址 —— 下面凡是要报「有几个」的地方一律 `len(FAMILY)`，不写字面量。

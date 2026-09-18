@@ -19,7 +19,7 @@
 //!
 //! **那个论证到今天没人做过** —— 于是前端与 `shared/ccm` 这半**一条机检都没有**，
 //! 而两个文件的头注里写着「本文件里不得出现 setInterval / setTimeout 轮询」这类**散文纪律**
-//! （`account-usage.ts` · `settings/cc-bus-section.ts`）。散文纪律 = 没有纪律，
+//! （`settings/cc-bus-section.ts`；`设计/50` 之前还有一份 `account-usage.ts`）。散文纪律 = 没有纪律，
 //! 这正是本工作区一直在治的病。
 //!
 //! # 论证：这一半为什么是**登记表**而不是禁令
@@ -307,17 +307,10 @@ mod tests {
     }
 
     /// **明令不许有周期唤醒**的文件（把两处散文纪律变成机检）。
-    const NO_PERIODIC_WAKE: &[(&str, &str)] = &[
-        (
-            "src/account-usage.ts",
-            "头注写着「没有 `setInterval`，没有后台…」—— 用量探测是重操作（起隐藏会话+网络查询），\
-             周期化会把它变成后台负载",
-        ),
-        (
-            "src/settings/cc-bus-section.ts",
-            "头注写着「本文件里不得出现 setInterval / setTimeout 轮询 / 后台定时任务」",
-        ),
-    ];
+    const NO_PERIODIC_WAKE: &[(&str, &str)] = &[(
+        "src/settings/cc-bus-section.ts",
+        "头注写着「本文件里不得出现 setInterval / setTimeout 轮询 / 后台定时任务」",
+    )];
 
     fn repo_root() -> PathBuf {
         // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
@@ -326,7 +319,7 @@ mod tests {
 
     /// 剥掉整行注释（`//` / `*` / `/*`）。
     ///
-    /// ⚠ 必须剥：`account-usage.ts` 与 `cc-bus-section.ts` 的头注里**就写着**
+    /// ⚠ 必须剥：`cc-bus-section.ts` 的头注里**就写着**
     /// `setInterval` 这个词（写的是「不许有」）。不剥的话它们会被自己的纪律说明命中 ——
     /// 与 `launch-cli-wire.vitest.ts` 那次「文档注释里就写着 `deny_unknown_fields`」同一个坑。
     /// 一行里有没有周期唤醒的形态。
@@ -570,7 +563,7 @@ mod tests {
         ("src/settings/cc_integration.ts", "setTimeout", 1, "500ms 后撤掉状态徽章的高亮描边。一次性。"),
         ("src/settings/config-surface-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
         ("src/settings/drift-ledger-section.ts", "setTimeout", 1, "1.5s 后把「已复制」还原。一次性。"),
-        ("src/tabs.ts", "requestAnimationFrame", 3, "① `fillAbove` 批末复检（间接自链，有队列型守卫）② 切 Tab 后把面板整表 re-render 推到下一帧，入口处 `this.activeId !== sessionId` 早返。③ ★ F15：`scheduleTabBarRefresh` —— live 路上后台 tab 的 unread 徽标**帧末合批**（原来每来一行整刷一次 bar）。排一次位，不是自链。⚠ 只合批这一处，用户动作触发的十几个调用点仍是同步的（合批对它们无收益，反而把「点完立刻看到」变成「下一帧」）。"),
+        ("src/tabs.ts", "requestAnimationFrame", 4, "① `fillAbove` 批末复检（间接自链，有队列型守卫）② 切 Tab 后把面板整表 re-render 推到下一帧，入口处 `this.activeId !== sessionId` 早返。③ ★ F15：`scheduleTabBarRefresh` —— live 路上后台 tab 的 unread 徽标**帧末合批**（原来每来一行整刷一次 bar）。排一次位，不是自链。⚠ 只合批这一处，用户动作触发的十几个调用点仍是同步的（合批对它们无收益，反而把「点完立刻看到」变成「下一帧」）。④ ★ 步 3（`设计/10`，2026-09-18）：`switchTo` 贴底的**第二帧**（对齐 `session-viewer.ts` 已有的同一修法）。⚠ 它**不是只读校正** —— `scrollToBottom()` 会把 `stickToBottom` 重新置真，所以第二帧与第一帧一样是强制贴底。可接受的理由只有一条：两帧之间只隔 ~16ms，人滚不出意图；切走了有 `activeId` 守卫挡着。**不是自链**（回调里不再排下一次）。"),
         ("src/tabs.ts", "requestIdleCallback", 1, "★ **空闲物化队列的自链**：`run` 处理一个后台 tab 后再排自己。退出条件是队列空。"),
         ("src/tabs.ts", "setTimeout", 10, "① `setTimeout(run, 200)` —— 上面那条 rIC 队列在 `requestIdleCallback` 缺失时的兜底，同一条自链 ② ③ 两处 `timeoutMs` 上限（`finish(false)` / `stop(false)`）④ ★ `pollTimer = setTimeout(() => void tick(), pollMs)` —— **真 data-poll**（`awaitExitFor`），见 `REGISTERED` 那条 ⑤ ⑥ hover 菜单的 150ms 开 / 250ms 关延时 ⑦ 0ms 下一拍挂右键菜单关闭监听 ⑧ ⑨ 两处 `bring_*_terminal_to_front` 的 invoke 超时拒绝。除 ④ 外都不是周期取数。 ⑩ ★ F15：`scheduleTabBarRefresh` 的**无 rAF 兜底**，0ms、一次性。"),
         ("src/views/grid-monitor.ts", "setInterval", 1, "1s 整表重绘 —— **ui-clock，不取数**，见 `REGISTERED` 那条。"),
@@ -580,7 +573,6 @@ mod tests {
         ("src/views/panorama.ts", "setTimeout", 1, "250ms 搜索去抖。一次性（每次输入前 clear）。"),
         ("src/views/session-viewer.ts", "requestAnimationFrame", 5, "① ② 两处 `maybeFillAbove` —— **向上补料的 rAF 链**，五道守卫在 `:418-426`（世代 / 已到顶 / 在途 等）③ 渲染批前先让状态文绘一帧 ④ ⑤ 双 rAF 后重发 `scrollIntoView`（等 content-visibility 材料化）。"),
         ("src/views/session-viewer.ts", "setTimeout", 2, "① `setTimeout(r, 0)` 让出主线程 ② 2.2s 后移除搜索命中的闪烁 class。都是一次性。"),
-        ("src/views/usage-view.ts", "requestAnimationFrame", 1, "合并重画用量列表，`rafPending` 防重入 + `seq` 世代守卫。一次性。"),
     ];
 
     /// 数一个调度 API 在源码里的**调用**次数（散文里提到名字不算）。
@@ -589,7 +581,7 @@ mod tests {
     ///
     /// **代码不允许，注释说允许** —— 两者对不上，而对不上的那一边正是漏洞：
     /// 把 `requestAnimationFrame (tick)`（**自链**，正是 E6 禁的连续唤醒）写进
-    /// `views/usage-view.ts`，本条与 `every_periodic_wake_is_registered_with_an_owner`
+    /// 一个已退役的视图文件（`views/usage-view.ts`），本条与 `every_periodic_wake_is_registered_with_an_owner`
     /// **两条都不响**（后者的 `is_periodic` 根本不看 rAF，只看 `setInterval` 与带 `poll` 的
     /// `setTimeout`）⇒ 一个空格就能把「全部调度调用点」这条枚举式白名单的人群缩小。
     ///

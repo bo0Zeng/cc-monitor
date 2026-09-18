@@ -52,8 +52,9 @@ exists: boolean,
  *      `formatBytes(info.sizeBytes)` 而 `formatBytes` 内有 `.toFixed()`，
  *      `bigint` 没有该方法 ⇒ 真是 BigInt 的话生产里早就 `TypeError`。
  *      **它只证明「今天不是 bigint」，不证明「不可能是」。**
- *    - **仓内同向先例**：`usage.rs::UsageTotals` 那四个 `u64` 字段跨边界，
- *      TS 侧 `views/usage-pivot.ts` 声明 `number` 并直接做算术。全仓无 BigInt。
+ *    - **仓内同向先例**：用量那一轴的四个 `u64` 字段曾跨边界、TS 侧声明 `number`
+ *      并直接做算术。〔`设计/50`：那一轴整轴退役，**先例的样本没了、结论没变** ——
+ *      全仓无 BigInt 这一条今天照样现打得出来。〕
  *
  *    **收窄成 `number` 在这里是安全的**：本字段只用于展示文件大小，
  *    而 f64 的安全整数上限 2^53-1 ≈ **8 PB**。

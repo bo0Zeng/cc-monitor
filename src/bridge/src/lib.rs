@@ -19,7 +19,6 @@
 //! State 注册矩阵见 src/doc/STATE-MATRIX.md；漏 `manage` 不会被 cargo check 抓住（INVARIANT § 8）。
 
 mod account_aliases; // K-R49：加了账号就给那条命令落盘——写的是 monitor 自己那份别名文件，不是用户的 rc
-mod account_usage; // F10：per-account Claude 订阅计划用量窗口%（一次性探针会话 + capture-pane）
 mod accounts; // A2：多账号（cc-acct-iso）只读查询——账号=一个 CLAUDE_CONFIG_DIR
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
 mod adapter;
@@ -158,7 +157,6 @@ mod tmux;
 mod tmux_daemon_gate_guard; // U10 裁决：daemon 侧没有身份守卫之前，send-keys/kill 不许改走 daemon
 mod tmux_reconcile;
 mod tool_registry; // T01：受管工具声明（只声明，不改各工具行为）
-mod usage;
 mod utils;
 mod watcher;
 mod write_site_registry; // audit-0805 08-07：每个会写用户机器的落点都要申报（关掉 §5 4b 一半） // audit-0805 08-07：每处远端执行都要申报命令来历 // audit-0805 08-08：webview 能力清单 = 三张登记表的共同前提
@@ -1320,8 +1318,6 @@ pub fn run() {
             //    **是同一拍的事**：拆开任意一处，`commands.vitest.ts` 的 `C04a`
             //    或 `parity_ledger` 的双向相等当场红（`K-R106` 实测过前一种）。
             history::render_local_attach,
-            usage::aggregate_usage_all,
-            remote_history::aggregate_remote_usage_all, // F88a-remote：远端 daemon 用量 fan-out
             // A2：多账号只读查询（账号=一个 CLAUDE_CONFIG_DIR）。旧 daemon
             // 台一律回 available:false，前端降级隐藏账号功能而不是弹错。
             accounts::list_remote_accounts,
@@ -1347,9 +1343,6 @@ pub fn run() {
             tmux::capture_remote_pane,
             tmux::kill_remote_tmux,
             tmux::tmux_send_keys,
-            account_usage::account_usage,
-            // F08：本机侧同一份载荷、另一个执行面（补平 parity_ledger 的 usage.per-account）。
-            account_usage::account_usage_local,
             ccm_probe::probe_ccm_cli,
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,

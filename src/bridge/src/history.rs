@@ -221,7 +221,7 @@ impl LivenessOracle for SessionMapLiveness {
 /// 「后端不在」与「后端在但这条查询失败了」**分开报**：前者是今天这台机器上没有对侧
 /// （该提示装 / 该回落），后者是有对侧但它说了不），压成一个 `Err` 就是让上层猜。
 /// 本函数把两者都折成 `Err(带身份的一句话)` 交给前端 toast，**但话不一样** ——
-/// 与 `usage::aggregate_usage_all` 那条路同形。
+/// 与 `local_accounts::list_local_session_accounts` 那条路同形。
 pub(crate) fn local_projects_via<Q>(
     query: Q,
     metadata: &HistoryMetadata,
@@ -286,7 +286,7 @@ where
 ///   两份实现从前**故意不一致**并被一条判据钉着（`ROADMAP §5`）；本件把 monitor 那份删了，
 ///   分歧随之消失（不是「对齐」，是**只剩一处**）。
 /// - **`CLAUDE_CONFIG_DIR` 指向不存在的路径时**：monitor 从前会回落到 `~/.claude`，
-///   sidecar 不会。极少见，但不是零（同 `usage.rs` 那条路记着的差异）。
+///   sidecar 不会。极少见，但不是零。
 /// - **Codex 那半没动**：后端侧今天没有 codex 的项目枚举（`--list-projects` 只服务 claude），
 ///   本机仍自己合成（`codex_projects`）—— 那条登记还挂在 `local_read_surface_registry` 上。
 ///
@@ -332,7 +332,8 @@ pub async fn list_history_projects(
 // ─── Phase 2 F1a-3：Codex 历史枚举（Codex 无 `projects/<cwd>` 目录 → 按 session_meta.cwd 内存分组成
 // 合成「项目」，塞进现有 HistoryProject shape → 前端零改、Codex 会话入列）───
 
-/// Codex 一个会话的 list 元信息。`pub(crate)` 供 usage.rs（F5 用量）复用枚举。
+/// Codex 一个会话的 list 元信息。〔`设计/50`：`pub(crate)` 原先是为用量那一轴复用枚举开的，
+/// 那一轴整轴退役了 —— 可见性没跟着收窄，如实记在这里。〕
 pub(crate) struct CodexSessionInfo {
     pub(crate) sid: String,
     pub(crate) path: PathBuf,
@@ -342,7 +343,7 @@ pub(crate) struct CodexSessionInfo {
 }
 
 /// 枚举本机 Codex 会话：walk `<codex_root>/sessions` 日期树 `rollout-*.jsonl`，读**首行** session_meta
-/// 取 cwd。Codex 未启用（无 `~/.codex/sessions`）→ 空 vec（零回归）。`pub(crate)` 供 usage.rs（F5）复用。
+/// 取 cwd。Codex 未启用（无 `~/.codex/sessions`）→ 空 vec（零回归）。〔`pub(crate)` 的来历同上。〕
 pub(crate) fn enumerate_codex_sessions() -> Vec<CodexSessionInfo> {
     use crate::adapter::AgentKind;
     let Some(root) = crate::adapter::for_kind(AgentKind::Codex).data_root() else {

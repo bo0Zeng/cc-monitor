@@ -40,7 +40,6 @@
 #[cfg(test)]
 const STATUS_CELLS: &[(&str, &str)] = &[
     ("U8c-1", "payload-kernel-exists"),
-    ("U8c-2a", "usage-probe-uses-the-kernel"),
     ("U8c-2b-0", "posix-quote-has-one-home"),
     ("U8c-2c-1", "ccm-invocation-kernel-exists"),
     ("U8c-2c-2", "production-ts-calls-the-rust-renderers"),
@@ -127,12 +126,6 @@ const MEASURE_CENSUS: &[(&str, MeasureShape, Verdict, &str)] = &[
         MeasureShape::ProdNeedle,
         Verdict::FallsShort,
         "声称「载荷内核在 `backend/control/payload.rs`」，量的是生产段里有没有子串          `fn render_payload` ⇒ **`fn render_payload_v2` 之类以它打头的名字照样命中**         （`needle_anchor_registry` 治的那一族）。另**没有断言那份文件存在** ——          读不到只会静默返回空串",
-    ),
-    (
-        "usage-probe-uses-the-kernel",
-        MeasureShape::ProdNeedle,
-        Verdict::FallsShort,
-        "声称「用量探针在调 `usage_probe_payload` 入口」，量的是裸子串 ⇒ 入口改名成         以它打头的另一个名字时照样绿。⚠ 这一格已经**被自己红过一次**并改对了标的         （原先量 `render_payload`），改的是「量哪一个」，没改「用什么单位量」。         另无存在性断言",
     ),
     (
         "posix-quote-has-one-home",
@@ -518,9 +511,13 @@ mod tests {
         // 〔2026-09-18 下调 11 → 10〕不是遍历坏了：`306c862e`（退役三份旧设计文档、
         // 设计与真相源归并到 `调研/`）删掉了 `doc/账号用量-usage抓取方案.md`。
         // 现打 `src/doc/*.md` = 10，`git ls-files` 同为 10 ⇒ **没有文件丢，是地板没跟着改**。
+        // 〔2026-09-18 二次下调 10 → 9〕又删了一篇：
+        // `远端支持方案-agent查看器与代码全景图.md`（2026-07-20 的「设计草案，待用户定 / 未写码」，
+        // 已由 `调研/设计/` 那一族取代）。现打 `src/doc/*.md` = 9，`git ls-files` 同为 9。
+        // ⚠ 往下拧地板的合法理由**只有**「那些文件真的不在了」—— 这两次都是。
         assert!(
-            files.len() >= 10,
-            "`doc/` 只扫到 {} 个 .md —— 遍历坏了（2026-09-18 现打 10 个）",
+            files.len() >= 9,
+            "`doc/` 只扫到 {} 个 .md —— 遍历坏了（2026-09-18 现打 9 个）",
             files.len()
         );
         let total: usize = files
@@ -688,17 +685,7 @@ mod tests {
             ),
             (
                 "control/launch.rs（daemon argv）",
-                root.join("src/backend/control/launch.rs")
-                    .is_file(),
-            ),
-            (
-                // 🔴 **翻面**（`K-R104` 09-13）：这一条**退役了**，所以这里断的是「它不在」。
-                //    读得到文件是前提（读不到会静默变成 `unwrap_or(false)` ⇒ 恒 true 的假绿），
-                //    所以两半都写出来：文件必须在 ＋ 那个函数必须不在。
-                "account_usage.rs::build_usage_probe_cmd（用量探针 shell 串，`K-R104` 已退役 —— 这一格断的是它**不许回来**）",
-                std::fs::read_to_string(root.join("src/bridge/src/account_usage.rs"))
-                    .map(|s| !s.contains("fn build_usage_probe_cmd"))
-                    .unwrap_or(false),
+                root.join("src/backend/control/launch.rs").is_file(),
             ),
             (
                 // 🔴 〔`K-R48` 第二拍 09-11〕住址换了，**产出方本身没退役**：
@@ -707,8 +694,7 @@ mod tests {
                 //    ⇒ `INVARIANTS §33b` 那句「四个产出方，一个都没退役」**仍然成立**，
                 //    只是第四个的住址从 `shared/ccm` 变成了 `control/ccm/plan.rs`。
                 "control/ccm/plan.rs（用户终端那条路）",
-                root.join("src/backend/control/ccm/plan.rs")
-                    .is_file(),
+                root.join("src/backend/control/ccm/plan.rs").is_file(),
             ),
         ];
         let missing: Vec<&str> = checks
@@ -719,10 +705,8 @@ mod tests {
         assert!(
             missing.is_empty(),
             "「外层产出方」里这几格与文档说的状态对不上：{missing:?}\n\
-             · 还没退役的那几条**不在了** ⇒ **这多半是好事**：有产出方退役了 ⇒\n\
-               `INVARIANTS §33b` 那张表过期了，回去把它和 U8c-3 的前置一起重裁。\n\
-             · 已退役的那条**又回来了** ⇒ 那是有人重新在 monitor 里拼一条 tmux 编排串\n\
-               （`K-R104` 刚把它整条搬上后端帧面）—— 回去看 `account_usage.rs` 的头注。"
+             这几条**不在了** ⇒ **这多半是好事**：有产出方退役了 ⇒\n\
+             `INVARIANTS §33b` 那张表过期了，回去把它和 U8c-3 的前置一起重裁。"
         );
     }
 
@@ -951,9 +935,13 @@ mod tests {
              **普查表多出来的**：那一行在描述一个已经不存在的量法，摘掉它。"
         );
         // 分母自检：表空了上面那个等号会退化成「空 == 空」。
+        // 〔`设计/50` 09-18〕地板 10 → **9**：`usage-probe-uses-the-kernel` 那一格
+        // 随用量 ③ 轴整轴退役（它量的是「用量探针在不在调载荷内核」，探针没了）。
+        // ⚠ **降地板要写清是哪一行、为什么** —— 这一条挡的是「偷偷删行」，
+        // 而「那一格量的东西整块不存在了」是唯一正当的降法。
         assert!(
-            MEASURE_CENSUS.len() >= 10,
-            "普查表只剩 {} 行（09-12 现打 10 行）—— 少于分母说明有人在偷偷删行",
+            MEASURE_CENSUS.len() >= 9,
+            "普查表只剩 {} 行（`设计/50` 后现打 9 行）—— 少于分母说明有人在偷偷删行",
             MEASURE_CENSUS.len()
         );
         for (k, _, _, why) in MEASURE_CENSUS {
@@ -1125,15 +1113,6 @@ mod tests {
                 "payload-kernel-exists" => (
                     prod("src/bridge/src/backend/control/payload.rs").contains("fn render_payload"),
                     "载荷内核在 `backend/control/payload.rs`",
-                ),
-                // ⚠ 第一版量法写的是 `render_payload`，**红了**——那是我选错了标的：
-                // 用量探针走的是内核的另一个入口 `payload::usage_probe_payload`
-                // （账号前缀 + 嵌套 env 清理 + 启动器，**无 cd**）。判据自己的报错文案
-                // 逐字预言了这一种可能（「或者本条量法本身选错了标的」），照它改。
-                "usage-probe-uses-the-kernel" => (
-                    prod("src/bridge/src/account_usage.rs")
-                        .contains("backend::control::payload::usage_probe_payload"),
-                    "用量探针在调载荷内核的 `usage_probe_payload` 入口",
                 ),
                 // ⚠ **F12 订正**：第一版左支读的是 `src/bridge/src/shell_quote.rs` —— **那个文件不存在**
                 // ⇒ 左支恒 false，整条判据只靠右支撑着（`/full-audit` 逮到的）。
@@ -1363,8 +1342,11 @@ mod tests {
                  —— 用量探针的整条编排搬上后端帧面之后，monitor 一个 shell 字符都不渲染。\
                  那两句正是「外层四个产出方里退役了哪一个、为什么」的解释，\
                  **删掉这个地址反而丢掉线索**（同上面 `run_tmux_reconcile_poller` 那条）。\
-                 ⚠ 它今天不是无人看管的：`the_outer_layer_producers_are_in_the_state_the_doc_claims` \
-                 把那一格**翻面**钉着 —— 这个函数要是回来了，那条会红。",
+                 ⚠ 〔`设计/50`〕它**今天是无人看管的**：原先由 \
+                 `the_outer_layer_producers_are_in_the_state_the_doc_claims` 翻面钉着\
+                 （「这个函数要是回来了就红」），而用量 ②③ 两轴整轴退役之后那一格已随\
+                 `account_usage.rs` 整删 —— **如实登记为射程边界**：\
+                 挡「它回来」的今天只有「整个功能不存在」这个事实，没有判据。",
             ),
         ];
         const KW: &[&str] = &[
@@ -2995,8 +2977,6 @@ mod daemon_wording_registry {
          "同上，另一个按钮的逐字文案"),
         ("src/bridge/README.md", "一次性 exec `<daemon> --list-projects/--list-sessions/",
          "同上，命令行占位符 `<daemon>`"),
-        ("src/bridge/README.md", "各配置远端 exec `<daemon> --usage`",
-         "同上，命令行占位符 `<daemon>`"),
     ];
 
     /// 语料地板：低于这个字节数就判「散文没喂进来」，而不是「一处都没有」。
@@ -3007,7 +2987,10 @@ mod daemon_wording_registry {
     /// 少一处 = 有条例外空转了（那句话被改过）；多一处 = 有人往例外表里塞了新的放行，
     /// 而放行必须是**有意的一拍**。⚠ 这个数与 [`EXEMPT`] 的条数今天恰好相等（15），
     /// 但两者不是同一件事：一条片段可以盖住同一句里的两处裸词。
-    const EXEMPT_HITS: usize = 15;
+    /// 〔`设计/50` 09-18〕**15 → 14**：`src/bridge/README.md` 那条
+    /// 「各配置远端 exec `<daemon> --usage`」的放行随那一行文档一起删了
+    /// （用量 ② 轴整轴退役）。**这是例外表变短，不是放宽。**
+    const EXEMPT_HITS: usize = 14;
 
     /// ASCII 标识符字符 —— **汉字不算**，这一条就是「两个数」的分水岭。
     fn is_ident(c: u8) -> bool {

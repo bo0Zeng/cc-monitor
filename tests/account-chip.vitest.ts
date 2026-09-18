@@ -8,15 +8,14 @@ const fetchAccountsMock = vi.fn();
 const invokeMock = vi.fn();
 vi.mock("../src/remote-config", () => ({ readRemoteConfig: () => readRemoteConfigMock() }));
 vi.mock("../src/error-toast", () => ({ showActionFailureToast: vi.fn() }));
-// F10：account-usage.ts 走 invoke("account_usage",...)——这个文件之前不需要 mock
-// @tauri-apps/api/core（chip 自己不直接调 invoke，只经 fetchAccounts），现在新增用量
-// 懒加载路径需要它。
+// 〔`设计/50`〕chip 自己不直接调 invoke（只经 `fetchAccounts`）——这个 mock 原先是为
+// 用量懒加载那条路装的，那条路整轴退役了；mock 留着是因为下面几条仍要拦住一切 invoke，
+// 好断言「chip 不该再发任何用量请求」。
 vi.mock("@tauri-apps/api/core", () => ({ invoke: (...a: unknown[]) => invokeMock(...a) }));
 
 import {
   pickPrimaryOrigin,
   chipLabel,
-  formatUsageSummaryForMenu,
   AccountChip,
 } from "../src/account-chip";
 import type { RemoteHostConfig } from "../src/remote-config";
@@ -24,8 +23,6 @@ import type { AccountsState, Account } from "../src/accounts";
 import * as accountsMod from "../src/accounts";
 // `D4 阻-4`：命令面板那一侧的**生产段**（chip 的快照就是喂给它的）。
 import { buildAccountCommands } from "../src/account-commands";
-import { invalidateAccountUsageCache } from "../src/account-usage";
-import { showActionFailureToast } from "../src/error-toast";
 
 beforeEach(() => {
   vi.restoreAllMocks();
@@ -33,10 +30,6 @@ beforeEach(() => {
   fetchAccountsMock.mockReset();
   invokeMock.mockReset().mockResolvedValue(undefined);
   vi.spyOn(accountsMod, "fetchAccounts").mockImplementation(() => fetchAccountsMock());
-  // F10：account-usage.ts 的去抖缓存是模块级单例，跨测试文件全程存活——每个测试用例开始前
-  // 清空，否则某条测试（如触发 chip.openMenu() 却没显式 mock account_usage）留下的
-  // probe-failed 缓存条目会让后面用同一 origin/账号名的测试误判"缓存命中,不该重新 invoke"。
-  invalidateAccountUsageCache();
   // F10 Phase D 审计排障发现：多条既有测试打开 chip 菜单后从不显式关闭（`toggleMenu` 把菜单
   // append 到 `document.body`，不像 tabs.ts 的上下文菜单那样每次开新的前先关旧的）——留下的
   // 陈旧 `.account-picker` 菜单会一直挂在全局 DOM 里，后面用 `document.querySelector(...)`
@@ -209,197 +202,26 @@ describe("account-ux U8 chip 头像休眠", () => {
   });
 });
 
-// 🔴 `K-R101`/`R59`（09-13）：`formatUsageSummaryCompact` **已删除** ——
-// 它压的是解析出来的百分比，而解析层功能已退役（墓碑住 `src/account-usage-parse.ts`）。
-// 折叠态 chip 从此留空；`10ch` 装不下一屏原文，就地再解析一次等于把退役的那层原地复活。
-describe("formatUsageSummaryForMenu（R59 之后只剩两态）", () => {
-  it("screen → 「已抓到一屏」（不是百分比，也不是空白）", () => {
-    expect(formatUsageSummaryForMenu({ status: "screen", raw: "Current session\n  38%" })).toBe(
-      "已抓到一屏",
-    );
-  });
-  it("★ 空屏也是「已抓到一屏」——captured=true 就是成功（KR101D1 ③）", () => {
-    expect(formatUsageSummaryForMenu({ status: "screen", raw: "" })).toBe("已抓到一屏");
-  });
-  it("probe-failed → 「探测失败」", () => {
-    expect(formatUsageSummaryForMenu({ status: "probe-failed", error: "x" })).toBe("探测失败");
-  });
-});
-
-// F10：菜单展开懒加载当前账号用量——只在展开时探测（不是 refresh()/app 启动时），回填折叠态
-// chip 摘要 + 菜单当前账号行；"刷新用量"与"刷新"（账号列表）语义分开。
-describe("F10 chip 用量摘要：菜单展开懒加载", () => {
-  function mockUsageInvoke(resp: { captured: boolean; raw?: string | null; error?: string | null }): void {
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "account_usage"
-        ? Promise.resolve({ captured: resp.captured, raw: resp.raw ?? null, error: resp.error ?? null })
-        : Promise.resolve(undefined),
-    );
-  }
-  const flush = async (): Promise<void> => {
-    for (let i = 0; i < 3; i++) await new Promise((r) => setTimeout(r, 0));
-  };
-
-  async function mountReady(): Promise<AccountChip> {
+// 〔`设计/50` 删用量〕原先这里是「F10 chip 用量摘要：菜单展开懒加载」整组
+// （懒加载 · 去抖缓存 · 「刷新用量」按钮 · 原文一屏渲染 · 占位符 …）。
+// 用量 ③ 轴（探针）整轴退役 ⇒ **被测对象没了**，不是断言变少了。
+// 这里换成一条**翻面**的判据：chip 今天不许再发任何用量请求、也不许再长出那个按钮。
+describe("设计/50：chip 上的用量面已退役（翻面判据）", () => {
+  it("展开菜单不发任何 invoke，且没有「刷新用量」这个动作", async () => {
     readRemoteConfigMock.mockResolvedValue({ enabled: true, hosts: [host({ label: "aya" })] });
     fetchAccountsMock.mockResolvedValue(
       state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "wei" }),
     );
     const chip = new AccountChip({ openSettings: () => {} });
     await chip.refresh();
-    return chip;
-  }
-
-  it("刷新态（refresh）不触发用量探测——较重操作不该背在轻量调用上", async () => {
-    mockUsageInvoke({ captured: true, raw: "50%" });
-    await mountReady();
-    expect(invokeMock.mock.calls.some(([cmd]) => cmd === "account_usage")).toBe(false);
-  });
-
-  /**
-   * 🔴 **`KR101D1`（`R58` 裁定一）在 chip 这一面的判据**：那一屏**原文**到得了菜单。
-   *
-   * ⚠ 失效方向（件文件点名）：判「`raw` 字段还在类型里」—— 那是判形状，恒绿。
-   * 这里断的是 **DOM 上真的有那几个字**：把 `usageScreenEl(outcome.raw)` 那一句摘掉、
-   * 或者中途把 `raw` 换成空串，本条当场红。
-   */
-  it("★ KR101D1：展开菜单 → 那一屏**原文**落到菜单当前账号行的 DOM 上（折叠态留空）", async () => {
-    const screen = "Current session\n  38% used\nResets in 2h";
-    mockUsageInvoke({ captured: true, raw: screen });
-    const chip = await mountReady();
     await chip.openMenu();
-    await flush();
-    // 折叠态：R59 之后没有可压成几个字符的数了 ⇒ 恒空。
-    expect(chip.element.querySelector(".status-account-usage")?.textContent).toBe("");
-    const currentRow = document.querySelector(".account-picker-item.current");
-    const pre = currentRow?.querySelector(".usage-screen-raw");
-    expect(pre, "菜单里没有那一屏原文的容器 —— 原文在中途被丢了").not.toBeNull();
-    expect(pre?.textContent).toBe(screen);
-  });
-
-  it("★ KR101D1 ③：抓到空屏也算成功 —— 仍然渲染，并明说它是空屏（不是失败）", async () => {
-    mockUsageInvoke({ captured: true, raw: "" });
-    const chip = await mountReady();
-    await chip.openMenu();
-    await flush();
-    const currentRow = document.querySelector(".account-picker-item.current");
-    expect(currentRow?.textContent).toContain("已抓到一屏");
-    expect(currentRow?.querySelector(".usage-screen-raw")?.textContent).toBe("");
-    expect(currentRow?.querySelector(".usage-screen-empty")?.textContent).toContain("空屏");
-    expect(currentRow?.textContent).not.toContain("探测失败");
-  });
-
-  it("非当前账号行不懒加载用量（只有当前账号那行探测）", async () => {
-    mockUsageInvoke({ captured: true, raw: "38%" });
-    const chip = await mountReady();
-    await chip.openMenu();
-    await flush();
-    const items = document.querySelectorAll(".account-picker-item");
-    const nonCurrent = [...items].find((el) => !el.classList.contains("current"))!;
-    expect(nonCurrent.querySelector(".account-picker-usage")).toBeNull();
-    // 只对当前账号（wei）探测了一次，不是每个账号各探一次。
-    expect(invokeMock.mock.calls.filter(([cmd]) => cmd === "account_usage")).toHaveLength(1);
-  });
-
-  it("失败态（如未安装 tmux）→ 折叠态摘要保持空（不占地方，不强行显示错误文案）", async () => {
-    mockUsageInvoke({ captured: false, error: "远端未安装 tmux" });
-    const chip = await mountReady();
-    await chip.openMenu();
-    await flush();
-    expect(chip.element.querySelector(".status-account-usage")?.textContent).toBe("");
-  });
-
-  it("「刷新用量」动作存在且与「刷新」（账号列表）分开", async () => {
-    mockUsageInvoke({ captured: true, raw: "50%" });
-    const chip = await mountReady();
-    await chip.openMenu();
-    await flush();
-    const actions = [...document.querySelectorAll(".account-picker-action")].map((b) => b.textContent);
-    expect(actions).toContain("刷新");
-    expect(actions).toContain("刷新用量");
-  });
-
-  it("点击「刷新用量」忽略去抖缓存，重新 invoke（force）", async () => {
-    mockUsageInvoke({ captured: true, raw: "50%" });
-    const chip = await mountReady();
-    await chip.openMenu();
-    await flush();
-    const before = invokeMock.mock.calls.filter(([cmd]) => cmd === "account_usage").length;
-    const refreshUsageBtn = [...document.querySelectorAll<HTMLButtonElement>(".account-picker-action")].find(
-      (b) => b.textContent === "刷新用量",
-    )!;
-    refreshUsageBtn.click();
-    await flush();
-    const after = invokeMock.mock.calls.filter(([cmd]) => cmd === "account_usage").length;
-    expect(after).toBe(before + 1);
-  });
-
-  it("点击「刷新用量」完成后给出 toast（menuAction 会立刻关闭菜单，用户看不到过程，靠 toast 反馈）", async () => {
-    mockUsageInvoke({ captured: true, raw: "Current session\n  50%\nResets in 1h" });
-    const chip = await mountReady();
-    await chip.openMenu();
-    await flush();
-    const refreshUsageBtn = [...document.querySelectorAll<HTMLButtonElement>(".account-picker-action")].find(
-      (b) => b.textContent === "刷新用量",
-    )!;
-    refreshUsageBtn.click();
-    await flush();
-    expect(showActionFailureToast).toHaveBeenCalledWith(
-      "用量已刷新",
-      expect.stringContaining("已抓到一屏"),
-      expect.objectContaining({ level: "info" }),
+    expect(invokeMock).not.toHaveBeenCalled();
+    const actions = [...document.querySelectorAll<HTMLButtonElement>(".account-picker-action")].map(
+      (b) => b.textContent,
     );
-  });
-
-  it("菜单展开后当前账号行先显示占位「…」，resolve 后才换成真实结果（此前完全空白,跟探测失败/没查过无法区分）", async () => {
-    let resolveInvoke!: (v: unknown) => void;
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "account_usage" ? new Promise((r) => (resolveInvoke = r)) : Promise.resolve(undefined),
-    );
-    const chip = await mountReady();
-    await chip.openMenu();
-    const currentRow = document.querySelector(".account-picker-item.current");
-    expect(currentRow?.querySelector(".account-picker-usage")?.textContent).toBe("…");
-    resolveInvoke({ captured: true, raw: "50%" });
-    await flush();
-    expect(currentRow?.querySelector(".account-picker-usage")?.textContent).not.toBe("…");
-  });
-
-  /**
-   * F10 Phase D 审计（UX，阻塞）：探测期间切换当前账号 ⇒ 姗姗来迟的结果必须被丢弃。
-   *
-   * 🔴 **`K-R101` 改了它断在哪儿，理由写出来**：原来断的是「折叠态 chip 上不是 `99%`」，
-   * 而 `R59` 之后折叠态 chip **恒空** ⇒ 那条断言会**恒绿**（判据的可观测面被这一刀抽走了）。
-   * 今天还看得见这件事的只有 `notify` 那条 toast ⇒ 判据跟着可观测面搬过来，
-   * **不留一条恒绿的在盘上**。
-   */
-  it("F10 Phase D 审计（UX，阻塞）：探测期间切换当前账号 → 姗姗来迟的结果被丢弃（走 notify 那条可观测路）", async () => {
-    let resolveWeiProbe!: (v: unknown) => void;
-    invokeMock.mockImplementation((cmd: string) =>
-      cmd === "account_usage" ? new Promise((r) => (resolveWeiProbe = r)) : Promise.resolve(undefined),
-    );
-    const chip = await mountReady(); // 当前账号 = wei
-    (
-      chip as unknown as {
-        loadCurrentAccountUsage: (d: Account, force: boolean, notify: boolean) => void;
-      }
-    ).loadCurrentAccountUsage(acct({ name: "wei" }), true, true);
-
-    // 切到 amy（探测仍挂起）。
-    fetchAccountsMock.mockResolvedValue(
-      state({ accounts: [acct({ name: "wei" }), acct({ name: "amy" })], defaultName: "amy" }),
-    );
-    await chip.refresh();
-
-    resolveWeiProbe({ captured: true, raw: "WEI-STALE-SCREEN" });
-    await flush();
-    expect(showActionFailureToast).toHaveBeenCalledWith(
-      "用量刷新已过期",
-      expect.stringContaining("已切换"),
-      expect.objectContaining({ level: "info" }),
-    );
-    // 那一屏陈旧内容一个字都不许落到 DOM 上。
-    expect(document.body.textContent).not.toContain("WEI-STALE-SCREEN");
+    expect(actions).not.toContain("刷新用量");
+    // 折叠态那个用量 span 也不该再存在（`.status-account-usage` 整条删了）。
+    expect(chip.element.querySelector(".status-account-usage")).toBeNull();
   });
 });
 

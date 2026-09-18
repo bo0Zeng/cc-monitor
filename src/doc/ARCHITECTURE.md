@@ -105,7 +105,7 @@
                                       │ stdout（一条 SSH channel）
                                       ▼
         ssh_source.rs::stream_loop ──► 与本机同一套 emitter / event_replay
-                                      （帧种类见 doc/IPC-PROTOCOL.md）
+                                      （帧种类见 `src/doc/IPC-PROTOCOL.md`）
 
   ┌─ POSIX 本机 ──────────────────────────┐
   │  「本地 = 不走 ssh 的远端」——同一套分解，  │  ← 会话容器就是 tmux，
@@ -262,7 +262,7 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 | 账本 | 管哪一块 |
 |---|---|
 | `no_timer_guard`（后端侧） | 后端里不许有「自己醒过来」的构件（零容忍） |
-| `polling_registry` | 前端 TS 与 `shared/ccm` |
+| `polling_registry` | 前端 TS 与 `shared/ccm`（已删，见 `e8f9e08e`；今天是后端的 `ccm`） |
 | `rust_timer_registry::REGISTERED` | monitor **Rust 级**的 `sleep` / `interval` |
 | `rust_timer_registry::SHELL_WAKES` | monitor Rust **拼出来的 shell 循环**（前三张都看不见它） |
 
@@ -291,9 +291,9 @@ monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一
 
 ---
 
-## 3. Tauri State 注册矩阵 → **只有一个家：`doc/STATE-MATRIX.md`**
+## 3. Tauri State 注册矩阵 → **只有一个家：`src/doc/STATE-MATRIX.md`**
 
-〔F19〕这里原本有一张 7 行的 State 表，而 **`doc/STATE-MATRIX.md` 里有严格更全的同一张表**
+〔F19〕这里原本有一张 7 行的 State 表，而 **`src/doc/STATE-MATRIX.md` 里有严格更全的同一张表**
 （多出「注册位置 / 创建位置 / Arc 所有权」三列 + 逐命令 consumer 清单），
 且原文自己就写着「详细 consumer 矩阵 → STATE-MATRIX.md」——
 **它自己承认家在那边，却又存了一份摘要。** 两份副本必漂 ⇒ 摘要删除，这里只留指针。
@@ -338,7 +338,7 @@ monitor 与外部进程的所有通信都在 `~/.claude/claudecode-frontend/` �
 每条都是踩过坑总结出来的"为什么不能用别的方案"。
 
 ### 零侵入 = 不写 Claude Code 数据源
-watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。写入均为用户**显式**触发：①历史浏览器 `delete_history_session`（Batch4-F15 起 exists → 双边 canonicalize → canonical 前缀 + `.jsonl` 扩展名四段守卫，`..`/symlink 穿越拒绝）；②F62 `create_branch_session`（从某轮建分支——**只新增** `<new-sid>.jsonl`，`create_new` 原子写**绝不覆盖**，原会话零改动，§1 正交非侵入）。〔`K-R88` 2026-09-13〕它的入参从路径收成 **sid**，守卫也跟着换了家：两侧共用 `branch_core::find_session_file`（〔散文墓碑〕原措辞逐字是「`validate_branch_source` 同源守卫」，那个函数今天已经不在了）；③PowerShell profile [安装]（只动 BEGIN/END **块内**内容，块外用户其他代码完全不动）；④**G6 远端分叉**（`remote_branch::create_remote_branch_session` → ssh → 后端的 `fork_write.rs`）——与②是**同一件事的远端形态**（用户显式点 `⑂` → 只新增一份 `<new-sid>.jsonl`、原会话零改动），区别只在**动手的是后端而不是 monitor**。后端的写面被 `readonly_guard` 两层护栏钉死在那**一个**模块上（且必须 `O_EXCL`、禁删/改名/截断/追加/覆盖），细则见 `doc/INVARIANTS.md` §1 的 G6 段与 §41.6。<br>（2026-08-01 Phase G 订正：本枚举原来只有三条 —— 而 `INVARIANTS.md` 那边已经写上了第四条，两份文档口径不一致，而本文是新人先读的那份。）
+watcher / session_map 只读 `~/.claude/projects/` 和 `~/.claude/sessions/`。写入均为用户**显式**触发：①历史浏览器 `delete_history_session`（Batch4-F15 起 exists → 双边 canonicalize → canonical 前缀 + `.jsonl` 扩展名四段守卫，`..`/symlink 穿越拒绝）；②F62 `create_branch_session`（从某轮建分支——**只新增** `<new-sid>.jsonl`，`create_new` 原子写**绝不覆盖**，原会话零改动，§1 正交非侵入）。〔`K-R88` 2026-09-13〕它的入参从路径收成 **sid**，守卫也跟着换了家：两侧共用 `branch_core::find_session_file`（〔散文墓碑〕原措辞逐字是「`validate_branch_source` 同源守卫」，那个函数今天已经不在了）；③PowerShell profile [安装]（只动 BEGIN/END **块内**内容，块外用户其他代码完全不动）；④**G6 远端分叉**（`remote_branch::create_remote_branch_session` → ssh → 后端的 `fork_write.rs`）——与②是**同一件事的远端形态**（用户显式点 `⑂` → 只新增一份 `<new-sid>.jsonl`、原会话零改动），区别只在**动手的是后端而不是 monitor**。后端的写面被 `readonly_guard` 两层护栏钉死在那**一个**模块上（且必须 `O_EXCL`、禁删/改名/截断/追加/覆盖），细则见 `src/doc/INVARIANTS.md` §1 的 G6 段与 §41.6。<br>（2026-08-01 Phase G 订正：本枚举原来只有三条 —— 而 `INVARIANTS.md` 那边已经写上了第四条，两份文档口径不一致，而本文是新人先读的那份。）
 
 **为什么**：cc-monitor 是个监控渲染器，写 jsonl 会破坏用户对"数据源 = 我自己的命令痕迹"的认知；profile 写入则是必要的可选副作用（用户显式 opt-in 装 `__ccm_bind`），仍然走完整的 backup + ACL 保留路径。
 
@@ -488,7 +488,7 @@ PS 端模板 `cc.ps1.tpl` 用 `[System.IO.File]::WriteAllText(... UTF8Encoding($
 
 **为什么放弃**：Windows Terminal 单进程多窗口/多 tab 架构，`GetForegroundWindow` 只能拿到 WT 主进程的 HWND，**无法区分同一 WT 窗口内哪个 tab active**。SidHwndCache 里 N 个 tab → 同一 HWND 的映射也反查不出。已彻底删除 `lookup_by_foreground_pid` 和 `FOCUS_SWITCH` IPC。
 
-**v2.4 issue #2 用 watcher 反推 `type=user` 替代**：用户在 claude 里敲回车 → claude 写一行 type=user 到 jsonl → watcher 识别 → 切对应 Tab。零侵入、信号准（详 doc/INVARIANTS.md § 20）。OS API 路径仍废弃；公开 API（[microsoft/terminal#19818](https://github.com/microsoft/terminal/issues/19818)）2026 年 5 月仍在 Backlog。
+**v2.4 issue #2 用 watcher 反推 `type=user` 替代**：用户在 claude 里敲回车 → claude 写一行 type=user 到 jsonl → watcher 识别 → 切对应 Tab。零侵入、信号准（详 `src/doc/INVARIANTS.md` § 20）。OS API 路径仍废弃；公开 API（[microsoft/terminal#19818](https://github.com/microsoft/terminal/issues/19818)）2026 年 5 月仍在 Backlog。
 
 ### subagent 实时流（已隔离）
 不走主 watcher，由前端 `invoke("load_subagent")` 在用户展开 Task 折叠卡时按需加载。

@@ -233,6 +233,24 @@ mod tests {
             "p2j-bus-state",
             "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--bus-state\n--capture-pane\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--oneshot-session\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-state\nch:cancel\nch:capture-pane\nch:kill\nch:launch\nch:oneshot-session\nch:ping\nch:resolve",
         ),
+        // ★ p2k（`设计/50` 删用量）：**本表第一次往下走** —— 三条同拍**退役**
+        //   （`--usage` ＋ `--oneshot-session` 出 `SUBCOMMANDS`，27 → 25；
+        //   `ch:oneshot-session` 出 `inbound::COMMANDS`，11 → 10 —— 注意这里的
+        //   `#channel` 半是 11 → 10 而不是 10 → 9，因为 `#channel` 那行本身也算一格）。
+        //
+        // ⚠ **必须 bump，而理由与前九次相反**：前九次都是「新能力在已部署的旧 daemon 上休眠」；
+        //   这一次是**旧 monitor 撞新 daemon** —— 一台装了这一版 daemon 的远端上，
+        //   `--usage` 会落进 `unknown argument` + exit 2，`ch:oneshot-session` 会让
+        //   `InboundClient::accepts` 判 `Unsupported`。判「这台机上的 daemon 是哪一版」
+        //   只有 build_id 这一条路 ⇒ **减法同样要 bump**，否则协议面上没人知道它变了。
+        // ★ `capture-pane` 那两条（CLI 面 ＋ 帧面）**刻意都留着**：拉屏预览真在用
+        //   （`设计/50 §2` 逐字「`capture-pane` **不是**孤儿」）。
+        // ★ 同 p2d / p2e / p2g / p2h / p2i / p2j 如实登记：这一半是**源码半**，
+        //   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**；本护栏对「半 bump」是瞎的。
+        (
+            "p2k-usage-retired",
+            "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--bus-state\n--capture-pane\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-state\nch:cancel\nch:capture-pane\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
     ];
 
     use crate::guard_support::{assert_no_test_code, production_code};

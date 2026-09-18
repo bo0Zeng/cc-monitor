@@ -7,7 +7,11 @@
  *
  * RecordTimeline 是唯一调用方：`insertNode` 按 seq 把卡插到正确位置。
  *
- * 用 ResizeObserver 观察 .stream-content 的尺寸变化以维持贴底：
+ * 用 ResizeObserver 观察 .stream-content **与 .stream 自己**两根轴（步 3）：
+ *   - 内容那根答「内容长高了吗」→ 贴底；
+ *   - 容器那根答「视口变大了吗」→ 报给宿主去补批（`onViewportResize`）。
+ *
+ * 内容那根的触发面：
  *   - 卡片插入 / 长高、tool 组追加单元、collapsible 展开、Markdown 字体/图片后载
  *   - Tab visibility 切回时（0×0 → 真实尺寸）
  *   都会触发回调 → stickToBottom 时 snap 贴底。
@@ -51,11 +55,30 @@ export class MessageStream {
     };
     this.scrollEl.addEventListener("scroll", this.scrollHandler);
 
-    this.resizeObserver = new ResizeObserver(() => {
+    this.resizeObserver = new ResizeObserver((entries) => {
       if (this.stickToBottom) this.snap();
+      // ★ 步 3（`设计/10 §6`）：**视口自己变大也要有人管。**
+      //
+      // 原来只观察 `contentEl` —— 那根轴只答「内容长高了吗」。
+      // 把窗口拉高、收起侧栏、拖宽 tab 栏时变的是 **`scrollEl` 自己**，内容一个字没动
+      // ⇒ 旧的 RO 一次都不响 ⇒ 多出来的那一块空白**没有任何东西会去补**
+      //（`fillAbove` 挂在 scroll 事件上，而不可滚的元素根本不产生 scroll 事件）。
+      // ⇒ 这里把 `scrollEl` 也观察上，宿主拿到通知后自己决定补不补（见 tabs.ts）。
+      if (this.onViewportResize && entries.some((e) => e.target === this.scrollEl)) {
+        this.onViewportResize();
+      }
     });
     this.resizeObserver.observe(this.contentEl);
+    this.resizeObserver.observe(this.scrollEl);
   }
+
+  /**
+   * 步 3：滚动容器**自身**尺寸变了（窗口拉高 / 布局变化）。宿主用它重新补批。
+   *
+   * 🔴 只报事实，不替宿主做决定：这里不知道「该不该补」——那要看 tab 是不是 active、
+   * 账本里还有没有东西。`MessageStream` 手上一样都没有。
+   */
+  onViewportResize?: () => void;
 
   /**
    * 释放 RO + scroll listener。Tab 被关闭时调用，避免每次关 Tab 累积一个

@@ -165,8 +165,9 @@ mod tests {
     ///
     /// ⚠ 带引号的那几根是**刻意的**：`jsonl` 裸词会打中 `jsonl_path` / `read_jsonl` /
     /// `newest_jsonl` 这一大片**变量名与函数名** —— 那是通用的流式读取机器，不是知识。
-    /// 同一个教训 `usage.rs::the_usage_kou_jing_has_exactly_one_home` 的头注也记着
-    /// （「匹配单位比事实**大**」）。
+    /// 同一个教训在 monitor 侧那条「用量口径只有一个家」的判据头注里也记着
+    /// （「匹配单位比事实**大**」）。〔`设计/50`：那条判据随用量 ② 轴整轴退役 ——
+    /// 教训还在，出处没了。〕
     fn needles() -> Vec<(String, &'static str)> {
         vec![
             (format!("rollo{}", "ut-"), "会话文件命名"),
@@ -210,8 +211,9 @@ mod tests {
 
     /// kind 值判别的形状：带引号的 `"codex"`。
     ///
-    /// ⚠ **必须带引号**——照 `usage.rs::the_usage_kou_jing_has_exactly_one_home` 头注记下的
-    /// 那次教训：第一版只比裸名字，`let is_codex = …` 这种**局部变量名**当场把判据打红。
+    /// ⚠ **必须带引号**——照 monitor 侧那条「用量口径只有一个家」的判据头注记下的
+    /// 那次教训（`设计/50` 已随用量 ② 轴把它删掉）：
+    /// 第一版只比裸名字，`let is_codex = …` 这种**局部变量名**当场把判据打红。
     /// 判据要认的是「谁在拿这个**值**做判别」，不是「谁提到过这个词」。
     fn kind_literal() -> String {
         format!("\"cod{}\"", "ex")
@@ -308,11 +310,6 @@ mod tests {
         ),
         ("observe/search_query.rs", 2, "会话记录根 + 会话文件判定"),
         (
-            "observe/usage_query.rs",
-            3,
-            "会话记录根 + 会话文件判定 + codex 侧聚合的另一半",
-        ),
-        (
             "observe/watcher.rs",
             4,
             "会话记录根 + pidfile 目录 + 判活 cmdline + 会话文件判定",
@@ -371,11 +368,9 @@ mod tests {
         ("会话记录根", "control/fork_write.rs", 1, "fork 落盘时用 Claude 的 `projects/` 拼路径 ⇒ 写到一个这家根本不用的目录下"),
         ("会话记录根", "observe/history_query.rs", 1, "报错，但措辞是 Claude 的布局（`read_dir <home>/projects failed`）—— 说得出话，说的是别人的话"),
         ("会话记录根", "observe/search_query.rs", 1, "**静默**：rc=0、零输出"),
-        ("会话记录根", "observe/usage_query.rs", 1, "**静默**：`projects/` 不是目录就 `Ok(())` 早退，rc=0、零输出"),
         ("会话记录根", "observe/watcher.rs", 1, "流式 watcher 只 inotify Claude 的两个根 ⇒ 这家的会话永远不出现（DG1 那半本来就没接线）"),
         ("会话文件判定", "observe/history_query.rs", 3, "`.jsonl` 判定把 `.ndjson` 全过滤掉 ⇒ **静默**当成空项目目录"),
         ("会话文件判定", "observe/search_query.rs", 1, "同上，**静默**"),
-        ("会话文件判定", "observe/usage_query.rs", 1, "同上，**静默**"),
         ("会话文件判定", "observe/watcher.rs", 1, "同上，**静默**（连 inotify 事件都会被过滤掉）"),
         ("会话文件命名", "control/fork_write.rs", 1, "按 `<sid>.jsonl` 造**新**文件 ⇒ 造出来的文件这家自己认不出来。〔`K-R88` 09-13〕2 → 1：**找**那一步的命名随「找文件」进了共享 crate，只剩落盘这一处"),
         ("会话文件命名", "observe/history_query.rs", 1, "`--list-subagents` 拿 `<stem>.jsonl` 找旁文件 ⇒ 找不到，**静默**返回空"),
@@ -385,7 +380,6 @@ mod tests {
         ("账号信任判定", "observe/accounts_query.rs", 1, "按 `.claude.json` 的 `projects[cwd].hasTrustDialogAccepted` 判 ⇒ 对这家恒判「不信任」"),
         ("判活 cmdline", "observe/watcher.rs", 1, "cmdline 兜底词表是 `claude`/`node` ⇒ 这家的进程被判成冒名"),
         ("解析本机 home", "main.rs", 1, "`resolve_agent_home()` 写死问 claudecode ⇒ 所有一次性子命令与流模式**只有一个根**，第三家连被问到的机会都没有"),
-        ("用量聚合", "observe/usage_query.rs", 1, "Claude 段之后硬接一句 codex 聚合 ⇒ 加一家就是再硬接一句"),
         ("resume 默认命令", "control/resolve_query.rs", 2, "`agent_kind` 不等于 `\"codex\"` 一律落 Claude 路 ⇒ 未知 kind **静默**拿到 `claude`"),
         ("resume 命令形", "control/resolve_query.rs", 2, "同上：`--resolve` 对 `agentKind:\"fake\"` 返回 `claude --resume <sid>`，**rc=0**。⚠ 这是最坏的一种：不是「没有会话」，是**跑错命令**"),
         ("resume 会话名前缀", "control/resolve_query.rs", 2, "同上：会话名前缀**静默**给成 `cc-`"),

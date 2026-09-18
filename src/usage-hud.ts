@@ -3,12 +3,12 @@
  * assistant 记录的 input+cache token ÷ 模型上限）。逼近上限（≥80%）高亮预警——最可行动的实时信号。
  *
  * 纯前端、零后端：数据来自 live 流（TabManager onLine 捕获活跃会话最新 assistant 的 usage+model）。
- * **只 token 不 $**（用户 2026-07-17 拍板）。模型上限表在 `views/pricing.ts`（未知模型显 `?`，不显错%）。
+ * **只 token 不 $**（用户 2026-07-17 拍板）。模型上限表在 `views/context-limit.ts`（未知模型显 `?`，不显错%）。
  *
  * 「今日 token」= 后续项（需跨会话聚合，非纯前端；本刀先聚焦 context% 这个最高价值信号）。
  */
 
-import { contextPercent, normalizeModel, type ContextLimitOverrides } from "./views/pricing";
+import { contextPercent, normalizeModel, type ContextLimitOverrides } from "./views/context-limit";
 import { loadConfig } from "./config";
 
 export class UsageHud {
@@ -27,6 +27,10 @@ export class UsageHud {
     // usage-hud-chip 只叠 delta（tabular-nums + .is-high 预警）。
     btn.className = "status-tasks usage-hud-chip";
     btn.style.display = "none"; // 无活跃会话/无 usage 时隐藏
+    // `设计/50`：它当初点开的跨会话聚合视图已退役 ⇒ chip 变**纯只读**，不再挂任何监听。
+    // 元素仍是 <button>（`.status-tasks` 那套 chip 样式建在 button 上），只把光标改回默认，
+    // 免得它看起来还像能点。
+    btn.style.cursor = "default";
     this.summaryElement = btn;
   }
 
@@ -46,11 +50,6 @@ export class UsageHud {
     } catch {
       /* 用内置默认上限表 */
     }
-  }
-
-  /** 点击 chip 的行为（main.ts 注入：打开用量视图）。 */
-  onClick(handler: () => void): void {
-    this.summaryElement.addEventListener("click", handler);
   }
 
   /**

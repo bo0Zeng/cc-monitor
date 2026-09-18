@@ -59,7 +59,7 @@ pub(crate) fn classify(code: Option<i32>, stdout: String, stderr: String) -> Que
     }
 }
 
-/// 跑一条本机一次性查询。`args` 是子命令及其参数，例如 `["--usage"]`。
+/// 跑一条本机一次性查询。`args` 是子命令及其参数，例如 `["--list-accounts"]`。
 ///
 /// ⚠ **不做重试、不做超时**：这两件都属调用方的策略（历史面愿意等、UI 探针不愿意），
 /// 而在这一层写死会让两种调用方之一必然错。如实记为诚实边界。
@@ -110,8 +110,8 @@ mod tests {
     ///
     /// # 三个候选都不是答案，而根因也不是「缺判据形态」
     ///
-    /// 摸底先量了一件事：**`aggregate_usage_all` 与 `list_local_session_accounts`
-    /// 今天一个测试都没有驱动过**（`grep` 实测 0 处）。⇒ 三个候选
+    /// 摸底先量了一件事：**当时那两个调用方（用量聚合 ＋ `list_local_session_accounts`）
+    /// 一个测试都没有驱动过**（`grep` 实测 0 处）。⇒ 三个候选
     /// （真二进制 e2e 断言副作用 / 覆盖率门槛 / `#[cfg(test)]` 计数探针）
     /// **全都要先有「一个真驱动那条路的测试」才谈得上**，而那一步才是缺的那步。
     /// ⇒ 补上那一步之后，**探针根本不用新造** ——
@@ -134,15 +134,18 @@ mod tests {
     #[tokio::test]
     async fn a_short_circuit_cannot_fake_the_honest_degrade() {
         // 前提自检：本测试环境**必须**没有 sidecar，否则下面两条会走 happy path 而空转。
-        let probe = run_query(env!("CCM_TARGET_TRIPLE"), &["--usage"]);
+        let probe = run_query(env!("CCM_TARGET_TRIPLE"), &["--list-accounts"]);
         assert!(
             matches!(probe, QueryOutcome::NoBackend(_)),
             "测试环境里居然找得到 sidecar —— 本条的前提不成立，两条断言会空转。\n\
              （若哪天单测环境真带 sidecar，本条要改成显式指一个不存在的 target triple）"
         );
 
-        // ① 账号查询：诚实降级必须 available=false **且带 error 理由**。
+        // 账号查询：诚实降级必须 available=false **且带 error 理由**。
         //    短路（`return Ok(Default::default())`）给出的是 error=None ⇒ 区分得开。
+        // 〔`设计/50`：这里原先还有第二个调用点「② 用量聚合」，
+        //   随用量 ② 轴整轴退役 ⇒ 本条今天只剩一个调用点。**性质没降**：它买的是
+        //   「短路装不出诚实降级」，一个调用点就足以买到；降的是覆盖面，如实记在这儿。〕
         let r = crate::local_accounts::list_local_session_accounts()
             .await
             .expect("这条路的诚实降级是 Ok(available=false)，不该是 Err");
@@ -153,21 +156,6 @@ mod tests {
              没有 sidecar 时它**必须说出理由**（定框 §5：tagged 返回 + reason）。\n\
              ⇒ 拿不出 reason 就意味着**那条查询根本没发生**（被短路了），\n\
              而扫源码的守卫看不见这种错：调用那行文字还在。"
-        );
-
-        // ② 用量聚合：同一条性质，另一个调用点。它的诚实降级形态是 `Err(带理由)`。
-        let (tx, _rx) = std::sync::mpsc::channel::<String>();
-        let ch = tauri::ipc::Channel::new(move |_body| {
-            let _ = tx.send(String::new());
-            Ok(())
-        });
-        let e = crate::usage::aggregate_usage_all(ch)
-            .await
-            .expect_err("没有 sidecar 时 aggregate_usage_all 必须报错，而不是「0 个会话」");
-        assert!(
-            e.contains("本机后端不在") || e.contains("查询失败"),
-            "报错没说清是「后端不在」还是「查询失败」：{e:?}\n\
-             —— 那两者对用户是完全不同的处境（定框 §5）"
         );
     }
 
@@ -228,7 +216,10 @@ mod tests {
     /// `NoBackend` 那支带得出「找过哪些路径」。
     #[test]
     fn no_backend_is_not_a_failed_query() {
-        let missing = run_query("x86_64-unknown-linux-gnu-does-not-exist", &["--usage"]);
+        let missing = run_query(
+            "x86_64-unknown-linux-gnu-does-not-exist",
+            &["--list-accounts"],
+        );
         match &missing {
             QueryOutcome::NoBackend(reason) => {
                 // 理由里必须能看出「找过哪儿」，否则 UI 只能说一句「不可用」。
@@ -253,6 +244,8 @@ mod tests {
     /// 原形：断言本模块**零生产调用方**，一有调用方就红并喊「回去把棘轮往下拧」。
     /// F10b 第一批（`usage.rs` 改走 `--usage`）时它**确实红了**，而且红得对 ——
     /// 棘轮当场从 11 拧到 10、`usage.rs` 那条登记删掉。
+    /// 〔`设计/50`：`usage.rs` 与 `--usage` 今天都不存在了 —— **上面这段是考古**，
+    ///  留着是因为它解释的是本条**为什么长这个样子**，不是在描述今天的盘面。〕
     ///
     /// ⇒ 换成后继形态：**每一个调用方都必须是「已退役」的那批**。
     /// 判定不靠手写清单：拿本模块的生产调用方集合，与

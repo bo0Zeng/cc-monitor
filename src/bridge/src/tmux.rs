@@ -57,8 +57,9 @@ const TMUX_LS_FMT_FIELDS: usize = 6;
 ///    `tmux display-message -u -p …` 都是 `rc=1 + unknown flag -u` ⇒ **放错是响的**。
 ///
 /// ⚠ `capture-pane -p` **不在人群里**：实测它抓回来的中文是原始 UTF-8 字节，
-/// POSIX / `C.UTF-8` / `-u` 三种模式逐字节相同 ⇒ [`capture_remote_pane`] 与
-/// `account_usage.rs` 的用量探针**不受本件影响**，本拍**刻意不给它们加 `-u`**（不扩面）。
+/// POSIX / `C.UTF-8` / `-u` 三种模式逐字节相同 ⇒ [`capture_remote_pane`]
+/// **不受本件影响**，本拍**刻意不给它加 `-u`**（不扩面）。
+/// 〔`设计/50`：原话还并列了 `account_usage.rs` 的用量探针 —— 那条整轴退役了。〕
 ///
 /// ⚠ **`-u` 单独不够**，它的失效面是「某一处忘了插」，而那是静默的。
 /// 处置那一半今天在 `list_remote_tmux` 上：[`tmux_tab_underflow`]（K-R12 `J1`）。
@@ -220,41 +221,8 @@ pub fn parse_tmux_ls(output: &str) -> Vec<TmuxSession> {
         .collect()
 }
 
-/// F10：一次性用量探针会话的命名前缀（`src/bridge/src/account_usage.rs` 唯一使用这个前缀建
-/// 会话）。**不**用新 tmux user-option 打标——`TMUX_LS_FMT` 是机器化锁死的"双写点"（红线 I8，
-/// 见本文件 `tmux_ls_fmt_double_write_point_stays_in_sync` 测试：daemon 的 `watcher.rs` 也用
-/// 这个格式串做自己的 idle-tmux 对账轮询，两侧必须逐字节一致），改格式串代价和风险都不成
-/// 比例。探针会话名完全由本功能自己控制，前缀足够独特，用它做识别零风险、不碰任何双写点。
-const USAGE_PROBE_NAME_PREFIX: &str = "ccm-usage-";
-
-/// 🔴 **`K-R104`（09-13）：探针会话的名字空间搬家了，本条跟着扩面。**
-///
-/// 编排搬上 daemon 帧面之后，探针会话**不再由 monitor 自己建**，而是由 daemon 的
-/// `oneshot-session` 原语**铸**出来 —— 名字形状是 `ccm-oneshot-<slug>-cc`
-/// （唯一住址 `src/backend/control/oneshot_session.rs::ONESHOT_PREFIX`
-/// ＋ `ONESHOT_GATE_SUFFIX`）。
-///
-/// ⚠ **不扩面的后果不是「少过滤一个前缀」**：那条 `-cc` 尾巴让它**过得了** §34 Gate 2
-/// 的名字半支（那正是它存在的理由），于是它在用户眼里长得跟一个正牌 `cc-*` 会话一样，
-/// 会**混进会话列表**闪现几秒。上一版那条前缀过滤挡的就是这件事。
-///
-/// ⚠ **这里刻意写 `ccm-oneshot-` 这个字面量而不是引 daemon 那个常量**：
-/// 两棵树是两个 crate，monitor 不依赖 daemon 的 crate（`layering` 那条线）。
-/// 同族的跨轨字面量本仓已有先例（`LOCAL_ORIGIN` 两侧对拍）；这一处由
-/// `tests::the_oneshot_prefix_matches_the_daemon_side` 逐字对拍，**不许各写各的**。
-const ONESHOT_SESSION_NAME_PREFIX: &str = "ccm-oneshot-";
-
-/// F10：判定一个 tmux 会话名是否是**一次性探针会话**（不该出现在用户的会话列表里）。
-/// 纯字符串前缀匹配，不涉及 IO。
-pub(crate) fn is_usage_probe_session(name: &str) -> bool {
-    name.starts_with(USAGE_PROBE_NAME_PREFIX) || name.starts_with(ONESHOT_SESSION_NAME_PREFIX)
-}
-
 /// 列远端 tmux 会话(通道 B,一次性 exec)。`command -v tmux` 门控:无 tmux → 哨兵 `NO_TMUX`
 /// → 返 `None`(前端隐藏 attach 项);有 tmux 但无会话 → `Some(空)`。
-///
-/// F10：过滤掉 `is_usage_probe_session` 命中的一次性用量探针会话——见
-/// `parse_visible_tmux_sessions`。
 #[tauri::command]
 pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>, String> {
     let cfg = crate::load_remote_config_by_label(&origin)
@@ -294,7 +262,7 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
             bad.split('\t').count()
         ));
     }
-    Ok(Some(parse_visible_tmux_sessions(&out)))
+    Ok(Some(parse_tmux_ls(&out)))
 }
 
 /// P3-刀2-UI：**本机今天有哪些 tmux 会话** —— 与远端 `list_remote_tmux` 同形。
@@ -343,23 +311,7 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
 #[tauri::command]
 pub fn list_local_tmux() -> Option<Vec<TmuxSession>> {
     let raw = ssh_source::tmux_raw_for(crate::inbound_client::LOCAL_ORIGIN)?;
-    Some(parse_visible_tmux_sessions(&raw))
-}
-
-/// `tmux ls` 原始输出 → **前端可见**的会话列表：解析 + 滤掉一次性用量探针会话（F10）。
-///
-/// 探针会话对 `findClaudeTmux`/tab 徽章/kill 授权判据等全部下游消费者应当不可见——它们寿命
-/// 以秒计、用完即清，混进正牌列表只会让 tab 右键菜单短暂冒出一个不属于任何 tab 的幽灵条目。
-///
-/// **为什么单独提一个函数**（F10 Phase D 审计）：原先「解析 + 过滤」内联在 `list_remote_tmux`
-/// 里，而 `#[tauri::command]` 需要真实远端连接、单测碰不到；于是那条测试把过滤表达式在测试体里
-/// **又抄了一遍**——删掉生产侧的 `.filter(...)` 它照样绿，是典型的伪测试。提成纯函数后，
-/// 生产与测试走的是同一条代码路径，删过滤会立刻红。
-pub(crate) fn parse_visible_tmux_sessions(raw: &str) -> Vec<TmuxSession> {
-    parse_tmux_ls(raw)
-        .into_iter()
-        .filter(|s| !is_usage_probe_session(&s.name))
-        .collect()
+    Some(parse_tmux_ls(&raw))
 }
 
 // ---------- P1（zero-poll-liveness）：`TmuxSessions.observation` 的取值 ----------
@@ -1954,63 +1906,6 @@ mod tests {
         assert!(!s[1].attached);
         assert_eq!(s[1].command, "zsh");
         assert_eq!(s[1].sid, None);
-    }
-
-    /// ★★ `K-R104` 跨轨对拍：**那个前缀两侧必须是同一个串**。
-    ///
-    /// 漂了**不会有任何东西报错** —— daemon 照旧铸它的名字，monitor 照旧过滤它以为的那个前缀，
-    /// 而探针会话会开始在用户的会话列表里闪现。同 `LOCAL_ORIGIN` 那条跨轨对拍的形状：
-    /// `include_str!` 读对面那份、抠出字面量、逐字比。
-    #[test]
-    fn the_oneshot_prefix_matches_the_daemon_side() {
-        const DAEMON: &str = include_str!("../../backend/control/oneshot_session.rs");
-        let line = DAEMON
-            .lines()
-            .find(|l| {
-                l.trim_start()
-                    .starts_with("pub(crate) const ONESHOT_PREFIX")
-            })
-            .expect("daemon 那份里找不到 `ONESHOT_PREFIX` —— 名字改了就来改这条");
-        let lit = line
-            .split('"')
-            .nth(1)
-            .expect("那一行不是 `pub(crate) const ONESHOT_PREFIX: &str = \"…\";` 的形状");
-        assert_eq!(
-            lit, ONESHOT_SESSION_NAME_PREFIX,
-            "一次性会话前缀两侧漂了：daemon {lit:?} / monitor {:?}。\n\
-             ⚠ 这种漂**不会有任何东西报错** —— 探针会话会开始在用户的会话列表里闪现。",
-            ONESHOT_SESSION_NAME_PREFIX
-        );
-    }
-
-    /// F10：一次性用量探针会话的识别——纯前缀匹配，不涉及新 tmux user-option（不碰
-    /// `TMUX_LS_FMT` 双写点，见 `USAGE_PROBE_NAME_PREFIX` 头注）。
-    #[test]
-    fn usage_probe_session_name_prefix() {
-        assert!(is_usage_probe_session("ccm-usage-z"));
-        // `K-R104`：daemon 铸的那个名字空间也要被挡在会话列表之外。
-        assert!(is_usage_probe_session("ccm-oneshot-usage-z-cc"));
-        assert!(!is_usage_probe_session("ccm-oneshot")); // 无尾随连字符，不是前缀本身
-        assert!(is_usage_probe_session("ccm-usage-z-2")); // 撞名重试的 -N 变体
-        assert!(!is_usage_probe_session("cc-abc12345")); // 正牌会话前缀，不该被误判
-        assert!(!is_usage_probe_session("web")); // 用户自己的会话
-        assert!(!is_usage_probe_session("ccm-usage")); // 无尾随连字符，不是前缀本身
-        assert!(!is_usage_probe_session("")); // 空
-    }
-
-    /// F10：`list_remote_tmux` 对探针会话的过滤逻辑——`parse_tmux_ls` 之后接一次
-    /// `is_usage_probe_session` 过滤，验证两者组合后正牌会话保留、探针会话消失（不需要真的
-    /// 发起 SSH 连接，`list_remote_tmux` 内部这段处理是纯数据变换，抽取同样的组合方式单测）。
-    #[test]
-    fn list_remote_tmux_filters_out_usage_probe_sessions() {
-        let out = "cc-abc12345\t/home/pi/proj\tclaude\t1\t1\tsess-1\nccm-usage-z\t/home/z\tclaude\t1\t1\t\nweb\t/srv/web\tzsh\t0\t1\t\n";
-        // 走**生产同一条**代码路径（`list_remote_tmux` 内联调的就是它）——此前这里把过滤表达式
-        // 在测试体里抄了一遍，删掉生产侧的 filter 照样绿，是伪测试（F10 Phase D 审计发现）。
-        let filtered = parse_visible_tmux_sessions(out);
-        assert_eq!(filtered.len(), 2);
-        assert!(filtered.iter().any(|s| s.name == "cc-abc12345"));
-        assert!(filtered.iter().any(|s| s.name == "web"));
-        assert!(!filtered.iter().any(|s| s.name == "ccm-usage-z"));
     }
 
     #[test]

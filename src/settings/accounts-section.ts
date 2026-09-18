@@ -30,7 +30,6 @@ import {
   type AccountsState,
   type Account,
 } from "../accounts";
-import { fetchAccountUsage, usageScreenEl, type AccountUsageOutcome } from "../account-usage";
 import { pickPrimaryOrigin } from "../account-chip";
 import { accountAvatarEl } from "../account-color";
 import { readRemoteConfig, type RemoteHostConfig } from "../remote-config";
@@ -1169,14 +1168,6 @@ export class AccountsSection {
     if (status.title) badge.title = status.title;
     row.appendChild(badge);
 
-    // F10：plan 用量窗口%——懒加载（点击才探测,不是面板打开就对全部账号并发起隐藏会话,
-    // 那是较重操作:起会话+网络查询）。与登录态放一起（都是"状态类"信息），机械操作
-    // （复制路径/登录终端）留在 actions 里靠后。
-    const usage = document.createElement("span");
-    usage.className = "accounts-row-usage";
-    this.renderUsageCell(usage, a);
-    row.appendChild(usage);
-
     const dir = document.createElement("span");
     dir.className = "accounts-row-dir";
     // Z01：账号 0 没有 config dir——它**就是**「不设 CLAUDE_CONFIG_DIR」这个状态。
@@ -1265,89 +1256,6 @@ export class AccountsSection {
     }
     row.appendChild(actions);
     return row;
-  }
-
-  /**
-   * F10：用量单元格渲染——初始态是一个"查看用量"按钮（不自动探测）；点击后走五种状态之一
-   * （查询中 / ok / unrecognized / not-logged-in / cli-missing / probe-failed），每种都是
-   * 明确的短句，不是空白（DoD"诚实留白+说明为何"）。`force` 为真时忽略去抖缓存重新探测
-   * （"刷新用量"用）。
-   */
-  private renderUsageCell(container: HTMLElement, a: Account, force = false): void {
-    container.innerHTML = "";
-    if (!force) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "accounts-usage-btn";
-      btn.textContent = "查看用量";
-      btn.title = "起一次隐藏会话跑 /usage 读取该账号的 plan 额度窗口（较重操作，几秒钟）";
-      btn.addEventListener("click", () => this.renderUsageCell(container, a, true));
-      container.appendChild(btn);
-      return;
-    }
-    const pending = document.createElement("span");
-    pending.className = "accounts-usage-pending";
-    pending.textContent = "查询中…";
-    container.appendChild(pending);
-    if (!this.origin) return; // 理论不可达（accountRow 只在 origin 非空时被调），防御性早退
-    // Z03：账号 0（`configDir === null`）也能探，载荷走 `unset CLAUDE_CONFIG_DIR; `。
-    // **原样传 `null`，别 `?? ""`**——空串是坏数据，会被 fail-closed 拒掉。
-    void fetchAccountUsage(this.origin, a.name, a.configDir, { force: true }).then((outcome) => {
-      container.innerHTML = "";
-      container.appendChild(this.buildUsageOutcomeEl(a, outcome));
-    });
-  }
-
-  /**
-   * `R58` 裁定一 ＋ `R59`：把结局渲染成一个块。
-   *
-   * 🔴 **两态**：`screen` ⇒ 那一屏**原文**（等宽 · 保留空白，`usageScreenEl` 唯一住址）
-   * ＋「复制这一屏」＋「刷新」；`probe-failed` ⇒ 失败原文 ＋「刷新」。
-   * 「认不出格式 / 未登录 / 无 claude」那三个态**都没有了** —— 它们全部来自解析器，
-   * 而解析层已退役（墓碑住 `src/account-usage-parse.ts` 头部）。
-   * 那三件事今天由**用户自己在那一屏上看出来**：`R58` 逐字「把屏幕预览给我看」。
-   */
-  private buildUsageOutcomeEl(a: Account, outcome: AccountUsageOutcome): HTMLElement {
-    const wrap = document.createElement("span");
-    wrap.className = "accounts-usage-outcome";
-    if (outcome.status === "screen") {
-      const screen = usageScreenEl(outcome.raw);
-      screen.classList.add("accounts-usage-raw");
-      wrap.appendChild(screen);
-      const copyBtn = document.createElement("button");
-      copyBtn.type = "button";
-      copyBtn.className = "accounts-usage-copy-raw";
-      copyBtn.textContent = "复制这一屏";
-      copyBtn.title =
-        "复制这次抓到的原始屏幕文字（可能含界面画框符号，不好看但对排查有用）——如果这一屏上" +
-        "读不出你的用量，可以把它贴到 cc-monitor 的 GitHub issue 里，帮忙定位。";
-      copyBtn.addEventListener("click", () => {
-        void navigator.clipboard?.writeText(outcome.raw).then(
-          () =>
-            showActionFailureToast(
-              "已复制这一屏",
-              "这是探测抓到的原始屏幕内容（非隐私信息，只是终端画面文字）。",
-              { level: "info", durationMs: 4000 },
-            ),
-          () => showActionFailureToast("复制失败", "剪贴板不可用", { level: "error" }),
-        );
-      });
-      wrap.appendChild(copyBtn);
-    } else {
-      const text = document.createElement("span");
-      text.textContent = outcome.error;
-      wrap.appendChild(text);
-    }
-    const refreshBtn = document.createElement("button");
-    refreshBtn.type = "button";
-    refreshBtn.className = "accounts-usage-refresh";
-    refreshBtn.textContent = "刷新";
-    refreshBtn.addEventListener("click", () => {
-      const container = wrap.parentElement;
-      if (container) this.renderUsageCell(container, a, true);
-    });
-    wrap.appendChild(refreshBtn);
-    return wrap;
   }
 
   private async selectDefault(a: Account): Promise<void> {

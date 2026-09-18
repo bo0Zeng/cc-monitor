@@ -65,7 +65,7 @@ mod tests {
     const PINS: &[(&str, &str, usize, &str)] = &[
         (
             "readonly_guard.rs",
-            "const SPAWN_SITES_TODAY: usize = 13;",
+            "const SPAWN_SITES_TODAY: usize = 11;",
             1,
             "daemon 侧起进程登记表的**相等断言**（不是地板）。\
              ⚠⚠ **这条针钉的是「那一行长什么样」，不是那个数字本身** —— 它挡的是\
@@ -100,7 +100,7 @@ mod tests {
               先红了，本针跟着记新值。\
               ⚠ 而「看门狗只杀自己铸的那个会话」这件事**不是这个数买的**（键分不出被起的是谁）：\
               买它的是 `control/oneshot_session.rs` 自己那几条判据。〕\
-             ⚠ 这一行**只挡「不动断言、只把数调小」**；「把断言原地调松」由下面两条实参针挡。",
+             〔🔴 `设计/50` 删用量：`13` → **11**，本表**第二次往下走**，逐条写清为什么它不是放宽：① `control/oneshot_session.rs` 那两处起进程点（`Command::new` 起 `tmux` 那处 ＋ 看门狗那个 `Command::new(<非字面量>)`）随**整份文件**退役 —— 用量 ③ 轴（探针会话）整轴不做了，`oneshot-session` 这条原语当初就是为它建的、零生产调用方；② **扫描面一个字节没缩**：那条判据递归扫 `src/`，`control/capture_pane.rs` 那一处还在（拉屏预览在用），`readonly_guard` 失败文案里的 `found` 清单逐条印得出来；③ 「变少多半是抽取坏了」这一格真去核过：实测清单 11 条逐条对得上 `ALLOWED`。⇒ 本针记新值。**下一次再往下走，仍然要像这样逐条写，不许只改数。**〕⚠ 这一行**只挡「不动断言、只把数调小」**；「把断言原地调松」由下面两条实参针挡。",
         ),
         (
             "readonly_guard.rs",

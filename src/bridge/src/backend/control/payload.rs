@@ -10,10 +10,9 @@
 //! ```
 //!
 //! 本模块只管**内层**。⚠ **不是因为外层「已经没了」** —— U8c-1 第一版这么写，被审计证伪：
-//! daemon 的 `launch`（U8a-2b）**零生产调用方**、它**结构上也不 attach**（平面 ③），
-//! 而当时 `account_usage.rs` 里那个探针构造器就在 Rust 里拼一整条外层 tmux 串。
-//! 🔴 **`K-R104`（09-13）订正上一句的时态**：那一处**已经退役**（探针编排整条搬上后端帧面，
-//! monitor 今天一个 shell 字符都不渲染）⇒ 外层今天是**三个产出方 ＋ 一个墓碑**，
+//! daemon 的 `launch`（U8a-2b）**零生产调用方**、它**结构上也不 attach**（平面 ③）。
+//! 🔴 **`设计/50`（删用量）订正上一句的举例**：原话举的例子是 `account_usage.rs` 那个
+//! 用量探针构造器 —— 用量 ②③ 两轴整轴退役之后**那个例子本身没了**，
 //! 而**本模块的结论一个字没变**：`launch` 那条仍然不 attach，外层没有整个退役。
 //! 逐格实况与量法见 `src/doc/INVARIANTS.md` §33b。
 //!
@@ -28,9 +27,10 @@
 //!
 //! # 诚实边界（别读成「合完了」）
 //!
-//! - 生产消费方今天有三个：`history.rs` 的 POSIX 分支（只用 [`config_dir_prefix_posix`]）、
-//!   `account_usage.rs` 的用量探针（[`usage_probe_payload`] → [`render_payload`]）、
+//! - 生产消费方今天有两个：`history.rs` 的 POSIX 分支（只用 [`config_dir_prefix_posix`]）、
 //!   以及 `backend/control/launch_wire.rs` 的 `render_launch_payload`（`container:"none"` 那格）。
+//!   〔`设计/50`：原先的第三个是 `account_usage.rs` 的用量探针（`usage_probe_payload`），  〔散文墓碑〕
+//!   随用量 ③ 轴整轴退役。〕
 //! - **Windows 分支不在这里** —— `$env:CLAUDE_CONFIG_DIR=$null; ` 与它自己那套
 //!   「什么算绝对路径」（盘符 / UNC / `\` 分隔）是刻意的平台特化。
 //! - TS 侧还剩 `launch-render-fallback.ts` 一个产出点（U8c-3 删除）。跨语言一致性由
@@ -360,46 +360,6 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
         cd,
         apply_wraps(inner, spec.wrap)
     ))
-}
-
-/// 一次性**用量探针**会话的启动载荷（U8c-2a：`render_payload` 的第一个生产用例）。
-///
-/// 形态 `<账号前缀>unset <嵌套env>; <launcher>` —— **没有 `cd`**（探针不关心工作目录），
-/// 也就是 `PayloadSpec { cwd: None, args: [], wrap: [] }` 那一格。
-///
-/// # 账号维度**恒显式表态，只有两态**
-///
-/// 用量探针恒是 per-account 的 —— 探不出「哪个账号」的用量就没有意义：
-///
-/// | `config_dir` | 含义 | 前缀 |
-/// |---|---|---|
-/// | `Some(路径)` | 具名账号 | `export CLAUDE_CONFIG_DIR='…'; ` |
-/// | `None` | **账号 0**（Z03） | `unset CLAUDE_CONFIG_DIR; ` |
-/// | `Some("")` | **坏数据，不是账号 0** | `Err` |
-///
-/// **绝不退化成裸载荷** —— 远端 rc 里那句 `export CLAUDE_CONFIG_DIR=<默认账号>` 会让探针
-/// 探到别的号，而 UI 会把结果标成账号 0 的用量 = **静默串号**。
-pub fn usage_probe_payload(
-    config_dir: Option<&str>,
-    nested_env: &[&str],
-    launcher: &str,
-) -> Result<String, String> {
-    let account = match config_dir {
-        None => EnvOp::UnsetConfigDir,
-        Some("") => {
-            return Err(refuse(
-                "用量探针需要显式 configDir（账号 0 请传 None，空串是坏数据）",
-            ))
-        }
-        Some(dir) => EnvOp::ExportConfigDir { value: dir },
-    };
-    render_payload(&PayloadSpec {
-        env: &[account, EnvOp::UnsetNestedEnv { keys: nested_env }],
-        cwd: None,
-        launcher,
-        args: &[],
-        wrap: &[],
-    })
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1138,34 +1098,6 @@ mod tests {
             render_payload(&ok).unwrap(),
             "claude --resume 0b2f7a1e-3c4d-4e5f-8a9b-0c1d2e3f4a5b"
         );
-    }
-
-    /// ★ U8c-2a：用量探针两态 —— 没有第三态，空串是坏数据。
-    #[test]
-    fn usage_probe_payload_is_two_states_and_never_bare() {
-        let nested = ["CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT"];
-        assert_eq!(
-            usage_probe_payload(Some("/h/.claude-accts/z"), &nested, "claude").unwrap(),
-            "export CLAUDE_CONFIG_DIR='/h/.claude-accts/z'; \
-             unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; claude"
-        );
-        assert_eq!(
-            usage_probe_payload(None, &nested, "claude").unwrap(),
-            "unset CLAUDE_CONFIG_DIR; unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT; claude"
-        );
-        assert!(
-            usage_probe_payload(Some(""), &nested, "claude").is_err(),
-            "空串是坏数据，不是账号 0"
-        );
-        // ★ 最要紧的一条：**两态都必须带账号前缀**，绝不退化成裸载荷（静默串号）。
-        for dir in [Some("/h/.claude-accts/z"), None] {
-            let p = usage_probe_payload(dir, &nested, "claude").unwrap();
-            assert!(
-                p.starts_with("export CLAUDE_CONFIG_DIR=")
-                    || p.starts_with("unset CLAUDE_CONFIG_DIR;"),
-                "载荷没有账号表态，会探到远端 rc 里的默认号：{p}"
-            );
-        }
     }
 
     #[test]

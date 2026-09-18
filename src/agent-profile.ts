@@ -94,7 +94,7 @@ export type FullAgentProfile = {
    * resume/拉起前要 unset 的嵌套会话 env。
    *
    * ⚠ **顺序不是随手排的**：它逐项同序于后端 `adapter/claude_code.rs::CLAUDE_NESTED_ENV`，
-   * 而那个顺序**直接决定了送到远端的那条命令的字节**（`payload::usage_probe_payload`）。
+   * 而那个顺序**直接决定了送到远端的那条命令的字节**（`backend/control/payload.rs` 那个载荷内核）。
    * 今天两侧同源（这一格就是从那里来的），顺序天然不会漂。
    */
   nestedEnvVars: string[];

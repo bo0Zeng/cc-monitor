@@ -572,6 +572,93 @@ pub fn etxtbsy_gave_up_reason(bin: &Path, tries: u32, last: &str) -> String {
     )
 }
 
+/// 一次子进程生命周期里，**最多往滚动日志搬这么多字节**的 stderr。
+///
+/// 🔴 它**不是**「读到这里就不读了」—— 那是把病换个方向犯（见 [`drain_child_stderr_into_log`]
+/// 头注的第二条）。超出之后照旧读到 EOF，只是不再逐行记，收尾报一个**行数**。
+const STDERR_LOG_BUDGET_BYTES: u64 = 256 * 1024;
+
+/// 单行上界。对端一个 `\n` 都不发时，`read_until` 会一直把内存吃下去。
+///
+/// ⚠ 超了**不丢字节**：这一段照记，只是末尾打一句 [`STDERR_CUT_MARK`] 说「它在这里被切开」，
+/// 余下的字节成为下一条。⇒ 超限语义是「**截断+说清**」里的「说清」那一半承重 ——
+/// 没有那句标记的话，日志里会出现一条**看起来完整、其实是半句**的诊断。
+const STDERR_MAX_LINE_BYTES: u64 = 8 * 1024;
+
+/// 一行被 [`STDERR_MAX_LINE_BYTES`] 切开时贴在断口上的话。
+const STDERR_CUT_MARK: &str = " …〔这一行超过单行上界，在此切开，下一条接着它〕";
+
+/// 把一个子进程的 stderr **读到 EOF**，前 [`STDERR_LOG_BUDGET_BYTES`] 字节逐行接进
+/// monitor 的滚动日志（`logging.rs`：`~/.claude/claudecode-frontend/logs/monitor.<日期>.log`）。
+///
+/// # 三条设计约束，每一条都是别人踩过的坑
+///
+/// 1. 🔴 **它必须读到 EOF，哪怕已经不想记了。** 管道的另一端是子进程：读的一侧停下来，
+///    内核缓冲写满之后**子进程下一次 `write(2)` 就阻塞**——而它阻塞在打印一句诊断上。
+///    那会把「诊断没人看」升级成「**打印诊断会把后端挂住**」，比原来的病重。
+///    ⇒ 预算用完之后走的是 `continue`（继续读、只是不记），不是 `break`。
+///
+/// 2. **记账要有上界，但上界只砍「记」不砍「读」。** 后端崩溃循环时 stderr 可以很吵，
+///    而滚动日志是按天滚的；没有上界的话一次崩溃循环能把当天那份撑爆，
+///    于是**下一次故障的线索反而被这一次的噪音淹掉**。
+///
+/// 3. **级别一律 `warn`，绝不 `error`。** `logging.rs` 的 `ErrorEmitterLayer` 只拦
+///    `Level::ERROR`，拦到就 emit `monitor-error` → 前端弹红色 toast。而这里搬的是
+///    **子进程说的话**，它自己的级别在文本里（后端那侧 `tracing_subscriber` 的 fmt 前缀），
+///    我们**没有**可靠办法把它还原成本进程的级别。
+///    ⇒ 拿不准就别替用户决定「这值得弹一个红框」：进日志文件，不进 toast。
+///    ⚠ 这一格是**刻意的诚实边界**：用户看得到的是日志文件，不是弹窗。真要某一类后端错误
+///    弹到脸上，那是**按内容分类**的活（谁分类、分哪几类 = 一次产品裁定），不是这里加个 `if`。
+///
+/// ⚠ 非 UTF-8 走 `from_utf8_lossy`，不走 `read_line` —— 后者遇到非法字节返回
+/// `InvalidData`，那会把本函数踢出循环，于是约束 1 当场失守（读的一侧停了，子进程会卡）。
+fn drain_child_stderr_into_log(err: std::process::ChildStderr, pid: u32) {
+    use std::io::{BufRead, Read};
+    let mut reader = std::io::BufReader::new(err);
+    let mut budget = STDERR_LOG_BUDGET_BYTES;
+    let mut buf: Vec<u8> = Vec::new();
+    let mut unlogged = 0usize;
+    loop {
+        buf.clear();
+        let n = match (&mut reader)
+            .take(STDERR_MAX_LINE_BYTES)
+            .read_until(b'\n', &mut buf)
+        {
+            Ok(n) => n,
+            // 读不动了 = 管子那头没了（子进程走了 / fd 被关）。这里 `break` 不违反约束 1：
+            // 已经没有「另一端会被我卡住」的另一端了。
+            Err(_) => break,
+        };
+        if n == 0 {
+            break; // EOF：子进程关掉了 stderr（通常就是它退了）。
+        }
+        if budget == 0 {
+            unlogged += 1;
+            continue; // ← 约束 1：照旧读，只是不记。
+        }
+        budget = budget.saturating_sub(n as u64);
+        // 没读到 `\n` 而恰好读满上界 ⇒ 这一条是被**切开**的，断口要说出来。
+        let cut = n as u64 == STDERR_MAX_LINE_BYTES && buf.last() != Some(&b'\n');
+        let line = String::from_utf8_lossy(&buf);
+        let line = line.trim_end_matches(['\n', '\r']);
+        if line.is_empty() {
+            continue;
+        }
+        if cut {
+            tracing::warn!("本机后端[pid {pid}] {line}{STDERR_CUT_MARK}");
+        } else {
+            tracing::warn!("本机后端[pid {pid}] {line}");
+        }
+    }
+    if unlogged > 0 {
+        tracing::warn!(
+            "本机后端[pid {pid}] 另有 {unlogged} 行 stderr 没有记进来 —— \
+             这一条子进程的日志预算（{STDERR_LOG_BUDGET_BYTES} 字节）用完了。\
+             ⚠ 别把它读成「后端只说了这些」：它说的比记下来的多。"
+        );
+    }
+}
+
 pub fn supervise(
     bin: PathBuf,
     args: Vec<String>,
@@ -620,6 +707,17 @@ pub fn supervise_with_stdio(
             // ⇒ 这里无条件清掉：daemon 该按自己的 `TMUX_TMPDIR`（或默认 socket）解析，
             // 而不是继承「monitor 恰好从哪个 tmux 里被启动」这个偶然。
             cmd.env_remove("TMUX");
+            // ★★ `00 §1.5.1` 步 1：**不给它开控制台窗口**（Windows 上的一行止血）。
+            //
+            // 不带这个 flag 时 Windows 会给子进程新开一个控制台 ⇒ 桌面上弹一个黑框，
+            // 而那个框**可关**：一关就是 `CTRL_CLOSE_EVENT` 打到后端 ⇒ 后端死 ⇒
+            // 中转不再监听 ⇒ 会话读不到，界面上只剩一句「本机后端起不来」。
+            //
+            // ⚠ 平台原语**不许落在 `backend/`**（`the_backend_half_stays_platform_agnostic`
+            //   的禁针含 `#[cfg(windows)` 与 `std::os::windows`，而平台例外表有递减棘轮）
+            //   ⇒ 实现住宿主知识层，这里只有这一行调用。理由与终局形态（A3 的
+            //   `ConsolePolicy`）逐字写在 `local_daemon::hide_console_window` 的头注里。
+            crate::local_daemon::hide_console_window(&mut cmd);
             cmd.args(&args)
                 // P2：有消费者才接 stdin。无消费者时**逐字维持 `null`** ——
                 // 「本机 daemon 收不了入方向命令」是 C4 量出来的缺口，
@@ -631,7 +729,23 @@ pub fn supervise_with_stdio(
                 })
                 // ★ stdout 必须是管道：它的 EOF 就是「进程死了」这个事件的来源。
                 .stdout(std::process::Stdio::piped())
-                .stderr(std::process::Stdio::null());
+                // ★★ `15 §5.1 A2` / `00 §1.5.3` 那一格：**先前这里是 `Stdio::null()`。**
+                //
+                // 后端整层 91 处 `tracing::{warn,error,info}!` 的**唯一出口**就是 stderr
+                //（它自己不写日志文件：`tracing_subscriber::fmt().with_writer(stderr)`）
+                // ⇒ 这一行先前是「后端每次死前说的话，无条件丢弃，全平台」。
+                // 具体被丢掉的都是**事件源失效的告知**：`watch failed for {agent_home}` ·
+                // 装 hook 失败那两条（它们的头注逐字写着「装不上 hook 不是致命错，**但要说出来**，
+                // 否则『hook 通路没生效』会变成静默降级」—— 说出来了，**没人听**）。
+                // 而中转那条路更直接：`local_daemon::start_local_relay` 的注释逐字记着
+                // 「中转**所有**诊断都写 stderr……那几句话生产上一句都到不了人」。
+                //
+                // 🔴 `logging.rs` 的模块头注已经用**七个带病版本**为这条原理付过学费
+                //（v1.7.0–1.7.7「cc 集成装上没用」：一直 `tracing::warn!`，而 GUI app 没有
+                // stderr 控制台，没人看得到）。⇒ 那次的解药只装在 **monitor 自己的进程里**；
+                // 子进程的 stderr 是 OS 级 fd、不过 subscriber，**这个病在子进程上一个字都没治**。
+                // 这一行就是把它治到子进程上：接出来 → 进 monitor 的滚动日志。
+                .stderr(std::process::Stdio::piped());
             for (k, v) in &envs {
                 cmd.env(k, v);
             }
@@ -661,6 +775,15 @@ pub fn supervise_with_stdio(
             let out = spawned.stdout.take();
             // P2：只有接了消费者时这里才是 Some（上面 `stdin(…)` 按 `stdio` 分流）。
             let in_ = spawned.stdin.take();
+            // ★★ `A2`：把 stderr 也拿走，交给一条**只干这一件事**的线程接进滚动日志。
+            //
+            // ⚠ 必须在 `*g = Some(spawned)` 之前 take —— 之后它就在锁里了。
+            // ⚠ 为什么另起一条线程而不是在本线程读：本线程接下来要阻塞在 stdout 上等 EOF
+            //   （那是「进程死了」这个事件的唯一来源），两根管子不能由一条线程串着读 ——
+            //   串着读的那一刻，没被读的那根写满就把子进程**卡死**。
+            if let Some(e) = spawned.stderr.take() {
+                std::thread::spawn(move || drain_child_stderr_into_log(e, this_pid));
+            }
             pid.store(this_pid, Ordering::SeqCst);
             if let Ok(mut g) = child.lock() {
                 *g = Some(spawned);

@@ -91,7 +91,7 @@ import {
   resolveResumeCommand,
 } from "./remote-config";
 import { activityLightClass, type GridSessionSnapshot, type SessionPeek } from "./session-status";
-import { contextPercent } from "./views/pricing";
+import { contextPercent } from "./views/context-limit";
 
 /**
  * auto-e2e F-E0:DEV-only 断言出口。同 e2e-probe.ts 的 `log()`——把状态转移写成可 grep 的
@@ -494,6 +494,11 @@ export class TabManager {
     onUp: (e: MouseEvent) => void;
   } | null = null;
   /**
+   * ★ 6d：拖拽进行中有人要求刷 tab 栏 —— 记一笔，`teardownDrag` 收尾时补一次。
+   * 只是一个「有没有」，不记是谁要求的：`refreshTabBar` 本来就是整栏重刷，补一次就够。
+   */
+  private tabBarDirtyDuringDrag = false;
+  /**
    * 拖拽撕离阈值：指针移动超过此像素才判定为"拖"，否则视为普通点击。
    */
   private static readonly DRAG_THRESHOLD_PX = 6;
@@ -598,9 +603,9 @@ export class TabManager {
     // 其余 virgin 后台 tab 进空闲物化队列(逐个串行,避免并发建卡风暴)。
     const active = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
     if (active && active.window.pendingCount > 0) {
-      const el = active.streamEl;
-      const notScrollable = el.scrollHeight - el.clientHeight <= 1;
-      if (active.window.floorSeq === null || notScrollable) {
+      // 步 3：「够不够一屏」改读**真实布局**（见 `contentReachesBottom` 的头注）。
+      const notFilled = !this.contentReachesBottom(active);
+      if (active.window.floorSeq === null || notFilled) {
         this.materializeUntilFilled(active);
         active.stream.scrollToBottom();
       }
@@ -625,15 +630,51 @@ export class TabManager {
   }
 
   /**
+   * ★ 步 3（`设计/10 §6`）：**「够不够一屏」改读真实布局。**
+   *
+   * # 旧判据错在哪
+   *
+   * 原来两处都写的是 `el.scrollHeight - el.clientHeight > 1`（「滚得动吗」）。
+   * 那**不是**「屏幕填满了吗」—— 两者在这个仓里经常不是同一件事：
+   * - 每张顶层卡都带 `content-visibility: auto` + `contain-intrinsic-size: auto <估值>`
+   *   （`height-estimate.ts`）。**没渲染过的卡贡献的是估值**，`scrollHeight` 里掺着一笔
+   *   与屏幕上看到的东西无关的账 ⇒ 估高了就"看起来滚得动"，而屏幕仍是半屏。
+   * - 工具密集会话一轮物化可能只产出几张 34px 的合并卡，`scrollHeight` 差一两像素就
+   *   越过 `>1` 这条线 ⇒ 补批当场停手。这正是用户报的「上下半屏」。
+   *
+   * # 新判据
+   *
+   * **最后一张卡的 `getBoundingClientRect().bottom` 有没有够到滚动容器的下沿。**
+   * 这两个数都来自真实布局，不吃估值。
+   *
+   * ⚠ **没有布局时必须退回旧判据**：jsdom 无布局引擎，所有 rect 恒为 0
+   * （容器 rect 高度也是 0）。这时按新判据算恒等于「满了」⇒ 补批整条路在测试环境里
+   * 被静默关掉。所以这里显式探一次「这台机器给不给布局」，给不了就走老的算术判据 ——
+   * **降级要写出来，不能靠恰好**。
+   */
+  private contentReachesBottom(tab: Tab): boolean {
+    const el = tab.streamEl;
+    const view = el.getBoundingClientRect();
+    if (view.height <= 0) {
+      // 拿不到真实布局（jsdom / 还没插进文档 / tab 不可见）⇒ 退回旧的算术判据。
+      return el.scrollHeight - el.clientHeight > 1;
+    }
+    const last = tab.stream.contentElement.lastElementChild;
+    if (!last) return false; // 一张卡都没有 ⇒ 肯定没满
+    // 1px 容差：HiDPI 分数像素下 rect 是小数，卡刚好贴到下沿时会差零点几像素。
+    return last.getBoundingClientRect().bottom >= view.bottom - 1;
+  }
+
+  /**
    * D 审计 R-3:一次 150 条 payload 可能只产出几张卡(tool-group 合并成单卡 34px、
    * skip 记录占配额不产卡)——工具密集会话一轮物化后屏幕仍近空,而 F40a 没有上翻
-   * 补批兜底。有界循环补到可滚动或账本弹尽(≤4 轮防病态会话空转)。
+   * 补批兜底。有界循环补到**一屏填满**或账本弹尽(≤4 轮防病态会话空转)。
+   * 〔步 3〕停手条件从「滚得动」换成 `contentReachesBottom`——理由见它的头注。
    */
   private materializeUntilFilled(tab: Tab): void {
     for (let round = 0; round < 4; round++) {
       if (tab.window.pendingCount === 0) return;
-      const el = tab.streamEl;
-      if (round > 0 && el.scrollHeight - el.clientHeight > 1) return;
+      if (round > 0 && this.contentReachesBottom(tab)) return;
       this.materializeTail(tab);
     }
   }
@@ -1470,6 +1511,21 @@ export class TabManager {
     };
     streamEl.addEventListener("scroll", fillHandler, { passive: true });
     tab.fillHandler = fillHandler;
+    // ★ 步 3：**视口自己变大 ⇒ 重新补批。**
+    //
+    // `fillHandler` 挂在 scroll 上，而**不可滚的元素根本不产生 scroll 事件** ——
+    // 把窗口从半屏拉到全屏时，多出来的那块空白之前没有任何入口去填。
+    // `MessageStream` 那边现在也观察 `scrollEl`（见 stream.ts），这里是它的消费端。
+    // ⚠ 三道门都不可少：① 只给 active tab 补（后台 tab 0×0 → 真实尺寸那一跳不是
+    // 「用户拉窗口」）；② 账本空了不补；③ 已经满屏了不补（否则每次 RO 都白干一轮）。
+    stream.onViewportResize = (): void => {
+      if (this.activeId !== sessionId) return;
+      const t = this.tabs.get(sessionId);
+      if (!t || t.window.pendingCount === 0) return;
+      if (this.contentReachesBottom(t)) return;
+      this.materializeUntilFilled(t);
+      this.updateSentinel(t);
+    };
     // issue #19：若该 sid 的归档信号先于本次建 Tab 到达（见 archiveTab），落实归档，
     // 避免重载后已结束会话复活成关不掉的 live Tab。本地 un-archive（上方 origin!==null
     // 那条）不适用，故归档后续 replay 行也不会把它复活。
@@ -2198,6 +2254,14 @@ export class TabManager {
     d.ghost?.remove();
     d.root.classList.remove("dragging");
     this.drag = null;
+    // ★ 6d：拖拽期间被守卫挡下的那些刷新，在这里**补一次**。
+    // 少了这一句，守卫就从「推迟」变成「静默丢弃」：会话在拖拽那一秒里跑完了，
+    // 它的 tab 会一直留在主栏假装还活着，直到下一件无关的事碰巧再刷一次栏。
+    // ⚠ 必须在 `this.drag = null` **之后** —— 否则自己被自己的守卫挡回去。
+    if (this.tabBarDirtyDuringDrag) {
+      this.tabBarDirtyDuringDrag = false;
+      this.refreshTabBar();
+    }
   }
 
   /** document mouseup：收尾；armed 则在落点弹独立窗口。 */
@@ -3110,6 +3174,20 @@ export class TabManager {
     requestAnimationFrame(() => {
       if (this.activeId !== sessionId) return;
       next?.stream.scrollToBottom();
+      // ★ 步 3：**第二帧再贴一次**（对齐 `session-viewer.ts:82` 已有的同一修法）。
+      //
+      // 第一帧贴底时，刚从 `visibility:hidden` 翻出来的那些卡还带着
+      // `content-visibility: auto` 的**估值**几何 —— 按估值算出来的 `scrollHeight`
+      // 不是真的，贴完仍可能差半屏。下一帧周边已材料化成真实尺寸，再发一次落点才准。
+      // ⚠ 诚实边界：`scrollToBottom()` 会把 `stickToBottom` **重新置真** ——
+      // 所以这不是一次「只读的校正」，它和第一次一样是强制贴底。
+      // 可接受的理由只有一条：两次之间只隔**一帧（~16ms）**，人不可能在这中间滚出意图；
+      // 切走了则上面那道 `activeId` 守卫已经挡住。真要更细，得让 `MessageStream` 出一个
+      // 「只重贴、不改粘底态」的入口 —— 那是另一件事，别在这一步顺手扩。
+      requestAnimationFrame(() => {
+        if (this.activeId !== sessionId) return;
+        this.tabs.get(sessionId)?.stream.scrollToBottom();
+      });
       // issue #11: 切换 task panel 数据源到新 active Tab 的 sid
       this.tasksPanel?.setSession(sessionId, this.tasksBySid.get(sessionId) ?? []);
       // issue #23: agents 面板同步切到新 active Tab
@@ -3270,6 +3348,21 @@ export class TabManager {
   }
 
   private refreshTabBar(): void {
+    // ★ 6d（条 54）：**拖拽进行中不重排 tab 栏。**
+    //
+    // `refreshTabBar` 挂在活动路上（`updateActivity` / `archiveTab` / `ensureTab` 末尾都
+    // 无条件调它），而这些事件在拖拽那一两秒里照常来。下面第 4 段那个排序循环一跑，
+    // **指针底下的 tab 就被换掉了** —— 用户松手落到的不是他瞄的那一格。
+    // 已实证的两条路：① 会话跑完 ⇒ 归档 ⇒ 那个 tab 整个离开 `barEl`（抽屉是它的兄弟），
+    // 下面的全部上移一格；② 新 bg 会话宣告 ⇒ `placeInOrder` 从**中间**插进去。
+    //
+    // ⚠ 守的是 `d.dragging`（真起拖了）而不是 `this.drag` 在不在 —— 后者在「按下还没动」
+    // 那一段也为真，那段本来就该照常刷新（它与点击没有区别）。
+    // ⚠ 不是丢掉这次刷新：记一笔脏，`teardownDrag` 收尾时补一次（见那里）。
+    if (this.drag?.dragging) {
+      this.tabBarDirtyDuringDrag = true;
+      return;
+    }
     // 1. 删
     const wanted = new Set(this.orderedIds);
     for (const sid of Array.from(this.tabButtons.keys())) {

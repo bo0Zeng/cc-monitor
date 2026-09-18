@@ -4,6 +4,18 @@ cc-monitor 跟外部进程（PowerShell `__ccm_bind` helper、Claude Code CLI）
 
 本文档定义每个文件的字段、编码约束、写入方原子性语义、读取方反序列化容错策略，以及握手时序图。
 
+> ## ⚠ 读之前：两处会误导你的旧称
+>
+> 1. 🔴 **`shared/ccm` 这个文件已经不存在了** —— 那 1592 行 bash 启动器删于 `e8f9e08e`
+>    （`K-R48` 第二拍④，同拍清零了 19 处 `include_str!`）。今天这条路走的是**后端的 `ccm`**
+>    （Rust，`src/backend/control/ccm/`），别名文本在 `src/shared/ccm-aliases.sh`。
+>    ⇒ **下文凡是提到 `shared/ccm` 的地方都是历史**，留着是为了解释「今天为什么长这样」，
+>    不是现状。看到它请读成「当年那个 bash 启动器」。
+> 2. **目录名**：2026-09-17 重组之后顶层**只有 `src/` 与 `tests/`**。
+>    `src-tauri/` → `src/bridge/` · `remote-daemon-proto/` → `src/backend/` ·
+>    `doc/` → `src/doc/` · `e2e/`·`evidence/`·`scripts/`·`hooks/` → `tests/` 下。
+>    下文若出现旧名，同样按历史读。
+
 不在本文档范围：
 - Tauri 内部 IPC（前后端 `invoke` / `emit`）— 见 [`../../src/bridge/README.md`](../../src/bridge/README.md) IPC 清单
 - monitor 自己的 user config — `config.json` schema 在 TS 端 [`../config.ts`](../config.ts) 定义
@@ -792,8 +804,8 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 #### `capture-pane`：把某个 tmux 会话此刻那一屏抓回来（`K-R104`，只读）
 
 ```text
-→ {"id":"C1","cmd":"capture-pane","args":{"name":"ccm-oneshot-usage-z-cc"}}
-← {"kind":"reply","id":"C1","ok":true,"data":{"name":"ccm-oneshot-usage-z-cc","screen":"Welcome …"}}
+→ {"id":"C1","cmd":"capture-pane","args":{"name":"cc-ab12cd34"}}
+← {"kind":"reply","id":"C1","ok":true,"data":{"name":"cc-ab12cd34","screen":"Welcome …"}}
 ```
 
 `name` 要抓的会话名；回 `name`（回显）＋ `screen`（**那一屏的原文**，不解析、不裁剪、不归一 ——
@@ -802,8 +814,10 @@ pane 处于 **copy-mode**（用户滚了一下轮子）时 `send-keys` **照样�
 ★ **它是 CLI 面 `--capture-pane`（`K-R86`）的同一个本体**（`control/capture_pane.rs::capture`），
 两个面只差取参数与包信封的方式（`K33` 逐字「所有命令只许有一处」）。
 **帧面这一条是 `K-R104` 新加的**，理由是结构性的、不是性能取舍：CLI 面每调一次就是一次
-SSH 握手，而用量探针两段轮询上限 12+20 轮 ⇒ 单次探测最多 **36** 次握手，
+SSH 握手，而当时的调用方（用量探针）两段轮询上限 12+20 轮 ⇒ 单次探测最多 **36** 次握手，
 撑破 monitor 侧的 25s 硬超时。帧面是**一条长连接上多次往返**，握手恒 1 次。
+〔`设计/50`：那个调用方已随用量 ③ 轴退役 —— **论证仍然成立，举的例子不在盘上了**。
+本条今天的消费者是拉屏预览（`tmux.rs::capture_via_daemon`）。〕
 
 🔴 **它只抓一次就返回，后端里没有任何「隔 N 毫秒再抓一次」**（零定时器铁律，
 `no_timer_guard` 零容忍）。「抓几次 / 隔多久」是**调用方**的事 ——
@@ -819,37 +833,11 @@ SSH 握手，而用量探针两段轮询上限 12+20 轮 ⇒ 单次探测最多 
 `no_server`（这台机上一个 tmux server 都没有）· `no_such_session`（server 在、目标不存在）·
 `capture_failed`（其它失败，**stderr 原样回包** —— 说不清但不撒谎）。
 
-#### `oneshot-session`：起一个到点自己会死的 tmux 会话（`K-R104`）
-
-```text
-→ {"id":"O1","cmd":"oneshot-session","args":{"slug":"usage-z","ttlSecs":"30","width":"200","height":"50"}}
-← {"kind":"reply","id":"O1","ok":true,"data":{"session":"ccm-oneshot-usage-z-cc","handle":"$7","ttlSecs":"30"}}
-```
-
-`slug` 会话名后缀（`[A-Za-z0-9_-]`，后端 **铸**完整名字，调用方给不了完整名字）·
-`ttlSecs` 存活秒数（**没有默认值** —— `K37`：后端只给机制不给偏好）·
-`width` / `height` **可省、必须成对**（省了就是 tmux 的 detached 默认 80×24；
-探针抓的是表格，80 列会把它折断）。
-回 `session`（铸出来的完整名）· `handle`（`#{session_id}`，形如 `$7`）· `ttlSecs`（回显）。
-
-★ **名字由后端铸，撞名一律拒**（`KR87D2`）：形状 = `ccm-oneshot-` ＋ slug ＋ `-cc`。
-那条 `-cc` 尾巴**不是装饰** —— 没有它，后端铸出来的会话过不了 §34 Gate 2 的名字半支
-（`gate_core::is_ccm_tmux_name` 只认 `cc-<X>` 与 `<X>-cc`）⇒ **后端自己的
-`launch send-into` 与 `kill` 都进不去自己刚建的那个会话**。理由全文与两条出路的比价住
-`control/oneshot_session.rs::ONESHOT_GATE_SUFFIX` 的头注。
-
-★ **看门狗是一个外部进程**（`setsid sh -c 'sleep N; tmux kill-session -t <句柄>'`），
-脚本是常量、变量全走位置参数（这条路上没有一处需要 quote）。它**独立于这条连接**：
-连接断了、后端没了，它照样到点清场。
-🔴 **看门狗起不来 ⇒ 不许回成功**：刚建出来的会话当场回滚杀掉，回 `watchdog_failed`
-并在话里说清回滚成没成。
-
-⚠ 与 `launch` 的 `create-or-attach` **刻意相反**：那一条撞名是幂等接回，
-而接回一个别人的会话等于替它定了死期。
-
-错误码：`invalid_args`（slug/秒数/尺寸形状不对，或宽高只给了一半）· `no_tmux` ·
-`name_taken`（那个名字已经有人占着 —— **拒绝，绝不静默接回**）· `create_failed` ·
-`watchdog_failed`。
+> 〔`设计/50` 删用量 —— 这里原有一节 `oneshot-session`（起一个到点自己会死的 tmux 会话）。
+> 它是为**用量探针**建的（`K-R87` 的 CLI 面 → `K-R104` 的帧面），而用量 ②③ 两轴整轴退役
+> ⇒ 这条命令**零生产调用方**，随之退役：`inbound::REGISTRY` 与 `COMMANDS` **11 → 10**，
+> `BUILD_ID` `p2j-bus-state` → `p2k-usage-retired`。
+> ⚠ **隔壁那条 `capture-pane` 没退**（拉屏预览真在用它），别把两条读成一刀。〕
 
 #### `resolve`：一次性 exec 与流命令**并存**（U6b-3）
 
@@ -908,13 +896,15 @@ rc=2
     ① **行序 = snippet 预算顺序 = 最近优先**（按 jsonl mtime 降序）。此前按 `WalkDir`（`readdir`）先走到的顺序花预算，与 monitor 的 `updatedAt desc` 几乎正交（实测前 3 重合 0/3）——而两侧的**展示**顺序都是最近优先。
     ② 每行多一个 **`hitsTruncated: bool`**：本会话有命中因**全局 `--limit` 用完**而拿不到 snippet。此前 `hitCount: 12, hits: []` 在下游与「这个会话没什么可看的」同形，monitor 合并时又逐字 `truncated: local.truncated` 把远端那一半丢掉 ⇒ **远端截断界面一个字不说**。⚠ 与「本会话超 `PER_SESSION_CAP`(30) 条只列前 30」**不是一回事**，后者不置这个位。
     - 兼容：旧后端不发这个字段 ⇒ monitor 侧 `serde(default)` = `false`，退化成收口前的行为，不炸。
-- `--usage`（F88a-remote / #52，`src/backend/observe/usage_query.rs`）→ 服务端在远端聚合用量（**per-requestId 每字段 MAX**，口径对齐 monitor `usage.rs`——有 `per_request_field_max_matches_local_kou_jing` 跨轨对账测），**每会话一行** camelCase 用量行 JSON，monitor 侧 `remote_history::aggregate_remote_usage_all` fan-out 合并（各带 `origin`）。**additive 子命令、未 bump PROTO_VERSION**。
+> 〔`设计/50` 删用量 —— 这里原有一条 `--usage`（服务端在远端聚合用量，per-requestId 每字段 MAX）。
+> 用量的**聚合轴**整轴退役 ⇒ 子命令与它的实现（那份 `usage_query.rs`，**已删**）一起删了，
+> monitor 侧的 fan-out 消费者同拍删除。`SUBCOMMANDS` 27 → 25（另一条是 `--oneshot-session`）。〕
 
 - `--list-accounts [--accts-dir <p>]`（A2 多账号，`src/backend/observe/accounts_query.rs`）→ 读 cc-acct-iso 的 manifest（`$ACCTS_DIR/accounts.json`，契约 v1）。**首行** `{"kind":"accounts-meta","enabled":bool,"acctsDir","manifestPath","updatedAt","sharedStore","count","error"}`，其后每账号一行 `{name,email,configDir,isDefault,mode,exists,loggedIn}`。**"未启用多账号"是正常状态**：manifest 缺失/坏/版本不支持 → `enabled:false` + `error` 人话原因 + **exit 0**（不是错误）。`loggedIn` 仅 stat `.credentials.json` 存在性。账号库目录解析：`--accts-dir` > `~/.cc-acct-iso/config` 的 `ACCTS_DIR=`（**正则抠值，绝不 source**）> `$HOME/.claude-accts`
 - `--session-accounts [--accts-dir <p>]`（A2；`launchId` 是 `K-P5f`）→ 扫 `<claude_dir>/sessions/<PID>.json` 拿 pid，读 `/proc/<pid>/environ` **只抠两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`；**键名不是参数**，所以这条查询不是「任意环境变量读」原语，也**绝不回传整个环境快照**），`CLAUDE_CONFIG_DIR` 反查 manifest 得账号名。每条一行 `{pid,sessionId,cwd,configDir,account,bare,alive,launchId}`。`account:null` = 查不到（**不猜**）；**`bare:true` = 进程活着、`/proc/<pid>/environ` 这一刻读得到、而没设 `CLAUDE_CONFIG_DIR`（裸起）——这个布尔的语义钉死在那一个变量上，加了第二个键也没有拓宽它**（没设 `CCM_LAUNCH_ID` 由 `launchId:null` 自己表达）。⚠ 「读得到」这个合取项是 `K-R21`（09-03）补的，**语义是收窄不是拓宽**：environ 在 exec 窗口里（60–140 µs）与进程成僵尸之后**读得到却回 0 字节 / 读不到**，从前那一刻会被报成斩钉截铁的 `account:"<账号0>"` + `bare:true`，而 `alive` 仍是 `true`（判活读的是 `/proc/<pid>/stat`，与 `environ` 不是同一次读）⇒ **一条真跑在别的账号下的会话会被报成账号 0 的，且无声无息**。现在那一刻报 `configDir:null` + `account:null` + `bare:false`（=「不知道」，**出参形状没变、没有新字段**）。`launchId` = 起会话方铸进这条会话进程环境的**身份 token**（写侧住 `history.rs::LAUNCH_ID_VAR`），`null` = **不作数**，五种原因合并且**刻意不区分**：没设 / 形状过不了白名单（`[A-Za-z0-9_-]`，1..=128）/ **同一个 token 落在一条以上活会话上** / 进程已死 / **读那一刻环境取不到**。⚠ 第五种是 `K-R21` 现打出来的，**它一直都在、只是从前混在「没设」里数不出来**（读侧那个 `Option` 装着四件事）——这不是新增了一种行为，是把「四种」这句旧话订正成实话；`configDir` 那一半已经把它拆出来了，身份这一半仍按「要区分就得给出参加状态位 = 改上线契约」那条裁定合并着。⚠ **`launchId` 不是硬真相**：它是**继承型**环境变量（claude spawn 的子进程原样继承），后端只能判「同一批里唯一」，判不出「确实是它的」——父会话已退出时那个继承值仍会被报出来。**additive**：老后端不出这个键，下游读成 `null`。⇒ 账号那一半（`configDir`/`account`/`bare`）仍是"某条**正在跑**的会话属于哪个账号"的唯一硬真相（会话 jsonl 里没有任何账号字段）；身份那一半（`launchId`）**不是**，别把上一句读到它头上
 - `--account-trust <configDir> <cwd> [--accts-dir <p>]`（A2）→ 换号 resume 前的信任预检（首次用某账号进某目录，CC 会弹信任确认、会卡住自动化）。单行 `{"trusted":bool,"known":bool,"error":null}`。**安全**：`configDir` 必须逐字 ∈ manifest 的账号列表，否则 exit 2 + stderr `{"code":"unknown_config_dir",...}`——避免退化成任意文件读原语；**只回三个布尔/字符串字段，绝不回传 `.claude.json` 内容**（内含 `mcpServers` 的环境变量，可能有 API key）
 - `--account-trust-zero <cwd>`（A2）→ **账号 0**（未启用多账号时那个原生身份）的信任预检，返回形状同 `--account-trust`。**为什么单开一个动词而不是给 `--account-trust` 传空 `configDir`**：账号 0 没有 config dir，而空串是被明令禁止的拼法（空值 ≠ 未设）；且它的 `.claude.json` 原生根是 `$HOME`、不在共享账号库里 ⇒ 路径来源本就不同，合并只能靠哨兵值区分，比多一个动词更易错。**不收任何文件/配置目录路径参数**：它收 `cwd`，但那只当 `projects` 里的**查表键**，`.claude.json` 的根写死 `$HOME` ⇒ 连"任意文件读"的面都没有（`account_trust_zero_takes_no_path_argument` 钉住）
-- `--fork-session <args>`（G2 branch-anywhere，`src/backend/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**后端唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`doc/INVARIANTS.md` §41.6）
+- `--fork-session <args>`（G2 branch-anywhere，`src/backend/control/fork_write.rs`）→ 从指定消息处分叉出一个新会话文件。**后端唯一的写盘入口**——其余一切子命令只读；`readonly_guard` 的写白名单按路径单独盯着 `control/fork_write.rs` 这一个文件（`src/doc/INVARIANTS.md` §41.6）
 - `--tmux-notify <daemon_pid> <daemon_starttime>`（P4b zero-poll-liveness）→ **不是查询**，是 tmux hook 子进程走的通路：校验身份后给正在跑的后端发一个信号叫它立刻重扫 tmux，**完全不碰文件系统**。两个参数缺一或非整数 ⇒ exit 2。**必须同时比对 starttime 而不只看 pid 存在**：后端退出后那个 pid 可能已被别的进程占用，误发信号轻则无效、重则打断无关进程（很多程序把该信号当自定义控制信号，默认处置直接终止）。身份对不上 ⇒ **静默 exit 0，不做事**
 
 - `--list-subagents <父会话 jsonl 路径>`（P7c-1，p1z）→ 列该会话的 **subagent 候选**，
@@ -976,44 +966,10 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
 - ⚠ **`--ping` 那族的「不读 stdin」纪律同样适用**：声明无输入的命令必须秒回，
   不许挂住等一个永远不来的输入（`P4f` 实测过 `bus-list` 那次 6 秒被掐死）。
 
-**`K-R87` 追加一条（09-13）**：`--oneshot-session <名字后缀> <存活秒数>` —— 起一个到点
-**自己会死**的 tmux 会话。它是上面 `--launch` 的邻居（同样改 tmux server 状态），
-但语义正好相反：`--launch` 的 `create-or-attach` 是**幂等**的（会话在就复用），
-而这一条**撞名就拒**，因为它会给那个会话挂一条到点杀它的看门狗。
-
-- **入参是两个位置参数**（**不读 stdin**）：
-  - `<名字后缀>` —— 只收 `[A-Za-z0-9_-]`、≤64 字符。**完整会话名由后端铸**：
-    专属前缀 `ccm-oneshot-` ＋ 这个后缀。调用方给不了完整名字，**这是故意的**：
-    那个前缀是后端的名字空间，「哪些会话是一次性的」这个问题只有一个答案。
-  - `<存活秒数>` —— 十进制整数，`>= 1` 且放得进 `u32`。**没有默认值、也没有上界**：
-    一次性会话的寿命是调用方要买的那件东西，后端只给机制不替它选（`K37`）——
-    「多久算太久」是偏好，后端不持有它。⚠ 代价：秒数给得足够大时「到点自己会死」
-    这条性质就接近空（它仍然成立，只是那个「点」在很远的地方）—— **那一格归调用方**。
-    `0` 拒：0 秒的看门狗等于没有看门狗，调用方会拿到一个**已经死了**的名字。
-- **成功**：stdout 一行紧凑 JSON `{"session":"<铸出来的名字>","handle":"$N","ttlSecs":<秒>}`
-  ＋ exit 0。`handle` 是 `#{session_id}`，在 server 生命周期内唯一且不复用 ——
-  后续要对这个会话下破坏性命令，**用它，别用名字**。
-- **失败**：stderr 一行 `{code, message}` ＋ exit 2（同 `--resolve` 那套信封）。五个码
-  **刻意分得开**：
-  - `invalid_args` —— 名字后缀 / 秒数的形状过不了，**在起进程之前**就拒了；
-  - `no_tmux` —— 这台机上 `tmux` 这个程序起不来；
-  - `name_taken` —— 那个名字已经有人占着 ⇒ **拒绝，绝不静默接回**。
-    接回等于替别人的会话定了死期，先例逐字在 `control/ccm/mod.rs` 的 `NAME_TAKEN_FMT`；
-  - `create_failed` —— 建不出来，而它也不存在（tmux 原话原样带回）；
-  - `watchdog_failed` —— 看门狗那条外部进程起不来 ⇒ 这个会话**没有到点自己会死的保证**
-    ⇒ 后端当场把刚建出来的会话杀掉（不留孤儿），并在 message 里**说清回滚成没成**。
-- **看门狗是一个外部进程，不是后端里的定时器**：
-  `setsid sh -c 'sleep "$1"; shift; exec tmux "$@"' ccm-watchdog <秒> <kill 的 argv…>`。
-  🔴 这不是实现口味：后端侧那条**零定时器铁律**（`no_timer_guard`）的人群是
-  「本 crate `src/` 的源码文本」，且明写**被起进程的行为不在里面** ——
-  把那个「等 N 秒」搬进后端自己的代码当场撞铁律。
-  ⚠ **脚本是一个常量**，会话名 / 句柄 / socket 全部走**位置参数** ⇒ 这条路上没有一处
-  需要 shell 引号，也就不会有引号写错这一类问题。
-- ⚠ **它只起会话，不看画面**：「隔多久抓一屏看它稳没稳」不在这条命令里
-  （抓一屏是 `--capture-pane`，「隔多久」由调用方决定）。
-- ⚠ **诚实边界**：回了 exit 0 只证明**看门狗那个进程起来了**。`setsid` 起得来、
-  而它 fork 之后 exec 失败（那台机器没有 `sleep` / `tmux`）这一档，父进程结构上拿不到
-  ⇒ **别把 exit 0 读成「它到点一定会死」**；要那一格就自己去看那个会话在不在。
+> 〔`设计/50` 删用量 —— 这里原有 `--oneshot-session <名字后缀> <存活秒数>` 的整段说明
+> （`K-R87` 09-13 加的一次性会话原语，含五个错误码与那条外部看门狗的形状）。
+> 它当初就是为用量探针建的；探针轴退役后它零生产调用方，连同那份 `oneshot_session.rs`（1122 行，**已删**）一起删除。其中「看门狗必须是外部进程、因为零定时器铁律只管本 crate 源码文本」
+> 这条论证仍然成立、只是今天在本仓没有实例了。〕
 
 **P4f 追加三条**：`--bus-list` / `--bus-send` / `--bus-kill`（cc-bus 的基础命令，见上面各自的小节）。
 它们与帧面走**同一个 `run`**，CLI 面这一层不写第二份实现。
@@ -1087,7 +1043,7 @@ bash 脚本与 skill 调不到。p1y 起，它们各有一个一次性 CLI 入�
   - ⭐ **「这一格里提到的路径还在不在」有人钉着**：
     `doc_claim_registry::tests::every_repo_path_named_in_the_docs_still_resolves`。
     现打变异（**只改这份文档，一行代码没动**）：把上面那个 `relay/tee.rs` 改成一个不存在的文件名
-    ⇒ **当场红**，判定行逐字把住址与那个改坏的名字一起印出来（`doc/IPC-PROTOCOL.md` 第 807 行）；
+    ⇒ **当场红**，判定行逐字把住址与那个改坏的名字一起印出来（`src/doc/IPC-PROTOCOL.md` 第 807 行）；
     那一趟 **12 passed / 1 failed**。
     ⇒ 上面那些 `tee.rs::open` / `::event` 的住址**改了名会被抓**，不会烂在这里。
   - ❌ **这一格的「内容」与 `tee.rs` 生产段对不对得上，没人对拍。**
@@ -1336,7 +1292,7 @@ arch 取值与 release 上挂的那两份一致）。⚠ **没有「取最新那
    （`ESC ]0;ccm-rbind-<sid> BEL`）→ 直通外层终端 → 经 ssh 显示层透传 → **本地 WT 窗口标题**。
    ⇒ 「自愈重打」不再需要（标题是 tmux 现算的，不是谁定期喷的）；
    `/clear`、`/branch` 原地换 sid 时 pidfile 被重写 ⇒ inotify modify ⇒ 后端跟着重打。
-   契约与 `doc/INVARIANTS.md` §30 同源。
+   契约与 `src/doc/INVARIANTS.md` §30 同源。
    ⚠ **代价（如实登记）**：**不在 tmux 里**跑的 `ccm` 从此**没有** rbind marker ——
    旧 poller 是直接 `printf` OSC 到终端的，而 `@ccm_sid` 是 tmux 会话级 option、
    没有 tmux 就没有地方放身份。ccm 会为此往 stderr 说一句，不静默。

@@ -18,7 +18,7 @@ members = [
     "crates/guard-core",
     "crates/search-core",
     "crates/shell-quote-core",
-    "crates/usage-core",
+    "crates/codex-token-core",
 ]
 exclude = ["vendor/code-picture-core"]
 
@@ -62,7 +62,7 @@ uuid = { version = "1", features = ["v4"] }
 code-picture-core = { path = "vendor/code-picture-core" }
 # G1（branch-anywhere）：分叉的记录变换，与远端 daemon 共用同一份实现。
 branch-core = { path = "crates/branch-core" }
-usage-core = { path = "crates/usage-core" }
+codex-token-core = { path = "crates/codex-token-core" }
 acct-core = { path = "crates/acct-core" }
 # K-H2a：第三方 API key 的唯一住址（类型 / 落盘格式 / 权限判断），与远端 daemon 共用。
 # ★ `features = ["harden"]` —— **monitor 是唯一会写这份文件的一侧**，所以只有这里开它。

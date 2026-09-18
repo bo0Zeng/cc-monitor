@@ -2488,7 +2488,7 @@ mod tests {
         ("src/history.rs", Why::Wording, 1),
         ("src/inbound_client.rs", Why::Wording, 2),
         ("src/lib.rs", Why::SymbolName, 2),
-        ("src/lib.rs", Why::Wording, 3),
+        ("src/lib.rs", Why::Wording, 2), // `设计/50` 3 → 2：`mod usage;` / `mod account_usage;` 两处注册随用量 ②③ 退役（这张账只许变小）
         ("src/local_accounts.rs", Why::Wording, 1),
         ("src/local_read_surface_registry.rs", Why::Wording, 1),
         ("src/parity_ledger.rs", Why::SymbolName, 2),
@@ -2509,7 +2509,6 @@ mod tests {
         ("src/tool_registry.rs", Why::OldId, 6),
         ("src/tool_registry.rs", Why::SymbolName, 8),
         ("src/tool_registry.rs", Why::Wording, 1),
-        ("src/usage.rs", Why::Wording, 2),
     ];
 
     /// 三档各自的处数。**针全部运行期拼**〔同 `scanning_guard_registry` 头注里

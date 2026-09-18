@@ -49,7 +49,10 @@ DOORS: list[tuple[str, str, str]] = [
     ("run_gate_sum", "run_gate_sum() {", "}"),
     ("run_e2e", "run_e2e() {", "}"),
     ("generated", "git diff --quiet --exit-code -- src/generated/", "esac"),
-    ("pb check", 'if [ -z "${PB_WS:-}" ]; then', "fi"),
+    # 〔墓碑 2026-09-18〕`pb check` 那一格已从 `gate.sh` 整格删除（用户拍板）——
+    # 本仓没有 `.claude/planned-build/`，且它调的 `pb.py` 不在盘上 ⇒ 没有可判的对象。
+    # 本行随之摘掉；复活那道门时要连这一行一起回来。
+    # ("pb check", 'if [ -z "${PB_WS:-}" ]; then', "fi"),
 ]
 # 探针那侧的住址（不进「11 条判定」的分母）。
 PROBE_FNS = ["gate_selftest() {", "gate_selftest_e2e() {", "gate_assert_judged() {"]

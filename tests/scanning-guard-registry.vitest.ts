@@ -79,7 +79,15 @@ const IS_TEST = (f: string): boolean => f.endsWith(".vitest.ts") || f.endsWith("
 const WALK_FORMS = ["readdirSync", "globSync", "readdir("];
 
 /**
- * ★ **今天在测试里做目录遍历的文件**（08-06 实测 9 个 → `P9` 08-12 起 **10** 个）。
+ * ★ **今天在测试里做目录遍历的文件**（08-06 实测 9 个 → `P9` 08-12 起 **10** 个
+ *    → 2026-09-18 起 **11** 个）。
+ *
+ * 🔴 **09-18 那一格抬得起来的理由，逐字记在这里**（抬上限只有这一种合法写法）：
+ * 新增的是 `tests/scale3-one-screen-gate.vitest.ts`（`设计/17 §6` 的秤 3）。
+ * 它**结构上读不到自己** —— 它遍历的是 `src/cards/`（`readdirSync(CARD_SRC_DIR)`，
+ * 从卡片源码里派生出全部 `card-*` 类名），而它自己住 `tests/`。**两棵不同的树。**
+ * 这是本条诊断给的第二条出路（「或者干脆扫别的扩展名」）的更彻底版：扫别的**目录**。
+ * ⇒ 它不可能在自己的语料里找到自己 ⇒ 不会恒绿。
  *
  * 只许降 —— 新增一个就红，那时要么让它摘掉自己、要么把它加进来并写明凭什么安全。
  *
@@ -94,7 +102,7 @@ const WALK_FORMS = ["readdirSync", "globSync", "readdir("];
  * 于是那边躺了一句手写的 `tmux attach -t …`（`P9` 摸底当场逮到，已改成问座要）。
  * ⇒ 这一格换的是「一条已经腐过的散文门禁」，不是又加了一个扫描器。
  */
-const WALKER_CEILING = 10;
+const WALKER_CEILING = 11;
 
 /**
  * ★ **磁盘语料上的裸 `.includes("…")`**（08-06 实测 8 处）。

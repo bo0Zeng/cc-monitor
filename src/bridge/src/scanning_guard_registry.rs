@@ -317,7 +317,6 @@ mod tests {
     ///   （删掉的那份文件还在裸遍历 ⇒ 当场以 `newcomers` 红）。
     /// - 它**挡不住把那条判据本身删掉** —— 买的是**留痕**，不是不可能。
     const PENDING: &[&str] = &[
-        "src/bridge/src/account_usage.rs",
         "src/bridge/src/atomic_replace_registry.rs",
         "src/bridge/src/backend/control/daemon_kill.rs",
         "src/bridge/src/backend/control/launch_wire.rs",
@@ -357,7 +356,7 @@ mod tests {
     /// [`no_new_guard_walks_the_tree_without_excluding_itself`]。
     // 08-08：`daemon_route.rs` 的裸遍历迁到了 `guard_core::scan_tree!`（那一轮把它的
     // 发现面从一个目录扩到整棵树，顺带就该换掉手写遍历）⇒ 清单少一行，上限一起降。
-    const PENDING_CEILING: usize = 29;
+    const PENDING_CEILING: usize = 28; // `设计/50`：`account_usage.rs` 整删 ⇒ 存量少一条，上限同拍往下拧一格
 
     /// 判定「这是一个带登记表的判据文件」的声明形态。**闭集，按名字认。**
     ///

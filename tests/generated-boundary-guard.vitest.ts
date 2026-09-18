@@ -110,7 +110,7 @@ describe("C01 边界生成物", () => {
   it("派生 ts_rs::TS 的 Rust 源文件恰好 31 个（自动发现的范围自检）", () => { // ⚠ 标题里这个数腐过：曾写 27 而断言是 28
     // 这一条不是为了钉住某个数字，是为了让「新文件加了派生」这件事**红一次**
     // ——范围由 `tsDerivingSources()` 自动发现（不会漏），但**扩大范围要被看见**。
-    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(32); // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
+    expect(TS_DERIVING_SOURCES.length, `实得 ${TS_DERIVING_SOURCES.length}：${TS_DERIVING_SOURCES.join(", ")}`).toBe(30); // **`设计/50` −2（`usage.rs` 与 `account_usage.rs` 整删：`UsageTotals`/`SessionUsageRow`/`UsageBucket` 与 `AccountUsageProbeResult` 四个生成物同拍出列）** // G6 tmux.rs +1；E79 accounts.rs +1；**P8a plugins.rs +1**；**PS1 cc_bus_deploy.rs +1**；**K-R49 account_aliases.rs +1**；**K-R65 tool_registry.rs +1**（`EnvTier` 上线 ⇒ 那一页按档的**值**分档，不再靠措辞猜）
   });
 
   it("生成目录里只有生成物，且每个都带「不许手改」标记", () => {
@@ -126,7 +126,6 @@ describe("C01 边界生成物", () => {
       // K-R49：按账号生成命令并落盘那一条命令的返回形状（报告 + 候选 rc）。
       "AccountAliasRc.ts",
       "AccountAliasReport.ts",
-      "AccountUsageProbeResult.ts", // C04d 批2
       // P8a：marketplace 只读枚举的两个载荷。
       // ⚠ 顺序按目录名排序，别按加入时间摆。
       "AcctIsoStatus.ts", //          C04d 批3（**抓到漂移**：TS 原来只认 1/3 个字段）
@@ -206,7 +205,6 @@ describe("C01 边界生成物", () => {
       "SessionHits.ts", // C04d 批6c
       "SessionIdlePayload.ts", //     C02
       "SessionStartedPayload.ts", //  C02
-      "SessionUsageRow.ts", //        C04d 批3（**抓到漂移**：origin 手写成 ?: string，线上恒有可为 null）
       "SettingsScope.ts", //          C04d 批2（ConfigSurfaceReport 的传递依赖）
       "SftpEntry.ts", //              C03（Phase G 报的唯一已确认静默有损点）
       "Snippet.ts", //                C04d 批3
@@ -218,8 +216,6 @@ describe("C01 边界生成物", () => {
       "TmuxSession.ts",
       "TransferProgress.ts", //       C03
       "Usage.ts", //                  C04c（messages.rs 的 token 计数，**不是** usage.rs 的 UsageTotals）
-      "UsageBucket.ts", //            C04d 批3（→ UsageTotals 是 **C03 生成的**，传递依赖已就位）
-      "UsageTotals.ts", //            C03
       // 🔴 `K-R93`（09-12）：**这一份不是 ts-rs 生成的**，是 `src/bridge/src/adapter.rs` 的
       // `export_bindings_agent_profile_table` 写出来的**值表**（ts-rs 只生成类型、不生成值）。
       // 它照样被 `npm run gen:types`（= `cargo test --lib export_bindings`）重跑、
@@ -431,7 +427,11 @@ describe("C01 边界生成物", () => {
     // `EntryMetadata.updated_at` · `SearchIndexStatus.built_at_ms` ·
     // `SessionHits.updated_at` · **`Hit.ts_ms`（这个是守卫指出来的**——`Hit` 是
     // `SessionHits` 的传递依赖，我没逐字段读它就派生了）。
-    expect(checked, `期望恰好 23 个大整数字段，实得 ${checked}`).toBe(24);
+    // 🔴 〔`设计/50` 09-18〕**24 → 20**：`usage.rs` 整删带走 4 个 `u64` 字段
+    //    （`UsageTotals` 的 `input`/`cache_creation`/`cache_read`/`output`）。
+    //    ⚠ **这个数变小不是放宽**：它是「有多少个大整数字段被 `ts(type=…)` 策略盖住」，
+    //    人群小了是因为被盖的对象少了，策略本身一个字没松。
+    expect(checked, `期望恰好 20 个大整数字段，实得 ${checked}`).toBe(20);
   });
 
   it("`Option<大整数>` 配 ts(type) 时不许丢掉 `| null`（除非同时有 ts(optional)）", () => {

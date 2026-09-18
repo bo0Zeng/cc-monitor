@@ -867,61 +867,6 @@ mod spawn_registry {
              这一处的立身之本就是「抓一屏只有一处、而且只抓一屏」。",
         ),
         (
-            "control/oneshot_session.rs",
-            "tmux",
-            "`K-R87`（09-13）：**一次性会话**那条路上全部 tmux 调用的唯一起进程点\
-             （`new-session -d -P -F` 建会话并顺带拿回句柄 · `has-session` 判撞名 · \
-             `kill-session` 回滚），argv 直传不过 shell。\
-             改的是 **tmux server 的运行期状态**，不是 daemon 自己写用户既有数据 \
-             —— 同 `control/launch.rs` / `control/kill.rs` 那两条（`D1` 裁决的正例）。\
-             ⚠ **它里面有一个破坏性动作**（`kill-session`），而它**没有过 §34 那三道门**：\
-             那三道门挡的是「往一个**不是本工具管理的**会话下手」，而本模块从头到尾只碰\
-             自己刚铸出来的名字 —— 名字在 daemon 专属前缀 `ccm-oneshot-` 底下，\
-             撞名那一档在建会话那一步就**拒掉**（`KR87D2`），结构上走不到下手那一步；\
-             真下手时对的是 `#{session_id}` **句柄**，不是名字。\
-             ⇒ 这一条**不许**被拿去给别处的 `kill-session` 免门。\
-             ⚠ 这张表的键分不出被调的是哪条 tmux 子命令（同 `plugin/invoke.rs` 那条自陈的 \
-             `K6b` 盲区）⇒ 光靠这一行买不到「它只碰自己的名字空间」——\
-             买那件事的是本模块自己那几条判据（撞名拒绝 · 别人的会话过了 ttl 还在）。",
-            "缩性质",
-            "「一次性会话」这条路整个搬出 daemon、或它不再需要自己杀会话的那天。\
-             ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第四条 tmux 子命令 —— \
-             今天恰好三条（建 · 问在不在 · 杀），加第四条就要回来重判\
-             「它还只碰自己的名字空间吗」。",
-        ),
-        (
-            "control/oneshot_session.rs",
-            "<非字面量>",
-            "`K-R87`（09-13）：**看门狗那条外部进程** —— `setsid sh -c '<常量脚本>' … N … \
-             kill-session -t $N`，到点回来把那个一次性会话杀掉。\
-             🔴 **它必须是外部进程，这不是实现口味**：零定时器铁律（`no_timer_guard`）的人群\
-             逐字是「本 crate `src/` 的源码文本」，且明写**被起进程的行为不在里面** ——\
-             把那个「等 N 秒」搬进 daemon 自己的代码当场撞铁律。\
-             写面：它只对 tmux server 下一条 `kill-session`，**不写任何文件** \
-             ⇒ 同上一条，落在收窄后的性质之内。\
-             ⚠ **程序名是非字面量**：生产恒是 `setsid`（住 `control/oneshot_session.rs` 的 \
-             `WATCHDOG_LAUNCHER`），可注入只为了让「它起不来时不许回成功」这一档\
-             测得出来（`KR87D3`）—— 那**不是配置口**，同 `capture_pane` 那条 socket 的理由。\
-             ⚠⚠ 与 `plugin/invoke.rs` / `platform/shell.rs` 那两条 `<非字面量>` 同族病：\
-             这条键**分不出**被起的是谁 ⇒ 把 launcher 换成别的程序**不会红**。\
-             逮那一格的是本模块 argv 逐元素那条判据（脚本是常量 · 变量全走位置参数）。\
-             \n🔴 **搬家欠账登记之二〔`K-R110` `KR110D3`，09-13〕**：这条路是 **POSIX-only**\
-             （`setsid` ＋ `sh` ＋ `sleep`），按 `K33` 裁定二「平台差异只许住适配层」它该住 `platform/`，\
-             **今天没住** —— 住址逐字是 `src/backend/control/oneshot_session.rs`\
-             （`WATCHDOG_LAUNCHER` 与它那段常量脚本），来历住 \
-             `features/K-R87-daemon侧没有「带看门狗的一次性会话」模式.md#§8` 第 13 条。\
-             **今天为什么没搬**：① 它要**新造一条适配层原语**（现成的 `platform/shell.rs::posix_shell` \
-             形状对不上：那条送的是「一条命令串」，这条要的是「脱离会话组、后台、带位置参数」）；\
-             ② `platform/` 与 `control/oneshot_session.rs` **都不在 `K-R110` 的写区**，\
-             而 `platform/cfgless_guard.rs` 还是 `K-R103` 刚做完的面（主干 `c741228`），本轮明令不许动。\
-             ⇒ **只登记、不搬**，由 PM 另立一件。",
-            "缩性质",
-            "哪天「一个会话到点自己没」这件事有了不必起外部进程的做法（tmux 自己出一条 \
-             session TTL、或判活那套事件源能承载它），这一条就该摘掉。\
-             ⚠ 在那之前**不许**因为「反正已经登记了」而往这一条底下加第二种被起的程序 —— \
-             今天经它起的**恰好一种**（看门狗），加第二种就要回来重判。",
-        ),
-        (
             "common/session_snapshot.rs",
             "tmux",
             "`K-R96`（09-12）：**全 crate 唯一一处「一次列全部 tmux 会话」的探测点**\
@@ -1118,7 +1063,12 @@ mod spawn_registry {
         //    那是按「新增一处起进程点」估的，而本件真实新增的是**两处**：看门狗是另一个程序，
         //    抽取器按 `Command::new(` 的**出现次数**数，不是按 `(文件, 程序)` 去重后的键数。
         //    ⇒ 这里记 13，并把差额登记在件文件 `§8`。
-        const SPAWN_SITES_TODAY: usize = 13;
+        // 🔴 〔`设计/50` 删用量〕**13 → 11**：`control/oneshot_session.rs` 整份文件随用量 ③ 轴
+        //    （探针会话）退役 ⇒ 它那两处起进程点（`Command::new("tmux")` ＋ 看门狗那个
+        //    `Command::new(<非字面量>)`）一起没了，`ALLOWED` 里那两条同拍摘掉。
+        //    ⚠ **变少这一次是真的少了，不是抽取坏了**：`control/capture_pane.rs` 那一处还在
+        //    （拉屏预览在用），下面 `found` 的实测清单里看得见。
+        const SPAWN_SITES_TODAY: usize = 11;
         assert_eq!(
             found.len(),
             SPAWN_SITES_TODAY,
@@ -2202,16 +2152,10 @@ mod error_envelope_registry {
             "control/capture_pane.rs",
             "let line = serde_json::json!",
             "`--capture-pane` 的 `emit_err`",
-            "与 `control/oneshot_session.rs` 那份**逐字同形**（两份都收 `CmdErr` 元组）。\
-             两份都只有三行、都只被自己那个入口用；`K-R103` 现打：引入至今零改动、零不同步事故\
-             ⇒ 收它买不到「一处改、全体跟」（真正的分母是 12 处，不是 4 份）。",
-        ),
-        (
-            "control/oneshot_session.rs",
-            "let line = serde_json::json!",
-            "`--oneshot-session` 的 `emit_err`",
-            "同上一行 —— 这两份就是 `K-R87` 交回时点名的「第 4 份同形」。**有意共存**，\
-             理由逐条在本模块头注；要收就得把 12 处一起收，那是另一件事的规模。",
+            "〔`设计/50`：原话说它与 `control/oneshot_session.rs` 那份**逐字同形** —— \
+             那份随用量 ③ 轴整轴退役了，「第 4 份同形」今天是第 3 份。〕\
+             它只有三行、只被自己那个入口用；`K-R103` 现打：引入至今零改动、零不同步事故\
+             ⇒ 收它买不到「一处改、全体跟」（真正的分母是 12 处，不是几份）。",
         ),
         (
             "control/fork_write.rs",
@@ -2683,10 +2627,14 @@ mod g6_dependency_signoff {
              落盘那一形要另一条 crate，而本清单上没有",
         ),
         (
-            "usage-core",
+            // 🔴 〔`设计/50` 删用量 09-18〕原名 `usage-core`（装着 Claude 用量口径的累加器
+            //    ＋ Codex 那半）。用量 ② 轴退役带走了累加器那半与它两侧的消费者
+            //    ⇒ crate 劈剩 Codex 的 token 增量映射一件事，改名 `codex-token-core`。
+            //    **签字一格没松**：仍是仓内 crate、现打 0 处写面。
+            "codex-token-core",
             DEPS,
             MEASURED_CLEAN,
-            "用量记录变换（纯数据），与 monitor 共用同一份；仓内 crate，现打 0 处写面",
+            "Codex `token_count` 事件 → token 增量的映射（纯数据）；仓内 crate，现打 0 处写面",
         ),
         (
             "walkdir",

@@ -139,10 +139,10 @@ selftest() {
 selftest
 
 # ── 真判据 ──────────────────────────────────────────────────────────────────
-if [ ! -d "$ROOT/hooks" ]; then
+if [ ! -d "$ROOT/tests/hooks" ]; then
   bad "hooks/ 在 $ROOT 下不存在 —— 本格的分母是空的，判不了（不许当成绿）"
 else
-  entries="$(git -C "$ROOT" ls-files -s -z -- hooks/ 2>/dev/null | tr '\0' '\n')"
+  entries="$(git -C "$ROOT" ls-files -s -z -- tests/hooks/ 2>/dev/null | tr '\0' '\n')"
   n_files=0
   while IFS= read -r ent; do
     [ -n "$ent" ] || continue

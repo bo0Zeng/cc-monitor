@@ -603,12 +603,16 @@ function injectOrBuildToolResult(
           ? `Error · exit ${exitCode}`
           : "Error"
         : "Output";
-      const sizeHint = approximateSize(block.content);
       const summary = document.createElement("summary");
       summary.className = "block-summary";
+      // `设计/17 §2.4`:approximateSize 对 617 KB 的 content 整份 JSON.stringify
+      //（O(len) 时间 + 一份等长字符串分配），而 preview 非空时这个结果 100% 用不上。
+      // 挪进三元的 else 分支 ⇒ 惰性求值。显示结果一字不变。
+      // ⚠ 同节还提了「数组 content 改成累加 text.length」——那个会改动显示出来的数字
+      //（JSON 括号/引号也计在 `N chars` 里），不是零语义风险，**本次没做**。
       summary.textContent = preview
         ? `${labelPrefix} · ${preview}`
-        : `${labelPrefix} · ${sizeHint}`;
+        : `${labelPrefix} · ${approximateSize(block.content)}`;
       resultEl.appendChild(summary);
 
       // 渲染模式 toolbar + body (lazy build 首次展开时再实际产生 DOM)
