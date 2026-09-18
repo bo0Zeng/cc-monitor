@@ -158,13 +158,22 @@ pub(crate) fn probe_local_ccm_uncached(timeout: std::time::Duration) -> CcmProbe
 /// 生产侧唯一的实参是 [`CCM_PROBE_CMD`]（由 `the_only_production_probe_command_is_the_constant` 钉）。
 #[cfg(not(windows))]
 fn probe_with(timeout: std::time::Duration, cmd: &str) -> CcmProbeResult {
+    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     probe_spawned(timeout, &|| {
-        std::process::Command::new("bash")
-            .args(["-lic", cmd])
+        let mut c = std::process::Command::new("bash");
+        c.args(["-lic", cmd])
             .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
+            .stdout(std::process::Stdio::piped());
+        // 三条策略（`00 §1.5.2`）：`Hidden`（探针绝不该在用户桌面上闪窗口）·
+        // `JobKillOnClose`（超时那条路要把 `-lic` 起出来的**整棵**树收掉 —— 用户 rc 里
+        // 起了什么我们不知道，只杀 `bash` 本身漏得掉）· `Null`（rc 的抱怨不是我们的诊断，
+        // 而这一跳唯一有用的字节在 stdout 上）。
+        spawn_managed_cmd(
+            &mut c,
+            ConsolePolicy::Hidden,
+            Lifetime::JobKillOnClose,
+            StderrSink::Null,
+        )
     })
 }
 
@@ -183,13 +192,21 @@ pub(crate) fn probe_binary_uncached(
     bin: &std::path::Path,
     timeout: std::time::Duration,
 ) -> CcmProbeResult {
+    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
     probe_spawned(timeout, &|| {
-        std::process::Command::new(bin)
-            .arg("--ccm-probe")
+        let mut c = std::process::Command::new(bin);
+        c.arg("--ccm-probe")
             .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
+            .stdout(std::process::Stdio::piped());
+        // 三条策略与上一条逐字相同，理由只有 `Hidden` 那格更重：这一跳在 Windows 上
+        // 起的是我们自己放下去的那份 `ccm.exe`（控制台子系统），不带 `CREATE_NO_WINDOW`
+        // 就是每问一次身份闪一次黑框。
+        spawn_managed_cmd(
+            &mut c,
+            ConsolePolicy::Hidden,
+            Lifetime::JobKillOnClose,
+            StderrSink::Null,
+        )
     })
 }
 
@@ -200,7 +217,7 @@ pub(crate) fn probe_binary_uncached(
 /// 抄第二份的话，两条路会在**最难查的那一格**（半截输出）上各说各话。
 fn probe_spawned(
     timeout: std::time::Duration,
-    spawn: &dyn Fn() -> std::io::Result<std::process::Child>,
+    spawn: &dyn Fn() -> std::io::Result<crate::spawn_managed::ManagedChild>,
 ) -> CcmProbeResult {
     use std::io::Read;
     let Ok(mut child) = spawn() else {

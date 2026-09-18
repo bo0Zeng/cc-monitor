@@ -846,133 +846,19 @@ fn resolve_bash() -> Result<std::ffi::OsString, String> {
     )
 }
 
-/// 收尾凭据：**句柄一关，那棵进程树整体收掉**。Windows 上它握着一个 Job Object；
-/// 非 Windows 上它是个空壳（那边 `kill_on_drop` 本来就够，见 [`reap_whole_tree_on_drop`]）。
-#[cfg(windows)]
-struct KillTreeGuard(Option<windows::Win32::Foundation::HANDLE>);
-
-#[cfg(not(windows))]
-struct KillTreeGuard;
-
-#[cfg(windows)]
-impl Drop for KillTreeGuard {
-    fn drop(&mut self) {
-        if let Some(h) = self.0.take() {
-            // 关掉 Job 的最后一个句柄 = 连同 Job 里**所有**进程一起收掉
-            // （`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`）。这就是本件要买的那一下。
-            // 形状照 `session_map::is_process_alive`：一个 `unsafe` 块，句柄显式关。
-            unsafe {
-                let _ = windows::Win32::Foundation::CloseHandle(h);
-            }
-        }
-    }
-}
-
-/// 🔴 **Windows：把子进程连同它自己起的一切收进一个 Job Object**〔ccbus-win 09-10 第七拍〕。
-///
-/// # 它治的是一个**有云端读数的**真缺陷
-///
-/// run `34473562660` 的 survivors 清单逐字：
-/// ```text
-/// 7976 ppid=3416 "C:\Program Files\Git\bin\..\usr\bin\bash.exe" -lc "while :; do : … ; done"
-/// ```
-/// 三样东西合起来说死了这件事：路径**不是**我们 spawn 的那个 `Git\bin\bash.exe`；
-/// `ppid=3416` 不是本进程；而 3416 **本身不在清单里**（它的 cmdline 同样含 marker，
-/// 还活着就必然被数到）⇒ **`Git\bin\bash.exe` 是个外壳，起完真 bash 自己就退了。**
-/// ⇒ `kill_on_drop` 的 `TerminateProcess` 打在一个**已经死了的 pid** 上，真 bash 继续转。
-///
-/// ⚠ **它不只在超时那条路上**：成功路径那句 `start_kill()`（「读够了就别再等它」）
-/// 同样只杀外壳 ⇒ `cat` 一个超大文件、我们读够就走的那一形**也漏**。
-/// **这一条今天仍是推论、没有实测**（要造一个大到需要提前掐断的 `cat` 才量得到）。
-///
-/// # 为什么是 Job Object，另外三条为什么不行
-///
-/// · **直接指 `Git\usr\bin\bash.exe` 绕开外壳**：只治这一形；而且我们对 `Git\bin\bash.exe`
-///   有读数（格① 过了）、对 `usr\bin\bash.exe` **零读数** —— 拿有读数的换零读数的，方向反了。
-///   外壳存在的理由正是布置 MSYS 环境，而格① 只用内建 `printf`，**逮不住「环境没布置好」**。
-/// · **`taskkill /T /F /PID`**：`/T` 杀的是**动手那一刻**的树，而外壳早就退了 —— 没有树可走。
-///   这不是判断，是上面那份清单**排除**出来的。
-/// · **按 ppid 递归杀**（ToolHelp 快照已在依赖里）：Windows 的 ppid 是记录值、父死不清零，
-///   所以找得到；但 **pid 会被复用** —— 本仓对这一形有明文先例
-///   （`local_daemon::signal_term` 为此加了 `/proc/<pid>/exe` 身份核对）。
-///   Job Object **在构造上没有这个窗口**。
-///
-/// # ⚠ 它买不到什么（写下来，别读成比它强）
-///
-/// 1. **有一个小竞态**：`AssignProcessToJobObject` 只能在 `spawn()` **之后**做，
-///    而外壳在这中间若已经把真 bash 起出来了，那个孙子进程就没进 Job。
-///    真正无窗口的做法要 `CREATE_SUSPENDED` + 拿线程句柄 `ResumeThread`，
-///    而 `std::process::Child` 不给线程句柄 ⇒ 今天做不到。
-///    ⚠ 落进这个窗口时**不比今天坏**（外壳照旧被 `kill_on_drop` 收掉），
-///    而 `a_timed_out_local_read_does_not_leave_an_orphan_behind` 的格④ 会把它数出来。
-/// 2. **失败不静默、但也不失败整条读**：建不出 Job / 认领不上时走 `tracing::error!`
-///    并**明说这台机器上收尾这一格没人守**。⚠ 刻意**不**回 `Err`：读面本身没坏，
-///    把它变成 `Err` 会让一台拒绝 Job 的机器**彻底读不了 cc-bus** —— 那是拿一个更大的坏
-///    去换一个小的（同 `OnOverflow::Truncate` 那条「副作用已经发生，别报成失败」的纪律）。
-///    ⇒ **真正守着它的是行为判据**：漏了的话格④ 数得出来、红。
-#[cfg(windows)]
-fn reap_whole_tree_on_drop(child: &tokio::process::Child, what: &str) -> KillTreeGuard {
-    use windows::Win32::Foundation::{CloseHandle, HANDLE};
-    use windows::Win32::System::JobObjects::{
-        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
-        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
-    };
-    let Some(raw) = child.raw_handle() else {
-        tracing::error!(
-            "本机{what}：拿不到子进程句柄，收尾这一格**在这台机器上没人守** —— \
-             超时/读够之后可能漏下一个真 shell 进程（Windows 上 `Git\\bin\\bash.exe` \
-             是外壳，`kill_on_drop` 只杀得到它）。"
-        );
-        return KillTreeGuard(None);
-    };
-    unsafe {
-        let job = match CreateJobObjectW(None, windows::core::PCWSTR::null()) {
-            Ok(h) if !h.is_invalid() => h,
-            other => {
-                tracing::error!(
-                    "本机{what}：建不出 Job Object（{other:?}），收尾这一格\
-                     **在这台机器上没人守** —— 超时/读够之后会漏下一个真 shell 进程。"
-                );
-                return KillTreeGuard(None);
-            }
-        };
-        let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
-        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-        let size = std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32;
-        let ptr = std::ptr::addr_of!(info) as *const core::ffi::c_void;
-        if let Err(e) = SetInformationJobObject(job, JobObjectExtendedLimitInformation, ptr, size) {
-            let _ = CloseHandle(job);
-            tracing::error!(
-                "本机{what}：Job Object 设不上 KILL_ON_JOB_CLOSE（{e:?}），\
-                 收尾这一格**在这台机器上没人守**。"
-            );
-            return KillTreeGuard(None);
-        }
-        if let Err(e) = AssignProcessToJobObject(job, HANDLE(raw as isize)) {
-            let _ = CloseHandle(job);
-            tracing::error!(
-                "本机{what}：子进程认领不进 Job Object（{e:?}），\
-                 收尾这一格**在这台机器上没人守**。"
-            );
-            return KillTreeGuard(None);
-        }
-        KillTreeGuard(Some(job))
-    }
-}
-
-/// 非 Windows 上的对侧：**什么都不做，而且这是对的**。
-///
-/// POSIX 上 `bash -lc '<脚本>'` 就是那一个进程（本机现打验过：
-/// `pgrep -af` 出来逐字是 `/bin/bash -lc while :; do : <marker>; done`，**没有外壳**），
-/// `kill_on_drop` 的信号直接打在它身上。⇒ 这里没有 Windows 那个「杀了外壳、孙子还在」的洞。
-///
-/// ⚠ 它**不是**「Windows 才有洞、POSIX 一定没有」的通用结论 —— 它只说
-/// 我们跑的这条命令在 POSIX 上不产生中间层。
-#[cfg(not(windows))]
-fn reap_whole_tree_on_drop(_child: &tokio::process::Child, _what: &str) -> KillTreeGuard {
-    KillTreeGuard
-}
+// ═══════════════════════════════════════════════════════════════════════════
+// 🪦〔散文墓碑〕 `KillTreeGuard` / `reap_whole_tree_on_drop` **搬走了**〔`15 §5.1 A3`，09-18〕
+//
+// 那一份（Job Object ＋ `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`，注释逐字「这就是本件
+// 要买的那一下」，还记了 `AssignProcessToJobObject` 的竞态）是设计稿点名的「仓里已经
+// 有的正确做法」之一 ⇒ 它现在是 `spawn_managed::Lifetime::JobKillOnClose` 的实现，
+// 住 `src/bridge/src/spawn_managed.rs`（连同那份「它买不到什么」的边界一起搬过去）。
+//
+// ⚠ **这里不留第二份**：本文件今天声明 `Lifetime::JobKillOnClose`，
+// 由那个唯一出口去建 Job —— 而**云端读数（run `34473562660` 的 survivors 清单）
+// 与 `a_timed_out_local_read_does_not_leave_an_orphan_behind` 那条行为判据一个字没动**，
+// 它们数的仍是同一件事：超时之后还剩不剩下子进程。
+// ═══════════════════════════════════════════════════════════════════════════
 
 /// P4a-Y1：**本机跑同一条串** —— [`exec_read`] 的孪生兄弟，差别只有「谁来跑它」。
 ///
@@ -1004,8 +890,9 @@ fn reap_whole_tree_on_drop(_child: &tokio::process::Child, _what: &str) -> KillT
 /// ⚠ 解析放在**超时之外**：解析失败是「这台机器上没有 bash」，
 /// 把它算进那 30 秒里、再报成「超时」是又一次拿错误的名字说话。
 ///
-/// ⚠ **收尾靠 [`reap_whole_tree_on_drop`]，不是只靠 `kill_on_drop`**〔第七拍〕：
+/// ⚠ **收尾靠 `Lifetime::JobKillOnClose`，不是只靠 `kill_on_drop`**〔第七拍〕：
 /// Windows 上 `Git\bin\bash.exe` 是外壳，`kill_on_drop` 只杀得到它。
+/// 〔`15 §5.1 A3` 09-18：那份 Job 的建法搬进 `spawn_managed` 了，做的事一个字没变。〕
 async fn local_shell_read(
     cmd: &str,
     cap: u64,
@@ -1016,43 +903,38 @@ async fn local_shell_read(
     use tokio::io::AsyncReadExt;
     let shell = resolve_bash()?;
     let read = async {
-        let mut child = tokio::process::Command::new(&shell)
-            .args(["-lc", cmd])
+        let mut c = tokio::process::Command::new(&shell);
+        c.args(["-lc", cmd])
             .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            // ★★ **超时那条路全靠它**〔D 阶段补审 08-12〕。
-            //
-            // 下面那句显式 `start_kill()` 只在**成功路径**上；超时是
-            // `tokio::time::timeout` 把整个 future 丢掉，走不到那里。而 tokio 的 `Child`
-            // **默认不因句柄被 drop 而杀子进程** ⇒ 每超时一次漏一个 `sleep`/`cat`。
-            //
-            // 本会话已经因为「我自己留下的孤儿进程」栽过一次：`#60` 的八轮实测里，
-            // 有五个孤儿 daemon 把读数全带偏了，我却先后猜了七个错误的病因。
-            // ⇒ 教训的产物不是「以后小心」，是
-            // `a_timed_out_local_read_does_not_leave_an_orphan_behind` 那条判据。
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| format!("本机{what}失败（起不了 bash）: {e}"))?;
+            .stdout(std::process::Stdio::piped());
+        // ★★ 三条策略（`00 §1.5.2`）—— **超时那条路全靠中间那一条**〔D 阶段补审 08-12〕。
+        //
+        // · `Hidden`：Windows 上这一跳起的是 `Git\bin\bash.exe`（控制台子系统），
+        //   不带 `CREATE_NO_WINDOW` 就是每读一次 cc-bus 闪一个黑框。
+        //   🔴 **这一格先前没人回答过** —— 走唯一出口之后它才被逼着说了一句。
+        // · `JobKillOnClose`：先前的 `kill_on_drop(true)` ＋ 那份 Job 收尾凭据
+        //   两句现在是**同一条策略**。下面那句显式 `start_kill()` 只在**成功路径**上；
+        //   超时是 `tokio::time::timeout` 把整个 future 丢掉，走不到那里，而 tokio 的
+        //   `Child` **默认不因句柄被 drop 而杀子进程** ⇒ 每超时一次漏一个 `sleep`/`cat`。
+        //   本会话已经因为「我自己留下的孤儿进程」栽过一次：`#60` 的八轮实测里，
+        //   有五个孤儿 daemon 把读数全带偏了，我却先后猜了七个错误的病因。
+        //   ⇒ 教训的产物不是「以后小心」，是
+        //   `a_timed_out_local_read_does_not_leave_an_orphan_behind` 那条判据。
+        // · `Null`：这一跳唯一有用的字节在 stdout 上；rc/shell 的抱怨不是我们的诊断。
+        //
+        // ⚠ **析构序仍然是「先关 Job、再走句柄」** —— 它现在由 `ManagedTokioChild`
+        //   的字段声明序保证（那边头注写着为什么），不再靠这里两个局部变量的先后。
+        let mut child = crate::spawn_managed::spawn_managed_tokio(
+            &mut c,
+            crate::spawn_managed::ConsolePolicy::Hidden,
+            crate::spawn_managed::Lifetime::JobKillOnClose,
+            crate::spawn_managed::StderrSink::Null,
+        )
+        .map_err(|e| format!("本机{what}失败（起不了 bash）: {e}"))?;
         let mut out = child
             .stdout
             .take()
             .ok_or_else(|| format!("本机{what}失败：拿不到 stdout"))?;
-        // ★★ Windows 上 `Git\bin\bash.exe` 是外壳，`kill_on_drop` 只杀得到它、孙子进程继续转
-        //    （云端 survivors 清单实测）。这一句把它连同它起的一切收进一个 Job Object，
-        //    句柄一关整棵树都走。
-        //
-        // ⚠ **声明位置有两层讲究，都写下来**：
-        //   ① 尽量靠近 `spawn()`：`AssignProcessToJobObject` 只能在 spawn **之后**做，
-        //      离得越近，外壳抢在我们之前把孙子起出来的窗口越小（那个窗口关不掉，
-        //      见 [`reap_whole_tree_on_drop`] 的「它买不到什么」①）。中间只隔了一句
-        //      `stdout.take()` —— 纯句柄搬运，不阻塞。
-        //   ② **在 `out` 之后声明** ⇒ 局部变量逆序析构 ⇒ 丢弃这个 future 时
-        //      **先关 Job（收掉整棵树、管道写端跟着关）、再丢 `out`、最后走 `child`
-        //      的 `kill_on_drop`**。三条都留着：Job 没建成时今天那条至少还在。
-        //   ⚠ ② 这个顺序是**收尾卫生**，不是冲着某个具体病去的 —— 先把能关的关掉、
-        //      再丢读端，本来就该是这个次序。
-        let _reaper = reap_whole_tree_on_drop(&child, what);
         let mut buf = Vec::new();
         // `+ 1` 的用意同远端那条：不多读一个字节就分不清「刚好读满」与「其实还有」，
         // 而分不清就只能静默截断。

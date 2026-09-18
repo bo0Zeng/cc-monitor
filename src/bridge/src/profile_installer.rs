@@ -877,10 +877,26 @@ pub struct UserPathStatus {
 /// 非 Windows 上**不起进程**，直接如实回错 —— 那台机器上根本没有「用户级 PATH」这一档。
 #[cfg(windows)]
 fn run_user_path_powershell(script: &str) -> Result<String, String> {
-    let out = std::process::Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-Command", script])
-        .output()
-        .map_err(|e| format!("起不来 powershell.exe：{e}"))?;
+    use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+    let mut cmd = std::process::Command::new("powershell.exe");
+    cmd.args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .stdout(std::process::Stdio::piped());
+    // 三条策略（`00 §1.5.2`）：
+    // · `Hidden` —— 🔴 **先前是裸 `.output()`，也就是没人回答过这个问题**：`-NonInteractive`
+    //   只保证它不等人回车，**挡不住 Windows 给它新开一个控制台窗口**。用户点一下
+    //   「加到 PATH」就闪一个黑框，而这一跳的全部意义是「点一下、悄悄改好」。
+    // · `JobKillOnClose` —— 就地等它退；`SetEnvironmentVariable` 那段若起了别的东西，
+    //   不许留在后面。
+    // · `Captured` —— stderr **是返回值的一部分**（下面那句 `退出码 …；stderr：…`
+    //   逐字要用它），不是被丢了。
+    let out = spawn_managed_cmd(
+        &mut cmd,
+        ConsolePolicy::Hidden,
+        Lifetime::JobKillOnClose,
+        StderrSink::Captured,
+    )
+    .and_then(|c| c.wait_with_output())
+    .map_err(|e| format!("起不来 powershell.exe：{e}"))?;
     if !out.status.success() {
         return Err(format!(
             "powershell 退出码 {:?}；stderr：{}",

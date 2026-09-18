@@ -102,7 +102,11 @@ impl Backend {
 /// 前者该提示用户装/起后端，后者该把原因原样端出来。
 fn run_local_query(argv: &[&str]) -> Result<Vec<String>, String> {
     use crate::backend::observe::local_query::{run_query, QueryOutcome};
-    match run_query(env!("CCM_TARGET_TRIPLE"), argv) {
+    match run_query(
+        env!("CCM_TARGET_TRIPLE"),
+        argv,
+        &*crate::spawn_managed::local_backend_one_shot_query(),
+    ) {
         QueryOutcome::Ok(stdout) => Ok(nonempty_lines(&stdout)),
         QueryOutcome::NoBackend(reason) => Err(format!("本机后端不在：{reason}")),
         QueryOutcome::Failed { code, stderr } => {
@@ -290,7 +294,11 @@ mod tests {
     #[tokio::test]
     async fn the_candidate_set_comes_from_the_backend_not_from_this_machines_disk() {
         // 前提自检：本测试环境**必须**没有 sidecar，否则下面那条断言会走 happy path 而空转。
-        let probe = run_query(env!("CCM_TARGET_TRIPLE"), &["--list-subagents"]);
+        let probe = run_query(
+            env!("CCM_TARGET_TRIPLE"),
+            &["--list-subagents"],
+            &*crate::spawn_managed::local_backend_one_shot_query(),
+        );
         assert!(
             matches!(probe, QueryOutcome::NoBackend(_)),
             "测试环境里居然找得到 sidecar —— 本条的前提不成立，下面那条断言会空转。\n\

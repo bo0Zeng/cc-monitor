@@ -301,7 +301,13 @@ pub async fn list_history_projects(
         let metadata = load_metadata().unwrap_or_default();
         let liveness = SessionMapLiveness(map);
         let rows = local_projects_via(
-            |args| local_query::run_query(env!("CCM_TARGET_TRIPLE"), args),
+            |args| {
+                local_query::run_query(
+                    env!("CCM_TARGET_TRIPLE"),
+                    args,
+                    &*crate::spawn_managed::local_backend_one_shot_query(),
+                )
+            },
             &metadata,
             &liveness,
         )?;

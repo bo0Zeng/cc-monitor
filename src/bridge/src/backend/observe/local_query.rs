@@ -64,7 +64,15 @@ pub(crate) fn classify(code: Option<i32>, stdout: String, stderr: String) -> Que
 /// ⚠ **不做重试、不做超时**：这两件都属调用方的策略（历史面愿意等、UI 探针不愿意），
 /// 而在这一层写死会让两种调用方之一必然错。如实记为诚实边界。
 // F10b 第一批起有生产调用方（`usage.rs`），不再需要 `allow(dead_code)`。
-pub(crate) fn run_query(target_triple: &str, args: &[&str]) -> QueryOutcome {
+/// ⚠ **`spawn` 是注入进来的**〔`15 §5.1 A3`，09-18〕：起进程那一下的三个答案
+/// （要不要窗口 · 要不要随我死 · 错误往哪去）要落成平台原语，而平台原语进不了本层
+/// （`the_backend_half_stays_platform_agnostic` 的禁针 ＋ 平台例外表的递减棘轮）。
+/// ⇒ 形状照 `control::local_backend::start_or_extract` 的 `make_executable` 那个先例。
+pub(crate) fn run_query(
+    target_triple: &str,
+    args: &[&str],
+    spawn: &crate::spawn_managed::ManagedSpawn,
+) -> QueryOutcome {
     // 🔴 这是本文件唯一一条**跨能力线**的引用（`observe → control`），`K-R71` 归位时才显形 ——
     // 先前它写成 `super::local_backend::…`，因为两个文件当时同住 `control/`。
     // 方向是对的（daemon 侧 `layering_guard` 逐字：`observe → control` 许、反向一条都不许），
@@ -83,7 +91,9 @@ pub(crate) fn run_query(target_triple: &str, args: &[&str]) -> QueryOutcome {
                 return QueryOutcome::NoBackend(format!("{reason}；找过 {looked_at:?}"));
             }
         };
-    match std::process::Command::new(&bin).args(args).output() {
+    let mut cmd = std::process::Command::new(&bin);
+    cmd.args(args).stdout(std::process::Stdio::piped());
+    match spawn(&mut cmd).and_then(|c| c.wait_with_output()) {
         Ok(out) => classify(
             out.status.code(),
             String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -134,7 +144,11 @@ mod tests {
     #[tokio::test]
     async fn a_short_circuit_cannot_fake_the_honest_degrade() {
         // 前提自检：本测试环境**必须**没有 sidecar，否则下面两条会走 happy path 而空转。
-        let probe = run_query(env!("CCM_TARGET_TRIPLE"), &["--list-accounts"]);
+        let probe = run_query(
+            env!("CCM_TARGET_TRIPLE"),
+            &["--list-accounts"],
+            &*crate::spawn_managed::local_backend_one_shot_query(),
+        );
         assert!(
             matches!(probe, QueryOutcome::NoBackend(_)),
             "测试环境里居然找得到 sidecar —— 本条的前提不成立，两条断言会空转。\n\
@@ -219,6 +233,7 @@ mod tests {
         let missing = run_query(
             "x86_64-unknown-linux-gnu-does-not-exist",
             &["--list-accounts"],
+            &*crate::spawn_managed::local_backend_one_shot_query(),
         );
         match &missing {
             QueryOutcome::NoBackend(reason) => {

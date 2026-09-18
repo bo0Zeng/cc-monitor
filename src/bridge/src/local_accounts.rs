@@ -477,8 +477,12 @@ pub(crate) fn classify_local_accounts(outcome: QueryOutcome) -> LocalAccountsOut
 pub async fn list_local_accounts() -> Result<AccountsResult, String> {
     // exec 是阻塞 IO，挪到阻塞线程池（与 `list_local_session_accounts` 同处理）。
     tokio::task::spawn_blocking(|| {
-        classify_local_accounts(run_query(env!("CCM_TARGET_TRIPLE"), &["--list-accounts"]))
-            .into_result()
+        classify_local_accounts(run_query(
+            env!("CCM_TARGET_TRIPLE"),
+            &["--list-accounts"],
+            &*crate::spawn_managed::local_backend_one_shot_query(),
+        ))
+        .into_result()
     })
     .await
     .map_err(|e| format!("枚举本机账号失败：{e}"))
@@ -1085,7 +1089,11 @@ mod tests {
     #[tokio::test]
     async fn the_read_port_really_asks_the_backend() {
         // 前提自检：本环境必须没有 sidecar，否则下面几条会走 happy path 而空转。
-        let probe = run_query(env!("CCM_TARGET_TRIPLE"), &["--list-accounts"]);
+        let probe = run_query(
+            env!("CCM_TARGET_TRIPLE"),
+            &["--list-accounts"],
+            &*crate::spawn_managed::local_backend_one_shot_query(),
+        );
         assert!(
             matches!(probe, QueryOutcome::NoBackend(_)),
             "测试环境里居然找得到 sidecar —— 本条的前提不成立，下面几条会空转。\n\
@@ -1171,7 +1179,11 @@ pub async fn list_local_session_accounts() -> Result<crate::accounts::SessionAcc
             error: Some(msg),
             sessions: Vec::new(),
         };
-        let stdout = match run_query(env!("CCM_TARGET_TRIPLE"), &["--session-accounts"]) {
+        let stdout = match run_query(
+            env!("CCM_TARGET_TRIPLE"),
+            &["--session-accounts"],
+            &*crate::spawn_managed::local_backend_one_shot_query(),
+        ) {
             QueryOutcome::Ok(s) => s,
             QueryOutcome::NoBackend(reason) => {
                 return unavailable(format!("本机后端不在，查不出会话属于哪个账号：{reason}"));

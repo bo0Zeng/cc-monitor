@@ -1385,12 +1385,13 @@ pub(crate) fn resolve_dial_proxy() -> Option<std::path::PathBuf> {
 
 /// 一条**跑在别的进程里**的 daemon 流：读写两半都是那个子进程的管子。
 ///
-/// `kill_on_drop(true)` 在 [`spawn_dial_proxy`] 里设，本结构只负责把 `Child` 一起持有着
-/// —— 丢掉这个结构 = 丢掉那个 `Child` = 代理进程被收掉。**`D3③` 那一句的落点就在这里。**
+/// `Lifetime::JobKillOnClose`（`kill_on_drop` ＋ Windows 上的 Job）在 [`spawn_dial_proxy`]
+/// 里声明，本结构只负责把那个句柄一起持有着 —— 丢掉这个结构 = 丢掉那个句柄 =
+/// 代理进程被收掉。**`D3③` 那一句的落点就在这里。**
 pub struct ProxyStream {
-    /// 只为持有生命周期；`kill_on_drop` 让「界面走了代理跟着走」成为类型层面的事，
-    /// 不是一条要人记得去调的清理。
-    _child: tokio::process::Child,
+    /// 只为持有生命周期；`Lifetime::JobKillOnClose` 让「界面走了代理跟着走」成为
+    /// 类型层面的事，不是一条要人记得去调的清理。
+    _child: crate::spawn_managed::ManagedTokioChild,
     w: tokio::process::ChildStdin,
     /// ⚠ **必须是 `BufReader` 本体**：握手那一行是 `read_line` 读的，它很可能已经
     /// 把后面的字节预读进缓冲里了。把裸 `ChildStdout` 交出去 = 丢掉那一段。
@@ -1536,16 +1537,26 @@ async fn spawn_dial_proxy(
     cfg: &RemoteConfig,
     cmd: &str,
 ) -> Result<ProxyStream, String> {
-    let mut child = tokio::process::Command::new(bin)
-        .arg("--dial")
+    let mut c = tokio::process::Command::new(bin);
+    c.arg("--dial")
         .env(DIAL_REQUEST_ENV, dial_request_json(cfg, cmd))
         .stdin(std::process::Stdio::piped())
-        .stdout(std::process::Stdio::piped())
-        // ★ 代理的 stderr **不接管**：它的诊断（拨号失败原因、TOFU 警告）就该跟着
-        //   界面进程的 stderr 走同一个地方。接管它就得再起一条泵，而那是又一条要看住的路。
-        .kill_on_drop(true)
-        .spawn()
-        .map_err(|e| format!("起拨号代理 {} 失败: {e}", bin.display()))?;
+        .stdout(std::process::Stdio::piped());
+    // ★★ 三条策略（`00 §1.5.2`）：
+    // · `Hidden` —— 拨号代理是个后台进程，绝不该在用户桌面上开窗。
+    // · `JobKillOnClose` —— 先前那句 `kill_on_drop(true)` 就是这一条
+    //   （「界面退出 = 句柄 drop = 代理跟着走」）。走唯一出口之后它**多买一样**：
+    //   Windows 上还进一个 `KILL_ON_JOB_CLOSE` 的 Job ⇒ monitor 被强杀 / 崩溃时
+    //   （句柄由内核关）代理也跟着走，而 `kill_on_drop` 覆盖不到那一格。
+    // · `Inherit` —— **代理的 stderr 刻意不接管**：它的诊断（拨号失败原因、TOFU 警告）
+    //   就该跟着界面进程的 stderr 走同一个地方。接管它就得再起一条泵，而那是又一条要看住的路。
+    let mut child = crate::spawn_managed::spawn_managed_tokio(
+        &mut c,
+        crate::spawn_managed::ConsolePolicy::Hidden,
+        crate::spawn_managed::Lifetime::JobKillOnClose,
+        crate::spawn_managed::StderrSink::Inherit,
+    )
+    .map_err(|e| format!("起拨号代理 {} 失败: {e}", bin.display()))?;
 
     let w = child
         .stdin
@@ -5843,10 +5854,23 @@ pub async fn resolve_ssh_host(alias: String) -> Result<ResolvedHost, String> {
     // 卡住 tokio runtime 线程。挪进 spawn_blocking（allowlist 守卫已在上方先过，不进线程池）。
     let alias_for_exec = alias.clone();
     let output = tokio::task::spawn_blocking(move || {
-        std::process::Command::new("ssh")
-            .arg("-G")
+        use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};
+        let mut cmd = std::process::Command::new("ssh");
+        cmd.arg("-G")
             .arg(&alias_for_exec)
-            .output()
+            .stdout(std::process::Stdio::piped());
+        // 三条策略（`00 §1.5.2`）：
+        // · `Hidden` —— 🔴 **先前是裸 `.output()`**：Windows 上 `ssh.exe` 是控制台子系统，
+        //   而 monitor 没有控制台 ⇒ 每解析一次别名闪一个黑框。
+        // · `JobKillOnClose` —— 一次性、就地等；`ssh -G` 只读配置不建连接，不该留后代。
+        // · `Captured` —— stderr **是返回值**（下面 `退出非 0: {stderr}` 逐字要用它）。
+        spawn_managed_cmd(
+            &mut cmd,
+            ConsolePolicy::Hidden,
+            Lifetime::JobKillOnClose,
+            StderrSink::Captured,
+        )
+        .and_then(|c| c.wait_with_output())
     })
     .await
     .map_err(|e| format!("ssh -G 任务调度失败: {e}"))?
