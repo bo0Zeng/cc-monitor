@@ -502,9 +502,7 @@ export const AGENT_PROFILE_TABLE: readonly AgentProfileRow[] = [
     /// `K-R93`：生成 `src/generated/agent-profile-table.ts`。
     #[test]
     fn export_bindings_agent_profile_table() {
-        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级目录");
+        let repo = crate::guard_support::repo_root();
         let out = repo.join("src/generated/agent-profile-table.ts");
         let body = render_agent_profile_table();
         std::fs::write(&out, body).unwrap_or_else(|e| panic!("写不进 {}：{e}", out.display()));

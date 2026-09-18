@@ -98,10 +98,8 @@ mod tests {
     ];
 
     fn repo_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级")
-            .to_path_buf()
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::repo_root()
     }
 
     /// 生产段：`.rs` 用 `guard_core`（连测试段一起剥）；`.ts` / shell 只剥整行注释。

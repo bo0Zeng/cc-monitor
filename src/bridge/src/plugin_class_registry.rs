@@ -65,7 +65,7 @@
 //!
 //! # 与已有判据的分工（**不重造**）
 //!
-//! · daemon 不许碰 cc-bus 的**数据布局** → `src/backend/cc_bus_boundary_guard.rs`；
+//! · 后端不许碰 cc-bus 的**数据布局** → `tests/backend/cc_bus_boundary_guard.rs`；
 //! · daemon 生产段的**起进程点总数** → `readonly_guard::spawn_registry`（相等断言，今天 9 处）；
 //! · 全景引擎的**取用口恰好一处** → `panorama_seam_registry`；
 //! · daemon 协议面**零全景** → `protocol_doc_guard`（它只扫 `inbound.rs` + `wire.rs`）。
@@ -179,10 +179,8 @@ mod tests {
     // ───────────────────────────── 量具 ─────────────────────────────
 
     fn repo_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级 = 仓根")
-            .to_path_buf()
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::repo_root()
     }
 
     /// 读一份**必须存在**的文件（相对仓根）。
@@ -257,9 +255,7 @@ mod tests {
     /// **为什么运行期读文件而不是 `include_str!`**：后者会在 monitor 与 daemon 之间造一条
     /// **编译期**跨 crate 边（`cross_half_edge_registry` 那族要单独登记），而本条要的只是一份文本。
     fn ccm_module_source(file: &str) -> String {
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级")
+        let p = crate::guard_support::repo_root()
             .join("src/backend/control/ccm")
             .join(file);
         std::fs::read_to_string(&p).unwrap_or_else(|e| panic!("读不到 {}：{e}", p.display()))
@@ -483,7 +479,8 @@ mod tests {
 
         // ④ 「零文件格式耦合」这句话**靠谁**成立 —— 那条判据还在，且针没缩。
         let boundary = guard_core::strip_comment_lines(&must_read(
-            "src/backend/cc_bus_boundary_guard.rs",
+            // 〔搬树 2026-09-17〕纯测试文件搬去 `tests/backend/`。
+            "tests/backend/cc_bus_boundary_guard.rs",
             1_000,
         ));
         let needles = segment_after(&boundary, "let needles = [", "];");
@@ -594,7 +591,7 @@ mod tests {
     #[test]
     fn cc_spawn_is_a_frontend_of_ccm_and_touches_no_bus_data() {
         let spawn = guard_core::strip_hash_comment_lines(include_str!(
-            "../../src/shared/cc-bus/scripts/cc-spawn"
+            "../../shared/cc-bus/scripts/cc-spawn"
         ));
         assert!(
             spawn.len() > 1_000,

@@ -73,10 +73,9 @@ mod tests {
     const MONITOR_TMUX: &str = include_str!("tmux.rs");
 
     fn daemon_control_dir() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级")
-            .join("src/backend/control")
+        // 住址唯一源：`crate::guard_support`。原来这里自己爬一级（`src/bridge` 的上级只到
+        // `<repo>/src`）⇒ 扫到 0 个 `.rs`，而本模块下面三条会**零命中地绿**。
+        crate::guard_support::backend_src_root().join("control")
     }
 
     /// daemon `control/` 下**全部** `.rs` 的生产段。

@@ -170,7 +170,8 @@ mod tests {
     ];
 
     fn src_root() -> PathBuf {
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::crate_src_root()
     }
 
     /// 剥掉整行注释 —— 本文件与 `mcp.rs` / `profile_installer.rs` 的**头注里就写着这两个符号**。
@@ -325,9 +326,7 @@ mod tests {
     #[test]
     fn the_doc_rule_this_registry_rests_on_is_still_there() {
         let doc = fs::read_to_string(
-            Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .expect("仓根")
+            crate::guard_support::repo_root()
                 .join("src/doc/INVARIANTS.md"),
         )
         .expect("src/doc/INVARIANTS.md 读不到 —— 路径变了就把这条一起改");

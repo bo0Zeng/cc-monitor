@@ -493,9 +493,7 @@ mod tests {
     /// 那时 `mod.rs` 的 `cfg` 会变，而本条不读它。⇒ 它是个闹钟，不是围栏。
     #[test]
     fn the_windows_pidwatch_is_still_an_honest_no_op() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根");
+        let root = crate::guard_support::repo_root();
         let p = root.join("src/backend/platform/pidwatch/fallback.rs");
         let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| {
             panic!(

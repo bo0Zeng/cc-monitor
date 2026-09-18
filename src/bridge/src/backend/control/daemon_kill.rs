@@ -258,9 +258,7 @@ mod tests {
     /// ★★ **创建路径不许铸出主路杀不掉的名字** —— 发现机制是遍历，不是手写清单。
     #[test]
     fn no_creation_path_can_mint_a_name_the_main_path_cannot_kill() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级");
+        let root = crate::guard_support::repo_root();
 
         // ── ① 反向锚点：daemon 那条形状门还在（它没了本判据就在空转）──────────
         let kill_prod = guard_core::production_code(include_str!(
@@ -328,7 +326,7 @@ mod tests {
                 let hit = super::creation_detect::creates_a_session(&body);
                 if hit {
                     found.push(
-                        p.strip_prefix(root)
+                        p.strip_prefix(&root)
                             .unwrap_or(&p)
                             .to_string_lossy()
                             .replace('\\', "/"),
@@ -537,9 +535,7 @@ mod tests {
         let fallback_alive = body[..end].contains("connect_and_exec_cmd");
 
         // ── 人群：遍历 `doc/`（递归），**不是**一张手写清单 ────────────────
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级");
+        let root = crate::guard_support::repo_root();
         let needle = format!("过渡期{}", "回落");
         let mut scanned: Vec<String> = Vec::new();
         let mut said: Vec<String> = Vec::new();
@@ -558,7 +554,7 @@ mod tests {
                     continue;
                 }
                 let rel = p
-                    .strip_prefix(root)
+                    .strip_prefix(&root)
                     .unwrap_or(&p)
                     .to_string_lossy()
                     .replace('\\', "/");

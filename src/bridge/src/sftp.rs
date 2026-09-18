@@ -1859,10 +1859,10 @@ mod tests {
         // `cargo zigbuild --target aarch64-…` **注释掉**，本条照样绿 —— 它命中的是
         // 那行注释自己。「判据看的是围栏，还是围栏的说明书」，本会话第三次。
         let rel = guard_core::strip_hash_comment_lines(
+            // 〔搬树 2026-09-17〕`root` 是 crate 根（`<repo>/src/bridge`）⇒ 再爬**一级**
+            // 只到 `<repo>/src`。仓根要爬两级，走唯一住址。
             &std::fs::read_to_string(
-                root.parent()
-                    .expect("仓根")
-                    .join(".github/workflows/release.yml"),
+                crate::guard_support::repo_root().join(".github/workflows/release.yml"),
             )
             .expect("读不到 release.yml"),
         );

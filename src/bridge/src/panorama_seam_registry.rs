@@ -269,10 +269,8 @@ mod engine_port_scope {
     )];
 
     fn repo_root() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级 = 仓根")
-            .to_path_buf()
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::repo_root()
     }
 
     /// 一棵树的绝对住址。**读不到就 `Err`**，不许退化成空语料。

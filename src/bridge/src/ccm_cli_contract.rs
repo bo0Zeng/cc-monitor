@@ -50,9 +50,7 @@ mod tests {
     }
 
     fn cc_spawn_path() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级")
+        crate::guard_support::repo_root()
             .join("src/shared/cc-bus/scripts/cc-spawn")
     }
 
@@ -117,9 +115,7 @@ mod tests {
     /// 这正是本仓一路在治的「散文与代码说的不是一件事」。⇒ 立一条禁词守卫。
     #[test]
     fn the_cc_bus_skill_no_longer_teaches_session_reuse() {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级")
+        let path = crate::guard_support::repo_root()
             .join("src/shared/cc-bus/SKILL.md");
         let src = std::fs::read_to_string(&path).expect("读 cc-bus SKILL.md");
         assert!(

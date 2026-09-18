@@ -333,10 +333,8 @@ mod f07_main_path_tests {
     //! `the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold` 的头注「第四次」那一节。
 
     fn repo_root() -> std::path::PathBuf {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级")
-            .to_path_buf()
+        // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+        crate::guard_support::repo_root()
     }
 
     fn read_ts(rel: &str) -> String {
@@ -716,9 +714,7 @@ mod f07_main_path_tests {
         //    ⚠ needle 仍用**带边界的词**（不是 Rust 那边的带引号字面量）：
         //    它在两侧可能长在字面量里、也可能长在 JSON 串里，带边界两种形态都收得到。
         let word = format!("create-or-{}", "attach");
-        let ccm_dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级")
+        let ccm_dir = crate::guard_support::repo_root()
             .join("src/backend/control/ccm");
         let ccm: String = ["mod.rs", "argv.rs", "plan.rs"]
             .iter()
@@ -1747,9 +1743,7 @@ mod k_r95_launch_render_facts {
     /// `cargo test --lib export_bindings`。
     #[test]
     fn export_bindings_launch_render_facts() {
-        let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级目录");
+        let repo = crate::guard_support::repo_root();
         let out = repo.join("src/generated/launch-render-facts.ts");
         let body = render_launch_render_facts();
         std::fs::write(&out, body).unwrap_or_else(|e| panic!("写不进 {}：{e}", out.display()));

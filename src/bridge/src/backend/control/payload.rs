@@ -1463,9 +1463,7 @@ mod tests {
     /// 造一条**编译期**跨 crate 边（`cross_half_edge_registry` 那族要单独登记），
     /// 而本条要的只是「读一份文本」。
     fn container_path_source() -> String {
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级")
+        let p = crate::guard_support::repo_root()
             .join("src/backend/control/ccm/plan.rs");
         std::fs::read_to_string(&p)
             .unwrap_or_else(|e| panic!("读不到容器路那份源码 {}：{e}", p.display()))
