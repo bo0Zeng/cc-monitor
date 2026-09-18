@@ -487,11 +487,17 @@ jobs:
           # 真相是「**根本没被 lint 到**」。逮住它的是 `shell_lint_registry` 那条恒等判据。
           # ⚠ **刻意不走「登记豁免」那条**：这 3 个脚本是本轮新写的、没有任何历史包袱，
           #   豁免是给改不动的老债留的。
+          # **2026-09-18 棘到 61** —— 新增 `tests/e2e/tier2-rig.sh`（tier-2 台架搭建器：
+          # 把 README 那份散文配方变成一条能跑的命令）。它落在 `tests/e2e/*.sh` 那个 glob 里
+          # ⇒ **人群没漏，是真多了一个文件**，与 `W-F1`/`K-R139` 那两次「新目录落在所有分组之外」
+          # 不同形。逮住它的还是 `shell_lint_registry` 那条恒等判据 —— 而且它是**提交之后**才红的：
+          # 那条判据数的是 `git ls-files`，文件没被跟踪时它看不见。⇒ 新增脚本要连地板一起提。
           # 今天实测构成（**逐组现打，不倒推** —— 倒推凑过一次假账）：
-          # **60 = tests/e2e/*.sh 30 + tests/e2e/weak-net/*.sh 4 + tests/e2e/local-backend-container/*.sh 3
-          #        + fake-claude 1 + cc-bus 14 + scripts 3 + vendored 4 + tests/hooks/pre-commit 1**。
-          # ⚠ 那个目录里还有一份 `Dockerfile`（**不是 `.sh`，不进这个人群**）。
-          [ "$N" -ge 60 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 60）"; exit 1; }
+          # **61 = tests/e2e/*.sh 31 + src/shared/cc-bus/scripts/* 14 + tests/e2e/weak-net/*.sh 4
+          #        + tests/e2e/local-backend-container/*.sh 3 + tests/scripts/*.sh 3
+          #        + vendored cc-acct-iso 4 + fake-claude 1 + tests/hooks/pre-commit 1**。
+          # ⚠ `local-backend-container/` 里还有一份 `Dockerfile`（**不是 `.sh`，不进这个人群**）。
+          [ "$N" -ge 61 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 61）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 
