@@ -58,7 +58,7 @@ pub const OVERFLOW_KEY: &str = "<overflow>";
 /// 四个「降级点」。每一个都对应一处**刻意的**宽容或排他。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "snake_case")]
 pub enum DriftFace {
     /// jsonl 里我们不认识的记录 `type`（`parser.rs` 抢救成 `Unrecognized`，刻意不 warn）。
@@ -94,7 +94,7 @@ impl DriftFace {
 /// 一个键的记账。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct DriftEntry {
     /// 看不懂的那个值（记录 type / kind / status / token）。
     pub key: String,
@@ -111,7 +111,7 @@ pub struct DriftEntry {
 /// 一个面的快照。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct DriftFaceReport {
     pub face: DriftFace,
     /// 这个面「看不懂时会发生什么」（`DriftFace::consequence`）。

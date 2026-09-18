@@ -46,7 +46,7 @@ use std::sync::Arc;
 /// P1.2：全字段 camelCase wire，前端 TS interface 字段名一致。
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct HistoryProject {
     /// 真实工作目录路径（从某个 jsonl 的首条 user 消息的 cwd 取）
@@ -79,7 +79,7 @@ pub struct HistoryProject {
 
 #[derive(Debug, Serialize, Clone)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct HistorySessionEntry {
     pub session_id: String,
@@ -157,7 +157,7 @@ pub struct HistoryMetadata {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct EntryMetadata {
     #[serde(default)]
     pub starred: bool,
@@ -812,7 +812,7 @@ pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<
 /// `remote_branch` 直接反序列化成本类型 —— 两条路一个类型，前端的成功处理才只有一份。
 #[derive(Debug, Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct BranchResult {
     #[serde(rename = "sessionId")]
     pub session_id: String,
@@ -4318,9 +4318,7 @@ mod tests {
     /// （`K-R61 §0e` 逐字禁的就是顺手做那个）—— 全仓那个人群多大，读数住件文件 `§8`。
     #[test]
     fn every_address_the_retirement_condition_names_is_still_on_disk() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("src/bridge 的上级 = 仓根")
+        let root = crate::guard_support::repo_root()
             .to_path_buf();
 
         let mut checked: Vec<String> = Vec::new();
@@ -4530,9 +4528,7 @@ mod tests {
         // ② 后端那一份还在，且窗口是个说得出的数 —— 否则上面那条会零命中地绿
         //    （「两边都没有」与「只剩一处」在断言上长得一样，这一格就是分开它们的那个）。
         let daemon_src = std::fs::read_to_string(
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                .parent()
-                .expect("仓根")
+            crate::guard_support::repo_root()
                 .join("src/backend/observe/history_query.rs"),
         )
         .expect("读不到后端的 history_query.rs");
@@ -5511,9 +5507,7 @@ mod tests {
     /// （后端在目标机上 `cargo build` 就咬住旁边这棵树了）。运行时读没有这个代价 ——
     /// 同 `K-R97` 那条 `extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place`。
     fn r88_backend_production(rel: &str) -> String {
-        let p = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent()
-            .expect("仓根")
+        let p = crate::guard_support::repo_root()
             .join(rel);
         let raw = std::fs::read_to_string(&p)
             .unwrap_or_else(|e| panic!("读不到后端的 {rel}：{e} —— 先修住址，别绕过本条"));

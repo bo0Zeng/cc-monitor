@@ -8,7 +8,7 @@ use tokio::io::{AsyncReadExt, BufReader};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct CcmProbeResult {
     pub installed: bool,
     pub version: Option<String>,
@@ -276,7 +276,7 @@ pub async fn probe_ccm_cli(origin: String) -> Result<CcmProbeResult, String> {
 /// PATH 上那个 `ccm`，与我们装的那一份是什么关系。**四态，没有兜底档。**
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "snake_case")]
 pub enum PathCcmVerdict {
     /// 终端里敲 `ccm` 走到的就是我们这一份。**没有话要说。**
@@ -294,7 +294,7 @@ pub enum PathCcmVerdict {
 /// 本机 `ccm` 这一格的全貌：我们那一份 · PATH 上那一份 · 判词 · 那句话。
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct LocalCcmEntry {
     /// 我们装的那一份在哪 —— **`$HOME/…` 形态**（别名要用它，写绝对路径会把
     /// 「换台机器 / 换个用户」堵死）。没装就是 `None`。

@@ -71,7 +71,7 @@ pub enum PathResolution {
 /// 现状。**没有"疑似缺失"这一档**（见模块文档）。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SurfaceState {
     Present {
@@ -439,7 +439,7 @@ pub fn effect_label(e: TouchEffect) -> &'static str {
 /// 表格里的一行。
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct SurfaceRow {
     pub tool_id: &'static str,
     pub tool_name: &'static str,
@@ -710,7 +710,7 @@ pub fn build_rows(env: &SurfaceEnv) -> Vec<SurfaceRow> {
 /// 于是"没装"的结论可能是错的。
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct SettingsScope {
     pub scope: &'static str,
     pub path: String,
@@ -793,7 +793,7 @@ pub fn build_settings_scopes(
 /// 一次审计的完整回报。
 #[derive(Debug, Clone, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct ConfigSurfaceReport {
     pub rows: Vec<SurfaceRow>,
     pub settings_scopes: Vec<SettingsScope>,

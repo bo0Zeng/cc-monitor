@@ -1046,7 +1046,7 @@ impl Provisioning {
 /// 「要么给它一个成员，**要么把这一档从 EnvTier 里删掉**」⇒ 删。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub enum EnvTier {
     /// **app 装的** —— 该我们装，而且今天真有装口。
     AppInstalls,

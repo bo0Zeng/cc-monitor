@@ -1,3 +1,16 @@
+// 🔴 〔搬树 2026-09-18〕**ts-rs 的 `export_to` 是三级 `../`，不是两级。**
+// 本 crate 从 `<repo>/src-tauri` 搬到 `<repo>/src/bridge` ⇒ 到仓根多了一级。
+// 漏改的症状**不是编译错**：ts-rs 会把全部类型写进一个叫 `<repo>/src/src/generated`
+// 的**文件**（因为那个目录不存在），而 `src/generated/*.ts` 那 86 份**从此不再更新**
+// ⇒ CI 那条「生成物必须最新」会红，而本机什么都不响。
+// 现打：32 个文件 / 84 处属性，全在 `src/bridge/src/*.rs` 同一层。
+//
+// 🔴 **结尾那个 `/` 也是承重的**：ts-rs 12 把不带斜杠的 `export_to` 当**文件路径**。
+// 重组那一趟把两件都改坏了：① 少一级 `..`；② **结尾斜杠被吃掉**
+// （重组前逐字是 `"../../src/generated/"`）。
+// 两个错叠在一起恰好**不报错**：`src/src/generated` 那个目录不存在 ⇒ ts-rs 安静地
+// 建了一个同名**文件**，把全部类型塞进去。只补 `..` 不补斜杠则当场 `Is a directory`（84 条红）。
+// ⇒ 这一格的教训：**"改完能编过"不等于改对了** —— 这两处都不是编译期能看见的。
 //! 库 crate 根：模块声明 + Tauri 应用装配。
 //!
 //! `run()` 在 `tauri::Builder` 之前先 `logging::init`（tracing 全局 dispatcher 必须最先 init），
@@ -36,6 +49,8 @@ mod launch;
 mod local_accounts; // L3a：本机多账号枚举（只读）——`accounts.rs` 的本地对侧
 mod local_daemon; // P2s（C8）：本机 daemon 的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod local_origin_registry;
+#[cfg(test)]
+mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
 mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
 mod messages;
@@ -2130,7 +2145,7 @@ async fn bring_remote_terminal_to_front(
 
 #[derive(serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 struct CcStatusResponse {
     profiles: Vec<profile_installer::ProfileScan>,
     active_registrations: u32,
@@ -2143,7 +2158,7 @@ struct CcStatusResponse {
 
 #[derive(serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 struct LegacyProfileEntry {
     kind: profile_installer::ProfileKind,
     path: String,
@@ -2190,7 +2205,7 @@ async fn cc_integration_status(
 
 #[derive(serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 struct CcPreviewResponse {
     code: String,
 }

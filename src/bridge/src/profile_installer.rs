@@ -52,7 +52,7 @@ const CC_TEMPLATE: &str = include_str!("../scripts/cc.ps1.tpl");
 /// PowerShell profile 类型标签。v1.7.2 起 UI 只用作显示提示，实际安装传 path。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub enum ProfileKind {
     /// Windows PowerShell 5.1（Windows 自带）→ Microsoft.PowerShell_profile.ps1
     Ps51,
@@ -64,7 +64,7 @@ pub enum ProfileKind {
 
 #[derive(Debug, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct ProfileScan {
     pub kind: ProfileKind,
     pub path: String,

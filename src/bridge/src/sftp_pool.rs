@@ -33,7 +33,7 @@ use crate::ssh_source::RemoteConfig;
 /// 目录项（前端渲染 + 排序用）。
 #[derive(Serialize, Clone, Debug)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct SftpEntry {
     pub name: String,
@@ -260,7 +260,7 @@ const PROGRESS_EVERY: u64 = 256 * 1024;
 
 #[derive(Serialize, Clone, Debug)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 #[serde(rename_all = "camelCase")]
 pub struct TransferProgress {
     /// C03：同 `SftpEntry.size` —— 传输字节数，2^53-1 ≈ 8 PB 够用；显式收窄不回落 `bigint`。

@@ -45,7 +45,7 @@ pub(crate) const MARKETPLACE_MANIFEST_CAP: u64 = 32 * 1024 * 1024;
 /// 一个 marketplace。**每个字段读不出就是 `null`，不编默认值。**
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct MarketplaceEntry {
     pub id: String,
     /// 形如 `github:anthropics/claude-plugins-official`。
@@ -66,7 +66,7 @@ pub struct MarketplaceEntry {
 /// 一次枚举的结果。
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
-#[cfg_attr(test, ts(export, export_to = "../../src/generated"))]
+#[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
 pub struct MarketplaceSurvey {
     pub entries: Vec<MarketplaceEntry>,
     /// `known_marketplaces.json` **不存在** ⇒ 这台机器一个 marketplace 都没有（**诚实的空**）。
