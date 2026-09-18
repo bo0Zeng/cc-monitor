@@ -1,0 +1,1598 @@
+{
+ "note": "秤 2 的真高金标准。真高只取决于 DOM+CSS+引擎，与 height-estimate.ts 无关 ⇒ 可以静态固化。估值必须门禁跑的时候现算。刷新：bash tests/evidence/U-scale2-run.sh",
+ "generatedAt": "2026-09-18",
+ "engine": {
+  "name": "Chromium 153.0.8010.12 (headless shell, Playwright)",
+  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36"
+ },
+ "crossCheck": {
+  "name": "WebKitGTK 2.52.6 (PyGObject + WebKit2-4.1, xvfb)",
+  "ua": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15"
+ },
+ "env": {
+  "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
+  "viewport": {
+   "w": 900,
+   "h": 700,
+   "dpr": 1
+  },
+  "streamContentWidth": 780,
+  "tokens": {
+   "--stream-max-width": "780px",
+   "--font-size-prose": "15px",
+   "--line-height-prose": "1.65",
+   "--font-size-xs": "11px",
+   "--font-size-small": "12px",
+   "--font-mono": "\"JetBrains Mono\", Consolas, monospace"
+  },
+  "bodyComputed": {
+   "font": "14px / 21.7px Inter, \"Segoe UI\", system-ui, sans-serif",
+   "lineHeight": "21.7px",
+   "fontFamily": "Inter, \"Segoe UI\", system-ui, sans-serif"
+  },
+  "apiRetryComputed": {
+   "fontSize": "11px",
+   "lineHeight": "17.05px",
+   "paddingTop": "3px",
+   "paddingBottom": "3px",
+   "borderTopWidth": "0px",
+   "borderBottomWidth": "0px",
+   "whiteSpace": "nowrap",
+   "height": 23.046875
+  },
+  "supports": {
+   "contentVisibility": true,
+   "containIntrinsicSize": true
+  }
+ },
+ "intrinsic": [
+  {
+   "label": "card-api-retry / inline auto 24px（今天的常数）",
+   "cls": "card card-api-retry",
+   "declared": 24,
+   "padBorder": 6,
+   "measured": 30,
+   "computedCIS": "auto 24px",
+   "computedCV": "auto",
+   "skipped": false
+  },
+  {
+   "label": "card-api-retry / inline auto 100px（拉开差距好判读）",
+   "cls": "card card-api-retry",
+   "declared": 100,
+   "padBorder": 6,
+   "measured": 106,
+   "computedCIS": "auto 100px",
+   "computedCV": "auto",
+   "skipped": false
+  },
+  {
+   "label": "card-api-retry / 无 inline（落 CSS 兜底 auto 120px）",
+   "cls": "card card-api-retry",
+   "declared": null,
+   "padBorder": 6,
+   "measured": 126,
+   "computedCIS": "auto 120px",
+   "computedCV": "auto",
+   "skipped": false
+  },
+  {
+   "label": "card-bash-input / inline auto 32px（今天的常数）",
+   "cls": "card card-bash-input",
+   "declared": 32,
+   "padBorder": 12,
+   "measured": 44,
+   "computedCIS": "auto 32px",
+   "computedCV": "auto",
+   "skipped": false
+  },
+  {
+   "label": "card-api-error / inline auto 40px（今天的常数）",
+   "cls": "card card-api-error",
+   "declared": 40,
+   "padBorder": 18,
+   "measured": 58,
+   "computedCIS": "auto 40px",
+   "computedCV": "auto",
+   "skipped": false
+  }
+ ],
+ "rows": [
+  {
+   "id": "real#1",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 4239,
+   "bucket": "2-8K",
+   "htmlLen": 5174,
+   "htmlHash": "65e8b093",
+   "estBrowser": 2847.25,
+   "estAppliedBrowser": 2847,
+   "trueBorderBox": 1974.64,
+   "trueContentBox": 1974.64,
+   "padBorder": 0
+  },
+  {
+   "id": "real#2",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 7613,
+   "bucket": "2-8K",
+   "htmlLen": 5610,
+   "htmlHash": "abc0d321",
+   "estBrowser": 6592.79,
+   "estAppliedBrowser": 6593,
+   "trueBorderBox": 3542.02,
+   "trueContentBox": 3542.02,
+   "padBorder": 0
+  },
+  {
+   "id": "real#3",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 7284,
+   "bucket": "2-8K",
+   "htmlLen": 6694,
+   "htmlHash": "3db78708",
+   "estBrowser": 4587.48,
+   "estAppliedBrowser": 4587,
+   "trueBorderBox": 2850.45,
+   "trueContentBox": 2850.45,
+   "padBorder": 0
+  },
+  {
+   "id": "real#4",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 6260,
+   "bucket": "2-8K",
+   "htmlLen": 4780,
+   "htmlHash": "e55b0bd1",
+   "estBrowser": 2519.53,
+   "estAppliedBrowser": 2520,
+   "trueBorderBox": 1853.73,
+   "trueContentBox": 1853.73,
+   "padBorder": 0
+  },
+  {
+   "id": "real#5",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 6686,
+   "bucket": "2-8K",
+   "htmlLen": 5325,
+   "htmlHash": "e7bd08e7",
+   "estBrowser": 4146.65,
+   "estAppliedBrowser": 4147,
+   "trueBorderBox": 2354.41,
+   "trueContentBox": 2354.41,
+   "padBorder": 0
+  },
+  {
+   "id": "real#6",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 4456,
+   "bucket": "2-8K",
+   "htmlLen": 3950,
+   "htmlHash": "f75e28f7",
+   "estBrowser": 2932.35,
+   "estAppliedBrowser": 2932,
+   "trueBorderBox": 1953,
+   "trueContentBox": 1953,
+   "padBorder": 0
+  },
+  {
+   "id": "real#7",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 6046,
+   "bucket": "2-8K",
+   "htmlLen": 4933,
+   "htmlHash": "70216a91",
+   "estBrowser": 4203.15,
+   "estAppliedBrowser": 4203,
+   "trueBorderBox": 2235.08,
+   "trueContentBox": 2235.08,
+   "padBorder": 0
+  },
+  {
+   "id": "real#8",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 5120,
+   "bucket": "2-8K",
+   "htmlLen": 4284,
+   "htmlHash": "00d26dd3",
+   "estBrowser": 3541.1,
+   "estAppliedBrowser": 3541,
+   "trueBorderBox": 1865.33,
+   "trueContentBox": 1865.33,
+   "padBorder": 0
+  },
+  {
+   "id": "real#9",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 2816,
+   "bucket": "2-8K",
+   "htmlLen": 3150,
+   "htmlHash": "01bfb3a6",
+   "estBrowser": 1451.7,
+   "estAppliedBrowser": 1452,
+   "trueBorderBox": 1250.73,
+   "trueContentBox": 1250.73,
+   "padBorder": 0
+  },
+  {
+   "id": "real#10",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 6412,
+   "bucket": "2-8K",
+   "htmlLen": 5488,
+   "htmlHash": "b9675f9d",
+   "estBrowser": 4818.04,
+   "estAppliedBrowser": 4818,
+   "trueBorderBox": 2402.86,
+   "trueContentBox": 2402.86,
+   "padBorder": 0
+  },
+  {
+   "id": "real#11",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 11514,
+   "bucket": "8-32K",
+   "htmlLen": 9264,
+   "htmlHash": "746f1f00",
+   "estBrowser": 6731.66,
+   "estAppliedBrowser": 6732,
+   "trueBorderBox": 3429.36,
+   "trueContentBox": 3429.36,
+   "padBorder": 0
+  },
+  {
+   "id": "real#12",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 19414,
+   "bucket": "8-32K",
+   "htmlLen": 21509,
+   "htmlHash": "e885f6bf",
+   "estBrowser": 15086.58,
+   "estAppliedBrowser": 15087,
+   "trueBorderBox": 8876.45,
+   "trueContentBox": 8876.45,
+   "padBorder": 0
+  },
+  {
+   "id": "real#13",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 12831,
+   "bucket": "8-32K",
+   "htmlLen": 11290,
+   "htmlHash": "9cbd9114",
+   "estBrowser": 6971.92,
+   "estAppliedBrowser": 6972,
+   "trueBorderBox": 4725.67,
+   "trueContentBox": 4725.67,
+   "padBorder": 0
+  },
+  {
+   "id": "real#14",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 8439,
+   "bucket": "8-32K",
+   "htmlLen": 6231,
+   "htmlHash": "efe9e3ce",
+   "estBrowser": 6574.08,
+   "estAppliedBrowser": 6574,
+   "trueBorderBox": 3239.56,
+   "trueContentBox": 3239.56,
+   "padBorder": 0
+  },
+  {
+   "id": "real#15",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 11514,
+   "bucket": "8-32K",
+   "htmlLen": 9274,
+   "htmlHash": "6fe0375c",
+   "estBrowser": 6731.66,
+   "estAppliedBrowser": 6732,
+   "trueBorderBox": 3429.36,
+   "trueContentBox": 3429.36,
+   "padBorder": 0
+  },
+  {
+   "id": "real#16",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 8425,
+   "bucket": "8-32K",
+   "htmlLen": 7631,
+   "htmlHash": "3fa51d8c",
+   "estBrowser": 4948.57,
+   "estAppliedBrowser": 4949,
+   "trueBorderBox": 3080.84,
+   "trueContentBox": 3080.84,
+   "padBorder": 0
+  },
+  {
+   "id": "real#17",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 11770,
+   "bucket": "8-32K",
+   "htmlLen": 8172,
+   "htmlHash": "1fb223e9",
+   "estBrowser": 7028.46,
+   "estAppliedBrowser": 7028,
+   "trueBorderBox": 4727.81,
+   "trueContentBox": 4727.81,
+   "padBorder": 0
+  },
+  {
+   "id": "real#18",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 8439,
+   "bucket": "8-32K",
+   "htmlLen": 6231,
+   "htmlHash": "b0845eaf",
+   "estBrowser": 6604.08,
+   "estAppliedBrowser": 6604,
+   "trueBorderBox": 3239.56,
+   "trueContentBox": 3239.56,
+   "padBorder": 0
+  },
+  {
+   "id": "real#19",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 289,
+   "bucket": "<2K",
+   "htmlLen": 251,
+   "htmlHash": "db9a20da",
+   "estBrowser": 56.75,
+   "estAppliedBrowser": 57,
+   "trueBorderBox": 46.8,
+   "trueContentBox": 46.8,
+   "padBorder": 0
+  },
+  {
+   "id": "real#20",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 325,
+   "bucket": "<2K",
+   "htmlLen": 265,
+   "htmlHash": "02266d72",
+   "estBrowser": 56.75,
+   "estAppliedBrowser": 57,
+   "trueBorderBox": 46.8,
+   "trueContentBox": 46.8,
+   "padBorder": 0
+  },
+  {
+   "id": "real#21",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 434,
+   "bucket": "<2K",
+   "htmlLen": 361,
+   "htmlHash": "16abdc21",
+   "estBrowser": 81.5,
+   "estAppliedBrowser": 82,
+   "trueBorderBox": 71.55,
+   "trueContentBox": 71.55,
+   "padBorder": 0
+  },
+  {
+   "id": "real#22",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 380,
+   "bucket": "<2K",
+   "htmlLen": 326,
+   "htmlHash": "ee245897",
+   "estBrowser": 56.75,
+   "estAppliedBrowser": 57,
+   "trueBorderBox": 46.8,
+   "trueContentBox": 46.8,
+   "padBorder": 0
+  },
+  {
+   "id": "real#23",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 361,
+   "bucket": "<2K",
+   "htmlLen": 346,
+   "htmlHash": "03e42809",
+   "estBrowser": 56.75,
+   "estAppliedBrowser": 57,
+   "trueBorderBox": 46.8,
+   "trueContentBox": 46.8,
+   "padBorder": 0
+  },
+  {
+   "id": "real#24",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 386,
+   "bucket": "<2K",
+   "htmlLen": 301,
+   "htmlHash": "d4ed7ab6",
+   "estBrowser": 56.75,
+   "estAppliedBrowser": 57,
+   "trueBorderBox": 46.8,
+   "trueContentBox": 46.8,
+   "padBorder": 0
+  },
+  {
+   "id": "real#25",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 514,
+   "bucket": "<2K",
+   "htmlLen": 427,
+   "htmlHash": "cc0450c3",
+   "estBrowser": 81.5,
+   "estAppliedBrowser": 82,
+   "trueBorderBox": 71.55,
+   "trueContentBox": 71.55,
+   "padBorder": 0
+  },
+  {
+   "id": "real#26",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 384,
+   "bucket": "<2K",
+   "htmlLen": 299,
+   "htmlHash": "f359ac37",
+   "estBrowser": 56.75,
+   "estAppliedBrowser": 57,
+   "trueBorderBox": 46.8,
+   "trueContentBox": 46.8,
+   "padBorder": 0
+  },
+  {
+   "id": "real#27",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 270,
+   "bucket": "<2K",
+   "htmlLen": 264,
+   "htmlHash": "8c220c76",
+   "estBrowser": 56.75,
+   "estAppliedBrowser": 57,
+   "trueBorderBox": 46.8,
+   "trueContentBox": 46.8,
+   "padBorder": 0
+  },
+  {
+   "id": "real#28",
+   "cls": "card-assistant",
+   "source": "shaped",
+   "bytes": 402,
+   "bucket": "<2K",
+   "htmlLen": 308,
+   "htmlHash": "695919a9",
+   "estBrowser": 81.5,
+   "estAppliedBrowser": 82,
+   "trueBorderBox": 71.55,
+   "trueContentBox": 71.55,
+   "padBorder": 0
+  },
+  {
+   "id": "real#29",
+   "cls": "card-compact",
+   "source": "shaped",
+   "bytes": 23371,
+   "bucket": "8-32K",
+   "htmlLen": 120,
+   "htmlHash": "b7e72636",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#30",
+   "cls": "card-user",
+   "source": "shaped",
+   "bytes": 242,
+   "bucket": "<2K",
+   "htmlLen": 163,
+   "htmlHash": "35dc5316",
+   "estBrowser": 21.7,
+   "estAppliedBrowser": 24,
+   "trueBorderBox": 43.69,
+   "trueContentBox": 21.69,
+   "padBorder": 22
+  },
+  {
+   "id": "real#31",
+   "cls": "card-user",
+   "source": "shaped",
+   "bytes": 498,
+   "bucket": "<2K",
+   "htmlLen": 267,
+   "htmlHash": "d9bb59cb",
+   "estBrowser": 130.2,
+   "estAppliedBrowser": 130,
+   "trueBorderBox": 152.13,
+   "trueContentBox": 130.13,
+   "padBorder": 22
+  },
+  {
+   "id": "real#32",
+   "cls": "card-user",
+   "source": "shaped",
+   "bytes": 334,
+   "bucket": "<2K",
+   "htmlLen": 213,
+   "htmlHash": "0238bc7f",
+   "estBrowser": 65.1,
+   "estAppliedBrowser": 65,
+   "trueBorderBox": 87.06,
+   "trueContentBox": 65.06,
+   "padBorder": 22
+  },
+  {
+   "id": "real#33",
+   "cls": "card-user",
+   "source": "shaped",
+   "bytes": 266,
+   "bucket": "<2K",
+   "htmlLen": 175,
+   "htmlHash": "8c462f76",
+   "estBrowser": 43.4,
+   "estAppliedBrowser": 43,
+   "trueBorderBox": 65.38,
+   "trueContentBox": 43.38,
+   "padBorder": 22
+  },
+  {
+   "id": "real#34",
+   "cls": "card-user",
+   "source": "shaped",
+   "bytes": 335,
+   "bucket": "<2K",
+   "htmlLen": 212,
+   "htmlHash": "96eb83ae",
+   "estBrowser": 43.4,
+   "estAppliedBrowser": 43,
+   "trueBorderBox": 65.38,
+   "trueContentBox": 43.38,
+   "padBorder": 22
+  },
+  {
+   "id": "real#35",
+   "cls": "card-user",
+   "source": "shaped",
+   "bytes": 556,
+   "bucket": "<2K",
+   "htmlLen": 309,
+   "htmlHash": "2e05dc89",
+   "estBrowser": 151.9,
+   "estAppliedBrowser": 152,
+   "trueBorderBox": 173.81,
+   "trueContentBox": 151.81,
+   "padBorder": 22
+  },
+  {
+   "id": "real#36",
+   "cls": "card-user",
+   "source": "shaped",
+   "bytes": 636,
+   "bucket": "<2K",
+   "htmlLen": 341,
+   "htmlHash": "4c55bbc8",
+   "estBrowser": 195.3,
+   "estAppliedBrowser": 195,
+   "trueBorderBox": 217.19,
+   "trueContentBox": 195.19,
+   "padBorder": 22
+  },
+  {
+   "id": "real#37",
+   "cls": "card-user",
+   "source": "shaped",
+   "bytes": 222,
+   "bucket": "<2K",
+   "htmlLen": 153,
+   "htmlHash": "e038aac1",
+   "estBrowser": 21.7,
+   "estAppliedBrowser": 24,
+   "trueBorderBox": 43.69,
+   "trueContentBox": 21.69,
+   "padBorder": 22
+  },
+  {
+   "id": "real#38",
+   "cls": "card-user",
+   "source": "shaped",
+   "bytes": 386,
+   "bucket": "<2K",
+   "htmlLen": 221,
+   "htmlHash": "d1bd6eed",
+   "estBrowser": 43.4,
+   "estAppliedBrowser": 43,
+   "trueBorderBox": 65.38,
+   "trueContentBox": 43.38,
+   "padBorder": 22
+  },
+  {
+   "id": "real#39",
+   "cls": "card-user",
+   "source": "shaped",
+   "bytes": 334,
+   "bucket": "<2K",
+   "htmlLen": 213,
+   "htmlHash": "6de24323",
+   "estBrowser": 65.1,
+   "estAppliedBrowser": 65,
+   "trueBorderBox": 87.06,
+   "trueContentBox": 65.06,
+   "padBorder": 22
+  },
+  {
+   "id": "real#40",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 2768,
+   "bucket": "2-8K",
+   "htmlLen": 314,
+   "htmlHash": "09de6678",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#41",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 2715,
+   "bucket": "2-8K",
+   "htmlLen": 355,
+   "htmlHash": "ad19a8ac",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#43",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 2288,
+   "bucket": "2-8K",
+   "htmlLen": 328,
+   "htmlHash": "ad8ff555",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#44",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 2743,
+   "bucket": "2-8K",
+   "htmlLen": 347,
+   "htmlHash": "e2bc6fe5",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#46",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 4709,
+   "bucket": "2-8K",
+   "htmlLen": 374,
+   "htmlHash": "f1d97e4e",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#47",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 2295,
+   "bucket": "2-8K",
+   "htmlLen": 298,
+   "htmlHash": "7813a037",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#48",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 7885,
+   "bucket": "2-8K",
+   "htmlLen": 336,
+   "htmlHash": "2fab1ce5",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#50",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 41983,
+   "bucket": "32-128K",
+   "htmlLen": 369,
+   "htmlHash": "0f9ce0a6",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#51",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 41983,
+   "bucket": "32-128K",
+   "htmlLen": 372,
+   "htmlHash": "99ae523a",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#52",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 9745,
+   "bucket": "8-32K",
+   "htmlLen": 336,
+   "htmlHash": "11e981de",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#53",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 17616,
+   "bucket": "8-32K",
+   "htmlLen": 369,
+   "htmlHash": "48f251ba",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#54",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 24542,
+   "bucket": "8-32K",
+   "htmlLen": 369,
+   "htmlHash": "e3b85b75",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#55",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 18284,
+   "bucket": "8-32K",
+   "htmlLen": 339,
+   "htmlHash": "e28011ab",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#57",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 29272,
+   "bucket": "8-32K",
+   "htmlLen": 339,
+   "htmlHash": "b961e7d8",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#58",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 19342,
+   "bucket": "8-32K",
+   "htmlLen": 375,
+   "htmlHash": "43c4e0da",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#61",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 462,
+   "bucket": "<2K",
+   "htmlLen": 371,
+   "htmlHash": "d858ef69",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#62",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 1027,
+   "bucket": "<2K",
+   "htmlLen": 376,
+   "htmlHash": "df4be360",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#64",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 639,
+   "bucket": "<2K",
+   "htmlLen": 368,
+   "htmlHash": "1f988a9e",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#65",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 483,
+   "bucket": "<2K",
+   "htmlLen": 376,
+   "htmlHash": "7be2f930",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#66",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 809,
+   "bucket": "<2K",
+   "htmlLen": 371,
+   "htmlHash": "ef45d6c5",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#67",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 1357,
+   "bucket": "<2K",
+   "htmlLen": 371,
+   "htmlHash": "01c61ca3",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#68",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 464,
+   "bucket": "<2K",
+   "htmlLen": 376,
+   "htmlHash": "234e6a0c",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "real#69",
+   "cls": "card-tool-group",
+   "source": "shaped",
+   "bytes": 791,
+   "bucket": "<2K",
+   "htmlLen": 339,
+   "htmlHash": "e8c18c4b",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  },
+  {
+   "id": "syn#0",
+   "cls": "card-api-retry",
+   "source": "synthetic",
+   "bytes": 203,
+   "bucket": "<2K",
+   "htmlLen": 96,
+   "htmlHash": "b6587f4c",
+   "estBrowser": 24,
+   "estAppliedBrowser": 24,
+   "trueBorderBox": 23.05,
+   "trueContentBox": 17.05,
+   "padBorder": 6
+  },
+  {
+   "id": "syn#1",
+   "cls": "card-api-retry",
+   "source": "synthetic",
+   "bytes": 184,
+   "bucket": "<2K",
+   "htmlLen": 77,
+   "htmlHash": "14e170f3",
+   "estBrowser": 24,
+   "estAppliedBrowser": 24,
+   "trueBorderBox": 23.05,
+   "trueContentBox": 17.05,
+   "padBorder": 6
+  },
+  {
+   "id": "syn#2",
+   "cls": "card-api-retry",
+   "source": "synthetic",
+   "bytes": 210,
+   "bucket": "<2K",
+   "htmlLen": 103,
+   "htmlHash": "644e988e",
+   "estBrowser": 24,
+   "estAppliedBrowser": 24,
+   "trueBorderBox": 23.05,
+   "trueContentBox": 17.05,
+   "padBorder": 6
+  },
+  {
+   "id": "syn#3",
+   "cls": "card-api-retry",
+   "source": "synthetic",
+   "bytes": 188,
+   "bucket": "<2K",
+   "htmlLen": 81,
+   "htmlHash": "3f4f5c5c",
+   "estBrowser": 24,
+   "estAppliedBrowser": 24,
+   "trueBorderBox": 23.05,
+   "trueContentBox": 17.05,
+   "padBorder": 6
+  },
+  {
+   "id": "syn#4",
+   "cls": "card-api-retry",
+   "source": "synthetic",
+   "bytes": 585,
+   "bucket": "<2K",
+   "htmlLen": 478,
+   "htmlHash": "0273aa73",
+   "estBrowser": 24,
+   "estAppliedBrowser": 24,
+   "trueBorderBox": 23.05,
+   "trueContentBox": 17.05,
+   "padBorder": 6
+  },
+  {
+   "id": "syn#5",
+   "cls": "card-api-error",
+   "source": "synthetic",
+   "bytes": 266,
+   "bucket": "<2K",
+   "htmlLen": 317,
+   "htmlHash": "fe405d48",
+   "estBrowser": 40,
+   "estAppliedBrowser": 40,
+   "trueBorderBox": 67.38,
+   "trueContentBox": 49.38,
+   "padBorder": 18
+  },
+  {
+   "id": "syn#6",
+   "cls": "card-api-error",
+   "source": "synthetic",
+   "bytes": 349,
+   "bucket": "<2K",
+   "htmlLen": 386,
+   "htmlHash": "e60ad4a2",
+   "estBrowser": 40,
+   "estAppliedBrowser": 40,
+   "trueBorderBox": 67.38,
+   "trueContentBox": 49.38,
+   "padBorder": 18
+  },
+  {
+   "id": "syn#7",
+   "cls": "card-api-error",
+   "source": "synthetic",
+   "bytes": 1335,
+   "bucket": "<2K",
+   "htmlLen": 1386,
+   "htmlHash": "eceede4b",
+   "estBrowser": 40,
+   "estAppliedBrowser": 40,
+   "trueBorderBox": 262.56,
+   "trueContentBox": 244.56,
+   "padBorder": 18
+  },
+  {
+   "id": "syn#8",
+   "cls": "card-bash-input",
+   "source": "synthetic",
+   "bytes": 171,
+   "bucket": "<2K",
+   "htmlLen": 151,
+   "htmlHash": "ab5838ae",
+   "estBrowser": 32,
+   "estAppliedBrowser": 32,
+   "trueBorderBox": 30.59,
+   "trueContentBox": 18.59,
+   "padBorder": 12
+  },
+  {
+   "id": "syn#9",
+   "cls": "card-bash-input",
+   "source": "synthetic",
+   "bytes": 206,
+   "bucket": "<2K",
+   "htmlLen": 194,
+   "htmlHash": "b99e5b81",
+   "estBrowser": 32,
+   "estAppliedBrowser": 32,
+   "trueBorderBox": 30.59,
+   "trueContentBox": 18.59,
+   "padBorder": 12
+  },
+  {
+   "id": "syn#10",
+   "cls": "card-bash-input",
+   "source": "synthetic",
+   "bytes": 193,
+   "bucket": "<2K",
+   "htmlLen": 173,
+   "htmlHash": "dad789f4",
+   "estBrowser": 32,
+   "estAppliedBrowser": 32,
+   "trueBorderBox": 30.59,
+   "trueContentBox": 18.59,
+   "padBorder": 12
+  },
+  {
+   "id": "syn#11",
+   "cls": "card-bash-output",
+   "source": "synthetic",
+   "bytes": 165,
+   "bucket": "<2K",
+   "htmlLen": 235,
+   "htmlHash": "7b4ef6c3",
+   "estBrowser": 42,
+   "estAppliedBrowser": 42,
+   "trueBorderBox": 53.19,
+   "trueContentBox": 41.19,
+   "padBorder": 12
+  },
+  {
+   "id": "syn#12",
+   "cls": "card-bash-output",
+   "source": "synthetic",
+   "bytes": 199,
+   "bucket": "<2K",
+   "htmlLen": 280,
+   "htmlHash": "13c49923",
+   "estBrowser": 125.75,
+   "estAppliedBrowser": 126,
+   "trueBorderBox": 137.3,
+   "trueContentBox": 125.3,
+   "padBorder": 12
+  },
+  {
+   "id": "syn#13",
+   "cls": "card-bash-output",
+   "source": "synthetic",
+   "bytes": 330,
+   "bucket": "<2K",
+   "htmlLen": 395,
+   "htmlHash": "040f0cf1",
+   "estBrowser": 428,
+   "estAppliedBrowser": 428,
+   "trueBorderBox": 439.41,
+   "trueContentBox": 427.41,
+   "padBorder": 12
+  },
+  {
+   "id": "syn#14",
+   "cls": "card-bash-output",
+   "source": "synthetic",
+   "bytes": 375,
+   "bucket": "<2K",
+   "htmlLen": 435,
+   "htmlHash": "3420ccab",
+   "estBrowser": 428,
+   "estAppliedBrowser": 428,
+   "trueBorderBox": 516.59,
+   "trueContentBox": 504.59,
+   "padBorder": 12
+  },
+  {
+   "id": "syn#15",
+   "cls": "card-bash-output",
+   "source": "synthetic",
+   "bytes": 870,
+   "bucket": "<2K",
+   "htmlLen": 513,
+   "htmlHash": "e31da270",
+   "estBrowser": 471,
+   "estAppliedBrowser": 471,
+   "trueBorderBox": 481.41,
+   "trueContentBox": 469.41,
+   "padBorder": 12
+  },
+  {
+   "id": "syn#16",
+   "cls": "card-bash-output",
+   "source": "synthetic",
+   "bytes": 235,
+   "bucket": "<2K",
+   "htmlLen": 384,
+   "htmlHash": "f8932089",
+   "estBrowser": 134.6,
+   "estAppliedBrowser": 135,
+   "trueBorderBox": 146.2,
+   "trueContentBox": 134.2,
+   "padBorder": 12
+  },
+  {
+   "id": "syn#17",
+   "cls": "card-slash",
+   "source": "synthetic",
+   "bytes": 240,
+   "bucket": "<2K",
+   "htmlLen": 143,
+   "htmlHash": "784bd9e2",
+   "estBrowser": 34,
+   "estAppliedBrowser": 34,
+   "trueBorderBox": 30.59,
+   "trueContentBox": 18.59,
+   "padBorder": 12
+  },
+  {
+   "id": "syn#18",
+   "cls": "card-slash",
+   "source": "synthetic",
+   "bytes": 270,
+   "bucket": "<2K",
+   "htmlLen": 186,
+   "htmlHash": "609daef2",
+   "estBrowser": 34,
+   "estAppliedBrowser": 34,
+   "trueBorderBox": 30.59,
+   "trueContentBox": 18.59,
+   "padBorder": 12
+  },
+  {
+   "id": "syn#19",
+   "cls": "card-slash",
+   "source": "synthetic",
+   "bytes": 269,
+   "bucket": "<2K",
+   "htmlLen": 207,
+   "htmlHash": "a148fe26",
+   "estBrowser": 34,
+   "estAppliedBrowser": 34,
+   "trueBorderBox": 30.59,
+   "trueContentBox": 18.59,
+   "padBorder": 12
+  },
+  {
+   "id": "syn#20",
+   "cls": "card-compact",
+   "source": "synthetic",
+   "bytes": 9261,
+   "bucket": "8-32K",
+   "htmlLen": 119,
+   "htmlHash": "e8453c1b",
+   "estBrowser": 38,
+   "estAppliedBrowser": 38,
+   "trueBorderBox": 36.59,
+   "trueContentBox": 34.59,
+   "padBorder": 2
+  }
+ ],
+ "crossRows": [
+  {
+   "id": "real#1",
+   "trueContentBox": 1943.38
+  },
+  {
+   "id": "real#2",
+   "trueContentBox": 3483.3
+  },
+  {
+   "id": "real#3",
+   "trueContentBox": 2749.89
+  },
+  {
+   "id": "real#4",
+   "trueContentBox": 1737.69
+  },
+  {
+   "id": "real#5",
+   "trueContentBox": 2231.8
+  },
+  {
+   "id": "real#6",
+   "trueContentBox": 1924.06
+  },
+  {
+   "id": "real#7",
+   "trueContentBox": 2201.72
+  },
+  {
+   "id": "real#8",
+   "trueContentBox": 1904.38
+  },
+  {
+   "id": "real#9",
+   "trueContentBox": 1236.05
+  },
+  {
+   "id": "real#10",
+   "trueContentBox": 2785.61
+  },
+  {
+   "id": "real#11",
+   "trueContentBox": 3327.06
+  },
+  {
+   "id": "real#12",
+   "trueContentBox": 9184.69
+  },
+  {
+   "id": "real#13",
+   "trueContentBox": 4640.41
+  },
+  {
+   "id": "real#14",
+   "trueContentBox": 3180.13
+  },
+  {
+   "id": "real#15",
+   "trueContentBox": 3327.06
+  },
+  {
+   "id": "real#16",
+   "trueContentBox": 2901.75
+  },
+  {
+   "id": "real#17",
+   "trueContentBox": 4620.84
+  },
+  {
+   "id": "real#18",
+   "trueContentBox": 3204.13
+  },
+  {
+   "id": "real#19",
+   "trueContentBox": 45
+  },
+  {
+   "id": "real#20",
+   "trueContentBox": 45
+  },
+  {
+   "id": "real#21",
+   "trueContentBox": 69
+  },
+  {
+   "id": "real#22",
+   "trueContentBox": 45
+  },
+  {
+   "id": "real#23",
+   "trueContentBox": 45
+  },
+  {
+   "id": "real#24",
+   "trueContentBox": 45
+  },
+  {
+   "id": "real#25",
+   "trueContentBox": 69
+  },
+  {
+   "id": "real#26",
+   "trueContentBox": 45
+  },
+  {
+   "id": "real#27",
+   "trueContentBox": 45
+  },
+  {
+   "id": "real#28",
+   "trueContentBox": 69
+  },
+  {
+   "id": "real#29",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#30",
+   "trueContentBox": 21
+  },
+  {
+   "id": "real#31",
+   "trueContentBox": 126
+  },
+  {
+   "id": "real#32",
+   "trueContentBox": 63
+  },
+  {
+   "id": "real#33",
+   "trueContentBox": 42
+  },
+  {
+   "id": "real#34",
+   "trueContentBox": 42
+  },
+  {
+   "id": "real#35",
+   "trueContentBox": 147
+  },
+  {
+   "id": "real#36",
+   "trueContentBox": 189
+  },
+  {
+   "id": "real#37",
+   "trueContentBox": 21
+  },
+  {
+   "id": "real#38",
+   "trueContentBox": 42
+  },
+  {
+   "id": "real#39",
+   "trueContentBox": 63
+  },
+  {
+   "id": "real#40",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#41",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#43",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#44",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#46",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#47",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#48",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#50",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#51",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#52",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#53",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#54",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#55",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#57",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#58",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#61",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#62",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#64",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#65",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#66",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#67",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#68",
+   "trueContentBox": 34
+  },
+  {
+   "id": "real#69",
+   "trueContentBox": 34
+  },
+  {
+   "id": "syn#0",
+   "trueContentBox": 17
+  },
+  {
+   "id": "syn#1",
+   "trueContentBox": 17
+  },
+  {
+   "id": "syn#2",
+   "trueContentBox": 17
+  },
+  {
+   "id": "syn#3",
+   "trueContentBox": 17
+  },
+  {
+   "id": "syn#4",
+   "trueContentBox": 17
+  },
+  {
+   "id": "syn#5",
+   "trueContentBox": 48
+  },
+  {
+   "id": "syn#6",
+   "trueContentBox": 48
+  },
+  {
+   "id": "syn#7",
+   "trueContentBox": 237
+  },
+  {
+   "id": "syn#8",
+   "trueContentBox": 19
+  },
+  {
+   "id": "syn#9",
+   "trueContentBox": 19
+  },
+  {
+   "id": "syn#10",
+   "trueContentBox": 19
+  },
+  {
+   "id": "syn#11",
+   "trueContentBox": 40
+  },
+  {
+   "id": "syn#12",
+   "trueContentBox": 124
+  },
+  {
+   "id": "syn#13",
+   "trueContentBox": 424
+  },
+  {
+   "id": "syn#14",
+   "trueContentBox": 504
+  },
+  {
+   "id": "syn#15",
+   "trueContentBox": 466
+  },
+  {
+   "id": "syn#16",
+   "trueContentBox": 133
+  },
+  {
+   "id": "syn#17",
+   "trueContentBox": 18
+  },
+  {
+   "id": "syn#18",
+   "trueContentBox": 18
+  },
+  {
+   "id": "syn#19",
+   "trueContentBox": 18
+  },
+  {
+   "id": "syn#20",
+   "trueContentBox": 34
+  }
+ ]
+}
