@@ -927,19 +927,20 @@ fn braced_block<'a>(prod: &'a str, marker: &str, lo: usize, hi: usize) -> &'a st
 #[test]
 fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
     // ── ① `backend/` 那半 ──────────────────────────────────────────
-    let backend_mod =
-        guard_core::production_code(include_str!("../../src/bridge/src/backend/mod.rs"));
-    guard_core::find_pinned(&backend_mod, "fn the_backend_half_stays_platform_agnostic")
-        .unwrap_or_else(|_| {
-            // 它住在 `#[cfg(test)]` 段里，`production_code` 会把它剥掉 ⇒ 换整份找。
-            let raw = include_str!("../../src/bridge/src/backend/mod.rs");
-            assert!(
-                raw.contains("fn the_backend_half_stays_platform_agnostic"),
-                "`backend/mod.rs` 里那条平台无关判据不在了 —— \n\
-                     本条①整半就没了依靠，而脱离那几行随时可以搬进 `backend/`。"
-            );
-            0
-        });
+    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕
+    // 那条平台无关判据（`the_backend_half_stays_platform_agnostic`）这一轮跟着
+    // `backend/mod.rs` 的测试段搬进了 `tests/bridge/backend_tests.rs`，
+    // 生产段那份里一个字都不剩 ⇒ 旧的两段（先剥生产段、剥不到再读整份）**两段都落空**。
+    // ⇒ 语料直接点它今天真住的那份文件。
+    // ⚠ 顺带把原来那个 `unwrap_or_else` 兜底去掉：它当初存在的理由是
+    //   「判据与被测代码同住一份文件、而 `production_code` 会把判据剥掉」——
+    //   剖分之后判据与生产代码**物理不同文件**，兜底那一支恒不触发（`§4.1` 那一形）。
+    let backend_tests = include_str!("backend_tests.rs");
+    assert!(
+        backend_tests.contains("fn the_backend_half_stays_platform_agnostic"),
+        "`backend_tests.rs` 里那条平台无关判据不在了 —— \n\
+             本条①整半就没了依靠，而脱离那几行随时可以搬进 `backend/`。"
+    );
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/backend");
     let files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
     assert!(
@@ -1310,27 +1311,45 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
     // 写死成 1 会让本条以「多了一处」的形式假红，而假红的判据最后会被人删掉。
     let pins: &[(&str, &str, usize, &str)] = &[
         (
-            "backend/mod.rs",
+            // 〔步 7c 剖分 2026-09-19 · C 类〕那条棘轮跟着测试段搬进了 `backend_tests.rs`。
+            "backend_tests.rs",
             "PLATFORM_EXCEPTIONS.len() <= 1,",
             1,
             "递减棘轮：平台例外只许少不许多。**本件正是被它堵着**才把脱离放进宿主层的 —— \
                  松掉它，下一个人就能把 `process_group` 直接写进 `backend/`。",
         ),
+        // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕
+        //    **`write_site_registry.rs` 剖成了三份，下面按新住址逐条重排。**
+        //
+        // 原来这里是三行、盯同一份文件（`missing.is_empty(),` 写 2 次、两条地板各 1 次）。
+        // 剖分之后那两张表各自成了一份文件：
+        //   · 写盘落点那张 → `write_site_registry_tests.rs`
+        //   · 起进程落点那张 → `write_site_registry_spawn_sites.rs`
+        //   · （第三份 `write_site_registry_writers.rs` 里这四根针一根都没有）
+        // ⇒ 「`missing.is_empty(),` 恰好 2 次」拆成**两行各 1 次**。
+        // **针的总处数一格没变（4 → 4）**，只是按文件分开数了 ——
+        // 而分开数比合起来数**更严**：原来一份文件里写两次、另一份写零次也能凑够 2。
         (
-            "write_site_registry.rs",
+            "write_site_registry_tests.rs",
             "missing.is_empty(),",
-            2,
-            "两张表的**默认拒绝**各一条（写盘落点 / 起进程落点）：人群从源码派生，不申报就红。\
-                 本件往两张表各加了两行 —— **加行是收紧**，而这两行是「不申报会不会红」本身。",
+            1,
+            "写盘落点那张表的**默认拒绝**：人群从源码派生，不申报就红。\
+                 本件往表里加了两行 —— **加行是收紧**，而这一条是「不申报会不会红」本身。",
         ),
         (
-            "write_site_registry.rs",
+            "write_site_registry_spawn_sites.rs",
+            "missing.is_empty(),",
+            1,
+            "起进程落点那张表的**默认拒绝**（同上，另一张表）。",
+        ),
+        (
+            "write_site_registry_spawn_sites.rs",
             "found.len() >= 5,",
             1,
             "起进程那张表的**反空真地板**：抽取器坏掉时它先红，而不是让默认拒绝空着绿。",
         ),
         (
-            "write_site_registry.rs",
+            "write_site_registry_tests.rs",
             "found.len() >= 15,",
             1,
             "写盘那张表的**反空真地板**（同上）。",
@@ -1338,8 +1357,11 @@ fn this_item_loosened_none_of_the_ratchets_it_touched() {
     ];
     for (file, line, want, why) in pins {
         let raw: &str = match *file {
-            "backend/mod.rs" => include_str!("../../src/bridge/src/backend/mod.rs"),
-            "write_site_registry.rs" => include_str!("../../src/bridge/src/write_site_registry.rs"),
+            "backend_tests.rs" => include_str!("backend_tests.rs"),
+            "write_site_registry_tests.rs" => include_str!("write_site_registry_tests.rs"),
+            "write_site_registry_spawn_sites.rs" => {
+                include_str!("write_site_registry_spawn_sites.rs")
+            }
             other => panic!("本表里出现了没接语料的文件：{other}"),
         };
         assert!(
@@ -3270,7 +3292,8 @@ fn the_timer_registry_names_every_caller_of_the_one_wait_here() {
     // 登记表那一行必须点到每一个。
     // 按**行**切那一条登记（不按字节偏移切 —— 中文在这份文件里到处都是，
     // 按字节切会切在字符中间，那是 CRASH 不是读数）。
-    let reg_lines: Vec<&str> = include_str!("../../src/bridge/src/rust_timer_registry.rs")
+    // 〔步 7c 剖分 2026-09-19 · C 类〕那张登记表跟着测试段搬进了 `rust_timer_registry_tests.rs`。
+    let reg_lines: Vec<&str> = include_str!("rust_timer_registry_tests.rs")
         .lines()
         .collect();
     let at = reg_lines

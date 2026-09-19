@@ -619,15 +619,55 @@ fn ccm_is_one_skeleton_with_a_per_agent_table() {
 /// 本条看不见。诚实边界登记在功能件 §4。
 #[test]
 fn the_classification_is_guard_corpus_only_and_no_production_code_consumes_it() {
-    // ① 本模块自己整体在 `#[cfg(test)]` 内 ⇒ 生产段为空。
-    let me = guard_core::production_code(include_str!("../../src/bridge/src/plugin_class_registry.rs"));
+    // ① 本模块自己整体在 `#[cfg(test)]` 内 ⇒ 生产段**只剩那三行桩**。
+    //
+    // 🔴 〔步 7c 剖分 2026-09-19〕**原来断的是「生产段为空」，今天为空是不可能的。**
+    //
+    // 剖分之后 `src/` 那份文件里按 `设计/16 §3.1` 必须留下三行：
+    //     #[cfg(test)]
+    //     #[path = "../../../tests/bridge/plugin_class_registry_tests.rs"]
+    //     mod tests;
+    // 而 `guard_core::production_code` **不剥分号声明形**（`真相源/00` 口径第 3 条逐字：
+    //「剖分之后 `src/` 里的 `cfg(test)` 只剩这一形」）⇒ 生产段恒有 88 字节，
+    // 「为空」那句话恒假（现打红过）。
+    //
+    // ⚠ 修法不是放宽成「小于 N 字节」——那会把「有人往里塞了一行 `pub const`」一起放过。
+    // 改成**逐行白名单**：生产段里除了那三行桩，**一行都不许有**。
+    // 这比原来那句更严：原来只要非空就红，但它说不出「非空的是什么」；
+    // 现在桩以外的任何一行都会被逐行打出来。
+    // ★ 顺带把桩本身也钉住（`stub_lines == 3`）：桩要是没了，
+    //   这个模块的判据就整批不参加编译，而那一格是**静默的**。
+    let me = guard_core::production_code(include_str!(
+        "../../src/bridge/src/plugin_class_registry.rs"
+    ));
+    let mut stub_lines = 0usize;
+    let leftovers: Vec<&str> = me
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .filter(|l| {
+            let is_stub = *l == "#[cfg(test)]"
+                || *l == "mod tests;"
+                || (l.starts_with("#[path = \"") && l.ends_with("\"]"));
+            if is_stub {
+                stub_lines += 1;
+            }
+            !is_stub
+        })
+        .collect();
+    assert_eq!(
+        stub_lines, 3,
+        "`plugin_class_registry.rs` 的生产段里那三行 `#[cfg(test)] #[path] mod tests;` 桩\n\
+             只找到 {stub_lines} 行（应恰好 3）—— 桩一坏，本模块那一整批判据**不参加编译**，\n\
+             而「没编进去」与「全过了」在 `cargo test` 的输出上一模一样。"
+    );
     assert!(
-        me.trim().is_empty(),
-        "本模块的生产段不再是空的（{} 字节）—— 分类表变成了运行期数据结构。\n\
+        leftovers.is_empty(),
+        "本模块的生产段除了那三行桩还有东西 —— 分类表变成了运行期数据结构：\n  {}\n\
              ⇒ `E4` 那张表**还没获批**（`DECISIONS.md#ED1`）。它今天的身份是\
              「今天的形态长这样」的判据语料，不是「将来必须这样」的裁定。\n\
              真获批了要落地的是 `EF02`–`EF06`，不是把这张表搬进生产段。",
-        me.trim().len()
+        leftovers.join("\n  ")
     );
 
     // ② 两棵树的生产段里，没有任何文件引用本模块。

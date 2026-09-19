@@ -938,7 +938,8 @@ fn comment_stripping_has_exactly_one_shared_implementation() {
             "按 marker 截断整行（能吃行尾注释），语料是自己生成的 shell/rc 片段、无 `://` 字面量风险",
         ),
         (
-            "e2e_gate_registry.rs",
+            // 〔步 7c 剖分 2026-09-19 · C 类〕住址跟着那份私有剥法搬进 `tests/bridge/`。
+            "e2e_gate_registry_tests.rs",
             "**别的注释语法**：语料是 shell 脚本（`tests/e2e/*.sh`），注释前缀是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 刻意只剥**整行**：shell 里 `#` 会出现在字符串中间（本处语料就有 `pgrep` 模式），                 按 marker 截断会误伤。收口的正确做法是给共享原语加一个「注释前缀」参数，那是另一件事。",
         ),
     ];
@@ -1624,7 +1625,13 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
         ("inbound_client.rs", "bridge.rs", 95),
         // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("launch_tests.rs", "launch.rs", 122),
-        ("lib.rs", "ccm_cli_contract.rs", 181),
+        // 🔴 〔步 7c 剖分 2026-09-19〕**这一行删了 —— 那处行号地址改成了符号地址。**
+        // 原来是 `guard-core/src/lib.rs` 里那句「两侧各有一个文件因此假红」的注，
+        // 点的是 `ccm_cli_contract.rs` 的第 181 行。那份文件剖分后只剩 40 行 ⇒ 越界，
+        // 已按本条的第 ① 条出路改成
+        // `ccm_cli_contract_tests.rs::cc_spawn_resolves_a_real_ccm_file_not_a_directory`。
+        // ⇒ 本条的保鲜自检逐字要求把这一行删掉（「多半是有人把它改成符号地址了，那是好事」）。
+        // **存量少一条，这是往下走**（递减方向），不是把账挂空。
         ("lib.rs", "main.rs", 26),
         ("lib.rs", "russh-sftp-2.3.0/src/protocol/file_attrs.rs", 29),
         ("lib.rs", "sftp.rs", 141),
@@ -1648,7 +1655,9 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
         //    那正是原先第 1062 行那段话讲的东西）⇒ 从「判不了真伪」变成
         //    `every_symbol_address_in_the_sources_still_resolves` **真的判得了**。
         //    ⚠ 没有「换一个今天对的行号」—— 那是本条头注逐字禁的那一手。
-        ("parity_ledger.rs", "sftp.rs", 141),
+        // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕住址跟着那句散文搬进 `tests/bridge/`。
+        // **存量条数一格没变** —— 一处行号地址都没新增，只是左端的文件名换了。
+        ("parity_ledger_tests.rs", "sftp.rs", 141),
         ("ratchet_guard.rs", "control/tmux_hook.rs", 6),
         ("ratchet_guard.rs", "control/tmux_hook.rs", 102),
         ("ratchet_guard.rs", "main.rs", 651),
@@ -2324,12 +2333,14 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         ("src/bridge/src/bind.rs", "handle_await_files", 1),
         (
-            "src/bridge/src/byte_cap_registry.rs",
+            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/byte_cap_registry_tests.rs",
             "handle_alloc_error",
             1,
         ),
         (
-            "src/bridge/src/byte_cap_registry.rs",
+            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/byte_cap_registry_tests.rs",
             "inline_literal_byte_caps_are_still_just_the_one",
             1,
         ),
@@ -2396,7 +2407,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("tests/bridge/panorama_tests.rs", "guard_doc_rel", 1),
         ("src/bridge/src/panorama.rs", "symbols_in_file", 3),
         (
-            "src/bridge/src/panorama_seam_registry.rs",
+            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/panorama_seam_registry_tests.rs",
             "panorama_raw_query",
             1,
         ),
@@ -2412,7 +2424,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    从 `shared/ccm`（bash，剥 `#`）换成了 `control/ccm/`（Rust，剥 `//`）
         //    ⇒ 那段解释连同它一起重写了，名字不再出现。**账跟着删，别留成僵尸行。**
         (
-            "src/bridge/src/polling_registry.rs",
+            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/polling_registry_tests.rs",
             "the_per_second_identity_poller_spawns_nothing_per_tick",
             1,
         ),
@@ -2422,12 +2435,14 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/bridge/src/rust_timer_registry.rs",
+            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/rust_timer_registry_tests.rs",
             "the_one_real_ticker",
             1,
         ),
         (
-            "src/bridge/src/shared_crate_registry.rs",
+            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/shared_crate_registry_ci_yaml.rs",
             "ci_live_lines",
             1,
         ),
@@ -2468,17 +2483,20 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/bridge/src/tmux_daemon_gate_guard.rs",
+            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/tmux_daemon_gate_guard_tests.rs",
             "both_daemon_commands_use_this_one_router",
             1,
         ),
         (
-            "src/bridge/src/tool_registry.rs",
+            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/tool_registry_tests.rs",
             "inbox_id_from_filename",
             1,
         ),
         (
-            "src/bridge/src/tool_registry.rs",
+            // 〔步 7c 剖分 2026-09-19〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/tool_registry_tests.rs",
             "locality_is_derivable_from_destination_today",
             1,
         ),
@@ -2540,6 +2558,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     ///
     /// 这 6 处全是 `K-R20` 本轮真的改过的**订正段** —— 订正段逐字引用旧名字，
     /// 那正是 `K-R19` 实测到「订正落盘之后尺子读数一动没动」的原因。
+    /// 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕**12 行换了住址，处数一格没变。**
+    /// 那些墓碑散文随各自判据的测试段搬进了 `tests/bridge/`，逐份点名（`src/bridge/src/X.rs` →）：
+    /// `capability_registry` · `ccm_cli_contract` · `doc_claim_registry` ·
+    /// `parity_ledger`（3 个名字 · 8 处）· `plugin_class_registry`（2 个名字）·
+    /// `polling_registry` · `shared_crate_registry` · `tmux_daemon_gate_guard` ·
+    /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
+    /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
         // 🔴 〔`K-R48` 第二拍 09-11〕下面这 9 行全是同一件事的账：`shared/ccm` 那个 bash
         //    脚本与它那一族判据删了（`K33`：「不要有什么 bash 脚本」），而**散文里那几处
@@ -2559,22 +2584,22 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    不许是 `AppInstalls`」在算术上不可能再红 ⇒ 删掉判据、留下墓碑说清
         //    「它守的那件事没丢，只是那个能填错的格子没有了」。
         (
-            "src/bridge/src/tool_registry.rs",
+            "tests/bridge/tool_registry_environment_tests.rs",
             "a_hand_written_entry_is_never_app_installs",
             1,
         ),
         (
-            "src/bridge/src/plugin_class_registry.rs",
+            "tests/bridge/plugin_class_registry_tests.rs",
             "ccm_agent_arms",
             1,
         ),
         (
-            "src/bridge/src/plugin_class_registry.rs",
+            "tests/bridge/plugin_class_registry_tests.rs",
             "ccm_probe_values",
             1,
         ),
         (
-            "src/bridge/src/polling_registry.rs",
+            "tests/bridge/polling_registry_tests.rs",
             "ccm_fails_loudly_when_no_daemon_can_be_found",
             1,
         ),
@@ -2650,7 +2675,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/bridge/src/ccm_cli_contract.rs", "pin_t_def", 1),
         ("src/bridge/src/ccm_cli_contract.rs", "scan_t_targets", 1),
         (
-            "src/bridge/src/ccm_cli_contract.rs",
+            "tests/bridge/ccm_cli_contract_tests.rs",
             "the_avoidance_lives_in_ccm_now",
             1,
         ),
@@ -2709,7 +2734,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         ("src/bridge/src/tmux.rs", "gate_guard_expr", 1),
         (
-            "src/bridge/src/tmux_daemon_gate_guard.rs",
+            "tests/bridge/tmux_daemon_gate_guard_tests.rs",
             "build_kill_session_cmd",
             1,
         ),
@@ -2720,7 +2745,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    「两条路此前靠同一个命令构造器同源，今天连命令串都不存在了」。
         //    按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
         (
-            "src/bridge/src/doc_claim_registry.rs",
+            "tests/bridge/doc_claim_registry_tests.rs",
             "the_four_outer_layer_producers_are_all_still_there",
             1,
         ),
@@ -2742,7 +2767,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         // 同一刀带走的 e2e 夹具产出者，与它那套跑不起来的真机验收脚本。
         (
-            "src/bridge/src/shared_crate_registry.rs",
+            "tests/bridge/shared_crate_registry_tests.rs",
             "emit_guarded_commands_for_e2e",
             1,
         ),
@@ -2793,7 +2818,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    删掉这些句子＝删掉这一刀的账，而这一刀正是 `设计/50 §7` 点名要记账的那一刀。
         //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里逐条记账。
         (
-            "src/bridge/src/capability_registry.rs",
+            "tests/bridge/capability_registry_tests.rs",
             "emit_usage_probe_frames_for_e2e",
             1,
         ),
@@ -2826,13 +2851,13 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         ("tests/ipc/commands.vitest.ts", "aggregate_usage_all", 1),
-        ("src/bridge/src/parity_ledger.rs", "account_usage_local", 4),
+        ("tests/bridge/parity_ledger_tests.rs", "account_usage_local", 4),
         (
-            "src/bridge/src/parity_ledger.rs",
+            "tests/bridge/parity_ledger_tests.rs",
             "aggregate_remote_usage_all",
             2,
         ),
-        ("src/bridge/src/parity_ledger.rs", "aggregate_usage_all", 2),
+        ("tests/bridge/parity_ledger_tests.rs", "aggregate_usage_all", 2),
         (
             "tests/backend/no_timer_guard.rs",
             "the_oneshot_watchdog_script_carries_no_loop",
@@ -2877,6 +2902,18 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    那段散文逐字引用旧名字，说的正是「它为什么不在了、以及**退役的理由不是
         //    『它变成恒等函数了』**」—— `设计/16 §4.1` 那条预言今天还不成立，读数在那儿。
         //    删掉这两句＝删掉这一刀的账 ⇒ 按第②条出路：贴墓碑 ＋ 在这里记一笔。
+        // 🔴 〔步 7c 剖分 2026-09-19〕**这一条是真新增的死名，不是搬住址。**
+        //
+        // `the_caller_never_gets_its_own_source_back` 是本轮**退役**的那条判据
+        //（`设计/16 §6.2` D 类：它的前提「判据与被测代码同住一份文件」剖分后恒假）。
+        // 接它岗的是 `the_scan_tree_macro_no_longer_excludes_its_caller_after_the_split`。
+        // 那段解释里**逐字引用了旧名字**（不引就说不清换掉的是谁、为什么），
+        // ⇒ 按本条第②条出路：同一行贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
+        (
+            "tests/bridge/crates/guard-core/lib_tests.rs",
+            "the_caller_never_gets_its_own_source_back",
+            1,
+        ),
         ("tests/backend/readonly_guard.rs", "strip_cfg_test", 2),
     ];
 

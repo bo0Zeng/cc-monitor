@@ -286,10 +286,24 @@ fn every_non_literal_include_is_registered_with_a_reason() {
     )];
     let mut found: Vec<(String, usize)> = Vec::new();
     let mut total_invocations = 0usize;
+    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §5.4b` 纪律 4〕
+    //    **排除的住址跟着本文件搬，而且加上「摘不到就红」那一格。**
+    //
+    // 原来写的是 `cross_half_edge_registry.rs`（本条剖分前住的那份）。
+    // 剖分之后本条住 `..._tests.rs`，而 `ends_with` 对它不命中 ⇒ **排除空转** ⇒
+    // 本文件把自己那两段非字面量调用示例（上面头注里逐字写着的）当成了病
+    // ⇒ 现打红成「多出来 ("tests/bridge/cross_half_edge_registry_tests.rs", 5)」。
+    //
+    // ⚠ 明写名单还不够：**名单摘不到东西时必须出声**，否则改名/搬家又会静默失效
+    //   （这正是 `guard_core::scan_tree_excluding` 比 `file!()` 多出来的那一格，
+    //   这里是手写遍历，所以把那一格自己补上）。
+    const SELF_EXCLUDED: &str = "tests/bridge/cross_half_edge_registry_tests.rs";
+    let mut self_excluded = 0usize;
     for rel in both_halves() {
         // 本文件自己要排除：上面那段说明里逐字写着两种**非字面量**的调用示例，
         // 不排除就会把自己的病历当成病（F23 那一族，本区第六次）。
-        if rel.ends_with("cross_half_edge_registry.rs") {
+        if rel == SELF_EXCLUDED {
+            self_excluded += 1;
             continue;
         }
         let raw = std::fs::read_to_string(repo_root().join(&rel)).unwrap_or_default();
@@ -304,6 +318,15 @@ fn every_non_literal_include_is_registered_with_a_reason() {
     assert!(
         total_invocations >= 20,
         "两半里只数到 {total_invocations} 个 `include_*!` 调用（08-06 实测 40+）—— 计数器坏了"
+    );
+    // 排除项自检（`§5.4b` 纪律 4 的那一格）：名单摘到 0 份 ⇒ 住址馊了，当场红。
+    assert_eq!(
+        self_excluded, 1,
+        "自摘名单上的 `{SELF_EXCLUDED}` 在人群里出现了 {self_excluded} 次（应恰好 1 次）——\n\
+             ⇒ 要么本文件改名/搬家了（住址馊了，排除从此空转 ⇒ 本条把自己的病历当病），\n\
+             要么 `both_halves()` 的射程不再覆盖 `tests/bridge`（那才是更大的问题）。\n\
+             ★ 这一格就是为了不让「排除悄悄失效」再走一遍：步 7c 之前它失效过一次，\n\
+             而那次是靠对拍多出一行才被看见的 —— 反过来的那一半（排除多摘了）不会有人看见。"
     );
     found.sort();
     let mut want: Vec<(String, usize)> = NON_LITERAL_INCLUDES

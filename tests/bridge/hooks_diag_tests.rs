@@ -584,7 +584,12 @@ fn this_module_never_writes() {
     // （名字原样留着），本条**照样绿** —— 而别名导入从此又能让写盘调用整个隐形。
     // 「散文说有、实际没有」这一族的又一例，只是这次「说」的是一个函数名。
     // ⇒ 三条腿：名字在 · 它真在判导入 · 反例那一半还在。
-    let ban = include_str!("../../src/bridge/src/write_site_registry.rs");
+    // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕嵌的那份换成 `write_site_registry` 的**测试段**。
+    // 下面三根针找的是那条导入禁令（`fn no_alias_or_item_import_can_hide_a_write_call`
+    // ＋ 它的 `fs_import_verdict` 调用 ＋ 反例那半的 `is_err()`）——
+    // 它们这一轮跟着测试段搬进了 `tests/bridge/write_site_registry_tests.rs`，
+    // 生产段那份里一根都不剩 ⇒ 不改的话本条当场红（现打：第一根针就报「整个不见了」）。
+    let ban = include_str!("write_site_registry_tests.rs");
     for (needle, why) in [
         (
             "fn no_alias_or_item_import_can_hide_a_write_call",

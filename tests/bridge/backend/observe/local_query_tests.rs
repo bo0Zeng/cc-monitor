@@ -224,8 +224,9 @@ fn every_caller_of_this_transport_is_already_off_the_read_surface_ledger() {
     // 后继形态：调用方**不许**还挂在「未退役」账上。
     // ⚠ 账本的真相源是那个模块自己的 `REGISTERED`，这里**不抄一份文件名单** ——
     // 读它的源码把还标着 `reader` 的文件名抽出来（同一个数/同一张表只有一个家，定框 §4）。
-    let ledger = std::fs::read_to_string(src_root.join("local_read_surface_registry.rs"))
-        .expect("读不到 local_read_surface_registry.rs");
+    // 〔步 7c 剖分 2026-09-19 · C 类〕那张 `REGISTERED` 跟着测试段搬进了
+    // `tests/bridge/local_read_surface_registry_tests.rs`；生产段那份里已经没有它。
+    let ledger = include_str!("../../local_read_surface_registry_tests.rs").to_string();
     let mut still_on_ledger: Vec<&String> = Vec::new();
     for c in &callers {
         // 登记表里的键是 `src/<rel>`。

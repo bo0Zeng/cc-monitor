@@ -102,7 +102,11 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→daemon",
-        "src/bridge/src/polling_registry.rs",
+        // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕住址跟着判据搬：
+        // 那条 `include_str!` 一直长在 `polling_registry` 的**测试段**里，
+        // 而测试段这一轮搬进了 `tests/bridge/polling_registry_tests.rs`。
+        // **边的条数一格没变**（16 → 16），只是左端的住址换了。
+        "tests/bridge/polling_registry_tests.rs",
         "src/backend/control/tmux_hook.rs",
         "C14 那条登记在案的例外（预信任的等信任框以 shell 字符串形态产出）真实存在的证据 —— \
          它是「零轮询」那条零命中守卫的反向锚点",
