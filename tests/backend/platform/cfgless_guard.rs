@@ -14,7 +14,7 @@
 //!
 //! ⇒ 判据只看得见**带 cfg** 的平台代码，看不见**不带 cfg** 的，
 //! 而后者才是真正编不过的那一类。09-10 `K-W2D` 接线那一拍就从这条缝里漏了一处：
-//! `sidecars/codepicture/acquire.rs::land` 引了 `std::os::unix::fs` 里那个给 `mode(…)` 的扩展
+//! 已删的那条按需拉取路里「落一个可执行文件」那一跳，引了 `std::os::unix::fs` 里那个给 `mode(…)` 的扩展
 //! trait，**一个 cfg 都没有**，daemon 从那一刻起在 Windows 上名字解析就过不了 ——
 //! ⚠ 这里刻意**不把那个 trait 的名字逐字写出来**：`readonly_guard` 的默认层扫本 crate
 //!   生产段（**连注释一起扫**，那是它 fail-closed 的设计），而那个名字在它的禁词表上
@@ -946,12 +946,14 @@ mod tests {
                 bad.push(format!("  {rel}：{why}\n      {what}"));
             }
         }
-        // 🔴 〔`设计/50` 删用量 09-18〕地板 60 → **57**（现打 59，留 2 份余量，与立表时同margin）：
-        // 本刀删掉本 crate **三份** `.rs`（`observe/usage_query.rs` · `control/oneshot_session.rs` ·
-        // `agents/codex/usage.rs`）⇒ 人群真的小了 3。**这不是遍历坏了**，
-        // 两者的读数长得一样，所以降地板必须逐条写清删的是哪三份。
+        // 🔴 〔条 67 · 2026-09-18〕地板 57 → **53**（现打 55，留 2 份余量，与立表时同 margin）：
+        // 用户逐字「**不在现在设计里的全部删掉**」⇒ 删了 `sidecars/` 那四份 `.rs`。
+        // ⚠ 同拍删的 `platform/landing.rs` **不在本条人群里**（本条把 `platform/` 整个 continue 掉了）
+        // ⇒ 本条只少 4，上一条少 5。**两个数不一样是对的**，别照抄。
+        // 〔上一次：`设计/50` 删用量 09-18 地板 60 → 57（现打 59），删的是 `observe/usage_query.rs` ·
+        //   `control/oneshot_session.rs` · `agents/codex/usage.rs` 三份。〕
         assert!(
-            scanned >= 57,
+            scanned >= 53,
             "`platform/` 之外只扫到 {scanned} 份 `.rs` —— 人群塌了，本条此刻在空转"
         );
         assert_eq!(
@@ -972,9 +974,12 @@ mod tests {
     #[test]
     fn the_population_is_not_silently_empty() {
         let (all, files) = scan_tree();
-        // 🔴 〔`设计/50` 09-18〕地板 70 → **67**（现打 69）：同上一条，本刀删了三份 `.rs`。
+        // 🔴 〔条 67 · 2026-09-18〕地板 67 → **62**（现打 64）：用户逐字「**不在现在设计里的全部删掉**」
+        // ⇒ `sidecars/` 整棵树四份 `.rs`（2 008 行）＋ `platform/landing.rs`（唯一消费者没了）一起走。
+        // 人群**真的**小了 5。**这不是遍历坏了** —— 两者读数长得一样，所以降地板必须逐份点名。
+        // 〔上一次：`设计/50` 09-18 地板 70 → 67（现打 69），那一刀删了三份 `.rs`。〕
         assert!(
-            files >= 67,
+            files >= 62,
             "只扫到 {files} 份 `.rs`（`scan_tree!` 已摘除本文件）—— 遍历坏了，\
              上面那几条此刻全在空转"
         );

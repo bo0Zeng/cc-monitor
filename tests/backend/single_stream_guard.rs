@@ -367,7 +367,10 @@ mod tests {
     ///
     /// 现打（09-04，本工作树，**未铺** `src/bridge/embedded-daemons/`）：daemon `src/` 下
     /// **73 份 `.rs`，走兜底 0 份**。地板是计数自检（遍历坏了要红，不是静默扫 0 份通过）。
-    /// 🔴 〔`设计/50` 09-18〕地板 70 → **67**（现打 69）：本刀删了本 crate 三份 `.rs`
+    /// 🔴 〔条 67 · 2026-09-18〕地板 67 → **62**（现打 64）：用户逐字「**不在现在设计里的全部删掉**」
+    /// ⇒ 删了 `sidecars/` 整棵树四份 `.rs`（2 008 行）＋ `platform/landing.rs`（它的唯一消费者没了）。
+    /// 人群**真的**小了 5，不是遍历坏了。
+    /// 〔上一次：`设计/50` 09-18 地板 70 → 67（现打 69）：那一刀删了本 crate 三份 `.rs`
     /// （`observe/usage_query.rs` · `control/oneshot_session.rs` · `agents/codex/usage.rs`）。
     ///
     /// # ★★ 09-04（`K-R25`）：**上面那句「本模块所有计数的分母」要带单位**
@@ -391,7 +394,7 @@ mod tests {
     /// 由 `tests/evidence/K-R25-D2-unit-alignment.md` 逐条手核）—— 不是「所有写法」的全称。
     #[test]
     fn no_daemon_file_falls_back_to_leaving_block_comments_in() {
-        guard_core::assert_block_comment_model_holds(&crate::guard_support::src_root(), 67, 500);
+        guard_core::assert_block_comment_model_holds(&crate::guard_support::src_root(), 62, 500);
     }
 
     /// ★ 正题：三处「恰好一个客户端」的锚点**逐个按次数**对上。
