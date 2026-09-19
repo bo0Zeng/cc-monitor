@@ -409,7 +409,7 @@ mod tests {
     ///
     /// 上面那条钉的四条 needle **全部命中 monitor job**，与 daemon job 的四步**一条都不重叠**。
     /// 实测（`audit-0805` 的只读核实）：当时全仓读 `.github/workflows` 的**只有两处**
-    /// （本文件 + `local_backend.rs::every_bundle_job_stages_the_sidecar_before_building`
+    /// （本文件 + `local_backend_tests.rs::every_bundle_job_stages_the_sidecar_before_building`
     /// 读 `release.yml`；
     /// ⚠ **08-08 起是三处** —— `sftp.rs` 新增了「发版流水线要为每个 arch 备料」那条，
     /// 这句话记的是**建本条当天**的度量面，别当成今天的事实），
@@ -495,7 +495,7 @@ mod tests {
     /// 且交出去之后所有门禁**依旧全绿**，比删掉一步隐蔽得多。
     ///
     /// 全仓读 `.github/workflows` 的只有两处（本文件 +
-    /// `local_backend.rs::every_bundle_job_stages_the_sidecar_before_building` 读 `release.yml`），（08-08 起三处，见上一条的订正）
+    /// `local_backend_tests.rs::every_bundle_job_stages_the_sidecar_before_building` 读 `release.yml`），（08-08 起三处，见上一条的订正）
     /// **两处都不看 `runs-on`**；`windows-latest` 这个字面量在仓里其余命中全是散文注释。
     ///
     /// ⚠ 本条**不管** daemon job 在哪跑（它在 ubuntu 上跨 target check，那是刻意的、
@@ -1085,7 +1085,12 @@ mod tests {
         let repo = crate::guard_support::repo_root().to_path_buf();
         // ── 收 `#[ignore]` 测试：(文件名 stem, fn 名)
         let mut ignored: Vec<(String, String)> = Vec::new();
-        for (path, src) in guard_core::scan_tree!(&repo.join("src/bridge/src"), &["rs"]) {
+        // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**加上 `tests/bridge` 这一棵。**
+        //    那 7 条 `#[ignore]` 全都是测试，剖分之后一条都不在 `src/bridge/src` 里了
+        //    ⇒ 老语料收到 0 条，下面那条「剥法坏了」的反空真按设计响了。
+        let mut ignore_corpus = guard_core::scan_tree!(&repo.join("src/bridge/src"), &["rs"]);
+        ignore_corpus.extend(guard_core::scan_tree!(&repo.join("tests/bridge"), &["rs"]));
+        for (path, src) in ignore_corpus {
             let stem = path
                 .file_stem()
                 .expect("文件名")

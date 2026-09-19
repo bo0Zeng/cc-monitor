@@ -633,7 +633,7 @@ mod tests {
           供 `include_bytes!` 内嵌。写的是 cargo 自己的构建目录，不碰用户环境；\
           ⚠ 〔`K-R70` 09-12 订正本行后半句〕它**不再读旁边那份 `.build_id` 清单** —— \
           身份改从二进制字节里扫（`CC_MONITOR_BUILD_STAMP`），\
-          由 `sftp.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
+          由 `sftp_tests.rs::the_embedded_identity_comes_from_the_bytes_not_from_a_label` 守着"),
         // ── devbench F03：skill 接入面的收件箱写入。**不是安装动作**。
         ("skill_host.rs", "write_skill_file", None,
          "写用户**自己项目里**的 `.claude/planned-build/INBOX.txt`（planned-build skill 的\
@@ -714,7 +714,7 @@ mod tests {
           它不是安装动作，但也不是 monitor 自己的东西。⚠ **08-07 订正**：本行原写「围栏由 \
           `validate_delete_target` 与它自己的判据守着」—— 那句只对一半：围栏函数有五条穿越 \
           防护判据，但**没有任何东西钉住那条路真的过了围栏**（实测跳过围栏，全仓 978 条不红）。 \
-          现由 `history.rs::the_delete_entry_point_actually_goes_through_the_fence` 端到端钉住"),
+          现由 `history_tests.rs::the_delete_entry_point_actually_goes_through_the_fence` 端到端钉住"),
     ];
 
     /// 一行 `use ... fs ...` 该放行还是该拦。`Ok(())` = 放行。

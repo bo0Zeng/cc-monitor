@@ -394,7 +394,13 @@ mod tests {
     /// 由 `tests/evidence/K-R25-D2-unit-alignment.md` 逐条手核）—— 不是「所有写法」的全称。
     #[test]
     fn no_daemon_file_falls_back_to_leaving_block_comments_in() {
-        guard_core::assert_block_comment_model_holds(&crate::guard_support::src_root(), 62, 500);
+        // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**两棵树一起喂，地板一格不动。**
+        //
+        // daemon 这半边今天也住两处：生产段 `src/backend`、测试段 `<repo>/tests/backend`。
+        // 本条第二个单位（`#[test]` 块）**整个住在测试段** ⇒ 只喂 `src/` 那一棵的话，
+        // `min_blocks` 会在一个已经掉空的分母上通过。两条地板（62 / 500）逐字照旧。
+        let roots = crate::guard_support::code_roots();
+        guard_core::assert_block_comment_model_holds(&[&roots[0], &roots[1]], 62, 500);
     }
 
     /// ★ 正题：三处「恰好一个客户端」的锚点**逐个按次数**对上。

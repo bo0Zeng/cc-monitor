@@ -455,15 +455,15 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
 /// | `daemon_bin_env_for_window(` | 2 | **1** |
 ///
 /// ⇒ 本文件那条**普通 `#[test]`**
-/// `launch.rs::every_terminal_window_backend_opens_carries_the_daemon_path`
+/// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_daemon_path`
 /// （就在 `cargo` 门里跑）用**三条等号断言**钉着这 5 个构造。
 ///
 /// **实打（`C` 第十轮 刀 `R10M1`，沙箱快道 `cargo test -p monitor --lib`，09-02）**：
 /// 把本函数体里 Plan B 那个 `if let Some((k, v)) = daemon_env { builder.env(k, v); }`
 /// 换成 `let _ = daemon_env;`（＝真实缺陷形状「开窗点漏了带 env」；锚点是那三行，**全文命中 1**）
 /// ⇒ **`1243 passed; 2 failed`**（同树干净分母 **`1245 passed; 0 failed`**），红名单**恰好两条**：
-/// `launch.rs::every_terminal_window_backend_opens_carries_the_daemon_path` 与
-/// `payload.rs::the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated`。
+/// `launch_tests.rs::every_terminal_window_backend_opens_carries_the_daemon_path` 与
+/// `payload_tests.rs::the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated`。
 ///
 /// ⚠ **分母话**：那是**一刀打出来的红名单**，不是「全部判据」的枚举 ——
 /// 我没有逐条去数还有几条判据碰得到这个函数体。⇒ 只能写「**我这一刀量到的是这两条**」。
@@ -499,11 +499,11 @@ pub fn build_remote_ssh_ps_command(cfg: &RemoteConfig, remote_cmd: &str) -> Resu
 ///
 /// - 同一条腿上的 [`crate::utils::powershell_encoded_command`] **没有 `cfg`、在 Linux 上真编译**
 ///   ⇒ 不属于本族（`D8 阻-2`）；第九轮已给它配了
-///   `utils.rs::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte`。
+///   `utils_tests.rs::the_relay_prefix_survives_the_powershell_encoding_byte_for_byte`。
 /// - `history.rs::PRODUCTION_LAUNCH_SINK` 的 `#[cfg(windows)]` 那一支（`D8` 表里的 `F3`，
 ///   `D8` **没打**、标着「推的」）第九轮打了、**是红的**；`C` 第十轮刀 `R10M8` 复打，
 ///   读数一致：**`1244 passed; 1 failed`**，红的是
-///   `payload.rs::nobody_reaches_the_relay_take_points_without_going_through_the_seam`。
+///   `payload_tests.rs::nobody_reaches_the_relay_take_points_without_going_through_the_seam`。
 #[cfg(windows)]
 pub fn launch_powershell_window(ps_command: &str, local_cwd: Option<&str>) -> Result<(), String> {
     use crate::spawn_managed::{spawn_managed_cmd, ConsolePolicy, Lifetime, StderrSink};

@@ -519,8 +519,15 @@ fn the_local_daemon_can_be_stopped_and_started_again() {
 
     // ★★ **fail closed，而且排在一切之前**：拿不到 shim 就当场炸，绝不降级裸跑。
     //    降级裸跑 = 去改用户真实 tmux server 的 `[50]` 槽位（08-11 / 08-26 / 08-27 / 08-29 各一次）。
-    let shim =
-        demand_tmux_shim("本条起真 daemon，而 daemon 一上来就往它连得到的 tmux server 装全局 hook");
+    // 🔴 〔搬树 2026-09-18〕**理由串提成一个局部常量，好让那一行回到「一行到底」。**
+    //
+    // 剖分把本条从 `local_daemon.rs` 的测试模块里搬了出来 ⇒ 缩进少一级，于是同拍那次
+    // `cargo fmt` 把原来的「`let shim = demand_tmux_shim(` ＋ 下一行放理由串」压成了
+    // 「`let shim =` 换行再写调用」——**语义一个字节没变**，而它恰好撞上本条头注
+    // **逐字登记过**的那一形假阳：「按 rustfmt 在 `=` 后断行（`D5-M5`）」。
+    // ⇒ 不去放宽读法（头注逐字：那要另做一次「先量再选」），把那一行**写回**它要的形状。
+    const WHY: &str = "本条起真 daemon，而 daemon 一上来就往它连得到的 tmux server 装全局 hook";
+    let shim = demand_tmux_shim(WHY);
     let _guard = crate::inbound_client::local_origin_test_lock();
     let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("embedded-daemons")
@@ -1052,7 +1059,7 @@ fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
 /// # 🔴🔴 它买不到什么（射程边缘 —— **这一栏是写区拦出来的，不是我不想买**）
 ///
 /// - **被监护那条起法（`LOCAL_BACKEND` 的 `.stop()`）不在这条缝里。**
-///   写区外的 `backend/control/local_backend.rs::the_exit_path_really_stops_the_local_backend`
+///   写区外的 `backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend`
 ///   逐条要求退出臂**体内**恰好一处 `.stop()`、恰好一处 `kill_on_exit(`、策略在前、
 ///   中间那个 `if` 判的就是策略绑定名 ⇒ 抽走它那条判据当场红，
 ///   **而那个文件不在本件登记的 27 项写区里**。
@@ -1473,7 +1480,7 @@ fn the_two_resolution_paths_still_agree_on_the_order() {
 /// 实现只要不接到调用点就是死代码，而那四格照样绿。这一格钉的是**两个落点各自的
 /// 函数体里真的走了那一份**，而且**没有各自留一条裸 `spawn()` 直接放弃的路**。
 ///
-/// 形状照 `sftp.rs::both_daemon_deploy_paths_ask_the_file_itself_not_only_the_marker`
+/// 形状照 `sftp_tests.rs::both_daemon_deploy_paths_ask_the_file_itself_not_only_the_marker`
 /// （`K-W4b` 那一拍也照抄过它）—— **但切函数体那一步复用本文件的 `body_of`，
 /// 不抄第三份切法**：本文件 `block_of` 的头注逐字写着「两种切法迟早在同一段代码上
 /// 给出两个答案」。反向自检因此是**两层**：`body_of` 自带的「窗口有界 + 非空」，
@@ -1653,7 +1660,13 @@ fn a_half_written_owner_record_is_refused_rather_than_guessed() {
 #[test]
 fn every_ignored_test_here_that_spawns_a_real_daemon_demands_private_tmux() {
     const PRIVATE_TMUX: &str = "CCM_E2E_TMUX_SHIM_BIN";
-    let src = include_str!("../../src/bridge/src/local_daemon.rs");
+    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**语料跟着测试搬。**
+    //
+    // 本条数的是「**本模块里**带 `#[ignore]` 的真进程判据」。剖分把本模块的测试段
+    // 整个搬到了 `tests/bridge/local_daemon_tests.rs`（就是本文件），
+    // 而 `src/bridge/src/local_daemon.rs` 今天**一个 `#[test]` 都没有**
+    // ⇒ 老语料切出 1 个块，下面整条在空转（那条 `chunks.len() >= 5` 的反空真按设计响了）。
+    let src = include_str!("local_daemon_tests.rs");
     // 按行切成「一个 `#[test]` 到下一个 `#[test]`」的块。
     // ⚠ **不在语料串上做裸 `split`**（`needle_anchor_registry` 把它判为「匹配单位比事实小」那一族）。
     let mut chunks: Vec<String> = Vec::new();
@@ -2115,7 +2128,7 @@ fn the_one_shim_gate_really_fails_closed() {
 ///    错在把它读成了「所有剥法都分不开」。
 ///
 ///    **`M-c7-D` 那把刀 09-04 在本工作树上重打，两个读数都留下**（`K-R9` `D3`，
-///    语料 = `local_backend.rs::the_local_tmux_frames_really_land_in_the_ledger`）：
+///    语料 = `local_backend_tests.rs::the_local_tmux_frames_really_land_in_the_ledger`）：
 ///    · 旧剥法：monitor `1275 passed / 0 failed` —— **静默假绿，逐字复现**；
 ///    · 新剥法：`every_test_that_starts_the_real_daemon_demands_a_private_tmux` **红**，
 ///      报文逐字点名「走的腿：两条腿都没走（连第二道锁 ② 都没有）」。
@@ -2301,7 +2314,7 @@ fn every_test_that_starts_the_real_daemon_demands_a_private_tmux() {
              rustc 眼里就是条普通跨行块注释）⇒ 这一块掉进剥法的兜底、一个字都不剥\
              ⇒ 「以 `let ` 打头就静默通过」那一格**原样回来**，而那一版的看门判据**还是绿的**。\
              实测于 `4eb271f`：本条判「合规」，全量 monitor `1278 passed; 0 failed`。\n      \
-             〔`K-R9` `D3` 两个读数：同一把刀（`local_backend.rs::the_local_tmux_frames_really_land_in_the_ledger`）\
+             〔`K-R9` `D3` 两个读数：同一把刀（`local_backend_tests.rs::the_local_tmux_frames_really_land_in_the_ledger`）\
              旧剥法 monitor `1275 passed / 0 failed`；新剥法本条当场红。\
              ⚠ 那个 1275 量于上一拍的旧基点，**别当今天的分母**（今天 monitor 那个包是 1287 条）。〕\n      \
              ★★★ **09-04 `K-R25`：上面那一格关上了 —— 关它的是「把两把尺子的单位对齐」。**\
@@ -2335,14 +2348,24 @@ fn every_test_that_starts_the_real_daemon_demands_a_private_tmux() {
              （**第三道锁 ③ · ㈢ 处数**）—— 起进程那一跳后写的赢，\
              排在 `sb.envs()` 之后的那条会把 shim 整个盖掉。委托方本体里这个形状应当**0 处**。\n      \
              ⚠ 判的是形状不是语义（同上：`\"PATH\"` 后面紧跟方法调用；纯读不算）";
+    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**两个语料都跟着测试搬。**
+    //
+    // 本条的人群是「**起真 daemon 的测试**」，而测试段剖分之后整个住进了 `tests/`：
+    // `local_daemon.rs` → `tests/bridge/local_daemon_tests.rs`（本文件）
+    // `backend/control/local_backend.rs` → `tests/bridge/backend/control/local_backend_tests.rs`
+    // 两份生产文件今天**一个 `#[test]` 都没有** ⇒ 老语料一共切出 2 个块，
+    // 下面整条在空转（那条 `total_chunks >= 40` 的反空真按设计响了）。
+    // ⚠ 第一格的标签也跟着改成 `_tests.rs` —— 下面那张「必须在人群里」的名单是
+    // `文件.rs::符号` 形的**住址**，而 `structural_scan::every_symbol_address_in_the_sources_still_resolves`
+    // 会逐条核它指的符号今天住哪儿。
     let files: [(&str, &str); 2] = [
         (
-            "local_daemon.rs",
-            include_str!("../../src/bridge/src/local_daemon.rs"),
+            "local_daemon_tests.rs",
+            include_str!("local_daemon_tests.rs"),
         ),
         (
-            "backend/control/local_backend.rs",
-            include_str!("../../src/bridge/src/backend/control/local_backend.rs"),
+            "backend/control/local_backend_tests.rs",
+            include_str!("backend/control/local_backend_tests.rs"),
         ),
     ];
 
@@ -2375,7 +2398,7 @@ fn every_test_that_starts_the_real_daemon_demands_a_private_tmux() {
     //
     // ⚠ 切法本身收口成共享原语 `guard_core::test_attr_chunks`（E3：一个事实一个权威源）——
     //   这里原来是一份**私有副本**，而姊妹守卫
-    //   `local_backend.rs::every_real_daemon_e2e_demands_a_private_tmux_dir` 里还有第二份
+    //   `local_backend_tests.rs::every_real_daemon_e2e_demands_a_private_tmux_dir` 里还有第二份
     //   （**那个文件不在本拍写区，一个字没动，已走上报口**：它今天仍然「先切块再剥」）。
     // ⚠⚠ **刻意写成 `Vec::new()` ＋ `push`，不写 `files.iter().map(..).collect()`**
     //   〔09-04 现打，两趟门禁读数〕：`needle_anchor_registry` 那条递减棘轮的语料变量集
@@ -2715,13 +2738,15 @@ fn every_test_that_starts_the_real_daemon_demands_a_private_tmux() {
     //    ⚠ 这是**地板不是等号**：新写一条起真 daemon 的测试会自动进人群、自动被要求合规。
     //      地板只挡「已知的那几条**静默掉出人群**」（改名 / 换来历 / 被删）。
     let names: Vec<&str> = population.iter().map(|(n, _, _, _)| n.as_str()).collect();
+    // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕住址跟着符号搬：这六条测试今天
+    //    逐条住在 `_tests.rs` 里（符号一个都没少、也没改名，只是换了文件）。
     for must in [
-        "local_daemon.rs::the_local_daemon_can_be_stopped_and_started_again",
-        "local_daemon.rs::e2e_a_second_host_adopts_the_running_daemon_instead_of_starting_a_second_one",
-        "local_daemon.rs::e2e_a_detached_daemon_that_dies_leaves_no_zombie",
-        "backend/control/local_backend.rs::the_local_tmux_frames_really_land_in_the_ledger",
-        "backend/control/local_backend.rs::the_local_daemon_really_registers_an_inbound_client",
-        "backend/control/local_backend.rs::e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed",
+        "local_daemon_tests.rs::the_local_daemon_can_be_stopped_and_started_again",
+        "local_daemon_tests.rs::e2e_a_second_host_adopts_the_running_daemon_instead_of_starting_a_second_one",
+        "local_daemon_tests.rs::e2e_a_detached_daemon_that_dies_leaves_no_zombie",
+        "backend/control/local_backend_tests.rs::the_local_tmux_frames_really_land_in_the_ledger",
+        "backend/control/local_backend_tests.rs::the_local_daemon_really_registers_an_inbound_client",
+        "backend/control/local_backend_tests.rs::e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed",
     ] {
         assert!(
             names.contains(&must),
@@ -2772,9 +2797,9 @@ fn every_test_that_starts_the_real_daemon_demands_a_private_tmux() {
     //   而上一版在**原文**里找，注释里的一句 `fn demand() -> Self {` 就能把窗口带偏。
     let me: &str = stripped
         .iter()
-        .find(|(who, _)| *who == "local_daemon.rs")
+        .find(|(who, _)| *who == "local_daemon_tests.rs")
         .map(|(_, s)| s.as_str())
-        .expect("`local_daemon.rs` 不在语料里 —— 上面那张 `files` 表被改坏了");
+        .expect("`local_daemon_tests.rs` 不在语料里 —— 上面那张 `files` 表被改坏了");
     let at = me
         .find(concat!("fn dem", "and() -> Self {"))
         .expect("`E2eSandbox::demand()` 不在了 —— 委托那条腿没了，来改本条");
@@ -3463,8 +3488,17 @@ fn the_listen_token_file_is_pinned_cell_by_cell() {
 /// `min_blocks` 挡「切法坏了」。棘轮纪律：只许升不许降。
 #[test]
 fn no_monitor_file_falls_back_to_leaving_block_comments_in() {
+    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**两棵树一起喂，地板一格不动。**
+    //
+    // monitor 这半边今天住两处：生产段 `src/bridge/src`、测试段 `<repo>/tests/bridge`。
+    // 而本条第二个单位（`#[test]` 块）**整个住在测试段** ⇒ 只喂 `src/` 那一棵的话
+    // 块数从 1 200 掉到 412，「没有文件走兜底」这个结论就是在三分之一的语料上得出的。
+    // ⚠ 两条地板**都没往下拧**（100 / 1200 逐字照旧）—— 变的是分母那一侧够不够得到。
     guard_core::assert_block_comment_model_holds(
-        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &[
+            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &crate::guard_support::tests_root().join("bridge"),
+        ],
         100,
         1200,
     );

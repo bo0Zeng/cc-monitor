@@ -1,6 +1,6 @@
 /// P1：**`REFUSE_TAG` 是跨语言双写点，两侧必须逐字一致**。
 ///
-/// 照仓里现成的形状写（`launch.rs::the_posix_marker_is_the_one_the_frontend_matches_on`）——
+/// 照仓里现成的形状写（`launch_tests.rs::the_posix_marker_is_the_one_the_frontend_matches_on`）——
 /// `include_str!` 读前端那份，把字面量抠出来对拍。改一边不改另一边 ⇒ 红。
 ///
 /// 为什么非钉不可：前端靠这个标区分「载荷渲染被拒」（不许回落）与「IPC 异常」（可回落）。
@@ -217,12 +217,23 @@ fn the_payload_cd_prefix_is_assembled_in_exactly_one_place() {
     let frag = format!("cd {}{} && ", "{}", "");
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let mut sites: Vec<String> = Vec::new();
-    let mut files: Vec<(std::path::PathBuf, String)> = guard_core::scan_tree!(&root, &["rs"]);
-    // ⚠ `scan_tree!` 摘除调用者自己，而唯一那处就在本文件里（F60 栽过一次）。
-    files.push((
-        std::path::PathBuf::from("payload.rs"),
-        include_str!("../../../../src/bridge/src/backend/control/payload.rs").to_string(),
-    ));
+    // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**这里不再有任何自摘，也不需要补回**。
+    //
+    // 上一版：`scan_tree!` 靠 `file!()` 摘掉调用者，而当年调用者**就是** `payload.rs`
+    // 本身（判据住在它的 `#[cfg(test)]` 段里）⇒ 被测那一份会被摘走 ⇒ 底下手工 `push`
+    // 一份补回来。剖分之后判据搬来 `tests/`，`payload.rs` 走普通遍历**本来就进人群**，
+    // 那一份手工补回的于是**变成重复** —— 读数逐字「出现了 2 处，应恰好 1」，
+    // 两行一模一样。⇒ 删掉补回那一份。
+    //
+    // ⚠ 走 `scan_tree_excluding(.., &[])` 而不是 `scan_tree!`：**明写「一份都不排除」**。
+    // `scan_tree!` 在这里已经是空转的（`file!()` 给的折返路径后缀比恒不命中），
+    // 而一个空转的自摘和一个真在工作的自摘**长得一模一样** —— 那正是条 73 禁的那一形。
+    let files: Vec<(std::path::PathBuf, String)> =
+        guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    assert!(
+        files.iter().any(|(p, _)| p.ends_with("payload.rs")),
+        "人群里没有 `payload.rs` —— 唯一那处拼装就住在它里面，本条此刻在空转"
+    );
     for (path, src) in files {
         let name = path
             .file_name()

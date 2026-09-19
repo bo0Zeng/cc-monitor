@@ -254,7 +254,7 @@ fn liveness_has_no_oracle_here_so_it_says_so_instead_of_saying_false() {
 ///
 /// # 为什么这一条与 `history.rs` 那条不是同一条
 ///
-/// `history.rs::the_three_counts_can_say_i_do_not_know` 判的是**类型装不装得下**
+/// `history_tests.rs::the_three_counts_can_say_i_do_not_know` 判的是**类型装不装得下**
 /// 第三态（它直接造一个 `HistoryProject`）；本条判的是**这条路会不会在中途把它压掉** ——
 /// 09-12 那半修就正是「类型分得开、过线那一步自己丢掉」。两条缺一条都有一整类漏网。
 ///
@@ -444,21 +444,34 @@ fn every_unknown_can_say_why() {
 /// ⚠ 本条同时是 `KR92D2` 的**性质**那一半：逐字**不钉那一行的行号**（挪个位置就瞎），
 /// 钉的是「这条路上不存在写死的活状态」。
 ///
-/// 对照组自带（F23 那一族本区已犯过三次）：needle 在未剥测试段里比生产段多，
-/// 剥不掉就说明 `production_source` 没在起作用、下面在读自己。
+/// 〔搬树 2026-09-18 订正〕**原文（已作废）**：「对照组自带：needle 在未剥测试段里比
+/// 生产段多，剥不掉就说明 `production_source` 没在起作用、下面在读自己。」
+/// 那条对照组的前提是判据与被测代码同住一份文件 —— 剖分之后本条住 `tests/bridge/`、
+/// 语料住 `src/bridge/src/`，`raw` 与 `prod` 逐字节相同，对照组恒假（`16 §4.1`）。
+/// 今天那道保障是**结构性**的，外加体内那条 `assert_no_test_code` 钉住「测试别搬回去」。
 #[test]
 fn there_is_no_place_left_that_flattens_unknown_into_a_wire_value() {
     let raw = include_str!("../../src/bridge/src/remote_history.rs");
     let prod = guard_core::production_source(raw);
-    // 对照组：这个名字只住在测试段里（`K-R92` 的假真相源），生产段必须一个都没有。
-    const ONLY_IN_TESTS: &str = "OracleBlindTo";
+    // 🔴 〔搬树 2026-09-18 · `设计/99 §2.5 P9` / `16 §4.1`〕**对照组退役，换成它今天真正的那道保障。**
+    //
+    // 上一版那条对照组的前提是「**判据与被测代码同住一份文件**」：needle 在未剥的源码里
+    // 有两处（生产一处 ＋ 本测试的字面量一处），所以「剥完之后变少 / 归零」能证明
+    // `production_source` 真在起作用。剖分之后那个前提**不成立了** ——
+    // 本条住 `tests/bridge/`，语料是 `src/bridge/src/remote_history.rs`，
+    // 两份文件物理不同 ⇒ `raw` 与 `prod` 逐字节相同，对照组**恒假**。
+    // 这正是 `16 §4.1` 早就预言的那一格：`production_source` 在 `src/` 上是恒等变换。
+    //
+    // ⇒ 不是删掉一条检查，是把它换成**今天真的成立、而且仍然会红**的那一条：
+    //   ① 语料真的读进来了（空串会让下面几条一起「找不到」—— 假红与假绿同形）；
+    //   ② 被测那份文件里**一个 `#[test]` 都没有** —— 那就是「判据不会读到自己」
+    //      在剖分之后的**结构性**保障。有人把测试搬回 `remote_history.rs`，这一格当场红。
     assert!(
-        raw.matches(ONLY_IN_TESTS).count() > 0 && prod.matches(ONLY_IN_TESTS).count() == 0,
-        "★ 对照组：剥掉测试段后 needle 应当归零（现打 raw {} / prod {}）。\n\
-             没归零 ⇒ `production_source` 没在起作用，下面那几条是在读自己、恒绿。",
-        raw.matches(ONLY_IN_TESTS).count(),
-        prod.matches(ONLY_IN_TESTS).count()
+        raw.len() > 5_000,
+        "只读到 {} 字节的 `remote_history.rs` —— 本条在空转",
+        raw.len()
     );
+    guard_core::assert_no_test_code("remote_history.rs", raw);
     // ⚠ **再剥一层行注释**：`production_source` 剥的是 `#[cfg(test)]` 段，注释照留。
     // 而本条要判的是「**代码里**有没有把这四格写成常量」——
     // 讲这段历史的**散文里必然出现那几个字面量**（上面 `Counted` 的头注就是），

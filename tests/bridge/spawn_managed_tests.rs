@@ -93,7 +93,22 @@ fn the_spawn_verbs_and_platform_primitives_live_only_here() {
     /// **代价也写下来**：一个既造 `Command`、又在别处对别的类型调 `.output()` 的文件
     /// 会被误判 —— 那时该做的是把那一处改名/拆文件，不是把这两个词删掉。
     const VERBS_IF_BUILDS_A_COMMAND: &[&str] = &[".output()", ".status()"];
-    let files = guard_core::scan_tree!(&crate::guard_support::crate_src_root(), &["rs"]);
+    // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**排掉的是谁、为什么 —— 明写。**
+    //
+    // 排掉 `src/bridge/src/spawn_managed.rs`：它**就是**那个唯一出口，
+    // 那四个动词（`.spawn()` / `.creation_flags(` / `.process_group(` / `.kill_on_drop(`）
+    // 按设计只许出现在它里面。人群是「**绕开**这个出口的地方」，本来就不含它自己。
+    //
+    // 上一版靠 `scan_tree!` 的 `file!()` 自摘 —— 当年本条住在 `spawn_managed.rs` 的
+    // `#[cfg(test)]` 段里，「摘掉调用者」恰好等于「摘掉那个唯一出口」。剖分之后
+    // `file!()` 指向本测试文件，那一刀**整个落空** ⇒ 唯一出口自己被报成违例，
+    // 而报文教人「把 `cmd.spawn()` 换成 `spawn_managed_cmd(..)`」——**在它自己的实现里**。
+    // ⇒ 换成明写的排除（摘不到它，`scan_tree_excluding` 当场红）。
+    let files = guard_core::scan_tree_excluding(
+        &crate::guard_support::crate_src_root(),
+        &["rs"],
+        &["src/bridge/src/spawn_managed.rs"],
+    );
     let mut offenders: Vec<String> = Vec::new();
     let mut scanned = 0usize;
     for (path, raw) in &files {

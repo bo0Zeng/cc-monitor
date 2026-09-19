@@ -162,7 +162,7 @@ fn no_two_test_attributes_land_on_the_same_function() {
 ///    本条自己守的只剩「这棵树剥得干净 ＋ 文件数没缩水」。
 ///
 /// 🔴 **这一段在两棵树里各住一份，逐字必须相同**
-/// （`src/backend/guard_support.rs` ＋ `src/bridge/src/structural_scan.rs`）——
+/// （`src/backend/guard_support.rs` ＋ `tests/bridge/structural_scan_tests.rs`）——
 /// `K-R110` 交回时点名过这个形状：**两个住址、同一句话**，改一处漏一处，
 /// 下一次还是一处真一处假。钉着它的是
 /// `guard_support.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
@@ -256,10 +256,24 @@ fn detour_top_level(line: &str) -> bool {
 ///
 /// 空行与整行注释跳过（属性与它修饰的 item 之间夹一行 `//` 是合法 Rust，
 /// 跳过它是**只严不松**）；遇到缩进行就停 —— 那说明这个属性挂在别人的块里。
+///
+/// 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**同一个 item 上的其它属性也要跳过**。
+/// 剖分之后生产段里那 111 处测试模块声明长这样：
+///
+/// ```ignore
+/// #[cfg(test)]
+/// #[path = "../../../tests/bridge/X_tests.rs"]
+/// mod tests;
+/// ```
+///
+/// 属性是**堆在同一个 item 上**的，而这里原来一遇到 `#[path = …]` 就把它当成「下一个 item」
+/// 收走 ⇒ `mod tests;` 再也认不出来：`cfg_test_module_names` 从 250 掉到 165，
+/// 而掉下去之后 [`cfg_test_reexport_sites`] 对那 111 份文件**恒真地空**（静默空真）。
+/// ⚠ 跳属性**只严不松**：属性只可能修饰它下面那个 item，跳过去只让人群**变大**。
 fn detour_next_item<'a>(lines: &[&'a str], from: usize) -> Option<(usize, &'a str)> {
     for (k, line) in lines.iter().enumerate().skip(from + 1) {
         let t = line.trim();
-        if t.is_empty() || t.starts_with("//") {
+        if t.is_empty() || t.starts_with("//") || t.starts_with("#[") {
             continue;
         }
         if !detour_top_level(line) {
@@ -706,11 +720,13 @@ fn every_comment_stripping_transformer_is_registered() {
             "**别的注释语法**：语料是 shell 脚本（`tests/e2e/*.sh`），注释是 `#` ——                  共享原语 `strip_comment_lines` 只认 `//` / `*` / `/*`（Rust/JS），对 `#` 一行都剥不掉。                 ⚠ 语义上刻意只剥**整行注释**、不碰行尾注释（shell 里 `#` 可以出现在字符串中间，                 按 marker 截断会误伤 `pgrep` 模式里的 `#`）。要收口的正确做法是给共享原语加一个                 「注释前缀」参数，那是另一件事。",
         ),
         (
-            "cc_bus.rs::non_test_code",
+            // 〔搬树 2026-09-18 · `16 §6.2` C 类〕符号还在、一个字没改，只是搬了家。
+            "cc_bus_tests.rs::non_test_code",
             "本地剥法：只服务本文件自己的零命中守卫，语料是本文件源码。⚠ 与共享原语重复，登记为待收口",
         ),
         (
-            "hooks_diag.rs::non_test_code",
+            // 〔搬树 2026-09-18 · `16 §6.2` C 类〕同上：随测试段搬去 `tests/bridge/`。
+            "hooks_diag_tests.rs::non_test_code",
             "同 cc_bus：本文件自用。⚠ 与共享原语重复，登记为待收口",
         ),
         (
@@ -726,7 +742,8 @@ fn every_comment_stripping_transformer_is_registered() {
             "session_name_registry.rs::production",
             "**多语言**剥法（`.rs` 走共享原语，`.ts`/shell 各有注释语法）——共享原语只管 Rust",
         ),
-        ("ccm_invocation.rs::refusal_variants", "不是剥法：从 `enum Refusal` 的定义里抽变体名（跳过 doc 行只是为了不把注释当变体）"),
+        // 〔搬树 2026-09-18 · `16 §6.2` C 类〕随测试段搬去 `tests/bridge/backend/control/`。
+        ("ccm_invocation_tests.rs::refusal_variants", "不是剥法：从 `enum Refusal` 的定义里抽变体名（跳过 doc 行只是为了不把注释当变体）"),
         ("agent_profile_parity.rs::rows", "不是剥法：解析对拍表的行"),
         ("gate2_parity.rs::rows", "不是剥法：解析 golden 表的行"),
         ("gate.rs::golden_rows", "不是剥法：daemon 侧解析同一张 golden 表"),
@@ -757,7 +774,9 @@ fn every_comment_stripping_transformer_is_registered() {
         // （一串 `.lines().filter().map()`），本条看不见；把它抽成具名函数给两处共用时，
         // 本条立刻说「你有第二份剥法」。⇒ 收口的动作反而暴露了此前没被登记的欠账。
         (
-            "launch_wire.rs::production_ts",
+            // 〔搬树 2026-09-18 · `16 §6.2` C 类〕随测试段搬去
+            // `tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs`。
+            "launch_wire_f07_main_path_tests.rs::production_ts",
             "**整行那半已经是共享原语**（本函数转调 `strip_comment_lines`），多出来的只有\
                  **行尾 `//` 截断** —— 共享原语刻意不剥行尾（会砍坏 `\"http:` + `//host\"`），\
                  而本组判据必须剥（F10 逐字：行尾注释里的提及不算数）。\
@@ -768,7 +787,21 @@ fn every_comment_stripping_transformer_is_registered() {
 
     let root = crate::guard_support::repo_root();
     let mut found: Vec<String> = Vec::new();
-    for sub in ["src/bridge/src", "src/bridge/crates", "src/backend"] {
+    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**补上 `"tests"` 这一棵。**
+    //
+    // 本条头注逐字写着「私有剥法一律住在测试模块里」—— 而测试模块剖分之后整个住进了
+    // `<repo>/tests/`。上一版那三棵根**一份都够不着它们** ⇒ 四份剥法
+    // （`cc_bus` / `hooks_diag` 的 `non_test_code` · `ccm_invocation` 的 `refusal_variants` ·
+    // `launch_wire` 的 `production_ts`）整批掉出人群，而「没有新增第二份剥法」这个结论
+    // 就是在一个缺了一大块的分母上得出的。**少扫不会红，只会零命中地绿。**
+    // ⚠ 四棵根**互不包含**（`src/bridge/src` · `src/bridge/crates` 是并列的两棵，
+    //   `src/backend` 与 `tests` 各自独立）—— 那是 `§5.4b` 纪律 1 要的那一问。
+    for sub in [
+        "src/bridge/src",
+        "src/bridge/crates",
+        "src/backend",
+        "tests",
+    ] {
         for (f, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
             let file = f
                 .file_name()
@@ -868,7 +901,9 @@ fn every_comment_stripping_transformer_is_registered() {
 fn comment_stripping_has_exactly_one_shared_implementation() {
     const REGISTERED: &[(&str, &str)] = &[
         (
-            "profile_installer.rs",
+            // 〔搬树 2026-09-18〕`profile_installer.rs` → 它那条握手文档守卫搬去了
+            // `tests/bridge/profile_installer_handshake_doc_guard.rs`，剥法随判据一起走。
+            "profile_installer_handshake_doc_guard.rs",
             "按 marker 截断整行（能吃行尾注释），语料是自己生成的 shell/rc 片段、无 `://` 字面量风险",
         ),
         (
@@ -877,22 +912,31 @@ fn comment_stripping_has_exactly_one_shared_implementation() {
         ),
     ];
 
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**两棵树：生产段 ＋ monitor 的测试段。**
+    //
+    // 同上一条的理由：本条头注逐字「私有剥法一律住在测试模块里」，而测试模块搬去了
+    // `<repo>/tests/bridge/`。只扫 `src/bridge/src` 的话连**已登记的那一份**都扫不到 ——
+    // 底下那条抽取器自检按设计响了（它正是为这一形而写的）。
     let mut found: Vec<String> = Vec::new();
-    for (f, raw) in guard_core::scan_tree!(&root, &["rs"]) {
-        // 只看生产段之外也一样：私有剥法一律住在测试模块里，所以扫整份。
-        for l in raw.lines() {
-            let t = l.trim_start();
-            if t.starts_with("fn strip_line_comments")
-                || t.starts_with("fn strip_comments")
-                || t.starts_with("fn without_comments")
-            {
-                found.push(
-                    f.file_name()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("?")
-                        .to_string(),
-                );
+    for root in [
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        crate::guard_support::tests_root().join("bridge"),
+    ] {
+        for (f, raw) in guard_core::scan_tree!(&root, &["rs"]) {
+            // 只看生产段之外也一样：私有剥法一律住在测试模块里，所以扫整份。
+            for l in raw.lines() {
+                let t = l.trim_start();
+                if t.starts_with("fn strip_line_comments")
+                    || t.starts_with("fn strip_comments")
+                    || t.starts_with("fn without_comments")
+                {
+                    found.push(
+                        f.file_name()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("?")
+                            .to_string(),
+                    );
+                }
             }
         }
     }
@@ -900,10 +944,13 @@ fn comment_stripping_has_exactly_one_shared_implementation() {
     found.dedup();
 
     // 抽取器自检：连登记在册的那一个都扫不到 ⇒ 遍历或形态坏了，下面的对拍会空绿。
+    // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕点名的住址跟着搬：那份私有剥法
+    //    （`profile_installer` 握手文档那条守卫里的 `fn strip_comments`）今天住
+    //    `tests/bridge/profile_installer_handshake_doc_guard.rs`。**剥法本身一个字没改。**
     assert!(
-        found.contains(&"profile_installer.rs".to_string()),
-        "连 `profile_installer.rs` 里那个已登记的实现都没扫到 —— 遍历或形态坏了，\n\
-             那样「没有新增」这个结论是零命中得来的，不是真的"
+        found.contains(&"profile_installer_handshake_doc_guard.rs".to_string()),
+        "连 `profile_installer_handshake_doc_guard.rs` 里那个已登记的实现都没扫到 —— \n\
+             遍历或形态坏了，那样「没有新增」这个结论是零命中得来的，不是真的。实得：{found:?}"
     );
 
     let extra: Vec<&String> = found
@@ -1539,23 +1586,37 @@ fn line_number_addresses_stay_in_range_and_never_grow() {
     const INVENTORY: &[(&str, &str, usize)] = &[
         ("atomic_replace_registry.rs", "fenced_block.rs", 5),
         ("bind.rs", "bind.rs", 225),
-        ("bind.rs", "bind.rs", 319),
+        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
+        ("bind_tests.rs", "bind.rs", 319),
         ("bridge.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
         ("data_paths.rs", "tauri-2.11.2/src/ipc/mod.rs", 181),
         ("inbound_client.rs", "bridge.rs", 95),
-        ("launch.rs", "launch.rs", 122),
+        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
+        ("launch_tests.rs", "launch.rs", 122),
         ("lib.rs", "ccm_cli_contract.rs", 181),
         ("lib.rs", "main.rs", 26),
         ("lib.rs", "russh-sftp-2.3.0/src/protocol/file_attrs.rs", 29),
         ("lib.rs", "sftp.rs", 141),
-        ("local_backend.rs", "structural_scan.rs", 425),
+        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
+        ("local_backend_tests.rs", "structural_scan.rs", 425),
+        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
         ("local_daemon.rs", "launch.rs", 196),
+        ("local_daemon_tests.rs", "launch.rs", 196),
         ("local_daemon.rs", "launch.rs", 198),
-        ("local_daemon.rs", "local_backend.rs", 336),
-        ("local_daemon.rs", "structural_scan.rs", 425),
-        ("local_daemon.rs", "structural_scan.rs", 508),
+        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
+        ("local_daemon_tests.rs", "local_backend.rs", 336),
+        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
+        ("local_daemon_tests.rs", "structural_scan.rs", 425),
+        // 〔搬树 2026-09-18〕引用方随测试段搬家，被引地址一个字没变。
+        ("local_daemon_tests.rs", "structural_scan.rs", 508),
         ("panorama.rs", "engine.rs", 42),
-        ("parity_ledger.rs", "config_surface.rs", 1062),
+        // 🔴 〔搬树 2026-09-18〕**这一行删掉了**：`config_surface.rs` 的测试段搬走之后
+        //    那份文件只剩 853 行，1062 行**越界**了（本条第 ① 格当场逮住）。
+        //    按本条头注唯一那条改法**改成了符号地址**
+        //    （`config_surface_tests.rs::either_host_keeps_the_glob_count`，
+        //    那正是原先第 1062 行那段话讲的东西）⇒ 从「判不了真伪」变成
+        //    `every_symbol_address_in_the_sources_still_resolves` **真的判得了**。
+        //    ⚠ 没有「换一个今天对的行号」—— 那是本条头注逐字禁的那一手。
         ("parity_ledger.rs", "sftp.rs", 141),
         ("ratchet_guard.rs", "control/tmux_hook.rs", 6),
         ("ratchet_guard.rs", "control/tmux_hook.rs", 102),
@@ -1793,11 +1854,23 @@ fn dead_name_rel(root: &std::path::Path, p: &std::path::Path) -> String {
 /// · **不按扩展名筛**（`scan_tree!` 空列表那一档）：代码侧越宽假红越少，
 ///   而 `.json` / `.tsv` / 无扩展名的脚本都可能是一个名字真正的家。
 ///
-/// ⚠ `scan_tree!` **按构造摘掉调用者自己** ⇒ 本文件不在语料里。这一刀**非落不可**：
-/// 下面 `INVENTORY` 里每个死名都是一个**字符串字面量 = 代码**，不摘的话
-/// 凡是登记过的名字全都「在代码里出现过」，**人群当场塌成空集**。
+/// ⚠ **本文件不在语料里。这一刀非落不可**：下面 `INVENTORY` 里每个死名都是一个
+/// **字符串字面量 = 代码**，不摘的话凡是登记过的名字全都「在代码里出现过」，
+/// **人群当场塌成空集**。
 /// 代价如实写明：**本文件自己的散文没人看** —— 那是 `ratchet_guard.rs` 头注那条纪律
 /// 「判据不许与被扫文本同住一个文件」的另一面。**射程外，不假装覆盖了。**
+///
+/// # 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕这一刀**从 `file!()` 换成明写的排除**
+///
+/// 上一版靠 `scan_tree!` 的自摘落这一刀。剖分之后本文件由 `#[path]` 引进来，
+/// `file!()` 给的是 `src/../../../tests/bridge/structural_scan_tests.rs` ——
+/// **带 `..` 的折返路径**，而草垛是规范化过的绝对路径 ⇒ 后缀比恒不命中
+/// ⇒ **那一刀整个落空**，本文件连同它那张 `INVENTORY` 一起进了语料。
+/// 读数：「只活在散文里的名字」从 84 处塌到 **6 处**。
+/// ⚠ 注意它塌的方向：这次是**人群变小**、被反空真逮住了；
+/// 反过来那一半（判据在自己的登记表里找到自己 ⇒ 恒绿）同样存在，而且不会红。
+/// ⇒ 换成 [`guard_core::scan_tree_excluding`]：排除**明写出来**，
+/// 而且**摘不到就当场红**（`file!()` 那条路从来没有这一格）。
 fn dead_name_corpus() -> Vec<(String, String)> {
     let root = addr_repo_root();
     let mut out: Vec<(String, String)> = Vec::new();
@@ -1819,7 +1892,17 @@ fn dead_name_corpus() -> Vec<(String, String)> {
         // 收 `"tests"` 一并把前端测试与 `tests/e2e/` 都拿回来。
         "tests",
     ] {
-        for (p, src) in guard_core::scan_tree!(&root.join(sub), &[] as &[&str]) {
+        // 🔴 **排掉的是谁、为什么**（`设计/99` 条 73 要的那一句）：
+        //    排掉 `tests/bridge/structural_scan_tests.rs` —— **本文件**。
+        //    理由见上面头注：它那张 `INVENTORY` 把每个死名都写成了字符串字面量，
+        //    收进来就等于宣布「这些名字都还活着」，人群当场塌成空集。
+        //    ⚠ 只对 `"tests"` 那一棵给名单：本文件不在 `"src"` 下面，而
+        //    `scan_tree_excluding` **摘不到就红** —— 给错根会当场说话，不会安静地空转。
+        let excluded: &[&str] = match sub {
+            "tests" => &["tests/bridge/structural_scan_tests.rs"],
+            _ => &[],
+        };
+        for (p, src) in guard_core::scan_tree_excluding(&root.join(sub), &[] as &[&str], excluded) {
             let rel = dead_name_rel(&root, &p);
             // 🔴 〔搬树 2026-09-18〕**`evidence/` 必须排掉** —— 本函数头注逐字写着
             // 它「刻意不收」，理由是「那是量具与记录，散文里逐字写着一堆死名；
@@ -1851,6 +1934,36 @@ fn dead_name_corpus() -> Vec<(String, String)> {
     let br = root.join("src/bridge/build.rs");
     let br_src = std::fs::read_to_string(&br).expect("读不到 src/bridge/build.rs");
     out.push((dead_name_rel(&root, &br), br_src));
+    // 🔴 〔搬树 2026-09-18〕**本文件的「声明」那一半要补回来，「登记表」与「散文」那两半不补。**
+    //
+    // 上面那一刀摘的是**整份文件**，而它其实只该摘掉两样东西：
+    // ① `INVENTORY` / `TOMBSTONED` 里那些**死名字符串字面量**（不摘 ⇒ 人群塌成空集）；
+    // ② 本文件自己的散文（头注逐字写着「射程外，不假装覆盖了」）。
+    //
+    // 剖分之前这两样与本文件那几十条 `fn` 声明**同住 `structural_scan.rs`**，
+    // 一起被摘掉也就一起看不见。剖分把**判据**搬来了 `tests/`，而**散文留在原处**
+    // ⇒ 摘掉整份文件之后，`structural_scan.rs` / `local_daemon_tests.rs` / …
+    // 那十几句「由 `every_symbol_address_in_the_sources_still_resolves` 钉着」
+    // 会被读成「点名了一个代码里根本不存在的名字」—— 而那些判据**就在盘上、还在跑**。
+    // 把它们登记进 `INVENTORY` 才是真的说谎（那张表逐字是「代码里根本不存在的名字」）。
+    //
+    // ⇒ 只把本文件的**不含字面量、不含注释**的那些行补回来：`fn` 声明在里面，
+    //   死名字面量与散文都不在。方向是安全的 —— 这一补只可能让名字**更像活的**，
+    //   而补进来的全是本文件真有的声明。
+    let me_rel = "tests/bridge/structural_scan_tests.rs";
+    let me_decls: String = include_str!("structural_scan_tests.rs")
+        .lines()
+        .filter(|l| !l.contains('"') && !l.contains("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    assert!(
+        me_decls.contains(concat!(
+            "fn every_dead_name_named_in_the_",
+            "prose_is_declared_dead"
+        )),
+        "本文件的声明那一半没补进来 —— 那十几条真实存在的判据会被读成死名"
+    );
+    out.push((me_rel.to_string(), me_decls));
     // ★ 抽取器自检：语料面塌了 ⇒ 下面整条零命中地绿。
     assert!(
         out.len() >= 550,
@@ -2097,11 +2210,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     const INVENTORY: &[(&str, &str, usize)] = &[
         ("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1),
         ("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1),
-        (
-            "src/doc/INVARIANTS.md",
-            "every_monitor_file_strips_clean",
-            1,
-        ),
         ("src/doc/INVARIANTS.md", "path_shell_safe", 1),
         ("src/doc/INVARIANTS.md", "snapshot_announced_by_origin", 1),
         ("src/doc/STATE-MATRIX.md", "read_session_jsonl", 1),
@@ -2138,11 +2246,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         (
             "src/backend/observe/accounts_query.rs",
-            "every_comment_stripping_transformer_is_registered",
-            1,
-        ),
-        (
-            "src/backend/observe/accounts_query.rs",
             "path_shell_safe",
             1,
         ),
@@ -2150,21 +2253,6 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         (
             "tests/backend/protocol_doc_guard.rs",
             "hello_commands_match_the_dispatch_table",
-            1,
-        ),
-        // 🔴 `K-R77` 09-12 加这一行 —— **它不是一处「判不了真伪」，是本条的一个结构性盲区**，
-        // 与下面 `guard-core/src/lib.rs` 那两行、`src/doc/INVARIANTS.md` 那一行**同一形**：
-        // 名字住在**本文件**里，而 `dead_name_corpus` 按构造摘掉调用者自己
-        // ⇒ 凡是别处散文点名住在这里的判据，本条一律读成「代码里根本不存在」。
-        // ⚠ 那句话**真的有人核**：它在 `readonly_guard.rs` 里写成
-        // `structural_scan·rs::<判据名>` 的**住址形**，由本文件的
-        // `every_symbol_address_in_the_sources_still_resolves` 真的判得了（那条的语料
-        // 用 `include_str!` 把本文件补了回来）。⇒ 这一行买的是「本条别再报这处假阳」，
-        // **不是**「这句话没人守」。根因怎么治（要不要把本文件的**声明**单独补进 `in_code`）
-        // 归 PM，本件不自批。
-        (
-            "tests/backend/readonly_guard.rs",
-            "the_cfg_test_reexport_detour_stays_extinct",
             1,
         ),
         ("src/backend/relay/http1.rs", "handle_alloc_error", 1),
@@ -2194,18 +2282,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/bridge/crates/guard-core/src/lib.rs",
-            "every_monitor_file_strips_clean",
-            2,
-        ),
-        (
             "src/bridge/src/backend/control/launch_wire.rs",
             "local_is_posix",
-            1,
-        ),
-        (
-            "src/bridge/src/backend/control/local_backend.rs",
-            "every_position_comparison_over_source_pins_and_bounds_its_anchors",
             1,
         ),
         (
@@ -2245,17 +2323,20 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         ("src/bridge/src/codex_record.rs", "token_usage_fields", 1),
         (
-            "src/bridge/src/config_surface.rs",
+            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/config_surface_tests.rs",
             "locality_is_derivable_from_destination_today",
             1,
         ),
         (
-            "src/bridge/src/creds_store.rs",
+            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/creds_store_tests.rs",
             "a_temp_file_is_born_owner_only",
             1,
         ),
         (
-            "src/bridge/src/creds_store.rs",
+            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/creds_store_tests.rs",
             "the_ui_hands_the_write_command_a_config_dir_not_a_name",
             1,
         ),
@@ -2266,25 +2347,22 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             2,
         ),
         ("src/bridge/src/history.rs", "read_session_jsonl", 1),
-        ("src/bridge/src/history.rs", "relay_key_for", 1),
+        ("tests/bridge/history_tests.rs", "relay_key_for", 1),
         (
-            "src/bridge/src/history.rs",
+            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/history_tests.rs",
             "the_two_inputs_at_the_call_site_are_still_the_two_take_points",
             1,
         ),
         ("src/bridge/src/history.rs", "up_to_message_id", 1),
-        (
-            "src/bridge/src/local_daemon.rs",
-            "every_comment_stripping_transformer_is_registered",
-            1,
-        ),
         ("src/bridge/src/local_daemon.rs", "futex_do_wait", 1),
         (
-            "src/bridge/src/local_daemon.rs",
+            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/local_daemon_tests.rs",
             "the_two_inputs_at_the_call_site_are_still_the_two_take_points",
             1,
         ),
-        ("src/bridge/src/panorama.rs", "guard_doc_rel", 1),
+        ("tests/bridge/panorama_tests.rs", "guard_doc_rel", 1),
         ("src/bridge/src/panorama.rs", "symbols_in_file", 3),
         (
             "src/bridge/src/panorama_seam_registry.rs",
@@ -2292,7 +2370,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/bridge/src/parser.rs",
+            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/parser_tests.rs",
             "unknown_type_falls_through_to_unknown_variant",
             1,
         ),
@@ -2322,12 +2401,14 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/bridge/src/ssh_source.rs",
+            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/ssh_source_write_half_guard.rs",
             "copy_bidirectional_with_sizes",
             1,
         ),
         (
-            "src/bridge/src/ssh_source.rs",
+            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/ssh_source_emits_parity.rs",
             "hello_commands_match_the_dispatch_table",
             1,
         ),
@@ -2338,9 +2419,17 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
+            // 🔴 〔搬树 2026-09-18〕这一行**拆成两行，总数仍是 2**：两处散文原先同住
+            //    `ssh_source.rs`，剖分把其中一处随 `f032` 那组判据搬去了
+            //    `tests/bridge/ssh_source_f032_idle_tests.rs`。**一处都没少。**
+            "tests/bridge/ssh_source_f032_idle_tests.rs",
+            "the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache",
+            1,
+        ),
+        (
             "src/bridge/src/ssh_source.rs",
             "the_local_path_is_safe_only_because_local_sids_never_enter_the_tmux_cache",
-            2,
+            1,
         ),
         (
             "src/bridge/src/tmux.rs",
@@ -2363,7 +2452,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/bridge/src/verified_write.rs",
+            // 〔搬树 2026-09-18〕散文随测试段搬家，处数一格没变。
+            "tests/bridge/verified_write_tests.rs",
             "write_failure_short_circuits_without_rollback",
             1,
         ),
@@ -2398,6 +2488,17 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/bridge/README.md", "drain_complete_lines", 1),
         ("src/bridge/README.md", "exec_on_session", 1),
         ("src/bridge/README.md", "plan_file_read", 1),
+        // 🔴 〔搬树 2026-09-18 · `设计/16 §4.2`〕**这里删掉了 6 行**，逐条点名：
+        //   `INVARIANTS.md`/`guard-core/src/lib.rs`  `every_monitor_file_strips_clean`
+        //   `accounts_query.rs`/`local_daemon.rs`     `every_comment_stripping_transformer_is_registered`
+        //   `tests/backend/readonly_guard.rs`         `the_cfg_test_reexport_detour_stays_extinct`
+        //   `local_backend.rs`  `every_position_comparison_over_source_pins_and_bounds_its_anchors`
+        //
+        //   这六个名字**从来就不是死名** —— 它们是本文件里六条**正在跑的判据**。
+        //   它们当年进这张表，唯一的原因是本条的语料面**按构造摘掉了判据自己那一份**
+        //   ⇒ 连它的 `fn` 声明一起看不见 ⇒ 别处散文点它们就被读成「点了一个不存在的名字」。
+        //   `dead_name_corpus` 这一轮把本文件的**声明那一半**补了回来（登记表字面量与
+        //   本文件自己的散文仍然不收）⇒ 这六行是**被修掉的缺陷**，不是被放过的欠账。
     ];
 
     /// **墓碑登记**：`(仓根相对路径, 名字, 带 [`PROSE_NAME_TOMBSTONE`] 的处数)`。
@@ -2447,11 +2548,17 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/bridge/src/sftp.rs",
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/sftp_tests.rs",
             "ccm_cli_strength_is_at_or_above_baseline",
             1,
         ),
-        ("src/bridge/src/sftp.rs", "pin_t_def", 1),
+        (
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/sftp_tests.rs",
+            "pin_t_def",
+            1,
+        ),
         // 🔴 〔`K-R70` 09-12〕又一形同族的账：那个「见证型布尔」`id_from_manifest`
         //    与守着它的判据一起删了 —— 它见证的是**一份旁挂清单在不在**，而清单是
         //    `release.yml` 从源码常量抠出来写的标签（三个载体恒等 ⇒ 零证据，
@@ -2460,7 +2567,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    ＋ 部署路上无条件跑的 `bytes_carry_build_stamp`。
         //    散文里那一句留着才说得清「为什么换掉它，而不是把它写得更严」。
         (
-            "src/bridge/src/sftp.rs",
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/sftp_tests.rs",
             "the_identity_witness_is_derived_from_the_manifest_not_written_by_hand",
             1,
         ),
@@ -2475,7 +2583,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/bridge/src/backend/control/launch_wire.rs",
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
             "the_daemonless_remote_still_needs_the_ts_fallback_renderer",
             2,
         ),
@@ -2490,12 +2599,14 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 一起删。⇒ 按本表头注那条纪律：「登记的那一处盘上已经没有了 ⇒ 删掉它，
         // 别让表替真判据挡枪」。
         (
-            "src/bridge/src/backend/control/launch_wire.rs",
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
             "ccm_reaches_the_backend_through_one_shot_subcommands",
             1,
         ),
         (
-            "src/bridge/src/backend/control/launch_wire.rs",
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
             "launch_via_daemon",
             1,
         ),
@@ -2551,8 +2662,20 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/doc/INVARIANTS.md", "build_kill_session_cmd", 1),
         ("src/doc/INVARIANTS.md", "build_send_keys_remote_cmd", 1),
         ("src/doc/INVARIANTS.md", "gate_guard_expr", 1),
-        ("src/bridge/src/tmux.rs", "build_kill_session_cmd", 3),
-        ("src/bridge/src/tmux.rs", "build_send_keys_remote_cmd", 3),
+        ("src/bridge/src/tmux.rs", "build_kill_session_cmd", 2),
+        (
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/tmux_tests.rs",
+            "build_kill_session_cmd",
+            1,
+        ),
+        ("src/bridge/src/tmux.rs", "build_send_keys_remote_cmd", 2),
+        (
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/tmux_tests.rs",
+            "build_send_keys_remote_cmd",
+            1,
+        ),
         ("src/bridge/src/tmux.rs", "gate_guard_expr", 1),
         (
             "src/bridge/src/tmux_daemon_gate_guard.rs",
@@ -2595,12 +2718,14 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         // 两条 `the_refusal_wording_matches_the_ssh_path` 改名成
         // `…_matches_the_sibling_command`（对照面从「那条 SSH 回落」换成兄弟命令）。
         (
-            "src/bridge/src/backend/control/daemon_kill.rs",
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/backend/control/daemon_kill_tests.rs",
             "the_refusal_wording_matches_the_ssh_path",
             1,
         ),
         (
-            "src/bridge/src/backend/control/daemon_send_keys.rs",
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/backend/control/daemon_send_keys_tests.rs",
             "the_refusal_wording_matches_the_ssh_path",
             1,
         ),
@@ -2613,7 +2738,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    接住、钉的是两条）。散文里那几句说的正是**「它们为什么不在了」**
         //    ⇒ 按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记一笔账。
         (
-            "src/bridge/src/subagent.rs",
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/subagent_tests.rs",
             "the_remote_path_actually_asks_the_daemon",
             1,
         ),
@@ -2652,7 +2778,8 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/bridge/src/inbound_client.rs",
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/inbound_client_tests.rs",
             "the_two_tmux_primitive_arg_builders_match_the_daemon_parsers",
             1,
         ),
@@ -2680,9 +2807,27 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_oneshot_watchdog_script_carries_no_loop",
             1,
         ),
-        ("src/bridge/src/cc_bus.rs", "build_broadcast_cmd", 2),
-        ("src/bridge/src/cc_bus.rs", "build_kill_cmd", 3),
-        ("src/bridge/src/tmux.rs", "build_capture_pane_cmd", 4),
+        ("src/bridge/src/cc_bus.rs", "build_broadcast_cmd", 1),
+        (
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/cc_bus_tests.rs",
+            "build_broadcast_cmd",
+            1,
+        ),
+        ("src/bridge/src/cc_bus.rs", "build_kill_cmd", 2),
+        (
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/cc_bus_tests.rs",
+            "build_kill_cmd",
+            1,
+        ),
+        ("src/bridge/src/tmux.rs", "build_capture_pane_cmd", 3),
+        (
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/tmux_tests.rs",
+            "build_capture_pane_cmd",
+            1,
+        ),
         //    同一件事的另一半：那条串的**出口判定**（两个哨兵 `NO_TMUX` / `NO_PANE`）
         //    也随之不存在了 —— 帧面把「答案」与「屏幕内容」分开走，
         //    「屏幕上恰好只有 NO_PANE 这几个字」这个误判形状跟着消失。

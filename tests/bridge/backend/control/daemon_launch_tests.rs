@@ -139,15 +139,24 @@ fn the_fields_this_channel_sends_are_declared_by_the_daemon_registry() {
 /// **可回落只能从「能证明没发出去」那一档产出**。
 #[test]
 fn may_fall_back_true_lives_in_exactly_one_place() {
-    let src = std::fs::read_to_string(file!())
-        .or_else(|_| {
-            std::fs::read_to_string(
-                std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join("src/backend/control/daemon_launch.rs"),
-            )
-        })
-        .expect("读不到本模块源码");
+    // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**被测那份的住址明写出来，不许走 `file!()`**。
+    //
+    // 上一版第一顺位读的是 `file!()` —— 当年判据住在 `daemon_launch.rs` 自己的
+    // `#[cfg(test)]` 段里，`file!()` 恰好就是被测那份。剖分之后 `file!()` 指的是本测试
+    // 文件，而本文件**一行生产代码都没有** ⇒ `production_code` 交出空串 ⇒ 读数 0 处。
+    // ⚠ 注意它红的方向：报文逐字「0 处 = `unsent` 那一处被改写了 ⇒ 没有 daemon 的远端
+    // 全都用不了」—— 尺子指错了地方，却报出了一条**关于被测代码的假结论**。
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("src/backend/control/daemon_launch.rs");
+    let src = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("读不到被测模块 {path:?}：{e} —— 本条此刻在空转"));
     let prod = guard_core::production_code(&src);
+    // ★ 反空真：被测那份真的有内容（空串会让下面「恰好一处」变成「0 处」的假红/假绿）。
+    assert!(
+        prod.len() > 2_000,
+        "`daemon_launch.rs` 的生产段只有 {} 字节 —— 没读到东西，本条在空转",
+        prod.len()
+    );
     // 运行时拼，免得命中本条自己的说明文字（F58 在这上面栽过两次）。
     let needle = format!("may_fall_back: {}", "true");
     let hits: Vec<&str> = prod

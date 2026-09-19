@@ -39,7 +39,7 @@ use serde_json::Value;
 
 // ── 口径常量 ─────────────────────────────────────────────────────────────
 // ⚠ 这些数**就是口径**。两侧任何一处再写一遍同样的字面量 = 又开了第二份口径，
-//   由 `search.rs::the_search_kou_jing_has_exactly_one_home` 逐个字面量扫着。
+//   由 `search_kou_jing_guard.rs::the_search_kou_jing_has_exactly_one_home` 逐个字面量扫着。
 
 /// 单条 user/assistant 正文的索引上限（字符）。正文极少超，兜底防超长粘贴。
 pub const MAIN_CAP: usize = 20_000;

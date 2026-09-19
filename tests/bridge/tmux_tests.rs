@@ -368,7 +368,20 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
     guard_core::find_pinned(&prod, &decl_prefix)
         .unwrap_or_else(|e| panic!("本文件生产段里 `{decl_prefix}` 不是恰好一处：{e}"));
     let root = crate::guard_support::repo_root();
-    let others = guard_core::scan_tree!(&root.join("src/bridge/src"), &["rs"]);
+    // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**排掉的是谁、为什么 —— 明写。**
+    //
+    // 排掉 `src/bridge/src/tmux.rs`：它就是「那一个家」，上面第 ① 段已经用 `find_pinned`
+    // 单独钉过它「恰好一处」。这里数的是**第二个家**，本来就不该把它自己算进去。
+    //
+    // 上一版靠 `scan_tree!` 的 `file!()` 自摘 —— 当年判据住在 `tmux.rs` 自己的
+    // `#[cfg(test)]` 段里，「摘掉调用者」恰好等于「摘掉被测那份」。剖分之后 `file!()`
+    // 指向本测试文件，那一刀**整个落空**，`tmux.rs` 回到人群里 ⇒ 报「monitor 侧有第二个」，
+    // 而盘上真的只有一个。⇒ 换成明写的排除（摘不到它，`scan_tree_excluding` 当场红）。
+    let others = guard_core::scan_tree_excluding(
+        &root.join("src/bridge/src"),
+        &["rs"],
+        &["src/bridge/src/tmux.rs"],
+    );
     assert!(
         others.len() >= 60,
         "monitor 树只采到 {} 个 .rs —— 遍历坏了，「无第二处」此刻是空转的",
@@ -905,7 +918,7 @@ fn the_local_kill_never_falls_back_to_ssh() {
 /// - 🔴 **②③ 比的是 `origin`，不是 `target` 会话名**：判据逐字是
 ///   `origin == LOCAL_ORIGIN`（**逐字节相等**）。⇒
 ///   · **拦得住**：唯一那个前端/后端约定的哨兵串（`inbound_client::LOCAL_ORIGIN`，
-///     由 `inbound_client.rs::the_local_origin_is_the_same_string_on_both_sides`
+///     由 `inbound_client_tests.rs::the_local_origin_is_the_same_string_on_both_sides`
 ///     钉着它与前端 `daemon-policy.ts` 那份逐字相同）。
 ///   · **拦不住**：一台 label 起成 `localhost` / `127.0.0.1` / 本机主机名的**远端**
 ///     （即便它就是这台机器）—— 走的是远端那句话。⚠ 那**是对的**：它确实是一条远端传输。

@@ -681,7 +681,7 @@ fn an_empty_origin_is_refused() {
 // ── `K-P3b`：接了几处就是几处 ────────────────────────────────────────
 
 /// 把一段（函数体）从生产段里切出来：从 `head` 那一行的下一行起，
-/// 到第一行**恰好是右花括号**为止。形状抄 `local_daemon.rs::body_of`。
+/// 到第一行**恰好是右花括号**为止。形状抄 `local_daemon_tests.rs::body_of`。
 ///
 /// ⚠ 收尾行**不写字面量右花括号** —— 本仓有判据用「花括号配平」剥测试段，
 /// 源码里多一个孤立的右花括号会让它提前闭合（`local_backend.rs` 那处逐字记过）。
@@ -733,10 +733,26 @@ fn the_death_ledger_is_wired_at_exactly_these_sites() {
     );
     let mut scanned = 0usize;
     let mut hits: Vec<(String, usize)> = Vec::new();
+    // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**只数调用点，不数定义。**
+    //
+    // 上一版靠 `scan_tree!` 的 `file!()` 自摘把 `daemon_policy.rs` 摘出人群 ——
+    // 当年本条就住在它的 `#[cfg(test)]` 段里，而那份文件恰好是 `record_death` 的**定义家**。
+    // 剖分之后自摘落空，`pub fn record_death(` 这一处**定义**被当成第四个调用点数了进来
+    // （读数逐字：「生产调用点是 4 处（登记 3 处）。实得：[("daemon_policy.rs", 1), …]」）。
+    //
+    // ⚠ 修法**不是**把那份文件整个排掉（那会连它里面真有的调用点一起瞎掉），
+    //   而是把「定义」与「调用」分开 —— 口径抄 `creds_store_tests.rs` 那条同族判据：
+    //   「『定义』不是一个出口，『调用』才是；两者混在一个数里，那个数就同时装了两件事」。
+    //   ⇒ 人群反而**比搬树前更大**：`daemon_policy.rs` 的其余代码现在也进了扫描面。
+    let call_sites = |prod: &str| -> usize {
+        prod.match_indices("record_death(")
+            .filter(|(i, _)| !prod[..*i].trim_end().ends_with("fn"))
+            .count()
+    };
     for (path, raw) in &files {
         let prod = guard_core::production_code(raw);
         scanned += prod.len();
-        let n = prod.matches("record_death(").count();
+        let n = call_sites(&prod);
         if n > 0 {
             hits.push((
                 path.file_name()
@@ -755,7 +771,7 @@ fn the_death_ledger_is_wired_at_exactly_these_sites() {
     //   「生产调用点是 2 处（登记 3 处）。实得：[("local_daemon.rs", 2)]」——
     //   它说得出**少了一处**，说不出**少的是哪一处**（三处都在同一个文件里）。
     //   ⇒ 先红的该是**说得出病在哪**的那句诊断，而不是要人再去查一遍的记账话。
-    //   （形状抄 `local_daemon.rs::the_user_actionable_start_failures_all_reach_the_user`
+    //   （形状抄 `local_daemon_tests.rs::the_user_actionable_start_failures_all_reach_the_user`
     //   头注那一段：「②③ 排在 ④ 前面是有意的」。）
     for (file, head, why) in DEATH_RECORD_SITES {
         let raw: &str = match *file {
