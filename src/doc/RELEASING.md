@@ -31,7 +31,7 @@
       >（一行上写两处只算一处；README 那三处恰好各占一行，是巧合不是保证）。
       > ⇒ 数**落点**（上面那张五处的表），别数某个字面量。
       > ⚠ **这五处里只有 ①③④ 有判据守**：
-      > `doc_claim_registry.rs::the_release_version_is_the_same_in_all_six_places`
+      > `doc_claim_registry_tests.rs::the_release_version_is_the_same_in_all_six_places`
       > 拿 `package.json` 当权威源，比对三份清单 + ① + ③ + ④ 共**六处**；
       > **② 与 ⑤ 一个判据都没有**，只有上面这张表。
       > 🔴 **`README.en.md` 的 ⑤ 曾经漂了整整四个版本**：它一度写着
@@ -65,7 +65,7 @@
       > 走的是优雅降级、`DAEMON_BUILD_ID` 静默变 `"unknown"`；兜那一档的是 monitor 侧的
       > `ssh_source_stream_flag_gate_tests.rs::embedded_build_id_single_source_wired`，不是 `build.rs`。
 - [ ] **需要人手跑的 e2e 套件**：权威清单是判据
-      `shared_crate_registry.rs::every_test_script_is_either_run_by_ci_or_registered_as_manual`
+      `shared_crate_registry_tests.rs::every_test_script_is_either_run_by_ci_or_registered_as_manual`
       的 `MANUAL` 表 —— **这里不抄第二份**。那张表会因「仓里有套件没人跑」而变红，
       而抄下来的清单只会漂（v3.1→v3.4 那四次漏改 README 就是抄的那份漂了）。
       > 建这条时实测：`tests/e2e/graylight-suite.sh` 是一整套跨进程整链 e2e，**CI 不跑、本清单也没有它**，

@@ -1,0 +1,455 @@
+use std::path::{Path, PathBuf};
+
+/// `(文件, 函数, 起的是什么, 为什么必须起进程, 三条策略)`。**默认拒绝**：人群从源码派生。
+///
+/// # ★ 第五列是 `15 §5.1 A3` 同拍加的：**每个落点选了哪三个策略**
+///
+/// 格式两种，二选一：
+/// - `"<Console> · <Lifetime> · <Stderr>"` —— 三个枚举变体名，逐字。
+///   带 `（宿主注入：<构造器>）` 后缀的，说明这一处**自己不写策略**（它在 `backend/`，
+///   平台原语进不去），答案由宿主那侧那个具名构造器给。
+/// - `"—— …"` 开头 —— **这一处刻意不进那个出口**，后面写清为什么（今天三处：
+///   `build.rs` 两处是构建期，加出口本身那一处）。
+///
+/// ⚠ 它**不是散文**：[`the_three_policies_each_site_declares_match_the_code`]
+/// 把这一列与盘面对拍（变体名从 `spawn_managed.rs` 的枚举派生，写错一个字母就红）。
+/// ⚠ **射程边界，写下来**：对拍的粒度是**文件**，不是「这一行」——
+/// 同一个文件里两个落点互换策略，本条看不出来（`launch.rs` 今天就有三个落点、
+/// 两种三元组）。它接得住的是「某个落点改了策略而账本没跟」「策略名被改掉」
+/// 这两族，接不住同文件内的对调。别把它读成更强的东西。
+const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
+    // ── 构建期（`build.rs`）：**每次 `cargo build`／`cargo check` 都在开发者机器上真跑**。
+    // 08-08 并进本表之前，它整个在所有登记表的扫描面之外。
+    ("build.rs", "check_vendor_freshness", "`git`（读 vendor 目录的最后一次改动）",
+     "vendor 新鲜度自检：只读地问 git，参数是仓内固定路径、不吃用户输入。\
+          它必须起进程是因为「vendor 目录相对上游有没有漂」这件事只有 git 知道",
+     "—— **不进那个出口**：它跑在构建期、在开发者机器上，`00 §1.5.2` 那三个问题对它一个都不成立（没有 GUI 宿主可弹窗、没有 monitor 进程可随、错误就该打到 `cargo` 的 stderr 上）"),
+    ("build.rs", "check_acct_iso_vendor_freshness", "`sh -c`（算 vendored 脚本的指纹）",
+     "同上的第二半，对 `cc-acct-iso` 那份 vendor 算摘要；命令串是常量，\
+          唯一的变量是仓内路径。⚠ 它跑在**构建期**，比运行时的任何一处都早",
+     "—— 同上：构建期，刻意不进那个出口"),
+    ("ccm_probe.rs", "probe_with", "`bash -lic <常量探测串>`",
+     "P3t-Y2：本机 ccm 的**能力集**探测。命令串是 `CCM_PROBE_CMD` —— 与远端那条**逐字同一个常量**，\
+          零插值。必须起进程的理由是「本机装没装 ccm、装的是哪一版」只有这台机器自己知道；\
+          而 shell 里的 `command -v` 那种探法只答得了「在不在」，答不了能力集，\
+          拿它当依据渲染就会在老 ccm 上渲出带未知 flag 的命令且**已经没有回落可走**（fail-open）。\
+          `bash -lic` 那层与远端同语义（PATH/别名/函数按交互终端解析），`ccm` 正是靠它才被找到。\
+          ⚠ **命令是参数**（D 阶段补审为了能测「挂住」而开）——生产侧唯一实参是 `CCM_PROBE_CMD`，\
+          由 `the_only_production_probe_command_is_the_constant` 按源码钉住，别读成「这里能跑任意命令」
+          ★ 三条策略为什么是这三格：探针绝不该在用户桌面上闪窗口；`-lic` 起出来的整棵树超时时要一起收（只杀 `bash` 漏得掉用户 rc 起的东西）；有用的字节只在 stdout 上。",
+     "Hidden · JobKillOnClose · Null"),
+    // ── 🔴 `K-R69`：**直接问我们自己放下去的那一份**「你是谁」。
+    ("ccm_probe.rs", "probe_binary_uncached", "`<我们那份 ccm> --ccm-probe`（不经 shell）",
+     "`KR69D2`：本机那条 `ccm` 入口的**身份**。必须起进程的理由与上一行不同 ——\
+          上一行问的是「你 PATH 上那个是谁」（非走登录 shell 不可，PATH 就是 rc 决定的），\
+          这一行问的是「**我们放下去的那一份是谁**」，路径我们自己知道 ⇒ 一个 shell 都不起，\
+          也就不吃用户 rc 的任何影响。两张名片一比才判得出「你 PATH 上那个是旧的」，\
+          而**只比路径认不出同名不同物** —— 那正是本件的题面（用户 `~/.local/bin/ccm` 那份旧 bash）。\
+          ⚠ 参数是**路径**，来自 `local_backend::local_ccm_entry_name()` 拼出来的落点，\
+          不吃任何用户输入；等待 / 读 / 解析与上一行**共用** `probe_spawned`（抄第二份必漂）
+          ★ 三条策略为什么是这三格：同上一行逐字，只有 `Hidden` 那格更重：Windows 上问的是我们自己放下去的 `ccm.exe`（控制台子系统），不带 flag 就是每问一次身份闪一次黑框。",
+     "Hidden · JobKillOnClose · Null"),
+    // 🔴 **`K-R112`（09-13）：这一行**留着**，而「留」这个判断是现打出来的，不是默认。**
+    //    本件删掉了查在线那条回落 ⇒ `local_shell_read` 的生产实参从**三个变两个**
+    //    （`build_online_cmd` 整块删了）。⇒ 它**仍然有生产调用方**（读清单 / 读 inbox），
+    //    这一行留着；说法那一列跟着改（下面括号里从「清单 / 在线 / inbox」变成「清单 / inbox」）。
+    //    ⚠ **改了行为不回来改理由，账本当天就开始撒谎** —— 这一行差一点就成了那种样本。
+    //    它什么时候能出表：`read_cc_bus_state` 与 `read_cc_bus_inbox` 都改走 daemon 原语那天
+    //    （前者等 `K-R113` 的 `bus-state`，后者 daemon 侧今天没有读口 —— `K-R111 §C3` 现打）。
+    ("cc_bus.rs", "local_shell_read", "`bash -lc <cc-bus 的读串>`",
+     "P4a-Y1：本机 cc-bus 的**读**面（清单 / inbox）。必须起进程的理由是\
+          **不许有第二份文件布局知识** —— `CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样，\
+          本机若自己 `read_to_string` 那两个文件，仓里就有了同一件事的两种表示，而它们会各自漂。\
+          ⇒ 照 `P3t-Y2` 的先例：**同一条串，远端包进 ssh，本机交给 bash**（`C1` 逐字「只是远端走 ssh」）。\
+          ⚠ **命令是参数**，但生产侧的**两个**实参各有来历：`CC_BUS_CAT_CMD`（常量）· \
+          `build_inbox_cmd`（过 `is_valid_bus_id`）。〔`K-R112` 09-13：原文写「三个」，第三个是 \
+          `build_online_cmd` —— 查在线改走帧 `bus-list` 之后它整块删了。〕\
+          用 `-lc` 而不是 `-lic`：只要 `$HOME`/`$CC_BUS_HOME`，不需要交互式 rc
+          ★ 三条策略为什么是这三格：`JobKillOnClose` 是先前 `kill_on_drop(true)` ＋ `reap_whole_tree_on_drop` 两句收成的同一条；`Hidden` 那格**先前没人回答过**（Windows 上起的是 `Git\\bin\\bash.exe`）。",
+     "Hidden · JobKillOnClose · Null"),
+    ("ssh_source.rs", "spawn_dial_proxy", "`<代理二进制> --dial`（子进程，常驻到某一头断开）",
+     "`K-P6b`：**daemon 那条长连接流的 SSH 握手交给这个子进程去跑**，界面只收字节。\
+          起的是什么：`cc-monitor-remote`（本仓 `src/backend` 的产物）——\
+          发版包里它就在 `monitor.exe` 旁边（`externalBin` sidecar），\
+          解析口 `resolve_dial_proxy` 只认两处：环境变量 `CCM_DIAL_PROXY` 与 exe 旁那份。\
+          **argv 只有一个常量 flag，零插值**；主机名 / 用户名 / 私钥**路径**走环境变量 \
+          `CCM_DIAL_REQUEST`（`argv` 是世界可读的，`/proc/<pid>/environ` 不是）。\
+          为什么必须起进程：这正是本件的**目的** —— 让那一跳拨号不发生在界面进程的地址空间里。\
+          ⚠ 它 `kill_on_drop(true)`：界面退出 = 句柄 drop = 代理跟着走。\
+          🔴 **别把这一行读成「拨号搬出去了」**：`connect_session` 的 7 处生产调用点里\
+          这条只覆盖 1 处，逐处登记在 `ssh_source::dial_move_judge::DIAL_SITES`
+          ★ 三条策略为什么是这三格：`Inherit` 是刻意的：代理的诊断（拨号失败、TOFU 警告）跟着界面进程的 stderr 走，接管它要再起一条泵。`JobKillOnClose` 比先前的 `kill_on_drop` 多买一格：monitor 被强杀时也生效。",
+     "Hidden · JobKillOnClose · Inherit"),
+    // 🔴 **`K-R104`（09-13）：`account_usage.rs` 那一行（本机执行面）删了。**
+    //    那个函数不存在了 —— 本机用量探针不再在界面进程里 `sh -c <载荷>`，
+    //    它与远端那条**是同一条路**：往那台机器的后端发几条帧命令。
+    //    ⇒ 界面进程这一侧起进程的面**净少一处**（这是好事，也是本表存在的理由）。
+    ("launch.rs", "launch_local_posix_via", "用户配置的终端 argv[0]",
+     "在用户的终端里起会话 —— 承接 C13「最后那次 exec 在用户终端里」，这是本产品的主用途
+          ★ 三条策略为什么是这三格：`Detached` 就是先前那句 `process_group(0)`。`Hidden` 在 POSIX 上是空的 —— **窗口是终端出口自己开的**，不是 `CreateProcess` 开的，别读成「这条路不开窗」。",
+     "Hidden · Detached · Null"),
+    ("launch.rs", "launch_powershell_window", "`wt.exe` / `powershell.exe`",
+     "Windows 侧同上；两个名字都是常量，不吃用户输入
+          ★ 三条策略为什么是这三格：🔴 **全仓唯一一处 `NewVisible`**（Plan B 那一跳），而且是刻意的（`00 §1.5.2` 逐字点名「别把它一起改掉」）。\
+          `Detached`：用户的终端不该随 monitor 一起死，关掉界面 ≠ 关掉他正在敲字的会话。\
+          ⚠ **这个函数里有两跳，第一格不一样**：Plan A（`wt.exe`）是 `Inherit · Detached · Inherit` —— \
+          它今天一个 creation flag 都没带，而且多半只是把请求转交给已在跑的 Windows Terminal 进程。\
+          本轮**照盘面写、不顺手改**（没有任何 Windows 读数支持那个改动，而这是主用途那条路）。\
+          第五列记的是 Plan B 那一跳；本表的对拍粒度是文件，盖不到同函数内两跳的差别 —— 如实记。",
+     "NewVisible · Detached · Inherit"),
+    // 🔴 〔`K-R135` / `R88` 09-15〕**这一行就是 `R88` 放行的那一行，只加了这一行。**
+    //
+    // `R87` 原本写着「本件不需要起进程」——**那是假前提，`R88` 已推翻**：`§0b` 明禁拿
+    // `$env:PATH` 判用户级 PATH（它是机器级＋用户级拼起来的）⇒ **状态 / 加 / 撤三样
+    // 都得碰 `HKCU\Environment`**，而「现在状态」那一格**根本不可能靠用户自己去跑**。
+    //
+    // **为什么必须起进程**：Rust 侧够到那一档只有两条路 —— 起 PowerShell，或直接读写
+    // 注册表。后者现打编不过（`windows::Win32::System::Registry` 是 `E0432`，全仓
+    // `Cargo.toml` 开这个 feature **0 处**、现有注册表调用 **0 处**），而且 `R88` 按份量
+    // 否掉了它：① 直接写注册表会造出**第二份 PATH 编辑实现**，而走 Tauri 命令的理由
+    // 本身就是「别给同一族动作另起一条路」；② `[Environment]::SetEnvironmentVariable`
+    // **自带 `WM_SETTINGCHANGE` 广播**，自己写注册表就得自己记得广播，忘了就是
+    // 「改了、新终端看不到」—— **那正是 `K-R135` 在杀的那个形状**。
+    //
+    // ⚠ **argv 是什么**：`powershell.exe -NoProfile -NonInteractive -Command <脚本>`。
+    // `<脚本>` **只可能是 `profile_installer` 那三个 `render_*` 函数的输出**
+    // （探 / 加 / 撤），**不吃任何用户输入** —— 里面唯一的变量是 `tool_registry` 申报的
+    // 那个目录。同文件的 `the_generated_path_command_edits_only_the_user_scope_and_never_via_setx`
+    // 在数「生产段起进程恰好一处、写环境变量恰好两处」，别读成「这里能跑任意命令」。
+    ("profile_installer.rs", "run_user_path_powershell", "`powershell.exe -NoProfile -NonInteractive -Command <我们自己生成的那段>`",
+     "`R85` 用户逐字「应当让用户手动点击加，也能管理删除」⇒ **点击即执行是允许的**（`K33` 禁的是产品**替**用户决定，用户点一下就是用户自己决定）。\
+          必须起进程的理由是**那一档只有 Windows 的用户级环境块里有**，而 Rust 侧够得着它的另一条路（直接写注册表）会造出第二份 PATH 编辑实现、并把 `WM_SETTINGCHANGE` 广播的责任揽到自己身上 —— 两条都被 `R88` 否掉了。\
+          ⚠ 跑的**就是界面上显示给用户看的那段字节** ⇒ 「点按钮」与「自己复制去跑」逐字同一份，实现只有一处
+          ★ 三条策略为什么是这三格：`Hidden` 那格**先前没人回答过**（裸 `.output()`）—— `-NonInteractive` 只保证不等人回车，挡不住新开一个控制台。`Captured`：stderr 是下面那句报错的一部分。",
+     "Hidden · JobKillOnClose · Captured"),
+    ("launch.rs", "ssh_client_available", "探测用的 `ssh`",
+     "只探测「本机有没有 ssh」，不带用户参数
+          ★ 三条策略为什么是这三格：同上：先前是裸 `.output()`，Windows 上闪一个 `where.exe` 的黑框。`Captured`：输出就是返回值（`status.success()`）。",
+     "Hidden · JobKillOnClose · Captured"),
+    ("lib.rs", "open_with_os", "`cmd` / `open` / `xdg-open`",
+     "按平台打开日志目录：三个名字都是常量，路径是 monitor 自己的目录
+          ★ 三条策略为什么是这三格：`Detached` 是承重的：fire-and-forget，**绝不能是 `JobKillOnClose`** —— 那会在本函数返回、句柄一丢的瞬间把刚打开的文件管理器杀掉。",
+     "Hidden · Detached · Inherit"),
+    ("local_backend.rs", "supervise_with_stdio", "被监护的 daemon 二进制",
+     "本机后端监护：二进制路径来自 `candidates`（有 `candidates_never_point_into_a_build_tree` 守着）。\
+          ⚠ P2 起它的 stdin 可能是 `piped()` 而不再恒为 `null` —— 那是本机入方向通道的管子\
+          （`local_stdio_consumer`）。`supervise` 只是它 `stdio=None` 的薄壳，真正 spawn 的是这一个
+          ★ 三条策略为什么是这三格：🔴 `设计/00 §1.5.2` 点名的那一处：它先前**同时**犯三个错（无 `CREATE_NO_WINDOW` · 无 job 绑定 · `stderr(Stdio::null())`），三格各对应一条策略。本层收注入参数，一个平台原语都不认识。",
+     "Hidden · JobKillOnClose · ToLog（宿主注入：local_backend_supervised）"),
+    ("local_query.rs", "run_query", "daemon 二进制 + 只读子命令",
+     "本机只读查询：`bin` 同上来自候选表，`args` 是本模块构造的固定子命令
+          ★ 三条策略为什么是这三格：与上一行只差最后一格：查询的 stderr **是返回值**（`QueryOutcome` 按它分类），接进滚动日志等于把调用方本来就拿得到的话再抄一遍。`Hidden` 那格先前是裸 `.output()`。",
+     "Hidden · JobKillOnClose · Captured（宿主注入：local_backend_one_shot_query）"),
+    ("ssh_source.rs", "resolve_ssh_host", "`ssh -G <host>`",
+     "解析 ssh_config 的别名 —— 只读一次配置，不建连接
+          ★ 三条策略为什么是这三格：先前是裸 `.output()`：Windows 上 `ssh.exe` 是控制台子系统，每解析一次别名闪一个黑框。`Captured`：stderr 进「退出非 0」那句话。",
+     "Hidden · JobKillOnClose · Captured"),
+    // ── `K-P1`：常驻那条路 ──────────────────────────────────────────────
+    ("local_daemon.rs", "spawn_detached", "被脱离起来的 daemon 二进制",
+     "本机后端**脱离宿主**起：`process_group(0)` + stdio 全 null + 协议改走回环监听口。\
+          二进制路径来自 `resolve_daemon_bin`，而**它今天只是个适配器** —— 真正的答案\
+          （exe 旁的 sidecar → 这份产物自己带的那份 → 释放出来）出自\
+          `local_backend::resolve_or_extract` 那**一份共用的解析**，\
+          `local_backend::start_or_extract` 走的也是同一份。\
+          〔`K-R43` 订正：本行原先写「与 `start_or_extract` 同一个顺序，由一条对拍判据钉着」——\
+           那时是**两份手写实现**，而那条判据只对拍顺序，`K-R42` 在它眼皮底下漂过一次仍全程绿。\
+           今天钉的不是「两份同序」，是「**两条路都走那一份，且旁边不许再长出第二份取法**」\
+           （`local_daemon::the_two_resolution_paths_still_agree_on_the_order`，名字没改、机制换了）。〕\
+          ⚠ 它必须住在**宿主知识层**而不是 `backend/`：`process_group` 来自 \
+          `std::os::unix::process::CommandExt`，而 `std::os::unix` 在 \
+          `backend/backend_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针里 —— 写进去当场红，\
+          而「加一条平台例外」被那张表的递减棘轮堵着（`PLATFORM_EXCEPTIONS.len() <= 1`，今天正好 1）
+          ★ 三条策略为什么是这三格：「三样一起才叫脱离」里的两样：`Detached` 就是 `process_group(0)`，`Null` 是 stderr 那一根（stdin/stdout 仍在函数体里）。`Hidden` 那格**先前没人回答过** —— 常驻实例在 Windows 上留一个可关的黑框，等于常驻当场没了。",
+     "Hidden · Detached · Null"),
+    // ── 🔴 `15 §5.1 A3`（09-18）：**出口本身**。它是唯一一处「起进程」不在上面那些
+    //    落点里的 —— 因为上面那些落点今天全都把那一下交给了它。
+    ("spawn_managed.rs", "spawn_managed", "调用方给的那个二进制 ＋ argv",
+     "`00 §1.5.2` 的唯一出口。它起进程不是为了做某件事，而是**为了让别人不用自己起** ——\
+          三条策略（要不要窗口 · 要不要随我死 · 错误往哪去）在这里落成平台原语\
+          （`creation_flags` / `process_group(0)` / Job Object / stderr 的四种去处），\
+          全仓只此一份。\
+          ⚠ 本行与上面那些**不是同一类**：上面每一行回答的是「这件事为什么非起进程不可」，\
+          这一行回答的是「起进程这件事为什么只许有一个出口」。\
+          由 `spawn_managed::tests::the_spawn_verbs_and_platform_primitives_live_only_here`\
+          按源码派生地钉住（`.spawn()` / `creation_flags` / `process_group` / `kill_on_drop`\
+          在别处出现一次就红）。",
+     "—— **它就是那个出口本身**，没有「它选了哪三条」这回事"),
+    ("local_daemon.rs", "signal_term", "`kill -TERM <pid>`",
+     "停掉一个**不是本 monitor 起的**常驻实例（上一次 monitor 脱离起的那个）。\
+          必须起进程的理由是：monitor 今天**没有 `libc` 这条直接依赖**（它只在依赖树里），\
+          为一次「停」按钮加一条直接依赖是更大的代价。\
+          ⚠ 参数是**我们自己算出来的 pid**、零用户输入；而且杀之前先过 `kill_adopted` 的身份核对\
+          （`/proc/<pid>/exe` 必须是同一个二进制）—— pid 会被复用，杀错一个无关进程是不可逆的
+          ★ 三条策略为什么是这三格：只在 Linux 上编译，`Hidden` 那格是空的**但得有人回答**；结论在退出码里，stderr 用不上。",
+     "Hidden · JobKillOnClose · Null"),
+];
+
+fn src_root() -> PathBuf {
+    // 住址唯一源：`crate::guard_support`（头注写着 24 份副本怎么一起漂的）。
+    crate::guard_support::crate_src_root()
+}
+
+/// 语料 = `src/` 整棵树 **+ `build.rs`**〔audit-0805 08-08〕。
+///
+/// ★ 为什么非把 `build.rs` 并进来：本表问的是「**谁能碰这台机器**」，
+/// 而构建脚本每次 `cargo build`／`cargo check` 都在开发者机器上真跑
+/// （它起 `sh` 与 `git`、往 `OUT_DIR` 复制内嵌 daemon）。
+/// 08-08 实测：全仓所有登记表/守卫的扫描根都是 `src/bridge/src` · `src/backend`
+/// · `src/bridge/crates` · `src` · `doc` —— **`src/bridge/build.rs` 一张表都没扫到**，
+/// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。
+fn corpus() -> Vec<(PathBuf, String)> {
+    let mut files = guard_core::scan_tree!(&src_root(), &["rs"]);
+    let bs = Path::new(env!("CARGO_MANIFEST_DIR")).join("build.rs");
+    let src = std::fs::read_to_string(&bs).expect("读不到 build.rs —— 它是本表的一部分");
+    files.push((bs, src));
+    files
+}
+
+/// 某一行所在的函数名（往回找最近的 `fn`）。
+fn enclosing_fn(lines: &[&str], at: usize) -> String {
+    for l in lines[..=at].iter().rev() {
+        if let Some(rest) = l.split(" fn ").nth(1).or_else(|| l.strip_prefix("fn ")) {
+            let n: String = rest
+                .chars()
+                .take_while(|c| c.is_alphanumeric() || *c == '_')
+                .collect();
+            if !n.is_empty() {
+                return n;
+            }
+        }
+    }
+    "<找不到外层函数>".to_string()
+}
+
+/// `spawn_managed.rs` 里某个枚举的变体名 —— **从源码派生，不手写**。
+///
+/// 手写一份的话，枚举改名之后这张表会安静地继续「通过」，
+/// 而它声称对拍的那件事已经不存在了。
+fn variants_of(enum_name: &str) -> Vec<String> {
+    let src = guard_core::production_code(include_str!("../../src/bridge/src/spawn_managed.rs"));
+    let head = format!("pub enum {enum_name} {{");
+    let i = src
+        .find(&head)
+        .unwrap_or_else(|| panic!("`spawn_managed.rs` 里找不到 `{head}` —— 枚举改名或搬家了"));
+    let rest = &src[i + head.len()..];
+    let end = rest
+        .find("\n}")
+        .unwrap_or_else(|| panic!("`pub enum {enum_name}` 的花括号没收口 —— 抽取器看不懂它了"));
+    rest[..end]
+        .lines()
+        .map(str::trim)
+        .filter_map(|l| l.strip_suffix(','))
+        .filter(|l| !l.is_empty() && l.chars().all(|c| c.is_alphanumeric()))
+        .map(str::to_string)
+        .collect()
+}
+
+/// ★★ **第五列与盘面对拍**〔`15 §5.1 A3`，09-18〕。
+///
+/// # 它守什么
+///
+/// 「这个落点选了哪三条策略」这句话，在本表里**是可判的**，不是散文：
+/// ① 三个变体名必须真的是 `spawn_managed.rs` 那三个枚举里的（名单从源码派生）；
+/// ② 那三个 `X::Variant` 必须真的出现在**声明它们的那份源码**里
+///    （默认是落点自己那个文件；带「宿主注入」后缀的，是 `spawn_managed.rs`）；
+/// ③ 「不进那个出口」的三处要明说（`——` 开头），而且**只许是那三处**。
+///
+/// # ⚠ 射程（写下来，别读成更强）
+///
+/// 对拍粒度是**文件**不是行：同一个文件里两个落点把三元组互换，本条看不出来
+/// （`launch.rs` 今天就是三个落点两种三元组）。它接得住的是
+/// 「某处改了策略而账本没跟」「策略名被改掉」「新落点没申报策略」这三族。
+#[test]
+fn the_three_policies_each_site_declares_match_the_code() {
+    let consoles = variants_of("ConsolePolicy");
+    let lifetimes = variants_of("Lifetime");
+    let sinks = variants_of("StderrSink");
+    // 反向自检：名单塌了 ⇒ 下面全成了「随便写什么都不在名单里」的假红／或恒绿。
+    assert_eq!(
+        (consoles.len(), lifetimes.len(), sinks.len()),
+        (3, 2, 4),
+        "三个枚举的变体数变了（现打 {consoles:?} / {lifetimes:?} / {sinks:?}）——\n\
+             变体增减本身不是错，但**它一定要经过这张表**：每一个落点都得回答\
+             「新那格算不算我」。改完这一行，再逐条看第五列。"
+    );
+
+    let files = corpus();
+    let src_of = |stem: &str| -> String {
+        files
+            .iter()
+            .find(|(p, _)| p.file_name().and_then(|s| s.to_str()) == Some(stem))
+            .map(|(_, raw)| guard_core::production_code(raw))
+            .unwrap_or_else(|| panic!("语料里找不到 {stem} —— 它搬家了，第五列也就无从对拍"))
+    };
+
+    let mut opted_out = 0usize;
+    let mut checked = 0usize;
+    for (file, func, _, _, policy) in SPAWNS {
+        if let Some(why) = policy.strip_prefix("——") {
+            assert!(
+                why.trim().len() > 10,
+                "{file}::{func} 说自己不进那个出口，却没写清为什么 —— \
+                     「刻意不做」也会过期，没有理由的豁免下一轮没人判得了真伪"
+            );
+            opted_out += 1;
+            continue;
+        }
+        let triple: Vec<&str> = policy
+            .split('（')
+            .next()
+            .unwrap_or(policy)
+            .split(" · ")
+            .map(str::trim)
+            .collect();
+        assert_eq!(
+            triple.len(),
+            3,
+            "{file}::{func} 的第五列不是三格：{policy:?}\n\
+                 ⇒ 格式是 `\"<Console> · <Lifetime> · <Stderr>\"`，\
+                 或者 `\"—— <为什么不进那个出口>\"`。"
+        );
+        for (i, (name, allowed)) in [
+            ("ConsolePolicy", &consoles),
+            ("Lifetime", &lifetimes),
+            ("StderrSink", &sinks),
+        ]
+        .iter()
+        .enumerate()
+        {
+            let v = triple[i];
+            assert!(
+                allowed.iter().any(|a| a == v),
+                "{file}::{func} 第 {} 格写的是 `{v}`，而 `{name}` 今天的变体是 {allowed:?}",
+                i + 1
+            );
+        }
+        // ② 那三个名字得真的写在**声明它们的那份源码**里。
+        let home = if policy.contains("宿主注入") {
+            "spawn_managed.rs"
+        } else {
+            *file
+        };
+        let src = src_of(home);
+        for (i, name) in ["ConsolePolicy", "Lifetime", "StderrSink"]
+            .iter()
+            .enumerate()
+        {
+            let needle = format!("{name}::{}", triple[i]);
+            assert!(
+                src.contains(&needle),
+                "{file}::{func} 的账本写着 `{needle}`，而 `{home}` 的生产段里找不到它。\n\
+                     ★ 两种来路，先分清：\n\
+                     ① 那一处真的改了策略 ⇒ **回来改第五列**（改了行为不回来改理由，\
+                        账本当天就开始撒谎）；\n\
+                     ② 这一行的「住哪」判错了 —— `backend/` 那两处自己不写策略，\
+                        它们的第五列要带「（宿主注入：…）」后缀。"
+            );
+        }
+        checked += 1;
+    }
+    assert_eq!(
+        opted_out, 3,
+        "「不进那个出口」的落点从 3 处变成了 {opted_out} 处。\n\
+             今天那三处是：`build.rs` 两处（构建期）＋ 出口自己那一处。\
+             多一处 = 有人给自己开了豁免；少一处 = 构建期那两条被并进来了（那是好事，改这个数）。"
+    );
+    assert!(
+        checked >= 13,
+        "只对拍到 {checked} 个带策略的落点 —— 09-18 现打 14 个。本条此刻在空转"
+    );
+}
+
+#[test]
+fn every_local_spawn_is_declared() {
+    let files = corpus();
+    let mut found: Vec<(String, String)> = Vec::new();
+    for (path, src) in &files {
+        let prod = guard_core::production_code(src);
+        let lines: Vec<&str> = prod.lines().collect();
+        let stem = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap()
+            .to_string();
+        // 🔴 〔`15 §5.1 A3` 09-18〕**人群的锚点从一个变成两个。**
+        //
+        // A3 之前「起进程」与「造一个 `Command`」是同一件事，所以数后者就够了。
+        // 今天不是了：走 [`crate::spawn_managed::spawn_managed`] 那个五参数形态的落点
+        // **自己不造 `Command`**（出口替它造）⇒ 只数 `Command::new(` 的话，
+        // 那种落点会**悄悄从人群里消失**，而它一样在用户机器上起进程
+        //（现打：`lib.rs::open_with_os` 就是这一形）。
+        // ⇒ 第二个锚点 = **调用那个唯一出口**。两个锚点是并集，落点只要沾一个就得申报。
+        //
+        // ⚠ **出口自己那份源码只按第一个锚点数**：在 `spawn_managed.rs` 里面，
+        //   这几个名字是它的**实现与签名**，不是「又一个起进程的地方」——
+        //   连签名行都会命中（`pub fn spawn_managed_tokio(`），那会给这张表添三行
+        //   只描述出口内部结构的噪声。出口自己在表里**恰好占一行**，那一行已经写清了
+        //   「它就是那个出口本身」。
+        let is_the_exit = stem == "spawn_managed.rs";
+        for (i, l) in lines.iter().enumerate() {
+            let hit = l.contains(concat!("Command::", "new("))
+                || (!is_the_exit
+                    && [
+                        "spawn_managed(",
+                        "spawn_managed_cmd(",
+                        "spawn_managed_tokio(",
+                    ]
+                    .iter()
+                    .any(|n| l.contains(n)));
+            if hit {
+                found.push((stem.clone(), enclosing_fn(&lines, i)));
+            }
+        }
+    }
+    found.sort();
+    found.dedup();
+    assert!(
+        found.len() >= 5,
+        "全树只找到 {} 处本机起进程（08-08 实测 8 个「文件::函数」）—— 抽取器坏了，本条此刻无效",
+        found.len()
+    );
+
+    let missing: Vec<String> = found
+        .iter()
+        .filter(|(f, n)| !SPAWNS.iter().any(|(sf, sn, ..)| sf == f && sn == n))
+        .map(|(f, n)| format!("  {f}::{n}"))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "这些地方**会在用户机器上起一个进程，但没人申报**：\n{}\n\n\
+             ⚠ 08-08 实测：往生产段加一句 `Command::new(\"sh\").arg(\"-c\")`，全仓判据一条不红。\n\
+             登记进 `SPAWNS`：写清**起的是什么**、**为什么必须起进程**、\
+             以及〔A3 之后〕**它选了哪三条策略**。\n\
+             daemon 侧同类表在 `readonly_guard`（`ALLOWED` + `SPAWN_SITES_TODAY`）。",
+        missing.join("\n")
+    );
+
+    let stale: Vec<String> = SPAWNS
+        .iter()
+        .filter(|(f, n, ..)| !found.iter().any(|(ff, nn)| ff == f && nn == n))
+        .map(|(f, n, ..)| format!("  {f}::{n}"))
+        .collect();
+    // ⚠ **红了还要讲对成因**〔08-08〕：死行有两种完全不同的来路 ——
+    // ① 那处代码真的改名/删了；② **扫描面缩了**（语料不再包含那个文件）。
+    // 实测把 `build.rs` 从语料里拿掉，旧诊断说「已经不起进程了（改名或删了）」，
+    // 而 `build.rs` 里那两处一个字没动 —— 照它去查会查错方向。
+    // 本区反复吃过这个亏（「讲错成因的红灯比不红更坏」），所以这里先分辨再说话。
+    let scanned: Vec<String> = files
+        .iter()
+        .filter_map(|(p, _)| p.file_name().and_then(|s| s.to_str()).map(str::to_string))
+        .collect();
+    let out_of_corpus: Vec<&str> = SPAWNS
+        .iter()
+        .map(|(f, ..)| *f)
+        .filter(|f| !scanned.iter().any(|s| s == f))
+        .collect();
+    assert!(
+        stale.is_empty(),
+        "申报表里这些落点在语料里找不到了：\n{}\n\
+             ★ 两种来路，先分清再动手：\n\
+             ① 那处代码真的改名/删了 ⇒ 更新登记（改名也要红 —— 名字变了就该有人重新看一眼它起的是什么）；\n\
+             ② **扫描面缩了** —— 这些文件压根不在本次语料里：{out_of_corpus:?}\n\
+                （非空就说明是这一种：去看 `corpus()` 少扫了什么，别去改登记表）",
+        stale.join("\n")
+    );
+}

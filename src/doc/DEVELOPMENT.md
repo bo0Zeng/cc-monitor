@@ -128,7 +128,7 @@ cargo test --lib -- --nocapture                      # 看 println! 输出
 > ⚠ **`--lib` 那种跑法不是全量**〔08-06 订正〕：它只覆盖**根包**，
 > 六个共享 crate（`guard-core` / `gate-core` / `shell-quote-core` / …）一条都不跑。
 > 上面那条 `--workspace --exclude code-picture-core` 与 `ci.yml` 的 `rust` job **逐字相同**，
-> 由 `doc_claim_registry.rs::the_backend_test_command_in_the_docs_matches_ci` 钉住。
+> 由 `doc_claim_registry_tests.rs::the_backend_test_command_in_the_docs_matches_ci` 钉住。
 >
 > **本机还必须跑的（CI 里有、或 CI 根本跑不到的）**：
 > - `cargo fmt --all --check`（两侧：`src/bridge/` 与 `src/backend/`）—— CI 第一个 Rust 步骤；
