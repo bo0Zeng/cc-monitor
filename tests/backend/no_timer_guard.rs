@@ -712,7 +712,11 @@ mod tests {
                     .to_string_lossy()
                     .replace('\\', "/");
                 let src = std::fs::read_to_string(&path).expect("read rs file");
-                out.push((rel, production_code(&src)));
+                // 🔴 〔步 7c 剖分 2026-09-19〕`production_code` → `production_side_of`：
+                // 住 `tests/backend` 的文件整份是测试段、外面没有 `#[cfg(test)]` 包着
+                // ⇒ 直接剥会把测试代码当成生产代码（理由与现打读数在
+                // `guard_support::production_side_of` 的头注里）。
+                out.push((rel, crate::guard_support::production_side_of(&path, &src)));
             }
         }
         out.sort();

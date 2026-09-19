@@ -1,0 +1,315 @@
+/// ★ 本文件**不许出现任何 `observe::`**。
+///
+/// 头注宣称了这条，但 D 审计指出它**没有机检** —— `layering_guard::layer_sources`
+/// 只遍历 `src/observe` 与 `src/control`，顶层的 `inbound.rs` 不在采集面内。
+/// 变异 `use crate::observe::watcher as _;` 之后全量 211 passed。
+///
+/// 在一份通篇强调「跨两处的约束必须机检」的文件里，这条自己是注释。现在不是了。
+#[test]
+fn inbound_never_reaches_into_the_observe_layer() {
+    let src = crate::guard_support::production_code(include_str!("../../src/backend/inbound.rs"));
+    assert!(
+        src.len() > 3000,
+        "只剥出 {} 字节生产段 —— 抽取坏了，本断言在空转",
+        src.len()
+    );
+    let hits: Vec<&str> = src
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.contains("observe::"))
+        .collect();
+    assert!(
+        hits.is_empty(),
+        "`inbound.rs` 伸进了读面：{hits:?}\n\
+             §1.1 的线是按**职责**画的：入方向是传输 + 控制，读面的事不归它。\n\
+             依赖方向只许 `inbound → control`。"
+    );
+}
+
+/// ★ **`id` 不许被解析**（F90 的代码强制）。
+///
+/// F90 说「登记表主键必须 opaque + 稳定」。今天 `running` 表的主键就是客户端给的
+/// 不透明 `id`，天然合规 —— 本条防的是**后人「顺手」从 id 里抠信息**
+/// （比如约定 `sid:xxx` 前缀然后 `strip_prefix`）。一旦那样，`id` 就不再不透明，
+/// 客户端换个格式就崩，而且 daemon 会开始依赖一个它无权定义的结构。
+#[test]
+fn the_request_id_is_never_parsed() {
+    let src = crate::guard_support::production_code(include_str!("../../src/backend/inbound.rs"));
+    let banned = [
+        ".parse",
+        ".split",
+        ".strip_prefix",
+        ".strip_suffix",
+        ".starts_with",
+        ".ends_with",
+    ];
+    let hits: Vec<String> = src
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.contains("id.") || l.contains("id_for_task.") || l.contains("id_sup."))
+        .filter(|l| banned.iter().any(|b| l.contains(b)))
+        .map(|l| l.to_string())
+        .collect();
+    assert!(
+        hits.is_empty(),
+        "有人在解析 `id`：{hits:?}\n\
+             它是**客户端给的不透明串** —— daemon 只许 clone / 比较 / 回显。\n\
+             从里面抠信息 = 让 daemon 依赖一个它无权定义的结构（F90）。"
+    );
+}
+
+/// ★ `COMMANDS` 这面**镜子**必须与注册表一致。
+///
+/// # 它替掉了什么
+///
+/// 上一版是 `hello_commands_match_the_dispatch_table` —— 扫 `dispatch` 分派臂的**文本**
+/// （按 8 空格缩进切）。那种判据既对 rustfmt 脆，又只能事后比对。
+/// U8a-2d 把名字与处理器绑进**同一个值**（[`super::REGISTRY`]）之后，
+/// 「声明了却不接 / 接了却不声明」在注册表这一侧**不可表示** ——
+/// 剩下的只有 `COMMANDS` 这面镜子，而这条是**数据对数据**，不是扫文本。
+///
+/// # 为什么还留着这面镜子
+///
+/// monitor 侧 `inbound_client.rs` 与 `tests/e2e/inbound-daemon-frames.sh` 都在**文本抽取**
+/// `const COMMANDS`（拿它做跨轨对拍）。把它换成运行时派生会同时打断那两处。
+/// ⇒ 保留字面量，由本条钉住它不漂。
+#[test]
+fn the_commands_mirror_matches_the_registry() {
+    let mut from_registry: Vec<&str> = super::REGISTRY.iter().map(|s| s.name).collect();
+    from_registry.sort_unstable();
+    assert!(
+        from_registry.len() >= 4,
+        "注册表只有 {} 条 —— 本断言在空转",
+        from_registry.len()
+    );
+    let mut mirror: Vec<&str> = super::COMMANDS.to_vec();
+    mirror.sort_unstable();
+    assert_eq!(
+        mirror, from_registry,
+        "\n`COMMANDS`（hello 上线的那份）与 `REGISTRY` 对不上。\n\
+             它今天只是一面镜子 —— 改注册表就把它一起改。\n\
+             （它之所以还是字面量：monitor 与 e2e 都在文本抽取它做跨轨对拍。）"
+    );
+    // 名字不许重复（`lookup` 取第一个，重复会让后一条静默失效）。
+    let mut uniq = from_registry.clone();
+    uniq.dedup();
+    assert_eq!(uniq.len(), from_registry.len(), "注册表里有重名命令");
+    // 排序：`COMMANDS` 上线时是有序的，别让它随手插到中间变成无序。
+    let mut sorted = super::COMMANDS.to_vec();
+    sorted.sort_unstable();
+    assert_eq!(
+        super::COMMANDS.to_vec(),
+        sorted,
+        "`COMMANDS` 不是字典序 —— 上线的能力集应当稳定可读"
+    );
+}
+
+/// ★ 每条命令的 `run` 档位必须与它真实的性质相符，**且新增命令必须来这里表态**。
+///
+/// 这条与 `the_dispatch_table_puts_blocking_commands_on_the_blocking_arm` 是两件事：
+/// 那条走**真的 `dispatch`**（接缝），这条查**注册表的声明**（源）。两条都要有。
+#[test]
+fn every_registered_command_declares_its_run_kind() {
+    use super::Run;
+    for spec in super::REGISTRY {
+        // F04a：`kill` 也是阻塞档 —— 它要起 tmux 子进程（探测 + kill-session）。
+        // P4f：`bus-list` / `bus-send` 同样是阻塞档 —— 它们要起 cc-bus 子进程并等它退出。
+        // `K-R104`：`capture-pane` / `oneshot-session` 起 tmux 子进程并等它退出。
+        let expected_blocking = matches!(
+            spec.name,
+            "launch"
+                | "kill"
+                | "bus-list"
+                | "bus-send"
+                | "bus-kill"
+                | "bus-state"
+                | "capture-pane"
+        );
+        let is_blocking = matches!(spec.run, Run::Blocking(_));
+        assert_eq!(
+            is_blocking, expected_blocking,
+            "`{}` 的 Run 档位与预期不符 —— 放错档的代价是「占住 worker」或「假装能取消」",
+            spec.name
+        );
+        let is_builtin = matches!(spec.run, Run::Builtin);
+        assert_eq!(
+            is_builtin,
+            spec.name == "cancel",
+            "`{}` 的 Builtin 档位不对 —— 只有 `cancel` 该是硬臂",
+            spec.name
+        );
+    }
+    // 计数自检：新增命令而这里没表态 ⇒ 上面那条 `expected_blocking` 会把它当非阻塞，
+    // 于是真加了一条阻塞命令却没登记时会红。这里再加一条显式的覆盖面断言。
+    // P4f：`bus-list` / `bus-send` 起 cc-bus 子进程并等它退出 ⇒ 与 `launch`/`kill` 同为阻塞档。
+    let known = [
+        "cancel",
+        "kill",
+        "launch",
+        "ping",
+        "resolve",
+        "bus-list",
+        "bus-send",
+        "bus-kill",
+        "bus-state",
+        "capture-pane",
+    ];
+    let missing: Vec<&str> = super::REGISTRY
+        .iter()
+        .map(|s| s.name)
+        .filter(|n| !known.contains(n))
+        .collect();
+    assert!(
+        missing.is_empty(),
+        "这些命令没在本条里表态「阻塞 / 异步 / 内建」：{missing:?}"
+    );
+}
+
+/// ★ `launch` 的 `fields` 必须与**真正的解析器 / 输出构造器**实测一致。
+///
+/// # 为什么非有这一层不可
+///
+/// `CommandSpec::fields` 是**手写镜子**。拿它去钉文档（R3）时，如果它自己会漂，
+/// 那就是**用一个手写清单证明另一个手写清单** —— 一点强度都没有。
+/// 所以它必须先与代码里真正读/写这些键的地方对上。
+///
+/// 抽取面：`parse_request` 里每个 `get_str("…")`（= args 侧）+
+/// `launch_for_inbound` 里 `json!` 的键（= data 侧）。
+#[test]
+fn launch_fields_match_its_parser_and_output() {
+    let src = crate::guard_support::production_code(include_str!("../../src/backend/control/launch.rs"));
+    let mut found: Vec<String> = Vec::new();
+
+    // args 侧：`get_str("<key>")`
+    let key = "get_str(\"";
+    let mut from = 0usize;
+    while let Some(rel) = src[from..].find(key) {
+        let at = from + rel + key.len();
+        let end = src[at..].find('"').map(|k| at + k).unwrap_or(at);
+        found.push(src[at..end].to_string());
+        from = end;
+    }
+    let args_n = found.len();
+    assert!(
+        args_n >= 5,
+        "只从解析器抠到 {args_n} 个 args 字段 —— 抽取坏了，本断言在空转"
+    );
+
+    // data 侧：`json!({ "<key>": … })` —— 取 `json!` 块里的所有 `"key":`
+    let j = src
+        .find("serde_json::json!({")
+        .expect("找不到 launch 的输出构造 —— 抽取坏了");
+    let jend = src[j..].find("})").map(|k| j + k).expect("json! 没收尾");
+    let block = &src[j..jend];
+    let mut data_n = 0usize;
+    for part in block.split('"').skip(1).step_by(2) {
+        if !part.is_empty() && part.chars().all(|c| c.is_ascii_lowercase() || c == '_') {
+            found.push(part.to_string());
+            data_n += 1;
+        }
+    }
+    assert!(
+        data_n >= 3,
+        "只从输出构造抠到 {data_n} 个 data 字段 —— 抽取坏了，本断言在空转"
+    );
+
+    found.sort();
+    found.dedup();
+    let spec = super::REGISTRY
+        .iter()
+        .find(|s| s.name == "launch")
+        .expect("注册表里没有 launch");
+    let mut declared: Vec<String> = spec.fields.iter().map(|s| s.to_string()).collect();
+    declared.sort();
+    assert_eq!(
+        declared, found,
+        "\n`launch` 登记的 fields 与它真正读/写的键对不上。\n\
+             这面镜子是用来钉文档的（R3）—— 它自己先漂了，钉出来的就是假的。"
+    );
+}
+
+/// ★〔audit-0805 08-06〕**「声明零字段」不许成为免检开关**。
+///
+/// # 它补的洞
+///
+/// 两条判据（本文件这条 + `protocol_doc_guard` 的
+/// `every_command_payload_field_appears_in_its_own_doc_section`）**开头都是**
+/// `if spec.fields.is_empty() { continue; }`。
+/// ⇒ 一条命令只要把 `fields` 声明成 `&[]`，就**同时**从两条判据里消失 ——
+/// 而没有任何东西检查那个声明是不是诚实的。**声明本身成了豁免开关。**
+///
+/// ⚠ `resolve` 今天就是「有 `doc_anchor`、`fields: &[]`」。逐字读过它的文档段之后
+/// 判定**它是诚实的**：载荷记作 `{ResumeSpec}`，按**结构体引用**写、不逐字段列。
+/// ⇒ 所以本条不写成「有文档段就不许零字段」（那会当场误红），
+/// 而写成**默认拒绝 + 豁免登记**：零字段可以，但要写明为什么。
+#[test]
+fn declaring_zero_fields_needs_a_reason() {
+    /// `(命令名, 为什么它可以声明零载荷字段)`。
+    const ZERO_FIELD_REASONS: &[(&str, &str)] = &[(
+        "resolve",
+        "载荷是 `ResumeSpec` **结构体**，文档段按结构体引用记（`args:{ResumeSpec}`）\
+             而不逐字段列；字段契约由那个 struct 的定义与它自己的序列化测试守。\
+             ⇒ 在这里列一份字段清单反而会造出第二个真相源（E3）。",
+    )];
+    let mut unexplained: Vec<&str> = Vec::new();
+    let mut zero_with_doc = 0usize;
+    for spec in super::REGISTRY {
+        if !spec.fields.is_empty() {
+            continue;
+        }
+        if spec.doc_anchor.is_none() {
+            continue;
+        }
+        zero_with_doc += 1;
+        if !ZERO_FIELD_REASONS.iter().any(|(n, _)| *n == spec.name) {
+            unexplained.push(spec.name);
+        }
+    }
+    assert!(
+        zero_with_doc >= 1,
+        "没有任何命令处于「有文档段 + 零字段声明」状态 —— 本条在空转。\
+             若确实全都列了字段，请把本条连同 `ZERO_FIELD_REASONS` 一起删掉（别留空转的判据）"
+    );
+    assert!(
+        unexplained.is_empty(),
+        "这些命令有自己的文档小节，却把 `fields` 声明成空：{unexplained:?}\n\
+             ⚠ 空声明会让它**同时**从两条判据里消失（本文件这条 + `protocol_doc_guard` 那条，\n\
+             两条开头都是 `if spec.fields.is_empty() {{ continue; }}`）——\n\
+             也就是说**声明本身是免检开关**。\n\
+             要么把载荷字段列出来，要么在 `ZERO_FIELD_REASONS` 里写明为什么它没有可列的字段。"
+    );
+    for (name, _) in ZERO_FIELD_REASONS {
+        let spec = super::REGISTRY
+            .iter()
+            .find(|s| s.name == *name)
+            .unwrap_or_else(|| panic!("`ZERO_FIELD_REASONS` 里的 `{name}` 已经不在注册表里"));
+        assert!(
+            spec.fields.is_empty(),
+            "`{name}` 现在列了 {} 个字段，豁免登记该删了（登记表腐烂比没有登记更糟）",
+            spec.fields.len()
+        );
+    }
+}
+
+/// ★ **有 `fields` 就必须有自己的文档小节。**
+///
+/// 没有小节就没地方钉字段名 —— 那正是设计审计 P2 说的
+/// 「帧的字段有对拍，命令的载荷没有」。
+#[test]
+fn a_command_with_a_payload_must_own_a_doc_section() {
+    for spec in super::REGISTRY {
+        if spec.fields.is_empty() {
+            continue;
+        }
+        // `cancel` 的 `target` 记在入方向节的正文里（它是取消机制本身，不另开小节）。
+        if spec.name == "cancel" {
+            continue;
+        }
+        assert!(
+            spec.doc_anchor.is_some(),
+            "`{}` 有 {} 个载荷字段却没有自己的文档小节 —— 那些字段没地方钉",
+            spec.name,
+            spec.fields.len()
+        );
+    }
+}

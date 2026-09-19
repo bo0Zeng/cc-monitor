@@ -588,17 +588,42 @@ mod tests {
             "这张表空了 —— 要么真的没有终端命令面了（那就连同 `found.retain` 一起摘掉），\n             要么是被人掏空了。空表让 `retain` 变成 no-op，本条因此在空转。"
         );
         // 今天的接盘判据：`control::ccm` 的用法行判据。它必须①存在 ②扫的是同一份文件。
-        let ccm_mod = crate::control::ccm::own_source();
+        //
+        // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕**读的那份换了。**
+        // `own_source()` 回的是生产段那份 `control/ccm/mod.rs`；而接盘的那条判据
+        // （`fn every_flag_we_accept_has_a_usage_line`）这一轮跟着测试段搬进了
+        // `tests/backend/control/ccm_tests.rs` ⇒ 在 `own_source()` 里恒找不到。
+        let ccm_mod = include_str!("control/ccm_tests.rs");
         assert!(
             ccm_mod.contains("fn every_flag_we_accept_has_a_usage_line"),
             "接盘判据 `every_flag_we_accept_has_a_usage_line` 不在 `control/ccm/mod.rs` 里了 —— \n             `TERMINAL_SURFACE_FILES` 那一格从此没人接，把那份文件放回 `DISPATCH_FILES`，\n             或者给它另找一条判据并把这里改掉。"
         );
         // ⚠ 针**运行时拼**：写成字面量的话本文件就多出一处「解析不出路径的 `include_*!`」，
         //   而 `cross_half_edge_registry` 的抽取器按文本数调用数 —— 那是一次现打逮到的假阳。
-        let needle = format!("include_str{}(\"argv.rs\")", "!");
+        //
+        // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §5.4b` 第二条元教训〕
+        //    **原来的针是 `include_str!("argv.rs")` —— 针里嵌着那条相对路径的全文。**
+        //    剖分把那条判据搬去了 `tests/backend/control/ccm_tests.rs`，剖分器**按原语义
+        //    重定向**了它的 `include_str!`，于是那一行今天逐字是
+        //    `include_str!("../../../src/backend/control/ccm/argv.rs")` ⇒ 整串针失配
+        //    （现打红：「接盘判据不再扫 `argv.rs` 了」）。
+        //    ⇒ 针改成**只认路径的收尾文件名**：它认的是「有一处 include 读的是 argv.rs」，
+        //      而不是「那条相对路径逐字长这样」。前者是事实，后者是位置。
+        let opener = format!("include_str{}(\"", "!");
+        let reads_argv = ccm_mod
+            .match_indices(opener.as_str())
+            .filter(|(i, _)| {
+                ccm_mod[i + opener.len()..]
+                    .split('"')
+                    .next()
+                    .is_some_and(|path| path.ends_with("argv.rs"))
+            })
+            .count();
         assert!(
-            ccm_mod.contains(&needle),
-            "接盘判据不再扫 `argv.rs` 了 —— 它声称覆盖的那份文件与它实际扫的对不上。"
+            reads_argv >= 1,
+            "接盘判据不再扫 `argv.rs` 了 —— 它声称覆盖的那份文件与它实际扫的对不上。\n\
+             （本条只认 include 路径的**收尾文件名**，所以搬树改相对前缀不会让它假红；\n\
+             它真红就是那条 include 没了或读了别的文件。）"
         );
         for (f, why) in TERMINAL_SURFACE_FILES {
             assert!(
