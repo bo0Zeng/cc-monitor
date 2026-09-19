@@ -468,6 +468,18 @@ def selfcheck(files):
     return bad
 
 
+# ───────────────────── `--selfcheck` 的合成夹具 ─────────────────────
+#
+# 🔴 剖分做完之后盘上**没有**「还有内联块」的文件了 —— 那意味着上面那条反空真
+# 会永远触发，而量具从此**证不了自己有牙**。⇒ 没给 `--only` 时现造这一份。
+#
+# 它覆盖六种变异各自要咬的那一格：
+#   · **两个**内联块（变异④「动末块」只有多块文件才认真）
+#   · 一段**多行原始字面量**，且**行首落在字面量里**（`dedent` 一个字节都不许动那几个空格）
+#   · 一处 `include_*!` 相对路径（变异⑤「篡改 include」）
+#   · 生产段有真项（`pub fn`），不然它不是「混合文件」那一形
+SELFCHECK_FIXTURE = '//! `--selfcheck` 的合成夹具。**跑完即删**，不该出现在任何一次提交里。\n\npub fn produce() -> usize {\n    1\n}\n\n#[cfg(test)]\nmod tests {\n    use super::produce;\n\n    /// 多行原始字面量：**下面那几行的行首空格是字符串的值**，去缩进不许动它们。\n    const SHAPE: &str = r#"\n    line with four leading spaces\n        line with eight\n"#;\n\n    const EMBEDDED: &str = include_str!("../../../README.md");\n\n    #[test]\n    fn the_production_item_is_reachable() {\n        assert_eq!(produce(), 1);\n        assert!(SHAPE.contains("four leading"));\n        assert!(!EMBEDDED.is_empty());\n    }\n}\n\n#[cfg(test)]\nmod more_tests {\n    #[test]\n    fn the_last_block_is_also_accounted_for() {\n        assert!(1 + 1 == 2);\n    }\n}\n'
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--survey", action="store_true")
@@ -487,6 +499,23 @@ def main():
         return
 
     if a.selfcheck:
+        # 没给 `--only` ⇒ 现造合成夹具（理由见 `SELFCHECK_FIXTURE` 的头注），跑完**一定删掉**。
+        # ⚠ 夹具落在 `src/bridge/src/` 下是刻意的：`dest_for` / `rel_up` 都按树认住址。
+        #   它只在这条路上短暂存在，且 `--selfcheck` **不写盘目标文件**。
+        if not a.only:
+            fx_rel = "src/bridge/src/zz_selfcheck_fixture.rs"
+            fx_abs = os.path.join(REPO, fx_rel)
+            assert not os.path.exists(
+                fx_abs
+            ), f"{fx_rel} 已存在 —— 上一趟没清干净，先手工删掉"
+            with open(fx_abs, "w", encoding="utf-8") as fh:
+                fh.write(SELFCHECK_FIXTURE)
+            try:
+                print(f"〔合成夹具〕{fx_rel}（跑完即删）")
+                bad = selfcheck([fx_rel])
+            finally:
+                os.remove(fx_abs)
+            return 1 if bad else 0
         # 两棵树各挑：最大的 · 块最多的 · 带 include_str! 的 · mod.rs 那一形
         # （步 7c 换过一次：原来那 5 份是步 7b 已经剖完的文件，今天没有内联块 ⇒ 空转）
         sample = a.only or [
