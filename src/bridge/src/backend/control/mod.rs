@@ -25,6 +25,11 @@ pub mod backend_send_keys;
 //        `backend/` 那半**只搬证据**」。搬进来当场红；
 //      · `ssh_source.rs` —— 生产段抓着 GUI 宿主的把手（`tauri::AppHandle` · `Emitter` · `.emit(`，
 //        现打 3 处），搬进来会当场踩 `the_backend_layer_stays_host_agnostic`（定框 `C13`）；
+//      · `sftp.rs` —— **试过、退回来了**：它的住址被 **6 条互锁的登记表**引着，其中
+//        `sftp_move_ledger`（那张「SFTP 那 14 处拨号今天各自卡在哪」的挡路石底账）
+//        把别的判据里的**逐字行**当成自己的「校验位」，而搬文件恰好会改写那几行；
+//        它红的时候逐字说：「**别顺手把校验位改成新的原文 —— 那等于把「有人动过」
+//        这件事抹掉**」。⇒ 照它说的停下来，交回去重读。
 //      · `local_backend_host.rs` —— 生产段有 15 处平台 cfg / 平台原语，会踩
 //        `the_backend_half_stays_platform_agnostic`（定框 `C10`：`platform/` 是唯一允许它们的地方，
 //        而 monitor 侧今天还没有 `platform/`）。它自己的头注早就写着「这边是**宿主知识**」。
