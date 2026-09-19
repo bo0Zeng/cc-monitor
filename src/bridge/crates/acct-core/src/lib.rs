@@ -2,9 +2,9 @@
 //!
 //! # 这份数据有三个读者
 //!
-//! bash 写侧（`cc-acct-iso`）· 远端 daemon（`observe/accounts_query.rs`）·
-//! 本机 monitor（`local_accounts.rs`）。daemon crate 是 bin-only、刻意不进 workspace，
-//! 所以此前只能靠一条**读对面源文件**的守卫（`contract_matches_the_daemon_implementation`）
+//! bash 写侧（`cc-acct-iso`）· 远端后端（`observe/accounts_query.rs`）·
+//! 本机 monitor（`local_accounts.rs`）。backend crate 是 bin-only、刻意不进 workspace，
+//! 所以此前只能靠一条**读对面源文件**的守卫（`contract_matches_the_backend_implementation`）
 //! 把四个常量钉住。
 //!
 //! 那条守卫是**真的**（它剥注释、剥测试段、有字节地板与锚点自检，注释里还记着
@@ -19,13 +19,13 @@
 //! | 函数 | 判定 |
 //! |---|---|
 //! | [`is_deceptive_char`] | **平台无关**，而且两侧**双向漂了**（见下）⇒ 合，取并集 |
-//! | `is_safe_config_dir` | monitor 用 `looks_absolute`（认 Windows 盘符）、**允许 `\`** 作分隔符故改拒 `\..\`；daemon 直接把 `\` 当危险字符拒掉。**是刻意的平台特化，不是漂移** ⇒ 不合 |
+//! | `is_safe_config_dir` | monitor 用 `looks_absolute`（认 Windows 盘符）、**允许 `\`** 作分隔符故改拒 `\..\`；backend 直接把 `\` 当危险字符拒掉。**是刻意的平台特化，不是漂移** ⇒ 不合 |
 //! | `norm_dir` | 同上（monitor 多剥一层 `\`）⇒ 不合 |
 //!
 //! 🔴 **`N-F1c`（09-05）把这个「二选一」解掉了，本节留作来历，别当现行**：
 //! 〔旧文逐字：「硬把后两个合了，只能二选一：要么 monitor 失去 Windows 路径，
-//! 要么 daemon 失去对 `\` 的拒绝。」〕
-//! 那个两难的前提是「`daemon` 只跑在 Linux 上，所以它可以把 `\` 当危险字符」。
+//! 要么后端失去对 `\` 的拒绝。」〕
+//! 那个两难的前提是「`backend` 只跑在 Linux 上，所以它可以把 `\` 当危险字符」。
 //! `N-F1c` 起 **monitor 的本机账号清单也来问这个二进制**（`--list-accounts`），而 monitor 要在
 //! Windows 上跑 ⇒ 那个前提没了。
 //! 解法**不是**「合」，是把判据按它防的东西拆开（逐字照 `local_accounts.rs` 那段头注）：
@@ -92,7 +92,7 @@ pub fn auth_kind_from_manifest(raw: Option<&str>) -> &'static str {
 }
 
 /// 「鉴权方式这一维**不再阻塞**这个号被选中」。**这是这条规则的唯一住址** ——
-/// 两个生产者（daemon `observe/accounts_query.rs` · monitor `local_accounts.rs`）都调它，
+/// 两个生产者（backend `observe/accounts_query.rs` · monitor `local_accounts.rs`）都调它，
 /// 所以「三个生产者各填一个不同默认值」那种漂移在结构上不可表示。
 ///
 /// - 订阅号：凭据文件在不在（**逐字节旧行为** —— `logged_in` 原来就是这一格）。
@@ -239,8 +239,8 @@ pub fn auth_kind_parity_manifest(root: &str) -> String {
 ///
 /// | 缺在哪 | 码位 | 是不是真洞 |
 /// |---|---|---|
-/// | daemon 缺 | `U+2060..=U+2064`（word joiner / 不可见运算符）· `U+1680` · `U+2000..=U+200A` · `U+202F` · `U+205F` · `U+3000`（各类空白） | **是**。这些 `char::is_control()` 全是 `false`，daemon 侧真的会放行 |
-/// | monitor 缺 | `U+0085`（NEL） | **不是**。U7-3 我把它当安全洞报了出来，**那是错的**：Rust 里 `'\u{0085}'.is_control() == true`（NEL 属 Cc 类），monitor 的 `is_safe_config_dir` 本来就靠 `is_control()` 拒了它。**集合差了一项，可观察行为没差。**<br>daemon 源码里那句「NEL 不在 `char::is_control` 里」是**事实错误**，我照抄了它 —— U7-4 实测证伪 |
+/// | backend 缺 | `U+2060..=U+2064`（word joiner / 不可见运算符）· `U+1680` · `U+2000..=U+200A` · `U+202F` · `U+205F` · `U+3000`（各类空白） | **是**。这些 `char::is_control()` 全是 `false`，backend 侧真的会放行 |
+/// | monitor 缺 | `U+0085`（NEL） | **不是**。U7-3 我把它当安全洞报了出来，**那是错的**：Rust 里 `'\u{0085}'.is_control() == true`（NEL 属 Cc 类），monitor 的 `is_safe_config_dir` 本来就靠 `is_control()` 拒了它。**集合差了一项，可观察行为没差。**<br>backend 源码里那句「NEL 不在 `char::is_control` 里」是**事实错误**，我照抄了它 —— U7-4 实测证伪 |
 ///
 /// NEL 仍然留在本集合里：让集合**自足** —— 调用方即使没有另外查 `is_control()` 也有完整保护。
 /// 但**理由要说对**，不能靠一句错的断言撑着。

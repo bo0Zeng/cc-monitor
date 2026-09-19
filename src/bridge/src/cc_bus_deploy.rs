@@ -396,5 +396,5 @@ pub async fn deploy_local_cc_bus() -> Result<CcBusDeployReport, String> {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/bridge/cc_bus_deploy_tests.rs"]
+#[path = "../../../tests/bridge/backend/control/cc_bus_deploy_tests.rs"]
 mod tests;

@@ -21,11 +21,11 @@
 //! 原因是那道真判据在本机与 CI
 //! 上各有一个够不着的理由，两条都是现打的读数、不是推断：
 //!
-//! - **本机**：`tests/scripts/verify-committed-state.sh` 的 `daemon-win` 卡在 `ring` 的 C 构建脚本上
+//! - **本机**：`tests/scripts/verify-committed-state.sh` 的 `backend-win` 卡在 `ring` 的 C 构建脚本上
 //!   （09-11 沙箱实测：EXIT=101 · `failed to find tool "lib.exe"` ·
-//!   `Checking cc-monitor-remote` 命中 **0** ⇒ 根本没走到我们的代码）。
+//!   `Checking cc-monitor-backend` 命中 **0** ⇒ 根本没走到我们的代码）。
 //!   而沙箱门禁那道 `winchk` 射程逐字是 `-p monitor`，**不含本 crate**。
-//! - **CI**：daemon job 那一步带 zig、口径是对的，但它只看 `origin/main`，
+//! - **CI**：backend job 那一步带 zig、口径是对的，但它只看 `origin/main`，
 //!   而本仓的红线是**不 push** —— 09-11 现打：最后一趟 CI 跑在 `14e0f05`（09-10 17:16Z，
 //!   `success`，那一步逐条绿），而**那个提交里根本没有 `acquire.rs` 这份文件**；
 //!   缺陷住在本地领先的 25 拍里。⇒ **CI 没有红，是因为它从来没见过那一拍。**

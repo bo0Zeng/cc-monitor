@@ -55,7 +55,7 @@
 //! 真实理由更硬：**`ToolSpec` 是 `const` 声明式数据，而探测是行为。**
 //! `ToolSource::Vendored { repo_path, fingerprint_file }` 是数据——两个字符串，
 //! 谁读它都不需要任何能力。一个探测机制不是：它要么需要一条活的 ssh 会话
-//! （`ccm` / `cc-acct-iso`），要么需要一次协议握手（remote daemon 的 `hello` 帧），
+//! （`ccm` / `cc-acct-iso`），要么需要一次协议握手（remote backend 的 `hello` 帧），
 //! 要么需要读本机文件系统（PowerShell profile 扫围栏）。把这些塞进 `const`
 //! 只能塞成「一段命令模板 + 一个解析规则」的小 DSL，那就是把四件不相干的事
 //! 装进一个盒子（本工作区反复拒绝的"上帝结构"）。
@@ -109,7 +109,7 @@ pub enum ToolSource {
         repo_path: &'static str,
         fingerprint_file: &'static str,
     },
-    /// 交叉编译后内嵌的二进制（remote daemon）。
+    /// 交叉编译后内嵌的二进制（remote backend）。
     EmbeddedBinary { repo_path: &'static str },
     /// 由 cc-monitor 现场生成的文本片段（PowerShell profile 块、shell 别名块、钩子片段）。
     Generated,
@@ -150,7 +150,7 @@ pub enum ToolDestination {
     /// **路径由用户配置决定，不是常量。**
     ///
     /// T02 审计追问「注册表与真写入方零耦合」时查出来的（比审计报的更严重）：
-    /// - `remote-daemon` 原先声明 `RemoteHomeRelative(".local/bin/ccm-daemon")`，
+    /// - `remote-daemon` 原先声明 `RemoteHomeRelative(".local/bin/ccm-backend")`，
     ///   而这个字符串**全仓只出现在注册表自己里**；真实路径是 `RemoteConfig.daemon_path`，
     ///   每个远端各自配置（`remote_history.rs::run_list_query` 直接 `shell_quote(&cfg.daemon_path)`）。
     /// - `cc-acct-iso` 原先声明 `LocalHomeRelative(".claude/skills/cc-acct-iso")`，
@@ -236,7 +236,7 @@ pub enum HostScope {
 ///
 /// 第一版把两件事写在同一个字符串里：`"~/.bashrc（或所选 profile）"`、
 /// `"~/.claude/settings.json 的 hooks 段"`、`"~/.local/bin/cc-*（12 条软链）"`、
-/// `"远端 ~/.local/bin/ccm-daemon"`。作为展示文本没问题，但 T02 要**真去查这些文件的现状**，
+/// `"远端 ~/.local/bin/ccm-backend"`。作为展示文本没问题，但 T02 要**真去查这些文件的现状**，
 /// 那些散文进不了 `Path`——于是拆成机器可解析的 `path` + 给人看的 `note`。
 ///
 /// 「本机还是远端」**没有新增字段**：从 [`ToolSpec::destination`] 推导
@@ -298,15 +298,15 @@ pub enum TouchEffect {
 ///
 /// # 🔴 〔`K-R81` 09-12〕这一层为什么非有不可（用户 09-12 逐字逼出来的）
 ///
-/// 用户逐字：「**一个后端要两处使用 / 即远程 daemon 就是远程本地机器的后端**」。
+/// 用户逐字：「**一个后端要两处使用 / 即远程后端就是远程本地机器的后端**」。
 /// 也就是说：**远端那台机器上跑的那一份，是「那台机器的本地后端」**，
-/// 不是「远端的 daemon」——「本机 / 远端」这个二分本身就是从错的名字里长出来的。
+/// 不是「远端的后端」——「本机 / 远端」这个二分本身就是从错的名字里长出来的。
 ///
 /// 而在这一层立起来之前，[`ToolSpec`] 是「一个源 + 一个落点 + 一串 touch」：
 /// **同一个后端有三种载体、四个落点，而闭集只表达得了一个半**（`K-R68` 现打）。
-/// 三种载体逐条是：① 这一份产物自己带着、要用时自释放的那份（`native-daemon/`，
-/// `local_backend::native_embedded_daemon` 的 `include_bytes!`）·
-/// ② 内嵌、推给远端那台机器的那份（`embedded-daemons/`）·
+/// 三种载体逐条是：① 这一份产物自己带着、要用时自释放的那份（`native-backend/`，
+/// `local_backend::native_embedded_backend` 的 `include_bytes!`）·
+/// ② 内嵌、推给远端那台机器的那份（`embedded-backends/`）·
 /// ③ 安装包放在 app 可执行文件旁边的那份（`tauri.sidecar.conf.json` 的 `externalBin`）。
 ///
 /// # 为什么不是「`destination` 改成多值」
@@ -631,12 +631,12 @@ pub const TOOLS: &[ToolSpec] = &[
     },
     // ═══ 🔴 〔`K-R81` 09-12〕**这一条改名了，而改名不是清洁工作** ═══
     //
-    // 用户 09-12 逐字：「**一个后端要两处使用 / 即远程 daemon 就是远程本地机器的后端**」。
-    // 这一条先前叫 `remote-daemon` / 「远端 daemon」，而它说的是**假的**：
-    // 那一份不是「远端的 daemon」，是**那台机器的本地后端**（`K36` 逐字
+    // 用户 09-12 逐字：「**一个后端要两处使用 / 即远程后端就是远程本地机器的后端**」。
+    // 这一条先前叫 `remote-daemon` / 「远端后端」，而它说的是**假的**：
+    // 那一份不是「远端的后端」，是**那台机器的本地后端**（`K36` 逐字
     // 「两份后端应该要一样的」·`K33` 逐字「后端只有一个」）。
     //
-    // 🔴 **这个名字已经花过一次真钱**：`build-linux` 没有 `Stage native daemon for
+    // 🔴 **这个名字已经花过一次真钱**：`build-linux` 没有 `Stage native backend for
     // self-extract` 那一步而 `build-windows` 有 ⇒ **Linux 裸 exe 装出来没有本机后端**
     // （`ROADMAP#KU26`，用户已裁「那肯定带」）。★ 那正是「把它当成『远端』产物」的直接后果 ——
     // **名字塑造了发版流水线的形状**。⚠ 发版那一步归 `K-R42`，本件只把名字与闭集说对。
@@ -646,8 +646,8 @@ pub const TOOLS: &[ToolSpec] = &[
         installable: true,
         // 🔴 〔`K-R63` 09-11〕**这一格原先是 `false`，而它是一处假申报** —— 本件那条新性质
         // 落地的当场把它逮出来的（不是人看出来的）。卸载实现一直在：
-        // `sftp.rs::uninstall_remote_daemon` 是**设置面板「卸载 daemon」按钮**背后那条命令
-        // （删 daemon 二进制 + 同目录 `.build_id`，`is_safe_remote_daemon_path` 守着）。
+        // `sftp.rs::uninstall_remote_backend` 是**设置面板「卸载后端」按钮**背后那条命令
+        // （删后端二进制 + 同目录 `.build_id`，`is_safe_remote_daemon_path` 守着）。
         // ⇒ 少报一格的后果与多报同向：配置面那一列「能否装/撤」直接印给用户看，
         //   写着「卸不掉」而按钮就在旁边。这正是 `K-R60` 在 `installable` 上治过的同一族病，
         //   只是这一次错在**少报**那一边（`K-R60` 那次是多报）。
@@ -662,7 +662,7 @@ pub const TOOLS: &[ToolSpec] = &[
             Carrier {
                 what: "安装包放在 app 可执行文件旁边的那一份（`tauri.sidecar.conf.json` 的 `externalBin`）—— 解析次序里**第一个**被采用的就是它（`local_backend::resolve_beside_this_exe`）",
                 source: ToolSource::EmbeddedBinary {
-                    repo_path: "src/bridge/binaries/cc-monitor-remote",
+                    repo_path: "src/bridge/binaries/cc-monitor-backend",
                 },
                 // **路径不是常量，也不是家目录相对** —— 它跟着 app 装到哪儿走，
                 // 而那个目录是装机时由人选的。同 `$DAEMON_PATH` 那一格的理由：
@@ -670,22 +670,22 @@ pub const TOOLS: &[ToolSpec] = &[
                 // 然后言之凿凿地报「缺失」。
                 destination: ToolDestination::UserConfiguredPath {
                     token: "$APP_DIR",
-                    what: "装机时安装向导里选的那个安装目录（sidecar 与 cc-monitor 主程序同目录）",
+                    what: "装机时安装向导里选的那个安装目录（local_backend 与 cc-monitor 主程序同目录）",
                 },
                 touches: &[TouchedFile {
                     path: "$APP_DIR",
                     host: HostScope::Client,
                     note: Some(
-                        "本机，随安装包落盘；文件名带 target triple（`cc-monitor-remote-<triple>`，\
+                        "本机，随安装包落盘；文件名带 target triple（`cc-monitor-backend-<triple>`，\
                          Windows 上再带 `.exe`）—— 名字的真相源是 `local_backend::resolve_with`",
                     ),
                     effect: TouchEffect::OwnedFile,
                 }],
             },
             Carrier {
-                what: "这一份产物**自己带着**、旁边没有 sidecar 时自释放出来的那一份（`build.rs::embed_native_daemon` ⇒ `local_backend::native_embedded_daemon` 的 `include_bytes!`）",
+                what: "这一份产物**自己带着**、旁边没有本机后端时自释放出来的那一份（`build.rs::embed_native_backend` ⇒ `local_backend::native_embedded_backend` 的 `include_bytes!`）",
                 source: ToolSource::EmbeddedBinary {
-                    repo_path: "src/bridge/native-daemon/cc-monitor-native",
+                    repo_path: "src/bridge/native-backend/cc-monitor-native",
                 },
                 // 落点带 build_id（`local_backend::local_extract_name`）—— 那不是命名品味：
                 // 远端自部署落的也是这个目录，两边对同一个文件名有不同期望就会互判 stale、
@@ -702,19 +702,19 @@ pub const TOOLS: &[ToolSpec] = &[
                 }],
             },
             Carrier {
-                what: "推给远端那台机器、在**那台机器上当本地后端**跑的那一份（`embedded-daemons/`，交叉编译的 musl 二进制）",
+                what: "推给远端那台机器、在**那台机器上当本地后端**跑的那一份（`embedded-backends/`，交叉编译的 musl 二进制）",
                 source: ToolSource::EmbeddedBinary {
-                    repo_path: "embedded-daemons",
+                    repo_path: "embedded-backends",
                 },
                 destination: ToolDestination::UserConfiguredPath {
                     token: "$DAEMON_PATH",
-                    what: "每个远端连接的「daemon 路径」配置项",
+                    what: "每个远端连接的「backend 路径」配置项",
                 },
                 touches: &[TouchedFile {
                     path: "$DAEMON_PATH",
                     host: HostScope::Remote,
                     note: Some(
-                        "路径由该连接的「daemon 路径」配置项决定——**不是**固定的 ~/.local/bin/ccm-daemon。\
+                        "路径由该连接的「backend 路径」配置项决定——**不是**固定的 ~/.local/bin/ccm-backend。\
                          ⚠ 它在那台机器上就是**那台机器的本地后端**（`K36`），\
                          「远端」说的是「相对这台 monitor」，不是它的身份",
                     ),

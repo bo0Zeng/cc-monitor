@@ -1,7 +1,7 @@
 //! Linux 实现：`pidfd_open(2)` + 无超时 `poll(2)`。**从 `platform/pidwatch.rs` 逐字搬来。**
 //!
 //! 整个文件 `#![cfg(target_os = "linux")]` —— U4a 之前它是无条件编译的，
-//! 那正是 daemon 在 Windows 上 12 个错里 11 个的来源（`SYS_pidfd_open` / `std::os::fd` /
+//! 那正是后端在 Windows 上 12 个错里 11 个的来源（`SYS_pidfd_open` / `std::os::fd` /
 //! `libc::poll` / `pollfd` / `POLLIN` / `pid_t`，**一个 cfg 都没有** —— 计划自审 §0.5-3
 //! 说的「cfg 位置扫描抓不到它」指的就是这里）。
 

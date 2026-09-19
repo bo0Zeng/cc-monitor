@@ -13,7 +13,7 @@ const FACES: DriftFace[] = [
   "unknown_record_type",
   "known_type_parse_failed",
   "unknown_session_kind",
-  "unknown_daemon_token",
+  "unknown_backend_token",
 ];
 
 describe("faceTitle", () => {

@@ -11,7 +11,7 @@ fn stat_with_starttime(start: &str) -> String {
 /// ★★ **「字段解析不出」不等于「进程不在」**〔audit-0805 F13 / 报告 I-14〕。
 ///
 /// 原来最后一行是 `proc_stat_starttime(&raw).is_some_and(|got| got == want)` ——
-/// 解析不出时给 `false` ⇒ **判死**。而 daemon 侧 `platform/liveness.rs` 对同一格逐字写着
+/// 解析不出时给 `false` ⇒ **判死**。而后端侧 `platform/liveness.rs` 对同一格逐字写着
 /// 「Do not archive a still-existing PID on missing start info.」⇒ **同一件事两个方向**。
 ///
 /// `/proc/<pid>/stat` 都读到了就说明那个 pid **还在**；解析不出只是「我认不出它是不是
@@ -23,7 +23,7 @@ fn an_unparseable_starttime_does_not_archive_a_living_process() {
         liveness_from_stat("garbage without fields", Some("12345")),
         "★ 解析不出 starttime 就判死 —— 那会把一个活着的会话归档。\n\
              /proc 都读到了就说明进程还在；解析不出只是「认不出是不是同一个」。\n\
-             daemon 侧 platform/liveness.rs 逐字：Do not archive a still-existing PID on \n\
+             backend 侧 platform/liveness.rs 逐字：Do not archive a still-existing PID on \n\
              missing start info. 两边必须同向。"
     );
 }
@@ -41,6 +41,6 @@ fn the_starttime_comparison_still_discriminates() {
     );
     assert!(
         liveness_from_stat(&stat_with_starttime("111"), None),
-        "没有 baseline ⇒ 退到存在性（同 Windows 侧与 daemon 侧）"
+        "没有 baseline ⇒ 退到存在性（同 Windows 侧与后端侧）"
     );
 }

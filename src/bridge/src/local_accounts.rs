@@ -1,20 +1,20 @@
 //! L3a（local-as-remote）：**本机**多账号枚举 —— 只读。
 //!
-//! `accounts.rs` 是这件事的**远端**那半（把 daemon 的 `--list-accounts` 包成 Tauri 命令）。
+//! `accounts.rs` 是这件事的**远端**那半（把后端的 `--list-accounts` 包成 Tauri 命令）。
 //! 本模块是它的本地对侧：**同样的输出类型**（`AccountsResult`），前端拿到的形状逐字段一致
 //! ——那正是 §40「本地 = 不走 ssh 的远端」在这一格上的意思。
 //!
 //! # 🔴 `N-F1c`（2026-09-05）：读口**不再自己读磁盘**，改成问本机后端
 //!
 //! 用户拍的板逐字：「claude code 真实运行在哪台机器，他的账号就应该归哪台机器的后端管」。
-//! ⇒ [`list_local_accounts`] 现在 exec 一次本机 sidecar 的 `--list-accounts`，
+//! ⇒ [`list_local_accounts`] 现在 exec 一次本机后端的 `--list-accounts`，
 //! 把它吐的那几行交给 `accounts::parse_accounts_lines`（**与远端那条同一套解析、不同传输**），
 //! 调用形状照同文件 [`list_local_session_accounts`] 那个先例，没有另造第二种调用法。
 //!
 //! 落地要先搬开两块石头，两块都在本轮搬掉了：
-//! - daemon 那份 `is_safe_config_dir` 第一条是 `p.starts_with('/')` ⇒ Windows 的账号目录
+//! - backend 那份 `is_safe_config_dir` 第一条是 `p.starts_with('/')` ⇒ Windows 的账号目录
 //!   `C:\Users\…` 会被判成不安全、**列表恒空**。已按下面那一节的原话拆成两半。
-//! - 开发树里**没有** sidecar（发版时才注入）⇒ 读口必须**诚实降级**：
+//! - 开发树里**没有** local_backend（发版时才注入）⇒ 读口必须**诚实降级**：
 //!   [`LocalAccountsOutcome`] 是三档 tagged 返回，「够不着」绝不许渲染成「你没有账号」。
 //!
 //! # 为什么当年是第三份实现（历史；那一段代码今天仍在，理由见 [`list_from_dir`]）
@@ -23,23 +23,23 @@
 //! （直接读文件系统）。当年**复用不了**，理由是结构性的：
 //!
 //! - 那个 crate 是 **bin-only**（无 `[lib]`），且 `Cargo.toml` 注释写明**刻意不进 workspace**
-//!   ——「a workspace would pull this Linux-only daemon into the Windows CI
+//!   ——「a workspace would pull this Linux-only backend into the Windows CI
 //!   `cargo test --all` and break the build」。
 //! - monitor **必须在 Windows 上构建**。让它依赖一个 Linux-only crate，正是那条注释在防的事。
 //!
 //! ⚠ `N-F1c` 绕开这条限制的办法**不是**去链接它，而是 **exec 它**：进程边界上没有 crate 依赖，
 //! 所以那条注释挡的事一件都没发生。⇒ 「复用不了」在**链接**这个意义上今天仍然成立。
 //!
-//! ⇒ 于是这份数据有 **三个读者**：`cc-acct-iso`（bash，写侧）· daemon（读侧，两条路都走它）·
+//! ⇒ 于是这份数据有 **三个读者**：`cc-acct-iso`（bash，写侧）· backend（读侧，两条路都走它）·
 //! 本模块保留的那份参照实现（只被判据驱动）。
 //! 这是**已知代价**，处置照本仓既有纪律：**双写点必须有守卫**
 //!（同 `TMUX_LS_FMT` / 观测取值 / Z06 凭据文件名那几条）。见本文件测试模块里的
 //! **U7-3 起四条契约常量与欺骗字符判据都住在共享 crate `acct-core`** ——
 //! 两侧 import 同一份，漂移**不可表示**（此前靠一条读对面源文件的守卫发现，已退役）。
 //!
-//! # 与 daemon 那份**故意不同**的一处：路径绝对性判据
+//! # 与后端那份**故意不同**的一处：路径绝对性判据
 //!
-//! daemon 的 `is_safe_config_dir` 第一条是 `p.starts_with('/')`。那条在 daemon 里是对的
+//! backend 的 `is_safe_config_dir` 第一条是 `p.starts_with('/')`。那条在后端里是对的
 //!（它只跑在 Linux 上），但**本模块要在 Windows 上跑**，而 Windows 的 config dir 是
 //! `C:\Users\…`——照抄会把每一个 Windows 账号都判成不安全、列表恒空。
 //!
@@ -56,12 +56,12 @@ use acct_core::{
 };
 use std::path::{Path, PathBuf};
 
-/// manifest 读取上限（与 daemon 侧同值；账号数有限，8MB 是兜底不是预期）。
+/// manifest 读取上限（与后端侧同值；账号数有限，8MB 是兜底不是预期）。
 const MANIFEST_CAP: u64 = 8 * 1024 * 1024;
 
 // 四条契约常量（账号库目录名 / manifest 文件名 / 凭据文件名 / schema 版本）
 // U7-3 起住在 `acct-core`，见文件顶部的 `use`。**它们不再是双写点** ——
-// 本模块与 daemon import 同一份，想不一致得先把 import 删掉。
+// 本模块与 backend import 同一份，想不一致得先把 import 删掉。
 // bash 写侧（`cc-acct-iso`）是另一门语言、共享不了常量，那条对账留在
 // `acct-core::tests::the_credential_filename_matches_the_cc_acct_iso_declaration`。
 
@@ -100,7 +100,7 @@ struct RawManifest {
 // U7-3：`is_deceptive_char` 搬进共享 crate `acct-core`。
 // 它是**平台无关的安全性质**（不是 `char::is_control` —— 那只覆盖 C0/C1），
 // 两侧读的是同一份 manifest，「什么算欺骗」必须一致。
-// 实测搬之前两侧集合不同：daemon 缺 word joiner / 各类空白（**真洞**，那些 is_control 是 false）；
+// 实测搬之前两侧集合不同：backend 缺 word joiner / 各类空白（**真洞**，那些 is_control 是 false）；
 // 本机缺 NEL（**非真洞** —— is_control 本来就挡着，U7-3 我误报过，U7-4 已证伪）。
 
 /// 「是绝对路径」——**这一半是平台相关的**（见模块头注）。
@@ -148,7 +148,7 @@ fn is_safe_config_dir(p: &str) -> bool {
     })
 }
 
-/// 去掉尾部分隔符，让不同来源写法能对上（daemon 侧同义）。
+/// 去掉尾部分隔符，让不同来源写法能对上（backend 侧同义）。
 fn norm_dir(p: &str) -> &str {
     let t = p.trim_end_matches('/');
     let t = t.trim_end_matches('\\');
@@ -198,9 +198,9 @@ fn local_accts_dir() -> Option<PathBuf> {
 /// 「它们没有判据、没有测试、也不是任何东西的唯一锚点」，而这一套**三条全占**：
 ///
 /// - `MANIFEST_CAP` 是 `byte_cap_registry` 那张表里点名的一格，
-///   还与 daemon 侧同名上限做**跨 crate 相等对拍**；
+///   还与后端侧同名上限做**跨 crate 相等对拍**；
 /// - `is_safe_config_dir` 是本仓「安全性质 / 平台形式」那条拆法的**参照实现** ——
-///   `N-F1c` 就是照着它把 daemon 那份改对的；
+///   `N-F1c` 就是照着它把后端那份改对的；
 /// - 这一套下面挂着十来条判据（三种读失败分得开 / 欺骗字符 / `authKind` 跨生产者对拍 …），
 ///   删掉它们是降强度。
 ///
@@ -218,7 +218,7 @@ fn list_from_dir(accts_dir: &Path) -> AccountsResult {
         shared_store,
         count,
         error,
-        // 本实现原生认得「configDir 缺席 = 账号 0」⇒ 恒 true（不像旧 daemon 要降级提示）。
+        // 本实现原生认得「configDir 缺席 = 账号 0」⇒ 恒 true（不像旧后端要降级提示）。
         account_zero_aware: true,
     };
 
@@ -315,7 +315,7 @@ fn list_from_dir(accts_dir: &Path) -> AccountsResult {
             .as_deref()
             .map(|d| d.join(CREDENTIALS_NAME).is_file())
             .unwrap_or(false);
-        // K-A1：分类与就绪各只有一处实现，都住 `acct-core` —— daemon 的
+        // K-A1：分类与就绪各只有一处实现，都住 `acct-core` —— backend 的
         // `observe/accounts_query.rs` 调的是同两个函数。⇒「两个生产者各填一个不同的默认值」
         // 在结构上不可表示（`KAY1` 那条 acceptor 点名的失效模式）。
         let kind = AuthKind::from_manifest(a.auth_kind.as_deref());
@@ -412,7 +412,7 @@ impl LocalAccountsOutcome {
                 accounts,
                 // ⚠ 逐字节保持 `N-F1c` 之前的行为：这条路一直是 `None`。
                 // `accounts::degraded_notice` **刻意不接进来** —— 它那两句话逐字都在说
-                // 「远端 daemon / 在远端跑一次」，对一台本机来说有两个字是假的，
+                // 「远端 backend / 在远端跑一次」，对一台本机来说有两个字是假的，
                 // 而改那两句要动 `accounts.rs`（本件写区外）。登记为诚实边界，不是遗漏。
                 notice: None,
             },
@@ -467,7 +467,7 @@ pub(crate) fn classify_local_accounts(outcome: QueryOutcome) -> LocalAccountsOut
 /// L3a：列出**本机**的账号 —— **问本机后端**（`N-F1c`）。
 ///
 /// `list_remote_accounts` 的本地对侧，**输出类型完全相同**；从 `N-F1c` 起连
-/// **数据源**也对上了：远端那条走 `ssh host <daemon> --list-accounts`，
+/// **数据源**也对上了：远端那条走 `ssh host <backend> --list-accounts`，
 /// 本机这条直接 exec 同一个二进制。调用形状照 [`list_local_session_accounts`]
 /// 那个先例，没有另造第二种调用法。
 ///
@@ -497,19 +497,19 @@ mod tests;
 // ─────────────────────────────────────────────────────────────────────────────
 
 // 〔F10b 第二批·下半〕`MAX_LOCAL_SESSION_FILES` / `MAX_LOCAL_SESSION_FILE_BYTES` **已删** ——
-// 它们是 daemon 侧同名上限的**第二份**（`accounts_query.rs::MAX_SESSION_FILES` 与
+// 它们是后端侧同名上限的**第二份**（`accounts_query.rs::MAX_SESSION_FILES` 与
 // `accounts_query.rs::MAX_SESSION_FILE_BYTES`，值逐字相同：
-// 500 个文件 / 1 MiB）。唯一的用处随 `list_local_session_accounts` 改走 sidecar 一起消失
-// ⇒ 留着就是「同一个数两处各写一份」（定框 §4）。上限现在只有一个家：daemon 那边，
+// 500 个文件 / 1 MiB）。唯一的用处随 `list_local_session_accounts` 改走本机后端一起消失
+// ⇒ 留着就是「同一个数两处各写一份」（定框 §4）。上限现在只有一个家：backend 那边，
 // 且由它自己的测试与 `read_regular_capped` 钉着。
 
 // 〔F10b 第二批〕`proc_claude_config_dir` 与 `pid_alive` **已删** ——
-// 它们是 daemon 侧 `platform/proc.rs` 那两个（`:19` / `:80`）的**第二份实现**，
-// 而本文件的头注原本就写着「判据与 daemon 侧逐字同源」。
-// 唯一的调用方（`list_local_session_accounts`）已改走 sidecar 的 `--session-accounts`
+// 它们是后端侧 `platform/proc.rs` 那两个（`:19` / `:80`）的**第二份实现**，
+// 而本文件的头注原本就写着「判据与后端侧逐字同源」。
+// 唯一的调用方（`list_local_session_accounts`）已改走本机后端的 `--session-accounts`
 // ⇒ 留着就是「同一件事两处各写一份」（定框 §4），且平台原语该住 `platform/`（C10）。
 // ⚠ 不是「暂时没人用就删」（铁律 13 禁的那种）：它们没有判据、没有测试、
-//   也不是任何东西的唯一锚点 —— 语义的家在 daemon 那边，且由它自己的测试钉着。
+//   也不是任何东西的唯一锚点 —— 语义的家在后端那边，且由它自己的测试钉着。
 
 /// E79：**本机**版的「某会话跑在哪个账号下」——`--session-accounts` 的对侧实现。
 ///
@@ -517,17 +517,17 @@ mod tests;
 ///
 /// 从前这里自己 `resolve_claude_dir()` + 读 `sessions/` 的 pidfile + 从
 /// `/proc/<pid>/environ` 抠 `CLAUDE_CONFIG_DIR`。现在**问本机后端**：
-/// exec 一次 sidecar `--session-accounts`，逐行 JSON 反序列化成 [`crate::accounts::SessionAccount`]。
+/// exec 一次 local_backend `--session-accounts`，逐行 JSON 反序列化成 [`crate::accounts::SessionAccount`]。
 ///
 /// ★ 这一迁把 **C1「一份代码、两种承载」在这条查询上做实了**：
 /// 本函数与 `accounts::list_remote_session_accounts` 现在是**同一套解析、不同传输** ——
-/// 远端那条走 `ssh host <daemon> --session-accounts`，本机这条直接 exec 同一个二进制。
+/// 远端那条走 `ssh host <backend> --session-accounts`，本机这条直接 exec 同一个二进制。
 /// 类型（`SessionAccount` / `SessionAccountsResult`）与逐行跳过坏行的做法都照它抄，没新造。
 ///
 /// # 平台差异搬到了该管它的那一侧
 ///
-/// 「Linux 有 `/proc`、Windows 没有」这件事**从此由 daemon 回答**，不再在 monitor 里判
-/// （从前这里有一句 `if !cfg!(target_os = "linux")`）。daemon 侧读 `/proc/<pid>/environ`
+/// 「Linux 有 `/proc`、Windows 没有」这件事**从此由后端回答**，不再在 monitor 里判
+/// （从前这里有一句 `if !cfg!(target_os = "linux")`）。backend 侧读 `/proc/<pid>/environ`
 /// 的那段在 `platform/proc.rs`，而 `platform/fallback_guard` 逐字禁止非目标平台的分支
 /// 凭空返回成功值 ⇒ Windows 上它诚实说「观测不到」而不是伪造空表。
 /// ⚠ **如实说**：本轮**没有**在真 Windows 上跑过这条（F05b 那次真机验的是 `--list-accounts`
@@ -535,16 +535,16 @@ mod tests;
 ///
 /// # 边界（`available:false` + `error` 这个形状本来就是为这类事准备的）
 ///
-/// - **sidecar 不在**（开发树）⇒ `available:false` + 「本机后端不在…（找过哪些路径）」。
+/// - **local_backend 不在**（开发树）⇒ `available:false` + 「本机后端不在…（找过哪些路径）」。
 /// - **查询失败** ⇒ `available:false` + 退出码与 stderr 原样带出（定框 §5：诚实降级）。
-/// - 零行是合法的（本机没有活会话）—— 同远端那条的判断，不额外区分「旧 daemon」。
+/// - 零行是合法的（本机没有活会话）—— 同远端那条的判断，不额外区分「旧后端」。
 /// - ⚠ 只抠**两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`）、`configDir` 过白名单
-///   —— 那两条现在由 daemon 侧守（它的 `observe/accounts_query.rs` 头注逐字写着同一套边界）。
+///   —— 那两条现在由后端侧守（它的 `observe/accounts_query.rs` 头注逐字写着同一套边界）。
 ///   🔴 **第二个键是 `K-P5f` 加的**（身份 token 读回来那一侧）；这句话原先逐字写着
 ///   「只抠 `CLAUDE_CONFIG_DIR` **一个键**」，**不同拍改它就是在盘上留一句假话** ——
 ///   而它这一处**没有任何机检看着**（路② 撞 0 道机检，`K-P5f §7 二㈡` 现打），
 ///   全靠人记得来改。同族病史见 `K-P5c §7 上报-3`「写着有、其实没有」。
-///   键名**不是参数**（daemon 侧两个常量），所以「两个键」与「整个环境快照」的界没有松动。
+///   键名**不是参数**（backend 侧两个常量），所以「两个键」与「整个环境快照」的界没有松动。
 #[tauri::command]
 pub async fn list_local_session_accounts() -> Result<crate::accounts::SessionAccountsResult, String>
 {

@@ -1,4 +1,4 @@
-// auto-e2e F-E3:`@tauri-apps/api/core` 的 **e2e 命令级 shim**（测试 fixture,非生产/daemon 改动）。
+// auto-e2e F-E3:`@tauri-apps/api/core` 的 **e2e 命令级 shim**（测试 fixture,非生产/backend 改动）。
 //
 // 诚实层级:Linux headless 下 Tauri IPC 边界结构性不可达（app 不在跑、GUI 触发经
 // `launch.rs::launch_powershell_window` 仅 Windows）。本 shim 把 `restartWithAccount`（真源）

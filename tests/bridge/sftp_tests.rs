@@ -15,7 +15,7 @@ fn probe_cfg() -> crate::ssh_source::RemoteConfig {
 /// ★★ **删远端文件的入口真的过了围栏吗**〔audit-0805 08-08，Phase G 第 53 件〕。
 ///
 /// 本文件有三条 `is_safe_remote_*` 围栏，各自都有直接的行为判据 ——
-/// **但主语是围栏本身**。08-08 实测：把 `uninstall_remote_daemon` 与
+/// **但主语是围栏本身**。08-08 实测：把 `uninstall_remote_backend` 与
 /// `remove_remote_file` 里那三处 `if !is_safe_…` 全部短路，
 /// **全仓 984 条判据一条不红**。而那两条路紧接着是
 /// `sftp.remove_file(...)` —— **删用户远端机器上的文件**。
@@ -51,7 +51,7 @@ async fn the_remote_delete_entry_point_actually_goes_through_the_fence() {
 fn both_remote_path_sinks_still_ask_their_fence() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/sftp.rs"));
     for (f, fence) in [
-        ("uninstall_remote_daemon", "is_safe_remote_daemon_path"),
+        ("uninstall_remote_backend", "is_safe_remote_daemon_path"),
         ("remove_remote_file", "is_safe_remote_jsonl"),
     ] {
         let at = prod
@@ -178,11 +178,11 @@ fn the_protocol_doc_sentence_about_the_alias_block_matches_the_file() {
 ///    `=名` 无尾冒号则在 send-keys/capture-pane/set-option 上 rc=1 完全失效。
 ///  - `exec` ：不能省。⚠ **理由在 `U-NP④`（08-14）之后换了一条**：旧理由是
 ///    「身份 poller 读 `sessions/$PID.json`，不 exec 则 PID 对不上」，而那条 poller 已删
-///    （身份改由 daemon 打，认的是 pidfile 自己的名字 = claude 的 PID）。今天留着它的
+///    （身份改由后端打，认的是 pidfile 自己的名字 = claude 的 PID）。今天留着它的
 ///    理由是「不在 agent 与终端之间多一层 shell」＋ 本 needle 本身就是部署契约。
 ///  - `@ccm_sid` / `@ccm_agent` ：身份随行，cc-monitor 靠它精确认会话。
 ///  - `@ccm_sid_expect` ：F04——通道A（建时/exec 时立即声明"打算跑这个 sid"）写这个 key，
-///    与通道B（独立读会话文件确认后才写的 `@ccm_sid`；`U-NP④` 之后由 **daemon** 写）分离。破坏性动作只认 `@ccm_sid`，
+///    与通道B（独立读会话文件确认后才写的 `@ccm_sid`；`U-NP④` 之后由 **backend** 写）分离。破坏性动作只认 `@ccm_sid`，
 ///    不被"声明了但从未真正跑起来"的会话骗过（旧审计 D6 的坑）。
 ///
 ///    **R09 复核订正（2026-07-28）——这条分离的作用域是「`shared/ccm` 内部」，不是全仓。**
@@ -200,7 +200,7 @@ fn the_protocol_doc_sentence_about_the_alias_block_matches_the_file() {
 ///      · `tests/session-backend.test.ts`（"#72 + F03.4甲′"那条黄金串）：兜底渲染器
 ///        **必须**写裸 `@ccm_sid`。已实测：把兜底侧改成 `_expect` 会让后者转红。
 ///    **成功标准④ 不受此例外影响**——终端起会话那条路径的意图声明全程在 `shared/ccm` 内
-///    （写 expect；事实由 daemon 提升，见 `U-NP④`），与兜底渲染器无交集。
+///    （写 expect；事实由后端提升，见 `U-NP④`），与兜底渲染器无交集。
 ///  - `CLAUDE_CONFIG_DIR` ：账号注入必须在**最终 exec 的那个 shell 里**设。
 ///  - `--print` / `--ccm-probe` ：F03 的渲染等价断言 + 安装自检/降级判据依赖它们。
 #[test]
@@ -234,11 +234,11 @@ fn ccm_cli_has_required_elements() {
 /// 而破的时候没有任何别的判据会出声（它不进任何 e2e，没有一台真远端可跑）。
 #[test]
 fn the_remote_ccm_entry_is_an_entry_not_an_implementation() {
-    let shim = ccm_entry_shim("/home/pi/.cc-monitor/bin/cc-monitor-remote");
+    let shim = ccm_entry_shim("/home/pi/.cc-monitor/bin/cc-monitor-backend");
     // ① 真的把 argv 转给后端，且走的是 `intercept` 的第二条入口（子命令形）。
     assert!(
-        shim.contains("exec '/home/pi/.cc-monitor/bin/cc-monitor-remote' ccm \"$@\"")
-            || shim.contains("exec /home/pi/.cc-monitor/bin/cc-monitor-remote ccm \"$@\""),
+        shim.contains("exec '/home/pi/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"")
+            || shim.contains("exec /home/pi/.cc-monitor/bin/cc-monitor-backend ccm \"$@\""),
         "shim 没把 argv 原样转给后端的 `ccm` 子命令：\n{shim}"
     );
     // ② **零实现**：除了 shebang、一行注释、一行 exec，不许有别的可执行行。
@@ -358,19 +358,19 @@ fn merge_profile_block_aborts_on_orphan_begin() {
     assert!(merge_profile_block(&truncated, "ccm() { :; }", "远端 ~/.bashrc").is_err());
 }
 
-/// F08b：仅当交叉编译产物已放进 embedded-daemons/（build.rs 置了 `embedded_daemons` cfg）
+/// F08b：仅当交叉编译产物已放进 embedded-backends/（build.rs 置了 `embedded_backends` cfg）
 /// 才编译/运行——证实内嵌真生效：按 arch 取到 ELF 二进制 + build_id 非空。CI 无二进制时
 /// 本测试被 cfg 掉，不误报。
-#[cfg(embedded_daemons)]
+#[cfg(embedded_backends)]
 #[test]
-fn embedded_daemon_binaries_present_and_valid() {
+fn embedded_backend_binaries_present_and_valid() {
     for arch in ["x86_64", "aarch64"] {
-        let bin = daemon_binary(arch).expect("内嵌二进制应存在");
+        let bin = backend_binary(arch).expect("内嵌二进制应存在");
         assert!(!bin.build_id.is_empty(), "build_id 非空");
         assert_eq!(&bin.bytes[..4], b"\x7fELF", "{arch} 应是 ELF");
         assert!(bin.bytes.len() > 100_000, "{arch} 体积应非平凡");
     }
-    assert!(daemon_binary("riscv64").is_none(), "未知 arch → None");
+    assert!(backend_binary("riscv64").is_none(), "未知 arch → None");
 }
 
 /// 🔴 `K-R70`：**那道身份见证真的会咬人** —— 四格（纯函数，不依赖内嵌产物在不在）。
@@ -379,7 +379,7 @@ fn embedded_daemon_binaries_present_and_valid() {
 /// （跑了会不会说真话）。少任何一条，另一条都能被一个恒答 `true` 的实现骗过去。
 #[test]
 fn the_build_stamp_witness_actually_bites() {
-    let (o, c) = (env!("DAEMON_STAMP_OPEN"), env!("DAEMON_STAMP_CLOSE"));
+    let (o, c) = (env!("BACKEND_STAMP_OPEN"), env!("BACKEND_STAMP_CLOSE"));
     let real = format!("头部随便什么{o}p9-sample{c}尾部随便什么");
     assert!(
         super::bytes_carry_build_stamp(real.as_bytes(), "p9-sample"),
@@ -398,8 +398,8 @@ fn the_build_stamp_witness_actually_bites() {
         "空身份必须判假：空串会让「戳」退化成两个界标挨着，而那一形是噪音不是身份"
     );
     // ⚠ 反向自检：**戳不是随便一处提到 build_id 就算**。
-    //   旧启发式 `bytes_contain(bytes, build_id)` 会被裸出现的 id 喂饱 —— 而 daemon
-    //   的 hello 帧里本来就带着这个串 ⇒ 那条判据在任何一份 daemon 上都恒真。
+    //   旧启发式 `bytes_contain(bytes, build_id)` 会被裸出现的 id 喂饱 —— 而 backend
+    //   的 hello 帧里本来就带着这个串 ⇒ 那条判据在任何一份后端上都恒真。
     assert!(
         !super::bytes_carry_build_stamp(b"...p9-sample...", "p9-sample"),
         "裸出现一次 id 就被当成身份戳 —— 那退回了 `K-R70` 之前那条恒真的启发式"
@@ -412,7 +412,7 @@ fn the_build_stamp_witness_actually_bites() {
 ///
 /// 〔散文墓碑〕〔本条原名 `the_identity_witness_is_derived_from_the_manifest_not_written_by_hand`，
 ///  钉的是那个见证布尔 `id_from_manifest` 只能由「那份清单在不在」推出来、不许写死 `true`
-///  （写死会让 `deploy_embedded_daemon` 里那道 `bytes_contain` 兜底整个跳过；
+///  （写死会让 `deploy_embedded_backend` 里那道 `bytes_contain` 兜底整个跳过；
 ///   08-08 实测写死 x86_64 那处，monitor 1004 一条都不红）。
 ///  **它守的动作是对的，守的东西是错的**：那个「见证」见证的是**一份旁挂清单在不在**，
 ///  而清单是 `release.yml` 从源码常量 `const BUILD_ID` 抠出来写的 ——
@@ -422,14 +422,14 @@ fn the_build_stamp_witness_actually_bites() {
 /// 今天身份**只有一条来路**：`build.rs` 从二进制字节里扫 `CC_MONITOR_BUILD_STAMP`。
 /// 于是本条钉三件事：
 ///
-/// 1. 两个 `DaemonBinary` 的 `build_id` **只许**是 `env!("DAEMON_EMBEDDED_ID_<ARCH>")`
+/// 1. 两个 `BackendBinary` 的 `build_id` **只许**是 `env!("BACKEND_EMBEDDED_ID_<ARCH>")`
 ///    —— 出现字面量、或退回源码 id（老 `pick()` 那条「问不出就拿源码顶上」的路）都红；
 /// 2. 部署路上**真的**跑了 [`bytes_carry_build_stamp`]，而且**不带前置条件**
 ///    （老写法 `!bin.id_from_manifest && …` 正是「有清单就整个跳过」）；
-/// 3. 界标那两个字面量**不许**在本文件里出现第二份（闭集唯一住址在 daemon 源码）。
+/// 3. 界标那两个字面量**不许**在本文件里出现第二份（闭集唯一住址在后端源码）。
 ///
 /// 顺带钉住 arch 那条跨文件契约的**另一半**：`build.rs` 期待的每个 arch，
-/// 这里都必须真有一份 `DaemonBinary`（漏一个 ⇒ `daemon_binary()` 对它返回 `None`，
+/// 这里都必须真有一份 `BackendBinary`（漏一个 ⇒ `backend_binary()` 对它返回 `None`，
 /// 远端自动部署对那个 arch **悄悄关闭** —— 与上一条判据守的是同一个事故形状的两端）。
 #[test]
 fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
@@ -452,10 +452,10 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     );
     for l in &inits {
         assert!(
-            l.contains("env!(\"DAEMON_EMBEDDED_ID_"),
+            l.contains("env!(\"BACKEND_EMBEDDED_ID_"),
             "这一格的身份不是从**字节**来的：{l}\n\
-                 ★ 只有 `DAEMON_EMBEDDED_ID_<ARCH>` 是 `build.rs` 从这份二进制的字节里\n\
-                 扫出来的（`CC_MONITOR_BUILD_STAMP`）。退回 `DAEMON_BUILD_ID`（源码 id）\n\
+                 ★ 只有 `BACKEND_EMBEDDED_ID_<ARCH>` 是 `build.rs` 从这份二进制的字节里\n\
+                 扫出来的（`CC_MONITOR_BUILD_STAMP`）。退回 `BACKEND_BUILD_ID`（源码 id）\n\
                  就是「问不出就拿源码的答案顶上」—— 把一个失败面换成一个假答案；\n\
                  写一份 `.build_id` 旁文件再读它，是把标签换个地方抄（`KR70D1` 逐字点名的失效方向）。"
         );
@@ -470,7 +470,7 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     assert_eq!(
         calls.len(),
         1,
-        "生产段里 `{witness}` 的调用处有 {} 个（应当恰好 1：`deploy_embedded_daemon` 出门前那一道）：{calls:?}",
+        "生产段里 `{witness}` 的调用处有 {} 个（应当恰好 1：`deploy_embedded_backend` 出门前那一道）：{calls:?}",
         calls.len()
     );
     assert_eq!(
@@ -481,18 +481,18 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
              恰恰在那一支里。⇒ 它必须无条件跑。",
         calls[0]
     );
-    // ③ 界标闭集只有一个住址（在 daemon 源码里），本文件只许 `env!` 取。
-    for mark in [env!("DAEMON_STAMP_OPEN"), env!("DAEMON_STAMP_CLOSE")] {
+    // ③ 界标闭集只有一个住址（在后端源码里），本文件只许 `env!` 取。
+    for mark in [env!("BACKEND_STAMP_OPEN"), env!("BACKEND_STAMP_CLOSE")] {
         assert!(
             !mark.is_empty(),
-            "`DAEMON_STAMP_OPEN/CLOSE` 是空串 —— `build.rs` 从 daemon 源码抠界标失败了，\n\
+            "`BACKEND_STAMP_OPEN/CLOSE` 是空串 —— `build.rs` 从后端源码抠界标失败了，\n\
                  而空界标会让 `bytes_carry_build_stamp` 恒答 false ⇒ 自动部署整个静默关闭。"
         );
         assert!(
             !prod.contains(&format!("\"{mark}\"")),
             "本文件生产段里出现了界标字面量 `{mark}` —— 闭集唯一住址在\n\
                  `src/backend/main.rs`（`BUILD_STAMP_OPEN`/`CLOSE`），\n\
-                 这里只许 `env!(\"DAEMON_STAMP_OPEN\")` / `env!(\"DAEMON_STAMP_CLOSE\")` 取。"
+                 这里只许 `env!(\"BACKEND_STAMP_OPEN\")` / `env!(\"BACKEND_STAMP_CLOSE\")` 取。"
         );
     }
 
@@ -520,9 +520,9 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
     );
     for arch in &arches {
         assert!(
-            prod.contains(&format!("DAEMON_EMBEDDED_ID_{}", arch.to_uppercase())),
-            "`build.rs` 会为 `{arch}` 嵌入二进制并发 `DAEMON_EMBEDDED_ID_{}`，\n\
-                 而 `sftp.rs` 生产段里没有对应的 `DaemonBinary` ⇒ `daemon_binary(\"{arch}\")` 返回 `None`，\n\
+            prod.contains(&format!("BACKEND_EMBEDDED_ID_{}", arch.to_uppercase())),
+            "`build.rs` 会为 `{arch}` 嵌入二进制并发 `BACKEND_EMBEDDED_ID_{}`，\n\
+                 而 `sftp.rs` 生产段里没有对应的 `BackendBinary` ⇒ `backend_binary(\"{arch}\")` 返回 `None`，\n\
                  **远端自动部署对这个 arch 悄悄关闭**（`build.rs` 那侧只 `cargo:warning=`，不会红）。\n\
                  与「发版流水线要为每个 arch 备料」那条守的是同一个事故形状的两端。",
             arch.to_uppercase()
@@ -534,22 +534,22 @@ fn the_embedded_identity_comes_from_the_bytes_not_from_a_label() {
 ///
 /// # 缺一个 arch 的后果是**静默的**，而且已经出货过
 ///
-/// `build.rs` 的 `embed_daemons` 缺件时只 `cargo:warning=`（**不是 error**）：
+/// `build.rs` 的 `embed_backends` 缺件时只 `cargo:warning=`（**不是 error**）：
 ///
-/// > 缺少内嵌 daemon {arch} —— 远端自动部署将关闭
+/// > 缺少内嵌 backend {arch} —— 远端自动部署将关闭
 ///
 /// 而它旁边的注释逐字记着这条路的历史：「原来这里**连 warn 都没有** —— 缺二进制就
-/// 静默不置 cfg、`daemon_binary()` 返回 None、远端自动部署整个消失而无人知晓。
+/// 静默不置 cfg、`backend_binary()` 返回 None、远端自动部署整个消失而无人知晓。
 /// **那正是 v2.19–v2.22 那批安装包的事故形状**」。
 ///
 /// 警告是**刻意**的（本机开发树本来就常常只有一个 arch —— 今天就是：
-/// `embedded-daemons/` 里只有 x86_64）。⇒ **保证「出货的那份两个 arch 都在」的，
+/// `embedded-backends/` 里只有 x86_64）。⇒ **保证「出货的那份两个 arch 都在」的，
 /// 只剩 `release.yml` 一处**，而在本条之前没有任何判据读它那几行。
 ///
 /// # 人群从 `build.rs` 派生
 ///
-/// 不手写 `["x86_64", "aarch64"]`（隔壁 `embedded_daemon_binaries_present_and_valid`
-/// 就是手写的，而且它带 `#[cfg(embedded_daemons)]` —— 本机缺一个 arch 时**整条不编译**，
+/// 不手写 `["x86_64", "aarch64"]`（隔壁 `embedded_backend_binaries_present_and_valid`
+/// 就是手写的，而且它带 `#[cfg(embedded_backends)]` —— 本机缺一个 arch 时**整条不编译**，
 /// 平时没人走）。这里读 `build.rs` 那个 `for arch in [...]`：**谁将来加第三个 arch，
 /// 本条当天就会要求流水线跟上**。
 #[test]
@@ -568,7 +568,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
         .expect("读不到 release.yml"),
     );
 
-    // 人群：`embed_daemons` 里那个 `for arch in [...]`。
+    // 人群：`embed_backends` 里那个 `for arch in [...]`。
     let arches: Vec<String> = build_rs
         .lines()
         .find_map(|l| {
@@ -604,10 +604,10 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
                 "没有为这个 arch 交叉编译",
             ),
             (
-                format!("staged/cc-monitor-remote-{arch}"),
+                format!("staged/cc-monitor-backend-{arch}"),
                 "编了但没按 `build.rs` 期待的名字放进 staged/",
             ),
-            // 🔴 〔`K-R70` 09-12〕这里原来还有第三条：`staged/cc-monitor-remote-<arch>.build_id`，
+            // 🔴 〔`K-R70` 09-12〕这里原来还有第三条：`staged/cc-monitor-backend-<arch>.build_id`，
             //    理由逐字「少了旁挂的 .build_id 清单（没有它，运行时只能回退到会误拒正品的启发式）」。
             //    **那条清单没有了**（它是从源码常量抠出来的标签，不是指纹 ——
             //    `K-R68` · `DECISIONS.md#R26` 裁定零），身份改从字节里扫。
@@ -636,7 +636,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
     // 上面那条按 arch 的清单只买到「它在校验的名单里」；这两条买的是**校验本身还在**。
     // 两个锚各自不可替代：
     //   · `ReadAllBytes` —— 它**真的把那份二进制读进来了**（不是 stat、不是读旁边的谁）；
-    //   · `const BUILD_STAMP_OPEN` —— 界标是**从 daemon 源码抠的**，不是在 yml 里手抄一份
+    //   · `const BUILD_STAMP_OPEN` —— 界标是**从后端源码抠的**，不是在 yml 里手抄一份
     //     （手抄那一份哪天与源码漂开，校验会以「假红」的形式提醒错人）。
     for (needle, why) in [
         (
@@ -646,7 +646,7 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
         ),
         (
             "const BUILD_STAMP_OPEN",
-            "身份戳的界标不是从 daemon 源码抠的 —— 手抄一份就多一个会漂的住址；\
+            "身份戳的界标不是从后端源码抠的 —— 手抄一份就多一个会漂的住址；\
                  漂开那天校验会红，而红的原因与真病无关",
         ),
     ] {
@@ -661,9 +661,9 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
     // fail-closed 那一半：一个都没 stage 到时，上传步骤必须当场失败而不是传个空包。
     assert!(
         rel.contains("if-no-files-found: error"),
-        "上传 `embedded-daemons` 的那一步没有 `if-no-files-found: error` —— \n\
+        "上传 `embedded-backends` 的那一步没有 `if-no-files-found: error` —— \n\
              staged/ 空了它会**成功地上传一个空 artifact**，下游 job 下载到空目录，\n\
-             最后出的安装包不带任何内嵌 daemon。这正是本条要挡的那个事故的上游一环。"
+             最后出的安装包不带任何内嵌后端。这正是本条要挡的那个事故的上游一环。"
     );
 }
 
@@ -715,7 +715,7 @@ fn a_matching_marker_no_longer_speaks_for_a_binary_that_is_not_there() {
     };
     // 「说得出是哪种坏」：这一句必须谈那个文件，而不是谈版本。
     assert!(
-        reason.contains("落点没有 daemon 二进制"),
+        reason.contains("落点没有后端二进制"),
         "原因没说清是「那个文件不在」：{reason}"
     );
     assert!(
@@ -737,7 +737,7 @@ fn a_matching_marker_no_longer_speaks_for_a_binary_that_is_not_there() {
         else {
             panic!("{what} + 文件不在 ⇒ 竟然跳过");
         };
-        assert!(r.contains("落点没有 daemon 二进制"), "{what}: {r}");
+        assert!(r.contains("落点没有后端二进制"), "{what}: {r}");
     }
 }
 
@@ -781,10 +781,10 @@ fn splitting_the_two_facts_did_not_dismantle_the_version_gate() {
 }
 
 /// 0 字节那一格 **不是假想形态**：本模块 `upload_atomic` 里「绝不 set_metadata」
-/// 那条注释记的就是真机 e2e 把 daemon 截成 0 字节、不可 exec 的那次事故。
+/// 那条注释记的就是真机 e2e 把后端截成 0 字节、不可 exec 的那次事故。
 /// 而 `try_exists` 会把它算成「在」⇒ 只问存在性的修法在这一形上仍然静默。
 #[test]
-fn a_zero_byte_daemon_is_not_a_deployed_daemon() {
+fn a_zero_byte_backend_is_not_a_deployed_backend() {
     const EXPECT: &str = "p1b-overflow";
     let DeployAction::Deploy(reason) =
         deploy_decision_at(Some(EXPECT), EXPECT, TargetBinary::Empty)
@@ -802,14 +802,14 @@ fn a_zero_byte_daemon_is_not_a_deployed_daemon() {
 }
 
 /// **防空转**：上面三格全在纯函数上，实现只要不接到调用点就是死代码，而三格照样绿。
-/// 这一格钉的是**两条 daemon 部署路真的去问了那个文件**：
-/// `ensure_daemon_deployed`（自动部署）与 `deploy_remote_daemon`（手动按钮）。
+/// 这一格钉的是**两条后端部署路真的去问了那个文件**：
+/// `ensure_backend_deployed`（自动部署）与 `deploy_remote_backend`（手动按钮）。
 ///
-/// ⚠ 射程：只到 daemon 那两条路。`acct_iso_deploy` 那条**刻意不在分母里**——
+/// ⚠ 射程：只到后端那两条路。`acct_iso_deploy` 那条**刻意不在分母里**——
 /// 它的标记落在目录上、内容是同一次上传的一批脚本，是另一种形状（见
 /// `deploy_decision` 的头注）；那条路今天有没有同族的病，本格判不了。
 #[test]
-fn both_daemon_deploy_paths_ask_the_file_itself_not_only_the_marker() {
+fn both_backend_deploy_paths_ask_the_file_itself_not_only_the_marker() {
     fn body<'a>(src: &'a str, sig: &str) -> &'a str {
         let i = src
             .find(sig)
@@ -819,8 +819,8 @@ fn both_daemon_deploy_paths_ask_the_file_itself_not_only_the_marker() {
     }
     let src = include_str!("../../src/bridge/src/sftp.rs");
     for sig in [
-        "pub async fn ensure_daemon_deployed(",
-        "pub async fn deploy_remote_daemon(",
+        "pub async fn ensure_backend_deployed(",
+        "pub async fn deploy_remote_backend(",
     ] {
         let code = body(src, sig)
             .lines()
@@ -869,7 +869,7 @@ fn probe_metadata_with_bytes_maps_to_present() {
 
 /// 映射规则②：`metadata` 说它在、size **恰好 0** ⇒ `Empty`，不是 `Present`。
 /// 0 字节不是假想形态：`upload_atomic` 那条「绝不 set_metadata」注释记的就是
-/// 真机 e2e 把 daemon 截成 0 字节、不可 exec 的那次事故，而 `try_exists` 会把它算成「在」。
+/// 真机 e2e 把后端截成 0 字节、不可 exec 的那次事故，而 `try_exists` 会把它算成「在」。
 #[test]
 fn probe_metadata_saying_zero_bytes_maps_to_empty() {
     assert_eq!(
@@ -985,7 +985,7 @@ fn probe_no_cell_answers_in_place_of_another() {
 /// ⇒ 全量 cargo 0 红）。这一格钉的是取样壳**真的走**那个纯解释函数、
 /// 并且**没有**把状态直接写死在 async 体里。
 ///
-/// 形状照抄同文件的 `both_daemon_deploy_paths_ask_the_file_itself_not_only_the_marker`
+/// 形状照抄同文件的 `both_backend_deploy_paths_ask_the_file_itself_not_only_the_marker`
 /// （含它那种反向自检）。
 ///
 /// ⚠ 射程：它看的是**源码文本**，不是运行期。挡得住「体被换成常量 / 纯函数没接上」，
@@ -1060,14 +1060,14 @@ fn is_safe_remote_jsonl_guard() {
 #[test]
 fn remote_parent_and_marker() {
     assert_eq!(
-        remote_parent("/home/pi/.cc-monitor/bin/cc-monitor-remote"),
+        remote_parent("/home/pi/.cc-monitor/bin/cc-monitor-backend"),
         "/home/pi/.cc-monitor/bin"
     );
     assert_eq!(remote_parent("/x"), "/");
     assert_eq!(remote_parent("rel/path"), "rel");
     assert_eq!(remote_parent("noslash"), ".");
     assert_eq!(
-        marker_path("/home/pi/.cc-monitor/bin/cc-monitor-remote"),
+        marker_path("/home/pi/.cc-monitor/bin/cc-monitor-backend"),
         "/home/pi/.cc-monitor/bin/.build_id"
     );
     assert_eq!(marker_path("/x"), "/.build_id");
@@ -1175,7 +1175,7 @@ fn upload_verify_catches_truncation_and_unreadable() {
 
 #[test]
 fn upload_verify_passes_on_exact_bytes() {
-    // 二进制（含 NUL 与非 UTF-8）也要过——daemon 是可执行文件，String 路线走不通
+    // 二进制（含 NUL 与非 UTF-8）也要过——backend 是可执行文件，String 路线走不通
     let bin = &[0x7f, b'E', b'L', b'F', 0x00, 0xff, 0xfe];
     assert!(verify_uploaded_bytes("/r/d", bin, Some(bin)).is_ok());
     assert!(verify_uploaded_bytes("/r/d", b"", Some(b"")).is_ok());
@@ -1324,7 +1324,7 @@ fn rollback_note_matches_what_actually_happened() {
 
 /// **结构性守卫**：两条 deploy 路径的**内容**上传必须走 verified。
 ///
-/// 范围只覆盖 `deploy_remote_daemon` 与 `deploy_remote_acct_iso` 两个函数体
+/// 范围只覆盖 `deploy_remote_backend` 与 `deploy_remote_acct_iso` 两个函数体
 /// ——**第一版写成"全文件不许有裸 upload_atomic"，当场被自己抓**：
 /// ccm helper 那条路（`&profile, stripped/merged`）**故意**用裸上传，
 /// 因为它下游紧接着自己的读回 + 回滚（`sftp.rs` 那三处 `verify_readback`）。
@@ -1344,9 +1344,9 @@ fn deploy_paths_use_verified_upload_for_content() {
         (
             body(
                 include_str!("../../src/bridge/src/sftp.rs"),
-                "pub async fn deploy_remote_daemon(",
+                "pub async fn deploy_remote_backend(",
             ),
-            "deploy_remote_daemon",
+            "deploy_remote_backend",
         ),
         (
             body(
@@ -1380,10 +1380,10 @@ fn deploy_paths_use_verified_upload_for_content() {
             );
         }
     }
-    // 计数自检：2 处 daemon 二进制 + 6 个 acct-iso 脚本
+    // 计数自检：2 处后端二进制 + 6 个 acct-iso 脚本
     assert_eq!(
         verified_total, 7,
-        "期望 1(daemon 体内) + 6(acct-iso)，实得 {verified_total}"
+        "期望 1(backend 体内) + 6(acct-iso)，实得 {verified_total}"
     );
 }
 
@@ -1408,7 +1408,7 @@ fn strip_aborts_on_malformed_begin_without_end() {
 #[test]
 fn safe_daemon_path_accepts_convention_rejects_suspicious() {
     assert!(is_safe_remote_daemon_path(
-        "/home/pi/.cc-monitor/bin/cc-monitor-remote"
+        "/home/pi/.cc-monitor/bin/cc-monitor-backend"
     ));
     assert!(!is_safe_remote_daemon_path("")); // 空
     assert!(!is_safe_remote_daemon_path("relative/cc-monitor")); // 非绝对

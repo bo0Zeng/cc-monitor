@@ -3,7 +3,7 @@
  *
  * # 它治的是一个真实发生过的洞
  *
- * S3 定了 5 格状态（`connection`/`daemon`/`ccm`/`acctIso`/`accounts`），S5/E56 拿它算
+ * S3 定了 5 格状态（`connection`/`backend`/`ccm`/`acctIso`/`accounts`），S5/E56 拿它算
  * 「还差什么」。但收官核账时发现：全仓 `recordFacet` 的生产者**只覆盖 3 格**
  * —— `acctIso` 与 `accounts` 一个写点都没有。
  *
@@ -63,7 +63,7 @@ function productionSources(): { file: string; code: string }[] {
  *
  * 两条写入形状：
  * - 直接：`recordFacet("ccm", …)` / `this.recordFacet("ccm", …)` / `this.note("accounts", …)`
- * - 间接：`{ facet: "daemon", ok: …, fail: … }`（machine-card 的 `runRemoteAction` 台账参数）
+ * - 间接：`{ facet: "backend", ok: …, fail: … }`（machine-card 的 `runRemoteAction` 台账参数）
  *
  * ## 这里踩过一次，判据是被变异逼紧的
  *
@@ -78,7 +78,7 @@ function productionSources(): { file: string; code: string }[] {
 function producersOf(facet: string): string[] {
   const lit = `["']${facet}["']`;
   const direct = new RegExp(`(?:recordFacet|note)\\s*\\(\\s*${lit}`);
-  // `facet: "daemon", ok: …` —— 逗号后必须还有一个对象键，把类型标注排除在外
+  // `facet: "backend", ok: …` —— 逗号后必须还有一个对象键，把类型标注排除在外
   const viaLedger = new RegExp(`facet\\s*:\\s*${lit}\\s*,\\s*\\w+\\s*:`);
   return productionSources()
     .filter(({ code }) => direct.test(code) || viaLedger.test(code))

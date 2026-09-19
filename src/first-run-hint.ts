@@ -73,8 +73,6 @@ export interface FirstRunHintDeps {
   origins: () => string[];
   /** 读 S3 那本账。 */
   statusOf: (origin: string) => MachineStatus;
-  /** `K-R59`：盘上还带着旧「不装后端」开关的主机（见 `settings/readiness.ts` 同名入参）。 */
-  legacyNoBackend?: (origin: string) => boolean;
   /** S9：本机 OS 决定哪些组件适用（Windows 本机没有 `ccm`）。 */
   hostOs: () => HostOs;
   /** 点它 ⇒ 打开那张清单住的地方。 */
@@ -115,7 +113,6 @@ export class FirstRunHint {
       computeGaps({
         origins: this.deps.origins(),
         statusOf: this.deps.statusOf,
-        legacyNoBackend: this.deps.legacyNoBackend,
         hostOs: this.deps.hostOs(),
       }),
     );

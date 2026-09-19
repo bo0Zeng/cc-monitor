@@ -48,7 +48,7 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 - **One-click public-key push**: append your local public key to the remote `~/.ssh/authorized_keys` for passwordless login
 - **ProxyJump / ssh-config bulk import**: reach an intranet target through a jump host; bulk-import from `~/.ssh/config` with smart aggregation of a machine's multiple addresses
 - **Local port-forward console** (`-L`): forward ports over the existing SSH connection, started/stopped from one place
-- **Daemonless degraded read**: read remote sessions via plain `tail` polling without a backend (a capability subset, honestly surfaced)
+- **Backendless degraded read**: read remote sessions via plain `tail` polling without a backend (a capability subset, honestly surfaced)
 - **Turn-complete notification**: a system notification when a remote session finishes a turn; **fingerprint reset**: reset a remote host-key when it changes
 
 ### Multi-account (isolated yet synced, #68/#69)
@@ -137,7 +137,7 @@ Get the latest version from [Releases](https://github.com/bo0Zeng/cc-monitor/rel
 - `monitor.exe` — bare exe (you manage the path yourself)
   > 🔴 **It is also missing a feature, not just "manage the path yourself"** (measured 09-10 on a
   > clean Windows machine): **the local backend will not start.** That backend
-  > (`cc-monitor-remote.exe`) is a *separate file installed alongside the app*, and the bare exe
+  > (`cc-monitor-backend.exe`) is a *separate file installed alongside the app*, and the bare exe
   > has no such file next to it, so the "your own machine is also a machine" features are
   > unavailable (**remote features are unaffected**). Measured: the installed build runs **2**
   > backend processes, the bare exe runs **0**.

@@ -20,7 +20,7 @@ REPO="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 SBX="${SBX:-/tmp/e2e-sandbox}"
 DISP="${DISP:-:80}"
 RIG="$SBX/rig"
-BACKEND="$REPO/.build/backend/debug/cc-monitor-remote"
+BACKEND="$REPO/.build/backend/debug/cc-monitor-backend"
 # 真 HOME —— 前提 1：沙箱 HOME 会把 rustup 的家一起换掉，这两个要显式指回来。
 REAL_HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
 
@@ -47,14 +47,14 @@ setup() {
   [ -n "$fp" ] || die "取不到本机 ed25519 host key 指纹"
 
   mkdir -p "$SBX/.claude/claudecode-frontend" "$RIG"
-  cp "$REPO/tests/e2e/daemon-wrapper.sh" "$RIG/daemon-wrapper.sh"
-  chmod +x "$RIG/daemon-wrapper.sh"
+  cp "$REPO/tests/e2e/backend-wrapper.sh" "$RIG/backend-wrapper.sh"
+  chmod +x "$RIG/backend-wrapper.sh"
   # 🔴 前提 2：文件名逐字是 `.build_id`（同目录隐藏文件），**不是** `<二进制名>.build_id`。
   #    `sftp.rs::marker_path` 是 `format!("{dir}/.build_id")`。写错 ⇒ wrapper 被覆盖。
   printf '%s' "$bid" > "$RIG/.build_id"
   # wrapper 离开仓之后 `$REPO` 解析到别处 ⇒ 它会走「自愈」静默换二进制。
-  # 旁边这个 `daemon-path` 钉死用哪个（env 传不进来，SSH exec 不带）。
-  printf '%s' "$BACKEND" > "$RIG/daemon-path"
+  # 旁边这个 `backend-path` 钉死用哪个（env 传不进来，SSH exec 不带）。
+  printf '%s' "$BACKEND" > "$RIG/backend-path"
 
   python3 - "$SBX" "$RIG" "$fp" "$REAL_HOME" <<'PY'
 import json, os, sys
@@ -69,7 +69,7 @@ cfg = {
             "port": 22,
             "user": os.environ.get("USER") or os.getlogin(),
             "keyPath": f"{real_home}/.ssh/id_ed25519",
-            "daemonPath": f"{rig}/daemon-wrapper.sh",
+            "daemonPath": f"{rig}/backend-wrapper.sh",
             "hostKeyFingerprint": fp,
             "addresses": [],
             "jump": "",

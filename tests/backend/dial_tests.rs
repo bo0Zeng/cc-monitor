@@ -10,7 +10,7 @@
 //!
 //! # 甲半在哪
 //!
-//! 甲半（界面这一侧：daemon 那条长连接流不再自己拨号）住
+//! 甲半（界面这一侧：backend 那条长连接流不再自己拨号）住
 //! `../../bridge/src/ssh_source.rs` 的测试模块 —— **两侧各扫各的 crate**，
 //! 刻意不从这里 `include_str!` 伸到对面去（那会新增一条跨轨编译期边，
 //! 而那张登记表不在本轮写区里）。
@@ -144,7 +144,7 @@ fn the_dial_only_happens_under_dial_home() {
 ///
 /// 🔴 **它是本轮 `7u` 探针逮出来的一格，不是设计时想到的。**
 /// 实打：把 `main.rs` 里那条 `--dial` 分派臂**整条摘掉**（`dial/` 的代码一个字不动），
-/// daemon 侧 **596 条判据一条都不红** —— 上面那条 `the_dial_only_happens_under_dial_home`
+/// backend 侧 **596 条判据一条都不红** —— 上面那条 `the_dial_only_happens_under_dial_home`
 /// 断的是**住在哪**（locality），断不了**接没接上**（reachability），
 /// 而 `argv_table_guard` 那条只看「存在的臂调不调实现」，摘掉的臂它看不见。
 ///

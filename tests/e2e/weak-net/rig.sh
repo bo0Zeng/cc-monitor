@@ -32,7 +32,7 @@
 #
 # ## 本机安全
 #
-# 全程不起真 claude / 真 daemon / 真 tmux；不碰用户真实的 `~/.ssh`——主机密钥与
+# 全程不起真 claude / 真 backend / 真 tmux；不碰用户真实的 `~/.ssh`——主机密钥与
 # `authorized_keys` 都是在容器里现造的，私钥从头到尾没离开过容器的文件系统。
 #
 # 用法：

@@ -206,7 +206,7 @@ fn strips_test_modules_whose_name_is_not_tests() {
 
 /// ★ Phase D 审计逮出的那条：`#[cfg(test)] mod x;`（**无花括号体的声明**）不许被当成
 /// 测试模块 —— 否则「列 0 的右大括号」会一路吞到下一个顶层 item 的收尾，把中间的生产代码
-/// 全部丢掉。这条回归钉直接照着真实病灶写（daemon `main.rs` 里 `mod guard_support;` 的形状）。
+/// 全部丢掉。这条回归钉直接照着真实病灶写（backend `main.rs` 里 `mod guard_support;` 的形状）。
 ///
 /// ⚠ 夹具**必须写成单行 `\n` 转义**，不能用带真实换行的多行字符串 ——
 /// 否则夹具里那些列 0 的右大括号会在本文件被 `this_crate_strips_clean` 扫到时
@@ -368,7 +368,7 @@ fn raw_and_multiline_strings_are_left_alone() {
 
 /// ★★ **本件的正题**：多行块注释不许再喂饱存在型判据。
 ///
-/// 形状照 09-04 在 `local_daemon.rs` 幂等门上现打的那一刀：真代码包进
+/// 形状照 09-04 在 `local_backend_host.rs` 幂等门上现打的那一刀：真代码包进
 /// `/*` `*/`（两个符号各占一行 —— 编辑器「注释掉这几行」的默认产物）、换一个桩值。
 /// 改之前 monitor 侧 **1275 条全绿 0 失败**，而生产上那道门已经没了。
 #[test]
@@ -532,7 +532,7 @@ fn a_broken_model_strips_nothing_and_says_so() {
 }
 
 /// 本 crate 自己的源码上，块注释词法**不许走兜底**（吃自己的狗粮）。
-/// 树级的那两份（monitor / daemon）由两侧各自的判据钉着。
+/// 树级的那两份（monitor / backend）由两侧各自的判据钉着。
 /// ⚠ 09-04（`K-R25`）起两个单位一起量：整份文件 ＋ 按 `#[test]` 切出的每一块。
 #[test]
 fn this_crate_never_falls_back_to_not_stripping() {

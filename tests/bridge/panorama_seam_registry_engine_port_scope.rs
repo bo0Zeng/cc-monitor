@@ -11,7 +11,7 @@ const TREES: &[(&str, &str, usize, &str)] = &[
              `scan_tree!` 按构造摘掉调用者自己那一份（也就是本文件）。地板取 80",
     ),
     (
-        "daemon",
+        "backend",
         "src/backend",
         55,
         "本件要换到的那一侧 —— 「解析搬到代码所在地」搬的就是往这棵树里搬\
@@ -97,7 +97,7 @@ fn port_needles() -> Vec<(String, &'static str)> {
 
 /// 纯函数：一份语料里命中这根针的**住址表**（生产段、带词边界）。
 ///
-/// 抽成纯函数是为了能**直接喂夹具** —— 否则「daemon 那棵树 0 处」这个读数
+/// 抽成纯函数是为了能**直接喂夹具** —— 否则「backend 那棵树 0 处」这个读数
 /// 与「这把尺子根本数不出东西」在终端上没有区别。
 fn ports_in(corpus: &[(String, String)], needle: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -135,7 +135,7 @@ fn the_engine_port_is_pinned_across_every_tree_we_compile() {
                  ★ **这不是要你把这里的期望改掉了事** —— 先回答是下面哪一种：\n\
                  ① 多出来的那一处是**第二个取用口** ⇒ 那就是第二条 SQLite 连接，\n\
                  「换侧要改的就是那一处」这句承重的话当场作废；\n\
-                 ② 是**换侧**（取用口搬到 daemon / 搬进某个共享 crate）⇒ 把期望改成新住址，\n\
+                 ② 是**换侧**（取用口搬到 backend / 搬进某个共享 crate）⇒ 把期望改成新住址，\n\
                  并**同轮**回答 `K-W2D` 的 `KW2D4`：新那一侧谁在数、`panorama.rs` 那条\n\
                  `find_pinned` 还指得对不对（它只读那一份文件）；\n\
                  ③ 少了 ⇒ 多半是抽取坏了、或引擎整个搬走了，两种都要人看一眼。"
@@ -143,16 +143,16 @@ fn the_engine_port_is_pinned_across_every_tree_we_compile() {
     }
 }
 
-/// ★★ **「0」要先证明尺子接上了** —— 否则 daemon 那棵树的零命中什么也说明不了。
+/// ★★ **「0」要先证明尺子接上了** —— 否则后端那棵树的零命中什么也说明不了。
 ///
-/// 三刀：树指错 ⇒ 出声；语料塌了 ⇒ 出声；**合成一处喂进 daemon 侧的语料 ⇒ 数得出来**。
+/// 三刀：树指错 ⇒ 出声；语料塌了 ⇒ 出声；**合成一处喂进后端侧的语料 ⇒ 数得出来**。
 ///
 /// # ⚠ 第三刀证明的比它听起来的少（**实测出来的边界，不是谦虚**）
 ///
 /// 那份夹具的文本是**用同一根针拼出来的** ⇒ 针本身错了，这一条照样绿。
 /// 09-04 现打（死值验 M9，把针改成一个盘上不存在的写法再跑一趟门禁）：
 /// **本条绿，而上面那条正题当场红**，报文逐字「住址表变了：`[]`」。
-/// ⇒ 分工写清：本条证的是「**剥生产段 + 词边界这条链，在 daemon 侧的语料上真的会命中**」；
+/// ⇒ 分工写清：本条证的是「**剥生产段 + 词边界这条链，在后端侧的语料上真的会命中**」；
 /// 「**针指的是不是那个事实**」由正题钉着（针错了住址表就空，正题红）。两条合起来才是一句完整的话。
 ///
 /// ★ 为什么不把夹具改成独立字面量：那要在本文件里写下针的**完整字面量**，
@@ -161,12 +161,12 @@ fn the_engine_port_is_pinned_across_every_tree_we_compile() {
 /// 走的是相反的选择 —— 那条**没有**正题替它补位，所以它必须换独立见证。〕
 #[test]
 fn a_tree_it_cannot_read_makes_it_say_so_instead_of_counting_zero() {
-    let daemon = TREES
+    let backend = TREES
         .iter()
-        .find(|(label, ..)| *label == "daemon")
-        .expect("`TREES` 里没有 daemon 那一棵 —— 而本件的整个题目就是往那一侧搬");
+        .find(|(label, ..)| *label == "backend")
+        .expect("`TREES` 里没有后端那一棵 —— 而本件的整个题目就是往那一侧搬");
     // ① 指错的树：`Err`，而且诊断要点出它找的那个住址（读的人才知道去哪儿看）。
-    let bogus = format!("{}-此处刻意不存在", daemon.1);
+    let bogus = format!("{}-此处刻意不存在", backend.1);
     let verdict = tree_dir(&bogus);
     let why = verdict.expect_err(
         "指到一个不存在的目录上，`tree_dir` 居然给了 `Ok` —— \
@@ -185,23 +185,23 @@ fn a_tree_it_cannot_read_makes_it_say_so_instead_of_counting_zero() {
         floor_check("夹具", 3, 3).is_ok(),
         "地板把恰好够的语料也挡了 —— 那会变成假红，而假红最省事的消法是把判据删掉"
     );
-    // ③ 尺子真的能在 daemon 侧的语料上数出命中。
+    // ③ 尺子真的能在后端侧的语料上数出命中。
     for (needle, what) in port_needles() {
         let fixture = vec![
             (
-                "daemon:某个适配层.rs".to_string(),
+                "backend:某个适配层.rs".to_string(),
                 format!("fn 取一次() {{ let e = {needle}(&key)?; }}"),
             ),
             (
-                "daemon:干净的一份.rs".to_string(),
+                "backend:干净的一份.rs".to_string(),
                 "fn f() -> u8 { 7 }".to_string(),
             ),
         ];
         assert_eq!(
             ports_in(&fixture, &needle),
-            vec!["daemon:某个适配层.rs".to_string()],
-            "{what} 这根针在 daemon 侧的语料上数不出命中 —— \
-                 那么正题里 daemon 那棵树的「0 处」是**空真**，说明不了任何事"
+            vec!["backend:某个适配层.rs".to_string()],
+            "{what} 这根针在后端侧的语料上数不出命中 —— \
+                 那么正题里后端那棵树的「0 处」是**空真**，说明不了任何事"
         );
     }
 }
@@ -275,7 +275,7 @@ fn the_set_of_trees_this_scope_covers_is_itself_pinned() {
 /// ⚠ 剥 `#` 整行注释走**共享原语**（`strip_comment_lines` 的 YAML/TOML 兄弟），
 /// 不在这里自己写第二份 —— 本函数第一版内联了一个 `#` 过滤，
 /// 而 `structural_scan` 那张「剥注释实现只许一份」的登记表**当场逮住了它**
-/// （09-04 现打，同一趟门禁里连本文件与 daemon 那侧两处一起点名）。
+/// （09-04 现打，同一趟门禁里连本文件与后端那侧两处一起点名）。
 /// 先例逐字在那张表里：另一处「已变成一句委托 ⇒ 登记删掉」。
 fn in_repo_path_deps(manifest_text: &str, home: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();

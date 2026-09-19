@@ -618,8 +618,8 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 /// | 发起面 | 谁从这里发起 cargo（认**这条命令**，不认行号） |
 /// |---|---|
 /// | 仓根 `.` | `ci.yml` 的 `e2e-tmux-rust` job（**没有** `working-directory` ⇒ cwd = 仓根；那一条是 `cargo build --manifest-path src/backend/Cargo.toml`）· `tests/scripts/run.ps1` 的 `"check"` 分支（`cargo check --manifest-path src/bridge\Cargo.toml`）。它同时是下面两个的**祖先** —— 往上找一定路过 |
-/// | `src/bridge/` | `tests/scripts/gate.sh` 的 `run_gate_sum cargo 8 …`（`cd src/bridge && cargo test --workspace --exclude code-picture-core --lib`）· `package.json` 的 `gen:types` · `ci.yml` 里**三处** `working-directory: src/bridge`（`rust` job · `rust-linux` job · `linux-app-build` job；🔴 〔09-18〕原文写「两处（`rust` / `linux-app-build`）」—— `15 §5.2 B4` 新加的 `rust-linux` job 是第三处，**加发起面没回来补这张表**，现打 `grep -c` = 3）· `tests/e2e/` **两个脚本共 3 处**（`local-backend-supervise.sh` 的 `local_backend` 与 `local_daemon` 两条 `cargo test --lib -- --ignored` · `p3t-local-tmux.sh` 的 `P3T_E2E_SID=…` 那一条）。⚠ **这个数只降不升过两次，两次都是随被测面退役**：`K-R72` 09-12 前是**四个脚本 6 处**（`tmux-guarded-acceptance.sh` 那一处随它的输入源 —— `tmux.rs` 两条桌面侧 SSH 回落的 builder —— 一起删了）；`K-R104` 09-13 从 5 降到 4（`usage-probe-acceptance.sh` 整条重写成帧面验收，输入源从「那条 shell 串」换成「那几行帧」，而它原先另有一处本机执行面的 `--ignored` 调用，那个执行面随编排搬上后端而不存在了）；🔴 **`设计/50` 09-18 从 4 降到 3，脚本数从三个降到两个**：用量 ②③ 两轴整轴退役 ⇒ `usage-probe-acceptance.sh` **整份删除**（被测对象没了，不是断言变少了），它那一处发起面（帧面夹具产出者 `emit_usage_probe_frames_for_e2e`）随 `account_usage.rs` 一起没了  〔散文墓碑〕|
-/// | `src/backend/` | `tests/scripts/gate.sh` 的 `run_gate daemon …`（`cd src/backend && cargo test`）· `ci.yml` 的 `daemon` job（`working-directory: src/backend`）· `release.yml` 里**三处** `working-directory: src/backend`（`build-daemons` · `build-windows` · `build-linux` 三个 job）· `tests/e2e/daemon-fork-session.sh` 的 `cd "$ROOT/src/backend" && cargo build` |
+/// | `src/bridge/` | `tests/scripts/gate.sh` 的 `run_gate_sum cargo 8 …`（`cd src/bridge && cargo test --workspace --exclude code-picture-core --lib`）· `package.json` 的 `gen:types` · `ci.yml` 里**三处** `working-directory: src/bridge`（`rust` job · `rust-linux` job · `linux-app-build` job；🔴 〔09-18〕原文写「两处（`rust` / `linux-app-build`）」—— `15 §5.2 B4` 新加的 `rust-linux` job 是第三处，**加发起面没回来补这张表**，现打 `grep -c` = 3）· `tests/e2e/` **两个脚本共 3 处**（`local-backend-supervise.sh` 的 `local_backend` 与 `local_backend_host` 两条 `cargo test --lib -- --ignored` · `p3t-local-tmux.sh` 的 `P3T_E2E_SID=…` 那一条）。⚠ **这个数只降不升过两次，两次都是随被测面退役**：`K-R72` 09-12 前是**四个脚本 6 处**（`tmux-guarded-acceptance.sh` 那一处随它的输入源 —— `tmux.rs` 两条桌面侧 SSH 回落的 builder —— 一起删了）；`K-R104` 09-13 从 5 降到 4（`usage-probe-acceptance.sh` 整条重写成帧面验收，输入源从「那条 shell 串」换成「那几行帧」，而它原先另有一处本机执行面的 `--ignored` 调用，那个执行面随编排搬上后端而不存在了）；🔴 **`设计/50` 09-18 从 4 降到 3，脚本数从三个降到两个**：用量 ②③ 两轴整轴退役 ⇒ `usage-probe-acceptance.sh` **整份删除**（被测对象没了，不是断言变少了），它那一处发起面（帧面夹具产出者 `emit_usage_probe_frames_for_e2e`）随 `account_usage.rs` 一起没了  〔散文墓碑〕|
+/// | `src/backend/` | `tests/scripts/gate.sh` 的 `run_gate backend …`（`cd src/backend && cargo test`）· `ci.yml` 的 `backend` job（`working-directory: src/backend`）· `release.yml` 里**三处** `working-directory: src/backend`（`build-backends` · `build-windows` · `build-linux` 三个 job）· `tests/e2e/backend-fork-session.sh` 的 `cd "$ROOT/src/backend" && cargo build` |
 ///
 /// ⚠ **为什么这里只能用锚点、不能用「函数名 + 行号」两样都给**〔`K-R5` `§4` 那一问的答〕：
 /// `ci.yml` / `release.yml` 那几处逐字都是同一句 `working-directory: <目录>`，**行号是它们
@@ -630,7 +630,7 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 /// ⚠ **尺子没覆盖到的**（写下来免得把它读成穷举）：① `cargo tauri build` 那种**由工具
 /// 再去起 cargo** 的，cwd 由 tauri CLI 定，本条没现打；② 人手临时 `cd` 到任意目录敲的
 /// cargo —— 那个分母没人数得出，也不是一条判据守得住的。
-/// ③ `tests/scripts/verify-committed-state.sh` 的 `run monitor-lib` / `run daemon` / `run daemon-win`
+/// ③ `tests/scripts/verify-committed-state.sh` 的 `run monitor-lib` / `run backend` / `run backend-win`
 /// 三条在**另开的临时工作树**里跑，相对目录仍是这两个，不新增发起面。
 ///
 /// **为什么是 6 不是 7**：往下没有第 4 个发起面 —— `src/bridge/crates/*` 与
@@ -705,7 +705,7 @@ fn probe_slot_verdict(tag: &str, body: &[u8]) -> Option<String> {
 ///      ⚠ **门那四个数变了**：08-29 是 `rc=0` · 包数 **8** · 合计 **1303**，
 ///      09-02 是 `rc=0` · 包数 **8** · 合计 **1313** —— 主干这几天动过，
 ///      **不是同一个读数，只是同一个判定**。⚠ 那个合计还带第二维：
-///      `src/bridge/embedded-daemons/` **铺没铺**（09-02 这棵树**没铺**，现打 `ls` 不存在）。
+///      `src/bridge/embedded-backends/` **铺没铺**（09-02 这棵树**没铺**，现打 `ls` 不存在）。
 ///    🔴 **所以这个读数答的不是「哪几支没人盯着」，是「在某一条切法下哪几支没人盯着」** ——
 ///    `D3` 的切法下 1 支，`R7` 的切法下 17 支，**而多出来的不是新洞，是同一片面被切得更细**。
 ///    〔🔴 上一版逐字写「**它答得了「哪几支没人盯着」**，答不了『支数对不对』」——**说宽了**：

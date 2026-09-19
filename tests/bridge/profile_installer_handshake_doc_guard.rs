@@ -9,7 +9,7 @@ const ARCH_DOC: &str = include_str!("../../src/doc/ARCHITECTURE.md");
 /// 实测 deadline 3000→800、轮询 30→250、debouncer 50→500、
 /// 重试 12×50→3×10（旧模板用户唯一的活路缩成 30ms），**四条全绿**。
 ///
-/// daemon 那边的护栏早就走 `guard_support::production_code` 剥注释，
+/// backend 那边的护栏早就走 `guard_support::production_code` 剥注释，
 /// 那个模块的注释里逐字写着「不剥的话守卫会被解释它自己的那段散文喂饱」。
 /// **同一个坑，隔一个 crate 又踩了一遍。**
 fn strip_comments(src: &str, line_comment: &str) -> String {

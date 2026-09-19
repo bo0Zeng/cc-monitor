@@ -45,7 +45,7 @@ if [ "$_identity_ok" = 1 ] && tmux has-session -t "=$id" 2>/dev/null; then
   ppid=$(tmux list-panes -t "=$id" -F '#{pane_pid}' 2>/dev/null | head -1)
   procs=""; [ -n "${ppid:-}" ] && procs=$(_tree "$ppid" 2>/dev/null || true)
   # ⚠ **把要销毁的东西说出来**：身份已经核准（是这个 agent 没错），但用户可能在这个会话里
-  #   开过自己的窗口。daemon 的 `kill` 原语在证据较弱时用「只杀单窗口」当第三道门；
+  #   开过自己的窗口。backend 的 `kill` 原语在证据较弱时用「只杀单窗口」当第三道门；
   #   这里证据更强（登记的 pane 根进程 pid 对上了）⇒ **照杀，但把窗口数摆出来**。
   #   要不要在多窗口时干脆拦下，是产品判断 ⇒ 记在 ROADMAP `U18`，不在这儿替用户定。
   _wins=$(tmux display-message -p -t "=$id:" '#{session_windows}' 2>/dev/null || true)

@@ -1,6 +1,6 @@
 // A6：cc-acct-iso 部署/维护命令的**纯构建器**（不 import DOM，vitest 锁死）。设置「账号」组的
 // 内联向导用它把「要在远端终端里跑的命令」拼好，再经 `launch_remote_terminal` 弹一个真实终端让用户
-// **亲眼看着、亲手确认**（DESIGN §6：动凭据的一切走终端，不经 daemon；本模块**不落盘、不读凭据**）。
+// **亲眼看着、亲手确认**（DESIGN §6：动凭据的一切走终端，不经后端；本模块**不落盘、不读凭据**）。
 //
 // 安全（§9 + F8）：账号名过安全字符集白名单；路径参数 POSIX 单引号 + 拒双引号/控制字符
 // （与 launch.rs 的 remote_cmd 双引号/控制字符拒收对齐＝双层防线）。构建失败返回可读原因、不抛。
@@ -9,7 +9,7 @@ const TOOL = "cc-acct-iso";
 
 /**
  * F5：从 daemonPath / user 推导 cc-acct-iso 的远端部署目录（绝对路径，供一键部署）。纯函数、可单测。
- * 约定与 daemon 同根：`<...>/.cc-monitor/cc-acct-iso`。daemonPath 含 `.cc-monitor` 则取其根；
+ * 约定与后端同根：`<...>/.cc-monitor/cc-acct-iso`。daemonPath 含 `.cc-monitor` 则取其根；
  * 否则回退 `/home/<user>/.cc-monitor/cc-acct-iso`。都拿不到（无 daemonPath 且 user 非法）→ null。
  */
 export function deriveAcctIsoDir(daemonPath?: string, user?: string): string | null {

@@ -7,7 +7,7 @@
 # 每条边界:①用 `resume-cmd-driver.ts` 取 app **真正会跑**的命令串(import 真实 remote-launch.ts,
 # 不重写);②断言命令形状(复用 cc-<sid8> 名/无 new-session/无 -N/CLAUDE_CONFIG_DIR 前缀);③真把该串
 # 跑到真 tmux(send-keys 进 idle pane 的 sh);④断言 argv.log(sid 命中行的 CLAUDE_CONFIG_DIR + `--resume`)
-# 与 `tmux list-sessions` 孤儿计数。红线:daemon 零改(不跑它) / 隔离 CLAUDE_CONFIG_DIR 绝不碰真 ~/.claude。
+# 与 `tmux list-sessions` 孤儿计数。红线:backend 零改(不跑它) / 隔离 CLAUDE_CONFIG_DIR 绝不碰真 ~/.claude。
 set -euo pipefail
 
 # ── G-C（解 BACKLOG E41）：把整套件钉在**自己的 tmux server** 上 ──────────────────

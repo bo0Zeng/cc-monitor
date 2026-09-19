@@ -345,7 +345,7 @@ describe("C01 边界生成物", () => {
     // `HistoryProject.origin` · `HistorySessionEntry.origin` ·
     // `HistorySessionEntry.forked_from_session_id`/`forked_from_message_uuid` · `SessionHits.origin`。
     // **K-A1：10 → 12。** `RemoteAccount.auth_kind` / `RemoteAccount.auth_ready`
-    // ——两者都是 `Option`，而**缺席与 `null` 在这里语义不同**：缺席 = 旧 daemon 压根没说
+    // ——两者都是 `Option`，而**缺席与 `null` 在这里语义不同**：缺席 = 旧后端压根没说
     // （前端据此回落到逐字节旧行为），`null` 会让那个 `??` 回落判据失效。⇒ 必须 `ts(optional)`。
     // **`K-R70`（09-12）：12 → 13。** `ccm_probe.rs::CcmProbeResult.build`
     // ——对面那份二进制自报的构建身份（`--ccm-probe` 的 `build=` 行）。同一条理由：

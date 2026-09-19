@@ -4,12 +4,12 @@
  * # 它为什么不去查状态
  *
  * 主计划 §1-2 是条红线：**状态灯绝不引入轮询**。依据是 `INVARIANTS §41`
- * （daemon 生产段零定时器，`no_timer_guard` 钉住）以及 `cc-bus-section.ts` /
+ * （backend 生产段零定时器，`no_timer_guard` 钉住）以及 `cc-bus-section.ts` /
  * `config-surface-section.ts` 文件头各自写死的「不新增轮询」。
  *
  * 「打开设置页时顺便把 N 台机器都探一遍」听起来不像轮询，但它是同一件事的另一种说法：
  * 一次 UI 动作扇出 N 次 ssh 往返，而用户根本没要求。所以本模块**只记录用户动作的结果**
- * ——测了连接就记连接、装了 daemon 就记 daemon——并把**记录时刻**一起存下来。
+ * ——测了连接就记连接、装了后端就记 backend——并把**记录时刻**一起存下来。
  *
  * ⇒ 行上显示的永远是「上次那次动作的结论 + 它有多旧」，绝不伪装成实时。
  * 没动作过就明说「未测过」，不猜、不填一个好看的 ✓。
@@ -35,7 +35,7 @@ export const LOCAL_MACHINE_KEY = "（本机）";
 /** 行上的一个格子。 */
 export type MachineFacet =
   | "connection"
-  | "daemon"
+  | "backend"
   | "ccm"
   | "acctIso"
   | "accounts";
@@ -43,7 +43,7 @@ export type MachineFacet =
 /** 面板上从左到右的显示顺序（也是 §2.3 那张示意图里的顺序）。 */
 export const MACHINE_FACETS: readonly MachineFacet[] = [
   "connection",
-  "daemon",
+  "backend",
   "ccm",
   "acctIso",
   "accounts",
@@ -51,7 +51,7 @@ export const MACHINE_FACETS: readonly MachineFacet[] = [
 
 export const FACET_LABELS: Record<MachineFacet, string> = {
   connection: "连接",
-  daemon: "daemon",
+  backend: "backend",
   ccm: "ccm",
   acctIso: "acct-iso",
   accounts: "账号",
@@ -60,7 +60,7 @@ export const FACET_LABELS: Record<MachineFacet, string> = {
 export interface FacetState {
   /**
    * - `ok` / `fail`：上次动作的结论。
-   * - `na`：**不适用** —— 例如本机不需要 daemon（主计划 §2.4 逐字写着「不需要」，
+   * - `na`：**不适用** —— 例如本机不需要后端（主计划 §2.4 逐字写着「不需要」，
    *   `watcher.rs` 直读 jsonl）。**这和「没测过」是两回事**：混成一个值的话，
    *   用户会以为本机缺了个组件。「没测过」的表示是**这个 facet 压根不在表里**。
    */

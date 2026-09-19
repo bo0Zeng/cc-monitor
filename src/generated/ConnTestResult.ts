@@ -4,7 +4,7 @@
  * 「测试连接」的结果（issue #15 Part 2）。serde camelCase 与前端渲染对齐。
  *
  * 偏好「返回 populated 结果 + message」而非 Err：让 UI 能展示部分成功
- * （如「SSH 连上了，但 daemon 没响应/未部署」）。仅参数级硬错误才返回 Err。
+ * （如「SSH 连上了，但后端没响应/未部署」）。仅参数级硬错误才返回 Err。
  */
 export type ConnTestResult = { 
 /**
@@ -21,15 +21,15 @@ fingerprint: string | null,
  */
 endpoint: string | null, 
 /**
- * daemon 是否在 SHORT timeout 内回了可解析的 hello 帧。
+ * backend 是否在 SHORT timeout 内回了可解析的 hello 帧。
  */
-daemonOk: boolean, 
+backendOk: boolean, 
 /**
- * daemon hello 的人读摘要（`v=.. arch=.. claude_home=..`）。
+ * backend hello 的人读摘要（`v=.. arch=.. claude_home=..`）。
  * ⚠ `S4` 起 `claude_home` 是**解析后**的值（优先 `homes`、回退 `claude_dir`），
  * 不是某个线上字段的原样照抄。
  */
-daemonHello: string | null, 
+backendHello: string | null, 
 /**
  * 人读的总体状态 / 失败原因。
  */

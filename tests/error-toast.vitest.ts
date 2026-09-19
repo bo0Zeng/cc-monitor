@@ -62,7 +62,7 @@ describe("toast 合流（audit-0805 F07 下半第二刀）", () => {
 
   it("★ 反向：不同标题不许合成一条", () => {
     showActionFailureToast("⚠ 远端管道拥塞", "a", { level: "info" });
-    showActionFailureToast("⚠ 远端 daemon 版本不符", "b", { level: "info" });
+    showActionFailureToast("⚠ 远端后端版本不符", "b", { level: "info" });
     expect(
       toasts().length,
       "两类完全不同的提示被并成了一条 —— 合流的键取得太宽，用户会漏掉其中一类",

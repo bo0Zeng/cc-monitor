@@ -1,4 +1,4 @@
-/// ★★ **daemon 的 runtime 必须是多 worker 的**〔audit-0805 08-08，Phase G 第 63 件〕。
+/// ★★ **backend 的 runtime 必须是多 worker 的**〔audit-0805 08-08，Phase G 第 63 件〕。
 ///
 /// `Disposition::SpawnBlocking` 的头注逐字写着：`main` 是**裸** `#[tokio::main]`
 /// （worker 数 = 可用核数），所以「一条在跑的阻塞命令占住一个 worker」这件事
@@ -8,7 +8,7 @@
 ///
 /// ⇒ 那整段论证压在「裸 `#[tokio::main]`」这五个字上，而**没人钉它**。
 /// 08-08 实测：改成 `#[tokio::main(flavor = "current_thread")]`，
-/// **daemon 293 条判据一条不红** —— 而那一改会把单核才有的饿死**推广到所有机器**。
+/// **backend 293 条判据一条不红** —— 而那一改会把单核才有的饿死**推广到所有机器**。
 ///
 /// ⚠ 只钉「不是单 worker」，**不钉具体 worker 数**：那由机器决定，钉了就是把
 /// 环境写进判据（本工作区反复在治的「把会腐的当前值抄进来」）。
@@ -20,7 +20,7 @@
 /// 可能命中一个已经跑完但还没摘掉的句柄。而**上面那段「拒重复 `id`」把后果抬高了一档**：
 /// `dispatch` 见到登记表里已有同名 `id` 就**直接拒绝**。
 /// ⇒ 「收到应答 ⇒ 这个 id 可以再用」这句话，正是靠 `remove` 排在 `send` 前面才成立的。
-/// 调换两行，客户端**按应答办事**地复用 id 会被 daemon 拒掉 —— 一个只在时序上出现、
+/// 调换两行，客户端**按应答办事**地复用 id 会被后端拒掉 —— 一个只在时序上出现、
 /// 客户端侧无从解释的失败。
 ///
 /// # 这条透镜（08-08「顺序」类声称）的结果一并记在这里
@@ -29,7 +29,7 @@
 /// `SendKeysRaw` / `CreateOrAttach`）· `kill.rs` 的门在 kill 之前 · `payload.rs` 的
 /// `cd` 位次（逐字节 golden 对拍抓过一次）· `sanitize` 先于 `wrap`（F54 已钉接线）·
 /// `fs.rs` 先看长度再读（F06）——**都已经有判据**。
-/// **只有这一条没有**：实测把两行对调，daemon 294 条一条不红。
+/// **只有这一条没有**：实测把两行对调，backend 294 条一条不红。
 #[test]
 fn the_handle_is_deregistered_before_the_reply_goes_out() {
     let src = crate::guard_support::production_code(include_str!("../../src/backend/inbound.rs"));
@@ -46,7 +46,7 @@ fn the_handle_is_deregistered_before_the_reply_goes_out() {
         "回应答排在摘登记之前了。\n\
              ★ 后果不是「白 abort 一个空壳」那么轻：本文件上面那段**拒重复 `id`** 意味着\n\
              「收到应答 ⇒ 这个 id 可以再用」，而那句话正是靠 `remove` 排在 `send` 前面才成立。\n\
-             调换之后，客户端**按应答办事**地复用 id 会被 daemon 直接拒掉 ——\n\
+             调换之后，客户端**按应答办事**地复用 id 会被后端直接拒掉 ——\n\
              一个只在时序上出现、客户端侧无从解释的失败。\n\
              ⚠ 真要先回应答（比如为了延迟），得先把「拒重复 id」那条规则一起重新设计。"
     );
@@ -76,7 +76,7 @@ fn the_handle_is_deregistered_before_the_reply_goes_out() {
 }
 
 #[test]
-fn the_daemon_runtime_keeps_more_than_one_worker() {
+fn the_backend_runtime_keeps_more_than_one_worker() {
     let src = include_str!("../../src/backend/main.rs");
     let prod = guard_core::production_code(src);
     // 运行时拼：写成字面量会命中本条自己的诊断文案（F58/F62 记过）。
@@ -117,7 +117,7 @@ fn the_daemon_runtime_keeps_more_than_one_worker() {
     }
     assert!(
         offenders.is_empty(),
-        "daemon 的 runtime 被改成了单 worker：{offenders:?}\n\
+        "backend 的 runtime 被改成了单 worker：{offenders:?}\n\
              ⚠ `SpawnBlocking` 那一档的整段论证前提是「worker 数 = 可用核数」——\n\
              单 worker 之下，**一条在跑的阻塞命令就占住唯一的 worker**，\n\
              `writer_task`（出方向帧的唯一出口）随即饿死：远端还活着但一句话不说，\n\
@@ -163,7 +163,7 @@ async fn ping_replies_ok() {
     assert_eq!(out, vec![r#"{"kind":"reply","id":"x","ok":true}"#]);
 }
 
-/// ★ `id` 是**不透明**的：daemon 不解析、不规范化、只回显。
+/// ★ `id` 是**不透明**的：backend 不解析、不规范化、只回显。
 #[tokio::test]
 async fn id_is_echoed_back_byte_for_byte() {
     for id in ["🌊-emoji", "0123456789", &"z".repeat(500)] {

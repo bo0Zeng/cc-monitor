@@ -49,7 +49,7 @@ const TREES = ["src", "tests"] as const;
  *
  * ⚠⚠ **同一个坑，高一层**〔08-14 实测〕：上面那句做到了「不写死**文件**名」，
  * 却写死了**目录**名 —— 原式是 `.replace(/^.*\/cc-monitor\//, "")`。
- * 于是在**任何一个 git worktree 里**（目录叫 `wt-daemon-split` 之类），那个 `replace`
+ * 于是在**任何一个 git worktree 里**（目录叫 `wt-backend-split` 之类），那个 `replace`
  * 不命中，`SELF` 停在绝对路径上、摘不掉自己 ⇒ 本文件把自己算进语料，两格当场红。
  * 多 agent 并发用 worktree 干活时 `npm test` **必红**，而红的原因与被测的性质无关。
  *

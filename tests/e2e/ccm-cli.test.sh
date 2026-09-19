@@ -14,18 +14,18 @@ REPO="$(cd "$HERE/../.." && pwd)"
 #   `intercept` 认的是 `argv[0]` 的 basename ⇒ 做一条叫 `ccm` 的软链指过去。
 # 🔴 **fail-closed**：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份
 #   （那正是本文件全篇隔离纪律要治的那一族：测试结果不许随「是谁在跑测试」而漂移）。
-CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-remote"
+CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 [ -x "$CCM_NATIVE" ] || {
-  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-remote\`" >&2
+  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-backend\`" >&2
   exit 2; }
 CCMDIR="$(mktemp -d)"; trap 'rm -rf "$CCMDIR"' EXIT
 ln -s "$CCM_NATIVE" "$CCMDIR/ccm"
 CCM="$CCMDIR/ccm"
 
 # ⚠ 〔`K-R48` 第二拍 09-11〕**这里原来有两道 `jq` 的 fail-closed 硬依赖闸，本轮删了。**
-#   它们守的是本文件那几份**假 daemon**（`mk_mirror_daemon` 用 `jq` 把夹具 manifest 翻成
+#   它们守的是本文件那几份**假 backend**（`mk_mirror_backend` 用 `jq` 把夹具 manifest 翻成
 #   `--list-accounts` 的帧形状、`KREC` 的记账 shim 转发给 `/usr/bin:/bin` 上那一个）——
-#   而那几份假 daemon 与它们服务的判据本轮一起删了：同一个进程之下没有「帧」这回事，
+#   而那几份假后端与它们服务的判据本轮一起删了：同一个进程之下没有「帧」这回事，
 #   账号表由后端自己读那份 manifest。**本文件今天一处都不用 `jq`**（`grep -c jq` 自己看）。
 #   ⚠ **`npx` 那条纪律仍在**：下面会话名派生那一节靠 `npx tsx` 真跑前端那个函数做跨语言对拍。
 
@@ -39,7 +39,7 @@ ck() { # ck <描述> <期望> <实得>
 # **全文件恒隔离 CLAUDE_CONFIG_DIR**：本机开发者本人就可能正跑在某个隔离账号下（这里真的
 # 踩过——CLAUDE_CONFIG_DIR=/home/zbl/.claude-accts/z 是本次开发时的真实环境）。account-reset
 # 修复后 ccm 会真的读这个变量，不隔离会让测试结果随"是谁在跑测试"而漂移。
-# ★★ 〔`K-R48` 第二拍 09-11〕**`CCM_DAEMON_BIN` 那一栏没了，`CCM_ACCTS_MANIFEST` 那一栏留着。**
+# ★★ 〔`K-R48` 第二拍 09-11〕**`CCM_BACKEND_BIN` 那一栏没了，`CCM_ACCTS_MANIFEST` 那一栏留着。**
 #   从前本套件要**自带一份后端**（`FAKED`）：账号解析没有本地退路，不给后端的话每一条判据
 #   都会死在 `exit 4` 上。今天敲的那个命令**就是**后端 ⇒ 那个变量在原生实现里现打 `grep -rn`
 #   **零命中**，留着它等于在夹具里摆一个谁也不读的旋钮。
@@ -64,7 +64,7 @@ echo "===== 契约：动作 × 修饰 ====="
 # ⚠ **`set -f` 不许省，它是这条串上唯一一处安全性质**：后端回的是一整条命令串，
 #   要被 shell 拆成词才跑得了（`exec $cmd`，不是 `exec "$cmd"`），而拆词那一步会顺手做
 #   路径名展开 ⇒ 命令里一个 `*` 会被 cwd 的文件名顶掉。〔第一拍差点丢掉这一格；
-#   daemon 侧判据 `a_command_from_the_backend_is_never_rewritten_by_the_shell` 盯着它。〕
+#   backend 侧判据 `a_command_from_the_backend_is_never_rewritten_by_the_shell` 盯着它。〕
 #
 # ⚠ 下面**仍是手写一份期望文本**，**刻意不从 ccm 里取** —— 从 ccm 取就是同义反复，
 #   实现怎么变期望就怎么变，这几条黄金串等于不存在。
@@ -154,12 +154,12 @@ ck "attach 动作" \
 echo
 echo "===== 账号三态（D 审计 B1/B2 回归）====="
 # ★★ `K-C1`（08-24）**本组的夹具改了两处，都是为了让它测的是生产形状**：
-#   ① `m.json` → `accounts.json`。daemon 的 `--list-accounts` **只收目录**（`--accts-dir`），
+#   ① `m.json` → `accounts.json`。backend 的 `--list-accounts` **只收目录**（`--accts-dir`），
 #      manifest 的文件名由它自己拼（`acct-core::MANIFEST_NAME`）⇒ 叫别的名字时 ccm 判得出
-#      「这个问题 daemon 答不了」、降级读文件并**说一句**，于是这几条黄金串会多出一行 stderr。
+#      「这个问题后端答不了」、降级读文件并**说一句**，于是这几条黄金串会多出一行 stderr。
 #      生产路径本来就是 `<目录>/accounts.json`（默认值与 cc-acct-iso 的 `ACCTS_DIR` 都是），
 #      夹具跟上去 = 测的是真形状，不是「顺手把判据改绿」。
-#   ② 〔原第②条：`CCM_DAEMON_BIN` 钉到一份假 daemon，免得查找次序摸到开发机上用户的真二进制〕
+#   ② 〔原第②条：`CCM_BACKEND_BIN` 钉到一份假后端，免得查找次序摸到开发机上用户的真二进制〕
 #      **`K-R48` 第二拍 09-11 作废** —— 没有查找次序了，敲的那个命令就是后端。
 #      它治的那条病（同一条判据在开发机与 CI 上走两条不同的路）今天由文件顶上那道
 #      `[ -x "$CCM_NATIVE" ]` fail-closed 顶着：被测对象**只可能**是本工作树刚 build 出来的那一份。
@@ -169,10 +169,10 @@ cat > "$ACCTMP/accounts.json" <<JSON
   { "name": "z", "configDir": "$ACCTMP/z", "isDefault": true },
   { "name": "b", "configDir": "$ACCTMP/b", "isDefault": false } ] }
 JSON
-# ⚠ 〔`K-R48` 第二拍 09-11〕**这里原来有一份镜像式假 daemon（`mk_mirror_daemon`），本轮删了。**
+# ⚠ 〔`K-R48` 第二拍 09-11〕**这里原来有一份镜像式假后端（`mk_mirror_backend`），本轮删了。**
 #   它的活是「把夹具 manifest 原样翻成 `--list-accounts` 帧形状」，好让 bash 那侧跨进程问到账号表。
 #   今天后端**自己读**那份 manifest（`CCM_ACCTS_MANIFEST` 仍是唯一事实源），中间那一跳没有了。
-#   下面那几个 helper 里留着的 `CCM_DAEMON_BIN=` 也一并去掉：原生实现现打 `grep -rn` **零命中**，
+#   下面那几个 helper 里留着的 `CCM_BACKEND_BIN=` 也一并去掉：原生实现现打 `grep -rn` **零命中**，
 #   留着它等于在夹具里摆一个谁也不读的旋钮。
 acct() { env -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/accounts.json" "$CCM" "$@" 2>&1; }
 ck "显式 --account 注入其 configDir" \
@@ -222,7 +222,7 @@ echo "===== 账号继承（F03 综合设计时发现的 bug 回归）====="
 # `--tmux` 会落进那条分支、根本不走容器路径，于是 4 条 R08 断言假红（CI 上无 TMUX 所以
 # 一直看不出来）。实测：同一份 HEAD，`TMUX` 有无决定 44/0 还是 40/4。
 # 测什么就要固定什么，不能让环境替测试选路径。
-# `K-C1`：夹具改名 + 钉假 daemon，理由同上一组（那段头注逐条写了，别在这儿重抄）。
+# `K-C1`：夹具改名 + 钉假后端，理由同上一组（那段头注逐条写了，别在这儿重抄）。
 inherit_acct() { CLAUDE_CONFIG_DIR="$ACCTMP/b" env -u TMUX -u TMUX_PANE CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent CCM_ACCTS_MANIFEST="$ACCTMP/accounts.json" "$CCM" "$@" 2>&1; }
 ACCTMP="$(mktemp -d)"; mkdir -p "$ACCTMP/z" "$ACCTMP/b" "$ACCTMP/bin"
 cat > "$ACCTMP/accounts.json" <<JSON
@@ -353,10 +353,10 @@ fi
 # ⇒ `shared/ccm` 删了，本套件的被测对象换成后端二进制本体。
 # 删掉的 218 条**逐条判词住 `tests/evidence/K-R48-356-verdicts.tsv`**（第 21–284 行是本套件那 264 条），
 # 按族：
-#   · 身份 daemon 前置检查 15 条（第 67–81）—— 「在 tmux 里找不到 daemon ⇒ 响亮失败」那一族。
-#     **同一个二进制之下「找不到 daemon」这个概念不存在了**：敲的那个命令就是后端。
-#   · 账号解析走 daemon 一整节（第 84–152）—— 往返次数 / 帧形状 / 无 jq 纯 bash 解析路 /
-#     「这段 bash 起了几个外部进程」的记账尺子。语义那一半已落成 daemon 侧 Rust 判据
+#   · 身份后端前置检查 15 条（第 67–81）—— 「在 tmux 里找不到 backend ⇒ 响亮失败」那一族。
+#     **同一个二进制之下「找不到后端」这个概念不存在了**：敲的那个命令就是后端。
+#   · 账号解析走后端一整节（第 84–152）—— 往返次数 / 帧形状 / 无 jq 纯 bash 解析路 /
+#     「这段 bash 起了几个外部进程」的记账尺子。语义那一半已落成后端侧 Rust 判据
 #     （`the_account_table_has_exactly_one_source` · `picking_an_account_never_falls_back_to_a_different_one`
 #      · `needs_account_table`）。
 #   · `JSONENC` 47 条（第 153–199）—— 那个**手写的 bash JSON 编码器**与 `jq -Rs .` 的逐字节对拍。
@@ -370,8 +370,8 @@ fi
 #   ① 第 82–83（`--print` 不受身份前置检查影响 ＋ 它的非空对照）——
 #      **非空对照那一条断的正是 `rc=2`**，而那道检查随第 67–81 那族一起没了。
 #      留下第 82 条单条 = 一条恒真（那正是第 83 条当初被加进来要防的东西）。
-#   ② 第 281–284（`WIRE/launch/--print` 的纯性 4 条）—— 第 281 条数的是「假 daemon 被调了几次」，
-#      而原生实现根本不去调任何外部 daemon ⇒ **恒 0，空真**。
+#   ② 第 281–284（`WIRE/launch/--print` 的纯性 4 条）—— 第 281 条数的是「假后端被调了几次」，
+#      而原生实现根本不去调任何外部 backend ⇒ **恒 0，空真**。
 #      余下三条的性质仍在别处守着：`--print` 吐本机 tmux 编排由上面「账号继承」那 5 条
 #      容器路黄金串逐字钉住；「stderr 一个字都没有」由本文件每一条黄金串的 `2>&1` 口径钉住
 #      （`ccm()` 把 stderr 并进被比的串 —— 吵一个字就当场不等）。

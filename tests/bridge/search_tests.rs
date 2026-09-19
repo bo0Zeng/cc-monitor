@@ -136,17 +136,17 @@ fn resp(status: &str, total: u32, sessions: Vec<SessionHits>) -> SearchResponse 
     }
 }
 
-/// daemon 的 `--search` 输出（camelCase，无 origin）能反序列化成 SessionHits。
+/// backend 的 `--search` 输出（camelCase，无 origin）能反序列化成 SessionHits。
 #[test]
-fn session_hits_deserializes_from_daemon_json() {
+fn session_hits_deserializes_from_backend_json() {
     let line = r#"{"sessionId":"s9","projectPath":"/home/pi/p","projectName":"p","jsonlPath":"/home/pi/.claude/projects/p/s9.jsonl","title":"标题","updatedAt":123,"hitCount":2,"hits":[{"uuid":"u1","tsMs":5,"kind":"user","before":"b","matched":"m","after":"a"}]}"#;
-    let sh: SessionHits = serde_json::from_str(line).expect("daemon json deserializes");
+    let sh: SessionHits = serde_json::from_str(line).expect("backend json deserializes");
     assert_eq!(sh.session_id, "s9");
     assert_eq!(sh.hit_count, 2);
     assert_eq!(sh.hits.len(), 1);
     assert_eq!(
         sh.origin, None,
-        "daemon 不发 origin → None（由 fan-out 补）"
+        "backend 不发 origin → None（由 fan-out 补）"
     );
 }
 
@@ -182,7 +182,7 @@ fn merge_no_remote_returns_local_verbatim() {
     assert_eq!(merged.session_count, 0);
 }
 
-// ── `K-R100` 的行为判据（本侧那一半；daemon 侧有同形的三条）─────────────
+// ── `K-R100` 的行为判据（本侧那一半；backend 侧有同形的三条）─────────────
 
 /// 建一棵 `<claude_dir>/projects/<proj>/<sid>.jsonl`，mtime 按给定毫秒设。
 fn corpus(tag: &str, sessions: &[(&str, u64, usize)]) -> PathBuf {
@@ -213,7 +213,7 @@ fn built(dir: &Path) -> SearchIndex {
     idx
 }
 
-/// `KR100D2`：**预算按最近优先花**，与 daemon 同一份 `search_core::sort_by_recency`。
+/// `KR100D2`：**预算按最近优先花**，与后端同一份 `search_core::sort_by_recency`。
 /// 死值验①（把某一侧换回「文件系统先走到的顺序」）当场红。
 #[test]
 fn the_snippet_budget_goes_to_the_most_recent_sessions() {
@@ -230,7 +230,7 @@ fn the_snippet_budget_goes_to_the_most_recent_sessions() {
         "会话按最近优先排（= 预算顺序 = 展示顺序）"
     );
 
-    // 预算只够 2 条 ⇒ 都花在最新那个会话上，与 daemon 侧同名判据逐条同形。
+    // 预算只够 2 条 ⇒ 都花在最新那个会话上，与后端侧同名判据逐条同形。
     let r = idx.query("docker", false, None, 0, 2);
     let newest = r.sessions.iter().find(|s| s.session_id == "new").unwrap();
     assert_eq!(newest.hits.len(), 2);
@@ -269,7 +269,7 @@ fn remote_truncation_survives_the_merge() {
     let local = resp("ready", 1, vec![mk_session("loc", 100, 1, None)]);
     assert!(!local.truncated);
     let mut rem = mk_session("rem", 200, 12, Some("pi"));
-    rem.hits_truncated = true; // daemon 说的：它被自己的 --limit 砍了
+    rem.hits_truncated = true; // backend 说的：它被自己的 --limit 砍了
     let merged = merge_search_results(local, vec![rem]);
     assert!(
         merged.truncated,
@@ -287,7 +287,7 @@ fn remote_truncation_survives_the_merge() {
 /// （`build_blocking` → `query` → `search_core::make_snippet`）。
 /// · 改 core 的 `SNIPPET_CTX` ⇒ 两头一起动，本条仍绿（＝行为确实跟着变）；
 /// · 本侧哪天写回一个自己的 `const SNIPPET_CTX = 48` ⇒ 实际不动、期望动 ⇒ **当场红**。
-/// daemon 侧有一条同形的（`observe/search_query_tests.rs::the_snippet_window_comes_from_core`）。
+/// backend 侧有一条同形的（`observe/search_query_tests.rs::the_snippet_window_comes_from_core`）。
 #[test]
 fn the_snippet_window_comes_from_core() {
     let ctx = search_core::SNIPPET_CTX;

@@ -10,8 +10,6 @@ import {
   summarizeGaps,
   describeGap,
   GAP_HEAD,
-  NO_BACKEND_GAP_CODE,
-  NO_BACKEND_CONSEQUENCE,
   type Gap,
 } from "../../src/settings/readiness";
 import { LOCAL_MACHINE_KEY, type MachineStatus } from "../../src/settings/machine-status";
@@ -38,12 +36,12 @@ describe("computeGaps", () => {
       statusOf: statusMap({
         aya: {
           connection: { kind: "ok", at: T },
-          daemon: { kind: "fail", at: T },
+          backend: { kind: "fail", at: T },
         },
       }),
     });
     expect(gaps.find((g) => g.facet === "connection")).toBeUndefined();
-    const d = gaps.find((g) => g.facet === "daemon")!;
+    const d = gaps.find((g) => g.facet === "backend")!;
     expect(d.kind).toBe("missing");
     expect(d.severity).toBe("blocking");
   });
@@ -53,10 +51,10 @@ describe("computeGaps", () => {
    *
    * # 这一条翻的是哪一面
    *
-   * 它此前逐字叫「★ 本机的 daemon 不算缺（不适用 ≠ 缺）」，断的是
-   * `computeGaps({origins:[LOCAL_MACHINE_KEY]})` **不产出** `daemon` 那一格 ——
-   * 依据是 `notApplicable` 里 `facet === "daemon"` 那一支，理由写在头注
-   * 「本机不需要 daemon（`watcher.rs` 直读 jsonl）」。
+   * 它此前逐字叫「★ 本机的后端不算缺（不适用 ≠ 缺）」，断的是
+   * `computeGaps({origins:[LOCAL_MACHINE_KEY]})` **不产出** `backend` 那一格 ——
+   * 依据是 `notApplicable` 里 `facet === "backend"` 那一支，理由写在头注
+   * 「本机不需要后端（`watcher.rs` 直读 jsonl）」。
    *
    * 那句话在 `C7`〔用 08-03〕之后就**不成立**了：`C7` 逐字「没有 daemonless，
    * 使用软件就要有后端 ⇒ **本机**也要有后端进程」，`local_backend.rs` 是它的产物。
@@ -66,27 +64,27 @@ describe("computeGaps", () => {
    *
    * **那一支里一个 `daemonless` 字样都没有。** `KR59D1` 的失效方向逐字写着：
    * 「只数 `grep daemonless == 0` —— 那只证明**名字**没了，不证明**那一档**没了」。
-   * 本条断的是**行为**：喂一个 `daemon` 那格空着的本机账本，那一格**必须出现在清单里**，
+   * 本条断的是**行为**：喂一个 `backend` 那格空着的本机账本，那一格**必须出现在清单里**，
    * 而且必须是 `blocking`。把那一支塞回 `notApplicable`（哪怕换个名字写），本条立刻红。
    */
-  it("🔴 KR59D1⑤：本机的 daemon **算一格** —— 没起来这件事清单必须说得出来", () => {
+  it("🔴 KR59D1⑤：本机的 backend **算一格** —— 没起来这件事清单必须说得出来", () => {
     const gaps = computeGaps({ origins: [LOCAL_MACHINE_KEY], statusOf: none });
-    const daemon = gaps.filter((g) => g.facet === "daemon");
+    const backend = gaps.filter((g) => g.facet === "backend");
     expect(
-      daemon.length,
-      "本机的 daemon 又被算成「不适用」了 —— `C7` 之后本机也有后端进程，" +
+      backend.length,
+      "本机的后端又被算成「不适用」了 —— `C7` 之后本机也有后端进程，" +
         "这一格空着必须说得出来（`KR59D1` 第 ⑤ 处载体）",
     ).toBe(1);
-    expect(daemon[0]?.origin).toBe(LOCAL_MACHINE_KEY);
-    expect(daemon[0]?.severity).toBe("blocking");
+    expect(backend[0]?.origin).toBe(LOCAL_MACHINE_KEY);
+    expect(backend[0]?.severity).toBe("blocking");
     // 反向自检：本机的**其它**项照常出现（不是整台被跳过了）
     expect(gaps.some((g) => g.facet === "ccm")).toBe(true);
     // 反向自检：账本里写了 `ok` 就该消失 —— 本条断的是「算不算一格」，不是「恒红一条」。
     const green = computeGaps({
       origins: [LOCAL_MACHINE_KEY],
-      statusOf: () => ({ daemon: { kind: "ok", at: T } }),
+      statusOf: () => ({ backend: { kind: "ok", at: T } }),
     });
-    expect(green.some((g) => g.facet === "daemon")).toBe(false);
+    expect(green.some((g) => g.facet === "backend")).toBe(false);
   });
 
   it("★ 本机的「连接」不算缺 —— 本地 = 不走 ssh 的远端（INVARIANTS §40）", () => {
@@ -96,11 +94,11 @@ describe("computeGaps", () => {
     const gaps = computeGaps({ origins: [LOCAL_MACHINE_KEY], statusOf: none });
     expect(gaps.some((g) => g.facet === "connection")).toBe(false);
     // ⚠ `K-R59` 订正：这里原来还断「本机不该有任何 blocking 条目」，
-    //    依据是「daemon 与 connection 是仅有的两条 blocking，而本机两条都不适用」。
-    //    今天本机的 `daemon` **算一格** ⇒ 那句话不再成立。
-    //    换成**逐格点名**：本机剩下的 blocking 恰好只有 daemon 一条。
+    //    依据是「backend 与 connection 是仅有的两条 blocking，而本机两条都不适用」。
+    //    今天本机的 `backend` **算一格** ⇒ 那句话不再成立。
+    //    换成**逐格点名**：本机剩下的 blocking 恰好只有后端一条。
     expect(gaps.filter((g) => g.severity === "blocking").map((g) => g.facet)).toEqual([
-      "daemon",
+      "backend",
     ]);
     // 反向：远端的连接照常算数
     expect(
@@ -153,51 +151,16 @@ describe("computeGaps", () => {
   it("账本里显式记成 na 的也不算缺", () => {
     const gaps = computeGaps({
       origins: ["aya"],
-      statusOf: statusMap({ aya: { daemon: { kind: "na", at: T } } }),
+      statusOf: statusMap({ aya: { backend: { kind: "na", at: T } } }),
     });
-    expect(gaps.some((g) => g.facet === "daemon")).toBe(false);
+    expect(gaps.some((g) => g.facet === "backend")).toBe(false);
   });
 
-  /**
-   * 🔴 `KR59D3`：旧配置里那个 `true` **不许被静默吞掉**。
-   *
-   * 这一条此前逐字叫「★ daemonless 的机器不该被说「缺 daemon」（那是用户显式选的降级）」，
-   * 断的是注入 `isDaemonless` 之后那台机器的 `daemon` 一格**消失**。
-   * `K35` 把那一档删了 ⇒ 语义整个翻面：那台机器从此**要连后端**，
-   * 而它连不上的时候用户该看见的是「你这台机器本来就是按不装后端配的，去装」，
-   * **不是**一句通用的「没测过」。
-   */
-  it("🔴 KR59D3：盘上还带着旧「不装后端」开关的主机 ⇒ 一条**指名的**告知", () => {
-    const gaps = computeGaps({
-      origins: ["aya"],
-      statusOf: none,
-      legacyNoBackend: (o) => o === "aya",
-    });
-    const daemon = gaps.filter((g) => g.facet === "daemon");
-    expect(daemon).toHaveLength(1);
-    expect(daemon[0]?.code, "那条告知没有名字 —— 形状抄 `K-P2` 的唯一失败面").toBe(
-      NO_BACKEND_GAP_CODE,
-    );
-    // **有名字还不够**：它得说清「为什么」+「下一步」，而且是 blocking。
-    expect(daemon[0]?.consequence).toBe(NO_BACKEND_CONSEQUENCE);
-    expect(daemon[0]?.severity).toBe("blocking");
-    // 「确认没有」而不是「没测过」—— 盘上那份配置就是证据。
-    expect(daemon[0]?.kind).toBe("missing");
-    // ⚠ **它压过账本**：旧路径把这台机器的两格记成 `na`（「用户显式选的降级」），
-    //   那正是要被撤掉的那句话；账本说 `na` 也照样告知。
-    const over = computeGaps({
-      origins: ["aya"],
-      statusOf: () => ({ daemon: { kind: "na", at: T } }),
-      legacyNoBackend: () => true,
-    });
-    expect(over.filter((g) => g.facet === "daemon")[0]?.code).toBe(NO_BACKEND_GAP_CODE);
-    // 反向自检①：没有旧开关的机器**不带**这个名字（不是恒挂一条）。
-    const plain = computeGaps({ origins: ["aya"], statusOf: none });
-    expect(plain.some((g) => g.code === NO_BACKEND_GAP_CODE)).toBe(false);
-    expect(plain.some((g) => g.facet === "daemon")).toBe(true);
-    // 反向自检②：那条告知**看得见** —— 显示文案里含它的「下一步」。
-    expect(describeGap(daemon[0]!)).toContain("装上后端");
-  });
+  // 🔴 〔步 8 · 条 80 「不要管旧配置」〕**`KR59D3` 那条整条退役了。**
+  //    它断的是「盘上还带着旧 `daemonless: true` 的主机要给一条指名的告知」，
+  //    而那条告知（`NO_BACKEND_GAP_CODE` / `NO_BACKEND_CONSEQUENCE`）与它背后的
+  //    `legacyNoBackend` 入参这一拍整块删了 ⇒ **它已经没有被测对象**。
+  //    ⚠ 用例数 −1，逐条点名在本轮报告里。
 
   it("★ blocking 排在 optional 前面，且顺序稳定", () => {
     const gaps = computeGaps({ origins: ["aya", "nano"], statusOf: none });
@@ -210,7 +173,7 @@ describe("computeGaps", () => {
   it("全都 ok → 空列表（调用方据此整块不渲染）", () => {
     const all: MachineStatus = {
       connection: { kind: "ok", at: T },
-      daemon: { kind: "ok", at: T },
+      backend: { kind: "ok", at: T },
       ccm: { kind: "ok", at: T },
       acctIso: { kind: "ok", at: T },
       accounts: { kind: "ok", at: T },
@@ -223,7 +186,7 @@ describe("computeGaps", () => {
  * `N-F2` `NF2D3`：**「全绿就整块不出现」那一支从死代码变成走得到。**
  *
  * 它此前是死代码，不是因为这个纯函数错了 —— 恰恰相反，`computeGaps` 一直就把本机
- * 算进去、`notApplicable` 当时也只排掉本机的 `daemon` / `connection`。死的是**写点**：
+ * 算进去、`notApplicable` 当时也只排掉本机的 `backend` / `connection`。死的是**写点**：
  * 本机的 `acctIso` / `accounts` 全仓没有任何 `recordFacet` 生产者
  * ⇒ 恒 `unknown` ⇒ `summarizeGaps` 恒非 null。
  *
@@ -235,13 +198,13 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
   /**
    * 本机那条路上真会被写绿的格子。
    *
-   * ⚠ `K-R59`（09-11）**从两格变成三格**：`daemon` 那一格此前被 `notApplicable` 排掉
-   * （理由「本机不需要 daemon」，`C7` 之后不成立），今天它算数了，写点是
-   * `remote-section.ts::noteLocalBackend`（问一次本机那把手，`daemon-section` 在同一个
+   * ⚠ `K-R59`（09-11）**从两格变成三格**：`backend` 那一格此前被 `notApplicable` 排掉
+   * （理由「本机不需要后端」，`C7` 之后不成立），今天它算数了，写点是
+   * `remote-section.ts::noteLocalBackend`（问一次本机那把手，`backend-section` 在同一个
    * 面板上早就在问同一个命令）。
    */
   const localGreen: MachineStatus = {
-    daemon: { kind: "ok", at: T },
+    backend: { kind: "ok", at: T },
     acctIso: { kind: "ok", at: T },
     accounts: { kind: "ok", at: T },
   };
@@ -256,7 +219,7 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
     expect(
       before.map((g) => g.facet),
       "适用格不是这三格 —— 那下面这条 null 就不是本件买来的",
-    ).toEqual(["daemon", "acctIso", "accounts"]);
+    ).toEqual(["backend", "acctIso", "accounts"]);
 
     const after = computeGaps({ origins, statusOf: () => localGreen, hostOs: "windows" });
     expect(after).toEqual([]);
@@ -270,7 +233,7 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
       hostOs: "windows",
     });
     expect(gaps.map((g) => `${g.facet}:${g.kind}`)).toEqual([
-      "daemon:unknown",
+      "backend:unknown",
       "acctIso:unknown",
       "accounts:unknown",
     ]);
@@ -280,7 +243,7 @@ describe("N-F2 NF2D3：本机全绿 + 没有远端 ⇒ 那张清单该整块消�
 
   it("★ 诚实边界：非 Windows 本机还剩 `ccm` 一格 —— 本机的 ccm 至今没有任何写点", () => {
     // 这一条**不是**在断本件做完了，正相反：它把本件**没**买到的那一格钉在明处。
-    // `machine-card` 那三格（connection / daemon / ccm）的写点全都按远端 host key 记账
+    // `machine-card` 那三格（connection / backend / ccm）的写点全都按远端 host key 记账
     //（`this.persistedKey ?? hostKey(this.collect())`）⇒ 全仓对 `LOCAL_MACHINE_KEY`
     // 的 ccm 写点是 **0 个**。于是在 Linux / macOS 上，本机那一栏就算这两格全绿，
     // 清单里仍会剩一条「本机 · ccm：未测过」。
@@ -346,7 +309,7 @@ describe("describeGap", () => {
   it("没测过的那条不写「缺」", () => {
     const t = describeGap({
       origin: "aya",
-      facet: "daemon",
+      facet: "backend",
       kind: "unknown",
       consequence: "c",
       severity: "blocking",
@@ -361,7 +324,7 @@ describe("describeGap", () => {
   it("「缺」/「未测过」这两个字只有一个住址（GAP_HEAD）", () => {
     const mk = (kind: Gap["kind"]): Gap => ({
       origin: "aya",
-      facet: "daemon",
+      facet: "backend",
       kind,
       consequence: "c",
       severity: "blocking",

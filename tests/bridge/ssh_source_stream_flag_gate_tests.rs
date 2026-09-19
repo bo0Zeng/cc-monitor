@@ -4,12 +4,12 @@ fn caps(items: &[&str]) -> Vec<String> {
     items.iter().map(|s| s.to_string()).collect()
 }
 
-/// F66 DoD：能力门控矩阵——空集（旧 daemon/未确认）恒 (false,false)；
+/// F66 DoD：能力门控矩阵——空集（旧 backend/未确认）恒 (false,false)；
 /// 声明 bg+tail-only 后 tail_only 恒开、with_bg 随 showBgSessions；
 /// 部分声明只开对应位；未知 token 忽略。
 /// ★ U-CC1：`KNOWN_CAPABILITY_TOKENS` 与 `decide_stream_flags` 必须是同一份事实。
 ///
-/// 漂开的后果是**漂移记账说谎**：daemon 声明了一个我们其实认识的 token，诊断面却把它
+/// 漂开的后果是**漂移记账说谎**：backend 声明了一个我们其实认识的 token，诊断面却把它
 /// 报成「不认识」；或者反过来，真的新 token 被当成已知、一声不吭。
 #[test]
 fn known_capability_tokens_match_decide_stream_flags() {
@@ -37,7 +37,7 @@ fn known_capability_tokens_match_decide_stream_flags() {
 
 #[test]
 fn capability_gate_matrix() {
-    // 空集 = 旧 daemon / 尚未收到 hello → 全降级
+    // 空集 = 旧 backend / 尚未收到 hello → 全降级
     assert_eq!(decide_stream_flags(&caps(&[]), true), (false, false));
     assert_eq!(decide_stream_flags(&caps(&[]), false), (false, false));
     // 全能力声明
@@ -54,15 +54,15 @@ fn capability_gate_matrix() {
     assert_eq!(
         decide_stream_flags(&caps(&["tail-only"]), true),
         (false, true),
-        "daemon 没声明 bg → 即便用户想看也不发 --with-bg"
+        "backend 没声明 bg → 即便用户想看也不发 --with-bg"
     );
     // 部分声明：只有 bg
     assert_eq!(
         decide_stream_flags(&caps(&["bg"]), true),
         (true, false),
-        "daemon 没声明 tail-only → 不发 --tail-only（历史走全量推流）"
+        "backend 没声明 tail-only → 不发 --tail-only（历史走全量推流）"
     );
-    // 未知 token 忽略（加法式向前兼容：未来 daemon 声明我们还不认识的能力）
+    // 未知 token 忽略（加法式向前兼容：未来后端声明我们还不认识的能力）
     assert_eq!(
         decide_stream_flags(&caps(&["bg", "tail-only", "future-x"]), true),
         (true, true),
@@ -99,16 +99,16 @@ fn upgrade_reconnect_converges() {
     assert!(up((true, false), (false, true)), "swap：新开 tail 该升级");
 }
 
-/// F66：确认 `build.rs::emit_daemon_capabilities` 那条单源管道真的通（非空、含当前
+/// F66：确认 `build.rs::emit_backend_capabilities` 那条单源管道真的通（非空、含当前
 /// token）——否则乐观路径静默退化成「第一轮降级 + hello 自愈」（仍正确，只慢一轮）。
-/// 用 `contains` 而非精确相等：daemon 将来加 token 时本测试仍过，不误红。
+/// 用 `contains` 而非精确相等：backend 将来加 token 时本测试仍过，不误红。
 ///
-/// 〔`K-R19` 订正 09-03〕这一句原先点的是 `EMBEDDED_DAEMON_CAPABILITIES`，**全仓零定义**
-/// ——管道上三个真名依次是：`build.rs::emit_daemon_capabilities` → 编译期 env
-/// `DAEMON_CAPABILITIES` → `ssh_source.rs::embedded_daemon_capabilities`。
+/// 〔`K-R19` 订正 09-03〕这一句原先点的是 `EMBEDDED_BACKEND_CAPABILITIES`，**全仓零定义**
+/// ——管道上三个真名依次是：`build.rs::emit_backend_capabilities` → 编译期 env
+/// `BACKEND_CAPABILITIES` → `ssh_source.rs::embedded_backend_capabilities`。
 #[test]
 fn embedded_capabilities_single_source_wired() {
-    let caps = super::embedded_daemon_capabilities();
+    let caps = super::embedded_backend_capabilities();
     assert!(caps.contains(&"bg".to_string()), "单源应含 bg：{caps:?}");
     assert!(
         caps.contains(&"tail-only".to_string()),
@@ -118,10 +118,10 @@ fn embedded_capabilities_single_source_wired() {
 
 /// U-1（2026-08-01）：**`build_id` 那半单源管道一直没有等价断言。**
 ///
-/// `build.rs::emit_daemon_build_id` 抠不到就 `unwrap_or_else(|| "unknown")` —— **静默退化**。
-/// 一旦 daemon crate 改名 / `BUILD_ID` 挪出 `main.rs` / `const` 写法换行，
-/// `EXPECTED_DAEMON_BUILD_ID` 会变成 `"unknown"`，而**编译通过、测试全绿**，
-/// 运行期把每台远端 daemon 都判成 `StaleBuild` → 无限重装。
+/// `build.rs::emit_backend_build_id` 抠不到就 `unwrap_or_else(|| "unknown")` —— **静默退化**。
+/// 一旦 backend crate 改名 / `BUILD_ID` 挪出 `main.rs` / `const` 写法换行，
+/// `EXPECTED_BACKEND_BUILD_ID` 会变成 `"unknown"`，而**编译通过、测试全绿**，
+/// 运行期把每台远端后端都判成 `StaleBuild` → 无限重装。
 ///
 /// capabilities 那半有 `embedded_capabilities_single_source_wired` 兜着，这半没有。
 /// U13 的仓库级重命名**必须**先有这条，否则那次重命名是静默失败。
@@ -130,10 +130,10 @@ fn embedded_capabilities_single_source_wired() {
 /// 写死 id 会让每次正常 bump 都误红，那种守卫最后会被人删掉。
 #[test]
 fn embedded_build_id_single_source_wired() {
-    let id = super::EXPECTED_DAEMON_BUILD_ID;
+    let id = super::EXPECTED_BACKEND_BUILD_ID;
     assert_ne!(
         id, "unknown",
-        "`build.rs::emit_daemon_build_id` 没抠到 daemon 的 `const BUILD_ID` —— \
+        "`build.rs::emit_backend_build_id` 没抠到后端的 `const BUILD_ID` —— \
              多半是路径失效（crate 改名 / 文件搬家）或 `const` 写法变了。\
              它是**静默退化**：不修的话每台远端都会被判 StaleBuild 并无限重装。"
     );

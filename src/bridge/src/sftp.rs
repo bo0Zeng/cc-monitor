@@ -6,7 +6,7 @@
 //!
 //! ## 只读铁律豁免（INVARIANT §1 / 账本 SS-G）—— 穷举登记见 `src/doc/INVARIANTS.md §1`
 //! cc-monitor 对远端的写入均**用户显式触发**，各自独立路径守卫、绝不混用：
-//! - **F08**：自部署 daemon 二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
+//! - **F08**：自部署后端二进制到 `~/.cc-monitor/bin/`（非用户数据、幂等、版本门控）。
 //! - **F11**：用户**主动**删除远端会话 jsonl（`remove_remote_file`，`is_safe_remote_jsonl` + `canonicalize`）。
 //! - **F89a**：用户**显式**增/改/删远端**项目** `.mcp.json`（`mcp::write_remote_mcp_server` 等，字符串守卫
 //!   `is_safe_remote_mcp_json`：绝对 + 尾 `/.mcp.json` + 无 `..` + 非裸；经本模块 `upload_atomic` 原子写）。
@@ -73,10 +73,10 @@ pub async fn connect_sftp(cfg: &RemoteConfig) -> Result<SftpConn, String> {
 ///
 /// ⚠ **rename 之后绝不 `set_metadata` 兜底 chmod** —— 真机 e2e 实证：OpenSSH sftp-server 上
 /// setstat（即便只设 permissions、`size=None`）会把刚 rename 好的文件**截断成 0 字节**，
-/// daemon 因此不可 exec → 连接 EOF → marker 变空 → 无限重部署。理由详见函数末尾那段注释。
+/// backend 因此不可 exec → 连接 EOF → marker 变空 → 无限重部署。理由详见函数末尾那段注释。
 ///
 /// （2026-07-31 修：本注释此前写的是「删旧 → rename」+「rename 后 set_metadata 兜底」，
-/// **两句都与函数体相反**，而且照它实现正好复活上面那个把 daemon 变砖的 bug。
+/// **两句都与函数体相反**，而且照它实现正好复活上面那个把后端变砖的 bug。
 /// 由 aterm 侧交叉核对时发现〔DN-7〕。）
 pub async fn upload_atomic(
     sftp: &SftpSession,
@@ -117,7 +117,7 @@ pub async fn upload_atomic(
 
     // 数据安全（F89a 审计·重要）：russh-sftp `rename` 不覆盖 → 旧目标**先 rename 成 `.bak`（不 delete）**，
     // 再 rename tmp→目标；tmp→目标失败时旧内容仍在 `.bak`（可恢复），不像「先删旧」失败即丢原件。
-    // 成功后即删 `.bak`（不留垃圾——大文件如 daemon 二进制不堆备份）。
+    // 成功后即删 `.bak`（不留垃圾——大文件如后端二进制不堆备份）。
     let bak = if sftp
         .try_exists(remote_path.to_string())
         .await
@@ -140,7 +140,7 @@ pub async fn upload_atomic(
     }
     // **绝不**在这里 `set_metadata(permissions)` 兜底 chmod —— 真机 e2e 诊断确证：在 OpenSSH
     // sftp-server 上 setstat（即便只设 permissions、size=None）会把刚 rename 好的文件**截断成
-    // 0 字节**（tmp 写后 size 正确、rename 直后 size 正确，唯独 set_metadata 之后变 0）。daemon
+    // 0 字节**（tmp 写后 size 正确、rename 直后 size 正确，唯独 set_metadata 之后变 0）。backend
     // 因此变 0 字节不可 exec → 连接 EOF，marker 变空 → 无限重部署。权限已在 open-create 的 attrs
     // 里设好（OpenSSH 按 SSH_FXP_OPEN attrs 建文件：0o700 可执行 / 0o600）、rename 保留权限，无需
     // 也不能再 set_metadata。
@@ -151,7 +151,7 @@ pub async fn upload_atomic(
 /// 判定一次远端上传的读回结果。**纯函数，可测**——远端往返塞不进单测，
 /// 但"读回的字节该不该判通过"这条判据可以，而它正是此前完全缺失的那一环。
 ///
-/// 按字节而不是按字符串：`deploy_remote_daemon` 上传的是**可执行二进制**，
+/// 按字节而不是按字符串：`deploy_remote_backend` 上传的是**可执行二进制**，
 /// `String::from_utf8` 会失败。这也是没直接复用 `verified_write::verify_readback`
 /// （它是 `&str`）的原因——判据同源（逐字节相同才算通过），载体不同。
 pub fn verify_uploaded_bytes(
@@ -192,8 +192,8 @@ pub fn verify_uploaded_bytes(
 ///
 /// ## 为什么这个函数此前不存在（T04 审计①）
 ///
-/// `deploy_remote_daemon` 与 `deploy_remote_acct_iso` 的**全部** `upload_atomic`
-/// ——1 个 daemon 可执行二进制 + 6 个远端脚本（含 0755 的 `cc-acct-iso` / `lib.sh` /
+/// `deploy_remote_backend` 与 `deploy_remote_acct_iso` 的**全部** `upload_atomic`
+/// ——1 个后端可执行二进制 + 6 个远端脚本（含 0755 的 `cc-acct-iso` / `lib.sh` /
 /// install.sh）——写完**直接写版本标记**，中间没有任何读回。`upload_atomic` 自己
 /// 只做 flush/shutdown/rename，不读回（实测 `grep -c` = 0）。
 ///
@@ -201,7 +201,7 @@ pub fn verify_uploaded_bytes(
 /// ——**那 5 处全在 profile/CLI 那条线上，压根没覆盖这两条 deploy 路**。
 /// 我那套"五套机制"框架恰好把这个洞盖住了：把"范式已共享"当成了"范式已覆盖"。
 ///
-/// 后果具体：传输损坏的 daemon 二进制照样被写上正确的 `.build_id` 标记 →
+/// 后果具体：传输损坏的后端二进制照样被写上正确的 `.build_id` 标记 →
 /// 下次 `deploy_decision` 判「已是最新，跳过」→ **坏二进制永久驻留**，
 /// 而用户看到的是部署成功。标记写在校验之后，就断了这条链。
 pub(crate) async fn upload_atomic_verified(
@@ -236,7 +236,7 @@ pub(crate) async fn read_optional(sftp: &SftpSession, path: &str) -> Option<Vec<
 ///    latin-1 人名、误粘的 `\xa0`）变 U+FFFD → **备份写的是已经有损的那份**，原字节
 ///    从此不可恢复；而读回校验拿同样有损的两份比对，**逐字节相同、校验通过**，
 ///    整套「备份 + 读回 + 回滚」为这次损坏出具合格证。`verify_uploaded_bytes` 的头注
-///    自己写着"按字节而不是按字符串"，那条纪律只落到了 daemon 二进制那条路。
+///    自己写着"按字节而不是按字符串"，那条纪律只落到了后端二进制那条路。
 ///
 /// 修法与本机侧对齐成 **fail-safe**：说不清就 `Err` 中止、不动原文件。
 /// `Ok(None)` = 文件真的不存在（`try_exists` 明确说 false）；`Ok(Some(s))` = 读到了且是
@@ -327,9 +327,9 @@ pub(crate) async fn ensure_dir_all(sftp: &SftpSession, dir: &str) {
     }
 }
 
-/// 内嵌的 daemon 二进制（F08b 由 `include_bytes!` 填充）。`build_id` 与
-/// `ssh_source::EXPECTED_DAEMON_BUILD_ID` 同源（SS-B）。
-pub struct DaemonBinary {
+/// 内嵌的后端二进制（F08b 由 `include_bytes!` 填充）。`build_id` 与
+/// `ssh_source::EXPECTED_BACKEND_BUILD_ID` 同源（SS-B）。
+pub struct BackendBinary {
     /// 🔴 `K-R70`：**这份字节自报的身份**（`build.rs` 从二进制里扫 `CC_MONITOR_BUILD_STAMP`
     /// 得来，不是从旁边那个 `.build_id` 文本文件抄的）。
     ///
@@ -356,12 +356,12 @@ pub enum DeployAction {
 ///
 /// ⚠ **这个函数只回答「版本对不对」一件事**，它的入参里根本没有落点那个文件
 /// ——「那个文件在不在」由 [`TargetBinary`] 单独取样、在 [`deploy_decision_at`] 里
-/// 与本判定合并。daemon 那条路**只许走 `deploy_decision_at`**（见它的头注）；
+/// 与本判定合并。backend 那条路**只许走 `deploy_decision_at`**（见它的头注）；
 /// 本函数留给 `acct_iso_deploy` 那条按目录取标记的路，那里标记与内容同一次上传、
 /// 且落点是目录不是单个文件。
 pub fn deploy_decision(remote_build_id: Option<&str>, expected: &str) -> DeployAction {
     match remote_build_id {
-        None => DeployAction::Deploy("远端无 daemon / 无版本标记".to_string()),
+        None => DeployAction::Deploy("远端无 backend / 无版本标记".to_string()),
         Some(r) if r.trim() != expected => {
             DeployAction::Deploy(format!("版本不符（远端 {} ≠ 期望 {expected}）", r.trim()))
         }
@@ -382,7 +382,7 @@ pub enum TargetBinary {
     /// stat **明确说**它不在。
     Missing,
     /// stat 说它在，但是 **0 字节** —— 不是假想形态：本模块 `upload_atomic` 里
-    /// 「绝不 set_metadata」那条注释记的就是真机 e2e 实测把 daemon 截成 0 字节、
+    /// 「绝不 set_metadata」那条注释记的就是真机 e2e 实测把后端截成 0 字节、
     /// 不可 exec 的那次事故。`try_exists` 会把它算成「在」。
     Empty,
     /// 问不出来（无权限 / 传输失败 / 服务器不给属性）—— 不许读成上面任何一个。
@@ -415,7 +415,7 @@ fn marker_phrase(remote_build_id: Option<&str>, expected: &str) -> String {
 /// 而 exec 走的是那个不存在的路径。
 ///
 /// ⚠ **那时用户看到什么，逐字**（`ssh_source.rs` 的连接面）：
-/// 「SSH 连上了，但 daemon 在超时内未回 hello（未部署 / 路径错 / 启动失败？）。」
+/// 「SSH 连上了，但后端在超时内未回 hello（未部署 / 路径错 / 启动失败？）。」
 /// —— 一个**三选一的猜测**。★ 病灶正在这里：**手里握着一条 SFTP 会话、能一问就知道
 /// 那个文件在不在的这一层，什么都没说**；而要去猜的是**够不着那个事实**的那一层。
 /// 本函数买的就是让前一层把它知道的那半句说出来。
@@ -437,11 +437,11 @@ pub fn deploy_decision_at(
 ) -> DeployAction {
     match target {
         TargetBinary::Missing => DeployAction::Deploy(format!(
-            "落点没有 daemon 二进制（{}）",
+            "落点没有后端二进制（{}）",
             marker_phrase(remote_build_id, expected)
         )),
         TargetBinary::Empty => DeployAction::Deploy(format!(
-            "落点的 daemon 二进制是 0 字节（{}）",
+            "落点的后端二进制是 0 字节（{}）",
             marker_phrase(remote_build_id, expected)
         )),
         // 「在」与「问不出来」都退回版本门控 —— 后者刻意保守：宁可与今天同答，
@@ -459,7 +459,7 @@ fn remote_parent(path: &str) -> &str {
     }
 }
 
-/// 版本标记文件路径：daemon 二进制同目录下 `.build_id`。
+/// 版本标记文件路径：backend 二进制同目录下 `.build_id`。
 ///
 /// ⚠ **目录级** —— 路径里不带二进制名。所以它认不出「同目录里换了个文件名」，
 /// 那半个事实由 [`probe_target_binary`] 单独取样（K-W4 `§0c`）。
@@ -529,7 +529,7 @@ async fn probe_target_binary(sftp: &SftpSession, path: &str) -> TargetBinary {
     interpret_target_probe(metadata_size, exists)
 }
 
-/// 探测远端 CPU 架构（`uname -m`）以选对应的内嵌 daemon 二进制（F08b）。一次性 exec。
+/// 探测远端 CPU 架构（`uname -m`）以选对应的内嵌后端二进制（F08b）。一次性 exec。
 async fn probe_remote_arch(cfg: &RemoteConfig) -> Result<String, String> {
     use tokio::io::{AsyncBufReadExt, BufReader};
     let stream = crate::ssh_source::connect_and_exec_cmd(cfg, "uname -m").await?;
@@ -546,21 +546,21 @@ async fn probe_remote_arch(cfg: &RemoteConfig) -> Result<String, String> {
     Ok(arch)
 }
 
-/// 连接前确保远端 daemon 已（自动）部署到 `cfg.daemon_path`（issue #29）。
+/// 连接前确保远端后端已（自动）部署到 `cfg.daemon_path`（issue #29）。
 ///
 /// 流程：① S-2 守卫（daemon_path 含 `~` → 跳过，SFTP 不展开 `~`）；② 探测远端 arch 选内嵌
-/// 二进制（[`daemon_binary`]）——无对应 arch 内嵌（F08b 未嵌入该 arch）则**优雅 no-op**；
+/// 二进制（[`backend_binary`]）——无对应 arch 内嵌（F08b 未嵌入该 arch）则**优雅 no-op**；
 /// ③ 开 SFTP、读版本标记、[`deploy_decision`]、需要则 mkdir -p + 原子上传 + 写标记。
 ///
-/// **best-effort**：调用方（ssh_source::run）对 Err 仅 warn 不阻断——手动部署的 daemon 仍可连。
-/// 返回值（Batch7-F24）：`Ok(Some(build_id))` = 已**确认**远端 daemon 版本
+/// **best-effort**：调用方（ssh_source::run）对 Err 仅 warn 不阻断——手动部署的后端仍可连。
+/// 返回值（Batch7-F24）：`Ok(Some(build_id))` = 已**确认**远端后端版本
 /// （Deploy 成功或 Skip-版本相符）；`Ok(None)` = 无法确认（`~` 路径 / arch 探测失败 /
-/// 无内嵌二进制等 no-op 路径——手动部署的 daemon，版本未知）。调用方据此决定
+/// 无内嵌二进制等 no-op 路径——手动部署的后端，版本未知）。调用方据此决定
 /// 是否传新版才认识的流模式参数（如 `--with-bg`）——未确认一律降级不传，
-/// 避免旧 daemon 把未知参数当一次性查询处理后退出（无 hello 死循环）。
-pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>, String> {
-    // S-2（审计）：SFTP 无 shell 不展开 `~`，而 daemon exec 路径会展开——daemon_path 含 `~`
-    // 会两边错位。含 `~` 直接跳过自动部署（用户应填绝对路径），手动部署的 daemon 仍可连。
+/// 避免旧后端把未知参数当一次性查询处理后退出（无 hello 死循环）。
+pub async fn ensure_backend_deployed(cfg: &RemoteConfig) -> Result<Option<String>, String> {
+    // S-2（审计）：SFTP 无 shell 不展开 `~`，而 backend exec 路径会展开——daemon_path 含 `~`
+    // 会两边错位。含 `~` 直接跳过自动部署（用户应填绝对路径），手动部署的后端仍可连。
     if cfg.daemon_path.contains('~') {
         tracing::debug!(
             "daemon_path 含 ~（SFTP 不展开），跳过自动部署：{}",
@@ -576,8 +576,8 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>
             return Ok(None);
         }
     };
-    let Some(bin) = daemon_binary(&arch) else {
-        tracing::debug!("无 {arch} 的内嵌 daemon 二进制（F08b 未嵌入该 arch?），跳过自动部署");
+    let Some(bin) = backend_binary(&arch) else {
+        tracing::debug!("无 {arch} 的内嵌后端二进制（F08b 未嵌入该 arch?），跳过自动部署");
         return Ok(None);
     };
     // 🔴 `K-R70`：**把这几 MB 字节推到别人机器上之前，先让它自己说一遍它是谁。**
@@ -590,10 +590,10 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>
     //  清单照旧）恰恰不检查。〕
     //
     // 今天判据**无条件**跑，而且不再是启发式：戳是一段 `#[used] static [u8; N]`，
-    // 连续、拆不成立即数（daemon 侧 `CC_MONITOR_BUILD_STAMP`）。
+    // 连续、拆不成立即数（backend 侧 `CC_MONITOR_BUILD_STAMP`）。
     if !bytes_carry_build_stamp(bin.bytes, bin.build_id) {
         tracing::warn!(
-            "内嵌 daemon 的字节里问不出 `{}` 这个身份戳——按身份未知跳过自动部署\
+            "内嵌后端的字节里问不出 `{}` 这个身份戳——按身份未知跳过自动部署\
              （这份字节不是这套源码编出来的，或它太旧、还没有身份戳；重跑 zigbuild 重铺）",
             bin.build_id
         );
@@ -612,14 +612,14 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>
     match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
         DeployAction::Skip => {
             tracing::info!(
-                "远端 [{}] daemon 已是 {}，跳过部署",
+                "远端 [{}] backend 已是 {}，跳过部署",
                 cfg.origin_label(),
                 bin.build_id
             );
         }
         DeployAction::Deploy(reason) => {
             tracing::info!(
-                "远端 [{}] 自动部署 daemon（{reason}）→ {}",
+                "远端 [{}] 自动部署后端（{reason}）→ {}",
                 cfg.origin_label(),
                 cfg.daemon_path
             );
@@ -627,7 +627,7 @@ pub async fn ensure_daemon_deployed(cfg: &RemoteConfig) -> Result<Option<String>
             upload_atomic_verified(sftp, &cfg.daemon_path, bin.bytes, 0o700).await?;
             upload_atomic(sftp, &marker, bin.build_id.as_bytes(), 0o600).await?;
             tracing::info!(
-                "远端 [{}] daemon 部署完成：{}",
+                "远端 [{}] backend 部署完成：{}",
                 cfg.origin_label(),
                 bin.build_id
             );
@@ -643,10 +643,10 @@ fn bytes_contain(haystack: &[u8], needle: &[u8]) -> bool {
 
 /// 🔴 `K-R70`：**这份字节自己说得出它是 `build_id` 吗** —— 不看它旁边任何文件。
 ///
-/// 找的是 daemon 那侧那段 `#[used] static CC_MONITOR_BUILD_STAMP`：
+/// 找的是后端那侧那段 `#[used] static CC_MONITOR_BUILD_STAMP`：
 /// `<开>` ＋ `BUILD_ID` ＋ `<关>`，两个界标的**唯一住址**在
 /// `src/backend/main.rs`（`BUILD_STAMP_OPEN` / `BUILD_STAMP_CLOSE`），
-/// 由 `build.rs` 抠出来经 `DAEMON_STAMP_OPEN` / `DAEMON_STAMP_CLOSE` 交到这里
+/// 由 `build.rs` 抠出来经 `BACKEND_STAMP_OPEN` / `BACKEND_STAMP_CLOSE` 交到这里
 /// ⇒ 本文件里**不许出现那两个字面量**
 /// （`the_embedded_identity_comes_from_the_bytes_not_from_a_label` 在数它）。
 ///
@@ -662,39 +662,39 @@ pub fn bytes_carry_build_stamp(bytes: &[u8], build_id: &str) -> bool {
     }
     let stamp = format!(
         "{}{build_id}{}",
-        env!("DAEMON_STAMP_OPEN"),
-        env!("DAEMON_STAMP_CLOSE")
+        env!("BACKEND_STAMP_OPEN"),
+        env!("BACKEND_STAMP_CLOSE")
     );
     bytes_contain(bytes, stamp.as_bytes())
 }
 
-/// 按远端 arch 选内嵌的 daemon 二进制（F08b）。build.rs 把交叉编译的 musl 二进制复制进
-/// OUT_DIR 并置 `embedded_daemons` cfg 时，这里 `include_bytes!` 内嵌并按 arch 返回；二进制
-/// 未就位（无 cfg）→ 返回 None（ensure_daemon_deployed 优雅跳过，沿用手动部署）。
+/// 按远端 arch 选内嵌的后端二进制（F08b）。build.rs 把交叉编译的 musl 二进制复制进
+/// OUT_DIR 并置 `embedded_backends` cfg 时，这里 `include_bytes!` 内嵌并按 arch 返回；二进制
+/// 未就位（无 cfg）→ 返回 None（ensure_backend_deployed 优雅跳过，沿用手动部署）。
 /// `build_id` 取编译期 env —— 🔴 `K-R70` 起那个 env 由 `build.rs` **从二进制字节里扫出来**。
-pub fn daemon_binary(arch: &str) -> Option<&'static DaemonBinary> {
-    #[cfg(embedded_daemons)]
+pub fn backend_binary(arch: &str) -> Option<&'static BackendBinary> {
+    #[cfg(embedded_backends)]
     {
-        // 🔴 `K-R70`：`DAEMON_EMBEDDED_ID_<ARCH>` = `build.rs` 从**这份字节**里扫出的身份戳。
+        // 🔴 `K-R70`：`BACKEND_EMBEDDED_ID_<ARCH>` = `build.rs` 从**这份字节**里扫出的身份戳。
         //
-        // 〔墓碑 —— 原来这里有一个 `pick()`：清单为空就退回 `env!("DAEMON_BUILD_ID")`（源码 id）。
+        // 〔墓碑 —— 原来这里有一个 `pick()`：清单为空就退回 `env!("BACKEND_BUILD_ID")`（源码 id）。
         //  那是「问不出来就拿源码的答案顶上」——把一个失败面换成一个假答案（`brief` 里
         //  已删的那条按需拉取路的禁词表逐字点名的第三条）。今天它不需要了：
         //  `build.rs` 在**任一 arch 的字节里扫不出身份时当场 panic**，扫得出才置
-        //  `embedded_daemons` cfg ⇒ 走到这里的路径上，这两个 env 结构上不可能是空串。
-        //  「结构上不可能」不许当成不检查的理由 ⇒ 下面 `deploy_embedded_daemon` 出门前
+        //  `embedded_backends` cfg ⇒ 走到这里的路径上，这两个 env 结构上不可能是空串。
+        //  「结构上不可能」不许当成不检查的理由 ⇒ 下面 `deploy_embedded_backend` 出门前
         //  仍无条件跑一遍 `bytes_carry_build_stamp`，本文件的判据也钉住这两处取值口。〕
         //
-        // 身份与期望（`EXPECTED_DAEMON_BUILD_ID` = 源码）**仍然分离**：陈旧内嵌 =
+        // 身份与期望（`EXPECTED_BACKEND_BUILD_ID` = 源码）**仍然分离**：陈旧内嵌 =
         // 身份 p1f ≠ 期望 p1g → 部署照做（远端至少拿到 p1f）但 confirmed=p1f
         // → 降级不传新 flag，比「拒部署」更平滑。
-        static X86: DaemonBinary = DaemonBinary {
-            build_id: env!("DAEMON_EMBEDDED_ID_X86_64"),
-            bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-x86_64")),
+        static X86: BackendBinary = BackendBinary {
+            build_id: env!("BACKEND_EMBEDDED_ID_X86_64"),
+            bytes: include_bytes!(concat!(env!("OUT_DIR"), "/backend-x86_64")),
         };
-        static ARM: DaemonBinary = DaemonBinary {
-            build_id: env!("DAEMON_EMBEDDED_ID_AARCH64"),
-            bytes: include_bytes!(concat!(env!("OUT_DIR"), "/daemon-aarch64")),
+        static ARM: BackendBinary = BackendBinary {
+            build_id: env!("BACKEND_EMBEDDED_ID_AARCH64"),
+            bytes: include_bytes!(concat!(env!("OUT_DIR"), "/backend-aarch64")),
         };
         match arch {
             "x86_64" | "amd64" => Some(&X86),
@@ -702,7 +702,7 @@ pub fn daemon_binary(arch: &str) -> Option<&'static DaemonBinary> {
             _ => None,
         }
     }
-    #[cfg(not(embedded_daemons))]
+    #[cfg(not(embedded_backends))]
     {
         let _ = arch;
         None
@@ -710,8 +710,8 @@ pub fn daemon_binary(arch: &str) -> Option<&'static DaemonBinary> {
 }
 
 // ============================================================================
-// F08c：手动安装 / 卸载 daemon（设置面板两个按钮）。安装逻辑同自动部署、但返回人读结果；
-// 卸载删 daemon 二进制 + 同目录 .build_id（is_safe_remote_daemon_path 守卫）。
+// F08c：手动安装 / 卸载后端（设置面板两个按钮）。安装逻辑同自动部署、但返回人读结果；
+// 卸载删后端二进制 + 同目录 .build_id（is_safe_remote_daemon_path 守卫）。
 // ============================================================================
 
 /// 远端受管路径的安全谓词。**T04 审计⑤：两个消费者、5 个条件里 4 个逐字相同，
@@ -730,33 +730,32 @@ pub(crate) fn is_safe_remote_managed_path(path: &str, markers: &[&str]) -> bool 
         && markers.iter().any(|m| p.contains(m))
 }
 
-/// 远端 daemon 路径安全守卫（卸载用，纯函数可单测）：绝对、无 `..`、非根、且含 `cc-monitor`
-/// （约定 `~/.cc-monitor/bin/cc-monitor-remote`）—— 杜绝把卸载误用成删任意远端文件。
+/// 远端后端路径安全守卫（卸载用，纯函数可单测）：绝对、无 `..`、非根、且含 `cc-monitor`
+/// （约定 `~/.cc-monitor/bin/cc-monitor-backend`）—— 杜绝把卸载误用成删任意远端文件。
 fn is_safe_remote_daemon_path(path: &str) -> bool {
     is_safe_remote_managed_path(path, &["cc-monitor"])
 }
 
-/// 手动安装 / 更新远端 daemon（设置面板「安装 daemon」按钮）。逻辑同自动部署
-/// [`ensure_daemon_deployed`]，但**返回人读结果**，且把自动部署里「优雅跳过」的几种情况
+/// 手动安装 / 更新远端后端（设置面板「安装后端」按钮）。逻辑同自动部署
+/// [`ensure_backend_deployed`]，但**返回人读结果**，且把自动部署里「优雅跳过」的几种情况
 /// （路径含 `~` / 探测不到 arch / 无该 arch 内嵌）显式报错——手动触发时用户要反馈。
 #[tauri::command]
-pub async fn deploy_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {
+pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
     let path = cfg.daemon_path.trim().to_string();
     if path.is_empty() {
         return Err(
-            "请先填 daemon 路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-remote）"
-                .into(),
+            "请先填后端路径（绝对路径，如 /home/<user>/.cc-monitor/bin/cc-monitor-backend）".into(),
         );
     }
     if path.contains('~') {
-        return Err("daemon 路径含 ~（SFTP 不展开 ~），请改用绝对路径".into());
+        return Err("backend 路径含 ~（SFTP 不展开 ~），请改用绝对路径".into());
     }
     let arch = probe_remote_arch(&cfg)
         .await
         .map_err(|e| format!("探测远端架构失败（uname -m）: {e}"))?;
-    let Some(bin) = daemon_binary(&arch) else {
+    let Some(bin) = backend_binary(&arch) else {
         return Err(format!(
-            "本 monitor 构建未内嵌 {arch} 架构的 daemon，无法一键安装。请用内嵌了该架构的发布版，或手动把 daemon 放到 {path}。"
+            "本 monitor 构建未内嵌 {arch} 架构的后端，无法一键安装。请用内嵌了该架构的发布版，或手动把后端放到 {path}。"
         ));
     };
     let conn = connect_sftp(&cfg).await?;
@@ -765,12 +764,12 @@ pub async fn deploy_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {
     let remote_id = read_optional(sftp, &marker)
         .await
         .map(|b| String::from_utf8_lossy(&b).trim().to_string());
-    // K-W4 §0c：手动「安装 daemon」按钮此前也只看标记 —— 落点文件被删/截断时，
+    // K-W4 §0c：手动「安装后端」按钮此前也只看标记 —— 落点文件被删/截断时，
     // 它会对着一个不存在的文件回「已是最新，无需重装」。同一条病，同一处修法。
     let target = probe_target_binary(sftp, &path).await;
     match deploy_decision_at(remote_id.as_deref(), bin.build_id, target) {
         DeployAction::Skip => Ok(format!(
-            "远端已是最新 daemon（{}，{arch}）：{path}，无需重装。",
+            "远端已是最新后端（{}，{arch}）：{path}，无需重装。",
             bin.build_id
         )),
         DeployAction::Deploy(reason) => {
@@ -778,30 +777,30 @@ pub async fn deploy_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {
             upload_atomic_verified(sftp, &path, bin.bytes, 0o700).await?;
             upload_atomic(sftp, &marker, bin.build_id.as_bytes(), 0o600).await?;
             tracing::info!(
-                "远端 [{}] 手动部署 daemon 完成：{}",
+                "远端 [{}] 手动部署后端完成：{}",
                 cfg.origin_label(),
                 bin.build_id
             );
             Ok(format!(
-                "已安装 daemon（{}，{arch}）到 {path}（{reason}）。重连远端即可用。",
+                "已安装后端（{}，{arch}）到 {path}（{reason}）。重连远端即可用。",
                 bin.build_id
             ))
         }
     }
 }
 
-/// 卸载远端 daemon（设置面板「卸载 daemon」按钮）：删 daemon 二进制 + 同目录 `.build_id`。
+/// 卸载远端后端（设置面板「卸载后端」按钮）：删后端二进制 + 同目录 `.build_id`。
 /// [`is_safe_remote_daemon_path`] 守卫。只读铁律豁免（SS-G）：用户显式触发的删。
 /// 注意：若该机器仍启用，自动部署会在下次连接重新装回——提示见返回消息。
 #[tauri::command]
-pub async fn uninstall_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {
+pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, String> {
     let path = cfg.daemon_path.trim().to_string();
     if path.contains('~') {
-        return Err("daemon 路径含 ~（SFTP 不展开），请改用绝对路径后再卸载".into());
+        return Err("backend 路径含 ~（SFTP 不展开），请改用绝对路径后再卸载".into());
     }
     if !is_safe_remote_daemon_path(&path) {
         return Err(format!(
-            "拒绝删除可疑 daemon 路径（须为含 cc-monitor 的绝对路径、无 ..）: {path}"
+            "拒绝删除可疑后端路径（须为含 cc-monitor 的绝对路径、无 ..）: {path}"
         ));
     }
     let conn = connect_sftp(&cfg).await?;
@@ -813,17 +812,14 @@ pub async fn uninstall_remote_daemon(cfg: RemoteConfig) -> Result<String, String
             removed.push(f);
         }
     }
-    tracing::info!(
-        "远端 [{}] 卸载 daemon：删除 {removed:?}",
-        cfg.origin_label()
-    );
+    tracing::info!("远端 [{}] 卸载后端：删除 {removed:?}", cfg.origin_label());
     if removed.is_empty() {
         Ok(format!(
-            "没有可删的 daemon 文件（{path} 及其 .build_id 都不在，可能已卸载）。"
+            "没有可删的后端文件（{path} 及其 .build_id 都不在，可能已卸载）。"
         ))
     } else {
         Ok(format!(
-            "已删除 {} 个文件：{}。注意：若本机器仍勾选「启用」，自动部署会在下次连接时把 daemon 装回——彻底移除请取消该机器启用 / 删除该机器后重启 monitor。",
+            "已删除 {} 个文件：{}。注意：若本机器仍勾选「启用」，自动部署会在下次连接时把后端装回——彻底移除请取消该机器启用 / 删除该机器后重启 monitor。",
             removed.len(),
             removed.join("、")
         ))
@@ -846,8 +842,8 @@ pub async fn uninstall_remote_daemon(cfg: RemoteConfig) -> Result<String, String
 /// jsonl）、`/a/projects/b/c/x.jsonl`（层级不符）这类伪造路径；且**不硬编码 `.claude`**，
 /// 兼容 `CLAUDE_CONFIG_DIR` 自定义目录（审计 S-1：`/.claude/projects/` 会误伤自定义目录）。
 ///
-/// 残留（审计登记，后续加固）：完全锚定需远端 daemon 上报的 `claude_dir`（一次性删除连接
-/// 无 hello）。但威胁仅「**已被攻陷的 daemon** 喂伪造路径」——而被攻陷 daemon 本就能在远端
+/// 残留（审计登记，后续加固）：完全锚定需远端后端上报的 `claude_dir`（一次性删除连接
+/// 无 hello）。但威胁仅「**已被攻陷的 backend** 喂伪造路径」——而被攻陷后端本就能在远端
 /// 任意删文件，monitor 删一个 `projects/*.jsonl` 不增加其能力（非提权）；叠加用户**二次确认**，
 /// 残留风险为纵深防御层面。
 pub fn is_safe_remote_jsonl(path: &str) -> bool {
@@ -1194,8 +1190,8 @@ pub async fn install_remote_ccm_helper(
         }
     }
     // 🔴 `K-R48` 第二拍：推的不再是那个 1592 行的 bash 启动器，是 [`ccm_entry_shim`]
-    //    —— 三行、零实现，只把 argv 转给**已经部署好的后端**（`ensure_daemon_deployed`
-    //    把它推到 `cfg.daemon_path`，默认约定 `~/.cc-monitor/bin/cc-monitor-remote`）。
+    //    —— 三行、零实现，只把 argv 转给**已经部署好的后端**（`ensure_backend_deployed`
+    //    把它推到 `cfg.daemon_path`，默认约定 `~/.cc-monitor/bin/cc-monitor-backend`）。
     // ⚠ **入口与后端本体的部署是两条路，这里刻意不合并**：本函数是「装 shell 便捷层」，
     //   后端本体由连接流程自己保证；合并就等于在这条路上再造一次部署逻辑（第二处实现）。
     let shim = ccm_entry_shim(&cfg.daemon_path);

@@ -8,7 +8,7 @@
 //!
 //! | 需要的 | 仓里原来住哪 | 今天住哪 |
 //! |---|---|---|
-//! | `CREATE_NO_WINDOW` | `lib.rs::open_with_os` ＋ `local_daemon` 的 `hide_console_window`〔散文墓碑〕 | [`ConsolePolicy::Hidden`] |
+//! | `CREATE_NO_WINDOW` | `lib.rs::open_with_os` ＋ `local_backend_host` 的 `hide_console_window`〔散文墓碑〕 | [`ConsolePolicy::Hidden`] |
 //! | Job Object `KILL_ON_JOB_CLOSE` | `cc_bus` 的 `reap_whole_tree_on_drop`〔散文墓碑〕 | [`Lifetime::JobKillOnClose`] |
 //!
 //! ⚠ 中间那一列的两个名字**今天已经不在盘上了** —— 它们就是被本模块收编的那两份，

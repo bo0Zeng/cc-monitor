@@ -12,9 +12,9 @@ const THE_TWO_CCM_ONLY_DECISIONS: &[(&str, &str)] = &[
     (
         "agent_has_identity",
         // ⚠ `U-NP④`（08-14）改过这句：ccm 里那条身份 poller 已删，这个决策今天
-        // 决定的是「要不要要求 daemon 在场」（身份 `@ccm_sid` 只由 daemon 打）。
+        // 决定的是「要不要要求后端在场」（身份 `@ccm_sid` 只由后端打）。
         // 与 `shared/ccm` 里同一行的措辞保持一致 —— 两处一起改，别只改一边。
-        "该 agent 有没有 per-PID session 文件（决定这个会话有没有身份、要不要要求 daemon 在场）",
+        "该 agent 有没有 per-PID session 文件（决定这个会话有没有身份、要不要要求后端在场）",
     ),
     (
         "agent_needs_bus_id",
@@ -178,7 +178,7 @@ fn the_resume_kind_column_matches_reality() {
 ///
 /// 而 Rust 那边的注释逐字写着「**F6 让命令构建支持 subcommand 形**」——
 /// 那个 F6 就是本件。但**本件刻意不做那个功能改动**：
-/// 「让 ccm 支持 codex resume」属 codex 支持那一族（`codex-phase2` / `daemon-codex` 工作区），
+/// 「让 ccm 支持 codex resume」属 codex 支持那一族（`codex-phase2` / `backend-codex` 工作区），
 /// **不是 C4「ccm 变零决策」**。⇒ 按三档走「绕」：如实登记，不削判据、不顺手改。
 ///
 /// 本条钉住那个**前提**：ccm 今天仍然拒绝 codex resume。
@@ -201,7 +201,7 @@ fn ccm_still_refuses_codex_resume_so_the_gap_is_still_real() {
     );
 }
 
-/// 🔴 〔`K-R48` 第二拍 09-11〕**住址换了：`shared/ccm` → `control/ccm/`（daemon crate）。**
+/// 🔴 〔`K-R48` 第二拍 09-11〕**住址换了：`shared/ccm` → `control/ccm/`（backend crate）。**
 ///
 /// 〔用@09-11 `K33`〕「不要有什么 bash 脚本」⇒ 那个脚本删了，它那几个 `agent_*` 决策
 /// 整条搬进了 `src/backend/control/ccm/`（Rust）。

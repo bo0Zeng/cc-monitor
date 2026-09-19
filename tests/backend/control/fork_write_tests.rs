@@ -95,7 +95,7 @@ fn missing_session_is_an_error_not_a_panic() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// ★★ `KR88D2` 第三刀（daemon 这一侧）：**给一个查不到的 sid，处置是报错，
+/// ★★ `KR88D2` 第三刀（backend 这一侧）：**给一个查不到的 sid，处置是报错，
 /// 不是「树上有什么就拿什么」。**
 ///
 /// 树上**真的有两份**别的会话 —— 少了这一步，下面那条断言在空树上也绿，
@@ -135,7 +135,7 @@ fn a_symlink_inside_the_tree_is_not_a_hit() {
     std::fs::remove_dir_all(&root).ok();
 }
 
-/// 子 agent 记录不可分叉 —— 这条判据在共享 crate 里，这里钉住 daemon 真的走了它。
+/// 子 agent 记录不可分叉 —— 这条判据在共享 crate 里，这里钉住后端真的走了它。
 #[test]
 fn sidechain_reject_reaches_daemon_path() {
     let root = tmp("side");

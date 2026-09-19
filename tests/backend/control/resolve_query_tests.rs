@@ -42,7 +42,7 @@ fn resolve_builds_plan_with_aterm_field_names() {
         v["command"],
         "cct --resume abcd1234-5678-90ab-cdef-1234567890ab"
     );
-    // substitutedFrom：MVP 恒省略——daemon 不做候选消解、无「被替换的原命令」（对齐 aterm
+    // substitutedFrom：MVP 恒省略——backend 不做候选消解、无「被替换的原命令」（对齐 aterm
     // 语义：仅解析 launch≠原意首候选时才有；见 resolve() 注 + aterm 2026-07-18 确认）。
     assert!(
         v.get("substitutedFrom").is_none(),

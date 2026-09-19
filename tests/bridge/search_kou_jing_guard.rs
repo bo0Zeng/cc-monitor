@@ -63,7 +63,7 @@ fn the_search_kou_jing_has_exactly_one_home() {
     );
     assert!(
         core.contains("pub fn sort_by_recency"),
-        "预算顺序必须住 core：收口前 monitor 按 `updated_at desc`、daemon 按 readdir，\
+        "预算顺序必须住 core：收口前 monitor 按 `updated_at desc`、backend 按 readdir，\
              `--limit 50` 下两侧给出的 3 个会话**只重合 1 个**"
     );
 
@@ -74,7 +74,7 @@ fn the_search_kou_jing_has_exactly_one_home() {
             include_str!("../../src/bridge/src/search.rs"),
         ),
         (
-            "daemon observe/search_query.rs",
+            "backend observe/search_query.rs",
             include_str!("../../src/backend/observe/search_query.rs"),
         ),
     ] {

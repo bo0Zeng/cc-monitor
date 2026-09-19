@@ -4,7 +4,7 @@
  * # 为什么是这一段
  *
  * 08-13 全链真跑把 `#60` 的搜索面收到了**只剩前端**：后端每一跳都量到了，逐条有读数 ——
- * daemon 发 `session_removed`（`cause=Gone`）· `ssh_source` 转发 ·
+ * backend 发 `session_removed`（`cause=Gone`）· `ssh_source` 转发 ·
  * 消费者判 `tmux_origin=Some(...)` → `RemovedDisposition::Idle` → emit `session-idle`
  *（`remote session idle-tmux` 那行日志）。
  *
@@ -83,7 +83,7 @@ describe("#60 最后一跳：session-idle 事件真的走到 onSessionIdle", () 
     // 值得钉的理由：08-13 全链量到后端四跳全通、前端事件层也通（上面两条），
     // **唯独这一行没有任何判据** —— 它是 `#60` 剩下的搜索面里唯一没人看着的一格。
     //
-    // ⚠ 照 `daemon-policy.vitest.ts` 那条的写法**整行钉**，不做裸子串匹配：
+    // ⚠ 照 `backend-policy.vitest.ts` 那条的写法**整行钉**，不做裸子串匹配：
     //   子串匹配对 `onSessionIdle: (s) => tabs.archiveTab(s)`（接错了函数）照样绿。
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");

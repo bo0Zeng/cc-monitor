@@ -221,7 +221,7 @@ export class SessionViewer {
       onQueueOperation: () => {},
       observeForLazyEnhance: true,
       // F62 / **G6**：给每张 user/assistant 卡挂「从这一轮分叉」按钮。**远端也挂**——
-      // 远端走 daemon 的 `--fork-session`（只认 sid），不再受"远端 jsonl 本机够不着"所限。
+      // 远端走后端的 `--fork-session`（只认 sid），不再受"远端 jsonl 本机够不着"所限。
       // F77：子 agent 记录 `suppressBranch` 仍关掉（子 agent jsonl 不是可分支的会话）。
       onCardRendered: opts.suppressBranch
         ? undefined

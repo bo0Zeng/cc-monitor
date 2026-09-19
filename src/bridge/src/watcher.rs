@@ -88,7 +88,7 @@ pub struct WatcherHandle {
 /// `try_recv` 第二条 —— 那句注释自己写着「100ms 轮询额外延迟是为兼容 rescan 通道」。
 /// ⇒ **10Hz、无终止条件、与 jsonl-watcher 线程同寿**，是全仓最快的一处周期唤醒。
 ///
-/// 合成一条之后主循环阻塞在**无超时 `recv()`** 上，形态与 daemon 侧 `watch_loop`
+/// 合成一条之后主循环阻塞在**无超时 `recv()`** 上，形态与后端侧 `watch_loop`
 /// （消费单一 `mpsc<WatchEvent>`，四类事件源全是事件）一致 —— 那边是先例，这边是补齐。
 ///
 /// ★ **附带收益不是次要的**：原注释算过「jsonl-line 已有 notify_debouncer 100ms
@@ -291,7 +291,7 @@ fn process_file(
             // 截断到空（len==0——truncated 下能走到早退的唯一情形：len>0 时
             // start=0 < len 必走读循环）：本轮无可读，但必须立刻重置游标——
             // 否则文件重新长回 ≥ 旧 consumed 时截断漏检，从错位 offset 读垃圾行
-            // （F14 审计发现的双端分歧：daemon 侧一直会重置）。len==0 无重读发生，
+            // （F14 审计发现的双端分歧：backend 侧一直会重置）。len==0 无重读发生，
             // 沿旧惯例不在这里喊 warn；重新长出内容后的下一轮照常读。
             offsets.lock().insert(
                 key,
@@ -340,7 +340,7 @@ fn process_file(
     //   3. lines() 遇非法 UTF-8 行 Err → map_while 静默截断整个批次。
     // 现在 partial 留在文件里等下次事件补全；撕裂的多字节序列必然整体落在
     // partial 里，对完整行做 lossy 解码不再产生瞬态 U+FFFD。
-    // 已接受取舍（同 daemon 侧 Parity 注释 / INVARIANTS §25）：写端写完整 JSON
+    // 已接受取舍（同后端侧 Parity 注释 / INVARIANTS §25）：写端写完整 JSON
     // 后、写 \n 前被 kill 且文件从此不变 → 该行 live 视图永不投递（历史 viewer
     // 的独立读取路径仍能读到）；实测 CLI 每条记录以 \n 收尾。
     let mut reader = BufReader::new(&mut file);

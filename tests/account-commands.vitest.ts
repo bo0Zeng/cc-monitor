@@ -63,7 +63,7 @@ describe("account-ux U8：Ctrl+K 账号命令", () => {
     expect(ids(i)).not.toContain("acct-default-amy");
   });
 
-  it("非 ready（未连远端/未启用/老 daemon）→ 只剩「管理…」", () => {
+  it("非 ready（未连远端/未启用/老后端）→ 只剩「管理…」", () => {
     expect(ids(input({ snapshot: null }))).toEqual(["acct-manage"]);
   });
 

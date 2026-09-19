@@ -3,7 +3,7 @@
 //! # 剥法本体已搬进共享 crate（U8a-2a）
 //!
 //! 实现在 [`guard_core`]（`src/bridge/crates/guard-core`），本模块只是**再导出** +
-//! 存放 daemon 专属的那两条语义钉。搬家的理由：monitor 侧够不着 daemon 的 `cfg(test)`
+//! 存放后端专属的那两条语义钉。搬家的理由：monitor 侧够不着后端的 `cfg(test)`
 //! 模块，于是它的守卫各自写了便宜近似（`src.split("\n#[cfg(test)]").next()`）——
 //! 那个近似在 `ssh_source.rs` 这种「第一个测试模块在 804 行、要扫的代码在 1771 行」的文件上
 //! **把扫描面砍掉三分之二**。剥法的来龙去脉（两个互相掩盖的坑、无花括号体 mod 声明那条）
@@ -68,7 +68,7 @@ pub(crate) fn tests_root() -> std::path::PathBuf {
 ///
 /// 现打后果（本轮真撞上，不是假想）：`no_timer_guard` 报
 /// 「生产代码 `../../tests/backend/control/capture_pane_tests.rs` 里有 `sleep(` 调用」——
-/// 那是**判据自己的夹具**在睡觉，而 daemon 的零定时器铁律说的是生产代码。
+/// 那是**判据自己的夹具**在睡觉，而后端的零定时器铁律说的是生产代码。
 /// 同一形让 `every_duration_use_is_registered_as_non_timer` 从 4 处涨到 39 处。
 ///
 /// ⇒ 分界线从「文件内的属性」换成「文件住哪棵树」：
@@ -95,7 +95,7 @@ pub(crate) fn production_side_of(path: &std::path::Path, src: &str) -> String {
 /// 🔴 为什么不用 `std::fs::canonicalize`〔步 7c 现打撞上〕：
 /// 本文件住 `src/backend/`，也就是 `readonly_guard` 的**生产段人群**里。
 /// 那条只读白名单按「动词」认文件系统调用，而 `canonicalize` 不在 `READ_ONLY` 里
-/// ⇒ 加一行 `fs::canonicalize` 当场把 `every_fs_call_in_daemon_production_is_read_only` 打红。
+/// ⇒ 加一行 `fs::canonicalize` 当场把 `every_fs_call_in_backend_production_is_read_only` 打红。
 /// 它确实是只读调用，但「往白名单加一个动词」是**放宽那条红线**，
 /// 而这里根本不需要碰盘：两个路径都由 `env!("CARGO_MANIFEST_DIR")` 拼出来，
 /// 里面的 `..` 是**字面**的，词法消解就够，而且不依赖目录存不存在。

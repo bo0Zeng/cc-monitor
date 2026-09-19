@@ -59,8 +59,8 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         2,
         "`is_ccm_tmux_name` —— 只**判**名字形状（§34 Gate 2 的本地那半），**不产名**。\
              登记它是为了让上面那条「多一处就红」不会被消费点噪音淹掉。\
-             ⚠ **F03 从 `src/bridge/src/tmux.rs` 搬到这里**：判定收进共享 crate，\
-             monitor 与 daemon 共用同一份（定框 C1）。本条棘轮当场红了 —— \
+             ⚠ **F03 从 `src/bridge/src/backend/control/tmux.rs` 搬到这里**：判定收进共享 crate，\
+             monitor 与后端共用同一份（定框 C1）。本条棘轮当场红了 —— \
              **它就该红**：被测对象搬家，判据要跟着走，而不是让它悄悄少扫一处。",
     ),
 ];
@@ -100,7 +100,7 @@ fn hits(src: &str) -> usize {
         .count()
 }
 
-/// 扫描面：`src/**/*.ts`（排除测试）+ `src/bridge/src/tmux.rs` + 两个 shell 脚本。
+/// 扫描面：`src/**/*.ts`（排除测试）+ `src/bridge/src/backend/control/tmux.rs` + 两个 shell 脚本。
 /// 扫描面本体 —— **单独抽出来，好让自检量的是「真正被扫的那一份」**。
 ///
 /// 〔audit-0805 08-06〕这一步不是重构洁癖：上一版自检自己又走了一遍遍历器，
@@ -212,7 +212,7 @@ fn the_scan_actually_reads_all_four_surfaces() {
         rs.len()
     );
     for f in [
-        "src/bridge/src/tmux.rs",
+        "src/bridge/src/backend/control/tmux.rs",
         "src/bridge/crates/gate-core/src/lib.rs",
         "src/backend/control/ccm/plan.rs",
         "src/shared/cc-bus/scripts/cc-spawn",
@@ -284,8 +284,8 @@ fn every_duplicate_producer_names_its_retirement_owner() {
     // `cc-spawn`（→ F13a）。⚠ **〔F13a 摸底订正 08-04〕它等的不是「本机后端」** ——
     // 实测：`cc-spawn` 已经**走 `ccm`**（`CCM_BIN --detach`，还带 `--ccm-probe` 能力协商），
     // 它走的是**命令行**、不是 monitor 的进程内通道 ⇒ 本机后端跑不跑起来与它**无关**。
-    // 它真正等的是 **F06b**：`ccm` 去调 daemon 的 `--resolve` 拿 argv/名字。
-    // ⚠ 而 daemon 侧 `--resolve` **早就做好了**（`control/resolve_query.rs`：
+    // 它真正等的是 **F06b**：`ccm` 去调后端的 `--resolve` 拿 argv/名字。
+    // ⚠ 而后端侧 `--resolve` **早就做好了**（`control/resolve_query.rs`：
     // stdin `ResumeSpec` → stdout `CommandPlan`）—— 缺的是 **`ccm` 那一侧的调用**。
     assert_eq!(
         dups, 3,

@@ -8,28 +8,28 @@
 //!
 //! # 摸底把这件的前提**证伪了一半**
 //!
-//! 08-04 架构重估报的是「10 条跨 crate `include_str!` 边，其中 daemon 读 monitor 那个
-//! 60KB 平铺 `tmux.rs` ⇒ **拆那个文件会让 daemon 编不过**，而 daemon 自称可在目标机原生构建」。
+//! 08-04 架构重估报的是「10 条跨 crate `include_str!` 边，其中后端读 monitor 那个
+//! 60KB 平铺 `tmux.rs` ⇒ **拆那个文件会让后端编不过**，而后端自称可在目标机原生构建」。
 //!
-//! 逐条量 + 一次决定性实验（把两条 daemon→monitor 的路径打断，再分别跑两条命令）：
+//! 逐条量 + 一次决定性实验（把两条 backend→monitor 的路径打断，再分别跑两条命令）：
 //!
 //! | 命令 | 打断后 | 说明 |
 //! |---|---|---|
 //! | `cargo build` | **exit=0，0 error** | ★ **部署路径完全不受影响** —— 目标机原生构建走的就是这条 |
 //! | `cargo test --no-run` | exit=101，两条边都被逐字点名 | 判据路径才咬住 |
 //!
-//! ⇒ **`10` 这个数当时对得上**（monitor→daemon 8 · daemon→monitor 2），
+//! ⇒ **`10` 这个数当时对得上**（monitor→backend 8 · backend→monitor 2），
 //!
-//! ⚠ **08-06 订正：真实是 11 条**（monitor→daemon **9** · daemon→monitor 2）。
+//! ⚠ **08-06 订正：真实是 11 条**（monitor→backend **9** · backend→monitor 2）。
 //! 多出来的那条是 `tmux.rs → observe/watcher.rs`，它**从一开始就在**，
-//! 只是路径藏在 `macro_rules! daemon_watcher_src` 里，而抽取器只认 `(` 之后紧跟的引号。
+//! 只是路径藏在 `macro_rules! backend_watcher_src` 里，而抽取器只认 `(` 之后紧跟的引号。
 //! ⇒ 「10 对得上」这个结论当时是**用一个看不见它的量具**得出的 ——
 //! 量具与被量对象一起决定了那个数，而结论只写了数。
 //! 但「编不过」说的是 **`cargo test`**，不是 `cargo build`。
-//! daemon 的 `Cargo.toml` 逐字写的是「Standalone crate, intentionally NOT part of a
+//! backend 的 `Cargo.toml` 逐字写的是「Standalone crate, intentionally NOT part of a
 //! workspace」—— 那句**没有假**：它讲的是 workspace 成员身份与构建。
 //! 真实的代价是另一句、而且**以前谁都没写下来**：
-//! **daemon 的 `cargo test` 需要旁边那棵 `src/bridge/` 树在。**
+//! **backend 的 `cargo test` 需要旁边那棵 `src/bridge/` 树在。**
 //!
 //! # 于是这件钉的不是「有几条边」，是**边只许长在判据里**
 //!
@@ -56,52 +56,52 @@
 /// 实测每一对都**两两不同**，所以「文件对」是够用且稳定的键。
 #[cfg(test)]
 const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
-    // ── monitor → daemon：monitor 的判据去读 daemon 的源码 ─────────────────
+    // ── monitor → backend：monitor 的判据去读后端的源码 ─────────────────
     (
-        "monitor→daemon",
-        "tests/bridge/tmux_tests.rs",
+        "monitor→backend",
+        "tests/bridge/backend/control/tmux_tests.rs",
         "src/backend/observe/watcher.rs",
-        "★〔audit-0805 08-06 新发现，此前整条不在本表里〕两条对拍守卫读 daemon 的 \
+        "★〔audit-0805 08-06 新发现，此前整条不在本表里〕两条对拍守卫读后端的 \
          `watcher.rs`：`tmux ls` 的 `-F` 格式串双写点、以及那个 const 的 TAB 转义。\
-         **路径藏在 `macro_rules! daemon_watcher_src` 里** —— `include_str!` 只接字面量 token，\
+         **路径藏在 `macro_rules! backend_watcher_src` 里** —— `include_str!` 只接字面量 token，\
          用宏是为了「单一落点」（`tmux.rs` 自己写着这个理由，是个好做法）， \
          而它恰好让这条边从本护栏的抽取器视野里消失了：抽取器只认 `(` 之后紧跟的 `\"`。 \
          ⇒ **减少重复的好做法，可以顺手把一条边变隐形** —— 这不是谁写错了，\
          是「护栏认字面量、代码认语义」这个落差的必然产物。抽取器已补上单臂宏展开。",
     ),
     (
-        "monitor→daemon",
-        "tests/bridge/backend/control/daemon_kill_tests.rs",
+        "monitor→backend",
+        "tests/bridge/backend/control/backend_kill_tests.rs",
         "src/backend/control/kill.rs",
-        "拒绝文案两侧逐字同形：daemon 那边改了措辞，monitor 的用户可见提示就跟着变",
+        "拒绝文案两侧逐字同形：backend 那边改了措辞，monitor 的用户可见提示就跟着变",
     ),
     (
-        "monitor→daemon",
-        "tests/bridge/backend/control/daemon_launch_tests.rs",
+        "monitor→backend",
+        "tests/bridge/backend/control/backend_launch_tests.rs",
         "src/backend/inbound.rs",
-        "本通道发的字段由 daemon 的登记表说了算 —— 读它才能断言两侧字段集一致",
+        "本通道发的字段由后端的登记表说了算 —— 读它才能断言两侧字段集一致",
     ),
     (
-        "monitor→daemon",
-        "tests/bridge/backend/control/daemon_send_keys_tests.rs",
+        "monitor→backend",
+        "tests/bridge/backend/control/backend_send_keys_tests.rs",
         "src/backend/control/launch.rs",
-        "两个 mode 名必须是 daemon 真能 parse 的那两个（`parse_request` 不 deny unknown \
+        "两个 mode 名必须是后端真能 parse 的那两个（`parse_request` 不 deny unknown \
          fields ⇒ 打错字会被静默忽略、照样附 Enter）",
     ),
     (
-        "monitor→daemon",
-        "tests/bridge/inbound_client_tests.rs",
+        "monitor→backend",
+        "tests/bridge/backend/control/inbound_client_tests.rs",
         "src/backend/inbound.rs",
         "入方向帧的种类与错误码两侧同形",
     ),
     (
-        "monitor→daemon",
-        "tests/bridge/inbound_client_tests.rs",
+        "monitor→backend",
+        "tests/bridge/backend/control/inbound_client_tests.rs",
         "src/backend/control/launch.rs",
         "launch 请求的字段名两侧同形",
     ),
     (
-        "monitor→daemon",
+        "monitor→backend",
         // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕住址跟着判据搬：
         // 那条 `include_str!` 一直长在 `polling_registry` 的**测试段**里，
         // 而测试段这一轮搬进了 `tests/bridge/polling_registry_tests.rs`。
@@ -116,29 +116,29 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //    ⚠ 它当初记的那条道理别丢：「光在闭集里加一行是**申报**，申报会在那一层被掏空之后
     //    照样绿着」⇒ 下次再有「app 自带某个二进制」这类申报，右边仍要去钉真源码。
     (
-        "monitor→daemon",
+        "monitor→backend",
         "tests/bridge/ssh_source_emits_parity.rs",
         "src/backend/main.rs",
-        "daemon 的启动契约（身份清单 / hello）两侧同形",
+        "backend 的启动契约（身份清单 / hello）两侧同形",
     ),
     (
-        "monitor→daemon",
+        "monitor→backend",
         "tests/bridge/ssh_source_f032_idle_tests.rs",
         "src/backend/wire.rs",
         "wire 帧的形状两侧同形",
     ),
     (
-        "monitor→daemon",
-        "tests/bridge/local_daemon_tests.rs",
+        "monitor→backend",
+        "tests/bridge/local_backend_host_tests.rs",
         "src/backend/listen.rs",
         "★〔`K-P1` 08-26〕**跨 crate 字面量对拍**：常驻监听口那两个 env 名\
-         （`CCM_LISTEN_PORT` / `CCM_LISTEN_TOKEN`）宿主与 daemon 各声明一份，\
-         而两边漂了**不会报错** —— daemon 会把它当成「没设」走 stdio 那条路，\
+         （`CCM_LISTEN_PORT` / `CCM_LISTEN_TOKEN`）宿主与后端各声明一份，\
+         而两边漂了**不会报错** —— backend 会把它当成「没设」走 stdio 那条路，\
          宿主则等在一个永远没人 bind 的口上，日志里只有一句「连不上」。\
          ⇒ 只能同时读两侧的源码才验得了（形状抄 `the_local_origin_is_the_same_string_on_both_sides`）。",
     ),
     (
-        "monitor→daemon",
+        "monitor→backend",
         "tests/bridge/search_kou_jing_guard.rs",
         "src/backend/observe/search_query.rs",
         "★★〔`K-R100` 09-13 新增〕**搜索口径的跨轨对拍** —— \
@@ -150,48 +150,48 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
          「今天没漂」不是保障，本条治的就是「没人拦着它漂」。",
     ),
     (
-        "monitor→daemon",
+        "monitor→backend",
         "tests/bridge/history_tests.rs",
         "src/backend/control/ccm/argv.rs",
-        "★★〔`K-R106` 09-13 新增〕**「本机后端产的那一句 attach，后端那份 `ccm` 真读得懂」** ——          `history::tests::the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created`          的第 ③ 段。monitor 这一侧产的是一串 argv（`ccm attach <名>`），         而「它是不是真的被读成 attach、那个位置参数是不是真的落进 `attach_name`」         只有 daemon 这一侧的解析器说得出 —— 那是一条**关于两侧同形**的性质，         只能同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**，不是真跑一次 `ccm`（真跑归 e2e `ccm-print-parity`）。",
+        "★★〔`K-R106` 09-13 新增〕**「本机后端产的那一句 attach，后端那份 `ccm` 真读得懂」** ——          `history::tests::the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created`          的第 ③ 段。monitor 这一侧产的是一串 argv（`ccm attach <名>`），         而「它是不是真的被读成 attach、那个位置参数是不是真的落进 `attach_name`」         只有后端这一侧的解析器说得出 —— 那是一条**关于两侧同形**的性质，         只能同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**，不是真跑一次 `ccm`（真跑归 e2e `ccm-print-parity`）。",
     ),
     (
-        "monitor→daemon",
+        "monitor→backend",
         "tests/bridge/history_tests.rs",
         "src/backend/control/ccm/plan.rs",
-        "★★〔`K-R106` 09-13 新增〕上一条的**下半程**：读懂之后它接进**哪一个**会话。         钉的是 `Plan::Attach` 那一行的**整行渲染**，而承重的不只是 `tmux attach` 四个字，         还有 `=名:` 那个**精确匹配形** —— 裸 `-t <名>` 按「精确名 → 名字开头 → glob」解析，         会打到兄弟会话上（`src/session-backend.ts::exactTarget` 头注有 tmux 3.6 实测）。         ⇒ 「接进刚建的那个会话」这句话的后半截只有读 daemon 源码才验得了。",
+        "★★〔`K-R106` 09-13 新增〕上一条的**下半程**：读懂之后它接进**哪一个**会话。         钉的是 `Plan::Attach` 那一行的**整行渲染**，而承重的不只是 `tmux attach` 四个字，         还有 `=名:` 那个**精确匹配形** —— 裸 `-t <名>` 按「精确名 → 名字开头 → glob」解析，         会打到兄弟会话上（`src/session-backend.ts::exactTarget` 头注有 tmux 3.6 实测）。         ⇒ 「接进刚建的那个会话」这句话的后半截只有读后端源码才验得了。",
     ),
-    // ── daemon → monitor（2 条）：daemon 的判据去读 monitor ────────────────────
+    // ── backend → monitor（2 条）：backend 的判据去读 monitor ────────────────────
     (
-        "daemon→monitor",
+        "backend→monitor",
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
         "tests/backend/control/gate_tests.rs",
         "src/bridge/src/backend/control/fixtures/gate2-golden.tsv",
         "§34 Gate 2 的黄金夹具**只有一个家**（定框 §4：同一个数不许两侧各写一份）—— \
-         daemon 与 monitor 各自独立读同一张表",
+         backend 与 monitor 各自独立读同一张表",
     ),
     (
-        "daemon→monitor",
+        "backend→monitor",
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
         "tests/backend/control/launch_tests.rs",
-        "src/bridge/src/tmux.rs",
+        "src/bridge/src/backend/control/tmux.rs",
         "★ 跨轨对拍：`format!(\"={target}:\")` 这个精确匹配形状两侧必须同形 —— \
          F01 实测过，一边写裸 `-t` 就会打到兄弟会话上，而另一边不会，排查极难",
     ),
     (
-        "daemon→monitor",
+        "backend→monitor",
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
         "tests/backend/relay/route_tests.rs",
         "src/bridge/src/backend/control/payload.rs",
         "★★〔`K-H2b` `KH2B4` 08-28 新增〕**中转路由键 `/s/<agent>/<account>/<key>/…` \
-         的两侧对拍**：注入侧（monitor 的 `relay_route_path`）拼、中转侧（daemon 的 \
+         的两侧对拍**：注入侧（monitor 的 `relay_route_path`）拼、中转侧（backend 的 \
          `route::parse`）切，而**两侧不可能共用一份实现** —— `src/backend` \
          单向依赖 `src/bridge/crates/*`，共享实现只能落在某个 `crates/*`，今天一个都没有。\
-         ⇒ daemon 的判据 `include_str!` monitor 那份源码，把 `RELAY_ROUTE_SAMPLE` \
+         ⇒ backend 的判据 `include_str!` monitor 那份源码，把 `RELAY_ROUTE_SAMPLE` \
          那一行的字面量抠出来喂给**真** `parse`，断言四段各落各位。\
          ⚠ 为什么必须编译期读：本条要买的是「**两半漂开而两边都不红**」这一形 —— \
          PM 08-28 亲手实测过它存在：把 monitor 的 `relay_env_prefix_posix` 改成返回空串，\
-         monitor 半边红 3 条，**daemon 半边的 `KH2B1` 一条都不红**（它的桩启动器自己读环境变量，\
+         monitor 半边红 3 条，**backend 半边的 `KH2B1` 一条都不红**（它的桩启动器自己读环境变量，\
          够不着 monitor 的函数）。跨轨对拍是唯一能把这一格焊住的形状。",
     ),
 ];

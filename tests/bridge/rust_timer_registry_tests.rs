@@ -13,7 +13,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
         "★ **本表一上岗就抓到的那个真节拍器**：`run_heartbeat` = \
              `loop { sleep(10s); cleanup_dead() }` —— 无限、周期、无上限。\
              它清的是「死 pid 的 HWND 绑定」。**事件源存在但没用**：pid 死亡本可由内核事件\
-             （Windows job object / daemon 侧那套 pidfd）推回来，今天是靠 10s 扫一遍。\
+             （Windows job object / backend 侧那套 pidfd）推回来，今天是靠 10s 扫一遍。\
              ⚠ **退役未排期** —— 它属 Windows HWND 绑定那一族，不在本工作区的五项范围内。\
              如实记未排期，**不编一个假 owner 让它看起来有人管**。",
     ),
@@ -37,12 +37,12 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              没上限就等于「点一次恢复永远转圈」。退役归：std 有了 `wait_timeout` 之后（今天没有）。",
     ),
     (
-        "src/local_daemon.rs",
+        "src/local_backend_host.rs",
         "wait-for-condition",
         1,
         "〔`K-P1` 08-26；说法 08-27 补全，见下 ⚠⚠〕那一处 `sleep` 住 `adopt_with`，\
              而 `adopt_with` 有**两个**调用方，等的是**两件不同的事**，共用同一条上限：\
-             ① `probe_and_attach_after_spawn`（`wait_for_bind = true`）等**刚脱离起来的那个 daemon**\
+             ① `probe_and_attach_after_spawn`（`wait_for_bind = true`）等**刚脱离起来的那个 backend**\
              把回环口 bind 上；\
              ② `adopt_existing`（`wait_for_bind = false`）**根本没有 spawn** —— 它等的是\
              `stream-busy` 那张牌被还回来（上一个 monitor 刚退、对面还没把那条流放回去）。\
@@ -52,7 +52,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              ⚠⚠ 〔`K-P1-D1` `重-4`〕本行原先只写了①，而它盖着的是两件事。\
              **登记表的说法就是那条判据的诚实边界** —— 说法与代码不是一回事时，\
              判据在替一个不存在的性质背书。⇒ 同轮补了\
-             `local_daemon::the_timer_registry_names_every_caller_of_the_one_wait_here`\
+             `local_backend_host::the_timer_registry_names_every_caller_of_the_one_wait_here`\
              钉住「这一行必须点到**每一个**调用方的名字」。\
              ⚠ 为什么非等不可（这是**实测**出来的，不是推的）：`connect_timeout` 在**没人在听**的口上\
              拿到 `ECONNREFUSED` 时**内核立刻返回**，它压根不等 —— 第一版据此写了「让内核等」，\
@@ -77,7 +77,7 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              它等的条件是「下一个连接」，由 `accept()` 本身阻塞驱动，sleep 只在错误分支。",
     ),
     // ★★ 🔴 `K-R59`（09-11）：**这里原来是本表抓到的第二个真节拍器，那一条今天退役了。**
-    //    它是 `src/ssh_source.rs` 的 `DAEMONLESS_POLL_INTERVAL = 2s`（`loop { …; sleep(2s) }`），
+    //    它是 `src/ssh_source.rs` 的 `BACKENDLESS_POLL_INTERVAL = 2s`（`loop { …; sleep(2s) }`），
     //    登记里逐字写着它「与**定框 C7 直接冲突**」「也与 **C8**（不许轮询）冲突」，
     //    而退役条件当时写的是「**远端自动部署可靠到可以删掉这个开关**……今天无人认领，
     //    如实记未排期」。
@@ -126,16 +126,16 @@ const REGISTERED: &[(&str, &str, usize, &str)] = &[
              它治的 bug 逐字在 `:405-408`：「用户关闭终端窗口导致 `claude.exe` 被强杀时，\
              `sessions/<PID>.json` **不会被删**（Claude Code 的退出 hook 没跑）→ 文件事件永不触发 \
              → **死 session 的 Tab 永远 live**」。\
-             ⇒ **事件源存在但住在别的 crate**：daemon 侧 `platform/pidwatch/linux.rs` 用 \
+             ⇒ **事件源存在但住在别的 crate**：backend 侧 `platform/pidwatch/linux.rs` 用 \
              `pidfd_open(2)` + 无超时 `poll(2)` 绑**进程实例**解掉了同一个问题（PID 复用骗不过它）。\
-             ⚠ **但 daemon 侧的 Windows 那格是空壳** —— `platform/pidwatch/fallback.rs` 头注逐字\
+             ⚠ **但后端侧的 Windows 那格是空壳** —— `platform/pidwatch/fallback.rs` 头注逐字\
              「非 Linux 的看守形态 —— **一个诚实的空壳，不是一个假实现**」，真形态 \
              `OpenProcess` + `WaitForSingleObject` 登记为 **U4b**（`unified-backend` 区，\
              标「要用户跑真 Windows 机」）。而本条治的 bug **恰恰是 Windows 场景**。\
              **退役归属：`devbench` F12，被 U4b 挡着。** 实测依据（08-10）：monitor 侧\
              `cargo check --lib --target x86_64-pc-windows-msvc` ⇒ \
              `failed to find tool \"lib.exe\"`（monitor 有 C 依赖，交叉编译要 MSVC 工具链），\
-             而 daemon 侧同一条能过 ⇒ **平台代码该住 daemon 侧，不该在 monitor 侧再抽一层**\
+             而后端侧同一条能过 ⇒ **平台代码该住后端侧，不该在 monitor 侧再抽一层**\
              （原设计那样做是在造第二份实现，已否）。",
     ),
 ];
@@ -369,7 +369,7 @@ fn every_ticker_names_its_event_source_and_owner() {
              ⚠ **别把它读成「自动部署终于可靠了」**（那是这条登记当年自己写的退役条件）：\
              实际走的是另一条路 —— **那一档整个取消**。\n\
              · 剩下的 `session_map.rs` 那条退役归 **F12**，被 `unified-backend` 的 **U4b** 挡着\
-             （daemon 侧 Windows 判活是诚实空壳，而本条治的 bug 恰恰是 Windows 场景）。"
+             （backend 侧 Windows 判活是诚实空壳，而本条治的 bug 恰恰是 Windows 场景）。"
     );
 }
 
@@ -378,7 +378,7 @@ fn every_ticker_names_its_event_source_and_owner() {
 /// # 它盯的是什么
 ///
 /// `session_map.rs` 那条 2s 心跳的退役归 **F12**，而 F12 被 **U4b** 挡着：
-/// daemon 侧 `platform/pidwatch/fallback.rs` 在非 Linux 上是**一个诚实的空壳**
+/// backend 侧 `platform/pidwatch/fallback.rs` 在非 Linux 上是**一个诚实的空壳**
 /// （头注原话），`on_dead` 永远不会被调用。而那条心跳治的 bug 恰恰是 Windows 场景
 /// （关终端窗口 ⇒ `claude.exe` 被强杀 ⇒ pidfile 不会被删 ⇒ 死 Tab 永远 live）。
 ///
@@ -392,7 +392,7 @@ fn every_ticker_names_its_event_source_and_owner() {
 /// `GetExitCodeProcess`（`STILL_ACTIVE`）+ `GetProcessTimes` 与 `procStart` 比
 /// （`PROC_START_TOLERANCE_TICKS`，防 PID 复用）。
 ///
-/// 那是**轮询形态**（问一次「它还在吗」）；daemon 要的是**事件形态**
+/// 那是**轮询形态**（问一次「它还在吗」）；backend 要的是**事件形态**
 /// （`watch_pid_until_exit`，阻塞等到它死）。⇒ 两者不能互相替代，
 /// 但**身份校验那一半可以直接搬**，U4b 真正缺的只是 `WaitForSingleObject` 那一段。
 /// ⚠ 这条订正很要紧：计划里 U4b 一直被当成「从零写 + 要真机验证」，
@@ -425,7 +425,7 @@ fn the_windows_pidwatch_is_still_an_honest_no_op() {
     let called = format!("on_{}()", "dead");
     assert!(
         !prod.contains(&called),
-        "★ **U4b 落地了** —— daemon 的非 Linux pidwatch 不再是空壳。\n\n             那意味着 **F12 可以开工了**：`session_map.rs` 那条 2s 心跳等的\n             「进程死了但 pidfile 还在」现在有真事件源了。\n\n             要做的两件事：\n             ① 把 `pidwatch` 抽成两侧共用的 crate（今天它住在 daemon crate 里，\n                而 daemon crate 刻意不在 workspace 里、有独立 lockfile）；\n             ② `session_map.rs` 改用它，删掉 `recv_timeout(2s)` 那条心跳，\n                并把上面 `REGISTERED` 里 `src/session_map.rs` 那条**删掉**\n                （`the_ticker_count_is_pinned` 会红在「少一条」上 —— 那是退役的验收证据）。\n\n             ⚠ 顺带读一下：Windows **轮询**判活本仓早就有（`session_map.rs` 的 `cfg(windows)` 支，\n             `OpenProcess` + `GetExitCodeProcess` + `GetProcessTimes` 比 procStart）——\n             身份校验那一半可以直接搬，别重写。"
+        "★ **U4b 落地了** —— backend 的非 Linux pidwatch 不再是空壳。\n\n             那意味着 **F12 可以开工了**：`session_map.rs` 那条 2s 心跳等的\n             「进程死了但 pidfile 还在」现在有真事件源了。\n\n             要做的两件事：\n             ① 把 `pidwatch` 抽成两侧共用的 crate（今天它住在 backend crate 里，\n                而 backend crate 刻意不在 workspace 里、有独立 lockfile）；\n             ② `session_map.rs` 改用它，删掉 `recv_timeout(2s)` 那条心跳，\n                并把上面 `REGISTERED` 里 `src/session_map.rs` 那条**删掉**\n                （`the_ticker_count_is_pinned` 会红在「少一条」上 —— 那是退役的验收证据）。\n\n             ⚠ 顺带读一下：Windows **轮询**判活本仓早就有（`session_map.rs` 的 `cfg(windows)` 支，\n             `OpenProcess` + `GetExitCodeProcess` + `GetProcessTimes` 比 procStart）——\n             身份校验那一半可以直接搬，别重写。"
     );
 }
 
@@ -475,7 +475,7 @@ fn the_one_real_ticker_still_looks_like_a_ticker() {
 ///
 /// - 本模块原来的 [`wake_hits`] 只认 **Rust 级**的 `sleep`/`interval` ⇒ 看不见它；
 /// - `polling_registry` 只管 TS 与 `shared/ccm` ⇒ 不管 Rust；
-/// - daemon 那条「外部节拍」子扫描要求 `format!` 与循环词**同行**，
+/// - backend 那条「外部节拍」子扫描要求 `format!` 与循环词**同行**，
 ///   而这处的 `format!(` 在一行、`while [` 在下一行 ⇒ **照抄它也会漏**。
 ///
 /// ⇒ 于是「零轮询」那条成功标准的勾曾经建立在一个**看不见它**的读数上（F12 已撤勾）。
@@ -493,14 +493,14 @@ const SHELL_WAKES: &[(&str, &str, &str, usize, &str)] = &[
     // ① 画面稳定轮询（那个渲染函数拼的 `while [ $i -lt N ]; do sleep 0.5;
     //    tmux capture-pane …`，2 处）· ② 自毁看门狗（`setsid sh -c 'sleep 30;
     //    tmux kill-session …'`，1 处）。两行的「退役条件」当时逐字写着
-    //    **「探针改成由 daemon 托管」⇒ 未排期**。
-    // ⇒ `K-R104` 把整条编排搬上 daemon 帧面：轮询那一半变成 monitor Rust 里的
+    //    **「探针改成由后端托管」⇒ 未排期**。
+    // ⇒ `K-R104` 把整条编排搬上后端帧面：轮询那一半变成 monitor Rust 里的
     //    `tokio::time::sleep`（**归 `REGISTERED`**，不再是 shell 形态），
-    //    看门狗那一半整个搬进 daemon（`control/oneshot_session.rs` 的外部进程）。
+    //    看门狗那一半整个搬进后端（`control/oneshot_session.rs` 的外部进程）。
     //    **认领人来了。**
     // 〔`设计/50`〕上面整段是**考古**：用量 ③ 轴（探针）整轴退役 ⇒ 那两处唤醒
     //    连同它们的新住址一起没了（`REGISTERED` 里那条 `account_usage.rs` 已删、
-    //    daemon 的 `control/oneshot_session.rs` 也已删）。本表**仍然是空的**，
+    //    backend 的 `control/oneshot_session.rs` 也已删）。本表**仍然是空的**，
     //    而空的理由从「搬走了」变成「那件事不做了」。零命中守卫照旧管这一族。
     // ★ 与 `watcher.rs`（F11）· `ssh_source.rs` 的 daemonless（`K-R59`）同形：
     //   **退役的验收证据就是本表先红在「少一处 = 退役了」上，删掉登记才绿。**
@@ -602,14 +602,14 @@ fn every_shell_shaped_periodic_wake_is_registered() {
              「它等的那个条件有没有内核事件源；没有就如实记未排期」。\n\
              **少一处** = 退役了 —— 删登记并把处数拧下来。\n\
              ⚠ 这一族此前**三张表一张都看不见**（本模块只认 Rust 级 sleep · `polling_registry` 不管 Rust ·\n\
-             daemon 那条子扫描要求 `format!` 与循环词同行而这处跨行）—— F17 补的就是它。"
+             backend 那条子扫描要求 `format!` 与循环词同行而这处跨行）—— F17 补的就是它。"
     );
 }
 
 /// ★ shell 那张表也守同一条类别纪律；且 `ticker` 必须写明事件源与退役归属。
 #[test]
 fn every_shell_wake_names_its_class_and_who_retires_it() {
-    // 🔴 `K-R104`：本表**今天就是空的**（那两行随编排搬进 daemon 而退役，
+    // 🔴 `K-R104`：本表**今天就是空的**（那两行随编排搬进后端而退役，
     //    理由逐条写在表里）。⇒ 这里不再断「非空」——
     //    「上面那条会不会零命中地绿」由它自己那条**反向自检**接住（合成样本必须被逮到），
     //    那比「表里得有东西」强：表非空也可能扫描器早就坏了。

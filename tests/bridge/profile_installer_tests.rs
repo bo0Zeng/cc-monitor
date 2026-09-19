@@ -1062,7 +1062,7 @@ fn the_powershell_block_never_touches_the_session_path_again() {
 /// # 为什么单独一条：上一条只证「这两处一致」，这一条证「它们对得上现实」
 ///
 /// 上一条比的是**我们生成的那段命令**与 `tool_registry` 的申报 —— **两边同时改错**
-/// 照样全绿。真落点住在**第三处**：`local_daemon.rs` 里算 `extract_dir` 的那一行，
+/// 照样全绿。真落点住在**第三处**：`local_backend_host.rs` 里算 `extract_dir` 的那一行，
 /// 它就是 `install_local_ccm_entry` 的 `dir` 实参。⇒ 这一条去读**那一行源码**。
 ///
 /// # 诚实边界
@@ -1086,7 +1086,7 @@ fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
         .collect::<Vec<_>>()
         .join("");
 
-    // 真落点：`install_local_ccm_entry` 的 `dir` 实参是 `local_daemon.rs` 算的 `extract_dir`。
+    // 真落点：`install_local_ccm_entry` 的 `dir` 实参是 `local_backend_host.rs` 算的 `extract_dir`。
     //
     // ⚠ **比之前先把空白抹掉**：`ccm_probe.rs` 那一处是
     // `h.join(".cc-monitor")\n            .join("bin")`（rustfmt 断的行）——
@@ -1096,8 +1096,8 @@ fn the_path_line_points_at_the_directory_we_really_install_ccm_into() {
     let want = squeeze(&want);
     let hosts: [(&str, &str); 2] = [
         (
-            "local_daemon.rs",
-            include_str!("../../src/bridge/src/local_daemon.rs"),
+            "local_backend_host.rs",
+            include_str!("../../src/bridge/src/local_backend_host.rs"),
         ),
         (
             "ccm_probe.rs",

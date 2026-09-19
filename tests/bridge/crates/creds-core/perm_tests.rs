@@ -58,7 +58,7 @@ fn the_windows_half_is_not_a_no_op() {
         "`make_private` 没有恰好一次派发到 Windows 那半 —— \
              上面两条就成了守着一段没人调的代码"
     );
-    // ④ 第三类平台**不许凭空返回成功**（daemon `fallback_guard` 那条道理的同款）。
+    // ④ 第三类平台**不许凭空返回成功**（backend `fallback_guard` 那条道理的同款）。
     assert!(
         mp.contains("不假装做到了"),
         "`make_private` 的非 unix/windows 分支没有诚实报错"
@@ -214,7 +214,7 @@ fn a_windows_dacl_with_a_wide_principal_is_called_out() {
 
 /// ★ **「查不出来」不是绿灯。**
 ///
-/// 这一条守的是 daemon `fallback_guard.rs` 整篇讲的那个失败模式：
+/// 这一条守的是 backend `fallback_guard.rs` 整篇讲的那个失败模式：
 /// 给一个答不上来的问题编一个看起来无害的答案。
 #[test]
 fn undetermined_is_not_a_green_light() {

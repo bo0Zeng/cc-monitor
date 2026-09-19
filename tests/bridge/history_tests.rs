@@ -1006,14 +1006,14 @@ fn observe_one_cell(name: &str) -> CellToday {
 /// # 今天的成因（本条逐格量出来，不是推的）
 ///
 /// 分母 = [`LaunchAccount`] 的**全部形状**加上「参数缺席」，并且**具名那一格喂两个号**
-/// （一个在中转表里、一个不在 —— 只喂一个的话「中转在不在场」这一维的取值域是 1，
+/// （一个在apikey 表里、一个不在 —— 只喂一个的话「中转在不在场」这一维的取值域是 1，
 /// 那正是 `D6 阻-2` 逮到过的形状）：
 ///
 /// | 形状 | 送出去那一串带不带中转前缀 | 带不带 `--tmux=`（= [`launch_local`] 的判据） |
 /// |---|---|---|
 /// | 缺席（`None`） | 不带（不走中转） | **是**〔🔴 `K-R89` 09-13 翻的：`R28` 之后省略有确定语义，渲染器说得出「继承」了〕 |
 /// | `Base`（账号 0） | 不带（不走中转） | **是** |
-/// | `Named{acct-a}`（**在中转表里**） | 带 | 否 —— `relay.is_empty()` 那一行挡住 |
+/// | `Named{acct-a}`（**在apikey 表里**） | 带 | 否 —— `relay.is_empty()` 那一行挡住 |
 /// | `Named{acct-b}`（不在表里） | 不带 | **是**（`K-R53` 开的就是这一格） |
 ///
 /// # ⚠ 它连带说明了一件别处的事（别让那条判据被读宽）
@@ -1045,12 +1045,12 @@ fn observe_one_cell(name: &str) -> CellToday {
 fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
     let act = LocalPsAction::Resume("s1".into());
     let base = LaunchAccount::Base;
-    // 在中转表里的那个号 —— 名字说得出（本件之后前端就是这么传的）。
+    // 在apikey 表里的那个号 —— 名字说得出（本件之后前端就是这么传的）。
     let acct_a = LaunchAccount::Named {
         config_dir: "/home/u/.claude-accts/acct-a".into(),
         name: Some("acct-a".into()),
     };
-    // 不在中转表里的那个号 —— 「哪个号」这一维的取值域因此是 2，不是 1（`D6 阻-2`）。
+    // 不在apikey 表里的那个号 —— 「哪个号」这一维的取值域因此是 2，不是 1（`D6 阻-2`）。
     let acct_b = LaunchAccount::Named {
         config_dir: "/home/u/.claude-accts/acct-b".into(),
         name: Some("acct-b".into()),
@@ -1100,7 +1100,7 @@ fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
     const TMUX: &str = "s1abcdef-cc";
 
     // ⓪ **重新裁定的那一格**：渲染器**单独看**已经不再互斥了 ——
-    //    在中转表里的那个号，渲染器今天渲得出来。互斥不再由它保。
+    //    在apikey 表里的那个号，渲染器今天渲得出来。互斥不再由它保。
     //    （这一格红 = `K-R53` 那一刀被退掉了，那时下面几格的理由也就不成立。）
     //    ⚠ 走的是**生产那个渲染器** [`render_local_ccm`]（探测经缝喂），
     //    不是它的纯函数半 —— 后者会把「生产上探测这一跳还在不在」漏在射程外。
@@ -1333,7 +1333,7 @@ fn r61_paths_in(seg: &str) -> Vec<String> {
 /// # ⚠ 边界（别读宽）
 ///
 /// - 本条判的是**这几段文本互相一致**，**不判**「这段话是真的」。
-///   「那个文件里真的有那个 token」由 daemon 那棵树的
+///   「那个文件里真的有那个 token」由后端那棵树的
 ///   `control::ccm::tests::the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it` 守。
 /// - 住址表本身（哪几处算「同职」）是**人写的**。有人在别处再写一段同职的话而不登记，
 ///   本条看不见 —— 那正是 `§0a` 漏掉 ③⑤ 两处的形状。
@@ -1432,7 +1432,7 @@ const R61_ADDR: &str = "src/backend/control/ccm/mod.rs";
 /// - [`the_retirement_condition_says_the_same_thing_in_every_place_that_states_it`]
 ///   钉着 [`R61_ADDR`] 这**一个**串 ⇒ 换成 `argv.rs` 它会红。但那是**钉死一个字面量**，
 ///   只护得住这一个住址，护不住下一条退役条件点的下一个住址。
-/// - 「那个文件里真的有那个 token」由 daemon 那棵树的
+/// - 「那个文件里真的有那个 token」由后端那棵树的
 ///   `the_base_url_token_is_declared_because_the_tmux_path_really_forwards_it` 守。
 /// - 「这段话说的是不是真的」**没有任何东西守**。
 ///
@@ -1649,11 +1649,11 @@ fn extracting_cwd_from_a_jsonl_head_now_lives_in_exactly_one_place() {
 
     // ② 后端那一份还在，且窗口是个说得出的数 —— 否则上面那条会零命中地绿
     //    （「两边都没有」与「只剩一处」在断言上长得一样，这一格就是分开它们的那个）。
-    let daemon_src = std::fs::read_to_string(
+    let backend_src = std::fs::read_to_string(
         crate::guard_support::repo_root().join("src/backend/observe/history_query.rs"),
     )
     .expect("读不到后端的 history_query.rs");
-    let remote: Vec<usize> = guard_core::production_code(&daemon_src)
+    let remote: Vec<usize> = guard_core::production_code(&backend_src)
         .lines()
         .filter(|l| l.contains("reader.lines().map_while(Result::ok).take("))
         .filter_map(|l| l.split(".take(").nth(1))
@@ -1892,7 +1892,7 @@ fn one_call_asks_the_backend_exactly_once_no_matter_how_many_projects() {
 fn a_missing_backend_is_not_an_empty_project_list() {
     let md = HistoryMetadata::default();
     let no_backend = local_projects_via(
-        |_| QueryOutcome::NoBackend("找过 [\"…/cc-monitor-remote\"]".into()),
+        |_| QueryOutcome::NoBackend("找过 [\"…/cc-monitor-backend\"]".into()),
         &md,
         &R97Oracle(&[]),
     )
@@ -3413,7 +3413,7 @@ fn unified_builder_byte_identical_to_pre_f06_new_session_output() {
 // ═════════════════════════════════════════════════════════════════════
 
 /// ★★★ `KH2B5`（`§0e` 裁一）**在这一层的对照** —— 同一条起会话路径、同一个函数，
-/// 只有「这个号在不在中转表里」不同：
+/// 只有「这个号在不在apikey 表里」不同：
 /// api-key 号（表里有行）的命令**带**那个 env，官方号的命令里**一个字节都没有**。
 #[test]
 fn only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix() {
@@ -3456,7 +3456,7 @@ fn only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix() 
 //    整条删了**，换成下面**三条**判据（两条行为 + 一条按函数地址对拍）。
 //    删它的理由是一个实测读数，不是风格：
 //
-// 它先前住 `local_daemon.rs`（`D4` 搬过去的，为的是「判据与被扫的代码不同文件」），
+// 它先前住 `local_backend_host.rs`（`D4` 搬过去的，为的是「判据与被扫的代码不同文件」），
 // 而它量的仍然是「`relay_prefix_for_launch` 的体切出 700 字节，窗口里**有没有**那两段文本」。
 // `D5` 现打：在同一个窗口里加一行把那两段文本原样留住的死赋值，同时把真入参换成空表 / 常量
 // ⇒ 文本一处不少、**全量门禁四个数与干净树逐字相同**，而中转注入在生产上被整个摘掉。
@@ -3505,7 +3505,7 @@ fn only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix() 
 /// # 它买不到什么
 ///
 /// 它不管那几个取值口**自己答得对不对**（那是 [`relay_rows_at`] 那条读真文件的判据、
-/// 与 `local_daemon::relay_running_really_reads_the_handle_table` 的活），
+/// 与 `local_backend_host::relay_running_really_reads_the_handle_table` 的活），
 /// 也不管**生产上插进那条缝的是不是它们**（那是下一条判据按函数地址对拍的活）。
 /// **三条合起来才等于「这条线真的在问那几件事」。**
 #[test]
@@ -3569,7 +3569,7 @@ fn the_launch_side_really_asks_those_two_take_points_and_uses_their_answers() {
     let got = relay_prefix_for_launch(&action, Some(&acct_a)).expect("这一档不该报错");
     assert!(
         ROWS_CALLS.with(Cell::get) >= 1,
-        "这次拉起**没问**「这个号在不在中转表里」—— 那一格成了常量"
+        "这次拉起**没问**「这个号在不在apikey 表里」—— 那一格成了常量"
     );
     assert!(
         RUNNING_CALLS.with(Cell::get) >= 1,
@@ -3817,24 +3817,24 @@ fn the_production_relay_facts_are_those_two_take_points() {
     assert!(
         std::ptr::fn_addr_eq(
             live.running,
-            crate::local_daemon::relay_running as fn() -> bool
+            crate::local_backend_host::relay_running as fn() -> bool
         ),
-        "没装替身时 `relay_facts()` 交出来的「中转在不在跑」不是 `local_daemon::relay_running`"
+        "没装替身时 `relay_facts()` 交出来的「中转在不在跑」不是 `local_backend_host::relay_running`"
     );
     assert!(
         std::ptr::fn_addr_eq(
             PRODUCTION_RELAY_FACTS.rows,
             relay_rows as fn() -> Vec<String>
         ),
-        "生产上「这个号在不在中转表里」不再由 `relay_rows` 答 ——\n\
+        "生产上「这个号在不在apikey 表里」不再由 `relay_rows` 答 ——\n\
              换成一个恒空的东西，谁都不走中转，而行为判据（喂替身的那条）照绿"
     );
     assert!(
         std::ptr::fn_addr_eq(
             PRODUCTION_RELAY_FACTS.running,
-            crate::local_daemon::relay_running as fn() -> bool
+            crate::local_backend_host::relay_running as fn() -> bool
         ),
-        "生产上「中转在不在跑」不再由 `local_daemon::relay_running` 答 ——\n\
+        "生产上「中转在不在跑」不再由 `local_backend_host::relay_running` 答 ——\n\
              换成恒真，`KH2B2`② 那道「起不来就当场拒」的闸整个失效，而行为判据照绿"
     );
     // 🔴 `D6 阻-3`：第三格（平台开关）同样按地址对拍，两跳都拍。
@@ -3915,7 +3915,7 @@ fn the_local_launch_really_asks_the_production_ccm_probe() {
 /// ★★★ `D1 阻-6` 刀 C 的反面：**`relay_rows` 真的去读那份文件、真的解析出行。**
 ///
 /// `D1` 实测过：把它整个换成 `Vec::new()`，**1221 passed / 0 failed** ——
-/// 也就是说「这个号在不在中转表里」这个**取值口**当时一条判据都没有，
+/// 也就是说「这个号在不在apikey 表里」这个**取值口**当时一条判据都没有，
 /// 而它一旦恒空，整件事的表现就是「谁都不走中转」，**而且全绿**。
 #[test]
 fn the_rows_really_come_from_that_file_not_from_a_constant() {
@@ -4267,7 +4267,7 @@ fn identity_segment(cmd: &str) -> Option<&str> {
 ///   **今天有** `export CCM_LAUNCH_ID=…` 那一句 ⇒ **那个洞的成因很可能已经不在了**。
 ///   但「洞补没补上」的落点是 `launcher_identity_registry` 的 `L1`，**不在 `K-R61` 写区**，
 ///   本轮**没有**去重裁它 —— 已报回 PM。在有人重裁之前，别把这一段读成「已经全覆盖」。
-/// - **读的那一侧**：daemon 从 `/proc/<pid>/environ` 读回来、经 wire 帧发出去 —— 本拍**没有做**
+/// - **读的那一侧**：backend 从 `/proc/<pid>/environ` 读回来、经 wire 帧发出去 —— 本拍**没有做**
 ///   （面在 `src/backend/`，不在本拍写区）。⇒ 今天这个变量**有人写、没人读**。
 /// - **Windows 上的运行时行为**：一行都没量（这台机器是 Linux）。⑤ 买到的只是
 ///   「平台那一格翻得动、渲出来的形态跟着变」，不是「PowerShell 里真的设上了」。
@@ -4471,7 +4471,7 @@ fn the_launcher_plants_the_session_identity_into_the_process_environment() {
 ///
 /// # ⚠ 它买不到什么（如实写）
 ///
-/// - **拿这个 token 真能反查出 sid**：那要一条真的跑起来的会话 + 一个真 daemon。
+/// - **拿这个 token 真能反查出 sid**：那要一条真的跑起来的会话 + 一个真后端。
 ///   本条只买到「token 到了调用方手上」，反查那一跳的判据在前端
 ///   （`tests/accounts.vitest.ts` 的 `K-P5h` 那一组，`KP5HD2`）。
 /// - **走 ccm 容器那一支**：与老判据同一个洞（喂 `tmux_name = None` ⇒ 走回落那条路），
@@ -4658,7 +4658,7 @@ thread_local! {
     /// **线程局部** ⇒ 三条判据并行跑互不干扰（`cargo test` 一测一线程）。
     static ENTRY_SENT: std::cell::RefCell<Vec<(String, Option<String>)>> =
         const { std::cell::RefCell::new(Vec::new()) };
-    /// 这一拍中转表里有哪几行（探针自己写）。
+    /// 这一拍apikey 表里有哪几行（探针自己写）。
     static ENTRY_ROWS: std::cell::RefCell<Vec<String>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }

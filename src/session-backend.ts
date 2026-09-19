@@ -10,11 +10,11 @@
  *
  * ★ **阶段①只做形状**（MASTERPLAN batch16 §133）：座抽出、命令语法归座，但**唯一后端 = tmux**，
  * `SESSION_BACKEND` 恒等于 `TMUX_BACKEND`、**无运行时后端选择/探测**。abduco/dtach 评估 + 后端能力
- * 探测 + daemon RPC = 阶段②（§9 轨道二，daemon 在场才补得了 `send-keys` 缺口）。
+ * 探测 + backend RPC = 阶段②（§9 轨道二，backend 在场才补得了 `send-keys` 缺口）。
  *
  * ★ **阶段②不是「再加一个返回 shell 串的 const」**（SS-13 / §31）：abduco/dtach **没有 `send-keys`**，
  * 本接口 `createRunAttach({quotedPayload})` 的「打字载荷」模型是 tmux 特有的；纯 abduco/dtach 履约不了。
- * 阶段② daemon 在场后，取命令方式从「同步返回 shell 串的 builder」转成「问 daemon 的 RPC 句柄」
+ * 阶段② backend 在场后，取命令方式从「同步返回 shell 串的 builder」转成「问后端的 RPC 句柄」
  * （异步、错误面变化）——**调用点届时要按 RPC 重塑，不是零改动换 const**。本座是阶段①的形状占位
  * （证明「命令可从调用方剥离」），不是阶段②接口的终态承诺。
  *
@@ -165,6 +165,6 @@ export const TMUX_BACKEND: SessionBackend = {
 /**
  * 阶段①**唯一活跃会话后端**（= tmux）。同 `AGENT_PROFILE` 的「单画像、切换点集中」范式：
  * remote-launch 只认这个句柄。阶段②的重塑见顶注——不是把这个 const 换成另一个同型实现，
- * 而是把整条「取命令」路径改成 daemon RPC。
+ * 而是把整条「取命令」路径改成 backend RPC。
  */
 export const SESSION_BACKEND: SessionBackend = TMUX_BACKEND;

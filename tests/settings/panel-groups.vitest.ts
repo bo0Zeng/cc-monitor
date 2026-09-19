@@ -200,9 +200,9 @@ describe("S2 设置面板分页结构", () => {
       "数据存储",
     ]);
     // ★ S4b-2：那四块**已从列表页搬到机器详情页**。
-    // ★ P2s：「daemon 开关」是这一页的新成员，且**排在「连接（远端）」之前** ——
+    // ★ P2s：「backend 开关」是这一页的新成员，且**排在「连接（远端）」之前** ——
     // 它管的是每台机（含本机），而「连接（远端）」是远端专有的 SSH 配置面。
-    expect(pageTitles("machines")).toEqual(["daemon 开关", "连接（远端）"]);
+    expect(pageTitles("machines")).toEqual(["backend 开关", "连接（远端）"]);
     // 它们跟着「当前在看哪台机器」走；初始落在本机页上（与 machine-context 的初始值对齐）。
     expect(pageTitles("machine:（本机）")).toEqual([
       "账号",
@@ -345,7 +345,7 @@ describe("S2 设置面板分页结构", () => {
     new SettingsPanel({ windowMode: true });
     // **不等** tick：此刻本机页还没注册，等价于 RemoteSection 挂掉的处境。
     expect(pageTitles("machines")).toEqual([
-      "daemon 开关",
+      "backend 开关",
       "连接（远端）",
       "账号",
       "终端集成",

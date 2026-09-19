@@ -23,9 +23,13 @@ mod accounts; // A2：多账号（cc-acct-iso）只读查询——账号=一个 
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
 mod adapter;
 mod auto_launch;
+mod backend_policy; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
+                    // 🔴 〔步 8 · 归属 2026-09-19〕**它搬不进 `backend/`** —— `backend_policy_tests.rs::
+                    //    the_supervisor_itself_never_records_a_death` 逐字：「`backend/` 的生产段里
+                    //    出现了 `record_death(` ⇒ 判与记该在**宿主层**，`backend/` 那半**只搬证据**」。
+                    //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
 mod bind;
 mod bridge;
-mod cc_bus; // B03：cc-bus 状态的纯解析层（脏数据防御，见 features/B03-dirty-data-samples.md）
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
@@ -41,14 +45,11 @@ mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
 mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monitor 独占）+ 读侧只回掩码
-mod daemon_control; // P2s（C8）：每台机一个开关的命令层——只认 origin，不认 ssh 也不认进程监护
-mod daemon_policy; // P2s（C8）：每台机一份 daemon 策略（生效值住内存，持久化归前端）
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
-mod inbound_client;
 mod launch;
 mod local_accounts; // L3a：本机多账号枚举（只读）——`accounts.rs` 的本地对侧
-mod local_daemon; // P2s（C8）：本机 daemon 的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
+mod local_backend_host; // P2s（C8）：本机后端的生命周期（起/停/状态）——命令不能与 IPC 命令清单同模块，理由见该模块头注
 mod local_origin_registry;
 mod logging;
 mod mcp; // F87（#50+#51）：MCP 管理（读跨 scope 展示 / 写只项目 .mcp.json，SS-14）
@@ -62,7 +63,7 @@ mod plugins; // P8a：Claude Code marketplace 面的只读枚举（**不声称�
 mod port_forward;
 mod profile_installer;
 mod pubkey;
-mod remote_branch; // G6：远端分叉（经 ssh 调 daemon `--fork-session`）——写面故与只读的 remote_history 分家
+mod remote_branch; // G6：远端分叉（经 ssh 调 backend `--fork-session`）——写面故与只读的 remote_history 分家
 mod remote_history;
 mod remote_write_registry; // devbench F10c：远端写面登记（接三张表各自划出去、然后没人接的那道缝）
 mod search;
@@ -91,7 +92,7 @@ mod ssh_source;
 // **只在测试期编译**——它的消费者全在 `#[cfg(test)]` 里（`sftp.rs` 的 tmux 目标守卫、
 // `tool_registry.rs` 的字段纪律）。这是测试支撑模块，不是被闲置的生产代码；
 // 加 `cfg(test)` 就是把这件事写进类型系统，顺带消掉 5 条 dead_code 警告。
-mod agent_dispatch_registry; // K-W1B D2：桌面侧「通用层认得出某个 adapter」的地方逐条登记 + 递减棘轮（整体 #[cfg(test)]；刻意不叫 agent_boundary_guard —— daemon 侧已有同名异职模块，来历见该模块头注）
+mod agent_dispatch_registry; // K-W1B D2：桌面侧「通用层认得出某个 adapter」的地方逐条登记 + 递减棘轮（整体 #[cfg(test)]；刻意不叫 agent_boundary_guard —— backend 侧已有同名异职模块，来历见该模块头注）
 mod arch_doc_shape_guard; // F19：顶层架构文档的结构性存在钉（必须覆盖 backend 边界 / 零轮询 / 两条链）+ 形状钉（逐文件模块表不许长回来）
 /// U1a：`shared/ccm` 的强度契约（仅测试构建）。U9 迁移后由同一份 `measure()` 对拍新构造点。
 ///
@@ -103,7 +104,7 @@ mod arch_doc_shape_guard; // F19：顶层架构文档的结构性存在钉（必
 mod ccm_cli_contract;
 mod cross_half_edge_registry; // F20：两半之间的编译期边（跨半边 include_str! 逐条登记 + ★ 一条都不许长在生产段）
 mod doc_claim_registry; // F11：耐久文档里「描述当下」的字段与代码对拍（状态列逐格登记 + ★ 判据从文档里读那个数，代码里不留第二份）
-mod frame_cadence_guard; // F01：帧节奏说法的零命中守卫（P5 后 daemon 零定时器；被禁措辞见模块头注）
+mod frame_cadence_guard; // F01：帧节奏说法的零命中守卫（P5 后后端零定时器；被禁措辞见模块头注）
 mod gate_singleton_guard; // F03：§34 Gate 2 的身份判定在 Rust 侧只许有一个家（`gate-core`）
 
 #[cfg(test)]
@@ -129,8 +130,8 @@ mod launcher_identity_registry; // K-P5b：起会话方身份落点清账 + 递�
                                 //  「F10（出口④）：本机读面清账 + 递减棘轮（**正题被 F05b 挡着**）」。
                                 //  括号里那句今天不成立：F05b 已经做完并随 v3.7.0 发出去了
                                 //  （09-10 干净 win11 现打，PM：装出来那份跑着 2 个
-                                //  `cc-monitor-remote.exe`、裸 `monitor.exe` 那份 0 个）。
-                                //  今天挡着正题的是 daemon 侧一批有名有姓的缺口，逐条写在
+                                //  `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个）。
+                                //  今天挡着正题的是后端侧一批有名有姓的缺口，逐条写在
                                 //  那张表**自己每一行**里 —— 这里刻意不抄第二份（定框 E12）。〕
 mod local_read_surface_registry;
 #[cfg(test)]
@@ -143,7 +144,7 @@ mod parity_ledger; // L5：本地/远端平价对账表（§40 的机制那半�
                    // ⚠ 注释刻意写在上一行而不是行尾：本模块有一条判据要断言「生产段里没人消费这张表」，
                    //   而 `lib.rs` 的这行声明是它存在的方式、不是消费 —— 那条判据按**整行相等**放行它。
 mod plugin_class_registry;
-mod polling_registry; // U7-P：前端 + shared/ccm 的周期唤醒清账（daemon 那条零定时器护栏点名要「单独论证」的那半）
+mod polling_registry; // U7-P：前端 + shared/ccm 的周期唤醒清账（backend 那条零定时器护栏点名要「单独论证」的那半）
 mod quote_singleton_guard; // U8c-2b-0：POSIX 单引号 quote 在 Rust 侧只许有一个实现（账本 S5）
 mod rust_timer_registry; // F09：monitor **Rust 侧**周期唤醒清账（`polling_registry` 明确留下的那半）
 mod scanning_guard_registry; // audit-0805 F23：扫描型判据不许裸遍历（自匹配这一族的收口）
@@ -157,8 +158,7 @@ mod shell_lint_registry; // audit-0805 08-08：每个 shell 脚本要么进 shel
 mod structural_scan;
 mod subagent;
 mod tasks;
-mod tmux;
-mod tmux_daemon_gate_guard; // U10 裁决：daemon 侧没有身份守卫之前，send-keys/kill 不许改走 daemon
+mod tmux_backend_gate_guard; // U10 裁决：backend 侧没有身份守卫之前，send-keys/kill 不许改走 backend
 mod tmux_reconcile;
 mod tool_registry; // T01：受管工具声明（只声明，不改各工具行为）
 mod utils;
@@ -179,9 +179,9 @@ use tauri::{Emitter, Listener, Manager};
 /// 都干净。**保留 `CLAUDE_CONFIG_DIR`**（monitor 自己消费它解析数据目录）。
 /// 正常启动路径这些变量本就不存在 → no-op 零回归。
 ///
-/// ⚠ 勿把上面"子会话不注册 pidfile"泛化：CC 2.1.x 的 daemon **后台任务**
+/// ⚠ 勿把上面"子会话不注册 pidfile"泛化：CC 2.1.x 的 backend **后台任务**
 /// (--fork-session) 会写 pidfile（kind:"bg" + jobId）——那类由 session_map /
-/// 远端 daemon 的 kind 交互性过滤处理（Batch6-F21），与本处嵌套环境清洗无关。
+/// 远端后端的 kind 交互性过滤处理（Batch6-F21），与本处嵌套环境清洗无关。
 /// 完整排查：src/doc/DEVELOPMENT.md 常见问题节。
 ///
 /// 返回实际清掉的 key（供 caller 在 logging 就绪后留痕——本函数必须在任何线程
@@ -225,7 +225,7 @@ pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
 ///
 /// # 为什么非有这条缝不可（这是同一族病在**退出臂**上的落点）
 ///
-/// 先前守着退出臂的是 `local_daemon_tests.rs::the_exit_path_covers_both_ways_of_starting_the_local_backend`，
+/// 先前守着退出臂的是 `local_backend_host_tests.rs::the_exit_path_covers_both_ways_of_starting_the_local_backend`，
 /// 而它的形态是**「那个窗口里有没有这几段文本」**：
 /// `braced_block(prod, "RunEvent::Exit", 200, 6000)` → `kill_on_exit(` 恰好 1 处
 /// + `contains(needle)` ×4 + 两处位置序。
@@ -255,25 +255,25 @@ pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
 /// # ⚠ 它还买不到什么（射程边缘，如实写）
 ///
 /// - 本结构管的是「**收不收 · 收哪几个**」。**收口点自己收干净了没有**是它们各自的活
-///   （`local_daemon::stop_local_backend` / `stop_local_relay` 的头注与判据）。
+///   （`local_backend_host::stop_local_backend` / `stop_local_relay` 的头注与判据）。
 /// - 🔴 `RunEvent::Exit` 那个闭包**本身驱动不了** —— 那要真跑一次 tauri app（红线内够不着）。
-///   ⇒ 臂里那几行由 `local_daemon_tests.rs::the_exit_arm_hands_the_other_two_ways_to_the_seam`
+///   ⇒ 臂里那几行由 `local_backend_host_tests.rs::the_exit_arm_hands_the_other_two_ways_to_the_seam`
 ///   的**零命中守卫**看着（谁在臂里另起一条收法就红）。
 ///   **那一行委托本身没有行为级判据，它是这条链上今天最后一跳。**
 #[derive(Clone, Copy)]
 pub(crate) struct ExitShutdownSinks {
-    /// 常驻（脱离）那条起法的收口 —— 生产恒指 [`local_daemon::stop_detached_backend_on_exit`]。
+    /// 常驻（脱离）那条起法的收口 —— 生产恒指 [`local_backend_host::stop_detached_backend_on_exit`]。
     /// 返回「这一趟真的动手收了没有」（没脱离 ⇒ `false`）。
     pub(crate) detached: fn() -> bool,
-    /// 🔴 **第三个进程**：本机中转 —— 生产恒指 [`local_daemon::stop_relay_on_exit`]。
+    /// 🔴 **第三个进程**：本机中转 —— 生产恒指 [`local_backend_host::stop_relay_on_exit`]。
     /// 返回「这一趟真的收到了一个在跑的中转没有」。
     pub(crate) relay: fn() -> bool,
 }
 
 /// 生产上这条缝里插的那两个口。**只有这一处**，判据按函数地址对拍它。
 pub(crate) const PRODUCTION_EXIT_SHUTDOWN: ExitShutdownSinks = ExitShutdownSinks {
-    detached: local_daemon::stop_detached_backend_on_exit,
-    relay: local_daemon::stop_relay_on_exit,
+    detached: local_backend_host::stop_detached_backend_on_exit,
+    relay: local_backend_host::stop_relay_on_exit,
 };
 
 /// 退出臂的下半：**那两条自己不会死的起法**，勾了就逐个收掉。
@@ -282,7 +282,7 @@ pub(crate) const PRODUCTION_EXIT_SHUTDOWN: ExitShutdownSinks = ExitShutdownSinks
 ///（读两次 = 三条路可能拿到不同的答案，中间它是可以被改的）。
 pub(crate) fn shutdown_detached_ways_on_exit(kill: bool, sinks: ExitShutdownSinks) {
     if !kill {
-        // 缺省不杀（`P2s` C8②③）：被监护的 daemon 是纯 stdio 子进程，monitor 一退它自己就死；
+        // 缺省不杀（`P2s` C8②③）：被监护的后端是纯 stdio 子进程，monitor 一退它自己就死；
         // 而**脱离**那条与**中转**那条不会 —— 那正是「勾了才收」这条策略的意义所在。
         tracing::info!("退出：kill_on_exit=false —— 常驻后端与本机中转都不收");
         return;
@@ -523,10 +523,10 @@ pub fn run() {
             // ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10，v3.7.0〕。
             //
             // 〔墓碑 —— 本行原话逐字：「⚠ 今天恒走「诚实降级」那一支 —— 安装包里还没有
-            //  sidecar（`externalBin` 归 F05b）。」它记的是 F05b 之前的世界，**今天不成立**。〕
+            //  local_backend（`externalBin` 归 F05b）。」它记的是 F05b 之前的世界，**今天不成立**。〕
             //
             // 证伪它的读数：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）——
-            // **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe`
+            // **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe`
             // **2 个进程在跑**；**裸 `monitor.exe`** 那份 **0 个**。
             // F05b 已经做完并随 v3.7.0 发出去了：`externalBin` 配在
             // `src/bridge/tauri.sidecar.conf.json`，发版那一步用
@@ -536,23 +536,23 @@ pub fn run() {
             //
             // ⇒ 降级那一支仍然在（裸 exe · 开发树走的就是它），只是**不再是常数**。
             // 它**不是**「接线没做」：接线在这里，是**这一份产物里没带**，两者的区别就在那个
-            // tagged 返回值上。它**刻意不扫仓库 dev 产物** —— daemon 一起来就无条件往
+            // tagged 返回值上。它**刻意不扫仓库 dev 产物** —— backend 一起来就无条件往
             // tmux server 装三条全局 hook 且没有开关，扫到 dev 产物就起它 = 去改用户真实
             // tmux 的状态（F05 摸底 §2.5）。
             {
                 use backend::control::local_backend::Resolved;
-                // P2z（定框 C10）：exe 旁边没有 sidecar 时，把**已内嵌**的那份释放到本机再起 ——
-                // 「单 exe 也能起 daemon 进程」那句话的落点。
+                // P2z（定框 C10）：exe 旁边没有本机后端时，把**已内嵌**的那份释放到本机再起 ——
+                // 「单 exe 也能起后端进程」那句话的落点。
                 //
                 // 两样宿主知识在这里给（backend 层不认识它们）：
                 //   · 落点 `~/.cc-monitor/bin`：与远端自部署同一个目录，但**文件名带 build_id**
                 //     ⇒ 与远端那份结构上不可能撞（理由见 `extract_embedded_to` 头注的 D1 段）。
-                //   · 当前 arch：`sftp::daemon_binary` 按它挑内嵌字节；缺内嵌（`cfg(embedded_daemons)`
+                //   · 当前 arch：`sftp::backend_binary` 按它挑内嵌字节；缺内嵌（`cfg(embedded_backends)`
                 //     未置）时给 None，函数会诚实降级、不伪造理由。
-                use local_daemon::StartOutcome;
-                match local_daemon::start_local_backend() {
+                use local_backend_host::StartOutcome;
+                match local_backend_host::start_local_backend() {
                     StartOutcome::Started(p) => {
-                        tracing::info!("本机后端 sidecar: {}", p.display())
+                        tracing::info!("本机后端 local_backend: {}", p.display())
                     }
                     StartOutcome::AlreadyRunning => {
                         tracing::info!("本机后端已经在跑（启动路径不重复起）")
@@ -561,30 +561,30 @@ pub fn run() {
                         // ★★ `K-P1-D1` `重-2`：**「对不上就出声并拒绝」那句话，
                         //    在这条路上不许只进日志。**
                         //
-                        // 两条起法只有手动那条会让用户看见（`daemon_control::daemon_start`
+                        // 两条起法只有手动那条会让用户看见（`crate::backend::control::backend_control::backend_start`
                         // 回 `Err` ⇒ 前端 toast）。而这一条 —— 用户每天真正走的那条 ——
                         // 回修前是 `tracing::info!`，连 `warn` 都不是。
                         //
                         // 触发场景不是理论：口按家目录算死，`hello_verdict` 逐字比
-                        // `DAEMON_BUILD_ID` ⇒ **升级 monitor 之后上一次脱离留下的那个
-                        // daemon 还在听同一个口** ⇒ `Stranger` ⇒ `Adopt::Refused`
+                        // `BACKEND_BUILD_ID` ⇒ **升级 monitor 之后上一次脱离留下的那个
+                        // backend 还在听同一个口** ⇒ `Stranger` ⇒ `Adopt::Refused`
                         // ⇒ 本机后端起不来，而界面上什么都不说。
-                        // ⚠ 这是**常驻带来的新场景**：翻面之前 daemon 153ms 就死了。
+                        // ⚠ 这是**常驻带来的新场景**：翻面之前 backend 153ms 就死了。
                         //
                         // ⚠ 分两档，因为这两件事不是一回事：
                         //   · **拒绝**（口上有东西、接不上）= 一件用户能动手解决的事 ⇒ 说到眼前；
-                        //   · 别的失败（**这一份产物里没带 sidecar** —— 裸 exe / 开发树，
+                        //   · 别的失败（**这一份产物里没带 local_backend** —— 裸 exe / 开发树，
                         //     或释放内嵌那一份也失败了）= **诚实降级**，
                         //     每次启动都弹一次就成了噪音 ⇒ 仍走日志。
                         //     〔订正 2026-09-10（v3.7.0）—— 原话逐字：「别的失败（安装包里
-                        //      还没有 sidecar…）= 今天的**诚实降级**」。括号里那句今天不成立：
+                        //      还没有 local_backend…）= 今天的**诚实降级**」。括号里那句今天不成立：
                         //      09-10 干净 win11 现打（PM）装出来那份跑着 2 个
-                        //      `cc-monitor-remote.exe`、裸 `monitor.exe` 那份 0 个。
+                        //      `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个。
                         //      ⚠ **分档标准本身一格没动**，换掉的只是它举的那个例子 ——
                         //      「诚实降级」这一档今天仍然有人（裸 exe · 开发树 · 释放失败）。〕
-                        //   分档的依据是 `local_daemon` 里那条**只在真的被拒绝时才写下**的记录，
+                        //   分档的依据是 `local_backend_host` 里那条**只在真的被拒绝时才写下**的记录，
                         //   **不是**去 `reason` 串里认字（那是 `KPY5` 治的那种假信号）。
-                        match local_daemon::take_start_refusal() {
+                        match local_backend_host::take_start_refusal() {
                             Some(next_step) => {
                                 tracing::warn!("本机后端未启动: {reason}；找过 {looked_at:?}");
                                 use tauri_plugin_notification::NotificationExt;
@@ -792,7 +792,7 @@ pub fn run() {
 
             // issue #20：远端当前活跃 sid 集 —— session_map 的远端对应物，专供
             // frontend-ready 重放后对账（远端 sid 不在 session_map，#19 的本地对账
-            // 覆盖不到）。唯一写者是下面的 remote-session-emitter（daemon 的
+            // 覆盖不到）。唯一写者是下面的 remote-session-emitter（backend 的
             // added/removed 与断连 flush 走同一 remote_tx 通道，集合恒等于"前端当前
             // 应视为 live 的远端 sid"）。无远端配置时恒空，对账自然 no-op。
             // 违反此约束见 src/doc/INVARIANTS.md § 24。
@@ -881,14 +881,14 @@ pub fn run() {
                                 }
                                 for removed in change.removed {
                                     let sid = removed.sid;
-                                    // audit-fixes F03.2（灰灯三态分流）：daemon-removed（claude 进程没了，权威）
+                                    // audit-fixes F03.2（灰灯三态分流）：backend-removed（claude 进程没了，权威）
                                     // 到达时，看该 sid 的 `@ccm_sid` 是否仍出现在某 origin 的 TmuxSessions 帧里：
                                     //   - Some(origin)=tmux 会话尚在（空 shell）→ **idle-tmux 灰灯**：mark_idle +
                                     //     emit SESSION_IDLE + **不 forget 绑定**（登录 shell 的 ssh 窗仍活、↗ 拉前有效）。
                                     //   - None=tmux 也没了 → **archived**（原逻辑）：clear_idle + forget + SESSION_ENDED。
                                     // 判据 command-agnostic（见 ssh_source::tmux_origin_for_sid）：帧的新鲜度**由 hook 决定**
-                                    // （P5 删 ticker 后 daemon 零定时器）——hook 覆盖到的近乎即时，覆盖不到的可能**永不刷新**。退出
-                                    // 瞬间 command 列可能仍是 claude，故用 daemon-removed 判"claude 死"、@ccm_sid
+                                    // （P5 删 ticker 后后端零定时器）——hook 覆盖到的近乎即时，覆盖不到的可能**永不刷新**。退出
+                                    // 瞬间 command 列可能仍是 claude，故用 backend-removed 判"claude 死"、@ccm_sid
                                     // present 判"tmux 在"。**§24**：removed sid 已在上方从 remote_active 移出，idle 天然
                                     // 在集合外；idle 只写独立 REMOTE_IDLE（唯一写者=本 emitter），**不新增 remote_active 写点**。
                                     //
@@ -951,7 +951,7 @@ pub fn run() {
                                         }
                                     }
                                 }
-                                // Batch9-F27：远端红绿灯——daemon session_status 帧/
+                                // Batch9-F27：远端红绿灯——backend session_status 帧/
                                 // 宣告初始值经 status_changed 透传（与本地 emitter
                                 // 同形状，前端 sid-keyed 零改动）。
                                 for act in change.status_changed {
@@ -978,7 +978,7 @@ pub fn run() {
                 // 每台远端各起一条 ssh_source::run（多机 #30），与本地 watcher 走相同出口
                 // （batch_to_payloads → on_line_batch）；session 变化共享 remote_tx → 上面那
                 // 唯一的 remote-session-emitter（session 变化 host 无关，按 sid 维护）。
-                // `connected` 是 connection-healthy signal（每台一份）：stream_loop 收到 daemon
+                // `connected` 是 connection-healthy signal（每台一份）：stream_loop 收到 backend
                 // hello 时置 true，run() 的重连循环据此判定本次是否连上过（连上过→下次立即快速
                 // 重连，否则指数退避）。远端**不**门控 frontend-ready（本地 watcher 的
                 // initial_scan_done 才门控 replay；远端是实时流，无"初始扫完成"概念）。
@@ -990,7 +990,7 @@ pub fn run() {
                         cfg.host,
                         cfg.port
                     );
-                    // P2s（C8②）：起法包成**闭包**，把手交给 `daemon_control` ——
+                    // P2s（C8②）：起法包成**闭包**，把手交给 `backend_control` ——
                     // 那一层只按 origin 找把手，不认识 ssh（也不该认识）。
                     // 原来这里是直接 `spawn` 且**把 JoinHandle 丢掉** ⇒ 远端流起了就再也停不下来，
                     // 「每台机一个开关」在远端那侧根本无从谈起。
@@ -1017,10 +1017,10 @@ pub fn run() {
                         })
                     };
                     let first = spawn_one();
-                    daemon_control::register_remote(origin, Box::new(spawn_one), first);
+                    backend::control::backend_control::register_remote(origin, Box::new(spawn_one), first);
                 }
                 // audit-fixes F03.2：tmux 存活对账**从 8s poller 改为收帧驱动**（甲-evented，零轮询）——
-                // 收割器现落在 `ssh_source::stream_loop` 的 `TmuxSessions` 帧臂（daemon **事件驱动**推帧即算），
+                // 收割器现落在 `ssh_source::stream_loop` 的 `TmuxSessions` 帧臂（backend **事件驱动**推帧即算），
                 // 复用 `tmux_reconcile::reconcile_step`。故此处不再 spawn poller（`run_tmux_reconcile_poller` 已删）。
             }
 
@@ -1130,9 +1130,9 @@ pub fn run() {
                             .filter(|sid| !session_map.is_session_active(sid))
                             .collect();
                         // issue #20：#19 的远端版。远端 sid 不在 session_map，活跃集由
-                        // remote-session-emitter 维护（daemon added/removed + 断连 flush
+                        // remote-session-emitter 维护（backend added/removed + 断连 flush
                         // 同一通道）。断连窗口期 F5 会把其实还活着的远端会话一并归档——
-                        // 重连后 daemon 重发 session-added + 重放行，前端 un-archive
+                        // 重连后后端重发 session-added + 重放行，前端 un-archive
                         // （tabs.ts ensureTab，仅远端）复活，自愈闭环。
                         //
                         // ⚠ 配套前提：前端把 session-ended 与行事件**同序**处理（events.ts
@@ -1211,11 +1211,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            daemon_policy::set_daemon_kill_on_exit,
-            daemon_control::daemon_machines,
-            daemon_control::daemon_status,
-            daemon_control::daemon_start,
-            daemon_control::daemon_stop,
+            backend_policy::set_backend_kill_on_exit,
+            backend::control::backend_control::backend_machines,
+            backend::control::backend_control::backend_status,
+            backend::control::backend_control::backend_start,
+            backend::control::backend_control::backend_stop,
             config::load_config,
             config::save_config,
             // K-H2a：中转那把 key。**读那条永远只回掩码**（`KS6`）；
@@ -1231,17 +1231,17 @@ pub fn run() {
             write_account_aliases,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
-            cc_bus::read_cc_bus_state,
-            cc_bus::check_cc_bus_agent_online,
-            cc_bus::read_cc_bus_inbox,
-            cc_bus::cc_bus_send,
-            cc_bus::cc_bus_broadcast,
-            cc_bus::cc_bus_kill,
-            cc_bus::cc_bus_spawn,
+            backend::control::cc_bus::read_cc_bus_state,
+            backend::control::cc_bus::check_cc_bus_agent_online,
+            backend::control::cc_bus::read_cc_bus_inbox,
+            backend::control::cc_bus::cc_bus_send,
+            backend::control::cc_bus::cc_bus_broadcast,
+            backend::control::cc_bus::cc_bus_kill,
+            backend::control::cc_bus::cc_bus_spawn,
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,
-            backend::control::daemon_launch::daemon_send_into,
+            backend::control::backend_launch::backend_send_into,
             backend::control::launch_wire::render_ccm_launch,
             backend::control::launch_wire::render_launch_payload,
             hooks_diag::diagnose_local_cc_bus_hooks,
@@ -1304,9 +1304,9 @@ pub fn run() {
             // F10：一键装 / 卸远端 ccm 助手到 ~/.bashrc（SFTP 写 profile，SS-H）
             sftp::install_remote_ccm_helper,
             sftp::uninstall_remote_ccm_helper,
-            // F08c：手动安装 / 卸载远端 daemon（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）
-            sftp::deploy_remote_daemon,
-            sftp::uninstall_remote_daemon,
+            // F08c：手动安装 / 卸载远端后端（SFTP 写 ~/.cc-monitor/bin，SS-G 部署写豁免）
+            sftp::deploy_remote_backend,
+            sftp::uninstall_remote_backend,
             acct_iso_deploy::deploy_remote_acct_iso,
             acct_iso_deploy::check_remote_acct_iso,
             acct_iso_deploy::remote_acct_iso_shellinit,
@@ -1322,7 +1322,7 @@ pub fn run() {
             //    **是同一拍的事**：拆开任意一处，`commands.vitest.ts` 的 `C04a`
             //    或 `parity_ledger` 的双向相等当场红（`K-R106` 实测过前一种）。
             history::render_local_attach,
-            // A2：多账号只读查询（账号=一个 CLAUDE_CONFIG_DIR）。旧 daemon
+            // A2：多账号只读查询（账号=一个 CLAUDE_CONFIG_DIR）。旧 backend
             // 台一律回 available:false，前端降级隐藏账号功能而不是弹错。
             accounts::list_remote_accounts,
             local_accounts::list_local_accounts,
@@ -1342,11 +1342,11 @@ pub fn run() {
             sftp_pool::sftp_read_text_for_edit,
             sftp_pool::sftp_write_text,
             pubkey::push_public_key,
-            tmux::list_remote_tmux,
-            tmux::list_local_tmux,
-            tmux::capture_remote_pane,
-            tmux::kill_remote_tmux,
-            tmux::tmux_send_keys,
+            backend::control::tmux::list_remote_tmux,
+            backend::control::tmux::list_local_tmux,
+            backend::control::tmux::capture_remote_pane,
+            backend::control::tmux::kill_remote_tmux,
+            backend::control::tmux::tmux_send_keys,
             ccm_probe::probe_ccm_cli,
             // 🔴 `K-R69` / `KR69D2`：本机 `ccm` 这一格（我们那一份 · PATH 上那一份 · 判词）。
             ccm_probe::local_ccm_entry_status,
@@ -1399,7 +1399,7 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        // F05a：**退出前收掉本机后端。** 被监护的 daemon 对「stdin 写端关闭」刻意不敏感
+        // F05a：**退出前收掉本机后端。** 被监护的后端对「stdin 写端关闭」刻意不敏感
         // ⇒ 不显式 `stop()` 它就活过 monitor，成游魂进程。
         //
         // ⚠ 这一段是 **clippy 的 dead_code 抓出来的**：`stop()` / `attempts()` / `current_pid()`
@@ -1410,17 +1410,17 @@ pub fn run() {
                 // P2s（C8②③）：**杀不杀由这台机自己的策略说了算**，缺省不杀。
                 //
                 // ⚠ 原来这里是无条件 `stop()`，理由写着「不杀就成了游魂进程」。
-                // 那个理由**实测不成立**〔08-11，P2s §0a〕：daemon 是纯 stdio 子进程，
+                // 那个理由**实测不成立**〔08-11，P2s §0a〕：backend 是纯 stdio 子进程，
                 // monitor 一退读端就断，它 **153 毫秒**内自己 broken-pipe 退出。
                 // ⇒ 不杀不会留游魂；那时这条策略的真实语义是「立刻杀」与「让它自己死」之差。
                 //
                 // ★★ 〔`K-P1` 08-26〕**上面那句话今天只对一半的情况成立** ——
-                // 本机后端在 Linux 上会**真脱离**（`local_daemon::start_detached`），
+                // 本机后端在 Linux 上会**真脱离**（`local_backend_host::start_detached`），
                 // 那一支上「不杀」就是真的继续跑；`D2 阻-5` 又补上了第三条（**中转是另一个进程**）。
                 // ⇒ 这个勾必须对**三条起法**都生效，否则用户勾了「退出时结束它」、退出、
                 // 而它没被结束 —— 一个说谎的开关。
                 // 策略**只读一次**，三条路共用同一个答案。
-                let kill = daemon_policy::kill_on_exit(inbound_client::LOCAL_ORIGIN);
+                let kill = crate::backend_policy::kill_on_exit(crate::backend::control::inbound_client::LOCAL_ORIGIN);
                 // ── 起法 ①：被监护的子进程，句柄在 `LOCAL_BACKEND` 里 ──
                 // ⚠ 锁在这里取、句柄不克隆：`SuperviseHandle` 刻意不是 `Clone`
                 // （克隆出去的那份 `stop()` 谁都能调，就没有「一个句柄一条命」这回事了）。
@@ -1433,7 +1433,7 @@ pub fn run() {
                 // 而那个文件不在本件登记的 27 项写区里 ⇒ **上报，不自己动**。
                 // ⚠ 残留的洞如实登记在 `ExitShutdownSinks` 头注里（`if kill && !kill` 过得去）。
                 {
-                    let guard = local_daemon::LOCAL_BACKEND.lock();
+                    let guard = local_backend_host::LOCAL_BACKEND.lock();
                     if let Some(h) = guard.as_ref().ok().and_then(|g| g.as_ref()) {
                         tracing::info!(
                             "退出：本机后端 pid={:?}（起过 {} 次）kill_on_exit={kill}",
@@ -1495,7 +1495,7 @@ pub(crate) fn load_show_bg_sessions() -> bool {
 ///   "hosts": [
 ///     { "label": "pi", "host": "raspberrypi.local", "port": 22, "user": "pi",
 ///       "keyPath": "C:\\Users\\me\\.ssh\\id_ed25519",
-///       "daemonPath": "/home/pi/cc-monitor-remote",
+///       "daemonPath": "/home/pi/cc-monitor-backend",
 ///       "hostKeyFingerprint": "SHA256:..." }
 ///   ]
 /// }
@@ -1705,13 +1705,13 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 ///
 /// # 两个字段各自的射程，别读宽
 ///
-/// - `routed`：**这个 configDir 推出来的账号 id 在中转凭据表里有一行**。
+/// - `routed`：**这个 configDir 推出来的账号 id 在apikey 凭据表里有一行**。
 ///   推 id 的规则只有一份（`history::relay_account_id_of_dir`），起会话那一侧调的是同一个，
 ///   由 `history::tests::the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule` 钉着。
 ///   ⚠ 它**不**答「那把 key 能不能用」（要到 claude 那边才知道），
 ///   也**不**答「这次拉起会不会真注入」（那还要过 `running` 那一格）。
 /// - `running`：**我们起过本机中转而且没停过**，**不是**「那个口上真有人听」
-///   （`local_daemon::relay_running` 头注逐字写了那两个分家的窗口）。
+///   （`local_backend_host::relay_running` 头注逐字写了那两个分家的窗口）。
 ///
 /// ⚠ **本结构刻意不走 `ts-rs`**：`RelayCredentialsStatus` 的先例逐字记着理由 ——
 /// 导出会在 `src/generated/` **新增一个文件**，而那个目录的清单由
@@ -1721,7 +1721,7 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 struct RelayRouting {
-    /// 传进来的那些 configDir 里，中转表里**有对应行**的那几个（原样回，不是 id）。
+    /// 传进来的那些 configDir 里，apikey 表里**有对应行**的那几个（原样回，不是 id）。
     routed: Vec<String>,
     /// 本机中转在不在跑。射程见上。
     running: bool,
@@ -1759,7 +1759,7 @@ fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
 /// # ⚠⚠ `K-H2c` `KH2C1`：**第二个入参是 `configDir`，不是账号名**
 ///
 /// 界面手上的账号对象**两个字段都有**（`local_accounts.rs` 的 `RawAccount { name, configDir }`），
-/// 而它们是 manifest 里**两个独立字段、可以漂开**。中转表按**账号 id** 索引，
+/// 而它们是 manifest 里**两个独立字段、可以漂开**。apikey 表按**账号 id** 索引，
 /// 而那个 id 由 [`history::relay_account_id_of_dir`] 从 `configDir` 推出来 ——
 /// **全仓只有那一份规则**，起会话那一侧（`history::relay_account_id`）调的是同一个函数。
 ///

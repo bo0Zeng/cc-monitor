@@ -23,10 +23,10 @@
  * `container: tmux` 的 `create` / `send-into`，加上 `action: attach`。三格都要问座
  * （`session-backend.ts`）要 `tmux new-session` / `send-keys` / `attach`，**而后端今天产不出它们**：
  *
- * - daemon 的 `control/launch.rs` 头注逐字「本模块**不 attach**，一次都不」（attach 必须落在
+ * - backend 的 `control/launch.rs` 头注逐字「本模块**不 attach**，一次都不」（attach 必须落在
  *   用户自己的终端里，§1.3）；生产段发 `create-or-attach` 的处数今天是 **0**；
  * - Rust 的 `ccm_invocation` 那条只对**装了 ccm** 的主机成立；
- * - ~~而 `daemonless`（每台远端主机的用户开关）今天仍在 ⇒ 没有 daemon 可问的主机**存在**。~~
+ * - ~~而 `daemonless`（每台远端主机的用户开关）今天仍在 ⇒ 没有后端可问的主机**存在**。~~
  *   🔴 **09-11 `K-R59` 起这一条退役了**：用户定框 `K35` 逐字「不要有 daemonless。
  *   没有没有后端的情况。前端应该就是去调用远程后端的。」⇒ 那一类主机不再存在。
  *

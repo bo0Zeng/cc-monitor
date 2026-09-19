@@ -51,7 +51,7 @@ import { mintSessionTmuxName } from "../remote-launch";
 export async function mintLocalTmuxName(cwd: string): Promise<string | null> {
   try {
     const sessions = await commands.list_local_tmux();
-    // `null` = 本机 daemon 通道没起 / 还没推过帧 = **不知道**。绝不退化成空集。
+    // `null` = 本机后端通道没起 / 还没推过帧 = **不知道**。绝不退化成空集。
     if (!sessions) return null;
     return mintSessionTmuxName(cwd, new Set(sessions.map((s) => s.name)));
   } catch {

@@ -1,4 +1,4 @@
-//! Phase-0 daemon→client wire types.
+//! Phase-0 backend→client wire types.
 //!
 //! Wire contract: exactly one UTF-8 JSON object per line, terminated by `\n`,
 //! with no bare `\n`/`\r` inside the object. `serde_json` compact output
@@ -8,7 +8,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// A single daemon→client frame.
+/// A single backend→client frame.
 ///
 /// Serializes with an external `kind` tag, e.g.
 /// `{"kind":"hello","v":1,...}` or `{"kind":"session_added","sid":"..."}`.
@@ -19,7 +19,7 @@ use std::collections::HashMap;
 #[serde(rename_all = "snake_case")]
 pub enum RemovalCause {
     /// 真的没了：pidfile 被删 / 进程退出 / 原地翻成非交互 kind。
-    /// **默认值** —— 缺字段就是它，保证旧 daemon×新 monitor 与今天行为一致。
+    /// **默认值** —— 缺字段就是它，保证旧 backend×新 monitor 与今天行为一致。
     #[default]
     Gone,
     /// 同一个 pidfile 原地换了 sid（`/branch`、`/clear`）：旧 sid **不是死了，是被顶替了**。
@@ -75,19 +75,19 @@ pub struct AgentHome {
 /// # 它为什么是一张**负向**表（这一格是本结构最贵的判断，不是口味）
 ///
 /// 三条既有的能力面都是**正向**清单。正向在这里**结构上表达不了「我什么都做不到」**：
-/// additive 要求空表省略（`skip_serializing_if`），而「省略」必须等于**旧 daemon 的语义**。
+/// additive 要求空表省略（`skip_serializing_if`），而「省略」必须等于**旧后端的语义**。
 /// 于是正向表的空集只有两种读法，两种都坏：
-/// ① 空=「一条都做不到」⇒ 每台旧 daemon 都变成「什么都不能干」，功能当场全消失；
+/// ① 空=「一条都做不到」⇒ 每台旧后端都变成「什么都不能干」，功能当场全消失；
 /// ② 空=「全都做得到」⇒ 一台**真的什么都做不到**的机器无法把这件事说出口。
 /// 负向表没有这个二选一：**空 = 我没有任何「做不到」的把握** ——
-/// 这**逐字就是今天的语义**（客户端照发、点了才由命令级 code 兜底），旧 daemon 天然落在这一格。
+/// 这**逐字就是今天的语义**（客户端照发、点了才由命令级 code 兜底），旧后端天然落在这一格。
 ///
 /// # `code` 为什么与**调用时**的错误码同一套取值空间
 ///
 /// 「做不到」这件事今天**已经**有表达手段，只是发生在调用之后：`kill`/`launch` 回 `no_tmux`
 /// （`control/kill.rs` · `control/gate.rs` · `control/launch.rs`），`bus-*` 回 `not_installed`。
 /// 事前那一句要是自造一套词，客户端就得维护**两张**「这句话怎么翻成人话」的表 ——
-/// 而 monitor 侧那张表已经写好了（`backend/control/daemon_launch.rs` 等三处逐字「远端未安装 tmux」）。
+/// 而 monitor 侧那张表已经写好了（`backend/control/backend_launch.rs` 等三处逐字「远端未安装 tmux」）。
 /// ⇒ 复用同一套 code，**事前与事后是同一句话，只是来得早**。
 /// 这一条由 `main_fourth_face_tests.rs::the_declared_code_is_one_the_registry_already_declares` 钉住：
 /// 本表只许说 `inbound::REGISTRY` 里那条命令**自己登记过**的 code。
@@ -95,7 +95,7 @@ pub struct AgentHome {
 /// # 为什么不带一句 `message`
 ///
 /// 那句人话今天归 monitor（见上）。再发一份等于给同一句话开第二个真相源，
-/// 而 daemon 这一侧连用户的语言都不知道。**要诊断细节的场合走真调用**，那条路的 message
+/// 而后端这一侧连用户的语言都不知道。**要诊断细节的场合走真调用**，那条路的 message
 /// 本来就说得更细（`not_installed_message` 会列出查过哪几个目录）。
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct Unavailable {
@@ -142,29 +142,29 @@ pub enum Frame {
         /// `S5` 落地时往这里填，**不要再加第二个目录字段**。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         homes: Vec<AgentHome>,
-        /// F66（#58③，additive）：本 daemon 声明支持的**能力 token 集**（开放字符串，
+        /// F66（#58③，additive）：本后端声明支持的**能力 token 集**（开放字符串，
         /// 加法式）。monitor 按此声明决定发哪些流模式 flag（`--with-bg`/`--tail-only`），
         /// **不再靠 build_id 精确匹配**——闭合 2026-07-09 那类「身份确认不了就全降级」事故。
         /// 旧 monitor 忽略此字段（additive）；空/缺 = 按最小能力集待它。
-        /// **§26 死循环护栏**：只声明本 daemon **会先剥离对应 flag** 的能力（老到不剥离
-        /// 未知 flag 的 daemon 也老到不声明该能力，声明 = 自证认识该 flag）。
+        /// **§26 死循环护栏**：只声明本 backend **会先剥离对应 flag** 的能力（老到不剥离
+        /// 未知 flag 的后端也老到不声明该能力，声明 = 自证认识该 flag）。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         capabilities: Vec<String>,
-        /// phase②（daemon-08，additive，与 `capabilities` **正交**）：本 daemon **会发射的帧 kind 集**
+        /// phase②（backend-08，additive，与 `capabilities` **正交**）：本 backend **会发射的帧 kind 集**
         /// （snake_case，如 "session_status"/"turn_end"）。aterm 据此**门控消费**（emits 含该 kind →
         /// 期待/依赖该帧；不含 → 不依赖、回退 β/watchdog）。**区别于 `capabilities`**（后者=流 flag-strip
         /// 能力、受 §26 死循环护栏 + `every_capability_token_is_strippable` 强制每 token 有可剥离 flag）——
         /// `emits` 是纯发射声明、无对应 flag、**不受 §26**。空/缺 → 省略（旧 client 忽略，additive）。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         emits: Vec<String>,
-        /// U6b-2（additive）：本 daemon **接受的入方向命令集**。
+        /// U6b-2（additive）：本 backend **接受的入方向命令集**。
         ///
         /// 能力协商此前只有出方向那一半（`capabilities` 说「我认识哪些流 flag」）。
         /// 客户端得知道发什么过去才有人接，否则只能试错。
-        /// 空/缺 = **这个 daemon 不读 stdin**（U6b-1 之前的所有版本），客户端别发命令。
+        /// 空/缺 = **这个后端不读 stdin**（U6b-1 之前的所有版本），客户端别发命令。
         #[serde(skip_serializing_if = "Vec::is_empty")]
         commands: Vec<String>,
-        /// `K-P4`（09-04，additive，**与上面三条都正交**）：本 daemon **接得下、但在这台
+        /// `K-P4`（09-04，additive，**与上面三条都正交**）：本 backend **接得下、但在这台
         /// 机器上做不到**的命令，以及原因（`[{command, code}]`，见 [`Unavailable`]）。
         ///
         /// # 它买的是什么：**事前**那一半
@@ -191,10 +191,10 @@ pub enum Frame {
         ///
         /// # 消费侧口径（三句，缺一句就会读错）
         ///
-        /// ① **空/缺 = 这台 daemon 没有任何「做不到」的把握**，不是「全都做得到」——
-        ///    客户端照今天的样子办（照发、点了看 code）。旧 daemon 天然落这一格。
+        /// ① **空/缺 = 这台后端没有任何「做不到」的把握**，不是「全都做得到」——
+        ///    客户端照今天的样子办（照发、点了看 code）。旧后端天然落这一格。
         /// ② 列出来的那条 = **别画那个按钮**（或画成灰的，配 `code` 那句人话）。
-        /// ③ 🔴 **它是提示，不是闸门。** daemon 自己**绝不**拿这张表去拒命令。
+        /// ③ 🔴 **它是提示，不是闸门。** backend 自己**绝不**拿这张表去拒命令。
         ///    **过期窗口比「一次连接」大得多，别按直觉估**：`build_hello` 在分档**之前**
         ///    只调一次（`main.rs`），那一帧随后交给两条载体，而常驻那条（`listen.rs`）
         ///    的分档表逐字写着「**不限次的『只读 hello 就走』**」——
@@ -225,7 +225,7 @@ pub enum Frame {
         path: String,
         seq: u64,
         raw: String,
-        /// daemon-01（gap#2，additive 不 bump PROTO_VERSION）：本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
+        /// backend-01（gap#2，additive 不 bump PROTO_VERSION）：本行末尾（含 `\n`）在文件中的**累计原始字节 offset**——
         /// 语义**逐字节对齐 aterm `LineFramer.endOffset`**：计 CRLF 的 `\r`、含 `\n`、残行不计；resume N ⇒
         /// `tail -c +(N+1)`。给 offset 续拉/截断检测（`seq` 是 per-stream 序数、非 resume 键）。
         /// 注：`Frame` 仅 derive `Serialize`，故此 `#[serde(default)]` 在**本 crate 装饰性**。
@@ -246,7 +246,7 @@ pub enum Frame {
     SessionAdded {
         sid: String,
         /// DG3（#2D，additive）：会话属哪 agent kind——`"codex"`（Codex 会话）。Claude 会话**省略**
-        /// （skip_if_none）→ 消费侧缺=claude（向后兼容、旧 daemon 无此字段）。
+        /// （skip_if_none）→ 消费侧缺=claude（向后兼容、旧后端无此字段）。
         #[serde(skip_serializing_if = "Option::is_none")]
         agent_kind: Option<String>,
         /// DG3（#2D，additive）：判活置信度——`"heuristic"`（Codex 无 pidfile、mtime/proc 启发）。
@@ -265,7 +265,7 @@ pub enum Frame {
         /// **「attach 进去对人有没有意义」**。
         ///
         /// `false` = 别给 attach / ↗ / 「杀死空 tmux」这几个动作。
-        /// **省略 = `true`**（存量会话与旧 daemon 一律照旧，零迁移）。
+        /// **省略 = `true`**（存量会话与旧后端一律照旧，零迁移）。
         /// 来源：pidfile 的 `attachable` 布尔字段（契约见 `src/doc/IPC-PROTOCOL.md` §9.3）。
         #[serde(skip_serializing_if = "Option::is_none")]
         attachable: Option<bool>,
@@ -280,7 +280,7 @@ pub enum Frame {
         #[serde(skip_serializing_if = "Option::is_none")]
         path: Option<String>,
         /// Batch8 审计 D-I2（additive）：tail-only 模式下 prime 时的完整行数 L
-        /// ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/daemon
+        /// ——monitor 校验快照拉到的行数 ≥ L 才算成功（不足 = 中途断/backend
         /// 报错，触发重试；exit status 经 ChannelStream 拿不到，行数校验更强）。
         /// 全量模式 None。
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -308,16 +308,16 @@ pub enum Frame {
         sid: String,
         /// **S0（additive）：这个 sid 是「死了」还是「被顶替了」。**
         ///
-        /// 为什么必须由 daemon 说：monitor 收到 removed 后要在「灰点（tmux 还在，可以回去
+        /// 为什么必须由后端说：monitor 收到 removed 后要在「灰点（tmux 还在，可以回去
         /// attach）」和「归档」之间二选一，今天它靠**查自己缓存的那份 `tmux ls` 原文里
         /// `@ccm_sid` 还在不在**来猜。`/branch`（同 pidfile 原地换 sid）时这个猜法必错：
         /// 旧 sid 的 tmux 格子还在、只是 `@ccm_sid` 已被换成新 sid（`U-NP④` 之前由
-        /// `shared/ccm` 的每秒 poller 换，之后由 daemon 的 `control::identity_tag` 换 ——
+        /// `shared/ccm` 的每秒 poller 换，之后由后端的 `control::identity_tag` 换 ——
         /// **换的时机与结果一样，这条推理不受影响**），
         /// 而那份缓存**在 P5 删掉 8s ticker 之后再没有任何事件路径会去刷新它**
         /// ⇒ 旧 tab 永久灰点、且按旧 sid 找不到 tmux 会话 ⇒ 杀不掉。
         ///
-        /// daemon 这边本来就**分得清**这两件事——它们是两个不同的调用点。把信息发出去，
+        /// backend 这边本来就**分得清**这两件事——它们是两个不同的调用点。把信息发出去，
         /// monitor 就不用猜，也就不受「缓存多旧」和「`@ccm_sid` 什么时候被回填」影响。
         ///
         /// 线上表现：[`RemovalCause::Gone`] **不写字段**（旧 monitor 原样工作，additive）；
@@ -325,15 +325,15 @@ pub enum Frame {
         #[serde(default, skip_serializing_if = "RemovalCause::is_gone")]
         cause: RemovalCause,
     },
-    /// phase②（daemon-09）：turn-end 边沿（一轮 assistant 完成）。**方案 C：raw-per-record、daemon
+    /// phase②（backend-09）：turn-end 边沿（一轮 assistant 完成）。**方案 C：raw-per-record、backend
     /// 不 dedup**——每见一条 turn-end 记录（`end_turn && !isApiError && !isSidechain`，见 `turn_detect`）
     /// 发一帧；aterm 侧 **rolling-latest + debounce(1200ms) `baselineByPath`** 塌合同 turn 的多记录、
     /// 首见吞历史不通知、offset 续拉重放 uuid ≤ 基线不通知（**transport-agnostic、与 β 逐字同语义、
-    /// gap#6 闭**；daemon 不猜消息边界）。`uuid` = 完成记录**顶层 uuid** = 客户端 dedup 键。
+    /// gap#6 闭**；backend 不猜消息边界）。`uuid` = 完成记录**顶层 uuid** = 客户端 dedup 键。
     /// **不带 `byte_offset`**（只 Line 带）——α watcher：Line 推 currentOffset、TurnEnd 喂 rolling
     /// current，结算时 baseline+offset 同段提交。旧 monitor 未知 kind 忽略（additive）。
     TurnEnd { session_id: String, uuid: String },
-    /// B2（tmux 对账改 daemon 推送）：daemon 在**远端本地**跑 `tmux ls -F '<TMUX_LS_FMT>'` 的**原始 stdout**
+    /// B2（tmux 对账改后端推送）：backend 在**远端本地**跑 `tmux ls -F '<TMUX_LS_FMT>'` 的**原始 stdout**
     /// （或哨兵 `NO_TMUX`），周期性推给 monitor——替掉 monitor 每 8s 新建 SSH 跑 tmux ls 的刷屏轮询。
     /// **送 raw、client 解析**（照 `Line` 帧哲学，复用 monitor 现有 `tmux::parse_tmux_ls`，零解析重复）。
     /// **monitor 专属**：aterm DaemonTransport 未知 kind 跳过。旧 monitor 忽略未知 kind（additive）。
@@ -342,17 +342,17 @@ pub enum Frame {
     ///
     /// **它补的是什么**：`TmuxSessions` 是「当前还剩哪些」的快照，monitor 靠**连续两次
     /// 没看见**（`RETIRE_MISS_THRESHOLD >= 2`）才敢 retire —— 那道门是为了容忍观测抖动，
-    /// 但也意味着「多个会话里关掉一个」至少要等两个节拍。本帧是 daemon 与上一份快照
+    /// 但也意味着「多个会话里关掉一个」至少要等两个节拍。本帧是后端与上一份快照
     /// 差分出来的**确定结论**，monitor 收到即可直接 retire，**绕过 miss 计数**。
     ///
-    /// **快照路径与 miss 计数原样保留**（重同步 / 旧 daemon 降级都靠它）⇒ 同一 sid 可能
+    /// **快照路径与 miss 计数原样保留**（重同步 / 旧后端降级都靠它）⇒ 同一 sid 可能
     /// 两条路都到，retire 必须幂等（`SidTrack.retired` 本就是幂等设计）。
     ///
     /// **旧 monitor 忽略本帧**：未知 kind 走 `warn` 后跳过（`ssh_source.rs` 那条已有测试
     /// `unknown_kind_returns_none` 钉住）⇒ 行为退回今天的「靠快照 + miss 计数」，不崩。
     TmuxSessionClosed {
         /// 会话名（`tmux ls` 第一列）。**不带 sid**：`#{@ccm_sid}` 在 hook 上下文里取不到
-        /// （P0 实测会拿到空 ⇒ 把活会话判灰），而 daemon 这边是**差分算出来的名字**，
+        /// （P0 实测会拿到空 ⇒ 把活会话判灰），而后端这边是**差分算出来的名字**，
         /// sid 由 monitor 用最新快照反查 —— 那份映射它本来就有。
         name: String,
     },
@@ -370,7 +370,7 @@ pub enum Frame {
         ///
         /// **旧 monitor 忽略本字段**：它看到空 `raw` ⇒ 空 backend ⇒ 保守跳过 = 今天的行为，
         /// 无回归。新 monitor 读本字段才能安全 retire。取值集与 monitor
-        /// `src/bridge/src/tmux.rs` 的 `OBS_*` const 是**双写点**（有守卫钉住）。
+        /// `src/bridge/src/backend/control/tmux.rs` 的 `OBS_*` const 是**双写点**（有守卫钉住）。
         #[serde(skip_serializing_if = "Option::is_none")]
         observation: Option<String>,
     },
@@ -391,10 +391,10 @@ pub enum Frame {
         lost_truncated: bool,
     },
 
-    /// U6b-1：**入方向命令的应答**。`id` 是客户端给的不透明串，daemon **原样回显、不解析**。
+    /// U6b-1：**入方向命令的应答**。`id` 是客户端给的不透明串，backend **原样回显、不解析**。
     ///
     /// 复用出方向的 `kind` tag 空间而不另开一条流：旧 monitor 见到未知 kind 会**忽略**
-    /// （§10 已有的 additive 规律），所以新 daemon × 旧 monitor 天然安全。
+    /// （§10 已有的 additive 规律），所以新 backend × 旧 monitor 天然安全。
     ///
     /// 错误形状 `{code, message}` **对齐 `--resolve` 已冻结的那套**（协议 v1 §3），
     /// 不发明第二种错误 JSON。成功时两者都省略。
@@ -485,14 +485,14 @@ impl Frame {
     }
 }
 
-/// U6b-1：**入方向**请求信封。只 `Deserialize` —— daemon 是读的那一方。
+/// U6b-1：**入方向**请求信封。只 `Deserialize` —— backend 是读的那一方。
 ///
 /// ```text
 /// {"id":"<opaque>","cmd":"<name>","args":{...}}
 /// ```
 ///
-/// `id` **不透明**：daemon 不解析、不校验格式、只回显。谁生成谁负责唯一 —— 客户端。
-/// daemon 自己发号的话，重连后号段会撞（同 F90「不许拿会变的东西当持久键」）。
+/// `id` **不透明**：backend 不解析、不校验格式、只回显。谁生成谁负责唯一 —— 客户端。
+/// backend 自己发号的话，重连后号段会撞（同 F90「不许拿会变的东西当持久键」）。
 #[derive(Debug, Clone, Deserialize)]
 pub struct Request {
     pub id: String,

@@ -9,7 +9,7 @@
 //! 散文里复述一份会把它数成 2（本仓「判据在自己的语料里找到自己」那一族）。
 //!
 //! ★ **它与 `agents/fake/` 是两条轴上的两件东西，别混起来读**：那一份是**最小假 agent**
-//! （`daemon-split` 的 `S6`，走的 7 段是「发现 / 宣告 / 读会话 / 判活 / 账号 / 用量 / resume」，
+//! （`backend-split` 的 `S6`，走的 7 段是「发现 / 宣告 / 读会话 / 判活 / 账号 / 用量 / resume」，
 //! 全程纯函数、一个进程都不起）；本份是**最小假插件**（找它 / 问它会什么 / 传 argv 起它 /
 //! 拿码 / 翻语义），而且**必须真起一个进程** —— 那一条与 `S6` 恰好相反，理由见下面「跳⑥」。
 //!
@@ -55,7 +55,7 @@
 //! | ⑥ 传 argv 起它 | ✅ | **真过** | `plugin::invoke::run`，**本 crate 第一次真起一个插件进程**（今天 `invoke.rs` 6 条 + `cc_bus.rs` 7 条，一条都没起过进程） |
 //! | ⑦ 拿码摘诊断 | ✅ | **真过** | 码与两条流来自真进程（今天那两条是手搓 `Done{…}`） |
 //! | ⑧ 把码翻成语义 | ✅ | **自问自答，而这一格的自问自答是对的** | `E6` 逐字要求码表**每插件一份** ⇒ 通用层按定框就不该有它。这一跳「没过通用层」是设计，不是缺口 |
-//! | ⑨ 回帧给客户端 | ❌ 走不到 | — | 要真 daemon 收发帧（派工令：不起真 daemon） |
+//! | ⑨ 回帧给客户端 | ❌ 走不到 | — | 要真后端收发帧（派工令：不起真后端） |
 //!
 //! ⇒ **一句话带分母**：九跳里本夹具真走 **6**（②半 · ④⑤⑥⑦⑧），
 //! 其中**真过通用层的是 4 跳半**（④⑤⑥⑦ + ②的判定半）· **自问自答 1 跳**（⑧，按定框应当如此）·
@@ -87,10 +87,10 @@
 //!
 //! # 诚实边界（写在这里，因为它们删了不会红）
 //!
-//! - 跳①③⑨ **本地验不了**，不是「以后再说」：它们要一个真 daemon 收发帧。今天真跑过那条路的
-//!   是 `tests/e2e/daemon-cc-bus.sh`（CI 地板 **50**，`.github/workflows/ci.yml:646` 逐字
-//!   `run: bash tests/e2e/assert-pass-floor.sh daemon-cc-bus 50`）——⚠ **它不在门禁九格里**
-//!   （`grep -c daemon-cc-bus tests/scripts/gate.sh` ⇒ **0**，09-04 现打），而且它测的是
+//! - 跳①③⑨ **本地验不了**，不是「以后再说」：它们要一个真后端收发帧。今天真跑过那条路的
+//!   是 `tests/e2e/backend-cc-bus.sh`（CI 地板 **50**，`.github/workflows/ci.yml:646` 逐字
+//!   `run: bash tests/e2e/assert-pass-floor.sh backend-cc-bus 50`）——⚠ **它不在门禁九格里**
+//!   （`grep -c backend-cc-bus tests/scripts/gate.sh` ⇒ **0**，09-04 现打），而且它测的是
 //!   **那个既有插件**，不是「加一个新插件」。
 //! - 本文件**不证明**「加一个插件，宿主零改动」。它证的是「**这几样知识凑得出一条真跑得动的路**」，
 //!   并给出那句话今天的**差距读数**（`KW2E5`，逐处住址在
@@ -166,7 +166,7 @@ mod tests {
     ///
     /// 逐行拼而不是一整块字面量：一整块里若出现**列 0 的右大括号**，
     /// `guard_core` 的剥法会**在那里收尾** ⇒ 本文件的测试段被剥成两半，
-    /// 而剥法自检（`every_daemon_file_strips_clean`）与
+    /// 而剥法自检（`every_backend_file_strips_clean`）与
     /// `assert_no_test_code` 会当场红。⇒ 全文一个大括号都不用（`case`/`if`/`while` 足够）。
     fn script_text(name: &str) -> String {
         let lines: Vec<String> = vec![
@@ -670,7 +670,7 @@ mod tests {
         include_str!("plugin_walk_fixture.rs")
     }
 
-    /// daemon 的 `src/` 根。
+    /// backend 的 `src/` 根。
     fn src_root() -> PathBuf {
         crate::guard_support::src_root()
     }
@@ -1324,7 +1324,7 @@ mod tests {
                 .iter()
                 .any(|s| s.name == plugin_name()),
             "假插件混进了 `inbound::REGISTRY` —— 真填 `hello.commands` 那天，\
-             daemon 会向仓外消费方声明一条**不存在**的命令"
+             backend 会向仓外消费方声明一条**不存在**的命令"
         );
     }
 
@@ -1590,9 +1590,9 @@ mod tests {
     ///    交给子进程的只有三样：argv · 额外 env · 关掉的 stdin —— 没有任何回程端点。
     ///
     /// ② **暗路 —— 09-05 关掉了，这一段是它的病历**〔`K-R26`〕。
-    ///    09-04 夜本格逐字记着：`invoke::run` **不 `env_clear()`** ⇒ 子进程**继承 daemon 的
+    ///    09-04 夜本格逐字记着：`invoke::run` **不 `env_clear()`** ⇒ 子进程**继承后端的
     ///    整份环境**，而常驻监听口那两个变量（`listen::ENV_PORT` / `listen::ENV_TOKEN`）
-    ///    恰好就是「接上宿主 + 过鉴权」需要的两样 ⇒ 只要 daemon 是带着它们起的，
+    ///    恰好就是「接上宿主 + 过鉴权」需要的两样 ⇒ 只要后端是带着它们起的，
     ///    **任何被它起的插件读一读自己的环境就能回连宿主、发全部基础命令**。
     ///    那不是「已经有了回调口」—— 它是**一条没有协议、没有权限模型、没有审计的**回程，
     ///    是**缺口的一种形状**，不是能力。
@@ -1684,7 +1684,7 @@ mod tests {
             invoke_prod.matches("env_clear").count(),
             1,
             "`plugin/invoke.rs` 的生产段里 `env_clear` 不是恰好一处。\n\
-             **没有** ⇒ 那条暗路又开了：子进程重新继承 daemon 的整份环境，\
+             **没有** ⇒ 那条暗路又开了：子进程重新继承后端的整份环境，\
              常驻口的地址与令牌跟着漏过去（本格头注 ② 段就是它的病历）。\n\
              **两处以上** ⇒ 先回答一句「哪一处是真的」—— 清两遍不会更干净，\
              只会让「白名单只有一个家」这句话开始漂。"
@@ -1715,7 +1715,7 @@ mod tests {
     /// 内层把读数打在这个前缀后面；外层据它判「内层真的跑到了那几行断言」。
     const INHERIT_READING: &str = "PWF-ENV-READING";
 
-    /// 喂给「daemon 侧那个进程」的两个**值**。
+    /// 喂给「backend 侧那个进程」的两个**值**。
     ///
     /// ⚠ 只有值住这里 —— **键名一律现取** `listen::ENV_PORT` / `listen::ENV_TOKEN`，
     /// 手抄一份字面量的话，那两个常量改了名本格会**安静地**继续绿
@@ -1735,8 +1735,8 @@ mod tests {
     ///
     /// ⇒ **分母说清楚**：内层那个进程**不是** `cargo test` 那个进程，
     ///    它是一个由 `Command` 起、环境里带着 `listen::ENV_PORT`/`ENV_TOKEN` 的新进程 ——
-    ///    而**生产里 daemon 拿到那两个键的方式一模一样**（`listen.rs` 头注逐字：
-    ///    token「只能由宿主生成、当 env 传进来」，daemon 自己造不出它）。
+    ///    而**生产里后端拿到那两个键的方式一模一样**（`listen.rs` 头注逐字：
+    ///    token「只能由宿主生成、当 env 传进来」，backend 自己造不出它）。
     ///    这就是它凭什么代表生产：**同一条投喂路，只是投喂的人换成了判据。**
     ///
     /// # ⚠ 本格量的是**行为**，不是「源码里有没有 `env_clear`」
@@ -1800,13 +1800,13 @@ mod tests {
         let port_key = crate::listen::ENV_PORT;
         let token_key = crate::listen::ENV_TOKEN;
 
-        // ── 分母①：本进程（扮演 daemon）的环境键 ────────────────────────────
+        // ── 分母①：本进程（扮演后端）的环境键 ────────────────────────────
         let parent: std::collections::BTreeSet<String> = std::env::vars_os()
             .map(|(k, _)| k.to_string_lossy().into_owned())
             .collect();
         assert!(
             parent.contains(port_key) && parent.contains(token_key),
-            "扮演 daemon 的这个进程环境里没有那两个键 ⇒ 下面每一句都是空真。\
+            "扮演后端的这个进程环境里没有那两个键 ⇒ 下面每一句都是空真。\
              外层那两句 `.env(…)` 是不是掉了？本进程的键数={}",
             parent.len()
         );
@@ -1860,7 +1860,7 @@ mod tests {
         assert!(
             !child.contains(port_key),
             "常驻监听口的**地址**漏进了插件进程：`{port_key}`。\n\
-             ⇒ 任何被 daemon 起的插件读一读自己的环境就能接上宿主 —— \
+             ⇒ 任何被后端起的插件读一读自己的环境就能接上宿主 —— \
              那是一条没有协议、没有权限模型、没有审计的回程。\n\
              子进程键集={:?}",
             child.iter().collect::<Vec<_>>()

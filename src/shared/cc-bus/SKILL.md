@@ -13,7 +13,7 @@ description: 让 tmux 里几个各自独立运行的 Claude Code 实例互发消
 
 - **唯一真相源**=`~/.cc-bus/inbox/<id>.jsonl`(消息落盘、不丢、按 offset 去重消费)。
 - **投递入口**=`cc-send`:组信封 → 入队 `queue/` → 有 `cc-busd` 守护进程则它异步施策投递,**没有则 cc-send 就地跑同一套管线兜底**(不卡/不丢)。
-- **管线(唯一实现在 `cc-bus-lib.sh`,daemon 与兜底共用)**:ACL → 限流/熔断 → 灭环 → 去重 → 写 inbox → 敲门去抖。
+- **管线(唯一实现在 `cc-bus-lib.sh`,backend 与兜底共用)**:ACL → 限流/熔断 → 灭环 → 去重 → 写 inbox → 敲门去抖。
 - **收信**=看到 🔔 或被 Stop 钩子喂进来 → 跑 `cc-recv`。
 
 ## 你的身份(自动,无需手动设)

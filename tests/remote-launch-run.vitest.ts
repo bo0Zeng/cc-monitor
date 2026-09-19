@@ -141,8 +141,8 @@ describe("F41 runRemoteResume", () => {
     expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
   });
 
-  // ★★ P1：`sendIntoViaDaemon` 的 catch 此前把**两件事**混成一件 ——
-  // IPC/序列化异常 与 载荷渲染被拒。它的注释推理「都在 daemon 那一跳之前 ⇒ 能证明什么都没
+  // ★★ P1：`sendIntoViaBackend` 的 catch 此前把**两件事**混成一件 ——
+  // IPC/序列化异常 与 载荷渲染被拒。它的注释推理「都在后端那一跳之前 ⇒ 能证明什么都没
   // 发出去 ⇒ 可回落」**对一半错一半**：没发出去只说明重做不会重复执行，**不说明重做走的那条
   // 路也会拒**。而回落那条正是 TS 兜底渲染器，它对同样输入未必拒 ⇒ 一次 Rust 侧的 fail-closed
   // 被那个 catch 变成 fail-open。分法 = Rust 侧 `payload::refuse()` 打的 `REFUSE:` 标。
@@ -168,19 +168,19 @@ describe("F41 runRemoteResume", () => {
   // ★★ P3 刀 3：**本机**就地 resume。它与上面那条远端的分水岭只有一处 ——
   // 远端在 `fallback` 时会去渲染整串重做一遍；**本机没有那条路，也不许造**
   //（`C1` 逐字排除「给本地单写一套控制逻辑」）。
-  it("P3 刀3 本机：daemon 回报可回落 → 仍然诚实失败，绝不另找一条路重做", async () => {
+  it("P3 刀3 本机：backend 回报可回落 → 仍然诚实失败，绝不另找一条路重做", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
       // `mayFallBack: true` = 证明没发出去。远端据此回落；**本机不许**。
-      if (cmd === "daemon_send_into")
-        return Promise.resolve({ typed: false, reason: "本机 daemon 通道不在", mayFallBack: true });
+      if (cmd === "backend_send_into")
+        return Promise.resolve({ typed: false, reason: "本机后端通道不在", mayFallBack: true });
       return Promise.resolve(undefined);
     });
     stubClipboard(vi.fn().mockResolvedValue(undefined));
     const ok = await runLocalResumeIntoExistingTmux("sid-l1", "l1-cc", "");
     expect(ok).toBe(false);
     expect(toastMock.mock.calls[0][0]).toBe("就地 resume 未执行");
-    expect(String(toastMock.mock.calls[0][1])).toContain("本机 daemon 通道不在");
+    expect(String(toastMock.mock.calls[0][1])).toContain("本机后端通道不在");
     // ★ 最要紧的一格：**一次拉起都没发起**。发起了就说明它去走了第二条路，
     //   而那条路会把可能已经键入过的载荷再提交给正在跑的 claude 一次（F14）。
     expect(invokeMock.mock.calls.map((c) => c[0])).not.toContain("launch_remote_terminal");
@@ -192,7 +192,7 @@ describe("F41 runRemoteResume", () => {
   it("P3 刀3 本机 typed + Linux（后端不开窗口）→ 仍算成功，命令交给用户在自己 bash 里跑", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
-      if (cmd === "daemon_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
+      if (cmd === "backend_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
       // 🔴 `K-R109`：attach 那一句**归本机后端产**（`R61` 裁定三）⇒ 这里是它的替身。
       if (cmd === "render_local_attach") return Promise.resolve(LOCAL_ATTACH_FROM_BACKEND);
       // 后端在非 Windows 上的既定回答（含跨语言标记）。
@@ -222,7 +222,7 @@ describe("F41 runRemoteResume", () => {
   it("P3 刀3 本机 typed + Windows（wt + PowerShell 起来了）→ 不复制、不弹既定设计文案", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
-      if (cmd === "daemon_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
+      if (cmd === "backend_send_into") return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
       if (cmd === "render_local_attach") return Promise.resolve(LOCAL_ATTACH_FROM_BACKEND);
       if (cmd === "launch_remote_terminal") return Promise.resolve(undefined); // 窗口开成了
       return Promise.resolve(undefined);
@@ -285,7 +285,7 @@ describe("F41 runRemoteResume", () => {
       if (cmd === "probe_ccm_cli")
         return Promise.resolve({ installed: false, version: null, capabilities: [] });
       // 通道问题，与载荷本身无关 ⇒ 重做是安全的、且兜底那条路能成
-      if (cmd === "daemon_send_into") return Promise.reject("ipc closed");
+      if (cmd === "backend_send_into") return Promise.reject("ipc closed");
       return Promise.resolve(undefined);
     });
     stubClipboard(vi.fn().mockResolvedValue(undefined));
@@ -431,7 +431,7 @@ describe("K-R109 本机 attach 那一句问后端要", () => {
   it("KR109D2 ★ 就地 resume 之后，attach 那一句是**问后端要**的，参数是那个会话名", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
-      if (cmd === "daemon_send_into")
+      if (cmd === "backend_send_into")
         return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
       if (cmd === "render_local_attach") return Promise.resolve(LOCAL_ATTACH_FROM_BACKEND);
       if (cmd === "launch_remote_terminal") return Promise.resolve(undefined);
@@ -452,10 +452,10 @@ describe("K-R109 本机 attach 那一句问后端要", () => {
   it("KR109D2 ★ 后端渲不出来 ⇒ **诚实失败**，不许回落到前端自己拼一条 tmux attach", async () => {
     invokeMock.mockImplementation((cmd: string) => {
       if (cmd === "render_launch_payload") return Promise.resolve("payload");
-      if (cmd === "daemon_send_into")
+      if (cmd === "backend_send_into")
         return Promise.resolve({ typed: true, reason: null, mayFallBack: false });
       // 后端拒（本机没装 ccm / 名字过不了闸 …）—— 这条 reject 是**该被看见的读数**：
-      // 走到这里说明 daemon 刚刚把载荷键进去了，而「有后端、没有 ccm」是 `R64` 判过的幽灵态。
+      // 走到这里说明后端刚刚把载荷键进去了，而「有后端、没有 ccm」是 `R64` 判过的幽灵态。
       if (cmd === "render_local_attach") return Promise.reject("本机没装 ccm");
       return Promise.resolve(undefined);
     });

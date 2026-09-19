@@ -21,14 +21,14 @@ POLL="${CCBUS_POLL:-0.5}"            # 队列空时轮询间隔秒(本实现恒�
 
 blog(){ printf '[%s] %s\n' "$(date -Iseconds)" "$*" >> "$BUSDLOG" 2>/dev/null || true; }
 
-declare -A RETRIES                            # 每条消息的投递失败重试计数(daemon 生命周期内)
+declare -A RETRIES                            # 每条消息的投递失败重试计数(backend 生命周期内)
 MAX_RETRY="${CCBUS_MAX_RETRY:-5}"
 
 # 认领并处理一条队列文件。返回 0=有进展(消费/死信/被抢),1=无进展(退回重试)。
 process_one(){
   local qf="$1" name proc line rc n
   name="${qf##*/}"
-  proc="$BUS/queue/.proc.$$.$name"           # 点前缀 + 本 daemon pid
+  proc="$BUS/queue/.proc.$$.$name"           # 点前缀 + 本 backend pid
   mv "$qf" "$proc" 2>/dev/null || return 0    # 没抢到(已被别人认领),算已处理
   line=$(cat "$proc" 2>/dev/null || true)
   route_process "$line"; rc=$?                # 无 set -e,route_process 的 &&/|| 安全
@@ -59,7 +59,7 @@ reap(){
     name="${f##*/}"
     pid=$(printf '%s' "$name" | sed -n 's/^\.proc\.\([0-9][0-9]*\)\..*/\1/p')
     [ -n "$pid" ] || continue
-    kill -0 "$pid" 2>/dev/null && continue      # 认领者还活着(含本 daemon 自己),跳过
+    kill -0 "$pid" 2>/dev/null && continue      # 认领者还活着(含本后端自己),跳过
     mt=$(stat -c %Y "$f" 2>/dev/null) || continue
     [ $(( now - mt )) -ge "$REAP_AGE" ] || continue
     base="${name#.proc.$pid.}"
@@ -109,16 +109,16 @@ run_loop(){
 case "${1:-}" in
   run) run_loop;;
   start)
-    if daemon_running; then echo "cc-busd 已在运行(pid $(cat "$PIDF" 2>/dev/null))"; exit 0; fi
+    if backend_running; then echo "cc-busd 已在运行(pid $(cat "$PIDF" 2>/dev/null))"; exit 0; fi
     mkdir -p "$BUS/log"
     setsid nohup "$SELFDIR/cc-busd" run >>"$BUSDLOG" 2>&1 </dev/null &
-    for _i in $(seq 1 10); do sleep 0.3; daemon_running && break; done   # 轮询确认最多 ~3s
-    if daemon_running; then echo "cc-busd 已启动(pid $(cat "$PIDF" 2>/dev/null))"
+    for _i in $(seq 1 10); do sleep 0.3; backend_running && break; done   # 轮询确认最多 ~3s
+    if backend_running; then echo "cc-busd 已启动(pid $(cat "$PIDF" 2>/dev/null))"
     else echo "cc-busd 启动失败,见 $BUSDLOG" >&2; exit 1; fi
     ;;
   stop)
     # 只在【锁判活为真】时才 kill,避免 stale pidfile 的 PID 被复用后误杀无辜进程
-    if daemon_running; then
+    if backend_running; then
       pid=$(cat "$PIDF" 2>/dev/null || true)
       if [ -n "$pid" ] && kill "$pid" 2>/dev/null; then echo "已停 cc-busd(pid $pid)"
       else echo "cc-busd: 判活为真但无法 kill(pid=$pid),请手动检查" >&2; fi
@@ -128,7 +128,7 @@ case "${1:-}" in
     fi
     ;;
   status)
-    if daemon_running; then
+    if backend_running; then
       echo "cc-busd: 运行中(pid $(cat "$PIDF" 2>/dev/null))"
       shopt -s nullglob; q=( "$BUS"/queue/*.json ); shopt -u nullglob
       echo "  队列待处理: ${#q[@]}"

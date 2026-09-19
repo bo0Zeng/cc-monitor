@@ -10,7 +10,7 @@
 //! ```
 //!
 //! 本模块只管**内层**。⚠ **不是因为外层「已经没了」** —— U8c-1 第一版这么写，被审计证伪：
-//! daemon 的 `launch`（U8a-2b）**零生产调用方**、它**结构上也不 attach**（平面 ③）。
+//! backend 的 `launch`（U8a-2b）**零生产调用方**、它**结构上也不 attach**（平面 ③）。
 //! 🔴 **`设计/50`（删用量）订正上一句的举例**：原话举的例子是 `account_usage.rs` 那个
 //! 用量探针构造器 —— 用量 ②③ 两轴整轴退役之后**那个例子本身没了**，
 //! 而**本模块的结论一个字没变**：`launch` 那条仍然不 attach，外层没有整个退役。
@@ -18,12 +18,12 @@
 //!
 //! # 它为什么住在这里（P4b，§1.4b）
 //!
-//! 它原来在共享 crate（当时叫 `launch-core`）里 —— 而 **daemon 对它零引用**。放在那儿的真实原因是
+//! 它原来在共享 crate（当时叫 `launch-core`）里 —— 而 **backend 对它零引用**。放在那儿的真实原因是
 //! 「monitor 侧当时一个边界都没有，没处放」。P4a 划出 `backend/control/` 之后它回到了归属地：
-//! §1.3 把最终 exec 钉在**用户自己的终端进程**里，U8a-2b 把 daemon 的执行面定成
+//! §1.3 把最终 exec 钉在**用户自己的终端进程**里，U8a-2b 把后端的执行面定成
 //! **argv 直传、不过 shell** ⇒ **「渲染一条 shell 命令串」永远属于开终端的那一侧。**
 //!
-//! 唯一留在共享 crate 里的是 [`shell_quote_core::posix_quote`]（daemon 的 `tmux_hook` 真的在用）。
+//! 唯一留在共享 crate 里的是 [`shell_quote_core::posix_quote`]（backend 的 `tmux_hook` 真的在用）。
 //!
 //! # 诚实边界（别读成「合完了」）
 //!
@@ -40,8 +40,8 @@
 ///
 /// # 为什么要打标（不是为了好看）
 ///
-/// TS 侧 `sendIntoViaDaemon` 的 catch 此前把两件事混成一件：**IPC 异常**（后端崩/序列化坏）
-/// 与**载荷渲染被拒**。它的注释推理「两者都在 daemon 那一跳之前 ⇒ 能证明什么都没发出去
+/// TS 侧 `sendIntoViaBackend` 的 catch 此前把两件事混成一件：**IPC 异常**（后端崩/序列化坏）
+/// 与**载荷渲染被拒**。它的注释推理「两者都在后端那一跳之前 ⇒ 能证明什么都没发出去
 /// ⇒ 可回落」——**对一半错一半**：没发出去只说明**重做不会重复执行**，
 /// **不说明重做走的那条路也会拒**。而回落那条路是 TS 兜底渲染器，
 /// 它对同样输入**未必拒**（`remote-launch-run.ts` 自己逐字承认过）。
@@ -324,12 +324,12 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
     // 这条路的上游是 tauri 命令 `render_launch_payload`：`launcher` 来自 webview。
     //
     // ⚠⚠ **08-08 订正赌注**（本条建成的次轮先核出来的）：这道检查是**纵深，不是边界**。
-    // `daemon_send_into` 同样是注册命令，它的 `payload: String` 也来自 webview，
-    // 而 daemon 侧只查「非空 / 长度 / 无控制字符」（`check_field`）—— 也就是说
+    // `backend_send_into` 同样是注册命令，它的 `payload: String` 也来自 webview，
+    // 而后端侧只查「非空 / 长度 / 无控制字符」（`check_field`）—— 也就是说
     // **前端本来就能绕过本函数，直接送一条任意载荷去键入**。
     // ⇒ 本检查买到的是：① 走**文档化的那条路**时不会把注入串拼进载荷（挡的是**缺陷**，
     // 不是攻击者）；② 与同函数 `args` 那道白名单**姿态一致**（不对称本身会误导下一个人）。
-    // 真正的边界在别处：daemon 的 `admit`（会话身份）+ 前端执行面（CSP / 能力表）。
+    // 真正的边界在别处：backend 的 `admit`（会话身份）+ 前端执行面（CSP / 能力表）。
     //
     // 字符集镜像 TS 的 `sanitizeRemoteLauncher`（今天真正管着这条路的那份策略），
     // 但按本函数的既有惯例**返回 `Err` 而不是静默回落**：拒绝要让调用方看得见。
@@ -390,11 +390,11 @@ pub fn render_payload(spec: &PayloadSpec) -> Result<String, String> {
 pub const RELAY_ROUTE_PREFIX: &str = "/s/";
 
 /// 本机中转的端口。**monitor 这一侧是权威** —— 起中转时以 `CCM_RELAY_PORT`
-/// 显式交给子进程（`local_daemon::start_local_relay`），注入侧用同一个常量拼 URL。
+/// 显式交给子进程（`local_backend_host::start_local_relay`），注入侧用同一个常量拼 URL。
 ///
 /// ⚠ 它与 `src/backend/relay/server.rs::DEFAULT_PORT` 是**同一个数字的两处写法**，
 /// 而两处**今天不由任何东西对拍**。之所以不疼：起中转那条路**显式传** `CCM_RELAY_PORT`
-/// ⇒ 子进程用的是这里这个值，daemon 那个默认值在这条路上根本不参与。
+/// ⇒ 子进程用的是这里这个值，backend 那个默认值在这条路上根本不参与。
 /// **端口通告面本件不做**（`§0e` 裁五，跟进件 `己1-f26`）——
 /// ⇒ 「同机两个 monitor」这一形今天是：第二个中转绑不上、**退 2 并出声**，不静默。
 pub const RELAY_PORT: u16 = 8788;
@@ -405,12 +405,12 @@ pub const RELAY_PORT: u16 = 8788;
 /// # ⚠ 它是**第二份实现**，这件事必须说清楚，不许读成「共用了一份」
 ///
 /// 两侧分家的原因是结构性的：`src/backend` 依赖 `src/bridge/crates/*`（单向），
-/// 反向依赖不存在 ⇒ 除非把这条规则搬进一个**共享 crate**，否则 monitor 够不着 daemon 那份。
+/// 反向依赖不存在 ⇒ 除非把这条规则搬进一个**共享 crate**，否则 monitor 够不着后端那份。
 /// 本件的写区里**没有任何共享 crate** ⇒ 本轮只能各写一份，并**用判据把它们焊住**：
 ///
 /// - monitor 侧：`the_relay_route_sample_is_what_the_builder_really_produces`
 ///   钉住 [`RELAY_ROUTE_SAMPLE`] 逐字节等于 [`relay_route_path`] 的产物；
-/// - daemon 侧：`route.rs` 的 `the_sample_the_monitor_side_builds_parses_into_the_slots_we_expect`
+/// - backend 侧：`route.rs` 的 `the_sample_the_monitor_side_builds_parses_into_the_slots_we_expect`
 ///   `include_str!` **本文件**、把那一行样例抠出来喂给真 `parse`，断言四段各落各位。
 ///
 /// ⇒ 买到的是「**两侧对同一条样例的判断一致**」，**不是**「两条谓词逐字符等价」。
@@ -457,11 +457,11 @@ pub fn relay_base_url(port: u16, agent: &str, account: &str, key: &str) -> Resul
     ))
 }
 
-/// 跨半边对拍用的那一行样例。**daemon 侧的判据 `include_str!` 本文件、拿它去 `parse`。**
+/// 跨半边对拍用的那一行样例。**backend 侧的判据 `include_str!` 本文件、拿它去 `parse`。**
 ///
 /// ⚠ 它不是文档，是**夹具**：`the_relay_route_sample_is_what_the_builder_really_produces`
 /// 钉住它逐字节等于 [`relay_route_path`] 的产物 ⇒ 谁改了构造口而没改它，monitor 这侧当场红；
-/// 谁改了它而 daemon 那侧解析不出预期的段，daemon 那侧当场红。
+/// 谁改了它而后端那侧解析不出预期的段，backend 那侧当场红。
 pub const RELAY_ROUTE_SAMPLE: &str = "/s/claude-code/acct-a/k-0123456789abcdef";
 
 /// `<key>` 段的**唯一铸造口**〔`KH2B6`〕。
@@ -548,7 +548,7 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 /// `history.rs` 那道人群闸数的是**标识符 `relay_running` 在生产段里出现几次**
 /// （定义 1 + 缝里那一处 1 = 2），一个同名的形参会让那个数恒多两处、闸就只能靠一个
 /// 「今天数出来的 N」活着。⇒ 形参改名，闸的分母回到「这个函数被谁提到」本身。
-pub fn relay_injection_for(
+pub fn apikey_endpoint_for(
     account_id: Option<&str>,
     rows: &[String],
     running: bool,
@@ -566,10 +566,10 @@ pub fn relay_injection_for(
         //   把它渲染成一条指向没人听的口的 URL，症状会长成「claude 连不上 API」——
         //   与网络故障同形，而这一条是我们自己的责任。⇒ 在**起会话那一侧**当场说出来。
         return Err(refuse(format!(
-            "账号 {id:?} 配了第三方端点（中转表里有它这一行），但**本机中转没在跑** ——\n\
+            "账号 {id:?} 配了第三方端点（apikey 表里有它这一行），但**本机中转没在跑** ——\n\
              这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败，\
              而真正的原因在我们这一侧。\n\
-             ⇒ 先起本机后端（设置 → 本机 daemon），或把该账号那一行从凭据文件里去掉。"
+             ⇒ 先起本机后端（设置 → 本机后端），或把该账号那一行从凭据文件里去掉。"
         )));
     }
     Ok(Some(relay_base_url(

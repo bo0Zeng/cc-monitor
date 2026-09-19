@@ -1,5 +1,5 @@
 //! 历史全文搜索**口径**的唯一实现 —— monitor 的内存索引（`src/bridge/src/search.rs`）
-//! 与 daemon 的 `--search`（`src/backend/observe/search_query.rs`）共用这一份。
+//! 与后端的 `--search`（`src/backend/observe/search_query.rs`）共用这一份。
 //!
 //! # 它治的是「今天没漂，而没人拦着它漂」
 //!
@@ -30,7 +30,7 @@
 //!
 //! # 🔴 预算的花法：**最近优先**（`sort_by_recency`）
 //!
-//! 收口前 monitor 按 `updated_at` desc 花预算、daemon 按 `WalkDir`（= `readdir`）
+//! 收口前 monitor 按 `updated_at` desc 花预算、backend 按 `WalkDir`（= `readdir`）
 //! 先走到的顺序花。**两侧的展示顺序都是 `updatedAt` desc**（`merge_search_results`
 //! 合并后重排、前端照序渲染）⇒ 预算顺序一旦与展示顺序不同，**缺 snippet 的正好是列表最上面
 //! 那几张卡**。理由与读数逐条写在 `sort_by_recency` 的文档注释里。

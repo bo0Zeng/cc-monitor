@@ -2,14 +2,14 @@
 //!
 //! 本模块是**活代码**：从 lib.rs 的 `setup()` 调用（`remote.enabled=true` 且配置完整时）。
 //! 它提供三块能力：
-//! - **russh client 数据源**：[`run`] 连远端、exec daemon、把 daemon stdout 的
+//! - **russh client 数据源**：[`run`] 连远端、exec backend、把 backend stdout 的
 //!   line-delimited JSON 帧解析后走与本地 watcher 相同的出口（`batch_to_payloads` →
 //!   `on_line_batch`），session 增减走专用 `session_changes` 通道。与本地 jsonl-watcher
 //!   **并行**作为附加数据源（远端行带 origin=host 标签）。
 //! - **ssh-config 导入**：[`list_ssh_host_aliases`] / [`resolve_ssh_host`]（`ssh -G`）
 //!   供前端「从 ~/.ssh/config 导入」自动填连接参数。
 //! - **测试连接**：[`test_remote_connection`] 实连一次，回 SSH ✓/✗ + host key 指纹 +
-//!   daemon ✓/✗（hello），供 UI 分级展示 + TOFU→strict 指纹固化。
+//!   backend ✓/✗（hello），供 UI 分级展示 + TOFU→strict 指纹固化。
 //!
 //! 上述三个 `#[tauri::command]` 在 lib.rs 的 invoke_handler! 里注册。
 //!
@@ -40,7 +40,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use crate::event_replay::EventReplay;
 use crate::session_map::{RemovalCause, RemovedSid, SessionChange};
 
-/// S0 **跨语言双写点**：daemon 那侧 `RemovalCause::Superseded` 的 serde 线上名。
+/// S0 **跨语言双写点**：backend 那侧 `RemovalCause::Superseded` 的 serde 线上名。
 /// 改这里必须同步 `src/backend/wire.rs`（同 `TMUX_LS_FMT` 的纪律）。
 const REMOVAL_CAUSE_SUPERSEDED: &str = "superseded";
 use crate::watcher::JsonlLine;
@@ -54,8 +54,8 @@ const RECONNECT_MAX: Duration = Duration::from_secs(30);
 ///
 /// # 为什么不能拿「收到过 hello」当健康
 ///
-/// `connected` 是在**收到 daemon hello 的那一刻**置位的（`stream_loop` 里那句
-/// `connected.store(true)`）。于是一个「发完 hello 就死」的 daemon —— 比如小机器上
+/// `connected` 是在**收到 backend hello 的那一刻**置位的（`stream_loop` 里那句
+/// `connected.store(true)`）。于是一个「发完 hello 就死」的 backend —— 比如小机器上
 /// 整读 jsonl 触发 OOM 被杀 —— 每一轮都算「连上过」⇒ 退避每次都被重置回 2 秒
 /// ⇒ **永远不增长**。而每次重连要付 3 次完整 SSH 登录（arch 探测 / SFTP 预检 / 起流），
 /// 折算约 **90 次握手/分钟/台**，正好压在那台已经撑不住的机器上。
@@ -84,21 +84,21 @@ fn should_reset_backoff(saw_hello: bool, lived: Duration) -> bool {
 /// |---|---|---|
 /// | ① | `uname -m` 一次性 exec（选内嵌二进制的 arch） | `sftp::probe_remote_arch` |
 /// | ② | SFTP 连接（读远端 `.build_id` marker） | `sftp::connect_sftp` |
-/// | ③ | exec daemon 起流 | `connect_and_exec` |
+/// | ③ | exec backend 起流 | `connect_and_exec` |
 ///
-/// ①② 同属 `ensure_daemon_deployed`。**即使远端已经是当前 build、什么都不用部署，
+/// ①② 同属 `ensure_backend_deployed`。**即使远端已经是当前 build、什么都不用部署，
 /// 每次重连也照付这两条**（各含一次 TCP + 握手 + 指纹校验 + auth）。
 ///
 /// # 记什么：hello **自报**的 build_id，不是预检算出来的结论
 ///
 /// 报告的原提法是「把 `arch`/`build_id` 记进 memo」。**记预检结论是猜，记 hello 是自证** ——
-/// 只有 daemon 自己说「我是 D」才写进来。于是这份记忆的含义是
-/// 「**这台机器上一次真的跑起来的 daemon 就是当前期望的那个**」，
+/// 只有后端自己说「我是 D」才写进来。于是这份记忆的含义是
+/// 「**这台机器上一次真的跑起来的后端就是当前期望的那个**」，
 /// 而不是「上一次我们检查时它看起来是对的」。
 ///
 /// # 为什么这样跳预检是保守的
 ///
-/// 跳的条件**只有一个**：记忆里那台机器的 build_id **恰好等于** [`EXPECTED_DAEMON_BUILD_ID`]。
+/// 跳的条件**只有一个**：记忆里那台机器的 build_id **恰好等于** [`EXPECTED_BACKEND_BUILD_ID`]。
 /// 其余一律照跑（无记忆 / 记的是别的 build）—— 那些情况本来就**可能需要部署**，不能跳。
 ///
 /// ⚠ 功能件 §8 把「缓存 miss 时 caps 决策必须保守」写成了这件事的阻塞。
@@ -127,9 +127,9 @@ fn verified_build_of(origin: &str) -> Option<String> {
     VERIFIED_BUILD.lock().ok()?.as_ref()?.get(origin).cloned()
 }
 
-/// 记下「这台机器上一次真的跑起来的 daemon 是 `build_id`」。
+/// 记下「这台机器上一次真的跑起来的后端是 `build_id`」。
 ///
-/// ⚠ **只许在收到 hello 的那一处调**（daemon 自报）。别处调就把「自证」变回了「猜」。
+/// ⚠ **只许在收到 hello 的那一处调**（backend 自报）。别处调就把「自证」变回了「猜」。
 fn record_verified_build(origin: &str, build_id: &str) {
     if let Ok(mut g) = VERIFIED_BUILD.lock() {
         g.get_or_insert_with(std::collections::HashMap::new)
@@ -137,7 +137,7 @@ fn record_verified_build(origin: &str, build_id: &str) {
     }
 }
 
-/// 抹掉这台机器的自证记录（连接没起来 / daemon 换了身份）。
+/// 抹掉这台机器的自证记录（连接没起来 / backend 换了身份）。
 fn forget_verified_build(origin: &str) {
     if let Ok(mut g) = VERIFIED_BUILD.lock() {
         if let Some(m) = g.as_mut() {
@@ -151,7 +151,7 @@ fn next_backoff(cur: Duration) -> Duration {
     (cur * 2).min(RECONNECT_MAX)
 }
 
-/// 远端 daemon 的连接配置。S5 会从 monitor 的 config 文件反序列化出来；
+/// 远端后端的连接配置。S5 会从 monitor 的 config 文件反序列化出来；
 /// Tier 1（issue #15）的「测试连接」命令直接收前端传来的同形对象（camelCase）。
 ///
 /// **serde camelCase 必须与前端 RemoteHostConfig / lib.rs::load_remote_configs 严格一致**：
@@ -172,7 +172,7 @@ pub struct RemoteConfig {
     /// 私钥文件路径（OpenSSH 格式）。None / 空 = 走 ssh-agent（见 connect_session）。
     #[serde(default, deserialize_with = "empty_string_as_none")]
     pub key_path: Option<String>,
-    /// 远端要 exec 的 daemon 命令（含参数前缀由 S5 决定）。
+    /// 远端要 exec 的后端命令（含参数前缀由 S5 决定）。
     pub daemon_path: String,
     /// 期望的 server host key 指纹（`SHA256:...` 形式）。
     /// Some = 严格校验（TOFU 之后固化）；None = 首次连接 TOFU 接受并 LOUD warn。
@@ -406,7 +406,7 @@ const RACE_STAGGER: Duration = Duration::from_millis(250);
 const HANDSHAKE_DEADLINE: Duration = Duration::from_secs(45);
 
 /// Batch14-F46：连接分阶段事件（测试连接时经 Tauri Channel 流给前端做泳道日志）。
-/// 只在 `test_remote_connection` 路径 emit（emitter=Some）;daemon 流/exec/SFTP 传 None,
+/// 只在 `test_remote_connection` 路径 emit（emitter=Some）;backend 流/exec/SFTP 传 None,
 /// 零开销零事件。阶段取 russh 能干净观测的粒度——不含 KEX（russh 不暴露 KEX 回调,
 /// HostKey 触发即隐含 TCP+KEX 已过）。
 #[derive(Serialize, Clone, Debug)]
@@ -701,7 +701,7 @@ pub(crate) async fn connect_session(
     // russh 0.61 的 inactivity timer 在没有 keepalive 时会在到点直接拆掉一条**健康的**
     // 空闲连接（idle 1h 的 Claude 会话很常见）。改用 SSH 层 keepalive：每 30s 无收包就
     // 发一个 keepalive，连发 keepalive_max(默认 3) 次无回应才判死（≈90s 探活）。死链由
-    // keepalive 超时 + daemon EOF 检出，inactivity_timeout 对长连接置 None。
+    // keepalive 超时 + backend EOF 检出，inactivity_timeout 对长连接置 None。
     // 测试连接（短命探活）仍可传 Some(短超时)，故 keepalive 与 inactivity 同时支持。
     let keepalive_interval = inactivity_timeout
         .is_none()
@@ -720,7 +720,7 @@ pub(crate) async fn connect_session(
     let origin = cfg.origin_label();
     // ★ F05 下半：**SSH 握手这一段**（TCP + 握手 + host key 校验 + 鉴权）。
     // 它被 `connect_and_exec` 那条埋点整个包在里面 —— 分开量才知道
-    //「起流慢」到底慢在登录还是慢在 daemon 起来。
+    //「起流慢」到底慢在登录还是慢在后端起来。
     let t_handshake = std::time::Instant::now();
     let (mut session, observed_fingerprint, winner) =
         match cfg.jump.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
@@ -861,28 +861,28 @@ async fn authenticate_via_agent(
 }
 
 /// 连接远端、鉴权、开 session channel、exec `cfg.daemon_path`，
-/// 返回 channel 的双向流（`AsyncRead + AsyncWrite`）——读端即 daemon 的 stdout 数据。
+/// 返回 channel 的双向流（`AsyncRead + AsyncWrite`）——读端即后端的 stdout 数据。
 ///
 /// 鉴权委托给 [`connect_session`]（publickey 或 ssh-agent）。
 /// 错误统一 map 成 `String`（本 crate 未直接依赖 anyhow，不为骨架引入新依赖）。
-/// F66（#58③）流模式门控决策（纯函数，矩阵单测）：**从 daemon 声明的能力 token 决定
+/// F66（#58③）流模式门控决策（纯函数，矩阵单测）：**从后端声明的能力 token 决定
 /// 发哪些 flag**，不再靠 build_id 精确匹配（Batch7-F24/Batch8-F26 的旧机制）。
 ///
-/// - `capabilities` = daemon hello 自报的能力集（旧 daemon 无声明 → 空集）。
-/// - 空集（旧 daemon / 尚未确认）→ `(false, false)`：全降级 = 2.18.0 行为，功能退化但
+/// - `capabilities` = backend hello 自报的能力集（旧后端无声明 → 空集）。
+/// - 空集（旧 backend / 尚未确认）→ `(false, false)`：全降级 = 2.18.0 行为，功能退化但
 ///   连接正常。
-/// - `tail_only`（历史改走旁路快照，拥塞根除）需 daemon 声明 `"tail-only"`。
-/// - `with_bg`（放行 bg 会话）需 daemon 声明 `"bg"` **且**用户开了 `show_bg`。
+/// - `tail_only`（历史改走旁路快照，拥塞根除）需后端声明 `"tail-only"`。
+/// - `with_bg`（放行 bg 会话）需后端声明 `"bg"` **且**用户开了 `show_bg`。
 ///
-/// **§26 死循环护栏靠声明本身保住**：旧 daemon 把未知 flag 当一次性查询 → 退出 → 无
-/// hello → 重连死循环。而只有**会先剥离该 flag** 的 daemon 才声明对应能力（见 daemon
+/// **§26 死循环护栏靠声明本身保住**：旧后端把未知 flag 当一次性查询 → 退出 → 无
+/// hello → 重连死循环。而只有**会先剥离该 flag** 的后端才声明对应能力（见 backend
 /// `CAPABILITIES` 注释），故「声明了 = 发该 flag 安全」——比 build_id 精确匹配更强更干净，
-/// 且直接闭合 2026-07-09「身份确认不了就全降级」事故（能力由 daemon 自报，不靠脆弱身份链）。
+/// 且直接闭合 2026-07-09「身份确认不了就全降级」事故（能力由后端自报，不靠脆弱身份链）。
 /// monitor **认识**的能力 token。
 ///
 /// U-CC1：它与 [`decide_stream_flags`] 是同一份事实 —— 由
 /// `known_capability_tokens_match_decide_stream_flags` 钉住。
-/// 有它才能回答「daemon 声明了一个我们不认识的能力」这个问题（漂移记账的第四个面）。
+/// 有它才能回答「backend 声明了一个我们不认识的能力」这个问题（漂移记账的第四个面）。
 const KNOWN_CAPABILITY_TOKENS: &[&str] = &["bg", "tail-only"];
 
 fn decide_stream_flags(capabilities: &[String], show_bg: bool) -> (bool, bool) {
@@ -890,9 +890,9 @@ fn decide_stream_flags(capabilities: &[String], show_bg: bool) -> (bool, bool) {
     (show_bg && has("bg"), has("tail-only"))
 }
 
-/// F66（#58③）★ 防无限重连的收敛判据（纯函数，穷举单测）：收到 daemon 能力声明后，
+/// F66（#58③）★ 防无限重连的收敛判据（纯函数，穷举单测）：收到后端能力声明后，
 /// **是否值得重连一轮升级流模式**。`cur` = 本轮实际发的 `(with_bg, tail_only)`；`next` =
-/// 据 daemon 自报能力算出的下一轮 flag。
+/// 据后端自报能力算出的下一轮 flag。
 ///
 /// **仅当下一轮会开一个本轮关着的 flag** 才重连——每次重连严格增开 flag，flag 数有限（2）
 /// ⟹ 最多 2 轮收敛，绝不无限重连。**关键定理**：一旦记账 `hello_confirmed=Some(D)`，下一轮
@@ -918,29 +918,29 @@ mod coldstart_perf_guard;
 #[path = "../../../tests/bridge/ssh_source_stream_flag_gate_tests.rs"]
 mod stream_flag_gate_tests;
 
-// ═══════════ `K-P6b`：daemon 那条长连接流的拨号，搬进一个由界面起的子进程 ═══════════
+// ═══════════ `K-P6b`：backend 那条长连接流的拨号，搬进一个由界面起的子进程 ═══════════
 //
 // # 🔴 先写死它买到了多少（`D2` 改窄后的原话，别读大）
 //
-// 买到的是：**`daemon 那条长连接流` 的那一跳 SSH 握手，可以不发生在界面进程里。**
+// 买到的是：**`backend 那条长连接流` 的那一跳 SSH 握手，可以不发生在界面进程里。**
 //
 // **没买到的，同段写死**：
 //
 // - 🔴 **界面进程仍然自己拨号 —— 7 处里搬走的是 1 处。**
 //   `connect_session` 的生产调用点 **7 处 / 3 份**，逐处登记在
-//   [`dial_move_judge::DIAL_SITES`]（**机检**，不是散文）：本条覆盖 daemon 长连接流那 1 处，
+//   [`dial_move_judge::DIAL_SITES`]（**机检**，不是散文）：本条覆盖后端长连接流那 1 处，
 //   SFTP · 端口转发 · 跳板 · 其余一次性 exec 与测试连接**一处都没动**。
 //   ⇒ **任何地方都不许把它写成「拨号搬出去了」。**
 // - ⚠ **回落有两条，都登记在 `dial_move_judge::FALLBACKS` 里（机检），不是散文**：
 //   ① **拿不到代理二进制**。`resolve_dial_proxy` 只认两处：环境变量 `CCM_DIAL_PROXY`
-//      与 exe 旁的 sidecar。
+//      与 exe 旁的本机后端。
 //      🔴 **这一条的射程是「开发树」，不是「默认装机」——我第一版判错过。**
-//      现打四环（逐份读的原文，**点符号不点行号**）：`local_backend.rs::SIDECAR_STEM`
-//      逐字 `"cc-monitor-remote"`
-//      · `src/bridge/tauri.sidecar.conf.json` 的 `"externalBin": ["binaries/cc-monitor-remote"]`
-//      · `.github/workflows/release.yml` 的 `build-windows` 三步（Windows 原生编 daemon → 拷成
-//      `cc-monitor-remote-<triple>.exe` → `tauri build --config …sidecar.conf.json`）
-//      · Linux job 同形（`:270/:273/:283`）⇒ **发版包里 sidecar 就在 exe 旁边，命中。**
+//      现打四环（逐份读的原文，**点符号不点行号**）：`local_backend.rs::LOCAL_BACKEND_STEM`
+//      逐字 `"cc-monitor-backend"`
+//      · `src/bridge/tauri.sidecar.conf.json` 的 `"externalBin": ["binaries/cc-monitor-backend"]`
+//      · `.github/workflows/release.yml` 的 `build-windows` 三步（Windows 原生编 backend → 拷成
+//      `cc-monitor-backend-<triple>.exe` → `tauri build --config …local_backend.conf.json`）
+//      · Linux job 同形（`:270/:273/:283`）⇒ **发版包里本机后端就在 exe 旁边，命中。**
 //      而 `externalBin` **不住 `tauri.conf.json`**、只在发版那一步注入 ⇒ **开发树上恒空**。
 //      ⇒ 「查开发树得到一个只在开发树为真的答案」正是 `local_accounts.rs` 里那条登记
 //      （`externalBin` 在开发树现打零命中）说的同一个病。
@@ -960,12 +960,12 @@ mod stream_flag_gate_tests;
 ///
 /// 🔴 **「没有它这条路一台机器上都走不到」—— 2026-09-10 起判不了，别当它还有答案。**
 ///
-/// 〔墓碑，原话逐字：「为什么要有它：今天安装包里没有 sidecar（F05b），没有这个变量的话
+/// 〔墓碑，原话逐字：「为什么要有它：今天安装包里没有本机后端（F05b），没有这个变量的话
 ///  这条路**一台机器上都走不到**，那就成了一份「编得过但永远不跑」的代码。」〕
 ///
 /// **前提翻了（这一格有读数）**：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe
-/// 各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe`
-/// **2 个进程在跑**、裸 `monitor.exe` 那份 **0 个** ⇒ 「安装包里没有 sidecar」不成立
+/// 各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe`
+/// **2 个进程在跑**、裸 `monitor.exe` 那份 **0 个** ⇒ 「安装包里没有本机后端」不成立
 /// （`externalBin` 住 `src/bridge/tauri.sidecar.conf.json`，发版那一步 `--config` 注入，
 /// **刻意不进基础 `tauri.conf.json`** ⇒「基础配置里没有」≠「没配」）。
 /// ⇒ 在装出来那份上，`resolve_dial_proxy` 的**第二处**（exe 旁那份）本来就有东西可认，
@@ -1006,7 +1006,7 @@ pub(crate) fn resolve_dial_proxy() -> Option<std::path::PathBuf> {
     }
 }
 
-/// 一条**跑在别的进程里**的 daemon 流：读写两半都是那个子进程的管子。
+/// 一条**跑在别的进程里**的后端流：读写两半都是那个子进程的管子。
 ///
 /// `Lifetime::JobKillOnClose`（`kill_on_drop` ＋ Windows 上的 Job）在 [`spawn_dial_proxy`]
 /// 里声明，本结构只负责把那个句柄一起持有着 —— 丢掉这个结构 = 丢掉那个句柄 =
@@ -1053,43 +1053,43 @@ impl tokio::io::AsyncWrite for ProxyStream {
     }
 }
 
-/// daemon 那条长连接流的两种承载。**上层一个字都不用改** ——
+/// backend 那条长连接流的两种承载。**上层一个字都不用改** ——
 /// `inbound_client::split_and_park` 本来就是泛型的（`S: AsyncRead + AsyncWrite + Send`）。
-pub enum DaemonStream {
+pub enum BackendStream {
     /// 拨号发生在**界面进程里**（今天的回落路径）。
     InProcess(russh::ChannelStream<client::Msg>),
     /// 拨号发生在**代理进程里**（`K-P6b` 买到的那一格）。
     Proxied(ProxyStream),
 }
 
-impl tokio::io::AsyncRead for DaemonStream {
+impl tokio::io::AsyncRead for BackendStream {
     fn poll_read(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &mut tokio::io::ReadBuf<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         match self.get_mut() {
-            DaemonStream::InProcess(s) => {
+            BackendStream::InProcess(s) => {
                 tokio::io::AsyncRead::poll_read(std::pin::Pin::new(s), cx, buf)
             }
-            DaemonStream::Proxied(s) => {
+            BackendStream::Proxied(s) => {
                 tokio::io::AsyncRead::poll_read(std::pin::Pin::new(s), cx, buf)
             }
         }
     }
 }
 
-impl tokio::io::AsyncWrite for DaemonStream {
+impl tokio::io::AsyncWrite for BackendStream {
     fn poll_write(
         self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<std::io::Result<usize>> {
         match self.get_mut() {
-            DaemonStream::InProcess(s) => {
+            BackendStream::InProcess(s) => {
                 tokio::io::AsyncWrite::poll_write(std::pin::Pin::new(s), cx, buf)
             }
-            DaemonStream::Proxied(s) => {
+            BackendStream::Proxied(s) => {
                 tokio::io::AsyncWrite::poll_write(std::pin::Pin::new(s), cx, buf)
             }
         }
@@ -1099,10 +1099,10 @@ impl tokio::io::AsyncWrite for DaemonStream {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         match self.get_mut() {
-            DaemonStream::InProcess(s) => {
+            BackendStream::InProcess(s) => {
                 tokio::io::AsyncWrite::poll_flush(std::pin::Pin::new(s), cx)
             }
-            DaemonStream::Proxied(s) => {
+            BackendStream::Proxied(s) => {
                 tokio::io::AsyncWrite::poll_flush(std::pin::Pin::new(s), cx)
             }
         }
@@ -1112,10 +1112,10 @@ impl tokio::io::AsyncWrite for DaemonStream {
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<std::io::Result<()>> {
         match self.get_mut() {
-            DaemonStream::InProcess(s) => {
+            BackendStream::InProcess(s) => {
                 tokio::io::AsyncWrite::poll_shutdown(std::pin::Pin::new(s), cx)
             }
-            DaemonStream::Proxied(s) => {
+            BackendStream::Proxied(s) => {
                 tokio::io::AsyncWrite::poll_shutdown(std::pin::Pin::new(s), cx)
             }
         }
@@ -1128,7 +1128,7 @@ impl tokio::io::AsyncWrite for DaemonStream {
 /// `/proc/<pid>/environ` 只有本人读得到。**也不走 stdin 第一行** ——
 /// 那要求本文件往一条流里写，而 `write_half_guard` 逐字禁止它自己写流
 /// （写的能力在 `U8a-2a` 整个交给了 `inbound_client`）。
-/// ⇒ 换成环境变量之后子进程的 `stdin` **纯粹**是 daemon 那条通道，一个字节带外数据都没有。
+/// ⇒ 换成环境变量之后子进程的 `stdin` **纯粹**是后端那条通道，一个字节带外数据都没有。
 pub(crate) const DIAL_REQUEST_ENV: &str = "CCM_DIAL_REQUEST";
 
 /// 请求的键名 —— **蛇形**，与 `src/backend/dial/mod.rs::DialRequest` 对齐。
@@ -1192,7 +1192,7 @@ async fn spawn_dial_proxy(
     let mut r = BufReader::new(stdout);
 
     // ★ **有上限的一行读**。对端是另一个进程 —— 它坏掉、或压根不是我们的代理，
-    //   一条没有换行的巨流会把无界读变成无界堆分配（daemon 侧实测过：512 MiB 无换行
+    //   一条没有换行的巨流会把无界读变成无界堆分配（backend 侧实测过：512 MiB 无换行
     //   ⇒ RSS 6 MiB → 518 MiB，见 `src/backend/inbound.rs` 头注）。
     //   ack 正常 < 200 字节，64 KiB 是五个数量级的余量。
     //   ⚠ 上限写成字面量而不是具名常量：具名的尺寸常量要去 `byte_cap_registry` 那张表上
@@ -1222,7 +1222,7 @@ async fn spawn_dial_proxy(
         return Err(format!("拨号代理拨不通: {why}"));
     }
     tracing::info!(
-        "K-P6b: daemon 流的拨号跑在代理进程里（{}），指纹 {:?}",
+        "K-P6b: backend 流的拨号跑在代理进程里（{}），指纹 {:?}",
         bin.display(),
         v.get("fingerprint").and_then(serde_json::Value::as_str)
     );
@@ -1237,11 +1237,11 @@ pub async fn connect_and_exec(
     cfg: &RemoteConfig,
     with_bg: bool,
     tail_only: bool,
-) -> Result<DaemonStream, String> {
-    // 与 jsonl-watcher 不同，daemon 是长连接：inactivity_timeout=None → connect_session
+) -> Result<BackendStream, String> {
+    // 与 jsonl-watcher 不同，backend 是长连接：inactivity_timeout=None → connect_session
     // 自动启用 30s keepalive（见 FIX 1 注释），靠 keepalive + EOF 检死链，不靠定时拆链。
     // Batch7-F24/Batch8-F26：两个流模式 flag 都由调用方决定（run_stream 里绑定
-    // "部署确认为当前版本"，见该处注释）。tail_only=true → daemon 不重放历史
+    // "部署确认为当前版本"，见该处注释）。tail_only=true → backend 不重放历史
     // （历史由本侧旁路 --read-session 快照拉取），实时通道流量趋零。
     let mut cmd = shell_quote(&cfg.daemon_path);
     if with_bg {
@@ -1262,13 +1262,13 @@ pub async fn connect_and_exec(
     match proxy.as_ref().filter(|_| has_key) {
         Some(bin) => spawn_dial_proxy(bin, cfg, &cmd)
             .await
-            .map(DaemonStream::Proxied),
+            .map(BackendStream::Proxied),
         None => {
             // 🔴 **这一句是「这一台机器上拨号仍在界面进程里」的运行期证据。**
             //    别把它降成 `info` —— 它是用户侧唯一看得见这一格的地方。
             tracing::warn!(
                 "K-P6b: 不走拨号代理（有二进制={} · 配了 keyPath={has_key}）\
-                 ⇒ **daemon 流的拨号仍然发生在界面进程里**。\
+                 ⇒ **backend 流的拨号仍然发生在界面进程里**。\
                  前者为假多半是在开发树里跑（`externalBin` 只在发版那一步注入，\
                  见 `tauri.sidecar.conf.json`），或 {DIAL_PROXY_ENV} 没设；\
                  后者为假 = 这台走的是 ssh-agent，而代理今天只会 publickey。",
@@ -1276,7 +1276,7 @@ pub async fn connect_and_exec(
             );
             connect_and_exec_cmd(cfg, &cmd)
                 .await
-                .map(DaemonStream::InProcess)
+                .map(BackendStream::InProcess)
         }
     }
 }
@@ -1297,7 +1297,7 @@ pub async fn connect_and_exec(
 // `K-R75`（09-12）把那一步换成**按形状**剥可见性修饰（`guard_core::strip_visibility`）之后
 // **那个理由不再成立** ⇒ 绕道拆掉，模块写回它本来的样子。
 // ⚠ 「今天剥法真的接得住 `pub(crate) mod`」这句话**由机检守着，不靠这段散文**：
-//   住 `local_daemon.rs` 的 `the_strip_rule_this_file_leans_on_is_still_on_disk`
+//   住 `local_backend_host.rs` 的 `the_strip_rule_this_file_leans_on_is_still_on_disk`
 //   （`K-R76` `KR76D2`，拿一段逐字校验位去核 `guard-core` 那一行）。
 #[cfg(test)]
 #[path = "../../../tests/bridge/ssh_source_dial_move_judge.rs"]
@@ -1305,7 +1305,7 @@ pub(crate) mod dial_move_judge;
 
 // === Batch8-F26：旁路快照拉取（"每管道一个对话，完就断"——用户设计） ===
 //
-// tail-only 下 daemon 不再重放历史；每个已宣告会话的完整历史由这里经**独立
+// tail-only 下后端不再重放历史；每个已宣告会话的完整历史由这里经**独立
 // SSH 连接**跑 `--read-session` 一次性查询拉回，按行号编 seq 灌进与 tail 行
 // 完全相同的管线（flush_lines → on_line_batch_awaited）。两路 seq 同处行号
 // 空间：重叠区是精确重复的 (sid,seq)，被前端既有去重吸收（MASTERPLAN-batch8 §2）。
@@ -1363,7 +1363,7 @@ fn announced_registry() -> &'static std::sync::Mutex<
     REMOTE_ANNOUNCED.get_or_init(Default::default)
 }
 
-/// B2：全局 tmux 状态账本 origin → 最新 `tmux ls` 原文（daemon `TmuxSessions` 帧推来）。写者 = 各主机
+/// B2：全局 tmux 状态账本 origin → 最新 `tmux ls` 原文（backend `TmuxSessions` 帧推来）。写者 = 各主机
 /// stream_loop（收 TmuxSessions 帧更新 / 连接退出清本 host）；读者 = tmux 对账 poller
 /// （[`snapshot_tmux_by_origin`] 读 + `tmux::parse_tmux_ls` 解析），**替掉每 8s 新建 SSH 的
 /// `list_remote_tmux` 轮询**（B2 治远端 sshd 日志刷屏）。
@@ -1376,15 +1376,15 @@ fn tmux_raw_registry() -> &'static std::sync::Mutex<std::collections::HashMap<St
 }
 
 /// B2：快照「origin → 最新 tmux ls 原文」，供 tmux 对账 poller 读（零 SSH）。缺该 origin = 尚未推来
-/// tmux 状态（daemon 未发 / 连接刚起 / 断连已清）→ poller 本轮跳过该 origin（同「观测无效不累计缺失」）。
+/// tmux 状态（backend 未发 / 连接刚起 / 断连已清）→ poller 本轮跳过该 origin（同「观测无效不累计缺失」）。
 ///
 /// # ⚠ 刻意**不开** IPC 出口〔devbench F08, 08-10〕
 ///
-/// 有人（包括一份审计清单）会看到「daemon 推来的 `tmux_sessions` 帧只进这张表、前端却每 1s
+/// 有人（包括一份审计清单）会看到「backend 推来的 `tmux_sessions` 帧只进这张表、前端却每 1s
 /// 新建一条 SSH 跑 `list_remote_tmux`」，然后得出「开个 `#[tauri::command]` 把它暴露给前端
 /// 就能消掉那条轮询」。**那个因果不成立**，理由是这份快照的**刷新时机**：
 ///
-/// - daemon 的 `TmuxProbeDue` **只在 `initial_tmux_probe` 发一次**（一次性初探）；
+/// - backend 的 `TmuxProbeDue` **只在 `initial_tmux_probe` 发一次**（一次性初探）；
 ///   之后每一拍由 `Poke` 驱动，而 `Poke` 来自 tmux hook，**hook 只有 3 条**：
 ///   `session-created` / `session-closed` / `session-renamed`（`control/tmux_hook.rs::HOOK_EVENTS`）。
 /// - 而 `tabs.ts` 的 `awaitExitFor` 等的是「**pane 前台命令从 claude 变回 shell**」——
@@ -1408,7 +1408,7 @@ fn tmux_raw_registry() -> &'static std::sync::Mutex<std::collections::HashMap<St
 /// 一边清一边不清）。⇒ 收成一个口，两侧共用 —— 这正是 `C1` 在数据面上的样子。
 ///
 /// `origin` 的取值域**只有两类**：远端的 `host_label`/`origin_label`，
-/// 或本机的 [`crate::inbound_client::LOCAL_ORIGIN`]。
+/// 或本机的 [`crate::backend::control::inbound_client::LOCAL_ORIGIN`]。
 /// 由 `ssh_source_f032_idle_tests.rs::the_tmux_cache_has_one_writer_and_only_origin_keys` 钉住。
 ///
 /// 〔`K-R19` 订正 09-03〕这一句原先点的是
@@ -1422,8 +1422,8 @@ pub(crate) fn record_tmux_raw(origin: &str, raw: String) {
     // 原来是 `.lock().unwrap()`。本函数**跑在本机消费者那条裸 `std::thread` 上**
     // （`local_backend::local_stdio_consumer`），而那个线程没有 `catch_unwind`：
     // 一次锁中毒 panic 会 unwind 出整个消费者闭包 ⇒ `child` 锁里还留着活的 `Child`、
-    // `pid` 没归 0、`unregister` 被跳过 ⇒ 没人再读 daemon 的 stdout ⇒ 管道缓冲填满
-    // ⇒ **daemon 阻塞在 write 上冻死**；而 `daemon_status` 照回 `channel: true` + 一个活 pid，
+    // `pid` 没归 0、`unregister` 被跳过 ⇒ 没人再读后端的 stdout ⇒ 管道缓冲填满
+    // ⇒ **backend 阻塞在 write 上冻死**；而 `backend_status` 照回 `channel: true` + 一个活 pid，
     // `start_local_backend` 也会以「已经在跑」拒绝重起。**全绿的死锁态，没有一处会响。**
     //
     // 处置对齐本仓既定做法（`inbound_client` 的两处 `unwrap_or_else(|e| e.into_inner())`）：
@@ -1444,7 +1444,7 @@ pub(crate) fn record_tmux_raw(origin: &str, raw: String) {
 ///
 /// ⚠ **补审 08-11 逮到本机那半从来不清**：远端断连走这条路（Batch9-F28 就写着），
 /// 而本机消费者流结束时只 `unregister` 入方向 client、不碰这张表 ⇒
-/// 停掉本机 daemon 之后 `<local>` 那份原文**永久留着**。
+/// 停掉本机后端之后 `<local>` 那份原文**永久留着**。
 /// 判据当时没发现，因为它只数 `insert`（`.remove(` 也是写者，见那条判据的订正）。
 pub(crate) fn forget_tmux_raw(origin: &str) {
     tmux_raw_registry()
@@ -1530,14 +1530,14 @@ pub fn snapshot_idle_by_origin(
 /// 字段），**不看 command**——command-agnostic：`TmuxSessions` 帧的新鲜度**由 hook 决定**（P5 后零定时器；
 /// hook 覆盖到的近乎即时，覆盖不到的可能**永不刷新** —— 见 `classify_removed` 头注那个 `/branch` 洞），claude 退出瞬间那帧
 /// 的 command 列可能仍是 claude，卡 `command!=claude` 会正常退出高频误判 archived、丢灰灯。故改用
-/// 「claude 死」由 daemon-removed（emitter 触发边沿）判、「tmux 在」由 `@ccm_sid` present 判（claude
+/// 「claude 死」由 backend-removed（emitter 触发边沿）判、「tmux 在」由 `@ccm_sid` present 判（claude
 /// 退出后 wrapper watcher 停写但**不 unset**，session 级 option 恒 present——aya 已实测）。`NO_TMUX`/空跳过。
 fn tmux_origin_for_sid(
     by_origin: &std::collections::HashMap<String, String>,
     sid: &str,
 ) -> Option<String> {
     for (origin, raw) in by_origin {
-        if crate::tmux::parse_tmux_ls(raw)
+        if crate::backend::control::tmux::parse_tmux_ls(raw)
             .iter()
             .any(|s| s.sid.as_deref() == Some(sid))
         {
@@ -1563,7 +1563,7 @@ fn tmux_origin_for_sid(
 ///
 /// # 为什么是「摘一行」而不是「重新探一次」
 ///
-/// 重新探要跨 SSH、要等，而**我们已经知道结论了**（daemon 的正向死亡帧就是结论）。
+/// 重新探要跨 SSH、要等，而**我们已经知道结论了**（backend 的正向死亡帧就是结论）。
 /// 摘一行是**把已知事实写进账本**，不是猜。
 /// ⚠ 只按**第一列（会话名）逐字相等**摘 —— 不做前缀匹配（`cc-a` 与 `cc-ab` 会互相误伤）。
 pub fn remove_tmux_line(raw: &str, name: &str) -> String {
@@ -1582,7 +1582,7 @@ pub fn find_tmux_origin_for_sid(sid: &str) -> Option<String> {
     tmux_origin_for_sid(&snapshot_tmux_by_origin(), sid)
 }
 
-/// audit-fixes F03.2（D 审计②覆盖缺口）：daemon-removed 到达时的分流决策。emitter 收 removed 后
+/// audit-fixes F03.2（D 审计②覆盖缺口）：backend-removed 到达时的分流决策。emitter 收 removed 后
 /// 据「该 sid 的 tmux 是否仍在」（`find_tmux_origin_for_sid` 的 Option）择一：
 /// `Idle{origin}`=tmux 会话尚在 → 灰灯（mark_idle + emit SESSION_IDLE + **不 forget**）；
 /// `Archive`=tmux 也没了 → 归档（clear_idle + forget + emit SESSION_ENDED）。
@@ -1665,8 +1665,8 @@ pub fn reannounce_all(app: &tauri::AppHandle) {
 struct SnapshotItem {
     sid: String,
     path: String,
-    /// daemon prime 时的完整行数 L（p1f 帧 `lines`）——完整性校验：快照行数
-    /// < L = 中途断/daemon 报错 → 判失败重试（审计 D-I2：exit status 拿不到）。
+    /// backend prime 时的完整行数 L（p1f 帧 `lines`）——完整性校验：快照行数
+    /// < L = 中途断/backend 报错 → 判失败重试（审计 D-I2：exit status 拿不到）。
     expected_lines: Option<u64>,
 }
 
@@ -1889,7 +1889,7 @@ enum FetchOutcome {
     Cancelled,
 }
 
-/// 判定快照流的一行是否计入行号（**必须与 daemon `read_new_lines` 一字一致**：
+/// 判定快照流的一行是否计入行号（**必须与 backend `read_new_lines` 一字一致**：
 /// BOM + 全空白的行跳过且不消耗 seq——两路 seq 同处行号空间的前提）。
 fn snapshot_line_countable(line: &str) -> bool {
     !line.trim_start_matches('\u{feff}').trim().is_empty()
@@ -1899,15 +1899,15 @@ fn snapshot_line_countable(line: &str) -> bool {
 ///
 /// 读取是 **fill_buf 字节级**（审计 D-I3/S2/S5）：超时打在"单次底层读无进展"
 /// 而非整行（多 MB 的 base64 图片行在慢链路上不再假超时）；`from_utf8_lossy`
-/// 解码对齐 daemon（坏字节不再让该会话历史永不可得）；EOF 处无 `\n` 的残行
-/// 丢弃不计 seq（与 daemon `read_new_lines` 的 F14 语义一字一致）。
+/// 解码对齐后端（坏字节不再让该会话历史永不可得）；EOF 处无 `\n` 的残行
+/// 丢弃不计 seq（与 backend `read_new_lines` 的 F14 语义一字一致）。
 ///
 /// 每个 chunk 边界查取消（会话 removed / 连接断）——中止并**补偿 emit 一次
 /// session-ended**：若某个已 flush 的 chunk 恰把归档 tab"见行复活"，这里把它
 /// 压回 archived（审计 D-B1 僵尸复活的封口；archiveTab 幂等，重复无害）。
 ///
 /// 完整性校验（审计 D-I2）：p1f 帧带 prime 时的行数 L——拉到的行数 < L 即
-/// 判失败（daemon exit 2 时 stdout 零字节、512MB take 截断等都会在此兜住）。
+/// 判失败（backend exit 2 时 stdout 零字节、512MB take 截断等都会在此兜住）。
 async fn fetch_snapshot(
     q: &std::sync::Arc<SnapshotQueue>,
     cfg: &RemoteConfig,
@@ -2012,13 +2012,13 @@ async fn fetch_snapshot(
     if let Some((total, _)) = tail_map {
         if arrived != total {
             return Err(format!(
-                "快照不完整：{arrived}/{total} 行（连接中断或 daemon 报错）"
+                "快照不完整：{arrived}/{total} 行（连接中断或后端报错）"
             ));
         }
     } else if let Some(expected) = item.expected_lines {
         if arrived < expected {
             return Err(format!(
-                "快照不完整：{arrived}/{expected} 行（连接中断或 daemon 报错）"
+                "快照不完整：{arrived}/{expected} 行（连接中断或后端报错）"
             ));
         }
     }
@@ -2026,7 +2026,7 @@ async fn fetch_snapshot(
 }
 
 /// Batch9-F30：解析快照流首行的 meta。非 meta（普通 jsonl 行）/ 关系非法
-/// （tail_from > total——自家 daemon saturating_sub 不可达，但 meta 是远端
+/// （tail_from > total——自家 backend saturating_sub 不可达，但 meta 是远端
 /// 进程输出，防御式拒收退回旧编号，审计 D）→ None。
 fn parse_snapshot_meta(line: &str) -> Option<(u64, u64)> {
     let v: serde_json::Value = serde_json::from_str(line).ok()?;
@@ -2055,7 +2055,7 @@ fn tail_seq(arrived: u64, total: u64, tail_from: u64) -> u64 {
 }
 
 /// [`connect_and_exec`] 的通用形态：exec 任意命令行（issue #16：历史查询走
-/// `<daemon_path> --list-projects` 等一次性命令，与流式 daemon 同一连接建立逻辑、
+/// `<daemon_path> --list-projects` 等一次性命令，与流式后端同一连接建立逻辑、
 /// 各自独立连接互不影响）。
 pub async fn connect_and_exec_cmd(
     cfg: &RemoteConfig,
@@ -2075,7 +2075,7 @@ pub async fn connect_and_exec_cmd(
         .await
         .map_err(|e| format!("exec {cmd} 失败: {e}"))?;
 
-    // into_stream 把 channel 变成 AsyncRead+AsyncWrite；读端就是 daemon stdout 流。
+    // into_stream 把 channel 变成 AsyncRead+AsyncWrite；读端就是 backend stdout 流。
     Ok(channel.into_stream())
 }
 
@@ -2089,7 +2089,7 @@ pub async fn connect_and_exec_cmd(
 /// 与「查询成功但结果为空」**在类型上不可区分**。
 ///
 /// 列举类查询忍得了（空结果本来就合法），但 `--fork-session` 忍不了 ——
-/// 分叉失败必须让用户看见原因，而 daemon 恰恰把原因写在 **stderr + exit 2** 上。
+/// 分叉失败必须让用户看见原因，而后端恰恰把原因写在 **stderr + exit 2** 上。
 /// 所以这里直接驱动 `channel.wait()` 收全三样。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemoteExec {
@@ -2104,9 +2104,9 @@ pub struct RemoteExec {
 /// 上限只是防「远端吐无穷字节」吃爆内存，正常路径远够不到。
 const EXEC_CAPTURE_MAX_BYTES: usize = 4 * 1024 * 1024;
 
-/// daemon **出方向单行**的字节上限〔devbench F10b〕。
+/// backend **出方向单行**的字节上限〔devbench F10b〕。
 ///
-/// # ★ 这个数**刻意不等于** daemon 侧的 `inbound::MAX_LINE_BYTES`（1 MiB）
+/// # ★ 这个数**刻意不等于** backend 侧的 `inbound::MAX_LINE_BYTES`（1 MiB）
 ///
 /// 那一条限的是**入方向命令信封**（`inbound.rs` 逐字「命令信封比 `ResumeSpec` 还小，
 /// 1 MiB 已是极宽松的上限」）。本条限的是**出方向内容帧** —— 一帧 = 一条 Claude jsonl 行。
@@ -2120,20 +2120,20 @@ const EXEC_CAPTURE_MAX_BYTES: usize = 4 * 1024 * 1024;
 /// 用户会看到一条「丢了帧」的健康提示，而那不是拥塞，是我们自己把上限设小了。
 ///
 /// 取 64 MiB = 实测最长行的 21 倍。留这么大余量的理由有两条：
-/// 帧内换行被 daemon 转义成 `\n` 两字符（最坏接近翻倍），以及工具输出体量只会变大。
+/// 帧内换行被后端转义成 `\n` 两字符（最坏接近翻倍），以及工具输出体量只会变大。
 ///
 /// # 超限语义：**丢弃 + 带身份报告**，不许静默
 ///
 /// 走 `REMOTE_HEALTH` + `kind: "line_too_long"`，与 `overflow_health_message` 那条
 /// 现成的路同一个出口（定框 E4：静默失败要给身份、且抬到调用方能判定的那一层）。
-pub(crate) const DAEMON_FRAME_LINE_CAP: usize = 64 * 1024 * 1024;
+pub(crate) const BACKEND_FRAME_LINE_CAP: usize = 64 * 1024 * 1024;
 
 /// 一次有界读行的结果。
 #[derive(Debug)]
 pub(crate) enum CappedLine {
     /// 读到一行（内容在 `buf` 里，**不含**行尾 `\n`；可能是 EOF 前的残行）。
     Line,
-    /// 这一行超过 [`DAEMON_FRAME_LINE_CAP`]，**已整行丢弃**。
+    /// 这一行超过 [`BACKEND_FRAME_LINE_CAP`]，**已整行丢弃**。
     /// 带上它到底有多少字节 —— 超限之后只数不存，所以这个数是准的而内存是 O(上限) 的。
     TooLong(u64),
     /// 对端关了写半边，且没有残行。
@@ -2144,20 +2144,20 @@ pub(crate) enum CappedLine {
 ///
 /// # ★ 为什么不是 `read_line` 加一句长度判断
 ///
-/// 那是 daemon 侧栽过的坑，逐字记在 `src/backend/inbound.rs` 头注里：
+/// 那是后端侧栽过的坑，逐字记在 `src/backend/inbound.rs` 头注里：
 /// 第一版用无界 `read_until`、读完再看长度，D 审计实测**喂 512 MiB 无换行的流 ⇒
 /// RSS 从 6 MiB 涨到 518 MiB**，而它照样回了一条 `line_too_long`「看起来对」。
 /// ⇒ 机制必须是 `fill_buf`/`consume`：超限之后**只找换行、不再往 buf 里塞字节**，
 /// 整行的内存占用与行长无关。本函数是那段机制在 monitor 侧的同构实现
-/// （**上限值不同、机制相同** —— 见 [`DAEMON_FRAME_LINE_CAP`] 头注）。
+/// （**上限值不同、机制相同** —— 见 [`BACKEND_FRAME_LINE_CAP`] 头注）。
 ///
 /// ⚠ **不是 cancellation-safe**：中途取消会丢掉 `overflowed`/计数状态，
 /// 而 `buf` 里的半行留着。调用方要么把它放进独立 task（主帧读那样），
 /// 要么取消之后就**不再复用这个 reader**（探测那两处那样）。
 ///
-/// ★ `cap` **是参数而不是直接读常量**：生产调用点全传 [`DAEMON_FRAME_LINE_CAP`]，
+/// ★ `cap` **是参数而不是直接读常量**：生产调用点全传 [`BACKEND_FRAME_LINE_CAP`]，
 /// 而测试要能传一个小数。否则「超限之后内存不涨」这条性质就只能靠量 RSS 来证
-/// （daemon 侧当年正是那么发现问题的），而**那种证法进不了单测**。
+/// （backend 侧当年正是那么发现问题的），而**那种证法进不了单测**。
 /// 传小 cap 之后同一条性质可以直接判：见 `over_limit_stops_growing_the_buffer`。
 pub(crate) async fn read_capped_line<R>(
     rd: &mut R,
@@ -2216,9 +2216,9 @@ where
 /// 消费点要真 `AppHandle` 测不了，而措辞对不对恰恰是要钉的东西。
 fn line_too_long_health_message(host_label: &str, bytes: u64) -> String {
     format!(
-        "远端 [{host_label}] 发来一行 {bytes} 字节，超过单行上限 {DAEMON_FRAME_LINE_CAP} 字节，\
+        "远端 [{host_label}] 发来一行 {bytes} 字节，超过单行上限 {BACKEND_FRAME_LINE_CAP} 字节，\
          这一行**已整行丢弃**。这不是网络拥塞 —— 要么该会话里有异常巨大的一条记录，\
-         要么对端不是本工具的 daemon。重开该会话可看完整历史。"
+         要么对端不是本工具的后端。重开该会话可看完整历史。"
     )
 }
 
@@ -2228,8 +2228,8 @@ fn line_too_long_health_message(host_label: &str, bytes: u64) -> String {
 /// 不影响长连接流路径。超时由调用方套 `tokio::time::timeout`。
 ///
 /// `abort_marker`：stdout 里一出现这个子串就**立刻收工返回**。存在的理由只有一个 ——
-/// **不认参数的旧 daemon 会掉进流模式**（长连接、永不 EOF）。老老实实收到通道关闭，
-/// 就只能等调用方的超时兜底，而超时会把「daemon 版本过旧」这条最有用的诊断吞成
+/// **不认参数的旧后端会掉进流模式**（长连接、永不 EOF）。老老实实收到通道关闭，
+/// 就只能等调用方的超时兜底，而超时会把「backend 版本过旧」这条最有用的诊断吞成
 /// 一句「超时」。给调用方一个字符串就能提前抽身。`None` = 收到底。
 pub async fn connect_and_exec_capture(
     cfg: &RemoteConfig,
@@ -2289,16 +2289,16 @@ pub fn shell_quote(s: &str) -> String {
     shell_quote_core::posix_quote(s)
 }
 
-/// daemon→client 的一帧（解析后的 inbound 表示）。
+/// backend→client 的一帧（解析后的 inbound 表示）。
 ///
 /// 对应 `src/backend::wire::Frame`（外部 `kind` tag，snake_case）。这里**不**
 /// 直接 import 那个 crate（它刻意不在 workspace 里、不被 root Cargo 引用，见其 README），
 /// 而是用 schema-agnostic 的方式（serde_json::Value + 读 `kind`）解析，只取 Phase-0 需要的
-/// 字段。这样：协议演进（daemon 加 `build_id` / 加新 kind）不会 break 解析 —— 未知 kind /
+/// 字段。这样：协议演进（backend 加 `build_id` / 加新 kind）不会 break 解析 —— 未知 kind /
 /// 多余字段一律忽略（见 `parse_frame`）。
 /// 一条**丢了就不可恢复**的帧的身份〔audit-0805 F21〕。
 ///
-/// 与 daemon 侧 `wire::LostFrame` 对应。**故意不共用类型**：那是 daemon crate 的私有 wire
+/// 与后端侧 `wire::LostFrame` 对应。**故意不共用类型**：那是 backend crate 的私有 wire
 /// 形状，monitor 这边是从 JSON 现解的，共用会把两个 crate 绑死在一个结构体上，
 /// 而 additive 演进恰恰要求两边能各自容忍对方多/少字段。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2307,11 +2307,11 @@ pub struct LostFrameInfo {
     pub subject: Option<String>,
 }
 
-/// `hello.homes` 的一项 —— **某个 agent 在那台远端机器上的 home 目录**〔daemon-split `S4`〕。
+/// `hello.homes` 的一项 —— **某个 agent 在那台远端机器上的 home 目录**〔backend-split `S4`〕。
 ///
-/// 与 daemon 侧 `wire::AgentHome` 对称（这一侧刻意不依赖那个 crate，照 `InboundFrame`
+/// 与后端侧 `wire::AgentHome` 对称（这一侧刻意不依赖那个 crate，照 `InboundFrame`
 /// 一贯的做法自己解析 JSON）。字段名里没有任何一个 agent 的名字：agent 维度住在
-/// `agent_kind` 这个**值**里 —— daemon 那边 `D3` 逐字要求的形状。
+/// `agent_kind` 这个**值**里 —— backend 那边 `D3` 逐字要求的形状。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AgentHome {
     pub agent_kind: String,
@@ -2322,13 +2322,13 @@ pub struct AgentHome {
 ///
 /// 这是 `S4` additive 迁移在消费侧的那一半。两个字段的关系：
 /// - `homes`（新，通用）：`[{agent_kind, path}]`，agent 维度在**值**里；
-/// - `claude_dir`（旧，冻结兼容）：字段名里带 agent 名，daemon 侧登记在
+/// - `claude_dir`（旧，冻结兼容）：字段名里带 agent 名，backend 侧登记在
 ///   `agent_boundary_guard::FROZEN_COMPAT`，**解锁条件是 monitor 与 aterm 都改读 `homes`**。
 ///
 /// ⇒ 本函数就是 monitor 那半的兑现：从今往后 monitor **不再依赖** `claude_dir` 的存在语义，
 /// 它只是回退路径。`claude_dir` 的删除因此只卡在仓外 aterm 上，我们这边不欠。
 ///
-/// ⚠ 今天的 daemon `homes` 恒空（DG1 未接线）⇒ 实际走的一直是回退分支。
+/// ⚠ 今天的 backend `homes` 恒空（DG1 未接线）⇒ 实际走的一直是回退分支。
 /// 这不是"没接上"，是 additive 迁移的正常中间态：先让消费侧认得新字段，
 /// 生产侧（`S5`）再开始发 —— 反过来做会有一段时间新字段被丢掉。
 pub(crate) fn claude_home_from_hello<'a>(homes: &'a [AgentHome], claude_dir: &'a str) -> &'a str {
@@ -2341,8 +2341,8 @@ pub(crate) fn claude_home_from_hello<'a>(homes: &'a [AgentHome], claude_dir: &'a
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InboundFrame {
-    /// 握手帧：连接建立后 daemon 发一次。`v` = 协议大版本，`build_id` = daemon 构建标识
-    /// （#33 版本协商捕获 + 比对），host_arch / claude_dir 用于 log 证明 daemon 真的在远端
+    /// 握手帧：连接建立后后端发一次。`v` = 协议大版本，`build_id` = backend 构建标识
+    /// （#33 版本协商捕获 + 比对），host_arch / claude_dir 用于 log 证明后端真的在远端
     /// 跑起来了。多余字段仍忽略（向前兼容）。
     Hello {
         v: u64,
@@ -2351,19 +2351,19 @@ pub enum InboundFrame {
         /// ⚠ **原样的线上值**，不做回退解析 —— 要「Claude 的 home」请走
         /// [`claude_home_from_hello`]（优先 `homes`）。两者分开是刻意的：
         /// 这个字段是**冻结兼容面**（仓外 aterm 还在读它），
-        /// 把回退结果写回这里会让"daemon 到底发了什么"变得不可观测。
+        /// 把回退结果写回这里会让"backend 到底发了什么"变得不可观测。
         claude_dir: String,
-        /// daemon-split `S4`（additive）：远端各 agent 的 home 目录表。
-        /// 旧 daemon（含今天所有已部署的）无此字段 ⇒ 空表 ⇒ 回退 `claude_dir`。
+        /// backend-split `S4`（additive）：远端各 agent 的 home 目录表。
+        /// 旧后端（含今天所有已部署的）无此字段 ⇒ 空表 ⇒ 回退 `claude_dir`。
         /// 非数组 / 元素缺字段一律滤掉，绝不 panic（同 `capabilities` 口径）。
         homes: Vec<AgentHome>,
-        /// F66（#58③）：daemon 声明的能力 token 集。旧 daemon 无此字段 → 空集
+        /// F66（#58③）：backend 声明的能力 token 集。旧后端无此字段 → 空集
         /// （保守：按最小能力集待它，不发流模式 flag）。monitor 按此决定发
         /// `--with-bg`/`--tail-only`，不再靠 build_id 精确匹配。
         capabilities: Vec<String>,
-        /// U6b-2 / U8a-2a：daemon 声明**接受哪些入方向命令**（`inbound::COMMANDS`）。
+        /// U6b-2 / U8a-2a：backend 声明**接受哪些入方向命令**（`inbound::COMMANDS`）。
         /// `capabilities` 说的是「我认识哪些流 flag」（出方向），这一条说的是入方向 ——
-        /// 两者正交。旧 daemon 无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
+        /// 两者正交。旧后端无此字段 ⇒ 空集 ⇒ monitor 一条入方向命令都不发。
         commands: Vec<String>,
     },
     /// 一行从远端 session jsonl 尾随读到的原始行。字段语义与本地 `watcher::JsonlLine` 对齐。
@@ -2373,8 +2373,8 @@ pub enum InboundFrame {
         seq: u64,
         raw: String,
     },
-    /// 远端新出现一个 session 文件。Batch7-F24：p1e daemon 附带 pidfile 元信息
-    /// （additive）；旧 daemon 缺字段 → None（保守视为交互）。
+    /// 远端新出现一个 session 文件。Batch7-F24：p1e backend 附带 pidfile 元信息
+    /// （additive）；旧后端缺字段 → None（保守视为交互）。
     SessionAdded {
         sid: String,
         session_kind: Option<String>,
@@ -2383,15 +2383,15 @@ pub enum InboundFrame {
         attachable: Option<bool>,
         cwd: Option<String>,
         name: Option<String>,
-        /// Batch8-F25：远端 jsonl 绝对路径（p1f daemon 起有值）——旁路快照用。
+        /// Batch8-F25：远端 jsonl 绝对路径（p1f backend 起有值）——旁路快照用。
         path: Option<String>,
-        /// Batch8 D-I2：daemon prime 时的完整行数 L（快照完整性校验）。
+        /// Batch8 D-I2：backend prime 时的完整行数 L（快照完整性校验）。
         lines: Option<u64>,
         /// Batch9-F27：宣告时的初始 status/waitingFor（连接建立灯就对）。
         status: Option<String>,
         waiting_for: Option<String>,
     },
-    /// Batch9-F27：会话 status 变化（p1g daemon；远端红绿灯）。
+    /// Batch9-F27：会话 status 变化（p1g backend；远端红绿灯）。
     SessionStatus {
         sid: String,
         status: Option<String>,
@@ -2400,28 +2400,28 @@ pub enum InboundFrame {
     /// 远端一个 session 文件消失。
     SessionRemoved {
         sid: String,
-        /// S0：daemon 明说的移除原因（缺字段 ⇒ [`RemovalCause::Gone`]，与旧 daemon 兼容）。
+        /// S0：backend 明说的移除原因（缺字段 ⇒ [`RemovalCause::Gone`]，与旧后端兼容）。
         cause: RemovalCause,
     },
-    /// issue #32：远端 daemon 发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）。
+    /// issue #32：远端后端发送通道拥塞、丢了 `dropped` 帧（慢 SSH 管道）。
     /// monitor 收到后经 SS-F remote-health 通道提示用户。
     ///
     /// ★ `lost` / `lost_truncated`〔audit-0805 F21，additive〕：那批丢帧里**不可恢复**的
     /// 那些的身份。⚠ **它们的有无决定了要对用户说哪句话** —— 丢内容帧「重开会话可看完整
     /// 历史」是真的；丢状态增量帧**不是**（它是一次差分的结果、别处不存在）。
-    /// 旧 daemon 不发这两个字段 ⇒ 空集 / false，行为退回从前。
+    /// 旧后端不发这两个字段 ⇒ 空集 / false，行为退回从前。
     Overflow {
         dropped: u64,
         lost: Vec<LostFrameInfo>,
         lost_truncated: bool,
     },
-    /// B2：daemon 在远端本地跑 `tmux ls` 的原始 stdout（或哨兵 `NO_TMUX`）——喂 tmux 对账，
+    /// B2：backend 在远端本地跑 `tmux ls` 的原始 stdout（或哨兵 `NO_TMUX`）——喂 tmux 对账，
     /// 替掉每 8s 新建 SSH 的刷屏轮询。`raw` 由 `tmux::parse_tmux_ls` 解析（`NO_TMUX`→无 tmux）。
     ///
-    /// P1（zero-poll-liveness）：`observation` = daemon 的**显式观测分类**（additive；旧 daemon
+    /// P1（zero-poll-liveness）：`observation` = backend 的**显式观测分类**（additive；旧 backend
     /// 为 `None`）。分类判定见 `tmux::classify_tmux_observation`——它把「确证零会话」与
     /// 「观测失败」分开，这是修掉 §24bis 灰灯卡死的关键（空 `raw` 在旧协议里两义不可分）。
-    /// P5：daemon 差分算出的**正向死亡帧**——某个 tmux 会话确定关闭了。
+    /// P5：backend 差分算出的**正向死亡帧**——某个 tmux 会话确定关闭了。
     /// 收到即 retire、绕过 miss 计数（快照 + miss 那条路原样保留作兜底）。
     TmuxSessionClosed { name: String },
     TmuxSessions {
@@ -2429,7 +2429,7 @@ pub enum InboundFrame {
         observation: Option<String>,
     },
     /// U6b-1 / U8a-2a：**入方向命令的应答**。`id` 是 monitor 自己生成的不透明串，
-    /// daemon 原样回显。由 `inbound_client` 按 `id` 路由回请求方。
+    /// backend 原样回显。由 `inbound_client` 按 `id` 路由回请求方。
     Reply {
         id: String,
         ok: bool,
@@ -2451,7 +2451,7 @@ pub enum InboundFrame {
 ///
 /// 三档（定框 **E4**：静默失败要给身份、且要抬到调用方能判定的那一层）：
 /// - **只丢了内容帧**（`lost` 空）：老说法成立，行还在远端 jsonl 里。
-///   ⚠ 旧 daemon（`p1x` 之前）不发 `lost` ⇒ 也落这一档，**行为与从前逐字相同**。
+///   ⚠ 旧后端（`p1x` 之前）不发 `lost` ⇒ 也落这一档，**行为与从前逐字相同**。
 /// - **有不可恢复的丢失**：点名主体，并**明说重开会话补不回来**。
 /// - **身份表还被截断了**：再加一句「清单不全」，暗示理性做法是整体重取。
 fn overflow_health_message(
@@ -2486,7 +2486,7 @@ fn overflow_health_message(
     )
 }
 
-/// 把 daemon 发来的一行（已去掉行尾 `\n`）解析成 [`InboundFrame`]。
+/// 把后端发来的一行（已去掉行尾 `\n`）解析成 [`InboundFrame`]。
 ///
 /// **纯函数 + 绝不 panic**：
 /// - 非 JSON / JSON 不是 object → `None`
@@ -2503,12 +2503,12 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
     match kind {
         "hello" => {
             let v = obj.get("v")?.as_u64()?;
-            // #33：捕获 build_id 做版本协商（既有 daemon 一直在发，故按必需字段解析）。
+            // #33：捕获 build_id 做版本协商（既有后端一直在发，故按必需字段解析）。
             let build_id = obj.get("build_id")?.as_str()?.to_string();
             let host_arch = obj.get("host_arch")?.as_str()?.to_string();
             let claude_dir = obj.get("claude_dir")?.as_str()?.to_string();
-            // daemon-split `S4`（additive）：`homes` = 远端各 agent 的 home 目录表
-            // （`[{agent_kind, path}]`）。旧 daemon **全部**没有这个字段 ⇒ 空表 ⇒
+            // backend-split `S4`（additive）：`homes` = 远端各 agent 的 home 目录表
+            // （`[{agent_kind, path}]`）。旧 backend **全部**没有这个字段 ⇒ 空表 ⇒
             // 消费侧回退 `claude_dir`（见 `claude_home_from_hello`）。
             // ⚠ 逐项要求 `agent_kind` 与 `path` 都是字符串，坏的那一项**单独丢掉**、
             //   不是丢整张表 —— 同 `capabilities` 的「非数组 / 元素类型不对一律滤掉」口径。
@@ -2528,7 +2528,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                         .collect()
                 })
                 .unwrap_or_default();
-            // F66（#58③，additive）：旧 daemon 无 `capabilities` 字段 → 空集（保守缺省，
+            // F66（#58③，additive）：旧后端无 `capabilities` 字段 → 空集（保守缺省，
             // 同 §27「status 缺失恒未知」族）。非数组 / 元素非字符串一律滤掉，绝不 panic。
             let capabilities = obj
                 .get("capabilities")
@@ -2539,7 +2539,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
                         .collect()
                 })
                 .unwrap_or_default();
-            // U8a-2a：入方向能力协商（additive，同上口径）。旧 daemon 无此字段 ⇒ 空集
+            // U8a-2a：入方向能力协商（additive，同上口径）。旧后端无此字段 ⇒ 空集
             // ⇒ `inbound_client` 一条入方向命令都不发。
             let commands = obj
                 .get("commands")
@@ -2574,7 +2574,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         }
         "session_added" => {
             let sid = obj.get("sid")?.as_str()?.to_string();
-            // Batch7-F24 附加字段（旧 daemon 缺失 → None）
+            // Batch7-F24 附加字段（旧后端缺失 → None）
             let opt = |k: &str| obj.get(k).and_then(|v| v.as_str()).map(str::to_string);
             Some(InboundFrame::SessionAdded {
                 sid,
@@ -2601,8 +2601,8 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         }
         "session_removed" => {
             let sid = obj.get("sid")?.as_str()?.to_string();
-            // ★ S0（additive）：`cause` 缺省 = `Gone`，旧 daemon 原样工作。
-            // **双写点**：字面量与 daemon `src/backend/wire.rs::RemovalCause`
+            // ★ S0（additive）：`cause` 缺省 = `Gone`，旧后端原样工作。
+            // **双写点**：字面量与 backend `src/backend/wire.rs::RemovalCause`
             // 的 serde 名逐字一致，由 `removal_cause_wire_literal_stays_in_sync` 钉住。
             // 未知取值也退回 `Gone`（宁可保守判活，不可凭一个不认识的词直接归档）。
             let cause = match obj.get("cause").and_then(|v| v.as_str()) {
@@ -2614,7 +2614,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         "overflow" => {
             // issue #32：dropped 必需且为数字；缺/错则当坏帧跳过（不 panic）。
             let dropped = obj.get("dropped")?.as_u64()?;
-            // 〔audit-0805 F21〕additive：**缺字段必须仍能解析** —— 旧 daemon 还在跑，
+            // 〔audit-0805 F21〕additive：**缺字段必须仍能解析** —— 旧后端还在跑，
             // 把它们当必需会让整帧变成坏帧、连 `dropped` 都丢掉，比不认识更糟。
             let lost: Vec<LostFrameInfo> = obj
                 .get("lost")
@@ -2645,7 +2645,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             })
         }
         // P5：additive 新帧。缺 `name` / 非字符串 → 坏帧跳过（不 panic），
-        // 与其余帧同一口径。**旧 daemon 不发它** ⇒ 这条分支永不命中，行为退回快照+miss。
+        // 与其余帧同一口径。**旧后端不发它** ⇒ 这条分支永不命中，行为退回快照+miss。
         "tmux_session_closed" => {
             let name = obj.get("name")?.as_str()?.to_string();
             Some(InboundFrame::TmuxSessionClosed { name })
@@ -2654,7 +2654,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
             // B2：raw = tmux ls 原文（或 NO_TMUX）。缺/非字符串 → 坏帧跳过。
             let raw = obj.get("raw")?.as_str()?.to_string();
             // P1：observation 是 additive 可选字段——**缺失/非字符串都当 None**（不是坏帧）。
-            // 旧 daemon 没有它；非字符串是坏 daemon，退化成旧判据即今天的保守行为。
+            // 旧后端没有它；非字符串是坏后端，退化成旧判据即今天的保守行为。
             let observation = obj
                 .get("observation")
                 .and_then(|v| v.as_str())
@@ -2686,7 +2686,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
         // **每帧刷一条 `skipping unparseable/unknown frame` 的 warn** —— 那既是噪声，
         // 也让真正的坏帧淹没在里面。
         //
-        // daemon 的 `EMITS` 里**登记了、也真在发**（`watcher.rs` 每轮对话一帧），
+        // backend 的 `EMITS` 里**登记了、也真在发**（`watcher.rs` 每轮对话一帧），
         // 而 monitor 此前**根本不认它** —— 实测是 `EMITS` 八个 kind 里唯一一个漏的。
         // monitor 不需要它：轮次边界由本地 `parse_line` 管线从 `line` 帧的原始 jsonl 自己推。
         // 它是发给 **aterm** 的（aterm 按 `emits` 门控消费）。
@@ -2700,7 +2700,7 @@ pub fn parse_frame(line: &str) -> Option<InboundFrame> {
 /// 本 monitor **认识**的全部帧 kind（消费 + 刻意不消费）。
 ///
 /// 与 `parse_frame` 的 match 臂是同一份事实 —— 由
-/// `every_kind_the_daemon_emits_is_known_to_the_monitor` 与
+/// `every_kind_the_backend_emits_is_known_to_the_monitor` 与
 /// `known_kinds_matches_parse_frame` 两条钉住。
 #[cfg(test)]
 const KNOWN_FRAME_KINDS: &[&str] = &[
@@ -2717,13 +2717,13 @@ const KNOWN_FRAME_KINDS: &[&str] = &[
     "turn_end",
 ];
 
-/// U7-1：**daemon 的产出面 ↔ monitor 的消费面**对拍。
+/// U7-1：**backend 的产出面 ↔ monitor 的消费面**对拍。
 ///
 /// # 这条抓到的第一个真缺陷
 ///
-/// daemon 的 `EMITS` 是一份**承诺**（那个常量的注释逐条写着「登记 = 承诺真发，已接线」），
+/// backend 的 `EMITS` 是一份**承诺**（那个常量的注释逐条写着「登记 = 承诺真发，已接线」），
 /// monitor 的 `parse_frame` 是**实际消费面**。两者此前**没有任何对拍** ——
-/// 实测 `turn_end` 是 daemon 承诺发、也真在发、而 monitor 压根不认的那一个：
+/// 实测 `turn_end` 是后端承诺发、也真在发、而 monitor 压根不认的那一个：
 /// 每轮对话刷一条 `skipping unparseable/unknown frame` 的 warn。
 ///
 /// 「读面合流」的第一步不是搬代码，是**让消费面追上产出面并钉住**。
@@ -2733,7 +2733,7 @@ mod emits_parity;
 
 /// U8a-2a：**握手完成 ⇒ 写半边解冻。**
 ///
-/// 见证只能由一帧真的 Hello 换出来（`DaemonHello::from_hello_frame`）⇒
+/// 见证只能由一帧真的 Hello 换出来（`BackendHello::from_hello_frame`）⇒
 /// 「hello 之前不许写」在 monitor 侧是类型上的事实，不是一条纪律。
 /// 第二次 hello（不该有）时 `parked` 已被 `take` 走，静默跳过。
 ///
@@ -2741,26 +2741,26 @@ mod emits_parity;
 /// 客户端永不登记）⇒ `cargo test` **全绿**。它埋在 `stream_loop` 中段时没有任何判据碰得到。
 fn attach_inbound_client<W>(
     host_label: &str,
-    parked: &mut Option<crate::inbound_client::ParkedWriter<W>>,
+    parked: &mut Option<crate::backend::control::inbound_client::ParkedWriter<W>>,
     frame: Option<&InboundFrame>,
-) -> Option<std::sync::Arc<crate::inbound_client::InboundClient>>
+) -> Option<std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>
 where
     W: tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-    let witness = crate::inbound_client::DaemonHello::from_hello_frame(frame?)?;
+    let witness = crate::backend::control::inbound_client::BackendHello::from_hello_frame(frame?)?;
     let client = parked.take()?.into_client(witness);
-    crate::inbound_client::register(host_label, client.clone());
+    crate::backend::control::inbound_client::register(host_label, client.clone());
     Some(client)
 }
 
 /// U8a-2a：把一帧入方向应答路由回请求方。返回是否真的交到了某个等待者手上。
 ///
-/// 没有客户端 = daemon 在 hello 之前就回了应答（协议倒错），照实报、不静默。
+/// 没有客户端 = backend 在 hello 之前就回了应答（协议倒错），照实报、不静默。
 ///
 /// **抽成函数同样是为了可测**（D 审计变异 MU12：把 `route_reply` 换成丢弃 ⇒ 全绿）。
 fn route_inbound_frame(
     host_label: &str,
-    client: Option<&std::sync::Arc<crate::inbound_client::InboundClient>>,
+    client: Option<&std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>,
     frame: InboundFrame,
 ) -> bool {
     let (kind, id) = match &frame {
@@ -2773,7 +2773,7 @@ fn route_inbound_frame(
     };
     let Some(c) = client else {
         tracing::warn!(
-            "ssh_source [{host_label}] 收到 {kind}(id={id})，但本连接还没有入方向客户端 —— daemon 在 hello 之前就回应答了？"
+            "ssh_source [{host_label}] 收到 {kind}(id={id})，但本连接还没有入方向客户端 —— backend 在 hello 之前就回应答了？"
         );
         return false;
     };
@@ -2800,7 +2800,7 @@ fn route_inbound_frame(
 /// - MU14：`probe_control_channel` 直接返回 `"control=ok(0ms)"`，一个字节都不发
 ///
 /// 也就是「把发送端接上」这件事本身删掉之后 CI 一片绿 —— `inbound_client` 的单测走的是
-/// 自造客户端，e2e 走的是真 daemon 二进制，**两者之间的接缝没有任何判据**。
+/// 自造客户端，e2e 走的是真后端二进制，**两者之间的接缝没有任何判据**。
 /// 这个模块就是那条接缝。
 #[cfg(test)]
 #[path = "../../../tests/bridge/ssh_source_seam_tests.rs"]
@@ -2816,34 +2816,34 @@ mod seam_tests;
 mod write_half_guard;
 
 // ============================================================================
-// 版本协商（issue #33）：连接时比对 daemon 的 hello.v / hello.build_id。
+// 版本协商（issue #33）：连接时比对后端的 hello.v / hello.build_id。
 // ============================================================================
 
-/// 本 monitor 期望的流式 wire 协议大版本。与 daemon 的 `PROTO_VERSION` 对齐（语义同值）。
-/// 类型用 `u64` 而非 daemon 侧的 `u32`：JSON 数字无符号宽度之分，`parse_frame` 用
+/// 本 monitor 期望的流式 wire 协议大版本。与后端的 `PROTO_VERSION` 对齐（语义同值）。
+/// 类型用 `u64` 而非后端侧的 `u32`：JSON 数字无符号宽度之分，`parse_frame` 用
 /// `as_u64()` 读 `v`，这里与之同宽以便直接比较，无需转换。
 const EXPECTED_PROTO_V: u64 = 1;
 
-/// 本 monitor 期望的 daemon build_id。
+/// 本 monitor 期望的 backend build_id。
 ///
-/// **SS-B（issue #33/#29）已单源**：值来自编译期 env `DAEMON_BUILD_ID`，由 `build.rs` 从
-/// `src/backend/main.rs::BUILD_ID` 抠出 emit——与 daemon 源码、F08b 内嵌二进制的
+/// **SS-B（issue #33/#29）已单源**：值来自编译期 env `BACKEND_BUILD_ID`，由 `build.rs` 从
+/// `src/backend/main.rs::BUILD_ID` 抠出 emit——与后端源码、F08b 内嵌二进制的
 /// build_id **同一事实源**，无需手工同步（F08b 消除了 F06 时的手工同步债）。
-const EXPECTED_DAEMON_BUILD_ID: &str = env!("DAEMON_BUILD_ID");
+const EXPECTED_BACKEND_BUILD_ID: &str = env!("BACKEND_BUILD_ID");
 
-/// F66（#58③）：monitor **内嵌** daemon 声明的能力 token（= daemon `main.rs::CAPABILITIES`）。
+/// F66（#58③）：monitor **内嵌** backend 声明的能力 token（= backend `main.rs::CAPABILITIES`）。
 ///
-/// 用途：部署侧确认「装的是当前内嵌 build」（`confirmed_build == EXPECTED_DAEMON_BUILD_ID`）
-/// 时，第一次连接还没收到 hello，用这份常量预知 daemon 能力、直接发对应 flag——省一轮
+/// 用途：部署侧确认「装的是当前内嵌 build」（`confirmed_build == EXPECTED_BACKEND_BUILD_ID`）
+/// 时，第一次连接还没收到 hello，用这份常量预知后端能力、直接发对应 flag——省一轮
 /// 「降级→收 hello→重连升级」的往返（等价旧 build_id 门控的乐观路径，但换成能力粒度）。
-/// 收到真实 hello 后一律以 daemon **自报**的 `capabilities` 为准（见 `hello_confirmed`）。
+/// 收到真实 hello 后一律以 backend **自报**的 `capabilities` 为准（见 `hello_confirmed`）。
 ///
-/// **单一事实源（SS-B，同 `EXPECTED_DAEMON_BUILD_ID`）**：值来自 `build.rs::emit_daemon_
-/// capabilities` 从 daemon `main.rs::CAPABILITIES` 抠出的编译期 env `DAEMON_CAPABILITIES`
-/// （逗号分隔）——**不再手抄**（审计 B1/S1：手抄副本漂移时乐观路径可能声明当前 daemon
+/// **单一事实源（SS-B，同 `EXPECTED_BACKEND_BUILD_ID`）**：值来自 `build.rs::emit_backend_
+/// capabilities` 从 backend `main.rs::CAPABILITIES` 抠出的编译期 env `BACKEND_CAPABILITIES`
+/// （逗号分隔）——**不再手抄**（审计 B1/S1：手抄副本漂移时乐观路径可能声明当前 backend
 /// 不剥离的 flag → §26 死循环窄窗；单源杜绝之）。
-fn embedded_daemon_capabilities() -> Vec<String> {
-    env!("DAEMON_CAPABILITIES")
+fn embedded_backend_capabilities() -> Vec<String> {
+    env!("BACKEND_CAPABILITIES")
         .split(',')
         .filter(|s| !s.is_empty())
         .map(str::to_string)
@@ -2855,9 +2855,9 @@ fn embedded_daemon_capabilities() -> Vec<String> {
 pub enum VersionVerdict {
     /// 协议版本 + build_id 都匹配 —— 无需提示。
     Ok,
-    /// 协议版本相同，但 build_id 不同 —— daemon 偏旧/偏新，建议更新（非阻断，F08 将自动重推）。
+    /// 协议版本相同，但 build_id 不同 —— backend 偏旧/偏新，建议更新（非阻断，F08 将自动重推）。
     StaleBuild { reported: String },
-    /// 协议大版本不符 —— 渲染可能异常，醒目提示需更新 daemon（仍不 hard-disconnect：
+    /// 协议大版本不符 —— 渲染可能异常，醒目提示需更新后端（仍不 hard-disconnect：
     /// 解析器向前兼容，能解析的仍照常呈现）。
     Incompatible { reported_v: u64 },
 }
@@ -2865,12 +2865,12 @@ pub enum VersionVerdict {
 /// 纯函数版本协商：协议版本优先于 build_id（协议不兼容是更严重的问题）。
 ///
 /// - `reported_v != EXPECTED_PROTO_V` → `Incompatible`（无论 build_id）。
-/// - 协议同、`reported_build_id != EXPECTED_DAEMON_BUILD_ID` → `StaleBuild`。
+/// - 协议同、`reported_build_id != EXPECTED_BACKEND_BUILD_ID` → `StaleBuild`。
 /// - 全同 → `Ok`。
 fn negotiate_version(reported_v: u64, reported_build_id: &str) -> VersionVerdict {
     if reported_v != EXPECTED_PROTO_V {
         VersionVerdict::Incompatible { reported_v }
-    } else if reported_build_id != EXPECTED_DAEMON_BUILD_ID {
+    } else if reported_build_id != EXPECTED_BACKEND_BUILD_ID {
         VersionVerdict::StaleBuild {
             reported: reported_build_id.to_string(),
         }
@@ -2884,18 +2884,18 @@ fn version_warning(reported_v: u64, reported_build_id: &str, label: &str) -> Opt
     match negotiate_version(reported_v, reported_build_id) {
         VersionVerdict::Ok => None,
         VersionVerdict::StaleBuild { reported } => Some(format!(
-            "远端 [{label}] daemon 版本 {reported} 与本机期望 {EXPECTED_DAEMON_BUILD_ID} 不一致，建议更新 daemon（后续将支持自动部署）。"
+            "远端 [{label}] backend 版本 {reported} 与本机期望 {EXPECTED_BACKEND_BUILD_ID} 不一致，建议更新后端（后续将支持自动部署）。"
         )),
         VersionVerdict::Incompatible { reported_v } => Some(format!(
-            "远端 [{label}] daemon 协议版本 v={reported_v} 与本机期望 v={EXPECTED_PROTO_V} 不兼容，渲染可能异常，请更新 daemon。"
+            "远端 [{label}] backend 协议版本 v={reported_v} 与本机期望 v={EXPECTED_PROTO_V} 不兼容，渲染可能异常，请更新后端。"
         )),
     }
 }
 
 /// SSH-remote 数据源主循环（S5）。
 ///
-/// 连接远端、exec daemon、把 daemon stdout 的 line-delimited JSON 帧逐行解析后分发：
-/// - `hello` → log（证明 daemon runtime 起来了）+ 置 `connected`（标记本次连接已健康，
+/// 连接远端、exec backend、把 backend stdout 的 line-delimited JSON 帧逐行解析后分发：
+/// - `hello` → log（证明 backend runtime 起来了）+ 置 `connected`（标记本次连接已健康，
 ///   供重连循环判定是否重置退避）。
 /// - `line` → 组 [`JsonlLine`] 走 **与本地 watcher 完全相同的出口**：
 ///   `crate::batch_to_payloads(...)` → `replay.on_line_batch(&app, ...)`。Phase-0 用最简正确
@@ -2916,7 +2916,7 @@ pub async fn run(
     connected: Arc<AtomicBool>,
 ) -> Result<(), String> {
     tracing::info!(
-        "ssh_source connecting to {}@{}:{} (daemon={})",
+        "ssh_source connecting to {}@{}:{} (backend={})",
         cfg.user,
         cfg.host,
         cfg.port,
@@ -2931,14 +2931,14 @@ pub async fn run(
     // iteration），故只归档本次连接残留。
     //
     // 重连循环：每轮跑一次 stream_loop。失败/掉线后按指数退避（2→4→8→16→30s 封顶）重连；
-    // 本轮**连上过**（收到 daemon hello，connected=true）则下次立即以 MIN 快速重连。
+    // 本轮**连上过**（收到 backend hello，connected=true）则下次立即以 MIN 快速重连。
     // INVARIANT §10：唯一的等待是 tokio::time::sleep（async、非阻塞），绝不 std::thread::sleep。
     let mut backoff = RECONNECT_MIN;
-    // v2.22.1 hello 自愈账本:上一轮 hello 自证 daemon==当前版本时记账,下一轮以此
+    // v2.22.1 hello 自愈账本:上一轮 hello 自证 backend==当前版本时记账,下一轮以此
     // 越过「部署侧确认失败」的降级(内嵌清单缺失的 CI 安装包 v2.19-v2.22 全中招)。
-    // 若带 flag 的一轮连 hello 都没收到(真·旧 daemon 把未知参数当一次性查询退出),
+    // 若带 flag 的一轮连 hello 都没收到(真·旧后端把未知参数当一次性查询退出),
     // 清账回退降级,防止 flagged 重连死循环。
-    // F66（#58③）：hello 自愈账本——存上一轮 daemon **自报的能力 token 集**（原为
+    // F66（#58③）：hello 自愈账本——存上一轮 backend **自报的能力 token 集**（原为
     // build_id）。None = 尚未收到能力声明；Some(caps) = 下一轮据此发 flag 升级。
     // 回退清账语义（`:is_some()` 那段）不变。
     let mut hello_confirmed: Option<Vec<String>> = None;
@@ -2951,7 +2951,7 @@ pub async fn run(
         let mut announced: std::collections::HashMap<String, AnnouncedMeta> =
             std::collections::HashMap::new();
         // 🔴 `K-R59`（定框 `K35`）：这里原来是**顶层二选一** —— `cfg.daemonless` 为真时
-        //    走纯 exec tail 轮询（`daemonless_stream_loop`），否则走 daemon 流。
+        //    走纯 exec tail 轮询（`daemonless_stream_loop`），否则走后端流。
         //    那一档整个没了 ⇒ **只剩一条路**：连后端。
         let result = stream_loop(
             &cfg,
@@ -2964,7 +2964,7 @@ pub async fn run(
         )
         .await;
         if hello_confirmed.is_some() && !connected.load(Ordering::Acquire) {
-            tracing::warn!("ssh_source hello 自愈轮未收到 hello,回退降级模式(daemon 可能被换旧)");
+            tracing::warn!("ssh_source hello 自愈轮未收到 hello,回退降级模式(backend 可能被换旧)");
             hello_confirmed = None;
         }
         // Batch9-F28：连接结束清本 host 的 registry（断连=骨架不该再被 F5 重建；
@@ -2973,7 +2973,7 @@ pub async fn run(
             .lock()
             .unwrap()
             .remove(&cfg.origin_label());
-        // B2：断连也清本 host 的 tmux 状态——防重连后、daemon 首个 TmuxSessions 帧到达前，
+        // B2：断连也清本 host 的 tmux 状态——防重连后、backend 首个 TmuxSessions 帧到达前，
         // 对账 poller 读到陈旧 tmux 状态误灰（重连后由新帧重新填充）。
         forget_tmux_raw(&cfg.origin_label());
         // 每轮都归档本次连接残留的 announced sid（保持原 FIX 2 归档契约）+ audit-fixes F03.2：本 origin
@@ -3005,7 +3005,7 @@ pub async fn run(
         // MIN，退避序列是 2→4→8→16→30；若收成单个 if/else（睡前就翻倍），首次失败会直接等 4s。
         // sleep 期间 `connected` 不会变（其唯一写者 stream_loop 已返回），故两次 load 读到同值。
         // F05（报告 I-1）：**「连上过」不等于「站住了」**。判据从「收到过 hello」换成
-        // 「这条连接活过 MIN_HEALTHY_UPTIME」——hello-then-die 的 daemon 此前每轮都算连上过，
+        // 「这条连接活过 MIN_HEALTHY_UPTIME」——hello-then-die 的后端此前每轮都算连上过，
         // 退避永远重置回 2s、每分钟约 90 次 SSH 握手砸在那台已经撑不住的机器上。
         if should_reset_backoff(connected.load(Ordering::Acquire), conn_started.elapsed()) {
             backoff = RECONNECT_MIN; // 本次真站住过 → 下次立即快速重连
@@ -3020,7 +3020,7 @@ pub async fn run(
 
 /// Line 帧攒批缓冲（Batch5-F17）。
 ///
-/// daemon 线协议没有批量帧（一行一帧），首连 snapshot 的几千行历史若逐帧调
+/// backend 线协议没有批量帧（一行一帧），首连 snapshot 的几千行历史若逐帧调
 /// `on_line_batch(vec![1条])`，恒 1 < INCREMENTAL_BATCH_THRESHOLD → 全部走
 /// 逐条 jsonl-line live 渲染管线（v2.4.2 给本地修掉的逐行刷屏在远端重现）。
 /// 客户端把**连续到达**的 Line 帧聚合成批再交 on_line_batch：snapshot 密集
@@ -3059,7 +3059,7 @@ impl Batcher {
         None
     }
 
-    /// 取走全部待发行（空则 None）。到达顺序 = 发出顺序（daemon per-file seq
+    /// 取走全部待发行（空则 None）。到达顺序 = 发出顺序（backend per-file seq
     /// 单调，前端按 seq 排序，跨 session 混流不需要拆分）。
     fn take(&mut self) -> Option<Vec<JsonlLine>> {
         self.born = None;
@@ -3083,7 +3083,7 @@ const BATCH_MAX_AGE_MS: u64 = 200;
 /// on_line_batch），但用 **awaited 变体**——大批的块序列发完才返回，保证行
 /// emit 严格先于随后的 SessionRemoved/断连归档（审计 R1：spawn 化的行若晚于
 /// session-ended 到达前端，会把刚归档的远端 Tab 复活成僵尸 live），同时对
-/// daemon 帧流形成天然背压。
+/// backend 帧流形成天然背压。
 async fn flush_lines(
     replay: &Arc<EventReplay>,
     app: &tauri::AppHandle,
@@ -3094,7 +3094,7 @@ async fn flush_lines(
     replay.on_line_batch_awaited(app, payloads).await;
 }
 
-/// [`run`] 的内层流循环：connect → exec daemon → 逐帧 dispatch。**所有**提前返回
+/// [`run`] 的内层流循环：connect → exec backend → 逐帧 dispatch。**所有**提前返回
 /// （`?` / EOF / 读错误）都把 result 冒泡给 [`run`]，由后者统一做最终 sid 归档 flush
 /// （见 FIX 2 注释），故本函数自身不负责归档。
 #[allow(clippy::too_many_arguments)]
@@ -3122,55 +3122,55 @@ async fn stream_loop(
     // ⚠ 埋点本身**不改任何行为**，也不该改：它只是让下一次讨论有数可依。
     let t_connect_start = std::time::Instant::now();
 
-    // issue #29（F08）：连接前确保远端 daemon 已（自动）部署到 cfg.daemon_path。
-    // 嵌入二进制就位前（F08b 未做）daemon_binary() 返回 None → ensure_daemon_deployed
-    // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的 daemon 仍可连。
-    // ★ F05 下半：**上一次这台机器的 daemon 自报过就是期望 build ⇒ 跳过预检那两条连接**。
+    // issue #29（F08）：连接前确保远端后端已（自动）部署到 cfg.daemon_path。
+    // 嵌入二进制就位前（F08b 未做）backend_binary() 返回 None → ensure_backend_deployed
+    // 优雅 no-op。**best-effort**：部署失败仅 warn，不阻断——手动部署的后端仍可连。
+    // ★ F05 下半：**上一次这台机器的后端自报过就是期望 build ⇒ 跳过预检那两条连接**。
     // 判据与记忆的语义见 `VERIFIED_BUILD` 头注（记的是 hello 自证，不是预检结论）。
     // 跳过时 `confirmed_build` 直接给 `EXPECTED` —— 若给 `None`，下面的 caps 阶梯会掉进
     // ③ 空集全降级，那就**比不跳还糟**（省两条连接换来一轮降级 + 一轮升级重连）。
     let verified = verified_build_of(&host_label);
-    let skip_preflight = preflight_can_be_skipped(verified.as_deref(), EXPECTED_DAEMON_BUILD_ID);
+    let skip_preflight = preflight_can_be_skipped(verified.as_deref(), EXPECTED_BACKEND_BUILD_ID);
     let confirmed_build = if skip_preflight {
-        Some(EXPECTED_DAEMON_BUILD_ID.to_string())
+        Some(EXPECTED_BACKEND_BUILD_ID.to_string())
     } else {
-        match crate::sftp::ensure_daemon_deployed(cfg).await {
+        match crate::sftp::ensure_backend_deployed(cfg).await {
             Ok(c) => c,
             Err(e) => {
                 tracing::warn!(
-                    "ssh_source [{host_label}] daemon 自动部署失败（继续尝试连接已有 daemon）: {e}"
+                    "ssh_source [{host_label}] backend 自动部署失败（继续尝试连接已有后端）: {e}"
                 );
                 None
             }
         }
     };
     tracing::info!(
-        "[perf] ssh_source [{host_label}] 部署预检 {}ms（ensure_daemon_deployed；\
+        "[perf] ssh_source [{host_label}] 部署预检 {}ms（ensure_backend_deployed；\
          confirmed_build={:?}；skip={skip_preflight}）",
         t_connect_start.elapsed().as_millis(),
         confirmed_build.as_deref()
     );
 
-    // F66（#58③）流模式门控：**从 daemon 声明的能力 token 决定发哪些 flag**，不再靠
-    // build_id 精确匹配。旧 daemon 会把未知参数当一次性查询处理后退出（无 hello → 重连
-    // 死循环，§26），故只对**声明了对应能力**的 daemon 发 flag（声明 = 自证会剥离该 flag）。
+    // F66（#58③）流模式门控：**从后端声明的能力 token 决定发哪些 flag**，不再靠
+    // build_id 精确匹配。旧后端会把未知参数当一次性查询处理后退出（无 hello → 重连
+    // 死循环，§26），故只对**声明了对应能力**的后端发 flag（声明 = 自证会剥离该 flag）。
     // 能力两条来源，hello 自愈账本优先：
-    //   ① `hello_confirmed`（上一轮 daemon **自报**的能力）—— 最权威，收过真 hello 才有。
-    //   ② 否则部署侧确认了当前内嵌 build（`confirmed_build == EXPECTED`）→ 用内嵌 daemon 的
+    //   ① `hello_confirmed`（上一轮 backend **自报**的能力）—— 最权威，收过真 hello 才有。
+    //   ② 否则部署侧确认了当前内嵌 build（`confirmed_build == EXPECTED`）→ 用内嵌后端的
     //      能力常量**预知**，省第一轮「降级→收 hello→重连升级」往返（乐观路径）。
     //   ③ 都没有 → 空集 → 全降级（= 2.18.0 行为，连接正常、功能退化）。
     // **hello 优先**于部署侧（②可能是陈旧内嵌的身份 ≠ 期望 → 空集 → 靠 hello 自愈救，
     //  见 v2.22.1 无限重连教训；`hello_confirmed` 只在收到真声明时写入，优先采纳恒安全）。
     let caps: Vec<String> = hello_confirmed.clone().unwrap_or_else(|| {
-        if confirmed_build.as_deref() == Some(EXPECTED_DAEMON_BUILD_ID) {
-            embedded_daemon_capabilities()
+        if confirmed_build.as_deref() == Some(EXPECTED_BACKEND_BUILD_ID) {
+            embedded_backend_capabilities()
         } else {
             Vec::new()
         }
     });
     let (with_bg, tail_only) = decide_stream_flags(&caps, crate::load_show_bg_sessions());
     let t_exec = std::time::Instant::now();
-    // ★ F05 下半：起流失败就抹掉自证记忆 —— 否则一台 daemon 被删/被换旧的机器会
+    // ★ F05 下半：起流失败就抹掉自证记忆 —— 否则一台后端被删/被换旧的机器会
     // **每一轮都跳预检、每一轮都失败**，永远等不到重新部署。代价是多一次重连，
     // 那正是 `VERIFIED_BUILD` 头注里如实写下的那个退化。
     let stream = match connect_and_exec(cfg, with_bg, tail_only).await {
@@ -3186,7 +3186,7 @@ async fn stream_loop(
         }
     };
     tracing::info!(
-        "[perf] ssh_source [{host_label}] 起流 {}ms（SSH 登录 + exec daemon；\
+        "[perf] ssh_source [{host_label}] 起流 {}ms（SSH 登录 + exec backend；\
          with_bg={with_bg} tail_only={tail_only}）· 自本轮连接开始 T+{}ms",
         t_exec.elapsed().as_millis(),
         t_connect_start.elapsed().as_millis()
@@ -3196,19 +3196,21 @@ async fn stream_loop(
     // 把写半边停住 —— `ParkedWriter` 身上没有任何写方法，要等收到 hello 才换得出能发命令的
     // 客户端。切与停必须是同一步：中间留一个裸 `WriteHalf` 就等于留了一个「Hello 之前能写」
     // 的窗口（D 审计实测过那个窗口，两条护栏都拦不住）。见 `inbound_client` 头注。
-    let (stream, parked) = crate::inbound_client::split_and_park(stream);
+    let (stream, parked) = crate::backend::control::inbound_client::split_and_park(stream);
     let mut parked = Some(parked);
     // 本连接的入方向客户端（收到 hello 后才有）。函数任何退出路径经 guard 摘除注册表
     // 并叫醒还在等应答的调用方 —— 同 `SnapshotQueueCloser` 的形状。
-    let mut inbound: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
+    let mut inbound: Option<
+        std::sync::Arc<crate::backend::control::inbound_client::InboundClient>,
+    > = None;
     struct InboundCloser(
         String,
-        Option<std::sync::Arc<crate::inbound_client::InboundClient>>,
+        Option<std::sync::Arc<crate::backend::control::inbound_client::InboundClient>>,
     );
     impl Drop for InboundCloser {
         fn drop(&mut self) {
             if let Some(c) = self.1.take() {
-                crate::inbound_client::unregister(&self.0, &c);
+                crate::backend::control::inbound_client::unregister(&self.0, &c);
             }
         }
     }
@@ -3238,18 +3240,18 @@ async fn stream_loop(
     let reader_host = host_label.clone();
     tauri::async_runtime::spawn(async move {
         let mut reader = BufReader::new(stream);
-        // 按 `\n` 切（协议保证每帧一行、帧内换行已被 daemon 转义成 `\n` 两字符，
+        // 按 `\n` 切（协议保证每帧一行、帧内换行已被后端转义成 `\n` 两字符，
         // 见 src/backend/wire.rs）。
         // ★ F10b：从无界 `read_line` 换成 [`read_capped_line`] —— 无界读遇「一条永远不结束
-        // 的行」就是无界堆分配，而对端是**远端进程**（它坏掉或不是我们的 daemon 都可能）。
+        // 的行」就是无界堆分配，而对端是**远端进程**（它坏掉或不是我们的后端都可能）。
         let mut buf: Vec<u8> = Vec::new();
         loop {
-            match read_capped_line(&mut reader, &mut buf, DAEMON_FRAME_LINE_CAP).await {
+            match read_capped_line(&mut reader, &mut buf, BACKEND_FRAME_LINE_CAP).await {
                 Ok(CappedLine::Eof) => {
-                    // EOF：daemon 退出 / channel 关闭。明确报错，不静默冻结。
+                    // EOF：backend 退出 / channel 关闭。明确报错，不静默冻结。
                     let _ = frame_tx
                         .send(Err(
-                            "ssh daemon stdout closed (EOF / connection dropped)".to_string()
+                            "ssh backend stdout closed (EOF / connection dropped)".to_string()
                         ))
                         .await;
                     break;
@@ -3260,7 +3262,7 @@ async fn stream_loop(
                     // 当成致命错误去重连，而超长行只是**这一行**坏了，连接本身没问题。
                     tracing::warn!(
                         "ssh_source remote [{reader_host}] line too long: {bytes} bytes \
-                         (cap {DAEMON_FRAME_LINE_CAP}); line dropped"
+                         (cap {BACKEND_FRAME_LINE_CAP}); line dropped"
                     );
                     let payload = crate::bridge::RemoteHealthPayload {
                         origin: Some(reader_host.clone()),
@@ -3284,7 +3286,7 @@ async fn stream_loop(
                 }
                 Err(e) => {
                     let _ = frame_tx
-                        .send(Err(format!("ssh daemon stdout read error: {e}")))
+                        .send(Err(format!("ssh backend stdout read error: {e}")))
                         .await;
                     break;
                 }
@@ -3325,7 +3327,7 @@ async fn stream_loop(
             if let Some(lines) = batcher.take() {
                 flush_lines(replay, app, &host_label, lines).await;
             }
-            return Err("ssh daemon frame channel closed".to_string());
+            return Err("ssh backend frame channel closed".to_string());
         };
         let line = match msg {
             Ok(l) => l,
@@ -3370,24 +3372,24 @@ async fn stream_loop(
             }) => {
                 // `S4`：日志报的是**解析后**的 Claude home（优先 `homes`、回退 `claude_dir`），
                 // 同时把原样的 `homes` 一起打出来 —— 排障时要能一眼看出
-                // 「这台 daemon 到底发没发新字段」，那正是 additive 迁移期最常问的问题。
+                // 「这台后端到底发没发新字段」，那正是 additive 迁移期最常问的问题。
                 let claude_home = claude_home_from_hello(&homes, &claude_dir);
                 tracing::info!(
-                    "ssh_source daemon hello: v={v} build_id={build_id} host_arch={host_arch} claude_home={claude_home} homes={homes:?} caps={capabilities:?} cmds={commands:?}"
+                    "ssh_source backend hello: v={v} build_id={build_id} host_arch={host_arch} claude_home={claude_home} homes={homes:?} caps={capabilities:?} cmds={commands:?}"
                 );
-                // U-CC1：记下**我们不认识的**能力 token。多半是远端 daemon 比 monitor 新
+                // U-CC1：记下**我们不认识的**能力 token。多半是远端后端比 monitor 新
                 // （自动部署会把它拉回同一个 build，但手工装 / 关了自动部署的用户会长期不一致）。
                 // 只记账，行为一字不改：不认识的 token 本来就按保守缺省忽略。
                 for t in &capabilities {
                     if !KNOWN_CAPABILITY_TOKENS.contains(&t.as_str()) {
                         crate::drift_ledger::record(
-                            crate::drift_ledger::DriftFace::UnknownDaemonToken,
+                            crate::drift_ledger::DriftFace::UnknownBackendToken,
                             &format!("capabilities:{t}"),
                             Some(&format!("build_id={build_id}")),
                         );
                     }
                 }
-                // 标记本次连接已健康(收到 daemon hello)，供 run() 重连循环判定是否重置退避。
+                // 标记本次连接已健康(收到 backend hello)，供 run() 重连循环判定是否重置退避。
                 connected.store(true, Ordering::Release);
                 // issue #33：版本协商。不兼容/偏旧经 SS-F remote-health 通道醒目提示（前端
                 // headlineFor 已含 version case，零前端改动）。不 hard-disconnect（向前兼容）。
@@ -3402,23 +3404,23 @@ async fn stream_loop(
                         tracing::warn!("ssh_source remote-health (version) emit failed: {e}");
                     }
                 }
-                // F66（#58③）：本轮若跑在降级模式（未开 tail_only）——用 daemon **自报的
+                // F66（#58③）：本轮若跑在降级模式（未开 tail_only）——用 backend **自报的
                 // 能力**判断能否升级，不再靠 build_id 精确匹配（闭合 2026-07-09 事故）：
-                // ① daemon 声明了**能开本轮没开的 flag** 的能力 → 记 hello 自愈账（存能力集）,
+                // ① backend 声明了**能开本轮没开的 flag** 的能力 → 记 hello 自愈账（存能力集）,
                 //    立即重连升级（connected 已置 true → 退避重置 MIN,~2s 内带 flag 回来）。
                 //    **防无限循环**：仅当「下一轮据此算出的 flag 严格优于本轮」才重连——flag 数
                 //    有限（2）、每次升级严格增开，最多 2 轮收敛。
-                // ② daemon 无任何能力声明（真旧 daemon）→ 降级可见化（否则用户看到「bg 会话
+                // ② backend 无任何能力声明（真旧后端）→ 降级可见化（否则用户看到「bg 会话
                 //    消失+拥塞复发」却无从归因，实测连环误诊）——经 remote-health 提示。
                 tracing::info!(
                     "[perf] ssh_source [{host_label}] 首个 hello T+{}ms（自本轮连接开始）· \
                      caps={capabilities:?}",
                     t_connect_start.elapsed().as_millis()
                 );
-                // ★ F05 下半：**自证记忆的唯一写入点**。daemon 自己说它是谁，我们才记。
+                // ★ F05 下半：**自证记忆的唯一写入点**。backend 自己说它是谁，我们才记。
                 // build_id 不是期望值 ⇒ **抹掉**（这台机器上装的不是当前 build，
                 // 下一轮必须照跑预检去部署），不是「留着上次的」。
-                if build_id == EXPECTED_DAEMON_BUILD_ID {
+                if build_id == EXPECTED_BACKEND_BUILD_ID {
                     record_verified_build(&host_label, &build_id);
                 } else {
                     forget_verified_build(&host_label);
@@ -3429,7 +3431,7 @@ async fn stream_loop(
                     if should_upgrade_reconnect((with_bg, tail_only), next) {
                         *hello_confirmed = Some(capabilities.clone());
                         return Err(format!(
-                            "daemon hello 声明能力({capabilities:?})——重连升级流模式(tail-only/with-bg)"
+                            "backend hello 声明能力({capabilities:?})——重连升级流模式(tail-only/with-bg)"
                         ));
                     }
                     if capabilities.is_empty() {
@@ -3437,7 +3439,7 @@ async fn stream_loop(
                             origin: Some(host_label.clone()),
                             kind: "degraded".to_string(),
                             message: format!(
-                                "远端 daemon 为旧版本({build_id},当前 {EXPECTED_DAEMON_BUILD_ID}),本连接降级运行:后台(bg)会话不可见、历史全量推流(易拥塞)。请在设置里重装该机器的 daemon。"
+                                "远端后端为旧版本({build_id},当前 {EXPECTED_BACKEND_BUILD_ID}),本连接降级运行:后台(bg)会话不可见、历史全量推流(易拥塞)。请在设置里重装该机器的后端。"
                             ),
                         };
                         if let Err(e) = app.emit(crate::bridge::events::REMOTE_HEALTH, payload) {
@@ -3501,8 +3503,8 @@ async fn stream_loop(
                 // 成功一个字不留。于是全链台架报「30s 内未见灰灯 tab-state」时，
                 // 日志**回答不了**最基本的那一问：**帧到 monitor 了吗？**
                 //
-                // 实测（连续两跑、四格自证全绿、读数逐字一致）：帧级套件 `graylight-daemon-frames`
-                // **12 过 / 0 败**（daemon 那侧发得对），而全链 **1 过 / 2 败**、前端
+                // 实测（连续两跑、四格自证全绿、读数逐字一致）：帧级套件 `graylight-backend-frames`
+                // **12 过 / 0 败**（backend 那侧发得对），而全链 **1 过 / 2 败**、前端
                 // `建卡 rendered=0 · drained=0`（一条会话载荷都没收到）⇒ 断点在这两者之间，
                 // 而这里正是那段路上唯一的分叉点。
                 //
@@ -3537,7 +3539,7 @@ async fn stream_loop(
                     },
                 );
                 // Batch9-F27：初始 status 一并透传（连接建立灯就对；None=旧 CC/
-                // 旧 daemon → 前端"未知不加类"，与本地一字一致）。
+                // 旧 backend → 前端"未知不加类"，与本地一字一致）。
                 if let Err(e) = session_changes.send(SessionChange {
                     added: vec![sid.clone()],
                     removed: vec![],
@@ -3594,7 +3596,7 @@ async fn stream_loop(
                 // ★★ `P0b-Y2` 第十拍〔08-13〕：**这一跳原先是不可观测的。**
                 //
                 // `#60`（灰灯不出现）问的正是「死亡这件事走到哪一步丢了」，而全链实测时
-                // daemon 侧 tap 里明明有 `session_removed`、monitor 日志里**一个字都没有**
+                // backend 侧 tap 里明明有 `session_removed`、monitor 日志里**一个字都没有**
                 // ⇒ 分不清「收到了但没转发」与「根本没收到」。加了这一行才分得清。
                 // ⚠ 量级同 `SessionAdded` 那条：**每个会话一次**，不是每帧一次 ⇒ 不会淹日志。
                 // `cause` 一起打：灰灯与归档走的是**不同的 cause**（`Superseded` 直接归档），
@@ -3612,7 +3614,7 @@ async fn stream_loop(
                 snapshots.cancel(&sid);
                 if let Err(e) = session_changes.send(SessionChange {
                     added: vec![],
-                    // ★ S0：cause 由 daemon 说了算，monitor 不猜（原先靠查会陈旧的 tmux 快照）。
+                    // ★ S0：cause 由后端说了算，monitor 不猜（原先靠查会陈旧的 tmux 快照）。
                     removed: vec![RemovedSid { sid, cause }],
                     status_changed: vec![],
                 }) {
@@ -3630,10 +3632,10 @@ async fn stream_loop(
                 // ★〔audit-0805 F21〕**这里此前对用户说了一句假话**：「重开该会话可看完整
                 // 历史」只对**内容帧**成立。状态增量帧（session_added/session_removed/
                 // tmux_session_closed/session_status）是一次差分的结果、**别处不存在**，
-                // 重开会话补不回来 —— 那正是 B-3 的正题。daemon 从 `p1x` 起会把这些帧的
+                // 重开会话补不回来 —— 那正是 B-3 的正题。backend 从 `p1x` 起会把这些帧的
                 // 身份放进 `Overflow.lost`；有身份就说实话，并点名是哪几个会话。
                 tracing::warn!(
-                    "ssh_source remote [{host_label}] overflow: daemon dropped {dropped} frame(s), \
+                    "ssh_source remote [{host_label}] overflow: backend dropped {dropped} frame(s), \
                      {} unrecoverable{}",
                     lost.len(),
                     if lost_truncated { " (list truncated)" } else { "" }
@@ -3648,20 +3650,20 @@ async fn stream_loop(
                     tracing::warn!("ssh_source remote-health emit failed: {e}");
                 }
             }
-            // P5：正向死亡帧 —— daemon 已经**确定**这个会话没了（它与上一份快照差分算出来的），
+            // P5：正向死亡帧 —— backend 已经**确定**这个会话没了（它与上一份快照差分算出来的），
             // 不需要 monitor 再靠「连续两次没看见」去猜。
             //
-            // **为什么仍然按名字反查 sid 而不是让 daemon 带上**：`#{@ccm_sid}` 在 hook 上下文
+            // **为什么仍然按名字反查 sid 而不是让后端带上**：`#{@ccm_sid}` 在 hook 上下文
             // 取不到（P0 实测拿到空 ⇒ 会把活会话判灰）；而 name→sid 的映射 monitor 这边本来
             // 就有（最新那份 `tmux ls` 原文）。让知道的人去查，比让不知道的人硬传更稳。
             //
-            // **快照路径与 `RETIRE_MISS_THRESHOLD` 原样保留**：重同步 / 旧 daemon 降级都靠它。
+            // **快照路径与 `RETIRE_MISS_THRESHOLD` 原样保留**：重同步 / 旧后端降级都靠它。
             // 同一 sid 两条路都可能到 ⇒ retire 必须幂等（`SidTrack.retired` 本就是）。
             Some(InboundFrame::TmuxSessionClosed { name }) => {
                 let sid = {
                     let reg = tmux_raw_registry().lock().unwrap();
                     reg.get(&host_label).and_then(|raw| {
-                        crate::tmux::parse_tmux_ls(raw)
+                        crate::backend::control::tmux::parse_tmux_ls(raw)
                             .into_iter()
                             .find(|e| e.name == name)
                             .and_then(|e| e.sid)
@@ -3682,7 +3684,7 @@ async fn stream_loop(
                             record_tmux_raw(&host_label, remove_tmux_line(raw, &name));
                         }
                         tracing::info!(
-                            "tmux 会话 {name} 关闭（daemon 死亡帧）⇒ 已从账本摘除 + 立刻 retire sid={sid}"
+                            "tmux 会话 {name} 关闭（backend 死亡帧）⇒ 已从账本摘除 + 立刻 retire sid={sid}"
                         );
                         if let Err(e) = session_changes.send(SessionChange {
                             added: vec![],
@@ -3703,13 +3705,13 @@ async fn stream_loop(
             }
             Some(InboundFrame::TmuxSessions { raw, observation }) => {
                 // audit-fixes F03.2（收帧驱动 tmux 存活收割器，取代已删的 8s poller = 甲-evented 零轮询）：
-                // daemon **事件驱动**推本 origin 最新 `tmux ls` 原文（tmux hook → SIGUSR1 → Poke）；收到即对账——把 tmux 后端已消失的 tracked
+                // backend **事件驱动**推本 origin 最新 `tmux ls` 原文（tmux hook → SIGUSR1 → Poke）；收到即对账——把 tmux 后端已消失的 tracked
                 // sid 去抖 retire → 当 removed 送 emitter（emitter 再判 None→archived+clear_idle）。tracked =
                 // 本连接 announced（live 会话）∪ 本 origin idle 会话（后者使 idle→archived 有产出者，补齐红线④）。
                 //
                 // P1（zero-poll-liveness）：原先这里内联着
                 // `if raw.trim() != "NO_TMUX" { … if !backend.is_empty() { … } }`——**把五种语义
-                // 不同的观测压成两条路**，其中「daemon 确证零会话」被误并进「观测失败」一律跳过
+                // 不同的观测压成两条路**，其中「backend 确证零会话」被误并进「观测失败」一律跳过
                 // ⇒ 杀掉某 origin 最后一个 tmux 会话时灰灯卡到断连（§24bis 预登记的残留 bug）。
                 // 现在判断提成纯函数 `tmux::classify_tmux_observation`（可 CI 单测，生产与测试
                 // 同一条路径），空集也是**有效观测**、照常累计缺失。
@@ -3728,10 +3730,13 @@ async fn stream_loop(
                 // 因为 `U3` 要的是「让这个数变得可测」，而区间对 `#82`（控制模式值不值得做）
                 // 更直接：它回答的是「不可观测**持续了多久**」。
                 // **别把本件读成「频率已经可测了」。**
-                let verdict = crate::tmux::classify_tmux_observation(&raw, observation.as_deref());
+                let verdict = crate::backend::control::tmux::classify_tmux_observation(
+                    &raw,
+                    observation.as_deref(),
+                );
                 let kind = match &verdict {
-                    crate::tmux::TmuxObservation::Backend(_) => "backend",
-                    crate::tmux::TmuxObservation::Skip(r) => r.as_str(),
+                    crate::backend::control::tmux::TmuxObservation::Backend(_) => "backend",
+                    crate::backend::control::tmux::TmuxObservation::Skip(r) => r.as_str(),
                 };
                 if last_observation_kind.as_deref() != Some(kind) {
                     tracing::info!(
@@ -3740,7 +3745,7 @@ async fn stream_loop(
                     );
                     last_observation_kind = Some(kind.to_string());
                 }
-                if let crate::tmux::TmuxObservation::Backend(backend) = verdict {
+                if let crate::backend::control::tmux::TmuxObservation::Backend(backend) = verdict {
                     let idle = snapshot_idle_for_origin(&host_label);
                     let tracked = reaper_tracked(announced.keys().cloned(), &idle);
                     // idle 集当 pre_bound 传入：@ccm_sid 证明绑过 tmux，播种 ever_bound，免跨线程
@@ -3785,7 +3790,7 @@ async fn stream_loop(
 // ============================================================================
 // 🔴 `K-R59`（09-11，定框 `K35`）：**`daemonless` 降级读取整段删除。**
 //
-// 这里原来住着 Batch14-F59 的那一整段：`DAEMONLESS_POLL_INTERVAL` 2s 轮询 · `find` 发现
+// 这里原来住着 Batch14-F59 的那一整段：`BACKENDLESS_POLL_INTERVAL` 2s 轮询 · `find` 发现
 // 最近 30 分钟活跃的 jsonl · `tail -c +offset` 增量读 · `DlCursor` · `emit_degraded` /
 // `announce_daemonless` / `archive_daemonless` / `daemonless_stream_loop`，
 // 由 `run()` 顶层 `if cfg.daemonless` 二选一。
@@ -3796,7 +3801,7 @@ async fn stream_loop(
 //
 // ⚠ 一起下岗的账（别只删代码不拧账本，那会让下一个人以为它们还在跑）：
 //   · `rust_timer_registry` 的 ticker 从 **3 → 2**（那 2s 是本仓抓到的第二个真节拍器）；
-//   · `byte_cap_registry` 少两条（`DAEMONLESS_READ_CAP` / `DAEMONLESS_DISCOVER_CAP`）；
+//   · `byte_cap_registry` 少两条（`BACKENDLESS_READ_CAP` / `BACKENDLESS_DISCOVER_CAP`）；
 //   · `dial_move_judge::DIAL_SITES` 里 `ssh_source.rs` 那格从 **5 → 4**、总数 **7 → 6**；
 //   · `local_read_surface_registry` 里 `ssh_source.rs` 那条从 **10 → 9**（远端目录串少一行；
 //     ⚠ 这个 9 是**跑出来的**，不是估的 —— 那条判据自己会红在「多一处/少一处」上）。
@@ -4133,7 +4138,7 @@ pub async fn import_ssh_hosts() -> Result<Vec<ImportGroup>, String> {
 /// 「测试连接」的结果（issue #15 Part 2）。serde camelCase 与前端渲染对齐。
 ///
 /// 偏好「返回 populated 结果 + message」而非 Err：让 UI 能展示部分成功
-/// （如「SSH 连上了，但 daemon 没响应/未部署」）。仅参数级硬错误才返回 Err。
+/// （如「SSH 连上了，但后端没响应/未部署」）。仅参数级硬错误才返回 Err。
 #[derive(Debug, Clone, Serialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
 #[cfg_attr(test, ts(export, export_to = "../../../src/generated/"))]
@@ -4146,25 +4151,25 @@ pub struct ConnTestResult {
     /// F45 / D 审计重要-1：竞发胜出的地址（`host:port`）。多地址 TOFU 首连时,让用户明确
     /// 自己正在固化**哪条路径**观察到的指纹（而非盲信「最快那条」）。单地址时即该地址。
     pub endpoint: Option<String>,
-    /// daemon 是否在 SHORT timeout 内回了可解析的 hello 帧。
-    pub daemon_ok: bool,
-    /// daemon hello 的人读摘要（`v=.. arch=.. claude_home=..`）。
+    /// backend 是否在 SHORT timeout 内回了可解析的 hello 帧。
+    pub backend_ok: bool,
+    /// backend hello 的人读摘要（`v=.. arch=.. claude_home=..`）。
     /// ⚠ `S4` 起 `claude_home` 是**解析后**的值（优先 `homes`、回退 `claude_dir`），
     /// 不是某个线上字段的原样照抄。
-    pub daemon_hello: Option<String>,
+    pub backend_hello: Option<String>,
     /// 人读的总体状态 / 失败原因。
     pub message: String,
 }
 
-/// 测试一条远端配置：连 SSH → 读指纹 → exec daemon → 等首行 hello（SHORT timeout）。
+/// 测试一条远端配置：连 SSH → 读指纹 → exec backend → 等首行 hello（SHORT timeout）。
 ///
 /// 步骤化、每步把结果填进 [`ConnTestResult`]：
 /// 1. `connect_session`（publickey 或 agent）。失败 → ssh_ok=false + message，返回 Ok。
 /// 2. 成功 → ssh_ok=true，从 observed cell 读指纹。
-/// 3. channel_open + exec daemon + 读首行 stdout（`tokio::time::timeout` 8s）。
-///    解析成 hello → daemon_ok=true + 摘要；否则 message 说明 daemon 未响应/未部署。
+/// 3. channel_open + exec backend + 读首行 stdout（`tokio::time::timeout` 8s）。
+///    解析成 hello → backend_ok=true + 摘要；否则 message 说明后端未响应/未部署。
 ///
-/// 只有"无法构造测试"这类硬错才返回 Err；连接/鉴权/daemon 失败都收进结果里，UI 据此分级展示。
+/// 只有"无法构造测试"这类硬错才返回 Err；连接/鉴权/backend 失败都收进结果里，UI 据此分级展示。
 #[tauri::command]
 pub async fn test_remote_connection(
     cfg: RemoteConfig,
@@ -4174,8 +4179,8 @@ pub async fn test_remote_connection(
         ssh_ok: false,
         fingerprint: None,
         endpoint: None,
-        daemon_ok: false,
-        daemon_hello: None,
+        backend_ok: false,
+        backend_hello: None,
         message: String::new(),
     };
 
@@ -4198,30 +4203,30 @@ pub async fn test_remote_connection(
     let win = winner_address(&cfg);
     result.endpoint = Some(format!("{}:{}", win.host, win.port));
 
-    // 3. exec daemon 并等首行 hello。
+    // 3. exec backend 并等首行 hello。
     let daemon_path = cfg.daemon_path.clone();
-    match probe_daemon(&session, &daemon_path).await {
+    match probe_backend(&session, &daemon_path).await {
         Ok(Some(probe)) => {
-            result.daemon_ok = true;
+            result.backend_ok = true;
             result.message = if probe.control_ok {
-                "SSH 与 daemon 均正常（含控制通道往返）。".to_string()
+                "SSH 与后端均正常（含控制通道往返）。".to_string()
             } else if probe.control_unsupported {
-                "SSH 与 daemon 正常，但该 daemon **不支持控制通道**（旧版本）——                 远端起会话等功能不可用，请在设置里重装该机器的 daemon。"
+                "SSH 与后端正常，但该 backend **不支持控制通道**（旧版本）——                 远端起会话等功能不可用，请在设置里重装该机器的后端。"
                     .to_string()
             } else {
                 // 控制通道真失败：**不许报「均正常」**。这一步就是为了让它在这里显形。
-                "SSH 与 daemon 正常，但**控制通道不通**（详见下方摘要的 control=… 段）——                 远端起会话会失败。"
+                "SSH 与后端正常，但**控制通道不通**（详见下方摘要的 control=… 段）——                 远端起会话会失败。"
                     .to_string()
             };
-            result.daemon_hello = Some(probe.summary);
+            result.backend_hello = Some(probe.summary);
         }
         Ok(None) => {
             result.message =
-                "SSH 连上了，但 daemon 在超时内未回 hello（未部署 / 路径错 / 启动失败？）。"
+                "SSH 连上了，但后端在超时内未回 hello（未部署 / 路径错 / 启动失败？）。"
                     .to_string();
         }
         Err(e) => {
-            result.message = format!("SSH 连上了，但 daemon 探测失败：{e}");
+            result.message = format!("SSH 连上了，但后端探测失败：{e}");
         }
     }
 
@@ -4232,19 +4237,19 @@ pub async fn test_remote_connection(
     Ok(result)
 }
 
-/// [`probe_daemon`] 的结果。**不是一个摘要串** —— 顶层结论要能分辨「控制通道通不通」，
-/// 否则 D 审计点名的那件事会再发生一次：控制通道不通时仍然报「SSH 与 daemon 均正常」，
+/// [`probe_backend`] 的结果。**不是一个摘要串** —— 顶层结论要能分辨「控制通道通不通」，
+/// 否则 D 审计点名的那件事会再发生一次：控制通道不通时仍然报「SSH 与后端均正常」，
 /// 失败只藏在括号里，而这一步的立项理由恰恰是「别让用户在全绿之后才发现起不了会话」。
-struct DaemonProbe {
-    /// 人读摘要（进 `ConnTestResult::daemon_hello`）。
+struct BackendProbe {
+    /// 人读摘要（进 `ConnTestResult::backend_hello`）。
     summary: String,
     /// 控制通道 ping 往返成功。
     control_ok: bool,
-    /// 旧 daemon：没声明任何入方向命令（不是失败，是能力缺失）。
+    /// 旧后端：没声明任何入方向命令（不是失败，是能力缺失）。
     control_unsupported: bool,
 }
 
-/// exec daemon、读首行 stdout、若是 hello 帧再**探一次控制通道往返**。
+/// exec backend、读首行 stdout、若是 hello 帧再**探一次控制通道往返**。
 ///
 /// 三步（第三步是 U8a-2a 新增）：
 ///
@@ -4252,18 +4257,18 @@ struct DaemonProbe {
 /// 2. 解析成 `hello` 帧 → 人读摘要；
 /// 3. 用同一条 channel 发一条 `ping` 等应答，超时 [`CONTROL_PROBE_TIMEOUT`]。
 ///
-/// **时间预算是两段串联**：最坏 8s + 5s = 13s，只在「daemon 发了 hello、声明了 `ping`、
-/// 却不回应答」时吃满；旧 daemon（未声明入方向）走 `control=unsupported` 立即返回。
+/// **时间预算是两段串联**：最坏 8s + 5s = 13s，只在「backend 发了 hello、声明了 `ping`、
+/// 却不回应答」时吃满；旧后端（未声明入方向）走 `control=unsupported` 立即返回。
 ///
 /// 返回：
 ///
 /// - `Ok(Some(probe))` —— 读到并解析成 hello（`probe.control_*` 说明控制通道结论）。
-/// - `Ok(None)`        —— 超时 / EOF / 非 hello（daemon 未正常响应）。
+/// - `Ok(None)`        —— 超时 / EOF / 非 hello（backend 未正常响应）。
 /// - `Err(_)`          —— channel/exec/IO 硬错误。
-async fn probe_daemon(
+async fn probe_backend(
     session: &client::Handle<ClientHandler>,
     daemon_path: &str,
-) -> Result<Option<DaemonProbe>, String> {
+) -> Result<Option<BackendProbe>, String> {
     let channel = session
         .channel_open_session()
         .await
@@ -4274,27 +4279,28 @@ async fn probe_daemon(
         .map_err(|e| format!("exec {daemon_path} 失败: {e}"))?;
 
     // U8a-2a：切成两半，写半边同一步停住（见 `inbound_client::split_and_park`）。
-    let (rh, parked) = crate::inbound_client::split_and_park(channel.into_stream());
+    let (rh, parked) =
+        crate::backend::control::inbound_client::split_and_park(channel.into_stream());
     let mut reader = BufReader::new(rh);
 
-    // ★ F10b：与主帧读同一个量（daemon 出方向单行）⇒ 同一个上限、同一个机制。
+    // ★ F10b：与主帧读同一个量（backend 出方向单行）⇒ 同一个上限、同一个机制。
     // 取消（超时）之后本函数直接返回，reader 不再复用 ⇒ 满足 `read_capped_line` 的使用条件。
     let mut line: Vec<u8> = Vec::new();
     let read = tokio::time::timeout(
         Duration::from_secs(8),
-        read_capped_line(&mut reader, &mut line, DAEMON_FRAME_LINE_CAP),
+        read_capped_line(&mut reader, &mut line, BACKEND_FRAME_LINE_CAP),
     )
     .await;
 
     match read {
         Err(_elapsed) => Ok(None), // 超时
-        Ok(Err(e)) => Err(format!("读 daemon stdout 出错: {e}")),
-        Ok(Ok(CappedLine::Eof)) => Ok(None), // EOF（daemon 立即退出 / 未输出）
-        // 握手行超限 ⇒ 与「非 hello 帧」同一档：daemon 未正常握手。
+        Ok(Err(e)) => Err(format!("读 backend stdout 出错: {e}")),
+        Ok(Ok(CappedLine::Eof)) => Ok(None), // EOF（backend 立即退出 / 未输出）
+        // 握手行超限 ⇒ 与「非 hello 帧」同一档：backend 未正常握手。
         // ⚠ 这里**不**发 REMOTE_HEALTH —— 探测阶段还没有 host_label 语境，
         // 且返回 `None` 本身就会被调用方当成「没握上手」如实报出去。
         Ok(Ok(CappedLine::TooLong(bytes))) => {
-            tracing::warn!("probe_daemon: hello 行 {bytes} 字节超上限，判未握手");
+            tracing::warn!("probe_backend: hello 行 {bytes} 字节超上限，判未握手");
             Ok(None)
         }
         Ok(Ok(CappedLine::Line)) => {
@@ -4304,13 +4310,13 @@ async fn probe_daemon(
                 Some(frame @ InboundFrame::Hello { .. }) => {
                     let head = describe_hello(&frame);
                     let control = probe_control_channel(parked, reader, &frame).await;
-                    Ok(Some(DaemonProbe {
+                    Ok(Some(BackendProbe {
                         control_ok: control.starts_with("control=ok("),
                         control_unsupported: control.starts_with("control=unsupported"),
                         summary: format!("{head} {control}"),
                     }))
                 }
-                // 非 hello 帧 → daemon 未正常握手。写半边随 `parked` 一起 drop。
+                // 非 hello 帧 → backend 未正常握手。写半边随 `parked` 一起 drop。
                 _ => Ok(None),
             }
         }
@@ -4343,15 +4349,15 @@ const CONTROL_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 ///
 /// # 为什么加这一步
 ///
-/// 此前「测试连接」只证明了两件事：SSH 通、daemon 会说 hello。它**没有**证明
+/// 此前「测试连接」只证明了两件事：SSH 通、backend 会说 hello。它**没有**证明
 /// 反方向能走 —— 而 U8a-2b 之后起会话正是走那条反方向。少了这一步，用户会在
 /// 「测试连接全绿」之后才在真起会话时发现控制通道根本不通，且无从归因。
 ///
-/// 探测用 `ping`：daemon 侧它是空操作（`Ok(None)`），零副作用、零写入。
+/// 探测用 `ping`：backend 侧它是空操作（`Ok(None)`），零副作用、零写入。
 ///
-/// 结果只追加进 `daemon_hello` 摘要串（前端已有展示位），不新增字段 ⇒ 零 TS 绑定改动。
+/// 结果只追加进 `backend_hello` 摘要串（前端已有展示位），不新增字段 ⇒ 零 TS 绑定改动。
 async fn probe_control_channel<R, W>(
-    parked: crate::inbound_client::ParkedWriter<W>,
+    parked: crate::backend::control::inbound_client::ParkedWriter<W>,
     reader: BufReader<R>,
     hello: &InboundFrame,
 ) -> String
@@ -4359,14 +4365,16 @@ where
     R: tokio::io::AsyncRead + Unpin + Send + 'static,
     W: tokio::io::AsyncWrite + Unpin + Send + 'static,
 {
-    let Some(witness) = crate::inbound_client::DaemonHello::from_hello_frame(hello) else {
+    let Some(witness) =
+        crate::backend::control::inbound_client::BackendHello::from_hello_frame(hello)
+    else {
         // 不可达（调用方已确认是 Hello），但不 panic —— 探测路径宁可少报一行。
         return "control=n/a".to_string();
     };
     let client = parked.into_client(witness);
     if !client.accepts("ping") {
         client.close_write();
-        return "control=unsupported(daemon 未声明入方向命令)".to_string();
+        return "control=unsupported(backend 未声明入方向命令)".to_string();
     }
     // 应答走的是同一条流的读半边 —— 起一个只做路由的泵，探完就撤。
     let pump = {
@@ -4382,8 +4390,8 @@ where
         Err(e) => format!("control=failed({e})"),
     };
     pump.abort();
-    // 探测专用：告诉 daemon 我们不会再发命令了（关写半边 ⇒ 它的入方向 reader 寿终）。
-    // ⚠ 这**不会**让 daemon 退出 —— 那句流传已久的注释是错的，e2e 第 9 条实测钉住。
+    // 探测专用：告诉后端我们不会再发命令了（关写半边 ⇒ 它的入方向 reader 寿终）。
+    // ⚠ 这**不会**让后端退出 —— 那句流传已久的注释是错的，e2e 第 9 条实测钉住。
     // 探测真正的收尾是本函数返回后整条 SSH channel 被 drop（stdout 断 ⇒ writer_task 结束 ⇒ exit）。
     client.close_write();
     out
@@ -4392,16 +4400,16 @@ where
 /// 只做一件事：把读到的 `reply`/`cancelled` 路由给客户端。其余帧丢弃（探测不关心）。
 async fn pump_inbound_replies<R>(
     mut reader: BufReader<R>,
-    client: std::sync::Arc<crate::inbound_client::InboundClient>,
+    client: std::sync::Arc<crate::backend::control::inbound_client::InboundClient>,
 ) where
     R: tokio::io::AsyncRead + Unpin,
 {
-    // ★ F10b：同一个量（daemon 出方向单行）⇒ 同一个上限。
+    // ★ F10b：同一个量（backend 出方向单行）⇒ 同一个上限。
     // 超限那一行**丢掉继续泵** —— 它不可能是本泵关心的 `reply`/`cancelled`
     // （那两种帧都是几百字节量级），而整个泵是探测期临时物、`pump.abort()` 就撤。
     let mut buf: Vec<u8> = Vec::new();
     loop {
-        let text = match read_capped_line(&mut reader, &mut buf, DAEMON_FRAME_LINE_CAP).await {
+        let text = match read_capped_line(&mut reader, &mut buf, BACKEND_FRAME_LINE_CAP).await {
             Ok(CappedLine::Eof) | Err(_) => break,
             Ok(CappedLine::TooLong(bytes)) => {
                 tracing::warn!("pump_inbound_replies: 丢掉一行 {bytes} 字节（超上限）");
@@ -4472,7 +4480,7 @@ mod snapshot_tests;
 ///
 /// 判据那半（`byte_cap_registry` 的四条）钉的全是**形态**：常量进表了没、
 /// 处置臂说话了没。它们**判不出**「上限到底生不生效」——
-/// 而 daemon 侧栽的那次正是这个缺口：上限写着 1 MiB、`line_too_long` 也回了，
+/// 而后端侧栽的那次正是这个缺口：上限写着 1 MiB、`line_too_long` 也回了，
 /// 可它是**读完再判**，实测 RSS 从 6 MiB 涨到 518 MiB。头注逐字记着
 /// 「常数抄了先例，**机制没抄**」。
 ///

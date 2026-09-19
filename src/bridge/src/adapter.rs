@@ -13,7 +13,7 @@ pub mod codex;
 use std::path::{Path, PathBuf};
 
 /// Phase 2（Codex 泛化）：受支持的 agent 种类。Claude Code 是第一个、Codex 是「第二个样本」
-/// （SS-1 说好的第二刀触发点）。monitor 先定义；daemon（`src/backend`）与 frontend
+/// （SS-1 说好的第二刀触发点）。monitor 先定义；backend（`src/backend`）与 frontend
 /// 各自镜像（双写 parity，同 `turn_detect`/`usage` 现状）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AgentKind {
@@ -188,7 +188,7 @@ fn codex_sid_from_rollout(p: &Path) -> Option<String> {
     }
     // 末 36 用 `.get()`（非字节切片）→ 非字符边界（畸形多字节名）安全返 None、不 panic。
     // Phase G 审计修：原 `&rest[..]` 会在含多字节字符的畸形文件名上 panic、挂掉整个历史/用量扫描
-    // （对齐 daemon `codex::codex_sid_from_path` 已加固的 .get 写法，消两端 parity 发散）。
+    // （对齐 backend `codex::codex_sid_from_path` 已加固的 .get 写法，消两端 parity 发散）。
     let uuid = rest.get(rest.len() - 36..)?;
     is_uuid(uuid).then(|| uuid.to_string())
 }
@@ -218,7 +218,7 @@ fn is_uuid(s: &str) -> bool {
 // `AgentAdapter` trait 今天没有「工具名 / 判活进程名」这几个方法，加进去要动
 // `adapter/claude_code.rs` 与 `adapter/codex.rs` —— 而 `K-R93` 的写区只给了本文件这一格
 //（件文件 `§2` 逐字「只加取数口，不动分派」）。⇒ **先住这里，住址写明，不假装它是终点**：
-// 收进 trait（顺带把 daemon 侧那份判活词表也接上，`daemon-api` F11）是下一刀的事。
+// 收进 trait（顺带把后端侧那份判活词表也接上，`backend-api` F11）是下一刀的事。
 //
 // # `None` 与 `Some(&[])` 不是一回事
 //
@@ -263,8 +263,8 @@ static CLAUDE_MD_TOOLS: &[&str] = &["Read", "Grep", "WebFetch", "NotebookRead", 
 ///
 /// ⚠ 这一格从前**没有权威方**（`tests/liveness-process-names-parity.vitest.ts` 的头注逐字说过
 /// 「`agent-profile-golden.tsv` 只有 4 个 key，不含这一项；`AgentAdapter` trait 也没有这个方法」）。
-/// 今天权威方在这里 —— 但 **daemon 那一侧仍是各写各的**（`agents/claudecode/liveness.rs` 的内联
-/// 字面量），两侧仍靠那条对拍咬着。收成一份归 `daemon-api` F11，本件没做。
+/// 今天权威方在这里 —— 但 **backend 那一侧仍是各写各的**（`agents/claudecode/liveness.rs` 的内联
+/// 字面量），两侧仍靠那条对拍咬着。收成一份归 `backend-api` F11，本件没做。
 static CLAUDE_LIVENESS_PROCESS_NAMES: &[&str] = &["claude", "node"];
 
 /// resume 的调用形态 —— 与 `backend/control/agent_profile_parity.rs` 那条**同一条推法**：

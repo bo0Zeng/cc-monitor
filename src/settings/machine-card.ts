@@ -160,7 +160,7 @@ export interface MachineCardHooks {
  * 故用 `/home/<user>/...` 形式而非 `~/...`（避免误导用户以为 `~` 可用）。
  */
 const DAEMON_PATH_PLACEHOLDER =
-  "/home/<user>/.cc-monitor/bin/cc-monitor-remote";
+  "/home/<user>/.cc-monitor/bin/cc-monitor-backend";
 /**
  * 按远端用户名生成 daemonPath 默认值（与自动部署的约定路径一致，
  * 见 src/doc/REMOTE-PHASE0-DEPLOY.md）。root 的 home 不在 /home 下，特判。
@@ -168,7 +168,7 @@ const DAEMON_PATH_PLACEHOLDER =
  */
 export function defaultDaemonPathFor(user: string): string {
   const home = user === "root" ? "/root" : `/home/${user}`;
-  return `${home}/.cc-monitor/bin/cc-monitor-remote`;
+  return `${home}/.cc-monitor/bin/cc-monitor-backend`;
 }
 /**
  * F43：是否显示「重置为 TOFU」按钮——当且仅当当前已固化了非空指纹。
@@ -196,8 +196,8 @@ export class MachineCard {
   private syncResetFpVisibility!: () => void;
   private testButton!: HTMLButtonElement;
   private installButton!: HTMLButtonElement;
-  private daemonInstallButton!: HTMLButtonElement;
-  private daemonUninstallButton!: HTMLButtonElement;
+  private backendInstallButton!: HTMLButtonElement;
+  private backendUninstallButton!: HTMLButtonElement;
   private ccmUninstallButton!: HTMLButtonElement;
   private testResult!: HTMLElement;
   /** 折叠时隐藏的字段 + 测试/安装区（legend 始终可见）。 */
@@ -249,7 +249,7 @@ export class MachineCard {
     };
   }
 
-  /** 导入别名时填充连接参数（host/port/user/keyPath + daemon 兜底 + label=别名）。 */
+  /** 导入别名时填充连接参数（host/port/user/keyPath + backend 兜底 + label=别名）。 */
   applyResolved(resolved: ResolvedHost, alias: string): void {
     if (!this.labelInput.value.trim()) this.labelInput.value = alias;
     this.hostInput.value = resolved.host;
@@ -310,7 +310,7 @@ export class MachineCard {
     // ★ S4b-3b-2：body 内部再分成**两块**，供机器详情页拆成「连接 / 组件」两栏
     //（主计划 §2.3 / §2.4）。分界就在 resume 命令那一行：
     //   连接 = 怎么连上这台机（host/port/user/密钥/指纹/地址/跳板…）
-    //   组件 = 这台机上装了什么、怎么起（resume 命令 + 装卸 daemon/ccm + 测试）
+    //   组件 = 这台机上装了什么、怎么起（resume 命令 + 装卸 backend/ccm + 测试）
     //
     // **顺带把 S4b-3a 摆错的位置纠正了**：那轮我把 resume 命令插在那个降级开关之后，
     // commit 里却说它「放在装/卸 ccm 按钮紧邻处」—— 实际隔着 installInfo 等约 120 行。
@@ -351,15 +351,15 @@ export class MachineCard {
     );
     this.daemonPathInput = buildTextRow(
       body,
-      "daemon 路径 (daemonPath)",
+      "backend 路径 (daemonPath)",
       DAEMON_PATH_PLACEHOLDER,
       onChange,
     );
-    const daemonHint = document.createElement("div");
-    daemonHint.className = "settings-hint";
-    daemonHint.textContent =
-      "须为绝对路径（如 /home/<你的用户名>/.cc-monitor/bin/cc-monitor-remote）；SSH 直接 exec 不经 shell，`~` 不会被展开。";
-    body.appendChild(daemonHint);
+    const backendHint = document.createElement("div");
+    backendHint.className = "settings-hint";
+    backendHint.textContent =
+      "须为绝对路径（如 /home/<你的用户名>/.cc-monitor/bin/cc-monitor-backend）；SSH 直接 exec 不经 shell，`~` 不会被展开。";
+    body.appendChild(backendHint);
     // F13：手动填完 user（change = 失焦提交，避免逐键拿半截用户名）后，daemonPath
     // 为空则按约定路径预填——与 ssh config 导入（applyResolved）同一兜底；已有值不覆盖。
     this.userInput.addEventListener("change", () => {
@@ -429,7 +429,7 @@ export class MachineCard {
     );
 
     // 🔴 `K-R59`（09-11，定框 `K35`）：**这里原来是那个 `daemonless` 降级开关**
-    //    （checkbox 逐字「daemonless 降级读取（无需 daemon）」→ `RemoteHostConfig.daemonless`）。
+    //    （checkbox 逐字「daemonless 降级读取（无需后端）」→ `RemoteHostConfig.daemonless`）。
     //    `K35` 逐字：「不要有 daemonless。没有没有后端的情况。前端应该就是去调用远程后端的。」
     //    ⇒ 整格删掉：字段 · 顶层二选一 · 轮询段 · 这一格界面 · 那条本机豁免，五处一起走。
     //    用户盘上那份旧 `true` 由 `remote-config.ts` 的 `LEGACY_NO_BACKEND_KEY` 认出来，
@@ -455,8 +455,8 @@ export class MachineCard {
     const installInfo = document.createElement("div");
     installInfo.className = "settings-hint remote-install-info";
     installInfo.textContent =
-      "安装位置：① daemon（远端数据源，必需）→ 上方「daemon 路径」填的位置" +
-      "（默认 ~/.cc-monitor/bin/cc-monitor-remote）+ 同目录 .build_id；启用远端后连接时会自动安装，" +
+      "安装位置：① backend（远端数据源，必需）→ 上方「backend 路径」填的位置" +
+      "（默认 ~/.cc-monitor/bin/cc-monitor-backend）+ 同目录 .build_id；启用远端后连接时会自动安装，" +
       "下面按钮供手动装 / 卸。② ccm 启动器（可选）→ 两部分：CLI 本体装到远端 " +
       "~/.local/bin/ccm（可执行文件），别名块写进 ~/.bashrc 的 cc-monitor BEGIN/END 标记块" +
       "（先备份原文件、只动标记块内）。装好后终端可用：ccm（起会话）/ ccm --tmux（tmux 里起）/ " +
@@ -465,7 +465,7 @@ export class MachineCard {
       "能 attach、能换号重启。";
     body.appendChild(installInfo);
 
-    // 动作区：连接测试 + daemon 装/卸 + ccm 装/卸。按钮多，行内可换行。
+    // 动作区：连接测试 + backend 装/卸 + ccm 装/卸。按钮多，行内可换行。
     const mkBtn = (
       label: string,
       variant: string,
@@ -487,7 +487,7 @@ export class MachineCard {
     this.testButton = mkBtn(
       "测试连接",
       "settings-btn-primary",
-      "测试 SSH 连接 / 主机指纹 / daemon 是否在线",
+      "测试 SSH 连接 / 主机指纹 / backend 是否在线",
       () => void this.onTestConnection(),
     );
     actionRow.appendChild(this.testButton);
@@ -531,25 +531,25 @@ export class MachineCard {
       ),
     );
 
-    // F08c：手动安装 / 卸载 daemon（两个独立按钮）。
-    this.daemonInstallButton = mkBtn(
-      "安装 daemon",
+    // F08c：手动安装 / 卸载后端（两个独立按钮）。
+    this.backendInstallButton = mkBtn(
+      "安装 backend",
       "settings-btn-secondary",
       // K-W4 §0c：此前这句写「已是最新则跳过」，而「最新」当时只看同目录 .build_id
       // 那个字符串 —— 落点那个文件被删/截成 0 字节时它照样跳过，且回「无需重装」。
       // 判定改成两个事实各自说话之后，这句话跟着说清跳过的条件是两条。
-      "把内嵌的 daemon 二进制按远端架构装到 daemonPath（版本已是最新、且落点那个文件在，才跳过）",
-      () => void this.onDeployDaemon(),
+      "把内嵌的后端二进制按远端架构装到 daemonPath（版本已是最新、且落点那个文件在，才跳过）",
+      () => void this.onDeployBackend(),
     );
-    actionRow.appendChild(this.daemonInstallButton);
+    actionRow.appendChild(this.backendInstallButton);
 
-    this.daemonUninstallButton = mkBtn(
-      "卸载 daemon",
+    this.backendUninstallButton = mkBtn(
+      "卸载 backend",
       "settings-btn-secondary",
-      "删除远端 daemon 二进制 + .build_id（若机器仍启用，下次连接会自动装回）",
-      () => void this.onUninstallDaemon(),
+      "删除远端后端二进制 + .build_id（若机器仍启用，下次连接会自动装回）",
+      () => void this.onUninstallBackend(),
     );
-    actionRow.appendChild(this.daemonUninstallButton);
+    actionRow.appendChild(this.backendUninstallButton);
 
     // F10：装 / 卸 ccm 助手到 ~/.bashrc（↗ 拉前用）。
     this.installButton = mkBtn(
@@ -700,14 +700,14 @@ export class MachineCard {
       });
       this.renderTestResult(res, null, stageLog);
       // S3：记进账本 —— 列表行上那个「✓ 3 分钟前」就是这一次的结论。
-      // 一次测试同时给出两格：`sshOk`（连得上吗）与 `daemonOk`（daemon 回 hello 了吗）。
-      // **只在 SSH 通了的时候才记 daemon** —— SSH 都没通，daemon 那格是「不知道」，
-      // 记成 `fail` 等于替用户断言「远端没装 daemon」，而事实可能只是网络不通。
+      // 一次测试同时给出两格：`sshOk`（连得上吗）与 `backendOk`（backend 回 hello 了吗）。
+      // **只在 SSH 通了的时候才记 backend** —— SSH 都没通，backend 那格是「不知道」，
+      // 记成 `fail` 等于替用户断言「远端没装后端」，而事实可能只是网络不通。
       this.recordFacet("connection", { kind: res.sshOk ? "ok" : "fail" });
       if (res.sshOk) {
-        this.recordFacet("daemon", {
-          kind: res.daemonOk ? "ok" : "fail",
-          detail: res.daemonOk ? "在跑" : "没响应",
+        this.recordFacet("backend", {
+          kind: res.backendOk ? "ok" : "fail",
+          detail: res.backendOk ? "在跑" : "没响应",
         });
       }
     } catch (e) {
@@ -853,7 +853,7 @@ export class MachineCard {
         : "留空则按工作目录名自动生成";
     });
 
-    // A4：账号下拉。异步填充——账号库不可用（旧 daemon / 未启用）则整行不显 → 不注入
+    // A4：账号下拉。异步填充——账号库不可用（旧 backend / 未启用）则整行不显 → 不注入
     // configDir → 行为与旧版逐字节一致（§7 降级）。选中某账号 = 起会话时注入其 CLAUDE_CONFIG_DIR。
     const acctRow = document.createElement("label");
     acctRow.className = "launcher-field";
@@ -1013,43 +1013,43 @@ export class MachineCard {
     this.renderStatusStrip();
   }
 
-  /** F08c：点「安装 daemon」——把内嵌 daemon 按远端架构装到 daemonPath。 */
-  private async onDeployDaemon(): Promise<void> {
+  /** F08c：点「安装后端」——把内嵌后端按远端架构装到 daemonPath。 */
+  private async onDeployBackend(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user || !cfg.daemonPath) {
-      this.showResultText("请先填好 host / user / daemonPath 再安装 daemon。");
+      this.showResultText("请先填好 host / user / daemonPath 再安装后端。");
       return;
     }
     await this.runRemoteAction(
-      this.daemonInstallButton,
-      "安装 daemon 中",
-      () => commands.deploy_remote_daemon({ cfg }),
-      { facet: "daemon", ok: "已装", fail: "装失败" },
+      this.backendInstallButton,
+      "安装后端中",
+      () => commands.deploy_remote_backend({ cfg }),
+      { facet: "backend", ok: "已装", fail: "装失败" },
     );
   }
 
-  /** F08c：点「卸载 daemon」——删远端 daemon 二进制 + .build_id（二次确认）。 */
-  private async onUninstallDaemon(): Promise<void> {
+  /** F08c：点「卸载后端」——删远端后端二进制 + .build_id（二次确认）。 */
+  private async onUninstallBackend(): Promise<void> {
     const cfg = this.collect();
     if (!cfg.host || !cfg.user || !cfg.daemonPath) {
-      this.showResultText("请先填好 host / user / daemonPath 再卸载 daemon。");
+      this.showResultText("请先填好 host / user / daemonPath 再卸载后端。");
       return;
     }
     if (
       !window.confirm(
-        `确认从 ${cfg.host} 删除 daemon？\n会删：${cfg.daemonPath} 及同目录 .build_id。\n（若该机器仍勾选启用，下次连接会自动装回。）`,
+        `确认从 ${cfg.host} 删除后端？\n会删：${cfg.daemonPath} 及同目录 .build_id。\n（若该机器仍勾选启用，下次连接会自动装回。）`,
       )
     ) {
       return;
     }
     await this.runRemoteAction(
-      this.daemonUninstallButton,
-      "卸载 daemon 中",
-      () => commands.uninstall_remote_daemon({ cfg }),
-      // 卸载**成功**意味着这台机器现在没有 daemon —— 结论是 `fail`（缺组件），不是 `ok`。
+      this.backendUninstallButton,
+      "卸载后端中",
+      () => commands.uninstall_remote_backend({ cfg }),
+      // 卸载**成功**意味着这台机器现在没有 backend —— 结论是 `fail`（缺组件），不是 `ok`。
       // 这里刻意不用 ledger 参数：它把「动作成功」映射成 `ok`，而本例正好相反。
     );
-    this.recordFacet("daemon", { kind: "fail", detail: "已卸载" });
+    this.recordFacet("backend", { kind: "fail", detail: "已卸载" });
   }
 
   /** F10：点「卸载 ccm」——从远端 ~/.bashrc 删掉 ccm 块（二次确认）。 */
@@ -1072,11 +1072,11 @@ export class MachineCard {
         profile: ".bashrc",
       }),
     );
-    // 同 daemon 卸载：动作成功 = 组件不在了。
+    // 同后端卸载：动作成功 = 组件不在了。
     this.recordFacet("ccm", { kind: "fail", detail: "已卸载" });
   }
 
-  /** 渲染测试结果：SSH ✓/✗、指纹（+可固化）、daemon ✓/✗（+hello）。
+  /** 渲染测试结果：SSH ✓/✗、指纹（+可固化）、backend ✓/✗（+hello）。
    * F46：`keepLog` 传入时保留其上方的「连接过程」阶段泳道（清空其余旧结果）。 */
   private renderTestResult(
     res: ConnTestResult | null,
@@ -1148,10 +1148,10 @@ export class MachineCard {
       this.testResult.appendChild(fpLine);
     }
 
-    const daemonText = res.daemonOk
-      ? `daemon 响应正常${res.daemonHello ? `（${res.daemonHello}）` : ""}`
-      : "daemon 未响应 / 未部署";
-    this.testResult.appendChild(makeStatusLine(res.daemonOk, daemonText));
+    const backendText = res.backendOk
+      ? `backend 响应正常${res.backendHello ? `（${res.backendHello}）` : ""}`
+      : "backend 未响应 / 未部署";
+    this.testResult.appendChild(makeStatusLine(res.backendOk, backendText));
 
     if (res.message) {
       const msg = document.createElement("div");

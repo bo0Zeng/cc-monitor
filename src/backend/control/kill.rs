@@ -3,7 +3,7 @@
 //! # 它与 monitor 侧那条路的关系
 //!
 //! monitor 的 `tmux.rs::kill_remote_tmux` 今天拼一条穿过 ssh + shell 的原子命令，
-//! 带 §34 的 **Gate 1/2/3**。本模块是它在 daemon 侧的对应物：
+//! 带 §34 的 **Gate 1/2/3**。本模块是它在后端侧的对应物：
 //! **argv 直传、不过 shell**，三道门由 [`super::gate::admit_destructive`] 复现。
 //!
 //! ⚠ **本模块落地不等于 monitor 那条路已经切过来了。** 定框 C6 逐字写着

@@ -177,7 +177,7 @@ fn every_listed_subcommand_is_actually_dispatched() {
 ///
 /// 「今天谁在双路上」遍历得出来；「**它为什么必须留着自己那条臂**」遍历不出来 ——
 /// 那是一次裁定。**两种角色的发现机制不同 ⇒ 分两张表**，
-/// 抄 `src/bridge/src/backend/control/daemon_kill.rs` 的 `CREATION_PATHS`／`VALIDATORS`
+/// 抄 `src/bridge/src/backend/control/backend_kill.rs` 的 `CREATION_PATHS`／`VALIDATORS`
 /// （逐字：「一张表混装两种角色是它自己会红的那种错」）。
 ///
 /// 没有这一张，[`every_listed_subcommand_has_a_live_dispatch_route`] 在双路那几条上
@@ -201,7 +201,7 @@ const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[
 /// # 它买的是哪一形：「子命令表里有、分派臂没有」
 ///
 /// 上面 [`every_listed_subcommand_is_actually_dispatched`] 的头注写清了它为什么看不见
-/// 这一形。这一形不是假想：`K-P6b` 实打过一次（摘掉 `--dial` 那条臂，daemon 侧
+/// 这一形。这一形不是假想：`K-P6b` 实打过一次（摘掉 `--dial` 那条臂，backend 侧
 /// 一条判据都不红，见 `dial/dial_tests.rs::the_dial_arm_is_actually_wired_into_the_dispatch`），
 /// `K-R86` 又撞了一次（`--capture-pane`）。两次都是**一件一件地各补一把伞**。
 /// 本条是那把**总伞**：人群不是手写的，是 [`SUBCOMMANDS`] 自己。
@@ -216,7 +216,7 @@ const DUAL_ROUTE_ARMS: &[(&str, &str)] = &[
 ///   ③ `_` 兜底臂交给 `observe::history_query::run`，它认哪几条由**那份文件里
 ///      它自己那个 `match` 块**判。
 ///
-/// 分表这一形抄 `src/bridge/src/backend/control/daemon_kill.rs` 的
+/// 分表这一形抄 `src/bridge/src/backend/control/backend_kill.rs` 的
 /// `CREATION_PATHS`／`VALIDATORS`（逐字：「一张表混装两种角色是它自己会红的那种错，
 /// 因为两种角色的发现机制不同」），不自己重发明。
 ///
@@ -350,15 +350,15 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
     );
 }
 
-/// ★ 未知 `--flag` 不许把 daemon 踢出流模式。
+/// ★ 未知 `--flag` 不许把后端踢出流模式。
 ///
 /// 变异回旧行为（「非空即查询」）⇒ 本测试红。
 #[test]
-fn an_unknown_flag_does_not_kick_the_daemon_out_of_stream_mode() {
+fn an_unknown_flag_does_not_kick_the_backend_out_of_stream_mode() {
     let v = |a: &[&str]| a.iter().map(|s| s.to_string()).collect::<Vec<_>>();
     assert!(
         !super::is_query_mode(&v(&["--some-future-flag"])),
-        "未知 flag 把 daemon 踢进了查询模式 ⇒ exit 2、无 hello ⇒ monitor 重连死循环\n\
+        "未知 flag 把后端踢进了查询模式 ⇒ exit 2、无 hello ⇒ monitor 重连死循环\n\
              （2026-07-09 事故的形状；实测过 `--some-future-flag` 会 rc=2）"
     );
     assert!(

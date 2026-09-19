@@ -425,7 +425,7 @@ fn the_fixture_agent_never_ships() {
     assert!(
         !kinds.contains(&AGENT_KIND),
         "夹具 agent `{AGENT_KIND}` 混进了生产注册表 `agents::REGISTRY`：{kinds:?}\n\
-             ⇒ 真填 `hello.homes` 那天，daemon 会向仓外消费方声明一个**不存在**的 agent。"
+             ⇒ 真填 `hello.homes` 那天，backend 会向仓外消费方声明一个**不存在**的 agent。"
     );
     // ② 模块声明必须带 `#[cfg(test)]` —— 生产二进制里零字节。
     let mod_rs = std::fs::read_to_string(crate::guard_support::src_root().join("agents/mod.rs"))

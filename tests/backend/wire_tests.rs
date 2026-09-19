@@ -5,7 +5,7 @@
 /// 帧就会**互相撕开**（半行 + 半行），而这条流**仓外 aterm 正在消费**（D6 契约冻结）。
 ///
 /// ⇒ 而它只是散文。08-08 实测：在 `inbound.rs` 加一个自己 `tokio::io::stdout()`
-/// 并 `write_all` 的函数，**daemon 292 条判据一条不红**。
+/// 并 `write_all` 的函数，**backend 292 条判据一条不红**。
 ///
 /// # 人群与豁免
 ///
@@ -115,7 +115,7 @@ fn the_outbound_stream_has_exactly_one_writer() {
 ///
 /// ⇒ 于是整条「Hello 之前不许起 inbound」的保证，**全压在这个类型的构造面上**。
 /// 08-08 实测：给它加一个 `pub fn assume() -> Self`，**两侧 291 + 989 条判据一条不红**。
-/// 与 F45（monitor 侧 `DaemonHello` / `ParkedWriter`）**同一形态在另一半**。
+/// 与 F45（monitor 侧 `BackendHello` / `ParkedWriter`）**同一形态在另一半**。
 ///
 /// 钉三件（第三件是 F45 的变异逼出来的：编译器替你挡住的，正是没人写下来的）：
 /// ① 生产段里 `HelloFlushed(` 的构造恰好一处；② `impl` 里除 `for_tests` 外没有别的
@@ -305,7 +305,7 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
         // 〔audit-0805 08-06〕补上此前**测试段零构造**的三个变体。
         // `Reply` 的上线形另有 `inbound.rs` 钉着；`TmuxSessionClosed` / `Cancelled`
         // 此前**只有 monitor 侧「解析成 None」的负向断言** —— 那是消费方的行为，
-        // 不是 daemon 序列化形态：改掉 kind 标签或字段名，两边都不会红。
+        // 不是后端序列化形态：改掉 kind 标签或字段名，两边都不会红。
         (
             Frame::TmuxSessionClosed {
                 name: "cc-1".into(),
@@ -362,14 +362,14 @@ fn each_variant_serializes_to_single_line_with_expected_kind() {
         variant_count,
         "样本覆盖 {} 个 kind，而 `Frame` 有 {variant_count} 个变体 —— \n\
              新增变体没补样本：它的上线形态（kind 标签 / 字段名 / 单行）此刻无人钉。\n\
-             ⚠ 这是**契约帧**，`daemon-api` 的 D6 写着「暴露给第三方 = 契约冻结成本」，\n\
+             ⚠ 这是**契约帧**，`backend-api` 的 D6 写着「暴露给第三方 = 契约冻结成本」，\n\
              而 aterm 正在消费这条流。\n\
              已覆盖：{kinds:?}",
         kinds.len()
     );
 }
 
-/// daemon-09：TurnEnd 上线形——`{"kind":"turn_end","session_id","uuid"}`，**无 byte_offset**
+/// backend-09：TurnEnd 上线形——`{"kind":"turn_end","session_id","uuid"}`，**无 byte_offset**
 /// （只 Line 带）。uuid = 客户端 dedup 键。
 #[test]
 fn turn_end_frame_serializes_with_session_and_uuid_only() {
@@ -456,7 +456,7 @@ fn hello_capabilities_serializes_when_present_and_omits_when_empty() {
 }
 
 /// phase②：Hello.emits 与 capabilities 同 additive 规律、且**独立正交**（一个非空一个空时
-/// 各自序列化/省略互不牵连）。aterm 门控读 emits 判「daemon 发不发某帧」。
+/// 各自序列化/省略互不牵连）。aterm 门控读 emits 判「backend 发不发某帧」。
 #[test]
 fn hello_emits_serializes_orthogonally_to_capabilities() {
     // emits 非空、capabilities 空 → 只 emits 在线上、capabilities 省略。
@@ -566,12 +566,12 @@ fn production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen() {
 }
 
 /// ★ `S5` 的另一半，**刻意贴着上面那条放**：上面钉的是「生产路径给空表」，
-/// 本条钉的是「**给空表不是因为 daemon 不会发现**」。两条合起来才是 `S5` 的口径 ——
+/// 本条钉的是「**给空表不是因为后端不会发现**」。两条合起来才是 `S5` 的口径 ——
 /// **能填不真填**。
 ///
 /// # 少了本条会怎样
 ///
-/// 只有上面那条的话，「`homes` 恒空」与「daemon 根本没有发现能力」在判据眼里**一模一样**。
+/// 只有上面那条的话，「`homes` 恒空」与「backend 根本没有发现能力」在判据眼里**一模一样**。
 /// 于是有人在清理死代码时把 `agents::visible_homes` 整个删掉 —— 上面那条照样绿，
 /// 而 `S5` 交付的东西没了、`S6` 的地基也没了，**没有任何东西会说**。
 ///
@@ -583,7 +583,7 @@ fn production_hello_leaves_homes_empty_so_claude_bytes_stay_frozen() {
 /// ⇒ 本条按生产路径**唯一**要改的那一行（`homes: Vec::new()` → `homes: visible_homes()`）
 /// 原样搭一遍，证明那一行换过去**编得过、发得出**。
 #[test]
-fn the_daemon_can_already_discover_homes_it_just_does_not_send_them() {
+fn the_backend_can_already_discover_homes_it_just_does_not_send_them() {
     // ─── ① 夹具那一半：**不依赖这台机器上装了什么**，所以能断言精确字节 ───
     //
     // 合成一家 agent（一个 `mkdir` 出来的 home）走一遍真正的发现路，
@@ -663,7 +663,7 @@ fn the_daemon_can_already_discover_homes_it_just_does_not_send_them() {
 
 // ─── DG3（#2D）：Codex wire additive 面 · 序列化 parity（aterm 消费侧 fixture 交叉核点）───
 
-/// **present 形**（多 agent 的 daemon）：新字段在线上、snake_case、值域正确。
+/// **present 形**（多 agent 的后端）：新字段在线上、snake_case、值域正确。
 ///
 /// ⚠ **测试名刻意不改**〔`S4`〕：`src/doc/IPC-PROTOCOL.md` 与**仓外 aterm** 都按这个名字
 /// 引用它当 fixture 真值，改名等于在跨仓契约上制造一处找不着。
@@ -731,7 +731,7 @@ fn dg3_codex_fields_serialize_when_present() {
     );
 }
 
-/// **absent 形**（Claude 会话 / 旧 daemon）：skip_if_none/empty → 字段**完全省略**，帧对 Claude
+/// **absent 形**（Claude 会话 / 旧后端）：skip_if_none/empty → 字段**完全省略**，帧对 Claude
 /// **字节等价旧形**（向后兼容红线）。aterm 消费侧「省=null→缺省 claude/authoritative」据此对齐。
 /// ★ 精确字节串 = aterm fixture 交叉核的真值。
 #[test]

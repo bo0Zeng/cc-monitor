@@ -4,7 +4,7 @@ use super::*;
 ///
 /// 这条是集合漂移的回归钉：任一侧的集合被"还原"回去，本测试红。
 ///
-/// ⚠ 但要分清**哪一半是真洞**：daemon 缺的那些 `is_control()` 全是 `false`，
+/// ⚠ 但要分清**哪一半是真洞**：backend 缺的那些 `is_control()` 全是 `false`，
 /// 它真的会放行；monitor 缺的 NEL 属 Cc 类、`is_control()` 本来就挡着 ——
 /// U7-3 我把后者也当成安全洞报了，U7-4 实测证伪。集合差过，行为没差。
 #[test]
@@ -12,14 +12,14 @@ fn the_union_covers_what_each_side_used_to_miss() {
     // NEL：集合里确实缺过，但**不是安全洞**（`is_control()` 覆盖）。
     // 留在集合里是为了让本集合自足，不是因为它此前漏防了什么。
     assert!(is_deceptive_char('\u{0085}'), "NEL 从集合里掉了");
-    // daemon 此前**真的**漏防的（这些 `is_control()` 全是 false）
+    // backend 此前**真的**漏防的（这些 `is_control()` 全是 false）
     for c in [
         '\u{2060}', '\u{2064}', '\u{1680}', '\u{2000}', '\u{200A}', '\u{202F}', '\u{205F}',
         '\u{3000}',
     ] {
         assert!(
             is_deceptive_char(c),
-            "U+{:04X} —— daemon 侧此前真的会放行",
+            "U+{:04X} —— backend 侧此前真的会放行",
             c as u32
         );
     }
@@ -43,7 +43,7 @@ fn the_union_keeps_everything_both_sides_already_had() {
 /// `loggedIn` 恒 false，UI 上看不出来。
 ///
 /// 守卫搬到这里而不是留在两个调用方：常量住在这儿，检查就该住在这儿，
-/// 否则又是两份。原先 daemon 侧那条还带了「本文件真的在用这个字面量」的第二半 ——
+/// 否则又是两份。原先后端侧那条还带了「本文件真的在用这个字面量」的第二半 ——
 /// 常量共享之后那半**结构上不可能不成立**（只有一个定义处），已随之删掉。
 #[test]
 fn the_credential_filename_matches_the_cc_acct_iso_declaration() {

@@ -6,7 +6,7 @@
 //! |---|---|
 //! | `exec_site_registry` | 「**不守**…⑤ 走 SFTP / 本机 `Command` 的路」 |
 //! | `write_site_registry` | 「**不守**…③ 通过 `Command` 起外部进程间接写盘（本条只看 Rust 侧的 `fs::` 调用面）」 |
-//! | `readonly_guard` | 只扫 daemon 生产源码 |
+//! | `readonly_guard` | 只扫后端生产源码 |
 //!
 //! ⇒ 本机写面有 `write_site_registry` 数着 36 处、「新增写盘落点不申报当场红」；
 //! **远端写面（写的是别人机器上的 `~/.bashrc` / `~/.claude/` / 任意用户选的路径）零登记**。

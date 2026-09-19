@@ -1,6 +1,6 @@
-//! Codex rollout 记录的 daemon 侧解析（per-kind · 2D）。
+//! Codex rollout 记录的后端侧解析（per-kind · 2D）。
 //!
-//! **daemon↔monitor 不共享代码**（deliberate）：本模块在 `serde_json::Value` 上**独立重镜像** monitor
+//! **backend↔monitor 不共享代码**（deliberate）：本模块在 `serde_json::Value` 上**独立重镜像** monitor
 //! `codex_record.rs` 的防御抽取，与 aterm 的 CodexRecordParser/CodexTurnEndDetector **golden-parity**
 //! （同 `turn_detect`/`usage_query` 套路）。Codex 格式未文档、每几 minor churn → 宽容抽取、逐行不崩、
 //! 未知/缺失安全默认、alias 归一 `turn_*`↔`task_*`。
@@ -82,7 +82,7 @@ pub fn codex_turn_end_uuid(v: &Value) -> Option<&str> {
 
 // ─── DG5：usage（event_msg `token_count`）+ 会话定位 helpers（镜像 monitor F5 / adapter Codex 侧）───
 
-/// `$CODEX_HOME`（优先、非空）| `~/.codex`。缺 HOME → None。**daemon 在会话主机本地解**（同 monitor adapter）。
+/// `$CODEX_HOME`（优先、非空）| `~/.codex`。缺 HOME → None。**backend 在会话主机本地解**（同 monitor adapter）。
 pub fn resolve_codex_dir() -> Option<PathBuf> {
     if let Some(h) = std::env::var_os("CODEX_HOME").filter(|h| !h.is_empty()) {
         return Some(PathBuf::from(h));

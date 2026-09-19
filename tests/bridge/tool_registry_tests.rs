@@ -675,7 +675,7 @@ fn installable_tools_declare_where_they_land() {
 // ═══════════════════════════════════════════════════════════════════════
 // 🔴 `K-R81` / `KR81D1` ＋ `KR81D3`：**一个后端，几处使用**
 //
-// 用户 09-12 逐字：「一个后端要两处使用 / 即远程 daemon 就是远程本地机器的后端」。
+// 用户 09-12 逐字：「一个后端要两处使用 / 即远程后端就是远程本地机器的后端」。
 // 下面四条判的是**这句话在闭集里说得出来**，不是「表好看一点」。
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -763,19 +763,19 @@ fn the_backend_is_one_thing_landing_in_several_places() {
     let mut want: Vec<(String, String, HostScope)> = vec![
         // ③ 安装包放在 app 可执行文件旁边的那份（`tauri.sidecar.conf.json` 的 `externalBin`）
         (
-            "src/bridge/binaries/cc-monitor-remote".into(),
+            "src/bridge/binaries/cc-monitor-backend".into(),
             "$APP_DIR".into(),
             HostScope::Client,
         ),
-        // ① 这一份产物自己带着、旁边没有 sidecar 时自释放的那份
+        // ① 这一份产物自己带着、旁边没有本机后端时自释放的那份
         (
-            "src/bridge/native-daemon/cc-monitor-native".into(),
+            "src/bridge/native-backend/cc-monitor-native".into(),
             "~/.cc-monitor/bin/cc-monitor-local-*".into(),
             HostScope::Client,
         ),
         // ② 推给远端那台机器、在那台机器上当**它的本地后端**跑的那份
         (
-            "embedded-daemons".into(),
+            "embedded-backends".into(),
             "$DAEMON_PATH".into(),
             HostScope::Remote,
         ),
@@ -939,17 +939,22 @@ fn every_carrier_says_which_one_it_is() {
 /// 旧名字今天还留在哪儿，**按「改它要动什么」分档**。闭集。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum Why {
-    /// **符号名**（那几个 `*_daemon` 的 `pub async fn`、以及对它们的逐字引用）。
+    /// **符号名**（那几个 `*_backend` 的 `pub async fn`、以及对它们的逐字引用）。
     /// 改它要与 `structural_scan` 的逐字签名钉、`sftp_move_ledger`、
     /// `parity_ledger`、`remote_write_registry` 那几张登记表**同拍**改 ——
     /// 那是一件纯符号改名件，与本件的正题（名字说错了「它**是什么**」）不同轴。
     /// **解锁条件**：另立一件「符号改名」，把那几张表一起带上。
+    /// ✅ 〔步 8 2026-09-19〕**那一件做了**（`设计/99 §4` 步 8，全仓冻结窗口）——
+    /// 这一档降到 12 处，剩下的 12 处**不是符号改名问题**：它们全在「远端那份后端的路径」
+    /// 那一族符号上，而那个拼写由**用户盘上那个配置键**锁着（见 [`SITES`]）。
     SymbolName,
     /// **措辞**（注释 / 文档 / 印给用户的串里那句「远端的那个后台进程」）。
     /// 🔴 **这些句子今天多数不假** —— 那确实是远端那台上的那一份；
     /// 用户裁的是它的**身份**（那是**那台机器的本地后端**，`K36`）。
     /// 订正措辞要连**前端那一面**一起过（`src/**/*.ts` 现打 30 余处），
     /// 只改 Rust 半边会让两边说两种话。**解锁条件**：另立一件「文案面」，两侧同拍。
+    /// ✅ 〔步 8 2026-09-19〕**那一件做了，这一档清零** —— Rust 报文、TS 界面串与散文
+    /// 一趟同拍改成「远端后端」。**这一档今天在 [`SITES`] 里一行都没有。**
     Wording,
     /// **逐字引用旧的闭集 id** —— 全部是订正段 / 墓碑 / 病史
     /// （「本条落地当场逮到 `<旧 id>`」这一族）。
@@ -971,88 +976,44 @@ enum Why {
 /// ⚠ **这张表不是愿望清单，是读数**：每一行都由下面那条判据在**真树**上对拍，
 /// 多一处红、少一处也红（少 ⇒ 那一行该删了，账不许挂着空号）。
 const SITES: &[(&str, Why, usize)] = &[
-    ("crates/acct-core/src/lib.rs", Why::Wording, 1),
-    ("crates/branch-core/src/lib.rs", Why::Wording, 1),
-    ("crates/creds-core/src/lib.rs", Why::Wording, 1),
-    ("src/accounts.rs", Why::Wording, 7),
-    // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    ("tests/bridge/accounts_tests.rs", Why::Wording, 1),
-    ("src/acct_iso_deploy.rs", Why::SymbolName, 3),
-    ("src/backend/control/daemon_route.rs", Why::Wording, 1),
-    // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    ("tests/bridge/config_surface_tests.rs", Why::OldId, 4),
-    // 〔条 67 · 09-18〕`src/cross_half_edge_registry.rs` 那一行删了：它记的旧 id 住在
-    // 「app 自带二进制那一层」那条跨半边上，而那条边随 `sidecars/` 整棵走 ⇒ 债真的还了。
-    ("src/daemon_control.rs", Why::Wording, 3),
-    // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    ("tests/bridge/doc_copy_registry_tests.rs", Why::Wording, 1),
-    ("src/drift_ledger.rs", Why::Wording, 2),
-    // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    ("tests/bridge/fenced_block_tests.rs", Why::OldId, 1),
-    ("tests/bridge/fenced_block_tests.rs", Why::SymbolName, 1),
-    ("src/history.rs", Why::Wording, 1),
-    ("src/inbound_client.rs", Why::Wording, 2),
-    ("src/lib.rs", Why::SymbolName, 2),
-    ("src/lib.rs", Why::Wording, 2), // `设计/50` 3 → 2：`mod usage;` / `mod account_usage;` 两处注册随用量 ②③ 退役（这张账只许变小）
-    ("src/local_accounts.rs", Why::Wording, 1),
-    // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    (
-        "tests/bridge/local_read_surface_registry_tests.rs",
-        Why::Wording,
-        1,
-    ),
-    // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    ("tests/bridge/parity_ledger_tests.rs", Why::SymbolName, 2),
-    ("tests/bridge/parity_ledger_tests.rs", Why::Wording, 2),
-    ("src/remote_branch.rs", Why::Wording, 1),
-    ("src/remote_history.rs", Why::Wording, 2),
-    // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    (
-        "tests/bridge/remote_write_registry_tests.rs",
-        Why::SymbolName,
-        3,
-    ),
-    (
-        "tests/bridge/remote_write_registry_tests.rs",
-        Why::Wording,
-        1,
-    ),
-    ("src/session_map.rs", Why::Wording, 1),
-    ("src/sftp.rs", Why::SymbolName, 8),
-    // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    ("tests/bridge/sftp_tests.rs", Why::SymbolName, 14),
-    ("src/sftp.rs", Why::Wording, 6),
-    // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    ("tests/bridge/sftp_move_ledger_tests.rs", Why::SymbolName, 2),
-    ("tests/bridge/sftp_move_ledger_tests.rs", Why::Wording, 1),
+    // 🔴 〔步 8 改名一刀 2026-09-19 · `设计/99 §4` 步 8〕**这张账从 43 行塌到 12 行。**
+    //
+    // 塌下去的那 31 行**不是被删掉了，是债真的还了**：`Why::SymbolName` 与 `Why::Wording`
+    // 两档当年各自写着「解锁条件：另立一件『符号改名』／『文案面，两侧同拍』」——
+    // **步 8 就是那一件**（全仓冻结窗口，Rust ＋ TS ＋ 散文一趟做完）。
+    // 下面那条判据的 `stale` 那一向逐字：「那一处已经改完了，**把这一行删掉**
+    // （账不许挂空号：一张挂着空号的表会让人以为债还在那儿，而它其实早还了）」⇒ 照办。
+    //
+    // **今天还剩的 12 行，逐档说清为什么还在**：
+    //   · `Why::OldId`（9 行）—— **本来就不该改**（那一档头注逐字「没有解锁条件」）：
+    //     订正段 / 墓碑 / 病史里对旧闭集 id 的逐字引用。步 8 的机械替换把这个拼写
+    //     **明写进了保护名单**（`tests/evidence/w8-rename.py` 的 `PROTECTED`）。
+    //   · `Why::SymbolName`（3 行 · 共 12 处）—— 🔴 **全部是「远端那份后端的路径」那一族符号**
+    //     （拼法就是本尺子 `stem_sym` 那个针后面再接 `_path`；这里**刻意不写全**，
+    //      写全了本文件自己就成了又一处「还在说旧名字的地方」——第一版就是那样，当场被逮），
+    //     它们跟着 `daemonPath` 走：那是**用户盘上 `config.json` 里那个键**
+    //     （`RemoteConfig` 带 `#[serde(rename_all = "camelCase")]` ⇒ Rust 字段名就是线上键名）。
+    //     改它要配一次读旧键的迁移，而 `设计/90 §1.4` 逐字「单独一刀，不要混进功能改动」
+    //     ⇒ **本拍刻意摘出去**，读数与判词见 `调研/真相源/94-步8改名-判据影响面地图.md` 的 `A1`。
+    //     **解锁条件**：`daemonPath` 那条迁移落地的同一拍。
+    //   · `Why::Wording`（0 行）—— **这一档清零了**。界面串与散文里那句「远端 ＋ 旧词」
+    //     两侧同拍改成了「远端后端」，一处不剩。
+    ("src/acct_iso_deploy.rs", Why::SymbolName, 1),
+    ("src/sftp.rs", Why::SymbolName, 4),
     ("src/skill_host.rs", Why::OldId, 1),
-    // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    ("tests/bridge/skill_host_tests.rs", Why::OldId, 1),
-    ("src/ssh_source.rs", Why::Wording, 5),
-    // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    (
-        "tests/bridge/ssh_source_stream_flag_gate_tests.rs",
-        Why::Wording,
-        1,
-    ),
     ("src/structural_scan.rs", Why::OldId, 1),
-    ("src/structural_scan.rs", Why::SymbolName, 1),
-    // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    ("tests/bridge/structural_scan_tests.rs", Why::SymbolName, 2),
-    // 〔步 7c 剖分 2026-09-19 · C 类〕`tool_registry.rs` 剖成三份，按新住址分开数。
-    // **总处数守恒**：`OldId` 6 ＝ 2（生产段）＋ 3（`_tests`）＋ 1（`_environment_tests`）·
-    // `SymbolName` 8 ＝ 2（生产段）＋ 6（`_tests`）。分开数比合起来数更严 ——
-    // 合起来数时「这份少一处、那份多一处」会互相抵掉。
     ("src/tool_registry.rs", Why::OldId, 2),
-    ("src/tool_registry.rs", Why::SymbolName, 2),
-    ("tests/bridge/tool_registry_tests.rs", Why::OldId, 3),
-    ("tests/bridge/tool_registry_tests.rs", Why::SymbolName, 6),
+    ("src/tool_registry.rs", Why::SymbolName, 1),
+    ("tests/bridge/config_surface_tests.rs", Why::OldId, 4),
+    ("tests/bridge/fenced_block_tests.rs", Why::OldId, 1),
+    ("tests/bridge/sftp_tests.rs", Why::SymbolName, 7),
+    ("tests/bridge/skill_host_tests.rs", Why::OldId, 1),
     (
         "tests/bridge/tool_registry_environment_tests.rs",
         Why::OldId,
         1,
     ),
-    ("src/tool_registry.rs", Why::Wording, 1),
+    ("tests/bridge/tool_registry_tests.rs", Why::OldId, 3),
 ];
 
 /// 三档各自的处数。**针全部运行期拼**〔同 `scanning_guard_registry` 头注里
@@ -1161,8 +1122,8 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
         old_name_counts(&data),
         [0, 0, 0],
         "\n闭集那张表的**数据**里还留着旧名字（[符号名, 旧 id, 措辞]）。\n\
-             用户 09-12 逐字：「一个后端要两处使用 / 即远程 daemon 就是远程本地机器的后端」——\n\
-             远端那台上跑的那一份是**那台机器的本地后端**，不是「远端的 daemon」。\n\
+             用户 09-12 逐字：「一个后端要两处使用 / 即远程后端就是远程本地机器的后端」——\n\
+             远端那台上跑的那一份是**那台机器的本地后端**，不是「远端的后端」。\n\
              ⚠ 这一格已经花过一次真钱（`ROADMAP#KU26`：Linux 裸 exe 装出来没有本机后端）。"
     );
 }
@@ -1179,15 +1140,15 @@ fn the_old_backend_name_is_gone_from_the_closed_set_itself() {
 ///
 /// # 🔴 射程与**刻意不管**的两样，写死在这里
 ///
-/// - **crate 目录（`…-proto`）与包名（`cc-monitor-remote`）本拍不碰**，
+/// - **crate 目录（`…-proto`）与包名（`cc-monitor-backend`）本拍不碰**，
 ///   而且它们**根本不进这把尺子**（`old_name_counts` 第一步就把那个拼写剥掉了）。
-///   理由不是嫌麻烦：改那两样要**同拍**改发版流水线的产物名、`embedded-daemons/`
+///   理由不是嫌麻烦：改那两样要**同拍**改发版流水线的产物名、`embedded-backends/`
 ///   的文件名约定、`tauri.sidecar.conf.json` 的 `externalBin`、`build.rs` 的清单
 ///   与 CI —— 而件文件 `§0d` 逐字「**不改发版流水线**（`KU26` 那一步归 `K-R42`）」。
 ///   ⇒ 它是**住址**，不是名字；名字改对了，住址跟着搬是另一件事。
 /// - **`src/backend/` 那棵树**（另一个 workspace）与**前端 `src/**.ts`**
 ///   不在本尺子的面里。⚠ 这是**判不了**，不是「那边干净」——
-///   现打：前端 30 余处、daemon 树 26 处，逐条读数落在 `evidence/K-R81-….md`。
+///   现打：前端 30 余处、backend 树 26 处，逐条读数落在 `evidence/K-R81-….md`。
 ///
 /// # ⚠ 本文件自己在面里（`K-R31` 那一形，`scanning_guard_registry` 登记为「第五形」）
 ///
@@ -1597,12 +1558,12 @@ fn claims() -> Vec<Claim> {
             tool: "backend",
             home: Some(sftp()),
             install: Some(ImplSite {
-                addr: "sftp.rs::deploy_remote_daemon",
-                definition: "pub async fn deploy_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {",
+                addr: "sftp.rs::deploy_remote_backend",
+                definition: "pub async fn deploy_remote_backend(cfg: RemoteConfig) -> Result<String, String> {",
             }),
             uninstall: Some(ImplSite {
-                addr: "sftp.rs::uninstall_remote_daemon",
-                definition: "pub async fn uninstall_remote_daemon(cfg: RemoteConfig) -> Result<String, String> {",
+                addr: "sftp.rs::uninstall_remote_backend",
+                definition: "pub async fn uninstall_remote_backend(cfg: RemoteConfig) -> Result<String, String> {",
             }),
         },
         Claim {
@@ -1672,7 +1633,7 @@ fn fn_name_of(definition: &str) -> &str {
 /// **两个方向都判**：
 ///   · 多报（声明可装 / 可卸而实现不在）⇒ 右边 `false`、左边 `true` ⇒ 红；
 ///   · 少报（实现在而字段写着不行）⇒ 反过来 ⇒ 红。
-///     少报**不是假想** —— 本条落地当场逮到 `remote-daemon`：`uninstall_remote_daemon`
+///     少报**不是假想** —— 本条落地当场逮到 `remote-daemon`：`uninstall_remote_backend`
 ///     是设置面板上的按钮，而字段写着 `uninstallable: false`。
 ///
 /// **`None` 那一侧靠负向扫描兜底**（不然「今天没有卸口」这句话永远没人核）：
@@ -1710,7 +1671,7 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
             include_str!("../../src/bridge/src/sftp.rs"),
             &["uninstall"]
         )
-        .contains(&"uninstall_remote_daemon".to_string()),
+        .contains(&"uninstall_remote_backend".to_string()),
         "负向扫描在真树上零命中 —— 它此刻无效，先查剥法别改断言"
     );
 

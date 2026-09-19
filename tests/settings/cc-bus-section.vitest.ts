@@ -755,7 +755,7 @@ describe("L2：spawn 必须表态用哪个账号（B03 审计重要-5）", () =>
   });
 
   it("账号取不到时只留「基座」，不能让人以为选了号而其实没生效", async () => {
-    mockFetchAccounts.mockRejectedValue(new Error("daemon 太旧"));
+    mockFetchAccounts.mockRejectedValue(new Error("backend 太旧"));
     mockInvoke.mockImplementation(async (cmd: string) => {
       if (cmd === "list_remote_mcp_origins") return ["aya"];
       throw new Error(cmd);

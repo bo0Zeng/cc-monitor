@@ -51,7 +51,7 @@ export function chipLabel(state: AccountsState | null): string {
   const ui = deriveUi(state);
   switch (ui.kind) {
     case "needs-update":
-      return "daemon 需更新";
+      return "backend 需更新";
     case "not-enabled":
       return "未启用";
     case "ready": {
@@ -132,7 +132,7 @@ export class AccountChip {
       return;
     }
     if (this.local && this.state) {
-      // 只问**说得出 configDir** 的那几个（账号 0 没有目录 ⇒ 推不出中转表里的 id）。
+      // 只问**说得出 configDir** 的那几个（账号 0 没有目录 ⇒ 推不出apikey 表里的 id）。
       const dirs = this.state.accounts
         .map((a) => a.configDir)
         .filter((d): d is string => typeof d === "string" && d.length > 0);
@@ -192,7 +192,7 @@ export class AccountChip {
       info.className = "account-picker-info";
       info.textContent =
         ui.kind === "needs-update"
-          ? "远端 daemon 需要更新才能用多账号"
+          ? "远端后端需要更新才能用多账号"
           : "该远端尚未启用多账号";
       menu.appendChild(info);
       menu.appendChild(this.menuAction("管理 / 部署…", () => this.deps.openSettings()));

@@ -14,7 +14,7 @@ const PROFILE_SRC: &str = include_str!("../../src/bridge/src/profile_installer.r
 /// 挡路石「别名 snippet 只许有一个家」引的那句原文是一条 `#[test]` 里的断言，
 /// 剖分把它从 `profile_installer.rs` 搬到了这里。**那句话一个字节没改。**
 const PROFILE_TESTS_SRC: &str = include_str!("profile_installer_tests.rs");
-const LOCAL_DAEMON_SRC: &str = include_str!("../../src/bridge/src/local_daemon.rs");
+const LOCAL_BACKEND_SRC: &str = include_str!("../../src/bridge/src/local_backend_host.rs");
 const BACKEND_SRC: &str = include_str!("../../src/bridge/src/backend/mod.rs");
 
 /// 语料地板：低于这个字节数就判「语料没喂进来」，而不是「一处都没有」。
@@ -61,15 +61,15 @@ fn corpus() -> Vec<(&'static str, String)> {
 ///
 /// 🔴 **PM 派工单里那句「9 处 / 4 文件」现打是错的** —— 实打 **14 处 / 4 文件**。
 /// 差在两处：派工单那张分类表自己加起来是 5 ＋ 4 ＋ 3 = 12，而 `sftp.rs` 里
-/// 另有 **2 处**它一类都没归（`ensure_daemon_deployed` 自动部署 ·
+/// 另有 **2 处**它一类都没归（`ensure_backend_deployed` 自动部署 ·
 /// `remove_remote_file` 删远端会话 jsonl）。
 const DIAL_CENSUS: &[(&str, usize, &str)] = &[
     (
         "sftp.rs",
         6,
-        "甲 4 条命令（`deploy_remote_daemon` · `uninstall_remote_daemon` · \
+        "甲 4 条命令（`deploy_remote_backend` · `uninstall_remote_backend` · \
              `install_remote_ccm_helper` · `uninstall_remote_ccm_helper`）\
-             ＋ **派工单没归类的 2 处**：`ensure_daemon_deployed`（连接流程里的自动部署）\
+             ＋ **派工单没归类的 2 处**：`ensure_backend_deployed`（连接流程里的自动部署）\
              与 `remove_remote_file`（F11 删远端会话 jsonl）",
     ),
     (
@@ -111,7 +111,7 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
              本文件写全了就会被当成「又一份派生了它的源文件」而把那条计数判据顶红。\
              〔09-12 实打撞到过：npm 那格 `实得 33 … expected 33 to be 32`。〕\
              ⇒ 搬进后端要先回答「一条 tauri channel 怎么跨进程」：\
-             daemon 那棵树**根本没有 tauri 这个依赖**（现打：`src/backend/Cargo.toml` \
+             backend 那棵树**根本没有 tauri 这个依赖**（现打：`src/backend/Cargo.toml` \
              的 `[dependencies]` 里一条 tauri 都没有），\
              而 monitor 侧 `backend/` 那道宿主无关守卫 `the_backend_layer_stays_host_agnostic` \
              的禁词表里已经有 `Emitter` / `State<` / `.emit(` 一族。",
@@ -139,11 +139,11 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
     // ── 甲：本件现打的四条挡路石 ─────────────────────────────────────
     (
         "甲",
-        "daemon 只读铁律 I7",
+        "backend 只读铁律 I7",
         "后端不许改动用户既有数据",
         "甲里 `install_remote_ccm_helper` / `uninstall_remote_ccm_helper` 改的正是\
              **用户既有的** `~/.bashrc`（备份 → 覆盖写 → 读回校验 → 回滚）。\
-             把它搬进后端 = **daemon 进程自身**去改用户既有数据 ⇒ 与铁律 I7 正面撞。\
+             把它搬进后端 = **backend 进程自身**去改用户既有数据 ⇒ 与铁律 I7 正面撞。\
              🔴 **这是用户拍的红线，实现方不自批** —— `DECISIONS.md#R32` 通篇没有处置这一格。\
              ⚠ 更要紧的是：`readonly_guard` 的模式表全是 `fs::` / `File::` / `OpenOptions` \
              命名空间（本模块**没有机检**这一句，住址 \
@@ -154,8 +154,8 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
              `FS_MUTATION_PATTERNS` 那张表**仍然**全在 `fs::` / `File::` / `OpenOptions` \
              命名空间（`K-R79` 刻意不往里塞 SFTP 方法名，那是件计划点名的失效方向）——\
              变的是**旁边多了一层**：`readonly_guard::remote_write_layer`，\
-             它按「取得远端写能力」＋「SFTP v3 协议操作的方法形」两张网扫 daemon 整棵生产段。\
-             `K-R79` 现打过这一刀：往 daemon 生产段插一处会话类型 + 协议打开标志 + 改名，\
+             它按「取得远端写能力」＋「SFTP v3 协议操作的方法形」两张网扫后端整棵生产段。\
+             `K-R79` 现打过这一刀：往后端生产段插一处会话类型 + 协议打开标志 + 改名，\
              **新层当场红并点名那份文件，而老那两层一格没红** —— 前半句因此仍是真的。\
              ⇒ 读这一行时把结论换成：**今天会红；这条挡路石从「机检看不见」降级成\
              「机检看得见、而『许不许』还没裁」**（`ROADMAP.md#KU31` 仍未裁）。\
@@ -165,7 +165,7 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
         "甲",
         "依赖签字闭集容不下这一档",
         "",
-        "daemon 那棵树只有 `russh`，**没有** `russh-sftp`（现打：`russh-sftp = \"2\"` \
+        "backend 那棵树只有 `russh`，**没有** `russh-sftp`（现打：`russh-sftp = \"2\"` \
              只在 `src/bridge/Cargo.toml`）。加它 ⇒ \
              `src/backend/readonly_guard.rs::g6_dependency_signoff::SIGNED` \
              必须同拍加一行（「新加一条而没签字 ⇒ 当场红」）。\
@@ -201,14 +201,14 @@ const REGISTERED: &[(&str, &str, &str, &str)] = &[
     (
         "甲",
         "要部署的那份字节住在界面这一侧",
-        "crate::sftp::daemon_binary(std::env::consts::ARCH)",
-        "远端 daemon 的字节由 `src/bridge/build.rs` 的 `embedded_daemons` cfg 内嵌进 \
-             **monitor** 这份二进制（`sftp::daemon_binary`），而它**不止部署路在用**：\
-             `local_daemon.rs` 释放本机后端时读的是同一份。\
+        "crate::sftp::backend_binary(std::env::consts::ARCH)",
+        "远端后端的字节由 `src/bridge/build.rs` 的 `embedded_backends` cfg 内嵌进 \
+             **monitor** 这份二进制（`sftp::backend_binary`），而它**不止部署路在用**：\
+             `local_backend_host.rs` 释放本机后端时读的是同一份。\
              ⇒ 字节搬不走 ⇒ 后端要部署，字节得**从界面递过去** ⇒ \
              过界物就不再是 `R32` 裁定二第 ③ 种那个干净的 `{origin, 动作} → 只回结果`。\
              **这一格要 PM 拍**：是认下「动作带载荷」，还是让后端自己去取那份字节\
-             （daemon 侧 `sidecars/codepicture/fetch.rs` 有同形的拉取协议，但它自陈\
+             （backend 侧 `sidecars/codepicture/fetch.rs` 有同形的拉取协议，但它自陈\
              「今天那三样一样都没有」）。",
     ),
     (
@@ -432,9 +432,9 @@ fn every_blocker_this_ledger_registers_is_still_quoted_verbatim_on_disk() {
         ("进度通道", "sftp_pool.rs"),
         ("per-origin 连接池", "sftp_pool.rs"),
         ("死连接重建重试", "sftp_pool.rs"),
-        ("daemon 只读铁律 I7", "src/doc/INVARIANTS.md"),
+        ("backend 只读铁律 I7", "src/doc/INVARIANTS.md"),
         ("别名 snippet 只许有一个家", "profile_installer_tests.rs"),
-        ("要部署的那份字节住在界面这一侧", "local_daemon.rs"),
+        ("要部署的那份字节住在界面这一侧", "local_backend_host.rs"),
         ("SFTP 写原语是三类共用的", "sftp.rs"),
     ];
     assert_eq!(
@@ -453,7 +453,7 @@ fn every_blocker_this_ledger_registers_is_still_quoted_verbatim_on_disk() {
             "sftp.rs" => production_code(SFTP_SRC),
             "profile_installer.rs" => PROFILE_SRC.to_string(),
             "profile_installer_tests.rs" => PROFILE_TESTS_SRC.to_string(),
-            "local_daemon.rs" => production_code(LOCAL_DAEMON_SRC),
+            "local_backend_host.rs" => production_code(LOCAL_BACKEND_SRC),
             "src/doc/INVARIANTS.md" => INVARIANTS.to_string(),
             other => panic!("没有这份语料：{other}"),
         };

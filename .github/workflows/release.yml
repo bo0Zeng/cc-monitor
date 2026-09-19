@@ -2,11 +2,11 @@ name: Release
 
 # 推 v* tag 时触发：
 #  0. ci-gate：**同一个 commit 上的 CI 必须绿过**，否则后面一步都不起（R1，2026-09-09 加）。
-#  1. build-daemons (ubuntu)：用 cargo-zigbuild 交叉编译 aarch64 / x86_64 musl 远端 daemon，
-#     作为 artifact 传给 Windows 作业 —— 让发布安装包内嵌 daemon、自动部署 (#29) 可用。
-#  2. build-windows：下载 daemon 放进 src/bridge/embedded-daemons/ → cargo tauri build →
+#  1. build-backends (ubuntu)：用 cargo-zigbuild 交叉编译 aarch64 / x86_64 musl 远端后端，
+#     作为 artifact 传给 Windows 作业 —— 让发布安装包内嵌后端、自动部署 (#29) 可用。
+#  2. build-windows：下载后端放进 src/bridge/embedded-backends/ → cargo tauri build →
 #     把 NSIS / MSI bundle 作为 GitHub Release 附件上传。
-#  3. build-linux：同一批 daemon artifact → tauri build --bundles deb → 追加进同一个 Release。
+#  3. build-linux：同一批 backend artifact → tauri build --bundles deb → 追加进同一个 Release。
 # 注意：默认 build 会尝试下载 WiX toolset 来打 MSI，若网络不稳定可临时改 --bundles nsis。
 on:
   push:
@@ -36,7 +36,7 @@ on:
 # 将来若再加别的触发器，默认落在「不发布」那一侧 —— 那是刻意的方向。
 #
 # ⚠ 它守的是**「往 GitHub Release 写」**这一件事，**不是** job 之间传的
-#   `actions/upload-artifact`（那份 `embedded-daemons` 是内部件，不发给任何人，
+#   `actions/upload-artifact`（那份 `embedded-backends` 是内部件，不发给任何人，
 #   而且 `build-windows` / `build-linux` 靠它才起得来）。
 env:
   PUBLISH: ${{ github.event_name == 'push' || inputs.publish == true }}
@@ -47,7 +47,7 @@ jobs:
   #
   # 在这个 job 之前，本文件里**一条测试门都没有**（`cargo test` / `cargo clippy` /
   # `cargo fmt` / `npm test` / `npm run gate` / `tsc --noEmit` / `vitest` / `e2e`
-  # 在本文件里**全部零命中**）：它只做「交叉编译 daemon → 核版本号与 tag 一致 → npm ci →
+  # 在本文件里**全部零命中**）：它只做「交叉编译 backend → 核版本号与 tag 一致 → npm ci →
   # 打包 → 算校验和 → 上传」。而跑测试的是**另一条**流水线 `ci.yml`，两条互不相干
   # ⇒ **推一个 tag，主干红成什么样都照发。**
   #（2026-09-09 现打：`ci.yml` 最近一次 main 的 run 34432595554，8 个 job **红 6 个**。
@@ -146,8 +146,8 @@ jobs:
             exit 1
           done
 
-  build-daemons:
-    name: Cross-compile remote daemons (musl)
+  build-backends:
+    name: Cross-compile remote backends (musl)
     needs: ci-gate
     runs-on: ubuntu-latest
     steps:
@@ -172,7 +172,7 @@ jobs:
         with:
           tool: cargo-zigbuild@0.23.0
 
-      # cc-monitor-remote 是独立 crate（无 workspace），静态编译成 musl。
+      # cc-monitor-backend 是独立 crate（无 workspace），静态编译成 musl。
       # build_id 由源码 const BUILD_ID 决定（src/bridge/build.rs 同源解析），从源码编译天然版本一致。
       #
       # ⚠ **`--locked` 不是可选的**（2026-09-09 加）：两份 `Cargo.lock` 今天都钉着
@@ -184,37 +184,37 @@ jobs:
       # 两条都坏：① 联网时它会**悄悄挪到 `0.7.5`** ⇒ 发出去的安装包与 CI 测过的**不是同一棵依赖树**；
       # ② 拿不到 `0.7.5`（离线 / 缓存里只有那份 yanked 的）时当场退 101。
       # `--locked` 把这两种都变成**一条响亮的失败**：lock 要动就报错，绝不静默换依赖。
-      - name: Cross-compile daemon for both musl targets
+      - name: Cross-compile backend for both musl targets
         working-directory: src/backend
         run: |
           cargo zigbuild --release --locked --target x86_64-unknown-linux-musl
           cargo zigbuild --release --locked --target aarch64-unknown-linux-musl
 
-      # 命名成 src/bridge/build.rs embed_daemons 期望的 cc-monitor-remote-<arch>。
+      # 命名成 src/bridge/build.rs embed_backends 期望的 cc-monitor-backend-<arch>。
       #
       # 🔴 **K-R70（09-12）：不再旁挂 `.build_id` 清单 —— 身份跟着字节走。**
       # 〔墓碑，本步原话逐字：「Batch9：旁挂 .build_id 清单 = 字节真实身份（编译器可能把
       #  BUILD_ID 优化成立即数、字节内搜不到明文——运行时启发式会误拒正品；清单从源码同一
       #  提取点生成，与刚编出的字节天然同源）」。**最后半句正是病灶**：清单从**源码**抠，
       #  所以三个载体的清单**恒等**，而恒等的东西一格证据都不提供（K-R68 · DECISIONS#R26 裁定零）。〕
-      # 今天 daemon 自己带着一段 `#[used] static` 的身份戳（main.rs::CC_MONITOR_BUILD_STAMP），
+      # 今天后端自己带着一段 `#[used] static` 的身份戳（main.rs::CC_MONITOR_BUILD_STAMP），
       # 连续、拆不成立即数 ⇒ 下游（src/bridge/build.rs）直接从字节里扫，不需要任何旁文件。
       - name: Stage binaries
         run: |
           mkdir -p staged
-          cp .build/backend/x86_64-unknown-linux-musl/release/cc-monitor-remote staged/cc-monitor-remote-x86_64
-          cp .build/backend/aarch64-unknown-linux-musl/release/cc-monitor-remote staged/cc-monitor-remote-aarch64
+          cp .build/backend/x86_64-unknown-linux-musl/release/cc-monitor-backend staged/cc-monitor-backend-x86_64
+          cp .build/backend/aarch64-unknown-linux-musl/release/cc-monitor-backend staged/cc-monitor-backend-aarch64
           file staged/* || true
 
       - uses: actions/upload-artifact@v4
         with:
-          name: embedded-daemons
-          path: staged/cc-monitor-remote-*
+          name: embedded-backends
+          path: staged/cc-monitor-backend-*
           if-no-files-found: error
 
   build-windows:
     name: Build Windows artifacts
-    needs: build-daemons
+    needs: build-backends
     runs-on: windows-latest
     permissions:
       contents: write   # 需要 write 才能上传 release 附件
@@ -232,11 +232,11 @@ jobs:
         with:
           workspaces: src/bridge
 
-      - name: Download cross-compiled daemons
+      - name: Download cross-compiled backends
         uses: actions/download-artifact@v4
         with:
-          name: embedded-daemons
-          path: daemon-artifacts
+          name: embedded-backends
+          path: backend-artifacts
 
       # 放进 build.rs 期望的位置；缺任一 arch 就 fail——绝不静默发出「自动部署被关」的安装包。
       #
@@ -248,18 +248,18 @@ jobs:
       #  那次事故与那次修复都是真的；今天换掉的是**修法**：清单是从源码抠的**标签**，
       #  它与刚编出来那份字节之间没有任何因果 —— 三个载体的清单永远一致，
       #  而「永远一致」证不了任何事（K-R68 · DECISIONS#R26 裁定零）。〕
-      # 今天问的是**这份字节自己**：daemon 里那段 `#[used] static CC_MONITOR_BUILD_STAMP`
+      # 今天问的是**这份字节自己**：backend 里那段 `#[used] static CC_MONITOR_BUILD_STAMP`
       # 逐字是 `<<ccm-build-id:$src:ccm-build-id>>`，界标的唯一住址在 main.rs 的
       # BUILD_STAMP_OPEN / BUILD_STAMP_CLOSE（这里按同一条既有机制从源码抠，不手抄）。
       # ⚠ 用 Latin1 解字节流：只是把每个字节映成一个字符好做子串搜索，不是在解码文本。
-      - name: Place + verify embedded daemons
+      - name: Place + verify embedded backends
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force src/bridge/embedded-daemons | Out-Null
+          New-Item -ItemType Directory -Force src/bridge/embedded-backends | Out-Null
           foreach ($a in "x86_64","aarch64") {
-            $f = Get-ChildItem -Recurse daemon-artifacts -Filter "cc-monitor-remote-$a" | Select-Object -First 1
-            if (-not $f) { Write-Error "daemon artifact cc-monitor-remote-$a 缺失——内嵌失败，自动部署会被禁用"; exit 1 }
-            Copy-Item $f.FullName "src/bridge/embedded-daemons/cc-monitor-remote-$a" -Force
+            $f = Get-ChildItem -Recurse backend-artifacts -Filter "cc-monitor-backend-$a" | Select-Object -First 1
+            if (-not $f) { Write-Error "backend artifact cc-monitor-backend-$a 缺失——内嵌失败，自动部署会被禁用"; exit 1 }
+            Copy-Item $f.FullName "src/bridge/embedded-backends/cc-monitor-backend-$a" -Force
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
           }
           $main = "src/backend/main.rs"
@@ -270,9 +270,9 @@ jobs:
           $want = "$open$src$close"
           Write-Host "expecting stamp: $want"
           foreach ($a in "x86_64","aarch64") {
-            $bytes = [System.IO.File]::ReadAllBytes("src/bridge/embedded-daemons/cc-monitor-remote-$a")
+            $bytes = [System.IO.File]::ReadAllBytes("src/bridge/embedded-backends/cc-monitor-backend-$a")
             $text  = [System.Text.Encoding]::Latin1.GetString($bytes)
-            if ($text.IndexOf($want) -lt 0) { Write-Error "内嵌 daemon $a 的字节里问不出身份戳 $want —— 它不是这套源码编出来的"; exit 1 }
+            if ($text.IndexOf($want) -lt 0) { Write-Error "内嵌 backend $a 的字节里问不出身份戳 $want —— 它不是这套源码编出来的"; exit 1 }
             Write-Host "stamp $a = $src (从字节里扫出来的，不是从旁边抄的)"
           }
 
@@ -326,55 +326,55 @@ jobs:
             exit 1
           }
           if (-not $did) {
-            Write-Error "抠不到 daemon 的 const BUILD_ID —— 后端这一版说不出自己是谁，不许发出去"
+            Write-Error "抠不到后端的 const BUILD_ID —— 后端这一版说不出自己是谁，不许发出去"
             exit 1
           }
           Write-Host "Backend identity OK: src/backend version=0.0.0 (deliberate), BUILD_ID=$did"
 
-      # F05b：**本机后端 sidecar**（C7「没有 daemonless，本机也要有后端进程」）。
+      # F05b：**本机后端**（Tauri `externalBin` 那一份）（C7「没有 daemonless，本机也要有后端进程」）。
       #
-      # 与上面那批 embedded-daemons 是**两件事**：那些是远端 SFTP 部署用的 musl 二进制
+      # 与上面那批 embedded-backends 是**两件事**：那些是远端 SFTP 部署用的 musl 二进制
       # （`build.rs` 用 `include_bytes!` 内嵌进 monitor）；这一份是**装在用户自己机器上**、
       # 由 monitor 起来看住的本机后端（Tauri `externalBin` 打包，装完落在 monitor.exe 旁边）。
       #
-      # ⚠ 必须原生编：daemon 在 Windows 上真编得过（2026-08-04 真机实测 exit=0、
+      # ⚠ 必须原生编：backend 在 Windows 上真编得过（2026-08-04 真机实测 exit=0、
       # release 2.6 MB，且跑起来发完整 hello；tmux 那半诚实发 `observation:"unobservable"`）。
-      # ⚠ 名字必须带 target triple —— Tauri 的 sidecar 约定是「构建期带 triple、打包时剥掉」，
+      # ⚠ 名字必须带 target triple —— Tauri 的本机后端约定是「构建期带 triple、打包时剥掉」，
       # 而消费侧 `local_backend::resolve_with` 正是先找带 triple 的、再找裸名。
-      # `--locked` 的理由与 build-daemons 那步同源（同一份 `src/backend/Cargo.lock`、
+      # `--locked` 的理由与 build-backends 那步同源（同一份 `src/backend/Cargo.lock`、
       # 同一个 yanked 的 `crypto-bigint 0.7.3`），逐字见那里的头注 —— 这里不抄第二份。
-      - name: Build local backend sidecar (native)
+      - name: Build local backend (native)
         working-directory: src/backend
         run: cargo build --release --locked
-      - name: Stage sidecar for externalBin
+      - name: Stage local backend for externalBin
         shell: pwsh
         run: |
           $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
           New-Item -ItemType Directory -Force src/bridge/binaries | Out-Null
-          Copy-Item .build/backend/release/cc-monitor-remote.exe `
-            "src/bridge/binaries/cc-monitor-remote-$triple.exe" -Force
+          Copy-Item .build/backend/release/cc-monitor-backend.exe `
+            "src/bridge/binaries/cc-monitor-backend-$triple.exe" -Force
           Get-ChildItem src/bridge/binaries | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
 
       # ── K-R42：**同一份二进制再铺一处** —— 让**裸 `monitor.exe`** 也带得上本机后端 ──────
       #
-      # 09-10 干净 win11 上现打：装出来那份 `cc-monitor-remote.exe` **2 个进程在跑**，
+      # 09-10 干净 win11 上现打：装出来那份 `cc-monitor-backend.exe` **2 个进程在跑**，
       # 裸 `monitor.exe` **0 个**。上面那一步（`binaries/` → Tauri `externalBin`）只服务
-      # **安装包**：它把 sidecar 放进 msi/nsis，装完落在 exe 同目录。裸 exe 拿不到那个文件。
+      # **安装包**：它把本机后端放进 msi/nsis，装完落在 exe 同目录。裸 exe 拿不到那个文件。
       #
       # ⚠ **这一步不动上面那一步**：安装包那条路 09-10 实测是好的（2 个进程），
       # `externalBin` 仍然只住 `tauri.sidecar.conf.json`、仍然只在下面 `tauri build` 那行
       # 用 `--config` 注入（进主配置会让 `cargo test` 也要求当前 target 的二进制存在，
-      # 那是 C2 反面钉住的）。本步**只是把同一个产物再拷一份到 `embedded-daemons/`**，
-      # 由 `src/bridge/build.rs::embed_native_daemon` `include_bytes!` 进 exe。
+      # 那是 C2 反面钉住的）。本步**只是把同一个产物再拷一份到 `embedded-backends/`**，
+      # 由 `src/bridge/build.rs::embed_native_backend` `include_bytes!` 进 exe。
       #
-      # ⚠ **落点刻意不是 `embedded-daemons/`**，理由住 `build.rs` 的 `NATIVE_DAEMON_DIR` 头注
-      # （一句话：那个目录名是另一条判据认「谁会起真 daemon」用的来历串，
+      # ⚠ **落点刻意不是 `embedded-backends/`**，理由住 `build.rs` 的 `NATIVE_BACKEND_DIR` 头注
+      # （一句话：那个目录名是另一条判据认「谁会起真后端」用的来历串，
       #  消费侧那个**字面量** `include_bytes!` 写下它会误伤那条判据）。
       #
-      # ⚠ 两个文件**缺一不可**，名字定死在 `build.rs::NATIVE_DAEMON_DIR`/`NATIVE_DAEMON_FILE`：
+      # ⚠ 两个文件**缺一不可**，名字定死在 `build.rs::NATIVE_BACKEND_DIR`/`NATIVE_BACKEND_FILE`：
       #   · `cc-monitor-native`           字节本身（**身份就在它里面**，见下）
       #   · `cc-monitor-native.target`    它是给哪个 triple 编的（名字里没有 triple ⇒ 只能靠它）
-      # 少任何一个，`build.rs` 要么打一条 `cargo:warning=没有本机内嵌 daemon（…）`
+      # 少任何一个，`build.rs` 要么打一条 `cargo:warning=没有本机内嵌后端（…）`
       # 而构建照常绿（二进制缺席），要么当场 panic（问不出身份 / target 对不上）。
       # ⇒ 下面那几条 `Test-Path` 就是把前一种也变成硬失败。
       #
@@ -389,26 +389,26 @@ jobs:
       #
       # ⚠ **诚实边界**：本步买到的是「铺了 · target 对得上 · build.rs 没 panic」。
       # 它**买不到**「裸 exe 在真 Windows 上真的起得来一个本机后端」—— 那要真机跑一趟。
-      - name: Stage native daemon for self-extract
+      - name: Stage native backend for self-extract
         shell: pwsh
         run: |
           $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
-          $dir = "src/bridge/native-daemon"
+          $dir = "src/bridge/native-backend"
           $dst = "$dir/cc-monitor-native"
           New-Item -ItemType Directory -Force $dir | Out-Null
-          Copy-Item .build/backend/release/cc-monitor-remote.exe $dst -Force
+          Copy-Item .build/backend/release/cc-monitor-backend.exe $dst -Force
           Set-Content -Path "$dst.target" -Value $triple
           foreach ($f in $dst, "$dst.target") {
-            if (-not (Test-Path $f)) { Write-Error "本机内嵌 daemon 没铺全（缺 $f）——裸 exe 会回到「0 个本机后端进程」那个读数"; exit 1 }
+            if (-not (Test-Path $f)) { Write-Error "本机内嵌后端没铺全（缺 $f）——裸 exe 会回到「0 个本机后端进程」那个读数"; exit 1 }
           }
-          Write-Host ("native daemon staged: {0} ({1} bytes, target={2})" -f $dst, (Get-Item $dst).Length, $triple)
+          Write-Host ("native backend staged: {0} ({1} bytes, target={2})" -f $dst, (Get-Item $dst).Length, $triple)
 
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
       #
       # ⚠ `--config src/bridge/tauri.sidecar.conf.json` 是 F05b 刻意选的形态：`externalBin`
-      # **不进主配置** —— `tauri-build` 要求当前 target 的 sidecar 在**编译期**就存在，
-      # 进主配置会让 `cargo test` 也需要一份 daemon 二进制（实测报错
-      # `resource path binaries/cc-monitor-remote-<triple> doesn't exist`），
+      # **不进主配置** —— `tauri-build` 要求当前 target 的本机后端在**编译期**就存在，
+      # 进主配置会让 `cargo test` 也需要一份后端二进制（实测报错
+      # `resource path binaries/cc-monitor-backend-<triple> doesn't exist`），
       # 那等于把两半在构建期绑死，正是 C2 反面禁的事。⇒ 只在发版这一步注入。
       - name: tauri build
         run: npx tauri build --config src/bridge/tauri.sidecar.conf.json --bundles nsis,msi
@@ -455,12 +455,12 @@ jobs:
   #
   # ⚠ **仍然成立的那一半，别跟着一起删**：本 job 只在 tag 时触发 ⇒ **本地一步都验不了**。
   # 而且**真正一次都没在 tag 上跑过的**是 v3.6.0 之后加进来的那些 —— 那之后本文件被改过两次、
-  # 期间**没有再发过版**：`ae18878`（08-02，裸二进制上传）与 `e39253e`（08-04，sidecar）。
-  # 具体是：两个 job 里的 `Build local backend sidecar (native)` + `Stage sidecar for externalBin`
+  # 期间**没有再发过版**：`ae18878`（08-02，裸二进制上传）与 `e39253e`（08-04，本机后端）。
+  # 具体是：两个 job 里的 `Build local backend (native)` + `Stage local backend for externalBin`
   # 共四步、两处 `tauri build` 上的 `--config tauri.sidecar.conf.json`、以及裸二进制那条上传。
   # ⇒ 下面每一处设计都是为了「万一它坏了，坏得可见且不伤及发版」：
   #
-  # 1. `needs: [build-daemons, build-windows]` —— **串在 Windows 之后**，两个理由：
+  # 1. `needs: [build-backends, build-windows]` —— **串在 Windows 之后**，两个理由：
   #    ① Release 是 `build-windows` 创建的；两个 job 同时 `action-gh-release` 会竞争同一个
   #       release，串起来就没这个竞态。
   #    ② `build-windows` 里那道**四处版本号与 tag 一致**的检查因此**被继承**——版本漂了它
@@ -476,7 +476,7 @@ jobs:
   #    最高风险面）；格式在命令行上给。
   build-linux:
     name: Build Linux artifacts (deb)
-    needs: [build-daemons, build-windows]
+    needs: [build-backends, build-windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write   # 追加附件到已存在的 release
@@ -504,45 +504,45 @@ jobs:
             libayatana-appindicator3-dev \
             librsvg2-dev
 
-      - name: Download cross-compiled daemons
+      - name: Download cross-compiled backends
         uses: actions/download-artifact@v4
         with:
-          name: embedded-daemons
-          path: daemon-artifacts
+          name: embedded-backends
+          path: backend-artifacts
 
       # 只做**放置**，不重做校验：`build-windows` 已经对**同一批 artifact** verify 过
       #（🔴 `K-R70` 09-12 起那道 verify 是「从字节里扫出身份戳」，不再是「比清单」），
       # 而本 job `needs` 它 ⇒ 那道检查已经过了。
       # 重写一份 bash 版校验只会多一个会漂的副本。缺文件仍然 fail（`cp` 会失败）。
-      # ⚠ 清单那两行跟着一起没了（`K-R70`：那是标签不是指纹，见 build-daemons 那步的墓碑）。
-      - name: Place embedded daemons
+      # ⚠ 清单那两行跟着一起没了（`K-R70`：那是标签不是指纹，见 build-backends 那步的墓碑）。
+      - name: Place embedded backends
         run: |
           set -euo pipefail
-          mkdir -p src/bridge/embedded-daemons
+          mkdir -p src/bridge/embedded-backends
           for a in x86_64 aarch64; do
-            bin=$(find daemon-artifacts -name "cc-monitor-remote-$a" -type f | head -1)
-            [ -n "$bin" ] || { echo "daemon artifact 缺失（$a）"; exit 1; }
-            cp "$bin" "src/bridge/embedded-daemons/cc-monitor-remote-$a"
+            bin=$(find backend-artifacts -name "cc-monitor-backend-$a" -type f | head -1)
+            [ -n "$bin" ] || { echo "backend artifact 缺失（$a）"; exit 1; }
+            cp "$bin" "src/bridge/embedded-backends/cc-monitor-backend-$a"
             echo "embedded $a placed"
           done
 
       - name: npm ci
         run: npm ci
 
-      # F05b：本机后端 sidecar（理由同 build-windows 那两步，见那里的头注）。
+      # F05b：本机后端（理由同 build-windows 那两步，见那里的头注）。
       # ⚠ Linux 侧同样必须做 —— `externalBin` 一旦注入，`tauri build` 就要求**当前 target**
       # 的那份二进制存在；少了它这一步会以 `resource path ... doesn't exist` 直接失败。
-      # `--locked` 同上：理由住 build-daemons 那步的头注，这里不抄第二份。
-      - name: Build local backend sidecar (native)
+      # `--locked` 同上：理由住 build-backends 那步的头注，这里不抄第二份。
+      - name: Build local backend (native)
         working-directory: src/backend
         run: cargo build --release --locked
-      - name: Stage sidecar for externalBin
+      - name: Stage local backend for externalBin
         run: |
           set -euo pipefail
           triple=$(rustc -vV | sed -n 's/^host: //p')
           mkdir -p src/bridge/binaries
-          cp .build/backend/release/cc-monitor-remote \
-             "src/bridge/binaries/cc-monitor-remote-$triple"
+          cp .build/backend/release/cc-monitor-backend \
+             "src/bridge/binaries/cc-monitor-backend-$triple"
           ls -l src/bridge/binaries
 
       - name: tauri build (deb)
@@ -562,14 +562,14 @@ jobs:
           done
           cat SHA256SUMS-linux.txt
 
-      # DN-8（aterm 2026-07-31 请求）：daemon 的 **musl 二进制也挂成 Release 资产**。
+      # DN-8（aterm 2026-07-31 请求）：backend 的 **musl 二进制也挂成 Release 资产**。
       # 此前它们只作为 CI artifact 传给 build-windows 内嵌 ⇒ 外部项目（aterm 走自部署）
       # 拿不到，只能自己装 zig 交叉编译一遍。
       #
-      # **挂在本 job 而不是 build-daemons**：后者跑在 build-windows **之前**，在那里调
+      # **挂在本 job 而不是 build-backends**：后者跑在 build-windows **之前**，在那里调
       # `action-gh-release` 会①抢先创建 release，正是本文件上面那段注释要避开的竞态；
       # ②**绕过** build-windows 里「四处版本号与 tag 一致」那道检查。本 job
-      # `needs: [build-daemons, build-windows]`，两条都天然继承。artifact 也已经下载好了。
+      # `needs: [build-backends, build-windows]`，两条都天然继承。artifact 也已经下载好了。
       #
       # 🔴 **`files: |` 里 `#` 不是注释**（2026-09-09 订正）：那是 YAML 字面块，
       # 整行会当成**文件 glob** 交给 `action-gh-release`。下面这三行原本就写在块里，
@@ -583,7 +583,7 @@ jobs:
       #   为什么这一处也要给：`action-gh-release` 对一个**已存在**的 release 是 PATCH ——
       #   本 job 不给正文，那一次 PATCH 会把 Windows 刚写上去的正文按它自己的口径再处理一遍。
       #   两处给**同一个生成器、同一个版本号**产出的同一份字节 ⇒ 第二次写是幂等的。
-      #   ⚠ **竞态一个字没动**：`needs: [build-daemons, build-windows]` 还在，
+      #   ⚠ **竞态一个字没动**：`needs: [build-backends, build-windows]` 还在，
       #     release 仍然由 `build-windows` 创建，本 job 仍然只追加（文件头 `:452` 那段头注的第 ①）。
       - name: Render the Release body (CHANGELOG section for this version)
         if: env.PUBLISH == 'true'
@@ -599,5 +599,5 @@ jobs:
             src/bridge/target/release/bundle/deb/*.deb
             src/bridge/target/release/monitor
             SHA256SUMS-linux.txt
-            daemon-artifacts/cc-monitor-remote-x86_64
-            daemon-artifacts/cc-monitor-remote-aarch64
+            backend-artifacts/cc-monitor-backend-x86_64
+            backend-artifacts/cc-monitor-backend-aarch64

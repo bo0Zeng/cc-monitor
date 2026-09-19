@@ -24,15 +24,15 @@ contains() { case "$2" in *"$1"*) echo yes ;; *) echo no ;; esac; }
 #
 # ★ `K-R48` 第二拍（09-11）：`ccm` 从**仓内 bash 脚本**换成**后端二进制本体**。
 #   〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
-#   ⇒ 终端里敲的 `ccm` 就是 `cc-monitor-remote`（`argv[0]` 的 basename 是 `ccm` 就进一次性模式）。
+#   ⇒ 终端里敲的 `ccm` 就是 `cc-monitor-backend`（`argv[0]` 的 basename 是 `ccm` 就进一次性模式）。
 #   **本套件 12 条断言一个字都没改** —— 它测的一直是「renderCli 渲出来的那行，被真 `ccm`
 #   解析后展开成什么」，那是后端今天仍要保证的命令契约，与用什么语言实现无关。
 #   依据是 `K-R48` 第一拍的逐字节对拍（`tests/evidence/K-R48-native-vs-bash-parity.py`，SAME=27/DIFF=2）。
 # 🔴 **fail-closed**：二进制没 build 就**响亮退出**，不许静默回落到 PATH 上碰巧有的那一份
 #   —— 那正是本段头注第一句要治的病。
-CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-remote"
+CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 [ -x "$CCM_NATIVE" ] || {
-  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-remote\`" >&2
+  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-backend\`" >&2
   exit 2
 }
 BIN="$(mktemp -d)"; trap 'rm -rf "$BIN"' EXIT
@@ -49,7 +49,7 @@ get_line() { echo "$TSV" | awk -F'\t' -v k="$1" '$1==k{print $2}'; }
 #
 # ★★ 〔`K-P2` `F` 拍 09-04；用@09-04「**ccm不要管找不到, 统一走后端**」〕**两处跟着契约改**：
 #
-#  ① `CCM_DAEMON_BIN` 指到 `tests/e2e/fake-daemon.sh`。
+#  ① `CCM_BACKEND_BIN` 指到 `tests/e2e/fake-backend.sh`。
 #     账号解析从此**没有本地退路** ⇒ 不给后端的话这 12 条会**全部**死在 `exit 4` 上
 #     （现打过：那不是「判据红了」，是**整套跑不起来**）。
 #     ⚠ 这**不是**放宽断言：本套件测的一直是「`renderCli` 渲出来的那行，被真 `ccm` 解析后
@@ -63,10 +63,10 @@ get_line() { echo "$TSV" | awk -F'\t' -v k="$1" '$1==k{print $2}'; }
 #     而裸 `/nonexistent` 拆不出目录 ⇒ 那是**调用方给错了环境变量**（`die`，码 2），
 #     与「后端不可达」（码 4）是两类。生产上这个值恒是 `<目录>/accounts.json`
 #     （`shared/ccm` 的默认值逐字如此）⇒ 换成带目录的形态**更贴生产**，不是迁就判据。
-FAKE_DAEMON="$REPO/tests/e2e/fake-daemon.sh"
+FAKE_BACKEND="$REPO/tests/e2e/fake-backend.sh"
 run_print() {
   env -u TMUX -u CLAUDE_CONFIG_DIR CCM_SELF=/usr/local/bin/ccm CCM_CONFIG=/nonexistent \
-    CCM_DAEMON_BIN="$FAKE_DAEMON" \
+    CCM_BACKEND_BIN="$FAKE_BACKEND" \
     CCM_ACCTS_MANIFEST=/nonexistent/accounts.json bash -c "$1 --print"
 }
 

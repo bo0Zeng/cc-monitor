@@ -413,7 +413,7 @@ fn every_fn_touching_the_inner_field_is_classified() {
 const STRING_RETURNING_EXITS: &[(&str, &str)] = &[
     (
         "expose_for_auth_header",
-        "唯一的**换头**出口。只出现在 daemon 生产段，相等断言 == 1",
+        "唯一的**换头**出口。只出现在后端生产段，相等断言 == 1",
     ),
     (
         "expose_for_persisting",
@@ -433,7 +433,7 @@ const STRING_RETURNING_EXITS: &[(&str, &str)] = &[
 /// 上一版是 `block.matches("&self.0").count() == 2` —— **性质是「不许有第三个出口」，
 /// 而人群是「`&self.0` 这一个字面出现几次」**。D1 审计一刀就绕过去了（PM 08-27 16:44 复打）：
 /// 加 `pub fn d1_probe_third_exit(&self) -> &str { self.0.as_str() }`
-/// ⇒ **creds-core 20 passed / 8 包合计 1284 passed / daemon 474 passed，一条都没红**。
+/// ⇒ **creds-core 20 passed / 8 包合计 1284 passed / backend 474 passed，一条都没红**。
 /// 「把内层字段交出去」的写法至少还有 `self.0.as_str()` · `&*self.0` · `&self.0[..]` ·
 /// `self.0.clone()` —— **换一种写法就绕过去，那不是判据，是巧合**。
 ///
@@ -588,7 +588,7 @@ fn the_plaintext_has_exactly_two_named_exits() {
     assert_eq!(
         exits, 2,
         "`SecretKey` 交出明文的地方有 {exits} 处，登记的是 **2** 处：\n\
-             · `expose_for_auth_header` —— 中转往上游请求写鉴权头（只在 daemon 生产段）\n\
+             · `expose_for_auth_header` —— 中转往上游请求写鉴权头（只在后端生产段）\n\
              · `expose_for_persisting`  —— 把它写回那份文件（只在 creds-core 生产段）\n\
              多一处 ⇒ **必须先在件计划里说清那一处是什么**（`KS2` 逐字：\
              加行是收紧、动断言是放宽，不许在实现里顺手把断言改大）"

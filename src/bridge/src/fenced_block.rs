@@ -6,7 +6,7 @@
 //!
 //! | 范式 | 使用者 | 现状 |
 //! |---|---|---|
-//! | 指纹判过期 → 决定装/升/跳过 | daemon + cc-acct-iso（2） | **已共享** `sftp::deploy_decision` |
+//! | 指纹判过期 → 决定装/升/跳过 | backend + cc-acct-iso（2） | **已共享** `sftp::deploy_decision` |
 //! | 备份 → 写 → 读回比对 → 回滚 | 5 处 | **已共享** `verified_write::verify_readback` |
 //! | 围栏块插入/替换/剥离 | ccm 远端 profile + PowerShell 本机 profile（2） | **两套独立实现** ← 本模块 |
 //! | 整份 JSON 覆写 | 项目 MCP（1） | 单例，不抽 |

@@ -125,7 +125,7 @@ describe("「不指定账号」的文案必须与 --base 的真实语义对上�
     //（〔用@09-11 `K33`〕「不要有什么 bash 脚本」），`--base` 的落点搬进了后端本体。
     // ⚠ **「两处」变「一处」不是判据放宽**：bash 那版 send-keys 载荷与进程自身 env 是
     //   **两段手写副本**（所以要数 2，缺一处就漏）；原生实现里 `--print` 与真跑
-    //   **读同一个 `Plan`** ⇒ 那两段不可能分家。那条结构事实由 daemon 侧
+    //   **读同一个 `Plan`** ⇒ 那两段不可能分家。那条结构事实由后端侧
     //   `print_and_exec_cannot_drift_because_they_read_the_same_plan` 钉着。
     // ⚠ **按「整行」认，不用裸 `.includes("…")`**：后者的匹配单位（子串）比事实
     //   （那一行代码）小，把事实撑大的改动（`unset_config_dir: o.use_base && never()`）

@@ -6,7 +6,7 @@
 //! **「未找到远端配置: `<local>`」** —— 一句与真实原因毫无关系的话。真实原因从来不是
 //! 「配置没找到」，而是「这条路是远端专属的，本机根本不该走到这里」。
 //!
-//! 已逐个修过三处（`daemon_kill` / `list_remote_tmux` / `launch_remote_terminal`），
+//! 已逐个修过三处（`backend_kill` / `list_remote_tmux` / `launch_remote_terminal`），
 //! 而 `P3b` 的 E 阶段又量到第四处（`capture_remote_pane`）。
 //!
 //! ⇒ **别再一个一个修。** 一个一个修的问题不是慢，是它对「第六次」毫无办法：
@@ -84,7 +84,9 @@ const TRIAGE_DEBT: &[(&str, &str)] = &[
     ("remote_branch.rs", "create_remote_branch_session"),
     ("remote_history.rs", "require_cfg_by_label"),
     ("ssh_source.rs", "connect_via_jump"),
-    ("tmux.rs", "list_remote_tmux"),
+    // 🔴 〔步 8 · 归属 2026-09-19〕住址从 `tmux.rs` 改成 `backend/control/tmux.rs` ——
+    //    **文件真的挪了**（`lib.rs` 顶层 → `backend/control/`），欠的那笔债一格没变。
+    ("backend/control/tmux.rs", "list_remote_tmux"),
     // `K-R56`（09-11）：`tmux.rs::tmux_send_keys` 从这里**还掉了** —— 它现在在
     // `load_remote_config_by_label` 之前分本机（`Routed::NoChannel` 那一臂的早退）。
     // 行为那一半由 `tmux::tests::the_local_send_keys_never_falls_back_to_ssh` 钉着。

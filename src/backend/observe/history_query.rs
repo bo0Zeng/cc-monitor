@@ -9,7 +9,7 @@
 //!   [offset, EOF]，= aterm `tail -c +(offset+1)`（offset 续拉/重连恢复）
 //!
 //! 输出协议：`--list-*` 每行一个 JSON 对象（**不是** wire::Frame——查询模式与流式
-//! 协议互不混用，旧 daemon 不认参数会照常进流模式发 hello，monitor 以"首行是
+//! 协议互不混用，旧后端不认参数会照常进流模式发 hello，monitor 以"首行是
 //! hello 帧"识别旧版并优雅降级）；`--read-session` 输出原始文件字节。
 //! 错误：stderr 写原因 + 退出码 2。成功退出码 0。
 //!
@@ -61,7 +61,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     match result {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("cc-monitor-remote query error: {e}");
+            eprintln!("cc-monitor-backend query error: {e}");
             2
         }
     }
@@ -83,7 +83,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
 ///
 /// **代价如实记**：`sessionIds` 与 `sessionCount` 同源同一趟 `read_dir`，
 /// **零额外 I/O**；涨的只有输出字节（每会话 ~38 B）。monitor 侧单行上限是 64 MiB
-/// （`ssh_source::DAEMON_FRAME_LINE_CAP`），要撞上它得一个项目下约 170 万个会话。
+/// （`ssh_source::BACKEND_FRAME_LINE_CAP`），要撞上它得一个项目下约 170 万个会话。
 ///
 /// ⚠ **它与 `sessionCount` 恒等长，这是契约的一部分** —— 下游据此判「空清单」是
 /// 「真的没有会话」还是「这一行坏了」（`sessionCount > 0` 而清单空 ⇒ 后者，不许当成 0）。
@@ -100,7 +100,7 @@ fn list_projects(agent_home: &Path) -> Result<(), String> {
         }
         let dir_name = entry.file_name().to_string_lossy().into_owned();
         let Some(line) = project_row(&dir, dir_name) else {
-            continue; // 空目录（全删过/只剩 sidecar）不展示
+            continue; // 空目录（全删过/只剩本机后端）不展示
         };
         writeln!(out, "{line}").map_err(|e| format!("stdout write failed: {e}"))?;
     }
@@ -146,7 +146,7 @@ fn project_row(dir: &Path, dir_name: String) -> Option<serde_json::Value> {
         }
     }
     if session_count == 0 {
-        return None; // 空目录（全删过/只剩 sidecar）不展示
+        return None; // 空目录（全删过/只剩本机后端）不展示
     }
     let project_path = newest_jsonl
         .and_then(|(_, p)| extract_cwd_from_head(&p))
@@ -194,7 +194,7 @@ fn list_sessions(agent_home: &Path, project_dir: &str) -> Result<(), String> {
 }
 
 /// `--read-session <jsonl_path>`：路径校验后原样透传文件内容。
-/// 透传而非逐行解析：monitor 侧本就有完整的 parse_line 管线，daemon 不重复造。
+/// 透传而非逐行解析：monitor 侧本就有完整的 parse_line 管线，backend 不重复造。
 /// **围栏：全文件唯一的一处 `canonicalize` + 前缀校验**〔audit-0805 08-06，定框 E3〕。
 ///
 /// # 为什么抽出来
@@ -236,9 +236,9 @@ fn fence_under_projects(agent_home: &Path, candidate: &Path) -> Result<std::path
 /// → 按时间戳挑最近 → 读）。**那会长出第二套语义** —— 定框 `C1` 逐字排除，
 /// 而本轮已经在那个 `or` 上数出**四份**实现。
 ///
-/// ⇒ 这里只做 daemon 独有的那件事：**列候选**。筛选与挑选留在 monitor，
+/// ⇒ 这里只做后端独有的那件事：**列候选**。筛选与挑选留在 monitor，
 /// 与本机那条路**共用同一份** `pick_closest`。
-/// 由 `the_daemon_never_matches_or_ranks_subagents` 钉住（生产段零 `description ==`、零时间戳比较）。
+/// 由 `the_backend_never_matches_or_ranks_subagents` 钉住（生产段零 `description ==`、零时间戳比较）。
 ///
 /// 围栏**复用既有的** `fence_under_projects` —— subagent 目录本来就在
 /// `<claude_dir>/projects/<slug>/<sid>/subagents/` 里（实测），不用放宽任何东西。
@@ -336,13 +336,13 @@ fn read_session(agent_home: &Path, jsonl_path: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// daemon-02（Phase 1 offset 续拉）：`--read-session-from-offset <path> <offset>`——
+/// backend-02（Phase 1 offset 续拉）：`--read-session-from-offset <path> <offset>`——
 /// seek 到字节 `offset`（0-based）后原样透传 [offset, EOF]，**语义逐字节 = aterm
 /// `tail -c +(offset+1)`**（`TailTransport.kt:33` + `SkeletonScan.windowContentCommand`）。
 /// `offset` = 客户端从 Line 帧 `byte_offset` 持久化的续点（重连/断线后带上）。
 /// 截断/重写（远端 size < offset）**不在此判**——同 aterm 由客户端另经 size 查检测后
 /// 决策 reset（`offsetByPath`），此处 seek 过 EOF → 读空 → 透传空，安全无副作用。
-/// 透传而非逐行：monitor 侧 parse_line 管线已全，daemon 不重复造（同 `read_session`）。
+/// 透传而非逐行：monitor 侧 parse_line 管线已全，backend 不重复造（同 `read_session`）。
 fn read_session_from_offset(
     agent_home: &Path,
     jsonl_path: &str,

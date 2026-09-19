@@ -42,17 +42,17 @@
 //! 拿走它之后 `Child` 仍可锁着共享 ⇒ 等待与 kill 互不打扰，零平台代码，零轮询。
 //!
 //! ⚠ **它的诚实边界**：如果子进程**关掉 stdout 但继续活着**，本模块会误判它死了。
-//! 被监护的对象是我们自己的 daemon（`--tail-only` 持续往 stdout 写帧），不会这么干；
+//! 被监护的对象是我们自己的后端（`--tail-only` 持续往 stdout 写帧），不会这么干；
 //! 换成别的程序前要重新想。EOF 之后仍会 `wait()` 收尸（那时它已经死了，不阻塞）。
 //!
 //! # ⚠ 它只认安装包里那一份，**绝不扫仓库 dev 产物** —— 这是刻意的
 //!
-//! 摸底量到一件安全相关的事：daemon 一启动就**无条件**往它能连到的 tmux server 上装三条
+//! 摸底量到一件安全相关的事：backend 一启动就**无条件**往它能连到的 tmux server 上装三条
 //! 全局 hook（`observe/watcher.rs::install_tmux_hooks_best_effort` → `set-hook -g`），
-//! **而且没有关掉它的开关**。所以「顺手在 dev 环境里扫到 `target/debug/cc-monitor-remote`
+//! **而且没有关掉它的开关**。所以「顺手在 dev 环境里扫到 `target/debug/cc-monitor-backend`
 //! 就起它」会去改用户真实 tmux server 的状态。
 //!
-//! ⇒ [`resolve_with`] **只认打包进安装包的 sidecar**（exe 同目录、按 target triple 命名），
+//! ⇒ [`resolve_with`] **只认打包进安装包的那一份本机后端**（exe 同目录、按 target triple 命名），
 //! **不扫仓库里的 dev 产物**；找不到时是 [`Resolved::Missing`] 的**诚实降级**
 //! （定框 §5：tagged + `reason`，不是 `Err`），零副作用。
 //!
@@ -66,7 +66,7 @@
 //! ⇒ **「基础配置里没有」≠「没配」，别再把这两句写成一句。**
 //!
 //! 干净 win11 虚拟机上现打（PM，09-10，真安装包 + 真裸 exe 各一趟）：
-//! **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe` **2 个进程在跑**；
+//! **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe` **2 个进程在跑**；
 //! **裸 `monitor.exe`** 那份 **0 个**。⇒ 走 [`Resolved::Found`] 还是 [`Resolved::Missing`]，
 //! 取决于**用户手里是哪一份产物**，不再是一个常数。
 //! **C7 由 F05a + F05b 两件共同满足**，ROADMAP §3 就是这么记的 —— 两件今天都在了。
@@ -74,33 +74,33 @@
 //! 🔴 **`K-R42`（09-10 同日，上面那次读数之后）：上面那句「取决于哪一份产物」被这一件改小了。**
 //! 那次读数**没有被推翻**（它量的是 v3.7.0 的产物，那一版的裸 exe 确实是 0 个）——
 //! 变的是**它之后的机制**：本模块这条路今天多了第二个二进制来源
-//! （[`native_embedded_daemon`]，`build.rs::embed_native_daemon` 按 `TARGET` 嵌进来的），
+//! （[`native_embedded_backend`]，`build.rs::embed_native_backend` 按 `TARGET` 嵌进来的），
 //! 于是 [`resolve_with`] 的 `Missing` **不再等于「这台机器上没有本机后端」**，
 //! 它只等于「**旁边**没有」。裸 exe 那一支从此走的是「自己释放一份再起」。
-//! ⚠ 三句话别混：① 旁边有没有（[`resolve_with`]）· ② 这份产物带没带（[`native_embedded_daemon`]）
+//! ⚠ 三句话别混：① 旁边有没有（[`resolve_with`]）· ② 这份产物带没带（[`native_embedded_backend`]）
 //! · ③ 放不放得下来（[`extraction_failure_reason`]）。09-10 那一形的病根就是把三件事说成一件。
 //!
 //! 真进程行为由 `tests/e2e/local-backend-supervise.sh` 验：它**显式**把二进制路径喂给
 //! [`supervise`]，并强制私有 tmux 隔离，绝不碰用户真实 tmux server。
 //! ⚠ 〔`P0e` 08-12〕隔离**换过机制**：原来靠私有 `TMUX_TMPDIR`，而 `$TMUX` 一有值就压过它
 //! （08-11 就是这么打没用户 9 个真实会话的）⇒ `C7i` 逐字禁掉那条路。
-//! 现在给 daemon 一条**前面挂着 shim 的 PATH**（`tests/e2e/tmux-shim.sh`），它 shell out 的 tmux
+//! 现在给后端一条**前面挂着 shim 的 PATH**（`tests/e2e/tmux-shim.sh`），它 shell out 的 tmux
 //! 被强插 `-L` —— **显式选择器压得过 `$TMUX`**。
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// 本机 sidecar 的基名。Tauri 的 `externalBin` 会把它按 `<基名>-<target-triple>[.exe]`
+/// 本机后端的基名。Tauri 的 `externalBin` 会把它按 `<基名>-<target-triple>[.exe]`
 /// 放到 app 可执行文件旁边。
-pub const SIDECAR_STEM: &str = "cc-monitor-remote";
+pub const LOCAL_BACKEND_STEM: &str = "cc-monitor-backend";
 
-/// F06b-1：**monitor 告诉 `ccm` 「daemon 二进制在哪」的那个 env 名**。
+/// F06b-1：**monitor 告诉 `ccm` 「backend 二进制在哪」的那个 env 名**。
 ///
 /// # 为什么用 env（三条路里裁的第 ③ 条）
 ///
 /// `ccm` 是终端里的一次性 bash，它够不着 monitor 的 [`resolve_beside_this_exe`]。三条路：
-/// ① ccm 自己实现一份「找 sidecar」⇒ **第二份实现**（定框 §4 逐字禁）·
+/// ① ccm 自己实现一份「找本机后端」⇒ **第二份实现**（定框 §4 逐字禁）·
 /// ② 装 ccm 时写进配置 ⇒ 要新机制（ccm 有 SFTP 部署 / 手装 / 仓内相对路径三条安装路径）·
 /// ③ **monitor 拼 env 时告诉它** ⇒ 零新机制（monitor 本来就在拼 env 前缀）。
 ///
@@ -108,19 +108,19 @@ pub const SIDECAR_STEM: &str = "cc-monitor-remote";
 /// （诚实降级，不是报错）。
 ///
 /// ⚠ **这个名字只有一个家** —— `shared/ccm` 读的必须是同一个字面量，
-/// 由 `the_daemon_bin_env_name_has_exactly_one_home` 钉住（定框 §4）。
+/// 由 `the_backend_bin_env_name_has_exactly_one_home` 钉住（定框 §4）。
 ///
-/// ⚠ **ccm 那一半已接**〔F06b-1c〕：旧 `shared/ccm` 的 `resolve_from_daemon` 〔散文墓碑〕（函数，exec 路用）
+/// ⚠ **ccm 那一半已接**〔F06b-1c〕：旧 `shared/ccm` 的 `resolve_from_backend` 〔散文墓碑〕（函数，exec 路用）
 /// 与 `resolve_recipe`（文本，print 路用），照该文件里 `derive_bus_id`/`BUS_ID_RECIPE` 的先例写；
 /// 一致性由 `tests/e2e/ccm-contract-parity.sh` 的 **A′/A′d 组**钉住（print↔exec 的 argv 差分）。
 ///
 /// ⚠ **monitor 这一半还没接**：本 `const` 今天**没有生产调用点**（只有判据读它，
 /// 于是 `dead_code` 警告仍在 —— 那个警告就是「没接上」的诚实标记，刻意不 `#[allow]`）。
 /// 挡在前面的是一条**架构题**，不是工作量：`payload.rs` 编译的 `EnvOp` 由 **TS 前端经 wire
-/// 送来**（`launch_wire.rs`），而 daemon 路径是**后端的知识**（[`resolve_beside_this_exe`]）
+/// 送来**（`launch_wire.rs`），而后端路径是**后端的知识**（[`resolve_beside_this_exe`]）
 /// ⇒ 让前端携带它正对着 C2 与 C9。裁这道题是 F06b-1d 的第一件事。⇒ resume 路不能把
-/// daemon 的答案烤进打印串，得打印一段「执行时去问 daemon」的配方。
-pub(crate) const DAEMON_BIN_ENV: &str = "CCM_DAEMON_BIN";
+/// backend 的答案烤进打印串，得打印一段「执行时去问后端」的配方。
+pub(crate) const BACKEND_BIN_ENV: &str = "CCM_BACKEND_BIN";
 
 /// 找二进制的结果。**tagged 而不是 `Result`** —— 定框 §5：「拿不到依赖」是诚实降级。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,14 +133,18 @@ pub enum Resolved {
     },
 }
 
-/// 本机 sidecar 的候选路径。**只在 exe 同目录找**，理由见模块头注（不扫仓库 dev 产物）。
+/// 本机后端的候选路径。**只在 exe 同目录找**，理由见模块头注（不扫仓库 dev 产物）。
 ///
 /// 两个候选：Tauri `externalBin` 的 triple 后缀形态，以及 bundler 剥掉后缀后的裸名
 /// （两种形态都出现过，取决于打包器版本；**都列出来比猜一个强**）。
-pub fn sidecar_candidates(exe_dir: &Path, target_triple: &str, exe_suffix: &str) -> Vec<PathBuf> {
+pub fn local_backend_candidates(
+    exe_dir: &Path,
+    target_triple: &str,
+    exe_suffix: &str,
+) -> Vec<PathBuf> {
     vec![
-        exe_dir.join(format!("{SIDECAR_STEM}-{target_triple}{exe_suffix}")),
-        exe_dir.join(format!("{SIDECAR_STEM}{exe_suffix}")),
+        exe_dir.join(format!("{LOCAL_BACKEND_STEM}-{target_triple}{exe_suffix}")),
+        exe_dir.join(format!("{LOCAL_BACKEND_STEM}{exe_suffix}")),
     ]
 }
 
@@ -151,7 +155,7 @@ pub fn resolve_with(
     exe_suffix: &str,
     exists: &dyn Fn(&Path) -> bool,
 ) -> Resolved {
-    let cands = sidecar_candidates(exe_dir, target_triple, exe_suffix);
+    let cands = local_backend_candidates(exe_dir, target_triple, exe_suffix);
     for c in &cands {
         if exists(c) {
             return Resolved::Found(c.clone());
@@ -159,7 +163,7 @@ pub fn resolve_with(
     }
     Resolved::Missing {
         reason: format!(
-            "这一份 monitor 旁边没有本机后端 sidecar（`{SIDECAR_STEM}`）。\
+            "这一份 monitor 旁边没有本机后端（`{LOCAL_BACKEND_STEM}`）。\
              它**随安装包一起发**（`*-setup.exe` / `*.msi` 里都带，装完与 monitor 同目录）。\
              ⚠ **「旁边没有」不等于「这台机器上没有本机后端」**：产物里内嵌了本机后端时，\
              monitor 会自己释放一份再起它 —— 那一步走没走成由**它自己**报，不由本行断言。\
@@ -221,7 +225,7 @@ pub fn decide(crash_times_ms: &[u64], now_ms: u64, limits: CrashLimits) -> Decis
 ///
 /// # 为什么这一维要有一个「没观测到」的档〔`K-P3b KP3W2`〕
 ///
-/// `supervise_with_stdio` 有两种客户：**接了消费者**的（daemon —— 有人解帧、有人读错误）
+/// `supervise_with_stdio` 有两种客户：**接了消费者**的（backend —— 有人解帧、有人读错误）
 /// 与**没接消费者**的（中转 —— 缺省那支只把 stdout `io::copy` 进 `sink`）。
 /// 后者身上「它跟我们说过话没有」这件事**一次都没有被观测过**。
 ///
@@ -229,19 +233,19 @@ pub fn decide(crash_times_ms: &[u64], now_ms: u64, limits: CrashLimits) -> Decis
 /// 「非零退出 **且** 从来没说过话」= 被拒了，两个条件缺一不可。
 /// 用一个没人观测过的值去顶第二个条件，判出来的「被拒了」是编的。
 /// ⇒ 这里给它一个**明写「没观测到」**的档，由宿主层决定拿它怎么办
-/// （今天：daemon 那条路上不该出现它，出现了就出声、不上账）。
+/// （今天：backend 那条路上不该出现它，出现了就出声、不上账）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StreamWitness {
     /// **这条路上没有消费者**（缺省那支）⇒ 两维都没有观测者。
     NoConsumer,
     /// **消费者自己没了**（体内 panic 被兜底外壳接住）⇒ 它手里那两维随它一起没了。
     ConsumerGone,
-    /// 消费者交回来的两维。类型取自 [`crate::daemon_policy`]（判据那一侧的**同一份**表示）——
+    /// 消费者交回来的两维。类型取自 [`crate::backend_policy`]（判据那一侧的**同一份**表示）——
     /// 在这里另造一套平行的 `bool` + `Option<String>` 就是同一个事实的第二份表示，
     /// 而两份表示会漂。
     Observed {
-        handshake: crate::daemon_policy::Handshake,
-        reader: crate::daemon_policy::ReaderEnd,
+        handshake: crate::backend_policy::Handshake,
+        reader: crate::backend_policy::ReaderEnd,
     },
 }
 
@@ -258,7 +262,7 @@ pub enum SuperviseEvent {
         /// ★ `K-P3b`：收尸拿到的**原样退出状态**。
         ///
         /// `code` 在**被信号打死**时是 `None`，**信号号已经丢了** —— 而
-        /// 「崩了」那一格恰恰要它（`daemon_policy::exit_status` 逐字打 `signal N`）。
+        /// 「崩了」那一格恰恰要它（`backend_policy::exit_status` 逐字打 `signal N`）。
         /// 取信号号要 `std::os::unix::process::ExitStatusExt`，而
         /// `the_backend_half_stays_platform_agnostic` 的禁针含 `std::os::unix`
         /// ⇒ **这一层只能原样把它交上去**，由宿主层取。
@@ -294,7 +298,7 @@ impl SuperviseHandle {
 
     /// 请求停止**并杀掉当前子进程**。
     ///
-    /// 杀掉是必须的：被监护的 daemon 不会因为父进程退出而自己走
+    /// 杀掉是必须的：被监护的后端不会因为父进程退出而自己走
     /// （它的入方向对「写端关闭」是刻意不敏感的），不杀就成了游魂进程。
     pub fn stop(&self) {
         self.stopping.store(true, Ordering::SeqCst);
@@ -312,7 +316,7 @@ impl SuperviseHandle {
 /// 全程在一个专用线程上；`now_ms` 由注入的时钟给（测试可以喂假时钟）。
 ///
 /// `envs` 是给子进程的环境变量 —— e2e 用它强制私有 `TMUX_TMPDIR`，
-/// **绝不让被监护的 daemon 碰用户真实的 tmux server**。
+/// **绝不让被监护的后端碰用户真实的 tmux server**。
 /// P2：每次 spawn 之后，把这一条命的 **stdin 写端 + stdout 读端**交给调用方。
 ///
 /// # 为什么是「消费者」而不是「把 stdout 拿走」
@@ -380,7 +384,7 @@ pub type StdioSink = Arc<
 // ★ 同一个成因在别的工具链上是有名的：go 与 cargo 都是靠**对 `ETXTBSY` 有上限地重试**收的。
 //   本仓的**测试台**先前已经分开过一次（`launch.rs` 那一族），而生产段没有 ——
 //   这一段就是把那个分类**抬进生产段**，两个落点（`supervise_with_stdio` 与
-//   `local_daemon::spawn_detached`）共用这一份，不各写一份。
+//   `local_backend_host::spawn_detached`）共用这一份，不各写一份。
 //
 // ⚠ **诚实边界（`§4`）**：这一段买的是「撞上了认得出、说得对、会重试」，
 //   **不是**「它不会再发生」。真机上这个竞态多久撞一次，本层量不到。
@@ -710,16 +714,16 @@ pub fn supervise_with_stdio(
             let mut cmd = std::process::Command::new(&bin);
             // ★★ **`TMUX` 一律不继承**〔事故订正 08-11〕。
             //
-            // 被监护的 daemon 会跑 `tmux ls`。tmux 客户端在 `TMUX` 有值时**按它给的 socket 走，
+            // 被监护的后端会跑 `tmux ls`。tmux 客户端在 `TMUX` 有值时**按它给的 socket 走，
             // `TMUX_TMPDIR` 完全不起作用** —— 那正是「私有 socket 隔离」被绕过的机制。
             // 我在一次探针里漏了这一条，结果用户 9 个真实 tmux 会话没了。
-            // ⇒ 这里无条件清掉：daemon 该按自己的 `TMUX_TMPDIR`（或默认 socket）解析，
+            // ⇒ 这里无条件清掉：backend 该按自己的 `TMUX_TMPDIR`（或默认 socket）解析，
             // 而不是继承「monitor 恰好从哪个 tmux 里被启动」这个偶然。
             cmd.env_remove("TMUX");
             // ★★ `00 §1.5.1` 步 1（不开控制台窗口）与 `15 §5.1 A2`（stderr 接进滚动日志）
             //    **都已经不在这一层了**〔A3 落地，09-18〕。
             //
-            // 先前这里有两段平台/宿主知识：一句 `crate::local_daemon::hide_console_window(&mut cmd)`
+            // 先前这里有两段平台/宿主知识：一句 `crate::local_backend_host::hide_console_window(&mut cmd)`
             // （那是 A3 之前的止血，它自己的头注逐字写着「A3 落地时它会被换成注入参数，
             // 和 `make_executable` 一样」），加一句 `.stderr(Stdio::piped())` ＋ 下面一条泵。
             // ⇒ 今天两样都是 `spawn` 这个注入参数说了算：宿主那侧声明
@@ -729,7 +733,7 @@ pub fn supervise_with_stdio(
             //（stdout 的 EOF 是「进程死了」这个事件的唯一来源），不是三条策略里的任何一条。
             cmd.args(&args)
                 // P2：有消费者才接 stdin。无消费者时**逐字维持 `null`** ——
-                // 「本机 daemon 收不了入方向命令」是 C4 量出来的缺口，
+                // 「本机后端收不了入方向命令」是 C4 量出来的缺口，
                 // 但没人要那根管子时接出来只会多一个没人写的 fd。
                 .stdin(if stdio.is_some() {
                     std::process::Stdio::piped()
@@ -777,7 +781,7 @@ pub fn supervise_with_stdio(
             // ★ **F16 关窗**：`stopping` 原来只在循环顶部与 EOF 之后检查 ⇒ 存在一个窗口 ——
             // 刚过顶部检查就 `spawn`，此刻 `stop()` 执行：它置位 `stopping`，但锁里还是 `None`
             // ⇒ **一个字节的 kill 都没发**；线程接着把子进程存进锁、进 `io::copy` 永久阻塞
-            // （daemon 对 stdin 关闭刻意不敏感、也不会自己退）⇒ **monitor 退了、daemon 还在跑，
+            // （backend 对 stdin 关闭刻意不敏感、也不会自己退）⇒ **monitor 退了、backend 还在跑，
             // 而且没人再能 kill 它** —— 那正是 `stop()` 头注说的「游魂进程」。
             // 触发条件：启动后极短时间内退出（single-instance 第二实例、启动即关窗）。
             if stopping.load(Ordering::SeqCst) {
@@ -799,7 +803,7 @@ pub fn supervise_with_stdio(
 
             // ★ 等它死：读到 EOF。**这不是定时器，也不是轮询** —— 没有「隔多久看一眼」。
             //
-            // ⚠ **F16 修**：原来是 `read_to_end(&mut Vec::new())` —— 那会把被监护 daemon 的
+            // ⚠ **F16 修**：原来是 `read_to_end(&mut Vec::new())` —— 那会把被监护后端的
             // **全部 stdout 攒在一个永不释放的 `Vec` 里**，而它是**持续产帧**的
             // （那正是本模块头注用来论证「它不会关掉 stdout」的理由）⇒ 增长速度 =
             // 本机所有会话的 jsonl 产出速度，且没有任何消费者。
@@ -902,11 +906,11 @@ pub fn supervise_with_stdio(
     handle
 }
 
-/// 在**本可执行文件同目录**找 sidecar。这是 [`resolve_with`] 的真文件系统版。
+/// 在**本可执行文件同目录**找本机后端。这是 [`resolve_with`] 的真文件系统版。
 ///
 /// `current_exe()` 不是 GUI 把手（不违反宿主无关那条机检）——
-/// 它是「我这个二进制装在哪」这一条**部署事实**，正是 sidecar 该在的位置。
-/// F06b-1d（**C9** 的逐字落地）：给 backend 亲手开的那个终端窗口，配上 daemon 路径。
+/// 它是「我这个二进制装在哪」这一条**部署事实**，正是本机后端该在的位置。
+/// F06b-1d（**C9** 的逐字落地）：给 backend 亲手开的那个终端窗口，配上后端路径。
 ///
 /// # 为什么是「给窗口设 env」而不是「拼进启动串」
 ///
@@ -919,20 +923,20 @@ pub fn supervise_with_stdio(
 ///
 /// # 返回 `None` 的含义
 ///
-/// **sidecar 不在就不设** —— 导一个指向空处的路径不会让 ccm 更聪明（它那边 `[ -x ]` 一样过不了），
+/// **local_backend 不在就不设** —— 导一个指向空处的路径不会让 ccm 更聪明（它那边 `[ -x ]` 一样过不了），
 /// 只会让「这台机到底有没有本机后端」这个问题多一个假阳性来源。⇒ 空值 ≠ 未设（Z01 那条支点）。
-pub(crate) fn daemon_bin_env_for_window(target_triple: &str) -> Option<(&'static str, String)> {
+pub(crate) fn backend_bin_env_for_window(target_triple: &str) -> Option<(&'static str, String)> {
     env_from_resolved(resolve_beside_this_exe(target_triple))
 }
 
 /// 上面那个函数的**纯**内核 —— 抽出来是为了两个分支都测得到。
 ///
-/// ⚠ 不抽的话判据只走得到 `Missing`（测试环境旁边没有 sidecar），
-/// 于是「`Found` 时用的是 [`DAEMON_BIN_ENV`] 这个名字」这半**永远验不了** ——
+/// ⚠ 不抽的话判据只走得到 `Missing`（测试环境旁边没有本机后端），
+/// 于是「`Found` 时用的是 [`BACKEND_BIN_ENV`] 这个名字」这半**永远验不了** ——
 /// 那正是「判据的探针改变了被观察的路」的近亲：**探针到不了的分支等于没判据**。
 fn env_from_resolved(r: Resolved) -> Option<(&'static str, String)> {
     match r {
-        Resolved::Found(p) => Some((DAEMON_BIN_ENV, p.to_string_lossy().into_owned())),
+        Resolved::Found(p) => Some((BACKEND_BIN_ENV, p.to_string_lossy().into_owned())),
         _ => None,
     }
 }
@@ -945,7 +949,7 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
         Some(d) => d,
         None => {
             return Resolved::Missing {
-                reason: "拿不到自身可执行文件路径 ⇒ 无法定位本机后端 sidecar".into(),
+                reason: "拿不到自身可执行文件路径 ⇒ 无法定位本机后端 local_backend".into(),
                 looked_at: Vec::new(),
             }
         }
@@ -961,14 +965,14 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
 /// # 诚实边界 8c：**不清理旧的按 build_id 命名的文件**
 ///
 /// 文件名带 build_id 是为了幂等与不撞版（见下方 D1 段），代价是
-/// **每换一次 daemon 构建就在 `~/.cc-monitor/bin/` 多留一个 10MB 级的旧文件，永不回收**。
+/// **每换一次后端构建就在 `~/.cc-monitor/bin/` 多留一个 10MB 级的旧文件，永不回收**。
 /// 今天没有任何清理逻辑，也没有判据钉它。
 /// ⇒ 刻意不做：按 mtime/版本回收要先定「谁还可能在跑旧的那份」，那是 `P2d`（认已有实例）的前提。
 ///
 /// 🔴 **`K-R42` 09-10 补一条：这笔账的分母变大了，而处置没变。**
 /// 本段写下时，这条路**只在 Linux 上真跑过**（宿主那侧压着 `cfg!(target_os = "linux")`），
-/// 而 Linux 上安装包与 dev 树旁边多半就有 sidecar ⇒ 释放这一支很少走到。
-/// 本件把 Windows 那一格接上之后，**裸 exe 每换一个 daemon 版本就在
+/// 而 Linux 上安装包与 dev 树旁边多半就有 local_backend ⇒ 释放这一支很少走到。
+/// 本件把 Windows 那一格接上之后，**裸 exe 每换一个后端版本就在
 /// `%USERPROFILE%\.cc-monitor\bin\` 多留一份**（这一次是 14 MB 级，见 `K-R42` 交回的体积读数）。
 /// ⇒ **仍然不清理**，三条理由都还成立、且新添一条：
 /// ① 判「谁还在跑旧的那份」仍是 `P2d` 的前提，本件没做那件事；
@@ -976,10 +980,10 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
 ///    而那条射程逐字登记在 `write_site_registry::WRITE_SITES` 里 —— 那张表不在本件写区，
 ///    改了代码不改登记 = 让一条登记变成假话，比多留一个文件贵；
 /// ③ 幂等这一半是好的：**同一个 build_id 不会重复写**（下面那个 size 相等就跳过的分支）
-///    ⇒ 留下的份数上界是「这台机上装过几个不同 daemon 版本」，不是「起过几次 monitor」。
+///    ⇒ 留下的份数上界是「这台机上装过几个不同后端版本」，不是「起过几次 monitor」。
 /// ⚠ **这是一笔如实记着的欠账，不是「已解决」** —— 建议作跟进件，与 `P2d` 同拍做。
 ///
-/// P2z（`control-parity` 的定框 C10 —— 单 exe 那一条，不是 `backend-split` 那条平台原语）：**单 exe 自释放** —— 把 app 里**已经内嵌**的那份 musl daemon
+/// P2z（`control-parity` 的定框 C10 —— 单 exe 那一条，不是 `backend-split` 那条平台原语）：**单 exe 自释放** —— 把 app 里**已经内嵌**的那份 musl backend
 /// 写到 `dir` 下，文件名**带 build_id**，返回落点。
 ///
 /// # 为什么文件名必须带 build_id（自批 D1，别改成和远端部署同一个文件）
@@ -1024,12 +1028,12 @@ pub fn local_extract_name(build_id: &str) -> String {
     )
 }
 
-/// `K-R42`：**这一份产物自己带着的本机后端**（`build.rs::embed_native_daemon` 嵌进来的）。
+/// `K-R42`：**这一份产物自己带着的本机后端**（`build.rs::embed_native_backend` 嵌进来的）。
 ///
 /// # 它与「宿主注入的那份」是两件事，不是同一件的两个写法
 ///
-/// `start_or_extract` 的 `embedded` 参数**是宿主知识**：`local_daemon.rs` 那侧按
-/// **运行期 arch** 从 `sftp::daemon_binary(ARCH)` 里挑，而那批是 **musl Linux** 二进制
+/// `start_or_extract` 的 `embedded` 参数**是宿主知识**：`local_backend_host.rs` 那侧按
+/// **运行期 arch** 从 `sftp::backend_binary(ARCH)` 里挑，而那批是 **musl Linux** 二进制
 /// ⇒ 它那侧压着一道 `cfg!(target_os = "linux")` 的闸，非 Linux 一律给 `None`。
 /// **那道闸是对的**：往 Windows 上释放一个 Linux ELF 再报「已起」，是 08-11 补审逮到的
 /// 阻塞级缺陷。缺的从来不是「把闸拆掉」，是**一份 Windows 能跑的字节**。
@@ -1042,9 +1046,9 @@ pub fn local_extract_name(build_id: &str) -> String {
 /// # 返回 `None` 的含义
 ///
 /// **这一份产物没内嵌本机后端**（开发构建、或发版那一步没铺）。诚实降级，不是错误。
-#[cfg(embedded_native_daemon)]
-pub fn native_embedded_daemon() -> Option<(&'static str, &'static [u8])> {
-    let id = env!("DAEMON_NATIVE_ID");
+#[cfg(embedded_native_backend)]
+pub fn native_embedded_backend() -> Option<(&'static str, &'static [u8])> {
+    let id = env!("BACKEND_NATIVE_ID");
     if id.is_empty() {
         // 走不到（`build.rs` 缺清单时当场 panic），但**不假设它走不到**：
         // 空 build_id 会拼出 `cc-monitor-local-` 这样一个不带版本的落点，
@@ -1054,27 +1058,27 @@ pub fn native_embedded_daemon() -> Option<(&'static str, &'static [u8])> {
     // 🔴 **这条路径必须是字面量，不许拼**（`concat!(env!(..), ..)` 那种写法编得过，但
     // `cross_half_edge_registry::every_non_literal_include_is_registered_with_a_reason`
     // 默认拒绝解析不出路径的 `include_*!`，而它的登记表不在本件写区 —— 实测当场红）。
-    // ⇒ 名字定死在两处：这一行，与 `build.rs` 的 `NATIVE_DAEMON_DIR`/`NATIVE_DAEMON_FILE`。
+    // ⇒ 名字定死在两处：这一行，与 `build.rs` 的 `NATIVE_BACKEND_DIR`/`NATIVE_BACKEND_FILE`。
     //   两处同一个串由 `the_native_daemon_path_is_spelled_the_same_on_both_sides` 对拍
     //   （闭集本该只有一个住址，这一处是 `include_bytes!` 的语法逼出来的例外 ⇒ 用判据补上）。
-    // ⚠ 目录名**刻意不是** `embedded-daemons`：那个串是 `local_daemon.rs` 那条
-    //   「谁会起真 daemon」判据认来历用的，写进本文件的生产段会把整段代码拖进它的人群
+    // ⚠ 目录名**刻意不是** `embedded-backends`：那个串是 `local_backend_host.rs` 那条
+    //   「谁会起真后端」判据认来历用的，写进本文件的生产段会把整段代码拖进它的人群
     //   （实测：多出一条 `local_backend.rs::default`，而它连测试都不是）。理由全文住 `build.rs`。
     Some((
         id,
-        include_bytes!("../../../native-daemon/cc-monitor-native"),
+        include_bytes!("../../../native-backend/cc-monitor-native"),
     ))
 }
 
 /// 没内嵌那一份时的同名壳 —— 头注在上面那一份上。
-#[cfg(not(embedded_native_daemon))]
-pub fn native_embedded_daemon() -> Option<(&'static str, &'static [u8])> {
+#[cfg(not(embedded_native_backend))]
+pub fn native_embedded_backend() -> Option<(&'static str, &'static [u8])> {
     None
 }
 
 /// 陈旧 `.partial` 的年龄阈值。
 ///
-/// 释放一份 daemon 是**一次几 MB 的顺序写**（本机实测 2.4 MB），正常在毫秒级完成。
+/// 释放一份后端是**一次几 MB 的顺序写**（本机实测 2.4 MB），正常在毫秒级完成。
 /// 24 小时给的是**五个数量级**的余量 —— 宁可多留一天垃圾，也不要在某台慢机器上
 /// 把**正在写的**那份删掉（那会把这道防线变成它自己要防的东西）。
 const STALE_PARTIAL_AGE: std::time::Duration = std::time::Duration::from_secs(24 * 3600);
@@ -1123,10 +1127,10 @@ pub fn extract_embedded_to(
         }
     }
     std::fs::create_dir_all(dir).map_err(|e| format!("建目录 {} 失败: {e}", dir.display()))?;
-    // 先写临时文件再 rename：半截文件不许被当成可执行的 daemon（rename 在同一文件系统上原子）。
+    // 先写临时文件再 rename：半截文件不许被当成可执行的后端（rename 在同一文件系统上原子）。
     // ★★ 临时名**带 pid**〔`P2t` 摸底 08-12〕：原来是**固定名**，两个同版本 monitor 同时释放
     // 会写同一个 `.partial` —— 一个写到一半、另一个 `rename` 走，出来的可能是**半截文件**，
-    // 而这道 `.partial` + `rename` 存在的全部理由就是「半截文件不许被当成可执行的 daemon 起起来」。
+    // 而这道 `.partial` + `rename` 存在的全部理由就是「半截文件不许被当成可执行的后端起起来」。
     // ⚠ 这不是理论：`tauri_plugin_single_instance` **只在 `#[cfg(windows)]` 注册**
     // （`lib.rs::run` 里那段 `#[cfg(windows)]`）⇒ Linux/macOS 上两个 monitor 天然并存。
     // ⇒ 每个进程写自己那份，`rename` 仍是原子的，互不覆盖。
@@ -1211,9 +1215,9 @@ pub fn local_ccm_entry_name() -> String {
 /// 容器路（`--tmux`）生成的**内层命令**以 `ccm::plan::Env::self_path` 开头，而那个值是
 /// `CCM_SELF` → 兜底 `argv[0]`。两条入口在这一格上**不对称**：
 /// · 入口①（本机改名副本）：`argv[0]` 的 basename 本来就是 `ccm` ⇒ 内层命令天然对。
-/// · 入口②（远端 shim）：shim `exec` 的是**二进制真身**，`argv[0]` 因此是 `<…>/cc-monitor-remote`
-///   ⇒ 内层命令变成 `cc-monitor-remote --cwd …`，**缺了 `ccm` 这个子命令词**，
-///   被当 daemon 直连口解析，当场 `query error: unknown argument: --cwd`。
+/// · 入口②（远端 shim）：shim `exec` 的是**二进制真身**，`argv[0]` 因此是 `<…>/cc-monitor-backend`
+///   ⇒ 内层命令变成 `cc-monitor-backend --cwd …`，**缺了 `ccm` 这个子命令词**，
+///   被当后端直连口解析，当场 `query error: unknown argument: --cwd`。
 ///
 /// 失败长得**不像 shim 的错**：tmux 会话建得出来、`@ccm_agent` 也打上了，
 /// 只有窗格里那一行是红的 —— 而 `--print` 吐的是同一条坏命令，所以平价预言机也不会红。
@@ -1324,7 +1328,7 @@ const EXTRACTION_REFUSED_MARKER: &str = "放不下来";
 /// ⇒ 这一支自己拼一句**结构上分得开**的话（[`EXTRACTION_REFUSED_MARKER`]），
 /// 并由 [`resolve_or_extract`] 在返回之前 `tracing::error!` 吼一声 ——
 /// 〔`K-R43` 订正住址：那一声原先在 [`start_or_extract`] 体内，抽进共用那份之后
-///  **两条生产路共用这一声** —— 常驻那条（`local_daemon.rs`）从此也吼得出来〕
+///  **两条生产路共用这一声** —— 常驻那条（`local_backend_host.rs`）从此也吼得出来〕
 /// 光靠返回值不够：调用方可能只把它记进 `info`。
 ///
 /// # 纯函数
@@ -1346,10 +1350,10 @@ pub fn extraction_failure_reason(dir: &Path, err: &str) -> String {
 /// **生产入口**：找得到就起并看住；找不到就**诚实降级**（定框 §5）。
 ///
 /// ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10 现打，v3.7.0〕：
-/// 安装包（NSIS / MSI）里**带着** sidecar —— 干净 win11 虚拟机上装完现打，
-/// `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe` **2 个进程在跑**；
+/// 安装包（NSIS / MSI）里**带着** local_backend —— 干净 win11 虚拟机上装完现打，
+/// `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe` **2 个进程在跑**；
 /// 而**裸 `monitor.exe`** 那份 **0 个**，走的才是降级那一支。
-/// 〔本行原话「今天恒走降级那一支 —— 安装包里还没有 sidecar（`externalBin` 是 F05b）」
+/// 〔本行原话「今天恒走降级那一支 —— 安装包里还没有本机后端（`externalBin` 是 F05b）」
 /// 已被那次读数证伪。`externalBin` 配着，只是住 `src/bridge/tauri.sidecar.conf.json`
 /// 而不是基础 `tauri.conf.json` —— 分工见模块头注。〕
 /// 降级不是「接线没做」，是**接线做了、这一份产物里没带**：两者的区别就在这个返回值上，
@@ -1389,12 +1393,12 @@ pub fn start_if_present(
 ///
 /// 那一份是 `async`（吃 `AsyncBufRead`），而本机消费者跑在**裸 `std::thread`** 上。
 /// 机制可以同构，代码跨不了 sync/async 这道边。
-/// ⇒ **共用的是上限常量**（`ssh_source::DAEMON_FRAME_LINE_CAP`），那才是会漂的东西；
+/// ⇒ **共用的是上限常量**（`ssh_source::BACKEND_FRAME_LINE_CAP`），那才是会漂的东西；
 /// 机制各写一份，两边头注互指。
 ///
 /// # 机制：`fill_buf`/`consume`，超限之后只找换行、不再往 buf 里塞字节
 ///
-/// 逐字抄远端那条头注记的教训：daemon 侧第一版用无界 `read_until`、读完再看长度，
+/// 逐字抄远端那条头注记的教训：backend 侧第一版用无界 `read_until`、读完再看长度，
 /// D 审计实测**喂 512 MiB 无换行的流 ⇒ RSS 从 6 MiB 涨到 518 MiB**，
 /// 而它照样回了一条「看起来对」的 `line_too_long`。
 ///
@@ -1405,7 +1409,7 @@ pub fn start_if_present(
 ///
 /// ⚠ **字节转字符串走 `from_utf8_lossy`**〔D 阶段补审 08-11 修〕：
 /// 原版用 `BufReader::lines()`，那是 **UTF-8 严格**的，一个坏字节就回 `InvalidData`，
-/// 而调用方把它和 EOF 一起 `break` ⇒ daemon 被我们读死、还被记成一次「崩溃」，
+/// 而调用方把它和 EOF 一起 `break` ⇒ backend 被我们读死、还被记成一次「崩溃」，
 /// 三次之后**整个进程周期不再起来**，日志写「崩了 3 次」——**一个错误的诊断**。
 /// 远端那条路早就明确取了相反的取舍（`ssh_source` 里 `from_utf8_lossy`，注释逐字
 /// 「非 UTF-8 不该让整条连接死掉」），本机这条当时把它漏了。
@@ -1454,25 +1458,25 @@ fn read_capped_line_sync<R: std::io::BufRead>(
     }
 }
 
-/// P3 刀 1 的**唯一**吸收点：本机 daemon 推来的帧里，哪些要进账本。
+/// P3 刀 1 的**唯一**吸收点：本机后端推来的帧里，哪些要进账本。
 ///
 /// # 为什么抽成函数〔`P3` 08-12〕
 ///
-/// 原来这三行**长在读行循环里**，而那个循环要有一个**真的在跑的 daemon** 才进得去
+/// 原来这三行**长在读行循环里**，而那个循环要有一个**真的在跑的 backend** 才进得去
 /// ⇒ `P3-Y1`（acceptor: **实测**）唯一的证据只能是一条会起真 tmux 的测试，而那条
 /// 08-11 出过**误伤用户 9 个真实会话**的事故后被 `#[ignore]` 了 ——
 /// 于是这条 DoD **至今没有兑现证据**（如实登记在件的 `§0h`：「不是『测试暂时关着』，
 /// 是这条 DoD 今天没有兑现」）。
 ///
-/// 抽出来之后，「帧 → 账本」这一跳**不需要 daemon、不需要 tmux** 就能验 ——
+/// 抽出来之后，「帧 → 账本」这一跳**不需要后端、不需要 tmux** 就能验 ——
 /// 与 `P5L` 把终端出口做成入参是同一手：**把够得到的那半做成可测，别拿够不到的当借口**。
 ///
 /// ⚠ **射程如实登记**：本函数可测的是「**收到帧之后**账本里有」。
-/// 「daemon **真的会发**这个帧」仍归 daemon 侧 `EMITS "tmux_sessions"` 的登记
+/// 「backend **真的会发**这个帧」仍归后端侧 `EMITS "tmux_sessions"` 的登记
 /// （逐字「登记 = 承诺真发」）与协议文档守卫 —— 那一跳本判据**够不到**，
 /// 那条会起真 tmux 的实测因此**留着**（仍 `#[ignore]`），不是删掉了事。
 fn absorb_local_frame(frame: &crate::ssh_source::InboundFrame) {
-    // P3 刀 1：**本机的 tmux 帧也要收**。daemon 的 `watch_loop` 周期跑本机 `tmux ls`
+    // P3 刀 1：**本机的 tmux 帧也要收**。backend 的 `watch_loop` 周期跑本机 `tmux ls`
     // 并推 `TmuxSessions` 帧。P2 写这个消费者时只需要通道，把非 hello 帧全丢了 ——
     // 于是**本机 tmux 会话对 monitor 不可见，不是拿不到，是我们扔了**。
     //
@@ -1480,17 +1484,20 @@ fn absorb_local_frame(frame: &crate::ssh_source::InboundFrame) {
     // ⇒ 必须先有「本地也判得出 `Superseded`」（P3 刀 0）。没有刀 0 就收帧 =
     // 把「永远消不掉的灰点」那个 bug 请回来。
     if let crate::ssh_source::InboundFrame::TmuxSessions { raw, .. } = frame {
-        crate::ssh_source::record_tmux_raw(crate::inbound_client::LOCAL_ORIGIN, raw.clone());
+        crate::ssh_source::record_tmux_raw(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN,
+            raw.clone(),
+        );
     }
 }
 
 /// # 诚实边界 10a + 10e：通道**通了**，但没人往里发命令，也没验命令真能执行
 ///
-/// 10a：`client_for("<local>")` 今天的生产消费者**只有读**（`daemon_status` 问「通道在不在」）。
+/// 10a：`client_for("<local>")` 今天的生产消费者**只有读**（`backend_status` 问「通道在不在」）。
 /// **一条入方向命令都还没有人从本机发出去** —— 那是 P3 刀 2/3 的活。
 /// 「通道在」与「控制面走通了」是两件事，别把前者当成后者的证据。
 ///
-/// 10e：起 daemon 时只验了它**照发 hello、且声明接受 `launch`/`kill`**。
+/// 10e：起后端时只验了它**照发 hello、且声明接受 `launch`/`kill`**。
 /// **没验入方向命令真的被执行** —— 要等 P3 有真实调用方才验得动。
 /// ⇒ 今天的证据链止于「对面说它接受」，不含「它真的做了」。
 ///
@@ -1507,8 +1514,8 @@ fn absorb_local_frame(frame: &crate::ssh_source::InboundFrame) {
 /// `ssh_source::stream_loop` **不是泛型**：它吃 `&RemoteConfig` + `&tauri::AppHandle`，
 /// 还管重放 / 会话变更 / 连接状态 / hello 确认。本机没有那些。
 /// 但它下面那三个零件**是纯的**，本函数复用的正是它们：
-/// `parse_frame(&str) -> Option<InboundFrame>` · `DaemonHello::from_hello_frame(&InboundFrame)` ·
-/// `ParkedWriter::into_client(DaemonHello)`。
+/// `parse_frame(&str) -> Option<InboundFrame>` · `BackendHello::from_hello_frame(&InboundFrame)` ·
+/// `ParkedWriter::into_client(BackendHello)`。
 /// ⇒ 复用**纯零件**，不把一个绑传输的循环硬掰成泛型。
 ///
 /// # 为什么要 `block_on` 一下
@@ -1519,7 +1526,7 @@ fn absorb_local_frame(frame: &crate::ssh_source::InboundFrame) {
 ///
 /// # 不缓冲
 ///
-/// 逐行读、读完即弃。daemon 是持续产帧的，攒任何东西都是无界增长。
+/// 逐行读、读完即弃。backend 是持续产帧的，攒任何东西都是无界增长。
 pub(crate) fn local_stdio_consumer(
     stdin: std::process::ChildStdin,
     stdout: std::process::ChildStdout,
@@ -1542,27 +1549,31 @@ pub(crate) fn local_stdio_consumer(
                 return ConsumerReport {
                     exit: ConsumerExit::Eof,
                     witness: StreamWitness::Observed {
-                        handshake: crate::daemon_policy::Handshake::NeverSpoke,
+                        handshake: crate::backend_policy::Handshake::NeverSpoke,
                         reader: match copied {
-                            Ok(_) => crate::daemon_policy::ReaderEnd::CleanEof,
-                            Err(e) => crate::daemon_policy::ReaderEnd::Broken(e.to_string()),
+                            Ok(_) => crate::backend_policy::ReaderEnd::CleanEof,
+                            Err(e) => crate::backend_policy::ReaderEnd::Broken(e.to_string()),
                         },
                     },
                 };
             }
         };
-    let mut parked = Some(crate::inbound_client::park_owned_writer(stdin));
+    let mut parked = Some(crate::backend::control::inbound_client::park_owned_writer(
+        stdin,
+    ));
     // 留一份副本给 `unregister` —— 它要 `&Arc` 比对身份（「不摘别人的 client」）。
-    let mut registered: Option<std::sync::Arc<crate::inbound_client::InboundClient>> = None;
+    let mut registered: Option<
+        std::sync::Arc<crate::backend::control::inbound_client::InboundClient>,
+    > = None;
     let mut early = false;
     // ★ `K-P3b`：**我们这一侧的读端怎么结束的** —— 观测在这里，判在宿主层。
     //   初值是「干净 EOF」，而它**只在真的读到 EOF 时才成立**：下面那条 `Err` 支
     //   会把它换成 `Broken`，两个出口各写各的，没有第三条路能带着初值出去。
-    let mut reader_end = crate::daemon_policy::ReaderEnd::CleanEof;
+    let mut reader_end = crate::backend_policy::ReaderEnd::CleanEof;
 
     let mut rd = std::io::BufReader::new(stdout);
     loop {
-        let line = match read_capped_line_sync(&mut rd, crate::ssh_source::DAEMON_FRAME_LINE_CAP) {
+        let line = match read_capped_line_sync(&mut rd, crate::ssh_source::BACKEND_FRAME_LINE_CAP) {
             Ok(Some(l)) => l,
             Ok(None) => break, // EOF = 流结束 = 判死
             Err(e) => {
@@ -1571,7 +1582,7 @@ pub(crate) fn local_stdio_consumer(
                 tracing::warn!("本机后端 stdout 读错误（{e}）；按早退处理");
                 // ★ `K-P3b`：那句错**原样**带上去 —— 账上那一行要它
                 //   （`B1` 逐字：「读坏了」说的是我们这一侧，**不算它崩了一次**）。
-                reader_end = crate::daemon_policy::ReaderEnd::Broken(e.to_string());
+                reader_end = crate::backend_policy::ReaderEnd::Broken(e.to_string());
                 early = true;
                 break;
             }
@@ -1589,7 +1600,9 @@ pub(crate) fn local_stdio_consumer(
         if parked.is_none() {
             continue;
         }
-        let Some(witness) = crate::inbound_client::DaemonHello::from_hello_frame(&frame) else {
+        let Some(witness) =
+            crate::backend::control::inbound_client::BackendHello::from_hello_frame(&frame)
+        else {
             continue;
         };
         // 日志取自**帧**而不是 client —— `InboundClient` 的 `commands` 是私有的，
@@ -1605,33 +1618,39 @@ pub(crate) fn local_stdio_consumer(
             .take()
             .expect("上面刚判过 is_some")
             .into_client(witness);
-        crate::inbound_client::register(crate::inbound_client::LOCAL_ORIGIN, client.clone());
+        crate::backend::control::inbound_client::register(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN,
+            client.clone(),
+        );
         registered = Some(client);
         tracing::info!(
             "本机入方向通道已登记：origin={} build_id={build_id} commands={commands:?}",
-            crate::inbound_client::LOCAL_ORIGIN
+            crate::backend::control::inbound_client::LOCAL_ORIGIN
         );
     }
 
     // ★ `K-P3b`：**「它跟我们说过话没有」的唯一变真处就是上面那一行 `registered = Some(client)`**
-    //   —— 而那一行只在 `DaemonHello::from_hello_frame` 给出见证之后才跑得到。
+    //   —— 而那一行只在 `BackendHello::from_hello_frame` 给出见证之后才跑得到。
     //   ⇒ 这一维是**观测**，不是默认值：把它在这里读一次，别在别处猜。
     let handshake = if registered.is_some() {
-        crate::daemon_policy::Handshake::Spoke
+        crate::backend_policy::Handshake::Spoke
     } else {
-        crate::daemon_policy::Handshake::NeverSpoke
+        crate::backend_policy::Handshake::NeverSpoke
     };
     // 流结束 ⇒ 摘掉登记，别在表里留一个写不进去的 client。
     if let Some(mine) = registered {
-        crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &mine);
+        crate::backend::control::inbound_client::unregister(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN,
+            &mine,
+        );
     }
     // ★ **本机那份 tmux 原文也要清**〔D 阶段补审 08-11，判据路〕。
     //
     // 远端断连早就清了（`ssh_source` 里 Batch9-F28 那处），而本机这侧流结束时
-    // **只摘入方向 client、不碰这张表** ⇒ 停掉本机 daemon 之后 `<local>` 那份原文永久留着，
+    // **只摘入方向 client、不碰这张表** ⇒ 停掉本机后端之后 `<local>` 那份原文永久留着，
     // 成了「tmux 还在」的**陈旧证据**：`find_tmux_origin_for_sid` 仍返回 `Some(<local>)`
     // ⇒ `classify_removed(Some(_), Gone)` = `Idle` = 那个「永远消不掉、也 attach 不上的灰点」。
-    crate::ssh_source::forget_tmux_raw(crate::inbound_client::LOCAL_ORIGIN);
+    crate::ssh_source::forget_tmux_raw(crate::backend::control::inbound_client::LOCAL_ORIGIN);
     ConsumerReport {
         exit: if early {
             ConsumerExit::Early
@@ -1652,8 +1671,8 @@ pub(crate) fn local_stdio_consumer(
 /// 消费者跑在 `supervise` 的裸 `std::thread` 上，那里**没有 `catch_unwind`**。
 /// 它体内任何一次 panic（锁中毒、切片越界、`expect`）都会 unwind 出去，于是：
 /// `child` 锁里还留着活的 `Child` · `pid` 没归 0 · `unregister` 被跳过
-/// ⇒ 没人读 daemon 的 stdout ⇒ 管道缓冲填满 ⇒ **daemon 阻塞在 write 上冻死**。
-/// 而 `daemon_status` 照回 `channel: true` + 活 pid，`start_local_backend` 也拒绝重起。
+/// ⇒ 没人读后端的 stdout ⇒ 管道缓冲填满 ⇒ **backend 阻塞在 write 上冻死**。
+/// 而 `backend_status` 照回 `channel: true` + 活 pid，`start_local_backend` 也拒绝重起。
 /// **全绿的死锁态，没有任何一处会响。**
 ///
 /// # 它做什么、不做什么
@@ -1675,7 +1694,7 @@ fn local_stdio_consumer_guarded(
     tracing::error!(
         "本机 stdio 消费者 panic —— 已兜住并按流结束处理。\n\
              ⚠ 不兜的话它会 unwind 出 supervise 线程，留下一个「状态全绿的死人」：\n\
-         daemon 还活着但没人读它的 stdout ⇒ 管道填满冻死，而 UI 显示一切正常。"
+         backend 还活着但没人读它的 stdout ⇒ 管道填满冻死，而 UI 显示一切正常。"
     );
     // panic 时**子进程多半还活着** ⇒ 报 `Early`，让 `supervise` 补一刀（B4）。
     // ★ `K-P3b`：那两维**随 panic 一起没了** —— `catch_unwind` 拿不回它体内的局部状态。
@@ -1687,7 +1706,7 @@ fn local_stdio_consumer_guarded(
     }
 }
 
-/// P2z（`control-parity` 的定框 C10）：**「那个 daemon 二进制在哪」的唯一一份答案。**
+/// P2z（`control-parity` 的定框 C10）：**「那个后端二进制在哪」的唯一一份答案。**
 ///
 /// 顺序刻意是 **先找旁边、再释放**：开发构建里 `target/debug/` 旁边就有一个**更新**的二进制，
 /// 那条路径优先于内嵌那份（内嵌的是打包时的快照）。
@@ -1695,34 +1714,34 @@ fn local_stdio_consumer_guarded(
 /// ⚠ **这个顺序也是 P2z-Y1 的验收陷阱**：dev 构建里第一步恒命中 ⇒ 不把旁边那个挪开，
 /// 测到的是旧路径，而读数看起来和「释放成功」一模一样。
 ///
-/// `embedded` 由调用方给（`sftp::daemon_binary(arch)` 的产物）—— 本模块不认识 `sftp`，
+/// `embedded` 由调用方给（`sftp::backend_binary(arch)` 的产物）—— 本模块不认识 `sftp`，
 /// 也不认识「当前是什么 arch」，那都是宿主知识。`make_executable` 同理（`C10`）。
 ///
 /// # `K-R42`：`embedded` 给 `None` 时还有第二个来源
 ///
-/// 宿主那侧只在 Linux 上给字节（它挑的是 **musl** 二进制，见 [`native_embedded_daemon`] 头注），
+/// 宿主那侧只在 Linux 上给字节（它挑的是 **musl** 二进制，见 [`native_embedded_backend`] 头注），
 /// 于是 09-10 干净 win11 上的读数是：**裸 `monitor.exe` 跑着 0 个本机后端进程**，
 /// 而同一个 exe 里那套「带着二进制、需要时落到盘上」的机制**一直都在，只服务远端**。
-/// ⇒ 这里补上 [`native_embedded_daemon`]：宿主给不出时，问这一份产物自己带没带。
+/// ⇒ 这里补上 [`native_embedded_backend`]：宿主给不出时，问这一份产物自己带没带。
 /// **次序刻意是「宿主优先」** —— 那条路今天在 Linux 上是活的（安装包那份也走它），
 /// 本件不许让它退化；本层这份只在它交白卷时才说话。
 ///
 /// # 🔴 `K-R43`：本函数**为什么是从 [`start_or_extract`] 里抽出来的**
 ///
 /// 抽出来之前，「找那个二进制」有**两份手写实现**：本模块的 [`start_or_extract`]
-/// 与 `local_daemon.rs::resolve_daemon_bin`（常驻那条路不要监护那半，用不了前者）。
+/// 与 `local_backend_host.rs::resolve_backend_bin`（常驻那条路不要监护那半，用不了前者）。
 /// 两份之间只有一条 `the_two_resolution_paths_still_agree_on_the_order` 盯着，而它**只对拍顺序**。
 ///
 /// ⚠ **那条判据眼皮底下真的漂了一次，而它全程绿**〔`K-R43` 现打，读数住件文件 `§9`〕：
 /// `K-R42` 只给 [`start_or_extract`] 接上了上面那两段（问产物带没带 · 释放失败说一句分得开的话），
-/// `resolve_daemon_bin` 一个字没动 —— 顺序仍是「先旁边、再释放」⇒ 那条判据**照样绿**。
+/// `resolve_backend_bin` 一个字没动 —— 顺序仍是「先旁边、再释放」⇒ 那条判据**照样绿**。
 /// 于是同一台机器上，两条路对**同一个失败**给出的是两句性质不同的话。
 /// ⇒ 处置**不是**再加一条「两边内容也要一样」的对拍（那是「测自己的副本」的近亲，
 /// 本模块 [`local_extract_name`] 的头注逐字论证过同一件事），是**只留一份**。
 ///
 /// # 它不做什么
 ///
-/// **不监护**。监护是 [`start_or_extract`] 那一半 —— 常驻那条路（`local_daemon.rs`）
+/// **不监护**。监护是 [`start_or_extract`] 那一半 —— 常驻那条路（`local_backend_host.rs`）
 /// 起完就脱离，它要的只是这个答案。**「找」与「监护」焊在一起，正是当初逼出第二份实现的那颗钉子。**
 pub fn resolve_or_extract(
     target_triple: &str,
@@ -1741,12 +1760,12 @@ pub fn resolve_or_extract(
         }
         // `K-R42`：宿主给不出就问这一份产物自己带没带（头注「第二个来源」那一段）。
         // ⚠ 中间这个**带标注的局部**不是多余的：内嵌那份是 `&'static`，直接
-        // `embedded.or_else(native_embedded_daemon)` 会把两边的生存期**往 `'static` 上**统一，
+        // `embedded.or_else(native_embedded_backend)` 会把两边的生存期**往 `'static` 上**统一，
         // 于是编译器要求调用方那个借来的 `embedded` 也活到 `'static`（实测 `E0521`）。
         // 标注一下就让它按**短的那个**统一（`'static` 往下兼容，反过来不行）。
-        let carried: Option<(&str, &[u8])> = native_embedded_daemon();
+        let carried: Option<(&str, &[u8])> = native_embedded_backend();
         let Some((build_id, bytes)) = embedded.or(carried) else {
-            // 两个来源都空（`cfg(embedded_daemons)` 与 `cfg(embedded_native_daemon)` 都未置）⇒
+            // 两个来源都空（`cfg(embedded_backends)` 与 `cfg(embedded_native_backend)` 都未置）⇒
             // 诚实降级，把 `beside` 的 reason/looked_at 原样交回，别伪造一个新理由。
             break 'resolve beside;
         };
@@ -1759,7 +1778,7 @@ pub fn resolve_or_extract(
                 //    09-10 一整天治的正是这一形：读面把「读不到」说成「你没有」。
                 let reason = extraction_failure_reason(extract_dir, &e);
                 // 光靠返回值不够响：调用方可能只把它记进 `tracing::info!`
-                //（`K-R43` 之前，`local_daemon.rs` 那条自动起的路对没有记录的失败就是这么走的
+                //（`K-R43` 之前，`local_backend_host.rs` 那条自动起的路对没有记录的失败就是这么走的
                 //  —— 而它当时**根本走不到这里**，那条路自己拼了一句分不开的话）。
                 // ⇒ 这一支自己吼一声 error，日志里一定留得下。**两条路今天共用这一声。**
                 tracing::error!("{reason}");
@@ -1786,7 +1805,7 @@ pub fn resolve_or_extract(
 }
 
 /// P2z：**生产入口的自释放版** —— [`resolve_or_extract`] 找到就起并看住它。
-/// 这就是「单 exe 也能起 daemon 进程」那句话的落点。
+/// 这就是「单 exe 也能起后端进程」那句话的落点。
 ///
 /// ⚠ 本函数 = **那一份共用的解析 + 监护**。「在哪找、找不到说什么」一个字都不住这里
 /// （`K-R43` 抽走了，理由住 [`resolve_or_extract`] 的头注）。

@@ -191,13 +191,13 @@ fn refusal_reasons_are_a_closed_set() {
 /// 真名是 `single_stream_guard.rs`。
 ///
 /// ⚠ **治的不是那一个词**，也不是「本模块头注」这一处（`brief` 第 15 条那一问：
-/// 我治的是这一处，还是**所有同职的地方**？）⇒ 人群是**本轮新增的那三个 daemon 文件**
+/// 我治的是这一处，还是**所有同职的地方**？）⇒ 人群是**本轮新增的那三个后端文件**
 /// 的头注，逐个文件、逐个住址。一条承重头注把读者指向一个不存在的住址，
 /// 是「**指了住址，但住址是假的**」——`brief` 第 13 条那一族的反面。
 ///
 /// # 分母（现打 08-27，量具 = 一段正则 + 逐条落盘核在不在）
 ///
-/// - 本轮新增的三个 daemon 文件（`listen.rs` / `single_stream_guard.rs` / `ratchet_guard.rs`）
+/// - 本轮新增的三个后端文件（`listen.rs` / `single_stream_guard.rs` / `ratchet_guard.rs`）
 ///   **全文**的路径式引用共 **22 处**（去掉一个正则假阳性 `buf.shrink_to_fit()`），
 ///   **悬空 1 处**，就是这一处；另两份**零悬空**。
 /// - ⚠ **射程之外，如实登记**：同一把尺子扫**全 crate 69 个 `.rs` 的 `//!` 头注**
@@ -235,7 +235,7 @@ fn every_file_this_head_note_points_at_really_exists() {
     }
     // 头注里写住址有四种形态：后端树内的裸文件名 · `relay/xxx.rs` 这种树内相对路径 ·
     // `src/bridge/src/xxx.rs` / `tests/e2e/xxx.sh` 这种从仓根写起的 ·
-    // **monitor 侧的裸文件名**（`daemon_policy.rs` —— 跨半个仓引用在本仓是常态）。四个根都试。
+    // **monitor 侧的裸文件名**（`backend_policy.rs` —— 跨半个仓引用在本仓是常态）。四个根都试。
     let roots = [
         // 〔搬树 2026-09-17〕后端源码树从 `src/backend` 搬到 `<repo>/src/backend`，
         // manifest 留在原处 ⇒ 这一格不再是 `manifest/src`。走那个唯一住址。
@@ -312,7 +312,7 @@ fn the_listen_address_is_loopback_and_it_is_a_literal() {
 /// ★★ **超限之后内存不涨** —— 这条性质只有把 `cap` 做成参数才测得动。
 ///
 /// 拿真常量（8 KiB）来测的话，要喂进去的字节量大到只能靠量 RSS 去证，
-/// 而那种证法进不了单测（daemon 侧当年正是那么发现问题的）。
+/// 而那种证法进不了单测（backend 侧当年正是那么发现问题的）。
 #[tokio::test]
 async fn an_over_cap_attach_line_is_dropped_whole_and_says_so() {
     let long = format!("{}\n", "x".repeat(100));

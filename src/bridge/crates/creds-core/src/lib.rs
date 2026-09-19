@@ -1,5 +1,5 @@
 //! **第三方 API key 的唯一住址** —— 装它的类型（本文件）· 它落盘的格式（[`store`]）·
-//! 它的权限够不够窄（[`perm`]）。monitor 与远端 daemon 共用同一份。
+//! 它的权限够不够窄（[`perm`]）。monitor 与远端后端共用同一份。
 //!
 //! # 这一档保什么、不保什么（`K-H2a §0a`〔用 08-26〕选的第三档，逐字抬进来）
 //!
@@ -42,8 +42,8 @@
 //! # 分工（别把两件事混成一件）
 //!
 //! - **写**这份文件：**只有 monitor 那一侧**（本 crate 的 `harden` feature 打开时）。
-//! - **读**这份文件：两侧都读。daemon 那侧**只许读** —— `K-H2a` 裁四：`readonly_guard.rs`
-//!   扫 daemon 生产段断言不含任何文件系统变更调用，白名单恰好一个模块 `control/fork_write.rs`。
+//! - **读**这份文件：两侧都读。backend 那侧**只许读** —— `K-H2a` 裁四：`readonly_guard.rs`
+//!   扫后端生产段断言不含任何文件系统变更调用，白名单恰好一个模块 `control/fork_write.rs`。
 
 pub mod perm;
 pub mod store;
@@ -199,10 +199,10 @@ mod sealed {
         ///   `src/bridge/crates/creds-core/src/store.rs`（`merge_key`）。
         ///
         /// ⚠⚠ **订正〔D1 阻-1，08-27〕：这一段先前写的是一句盘上没有的承诺。**
-        /// 它原文写着「它在 `src/bridge` 生产段里应当是 0 次」「在 daemon 生产段里应当是 0 次」，
+        /// 它原文写着「它在 `src/bridge` 生产段里应当是 0 次」「在后端生产段里应当是 0 次」，
         /// 并声称「三条断言各自守一格」—— 而实际盘上**那两格根本不存在**：
         /// `creds-core` 这条判据只扫 `include_str!("lib.rs")`（**它自己这一个文件**），
-        /// daemon 那条只扫 daemon crate，**`src/bridge` 整个不在任何人的人群里**。
+        /// backend 那条只扫 backend crate，**`src/bridge` 整个不在任何人的人群里**。
         /// 审计一刀坐实：在 monitor 生产段取一次明文 `eprintln!` 出去 ⇒ 8 包合计 **1284 passed，一条没红**。
         /// **留着一句盘上没有的承诺，比没有这句话更坏。**
         ///
@@ -216,7 +216,7 @@ mod sealed {
         /// 3. **调用面 + 人群**：`creds_store::the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_three_trees`
         ///    （`src/bridge/src/creds_store.rs`）—— 扫 **`src/bridge/src` · `src/bridge/crates` ·
         ///    `src/backend` 三棵树**的生产段，两个出口各自的调用点数与住址都钉死。
-        /// 另有 daemon 那个 crate 内部的一格单断：`relay::creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`。
+        /// 另有后端那个 crate 内部的一格单断：`relay::creds_guard::the_plaintext_leaves_the_type_at_exactly_one_place_in_this_crate`。
         pub fn expose_for_persisting(&self) -> &str {
             &self.0
         }

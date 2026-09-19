@@ -59,7 +59,7 @@ cat <<EOF
    手动前台/后台:  cc-busd start   (停:cc-busd stop;状态:cc-busd status)
    或装成 systemd --user 服务(开机自启):
      mkdir -p ~/.config/systemd/user && cp "$SKILLDIR/examples/cc-busd.service" ~/.config/systemd/user/
-     systemctl --user daemon-reload && systemctl --user enable --now cc-busd
+     systemctl --user backend-reload && systemctl --user enable --now cc-busd
 
 4) 【可选:开路由策略】cp $BUSHOME/config.example $BUSHOME/config,按需开限流/ACL(见文件注释)。
 

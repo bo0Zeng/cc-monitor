@@ -36,8 +36,8 @@ export function faceTitle(face: DriftFace): string {
       return "已知类型解析失败";
     case "unknown_session_kind":
       return "未登记的会话 kind";
-    case "unknown_daemon_token":
-      return "远端 daemon 声明了我们不认识的能力";
+    case "unknown_backend_token":
+      return "远端后端声明了我们不认识的能力";
     default:
       // 后端加第五个面时**不许整页炸掉**，也不许静默吞掉 —— 显示原名。
       return `未命名的面（${String(face)}）`;
@@ -52,7 +52,7 @@ export function countUnit(face: DriftFace): string {
       return "条记录";
     case "unknown_session_kind":
       return "次观测（每次重扫一次，不是会话数）";
-    case "unknown_daemon_token":
+    case "unknown_backend_token":
       return "次握手";
     default:
       return "次";

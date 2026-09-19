@@ -2,7 +2,7 @@
  * 设置面板「远端 (SSH)」区（SSH-remote issue #15 / 多机 #30）。
  *
  * 让用户配置 + 启用「远端模式」：monitor 通过 SSH 连到 **0..N 台** 远端主机，由各台的
- * daemon 作为额外数据源（与本地 jsonl-watcher 聚合）。配置写入 config.json 的 `remote`
+ * backend 作为额外数据源（与本地 jsonl-watcher 聚合）。配置写入 config.json 的 `remote`
  * 子对象（`{ enabled, hosts: [...] }`），由 Rust 侧 `lib.rs::load_remote_configs` 启动时读。
  *
  * **camelCase key 必须与 Rust reader 严格一致**（否则后端读不到）：
@@ -19,7 +19,7 @@
  * - 每次输入 change 立即保存（无"未保存"中间态）→ refresh() 可安全从 config 重建卡片。
  *
  * Tier 1（issue #15）：从 ~/.ssh/config 导入别名（`ssh -G`）→ 作为**新机器**加入列表；
- * 每台各有「测试连接」（`test_remote_connection`）展示 SSH/指纹/daemon，指纹可一键固化。
+ * 每台各有「测试连接」（`test_remote_connection`）展示 SSH/指纹/backend，指纹可一键固化。
  */
 
 import { commands } from "../ipc/commands";
@@ -55,7 +55,7 @@ import { markRestartNeeded } from "./restart-notice";
 import { computeGaps, summarizeGaps, describeGap } from "./readiness";
 // K-P1/P2s：本机后端那条把手的 origin。**与 `LOCAL_MACHINE_KEY` 不是同一个串** ——
 // 前者是后端注册表里的键（`inbound_client::LOCAL_ORIGIN`），后者是这本 UI 账本的键。
-import { LOCAL_ORIGIN } from "../daemon-policy";
+import { LOCAL_ORIGIN } from "../backend-policy";
 import { hostOs } from "./host-os"; // S9：本机 OS 决定哪些组件适用
 // 旧调用点从本模块 import 这两个（测试也是）——搬家后原样再导出，不制造无谓的改动面。
 export { shouldShowResetFingerprint };
@@ -80,7 +80,7 @@ import type { ImportMember } from "../generated/ImportMember";
 
 
 const REMOTE_INFO_TEXT =
-  "远端模式：monitor 通过 SSH 连到一台或多台远端主机，由各台 daemon 作为额外数据源\n" +
+  "远端模式：monitor 通过 SSH 连到一台或多台远端主机，由各台后端作为额外数据源\n" +
   "与本地聚合（渲染、Tab、分支等行为完全相同；远端 Tab 标题带 [机器名] 前缀）。\n" +
   "关闭（默认）或机器列表为空时一切走本地，不受影响。\n\n" +
   "⚠ 启用 / 修改任意远端设置后，需重启 monitor 才生效。\n" +
@@ -205,7 +205,6 @@ export class RemoteSection {
   private original: RemoteConfig = {
     enabled: false,
     hosts: [],
-    legacyNoBackend: [],
   };
 
   /**
@@ -277,8 +276,8 @@ export class RemoteSection {
     strip.className = "remote-machine-status";
     legend.appendChild(strip);
     // 🔴 `K-R59`（09-11）：**这里原来写死了一格 `na`** ——
-    //    「daemon 那格对本机是不适用，不是「缺组件」：`watcher.rs` 直读 jsonl，
-    //      本机压根不需要 daemon（主计划 §2.4 那张表逐字写着「不需要」）」。
+    //    「backend 那格对本机是不适用，不是「缺组件」：`watcher.rs` 直读 jsonl，
+    //      本机压根不需要后端（主计划 §2.4 那张表逐字写着「不需要」）」。
     //    那句话在 `C7`〔用 08-03〕之后就不成立了（`local_backend.rs` 就是它的产物），
     //    而它**一个 `daemonless` 字样都不含** —— 与 `readiness.notApplicable` 那一支同一档。
     //    ⇒ 撤掉写死值，照实画账本。
@@ -289,14 +288,14 @@ export class RemoteSection {
   }
 
   /**
-   * `K-R59`：**本机 `daemon` 那一格的写点。**
+   * `K-R59`：**本机 `backend` 那一格的写点。**
    *
    * # 为什么非有不可
    *
-   * 撤掉 `readiness.notApplicable` 里那条豁免之后，本机的 `daemon` 变成一格**适用**的格子。
+   * 撤掉 `readiness.notApplicable` 里那条豁免之后，本机的 `backend` 变成一格**适用**的格子。
    * 而全仓对 `LOCAL_MACHINE_KEY` 的 `recordFacet` 写点此前只有一个
    *（`accounts-section.ts::note`，只写 `acctIso`/`accounts`）⇒ 少了这一行，
-   * 本机 daemon 会**恒 `unknown`**，「还差什么」那张清单对任何人都清不空 ——
+   * 本机后端会**恒 `unknown`**，「还差什么」那张清单对任何人都清不空 ——
    * 那正是 `facet-producer-guard.vitest.ts` 与 `N-F2` 各治过一遍的同一个洞
    *（⚠ 两者都**看不见**这一格：前者按 facet 扫源码，后者管的是另外两格）。
    *
@@ -304,14 +303,14 @@ export class RemoteSection {
    *
    * 一次性、只问**本机**那一把手（不走 ssh、不扇出 N 台），只在打开设置面板重建列表时发一次
    * —— 与 `machine-status.ts` 头注那条红线（「打开设置页时顺便把 N 台机器都探一遍」）
-   * 不是同一件事；`daemon-section` 在同一个面板上早就在问同一个命令了。
+   * 不是同一件事；`backend-section` 在同一个面板上早就在问同一个命令了。
    * 查不到 ⇒ **不写账本**（「答不出来」不是「没有」，那是本模块最贵的一条区分）。
    */
   private async noteLocalBackend(): Promise<void> {
     try {
-      const st = await commands.daemon_status({ origin: LOCAL_ORIGIN });
+      const st = await commands.backend_status({ origin: LOCAL_ORIGIN });
       const on = st.channel === true;
-      recordFacet(LOCAL_MACHINE_KEY, "daemon", {
+      recordFacet(LOCAL_MACHINE_KEY, "backend", {
         kind: on ? "ok" : "fail",
         detail: on ? "已连上" : "没起来",
       });
@@ -363,12 +362,9 @@ export class RemoteSection {
    * 后果写出来（不只是一个 ✗），让他自己判断值不值得补。
    */
   private renderGaps(hosts: RemoteHostConfig[]): void {
-    // `KR59D3`：盘上还带着旧「不装后端」开关的主机 ⇒ 那一格换成一条**指名的**告知。
-    const legacy = new Set(this.original.legacyNoBackend);
     const gaps = computeGaps({
       origins: [LOCAL_MACHINE_KEY, ...hosts.map(hostKey)],
       statusOf: readStatus,
-      legacyNoBackend: (o) => legacy.has(o),
       // S9：Windows 本机的启动器是「终端集成」那块，不是 POSIX 的 ccm。
       hostOs: hostOs(),
     });
@@ -1027,9 +1023,6 @@ export class RemoteSection {
     return {
       enabled: this.enabledCheckbox.checked,
       hosts: this.cards.map((c) => c.collect()),
-      // K-R59：这一格说的是**盘上那份 JSON**，卡片上表示不出来 ⇒ 原样带过来。
-      // 它只喂那条迁移告知；`writeRemoteConfig` 根本不读它（保存那一刻旧键就没了）。
-      legacyNoBackend: this.original.legacyNoBackend,
     };
   }
 
