@@ -19,9 +19,9 @@
 //!
 //! 条数由 `crate::layering_guard` 钉住 —— **多一个就红**，逼人回答「这条也该跨层吗」。
 
-pub(crate) mod accounts_query;
+pub mod accounts_query;
 pub(crate) mod fs;
-pub(crate) mod history_query;
-pub(crate) mod search_query;
+pub mod history_query;
+pub mod search_query;
 pub(crate) mod turn_detect;
-pub(crate) mod watcher;
+pub mod watcher;

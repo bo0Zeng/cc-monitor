@@ -315,8 +315,12 @@ fn the_windows_answer_is_confirmed_absent_not_unknown() {
 /// 那由 `#[cfg(windows)] const _` 那条编译期断言守，而**那一条在本仓门禁上不存在**。
 #[test]
 fn the_windows_arm_is_wired_into_the_source() {
-    let prod = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
-    let decl = "const TMUX_PLATFORM: TmuxPlatform = if cfg!(windows) {";
+    // 〔步 9 · 09-19〕`TMUX_PLATFORM` 与 tmux 可用性那一族已搬进 `lib.rs` ⇒ 扫两份的全集。
+    let prod = crate::guard_support::production_code(&crate::guard_support::backend_root_source());
+    let decl = // 〔步 9 · 09-19〕搬进 `lib.rs` 时提了权 ⇒ 逐字锚跟着改成 `pub const`。
+        // ⚠ 这一条**本该红，也真的红了**：它报的是「有一行包含它但不等于它」并把那一行
+        //   原样印了出来 —— 逐字锚的正确失效方式。
+        "pub const TMUX_PLATFORM: TmuxPlatform = if cfg!(windows) {";
     let at = guard_core::pin_line(&prod, decl)
         .unwrap_or_else(|why| panic!("生产段里钉不住那一行：{why}\n（找的是 `{decl}`）"));
     let body: Vec<&str> = prod

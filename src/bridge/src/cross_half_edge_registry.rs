@@ -118,7 +118,10 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     (
         "monitor→backend",
         "tests/bridge/ssh_source_emits_parity.rs",
-        "src/backend/main.rs",
+        // 🔴 〔步 9 · 09-19〕对端从 `main.rs` 改成 `lib.rs` —— `EMITS` 那张表按
+        //    `设计/00 §1.5.4` 前置 1 搬进了后端库面。本行是**盘上现打出来的答案**：
+        //    搬家当天这条判据逐字报「盘上有 `…/lib.rs`、登记里是 `…/main.rs`」。
+        "src/backend/lib.rs",
         "backend 的启动契约（身份清单 / hello）两侧同形",
     ),
     (

@@ -233,7 +233,7 @@ pub(crate) const SUBCOMMAND_WORD: &str = "ccm";
 ///
 /// 🔴 **它必须排在 `split_stream_flags` 之前**：那一步会把 `--with-bg` / `--tail-only`
 /// 从 argv 里**任意位置**剥掉，而 `ccm -- --tail-only` 里那个是要原样透传给 agent 的。
-pub(crate) fn intercept(argv0: &str, args: &[String]) -> Option<Vec<String>> {
+pub fn intercept(argv0: &str, args: &[String]) -> Option<Vec<String>> {
     let base = argv0
         .rsplit(['/', '\\'])
         .next()
@@ -252,7 +252,7 @@ pub(crate) fn intercept(argv0: &str, args: &[String]) -> Option<Vec<String>> {
 ///
 /// 退出码的四档（与旧实现逐字同义，消费者按码分支）：
 /// `0` 正常 · `2` 用法错（`die`）· `3` 会话名被占 · `4` 起不来。
-pub(crate) fn run(args: &[String]) -> i32 {
+pub fn run(args: &[String]) -> i32 {
     let parsed = match argv::parse(args) {
         Ok(p) => p,
         Err(Die(msg)) => return die(&msg),

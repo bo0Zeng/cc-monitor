@@ -264,7 +264,7 @@ mod tests {
     // 二 · 跳② 的判定那一半（`§0d` 出路**丙**）
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// 插件轴的「接得下但做不到」判定 —— 与 `main.rs::unavailable_from` **同形**：
+    /// 插件轴的「接得下但做不到」判定 —— 与 `lib.rs::unavailable_from` **同形**：
     /// **从 `inbound::REGISTRY` 的 `codes` 派生**，不手写第二张「命令→依赖什么」的表。
     ///
     /// 三态与那一份逐字相同（这一格是唯一容易假绿的地方）：
@@ -1423,14 +1423,17 @@ mod tests {
         );
         crate::guard_support::assert_no_test_code("plugin_walk_fixture.rs", &prod);
 
-        // ② `main.rs` 里那一行 `mod` 声明在（掉了本文件整个不编译，但它也可能被改成
+        // ② `lib.rs` 里那一行 `mod` 声明在（掉了本文件整个不编译，但它也可能被改成
         //    别的形状；钉住它，顺带把「PM 预批的那一行」写成一条读数）。
-        let main_rs = std::fs::read_to_string(src_root().join("main.rs")).expect("读 main.rs");
+        // 🔴 〔步 9 · 09-19〕那一行 `mod` 随模块声明整体搬去了 `lib.rs`。
+        //    本条买的是「本件付给宿主的落点**恰好一处**」——落在哪份文件不是它的射程，
+        //    所以住址跟着走，**恒等 1 一个字没松**。
+        let main_rs = std::fs::read_to_string(src_root().join("lib.rs")).expect("读 lib.rs");
         let decl = format!("mod plugin_walk_{};", "fixture");
         assert_eq!(
             main_rs.matches(decl.as_str()).count(),
             1,
-            "`main.rs` 里 `{decl}` 不是恰好一处"
+            "`lib.rs` 里 `{decl}` 不是恰好一处"
         );
 
         // ③ 天花板：测试段里经通用口起进程的，除本文件之外**零处**。
@@ -1997,8 +2000,11 @@ mod tests {
             "本文件的生产段里出现了起进程的形 —— 那会让 `SPAWN_SITES_TODAY` 那个数涨一格"
         );
 
-        // 本件自己付的那 1 处：`main.rs` 的一行 `mod`（而**不是**两处、也不是零处）。
-        let main_rs = std::fs::read_to_string(src_root().join("main.rs")).expect("读 main.rs");
+        // 本件自己付的那 1 处：`lib.rs` 的一行 `mod`（而**不是**两处、也不是零处）。
+        // 🔴 〔步 9 · 09-19〕那一行 `mod` 随模块声明整体搬去了 `lib.rs`。
+        //    本条买的是「本件付给宿主的落点**恰好一处**」——落在哪份文件不是它的射程，
+        //    所以住址跟着走，**恒等 1 一个字没松**。
+        let main_rs = std::fs::read_to_string(src_root().join("lib.rs")).expect("读 lib.rs");
         let decl = format!("mod plugin_walk_{};", "fixture");
         assert_eq!(
             main_rs.matches(decl.as_str()).count(),

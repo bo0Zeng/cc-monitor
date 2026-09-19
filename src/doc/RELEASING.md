@@ -51,7 +51,7 @@
 - [ ] **若本版动过滚动/渲染管线**（stream/tabs/session-viewer/branch-fold/render-*）：跑一遍 `npm run test:f40`（= `tests/e2e/f40-suite.sh`；Linux Xvfb + 一个正在跑的 `tauri dev`，前置见 tests/e2e/README）+ Windows 真机把 tests/e2e/README「人工场景」的 WebView2 复核过一遍（WebKitGTK 无 overflow-anchor，两端补批语义不同）
 - [ ] **若本版改过后端源码**（BUILD_ID 应已随改动 bump）：走 tag 发版由 release.yml 的 build-backends job 从源码重编内嵌二进制（官方渠道恒一致）；**本地手工打包分发**则必须先重编并**换掉 `src/bridge/embedded-backends/` 里的二进制**——否则装出去的是旧后端，连接后无限重装循环。
       > 🔴 **`K-R70`（09-12）：旁挂 `.build_id` 清单这一步没有了。** 身份现在住在二进制**自己的字节**里
-      > （`main.rs::CC_MONITOR_BUILD_STAMP`，一段 `#[used] static`），`build.rs` 直接扫它。
+      > （`lib.rs::CC_MONITOR_BUILD_STAMP`，一段 `#[used] static`），`build.rs` 直接扫它。
       > 那份清单是从**源码常量**抠出来的一张标签 —— 三个载体的标签永远一致，
       > 而「永远一致」证不了任何事（`K-R68` 摸底 · `DECISIONS.md#R26` 裁定零）。
       > **这一格 2026-08-01（U-1）从 warning 升成编译期 panic。** 原来只有一条比 mtime 的

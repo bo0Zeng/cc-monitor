@@ -274,7 +274,7 @@ pub(crate) fn capture_for_inbound(
 /// ⚠ **子命令那个 `--` 字面量刻意留在 `main.rs`，本文件一个都没有**：
 /// `protocol_doc_guard::dispatch_registry_is_complete` 按「生产段里出现 `"--` 字面量」
 /// 收人，本文件一旦持有它就得进 `DISPATCH_FILES`（那份文件不在本件写区）。
-pub(crate) fn run(args: &[String]) -> i32 {
+pub fn run(args: &[String]) -> i32 {
     let Some(name) = args.get(1) else {
         return emit_err((
             "invalid_args",

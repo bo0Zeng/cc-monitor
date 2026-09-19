@@ -15,7 +15,7 @@ const HOME_DIR_NAME: &str = ".claude";
 /// 再退 cwd 下的 `.claude`，让二进制至少起得来。
 ///
 /// `S3` 从 `main.rs::resolve_claude_dir` 原样搬来（逻辑一字未改）。
-pub(crate) fn resolve_home() -> PathBuf {
+pub fn resolve_home() -> PathBuf {
     if let Some(dir) = std::env::var_os(CONFIG_DIR_ENV) {
         return PathBuf::from(dir);
     }

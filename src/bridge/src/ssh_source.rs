@@ -2827,11 +2827,11 @@ const EXPECTED_PROTO_V: u64 = 1;
 /// 本 monitor 期望的 backend build_id。
 ///
 /// **SS-B（issue #33/#29）已单源**：值来自编译期 env `BACKEND_BUILD_ID`，由 `build.rs` 从
-/// `src/backend/main.rs::BUILD_ID` 抠出 emit——与后端源码、F08b 内嵌二进制的
+/// `src/backend/lib.rs::BUILD_ID` 抠出 emit——与后端源码、F08b 内嵌二进制的
 /// build_id **同一事实源**，无需手工同步（F08b 消除了 F06 时的手工同步债）。
 const EXPECTED_BACKEND_BUILD_ID: &str = env!("BACKEND_BUILD_ID");
 
-/// F66（#58③）：monitor **内嵌** backend 声明的能力 token（= backend `main.rs::CAPABILITIES`）。
+/// F66（#58③）：monitor **内嵌** backend 声明的能力 token（= backend `lib.rs::CAPABILITIES`）。
 ///
 /// 用途：部署侧确认「装的是当前内嵌 build」（`confirmed_build == EXPECTED_BACKEND_BUILD_ID`）
 /// 时，第一次连接还没收到 hello，用这份常量预知后端能力、直接发对应 flag——省一轮
@@ -2839,7 +2839,7 @@ const EXPECTED_BACKEND_BUILD_ID: &str = env!("BACKEND_BUILD_ID");
 /// 收到真实 hello 后一律以 backend **自报**的 `capabilities` 为准（见 `hello_confirmed`）。
 ///
 /// **单一事实源（SS-B，同 `EXPECTED_BACKEND_BUILD_ID`）**：值来自 `build.rs::emit_backend_
-/// capabilities` 从 backend `main.rs::CAPABILITIES` 抠出的编译期 env `BACKEND_CAPABILITIES`
+/// capabilities` 从 backend `lib.rs::CAPABILITIES` 抠出的编译期 env `BACKEND_CAPABILITIES`
 /// （逗号分隔）——**不再手抄**（审计 B1/S1：手抄副本漂移时乐观路径可能声明当前 backend
 /// 不剥离的 flag → §26 死循环窄窗；单源杜绝之）。
 fn embedded_backend_capabilities() -> Vec<String> {

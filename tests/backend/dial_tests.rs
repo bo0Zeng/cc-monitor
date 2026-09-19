@@ -156,7 +156,9 @@ fn the_dial_only_happens_under_dial_home() {
 #[test]
 fn the_dial_arm_is_actually_wired_into_the_dispatch() {
     let main_prod =
-        crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
+        // 〔步 9 · 09-19〕那 2 处如今**一处一份文件**：`SUBCOMMANDS` 在 `lib.rs`、
+        // `match` 那条臂在 `main.rs` ⇒ 扫描面必须取两份的全集，否则恒等 2 永远凑不齐。
+        crate::guard_support::production_code(&crate::guard_support::backend_root_source());
     assert!(
         main_prod.len() > 3_000,
         "剥完 main.rs 生产段只剩 {} 字节 —— 剥法坏了，本条此刻在空转",

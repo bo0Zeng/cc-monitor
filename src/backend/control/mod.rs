@@ -49,14 +49,14 @@
 //! 那个函数根本不是 observe 的域逻辑，是通用安全读文件，搬进 `common/fs.rs` 之后
 //! 反向边自然消失。铁律 6：改结构让问题不存在。
 
-pub(crate) mod capture_pane;
+pub mod capture_pane;
 pub(crate) mod cc_bus;
-pub(crate) mod ccm;
-pub(crate) mod cli_control;
-pub(crate) mod fork_write;
+pub mod ccm;
+pub mod cli_control;
+pub mod fork_write;
 pub(crate) mod gate;
 pub(crate) mod identity_tag;
 pub(crate) mod kill;
 pub(crate) mod launch;
-pub(crate) mod resolve_query;
-pub(crate) mod tmux_hook;
+pub mod resolve_query;
+pub mod tmux_hook;

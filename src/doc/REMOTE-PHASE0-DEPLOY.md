@@ -16,7 +16,7 @@
 
 打包 cc-monitor.exe 前，需把后端交叉编译成两份 musl 二进制放进 `src/bridge/embedded-backends/`。
 🔴 **`K-R70`（09-12）：旁边那份同名 `.build_id` 清单不要了。** 身份住在二进制**自己的字节**里
-（`main.rs::CC_MONITOR_BUILD_STAMP`，一段 `#[used] static [u8; N]`，形如 `<<ccm-build-id:<id>:ccm-build-id>>`），
+（`lib.rs::CC_MONITOR_BUILD_STAMP`，一段 `#[used] static [u8; N]`，形如 `<<ccm-build-id:<id>:ccm-build-id>>`），
 `build.rs` 直接扫它。〔为什么换：清单是从**源码常量**抠出来写的一张标签，三个载体的清单**恒等**，
 而恒等的东西一格证据都不提供 —— `K-R68` 摸底 · `DECISIONS.md#R26` 裁定零。〕
 该目录已 gitignore——是构建产物；**整个目录缺失**时 `build.rs` 优雅降级（`cargo:warning` + 自动部署变
@@ -56,7 +56,7 @@ copy target\aarch64-unknown-linux-musl\release\cc-monitor-backend  ..\src/bridge
 > 只做过字节级核对，真机 smoke 前别当已验收。
 
 > **纪律（2026-08-01 U-1 起：`build.rs` 从 warning 升成硬 panic）**：每次改了 backend
-> （尤其 bump `main.rs::BUILD_ID`）都要**重编二进制 + 同步改清单**，两件一起做。
+> （尤其 bump `lib.rs::BUILD_ID`）都要**重编二进制 + 同步改清单**，两件一起做。
 > `build.rs` 会在三种情况直接 panic 掉编译。
 > **三条都以「`embedded-backends/` 里真有那个 arch 的二进制」为前提**（`build.rs:266` 的
 > `if src.exists()`）—— 整个目录不存在时走的是优雅降级（两条 `cargo:warning` + 自动部署 no-op），

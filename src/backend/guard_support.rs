@@ -132,6 +132,23 @@ pub(crate) fn repo_root() -> std::path::PathBuf {
         .to_path_buf()
 }
 
+/// 🔴 〔步 9 · 09-19〕后端 crate 的**根源码面** —— 它从一份变成了两份。
+///
+/// `设计/00 §1.5.4` 前置 1 把模块声明、身份（`BUILD_ID` ＋ 戳）、`SUBCOMMANDS` /
+/// `CAPABILITIES` / `EMITS` 这一族搬进了 `lib.rs`，**分派留在 `main.rs`**。
+///
+/// ⚠ **这个函数存在的理由是「别有第二份手抄」**：搬家当天有 **8** 条源码扫描型守卫
+/// 同时红，全部是因为各自手写着 `include_str!(".../main.rs")`。它们没有瞎报 ——
+/// 每一条都逐字说清了「我要的那个东西不在扫描面里了」。但**八份住址意味着下一次
+/// 搬家还会红八次**，而那八次里只要有一条被人顺手改成「找不到就算了」，
+/// 它就会从此静默恒绿。⇒ 住址收成这一处。
+///
+/// ⚠ **要「只看分派」的判据别用它** —— 那种判据要的是 `main.rs` 单独一份
+/// （比如「这条臂在不在 `match` 里」）。本函数给的是**两份拼起来的全集**。
+pub fn backend_root_source() -> String {
+    format!("{}\n{}", include_str!("lib.rs"), include_str!("main.rs"),)
+}
+
 #[cfg(test)]
 #[path = "../../tests/backend/guard_support_tests.rs"]
 mod tests;

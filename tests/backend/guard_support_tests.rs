@@ -71,7 +71,9 @@ fn the_src_root_address_points_at_a_real_tree() {
 /// 两条解耦线在 `main.rs` 里的落点，比原来那条更承重。
 #[test]
 fn main_production_section_keeps_its_load_bearing_items() {
-    let prod = production_code(include_str!("../../src/backend/main.rs"));
+    // 〔步 9 · 09-19〕承重项如今分居两份（`const BUILD_ID` 在 `lib.rs`，分派在 `main.rs`）
+    // ⇒ 扫描面取全集。本条买的是「剥法没剥过头」，不是「它们住在同一份文件里」。
+    let prod = production_code(&backend_root_source());
     for anchor in [
         format!("const BUILD{}", "_ID"),
         format!("const CAPA{}", "BILITIES"),
