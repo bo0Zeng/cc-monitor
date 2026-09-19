@@ -821,8 +821,18 @@ pub fn test_attr_chunks(src: &str) -> Vec<String> {
 ///
 /// 目录 / 文件读不了、有文件或有块走了兜底、或扫到的文件数 `< min_files`
 /// / 块数 `< min_blocks` 时 panic（守卫语义，只在测试里调）。
+/// # 🔴 `roots` 是**一串**树，不是一棵〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕
+///
+/// 仓库重组之后，「一个半边的源码」**不再是一棵树**：生产段住 `src/<半边>`、
+/// 测试段住 `tests/<半边>`。而本条量的两个单位里，**块那一个单位整个住在测试段**
+/// ⇒ 只喂 `src/` 那一棵，`min_blocks` 那条地板会从 1 200 掉到 412，
+/// 而掉下去之后「没有文件走兜底」这个结论是**在四分之一的语料上**得出的。
+/// ⇒ 调用方**把两棵一起交进来**，地板一格都不用动。
+///
+/// ⚠ **`roots` 里两棵树不许互相包含**（`设计/16 §5.4b` 纪律 1）：包含的话同一份文件
+/// 会被数两遍，两条地板一起虚高 —— 本函数当场拒绝这种参数。
 pub fn assert_block_comment_model_holds(
-    root: &std::path::Path,
+    roots: &[&std::path::Path],
     min_files: usize,
     min_blocks: usize,
 ) {
@@ -831,11 +841,28 @@ pub fn assert_block_comment_model_holds(
         min_blocks > 0,
         "min_blocks 不得为 0 —— 那等于关掉块级计数自检"
     );
+    assert!(!roots.is_empty(), "roots 为空 —— 那等于把整条判据关掉");
+    // ⚠ 先**规范化**再比包含：调用方给的住址里常带 `..`（后端那个 `tests_root()` 逐字是
+    //   `src/backend/../../tests/backend`），而 `Path::starts_with` 是**按分量**比的，
+    //   `..` 对它只是一个普通分量 ⇒ 不规范化的话那两棵树会被误判成互相包含。
+    let norm: Vec<std::path::PathBuf> = roots
+        .iter()
+        .map(|r| std::fs::canonicalize(r).unwrap_or_else(|_| r.to_path_buf()))
+        .collect();
+    for (i, a) in norm.iter().enumerate() {
+        for (j, b) in norm.iter().enumerate() {
+            assert!(
+                i == j || !a.starts_with(b),
+                "语料根 {a:?} 是 {b:?} 的子目录 —— 同一份文件会被数两遍，\
+                 两条地板一起虚高（`设计/16 §5.4b` 纪律 1）"
+            );
+        }
+    }
     let mut n = 0usize;
     let mut blocks = 0usize;
     let mut bad: Vec<String> = Vec::new();
     let mut bad_blocks: Vec<String> = Vec::new();
-    let mut stack = vec![root.to_path_buf()];
+    let mut stack: Vec<std::path::PathBuf> = roots.iter().map(|r| r.to_path_buf()).collect();
     while let Some(d) = stack.pop() {
         for entry in std::fs::read_dir(&d).unwrap_or_else(|e| panic!("读目录 {d:?} 失败: {e}"))
         {
@@ -1251,6 +1278,22 @@ pub fn scan_tree_excluding_self(
     // 把自己那一份也读进了自己的语料。
     // ⚠ 修法**不是**给 Windows 开特判：归一成同一种分隔符之后，两个平台走的是同一条路。
     let caller_norm = caller_file.replace('\\', "/");
+    walk_tree(root, exts)
+        .into_iter()
+        .filter(|(path, _)| {
+            // ← 就是这一行：调用者自己那份进不来
+            !path_suffix_matches(&path.to_string_lossy().replace('\\', "/"), &caller_norm)
+        })
+        .collect()
+}
+
+/// 两个 `scan_tree_*` 共用的那一趟遍历 —— **只管「收哪些文件」，一个都不摘**。
+///
+/// 抽出来的理由是 `设计/16 §5.1`（一条形状出现 N 次就抽一个住址）：
+/// 摘除口径有两种（`file!()` 自摘 / 明写名单），而遍历口径只许有一份 ——
+/// 「不下构建产物目录」「空 `exts` = 整棵树」「非 UTF-8 跳过」这三条边界
+/// 各自都是现打逮出来的，写第二份必然漂。
+fn walk_tree(root: &std::path::Path, exts: &[&str]) -> Vec<(std::path::PathBuf, String)> {
     let mut out = Vec::new();
     let mut stack = vec![root.to_path_buf()];
     while let Some(d) = stack.pop() {
@@ -1297,9 +1340,6 @@ pub fn scan_tree_excluding_self(
                     continue;
                 }
             }
-            if path_suffix_matches(&path.to_string_lossy().replace('\\', "/"), &caller_norm) {
-                continue; // ← 就是这一行：调用者自己那份进不来
-            }
             // ★ **读不动 = panic（守卫语义照旧）；不是文本 = 跳过**〔09-15 现打〕。
             //
             // `read_to_string` 把两件事压成了一个 `Err`：**IO 真的失败**（权限 / 坏盘 ——
@@ -1323,6 +1363,81 @@ pub fn scan_tree_excluding_self(
         }
     }
     out.sort_by(|a, b| a.0.cmp(&b.0));
+    out
+}
+
+/// 遍历源码树，**按一张明写的名单摘除**，并且**摘不到就当场红**。
+///
+/// # 🔴 它是 `设计/99` 条 73 那条新纪律的落点：**「摘掉我自己」不许靠 `file!()`**
+///
+/// [`scan_tree_excluding_self`] 用 `file!()` 当针去做后缀比。那在「判据与被扫的树
+/// 同住一棵」的年代是对的；**仓库重组（`设计/16`）把判据搬进 `tests/` 之后它就塌了**：
+/// 被 `#[path]` 引进来的文件，`file!()` 给的是
+/// `src/../../../tests/bridge/X_tests.rs` 这种**带 `..` 的折返路径**，
+/// 而草垛是规范化过的绝对路径 ⇒ **后缀比恒不命中 ⇒ 摘除整个是空转**。
+///
+/// 两种后果，**方向相反而症状相同**（`设计/16 §6.2` A 类）：
+///
+/// | 方向 | 症状 |
+/// |---|---|
+/// | 判据手工把被测那份补回来过 | 补回来的那份**变成重复** ⇒ 「恰好 1 处」读成 2 处 ⇒ **红** |
+/// | 判据没补过、指望摘除挡住自己 | 自己那份**进了人群** ⇒ 判据在自己的登记表/散文里找到自己 ⇒ **静默全绿** |
+///
+/// ⇒ 本函数把排除变成**调用方明写的一张名单**（`设计/16 §5.4b` 纪律 2：
+/// 「把靠位置的排除换成明写的排除 —— 位置会变，那一行不会」），
+/// 并加一条 `file!()` 那条路**从来没有过**的自检：
+///
+/// ★ **名单上每一条都必须真的摘到东西**，摘到 0 份就 panic。
+///   这正是上面那张表两行的共同前提 ——「摘除悄悄失效」—— 的机检形态：
+///   路径写错、文件改名、被排除的那份搬走，都当场变红，而不是安静地多扫一份。
+///
+/// # 名单的匹配口径
+///
+/// 与 [`scan_tree_excluding_self`] 同一把尺（[`path_suffix_matches`]）：
+/// 「整串相等」**或**「匹配点前面恰好是 `/`」，只会摘得更严、绝不多摘。
+/// 名单里写**仓根相对路径**（如 `tests/bridge/structural_scan_tests.rs`），
+/// 别写裸基名 —— `K-R75` 逐字：两棵树里同名文件是常态。
+///
+/// # Panics
+///
+/// 目录读不了 / 文件读不了时 panic；名单里有一条**一份都没摘到**时 panic。
+pub fn scan_tree_excluding(
+    root: &std::path::Path,
+    exts: &[&str],
+    excluded: &[&str],
+) -> Vec<(std::path::PathBuf, String)> {
+    assert!(
+        !excluded.iter().any(|e| e.is_empty()),
+        "排除名单里有空串 —— 空串会命中一切，那比不排除更坏（静默空集）"
+    );
+    // 名单为空时退化成「不排除」是合法的：调用方就是要整棵树。
+    // ⚠ 但**不许**把 `file!()` 塞进名单 —— 那是本函数存在的理由的反面。
+    let all = walk_tree(root, exts);
+    let mut hits = vec![0usize; excluded.len()];
+    let mut out = Vec::new();
+    for (path, src) in all {
+        let norm = path.to_string_lossy().replace('\\', "/");
+        let mut dropped = false;
+        for (i, e) in excluded.iter().enumerate() {
+            if path_suffix_matches(&norm, &e.replace('\\', "/")) {
+                hits[i] += 1;
+                dropped = true;
+            }
+        }
+        if !dropped {
+            out.push((path, src));
+        }
+    }
+    for (i, e) in excluded.iter().enumerate() {
+        assert!(
+            hits[i] > 0,
+            "排除名单上的 `{e}` 在 {root:?} 下一份都没摘到 —— \
+             它改名了 / 搬走了 / 路径写错了。\n\
+             ★ 这一格非红不可：排除悄悄失效之后，那份文件会**回到人群里**，\
+             而判据在自己的登记表或散文里找到自己 ⇒ **恒绿**，\
+             读起来和「真的没有违规」一模一样（`设计/16 §6.2` A 类）。"
+        );
+    }
     out
 }
 
@@ -1691,6 +1806,64 @@ mod tests {
             files.iter().any(|(p, _)| p.ends_with("lib.rs")),
             "换成匹配不上的摘除名之后 `lib.rs` **仍然**不在结果里 —— \
              说明遍历本来就坏了，上一条的「为空」是假信号（零命中地绿）"
+        );
+    }
+
+    /// 🔴 **`file!()` 自摘在「判据被 `#[path]` 引进来」时是空转的** —— 条 73 的成因钉。
+    ///
+    /// 仓库重组（`设计/16`）之后，测试模块长这样：
+    /// `#[cfg(test)] #[path = "../../../tests/bridge/X_tests.rs"] mod tests;`
+    /// 被引进来的那份文件里 `file!()` 给的是 `src/../../../tests/bridge/X_tests.rs` ——
+    /// **带 `..` 的折返路径**，而草垛是规范化过的绝对路径 ⇒ 后缀比**恒不命中**。
+    ///
+    /// ⚠ 这一条**不是**在要求把它修好（修好之后它仍然只是「看起来像在工作」）；
+    /// 它是把那个失效**钉成一条读得出来的事实**，好让条 73 那条纪律有据可依：
+    /// 靠 `file!()` 自摘的判据，一搬树就安静地把自己收进了自己的语料。
+    #[test]
+    fn a_path_attribute_caller_file_silently_fails_to_exclude() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let folded = "src/../../../crates/guard-core/src/lib.rs";
+        let files = scan_tree_excluding_self(&root, &["rs"], folded);
+        assert!(
+            files.iter().any(|(p, _)| p.ends_with("lib.rs")),
+            "折返形的 `caller_file` 居然摘掉了调用者 —— 那说明后缀比的口径变了，\
+             条 73 那条纪律的成因描述要跟着重写"
+        );
+    }
+
+    /// ★ 明写名单**真的摘得掉** —— [`scan_tree_excluding`] 的正控。
+    #[test]
+    fn a_named_exclusion_actually_drops_that_file() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let files = scan_tree_excluding(&root, &["rs"], &["crates/guard-core/src/lib.rs"]);
+        assert!(
+            files.is_empty(),
+            "明写名单没把 `lib.rs` 摘掉，实得 {:?}",
+            files.iter().map(|(p, _)| p).collect::<Vec<_>>()
+        );
+        // 对照组：名单为空 ⇒ 它必须回来（否则上面那个「为空」是遍历坏了）。
+        assert!(
+            scan_tree_excluding(&root, &["rs"], &[])
+                .iter()
+                .any(|(p, _)| p.ends_with("lib.rs")),
+            "名单为空时 `lib.rs` 仍然不在结果里 —— 遍历坏了，上一格的「为空」是假信号"
+        );
+    }
+
+    /// 🔴 **名单摘不到东西就当场红** —— 这正是 `file!()` 那条路从来没有过的那一格。
+    ///
+    /// 排除悄悄失效之后，被排除的那份会**回到人群里**，而判据在自己的登记表或散文里
+    /// 找到自己 ⇒ 恒绿，读起来和「真的没有违规」一模一样。
+    #[test]
+    fn an_exclusion_that_matches_nothing_is_a_hard_error() {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let err = std::panic::catch_unwind(|| {
+            scan_tree_excluding(&root, &["rs"], &["crates/guard-core/src/gone.rs"]);
+        });
+        assert!(
+            err.is_err(),
+            "名单上写了一个盘上没有的文件，本函数却一声不吭 —— \
+             那就退回成了 `file!()` 那条「关掉之后看起来和没关一模一样」的路"
         );
     }
 
@@ -2113,7 +2286,7 @@ mod tests {
     #[test]
     fn this_crate_never_falls_back_to_not_stripping() {
         assert_block_comment_model_holds(
-            &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+            &[&std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src")],
             1,
             30,
         );

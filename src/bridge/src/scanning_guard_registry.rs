@@ -48,7 +48,7 @@
 //! # ★ 登记一个**第五形**（`K-R31` `D2`，09-06）—— 只登记，不加判据
 //!
 //! 上面那张四类表说的是「这份遍历**凭什么读不到自己**」。`K-R31` 新立的那条判据
-//! （`local_backend.rs::nothing_in_the_production_path_runs_code_between_fork_and_exec`）
+//! （`local_backend_tests.rs::nothing_in_the_production_path_runs_code_between_fork_and_exec`）
 //! 走的是一个上面没有的形状：**`scan_tree!` 摘掉自己那份之后，
 //! 又用 `include_str` 那个宏把自己那一份显式加回来**。
 //!
@@ -317,9 +317,19 @@ mod tests {
     ///   （删掉的那份文件还在裸遍历 ⇒ 当场以 `newcomers` 红）。
     /// - 它**挡不住把那条判据本身删掉** —— 买的是**留痕**，不是不可能。
     const PENDING: &[&str] = &[
+        // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕**下面 7 行换了住址，条数一格没变**
+        //    （`PENDING_CEILING` 因此**没有动** —— 一个裸遍历都没少，只是它们跟着
+        //    自己那条判据搬进了 `tests/`）。逐份点名：
+        //      `backend/control/daemon_kill.rs`  → `tests/bridge/backend/control/daemon_kill_tests.rs`
+        //      `backend/control/launch_wire.rs`  → `tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs`
+        //      `panorama.rs`                     → `tests/bridge/panorama_tests.rs`
+        //      `parser.rs`                       → `tests/bridge/parser_tests.rs`
+        //      `profile_installer.rs`            → `tests/bridge/profile_installer_tests.rs`
+        //      `ssh_source.rs`                   → `tests/bridge/ssh_source_f032_idle_tests.rs`
+        //      `utils.rs`                        → `tests/bridge/utils_tests.rs`
         "src/bridge/src/atomic_replace_registry.rs",
-        "src/bridge/src/backend/control/daemon_kill.rs",
-        "src/bridge/src/backend/control/launch_wire.rs",
+        "tests/bridge/backend/control/daemon_kill_tests.rs",
+        "tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs",
         "src/bridge/src/backend/mod.rs",
         "src/bridge/src/backend/observe/local_query.rs",
         "src/bridge/src/cross_half_edge_registry.rs",
@@ -328,17 +338,17 @@ mod tests {
         "src/bridge/src/frame_cadence_guard.rs",
         "src/bridge/src/gate_singleton_guard.rs",
         "src/bridge/src/local_read_surface_registry.rs",
-        "src/bridge/src/panorama.rs",
-        "src/bridge/src/parser.rs",
+        "tests/bridge/panorama_tests.rs",
+        "tests/bridge/parser_tests.rs",
         "src/bridge/src/polling_registry.rs",
-        "src/bridge/src/profile_installer.rs",
+        "tests/bridge/profile_installer_tests.rs",
         "src/bridge/src/quote_singleton_guard.rs",
         "src/bridge/src/rust_timer_registry.rs",
         "src/bridge/src/session_name_registry.rs",
         "src/bridge/src/shared_crate_registry.rs",
-        "src/bridge/src/ssh_source.rs",
+        "tests/bridge/ssh_source_f032_idle_tests.rs",
         "src/bridge/src/tmux_daemon_gate_guard.rs",
-        "src/bridge/src/utils.rs",
+        "tests/bridge/utils_tests.rs",
         "tests/backend/layering_guard.rs",
         "tests/backend/no_timer_guard.rs",
         "src/backend/observe/watcher.rs",
@@ -469,6 +479,21 @@ mod tests {
     }
 
     /// 抠出所有 `#[cfg(test)]` 段（到下一个顶层 `}` 为止）。
+    /// 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**住 `tests/` 的文件整份就是测试段。**
+    ///
+    /// [`test_regions`] 与 `guard_core::test_source` 都靠 `#[cfg(test)]` 这个**标记**
+    /// 切出测试段 —— 那个标记是「生产段与测试段同住一份文件」那个年代的产物。
+    /// 剖分之后 `<repo>/tests/` 那棵树**整棵不进 `cargo build`**，里面的文件
+    /// 一个 `#[cfg(test)]` 都不需要写 ⇒ 两个切法对它们一律交回**空串**，
+    /// 而空串会让本模块两层判据（文件级 · 判据级）对那棵树**恒真地绿**
+    /// —— 本模块从头到尾治的正是「没红与没看在输出上一模一样」这个形状。
+    fn test_side_of(rel: &str, src: &str) -> String {
+        if rel.starts_with("tests/") {
+            return src.to_string();
+        }
+        test_regions(src)
+    }
+
     fn test_regions(src: &str) -> String {
         let mut out = String::new();
         let mut i = 0usize;
@@ -560,13 +585,14 @@ mod tests {
                     .to_string_lossy()
                     .replace('\\', "/");
                 seen.push(rel.clone());
-                for (name, item) in guards_declaring_a_table(&guard_core::test_source(&src)) {
+                let test_side = test_side_of(&rel, &src);
+                for (name, item) in guards_declaring_a_table(&test_side) {
                     per_guard.push(format!("{rel}::{name}"));
                     if !REVERSE.iter().any(|m| item.contains(m)) {
                         missing_guards.push(format!("{rel}::{name}"));
                     }
                 }
-                let regs = test_regions(&src);
+                let regs = test_side;
                 if !declares_a_guard_table(&regs) {
                     continue;
                 }
@@ -673,7 +699,11 @@ mod tests {
         // 改一个名字 ⇒ 那一形当场退回「没被扫到」，而「没被扫到」与「过了」在上面那条
         // 断言上**输出完全相同**（都不红）。⇒ 拿真实住址把至少一形钉住，让它改名即红。
         const MUST_BE_RECOGNISED: &[(&str, &str)] = &[(
-            "src/backend/control/local_backend.rs",
+            // 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕住址跟着判据搬：`K-R31` 那条判据
+            // 与它那张 `FORMS` 一起从 `src/backend/control/local_backend.rs` 搬到了
+            // `tests/bridge/backend/control/local_backend_tests.rs`（现打：全树 `const FORMS:`
+            // 仍然**恰好一处**，就是它）。**表名与判据名一个字都没改。**
+            "tests/bridge/backend/control/local_backend_tests.rs",
             "`K-R31` 的 `nothing_in_the_production_path_runs_code_between_fork_and_exec`，\
              它的表叫 `FORMS`",
         )];
@@ -726,7 +756,8 @@ mod tests {
         // 而 0 条时下面那两条断言**恒真地绿** —— 与 `K-R33` 那一格同形：
         // 「没扫到你」与「判过你了」在输出上一模一样。⇒ 拿真实住址把**本件的题眼**钉住。
         const MUST_BE_JUDGED_PER_GUARD: &[(&str, &str)] = &[(
-            "src/backend/control/local_backend.rs::nothing_in_the_production_path_runs_code_between_fork_and_exec",
+            // 〔搬树 2026-09-18 · `16 §6.2` C 类〕住址跟着判据搬（表名与判据名没改）。
+            "tests/bridge/backend/control/local_backend_tests.rs::nothing_in_the_production_path_runs_code_between_fork_and_exec",
             "`K-R36` 的题眼：它的表叫 `FORMS`、声明在它自己体内，\
              而同一份文件的测试段里另有几十处 `assert_eq!(` ——\
              文件级那一层对它恒真，判据级这一层才判得到它",
@@ -761,7 +792,8 @@ mod tests {
         /// 起对名字在这里买到的只是**纪律的一致性**，不是「它真被判到了」。
         /// 真正接住这张表腐烂的是紧跟着的那条**幽灵检查**。
         const REGISTERED: &[(&str, &str, &str)] = &[(
-            "src/bridge/src/structural_scan.rs::comment_stripping_has_exactly_one_shared_implementation",
+            // 〔搬树 2026-09-18〕住址订正：那条判据住 `tests/bridge/`，不在 `src/bridge/src/`。
+            "tests/bridge/structural_scan_tests.rs::comment_stripping_has_exactly_one_shared_implementation",
             "它自带扫描面（`scan_tree!`）与登记表，但只断了「扫到的里有没有没登记的」这一向；\
              「登记了却已经不在」那一向没人接 —— 而那正是本条要治的族。\
              本件按 `D2②` 只让它红出来，不代补",
@@ -957,7 +989,12 @@ mod tests {
             // ★ 「哪一行在真正干活」这种断言**必须变异验过再写** —— 本区第三次
             //（F14 第六刀 `[ -r ]` 不能省 · F12 `uiStrings` 两道都不能省 · 本条）。
             for (f, src) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
-                let regs = test_regions(&src);
+                let rel = f
+                    .strip_prefix(&root)
+                    .unwrap_or(&f)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let regs = test_side_of(&rel, &src);
                 // ★ F23 第二刀：**去掉了 `&& !regs.contains("scan_tree!")` 那半**。
                 //
                 // 它是**整份文件级的豁免**：只要测试段里出现过一次 `scan_tree!`，

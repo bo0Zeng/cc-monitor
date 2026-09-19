@@ -1204,7 +1204,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         probe: EnvProbe::OnPath,
         named: "git",
         host: HostScope::Client,
-        why: "认 skill 所在的工作树与主检出要跑它 —— skill_host.rs::git_common_dir",
+        why: "认 skill 所在的工作树与主检出要跑它 —— skill_host_tests.rs::git_common_dir",
     },
     UnmanagedEnv {
         id: "ssh",
@@ -1223,7 +1223,7 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
         probe: EnvProbe::OnPath,
         named: "pgrep",
         host: HostScope::Either,
-        why: "数 cc-bus 的 agent 在不在用它 —— cc_bus.rs::count_now",
+        why: "数 cc-bus 的 agent 在不在用它 —— cc_bus_tests.rs::count_now",
     },
     UnmanagedEnv {
         id: "xdg-open",
@@ -2454,17 +2454,21 @@ mod tests {
         ("crates/acct-core/src/lib.rs", Why::Wording, 1),
         ("crates/branch-core/src/lib.rs", Why::Wording, 1),
         ("crates/creds-core/src/lib.rs", Why::Wording, 1),
-        ("src/accounts.rs", Why::Wording, 8),
+        ("src/accounts.rs", Why::Wording, 7),
+        // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
+        ("tests/bridge/accounts_tests.rs", Why::Wording, 1),
         ("src/acct_iso_deploy.rs", Why::SymbolName, 3),
         ("src/backend/control/daemon_route.rs", Why::Wording, 1),
-        ("src/config_surface.rs", Why::OldId, 4),
+        // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
+        ("tests/bridge/config_surface_tests.rs", Why::OldId, 4),
         // 〔条 67 · 09-18〕`src/cross_half_edge_registry.rs` 那一行删了：它记的旧 id 住在
         // 「app 自带二进制那一层」那条跨半边上，而那条边随 `sidecars/` 整棵走 ⇒ 债真的还了。
         ("src/daemon_control.rs", Why::Wording, 3),
         ("src/doc_copy_registry.rs", Why::Wording, 1),
         ("src/drift_ledger.rs", Why::Wording, 2),
-        ("src/fenced_block.rs", Why::OldId, 1),
-        ("src/fenced_block.rs", Why::SymbolName, 1),
+        // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
+        ("tests/bridge/fenced_block_tests.rs", Why::OldId, 1),
+        ("tests/bridge/fenced_block_tests.rs", Why::SymbolName, 1),
         ("src/history.rs", Why::Wording, 1),
         ("src/inbound_client.rs", Why::Wording, 2),
         ("src/lib.rs", Why::SymbolName, 2),
@@ -2478,14 +2482,26 @@ mod tests {
         ("src/remote_write_registry.rs", Why::SymbolName, 3),
         ("src/remote_write_registry.rs", Why::Wording, 1),
         ("src/session_map.rs", Why::Wording, 1),
-        ("src/sftp.rs", Why::SymbolName, 22),
+        ("src/sftp.rs", Why::SymbolName, 8),
+        // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
+        ("tests/bridge/sftp_tests.rs", Why::SymbolName, 14),
         ("src/sftp.rs", Why::Wording, 6),
         ("src/sftp_move_ledger.rs", Why::SymbolName, 2),
         ("src/sftp_move_ledger.rs", Why::Wording, 1),
-        ("src/skill_host.rs", Why::OldId, 2),
-        ("src/ssh_source.rs", Why::Wording, 6),
+        ("src/skill_host.rs", Why::OldId, 1),
+        // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
+        ("tests/bridge/skill_host_tests.rs", Why::OldId, 1),
+        ("src/ssh_source.rs", Why::Wording, 5),
+        // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
+        (
+            "tests/bridge/ssh_source_stream_flag_gate_tests.rs",
+            Why::Wording,
+            1,
+        ),
         ("src/structural_scan.rs", Why::OldId, 1),
-        ("src/structural_scan.rs", Why::SymbolName, 3),
+        ("src/structural_scan.rs", Why::SymbolName, 1),
+        // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
+        ("tests/bridge/structural_scan_tests.rs", Why::SymbolName, 2),
         ("src/tool_registry.rs", Why::OldId, 6),
         ("src/tool_registry.rs", Why::SymbolName, 8),
         ("src/tool_registry.rs", Why::Wording, 1),
@@ -2641,6 +2657,13 @@ mod tests {
         let crates_root = manifest.join("crates");
         let mut files: Vec<(PathBuf, String)> = guard_core::scan_tree!(&src_root, &["rs"]);
         files.extend(guard_core::scan_tree!(&crates_root, &["rs"]));
+        // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕monitor 这半边今天**第三棵树**：
+        //    测试段整个住 `<repo>/tests/bridge`。少扫它 ⇒ 搬过去的那几处旧名字
+        //    整批掉出人群，读起来像「债还了」，而那句话一个字没改。
+        files.extend(guard_core::scan_tree!(
+            &crate::guard_support::tests_root().join("bridge"),
+            &["rs"]
+        ));
         // 把自己那一份加回来（上面头注那一段说的就是这里）。
         files.push((
             manifest.join("src").join("tool_registry.rs"),
@@ -2655,8 +2678,13 @@ mod tests {
 
         let mut got: BTreeMap<(String, Why), usize> = BTreeMap::new();
         for (p, text) in &files {
+            // 🔴 〔搬树 2026-09-18〕住址两种前缀：本 crate 里的按 `manifest` 相对
+            //    （`src/…` / `crates/…`，与表里既有的几十行同形），第三棵树 `tests/bridge`
+            //    不在 `manifest` 下面 ⇒ 退回按**仓根**相对（`tests/bridge/…`）。
+            //    不这么做的话那棵树的住址会印成绝对路径，表一写死就换台机器就假。
             let rel = p
                 .strip_prefix(manifest)
+                .or_else(|_| p.strip_prefix(crate::guard_support::repo_root()))
                 .unwrap_or(p)
                 .to_string_lossy()
                 .replace('\\', "/");
