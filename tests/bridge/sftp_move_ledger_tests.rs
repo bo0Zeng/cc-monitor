@@ -13,8 +13,7 @@ const PROFILE_SRC: &str = include_str!("../../src/bridge/src/profile_installer.r
 /// 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**校验位跟着判据搬。**
 /// 挡路石「别名 snippet 只许有一个家」引的那句原文是一条 `#[test]` 里的断言，
 /// 剖分把它从 `profile_installer.rs` 搬到了这里。**那句话一个字节没改。**
-const PROFILE_TESTS_SRC: &str =
-    include_str!("profile_installer_tests.rs");
+const PROFILE_TESTS_SRC: &str = include_str!("profile_installer_tests.rs");
 const LOCAL_DAEMON_SRC: &str = include_str!("../../src/bridge/src/local_daemon.rs");
 const BACKEND_SRC: &str = include_str!("../../src/bridge/src/backend/mod.rs");
 
@@ -255,9 +254,7 @@ fn census(corpus: &[(&str, String)]) -> Result<usize, String> {
         total += got;
     }
     if total == 0 {
-        return Err(
-            "生产段里一处 `connect_sftp` 调用点都没有 —— 那不是搬完了，是没扫到。".into(),
-        );
+        return Err("生产段里一处 `connect_sftp` 调用点都没有 —— 那不是搬完了，是没扫到。".into());
     }
     Ok(total)
 }
@@ -357,8 +354,7 @@ fn a_pool_missing_any_one_of_the_three_is_caught_and_named() {
             holed, prod,
             "挖不动「{what}」—— 那说明它本来就不在，本条在空转"
         );
-        let e =
-            three_things_present(&holed).expect_err(&format!("挖掉「{what}」之后判据必须红"));
+        let e = three_things_present(&holed).expect_err(&format!("挖掉「{what}」之后判据必须红"));
         assert!(
             e.contains(what),
             "判据红了却没点名是哪一样（挖掉的是「{what}」），实得：{e}"
@@ -503,7 +499,9 @@ fn this_ledger_does_not_wind_up_an_alarm_clock() {
 /// 乙那一行拿它当理由（池活不过一次 exec），所以它腐了乙那一行就假了。
 #[test]
 fn the_one_shot_shape_of_todays_local_backend_transport_is_still_what_this_ledger_claims() {
-    let prod = production_code(include_str!("../../src/bridge/src/backend/observe/local_query.rs"));
+    let prod = production_code(include_str!(
+        "../../src/bridge/src/backend/observe/local_query.rs"
+    ));
     for pin in [
         "std::process::Command::new(&bin)",
         "pub(crate) fn run_query(",

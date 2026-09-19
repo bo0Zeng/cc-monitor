@@ -365,8 +365,7 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     );
 
     // ② 搜索：**静默**（rc=0）。
-    let rc =
-        crate::observe::search_query::run(&root, &["--search".to_string(), "hi".to_string()]);
+    let rc = crate::observe::search_query::run(&root, &["--search".to_string(), "hi".to_string()]);
     assert_eq!(
         rc, 0,
         "`--search` 的反应变了 —— 本格记的是「今天它 rc=0 零输出」这个事实，\
@@ -388,8 +387,7 @@ fn the_general_layer_answers_a_non_claude_agent_silently_or_with_claudes_words()
     assert_eq!(rc, 0, "`--session-accounts` 的反应变了");
 
     // ④ resume：**静默按 Claude 跑** —— 本件实测到的最坏一种。
-    let spec =
-        format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}");
+    let spec = format!("{{\"agentKind\":\"{AGENT_KIND}\",\"sessionId\":\"{FIXTURE_SESSION_ID}\"}}");
     let plan = crate::control::resolve_query::resolve_json_for_inbound(&spec)
         .expect("`--resolve` 对未知 agentKind 今天不报错（这正是本格要记的）");
     assert_eq!(
@@ -430,9 +428,8 @@ fn the_fixture_agent_never_ships() {
              ⇒ 真填 `hello.homes` 那天，daemon 会向仓外消费方声明一个**不存在**的 agent。"
     );
     // ② 模块声明必须带 `#[cfg(test)]` —— 生产二进制里零字节。
-    let mod_rs =
-        std::fs::read_to_string(crate::guard_support::src_root().join("agents/mod.rs"))
-            .expect("读 agents/mod.rs");
+    let mod_rs = std::fs::read_to_string(crate::guard_support::src_root().join("agents/mod.rs"))
+        .expect("读 agents/mod.rs");
     let decl = format!("mod {AGENT_KIND};");
     let idx = mod_rs.find(&decl).unwrap_or_else(|| {
         panic!("`agents/mod.rs` 里找不到 `{decl}` —— 夹具家的模块声明改了形状，本条在空转")

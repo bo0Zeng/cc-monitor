@@ -1,4 +1,5 @@
-const GOLDEN: &str = include_str!("../../../../src/bridge/src/backend/control/fixtures/gate2-golden.tsv");
+const GOLDEN: &str =
+    include_str!("../../../../src/bridge/src/backend/control/fixtures/gate2-golden.tsv");
 
 fn rows() -> Vec<(String, String, Option<String>, String)> {
     GOLDEN

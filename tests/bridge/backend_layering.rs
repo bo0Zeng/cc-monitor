@@ -212,8 +212,7 @@ fn group_names_layer(group: &str, layer: &str) -> bool {
             .chars()
             .next_back()
             .is_some_and(|c| c == '{' || c == ',' || c.is_whitespace());
-        let after_ok =
-            !group[from..].starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_');
+        let after_ok = !group[from..].starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_');
         if before_ok && after_ok {
             return true;
         }

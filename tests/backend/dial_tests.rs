@@ -155,7 +155,8 @@ fn the_dial_only_happens_under_dial_home() {
 /// 但**源码级的这次退化没有任何判据拦得住** —— 本条就是补上的那一刀。
 #[test]
 fn the_dial_arm_is_actually_wired_into_the_dispatch() {
-    let main_prod = crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
+    let main_prod =
+        crate::guard_support::production_code(include_str!("../../src/backend/main.rs"));
     assert!(
         main_prod.len() > 3_000,
         "剥完 main.rs 生产段只剩 {} 字节 —— 剥法坏了，本条此刻在空转",

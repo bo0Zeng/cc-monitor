@@ -88,11 +88,10 @@ fn a_base_url_that_carries_things_a_prefix_cannot_carry_says_why() {
     // ★★ 理由**逐形不同**：四个理由串放进集合去重之后必须还是 4 个。
     //    这一格才是「一个 None 装了几件事」被治掉的读数 —— 只断 `is_err()` 的话，
     //    把每一支的理由都换成同一句，本条照样全绿。
-    let mut whys: Vec<&'static str> =
-        ["ftp://x", "https://", "https://h/v1?x=1", "https://h//v1"]
-            .iter()
-            .map(|u| Base::parse(u).expect_err("这几形都该是 Err").0)
-            .collect();
+    let mut whys: Vec<&'static str> = ["ftp://x", "https://", "https://h/v1?x=1", "https://h//v1"]
+        .iter()
+        .map(|u| Base::parse(u).expect_err("这几形都该是 Err").0)
+        .collect();
     let n = whys.len();
     whys.sort();
     whys.dedup();

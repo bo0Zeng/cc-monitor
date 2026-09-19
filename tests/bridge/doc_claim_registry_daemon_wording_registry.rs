@@ -91,9 +91,7 @@ fn token_at(s: &[u8], mut a: usize, mut b: usize) -> (usize, usize) {
     }
     while b < s.len()
         && (is_ident(s[b])
-            || (matches!(s[b], b'-' | b'.' | b'/' | b':')
-                && b + 1 < s.len()
-                && is_ident(s[b + 1])))
+            || (matches!(s[b], b'-' | b'.' | b'/' | b':') && b + 1 < s.len() && is_ident(s[b + 1])))
     {
         b += 1;
     }

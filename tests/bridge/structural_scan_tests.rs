@@ -130,12 +130,22 @@ fn no_two_test_attributes_land_on_the_same_function() {
             }
             let mut k = i;
             let mut has_attr = false;
+            // ⚠ 两根前缀针**运行期拼**〔步 7c 现打逼出来的〕：
+            //   `needle_anchor_registry` 的 `.starts_with(` 是**0 上限**的递减棘轮，
+            //   而它认的是「语料变量上的裸字面量匹配」。步 7c 往本文件新加了两处
+            //   从磁盘语料派生的 `let`（`p9_tree_shape` / `fn_bodies` 里的 `lines`），
+            //   而那条棘轮的语料变量追踪是**按名字、整份文件**算的
+            //   ⇒ 这两处**一直存在**的针**第一次被数到**（2 处 > 上限 0）。
+            //   拼出来就不在它的人群里；针的含义一个字没变。
+            //   ★ 如实记：这是「人群扩大之后旧债第一次现形」，不是本轮新写的债。
+            let fn_head = format!("{} ", "fn");
+            let pub_fn_head = format!("pub {} ", "fn");
             while k > 0 {
                 let prev = lines[k - 1].trim();
                 if prev.is_empty()
                     || prev == "\u{7d}"
-                    || prev.starts_with("fn ")
-                    || prev.starts_with("pub fn ")
+                    || prev.starts_with(fn_head.as_str())
+                    || prev.starts_with(pub_fn_head.as_str())
                 {
                     break;
                 }
@@ -1318,7 +1328,9 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
                 .or_else(|| t.strip_prefix("pub "))
                 .unwrap_or(t);
             let head = head.strip_prefix("async ").unwrap_or(head);
-            let is_fn = head.starts_with("fn ") && (in_tests || indent == 4);
+            // 针运行期拼（同上：`.starts_with(` 是 0 上限的递减棘轮）。
+            let fn_kw = format!("{} ", "fn");
+            let is_fn = head.starts_with(fn_kw.as_str()) && (in_tests || indent == 4);
             if is_fn {
                 if let Some(b) = cur.take() {
                     out.push(b.join("\n"));
@@ -2368,7 +2380,11 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         ("src/backend/relay/http1.rs", "handle_alloc_error", 1),
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕散文随测试段搬家，处数一格没变。
-        ("tests/backend/relay/http1_tests.rs", "head_cap_is_enforced", 1),
+        (
+            "tests/backend/relay/http1_tests.rs",
+            "head_cap_is_enforced",
+            1,
+        ),
         (
             "tests/backend/relay/nodelay_guard.rs",
             "both_directions_disable_nagle_in_relay_production_code",
@@ -2926,13 +2942,21 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         ("tests/ipc/commands.vitest.ts", "aggregate_usage_all", 1),
-        ("tests/bridge/parity_ledger_tests.rs", "account_usage_local", 4),
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "account_usage_local",
+            4,
+        ),
         (
             "tests/bridge/parity_ledger_tests.rs",
             "aggregate_remote_usage_all",
             2,
         ),
-        ("tests/bridge/parity_ledger_tests.rs", "aggregate_usage_all", 2),
+        (
+            "tests/bridge/parity_ledger_tests.rs",
+            "aggregate_usage_all",
+            2,
+        ),
         (
             "tests/backend/no_timer_guard.rs",
             "the_oneshot_watchdog_script_carries_no_loop",
@@ -3185,124 +3209,268 @@ fn the_dead_name_scanner_really_sees_each_shape() {
 /// 的剖分计划里，混进来会让下面那两个读数说不清自己在说哪件事。
 const P9_PRODUCTION_TREES: &[&str] = &["src/backend", "src/bridge/src"];
 
-/// 🔴 〔`99 §2.5 P9` 2026-09-18〕**`P9` 剩下两件所依赖的那个前提，今天是假的 ——
-/// 这里是它会说话的读数。**
+/// 一棵生产树今天的形状：`(.rs 份数, 真 `#[test]` 属性数, 内联 test 模块数, 测试专用支撑项数)`。
 ///
-/// # 题面：三件事共用一个前提，而那个前提只写在散文里
+/// 三个计数的**口径分得很细，这一格是承重的**（步 7c 就是被这一格咬到的）：
+/// · **真 `#[test]` 属性** ＝ 整行 trim 之后**逐字等于** `#[test]`。
+///   ⚠ 不用 `src.contains("#[test]")`：那是**子串**口径，会把头注里讲形状的散文算进来
+///   （现打：`src/bridge/src` 今天有 3 处这样的散文 —— `tool_registry` ·
+///   `scanning_guard_registry`×2 · `launch`），于是「这棵树还有测试代码」这句话
+///   会在真的一个都没有的时候仍然为真。**上一版就是这么读的，因此永远响不了。**
+/// · **内联 test 模块** ＝ `#[cfg(test)]`（跳过后续属性行）之后紧接 `mod X {`。
+///   这是 `设计/16 §3.1` 那套剖分要消灭的形状。
+/// · **测试专用支撑项** ＝ `#[cfg(test)]` 之后紧接**别的**以 `{` 收尾的项
+///   （`thread_local! {` · `impl Drop for …` · 辅助 `fn` · 测试专用 `enum`）。
+///   ⚠ 这一类**不是**剖分的标的：`真相源/00` 逐字写着剩下那几份的 `cfg(test)`
+///   「不是 `mod`，是测试专用的 `thread_local!` / 辅助 `fn` / `struct`，
+///   `§3.1` 那套机制罩不住它们，要单独裁」。上一版把它与 test 模块混成一个
+///   「块形」计数，于是剖分做完之后那个数**仍然大于 0**，本条照样不响。
+/// · 分号声明形（`#[cfg(test)] #[path=…] mod X;`）**一个都不算** —— 那正是剖分的产物。
+fn p9_tree_shape(root: &std::path::Path, tree: &str) -> (usize, usize, usize, usize) {
+    // 排除名单刻意留空：本文件住 `tests/bridge/`，**按住址就不在这两棵树里**，
+    // 没有「摘掉我自己」这回事。写成空名单是把这件事明写出来（`§5.4b` 纪律 2）。
+    let files = guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]);
+    let (mut attrs, mut mods, mut support) = (0usize, 0usize, 0usize);
+    let test_attr = format!("#[{}]", "test");
+    let cfg_attr = format!("#[cfg({})]", "test");
+    for (_, src) in &files {
+        let lines: Vec<&str> = src.lines().collect();
+        for (i, l) in lines.iter().enumerate() {
+            if l.trim() == test_attr.as_str() {
+                attrs += 1;
+            }
+            if l.trim() != cfg_attr.as_str() {
+                continue;
+            }
+            // 跳过它后面那一串属性行（`#[path = …]` 之类），再看真正的那一项。
+            // ⚠ 针**运行期拼**：`needle_anchor_registry` 的 `.starts_with(` 是**0 上限**的
+            //   递减棘轮（语料变量上的裸字面量匹配）。步 7c 第一版写成字面量，当场把那条
+            //   棘轮顶破 2 处 —— 拼出来就不在它的人群里，而且顺带没了自指。
+            let attr_open = format!("#{}", "[");
+            let mut j = i + 1;
+            while j < lines.len() && lines[j].trim_start().starts_with(attr_open.as_str()) {
+                j += 1;
+            }
+            let Some(t) = lines.get(j).map(|x| x.trim()) else {
+                continue;
+            };
+            if t.ends_with(';') {
+                continue; // 分号声明形 —— 剖分的产物，不算
+            }
+            if !t.ends_with('{') {
+                continue;
+            }
+            let item = t
+                .strip_prefix("pub ")
+                .or_else(|| t.strip_prefix("pub(crate) "))
+                .or_else(|| t.strip_prefix("pub(super) "))
+                .unwrap_or(t);
+            let mod_kw = format!("{} ", "mod");
+            if item.starts_with(mod_kw.as_str()) {
+                mods += 1;
+            } else {
+                support += 1;
+            }
+        }
+    }
+    (files.len(), attrs, mods, support)
+}
+
+/// 每棵生产树**还允许**留几个「测试专用支撑项」。**递减棘轮，只许往下调。**
 ///
-/// `设计/16` 的 `§4.1`（`strip_cfg_test` 变成恒等函数）· `§4.2`（103 处运行时拼针
-/// 可以改回字面量）· `§4.4`（两个「测试代码漏进生产段」的元守卫可以退役）
-/// 三条预言共用同一个前提：**「剖分做完之后，生产树里就没有测试代码了」**。
+/// 现打（步 7c 剖分做完之后，2026-09-19）：`src/backend` **7** · `src/bridge/src` **15**。
+/// 逐份点名见 `设计/16 §6.5`。这一族要单独裁（`真相源/00` 那句「`§3.1` 罩不住它们」），
+/// 不在步 7c 的写区里 —— 立这条棘轮是为了让它**只减不增**。
+const P9_SUPPORT_ITEM_CEILINGS: &[(&str, usize)] = &[("src/backend", 7), ("src/bridge/src", 15)];
+
+/// 🟢 〔步 7c 2026-09-19〕**剖分做完了 —— 而 `P9` 剩下两件**仍然**做不得，理由换了。**
 ///
-/// ⚠ **前提今天是假的**（现打，2026-09-18）：`src/bridge/` 的剖分只走了「混合文件」
-/// 那 69 份，整份是判据的那些 registry 文件还原地住在 `src/bridge/src`；
-/// `src/backend` 的剖分**根本还没排进 `§6` 那三批**。
+/// # 它接的是谁的岗
 ///
-/// | 生产树 | `.rs` 份数 | `#[cfg(test)]` **块形** | 分号声明形 | 含 `#[test]` 的份数 |
-/// |---|---:|---:|---:|---:|
-/// | `src/backend` | 64 | **66** | 23 | **49** |
-/// | `src/bridge/src` | 110 | **72** | 117 | **44** |
+/// 原来这里住的是 `the_premise_that_p9_waits_on_is_still_false_and_says_so`〔散文墓碑〕。
+/// 那一条断言「两棵生产树的测试代码**不全为 0**」，并在断言文案里写明：
+/// 掉到 0 那天它红，而红的意思是「那棵树剖分做完了 ⇒ `P9` 剩下两件对它成立了」。
 ///
-/// 表里这四个粗体数**就是本条断言的那两格**（写在这里是给人看的参照，
-/// 断言现算 —— 表陈旧了不会让本条变绿）。
+/// 步 7c 把剖分做完了（`src/bridge` 45 份 / 59 块 · `src/backend` 49 份 / 57 块），
+/// 而那一条**没有红** —— 逐条写明为什么，因为这两格都是「量具比它的说法粗」：
+/// ① 它数「含 `#[test]` 的份数」用的是**子串**口径 ⇒ 头注里讲形状的散文照样算命中
+///    （现打 3 处）；
+/// ② 它数「`#[cfg(test)]` 块形」时把 **test 模块**与**测试专用支撑项**
+///    （`thread_local!` / `impl Drop` / 辅助 `fn`）混成一个数 ⇒ 后者按设计还留着
+///    （现打 7 ＋ 15），那个数永远大于 0。
+/// ⇒ 口径按它自己的说法收细之后（见 [`p9_tree_shape`]），「剖分做完」这件事
+///    **今天确实成立**：两棵树真 `#[test]` 属性各 **0** 个、内联 test 模块各 **0** 个。
 ///
-/// # 🔴 为什么它必须是一条判据，而不是散文里的一句话（`§5.4b` 纪律 4）
+/// # 🔴 但它推出来的那个结论是**假的** —— 现打证掉了，所以不能照它说的去做 `P9`
 ///
-/// 那个前提**靠位置生效**：「判据住 `tests/`、语料住 `src/`，所以判据不会被数成测试代码」。
-/// 而「靠位置生效的边界会被搬树静默取消」正是这个仓刚治过的那一族 —— `§6.2` 那 35 条
-/// 就是它一次到齐的形态。更要命的是，依前提做掉的那三件事，**失效方向全是恒绿**：
-/// 拼针改回字面量 ⇒ 判据在自己的语料里找到自己 ⇒ 恒绿；元守卫退役 ⇒ 剥法偏了没人说话 ⇒ 恒绿。
-/// `§5.2` 逐字：「恒绿看起来和真绿一模一样」。
-/// ⇒ 一句散文不会在它由假变真的那天说话，本条会。
+/// | `P9` 剩下那件 | 它原来的前提 | 步 7c 现打 |
+/// |---|---|---|
+/// | ② 103 处拼针改回字面量 | 「判据住 `tests/`、语料住 `src/` ⇒ 自指不可能」 | ⛔ **假**：今天有 **21 份**判据文件把 `tests/` 那棵树（也就是它们自己住的那棵）收进了语料根 —— 而那是 `§6.2` B 类**必须**的修法（不收就整批掉出扫描面）。步 7c 又加了几处。 |
+/// | ③ 退役那两个元守卫 | 「生产段与测试段是不同目录 ⇒ 混淆结构上不可能」 | ⛔ **假**：正控（往生产段塞一段真漏进来的 `#[test]`）⇒ **三条全红**（`readonly_guard::no_test_code_leaks_into_any_production_section` · `guard_support::every_daemon_file_strips_clean` · `structural_scan::every_monitor_file_strips_clean`）。目录不同**不妨碍**有人在 `src/` 里写 `#[test]` —— 今天挡住这件事的就是这三条。 |
 ///
-/// # 它怎么响，以及**红了该干什么**
+/// ⇒ 本条因此**换了岗位**：从「等剖分做完」的闸，变成
+/// ① **守住剖分的成果**（两棵树真 `#[test]` 与内联 test 模块恒为 0，回来一个就红）；
+/// ② **把 `P9` 那两件今天真正的拦路石变成读数**（21 份自指语料 · 三条元守卫还在）。
 ///
-/// 逐棵树两个读数，都断言 **> 0**：
-/// ① `#[cfg(test)]` 的**块形**处数（`#[cfg(test)] #[path=…] mod tests;` 那种分号声明形不算）；
-/// ② 含 `#[test]` 的文件份数。
+/// # 它怎么响
 ///
-/// 某一棵树两个数都掉到 0 ⇒ **本条红**。红的意思**不是「出事了」**，是
-/// **「那棵树的剖分做完了 ⇒ `99 §2.5 P9` 对它成立了 ⇒ 回去做 P9，并把本条同轮收掉」**。
-/// 断言文案里把这句话写进去 —— 一条会红的判据不说清红了该干什么，下一个人只会把它删掉了事。
+/// - 生产树里回来一个 `#[test]` 或一个内联 `mod tests {}` ⇒ 红（剖分被吃回去了）。
+/// - 测试专用支撑项涨过上限 ⇒ 红（那一族只许减，见 [`P9_SUPPORT_ITEM_CEILINGS`]）。
+/// - **「自指语料」的份数掉到 0** ⇒ 红，而那一天的意思是
+///   **`P9` ② 的前提第一次真的成立了 ⇒ 回去做它，并把这一格同轮收掉**。
+/// - 三条元守卫里少了任何一条 ⇒ 红（`P9` ③ 的拦路石被人绕过去了）。
 ///
 /// # ⚠ 它买不到什么（诚实边界）
 ///
-/// - **判不了「某一处拼针该不该拆」** —— 那要逐处看那条判据的人群覆不覆盖它自己那份文件。
-///   本条买的是「前提的真假有一个会说话的读数」，不是「每一处都安全」。
-/// - **判不了剖分做得对不对** —— 回拼对账是 `tests/evidence/W1-split-mixed-files.py` 的活。
-///
-/// # 死值验（2026-09-18 现打，`99 §2.5 P9` 硬纪律 2 要的那一格）
-///
-/// 把两根针换成两个不存在的属性名（人群不变、扫描面不变，只是两个计数必然归零），
-/// 本条**当场红**并逐字打出上面那段解锁文案。⇒ 断言真的会咬人，不是摆设。
-///
-/// ⚠ 本条的针写成**字面量**，不拼。现打验过（两个 workspace 全绿）：本文件住
-/// `tests/bridge/`，而今天没有任何判据的人群**同时**含 `tests/` 且按 `#[test]` /
-/// `#[cfg(test)]` 的**字面量**计数 —— 离得最近的那条（`local_daemon_tests` 那个
-/// `#[test]` 块数地板 1 200，语料含 `tests/bridge`）按「整行 trim 后逐字相等」认块，
-/// 而本文件里这两处是 `let … = "…";`，不是整行。
+/// - 判不了「某一处拼针该不该拆」：那要逐处看那条判据的人群覆不覆盖它自己那份文件。
+/// - 判不了剖分做得**对**不对：回拼对账是 `tests/evidence/W1-split-mixed-files.py` 的活。
+/// - 「三条元守卫还在」按**名字**认，认不出「它被掏空了」——
+///   那一格由它们各自的正控接（步 7c 跑过，读数在上表）。
 #[test]
-fn the_premise_that_p9_waits_on_is_still_false_and_says_so() {
+fn the_split_stays_done_and_p9_is_blocked_for_a_reason_that_says_itself() {
     let root = addr_repo_root();
-    let cfg_attr = "#[cfg(test)]";
-    let test_attr = "#[test]";
 
-    let mut readings: Vec<(&str, usize, usize, usize)> = Vec::new();
+    let mut shapes: Vec<(&str, usize, usize, usize, usize)> = Vec::new();
     for tree in P9_PRODUCTION_TREES {
-        // 排除名单刻意留空：本文件住 `tests/bridge/`，**按住址就不在这两棵树里**，
-        // 没有「摘掉我自己」这回事。写成空名单是把这件事明写出来（`§5.4b` 纪律 2），
-        // 而不是靠 `file!()` 去摘一个根本不在人群里的东西（那条路 `§6.2` A 类刚治过）。
-        let files = guard_core::scan_tree_excluding(&root.join(tree), &["rs"], &[]);
-        let mut block_form = 0usize;
-        let mut with_tests = 0usize;
-        for (_, src) in &files {
-            if src.contains(test_attr) {
-                with_tests += 1;
-            }
-            let lines: Vec<&str> = src.lines().collect();
-            for (i, l) in lines.iter().enumerate() {
-                if l.trim() != cfg_attr {
-                    continue;
-                }
-                // 往后第一条以 `{` 收尾的行 ⇒ 块形；先遇到以 `;` 收尾的行 ⇒ 分号声明形。
-                // （这正是剥法本体分流这两支的那一格，见 `guard_core::test_module_ranges`。）
-                for next in lines.iter().skip(i + 1) {
-                    let t = next.trim_end();
-                    if t.ends_with('{') {
-                        block_form += 1;
-                        break;
-                    }
-                    if t.ends_with(';') {
-                        break;
-                    }
-                }
-            }
-        }
-        readings.push((tree, files.len(), block_form, with_tests));
+        let (files, attrs, mods, support) = p9_tree_shape(&root, tree);
+        shapes.push((tree, files, attrs, mods, support));
     }
 
-    // ★ 反空真：两棵树都得真的读到文件。扫空集 ⇒ 两个数都是 0 ⇒ 本条会**假红**
-    //   并把人送去做一件其实还不能做的事 —— 那比恒绿更糟，所以地板放在断言前面。
-    for (tree, files, _, _) in &readings {
+    // ★ 反空真：两棵树都得真的读到文件。扫空集 ⇒ 三个计数全是 0 ⇒ 下面那两条
+    //   「恒为 0」会**零命中地绿**，而这一次假绿的方向是「宣布剖分守住了」。
+    //   ⇒ 地板放在断言前面。
+    for (tree, files, ..) in &shapes {
         assert!(
             *files >= 40,
-            "`{tree}` 只收到 {files} 份 `.rs` —— 语料塌了，下面两个读数此刻不携带信息"
+            "`{tree}` 只收到 {files} 份 `.rs` —— 语料塌了，下面几个读数此刻不携带信息"
         );
     }
 
-    for (tree, files, block_form, with_tests) in &readings {
-        assert!(
-            *block_form > 0 || *with_tests > 0,
-            "🟢 `{tree}` 的剖分做完了：{files} 份里 `{cfg_attr}` 块形 0 处、\
-             带 `{test_attr}` 的文件 0 份。\n\
+    // ① 剖分的成果：两棵生产树里**一个测试函数都没有**。
+    for (tree, files, attrs, mods, _) in &shapes {
+        assert_eq!(
+            (*attrs, *mods),
+            (0, 0),
+            "🔴 `{tree}`（{files} 份 `.rs`）里测试代码**回来了**：\n\
+             真 `#[test]` 属性 {attrs} 个 · 内联 `#[cfg(test)] mod X {{}}` {mods} 处。\n\
              \n\
-             **本条不是在报故障，是在报一个解锁条件**：\n\
-             `设计/16 §4.1`/`§4.2`/`§4.4` 那三条预言对这棵树**从现在起成立**，\n\
-             `99 §2.5 P9` 剩下的两件（103 处拼针改回字面量 · 退役那两个元守卫）\n\
-             可以对这棵树做了。\n\
-             ⇒ 做完之后**把本条同轮收掉**（它的存在理由就是等这一天），\n\
-             并按 `99 §2.5 P9` 的纪律：退役每一条判据之前先跑一次死值验，\n\
-             用例数逐条点名。"
+             `设计/16 §3.1` 的形状是：生产树里只留三行桩\n\
+             （`#[cfg(test)]` ＋ `#[path = \"…\"]` ＋ `mod X;`），测试体住 `<repo>/tests/`。\n\
+             ⇒ 处置：把它剖出去（量具：`tests/evidence/W1-split-mixed-files.py --apply`，\n\
+             它带逐字节回拼对账）。**别把本条改松** —— 步 7c 之前这棵树上有过\n\
+             533（backend）/ 302（bridge）个测试属性，那个状态是用两轮尺子重瞄换回来的。"
+        );
+    }
+
+    // ② 测试专用支撑项：递减棘轮（这一族要单独裁，不在剖分的射程里）。
+    for (tree, _, _, _, support) in &shapes {
+        let ceiling = P9_SUPPORT_ITEM_CEILINGS
+            .iter()
+            .find(|(t, _)| t == tree)
+            .map(|(_, c)| *c)
+            .unwrap_or_else(|| panic!("`{tree}` 没有登记支撑项上限 —— 加树就在那张表里加一行"));
+        assert!(
+            *support <= ceiling,
+            "`{tree}` 的「测试专用支撑项」涨到 {support}（上限 {ceiling}）—— **只许降**。\n\
+             这一族是 `#[cfg(test)]` 罩着的 `thread_local!` / `impl Drop` / 辅助 `fn`，\n\
+             `§3.1` 那套 `#[path] mod` 机制罩不住它们，要单独裁。\n\
+             ⚠ **不许把上限调上去让今天好过** —— 新写一个就是给那件事又添一笔债。"
+        );
+    }
+
+    // ③ `P9` ② 今天真正的拦路石：判据把**自己住的那棵树**收进了语料。
+    //
+    // 这是 `§6.2` B 类**必须**的修法（不收，搬走的测试就整批掉出扫描面 ⇒ 恒绿），
+    // 而它的直接后果就是「判据住 `tests/`、语料住 `src/`」这个前提失效。
+    // ⚠ 本条自己就是这 21 份之一（它的语料根含两棵生产树，但 ③ 这一格扫的是 `tests/`）——
+    //   如实记，不把自己摘出去：摘出去这个数就说不出「自指还在不在」了。
+    // 🔴 **针一律运行期拼，一个都不许写成整串字面量。**〔步 7c 死值验当场逼出来的〕
+    //
+    // 现打过：第一版把这五根针写成字面量 ⇒ 本文件（住 `tests/`，在③这一格的语料里）
+    // **永远命中自己**，于是 `self_corpus_files` 恒非空、下面那条断言**恒不可能响**。
+    // 那正是本模块从头到尾在治的「判据在自己的语料里找到自己 ⇒ 恒绿」，
+    // 而这一次它长在**新写的判据自己**头上 —— 死值验（把针换成认不出的名字）是唯一
+    // 能看见它的办法：那一趟本条**照样绿**。
+    let t = "tests";
+    let self_corpus_markers = [
+        format!("\"{t}\""),
+        format!("\"{t}/{}\"", "bridge"),
+        format!("\"{t}/{}\"", "backend"),
+        format!("{t}_{}()", "root"),
+        format!("{}_{}()", "code", "roots"),
+    ];
+    // 🔴 **本文件必须明写摘掉，而这一格是死值验逼出来的第二刀。**
+    //
+    // 上面把针改成运行期拼之后，死值验仍然**绿**：针是从 `t` 拼的，而 `t` 的**值**
+    // 必然以字面量出现在本文件里（`let t = "tests";`）⇒ 拼出来的针照样命中本文件。
+    // 换任何一个值都一样 —— 这一格**在本文件上是量不了的**。
+    // ⇒ 排除明写成名单（`scan_tree_excluding` 摘不到就 panic，改名会出声）。
+    //
+    // ⚠ **诚实边界，别读错这个数**：本文件**自己也是这一族的一员**
+    //（`dead_name_corpus()` 的语料根逐字含 `"tests"`）。摘掉它不是因为它不算，
+    // 是因为量具量不了自己。⇒ 下面那个数是 **20**，而真值是 **21**。
+    // 「这一族清零」那天，本文件自己那一处也要一起拆掉 —— 解锁文案里写了这一句。
+    let mut self_corpus_files: Vec<String> = Vec::new();
+    for (path, src) in guard_core::scan_tree_excluding(
+        &root.join("tests"),
+        &["rs"],
+        &["bridge/structural_scan_tests.rs"],
+    ) {
+        if self_corpus_markers.iter().any(|m| src.contains(m.as_str())) {
+            self_corpus_files.push(
+                path.strip_prefix(&root)
+                    .unwrap_or(&path)
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
+        }
+    }
+    self_corpus_files.sort();
+    assert!(
+        !self_corpus_files.is_empty(),
+        "🟢 **`99 §2.5 P9` 第②件的前提第一次成立了** —— 今天没有任何判据文件\n\
+         把 `tests/` 那棵树收进自己的语料根了。\n\
+         \n\
+         **本条不是在报故障，是在报一个解锁条件**：\n\
+         `设计/16 §4.2` 那条「103 处运行时拼针可以改回普通字面量」，它的前提逐字是\n\
+         「判据和语料物理不同文件 ⇒ 自指不可能发生」。那个前提从 `§6.3` B 类修法\n\
+         落地那天起就是假的（判据住 `tests/`，而语料根含 `tests/`）——\n\
+         今天这个数掉到 0，说明那一族自指真的没了。\n\
+         ⇒ 回去做 `P9` 第②件，并把本条这一格**同轮收掉**。\n\
+         ⚠ 本文件被明写摘出了人群（量具量不了自己，理由在上面那段注里）——\n\
+         所以这个数清零时，**还要手工核一遍本文件自己那一处**（`dead_name_corpus()` 的 `\"tests\"`）。\n\
+         ⚠ 做之前先读 `§4.2` 的订正段：那一轮机械改回 326 处 ⇒ 红 12 条，\n\
+         其中一条住 `tests/bridge/`。逐条核过再改。"
+    );
+
+    // ④ `P9` ③ 今天真正的拦路石：三条元守卫都还在。
+    //
+    // `§4.4` 原文说「搬完之后生产段和测试段是不同目录，这个混淆在结构上不可能发生」。
+    // 目录不同**不妨碍**有人在 `src/` 里写 `#[test]` —— 步 7c 的正控逐条验过：
+    // 往生产段塞一段真漏进来的测试代码，这三条**全红**。它们就是①那一格的执行者。
+    for (rel, judge) in [
+        (
+            "tests/backend/readonly_guard.rs",
+            "fn no_test_code_leaks_into_any_production_section",
+        ),
+        (
+            "tests/backend/guard_support_tests.rs",
+            "fn every_daemon_file_strips_clean",
+        ),
+        (
+            "tests/bridge/structural_scan_tests.rs",
+            "fn every_monitor_file_strips_clean",
+        ),
+    ] {
+        let src = std::fs::read_to_string(root.join(rel))
+            .unwrap_or_else(|e| panic!("{rel} 读不到：{e} —— 本条判不了，不许当成绿"));
+        assert!(
+            src.contains(judge),
+            "元守卫 `{judge}` 不在 `{rel}` 里了 —— \n\
+             它是上面①那条「生产树里没有测试代码」的**执行者**：①只在每次跑测试时看一眼，\n\
+             而这三条是按文件逐份剥出生产段来核的。\n\
+             ⚠ `设计/16 §4.4` 说它们「可以退役」，而步 7c 的正控证明**退不得**：\n\
+             往生产段塞一段真漏进来的 `#[test]` ⇒ 这三条全红。别照那一节的散文退役它们。"
         );
     }
 }

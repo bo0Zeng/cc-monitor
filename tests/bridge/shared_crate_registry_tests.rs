@@ -137,9 +137,8 @@ fn the_crate_scan_actually_finds_crates() {
 /// 论证（`C7` 逐字「vendor `code-picture-core` 不动」）看着，**没有判据**。
 #[test]
 fn the_gate_package_count_tracks_the_number_of_shared_crates() {
-    let gate =
-        fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
-            .expect("读不到 tests/scripts/gate.sh —— 抽取器坏了，本条会零命中地绿");
+    let gate = fs::read_to_string(crate::guard_support::repo_root().join("tests/scripts/gate.sh"))
+        .expect("读不到 tests/scripts/gate.sh —— 抽取器坏了，本条会零命中地绿");
     let at = guard_core::find_pinned(&gate, "run_gate_sum cargo ")
         .expect("`gate.sh` 里找不到（或不止一处）`run_gate_sum cargo ` —— 本条按红处理");
     let n: usize = gate[at + "run_gate_sum cargo ".len()..]
@@ -690,9 +689,8 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
                 Some(n) => found.push((job.clone(), n)),
                 None => {
                     // 无名步骤：拿命令首行当标识。`|` / `>` 块标量则往下看一行。
-                    let raw = inline.unwrap_or_else(|| {
-                        trimmed.strip_prefix("run:").expect("上面已判过前缀")
-                    });
+                    let raw = inline
+                        .unwrap_or_else(|| trimmed.strip_prefix("run:").expect("上面已判过前缀"));
                     let head = match raw.trim() {
                         "" | "|" | ">" | "|-" | ">-" => src
                             .get(i + 1)
@@ -747,9 +745,7 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
     // 哪天它被挪出去（或改名），本地门禁那份清单就该跟着改 —— 不许它悄悄失联。
     for (step, how) in LOCALLY_RUNNABLE {
         let at = found.iter().find(|(_, n)| n == step).unwrap_or_else(|| {
-            panic!(
-                "`{step}` 在 `ci.yml` 里找不到了 —— 本地门禁那份清单要跟着改。（跑法：{how}）"
-            )
+            panic!("`{step}` 在 `ci.yml` 里找不到了 —— 本地门禁那份清单要跟着改。（跑法：{how}）")
         });
         assert!(
             BLANKET.iter().any(|(b, _)| *b == at.0),
@@ -1458,8 +1454,7 @@ fn dormant_e2e_suites_keep_their_assertions() {
 /// 写在这里让下一个人看得见。
 #[test]
 fn the_only_gate_that_measures_committed_state_still_does_all_three_checks() {
-    let path =
-        crate::guard_support::repo_root().join("tests/scripts/verify-committed-state.sh");
+    let path = crate::guard_support::repo_root().join("tests/scripts/verify-committed-state.sh");
     let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
     // ★ 抽取器自检：文件被掏空/改名时，下面三条会零命中地绿。
     assert!(
@@ -1526,8 +1521,7 @@ fn the_only_gate_that_measures_committed_state_still_does_all_three_checks() {
 /// 挡不住的是「`run` 函数本身坏掉但文本还在」。
 #[test]
 fn a_skipped_windows_check_cannot_look_like_a_full_pass() {
-    let path =
-        crate::guard_support::repo_root().join("tests/scripts/verify-committed-state.sh");
+    let path = crate::guard_support::repo_root().join("tests/scripts/verify-committed-state.sh");
     let src = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("读不到 {path:?}: {e}"));
     // ⚠ **只看非注释行**：本脚本的头注里逐字引用着那句成功结论（讲的就是这次事故），
     // 连注释一起数，下面「恰好一处」当场变成两处 —— 08-08 写这条时就差点踩上。

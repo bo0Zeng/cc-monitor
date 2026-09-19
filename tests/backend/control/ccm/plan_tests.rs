@@ -34,12 +34,7 @@ fn snapshot_of(names: &[&str]) -> TakenNames {
         .expect("固定夹具问得到")
 }
 
-fn plan_of_with(
-    args: &[&str],
-    env: &Env,
-    t: &AccountTable,
-    taken: Option<&TakenNames>,
-) -> Plan {
+fn plan_of_with(args: &[&str], env: &Env, t: &AccountTable, taken: Option<&TakenNames>) -> Plan {
     let a: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     match parse(&a).expect("该解析得动") {
         Parsed::Opts(o) => build(&o, env, t, taken).expect("该算得出计划"),
@@ -58,7 +53,8 @@ fn printed(args: &[&str]) -> String {
 /// （CCM_ENV → CC_BUS_ID → 账号目录 → 模型 → 清嵌套 → cd → exec）。
 #[test]
 fn the_shape_of_one_launch_command_line() {
-    let nested = "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION";
+    let nested =
+        "unset CLAUDECODE CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION";
     assert_eq!(
         printed(&["--cwd", "/p"]),
         format!("{nested}; cd '/p' && exec claude")
@@ -171,8 +167,9 @@ fn picking_an_account_never_falls_back_to_a_different_one() {
     );
     // 无账号库 ⇒ 一个字都不说，退化为基座（没有 CLAUDE_CONFIG_DIR 注入）
     let empty = AccountTable::default();
-    assert!(!render(&plan_of(&["--cwd", "/p"], &env(), &empty), None)
-        .contains("CLAUDE_CONFIG_DIR="));
+    assert!(
+        !render(&plan_of(&["--cwd", "/p"], &env(), &empty), None).contains("CLAUDE_CONFIG_DIR=")
+    );
 }
 
 /// 〔搬自 `ccm-cli`「deriveTmuxName 对拍」那 5 条（跨语言双写点的**本侧**）〕
@@ -558,7 +555,9 @@ fn asking_for_bus_registration_and_not_getting_it_is_never_silent() {
     let _ = std::fs::remove_dir_all(&d);
 
     // ② 查找次序**三档都在**：`PATH` 那一档是本拍补回来的，别再删。
-    let me = crate::guard_support::production_code(include_str!("../../../../src/backend/control/ccm/plan.rs"));
+    let me = crate::guard_support::production_code(include_str!(
+        "../../../../src/backend/control/ccm/plan.rs"
+    ));
     for anchor in [
         "std::env::var(\"CC_BUS_SCRIPTS\")",
         "join(\"cc-bus\").join(\"scripts\")",

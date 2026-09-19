@@ -282,10 +282,10 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
         } else {
             guard_core::test_source(src)
         })
-            .lines()
-            .filter(|l| !l.trim_start().starts_with("//"))
-            .collect::<Vec<_>>()
-            .join("\n");
+        .lines()
+        .filter(|l| !l.trim_start().starts_with("//"))
+        .collect::<Vec<_>>()
+        .join("\n");
         all_contains += test_src.matches(".contains(\"").count();
         for (mark, _) in MATCHER_CEILINGS {
             let n = bare_matcher_on_corpus(&test_src, mark);
@@ -354,7 +354,12 @@ fn bare_contains_on_disk_corpora_only_goes_down() {
              `contains_word`（有边界）。⚠ **不许把上限调上去让今天好过** —— 这是递减棘轮。",
         over.iter()
             .map(|line| {
-                let mark = line.trim_start().split('"').next().unwrap_or("").to_string();
+                let mark = line
+                    .trim_start()
+                    .split('"')
+                    .next()
+                    .unwrap_or("")
+                    .to_string();
                 format!("{line}\n{}", where_of(&mark))
             })
             .collect::<Vec<_>>()
@@ -386,7 +391,12 @@ fn the_extension_suffix_exemption_is_still_load_bearing() {
     // ② 保鲜：全仓真的还有人在用这一形。用不到了就该把豁免删掉。
     let root = repo_root();
     let mut used = 0usize;
-    for sub in ["src/bridge/src", "src/backend", "src/bridge/crates", "tests"] {
+    for sub in [
+        "src/bridge/src",
+        "src/backend",
+        "src/bridge/crates",
+        "tests",
+    ] {
         for (_, src) in guard_core::scan_tree_excluding(&root.join(sub), &["rs"], &[]) {
             let mut i = 0usize;
             while let Some(j) = src[i..].find(".ends_with(") {

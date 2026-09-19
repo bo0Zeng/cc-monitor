@@ -122,8 +122,14 @@ fn every_default_lives_only_in_the_defaults_block() {
 #[test]
 fn the_ccm_argv_is_parsed_in_exactly_one_place() {
     let others: &[(&str, &str)] = &[
-        ("control/ccm/mod.rs", include_str!("../../../../src/backend/control/ccm/mod.rs")),
-        ("control/ccm/plan.rs", include_str!("../../../../src/backend/control/ccm/plan.rs")),
+        (
+            "control/ccm/mod.rs",
+            include_str!("../../../../src/backend/control/ccm/mod.rs"),
+        ),
+        (
+            "control/ccm/plan.rs",
+            include_str!("../../../../src/backend/control/ccm/plan.rs"),
+        ),
     ];
     let mut hits: Vec<String> = Vec::new();
     for (name, raw) in others {

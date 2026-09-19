@@ -1,6 +1,5 @@
 use super::{
-    tmux_exe_in, tmux_in, tmux_present, unavailable_from, unavailable_here, TmuxPlatform,
-    NO_TMUX,
+    tmux_exe_in, tmux_in, tmux_present, unavailable_from, unavailable_here, TmuxPlatform, NO_TMUX,
 };
 
 /// ★ `K-P4` 红线之一：**生产路径今天恒空** ⇒ hello 帧的线上字节逐字节不变。
@@ -360,9 +359,7 @@ fn the_windows_arm_is_wired_into_the_source() {
         "TmuxPlatform::AbsentUnlessExeOnPath => Some(tmux_exe_in(path)),",
     )
     .unwrap_or_else(|why| {
-        panic!(
-            "windows 那一档不再给确定答案了：{why}\n它一旦回 `None`，表在 Windows 上就又空了。"
-        )
+        panic!("windows 那一档不再给确定答案了：{why}\n它一旦回 `None`，表在 Windows 上就又空了。")
     });
 }
 

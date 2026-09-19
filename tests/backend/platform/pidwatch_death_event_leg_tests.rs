@@ -21,7 +21,9 @@ fn on_linux_the_leg_is_there_so_there_is_nothing_to_declare() {
 /// ★★ 非 Linux 那一支**写在源码里**，且它给的是「确证没有」。
 #[test]
 fn the_non_linux_arm_is_wired_into_the_source() {
-    let prod = guard_core::production_code(include_str!("../../../src/backend/platform/pidwatch/mod.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../src/backend/platform/pidwatch/mod.rs"
+    ));
     const SIG: &str = "pub(crate) const fn death_events_available() -> bool {";
     let lines: Vec<&str> = prod.lines().map(str::trim).collect();
     // 反空真①：剥法跑飞 / 文件被掏空时，下面几条会在一份空文本上恒真。
@@ -75,9 +77,7 @@ fn the_non_linux_arm_is_wired_into_the_source() {
         arms.iter()
             .find(|(c, _)| *c == cfg)
             .map(|(_, b)| b.trim().to_string())
-            .unwrap_or_else(|| {
-                panic!("找不到 `{cfg}` 那条臂 —— 两条臂的 cfg 被换过了：{arms:?}")
-            })
+            .unwrap_or_else(|| panic!("找不到 `{cfg}` 那条臂 —— 两条臂的 cfg 被换过了：{arms:?}"))
     };
     assert_eq!(
         arm_of("#[cfg(not(target_os = \"linux\"))]"),

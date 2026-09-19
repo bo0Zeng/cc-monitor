@@ -117,13 +117,7 @@ fn every_registered_command_declares_its_run_kind() {
         // `K-R104`：`capture-pane` / `oneshot-session` 起 tmux 子进程并等它退出。
         let expected_blocking = matches!(
             spec.name,
-            "launch"
-                | "kill"
-                | "bus-list"
-                | "bus-send"
-                | "bus-kill"
-                | "bus-state"
-                | "capture-pane"
+            "launch" | "kill" | "bus-list" | "bus-send" | "bus-kill" | "bus-state" | "capture-pane"
         );
         let is_blocking = matches!(spec.run, Run::Blocking(_));
         assert_eq!(
@@ -177,7 +171,8 @@ fn every_registered_command_declares_its_run_kind() {
 /// `launch_for_inbound` 里 `json!` 的键（= data 侧）。
 #[test]
 fn launch_fields_match_its_parser_and_output() {
-    let src = crate::guard_support::production_code(include_str!("../../src/backend/control/launch.rs"));
+    let src =
+        crate::guard_support::production_code(include_str!("../../src/backend/control/launch.rs"));
     let mut found: Vec<String> = Vec::new();
 
     // args 侧：`get_str("<key>")`

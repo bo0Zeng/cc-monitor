@@ -338,10 +338,7 @@ fn every_listed_subcommand_has_a_live_dispatch_route() {
     let mut unexplained: Vec<&str> = Vec::new();
     for tok in SUBCOMMANDS.iter().copied() {
         let on_derived = derived_arm && crate::control::cli_control::spec_for(tok).is_some();
-        if on_derived
-            && literal.contains(&tok)
-            && !DUAL_ROUTE_ARMS.iter().any(|(t, _)| *t == tok)
-        {
+        if on_derived && literal.contains(&tok) && !DUAL_ROUTE_ARMS.iter().any(|(t, _)| *t == tok) {
             unexplained.push(tok);
         }
     }

@@ -162,8 +162,7 @@ fn every_daemon_sender_is_registered_and_uses_the_one_router() {
     // ⚠ 发现阶段就把生产段留下：下面按名字取时**不能再用 `dir.join(name)`**，
     //   扩面之后 `dir` 是整棵 `src/`，而发送端散在子目录里（第一版就栽在这，
     //   报「daemon_kill.rs 生产段却没有 route_call_error」—— 其实是文件根本没读到）。
-    let mut by_name: std::collections::HashMap<String, String> =
-        std::collections::HashMap::new();
+    let mut by_name: std::collections::HashMap<String, String> = std::collections::HashMap::new();
     for (p, src) in guard_core::scan_tree!(&dir, &["rs"]) {
         let prod = guard_core::production_code(&src);
         if prod.contains(verb.as_str()) {
@@ -192,9 +191,9 @@ fn every_daemon_sender_is_registered_and_uses_the_one_router() {
              `/full-audit` 在本守卫身上逮到的东西（第三个发送端整个逃出了扫描面）。"
     );
     for (name, verdict) in SENDERS {
-        let prod = by_name.get(*name).unwrap_or_else(|| {
-            panic!("`{name}` 在登记表里但发现阶段没扫到 —— 上面那条已保证不会")
-        });
+        let prod = by_name
+            .get(*name)
+            .unwrap_or_else(|| panic!("`{name}` 在登记表里但发现阶段没扫到 —— 上面那条已保证不会"));
         let uses = prod.contains("route_call_error");
         // 运行时拼，免得命中本行自己。
         let needle = format!("CallError::{}", "");

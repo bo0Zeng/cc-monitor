@@ -11,7 +11,8 @@ use super::*;
 /// 只有行为那条，「另起一条 argv 自己去问」在没有真 tmux 的沙箱里也可能碰巧绿。
 #[test]
 fn listing_every_session_is_no_longer_this_modules_job() {
-    let prod = crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
+    let prod =
+        crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
     crate::guard_support::assert_no_test_code("control/gate.rs", &prod);
     assert!(
         !prod.contains("list-sessions"),
@@ -115,7 +116,8 @@ fn both_tmux_call_sites_ask_for_a_utf8_client_before_the_subcommand() {
     const FLAG_IDENT: &str = "UTF8_CLIENT_FLAG";
     const ARGS_OPEN: &str = ".args([";
 
-    let prod = crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
+    let prod =
+        crate::guard_support::production_code(include_str!("../../../src/backend/control/gate.rs"));
     crate::guard_support::assert_no_test_code("control/gate.rs", &prod);
 
     let starts = prod.matches("Command::new(\"tmux\")").count();
@@ -502,8 +504,7 @@ fn repo_root() -> std::path::PathBuf {
 #[test]
 fn the_gate2_floor_still_makes_a_skip_hurt() {
     let root = repo_root();
-    let ci =
-        std::fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("ci.yml 读不到");
+    let ci = std::fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("ci.yml 读不到");
     let mark = "assert-pass-floor.sh daemon-gate2 ";
     let at = ci
         .find(mark)

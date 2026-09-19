@@ -62,7 +62,8 @@ const REGISTERED: &[Candidate] = &[
         shape: Shape::Plugin,
         today: "一族 shell 脚本；daemon 只经命令面转调它，且那唯一一处起进程口\
                     自 08-26 起住在**通用调用口** `plugin/invoke.rs` 里，转调壳自己零处",
-        gap: "还差「插件」这个名分（`EU3`：粒度是命令还是包）—— **通用口那一半 `K-W1A` 已经补上**：\
+        gap:
+            "还差「插件」这个名分（`EU3`：粒度是命令还是包）—— **通用口那一半 `K-W1A` 已经补上**：\
                   今天那处口不再是 cc-bus 专用的，壳只是它的第一个消费者",
     },
     Candidate {

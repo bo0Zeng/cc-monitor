@@ -526,8 +526,7 @@ fn a_gate_rejection_is_never_laundered_into_the_ssh_fallback() {
 /// 也不是让人悄悄绕过它。**它红了不是误报，是它的岗位。**
 #[test]
 fn send_keys_now_routes_through_the_daemon() {
-    let body =
-        guard_core::production_code(&body_of(MONITOR_TMUX, "pub async fn tmux_send_keys("));
+    let body = guard_core::production_code(&body_of(MONITOR_TMUX, "pub async fn tmux_send_keys("));
     assert!(
         body.contains("daemon_send_keys::daemon_send_keys("),
         "`tmux_send_keys` 的生产段没有调 `daemon_send_keys::daemon_send_keys(` ——\n\

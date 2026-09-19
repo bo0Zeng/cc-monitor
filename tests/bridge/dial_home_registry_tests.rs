@@ -226,8 +226,7 @@ fn the_locality_reader_can_tell_a_stray_from_a_home() {
     );
 
     // ② 家里多了一处（第七个地方也可以长在已登记的文件里）⇒ 必须红。
-    let e2 =
-        dial_locality(&mk(&[("乙.rs", 3)]), h).expect_err("家里的处数涨了，判据居然是绿的");
+    let e2 = dial_locality(&mk(&[("乙.rs", 3)]), h).expect_err("家里的处数涨了，判据居然是绿的");
     assert!(e2.contains("对不上"), "红的理由不是处数对不上：{e2}");
 
     // ③ 家里少了一处 ⇒ 也必须红（登记腐烂比没有登记更糟）。

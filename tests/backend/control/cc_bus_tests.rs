@@ -70,7 +70,9 @@ const TRANSCALLS: &[(&str, &str, &str, &str)] = &[
 /// 取法与 `readonly_guard::g6_reach` 那一格**刻意相同**（`run("` / `run_as("` 之后
 /// 那一个字符串字面量）—— 两处认的是同一件事实，取法不同才会各说各话。
 fn transcalled_today() -> Vec<String> {
-    let prod = crate::guard_support::production_code(include_str!("../../../src/backend/control/cc_bus.rs"));
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/cc_bus.rs"
+    ));
     let mut out: Vec<String> = Vec::new();
     for opener in ["run(\"", "run_as(\""] {
         let mut from = 0usize;
@@ -158,7 +160,9 @@ fn every_shelled_out_command_carries_a_written_ruling() {
 /// 真跑由 `tests/e2e/daemon-cc-bus.sh` 那一族负责。
 #[test]
 fn bus_state_answers_both_halves_from_one_call() {
-    let prod = crate::guard_support::production_code(include_str!("../../../src/backend/control/cc_bus.rs"));
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/control/cc_bus.rs"
+    ));
     let body = prod
         .split("pub(crate) fn state_for_inbound")
         .nth(1)
@@ -279,12 +283,8 @@ fn the_not_installed_message_names_the_places_it_looked() {
     let home = PathBuf::from("/home/u");
     let fixed = fixed_candidates(None, Some(&home), "cc-list");
     assert_eq!(fixed.len(), 2, "固定位置应当是两处：{fixed:?}");
-    let msg = crate::plugin::discover::not_installed_message(
-        "cc-list",
-        &fixed,
-        9,
-        NOT_INSTALLED_HINT,
-    );
+    let msg =
+        crate::plugin::discover::not_installed_message("cc-list", &fixed, 9, NOT_INSTALLED_HINT);
     assert!(msg.contains("/home/u/.local/bin/cc-list"), "{msg}");
     assert!(
         msg.contains(".claude/skills/cc-bus/scripts/cc-list"),

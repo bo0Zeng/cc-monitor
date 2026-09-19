@@ -55,8 +55,7 @@ fn flags_are_stripped_and_detected() {
 /// 命令行也不会破坏查询"的边角）。
 #[test]
 fn query_args_pass_through() {
-    let (rest, bg, tail) =
-        split_stream_flags(v(&["--read-session", "/p/s.jsonl", "--with-bg"]));
+    let (rest, bg, tail) = split_stream_flags(v(&["--read-session", "/p/s.jsonl", "--with-bg"]));
     assert_eq!(rest, v(&["--read-session", "/p/s.jsonl"]));
     assert!(bg);
     assert!(!tail);

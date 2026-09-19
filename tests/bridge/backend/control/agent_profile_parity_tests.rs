@@ -1,6 +1,7 @@
 use crate::adapter::{self, AgentKind};
 
-const GOLDEN: &str = include_str!("../../../../src/bridge/src/backend/control/fixtures/agent-profile-golden.tsv");
+const GOLDEN: &str =
+    include_str!("../../../../src/bridge/src/backend/control/fixtures/agent-profile-golden.tsv");
 
 /// ★ `shared/ccm` 独有、**Rust 侧无对侧**的两个决策。
 ///

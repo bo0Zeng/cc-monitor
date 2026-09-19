@@ -1,6 +1,6 @@
 use super::{
-    EnvKeyClaim, Verdict, ENV_KEY_CLAIM_SITES, FALLS_SHORT_CEILING, MEASURE_CENSUS,
-    STATUS_CELLS, THIRTY_THREE_B_QUESTIONS,
+    EnvKeyClaim, Verdict, ENV_KEY_CLAIM_SITES, FALLS_SHORT_CEILING, MEASURE_CENSUS, STATUS_CELLS,
+    THIRTY_THREE_B_QUESTIONS,
 };
 use std::path::{Path, PathBuf};
 
@@ -199,8 +199,7 @@ fn production_launch_calls() -> usize {
             if p.file_name().is_some_and(|s| s == "launch_wire.rs") {
                 continue;
             }
-            let src =
-                guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
+            let src = guard_core::production_code(&std::fs::read_to_string(&p).unwrap_or_default());
             n += src.matches(verb.as_str()).count();
         }
     }
@@ -1178,18 +1177,12 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
             "code-picture/doc/agents/claude-code.md",
             "**跨仓引用**：另一个仓的语料，本仓解析不到是正常的",
         ),
-        (
-            "agents/claude-code.md",
-            "同上（同一句里的简写形）",
-        ),
+        ("agents/claude-code.md", "同上（同一句里的简写形）"),
         (
             "account-ux/MASTERPLAN.md",
             "**计划工作区**住在 `.claude/planned-build/`（另一个 git 仓）",
         ),
-        (
-            "unify-launch/MASTERPLAN.md",
-            "同上",
-        ),
+        ("unify-launch/MASTERPLAN.md", "同上"),
         (
             ".claude/planned-build/account-isolation/DESIGN-account-switching.md",
             "同上：计划仓里的设计稿，不在本仓",
@@ -1516,8 +1509,7 @@ fn the_release_version_is_the_same_in_all_six_places() {
 /// 会把同文件别处**早就存在**的匹配一起卷进人群，那条递减棘轮当场涨一格。
 /// 〔与 `frozen_daemon_census::read_frozen` 那条头注同源，09-14 实打过一次〕
 fn read_repo_file(rel: &str) -> String {
-    std::fs::read_to_string(repo_root().join(rel))
-        .unwrap_or_else(|e| panic!("读 {rel} 失败：{e}"))
+    std::fs::read_to_string(repo_root().join(rel)).unwrap_or_else(|e| panic!("读 {rel} 失败：{e}"))
 }
 
 /// 本仓 breaking 段的**约定名** —— `CHANGELOG.md` 里标题带这个词的那个 `###` 就是它。
@@ -1909,8 +1901,7 @@ fn every_constant_value_quoted_in_the_docs_matches_the_code() {
                 continue;
             }
             let s = i;
-            while i < b.len()
-                && (b[i].is_ascii_uppercase() || b[i].is_ascii_digit() || b[i] == '_')
+            while i < b.len() && (b[i].is_ascii_uppercase() || b[i].is_ascii_digit() || b[i] == '_')
             {
                 i += 1;
             }
@@ -2288,9 +2279,9 @@ fn env_keys_actually_read() -> usize {
     guard_core::assert_no_test_code("accounts_query.rs", &prod);
     // ⚠ 锚点用**带边界的钉法**，不写裸 `contains`
     //（`needle_anchor_registry` 那条递减棘轮：语料变量上的裸 `contains` 只许比今天少）。
-    guard_core::find_pinned(&prod, "fn session_accounts(agent_home: &Path").unwrap_or_else(
-        |e| panic!("`accounts_query.rs` 生产段的锚点挪了 —— 下面两条会零命中地绿：{e}"),
-    );
+    guard_core::find_pinned(&prod, "fn session_accounts(agent_home: &Path").unwrap_or_else(|e| {
+        panic!("`accounts_query.rs` 生产段的锚点挪了 —— 下面两条会零命中地绿：{e}")
+    });
     let n = prod.matches("proc_env_var(pid, ").count();
     assert!(
         n > 0,
@@ -2330,8 +2321,7 @@ fn the_environ_key_claim_scan_is_not_zero_hit() {
         "只扫到 {} 份副本（`K-P5g` 建判据当天实测 10 份 / 4 个文件）—— 针或人群坏了",
         hits.len()
     );
-    let files: std::collections::BTreeSet<&str> =
-        hits.iter().map(|(f, _, _)| f.as_str()).collect();
+    let files: std::collections::BTreeSet<&str> = hits.iter().map(|(f, _, _)| f.as_str()).collect();
     assert!(
         files.len() >= 3,
         "只扫到 {} 个文件 —— 人群塌了：{files:?}",

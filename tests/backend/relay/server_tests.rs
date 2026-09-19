@@ -373,9 +373,8 @@ fn spawn_fake_upstream_faulted(
 
 /// 往假上游发一整发、并把响应**整条**读回来。只给 `K-R126` 那两条判据用。
 fn one_whole_shot(addr: SocketAddr, what: &str) -> String {
-    let mut c = TcpStream::connect(addr).unwrap_or_else(|e| {
-        panic!("{what}：连不上假上游 —— 它的 `listener` 已经不在了（{e:?}）")
-    });
+    let mut c = TcpStream::connect(addr)
+        .unwrap_or_else(|e| panic!("{what}：连不上假上游 —— 它的 `listener` 已经不在了（{e:?}）"));
     let req = format!(
         "POST /v1/messages HTTP/1.1\r\nContent-Length: {}\r\n\r\n{REQUEST_BODY}",
         REQUEST_BODY.len()
@@ -2516,8 +2515,7 @@ fn upstream_request_drops_hop_by_hop_and_narrows_accept_encoding() {
 
 #[test]
 fn response_head_keeps_framing_and_forces_close() {
-    let raw =
-        b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n";
+    let raw = b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: keep-alive\r\n\r\n";
     let out = String::from_utf8(rewrite_response_head(raw)).expect("utf8");
     assert!(out.contains("Transfer-Encoding: chunked\r\n"), "分帧不能丢");
     assert!(!out.contains("keep-alive"));
@@ -3021,10 +3019,7 @@ fn each_env_var_name_goes_into_its_own_config_slot() {
 /// **实测过**：变异 `R3`（让 `resolve_config` 不再认 `port_env`）会去绑一个**空闲**端口、
 /// 进 `serve()`，那一趟 `^test result:` 条数 = **0**，`cargo` 印的是
 /// `has been running for over 60 seconds`。⇒ 这里把「挂住」换成「5 秒后红」。
-fn relay_entry_exit_code_within_5s(
-    port_env: Option<String>,
-    upstream_env: Option<String>,
-) -> i32 {
+fn relay_entry_exit_code_within_5s(port_env: Option<String>, upstream_env: Option<String>) -> i32 {
     let (tx, rx) = mpsc::channel();
     std::thread::spawn(move || {
         let _ = tx.send(run_with(
@@ -3298,10 +3293,7 @@ fn a_credentials_file_produced_by_the_write_side_routes_that_account_to_the_upst
     //   id 取中性名：断言里用的是 key 那个值，不是目录名（`brief` 12 那条）。
     std::fs::write(
         &creds,
-        creds_text_the_write_side_would_produce(&[
-            ("row-one", "KEY-ONE"),
-            ("row-two", "KEY-TWO"),
-        ]),
+        creds_text_the_write_side_would_produce(&[("row-one", "KEY-ONE"), ("row-two", "KEY-TWO")]),
     )
     .expect("写凭据夹具");
     // 采集面自检：写侧那两步**真的产出了一份能解析的、带那两行的文件**。

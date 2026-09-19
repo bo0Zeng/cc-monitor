@@ -996,15 +996,27 @@ const SITES: &[(&str, Why, usize)] = &[
     ("src/lib.rs", Why::Wording, 2), // `设计/50` 3 → 2：`mod usage;` / `mod account_usage;` 两处注册随用量 ②③ 退役（这张账只许变小）
     ("src/local_accounts.rs", Why::Wording, 1),
     // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    ("tests/bridge/local_read_surface_registry_tests.rs", Why::Wording, 1),
+    (
+        "tests/bridge/local_read_surface_registry_tests.rs",
+        Why::Wording,
+        1,
+    ),
     // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
     ("tests/bridge/parity_ledger_tests.rs", Why::SymbolName, 2),
     ("tests/bridge/parity_ledger_tests.rs", Why::Wording, 2),
     ("src/remote_branch.rs", Why::Wording, 1),
     ("src/remote_history.rs", Why::Wording, 2),
     // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
-    ("tests/bridge/remote_write_registry_tests.rs", Why::SymbolName, 3),
-    ("tests/bridge/remote_write_registry_tests.rs", Why::Wording, 1),
+    (
+        "tests/bridge/remote_write_registry_tests.rs",
+        Why::SymbolName,
+        3,
+    ),
+    (
+        "tests/bridge/remote_write_registry_tests.rs",
+        Why::Wording,
+        1,
+    ),
     ("src/session_map.rs", Why::Wording, 1),
     ("src/sftp.rs", Why::SymbolName, 8),
     // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
@@ -1035,7 +1047,11 @@ const SITES: &[(&str, Why, usize)] = &[
     ("src/tool_registry.rs", Why::SymbolName, 2),
     ("tests/bridge/tool_registry_tests.rs", Why::OldId, 3),
     ("tests/bridge/tool_registry_tests.rs", Why::SymbolName, 6),
-    ("tests/bridge/tool_registry_environment_tests.rs", Why::OldId, 1),
+    (
+        "tests/bridge/tool_registry_environment_tests.rs",
+        Why::OldId,
+        1,
+    ),
     ("src/tool_registry.rs", Why::Wording, 1),
 ];
 
@@ -1294,7 +1310,10 @@ fn every_place_that_still_says_the_old_name_is_registered_and_only_shrinks() {
              还带旧名的 {} 份 / {total} 处（{}）· 登记 {} 行 · \
              ⚠ 面外判不了：`remote{}daemon{}proto/` 那棵树与前端 `src/**/*.ts`",
         files.len(),
-        got.keys().map(|k| k.0.clone()).collect::<std::collections::HashSet<_>>().len(),
+        got.keys()
+            .map(|k| k.0.clone())
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
         by_kind.join(" · "),
         SITES.len(),
         "-",
@@ -1687,8 +1706,11 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
     assert!(pin_definition("fn a() {}\n", "fn a() {}", "fn a", "自检").is_ok());
     // ②b 反向自检：负向扫描在**真树**上不是零命中的（零命中 ⇒ 那一半是空真）。
     assert!(
-        crate::structural_scan::fn_names_starting_with(include_str!("../../src/bridge/src/sftp.rs"), &["uninstall"])
-            .contains(&"uninstall_remote_daemon".to_string()),
+        crate::structural_scan::fn_names_starting_with(
+            include_str!("../../src/bridge/src/sftp.rs"),
+            &["uninstall"]
+        )
+        .contains(&"uninstall_remote_daemon".to_string()),
         "负向扫描在真树上零命中 —— 它此刻无效，先查剥法别改断言"
     );
 

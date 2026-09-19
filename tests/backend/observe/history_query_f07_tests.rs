@@ -5,7 +5,9 @@
 /// ⇒ 这里只列候选；`description` 精确匹配与按时间戳挑最近**留在 monitor**。
 #[test]
 fn the_daemon_never_matches_or_ranks_subagents() {
-    let prod = crate::guard_support::production_code(include_str!("../../../src/backend/observe/history_query.rs"));
+    let prod = crate::guard_support::production_code(include_str!(
+        "../../../src/backend/observe/history_query.rs"
+    ));
     let at = prod
         .find("pub fn list_subagents(")
         .expect("找不到 list_subagents —— 判据在空转");
@@ -62,7 +64,9 @@ fn listing_subagents_refuses_paths_outside_projects() {
 /// ⚠ 「慢/费内存」**不会让任何测试变红** ⇒ 只能靠源码形态钉（同 F04 那条）。
 #[test]
 fn the_history_readers_stream_instead_of_slurping() {
-    let src = guard_core::production_code(include_str!("../../../src/backend/observe/history_query.rs"));
+    let src = guard_core::production_code(include_str!(
+        "../../../src/backend/observe/history_query.rs"
+    ));
     for (name, sig) in [
         ("extract_cwd_from_head", "fn extract_cwd_from_head("),
         ("analyze_session", "fn analyze_session("),

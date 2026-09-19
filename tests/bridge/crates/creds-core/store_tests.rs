@@ -509,8 +509,7 @@ fn writing_one_account_leaves_every_other_account_byte_for_byte_untouched() {
     //    没有这一格，下面 ㈡ 那条可能只是因为这把尺子看不见任何变化。
     //    ⚠ 先前它排在整条判据的**最后** —— 与 `D1-M6` 逮到的那一形同族：
     //    前面任何一条先炸，它就一次都没被求值。
-    let b_after_writing_b =
-        serde_json::to_string(&merged_b["accounts"]["B"]).expect("序列化 B");
+    let b_after_writing_b = serde_json::to_string(&merged_b["accounts"]["B"]).expect("序列化 B");
     assert_ne!(
         b_after_writing_b, before_b,
         "改 B 的时候 B 没变 —— 这把尺子是瞎的，下面那条「没被动」证不了什么"
@@ -649,10 +648,8 @@ fn arrays_keep_their_order_because_that_order_is_data() {
     // 非空对照：落盘的仍是合法 JSON，而且数组那一层**还在**（不是被压没了）。
     let nested_back: Value = serde_json::from_str(&nested_text).expect("合法 JSON");
     assert_eq!(nested_back["list"][0]["aaa"], 2);
-    let iaaa =
-        guard_core::find_pinned(&nested_text, "\"aaa\"").expect("`aaa` 应当恰好出现一处");
-    let izzz =
-        guard_core::find_pinned(&nested_text, "\"zzz\"").expect("`zzz` 应当恰好出现一处");
+    let iaaa = guard_core::find_pinned(&nested_text, "\"aaa\"").expect("`aaa` 应当恰好出现一处");
+    let izzz = guard_core::find_pinned(&nested_text, "\"zzz\"").expect("`zzz` 应当恰好出现一处");
     assert!(
         iaaa < izzz,
         "数组里那个对象没被递归排序 —— `ordered_value` 的 `Value::Array` 那一支没有往下走：{nested_text}"

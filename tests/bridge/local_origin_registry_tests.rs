@@ -110,8 +110,7 @@ fn every_remote_config_lookup_deals_with_the_local_origin_first() {
             }
             let body = &prod[start..at];
             // 分本机的动作长什么样：读 `LOCAL_ORIGIN`，或逐字比 `<local>`。
-            let deals_with_local =
-                body.contains("LOCAL_ORIGIN") || body.contains("\"<local>\"");
+            let deals_with_local = body.contains("LOCAL_ORIGIN") || body.contains("\"<local>\"");
             if !deals_with_local {
                 offenders.push(format!("{rel}::{fn_name}"));
             }

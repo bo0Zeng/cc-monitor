@@ -6,8 +6,7 @@ fn repo_root() -> std::path::PathBuf {
 }
 
 pub(crate) fn yml() -> String {
-    std::fs::read_to_string(repo_root().join(".github/workflows/ci.yml"))
-        .expect("ci.yml 读不到")
+    std::fs::read_to_string(repo_root().join(".github/workflows/ci.yml")).expect("ci.yml 读不到")
 }
 
 /// `ci.yml` 的**有效行**（整行注释剔掉）。
