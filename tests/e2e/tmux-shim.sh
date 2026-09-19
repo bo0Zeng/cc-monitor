@@ -25,7 +25,7 @@
 #
 # ## 为什么抽成共享文件〔`P0e` 08-12〕
 #
-# 这段原来在 `graylight-suite` / `graylight-daemon-frames` / `p3t-local-tmux` 里**各抄了一份**。
+# 这段原来在 `graylight-suite` / `graylight-backend-frames` / `p3t-local-tmux` 里**各抄了一份**。
 # 而红线的落地**不该有三份实现**：改一处漏两处，正是本仓一路在收的那一族。
 
 : "${TMUX_SHIM_SOCK:?tmux-shim.sh 需要 TMUX_SHIM_SOCK=<私有 socket 名>}"

@@ -14,16 +14,16 @@ fn backend_dir() -> PathBuf {
 /// 而 `inbound_client.rs` **物理位置在 `src/` 顶层** ⇒ **整个在扫描面之外**。
 /// 审计当天实测它是干净的（无 `AppHandle` / `State<` / `.emit(`）——
 /// **但那是巧合，不是被钉住**。它承担的正是 **C1**「一份代码两种承载」里
-/// 「本机进程」那一半最关键的传输层（`daemon_kill` / `daemon_launch` /
-/// `daemon_send_keys` 共同依赖它）。它一旦长出宿主耦合，backend 的护栏体系**整体看不见**。
+/// 「本机进程」那一半最关键的传输层（`backend_kill` / `backend_launch` /
+/// `backend_send_keys` 共同依赖它）。它一旦长出宿主耦合，backend 的护栏体系**整体看不见**。
 ///
 /// ⚠ **为什么是加进扫描面而不是挪文件**：挪 1183 行的文件会动到一大批 `use` 路径与
 /// `mod` 声明，半径远大于收益，且与 `cross_half_edge_registry` 的边登记表相互作用。
 /// **先把它纳入管辖，挪不挪是另一件事**（若将来挪进 `backend/`，把这一行删掉即可）。
 const EXTRA_BACKEND_FILES: &[(&str, &str)] = &[(
     "inbound_client.rs",
-    "daemon 流通道的 wire 客户端 —— C1「本机进程」那一半的传输层，\
-         被 daemon_kill / daemon_launch / daemon_send_keys 共同依赖。\
+    "backend 流通道的 wire 客户端 —— C1「本机进程」那一半的传输层，\
+         被 backend_kill / backend_launch / backend_send_keys 共同依赖。\
          它不在 backend/ 下是历史位置，不是它不属于这一半。",
 )];
 
@@ -132,7 +132,7 @@ fn every_file_under_backend_is_registered_with_a_reason() {
 /// ★ 每个文件都必须**住在一条能力线上** —— `backend/` 根下只允许 `mod.rs`。
 ///
 /// 这条钉的是 §1.1 那条线在 monitor 侧也成立：读与控制分开，不许有「既不是读也不是写」
-/// 的第三堆。daemon 侧同一条纪律由 `layering_guard` 管。
+/// 的第三堆。backend 侧同一条纪律由 `layering_guard` 管。
 #[test]
 fn every_file_under_backend_lives_on_a_capability_line() {
     for (f, line, _) in BACKEND_FILES {
@@ -285,7 +285,7 @@ fn platform_hits(prod: &str) -> Vec<String> {
 ///
 /// # C10 说「判据是跨 target 编译」，那 monitor 侧的那一半在哪
 ///
-/// daemon 侧 CI 有一步 `cargo check --all-targets --target x86_64-pc-windows-msvc`，
+/// backend 侧 CI 有一步 `cargo check --all-targets --target x86_64-pc-windows-msvc`，
 /// 逐字标着「平台线的真判据」。**monitor 照抄不了**：本机实测 exit=101 ——
 /// 挡路的**不是 monitor 的代码**（252 个 `.rmeta` 已经产出），
 /// 是某个 C 依赖的 build script 要 `lib.exe`（MSVC 的库工具），Linux 上没有。
@@ -298,8 +298,8 @@ fn platform_hits(prod: &str) -> Vec<String> {
 /// 也就是说 monitor 的 Windows 面已经很久没有被任何编译器看过，
 /// 而这段头注原文会让人以为它有人管。**这不是判据的洞，是判据的前提没了。**
 /// 实况与解锁条件记在 `ROADMAP §5` 的 3y；前提本身由
-/// `shared_crate_registry::the_windows_cross_target_signal_covers_only_the_daemon`
-/// 盯着（daemon 那步被删 / monitor 那侧补上 / vendor 依赖变 optional，三种都会红）。
+/// `shared_crate_registry::the_windows_cross_target_signal_covers_only_the_backend`
+/// 盯着（backend 那步被删 / monitor 那侧补上 / vendor 依赖变 optional，三种都会红）。
 /// 本条是它的**源码形态那一半**：编译只能证明「今天两边都过」，
 /// 挡不住「往 backend 里塞一段 `#[cfg]` 分叉、两边各编一半」——那才是 C10 真正怕的。
 #[test]

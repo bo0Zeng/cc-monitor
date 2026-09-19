@@ -48,7 +48,7 @@ Renders the real-time conversation written by Claude Code CLI to `~/.claude/proj
 - **One-click public-key push**: append your local public key to the remote `~/.ssh/authorized_keys` for passwordless login
 - **ProxyJump / ssh-config bulk import**: reach an intranet target through a jump host; bulk-import from `~/.ssh/config` with smart aggregation of a machine's multiple addresses
 - **Local port-forward console** (`-L`): forward ports over the existing SSH connection, started/stopped from one place
-- **Daemonless degraded read**: read remote sessions via plain `tail` polling without a backend (a capability subset, honestly surfaced)
+- **Backendless degraded read**: read remote sessions via plain `tail` polling without a backend (a capability subset, honestly surfaced)
 - **Turn-complete notification**: a system notification when a remote session finishes a turn; **fingerprint reset**: reset a remote host-key when it changes
 
 ### Multi-account (isolated yet synced, #68/#69)

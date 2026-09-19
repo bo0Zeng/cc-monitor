@@ -29,17 +29,22 @@ fn prod_code() -> String {
 
 #[test]
 fn hook_args_shape() {
-    let a = hook_set_args("session-closed", &PathBuf::from("/opt/ccm/daemon"), 42, 999);
+    let a = hook_set_args(
+        "session-closed",
+        &PathBuf::from("/opt/ccm/backend"),
+        42,
+        999,
+    );
     assert_eq!(a[0], "set-hook");
     assert_eq!(a[1], "-g");
     assert_eq!(a[2], "session-closed[50]");
     assert_eq!(
         a[3],
-        "run-shell -b ''\\''/opt/ccm/daemon'\\'' --tmux-notify 42 999'"
+        "run-shell -b ''\\''/opt/ccm/backend'\\'' --tmux-notify 42 999'"
     );
 }
 
-/// exe 路径含单引号也不能破坏命令串（我们自己产生的路径，但用户可以把 daemon
+/// exe 路径含单引号也不能破坏命令串（我们自己产生的路径，但用户可以把 backend
 /// 部署到任意目录）。
 #[test]
 fn exe_path_with_quote_is_escaped() {
@@ -90,7 +95,7 @@ fn no_filesystem_writes_in_this_module() {
     // 它天然漏掉没列的那些 —— 实测把 `std::fs::remove_file` 放进本模块生产段，
     // 本条**不红**（删除/改名/复制都不在表里）。
     //
-    // 真正的保障是 `readonly_guard::every_fs_call_in_daemon_production_is_read_only`：
+    // 真正的保障是 `readonly_guard::every_fs_call_in_backend_production_is_read_only`：
     // 那条是**白名单**（默认拒绝），上面那一刀正是它逮住的。
     // 两层失效模式相反（黑名单漏新写法 / 白名单误伤新读法）⇒ 留着这层是纵深，不是重复；
     // 但**别把这张黑名单读成保障**。它一旦成了唯一的一层，本模块就没人守了。
@@ -101,7 +106,7 @@ fn no_filesystem_writes_in_this_module() {
     let guard = include_str!("../readonly_guard.rs");
     for (needle, why) in [
         (
-            "fn every_fs_call_in_daemon_production_is_read_only",
+            "fn every_fs_call_in_backend_production_is_read_only",
             "那条白名单整个不见了",
         ),
         (

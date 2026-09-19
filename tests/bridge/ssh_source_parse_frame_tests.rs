@@ -12,9 +12,9 @@ fn parses_hello_and_captures_build_id() {
             build_id: "abc123".to_string(),
             host_arch: "aarch64".to_string(),
             claude_dir: "/home/pi/.claude".to_string(),
-            // `S4`：本样本无 `homes` 字段（= 今天所有已部署的 daemon）→ 空表 ⇒ 回退 `claude_dir`。
+            // `S4`：本样本无 `homes` 字段（= 今天所有已部署的后端）→ 空表 ⇒ 回退 `claude_dir`。
             homes: Vec::new(),
-            // F66：旧 daemon（本样本无 capabilities 字段）→ 空集（保守缺省）
+            // F66：旧后端（本样本无 capabilities 字段）→ 空集（保守缺省）
             capabilities: Vec::new(),
             // U8a-2a：同理，无 commands 字段 → 空集 ⇒ 一条入方向命令都不发。
             commands: Vec::new(),
@@ -29,18 +29,18 @@ fn parses_hello_and_captures_build_id() {
 /// 而 additive 迁移实际上没发生。所以这里逐形态断言，不只断言"不 panic"。
 #[test]
 fn parses_hello_homes_and_falls_back_to_claude_dir() {
-    // ① 无 `homes`（= 今天所有已部署的 daemon）⇒ 空表 ⇒ 回退 `claude_dir`。
+    // ① 无 `homes`（= 今天所有已部署的后端）⇒ 空表 ⇒ 回退 `claude_dir`。
     let old =
         r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/old/.claude"}"#;
     match parse_frame(old).expect("hello must parse") {
         InboundFrame::Hello {
             homes, claude_dir, ..
         } => {
-            assert!(homes.is_empty(), "旧 daemon 不该凭空长出 homes");
+            assert!(homes.is_empty(), "旧后端不该凭空长出 homes");
             assert_eq!(
                 claude_home_from_hello(&homes, &claude_dir),
                 "/old/.claude",
-                "无 homes 时必须回退 claude_dir —— 这条一坏，所有已部署的 daemon 当场失去 home"
+                "无 homes 时必须回退 claude_dir —— 这条一坏，所有已部署的后端当场失去 home"
             );
         }
         other => panic!("expected Hello, got {other:?}"),
@@ -108,7 +108,7 @@ fn parses_hello_homes_and_falls_back_to_claude_dir() {
 /// `InboundClient::accepts()` 永远假 ⇒ **一条入方向命令都发不出去**，
 /// 也就是 U8a-2a 要修的那个「通道不可达」原地复活。
 ///
-/// e2e 挡不住的原因：它 `grep` 的是整行 hello，daemon 把 `ping` 放哪个键里都绿。
+/// e2e 挡不住的原因：它 `grep` 的是整行 hello，backend 把 `ping` 放哪个键里都绿。
 #[test]
 fn parses_hello_commands_across_the_three_shapes() {
     let with = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":["cancel","ping","resolve"]}"#;
@@ -122,13 +122,13 @@ fn parses_hello_commands_across_the_three_shapes() {
         }
         other => panic!("不是 hello：{other:?}"),
     }
-    // 旧 daemon：无该字段 → 空集（保守缺省，不发任何入方向命令）。
+    // 旧后端：无该字段 → 空集（保守缺省，不发任何入方向命令）。
     let without = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d"}"#;
     match parse_frame(without).expect("hello must parse") {
         InboundFrame::Hello { commands, .. } => assert!(commands.is_empty()),
         other => panic!("不是 hello：{other:?}"),
     }
-    // 坏 daemon：非数组 / 元素非字符串 → 滤成空集，**绝不 panic**（同 capabilities 口径）。
+    // 坏后端：非数组 / 元素非字符串 → 滤成空集，**绝不 panic**（同 capabilities 口径）。
     let junk = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d","commands":"ping"}"#;
     match parse_frame(junk).expect("hello must parse") {
         InboundFrame::Hello { commands, .. } => assert!(commands.is_empty()),
@@ -170,7 +170,7 @@ fn parses_reply_and_cancelled_field_by_field() {
             data: None,
         }
     );
-    // daemon 对**协议级**错误回空 id（它那时还不知道 id）——空串是合法值，不是坏帧。
+    // backend 对**协议级**错误回空 id（它那时还不知道 id）——空串是合法值，不是坏帧。
     let proto_err = r#"{"kind":"reply","id":"","ok":false,"code":"line_too_long","message":"x"}"#;
     assert!(matches!(
         parse_frame(proto_err),
@@ -192,7 +192,7 @@ fn parses_reply_and_cancelled_field_by_field() {
     assert!(parse_frame(r#"{"kind":"cancelled"}"#).is_none());
 }
 
-/// #33：hello 缺 build_id → None（按必需字段，坏帧跳过；既有 daemon 总在发它）。
+/// #33：hello 缺 build_id → None（按必需字段，坏帧跳过；既有后端总在发它）。
 #[test]
 fn hello_missing_build_id_returns_none() {
     let line = r#"{"kind":"hello","v":1,"host_arch":"x86_64","claude_dir":"/c"}"#;
@@ -200,20 +200,20 @@ fn hello_missing_build_id_returns_none() {
 }
 
 /// F66（#58③）wire 契约：hello 的 `capabilities` 字段。
-/// ① 缺字段（旧 daemon）→ 空集（向后兼容，保守缺省，同 §27 族）。
+/// ① 缺字段（旧后端）→ 空集（向后兼容，保守缺省，同 §27 族）。
 /// ② 声明数组 → 原样解析（monitor 按此决定发哪些 flag）。
 /// ③ 非数组 / 元素非字符串 → 滤成空集，绝不 panic（宽容解析，§18）。
 #[test]
 fn hello_capabilities_backward_compat_and_declared() {
-    // ① 旧 daemon：无 capabilities → 空集
+    // ① 旧后端：无 capabilities → 空集
     let old = r#"{"kind":"hello","v":1,"build_id":"p1e","host_arch":"x86_64","claude_dir":"/c"}"#;
     match parse_frame(old).unwrap() {
         InboundFrame::Hello { capabilities, .. } => {
-            assert!(capabilities.is_empty(), "旧 daemon 无声明 → 空集");
+            assert!(capabilities.is_empty(), "旧后端无声明 → 空集");
         }
         _ => panic!("expected Hello"),
     }
-    // ② 新 daemon：声明能力
+    // ② 新后端：声明能力
     let new = r#"{"kind":"hello","v":1,"build_id":"p1h","host_arch":"x86_64","claude_dir":"/c","capabilities":["bg","tail-only"]}"#;
     match parse_frame(new).unwrap() {
         InboundFrame::Hello { capabilities, .. } => {
@@ -250,7 +250,7 @@ fn hello_capabilities_backward_compat_and_declared() {
 fn negotiate_version_truth_table() {
     // 全同 → Ok。
     assert_eq!(
-        negotiate_version(EXPECTED_PROTO_V, EXPECTED_DAEMON_BUILD_ID),
+        negotiate_version(EXPECTED_PROTO_V, EXPECTED_BACKEND_BUILD_ID),
         VersionVerdict::Ok
     );
     // 协议同、build 异 → StaleBuild（带上报值）。
@@ -266,7 +266,7 @@ fn negotiate_version_truth_table() {
         VersionVerdict::Incompatible { reported_v: 999 }
     );
     assert_eq!(
-        negotiate_version(999, EXPECTED_DAEMON_BUILD_ID),
+        negotiate_version(999, EXPECTED_BACKEND_BUILD_ID),
         VersionVerdict::Incompatible { reported_v: 999 },
         "协议不符时即使 build 匹配也算不兼容"
     );
@@ -276,12 +276,12 @@ fn negotiate_version_truth_table() {
 #[test]
 fn version_warning_messages() {
     assert_eq!(
-        version_warning(EXPECTED_PROTO_V, EXPECTED_DAEMON_BUILD_ID, "pi"),
+        version_warning(EXPECTED_PROTO_V, EXPECTED_BACKEND_BUILD_ID, "pi"),
         None
     );
     let stale = version_warning(EXPECTED_PROTO_V, "p1a-history", "pi").expect("stale warns");
     assert!(stale.contains("pi") && stale.contains("p1a-history"));
-    let incompat = version_warning(2, EXPECTED_DAEMON_BUILD_ID, "wsl").expect("incompat warns");
+    let incompat = version_warning(2, EXPECTED_BACKEND_BUILD_ID, "wsl").expect("incompat warns");
     assert!(incompat.contains("wsl") && incompat.contains("不兼容"));
 }
 
@@ -374,8 +374,8 @@ fn known_kind_with_extra_fields_still_parses() {
     );
 }
 
-/// Batch7-F24：p1e daemon 的 session_added 附加元信息正确解析；
-/// 旧 daemon 缺字段 → None（上一测试已覆盖）。
+/// Batch7-F24：p1e backend 的 session_added 附加元信息正确解析；
+/// 旧后端缺字段 → None（上一测试已覆盖）。
 #[test]
 fn session_added_metadata_parses() {
     let line = r#"{"kind":"session_added","sid":"s-bg","session_kind":"bg","cwd":"/proj/x","name":"评估任务","path":"/home/u/.claude/projects/p/s-bg.jsonl","lines":42}"#;
@@ -429,7 +429,7 @@ fn parses_session_removed() {
         frame,
         InboundFrame::SessionRemoved {
             sid: "s-dead".to_string(),
-            // ★ S0 向后兼容：**旧 daemon 不发 cause** ⇒ 必须解析成 Gone，
+            // ★ S0 向后兼容：**旧后端不发 cause** ⇒ 必须解析成 Gone，
             // 即维持今天的行为（查快照判灰点）。
             cause: RemovalCause::Gone,
         }
@@ -485,7 +485,7 @@ fn parses_tmux_sessions_and_rejects_bad_raw() {
         frame,
         InboundFrame::TmuxSessions {
             raw: "s1\t/p\tclaude\t1\t2\tsid-a".to_string(),
-            // P1：旧 daemon 无该字段 ⇒ None（**不是**坏帧）。
+            // P1：旧后端无该字段 ⇒ None（**不是**坏帧）。
             observation: None,
         }
     );
@@ -498,7 +498,7 @@ fn parses_tmux_sessions_and_rejects_bad_raw() {
     assert_eq!(parse_frame(r#"{"kind":"tmux_sessions"}"#), None);
     assert_eq!(parse_frame(r#"{"kind":"tmux_sessions","raw":5}"#), None);
     // P1（additive 字段）：observation 存在则读出；**非字符串不是坏帧**、退化成 None
-    // （坏 daemon 也只该让 monitor 退回保守判据，不该让整帧被丢）。
+    // （坏后端也只该让 monitor 退回保守判据，不该让整帧被丢）。
     assert_eq!(
         parse_frame(r#"{"kind":"tmux_sessions","raw":"","observation":"zero_sessions"}"#),
         Some(InboundFrame::TmuxSessions {

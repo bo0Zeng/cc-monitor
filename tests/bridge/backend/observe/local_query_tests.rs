@@ -97,7 +97,7 @@ fn exit_zero_is_the_only_success_and_stderr_survives_failure() {
             "退出码 {c} 被判成了非 Failed —— 而本条的名字声称「只有 0 是成功」"
         );
     }
-    // ⚠ 退出码非 0 时 stdout 里可能**也有内容**（daemon 边写边失败），但那不是成功。
+    // ⚠ 退出码非 0 时 stdout 里可能**也有内容**（backend 边写边失败），但那不是成功。
     assert_eq!(
         classify(Some(2), "partial\n".into(), "boom\n".into()),
         QueryOutcome::Failed {

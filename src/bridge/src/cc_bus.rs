@@ -158,7 +158,7 @@ pub fn split_combined<'a>(raw: &'a str, marker: &str) -> (&'a str, &'a str) {
 // ===== IPC 层：按需经 SSH 读一次远端状态。**照抄 `mcp.rs::fetch_remote_claude_json`** =====
 //
 // 为什么是「按需读」而不是订阅/轮询：cc-bus 的状态全在远端本机 `~/.cc-bus/`，cc-monitor
-// 跑在 Windows 只能经 SSH 看。两条备选——复用 daemon 既有 inotify watcher（**违反 daemon
+// 跑在 Windows 只能经 SSH 看。两条备选——复用后端既有 inotify watcher（**违反 backend
 // 零改红线**，且要新增协议帧），或按需刷新。取后者，形状逐条对齐 `mcp.rs`：
 // 定值命令（零用户输入拼接 → 零注入面）、30s 超时、32MB 上限、
 // **超限拒收**（devbench F10b：不再是「读满就停」的静默截断）、宽容解析（缺/坏 → 空）、
@@ -169,9 +169,9 @@ pub fn split_combined<'a>(raw: &'a str, marker: &str) -> (&'a str, &'a str) {
 /// （同 `mcp.rs` 那条 `CMD` 常量的形状）。
 /// 尊重 `CC_BUS_HOME`（cc-bus 自己就用这个变量定位状态目录）。
 /// 结尾 `true` 保证两个文件都不存在时命令仍 rc=0——"没装 cc-bus"不是错误，是一种状态。
-/// ## 为什么这条读面**还没**走 daemon〔`P4a2` 摸底 08-12，有读数〕
+/// ## 为什么这条读面**还没**走 backend〔`P4a2` 摸底 08-12，有读数〕
 ///
-/// 常被问「远端这条为什么不走已经连着的 daemon，省掉每次一次 SSH 握手」。收益是**真的**，
+/// 常被问「远端这条为什么不走已经连着的后端，省掉每次一次 SSH 握手」。收益是**真的**，
 /// 代价也是真的，两边都量过：
 ///
 /// **收益**：`connect_and_exec_cmd` 每次都 `connect_session` —— **不复用连接**。
@@ -181,12 +181,12 @@ pub fn split_combined<'a>(raw: &'a str, marker: &str) -> (&'a str, &'a str) {
 /// 用户一次点击等 0.2s —— 这个量级不足以单独撑起一次架构改动。
 ///
 /// **代价**：`CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样。换传输 = 把这份
-/// **文件格式耦合搬进 daemon**，而 `P4b` 作废重写的理由逐字是「**cc-bus 后面肯定还是要变的**」——
-/// 把一个正要变的东西焊进 daemon，是拿 180ms 换一次以后更贵的返工。
+/// **文件格式耦合搬进 backend**，而 `P4b` 作废重写的理由逐字是「**cc-bus 后面肯定还是要变的**」——
+/// 把一个正要变的东西焊进后端，是拿 180ms 换一次以后更贵的返工。
 ///
 /// **⚠ 解锁条件不是「`P4b` 落地」**（那件 08-12 已签收，但它只删掉了 cc-spawn 的复用判定，
 /// **`agents.tsv` 的格式契约一字未动**）——实质条件是**格式契约稳下来**。
-/// 届时的正确形状多半**不是**把 shell 串搬过去，而是 daemon 出一条**具名的读命令**
+/// 届时的正确形状多半**不是**把 shell 串搬过去，而是后端出一条**具名的读命令**
 /// （形状抄 `P4d` 那批：stdin JSON 进 / stdout JSON 出 / 能力探测口报得出来）。
 ///
 /// ## 🔴 为什么它要**自己报「我读没读得了」**〔ccbus-win 09-10，有实测〕
@@ -403,15 +403,15 @@ pub async fn read_cc_bus_state(origin: String) -> Result<CcBusState, String> {
 /// ⇒ **回落回去等于把病请回来**，只是这一次是在「主路答不上」的时候悄悄请回来，
 /// 而那正是最难被人发现的时候。
 ///
-/// ⚠ **代价如实写**：通道不在 / daemon 太旧 / 问不到身份空间时，这盏灯从
+/// ⚠ **代价如实写**：通道不在 / backend 太旧 / 问不到身份空间时，这盏灯从
 /// 「悄悄退回按名字探一次」变成**明确的一句「问不到」**。那句话由 [`unknown_liveness`]
 /// 独家造 —— 「问不到」**不许**被渲染成「不在线」（灭灯是一个确定的答案，而我们并不确定），
 /// 而删掉回落之后这条性质是**结构性**的：这条路上根本没有地方能造出「不在线」这个答案。
 ///
-/// ⚠ `origin` 是入参不是分支（同 [`send_via_daemon`]）：`client_for` 两侧都答得出。
+/// ⚠ `origin` 是入参不是分支（同 [`send_via_backend`]）：`client_for` 两侧都答得出。
 #[tauri::command]
 pub async fn check_cc_bus_agent_online(origin: String, id: String) -> Result<bool, String> {
-    online_via_daemon(&origin, &id).await
+    online_via_backend(&origin, &id).await
 }
 
 // ===== B03 批二：命令构造抽成**纯函数**，让校验落在可测的地方 =====
@@ -433,7 +433,7 @@ pub async fn check_cc_bus_agent_online(origin: String, id: String) -> Result<boo
 // 留一个没人调的构造器就是把那一幕请回来。同 `K-R72` 给 `build_guarded_tmux_cmd` 记的那一笔：
 // 「把回落改成恒失败的桩留在原地 —— 那不是删，那是把一份实现变成一句谎话」。
 //
-// **那道 id 白名单没有丢，换了住址**：搬进 [`online_via_daemon`]（同 `K-R98` 给发消息那条的手法）。
+// **那道 id 白名单没有丢，换了住址**：搬进 [`online_via_backend`]（同 `K-R98` 给发消息那条的手法）。
 
 /// 读某个 agent 的 inbox。只取尾部 200 行：inbox 是只增文件，全量读会随时间越来越慢，
 /// 而驾驶舱只看最近的。
@@ -461,16 +461,16 @@ fn build_inbox_cmd(id: &str) -> Result<String, String> {
 // 「`bus-list` 挑人 + 逐个 `bus-send`」正是为了不再打进 78 个幽灵收件箱；
 // 本件删掉回落之后它零生产调用点 ⇒ 整块走（理由同上一块墓碑）。
 //
-// **空消息那道校验没有丢，换了住址**：`send_via_daemon` 里那句 `text.trim().is_empty()`
+// **空消息那道校验没有丢，换了住址**：`send_via_backend` 里那句 `text.trim().is_empty()`
 // 是每一条真发出去的消息都要过的那一份（广播逐个调它）。
 
 // ★★ `K-R112`（09-13）：**这里原来住着收掉那条 SSH 主路的命令构造器** `build_kill_cmd`。〔散文墓碑〕
 //
 // 它拼的是 `cc-kill <id>`。与上面两块不同的是：**这一条走的不是回落，是主路** ——
-// 收掉 agent 在本件之前从头到尾就是一条 SSH shell 串，而 daemon 侧的 `bus-kill` 早就在。
-// 改走原语换来的两样东西写在 [`kill_via_daemon`] 头注里（`<local>` 通了 · 回值三态分得开）。
+// 收掉 agent 在本件之前从头到尾就是一条 SSH shell 串，而后端侧的 `bus-kill` 早就在。
+// 改走原语换来的两样东西写在 [`kill_via_backend`] 头注里（`<local>` 通了 · 回值三态分得开）。
 //
-// **那道 id 白名单没有丢，换了住址**：搬进 [`kill_via_daemon`]，理由在那里写得更硬
+// **那道 id 白名单没有丢，换了住址**：搬进 [`kill_via_backend`]，理由在那里写得更硬
 // —— 这一条的后果是杀掉一棵进程树。
 
 fn build_spawn_cmd(
@@ -866,7 +866,7 @@ fn resolve_bash() -> Result<std::ffi::OsString, String> {
 ///
 /// `CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样。本机要是自己去 `read_to_string`
 /// 那两个文件，仓里就有了**两份**同一件事的表示，而它们会各自漂 ——
-/// 这个仓管这叫「一段逻辑、两种表示」，旧 `ccm` 的 `resolve_from_daemon` 〔散文墓碑〕/`resolve_recipe`
+/// 这个仓管这叫「一段逻辑、两种表示」，旧 `ccm` 的 `resolve_from_backend` 〔散文墓碑〕/`resolve_recipe`
 /// 那对孪生函数专门为此立了一条 e2e 对拍。
 ///
 /// ⇒ 照 `P3t-Y2` 的先例办（`exec_site_registry` 逐字记着「起本机探针与它**共用同一个常量**」）：
@@ -917,7 +917,7 @@ async fn local_shell_read(
         //   超时是 `tokio::time::timeout` 把整个 future 丢掉，走不到那里，而 tokio 的
         //   `Child` **默认不因句柄被 drop 而杀子进程** ⇒ 每超时一次漏一个 `sleep`/`cat`。
         //   本会话已经因为「我自己留下的孤儿进程」栽过一次：`#60` 的八轮实测里，
-        //   有五个孤儿 daemon 把读数全带偏了，我却先后猜了七个错误的病因。
+        //   有五个孤儿后端把读数全带偏了，我却先后猜了七个错误的病因。
         //   ⇒ 教训的产物不是「以后小心」，是
         //   `a_timed_out_local_read_does_not_leave_an_orphan_behind` 那条判据。
         // · `Null`：这一跳唯一有用的字节在 stdout 上；rc/shell 的抱怨不是我们的诊断。
@@ -974,16 +974,16 @@ async fn local_shell_read(
 /// 又一句与真实原因毫无关系的话（`P4d-Y5` 收口的正是这一族）。
 ///
 /// ⚠〔`K-R112` 09-13〕**今天只剩一个调用方**：`cc_bus_spawn`。
-/// 发消息（`P4f`）· 广播（`P4f`）· 收掉（本件）三条都已改走 daemon 原语，
+/// 发消息（`P4f`）· 广播（`P4f`）· 收掉（本件）三条都已改走后端原语，
 /// 它们的 `origin` 是入参不是分支 ⇒ 没有「本机走不到」这回事了。
-/// **留着这一份不是为了对称**：spawn 那条今天真的没有对侧（daemon 帧面 10 条里没有 spawn），
+/// **留着这一份不是为了对称**：spawn 那条今天真的没有对侧（backend 帧面 10 条里没有 spawn），
 /// 而这句话要说清「缺的是后端能力」，不是「配置没找到」。
 fn refuse_local_write(origin: &str, what: &str) -> Option<String> {
     if origin != crate::inbound_client::LOCAL_ORIGIN {
         return None;
     }
     Some(format!(
-        "本机还不能{what}：cc-bus 的这一面在本机没有对侧（daemon 侧没有它的原语）。\n\
+        "本机还不能{what}：cc-bus 的这一面在本机没有对侧（backend 侧没有它的原语）。\n\
          读面（清单 / 在线 / inbox）与写面里的发消息 / 广播 / 收掉今天都通了；\n\
          剩下这一条等的是**后端先长出那条原语**，不是等谁记得接线。"
     ))
@@ -993,7 +993,7 @@ fn refuse_local_write(origin: &str, what: &str) -> Option<String> {
 ///
 /// `None` 有两种来源，**它们都不是"不在线"**：
 /// · 这个 id 不在总线名单里（那它根本不是 agent）；
-/// · `live` 是 `null`（daemon 问不到身份空间）。
+/// · `live` 是 `null`（backend 问不到身份空间）。
 /// ⇒ 调用方拿到 `None` 时**诚实报「问不到」**（[`unknown_liveness`]），而不是渲染成一盏灭灯。
 ///
 /// ⚠〔`K-R112` 09-13〕原文这一行写的是「**回落**到老探法」—— 那半句今天假了：
@@ -1020,12 +1020,12 @@ pub(crate) fn unknown_liveness(origin: &str, id: &str, why: &str) -> String {
     )
 }
 
-/// 问 daemon「这个 agent 在线吗」。**没有第二条路**〔`K-R112` 09-13〕。
+/// 问后端「这个 agent 在线吗」。**没有第二条路**〔`K-R112` 09-13〕。
 ///
-/// `Err` 的五种来源逐条经 [`unknown_liveness`]：没通道 · daemon 太旧 · 那一趟失败 ·
+/// `Err` 的五种来源逐条经 [`unknown_liveness`]：没通道 · backend 太旧 · 那一趟失败 ·
 /// 应答形状不认识 · 它不在名单里 /`live` 是 null。**一种都不是「不在线」。**
-async fn online_via_daemon(origin: &str, id: &str) -> Result<bool, String> {
-    // ⚠ **校验留在这一侧**（同 [`send_via_daemon`]）：id 今天不再被拼进任何命令串，
+async fn online_via_backend(origin: &str, id: &str) -> Result<bool, String> {
+    // ⚠ **校验留在这一侧**（同 [`send_via_backend`]）：id 今天不再被拼进任何命令串，
     //   但「调用方不能靠对端校验」这条规矩不因为注入面没了就作废。
     if !is_valid_bus_id(id) {
         return Err(format!("非法 agent id（拒绝去问它在不在线）: {id:?}"));
@@ -1033,14 +1033,14 @@ async fn online_via_daemon(origin: &str, id: &str) -> Result<bool, String> {
     let unknown = |why: String| unknown_liveness(origin, id, &why);
     let Some(client) = crate::inbound_client::client_for(origin) else {
         return Err(unknown(
-            "这台的 daemon 通道没起来（设置里可以起/停每台机器的 daemon）".to_string(),
+            "这台的后端通道没起来（设置里可以起/停每台机器的后端）".to_string(),
         ));
     };
-    // 能力协商放在问之前 —— 同 `send_via_daemon` 那条理由：「这台的后端太旧」
+    // 能力协商放在问之前 —— 同 `send_via_backend` 那条理由：「这台的后端太旧」
     // 是**问得出答案**的，不许与超时同形。
     if !client.accepts(BUS_LIST) {
         return Err(unknown(format!(
-            "这台的 daemon 太旧 —— 它没声明 `{BUS_LIST}` 这条命令\
+            "这台的后端太旧 —— 它没声明 `{BUS_LIST}` 这条命令\
              （**能力协商**问出来的，不是超时、也不是网络错）"
         )));
     }
@@ -1062,17 +1062,17 @@ async fn online_via_daemon(origin: &str, id: &str) -> Result<bool, String> {
             ))
         })?;
     live_of(agents, id).ok_or_else(|| {
-        unknown("它不在总线名单里，或者 daemon 问不到身份空间（`live` 是 null）".to_string())
+        unknown("它不在总线名单里，或者后端问不到身份空间（`live` 是 null）".to_string())
     })
 }
 
-/// 广播走 daemon 那条路的两种失败：能不能回落到老路。
+/// 广播走后端那条路的两种失败：能不能回落到老路。
 ///
-/// 与 `daemon_route::Routed` 同一条纪律：**只有能证明"一条都没发出去"时才允许回落**。
+/// 与 `backend_route::Routed` 同一条纪律：**只有能证明"一条都没发出去"时才允许回落**。
 pub(crate) enum BroadcastRoute {
-    /// 一条都没发出去（没通道 / daemon 太旧）⇒ 远端可以回落。
+    /// 一条都没发出去（没通道 / backend 太旧）⇒ 远端可以回落。
     NoChannel(String),
-    /// 已经发了一部分，或 daemon 明确拒绝 ⇒ **不许回落**（回落会把一部分人收到两遍）。
+    /// 已经发了一部分，或后端明确拒绝 ⇒ **不许回落**（回落会把一部分人收到两遍）。
     Failed(String),
 }
 
@@ -1118,8 +1118,8 @@ pub(crate) struct BroadcastPlan {
     pub(crate) liveness_unknown: bool,
 }
 
-/// 广播走 daemon：`bus-list` 挑人 → 逐个 `bus-send`。
-async fn broadcast_via_daemon(origin: &str, text: &str) -> Result<String, BroadcastRoute> {
+/// 广播走后端：`bus-list` 挑人 → 逐个 `bus-send`。
+async fn broadcast_via_backend(origin: &str, text: &str) -> Result<String, BroadcastRoute> {
     use crate::inbound_client::client_for;
     let Some(client) = client_for(origin) else {
         return Err(BroadcastRoute::NoChannel(format!(
@@ -1133,22 +1133,22 @@ async fn broadcast_via_daemon(origin: &str, text: &str) -> Result<String, Broadc
             std::time::Duration::from_secs(30),
         )
         .await
-        // ⚠ **分流走那唯一的一份**（`daemon_route::route_call_error`）——
+        // ⚠ **分流走那唯一的一份**（`backend_route::route_call_error`）——
         //   我第一版在这儿自己 match 了一遍 `CallError`，守卫当场逮住：
         //   「那是分流规则的第二份实现，它一旦与本模块漂开，一次 `wrong_owner`
         //    就可能被另一条路重做一遍」。逮得对。
         .map_err(|e| {
-            match crate::backend::control::daemon_route::route_call_error(&e, |code, message| {
+            match crate::backend::control::backend_route::route_call_error(&e, |code, message| {
                 format!("列总线成员被拒：{code}：{message}")
             }) {
                 // 「证明没发出去」⇒ 远端可以回落到老路
-                crate::backend::control::daemon_route::Routed::NoChannel(why) => {
+                crate::backend::control::backend_route::Routed::NoChannel(why) => {
                     BroadcastRoute::NoChannel(why)
                 }
-                crate::backend::control::daemon_route::Routed::Refused(why) => {
+                crate::backend::control::backend_route::Routed::Refused(why) => {
                     BroadcastRoute::Failed(why)
                 }
-                crate::backend::control::daemon_route::Routed::Done => {
+                crate::backend::control::backend_route::Routed::Done => {
                     BroadcastRoute::Failed("分流器判成已完成，这不该发生".into())
                 }
             }
@@ -1201,15 +1201,15 @@ pub(crate) fn describe_broadcast(plan: &BroadcastPlan, ok: usize, failed: &[Stri
 /// cc-monitor 自己在总线上的身份 —— **发消息时用它，别让收信人看到 `unknown`**。
 pub(crate) const MONITOR_BUS_ID: &str = "cc-monitor";
 
-/// daemon 那条发消息原语的名字（`P4f`；实现住 `src/backend` 的 `control/cc_bus.rs`）。
+/// backend 那条发消息原语的名字（`P4f`；实现住 `src/backend` 的 `control/cc_bus.rs`）。
 const BUS_SEND: &str = "bus-send";
 
-/// daemon 那条**列总线成员**原语的名字（`P4f`；三态在线就出自它的 `live` 字段）。
+/// backend 那条**列总线成员**原语的名字（`P4f`；三态在线就出自它的 `live` 字段）。
 ///
 /// ⚠ 它有两个消费者（查在线 · 广播挑人）—— 名字**只许有一个住址**，别在调用点写字面量。
 const BUS_LIST: &str = "bus-list";
 
-/// daemon 那条**收掉 agent** 原语的名字（`P4f` 续 p2c，`BUILD_ID` 里逐字记着那一拍）。
+/// backend 那条**收掉 agent** 原语的名字（`P4f` 续 p2c，`BUILD_ID` 里逐字记着那一拍）。
 const BUS_KILL: &str = "bus-kill";
 
 /// 一句话里怎么称呼这台机器 —— **纯函数**。
@@ -1226,14 +1226,14 @@ pub(crate) fn machine_label(origin: &str) -> String {
     }
 }
 
-/// 「这台的 daemon 通道没起来」讲成人话 —— 纯函数，**每条走 daemon 的 cc-bus 命令共用这一份**。
+/// 「这台的后端通道没起来」讲成人话 —— 纯函数，**每条走后端的 cc-bus 命令共用这一份**。
 ///
 /// ⚠〔`K-R112` 09-13〕原来这一份只服务发消息（`what` / `outcome` 两处都写死）。
 /// 收掉 agent 改走原语之后要说同一句话 ⇒ **提参数，不抄第二份**：
 /// 抄一份的代价不是重复，是两份措辞会各自漂，而措辞正是用户唯一看得见的那一面。
 pub(crate) fn describe_no_channel_for(origin: &str, what: &str, outcome: &str) -> String {
     format!(
-        "{} 的 daemon 通道没起来 —— {what}要经它（设置里可以起/停每台机器的 daemon）；\
+        "{} 的后端通道没起来 —— {what}要经它（设置里可以起/停每台机器的后端）；\
          {outcome}。",
         machine_label(origin)
     )
@@ -1244,7 +1244,7 @@ pub(crate) fn describe_no_channel(origin: &str, id: &str) -> String {
     describe_no_channel_for(origin, "发消息", &format!("{id} 的消息**没有发出去**"))
 }
 
-/// 「这台的 daemon 太旧」讲成人话 —— **能力协商的结论**，纯函数，两条路共用这一份。
+/// 「这台的后端太旧」讲成人话 —— **能力协商的结论**，纯函数，两条路共用这一份。
 ///
 /// # 🔴 它为什么必须与超时 / 断连长得不一样〔`KR98D2`〕
 ///
@@ -1252,29 +1252,29 @@ pub(crate) fn describe_no_channel(origin: &str, id: &str) -> String {
 /// 而「超时」「连接断了」是**问不出答案**的事。把它们压成同一句「发消息失败」，
 /// 就是本工作区最贵的那一形 —— **一个值装了两件事**：用户拿到它既不知道该升级，
 /// 也不知道该重试，只能两样都试一遍。
-pub(crate) fn describe_daemon_too_old_for(origin: &str, cmd: &str, outcome: &str) -> String {
+pub(crate) fn describe_backend_too_old_for(origin: &str, cmd: &str, outcome: &str) -> String {
     format!(
-        "{} 的 daemon 太旧：它没声明 `{cmd}` 这条命令（这是**能力协商**问出来的，\
+        "{} 的后端太旧：它没声明 `{cmd}` 这条命令（这是**能力协商**问出来的，\
          不是超时、也不是网络错）—— {outcome}；把这台的后端升到新版就能用。",
         machine_label(origin)
     )
 }
 
 /// 发消息那一档的说法（输出与提参数之前**逐字节相同**）。
-pub(crate) fn describe_daemon_too_old(origin: &str, id: &str) -> String {
-    describe_daemon_too_old_for(origin, BUS_SEND, &format!("{id} 的消息**没有发出去**"))
+pub(crate) fn describe_backend_too_old(origin: &str, id: &str) -> String {
+    describe_backend_too_old_for(origin, BUS_SEND, &format!("{id} 的消息**没有发出去**"))
 }
 
 /// 发消息那一趟的失败讲成人话 —— 纯函数，两条路共用这一份。
 ///
-/// ⚠ **分流走共用的那一份**（`daemon_route::route_call_error`）：
-///   `daemon_route` 的登记表逐字要求「新增一个发送端就必须在这里表态」，
+/// ⚠ **分流走共用的那一份**（`backend_route::route_call_error`）：
+///   `backend_route` 的登记表逐字要求「新增一个发送端就必须在这里表态」，
 ///   而它自己的头注记着为什么 —— 分流规则一旦有第二份实现，
 ///   「被门拒绝」就会在某一份里被洗成「换条路重做」。
 /// ★ 本发送端**没有第二条路可回落**（shell 写面正是 `P4a` 拒掉、`K-R98` 删净的东西）
 ///   ⇒ 三档结果都只是给用户的一句话，`Routed` 的回落语义在这里是空的。
 pub(crate) fn describe_bus_error(outcome: &str, e: &crate::inbound_client::CallError) -> String {
-    use crate::backend::control::daemon_route::{route_call_error, Routed};
+    use crate::backend::control::backend_route::{route_call_error, Routed};
     match route_call_error(e, |code, message| format!("{code}：{message}")) {
         Routed::NoChannel(why) => format!("{why}（{outcome}）"),
         Routed::Refused(why) => why,
@@ -1287,11 +1287,11 @@ pub(crate) fn describe_send_error(id: &str, e: &crate::inbound_client::CallError
     describe_bus_error(&format!("{id} 的消息**没有发出去**"), e)
 }
 
-/// 发消息：走 daemon 的 `bus-send` 原语（`P4f`）。**本机与远端同一条路**〔`K-R98` 09-13〕。
+/// 发消息：走后端的 `bus-send` 原语（`P4f`）。**本机与远端同一条路**〔`K-R98` 09-13〕。
 ///
 /// # 为什么不是"再拼一条 shell 串"
 ///
-/// 那正是 `C1` 排除的东西（一份语义两处实现）。daemon 那条原语自己带着**六档错误码**
+/// 那正是 `C1` 排除的东西（一份语义两处实现）。backend 那条原语自己带着**六档错误码**
 /// 与**三态在线**，这条路只做一件事：把它们讲成人话。
 ///
 /// # 🔴 `origin` 是原语的一个入参，不是一个分支
@@ -1300,9 +1300,9 @@ pub(crate) fn describe_send_error(id: &str, e: &crate::inbound_client::CallError
 /// origin —— `C1` 逐字「只是远端走 ssh，本地不走」）。⇒ 「同一输入 ⇒ 同一结果形状」
 /// **不是**靠两处代码互相照抄维持的，是结构上只有一处可抄。
 ///
-/// ⚠ 老 daemon 没有这条命令 ⇒ 开场先用 `accepts` 问一句（**能力协商，不是超时**）
-/// ⇒ 报「这台的 daemon 太旧」，而不是含糊的失败。
-async fn send_via_daemon(origin: &str, id: &str, text: &str) -> Result<String, String> {
+/// ⚠ 老后端没有这条命令 ⇒ 开场先用 `accepts` 问一句（**能力协商，不是超时**）
+/// ⇒ 报「这台的后端太旧」，而不是含糊的失败。
+async fn send_via_backend(origin: &str, id: &str, text: &str) -> Result<String, String> {
     use crate::inbound_client::client_for;
     // ⚠ **两道校验留在这一侧**〔`K-R98`〕：id 今天不再被拼进任何命令串（那条 shell 路本件
     //   删净了），但「调用方不能靠对端校验」这条规矩不因为注入面没了就作废 ——
@@ -1319,15 +1319,15 @@ async fn send_via_daemon(origin: &str, id: &str, text: &str) -> Result<String, S
     let Some(client) = client_for(origin) else {
         return Err(describe_no_channel(origin, id));
     };
-    // ⚠ **能力协商放在发之前**：老 daemon 没有这条命令时 `call` 自己也会回一个「没发出去」，
+    // ⚠ **能力协商放在发之前**：老后端没有这条命令时 `call` 自己也会回一个「没发出去」，
     //   但那一档经分流器出来与「入方向排队满了」同形。这里先问一句，是为了让
-    //   **「这台的 daemon 太旧」说得出口** —— `KR98D2` 判的正是它不许与超时/网络错同形。
+    //   **「这台的后端太旧」说得出口** —— `KR98D2` 判的正是它不许与超时/网络错同形。
     //   ★ 分流本身仍然只有一份（下面 `describe_send_error` 里那个 `route_call_error`）：
     //     本行判的是「**发之前**这台机器认不认这条命令」，不是「这次失败该不该回落」。
     if !client.accepts(BUS_SEND) {
-        return Err(describe_daemon_too_old(origin, id));
+        return Err(describe_backend_too_old(origin, id));
     }
-    // ★ **以谁的身份发**〔08-13 实测〕：不给 `from` 的话，daemon 跑 `cc-send` 时不在任何
+    // ★ **以谁的身份发**〔08-13 实测〕：不给 `from` 的话，backend 跑 `cc-send` 时不在任何
     //   tmux pane 里，`cc-whoami` 解不出身份 ⇒ 收信人看到「来自 unknown」，
     //   而它给的回复方式是 `cc-send unknown "…"` —— **回复直接掉进没人读的收件箱**。
     // ⚠ 用 `MONITOR_BUS_ID` 这个固定身份：收信人至少知道**这条是从 cc-monitor 发来的**。
@@ -1359,7 +1359,7 @@ pub(crate) fn describe_send_reply(id: &str, reply: Option<&serde_json::Value>) -
             "已投递给 {id}，但**它当前不在线** —— 消息留在收件箱里，它下次起来才会读到"
         ),
         (_, Some(true)) => format!("已投递给 {id}"),
-        // daemon 问不到身份空间（没装 tmux 等）⇒ **不假装知道**
+        // backend 问不到身份空间（没装 tmux 等）⇒ **不假装知道**
         _ => format!("已投递给 {id}（在不在线：问不到）"),
     }
 }
@@ -1393,20 +1393,20 @@ pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMe
 pub async fn cc_bus_send(origin: String, id: String, text: String) -> Result<String, String> {
     // ★★ **本机写面接上了**〔P4f 08-13〕。
     //
-    // `refuse_local_write` 的拒绝理由逐字写着「写面归 `P4b`（cc-bus 改调 daemon 原语）——
+    // `refuse_local_write` 的拒绝理由逐字写着「写面归 `P4b`（cc-bus 改调后端原语）——
     // 用户 08-12 已裁『**先把确切的命令组件做出来，然后 cc-bus 可以去调用**』」。
     // **那些命令组件今天做出来了**（`P4f` 的 `bus-send`）⇒ 前提到期，这一条不再拒。
     //
-    // ⚠ 其余三条（广播 / kill / spawn）**仍然拒**：daemon 侧没有对应的原语。
+    // ⚠ 其余三条（广播 / kill / spawn）**仍然拒**：backend 侧没有对应的原语。
     // 拒绝理由是逐条的，不是一句通用话 —— 别把它们一起放行。
     //
     // 🔴🔴 **`K-R98`（09-13）：远端这半也改走原语了。**
-    //   在此之前它还在**拼一条 `cc-send …` 的 shell 串走 SSH** —— 而 daemon 侧那条
+    //   在此之前它还在**拼一条 `cc-send …` 的 shell 串走 SSH** —— 而后端侧那条
     //   `bus-send` 早就有（`P4f` 逐字「cc-bus 的基础命令」）⇒ **不是缺能力，是还没改走**。
     //   改走之后这个函数体里**再没有「本机怎么走 / 远端怎么走」这个分支**：
     //   origin 只是原语的一个入参，两侧走的是同一份代码、说的是同一句话。
     //   ⚠ 上面那句「其余三条仍然拒」**一个字都没松** —— 本件放行的是**一条**。
-    send_via_daemon(&origin, &id, &text).await
+    send_via_backend(&origin, &id, &text).await
 }
 
 /// P4c（#77/#78）：向**所有**已登记 agent 广播一条消息。
@@ -1423,7 +1423,7 @@ pub async fn cc_bus_broadcast(origin: String, text: String) -> Result<String, St
     //
     // 🔴🔴 **`K-R112`（09-13）：远端那条 SSH 回落删了 —— 两侧同一条路。**
     //
-    //   在此之前，远端拿不到 daemon 能力时会退回 `cc-broadcast` 那条 shell 串（`C7` 过渡期）。
+    //   在此之前，远端拿不到后端能力时会退回 `cc-broadcast` 那条 shell 串（`C7` 过渡期）。
     //   ⚠ 那条串发给 `agents.tsv` 的**每一行** —— 正是上面那段实测事故（86 行登记 / 8 个活着）
     //   的原样复发，只是改在「主路答不上」的时候悄悄发生，**而那正是最难被发现的时候**。
     //   ⇒ 回落删净：三个数分开说的那份诚实（发到几个 / 因不在线跳过几个 / 失败几个）
@@ -1432,7 +1432,7 @@ pub async fn cc_bus_broadcast(origin: String, text: String) -> Result<String, St
     // ⚠ **代价如实写**（同 `K-R72` 给送键 / 杀会话记的那一笔）：通道不在时，广播从
     //   「换条路悄悄发掉」变成**明确失败**。两侧说的是同一句话 —— 本机此前就没有第二条路，
     //   今天远端也没有了，于是这句话不再分本机 / 远端两种写法。
-    match broadcast_via_daemon(&origin, &text).await {
+    match broadcast_via_backend(&origin, &text).await {
         Ok(msg) => Ok(msg),
         Err(BroadcastRoute::NoChannel(why)) => Err(format!(
             "{why}（没有第二条路可走 —— 广播只走后端这一条；\
@@ -1444,12 +1444,12 @@ pub async fn cc_bus_broadcast(origin: String, text: String) -> Result<String, St
 
 /// 把 `bus-kill` 的回值讲成人话 —— 纯函数。
 ///
-/// ★ **三态分开说**，这是 daemon 那条原语刻意回三个字段的理由（`control/cc_bus.rs`
+/// ★ **三态分开说**，这是后端那条原语刻意回三个字段的理由（`control/cc_bus.rs`
 /// 逐字：「回值要说清"到底动了什么"：会话是被杀了，还是身份对不上只摘了登记？」）：
 /// 真杀了会话 · 身份对不上**只摘了陈旧登记而会话没动** · 两样都没发生。
 ///
 /// ⚠ 第四档是**应答形状不认识**：那时我们**不知道它动没动**，所以不许说成「没杀成」——
-/// 同 `daemon_kill::killed_from_reply` 的那条理由（破坏性动作上把未知说成否定，
+/// 同 `backend_kill::killed_from_reply` 的那条理由（破坏性动作上把未知说成否定，
 /// 下一步就是在未知状态上再做一次）。
 pub(crate) fn describe_kill_reply(id: &str, reply: Option<&serde_json::Value>) -> String {
     let get = |k: &str| reply.and_then(|r| r.get(k)).and_then(|v| v.as_bool());
@@ -1459,7 +1459,7 @@ pub(crate) fn describe_kill_reply(id: &str, reply: Option<&serde_json::Value>) -
             "{id} 的**登记摘掉了，会话没动** —— 那个名字今天挂在别人的会话上（身份对不上）"
         ),
         (Some(false), Some(false)) => format!(
-            "{id} 没有被收掉：daemon 说它既没杀会话、也没摘登记（多半这个名字根本不在总线上）"
+            "{id} 没有被收掉：backend 说它既没杀会话、也没摘登记（多半这个名字根本不在总线上）"
         ),
         _ => format!(
             "收掉 {id} 的应答形状不认识（缺 `killed` / `stale_only`）—— 这一端与那一端的契约漂开了；\
@@ -1468,24 +1468,24 @@ pub(crate) fn describe_kill_reply(id: &str, reply: Option<&serde_json::Value>) -
     }
 }
 
-/// 收掉一个 agent：走 daemon 的 `bus-kill` 原语〔`K-R112` 09-13〕。
+/// 收掉一个 agent：走后端的 `bus-kill` 原语〔`K-R112` 09-13〕。
 ///
 /// # 🔴 为什么不是"再拼一条 `cc-kill` 的 shell 串"
 ///
 /// 在本件之前这条命令的主路**就是 SSH**（`build_kill_cmd` + `exec_read`）〔散文墓碑〕，
-/// 而 daemon 侧那条 `bus-kill` 早就有（`P4f` 续 p2c）⇒ **不是缺能力，是还没改走**
+/// 而后端侧那条 `bus-kill` 早就有（`P4f` 续 p2c）⇒ **不是缺能力，是还没改走**
 /// —— 与 `K-R98` 给发消息记的那句逐字同形。
 ///
 /// 改走之后换来两样具体的东西，都不是「架构更整齐」这种空话：
 /// 1. **`<local>` 通了**：本机此前被 `refuse_local_write` 拦着（那句拒绝逐字写着
-///    「写面归 `P4b`（cc-bus 改调 daemon 原语）」）—— 前提到期了，这一条不再拒。
+///    「写面归 `P4b`（cc-bus 改调后端原语）」）—— 前提到期了，这一条不再拒。
 /// 2. **回值从「一坨回显」变成三个字段**：老路把 `cc-kill` 的 stdout `trim` 一下就交给用户，
 ///    「杀了会话」与「只摘了陈旧登记」在那一坨里分不开；`bus-kill` 分得开，
 ///    [`describe_kill_reply`] 把它讲成三句不同的话。
 ///
-/// ⚠ **两道校验留在这一侧**（同 [`send_via_daemon`]）：id 今天不再被拼进任何命令串，
+/// ⚠ **两道校验留在这一侧**（同 [`send_via_backend`]）：id 今天不再被拼进任何命令串，
 /// 但「调用方不能靠对端校验」这条规矩不因为注入面没了就作废 —— 这一条的后果是**杀掉一棵进程树**。
-async fn kill_via_daemon(origin: &str, id: &str) -> Result<String, String> {
+async fn kill_via_backend(origin: &str, id: &str) -> Result<String, String> {
     let outcome = format!("`{id}` **没有被收掉**");
     if !is_valid_bus_id(id) {
         return Err(format!("非法 agent id（拒绝收掉它）: {id:?}"));
@@ -1493,10 +1493,10 @@ async fn kill_via_daemon(origin: &str, id: &str) -> Result<String, String> {
     let Some(client) = crate::inbound_client::client_for(origin) else {
         return Err(describe_no_channel_for(origin, "收掉 agent", &outcome));
     };
-    // 能力协商放在动手之前：老 daemon 没有这条命令时也回「没发出去」，但那一档经分流器
+    // 能力协商放在动手之前：老后端没有这条命令时也回「没发出去」，但那一档经分流器
     // 出来与「入方向排队满了」同形 —— 先问一句，是为了让「这台的后端太旧」说得出口。
     if !client.accepts(BUS_KILL) {
-        return Err(describe_daemon_too_old_for(origin, BUS_KILL, &outcome));
+        return Err(describe_backend_too_old_for(origin, BUS_KILL, &outcome));
     }
     match client
         .call(
@@ -1516,11 +1516,11 @@ async fn kill_via_daemon(origin: &str, id: &str) -> Result<String, String> {
 /// # 🔴 `origin` 是原语的一个入参，不是一个分支〔`K-R112` 09-13〕
 ///
 /// 本机与远端**共用这整个函数体**（同 `cc_bus_send`）：`client_for(origin)` 两侧都答得出。
-/// ⚠ `cc_bus_spawn` **仍然拒** `<local>` —— daemon 侧没有 spawn 原语。
+/// ⚠ `cc_bus_spawn` **仍然拒** `<local>` —— backend 侧没有 spawn 原语。
 /// 拒绝理由是**逐条**的，不是一句通用话，别把两条一起放行。
 #[tauri::command]
 pub async fn cc_bus_kill(origin: String, id: String) -> Result<String, String> {
-    kill_via_daemon(&origin, &id).await
+    kill_via_backend(&origin, &id).await
 }
 
 /// B03 批二：图形化 spawn。**注意这会起一个真实 agent 进程（消耗额度）**

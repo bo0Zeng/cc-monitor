@@ -34,10 +34,10 @@ describe("账本读写", () => {
 
   it("同一台机器的不同 facet 各存各的，互不覆盖", () => {
     recordFacet("aya", "connection", { kind: "ok", at: T0 });
-    recordFacet("aya", "daemon", { kind: "fail", detail: "没装", at: T0 + 1 });
+    recordFacet("aya", "backend", { kind: "fail", detail: "没装", at: T0 + 1 });
     const s = readStatus("aya");
     expect(s.connection?.kind).toBe("ok");
-    expect(s.daemon).toEqual({ kind: "fail", detail: "没装", at: T0 + 1 });
+    expect(s.backend).toEqual({ kind: "fail", detail: "没装", at: T0 + 1 });
   });
 
   it("同一 facet 再记一次 = 覆盖（要的就是「上次那次」）", () => {
@@ -59,10 +59,10 @@ describe("账本读写", () => {
   });
 
   it("renameMachine 把记录挪过去（改个名字不该让状态凭空清零）", () => {
-    recordFacet("aya", "daemon", { kind: "ok", at: T0 });
+    recordFacet("aya", "backend", { kind: "ok", at: T0 });
     renameMachine("aya", "aya-2");
     expect(readStatus("aya")).toEqual({});
-    expect(readStatus("aya-2").daemon?.kind).toBe("ok");
+    expect(readStatus("aya-2").backend?.kind).toBe("ok");
   });
 
   it("坏存档当空处理，不炸（它只是缓存，丢了无所谓；炸了整页就没了）", () => {
@@ -139,7 +139,7 @@ describe("describeFacet", () => {
   });
 
   it("★ 「不适用」与「没测过」是两回事", () => {
-    // 本机不需要 daemon（主计划 §2.4 逐字写「不需要」）。混成一个值的话，
+    // 本机不需要后端（主计划 §2.4 逐字写「不需要」）。混成一个值的话，
     // 用户会以为本机缺了个组件。
     const na = describeFacet({ kind: "na", detail: "不需要", at: T0 }, T0);
     expect(na.tone).toBe("na");

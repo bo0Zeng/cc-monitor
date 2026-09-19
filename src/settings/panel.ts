@@ -42,7 +42,7 @@ import {
 } from "./remote-section";
 import { DataSection } from "./data-section";
 import { RemoteSection } from "./remote-section";
-import { DaemonSection } from "./daemon-section"; // P2s（C8）：每台机一个 daemon 开关
+import { BackendSection } from "./backend-section"; // P2s（C8）：每台机一个后端开关
 import {
   getBehavior,
   setBehavior,
@@ -161,7 +161,7 @@ const APPEARANCE_INFO_TEXT =
   "配一次基本不再动，所以默认收起。";
 
 const REMOTE_INFO_TEXT =
-  "「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端 daemon 取代本地 " +
+  "「远端 (SSH)」—— monitor 通过 SSH 连到远端主机，由远端后端取代本地 " +
   "jsonl-watcher 作为数据源（渲染 / Tab / 分支等行为完全相同）。\n\n" +
   "关闭（默认）时一切走本地，不受影响。启用 / 修改任意远端设置后需重启 monitor 才生效。" +
   "配置不完整（缺 host / user / daemonPath）时后端自动回退本地模式。";
@@ -243,8 +243,8 @@ export class SettingsPanel {
   private dataSection?: DataSection;
   /** issue #15 (S6): 远端 (SSH) 配置区。打开面板时 refresh 一次拉最新 config */
   private remoteSection?: RemoteSection;
-  /** P2s（C8）：daemon 开关区。打开面板时 refresh 一次，重拉每台机的状态。 */
-  private daemonSection?: DaemonSection;
+  /** P2s（C8）：backend 开关区。打开面板时 refresh 一次，重拉每台机的状态。 */
+  private backendSection?: BackendSection;
 
   // v2.4 issue #2: 行为类 toggle
   private autoFollowCheckbox!: HTMLInputElement;
@@ -344,7 +344,7 @@ export class SettingsPanel {
     // issue #15 (S6): 每次打开重拉 config.json 的 remote 子对象，跟外部改动对齐
     void this.remoteSection?.refresh();
     // P2s：状态是**运行期**的东西，每次打开都要重拉 —— 缓存住等于给用户看一张旧照片。
-    void this.daemonSection?.refresh();
+    void this.backendSection?.refresh();
     // issue #5: 同步快捷键覆盖数 chip（编辑器关闭时也可能改了）
     this.refreshKbChip();
     // S2：每次打开回落地页。**刻意不记忆上次停在哪一页** —— 既然计划把「机器」定为落地页，
@@ -460,7 +460,7 @@ export class SettingsPanel {
       this.resumeRemotePresets = next.resumeCommandRemotePresets;
       this.renderResumePresets();
       // E62：`showBgSessions` 是**重启生效**的（`behavior.ts` 的字段注释逐字写着：
-      // 后端启动时读一次 —— 本地扫描过滤 + 远端 daemon `--with-bg`）。改了却不供货，
+      // 后端启动时读一次 —— 本地扫描过滤 + 远端 backend `--with-bg`）。改了却不供货，
       // 用户就只能靠记性知道「我刚才改的那个还没生效」。
       if (next.showBgSessions !== this.showBgOriginal) {
         markRestartNeeded("显示后台任务会话");
@@ -726,14 +726,14 @@ export class SettingsPanel {
     // 四份互不同步）。有 origin 选择器 = 它改的是某台机器的状态。
     // S4 会把这四份选择器换成「当前在哪台机器页」这个上下文。
     const machinesPage = document.createElement("div");
-    // P2s（C8）：daemon 开关排在「连接（远端）」**之前** —— 它管的是**每台机**（含本机），
+    // P2s（C8）：backend 开关排在「连接（远端）」**之前** —— 它管的是**每台机**（含本机），
     // 而下面那块是远端专有的 SSH 配置面。本机在这一区的第一行，
     // 不为它造特例（`C1`：本地只是不走 ssh 的那一台）。
     // 同样进 `safeBlock`：它构造时会发 IPC，失败不该把整个设置面板炸穿。
     machinesPage.appendChild(
-      this.safeBlock("daemon 开关", () => {
-        const sec = new DaemonSection({ headless: true });
-        this.daemonSection = sec;
+      this.safeBlock("backend 开关", () => {
+        const sec = new BackendSection({ headless: true });
+        this.backendSection = sec;
         return sec.element;
       }),
     );
@@ -820,7 +820,7 @@ export class SettingsPanel {
         el: this.safeBlock("MCP", () => new McpSection().element),
       },
       // P8a：插件面（marketplace）只读枚举。
-      // ⚠ `appliesTo: "local"` —— 它今天**只有本机口**（远端要等 daemon 的
+      // ⚠ `appliesTo: "local"` —— 它今天**只有本机口**（远端要等后端的
       // `--list-marketplaces`，欠账记在 `parity_ledger::plugins.marketplaces` 那行）。
       // 挂成 `both` 会让远端机器上出现一个恒失败的块，那是骗人。
       {

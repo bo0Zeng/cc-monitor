@@ -72,11 +72,11 @@ import {
   runRemoteResumeIntoExistingTmux,
   runRemoteAttach,
 } from "./remote-launch-run";
-// ⚠ **两个同名常量**：本文件要的是 `daemon-policy` 那个（`"<local>"`，与 Rust
+// ⚠ **两个同名常量**：本文件要的是 `backend-policy` 那个（`"<local>"`，与 Rust
 // `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）；`accounts.ts` 里那个是
-// `"__local__"`，是账号面自己的标记，**不是 daemon origin**。导错一个不会红，只会静默查不到。
+// `"__local__"`，是账号面自己的标记，**不是 backend origin**。导错一个不会红，只会静默查不到。
 import { AGENT_PROFILE } from "./agent-profile";
-import { LOCAL_ORIGIN } from "./daemon-policy";
+import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
 import { mintSessionTmuxName } from "./remote-launch";
 import { collectEditedFiles } from "./panorama/session-files";
@@ -177,7 +177,7 @@ export interface Tab {
   /**
    * audit-fixes F03.2（灰灯 / 第三态渲染）：远端 tmux 会话「claude 已退但 tmux 会话还在」
    * = idle-tmux。**与 TabStatus/activity 都正交**：不是 archived（内容仍在、可 attach 复用），
-   * 也不是 live（claude 进程没了）；仅驱动 `.tab.tmux-idle` 灰点渲染。后端 emitter 收 daemon
+   * 也不是 live（claude 进程没了）；仅驱动 `.tab.tmux-idle` 灰点渲染。后端 emitter 收 backend
    * `removed` 时若 `@ccm_sid` 仍在则 emit `session-idle`（见 ssh_source F03.2a-wire），前端
    * markTmuxIdle 置 true；复活（session-change added）/ 归档（真 tmux 没了 → session-ended）/
    * 本会话再有活动（onActivity）时清回 false。默认 false。
@@ -242,7 +242,7 @@ export interface Tab {
   >;
   /**
    * 按 seq 去重集合。一个 Tab == 一个 jsonl path == 一个 seq 空间（本地 watcher 的
-   * per-path seqs / 远端 daemon 的 per-process SeqCounter）。SSH 重连后新 daemon 会从
+   * per-path seqs / 远端后端的 per-process SeqCounter）。SSH 重连后新后端会从
    * seq 0 重发整个会话 → 命中即丢，避免 Tab 内容翻倍。本地 seq 全程唯一 → 永不命中（no-op）。
    *
    * 注意：本集合**只防同 seq 重投**。本地 watcher 截断重读是**换新 seq** 重投整个
@@ -399,9 +399,9 @@ export class TabManager {
   private tabButtons = new Map<string, TabButtonRefs>();
   /** A3：远端 live 探测的会话账号归属（sid → 探测行）。main.ts 定期喂。 */
   /**
-   * E73：sid → **attach 进去对人有没有意义**（来自 pidfile 的 `attachable`，经 daemon 帧透传）。
+   * E73：sid → **attach 进去对人有没有意义**（来自 pidfile 的 `attachable`，经后端帧透传）。
    *
-   * 只记**显式 false** 的那些。缺席 = 可以 —— 存量会话与旧 daemon 一律照旧，零迁移。
+   * 只记**显式 false** 的那些。缺席 = 可以 —— 存量会话与旧后端一律照旧，零迁移。
    *
    * # 为什么单独一张表而不是 `Tab` 的字段
    *
@@ -947,7 +947,7 @@ export class TabManager {
       payload.origin ?? null,
     );
 
-    // SSH 重连后远端 daemon 从 seq 0 重发该 session 整段 jsonl → 按 seq 去重。必须在
+    // SSH 重连后远端后端从 seq 0 重发该 session 整段 jsonl → 按 seq 去重。必须在
     // renderStreamRecord 之前、且覆盖 skip 记录（attachment/isMeta/空 user 有 seq 但不入
     // timeline，timeline.has 漏判）。本地 seq 全程唯一 → 此 set 永不命中（本地 no-op）。
     if (tab.seenSeqs.has(payload.seq)) return;
@@ -1189,7 +1189,7 @@ export class TabManager {
     origin: string | null,
     kind: string | null = null,
     name: string | null = null,
-    // E73：`null` = 没说（旧 daemon / 存量会话）= 视为可以。只有显式 `false` 才记账。
+    // E73：`null` = 没说（旧 backend / 存量会话）= 视为可以。只有显式 `false` 才记账。
     attachable: boolean | null = null,
   ): void {
     if (attachable === false) this.notAttachableSids.add(sessionId);
@@ -1200,7 +1200,7 @@ export class TabManager {
   /**
    * E73：attach / `↗` / 「杀死空 tmux」这几个动作对这个会话有没有意义。
    *
-   * **默认 true**：没说就是可以。判据只认 daemon 明说的 `attachable:false`
+   * **默认 true**：没说就是可以。判据只认后端明说的 `attachable:false`
    *（源头是 pidfile 的同名布尔，契约见 `src/doc/IPC-PROTOCOL.md` §9.3）。
    */
   isAttachable(sid: string): boolean {
@@ -1258,7 +1258,7 @@ export class TabManager {
    * context% 复用 pricing.ts `contextPercent`（上限未知 / 无 usage → null）。
    */
   /**
-   * A3：喂入远端 live 探测的会话账号归属（来自 daemon `--session-accounts`）+ 账号邮箱表。
+   * A3：喂入远端 live 探测的会话账号归属（来自 backend `--session-accounts`）+ 账号邮箱表。
    * main.ts 定期聚合各远端调用。喂完刷新所有 tab 的账号徽章。
    */
   setSessionAccounts(
@@ -1412,7 +1412,7 @@ export class TabManager {
   ): Tab {
     let tab = this.tabs.get(sessionId);
     if (tab) {
-      // SSH 重连：远端会话掉线时被 flush 归档过，现在又收到它的行 = daemon 在重放 = 会话仍
+      // SSH 重连：远端会话掉线时被 flush 归档过，现在又收到它的行 = backend 在重放 = 会话仍
       // 活着 → 复活成 live。必须放在 ensureTab 里（在 onLine 的 seq 去重 return 之前），否则整段
       // 重放全被去重时连第一条行都走不到翻转。**仅远端**：本地归档由 PID 判活驱动，不靠「收到行」
       // 翻转，避免会话退出时尾写把已归档的本地 Tab 误复活（远端掉线归档是连接驱动，无此风险）。
@@ -1420,17 +1420,17 @@ export class TabManager {
         tab.status = "live";
         this.refreshTabBar();
       }
-      // audit-fixes F03.2（D 审计修）：远端 idle-tmux tab 又收到 daemon 重宣告 / jsonl 行 = claude
-      // 复活（daemon 只对活 pidfile 重宣告并推行；真 idle 会话已从 remote_active 移出、不重宣告也不
+      // audit-fixes F03.2（D 审计修）：远端 idle-tmux tab 又收到后端重宣告 / jsonl 行 = claude
+      // 复活（backend 只对活 pidfile 重宣告并推行；真 idle 会话已从 remote_active 移出、不重宣告也不
       // 推行）→ 清灰。这是清灰的**主**信号（queue 内、与行保序，SESSION_IDLE 恒排在会话末行之后，
       // 故复活行/重宣告严格晚于 idle）。不能只靠 session-activity 清灰：那是非 queue 同步派发、且
-      // null-activity 的 daemon（远端 v1 无 status 字段）下永不清 → 活跃流式会话永久卡灰。
+      // null-activity 的后端（远端 v1 无 status 字段）下永不清 → 活跃流式会话永久卡灰。
       if (tab.tmuxIdle) {
         tab.tmuxIdle = false;
         this.refreshTabBar();
         this.emitTabStateProbe(tab); // F-E1:远端复活清灰(idle→live)
       }
-      // v2.22.2 kind 冲突消解:同一 sid 可能有多份 pidfile(实证:cc-daemon 的
+      // v2.22.2 kind 冲突消解:同一 sid 可能有多份 pidfile(实证:cc-backend 的
       // bg-spare 备用进程复用**父会话的 sid**写 kind=bg)——宣告到达顺序不定,
       // bg 先到会把真交互会话降格成 ⚙ 且树状挂到别的宿主下(用户截图实锤)。
       // 规则:**interactive 恒压过 bg**——后到的 interactive 宣告在此升格纠正
@@ -1689,10 +1689,10 @@ export class TabManager {
 
   /**
    * audit-fixes F03.2：远端 claude 退出但 tmux 会话仍在 → 灰灯（idle-tmux 第三态）。
-   * 后端 emitter 收 daemon removed 且 `@ccm_sid` present 时 emit `session-idle` 驱动（**不**
+   * 后端 emitter 收 backend removed 且 `@ccm_sid` present 时 emit `session-idle` 驱动（**不**
    * 归档、不 forget，故 status 仍 live，仅灯变灰）。Tab 未建（F5 重放乱序）则暂存待 ensureTab
    * 落实。archived 的 Tab 不置灰（真 tmux 没了才归档，归档优先）。无变化不重绘。清灰四处：
-   * ensureTab（**主**：远端 tab 又收 daemon 重宣告/行 = 复活，queue 内保序）/ updateActivity
+   * ensureTab（**主**：远端 tab 又收后端重宣告/行 = 复活，queue 内保序）/ updateActivity
    * （claude 再产活动，非 queue 的次要信号）/ reviveTab（本地）/ archiveTab（tmux 真没了）。
    */
   markTmuxIdle(sessionId: string): void {
@@ -1729,7 +1729,7 @@ export class TabManager {
     // activity，archived tab 会挂上过期的 waiting tooltip——灯本身被 CSS 隐藏）。
     if (tab.status === "archived") return;
     // audit-fixes F03.2：收到活动信号 = claude 活着（远端 activity 仅在 claude 存活时由
-    // daemon 推）→ 清灰灯。必须放在下方「无变化早退」之前：复活后首个 activity 未必与灰前
+    // backend 推）→ 清灰灯。必须放在下方「无变化早退」之前：复活后首个 activity 未必与灰前
     // 的陈旧 activity 值不同，否则灰点被早退跳过、清不掉。清了灰即使 activity 没变也要重绘。
     const clearedIdle = tab.tmuxIdle && act !== null;
     if (clearedIdle) tab.tmuxIdle = false;
@@ -2413,7 +2413,7 @@ export class TabManager {
     // `existing` 从 `commands.list_local_tmux()` 来（就在下面几行）。
     // 〔K-R19 订正 09-03〕这里原先写的是 `local_tmux_names()`，**全仓零定义**：
     // 真名从来就是 `list_local_tmux`（Rust 侧 `tmux.rs::list_local_tmux`）。
-    // ⚠ 它回 `null` 表示**不知道**（本机 daemon 通道
+    // ⚠ 它回 `null` 表示**不知道**（本机后端通道
     // 没起 / 还没推过帧），不是「一个名字都没占」。不知道的时候**不铸名**、不传 `tmuxName`
     // ⇒ 后端诚实降级回旧路（不进容器）。硬要铸就是「不避让」，那正是 issue #76
     //「静默接进第一个会话，而用户以为开了新的」。
@@ -2617,7 +2617,7 @@ export class TabManager {
     origin: string,
   ): Promise<TmuxSession[] | null | undefined> {
     try {
-      // ★ P3 刀 2 UI：本机走自己的读口 —— 它读的是 daemon 推来的快照，不走 SSH
+      // ★ P3 刀 2 UI：本机走自己的读口 —— 它读的是后端推来的快照，不走 SSH
       //（`<local>` 拿去查远端配置只会报「未找到远端配置」，与真实原因毫无关系）。
       // 这就是 `C1`「差别只允许出现在传输这一跳」在读面上的样子：同一个返回类型、同一批消费者。
       const sessions =
@@ -2635,7 +2635,7 @@ export class TabManager {
   /** ★ P3 刀 2 的 UI 半：本机 tab 的「杀死会话」。
    *
    *  与远端那条（`resolveAttachMenuItem`）**共用同一批判定函数**（`findClaudeTmuxMatches`）——
-   *  这就是 `C1`「差别只允许出现在传输这一跳」：读口不同（daemon 快照 vs 一次性 SSH），
+   *  这就是 `C1`「差别只允许出现在传输这一跳」：读口不同（backend 快照 vs 一次性 SSH），
    *  之后的一切逐字相同。
    *
    *  ⚠ **按 `@ccm_sid` 认，不按名字前缀猜。** 本机会话名今天确实长成 `<sid8>-cc`，
@@ -2646,7 +2646,7 @@ export class TabManager {
     const gen = tabMenuGeneration;
     const got = await this.fetchTmuxFresh(LOCAL_ORIGIN);
     if (gen !== tabMenuGeneration) return;
-    // `undefined` = 读口抛了；`null` = **本机 daemon 通道不在**（不知道，不是「没有」）。
+    // `undefined` = 读口抛了；`null` = **本机后端通道不在**（不知道，不是「没有」）。
     // 两种都不该留一个假装能用的菜单项 —— 移除它，别让用户点一个必失败的破坏性动作。
     if (got === undefined || got === null) {
       removeTabContextMenuItem("kill");

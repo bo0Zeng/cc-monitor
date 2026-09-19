@@ -5,7 +5,7 @@
 /// 分派臂是派生的（`Some(f) if cli_control::handles(f)`），可 `main::is_query_mode`
 /// 这道**闸门**读的是手写的 `SUBCOMMANDS`。于是往 `inbound::REGISTRY` 加一条命令：
 /// 帧面立刻有了、`hello.commands` 也报了，而 CLI 面 —— 一行 warn
-/// 「未知 flag，已忽略并照常进流模式」，然后 daemon **进了流模式**。
+/// 「未知 flag，已忽略并照常进流模式」，然后 backend **进了流模式**。
 ///
 /// 调用方看到的是：命令"存在"（能力探测报了它），调它却拿到一堆 jsonl 行。
 /// P4d 的表里那段注释本来就写着「登记在这张表里是因为 `is_query_mode` 也读它」——
@@ -164,7 +164,7 @@ fn the_probe_reports_exactly_what_it_can_dispatch() {
 /// 而判据写的是「`fields` 空 ⇒ 不读 stdin；非空 ⇒ 读」—— 两个分支各自是同一个表达式的
 /// 复述，**永远不可能红**。`bus-list` 挂死那次它一声没吭。
 /// ⇒ 现在钉的是**登记表与声明对不对得上**（两个独立来源），且真不真由行为判据验
-///（`tests/e2e/daemon-cc-bus.sh`：声明无输入的命令，stdin 不关时必须秒回）。
+///（`tests/e2e/backend-cc-bus.sh`：声明无输入的命令，stdin 不关时必须秒回）。
 #[test]
 fn the_no_input_commands_are_registered_and_declared_consistently() {
     /// 不收入方向载荷的命令。**加一条就来这里写一行**。

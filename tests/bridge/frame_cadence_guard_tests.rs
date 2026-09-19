@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 /// # 〔audit-0805 08-06〕从 4 条手写字面量改成**派生**的笛卡尔积
 ///
 /// 原来这里手写四条。实测那是 F24 那一族（**匹配单位比事实小**）在本护栏上的形状：
-/// 把同一句话写成 **「daemon 每 8 秒推一帧」** 塞进 daemon 生产段（`observe/watcher.rs`），
+/// 把同一句话写成 **「backend 每 8 秒推一帧」** 塞进后端生产段（`observe/watcher.rs`），
 /// **三条判据全绿** —— 只认 `8s` 不认 `8 秒`、只认紧跟的「推」不认「推一帧」「推帧间隔」。
 ///
 /// 改法是把危险集合**派生**出来：单位 × 说法。新写法自动落进网里，不靠人再手写一条。
@@ -115,7 +115,7 @@ fn the_scan_actually_reads_both_crates() {
 #[test]
 fn the_real_cadence_is_still_documented_somewhere() {
     let w = fs::read_to_string(repo_root().join("src/backend/observe/watcher.rs"))
-        .expect("读不到 daemon watcher.rs");
+        .expect("读不到 backend watcher.rs");
     assert!(
         w.len() > 10_000,
         "watcher.rs 只有 {} 字节，像是抽错了",
@@ -124,7 +124,7 @@ fn the_real_cadence_is_still_documented_somewhere() {
     for needle in ["initial_tmux_probe", "零定时器"] {
         assert!(
             w.contains(needle),
-            "daemon watcher.rs 里找不到 `{needle}` —— P5 留下的那一拍与「零定时器」的说明没了，\
+            "backend watcher.rs 里找不到 `{needle}` —— P5 留下的那一拍与「零定时器」的说明没了，\
                  那本条就成了「谁都没提过 8s」的空守卫"
         );
     }
@@ -152,8 +152,8 @@ fn no_production_comment_claims_an_eight_second_frame_cadence() {
     }
     assert!(
         offenders.is_empty(),
-        "又出现了「daemon 每 ~8s 推帧」这类说法 —— **P5 之后它是假的**：\n\
-             daemon 零定时器，帧由 tmux hook → SIGUSR1 → Poke 驱动 ⇒ 新鲜度**取决于 hook 覆不覆盖**\n\
+        "又出现了「backend 每 ~8s 推帧」这类说法 —— **P5 之后它是假的**：\n\
+             backend 零定时器，帧由 tmux hook → SIGUSR1 → Poke 驱动 ⇒ 新鲜度**取决于 hook 覆不覆盖**\n\
              （覆盖到的近乎即时，覆盖不到的**可能永不刷新**）。这两种画像给出的设计结论完全不同 ——\n\
              实测有过一次裁决整条建立在这句过期注释上。\n\
              历史叙述请带限定词（「P5 前…」「已删的 8s poller」），那样不会命中本条。\n{}",

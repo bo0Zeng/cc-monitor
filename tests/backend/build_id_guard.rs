@@ -2,9 +2,9 @@
 //!
 //! # 为什么需要它
 //!
-//! monitor 判「远端那台的 daemon 该不该换」只有一条判据：
-//! `reported_build_id != EXPECTED_DAEMON_BUILD_ID`（`ssh_source.rs`，值由 `build.rs`
-//! 从本文件抠出）。**不 bump ⇒ 已部署的旧 daemon 报同一个 id ⇒ 不判 stale ⇒ 不自动重装
+//! monitor 判「远端那台的后端该不该换」只有一条判据：
+//! `reported_build_id != EXPECTED_BACKEND_BUILD_ID`（`ssh_source.rs`，值由 `build.rs`
+//! 从本文件抠出）。**不 bump ⇒ 已部署的旧后端报同一个 id ⇒ 不判 stale ⇒ 不自动重装
 //! ⇒ 整轮改动在已部署的远端休眠。**
 //!
 //! 这一课在 `main.rs` 的版本谱系里被写过两遍（p1r 段、p1t 段），`src/doc/INVARIANTS.md` §41.5
@@ -61,7 +61,7 @@ mod tests {
             "p1t-removal-cause",
             "--account-trust\n--account-trust-zero\n--list-accounts\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage",
         ),
-        // p1u：G2/G6 加 --fork-session（daemon 第一次有写盘能力）。
+        // p1u：G2/G6 加 --fork-session（backend 第一次有写盘能力）。
         // ⚠ 这一行（及上一行）是**指纹只覆盖 CLI 那一面**时代的记录，没有 `#channel` 段。
         //   扩面之后它们永远不会再等于当前指纹 —— 那是对的：它们记的就是「那时候只有这一面」。
         (
@@ -97,7 +97,7 @@ mod tests {
         // 与 `--daemon-probe`（能力探测口，回 `{proto, buildId, commands}`）。
         // ⚠ 这 4 条**都不是新语义** —— 实现仍是 `inbound::REGISTRY` 上那几条 `run`，
         //   CLI 面只是不经 SSH 帧地调它们（`control/cli_control.rs`）。
-        // ⇒ 但**必须 bump**：已部署的旧 daemon 没有这几个口，而 skill 会按
+        // ⇒ 但**必须 bump**：已部署的旧后端没有这几个口，而 skill 会按
         //   `--daemon-probe` 的回答决定走不走新路 —— 不 bump 就不判 stale、不重装，
         //   探测口在旧机器上直接 exit 2，整轮能力静默休眠（`branch-anywhere` 那次的形状）。
         (
@@ -106,7 +106,7 @@ mod tests {
         ),
         // ★ p1z（P7c-1，08-12）：新增 `--list-subagents` —— 列一个父会话的 subagent 候选。
         //
-        // ⚠ **必须 bump**：远端会话的 subagent 展开就靠这一条；旧 daemon 没有它，
+        // ⚠ **必须 bump**：远端会话的 subagent 展开就靠这一条；旧后端没有它，
         //   而 monitor 判 stale 只看 build_id ⇒ 不 bump 就不重装，功能在已部署的机器上休眠。
         // ★ 它**只列不挑**：description 匹配与时间戳排序留在 monitor（定框 C1：别长第二套语义）。
         (
@@ -116,13 +116,13 @@ mod tests {
         // ★ p2b（P4f，08-13）：帧面新增 `bus-list` / `bus-send` —— cc-bus 的基础命令。
         //
         // ⚠ **必须 bump**：集成方（skill / monitor）判「这台机器有没有这条能力」看的是
-        //   `hello` 的 `commands`，而它随 daemon 二进制走。旧 daemon 报同一个 build_id
+        //   `hello` 的 `commands`，而它随后端二进制走。旧后端报同一个 build_id
         //   ⇒ 不判 stale ⇒ 不重装 ⇒ 这两条命令在已部署的机器上休眠。
         // ★ CLI 面这一半**也变了**（`--bus-list` / `--bus-send` 进了 `SUBCOMMANDS`）。
         //   ⚠ 我第一版只加了 `ch:` 那两条就以为完事，还给自己写了句「CLI 指纹看不见它，
         //   是取法的射程」—— **那句话是错的**：CLI 指纹取自 `SUBCOMMANDS`，而 `SUBCOMMANDS`
         //   正是 `is_query_mode` 的闸门。指纹没变**恰恰是**「这条命令的 CLI 面根本没接上」
-        //   的症状，而我把症状读成了取法的局限。实测才逮到（daemon 当场进了流模式）。
+        //   的症状，而我把症状读成了取法的局限。实测才逮到（backend 当场进了流模式）。
         //   ⇒ 现在那条纪律由 `cli_control::tests::every_cli_exposed_command_is_in_the_query_mode_gate`
         //   钉住：漏加就红，不再靠人记得。
         (
@@ -132,7 +132,7 @@ mod tests {
         // ★ p2c（P4f 续，08-13）：新增 `bus-kill` —— 收掉一个总线成员（转调 `cc-kill`）。
         //
         // ⚠ **必须 bump**：monitor/skill 判「这台有没有这条能力」看的是 `hello.commands`，
-        //   它随二进制走；不 bump ⇒ 旧 daemon 报同一个 id ⇒ 不判 stale ⇒ 这条在远端休眠。
+        //   它随二进制走；不 bump ⇒ 旧后端报同一个 id ⇒ 不判 stale ⇒ 这条在远端休眠。
         // ★ 与 `kill` 的分工写在 IPC-PROTOCOL：那条只杀 tmux 会话（§34 三道门，证据弱）；
         //   这条还要清名册/台账/状态，且门在 `cc-kill` 自己那儿（证据强：登记的 pane 根进程 pid）。
         (
@@ -142,7 +142,7 @@ mod tests {
         // ★ p2d（`K-H1`，08-25）：新增 `--relay` —— HTTP 中转（搬字节那半）。
         //
         // ⚠ **必须 bump**：中转是**新的进程形态**（常驻、只听回环、按路径前缀分流）。
-        //   已部署的旧 daemon 根本没有这个口，而 monitor/skill 判 stale 只看 build_id
+        //   已部署的旧后端根本没有这个口，而 monitor/skill 判 stale 只看 build_id
         //   ⇒ 不 bump 就不重装，整件能力在已部署的远端休眠（p1r / p1t / G2 那三次的形状）。
         // ★ 这一半是**源码半**。`main.rs::BUILD_ID` 那段头注逐字警告过另一半：
         //   「只 bump 源码不 re-embed = 源码 build_id 与内嵌清单不一致的**半 bump**，更糟」。
@@ -152,15 +152,15 @@ mod tests {
             "p2d-relay",
             "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--daemon-probe\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n--usage\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:cancel\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
-        // ★ p2e（`K-P6b`，09-06）：新增 `--dial` —— 把 **daemon 那条长连接流**的 SSH 握手
+        // ★ p2e（`K-P6b`，09-06）：新增 `--dial` —— 把 **backend 那条长连接流**的 SSH 握手
         //   搬进一个由界面起的子进程（候选 E 的字节代理）。
         //
         // ⚠ **必须 bump**：又一个**新的进程形态**（常驻、一条管子进一条管子出、不进
-        //   `listen` 那条常驻路）。已部署的旧 daemon 没有这条臂，而 monitor 判 stale
+        //   `listen` 那条常驻路）。已部署的旧后端没有这条臂，而 monitor 判 stale
         //   只看 build_id ⇒ 不 bump 就不重装 ⇒ 整件能力在已部署的远端休眠。
         //   —— 与 p2d 那条逐字同一个理由，这已经是本表第五次写它了。
         // 🔴 **这一行不许被读成「拨号搬出去了」**：`connect_session` 的生产调用点
-        //   **7 处 / 3 份**，本件只覆盖 daemon 长连接流那 **1** 处；
+        //   **7 处 / 3 份**，本件只覆盖后端长连接流那 **1** 处；
         //   SFTP · 端口转发 · 跳板 · 其余 exec 路径**界面仍然自己拨**。
         // ★ 同 p2d：这一半是**源码半**，`main.rs::BUILD_ID` 头注警告的那个「半 bump」
         //   （只 bump 源码不 re-embed）归发版那一拍（CI 交叉编译），本轮没做。
@@ -178,7 +178,7 @@ mod tests {
         //   头注那段逐字写着为什么不是「等于最后一行」：因为别的原因 bump 也被逼着改这张表，
         //   而改表恰恰是本护栏最不想诱导的动作。
         //
-        // ⚠ **必须 bump**：新增子命令 ⇒ 已部署的旧 daemon 上 `--capture-pane` 落进
+        // ⚠ **必须 bump**：新增子命令 ⇒ 已部署的旧后端上 `--capture-pane` 落进
         //   `unknown argument` + exit 2，而调用方判 stale 只看 build_id
         //   ⇒ 不 bump 就不重装，这条能力在已部署的远端休眠（p1r / p1t / G2 / p2d / p2e 同形）。
         // ★ 同 p2d / p2e 那条如实登记：这一半是**源码半**，re-embed（CI 交叉编译）归发版那一拍，
@@ -189,7 +189,7 @@ mod tests {
         ),
         // ★ p2h（`K-R87`，09-13）：新增 `--oneshot-session` —— **带看门狗的一次性会话**。
         //
-        // ⚠ **必须 bump**：又一条新增的子命令 ⇒ 已部署的旧 daemon 上它落进
+        // ⚠ **必须 bump**：又一条新增的子命令 ⇒ 已部署的旧后端上它落进
         //   `unknown argument` + exit 2，而调用方判 stale 只看 build_id
         //   ⇒ 不 bump 就不重装，这条能力在已部署的远端休眠
         //   （p1r / p1t / G2 / p2d / p2e / p2g 同形，这已经是本表第七次写这个理由）。
@@ -206,12 +206,12 @@ mod tests {
         //   那半变了（p1w 那次是「第一次把通道面纳进指纹」，形状不同，别读成同一件事）。
         //
         // ⚠ **必须 bump**，而这一次的理由比前七次更硬：
-        //   前七次是「新子命令在旧 daemon 上落进 `unknown argument` + exit 2」；
-        //   这一次是**帧面**：旧 daemon 的 `hello.commands` 里没有这两条 ⇒ monitor 的
+        //   前七次是「新子命令在旧后端上落进 `unknown argument` + exit 2」；
+        //   这一次是**帧面**：旧后端的 `hello.commands` 里没有这两条 ⇒ monitor 的
         //   `InboundClient::accepts` 当场判 `CallError::Unsupported`、**一个字节都不发**
         //   （`bus-send` 那条是现成先例）。⇒ 用量探针在已部署的旧远端上**整条不可用**，
         //   而调用方判 stale 只看 build_id ⇒ 不 bump 就不重装。
-        //   ★ 那不是静默失败：`Unsupported` 的 `Display` 逐字说「多半是旧版本，请重装该机器的 daemon」。
+        //   ★ 那不是静默失败：`Unsupported` 的 `Display` 逐字说「多半是旧版本，请重装该机器的后端」。
         // ★ 同 p2d / p2e / p2g / p2h 那条如实登记：这一半是**源码半**，
         //   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**；本护栏对「半 bump」是瞎的。
         (
@@ -223,8 +223,8 @@ mod tests {
         //   10 → 11）。这是本表**第一次**两半一起变：p2h 只动 CLI 那半、p2i 只动通道那半。
         //
         // ⚠ **必须 bump**，而这一次前八次的两个失效形状**同时**成立：
-        //   ① CLI 面 —— 旧 daemon 上 `--bus-state` 落进 `unknown argument` + exit 2；
-        //   ② 帧面 —— 旧 daemon 的 `hello.commands` 里没有它 ⇒ monitor 的
+        //   ① CLI 面 —— 旧后端上 `--bus-state` 落进 `unknown argument` + exit 2；
+        //   ② 帧面 —— 旧后端的 `hello.commands` 里没有它 ⇒ monitor 的
         //      `InboundClient::accepts` 当场判 `CallError::Unsupported`、一个字节都不发。
         //   两条路都止于「调用方判 stale 只看 build_id」⇒ 不 bump 就不重装，能力在远端休眠。
         // ★ 同 p2d / p2e / p2g / p2h / p2i 那条如实登记：这一半是**源码半**，
@@ -238,10 +238,10 @@ mod tests {
         //   `ch:oneshot-session` 出 `inbound::COMMANDS`，11 → 10 —— 注意这里的
         //   `#channel` 半是 11 → 10 而不是 10 → 9，因为 `#channel` 那行本身也算一格）。
         //
-        // ⚠ **必须 bump，而理由与前九次相反**：前九次都是「新能力在已部署的旧 daemon 上休眠」；
-        //   这一次是**旧 monitor 撞新 daemon** —— 一台装了这一版 daemon 的远端上，
+        // ⚠ **必须 bump，而理由与前九次相反**：前九次都是「新能力在已部署的旧后端上休眠」；
+        //   这一次是**旧 monitor 撞新 backend** —— 一台装了这一版后端的远端上，
         //   `--usage` 会落进 `unknown argument` + exit 2，`ch:oneshot-session` 会让
-        //   `InboundClient::accepts` 判 `Unsupported`。判「这台机上的 daemon 是哪一版」
+        //   `InboundClient::accepts` 判 `Unsupported`。判「这台机上的后端是哪一版」
         //   只有 build_id 这一条路 ⇒ **减法同样要 bump**，否则协议面上没人知道它变了。
         // ★ `capture-pane` 那两条（CLI 面 ＋ 帧面）**刻意都留着**：拉屏预览真在用
         //   （`设计/50 §2` 逐字「`capture-pane` **不是**孤儿」）。
@@ -250,6 +250,28 @@ mod tests {
         (
             "p2k-usage-retired",
             "--account-trust\n--account-trust-zero\n--bus-kill\n--bus-list\n--bus-send\n--bus-state\n--capture-pane\n--daemon-probe\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-state\nch:cancel\nch:capture-pane\nch:kill\nch:launch\nch:ping\nch:resolve",
+        ),
+        // ★ p2l（`设计/99 §4` 步 8 · 全仓改名一刀）：**本表第一次「只改名字、一条能力都没动」** ——
+        //   `--daemon-probe` → `--backend-probe`，集合大小 25 一格没变，帧面那半一个字没动。
+        //
+        // ⚠ **必须 bump，而这一次的理由是第三种**：前九次是「新能力在旧后端上休眠」、
+        //   p2k 是「旧 monitor 撞新后端」，这一次是**同一条能力换了口**：
+        //   一台装着旧后端的远端上 `--backend-probe` 落进 `unknown argument` + exit 2；
+        //   一台装着新后端的远端上 `--daemon-probe` 同样落进那里。**两个方向都会断**，
+        //   而判「这台机上的后端是哪一版」只有 build_id 这一条路。
+        //
+        // 🔴 **上面那 13 行快照一个字节都没改，那是刻意的。**
+        //   机械替换第一版**把它们全改成了 `--backend-probe`** ——
+        //   那等于宣布「历史上每一版后端都有 `--backend-probe`」，而本护栏照样绿
+        //   （当前指纹也一起改了 ⇒ 两边同时说谎 ⇒ 对得上）。
+        //   ⇒ 这张表是**历史证据**，不是待同步的副本。改名一刀的正解只有
+        //   「快照不动 ＋ bump ＋ 追加一行」，也就是本条。
+        //   〔影响面地图：`调研/真相源/94-步8改名-判据影响面地图.md` C5〕
+        // ★ 同 p2d / p2e / p2g / p2h / p2i / p2j / p2k 如实登记：这一半是**源码半**，
+        //   re-embed（CI 交叉编译）归发版那一拍，本轮**没做**。
+        (
+            "p2l-rename-daemon-to-backend",
+            "--account-trust\n--account-trust-zero\n--backend-probe\n--bus-kill\n--bus-list\n--bus-send\n--bus-state\n--capture-pane\n--dial\n--fork-session\n--kill\n--launch\n--list-accounts\n--list-projects\n--list-sessions\n--list-subagents\n--ping\n--read-session\n--read-session-from-offset\n--read-session-tail\n--relay\n--resolve\n--search\n--session-accounts\n--tmux-notify\n#channel\nch:bus-kill\nch:bus-list\nch:bus-send\nch:bus-state\nch:cancel\nch:capture-pane\nch:kill\nch:launch\nch:ping\nch:resolve",
         ),
     ];
 
@@ -272,7 +294,7 @@ mod tests {
     /// # 它此前只覆盖一半，而漏掉的那半从 0 长到了 5
     ///
     /// 本函数原来只抠 `main.rs` 里的 `Some("--`，也就是**一次性子命令**那一面。
-    /// 而 daemon 还有第二个命令面：[`crate::inbound::COMMANDS`]（常驻通道命令）。
+    /// 而后端还有第二个命令面：[`crate::inbound::COMMANDS`]（常驻通道命令）。
     /// 实测（`audit-0805` 的只读核实）：
     ///
     /// - `BUILD_ID` 从 `4617f34`（07-31，`p1v-attachable`）之后**再没变过**；
@@ -280,14 +302,14 @@ mod tests {
     ///   `kill`（`899538a`，08-04）。`git merge-base --is-ancestor` 三条全 YES。
     ///
     /// ⇒ **加了整整一个命令面，一次 bump 都没被逼出来**，因为指纹结构上看不见它。
-    /// 而 `sftp.rs::deploy_decision` 判「远端要不要换 daemon」时，**版本那一维**的唯一判据就是 build_id 字符串
-    /// （〔K-W4 09-04〕daemon 那条部署路今天走 `deploy_decision_at`，另加了「落点文件在不在」这一维；
-    /// 本句的实质警告不变：**stale 但文件在**的 daemon 仍只凭 build_id 判换不换）
-    /// ⇒ 已部署的旧 daemon 报同一个 id ⇒ 判 `Skip` ⇒ **整个控制面在远端静默不可用**。
+    /// 而 `sftp.rs::deploy_decision` 判「远端要不要换后端」时，**版本那一维**的唯一判据就是 build_id 字符串
+    /// （〔K-W4 09-04〕backend 那条部署路今天走 `deploy_decision_at`，另加了「落点文件在不在」这一维；
+    /// 本句的实质警告不变：**stale 但文件在**的后端仍只凭 build_id 判换不换）
+    /// ⇒ 已部署的旧后端报同一个 id ⇒ 判 `Skip` ⇒ **整个控制面在远端静默不可用**。
     ///
     /// # 这不只是结构缺陷，本机实测到了它的后果
     ///
-    /// 本机 `embedded-daemons/cc-monitor-remote-x86_64`（08-01 构建）里
+    /// 本机 `embedded-backends/cc-monitor-remote-x86_64`（08-01 构建）里
     /// **找不到入方向那一面会发射的任何一个错误码**（`not_cancellable` / `unknown_command` /
     /// `duplicate_id` / `handler_panicked` / `wrong_owner` / `too_many_windows`，`.rodata` 全 0 命中），
     /// 而它的清单写着 `p1v-attachable` = 期望值。
@@ -381,10 +403,10 @@ mod tests {
             let added: Vec<&&str> = new.iter().filter(|s| !old.contains(s)).collect();
             let removed: Vec<&&str> = old.iter().filter(|s| !new.contains(s)).collect();
             panic!(
-                "daemon 的子命令集变了（+{added:?} / -{removed:?}），而 BUILD_ID 还是 `{}`。\n\
+                "backend 的子命令集变了（+{added:?} / -{removed:?}），而 BUILD_ID 还是 `{}`。\n\
                  \n\
-                 **别只改这张表**。monitor 判「远端该不该换 daemon」只有一条判据：\n\
-                 `reported_build_id != EXPECTED_DAEMON_BUILD_ID`。不 bump ⇒ 已部署的旧 daemon\n\
+                 **别只改这张表**。monitor 判「远端该不该换后端」只有一条判据：\n\
+                 `reported_build_id != EXPECTED_BACKEND_BUILD_ID`。不 bump ⇒ 已部署的旧 backend\n\
                  报同一个 id ⇒ 不判 stale ⇒ 不自动重装 ⇒ **你这一轮的改动在已部署的远端休眠**，\n\
                  用户只会拿到「版本过旧」。本仓已经因为这个栽过三次（p1r / p1t / G2）。\n\
                  \n\
@@ -413,7 +435,7 @@ mod tests {
     //
     // 上面那几条守的是「**该不该** bump」。本节守的是另一件事，`K-R68` 摸底才逮出来的：
     // **拿起一份后端二进制，产品今天没有办法判断它是不是我们以为的那一份。**
-    // 三个载体（`native-daemon/` · `embedded-daemons/` · `binaries/`）的身份
+    // 三个载体（`native-backend/` · `embedded-backends/` · `binaries/`）的身份
     // 全靠旁边那个 `.build_id` 文本文件，而那个文件是**从同一处源码常量抠出来的标签**
     // ⇒ 三份恒等 ⇒ 一格证据都不提供（`DECISIONS.md#R26` 裁定零）。
     //

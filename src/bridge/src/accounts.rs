@@ -1,16 +1,16 @@
 //! A2 monitor 侧：远端多账号（cc-acct-iso）的**只读**查询命令。
 //!
-//! 账号 = 一个 `CLAUDE_CONFIG_DIR`。本模块只把远端 daemon 的三个只读命令包装成
+//! 账号 = 一个 `CLAUDE_CONFIG_DIR`。本模块只把远端后端的三个只读命令包装成
 //! Tauri command，**不做任何注入、不落任何盘**（注入是 A4、UI 是 A3）。
 //!
 //! # 「不可用」不是错误
-//! 旧 daemon 不认这三个命令（`unknown argument` → exit 2 / 无输出）。
+//! 旧后端不认这三个命令（`unknown argument` → exit 2 / 无输出）。
 //! 这种情况一律回 `available:false + error:<人话>`，
 //! **而不是** `Err`——前端据此把账号功能整体降级隐藏，不弹错误（设计文档 §7 降级矩阵）。
 //! 只有「这台远端根本没配」才回 `Err`（那是调用方的 bug）。
 //!
 //! # 凭据边界
-//! daemon 侧已保证不输出任何凭据/密钥内容（见 `accounts_query.rs` 模块文档）。
+//! backend 侧已保证不输出任何凭据/密钥内容（见 `accounts_query.rs` 模块文档）。
 //! 本模块只做反序列化与转发，不额外读任何文件。
 
 use crate::remote_history::run_list_query;
@@ -29,7 +29,7 @@ pub struct AccountsMeta {
     pub count: u32,
     /// `enabled:false` 时的人话原因（给部署引导用）。
     pub error: Option<String>,
-    /// Z01：远端 daemon 认不认「configDir 缺席 = 账号 0」。**旧 daemon 不出这个键**
+    /// Z01：远端后端认不认「configDir 缺席 = 账号 0」。**旧后端不出这个键**
     /// ⇒ `false` ⇒ 它会把账号 0 当坏数据跳过，列表里就少一行。见 `degraded_notice`。
     #[serde(default)]
     pub account_zero_aware: bool,
@@ -67,7 +67,7 @@ pub enum AuthKind {
     ApiKey,
 }
 
-/// manifest 里的一个账号（daemon 已剔除 configDir 不安全的条目）。
+/// manifest 里的一个账号（backend 已剔除 configDir 不安全的条目）。
 ///
 /// **K-A1 起这份结构是 TS 侧 `Account` 的生成源**（`src/generated/RemoteAccount.ts`）。
 /// 在此之前两侧靠一行「对齐 A2 的返回结构」的注释对齐 —— 那句注释是纪律，不是判据：
@@ -82,7 +82,7 @@ pub struct RemoteAccount {
     #[serde(default)]
     pub email: String,
     /// **Z01：可以是 `None`** —— 那就是账号 0（「不设 `CLAUDE_CONFIG_DIR`」这个状态）。
-    /// 起它就是**什么都不设**；`Some("")` 是非法拼法，daemon 侧已挡（空值 ≠ 未设）。
+    /// 起它就是**什么都不设**；`Some("")` 是非法拼法，backend 侧已挡（空值 ≠ 未设）。
     #[serde(default)]
     pub config_dir: Option<String>,
     #[serde(default)]
@@ -96,15 +96,15 @@ pub struct RemoteAccount {
     ///
     /// ⚠ **K-A1 起它不再是可用性判据** —— 可用性走 `auth_ready`（订阅号那一支的值与它
     /// 逐字节相同，api-key 号那一支不看这个文件）。它留下来只做两件事：
-    /// 显示「订阅凭据在不在」，以及给**旧 daemon**（不出 `authReady`）当回落。
+    /// 显示「订阅凭据在不在」，以及给**旧 backend**（不出 `authReady`）当回落。
     #[serde(default)]
     pub logged_in: bool,
-    /// **K-A1：鉴权方式。`None` = 对面没说** —— 那是**旧 daemon**
+    /// **K-A1：鉴权方式。`None` = 对面没说** —— 那是**旧 backend**
     /// （本字段之前的版本压根不出这个键）。消费侧一律当订阅（`KA6d`）。
     ///
     /// ⚠ 它是 `Option` **不是**为了给「未知」留一档语义：这一维上「未知」没有真值
     /// （判可用 = 放宽订阅号的缺凭据保护；判不可用 = 今天所有账号立刻不可选）。
-    /// 它是 `Option` 只因为**线上真的会缺**（monitor 连任意版本的远端 daemon）。
+    /// 它是 `Option` 只因为**线上真的会缺**（monitor 连任意版本的远端后端）。
     #[serde(
         default,
         deserialize_with = "lenient_auth_kind",
@@ -112,7 +112,7 @@ pub struct RemoteAccount {
     )]
     #[cfg_attr(test, ts(optional))]
     pub auth_kind: Option<AuthKind>,
-    /// **K-A1：「鉴权方式这一维不再阻塞它被选中」。`None` = 旧 daemon ⇒ 回落到 `logged_in`。**
+    /// **K-A1：「鉴权方式这一维不再阻塞它被选中」。`None` = 旧 backend ⇒ 回落到 `logged_in`。**
     ///
     /// 规则的唯一住址是 `acct_core::auth_ready`，两个生产者都调它。
     /// ⚠ `true` **不等于**「真能连上」（`KA6a`），也不等于「凭据有效」（`KA6b`）。
@@ -133,7 +133,7 @@ pub struct RemoteAccount {
 /// `parse_accounts_lines` 的「坏行跳过」策略会让**整个账号从列表里消失**
 /// —— 而少一行是用户看不见、也没法修的那种坏。
 /// `bool` 今天不太可能变形状，但这个理由**不该由字段类型来担保** ——
-/// 担保它的是「远端 daemon 的版本我们控制不了」这件事，而那对两个字段一模一样。
+/// 担保它的是「远端后端的版本我们控制不了」这件事，而那对两个字段一模一样。
 fn lenient_auth_ready<'de, D>(d: D) -> Result<Option<bool>, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -191,7 +191,7 @@ impl AuthKind {
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountsResult {
-    /// false = 该台拿不到账号能力（daemon 旧 / 查询失败）→ 前端降级隐藏。
+    /// false = 该台拿不到账号能力（backend 旧 / 查询失败）→ 前端降级隐藏。
     pub available: bool,
     pub error: Option<String>,
     pub meta: Option<AccountsMeta>,
@@ -202,14 +202,14 @@ pub struct AccountsResult {
 }
 
 /// Z01：列表虽然拿到了，但远端版本旧到「账号 0 看不见」时的人话说明。
-/// 两种旧法要分开说，因为要用户做的事不一样（更新 daemon vs 更新 cc-acct-iso）。
+/// 两种旧法要分开说，因为要用户做的事不一样（更新 backend vs 更新 cc-acct-iso）。
 pub(crate) fn degraded_notice(meta: &AccountsMeta, accounts: &[RemoteAccount]) -> Option<String> {
     if !meta.enabled {
         return None; // 压根没启用多账号，谈不上缺账号 0
     }
     if !meta.account_zero_aware {
         return Some(
-            "远端 daemon 版本较旧：它不认识账号 0（未设 CLAUDE_CONFIG_DIR 的那个默认登录），             列表里会少这一行。更新远端 daemon 后即可看到。"
+            "远端后端版本较旧：它不认识账号 0（未设 CLAUDE_CONFIG_DIR 的那个默认登录），             列表里会少这一行。更新远端后端后即可看到。"
                 .into(),
         );
     }
@@ -253,10 +253,10 @@ pub struct SessionAccount {
     /// ① 进程没设它；② 值的形状过不了白名单；③ 它同时落在别的活会话上
     /// （继承来的，判不出谁是原主）；④ 进程已死（不读它的 environ）。
     ///
-    /// ⚠ **additive**：老 daemon 的出参里**没有这个键**，缺了必须读成 `None`，
-    /// **不许把老 daemon 判成坏行**（那会让整条会话账号映射消失，症状是徽章整片没了，
+    /// ⚠ **additive**：老后端的出参里**没有这个键**，缺了必须读成 `None`，
+    /// **不许把老后端判成坏行**（那会让整条会话账号映射消失，症状是徽章整片没了，
     /// 而没有任何地方说得出为什么）。判据 = `session_account_row_parses` 里那条
-    /// **逐字节没有 `launchId` 键**的老 daemon 金样行。
+    /// **逐字节没有 `launchId` 键**的老后端金样行。
     ///
     /// 🔴 **`#[serde(default)]` 在这一格上不是承重的，写清楚免得后人误读**〔`K-P5f` 第二拍死值验现打〕：
     /// 把它删掉，上面那条金样行**照样绿**（serde 的 derive 对 `Option<T>` 本来就把
@@ -295,7 +295,7 @@ pub struct AccountTrustResult {
 }
 
 /// 解析 `--list-accounts` 的输出行（首行 meta + 每账号一行）。纯函数，供单测。
-/// 认不出的行**跳过**而不是整体失败（daemon 将来可能加新 kind）。
+/// 认不出的行**跳过**而不是整体失败（backend 将来可能加新 kind）。
 pub(crate) fn parse_accounts_lines(lines: &[String]) -> (Option<AccountsMeta>, Vec<RemoteAccount>) {
     let mut meta = None;
     let mut accounts = Vec::new();
@@ -320,7 +320,7 @@ pub(crate) fn parse_accounts_lines(lines: &[String]) -> (Option<AccountsMeta>, V
 /// 拼 trust 查询的参数串。纯函数，供单测（拼命令行是注入面，必须能直接断言）。
 pub(crate) fn trust_args(config_dir: Option<&str>, cwd: &str) -> String {
     match config_dir {
-        // 账号 0：**不传路径**。daemon 那边路径是写死的 $HOME/.claude.json ⇒
+        // 账号 0：**不传路径**。backend 那边路径是写死的 $HOME/.claude.json ⇒
         // 这条命令连「任意文件读」的面都没有。
         None => format!("--account-trust-zero {}", ssh_source::shell_quote(cwd)),
         Some(c) => format!(
@@ -387,15 +387,15 @@ pub async fn list_remote_accounts(origin: String) -> Result<AccountsResult, Stri
         }
         Ok(lines) => {
             if lines.is_empty() {
-                // 旧 daemon 不认该参数 → exit 2 且 stdout 无输出
+                // 旧后端不认该参数 → exit 2 且 stdout 无输出
                 return Ok(unavailable(
-                    "远端 daemon 不支持账号查询（版本过旧）——请更新 daemon",
+                    "远端后端不支持账号查询（版本过旧）——请更新 backend",
                 ));
             }
             let (meta, accounts) = parse_accounts_lines(&lines);
             if meta.is_none() {
                 return Ok(unavailable(
-                    "远端返回的账号数据无法解析（daemon 版本不匹配？）",
+                    "远端返回的账号数据无法解析（backend 版本不匹配？）",
                 ));
             }
             let notice = meta.as_ref().and_then(|m| degraded_notice(m, &accounts));
@@ -430,7 +430,7 @@ pub async fn list_remote_session_accounts(origin: String) -> Result<SessionAccou
                     Err(e) => tracing::warn!("远端 [{origin}] session-accounts 行解析失败: {e}"),
                 }
             }
-            // 零行是合法的（远端没有活会话）；无法与"旧 daemon"区分，但该命令只用于
+            // 零行是合法的（远端没有活会话）；无法与"旧 backend"区分，但该命令只用于
             // 补充徽章，降级表现一致（没徽章），故不额外判定。
             Ok(SessionAccountsResult {
                 available: true,
@@ -442,11 +442,11 @@ pub async fn list_remote_session_accounts(origin: String) -> Result<SessionAccou
 }
 
 /// 换号前预检：目标账号是否已信任该工作目录。
-/// `config_dir` 必须来自 `list_remote_accounts` 的返回值（daemon 侧还会再校验一次）。
+/// `config_dir` 必须来自 `list_remote_accounts` 的返回值（backend 侧还会再校验一次）。
 ///
-/// **Z01**：`config_dir` 为 `None` = 账号 0 ⇒ 走 daemon 的 `--account-trust-zero`
+/// **Z01**：`config_dir` 为 `None` = 账号 0 ⇒ 走后端的 `--account-trust-zero`
 /// （它的 `.claude.json` 在 `$HOME`，不在任何 config dir 里）。**不要**为此传空串：
-/// 空串会被 daemon 判成不安全路径并拒掉，用户看到的是一句莫名其妙的错。
+/// 空串会被后端判成不安全路径并拒掉，用户看到的是一句莫名其妙的错。
 #[tauri::command]
 pub async fn check_account_trust(
     origin: String,
@@ -465,11 +465,11 @@ pub async fn check_account_trust(
             Ok(unavailable(e))
         }
         Ok(lines) => {
-            // daemon 的硬错误走 stderr + exit 2，stdout 无行 → 视为不可用（不阻断编排，
+            // backend 的硬错误走 stderr + exit 2，stdout 无行 → 视为不可用（不阻断编排，
             // 由调用方按"未知信任状态"处理：只警告不拦截）
             let Some(first) = lines.first() else {
                 return Ok(unavailable(
-                    "远端未返回信任状态（daemon 版本过旧或该 configDir 被拒）",
+                    "远端未返回信任状态（backend 版本过旧或该 configDir 被拒）",
                 ));
             };
             match serde_json::from_str::<AccountTrustResult>(first) {

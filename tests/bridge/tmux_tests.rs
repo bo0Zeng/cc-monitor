@@ -1,7 +1,7 @@
 // `include_str!` 只接**字面量 token**，喂 `const` 会报 `argument must be a string literal`
 // ⇒ 用单臂宏拿到「单一落点」。原住 `src/bridge/src/tmux.rs`，步 7b 随它唯一的消费者搬来这里；
 // 路径也跟着换成相对本文件（`16 §5.4a` 规则 1：路径不只住在字面量里，也住在宏展开里）。
-macro_rules! daemon_watcher_src {
+macro_rules! backend_watcher_src {
     () => {
         "../../src/backend/observe/watcher.rs"
     };
@@ -19,9 +19,9 @@ fn the_three_skip_reasons_are_distinguishable() {
         // 远端没装 tmux —— 哨兵与显式字段两条路都该给同一个原因。
         classify_tmux_observation("NO_TMUX", None),
         classify_tmux_observation("", Some(OBS_NO_TMUX)),
-        // daemon 自报观测失败 —— `#82` 要的就是这一格的频率。
+        // backend 自报观测失败 —— `#82` 要的就是这一格的频率。
         classify_tmux_observation("", Some(OBS_UNOBSERVABLE)),
-        // 旧 daemon 的空串歧义。
+        // 旧后端的空串歧义。
         classify_tmux_observation("", None),
     ]
     .iter()
@@ -59,7 +59,7 @@ fn sids(o: &TmuxObservation) -> Vec<String> {
     }
 }
 
-/// ★ P1 的回归测试（**这条在修之前是红的**）：daemon 确证零会话 ⇒ 必须是**有效观测（空集）**，
+/// ★ P1 的回归测试（**这条在修之前是红的**）：backend 确证零会话 ⇒ 必须是**有效观测（空集）**，
 /// 不是跳过。这就是 `src/doc/INVARIANTS.md` §24bis 那条残留 bug 的机理：
 /// 杀掉某 origin 仅剩的 tmux 会话 → server 随之退出 → `tmux ls` 回空 →
 /// 旧代码保守跳过 → idle 灰灯卡到断连 flush 才清。
@@ -68,21 +68,21 @@ fn zero_sessions_is_a_valid_observation_not_a_skip() {
     assert_eq!(
         classify_tmux_observation("", Some("zero_sessions")),
         TmuxObservation::Backend(std::collections::HashSet::new()),
-        "daemon 确证零会话时必须进对账（空集），否则灰灯永不清"
+        "backend 确证零会话时必须进对账（空集），否则灰灯永不清"
     );
 }
 
-/// 旧 daemon（无 `observation` 字段）+ 空 raw ⇒ **保持今天的保守行为**。
-/// 空 raw 在旧 daemon 那里同时意味着「零会话」和「`tmux ls` 出错被 `|| true` 吞了」，
+/// 旧后端（无 `observation` 字段）+ 空 raw ⇒ **保持今天的保守行为**。
+/// 空 raw 在旧后端那里同时意味着「零会话」和「`tmux ls` 出错被 `|| true` 吞了」，
 /// 分不开 ⇒ 只能跳过。**新旧混搭不许回归。**
 #[test]
-fn old_daemon_empty_raw_still_skips() {
+fn old_backend_empty_raw_still_skips() {
     assert_eq!(
         classify_tmux_observation("", None),
         // ★ P8c：连**原因**一起钉 —— 原来只钉「跳了」，而三种完全不同的原因
         // 压成同一个无载荷的 `Skip` 正是 `#82` 问不出频率的来源。
         TmuxObservation::Skip(SkipReason::LegacyAmbiguousEmpty),
-        "旧 daemon 的空串语义不可分，必须保守跳过"
+        "旧后端的空串语义不可分，必须保守跳过"
     );
 }
 
@@ -117,7 +117,7 @@ fn sessions_parse_into_sid_set() {
     assert_eq!(sids(&o), vec!["sid-a".to_string(), "sid-c".to_string()]);
 }
 
-/// 向前兼容：未来 daemon 加了本 monitor 不认识的分类 ⇒ **落回 raw 判据**，
+/// 向前兼容：未来后端加了本 monitor 不认识的分类 ⇒ **落回 raw 判据**，
 /// 退化成今天的保守行为，不误灰。
 #[test]
 fn unknown_observation_falls_back_to_raw() {
@@ -141,14 +141,14 @@ fn sessions_without_any_ccm_sid_still_skips() {
     );
 }
 
-/// P1：`observation` 取值集是 monitor↔daemon 的**第三个双写点**（前两个：`TMUX_LS_FMT` ·
+/// P1：`observation` 取值集是 monitor↔backend 的**第三个双写点**（前两个：`TMUX_LS_FMT` ·
 /// `NO_TMUX` 哨兵）。两个独立 crate 不能共享类型 ⇒ 用与
-/// `tmux_ls_fmt_double_write_point_stays_in_sync` 相同的办法钉住：`include_str!` 读 daemon 源
+/// `tmux_ls_fmt_double_write_point_stays_in_sync` 相同的办法钉住：`include_str!` 读后端源
 /// + **锚定 const 定义行**（不是裸字面量——否则该串若出现在某条注释里会掩盖真漂移）。
-///   **双向**：改 monitor 或 daemon 任一侧忘同步，本测即红。
+///   **双向**：改 monitor 或后端任一侧忘同步，本测即红。
 #[test]
 fn observation_tokens_double_write_point_stays_in_sync() {
-    let daemon_src = include_str!(daemon_watcher_src!());
+    let backend_src = include_str!(backend_watcher_src!());
     for (name, value) in [
         ("OBS_ZERO_SESSIONS", OBS_ZERO_SESSIONS),
         ("OBS_NO_TMUX", OBS_NO_TMUX),
@@ -156,16 +156,16 @@ fn observation_tokens_double_write_point_stays_in_sync() {
     ] {
         let expected_def = format!("const {name}: &str = \"{value}\";");
         assert!(
-            daemon_src.contains(&expected_def),
-            "observation 双写点漂移：daemon watcher.rs 不含 {expected_def:?}\n\
+            backend_src.contains(&expected_def),
+            "observation 双写点漂移：backend watcher.rs 不含 {expected_def:?}\n\
                  （改了分类取值就得两侧同步——同 TMUX_LS_FMT 的纪律）"
         );
     }
-    // 反向自检：断言的是「扫到了 daemon 源」而不是「命中若干条」——阈值不能挂在
+    // 反向自检：断言的是「扫到了后端源」而不是「命中若干条」——阈值不能挂在
     // 被检查的量上（rust-ts-boundary 的教训）。
     assert!(
-        daemon_src.len() > 1000,
-        "include_str! 没读到 daemon 源，上面三条断言全是空转"
+        backend_src.len() > 1000,
+        "include_str! 没读到后端源，上面三条断言全是空转"
     );
 }
 
@@ -226,7 +226,7 @@ fn gate1_rejects_only_empty_target() {
     );
     // ②③④ 三条后端命令：**真跑生产入口**〔`K-R112` 09-13：抓屏从「构造器那一格」
     //     挪进这一段 —— 它的构造器随那条 SSH 串一起删了，而生产入口比构造器强一格〕。
-    // ⚠ 不必登记入方向通道 —— Gate 1 在 `daemon_*` 之前，根本走不到那一步。
+    // ⚠ 不必登记入方向通道 —— Gate 1 在 `backend_*` 之前，根本走不到那一步。
     let rt = tokio::runtime::Builder::new_current_thread()
         .build()
         .expect("建不出 runtime —— 本条无从判断，别读成绿");
@@ -313,10 +313,10 @@ fn the_surviving_cross_ssh_tmux_read_asks_for_a_utf8_client_before_the_subcomman
     );
 }
 
-/// daemon 侧那个「一个口径一个家」的家（相对**仓根**）—— 跨仓对拍的被读对象。
+/// backend 侧那个「一个口径一个家」的家（相对**仓根**）—— 跨仓对拍的被读对象。
 ///
-/// 单一落点：路径写死在这里一处，daemon 再搬家只改这一行。
-const DAEMON_KOU_JING_HOME: &str = "src/backend/common/tmux_utf8.rs";
+/// 单一落点：路径写死在这里一处，backend 再搬家只改这一行。
+const BACKEND_KOU_JING_HOME: &str = "src/backend/common/tmux_utf8.rs";
 
 /// ★★ **K-R12 下一拍（09-04）：「同一个口径只有一个家 + 另一侧引用它或有对拍」——
 /// 本 const 走的是**对拍**那一支。**
@@ -328,8 +328,8 @@ const DAEMON_KOU_JING_HOME: &str = "src/backend/common/tmux_utf8.rs";
 /// | # | 断的什么 | 缺了它会怎样 |
 /// |---|---|---|
 /// | ① | 本侧**只有一个**声明（本文件那一处，全 monitor 树无第二处） | 本侧自己先分了两份，对拍再准也没用 |
-/// | ② | 本侧那个值与 daemon 家里那一行**逐字相等**（值是从本侧 const **现取**的） | 两侧漂开而两边都不红 —— 正是本件治的那个形状 |
-/// | ③ | daemon 家里**两种表示都还在** | 有人把家「收口」成一种表示 ⇒ 另一类调用点静默失效 |
+/// | ② | 本侧那个值与后端家里那一行**逐字相等**（值是从本侧 const **现取**的） | 两侧漂开而两边都不红 —— 正是本件治的那个形状 |
+/// | ③ | backend 家里**两种表示都还在** | 有人把家「收口」成一种表示 ⇒ 另一类调用点静默失效 |
 ///
 /// ②③ 都是**读两棵树**才验得了的性质：两个 crate 不共享源码树，共用 `const` 拿不到
 /// （七个 `*-core` 的职责逐条都装不下，论据在 `UTF8_CLIENT_FLAG` 的头注里）。
@@ -337,22 +337,22 @@ const DAEMON_KOU_JING_HOME: &str = "src/backend/common/tmux_utf8.rs";
 /// # ⚠ 作用域，逐条说清（`brief` 12：报一个数就要说清尺子）
 ///
 /// - **在哪跑**：monitor 那格 cargo（`cargo test --workspace --lib`）。
-///   daemon 自己那格看不见它 —— 但门禁两格都跑，所以任一侧漂开都会在门禁里红。
+///   backend 自己那格看不见它 —— 但门禁两格都跑，所以任一侧漂开都会在门禁里红。
 /// - **读了哪两棵树**：本侧 `include_str!("../../src/bridge/src/tmux.rs")`（编译期，同一半）+
-///   daemon 侧 [`DAEMON_KOU_JING_HOME`]（**运行期** `read_to_string`）。
-/// - 🔴 **为什么 daemon 那一半刻意用运行期读、而不是 `include_str!`**：
+///   backend 侧 [`BACKEND_KOU_JING_HOME`]（**运行期** `read_to_string`）。
+/// - 🔴 **为什么后端那一半刻意用运行期读、而不是 `include_str!`**：
 ///   `include_str!` 会新长出一条**跨半边的编译期边**，而那种边由
 ///   `cross_half_edge_registry::CROSS_EDGES` 逐条登记着（多一条就红），
 ///   **那个文件不在本拍写区**。运行期读在本仓是**既有做法**、不是绕道：
-///   `cross_half_edge_registry` 自己就是运行期遍历 daemon 那棵树的
+///   `cross_half_edge_registry` 自己就是运行期遍历后端那棵树的
 ///   （`both_halves()` 扫 `src/backend`），`scanning_guard_registry::PENDING`
-///   里也直接列着 daemon 的文件。而且它在该登记表关心的那一维上**更轻**：
-///   daemon 换布局时这里是一句说得清的运行期失败，不是 `cargo test` 编不过。
+///   里也直接列着后端的文件。而且它在该登记表关心的那一维上**更轻**：
+///   backend 换布局时这里是一句说得清的运行期失败，不是 `cargo test` 编不过。
 ///   ⚠ 代价如实写下：这条边因此**不出现在** `CROSS_EDGES` 里。
 ///   PM 若要它以编译期形态登记，改法是**两处一起动、不许只动一处**：
 ///   ① 把下面那句运行期读换成编译期读（`include_str!` 配 `concat!` / `env!` 拼路径，
-///      形状照本文件已有的 `daemon_watcher_src` 那个单一落点宏）；
-///   ② 同轮在 `CROSS_EDGES` 里加一条 `monitor→daemon` 的登记
+///      形状照本文件已有的 `backend_watcher_src` 那个单一落点宏）；
+///   ② 同轮在 `CROSS_EDGES` 里加一条 `monitor→backend` 的登记
 ///      （读者 `src/bridge/src/tmux.rs` · 被读 `src/backend/common/tmux_utf8.rs` ·
 ///      理由「跨轨对拍：口径的家在对面，本侧那一份必须与它逐字相等」）。
 ///   🔴 只动 ① 会让那张表的条数当场对不上 —— 它是**两个方向都查**的。
@@ -398,24 +398,24 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
              ⇒ 从此两份靠人对齐。正解是引用本文件那一处。"
     );
 
-    // ── ② 与 daemon 那个家逐字相等（值现取，不写死） ──────────────────
-    let home_path = root.join(DAEMON_KOU_JING_HOME);
+    // ── ② 与后端那个家逐字相等（值现取，不写死） ──────────────────
+    let home_path = root.join(BACKEND_KOU_JING_HOME);
     let home = std::fs::read_to_string(&home_path).unwrap_or_else(|e| {
         panic!(
-            "读不到 daemon 侧那个家 {home_path:?}：{e}\n\
+            "读不到后端侧那个家 {home_path:?}：{e}\n\
                  它是 K-R12 下一拍建的「一个口径一个家」。文件被搬了 ⇒ 改本文件那个常量；\
                  家被删了 ⇒ 那个口径退回三份靠人对齐，先回件文件。"
         )
     });
     assert!(
         home.len() > 2_000,
-        "daemon 那个家只有 {} 字节 —— 没读到内容，下面的对拍是空转的",
+        "backend 那个家只有 {} 字节 —— 没读到内容，下面的对拍是空转的",
         home.len()
     );
     let want_flag = format!("{}: &str = {UTF8_CLIENT_FLAG:?};", "UTF8_CLIENT_FLAG");
     assert!(
         home.contains(&want_flag),
-        "跨仓漂移：本侧的旗是 {UTF8_CLIENT_FLAG:?}，而 daemon 那个家里找不到 `{want_flag}`。\n\
+        "跨仓漂移：本侧的旗是 {UTF8_CLIENT_FLAG:?}，而后端那个家里找不到 `{want_flag}`。\n\
              两侧漂开时**两边都不会因为别的判据变红** —— 那正是本件立件时的那个形状。"
     );
     // 段数下溢那个谓词是同一族的第二个口径：比的是**函数体**，不是名字。
@@ -424,11 +424,11 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
         .unwrap_or_else(|e| panic!("本侧那个下溢谓词的体不是恰好一处：{e}"));
     assert!(
         home.contains(&body),
-        "跨仓漂移：下溢谓词的体两侧不一致（本侧是 `{body}`，daemon 家里找不到）。\n\
+        "跨仓漂移：下溢谓词的体两侧不一致（本侧是 `{body}`，backend 家里找不到）。\n\
              口径一致本身就是要买的东西：一侧改成 `!=` 就会开始误伤合法内容。"
     );
 
-    // ── ③ daemon 家里两种表示都还在 ───────────────────────────────────
+    // ── ③ backend 家里两种表示都还在 ───────────────────────────────────
     // ⚠ 锚点只钉「那里有一个声明」（`const <名>:`），**不钉类型写法** ——
     //   带类型标注的锚点实测会被 `(&'static str, &'static str)` 这种合法写法误伤，
     //   而它印出来的话是「家里少了 env 形」：一句指向完全错误方向的诊断。
@@ -436,7 +436,7 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
     //   当成命中（「匹配单位比事实小」那一族），于是「家改名了」这一形看不见。
     // 表里存**标识符**，锚点现拼 —— 反向自检那份「改了名」的夹具必须从标识符派生，
     // 从锚点文本派生的夹具会跟着锚点一起变松，于是「锚点变松了」这件事自己看不见
-    // （daemon 那侧的同职判据实测栽过这一形，头注里逐字记着）。
+    // （backend 那侧的同职判据实测栽过这一形，头注里逐字记着）。
     let anchor = |ident: &str| format!("const {ident}:");
     for (label, ident) in [
         ("argv 形（旗）", "UTF8_CLIENT_FLAG"),
@@ -445,7 +445,7 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
         let needle = anchor(ident);
         assert!(
             home.contains(&needle),
-            "daemon 那个家里少了**{label}**（找不到 `{needle}`）—— \
+            "backend 那个家里少了**{label}**（找不到 `{needle}`）—— \
                  「一个口径两种表示」被收口成一种了，而两类调用点各需要一种：\
                  少了哪一种，那一类调用点就静默退回非 UTF-8 客户端。"
         );
@@ -478,12 +478,12 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
     let drifted = format!("{}: &str = \"{UTF8_CLIENT_FLAG}x\";", "UTF8_CLIENT_FLAG");
     assert!(
         !home.contains(&drifted),
-        "喂一个**漂了的**值居然也在 daemon 那个家里命中（`{drifted}`）—— \
+        "喂一个**漂了的**值居然也在后端那个家里命中（`{drifted}`）—— \
              ② 那条对拍此刻恒真，它什么都没在守"
     );
     assert!(
         !home.contains(&format!("{}.count() != expected", ".split('\\t')")),
-        "daemon 家里同时存在 `!=` 那一版下溢谓词 —— 口径不一致，且 `!=` 会误伤合法内容"
+        "backend 家里同时存在 `!=` 那一版下溢谓词 —— 口径不一致，且 `!=` 会误伤合法内容"
     );
 }
 
@@ -601,7 +601,7 @@ fn every_target_placeholder_comes_from_exact_target() {
         found.is_empty(),
         "生产段又出现了把目标插进 tmux 命令串的地方：{:?}\n\
              —— 那条路 `K-R72`/`K-R112` 已经收干净了（三条命令全走后端帧面）。\n\
-             真要新增一处，`exact_target` 今天只住 daemon 侧\n\
+             真要新增一处，`exact_target` 今天只住后端侧\n\
              （`src/backend/control/launch.rs`），别在这里重新长一份。",
         found.iter().map(|(n, _)| n).collect::<Vec<_>>()
     );
@@ -686,7 +686,7 @@ fn the_tmux_shell_line_detector_really_sees_each_shape() {
 
 /// ★★ `KR112D2` 刀①：**抓一屏走的是 `capture-pane` 帧，不是一次性 SSH。**
 ///
-/// 判的是**这条路**（`capture_remote_pane` → `capture_via_daemon`）上有没有命令串。
+/// 判的是**这条路**（`capture_remote_pane` → `capture_via_backend`）上有没有命令串。
 #[test]
 fn the_capture_path_asks_the_backend_instead_of_composing_a_shell_line() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/tmux.rs"));
@@ -703,7 +703,7 @@ fn the_capture_path_asks_the_backend_instead_of_composing_a_shell_line() {
     let mut checked = 0usize;
     for sig in [
         "pub async fn capture_remote_pane(",
-        "async fn capture_via_daemon(",
+        "async fn capture_via_backend(",
     ] {
         let body = body_of(sig);
         assert!(
@@ -715,26 +715,26 @@ fn the_capture_path_asks_the_backend_instead_of_composing_a_shell_line() {
         assert!(
             hits.is_empty(),
             "`{sig}` 这条路上又出现了命令串的痕迹 {hits:?}。\n\
-                 抓一屏归 daemon 的 `capture-pane` 原语（`K-R86` 出、`K-R104` 上帧面）——\n\
+                 抓一屏归后端的 `capture-pane` 原语（`K-R86` 出、`K-R104` 上帧面）——\n\
                  拼一条 shell 串走 SSH 就是同一件事的第二份实现（`K33`「所有命令只许有一处」）。"
         );
         checked += 1;
     }
     assert_eq!(checked, 2, "只核到 {checked} 段 —— 本断言在空转");
     // 它真的调了那条原语，而且能力协商排在抓之前。
-    let via = body_of("async fn capture_via_daemon(");
+    let via = body_of("async fn capture_via_backend(");
     let ask = via
         .find("accepts(CAPTURE_PANE)")
-        .expect("`capture_via_daemon` 没有先问一句能力 —— 「这台后端太旧」永远说不出口");
+        .expect("`capture_via_backend` 没有先问一句能力 —— 「这台后端太旧」永远说不出口");
     let call = via
         .find("CAPTURE_PANE,")
-        .expect("`capture_via_daemon` 没在调那条原语 —— 判据的参照物没了");
+        .expect("`capture_via_backend` 没在调那条原语 —— 判据的参照物没了");
     assert!(ask < call, "能力协商排在真抓之后 —— 那就永远走不到");
     assert!(
         via.contains("capture_pane_args(target)"),
         "参数不是走那份共用的构造器 —— 字段名一漂，症状是「命令发出去了、对面说缺字段」"
     );
-    // 分流走那唯一的一份（`daemon_route` 的登记表逐字要求每个发送端表态）。
+    // 分流走那唯一的一份（`backend_route` 的登记表逐字要求每个发送端表态）。
     assert!(
         via.contains("route_call_error"),
         "抓屏这个发送端自己在判「要不要回落」—— 那是分流规则的第二份实现"
@@ -744,7 +744,7 @@ fn the_capture_path_asks_the_backend_instead_of_composing_a_shell_line() {
 /// ★★ `KR112D2` 刀②：**本机那一支从「回一句还看不了」变成真去抓。**
 ///
 /// 老行为逐字是：`<local>` 直接早退，回一句「本机还看不了 …的画面预览」。
-/// 那句话当时诚实（daemon 没有抓屏原语），今天**前提到期**（`K-R86`/`K-R104`）。
+/// 那句话当时诚实（backend 没有抓屏原语），今天**前提到期**（`K-R86`/`K-R104`）。
 ///
 /// ⚠ **射程写清楚**：本条不证明「本机真抓得到一屏」—— 那要后端在、且有一个真 tmux 会话，
 /// 而沙箱里 `<local>` 上没有入方向通道。本条证的是**两件可判的事**：
@@ -762,7 +762,7 @@ fn the_local_capture_is_no_longer_a_dead_end() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        body.contains("capture_via_daemon("),
+        body.contains("capture_via_backend("),
         "抽到的 `capture_remote_pane` 体里连主路都没有 —— 抽取器坏了，本条空转。实得 {} 字节",
         body.len()
     );
@@ -772,7 +772,7 @@ fn the_local_capture_is_no_longer_a_dead_end() {
             !body.contains(forbidden),
             "`capture_remote_pane` 里又出现了 `{forbidden}` —— 本机那条早退回潮了。\n\
                  它回的那句「本机还看不了」在 `K-R86`/`K-R104` 之后是**假话**：\n\
-                 daemon 有 `capture-pane` 了，`<local>` 也是一个 origin。"
+                 backend 有 `capture-pane` 了，`<local>` 也是一个 origin。"
         );
     }
     // ② 两侧同一段代码：通道不在时只差一个称呼。
@@ -856,7 +856,7 @@ fn the_local_kill_never_falls_back_to_ssh() {
         .join("\n");
     // 抽取器自检：抽空了下面那条就恒绿。
     assert!(
-        body.contains("daemon_kill::daemon_kill("),
+        body.contains("backend_kill::backend_kill("),
         "抽到的 `kill_remote_tmux` 函数体里连主路都没有 —— 抽取器坏了，本条此刻空转。\n\
              实得 {} 字节",
         body.len()
@@ -865,7 +865,7 @@ fn the_local_kill_never_falls_back_to_ssh() {
     assert!(
         !body.contains("connect_and_exec_cmd"),
         "`kill_remote_tmux` 里又出现了 `connect_and_exec_cmd` —— 那条一次性 SSH 回落回潮了。\n\
-             `K-R54` 表第 2 处判它删：daemon 那条先 `admit_destructive` 拿 `#{{session_id}}`\n\
+             `K-R54` 表第 2 处判它删：backend 那条先 `admit_destructive` 拿 `#{{session_id}}`\n\
              **句柄**再杀，而 SSH 那条杀的是 `=name:`（**名字**）—— 破坏性动作对名字下手\n\
              就把 TOCTOU 窗口留着。要恢复它先回 `K-R54` 重新裁定。"
     );
@@ -919,7 +919,7 @@ fn the_local_kill_never_falls_back_to_ssh() {
 ///   `origin == LOCAL_ORIGIN`（**逐字节相等**）。⇒
 ///   · **拦得住**：唯一那个前端/后端约定的哨兵串（`inbound_client::LOCAL_ORIGIN`，
 ///     由 `inbound_client_tests.rs::the_local_origin_is_the_same_string_on_both_sides`
-///     钉着它与前端 `daemon-policy.ts` 那份逐字相同）。
+///     钉着它与前端 `backend-policy.ts` 那份逐字相同）。
 ///   · **拦不住**：一台 label 起成 `localhost` / `127.0.0.1` / 本机主机名的**远端**
 ///     （即便它就是这台机器）—— 走的是远端那句话。⚠ 那**是对的**：它确实是一条远端传输。
 ///   · **也拦不住**：大小写 / 前后空白不同的写法（`<LOCAL>`、`" <local>"`）——
@@ -943,7 +943,7 @@ fn the_local_send_keys_never_falls_back_to_ssh() {
         .collect::<Vec<_>>()
         .join("\n");
     assert!(
-        body.contains("daemon_send_keys::daemon_send_keys("),
+        body.contains("backend_send_keys::backend_send_keys("),
         "抽到的 `tmux_send_keys` 函数体里连主路都没有 —— 抽取器坏了，本条此刻空转。\n\
              实得 {} 字节",
         body.len()
@@ -1014,11 +1014,11 @@ fn the_local_send_keys_never_falls_back_to_ssh() {
 /// ⚠ 这时有两种写法，只有一种是诚实的：
 /// · 把本条删掉 ⇒ 「精确匹配」从此**无人在数**（而它仍然承重）；
 /// · 让本条**跟到新住址去数** ⇒ 就是下面这样。
-/// 判的是 daemon 那棵树（读文件，不跨 crate 调用）—— 同 `tmux_daemon_gate_guard`
+/// 判的是后端那棵树（读文件，不跨 crate 调用）—— 同 `tmux_backend_gate_guard`
 /// 那几条两树对拍的做法。
 ///
 /// ⚠ **它买不到什么**：只证明那两处**调了** `exact_target`，不证明 `exact_target`
-/// 自己产的形状对 —— 那由 daemon 那棵树自己的判据钉（本条够不着它的运行期）。
+/// 自己产的形状对 —— 那由后端那棵树自己的判据钉（本条够不着它的运行期）。
 #[test]
 fn tmux_targets_use_exact_match() {
     // ① monitor 侧：一处裸目标都不许再有（本件之后这一侧连命令串都没有了）。
@@ -1027,7 +1027,7 @@ fn tmux_targets_use_exact_match() {
         !mine.contains("-t {"),
         "monitor 的 `tmux.rs` 生产段又出现了 `-t {{…}}` —— 那条路已经收干净了"
     );
-    // ①b [`exact_target`] 自己产的形状 —— 它今天零生产调用方，但**是 daemon 那条
+    // ①b [`exact_target`] 自己产的形状 —— 它今天零生产调用方，但**是后端那条
     //     跨轨对拍的锚点**（见它的头注），所以这几格照旧断。
     assert_eq!(exact_target("cc-x").unwrap(), "'=cc-x:'");
     assert_eq!(exact_target("proj_cc-2").unwrap(), "'=proj_cc-2:'");
@@ -1038,19 +1038,19 @@ fn tmux_targets_use_exact_match() {
     assert!(exact_target("a'b").unwrap().ends_with("b:'"));
     // Gate 1：空 target 必须被拒（`=:` 会被 tmux 解析成「当前会话」）。
     assert!(exact_target("").is_err(), "空 target 必须被 Gate 1 拒绝");
-    // ② 那条性质的新住址：daemon 侧抓屏与杀会话**都**过 `exact_target`。
+    // ② 那条性质的新住址：backend 侧抓屏与杀会话**都**过 `exact_target`。
     // 〔搬树 2026-09-17〕后端树从 `remote-daemon-proto/src/` 搬到 `<repo>/src/backend/`
     // ⇒ **中间那层 `src` 没了**。原来是 `.join("src/backend").join("src").join("control")`。
-    let daemon = crate::guard_support::backend_src_root().join("control");
+    let backend = crate::guard_support::backend_src_root().join("control");
     let mut checked = 0usize;
     for (file, why) in [("capture_pane.rs", "抓屏"), ("kill.rs", "杀会话")] {
-        let p = daemon.join(file);
+        let p = backend.join(file);
         let raw = std::fs::read_to_string(&p)
             .unwrap_or_else(|e| panic!("读不到 {p:?}：{e} —— 本条的被测对象没了，它此刻在空转"));
         let prod = guard_core::production_code(&raw);
         assert!(
             prod.contains("exact_target("),
-            "daemon 的 `control/{file}`（{why}）生产段里没有 `exact_target(` —— \n\
+            "backend 的 `control/{file}`（{why}）生产段里没有 `exact_target(` —— \n\
                  「`-t <名>` 必须是 `=<名>:` 精确形态」这条性质**今天两棵树上都没人守了**：\n\
                  monitor 侧 `K-R112` 已把它走掉（那一处的墓碑在本文件里），\n\
                  而这一处正是它唯一的新住址。裸目标会走 tmux 的\n\
@@ -1140,10 +1140,10 @@ fn the_five_capture_refusals_stay_apart() {
             assert_ne!(a, b, "两档被压成了同一句话");
         }
     }
-    // ② 每一句都说得出是哪个会话，而且带上 daemon 的原话（诊断不许被吃掉）。
+    // ② 每一句都说得出是哪个会话，而且带上后端的原话（诊断不许被吃掉）。
     for m in &msgs {
         assert!(m.contains("cc-x"), "没说是哪个会话：{m}");
-        assert!(m.contains("原话"), "daemon 的原话被吃掉了：{m}");
+        assert!(m.contains("原话"), "backend 的原话被吃掉了：{m}");
     }
     // ③ 🔴 **认不出的码不许猜**：原样带出去，且不许长成任何一句已知档的样子。
     let unknown = describe_capture_refusal("cc-x", "zzz_new_code", "原话");
@@ -1168,19 +1168,19 @@ fn fmt_uses_real_tab_not_literal_backslash_t() {
 
 #[test]
 fn tmux_ls_fmt_double_write_point_stays_in_sync() {
-    // F08a：TMUX_LS_FMT 双写点断言（红线 I8 的机器化护栏）。monitor(本 const) 与 daemon
+    // F08a：TMUX_LS_FMT 双写点断言（红线 I8 的机器化护栏）。monitor(本 const) 与 backend
     // (`src/backend/observe/watcher.rs`) 分属两个独立 crate、不能共享 const，但两侧
-    // `tmux ls -F` 格式串**必须逐字一致**（否则 daemon 推的列 monitor 解错位）。编译期
-    // include_str! 读 daemon 源，把本 const 的真 TAB 折回源码里的 `\t` 转义再断言 daemon 源
-    // 含该带引号字面量——**双向**：改 monitor 或 daemon 任一侧忘同步，本测即红。
-    let daemon_src = include_str!(daemon_watcher_src!());
+    // `tmux ls -F` 格式串**必须逐字一致**（否则后端推的列 monitor 解错位）。编译期
+    // include_str! 读后端源，把本 const 的真 TAB 折回源码里的 `\t` 转义再断言后端源
+    // 含该带引号字面量——**双向**：改 monitor 或后端任一侧忘同步，本测即红。
+    let backend_src = include_str!(backend_watcher_src!());
     let source_literal = TMUX_LS_FMT.replace('\t', "\\t");
     // 锚定到 const 定义行（非裸字面量）——否则该字面量若也出现在某条注释里，会掩盖真 const 漂移
-    // （假阴性）。daemon 侧常量名同为 TMUX_LS_FMT（红线 I8 不许改），故按定义行精确比对。
+    // （假阴性）。backend 侧常量名同为 TMUX_LS_FMT（红线 I8 不许改），故按定义行精确比对。
     let expected_def = format!("const TMUX_LS_FMT: &str = \"{source_literal}\";");
     assert!(
-        daemon_src.contains(&expected_def),
-        "TMUX_LS_FMT 双写点漂移：daemon watcher.rs 不含与 monitor 侧一致的定义 {expected_def:?}\n\
+        backend_src.contains(&expected_def),
+        "TMUX_LS_FMT 双写点漂移：backend watcher.rs 不含与 monitor 侧一致的定义 {expected_def:?}\n\
              （改了 tmux ls 格式串就得两侧同步——红线 I8）"
     );
 }

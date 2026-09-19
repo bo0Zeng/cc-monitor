@@ -41,7 +41,7 @@ route_log() { printf '[%s] %s\n' "$(date -Iseconds)" "$*" >> "$BUS/log/bus.log" 
 # 进而入队却无人处理→静默丢消息(多 cc-send 并发是常态)。改用只读探测:
 #   pidfile 存在 且 PID 活(kill -0,不获取任何锁,无自竞态)且 /proc/<pid>/cmdline 确是 cc-busd(防 PID 复用)。
 # 崩溃后 pidfile 残留:PID 已死→kill -0 失败→正确判"未运行";PID 被复用→cmdline 不含 cc-busd→仍判"未运行"。
-daemon_running() {
+backend_running() {
   local pf="$BUS/cc-busd.pid" pid
   [ -f "$pf" ] || return 1
   pid=$(cat "$pf" 2>/dev/null) || return 1
@@ -262,7 +262,7 @@ route_process() {
   local line="$1" from to
   from=$(printf '%s' "$line" | jq -r '.from // "?"' 2>/dev/null || echo "?")
   to=$(printf '%s' "$line" | jq -r '.to // "?"' 2>/dev/null || echo "?")
-  # 路径穿越纵深防御:to/from 都会拼进文件路径(库是唯一实现,daemon 会读任意实例写的信封)
+  # 路径穿越纵深防御:to/from 都会拼进文件路径(库是唯一实现,backend 会读任意实例写的信封)
   case "$to"   in *[!A-Za-z0-9_-]*|'') route_log "DROP badname to=$to"; return 10;; esac
   case "$from" in *[!A-Za-z0-9_-]*|'') route_log "DROP badname from=$from"; return 10;; esac
   # 这里的门全是【只读】(无副作用)。限流/去重的状态仅在 deliver 成功后(见下)才提交,

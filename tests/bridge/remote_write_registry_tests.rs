@@ -44,7 +44,7 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
         "upload_atomic",
         "远端",
         "近原子替换的核心：写 `.tmp` → 备份旧文件为 `.bak` → rename 上位。\
-             **路径由调用方给**，而调用方全是「代码定路径」那一族（daemon 落点 / `.mcp.json` /\
+             **路径由调用方给**，而调用方全是「代码定路径」那一族（backend 落点 / `.mcp.json` /\
              `sftp_write_text` 转发过来的用户选路径）。⚠ 本函数自己**不设围栏** ——\
              用户选路径那条链的围栏在入口 `sftp_pool::sftp_write_text` 上（见下面第三条判据）。",
     ),
@@ -57,9 +57,9 @@ const REMOTE_WRITES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "sftp.rs",
-        "uninstall_remote_daemon",
+        "uninstall_remote_backend",
         "远端",
-        "删远端 daemon 二进制。路径**由代码定**（`daemon_binary()` 的落点），不接受用户输入。",
+        "删远端后端二进制。路径**由代码定**（`backend_binary()` 的落点），不接受用户输入。",
     ),
     (
         "sftp.rs",
@@ -378,7 +378,7 @@ fn a_user_chosen_remote_write_passes_the_claude_data_fence() {
 /// # 为什么单列
 ///
 /// 〔audit-0805 V7-2〕当初点名的十个名字里有五个是**IPC 包装**
-/// （`sftp_write_text` / `sftp_upload` / `deploy_remote_daemon` /
+/// （`sftp_write_text` / `sftp_upload` / `deploy_remote_backend` /
 /// `write_remote_mcp_server` / `delete_remote_history_session`）——
 /// 它们自己**不调写原语**，所以按能力边界派生的人群里**一个都没有**。
 ///
@@ -392,7 +392,7 @@ fn the_ipc_entry_points_route_through_a_registered_write_site() {
     const ROUTES: &[(&str, &str, &str)] = &[
         ("sftp_pool.rs", "sftp_write_text", "upload_atomic"),
         ("sftp_pool.rs", "sftp_upload", "upload_inner"),
-        ("sftp.rs", "deploy_remote_daemon", "upload_atomic"),
+        ("sftp.rs", "deploy_remote_backend", "upload_atomic"),
         ("mcp.rs", "write_remote_mcp_server", "upload_atomic"),
         (
             "remote_history.rs",

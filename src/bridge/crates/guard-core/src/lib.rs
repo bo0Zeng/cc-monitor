@@ -2,7 +2,7 @@
 //!
 //! # 为什么是一个共享 crate（U8a-2a，2026-08-02）
 //!
-//! 这份剥法原先住在 daemon 的 `guard_support`（`cfg(test)` 模块）。monitor 侧够不着它，
+//! 这份剥法原先住在后端的 `guard_support`（`cfg(test)` 模块）。monitor 侧够不着它，
 //! 于是 monitor 的守卫各自写了**便宜近似**，最常见的一种是：
 //!
 //! ```text
@@ -14,7 +14,7 @@
 //! **扫描面直接归零到前 803 行**，守卫静默变瞎。
 //!
 //! 「抽取面画小了」这一族在 unified-backend 工作区里已经出现过四次。本 crate 是它的收口：
-//! 两侧用**同一份**剥法，daemon 的 `guard_support` 改为再导出。
+//! 两侧用**同一份**剥法，backend 的 `guard_support` 改为再导出。
 //!
 //! # ⚠ 与三个兄弟 crate 的一处**不同**，别照抄错家族不变量
 //!
@@ -25,20 +25,20 @@
 //! **纯文本处理放这里，需要 IO 的只能是守卫断言型（panic 语义、只在测试里跑）。**
 //!
 //! 🔴 **而 IO 里的「写」这一半，本 crate 一处都不许有 —— 连 `#[cfg(test)]` 里也不许。**
-//! 看着它的是 daemon 侧的
+//! 看着它的是后端侧的
 //! `readonly_guard::g6_dependency_signoff::the_clean_verdict_is_re_measured_on_the_tree_every_run`：
 //! 签字表把本 crate 判成「已量 · 未见写面」，而它**按原文行**重扫（`src.lines()`，
-//! **不走 `production_code`**）⇒ 测试夹具里一句 `std` 的写盘调用就会让 daemon 那一格当场红。
+//! **不走 `production_code`**）⇒ 测试夹具里一句 `std` 的写盘调用就会让后端那一格当场红。
 //! ⚠ **连这段散文自己都要小心**：那把尺子是**纯字面**的，`///` 里逐字写出那几个写盘 API 的名字
-//! **一样命中**（09-12 现打过一次：本段第一版把其中一个写进了句子里，daemon 那格逐字点名的正是这一行）
+//! **一样命中**（09-12 现打过一次：本段第一版把其中一个写进了句子里，backend 那格逐字点名的正是这一行）
 //! ⇒ 本段刻意只说「写盘调用」，一个 API 名都不写。要看今天有哪几个，读那两张模式表本身。
-//! 〔`K-R75` 09-12 现打：一条需要真目录的树遍历判据写在这里，门禁 `daemon` 那格 `685/1`；
+//! 〔`K-R75` 09-12 现打：一条需要真目录的树遍历判据写在这里，门禁 `backend` 那格 `685/1`；
 //!  处置是把那条判据**搬去 monitor 侧的 `structural_scan.rs`**（就挨着
 //!  monitor 那条树遍历；它的名字与死值验写在它自己的头注里 —— 这里刻意不复述那个名字：
 //!  那份文件把自己从死名判据的语料里摘掉了，在这儿点它的名字会被读成一个不存在的符号），
 //!  **不是**去动那把尺子。〕
 //!
-//! # 为什么剥法长这样（daemon 侧的两次实测教训，原样保留）
+//! # 为什么剥法长这样（backend 侧的两次实测教训，原样保留）
 //!
 //! 原先**八处**各写一份：
 //!
@@ -49,7 +49,7 @@
 //!
 //! 它有**两个**独立的坑，而且互相掩盖：
 //!
-//! 1. **锚点写死了模块名 `tests`。** daemon `main.rs` 的测试模块叫 `mod stream_flag_tests`
+//! 1. **锚点写死了模块名 `tests`。** backend `main.rs` 的测试模块叫 `mod stream_flag_tests`
 //!    ⇒ 匹配不上 ⇒ `None` 分支 ⇒ **整个文件（含测试段）被当成生产段扫**。
 //!
 //! 2. **「第一个锚点之后全砍」这个形状本身就是错的。** 它假定测试模块是文件里最后一样
@@ -114,7 +114,7 @@ fn cfg_is_test_only(attr: &str) -> bool {
 ///
 /// # 🔴 上一版这里写着的那句话**已被证伪，原样留在这里当账**〔`K-R110`，09-13〕
 ///
-/// 逐字是：「列 0 判据在两侧的文件上**实测干净**（daemon 侧 `every_daemon_file_strips_clean`、
+/// 逐字是：「列 0 判据在两侧的文件上**实测干净**（backend 侧 `every_backend_file_strips_clean`、
 /// monitor 侧 `every_monitor_file_strips_clean`）」。**两半都不成立**：
 /// `src/backend/plugin/mod.rs` 的测试段里有一段 `r#"…"#`，内容里逐字有一行
 /// `}"#;` ⇒ 区间在**第 657 行**收了尾，而真收尾在 688 行 ⇒ **31 行**测试代码漏进生产段；
@@ -130,12 +130,12 @@ fn cfg_is_test_only(attr: &str) -> bool {
 ///
 /// ```text
 /// #[cfg(test)]
-/// mod guard_support;      ← 就是这份剥法自己在 daemon main.rs 里的声明
+/// mod guard_support;      ← 就是这份剥法自己在 backend main.rs 里的声明
 /// ```
 ///
 /// 锚点照样匹配，但这里没有块可剥 —— 于是「列 0 的右大括号」会一路找到**下一个顶层 item 的
 /// 收尾大括号**，把中间**全部生产代码**当测试段吞掉。实测：加上这条声明后，
-/// daemon `main.rs:26–179` 整段消失（`const BUILD_ID` / `const CAPABILITIES` / `const EMITS` /
+/// backend `main.rs:26–179` 整段消失（`const BUILD_ID` / `const CAPABILITIES` / `const EMITS` /
 /// `fn split_stream_flags` 全没了），而 `no_timer_guard` 在那一段上**静默变瞎** ——
 /// 把 `thread::sleep` 放进被吞区间**全绿**，放到测试模块之后才红。
 ///
@@ -262,7 +262,7 @@ fn test_module_ranges(src: &str) -> Vec<(usize, usize)> {
             //
             // ★「无花括号体」那一条是 Phase D 审计逮出来的：`#[cfg(test)] mod guard_support;`
             //   若被当成模块体，「列 0 的右大括号」会一路吞到下一个顶层 item 的收尾，
-            //   把中间**全部生产代码**当测试段丢掉（daemon main.rs 曾整段 26–179 行消失）。
+            //   把中间**全部生产代码**当测试段丢掉（backend main.rs 曾整段 26–179 行消失）。
             //
             // ★★ 第二形（`K-R75`，09-12）：**带可见性前缀的模块声明**。上一版这里逐字写着
             //   `mod_line.starts_with("mod ")` ⇒ `pub(crate) mod tests {` 从这个 `continue`
@@ -487,9 +487,9 @@ fn raw_string_open(sb: &[u8], i: usize) -> Option<(usize, usize)> {
 /// let _shim = g.is_some();
 /// ```
 ///
-/// 09-04 在本仓 `local_daemon.rs` 的幂等门上现打过这一刀：monitor 侧
-/// **1275 条测试全绿、0 失败**，而生产上「点两下起出第二个 daemon」那个阻塞级缺陷回来了 ——
-/// 连**专门为它写的**那条判据（`starting_twice_does_not_spawn_a_second_local_daemon`）
+/// 09-04 在本仓 `local_backend_host.rs` 的幂等门上现打过这一刀：monitor 侧
+/// **1275 条测试全绿、0 失败**，而生产上「点两下起出第二个后端」那个阻塞级缺陷回来了 ——
+/// 连**专门为它写的**那条判据（`starting_twice_does_not_spawn_a_second_local_backend_host`）
 /// 都在数块注释里的那份文本。
 ///
 /// ⚠⚠ **而多行块注释正是编辑器「注释掉这几行」的默认产物** —— 这不是一个刁钻的绕法。
@@ -569,7 +569,7 @@ fn try_strip_block_comments(src: &str) -> Option<String> {
 /// - 万一词法认错、把真代码当成串/注释 ⇒ 收尾会挪过头，**测试段吞掉生产代码**
 ///   （这是 `production_source` 头注里记的那个老病灶的方向）。
 ///   看着这一档的是两侧既有的「生产段里必须还找得到某锚点」判据
-///   （daemon `guard_support::main_production_section_keeps_its_load_bearing_items`），
+///   （backend `guard_support::main_production_section_keeps_its_load_bearing_items`），
 ///   以及本模块的 [`assert_test_module_ranges_are_brace_balanced`]。
 /// - 词法**自己**崩了（收不了口）⇒ 走兜底、退回裸文本，形状退回 09-13 之前那一档，
 ///   而 [`assert_block_comment_model_holds`] 与本模块那条新判据都会出声。
@@ -749,8 +749,8 @@ pub fn block_comment_model_holds(src: &str) -> bool {
 ///
 /// # 为什么它住在这儿（`K-R25`，09-04）
 ///
-/// 本仓有两条守卫（monitor 的 `every_test_that_starts_the_real_daemon_demands_a_private_tmux`
-/// 与它的姊妹 `every_real_daemon_e2e_demands_a_private_tmux_dir`）**先按 `#[test]` 切块、
+/// 本仓有两条守卫（monitor 的 `every_test_that_starts_the_real_backend_demands_a_private_tmux`
+/// 与它的姊妹 `every_real_backend_e2e_demands_a_private_tmux_dir`）**先按 `#[test]` 切块、
 /// 再逐块判**，而它们各写了一份**私有副本**的切法。切法是一个事实
 /// ⇒ 恰好一个权威源（E3）。本函数就是那一份。
 ///
@@ -931,7 +931,7 @@ pub fn assert_block_comment_model_holds(
 ///
 /// 剥注释是必需的：两侧的注释**大量**在解释「为什么这里没有定时器了 / 哪些写模式被
 /// 禁了 / 有哪些子命令」，逐字提到那些字面量。不剥的话守卫会被**解释它自己的那段散文**
-/// 喂饱（daemon 的 `no_timer_guard` P4 实测被打红过；`build_id_guard` 的指纹会被注释里的
+/// 喂饱（backend 的 `no_timer_guard` P4 实测被打红过；`build_id_guard` 的指纹会被注释里的
 /// 子命令名污染）。
 ///
 /// # ★ 09-01（`K-R3`）：行尾注释那一半是**后补的**，补之前它是这一族的活体洞
@@ -948,7 +948,7 @@ pub fn assert_block_comment_model_holds(
 /// 09-01 补上行尾那一半之后，头注（与 `strip_comment_lines` 那一段）逐字留了这句边界：
 /// 「**别把这条边界读成「注释都剥干净了」**」。那句话写下来了，**但没有人守着它**：
 /// 剥法仍然只认 `//`，`/* … */` 一个字都不剥。⇒ 把真代码包进**多行块注释**再换个桩值，
-/// 判据全绿（09-04 在 `local_daemon.rs` 的幂等门上现打：monitor **1275 条全绿 0 失败**）。
+/// 判据全绿（09-04 在 `local_backend_host.rs` 的幂等门上现打：monitor **1275 条全绿 0 失败**）。
 ///
 /// ⇒ 本轮的处置**不是**再写一句边界，而是[`strip_block_comments`] 把它剥掉，
 /// 并用 [`assert_block_comment_model_holds`] 看着那条兜底。
@@ -998,7 +998,7 @@ pub fn assert_no_test_code(who: &str, prod: &str) {
 /// [`assert_no_test_code`] 数的是残留的**测试属性**（`#[test]`）。它接得住「测试模块没剥掉
 /// 而里面有测试函数」，**接不住「测试模块没剥掉而里面一个 `#[test]` 都没有」** ——
 /// 而那不是假想：09-12 现打，monitor 树上就有 **3 处** `#[cfg(test)] pub(crate) mod X {`
-/// （`daemon_kill.rs` 的 `creation_detect` · `shared_crate_registry.rs` 的 `ci_yaml` ·
+/// （`backend_kill.rs` 的 `creation_detect` · `shared_crate_registry.rs` 的 `ci_yaml` ·
 /// `write_site_registry.rs` 的 `writers`），它们全是**只给测试用的量具模块、里面没有 `#[test]`**
 /// ⇒ 剥法认不出它们、它们整段待在生产段里被各条判据扫，**而反向自检一声不吭**。
 ///
@@ -1014,7 +1014,7 @@ pub fn assert_no_test_code(who: &str, prod: &str) {
 /// - **接得住**：`pub(crate) mod` · `pub(in …) mod` · 同一行的 `#[cfg(test)] mod x {` ·
 ///   属性与 `mod` 之间夹了文档注释/别的属性的写法（往下跳过空行、`//`、`#[…]` 再看）。
 /// - **接不住**：① **过剥**（剥多了 —— 那一族由两侧的「生产段里必须还找得到某锚点」判据守，
-///   见 daemon `guard_support` 那条）；② `#[cfg(test)]` 挂在**不是 `mod` 的**花括号体上
+///   见 backend `guard_support` 那条）；② `#[cfg(test)]` 挂在**不是 `mod` 的**花括号体上
 ///   （`fn` / `impl` / `enum` / `thread_local!`，09-12 现打两棵树共 **31 处**）——
 ///   那不是「剥法漏了」，剥法从来只认 `mod` 块；把它们也判红等于给这条守卫加一族假红。
 /// - **它不数「有没有 `#[test]`」** ⇒ 与 [`assert_no_test_code`] 是并集关系，不是替代。
@@ -1059,7 +1059,7 @@ pub fn assert_no_unstripped_test_module(who: &str, prod: &str) {
     assert!(
         offenders.is_empty(),
         "{who}：生产段里残留了 {} 处**剥法没认出来的测试模块** —— 此刻这些判据在扫测试代码：\n{}\n\
-         ★ 这一族已经犯过三形：① 无花括号体的 `mod x;`（daemon main.rs 曾整段 26–179 行消失）\n\
+         ★ 这一族已经犯过三形：① 无花括号体的 `mod x;`（backend main.rs 曾整段 26–179 行消失）\n\
          ② 可见性前缀 `pub(crate) mod`（`K-R74` 实打：判定行 1403/0 → 1399/10）③ 就是你现在看到的这一处。\n\
          ⇒ **改的是 `guard_core::test_module_ranges` 的剥法，不是这份文件的写法**；\n\
          而且**不许再列一张前缀表** —— 要认形状（`strip_visibility` 那一档是范例）。",
@@ -1140,7 +1140,7 @@ pub fn assert_test_module_ranges_are_brace_balanced(who: &str, src: &str) {
 /// 遍历一棵源码树，对每个 `.rs` 文件断言 [`assert_no_test_code`] **与**
 /// [`assert_no_unstripped_test_module`]（`K-R75` 09-12 补的第二半）。
 ///
-/// 抽出来是因为两侧各有一份一模一样的遍历（daemon `every_daemon_file_strips_clean`、
+/// 抽出来是因为两侧各有一份一模一样的遍历（backend `every_backend_file_strips_clean`、
 /// monitor `every_monitor_file_strips_clean`），而遍历本身也会坏 —— `min_files`
 /// 就是那条计数自检：扫到的文件数低于它，说明**遍历坏了**，不是代码变干净了。
 ///
@@ -1587,7 +1587,7 @@ fn ident_char(c: char) -> bool {
 /// | 何处 | needle | 撑大成 | 后果 |
 /// |---|---|---|---|
 /// | F05 | `起流` | `起流程` | 阶段埋点判据认错阶段 |
-/// | F16 | `src/backend` | `src/backend-X` | 「跨 target check 走 daemon 的 lock」这个前提没了却不红 |
+/// | F16 | `src/backend` | `src/backend-X` | 「跨 target check 走后端的 lock」这个前提没了却不红 |
 /// | F19 | `exe_suffix: &str` | 另一个函数的**同名参数** | 断言指的不是它自称的那个函数 |
 ///
 /// ★ **三次没有一次是被「判据变红」发现的**，全靠变异。这一族的默认结局同样是恒绿。

@@ -815,7 +815,7 @@ pub fn delete_history_session(session_id: String, jsonl_path: String) -> Result<
 
 /// 建分支的返回体（前端据此提示 / 一键 resume 新分支）。
 ///
-/// **`Deserialize` 是给远端那条路用的**（G6）：daemon 的 `--fork-session` 在 stdout 吐同形 JSON，
+/// **`Deserialize` 是给远端那条路用的**（G6）：backend 的 `--fork-session` 在 stdout 吐同形 JSON，
 /// `remote_branch` 直接反序列化成本类型 —— 两条路一个类型，前端的成功处理才只有一份。
 #[derive(Debug, Serialize, serde::Deserialize)]
 #[cfg_attr(test, derive(ts_rs::TS))]
@@ -859,7 +859,7 @@ fn read_jsonl_values(path: &Path) -> Result<Vec<serde_json::Value>, String> {
     Ok(out)
 }
 
-// G1：**记录变换已提成共享 crate** `branch-core` —— monitor 与远端 daemon 共用同一份。
+// G1：**记录变换已提成共享 crate** `branch-core` —— monitor 与远端后端共用同一份。
 // 搬走的理由与选型过程见 `.claude/planned-build/branch-anywhere/features/G1-*.md`；
 // 落盘格式的实证判据见该 crate 的 `build_branch_records` 头注。
 // **本文件只留 IO**（读 jsonl 的口径 ＋ `O_EXCL` 落盘，那两样是 monitor 侧特有的）；
@@ -1059,7 +1059,7 @@ fn sanitize_launcher(launcher: Option<&str>) -> Result<Option<String>, String> {
 /// ⚠ 那句「本模块**不 attach**，一次都不」（`src/backend/control/launch.rs`
 /// 头注）**仍然对** —— 它说的是**远端后端**，理由逐字是「在远端，**开不了你面前的窗**」。
 /// 🔴 **本机后端就在用户面前那台机器上** ⇒ 那条位置约束在这一侧不成立。
-/// `R61` 立的就是这件事：**不许再用「daemon」这个词把这两件事压平。**
+/// `R61` 立的就是这件事：**不许再用「backend」这个词把这两件事压平。**
 ///
 /// # ⚠ `Attach` 与另外两个变体**不是同一类动作**，三处边界写在这里
 ///
@@ -1680,9 +1680,9 @@ fn render_local_ccm_with(
 /// 加上 `launch_local_posix` 的 stdio 全 null ⇒ 一个**无 tty、无 tmux** 的进程，
 /// 用户敲进去的字会被脚本吃掉。顺序由 `the_local_launch_tries_the_renderer_before_the_old_path` 钉住。
 ///
-/// # ⚠ 本机 `launch` **不经 daemon**，而本机 `kill` 经〔E 阶段全局审计 08-12，待决 `U13`〕
+/// # ⚠ 本机 `launch` **不经 backend**，而本机 `kill` 经〔E 阶段全局审计 08-12，待决 `U13`〕
 ///
-/// `daemon_kill.rs::daemon_kill` 那条本机 kill 走的是 daemon 通道（P3 刀 2）；本函数**没有**。
+/// `backend_kill.rs::backend_kill` 那条本机 kill 走的是后端通道（P3 刀 2）；本函数**没有**。
 /// 同一个控制面里两条命令走了两条路，而 `control-parity` 的 `C1` 逐字排除的正是
 /// 「本地直接 `Command::new` spawn」这条今天的做法 —— 也就是**本函数下游那条**。
 ///
@@ -1717,7 +1717,7 @@ fn render_local_ccm_with(
 ///   app 自带并自管环境、后端只有一个 ⇒「对面装了**别的** `ccm`」这个概念本身正在退场，
 ///   **不许再拿它当理由**；
 /// - 我们自己这份 `ccm` 的容器路**本来就转发** `ANTHROPIC_BASE_URL`
-///   （`src/backend/control/ccm/plan.rs`，daemon 侧有判据真去驱动它）。
+///   （`src/backend/control/ccm/plan.rs`，backend 侧有判据真去驱动它）。
 ///
 /// ⇒ 今天的形状是：**转发做到了、也声明了** —— `K-R61` 把 `base-url-across-tmux`
 /// 补进了 `src/backend/control/ccm/mod.rs` 的 `CAPABILITIES`，
@@ -1968,7 +1968,7 @@ pub(crate) fn relay_rows() -> Vec<String> {
 /// 中转装表时会把两类行**丢出表**（`relay::table::build`）：① 账号 id 当不了路由段；
 /// ② `base_url` 解析不了。本函数**只筛得掉第 ①** 类（`payload::relay_segment_is_safe`
 /// 与 `route::segment_is_safe` 是同一条规则，由 `payload.rs` 那边的头注登记着）。
-/// **第 ② 类筛不掉** —— 那要一份 `Base::parse`，而它住 daemon 那一侧、monitor 够不着
+/// **第 ② 类筛不掉** —— 那要一份 `Base::parse`，而它住后端那一侧、monitor 够不着
 /// （单向依赖）。
 /// ⇒ **残留的症状**：一行 `base_url` 打错的账号，界面会说「经本机中转」而中转那侧 404。
 /// **如实登记，不假装两侧人群相等。**〔`D1` 点名的那条同族，处置是「筛掉能筛的、写清剩下的」。〕
@@ -2035,7 +2035,7 @@ fn relay_prefix_for(
 ///
 /// 先前这里逐字写着「这两个取值口的**生产消费方恰好 2**」，并把那个 2 当成了闸。
 /// `D6` 的刀 `E5` 打穿它：在 `lib.rs` 加**第三个**消费方、**绕开这条缝**直接调
-/// `history::relay_rows()` / `local_daemon::relay_running()` ⇒ **全量门禁四个数与干净树逐字相同**。
+/// `history::relay_rows()` / `local_backend_host::relay_running()` ⇒ **全量门禁四个数与干净树逐字相同**。
 /// ⇒ 那句头注买到的是「**这两处**走缝」，**没买到「所有人都得走缝」**。
 /// ★ 定性（PM `§8 裁四`）：**治一个「今天数出来的 N」的过程中，长出了一个新的「今天数出来的 N」。**
 ///
@@ -2046,7 +2046,7 @@ fn relay_prefix_for(
 /// - 裸标识符 `relay_rows` / `relay_running` 各恰好 **2** 处（定义 + 本结构这一处）；
 /// - [`platform_is_windows`] **不再数总数**〔ccbus-win 09-10〕：它从今天起有了第二类消费方
 ///   （`cc_bus::resolve_bash` 只要「是不是 Windows」，走缝要顺带付 `relay_rows()` 读文件
-///   与 `relay_running()` 问 daemon 两笔钱），⇒ 那一格换成**点名住址**（`PLATFORM_TAKE_SITES`），
+///   与 `relay_running()` 问后端两笔钱），⇒ 那一格换成**点名住址**（`PLATFORM_TAKE_SITES`），
 ///   函数指针那一半改钉**差值**（裸标识符 − 调用形 == 1 = 只有本结构持有它）。
 ///   ★ 换制的理由是数个数会**抵消**：「加一处绕缝」＋「删一处正当」总数不变 ⇒ 一声不吭。
 ///   PM 09-10 在沙箱里现打过这一刀，住址制两条都逮得住（读数住 `audits/ccbus-win-PM.md`）。
@@ -2058,7 +2058,7 @@ fn relay_prefix_for(
 /// # 它买不到什么（如实写，别读宽）
 ///
 /// 本结构只管「**问不问**」与「**答案用不用**」。「那三个取值口自己答得对不对」由它们各自的
-/// 判据买（[`relay_rows_at`] 那条读真文件的 · `local_daemon::relay_running_really_reads_the_handle_table`）。
+/// 判据买（[`relay_rows_at`] 那条读真文件的 · `local_backend_host::relay_running_really_reads_the_handle_table`）。
 /// 而「生产上这条缝里插的**就是**那三个取值口」由 `the_production_relay_facts_are_those_two_take_points`
 /// 按**函数地址**对拍 —— 不是按文本。
 ///
@@ -2067,7 +2067,7 @@ fn relay_prefix_for(
 ///    `D6` 的刀 `Xa` 把它掏空成 `Vec::new()` ⇒ **全绿、门禁四个数与干净树逐字相同**。
 ///    🔴 **先前这里写的理由（「要动真实家目录，红线不许 ⇒ 做不到」）是假的，解锁条件（「要动 `paths.rs`」）也是假的**：
 ///    `paths.rs` 从 `dirs::home_dir()` 拼路径 ⇒ 在 Linux 上它读的就是 `$HOME`，
-///    而**本 crate 今天就有这个手法的先例**（`local_daemon::become_host_with_home` 里那行
+///    而**本 crate 今天就有这个手法的先例**（`local_backend_host::become_host_with_home` 里那行
 ///    `std::env::set_var("HOME", …)`）⇒ **写得出来，一个字节都不用动 `paths.rs`**。
 ///    **真代价**是这种判据必须 `--test-threads=1` ⇒ 只能住 `#[ignore]` 的 e2e 那条道
 ///    ⇒ **进不了 `tests/scripts/gate.sh`**。重新裁定的落点就是这一栏 + 件文件 `§4`。
@@ -2092,7 +2092,7 @@ fn relay_prefix_for(
 pub(crate) struct RelayFactSources {
     /// 「这个号在不在中转表里」——生产恒指 [`relay_rows`]。
     pub(crate) rows: fn() -> Vec<String>,
-    /// 「中转在不在跑」——生产恒指 [`crate::local_daemon::relay_running`]。
+    /// 「中转在不在跑」——生产恒指 [`crate::local_backend_host::relay_running`]。
     pub(crate) running: fn() -> bool,
     /// 🔴 「这台机是不是 Windows」——生产恒指 [`platform_is_windows`]〔`D6 阻-3`，08-29〕。
     ///
@@ -2116,7 +2116,7 @@ pub(crate) fn platform_is_windows() -> bool {
 /// 生产上这条缝里插的那三个取值口。**只有这一处**，判据按地址对拍它。
 pub(crate) const PRODUCTION_RELAY_FACTS: RelayFactSources = RelayFactSources {
     rows: relay_rows,
-    running: crate::local_daemon::relay_running,
+    running: crate::local_backend_host::relay_running,
     windows: platform_is_windows,
 };
 

@@ -45,7 +45,7 @@
 //!
 //! # 只读铁律（src/doc/INVARIANTS.md §1）
 //! 本模块只 `read` / `read_dir` / `metadata`，**零写入**，且**不 shell out**
-//! （daemon 是非登录 shell、PATH 很瘦；直接读 manifest 文件即可，省掉 PATH 依赖
+//! （backend 是非登录 shell、PATH 很瘦；直接读 manifest 文件即可，省掉 PATH 依赖
 //! 与"让只读组件去跑写工具"的争议面）。
 //!
 //! # 凭据边界（本模块最重要的约束）
@@ -124,11 +124,11 @@ fn is_safe_config_dir(p: &str) -> bool {
     //   ① shell 元字符与视觉欺骗字符 = **平台无关的安全性质**，两侧逐字同一套；
     //   ② 「是绝对路径」= **平台相关的形式**，各写各的。
     //
-    // 为什么现在才拆：本函数此前只服务远端（daemon 只跑在 Linux 上），而
+    // 为什么现在才拆：本函数此前只服务远端（backend 只跑在 Linux 上），而
     // `N-F1c` 起 **monitor 的本机账号清单也来问这个二进制**（`--list-accounts`），
     // 而那份 monitor 要在 Windows 上跑 —— Windows 的账号目录是 `C:\Users\…`，
     // 旧的第一条会把每一个 Windows 账号判成不安全 ⇒ **清单恒空**。
-    // ⚠ 障碍是这条检查，**不是**「daemon 不能在 Windows 上跑」：发版流水线的
+    // ⚠ 障碍是这条检查，**不是**「backend 不能在 Windows 上跑」：发版流水线的
     //   `build-windows` 里有原生 sidecar 构建，产物装进 `externalBin`。
     fn looks_absolute(p: &str) -> bool {
         if p.starts_with('/') {
@@ -183,7 +183,7 @@ fn home_dir() -> Option<PathBuf> {
 }
 
 /// 把 `$HOME/x` / `~/x` 前缀展开成绝对路径。仅支持前缀形式——更花哨的 shell 写法
-/// 一律不猜（daemon 不跑 shell），让用户走 `--accts-dir` 显式覆盖。
+/// 一律不猜（backend 不跑 shell），让用户走 `--accts-dir` 显式覆盖。
 fn expand_home_prefix(raw: &str, home: Option<&Path>) -> String {
     let home = match home {
         Some(h) => h.to_string_lossy().into_owned(),
@@ -201,7 +201,7 @@ fn expand_home_prefix(raw: &str, home: Option<&Path>) -> String {
 }
 
 /// 从 `~/.cc-acct-iso/config` 的文本里抠 `ACCTS_DIR=` 的值。
-/// **正则式纯文本解析，绝不 source**（那是 shell 文件，daemon 不跑 shell）。
+/// **正则式纯文本解析，绝不 source**（那是 shell 文件，backend 不跑 shell）。
 /// 取最后一次有效赋值（后写覆盖先写，与 shell 语义一致）；跳过注释行。
 fn parse_accts_dir_from_config(text: &str) -> Option<String> {
     let mut found = None;
@@ -293,11 +293,7 @@ fn load_manifest(accts_dir: &Path) -> Result<Manifest, String> {
         serde_json::from_slice(&bytes).map_err(|e| format!("manifest 不是合法 JSON：{e}"))?;
     match root.get("version").and_then(|v| v.as_u64()) {
         Some(SUPPORTED_SCHEMA) => {}
-        Some(v) => {
-            return Err(format!(
-                "manifest schema 版本 {v} 不受支持（本 daemon 只认 1）"
-            ))
-        }
+        Some(v) => return Err(format!("manifest schema 版本 {v} 不受支持（本后端只认 1）")),
         None => return Err("manifest 缺 version 字段（或不是数字）".into()),
     }
     let mut accounts = Vec::new();
@@ -445,7 +441,7 @@ struct SessionRow {
 ///
 /// | 盘上的防法 | 它防的 | 能不能用在这里 |
 /// |---|---|---|
-/// | ① `@ccm_sid` 那一侧的 `procStart` 冒名检查（`identity_tag.rs` 头注逐字：daemon 打标前已过 `pid_alive` + `add_time_verdict`）| **PID 复用** | ❌ **威胁模型不对** —— 与上面那道是同一族，继承一格都不防 |
+/// | ① `@ccm_sid` 那一侧的 `procStart` 冒名检查（`identity_tag.rs` 头注逐字：backend 打标前已过 `pid_alive` + `add_time_verdict`）| **PID 复用** | ❌ **威胁模型不对** —— 与上面那道是同一族，继承一格都不防 |
 /// | ② `CC_BUS_ID` 那一侧的「无条件覆盖继承值」（`shared/ccm:1128`–`:1136`，记着一次**有可复现反例**的事故）| 继承 | ⚠ **原则可用、实现抄不了**：它成立靠「会话名是这个会话身份的唯一事实来源」——`derive_bus_id` 在**本地**就算得出真值，所以敢无条件覆盖。`CCM_LAUNCH_ID` **没有这样的本地真值**（token 是起会话方现铸的 nonce，被起的那一方无从复算）⇒ 写侧无法分辨「监视器刚给我的」与「我从父进程继承的」 |
 ///
 /// ⇒ 本函数落的是 **② 的原则在读侧的兑现**：`CC_BUS_ID` 那条头注最后一句逐字是
@@ -584,9 +580,9 @@ fn list_accounts(accts_dir: &Path) -> Vec<String> {
                     "sharedStore": json_str(m.shared_store.as_deref()),
                     "count": lines.len(),
                     "error": serde_json::Value::Null,
-                    // Z01 能力标记：本 daemon 认识「configDir 缺席 = 账号 0」。
-                    // **旧 daemon 不会出这个键**（它把账号 0 当坏数据跳过了）⇒ monitor 侧
-                    // default=false ⇒ 能**明说**「远端 daemon 太旧，列表里少了账号 0」，
+                    // Z01 能力标记：本后端认识「configDir 缺席 = 账号 0」。
+                    // **旧后端不会出这个键**（它把账号 0 当坏数据跳过了）⇒ monitor 侧
+                    // default=false ⇒ 能**明说**「远端后端太旧，列表里少了账号 0」，
                     // 而不是让用户看着一个静默少一行的列表。
                     "accountZeroAware": true,
                 })
@@ -769,7 +765,7 @@ fn session_accounts(agent_home: &Path, accts_dir: &Path) -> Vec<String> {
                 // ⚠ 第五种是 `K-R21`（09-03）现打出来的，**它一直都在、只是没人写出来**：
                 // 从前它混在「没设」里数不出来。⇒ 这里不是新增了一种行为，是把一句
                 // 「四种」的旧话订正成实话。
-                // ⚠ 老 daemon 不出这个键，下游读成 `None`（additive）。
+                // ⚠ 老后端不出这个键，下游读成 `None`（additive）。
                 "launchId": json_str(r.launch_id.as_deref()),
             })
             .to_string()

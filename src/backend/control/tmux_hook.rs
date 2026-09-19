@@ -1,4 +1,4 @@
-//! P4b（zero-poll-liveness）：**tmux hook → daemon** 的通知通路。
+//! P4b（zero-poll-liveness）：**tmux hook → backend** 的通知通路。
 //!
 //! # 它解决什么
 //!
@@ -10,24 +10,24 @@
 //!
 //! ```text
 //! tmux hook (全局 [50], run-shell -b)
-//!    └─> <daemon exe> --tmux-notify <daemon_pid> <daemon_starttime>
+//!    └─> <backend exe> --tmux-notify <backend_pid> <backend_starttime>
 //!           ├─ 读 /proc/<pid>/stat 校验 starttime 相符（挡 PID 复用误伤无关进程）
 //!           └─ kill(pid, SIGUSR1)
-//!    daemon: SIGUSR1 流（main.rs，P4a 已就位）
+//!    backend: SIGUSR1 流（main.rs，P4a 已就位）
 //!           └─> WatcherPoke::poke() ⇒ 往统一 channel 发一拍 ⇒ 立刻重探
 //! ```
 //!
 //! # 为什么不传会话名（这不是偷懒，是设计）
 //!
 //! 原方案让 hook 把 `#{hook_session_name}` 写进一个事件日志文件。两个问题：
-//! ① **撞红线 I7「daemon 只读」**——`readonly_guard` 当场拦下了那个建目录调用。
+//! ① **撞红线 I7「backend 只读」**——`readonly_guard` 当场拦下了那个建目录调用。
 //!    （**这里刻意不逐字写出那个函数名**：`readonly_guard` 连注释一起扫，
-//!    是 fail-closed 的设计；在 daemon 源码的散文里引用它的禁用模式会让全局守卫红。
+//!    是 fail-closed 的设计；在后端源码的散文里引用它的禁用模式会让全局守卫红。
 //!    本轮实测栽过一次 —— 处置是改措辞，**不是**去把那道红线守卫改成剥注释。）
 //! ② 会话名要经 shell 引号 —— 名字里有 `"` 或 `$(...)` 就能破坏命令串甚至注入，
 //!    原方案只能「接受并登记」这个面。
 //!
-//! 现在**名字根本不传**：信号无载荷 ⇒ 注入面消失、日志不存在、daemon 写归零。
+//! 现在**名字根本不传**：信号无载荷 ⇒ 注入面消失、日志不存在、backend 写归零。
 //! 代价是信号会合并（多个会话同时关可能只来一次）—— 靠**重探 + 与上一份快照差分**
 //! 天然免疫，差分一次能报出所有消失的会话，比逐条事件更稳。
 //!
@@ -78,9 +78,9 @@ pub(crate) fn hook_set_args(event: &str, exe: &Path, pid: u32, starttime: u64) -
 
 /// 撤销用的参数（人要手动清时照着敲）。
 ///
-/// **生产路径刻意不调它**：daemon 停机时**不需要**摘 hook —— 留着的 hook 指向一个已死的
+/// **生产路径刻意不调它**：backend 停机时**不需要**摘 hook —— 留着的 hook 指向一个已死的
 /// pid，`notify` 那边 starttime 校验不过就静默 no-op；而 server 每次重启 hook 本就没了。
-/// 主动摘反而会在「同机跑两个 daemon」时把对方的 hook 也摘掉。
+/// 主动摘反而会在「同机跑两个后端」时把对方的 hook 也摘掉。
 /// 它的价值是**可撤销这件事本身有据可查**（授权时承诺过），由测试钉住形状。
 #[allow(dead_code)]
 pub(crate) fn hook_unset_args(event: &str) -> Vec<String> {
@@ -97,7 +97,7 @@ pub(crate) fn hook_unset_args(event: &str) -> Vec<String> {
 /// server 一重启就全没了。P3 把「server 起来了」变成了事件 ⇒ 这里有现成的时机。
 ///
 /// **socket 定位**：不传 `-L`/`-S`，靠继承的 `TMUX_TMPDIR` / 默认 socket ——
-/// daemon 与它观测的那台 server 本来就在同一套 socket 语义下（`tmux ls` 探测也是这么跑的）。
+/// backend 与它观测的那台 server 本来就在同一套 socket 语义下（`tmux ls` 探测也是这么跑的）。
 ///
 /// **失败只 warn 不致命**：装不上 hook = 退回定时探测（P5 之前 ticker 还在），
 /// 不是致命错。**但要说出来**，否则「hook 通路没生效」会变成静默降级。
@@ -126,10 +126,10 @@ pub(crate) fn install_hooks(exe: &Path, pid: u32, starttime: u64) -> usize {
 ///
 /// **fail-closed 的是「误伤」而不是「漏报」**：校验不过就**什么都不做**并退 0。
 /// 退 0 是有意的 —— 这是 tmux 的 `run-shell -b` 子进程，非零退出只会在 tmux 里堆错误，
-/// 而「daemon 已经不在了」是完全正常的情况（用户关掉 monitor 之后 hook 还留着）。
+/// 而「backend 已经不在了」是完全正常的情况（用户关掉 monitor 之后 hook 还留着）。
 pub fn notify(args: &[String]) -> i32 {
     let (Some(pid_s), Some(start_s)) = (args.get(1), args.get(2)) else {
-        eprintln!("用法: --tmux-notify <daemon_pid> <daemon_starttime>");
+        eprintln!("用法: --tmux-notify <backend_pid> <backend_starttime>");
         return 2;
     };
     let (Ok(pid), Ok(want_start)) = (pid_s.parse::<u32>(), start_s.parse::<u64>()) else {
@@ -137,19 +137,19 @@ pub fn notify(args: &[String]) -> i32 {
         return 2;
     };
 
-    // ★ PID 复用防御：光看 /proc/<pid> 存在是不够的 —— daemon 退出后那个 pid 可能已经
+    // ★ PID 复用防御：光看 /proc/<pid> 存在是不够的 —— backend 退出后那个 pid 可能已经
     // 被**别的进程**占用，给它发 SIGUSR1 轻则无效、重则打断一个无关进程（很多程序把
     // SIGUSR1 当自定义控制信号，默认处置更是直接终止）。必须比对 starttime。
     match crate::platform::proc::proc_starttime(pid) {
         Some(actual) if actual == want_start => {}
-        _ => return 0, // 不是那个 daemon（或它已经不在）⇒ 静默不做事
+        _ => return 0, // 不是那个后端（或它已经不在）⇒ 静默不做事
     }
 
     // U3：发信号那一步下沉到 `platform::signal`（§1.1-1：平台原语只许在 platform/）。
     // 措辞刻意不写出那个 libc 函数名 —— 「本层还有没有平台原语」是靠 grep 查的，
     // 注释里留一个会让下一个人白查一趟（同 §41.4 第 1 条纪律的形状）。
-    // **身份校验留在这里**——那是域判断（「这个 pid 是不是我那个 daemon」），不是平台能力。
-    // 发失败仍不是错误：竞态（校验之后、发信号之前 daemon 退出了）。
+    // **身份校验留在这里**——那是域判断（「这个 pid 是不是我那个后端」），不是平台能力。
+    // 发失败仍不是错误：竞态（校验之后、发信号之前后端退出了）。
     let _ = crate::platform::signal::send_sigusr1(pid);
     0
 }

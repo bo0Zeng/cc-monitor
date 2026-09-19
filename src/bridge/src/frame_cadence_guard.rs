@@ -2,12 +2,12 @@
 //!
 //! # 病史：同一句假话在四个地方活了下来
 //!
-//! P5（`zero-poll-liveness`）删掉了 daemon 的 8s ticker 线程 —— 之后每一拍由
+//! P5（`zero-poll-liveness`）删掉了后端的 8s ticker 线程 —— 之后每一拍由
 //! **tmux hook → `--tmux-notify` → SIGUSR1 → `WatchEvent::Poke`** 驱动，
-//! server 生死由 pidfd / socket inotify 管，**daemon 零定时器**（`no_timer_guard` 钉着）。
+//! server 生死由 pidfd / socket inotify 管，**backend 零定时器**（`no_timer_guard` 钉着）。
 //! monitor 侧那个 8s 对账 poller 也早已删（`run_tmux_reconcile_poller`，改收帧驱动）。
 //!
-//! **可是「daemon 每 ~8s 推帧」「帧最长 8s 陈旧」这两句仍留在四处注释里**，
+//! **可是「backend 每 ~8s 推帧」「帧最长 8s 陈旧」这两句仍留在四处注释里**，
 //! 一句在 `lib.rs`（两处）、一句在 `tmux_reconcile.rs`、一句在 `ssh_source.rs`。
 //! 它们是**理由过期而结论仍对**那一类 —— 结论（收帧驱动、零轮询）没错，
 //! 而给出的**数量级是假的**，读的人会据此做设计判断。

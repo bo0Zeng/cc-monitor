@@ -50,7 +50,7 @@
 /// **本机 `Command::new` 这一侧没有** —— 08-08 实测：往 `session_map.rs` 加一句
 /// `Command::new("sh").arg("-c").arg(arg)`，**全仓 983 条判据一条不红**。
 ///
-/// ⚠ 先核查出关键一半：**daemon 侧早就有这张表**（`readonly_guard` 的 `ALLOWED` +
+/// ⚠ 先核查出关键一半：**backend 侧早就有这张表**（`readonly_guard` 的 `ALLOWED` +
 /// `SPAWN_SITES_TODAY`），monitor 侧从来没有。又是「同一形态在另一半原样存在」，
 /// 只是这次缺的是 monitor（第 34、44 件是反过来）。
 ///

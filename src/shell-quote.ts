@@ -35,13 +35,13 @@ export function sanitizeRemoteLauncher(cmd: string | undefined): string {
 
 /**
  * A4：CLAUDE_CONFIG_DIR 白名单。必须是绝对路径、无 `..` 段、无任何 shell 元字符/
- * 控制符/可欺骗 Unicode（与 daemon 侧 `is_safe_config_dir` 对齐）。fail-closed：
+ * 控制符/可欺骗 Unicode（与后端侧 `is_safe_config_dir` 对齐）。fail-closed：
  * 稍有可疑即判非法，绝不拼进远端命令。
  */
 export function isValidConfigDir(dir: string): boolean {
   if (!dir.startsWith("/")) return false;
   if (dir === "/" || dir.includes("/../") || dir.endsWith("/..")) return false;
-  // shell 元字符 / 引号 / 控制符（C0 + DEL + C1，对齐 daemon Rust char::is_control）——一律拒
+  // shell 元字符 / 引号 / 控制符（C0 + DEL + C1，对齐 backend Rust char::is_control）——一律拒
   if (/['"\\`$;|&<>*?()!\u0000-\u001f\u007f-\u009f]/.test(dir)) return false;
   // 可欺骗 Unicode（零宽 / 双向控制 / 各类空白 / BOM；NEL \u0085 已含在上面 C1 区）——一律拒。
   //
@@ -152,16 +152,16 @@ export function tmuxNameSegment(raw: string): string {
 /**
  * ★ F04b 追加 `=`：**别创建一个主路杀不掉的名字。**
  *
- * kill 的主路从 F04b 起走 daemon（`src/backend/control/kill.rs`），
+ * kill 的主路从 F04b 起走后端（`src/backend/control/kill.rs`），
  * 而它的形状门逐字拒绝 `:` 与 `=`（「它们是 tmux 目标语法」）。
  * `isValidTmuxName` 已经禁了 `:`，但 **`=` 是允许的** —— 于是一个像 `proj=x-cc`
- * 的名字**建得出来、却在主路上杀不掉**（daemon 回 `invalid_args`）。
+ * 的名字**建得出来、却在主路上杀不掉**（backend 回 `invalid_args`）。
  *
  * 处置选的是「**改结构让问题不存在**」那一条（同仓 U3 的先例）：不在 kill 那边开特例
  * 回落到 shell 路（那等于把一次形状拒绝洗成另一条路的成功），而是**不让它被建出来**。
  * ⚠ `isValidTmuxName`（attach 已有会话那条）**刻意不跟着改** —— 那些名字不是我们建的，
  * 禁它只会把「attach 到一个已存在的 `a=b`」从可用变成 throw，挡不住任何东西。
- * 由 Rust 侧 `backend::control::daemon_kill::the_creation_path_cannot_mint_a_name_the_main_path_cannot_kill`
+ * 由 Rust 侧 `backend::control::backend_kill::the_creation_path_cannot_mint_a_name_the_main_path_cannot_kill`
  * 跨轨钉住。
  */
 export function isValidNewTmuxName(name: string): boolean {

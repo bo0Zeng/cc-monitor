@@ -31,7 +31,7 @@
 - **后台任务会话**（`--fork-session` bg）：默认以 `⚙` 标识 + 树状缩进挂在同项目交互 Tab 之后（远端同理），设置 → 行为可关（关 = 完全不流 bg 数据）
 - session 退出后 Tab 灰显归档，可手动关闭（W / 中键 / ×）；**本地会话 `/resume` 后 Tab 自动复活成 live**（崩溃或退出导致灰显，重新 resume 同一会话即恢复，无需 F5）
 - **Tab 独立窗口**（issue #10）：右键 Tab「在新窗口打开」/ `N`，**或直接把 Tab 往标签栏下方一拖松手**（tear-off），把会话拉到独立只读窗口（双屏并排 / 长任务常驻），与主窗口实时同步
-- **会话红绿灯**（issue #23）：每个 Tab（**本地与远端**——远端自 v2.19/daemon p1g 起）的状态点实时反映 Claude 状态——🟢 运行中 / 🟡 等你决定（权限确认 / 弹窗选择，呼吸闪烁）/ 🔴 答完等输入；Agents 展开区每个 subagent 一行独立状态灯
+- **会话红绿灯**（issue #23）：每个 Tab（**本地与远端**——远端自 v2.19/backend p1g 起）的状态点实时反映 Claude 状态——🟢 运行中 / 🟡 等你决定（权限确认 / 弹窗选择，呼吸闪烁）/ 🔴 答完等输入；Agents 展开区每个 subagent 一行独立状态灯
 - **多 agent 并排监控**（F91）：顶栏 `▦` 按钮（或命令栏）打开跨机器**只读** mission-control 网格——一屏一格聚合本地 + 所有远端会话的红绿灯 / 标题 / 工作目录 / 运行中 subagent 数 / context 占用% / 未读 / ⚙ 后台标记，点格直接跳到该会话
 
 ### SSH 远端模式（issue #15）
@@ -90,7 +90,7 @@
   - `↺` 恢复（v2.8.1：新 **PowerShell** 窗口跑 `cc --resume`，无 `cc` 时回退 `claude`；加载 profile 故代理 / env 生效）
   - `✕` 物理删除（二次确认；jsonl 文件被真删）
 - 点击会话条目进入**只读消息查看器**
-- **从这一轮创建分支（F62）**：只读查看器里 hover 任意一轮（你的提问 / Claude 回复）卡片 → 右上角浮现 `⑂`，点它把「开头 → 这一轮」复制成一个**新会话**（对齐 Claude 原生 `/branch` 的 `forkedFrom` 格式，**原会话零改动**），弹提示可一键在新终端 `resume` 从该轮岔开。补上内置 `/branch` 只能从当前进度分叉的缺口。**本地与远端会话都支持**（G6 起；后端侧 `--fork-session`，e2e `daemon-fork` 在 CI 里）
+- **从这一轮创建分支（F62）**：只读查看器里 hover 任意一轮（你的提问 / Claude 回复）卡片 → 右上角浮现 `⑂`，点它把「开头 → 这一轮」复制成一个**新会话**（对齐 Claude 原生 `/branch` 的 `forkedFrom` 格式，**原会话零改动**），弹提示可一键在新终端 `resume` 从该轮岔开。补上内置 `/branch` 只能从当前进度分叉的缺口。**本地与远端会话都支持**（G6 起；后端侧 `--fork-session`，e2e `backend-fork` 在 CI 里）
 
 ### 设置面板（,）
 
@@ -340,7 +340,7 @@ cc-monitor/
 
 - **版本**：v3.8.1（Released）
 - **平台**：Windows 10 (1809+) / 11 · **Linux（`.deb`，v3.4.0 起随 release 一起发）**（远端后端跑 Linux x86_64 / aarch64）
-- **测试**：后端 cargo + vendor code-picture-core + 远端后端 + 前端 node 纯函数 + vitest（jsdom）+ e2e 脚本，CI job 全绿（`rust` / `frontend` / `daemon` / `linux-app-build` / `e2e-smoke` / `e2e-tmux` / `e2e-tmux-rust` / `rust-linux` / `weak-net`；⚠ 这份清单**没有判据数它全不全**，改 `ci.yml` 的 job 集合时要回来手动对一次 —— 它漏过 `weak-net`（从没进过清单）与 `rust-linux`（`15 §5.2 B4` 新加时没跟），两个都是 09-18 补的。⚠ 补的两个刻意**追加在队尾、不按 `ci.yml` 的顺序插队**：`doc_claim_registry` 的 `R61` 措辞例外表按**逐字片段**钉着本句前半段（`rust` … `e2e-smoke`），往中间插一个 job 名会让那条例外空转并当场判红；eslint/stylelint 是顾问式基线，覆盖率有地板棘轮）。
+- **测试**：后端 cargo + vendor code-picture-core + 远端后端 + 前端 node 纯函数 + vitest（jsdom）+ e2e 脚本，CI job 全绿（`rust` / `frontend` / `backend` / `linux-app-build` / `e2e-smoke` / `e2e-tmux` / `e2e-tmux-rust` / `rust-linux` / `weak-net`；⚠ 这份清单**没有判据数它全不全**，改 `ci.yml` 的 job 集合时要回来手动对一次 —— 它漏过 `weak-net`（从没进过清单）与 `rust-linux`（`15 §5.2 B4` 新加时没跟），两个都是 09-18 补的。⚠ 补的两个刻意**追加在队尾、不按 `ci.yml` 的顺序插队**：`doc_claim_registry` 的 `R61` 措辞例外表按**逐字片段**钉着本句前半段（`rust` … `e2e-smoke`），往中间插一个 job 名会让那条例外空转并当场判红；eslint/stylelint 是顾问式基线，覆盖率有地板棘轮）。
   ⚠ **各项条数刻意不写在这里**（audit-0805 F18）：这个数在仓里曾有 4-5 份拷贝、全部漂成假的。
   唯一真相是**实跑**（`src/`src/doc/DEVELOPMENT.md` 那张表给命令）与 `ci.yml` 里的**地板行**（那些有判据看着）
 - **架构**：Tauri 2 + Vanilla TS（前端零框架依赖，~33K 行 TS〔另 ~18K 行测试〕 + ~35K 行 Rust + ~10K 行远端后端）

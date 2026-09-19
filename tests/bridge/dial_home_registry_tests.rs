@@ -41,7 +41,7 @@ const SITES: &[(&str, usize, &str, &str)] = &[
     ),
 ];
 
-/// 真正把字节交给 SSH 状态机的入口 —— **锚点与 daemon `dial_locality` 逐字同一组**。
+/// 真正把字节交给 SSH 状态机的入口 —— **锚点与 backend `dial_locality` 逐字同一组**。
 ///
 /// 🔴 **运行时拼**：直接写字面量的话，本模块自己就会被下面的扫描命中
 ///（`scanning_guard_registry` 头注记着的那一族，本仓栽过五次）。
@@ -69,7 +69,7 @@ const CORPUS_FLOOR_FILES: usize = 80;
 /// 回 `Ok(锚点总数)`；`Err(说法)` = 判据红。三种红各有各的话：
 /// ① 语料太小（空转）· ② 锚点长在家外面 · ③ 家里的处数与登记对不上。
 ///
-/// 🔴 **刻意没有 daemon 那条 `total == 0 ⇒ Err`**：在这一侧 0 是终点，不是故障。
+/// 🔴 **刻意没有后端那条 `total == 0 ⇒ Err`**：在这一侧 0 是终点，不是故障。
 /// 理由写在模块头注「两处刻意的不同」第 2 条，这里不复述。
 fn dial_locality(corpus: &[(String, String)], home: &[(&str, usize)]) -> Result<usize, String> {
     let bytes: usize = corpus.iter().map(|(_, c)| c.len()).sum();
@@ -129,7 +129,7 @@ fn dial_locality(corpus: &[(String, String)], home: &[(&str, usize)]) -> Result<
 /// 🔴 **必须走 `guard_core::scan_tree!`**（`scanning_guard_registry` 那条判据钉着）：
 /// 裸 `read_dir` 的扫描型判据会在自己的登记表 / 注释里找到自己 ⇒ 恒绿。
 ///
-/// ⚠ `scan_tree!` **按构造摘除调用者自己那一份**（本文件）。daemon 那侧必须把自己
+/// ⚠ `scan_tree!` **按构造摘除调用者自己那一份**（本文件）。backend 那侧必须把自己
 /// `include_str!` 补回来（锚点恰恰住在它自己那份里），**本侧刻意不补** ——
 /// 本文件里一处锚点字面量都没有（[`anchors`] 是运行时拼的），补回来只会把
 /// 「判据在自己身上找到自己」那一族重新请进门。
@@ -235,12 +235,12 @@ fn the_locality_reader_can_tell_a_stray_from_a_home() {
         "登记说 2 处而实际 1 处，判据居然是绿的 —— 登记表腐烂不出声"
     );
 
-    // ④ 家空了、锚点也没了 ⇒ **必须绿**。这一格是本模块与 daemon 那份的分水岭：
-    //    抄了 daemon 的 `total == 0 ⇒ Err`，`K-P6` 做成的那天本条会变红。
+    // ④ 家空了、锚点也没了 ⇒ **必须绿**。这一格是本模块与后端那份的分水岭：
+    //    抄了后端的 `total == 0 ⇒ Err`，`K-P6` 做成的那天本条会变红。
     assert_eq!(
         dial_locality(&mk(&[]), &[]),
         Ok(0),
-        "家变成空集是本件的**终点**，不许红 —— 别把 daemon 那条 `total == 0 ⇒ Err` 抄过来"
+        "家变成空集是本件的**终点**，不许红 —— 别把后端那条 `total == 0 ⇒ Err` 抄过来"
     );
 
     // ⑤ 语料太小 ⇒ 归**地板**管，不归上面那两支管。两格刻意分开，别并。
@@ -276,7 +276,7 @@ fn every_registered_dial_home_says_what_it_is_and_when_it_could_go() {
 
 /// 界面 crate 的 manifest。**编译期读，不走 `read_to_string`** ——
 /// 它与 `src/bridge/src/` 同属这一半，不是跨半边的边
-///（`cross_half_edge_registry` 那张表管的是 monitor ↔ daemon）。
+///（`cross_half_edge_registry` 那张表管的是 monitor ↔ backend）。
 const INTERFACE_MANIFEST: &str = include_str!("../../src/bridge/Cargo.toml");
 
 /// **终点那面二值旗**：界面 crate 的 manifest 里，`russh` 家族的直接依赖有哪几个。

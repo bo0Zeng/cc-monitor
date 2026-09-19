@@ -287,11 +287,11 @@ fn ci_actually_runs_the_three_converged_commands() {
     }
 }
 
-/// ★★ **daemon job 那四步也必须真的在跑**〔audit-0805 F01〕。
+/// ★★ **backend job 那四步也必须真的在跑**〔audit-0805 F01〕。
 ///
 /// # 为什么单开一条（而不是往上面那条的 needle 表里加）
 ///
-/// 上面那条钉的四条 needle **全部命中 monitor job**，与 daemon job 的四步**一条都不重叠**。
+/// 上面那条钉的四条 needle **全部命中 monitor job**，与 backend job 的四步**一条都不重叠**。
 /// 实测（`audit-0805` 的只读核实）：当时全仓读 `.github/workflows` 的**只有两处**
 /// （本文件 + `local_backend_tests.rs::every_bundle_job_stages_the_sidecar_before_building`
 /// 读 `release.yml`；
@@ -306,9 +306,9 @@ fn ci_actually_runs_the_three_converged_commands() {
 ///
 /// 这条判据自己被变异抓过**两次**，每次都是同一族的「匹配到了别的地方」：
 ///
-/// 1. **整份 `contains` 会被别的 job 的子串盖住**：daemon 那步是**裸** `cargo test`，
+/// 1. **整份 `contains` 会被别的 job 的子串盖住**：backend 那步是**裸** `cargo test`，
 ///    而它是 monitor 那条 `cargo test --workspace --exclude code-picture-core` 的子串
-///    ⇒ 注释掉 daemon 那步，整份 `contains("cargo test")` 照样命中（实测全文件 10 处命中）。
+///    ⇒ 注释掉后端那步，整份 `contains("cargo test")` 照样命中（实测全文件 10 处命中）。
 ///    ⇒ 先切 job 块。
 /// 2. ★ **切了块还不够：needle 会匹配到步骤名那一行。** 第一版切了块、但用
 ///    `block.contains("cargo test")`，而块里有 `- name: cargo test` ⇒
@@ -317,12 +317,12 @@ fn ci_actually_runs_the_three_converged_commands() {
 ///
 /// 一般化：**判据要钉的是那条真的会被执行的行，不是恰好长得像它的那些字**。
 #[test]
-fn ci_actually_runs_the_daemon_four_steps() {
-    let block = ci_job_block("daemon");
+fn ci_actually_runs_the_backend_four_steps() {
+    let block = ci_job_block("backend");
     // 抽取器自检 ①：切不出块 / 切错块时，下面四条会零命中地绿。
     assert!(
         block.lines().count() >= 10,
-        "从 ci.yml 切 `daemon:` job 只得到 {} 行 —— job 名或缩进变了，本条会零命中地绿",
+        "从 ci.yml 切 `backend:` job 只得到 {} 行 —— job 名或缩进变了，本条会零命中地绿",
         block.lines().count()
     );
     assert!(
@@ -344,7 +344,7 @@ fn ci_actually_runs_the_daemon_four_steps() {
     //    ⇒ 自检只管「零命中」，「少了一条」交给下面的正文断言去说。
     assert!(
         !runs.is_empty(),
-        "从 `daemon:` job 一条 `run:` 行都没抽到 —— 抽取器坏了，本条会零命中地绿"
+        "从 `backend:` job 一条 `run:` 行都没抽到 —— 抽取器坏了，本条会零命中地绿"
     );
     for want in [
         "cargo fmt --check",
@@ -356,7 +356,7 @@ fn ci_actually_runs_the_daemon_four_steps() {
     ] {
         assert!(
             runs.contains(&want),
-            "`ci.yml` 的 `daemon:` job 里没有（未注释的）`run: {want}`。\n\
+            "`ci.yml` 的 `backend:` job 里没有（未注释的）`run: {want}`。\n\
                  今天抽到的 run 行：{runs:?}\n\
                  两种可能，看上面那行就能分辨：\n\
                  ① 这一步真的被删/被注释/被改了；\n\
@@ -372,7 +372,7 @@ fn ci_actually_runs_the_daemon_four_steps() {
 ///
 /// # 这条是审计打脸打出来的
 ///
-/// 上面那条刚给 daemon 四步补完守卫，Phase D 立刻指出：**更中心的那一行仍然零守卫** ——
+/// 上面那条刚给后端四步补完守卫，Phase D 立刻指出：**更中心的那一行仍然零守卫** ——
 /// 把 `rust` job 的 `runs-on` 从 `windows-latest` 改成 `ubuntu-latest`，
 /// **全仓一条判据都不红**（审计变异实测：改完 `cargo test --lib` 仍 888 passed / 0 failed）。
 /// 而那个 job 是**生产平台唯一的编译与测试信号** —— 换掉 runner 等于把它整个交出去，
@@ -382,7 +382,7 @@ fn ci_actually_runs_the_daemon_four_steps() {
 /// `local_backend_tests.rs::every_bundle_job_stages_the_sidecar_before_building` 读 `release.yml`），（08-08 起三处，见上一条的订正）
 /// **两处都不看 `runs-on`**；`windows-latest` 这个字面量在仓里其余命中全是散文注释。
 ///
-/// ⚠ 本条**不管** daemon job 在哪跑（它在 ubuntu 上跨 target check，那是刻意的、
+/// ⚠ 本条**不管** backend job 在哪跑（它在 ubuntu 上跨 target check，那是刻意的、
 /// `ci.yml:159-161` 有论证）—— 只钉「那个真跑 Windows 的 job 还在 Windows 上跑」。
 #[test]
 fn the_only_windows_signal_still_runs_on_a_windows_runner() {
@@ -497,7 +497,7 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
     /// ⚠ **08-06 订正：这条豁免曾经过宽。** 它当初写成「整个 job 跑不了」，
     /// 而实测（用一个只会报错的 `tmux` 桩遮住 PATH，谁碰谁当场失败）发现
     /// 这两个 job 里有**四套根本不碰 tmux**、在本机跑得通且全过：
-    /// `ccm-cli`(53) · `ccm-contract-parity`(45) · `ccm-print-parity`(12) · `daemon-fork`(10)
+    /// `ccm-cli`(53) · `ccm-contract-parity`(45) · `ccm-print-parity`(12) · `backend-fork`(10)
     /// —— 合计 **120 条断言**，此前被我按 job 一刀切成「结构上跑不了」。
     /// 那四套的名字登记在 [`LOCALLY_RUNNABLE`]，本地门禁要跑它们。
     /// ⇒ 教训：**豁免的粒度要贴着「为什么跑不了」的粒度**。job 级理由（装 tmux）
@@ -525,19 +525,19 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
             "`npm run test:ccm-print-parity` —— 实测 PASS=12",
         ),
         (
-            "daemon 分叉（G2 `--fork-session`）",
-            "`npm run test:daemon-fork` —— 脚本头注逐字「不需要 tmux、不需要 ssh」，实测 PASS=10",
+            "backend 分叉（G2 `--fork-session`）",
+            "`npm run test:backend-fork` —— 脚本头注逐字「不需要 tmux、不需要 ssh」，实测 PASS=10",
         ),
         (
             "本机后端监护真进程验收（F05a + K-P1 常驻）",
             "`npm run test:local-backend` —— 〔`K-P1` 08-26 重打〕实测 **PASS=14**（原 7），\
                  它**跑两趟** `--ignored`：`local_backend`（F05a 监护那条路，3 条）+ \
-                 `local_daemon`（`K-P1` 常驻那条路，2 条）—— 都真起 daemon 进程。\
-                 ⚠ **只许带 tmux 隔离跑**：被起的 daemon 一上来就往它连得到的 tmux server 装三条\
+                 `local_backend_host`（`K-P1` 常驻那条路，2 条）—— 都真起后端进程。\
+                 ⚠ **只许带 tmux 隔离跑**：被起的后端一上来就往它连得到的 tmux server 装三条\
                  **全局** hook（固定槽位 `[50]`，没有关掉它的开关）⇒ 裸跑就是去改用户真实 tmux 的状态。\
                  隔离走 `tests/e2e/tmux-shim.sh`（`C7i` 的唯一原语：shim 强插 `-L`，\
                  **不是** `TMUX_TMPDIR` —— `$TMUX` 一有值就压过它，08-11 那次事故正是这个机制）。\
-                 ⚠ 收尾顺序是承重的：**先收进程、再删 shim**；漏网的 daemon 在 shim 没了之后\
+                 ⚠ 收尾顺序是承重的：**先收进程、再删 shim**；漏网的后端在 shim 没了之后\
                  重装 hook 会落到真 tmux 上（08-26 实测发生过一次）。",
         ),
     ];
@@ -577,7 +577,7 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
         ("coverage floor (vitest jsdom)", true, "`npm run coverage`"),
         ("coverage per-file floors + zero-coverage ratchet", true, "`node tests/scripts/assert-coverage-floors.mjs`"),
         ("vite build (dist/)", true, "`npm run build`"),
-        // ── job daemon
+        // ── job backend
         ("cargo fmt --check", true, "`cd src/backend && cargo fmt --check`"),
         ("cargo check（跨 target：Windows 编得过 —— 平台线的真判据）", true, "E7 的真判据；本机装了 `x86_64-pc-windows-msvc` target，实测跑得通"),
         ("cargo clippy", true, "同名命令"),
@@ -791,7 +791,7 @@ fn every_ci_run_step_is_classified_as_local_or_unrunnable() {
 ///
 /// **为什么建它**（实测撞见的，不是设想）：`tests/e2e/graylight-suite.sh` 是一整套
 /// 跨进程整链 e2e（130 行，驱 gray-light 生命周期、断言 `[e2e] tab-state` 序列），
-/// 而 **CI 一次都不跑它** —— CI 跑的是名字很像的另一个 `graylight-daemon-frames.sh`。
+/// 而 **CI 一次都不跑它** —— CI 跑的是名字很像的另一个 `graylight-backend-frames.sh`。
 /// 它的前置逐字写着「Xvfb 上跑着 `npx tauri dev`」⇒ 结构上确实进不了 CI，这没问题；
 /// **问题是 `src/doc/RELEASING.md` 里零处提到它**：`test:f40` 好歹进了发版手测清单，它没有。
 /// ⇒ 于是这套件的唯一触发条件是「有人想起来」。
@@ -933,7 +933,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
 /// 原文写「这七条自 `1eeb4bf` 起执行次数为零」，理由是三个触发脚本都要真 tmux。
 /// **那句话对其中三条是假的**：用一个只会报错的 `tmux` 桩遮住 PATH 实测，
 /// `local-backend-supervise.sh` **零次碰 tmux 就跑完**（PASS=7），
-/// 并且**真的执行了 `local_backend.rs` 的那三条**（`3 passed`，还起了一个真 daemon 进程）。
+/// 并且**真的执行了 `local_backend.rs` 的那三条**（`3 passed`，还起了一个真后端进程）。
 /// ⇒ 今天的准确说法：**七条里三条在本机跑得动（带桩）、四条仍要真 tmux**；
 /// 而后四条确实自 `1eeb4bf` 起零执行（`ci.yml` 只在 push/PR 触发，停推后没跑过）。
 /// 本条守的是「链还连着」，**不是**「它们跑过了」——两件事别混。
@@ -951,7 +951,7 @@ fn every_test_script_is_either_run_by_ci_or_registered_as_manual() {
 ///
 /// ⇒ **7 条里 7 条都跑过了**（`local_backend` 那 4 条此前一次都没跑过 ——
 /// 其中 `the_local_tmux_frames_really_land_in_the_ledger` **首跑就是红的**，
-/// 病根是「测试与 daemon 不在同一台 tmux server」，已修，见 `P3 §0h-2`）。
+/// 病根是「测试与后端不在同一台 tmux server」，已修，见 `P3 §0h-2`）。
 ///
 /// ★ 「触发者登记在册」与「真的有人跑」是两件事 —— 本条只守前者，
 /// 后者靠人真跑。**别把这段读成「以后会自动跑」**：它们仍不在 CI 里（要真 tmux/真进程）。
@@ -1087,7 +1087,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
     );
 }
 
-/// 〔audit-0805 08-06〕**跨 target（Windows）编译信号今天只覆盖 daemon，不覆盖 monitor
+/// 〔audit-0805 08-06〕**跨 target（Windows）编译信号今天只覆盖后端，不覆盖 monitor
 /// —— 把这个不对称本身钉住，让它不能悄悄变。**
 ///
 /// 定框 **E7** 逐字写着「C10 的**真判据是跨 target 编得过**
@@ -1095,7 +1095,7 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
 /// 所以本条**刻意不去数 `#[cfg(windows)]` 的位置**——那会与 E7 相悖。它只钉「真判据在不在」。
 ///
 /// **实测到的实况**（08-06）：
-/// - daemon 有那一步，本机跑得通（exit 0）；
+/// - backend 有那一步，本机跑得通（exit 0）；
 /// - **monitor 没有**。它的 Windows 面只由跑在 `windows-latest` 的 `rust` job 编译，
 ///   而〔用 08-05〕停推后 `ci.yml` 至今 72 个提交一次没跑 ⇒ **那 31 处 `cfg(windows)`
 ///   已经很久没有被任何编译器看过**。
@@ -1110,14 +1110,14 @@ fn every_ignored_test_still_has_someone_who_triggers_it() {
 ///
 /// 本条是那条诚实边界（`ROADMAP §5`）的**前提触发器**：前提一旦消失就红，逼人回来重判。
 #[test]
-fn the_windows_cross_target_signal_covers_only_the_daemon() {
+fn the_windows_cross_target_signal_covers_only_the_backend() {
     const NEEDLE: &str = "--target x86_64-pc-windows-msvc";
 
-    // ① daemon 那一步还在吗（E7 点名的真判据，本仓唯一一处）。
-    let daemon_block = ci_job_block("daemon");
+    // ① backend 那一步还在吗（E7 点名的真判据，本仓唯一一处）。
+    let backend_block = ci_job_block("backend");
     assert!(
-        daemon_block.contains(NEEDLE),
-        "`daemon` job 里的跨 target check 不见了 —— 那是 E7 逐字点名的**真判据**，\n\
+        backend_block.contains(NEEDLE),
+        "`backend` job 里的跨 target check 不见了 —— 那是 E7 逐字点名的**真判据**，\n\
              删它等于把平台线上唯一还活着的编译信号也关掉。"
     );
 
@@ -1327,13 +1327,13 @@ fn dormant_e2e_suites_keep_their_assertions() {
     /// `(套件, 脚本名, 断言助手, 当日静态条数)` —— **只许涨**。
     const RATCHET: &[(&str, &str, &str, usize)] = &[
         // `U-NP④`（08-14）：19 → 26。场景 3b/5ter 从「验 ccm 那条每秒 poller 打 `@ccm_sid`」
-        // 改成「验 daemon 打标的那把钥匙（`/proc/<pid>/environ` 的 `TMUX_PANE`）＋按它的算法
+        // 改成「验后端打标的那把钥匙（`/proc/<pid>/environ` 的 `TMUX_PANE`）＋按它的算法
         // 打一次」——poller 已整条删除，旧判据测的东西不存在了。**条数是涨的，不是删测试。**
         // 🔴 〔`K-R48` 第二拍 09-11〕**`ccm-acceptance`(26) 与 `ccm-pretrust`(15) 两行摘了 ——
         //    那两套 e2e 删了。摘的理由要写清，不然这就是「把棘轮往下拧」。**
         //    它们**只测 `shared/ccm` 那个 bash 脚本的真机行为**：`ccm-pretrust` 测的预信任
         //    （写 `~/.claude.json` / `~/.codex/config.toml`）`K-R48` 第一拍逐字登记为**没搬**
-        //    （daemon 那个 crate 有「进程自身不许写用户既有数据」的红线 `readonly_guard`）
+        //    （backend 那个 crate 有「进程自身不许写用户既有数据」的红线 `readonly_guard`）
         //    ⇒ 它今天**连被测对象都没有**；`ccm-acceptance` 的 31 条里，实测把 `$CCM` 指向
         //    二进制之后 **13 通过 / 18 失败**，18 条里绝大多数卡在「一次性模式在 tmux 内
         //    由谁打 `@ccm_sid`」那一格 —— 那一格 `K-R48` 第一拍逐字登记为**没裁**。
@@ -1359,8 +1359,8 @@ fn dormant_e2e_suites_keep_their_assertions() {
         //    脚本第一步 `cargo test … --ignored` 就产不出任何命令串，整套跑不起来。
         //    ⇒ **不是「断言变少了」，是被测对象没了**：脚本本身已从 `tests/e2e/` 删除，
         //    留在这里的一行只会让本条去读一个不存在的文件（`read_to_string` 直接 panic）。
-        //    真机那一面的等价覆盖在 `daemon-gate2-acceptance.sh`（下面 `NO_STATIC_SIGNAL`
-        //    那张表里，真 daemon + 真 tmux，用例逐行来自同一张 `gate2-golden.tsv`）。
+        //    真机那一面的等价覆盖在 `backend-gate2-acceptance.sh`（下面 `NO_STATIC_SIGNAL`
+        //    那张表里，真 backend + 真 tmux，用例逐行来自同一张 `gate2-golden.tsv`）。
         ("tmux-target", "tmux-target-acceptance.sh", "ck", 26),
         // 🔴 〔`设计/50` 删用量〕**`usage-probe`(9) 这一行摘了 —— 摘的理由**（同上面
         //    `tmux-guarded` 那条的口径：摘棘轮的行必须写清）：
@@ -1377,13 +1377,13 @@ fn dormant_e2e_suites_keep_their_assertions() {
     const NO_STATIC_SIGNAL: &[(&str, &str, usize, usize)] = &[
         ("cc-spawn-uplift.sh", "-", 0, 51),
         ("ccm-rbind-title.sh", "ok", 0, 8),
-        ("daemon-gate2-acceptance.sh", "ok", 3, 36),
-        ("graylight-daemon-frames.sh", "ok", 9, 12),
-        ("inbound-daemon-frames.sh", "ok", 12, 32),
+        ("backend-gate2-acceptance.sh", "ok", 3, 36),
+        ("graylight-backend-frames.sh", "ok", 9, 12),
+        ("inbound-backend-frames.sh", "ok", 12, 32),
         ("restart-suite.sh", "ok", 0, 24),
-        ("restart-daemon-frames.sh", "ok", 0, 5),
+        ("restart-backend-frames.sh", "ok", 0, 5),
         ("resume-suite.sh", "ok", 2, 17),
-        ("resume-daemon-frames.sh", "ok", 1, 7),
+        ("resume-backend-frames.sh", "ok", 1, 7),
     ];
 
     let e2e = crate::guard_support::repo_root().join("tests").join("e2e");
@@ -1446,7 +1446,7 @@ fn dormant_e2e_suites_keep_their_assertions() {
 ///
 /// 08-06 查到：`ci.yml` 里**只有一句注释**提到这个脚本（不是步骤），
 /// 而仓里**没有任何判据读它的内容** ⇒ 三项检查被删掉一项不会红。
-/// 本条钉住那三项还在：`monitor-lib` · `daemon` · `daemon-win`。
+/// 本条钉住那三项还在：`monitor-lib` · `backend` · `backend-win`。
 ///
 /// ⚠ **如实记一处局限**（免得把它的绿读大）：monitor 那项是 `cargo check --lib`，
 /// **不编测试段**。所以「提交状态编得过」不等于「提交状态的测试编得过」。
@@ -1466,8 +1466,8 @@ fn the_only_gate_that_measures_committed_state_still_does_all_three_checks() {
     // `(检查名, 那一行还必须含什么)` —— 钉性质不钉整行，留出改写空间。
     const CHECKS: &[(&str, &str)] = &[
         ("run monitor-lib", "cargo check"),
-        ("run daemon ", "cargo check --all-targets"),
-        ("run daemon-win", "x86_64-pc-windows-msvc"),
+        ("run backend ", "cargo check --all-targets"),
+        ("run backend-win", "x86_64-pc-windows-msvc"),
     ];
     for (head, must) in CHECKS {
         let hit = src
@@ -1489,14 +1489,14 @@ fn the_only_gate_that_measures_committed_state_still_does_all_three_checks() {
 
 /// 〔audit-0805 08-08〕**三项还在 ≠ 三项都跑了**。
 ///
-/// 上一条钉的是那三项检查**存在**。而 `daemon-win` 那项包在
+/// 上一条钉的是那三项检查**存在**。而 `backend-win` 那项包在
 /// `if rustup target list --installed | grep -q x86_64-pc-windows-msvc` 里 ——
 /// ★ 08-08 **真路实测**（临时放一个假 `rustup` 到 `PATH` 前面、让它报「什么都没装」）：
 ///
 /// ```text
 ///    ok   monitor-lib
-///    ok   daemon
-///    skip daemon-win（没装 x86_64-pc-windows-msvc target）
+///    ok   backend
+///    skip backend-win（没装 x86_64-pc-windows-msvc target）
 /// == 提交状态编得过 ==            ← 与三项全跑时**一字不差**，exit 0
 /// ```
 ///
@@ -1549,8 +1549,8 @@ fn a_skipped_windows_check_cannot_look_like_a_full_pass() {
 
     assert!(
         code.iter()
-            .any(|l| l.starts_with("skipped=") && l.contains("daemon-win")),
-        "跳过 `daemon-win` 那一支没有把这件事**记进变量**（找不到 `skipped=…daemon-win…`）。\n\
+            .any(|l| l.starts_with("skipped=") && l.contains("backend-win")),
+        "跳过 `backend-win` 那一支没有把这件事**记进变量**（找不到 `skipped=…backend-win…`）。\n\
              ⚠ 只 `echo` 一行「skip」是不够的：结论行不读它，读门禁的人只看最后一行。\n\
              08-08 真路实测过这个状态：skip 打了，最后一行仍是「== 提交状态编得过 ==」、exit 0。"
     );

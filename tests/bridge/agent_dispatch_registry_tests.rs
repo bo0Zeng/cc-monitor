@@ -25,7 +25,7 @@ impl Face {
 /// ⚠ 这不是白名单：**表里有几处，就意味着「把 agent 收进接口要回来改几处」**。
 /// 它长了是设计在退化；短了才说明真收进接口了（那一轮同时摘登记）。
 ///
-/// ⚠ `adapter.rs` 自己那几行**也在表里** —— 见模块头注「本条比 daemon 侧那条少一个洞」。
+/// ⚠ `adapter.rs` 自己那几行**也在表里** —— 见模块头注「本条比后端侧那条少一个洞」。
 const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
     (
         "adapter.rs",
@@ -97,7 +97,7 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
         Face::Facade,
         3,
         "本地全文索引的扫描面：记录根 + 记录判定 + 从路径取 sid。\
-             ⚠ `search.rs` 的退役条件另有裁定（`K7` 乙块逐字：daemon 侧没索引，迁它是拿性能换账面）\
+             ⚠ `search.rs` 的退役条件另有裁定（`K7` 乙块逐字：backend 侧没索引，迁它是拿性能换账面）\
              —— 但**耦合处数照样要数**，两件事",
     ),
     (
@@ -149,7 +149,7 @@ const AGENT_COUPLING_SITES: &[(&str, Face, usize, &str)] = &[
 /// ⚠ **这一格不是「收进接口了」，是「那件事不做了」** —— 两种都让棘轮往下走，
 /// 但只有前者算把耦合还清；如实写在这里，别让下一个人把它读成进展。
 ///
-/// ⚠ 与 daemon 侧那个 27 **不是同一把尺子，不许相加**（两侧机制不同：那边直呼
+/// ⚠ 与后端侧那个 27 **不是同一把尺子，不许相加**（两侧机制不同：那边直呼
 /// `agents::<名>::`，这边走 trait + 门面）。要比较请各自报各自的尺子。
 const COUPLING_BASELINE: usize = 35;
 
@@ -324,7 +324,7 @@ fn the_scan_actually_reads_the_monitor_tree_and_the_needles_reach() {
 
 /// ① **逐文件逐脸相等** —— 多一处红、**少一处也红**。
 ///
-/// 形态照 daemon 侧 `agent_locality_guard::general_layer_adapter_call_sites_are_enumerated_one_by_one`。
+/// 形态照后端侧 `agent_locality_guard::general_layer_adapter_call_sites_are_enumerated_one_by_one`。
 /// 只比总数的话「从 A 文件挪一处到 B 文件」会全绿，而那是**把改动面藏起来，不是消掉**。
 #[test]
 fn agent_coupling_sites_are_enumerated_one_by_one() {
@@ -460,7 +460,7 @@ fn body_of(src: &str, define: &str) -> String {
 /// 去掉闭括号）会**安静地全绿**，而 `§0c①` 现打证明过那个失败形长得跟
 /// 「问题已经没有了」一模一样。⇒ 每一道处置在这里各有一格正、一格反。
 ///
-/// 形状照 daemon 侧 `agent_locality_guard::the_s4b_detectors_catch_synthetic_violations`。
+/// 形状照后端侧 `agent_locality_guard::the_s4b_detectors_catch_synthetic_violations`。
 #[test]
 fn the_detectors_catch_synthetic_violations() {
     // ── 处置 1：不带前导点 ⇒ 三种写法都认得 ────────────────────────

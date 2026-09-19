@@ -14,7 +14,7 @@
 
 /// Whether `pid` currently exists as a process on this host (existence only).
 ///
-/// Linux (the daemon's real target): `/proc/<pid>` existence. This is the
+/// Linux (the backend's real target): `/proc/<pid>` existence. This is the
 /// add-time gate; the reuse-proof check is [`session_alive`].
 pub(crate) fn pid_alive(pid: u32) -> bool {
     #[cfg(target_os = "linux")]
@@ -37,7 +37,7 @@ pub(crate) fn pid_alive(pid: u32) -> bool {
         // 那 U4a 能做的是什么？**把谎换成事实**：
         // - `panic` 是一个没人能忽略的信号，`true` 不是。
         // - **不可能回归 Linux**：这条分支在 Linux 上编译期就不存在。
-        // - Windows daemon 今天跑不起来（U4b 才让它能跑），所以不影响任何现存路径。
+        // - Windows backend 今天跑不起来（U4b 才让它能跑），所以不影响任何现存路径。
         // - 它给 U4b 留了一个**编译器/运行时帮你找**的落点，而不是一个「看起来能用」的假实现。
         let _ = pid;
         unimplemented!(
@@ -146,7 +146,7 @@ impl EnvRead {
 /// ⚠⚠ **调用形状（`proc_env_var(pid, <键>)` 这一串字面）是两把尺子的量点**，别改：
 /// `observe/accounts_query_tests.rs::the_only_env_keys_this_module_reads_are_the_two_named_constants`
 /// 与**跨 crate** 的 `src/bridge/src/doc_claim_registry_tests.rs::env_keys_actually_read`
-/// 都按这串字面数「daemon 今天真读几个键」，后者再拿那个数去与盘上五份文档的计数词对拍。
+/// 都按这串字面数「backend 今天真读几个键」，后者再拿那个数去与盘上五份文档的计数词对拍。
 /// `K-R21` 只换返回类型、**一个字面都没动**，正是为了不惊动它们。
 ///
 /// 🔴 **`warn!` 在这里而不在调用方**：这是那次读的**唯一发生地**，

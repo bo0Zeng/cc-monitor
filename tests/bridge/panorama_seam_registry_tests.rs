@@ -103,7 +103,7 @@ fn the_engine_is_opened_in_exactly_one_place() {
             "`{needle}` 在生产段不是恰好一处：{e}\n\
                  ⇒ 第二处 = 第二条 rusqlite 连接。`panorama.rs` 自己的注释记着那条真事故：\n\
                  「对同一 index.db 并发写 → SQLITE_BUSY + 缓存不一致」。\n\
-                 而且换引擎（内嵌 / 侧车 / 编进 daemon）那天要改的就是这一处 —— 多一处多一份漏改。"
+                 而且换引擎（内嵌 / 侧车 / 编进后端）那天要改的就是这一处 —— 多一处多一份漏改。"
         )
     });
 }

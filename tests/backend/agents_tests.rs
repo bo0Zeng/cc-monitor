@@ -35,12 +35,12 @@ const SYNTH_REGISTRY: &[Adapter] = &[
 ///
 /// ⚠ 三个阴性项（`ghost` 缺席 · `nameless` 说不出路径 · `filey` 是文件）是本条的
 /// 全部意义所在：只喂存在的那家、只断言"返回非空"的话，判准坏成「永远全放行」照样绿 ——
-/// 而那种坏法正是本件最怕的：daemon 会声明它其实**看不见**的 agent，
+/// 而那种坏法正是本件最怕的：backend 会声明它其实**看不见**的 agent，
 /// 消费方照着那个 path 去列会话，只会得到空/报错。
 ///
 /// ⚠ 本条**完全不依赖跑测试这台机器上装了什么** —— 注册表是合成的，
 /// home 路径由 pid 隔开。真机那半由
-/// `wire::tests::the_daemon_can_already_discover_homes_it_just_does_not_send_them` 兜。
+/// `wire::tests::the_backend_can_already_discover_homes_it_just_does_not_send_them` 兜。
 #[test]
 fn only_agents_whose_home_directory_exists_are_visible() {
     let root = fixture_root();
@@ -62,7 +62,7 @@ fn only_agents_whose_home_directory_exists_are_visible() {
         vec![("alpha", want_path.as_str())],
         "判准是「home 目录**存在**」，四种形态各验一次：\n\
              · alpha（目录在）——进；\n\
-             · ghost（目录不在）——一项都不许产，否则 daemon 会声明它其实看不见的 agent；\n\
+             · ghost（目录不在）——一项都不许产，否则后端会声明它其实看不见的 agent；\n\
              · nameless（连候选路径都说不出）——出局，别拿空路径去 stat；\n\
              · filey（同名的**文件**）——不算家，报出去的 path 会被消费方当目录拼子路径。"
     );
@@ -117,7 +117,7 @@ fn the_registry_names_every_agent_exactly_once() {
 ///
 /// ⚠ 本条**不断言具体路径**（那取决于跑测试这台机器的 `HOME`/`CLAUDE_CONFIG_DIR`）——
 /// 它断言的是"注册表接的是那根管子"：函数指针指错了家（两条都接 claude），
-/// 上面两条都还会绿，而 daemon 会把同一个目录报成两个 agent 的家。
+/// 上面两条都还会绿，而后端会把同一个目录报成两个 agent 的家。
 #[test]
 fn each_registry_entry_asks_its_own_adapter_for_the_home() {
     let claude = REGISTRY

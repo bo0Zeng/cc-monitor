@@ -12,14 +12,14 @@
 //!   `runCatching` 也兜 exit2+stderr，取结构化）。
 //! - **exec 模型**：1 exec = 1 请求 1 响应 1 退出、天然 1:1，**无 request-id**；超时 = 客户端杀 exec。
 //!
-//! **advisory not owning（§5④）**：只返命令串、daemon 零 handle、绝不执行后端。
-//! **B2 纪律**：daemon 是权威也**保留本地 `is_valid_session_id` 校验**（对 daemon 自己产出的 plan
+//! **advisory not owning（§5④）**：只返命令串、backend 零 handle、绝不执行后端。
+//! **B2 纪律**：backend 是权威也**保留本地 `is_valid_session_id` 校验**（对后端自己产出的 plan
 //! 也过一遍——sessionId 会进 command 串，注入防线）。
 //!
 //! ★ **MVP 范围**（aterm 现走 β TailTransport、DaemonTransport 未建、**暂不消费 resolve**）：本轮锁
 //! **wire 信封**（stdin/stdout/错误/字段名）。command 构建 = 首个可用 `launchCandidate` + `--resume
 //! <sid>`（无候选→默认 `claude`），`substitutedFrom` 记来源——合理 MVP 默认；pidfile-based sid 消解
-//! （post-/branch 正确 sid + kind，daemon 深层权威）与 aterm `ResumePlan` 模板精确对齐**留 aterm 接
+//! （post-/branch 正确 sid + kind，backend 深层权威）与 aterm `ResumePlan` 模板精确对齐**留 aterm 接
 //! DaemonTransport 时联调**（那时才真消费）。caps 用 tmux/pty 典型档、待后续 backend 探测细化。
 
 use serde::{Deserialize, Serialize};
@@ -43,7 +43,7 @@ struct ResumeSpec {
     ///
     /// ★ `S4` 只盘了 `wire.rs`，**没看见这一条** —— 因为 `S1` 的判据只扫
     /// `CORE_FILES`，而 `control/resolve_query.rs` 不在表里。`S4b` 把它补登记了。
-    #[allow(dead_code)] // MVP 未用（daemon 用自身 agent_home 做 pidfile 查，留字段兼容）
+    #[allow(dead_code)] // MVP 未用（backend 用自身 agent_home 做 pidfile 查，留字段兼容）
     #[serde(default)]
     claude_dir: String,
     #[allow(dead_code)] // MVP 未用（both-down→local 回退是客户端侧决策，见 §3 三态）
@@ -169,7 +169,7 @@ fn resolve_from_json(input: &str) -> Result<String, (&'static str, String)> {
 
 /// 纯：ResumeSpec → CommandPlan（或 (code,message) 错误）。供单测（不碰 stdin/stdout）。
 fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
-    // B2 纪律：sessionId 会进 command 串 → 先过本地校验（注入防线，daemon 自产也过）。
+    // B2 纪律：sessionId 会进 command 串 → 先过本地校验（注入防线，backend 自产也过）。
     if !is_valid_session_id(&spec.session_id) {
         return Err((
             "invalid_session_id",
@@ -203,7 +203,7 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
     // 审计 security-重要①：B2 纪律**对称化**——`base` 同样进 command 串、由客户端 pty 执行，
     // 原只校验 sid、base 零校验（端到端两侧都没人查 base：客户端 B2 复校也只覆盖 sid）。补 base
     // 的 shell-safe 校验，兑现模块 doc 自称的 B2 注入防线（defense-in-depth：advisory 不执行 +
-    // 同信任域下当前不可利用，但污染 ResumeSpec 会被洗成带 daemon 权威的可注入 CommandPlan）。
+    // 同信任域下当前不可利用，但污染 ResumeSpec 会被洗成带后端权威的可注入 CommandPlan）。
     if !is_shell_safe_base(&base) {
         return Err((
             "unsafe_launch_candidate",
@@ -231,9 +231,9 @@ fn resolve(spec: &ResumeSpec) -> Result<CommandPlan, (&'static str, String)> {
         session_name: Some(session_name_for(&spec.session_id, is_codex)), // Codex cx- / Claude cc-
         launch_label: None, // MVP 不产 label（aterm 侧自算）
         // substitutedFrom：aterm 语义（`TmuxBackend.resume` 核实，2026-07-18 回）=「被替换掉的原命令」
-        // = `intended?.takeIf { it != launch }`——仅当解析出的 launch ≠ 用户原意首候选时非空。MVP daemon
+        // = `intended?.takeIf { it != launch }`——仅当解析出的 launch ≠ 用户原意首候选时非空。MVP backend
         // 不做「解析可能异于原意」的候选消解（直接用首候选/默认，launch==intended），恒无替换 → None（省略）。
-        // 待 daemon 有真候选消解（候选不可用回退 / post-/branch sid 变更）再填原值。**修正 daemon-04 此前
+        // 待后端有真候选消解（候选不可用回退 / post-/branch sid 变更）再填原值。**修正 backend-04 此前
         // 误设为「被用候选」**（反了 aterm 语义、与 command 冗余；审计 flag、aterm 2026-07-18 确认语义）。
         substituted_from: None,
     })
@@ -252,7 +252,7 @@ fn is_valid_session_id(sid: &str) -> bool {
 /// base（launchCandidate 或默认 `claude`）会进 `command` 串、由客户端 pty 执行 → 拒 shell 注入。
 /// 允许 launcher 常见形（字母数字/空格/`- _ . / = : ,`，支持带路径与 flag），拒 shell 元字符
 /// `; | & $ ` ( ) < > \ " ' * ? { } !`、换行/控制字符（0x00–0x1f、0x7f）。defense-in-depth——
-/// daemon advisory 不执行，但不应产出一份可注入的 CommandPlan（客户端 pty-inject 它）。
+/// backend advisory 不执行，但不应产出一份可注入的 CommandPlan（客户端 pty-inject 它）。
 fn is_shell_safe_base(s: &str) -> bool {
     !s.is_empty()
         && !s.bytes().any(|b| {
@@ -281,7 +281,7 @@ fn is_shell_safe_base(s: &str) -> bool {
 }
 
 /// resume 会话名：Claude `cc-<sid8>` / **Codex `cx-<sid8>`**（前 8 字符；不足 8 取全部）。
-/// golden-parity aterm（Claude `cc-`、Codex CodexInvocation.resumeSessionName `cx-`）。客户端亦自算、daemon 顺带给。
+/// golden-parity aterm（Claude `cc-`、Codex CodexInvocation.resumeSessionName `cx-`）。客户端亦自算、backend 顺带给。
 fn session_name_for(sid: &str, is_codex: bool) -> String {
     let head: String = sid.chars().take(8).collect();
     let prefix = if is_codex {

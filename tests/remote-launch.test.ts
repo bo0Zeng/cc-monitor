@@ -385,10 +385,10 @@ test("F01 isValidNewTmuxName:创建路径额外禁 glob 元字符（第二道防
 });
 
 test("F04b isValidNewTmuxName:`=` 也拒 —— 别创建一个主路杀不掉的名字", () => {
-  // kill 的主路从 F04b 起走 daemon，而它的形状门拒 `:` 与 `=`（tmux 目标语法）。
-  // 切之前 SSH 那条路杀得掉 `proj=x-cc`，切之后 daemon 回 `invalid_args` ⇒
+  // kill 的主路从 F04b 起走后端，而它的形状门拒 `:` 与 `=`（tmux 目标语法）。
+  // 切之前 SSH 那条路杀得掉 `proj=x-cc`，切之后后端回 `invalid_args` ⇒
   // 那是一条真的（虽然窄的）回归。处置是「不让它被建出来」，不是给 kill 开回落特例。
-  eq(isValidNewTmuxName("proj=x-cc"), false, "= 拒（daemon 的 kill 形状门不认它）");
+  eq(isValidNewTmuxName("proj=x-cc"), false, "= 拒（backend 的 kill 形状门不认它）");
   eq(isValidNewTmuxName("a=b"), false, "同上");
   // ⚠ attach 那条**刻意不跟着改**：那些名字不是我们建的，禁它只会把
   // 「attach 到一个已存在的 a=b」从可用变成 throw，而挡不住任何东西。
@@ -487,7 +487,7 @@ test("isValidConfigDir：绝对合法 true / 相对·根·..·元字符·unicode
   eq(isValidConfigDir("/a`b"), false);
   eq(isValidConfigDir("/a​b"), false); // 零宽空格
   eq(isValidConfigDir("/a‮b"), false); // 双向控制字符
-  // C1 控制区 0x80-0x9f（含 NEL 0x85）——对齐 daemon char::is_control；fromCharCode 避免字面不可见字符。
+  // C1 控制区 0x80-0x9f（含 NEL 0x85）——对齐 backend char::is_control；fromCharCode 避免字面不可见字符。
   eq(isValidConfigDir("/a" + String.fromCharCode(0x85) + "b"), false); // NEL
   eq(isValidConfigDir("/a" + String.fromCharCode(0x90) + "b"), false); // C1 中段
   eq(isValidConfigDir("/a" + String.fromCharCode(0x9f) + "b"), false); // C1 末

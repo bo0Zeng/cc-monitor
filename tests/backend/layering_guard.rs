@@ -38,8 +38,8 @@ mod tests {
     /// `identity_tag::tag`（`U-NP④`，08-14）的答案**同型**：触发时机是「某个 pidfile 出现/
     /// 原地换了 sid」，那是 `sessions/` inotify 观测到的事实（`(pid, sid)` 也只有那一刻同时在手）；
     /// control 侧没有这个信号，硬要它自己发现只能靠轮询 —— 而本件的**全部目的**就是
-    /// 把 `shared/ccm` 那条每秒轮询消掉（用户 08-14：「不要轮询」「ccm 做到必须走 daemon」）。
-    /// 反过来做只是把轮询从 ccm 搬到 daemon。
+    /// 把 `shared/ccm` 那条每秒轮询消掉（用户 08-14：「不要轮询」「ccm 做到必须走后端」）。
+    /// 反过来做只是把轮询从 ccm 搬到后端。
     const ALLOWED_OBSERVE_TO_CONTROL: &[&str] = &[
         "crate::control::identity_tag::tag",
         "crate::control::tmux_hook::install_hooks",

@@ -100,7 +100,7 @@ export function deriveForkSource(
 /**
  * 取源会话事实。取数失败一律降级成「不知道」（⇒ 弹窗问一次），**绝不**降级成一个具体值。
  *
- * **本机没有对侧探针**：daemon 的 `--session-accounts` 是远端专属，本机侧至今没有
+ * **本机没有对侧探针**：backend 的 `--session-accounts` 是远端专属，本机侧至今没有
  * 「某 sid 现在跑在哪个账号下」的查询（`local_accounts.rs` 只枚举账号，不认会话）。
  * 所以本机一律按「查不出来」处理 —— 问一次，而不是拿当前账号顶替。
  */

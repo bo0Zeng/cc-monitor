@@ -51,7 +51,7 @@ export function chipLabel(state: AccountsState | null): string {
   const ui = deriveUi(state);
   switch (ui.kind) {
     case "needs-update":
-      return "daemon 需更新";
+      return "backend 需更新";
     case "not-enabled":
       return "未启用";
     case "ready": {
@@ -192,7 +192,7 @@ export class AccountChip {
       info.className = "account-picker-info";
       info.textContent =
         ui.kind === "needs-update"
-          ? "远端 daemon 需要更新才能用多账号"
+          ? "远端后端需要更新才能用多账号"
           : "该远端尚未启用多账号";
       menu.appendChild(info);
       menu.appendChild(this.menuAction("管理 / 部署…", () => this.deps.openSettings()));

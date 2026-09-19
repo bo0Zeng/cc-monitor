@@ -7,7 +7,7 @@
 //! | 段 | 今天在哪 |
 //! |---|---|
 //! | 会话名 | F13 的铸名口（`mintTmuxName`，避让不可分离） |
-//! | §34 三道门 | F03 + F04a 已搬进 daemon `control/` |
+//! | §34 三道门 | F03 + F04a 已搬进 backend `control/` |
 //! | 内层载荷 | `backend::control::payload`（P4b） |
 //! | ccm 调用行 | `backend::control::ccm_invocation`（P4b） |
 //! | **生产切换** | ✅ `remote-launch-run.ts` 三处在调 `render_ccm_launch` / `render_launch_payload` |
@@ -21,7 +21,7 @@
 //! （两条 tauri 命令注册 + 生产 TS 三处在调 + `parity_ledger` 两条能力）。
 //!
 //! **过期二**：三问的答案① 写「**否** —— 全仓 `.call("launch")` 只有一处且在 `cfg(test)` 里」，
-//! 实测**生产段有一处**（`daemon_launch.rs`，U8a-2c-1 的 `daemon_send_into`）⇒ 应为「**部分是**」。
+//! 实测**生产段有一处**（`backend_launch.rs`，U8a-2c-1 的 `backend_send_into`）⇒ 应为「**部分是**」。
 //!
 //! ⚠ **结论仍然对**（U8c-3 今天删不得：③ U12 未决 + attach 那格仍在 TS），**但依据过期了**。
 //! 这是本工作区「**理由过期而结论仍对**」的第二次（F01 那次是四处「每 ~8s」）——
@@ -33,9 +33,9 @@
 //!
 //! | 问 | 08-04 的答 | 08-14 实测 |
 //! |---|---|---|
-//! | ① 生产切到 daemon 的 `launch` 了吗 | 部分是（`send-into` 一格） | **仍是「部分是」**：生产段 `create-or-attach` **0 处**（下面那条判据在量），`attach` 结构上不归 daemon（`control/launch.rs` 头注「本模块**不 attach**」） |
+//! | ① 生产切到后端的 `launch` 了吗 | 部分是（`send-into` 一格） | **仍是「部分是」**：生产段 `create-or-attach` **0 处**（下面那条判据在量），`attach` 结构上不归后端（`control/launch.rs` 头注「本模块**不 attach**」） |
 //! | ② attach 那条串归谁产 | 一半有答案 | **仍挡着，而且不止 attach**：`renderFallback` 的三格（tmux `create` / `send-into` / `attach`）全在 TS。⇒「只剩 attach 那一格」是把阻碍读窄了 |
-//! | ③ daemonless 的远端还要不要能起会话 | **未决**（U12 待做） | **已决：要。** `U12` 那个**件**被 `C7` 关掉了，但 `C7` 裁的是「**本机**也要有后端进程」；而 `daemonless` 今天是**每台远端主机的用户开关**（`src/settings/machine-card.ts` 那个 checkbox「daemonless 降级读取（无需 daemon）」→ `RemoteHostConfig.daemonless`，生产段 7 个文件 31 处）⇒ 那种主机**存在**、且它的 `↗` 走纯 SSH（`launch_remote_terminal` 不经 daemon）⇒ 起会话只能靠 monitor 自己渲染整串 |
+//! | ③ daemonless 的远端还要不要能起会话 | **未决**（U12 待做） | **已决：要。** `U12` 那个**件**被 `C7` 关掉了，但 `C7` 裁的是「**本机**也要有后端进程」；而 `daemonless` 今天是**每台远端主机的用户开关**（`src/settings/machine-card.ts` 那个 checkbox「daemonless 降级读取（无需后端）」→ `RemoteHostConfig.daemonless`，生产段 7 个文件 31 处）⇒ 那种主机**存在**、且它的 `↗` 走纯 SSH（`launch_remote_terminal` 不经后端）⇒ 起会话只能靠 monitor 自己渲染整串 |
 //!
 //! ⇒ ③ 从**软障碍（未决，所以不敢删）变成硬障碍（已决为「要」，所以确定不能删）**。
 //! **「件关掉了」不等于「约束消失了」** —— 这是本节第三次栽在同一形状上，
@@ -168,7 +168,7 @@ const TS_FALLBACK_KEEPERS: &[(&str, &str, usize, &str, &str)] = &[
     // `attachCmd` 那一处（把 `↗` 交给用户自己的终端那一跳）", …)`，解锁条件写着
     // 「`attach` 那一跳由 `K-R59` `§0c` 明写**不做** —— 后端在远端开不了你面前的窗」。
     // ⚠ **那句话没有错，它的射程被读宽了**：`control/launch.rs` 那条「本模块不 attach」
-    // 讲的是**远端**（`R61` 裁定三之后不许再拿「daemon」把两侧压成一个）。
+    // 讲的是**远端**（`R61` 裁定三之后不许再拿「backend」把两侧压成一个）。
     // 这一处是**本机**就地 resume，后端就在用户面前那台机器上 ⇒ 它产得出，也接过去了
     //（`history.rs::render_local_attach` ⇒ `commands.render_local_attach`）。
     // ⇒ 这一行**不是「登记漏了」，是消费者真的少了一个**：生产处数 2 → 0。
@@ -320,7 +320,7 @@ fn the_remote_launch_main_path_really_calls_the_backend_renderers() {
 /// 依据一：**兜底渲染器仍是生产渲染器** —— `remote-launch-run.ts` 的**生产段**
 /// 仍在调 `renderFallback(`，而它产的三格（tmux `create` / `send-into` / `attach`）
 /// 全要外层 tmux 命令，归 TS 的座 `session-backend.ts`
-/// （daemon 的 `control/launch.rs` 头注逐字写着「本模块**不 attach**，一次都不」）。
+/// （backend 的 `control/launch.rs` 头注逐字写着「本模块**不 attach**，一次都不」）。
 /// 依据二：**`create-or-attach` 那格仍未切** —— 生产段一次都不发这个 mode。
 ///
 /// ⚠ 〔08-14〕依据一的**量法换了**：原来量的是「文件里出现过 `session-backend` 这个词」
@@ -338,11 +338,11 @@ fn the_remote_launch_main_path_really_calls_the_backend_renderers() {
 ///
 /// 原来数的是「生产段 `.call("launch")` 的处数 == 1」。F04c 让它变成 **2** 而当场报红 ——
 /// **它红得对**（前提确实动了，该回来重裁），**但重裁的结论是「依据二仍成立」**：
-/// 新增那一处是 `daemon_send_keys` 发的 `send-into` / `send-keys-raw`，那是
-/// **`tmux_send_keys` 这条命令**改走 daemon，**不是「起会话」又切了一格**。
+/// 新增那一处是 `backend_send_keys` 发的 `send-into` / `send-keys-raw`，那是
+/// **`tmux_send_keys` 这条命令**改走后端，**不是「起会话」又切了一格**。
 ///
 /// ⇒ **`.call("launch")` 的处数是个过期的代理指标**：它把「有几条代码路径用 launch 命令」
-/// 和「起会话有几格切到了 daemon」混成一个数。改成直接量后者 ——
+/// 和「起会话有几格切到了后端」混成一个数。改成直接量后者 ——
 /// **生产段发不发 `create-or-attach`**。
 ///
 /// ★ 这是「**依据/度量过期而结论仍对**」在本工作区的**第三次**
@@ -353,14 +353,14 @@ fn the_remote_launch_main_path_really_calls_the_backend_renderers() {
 ///
 /// 上面那句「改成直接量后者」把**量法**修对了，却留下一个**面**的洞：
 /// 扫的是 `env!("CARGO_MANIFEST_DIR")/src`，也就是**只有 `src/bridge/src/**.rs`**。
-/// 而「起会话改走 daemon」有两条路，`K-P2 §0d`〔PM 08-29〕**裁的是后一条**：
+/// 而「起会话改走后端」有两条路，`K-P2 §0d`〔PM 08-29〕**裁的是后一条**：
 ///
 /// | 路 | 接线落在哪 | 本条**看不看得见** |
 /// |---|---|---|
 /// | ㈡ 宿主自己发 `launch` | `src/bridge/src/**.rs` | 看得见 |
 /// | ㈠ **`ccm` 直接问后端二进制**（`§0d` 裁定：`ccm <子命令>` = 后端以**一次性模式**跑） | `shared/ccm`（**shell**） | **看不见** |
 ///
-/// ⇒ 走㈠ 的话，「起会话那格切到 daemon 了」这件事**做成了，而本条一个字都不说**
+/// ⇒ 走㈠ 的话，「起会话那格切到后端了」这件事**做成了，而本条一个字都不说**
 /// —— 那不是绿，是**零命中地绿**。`K-P2` 的 `KP2A` 逐字预言过这个形状：
 /// 「它的扫描面只有 `src/bridge/src/**/*.rs` ⇒ **扫不到 `shared/ccm`** ……
 ///  这条判据**零命中地绿**，而事情做成了它一个字都不说」。
@@ -454,18 +454,18 @@ fn the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold() {
     //
     // 它原来与 Rust 那棵树同判：「**两棵树都不许**出现 `create-or-attach`」。
     // `K-P2` `D3` 把 `shared/ccm` 的 `--tmux` 接到了后端那条一次性口上
-    //（旧 bash 的 `launch_via_daemon` 〔散文墓碑〕 发 `mode=create-or-attach`）⇒ **这一半当场红了，红得对**。
+    //（旧 bash 的 `launch_via_backend` 〔散文墓碑〕 发 `mode=create-or-attach`）⇒ **这一半当场红了，红得对**。
     //
     // ⇒ 翻成正向：`shared/ccm` 从「不许有」变成「**必须有**」。
     // **别把它删掉**：删掉之后「起会话又退回本机 tmux 直起」就没有任何东西会说话。
     //
     // 🔴 **而本条的结论不变，理由要写清楚**（这正是那句 assert 文案要求「回来重裁」的事）：
-    // 三问的答案① 变了（起会话这一格 `shared/ccm` 已经切到 daemon），
+    // 三问的答案① 变了（起会话这一格 `shared/ccm` 已经切到后端），
     // **但上面那两条依据是独立的、且都还成立** ——
     // ① a：`remote-launch-run.ts` 的生产主路仍在调 `renderFallback(`；
     // ① b：`launch-render-fallback.ts` 仍问 `SESSION_BACKEND.` 要外层 tmux 命令。
     // 那两条说的是 **monitor 自己那条 `↗` 路**（TS 渲染 → `ssh -t bash -lic '<串>'`），
-    // 它与「ccm 在远端自己起会话时问不问 daemon」**是两条路，别压成一句**。
+    // 它与「ccm 在远端自己起会话时问不问后端」**是两条路，别压成一句**。
     // 〔散文墓碑〕这里原来还写着「再加上 `the_daemonless_remote_still_needs_the_ts_fallback_renderer`
     // 那条**硬**障碍（daemonless 主机今天仍是产品提供的开关）」——
     // 🔴 `K-R59`（09-11，定框 `K35`）把那一档整格删了，那条判据也随之换人。
@@ -474,12 +474,12 @@ fn the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold() {
     //   `TS_FALLBACK_KEEPERS`；**处数与「站不站在生产路上」都从源码派生，这里不写死**
     //   —— `K-R105` 09-13 把那两个字面量从全部散文副本里撤了，理由见那张表的头注）。
     // ⚠ 而 **Rust 那棵树仍然必须是零** —— monitor 侧那条 `.call("launch")` 至今只发
-    //   `send-into` / `send-keys-raw`（`daemon_launch::the_only_mode_this_channel_can_speak_is_send_into`
+    //   `send-into` / `send-keys-raw`（`backend_launch::the_only_mode_this_channel_can_speak_is_send_into`
     //   钉着它）。**两棵树本拍起口径不同，这不是疏漏，是两件不同的事。**
     assert!(
         hits.is_empty(),
         "**Rust 生产段**开始发 `create-or-attach` 了（{hits:?}）—— **这多半是好事**：\n\
-             monitor 侧「起会话」那格可能也切到 daemon 了 ⇒ `INVARIANTS §33b` 三问的答案① 又变了，\n\
+             monitor 侧「起会话」那格可能也切到后端了 ⇒ `INVARIANTS §33b` 三问的答案① 又变了，\n\
              回 F07/U8c-3 重裁「删 TS 渲染器」的前置。\n\
              ⚠ 同轮还要回 `K-P2`：`KP2A②` 的棘轮要抬、`KP2C` 的退路要登记、\n\
              `KP2D` 的通道 A/B 冲突必须已经解掉。\n\
@@ -490,7 +490,7 @@ fn the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold() {
         "`control/ccm/` 的生产段**不再发** `create-or-attach` 了 —— 起会话退回本机 tmux 直起？\n\
              `K-P2` `D3`（09-03）把它接到了后端那条一次性口上；`K-R48`（09-11）之后\n\
              那条口住进了同一个进程（`control::launch::parse_request` 那道门）。\n\
-             ⇒ 真要退回来，请连同 daemon 侧那条\n\
+             ⇒ 真要退回来，请连同后端侧那条\n\
              `the_container_launch_goes_through_the_one_door_with_every_field_intact`\n\
              一起撤，并回 `K-P2` 说明为什么。"
     );
@@ -834,7 +834,7 @@ fn the_retired_premise_left_a_tombstone_that_is_still_on_the_board() {
     );
     // 阴性对照：这把尺子不是恒真的。
     // ⚠ **针要现拼**：写成字面量的话它自己就在本文件里，这一条当场自相矛盾
-    //   （本轮实测红过一次 —— 与 `daemon-section` 那条「别让路径混进断言」同族）。
+    //   （本轮实测红过一次 —— 与 `backend-section` 那条「别让路径混进断言」同族）。
     let absent = format!("fn {}", "a_judgement_that_was_never_written");
     assert!(
         !me.contains(absent.as_str()),
@@ -845,9 +845,9 @@ fn the_retired_premise_left_a_tombstone_that_is_still_on_the_board() {
 /// ★ **F04c 补：`send-keys` 那两个 mode 只许从一个地方发出去。**
 ///
 /// 上面那条不再数 `.call("launch")` 的处数了，于是「谁在发 launch」这件事少了一道账。
-/// 本条把它补回来，但量的是**对的东西**：走 daemon 的 `send-keys` 语义
+/// 本条把它补回来，但量的是**对的东西**：走后端的 `send-keys` 语义
 /// （`send-into` / `send-keys-raw`）在生产段只许有**一个**产出点
-/// （`daemon_send_keys::mode_for`）—— 多一处就是「同一个决策两份实现」的起点，
+/// （`backend_send_keys::mode_for`）—— 多一处就是「同一个决策两份实现」的起点，
 /// 而这个决策错了的后果是**把「打断当前回合」变成「提交用户排队的文本」**。
 #[test]
 fn the_send_keys_mode_names_have_exactly_one_production_home() {
@@ -878,9 +878,9 @@ fn the_send_keys_mode_names_have_exactly_one_production_home() {
     }
     assert_eq!(
         homes,
-        vec!["daemon_send_keys.rs".to_string()],
+        vec!["backend_send_keys.rs".to_string()],
         "`send-keys-raw` 这个 mode 名的生产段落点不止一个（或搬走了）：{homes:?}\n\
-             它必须只有一个家（`daemon_send_keys::mode_for`）—— 两处就会漂，\n\
+             它必须只有一个家（`backend_send_keys::mode_for`）—— 两处就会漂，\n\
              而这个决策漂了的后果是把 `Escape`（打断当前回合）当成「键入并提交」。"
     );
 }

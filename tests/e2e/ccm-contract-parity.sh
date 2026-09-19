@@ -8,13 +8,13 @@
 #     ① **repoint** —— `CCM` 指向 `cc-monitor-remote`（`argv[0]` basename 为 `ccm` 即进一次性模式），
 #        调用点从 `bash "$CCM"` 改成 `"$CCM"`。**39 条断言的判定文字一个字没改。**
 #     ② **删 33 条** —— 它们测的全是「**bash 去问另一个进程**」这件事的形状：
-#        `A″`(7) 账号 configDir 的 provenance（夹具要害逐字是「daemon 与 manifest 必须答不同的目录」，
+#        `A″`(7) 账号 configDir 的 provenance（夹具要害逐字是「backend 与 manifest 必须答不同的目录」，
 #        而同一个进程之下两者是同一件事，这个夹具**造不出来了**）·
-#        `A′d`/`A′e`(13) daemon 在位/不在位时 argv 从哪来、部署落点发现、答不出时的静默退路 ·
-#        `A′f`(6) daemon hang/garbage/broken 三种坏法的兜底与超时 ·
-#        `A′g`(2) 后端回的命令串不许被 shell 改写（**已落成 daemon 侧 Rust 判据**
+#        `A′d`/`A′e`(13) backend 在位/不在位时 argv 从哪来、部署落点发现、答不出时的静默退路 ·
+#        `A′f`(6) backend hang/garbage/broken 三种坏法的兜底与超时 ·
+#        `A′g`(2) 后端回的命令串不许被 shell 改写（**已落成后端侧 Rust 判据**
 #        `control::ccm::plan::tests::a_command_from_the_backend_is_never_rewritten_by_the_shell`）·
-#        `A′h`(5) `$CCM_DAEMON_BIN` → 部署落点 → PATH 的查找次序（`K-R48` `§0h` 逐字：
+#        `A′h`(5) `$CCM_BACKEND_BIN` → 部署落点 → PATH 的查找次序（`K-R48` `§0h` 逐字：
 #        「这道题消失了，不是被挑了边」）。
 #   逐条判词住 `tests/evidence/K-R48-356-verdicts.tsv`（第 285–356 行就是本套件那 72 条）。
 #
@@ -65,7 +65,7 @@ ln -s "$CCM_NATIVE" "$CCMDIR/ccm"
 CCM="$CCMDIR/ccm"
 
 # ⚠ 〔`K-R48` 第二拍 09-11〕**原来这里有一道 `jq` 的 fail-closed 硬依赖闸，本轮删了。**
-#   它守的是 `_acct_prefix`（把夹具 manifest 翻成 `--list-accounts` 帧形状喂给假 daemon）——
+#   它守的是 `_acct_prefix`（把夹具 manifest 翻成 `--list-accounts` 帧形状喂给假后端）——
 #   而那个函数与它服务的那几组断言本轮一起删了（同一个进程之下没有「帧」这回事）。
 #   留着它就是一句假话：本文件今天**一处都不用 `jq`**（现打 `grep -c jq` 自己看）。
 
@@ -87,12 +87,12 @@ exit 0
 SHIM
 chmod +x "$W/bin/tmux"
 
-# ⚠ 〔`K-R48` 第二拍 09-11〕**这里原来有一整块假 daemon 脚手架，本轮整块删了。**
-#   它存在的理由逐字是「本套件必须让 ccm『查得到 daemon』，否则每一条真跑都会被身份前置检查挡下」
-#   （`U-NP④` 08-14）＋「账号解析改成问 daemon 之后，每一条真跑都会先问它一次」（`K-C1` 08-24）。
-#   **这两条今天都没有指称对象了**：敲的那个命令**就是**后端 ——「查得到 daemon」不是一个问题，
+# ⚠ 〔`K-R48` 第二拍 09-11〕**这里原来有一整块假后端脚手架，本轮整块删了。**
+#   它存在的理由逐字是「本套件必须让 ccm『查得到 backend』，否则每一条真跑都会被身份前置检查挡下」
+#   （`U-NP④` 08-14）＋「账号解析改成问后端之后，每一条真跑都会先问它一次」（`K-C1` 08-24）。
+#   **这两条今天都没有指称对象了**：敲的那个命令**就是**后端 ——「查得到后端」不是一个问题，
 #   账号表由它自己读（`CCM_ACCTS_MANIFEST` 那份 manifest 仍是唯一事实源，只是不再经一次 argv 往返）。
-#   现打验过：`TMUX` 有值 · agent=claude · `HOME` 是空沙箱 —— 一个 daemon 都没有，照样 rc=0。
+#   现打验过：`TMUX` 有值 · agent=claude · `HOME` 是空沙箱 —— 一个后端都没有，照样 rc=0。
 
 cat > "$W/accounts.json" <<JSON
 { "version": 1, "accounts": [
@@ -166,16 +166,16 @@ BASE_EXTRA=()
 
 # ⚠ 〔`K-R48` 第二拍 09-11〕**`A″` 组 7 条整组删了**（判词 `N`，住 `tests/evidence/K-R48-356-verdicts.tsv`
 #   第 297–303 行）。它问的是「`--account b` 拿到的 `configDir` **来自哪一条路**」，
-#   而它的夹具要害逐字是「**daemon 与 manifest 必须答不同的目录**」——
+#   而它的夹具要害逐字是「**backend 与 manifest 必须答不同的目录**」——
 #   同一个进程之下两者**是同一件事**，这个夹具造不出来了。
-#   ⚠ 「值真的跟着账号表走」这一半**没丢**：daemon 侧 `control::ccm` 的
+#   ⚠ 「值真的跟着账号表走」这一半**没丢**：backend 侧 `control::ccm` 的
 #   `the_account_table_has_exactly_one_source` 钉着「账号表只有一处真相源」。
 
 echo
 echo "===== A′ 组：print↔exec 的 **argv** 一致（A 组只比 env，且六格全是 new）====="
 # ★ 这一组的开张理由是一个**存活的反例**（F06b-1b，2026-08-04）：
-# 往 `--print` 的非容器出口里塞一句「现在就去问 daemon 要 command」，打印串从
-# `exec claude --resume abc-123` 变成 `exec claude --resume STUB-FROM-DAEMON`
+# 往 `--print` 的非容器出口里塞一句「现在就去问后端要 command」，打印串从
+# `exec claude --resume abc-123` 变成 `exec claude --resume STUB-FROM-BACKEND`
 # —— 而 `ccm-print-parity`(12) 与本套件(31) **两套全绿**。
 #
 # 两个洞，都真：
@@ -217,7 +217,7 @@ pair_argv "resume（本组的正题：F06b 要接 --resolve 的就是这条）" 
 pair_argv "resume + --model（修饰不许只落一边）"                  resume abc-123 --agent claude --model opus
 pair_argv "new（对照组：证明差分不是只对 resume 有效）"            --agent claude
 # ⚠ 〔`K-R48` 第二拍 09-11〕**`A′d` / `A′e` 共 13 条整组删了**（判词 `N`，verdicts 第 310–322 行）。
-#   它们量的是「daemon 在位/不在位时 argv 从哪来」「不给 `CCM_DAEMON_BIN` 也找得到部署落点」
+#   它们量的是「backend 在位/不在位时 argv 从哪来」「不给 `CCM_BACKEND_BIN` 也找得到部署落点」
 #   「后端答不出 `--resolve` 时落回本地那条」—— **全是「ccm 去问另一个进程」这件事的形状**。
 #   一个后端之后没有谁要去找谁：`resume` 那一问在进程内直接答。
 #   ⚠ **如实边界**：这 13 条里「`--print` 是纯的（一个请求都不发、stderr 空）」那一格，
@@ -315,7 +315,7 @@ ck "agents= 行列出 claude 与 codex" "1" \
 #   下次 bump 时这一格会以「假红」的形式提醒错人（而且它测的会变成「我抄对了没有」）。
 SRC_BUILD_ID="$(sed -n 's/^const BUILD_ID: &str = "\([^"]*\)";$/\1/p' \
                  "$REPO/src/backend/main.rs")"
-ck "抽取器自检：从 daemon 源码抠得到 BUILD_ID（空 ⇒ 下面两格会零命中地绿）" "yes" \
+ck "抽取器自检：从后端源码抠得到 BUILD_ID（空 ⇒ 下面两格会零命中地绿）" "yes" \
    "$([ -n "$SRC_BUILD_ID" ] && echo yes || echo no)"
 ck "build= 行报的就是这一份二进制自己的 BUILD_ID（不看它旁边任何文件）" "$SRC_BUILD_ID" \
    "$(printf '%s\n' "$PROBE" | sed -n 's/^build=//p')"
@@ -336,7 +336,7 @@ RELAY_PRINT="$(base_env ANTHROPIC_BASE_URL=https://relay.example/v1 \
                  "$CCM" --print --tmux=r61-caps --cwd "$CWD" 2>&1)"
 # ⚠ 只 grep `export ANTHROPIC_BASE_URL=` 这个头：值那一半在载荷里是**被 quote 过的**
 #   （`send-keys` 那一层把内层单引号转义成 `'\''`），照原样 grep 整条值必然零命中 —— 那会是假红。
-#   「值真的带对了」那一格由 daemon 侧那条 Rust 判据逐字钉（它量的是 quote 之前那一串）。
+#   「值真的带对了」那一格由后端侧那条 Rust 判据逐字钉（它量的是 quote 之前那一串）。
 ck "兑现：--tmux 的载荷内侧真带 export ANTHROPIC_BASE_URL=（否则上面那个 token 是假申报）" "1" \
    "$(printf '%s\n' "$RELAY_PRINT" | grep -c 'export ANTHROPIC_BASE_URL=')"
 NORELAY_PRINT="$(base_env "$CCM" --print --tmux=r61-caps --cwd "$CWD" 2>&1)"
@@ -345,11 +345,11 @@ ck "反空真：不设中转地址时那一串里没有 ANTHROPIC_BASE_URL" "0" 
 
 # ⚠ 〔`K-R48` 第二拍 09-11〕**`A′f`(6) · `A′g`(2) · `A′h`(5) 共 13 条整组删了**
 #   （verdicts 第 344–356 行；`A′g` 判 `M/rust`，其余判 `N`）。
-#   · `A′f`：daemon hang / garbage / broken 三种坏法的兜底与 `timeout 3` —— 超时与降级都是**跨进程调用的形状**。
+#   · `A′f`：backend hang / garbage / broken 三种坏法的兜底与 `timeout 3` —— 超时与降级都是**跨进程调用的形状**。
 #   · `A′g`：「后端回的命令串里的 `*` 不许被 cwd 的文件名改写、`$(…)` 不许被执行」——
 #     🔴 **这一条没有消失，它搬进了 Rust**：`control::ccm::plan::tests::
 #     a_command_from_the_backend_is_never_rewritten_by_the_shell`（第一拍补的 `set -f`，PM 亲手切过刀验红）。
-#   · `A′h`：`$CCM_DAEMON_BIN` → 部署落点 → PATH 的查找次序 —— `K-R48` `§0h` 逐字
+#   · `A′h`：`$CCM_BACKEND_BIN` → 部署落点 → PATH 的查找次序 —— `K-R48` `§0h` 逐字
 #     「这道题消失了，不是被挑了边」。
 echo
 echo "===== 合计 PASS=$PASS FAIL=$FAIL ====="

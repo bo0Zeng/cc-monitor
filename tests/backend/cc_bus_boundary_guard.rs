@@ -1,4 +1,4 @@
-//! `P4f-Y2`〔用@08-13「后面我可能要改ccbus」〕：**daemon 不许碰 cc-bus 的数据布局**。
+//! `P4f-Y2`〔用@08-13「后面我可能要改ccbus」〕：**backend 不许碰 cc-bus 的数据布局**。
 //!
 //! # 为什么单独一个模块
 //!
@@ -20,7 +20,7 @@
 #[cfg(test)]
 mod tests {
     #[test]
-    fn no_cc_bus_data_layout_leaks_into_the_daemon() {
+    fn no_cc_bus_data_layout_leaks_into_the_backend() {
         // ★ `scan_tree!` 而不是自己 `read_dir`：它按构造摘除**调用者自己**那一份
         //（`scanning_guard_registry` 逼的，治「判据在自己的语料里找到自己 ⇒ 恒绿」那族）。
         // ⇒ 本判据因此**不能**住在 `control/cc_bus.rs` 里 —— 那正是最该被扫的文件。
@@ -63,7 +63,7 @@ mod tests {
         }
         assert!(
             hits.is_empty(),
-            "daemon 的生产段碰了 cc-bus 的**数据布局**：{hits:?}\n\
+            "backend 的生产段碰了 cc-bus 的**数据布局**：{hits:?}\n\
              用户 08-13 逐字说过「后面我可能要改ccbus」⇒ 这一层只许把 cc-bus 的**命令**当接口。\n\
              读文件确实更快、还省一个进程 —— 代价是他改 cc-bus 的那天这里会静悄悄地错。\n\
              要拿的东西命令给不出来时，正确做法是**给 cc-bus 加一条命令**，不是绕到它背后读文件。"

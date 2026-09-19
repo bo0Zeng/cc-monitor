@@ -533,7 +533,7 @@ export const commands = {
   stop_forward: (args: { id: string }) => invoke<void>("stop_forward", args),
 
   /**
-   * 测一条远端配置：连 SSH → 读指纹 → exec daemon → 等 hello。
+   * 测一条远端配置：连 SSH → 读指纹 → exec backend → 等 hello。
    *
    * **`onStage` 是 `Channel<ConnectStage>`**（第二个进包装层的 Channel 参数）。
    * `ConnectStage` 本轮一并生成——TS 侧 `describeStage` 里有 `const _never: never = st`
@@ -692,7 +692,7 @@ export const commands = {
    *
    *  两个消费者：① 铸名时当 `existing`（P3t-Y2b）② 杀会话的菜单按 `@ccm_sid` 认归属（P3 刀 2 UI）。
    *
-   *  ⚠ `null` 是「**不知道**」（本机 daemon 通道没起 / 还没推过帧），**不是**「一个都没有」。
+   *  ⚠ `null` 是「**不知道**」（本机后端通道没起 / 还没推过帧），**不是**「一个都没有」。
    *  拿 `null` 当空表：铸名那侧会不避让（issue #76），菜单那侧会说「没有会话」而其实有。
    *
    *  ⚠ **`command` 那一列可能陈旧**：它由 tmux hook 驱动刷新，而 hook 只有
@@ -735,8 +735,8 @@ export const commands = {
   check_cc_bus_agent_online: (args: { origin: string; id: string }) =>
     invoke<boolean>("check_cc_bus_agent_online", args),
 
-  /** 部署内嵌的 daemon 到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
-  deploy_remote_daemon: (args: { cfg: unknown }) => invoke<string>("deploy_remote_daemon", args),
+  /** 部署内嵌的后端到远端。Rust 返回 `Result<String, String>`（人话结果）⇒ 原始类型。 */
+  deploy_remote_backend: (args: { cfg: unknown }) => invoke<string>("deploy_remote_backend", args),
 
   /**
    * 从某一轮建分支（F62）。返回值字段被真消费 ⇒ 生成物（桶③）。
@@ -748,8 +748,8 @@ export const commands = {
     invoke<BranchResult>("create_branch_session", args),
 
   /**
-   * G6：**远端**分叉——经 ssh 让 daemon 在那台机器上分叉。返回体与本地那条同形（桶③）。
-   * 参数刻意收 `sourceSessionId` 而**不是**路径：daemon 只认 sid（少一个可构造的路径入参）。
+   * G6：**远端**分叉——经 ssh 让后端在那台机器上分叉。返回体与本地那条同形（桶③）。
+   * 参数刻意收 `sourceSessionId` 而**不是**路径：backend 只认 sid（少一个可构造的路径入参）。
    */
   /**
    * E79：**本机**版「某会话现在跑在哪个账号下」——远端 `--session-accounts` 的对侧。
@@ -812,11 +812,11 @@ export const commands = {
   render_local_attach: (args: { tmuxName: string }) =>
     invoke<string>("render_local_attach", args),
 
-  // U8a-2c-1：**「控制搬进 daemon」的第一条生产通道** —— 往已存在的远端 tmux 会话键入载荷
+  // U8a-2c-1：**「控制搬进后端」的第一条生产通道** —— 往已存在的远端 tmux 会话键入载荷
   // （`send-keys` 那半边）。`attach` 那半边**不走它**：§1.3 要求最终 exec 落在用户自己的
-  // 终端进程里，daemon 在远端、开不了你面前的窗。
-  daemon_send_into: (args: { req: SendIntoRequest }) =>
-    invoke<SendIntoResponse>("daemon_send_into", args),
+  // 终端进程里，backend 在远端、开不了你面前的窗。
+  backend_send_into: (args: { req: SendIntoRequest }) =>
+    invoke<SendIntoResponse>("backend_send_into", args),
 
   /** 把内嵌的 vendor `cc-acct-iso` 部署到远端。返回人话结果串 ⇒ 原始类型，无需生成物。 */
   deploy_remote_acct_iso: (args: { cfg: unknown; destDir: string }) =>
@@ -898,31 +898,31 @@ export const commands = {
   load_config: () => invoke<Record<string, unknown>>("load_config"),
 
   /**
-   * P2s（C8）：这台机的 daemon，monitor 退出时结不结束它。Rust 返回 `Result<(), String>` ⇒ **桶①**。
-   * `origin` 本机是 `"<local>"`（见 `daemon-policy.ts` 的 `LOCAL_ORIGIN`，两侧有判据对拍）。
+   * P2s（C8）：这台机的后端，monitor 退出时结不结束它。Rust 返回 `Result<(), String>` ⇒ **桶①**。
+   * `origin` 本机是 `"<local>"`（见 `backend-policy.ts` 的 `LOCAL_ORIGIN`，两侧有判据对拍）。
    */
-  set_daemon_kill_on_exit: (args: { origin: string; kill: boolean }) =>
-    invoke<void>("set_daemon_kill_on_exit", args),
+  set_backend_kill_on_exit: (args: { origin: string; kill: boolean }) =>
+    invoke<void>("set_backend_kill_on_exit", args),
 
   /**
-   * P2s（C8）：这台机的 daemon 现在什么状态。Rust 那边是不透明 JSON（同 `load_config` 那处的
+   * P2s（C8）：这台机的后端现在什么状态。Rust 那边是不透明 JSON（同 `load_config` 那处的
    * 结构性缺口）⇒ **桶②**：不为没人消费的字段造生成物。
    */
-  daemon_status: (args: { origin: string }) =>
-    invoke<Record<string, unknown>>("daemon_status", args),
+  backend_status: (args: { origin: string }) =>
+    invoke<Record<string, unknown>>("backend_status", args),
 
   /**
    * P2s（C8）：**开关面该列哪几台机** —— 由后端的注册表说了算，前端不自己算。
    * 前端自己拼会与 Rust 的 origin 分叉四处（trim / 重复 label 后缀化 / 忽略 enabled /
-   * 启动后新增的没注册），见 `daemon_control::daemon_machines` 头注。⇒ **桶②**。
+   * 启动后新增的没注册），见 `backend_control::backend_machines` 头注。⇒ **桶②**。
    */
-  daemon_machines: () => invoke<string[]>("daemon_machines"),
+  backend_machines: () => invoke<string[]>("backend_machines"),
 
-  /** P2s（C8）：起这台机的 daemon。返回一句人话（已起 / 已经在跑 / 起不来的理由）⇒ **桶②**。 */
-  daemon_start: (args: { origin: string }) => invoke<string>("daemon_start", args),
+  /** P2s（C8）：起这台机的后端。返回一句人话（已起 / 已经在跑 / 起不来的理由）⇒ **桶②**。 */
+  backend_start: (args: { origin: string }) => invoke<string>("backend_start", args),
 
-  /** P2s（C8）：停这台机的 daemon。⚠ 远端返回的是「已断流」不是「已停进程」⇒ **桶②**。 */
-  daemon_stop: (args: { origin: string }) => invoke<string>("daemon_stop", args),
+  /** P2s（C8）：停这台机的后端。⚠ 远端返回的是「已断流」不是「已停进程」⇒ **桶②**。 */
+  backend_stop: (args: { origin: string }) => invoke<string>("backend_stop", args),
 
   /**
    * 在某目录起一个**全新**本机会话。
@@ -955,9 +955,9 @@ export const commands = {
   uninstall_remote_ccm_helper: (args: { cfg: unknown; profile: string }) =>
     invoke<string>("uninstall_remote_ccm_helper", args),
 
-  /** 卸远端 daemon。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
-  uninstall_remote_daemon: (args: { cfg: unknown }) =>
-    invoke<string>("uninstall_remote_daemon", args),
+  /** 卸远端后端。Rust 返回 `Result<String, String>` ⇒ 原始类型。 */
+  uninstall_remote_backend: (args: { cfg: unknown }) =>
+    invoke<string>("uninstall_remote_backend", args),
 
   /** 用系统默认程序打开 monitor 的 log **目录**。Rust 返回 `Result<(), String>` ⇒ **桶①**。 */
   open_log_dir: () => invoke<void>("open_log_dir"),

@@ -73,8 +73,8 @@ const REGISTERED: &[Launcher] = &[
                   **归 PM 下一拍（写区要含前端）。**",
     },
     Launcher {
-        label: "L3 · 往已存在的 tmux 送载荷（`daemon_launch.rs::daemon_send_into`）",
-        ledger_cmds: &["daemon_send_into"],
+        label: "L3 · 往已存在的 tmux 送载荷（`backend_launch.rs::backend_send_into`）",
+        ledger_cmds: &["backend_send_into"],
         anchors: &[],
         plants: false,
         why: "今天没落，理由是**它不是「起一条新会话」**：send-into 把载荷送进一条\

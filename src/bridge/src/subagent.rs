@@ -11,7 +11,7 @@
 //!
 //! # `K-R94`（09-12）：**「找」也交给后端了**
 //!
-//! 改前两条路只共用了「挑」那一半（`pick_closest`）：远端让 daemon 列候选，
+//! 改前两条路只共用了「挑」那一半（`pick_closest`）：远端让后端列候选，
 //! **而本机自己做了三样** —— 候选枚举（`read_dir` 扫 `*.meta.json`）· 读首行时间戳 ·
 //! 读 jsonl。这三样后端侧的 `--list-subagents` / `--read-session` 早就有了。
 //!
@@ -180,8 +180,8 @@ pub async fn load_subagent(
 /// 入参是 `--list-subagents` 的输出行（每行 `{path, description, timestamp}`）。
 /// ⇒「候选集由后端决定」在这里是**类型上的**事实：这个函数没有别的地方能变出候选来。
 ///
-/// ★ **筛选留在本侧**，不在 daemon（`C1`：挑选逻辑只准有一份；daemon 侧那半由
-/// `the_daemon_never_matches_or_ranks_subagents` 钉住它只列、不挑）。
+/// ★ **筛选留在本侧**，不在后端（`C1`：挑选逻辑只准有一份；backend 侧那半由
+/// `the_backend_never_matches_or_ranks_subagents` 钉住它只列、不挑）。
 fn choose_subagent(
     listing: &[String],
     description: &str,

@@ -128,7 +128,7 @@ fn changing_what_the_backend_lists_changes_what_gets_picked() {
         "后端零候选却挑出了东西 —— 那个东西只可能来自别处"
     );
 
-    // ④ description 不匹配的不许混进来（筛选留在本侧，daemon 不挑）
+    // ④ description 不匹配的不许混进来（筛选留在本侧，backend 不挑）
     let l3 = vec![listed(
         "/r/agent-d.jsonl",
         "别的",
@@ -332,7 +332,7 @@ fn both_shapes_of_a_missing_timestamp_land_in_the_same_tier() {
 
 /// ★ **两条路都去问后端，问的是同一对既有子命令**（不新造读口）。
 ///
-/// 〔散文墓碑〕改前这条只钉远端那半（`the_remote_path_actually_asks_the_daemon`）——
+/// 〔散文墓碑〕改前这条只钉远端那半（`the_remote_path_actually_asks_the_backend`）——
 /// 那时本机那条根本不问后端。`K-R94` 之后它钉的是**两条**。
 #[test]
 fn both_paths_ask_the_backend_and_reuse_the_existing_subcommands() {

@@ -54,8 +54,8 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
     //    （`build_online_cmd` 整块删了）。⇒ 它**仍然有生产调用方**（读清单 / 读 inbox），
     //    这一行留着；说法那一列跟着改（下面括号里从「清单 / 在线 / inbox」变成「清单 / inbox」）。
     //    ⚠ **改了行为不回来改理由，账本当天就开始撒谎** —— 这一行差一点就成了那种样本。
-    //    它什么时候能出表：`read_cc_bus_state` 与 `read_cc_bus_inbox` 都改走 daemon 原语那天
-    //    （前者等 `K-R113` 的 `bus-state`，后者 daemon 侧今天没有读口 —— `K-R111 §C3` 现打）。
+    //    它什么时候能出表：`read_cc_bus_state` 与 `read_cc_bus_inbox` 都改走后端原语那天
+    //    （前者等 `K-R113` 的 `bus-state`，后者后端侧今天没有读口 —— `K-R111 §C3` 现打）。
     ("cc_bus.rs", "local_shell_read", "`bash -lc <cc-bus 的读串>`",
      "P4a-Y1：本机 cc-bus 的**读**面（清单 / inbox）。必须起进程的理由是\
           **不许有第二份文件布局知识** —— `CC_BUS_CAT_CMD` 逐字知道 `~/.cc-bus/agents.tsv` 长什么样，\
@@ -68,7 +68,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           ★ 三条策略为什么是这三格：`JobKillOnClose` 是先前 `kill_on_drop(true)` ＋ `reap_whole_tree_on_drop` 两句收成的同一条；`Hidden` 那格**先前没人回答过**（Windows 上起的是 `Git\\bin\\bash.exe`）。",
      "Hidden · JobKillOnClose · Null"),
     ("ssh_source.rs", "spawn_dial_proxy", "`<代理二进制> --dial`（子进程，常驻到某一头断开）",
-     "`K-P6b`：**daemon 那条长连接流的 SSH 握手交给这个子进程去跑**，界面只收字节。\
+     "`K-P6b`：**backend 那条长连接流的 SSH 握手交给这个子进程去跑**，界面只收字节。\
           起的是什么：`cc-monitor-remote`（本仓 `src/backend` 的产物）——\
           发版包里它就在 `monitor.exe` 旁边（`externalBin` sidecar），\
           解析口 `resolve_dial_proxy` 只认两处：环境变量 `CCM_DIAL_PROXY` 与 exe 旁那份。\
@@ -130,13 +130,13 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
      "按平台打开日志目录：三个名字都是常量，路径是 monitor 自己的目录
           ★ 三条策略为什么是这三格：`Detached` 是承重的：fire-and-forget，**绝不能是 `JobKillOnClose`** —— 那会在本函数返回、句柄一丢的瞬间把刚打开的文件管理器杀掉。",
      "Hidden · Detached · Inherit"),
-    ("local_backend.rs", "supervise_with_stdio", "被监护的 daemon 二进制",
+    ("local_backend.rs", "supervise_with_stdio", "被监护的后端二进制",
      "本机后端监护：二进制路径来自 `candidates`（有 `candidates_never_point_into_a_build_tree` 守着）。\
           ⚠ P2 起它的 stdin 可能是 `piped()` 而不再恒为 `null` —— 那是本机入方向通道的管子\
           （`local_stdio_consumer`）。`supervise` 只是它 `stdio=None` 的薄壳，真正 spawn 的是这一个
           ★ 三条策略为什么是这三格：🔴 `设计/00 §1.5.2` 点名的那一处：它先前**同时**犯三个错（无 `CREATE_NO_WINDOW` · 无 job 绑定 · `stderr(Stdio::null())`），三格各对应一条策略。本层收注入参数，一个平台原语都不认识。",
      "Hidden · JobKillOnClose · ToLog（宿主注入：local_backend_supervised）"),
-    ("local_query.rs", "run_query", "daemon 二进制 + 只读子命令",
+    ("local_query.rs", "run_query", "backend 二进制 + 只读子命令",
      "本机只读查询：`bin` 同上来自候选表，`args` 是本模块构造的固定子命令
           ★ 三条策略为什么是这三格：与上一行只差最后一格：查询的 stderr **是返回值**（`QueryOutcome` 按它分类），接进滚动日志等于把调用方本来就拿得到的话再抄一遍。`Hidden` 那格先前是裸 `.output()`。",
      "Hidden · JobKillOnClose · Captured（宿主注入：local_backend_one_shot_query）"),
@@ -145,16 +145,16 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           ★ 三条策略为什么是这三格：先前是裸 `.output()`：Windows 上 `ssh.exe` 是控制台子系统，每解析一次别名闪一个黑框。`Captured`：stderr 进「退出非 0」那句话。",
      "Hidden · JobKillOnClose · Captured"),
     // ── `K-P1`：常驻那条路 ──────────────────────────────────────────────
-    ("local_daemon.rs", "spawn_detached", "被脱离起来的 daemon 二进制",
+    ("local_backend_host.rs", "spawn_detached", "被脱离起来的后端二进制",
      "本机后端**脱离宿主**起：`process_group(0)` + stdio 全 null + 协议改走回环监听口。\
-          二进制路径来自 `resolve_daemon_bin`，而**它今天只是个适配器** —— 真正的答案\
+          二进制路径来自 `resolve_backend_bin`，而**它今天只是个适配器** —— 真正的答案\
           （exe 旁的 sidecar → 这份产物自己带的那份 → 释放出来）出自\
           `local_backend::resolve_or_extract` 那**一份共用的解析**，\
           `local_backend::start_or_extract` 走的也是同一份。\
           〔`K-R43` 订正：本行原先写「与 `start_or_extract` 同一个顺序，由一条对拍判据钉着」——\
            那时是**两份手写实现**，而那条判据只对拍顺序，`K-R42` 在它眼皮底下漂过一次仍全程绿。\
            今天钉的不是「两份同序」，是「**两条路都走那一份，且旁边不许再长出第二份取法**」\
-           （`local_daemon::the_two_resolution_paths_still_agree_on_the_order`，名字没改、机制换了）。〕\
+           （`local_backend_host::the_two_resolution_paths_still_agree_on_the_order`，名字没改、机制换了）。〕\
           ⚠ 它必须住在**宿主知识层**而不是 `backend/`：`process_group` 来自 \
           `std::os::unix::process::CommandExt`，而 `std::os::unix` 在 \
           `backend/backend_tests.rs::the_backend_half_stays_platform_agnostic` 的禁针里 —— 写进去当场红，\
@@ -174,7 +174,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
           按源码派生地钉住（`.spawn()` / `creation_flags` / `process_group` / `kill_on_drop`\
           在别处出现一次就红）。",
      "—— **它就是那个出口本身**，没有「它选了哪三条」这回事"),
-    ("local_daemon.rs", "signal_term", "`kill -TERM <pid>`",
+    ("local_backend_host.rs", "signal_term", "`kill -TERM <pid>`",
      "停掉一个**不是本 monitor 起的**常驻实例（上一次 monitor 脱离起的那个）。\
           必须起进程的理由是：monitor 今天**没有 `libc` 这条直接依赖**（它只在依赖树里），\
           为一次「停」按钮加一条直接依赖是更大的代价。\
@@ -193,7 +193,7 @@ fn src_root() -> PathBuf {
 ///
 /// ★ 为什么非把 `build.rs` 并进来：本表问的是「**谁能碰这台机器**」，
 /// 而构建脚本每次 `cargo build`／`cargo check` 都在开发者机器上真跑
-/// （它起 `sh` 与 `git`、往 `OUT_DIR` 复制内嵌 daemon）。
+/// （它起 `sh` 与 `git`、往 `OUT_DIR` 复制内嵌后端）。
 /// 08-08 实测：全仓所有登记表/守卫的扫描根都是 `src/bridge/src` · `src/backend`
 /// · `src/bridge/crates` · `src` · `doc` —— **`src/bridge/build.rs` 一张表都没扫到**，
 /// 它是这些扫描面共同的盲点（与 F65「三张表共享同一个没写下来的前提」同族）。
@@ -420,7 +420,7 @@ fn every_local_spawn_is_declared() {
              ⚠ 08-08 实测：往生产段加一句 `Command::new(\"sh\").arg(\"-c\")`，全仓判据一条不红。\n\
              登记进 `SPAWNS`：写清**起的是什么**、**为什么必须起进程**、\
              以及〔A3 之后〕**它选了哪三条策略**。\n\
-             daemon 侧同类表在 `readonly_guard`（`ALLOWED` + `SPAWN_SITES_TODAY`）。",
+             backend 侧同类表在 `readonly_guard`（`ALLOWED` + `SPAWN_SITES_TODAY`）。",
         missing.join("\n")
     );
 

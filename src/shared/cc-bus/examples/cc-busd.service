@@ -1,5 +1,5 @@
 [Unit]
-Description=cc-bus broker daemon (multi Claude Code 实例消息总线路由)
+Description=cc-bus broker backend (multi Claude Code 实例消息总线路由)
 After=default.target
 
 [Service]

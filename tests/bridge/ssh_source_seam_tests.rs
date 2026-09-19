@@ -25,7 +25,7 @@ async fn a_hello_frame_thaws_the_write_half_and_registers_the_client() {
     assert!(parked.is_some(), "写半边被误消耗了");
     assert!(inbound_client::client_for(origin).is_none());
 
-    // hello ⇒ 解冻 + 登记，且 daemon 声明的命令集透传到客户端。
+    // hello ⇒ 解冻 + 登记，且后端声明的命令集透传到客户端。
     let hello = parse_frame(&hello_line(r#"["ping"]"#));
     let client =
         attach_inbound_client(origin, &mut parked, hello.as_ref()).expect("hello 应当换出客户端");
@@ -75,7 +75,7 @@ fn the_overflow_message_stops_lying_when_state_was_lost() {
     assert!(!m.contains("清单**不全**"), "没截断就别说截断：{m}");
 }
 
-/// 只丢内容帧时**逐字沿用老说法** —— 旧 daemon（`p1x` 之前）不发 `lost`，
+/// 只丢内容帧时**逐字沿用老说法** —— 旧后端（`p1x` 之前）不发 `lost`，
 /// 也落这一档，行为必须与从前一字不差。
 #[test]
 fn the_overflow_message_is_byte_identical_when_only_lines_were_lost() {
@@ -97,11 +97,11 @@ fn the_overflow_message_says_so_when_the_identity_list_was_truncated() {
     assert!(m.contains("不全"), "截断了就要说出来：{m}");
 }
 
-/// ★ **旧 daemon 的 overflow 帧必须照旧能解析**〔additive 的真正代价在这里〕。
+/// ★ **旧后端的 overflow 帧必须照旧能解析**〔additive 的真正代价在这里〕。
 ///
 /// 把 `lost` 当必需字段会让整帧变成坏帧、**连 `dropped` 都丢掉** —— 比不认识新字段更糟。
 #[test]
-fn overflow_from_an_old_daemon_still_parses() {
+fn overflow_from_an_old_backend_still_parses() {
     match parse_frame(r#"{"kind":"overflow","dropped":5}"#) {
         Some(InboundFrame::Overflow {
             dropped,
@@ -109,14 +109,14 @@ fn overflow_from_an_old_daemon_still_parses() {
             lost_truncated,
         }) => {
             assert_eq!(dropped, 5);
-            assert!(lost.is_empty(), "旧 daemon 不发 lost ⇒ 空集");
+            assert!(lost.is_empty(), "旧后端不发 lost ⇒ 空集");
             assert!(!lost_truncated);
         }
-        other => panic!("旧 daemon 的 overflow 解析不出来了：{other:?}"),
+        other => panic!("旧后端的 overflow 解析不出来了：{other:?}"),
     }
 }
 
-/// 新 daemon 的 `lost` / `lost_truncated` 要真的被读进来。
+/// 新后端的 `lost` / `lost_truncated` 要真的被读进来。
 #[test]
 fn overflow_identity_fields_are_actually_parsed() {
     let json = r#"{"kind":"overflow","dropped":2,"lost":[{"kind":"session_removed","subject":"sid-x"},{"kind":"tmux_sessions"}],"lost_truncated":true}"#;
@@ -179,7 +179,7 @@ async fn reply_and_cancelled_frames_reach_the_waiting_caller() {
     inbound_client::unregister(origin, &client);
 }
 
-/// 没有客户端时（daemon 在 hello 之前回应答）不 panic、返回 false。
+/// 没有客户端时（backend 在 hello 之前回应答）不 panic、返回 false。
 #[test]
 fn routing_without_a_client_is_reported_not_panicked() {
     let frame = parse_frame(r#"{"kind":"reply","id":"x","ok":true}"#).expect("reply");
@@ -191,13 +191,13 @@ fn routing_without_a_client_is_reported_not_panicked() {
 
 /// MU14 的回归钉：`probe_control_channel` 必须**真发一条 ping 并等应答**。
 ///
-/// 用内存双工管道扮 daemon：读到请求行就回一条 `reply`。
+/// 用内存双工管道扮后端：读到请求行就回一条 `reply`。
 #[tokio::test]
 async fn the_control_probe_really_sends_a_ping_and_measures_the_round_trip() {
-    // mon_w → dae_r：monitor 写 / 假 daemon 读；dae_w → mon_r：假 daemon 写 / monitor 读。
+    // mon_w → dae_r：monitor 写 / 假后端读；dae_w → mon_r：假后端写 / monitor 读。
     let (mon_w, mut dae_r) = tokio::io::duplex(4096);
     let (mut dae_w, mon_r) = tokio::io::duplex(4096);
-    let fake_daemon = tokio::spawn(async move {
+    let fake_backend = tokio::spawn(async move {
         use tokio::io::AsyncWriteExt;
         let mut rd = BufReader::new(&mut dae_r);
         let mut line = String::new();
@@ -220,16 +220,16 @@ async fn the_control_probe_really_sends_a_ping_and_measures_the_round_trip() {
         out.starts_with("control=ok("),
         "探测应当报成功往返，实得：{out}"
     );
-    let sent = fake_daemon.await.expect("假 daemon task");
+    let sent = fake_backend.await.expect("假 backend task");
     assert!(
         sent.contains(r#""cmd":"ping""#),
-        "假 daemon 收到的不是 ping：{sent}"
+        "假后端收到的不是 ping：{sent}"
     );
 }
 
-/// 旧 daemon（`commands` 空集）：不发任何字节，直接报 unsupported。
+/// 旧后端（`commands` 空集）：不发任何字节，直接报 unsupported。
 #[tokio::test]
-async fn the_control_probe_writes_nothing_to_an_old_daemon() {
+async fn the_control_probe_writes_nothing_to_an_old_backend() {
     let (mon_w, mut dae_r) = tokio::io::duplex(4096);
     let (_dae_w, mon_r) = tokio::io::duplex(4096);
     let hello = parse_frame(&hello_line("[]")).expect("hello");
@@ -246,6 +246,6 @@ async fn the_control_probe_writes_nothing_to_an_old_daemon() {
     match read {
         Err(_) => {}
         Ok(Ok(0)) => {}
-        Ok(other) => panic!("对旧 daemon 发了字节：{other:?}"),
+        Ok(other) => panic!("对旧后端发了字节：{other:?}"),
     }
 }

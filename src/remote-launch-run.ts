@@ -11,10 +11,10 @@
  * （`runRemoteResumeTmux` 的位置参数签名被 `tests/e2e/restart-cmd-driver.ts` 经 `account-restart.ts`
  * 传递性锁死）。
  */
-// ⚠ 仓里有**两个 `LOCAL_ORIGIN`**：这个是 daemon origin（`"<local>"`，与 Rust
+// ⚠ 仓里有**两个 `LOCAL_ORIGIN`**：这个是 backend origin（`"<local>"`，与 Rust
 // `inbound_client::LOCAL_ORIGIN` 逐字节相同、有跨语言判据钉着）；`accounts.ts` 里那个是
 // `"__local__"`，账号面自己的标记。导错不会红，只会静默查不到通道。
-import { LOCAL_ORIGIN } from "./daemon-policy";
+import { LOCAL_ORIGIN } from "./backend-policy";
 import { commands } from "./ipc/commands";
 import {
   planResumeDirect,
@@ -312,11 +312,11 @@ export async function runRemoteResumeTmux(
   });
 }
 
-/** U8a-2c-1 + **F14**：把 `send-keys` 那半边交给**远端 daemon**（`control/launch.rs`，`mode:"send-into"`）。
+/** U8a-2c-1 + **F14**：把 `send-keys` 那半边交给**远端 backend**（`control/launch.rs`，`mode:"send-into"`）。
  *
  *  @returns 三态 —— `"typed"` = 载荷**真的键入了** ⇒ 终端只需 `attach`；
  *  `"fallback"` = **能证明什么都没发出去** ⇒ 照今天那条整串走；
- *  `"refused"` = daemon 说过话了（或我们无法证明它没执行）⇒ **绝不许回落**。
+ *  `"refused"` = backend 说过话了（或我们无法证明它没执行）⇒ **绝不许回落**。
  *
  *  # ★★ F14 为什么把两态改成三态
  *
@@ -325,11 +325,11 @@ export async function runRemoteResumeTmux(
  *  探测也无 `CCM_GUARD_REJECTED`。于是：
  *
  *  - 一次 `wrong_owner`（门说「这不是本工具的会话」）会被那条**无门**的路重做一遍；
- *  - 更实的一条：daemon **已经过门并键入成功**，但应答排在出方向帧后面、慢链路下 >10s
+ *  - 更实的一条：backend **已经过门并键入成功**，但应答排在出方向帧后面、慢链路下 >10s
  *    ⇒ monitor 侧超时 ⇒ 回落 ⇒ **载荷第二次被键入**，而这次落进一个**已经在跑 claude 的 pane**
  *    ⇒ 那条 `env … claude --resume …` 被当成 **prompt 提交**、写进对话历史、**不可撤销**。
  *
- *  ⇒ 分流判定**不在这里**，它住 Rust 侧的 `backend/control/daemon_route.rs`（与 `kill`/`send-keys`
+ *  ⇒ 分流判定**不在这里**，它住 Rust 侧的 `backend/control/backend_route.rs`（与 `kill`/`send-keys`
  *  共用一份），这里只读它翻出来的 `mayFallBack`。
  *
  *  ⚠ **`"refused"` 要 toast**（改了原来那条「绝不 toast」的纪律）：回落是用户看不出区别的，
@@ -338,7 +338,7 @@ export async function runRemoteResumeTmux(
  *  ⚠ **诚实登记一处仍然 fail-open**：载荷渲染被 Rust 拒（非法 configDir / 会裂的 arg）时走
  *  `"fallback"`，而兜底渲染器（TS）对同样输入**未必拒**。那不是本件引入的（这一格今天根本不经
  *  Rust 渲染）；收成 fail-closed 要连兜底渲染器一起收 ⇒ U8c-3。 */
-async function sendIntoViaDaemon(
+async function sendIntoViaBackend(
   origin: string,
   name: string,
   plan: LaunchPlan,
@@ -347,19 +347,19 @@ async function sendIntoViaDaemon(
     const payload = await commands.render_launch_payload({
       req: buildPayloadRenderRequest(plan),
     });
-    const res = await commands.daemon_send_into({ req: { origin, name, payload } });
+    const res = await commands.backend_send_into({ req: { origin, name, payload } });
     if (res.typed) return { verdict: "typed" };
-    const reason = res.reason ?? "daemon 未给理由";
+    const reason = res.reason ?? "backend 未给理由";
     if (res.mayFallBack) {
       console.debug(`[F14] send-into 回落到整串（证明没发出去）：${reason}`);
       return { verdict: "fallback", reason };
     }
-    // ★ 不许回落：daemon 说过话，或我们无法证明它没执行。
+    // ★ 不许回落：backend 说过话，或我们无法证明它没执行。
     console.debug(`[F14] send-into 被拒，**不回落**：${reason}`);
     return { verdict: "refused", reason };
   } catch (e) {
     // ★★ P1：这里原来把**两件事**混成一件，注释是这么写的 ——
-    //   「两者都在 daemon 那一跳之前 ⇒ 能证明什么都没发出去 ⇒ 可回落」
+    //   「两者都在后端那一跳之前 ⇒ 能证明什么都没发出去 ⇒ 可回落」
     // **对一半错一半**：「没发出去 ⇒ 重做不会重复执行」对；「所以可以回落」错 ——
     // 没发出去只说明**重做是安全的**，**不说明重做走的那条路也会拒**。
     // 而回落那条路是 TS 兜底渲染器，它对同样输入**未必拒**（本文件上面那格逐字承认过）。
@@ -395,15 +395,15 @@ export async function runRemoteResumeIntoExistingTmux(
   mods: LaunchModifiers = {}, // R03：正交修饰 bag（configDir/accountName/modelOverride），见 launch-plan.ts
 ): Promise<boolean> {
   let cmd: string;
-  let viaDaemon = false;
+  let viaBackend = false;
   try {
     const { ctx, plan } = planResumeIntoExistingTmux(sid, name, launcher, mods);
-    // ★ U8a-2c-1：**先试 daemon**。这一格今天的整串是
+    // ★ U8a-2c-1：**先试 backend**。这一格今天的整串是
     //   `tmux send-keys -t '=name:' '<载荷>' Enter; tmux attach -t '=name:'` —— 两半干干净净：
     //   `send-keys` 交给远端 `control/`，`attach` **必须**留在用户自己的终端（§1.3）。
-    //   拿不到控制通道 / daemon 回报未键入 ⇒ 原样回落到整串（**行为逐字不变**），
-    //   所以这条切换在没有 daemon 的远端上是零影响的。
-    const sent = await sendIntoViaDaemon(origin, name, plan);
+    //   拿不到控制通道 / backend 回报未键入 ⇒ 原样回落到整串（**行为逐字不变**），
+    //   所以这条切换在没有后端的远端上是零影响的。
+    const sent = await sendIntoViaBackend(origin, name, plan);
     if (sent.verdict === "refused") {
       // ★ F14：**不许回落**。那条整串没有 §34 的门 ⇒ 回落等于用一条无门的路把
       //   「被门拒绝」或「可能已经键入过」重做一遍（后者会把载荷第二次提交给正在跑的 claude）。
@@ -414,7 +414,7 @@ export async function runRemoteResumeIntoExistingTmux(
     if (sent.verdict === "typed") {
       const attach = planAttach(name);
       cmd = await renderLaunchCommand(origin, attach.ctx, attach.plan);
-      viaDaemon = true;
+      viaBackend = true;
     } else {
       cmd = await renderLaunchCommand(origin, ctx, plan);
     }
@@ -424,8 +424,8 @@ export async function runRemoteResumeIntoExistingTmux(
   }
   return invokeLaunchOrCopyFallback(origin, cmd, {
     success: "已在原 tmux 就地 resume",
-    successDetail: viaDaemon
-      ? `远端 daemon 已在 tmux 会话「${name}」里就地 resume（复用、不新建），新终端窗口正在连接 [${origin}] 接上它。`
+    successDetail: viaBackend
+      ? `远端后端已在 tmux 会话「${name}」里就地 resume（复用、不新建），新终端窗口正在连接 [${origin}] 接上它。`
       : `新终端窗口正在连接 [${origin}] 并在原 tmux 会话「${name}」里 resume 该会话（复用、不新建）。`,
     failureCopied: "拉起失败，已复制就地 resume 命令",
     failureNotCopied: "拉起失败，请手动复制以下命令",
@@ -440,8 +440,8 @@ export async function runRemoteResumeIntoExistingTmux(
  *
  * # 与远端那条的差别只有两处，其余逐字共用
  *
- * ① **载荷那半共用**：同一个 `planResumeIntoExistingTmux` + 同一个 `sendIntoViaDaemon`
- *    + 同一条 `daemon_send_into`（它 `client_for(&origin)`，**本来就传输无关**）。
+ * ① **载荷那半共用**：同一个 `planResumeIntoExistingTmux` + 同一个 `sendIntoViaBackend`
+ *    + 同一条 `backend_send_into`（它 `client_for(&origin)`，**本来就传输无关**）。
  *    这就是 `C1`「差别只允许出现在传输这一跳」的样子。
  * ② **attach 那半本机做不到，而且是结构性的**：`launch_remote_terminal` 只会
  *    `ssh + PowerShell`，而 POSIX 本机 `launch.rs` 逐字「**不开 GUI 终端窗口**」——
@@ -469,13 +469,13 @@ export async function runLocalResumeIntoExistingTmux(
     showActionFailureToast("无法构造就地 resume 命令", String(err));
     return false;
   }
-  const sent = await sendIntoViaDaemon(LOCAL_ORIGIN, name, plan);
+  const sent = await sendIntoViaBackend(LOCAL_ORIGIN, name, plan);
   if (sent.verdict !== "typed") {
     // `fallback` 与 `refused` 在本机是**同一种处置** —— 见头注：本机没有第二条路，
     // 而造一条就是 `C1` 排除的那件事。两者的 `reason` 都原样交给用户。
     showActionFailureToast(
       "就地 resume 未执行",
-      `${sent.reason ?? "本机 daemon 通道不在，无法确认是否已执行"}\n` +
+      `${sent.reason ?? "本机后端通道不在，无法确认是否已执行"}\n` +
         "（本机没有第二条路可回落 —— 造一条就会长出第二套控制语义）",
     );
     return false;
@@ -511,7 +511,7 @@ export async function runLocalResumeIntoExistingTmux(
   // 🔴 **渲不出来就诚实失败，不许回落到前端自己拼一条** —— 两条理由，都不是偏好：
   //   ① §31 最终形态第①条逐字禁「前端硬编码后端命令」，回落等于把它请回来；
   //   ② **走到这一行时后端刚刚证明过自己在**（上面那个 `sent.verdict === "typed"` 是
-  //      本机 daemon 通道真的把载荷键进去了才有的结论）。而「有后端、没有 ccm」是
+  //      本机后端通道真的把载荷键进去了才有的结论）。而「有后端、没有 ccm」是
   //      `DECISIONS.md#R64` 判过的**幽灵态**（用户逐字「不存在什么没装 ccm 装了后端的情况」）
   //      ⇒ 这一行真的 reject 的时候，那是一条**该让人看见的**读数，不是该被糊过去的边角。
   let attachCmd: string;

@@ -19,10 +19,10 @@ impl Sandbox {
     ///
     /// U7-4：此前这里是 `self.0.join(MANIFEST_NAME)` —— 测试的**写侧**与生产的**读侧**
     /// 用同一个常量，常量一起变，测试**结构上不可能因为它变了而失败**。
-    /// U7-3 实测：把内核里的 `MANIFEST_NAME` 改成 `"accts.json"`，daemon 红了 9 条，
+    /// U7-3 实测：把内核里的 `MANIFEST_NAME` 改成 `"accts.json"`，backend 红了 9 条，
     /// monitor **全绿**。那不是「没测到」，是「测不到」。
     ///
-    /// 常量是**实现**，文件名是**契约**（bash 写侧 / daemon / 本机三方共用）。
+    /// 常量是**实现**，文件名是**契约**（bash 写侧 / backend / 本机三方共用）。
     /// 测试该钉契约，所以这里用字面量。
     fn write_manifest(&self, json: &str) {
         std::fs::write(self.0.join("accounts.json"), json).expect("write manifest");
@@ -215,7 +215,7 @@ fn unsafe_config_dirs_are_dropped_not_fatal() {
 /// # 这条为什么单独立一件事做
 ///
 /// U7-3 把 `is_deceptive_char` 抽进 `acct-core` 时做变异验证：
-/// 删掉内核里的 NEL（`U+0085`）⇒ acct-core 红、daemon 红、**monitor 全绿**。
+/// 删掉内核里的 NEL（`U+0085`）⇒ acct-core 红、backend 红、**monitor 全绿**。
 /// 当时如实登记了原因 —— 不是接线没生效，是本模块**只测过 `U+202E` 一个码位**，
 /// 而那恰好是两侧本来都有的。
 ///
@@ -238,16 +238,16 @@ fn every_group_of_deceptive_characters_is_rejected_in_a_config_dir() {
             "集合差过、行为没差",
         ),
         ('\u{00A0}', "NBSP", "两侧都有"),
-        ('\u{1680}', "Ogham space mark", "daemon 缺"),
-        ('\u{2003}', "各类空格（U+2000..200A）", "daemon 缺"),
+        ('\u{1680}', "Ogham space mark", "backend 缺"),
+        ('\u{2003}', "各类空格（U+2000..200A）", "backend 缺"),
         ('\u{200B}', "零宽空格/连接符", "两侧都有"),
         ('\u{2028}', "行分隔", "两侧都有"),
         ('\u{202E}', "双向覆盖（RLO）", "两侧都有"),
-        ('\u{202F}', "narrow NBSP", "daemon 缺"),
-        ('\u{205F}', "medium mathematical space", "daemon 缺"),
-        ('\u{2060}', "word joiner / 不可见运算符", "daemon 缺"),
+        ('\u{202F}', "narrow NBSP", "backend 缺"),
+        ('\u{205F}', "medium mathematical space", "backend 缺"),
+        ('\u{2060}', "word joiner / 不可见运算符", "backend 缺"),
         ('\u{2066}', "双向隔离", "两侧都有"),
-        ('\u{3000}', "ideographic space", "daemon 缺"),
+        ('\u{3000}', "ideographic space", "backend 缺"),
         ('\u{FEFF}', "ZWNBSP / BOM", "两侧都有"),
     ];
     assert!(
@@ -281,7 +281,7 @@ fn the_accounts_library_lives_under_the_contract_directory_name() {
     assert_eq!(
         d.file_name().and_then(|s| s.to_str()),
         Some(".claude-accts"),
-        "账号库目录名变了。这是 bash 写侧 / daemon / 本机三方共用的契约名，\n\
+        "账号库目录名变了。这是 bash 写侧 / backend / 本机三方共用的契约名，\n\
              改了它本机就去别处找账号库，UI 上只表现为「一个账号都没有」。"
     );
 }
@@ -300,30 +300,30 @@ fn the_accounts_library_lives_under_the_contract_directory_name() {
 //
 // 🔴 **`N-F1c`（09-05）订正上半句的理由**：那句话原先逐字写着
 // 「本机侧要认 Windows 盘符（`looks_absolute`）且必须允许 `\` 作分隔符，
-//  所以改成拒 `\..\`；daemon 是 Linux-only，直接把 `\` 当危险字符拒掉。
-//  硬合只能二选一：要么本机失去 Windows 路径，要么 daemon 失去对 `\` 的拒绝。」
+//  所以改成拒 `\..\`；backend 是 Linux-only，直接把 `\` 当危险字符拒掉。
+//  硬合只能二选一：要么本机失去 Windows 路径，要么后端失去对 `\` 的拒绝。」
 // —— **后半段今天不成立了**：本机读口改问后端之后，那个「Linux-only」的前提没了
-// （同一个二进制要在 Windows 上答本机的账号），于是 daemon 那份**也**按同一句话
+// （同一个二进制要在 Windows 上答本机的账号），于是后端那份**也**按同一句话
 // 拆成了「安全性质 + 平台形式」，两边的字符集现在逐字相同。
-// ⇒ 「二选一」那个两难是**假的**：它假设了 daemon 只跑 Linux。
+// ⇒ 「二选一」那个两难是**假的**：它假设了后端只跑 Linux。
 //
 // ⚠ 那**仍然不等于该合**（两条理由，都还硬着）：
-//   ① daemon crate 是 bin-only、刻意不进 workspace，import 不了 `acct-core` 之外的东西
+//   ① backend crate 是 bin-only、刻意不进 workspace，import 不了 `acct-core` 之外的东西
 //      —— 而这两个函数要合就得先有个共同的家，`acct-core` 是唯一候选；
 //   ② `norm_dir` 两侧仍然真的不同（本机多剥一层 `\`），合它是另一件事。
 // ⇒ 合并条件写清：把这两个函数搬进 `acct-core`（连同它们的判据），两侧 import 同一份。
 // ⚠ **同一句订正在 `acct-core` 的模块头注里还有一份没改** —— 那份文件不在 `N-F1c`
-//   的写区里（本件只许动 daemon 那一个函数），已按诚实边界交回 PM。
+//   的写区里（本件只许动后端那一个函数），已按诚实边界交回 PM。
 
 // ---- K-A1：鉴权方式这一维（生产者②） ----
 
 /// ★ **跨生产者对拍，本机这一半。**
 ///
-/// 喂的是 `acct_core::auth_kind_parity_manifest`（daemon 那半喂的是**同一个函数**
+/// 喂的是 `acct_core::auth_kind_parity_manifest`（backend 那半喂的是**同一个函数**
 /// 的输出），断的是 `acct_core::AUTH_KIND_PARITY_CASES` 里手写的金样。
 /// ⇒ 两个生产者里任意一个自己填一个默认值，它那半当场红。
-/// daemon 那半住 `src/backend/observe/accounts_query.rs::
-/// tests::auth_kind_parity_daemon_side`。
+/// backend 那半住 `src/backend/observe/accounts_query.rs::
+/// tests::auth_kind_parity_backend_side`。
 ///
 /// ⚠ 射程如实写（`KA6c`）：**只覆盖 `authKind` / `authReady` 这一维**。
 /// 其余 6 个字段今天仍是两份实现各写一遍，这条对拍看不见它们漂。
@@ -389,7 +389,7 @@ fn auth_kind_parity_local_side() {
 /// `acct_core::auth_ready(`，`authKind` 只许来自 `AuthKind::from_manifest(`。
 /// 有人在这儿手写 `if kind == AuthKind::ApiKey { true } else { … }`，本条红。
 ///
-/// ⚠ 射程如实写：**只管本文件**（daemon 那份由它自己那条同名判据守），
+/// ⚠ 射程如实写：**只管本文件**（backend 那份由它自己那条同名判据守），
 /// 而且是**字面量扫描** —— 把 helper 重新 `use` 成别名就绕得过去。
 /// 真正的地板不是它，是 `acct-core` 里只有一份实现。
 #[test]
@@ -436,7 +436,7 @@ fn the_auth_dimension_has_exactly_one_computation_path() {
 
 // ---- `N-F1c`：读口改问本机后端 ----
 
-/// daemon `--list-accounts` 出参的一份**已知假清单**：首行 meta，其后每账号一行。
+/// backend `--list-accounts` 出参的一份**已知假清单**：首行 meta，其后每账号一行。
 ///
 /// ⚠ 逐字写死成字面量、**不用**任何生产常量拼 —— 同本文件 `write_manifest`
 /// 那条纪律：测试该钉契约，用生产常量拼的话常量一起变、判据结构上不可能红。
@@ -499,7 +499,7 @@ fn a_known_fake_listing_comes_back_with_the_right_accounts() {
 
 /// ★★ `NF1cD3`：**三个结局在类型上分得开，三句话两两不同。**
 ///
-/// 形状照 `daemon_policy` 那族「四条文案两两不同」——
+/// 形状照 `backend_policy` 那族「四条文案两两不同」——
 /// 判定不是「源码里出现了三个枚举名」，是**说出来的那三句话真的不一样**。
 #[test]
 fn the_three_endings_are_told_apart_and_say_different_things() {

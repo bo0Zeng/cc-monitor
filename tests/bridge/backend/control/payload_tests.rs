@@ -113,7 +113,7 @@ fn every_business_rejection_is_tagged() {
     assert!(
         offenders.is_empty(),
         "渲染路径上有**没打标**的业务拒绝：\n  {}\n\n\
-             全部要经 `refuse(...)`（见它的头注）。不打标 ⇒ TS 侧 `sendIntoViaDaemon` 分不出\n\
+             全部要经 `refuse(...)`（见它的头注）。不打标 ⇒ TS 侧 `sendIntoViaBackend` 分不出\n\
              「载荷渲染被拒」与「IPC 异常」⇒ 会**回落到兜底渲染器**，而它对同样输入未必拒\n\
              ⇒ 一次 Rust 侧的 fail-closed 当场变成 fail-open。",
         offenders.join("\n  ")
@@ -128,11 +128,11 @@ fn every_business_rejection_is_tagged() {
 /// 一个检查都没有** —— 它被直接 `push` 进 `argv` 再 `join(" ")`。
 /// 而 `render_launch_payload` 是**注册过的 tauri 命令**：`launcher` 来自 webview。
 ///
-/// ⚠⚠ **次轮先核订正了赌注**：这道检查是**纵深不是边界** —— `daemon_send_into`
+/// ⚠⚠ **次轮先核订正了赌注**：这道检查是**纵深不是边界** —— `backend_send_into`
 /// 的 `payload` 同样来自 webview 且只受「非空/长度/无控制字符」约束，
 /// 前端本来就能绕过本函数直接送任意载荷。本条挡的是**缺陷**（走文档化那条路时
 /// 把注入串拼进载荷）与**姿态不一致**（同函数 `args` 有闸而 `launcher` 没有）。
-/// 真边界在 daemon 的 `admit` 与前端执行面 —— 见 `ROADMAP §5` 那条登记。
+/// 真边界在后端的 `admit` 与前端执行面 —— 见 `ROADMAP §5` 那条登记。
 ///
 /// 该字段的头注写着「已 sanitize 过的 launcher …… 本 crate 收的是**结果**」——
 /// 那是**调用约定**，不是这一侧的保证：wire 那条路（`launch_wire.rs`）把
@@ -550,8 +550,8 @@ fn model_export_is_quoted() {
 
 /// ★★ `KH2B4` 的 monitor 半 —— [`RELAY_ROUTE_SAMPLE`] 是**构造口真的产出的那一串**。
 ///
-/// 它与 daemon 侧那条 `include_str!` 本文件的判据一起，把两侧焊在同一行样例上：
-/// 谁改了这边的拼法而没改样例 ⇒ 本条红；样例改了而 daemon 那边解析出别的段 ⇒ 那边红。
+/// 它与后端侧那条 `include_str!` 本文件的判据一起，把两侧焊在同一行样例上：
+/// 谁改了这边的拼法而没改样例 ⇒ 本条红；样例改了而后端那边解析出别的段 ⇒ 那边红。
 #[test]
 fn the_relay_route_sample_is_what_the_builder_really_produces() {
     // 期望值是**手写字面量**（不是拿被测函数算出来的，否则自证恒绿）。
@@ -562,7 +562,7 @@ fn the_relay_route_sample_is_what_the_builder_really_produces() {
     assert_eq!(
         RELAY_ROUTE_SAMPLE,
         relay_route_path("claude-code", "acct-a", "k-0123456789abcdef").unwrap(),
-        "跨半边那行样例与构造口漂开了 —— daemon 侧那条判据量的就不是生产段的拼法了"
+        "跨半边那行样例与构造口漂开了 —— backend 侧那条判据量的就不是生产段的拼法了"
     );
 }
 
@@ -817,8 +817,8 @@ fn exported_var_names(chunks: &[String]) -> Vec<String> {
 /// 容器路那份**源码**的住址：`src/backend/control/ccm/plan.rs`。
 ///
 /// 🔴 〔`K-R48` 第二拍 09-11〕从前这里是 `include_str!("../../../../src/shared/ccm")`。
-/// 那个 bash 脚本删了（`K33`：「不要有什么 bash 脚本」），容器路整条搬进了 daemon 那个 crate。
-/// ⇒ 改成**运行期读**那份 Rust 源码：`include_str!` 会在 monitor 与 daemon 之间
+/// 那个 bash 脚本删了（`K33`：「不要有什么 bash 脚本」），容器路整条搬进了后端那个 crate。
+/// ⇒ 改成**运行期读**那份 Rust 源码：`include_str!` 会在 monitor 与后端之间
 /// 造一条**编译期**跨 crate 边（`cross_half_edge_registry` 那族要单独登记），
 /// 而本条要的只是「读一份文本」。
 fn container_path_source() -> String {
@@ -837,7 +837,7 @@ fn container_path_source() -> String {
 /// `format!("export {}={}; {payload}", env.account_env, sq(v))` —— 变量名是**运行期**才知道的
 /// （`agents::account_env_of(<这一趟的 agent>)`）。左集里也没有它（左集是 monitor 在
 /// **ccm 外面** export 的那些，账号目录走的是 argv 不是 export）⇒ 抠不到它不影响这道闸。
-/// **它由 daemon 侧那条 `the_container_path_forwards_every_inherited_variable_inward` 钉着。**
+/// **它由后端侧那条 `the_container_path_forwards_every_inherited_variable_inward` 钉着。**
 ///
 /// 🔴 窗口取不到 / 一条都数不到就 **panic**，不许回空表冒充「零条」：
 /// 回空表会把下面的 ⊆ 从「今天成立」翻成「今天全违规」—— 方向相反，但同样是假读数。
@@ -1059,7 +1059,7 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     let right = forwarded_by_container_path(&ccm);
     // 🔴 〔`K-R48` 第二拍 09-11〕**分母从 3 改成 2，改的是尺子的射程，不是转发面缩了。**
     //    容器路今天仍然转发**三个**（`CLAUDE_CONFIG_DIR` · `ANTHROPIC_BASE_URL` · `CCM_LAUNCH_ID`），
-    //    daemon 侧 `the_container_path_forwards_every_inherited_variable_inward` 逐条钉着。
+    //    backend 侧 `the_container_path_forwards_every_inherited_variable_inward` 逐条钉着。
     //    这里只数得到 2：账号那条在 Rust 里写成 `format!("export {{}}={{}}; …", env.account_env, …)`
     //    —— 变量名**运行期**才知道（`agents::account_env_of(<这一趟的 agent>)`），
     //    源码里根本没有那个字面量可抠。⇒ **如实把分母降到这把尺子真数得到的那个数**，
@@ -1234,7 +1234,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
         "TS 兜底渲染器服务的是**远端**那族（`tryRenderCli` 拒了之后的回落），\
              而本件 `§0e` 裁四明写只保本机、远端那一半 `判不了`（要先给 `creds.relay-key` 找到主人）。";
     const NOT_WIRED_WINDOW: &str =
-        "开窗那一跳给的是**终端进程**的 env（`daemon_bin_env_for_window`），\
+        "开窗那一跳给的是**终端进程**的 env（`backend_bin_env_for_window`），\
              而 agent 进程的 env 由它里面那条命令串自己带 ⇒ 同一件事在 A/B 两处已经做了，\
              在这里再做一遍是第二个决定点。";
     let plan_rs = container_path_source();
@@ -1254,11 +1254,11 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
             wired: None,
         },
         // 🔴 〔`K-R48` 第二拍 09-11〕原来这一格是 `C · shared/ccm`（`include_str!` 那个 bash 脚本，
-        //    针 `export CLAUDE_CONFIG_DIR=`、该有 3 处）。脚本删了，容器路整条搬进了 daemon 那个 crate
+        //    针 `export CLAUDE_CONFIG_DIR=`、该有 3 处）。脚本删了，容器路整条搬进了后端那个 crate
         //    ⇒ 换住址、换针形（Rust 那侧账号那条写的是 `export {}=`，变量名运行期才定），
         //    **该有几处、接没接上、理由，三样一个字没改**。
         Site {
-            what: "C · control/ccm/plan.rs（容器路，daemon crate）",
+            what: "C · control/ccm/plan.rs（容器路，backend crate）",
             src: &plan_rs,
             // 3 处：`--print`/真跑共用的那条渲染（`render_direct` 的账号段）· 容器路把继承值
             // 写进载荷内侧 · `--base` 那条 `unset` 的对侧。
@@ -1332,7 +1332,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
 /// 上一拍（08-28）买那条缝时，`RelayFactSources` 的头注里逐字写着
 /// 「这两个取值口的**生产消费方恰好 2**」，并把那句话当成了闸。
 /// `D6` 的刀 `E5` 打穿它：在 `lib.rs` 加**第三个**消费方、绕开缝直接调
-/// `history::relay_rows()` / `local_daemon::relay_running()`
+/// `history::relay_rows()` / `local_backend_host::relay_running()`
 /// ⇒ **`1227 passed; 0 failed`、`GATE: OK`、四个数与干净树逐字相同。**
 /// ⇒ 那句头注买到的是「**这两处**走缝」，**没买到「所有人都得走缝」**。
 /// ★ PM `§8 裁四` 的定性：**治一个「今天数出来的 N」的过程中，长出了一个新的。**
@@ -1352,7 +1352,7 @@ fn the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated(
 /// - `scan_tree!` **按构造摘除调用者自己那份** ⇒ 本文件（`payload.rs`）不在人群里。
 ///   本文件今天不提那几个符号；真要在这里绕缝，本条看不见 —— **登记，不假装钉住了**。
 ///   （这也是本条**不住 `history.rs`** 的理由：住在那里等于把缝自己那一份摘出人群。）
-/// - 它只看 Rust 侧。别的 crate（daemon）够不着这几个符号（单向依赖）。
+/// - 它只看 Rust 侧。别的 crate（backend）够不着这几个符号（单向依赖）。
 /// - `let f = crate::history::relay_rows; f()` 这一形由裸标识符那一半接住（会变成 3）。
 #[test]
 fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
@@ -1380,11 +1380,11 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
     //
     // ⚠ **这两格仍然是计数制，别顺手统一成下面那种住址制**〔ccbus-win 09-10〕：
     //   它们今天**没有第二类消费者** —— 除了缝，谁都不该调 `relay_rows`（读文件）
-    //   / `relay_running`（问 daemon）。计数对它们仍然是对的答案。
+    //   / `relay_running`（问后端）。计数对它们仍然是对的答案。
     let mut counts = [
         // 定义 1 处（`history.rs`）+ 缝里 `rows: relay_rows,` 1 处。
         ("relay_rows", 1usize, 2usize, 0usize, 0usize),
-        // 定义 1 处（`local_daemon.rs`）+ 缝里 `running: crate::local_daemon::relay_running,` 1 处。
+        // 定义 1 处（`local_backend_host.rs`）+ 缝里 `running: crate::local_backend_host::relay_running,` 1 处。
         ("relay_running", 1, 2, 0, 0),
     ];
 
@@ -1401,7 +1401,7 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
     //   「**重新裁定**并在这里说清为什么这一处可以不走」。
     //
     // ⚠ **走缝是错的出路**：为了问一句「是不是 Windows」而调 `history::relay_facts()`，
-    //   会顺带跑 `relay_rows()`（读文件）与 `relay_running()`（问 daemon）。
+    //   会顺带跑 `relay_rows()`（读文件）与 `relay_running()`（问后端）。
     //
     // # 换制之后它比原来强在哪（**有读数，不是设想**）
     //
@@ -1427,7 +1427,7 @@ fn nobody_reaches_the_relay_take_points_without_going_through_the_seam() {
             "`resolve_bash` 的平台那一格〔ccbus-win 09-10〕。它不走缝的理由是\
                  **缝答的不是它要问的东西**：`RelayFactSources` 是「中转」那三件事的取值口，\
                  而这里只要「是不是 Windows」，走缝要顺带付 `relay_rows()`（读文件）\
-                 与 `relay_running()`（问 daemon）两笔钱。\
+                 与 `relay_running()`（问后端）两笔钱。\
                  ⚠ 它**没有**因此自己写 `cfg!(windows)` —— 那句话仍然只有一个家，\
                  由 `cc_bus::tests::the_bash_cc_bus_runs_is_resolved_in_exactly_one_place` \
                  从另一头钉住（那条判据要求本文件里 `cfg!(windows)` 恰好 0 处）。",

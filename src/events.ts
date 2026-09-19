@@ -49,7 +49,7 @@ export interface EventHandlers {
   onSessionEnded: (sessionId: string) => void;
   /**
    * audit-fixes F03.2：远端 claude 退出但 tmux 会话仍在 → 灰灯（idle-tmux）。后端 emitter
-   * 收 daemon removed 且 `@ccm_sid` present 时 emit `session-idle`（**不** emit session-ended，
+   * 收 backend removed 且 `@ccm_sid` present 时 emit `session-idle`（**不** emit session-ended，
    * 故不归档）。与 session-ended 同进 queue：二者对同一 sid 互斥（emitter removed 臂择一），
    * 但需相对该会话的行/后续 remote-added 保序（idle 在行之后、复活 remote-added 之前）。
    * 前端 tabs.markTmuxIdle 置灰点。
@@ -66,13 +66,13 @@ export interface EventHandlers {
     meta: { cwd: string | null; kind: string | null; name: string | null },
   ) => void;
   /** Batch5-F18：远端会话宣告 → 建骨架 Tab（不等首行）。Batch7-F24：附 pidfile
-   *  元信息（p1e daemon 起有值；旧 daemon → null）。 */
+   *  元信息（p1e backend 起有值；旧 backend → null）。 */
   onRemoteSessionAdded?: (
     sessionId: string,
     origin: string,
     meta: {
       kind: string | null;
-      /** E73：`null` = 没说（旧 daemon / 存量会话）= 视为可以 attach。 */
+      /** E73：`null` = 没说（旧 backend / 存量会话）= 视为可以 attach。 */
       attachable: boolean | null;
       cwd: string | null;
       name: string | null;
@@ -122,14 +122,14 @@ type QueueItem =
       sessionKind: string | null;
       name: string | null;
     }
-  // Batch5-F18：远端会话宣告（daemon session_added 透传）——骨架 Tab 入口。
+  // Batch5-F18：远端会话宣告（backend session_added 透传）——骨架 Tab 入口。
   // 走同一 queue 与 ended/started/行保序（INVARIANT § 20 / issue #20 教训）。
   | {
       kind: "remote-added";
       sessionId: string;
       origin: string;
       sessionKind: string | null;
-      /** E73：attach 进去对人有没有意义。`null` = 没说（旧 daemon / 存量会话）= 视为可以。 */
+      /** E73：attach 进去对人有没有意义。`null` = 没说（旧 backend / 存量会话）= 视为可以。 */
       attachable: boolean | null;
       cwd: string | null;
       name: string | null;
@@ -485,7 +485,7 @@ export async function bindEvents(
   // tabs.ts ensureTab 的远端 un-archive（archived + origin!==null 见行即复活），
   // 重载对账补发的归档被原样吃掉 → 僵尸 live Tab。入队后前端处理顺序 = 后端
   // emit 顺序（重放块全部在前、补发 ended 在后；实时 ended 也天然晚于该会话的行：
-  // daemon 协议 removed 帧在行帧之后）。tabs.ts 的 pendingArchive 保留为防御层
+  // backend 协议 removed 帧在行帧之后）。tabs.ts 的 pendingArchive 保留为防御层
   //（§ 17a 双层防御：万一 ended 仍早于建 Tab 的行，建 Tab 时落实归档）。
   registrations.push(
     sub<SessionEndedPayload>("session-ended", (e) => {

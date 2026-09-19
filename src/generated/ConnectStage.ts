@@ -2,7 +2,7 @@
 
 /**
  * Batch14-F46：连接分阶段事件（测试连接时经 Tauri Channel 流给前端做泳道日志）。
- * 只在 `test_remote_connection` 路径 emit（emitter=Some）;daemon 流/exec/SFTP 传 None,
+ * 只在 `test_remote_connection` 路径 emit（emitter=Some）;backend 流/exec/SFTP 传 None,
  * 零开销零事件。阶段取 russh 能干净观测的粒度——不含 KEX（russh 不暴露 KEX 回调,
  * HostKey 触发即隐含 TCP+KEX 已过）。
  */

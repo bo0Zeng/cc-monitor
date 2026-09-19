@@ -232,12 +232,12 @@ fn the_golden_table_is_actually_read_from_the_monitor_side_fixture() {
     }
 }
 
-/// ★ daemon 这一侧对同一张表给出同样的判定。
+/// ★ backend 这一侧对同一张表给出同样的判定。
 ///
 /// ⚠ **不许改成「调 monitor 的实现来对拍」** —— 两侧一起错就全绿了。
 /// 两侧各自独立读这张表，才叫跨轨。
 #[test]
-fn the_daemon_side_agrees_with_the_golden_table() {
+fn the_backend_side_agrees_with_the_golden_table() {
     let mut bad = Vec::new();
     for (id, name, sid, want) in golden_rows() {
         let got = gate_core::gate2(&name, sid.as_deref()).as_str();
@@ -249,7 +249,7 @@ fn the_daemon_side_agrees_with_the_golden_table() {
     }
     assert!(
         bad.is_empty(),
-        "daemon 侧与判定表不一致：\n{}",
+        "backend 侧与判定表不一致：\n{}",
         bad.join("\n")
     );
 }
@@ -257,7 +257,7 @@ fn the_daemon_side_agrees_with_the_golden_table() {
 /// ★ 生产接线：`admit` 通过之后回的是**句柄**，不是名字 —— TOCTOU 那条的落点。
 ///
 /// 这里只钉「解析出来的形状」；真 tmux 上的行为由
-/// `tests/e2e/daemon-gate2-acceptance.sh` 钉（那才是真二进制那一轨）。
+/// `tests/e2e/backend-gate2-acceptance.sh` 钉（那才是真二进制那一轨）。
 #[test]
 fn a_probe_line_parses_into_a_handle_and_a_sid() {
     // 直接构造探测输出的解析结果，不起进程（起进程是 e2e 的事）。
@@ -330,7 +330,7 @@ fn the_probe_format_asks_for_both_fields() {
 /// `K-R56` 在 monitor 侧立了 `tmux.rs` 里那条
 /// `tests::the_ssh_fallback_always_probes_before_it_acts`〔散文墓碑〕，
 /// 守的是「那条一次性 SSH 回落上，四种守护形态一个不漏地**先探会话、探不到就不动手**」。
-/// 立它的理由逐字是：daemon 的 [`admit`] **恒先 `probe`**，而 monitor 那条退化分支
+/// 立它的理由逐字是：backend 的 [`admit`] **恒先 `probe`**，而 monitor 那条退化分支
 /// （`cc-*` 名的 send-keys）**一次探测都没有** ⇒ 两条路的门不等价（`K-R54` 表第 1 处）。
 ///
 /// 🔴 `K-R72` 把 monitor 那条路整个删了 ⇒ **那条判据的被测对象没有了，而它守的性质还在**
@@ -344,7 +344,7 @@ fn the_probe_format_asks_for_both_fields() {
 ///   `no_such_session`，而放行交出的是**探回来的句柄** `p.session_id`，
 ///   不是调用方给的名字。
 /// - **不判**：「探对了」。那要真 tmux，本区口径禁（`K-R56#§0d`）。
-///   行为那一半在 `tests/e2e/daemon-gate2-acceptance.sh`（真 daemon 二进制 + 真 tmux server，
+///   行为那一半在 `tests/e2e/backend-gate2-acceptance.sh`（真后端二进制 + 真 tmux server，
 ///   用例逐行来自同一张 `gate2-golden.tsv`）。
 /// - ⚠ **约定型守卫**：扫的是本文件自己的源码形态，挡得住「顺手把 probe 挪到动作后面 /
 ///   删掉 `else` 那一支」，挡不住「换个名字继续错」。**比没有强，别读成证明。**
@@ -386,7 +386,7 @@ fn both_gates_always_probe_before_they_act() {
         assert!(
             body.contains(HANDLE_OUT),
             "`{sig}` 放行时交出来的不是探回来的句柄 `{HANDLE_OUT}` ——\n\
-                 对**名字**下手就把 TOCTOU 窗口留着（`K-R54` 表第 2 处判「留 daemon」\n\
+                 对**名字**下手就把 TOCTOU 窗口留着（`K-R54` 表第 2 处判「留后端」\n\
                  的理由逐字就是这一条）。实得这一段：{body:?}"
         );
     }
@@ -488,7 +488,7 @@ fn repo_root() -> std::path::PathBuf {
     crate::guard_support::repo_root()
 }
 
-/// ★ `daemon-gate2` 的地板必须**恰好等于这套件今天够得到的那个数**：
+/// ★ `backend-gate2` 的地板必须**恰好等于这套件今天够得到的那个数**：
 /// `总槽位 − 已登记豁免数`。**两侧各红一件不同的事**，诊断也是两段不同的话
 /// （照 `assert-pass-floor.sh` 头注那条纪律：`-lt` 与 `-gt` 治的不是同一个病）：
 ///
@@ -505,10 +505,10 @@ fn repo_root() -> std::path::PathBuf {
 fn the_gate2_floor_still_makes_a_skip_hurt() {
     let root = repo_root();
     let ci = std::fs::read_to_string(root.join(".github/workflows/ci.yml")).expect("ci.yml 读不到");
-    let mark = "assert-pass-floor.sh daemon-gate2 ";
+    let mark = "assert-pass-floor.sh backend-gate2 ";
     let at = ci
         .find(mark)
-        .expect("ci.yml 里没有 `assert-pass-floor.sh daemon-gate2 <地板>` 调用行");
+        .expect("ci.yml 里没有 `assert-pass-floor.sh backend-gate2 <地板>` 调用行");
     let floor: usize = ci[at + mark.len()..]
         .split_whitespace()
         .next()
@@ -532,7 +532,7 @@ fn the_gate2_floor_still_makes_a_skip_hurt() {
     // ── 输入 ②：**已登记豁免数，从套件自己的 `waiver_reason()` 现数** ────────────
     //
     // 不在本文件抄一份。抄一份就又是「同一个量两处各写一份」，而下面两条治的正是那个形状。
-    let sh = std::fs::read_to_string(root.join("tests/e2e/daemon-gate2-acceptance.sh"))
+    let sh = std::fs::read_to_string(root.join("tests/e2e/backend-gate2-acceptance.sh"))
         .expect("e2e 脚本读不到");
     // ⚠ 刻意**不复用**上面那个 `at`（那是 ci.yml 里的偏移）—— 两个不同的量不共一个名字。
     //
@@ -608,7 +608,7 @@ fn the_gate2_floor_still_makes_a_skip_hurt() {
     // ★ 低了：**一个字没松的那一侧**。
     assert!(
         floor >= reachable,
-        "`daemon-gate2` 的地板 {floor} 低于它够得到的 {reachable}\n\
+        "`backend-gate2` 的地板 {floor} 低于它够得到的 {reachable}\n\
              （总槽位 {slots} = 判定表 {rows} 行 + 表外固定场景 {FIXED_SLOTS}；已登记豁免 {waivers} 条）。\n\
              ★ **低下去，就有一格可以被静默地不验了** —— 那正是 `assert-pass-floor.sh` 头注写的\n\
              失效模式：不是变红，是**静默缩水**。\n\
@@ -618,7 +618,7 @@ fn the_gate2_floor_still_makes_a_skip_hurt() {
     // ★ 高了：这条是 `CI-J3` 新加的那颗牙 —— 08-06 起挡着半条流水线的正是它。
     assert!(
         floor <= reachable,
-        "`daemon-gate2` 的地板 {floor} **高于它够得到的 {reachable}**\n\
+        "`backend-gate2` 的地板 {floor} **高于它够得到的 {reachable}**\n\
              （总槽位 {slots} = 判定表 {rows} 行 + 表外固定场景 {FIXED_SLOTS}；已登记豁免 {waivers} 条）。\n\
              🔴 **一条够不到的地板不是判据，是路障**：它不会以「地板红」的形式被看见，\n\
              只会以「排在它后面的每一步整片 skipped」的形式被看见 —— 08-06 到 09-09 就是这么过的。\n\
@@ -640,7 +640,7 @@ fn the_gate2_floor_still_makes_a_skip_hurt() {
 /// 那正是 F20 上半修掉的东西。
 #[test]
 fn the_selfevidencing_skip_branch_is_still_there() {
-    let sh = std::fs::read_to_string(repo_root().join("tests/e2e/daemon-gate2-acceptance.sh"))
+    let sh = std::fs::read_to_string(repo_root().join("tests/e2e/backend-gate2-acceptance.sh"))
         .expect("e2e 脚本读不到");
     for needle in ["has-session -t \"=$name:\"", "实际会话："] {
         assert!(

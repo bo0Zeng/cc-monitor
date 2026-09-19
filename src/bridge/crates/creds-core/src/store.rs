@@ -4,9 +4,9 @@
 //!
 //! 三条理由，每条都指向本仓一条真实存在的判据：
 //!
-//! 1. **daemon 只许读，不许写**〔`K-H2a` 裁四〕：`readonly_guard.rs` 扫 daemon 生产段
+//! 1. **backend 只许读，不许写**〔`K-H2a` 裁四〕：`readonly_guard.rs` 扫后端生产段
 //!    （剥掉 `#[cfg(test)]` 块之后）断言**不含任何文件系统变更调用**，白名单**恰好一个模块**
-//!    `control/fork_write.rs`。本 crate 被 daemon depend ⇒ 写调用放进来是在给那道护栏挖洞。
+//!    `control/fork_write.rs`。本 crate 被 backend depend ⇒ 写调用放进来是在给那道护栏挖洞。
 //! 2. **写盘落点必须被登记表看见**：`src/bridge/src/write_site_registry.rs` 与
 //!    `atomic_replace_registry.rs` 的扫描根**都是 `src/bridge/src`**
 //!    （两者的 `src_root()` 逐字是 `CARGO_MANIFEST_DIR/src`）——
@@ -91,7 +91,7 @@ pub const LEGACY_ACCOUNT_ID: &str = "default";
 ///
 /// # 为什么住这里，而不是两边各写一份字面量
 ///
-/// monitor 与 daemon 各有自己的「家目录」解析（前者 `paths::resolve_monitor_data_dir`，
+/// monitor 与后端各有自己的「家目录」解析（前者 `paths::resolve_monitor_data_dir`，
 /// 后者 `agents::claudecode::paths::resolve_home`），但**落点的相对路径必须是同一个** ——
 /// 两边各写一份字符串，漂开的那天没有任何东西会说，而症状是
 /// 「界面上配好了，中转说没配」这种**查不出来**的形状。
@@ -346,7 +346,7 @@ pub struct AccountEntry {
 ///
 /// # 它**不**做什么
 ///
-/// 不判 `id` 能不能当路由段用（那要 `route::segment_is_safe`，住 daemon 那一侧，
+/// 不判 `id` 能不能当路由段用（那要 `route::segment_is_safe`，住后端那一侧，
 /// 本 crate 刻意不认识 HTTP）· 不解析 `base_url`（那要 `upstream::Base`，同上）。
 /// ⇒ **这两格由中转在装表那一刻判并出声**，本函数只负责「文件里写了什么」。
 pub fn read_accounts(doc: &Map<String, Value>) -> Vec<AccountEntry> {
@@ -431,7 +431,7 @@ pub fn merge_account_key(
 ///
 /// # 它为什么收 `current` 而不是收一个 `&mut self`
 ///
-/// `daemon_policy.rs` 头注逐字记着本仓踩过的那个形状：同一个文件有两个写者时，
+/// `backend_policy.rs` 头注逐字记着本仓踩过的那个形状：同一个文件有两个写者时，
 /// 「前端『读—改—写』整份的那一刻，会把 Rust 刚写进去的键按一份**陈旧副本**覆盖掉」。
 /// **本件是同一个形状换了两个当事人（程序 vs 人手）。**
 /// ⇒ 签名逼着调用方在**写的那一刻**把盘上的当前内容递进来，

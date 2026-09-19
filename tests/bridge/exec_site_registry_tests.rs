@@ -42,11 +42,11 @@ const EXEC_SITES: &[(&str, &str, Origin, &str)] = &[
     //    整条没了（编排改走后端帧面）⇒ 它不再是一个「远端执行点」。
     //    留着它，上面那条反向锚点（「申报了一处已经不存在的执行点」）会当场逮住。
     // ── 本函数里拼，但自由文本过了 shell_quote
-    ("remote_history.rs", "run_list_query", Origin::Quoted, "daemon 路径经引用后拼 args"),
-    ("remote_history.rs", "stream_read_remote_session", Origin::Quoted, "daemon 路径与 jsonl 路径各引用一次"),
-    ("ssh_source.rs", "connect_and_exec", Origin::Quoted, "daemon 路径经引用"),
-    ("ssh_source.rs", "fetch_snapshot", Origin::Quoted, "daemon 路径与目标路径各引用一次"),
-    ("tmux.rs", "list_remote_tmux", Origin::Quoted, "唯一插值是常量 `TMUX_LS_FMT`（双写点由 `tmux.rs`/daemon 对拍守）；\
+    ("remote_history.rs", "run_list_query", Origin::Quoted, "backend 路径经引用后拼 args"),
+    ("remote_history.rs", "stream_read_remote_session", Origin::Quoted, "backend 路径与 jsonl 路径各引用一次"),
+    ("ssh_source.rs", "connect_and_exec", Origin::Quoted, "backend 路径经引用"),
+    ("ssh_source.rs", "fetch_snapshot", Origin::Quoted, "backend 路径与目标路径各引用一次"),
+    ("tmux.rs", "list_remote_tmux", Origin::Quoted, "唯一插值是常量 `TMUX_LS_FMT`（双写点由 `tmux.rs`/backend 对拍守）；\
           本函数不吃自由文本 —— 归 Quoted 是因为它在函数里拼，机检只要求「拼的地方要么有引用、要么插的是常量」"),
     // ── 只转发，不构造（命令来自调用方）
     ("ssh_source.rs", "connect_and_exec_cmd", Origin::PassThrough, "★ 这是原语**自己的定义**，不是调用点"),
@@ -164,7 +164,7 @@ fn every_remote_exec_declares_where_its_command_came_from() {
     assert!(
         found.len() >= 12,
         "全树只找到 {} 处 `connect_and_exec_cmd(` 调用（08-07 实测 16；\
-             **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走 daemon 帧面之后各少一处）\
+             **`K-R112` 09-13 现打 14** —— 查在线与抓屏那两处改走后端帧面之后各少一处）\
              —— 抽取器坏了，本条此刻无效",
         found.len()
     );

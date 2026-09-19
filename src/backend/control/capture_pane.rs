@@ -4,14 +4,14 @@
 //! # 它补的是哪个洞
 //!
 //! monitor 侧 `src/bridge/src/parity_ledger.rs` 的 `tmux.manage` 那一格逐字记了一个月：
-//! 「能不能预览这件事一点没变，**仍等 daemon 出原语**」。**本模块就是那条原语。**
+//! 「能不能预览这件事一点没变，**仍等后端出原语**」。**本模块就是那条原语。**
 //!
-//! 在它之前 daemon 会 `list-sessions`（`common/session_snapshot.rs`）、会
+//! 在它之前后端会 `list-sessions`（`common/session_snapshot.rs`）、会
 //! `display-message`（[`super::gate`]）、会 `kill-session`（[`super::kill`]）、
 //! 会 `send-keys`（[`super::launch`]）—— **唯独没有「把那一屏取回来」**。
 //!
 //! ⚠ **它只是原语。** monitor 侧那条 `capture_remote_pane` 今天仍然只有远端一条路
-//! （`src/bridge/src/tmux.rs` 不在本件写区）—— 欠账从「等 daemon 出原语」变成
+//! （`src/bridge/src/tmux.rs` 不在本件写区）—— 欠账从「等后端出原语」变成
 //! 「等 monitor 侧接上去」，**没有被结掉**。
 //!
 //! # 🔴 只出原语，不出轮询（`KR86D3`）
@@ -48,7 +48,7 @@
 //! 所以「抓不到」这件事**不靠输出是不是空**判 —— 靠退出码。
 //! （这一条与 [`super::gate::probe`] 相反：那边 `display-message` 对不存在的目标是
 //!  **rc=0 + 空输出**，只能拿「输出为空」当判据；`capture-pane` 对不存在的目标是
-//!  **rc≠0 + stderr 有话**，daemon 直接拿得到，不必像 monitor 那侧渲染 `NO_PANE` 哨兵。）
+//!  **rc≠0 + stderr 有话**，backend 直接拿得到，不必像 monitor 那侧渲染 `NO_PANE` 哨兵。）
 //!
 //! ⚠ **兜底那一档是「说不清但不撒谎」**：tmux 换了措辞 ⇒ 两张针都不命中 ⇒ 落
 //! `capture_failed` 并把 stderr **原样**带出去。它比「压成会话不存在」诚实 ——

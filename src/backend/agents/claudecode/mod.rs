@@ -1,4 +1,4 @@
-//! Claude Code 适配层 —— daemon 里 Claude 专属知识的唯一住址（`S3`）。
+//! Claude Code 适配层 —— backend 里 Claude 专属知识的唯一住址（`S3`）。
 //!
 //! | 子模块 | 装什么 |
 //! |---|---|

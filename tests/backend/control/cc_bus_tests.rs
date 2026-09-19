@@ -157,7 +157,7 @@ fn every_shelled_out_command_carries_a_written_ruling() {
 /// 钉的是**数据流**，不是「函数存在」：两条命令必须落到同一个 `agents_via_cc_list`，
 /// 否则 `bus-state.agents` 与 `bus-list.agents` 会各自漂。
 /// ⚠ 起子进程那一步在沙箱里跑不了（没装 cc-bus）⇒ 本条扫的是生产段的**接线**，
-/// 真跑由 `tests/e2e/daemon-cc-bus.sh` 那一族负责。
+/// 真跑由 `tests/e2e/backend-cc-bus.sh` 那一族负责。
 #[test]
 fn bus_state_answers_both_halves_from_one_call() {
     let prod = crate::guard_support::production_code(include_str!(
@@ -276,7 +276,7 @@ fn non_data_lines_never_become_agents() {
 /// `P4f-Y4`：找不到时要说**查过哪儿**。
 ///
 /// ⚠ 拼那句话的活搬去通用口了，**这一格没跟着搬**：它核的是 cc-bus 自己那三样
-///（两处固定位置的形状 + [`NOT_INSTALLED_HINT`] 这句尾巴），而 `tests/e2e/daemon-cc-bus.sh` 的
+///（两处固定位置的形状 + [`NOT_INSTALLED_HINT`] 这句尾巴），而 `tests/e2e/backend-cc-bus.sh` 的
 /// 第 6 组逐字 `grep` 的正是这三条。搬走它等于把那三条 e2e 的单测对位丢掉。
 #[test]
 fn the_not_installed_message_names_the_places_it_looked() {
@@ -320,12 +320,12 @@ fn the_three_exit_codes_map_to_three_different_meanings() {
     assert_eq!(killed, other, "被信号打断与其它失败同档（都是 failed）");
 }
 
-/// `P4f-Y5` 的另一半：daemon **不重复校验收件人合法性**。
+/// `P4f-Y5` 的另一半：backend **不重复校验收件人合法性**。
 ///
 /// 传一个 cc-bus 自己会拒的名字（含 `/`），本侧必须**放行到 cc-send 那一步**——
 /// 由它去拒（rc=2 → `invalid_args`）。这样白名单只有一份。
 #[test]
-fn the_daemon_does_not_re_implement_the_recipient_charset_rule() {
+fn the_backend_does_not_re_implement_the_recipient_charset_rule() {
     let ok = parse_send(&json!({ "to": "a/b", "text": "x" }));
     assert!(
         ok.is_ok(),

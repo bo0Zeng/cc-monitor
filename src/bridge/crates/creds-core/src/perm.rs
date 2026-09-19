@@ -25,15 +25,15 @@
 //!
 //! # 写与读的能力**是分开的**，而且是编译期分开的
 //!
-//! - [`make_private`] 只在 `harden` feature 打开时存在 ⇒ **daemon 那侧根本调不到它**
-//!   （`K-H2a` 裁四：daemon 只许读）。这是编译器兜的，不是一条判据兜的 ——
+//! - [`make_private`] 只在 `harden` feature 打开时存在 ⇒ **backend 那侧根本调不到它**
+//!   （`K-H2a` 裁四：backend 只许读）。这是编译器兜的，不是一条判据兜的 ——
 //!   `scanning_guard_registry` 头注逐字写着本仓的偏好：「**让它写不出来，而不是再检测一遍**」。
 //! - [`probe`] / [`judge`] 两侧都在。
 //!
 //! # ⚠ 诚实边界：没有判据钉「平台原语只许住这里」
 //!
 //! 这条是从 `platform_fs.rs` 的**诚实边界 `10g`** 原样继承来的：
-//! `backend/mod.rs` 那条只扫 `backend/`，daemon 的 `fallback_guard` 只扫 `platform/`，
+//! `backend/mod.rs` 那条只扫 `backend/`，backend 的 `fallback_guard` 只扫 `platform/`，
 //! **两条都扫不到 `src/bridge/crates/`** ⇒ 有人在别处再写一个平台 cfg，**不会红**。
 //! 今天靠约定。⚠ 而本 crate 是 `crates/` 这一层里**第一个**带平台 cfg 的
 //! （现打 08-27：另外 6 个 crate 平台 cfg 全树 0 处），所以这条边界比在 `platform_fs.rs` 里更该说清。
@@ -47,7 +47,7 @@ pub enum Protection {
     /// 空 = 一个宽泛主体都没有。
     Windows { wide_principals: Vec<String> },
     /// **量不出来。** ⚠ 这一档**不许**被当成「没问题」——
-    /// daemon 那个 `platform/fallback_guard.rs` 整篇讲的就是这一条：
+    /// backend 那个 `platform/fallback_guard.rs` 整篇讲的就是这一条：
     /// 「为了让代码在别的平台上也能跑一下，给一个答不上来的问题编一个看起来无害的答案」，
     /// 而 `true` / `Some(..)` / `Ok(..)` 恰恰是最危险的那几个。
     Undetermined { why: String },
@@ -190,7 +190,7 @@ pub fn make_private(p: &std::path::Path) -> Result<(), String> {
     }
     #[cfg(not(any(unix, windows)))]
     {
-        // ⚠ 这里**必须**是错，不许是 `Ok(())`。理由整段见 daemon 的 `platform/fallback_guard.rs`：
+        // ⚠ 这里**必须**是错，不许是 `Ok(())`。理由整段见后端的 `platform/fallback_guard.rs`：
         // 一个答不上来的问题不该有一个看起来无害的答案。
         Err(format!(
             "这个平台上不知道怎么把 {} 收成只给本人 —— 没做到，不假装做到了",

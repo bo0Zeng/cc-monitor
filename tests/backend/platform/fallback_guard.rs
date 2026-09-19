@@ -735,7 +735,7 @@ mod g6_scope_pins {
         //   否则上面那几条断言靠「钉了几个谁也不会写的字」恒绿。
         //   原话在这里**运行时拼**，免得本文件自己成为那句假话的第三处住址。
         let historical = format!(
-            "daemon 对被观测文件系统（`~/.claude` 等）**必须{}**——只 watch/scan/read，绝不{}。",
+            "backend 对被观测文件系统（`~/.claude` 等）**必须{}**——只 watch/scan/read，绝不{}。",
             "只读", "写"
         );
         for word in &forbidden {

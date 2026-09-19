@@ -40,7 +40,7 @@ const POINTER_ONLY: &[(&str, &[&str], &str, &str)] = &[
             // 写区那 9 份散文里下面那个旧前缀全换成了「远端后端」，而 `PROSE_FILES`
             // 里还有**不在那一轮写区**的文件（`src/doc/REMOTE-PHASE0-DEPLOY.md`）仍写旧词。
             // 只换不加 ⇒ 旧词那半静默掉出人群；只加不留 ⇒ 新词那半没人看。
-            "远端 daemon ",
+            "远端 backend ",
             "远端后端 ",
             "vitest ",
             "DOM 单测（",
@@ -58,7 +58,7 @@ const POINTER_ONLY: &[(&str, &[&str], &str, &str)] = &[
         "`.github/workflows/ci.yml` 的 job 列表本身",
     ),
     (
-        "daemon 生产段起进程的处数",
+        "backend 生产段起进程的处数",
         &["今天清单上有 ", "清单上共 "],
         "清单本身就是家",
         "`readonly_guard.rs` 的 `ALLOWED` + 那条 `SPAWN_SITES_TODAY` 相等断言（不是地板）",
@@ -70,7 +70,7 @@ const POINTER_ONLY: &[(&str, &[&str], &str, &str)] = &[
             "ccm-cli ",
             "ccm-acceptance ",
             "usage-probe ",
-            "daemon-gate2 ",
+            "backend-gate2 ",
             "graylight-frames ",
         ],
         "套数与地板值一律不抄在这里",
@@ -94,7 +94,7 @@ const HAS_A_GUARD: &[(&str, &str)] = &[
     ),
     ("node 套件组数", "NODE_SUITES"),
     ("本机读取面 reader 文件数", "local_read_surface_registry"),
-    ("daemon 生产 `Command::new` 处数", "ALLOWED"),
+    ("backend 生产 `Command::new` 处数", "ALLOWED"),
     (
         "`tmux ls` 格式串双写点",
         "tmux_ls_fmt_double_write_point_stays_in_sync",
@@ -106,7 +106,7 @@ const HAS_A_GUARD: &[(&str, &str)] = &[
     // ⚠ 「e2e 套件名单」那条判据 **住在本文件里**，而本文件在扫描时被摘除
     // （否则表里写着的符号名会让每一条都在自己身上找到自己 —— F23 那一族）。
     // ⇒ 它不进这张表：住在本文件里的判据由**编译**保证还在，不需要再查一遍。
-    ("daemon 生产段起进程的处数", "SPAWN_SITES_TODAY"),
+    ("backend 生产段起进程的处数", "SPAWN_SITES_TODAY"),
     ("设置面板逐页清单", "pageTitles"),
 ];
 
@@ -143,7 +143,7 @@ const DONE_ROWS: &[&str] = &[
     "#5 CI job 数（删副本留指针）",
     "#6 e2e 套数与逐套地板（删副本留指针 + 新增套件名单机检）",
     "#7 reader 文件数（`local_read_surface_registry` 头注 11 vs 同文件机检 7 —— 一个文件内部自相矛盾；已删副本留指针）",
-    "#8 daemon 生产 `Command::new` 处数（散文删副本；★ 判据从地板 `>= 4` 收紧为相等 —— 地板在变大方向上是瞎的）",
+    "#8 backend 生产 `Command::new` 处数（散文删副本；★ 判据从地板 `>= 4` 收紧为相等 —— 地板在变大方向上是瞎的）",
     "#9 `backend/` 下 `.rs` 数（删副本留指针）",
     "#11 主题 token 数（README 与 IPC-PROTOCOL 两处 13 → 删副本，家在 `theme.ts` 的 `TOKENS`，实为 14）",
     "#12 `__ccm_rbind`（`REMOTE-PHASE0-DEPLOY.md` 仍在教用户调一个全仓没有定义的函数 → 已改写）",
@@ -179,7 +179,7 @@ const QUANTITY_KEYWORDS: &[(&str, &str)] = &[
     ("e2e 各套件的断言数地板", "ccm-cli"),
     ("e2e 各套件的断言数地板", "ccm-acceptance"),
     ("e2e 各套件的断言数地板", "usage-probe"),
-    ("e2e 各套件的断言数地板", "daemon-gate2"),
+    ("e2e 各套件的断言数地板", "backend-gate2"),
     ("e2e 各套件的断言数地板", "graylight-frames"),
     ("reader 文件数", "reader"),
     ("主题 token 数", "token"),

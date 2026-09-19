@@ -2,7 +2,7 @@
 //!
 //! # 它断的是哪一个性质
 //!
-//! **「daemon 那条长连接流」的那一跳 SSH 握手，由谁去跑。**
+//! **「backend 那条长连接流」的那一跳 SSH 握手，由谁去跑。**
 //!
 //! 🔴 **它断的不是「`russh` 这个词还在不在」** —— `K-P6` 那一拍已经证过后者会量错集合
 //! （**14 份在往外拨的文件里，11 份的 `russh` 代码态是 0**）。
@@ -82,7 +82,7 @@ const FALLBACKS: &[(&str, &str, &str)] = &[
              `cargo run` 恒空；而发版包里 sidecar 就在 exe 旁边（`release.yml` 的 \
              `Build local backend sidecar (native)` + `Stage sidecar for externalBin`）⇒ 命中。",
         "把 `externalBin` 并进主配置的那天（今天刻意不并 —— \
-             `release.yml` 头注写着并进去会让 `cargo test` 也要一份 daemon 二进制）。",
+             `release.yml` 头注写着并进去会让 `cargo test` 也要一份后端二进制）。",
     ),
     (
         "has_key",
@@ -139,7 +139,7 @@ fn call_sites(code: &str) -> usize {
 
 /// 按**行**取一个函数体：从 `head` 那一行起，到第一行**恰好是 `}`** 为止。
 ///
-/// 与 `local_daemon_tests.rs::body_of` 同形 —— 本仓已经在用这一把尺子，不另发明一把。
+/// 与 `local_backend_host_tests.rs::body_of` 同形 —— 本仓已经在用这一把尺子，不另发明一把。
 fn body_of(code: &str, head: &str) -> String {
     let Some(at) = code.find(head) else {
         return String::new();
@@ -158,7 +158,7 @@ fn body_of(code: &str, head: &str) -> String {
 /// 🔴 **甲半判据本体。纯函数** —— 语料由调用方给 ⇒ 阳性/阴性两个方向都切得动。
 ///
 /// 传进来的是 `connect_and_exec` 那个函数体。返回 `Err(说法)` = 判据红。
-fn daemon_stream_dial_verdict(body: &str) -> Result<(), String> {
+fn backend_stream_dial_verdict(body: &str) -> Result<(), String> {
     if body.len() < BODY_FLOOR_BYTES {
         return Err(format!(
             "切出来的入口函数体只有 {} 字节（地板 {BODY_FLOOR_BYTES}）—— 本判据此刻在空转。\n\
@@ -195,7 +195,7 @@ fn daemon_stream_dial_verdict(body: &str) -> Result<(), String> {
     // 🔴 回落那一条**必须在**，而且必须**登记出来**：它就是「默认装机上搬走 0 处」的落点。
     //
     // 〔订正 2026-09-10（v3.7.0）—— 动的是**失败文案**，不是判据。
-    //  墓碑，原文逐字：「0 处 ⇒ 代理拿不到二进制时 daemon 流会直接断
+    //  墓碑，原文逐字：「0 处 ⇒ 代理拿不到二进制时后端流会直接断
     //  （**今天安装包没有 sidecar，那是 F05b**）」。括号里那句今天不成立。
     //  证伪它的读数：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）——
     //  装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe` **2 个进程在跑**、
@@ -218,7 +218,7 @@ fn daemon_stream_dial_verdict(body: &str) -> Result<(), String> {
         return Err(format!(
             "入口函数体里 `connect_and_exec_cmd(` 有 {n_inproc} 处（应当恰好 1 处 = 那条**回落**）。\n\
                  0 处 ⇒ 代理拿不到二进制（开发树 · `CCM_DIAL_PROXY` 指错）、\
-                 或这台走 ssh-agent 时，daemon 流会直接断 \
+                 或这台走 ssh-agent 时，backend 流会直接断 \
                  —— 那不是「搬出去了」，那是把主平台弄坏了；\n\
                  ≥2 处 ⇒ 回落不止一条，而这张表只认得一条。"
         ));
@@ -238,15 +238,15 @@ fn daemon_stream_dial_verdict(body: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// ★ 甲半：**daemon 那条长连接流的入口，把拨号交给了代理进程；回落那一条被登记着。**
+/// ★ 甲半：**backend 那条长连接流的入口，把拨号交给了代理进程；回落那一条被登记着。**
 #[test]
-fn the_daemon_stream_entry_hands_the_dial_to_another_process() {
+fn the_backend_stream_entry_hands_the_dial_to_another_process() {
     let (_, prod) = corpus()
         .into_iter()
         .find(|(n, _)| *n == "ssh_source.rs")
         .expect("语料里没有 ssh_source.rs");
     let body = body_of(&prod, "pub async fn connect_and_exec(");
-    if let Err(e) = daemon_stream_dial_verdict(&body) {
+    if let Err(e) = backend_stream_dial_verdict(&body) {
         panic!("{e}");
     }
 }
@@ -295,7 +295,7 @@ fn six_of_the_seven_dial_sites_are_still_in_this_process() {
         "登记表说有 {moved} 处的拨号已经搬走了。\n\
              🔴 **别把 `connect_and_exec` 那一处算进来** —— 它调的是 `connect_and_exec_cmd`，\
              那 5 处一处都没少；本件买到的是「入口不再无条件走到它」，\
-             那一格由 `the_daemon_stream_entry_hands_the_dial_to_another_process` 钉，不由本表钉。"
+             那一格由 `the_backend_stream_entry_hands_the_dial_to_another_process` 钉，不由本表钉。"
     );
 }
 
@@ -362,7 +362,7 @@ fn every_registered_fallback_is_actually_decided_in_the_entry() {
 /// —— 一个原始字符串里塞进这么一行，**整棵树的剥法当场坏掉**
 /// （实打：`structural_scan` / `cross_half_edge_registry` / `write_half_guard` 三族
 /// 一起红，报的都是 `guard_core` 里那条剥法的断言）。
-/// `guard_support` 那条 `every_daemon_file_strips_clean` 的头注逐字预告过这一形，
+/// `guard_support` 那条 `every_backend_file_strips_clean` 的头注逐字预告过这一形，
 /// **这一轮把它撞出来了**。逐行存 ⇒ 那个 `}` 永远带着缩进，剥法看不见它。
 const BODY_BEFORE_THIS_ITEM_LINES: &[&str] = &[
     "pub async fn connect_and_exec(",
@@ -370,10 +370,10 @@ const BODY_BEFORE_THIS_ITEM_LINES: &[&str] = &[
     "    with_bg: bool,",
     "    tail_only: bool,",
     ") -> Result<russh::ChannelStream<client::Msg>, String> {",
-    "    // 与 jsonl-watcher 不同，daemon 是长连接：inactivity_timeout=None → connect_session",
+    "    // 与 jsonl-watcher 不同，backend 是长连接：inactivity_timeout=None → connect_session",
     "    // 自动启用 30s keepalive（见 FIX 1 注释），靠 keepalive + EOF 检死链，不靠定时拆链。",
     "    // Batch7-F24/Batch8-F26：两个流模式 flag 都由调用方决定（run_stream 里绑定",
-    "    // 部署确认为当前版本，见该处注释）。tail_only=true → daemon 不重放历史",
+    "    // 部署确认为当前版本，见该处注释）。tail_only=true → backend 不重放历史",
     "    // （历史由本侧旁路 --read-session 快照拉取），实时通道流量趋零。",
     "    let mut cmd = shell_quote(&cfg.daemon_path);",
     "    if with_bg {",
@@ -409,7 +409,7 @@ fn the_shape_before_this_item_is_caught_and_named() {
         !before.contains("spawn_dial_proxy("),
         "冻结的反例语料里居然有代理调用 —— 那它就不是「改动之前」了"
     );
-    let e = daemon_stream_dial_verdict(&before).expect_err("旧形状（界面进程自己拨号）居然判绿了");
+    let e = backend_stream_dial_verdict(&before).expect_err("旧形状（界面进程自己拨号）居然判绿了");
     assert!(
         e.contains("spawn_dial_proxy("),
         "判据红了，但**没点名是哪一处** —— 只说「有问题」的诊断等于没有诊断。实得：{e}"
@@ -423,13 +423,13 @@ fn the_shape_before_this_item_is_caught_and_named() {
 /// ★ 反向自检 · **阴性方向**（`P6bM4`）：喂空输入，判据必须**自己先红**。
 #[test]
 fn an_empty_body_makes_the_judge_red_by_itself() {
-    let e = daemon_stream_dial_verdict("").expect_err("空函数体居然判绿 —— 地板断言没接上");
+    let e = backend_stream_dial_verdict("").expect_err("空函数体居然判绿 —— 地板断言没接上");
     assert!(
         e.contains("空转"),
         "空输入红了，但红的理由不是「空转」—— 说明它被别的分支拦下了，地板没生效。实得：{e}"
     );
     // 再补一刀：非空但远小于地板，同样要以「空转」红。
-    let e2 = daemon_stream_dial_verdict("fn f() {}\n").expect_err("小输入居然判绿");
+    let e2 = backend_stream_dial_verdict("fn f() {}\n").expect_err("小输入居然判绿");
     assert!(e2.contains("空转"), "小输入红的理由不对：{e2}");
 }
 
@@ -443,14 +443,14 @@ fn a_comment_only_edit_does_not_move_the_verdict() {
         .find(|(n, _)| *n == "ssh_source.rs")
         .expect("语料里没有 ssh_source.rs");
     let body = body_of(&prod, "pub async fn connect_and_exec(");
-    daemon_stream_dial_verdict(&body).expect("真身就该是绿的");
+    backend_stream_dial_verdict(&body).expect("真身就该是绿的");
     let edited = body.replace(
         "    let mut cmd = shell_quote(&cfg.daemon_path);",
         "    // 这一行是本判据现加的注释，只为证明它不按文本相等判\n\
              \x20   let mut cmd = shell_quote(&cfg.daemon_path);",
     );
     assert_ne!(edited, body, "注释没插进去 —— 本条在空转");
-    daemon_stream_dial_verdict(&edited)
+    backend_stream_dial_verdict(&edited)
         .expect("只加了一行注释，判据就红了 ⇒ 刀太粗，它钉的是文本不是性质");
 }
 

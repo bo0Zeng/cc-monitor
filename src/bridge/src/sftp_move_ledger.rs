@@ -18,7 +18,7 @@
 //!
 //! **不钉**（诚实边界，逐条写死）：
 //!
-//! - **daemon 那一侧的事实本模块一个字都没机检** —— `readonly_guard` 的模式表、
+//! - **backend 那一侧的事实本模块一个字都没机检** —— `readonly_guard` 的模式表、
 //!   `g6_dependency_signoff` 的判档闭集，都住对面那棵树。从这里 `include_str!` 过去
 //!   会**新增一条跨半边编译期边**，那张登记表（`cross_half_edge_registry`）不在本件写区里。
 //!   ⚠ 这与 `ssh_source::dial_move_judge` 立乙半时给的理由**逐字同一条**，不是本件新编的借口。

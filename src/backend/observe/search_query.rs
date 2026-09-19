@@ -1,7 +1,7 @@
 //! issue #28：远端全文搜索（一次性查询子命令 `--search`）。
 //!
-//! cc-monitor 通过**独立 SSH 连接**一次性 exec `<daemon> --search <query> [opts]`，
-//! daemon 在远端 CPU 上扫 `<claude_dir>/projects/**/*.jsonl`、做服务端搜索（避免拉
+//! cc-monitor 通过**独立 SSH 连接**一次性 exec `<backend> --search <query> [opts]`，
+//! backend 在远端 CPU 上扫 `<claude_dir>/projects/**/*.jsonl`、做服务端搜索（避免拉
 //! 整库回本地），输出**每命中会话一行** camelCase JSON（与 monitor `search::SessionHits`
 //! 形状严格一致，可直接反序列化）：
 //! `{sessionId,projectPath,projectName,jsonlPath,title,updatedAt,hitCount,hits:[{uuid,tsMs,kind,before,matched,after}]}`
@@ -13,7 +13,7 @@
 //! `cross_half_edge_registry::CROSS_EDGES` 17 条跨轨边里 **search 零命中** ⇒
 //! **没有任何判据在拦着它们漂开**。判据现在有了，住
 //! `../../bridge/src/search_kou_jing_guard.rs::the_search_kou_jing_has_exactly_one_home`。
-//! daemon 无 `parse_line`，故仍直接在 `serde_json::Value` 上抽取 —— 那是**取数**的差别，
+//! backend 无 `parse_line`，故仍直接在 `serde_json::Value` 上抽取 —— 那是**取数**的差别，
 //! 不是**口径**的差别。
 //!
 //! 安全：路径严格限 `<claude_dir>/projects/`（canonicalize 前缀校验，复刻 history_query）；

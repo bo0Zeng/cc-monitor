@@ -6,7 +6,7 @@ use super::*;
 ///
 /// 本会话把「谁能**写**」（`write_site_registry`）、「谁能**执行**」
 /// （`exec_site_registry` / 本机起进程 / 构建期执行面）都钉成了默认拒绝，
-/// 而**读**那一侧只有两块：daemon 的 `readonly_guard`（整个 crate 不许写），
+/// 而**读**那一侧只有两块：backend 的 `readonly_guard`（整个 crate 不许写），
 /// 与 monitor 的 `local_read_surface_registry` —— 而后者的人群是**五个手写针**，
 /// 全部对着 **claude 目录**（`claude_dir` / `CLAUDE_CONFIG_DIR` / `.claude` …）。
 ///
@@ -341,16 +341,16 @@ fn remote_config_defaults_and_some() {
     assert_eq!(cfg.host_key_fingerprint.as_deref(), Some("SHA256:abc"));
 }
 
-/// ★★ **hello-then-die 的 daemon 不许把退避永远按在 2 秒**〔audit-0805 F05 / 报告 I-1〕。
+/// ★★ **hello-then-die 的后端不许把退避永远按在 2 秒**〔audit-0805 F05 / 报告 I-1〕。
 ///
-/// `connected` 是收到 hello 的那一刻置位的。一个「发完 hello 就死」的 daemon
+/// `connected` 是收到 hello 的那一刻置位的。一个「发完 hello 就死」的 backend
 /// （小机器整读 jsonl 触发 OOM 被杀，正是本区 F04 治的那条链）每轮都算「连上过」
 /// ⇒ 退避每次重置回 2 秒 ⇒ **永远不增长**，而每次重连要付 3 次完整 SSH 登录
 /// ⇒ 约 **90 次握手/分钟/台**，正好砸在那台已经撑不住的机器上。
 ///
 /// ⇒ 判据必须是「**活过多久**」，不是「握没握上手」。
 #[test]
-fn a_daemon_that_dies_right_after_hello_does_not_keep_resetting_the_backoff() {
+fn a_backend_that_dies_right_after_hello_does_not_keep_resetting_the_backoff() {
     // hello 收到了，但连接只活了 1 秒 —— 这正是 hello-then-die。
     assert!(
         !should_reset_backoff(true, Duration::from_secs(1)),

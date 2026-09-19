@@ -20,11 +20,11 @@ version = "0.0.0"
 edition = "2021"
 
 # Standalone crate, intentionally NOT part of a workspace. There is no root
-# Cargo.toml: a workspace would pull this Linux-only daemon into the Windows
+# Cargo.toml: a workspace would pull this Linux-only backend into the Windows
 # CI `cargo test --all` and break the build. Build this natively on the target.
 #
 # F20（2026-08-04）：「standalone」到底 standalone 到什么程度 —— 实测答案，别再猜：
-#   · `cargo build`  **真的独立**。把两条 daemon→monitor 的 `include_str!` 路径打断，
+#   · `cargo build`  **真的独立**。把两条 backend→monitor 的 `include_str!` 路径打断，
 #     `cargo build` 仍然 exit=0 / 0 error ⇒ 目标机原生构建**不需要**旁边那棵 `src/bridge/`。
 #   · `cargo test`   **不独立**。它需要 `../src/bridge/` 在 —— 两条判据要跨轨对拍
 #     （`control/gate.rs` 读 Gate 2 的黄金夹具 · `control/launch.rs` 读 monitor 的
@@ -49,9 +49,9 @@ path = "main.rs"
 # 本 crate 有 **17 个扫描型守卫**按 `guard_support::src_root()`（= 本 manifest 所在目录）
 # **递归走全树收 `.rs`**。其中 `no_timer_guard::periodic_wake_patterns()` 的禁用表里
 # 逐字有一条 `format!("{}::now", "Instant")` —— 而一把计时的秤**必须**调它。
-# ⇒ 只要这个文件落在 `src/backend/` 下面任何一层，`daemon_production_code_has_no_periodic_wakeups`
+# ⇒ 只要这个文件落在 `src/backend/` 下面任何一层，`backend_production_code_has_no_periodic_wakeups`
 # 当场红，而那条守卫住 `tests/backend/`、不在本件的写区里。
-# 同理还有 `readonly_guard::every_fs_call_in_daemon_production_is_read_only` 那张只读白名单。
+# 同理还有 `readonly_guard::every_fs_call_in_backend_production_is_read_only` 那张只读白名单。
 # ⇒ 源码放 `tests/evidence/`（它**不在** `code_roots()` 的两棵树里 —— 那两棵是
 #   `src/backend/` 与 `tests/backend/`），住址由本节的 `path` 指过去。
 #   这与 `.cargo/config.toml` 把 `target-dir` 挪出源码树是**同一条理由的第二例**：
@@ -73,7 +73,7 @@ harness = false
 # （而上面点名的 serde / serde_json / tokio / notify / notify-debouncer-mini / walkdir /
 #  tracing / tracing-subscriber / libc 逐个量都是 1）。
 # ⇒ 这两条**没有**被 pin 到 monitor 那份 lock，**也不能**靠「monitor 早就下过」变成离线可用。
-# 准确说法：**一台从没下过 `rustls` 的机器，daemon 第一次构建必须联网**；下过之后本机缓存才服务得了它。
+# 准确说法：**一台从没下过 `rustls` 的机器，backend 第一次构建必须联网**；下过之后本机缓存才服务得了它。
 # 这正是 `裁-1` 代价② 认下的那条 —— 代价认了，而这段块头注先前一个字没跟着改，于是它自己变成了假话。
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -83,13 +83,13 @@ codex-token-core = { path = "../bridge/crates/codex-token-core" }
 acct-core = { path = "../bridge/crates/acct-core" }
 # K-H2a：第三方 API key 的唯一住址（装它的类型 / 落盘格式 / 权限判断）。
 # ★★ **刻意不开 `harden`**：那个 feature 才带「把文件收窄」的平台原语，而
-# `K-H2a` 裁四逐字定死 daemon **只许读那份文件，不许写** ——
+# `K-H2a` 裁四逐字定死 backend **只许读那份文件，不许写** ——
 # `readonly_guard.rs` 扫本 crate 生产段（剥掉 `#[cfg(test)]` 之后）断言不含任何
 # 文件系统变更调用，白名单**恰好一个模块** `control/fork_write.rs`。
 # ⇒ 不开 feature ⇒ `creds_core::perm::make_private` 在本 crate 里**根本不存在**，
 #   写不出来比事后检测更强（`scanning_guard_registry` 头注逐字：「让它写不出来，而不是再检测一遍」）。
 # ⚠ 代价如实记：不开 `harden` ⇒ Windows 上 `perm::probe` 读不了 DACL，返回 `Undetermined`。
-#   那**不是**绿灯（`judge` 把它判成要出声），但确实是「查不出来」。daemon 今天的运行目标是 Linux。
+#   那**不是**绿灯（`judge` 把它判成要出声），但确实是「查不出来」。backend 今天的运行目标是 Linux。
 creds-core = { path = "../bridge/crates/creds-core" }
 # U8c-2b-0：POSIX 单引号 quote 的唯一实现（账本 S5 收口）。
 # 本 crate 只用它一处（`control/tmux_hook::sq`）；U8c-2c 起载荷渲染也走它。
@@ -113,7 +113,7 @@ tokio = { version = "1", features = [
     # ⚠ **这句话先前撑在一条已经作废的框架上，别再照抄**〔`K-R34` 09-06 换掉〕：
     #   原文逐字「`net` 带进来的 `socket2` 是纯 Rust（`C18`「依赖树零 C」**不受影响**）」——
     #   **事实那一半是真的、留着**；换掉的是括号里那条框架：
-    #   盘上逐字「~~**C18** daemon 不引 C 生态链~~ **已被推翻（08-29）**」
+    #   盘上逐字「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」
     #   （住址 backend-consolidation 的 `MASTERPLAN.md:58`；现行版本是 `K30`
     #    ——「装到任意 agent 机器就能跑」＝静态 musl · 两个架构都出得来 · 体积在预算内，
     #    **不是**「零 C」）。
@@ -134,7 +134,7 @@ tokio = { version = "1", features = [
 # （本 crate Cargo.lock 里 libc 0.2.186 早已解析）⇒ 声明它不动 lock、离线可用。
 # 只用 SYS_pidfd_open / poll / pollfd 三样，不引入任何 feature。
 libc = "0.2"
-# K-H1〔裁-1，08-25〕：**daemon 侧第一条加密依赖**，也是**本仓第一条 TLS（X.509 + 根证书链）依赖**。
+# K-H1〔裁-1，08-25〕：**backend 侧第一条加密依赖**，也是**本仓第一条 TLS（X.509 + 根证书链）依赖**。
 #
 # ⚠ 口径订正〔回修轮 08-25，承接 D1 `重要-4`〕：先前这里逐字写的是「**本仓**第一条加密依赖」，
 # 而下面两行同时写着「`ring` 已经在」—— **同一段注释自相矛盾**，且前半句是假的。
@@ -142,7 +142,7 @@ libc = "0.2"
 #   · **依赖图**（谁的 Cargo.lock / cargo tree 里有它）：`ring 0.17.14` 在本件**之前**就已在
 #     monitor 的依赖图里 —— `git show c3cf193:src/bridge/Cargo.lock | grep -c '^name = "ring"$'` ⇒ **1**，
 #     `cargo tree -i ring --manifest-path ../bridge/Cargo.toml` ⇒ `ring └── russh └── monitor`。
-#     同一把尺子量 **daemon 自己**那份 lock 的同一个尖 ⇒ **0** —— 所以「**daemon 侧**第一条」是真话。
+#     同一把尺子量 **backend 自己**那份 lock 的同一个尖 ⇒ **0** —— 所以「**backend 侧**第一条」是真话。
 #   · **本机 cargo 缓存**（`~/.cargo/registry/cache/` 里有没有那个 `.crate` 文件）：**只说这台机器**，
 #     与依赖图是两件事。缓存里有不等于依赖图里有，反过来也一样。
 #   ⇒ 下面「少下一棵 C 构建树」这条好处**两个口径都成立**，但它买到的是**构建时间**，不是「本仓第一条」。
@@ -167,11 +167,11 @@ webpki-roots = "1"
 #      `KG1` 成功标准② 已因此重写成「静态 musl 二进制」）。russh 走的是**同一棵 `ring`**
 #      ⇒ 它**不新增**一棵 C 构建树；但这句话是「不新增」，**不是**「零 C」。
 #      ⚠ 补一句〔`K-R34` 09-06〕：**那条框架本身后来也没了** —— 盘上逐字
-#      「~~**C18** daemon 不引 C 生态链~~ **已被推翻（08-29）**」（住址 backend-consolidation 的
+#      「~~**C18** backend 不引 C 生态链~~ **已被推翻（08-29）**」（住址 backend-consolidation 的
 #      `MASTERPLAN.md:58`；现行版本是 `K30`）⇒ 今天**不是**「本 crate 破了一条还活着的规矩」，
 #      是**那条规矩已经不在了**。上面 tokio 那条 `net` feature 的注释同源同结论，
 #      **这份文件里关于 `C18` 的两处话从此不再打架**。
-#   ② 🔴 **musl 交叉编译本轮没验**。CI（`.github/workflows/release.yml` 的 `build-daemons`）
+#   ② 🔴 **musl 交叉编译本轮没验**。CI（`.github/workflows/release.yml` 的 `build-backends`）
 #      要把本 crate `cargo zigbuild` 到 `x86_64-unknown-linux-musl` 与 `aarch64-unknown-linux-musl`，
 #      **而沙箱门禁只做本机 gnu 构建、不做交叉编译** ⇒ **门禁全绿也证不出这两个 target 编得过**。
 #      `ring` 在 musl 上要 `cc` 编汇编，zig 作 linker 这条路本 crate 已经走通过（`rustls` 那次），
@@ -213,7 +213,7 @@ webpki-roots = "1"
 # ④ 🔴 **两条出路 —— 这里只写「谁来决定」，不写「怎么做」；`K-R34` 不做决定**：
 #    · **升到 `crypto-bigint 0.7.5`**：它是跟着 `russh` 走的，而两侧的版本与 feature 集
 #      **必须同版同 feature**（理由见上面那段：一侧多开一个 feature 就是「界面拨得通、
-#      代理拨不通」）⇒ **本 crate 单方面决定不了**，是**一件同时动 monitor 与 daemon 两侧的活**。
+#      代理拨不通」）⇒ **本 crate 单方面决定不了**，是**一件同时动 monitor 与后端两侧的活**。
 #      **谁来决定：PM 立件、用户拍板。**
 #    · **砍掉 `rsa` feature**（`crypto-bigint` 就是它拉进来的）：要**先量**
 #      「有没有只认 RSA host key 的远端」—— 那是一次对**真实远端**的摸底，**今天没人量过**。

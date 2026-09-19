@@ -1,11 +1,11 @@
 //! `--fork-session`：在**远端本地**把一个会话从指定消息处分叉出一个新会话文件。
 //!
-//! # 为什么这一步必须在 daemon 里做
+//! # 为什么这一步必须在后端里做
 //!
 //! 分叉要读整份 jsonl 的祖先链。真机会话动辄几十 MB —— 为了分叉把它拉过 ssh 再算完写回去，
-//! 是两趟大文件传输。daemon 就跑在会话所在那台机器上，读写都是本地。
+//! 是两趟大文件传输。backend 就跑在会话所在那台机器上，读写都是本地。
 //!
-//! # ★ 本模块是 daemon **唯一**被允许写文件系统的地方
+//! # ★ 本模块是 backend **唯一**被允许写文件系统的地方
 //!
 //! `readonly_guard` 对它另有一套**更严**的断言（见该文件的白名单层）：
 //!
@@ -19,13 +19,13 @@
 //! —— 本仓「把注释当代码」已栽过四次（见 `test-support/strip-comments.ts` 头注）。
 //! **要改就改措辞，别去放宽护栏。**
 //!
-//! 这条边界背后的判据不是「daemon 不许碰文件系统」，而是
-//! **「daemon 不许改动用户既有数据」**。`O_EXCL` 新建一个此前不存在的文件不违反后者
+//! 这条边界背后的判据不是「backend 不许碰文件系统」，而是
+//! **「backend 不许改动用户既有数据」**。`O_EXCL` 新建一个此前不存在的文件不违反后者
 //! —— 详见 `src/doc/INVARIANTS.md` I7 与 `.claude/planned-build/branch-anywhere/MASTERPLAN.md §4`。
 //!
 //! # 变换逻辑不在这里
 //!
-//! 记录变换走共享 crate `branch-core`（monitor 与 daemon **同一份实现**，G1）。
+//! 记录变换走共享 crate `branch-core`（monitor 与 backend **同一份实现**，G1）。
 //!
 //! # ★〔`K-R88` 09-13〕**「找文件」也不在这里了**
 //!
@@ -55,7 +55,7 @@ struct ForkResult {
 /// `common::fs::read_regular_capped` 早就为这件事写好了函数**和**一句结论
 ///（「`read_to_string` 无上限 → 远端 OOM」，还实测过 symlink→/dev/zero 六秒涨 11GB），
 /// 分叉这条新路却没用它。真机上会话 jsonl 到几十 MB 是常态（本仓注释里记过 37MB 一份），
-/// daemon 常跑在树莓派/SBC 上，原文 String + 全量 `Value` 双份驻留很容易把它按死。
+/// backend 常跑在树莓派/SBC 上，原文 String + 全量 `Value` 双份驻留很容易把它按死。
 ///
 /// 次生危害更隐蔽：进程被 OOM-killer 杀掉时 sshd 送的是 `exit-signal` 而不是 `exit-status`，
 /// monitor 侧 `interpret_fork_exec` 会看到 `exit_status: None` ⇒ 报「没收到退出码，连接可能中断」
@@ -79,7 +79,7 @@ fn read_jsonl(path: &Path) -> Result<Vec<serde_json::Value>, String> {
         .collect())
 }
 
-/// 生成一个新 sid。**不引 uuid crate**（daemon 依赖表刻意极简，见 Cargo.toml 抬头）：
+/// 生成一个新 sid。**不引 uuid crate**（backend 依赖表刻意极简，见 Cargo.toml 抬头）：
 /// 用「时间 + 进程 id + 源 sid 的哈希」拼一个 v4 形状的串。
 ///
 /// 唯一性不靠这个串本身保证 —— **靠 `O_EXCL`**：撞了就直接失败，绝不覆盖。

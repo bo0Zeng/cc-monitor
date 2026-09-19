@@ -9,7 +9,7 @@
  * 另持有启动 perf 测量（`window.__ccmPerf`，与后端 lib.rs 的 t0 互补看完整启动管线）。
  * HMR 走 full reload（不引框架，原生 DOM，强制整页重载简化心智模型）。
  */
-import { initDaemonPolicy } from "./daemon-policy";
+import { initBackendPolicy } from "./backend-policy";
 import "./styles.css";
 import { emit } from "@tauri-apps/api/event";
 import { commands } from "./ipc/commands";
@@ -146,12 +146,12 @@ window.addEventListener("DOMContentLoaded", async () => {
     return;
   }
 
-  // P2s（C8）：把盘上的 daemon 策略推给 Rust。**必须在这里推**——Rust 那边只持有生效值，
-  // 不读 config.json（避免同一个文件两个写者，见 daemon-policy.ts 头注）。
+  // P2s（C8）：把盘上的后端策略推给 Rust。**必须在这里推**——Rust 那边只持有生效值，
+  // 不读 config.json（避免同一个文件两个写者，见 backend-policy.ts 头注）。
   // 不推的后果不是报错，是**每台机都退回缺省**：用户设过的「退出时结束它」静默失效。
   // 失败不拦启动：策略是附加功能，读不到不该让主界面起不来。
-  void initDaemonPolicy().catch((e) => {
-    console.warn(`[P2s] daemon 策略推送失败，本次运行按缺省（不结束）走：${String(e)}`);
+  void initBackendPolicy().catch((e) => {
+    console.warn(`[P2s] backend 策略推送失败，本次运行按缺省（不结束）走：${String(e)}`);
   });
 
   status.innerHTML = "";
@@ -226,7 +226,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // A3：账号徽章数据管道——定期对每台远端拉 session-accounts（哪条会话属于哪个号）+ 账号邮箱，
   // 聚合喂 tabs（tabs 已在上方构造）。走 accounts store 的 8s TTL 缓存 + available:false 降级，
-  // 未迁移 / 旧 daemon 零副作用。
+  // 未迁移 / 旧后端零副作用。
   // audit-fixes I4：refreshSessionAccounts 无重入/顺序保护 → 慢的旧快照可覆盖新快照（把切号后刚
   // 关上的"反向窗口"从并发侧重开）。加 in-flight 递增序号门：每次进入 ++refreshSeq 取本地 mySeq，
   // 写 setSessionAccounts 前若 refreshSeq 已被更晚一次进入推大（mySeq !== refreshSeq）→ 丢弃本次。
@@ -286,7 +286,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   // F77（#53）：点 agents 面板某行 → load_subagent 拿子 agent jsonl 路径 → SessionViewer 只读展示该
   // agent 的记录。★ P7c-1（08-12）起**远端会话也支持**（同 subagent 卡片：origin 传下去，
-  // daemon 的 `--list-subagents` 只列候选，挑选留后端本侧）。
+  // backend 的 `--list-subagents` 只列候选，挑选留后端本侧）。
   let agentViewer: SessionViewer | null = null;
   let agentViewerMount: HTMLElement | null = null;
   const closeAgentViewer = (): void => {
@@ -311,7 +311,7 @@ window.addEventListener("DOMContentLoaded", async () => {
           parentJsonlPath: actx.parentPath,
           description: entry.desc, // ★ 用 trim 后的原始 desc（非展示 label）——load_subagent 精确匹配
           toolUseTimestamp: entry.timestamp,
-          // P7c-1：远端会话也能展开了（daemon `--list-subagents` 只列候选，挑选留后端本侧）。
+          // P7c-1：远端会话也能展开了（backend `--list-subagents` 只列候选，挑选留后端本侧）。
           origin: actx.origin ?? null,
         });
         closeAgentViewer(); // 关掉上一个（单例语义）
@@ -763,8 +763,8 @@ window.addEventListener("DOMContentLoaded", async () => {
     // issue #23: 会话红绿灯（busy=绿 / idle·shell=红 / waiting=黄）
     onSessionActivity: (e) =>
       tabs.updateActivity(e.session_id, e.status, e.waiting_for),
-    // Batch5-F18：远端会话宣告 → 骨架 Tab。Batch7-F24：p1e daemon 附 cwd/kind/name
-    // ——骨架标题即时完整（bg → ⚙ + 树状挂宿主后）；旧 daemon 缺省照旧 sid 前缀。
+    // Batch5-F18：远端会话宣告 → 骨架 Tab。Batch7-F24：p1e backend 附 cwd/kind/name
+    // ——骨架标题即时完整（bg → ⚙ + 树状挂宿主后）；旧后端缺省照旧 sid 前缀。
     onRemoteSessionAdded: (sessionId, origin, meta) => {
       tabs.createSkeletonTab(
         sessionId,

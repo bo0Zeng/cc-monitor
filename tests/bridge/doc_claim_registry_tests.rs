@@ -290,7 +290,7 @@ fn the_outer_layer_producers_are_in_the_state_the_doc_claims() {
             root.join("src/session-backend.ts").is_file(),
         ),
         (
-            "control/launch.rs（daemon argv）",
+            "control/launch.rs（backend argv）",
             root.join("src/backend/control/launch.rs").is_file(),
         ),
         (
@@ -323,15 +323,15 @@ fn the_outer_layer_producers_are_in_the_state_the_doc_claims() {
 ///
 /// # 三条量法，逐条写清它量的是什么
 ///
-/// - **①「生产切到 daemon 的 `launch` 了吗」** —— 量「哪几棵树的生产段真的发
+/// - **①「生产切到后端的 `launch` 了吗」** —— 量「哪几棵树的生产段真的发
 ///   `create-or-attach`」。**两棵树各算一格**：monitor 自己那条 `↗` 路
 ///   （`src/bridge/src/**.rs`）与后端自带的 CLI 面（`control/ccm/`）。
 ///   🔴 08-14 那一版只量了前一棵 ⇒ `K-P2` `D3`（09-03）把后一棵翻正之后，
 ///   那个读数**在它自己的尺子上仍然是对的**，而它答的那一问已经不是原来那一问了。
 ///   ⇒ 本条把两棵树都收进来，`部分切` 与 `全切` 因此分得开。
 /// - **②「attach 那条串归谁产」** —— 量「生产 TS 里还有没有人问座要 attach」。
-///   daemon **结构上不产 attach**（`control/launch.rs` 头注逐字「本模块不 attach，一次都不」，
-///   `parse_request` 的错文案逐字「attach 是平面 ③，不归 daemon」）⇒
+///   backend **结构上不产 attach**（`control/launch.rs` 头注逐字「本模块不 attach，一次都不」，
+///   `parse_request` 的错文案逐字「attach 是平面 ③，不归后端」）⇒
 ///   前端不产的那天，就是这一问有第二个答案的那天。
 /// - **③「daemonless 的远端还要不要能起会话」** —— 量那一档的**三个载体**
 ///   （落盘字段 · 界面那个 input · 数据源那条轮询回落）。
@@ -422,7 +422,7 @@ fn the_three_questions_in_33b_have_todays_answers() {
     } else {
         "〔现打②〕前端仍产 attach"
     };
-    // ★ 反向锚点：daemon 那条「不 attach」的结构事实还在。它没了，② 的两档都说不清。
+    // ★ 反向锚点：backend 那条「不 attach」的结构事实还在。它没了，② 的两档都说不清。
     // 🔴 **钉整行，不是子串**（`needle_anchor_registry` 治的那一族：匹配单位比事实小）。
     let launch_rs = read("src/backend/control/launch.rs");
     let no_attach = "//! 开不了你面前的窗）。所以本模块**不 attach**，一次都不。";
@@ -759,7 +759,7 @@ fn each_registered_status_still_matches_reality() {
             // ⚠ `control/` 那格刻意不是裸 `is_dir`：目录空着也算「有目录」，
             // 而这一格要主张的是**控制面真的住进来了** ⇒ 钉住那个唯一的分流器在里面。
             "monitor-backend-control-landed" => (
-                root.join("src/bridge/src/backend/control/daemon_route.rs")
+                root.join("src/bridge/src/backend/control/backend_route.rs")
                     .is_file(),
                 "monitor 侧 `backend/control/` 在，且那个唯一的回落分流器住在里面",
             ),
@@ -832,8 +832,8 @@ fn each_registered_status_still_matches_reality() {
 ///
 /// # 它是怎么被发现的
 ///
-/// Phase G 的全局变异抽样里，把 daemon `inbound.rs` 的 `unknown_command`
-/// **三处一起改名**成 `unknown_cmd` —— **daemon 253 条全绿**。
+/// Phase G 的全局变异抽样里，把 backend `inbound.rs` 的 `unknown_command`
+/// **三处一起改名**成 `unknown_cmd` —— **backend 253 条全绿**。
 /// 而 `src/doc/IPC-PROTOCOL.md` 逐条列着六个**协议级**错误码，语义是
 /// 「客户端代码写错了，别重试」—— 那是**仓外可见的契约**（`resolve` 那条已经与 aterm 冻结）。
 ///
@@ -845,7 +845,7 @@ fn each_registered_status_still_matches_reality() {
 ///
 /// ⇒ 这条也是 skill 那句「**变异存活分布不会说谎**」在本工作区拿到的实货。
 #[test]
-fn the_protocol_level_error_codes_in_the_doc_are_the_ones_the_daemon_uses() {
+fn the_protocol_level_error_codes_in_the_doc_are_the_ones_the_backend_uses() {
     const IPC: &str = include_str!("../../src/doc/IPC-PROTOCOL.md");
     let marker = "**协议级**由 `inbound.rs` 独占 ——";
     let at = IPC.find(marker).unwrap_or_else(|| {
@@ -888,19 +888,19 @@ fn the_protocol_level_error_codes_in_the_doc_are_the_ones_the_daemon_uses() {
              unknown_command · duplicate_id · handler_panicked · not_cancellable。",
         in_doc.len()
     );
-    let daemon = std::fs::read_to_string(repo_root().join("src/backend/inbound.rs"))
-        .expect("读不到 daemon 的 inbound.rs");
-    let prod = guard_core::production_code(&daemon);
+    let backend = std::fs::read_to_string(repo_root().join("src/backend/inbound.rs"))
+        .expect("读不到后端的 inbound.rs");
+    let prod = guard_core::production_code(&backend);
     let missing: Vec<&&str> = in_doc
         .iter()
         .filter(|c| !prod.contains(&format!("\"{c}\"")))
         .collect();
     assert!(
         missing.is_empty(),
-        "`IPC-PROTOCOL.md` 列着这些协议级错误码，而 daemon 生产段里**找不到**：{missing:?}\n\
+        "`IPC-PROTOCOL.md` 列着这些协议级错误码，而后端生产段里**找不到**：{missing:?}\n\
              ⚠ 它是**仓外可见的契约**（`resolve` 那条已经与仓外 aterm 冻结）——\n\
              改名 = 静默毁约：对端拿到一个它不认识的码，而两侧的测试都不会红\n\
-             （F12 的全局变异抽样就是这么把这个缺口逮出来的：三处一起改名，daemon 253 条全绿）。\n\
+             （F12 的全局变异抽样就是这么把这个缺口逮出来的：三处一起改名，backend 253 条全绿）。\n\
              要改就两侧一起改，并想清楚仓外消费方。"
     );
 }
@@ -989,7 +989,7 @@ fn every_code_symbol_named_in_the_docs_still_resolves() {
         include_str!("../../src/bridge/src/doc_claim_registry.rs").to_string(),
     ));
     // `build.rs` 是单文件、不在任何被扫的目录下 —— 第一版就漏了它，
-    // 于是 `build.rs::emit_daemon_build_id` 被当成「腐了」。**抽取器的扫描面要自己说清楚。**
+    // 于是 `build.rs::emit_backend_build_id` 被当成「腐了」。**抽取器的扫描面要自己说清楚。**
     let br = repo_root().join("src/bridge/build.rs");
     let br_src = std::fs::read_to_string(&br).expect("读不到 src/bridge/build.rs");
     srcs.push((br, br_src));
@@ -1356,7 +1356,7 @@ fn every_repo_path_named_in_the_docs_still_resolves() {
 /// > 先失败，本 job 根本不会起。**不重复实现那道检查**（重复 = 又一个会漂的副本）。
 ///
 /// 那是一条**正确的 E3 决定**（别造第二个权威源），而它的正确性**整个压在
-/// `needs: [build-daemons, build-windows]` 这一行上**。谁为了「发版快一点」把
+/// `needs: [build-backends, build-windows]` 这一行上**。谁为了「发版快一点」把
 /// `build-windows` 从 needs 里摘掉，两件事同时发生，且都不会有人说话：
 ///
 /// 1. **`.deb` 的版本再没人查** —— 那道 guard 正是「防 v2.4.2 漂移事故复发」加的；
@@ -1507,7 +1507,7 @@ fn the_release_version_is_the_same_in_all_six_places() {
 /// `needle_anchor_registry::corpus_vars` 按「`let X = …read_to_string(…)`」播种
 /// 「语料变量」，而它的传递闭包**按名字**跑一层 —— 在本文件里多播一个名字出去，
 /// 会把同文件别处**早就存在**的匹配一起卷进人群，那条递减棘轮当场涨一格。
-/// 〔与 `frozen_daemon_census::read_frozen` 那条头注同源，09-14 实打过一次〕
+/// 〔与 `frozen_backend_census::read_frozen` 那条头注同源，09-14 实打过一次〕
 fn read_repo_file(rel: &str) -> String {
     std::fs::read_to_string(repo_root().join(rel)).unwrap_or_else(|e| panic!("读 {rel} 失败：{e}"))
 }
@@ -1872,8 +1872,8 @@ fn the_npm_lockfile_claims_the_version_we_ship() {
 /// （`CHUNK_SIZE=600` 等）**一个都不在它的扫描面里**」—— 本模块此前只管
 /// 「状态列」与几种极窄形态，`CONST = 数` 这一族**没人读**。
 ///
-/// **变异实证（先红后信的反面：它当时是绿的）**：把 daemon 生产常量
-/// `REPLY_BURST` 从 8 改成 3 —— daemon 全套 + monitor 全套**都绿**，
+/// **变异实证（先红后信的反面：它当时是绿的）**：把后端生产常量
+/// `REPLY_BURST` 从 8 改成 3 —— backend 全套 + monitor 全套**都绿**，
 /// 而 `IPC-PROTOCOL.md` 逐字写着「`main.rs::REPLY_BURST = 8`，连发 8 条后强制让位一次」。
 /// 也就是说：**协议文档里的一个行为常量，代码改了不会有任何东西红。**
 ///
@@ -2044,7 +2044,7 @@ fn every_constant_value_quoted_in_the_docs_matches_the_code() {
     assert!(
         bad.is_empty(),
         "文档写死的常量值与代码对不上：\n{}\n\n\
-             ⚠ 立项样本就是这么溜掉的：`REPLY_BURST` 8→3，daemon 与 monitor **两套全绿**。\n\
+             ⚠ 立项样本就是这么溜掉的：`REPLY_BURST` 8→3，backend 与 monitor **两套全绿**。\n\
              修法（E12）：① 把文档改对；② 或者那句话本就不该写死数字 —— 改成指常量名。",
         bad.join("\n")
     );
@@ -2262,7 +2262,7 @@ fn env_key_claim_lines() -> Vec<(String, usize, String)> {
     hits
 }
 
-/// daemon **今天真的**从 `/proc/<pid>/environ` 里读几个环境变量 —— 从生产代码数出来。
+/// backend **今天真的**从 `/proc/<pid>/environ` 里读几个环境变量 —— 从生产代码数出来。
 ///
 /// ★ 这个数**只有一个家**（那段生产代码）：不是本文件里的常量，也不是文档里那个词。
 /// 这正是本模块头注那条手法：「判据不自己写那个数 —— 它把数抽出来，再与现场量的比」。
@@ -2372,7 +2372,7 @@ fn every_copy_of_that_sentence_is_registered() {
     assert!(
         orphans.is_empty(),
         "\n★★ 这几份副本没在册（或锚点含糊）：\n{}\n\n\
-             ⚠ 这句话说的是「daemon 从 `/proc/<pid>/environ` 读几个环境变量」，\
+             ⚠ 这句话说的是「backend 从 `/proc/<pid>/environ` 读几个环境变量」，\
              它在盘上**散着好几份**。`K-P5f` 那一拍改了三处、漏了第四处 ——\n\
              **订正手头那一处，不等于订正那句话**（本模块头注对同一个病记过两次）。\n\
              ⇒ 新写一份副本，就来 `ENV_KEY_CLAIM_SITES` 登记它是哪一类：\n\
@@ -2446,7 +2446,7 @@ fn every_registered_copy_says_the_number_we_actually_read() {
     }
     assert!(
         bad.is_empty(),
-        "\n★★ 「daemon 从 `/proc/<pid>/environ` 读几个环境变量」这句话，\
+        "\n★★ 「backend 从 `/proc/<pid>/environ` 读几个环境变量」这句话，\
              盘上这几份与现场对不上：\n{}\n\n\
              现场那个数从生产代码数出来（`accounts_query.rs` 生产段里 `proc_env_var(pid, …)` 的处数 = {n}），\n\
              ⇒ 要么是代码改了而这几份没跟着改（**盘上留了假话**），\n\
