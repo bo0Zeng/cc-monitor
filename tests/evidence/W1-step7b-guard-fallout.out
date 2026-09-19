@@ -1,0 +1,483 @@
+# 步 7b（`设计/16 §6` 第 3 批）剖分之后的守卫落点 —— 现打读数，不是结论
+#
+# 量法：git checkout w1/split-mixed-files && cd src/bridge && cargo test --workspace
+# 分类与结论住 `调研/设计/16 §6.2`；本文件只放**生数**。
+#
+# 剖分这一半的读数（可证的那一半）：
+#   混合文件 src/bridge/  69 → 6        （全仓 100 → 37；行数 113 219 → 36 735）
+#   逐字节回拼对账        69/69 通过，跳过 0 份
+#   用例数                monitor 包 1460 条（1453 passed + 7 ignored）→ 1460 条
+#                         （1418 passed + 35 failed + 7 ignored）—— **逐位相同**
+#                         8 个共享 crate 141 条 → 141 条，全绿
+#   cargo fmt --all --check  干净
+#
+# 红的 35 条（全部是「搬树之后尺子没跟着搬」，逐条原文见下）：
+    backend::control::daemon_launch::tests::may_fall_back_true_lives_in_exactly_one_place
+    backend::control::launch_wire::f07_main_path_tests::the_byte_for_byte_parity_still_has_two_independent_sides
+    backend::control::launch_wire::f07_main_path_tests::the_parity_guard_counts_bindings_it_does_not_merely_look_for_them
+    backend::control::launch_wire::f07_main_path_tests::the_retired_premise_left_a_tombstone_that_is_still_on_the_board
+    backend::control::local_backend::tests::every_real_daemon_e2e_demands_a_private_tmux_dir
+    backend::control::payload::tests::the_payload_cd_prefix_is_assembled_in_exactly_one_place
+    creds_store::tests::the_definition_table_and_the_call_site_table_name_the_same_exits
+    cross_half_edge_registry::tests::every_cross_half_edge_is_registered_with_a_reason
+    cross_half_edge_registry::tests::no_cross_half_edge_lives_in_production_code
+    cross_half_edge_registry::tests::the_edge_scan_sees_both_trees_and_actually_parses
+    daemon_policy::tests::the_death_ledger_is_wired_at_exactly_these_sites
+    dial_home_registry::tests::the_interface_side_ssh_debt_is_one_number_and_it_is_printed
+    doc_claim_registry::tests::every_code_symbol_named_in_the_docs_still_resolves
+    history::tests::every_address_the_retirement_condition_names_is_still_on_disk
+    history::tests::the_retirement_condition_says_the_same_thing_in_every_place_that_states_it
+    launch::tests::the_terminal_exit_table_says_why_it_refuses_to_pick
+    local_daemon::tests::every_ignored_test_here_that_spawns_a_real_daemon_demands_private_tmux
+    local_daemon::tests::every_test_that_starts_the_real_daemon_demands_a_private_tmux
+    local_daemon::tests::no_monitor_file_falls_back_to_leaving_block_comments_in
+    remote_history::f06_tests::the_cap_check_is_still_wired_not_just_declared
+    remote_history::kr83_tests::there_is_no_place_left_that_flattens_unknown_into_a_wire_value
+    scanning_guard_registry::tests::every_registry_guard_keeps_its_reverse_half
+    scanning_guard_registry::tests::no_new_guard_walks_the_tree_without_excluding_itself
+    scanning_guard_registry::tests::the_pending_inventory_only_shrinks
+    sftp_move_ledger::tests::every_blocker_this_ledger_registers_is_still_quoted_verbatim_on_disk
+    shared_crate_registry::tests::every_ignored_test_still_has_someone_who_triggers_it
+    spawn_managed::tests::the_spawn_verbs_and_platform_primitives_live_only_here
+    structural_scan::tests::comment_stripping_has_exactly_one_shared_implementation
+    structural_scan::tests::every_comment_stripping_transformer_is_registered
+    structural_scan::tests::every_dead_name_named_in_the_prose_is_declared_dead
+    structural_scan::tests::every_symbol_address_in_the_sources_still_resolves
+    structural_scan::tests::line_number_addresses_stay_in_range_and_never_grow
+    structural_scan::tests::the_cfg_test_reexport_detour_stays_extinct
+    tmux::tests::utf8_client_kou_jing_has_one_home_and_this_side_matches_it
+    tool_registry::tests::every_place_that_still_says_the_old_name_is_registered_and_only_shrinks
+
+# ── 逐条 panic 原文 ──────────────────────────────────────────────
+---- backend::control::daemon_launch::tests::may_fall_back_true_lives_in_exactly_one_place stdout ----
+
+thread 'backend::control::daemon_launch::tests::may_fall_back_true_lives_in_exactly_one_place' (996765) panicked at src/backend/control/../../../../../tests/bridge/backend/control/daemon_launch_tests.rs:156:5:
+assertion `left == right` failed: 生产段里 `may_fall_back: true` 出现 0 处（应恰好 1 处，在 `fn unsent` 里）：
+
+
+★ 多出来的那处意味着**有一档不经「能证明没发出去」这个判断就允许了回落**。
+那条回落走的整串没有 §34 的门 ⇒ 一次门拒绝、或一次「daemon 可能已经键入过」
+会被原样重做一遍；后者**不可撤销**（载荷第二次进正在跑 claude 的 pane，
+被当成 prompt 提交并写进对话历史）。
+⇒ 新的一档要允许回落，就让它走 `SendIntoResponse::unsent(...)`，
+并先回答一句「凭什么能证明这条命令根本没发出去」。
+⚠ 0 处 = `unsent` 那一处被改写了 ⇒ 没有 daemon 的远端全都用不了（C7 过渡期），
+那是另一个方向的坏，同样要红。
+  left: 0
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- backend::control::launch_wire::f07_main_path_tests::the_byte_for_byte_parity_still_has_two_independent_sides stdout ----
+
+thread 'backend::control::launch_wire::f07_main_path_tests::the_byte_for_byte_parity_still_has_two_independent_sides' (996840) panicked at src/backend/control/../../../../../tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs:1147:9:
+`launch_payload_parity.rs` 里那条逐字节对拍没了 ——
+**删前端渲染器最省事的做法就是把量它的尺子一起删掉**（纪律 ⑱）。
+真要退役它，先回 `K-R89`/`U8c-3` 说明「谁来证明两侧一致」，别自批。
+
+---- backend::control::launch_wire::f07_main_path_tests::the_parity_guard_counts_bindings_it_does_not_merely_look_for_them stdout ----
+
+thread 'backend::control::launch_wire::f07_main_path_tests::the_parity_guard_counts_bindings_it_does_not_merely_look_for_them' (996841) panicked at src/backend/control/../../../../../tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs:1021:10:
+对拍那条判据不在了 —— 本条此刻在量一个不存在的东西
+
+---- backend::control::launch_wire::f07_main_path_tests::the_retired_premise_left_a_tombstone_that_is_still_on_the_board stdout ----
+
+thread 'backend::control::launch_wire::f07_main_path_tests::the_retired_premise_left_a_tombstone_that_is_still_on_the_board' (996843) panicked at src/backend/control/../../../../../tests/bridge/backend/control/launch_wire_f07_main_path_tests.rs:750:5:
+只读到 14475 字节的本文件 —— 本条在空转
+
+---- backend::control::local_backend::tests::every_real_daemon_e2e_demands_a_private_tmux_dir stdout ----
+
+thread 'backend::control::local_backend::tests::every_real_daemon_e2e_demands_a_private_tmux_dir' (996863) panicked at src/backend/control/../../../../../tests/bridge/backend/control/local_backend_tests.rs:2543:5:
+本文件里找不到「`#[ignore]` 且要 CCM_E2E_DAEMON」的测试（08-08 实测 1 条）—— 抽取器坏了或那条 e2e 被删了，本条此刻无效
+
+---- backend::control::payload::tests::the_payload_cd_prefix_is_assembled_in_exactly_one_place stdout ----
+
+thread 'backend::control::payload::tests::the_payload_cd_prefix_is_assembled_in_exactly_one_place' (996930) panicked at src/backend/control/../../../../../tests/bridge/backend/control/payload_tests.rs:236:5:
+assertion `left == right` failed: 载荷的 `cd <目录> && ` 片段在 monitor 生产段里出现了 2 处（应恰好 1）：
+  payload.rs: Some(c) => format!("cd {} && ", shell_quote_core::posix_quote(c)),
+  payload.rs: Some(c) => format!("cd {} && ", shell_quote_core::posix_quote(c)),
+
+⚠ 头注第一行写着本模块是「那一段串的**唯一 Rust 真相源**」。
+第二份拼装会与这一份各自演化引用规则与拼接顺序，而载荷是**原样键进会话**的 —— 
+漂开的后果不是「样式不一致」，是**一边转义、一边不转义**。
+真要复用，调 `render_payload`。
+  left: 2
+ right: 1
+
+---- creds_store::tests::the_definition_table_and_the_call_site_table_name_the_same_exits stdout ----
+
+thread 'creds_store::tests::the_definition_table_and_the_call_site_table_name_the_same_exits' (997335) panicked at src/../../../tests/bridge/creds_store_tests.rs:627:10:
+切不出定义面那张表 —— 本条按红处理: "`const INNER_FIELD_USERS:` 一处都找不到 —— 事实没了，或者抽取面画错了（本条此刻是空转的）"
+
+---- cross_half_edge_registry::tests::no_cross_half_edge_lives_in_production_code stdout ----
+
+thread 'cross_half_edge_registry::tests::no_cross_half_edge_lives_in_production_code' (997348) panicked at src/cross_half_edge_registry.rs:570:13:
+src/bridge/src/backend/control/daemon_kill.rs 里看不到 `kill.rs` 或任何 `include_*!` —— 登记表与现实漂了
+
+---- cross_half_edge_registry::tests::every_cross_half_edge_is_registered_with_a_reason stdout ----
+
+thread 'cross_half_edge_registry::tests::every_cross_half_edge_is_registered_with_a_reason' (997346) panicked at src/cross_half_edge_registry.rs:511:9:
+assertion `left == right` failed: 两半之间的编译期边与登记表对不上。
+多出来的边请登记进 `CROSS_EDGES`，第四列写清**为什么必须编译期读**
+（「跨轨对拍：两侧必须同形」是正当理由；「顺手方便」不是）；
+登记表里多出来的说明那条边被删了或路径改了。
+  left: [("daemon→monitor", "src/backend/control/gate.rs", "src/bridge/src/backend/control/fixtures/gate2-golden.tsv"), ("daemon→monitor", "src/backend/control/launch.rs", "src/bridge/src/tmux.rs"), ("daemon→monitor", "src/backend/relay/route.rs", "src/bridge/src/backend/control/payload.rs"), ("monitor→daemon", "src/bridge/src/polling_registry.rs", "src/backend/control/tmux_hook.rs")]
+ right: [("daemon→monitor", "src/backend/control/gate.rs", "src/bridge/src/backend/control/fixtures/gate2-golden.tsv"), ("daemon→monitor", "src/backend/control/launch.rs", "src/bridge/src/tmux.rs"), ("daemon→monitor", "src/backend/relay/route.rs", "src/bridge/src/backend/control/payload.rs"), ("monitor→daemon", "src/bridge/src/backend/control/daemon_kill.rs", "src/backend/control/kill.rs"), ("monitor→daemon", "src/bridge/src/backend/control/daemon_launch.rs", "src/backend/inbound.rs"), ("monitor→daemon", "src/bridge/src/backend/control/daemon_send_keys.rs", "src/backend/control/launch.rs"), ("monitor→daemon", "src/bridge/src/history.rs", "src/backend/control/ccm/argv.rs"), ("monitor→daemon", "src/bridge/src/history.rs", "src/backend/control/ccm/plan.rs"), ("monitor→daemon", "src/bridge/src/inbound_client.rs", "src/backend/control/launch.rs"), ("monitor→daemon", "src/bridge/src/inbound_client.rs", "src/backend/inbound.rs"), ("monitor→daemon", "src/bridge/src/local_daemon.rs", "src/backend/listen.rs"), ("monitor→daemon", "src/bridge/src/polling_registry.rs", "src/backend/control/tmux_hook.rs"), ("monitor→daemon", "src/bridge/src/search.rs", "src/backend/observe/search_query.rs"), ("monitor→daemon", "src/bridge/src/ssh_source.rs", "src/backend/main.rs"), ("monitor→daemon", "src/bridge/src/ssh_source.rs", "src/backend/wire.rs"), ("monitor→daemon", "src/bridge/src/tmux.rs", "src/backend/observe/watcher.rs")]
+
+---- dial_home_registry::tests::the_interface_side_ssh_debt_is_one_number_and_it_is_printed stdout ----
+
+thread 'dial_home_registry::tests::the_interface_side_ssh_debt_is_one_number_and_it_is_printed' (997412) panicked at src/dial_home_registry.rs:506:13:
+在 `src/bridge/src/ssh_source.rs` 里找不到 `DIAL_SITES` 那张表（针：const DIAL_SITES: &[(）——
+表被改了名 / 挪了文件 / 换了列数 ⇒ 本模块三条判据同时失去被测对象。
+🔴 **不许让它默默当 0** —— 那等于宣布「已经解耦了」。
+
+---- cross_half_edge_registry::tests::the_edge_scan_sees_both_trees_and_actually_parses stdout ----
+
+thread 'cross_half_edge_registry::tests::the_edge_scan_sees_both_trees_and_actually_parses' (997349) panicked at src/cross_half_edge_registry.rs:425:9:
+assertion `left == right` failed: 跨半边的编译期边**条数**变了（实得 4，登记 16）：
+[
+    (
+        "daemon→monitor",
+        "src/backend/control/gate.rs",
+        "src/bridge/src/backend/control/fixtures/gate2-golden.tsv",
+    ),
+    (
+        "daemon→monitor",
+        "src/backend/control/launch.rs",
+        "src/bridge/src/tmux.rs",
+    ),
+    (
+        "daemon→monitor",
+        "src/backend/relay/route.rs",
+        "src/bridge/src/backend/control/payload.rs",
+    ),
+    (
+        "monitor→daemon",
+        "src/bridge/src/polling_registry.rs",
+        "src/backend/control/tmux_hook.rs",
+    ),
+]
+⚠ 别改这个数了事：新增一条就把它登记进 `CROSS_EDGES` 并写清「为什么必须编译期读」；少一条说明有判据被删了或路径改了。
+  left: 4
+ right: 16
+
+---- history::tests::every_address_the_retirement_condition_names_is_still_on_disk stdout ----
+
+thread 'history::tests::every_address_the_retirement_condition_names_is_still_on_disk' (997594) panicked at src/../../../tests/bridge/history_tests.rs:1190:10:
+自剪线不见了 —— 本组判据此刻在量它自己，读数作废
+
+---- daemon_policy::tests::the_death_ledger_is_wired_at_exactly_these_sites stdout ----
+
+thread 'daemon_policy::tests::the_death_ledger_is_wired_at_exactly_these_sites' (997372) panicked at src/../../../tests/bridge/daemon_policy_tests.rs:773:5:
+assertion `left == right` failed: `record_death` 的生产调用点是 4 处（登记 3 处）。实得：[("daemon_policy.rs", 1), ("local_daemon.rs", 3)]
+★ **接了几处就是几处**。变少 = 某一条观测路又回到了「看得见它没了、却没人记」，
+那正是 `K-P3` `§3-5` 第一行登记的那一格（当时这个数是 0）；
+变多 = 有第四条路开始记账（上面逐处那一圈只看登记过的三处，
+**第四处它一个字都不会说**）⇒ 回来把它写进 `DEATH_RECORD_SITES`，
+并说清它记的是哪条路。
+  left: 4
+ right: 3
+
+---- history::tests::the_retirement_condition_says_the_same_thing_in_every_place_that_states_it stdout ----
+
+thread 'history::tests::the_retirement_condition_says_the_same_thing_in_every_place_that_states_it' (997648) panicked at src/../../../tests/bridge/history_tests.rs:1190:10:
+自剪线不见了 —— 本组判据此刻在量它自己，读数作废
+
+---- launch::tests::the_terminal_exit_table_says_why_it_refuses_to_pick stdout ----
+
+thread 'launch::tests::the_terminal_exit_table_says_why_it_refuses_to_pick' (997794) panicked at src/../../../tests/bridge/launch_tests.rs:396:9:
+`TERMINAL_EXITS` 的头注里少了 "绝不在这里列"。
+那段话记的是「为什么不探测具体终端」——用户逐字「暂时不考虑其他终端」。
+删掉它，下一个人就会顺手加一行 `gnome-terminal`。
+
+---- local_daemon::tests::every_ignored_test_here_that_spawns_a_real_daemon_demands_private_tmux stdout ----
+
+thread 'local_daemon::tests::every_ignored_test_here_that_spawns_a_real_daemon_demands_private_tmux' (997865) panicked at src/../../../tests/bridge/local_daemon_tests.rs:1667:5:
+只切出 1 个测试块 —— 切法坏了
+
+---- local_daemon::tests::every_test_that_starts_the_real_daemon_demands_a_private_tmux stdout ----
+
+thread 'local_daemon::tests::every_test_that_starts_the_real_daemon_demands_a_private_tmux' (997869) panicked at src/../../../tests/bridge/local_daemon_tests.rs:2702:5:
+两个文件一共只切出 2 个测试块 —— 切法坏了，下面整条在空转
+
+---- local_daemon::tests::no_monitor_file_falls_back_to_leaving_block_comments_in stdout ----
+
+thread 'local_daemon::tests::no_monitor_file_falls_back_to_leaving_block_comments_in' (997874) panicked at crates/guard-core/src/lib.rs:874:5:
+只切出 412 个 `#[test]` 块（期望至少 1200，扫了 110 份文件）—— **切法坏了**，本条的块级那一半此刻是空转的
+
+---- remote_history::f06_tests::the_cap_check_is_still_wired_not_just_declared stdout ----
+
+thread 'remote_history::f06_tests::the_cap_check_is_still_wired_not_just_declared' (998255) panicked at src/../../../tests/bridge/remote_history_f06_tests.rs:68:5:
+★ 对照组：剥掉测试段之后这个 needle 应当变少（本测试自己的字面量被剥走了）。
+没变少 ⇒ `production_source` 没在起作用，下面三条就是在**读自己**、恒绿。
+
+---- remote_history::kr83_tests::there_is_no_place_left_that_flattens_unknown_into_a_wire_value stdout ----
+
+thread 'remote_history::kr83_tests::there_is_no_place_left_that_flattens_unknown_into_a_wire_value' (998274) panicked at src/../../../tests/bridge/remote_history_kr83_tests.rs:456:5:
+★ 对照组：剥掉测试段后 needle 应当归零（现打 raw 0 / prod 0）。
+没归零 ⇒ `production_source` 没在起作用，下面那几条是在读自己、恒绿。
+
+---- scanning_guard_registry::tests::no_new_guard_walks_the_tree_without_excluding_itself stdout ----
+
+thread 'scanning_guard_registry::tests::no_new_guard_walks_the_tree_without_excluding_itself' (998293) panicked at src/scanning_guard_registry.rs:1002:9:
+有扫描型判据在测试段里**裸遍历目录**，且不在存量清单里：
+  tests/bridge/ssh_source_f032_idle_tests.rs
+
+⇒ 改走 `guard_core::scan_tree!(&root, &["rs"])` —— 它按构造摘除调用者自己那份。
+★ 为什么非要这条：判据在自己的登记表/注释/常量里找到自己 ⇒ **恒绿**，
+audit-0805 实测五次，**五次都不是被判据变红发现的**（四次靠变异、一次靠 clippy）。
+「以后小心点」对这一族无效，所以修法是**让它写不出来**。
+
+---- sftp_move_ledger::tests::every_blocker_this_ledger_registers_is_still_quoted_verbatim_on_disk stdout ----
+
+thread 'sftp_move_ledger::tests::every_blocker_this_ledger_registers_is_still_quoted_verbatim_on_disk' (998392) panicked at src/sftp_move_ledger.rs:498:13:
+挡路石「别名 snippet 只许有一个家」的逐字校验位在 `profile_installer.rs` 里找不到了：
+  vec!["sftp.rs".to_string()]
+⇒ 它引的那句话在盘上变了。**回来重读这一条**，别顺手把校验位改成新的原文 ——那等于把「有人动过」这件事抹掉。
+
+---- doc_claim_registry::tests::every_code_symbol_named_in_the_docs_still_resolves stdout ----
+
+thread 'doc_claim_registry::tests::every_code_symbol_named_in_the_docs_still_resolves' (997429) panicked at src/doc_claim_registry.rs:1509:9:
+`doc/` 点名了这些代码符号，而它们今天对不上：
+src/doc/CONTRIBUTING.md:87  `ssh_source.rs::embedded_build_id_single_source_wired` —— **全仓找不到这个符号**（改名或删了）
+src/doc/INVARIANTS.md:545  `tmux.rs::observation_tokens_double_write_point_stays_in_sync` —— **全仓找不到这个符号**（改名或删了）
+src/doc/INVARIANTS.md:1021  `launch_wire.rs::the_ts_fallback_renderer_now_stands_on_its_own_consumers` —— **全仓找不到这个符号**（改名或删了）
+src/doc/INVARIANTS.md:1021  `launch_wire.rs::the_retired_premise_left_a_tombstone_that_is_still_on_the_board` —— **全仓找不到这个符号**（改名或删了）
+src/doc/INVARIANTS.md:1030  `launch_wire.rs::TS_FALLBACK_KEEPERS` —— **全仓找不到这个符号**（改名或删了）
+src/doc/INVARIANTS.md:1030  `launch_wire.rs::TS_FALLBACK_REACH` —— **全仓找不到这个符号**（改名或删了）
+src/doc/INVARIANTS.md:1031  `daemon_kill.rs::CREATION_PATHS` —— **全仓找不到这个符号**（改名或删了）
+src/doc/INVARIANTS.md:1036  `launch_wire.rs::TS_FALLBACK_KEEPERS` —— **全仓找不到这个符号**（改名或删了）
+src/doc/RELEASING.md:66  `ssh_source.rs::embedded_build_id_single_source_wired` —— **全仓找不到这个符号**（改名或删了）
+src/doc/REMOTE-PHASE0-DEPLOY.md:78  `ssh_source.rs::embedded_build_id_single_source_wired` —— **全仓找不到这个符号**（改名或删了）
+
+⚠ 这是**停滞式腐坏**的典型形态：改代码的人不会回来改文档，而在本判据之前
+             **没有任何东西会因此变红**。两条修法（E12）：① 把文档改对；② 那句话若只是历史，就写清「已删 / 已改名」并进本条的例外表（带理由）。
+
+---- scanning_guard_registry::tests::the_pending_inventory_only_shrinks stdout ----
+
+thread 'scanning_guard_registry::tests::the_pending_inventory_only_shrinks' (998294) panicked at src/scanning_guard_registry.rs:1032:9:
+存量清单里这些已经不裸遍历了（迁完了或文件没了）：["src/bridge/src/backend/control/daemon_kill.rs", "src/bridge/src/backend/control/launch_wire.rs", "src/bridge/src/panorama.rs", "src/bridge/src/parser.rs", "src/bridge/src/profile_installer.rs", "src/bridge/src/ssh_source.rs", "src/bridge/src/utils.rs"]
+⇒ 删掉它们并把 `PENDING_CEILING` 一起调下来 —— 留着就是把棘轮的余量白送出去。
+
+---- shared_crate_registry::tests::every_ignored_test_still_has_someone_who_triggers_it stdout ----
+
+thread 'shared_crate_registry::tests::every_ignored_test_still_has_someone_who_triggers_it' (998413) panicked at src/shared_crate_registry.rs:1115:9:
+全仓只收到 0 条 `#[ignore]` 测试 —— 剥法坏了（建判据当天实测 7 条）
+
+---- structural_scan::tests::comment_stripping_has_exactly_one_shared_implementation stdout ----
+
+thread 'structural_scan::tests::comment_stripping_has_exactly_one_shared_implementation' (998624) panicked at src/../../../tests/bridge/structural_scan_tests.rs:903:5:
+连 `profile_installer.rs` 里那个已登记的实现都没扫到 —— 遍历或形态坏了，
+那样「没有新增」这个结论是零命中得来的，不是真的
+
+---- scanning_guard_registry::tests::every_registry_guard_keeps_its_reverse_half stdout ----
+〔登记表型判据 · 本趟的射程〕3 棵子树 · 逐棵采集量 [("src/bridge/src", 109), ("src/backend", 64), ("tests", 111)]
+〔登记表型判据 · 本趟采到的人群〕13 个：
+  src/bridge/src/atomic_replace_registry.rs
+  src/bridge/src/dial_home_registry.rs
+  src/bridge/src/doc_claim_registry.rs
+  src/bridge/src/launcher_identity_registry.rs
+  src/bridge/src/local_read_surface_registry.rs
+  src/bridge/src/plugin_class_registry.rs
+  src/bridge/src/polling_registry.rs
+  src/bridge/src/rust_timer_registry.rs
+  src/bridge/src/session_name_registry.rs
+  src/bridge/src/sftp_move_ledger.rs
+  src/bridge/src/tool_registry.rs
+  tests/backend/platform/cfgless_guard.rs
+  tests/bridge/backend/control/local_backend_tests.rs
+
+thread 'scanning_guard_registry::tests::every_registry_guard_keeps_its_reverse_half' (998292) panicked at src/scanning_guard_registry.rs:685:9:
+这几份**应当**被采进人群，而本趟一个候选都没采到它们：
+  src/backend/control/local_backend.rs —— `K-R31` 的 `nothing_in_the_production_path_runs_code_between_fork_and_exec`，它的表叫 `FORMS`
+
+本趟采到的是这 13 个：
+  src/bridge/src/atomic_replace_registry.rs
+  src/bridge/src/dial_home_registry.rs
+  src/bridge/src/doc_claim_registry.rs
+  src/bridge/src/launcher_identity_registry.rs
+  src/bridge/src/local_read_surface_registry.rs
+  src/bridge/src/plugin_class_registry.rs
+  src/bridge/src/polling_registry.rs
+  src/bridge/src/rust_timer_registry.rs
+  src/bridge/src/session_name_registry.rs
+  src/bridge/src/sftp_move_ledger.rs
+  src/bridge/src/tool_registry.rs
+  tests/backend/platform/cfgless_guard.rs
+  tests/bridge/backend/control/local_backend_tests.rs
+
+🔴 别把这条读成「那份文件坏了」—— 它红的是**本条自己瞎了**：
+上面那个 `TABLE_DECLS` 是**按名字**认表的闭集，被点名的那份文件把表改了个名字
+（或换了写法）⇒ 它从此掉出人群，而掉出去之后本条对它**恒真地绿**。
+★ `K-R33` 立件的正是这一格：`K-R31` 那条判据的表叫 `FORMS`，闭集里没有这个名字，
+于是它整整一轮**没被判到**，而输出与「判到了并且过了」一模一样。
+⇒ 处置：把新表名加进 `TABLE_DECLS`（那是**放宽**，先读模块头注 `K-R33` 那一节），
+或者把那张表改回闭集里的名字。
+
+---- structural_scan::tests::every_comment_stripping_transformer_is_registered stdout ----
+
+thread 'structural_scan::tests::every_comment_stripping_transformer_is_registered' (998625) panicked at src/../../../tests/bridge/structural_scan_tests.rs:857:5:
+assertion `left == right` failed: 
+「返回 String/Vec 且会剥注释」的函数与登记表对不上。
+**多出来的**：先问「共享原语 `guard_core::strip_comment_lines` 为什么不够」——
+答得出来就登记进 `TRANSFORMERS` 并写明理由；答不出来就改成调它。
+⚠ 名字叫什么**不是判据**：换个名字的同一份剥法仍然是第二份剥法。
+**少了的**：它被收口了 ⇒ 把登记删掉（登记表腐烂比没有登记更糟）。
+  left: ["agent_profile_parity.rs::rows", "e2e_gate_registry.rs::strip_comments", "gate.rs::golden_rows", "gate2_parity.rs::rows", "lib.rs::production_code", "lib.rs::strip_comment_lines", "lib.rs::strip_hash_comment_lines", "profile_installer.rs::scan_legacy_rc_lines", "session_name_registry.rs::production", "shared_crate_registry.rs::job_block", "ssh_source.rs::parse_host_aliases", "tmux_hook.rs::prod_code", "tool_registry.rs::declared_fields_of", "tool_registry.rs::production_code"]
+ right: ["agent_profile_parity.rs::rows", "cc_bus.rs::non_test_code", "ccm_invocation.rs::refusal_variants", "e2e_gate_registry.rs::strip_comments", "gate.rs::golden_rows", "gate2_parity.rs::rows", "hooks_diag.rs::non_test_code", "launch_wire.rs::production_ts", "lib.rs::production_code", "lib.rs::strip_comment_lines", "lib.rs::strip_hash_comment_lines", "profile_installer.rs::scan_legacy_rc_lines", "session_name_registry.rs::production", "shared_crate_registry.rs::job_block", "ssh_source.rs::parse_host_aliases", "tmux_hook.rs::prod_code", "tool_registry.rs::declared_fields_of", "tool_registry.rs::production_code"]
+
+---- structural_scan::tests::line_number_addresses_stay_in_range_and_never_grow stdout ----
+
+thread 'structural_scan::tests::line_number_addresses_stay_in_range_and_never_grow' (998635) panicked at src/../../../tests/bridge/structural_scan_tests.rs:1637:5:
+这些行号地址**越界**了 —— 被引文件根本没有那么多行，一定是假的：
+  parity_ledger.rs:443  指 config_surface.rs 的第 1062 行，而它只有 853 行
+
+⇒ 改法只有一条：**点符号**（函数名 / 常量名 / 类型名），别换一个今天对的行号 ——换一个今天对的行号就是把这一族再走一遍。
+
+---- structural_scan::tests::the_cfg_test_reexport_detour_stays_extinct stdout ----
+
+thread 'structural_scan::tests::the_cfg_test_reexport_detour_stays_extinct' (998644) panicked at src/../../../tests/bridge/structural_scan_tests.rs:408:5:
+只认出 165 个 `#[cfg(test)]` 顶层模块（语料 297 份）—— 人群的第一步塌了，本条在空转。09-12 现打 250 个 / 207 份（两棵树）。
+
+---- spawn_managed::tests::the_spawn_verbs_and_platform_primitives_live_only_here stdout ----
+
+thread 'spawn_managed::tests::the_spawn_verbs_and_platform_primitives_live_only_here' (998463) panicked at src/../../../tests/bridge/spawn_managed_tests.rs:131:5:
+这些地方绕开了 `spawn_managed` 这个唯一出口：
+  <repo>/src/bridge/src/spawn_managed.rs: `.spawn()`
+  <repo>/src/bridge/src/spawn_managed.rs: `.creation_flags(`
+  <repo>/src/bridge/src/spawn_managed.rs: `.process_group(`
+  <repo>/src/bridge/src/spawn_managed.rs: `.kill_on_drop(`
+
+★ `15 §5.1 A3` / `00 §1.5.2`：起子进程的三个问题（要不要窗口 · 要不要随我死 · 错误往哪去）**必须在编译期各自回答一遍**。
+⇒ 把 `cmd.spawn()` 换成 `crate::spawn_managed::spawn_managed_cmd(&mut cmd, …)`，三个策略照实写；`backend/` 那一半收注入参数（`ManagedSpawn`），不许自己认平台。
+⚠ 别在落点上直接写 `creation_flags` / `process_group` / `kill_on_drop` —— 那正是「同一形状出现三次」的来路。
+
+---- tool_registry::tests::every_place_that_still_says_the_old_name_is_registered_and_only_shrinks stdout ----
+
+thread 'tool_registry::tests::every_place_that_still_says_the_old_name_is_registered_and_only_shrinks' (998762) panicked at src/tool_registry.rs:2707:9:
+
+`SITES` 里这几行在盘上已经没有对应物了：
+  src/config_surface.rs · OldId
+  src/fenced_block.rs · SymbolName
+  src/fenced_block.rs · OldId
+
+⇒ 那一处已经改完了，**把这一行删掉**（账不许挂空号：
+一张挂着空号的表会让人以为债还在那儿，而它其实早还了）。
+
+---- tmux::tests::utf8_client_kou_jing_has_one_home_and_this_side_matches_it stdout ----
+
+thread 'tmux::tests::utf8_client_kou_jing_has_one_home_and_this_side_matches_it' (998699) panicked at src/../../../tests/bridge/tmux_tests.rs:382:5:
+monitor 侧有**第二个** `UTF8_CLIENT_FLAG: &str =`：["<repo>/src/bridge/src/tmux.rs"]
+⇒ 从此两份靠人对齐。正解是引用本文件那一处。
+
+---- structural_scan::tests::every_symbol_address_in_the_sources_still_resolves stdout ----
+
+thread 'structural_scan::tests::every_symbol_address_in_the_sources_still_resolves' (998633) panicked at src/../../../tests/bridge/structural_scan_tests.rs:1502:5:
+源码里点名了这些代码符号，而它们今天对不上：
+  fenced_block.rs:172  指 profile_installer.rs 里的 `the_local_posix_port_is_byte_for_byte_the_remote_one` —— 符号还在，但**搬家了**：现住 ["profile_installer_tests.rs"]
+  launch.rs:458  指 launch.rs 里的 `every_terminal_window_backend_opens_carries_the_daemon_path` —— 符号还在，但**搬家了**：现住 ["launch_tests.rs"]
+  launch.rs:465  指 launch.rs 里的 `every_terminal_window_backend_opens_carries_the_daemon_path` —— 符号还在，但**搬家了**：现住 ["launch_tests.rs"]
+  launch.rs:466  指 payload.rs 里的 `the_population_that_renders_env_prefixes_for_the_agent_process_is_enumerated` —— 符号还在，但**搬家了**：现住 ["payload_tests.rs"]
+  launch.rs:502  指 utils.rs 里的 `the_relay_prefix_survives_the_powershell_encoding_byte_for_byte` —— 符号还在，但**搬家了**：现住 ["utils_tests.rs"]
+  launch.rs:506  指 payload.rs 里的 `nobody_reaches_the_relay_take_points_without_going_through_the_seam` —— 符号还在，但**搬家了**：现住 ["payload_tests.rs"]
+  lib.rs:228  指 local_daemon.rs 里的 `the_exit_path_covers_both_ways_of_starting_the_local_backend` —— 符号还在，但**搬家了**：现住 ["local_daemon_tests.rs"]
+  lib.rs:245  指 local_backend.rs 里的 `the_exit_path_really_stops_the_local_backend` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  lib.rs:260  指 local_daemon.rs 里的 `the_exit_arm_hands_the_other_two_ways_to_the_seam` —— 符号还在，但**搬家了**：现住 ["local_daemon_tests.rs"]
+  lib.rs:1430  指 local_backend.rs 里的 `the_exit_path_really_stops_the_local_backend` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  parity_ledger.rs:888  指 history.rs 里的 `every_local_account_shape_gets_a_named_verdict_from_the_backend_path` —— 符号还在，但**搬家了**：现住 ["history_tests.rs"]
+  scanning_guard_registry.rs:51  指 local_backend.rs 里的 `nothing_in_the_production_path_runs_code_between_fork_and_exec` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  scanning_guard_registry.rs:729  指 local_backend.rs 里的 `nothing_in_the_production_path_runs_code_between_fork_and_exec` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  scanning_guard_registry.rs:764  指 structural_scan.rs 里的 `comment_stripping_has_exactly_one_shared_implementation` —— 符号还在，但**搬家了**：现住 ["structural_scan_tests.rs"]
+  sftp_move_ledger.rs:227  指 profile_installer.rs 里的 `the_alias_snippet_has_exactly_one_home_in_the_rust_tree` —— 符号还在，但**搬家了**：现住 ["profile_installer_tests.rs"]
+  shared_crate_registry.rs:412  指 local_backend.rs 里的 `every_bundle_job_stages_the_sidecar_before_building` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  shared_crate_registry.rs:498  指 local_backend.rs 里的 `every_bundle_job_stages_the_sidecar_before_building` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  ssh_source.rs:1412  指 ssh_source.rs 里的 `the_tmux_cache_has_one_writer_and_only_origin_keys` —— 符号还在，但**搬家了**：现住 ["ssh_source_f032_idle_tests.rs"]
+  tmux_daemon_gate_guard.rs:265  指 tmux.rs 里的 `every_target_placeholder_comes_from_exact_target` —— 符号还在，但**搬家了**：现住 ["tmux_tests.rs"]
+  tool_registry.rs:1207  指 skill_host.rs 里的 `git_common_dir` —— 符号还在，但**搬家了**：现住 ["skill_host_tests.rs"]
+  tool_registry.rs:1226  指 cc_bus.rs 里的 `count_now` —— 符号还在，但**搬家了**：现住 ["cc_bus_tests.rs"]
+  write_site_registry.rs:636  指 sftp.rs 里的 `the_embedded_identity_comes_from_the_bytes_not_from_a_label` —— 符号还在，但**搬家了**：现住 ["sftp_tests.rs"]
+  write_site_registry.rs:717  指 history.rs 里的 `the_delete_entry_point_actually_goes_through_the_fence` —— 符号还在，但**搬家了**：现住 ["history_tests.rs"]
+  lib.rs:42  指 search.rs 里的 `the_search_kou_jing_has_exactly_one_home` —— 符号还在，但**搬家了**：现住 ["search_kou_jing_guard.rs"]
+  accounts_query.rs:2072  指 local_accounts.rs 里的 `the_auth_dimension_has_exactly_one_computation_path` —— 符号还在，但**搬家了**：现住 ["accounts_query.rs", "local_accounts_tests.rs"]
+  search_query.rs:15  指 search.rs 里的 `the_search_kou_jing_has_exactly_one_home` —— 符号还在，但**搬家了**：现住 ["search_kou_jing_guard.rs"]
+  search_query.rs:600  指 search.rs 里的 `the_snippet_window_comes_from_core` —— 符号还在，但**搬家了**：现住 ["search_query.rs", "search_tests.rs"]
+  ratchet_guard.rs:41  指 local_daemon.rs 里的 `this_item_loosened_none_of_the_ratchets_it_touched` —— 符号还在，但**搬家了**：现住 ["local_daemon_tests.rs"]
+  readonly_guard.rs:1449  指 structural_scan.rs 里的 `the_cfg_test_reexport_detour_stays_extinct` —— 符号还在，但**搬家了**：现住 ["structural_scan_tests.rs"]
+  acct_iso_deploy_tests.rs:90  指 tmux.rs 里的 `tmux_ls_fmt_double_write_point_stays_in_sync` —— 符号还在，但**搬家了**：现住 ["tmux_tests.rs"]
+  daemon_send_keys_tests.rs:44  指 daemon_kill.rs 里的 `the_refusal_wording_matches_the_sibling_command` —— 符号还在，但**搬家了**：现住 ["daemon_kill_tests.rs", "daemon_send_keys_tests.rs"]
+  local_backend_tests.rs:939  指 local_daemon.rs 里的 `the_local_daemon_can_be_stopped_and_started_again` —— 符号还在，但**搬家了**：现住 ["local_daemon_tests.rs"]
+  local_backend_tests.rs:2823  指 local_daemon.rs 里的 `every_test_that_starts_the_real_daemon_demands_a_private_tmux` —— 符号还在，但**搬家了**：现住 ["local_daemon_tests.rs"]
+  local_backend_tests.rs:3118  指 local_daemon.rs 里的 `three_fake_daemons_land_in_three_different_cells` —— 符号还在，但**搬家了**：现住 ["local_daemon_tests.rs"]
+  payload_tests.rs:3  指 launch.rs 里的 `the_posix_marker_is_the_one_the_frontend_matches_on` —— 符号还在，但**搬家了**：现住 ["launch_tests.rs"]
+  daemon_policy_tests.rs:675  指 local_daemon.rs 里的 `body_of` —— 符号还在，但**搬家了**：现住 ["agent_dispatch_registry.rs", "local_daemon_tests.rs", "ssh_source_coldstart_perf_guard.rs", "ssh_source_dial_move_judge.rs", "tmux_daemon_gate_guard.rs"]
+  daemon_policy_tests.rs:749  指 local_daemon.rs 里的 `the_user_actionable_start_failures_all_reach_the_user` —— 符号还在，但**搬家了**：现住 ["local_daemon_tests.rs"]
+  history_tests.rs:104  指 launch.rs 里的 `local_and_remote_share_the_same_payload` —— 符号还在，但**搬家了**：现住 ["launch_tests.rs"]
+  local_daemon_tests.rs:1053  指 local_backend.rs 里的 `the_exit_path_really_stops_the_local_backend` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  local_daemon_tests.rs:1472  指 sftp.rs 里的 `both_daemon_deploy_paths_ask_the_file_itself_not_only_the_marker` —— 符号还在，但**搬家了**：现住 ["sftp_tests.rs"]
+  local_daemon_tests.rs:2112  指 local_backend.rs 里的 `the_local_tmux_frames_really_land_in_the_ledger` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  local_daemon_tests.rs:2298  指 local_backend.rs 里的 `the_local_tmux_frames_really_land_in_the_ledger` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  local_daemon_tests.rs:2369  指 local_backend.rs 里的 `every_real_daemon_e2e_demands_a_private_tmux_dir` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  local_daemon_tests.rs:2712  指 local_daemon.rs 里的 `the_local_daemon_can_be_stopped_and_started_again` —— 符号还在，但**搬家了**：现住 ["local_daemon_tests.rs"]
+  local_daemon_tests.rs:2713  指 local_daemon.rs 里的 `e2e_a_second_host_adopts_the_running_daemon_instead_of_starting_a_second_one` —— 符号还在，但**搬家了**：现住 ["local_daemon_tests.rs"]
+  local_daemon_tests.rs:2714  指 local_daemon.rs 里的 `e2e_a_detached_daemon_that_dies_leaves_no_zombie` —— 符号还在，但**搬家了**：现住 ["local_daemon_tests.rs"]
+  local_daemon_tests.rs:2715  指 local_backend.rs 里的 `the_local_tmux_frames_really_land_in_the_ledger` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  local_daemon_tests.rs:2716  指 local_backend.rs 里的 `the_local_daemon_really_registers_an_inbound_client` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  local_daemon_tests.rs:2717  指 local_backend.rs 里的 `e2e_the_supervisor_restarts_a_real_daemon_after_it_is_killed` —— 符号还在，但**搬家了**：现住 ["local_backend_tests.rs"]
+  remote_history_kr83_tests.rs:257  指 history.rs 里的 `the_three_counts_can_say_i_do_not_know` —— 符号还在，但**搬家了**：现住 ["history_tests.rs"]
+  ssh_source_dial_move_judge.rs:139  指 local_daemon.rs 里的 `body_of` —— 符号还在，但**搬家了**：现住 ["agent_dispatch_registry.rs", "local_daemon_tests.rs", "ssh_source_coldstart_perf_guard.rs", "ssh_source_dial_move_judge.rs", "tmux_daemon_gate_guard.rs"]
+  structural_scan_tests.rs:709  指 cc_bus.rs 里的 `non_test_code` —— 符号还在，但**搬家了**：现住 ["cc_bus_tests.rs", "hooks_diag_tests.rs"]
+  structural_scan_tests.rs:713  指 hooks_diag.rs 里的 `non_test_code` —— 符号还在，但**搬家了**：现住 ["cc_bus_tests.rs", "hooks_diag_tests.rs"]
+  structural_scan_tests.rs:729  指 ccm_invocation.rs 里的 `refusal_variants` —— 符号还在，但**搬家了**：现住 ["ccm_invocation_tests.rs"]
+  structural_scan_tests.rs:760  指 launch_wire.rs 里的 `production_ts` —— 符号还在，但**搬家了**：现住 ["launch_wire_f07_main_path_tests.rs"]
+  tmux_tests.rs:908  指 inbound_client.rs 里的 `the_local_origin_is_the_same_string_on_both_sides` —— 符号还在，但**搬家了**：现住 ["inbound_client_tests.rs"]
+  build.rs:519  指 local_daemon.rs 里的 `every_test_that_starts_the_real_daemon_demands_a_private_tmux` —— 符号还在，但**搬家了**：现住 ["local_daemon_tests.rs"]
+
+⚠ 这是**停滞式腐坏**：改代码的人不会回来改注释，而在本条之前**源码这一侧没有任何东西会因此变红**（`doc/` 那一侧 08-06 就有人守了）。
+两条修法：① 把地址改对（点今天真的那个符号）；② 那句话若只是历史，就写清「已删 / 已改名」并进本条的例外表，**带理由**。
+
+---- structural_scan::tests::every_dead_name_named_in_the_prose_is_declared_dead stdout ----
+
+thread 'structural_scan::tests::every_dead_name_named_in_the_prose_is_declared_dead' (998626) panicked at src/../../../tests/bridge/structural_scan_tests.rs:2714:5:
+只抽到 6 处「只活在散文里的名字」—— 抽取器坏了（09-03 现打 84 处 / 58 个名字）
+
+
+failures:
+    backend::control::daemon_launch::tests::may_fall_back_true_lives_in_exactly_one_place
+    backend::control::launch_wire::f07_main_path_tests::the_byte_for_byte_parity_still_has_two_independent_sides
+    backend::control::launch_wire::f07_main_path_tests::the_parity_guard_counts_bindings_it_does_not_merely_look_for_them
+    backend::control::launch_wire::f07_main_path_tests::the_retired_premise_left_a_tombstone_that_is_still_on_the_board
+    backend::control::local_backend::tests::every_real_daemon_e2e_demands_a_private_tmux_dir
+    backend::control::payload::tests::the_payload_cd_prefix_is_assembled_in_exactly_one_place
+    creds_store::tests::the_definition_table_and_the_call_site_table_name_the_same_exits
+    cross_half_edge_registry::tests::every_cross_half_edge_is_registered_with_a_reason
+    cross_half_edge_registry::tests::no_cross_half_edge_lives_in_production_code
+    cross_half_edge_registry::tests::the_edge_scan_sees_both_trees_and_actually_parses
+    daemon_policy::tests::the_death_ledger_is_wired_at_exactly_these_sites
+    dial_home_registry::tests::the_interface_side_ssh_debt_is_one_number_and_it_is_printed
+    doc_claim_registry::tests::every_code_symbol_named_in_the_docs_still_resolves
+    history::tests::every_address_the_retirement_condition_names_is_still_on_disk
+    history::tests::the_retirement_condition_says_the_same_thing_in_every_place_that_states_it
+    launch::tests::the_terminal_exit_table_says_why_it_refuses_to_pick
+    local_daemon::tests::every_ignored_test_here_that_spawns_a_real_daemon_demands_private_tmux
+    local_daemon::tests::every_test_that_starts_the_real_daemon_demands_a_private_tmux
+    local_daemon::tests::no_monitor_file_falls_back_to_leaving_block_comments_in
+    remote_history::f06_tests::the_cap_check_is_still_wired_not_just_declared
+    remote_history::kr83_tests::there_is_no_place_left_that_flattens_unknown_into_a_wire_value
+    scanning_guard_registry::tests::every_registry_guard_keeps_its_reverse_half
+    scanning_guard_registry::tests::no_new_guard_walks_the_tree_without_excluding_itself
+    scanning_guard_registry::tests::the_pending_inventory_only_shrinks
+    sftp_move_ledger::tests::every_blocker_this_ledger_registers_is_still_quoted_verbatim_on_disk
+    shared_crate_registry::tests::every_ignored_test_still_has_someone_who_triggers_it
+    spawn_managed::tests::the_spawn_verbs_and_platform_primitives_live_only_here
+    structural_scan::tests::comment_stripping_has_exactly_one_shared_implementation
+    structural_scan::tests::every_comment_stripping_transformer_is_registered
+    structural_scan::tests::every_dead_name_named_in_the_prose_is_declared_dead
+    structural_scan::tests::every_symbol_address_in_the_sources_still_resolves
+    structural_scan::tests::line_number_addresses_stay_in_range_and_never_grow
+    structural_scan::tests::the_cfg_test_reexport_detour_stays_extinct
+    tmux::tests::utf8_client_kou_jing_has_one_home_and_this_side_matches_it
+    tool_registry::tests::every_place_that_still_says_the_old_name_is_registered_and_only_shrinks
+
+test result: FAILED. 1418 passed; 35 failed; 7 ignored; 0 measured; 0 filtered out; finished in 10.77s
+
+error: test failed, to rerun pass `-p monitor --lib`
+EXIT=101
