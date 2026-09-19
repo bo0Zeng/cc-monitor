@@ -33,8 +33,9 @@
 # │ ⚠ **自述句只许住在这一段里。** `C5b` 会把这一段之外、头注里任何一句「本脚本跑 N 格 /
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
-# │ 〔自述·格数〕21 格
+# │ 〔自述·格数〕23 格
 # │ 〔自述·点名〕hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
+# │   platform · muslbuild ·
 # │   installface ·
 # │   fmt · fmt-backend ·
 # │   winchk · winchk-backend · cargo · deadcode · generated · backend · tsc · npm ·
@@ -50,6 +51,11 @@
 # │ 〔自述·现物〕`release-gate` 那一格的判据本体：`tests/evidence/K-R124-ruler.py`（`K-R124` 09-15 第 20 格）
 # │   —— 它与 `.github/workflows/ci.yml` 里那一步跑的是**同一份文件**，不是两份抄件；
 # │   被测对象是 `.github/workflows/release.yml`，它顺带调 `scripts/release-notes.mjs --check`。
+# │ 〔自述·现物〕`platform` 那一格的判据本体：`tests/evidence/K-G4-platform-ledger.py`
+# │   （`G4` 09-19 第 24 格）—— 承诺的平台（条 63：三格）↔ 门禁真跑的格，两向对拍。
+# │ 〔自述·现物〕`muslbuild` 那一格没有独立的判据文件 —— 它就是两趟 `cargo zigbuild`
+# │   （`x86_64-unknown-linux-musl` ＋ `aarch64-unknown-linux-musl`），判定逐字写在
+# │   下面那一行 `run_gate muslbuild` 的内联脚本里（`G4` 09-19 第 23 格）。
 # │ 〔自述·现物〕`gate-selfdesc` 那一格的判据本体：`tests/evidence/K-R80-gate-cell-coverage.py`
 # │   （09-19 第 22 格）—— **被测对象就是本文件**。它默认读 `tests/scripts/gate.sh`，
 # │   也接一个路径参数（对着变异过的副本跑死值验时用）。
@@ -895,6 +901,35 @@ run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PAS
 run_gate gate-selfdesc '判过的条数（逐项分母由判据本体每趟现算并印在它自己那行上：C1 两向集合对拍 ＋ 每格一条逐字锚点 ＋ 逐格逐树的裁词与理由 ＋ 树的分区恒等 ＋ 每棵树非空与在盘 ＋ 裁决行格数对拍 ＋「不需要门」的说明与钉子 ＋ 分档表逐份成员）。⚠ **反空真锚不是这个数，是 `C1` 那两向集合相等** —— 登记空了或 `gate.sh` 读成空串，两个集合当场分叉（死值验：改一格的名 ⇒ C1 红）。⚠ 它只判「登记完整且指得到真东西」，**不判裁词对不对、不判归得对不对**（那要读语义）' \
          python3 tests/evidence/K-R80-gate-cell-coverage.py
 
+# ── `muslbuild`：**远端 Linux 那一格**（G4 · 09-19，第 23 格）─────────────────
+#
+# 🔴 **它补的是 `真相源/92 §2` 登记的 G4 空洞①**，逐字：「**musl 那两个 target 在 CI 与
+#    本地门禁里都是零命中**（只在 tag 那天编一次）」。远端 Linux 是**条 63 点名的三格
+#    承诺平台之一**，而它在每次提交上一个字节都没人验 —— 坏了要等推 tag 那天才知道。
+#
+# 🔴 **用 `cargo zigbuild`、版本跟 `release.yml` 对齐，这不是洁癖**：
+#    zig **0.14.0**（`release.yml:168` 逐字）＋ cargo-zigbuild **0.23.0**（`:173`）。
+#    版本不同 ⇒ 本格的绿**不代表发版那趟会绿**，而那正是这一格要买的东西。
+#    ⚠ 现打一条差异如实记：**宿主上装的是 zig 0.16.0**；沙箱镜像刻意钉 0.14.0 ——
+#      门禁要代理的是**发版那条路**，不是这台开发机。
+#
+# ⚠⚠ **诚实边界，写死别读宽**：它买的是「**编得出静态字节**」。
+#    **买不到**「那份字节在真的远端 Linux 上跑得起来」（没有真机、没有运行）；
+#    **买不到** `--all-targets`（这里只编 bin：测试档在 musl 上要跑不要编，另一回事）。
+run_gate muslbuild '不是数出来的数：两个 musl target 各一趟 `cargo zigbuild`，只有绿/红两态。分母 = **条 63 承诺的「远端 Linux」那一格的两个 arch**（`x86_64` ＋ `aarch64`），逐个编。⚠ 买的是「编得出静态字节」，**不买**「在真远端上跑得起来」（无真机、不运行）、**不买** test 档（只编 bin）。⚠ 工具链版本与 `release.yml` 对齐（zig 0.14.0 / cargo-zigbuild 0.23.0）—— 版本一漂，本格的绿就不再代表发版那趟会绿' \
+         bash -c 'cd src/backend && n=0; for t in x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do cargo zigbuild --target "$t" >/dev/null || { echo "musl: $t 编不过"; exit 1; }; n=$((n+1)); done; printf "muslbuild: %s passed（两个 arch 各一趟 cargo zigbuild，zig $(zig version)）\n" "$n"'
+
+# ── `platform`：**承诺的平台 ↔ 门禁真跑的格**（G4 · 09-19，第 24 格）──────────
+#
+# 🔴 **上面那几格各自只说「我编得过」，没有任何东西说「该编的都编了」。**
+#    条 63 点名三格承诺平台（本机 Windows x86_64 · 远端 Linux · 本机 Linux）＋
+#    一格显式拒绝（Windows aarch64）。少一格门禁、或多一格没人登记的 target，
+#    在今天的输出面上**一个字都不会说**。这一格买的就是那句话。
+# ⚠ 它是**登记的机检**，不自己编任何东西 —— 判的是「门禁盖到了哪些平台」，
+#   **不判那些平台上真的跑得起来**（那一维仍然判不了，逐字写在判据本体的头注里）。
+run_gate platform '判过的条数（判据本体每趟现算并印在它自己那行上：P1 承诺表↔门禁格**两向集合相等** ＋ P2 每格一条逐字锚点 count()==1 ＋ P3 显式拒绝的那格全仓零脚印 ＋ P4「壳-折」那一维的三条现物）。⚠ **反空真锚是 P1 那两向相等**，不是「承诺表里每条都找得到」——后者在表被清空时恒真。⚠ 它不编任何东西：判的是**门禁盖到了哪些平台**，不判那些平台上真跑得起来' \
+         python3 tests/evidence/K-G4-platform-ledger.py
+
 # ── `installface`：**安装面切件方案与量具的对账**（`K-R128`，09-15，第 21 格）──────
 #
 # ## 题面：第三块（`S1`–`S5`）要开工了，而撑着那个切法的两句话**一句都没有闸**
@@ -1553,7 +1588,7 @@ if [ "${#fails[@]}" -eq 0 ]; then
   #   `K-R80` 不在本脚本的执行链上，且它默认找的是重构前的 `scripts/gate.sh`（现打直接
   #   `FileNotFoundError`）。**两头坏叠在一起 ⇒ 假账在裁决行上挂了一天。**
   #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
-  echo "GATE: OK —— 21 格全绿（hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · installface · fmt · fmt-backend · winchk · winchk-backend · cargo · deadcode · generated · backend · tsc · npm · 四套 ccm e2e），可以出货"
+  echo "GATE: OK —— 23 格全绿（hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · platform · installface · fmt · fmt-backend · winchk · winchk-backend · muslbuild · cargo · deadcode · generated · backend · tsc · npm · 四套 ccm e2e），可以出货"
   gate_print_blind
   exit 0
 fi

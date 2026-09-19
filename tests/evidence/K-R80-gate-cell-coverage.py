@@ -560,6 +560,43 @@ for suite, anchor in [
 #     `gate.sh` 里再出现这一格而登记没跟，`got - want` 当场点名。
 
 
+# ── 第 23、24 格 `muslbuild` / `platform`（`G4`，09-19）──────────────────────
+# `设计/01 §7.3` 要的「每一个我们发布的平台都编得过」＋「两个壳都要编得过」。
+# 行数由条 63 定：承诺三格（本机 Windows x86_64 · 远端 Linux · 本机 Linux），
+# (Windows, aarch64) 显式拒绝。
+cell(
+    "muslbuild",
+    anchor="run_gate muslbuild '不是数出来的数",
+    cwd="src/backend",
+    cmd="cargo zigbuild --target {x86_64,aarch64}-unknown-linux-musl",
+    **{
+        "src/backend/": (FULL, "〔现打 09-19〕本格把这个 crate 在**两个 musl arch** 上各编一趟 "
+                               "⇒ 整棵生产树都过编译器。⚠ 只编 bin ＋ lib，**不带 `--all-targets`** "
+                               "⇒ test 档那一半在 musl 上没人编（那是另一回事：测试要跑，不是要编）"),
+        VENDOR: (NONE, "本 crate 不依赖 vendor 那两棵（`code-picture-core` 被 `cargo` 那格显式 "
+                       "`--exclude`，`cc-acct-iso` 是 bridge 侧的）"),
+        "src/bridge/": (NONE, "🔴 **本格只编后端那一个 crate** —— 前端那棵树在 musl 上"
+                              "**没有任何门禁**，而它也不需要：远端只装后端字节，前端不过去"),
+    },
+)
+
+cell(
+    "platform",
+    anchor="run_gate platform '判过的条数",
+    cwd="仓根",
+    cmd="python3 tests/evidence/K-G4-platform-ledger.py",
+    **{
+        "tests/scripts/": (PART, "`P1`/`P2` 读 `gate.sh` **这一份**的文本（格名 ＋ 逐字锚点）；"
+                                 "这棵树里另外 6 份 `.sh` 本格一个字不看"),
+        "src/backend/": (PART, "`P4` 只看**三样现物**：`Cargo.toml` 里有没有 `[lib]` · "
+                               "`lib.rs` 在不在 · 它里面有没有 `pub const BUILD_ID`。"
+                               "这棵树的 69 份源码本格一行都不读"),
+        "tests/evidence/": (NONE, "🔴 判据本体住这棵树，但本格不读这棵树的任何文件 —— "
+                                  "**判据自己住哪不算覆盖**（同 `gate-selfdesc` 那一条）"),
+    },
+)
+
+
 # ── 第 22 格 `gate-selfdesc`（09-19）：**被测对象就是 `gate.sh` 自己** ────────────
 # 🔴 本文件自己成了门禁的一格。立它的起因逐字记在 `gate.sh` 那一格的头注里：
 #   `pb check` 09-18 整格删除，而裁决行点了它一整天 —— 而**本文件的 `C5` 正是为这件事写的**，
@@ -1268,9 +1305,9 @@ def main():
     #   （步 8 把 `fmt-daemon`/`winchk-daemon`/`daemon` 改名之后，这里三行陈了一个月没人响）。
     #   ⇒ 下面那条 `missing` 把「登记里有、这张表没点到」当场印出来，不让它再静默。
     order = [c for c in ("hooks", "copy2", "shellcheck", "ci-e2e-prereq", "release-gate",
-                         "gate-selfdesc",
+                         "gate-selfdesc", "platform",
                          "installface", "fmt", "fmt-backend", "winchk", "winchk-backend",
-                         "cargo", "deadcode", "generated", "backend", "tsc", "npm")
+                         "muslbuild", "cargo", "deadcode", "generated", "backend", "tsc", "npm")
              if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm tests/e2e/"))
     missing = sorted(set(REGISTRY) - set(order))
     if missing:
