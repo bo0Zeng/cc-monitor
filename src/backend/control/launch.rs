@@ -485,7 +485,7 @@ pub(crate) fn run(req: &LaunchRequest) -> Result<LaunchOutcome, CmdErr> {
                 let _ = tmux(&["set-option", "-t", &t, "@ccm_sid_expect", sid]);
                 let _ = tmux(&["set-option", "-t", &t, "set-titles", "on"]);
                 // ⚠ 〔`K-R48` 09-11〕**这一行刻意保持字面量，别「顺手收口」成
-                // `super::ccm::RBIND_TITLE_FORMAT`。** 试过一次，代价是 monitor 侧
+                // `super::ccm::TERMINAL_BIND_TITLE_FORMAT`。** 试过一次，代价是 monitor 侧
                 // `ccm_cli_contract::the_intent_tag_and_the_fact_tag_are_not_merged_by_the_move`
                 // 当场红：那条判据数的是**本文件生产段里「事实标记读点」的处数**（登记 2 处，
                 // 就是这一行里的条件头与取值），收口之后它读到 0 —— 而 0 的含义逐字是

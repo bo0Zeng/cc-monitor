@@ -66,6 +66,25 @@ SKIP_FILES = [
 # ── 哨兵：这两个名字一格都不许动 ──────────────────────────────────────
 SENTINELS = ["ccm", "monitor"]
 
+# ── 🔴 第三档哨兵：**已经写在用户 shell rc 文件里的三条围栏**〔步 8 · 2026-09-19〕
+#
+# 它们不在那六个名字里，但两条路会误伤：
+#   ① `cc-monitor-remote` 的替换 —— `CCM_PROFILE_BEGIN` 里是 `cc-monitor remote ccm`
+#      （**空格不是连字符**），正则写松了会命中。⇒ 本脚本的映射表**钉连字符**。
+#   ② `relay` / `proto` / `sidecar` 不带词边界时会扫到附近的注释。
+#
+# 一改 ⇒ 盘上那块**永远对不上**：界面说「未安装」· 卸载按钮消失 · 残留无人提。
+# 🔴 而本仓**今天没有任何东西认得上一版围栏** ⇒ 改完之后判据侧会跟着改、**全绿**。
+# ⇒ 逐字节钉在这里，`--fences` 每趟现打核一遍。
+FENCES = [
+    ("# === cc-monitor aliases BEGIN v1 ===",
+     "`account_aliases.rs::RC_BEGIN` —— 别名块的起围栏"),
+    ("# === cc-monitor BEGIN",
+     "`profile_installer.rs::BEGIN_MARKER` —— 本机 profile 块的起围栏"),
+    ("# === cc-monitor remote ccm BEGIN ===",
+     "`sftp.rs::CCM_PROFILE_BEGIN` —— 远端 ccm 块的起围栏"),
+]
+
 
 def in_scope(rel: str) -> bool:
     for p, _ in SKIP_PREFIXES:
@@ -332,6 +351,7 @@ def main():
     ap.add_argument("--rename")
     ap.add_argument("--files")
     ap.add_argument("--sentinels", action="store_true")
+    ap.add_argument("--fences", action="store_true", help="现打三条围栏的逐字节处数")
     ap.add_argument("--apply", action="store_true", help="真写盘（默认 dry-run）")
     a = ap.parse_args()
     if a.census:
@@ -339,6 +359,15 @@ def main():
     if a.sentinels:
         for s, n in sentinel_counts().items():
             print("哨兵 `%s`：%d" % (s, n))
+    if a.fences:
+        for lit, why in FENCES:
+            n = 0
+            for rel, ap2 in walk():
+                try:
+                    n += open(ap2, encoding="utf-8").read().count(lit)
+                except (UnicodeDecodeError, OSError):
+                    pass
+            print("围栏 %r：%d 处  —— %s" % (lit, n, why))
     if a.files:
         cmd_files(a.files, not a.apply)
     if a.rename:
