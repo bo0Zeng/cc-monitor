@@ -1,105 +1,42 @@
-:root {
-  /* === 颜色令牌（Anthropic warm gray-brown，参照 claude.ai 暗色） === */
-  --bg: #2b2a27; /* warm dark，主背景 */
-  --bg-2: #1f1e1b; /* 比主背景更深，用于 tab bar / status bar / code block / composer */
-  --card: #393937; /* user 气泡 / 折叠卡展开后 summary bg */
-  --text: #e8e6e1;
-  --text-2: #a8a39a;
-  --text-faint: #6b665e;
-  --accent: #c96442; /* Anthropic terracotta orange，单一强调色 */
-  --user: var(--accent); /* 兼容，仍可用于 slash 卡左条等 */
-  --assistant: var(--accent);
-  --success: #6fb074;
-  --warn: #d4a04a;
-  --error: #d96868;
-  --live: #6fb074;
+/**
+ * cc-monitor 主样式表。
+ *
+ * # 级联层（`设计/41 §3`）—— 本轮只包了 `reset` 与 `tokens` 两层，这是**刻意的**
+ *
+ * `@layer` 的规则是「**无层的样式赢过所有有层的样式**」。所以分批包时，
+ * 先包的必须是**优先级最低**的那几层 —— 剩下没包的（base / layout / components /
+ * states）落进那个隐含的「无层桶」，而这个桶的位置恰好就在声明的七层**之后**。
+ * ⇒ 今天的实际次序是 `reset < tokens < (其余 6900 行，相对次序与改动前逐字相同)`，
+ *   **与设计要的次序一致，且对今天的渲染零影响**（证明见下面两条）。
+ * ⇒ 反过来，如果先包 `components`、把 `layout` 留在外面，次序就**倒过来**了。
+ *   这就是「分批包」只能从底往上包的原因。
+ *
+ * 零影响的两条证明（改动当天现打）：
+ *   ① `box-sizing` 全文只有 2 处声明，另一处是具体元素（特异度远高于 `*`）⇒ 包 `reset` 不改变任何一格；
+ *   ② `:root` 全文只有 1 个，且 `html`/`body` 上没有任何别处声明 `font-*`/`color`/`background`
+ *      ⇒ 包 `tokens` 不改变任何一格。
+ *
+ * 把 `base`/`layout`/`components` 也包进去要等 `设计/41` 件 6（按层 + 按窗口切文件），
+ * 那一件与三入口拆分绑在一起。**不是忘了，是次序。**
+ */
+@layer reset, tokens, base, layout, components, states, utilities;
 
-  /* === 账号身份色板（account-ux U4）=== 不透明、CVD-safe、主题无关（不随明暗 swap）。
-     每格自带 ink（白/黑）保小字 ≥4.5:1。slot 由 accountColorSlot(name) 定，颜色粘着账号。 */
-  --acct-c0: #256abf;
-  --acct-ink0: #ffffff;
-  --acct-c1: #eb6834;
-  --acct-ink1: #141414;
-  --acct-c2: #1baf7a;
-  --acct-ink2: #141414;
-  --acct-c3: #eda100;
-  --acct-ink3: #141414;
-  --acct-c4: #e87ba4;
-  --acct-ink4: #141414;
-  --acct-c5: #008300;
-  --acct-ink5: #ffffff;
-  --acct-c6: #4a3aa7;
-  --acct-ink6: #ffffff;
-  --acct-c7: #e34948;
-  --acct-ink7: #141414;
+/* 令牌清单住 `src/styles/tokens.css` —— 「组件里只许用那个文件里的名字」。
+   `@import` 必须排在所有规则之前（`@layer` 语句形式除外，所以上面那行合法）。 */
+@import "./styles/tokens.css" layer(tokens);
 
-  /* 边/底色层级 */
-  --border-strong: #3d3a35;
-  --border-medium: #ffffff20;
-  --border-soft: #ffffff14;
-  --border-faint: #ffffff08;
-  /* alias: 旧 var(--border) 引用（kb-editor 等 4 处无 fallback）默认走 strong */
-  --border: var(--border-strong);
-  --overlay-hover: #ffffff06;
-  --overlay-dim: #00000020;
-  --overlay-deep: #00000040;
-  --overlay-shadow: #00000080;
+@layer reset {
+  * {
+    box-sizing: border-box;
+  }
 
-  /* diff 卡（issue #14）：从 --success / --error 派生的**私有**令牌，
-     不进 theme.ts TOKENS / 设置面板（同 --border-* / --overlay-* 的约定）。
-     改 success/error 取色器即可同步重染 diff。底色用 color-mix（暗底上需要够明显
-     才看得见），但**可见性主信号是实色左边框**（不依赖 color-mix，老 WebView2 也稳）。 */
-  --diff-add-bg: color-mix(in srgb, var(--success) 20%, transparent);
-  --diff-add-gutter: color-mix(in srgb, var(--success) 42%, transparent);
-  --diff-del-bg: color-mix(in srgb, var(--error) 20%, transparent);
-  --diff-del-gutter: color-mix(in srgb, var(--error) 42%, transparent);
-
-  /* === 字体令牌 === */
-  --font-base: Inter, "Segoe UI", system-ui, sans-serif;
-  --font-prose:
-    "Source Serif 4", "Source Serif Pro", "Iowan Old Style", "PingFang SC",
-    "Microsoft YaHei", Georgia, serif;
-  --font-mono: "JetBrains Mono", Consolas, monospace;
-  --font-size-base: 14px;
-  --font-size-prose: 15px;
-  --font-size-mono: 13px;
-  --font-size-small: 12px;
-  --font-size-xs: 11px;
-  --line-height-base: 1.55;
-  --line-height-prose: 1.65;
-  --line-height-mono: 1.55;
-
-  /* 主消息流最大宽度（居中容器） */
-  --stream-max-width: 780px;
-
-  font-family: var(--font-base);
-  font-size: var(--font-size-base);
-  line-height: var(--line-height-base);
-  color: var(--text);
-  background: var(--bg);
-  color-scheme: dark;
-
-  /* === 顶栏图标（devbench F09）：data-URI SVG，零字体依赖 ===
-   * 定义并进这个已有的 `:root` 而不是另开一个 —— stylelint 的
-   * `no-duplicate-selectors` 会红，而它是对的：两个 `:root` 迟早分叉。 */
-  --icon-settings: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 6h5.2a3 3 0 0 1 5.6 0H21v2h-7.2a3 3 0 0 1-5.6 0H3V6zm0 10h11.2a3 3 0 0 1 5.6 0H21v2h-1.2a3 3 0 0 1-5.6 0H3v-2z'/%3E%3C/svg%3E");
-  --icon-history: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm-1 3v6l5 3 .9-1.6L13 12V7h-2z'/%3E%3C/svg%3E");
-  --icon-panorama: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 4.5 13.6 8l-.5 1.9-7.6-3.5.5-1.9zM7.6 12.6l6-3.3 1 1.8-6 3.3-1-1.8z'/%3E%3Ccircle cx='5' cy='5.5' r='3'/%3E%3Ccircle cx='16' cy='9.5' r='3'/%3E%3Ccircle cx='7' cy='16.5' r='3'/%3E%3Ccircle cx='18' cy='19' r='3'/%3E%3Cpath d='M9.4 15.4l6.6 2.6-.7 1.9-6.6-2.6.7-1.9z'/%3E%3C/svg%3E");
-  --icon-grid: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z'/%3E%3C/svg%3E");
-  --icon-folder: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 5h6.6l2 2H21a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z'/%3E%3C/svg%3E");
-  --icon-keyboard: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 6h20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zm3 3v2h2V9H5zm4 0v2h2V9H9zm4 0v2h2V9h-2zm4 0v2h2V9h-2zM5 13v2h2v-2H5zm4 0v2h6v-2H9zm8 0v2h2v-2h-2z'/%3E%3C/svg%3E");
-}
-
-* {
-  box-sizing: border-box;
-}
-
-html,
-body {
-  margin: 0;
-  padding: 0;
-  height: 100vh;
-  overflow: hidden;
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    overflow: hidden;
+  }
 }
 
 #app {
@@ -189,7 +126,7 @@ body.viewer-mode .grid-monitor-trigger {
 /* issue #10：Tab 右键上下文菜单（极简浮层，挂 body） */
 .tab-context-menu {
   position: fixed;
-  z-index: 99999;
+  z-index: var(--z-menu);
   min-width: 140px;
   background: var(--bg-2);
   border: 1px solid var(--border-strong);
@@ -267,6 +204,11 @@ body.viewer-mode .grid-monitor-trigger {
 
 #tab-bar {
   grid-area: tabs;
+  /* 🔴 `设计/41 §5`：显式成为**层叠上下文** —— tab 栏内部的东西关在里面，
+     逃不出去和 `#app` 里的叔伯元素（那六个 trigger）比 z-index。
+     `position: relative` 只为开这个上下文，不改任何几何（grid item 原地不动）。 */
+  position: relative;
+  z-index: var(--z-base);
   width: var(--tab-bar-w, 150px);
   background: var(--bg-2);
   border-right: 1px solid var(--border-strong);
@@ -286,7 +228,7 @@ body.viewer-mode .grid-monitor-trigger {
   left: calc(var(--tab-bar-w, 150px) - 3px);
   width: 6px;
   cursor: col-resize;
-  z-index: 3;
+  z-index: var(--z-float);
 }
 #tab-bar-resizer:hover,
 #tab-bar-resizer.resizing {
@@ -300,7 +242,7 @@ body.viewer-mode .grid-monitor-trigger {
   bottom: 24px;
   width: 2px;
   background: var(--accent);
-  z-index: 50;
+  z-index: var(--z-drag);
   pointer-events: none;
 }
 
@@ -320,7 +262,11 @@ body.tabbar-collapsed .tab .tab-badge,
 body.tabbar-collapsed .tab .tab-cwd,
 body.tabbar-collapsed .tab .tab-focus,
 body.tabbar-collapsed .tab .tab-close {
-  display: none !important;
+  /* S21 步 8：`!important` 已摘 —— 特异度 (0,3,1) 本来就压得过后面那条
+     `.tab-close, .tab-focus, .tab-cwd { display: inline-flex }` (0,1,0)。
+     死值验：两个真引擎里摘掉 `!important` 前后 computed 逐格相同（读数见
+     `tests/evidence/S21-css-readings.md` §步8）。 */
+  display: none;
 }
 body.tabbar-collapsed .tab.tab-bg::before {
   position: static;
@@ -352,7 +298,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   cursor: pointer;
   border-radius: 4px;
   font: inherit;
-  z-index: 2;
+  z-index: var(--z-chrome);
 }
 .settings-trigger:hover {
   background: var(--overlay-hover);
@@ -456,7 +402,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   border-radius: 4px;
   font: inherit;
   font-size: 14px;
-  z-index: 2;
+  z-index: var(--z-chrome);
 }
 .history-trigger:hover {
   background: var(--overlay-hover);
@@ -480,7 +426,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   border-radius: 4px;
   font: inherit;
   font-size: 14px;
-  z-index: 2;
+  z-index: var(--z-chrome);
 }
 .panorama-trigger:hover {
   background: var(--overlay-hover);
@@ -504,7 +450,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   border-radius: 4px;
   font: inherit;
   font-size: 15px;
-  z-index: 2;
+  z-index: var(--z-chrome);
 }
 .sftp-trigger:hover {
   background: var(--overlay-hover);
@@ -528,7 +474,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   border-radius: 4px;
   font: inherit;
   font-size: 15px;
-  z-index: 2;
+  z-index: var(--z-chrome);
 }
 .grid-monitor-trigger:hover {
   background: var(--overlay-hover);
@@ -537,7 +483,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 /* F83：多台远端时的选主机浮层（body-level fixed，照 history 菜单）。 */
 .sftp-host-picker {
   position: fixed;
-  z-index: 100001;
+  z-index: var(--z-menu);
   min-width: 160px;
   background: var(--bg-2);
   border: 1px solid var(--border-strong);
@@ -569,7 +515,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 .grid-monitor {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: var(--z-view);
   background: var(--bg);
   display: flex;
   flex-direction: column;
@@ -713,7 +659,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 .grid-monitor-cell.is-selected {
   border-color: var(--accent, #7aa2f7);
   box-shadow: 0 0 0 2px var(--accent, #7aa2f7) inset;
-  background: var(--overlay-active, rgba(122, 162, 247, 0.12));
+  background: var(--state-active);
 }
 
 /* F91b：底部 peek 面板——选中会话的内容详情（cwd/状态/model/agent/改过的文件）+ 跳转按钮。 */
@@ -853,7 +799,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   inset: 0;
   /* 全局唤起（Ctrl+K）：须盖过任何可在其上唤起的 overlay——历史/全景(150)、SFTP/预览 modal(10000/10001)，
      故置于交互 overlay 最顶（10002）；仍在 toast 层(99999+)之下，保通知可见。 */
-  z-index: 10002;
+  z-index: var(--z-modal);
   background: color-mix(in srgb, var(--bg) 55%, transparent);
   display: flex;
   justify-content: center;
@@ -877,7 +823,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   background: transparent;
   color: var(--text);
   font: inherit;
-  font-size: var(--font-size);
+  font-size: var(--font-size-base);
   padding: 12px 14px;
   outline: none;
 }
@@ -980,9 +926,9 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   align-items: flex-start;
   gap: 8px;
   padding: 10px;
-  border: 1px solid var(--danger, #e06c75);
+  border: 1px solid var(--error);
   border-radius: 6px;
-  color: var(--danger, #e06c75);
+  color: var(--error);
   font-size: var(--font-size-small);
 }
 .mcp-remote-head {
@@ -1390,7 +1336,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   position: fixed;
   left: 0;
   top: 0;
-  z-index: 1000;
+  z-index: var(--z-drag);
   pointer-events: none;
   max-width: 240px;
   overflow: hidden;
@@ -1417,6 +1363,12 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 
 #message-stream {
   position: relative;
+  /* 🔴 `设计/40 §7` 步 6 顺带那条 + `设计/41 §5`：**根治**「子孙逃出去压叔伯」。
+     以前这里是 `z-index: auto` ⇒ 不创建层叠上下文 ⇒ 流里的 `.live-user-inputs`
+     （z-index 3）直接和 `#app` 里那六个 trigger（z-index 2）比大小，**压住它们连点击一起吃掉**。
+     `设计/10` 步 2 当时用 `top: 40px` 把两者错开止了血；这一行是那个 bug 的根。
+     ⚠ 加了它之后，`.live-user-inputs` 的 3 只在这个圈子里有意义，永远压不到 #app 的按钮。 */
+  z-index: var(--z-base);
   overflow: hidden;
 }
 
@@ -1505,7 +1457,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   position: absolute;
   top: 6px;
   right: 6px;
-  z-index: 2;
+  z-index: var(--z-chrome);
   width: 22px;
   height: 22px;
   padding: 0;
@@ -2495,38 +2447,9 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 }
 
 /* === 设置面板：PowerShell 集成区 (cc_integration.ts) === */
-.settings-cc-profiles {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-top: 8px;
-}
-.settings-cc-profile-card {
-  border: 1px solid var(--border, #3a342e);
-  border-radius: 8px;
-  padding: 12px;
-  background: var(--bg-2, #2a2520);
-}
-.settings-cc-profile-head {
-  display: flex;
-  align-items: baseline;
-  gap: 12px;
-  margin-bottom: 6px;
-}
-.settings-cc-profile-name {
-  font-weight: 600;
-  color: var(--text, #d6cfc6);
-}
-.settings-cc-profile-path {
-  font-family: var(--font-mono, monospace);
-  font-size: 11px;
-  color: var(--text-faint, #8a8275);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
+/* ⚠ S21：`.settings-cc-profiles` / `-card` / `-head` / `-name` / `-path` 五条已删 ——
+   那个「一张 profile 卡」的组件被重写掉了，样式留在原地零引用。
+   活着的是下面 `-status` / `-badge` / `-buttons` / `-warn` 这几条（cc_integration.ts 现打在用）。 */
 .settings-cc-profile-status {
   margin-bottom: 8px;
 }
@@ -2631,7 +2554,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-size: 11px;
   line-height: 1.5;
   color: var(--text-2, #bcb5a8);
-  z-index: 10001; /* 高于 panel(100) 和预览 modal(10000) */
+  z-index: var(--z-toast);
   text-align: left;
   white-space: pre-line;
   font-weight: 400;
@@ -2686,7 +2609,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
-  z-index: 10000;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2738,7 +2661,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   /* 邻居 `.settings-cc-modal-backdrop` 用的是 `rgba()`，那是 stylelint 基线里已有的
    * 50 条告警之一。**新写的别再添一条**——同一个颜色，用现代写法。 */
   background: rgb(0 0 0 / 60%);
-  z-index: 10000;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2786,7 +2709,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 }
 /* 「为什么要问」——原样端出推断层给的理由，弱化呈现（是背景不是指令）。 */
 .fork-ask-why {
-  color: var(--text-3, #8c857b);
+  color: var(--text-2);
   font-size: 11px;
   line-height: 1.5;
 }
@@ -2813,7 +2736,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   position: fixed;
   right: 20px;
   bottom: 20px;
-  z-index: 9999;
+  z-index: var(--z-toast);
   display: flex;
   flex-direction: column-reverse; /* 最新插入的在最下面（视觉上最靠近底部） */
   gap: 8px;
@@ -2895,7 +2818,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   transition: transform 0.22s ease;
   display: flex;
   flex-direction: column;
-  z-index: 100;
+  z-index: var(--z-view);
 }
 .settings-panel.open {
   transform: translateX(0);
@@ -3013,16 +2936,16 @@ body.settings-window-mode .grid-monitor-trigger {
   white-space: nowrap;
 }
 .remote-status-ok {
-  color: var(--ok, var(--text-2));
+  color: var(--success);
 }
 .remote-status-fail {
-  color: var(--danger, var(--text-2));
+  color: var(--error);
 }
 /* 「不适用」与「未测过」用同一种弱化色，但**语义不同**：前者是本机不需要 daemon，
    后者是还没测过。区分在文案（title / 图标 — vs ·），不靠颜色。 */
 .remote-status-na,
 .remote-status-unknown {
-  color: var(--text-3, var(--text-2));
+  color: var(--text-2);
 }
 
 /* S7：「有改动待重启」常驻条。空时 `hidden`，不占位。
@@ -3050,7 +2973,7 @@ body.settings-window-mode .grid-monitor-trigger {
   position: fixed;
   right: 0;
   top: 0;
-  z-index: 40;
+  z-index: var(--z-view);
 }
 .cc-bus-view-bar {
   align-items: center;
@@ -3102,7 +3025,7 @@ body.settings-window-mode .grid-monitor-trigger {
 /* 「确认缺」与「还没测过」**视觉上必须能分开** —— 它们是两种不同的结论，
    混成一个颜色就等于把「不知道」说成了「缺」。 */
 .remote-gap-missing {
-  color: var(--danger, var(--text));
+  color: var(--error);
 }
 .remote-gap-unknown {
   color: var(--text-2);
@@ -3199,13 +3122,6 @@ body.settings-window-mode .grid-monitor-trigger {
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-bottom: 8px;
-}
-/* F82b：4 组里「远端」暂无内容的占位文案（留空占位组，后续填充）。 */
-.settings-group-empty {
-  font-size: var(--font-size-small);
-  color: var(--text-faint);
-  font-style: italic;
-  padding: 4px 0;
 }
 
 /* issue #8: ESC 回退分支折叠。
@@ -3497,7 +3413,7 @@ body.settings-window-mode .grid-monitor-trigger {
   left: 12px;
   right: 12px;
   bottom: 28px; /* status-bar 高 24px + 一点呼吸 */
-  z-index: 50;
+  z-index: var(--z-float);
   max-height: 50vh;
   display: flex;
   flex-direction: column;
@@ -3912,7 +3828,7 @@ body.settings-window-mode .grid-monitor-trigger {
   display: inline-block;
   width: 12px;
   font-size: 11px;
-  color: var(--text-muted);
+  color: var(--text-2);
 }
 
 /* 机器名占满中段，把删除按钮推到右侧 */
@@ -3964,7 +3880,7 @@ body.settings-window-mode .grid-monitor-trigger {
      → 新 tab 显示空白。改 fixed 后 history 自挂 body 不影响 streamRoot 子树。 */
   position: fixed;
   inset: 0;
-  z-index: 150;
+  z-index: var(--z-view);
   display: flex;
   flex-direction: column;
   background: var(--bg);
@@ -4169,11 +4085,6 @@ body.settings-window-mode .grid-monitor-trigger {
   transform: rotate(90deg);
 }
 
-.history-group-icon {
-  font-size: 14px;
-  flex-shrink: 0;
-}
-
 .history-group-name {
   color: var(--text);
   font-size: var(--font-size-base);
@@ -4331,7 +4242,7 @@ body.settings-window-mode .grid-monitor-trigger {
   position: sticky;
   top: 0;
   background: var(--bg-2);
-  z-index: 1;
+  z-index: var(--z-sticky);
 }
 .search-session-host {
   color: var(--accent, #6aa8ff);
@@ -4466,11 +4377,11 @@ body.settings-window-mode .grid-monitor-trigger {
   background: var(--bg);
 }
 /* F77（#53）：agents 面板点开某 agent 记录时，SessionViewer 的 body-level 挂载壳——fixed 全屏 +
-   高 z-index（盖住顶栏触发器 z-index:2 等；.session-viewer 是 absolute inset:0，靠这个定位祖先铺满）。 */
+   `--z-view`（盖住顶栏触发器 `--z-chrome`；.session-viewer 是 absolute inset:0，靠这个定位祖先铺满）。 */
 .agent-records-viewer-mount {
   position: fixed;
   inset: 0;
-  z-index: 150;
+  z-index: var(--z-view);
 }
 
 .session-viewer-bar {
@@ -4587,16 +4498,19 @@ body.settings-window-mode .grid-monitor-trigger {
    `.session-viewer-inputs-toggle` 同一条诚实边界，登记在件 `§5.6`。 */
 /* 🔴 `设计/10` 步 2（`§3` 的 E2）：**挪到按钮行之下。**
    原来是 `top: 8px` —— 而顶栏那六个入口（`.settings-trigger` 一族）是 `#app` 的绝对定位子节点，
-   带宽 `top:4px` + `height:28px` ⇒ 占 **4…32px**，`z-index: 2`。
-   这一层 `z-index: 3` 且 `.active` 时 `pointer-events: auto`
+   带宽 `top:4px` + `height:28px` ⇒ 占 **4…32px**，`--z-chrome`。
+   这一层 `--z-float` 且 `.active` 时 `pointer-events: auto`
    ⇒ 它**压住那六个按钮，连点击一起吃掉**（用户点设置/历史没反应的根因）。
    ⇒ `top` 改成 **40px**：按钮行底边 32px 之下再留 8px 呼吸位，两者不再有任何重叠带。
+   🔴 **S21 起这一条已经是第二道保险**：`#message-stream` 现在显式是层叠上下文
+   （`z-index: var(--z-base)`），这一层的 `--z-float` 关在流里，**结构上**再也够不到
+   `#app` 的按钮。`top: 40px` 留着是因为它同时还管「视觉上不叠按钮行」。
    ⚠ 这一步只止血。独立悬浮层本身在步 6 并进 Ctrl+F 那块面板时整个删掉（`§2.2b ④`）。 */
 .live-user-inputs {
   position: absolute;
   top: 40px;
   right: 24px;
-  z-index: 3;
+  z-index: var(--z-float);
   max-width: min(420px, 60%);
   visibility: hidden;
   pointer-events: none;
@@ -4738,7 +4652,7 @@ body.settings-window-mode .grid-monitor-trigger {
 /* F96：历史条目右键菜单（镜像 tab-context-menu 视觉语言，不复用其私有 JS）。 */
 .history-context-menu {
   position: fixed;
-  z-index: 99999;
+  z-index: var(--z-menu);
   min-width: 160px;
   background: var(--bg-2);
   border: 1px solid var(--border-strong);
@@ -4774,12 +4688,12 @@ body.settings-window-mode .grid-monitor-trigger {
 
 /* === Keybindings Editor (issue #5) ===
    modal overlay 仿小窗口风格：fixed 全屏 backdrop + 居中浮窗。
-   z-index 200 > settings(100)，保证从设置里点开能浮在设置之上。 */
+   `--z-overlay` > `--z-view`（设置面板），保证从设置里点开能浮在设置之上。 */
 .kb-editor-overlay {
   position: fixed;
   inset: 0;
   background: var(--overlay-deep);
-  z-index: 200;
+  z-index: var(--z-overlay);
   display: none;
   align-items: center;
   justify-content: center;
@@ -4956,7 +4870,7 @@ body.settings-window-mode .grid-monitor-trigger {
 .sftp-overlay {
   position: fixed;
   inset: 0;
-  z-index: 100000;
+  z-index: var(--z-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -4968,7 +4882,7 @@ body.settings-window-mode .grid-monitor-trigger {
   display: flex;
   flex-direction: column;
   background: var(--bg, #1e1e1e);
-  color: var(--fg, #ddd);
+  color: var(--text);
   border: 1px solid var(--border, #444);
   border-radius: 8px;
   overflow: hidden;
@@ -5009,7 +4923,7 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 .sftp-crumb:hover,
 .sftp-btn:hover {
-  background: var(--hover, #333);
+  background: var(--state-hover);
 }
 .sftp-list {
   flex: 1;
@@ -5027,7 +4941,7 @@ body.settings-window-mode .grid-monitor-trigger {
   cursor: pointer;
 }
 .sftp-row:hover {
-  background: var(--hover, #2a2a2a);
+  background: var(--state-hover);
 }
 .sftp-name {
   flex: 1;
@@ -5156,7 +5070,7 @@ body.settings-window-mode .grid-monitor-trigger {
 .sftp-edit-back {
   position: absolute;
   inset: 0;
-  z-index: 5;
+  z-index: var(--z-modal);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5202,12 +5116,12 @@ body.settings-window-mode .grid-monitor-trigger {
   font-variant-numeric: tabular-nums;
 }
 
-/* F53：「开新 Claude」launcher 即席弹框（全屏遮罩 + 居中卡片）。z-index > 设置面板(100)——
-   从设置里点开,低值会被右侧 360px 抽屉盖住（F58 D-R1 一并修）。 */
+/* F53：「开新 Claude」launcher 即席弹框（全屏遮罩 + 居中卡片）。`--z-overlay` > 设置面板
+   （`--z-view`）—— 从设置里点开,低值会被右侧 360px 抽屉盖住（F58 D-R1 一并修）。 */
 .launcher-back {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: var(--z-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5237,7 +5151,7 @@ body.settings-window-mode .grid-monitor-trigger {
 .launcher-field input,
 .launcher-field select {
   padding: 6px 8px;
-  background: var(--input-bg, #2a2a2a);
+  background: var(--field-bg);
   border: 1px solid var(--border, #444);
   border-radius: 4px;
   color: inherit;
@@ -5261,7 +5175,7 @@ body.settings-window-mode .grid-monitor-trigger {
   background: transparent;
   border: 1px dashed var(--border, #555);
   border-radius: 4px;
-  color: var(--link, #6cb6ff);
+  color: var(--color-link);
   font-family: ui-monospace, monospace;
   font-size: 12px;
   cursor: pointer;
@@ -5272,13 +5186,13 @@ body.settings-window-mode .grid-monitor-trigger {
   border-style: solid;
 }
 
-/* F58:端口转发(-L)管理台 overlay。z-index 须 > 设置面板(100)——本面板从设置里点开,
-   设置抽屉(fixed right,360px,z-index 100)不关,低 z-index 会被盖住(D-R1;F53/F57 同修)。 */
-/* F60：远端 tmux 画面预览 overlay（只读快照）。z-index 200 对齐设置内 overlay 约定。 */
+/* F58:端口转发(-L)管理台 overlay。层级须 > 设置面板(`--z-view`)——本面板从设置里点开,
+   设置抽屉(fixed right,360px)不关,低层级会被盖住(D-R1;F53/F57 同修)。 */
+/* F60：远端 tmux 画面预览 overlay（只读快照）。`--z-overlay` 对齐设置内 overlay 约定。 */
 .pane-preview-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: var(--z-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5339,7 +5253,7 @@ body.settings-window-mode .grid-monitor-trigger {
 .pf-overlay {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: var(--z-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5438,12 +5352,12 @@ body.settings-window-mode .grid-monitor-trigger {
   background: var(--error, #f85149);
 }
 
-/* F57:~/.ssh/config 批量导入预览弹框。z-index > 设置面板(100)——从设置里点开,
+/* F57:~/.ssh/config 批量导入预览弹框。`--z-overlay` > 设置面板(`--z-view`)——从设置里点开,
    低值会被右侧 360px 抽屉盖住（F58 D-R1 一并修）。 */
 .import-preview-back {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: var(--z-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5487,7 +5401,7 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 .import-preview-label {
   padding: 3px 6px;
-  background: var(--input-bg, #2a2a2a);
+  background: var(--field-bg);
   border: 1px solid var(--border, #444);
   border-radius: 3px;
   color: inherit;
@@ -5528,13 +5442,13 @@ body.settings-window-mode .grid-monitor-trigger {
 
 /* ============================================================
    Batch15-P2：代码全景（panorama）—— body-level fixed overlay，
-   与历史浏览器同层（z-index 150）。纯 canvas 地图 + 覆盖 banner +
+   与历史浏览器同层（`--z-view`）。纯 canvas 地图 + 覆盖 banner +
    符号搜索 + 节点详情侧栏。主题跟随现有 CSS 变量（light/dark 一致）。
    ============================================================ */
 .panorama-view {
   position: fixed;
   inset: 0;
-  z-index: 150;
+  z-index: var(--z-view);
   display: flex; /* open() 切换；构造时 inline display:none */
   flex-direction: column;
   background: var(--bg);
@@ -5650,7 +5564,7 @@ body.settings-window-mode .grid-monitor-trigger {
   border: 1px solid var(--border-strong);
   border-radius: 5px;
   box-shadow: 0 4px 14px var(--overlay-shadow);
-  z-index: 3;
+  z-index: var(--z-float);
 }
 .panorama-tt-path {
   font-family: var(--font-mono);
@@ -5677,7 +5591,7 @@ body.settings-window-mode .grid-monitor-trigger {
   text-align: center;
   padding: 24px;
   background: color-mix(in srgb, var(--bg) 78%, transparent);
-  z-index: 4;
+  z-index: var(--z-overlay);
 }
 .panorama-spinner {
   width: 30px;
@@ -5980,14 +5894,6 @@ body.settings-window-mode .grid-monitor-trigger {
   padding: 3px 0;
   overflow-wrap: anywhere;
 }
-.panorama-file-note {
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  line-height: var(--line-height-base);
-}
-.panorama-file-searchbtn {
-  align-self: flex-start;
-}
 
 /* A3：状态栏「当前账号」chip（照 .status-cmdk 形态）+ 账号选单浮层 */
 .status-account {
@@ -6030,7 +5936,7 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 .account-picker {
   position: fixed;
-  z-index: 1000;
+  z-index: var(--z-menu);
   min-width: 220px;
   max-width: 360px;
   padding: 4px;
@@ -6155,8 +6061,11 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 /* 幽灵态（U5：lastAccount 软来源）——淡填充 + 描边，弱于实心 live。 */
 .acct-avatar.ghost {
-  background: transparent !important;
-  color: var(--text-2) !important;
+  /* S21 步 8：这一族原本 10 处 `!important` 已全摘 —— `.acct-avatar.ghost` 是
+     (0,2,0)、`.acct-avatar.ghost.acct-cN` 是 (0,3,0)，而被压的 `.acct-cN` 只有 (0,1,0)，
+     **按特异度本来就该赢**，与源码顺序无关。死值验读数同上。 */
+  background: transparent;
+  color: var(--text-2);
   box-shadow: inset 0 0 0 1px currentColor;
   opacity: 0.72;
 }
@@ -6194,28 +6103,28 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 /* 幽灵态描边取该 slot 的填充色（用 color 承载，box-shadow currentColor 引用）。 */
 .acct-avatar.ghost.acct-c0 {
-  color: var(--acct-c0) !important;
+  color: var(--acct-c0);
 }
 .acct-avatar.ghost.acct-c1 {
-  color: var(--acct-c1) !important;
+  color: var(--acct-c1);
 }
 .acct-avatar.ghost.acct-c2 {
-  color: var(--acct-c2) !important;
+  color: var(--acct-c2);
 }
 .acct-avatar.ghost.acct-c3 {
-  color: var(--acct-c3) !important;
+  color: var(--acct-c3);
 }
 .acct-avatar.ghost.acct-c4 {
-  color: var(--acct-c4) !important;
+  color: var(--acct-c4);
 }
 .acct-avatar.ghost.acct-c5 {
-  color: var(--acct-c5) !important;
+  color: var(--acct-c5);
 }
 .acct-avatar.ghost.acct-c6 {
-  color: var(--acct-c6) !important;
+  color: var(--acct-c6);
 }
 .acct-avatar.ghost.acct-c7 {
-  color: var(--acct-c7) !important;
+  color: var(--acct-c7);
 }
 
 /* account-ux U5：徽章 span 退化为纯容器（内含 .acct-avatar 头像，仅"不在当前账号"时出现）；
@@ -6247,11 +6156,6 @@ body.settings-window-mode .grid-monitor-trigger {
   align-items: center;
   gap: 8px;
   margin-bottom: 10px;
-}
-.accounts-bar-label {
-  font-size: var(--font-size-small);
-  color: var(--text-2);
-  flex: none;
 }
 /* E59：`.accounts-origin-select` 已删 —— 账号分节不再自己挑机器（origin 只来自共用 store）。 */
 .accounts-refresh {
@@ -6682,7 +6586,7 @@ body.settings-window-mode .grid-monitor-trigger {
 .accounts-maint-name,
 .accounts-maint-cred {
   padding: 6px 8px;
-  background: var(--input-bg, #2a2a2a);
+  background: var(--field-bg);
   border: 1px solid var(--border, #444);
   border-radius: 4px;
   color: inherit;
@@ -6693,7 +6597,7 @@ body.settings-window-mode .grid-monitor-trigger {
 .accounts-maint-err {
   min-height: 1em;
   font-size: 12px;
-  color: var(--danger, #e06c75);
+  color: var(--error);
 }
 .accounts-wiz-preview {
   margin: 0;
@@ -6731,7 +6635,7 @@ body.settings-window-mode .grid-monitor-trigger {
   padding: 5px 10px;
   border: 1px solid var(--border, #444);
   border-radius: 4px;
-  background: var(--input-bg, #2a2a2a);
+  background: var(--field-bg);
   color: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -6748,8 +6652,8 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 .accounts-wiz-btns button.danger,
 .accounts-maint button.danger {
-  border-color: var(--danger, #e06c75);
-  color: var(--danger, #e06c75);
+  border-color: var(--error);
+  color: var(--error);
 }
 .accounts-wiz-note {
   font-size: 12px;
@@ -6814,7 +6718,7 @@ body.settings-window-mode .grid-monitor-trigger {
 }
 .config-surface-state {
   font-size: 12px;
-  color: var(--text-dim, var(--text));
+  color: var(--text-2);
 }
 .config-surface-row.tone-bad .config-surface-state {
   color: var(--error);
@@ -6876,7 +6780,7 @@ body.settings-window-mode .grid-monitor-trigger {
   padding: 0 5px;
   border: 1px solid var(--border-strong);
   border-radius: 3px;
-  font-family: var(--font, inherit);
+  font-family: var(--font-base);
   font-size: 11px;
   color: var(--text-faint);
 }
@@ -6898,14 +6802,11 @@ body.settings-window-mode .grid-monitor-trigger {
   width: 100%;
 }
 /* B03/B04 的欠账（T02/T03 只补了自己那几段） */
-.cc-bus-source,
 .cc-bus-hooks-source,
-.cc-bus-hooks-note,
-.cc-bus-agent-meta {
+.cc-bus-hooks-note {
   font-size: 12px;
   color: var(--text-faint);
 }
-.cc-bus-hooks-out,
 .cc-bus-hooks-form {
   width: 100%;
 }
@@ -6922,7 +6823,7 @@ body.settings-window-mode .grid-monitor-trigger {
 .inbox-overlay {
   position: fixed;
   inset: 0;
-  z-index: 40;
+  z-index: var(--z-overlay);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -6972,8 +6873,8 @@ body.settings-window-mode .grid-monitor-trigger {
   line-height: 1.5;
 }
 .inbox-path {
-  color: var(--text-3, var(--text-2));
-  font-family: var(--mono, monospace);
+  color: var(--text-2);
+  font-family: var(--font-mono);
   font-size: 11px;
   overflow-wrap: anywhere;
 }
@@ -6984,7 +6885,7 @@ body.settings-window-mode .grid-monitor-trigger {
   background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: 4px;
-  font-family: var(--mono, monospace);
+  font-family: var(--font-mono);
   font-size: 13px;
   line-height: 1.6;
   resize: none;
@@ -7008,13 +6909,13 @@ body.settings-window-mode .grid-monitor-trigger {
   background: transparent;
   border: 1px solid var(--border, #3a3a3a);
   border-radius: 4px;
-  color: var(--fg-dim, #9a9a9a);
+  color: var(--text-2);
   cursor: pointer;
   font-size: 12px;
   padding: 2px 8px;
 }
 .tab-archive-toggle:hover {
-  color: var(--fg, #ddd);
+  color: var(--text);
 }
 .tab-archive-list {
   display: flex;
@@ -7045,7 +6946,7 @@ body.settings-window-mode .grid-monitor-trigger {
 .tab-group-name {
   background: transparent;
   border: 0;
-  color: var(--fg-dim, #9a9a9a);
+  color: var(--text-2);
   cursor: pointer;
   flex: 1;
   font-size: 11px;
@@ -7059,7 +6960,7 @@ body.settings-window-mode .grid-monitor-trigger {
 .tab-group-del {
   background: transparent;
   border: 0;
-  color: var(--fg-dim, #9a9a9a);
+  color: var(--text-2);
   cursor: pointer;
   padding: 0 2px;
 }
@@ -7079,7 +6980,7 @@ body.settings-window-mode .grid-monitor-trigger {
   margin-bottom: 6px;
 }
 .panorama-layer-head {
-  color: var(--fg-dim, #9a9a9a);
+  color: var(--text-2);
   font-size: 11px;
   margin: 6px 0 2px;
 }

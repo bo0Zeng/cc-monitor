@@ -1,0 +1,170 @@
+/**
+ * 设计令牌 —— **组件里只许用这个文件里的名字。**
+ *
+ * 为什么单独成文件（`设计/41 §2`）：这份清单原来住在 7085 行 `styles.css` 的开头，
+ * 没人会翻到那里 ⇒ 16 个「用了但从未定义」的假变量里 **13 个是既有 token 的错名**
+ * （`--fg` vs `--text`、`--danger` vs `--error`、`--mono` vs `--font-mono`）。
+ * 问题不是命名语法不好，**是没人知道有哪些**。
+ *
+ * # 命名语法（`设计/41 §2`）—— 定死，但**不重命名现有的**
+ *
+ *     --{族}-{角色}[-{变体}]
+ *     族：  颜色族省略（历史原因，bg / text / accent 直接用）
+ *           border- · overlay- · state- · field- · font- · font-size- ·
+ *           line-height- · icon- · acct- · diff- · z-
+ *     角色：语义，不是外观（用 text-faint 不用 text-gray）
+ *     变体：strong / medium / soft / faint  或  数字档
+ *
+ * ⚠ **禁止清单**（已经发生过的错猜，直接拉黑比等人再犯便宜）：
+ *   `--fg*` · `--danger` · `--ok` · `--mono` · `--font`（裸） · `--text-3/-dim/-muted` ·
+ *   `--hover` · `--input-bg` · `--link` · `--overlay-active` · `--font-size`（裸） · `--bg-1/-3`
+ *   🔴 **一条例外**：`--bg-2` 在禁止清单的字面射程里（「编号背景」），但它是**今天活着的
+ *   真 token**，而且是 `theme.ts` 那 14 个用户可调项之一 ⇒ **不在射程内**。
+ *   `设计/41 §2` 同一节也写着「现有短名没问题，别为了整齐去动 60 个 token + 800 处引用」，
+ *   所以禁止清单管的是**新增**。落 lint 时这一格要显式豁免，否则当场假红。
+ *
+ * # 状态怎么表达（`设计/41 §7` 的三条约定，写在这里是因为它和令牌一样是全局约定）
+ *
+ * 1. **「不参与布局」用 `hidden` 属性**（HTML 语义 + 无障碍白得）。
+ *    🔴 CSS 里**禁止**对这些元素写 `display` —— `hidden` 是 UA 样式表里的 `display:none`，
+ *    作者样式里任何一条 `display` 都会盖掉它 ⇒ 面板从此永远展开。**这条咬过人**
+ *    （`.user-inputs` 的逐字警告还在 `styles.css` 里）。
+ * 2. **「占位但不可见」用 `visibility`**（切 tab 那种，要 0 reflow）。
+ * 3. **状态用 `data-*`，不用类名** —— `data-*` 天然「加也有减也有」，类名容易只加不减。
+ *    ⚠ 改成 `data-*` 还不够，**减的那一半也要有判据**。
+ *
+ * # 主题
+ *
+ * ❌ 主题预设 / 亮色模式 **不做**（用户 2026-09-16 拍板，`设计/41 §8`）。
+ * 推迟**不产生债**：语义名这一层形状已经是对的，将来要亮色只需在语义名**下面**插一层
+ * 原始值（`--c-neutral-900` 那种），组件里写的还是 `var(--bg)`，800 处引用一处不动。
+ */
+
+:root {
+  /* === 颜色令牌（Anthropic warm gray-brown，参照 claude.ai 暗色） === */
+  --bg: #2b2a27; /* warm dark，主背景 */
+  --bg-2: #1f1e1b; /* 比主背景更深，用于 tab bar / status bar / code block / composer */
+  --card: #393937; /* user 气泡 / 折叠卡展开后 summary bg */
+  --text: #e8e6e1;
+  --text-2: #a8a39a;
+  --text-faint: #6b665e;
+  --accent: #c96442; /* Anthropic terracotta orange，单一强调色 */
+  --user: var(--accent); /* 兼容，仍可用于 slash 卡左条等 */
+  --assistant: var(--accent);
+  --success: #6fb074;
+  --warn: #d4a04a;
+  --error: #d96868;
+  --live: #6fb074;
+
+  /* === 账号身份色板（account-ux U4）=== 不透明、CVD-safe、主题无关（不随明暗 swap）。
+     每格自带 ink（白/黑）保小字 ≥4.5:1。slot 由 accountColorSlot(name) 定，颜色粘着账号。 */
+  --acct-c0: #256abf;
+  --acct-ink0: #fff;
+  --acct-c1: #eb6834;
+  --acct-ink1: #141414;
+  --acct-c2: #1baf7a;
+  --acct-ink2: #141414;
+  --acct-c3: #eda100;
+  --acct-ink3: #141414;
+  --acct-c4: #e87ba4;
+  --acct-ink4: #141414;
+  --acct-c5: #008300;
+  --acct-ink5: #fff;
+  --acct-c6: #4a3aa7;
+  --acct-ink6: #fff;
+  --acct-c7: #e34948;
+  --acct-ink7: #141414;
+
+  /* 边/底色层级 */
+  --border-strong: #3d3a35;
+  --border-medium: #ffffff20;
+  --border-soft: #ffffff14;
+  --border-faint: #ffffff08;
+  /* alias: 旧 var(--border) 引用（kb-editor 等 4 处无 fallback）默认走 strong */
+  --border: var(--border-strong);
+  --overlay-hover: #ffffff06;
+  --overlay-dim: #00000020;
+  --overlay-deep: #00000040;
+  --overlay-shadow: #00000080;
+
+  /* diff 卡（issue #14）：从 --success / --error 派生的**私有**令牌，
+     不进 theme.ts TOKENS / 设置面板（同 --border-* / --overlay-* 的约定）。
+     改 success/error 取色器即可同步重染 diff。底色用 color-mix（暗底上需要够明显
+     才看得见），但**可见性主信号是实色左边框**（不依赖 color-mix，老 WebView2 也稳）。 */
+  --diff-add-bg: color-mix(in srgb, var(--success) 20%, transparent);
+  --diff-add-gutter: color-mix(in srgb, var(--success) 42%, transparent);
+  --diff-del-bg: color-mix(in srgb, var(--error) 20%, transparent);
+  --diff-del-gutter: color-mix(in srgb, var(--error) 42%, transparent);
+
+  /* === 字体令牌 === */
+  --font-base: Inter, "Segoe UI", system-ui, sans-serif;
+  --font-prose:
+    "Source Serif 4", "Source Serif Pro", "Iowan Old Style", "PingFang SC",
+    "Microsoft YaHei", Georgia, serif;
+  --font-mono: "JetBrains Mono", Consolas, monospace;
+  --font-size-base: 14px;
+  --font-size-prose: 15px;
+  --font-size-mono: 13px;
+  --font-size-small: 12px;
+  --font-size-xs: 11px;
+  --line-height-base: 1.55;
+  --line-height-prose: 1.65;
+  --line-height-mono: 1.55;
+
+  /* 主消息流最大宽度（居中容器） */
+  --stream-max-width: 780px;
+
+  font-family: var(--font-base);
+  font-size: var(--font-size-base);
+  line-height: var(--line-height-base);
+  color: var(--text);
+  background: var(--bg);
+  color-scheme: dark;
+
+  /* === 顶栏图标（devbench F09）：data-URI SVG，零字体依赖 ===
+   * 定义并进这个已有的 `:root` 而不是另开一个 —— stylelint 的
+   * `no-duplicate-selectors` 会红，而它是对的：两个 `:root` 迟早分叉。 */
+  --icon-settings: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 6h5.2a3 3 0 0 1 5.6 0H21v2h-7.2a3 3 0 0 1-5.6 0H3V6zm0 10h11.2a3 3 0 0 1 5.6 0H21v2h-1.2a3 3 0 0 1-5.6 0H3v-2z'/%3E%3C/svg%3E");
+  --icon-history: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16zm-1 3v6l5 3 .9-1.6L13 12V7h-2z'/%3E%3C/svg%3E");
+  --icon-panorama: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M6 4.5 13.6 8l-.5 1.9-7.6-3.5.5-1.9zM7.6 12.6l6-3.3 1 1.8-6 3.3-1-1.8z'/%3E%3Ccircle cx='5' cy='5.5' r='3'/%3E%3Ccircle cx='16' cy='9.5' r='3'/%3E%3Ccircle cx='7' cy='16.5' r='3'/%3E%3Ccircle cx='18' cy='19' r='3'/%3E%3Cpath d='M9.4 15.4l6.6 2.6-.7 1.9-6.6-2.6.7-1.9z'/%3E%3C/svg%3E");
+  --icon-grid: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z'/%3E%3C/svg%3E");
+  --icon-folder: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M3 5h6.6l2 2H21a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z'/%3E%3C/svg%3E");
+  --icon-keyboard: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M2 6h20a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1zm3 3v2h2V9H5zm4 0v2h2V9H9zm4 0v2h2V9h-2zm4 0v2h2V9h-2zM5 13v2h2v-2H5zm4 0v2h6v-2H9zm8 0v2h2v-2h-2z'/%3E%3C/svg%3E");
+
+  /* === 交互态（`设计/41 §2` 族一：新增）===
+     这一族缺失是那批假变量的**直接来源** —— 人们伸手去抓 `--hover`（2 处）、
+     `--overlay-active`（1 处），而系统里只有一个 `--overlay-hover`。 */
+  --state-hover: #ffffff06; /* = 旧 --overlay-hover 同值；旧名保留为别名，不动既有 42 处 */
+  --state-active: #ffffff0d;
+  --state-focus: var(--accent);
+  --state-disabled-opacity: 0.45; /* 今天 0.45/0.5/0.55 散在各处硬写，新写的一律用它 */
+
+  /* === 表单控件（`设计/41 §2` 族二：新增，今天完全没有）===
+     `.command-bar-input` 抓 `--font-size`、`.panorama-ann-input` 抓 `--bg-1`、
+     四处抓 `--input-bg` —— 它们都是在找这一族。 */
+  --field-bg: #1f1e1b;
+  --field-border: var(--border-medium);
+  --field-border-focus: var(--accent);
+  --field-placeholder: var(--text-faint);
+
+  /* 链接色（`设计/41 §2` 那三个零散的之一）。取今天那处硬编码兜底的同值，
+     刻意**不**用 `--accent`：accent 是赤陶橙，当链接色读不出「可点」。 */
+  --color-link: #6cb6ff;
+
+  /* === 层叠刻度（`设计/40 §7` 步 6 · `真相源/51 §3`）===
+     🔴 **z-index 只许写 `var(--z-*)`，不许写裸数字。**
+     刻度存在的理由：改之前最大值是 **100001**，而它存在的唯一理由是要压过 100000 ——
+     那是一场军备竞赛的化石。有了刻度，加一个更上层的浮层不再需要「比上一个大 1」。
+     ⚠ 配套的另一半是**层叠上下文**（`设计/41 §5`）：`#tab-bar` / `#message-stream`
+     显式成为层叠上下文，圈子里的东西逃不出去压叔伯。 */
+  --z-base: 0; /* 流内内容 */
+  --z-sticky: 1; /* 表头、粘性行 */
+  --z-chrome: 2; /* 右上角 trigger、卡内按钮 */
+  --z-float: 3; /* 贴在内容上的浮层：tooltip、popover、拖拽把手 */
+  --z-view: 100; /* 全屏视图：history / panorama / grid / cc-bus / settings */
+  --z-overlay: 200; /* 视图之上的 overlay：编辑器、预览、选择器、SFTP */
+  --z-menu: 300; /* 右键菜单、下拉选择器 */
+  --z-modal: 400; /* 模态 + 背板 + 命令面板 */
+  --z-toast: 500; /* 提示条 / tooltip（必须能压过模态，否则提示看不见） */
+  --z-drag: 600; /* 拖拽幽灵、拖宽参考线（必须在最上） */
+}
