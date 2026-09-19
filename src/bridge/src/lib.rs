@@ -1705,7 +1705,7 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 ///
 /// # 两个字段各自的射程，别读宽
 ///
-/// - `routed`：**这个 configDir 推出来的账号 id 在中转凭据表里有一行**。
+/// - `routed`：**这个 configDir 推出来的账号 id 在apikey 凭据表里有一行**。
 ///   推 id 的规则只有一份（`history::relay_account_id_of_dir`），起会话那一侧调的是同一个，
 ///   由 `history::tests::the_ui_and_the_launch_side_derive_the_account_id_from_the_same_rule` 钉着。
 ///   ⚠ 它**不**答「那把 key 能不能用」（要到 claude 那边才知道），
@@ -1721,7 +1721,7 @@ fn read_relay_credentials_status() -> Result<creds_store::RelayCredentialsStatus
 #[derive(serde::Serialize, Debug, Clone, Default)]
 #[serde(rename_all = "camelCase")]
 struct RelayRouting {
-    /// 传进来的那些 configDir 里，中转表里**有对应行**的那几个（原样回，不是 id）。
+    /// 传进来的那些 configDir 里，apikey 表里**有对应行**的那几个（原样回，不是 id）。
     routed: Vec<String>,
     /// 本机中转在不在跑。射程见上。
     running: bool,
@@ -1759,7 +1759,7 @@ fn relay_routing_for(config_dirs: Vec<String>) -> RelayRouting {
 /// # ⚠⚠ `K-H2c` `KH2C1`：**第二个入参是 `configDir`，不是账号名**
 ///
 /// 界面手上的账号对象**两个字段都有**（`local_accounts.rs` 的 `RawAccount { name, configDir }`），
-/// 而它们是 manifest 里**两个独立字段、可以漂开**。中转表按**账号 id** 索引，
+/// 而它们是 manifest 里**两个独立字段、可以漂开**。apikey 表按**账号 id** 索引，
 /// 而那个 id 由 [`history::relay_account_id_of_dir`] 从 `configDir` 推出来 ——
 /// **全仓只有那一份规则**，起会话那一侧（`history::relay_account_id`）调的是同一个函数。
 ///

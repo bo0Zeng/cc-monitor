@@ -132,7 +132,7 @@ export class AccountChip {
       return;
     }
     if (this.local && this.state) {
-      // 只问**说得出 configDir** 的那几个（账号 0 没有目录 ⇒ 推不出中转表里的 id）。
+      // 只问**说得出 configDir** 的那几个（账号 0 没有目录 ⇒ 推不出apikey 表里的 id）。
       const dirs = this.state.accounts
         .map((a) => a.configDir)
         .filter((d): d is string => typeof d === "string" && d.length > 0);

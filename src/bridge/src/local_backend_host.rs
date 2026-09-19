@@ -1651,7 +1651,15 @@ pub fn start_local_relay(bin: std::path::PathBuf) -> bool {
         //    —— 中转诊断到不了人的时候，这一格是用户**唯一**看得见的说法。
         std::sync::Arc::new(|e| match &e {
             local_backend::SuperviseEvent::GaveUp { reason } => {
-                tracing::warn!("本机中转起不来（api-key 号的会话会被起会话那一侧拒掉）：{reason}");
+                // 🔴 〔步 8 · `设计/90 §1.2` 第四条 🔴〕**这一句原来把两层混成一句**：
+                //    「本机中转起不来（api-key 号的会话会被起会话那一侧拒掉）」——
+                //    读到它的人分不清坏的是**层 1**（SSE 转发那条通道）还是**层 2**
+                //    （apikey 端点改写），于是判不出影响面。⇒ 拆成两句，两层各说各的。
+                //    口径出处：`设计/20 §术语归属`（2026-09-16 用户拍板，唯一口径）。
+                tracing::warn!("层 1（SSE 转发）没起来：本机 `--relay` 进程起不动：{reason}");
+                tracing::warn!(
+                    "apikey 端点改写不可用 —— 配了第三方 key 的账号，起会话那一侧会当场拒掉"
+                );
                 // ⚠ 不能调 `stop_local_relay()`：那会 `stop()` 一个已经死了的句柄，
                 //   而且这里就在监护线程上。只把它摘出表 —— 状态从此与事实一致。
                 let mut g = LOCAL_RELAY.lock().unwrap_or_else(|e| e.into_inner());

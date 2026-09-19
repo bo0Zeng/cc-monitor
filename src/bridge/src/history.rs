@@ -1887,13 +1887,13 @@ fn launch_local(
 // `K-H2b`：注入侧的三个判断（**账号 id 从哪来 · 表里有没有它 · 中转在不在**）
 // ═════════════════════════════════════════════════════════════════════════════
 
-/// 这次拉起的账号在**中转表**里的 id。
+/// 这次拉起的账号在**apikey 表**里的 id。
 ///
 /// # ⚠ 它是**推出来的**，不是传下来的 —— 这一格必须写清楚
 ///
 /// [`LaunchAccount::Named`] 只有一个字段 `config_dir`，**没有名字**（`render_local_ccm`
 /// 头注里那条「②有 configDir 没名字 ⇒ 说不出 ⇒ 降级」记的就是这件事）。
-/// 而中转表按**账号 id** 索引 ⇒ 这里只能拿 `config_dir` 的**末段目录名**当 id：
+/// 而apikey 表按**账号 id** 索引 ⇒ 这里只能拿 `config_dir` 的**末段目录名**当 id：
 /// `cc-acct-iso` 的布局逐字是 `~/.claude-alt/<名字>`，`local_accounts.rs` 读出来的
 /// 账号名**就是那个目录名**。
 ///
@@ -1910,7 +1910,7 @@ fn relay_account_id(account: Option<&LaunchAccount>) -> Option<String> {
     }
 }
 
-/// 上一条的**纯派生半** —— 「一个 configDir 对应中转表里哪个 id」。
+/// 上一条的**纯派生半** —— 「一个 configDir 对应apikey 表里哪个 id」。
 ///
 /// ★ 抽出来的理由是**只许有一份**：界面那一侧（徽章要显「这个号走不走中转」）问的是
 /// **同一个问题**，而它手上也只有 configDir。两边各写一个 basename 规则，
@@ -1935,7 +1935,7 @@ pub(crate) fn relay_account_id_of_dir(config_dir: &str) -> Option<String> {
 /// 而**这条规则本身**（怎么从 configDir 推 id、怎么和表比）不该只能对着真实的家目录跑。
 ///
 /// ⚠ **它答的是「表里有没有这一行」，不是「这个 key 能不能用」** —— 后者要到 claude 那边才知道。
-/// ⚠ 也不是「这次拉起会不会真的注入」：那还要过 `relay_running` 那一格（`relay_injection_for`）。
+/// ⚠ 也不是「这次拉起会不会真的注入」：那还要过 `relay_running` 那一格（`apikey_endpoint_for`）。
 pub(crate) fn relay_routed_subset(config_dirs: &[String], rows: &[String]) -> Vec<String> {
     config_dirs
         .iter()
@@ -1944,7 +1944,7 @@ pub(crate) fn relay_routed_subset(config_dirs: &[String], rows: &[String]) -> Ve
         .collect()
 }
 
-/// 中转凭据文件里今天有哪几条账号 id。**读不到就是零条**（零条 ⇒ 谁都不走中转）。
+/// apikey 凭据文件里今天有哪几条账号 id。**读不到就是零条**（零条 ⇒ 谁都不走中转）。
 ///
 /// ⚠ 「读不到」与「一条都没配」在这里**故意同一处置**：两者的正确行为都是
 /// 「照旧走官方直连」，而把「读文件失败」变成一次起会话失败，是拿一个**能用的**状态
@@ -1983,7 +1983,7 @@ pub(crate) fn relay_rows_at(path: &std::path::Path) -> Vec<String> {
             .filter(|id| crate::backend::control::payload::relay_segment_is_safe(id))
             .collect(),
         Err(e) => {
-            tracing::debug!("中转凭据文件读不成表（照旧走官方直连）：{e:?}");
+            tracing::debug!("apikey 凭据文件读不成表（照旧走官方直连）：{e:?}");
             Vec::new()
         }
     }
@@ -2000,7 +2000,7 @@ fn relay_prefix_for(
     windows: bool,
 ) -> Result<String, String> {
     let agent = crate::adapter::active().id();
-    let url = crate::backend::control::payload::relay_injection_for(
+    let url = crate::backend::control::payload::apikey_endpoint_for(
         account_id, rows, running, sid, agent,
     )?;
     Ok(match url {
@@ -2018,7 +2018,7 @@ fn relay_prefix_for(
 /// 700 字节，断言那个窗口里**有没有**那两段文本。`D5` 现打的读数：在同一个窗口里加一行
 /// 把两段文本原样留住的死赋值（一个用不到的绑定就够），同时把真入参换成空表 / 常量
 /// ⇒ 文本一处不少、锚点命中数一处不少、**全量门禁四个数与干净树逐字相同**，
-/// 而「这个号在不在中转表里」「中转在不在跑」两件事**都不再被问**、中转前缀恒空。
+/// 而「这个号在不在apikey 表里」「中转在不在跑」两件事**都不再被问**、中转前缀恒空。
 ///
 /// 病史五层，每一层都是**上一层的修法买到的东西被下一层的量法漏掉**：
 /// ① 参数位没有账号 → ② 参数位有、值恒空 → ③ 值到得了、判据只量文本 →
@@ -2090,7 +2090,7 @@ fn relay_prefix_for(
 ///    「PowerShell 那一格」当场红（`D6` 的刀 `Xb` 打的正是调用点那一格）。
 #[derive(Clone, Copy)]
 pub(crate) struct RelayFactSources {
-    /// 「这个号在不在中转表里」——生产恒指 [`relay_rows`]。
+    /// 「这个号在不在apikey 表里」——生产恒指 [`relay_rows`]。
     pub(crate) rows: fn() -> Vec<String>,
     /// 「中转在不在跑」——生产恒指 [`crate::local_backend_host::relay_running`]。
     pub(crate) running: fn() -> bool,
@@ -2213,7 +2213,7 @@ pub(crate) const LAUNCH_ID_VAR: &str = "CCM_LAUNCH_ID";
 /// # ⚠ 它欠的一笔账（如实登记，别读成缺陷也别读成没有）
 ///
 /// **新开**会话时，中转路由键与本 token 是**两个不同的 nonce**（同一份铸法被调了两次）——
-/// 中转那一次在 `payload::relay_injection_for` 里面，本文件够不着它算好的值。
+/// 中转那一次在 `payload::apikey_endpoint_for` 里面，本文件够不着它算好的值。
 /// 今天不构成缺陷：`mint_route_key` 头注现打登记过「route key 对路由完全惰性、tee 今天零消费者」，
 /// 而身份 token 与它**不共享任何消费者**。要它们相等得改 `payload.rs`（本拍只许读它）。
 fn launch_identity_token(action: &LocalPsAction) -> String {

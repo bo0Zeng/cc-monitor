@@ -214,7 +214,7 @@ export interface AccountStatusBadge {
  * `K-H2b` `KH2B7`：**api-key 号那一格今天不是一态。**
  *
  * 本件之前那句 hover 文案逐字是「cc-monitor 今天还不会替它配 API key 与 base URL」——
- * 本件落地那一刻，它对**一部分号**就成了假话（本机、且中转表里有它那一行、且中转在跑
+ * 本件落地那一刻，它对**一部分号**就成了假话（本机、且apikey 表里有它那一行、且中转在跑
  * 的那些号，cc-monitor **真的**会替它配）。⇒ 按「这个号属于哪一半 / 那两个前置成不成立」
  * 分别说各自的话。
  *
@@ -258,12 +258,12 @@ export type AccountRelayState =
  * （`parity_ledger.rs` 5 个数 + `tests/ipc/commands.vitest.ts` 两处 `144`），
  * 而后者当时不在写区。**那两个数是联动的**：注册了不调 ⇒ 前一个红；调了没注册 ⇒ 编不过。
  *
- * ⚠ **两个字段各自的射程，别读宽**：`routed` 说的是「中转表里有这一行」，
+ * ⚠ **两个字段各自的射程，别读宽**：`routed` 说的是「apikey 表里有这一行」，
  * **不是**「那把 key 能用」；`running` 说的是「我们起过它而且没停过」，
  * **不是**「那个口上真有人听」。
  */
 export interface RelayRoutingView {
-  /** 传进去的那些 configDir 里，中转表里**有对应行**的那几个（原样回）。 */
+  /** 传进去的那些 configDir 里，apikey 表里**有对应行**的那几个（原样回）。 */
   routed: string[];
   /** 本机中转在不在跑。 */
   running: boolean;
@@ -451,7 +451,7 @@ export async function fetchLocalRelayRouting(configDirs: string[]): Promise<Rela
  * 把上面那份读数落到**一个账号**上。
  *
  * `configDir` 缺席（账号 0）⇒ `null`：账号 0 在 manifest 里没有目录名，
- * **推不出中转表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `relay_account_id` 的三态同形）。
+ * **推不出apikey 表里的 id** ⇒ 说不出就不表态（与 Rust 侧 `relay_account_id` 的三态同形）。
  */
 export function localRelayStateFor(
   a: Account,
@@ -479,7 +479,7 @@ export function accountStatusBadge(
         text: "api-key（经本机中转）",
         warn: false,
         title:
-          "这个号在中转凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 " +
+          "这个号在apikey 凭据文件里有一行，本机中转也在跑 —— 起本机会话时 cc-monitor 会把 " +
           "ANTHROPIC_BASE_URL 指向本机中转，由中转按账号换上这一行的 key。\n" +
           "⚠ 它保证的是「请求发得到中转、中转按这一行转发」；" +
           "那把 key 本身对不对、上游认不认，仍然要到 claude 那边才知道。",
@@ -490,7 +490,7 @@ export function accountStatusBadge(
         text: "api-key（中转未运行）",
         warn: true,
         title:
-          "这个号在中转凭据文件里有一行，但本机中转没在跑 —— 起会话会被**当场拒**" +
+          "这个号在apikey 凭据文件里有一行，但本机中转没在跑 —— 起会话会被**当场拒**" +
           "（不是静默失败：中转没起来与网络坏了在 claude 那边长得一模一样，" +
           "所以这一条在起会话那一侧就拦下来）。请先起本机后端。",
       };
@@ -498,14 +498,14 @@ export function accountStatusBadge(
     // 三种「没配上」的成因，各说各的 —— **合成一句就等于又写下一句说不准的话**。
     const why =
       local != null
-        ? "中转凭据文件里**没有这个账号的一行** ⇒ cc-monitor 不会替它配 base URL。" +
+        ? "apikey 凭据文件里**没有这个账号的一行** ⇒ cc-monitor 不会替它配 base URL。" +
           "要用它：在那份 JSON 里给这个账号加一行（端点 + key），或者在该账号自己的 " +
           "shell 环境里配好第三方端点。"
         : relay?.scope === "remote"
           ? "cc-monitor 今天只给**本机**会话配 base URL；**远端**这一半还不做" +
             "（把 key 送到远端那台机器是另一件事）⇒ 这个号要用，得在远端那台机器上" +
             "自己配好第三方端点。"
-          : "cc-monitor 只在两件事都成立时替它配端点（base URL）：① 中转凭据文件里有这个" +
+          : "cc-monitor 只在两件事都成立时替它配端点（base URL）：① apikey 凭据文件里有这个" +
             "账号 id 的一行；② 本机中转在跑。**这一处没被告知它属于哪一半、那两条成不成立**，" +
             "所以不替它下判断。";
     return {
