@@ -587,7 +587,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
     // ── 起 ────────────────────────────────────────────────────────
     *LOCAL_BACKEND.lock().expect("锁") = Some(spawn());
     assert!(wait_channel(true), "5s 内通道没登记上 —— backend 没起来");
-    let pid1 = crate::backend_control::backend_status(
+    let pid1 = crate::backend::control::backend_control::backend_status(
         crate::backend::control::inbound_client::LOCAL_ORIGIN.into(),
     )
     .expect("查状态")
@@ -630,7 +630,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
         wait_channel(true),
         "停了之后起不回来 —— 那就只有「停」没有「起」"
     );
-    let pid2 = crate::backend_control::backend_status(
+    let pid2 = crate::backend::control::backend_control::backend_status(
         crate::backend::control::inbound_client::LOCAL_ORIGIN.into(),
     )
     .expect("查状态")
@@ -663,7 +663,9 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
 /// 「停了进程真没了」那半由 `local_backend_host::tests` 里那条实测管（而它今天 `#[cfg]` 门着，见 10c）。
 #[test]
 fn the_stop_command_really_calls_this_module() {
-    let dc = guard_core::production_code(include_str!("../../src/bridge/src/backend_control.rs"));
+    let dc = guard_core::production_code(include_str!(
+        "../../src/bridge/src/backend/control/backend_control.rs"
+    ));
     guard_core::find_pinned(&dc, "local_backend_host::stop_local_backend()").unwrap_or_else(|e| {
         panic!(
             "`backend_control` 的停口没有接到 `stop_local_backend`（{e}）——\n\
@@ -1254,7 +1256,9 @@ fn detached_reads_the_path_that_was_taken_not_a_guess() {
                  反推出来的信号不会报错，它只会一直说是（`SSH_CONNECTION` 那一形）。"
         );
     }
-    let dc = guard_core::production_code(include_str!("../../src/bridge/src/backend_control.rs"));
+    let dc = guard_core::production_code(include_str!(
+        "../../src/bridge/src/backend/control/backend_control.rs"
+    ));
     let status = body_of(&dc, "pub fn backend_status(origin: String)");
     assert_eq!(
         status.matches("local_backend_host::is_detached()").count(),
@@ -1289,7 +1293,7 @@ fn detached_reads_the_path_that_was_taken_not_a_guess() {
         DETACHED.lock().expect("锁").is_none(),
         "测试开始时 `DETACHED` 就不是空的 —— 前一条判据留了状态，本条读数不可信"
     );
-    let st = crate::backend_control::backend_status(
+    let st = crate::backend::control::backend_control::backend_status(
         crate::backend::control::inbound_client::LOCAL_ORIGIN.into(),
     )
     .expect("查状态");
@@ -1298,7 +1302,8 @@ fn detached_reads_the_path_that_was_taken_not_a_guess() {
         Some(false),
         "没走过脱离那条路，`detached` 却不是 false —— 那一格在猜"
     );
-    let remote = crate::backend_control::backend_status("某台远端".into()).expect("查远端状态");
+    let remote = crate::backend::control::backend_control::backend_status("某台远端".into())
+        .expect("查远端状态");
     assert!(
         remote.get("detached").is_some_and(|v| v.is_null()),
         "远端的 `detached` 不是 null —— 那是在替一台看不见的机器编读数"

@@ -6,7 +6,9 @@ use super::*;
 /// 正是 `C1` 排除掉的做法（也是 #58 门⑤ 要防的形态）。
 #[test]
 fn the_three_ports_are_one_command_each_and_all_take_origin() {
-    let src = guard_core::production_code(include_str!("../../src/bridge/src/backend_control.rs"));
+    let src = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/backend_control.rs"
+    ));
     const PORTS: &[&str] = &["backend_status", "backend_start", "backend_stop"];
     for p in PORTS {
         let sig = format!("pub fn {p}(origin: String)");
@@ -56,7 +58,9 @@ fn the_three_ports_are_one_command_each_and_all_take_origin() {
 /// ② 本机那支必须有 `Failed` ⇒ `Err` 那一格（三态各有去处，不靠 `reason` 字符串猜）。
 #[test]
 fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
-    let src = guard_core::production_code(include_str!("../../src/bridge/src/backend_control.rs"));
+    let src = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/backend_control.rs"
+    ));
     let at =
         guard_core::find_pinned(&src, "pub fn backend_start(origin: String)").expect("起口不在了");
     let body: String = src[at..]
@@ -100,7 +104,7 @@ fn starting_reports_failure_as_failure_and_finished_streams_as_not_running() {
 /// —— **JoinHandle 直接丢**，于是远端流起了就再也停不下来。
 #[test]
 fn the_startup_path_really_registers_remote_handles() {
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/lib.rs"));
+    let prod = guard_core::production_code(include_str!("../../../../src/bridge/src/lib.rs"));
     guard_core::find_pinned(&prod, "backend_control::register_remote(").unwrap_or_else(|e| {
         panic!(
             "`lib.rs` 的生产段里没有恰好一处 `register_remote(`（{e}）。\n\

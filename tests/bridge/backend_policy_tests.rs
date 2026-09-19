@@ -131,7 +131,7 @@ fn the_health_copy_has_exactly_one_home() {
         ),
         (
             "backend_control.rs",
-            include_str!("../../src/bridge/src/backend_control.rs"),
+            include_str!("../../src/bridge/src/backend/control/backend_control.rs"),
         ),
     ];
     for (name, src) in HOMES {
@@ -610,7 +610,7 @@ fn the_unconditional_ban_is_gone_from_all_four_homes() {
         ),
         (
             "backend_control.rs",
-            include_str!("../../src/bridge/src/backend_control.rs"),
+            include_str!("../../src/bridge/src/backend/control/backend_control.rs"),
         ),
         (
             "src/backend-policy.ts",

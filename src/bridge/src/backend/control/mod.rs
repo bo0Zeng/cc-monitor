@@ -15,7 +15,22 @@ pub mod backend_kill;
 pub mod backend_launch;
 pub mod backend_route;
 pub mod backend_send_keys;
-// 🔴 〔步 8 · 归属 2026-09-19〕从 `lib.rs` 顶层搬进来的 —— cc-bus 的**起 / 杀 / 发**
+// 🔴 〔步 8 · 归属 2026-09-19〕从 `lib.rs` 顶层搬进来的三份 —— 它们干的全是控制面的活：
+//    `backend_control`（每台机一个开关的命令层）· `cc_bus`（起 / 杀 / 发）·
+//    `inbound_client`（流通道的 wire 客户端）。
+//    ⚠ **同一批里有三份搬不动，原因写在这里免得下一个人再试一次**（三条都是**试过、红了**）：
+//      · `backend_policy.rs` —— 它是 `record_death` 的唯一住址，而
+//        `backend_policy_tests.rs::the_supervisor_itself_never_records_a_death` 逐字
+//        「`backend/` 的生产段里出现了 `record_death(` ⇒ **判与记该在宿主层**，
+//        `backend/` 那半**只搬证据**」。搬进来当场红；
+//      · `ssh_source.rs` —— 生产段抓着 GUI 宿主的把手（`tauri::AppHandle` · `Emitter` · `.emit(`，
+//        现打 3 处），搬进来会当场踩 `the_backend_layer_stays_host_agnostic`（定框 `C13`）；
+//      · `local_backend_host.rs` —— 生产段有 15 处平台 cfg / 平台原语，会踩
+//        `the_backend_half_stays_platform_agnostic`（定框 `C10`：`platform/` 是唯一允许它们的地方，
+//        而 monitor 侧今天还没有 `platform/`）。它自己的头注早就写着「这边是**宿主知识**」。
+//      ⇒ 那两份是**解耦**的活（`设计/99 §4` 的 E/H），不是改名一刀能搬的。
+pub mod backend_control;
+// cc-bus 的**起 / 杀 / 发**
 //    全是控制面的活（它的命令面逐条登记在 `plugin_class_registry`）。
 pub mod cc_bus;
 pub mod ccm_invocation;
