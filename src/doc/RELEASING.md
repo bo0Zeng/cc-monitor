@@ -122,11 +122,11 @@ Linux 打包）全部不起。
 - `monitor` — 裸二进制（⚠ **v3.6.0 那次还没有它**：这条上传是 08-02 `ae18878` 补的，
   之后一直没发过版 ⇒ **它第一次真的出现会是下一个 tag**）
 - `SHA256SUMS-linux.txt`
-- `cc-monitor-remote-x86_64` / `cc-monitor-remote-aarch64`
+- `cc-monitor-backend-x86_64` / `cc-monitor-backend-aarch64`
   —— 远端后端的 musl 静态二进制（DN-8：外部项目自部署要拿它）
   ⚠ 🔴 **`K-R70`（09-12）起不再附 `.build_id`**：身份在二进制自己的字节里
   （`<<ccm-build-id:…:ccm-build-id>>`），要问它是谁就 `grep -a` 那个串，或直接跑
-  `./cc-monitor-remote --ccm-probe` 读 `build=` 那一行。
+  `./cc-monitor-backend --ccm-probe` 读 `build=` 那一行。
   ⚠ **上面那张资产表量于 `v3.6.0`，本行改的是「下一个 tag 会长什么样」** —— 别把它读成已发生的读数。
 
 > ⚠ 上面这张表是 **2026-09-09 读 `v3.6.0` 那个 release 的真实资产清单**现打出来的

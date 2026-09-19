@@ -70,7 +70,7 @@ run backend        "$WT/src/backend" cargo check --all-targets
 # 🔴 **它今天量不到我们的代码，这是现打的读数**（`K-R52` 09-11，在沙箱里对 `d231e50` 跑）：
 #   `cargo check --all-targets --target x86_64-pc-windows-msvc` ⇒ **EXIT=101**、
 #   `error occurred in cc-rs: failed to find tool "lib.exe"`、
-#   而 `Checking cc-monitor-remote` 命中 **0** —— 它**根本没走到我们这一行**。
+#   而 `Checking cc-monitor-backend` 命中 **0** —— 它**根本没走到我们这一行**。
 #   ⇒ 那个红**不是**「Windows 编不过」的证据，它什么都不是。
 #   一道永远红、而红得没有信息的门，与一道「跑了就绿」的假门是同一种东西。
 #
@@ -80,7 +80,7 @@ run backend        "$WT/src/backend" cargo check --all-targets
 #   它存在只是为了让 build script 走完、好让检查走到我们的代码。
 #
 # 🔴 **判绿的口径不是退出码，是「它有没有走到我们的代码」**：
-#   needle 用**包名** `cc-monitor-remote`，不是目录名 `src/backend`
+#   needle 用**包名** `cc-monitor-backend`，不是目录名 `src/backend`
 #   （拿目录名当 needle 会永远数出 0 —— CI 那一步的头注逐字记着这个坑）。
 #   三种结局，**各自不同的结论**：
 #     · 走到了 + exit 0        ⇒ ok，这一格真的量到了东西
@@ -105,14 +105,14 @@ if rustup target list --installed | grep -q x86_64-pc-windows-msvc; then
   run backend-win  "$WT/src/backend" "${winenv[@]}" cargo check --all-targets --target x86_64-pc-windows-msvc
   # 🔴 **重判**：`run` 只看退出码，而退出码在这一格上说明不了事（见上面那一段）。
   #    没走到我们的代码 ⇒ 把 `run` 刚记下的那一笔**撤回**，改记成「没有读数」。
-  if ! grep -q 'Checking cc-monitor-remote' "$WT/.verify-backend-win.log"; then
+  if ! grep -q 'Checking cc-monitor-backend' "$WT/.verify-backend-win.log"; then
     fail="$win_fail_before"
     if command -v zig >/dev/null 2>&1; then
       why="装了 zig 也没走到我们的代码"
     else
       why="没装 zig，构建卡在 \`ring\` 的 C 构建脚本上"
     fi
-    skipped="backend-win（$why —— 日志里 \`Checking cc-monitor-remote\` 命中 0）"
+    skipped="backend-win（$why —— 日志里 \`Checking cc-monitor-backend\` 命中 0）"
     echo "   量不到 backend-win —— $why"
     echo "        ⇒ **上面那条 FAIL（如果打了）不算数**：它量的不是我们的代码。"
     echo "        见 $WT/.verify-backend-win.log；装法照抄 .github/workflows/ci.yml 的 backend job（mlugg/setup-zig，0.14.0）"

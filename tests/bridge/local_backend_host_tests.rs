@@ -532,7 +532,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
     let _guard = crate::inbound_client::local_origin_test_lock();
     let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("embedded-backends")
-        .join("cc-monitor-remote-x86_64");
+        .join("cc-monitor-backend-x86_64");
     let home = std::env::temp_dir().join(format!("p2s-restart-{}", std::process::id()));
     let cfg_dir = home.join(".claude");
     std::fs::create_dir_all(cfg_dir.join("projects")).expect("建沙箱 HOME");
@@ -684,7 +684,7 @@ fn the_stop_command_really_calls_this_module() {
 
 /// ★★ **本机只许用本平台能跑的二进制**〔D 阶段补审 08-11 新增〕。
 ///
-/// 内嵌的两份是 **musl Linux**（`build.rs` 只认 `embedded-backends/cc-monitor-remote-{x86_64,aarch64}`），
+/// 内嵌的两份是 **musl Linux**（`build.rs` 只认 `embedded-backends/cc-monitor-backend-{x86_64,aarch64}`），
 /// 而 `sftp::backend_binary(ARCH)` **只按 arch 分派、不看 OS**。
 /// 少了这道门，Windows/macOS 上会释放一个 Linux ELF、`start_or_extract` 回 `Resolved::Found`
 /// ⇒ **UI 与日志报告「已起」，而进程从来没起来过**（补审阻塞 C1）。
@@ -3136,7 +3136,7 @@ fn the_auto_start_refusal_is_not_only_a_log_line() {
 /// **一件用户能动手解决的事** ⇒ 说到眼前；别的失败（安装包里还没有 local_backend…）=
 /// 诚实降级 ⇒ 仍走日志」。
 /// ⚠ 括号里那个例子今天不成立（09-10 干净 win11 现打，PM：装出来那份跑着 2 个
-/// `cc-monitor-remote.exe`、裸 `monitor.exe` 那份 0 个），`lib.rs` 那处已订正为
+/// `cc-monitor-backend.exe`、裸 `monitor.exe` 那份 0 个），`lib.rs` 那处已订正为
 /// 「这一份产物里没带本机后端」；**分档标准本身、本条判据的靶，两样都一格没动。**
 /// 「盘上有个零字节的 token 文件，删掉它再起一次」按这条标准
 /// **属于前者**，而上一轮把它落在了后者。
@@ -3179,7 +3179,7 @@ fn the_user_actionable_start_failures_all_reach_the_user() {
     // 〔订正 2026-09-10（v3.7.0）—— 动的是**失败文案**，不是判据。
     //  墓碑，原文逐字：「诚实降级（**还没有本机后端那种**）⇒ 仍走日志」。
     //  括号里那句今天不成立：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe
-    //  各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe`
+    //  各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe`
     //  **2 个进程在跑**、裸 `monitor.exe` 那份 **0 个** ⇒ 发版包里本机后端就在 exe 旁边。
     //
     //  ⚠ **判据守的那个性质没跟着过期** —— 它守的是「**分母不许在没人回来重判的情况下变**」，

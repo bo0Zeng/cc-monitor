@@ -623,8 +623,8 @@ mod window_raise_guard;
 // 在它之前是**二分**：剥掉流 flag，剩下非空就当一次性查询。后果实测：
 //
 // ```text
-// $ cc-monitor-remote --some-future-flag
-// cc-monitor-remote query error: unknown argument: --some-future-flag
+// $ cc-monitor-backend --some-future-flag
+// cc-monitor-backend query error: unknown argument: --some-future-flag
 // rc=2
 // ```
 //
@@ -678,7 +678,7 @@ const SUBCOMMANDS: &[&str] = &[
     //  🔴 它**不是**同族的「前提翻了」，是纯粹的漂移：没有任何前提翻，只是这一处没跟着改。
     //
     //  证据（09-10 在本树现打的读数，不是从代码推的）：本仓 debug 构建的
-    //  `cc-monitor-remote --dial` 跑两趟 ——
+    //  `cc-monitor-backend --dial` 跑两趟 ——
     //  ① 不设 `CCM_DIAL_REQUEST`、stdin 给 `/dev/null` ⇒ **退出码 2**，stdout **0 字节**，
     //     stderr 逐字 `dial: 环境变量 CCM_DIAL_REQUEST 没设（或是空的）—— 界面没交请求`；
     //  ② **把那份 JSON 原样喂进 stdin 第一行**、仍不设那个环境变量 ⇒ **还是退出码 2、
@@ -785,7 +785,7 @@ async fn main() {
     // ★★ `K-R48`（09-11）：**当 `ccm` 用的那一趟，在这里就整条分出去。**
     //
     // 〔用@09-11 `K33`〕「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**。」
-    // ⇒ 终端里敲的 `ccm` 就是本二进制（别名 / 软链指过来，或 `cc-monitor-remote ccm …`）。
+    // ⇒ 终端里敲的 `ccm` 就是本二进制（别名 / 软链指过来，或 `cc-monitor-backend ccm …`）。
     //
     // 🔴 **三个「必须排在前面」，一个都不是排版**：
     //   ① 排在 `tracing_subscriber` 之前 —— 一次性模式的 stderr 是给人看的，

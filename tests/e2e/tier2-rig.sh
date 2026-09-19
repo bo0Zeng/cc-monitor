@@ -20,7 +20,7 @@ REPO="$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)"
 SBX="${SBX:-/tmp/e2e-sandbox}"
 DISP="${DISP:-:80}"
 RIG="$SBX/rig"
-BACKEND="$REPO/.build/backend/debug/cc-monitor-remote"
+BACKEND="$REPO/.build/backend/debug/cc-monitor-backend"
 # 真 HOME —— 前提 1：沙箱 HOME 会把 rustup 的家一起换掉，这两个要显式指回来。
 REAL_HOME="$(getent passwd "$(id -un)" | cut -d: -f6)"
 

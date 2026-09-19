@@ -172,7 +172,7 @@ jobs:
         with:
           tool: cargo-zigbuild@0.23.0
 
-      # cc-monitor-remote 是独立 crate（无 workspace），静态编译成 musl。
+      # cc-monitor-backend 是独立 crate（无 workspace），静态编译成 musl。
       # build_id 由源码 const BUILD_ID 决定（src/bridge/build.rs 同源解析），从源码编译天然版本一致。
       #
       # ⚠ **`--locked` 不是可选的**（2026-09-09 加）：两份 `Cargo.lock` 今天都钉着
@@ -190,7 +190,7 @@ jobs:
           cargo zigbuild --release --locked --target x86_64-unknown-linux-musl
           cargo zigbuild --release --locked --target aarch64-unknown-linux-musl
 
-      # 命名成 src/bridge/build.rs embed_backends 期望的 cc-monitor-remote-<arch>。
+      # 命名成 src/bridge/build.rs embed_backends 期望的 cc-monitor-backend-<arch>。
       #
       # 🔴 **K-R70（09-12）：不再旁挂 `.build_id` 清单 —— 身份跟着字节走。**
       # 〔墓碑，本步原话逐字：「Batch9：旁挂 .build_id 清单 = 字节真实身份（编译器可能把
@@ -202,14 +202,14 @@ jobs:
       - name: Stage binaries
         run: |
           mkdir -p staged
-          cp .build/backend/x86_64-unknown-linux-musl/release/cc-monitor-remote staged/cc-monitor-remote-x86_64
-          cp .build/backend/aarch64-unknown-linux-musl/release/cc-monitor-remote staged/cc-monitor-remote-aarch64
+          cp .build/backend/x86_64-unknown-linux-musl/release/cc-monitor-backend staged/cc-monitor-backend-x86_64
+          cp .build/backend/aarch64-unknown-linux-musl/release/cc-monitor-backend staged/cc-monitor-backend-aarch64
           file staged/* || true
 
       - uses: actions/upload-artifact@v4
         with:
           name: embedded-backends
-          path: staged/cc-monitor-remote-*
+          path: staged/cc-monitor-backend-*
           if-no-files-found: error
 
   build-windows:
@@ -257,9 +257,9 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force src/bridge/embedded-backends | Out-Null
           foreach ($a in "x86_64","aarch64") {
-            $f = Get-ChildItem -Recurse backend-artifacts -Filter "cc-monitor-remote-$a" | Select-Object -First 1
-            if (-not $f) { Write-Error "backend artifact cc-monitor-remote-$a 缺失——内嵌失败，自动部署会被禁用"; exit 1 }
-            Copy-Item $f.FullName "src/bridge/embedded-backends/cc-monitor-remote-$a" -Force
+            $f = Get-ChildItem -Recurse backend-artifacts -Filter "cc-monitor-backend-$a" | Select-Object -First 1
+            if (-not $f) { Write-Error "backend artifact cc-monitor-backend-$a 缺失——内嵌失败，自动部署会被禁用"; exit 1 }
+            Copy-Item $f.FullName "src/bridge/embedded-backends/cc-monitor-backend-$a" -Force
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
           }
           $main = "src/backend/main.rs"
@@ -270,7 +270,7 @@ jobs:
           $want = "$open$src$close"
           Write-Host "expecting stamp: $want"
           foreach ($a in "x86_64","aarch64") {
-            $bytes = [System.IO.File]::ReadAllBytes("src/bridge/embedded-backends/cc-monitor-remote-$a")
+            $bytes = [System.IO.File]::ReadAllBytes("src/bridge/embedded-backends/cc-monitor-backend-$a")
             $text  = [System.Text.Encoding]::Latin1.GetString($bytes)
             if ($text.IndexOf($want) -lt 0) { Write-Error "内嵌 backend $a 的字节里问不出身份戳 $want —— 它不是这套源码编出来的"; exit 1 }
             Write-Host "stamp $a = $src (从字节里扫出来的，不是从旁边抄的)"
@@ -351,13 +351,13 @@ jobs:
         run: |
           $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
           New-Item -ItemType Directory -Force src/bridge/binaries | Out-Null
-          Copy-Item .build/backend/release/cc-monitor-remote.exe `
-            "src/bridge/binaries/cc-monitor-remote-$triple.exe" -Force
+          Copy-Item .build/backend/release/cc-monitor-backend.exe `
+            "src/bridge/binaries/cc-monitor-backend-$triple.exe" -Force
           Get-ChildItem src/bridge/binaries | ForEach-Object { Write-Host "$($_.Name) $($_.Length)" }
 
       # ── K-R42：**同一份二进制再铺一处** —— 让**裸 `monitor.exe`** 也带得上本机后端 ──────
       #
-      # 09-10 干净 win11 上现打：装出来那份 `cc-monitor-remote.exe` **2 个进程在跑**，
+      # 09-10 干净 win11 上现打：装出来那份 `cc-monitor-backend.exe` **2 个进程在跑**，
       # 裸 `monitor.exe` **0 个**。上面那一步（`binaries/` → Tauri `externalBin`）只服务
       # **安装包**：它把本机后端放进 msi/nsis，装完落在 exe 同目录。裸 exe 拿不到那个文件。
       #
@@ -396,7 +396,7 @@ jobs:
           $dir = "src/bridge/native-backend"
           $dst = "$dir/cc-monitor-native"
           New-Item -ItemType Directory -Force $dir | Out-Null
-          Copy-Item .build/backend/release/cc-monitor-remote.exe $dst -Force
+          Copy-Item .build/backend/release/cc-monitor-backend.exe $dst -Force
           Set-Content -Path "$dst.target" -Value $triple
           foreach ($f in $dst, "$dst.target") {
             if (-not (Test-Path $f)) { Write-Error "本机内嵌后端没铺全（缺 $f）——裸 exe 会回到「0 个本机后端进程」那个读数"; exit 1 }
@@ -408,7 +408,7 @@ jobs:
       # ⚠ `--config src/bridge/tauri.sidecar.conf.json` 是 F05b 刻意选的形态：`externalBin`
       # **不进主配置** —— `tauri-build` 要求当前 target 的本机后端在**编译期**就存在，
       # 进主配置会让 `cargo test` 也需要一份后端二进制（实测报错
-      # `resource path binaries/cc-monitor-remote-<triple> doesn't exist`），
+      # `resource path binaries/cc-monitor-backend-<triple> doesn't exist`），
       # 那等于把两半在构建期绑死，正是 C2 反面禁的事。⇒ 只在发版这一步注入。
       - name: tauri build
         run: npx tauri build --config src/bridge/tauri.sidecar.conf.json --bundles nsis,msi
@@ -520,9 +520,9 @@ jobs:
           set -euo pipefail
           mkdir -p src/bridge/embedded-backends
           for a in x86_64 aarch64; do
-            bin=$(find backend-artifacts -name "cc-monitor-remote-$a" -type f | head -1)
+            bin=$(find backend-artifacts -name "cc-monitor-backend-$a" -type f | head -1)
             [ -n "$bin" ] || { echo "backend artifact 缺失（$a）"; exit 1; }
-            cp "$bin" "src/bridge/embedded-backends/cc-monitor-remote-$a"
+            cp "$bin" "src/bridge/embedded-backends/cc-monitor-backend-$a"
             echo "embedded $a placed"
           done
 
@@ -541,8 +541,8 @@ jobs:
           set -euo pipefail
           triple=$(rustc -vV | sed -n 's/^host: //p')
           mkdir -p src/bridge/binaries
-          cp .build/backend/release/cc-monitor-remote \
-             "src/bridge/binaries/cc-monitor-remote-$triple"
+          cp .build/backend/release/cc-monitor-backend \
+             "src/bridge/binaries/cc-monitor-backend-$triple"
           ls -l src/bridge/binaries
 
       - name: tauri build (deb)
@@ -599,5 +599,5 @@ jobs:
             src/bridge/target/release/bundle/deb/*.deb
             src/bridge/target/release/monitor
             SHA256SUMS-linux.txt
-            backend-artifacts/cc-monitor-remote-x86_64
-            backend-artifacts/cc-monitor-remote-aarch64
+            backend-artifacts/cc-monitor-backend-x86_64
+            backend-artifacts/cc-monitor-backend-aarch64

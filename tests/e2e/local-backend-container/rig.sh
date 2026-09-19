@@ -241,7 +241,7 @@ docker exec -u tester -e HOME=/home/tester \
 # 给它一点时间把后端释放出来并起进程。
 sleep 20
 note "app 进程数（pgrep -c monitor）：$(docker exec "$CT" sh -c 'pgrep -c -x monitor || echo 0' | tr -d '\r')"
-note "后端进程数（pgrep -cf cc-monitor-remote）：$(docker exec "$CT" sh -c 'pgrep -cf cc-monitor-remote || echo 0' | tr -d '\r')"
+note "后端进程数（pgrep -cf cc-monitor-backend）：$(docker exec "$CT" sh -c 'pgrep -cf cc-monitor-backend || echo 0' | tr -d '\r')"
 note "\$HOME/$DIR_REAL 里现在有什么：$(tsh "ls -1 \$HOME/$DIR_REAL 2>/dev/null | tr '\n' ' '")"
 note "app 日志尾（/tmp/app.log 末 6 行）："
 docker exec "$CT" sh -c 'tail -6 /tmp/app.log 2>/dev/null' | sed 's/^/    | /'
@@ -297,14 +297,14 @@ printf '%s\n' "$P_DIRECT" | sed 's/^/    | /'
 P_PATH="$(tsh 'command -v ccm >/dev/null 2>&1 && ccm --ccm-probe 2>/dev/null || printf NO_CCM\\n')"
 note "② 问 PATH 上那个（产品探针 CCM_PROBE_CMD 的口径）：行数 = $(printf '%s' "$P_PATH" | grep -c . )"
 printf '%s\n' "$P_PATH" | sed 's/^/    | /'
-# ③ 包里那个 /usr/bin/cc-monitor-remote 自己答不答（argv[0] 不叫 ccm）
+# ③ 包里那个 /usr/bin/cc-monitor-backend 自己答不答（argv[0] 不叫 ccm）
 # 🔴 **必须带 timeout** —— 09-15 头一趟就是在这里挂住的：`argv[0]` 不叫 `ccm` 时它**不走 ccm 那一支**
 #    （`control/ccm/mod.rs:16` 逐字：basename 是 `ccm` 才进），`--ccm-probe` 既不被认、也不让它退，
 #    进程就那么停着（实测 12 分半没退，最后手工 `kill -9` 才放行）。
 #    ⚠ 不带 timeout 的话，「它不答」这一格会表现成**整个台架挂死**，而挂死读不出是哪一格坏了。
-P_SIDE="$(timeout 10 docker exec "$CT" /usr/bin/cc-monitor-remote --ccm-probe 2>&1 | head -8)"
+P_SIDE="$(timeout 10 docker exec "$CT" /usr/bin/cc-monitor-backend --ccm-probe 2>&1 | head -8)"
 SIDE_RC=$?
-note "③ 问 /usr/bin/cc-monitor-remote（argv[0] 不叫 ccm）：行数 = $(printf '%s' "$P_SIDE" | grep -c . ) · timeout 退出码 = $SIDE_RC（124 = 10 秒内没退）"
+note "③ 问 /usr/bin/cc-monitor-backend（argv[0] 不叫 ccm）：行数 = $(printf '%s' "$P_SIDE" | grep -c . ) · timeout 退出码 = $SIDE_RC（124 = 10 秒内没退）"
 printf '%s\n' "$P_SIDE" | sed 's/^/    | /'
 # 起的那个进程不会自己走 ⇒ 台架自己收尸，别留给收尾那一步
 docker exec "$CT" pkill -f -- '--ccm-probe' >/dev/null 2>&1
@@ -314,7 +314,7 @@ line
 echo "== P10 卸载 → 看残留"
 rsh "dpkg -r cc-monitor >/dev/null 2>&1; echo rc=\$?" | sed 's/^/    | /'
 note "卸完 /usr/bin/monitor 在不在：$(docker exec "$CT" sh -c '[ -e /usr/bin/monitor ] && echo 在 || echo 不在')"
-note "卸完 /usr/bin/cc-monitor-remote 在不在：$(docker exec "$CT" sh -c '[ -e /usr/bin/cc-monitor-remote ] && echo 在 || echo 不在')"
+note "卸完 /usr/bin/cc-monitor-backend 在不在：$(docker exec "$CT" sh -c '[ -e /usr/bin/cc-monitor-backend ] && echo 在 || echo 不在')"
 note "卸完 \$HOME/$DIR_REAL 在不在：$(tsh "[ -d \$HOME/$DIR_REAL ] && echo 在 || echo 不在")"
 note "卸完 \$HOME/$DIR_REAL 里还剩：$(tsh "ls -1 \$HOME/$DIR_REAL 2>/dev/null | tr '\n' ' '")"
 note "卸完 rc 里围栏还剩：$(tsh "grep -c 'cc-monitor remote ccm BEGIN' \$HOME/.bashrc 2>/dev/null || echo 0") 处"

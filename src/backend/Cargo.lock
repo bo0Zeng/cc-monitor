@@ -218,7 +218,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "cc-monitor-remote"
+name = "cc-monitor-backend"
 version = "0.0.0"
 dependencies = [
  "acct-core",

@@ -160,7 +160,7 @@ export interface MachineCardHooks {
  * 故用 `/home/<user>/...` 形式而非 `~/...`（避免误导用户以为 `~` 可用）。
  */
 const DAEMON_PATH_PLACEHOLDER =
-  "/home/<user>/.cc-monitor/bin/cc-monitor-remote";
+  "/home/<user>/.cc-monitor/bin/cc-monitor-backend";
 /**
  * 按远端用户名生成 daemonPath 默认值（与自动部署的约定路径一致，
  * 见 src/doc/REMOTE-PHASE0-DEPLOY.md）。root 的 home 不在 /home 下，特判。
@@ -168,7 +168,7 @@ const DAEMON_PATH_PLACEHOLDER =
  */
 export function defaultDaemonPathFor(user: string): string {
   const home = user === "root" ? "/root" : `/home/${user}`;
-  return `${home}/.cc-monitor/bin/cc-monitor-remote`;
+  return `${home}/.cc-monitor/bin/cc-monitor-backend`;
 }
 /**
  * F43：是否显示「重置为 TOFU」按钮——当且仅当当前已固化了非空指纹。
@@ -358,7 +358,7 @@ export class MachineCard {
     const backendHint = document.createElement("div");
     backendHint.className = "settings-hint";
     backendHint.textContent =
-      "须为绝对路径（如 /home/<你的用户名>/.cc-monitor/bin/cc-monitor-remote）；SSH 直接 exec 不经 shell，`~` 不会被展开。";
+      "须为绝对路径（如 /home/<你的用户名>/.cc-monitor/bin/cc-monitor-backend）；SSH 直接 exec 不经 shell，`~` 不会被展开。";
     body.appendChild(backendHint);
     // F13：手动填完 user（change = 失焦提交，避免逐键拿半截用户名）后，daemonPath
     // 为空则按约定路径预填——与 ssh config 导入（applyResolved）同一兜底；已有值不覆盖。
@@ -456,7 +456,7 @@ export class MachineCard {
     installInfo.className = "settings-hint remote-install-info";
     installInfo.textContent =
       "安装位置：① backend（远端数据源，必需）→ 上方「backend 路径」填的位置" +
-      "（默认 ~/.cc-monitor/bin/cc-monitor-remote）+ 同目录 .build_id；启用远端后连接时会自动安装，" +
+      "（默认 ~/.cc-monitor/bin/cc-monitor-backend）+ 同目录 .build_id；启用远端后连接时会自动安装，" +
       "下面按钮供手动装 / 卸。② ccm 启动器（可选）→ 两部分：CLI 本体装到远端 " +
       "~/.local/bin/ccm（可执行文件），别名块写进 ~/.bashrc 的 cc-monitor BEGIN/END 标记块" +
       "（先备份原文件、只动标记块内）。装好后终端可用：ccm（起会话）/ ccm --tmux（tmux 里起）/ " +

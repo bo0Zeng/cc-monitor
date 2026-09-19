@@ -971,13 +971,13 @@ run_gate fmt '不是数出来的数：`cargo fmt --all --check` 只有绿/红两
 #
 # ## ⚠ 诚实边界，别读宽
 #   · 它买的是「**排版与 rustfmt 一致**」，**买不到**「代码对」——与上面那一格同一句话。
-#   · 分母是**一个包** `cc-monitor-remote`，射程 = 从 `src/main.rs` 顺 `mod` 走得到的那些文件；
+#   · 分母是**一个包** `cc-monitor-backend`，射程 = 从 `src/main.rs` 顺 `mod` 走得到的那些文件；
 #     那棵树里**走不到的 `.rs` 文件本格看不见**（今天没有这样的文件，但那是事实不是判据）。
 #   · `.github/workflows/ci.yml` 的 `backend` job **早就有这一步**（逐字同一条命令
 #     `cargo fmt --check`，`working-directory: src/backend`）⇒ 本行**不是新买一条判据**，
 #     是把「本机门禁不是云端的超集」这个已知缺口在这一维上补平。⚠ 因此 `ci.yml` **不用改**，
 #     上面那条「三处一起改」的纪律与本行无关。
-run_gate fmt-backend '不是数出来的数：`cargo fmt --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的唯一成员 `cc-monitor-remote`；`src/bridge` 与 `vendor/code-picture-core` 由上面 fmt 那一格与它自己的 exclude 管，本行盖不到（刻意不加 --all，理由见上方注释）' \
+run_gate fmt-backend '不是数出来的数：`cargo fmt --check` 只有绿/红两态（rc=0 / rc=1），本格的「分母」是 `src/backend` 那个 workspace 的唯一成员 `cc-monitor-backend`；`src/bridge` 与 `vendor/code-picture-core` 由上面 fmt 那一格与它自己的 exclude 管，本行盖不到（刻意不加 --all，理由见上方注释）' \
          bash -c 'cd src/backend && cargo fmt --check 2>&1 && echo "fmt-backend: 1 passed"'
 
 # ── Windows 那半编不编得过 ──────────────────────────────────────────────────
@@ -1059,13 +1059,13 @@ run_gate winchk '不是数出来的数：`cargo check --all-targets --target x86
 #   · **两个 target 对本族缺陷等价**：那 10 个错全是「这个名字在 Windows 上不存在」
 #     （`std::os::unix` / `libc::utimensat` / `libc::AT_FDCWD` / `Permissions::from_mode`）——
 #     那是 `cfg(unix)` 这一维，与 ABI 无关。**现打验过**：同一份未修的源码在本格这条
-#     `-gnu` 命令下逐字报 `due to 10 previous errors`、`(bin "cc-monitor-remote" test)`，
+#     `-gnu` 命令下逐字报 `due to 10 previous errors`、`(bin "cc-monitor-backend" test)`，
 #     与 CI 那趟 msvc 的读数**同数同档**。
 #   · ⚠ **它买不到 MSVC ABI 专属的那一类** —— 只在 msvc 上才犯的毛病（C 依赖的链接面、
 #     MSVC 特有的 `#[link]`）本格盖不到。**那一格仍然只有 CI 有。**
 #
 # ⚠ **`--all-targets` 是承重的，别「简化」掉**：那 10 个错**一个都不在生产段**
-#   （同一份源码在 `build-windows` 里原生编出过 `cc-monitor-remote.exe`）。
+#   （同一份源码在 `build-windows` 里原生编出过 `cc-monitor-backend.exe`）。
 #   不加这个 flag，本格会在这一族缺陷上**全绿**。
 # ⚠ 依赖沙箱镜像装了 `x86_64-pc-windows-gnu` 这个 target（现打在；`.claude/devbox/Dockerfile`
 #   仓外、不进版本控制）。没装的机器上本格红在「找不到 target」—— fail-closed，那是对的。
@@ -1332,17 +1332,17 @@ gate_selftest_e2e
 # ★★ 🔴 `K-R48` 第二拍（09-11）：**这四套的被测对象换成了后端二进制，所以先把它 build 出来。**
 #
 # 〔用@09-11 `K33`〕逐字「后端**只有一个**…**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」
-# ⇒ `shared/ccm` 删了，四套 e2e 的 `$CCM` 指向 `$CARGO_TARGET_DIR/debug/cc-monitor-remote`。
+# ⇒ `shared/ccm` 删了，四套 e2e 的 `$CCM` 指向 `$CARGO_TARGET_DIR/debug/cc-monitor-backend`。
 #
 # 🔴 **为什么要单独 build，不能指望上面 `backend` 那格顺手带出来**：现打实测过 ——
 #   `cargo test`（那一格跑的就是它）**只编 `src/main.rs` 的 test 版**
-#   （`deps/cc_monitor_remote-<hash>`），**不产 `debug/cc-monitor-remote`**。
+#   （`deps/cc_monitor_backend-<hash>`），**不产 `debug/cc-monitor-backend`**。
 #   不加这一步的话，四套 e2e 会在 fail-closed 那道 `[ -x ]` 上一起红，
 #   而诊断说的是「先 cargo build」——对，但那件事该由门禁自己做。
 # ⚠ 它**不进判定面**：build 失败时下面四格会各自红并说清原因（fail-closed），
 #   这里再加一层判定只会让同一件事报两遍。
 printf '  ·    %-14s %s\n' "e2e 前置" "build 后端二进制（四套 ccm e2e 的被测对象）"
-( cd src/backend && cargo build --bin cc-monitor-remote >/dev/null 2>&1 ) || true
+( cd src/backend && cargo build --bin cc-monitor-backend >/dev/null 2>&1 ) || true
 
 run_e2e ccm-print-parity 12
 run_e2e ccm-rbind-title  8

@@ -100,7 +100,7 @@ pub(crate) fn spec_for(flag: &str) -> Option<&'static CommandSpec> {
 /// # 它修的是一条真缺陷：存活探测口会挂死
 ///
 /// 第一版无条件读 stdin。实测（stdin 接一条不关的管道，也就是 skill 直接
-/// `cc-monitor-remote --ping` 时的形状）：**`--ping` 永远不返回**。
+/// `cc-monitor-backend --ping` 时的形状）：**`--ping` 永远不返回**。
 /// 而这是所有失败里最坏的一种 —— 问「你活着吗」的那条命令，答案是挂住。
 ///
 /// ⚠⚠ **第二版**〔P4f 08-13〕：原来这里写的是 `!spec.fields.is_empty()` —— 那是个**代用品**，

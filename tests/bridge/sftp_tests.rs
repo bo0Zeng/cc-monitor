@@ -234,11 +234,11 @@ fn ccm_cli_has_required_elements() {
 /// 而破的时候没有任何别的判据会出声（它不进任何 e2e，没有一台真远端可跑）。
 #[test]
 fn the_remote_ccm_entry_is_an_entry_not_an_implementation() {
-    let shim = ccm_entry_shim("/home/pi/.cc-monitor/bin/cc-monitor-remote");
+    let shim = ccm_entry_shim("/home/pi/.cc-monitor/bin/cc-monitor-backend");
     // ① 真的把 argv 转给后端，且走的是 `intercept` 的第二条入口（子命令形）。
     assert!(
-        shim.contains("exec '/home/pi/.cc-monitor/bin/cc-monitor-remote' ccm \"$@\"")
-            || shim.contains("exec /home/pi/.cc-monitor/bin/cc-monitor-remote ccm \"$@\""),
+        shim.contains("exec '/home/pi/.cc-monitor/bin/cc-monitor-backend' ccm \"$@\"")
+            || shim.contains("exec /home/pi/.cc-monitor/bin/cc-monitor-backend ccm \"$@\""),
         "shim 没把 argv 原样转给后端的 `ccm` 子命令：\n{shim}"
     );
     // ② **零实现**：除了 shebang、一行注释、一行 exec，不许有别的可执行行。
@@ -604,10 +604,10 @@ fn the_release_pipeline_stages_every_arch_that_build_rs_embeds() {
                 "没有为这个 arch 交叉编译",
             ),
             (
-                format!("staged/cc-monitor-remote-{arch}"),
+                format!("staged/cc-monitor-backend-{arch}"),
                 "编了但没按 `build.rs` 期待的名字放进 staged/",
             ),
-            // 🔴 〔`K-R70` 09-12〕这里原来还有第三条：`staged/cc-monitor-remote-<arch>.build_id`，
+            // 🔴 〔`K-R70` 09-12〕这里原来还有第三条：`staged/cc-monitor-backend-<arch>.build_id`，
             //    理由逐字「少了旁挂的 .build_id 清单（没有它，运行时只能回退到会误拒正品的启发式）」。
             //    **那条清单没有了**（它是从源码常量抠出来的标签，不是指纹 ——
             //    `K-R68` · `DECISIONS.md#R26` 裁定零），身份改从字节里扫。
@@ -1060,14 +1060,14 @@ fn is_safe_remote_jsonl_guard() {
 #[test]
 fn remote_parent_and_marker() {
     assert_eq!(
-        remote_parent("/home/pi/.cc-monitor/bin/cc-monitor-remote"),
+        remote_parent("/home/pi/.cc-monitor/bin/cc-monitor-backend"),
         "/home/pi/.cc-monitor/bin"
     );
     assert_eq!(remote_parent("/x"), "/");
     assert_eq!(remote_parent("rel/path"), "rel");
     assert_eq!(remote_parent("noslash"), ".");
     assert_eq!(
-        marker_path("/home/pi/.cc-monitor/bin/cc-monitor-remote"),
+        marker_path("/home/pi/.cc-monitor/bin/cc-monitor-backend"),
         "/home/pi/.cc-monitor/bin/.build_id"
     );
     assert_eq!(marker_path("/x"), "/.build_id");
@@ -1408,7 +1408,7 @@ fn strip_aborts_on_malformed_begin_without_end() {
 #[test]
 fn safe_daemon_path_accepts_convention_rejects_suspicious() {
     assert!(is_safe_remote_daemon_path(
-        "/home/pi/.cc-monitor/bin/cc-monitor-remote"
+        "/home/pi/.cc-monitor/bin/cc-monitor-backend"
     ));
     assert!(!is_safe_remote_daemon_path("")); // 空
     assert!(!is_safe_remote_daemon_path("relative/cc-monitor")); // 非绝对

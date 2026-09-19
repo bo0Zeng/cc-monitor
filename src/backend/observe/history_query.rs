@@ -61,7 +61,7 @@ pub fn run(agent_home: &Path, args: &[String]) -> i32 {
     match result {
         Ok(()) => 0,
         Err(e) => {
-            eprintln!("cc-monitor-remote query error: {e}");
+            eprintln!("cc-monitor-backend query error: {e}");
             2
         }
     }

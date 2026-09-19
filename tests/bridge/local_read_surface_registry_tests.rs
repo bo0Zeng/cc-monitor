@@ -676,7 +676,7 @@ fn the_local_backend_contract_has_exactly_one_home_and_f10s_ratchet_is_untouched
     assert!(
         !main_conf.contains(key.as_str()),
         "`{key}` 回到了主配置 —— 那会让 `cargo test` 也需要一份当前 target 的后端二进制\n\
-             （实测报错：`resource path binaries/cc-monitor-remote-<triple> doesn't exist`），\n\
+             （实测报错：`resource path binaries/cc-monitor-backend-<triple> doesn't exist`），\n\
              等于把两半在**构建期**绑死。它的家是 `tauri.sidecar.conf.json`，只在发版时 `--config` 注入。"
     );
     let patch = fs::read_to_string(root().join("tauri.sidecar.conf.json"))

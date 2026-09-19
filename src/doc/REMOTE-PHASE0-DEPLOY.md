@@ -2,10 +2,10 @@
 
 > **更新（issue #29 F08b 已实现自动部署）**：cc-monitor.exe **内嵌**交叉编译好的 aarch64/x86_64
 > musl backend 二进制；连接远端时**自动**探测远端 arch（`uname -m`）、按 build_id 版本门控经 SFTP
-> 把对应二进制推到 `cfg.daemon_path`（默认 `~/.cc-monitor/bin/cc-monitor-remote`）并 exec——用户**零手动步骤**。
+> 把对应二进制推到 `cfg.daemon_path`（默认 `~/.cc-monitor/bin/cc-monitor-backend`）并 exec——用户**零手动步骤**。
 > 自动部署失败（无内嵌该 arch / daemon_path 含 `~` / SFTP 失败）会优雅降级到下面的手动部署。
 >
-> **daemon_path 必须是绝对路径**（如 `/home/pi/.cc-monitor/bin/cc-monitor-remote`）：SFTP 无 shell、
+> **daemon_path 必须是绝对路径**（如 `/home/pi/.cc-monitor/bin/cc-monitor-backend`）：SFTP 无 shell、
 > 不展开 `~`，含 `~` 时自动部署会跳过（手动部署仍可用 `~`，因为那走 shell exec）。
 >
 > 下面的**手动部署**仍然有效，作为：① 自动部署不可用时的回退；② Phase 0 钢丝验证的原始步骤。
@@ -35,13 +35,13 @@ cargo zigbuild --release --target aarch64-unknown-linux-musl
 
 # 放进内嵌目录（build.rs 会 include_bytes 进 exe）
 mkdir ..\src/bridge\embedded-backends
-copy target\x86_64-unknown-linux-musl\release\cc-monitor-remote   ..\src/bridge\embedded-backends\cc-monitor-remote-x86_64
-copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src/bridge\embedded-backends\cc-monitor-remote-aarch64
+copy target\x86_64-unknown-linux-musl\release\cc-monitor-backend   ..\src/bridge\embedded-backends\cc-monitor-backend-x86_64
+copy target\aarch64-unknown-linux-musl\release\cc-monitor-backend  ..\src/bridge\embedded-backends\cc-monitor-backend-aarch64
 
 # 🔴 K-R70（09-12）：**没有第三步了** —— 不必再写 .build_id 清单，身份跟着字节走。
 #   想自己核一眼这两份是谁（不看它旁边任何文件）：
-#     Select-String -Path ..\src/bridge\embedded-backends\cc-monitor-remote-x86_64 -Pattern 'ccm-build-id' -Encoding ascii
-#   Linux/macOS 上：grep -ao '<<ccm-build-id:[^>]*>>' ../../src/bridge/embedded-backends/cc-monitor-remote-x86_64
+#     Select-String -Path ..\src/bridge\embedded-backends\cc-monitor-backend-x86_64 -Pattern 'ccm-build-id' -Encoding ascii
+#   Linux/macOS 上：grep -ao '<<ccm-build-id:[^>]*>>' ../../src/bridge/embedded-backends/cc-monitor-backend-x86_64
 ```
 
 > **不想装 zig 也行（U-1 实测，零安装）**：`rust-lld` 随 rustc 自带，两个 musl target 都能链：
@@ -84,7 +84,7 @@ copy target\aarch64-unknown-linux-musl\release\cc-monitor-remote  ..\src/bridge\
 ## 手动部署（自动部署的回退 / Phase 0 原始步骤）
 
 在目标机器上**原生编译**后手动放到固定路径——零交叉编译（aarch64 机器自己编 aarch64）。本文给出在
-**NanoPi(aarch64)** 或任意 Linux 机器（含 **WSL**）上把 `cc-monitor-remote` 跑起来的确切步骤。
+**NanoPi(aarch64)** 或任意 Linux 机器（含 **WSL**）上把 `cc-monitor-backend` 跑起来的确切步骤。
 
 ---
 
@@ -144,19 +144,19 @@ cd src/backend       # 进到 crate 目录
 cargo build --release        # aarch64 编 aarch64 / x86_64 编 x86_64，零交叉编译
 ```
 
-产物：`target/release/cc-monitor-remote`（二进制名由 `Cargo.toml` 的 `[[bin]] name` 决定）。
+产物：`target/release/cc-monitor-backend`（二进制名由 `Cargo.toml` 的 `[[bin]] name` 决定）。
 
 ---
 
 ## 4. 安装到固定路径
 
-cc-monitor 默认 exec 的路径是 `~/.cc-monitor/bin/cc-monitor-remote`（可在设置里改 `daemonPath`）：
+cc-monitor 默认 exec 的路径是 `~/.cc-monitor/bin/cc-monitor-backend`（可在设置里改 `daemonPath`）：
 
 ```bash
 mkdir -p ~/.cc-monitor/bin
-cp target/release/cc-monitor-remote ~/.cc-monitor/bin/
-chmod 700 ~/.cc-monitor/bin/cc-monitor-remote
-~/.cc-monitor/bin/cc-monitor-remote --help 2>/dev/null || true   # 可执行性自检
+cp target/release/cc-monitor-backend ~/.cc-monitor/bin/
+chmod 700 ~/.cc-monitor/bin/cc-monitor-backend
+~/.cc-monitor/bin/cc-monitor-backend --help 2>/dev/null || true   # 可执行性自检
 ```
 
 ---
@@ -171,7 +171,7 @@ export CLAUDE_CONFIG_DIR=/tmp/ccm-smoke/.claude
 mkdir -p "$CLAUDE_CONFIG_DIR/projects/proj" "$CLAUDE_CONFIG_DIR/sessions"
 
 # 前台跑后端，stdout 是 wire（JSON Lines），stderr 是日志
-~/.cc-monitor/bin/cc-monitor-remote
+~/.cc-monitor/bin/cc-monitor-backend
 # 另开一个终端，往 jsonl 追加一行：
 echo '{"type":"user","uuid":"u1","timestamp":"2026-01-01T00:00:00Z","sessionId":"s1","message":{"role":"user","content":"hi from remote"}}' \
   >> "$CLAUDE_CONFIG_DIR/projects/proj/s1.jsonl"
@@ -210,7 +210,7 @@ ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 | `port` | 22 | 22 |
 | `user` | 你的 WSL 用户名 | `pi` |
 | `keyPath` | `C:\Users\<you>\.ssh\id_ed25519` | 同 |
-| `daemonPath` | `/home/<you>/.cc-monitor/bin/cc-monitor-remote` | `/home/pi/.cc-monitor/bin/cc-monitor-remote` |
+| `daemonPath` | `/home/<you>/.cc-monitor/bin/cc-monitor-backend` | `/home/pi/.cc-monitor/bin/cc-monitor-backend` |
 | `hostKeyFingerprint` | `SHA256:...`（第 6 步） | 同 |
 | `addresses`（可选，F45 备用地址数组，每项 `host`/`host:port`/`[IPv6]:port`；与 `host` 竞速故障切换，首个成功者胜；设置卡「备用地址」多行输入即写此字段） | `[]` | `["10.0.0.9","pi.公网:2222"]` |
 
@@ -244,7 +244,7 @@ ssh-keyscan -t ed25519 <host> 2>/dev/null | ssh-keygen -lf - | awk '{print $2}'
 ```bash
 cd ~/cc-monitor-src && git pull          # 或重新 scp src/backend/
 cd src/backend && cargo build --release
-cp target/release/cc-monitor-remote ~/.cc-monitor/bin/   # 覆盖
+cp target/release/cc-monitor-backend ~/.cc-monitor/bin/   # 覆盖
 # 重启 cc-monitor（它会重新 exec backend）
 ```
 

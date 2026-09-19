@@ -198,7 +198,7 @@ fn backend_stream_dial_verdict(body: &str) -> Result<(), String> {
     //  墓碑，原文逐字：「0 处 ⇒ 代理拿不到二进制时后端流会直接断
     //  （**今天安装包没有本机后端，那是 F05b**）」。括号里那句今天不成立。
     //  证伪它的读数：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）——
-    //  装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe` **2 个进程在跑**、
+    //  装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-backend.exe` **2 个进程在跑**、
     //  裸 `monitor.exe` 那份 **0 个** ⇒ 发版包里本机后端就在 exe 旁边
     //  （本模块头注回落①那四环记的就是这件事，只是这条文案没跟着改）。
     //

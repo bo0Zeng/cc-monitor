@@ -5,7 +5,7 @@
 # ★★ `K-R48` 第二拍（09-11）：被测对象从那份 bash `ccm` 换成**后端二进制**。
 #   〔用@09-11 `K33`〕逐字「后端**只有一个**，**不要有什么 bash 脚本**，**不要有什么单独的 ccm**」。
 #   本轮对本套件做了两件事，**分开记**：
-#     ① **repoint** —— `CCM` 指向 `cc-monitor-remote`（`argv[0]` basename 为 `ccm` 即进一次性模式），
+#     ① **repoint** —— `CCM` 指向 `cc-monitor-backend`（`argv[0]` basename 为 `ccm` 即进一次性模式），
 #        调用点从 `bash "$CCM"` 改成 `"$CCM"`。**39 条断言的判定文字一个字没改。**
 #     ② **删 33 条** —— 它们测的全是「**bash 去问另一个进程**」这件事的形状：
 #        `A″`(7) 账号 configDir 的 provenance（夹具要害逐字是「backend 与 manifest 必须答不同的目录」，
@@ -56,9 +56,9 @@ REPO="$(cd "$HERE/../.." && pwd)"
 # ★★ `K-R48` 第二拍：被测对象 = 后端二进制，**名字必须是 `ccm`**（`intercept` 认的是
 #   `argv[0]` 的 basename）⇒ 在一次性目录里做一条叫 `ccm` 的软链指过去。
 # 🔴 **fail-closed**：没 build 就响亮退出，不许静默回落到 PATH 上碰巧有的那一份。
-CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-remote"
+CCM_NATIVE="${CARGO_TARGET_DIR:-$REPO/.build/backend}/debug/cc-monitor-backend"
 [ -x "$CCM_NATIVE" ] || {
-  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-remote\`" >&2
+  echo "::error::找不到原生入口 $CCM_NATIVE —— 先 \`cd src/backend && cargo build --bin cc-monitor-backend\`" >&2
   exit 2; }
 CCMDIR="$(mktemp -d)"
 ln -s "$CCM_NATIVE" "$CCMDIR/ccm"

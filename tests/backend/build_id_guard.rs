@@ -309,7 +309,7 @@ mod tests {
     ///
     /// # 这不只是结构缺陷，本机实测到了它的后果
     ///
-    /// 本机 `embedded-backends/cc-monitor-remote-x86_64`（08-01 构建）里
+    /// 本机 `embedded-backends/cc-monitor-backend-x86_64`（08-01 构建）里
     /// **找不到入方向那一面会发射的任何一个错误码**（`not_cancellable` / `unknown_command` /
     /// `duplicate_id` / `handler_panicked` / `wrong_owner` / `too_many_windows`，`.rodata` 全 0 命中），
     /// 而它的清单写着 `p1v-attachable` = 期望值。

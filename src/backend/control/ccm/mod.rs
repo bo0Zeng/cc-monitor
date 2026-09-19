@@ -7,7 +7,7 @@
 //!
 //! # 同一份实现两种模式
 //!
-//! - **常驻**：`cc-monitor-remote` 起来接流，别人连它（`main.rs` 的流模式）。
+//! - **常驻**：`cc-monitor-backend` 起来接流，别人连它（`main.rs` 的流模式）。
 //! - **一次性**：在用户终端里认 argv，做完就走 —— **就是本模块**。
 //!
 //! # 怎么进到这里
@@ -15,7 +15,7 @@
 //! 两条，**都只经 [`intercept`] 这一处**：
 //! ① `argv[0]` 的 basename 是 `ccm`（别名 / 软链 / 改名拷贝指过来；`src/shared/ccm-aliases.sh`
 //!    里 `cc` / `cct` 那几个别名调的就是它）；
-//! ② 显式子命令 `cc-monitor-remote ccm <argv…>`（给「二进制没改名」的场合，
+//! ② 显式子命令 `cc-monitor-backend ccm <argv…>`（给「二进制没改名」的场合，
 //!    也给判据一个不依赖文件名的入口）。
 //!
 //! ⚠ **它不是一条 wire 子命令**，所以**不进 `main::SUBCOMMANDS`**、也不进
@@ -215,7 +215,7 @@ pub(crate) fn own_source() -> &'static str {
     include_str!("mod.rs")
 }
 
-/// 显式子命令形（`cc-monitor-remote ccm …`）的那个词。
+/// 显式子命令形（`cc-monitor-backend ccm …`）的那个词。
 ///
 /// ⚠ 刻意**不是** `--ccm`：那样它会长得像一条 wire 子命令，而它不是。
 pub(crate) const SUBCOMMAND_WORD: &str = "ccm";
