@@ -478,7 +478,7 @@ fn a_block_open_inside_a_line_comment_does_not_swallow_the_file() {
 
 /// 误伤五：**跨行原始串内部**一个字都不许动。
 ///
-/// 这条不是防御性编程 —— 语料是本仓 `relay/server.rs::STUB_LAUNCHER` 那段 shell 的最小形，
+/// 这条不是防御性编程 —— 语料是本仓 `relay/server_tests.rs::STUB_LAUNCHER` 那段 shell 的最小形，
 /// 里面逐字有一个 `/*`（`${rest%%/*}`）和一个 `*/`（`${rest#*/}`）。
 /// 按「含 `r#` 的**那一行**整行不动」的便宜办法，中间这两行会被当块注释抹掉 18 个字节，
 /// 而它们是真的字符串内容。

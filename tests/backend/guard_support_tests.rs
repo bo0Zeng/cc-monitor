@@ -104,7 +104,7 @@ fn main_production_section_keeps_its_load_bearing_items() {
 /// （`src/backend/guard_support.rs` ＋ `tests/bridge/structural_scan_tests.rs`）——
 /// `K-R110` 交回时点名过这个形状：**两个住址、同一句话**，改一处漏一处，
 /// 下一次还是一处真一处假。钉着它的是
-/// `guard_support.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
+/// `guard_support_tests.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
 // ⟦KR115D3 共用段·止⟧
 #[test]
 fn every_daemon_file_strips_clean() {

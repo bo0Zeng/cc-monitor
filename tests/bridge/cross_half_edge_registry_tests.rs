@@ -16,30 +16,31 @@ fn both_halves() -> Vec<String> {
     // 跨半边的编译期边**无一例外都长在判据里**（本模块头注逐字），而判据剖分之后
     // 整个住进了 `tests/`。只扫 `src/` 那两棵的话，16 条边里有 12 条整批掉出扫描面
     // ⇒ 「实得 4 / 登记 16」。⚠ 四棵树**互不包含**（`§5.4b` 纪律 1 要的那一问）。
+    // 🔴 〔步 7c 2026-09-19〕**手写递归遍历迁到共享原语。**
+    //
+    // `scanning_guard_registry::PENDING` 那张存量清单里真的迁掉了一条。
+    // 起因：`watcher` 那一条这一轮**一条变两条**（生产段与测试段各命中一次），
+    // 而 `PENDING_CEILING` 是**只许往下调**的递减棘轮，且
+    // `the_pending_ratchet_never_turns_backwards` 拿 git 历史当权威 ——
+    // 抬上去「提交了也不会绿」。⇒ 正确出路只有一条：**真迁一个**。
+    // 这一处语义与 `guard_core::scan_tree_excluding` 逐字相同（递归收 `.rs`、
+    // 返回相对路径），是纯死重。
+    // ⚠ 名单明写为空（`设计/16 §5.4b` 纪律 4）：本文件的自摘走的是
+    //   下面 `every_non_literal_include_is_registered_with_a_reason` 里那条
+    //   `SELF_EXCLUDED`（带「摘不到就红」的自检），不在这一层做。
     for sub in [
         "src/bridge/src",
         "src/backend",
         "tests/bridge",
         "tests/backend",
     ] {
-        let mut stack = vec![root.join(sub)];
-        while let Some(d) = stack.pop() {
-            let Ok(rd) = std::fs::read_dir(&d) else {
-                continue;
-            };
-            for e in rd.flatten() {
-                let p = e.path();
-                if p.is_dir() {
-                    stack.push(p);
-                } else if p.extension().is_some_and(|x| x == "rs") {
-                    out.push(
-                        p.strip_prefix(&root)
-                            .unwrap_or(&p)
-                            .to_string_lossy()
-                            .replace('\\', "/"),
-                    );
-                }
-            }
+        for (p, _) in guard_core::scan_tree_excluding(&root.join(sub), &["rs"], &[]) {
+            out.push(
+                p.strip_prefix(&root)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .replace('\\', "/"),
+            );
         }
     }
     out.sort();
@@ -464,9 +465,29 @@ fn no_cross_half_edge_lives_in_production_code() {
     //      `ssh_source_f032_idle_tests.rs` · `tmux_tests.rs`）——
     //      它们**按构造**没有生产段，上面那条正控逐个核过「它真的是测试文件」。
     // ⚠ 拧下去的是**分母**，不是灵敏度的门槛：3 个全都掉到空串，这条照样红。
-    assert!(
-        with_production >= 3,
-        "住生产树的那 3 个读者里只有 {with_production} 个有非空生产段 —— \
+    //
+    // 🔴 〔步 7c 后端剖分 2026-09-19〕**那 3 个也走了 —— 分母现在是 0，逐份点名：**
+    //   ① `src/backend/control/gate.rs`  → `tests/backend/control/gate_tests.rs`
+    //   ② `src/backend/control/launch.rs` → `tests/backend/control/launch_tests.rs`
+    //   ③ `src/backend/relay/route.rs`   → `tests/backend/relay/route_tests.rs`
+    // **一个都不是「文件没了」** —— 三份生产文件都还在，走的是它们的**测试段**
+    // （那三条 include 一直长在测试段里）。⇒ 16 个跨半边读者今天**全部住 `tests/`**，
+    // 而那正是剖分要达到的终局：`§4.1` 那句「搬完之后生产段和测试段是不同目录」
+    // 在**这一族边上**真的成立了。
+    //
+    // ⇒ 断言从「写死的 3」换成**与分母对拍**：住生产树的读者，**每一个**都必须有
+    // 非空生产段。分母是 0 时它读作 `0 == 0` —— 那一格的承重转移给了上面那条
+    // **逐读者的正控**（住 `tests/` 的必须真的是测试文件，里面有 `#[test]`），
+    // 而那条正控是**每一个读者都跑**的，比原来那个 `>= 3` 的抽样强。
+    // ⚠ 哪天有人把一条边写回生产段：`in_production_tree` 变成 1，
+    //   下面这条立刻要求它有非空生产段，而 `in_prod` 那条真正的断言随即当场红。
+    let in_production_tree = CROSS_EDGES
+        .iter()
+        .filter(|(_, reader, _, _)| !reader.starts_with("tests/"))
+        .count();
+    assert_eq!(
+        with_production, in_production_tree,
+        "住生产树的读者有 {in_production_tree} 个，而其中只有 {with_production} 个有非空生产段 —— \
              `guard_core::production_code` 多半坏了，此刻本条在拿空串做零命中\
              （逐份点名见上面那段注释）"
     );

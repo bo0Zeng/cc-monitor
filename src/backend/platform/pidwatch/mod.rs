@@ -193,7 +193,7 @@ mod fallback_shape_tests;
 /// - 本机（Linux）那一格：有腿 ⇒ 没有要声明的话 —— 这是**负例**，
 ///   少了它，把 `self_healing_caveat` 写成 `Some(…)` 恒真也照样绿。
 /// - 非 Linux 那一支：本机**编不到它** ⇒ 只能把源码当数据读
-///   （形状照 `main.rs::the_windows_arm_is_wired_into_the_source`，`K-P4` 立的）。
+///   （形状照 `main_fourth_face_tests.rs::the_windows_arm_is_wired_into_the_source`，`K-P4` 立的）。
 /// - 那句话本身：必须真的说「没有」，而不是一句读不出结论的散文。
 ///
 /// ⚠ **诚实边界，照 `K-P4` 那条原样写**：本机没有 Windows ⇒ 这几条证的是

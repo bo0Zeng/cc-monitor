@@ -70,7 +70,7 @@ pub const REPLY_CHANNEL_CAPACITY: usize = 256;
 /// 入方向同样需要：客户端得知道发什么过去才有人接，否则只能试错。
 ///
 /// **这是单一真相源** —— `hello` 从这里取值，`dispatch` 必须恰好处理这些。
-/// 两者由 `inbound.rs::the_commands_mirror_matches_the_registry` 钉住，不许各写各的。
+/// 两者由 `inbound_structure_guards.rs::the_commands_mirror_matches_the_registry` 钉住，不许各写各的。
 /// ⚠ 09-03 订正〔`K-R19` 摸底逮到，PM 自己落 —— 本文件 PM 持有，派不出去〕：
 ///   这里原先写的是 `hello_commands_match_the_dispatch_table`，**那个符号全仓零定义**
 ///   （`U8a-2d` 换掉的），而同一份文件的 `mod tests` 里自己写着「上一版是 …」——

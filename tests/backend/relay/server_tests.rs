@@ -1946,7 +1946,7 @@ fn each_account_gets_its_own_key_and_neither_key_shows_up_in_any_exit() {
     // ⇒ 代价照实说：前面几条炸掉时 ② 不被求值（`D1` 五刀里有四刀都在它之前炸）。
     //   **而这一格已经单独还上了** —— ② 的死值验由 `D1-M5`（把整条上游请求头印进 stderr）承担：
     //   **484 passed / 4 failed**，红在「㈢ stderr 里出现了 A 的 key」（`D1` 报的住址：
-    //   `server.rs::the_substituted_key_never_shows_up_in_any_of_the_four_exits` 的 ㈢ 那条断言）。
+    //   `server_tests.rs::the_substituted_key_never_shows_up_in_any_of_the_four_exits` 的 ㈢ 那条断言）。
     //   ⇒ **② 有牙，是被那一刀单独证过的，不是靠这里的排序证的。**
     for (who, canary) in [("A", CANARY_A), ("B", CANARY_B), ("dead", CANARY_DEAD)] {
         assert!(

@@ -164,21 +164,24 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // ── daemon → monitor（2 条）：daemon 的判据去读 monitor ────────────────────
     (
         "daemon→monitor",
-        "src/backend/control/gate.rs",
+        // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
+        "tests/backend/control/gate_tests.rs",
         "src/bridge/src/backend/control/fixtures/gate2-golden.tsv",
         "§34 Gate 2 的黄金夹具**只有一个家**（定框 §4：同一个数不许两侧各写一份）—— \
          daemon 与 monitor 各自独立读同一张表",
     ),
     (
         "daemon→monitor",
-        "src/backend/control/launch.rs",
+        // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
+        "tests/backend/control/launch_tests.rs",
         "src/bridge/src/tmux.rs",
         "★ 跨轨对拍：`format!(\"={target}:\")` 这个精确匹配形状两侧必须同形 —— \
          F01 实测过，一边写裸 `-t` 就会打到兄弟会话上，而另一边不会，排查极难",
     ),
     (
         "daemon→monitor",
-        "src/backend/relay/route.rs",
+        // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
+        "tests/backend/relay/route_tests.rs",
         "src/bridge/src/backend/control/payload.rs",
         "★★〔`K-H2b` `KH2B4` 08-28 新增〕**中转路由键 `/s/<agent>/<account>/<key>/…` \
          的两侧对拍**：注入侧（monitor 的 `relay_route_path`）拼、中转侧（daemon 的 \
