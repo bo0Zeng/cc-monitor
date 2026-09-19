@@ -8,7 +8,7 @@
 #   逐字节回拼对账        69/69 通过，跳过 0 份
 #   用例数                monitor 包 1460 条（1453 passed + 7 ignored）→ 1460 条
 #                         （1418 passed + 35 failed + 7 ignored）—— **逐位相同**
-#                         8 个共享 crate 141 条 → 141 条，全绿
+#                         9 个 crate lib（含 vendored code-picture-core）153 条 → 153 条，全绿
 #   cargo fmt --all --check  干净
 #
 # 红的 35 条（全部是「搬树之后尺子没跟着搬」，逐条原文见下）：
