@@ -230,7 +230,7 @@ const SHAPE_FILES: &[(&str, &str)] = &[
 /// 而那一行的申报（`None`）与现实（`account_aliases.rs` 生产段里
 /// 一个 `fn uninstall… / remove… / strip… / purge…` 都没有）**是一致的** ——
 /// 它是**缺实现**，不是**假申报**。要它红需要的是另一条性质
-/// （「装得进去就必须卸得掉」，即 `tool_registry.rs::fenced_block_implies_uninstallable`
+/// （「装得进去就必须卸得掉」，即 `tool_registry_tests.rs::fenced_block_implies_uninstallable`
 /// 在这张账上的对应物），而那一条今天立起来就是一道**永远红**的闸
 /// （补卸口是 `§0d` 明写本件不做的事）—— 立不立由 PM 裁，本条不替它裁。
 #[test]

@@ -45,7 +45,7 @@ fn every_kind_the_daemon_emits_is_known_to_the_monitor() {
 /// ★ `KNOWN_FRAME_KINDS` 必须与 `parse_frame` 的 match 臂**完全一致**。
 ///
 /// 两份名单必然漂移 —— 这条让它们只能是同一份（同 daemon 侧
-/// `inbound.rs::the_commands_mirror_matches_the_registry` 的思路）。
+/// `inbound_structure_guards.rs::the_commands_mirror_matches_the_registry` 的思路）。
 ///
 /// 〔`K-R19` 订正 09-03〕这一句原先点的是 `hello_commands_match_the_dispatch_table`，
 /// **全仓零定义**——那是 daemon 侧那条判据的**上一版**名字（`U8a-2d` 换掉的），

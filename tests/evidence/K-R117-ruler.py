@@ -539,9 +539,67 @@ def slurp(path: str) -> str:
 
 
 def const_block(src: str, head: str) -> str:
-    """取一个 `const X: … = &[` 到**列 4 的 `];`** 之间那一段（本仓 rustfmt 的固定形状）。"""
+    """取一个 `const X: … = &[` 到它的收尾 `];` 之间那一段。
+
+    🔴 **不靠缩进认**〔2026-09-19 订正〕。原来写的是 `src.index("\n    ];", i)` ——
+    **把 4 格缩进焊死在针里**（注释还写着「本仓 rustfmt 的固定形状」当理由）。
+    步 7c 把 `tool_registry.rs` 的表搬出嵌套上下文之后，收尾 `];` 落到**第 0 列**
+    ⇒ 这把尺子 `ValueError: substring not found` **整个崩掉**，门禁红在一条
+    与真实原因毫无关系的诊断上（回溯指向 `const_block`，而病在搬树）。
+
+    ⚠ **只把 4 格改成 0 格是错的修法** —— `设计/16 §5.4b` 纪律 4 逐字：
+    「按位置认的针」与「靠位置的排除」是同一族，下次再搬还会失配。
+    ⇒ 改成**按「整行 trim 后正好是 `];`」认**，与缩进无关；
+    并且**找不到就抛一条说得清的错**，不要让调用方去接一个 `ValueError`。
+    """
     i = src.index(head)
-    j = src.index("\n    ];", i)
+    # 🔴 **用「头那一行的缩进」去找同级收尾** —— 不是忽略缩进，也不是把缩进写死。
+    #    ⚠ 第一版写的是 `line.strip() == "];"`，那**自己有 bug**：
+    #      trim 掉缩进之后，**嵌在里面的**同形收尾（闭包的 `}`、内层表的 `];`）也会匹配
+    #      ⇒ 提前停住、切出一小截。实测 `fn claims()` 就这么切出 0 条。
+    #    ⇒ 缩进是**从 head 那一行推出来的**，所以它跟着搬树自动变，而不必有人回来改。
+    line_start = src.rfind("\n", 0, i) + 1
+    indent = src[line_start:i]
+    if indent.strip():
+        indent = ""  # head 不在行首（拼接语料的边界）⇒ 退回顶层
+    needle = "\n" + indent + "];"
+    j = src.find(needle, i)
+    if j < 0:
+        raise SystemExit(
+            f"const_block：从 `{head[:40]}…` 往后找不到缩进为 {len(indent)} 格的收尾 "
+            "`];` —— 那张表/那个函数的形状变了。\n"
+            f"  ⚠ 本函数**按 head 的缩进**认收尾，所以这次不是「缩进变了」而是「形状变了」。"
+        )
+    return src[i:j]
+
+
+def fn_body(src: str, head: str) -> str:
+    """取一个 `fn X(...) {` 到它的收尾 `}` 之间那一段。
+
+    🔴 **不靠缩进认** —— 与 [`const_block`] 同一课（2026-09-19 · 步 7c）。
+    原来写的是 `src.index("\n    }\n", i)`：`fn claims()` 当年住在 `mod tests {` 里（缩进 4），
+    剖分把它搬到测试文件**顶层**之后收尾变成第 0 列 ⇒ 这一格**解析出 0 条**。
+    ⚠ 而它没有崩，是**它自己的反空真地板**（`claims() 现打 0 · 地板 5`）把它逮住的 ——
+    没有那条地板，这一格会零命中地绿。
+    """
+    i = src.index(head)
+    # 🔴 **用「头那一行的缩进」去找同级收尾** —— 不是忽略缩进，也不是把缩进写死。
+    #    ⚠ 第一版写的是 `line.strip() == "}"`，那**自己有 bug**：
+    #      trim 掉缩进之后，**嵌在里面的**同形收尾（闭包的 `}`、内层表的 `];`）也会匹配
+    #      ⇒ 提前停住、切出一小截。实测 `fn claims()` 就这么切出 0 条。
+    #    ⇒ 缩进是**从 head 那一行推出来的**，所以它跟着搬树自动变，而不必有人回来改。
+    line_start = src.rfind("\n", 0, i) + 1
+    indent = src[line_start:i]
+    if indent.strip():
+        indent = ""  # head 不在行首（拼接语料的边界）⇒ 退回顶层
+    needle = "\n" + indent + "}"
+    j = src.find(needle, i)
+    if j < 0:
+        raise SystemExit(
+            f"fn_body：从 `{head[:40]}…` 往后找不到缩进为 {len(indent)} 格的收尾 "
+            "`}` —— 那张表/那个函数的形状变了。\n"
+            f"  ⚠ 本函数**按 head 的缩进**认收尾，所以这次不是「缩进变了」而是「形状变了」。"
+        )
     return src[i:j]
 
 
@@ -597,8 +655,7 @@ def parse_claims(src: str):
     形状：`Claim { tool: "x", home: …, install: Some(ImplSite { addr: "f::n", … }) … }`。
     取法：按 `Claim {` 切段，段内找 `install:` / `uninstall:` 之后最近的 `addr: "…"`。
     """
-    i = src.index("fn claims() -> Vec<Claim> {")
-    seg = src[i:src.index("\n    }\n", i)]
+    seg = fn_body(src, "fn claims() -> Vec<Claim> {")
     out = []
     parts = seg.split("Claim {")[1:]
     for p in parts:
@@ -1106,9 +1163,40 @@ def main() -> int:
     print(f"量具：{os.path.abspath(__file__)}")
     print(f"被测树：{root}" + (f"（HEAD {sha}）" if sha else "（不是 git 树 / 取不到 HEAD）"))
 
-    reg_src = slurp(os.path.join(src_dir, "tool_registry.rs"))
-    led_src = slurp(os.path.join(src_dir, "parity_ledger.rs"))
-    wsr_src = slurp(os.path.join(src_dir, "write_site_registry.rs"))
+    # 🔴 **语料跨两棵树**〔2026-09-19 · 步 7c〕
+    #
+    # 剖分把**仅测的常量表**整批搬去了 `tests/bridge/`。本尺子原来只读 `src/bridge/src/`，
+    # 于是接连崩在三处 —— 而三处的报错**各不相同**，一个一个补会补很久：
+    #   ① 收尾针 `"\n    ];"` 把 4 格缩进焊死（`UNMANAGED_ENV` 的 `];` 落到第 0 列）
+    #      ⇒ 报 `substring not found` 在 **tail**（已在 `const_block` 里改成与缩进无关）
+    #   ② `const LEDGER` 整张搬走 ⇒ 报 `substring not found` 在 **head**
+    #   ③ `WRITE_SITES` 同样搬走 ⇒ 同 ②
+    # ⇒ 不再逐个补：**每一份语料一律 = 生产那份 ＋ 测试树里同名的那些份，全部拼起来。**
+    #
+    # ⚠ 为什么拼而不是"二选一"：`TOOLS` 今天**两棵树都有**（生产段与测试段各一部分）
+    #    ⇒ 二选一会漏掉一半，而漏掉的那一半**不会报错**，只会让下面几格少判几条。
+    # ⚠ **拼不到任何一份就抛**，不许回落成空串 —— 那会让每一格零命中地绿。
+    def corpus(stem: str) -> str:
+        parts = []
+        prod = os.path.join(src_dir, f"{stem}.rs")
+        if os.path.exists(prod):
+            parts.append(slurp(prod))
+        tdir = os.path.join(root, "tests", "bridge")
+        if os.path.isdir(tdir):
+            for fn in sorted(os.listdir(tdir)):
+                if fn.startswith(stem) and fn.endswith(".rs"):
+                    parts.append(slurp(os.path.join(tdir, fn)))
+        if not parts:
+            raise SystemExit(
+                f"`{stem}` 的语料一份都找不到（既不在 `src/bridge/src/`，"
+                f"也不在 `tests/bridge/{stem}*.rs`）—— 语料搬家了而本尺子没跟上。\n"
+                f"  ⚠ **不许回落成空串**：那会让下面每一格零命中地绿。"
+            )
+        return "\n".join(parts)
+
+    reg_src = corpus("tool_registry")
+    led_src = corpus("parity_ledger")
+    wsr_src = corpus("write_site_registry")
 
     tools = parse_tools(reg_src)
     unmanaged = parse_unmanaged(reg_src)

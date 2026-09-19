@@ -686,33 +686,39 @@ mod tests {
         // 〔搬测试 2026-09-17〕人群是「**全体后端代码**」，而它今天住两棵树。
         // 只走 `src_root()` 会安静地少 19 个文件 —— 下面那条「采集 ＋ 跳过 ＝ 树上全部」
         // 正是因此红的（它跳过的 `no_timer_guard.rs` 自己就搬去了第二棵树）。
+        // 🔴 〔步 7c 2026-09-19〕**手写递归遍历迁到共享原语。**
+        //
+        // `scanning_guard_registry::PENDING` 那张存量清单里的一条，真的迁掉了一条。
+        // 起因：`src/backend/observe/watcher.rs` 的裸遍历读数这一轮**一条变两条**
+        //（它的测试段搬去了 `tests/backend/observe/watcher_tests.rs`，而生产段那份
+        // 仍被那条判据的粗切法命中）⇒ 按文件数的清单会顶破 `PENDING_CEILING`（只许往下调）。
+        // ⇒ 正确出路是**真迁一个**，而这一处是最干净的：语义与
+        // `guard_core::scan_tree_excluding` 逐字相同（递归收 `.rs`、按名单排除）。
+        //
+        // ⚠ 顺带把「跳过自身」从**按文件名过滤**换成 `scan_tree_excluding` 的明写名单
+        //   （`设计/16 §5.4b` 纪律 4）：那个原语**摘不到就 panic**，
+        //   所以本文件改名之后不会安静地把自己收进语料。
+        //   `SKIPPED_BY_NAME` 那张表**留着**：下面那条「采集 ＋ 跳过 ＝ 树上全部」
+        //   要用它算跳过了几个，两处口径必须是同一张表。
         let roots = crate::guard_support::code_roots();
         let root = roots[0].clone();
         let mut out = Vec::new();
-        let mut stack: Vec<std::path::PathBuf> = roots.to_vec();
-        while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).expect("read src dir") {
-                let path = entry.expect("dir entry").path();
-                if path.is_dir() {
-                    stack.push(path);
-                    continue;
-                }
-                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
-                    continue;
-                }
-                // 跳过本护栏自身：它的模式表与说明文字必然含这些子串。
-                let base = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
-                if SKIPPED_BY_NAME.contains(&base) {
-                    continue;
-                }
+        for (i, r) in roots.iter().enumerate() {
+            // 本护栏自己住测试树（`roots[1]`）⇒ 名单只对那一棵给，
+            // 给生产树那一棵会因为「摘不到」而 panic —— 那正是那个原语的价值。
+            let excluded: &[&str] = if i == 1 { SKIPPED_BY_NAME } else { &[] };
+            for (path, src) in guard_core::scan_tree_excluding(r, &["rs"], excluded) {
                 let rel = path
                     .strip_prefix(&root)
                     .or_else(|_| path.strip_prefix(&roots[1]))
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .replace('\\', "/");
-                let src = std::fs::read_to_string(&path).expect("read rs file");
-                out.push((rel, production_code(&src)));
+                // 🔴 〔步 7c 剖分 2026-09-19〕`production_code` → `production_side_of`：
+                // 住 `tests/backend` 的文件整份是测试段、外面没有 `#[cfg(test)]` 包着
+                // ⇒ 直接剥会把测试代码当成生产代码（理由与现打读数在
+                // `guard_support::production_side_of` 的头注里）。
+                out.push((rel, crate::guard_support::production_side_of(&path, &src)));
             }
         }
         out.sort();

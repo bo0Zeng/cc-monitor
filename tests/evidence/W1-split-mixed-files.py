@@ -117,7 +117,14 @@ def literal_line_starts(text: str):
 
 # ───────────────────────── 识别顶层 `#[cfg(test)] mod X { … }` ─────────────────────────
 ATTR = re.compile(r"^#\[[^\n]*\]$")
-CFG_TEST = re.compile(r"^#\[cfg\(test\)\]$")
+
+# 🔴 步 7c 加 `all(test, …)` 那一支。盘上一共 5 种含 `test` 的 cfg 形，**两族含义相反**：
+#   · `#[cfg(test)]` 280 处 · `#[cfg(all(test, target_os = "linux"))]` 4 处
+#     · `#[cfg(all(test, not(windows)))]` 4 处      ⇒ **只在 test 下存在** ⇒ 是测试段，搬。
+#   · `#[cfg(any(windows, test))]` 6 处 · `#[cfg(any(not(windows), test))]` 1 处
+#     ⇒ **生产下也存在**（测试只是额外的一个开关）⇒ 是生产项，**不许搬**。
+# 只认 `all(test, …)`，不认 `any(…, test)` —— 这条区分是语义的，不是形状的。
+CFG_TEST = re.compile(r"^#\[cfg\((?:test|all\(test\s*,[^\n]*\))\)\]$")
 MOD_OPEN = re.compile(r"^(pub(\([^)]*\))?\s+)?mod\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{\s*$")
 
 
@@ -208,30 +215,45 @@ def rel_up(from_file: str, to_file: str) -> str:
     return os.path.relpath(os.path.join(REPO, to_file), os.path.dirname(os.path.join(REPO, from_file)))
 
 
+# 两棵生产树 → 两棵测试树。`src/backend` 这一格是步 7c 加的（`设计/16 §6` 第 2 批
+# 只搬了目录与 19 份纯测试文件，**剖分从来没排进那三批**）。
+TREES = {"src/bridge": "tests/bridge", "src/backend": "tests/backend"}
+
+
+def tree_of(src_rel: str) -> str:
+    for t in TREES:
+        if src_rel == t or src_rel.startswith(t + "/"):
+            return t
+    raise AssertionError(f"不在任何一棵生产树里：{src_rel}")
+
+
 def dest_for(src_rel: str, mod_name: str, single: bool) -> str:
     """src/bridge/src/foo.rs           → tests/bridge/foo_tests.rs
     src/bridge/src/a/b.rs              → tests/bridge/a/b_tests.rs
     src/bridge/crates/x-core/src/l.rs  → tests/bridge/crates/x-core/l_tests.rs
+    src/backend/foo.rs                 → tests/backend/foo_tests.rs
+    src/backend/a/b.rs                 → tests/backend/a/b_tests.rs
     同一文件有多个测试模块时用模块名消歧：<stem>_<mod>.rs
+
+    🔴 `mod.rs` 特例：`a/mod.rs` 的 stem 是字面的 `mod`，直接拼会得到
+    `a/mod_tests.rs` —— 那个名字不携带信息，而且同一棵树下每个目录都会出一个同名文件
+    （只靠目录区分）。改用**目录名**当 stem 并上移一层：`a/mod.rs → a_tests.rs`。
     """
-    p = src_rel
-    assert p.startswith("src/bridge/")
-    rest = p[len("src/bridge/"):]
-    if rest.startswith("src/"):
-        rest = rest[len("src/"):]
-    else:
-        m = re.match(r"^(crates/[^/]+)/src/(.*)$", rest)
-        if m:
-            rest = m.group(1) + "/" + m.group(2)
+    tree = tree_of(src_rel)
+    rest = src_rel[len(tree) + 1:]
+    if tree == "src/bridge":
+        if rest.startswith("src/"):
+            rest = rest[len("src/"):]
+        else:
+            m = re.match(r"^(crates/[^/]+)/src/(.*)$", rest)
+            if m:
+                rest = m.group(1) + "/" + m.group(2)
     d, base = os.path.split(rest)
     stem = base[:-3]
-    if single and mod_name == "tests":
-        name = f"{stem}_tests.rs"
-    elif mod_name == "tests":
-        name = f"{stem}_tests.rs"
-    else:
-        name = f"{stem}_{mod_name}.rs"
-    return os.path.join("tests/bridge", d, name)
+    if stem == "mod" and d:
+        d, stem = os.path.split(d)
+    name = f"{stem}_tests.rs" if mod_name == "tests" else f"{stem}_{mod_name}.rs"
+    return os.path.join(TREES[tree], d, name)
 
 
 def split_file(src_rel: str):
@@ -365,10 +387,29 @@ def census(root=REPO):
 def selfcheck(files):
     """§16 §5.2「恒绿看起来和真绿一模一样」——对账本身也要被证明能红。
 
-    对每个样本做三种变异（删一行测试体 / 吃掉一行缩进 / 删一行 src 段），
-    三种都必须被 verify() 逮住。有一种没红，这条对账就不携带信息。
+    六种变异，每一种都必须被 verify() 逮住：
+
+    | # | 变异 | 它治的失效 |
+    |---|---|---|
+    | 1 | 删测试体中间一行 | 回拼漏掉测试段内容 |
+    | 2 | 吃掉测试体一行的缩进 | `reindent` 不是 `dedent` 的逆 |
+    | 3 | 删 src 段一行 | 回拼漏掉生产段内容 |
+    | 4 | 改**最后一块**的测试体 | 多块文件里只对账了第一块（步 7c 新加）|
+    | 5 | 篡改测试体里的 `include_str!`/`#[path]` 字面量 | `retarget` 的来回改写不是对合（步 7c 新加）|
+    | 6 | 在测试体**末尾追加**一行 | 变异 1 删中间，逮不到「末尾多/少一行」（步 7c 新加）|
+
+    🔴 变异 4/5/6 是步 7c 为 `src/backend` 补的：那棵树的形状与 `src/bridge` 不同 ——
+    多块文件更多（`main.rs` 4 块 · `observe/history_query.rs` 4 块）、`mod.rs` 占比更高
+    （目标名要用目录名，见 `dest_for`）、`include_str!` 更密。**变异 4 是其中最要紧的一条**：
+    原来的三种全部只动 `moved[0]`，一个「只对账第一块」的 bug 会安静地绿。
+
+    🔴 **反空真：真被验到的样本数为 0 ⇒ 硬错。**〔步 7c 现打撞上〕
+    原来的默认样本是步 7b 已经剖完的那 5 份文件 —— 它们今天已经没有内联块了，
+    于是六种变异一个都没跑，而末行照样打印「0 个没能让对账变红」。
+    那正是 `§5.2` 说的「扫空集 ⇒ 恒绿」，且它**看起来和真绿一模一样**。
     """
     bad = 0
+    exercised = 0
     for f in files:
         new_src, moved, why = split_file(f)
         if why:
@@ -378,6 +419,7 @@ def selfcheck(files):
             print(f"  🔴 {f} —— 未变异就对不上")
             bad += 1
             continue
+        exercised += 1
         dest, body = moved[0]
         lines = body.split("\n")
         k = len(lines) // 2
@@ -390,13 +432,53 @@ def selfcheck(files):
         m2 = verify(f, new_src, [(dest, "\n".join(l2))] + moved[1:])
         nl = new_src.split("\n")
         m3 = verify(f, "\n".join(nl[:len(nl) // 2] + nl[len(nl) // 2 + 1:]), moved)
-        ok = bool(m1) and bool(m2) and bool(m3)
-        print(f"  {'✔' if ok else '🔴'} {f}  删测试行={'红' if m1 else '没抓到'} "
-              f"吃缩进={'红' if m2 else '没抓到'} 删src行={'红' if m3 else '没抓到'}")
+
+        # ④ 动**最后一块**（单块文件时 moved[-1] is moved[0]，这一格退化成变异 1 的同义重复，
+        #    但对多块文件它是唯一能逮住「只对账第一块」的那一条）
+        ldest, lbody = moved[-1]
+        llines = lbody.split("\n")
+        lk = len(llines) // 2
+        m4 = verify(f, new_src, moved[:-1] + [(ldest, "\n".join(llines[:lk] + llines[lk + 1:]))])
+
+        # ⑤ 篡改测试体里的 include 路径字面量（有就改，没有就记 n/a）
+        m5 = None
+        for idx, (d, b) in enumerate(moved):
+            hit = PATHLIT.search(b)
+            if hit:
+                tampered = b[:hit.start(2)] + "ZZ_tampered/" + b[hit.start(2):]
+                m5 = verify(f, new_src, moved[:idx] + [(d, tampered)] + moved[idx + 1:])
+                break
+
+        # ⑥ 末尾追加一行（变异 1 删的是中间，逮不到末尾那一格）
+        m6 = verify(f, new_src, [(dest, body + "\nfn zz_appended_by_selfcheck() {}")] + moved[1:])
+
+        checks = {"删测试行": m1, "吃缩进": m2, "删src行": m3, "动末块": m4, "篡改include": m5, "尾部加行": m6}
+        ok = all(bool(v) for v in checks.values() if v is not None)
+        got = " ".join(
+            f"{k}={'n/a' if v is None else ('红' if v else '没抓到')}" for k, v in checks.items()
+        )
+        print(f"  {'✔' if ok else '🔴'} {f}  ({len(moved)} 块)  {got}")
         bad += 0 if ok else 1
-    print(f"自检：{len(files)} 个样本，{bad} 个没能让对账变红")
+
+    print(f"自检：{len(files)} 个样本，真验到 {exercised} 个，{bad} 个没能让对账变红")
+    if exercised == 0:
+        print("  🔴 **反空真触发**：一个样本都没真被验到 ⇒ 上面那句「0 个没能让对账变红」"
+              "不携带信息（`设计/16 §5.2`）。给 --only 指几份**还有内联块**的文件。")
+        return max(bad, 1)
     return bad
 
+
+# ───────────────────── `--selfcheck` 的合成夹具 ─────────────────────
+#
+# 🔴 剖分做完之后盘上**没有**「还有内联块」的文件了 —— 那意味着上面那条反空真
+# 会永远触发，而量具从此**证不了自己有牙**。⇒ 没给 `--only` 时现造这一份。
+#
+# 它覆盖六种变异各自要咬的那一格：
+#   · **两个**内联块（变异④「动末块」只有多块文件才认真）
+#   · 一段**多行原始字面量**，且**行首落在字面量里**（`dedent` 一个字节都不许动那几个空格）
+#   · 一处 `include_*!` 相对路径（变异⑤「篡改 include」）
+#   · 生产段有真项（`pub fn`），不然它不是「混合文件」那一形
+SELFCHECK_FIXTURE = '//! `--selfcheck` 的合成夹具。**跑完即删**，不该出现在任何一次提交里。\n\npub fn produce() -> usize {\n    1\n}\n\n#[cfg(test)]\nmod tests {\n    use super::produce;\n\n    /// 多行原始字面量：**下面那几行的行首空格是字符串的值**，去缩进不许动它们。\n    const SHAPE: &str = r#"\n    line with four leading spaces\n        line with eight\n"#;\n\n    const EMBEDDED: &str = include_str!("../../../README.md");\n\n    #[test]\n    fn the_production_item_is_reachable() {\n        assert_eq!(produce(), 1);\n        assert!(SHAPE.contains("four leading"));\n        assert!(!EMBEDDED.is_empty());\n    }\n}\n\n#[cfg(test)]\nmod more_tests {\n    #[test]\n    fn the_last_block_is_also_accounted_for() {\n        assert!(1 + 1 == 2);\n    }\n}\n'
 
 def main():
     ap = argparse.ArgumentParser()
@@ -405,6 +487,7 @@ def main():
     ap.add_argument("--census", action="store_true")
     ap.add_argument("--selfcheck", action="store_true")
     ap.add_argument("--only", nargs="*")
+    ap.add_argument("--tree", nargs="*", choices=list(TREES))
     a = ap.parse_args()
 
     if a.census:
@@ -416,25 +499,59 @@ def main():
         return
 
     if a.selfcheck:
+        # 没给 `--only` ⇒ 现造合成夹具（理由见 `SELFCHECK_FIXTURE` 的头注），跑完**一定删掉**。
+        # ⚠ 夹具落在 `src/bridge/src/` 下是刻意的：`dest_for` / `rel_up` 都按树认住址。
+        #   它只在这条路上短暂存在，且 `--selfcheck` **不写盘目标文件**。
+        if not a.only:
+            fx_rel = "src/bridge/src/zz_selfcheck_fixture.rs"
+            fx_abs = os.path.join(REPO, fx_rel)
+            assert not os.path.exists(
+                fx_abs
+            ), f"{fx_rel} 已存在 —— 上一趟没清干净，先手工删掉"
+            with open(fx_abs, "w", encoding="utf-8") as fh:
+                fh.write(SELFCHECK_FIXTURE)
+            try:
+                print(f"〔合成夹具〕{fx_rel}（跑完即删）")
+                bad = selfcheck([fx_rel])
+            finally:
+                os.remove(fx_abs)
+            return 1 if bad else 0
+        # 两棵树各挑：最大的 · 块最多的 · 带 include_str! 的 · mod.rs 那一形
+        # （步 7c 换过一次：原来那 5 份是步 7b 已经剖完的文件，今天没有内联块 ⇒ 空转）
         sample = a.only or [
-            "src/bridge/src/ssh_source.rs",
-            "src/bridge/src/cc_bus.rs",
-            "src/bridge/src/profile_installer.rs",
-            "src/bridge/src/adapter.rs",
-            "src/bridge/src/utils.rs",
+            "src/bridge/src/tool_registry.rs",          # 3773 行 · 3 块 · include_str!
+            "src/bridge/src/lib.rs",                    # 5 块（本仓最多）
+            "src/bridge/crates/guard-core/src/lib.rs",  # crates/ 那一形
+            "src/backend/observe/watcher.rs",           # 5306 行（本仓最大）
+            "src/backend/main.rs",                      # 4 块 · include_str!
+            "src/backend/observe/history_query.rs",     # 4 块
+            "src/backend/dial/mod.rs",                  # mod.rs → 目录名那一形
+            "src/backend/platform/pidwatch/mod.rs",     # mod.rs ＋ 2 块
         ]
         return 1 if selfcheck(sample) else 0
 
+    trees = a.tree or list(TREES)
     files = a.only or sorted(
         subprocess.run(
-            ["find", "src/bridge", "-name", "*.rs", "-not", "-path", "*/vendor/*"],
+            ["find", *trees, "-name", "*.rs", "-not", "-path", "*/vendor/*"],
             cwd=REPO, capture_output=True, text=True,
         ).stdout.split()
     )
+
+    # 🔴 步 7c：**选片不再走 `is_mixed()`。**
+    # `is_mixed()` 是 `真相源/00`「混合文件（唯一住址）」那个**报数**口径，
+    # 它答的是「这份文件里生产项与测试段同住吗」；而 `--apply` 要答的是
+    # 「这份文件里有没有剖得开的顶层 `#[cfg(test)] mod X { … }`」——**两个不同的问题**。
+    # 步 7b 拿前者当后者用，于是**漏掉 42 份 bridge ＋ 18 份 backend**：
+    # 那些文件（整份是判据的 registry 一族）在 `is_mixed()` 眼里不混合，
+    # 因为它把「第一个测试标记」认在了头注里那句 `//! … `#[test]` …` 上
+    # （`TESTMARK` 不跳注释），于是「生产项在它之前吗」恒为假。
+    # ⇒ 选片改用 `find_blocks()` —— 它就是剖分器自己的判断，问的正是要做的那件事。
     done, skipped = [], []
+    claimed = {}
     for f in files:
         text = open(os.path.join(REPO, f), "rb").read().decode("utf-8")
-        if not is_mixed(text):
+        if not find_blocks(text):
             continue
         new_src, moved, why = split_file(f)
         if why:
@@ -444,6 +561,17 @@ def main():
         if why:
             skipped.append((f, why))
             continue
+        # 目标路径必须没人占：跨文件撞车 / 盘上已有同名文件，两种都不许静默覆盖
+        clash = next((d for d, _ in moved if d in claimed), None)
+        if clash:
+            skipped.append((f, f"目标路径已被 {claimed[clash]} 占用：{clash}"))
+            continue
+        clash = next((d for d, _ in moved if os.path.exists(os.path.join(REPO, d))), None)
+        if clash:
+            skipped.append((f, f"目标路径盘上已存在：{clash}"))
+            continue
+        for d, _ in moved:
+            claimed[d] = f
         done.append((f, new_src, moved))
         if a.apply:
             for dest, body in moved:
@@ -453,7 +581,8 @@ def main():
             with open(os.path.join(REPO, f), "w", encoding="utf-8") as fh:
                 fh.write(new_src)
 
-    print(f"处理 {len(done)} 份 · 跳过 {len(skipped)} 份")
+    nblocks = sum(len(m) for _, _, m in done)
+    print(f"处理 {len(done)} 份（{nblocks} 个测试模块） · 跳过 {len(skipped)} 份")
     for f, _, moved in done:
         print(f"  ✔ {f}  →  {', '.join(d for d, _ in moved)}")
     for f, why in skipped:

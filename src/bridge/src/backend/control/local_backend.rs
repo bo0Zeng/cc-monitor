@@ -1010,7 +1010,7 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
 ///
 /// 释放出来的这份是要**被起成进程**的 ⇒ 在把扩展名当身份的平台上它得带着自己那个后缀。
 /// 🔴 **后缀不是在这里现算的** —— 算它要 `env::consts::EXE_SUFFIX`，那是**平台原语**，
-/// 而本文件在 `backend/mod.rs::PLATFORM_EXCEPTIONS` 里**只有一格例外额度**
+/// 而本文件在 `backend/backend_tests.rs::PLATFORM_EXCEPTIONS` 里**只有一格例外额度**
 /// （那张表挂着递减棘轮 `len() <= 1`，今天正好占满，占的是 `resolve_beside_this_exe`）。
 /// ⇒ 由 `build.rs` 从 **`TARGET`** 算好、当编译期常量交进来
 /// （`CCM_TARGET_EXE_SUFFIX`，同 `CCM_TARGET_TRIPLE` 那条先例）。
@@ -1182,7 +1182,7 @@ pub const CCM_ENTRY_WORD: &str = "ccm";
 /// `CCM_TARGET_EXE_SUFFIX`。这一份是要**被起成进程**的 ⇒ 在把扩展名当身份的平台上
 /// 它得带着自己那个后缀。
 /// ⚠ 这里**不许**现算 `env::consts::EXE_SUFFIX` —— 那是平台原语，而本文件在
-/// `backend/mod.rs::PLATFORM_EXCEPTIONS` 上只有一格例外额度，今天已被
+/// `backend/backend_tests.rs::PLATFORM_EXCEPTIONS` 上只有一格例外额度，今天已被
 /// `resolve_beside_this_exe` 占满（那张表挂着递减棘轮 `len() <= 1`）。
 pub fn local_ccm_entry_name() -> String {
     format!("{CCM_ENTRY_WORD}{}", env!("CCM_TARGET_EXE_SUFFIX"))
