@@ -118,6 +118,19 @@ fn count(text: &str, needle: &str, fold_case: bool) -> usize {
     hay.matches(needle).count()
 }
 
+/// **会长的那几份**：登记里的数只当地板，不做等值对拍。**逐条带理由。**
+///
+/// 🔴 这是 [`the_frozen_history_never_loses_a_daemon`] 反向那半的豁免表
+/// （步 7c 2026-09-19 补那一半时立的）。默认是**等值对拍**（冻结档两个方向都不许动），
+/// 这里列出的才退回「只管地板」。现打：70 行登记里 **69 行等值**，只有一行在长。
+const GROWING: &[(&str, &str)] = &[(
+    "CHANGELOG.md",
+    "**活文件**：每次发版往上加一段，两个词的处数按设计会涨。\
+         它进这张表的理由是「发版墓碑不许被抹」（`K-R116` `KR116D2`），\
+         那条只需要地板。⚠ 别把 `tests/evidence/**` 里的任何一份加进来 —— \
+         那些是死值验留档，**涨了就是有人补写**。",
+)];
+
 /// ★★ 正题：登记过的每一份，两个词的处数都不许掉。
 #[test]
 fn the_frozen_history_never_loses_a_daemon() {
@@ -133,6 +146,9 @@ fn the_frozen_history_never_loses_a_daemon() {
     );
 
     let mut shrunk: Vec<String> = Vec::new();
+    // 反向那半的两张表：`(住址, daemon, ccm)`，逐行对拍。
+    let mut frozen_registered: Vec<(&str, usize, usize)> = Vec::new();
+    let mut frozen_measured: Vec<(&str, usize, usize)> = Vec::new();
     for (rel, floor_d, floor_c) in REGISTERED {
         let frozen_text = read_frozen(&root, rel);
         let d = count(&frozen_text, DAEMON, true);
@@ -143,7 +159,29 @@ fn the_frozen_history_never_loses_a_daemon() {
         if c < *floor_c {
             shrunk.push(format!("  {rel}：ccm {c} < 登记 {floor_c}"));
         }
+        // ── 🔴 反向那半（步 7c 2026-09-19 补）──────────────────────────────
+        // 冻结档**两个方向都不许动**：掉了 = 有人抹读数（上面那半）；
+        // 涨了 = 有人往留档里补写 —— 同样是伪造一次读数，而上面那半对它是瞎的。
+        // 收成「登记表 vs 实测表」的**逐行对拍**（本仓登记表型判据的通用形状），
+        // 而不是逐格 `if`：对拍会把**两个方向**一起打出来。
+        if !GROWING.iter().any(|(g, _)| g == rel) {
+            frozen_registered.push((*rel, *floor_d, *floor_c));
+            frozen_measured.push((*rel, d, c));
+        }
     }
+    assert_eq!(
+        frozen_measured, frozen_registered,
+        "\n冻结档的读数与登记对不上。左边是**实测**，右边是**登记**。\n\
+             ★ `tests/evidence/**` 装的是「某年某月现打是多少」——\n\
+             往里补写和从里抹掉**一样**是伪造读数（`brief` 第 12 条），\n\
+             而上面那条「不许掉」的地板对**涨**是瞎的。\n\
+             ⇒ 三条出路：① 那份留档真的该重新采（说清为什么）⇒ 改登记的那一行；\n\
+                ② 它是一份会长的活文件（像 `CHANGELOG.md`）⇒ 登记进 `GROWING` 并写明理由；\n\
+                ③ 登记表里多出一行而盘上没有 ⇒ `read_frozen` 已经先 panic 了，到不了这里。\n\
+             ⚠ 别反过来把这一格改成「只管地板」—— 它正是\n\
+             `scanning_guard_registry::every_registry_guard_keeps_its_reverse_half`\n\
+             逐字要的那个反向半：单向对拍挡不住登记表腐烂。"
+    );
 
     // ── 整棵树那一档：新长出来的 `tests/evidence/*.md` 由它兜 ──
     //
