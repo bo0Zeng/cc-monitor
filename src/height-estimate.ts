@@ -306,10 +306,11 @@ export function estimateStreamNodeHeight(el: HTMLElement): number | null {
   //     card-bash-input 19 ← 12px(--font-size-small) × 1.55 = 18.59
   //     card-slash      19 ← 同一套紧凑系 token,真高同 18.59
   //   padding 不在这里加:api-retry 3×2 / bash-input 6×2 / slash 6×2 由盒模型另算(S1)。
-  // ⚠ 但 `applyIntrinsicSize` 的 `Math.max(24, …)` 地板会把 17/19 一律顶成 **24**
-  //   ⇒ 写进 style 的仍是 24,三条卡的落地误差停在 40.8% / 29.1% / 29.1%,
-  //   **不是**常数本身对应的 0.3% / 2.2% / 2.2%。读数与登记见
-  //   `tests/evidence/U-scale2-height-truth.md` §2/§4。
+  // 🔴 2026-09-18（`99 条 75` / `设计/17 订正④`）之前,`applyIntrinsicSize` 里那个
+  //   `Math.max(24, …)` 地板会把 17/19 一律顶成 **24** ⇒ 写进 style 的仍是 24,
+  //   三条卡的落地误差停在 40.8% / 29.1% / 29.1%,**不是**常数本身对应的 0.3% / 2.2% / 2.2%。
+  //   地板已去掉(见 `appliedIntrinsicPx`),这三条常数从此**原样出货**。
+  //   读数与登记见 `tests/evidence/U-scale2-height-truth.md` §2/§4 与 `S23-floor-removal.md`。
   if (el.classList.contains("card-api-error")) return 40;
   if (el.classList.contains("card-slash")) return 19;
   // `设计/17 §2.2` 修法①:两行常数。card-api-retry 是"重试风暴"时成批出现的那一种。
@@ -333,13 +334,41 @@ export function estimateStreamNodeHeight(el: HTMLElement): number | null {
 }
 
 /**
+ * 估值 → **真正写进 `contain-intrinsic-size` 的那个数**。全仓只有这一处。
+ *
+ * 导出不是为了给别人算高,是为了让**秤**有一个住址可问:
+ * 秤 2 的门禁与 `U-scale2-probe-entry.ts` 都必须按"浏览器实际用了哪个数"算误差,
+ * 而此前那个数被**各自抄了一份**(两处 `const APPLIED_FLOOR = 24`)
+ * ⇒ 改这里不会让它们变,秤会在量一个不再出货的配置(`99 条 75` 落地清单第 3 处)。
+ *
+ * 🔴 **2026-09-18:这里原本有个 `Math.max(24, …)` 地板,已去掉**
+ * (`99 条 75` / `设计/17 订正④`,读数 `tests/evidence/S22-floor-readings.md`)。
+ * 三条理由,不要再把它加回来:
+ *  ① **全局地板构造上不可能对** —— 正确值逐 class 不同(content-box 真高 min:
+ *    retry 17.05 · slash/bash-input 18.59 · user 21.69 · …… · api-error 49.38);
+ *    24 让 13/83 张卡虚高,300 张细条卡的风暴里总高虚高 **+20.5%/+23.8%**、
+ *    滚动条抖 1683/1946px —— 就它自称要防的那件事而言,24 比真值**更坏**。
+ *  ② **按 class 分档 ＝ 把常数抄第二遍**:class 判定整套住在 `estimateStreamNodeHeight`,
+ *    这里只拿得到 `HTMLElement`。
+ *  ③ **它该出声,不该静默夹取**:`Math.max` 会把「估值荒谬地小」抹平,估算器真坏了没人发现。
+ *    保险职责已搬到判据层 —— `scale2-height-truth.vitest.ts` 的 **F1**
+ *    「每个 class 的估值最小值 ≥ 该 class 登记的常数」,那一格会红,`Math.max` 不会。
+ *
+ * 注释原先自陈的两个防御对象都是空集(两个真引擎实测):0 只有 `card-user` 空正文一条路,
+ * 而 `renderMessage` 根本不给空正文建卡;负值写不出来(各支全是非负项相加),
+ * 就算写出来浏览器也**丢弃整条声明**落回 CSS 的 `auto 120px` —— 是虚高,不是塌陷。
+ */
+export function appliedIntrinsicPx(h: number): number {
+  return Math.round(h);
+}
+
+/**
  * 建卡处统一入口:算出估值写 `contain-intrinsic-size: auto <h>px`。
  * F39(viewer 窗口化)复用同一模块供高——不要另写第二套(账本 §3)。
  */
 export function applyIntrinsicSize(el: HTMLElement): void {
   const h = estimateStreamNodeHeight(el);
   if (h !== null) {
-    // 24px 下限:单行文本卡的最小合理占位,防 0/负值
-    el.style.setProperty("contain-intrinsic-size", `auto ${Math.max(24, Math.round(h))}px`);
+    el.style.setProperty("contain-intrinsic-size", `auto ${appliedIntrinsicPx(h)}px`);
   }
 }

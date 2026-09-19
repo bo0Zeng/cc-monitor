@@ -1,30 +1,34 @@
 # 秤 2 变异自检 —— 原文（bash tests/evidence/U-scale2-mutation.sh 覆盖重写）
 
 ######## M0 · 基线（未变异）
-      Tests  12 passed (12)
+      Tests  17 passed (17)
 
 ######## M1 · card-api-retry 常数 17 → 120（退回修之前的 CSS 兜底值）
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 120ms
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 92ms
      × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 2ms
-    card-api-retry：p90=603.8% > 上限 45%（n=5）: expected [ Array(1) ] to deeply equal []
-+   "card-api-retry：p90=603.8% > 上限 45%（n=5）",
-    syn#0（card-api-retry）现算 120 ≠ 金标准 24
-    syn#1（card-api-retry）现算 120 ≠ 金标准 24
-    syn#2（card-api-retry）现算 120 ≠ 金标准 24
-    syn#3（card-api-retry）现算 120 ≠ 金标准 24
+     × ★ 悬案③：地板去掉之后，那两条红带**是地板造出来的，跟着地板一起没了** 1ms
+     × ★ 口径自检：算上 margin 之后四条结论的方向不变（不然上面那句 ⚠ 是空话） 1ms
+    card-api-retry：p90=603.8% > 上限 30%（n=5）: expected [ Array(1) ] to deeply equal []
++   "card-api-retry：p90=603.8% > 上限 30%（n=5）",
+    syn#0（card-api-retry）现算 120 ≠ 金标准 17
+    syn#1（card-api-retry）现算 120 ≠ 金标准 17
+    syn#2（card-api-retry）现算 120 ≠ 金标准 17
+    syn#3（card-api-retry）现算 120 ≠ 金标准 17
 
 ######## M2 · 删掉 card-api-retry 那一行（退回 return null ⇒ 落 CSS 120 兜底）
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 90ms
-     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 2ms
-    card-api-retry：p90=603.8% > 上限 45%（n=5）: expected [ Array(1) ] to deeply equal []
-+   "card-api-retry：p90=603.8% > 上限 45%（n=5）",
-    syn#0（card-api-retry）现算 120 ≠ 金标准 24
-    syn#1（card-api-retry）现算 120 ≠ 金标准 24
-    syn#2（card-api-retry）现算 120 ≠ 金标准 24
-    syn#3（card-api-retry）现算 120 ≠ 金标准 24
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 89ms
+     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 1ms
+     × ★ 悬案③：地板去掉之后，那两条红带**是地板造出来的，跟着地板一起没了** 1ms
+     × ★ 口径自检：算上 margin 之后四条结论的方向不变（不然上面那句 ⚠ 是空话） 1ms
+    card-api-retry：p90=603.8% > 上限 30%（n=5）: expected [ Array(1) ] to deeply equal []
++   "card-api-retry：p90=603.8% > 上限 30%（n=5）",
+    syn#0（card-api-retry）现算 120 ≠ 金标准 17
+    syn#1（card-api-retry）现算 120 ≠ 金标准 17
+    syn#2（card-api-retry）现算 120 ≠ 金标准 17
+    syn#3（card-api-retry）现算 120 ≠ 金标准 17
 
 ######## M3 · SUMMARY_H 38 → 52（折叠卡估高改坏）
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 120ms
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 103ms
      × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 2ms
     card-compact：p90=50.3% > 上限 30%（n=2）
     card-tool-group：p90=50.3% > 上限 30%（n=23）: expected [ …(2) ] to deeply equal []
@@ -32,42 +36,46 @@
 +   "card-tool-group：p90=50.3% > 上限 30%（n=23）",
     real#29（card-compact）现算 52 ≠ 金标准 38
     real#40（card-tool-group）现算 52 ≠ 金标准 38
+    real#41（card-tool-group）现算 52 ≠ 金标准 38
+    real#43（card-tool-group）现算 52 ≠ 金标准 38
 
 ######## M4 · LH_PROSE ×1.65 → ×1.20（正文行高砍 27% ⇒ **仍然不红**，原因见日志末尾）
-      Tests  12 passed (12)
+      Tests  17 passed (17)
 
 ######## M5 · COL_W 780 → 390（列宽假设改错一半）
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 105ms
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 102ms
     card-assistant：p90=75.2% > 上限 30%（n=28）
     card-user：p90=54.9% > 上限 30%（n=10）: expected [ …(2) ] to deeply equal []
 +   "card-assistant：p90=75.2% > 上限 30%（n=28）",
 +   "card-user：p90=54.9% > 上限 30%（n=10）",
-      Tests  1 failed | 11 passed (12)
+      Tests  1 failed | 16 passed (17)
 
 ######## M6 · LH_PROSE ×1.65 → ×2.40（正文行高往虚高方向再推）
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 119ms
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 87ms
     card-assistant：p90=45.3% > 上限 30%（n=28）: expected [ Array(1) ] to deeply equal []
 +   "card-assistant：p90=45.3% > 上限 30%（n=28）",
-      Tests  1 failed | 11 passed (12)
+      Tests  1 failed | 16 passed (17)
 
 ######## M7 · BASH_OUTPUT_MAX_LINES 20 → 60
-     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 6ms
+     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 4ms
     syn#14（card-bash-output）现算 529 ≠ 金标准 428: expected [ Array(1) ] to deeply equal []
 +   "syn#14（card-bash-output）现算 529 ≠ 金标准 428",
-      Tests  1 failed | 11 passed (12)
+      Tests  1 failed | 16 passed (17)
 
 ######## M8 · card-slash 19 → 34（退回 2026-09-18 之前那个 border-box 手算值）
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 87ms
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 89ms
      × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 1ms
     card-slash：p90=82.9% > 上限 30%（n=3）: expected [ Array(1) ] to deeply equal []
 +   "card-slash：p90=82.9% > 上限 30%（n=3）",
-    syn#17（card-slash）现算 34 ≠ 金标准 24
-    syn#18（card-slash）现算 34 ≠ 金标准 24
-    syn#19（card-slash）现算 34 ≠ 金标准 24: expected [ …(3) ] to deeply equal []
-+   "syn#17（card-slash）现算 34 ≠ 金标准 24",
+    syn#17（card-slash）现算 34 ≠ 金标准 19
+    syn#18（card-slash）现算 34 ≠ 金标准 19
+    syn#19（card-slash）现算 34 ≠ 金标准 19: expected [ …(3) ] to deeply equal []
++   "syn#17（card-slash）现算 34 ≠ 金标准 19",
++   "syn#18（card-slash）现算 34 ≠ 金标准 19",
++   "syn#19（card-slash）现算 34 ≠ 金标准 19",
 
 ######## M9 · BASH_OUTPUT_HEADER_H 19 → 90
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 103ms
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 116ms
      × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 2ms
     card-bash-output：p90=115.8% > 上限 30%（n=6）: expected [ Array(1) ] to deeply equal []
 +   "card-bash-output：p90=115.8% > 上限 30%（n=6）",
@@ -75,15 +83,53 @@
     syn#12（card-bash-output）现算 197 ≠ 金标准 126
     syn#13（card-bash-output）现算 499 ≠ 金标准 428
     syn#14（card-bash-output）现算 499 ≠ 金标准 428
+    syn#15（card-bash-output）现算 542 ≠ 金标准 471
+    syn#16（card-bash-output）现算 206 ≠ 金标准 135: expected [ …(6) ] to deeply equal []
 
 ######## M10 · extractProseText 不再折叠源码换行（退回修之前那个「全留 \n」）
-     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 123ms
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 89ms
     card-assistant：p90=99.8% > 上限 30%（n=28）: expected [ Array(1) ] to deeply equal []
 +   "card-assistant：p90=99.8% > 上限 30%（n=28）",
-      Tests  1 failed | 11 passed (12)
+      Tests  1 failed | 16 passed (17)
+
+######## M11 · card-api-retry 常数 17 → 5（估值塌到荒谬地小 ⇒ F1 必须红）
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 87ms
+     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 1ms
+     × ★ F1：每个 class 的 `estimateStreamNodeHeight` 最小值 ≥ 该 class 登记的常数 33ms
+     × ★ 悬案③：地板去掉之后，那两条红带**是地板造出来的，跟着地板一起没了** 1ms
+    card-api-retry：p90=70.7% > 上限 30%（n=5）: expected [ Array(1) ] to deeply equal []
++   "card-api-retry：p90=70.7% > 上限 30%（n=5）",
+    syn#0（card-api-retry）现算 5 ≠ 金标准 17
+    syn#1（card-api-retry）现算 5 ≠ 金标准 17
+    syn#2（card-api-retry）现算 5 ≠ 金标准 17
+    syn#3（card-api-retry）现算 5 ≠ 金标准 17
+
+######## M12 · SUMMARY_H 38 → 12（折叠卡塌下去 ⇒ F1 在 compact/tool-group 两条上必须红）
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 90ms
+     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 2ms
+     × ★ F1：每个 class 的 `estimateStreamNodeHeight` 最小值 ≥ 该 class 登记的常数 34ms
+    card-compact：p90=65.3% > 上限 30%（n=2）
+    card-tool-group：p90=65.3% > 上限 30%（n=23）: expected [ …(2) ] to deeply equal []
++   "card-compact：p90=65.3% > 上限 30%（n=2）",
++   "card-tool-group：p90=65.3% > 上限 30%（n=23）",
+    real#29（card-compact）现算 12 ≠ 金标准 38
+    real#40（card-tool-group）现算 12 ≠ 金标准 38
+    real#41（card-tool-group）现算 12 ≠ 金标准 38
+
+######## M13 · 把 Math.max(24, …) 地板原样加回来（⇒「没有第二个地板悄悄回来」必须红）
+     × ★ 现算路（估值现场算 vs 真浏览器真高）：每个 class 都在登记上限内 90ms
+     × ★ 常数型卡：jsdom 现算的估值必须与真浏览器逐位相同 1ms
+     × ★ 没有第二个地板悄悄回来：写进 style 的值 == round(估值)，逐张卡 35ms
+     × ★ 悬案③：地板去掉之后，那两条红带**是地板造出来的，跟着地板一起没了** 1ms
+     × ★ 口径自检：算上 margin 之后四条结论的方向不变（不然上面那句 ⚠ 是空话） 1ms
+    card-api-retry：p90=40.8% > 上限 30%（n=5）: expected [ Array(1) ] to deeply equal []
++   "card-api-retry：p90=40.8% > 上限 30%（n=5）",
+    syn#0（card-api-retry）现算 24 ≠ 金标准 17
+    syn#1（card-api-retry）现算 24 ≠ 金标准 17
+    syn#2（card-api-retry）现算 24 ≠ 金标准 17
 
 ######## 全部还原后复跑
-      Tests  12 passed (12)
+      Tests  17 passed (17)
 
 ######## ⚠ M4 为什么还是绿的（这是秤的钝处，不是它守住了）
   LH_PROSE ×1.65 → ×1.20 把正文行高砍掉 27%，card-assistant 的 p90 只从 21.8% 动到 25.7%
@@ -95,6 +141,6 @@
   同一个变异离红只剩 4.3 个点。**钝是真的钝，但比原来锐了一个数量级。**
 
 ######## 真仓 src/height-estimate.ts 有没有被变异溅到（两行相同 = 一个字没改）
-  跑之前 a0ac22d8500a18fa9a80d4012e2a44c0b787d3a72d1edc54dcdd2776d5d2c7d3  src/height-estimate.ts
-  跑之后 a0ac22d8500a18fa9a80d4012e2a44c0b787d3a72d1edc54dcdd2776d5d2c7d3  src/height-estimate.ts
+  跑之前 2138819052d46c3eb1a7e6c86e3b469073bde9953fb919f4f0c1bbf8143c1ffe  src/height-estimate.ts
+  跑之后 2138819052d46c3eb1a7e6c86e3b469073bde9953fb919f4f0c1bbf8143c1ffe  src/height-estimate.ts
 [END]

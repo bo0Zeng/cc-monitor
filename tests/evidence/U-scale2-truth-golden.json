@@ -47,14 +47,26 @@
  },
  "intrinsic": [
   {
-   "label": "card-api-retry / inline auto 24px（今天的常数）",
+   "label": "card-api-retry / inline auto 17px（**今天真写进 style 的那个数**，由 appliedIntrinsicPx 现算）",
+   "cls": "card card-api-retry",
+   "declared": 17,
+   "padBorder": 6,
+   "measured": 23,
+   "computedCIS": "auto 17px",
+   "computedCV": "auto",
+   "skipped": false,
+   "shipped": true
+  },
+  {
+   "label": "card-api-retry / inline auto 24px（2026-09-18 之前那个 Math.max 地板的值，留作对照）",
    "cls": "card card-api-retry",
    "declared": 24,
    "padBorder": 6,
    "measured": 30,
    "computedCIS": "auto 24px",
    "computedCV": "auto",
-   "skipped": false
+   "skipped": false,
+   "shipped": false
   },
   {
    "label": "card-api-retry / inline auto 100px（拉开差距好判读）",
@@ -64,7 +76,8 @@
    "measured": 106,
    "computedCIS": "auto 100px",
    "computedCV": "auto",
-   "skipped": false
+   "skipped": false,
+   "shipped": false
   },
   {
    "label": "card-api-retry / 无 inline（落 CSS 兜底 auto 120px）",
@@ -74,17 +87,19 @@
    "measured": 126,
    "computedCIS": "auto 120px",
    "computedCV": "auto",
-   "skipped": false
+   "skipped": false,
+   "shipped": false
   },
   {
-   "label": "card-bash-input / inline auto 32px（今天的常数）",
+   "label": "card-bash-input / inline auto 32px（2026-09-18 上半场那个 border-box 手算值）",
    "cls": "card card-bash-input",
    "declared": 32,
    "padBorder": 12,
    "measured": 44,
    "computedCIS": "auto 32px",
    "computedCV": "auto",
-   "skipped": false
+   "skipped": false,
+   "shipped": false
   },
   {
    "label": "card-api-error / inline auto 40px（今天的常数）",
@@ -94,7 +109,8 @@
    "measured": 58,
    "computedCIS": "auto 40px",
    "computedCV": "auto",
-   "skipped": false
+   "skipped": false,
+   "shipped": false
   }
  ],
  "rows": [
@@ -513,7 +529,7 @@
    "htmlLen": 163,
    "htmlHash": "35dc5316",
    "estBrowser": 21.7,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 22,
    "trueBorderBox": 43.69,
    "trueContentBox": 21.69,
    "padBorder": 22
@@ -611,7 +627,7 @@
    "htmlLen": 153,
    "htmlHash": "e038aac1",
    "estBrowser": 21.7,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 22,
    "trueBorderBox": 43.69,
    "trueContentBox": 21.69,
    "padBorder": 22
@@ -975,7 +991,7 @@
    "htmlLen": 96,
    "htmlHash": "b6587f4c",
    "estBrowser": 17,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 17,
    "trueBorderBox": 23.05,
    "trueContentBox": 17.05,
    "padBorder": 6
@@ -989,7 +1005,7 @@
    "htmlLen": 77,
    "htmlHash": "14e170f3",
    "estBrowser": 17,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 17,
    "trueBorderBox": 23.05,
    "trueContentBox": 17.05,
    "padBorder": 6
@@ -1003,7 +1019,7 @@
    "htmlLen": 103,
    "htmlHash": "644e988e",
    "estBrowser": 17,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 17,
    "trueBorderBox": 23.05,
    "trueContentBox": 17.05,
    "padBorder": 6
@@ -1017,7 +1033,7 @@
    "htmlLen": 81,
    "htmlHash": "3f4f5c5c",
    "estBrowser": 17,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 17,
    "trueBorderBox": 23.05,
    "trueContentBox": 17.05,
    "padBorder": 6
@@ -1031,7 +1047,7 @@
    "htmlLen": 478,
    "htmlHash": "0273aa73",
    "estBrowser": 17,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 17,
    "trueBorderBox": 23.05,
    "trueContentBox": 17.05,
    "padBorder": 6
@@ -1087,7 +1103,7 @@
    "htmlLen": 151,
    "htmlHash": "ab5838ae",
    "estBrowser": 19,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 19,
    "trueBorderBox": 30.59,
    "trueContentBox": 18.59,
    "padBorder": 12
@@ -1101,7 +1117,7 @@
    "htmlLen": 194,
    "htmlHash": "b99e5b81",
    "estBrowser": 19,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 19,
    "trueBorderBox": 30.59,
    "trueContentBox": 18.59,
    "padBorder": 12
@@ -1115,7 +1131,7 @@
    "htmlLen": 173,
    "htmlHash": "dad789f4",
    "estBrowser": 19,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 19,
    "trueBorderBox": 30.59,
    "trueContentBox": 18.59,
    "padBorder": 12
@@ -1213,7 +1229,7 @@
    "htmlLen": 143,
    "htmlHash": "784bd9e2",
    "estBrowser": 19,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 19,
    "trueBorderBox": 30.59,
    "trueContentBox": 18.59,
    "padBorder": 12
@@ -1227,7 +1243,7 @@
    "htmlLen": 186,
    "htmlHash": "609daef2",
    "estBrowser": 19,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 19,
    "trueBorderBox": 30.59,
    "trueContentBox": 18.59,
    "padBorder": 12
@@ -1241,7 +1257,7 @@
    "htmlLen": 207,
    "htmlHash": "a148fe26",
    "estBrowser": 19,
-   "estAppliedBrowser": 24,
+   "estAppliedBrowser": 19,
    "trueBorderBox": 30.59,
    "trueContentBox": 18.59,
    "padBorder": 12
