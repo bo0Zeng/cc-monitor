@@ -556,6 +556,66 @@ async function openRemoteFileInSftp(origin: string, filePath: string): Promise<v
 }
 
 /**
+ * 秤 6（`设计/17 §6` 表第 6 行，验 `§2.8` 与 `§5.5`）的**计数器**。
+ *
+ * `设计/17 §5.5` 逐字：「`buildResultBody` 闭包持有的文本总量 —— §2.8 的 7 MB 是按均值
+ * 推的，不是实测。**怎么知道**：heap snapshot 按 retainer 找；或在 `cards/index.ts:570`
+ * 累加 `text.length`」。这里就是那个「累加 `text.length`」。
+ *
+ * # 它是什么口径（写清楚，否则下一个人会把它读成别的东西）
+ *
+ * - **单位是 UTF-16 码元**（`String.prototype.length`），不是 UTF-8 字节。
+ *   V8 里非 Latin-1 字符串每码元 2 字节 ⇒ 乘 2 才是堆上那一份的量级（§2.8 的
+ *   「7 MB ⇒ UTF-16 下 ~14 MB」就是这么换的）。
+ * - **它是累计流量，不是瞬时驻留**：同一条 result 被重渲一次（`replaceChildren`
+ *   那一支）就再记一次，而旧闭包此刻已经可回收。⇒ 它是**驻留量的上界**。
+ * - **它不是进程 RSS**，也不含 DOM 节点、marked/katex 中间产物、`pendingToolResults`
+ *   里那份 `block`。它只答一句话：「我们自己的闭包里经手了多少文本」。
+ *
+ * # 为什么 `produced` 与 `captured` 要分开记
+ *
+ * `produced` 记在 `renderResultContent` 的出口（文本被造出来的那一刻），
+ * `captured` 记在 `buildResultBody` 的入口（文本被闭包捕获的那一刻）。
+ * 两者在主路上一一对应，但**有两处会岔开**，而那两处正是「留没留存」的判据：
+ * - `wrap` 找不到那一支 ⇒ 造了文本但没人捕获（`produced` 涨、`captured` 不涨）；
+ * - fallback 那一支的 `makeCollapsible` 工厂**没跑也捕获**（闭包参数里就有 `text`）
+ *   ⇒ `captured` 此刻不涨，但文本**已经被留住了**。
+ * ⇒ 只看 `captured` 会低估留存，只看 `produced` 会高估。两个都记，判词才站得住。
+ *
+ * 纯计数，零 DOM 副作用（`设计/17 §6` 秤 6 的硬约束）。生产里也一直在加，成本是
+ * 每条 tool_result 两次整数加法。
+ */
+export interface ResultTextLedger {
+  /** `renderResultContent` 出口计数 */
+  produced: number;
+  /** Σ `text.length`（UTF-16 码元），出口侧 */
+  producedUnits: number;
+  /** `buildResultBody` 入口计数（= 建了几个持有 `text` 的闭包） */
+  captured: number;
+  /** Σ `text.length`（UTF-16 码元），闭包侧 */
+  capturedUnits: number;
+  /** 单条最长的 `text.length` */
+  maxUnits: number;
+}
+
+export const resultTextLedger: ResultTextLedger = {
+  produced: 0,
+  producedUnits: 0,
+  captured: 0,
+  capturedUnits: 0,
+  maxUnits: 0,
+};
+
+/** 判据侧用：每格开跑前归零。生产不调。 */
+export function resetResultTextLedger(): void {
+  resultTextLedger.produced = 0;
+  resultTextLedger.producedUnits = 0;
+  resultTextLedger.captured = 0;
+  resultTextLedger.capturedUnits = 0;
+  resultTextLedger.maxUnits = 0;
+}
+
+/**
  * tool_result 注入：找到对应 tool_use 折叠条 → 在 `.block-body-wrap` 末尾
  * append 一个 `.block-tool-result-inline` 区块 → 同步更新 summary 加首行预览
  * 与错误标记。返 null 让上层不再追加独立 element。
@@ -568,6 +628,12 @@ function injectOrBuildToolResult(
   ctx: RenderContext,
 ): HTMLElement | null {
   const text = renderResultContent(block.content);
+  // 秤 6：`设计/17 §5.5` 点名的那一处累加。纯计数。
+  resultTextLedger.produced += 1;
+  resultTextLedger.producedUnits += text.length;
+  if (text.length > resultTextLedger.maxUnits) {
+    resultTextLedger.maxUnits = text.length;
+  }
   const exitCode = block.is_error ? extractExitCode(text) : null;
   const preview = firstLinePreview(text, 60);
   const toolName = ctx.toolUseNames.get(block.tool_use_id) ?? "tool";
@@ -724,6 +790,12 @@ function buildResultBody(
   text: string,
   toolName: string,
 ): void {
+  // 秤 6（`设计/17 §6` 表第 6 行）：本函数下面建的每个闭包（`renderMode` /
+  // 两个 click 监听 / `onToggle`）都捕获 `text`，而它们经 DOM 监听器被卡片长期持有。
+  // 纯计数，口径见 `resultTextLedger` 的头注。
+  resultTextLedger.captured += 1;
+  resultTextLedger.capturedUnits += text.length;
+
   const toolbar = document.createElement("div");
   toolbar.className = "block-result-toolbar";
 

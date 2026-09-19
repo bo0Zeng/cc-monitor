@@ -362,6 +362,33 @@ function warnCwdFallbackAttach(): void {
   );
 }
 
+/**
+ * 秤 6(`设计/17 §6` 表第 6 行):读 `BranchFolder.records` 的**条数**,给 `debugSnapshot`。
+ *
+ * # 为什么是按结构读,不是加一个 getter
+ *
+ * `records` 是 `BranchFolder` 的 private 字段,而本轮的写区**不含** `branch-fold.ts`
+ * (同一棵树上还有别路 agent 在写)。TS 的 `private` 只活在编译期,运行时它就是个普通
+ * 字段 ⇒ 这里按名字读一次。**只给 DEV 探针用,无副作用、不改任何行为。**
+ * 哪天 `branch-fold.ts` 可写了,把这里换成一个 `get recordCount()` 是纯收窄。
+ *
+ * # 读不到时返 -1,不返 0
+ *
+ * 字段一旦改名,返 0 会被读成「**账本是空的**」—— 那是一句假话,而且是**朝着"看起来
+ * 一切正常"的方向**假(同篇 `§6` 反复点名的那一族:坏掉的尺子把真缺陷一起藏起来)。
+ * 返 -1 在读数里一眼就是「这根尺子断了」。`tests/scale6-memory-ledger.vitest.ts`
+ * 有一格专钉「它不许是 -1」。
+ *
+ * # 它量的是条数,不是字节
+ *
+ * 一条 `BranchRecord` 是 `{uuid, parentUuid, timestamp}` 三个短字符串,**不含正文** ——
+ * 这正是下面那句判词的一半依据。想要字节得另外称,本秤不称。
+ */
+function branchRecordCount(folder: BranchFolder): number {
+  const inner = folder as unknown as { records?: unknown };
+  return Array.isArray(inner.records) ? inner.records.length : -1;
+}
+
 export class TabManager {
   private tabs = new Map<string, Tab>();
   /** F51：per-origin tmux 会话短缓存(反查 attach)。null=该 origin 无 tmux。 */
@@ -822,6 +849,10 @@ export class TabManager {
   /**
    * F40c DEV 探针用:active tab 状态一行 JSON——无 devtools 环境下 E2E 断言的
    * 唯一出口(经 e2e-probe 热键 → fe_perf 日志)。生产不接线,方法本身无副作用。
+   *
+   * 🔴 秤 6(`设计/17 §6` 表第 6 行)在这里加了**三个账本的条数**:
+   * `branchRecords` / `userInputs` / `pending`。口径与「量不到什么」写在
+   * `branchRecordCount` 的头注与 `tests/evidence/S6-memory-ledger.md` 里。
    */
   debugSnapshot(): string {
     const tab = this.activeId !== null ? this.tabs.get(this.activeId) : undefined;
@@ -834,7 +865,13 @@ export class TabManager {
       scrollHeight: el.scrollHeight,
       clientHeight: el.clientHeight,
       distBottom: Math.round(el.scrollHeight - el.scrollTop - el.clientHeight),
+      // 秤 6 的三个账本(`pending` 本来就在,不重复开一个字段):
+      // ① `TailWindow.pending` —— 还没上屏的整条 payload,**这一份是真的文本驻留**
       pending: tab.window.pendingCount,
+      // ② `BranchFolder.records` —— 每条一个 {uuid,parentUuid,timestamp} 三元组,不含正文
+      branchRecords: branchRecordCount(tab.branchFolder),
+      // ③ `Tab.userInputs` —— 每条一份**截断到 80 字**的摘要(字段头注里有分母)
+      userInputs: tab.userInputs.length,
       midBuffer: tab.midBatchBuffer.length,
       timeline: tab.timeline.size,
       foldWraps: tab.stream.contentElement.querySelectorAll(":scope > .branch-fold-wrap").length,
