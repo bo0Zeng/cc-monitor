@@ -10,6 +10,8 @@
   "ua": "Mozilla/5.0 (X11; Ubuntu; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15"
  },
  "env": {
+  "displayLocale": "zh-CN",
+  "timeZone": "America/Los_Angeles",
   "ua": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.8010.12 Safari/537.36",
   "viewport": {
    "w": 900,

@@ -64,6 +64,11 @@ interface GoldenRow {
 interface Golden {
   generatedAt: string;
   engine: { name: string; ua: string };
+  // 🔴 〔09-19 加〕打这份金标准那一趟的**显示时区与 locale**。
+  //   语料 94 张卡全部带时间戳 ⇒ 这两个值决定渲染出来的字面与字数，进而决定真高。
+  //   设成可选：加这条判据之前打的金标准没有它们，那一形由下面那条判据点名报出来，
+  //   **不靠类型系统悄悄放过去**。
+  env?: { displayLocale?: string; timeZone?: string };
   crossCheck: { name: string; ua: string } | null;
   intrinsic: {
     label: string;
@@ -274,6 +279,38 @@ describe("秤 2 · 金标准没过期（过期的秤比没有秤更坏）", () =
       new Set(corpus.map((c) => c.cls)).size,
       "只建出一个卡型 —— 分桶表没有意义",
     ).toBeGreaterThanOrEqual(8);
+  });
+
+  // 🔴 〔09-19 立〕**这一条要排在指纹那条前面。**
+  //   起因：断网沙箱里下面那条红，而宿主上它绿 —— 同一个提交、同一份 node_modules。
+  //   它报的是「金标准过期了 —— 语料或卡片渲染改过」，**那句话是错的**：一个字都没改，
+  //   差的是**这台机器的显示时区与 locale**（宿主 zh-CN / America-LA，容器 UTC / en-US）。
+  //   语料 94 张卡**全部带时间戳**，渲染走 `src/format.ts` 的 `toLocaleTimeString([], …)`
+  //   ⇒ 宿主出 `05:34`、容器出 `12:34 PM`，**字面与字数都不同** ⇒ 指纹全漂、真高也会变。
+  //
+  // 🔴 **把「环境不同」与「语料改了」分开报，是这一条存在的全部理由** ——
+  //   两者下面那条的报错长得一模一样，而**处置完全相反**：
+  //     · 语料真改了 ⇒ 重打金标准（`bash tests/evidence/U-scale2-run.sh`）
+  //     · 环境不同   ⇒ **别重打**，把环境调对；重打会把「这台机器」再烤进去一次
+  //   ⚠ 09-19 之前这两件事在输出面上分不开，于是那条红在沙箱里被读成「语料过期」。
+  it("跑本秤这台机器的显示时区与 locale，与金标准那一趟一致", () => {
+    const now = Intl.DateTimeFormat().resolvedOptions();
+    const want = golden.env ?? {};
+    expect(
+      want.displayLocale,
+      "金标准里没有 `env.displayLocale` 戳 —— 那份金标准是加这条判据之前打的，" +
+        "它把打它那台机器的 locale 悄悄烤了进去。重打一次即可：" +
+        "`bash tests/evidence/U-scale2-run.sh`",
+    ).toBeTruthy();
+    expect(
+      { locale: now.locale, timeZone: now.timeZone },
+      "★ **本秤在这台机器上判不了**（不是语料过期，别去重打金标准）。\n" +
+        `  金标准那一趟：locale=${want.displayLocale} · TZ=${want.timeZone}\n` +
+        `  这台机器现打：locale=${now.locale} · TZ=${now.timeZone}\n` +
+        "  语料 94 张卡全部带时间戳，locale/TZ 一变，渲染出来的字面与字数都变 ⇒ 真高也变。\n" +
+        "  这两个值由 `vitest.config.ts` 顶层钉死（`process.env.TZ` / `process.env.LC_ALL`）——\n" +
+        "  对不上说明那两行被改了、或本文件不是经 vitest 跑的。",
+    ).toEqual({ locale: want.displayLocale, timeZone: want.timeZone });
   });
 
   it("金标准与现算语料逐条对得上（id / class / DOM 指纹）", () => {

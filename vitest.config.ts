@@ -4,6 +4,30 @@ import { defineConfig } from "vitest/config";
 // DOM 单元测试（jsdom 环境）。**只挑 *.vitest.ts**，与既有手写 node 测试（*.test.ts，
 // 由 `tsx tests/X.test.ts` 跑纯函数）分流，互不干扰。新增需 DOM/模块 mock 的测试写成
 // `<name>.vitest.ts` 即自动纳入。
+// ── 🔴 显示时区与 locale 钉死在这里（09-19）────────────────────────────────────
+// 起因：断网沙箱里 `tests/scale2-height-truth.vitest.ts` 红，而宿主上它绿 —— 同一个提交、
+// 同一份 node_modules。现打差异只有两条：宿主 `TZ=America/Los_Angeles` / `zh-CN`，
+// 容器 `TZ=UTC` / `en-US`。
+//
+// 🔴 **秤 2 的语料 94 张卡全部带时间戳**，渲染走 `src/format.ts` 的
+// `toLocaleTimeString([], …)` —— `[]` 就是「跟这台机器走」。于是：
+//   · 宿主渲染出 `05:34`（12:34 UTC 换成 PDT）
+//   · 容器渲染出 `12:34 PM`
+// **字面不同、字数也不同** ⇒ DOM 指纹全漂，而且**真高本身也会变**（宽度变了）。
+// ⇒ 金标准把**打它那台机器的时区与 locale 一起烤了进去**，秤 2 因此只在这一台机器上判得了。
+//
+// ⚠ **这不是沙箱的毛病，是秤自己的毛病**：CI 的 runner 是 UTC/en-US，这条测试在云端
+//   同样红（`ci.yml` 的 `unit tests` 那步跑 `npm test`，**无 `|| true`**）。
+//   沙箱只是**第一个说出来的人** —— 宿主恰好就是打金标准那台机器，所以它永远绿。
+//
+// 🔴 **这两个值必须与金标准那一趟一致**（`tests/evidence/U-scale2-truth-golden.json`
+//   的 `env` 戳）。改任何一个 ⇒ 金标准作废，要重打：`bash tests/evidence/U-scale2-run.sh`。
+//   `tests/scale2-height-truth.vitest.ts` 有一条判据逐字对拍这件事，改了不重打会当场红。
+// ⚠ 在 `defineConfig` 之外、模块顶层设 —— worker 是**新进程**，从这里继承 env；
+//   放进 `test.env` 太晚（ICU 的默认 locale 在进程启动时就定了）。
+process.env.TZ = "America/Los_Angeles";
+process.env.LC_ALL = "zh-CN";
+
 export default defineConfig({
   test: {
     environment: "jsdom",
