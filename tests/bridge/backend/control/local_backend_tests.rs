@@ -572,7 +572,7 @@ fn a_local_tmux_frame_lands_in_the_ledger_without_any_backend() {
 
     let snap = crate::ssh_source::snapshot_tmux_by_origin();
     let got = snap
-        .get(crate::inbound_client::LOCAL_ORIGIN)
+        .get(crate::backend::control::inbound_client::LOCAL_ORIGIN)
         .map(String::as_str);
     assert_eq!(
         got,
@@ -649,7 +649,7 @@ fn the_local_tmux_frames_really_land_in_the_ledger() {
 
     // ★★ **fail closed，排在一切之前**（`K-R7`）。
     let shim = crate::local_backend_host::tests::demand_tmux_shim("本条起真后端且起真 tmux");
-    let _guard = crate::inbound_client::local_origin_test_lock();
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
 
     // ★★★ 「用户真实的 tmux」这一问**必须绕开 PATH 上的 shim**〔`K-R7` 08-31，实测逼出来的〕。
     //
@@ -770,7 +770,7 @@ fn the_local_tmux_frames_really_land_in_the_ledger() {
     for _ in 0..150 {
         let snap = crate::ssh_source::snapshot_tmux_by_origin();
         if snap
-            .get(crate::inbound_client::LOCAL_ORIGIN)
+            .get(crate::backend::control::inbound_client::LOCAL_ORIGIN)
             .is_some_and(|raw| raw.contains(sess.as_str()))
         {
             seen = true;
@@ -782,7 +782,10 @@ fn the_local_tmux_frames_really_land_in_the_ledger() {
     let user_tmux_after = user_tmux();
     cleanup(Some(&h));
     // 摘掉本条写进去的那一份，别留给同批别的用例。
-    crate::ssh_source::record_tmux_raw(crate::inbound_client::LOCAL_ORIGIN, String::new());
+    crate::ssh_source::record_tmux_raw(
+        crate::backend::control::inbound_client::LOCAL_ORIGIN,
+        String::new(),
+    );
 
     assert_eq!(
         user_tmux_before, user_tmux_after,
@@ -973,7 +976,7 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     let shim = crate::local_backend_host::tests::demand_tmux_shim(
         "本条起真后端，而后端一上来就往它连得到的 tmux server 装全局 hook",
     );
-    let _guard = crate::inbound_client::local_origin_test_lock();
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
     let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("embedded-backends")
         .join("cc-monitor-backend-x86_64");
@@ -1056,7 +1059,9 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     // 轮询而不是睡死：进程起来 + 发 hello 的耗时不确定，睡固定值要么慢要么飘。
     let mut client = None;
     for _ in 0..100 {
-        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
+        if let Some(c) = crate::backend::control::inbound_client::client_for(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN,
+        ) {
             client = Some(c);
             break;
         }
@@ -1088,7 +1093,10 @@ fn the_local_backend_host_really_registers_an_inbound_client() {
     client.close_write();
     std::thread::sleep(std::time::Duration::from_millis(500));
     let alive = Path::new(&format!("/proc/{pid}")).exists();
-    crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &client);
+    crate::backend::control::inbound_client::unregister(
+        crate::backend::control::inbound_client::LOCAL_ORIGIN,
+        &client,
+    );
     cleanup(&h);
     assert!(
         alive,

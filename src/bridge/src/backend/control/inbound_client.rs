@@ -713,5 +713,5 @@ pub fn client_for(origin: &str) -> Option<Arc<InboundClient>> {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/bridge/inbound_client_tests.rs"]
+#[path = "../../../../../tests/bridge/backend/control/inbound_client_tests.rs"]
 mod tests;

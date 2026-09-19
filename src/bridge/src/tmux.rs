@@ -310,7 +310,7 @@ pub async fn list_remote_tmux(origin: String) -> Result<Option<Vec<TmuxSession>>
 /// 空表会让调用方以为「一个会话都没有」，那是把「不知道」当成「知道没有」。
 #[tauri::command]
 pub fn list_local_tmux() -> Option<Vec<TmuxSession>> {
-    let raw = ssh_source::tmux_raw_for(crate::inbound_client::LOCAL_ORIGIN)?;
+    let raw = ssh_source::tmux_raw_for(crate::backend::control::inbound_client::LOCAL_ORIGIN)?;
     Some(parse_tmux_ls(&raw))
 }
 
@@ -581,7 +581,7 @@ pub(crate) fn exact_target(target: &str) -> Result<String, String> {
 /// 一台 label 起成 `localhost` / 本机主机名的**远端**走的是下面那半 —— 那是对的，
 /// 它确实是一条远端传输。
 fn no_channel_message(action: &str, origin: &str, target: &str, why: &str) -> String {
-    if origin == crate::inbound_client::LOCAL_ORIGIN {
+    if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
         format!(
             "本机后端通道不在，{action} `{target}`：{why}\n\
              （抓屏、送键与杀会话只走后端这一条路 —— 先让本机后端跑起来。\
@@ -626,7 +626,7 @@ async fn capture_via_backend(
     target: &str,
 ) -> Result<String, crate::backend::control::backend_route::Routed> {
     use crate::backend::control::backend_route::{no_channel, route_call_error, Routed};
-    let Some(client) = crate::inbound_client::client_for(origin) else {
+    let Some(client) = crate::backend::control::inbound_client::client_for(origin) else {
         return Err(no_channel(origin));
     };
     // 能力协商放在抓之前：抓一屏是 `K-R86`/`K-R104` 之后才有的原语，老后端上没有。
@@ -640,7 +640,7 @@ async fn capture_via_backend(
     let reply = client
         .call(
             CAPTURE_PANE,
-            crate::inbound_client::capture_pane_args(target),
+            crate::backend::control::inbound_client::capture_pane_args(target),
             std::time::Duration::from_secs(20),
         )
         .await

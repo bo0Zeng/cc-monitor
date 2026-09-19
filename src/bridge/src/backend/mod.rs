@@ -121,6 +121,18 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
     ),
     ("control/mod.rs", "control", "写/控制面的说明"),
     (
+        "control/inbound_client.rs",
+        "control",
+        "🔴 〔步 8 · 归属 2026-09-19〕**从 `lib.rs` 顶层搬进来的。**\
+         backend 流通道的 wire 客户端 —— `C1`「一份代码两种承载」里「本机进程」那一半的传输层，\
+         被 `backend_kill` / `backend_launch` / `backend_send_keys` 共同依赖。\
+         它此前住 `src/` 顶层，靠那张「表外但归这一半」的登记表（`EXTRA_BACKEND_FILES`，已随本拍整张删除）\
+         「表外但归这一半」的登记**纳入管辖**；那张表的头注逐字写着理由是\
+         「挪文件半径远大于收益 …… **先把它纳入管辖，挪不挪是另一件事**\
+         （若将来挪进 `backend/`，把这一行删掉即可）」。步 8 是全仓冻结窗口，\
+         那个「半径太大」的前提当场消失 ⇒ 真挪了，那张表随之整张删掉（它空了）。",
+    ),
+    (
         "control/ccm_invocation.rs",
         "control",
         "ctx → `ccm …` 调用行（维度注册表 + 诚实降级）。P4b 从共享 crate 搬回归属地",

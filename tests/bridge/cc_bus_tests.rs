@@ -1637,7 +1637,7 @@ fn the_write_face_branches_on_local_before_it_asks_for_a_remote_config() {
         // 本机分支有**两种形态**（早返回走 backend / 拒绝），取**先出现**的那个位置。
         let refuse = [
             body.find("refuse_local_write(&origin, \""),
-            body.find("origin == crate::inbound_client::LOCAL_ORIGIN"),
+            body.find("origin == crate::backend::control::inbound_client::LOCAL_ORIGIN"),
         ]
         .into_iter()
         .flatten()
@@ -1791,7 +1791,7 @@ fn the_send_path_asks_the_backend_instead_of_composing_a_shell_line() {
         .enable_all()
         .build()
         .expect("建运行时");
-    let local = crate::inbound_client::LOCAL_ORIGIN;
+    let local = crate::backend::control::inbound_client::LOCAL_ORIGIN;
     for (id, text) in [("proj_cc", "   "), ("--help", "hi")] {
         let a = rt.block_on(cc_bus_send(local.into(), id.into(), text.into()));
         let b = rt.block_on(cc_bus_send(
@@ -1833,7 +1833,7 @@ fn the_send_path_asks_the_backend_instead_of_composing_a_shell_line() {
 /// 本工作区最贵的那一形 —— 一个值装了两件事。
 #[test]
 fn an_old_backend_on_the_send_path_is_told_apart_from_a_timeout() {
-    use crate::inbound_client::CallError;
+    use crate::backend::control::inbound_client::CallError;
     let origin = "h1";
     let id = "proj_cc";
     let too_old = describe_backend_too_old(origin, id);
@@ -2015,7 +2015,7 @@ fn the_kill_entry_still_refuses_bad_ids_before_it_asks_anyone() {
         .enable_all()
         .build()
         .expect("建运行时");
-    let local = crate::inbound_client::LOCAL_ORIGIN;
+    let local = crate::backend::control::inbound_client::LOCAL_ORIGIN;
     // 收掉：非法 id 拒绝 —— **不能靠对端校验**，这一条的后果是杀掉一棵进程树。
     for bad in ["", "a b", "--help", "x;y", "../etc", "a'b"] {
         let r = rt.block_on(cc_bus_kill(local.into(), bad.into()));
@@ -2091,7 +2091,7 @@ fn whoever_still_asks_for_a_remote_config_branches_on_local_first() {
         let body = fn_body(&code, name);
         let refuse = [
             body.find("refuse_local_write(&origin, \""),
-            body.find("origin == crate::inbound_client::LOCAL_ORIGIN"),
+            body.find("origin == crate::backend::control::inbound_client::LOCAL_ORIGIN"),
         ]
         .into_iter()
         .flatten()
@@ -2174,7 +2174,7 @@ fn the_kill_path_asks_the_backend_instead_of_composing_a_shell_line() {
         .enable_all()
         .build()
         .expect("建运行时");
-    let local = crate::inbound_client::LOCAL_ORIGIN;
+    let local = crate::backend::control::inbound_client::LOCAL_ORIGIN;
     for id in ["--help", "a b"] {
         let a = rt.block_on(cc_bus_kill(local.into(), id.into()));
         let b = rt.block_on(cc_bus_kill("kr112-no-such-host".into(), id.into()));

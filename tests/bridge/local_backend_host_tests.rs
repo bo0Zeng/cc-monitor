@@ -529,7 +529,7 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
     // ⇒ 不去放宽读法（头注逐字：那要另做一次「先量再选」），把那一行**写回**它要的形状。
     const WHY: &str = "本条起真后端，而后端一上来就往它连得到的 tmux server 装全局 hook";
     let shim = demand_tmux_shim(WHY);
-    let _guard = crate::inbound_client::local_origin_test_lock();
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
     let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("embedded-backends")
         .join("cc-monitor-backend-x86_64");
@@ -571,8 +571,10 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
     };
     let wait_channel = |want: bool| -> bool {
         for _ in 0..100 {
-            let on =
-                crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some();
+            let on = crate::backend::control::inbound_client::client_for(
+                crate::backend::control::inbound_client::LOCAL_ORIGIN,
+            )
+            .is_some();
             if on == want {
                 return true;
             }
@@ -585,11 +587,13 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
     // ── 起 ────────────────────────────────────────────────────────
     *LOCAL_BACKEND.lock().expect("锁") = Some(spawn());
     assert!(wait_channel(true), "5s 内通道没登记上 —— backend 没起来");
-    let pid1 = crate::backend_control::backend_status(crate::inbound_client::LOCAL_ORIGIN.into())
-        .expect("查状态")
-        .get("pid")
-        .and_then(|v| v.as_u64())
-        .expect("起来了却没有 pid") as u32;
+    let pid1 = crate::backend_control::backend_status(
+        crate::backend::control::inbound_client::LOCAL_ORIGIN.into(),
+    )
+    .expect("查状态")
+    .get("pid")
+    .and_then(|v| v.as_u64())
+    .expect("起来了却没有 pid") as u32;
     assert!(alive(pid1), "状态给了 pid={pid1}，但 /proc 里没有这个进程");
     // ★ `K-R7`：本条改成 `#[ignore]` 之后由 `tests/e2e/local-backend-supervise.sh` 驱动，
     //   而那个脚本的收尾自检是「**标记数 < 跑成的测试数 ⇒ 有测试提前退出**」
@@ -626,11 +630,13 @@ fn the_local_backend_host_can_be_stopped_and_started_again() {
         wait_channel(true),
         "停了之后起不回来 —— 那就只有「停」没有「起」"
     );
-    let pid2 = crate::backend_control::backend_status(crate::inbound_client::LOCAL_ORIGIN.into())
-        .expect("查状态")
-        .get("pid")
-        .and_then(|v| v.as_u64())
-        .expect("再起之后没有 pid") as u32;
+    let pid2 = crate::backend_control::backend_status(
+        crate::backend::control::inbound_client::LOCAL_ORIGIN.into(),
+    )
+    .expect("查状态")
+    .get("pid")
+    .and_then(|v| v.as_u64())
+    .expect("再起之后没有 pid") as u32;
     assert!(alive(pid2), "再起给了 pid={pid2}，但 /proc 里没有");
     assert_ne!(
         pid1, pid2,
@@ -1278,13 +1284,15 @@ fn detached_reads_the_path_that_was_taken_not_a_guess() {
 
     // ── 负例②：**没走那条路 ⇒ `backend_status` 必须回 `detached: false`** ──
     //    这一格走的是**真命令**，不是读源码。
-    let _guard = crate::inbound_client::local_origin_test_lock();
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
     assert!(
         DETACHED.lock().expect("锁").is_none(),
         "测试开始时 `DETACHED` 就不是空的 —— 前一条判据留了状态，本条读数不可信"
     );
-    let st = crate::backend_control::backend_status(crate::inbound_client::LOCAL_ORIGIN.into())
-        .expect("查状态");
+    let st = crate::backend_control::backend_status(
+        crate::backend::control::inbound_client::LOCAL_ORIGIN.into(),
+    )
+    .expect("查状态");
     assert_eq!(
         st.get("detached").and_then(|v| v.as_bool()),
         Some(false),
@@ -3592,8 +3600,13 @@ impl E2eSandbox {
         // ★ **真宿主退出时那条 socket 会关掉** —— 只清进程内的句柄是**演砸的模型**：
         //   那条流还挂着，下一个宿主拿到的是 `stream-busy`。
         //   〔实测：第一版就是这么写的，`KPY2` 当场红在「第二个宿主没有认出已有实例」。〕
-        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
-            crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &c);
+        if let Some(c) = crate::backend::control::inbound_client::client_for(
+            crate::backend::control::inbound_client::LOCAL_ORIGIN,
+        ) {
+            crate::backend::control::inbound_client::unregister(
+                crate::backend::control::inbound_client::LOCAL_ORIGIN,
+                &c,
+            );
             // ⚠ `shutdown()` 只叫醒等着的调用方，**它不关 socket**。
             //   要让对面知道我们走了，得真的关掉写半边 —— 那才是后端那边的 EOF。
             c.close_write();
@@ -3725,7 +3738,7 @@ fn alive(pid: u32) -> bool {
 fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one() {
     #[cfg(target_os = "linux")]
     {
-        let _guard = crate::inbound_client::local_origin_test_lock();
+        let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
         let sb = E2eSandbox::demand();
         let claude = sb.become_host_with_home("adopt");
         *DETACHED.lock().expect("锁") = None;
@@ -3767,7 +3780,10 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
         let pid2 = DETACHED.lock().expect("锁").as_ref().expect("句柄").pid;
         assert_eq!(pid2, pid1, "第二个宿主接上的不是同一个进程");
         assert!(
-            crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some(),
+            crate::backend::control::inbound_client::client_for(
+                crate::backend::control::inbound_client::LOCAL_ORIGIN
+            )
+            .is_some(),
             "接上了却没登记入方向通道 —— 那只是「连上了」，不是「接上了」"
         );
         println!("E2E-OK KPY2 第二个宿主**接上**了同一个后端（pid 不变），没起第二个");
@@ -3808,7 +3824,7 @@ fn e2e_a_second_host_adopts_the_running_backend_instead_of_starting_a_second_one
 fn e2e_a_detached_backend_that_dies_leaves_no_zombie() {
     #[cfg(target_os = "linux")]
     {
-        let _guard = crate::inbound_client::local_origin_test_lock();
+        let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
         let sb = E2eSandbox::demand();
         let _ = sb.become_host_with_home("zombie");
         *DETACHED.lock().expect("锁") = None;
@@ -3874,7 +3890,7 @@ fn e2e_a_detached_backend_that_dies_leaves_no_zombie() {
 
 /// 本机那台机的死亡账读数（三处接线都记在 `LOCAL_ORIGIN` 名下）。
 fn local_health() -> crate::backend_policy::Health {
-    crate::backend_policy::health(crate::inbound_client::LOCAL_ORIGIN)
+    crate::backend_policy::health(crate::backend::control::inbound_client::LOCAL_ORIGIN)
 }
 
 /// ★★ `KP3W2` 脱离路：**`Handshake` 那一维不是一个孤零零的字面量。**
@@ -3893,7 +3909,7 @@ fn the_detached_handshake_is_derived_from_the_hello_gate() {
         r#""claude_dir":"/dev/null","commands":["ping"]}"#
     );
     let frame = crate::ssh_source::parse_frame(line).expect("这一行该解析成 hello 帧");
-    let witness = crate::inbound_client::BackendHello::from_hello_frame(&frame)
+    let witness = crate::backend::control::inbound_client::BackendHello::from_hello_frame(&frame)
         .expect("hello 帧该给得出见证 —— 给不出的话下面那一格是空转的");
     assert_eq!(
         handshake_from_hello(&witness),
@@ -3953,8 +3969,8 @@ fn the_detached_handshake_is_derived_from_the_hello_gate() {
 /// 而本文件那一族的纪律逐字是「两份措辞迟早对不上」。
 #[test]
 fn the_never_started_reason_is_the_same_string_the_caller_gets() {
-    let _guard = crate::inbound_client::local_origin_test_lock();
-    let origin = crate::inbound_client::LOCAL_ORIGIN;
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
+    let origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
     // 中性夹具串：**不取自任何路径或夹具名**（`brief` 第 12 条那一族）。
     let reason = "那一份不在，旁边也没有 ⇒ 拒绝报「已起」".to_string();
     let looked_at = vec![
@@ -4047,7 +4063,7 @@ fn the_never_started_reason_is_the_same_string_the_caller_gets() {
 #[test]
 fn three_fake_backends_land_in_three_different_cells() {
     use std::sync::Arc;
-    let _guard = crate::inbound_client::local_origin_test_lock();
+    let _guard = crate::backend::control::inbound_client::local_origin_test_lock();
     let hello = concat!(
         r#"{"kind":"hello","v":1,"build_id":"kp3b-yi","host_arch":"x86_64","#,
         r#""claude_dir":"/dev/null","commands":["ping"]}"#

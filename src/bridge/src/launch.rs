@@ -672,7 +672,7 @@ pub async fn launch_remote_terminal(origin: String, remote_cmd: String) -> Resul
     // · Windows → `launch_powershell_window`（PowerShell + Windows Terminal，与远端同一个函数）；
     // · POSIX   → 那个函数的非 Windows 臂回 `POSIX_NO_TERMINAL_WINDOW`，前端据此把命令交给用户
     //   在自己的 bash 里执行。**这不是失败**，前端有专门的标题分档（`POSIX_NO_WINDOW_MARKER`）。
-    if origin == crate::inbound_client::LOCAL_ORIGIN {
+    if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
         return tokio::task::spawn_blocking(move || {
             launch_powershell_window(&remote_cmd, None)?;
             tracing::info!("launch: local terminal (no ssh)");

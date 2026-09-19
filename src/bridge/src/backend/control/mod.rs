@@ -16,6 +16,13 @@ pub mod backend_launch;
 pub mod backend_route;
 pub mod backend_send_keys;
 pub mod ccm_invocation;
+// 🔴 〔步 8 · 归属 2026-09-19〕从 `lib.rs` 顶层搬进来的。那张「表外但归这一半」的登记表（`EXTRA_BACKEND_FILES`，已随本拍整张删除）
+//    当年逐字登记着它：「backend 流通道的 wire 客户端 …… **它不在 backend/ 下是历史位置，
+//    不是它不属于这一半**」。⇒ 这一拍把那句话落成事实，那张表随之整张删掉（它空了）。
+//    住 `control/` 而不是 `backend/` 根下：`every_file_under_backend_lives_on_a_capability_line`
+//    逐字「根下只允许 mod.rs」，而它的三个消费者（`backend_kill` / `backend_launch` /
+//    `backend_send_keys`）全在这条能力线上。
+pub mod inbound_client;
 pub mod launch_wire;
 pub mod local_backend;
 pub mod payload;

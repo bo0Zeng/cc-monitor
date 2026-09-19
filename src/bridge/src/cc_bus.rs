@@ -368,7 +368,7 @@ fn interpret_cc_bus_read(origin: &str, raw: &str) -> Result<CcBusState, String> 
 #[tauri::command]
 pub async fn read_cc_bus_state(origin: String) -> Result<CcBusState, String> {
     // P4a-Y1：本机跑同一条 `CC_BUS_CAT_CMD`，只是不包进 ssh。
-    let raw = if origin == crate::inbound_client::LOCAL_ORIGIN {
+    let raw = if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
         local_shell_read(
             CC_BUS_CAT_CMD,
             CC_BUS_TSV_CAP,
@@ -650,7 +650,7 @@ fn cfg_of(origin: &str) -> Result<crate::ssh_source::RemoteConfig, String> {
     // 下一个人加第四个调用方时，那个承诺对他不可见，而 `<local>` 掉进下面那句的后果是
     // 报「远端 `<local>` 未配置或未启用」：一句与真实原因毫无关系的话
     // （`P4d-Y5` 收口的正是这一族，`local_origin_registry` 按**位置**盯着它）。
-    if origin == crate::inbound_client::LOCAL_ORIGIN {
+    if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
         return Err("本机没有「远端配置」这种东西 —— 这条路是远端专属的。\n\
              cc-bus 的读面本机已经通了（走同一条命令串，只是不包进 ssh）；\n\
              写面还没做，归 `P4b`。"
@@ -979,7 +979,7 @@ async fn local_shell_read(
 /// **留着这一份不是为了对称**：spawn 那条今天真的没有对侧（backend 帧面 10 条里没有 spawn），
 /// 而这句话要说清「缺的是后端能力」，不是「配置没找到」。
 fn refuse_local_write(origin: &str, what: &str) -> Option<String> {
-    if origin != crate::inbound_client::LOCAL_ORIGIN {
+    if origin != crate::backend::control::inbound_client::LOCAL_ORIGIN {
         return None;
     }
     Some(format!(
@@ -1031,7 +1031,7 @@ async fn online_via_backend(origin: &str, id: &str) -> Result<bool, String> {
         return Err(format!("非法 agent id（拒绝去问它在不在线）: {id:?}"));
     }
     let unknown = |why: String| unknown_liveness(origin, id, &why);
-    let Some(client) = crate::inbound_client::client_for(origin) else {
+    let Some(client) = crate::backend::control::inbound_client::client_for(origin) else {
         return Err(unknown(
             "这台的后端通道没起来（设置里可以起/停每台机器的后端）".to_string(),
         ));
@@ -1120,7 +1120,7 @@ pub(crate) struct BroadcastPlan {
 
 /// 广播走后端：`bus-list` 挑人 → 逐个 `bus-send`。
 async fn broadcast_via_backend(origin: &str, text: &str) -> Result<String, BroadcastRoute> {
-    use crate::inbound_client::client_for;
+    use crate::backend::control::inbound_client::client_for;
     let Some(client) = client_for(origin) else {
         return Err(BroadcastRoute::NoChannel(format!(
             "[{origin}] 没有可用的控制通道"
@@ -1219,7 +1219,7 @@ const BUS_KILL: &str = "bus-kill";
 /// 一旦有人给本机另写一句「更亲切的」话，两条路就从措辞开始漂 ——
 /// 而措辞正是用户唯一看得见的那一面。
 pub(crate) fn machine_label(origin: &str) -> String {
-    if origin == crate::inbound_client::LOCAL_ORIGIN {
+    if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
         "本机".to_string()
     } else {
         origin.to_string()
@@ -1273,7 +1273,10 @@ pub(crate) fn describe_backend_too_old(origin: &str, id: &str) -> String {
 ///   「被门拒绝」就会在某一份里被洗成「换条路重做」。
 /// ★ 本发送端**没有第二条路可回落**（shell 写面正是 `P4a` 拒掉、`K-R98` 删净的东西）
 ///   ⇒ 三档结果都只是给用户的一句话，`Routed` 的回落语义在这里是空的。
-pub(crate) fn describe_bus_error(outcome: &str, e: &crate::inbound_client::CallError) -> String {
+pub(crate) fn describe_bus_error(
+    outcome: &str,
+    e: &crate::backend::control::inbound_client::CallError,
+) -> String {
     use crate::backend::control::backend_route::{route_call_error, Routed};
     match route_call_error(e, |code, message| format!("{code}：{message}")) {
         Routed::NoChannel(why) => format!("{why}（{outcome}）"),
@@ -1283,7 +1286,10 @@ pub(crate) fn describe_bus_error(outcome: &str, e: &crate::inbound_client::CallE
 }
 
 /// 发消息那一档的说法。**分流仍然只有一份**〔`K-R112`：提参数之后仍然只有一处 `route_call_error`〕。
-pub(crate) fn describe_send_error(id: &str, e: &crate::inbound_client::CallError) -> String {
+pub(crate) fn describe_send_error(
+    id: &str,
+    e: &crate::backend::control::inbound_client::CallError,
+) -> String {
     describe_bus_error(&format!("{id} 的消息**没有发出去**"), e)
 }
 
@@ -1303,7 +1309,7 @@ pub(crate) fn describe_send_error(id: &str, e: &crate::inbound_client::CallError
 /// ⚠ 老后端没有这条命令 ⇒ 开场先用 `accepts` 问一句（**能力协商，不是超时**）
 /// ⇒ 报「这台的后端太旧」，而不是含糊的失败。
 async fn send_via_backend(origin: &str, id: &str, text: &str) -> Result<String, String> {
-    use crate::inbound_client::client_for;
+    use crate::backend::control::inbound_client::client_for;
     // ⚠ **两道校验留在这一侧**〔`K-R98`〕：id 今天不再被拼进任何命令串（那条 shell 路本件
     //   删净了），但「调用方不能靠对端校验」这条规矩不因为注入面没了就作废 ——
     //   `--help` 这种 id 在盘上真出现过（`~/.cc-bus/inbox/--help.jsonl`，188 字节），
@@ -1369,7 +1375,7 @@ pub(crate) fn describe_send_reply(id: &str, reply: Option<&serde_json::Value>) -
 pub async fn read_cc_bus_inbox(origin: String, id: String) -> Result<Vec<CcBusMessage>, String> {
     let cmd = build_inbox_cmd(&id)?;
     // P4a-Y1：本机跑同一条 `build_inbox_cmd` 产出的串（`tail`，零副作用）。
-    let raw = if origin == crate::inbound_client::LOCAL_ORIGIN {
+    let raw = if origin == crate::backend::control::inbound_client::LOCAL_ORIGIN {
         local_shell_read(&cmd, INBOX_READ_CAP, 30, "读 inbox", OnOverflow::Truncate).await?
     } else {
         let cfg = cfg_of(&origin)?;
@@ -1490,7 +1496,7 @@ async fn kill_via_backend(origin: &str, id: &str) -> Result<String, String> {
     if !is_valid_bus_id(id) {
         return Err(format!("非法 agent id（拒绝收掉它）: {id:?}"));
     }
-    let Some(client) = crate::inbound_client::client_for(origin) else {
+    let Some(client) = crate::backend::control::inbound_client::client_for(origin) else {
         return Err(describe_no_channel_for(origin, "收掉 agent", &outcome));
     };
     // 能力协商放在动手之前：老后端没有这条命令时也回「没发出去」，但那一档经分流器

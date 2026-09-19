@@ -2671,6 +2671,19 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// `tool_registry`（→ `tool_registry_environment_tests.rs`）。
     /// 另有**真新增的一条**（退役判据留下的墓碑），挂在本表末尾、单独写了理由。
     const TOMBSTONED: &[(&str, &str, usize)] = &[
+        // 🔴 〔步 8 · 归属 2026-09-19〕**三处，同一件事**：`inbound_client.rs` 真的挪进
+        //    `backend/control/` 了 ⇒ 那张「表外但归这一半」的登记表（`EXTRA_BACKEND_FILES`）
+        //    与它的僵尸检查（`the_extra_backend_files_are_not_ghosts`）**一起删掉**——
+        //    那是那张表自己那条判据逐字给的指示（「表空了 …… 连这条一起删」）。
+        //    留下的散文说的正是「它们为什么不在了」，走第②条出路：贴墓碑 ＋ 记账。
+        //    ⚠ 只登记这一条：`EXTRA_BACKEND_FILES` 是**全大写**，不合本族的死名形状
+        //    （`is_dead_name_shape` 只认全小写 snake_case）⇒ 它不进这张表，
+        //    那两处改成不带 `文件.rs::` 前缀的写法，避开另一条「符号地址还解析得了吗」。
+        (
+            "tests/bridge/backend_tests.rs",
+            "the_extra_backend_files_are_not_ghosts",
+            1,
+        ),
         // 🔴 〔`K-R48` 第二拍 09-11〕下面这 9 行全是同一件事的账：`shared/ccm` 那个 bash
         //    脚本与它那一族判据删了（`K33`：「不要有什么 bash 脚本」），而**散文里那几处
         //    点名它们的句子留着是有用的**（它们说的正是「这个东西为什么不在了」）
@@ -2941,7 +2954,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ),
         (
             // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/bridge/inbound_client_tests.rs",
+            "tests/bridge/backend/control/inbound_client_tests.rs",
             "the_two_tmux_primitive_arg_builders_match_the_backend_parsers",
             1,
         ),

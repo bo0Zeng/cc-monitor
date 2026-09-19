@@ -167,7 +167,7 @@ fn the_tmux_cache_has_one_writer_and_only_origin_keys() {
     });
 
     // ② 键的取值域：调用方只许传远端标签或本机那个常量。
-    let local_origin = crate::inbound_client::LOCAL_ORIGIN;
+    let local_origin = crate::backend::control::inbound_client::LOCAL_ORIGIN;
     for f in [
         guard_core::production_code(include_str!("../../src/bridge/src/ssh_source.rs")),
         guard_core::production_code(include_str!(
