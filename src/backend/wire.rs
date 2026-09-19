@@ -370,7 +370,7 @@ pub enum Frame {
         ///
         /// **旧 monitor 忽略本字段**：它看到空 `raw` ⇒ 空 backend ⇒ 保守跳过 = 今天的行为，
         /// 无回归。新 monitor 读本字段才能安全 retire。取值集与 monitor
-        /// `src/bridge/src/tmux.rs` 的 `OBS_*` const 是**双写点**（有守卫钉住）。
+        /// `src/bridge/src/backend/control/tmux.rs` 的 `OBS_*` const 是**双写点**（有守卫钉住）。
         #[serde(skip_serializing_if = "Option::is_none")]
         observation: Option<String>,
     },

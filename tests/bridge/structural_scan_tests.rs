@@ -2583,7 +2583,7 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             1,
         ),
         (
-            "src/bridge/src/tmux.rs",
+            "src/bridge/src/backend/control/tmux.rs",
             "the_name_set_question_is_exactly_what_the_hooks_cover",
             1,
         ),
@@ -2840,21 +2840,33 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         ("src/doc/INVARIANTS.md", "build_kill_session_cmd", 1),
         ("src/doc/INVARIANTS.md", "build_send_keys_remote_cmd", 1),
         ("src/doc/INVARIANTS.md", "gate_guard_expr", 1),
-        ("src/bridge/src/tmux.rs", "build_kill_session_cmd", 2),
+        (
+            "src/bridge/src/backend/control/tmux.rs",
+            "build_kill_session_cmd",
+            2,
+        ),
         (
             // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/bridge/tmux_tests.rs",
+            "tests/bridge/backend/control/tmux_tests.rs",
             "build_kill_session_cmd",
             1,
         ),
-        ("src/bridge/src/tmux.rs", "build_send_keys_remote_cmd", 2),
+        (
+            "src/bridge/src/backend/control/tmux.rs",
+            "build_send_keys_remote_cmd",
+            2,
+        ),
         (
             // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/bridge/tmux_tests.rs",
+            "tests/bridge/backend/control/tmux_tests.rs",
             "build_send_keys_remote_cmd",
             1,
         ),
-        ("src/bridge/src/tmux.rs", "gate_guard_expr", 1),
+        (
+            "src/bridge/src/backend/control/tmux.rs",
+            "gate_guard_expr",
+            1,
+        ),
         (
             "tests/bridge/tmux_backend_gate_guard_tests.rs",
             "build_kill_session_cmd",
@@ -3016,17 +3028,25 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "build_kill_cmd",
             1,
         ),
-        ("src/bridge/src/tmux.rs", "build_capture_pane_cmd", 3),
+        (
+            "src/bridge/src/backend/control/tmux.rs",
+            "build_capture_pane_cmd",
+            3,
+        ),
         (
             // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/bridge/tmux_tests.rs",
+            "tests/bridge/backend/control/tmux_tests.rs",
             "build_capture_pane_cmd",
             1,
         ),
         //    同一件事的另一半：那条串的**出口判定**（两个哨兵 `NO_TMUX` / `NO_PANE`）
         //    也随之不存在了 —— 帧面把「答案」与「屏幕内容」分开走，
         //    「屏幕上恰好只有 NO_PANE 这几个字」这个误判形状跟着消失。
-        ("src/bridge/src/tmux.rs", "classify_capture_output", 1),
+        (
+            "src/bridge/src/backend/control/tmux.rs",
+            "classify_capture_output",
+            1,
+        ),
         // 🔴 〔`15 §5.1 A3` 09-18〕`spawn_managed` 那个唯一出口把仓里三份**各自长着的**
         //    正确做法收编了，其中两份连符号一起没了：`local_backend_host::hide_console_window`
         //    （`00 §1.5.1` 步 1 的止血，它自己的头注就写着「A3 落地时它会被换成注入参数」）

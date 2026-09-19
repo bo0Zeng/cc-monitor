@@ -121,6 +121,15 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
     ),
     ("control/mod.rs", "control", "写/控制面的说明"),
     (
+        "control/tmux.rs",
+        "control",
+        "🔴 〔步 8 · 归属 2026-09-19〕**从 `lib.rs` 顶层搬进来的。**\
+         tmux 的**三条原语**（列会话 / 抓屏 / send-keys）＋ 杀会话 —— 全是控制面。\
+         `daemon` 密度第五高的那份（`设计/90 §1.1` 那条顺序事实），\
+         而它一行 GUI 把手、一行平台 cfg 都没有（这正是它搬得动、\
+         而 `ssh_source.rs` / `local_backend_host.rs` 搬不动的分水岭）。",
+    ),
+    (
         "control/backend_control.rs",
         "control",
         "🔴 〔步 8 · 归属 2026-09-19〕**从 `lib.rs` 顶层搬进来的。**\

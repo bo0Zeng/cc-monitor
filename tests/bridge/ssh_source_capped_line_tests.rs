@@ -146,7 +146,7 @@ fn the_frame_arm_logs_the_observation_kind() {
     // 它是**纯观测**：决策仍只看 `classify_tmux_observation` 的结果（`verdict`）。
     let decide_at = guard_core::find_pinned(
         &prod,
-        "if let crate::tmux::TmuxObservation::Backend(backend) = verdict {",
+        "if let crate::backend::control::tmux::TmuxObservation::Backend(backend) = verdict {",
     )
     .unwrap_or_else(|e| panic!("{e}\n对账不再直接吃分类结果 —— 观测与决策的界线糊了"));
     assert!(

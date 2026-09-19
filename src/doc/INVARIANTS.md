@@ -140,7 +140,7 @@
 （`~/.cc-monitor/bin/` 自部署，例外 2），G6 只是让它多写一个 `projects/` 下的**新** jsonl，
 并第一次给它的写面套上了机检守卫。
 
-**A5 tmux 会话名契约是跨语言隐性耦合，改一端必须同步另一端**：本工具建的远端 tmux 会话名恒为 `cc-<sid8>[-N]`（前端 `deriveTmuxName`/`pickFreshTmuxName` at `src/remote-launch.ts` 生成）。Rust 侧 `tmux::is_ccm_tmux_name`（`src/bridge/src/tmux.rs`）用 `cc-` 前缀 + `[A-Za-z0-9_-]` 白名单**门控 `tmux_send_keys`**（A5 换号重启在旧号 send `/compact`），**绝不向用户自己的其它 tmux 会话发按键**。两端各写一份该契约、仅靠测试对齐（跨语言无法共享函数）。**若改了前端的 tmux 名前缀/字符集，必须同步 Rust 白名单**，否则 send-keys 会被静默拒绝、compact 悄悄失效（不阻断重启，但优化白丢）。注：`kill_remote_tmux`（F79）**曾**沿用既有行为无此白名单 —— ⚠ **F04b 2026-08-04 订正：这句自 F04 起就假了**（F04 给 kill 补了 Gate 2 union，F04a 又加了 Gate 3；**F04b 起它的主路是后端的 `kill` 命令**，三道门在后端侧复现）。原文留痕是因为下面那半仍然成立且仍在生产：A5 破坏性重启在 `restartTabWithAccount` 里用 `live.sid === sid` 精确守卫兜底——只精确命中 `@ccm_sid` 才 kill，绝不按 cwd 回退猜（防杀错会话 + 双进程）。**A5+**：`tmux_send_keys` 加了可选形参 `enter`（`Option<bool>`，**缺省 true**）——`enter=false` 时命令省去尾 `Enter`（优雅退出发 `Escape` 打断当前回合时用，防误提交输入框队列文本），`/compact`、`/exit` 等仍附回车。前端旧调用不传 `enter` → 逐字节等价旧行为，向后兼容。
+**A5 tmux 会话名契约是跨语言隐性耦合，改一端必须同步另一端**：本工具建的远端 tmux 会话名恒为 `cc-<sid8>[-N]`（前端 `deriveTmuxName`/`pickFreshTmuxName` at `src/remote-launch.ts` 生成）。Rust 侧 `tmux::is_ccm_tmux_name`（`src/bridge/src/backend/control/tmux.rs`）用 `cc-` 前缀 + `[A-Za-z0-9_-]` 白名单**门控 `tmux_send_keys`**（A5 换号重启在旧号 send `/compact`），**绝不向用户自己的其它 tmux 会话发按键**。两端各写一份该契约、仅靠测试对齐（跨语言无法共享函数）。**若改了前端的 tmux 名前缀/字符集，必须同步 Rust 白名单**，否则 send-keys 会被静默拒绝、compact 悄悄失效（不阻断重启，但优化白丢）。注：`kill_remote_tmux`（F79）**曾**沿用既有行为无此白名单 —— ⚠ **F04b 2026-08-04 订正：这句自 F04 起就假了**（F04 给 kill 补了 Gate 2 union，F04a 又加了 Gate 3；**F04b 起它的主路是后端的 `kill` 命令**，三道门在后端侧复现）。原文留痕是因为下面那半仍然成立且仍在生产：A5 破坏性重启在 `restartTabWithAccount` 里用 `live.sid === sid` 精确守卫兜底——只精确命中 `@ccm_sid` 才 kill，绝不按 cwd 回退猜（防杀错会话 + 双进程）。**A5+**：`tmux_send_keys` 加了可选形参 `enter`（`Option<bool>`，**缺省 true**）——`enter=false` 时命令省去尾 `Enter`（优雅退出发 `Escape` 打断当前回合时用，防误提交输入框队列文本），`/compact`、`/exit` 等仍附回车。前端旧调用不传 `enter` → 逐字节等价旧行为，向后兼容。
 
 ---
 
@@ -808,7 +808,7 @@ set-option / show-options / kill-session / has-session / attach **全部**动词
 
 **四处同源**（F02 新增第四处，照 §I8 `TMUX_LS_FMT` 双写范式立条）：
 1. `src/session-backend.ts` 的 `exactTarget()` —— 前端 shell 渲染面
-2. `src/bridge/src/tmux.rs` 的 `exact_target()` —— IPC 控制面
+2. `src/bridge/src/backend/control/tmux.rs` 的 `exact_target()` —— IPC 控制面
 3. `tests/e2e/restart-shims/core.mjs` —— Tauri IPC 边界的 mock，**结构上无法 import Rust，去重不可能**；
    必须**与生产同构**，否则 e2e 对这条假绿
 4. `shared/ccm`（F02 统一启动 CLI）—— 独立的 tmux 命令构造器（不复用前三处，语言/执行环境不同）；
@@ -1149,7 +1149,7 @@ U8c-1 摸底后拆成三步：
 
 **三道门**（⚠ **F04b 2026-08-04**：`kill` 主路切到后端；**F04c** 切 `send-keys`；
 **`K-R72` 2026-09-12**：两条回落删净）：
-1. **Gate 1（恒强制）** —— 家在 `src/bridge/src/tmux.rs::gate1_reject_empty`：只拒**空** target
+1. **Gate 1（恒强制）** —— 家在 `src/bridge/src/backend/control/tmux.rs::gate1_reject_empty`：只拒**空** target
    （`=:` 会被 tmux 解析成「当前会话」，是唯一真正危险的默认值）。**不额外收紧字符集**——
    glob/元字符交给 `shell_quote` 安全引号化，字符集收紧是 TS 侧 `isValidNewTmuxName`
    （仅创建路径）/`isValidTmuxName`（attach 故意宽松）的职责，见 §31a「第二道防线」。

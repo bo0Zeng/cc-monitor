@@ -59,7 +59,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // ── monitor → backend：monitor 的判据去读后端的源码 ─────────────────
     (
         "monitor→backend",
-        "tests/bridge/tmux_tests.rs",
+        "tests/bridge/backend/control/tmux_tests.rs",
         "src/backend/observe/watcher.rs",
         "★〔audit-0805 08-06 新发现，此前整条不在本表里〕两条对拍守卫读后端的 \
          `watcher.rs`：`tmux ls` 的 `-F` 格式串双写点、以及那个 const 的 TAB 转义。\
@@ -174,7 +174,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "backend→monitor",
         // 〔步 7c 后端剖分 2026-09-19 · C 类〕住址跟着那条 include 搬进 `tests/backend/`。
         "tests/backend/control/launch_tests.rs",
-        "src/bridge/src/tmux.rs",
+        "src/bridge/src/backend/control/tmux.rs",
         "★ 跨轨对拍：`format!(\"={target}:\")` 这个精确匹配形状两侧必须同形 —— \
          F01 实测过，一边写裸 `-t` 就会打到兄弟会话上，而另一边不会，排查极难",
     ),

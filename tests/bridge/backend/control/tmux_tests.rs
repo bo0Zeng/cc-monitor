@@ -1,9 +1,9 @@
 // `include_str!` 只接**字面量 token**，喂 `const` 会报 `argument must be a string literal`
-// ⇒ 用单臂宏拿到「单一落点」。原住 `src/bridge/src/tmux.rs`，步 7b 随它唯一的消费者搬来这里；
+// ⇒ 用单臂宏拿到「单一落点」。原住 `src/bridge/src/backend/control/tmux.rs`，步 7b 随它唯一的消费者搬来这里；
 // 路径也跟着换成相对本文件（`16 §5.4a` 规则 1：路径不只住在字面量里，也住在宏展开里）。
 macro_rules! backend_watcher_src {
     () => {
-        "../../src/backend/observe/watcher.rs"
+        "../../../../src/backend/observe/watcher.rs"
     };
 }
 
@@ -288,7 +288,9 @@ fn gate1_rejects_only_empty_target() {
 /// （真 tmux 3.4，改前段数 1 / 改后段数 6）。
 #[test]
 fn the_surviving_cross_ssh_tmux_read_asks_for_a_utf8_client_before_the_subcommand() {
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/tmux.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/tmux.rs"
+    ));
     guard_core::assert_no_test_code("tmux.rs", &prod);
     // 抽取器自检：生产段塌了下面两条就零命中地绿。
     assert!(
@@ -338,7 +340,7 @@ const BACKEND_KOU_JING_HOME: &str = "src/backend/common/tmux_utf8.rs";
 ///
 /// - **在哪跑**：monitor 那格 cargo（`cargo test --workspace --lib`）。
 ///   backend 自己那格看不见它 —— 但门禁两格都跑，所以任一侧漂开都会在门禁里红。
-/// - **读了哪两棵树**：本侧 `include_str!("../../src/bridge/src/tmux.rs")`（编译期，同一半）+
+/// - **读了哪两棵树**：本侧 `include_str!("../../../../src/bridge/src/backend/control/tmux.rs")`（编译期，同一半）+
 ///   backend 侧 [`BACKEND_KOU_JING_HOME`]（**运行期** `read_to_string`）。
 /// - 🔴 **为什么后端那一半刻意用运行期读、而不是 `include_str!`**：
 ///   `include_str!` 会新长出一条**跨半边的编译期边**，而那种边由
@@ -353,14 +355,16 @@ const BACKEND_KOU_JING_HOME: &str = "src/backend/common/tmux_utf8.rs";
 ///   ① 把下面那句运行期读换成编译期读（`include_str!` 配 `concat!` / `env!` 拼路径，
 ///      形状照本文件已有的 `backend_watcher_src` 那个单一落点宏）；
 ///   ② 同轮在 `CROSS_EDGES` 里加一条 `monitor→backend` 的登记
-///      （读者 `src/bridge/src/tmux.rs` · 被读 `src/backend/common/tmux_utf8.rs` ·
+///      （读者 `src/bridge/src/backend/control/tmux.rs` · 被读 `src/backend/common/tmux_utf8.rs` ·
 ///      理由「跨轨对拍：口径的家在对面，本侧那一份必须与它逐字相等」）。
 ///   🔴 只动 ① 会让那张表的条数当场对不上 —— 它是**两个方向都查**的。
 /// - **不管什么**：它不证明「那个旗真的被走到了」（「盘上有 ≠ 被走到」）。
 ///   行为那一半的死值在 `tests/evidence/K-R12-deathvalue.md`（真 tmux 3.4 私有 socket）。
 #[test]
 fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/tmux.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/tmux.rs"
+    ));
     guard_core::assert_no_test_code("tmux.rs", &prod);
 
     // ── ① 本侧只有一个声明 ────────────────────────────────────────────
@@ -370,7 +374,7 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
     let root = crate::guard_support::repo_root();
     // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**排掉的是谁、为什么 —— 明写。**
     //
-    // 排掉 `src/bridge/src/tmux.rs`：它就是「那一个家」，上面第 ① 段已经用 `find_pinned`
+    // 排掉 `src/bridge/src/backend/control/tmux.rs`：它就是「那一个家」，上面第 ① 段已经用 `find_pinned`
     // 单独钉过它「恰好一处」。这里数的是**第二个家**，本来就不该把它自己算进去。
     //
     // 上一版靠 `scan_tree!` 的 `file!()` 自摘 —— 当年判据住在 `tmux.rs` 自己的
@@ -380,7 +384,7 @@ fn utf8_client_kou_jing_has_one_home_and_this_side_matches_it() {
     let others = guard_core::scan_tree_excluding(
         &root.join("src/bridge/src"),
         &["rs"],
-        &["src/bridge/src/tmux.rs"],
+        &["src/bridge/src/backend/control/tmux.rs"],
     );
     assert!(
         others.len() >= 60,
@@ -590,7 +594,9 @@ fn every_target_placeholder_comes_from_exact_target() {
             .collect()
     }
 
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/tmux.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/tmux.rs"
+    ));
     let found = sites(&prod);
     // 🔴 **`K-R112`（09-13）：人群从 1 掉到 0 —— 这是这条棘轮的终态，不是它坏了。**
     //   `build_capture_pane_cmd`〔散文墓碑〕是最后一个把目标插进 tmux 命令串的地方，抓屏改走
@@ -689,7 +695,9 @@ fn the_tmux_shell_line_detector_really_sees_each_shape() {
 /// 判的是**这条路**（`capture_remote_pane` → `capture_via_backend`）上有没有命令串。
 #[test]
 fn the_capture_path_asks_the_backend_instead_of_composing_a_shell_line() {
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/tmux.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/tmux.rs"
+    ));
     let body_of = |sig: &str| -> String {
         let at = guard_core::find_pinned(&prod, sig)
             .unwrap_or_else(|e| panic!("生产段找不到 {sig}（{e}）—— 判据在空转"));
@@ -752,7 +760,9 @@ fn the_capture_path_asks_the_backend_instead_of_composing_a_shell_line() {
 /// 通道不在时两边只差一个称呼 —— 那正是「本机不再是死胡同」的可判形式。
 #[test]
 fn the_local_capture_is_no_longer_a_dead_end() {
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/tmux.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/tmux.rs"
+    ));
     let at = guard_core::find_pinned(&prod, "pub async fn capture_remote_pane(")
         .expect("抓屏入口不在了");
     let body: String = prod[at..]
@@ -848,7 +858,9 @@ fn the_local_capture_is_no_longer_a_dead_end() {
 /// 后者今天没有 UI 入口（见 `K-R56#§0j`），所以也没有实测。
 #[test]
 fn the_local_kill_never_falls_back_to_ssh() {
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/tmux.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/tmux.rs"
+    ));
     let at =
         guard_core::find_pinned(&prod, "pub async fn kill_remote_tmux(").expect("kill 入口不在了");
     let body: String = prod[at..]
@@ -939,7 +951,9 @@ fn the_local_kill_never_falls_back_to_ssh() {
 #[test]
 fn the_local_send_keys_never_falls_back_to_ssh() {
     // ① 回潮闸：这条命令里**不许再有** SSH 那条路。
-    let prod = guard_core::production_code(include_str!("../../src/bridge/src/tmux.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/tmux.rs"
+    ));
     let at = guard_core::find_pinned(&prod, "pub async fn tmux_send_keys(")
         .expect("send-keys 入口不在了");
     let body: String = prod[at..]
@@ -1031,7 +1045,9 @@ fn the_local_send_keys_never_falls_back_to_ssh() {
 #[test]
 fn tmux_targets_use_exact_match() {
     // ① monitor 侧：一处裸目标都不许再有（本件之后这一侧连命令串都没有了）。
-    let mine = guard_core::production_code(include_str!("../../src/bridge/src/tmux.rs"));
+    let mine = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/tmux.rs"
+    ));
     assert!(
         !mine.contains("-t {"),
         "monitor 的 `tmux.rs` 生产段又出现了 `-t {{…}}` —— 那条路已经收干净了"

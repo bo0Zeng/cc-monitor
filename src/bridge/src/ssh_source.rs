@@ -1537,7 +1537,7 @@ fn tmux_origin_for_sid(
     sid: &str,
 ) -> Option<String> {
     for (origin, raw) in by_origin {
-        if crate::tmux::parse_tmux_ls(raw)
+        if crate::backend::control::tmux::parse_tmux_ls(raw)
             .iter()
             .any(|s| s.sid.as_deref() == Some(sid))
         {
@@ -3663,7 +3663,7 @@ async fn stream_loop(
                 let sid = {
                     let reg = tmux_raw_registry().lock().unwrap();
                     reg.get(&host_label).and_then(|raw| {
-                        crate::tmux::parse_tmux_ls(raw)
+                        crate::backend::control::tmux::parse_tmux_ls(raw)
                             .into_iter()
                             .find(|e| e.name == name)
                             .and_then(|e| e.sid)
@@ -3730,10 +3730,13 @@ async fn stream_loop(
                 // 因为 `U3` 要的是「让这个数变得可测」，而区间对 `#82`（控制模式值不值得做）
                 // 更直接：它回答的是「不可观测**持续了多久**」。
                 // **别把本件读成「频率已经可测了」。**
-                let verdict = crate::tmux::classify_tmux_observation(&raw, observation.as_deref());
+                let verdict = crate::backend::control::tmux::classify_tmux_observation(
+                    &raw,
+                    observation.as_deref(),
+                );
                 let kind = match &verdict {
-                    crate::tmux::TmuxObservation::Backend(_) => "backend",
-                    crate::tmux::TmuxObservation::Skip(r) => r.as_str(),
+                    crate::backend::control::tmux::TmuxObservation::Backend(_) => "backend",
+                    crate::backend::control::tmux::TmuxObservation::Skip(r) => r.as_str(),
                 };
                 if last_observation_kind.as_deref() != Some(kind) {
                     tracing::info!(
@@ -3742,7 +3745,7 @@ async fn stream_loop(
                     );
                     last_observation_kind = Some(kind.to_string());
                 }
-                if let crate::tmux::TmuxObservation::Backend(backend) = verdict {
+                if let crate::backend::control::tmux::TmuxObservation::Backend(backend) = verdict {
                     let idle = snapshot_idle_for_origin(&host_label);
                     let tracked = reaper_tracked(announced.keys().cloned(), &idle);
                     // idle 集当 pre_bound 传入：@ccm_sid 证明绑过 tmux，播种 ever_bound，免跨线程

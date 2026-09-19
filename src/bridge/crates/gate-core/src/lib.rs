@@ -5,7 +5,7 @@
 //! 这道门挡的是「往一个不是本工具管理的 tmux 会话里打字 / 把它杀掉」。
 //! 在 F03 之前它**只活在 monitor 一侧**，而且被拆成了两半、两种语言：
 //!
-//! - 本地半支：`src/bridge/src/tmux.rs` 里一个私有的 `is_ccm_tmux_name`；
+//! - 本地半支：`src/bridge/src/backend/control/tmux.rs` 里一个私有的 `is_ccm_tmux_name`；
 //! - 远端半支：backend `control/gate.rs::probe` 取回的 `@ccm_sid`，由 `admit` 判。
 //!   ⚠ `K-R72`（09-12）之前这里还有第二份：monitor 侧 `build_guarded_tmux_cmd` 拼出来的
 //!   **shell 串**里那句 `[ -n "$sid" ]`。那条路（送键与杀会话的桌面侧 SSH 回落）已经删了，
