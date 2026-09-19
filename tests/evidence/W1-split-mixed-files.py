@@ -148,6 +148,34 @@ def find_blocks(text: str):
     return out
 
 
+# ───────────────── `include_str!` 一族：路径跟着**声明它的文件**走 ─────────────────
+# `设计/16 §5.4a` 那三条人群规则：`include_str!` 与 `include_bytes!` 是同一个人群
+# （按语义划，不按宏名）；路径也住在 `#[path]` 里。测试体一搬家，这些**相对**字面量
+# 全部指空 —— 而它们不是静默失效，是编不过（`§5.4a` 表里第 2 行同一形）。
+PATHLIT = re.compile(r'((?:include_str|include_bytes)!\s*\(\s*|#\[path = )"([^"\\\n]*)"')
+
+
+def retarget(text: str, from_rel: str, to_rel: str):
+    """把 text 里所有**相对**的 include 路径，从「相对 from_rel」改写成「相对 to_rel」。
+
+    绝对路径与带转义的字面量不碰。返回 (新文本, 改写处数)。
+    """
+    a = os.path.dirname(os.path.join(REPO, from_rel))
+    b = os.path.dirname(os.path.join(REPO, to_rel))
+    n = 0
+
+    def sub(m):
+        nonlocal n
+        lit = m.group(2)
+        if not lit or lit.startswith("/"):
+            return m.group(0)
+        new = os.path.relpath(os.path.normpath(os.path.join(a, lit)), b).replace(os.sep, "/")
+        n += 1
+        return f'{m.group(1)}"{new}"'
+
+    return PATHLIT.sub(sub, text), n
+
+
 # ───────────────────────── 缩进：去一层 / 还原一层，必须可逆 ─────────────────────────
 def dedent(body_lines):
     """去掉一层（4 空格）缩进。
@@ -234,7 +262,8 @@ def split_file(src_rel: str):
         if reindent(ded) != body:
             return None, None, f"mod {name}：去缩进→还原缩进不是恒等（逐字节对账失败）"
         dest = dest_for(src_rel, name, single)
-        moved.append((dest, "\n".join(ded)))
+        body, _ = retarget("\n".join(ded), src_rel, dest)
+        moved.append((dest, body))
         new_lines.extend(lines[attr_start:mod_line])  # #[cfg(test)] 与其它属性行
         new_lines.append(f'#[path = "{rel_up(src_rel, dest)}"]')
         new_lines.append(re.sub(r"\s*\{\s*$", ";", lines[mod_line]))
@@ -269,7 +298,8 @@ def verify(src_rel: str, new_src: str, moved) -> str:
                 if m and dest in body_of:
                     out.extend(lines[i:j])
                     out.append(m.group(1) + " {")
-                    out.extend(reindent(body_of[dest].split("\n")))
+                    back, _ = retarget(body_of[dest], dest, src_rel)
+                    out.extend(reindent(back.split("\n")))
                     out.append("}")
                     i = j + 2
                     continue
