@@ -43,12 +43,24 @@
   /* Batch11-F33：竖直 tab 栏。原顶部 36px 横栏 tab 多了会滑到右上角 🕐/⚙ 图标
      底下被压住；改左侧竖栏后 tab 纵向生长永不重叠，消息流列在剩余空间里居中
      （左右空白自动对称）。宽度由 --tab-bar-w 驱动（拖拽调宽 + localStorage 记忆）。 */
+  /* 🔴 S24：多出来的 `archive` 那一行是**给归档抽屉认领的格子**，不是装饰。
+     病史：`TabManager.ensureArchiveUi()`（`tabs.ts`）把 `.tab-archive` 插成 `#tab-bar`
+     的兄弟 ⇒ 它是 `#app` 的 in-flow 直接子元素；而它从来没写过 `grid-area`/`position`
+     ⇒ **一个没认领格子的 grid item**，浏览器只好给它开一条**隐式行**。
+     真引擎实测（Chromium 153，900×700）：插进去之后 `#app` 的 `grid-template-rows`
+     从 `676px 24px` 变成 `641px 24px 35px` ⇒ ① `#message-stream` 被偷 35px；
+     ② 抽屉画在 y=665，**在状态栏下面**。读数见 `tests/evidence/S24-css-readings.md`。
+     ⇒ `main` 跨 `tabs`/`archive` 两行：抽屉开多高，消息流的高度都**一个像素不变**
+       （被让出高度的是 tab 栏自己，它本来就 `overflow-y:auto`）。
+     ⚠ 这条模板与 `tests/app-grid-claims.vitest.ts` 绑着：`#app` 的每个 in-flow 直接
+       子元素都必须认领一个**本模板里声明过的**具名区域，否则那条判据当场红。 */
   display: grid;
   grid-template-areas:
     "tabs main"
+    "archive main"
     "status status";
   grid-template-columns: auto minmax(0, 1fr);
-  grid-template-rows: minmax(0, 1fr) 24px;
+  grid-template-rows: minmax(0, 1fr) auto 24px;
   height: 100vh;
   position: relative;
 }
@@ -79,7 +91,13 @@ body.viewer-mode #app {
 body.viewer-mode .viewer-topbar {
   grid-area: top;
 }
+/* 🔴 S24：`.tab-archive` 也要在这张单子里。viewer 窗口**照样 new 一个 TabManager**
+   （`main.ts` bootstrapViewer），所以抽屉在这里也会被插进 `#app` —— 而 viewer 的模板
+   只有 `top/main/status` 三行、没有 `archive`。实测（改前）：viewer 里插进抽屉，
+   `grid-template-rows` 从 `auto 644px 24px` 变成 `auto 511px 24px 133px`，
+   消息流被偷 133px。tab 栏在 viewer 里本就 `display:none`，抽屉是它的附属 ⇒ 一起藏。 */
 body.viewer-mode #tab-bar,
+body.viewer-mode .tab-archive,
 body.viewer-mode #tab-bar-resizer,
 body.viewer-mode .settings-trigger,
 body.viewer-mode .history-trigger,
@@ -246,40 +264,62 @@ body.viewer-mode .grid-monitor-trigger {
   pointer-events: none;
 }
 
-/* F33：窄窗折叠成图标条（JS 按窗宽挂 body 类）——只剩状态灯，悬停有原生 title */
-body.tabbar-collapsed #tab-bar {
-  width: 44px;
-}
-body.tabbar-collapsed #tab-bar-resizer {
-  display: none;
-}
-body.tabbar-collapsed .tab {
-  justify-content: center;
-  padding: 0 4px;
-}
-body.tabbar-collapsed .tab .tab-title,
-body.tabbar-collapsed .tab .tab-badge,
-body.tabbar-collapsed .tab .tab-cwd,
-body.tabbar-collapsed .tab .tab-focus,
-body.tabbar-collapsed .tab .tab-close {
-  /* S21 步 8：`!important` 已摘 —— 特异度 (0,3,1) 本来就压得过后面那条
-     `.tab-close, .tab-focus, .tab-cwd { display: inline-flex }` (0,1,0)。
-     死值验：两个真引擎里摘掉 `!important` 前后 computed 逐格相同（读数见
-     `tests/evidence/S21-css-readings.md` §步8）。 */
-  display: none;
-}
-body.tabbar-collapsed .tab.tab-bg::before {
-  position: static;
-  margin-right: 2px;
-}
-/* 折叠态归档 tab 只剩空行（常态下灯被隐藏、靠斜体标题辨认）→ 给灰点当占位标识 */
-body.tabbar-collapsed .tab.archived .live-dot {
-  display: block;
-  background: var(--text-faint);
-}
-/* 折叠态未读徽标（99+ 数字）没了 → 用灯外圈光环代偿 */
-body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+/* F33：窄窗折叠成图标条——只剩状态灯，悬停有原生 title。
+   内容列 780px + 栏 + 呼吸空间放不下 ⇒ 980px 以下折叠。
+ *
+ * 🔴 S24（= `设计/40 §7` 步 5）：断点从 JS 搬进 CSS。
+ * 改前是 `main.ts` 一个 `resize` 监听按 `innerWidth < 980` 往 body 上挂
+ * `.tabbar-collapsed`，而这里的规则再读那个类 —— 一个纯视觉断点绕了一圈 JS，
+ * 代价是「窄窗启动先闪一下宽栏才折叠」。那个类现打**只被写、从没被读**
+ * （全仓唯一读者就是本段 CSS）⇒ 删监听 + 媒体查询是等价替换。
+ *
+ * ⚠ **为什么前缀是 `body:not(.viewer-mode)` 而不是干脆去掉**（踩过的坑，别改回去）：
+ * 去掉 `body.tabbar-collapsed` 会让每条选择器**少一个类**，而下面三条靠那一个类
+ * 才压得过后文同族规则 —— `.tab`（本文件 `.tab{}` 在更后面）、
+ * `.tab.tab-bg::before`（同特异度、在更后面）、`.tab.archived .live-dot`
+ * （`.tab.act-idle .live-dot` 同特异度、在更后面）⇒ 直接去掉会让这三条**当场失效**。
+ * `:not(.viewer-mode)` 同样算一个类 ⇒ 特异度逐条与改前**完全相同**；
+ * 而语义上也正好：viewer 窗口里 `#tab-bar` 本就 `display:none`，折叠样式是空跑。
+ * 死值验（两个真引擎 × 7 格 computed，改前「挂类/不挂类」5 格有差异）见
+ * `tests/evidence/S24-css-readings.md` §步5。 */
+@media (width < 980px) {
+  body:not(.viewer-mode) #tab-bar {
+    width: 44px;
+  }
+  body:not(.viewer-mode) .tab-archive {
+    width: 44px;
+  }
+  body:not(.viewer-mode) #tab-bar-resizer {
+    display: none;
+  }
+  body:not(.viewer-mode) .tab {
+    justify-content: center;
+    padding: 0 4px;
+  }
+  body:not(.viewer-mode) .tab .tab-title,
+  body:not(.viewer-mode) .tab .tab-badge,
+  body:not(.viewer-mode) .tab .tab-cwd,
+  body:not(.viewer-mode) .tab .tab-focus,
+  body:not(.viewer-mode) .tab .tab-close {
+    /* S21 步 8：`!important` 已摘 —— 特异度 (0,3,1) 本来就压得过后面那条
+       `.tab-close, .tab-focus, .tab-cwd { display: inline-flex }` (0,1,0)。
+       死值验：两个真引擎里摘掉 `!important` 前后 computed 逐格相同（读数见
+       `tests/evidence/S21-css-readings.md` §步8）。 */
+    display: none;
+  }
+  body:not(.viewer-mode) .tab.tab-bg::before {
+    position: static;
+    margin-right: 2px;
+  }
+  /* 折叠态归档 tab 只剩空行（常态下灯被隐藏、靠斜体标题辨认）→ 给灰点当占位标识 */
+  body:not(.viewer-mode) .tab.archived .live-dot {
+    display: block;
+    background: var(--text-faint);
+  }
+  /* 折叠态未读徽标（99+ 数字）没了 → 用灯外圈光环代偿 */
+  body:not(.viewer-mode) .tab.has-unread:not(.active) .live-dot {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent);
+  }
 }
 
 /* 设置入口 */
@@ -1080,7 +1120,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   font-family: var(--font-mono, monospace);
   font-size: var(--font-size-xs);
   color: var(--text-2);
-  background: var(--bg-1, #1e1a16);
+  background: var(--field-bg);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 6px 8px;
@@ -2405,7 +2445,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
   border: 1px solid var(--border, #3a342e);
   border-bottom-width: 2px;
   border-radius: 4px;
-  background: var(--bg-1, #1e1a16);
+  background: var(--field-bg);
   color: var(--text-2);
 }
 
@@ -2438,7 +2478,7 @@ body.tabbar-collapsed .tab.has-unread:not(.active) .live-dot {
 .status-first-run-open:hover,
 .status-first-run-dismiss:hover {
   color: var(--text, #d6cfc6);
-  background: var(--bg-1, #1e1a16);
+  background: var(--field-bg);
 }
 .status-first-run-dismiss {
   padding: 1px 6px;
@@ -4990,11 +5030,22 @@ body.settings-window-mode .grid-monitor-trigger {
   border-radius: 3px;
   overflow: hidden;
 }
+/* 🔴 S24（= `设计/40 §7` 步 7）：进度靠 `transform: scaleX()`，不再逐帧改 `width`。
+   改前 `transition: width` 是全文**唯一**一条动非合成属性的 transition（`设计/41` 件 9
+   那张白名单里唯一的违例）⇒ 传输期间每帧整条 flex 行重排。
+   ⚠ CSS 与 `sftp/panel.ts` 必须**同拍**改：进度值是 JS 写内联样式推的。
+   死值验（Chromium 153，400px 轨道）：
+     · 改后 CSS + 旧写法 `style.width="40%"`  ⇒ 填充盒 **0px**（进度条完全不动）
+     · 改前 CSS + 新写法 `style.transform=…` ⇒ 填充盒 **0px**（同样不动）
+     · 两边同拍                               ⇒ **160px** = 40%，与改前逐位相同
+   读数见 `tests/evidence/S24-css-readings.md` §步7。 */
 .sftp-bar-fill {
   height: 100%;
-  width: 0;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
   background: var(--accent, #4a9);
-  transition: width 0.15s linear;
+  transition: transform 0.15s linear;
 }
 .sftp-transfer-pct {
   font-variant-numeric: tabular-nums;
@@ -5748,7 +5799,7 @@ body.settings-window-mode .grid-monitor-trigger {
   box-sizing: border-box;
   min-height: 2.2em;
   padding: 6px 8px;
-  background: var(--bg-1);
+  background: var(--field-bg);
   color: var(--text);
   border: 1px solid var(--border);
   border-radius: 4px;
@@ -5940,7 +5991,7 @@ body.settings-window-mode .grid-monitor-trigger {
   min-width: 220px;
   max-width: 360px;
   padding: 4px;
-  background: var(--bg-1, #1c1a17);
+  background: var(--field-bg);
   border: 1px solid var(--border-strong, #55493c);
   border-radius: 8px;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
@@ -6602,7 +6653,7 @@ body.settings-window-mode .grid-monitor-trigger {
 .accounts-wiz-preview {
   margin: 0;
   padding: 8px 10px;
-  background: var(--bg-1, #1c1a17);
+  background: var(--field-bg);
   border: 1px solid var(--border, #3a342e);
   border-radius: 4px;
   font-family: ui-monospace, monospace;
@@ -6898,11 +6949,35 @@ body.settings-window-mode .grid-monitor-trigger {
 /* P7a-1（#61）：独立归档区。灰 tab 从主栏挪进这里，要用时点开捞回来。
    ⚠ 归档区是 #tab-bar 的**兄弟**（TabManager 自己插的），不是它的子元素 ——
    主栏那条 tear-off 判定线（barEl 的右边界）对它没有意义，故抽屉里的 tab 不挂拖拽。 */
+/* 🔴 S24 止血（三条，逐条都有真引擎读数，见 `tests/evidence/S24-css-readings.md`）：
+   ① `grid-area: archive` —— 认领 `#app` 模板里那条具名行。不认领就开隐式行，
+      后果是「偷消息流 35px + 画到状态栏下面」。
+   ② `width: var(--tab-bar-w)` —— `tabs`/`archive` 那一列是 `auto`（intrinsic），
+      列宽取该列所有 item 的 max-content。抽屉里是会话标题，**实测 3 个归档 tab 就把
+      整列从 150px 撑到 296px**，消息流跟着右移、变窄。抽屉是 tab 栏的附属，
+      宽度就该跟着 `--tab-bar-w`（`#tab-bar-resizer` 的 `left` 也是这么跟的）。
+   ③ `max-height` + `overflow-y` —— `archive` 行是 `auto`，不封顶的话抽屉能把
+      `minmax(0,1fr)` 那行（tab 栏）压到 0。封顶后最坏情况是抽屉自己出滚动条。
+   ⚠ 这一刀**只治「偷高度 + 画错地方」**。归档这个概念整个怎么处置归 `设计/99` 步 17
+     （`设计/30` 三刀），别在这里顺手重做交互。 */
 .tab-archive {
+  grid-area: archive;
+  width: var(--tab-bar-w, 150px);
+  max-height: 40vh;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 4px;
   padding: 2px 6px 6px;
+}
+/* 🔴 S24：`tabs.ts` 现打写着 `archiveWrap.hidden = archived === 0`（逐字注释：
+   「一条都没有就整块不显：一个空抽屉只会占地方」），但上面那条 `display: flex`
+   是**作者层**的，压过 UA 的 `[hidden]{display:none}` ⇒ 那句 `hidden` 一直是空写。
+   实测：0 个归档会话时抽屉照样占 35px。这正是 `styles/tokens.css` 抬头那条
+   「不参与布局用 `hidden` 属性、CSS 里禁止对这些元素写 `display`」要防的形状；
+   既然 `display` 这里必须写，就得把 `[hidden]` 显式补回来。 */
+.tab-archive[hidden] {
+  display: none;
 }
 .tab-archive-toggle {
   align-self: flex-start;
