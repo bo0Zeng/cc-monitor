@@ -243,8 +243,11 @@ describe("秤 3 · 三个细条卡型不再落 CSS 的 120px 兜底", () => {
       const relErr = Math.abs((est as number) - trueH) / trueH;
       // ⚠ 这里比的是「常数 vs 手算」,**不是**「常数 vs 真实布局高度」——后者是秤 2 的活
       //   (`tests/scale2-height-truth.vitest.ts`,真浏览器金标准,2026-09-18 已落地)。
-      // ⚠ 也**不是**「落地值 vs 真高」:`applyIntrinsicSize` 的 `Math.max(24,…)` 地板会把
-      //   这两个数一律顶成 24 ⇒ 真正写进 style 的仍是 24。那一格的读数在秤 2 里。
+      // ⚠ 也**不是**「落地值 vs 真高」——那一格的读数在秤 2 里。
+      //   🔴 〔2026-09-18 订正〕原文写着「`Math.max(24,…)` 地板会把这两个数一律顶成 24
+      //   ⇒ 真正写进 style 的仍是 24」。**那个地板已经整个去掉了**（`99` 条 75 /
+      //   `设计/17` 订正④）⇒ 今天 17/19 **原样出货**，落地值就是 `round(估值)`。
+      //   判据本体不受影响（它比的是「常数 vs 手算」），但这句话不改就是一条会骗人的散文。
       expect(relErr, `${el.className} est=${est} hand-calc=${trueH.toFixed(1)}`).toBeLessThan(0.2);
     }
   });

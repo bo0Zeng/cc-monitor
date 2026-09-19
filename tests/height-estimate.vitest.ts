@@ -130,7 +130,8 @@ describe("estimateStreamNodeHeight", () => {
     // 19 = 12px(--font-size-small) × 1.55 的 **content-box** 值(秤 2 的 B 段实测
     // `contain-intrinsic-size` 吃 content-box;原来的 34 是按 border-box 手算的,
     // 多了一份 padding 6×2 ⇒ p90 相对误差 82.9%)。
-    // ⚠ `applyIntrinsicSize` 的 24px 地板会把 19 顶成 24,写进 style 的是 24。
+    // ⚠ 2026-09-18 之前 `applyIntrinsicSize` 的 24px 地板会把 19 顶成 24(写进 style 的是 24);
+    //   地板已按 `99 条 75` / `设计/17 订正④` 去掉 ⇒ 现在 19 原样出货,见下面那个 describe。
     expect(estimateStreamNodeHeight(slash)).toBe(19);
   });
   it("认不出的形态返回 null(CSS 兜底接管)", () => {
@@ -141,14 +142,35 @@ describe("estimateStreamNodeHeight", () => {
 });
 
 describe("applyIntrinsicSize(F39 复用的契约面)", () => {
-  it("写入格式 auto <N>px、四舍五入、24px 下限", () => {
+  it("写入格式 auto <N>px、四舍五入、**不夹取**(地板已去掉)", () => {
     const el = document.createElement("div");
     el.className = "card card-user";
     el.innerHTML = '<div class="card-body">hi</div>';
     applyIntrinsicSize(el);
     const v = el.style.getPropertyValue("contain-intrinsic-size");
     expect(v).toMatch(/^auto \d+px$/);
-    expect(parseInt(v.slice(5), 10)).toBeGreaterThanOrEqual(24);
+    // 🔴 这一条 2026-09-18 之前断的是 `>= 24`(`applyIntrinsicSize` 里那个 `Math.max(24, …)` 地板)。
+    //   地板已整个去掉(`99 条 75` / `设计/17 订正④`,读数 `tests/evidence/S22-floor-readings.md`):
+    //   它防的两件事都是空集(0 不可达、负值写不出来且浏览器自己会拒),而它让 13/83 张卡虚高,
+    //   300 张细条卡的风暴里总高虚高 +20.5%/+23.8%。保险职责搬到判据层 ——
+    //   秤 2 的 **F1**「每 class 估值最小值 ≥ 登记常数」会红,`Math.max` 只会静默抹平。
+    //   ⇒ 这里从"断一个下限"改成"断**没有**下限":写进去的必须逐位 = round(估值)。
+    expect(v).toBe(`auto ${Math.round(estimateStreamNodeHeight(el) as number)}px`);
+    // 这张卡的估值是 21.7(LH_BASE = 14 × 1.55)⇒ 落地 22;旧地板下会被顶成 24
+    expect(v).toBe("auto 22px");
+  });
+
+  it("**低于旧地板 24 的估值原样出货**(地板去掉之后这一条才成立)", () => {
+    for (const [cls, expected] of [
+      ["card card-api-retry", "auto 17px"], // 常数 17,旧地板下写的是 24
+      ["card card-slash", "auto 19px"], //    常数 19,旧地板下写的是 24
+      ["card card-bash-input", "auto 19px"], // 常数 19,旧地板下写的是 24
+    ] as const) {
+      const el = document.createElement("div");
+      el.className = cls;
+      applyIntrinsicSize(el);
+      expect(el.style.getPropertyValue("contain-intrinsic-size"), cls).toBe(expected);
+    }
   });
   it("估不出(null)时不写 style", () => {
     const el = document.createElement("div");
