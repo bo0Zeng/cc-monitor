@@ -113,7 +113,7 @@ pub(crate) fn reads_stdin(spec: &CommandSpec) -> bool {
 
 /// 本入口认不认这个 flag。`main` 的分派臂只问它，**不写命令字面量** ——
 /// 于是「帧面加一条命令」不需要回来改 `main`。
-pub(crate) fn handles(flag: &str) -> bool {
+pub fn handles(flag: &str) -> bool {
     flag == PROBE_FLAG || spec_for(flag).is_some()
 }
 
@@ -143,7 +143,7 @@ fn probe() -> i32 {
 }
 
 /// CLI 控制面的一次性入口。返回进程退出码。
-pub(crate) async fn run(args: &[String]) -> i32 {
+pub async fn run(args: &[String]) -> i32 {
     let flag = args.first().map(String::as_str).unwrap_or_default();
     if flag == PROBE_FLAG {
         return probe();

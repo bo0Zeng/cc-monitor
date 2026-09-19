@@ -353,7 +353,7 @@ pub(crate) enum Run {
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) struct CommandSpec {
     /// 线上命令名。
-    pub(crate) name: &'static str,
+    pub name: &'static str,
     /// 它在 `src/doc/IPC-PROTOCOL.md` §10 里那一小节的标题**逐字**；`None` = 没有自己的小节
     /// （只要求名字出现在「入方向」节里）。**有 `fields` 就必须有小节** —— 由机检钉住。
     ///
@@ -362,7 +362,7 @@ pub(crate) struct CommandSpec {
     /// （从「§10 全节任意反引号」收到「本命令那一小节」），强度只升不降。
     pub(crate) doc_anchor: Option<&'static str>,
     /// 本命令**自己**可能回的 code。**协议级 code 不许出现在这里**（由 R4 的零命中钉住）。
-    pub(crate) codes: &'static [&'static str],
+    pub codes: &'static [&'static str],
     /// 本命令 `args` / `data` 的字段名。空 = 无载荷（如 `ping`）。
     ///
     /// ⚠ 它是**手写镜子**，本身就是一个新的漂移源 —— 所以必须再钉一层：
@@ -393,7 +393,7 @@ pub(crate) struct CommandSpec {
 }
 
 /// **单一事实源。** `COMMANDS` 是它的镜子，`dispatch` 从它查。
-pub(crate) const REGISTRY: &[CommandSpec] = &[
+pub const REGISTRY: &[CommandSpec] = &[
     // P4f：cc-bus 的两条基础命令。**转调本机的 cc-bus 命令**，不在后端里重实现总线
     //（用户 08-13 逐字：「细节先按原本的就行」「后面我可能要改ccbus」）。
     // ⚠ 刻意**没有** `bus-recv`：`cc-recv` 会推进已读位置，backend 代读等于把消息从人那里

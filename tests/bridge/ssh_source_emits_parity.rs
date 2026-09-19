@@ -1,10 +1,15 @@
-/// backend `main.rs` 的 `EMITS` 常量（编译期内嵌后端源码，同 `build_id` 那套单源思路）。
-const BACKEND_MAIN: &str = include_str!("../../src/backend/main.rs");
+/// backend `lib.rs` 的 `EMITS` 常量（编译期内嵌后端源码，同 `build_id` 那套单源思路）。
+///
+/// 🔴 〔步 9 · 09-19〕住址从 `main.rs` 改成 `lib.rs` —— `EMITS` / `CAPABILITIES` /
+/// `BUILD_ID` 这一族按 `设计/00 §1.5.4` 前置 1、2 搬进了后端库面（in-process 那条路
+/// **没有那个 `main.rs`**）。⚠ 下面那句 `expect` 的文案一起改，否则它报的是一个
+/// **今天不存在的文件名**，下一个人会照着它去错的地方找。
+const BACKEND_MAIN: &str = include_str!("../../src/backend/lib.rs");
 
 fn backend_emits() -> Vec<String> {
     let i = BACKEND_MAIN
         .find("const EMITS")
-        .expect("backend main.rs 里找不到 EMITS —— 抽取坏了，本断言在空转");
+        .expect("backend lib.rs 里找不到 EMITS —— 抽取坏了，本断言在空转");
     let j = BACKEND_MAIN[i..]
         .find("];")
         .map(|k| i + k)

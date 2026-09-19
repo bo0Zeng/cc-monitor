@@ -76,6 +76,13 @@
 /// 所以下面 `dispatch_registry_is_complete` 会**反向核对**这份名单没漏文件。
 const DISPATCH_FILES: &[(&str, &str)] = &[
     ("main.rs", include_str!("../../src/backend/main.rs")),
+    // 🔴 〔步 9 · 09-19〕`lib.rs`：`SUBCOMMANDS` 那张表按 `设计/00 §1.5.4` 前置 1
+    //    搬进了库面 ⇒ 按本名单的口径（「生产段里出现 `"--`」）它现在就是一份。
+    //    ⚠ **不是我判断它该进来，是下面 `dispatch_registry_is_complete` 自己算出来的** ——
+    //      搬家当天它逐字报「左边多了 `lib.rs`」。本条登记的就是它算出的那个答案。
+    //    ⚠ 漏登它的后果逐字写在本名单头注里：那份文件里的 `--子命令` **全部不受
+    //      IPC-PROTOCOL.md 对拍约束**，而对拍判据照常报绿。
+    ("lib.rs", include_str!("../../src/backend/lib.rs")),
     // P4f：`control/cc_bus.rs` 里有一个 `"--"` 字面量（调 `cc-send` 时显式结束旗标，
     // 免得收件人以 `--` 开头被当成选项）。派生的文件集按「生产段里出现 `"--`」收人，
     // 于是把它扫了进来 —— 那条判据自己写着「宁可多登记几个文件」。登记，不改判据。
@@ -1131,7 +1138,9 @@ mod tests {
         );
 
         // 从 main.rs 生产段抠 `const EMITS: &[&str] = &[ "a", "b", … ];`
-        let prod = guard_core::production_code(include_str!("../../src/backend/main.rs"));
+        // 〔步 9 · 09-19〕`EMITS` 已搬进 `lib.rs` ⇒ 扫描面取**两份的全集**
+        //（住址只有一处：`guard_support::backend_root_source`，理由见那函数头注）。
+        let prod = guard_core::production_code(&crate::guard_support::backend_root_source());
         let start = prod
             .find("const EMITS")
             .expect("找不到 `const EMITS` —— 抽取器坏了，本条会零命中地绿");

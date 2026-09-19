@@ -78,7 +78,7 @@
 //!   本 crate 的零定时器护栏**一个字都看不见**（那条判据的主语是「backend 自己的源码」，
 //!   不是「backend + 它起的插件」这个整体）。
 
-pub(crate) mod discover;
+pub mod discover;
 pub(crate) mod invoke;
 
 // ⚠ 今天零生产调用方 —— 理由与射程见本模块头注最后那一节。

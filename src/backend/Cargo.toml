@@ -34,6 +34,14 @@ edition = "2021"
 # 不影响部署。由 monitor 侧 `cross_half_edge_registry` 逐条登记 + 钉住
 # 「一条都不许长到生产段」（真长过去，上面那句 standalone 就变假了）。
 
+# 🔴 〔步 9 · 09-19〕库面。`设计/00 §1.5.4` 前置 1：目标是「`backend-core` 一份，
+#    两个宿主 link 同一份」——本机 GUI 进程内跑它，远端走下面那个薄 `main` 壳。
+#    在这之前本 crate 只有 `[[bin]]`，模块全是 bin 私有的 ⇒ **没有任何东西能 link 它**。
+# ⚠ crate 名用下划线（Rust 标识符），产物名保持连字符 —— 两者不是一回事。
+[lib]
+name = "cc_monitor_backend"
+path = "lib.rs"
+
 [[bin]]
 name = "cc-monitor-backend"
 path = "main.rs"

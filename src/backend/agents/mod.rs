@@ -69,7 +69,7 @@
 use crate::wire::AgentHome;
 use std::path::{Path, PathBuf};
 
-pub(crate) mod claudecode;
+pub mod claudecode;
 pub(crate) mod codex;
 
 /// 〔`S6`〕**夹具家** —— 本区验收件的最小假 agent。

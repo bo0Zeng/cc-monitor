@@ -162,7 +162,7 @@ pub const REFUSE_AUTH: &str = "bad-token";
 pub const REFUSE_MALFORMED: &str = "malformed-attach";
 
 /// backend 这次跑成什么形态。**由环境决定，不由 argv 决定** ——
-/// argv 那张表（`main.rs::SUBCOMMANDS`）一动就要 bump `BUILD_ID` 并改
+/// argv 那张表（`lib.rs::SUBCOMMANDS`）一动就要 bump `BUILD_ID` 并改
 /// `IPC-PROTOCOL.md` 的对拍面，而本件没有新增任何**子命令**：
 /// 它换的是**同一个流模式的载体**，不是新增一条命令。
 #[derive(Debug, Clone, PartialEq, Eq)]

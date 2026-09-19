@@ -589,7 +589,7 @@ Batch8-F25/26 起（p1f 后端 + tail-only）：后端连接时把各文件 seq 
 
 - **kind 缺失恒视为交互**（旧 CC 兼容），双端一字一致。
 - **bg 门在数据层生效**（本地 scan_dir 过滤 / 远端后端 `--with-bg` 参数），不是前端隐藏——关掉 = bg 数据完全不流（省带宽与 buffer，bg 历史可达 10MB+）。开（默认）= bg 建 Tab 带 ⚙ + 树状挂同 (cwd, origin) 交互宿主后。
-- **后端任何新增流模式 flag 必须在一次性查询模式判定之前从 args 剥离**（`main.rs::split_stream_flags` 先 `retain` 再判 `!args.is_empty()`）——否则 flag 落进 query 分支，后端打印查询结果退出，monitor 无 hello 死循环。既有实例：`--with-bg`（F24）、`--tail-only`（Batch8-F25）。
+- **后端任何新增流模式 flag 必须在一次性查询模式判定之前从 args 剥离**（`lib.rs::split_stream_flags` 先 `retain` 再判 `!args.is_empty()`）——否则 flag 落进 query 分支，后端打印查询结果退出，monitor 无 hello 死循环。既有实例：`--with-bg`（F24）、`--tail-only`（Batch8-F25）。
 - **monitor 只对「声明了对应能力」的后端发该 flag**（F66/#58③ 起，**取代**原来的「build_id 精确匹配」门控）：后端在 hello 帧自报 `capabilities` token 集，monitor 按声明发 flag。**护栏靠「声明 ⟹ 会剥离」成立**——只有会先 `split_stream_flags` 剥离某 flag 的后端才声明对应能力（老到不剥离未知 flag 的后端也老到不声明）。这条约定**由 `every_capability_token_is_strippable` 测试代码强制**（后端侧）：`CAPABILITIES` 每个 token 的 flag 必须被 `split_stream_flags` 剥离，否则测试红。**加新能力 token = 同时加剥离分支**，不然埋死循环。
   - **能力 ≠ 身份（两轴正交，呼应 §28）**：`build_id`（身份，SS-B 单源）管 staleness / 重部署提示；`capabilities`（能力，加法式）管发什么 flag；`v`（proto version）只留破坏性变更（F66 **绝不 bump**）。**2026-07-09 事故的根因正是把「能干什么」错编码成「是不是那个精确构建」**——身份链一环断（发布流水线漏拷清单）就全能力静默关。F66 拆开三者：能力由后端自报，即使身份确认不了也照开。**新原则：绝不用身份匹配代理能力声明。**
 

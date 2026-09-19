@@ -262,7 +262,11 @@ jobs:
             Copy-Item $f.FullName "src/bridge/embedded-backends/cc-monitor-backend-$a" -Force
             Write-Host ("embedded {0} ({1} bytes)" -f $a, $f.Length)
           }
-          $main = "src/backend/main.rs"
+          # 🔴 〔步 9 · 09-19〕从 main.rs 改成 lib.rs —— BUILD_ID 与身份戳界标已按
+          #    `设计/00 §1.5.4` 前置 2 搬进后端库面（in-process 那条路没有那个 main.rs）。
+          #    `src/bridge/build.rs::backend_lib_rs` 与本行是同一条住址，改一处就要改另一处；
+          #    `tests/backend/build_id_guard.rs` 那条判据钉着三处都指得到真东西。
+          $main = "src/backend/lib.rs"
           $src   = (Select-String -Path $main -Pattern 'const BUILD_ID: &str = "([^"]+)"').Matches[0].Groups[1].Value
           $open  = (Select-String -Path $main -Pattern 'const BUILD_STAMP_OPEN: &str = "([^"]+)"').Matches[0].Groups[1].Value
           $close = (Select-String -Path $main -Pattern 'const BUILD_STAMP_CLOSE: &str = "([^"]+)"').Matches[0].Groups[1].Value

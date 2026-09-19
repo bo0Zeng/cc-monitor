@@ -965,7 +965,7 @@ fn run_reading(
 /// 本函数今天**只剩一件事**：把「真取值器」与 `run_with` 接上。接线本身（哪个变量
 /// 喂给哪个位）住 `run_reading`，那里有判据钉着。**别往里加逻辑**：加进来的就又没判据了
 /// —— 本函数这一行今天是**判不了**的那一格，登记住址件文件 §8.18.3。
-pub(crate) fn run(home: &std::path::Path, _args: &[String]) -> i32 {
+pub fn run(home: &std::path::Path, _args: &[String]) -> i32 {
     run_reading(&|k| std::env::var(k).ok(), home, &run_with)
 }
 

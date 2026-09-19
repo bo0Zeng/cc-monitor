@@ -144,7 +144,7 @@ mod tests {
         // ⚠ **必须 bump**：中转是**新的进程形态**（常驻、只听回环、按路径前缀分流）。
         //   已部署的旧后端根本没有这个口，而 monitor/skill 判 stale 只看 build_id
         //   ⇒ 不 bump 就不重装，整件能力在已部署的远端休眠（p1r / p1t / G2 那三次的形状）。
-        // ★ 这一半是**源码半**。`main.rs::BUILD_ID` 那段头注逐字警告过另一半：
+        // ★ 这一半是**源码半**。`lib.rs::BUILD_ID` 那段头注逐字警告过另一半：
         //   「只 bump 源码不 re-embed = 源码 build_id 与内嵌清单不一致的**半 bump**，更糟」。
         //   本护栏对「半 bump」是瞎的 ⇒ re-embed 归发版那一拍（CI 交叉编译），本轮没做，
         //   已在件文件的「没做到」里点名。
@@ -162,7 +162,7 @@ mod tests {
         // 🔴 **这一行不许被读成「拨号搬出去了」**：`connect_session` 的生产调用点
         //   **7 处 / 3 份**，本件只覆盖后端长连接流那 **1** 处；
         //   SFTP · 端口转发 · 跳板 · 其余 exec 路径**界面仍然自己拨**。
-        // ★ 同 p2d：这一半是**源码半**，`main.rs::BUILD_ID` 头注警告的那个「半 bump」
+        // ★ 同 p2d：这一半是**源码半**，`lib.rs::BUILD_ID` 头注警告的那个「半 bump」
         //   （只 bump 源码不 re-embed）归发版那一拍（CI 交叉编译），本轮没做。
         //   ⚠ 而且本轮**连 musl 交叉编译都没验**（沙箱门禁不做交叉编译）——
         //   理由与读数住 `Cargo.toml` 里 `russh` 那条依赖的块头注。
@@ -631,17 +631,27 @@ mod tests {
              `0.0.0` 于是退回成一个**没人解释过的假值**，而下一个人看到它只会顺手改掉。"
         );
         // ── ③ 真身份的住址逐个还在 ─────────────────────────────────────────
-        let main_rs = include_str!("../../src/backend/main.rs");
-        let decls = main_rs
+        // 🔴 〔步 9 · 09-19〕住址从 `main.rs` 改成 `lib.rs` —— 身份按 `设计/00 §1.5.4`
+        //    前置 2 搬进库面（in-process 那条路没有那个 `main.rs`，身份会跟着它消失）。
+        // ⚠ 认的那一行现在是 `pub const BUILD_ID`（搬进库面时提了权）——
+        //    `starts_with("const BUILD_ID")` 会**一条都不命中**而本条当场空真，
+        //    所以下面按 `contains` 认，且**仍然要求恰好 1 处**。
+        let lib_rs = include_str!("../../src/backend/lib.rs");
+        let decls = lib_rs
             .lines()
-            .filter(|l| l.trim_start().starts_with("const BUILD_ID"))
+            .filter(|l| {
+                let t = l.trim_start();
+                t.starts_with("const BUILD_ID") || t.starts_with("pub const BUILD_ID")
+            })
             .count();
         assert_eq!(
             decls, 1,
-            "`main.rs` 里 `const BUILD_ID` 的声明有 {decls} 处（应当 1）—— \n\
-             ⚠ `src/bridge/build.rs::extract_build_id` 与 `release.yml` 两处都按\n\
-             「含 `const BUILD_ID` 的那一行」去抠它；0 处 ⇒ 抠出 `unknown`，\n\
-             多处 ⇒ 抠到哪一个看运气。"
+            "`lib.rs` 里 `const BUILD_ID` 的声明有 {decls} 处（应当 1）—— \n\
+             ⚠ `src/bridge/build.rs::backend_lib_rs` 与 `release.yml` 两处都按\n\
+             「含 `const BUILD_ID` 的那一行」去抠**这份文件**；0 处 ⇒ 抠出 `unknown`，\n\
+             多处 ⇒ 抠到哪一个看运气。\n\
+             ⚠ 把它搬回 `main.rs` 也会让本条红 —— 那是刻意的：in-process 那条路**没有\n\
+             那个 `main.rs`**，身份不能住在只有一个宿主看得见的地方。"
         );
         assert!(
             !super::super::BUILD_ID.is_empty(),

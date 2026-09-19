@@ -10,19 +10,31 @@ fn main() {
     tauri_build::build()
 }
 
-/// backend 源码的住址 —— 本文件里**四处**要它（build_id · capabilities · mtime · 内嵌校验）。
-/// 抽出来的理由与 `local_extract_name` 同族：四份手抄的路径迟早有一份被漏改。
-fn backend_main_rs() -> PathBuf {
+/// backend 源码里**装身份与声明的那一份**的住址 —— 本文件里五处要它
+/// （build_id · 身份戳界标 · capabilities · mtime · 内嵌校验）。
+/// 抽出来的理由与 `local_extract_name` 同族：五份手抄的路径迟早有一份被漏改。
+///
+/// 🔴 〔步 9 · 09-19〕**从 `main.rs` 改成 `lib.rs`。** `BUILD_ID` / `BUILD_STAMP_*` /
+/// `CAPABILITIES` 这一族已按 `设计/00 §1.5.4` 前置 2 搬进后端的库面 —— 理由是
+/// in-process 那条路**没有那个 `main.rs`**，身份会跟着它一起消失。
+/// ⚠ 本函数**没有回退到 `main.rs` 的分支**，这是刻意的：抠不到时上面那几个消费者
+/// 各自落到「`unknown` / 空界标」那一支并把失败逐字印出来，**比悄悄读到一份旧住址好**。
+fn backend_lib_rs() -> PathBuf {
     // build.rs 的 cwd 是本包根（`src/bridge/`）⇒ `..` 是 `src/`。
     // 2026-09-18：仓库重组把后端树从 `remote-daemon-proto/src/` 搬到 `src/backend/`，
     // 这一处漏改了（原为 `../src/backend/src/main.rs`，解出 `src/src/backend/src/main.rs`）。
     // 它没有当场现形，唯一的原因是**本包在本机从未编过** —— 装齐 Tauri 栈后头一次 check 就炸了。
+    Path::new("..").join("backend").join("lib.rs")
+}
+
+/// 分派那一半的住址。只有 mtime 那条安全网要它（改了分派，内嵌的二进制一样陈了）。
+fn backend_main_rs() -> PathBuf {
     Path::new("..").join("backend").join("main.rs")
 }
 
 /// backend 源码里那个 `const BUILD_ID`。**这是本机与远端两条内嵌路共用的期望值。**
 fn backend_source_build_id() -> Option<String> {
-    std::fs::read_to_string(backend_main_rs())
+    std::fs::read_to_string(backend_lib_rs())
         .ok()
         .and_then(|s| extract_build_id(&s))
 }
@@ -177,8 +189,11 @@ fn extract_backtick_after(text: &str, label: &str) -> Option<String> {
 /// env `BACKEND_BUILD_ID`，让 monitor 的 `EXPECTED_BACKEND_BUILD_ID` 与内嵌二进制的 build_id
 /// **单一事实源**（SS-B：消除 F06 时的手工同步）。
 fn emit_backend_build_id() {
-    let main_rs = backend_main_rs();
+    let main_rs = backend_lib_rs();
     println!("cargo:rerun-if-changed={}", main_rs.display());
+    // 🔴 〔步 9 · 09-19〕分派那一半也要登记 —— 否则改 `main.rs` 不触发重跑本 build 脚本，
+    //    上面那条 mtime 安全网拿到的是**缓存过的旧值**，它就不响了。
+    println!("cargo:rerun-if-changed={}", backend_main_rs().display());
     let build_id = std::fs::read_to_string(&main_rs)
         .ok()
         .and_then(|s| extract_build_id(&s))
@@ -222,7 +237,7 @@ fn extract_str_const(src: &str, name: &str) -> Option<String> {
 /// 抠不到时给一对**空串**：`bytes_build_id` 见空串直接答 `None`，于是内嵌路走
 /// 「扫不出身份」那一支并把这里的失败逐字印进 panic 文案（比静默用一个错界标去扫好）。
 fn backend_stamp_marks() -> (String, String) {
-    let src = std::fs::read_to_string(backend_main_rs()).unwrap_or_default();
+    let src = std::fs::read_to_string(backend_lib_rs()).unwrap_or_default();
     (
         extract_str_const(&src, "BUILD_STAMP_OPEN").unwrap_or_default(),
         extract_str_const(&src, "BUILD_STAMP_CLOSE").unwrap_or_default(),
@@ -294,7 +309,7 @@ fn file_build_id(p: &Path, open: &str, close: &str) -> Option<String> {
 /// backend 声明的能力**单一事实源**——同 build_id 的 SS-B，杜绝手工同步债（审计 B1/S1：
 /// 否则两份手抄常量漂移时，乐观路径可能声明当前后端不剥离的 flag → §26 死循环窄窗）。
 fn emit_backend_capabilities() {
-    let main_rs = backend_main_rs();
+    let main_rs = backend_lib_rs();
     // rerun-if-changed 已由 emit_backend_build_id 对同一文件登记，无需重复。
     let caps = std::fs::read_to_string(&main_rs)
         .ok()
@@ -347,9 +362,13 @@ fn embed_backends() {
     let dir = Path::new("embedded-backends");
     // staleness 安全网（审计 SUGGESTION-1）：backend 源码 mtime，用于提示「bump BUILD_ID 后
     // 忘了 re-zigbuild」——否则内嵌旧二进制 build_id 与源码不符 → 永不收敛的重复部署。
-    let src_mtime = std::fs::metadata(backend_main_rs())
-        .and_then(|m| m.modified())
-        .ok();
+    // 🔴 〔步 9 · 09-19〕**两份都看，取较新的那个。** 身份搬去了 `lib.rs`，而分派仍在
+    //    `main.rs` —— 只看一份，改另一份时这张安全网当场变瞎（而它是「bump 了 BUILD_ID
+    //    却忘了 re-zigbuild」的唯一拦截点）。
+    let src_mtime = [backend_lib_rs(), backend_main_rs()]
+        .iter()
+        .filter_map(|p| std::fs::metadata(p).and_then(|m| m.modified()).ok())
+        .max();
     // U-1：mtime 之外再取 **build_id 字符串本身**，用于下面那条硬校验（mtime 漏掉过一次真事故）。
     let source_build_id = backend_source_build_id();
     let (stamp_open, stamp_close) = backend_stamp_marks();

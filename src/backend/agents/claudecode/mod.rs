@@ -30,7 +30,7 @@
 
 pub(crate) mod accounts;
 pub(crate) mod liveness;
-pub(crate) mod paths;
+pub mod paths;
 pub(crate) mod records;
 pub(crate) mod resume;
 
