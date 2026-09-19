@@ -679,7 +679,7 @@ pub fn daemon_binary(arch: &str) -> Option<&'static DaemonBinary> {
         //
         // 〔墓碑 —— 原来这里有一个 `pick()`：清单为空就退回 `env!("DAEMON_BUILD_ID")`（源码 id）。
         //  那是「问不出来就拿源码的答案顶上」——把一个失败面换成一个假答案（`brief` 里
-        //  `sidecar_fetch_guard` 那张禁词表逐字点名的第三条）。今天它不需要了：
+        //  已删的那条按需拉取路的禁词表逐字点名的第三条）。今天它不需要了：
         //  `build.rs` 在**任一 arch 的字节里扫不出身份时当场 panic**，扫得出才置
         //  `embedded_daemons` cfg ⇒ 走到这里的路径上，这两个 env 结构上不可能是空串。
         //  「结构上不可能」不许当成不检查的理由 ⇒ 下面 `deploy_embedded_daemon` 出门前

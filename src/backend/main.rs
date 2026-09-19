@@ -67,10 +67,6 @@ mod ratchet_guard; // K-P1 KPY7：本件动过的那几张登记表，**断言�
 mod readonly_guard; // F08a：daemon 只读机器护栏（内部整体 #[cfg(test)]，生产构建为空）
 mod relay; // K-H1：HTTP 中转（搬字节那半）——只听回环、按路径前缀分流、逐块透传 + tee
 #[cfg(test)]
-#[path = "../../tests/backend/sidecar_fetch_guard.rs"]
-mod sidecar_fetch_guard; // K-W2D R2④：按需拉取那条路的四格机器判据（整体 #[cfg(test)]）
-mod sidecars; // K6 裁定一：我们自己出、自己装、自己调的那几个独立进程（与 agents/ 对称）
-#[cfg(test)]
 #[path = "../../tests/backend/single_stream_guard.rs"]
 mod single_stream_guard; // K-P1 KPY8：「多客户端的流」明确不做 —— 三处「恰好一个客户端」的触发器（整体 #[cfg(test)]）
 mod wire;

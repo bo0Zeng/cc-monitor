@@ -1282,38 +1282,18 @@ pub const UNMANAGED_ENV: &[UnmanagedEnv] = &[
     },
     // ═══ 🔴 〔`K-R65` 09-11〕**第三样「随产品分发的东西」—— 它此前一张表都没进** ═══
     //
-    // 来历如实记：`K38` 逐字只举了两样（`account` · `cc-bus`），PM 拟 `KR65D3` 时也只
-    // 数出这两样，**这一项是用户当拍凭记忆点出来的**（「不是还有 code picture 吗」）。
-    // ⇒ 「app 自带的是哪几样」这个人群此前**真的没有住址**，这一条就是那句话的证据。
+    // 🔴 **〔条 67 · 2026-09-18〕`code-picture-sidecar` 这一项摘掉了。**
     //
-    // 它的身份来自 `src/backend/sidecars/` 那一层的头注逐字：
-    // 「**我们自己出、我们自己装、我们自己调**的那几个独立进程……
-    //   这一层装的是**我们随产品分发**的东西」⇒ 这就是 `Provisioning::AppShips` 的定义。
+    // 它申报的是「app 随产品分发的独立进程那一份代码全景」，身份来自
+    // `src/backend/sidecars/` 那一层的头注。用户逐字「**不在现在设计里的全部删掉**」
+    // ⇒ 那一层（2 008 行）整棵删了 ⇒ **这条申报变成了假话**，不是「暂时没接线」。
     //
-    // ⚠ **别读成「该给它接线」**：那一层今天零生产调用方，而那是一次**有代价的发布决策**
-    // （`sidecar_fetch_guard` 那条「今天恰好 0 个生产调用点」的判据红的那一刻就是接线那一刻）。
-    // 本条只申报「它属于自带那一群，而 app 里今天没有装口」，**不动那一层**。
-    //
+    // ⚠ 留墓碑是因为它的来历本身是一条教训：`K38` 逐字只举了两样（`account` · `cc-bus`），
+    //   这一项是**用户当拍凭记忆点出来的**（「不是还有 code picture 吗」）——
+    //   「app 自带的是哪几样」这个人群此前真的没有住址。那个教训今天仍然成立。
     // ⚠ 与 [`NOT_MANAGED`] 里那条 `code-picture` **不是同一个东西**：那条说的是
-    // **vendored 进 monitor 二进制的 crate**（没有落点、卸载它等于重新编译）。
-    // 这一条说的是**独立进程那一份**。同名三身份，那条反向表已补记。
-    UnmanagedEnv {
-        id: "code-picture-sidecar",
-        display_name: "代码全景 sidecar（独立进程那一份）",
-        who: Provisioning::AppShips,
-        // 落点由调用方给（那一层头注逐字：「`dir` 是入参，本层不知道「落点在哪」」），
-        // 而今天**没有调用方** ⇒ 连「往哪儿查」都还没有答案。
-        // 🔴 这是「查不动」的第二个活体，而且它**查不动的理由与 `$MCP_COMMAND` 那条不同**：
-        //    那条是「值住在用户的配置里」，这条是「值住在一段还没写的接线里」。
-        probe: EnvProbe::CannotProbe {
-            why: "落点由调用方给（那一层刻意不知道落点在哪），而今天它零生产调用方 —— \
-                  接线那天才会有一个可查的路径",
-        },
-        named: "$CODEPICTURE_LANDING",
-        host: HostScope::Either,
-        why: "我们自己出、自己装、自己调的独立进程，随产品分发；取件那一跳已经写好、\
-              只是还没接线 —— sidecars/codepicture/acquire.rs::obtain",
-    },
+    //   **vendored 进 monitor 二进制的 crate**（21 条命令、14 条在用），**它还在，没删**。
+    //   同名两身份，删掉的是「独立进程那一份」。
     // 🔴 〔`K-R62` 09-11〕**`posix-rc-aliases` 从这里搬走了 —— 这是它的墓碑。**
     //
     // ⚠ 〔`K-R65` 09-11 补一句〕下面这段原文里那个档名**今天已经不存在了**（`K38` 删了
@@ -1449,13 +1429,12 @@ pub const NOT_MANAGED: &[(&str, &str)] = &[
          `config_surface.rs` 里 `code-picture` 零命中）。\n\
          ⇒ 真要做「一键装 code-picture 的 MCP」属 **issue #51 第 1 部分**，\
          用户 08-10 明说「cc-bus 和 code-picture 后面再增强，现在先不做」。\n\
-         🔴 **〔`K-R65` 09-11 补〕这个名字今天有第三个身份，本条此前一个字都没提**：\
-         `src/backend/sidecars/codepicture/` 那一层的**独立进程**——\
-         那一层头注逐字「我们自己出、我们自己装、我们自己调……随产品分发」。\
-         它**是** app 自带的东西，已经进环境闭集（id `code-picture-sidecar`，\
-         `Provisioning::AppShips`）。⇒ 本条那句「不是「装到别处的工具」」\
-         **只对 vendored 那一份成立**，别拿它读那一份独立进程。\
-         〔纪律 ⑲：写下「表上没有它」的同一拍，把那张表改对。〕",
+         🔴 **〔条 67 · 2026-09-18〕这个名字曾经有第三个身份，现在没有了**：\
+         `src/backend/sidecars/codepicture/` 那一层的**独立进程**（2 008 行）已整棵删除\
+         （用户逐字「不在现在设计里的全部删掉」），环境闭集里那条 `code-picture-sidecar` 同拍摘了。\
+         ⇒ **本条现在回到只有两个身份**：vendored 进二进制的 crate（就是本条说的这一份）\
+         ＋ MCP server 那个头。⚠ `K-R65` 当初补那一句买到的道理**仍然成立**：\
+         一个名字可以同时是好几样东西，写「表上没有它」的同一拍要把那张表改对（纪律 ⑲）。",
     ),
     (
         "planned-build",
@@ -2479,7 +2458,8 @@ mod tests {
         ("src/acct_iso_deploy.rs", Why::SymbolName, 3),
         ("src/backend/control/daemon_route.rs", Why::Wording, 1),
         ("src/config_surface.rs", Why::OldId, 4),
-        ("src/cross_half_edge_registry.rs", Why::OldId, 1),
+        // 〔条 67 · 09-18〕`src/cross_half_edge_registry.rs` 那一行删了：它记的旧 id 住在
+        // 「app 自带二进制那一层」那条跨半边上，而那条边随 `sidecars/` 整棵走 ⇒ 债真的还了。
         ("src/daemon_control.rs", Why::Wording, 3),
         ("src/doc_copy_registry.rs", Why::Wording, 1),
         ("src/drift_ledger.rs", Why::Wording, 2),
@@ -3569,11 +3549,14 @@ mod environment_tests {
     /// - `code-picture-sidecar` **不在 `K38` 的举例里**，是用户当拍凭记忆追问出来的
     ///   （PM 拟这条 dod 时只数出两样）⇒ **点名清单本身就会漏**，
     ///   这正是「人群必须是数出来的」那句话的来历。
+    ///   ⚠ 〔条 67 · 09-18〕那一项**已随 `sidecars/` 整棵删除而摘掉** —— 留这段话是因为
+    ///   「点名清单本身就会漏」这条教训与它在不在表上无关。
     ///
     /// **死值验**：把 `cc-bus` 从「自带」里摘掉（例如在 [`environment`] 里给它硬写
     /// `Provisioning::NotAnInstall`）⇒ 本条红。
-    /// 第二条死值验（`sidecars/` 那一层）住
-    /// `the_layer_we_ship_binaries_from_is_pinned_to_the_population`。
+    /// ⚠ 〔条 67 · 09-18〕**第二条死值验没有了** —— 它钉的是 `sidecars/` 那一层，
+    /// 而那一层整棵删了。⇒ 今天这条判据**只剩一条死值验**（`cc-bus` 那条）。
+    /// 如实记：射程比 09-11 那一拍窄了一格，不是"一样强"。
     #[test]
     fn everything_the_charter_named_as_ours_is_in_the_shipped_population() {
         /// `(闭集里的 id, 谁在什么时候点的名)`。**只收逐字点过名的**，不收推断出来的。
@@ -3583,11 +3566,6 @@ mod environment_tests {
             (
                 "cc-acct-iso-local",
                 "K38 逐字：「account」—— 本机那半（件计划 §0c 明裁它是 app 独有的）",
-            ),
-            (
-                "code-picture-sidecar",
-                "用户 09-11 当拍追问：「不是还有 code picture 吗」—— \
-                 现打落在 sidecars/ 那一层（「我们自己出、我们自己装、我们自己调」）",
             ),
         ];
         let env = environment();
@@ -3635,61 +3613,12 @@ mod environment_tests {
         );
     }
 
-    /// 🔴 `KR65D3` 的**第二条死值验**：**我们随产品分发二进制的那一层，在人群里数得到。**
-    ///
-    /// # 为什么非得钉盘上那一层，光在闭集里加一行不够
-    ///
-    /// 闭集里那一行是**申报**。申报可以在那一层被掏空之后照样绿着 ——
-    /// 那正是本仓治过的「声明缺口」那一族（`remote-daemon` 的 `uninstallable: false`
-    /// 假申报活了一个月）。⇒ 右边去钉**盘上那一层真有那一跳**，两边一起断。
-    ///
-    /// **死值验**：把 `sidecars/codepicture/acquire.rs` 那一层掏空（`obtain` 那一跳删掉
-    /// 或改签名）⇒ 本条红。
-    /// ⚠ **如实写明它的边界**：把整个文件**删掉**是 `include_str!` 编译失败，
-    /// 那是 **CRASH 不是红** —— 两件事别混着报。
-    ///
-    /// ⚠ 它**判不了**「这一层今天接没接线」（那一格由 daemon 那侧的
-    /// `sidecar_fetch_guard` 管，红的那一刻就是接线那一刻）。本条只判
-    /// 「这一层还在盘上，而闭集里申报了它」。
-    #[test]
-    fn the_layer_we_ship_binaries_from_is_pinned_to_the_population() {
-        use crate::structural_scan::pin_definition;
-
-        /// 那一层的取件实现。**跨 crate 读源码在本仓有先例**
-        /// （`usage.rs` / `polling_registry.rs` 都这么钉 `src/backend` 那侧）。
-        const SIDECAR_ACQUIRE: &str = include_str!("../../backend/sidecars/codepicture/acquire.rs");
-
-        // 反向自检：`pin_definition` 真的会说「不在」（否则下面是空真）。
-        assert!(pin_definition("fn a() {}\n", "fn b() {}", "fn b", "自检").is_err());
-
-        // 右边：盘上那一层真有「把它拿到这台机器上来」的那一跳，且只有一处。
-        pin_definition(
-            SIDECAR_ACQUIRE,
-            "pub fn obtain<O: Origin>(",
-            "pub fn obtain",
-            "代码全景 sidecar 的取件实现",
-        )
-        .expect("sidecars/ 那一层被掏空了 —— 而闭集里仍申报着它是「app 自带」的一员");
-
-        // 左边：闭集里那一项，而且它算在「app 自带」那个人群里。
-        const ID: &str = "code-picture-sidecar";
-        let e = environment()
-            .into_iter()
-            .find(|e| e.id == ID)
-            .unwrap_or_else(|| {
-                panic!(
-                    "`{ID}` 不在环境闭集里 —— 盘上有一层专门用来「随产品分发二进制」，\
-                     而「app 自带的是哪几样」这个人群里数不到它"
-                )
-            });
-        assert_eq!(
-            e.who,
-            Provisioning::AppShips,
-            "`{ID}` 没算在「{}」那一群里 —— 那一层的头注逐字写着「我们自己出、\
-             我们自己装、我们自己调……随产品分发」",
-            Provisioning::AppShips.label()
-        );
-    }
+    // 🔴 **〔条 67 · 2026-09-18〕那条「我们随产品分发二进制的那一层」跨半判据删了。**
+    // 它钉的是「`sidecars/` 那一层还在盘上」∧「闭集里申报了它」同时成立。
+    // 那一层删了、那条申报也摘了 ⇒ 判据的两边都不在，**留着它就是一条恒红或恒空真的尺子**。
+    // ⚠ 它当初买的那个道理**别丢**：「光在闭集里加一行是**申报**，申报会在那一层被掏空之后
+    //   照样绿着 —— 那正是 `remote-daemon` 的 `uninstallable: false` 假申报活了一个月那一族。」
+    //   ⇒ 下一次往闭集里加「app 自带」的条目时，仍然要去**钉真源码**，不许只申报。
 
     /// 「谁该装」三值**都真有人用** —— 一个只有一个取值的字段没有区分力。
     /// 形抄 `config_surface::all_host_scopes_are_really_used`。

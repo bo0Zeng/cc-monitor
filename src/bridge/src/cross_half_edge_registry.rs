@@ -107,20 +107,10 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
         "C14 那条登记在案的例外（预信任的等信任框以 shell 字符串形态产出）真实存在的证据 —— \
          它是「零轮询」那条零命中守卫的反向锚点",
     ),
-    (
-        "monitor→daemon",
-        "src/bridge/src/tool_registry.rs",
-        "src/backend/sidecars/codepicture/acquire.rs",
-        "★ 〔`K-R65` 09-11〕**「app 自带的是哪几样」那个人群的第二条死值验。**\
-         monitor 侧的环境闭集申报了一项 `code-picture-sidecar`（`Provisioning::AppShips`），\
-         而**我们随产品分发二进制的那一层住在 daemon 那半** —— \
-         `the_layer_we_ship_binaries_from_is_pinned_to_the_population` 要断言\
-         「那一层还在盘上」与「闭集里申报了它」**同时成立**，那是一条关于两侧的性质，\
-         只能编译期读那一侧的源码才验得了。\
-         ⚠ 光在闭集里加一行是**申报**，申报会在那一层被掏空之后照样绿着 —— \
-         那正是本仓治过的「声明缺口」那一族（`remote-daemon` 的 `uninstallable: false` \
-         假申报活了一个月）。⇒ 右边必须去钉真源码。",
-    ),
+    // 🔴 **〔条 67 · 2026-09-18〕`tool_registry.rs → sidecars/codepicture/acquire.rs`
+    //    这条跨半边删了** —— 右边那份源码随 `sidecars/` 整棵走了（2 008 行）。
+    //    ⚠ 它当初记的那条道理别丢：「光在闭集里加一行是**申报**，申报会在那一层被掏空之后
+    //    照样绿着」⇒ 下次再有「app 自带某个二进制」这类申报，右边仍要去钉真源码。
     (
         "monitor→daemon",
         "src/bridge/src/ssh_source.rs",

@@ -13,7 +13,7 @@
 //! # 🔴 〔`K-R52` 09-11 补〕上面那句话**今天仍然对，但它不够** —— 那道真判据够不着这里
 //!
 //! 「唯一真判据是跨 target 编译」写下时是真的，而 09-10 有一处
-//! （`sidecars/codepicture/acquire.rs::land` 引了 `std::os::unix::fs` 里那个给 `mode(…)` 的
+//! （已删的那条按需拉取路里「落一个可执行文件」那一跳 —— 引了 `std::os::unix::fs` 里那个给 `mode(…)` 的
 //! 扩展 trait，**一个 cfg 都没有**）**照样漏了进来，且当天门禁全绿**。
 //! ⚠ 这里刻意不把那个 trait 的名字逐字写出来：`readonly_guard` 的默认层**连注释一起扫**
 //!   （那是它 fail-closed 的设计），而那个名字在它的禁词表上、本文件不在写面白名单里
@@ -47,8 +47,6 @@
 //! - [`signal`]：`send_sigusr1`（U3 从 `control/tmux_hook.rs` 下沉）
 //! - [`shell`]：`posix_shell`（`K-R55` 09-11 从 `observe/watcher.rs` 下沉 ——
 //!   那两处 `Command::new("sh")` 正是 `K-R52` 立表时挂在 A2「真漏」堆上的头两条）
-//! - [`landing`]：`land`（`K-R55` 09-11 从 `sidecars/codepicture/acquire.rs` 下沉 ——
-//!   `O_EXCL` 新建 + **新建那一刻**给可执行位，那个 `mode(…)` 是 unix 专有的名字）
 //!
 //! **前三个是从 `watcher.rs` 逐字搬来的**（U2 纯重构，行为逐字不变）。
 //! [`signal`] 不是 —— 它是**重写**：原实现内联在 `tmux_hook` 里、失败时 `return 0`；
@@ -61,7 +59,6 @@ mod cfgless_guard;
 #[cfg(test)]
 #[path = "../../../tests/backend/platform/fallback_guard.rs"]
 mod fallback_guard;
-pub(crate) mod landing;
 pub(crate) mod liveness;
 pub(crate) mod paths;
 pub(crate) mod pidwatch;
