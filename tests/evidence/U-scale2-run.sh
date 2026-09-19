@@ -20,6 +20,18 @@ RIG=/tmp/cv-reparent-probe          # G 路留下的两个 runner
 cd "$ROOT"
 mkdir -p "$WORK"
 
+# ── 🔴 显示时区与 locale：与门禁那一侧钉同一对值（09-19）───────────────────
+# 语料 94 张卡**全部带时间戳**，渲染走 `src/format.ts` 的 `toLocaleTimeString([], …)`
+# ⇒ 这两个值一变，字面与字数都变，**真高跟着变**。不钉，就等于把「重打金标准那一刻
+# 这台机器碰巧是什么设置」烤进金标准 —— 那正是 09-19 在断网沙箱里逮到的那一形
+# （宿主永远绿，因为它就是打金标准那台机器；容器与 CI 的 runner 一律红）。
+#
+# 🔴 **这两行必须与 `vitest.config.ts` 顶层那两行逐字相同。** 探针会把现打值采进
+#    金标准的 `env.displayLocale` / `env.timeZone`，而 `tests/scale2-height-truth.vitest.ts`
+#    有一条判据拿它跟运行时对拍 —— 三处对不上，那一条当场红并说「判不了」。
+export TZ="America/Los_Angeles"
+export LC_ALL="zh-CN"
+
 # ── ① 语料 ────────────────────────────────────────────────────────────────
 # 🔴 **默认不重采样。** 采样源 `~/.claude/projects/-home-user----work/`
 # 里有一个**正在被写的 jsonl（当前这次会话自己的）**，每跑一次采样器它都长大一点

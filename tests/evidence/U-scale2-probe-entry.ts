@@ -326,6 +326,11 @@ async function main(): Promise<void> {
 
   const env = {
     ua: navigator.userAgent,
+    // 🔴 〔09-19 加〕语料 94 张卡**全部带时间戳**，渲染走 `toLocaleTimeString([], …)`
+    //   ⇒ 真高与 DOM 指纹都跟着这两个值走。不采它们，金标准就把「打它那台机器」
+    //   悄悄烤了进去 —— 那正是 09-19 在断网沙箱里逮到的那一形。
+    displayLocale: Intl.DateTimeFormat().resolvedOptions().locale,
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio },
     streamContentWidth: colWidth,
     // `height-estimate.ts` 的 COL_W = 780 假设这一格必须核
