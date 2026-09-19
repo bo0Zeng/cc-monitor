@@ -34,11 +34,12 @@
 # │   N 道门」判红；历史读数的唯一豁免是**在那一行**逐字带上 `〔量于 …〕`。
 # │
 # │ 〔自述·格数〕21 格
-# │ 〔自述·点名〕hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · installface ·
+# │ 〔自述·点名〕hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc ·
+# │   installface ·
 # │   fmt · fmt-backend ·
 # │   winchk · winchk-backend · cargo · deadcode · generated · backend · tsc · npm ·
 # │   ccm tests/e2e/ccm-print-parity · ccm tests/e2e/ccm-rbind-title · ccm tests/e2e/ccm-cli ·
-# │   ccm tests/e2e/ccm-contract-parity · pb check
+# │   ccm tests/e2e/ccm-contract-parity
 # │ 〔自述·现物〕四套 e2e 的被测文件：`tests/e2e/ccm-print-parity.sh` · `tests/e2e/ccm-rbind-title.sh` ·
 # │   `tests/e2e/ccm-cli.test.sh` · `tests/e2e/ccm-contract-parity.sh`；判法一律走 `tests/e2e/assert-pass-floor.sh`。
 # │ 〔自述·现物〕`copy2` 那一格的判据本体：`tests/evidence/K-R115-ruler.py`（`K-R115` 09-14 第 14 格）。
@@ -49,6 +50,9 @@
 # │ 〔自述·现物〕`release-gate` 那一格的判据本体：`tests/evidence/K-R124-ruler.py`（`K-R124` 09-15 第 20 格）
 # │   —— 它与 `.github/workflows/ci.yml` 里那一步跑的是**同一份文件**，不是两份抄件；
 # │   被测对象是 `.github/workflows/release.yml`，它顺带调 `scripts/release-notes.mjs --check`。
+# │ 〔自述·现物〕`gate-selfdesc` 那一格的判据本体：`tests/evidence/K-R80-gate-cell-coverage.py`
+# │   （09-19 第 22 格）—— **被测对象就是本文件**。它默认读 `tests/scripts/gate.sh`，
+# │   也接一个路径参数（对着变异过的副本跑死值验时用）。
 # │ 〔自述·现物〕`installface` 那一格的判据本体：`tests/evidence/K-R117-ruler.py`（`K-R128` 09-15
 # │   第 21 格）—— 它同时是 `K-R117` 第一拍摸底的那把尺子，本件只往它上面加了 `R8`/`R9`/`R10`
 # │   三条判定（`R1`–`R7` 一个字节没动）。死值验 16 刀住 `tests/evidence/K-R128-deathvalue.md`。
@@ -873,6 +877,24 @@ run_gate ci-e2e-prereq '判过的 e2e 调用行数（`ci.yml` 的 `steps:` 里�
 run_gate release-gate '判过的条数（`release.yml` 上逐行印出来的 PASS：三条地板 ＋ ①触发得了 ②手工默认不发布 ③`env.PUBLISH` 字面 ④两处发布步骤的闸 ⑤CI 门的闸 ⑥两处发布步骤各自的正文来源 ⑦生成器排在发布步骤前面 ⑧生成器吐得出本版正文）。⚠ 它**不执行 GitHub 的表达式求值器**，也**不跑那条流水线** ⇒ 「盘上这份文本满足这几条」不等于「云端那一趟会绿」；⚠ 「往 Release 上写」只认两种形状（`softprops/action-gh-release` 的 `uses:` · `run:` 里的 `gh release`/`gh api …/releases`），换第三种路子上传它看不见；⚠ 正文**写得对不对**它一个字都不判' \
          python3 tests/evidence/K-R124-ruler.py
 
+# ── `gate-selfdesc`：**门禁自述 ↔ 门禁现状的对拍**（09-19，第 22 格）───────────
+#
+# 🔴 **立这一格的直接起因是本门禁自己说了一整天假话。** `pb check` 那一格 09-18 已按用户
+#   拍板**整格删除**，而裁决行照旧点着它的名、自称「21 格全绿」——实跑 20 格。
+#   ⚠ **本该抓住它的东西一直都在**：`tests/evidence/K-R80-gate-cell-coverage.py` 的
+#   `C5`/`C5b` 逐字就是「裁决行的数 == 现打格数」「逐格点名集合相等」。它没瞎，是**两头坏**：
+#     ① **没人跑它** —— 它只被本文件头注引为「可复跑」，**不在执行链上**；
+#     ② 它默认找的是**重构前**的 `scripts/gate.sh` ⇒ 手跑当场 `FileNotFoundError`。
+#   两头叠在一起，效果就是本仓自己的那句话：**坏尺子会把真缺陷一起藏起来。**
+#   ⇒ 本拍把 ② 修了，并把它接成真的一格，治 ①。**从此「自述腐了」这件事不靠人记得手跑。**
+#
+# ⚠ **它判的是登记，不是行为** —— 它只买「本文件的自述与盘上现状对得上、且每条登记指得到
+#   真东西」。裁词对不对（某格到底盖没盖到某棵树）它一个字都不判，那要读语义。
+# ⚠ **它是本门禁里唯一一格「被测对象就是本文件自己」** —— 改本文件的头注、加删一格、
+#   动一句自述，都会在这一格上出声。这是刻意的：自述与现状分叉，正是它要治的病。
+run_gate gate-selfdesc '判过的条数（逐项分母由判据本体每趟现算并印在它自己那行上：C1 两向集合对拍 ＋ 每格一条逐字锚点 ＋ 逐格逐树的裁词与理由 ＋ 树的分区恒等 ＋ 每棵树非空与在盘 ＋ 裁决行格数对拍 ＋「不需要门」的说明与钉子 ＋ 分档表逐份成员）。⚠ **反空真锚不是这个数，是 `C1` 那两向集合相等** —— 登记空了或 `gate.sh` 读成空串，两个集合当场分叉（死值验：改一格的名 ⇒ C1 红）。⚠ 它只判「登记完整且指得到真东西」，**不判裁词对不对、不判归得对不对**（那要读语义）' \
+         python3 tests/evidence/K-R80-gate-cell-coverage.py
+
 # ── `installface`：**安装面切件方案与量具的对账**（`K-R128`，09-15，第 21 格）──────
 #
 # ## 题面：第三块（`S1`–`S5`）要开工了，而撑着那个切法的两句话**一句都没有闸**
@@ -1524,7 +1546,14 @@ if [ "${#fails[@]}" -eq 0 ]; then
   # 🔴 `K-R124`（09-15）：**19 → 20**，加的是 `release-gate`（第 20 格）。它治的不是
   #   「CI 有、本地没有」，是**更坏的一档**：CI 里那一步从加进去那天起就不可能过，
   #   而它在本地跑不起来（判据本体用了沙箱里没有的 PyYAML）⇒ **两头都看不见**。
-  echo "GATE: OK —— 21 格全绿（hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · installface · fmt · fmt-backend · winchk · winchk-backend · cargo · deadcode · generated · backend · tsc · npm · 四套 ccm e2e · pb check），可以出货"
+  # 🔴 〔订正 09-19〕**21 → 20，摘掉 `pb check`。** 那一格 09-18 已按用户拍板**整格删除**
+  #   （`PB_WS` / `planned-build` 在本文件非注释处现打零命中），而这一行与上面自述段
+  #   **两处都还在点它的名**，于是门禁整整一天印着一个比实跑多一格的数。
+  #   ⚠ **这正是 `C5`/`C5b` 该抓而没抓到的那条** —— 它没瞎，是**没人跑它**：
+  #   `K-R80` 不在本脚本的执行链上，且它默认找的是重构前的 `scripts/gate.sh`（现打直接
+  #   `FileNotFoundError`）。**两头坏叠在一起 ⇒ 假账在裁决行上挂了一天。**
+  #   ⇒ 本拍把它接成真的一格（见下面 `run_gate gate-selfdesc`），不再靠人记得手跑。
+  echo "GATE: OK —— 21 格全绿（hooks · copy2 · shellcheck · ci-e2e-prereq · release-gate · gate-selfdesc · installface · fmt · fmt-backend · winchk · winchk-backend · cargo · deadcode · generated · backend · tsc · npm · 四套 ccm e2e），可以出货"
   gate_print_blind
   exit 0
 fi
