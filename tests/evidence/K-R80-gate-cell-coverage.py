@@ -67,32 +67,71 @@ from pathlib import Path
 # `K_R80_ROOT` 只为**死值验**存在：把本文件拷进 scratchpad 变异之后，仓根仍要指回真工作树。
 # ⚠ 它不是配置项，日常跑一律不带。
 ROOT = Path(os.environ.get("K_R80_ROOT") or Path(__file__).resolve().parents[2])
-GATE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "scripts" / "gate.sh"
+# 🔴 〔订正 09-19〕默认住址原先写着 `ROOT / "scripts" / "gate.sh"` —— 那是**重构前**的住址。
+# 重构后 `gate.sh` 搬进 `tests/scripts/`，于是不带参数跑本文件**当场 `FileNotFoundError`**。
+# ⚠ **它崩得响，却没人听见** —— 本文件那时不在门禁的执行链上（只被 `gate.sh` 头注引为
+#   「可复跑」）。两头坏叠在一起的后果实测：`pb check` 那一格 09-18 已整格删除，而裁决行
+#   照旧印「21 格全绿」，挂了一整天没人响。本拍两头都治：住址改对，**并把本文件接成真的一格**。
+GATE = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else ROOT / "tests" / "scripts" / "gate.sh"
 
 # ── 树的全集 ────────────────────────────────────────────────────────────────
-# 分母不是拍脑袋定的：`C4` 拿 `git ls-files` 现打的**顶层目录**跟它对拍。
-# 两处刻意与顶层目录不一样，各有理由，都写在这里：
-#   · `src-tauri/vendor/code-picture-core/` 从 `src-tauri/` 里**单拆出来** ——
-#     `C7` 逐字「vendor `code-picture-core` **不动**」，它被 `cargo` 那一格显式 `--exclude`，
-#     与 `src-tauri/` 的其余部分**受不同的门管**，混成一棵就点不出这一格盲区。
+# 🔴 〔重写 09-19〕**整张表换成重构后的布局，并且把 `C4` 的单位从「顶层目录」改成「前缀分区」。**
+#
+#   上一版的 12 棵是重构前的地址（`src-tauri/` · `remote-daemon-proto/` · `e2e/` ·
+#   `scripts/` · `shared/` · `hooks/` · `doc/` · `evidence/`），现打**一棵都不存在** ——
+#   给它真住址跑一趟，`C4` 一口气吐 7 条「登记里的树盘上不存在」。
+#
+#   ⚠ **不能照着新的顶层目录原样抄。** 重构后 `git ls-files` 的顶层只剩 4 个
+#   （`src/` `tests/` `.github/` `.cargo/`）——照抄就是把这张表压成 4 棵，
+#   而这张表存在的全部意义是**那张盲区转置表**（`K-R80` 的题面就是「`fmt` 盖不到
+#   另一个 workspace」这一条）。4 棵粗到每一格都同时盖 `src/` 与 `tests/` ⇒ 一句话都说不出。
+#
+#   ⇒ 改判据的**单位**，不改它买的东西：树按**前缀**登记、**首匹配**归属（长前缀写在前），
+#     `C4` 从「集合等于顶层目录」换成两条更强的：
+#       · **分区**：`git ls-files` 每一份都归到恰好一棵登记的树（catch-all 兜底 ⇒ 不可能漏）
+#       · **非空**：每一棵登记的树现打份数 > 0（搬走/删空 ⇒ 红，这是上一版唯一守住的那条）
+#     ⚠ 前者比上一版**严**：上一版只对拍顶层目录名，一份文件归没归进某棵树它不看。
+#
+#   两处刻意与目录结构不一样，各有理由：
+#   · `src/bridge/vendor/` 从 `src/bridge/` 里**单拆出来** —— `C7` 逐字「vendor
+#     `code-picture-core` **不动**」，它被 `cargo` 那一格显式 `--exclude`，与 `src/bridge/`
+#     其余部分**受不同的门管**，混成一棵就点不出这一格盲区。
+#     ⚠ 今天 vendor 下是**两棵**（`code-picture-core` 25 份 · `cc-acct-iso` 8 份），
+#       上一版的 `VENDOR` 只指 `code-picture-core` ⇒ `cc-acct-iso` 当时落在 `src-tauri/` 里。
 #   · `<仓根文件>` 是一格，装 `package.json` / `vite.config.ts` / `README.md` 那些
-#     不属于任何顶层目录的文件（`git ls-files` 里 `NF==1` 的那些）。
-VENDOR = "src-tauri/vendor/code-picture-core/"
+#     不属于任何目录的文件（`git ls-files` 里不含 `/` 的那些）。
+#
+# 〔现打 09-19〕15 棵合计 **1343** 份 == `git ls-files` 现打 1343（分区，不重不漏）。
+VENDOR = "src/bridge/vendor/"
 ROOTFILES = "<仓根文件>"
+# 🔴 **顺序是承重的**：`tree_of()` 首匹配即归属 ⇒ 长前缀必须排在它的 catch-all 之前。
+#    把 `src/` 挪到 `src/backend/` 前面，后端那 69 份会被前端那棵吞掉，而**一条判据都不红**。
 TREES = [
-    "src/",
-    "src-tauri/",            # 不含 vendor 那一棵
-    VENDOR,
-    "remote-daemon-proto/",
-    "e2e/",
-    "scripts/",
-    "shared/",
-    "hooks/",
-    "doc/",
-    ".github/",
-    "evidence/",
-    ROOTFILES,
+    "src/backend/",          # 69   后端 Rust（重构前的 `remote-daemon-proto/`）
+    VENDOR,                  # 33   vendor 两棵：code-picture-core 25 · cc-acct-iso 8
+    "src/bridge/",           # 157  Tauri 侧 Rust（重构前的 `src-tauri/`），不含 vendor
+    "src/generated/",        # 82   `ts_rs` 生成物（重构前不单列）
+    "src/shared/",           # 19   重构前的 `shared/`
+    "src/doc/",              # 9    重构前的 `doc/`
+    "src/",                  # 126  前端 TS —— catch-all，必须排在上面几棵之后
+    "tests/e2e/",            # 54   重构前的 `e2e/`
+    "tests/evidence/",       # 384  重构前的 `evidence/`
+    "tests/scripts/",        # 7    重构前的 `scripts/`
+    "tests/hooks/",          # 1    重构前的 `hooks/`
+    "tests/",                # 384  判据本体（bridge/ backend/ views/ settings/ + vitest）
+    ".github/",              # 3
+    ".cargo/",               # 1
+    ROOTFILES,               # 14
 ]
+
+
+def tree_of(path):
+    """一份文件归哪棵树 —— **首匹配**。不含 `/` 的归 `<仓根文件>`。"""
+    for t in TREES:
+        if t is not ROOTFILES and path.startswith(t):
+            return t
+    return ROOTFILES
+
 
 FULL, PART, NONE = "全", "部", "无"
 
@@ -132,14 +171,14 @@ cell(
     "hooks",
     anchor="run_gate hooks '每个被跟踪的 hook 文件 3 条",
     cwd="仓根",
-    cmd="bash scripts/hooks-are-runnable.sh",
+    cmd="bash tests/scripts/hooks-are-runnable.sh",
     **{
-        "hooks/": (FULL, "`git ls-files hooks/` 下**每一个**被跟踪的文件，各 3 条："
+        "tests/hooks/": (FULL, "`git ls-files hooks/` 下**每一个**被跟踪的文件，各 3 条："
                          "盘上可执行（`test -x`）· 库里记着可执行位（index mode `100755`）· "
                          "语法过得了它自己 shebang 声明的解释器。⚠ 买的是「**跑得起来**」这一层，"
                          "**不买「它拦得对」**——`pre-commit` 那条 `[profile.dev]` 正则判得准不准，"
                          "本格一个字都问不出来"),
-        "scripts/": blind("本格的**尺子**住在 `scripts/hooks-are-runnable.sh` —— "
+        "tests/scripts/": blind("本格的**尺子**住在 `scripts/hooks-are-runnable.sh` —— "
                           "但尺子不是分母。把量具算进它自己的覆盖，正是本区最高频那族病"
                           "（量具的作用域对不上事实）⇒ 这里刻意判「无」"),
     },
@@ -159,9 +198,9 @@ cell(
     #   本件把它摘了（份数以判据本体自己印的那一行为准）⇒ 锚点收到「不含那个数」的那一段。
     anchor="run_gate copy2 '`evidence/*.py` 里，`shutil` 保元数据复制族",
     cwd="仓根",
-    cmd="python3 evidence/K-R115-ruler.py",
+    cmd="python3 tests/evidence/K-R115-ruler.py",
     **{
-        "evidence/": (PART, "只判 `evidence/*.py` 里 `shutil` 保元数据复制族"
+        "tests/evidence/": (PART, "只判 `evidence/*.py` 里 `shutil` 保元数据复制族"
                             "（`copy2` / `copytree` / `copystat`）的**调用点**"
                             "（现打 11 处）：它的目的地落不落在被 git 跟踪的树内内容上。"
                             "⚠ 这棵树的其余部分（`.md` 留档 · `.tsv`/`.json` 读数 · "
@@ -181,7 +220,7 @@ cell(
     "installface",
     anchor="run_gate installface '判过的条数（`§S5c`/`§S5d`/`§S5e` 三节",
     cwd="仓根",
-    cmd="python3 evidence/K-R117-ruler.py",
+    cmd="python3 tests/evidence/K-R117-ruler.py",
     **{
         "src/": (PART, "只判**安装面那 22 条命令**在 `src/**.ts` 里的**落点分布**"
                        "（哪几份文件调它们，现打 8 份）＋ 它们在包装层 "
@@ -191,13 +230,13 @@ cell(
                        "⚠ 连这 22 条**调用得对不对**也不问 —— 只问「在哪几份文件里被调」。"
                        "⚠ 只认调用形状 `.<命令>(`；`invoke(\"<名>\")` 直呼它看不见"
                        "（那一档在 `§S5d` 第二档里只出读数、不判红）"),
-        "src-tauri/": (PART, "只判那 22 条命令的**名字**在三份共用文件里的形状："
+        "src/bridge/": (PART, "只判那 22 条命令的**名字**在三份共用文件里的形状："
                              "`tool_registry.rs` 的 `claims()` 每个装 / 卸符号要么解析到一条真 "
                              "`#[tauri::command]`、要么在明示的非命令名单里。"
                              "⚠ `parity_ledger.rs` 那一份**判不了**（那 22 条就是从它解析出来的 "
                              "⇒ 空真），它的闸在同一份尺子的 `§S5c` 闭集判定，不在这一档。"
                              "⚠ 这棵树的 Rust 逻辑、错误处理、`Side` 栏对不对，本格一概不问"),
-        "evidence/": blind("本格的**尺子**就住这棵树（`evidence/K-R117-ruler.py`）—— "
+        "tests/evidence/": blind("本格的**尺子**就住这棵树（`evidence/K-R117-ruler.py`）—— "
                            "尺子不是分母。把量具算进它自己的覆盖，正是本区最高频那族病"
                            "（量具的作用域对不上事实）⇒ 这里刻意判「无」，"
                            "与 `hooks` / `copy2` 两格对自己那棵树的判法一致"),
@@ -213,14 +252,14 @@ cell(
     cwd="src-tauri/",
     cmd="cargo check -p monitor（非 test）＋ never used 递减棘轮",
     **{
-        "src-tauri/": (PART, "**只有 `-p monitor` 一个包的生产段**：非 test 构建里 "
+        "src/bridge/": (PART, "**只有 `-p monitor` 一个包的生产段**：非 test 构建里 "
                              "`never used` 的条数，上限 54 / 下限 40 的递减棘轮。"
                              "⚠ 同 workspace 的其余成员不在 `-p` 里；`#[cfg(test)]` 里的"
                              "死代码任何非 test 构建都看不见 —— 这两块本格都盖不到"),
         VENDOR: blind("`-p monitor` 只编它自己那一个包的生产段；vendor 作为依赖被编，"
                       "而依赖的警告不进 `-p` 那个包的 `never used` 计数（`cargo` 只报"
                       "本包的 lint）⇒ 这棵树本格一条都数不到"),
-        "remote-daemon-proto/": blind("另一个 workspace，`-p monitor` 够不着 —— "
+        "src/backend/": blind("另一个 workspace，`-p monitor` 够不着 —— "
                                       "它那棵树的 `dead_code` 今天**仍然没有格**，"
                                       "这是本格明写的盲区，不是漏登"),
     },
@@ -237,19 +276,19 @@ cell(
     cwd="仓根",
     cmd="shellcheck --severity=error <人群从 ci.yml 现读>",
     **{
-        "e2e/": (PART, "现打 `e2e/*.sh` **30** 份 ＋ `e2e/weak-net/*.sh` **4** 份 ＋ "
+        "tests/e2e/": (PART, "现打 `e2e/*.sh` **30** 份 ＋ `e2e/weak-net/*.sh` **4** 份 ＋ "
                        "`e2e/fake-claude` **1** 份 = 35 / 这棵树现打 **50** 份。"
                        "⚠ 剩下那 15 份（`.ts` / `.py` / `.tsv` / `fixtures/`）本格一行都不读；"
                        "⚠ 买的是「`--severity=error` 这一档没有告警」，**不买「脚本干得对」**"),
-        "shared/": (PART, "只有 `shared/cc-bus/scripts/*` **14** 份 / 这棵树现打 **19** 份 —— "
+        "src/shared/": (PART, "只有 `shared/cc-bus/scripts/*` **14** 份 / 这棵树现打 **19** 份 —— "
                           "`shared/cc-bus/examples/` 那 3 份与仓根那 1 份不在人群里"),
-        "scripts/": (PART, "`scripts/*.sh` 现打 **3** 份 / 这棵树现打 **6** 份 —— "
+        "tests/scripts/": (PART, "`scripts/*.sh` 现打 **3** 份 / 这棵树现打 **6** 份 —— "
                            "`run.ps1` 全仓没有 linter（`audit-0805` 登记的诚实边界），"
                            "`assert-coverage-floors.mjs` 是 JS"),
-        "src-tauri/": (PART, "只有 vendored `cc-acct-iso` 那 **4** 份 bash（逐份点名，不用 glob —— "
+        "src/bridge/": (PART, "只有 vendored `cc-acct-iso` 那 **4** 份 bash（逐份点名，不用 glob —— "
                              "`ci.yml` 那段注释逐字记着为什么：不开 globstar 时 `**` 等价于 `*`，"
                              "会把一个目录喂给 shellcheck ⇒ 恒红）。这棵树的其余部分与本格无关"),
-        "hooks/": (PART, "只有 `hooks/pre-commit` 这**一份**，而且是**逐份点名**进人群的、不是 glob "
+        "tests/hooks/": (PART, "只有 `hooks/pre-commit` 这**一份**，而且是**逐份点名**进人群的、不是 glob "
                          "⇒ 往这棵树加第二份 hook，本格看不见它（那一维由 `hooks` 那一格的 "
                          "`git ls-files hooks/` 盖）"),
         ".github/": blind("`ci.yml` 在本格里是**人群清单**（被读的那份配置），不是被检对象 —— "
@@ -263,24 +302,26 @@ cell(
     cwd="src-tauri/",
     cmd="cargo fmt --all --check",
     **{
-        "src-tauri/": (PART, "只有那 8 个 workspace 成员从 crate 根顺 mod 走得到的 `.rs`；"
+        "tests/": ("部", "〔现打 09-19〕**死值验证过**：往 `tests/bridge/accounts_tests.rs` 尾部加一行乱格式，`cargo fmt --all --check` 当场 `rc=1` ⇒ rustfmt 顺着 `#[path = '../../../tests/bridge/…']` 进了这棵树。⚠ 只盖 `tests/bridge/` 那 152 份 `.rs`，这棵树里 155 份 `.ts` 它一份不碰"),
+        "src/bridge/": (PART, "只有那 8 个 workspace 成员从 crate 根顺 mod 走得到的 `.rs`；"
                              "`tauri.conf.json` / `Cargo.toml` 那些非 Rust 文件一概不在"),
         VENDOR: blind("`[workspace] exclude` 把它排掉了 —— 而 `C7` 逐字「vendor 不动」，"
                       "把它拉进出货门禁就是一道我们满足不了的闸"),
-        "remote-daemon-proto/": blind("另一个 workspace —— **这就是 `K-R80` 的题面**，"
+        "src/backend/": blind("另一个 workspace —— **这就是 `K-R80` 的题面**，"
                                       "今天由 `fmt-daemon` 那一格盖"),
     },
 )
 
 cell(
-    "fmt-daemon",
-    anchor="run_gate fmt-daemon '不是数出来的数",
+    "fmt-backend",
+    anchor="run_gate fmt-backend '不是数出来的数",
     cwd="remote-daemon-proto/",
     cmd="cargo fmt --check（刻意不加 --all）",
     **{
-        "remote-daemon-proto/": (PART, "唯一成员 `cc-monitor-remote`，射程 = 从 `src/main.rs` "
+        "tests/": ("部", "〔现打 09-19〕同法死值验：`tests/backend/inbound_tests.rs` 加乱行 ⇒ `rc=1`。只盖 `tests/backend/` 那 75 份 `.rs`"),
+        "src/backend/": (PART, "唯一成员 `cc-monitor-remote`，射程 = 从 `src/main.rs` "
                                        "顺 `mod` 走得到的那些 `.rs`；走不到的文件本格看不见"),
-        "src-tauri/": blind("刻意**不加** `--all`：加了 rustfmt 实收 12 个 crate 根、11 个在这棵树外"),
+        "src/bridge/": blind("刻意**不加** `--all`：加了 rustfmt 实收 12 个 crate 根、11 个在这棵树外"),
         VENDOR: blind("同上 —— 加 `--all` 会把这棵我们无权修的树拉进来"),
     },
 )
@@ -291,11 +332,12 @@ cell(
     cwd="src-tauri/",
     cmd="cargo check --locked -p monitor --target x86_64-pc-windows-gnu",
     **{
-        "src-tauri/": (PART, "`-p monitor` 一个包的**生产段编得过**；7 个共享 crate 作为依赖被编。"
+        "tests/": ("无", "〔现打 09-19〕本格是 `-p monitor` **不带 `--all-targets`** ⇒ 只编 lib ＋ bin，test target 一个不编 ⇒ `tests/bridge/` 那 152 份在 Windows 目标下**没人编过**"),
+        "src/bridge/": (PART, "`-p monitor` 一个包的**生产段编得过**；7 个共享 crate 作为依赖被编。"
                              "⚠ `#[cfg(test)]` 不进 `check`，「行为对」更买不到"),
         VENDOR: (PART, "作为 `monitor` 的依赖被编。⚠ 这一条**本件没现打**，"
                        "是从依赖关系推的 —— 按「未验」读"),
-        "remote-daemon-proto/": blind("本格逐字写着它盖不到：那 17 处 `cfg(windows)` 没人跨编"),
+        "src/backend/": blind("本格逐字写着它盖不到：那 17 处 `cfg(windows)` 没人跨编"),
     },
 )
 
@@ -308,13 +350,13 @@ cell(
     "ci-e2e-prereq",
     anchor="run_gate ci-e2e-prereq '判过的 e2e 调用行数",
     cwd="仓根",
-    cmd="python3 evidence/K-R122-ruler.py",
+    cmd="python3 tests/evidence/K-R122-ruler.py",
     **{
         ".github/": (PART, "只判 `ci.yml` 一份文件里的**一个切片**：`steps:` 里那 20 条 e2e "
                            "调用行，各自的 build 前置齐不齐。⚠ 这棵树的其余部分"
                            "（`release.yml` 整份 · 那些 job 的 runner / 工具链 / needs / if）"
                            "本格一个字都不问；⚠ 它**不跑任何 e2e**，「前置齐了」≠「那一套会绿」"),
-        "e2e/": (PART, "那 20 条调用行指到的 `.sh`（现打 20 份，其中 15 份硬门后端二进制）"
+        "tests/e2e/": (PART, "那 20 条调用行指到的 `.sh`（现打 20 份，其中 15 份硬门后端二进制）"
                        "**只被读一个字面量**（`debug/cc-monitor-remote` 在不在）—— "
                        "脚本里的任何一行断言、任何一处行为，本格都不看"),
         ROOTFILES: blind("`package.json` 的 `scripts` 那一块在本格里是**索引**"
@@ -323,9 +365,9 @@ cell(
                          "被读的那份配置不算被它盖到。⚠ 这一条判「无」是**有代价**的："
                          "`test:<套件>` 那条脚本被改坏时本格报的是「找不到脚本」，"
                          "而那句诊断说的是**索引坏了**，不是「仓根文件有问题」"),
-        "scripts/": blind("本格的**尺子**住 `evidence/K-R122-ruler.py`，不在这棵树上；"
+        "tests/scripts/": blind("本格的**尺子**住 `evidence/K-R122-ruler.py`，不在这棵树上；"
                           "而尺子本来也不该算进自己的覆盖"),
-        "evidence/": blind("同上 —— 把量具自己算进它的覆盖，正是本区最高频那族病"),
+        "tests/evidence/": blind("同上 —— 把量具自己算进它的覆盖，正是本区最高频那族病"),
     },
 )
 
@@ -334,18 +376,20 @@ cell(
 # 而 `K-R119` 那一趟云端正是红在它上面（daemon job 第 7 步，**10 个编译错全在 test 档**）。
 # ⚠ 与 CI 的差别写在 `gate.sh` 那一格的分母里（target `-gnu` vs `-msvc`），这里不抄第二份。
 cell(
-    "winchk-daemon",
-    anchor="run_gate winchk-daemon '不是数出来的数",
+    "winchk-backend",
+    anchor="run_gate winchk-backend '不是数出来的数",
     cwd="remote-daemon-proto/",
     cmd="cargo check --all-targets --target x86_64-pc-windows-gnu",
     **{
-        "remote-daemon-proto/": (PART, "唯一成员 `cc-monitor-remote` 的**生产段 ＋ test 档**"
+        "tests/evidence/": ("部", "〔现打 09-19〕**这棵树里有一条活的 `[[bench]]`** —— `src/backend/Cargo.toml` 的 `path = '../../tests/evidence/S7-history-read.rs'`，本格带 `--all-targets` ⇒ 它**被跨目标编译**。★ 有现物：步 8 改名把这一份漏了（`CARGO_BIN_EXE_cc-monitor-remote`），宿主 `cargo test` 全绿，**只有本格红**。⚠ 这棵树其余 383 份（读数 `.md` ／ 一次性量具 `.py`）本格一份不碰"),
+        "tests/": ("部", "〔现打 09-19〕本格带 `--all-targets` ⇒ test target 也编 ⇒ 盖 `tests/backend/` 那 75 份。★ 这条有现物：步 8 改名漏了 `tests/evidence/S7-history-read.rs` 里的 `CARGO_BIN_EXE_cc-monitor-remote`，宿主 `cargo test` 全绿，**只有本格红**"),
+        "src/backend/": (PART, "唯一成员 `cc-monitor-remote` 的**生产段 ＋ test 档**"
                                        "（`--all-targets` 是承重的：云端那 10 个错一个都不在生产段）"
                                        "在 Windows target 上**编得过**。"
                                        "⚠ 只买「编得过」，**买不到「在 Windows 上跑得对」** —— "
                                        "`check` 一行代码都不执行；⚠ `-gnu` 不是 `-msvc`，"
                                        "MSVC ABI 专属的那一类本格盖不到"),
-        "src-tauri/": blind("另一个 workspace，由上面 `winchk` 那一格盖"),
+        "src/bridge/": blind("另一个 workspace，由上面 `winchk` 那一格盖"),
         VENDOR: blind("同上 —— 它是 `src-tauri` 那棵的依赖，本命令的编译图里没有它"),
     },
 )
@@ -360,7 +404,7 @@ cell(
     "release-gate",
     anchor="run_gate release-gate '判过的条数",
     cwd="仓根",
-    cmd="python3 evidence/K-R124-ruler.py",
+    cmd="python3 tests/evidence/K-R124-ruler.py",
     **{
         ".github/": (PART, "只判 `release.yml` **一份文件里点名的那几处**：触发器解析得出来 · "
                            "`workflow_dispatch` 在不在 · `inputs.publish` 的 type/default · "
@@ -370,14 +414,14 @@ cell(
                            "⚠ `ci.yml` 整份**不在本格射程里**（那棵树的切片由 `shellcheck` 与 "
                            "`ci-e2e-prereq` 两格各判一块）；⚠ 它**不跑那条流水线**，"
                            "「盘上这份文本满足这几条」≠「云端那一趟会绿」"),
-        "scripts/": (PART, "只判 `scripts/release-notes.mjs` **两件事**：它在不在盘上、"
+        "tests/scripts/": (PART, "只判 `scripts/release-notes.mjs` **两件事**：它在不在盘上、"
                            "`--check` 跑不跑得出一段非空的正文。那份文件里的任何一行逻辑"
                            "（段落切法 · 拼装 · 写文件那一半）本格都不看"),
         ROOTFILES: (PART, "经生成器 `--check` 读进去的那两份：`package.json` 的 `version`、"
                           "以及 `CHANGELOG.md` 里 `## [<version>]` 那一段**在不在、非不非空**。"
                           "⚠ 这是**分母**不是依赖（本格真的在判它们：版本号没有对应段 ⇒ 本格红）；"
                           "⚠ 那一段**写得对不对**本格一个字不判"),
-        "evidence/": blind("本格的尺子自己就住在这棵树上 —— 把量具算进它自己的覆盖，"
+        "tests/evidence/": blind("本格的尺子自己就住在这棵树上 —— 把量具算进它自己的覆盖，"
                            "正是本区最高频那族病（与上面 `ci-e2e-prereq` 同一条理由）"),
     },
 )
@@ -392,17 +436,19 @@ cell(
     cwd="src-tauri/",
     cmd="cargo test --workspace --exclude code-picture-core --lib",
     **{
-        "src-tauri/": (FULL, "9 个成员的 `--lib` 判据，合计求和 + 包数相等断言"
+        "src/generated/": ("无", "〔现打 09-19〕这棵树是 `.ts`，Rust 那侧碰不到它 —— **盯「Rust 源改了而生成物没跟」的是 `generated` 那一格，不是本格**"),
+        "tests/": ("部", "〔现打 09-19〕`tests/bridge/` 那 152 份 `.rs` 靠 `src/bridge/src/*.rs` 里的 `#[path]` 挂进 crate ⇒ 本格**编它们、跑它们**（步 7b 把测试段整批搬出生产树之后，两棵生产树的真 `#[test]` 是 0/0，测试全在这棵树里）。⚠ `.ts` 那一半本格看不见"),
+        "src/bridge/": (FULL, "9 个成员的 `--lib` 判据，合计求和 + 包数相等断言"
                              "〔09-14 现打：`gate.sh` 那行是 `run_gate_sum cargo 9`；"
                              "上一版这里与锚点都写着 8〕"),
         VENDOR: blind("显式 `--exclude code-picture-core`（`C7`：vendor 不动）"),
-        "remote-daemon-proto/": (PART, "**经扫描型守卫读进去**：现打 18 个读点"
+        "src/backend/": (PART, "**经扫描型守卫读进去**：现打 18 个读点"
                                        "（尺子见本文件 `cross_tree_reads()`）"),
-        "scripts/": (PART, "同上，现打 6 个读点（`shared_crate_registry` 读 `gate.sh` 那条最有名）"),
-        "doc/": (PART, "同上，现打 9 个读点"),
-        "shared/": (PART, "同上，现打 5 个读点"),
+        "tests/scripts/": (PART, "同上，现打 6 个读点（`shared_crate_registry` 读 `gate.sh` 那条最有名）"),
+        "src/doc/": (PART, "同上，现打 9 个读点"),
+        "src/shared/": (PART, "同上，现打 5 个读点"),
         ".github/": (PART, "同上，现打 3 个读点（`capability_registry` 读 `ci.yml`）"),
-        "e2e/": (PART, "同上，现打 4 个读点"),
+        "tests/e2e/": (PART, "同上，现打 4 个读点"),
         "src/": blind("前端那棵树归 `npm` 与 `generated` 两格；Rust 判据里没有读点"),
     },
 )
@@ -413,23 +459,25 @@ cell(
     cwd="仓根",
     cmd="git diff --quiet --exit-code -- src/generated/",
     **{
+        "src/generated/": ("全", "〔现打 09-19〕本格的命令逐字是 `git diff --quiet --exit-code -- src/generated/` ⇒ 分母**就是这棵树**，82 份一份不漏"),
         "src/": (PART, "**只有 `src/generated/`**，而且只判**已跟踪文件的 diff** ——"
                        "全新的生成物是 untracked，本格看不见（那一格归 `generated-boundary-guard`）"),
     },
 )
 
 cell(
-    "daemon",
-    anchor="run_gate daemon '单包 remote-daemon-proto",
+    "backend",
+    anchor="run_gate backend '单包 src/backend",
     cwd="remote-daemon-proto/",
     cmd="cargo test",
     **{
-        "remote-daemon-proto/": (FULL, "单包全量 `cargo test`（含 `#[cfg(test)]` 那一族守卫）"),
-        "src-tauri/": (PART, "跨轨对拍：现打 4 个读点（`control/gate.rs` 读 Gate 2 黄金夹具、"
+        "tests/": ("部", "〔现打 09-19〕同上，`tests/backend/` 那 75 份 `.rs` 由 `src/backend/*.rs` 的 `#[path]` 挂进来 ⇒ 本格编它们、跑它们"),
+        "src/backend/": (FULL, "单包全量 `cargo test`（含 `#[cfg(test)]` 那一族守卫）"),
+        "src/bridge/": (PART, "跨轨对拍：现打 4 个读点（`control/gate.rs` 读 Gate 2 黄金夹具、"
                              "`control/launch.rs` 读 monitor 的 `tmux.rs`）"),
         ".github/": (PART, "现打 1 个读点"),
-        "e2e/": (PART, "现打 2 个读点"),
-        "doc/": (PART, "现打 5 个读点（协议文档对拍）"),
+        "tests/e2e/": (PART, "现打 2 个读点"),
+        "src/doc/": (PART, "现打 5 个读点（协议文档对拍）"),
     },
 )
 
@@ -446,12 +494,14 @@ cell(
     cwd="仓根",
     cmd="node_modules/.bin/tsc --noEmit --listFiles（＋ 程序面份数对账）",
     **{
+        "src/generated/": ("全", "〔现打 09-19〕`include` 的第一项是 `src` ⇒ 这 82 份 `ts_rs` 生成物全部过 `tsc --noEmit`，且它们在 `/src/` 下 ⇒ **也在本格那条恒等对账的两侧**"),
+        "tests/": ("部", "〔现打 09-19〕`tsconfig.json` 的 `include` 是 `['src', 'tests']` ⇒ 这棵树的 155 份 `.ts` **确实被 tsc 读进程序、真判了类型**。🔴 **但本格那条恒等对账盖不到它们**：`want` 是 `find src tests/e2e`、`got` 的正则是 `/(src|e2e)/` —— 两侧同时把 `tests/` 的其余部分剔掉，所以等式照样成立。⇒ 有人把 `include` 收窄成 `['src', 'tests/e2e']`，**162 份静悄悄不再被检，而本格全绿**。这一条另案记在 `真相源`，本登记只如实写射程"),
         "src/": (FULL, "`tsconfig.json` 的 `include` 第一项就是这棵树 ⇒ 下面每一份 "
                        "`.ts`/`.tsx`/`.mts` 都进程序，**而且本格自己现打对账**"
                        "（真读进程序的份数 == 盘上现打的份数，两个数同一趟算，一个都不写死）。"
                        "⚠ 买的是**类型**这一层：`tsc --noEmit` 不跑一行代码 ⇒ "
                        "「类型对而行为错」本格一个字都问不出来（那一维归 `npm` 那一格）"),
-        "e2e/": (PART, "`include` 的第二项，但这棵树下绝大多数是 `.sh` —— "
+        "tests/e2e/": (PART, "`include` 的第二项，但这棵树下绝大多数是 `.sh` —— "
                        "现打只有 `.ts`/`.mts` 那几份进程序，shell 套件本格一行都读不到"),
         ROOTFILES: blind("`tsconfig.json` 是本格的**配置**（它决定程序面），不是被检对象；"
                          "而仓根那几份 `.ts`（`vite.config.ts` / `vitest.config.ts`）"
@@ -465,14 +515,16 @@ cell(
     cwd="仓根",
     cmd="npm test（16 个 tsx 套件 + vitest run）",
     **{
+        "src/generated/": ("部", "〔现打 09-19〕生成物被套件 import ⇒ 会被编进去，但它们自己不是套件"),
+        "tests/": ("部", "〔现打 09-19〕`vitest.config.ts` 的 `include: ['tests/**/*.vitest.ts']` ⇒ 现打 **134** 份 `.vitest.ts` 全在本格的分母里。⚠ 229 份 `.rs` 与 `test-support/` 那几份不是套件，本格不跑"),
         "src/": (FULL, "16 个 tsx 套件全在 `src/` 下 + `vitest.config.ts` 的 "
                        "`include: [\"src/**/*.vitest.ts\"]`。⚠ **「跑了 0 个也照绿」那一格 15/17 守不住**"
                        "（本格分母那句话逐字写着）"),
-        "src-tauri/": (PART, "现打 2 个读点"),
-        "remote-daemon-proto/": (PART, "现打 1 个读点"),
-        "scripts/": (PART, "现打 2 个读点"),
-        "e2e/": (PART, "现打 1 个读点"),
-        "shared/": (PART, "现打 1 个读点"),
+        "src/bridge/": (PART, "现打 2 个读点"),
+        "src/backend/": (PART, "现打 1 个读点"),
+        "tests/scripts/": (PART, "现打 2 个读点"),
+        "tests/e2e/": (PART, "现打 1 个读点"),
+        "src/shared/": (PART, "现打 1 个读点"),
     },
 )
 
@@ -481,31 +533,60 @@ E2E_NOTE = ("四套 `ccm` e2e 之一。`e2e/` 下的套件今天远不止四套 
             "（那笔账逐字记在本文件头注引的 `gate.sh` 那一段：一次真行为变更的 71 条红里"
             "「这道门看得见 9 条、看不见 62 条」）")
 for suite, anchor in [
-    ("ccm e2e/ccm-print-parity", "run_e2e ccm-print-parity 12"),
-    ("ccm e2e/ccm-rbind-title", "run_e2e ccm-rbind-title  8"),
-    ("ccm e2e/ccm-cli", "run_e2e ccm-cli               46"),
-    ("ccm e2e/ccm-contract-parity", "run_e2e ccm-contract-parity   45"),
+    ("ccm tests/e2e/ccm-print-parity", "run_e2e ccm-print-parity 12"),
+    ("ccm tests/e2e/ccm-rbind-title", "run_e2e ccm-rbind-title  8"),
+    ("ccm tests/e2e/ccm-cli", "run_e2e ccm-cli               46"),
+    ("ccm tests/e2e/ccm-contract-parity", "run_e2e ccm-contract-parity   45"),
 ]:
     cell(
         suite,
         anchor=anchor,
         cwd="仓根",
-        cmd="bash e2e/assert-pass-floor.sh <套件> <地板> exact",
+        cmd="bash tests/e2e/assert-pass-floor.sh <套件> <地板> exact",
         **{
-            "e2e/": (PART, E2E_NOTE),
-            "remote-daemon-proto/": (PART, "**被测对象是它编出来的二进制** "
+            "tests/e2e/": (PART, E2E_NOTE),
+            "src/backend/": (PART, "**被测对象是它编出来的二进制** "
                                            "`$CARGO_TARGET_DIR/debug/cc-monitor-remote`"
                                            "（`K-R48` 第二拍起）——买的是行为，不是它的源码"),
         },
     )
 
+# 🔴 〔墓碑 09-19〕**`pb check` 那一格的登记整块删掉。**
+#   那一格 09-18 已按用户拍板**从 `gate.sh` 整格删除**（`PB_WS` / `planned-build` 在
+#   `gate.sh` 非注释处现打零命中）。本文件的 `C1` 本该当场红「登记里有格盘上没有」——
+#   **它没红，因为没人跑它**（不在执行链上 ＋ 默认住址还指着重构前的 `scripts/gate.sh`）。
+#   ⇒ 那一格从裁决行上消失用了一天，而**本文件就是那个该响没响的东西**。
+#   ⚠ 这条墓碑**不是判据**：真正拦「它偷偷回来」的是 `C1` 的两向对拍 ——
+#     `gate.sh` 里再出现这一格而登记没跟，`got - want` 当场点名。
+
+
+# ── 第 22 格 `gate-selfdesc`（09-19）：**被测对象就是 `gate.sh` 自己** ────────────
+# 🔴 本文件自己成了门禁的一格。立它的起因逐字记在 `gate.sh` 那一格的头注里：
+#   `pb check` 09-18 整格删除，而裁决行点了它一整天 —— 而**本文件的 `C5` 正是为这件事写的**，
+#   它没红只因为**没人跑它**（＋默认住址指着重构前的 `scripts/gate.sh`）。
+# ⚠ **登记它自己不是循环论证**：`C1` 拿 `gate.sh` 现打的格名与本登记两向对拍 ——
+#   本格从 `gate.sh` 里消失而这条登记还在，`want - got` 当场点名。
 cell(
-    "pb check",
-    anchor='python3 "$HOME/.claude-accts/z/skills/planned-build/bin/pb.py" check',
-    cwd="仓根（查的目录在仓外）",
-    cmd="pb.py check ../.claude/planned-build/$PB_WS",
-    # 12 棵树全「无」——刻意的，见下
-    **{t: blind("本格的分母**根本不在本仓**：它查 `../.claude/planned-build/$PB_WS` 那个计划仓") for t in TREES},
+    "gate-selfdesc",
+    anchor="run_gate gate-selfdesc '判过的条数",
+    cwd="仓根",
+    cmd="python3 tests/evidence/K-R80-gate-cell-coverage.py",
+    **{
+        "tests/scripts/": (PART, "本格**只读 `gate.sh` 这一份**（这棵树现打 7 份），"
+                                 "而且只读它的**文本**：格名 · 逐字锚点 · 裁决行的数 · 头注自述节。"
+                                 "这棵树里另外 6 份 `.sh` 本格一个字不看"),
+        "tests/e2e/": (PART, "`C5b` 要验「头注点名的套件盘上真有那份文件」⇒ 本格查"
+                             "这棵树里四套套件的**文件在不在**，**不看内容、不跑它们**"),
+        "tests/evidence/": (NONE, "🔴 **判据本体住这棵树，但本格不读这棵树的任何文件** ——"
+                                  "它读的是 `tests/scripts/gate.sh`。**判据自己住哪不算覆盖**，"
+                                  "把这两件事混起来，每把尺子都会「盖住」它自己所在的树"),
+        ".cargo/": (NONE, "🔴 本格确实会打开 `.cargo/config.toml`（`C6b` 的钉子：验那条"
+                          "「不需要门」的理由还站不站得住），**但那不算覆盖**：钉子验的是"
+                          "**一句说明**，不是这棵树的内容。算成覆盖，等于让一条「不需要门」的"
+                          "说明**自己把自己变成有门** —— `C6b` 会立刻翻脸说「这条说明陈了」"),
+        ROOTFILES: (NONE, "同上：`C6b` 的钉子③ 读 `package.json` 的 `scripts.test` 验一句话，"
+                          "不判这棵树的内容。本树的 `部` 来自 `release-gate`，不来自本格"),
+    },
 )
 
 
@@ -546,7 +627,30 @@ NEED_NONE, UNJUDGED = "不需要门", "未裁"
 #   **但那句话的字面不成立了** ⇒ 删它，不许改成一句还罩得住的话。
 #   🔴 这一改**推翻了 `K-R80` 记下的一条理由**，不是机械随动 —— 实现方不自批，交回 PM 裁。
 NO_GATE_NEEDED = {
+    # 🔴 〔新增 09-19〕重构把两个 Cargo 工程搬进 `src/` 之后才出现的一棵树。
+    ".cargo/": {
+        "why": "这棵树只有一份 `config.toml`，内容是 `[build] target-dir = \".build/bridge\"` ——"
+               "它把构建产物**赶出 `src/`**。⇒ 它是本仓那一族「走一遍源码树收所有 `.rs`」判据的"
+               "**前置条件**，不是任何一格的**分母**；登记只记分母，所以这里判 0 不是漏登。"
+               "🔴 **但它坏掉的后果比一般配置重，写清楚**：`target/` 下有成千上万份 build script "
+               "生成的 `.rs`，一旦落回 `src/` 里，那一族判据的人群会被生成代码淹没 —— "
+               "**不是报错，是安静地扫错东西**（本仓自己的说法：「恒绿看起来和真绿一模一样」）。"
+               "⇒ 判词写死是 `未裁`：该不该给它单立一道门是另一次裁定，本条只买「已被数到」。"
+               "⚠ 与 `tests/hooks/` 的区别仍在那一句：那棵树里的东西**会被执行**。",
+        # 钉子：那份文件得真在、且那条键真是这个值 —— 有人把 target-dir 改回默认，理由当场失效。
+        "witness_file": ".cargo/config.toml",
+        "witness_text": 'target-dir = ".build/bridge"',
+        "archive": [
+            {"档": "构建 / 工具链配置", "判": UNJUDGED,
+             "成员": ["config.toml"],
+             "why": "它决定构建产物落在哪；改坏它不改变产品行为，但会让一族判据的人群失真。"
+                    "该不该给它加门未裁。"},
+        ],
+    },
     ROOTFILES: {
+        # 🔴 〔加标 09-19〕`release-gate` 那一格读 `package.json` 的 `version` ⇒ 本树 **1 格覆盖**，
+        #   不再是孤儿。但 14 份里进那一格的只有 1 份 ⇒ 逐份分档照做（见上面 `partial` 那段）。
+        "partial": True,
         # 🔴 `K-R91`（09-12）**这一段整段重写过**，上一版逐字是：
         #   「② 其余的（`README*.md` / `CHANGELOG.md` / `LICENSE` / `PHASE-G-REPORT.md` /
         #     `.gitattributes` / 那份审阅报告）是**文档与仓库元数据**，改坏它们不改变任何产品行为」
@@ -558,7 +662,10 @@ NO_GATE_NEEDED = {
                "🔴 **每一档带自己的判词，`不需要门` 与 `未裁` 分开写**："
                "① `npm` 那一格的命令本体住在 `package.json` 的 `scripts.test` 里、"
                "`vitest.config.ts` 给它 `include` —— 这两份坏了那一格根本起不来 ⇒ 它们是那格的"
-               "**依赖**，不是那格的**分母**；登记只记分母，所以这里仍判 0，不是漏登。"
+               "**依赖**，不是那格的**分母**；登记只记分母，所以这两份在本树上判 0，不是漏登。"
+               "⚠ 〔订正 09-19〕上一句原先写的是「**这里仍判 0**」——那是说**整棵树** 0 格覆盖，"
+               "今天不成立了：`release-gate` 读 `package.json` 的 `version`，本树现打 **1 格**。"
+               "改的是那句话的射程（从整棵树收到这两份），**不是把普查关掉**。"
                "② 文档与仓库元数据那两档，改坏它们不改变任何产品行为，**不值一道出货闸**。"
                "③ **应用入口与构建 / 工具链配置那两档今天 0 格覆盖，而它们既不是文档也不是仓库元数据** ——"
                "判词写死是 `未裁`：该不该给它们加门是另一次裁定（`K-R91` `§0b` 逐字禁本件加门），"
@@ -593,8 +700,11 @@ NO_GATE_NEEDED = {
              "why": "它们只对 git 自己说话（哪些文件不跟踪 / 换行与 diff 怎么处理），"
                     "不进构建、不进运行时、不被产品代码读"},
             {"档": "文档", "判": NEED_NONE,
-             "成员": ["README*.md", "CHANGELOG.md", "LICENSE", "PHASE-G-REPORT.md",
-                     "项目审阅报告-*.md"],
+             # 🔴 〔订正 09-19〕摘掉 `PHASE-G-REPORT.md` 与 `项目审阅报告-*.md` ——
+             #   两份**今天一份都匹配不到**（`C6c` 每趟现数，所以它红得出来）。
+             #   ⚠ 摘的是**档标**不是判词：剩下四份仍归「文档」，那句「改坏它们不改变
+             #   任何产品行为」对它们一个字没变。
+             "成员": ["README*.md", "CHANGELOG.md", "LICENSE"],
              "why": "改坏它们不改变任何产品行为 —— **这一句对这一档是真的**；"
                     "上一版把同一句话当成罩住整棵树的全称句用，那正是 `K-R91` 立案的那一形"},
         ],
@@ -637,25 +747,17 @@ def cross_tree_reads():
     ⇒ 它给的是**量级**，不是精确数。上面登记里那些「现打 N 个读点」就是这把尺子的读数。
     """
     read_call = re.compile(r"read_to_string|include_str!|readFileSync|read_dir|readdirSync")
-    markers = {
-        "scripts/": "scripts/", ".github/": ".github/", "e2e/": "e2e/", "doc/": "doc/",
-        "remote-daemon-proto": "remote-daemon-proto/", "src-tauri": "src-tauri/",
-        "shared/": "shared/", "hooks/": "hooks/",
-    }
+    # 🔴 〔订正 09-19〕上一版这里**另写了一份归属表**（`markers` 八条 ＋ 下面那串 if/elif），
+    #    与文件头的 `TREES` 是两份账，重构一来两份同时腐、而且互相看不见。
+    #    ⚠ 本拍那道「树键位改写」的正则还**误伤过它一次** —— 它的键是「源码行里要找的字串」、
+    #      值才是树名，两者同形 ⇒ 正则把键当树名改了一半。**这正是第二份账的典型死法。**
+    #    ⇒ 删掉，一律从 `TREES` 派生：归属只有一个住址。
+    markers = {t: t for t in TREES if t is not ROOTFILES}
     matrix = {}
     for f in ls_files():
         if not f or f.rsplit(".", 1)[-1] not in ("rs", "ts", "mts", "js", "mjs"):
             continue
-        if f.startswith("src-tauri/vendor/"):
-            owner = VENDOR
-        elif f.startswith("src-tauri/"):
-            owner = "src-tauri/"
-        elif f.startswith("remote-daemon-proto/"):
-            owner = "remote-daemon-proto/"
-        elif "/" in f:
-            owner = f.split("/")[0] + "/"
-        else:
-            owner = ROOTFILES
+        owner = tree_of(f)
         try:
             txt = (ROOT / f).read_text(encoding="utf-8", errors="replace")
         except OSError:
@@ -677,12 +779,11 @@ def cross_tree_reads():
 CELL_PATTERNS = [
     (re.compile(r"^run_gate_sum (\S+) ", re.M), lambda m: m.group(1)),
     (re.compile(r"^run_gate (\S+) ", re.M), lambda m: m.group(1)),
-    (re.compile(r"^run_e2e (\S+) ", re.M), lambda m: "ccm e2e/" + m.group(1)),
+    (re.compile(r"^run_e2e (\S+) ", re.M), lambda m: "ccm tests/e2e/" + m.group(1)),
 ]
 # 这两格不走那三个函数，各自手写判定 ⇒ 单独按**逐字锚点**认。
 HANDWRITTEN = {
     "generated": "git diff --quiet --exit-code -- src/generated/",
-    "pb check": 'fails+=("pb check（没给 PB_WS',
 }
 ROLLCALL = re.compile(r"GATE: OK —— (\d+) 格全绿")
 
@@ -763,7 +864,10 @@ def header_paragraphs(hdr):
 
 
 def suite_on_disk(tok):
-    return any((ROOT / f"e2e/{tok}{ext}").exists() for ext in (".sh", ".test.sh", ""))
+    # 🔴 〔订正 09-19〕住址原先是 `e2e/{tok}` —— 重构后套件搬进 `tests/e2e/`，
+    #    于是**四套都查无此文件**，C5b 一口气吐三条假红（三段头注被判成「点了不存在的套件」）。
+    #    ⚠ 这一形值得记：**尺子指错地方时，它的红与真红长得一模一样。**
+    return any((ROOT / f"tests/e2e/{tok}{ext}").exists() for ext in (".sh", ".test.sh", ""))
 
 
 # ── `C5c`（`K-R122` `KR122D3` 的兄弟条，09-14）：**裁决行上那句射程，有人守** ────────
@@ -925,7 +1029,7 @@ def check_self_description(text, cells, rollcall):
                 if SUITE_TOK.match(tok) and not suite_on_disk(tok):
                     bad.setdefault(tok, i)
         if bad:
-            out.append(f"C5b `gate.sh:{para[0][0]}–{para[-1][0]}` 这一段点名了 `e2e/` 下"
+            out.append(f"C5b `gate.sh:{para[0][0]}–{para[-1][0]}` 这一段点名了 `tests/e2e/` 下"
                        f"**没有那份文件**的套件："
                        + " · ".join(f"`{t}`（首见 :{n}）" for t, n in sorted(bad.items()))
                        + f" —— 若这一段是历史账，就在**段落首行**逐字带上 `{HIST_MARK} …〕`")
@@ -943,7 +1047,19 @@ def check_no_gate_needed(orphans):
     """
     out = []
     rootfiles = {p for p in ls_files() if "/" not in p}
-    got, want = set(orphans), set(NO_GATE_NEEDED)
+    # 🔴 〔订正 09-19〕`C6b` 的人群从「孤儿树」扩成「孤儿树 ∪ 明标 `partial` 的树」。
+    #   题面：`<仓根文件>` 今天被 `release-gate` 盖到 **1 格**（它读 `package.json` 的 `version`）
+    #   ⇒ 按上一版那条两向对拍，它**不再是孤儿**，于是「登记说它不需要门」当场红，
+    #   而正确的动作不是删掉那条说明 —— 14 份仓根文件里真正进了那一格的**只有 1 份**，
+    #   另外 13 份的处境一个字没变。**一条 `部` 裁词把整棵树的逐份普查关掉了，这才是病。**
+    #   ⇒ 开一个 `partial` 标，两条纪律拴住它，不让它变成万能豁免：
+    #     · 标了 `partial` 的树**必须真被至少一格盖到**（否则它就是孤儿，该摘掉这个标）
+    #     · 它的 `archive` 仍要**逐份盖全**（`C6c` 一个字没放松）
+    partial = {t for t, e in NO_GATE_NEEDED.items() if e.get("partial")}
+    for t in sorted(partial & set(orphans)):
+        out.append(f"C6b `{t}` 标了 `partial`（说它被格盖到了），而它今天 **0 格覆盖** —— "
+                   f"这个标陈了，摘掉它，这棵树就是普通孤儿")
+    got, want = set(orphans) | partial, set(NO_GATE_NEEDED)
     for t in sorted(got - want):
         out.append(f"C6b `{t}` 今天 0 格覆盖，而登记里**一条说明都没有** —— "
                    f"「不需要」与「没查」在输出上一模一样，这一条要求写死是前者")
@@ -1001,10 +1117,11 @@ def check_no_gate_needed(orphans):
 #   关掉了那条路），只判**有没有归**。这与 `C6b` 是同一条边界，方向不同：
 #   `C6b` 查「这句话还站不站得住」，`C6c` 查「这句话的枚举盖没盖全那棵树」。
 def tree_members(tree, files):
-    """那棵树**现打**的成员。`<仓根文件>` = `git ls-files` 里不含 `/` 的那些。"""
-    if tree == ROOTFILES:
-        return sorted(p for p in files if "/" not in p)
-    return sorted(p for p in files if p.startswith(tree))
+    """那棵树**现打**的成员。
+    🔴 〔订正 09-19〕走 `tree_of()` 的**首匹配**，不再用裸 `startswith` ——
+    重构后树之间**有前缀包含关系**（`src/` ⊃ `src/bridge/`），裸 `startswith` 会让
+    catch-all 那棵把所有子树的成员**再数一遍**，分母当场虚高、而且没有任何判据会红。"""
+    return sorted(p for p in files if tree_of(p) == tree)
 
 
 def bucket_hits(pattern, tree, members):
@@ -1019,7 +1136,9 @@ def bucket_hits(pattern, tree, members):
 
 def check_archive(orphans, files):
     out = []
-    for t in orphans:
+    # 人群与 `C6b` 同步：孤儿树 ∪ 明标 `partial` 的树（理由见 `check_no_gate_needed`）。
+    for t in list(orphans) + [t for t, e in NO_GATE_NEEDED.items()
+                              if e.get("partial") and t not in orphans]:
         ent = NO_GATE_NEEDED.get(t)
         if not ent:
             continue          # 那一形归 `C6b`（「登记里一条说明都没有」），这里不重复报
@@ -1106,16 +1225,26 @@ def main():
             if not (why or "").strip():
                 fails.append(f"C6 `{name}` / `{t}` 的裁词没带理由 —— 空白格不算点名")
 
-    top = {p.split("/")[0] + "/" for p in ls_files() if "/" in p}
-    registered_top = {t for t in TREES if t not in (VENDOR, ROOTFILES)}
-    if top != registered_top:
-        fails.append(f"C4 树的全集与 `git ls-files` 现打的顶层目录对不上："
-                     f"盘上多出 {sorted(top - registered_top)} · 登记里多出 {sorted(registered_top - top)}")
+    # ── `C4`〔重写 09-19〕树的全集 ↔ 盘 ──────────────────────────────────────
+    # 上一版判的是「登记的树 == `git ls-files` 现打的**顶层目录**」。重构后顶层只剩 4 个，
+    # 照那条判法这张表只能有 4 棵 —— 而那张盲区转置表正是靠**细粒度**说话的。
+    # ⇒ 换单位，买更强的两条（见文件头 `TREES` 那段）：
+    #   · `C4a` **分区**：每一份被跟踪文件归到恰好一棵登记的树，份数合计 == 现打总数
+    #   · `C4b` **非空**：每一棵登记的树现打份数 > 0
+    # 🔴 `C4a` 写成**恒等**不写成「有没有漏」 —— 「一份都没漏」与「一份都没数」
+    #   在布尔面上同形。catch-all（`src/` / `tests/`）被删、或 `tree_of()` 的顺序被改，
+    #   合计当场对不上；这是本条唯一能红的路，也正是它存在的理由。
+    tracked = [f for f in ls_files() if f]
+    per_tree = {t: len(tree_members(t, tracked)) for t in TREES}
+    if sum(per_tree.values()) != len(tracked):
+        fails.append(f"C4a 分区对不上：{len(TREES)} 棵树合计 {sum(per_tree.values())} 份，"
+                     f"而 `git ls-files` 现打 {len(tracked)} 份 —— "
+                     f"catch-all 那两棵（`src/` / `tests/`）被动过，或 `TREES` 的顺序被改了")
     for t in TREES:
-        if t in (ROOTFILES,):
-            continue
-        if not (ROOT / t).exists():
-            fails.append(f"C4 登记里的树 `{t}` 盘上不存在")
+        if per_tree[t] == 0:
+            fails.append(f"C4b 登记里的树 `{t}` 现打 **0 份** —— 它搬走了或被删空了，登记陈了")
+        if t is not ROOTFILES and not (ROOT / t).exists():
+            fails.append(f"C4b 登记里的树 `{t}` 盘上不存在")
 
     m = ROLLCALL.search(text)
     if not m:
@@ -1131,14 +1260,22 @@ def main():
     print(f"# `K-R80` `KR80D3` 门禁分格覆盖登记 —— 量于 `{GATE}`")
     print()
     print(f"判定格 **{len(cells)}** 个 · 树的全集 **{len(TREES)}** 棵"
-          f"（顶层目录 {len(registered_top)} + vendor 单拆 + 仓根文件）")
+          f"（现打合计 {sum(per_tree.values())} 份，分区不重不漏）")
     print()
     print("| 格 | cwd | 命令 | 全 | 部 | 🔴 盖不到（逐棵点名） |")
     print("|---|---|---|---|---|---|")
-    order = [c for c in ("hooks", "copy2", "shellcheck", "ci-e2e-prereq",
-                         "fmt", "fmt-daemon", "winchk", "winchk-daemon", "cargo",
-                         "deadcode", "generated", "daemon", "tsc", "npm")
-             if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm e2e/")) + ["pb check"]
+    # ⚠ 这张顺序表**只管印，不管判** —— `c in REGISTRY` 那道过滤会让写错的名字**静静消失**
+    #   （步 8 把 `fmt-daemon`/`winchk-daemon`/`daemon` 改名之后，这里三行陈了一个月没人响）。
+    #   ⇒ 下面那条 `missing` 把「登记里有、这张表没点到」当场印出来，不让它再静默。
+    order = [c for c in ("hooks", "copy2", "shellcheck", "ci-e2e-prereq", "release-gate",
+                         "gate-selfdesc",
+                         "installface", "fmt", "fmt-backend", "winchk", "winchk-backend",
+                         "cargo", "deadcode", "generated", "backend", "tsc", "npm")
+             if c in REGISTRY] + sorted(c for c in REGISTRY if c.startswith("ccm tests/e2e/"))
+    missing = sorted(set(REGISTRY) - set(order))
+    if missing:
+        print(f"> ⚠ 这张表的打印顺序没点到：{missing}（登记里有，下面按名字补在末尾）")
+        order += missing
     for name in order:
         ent = REGISTRY[name]
         # ⚠ 一律走 `verdict_of` —— 直接下标会在「登记漏了一棵树」那一形上 `KeyError` 崩掉，
@@ -1232,6 +1369,26 @@ def main():
         for f in fails:
             print(f"  ✗ {f}")
         return 1
+    # 🔴 门禁那一格的读数行：`run_gate` 靠「N passed」认这一格**真的跑了**
+    #   （`0 passed 不是绿` 是它的另一条判定）。〔09-19 接进门禁时加〕
+    # 分母**每趟现算**，逐项写死在下面，不许手抄：
+    n_arch = sum(len(b.get("成员") or []) for e in NO_GATE_NEEDED.values()
+                 for b in (e.get("archive") or []))
+    checks = (2                                   # C1 两向集合对拍
+              + len(REGISTRY)                     # C2 每格一条逐字锚点，count()==1
+              + len(REGISTRY) * len(TREES) * 2    # C3 裁词在闭集里 + C6 裁词带理由
+              + 1                                 # C4a 分区恒等（15 棵合计 == 现打总数）
+              + len(TREES) * 2                    # C4b 每棵非空 + 每棵盘上存在
+              + 1                                 # C5  裁决行的数 == 现打格数
+              + len(NO_GATE_NEEDED)               # C6b 每条「不需要门」的说明 + 钉子
+              + n_arch)                           # C6c 分档表里逐份点名的成员
+    # 🔴 **这个数不是本条的反空真锚** —— 它只说「判了多少条」。真正拦「一条都没判」的是
+    #   `C1` 那两向**集合相等**：登记空了、或 `gate.sh` 读成了空串，`got`/`want` 当场分叉。
+    #   ⇒ 「扫到 0 格所以绿」在本条上走不通，而这句话有死值验撑着（刀 2：改一格的名 ⇒ C1 红）。
+    print(f"gate-selfdesc: {checks} passed（分母 = C1 两向 2 ＋ C2 锚点 {len(REGISTRY)} ＋ "
+          f"C3/C6 逐格逐树裁词与理由 {len(REGISTRY)}×{len(TREES)}×2 ＋ C4a 分区恒等 1 ＋ "
+          f"C4b 每棵树非空与在盘 {len(TREES)}×2 ＋ C5 格数对拍 1 ＋ "
+          f"C6b「不需要门」{len(NO_GATE_NEEDED)} 条 ＋ C6c 分档成员 {n_arch} 份）")
     print("KR80D3: OK —— C1..C6 全过；C5b 全过（`K-R91` `KR91D1`）；"
           "C5c 全过（`K-R122` `KR122D2` 乙：裁决行那句射程）；"
           "C6b 全过（`K-R82` `KR82D3`）；C6c 全过（`K-R91` `KR91D2`）"
