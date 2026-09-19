@@ -410,6 +410,7 @@ mod tests {
             "acct-iso.shellinit",
             Side::Remote,
         ),
+        // 🔴 §40 九对合并的**第 10 对**：它不是漏了，是判成两个能力（`调研/设计/15 §D1`）。
         ("list_remote_tmux", "tmux.manage", Side::Remote),
         // P3t-Y2b：**刻意不挂在 `tmux.manage` 底下**。挂上去会让那条能力变成 `Both`，
         // 而那是过度声称 —— 本机这个口只答「哪些名字被占了」，不能 capture-pane、不能 kill、
