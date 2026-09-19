@@ -28,9 +28,12 @@ say () { printf '%s\n' "$*" | tee -a "$LOG"; }
 
 # ⚠ `|| true`：变异跑的时候 vitest **本来就该**非零退出，而本文件开着 `set -e -o pipefail`
 # ——不兜住的话脚本会在第一个变异之后就死掉（现打踩过：日志只剩 M0/M1）。
+# ⚠ grep 的模式里**每加一条判据就要回来加一行** —— 抓不到的那条会在日志里只剩一个 `×`，
+#   读的人看不出它为什么红。2026-09-18 随地板去掉新增两格：F1（`< 登记的`）与
+#   「没有第二个地板悄悄回来」（`又开始夹取估值`）。
 run_gate () {
   { npx vitest run "$GATE" 2>&1 || true; } \
-    | grep -E '^\s+×|Tests  |card-[a-z-]+：p90|现算 [0-9.]+ ≠ 金标准' | head -8 || true
+    | grep -E '^\s+×|Tests  |card-[a-z-]+：p90|现算 [0-9.]+ ≠ 金标准|< 登记的 |又开始夹取估值' | head -10 || true
 }
 
 say "# 秤 2 变异自检 —— 原文（bash tests/evidence/U-scale2-mutation.sh 覆盖重写）"
@@ -79,6 +82,16 @@ mutate "M9 · BASH_OUTPUT_HEADER_H 19 → 90" \
 #    它红不了就说明上限白拧了。
 mutate "M10 · extractProseText 不再折叠源码换行（退回修之前那个「全留 \\n」）" \
   's|const s = raw.*|const s = raw;|'
+# ── 🔴 2026-09-18 新增三条：地板去掉之后，顶班的那两格灵不灵 ──────────────────
+#    M11/M12 钉 **F1**「每 class 估值最小值 ≥ 登记常数」—— 地板从前会把这种值静默顶上去，
+#    判据必须把它喊出来。**它们红不了，就说明地板是白去的**（保险没人接手）。
+#    M13 钉「没有第二个地板悄悄回来」那一格 —— 把地板原样加回去，必须当场红。
+mutate "M11 · card-api-retry 常数 17 → 5（估值塌到荒谬地小 ⇒ F1 必须红）" \
+  's|if (el.classList.contains("card-api-retry")) return 17;|if (el.classList.contains("card-api-retry")) return 5;|'
+mutate "M12 · SUMMARY_H 38 → 12（折叠卡塌下去 ⇒ F1 在 compact/tool-group 两条上必须红）" \
+  's|^const SUMMARY_H = 38;|const SUMMARY_H = 12;|'
+mutate "M13 · 把 Math.max(24, …) 地板原样加回来（⇒「没有第二个地板悄悄回来」必须红）" \
+  's|^  return Math.round(h);|  return Math.max(24, Math.round(h));|'
 
 say ""
 say "######## 全部还原后复跑"

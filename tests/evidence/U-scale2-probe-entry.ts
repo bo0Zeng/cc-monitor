@@ -19,8 +19,11 @@
  *   这一段专门回答 `height-estimate.ts` 自陈的那句「不加 padding/border：
  *   `contain-intrinsic-size` 是 content-box」到底成不成立。做法：一张真的
  *   `card-api-retry`（padding 3px 12px）放在**视口外、从没渲染过**的位置，
- *   inline 写 `contain-intrinsic-size: auto 24px`，读它的 `getBoundingClientRect().height`。
- *   **读到 24 ⇒ border-box；读到 24+padding+border ⇒ content-box。** 二选一，没有第三种。
+ *   inline 写 `contain-intrinsic-size: auto <N>px`，读它的 `getBoundingClientRect().height`。
+ *   **读到 N ⇒ border-box；读到 N+padding+border ⇒ content-box。** 二选一，没有第三种。
+ *   🔴 第一格的 N **不是写死的**，是 `appliedIntrinsicPx` 今天真写进 style 的那个数
+ *   （`shipped: true`）—— 悬案③ 按这一格推「视口外一张 retry 实际占多少」，
+ *   源码一改它跟着动。其余几格是写死的对照值（24/100/32/40 与无 inline 的 CSS 兜底）。
  *
  * - **C 段 · 环境**：UA、视口、devicePixelRatio、`.stream-content` 实际列宽、
  *   几个承重 CSS token 的 computed 值（字号/行高/字体族是否真的落到了 fallback）。
@@ -35,6 +38,7 @@ import { buildCorpus, htmlFingerprint } from "../scale2-height-corpus";
 import {
   estimateStreamNodeHeight,
   applyIntrinsicSize,
+  appliedIntrinsicPx,
   extractProseText,
   codeBlockHeight,
 } from "../../src/height-estimate";
@@ -46,7 +50,16 @@ declare global {
   }
 }
 
-const APPLIED_FLOOR = 24; // `applyIntrinsicSize` 里那个 `Math.max(24, …)`
+/**
+ * `styles.css` 的 `.stream-content > * { contain-intrinsic-size: auto 120px }` ——
+ * 估不出高时浏览器实际用的那个数。
+ *
+ * 🔴 这里原先还有一份硬写的 `const APPLIED_FLOOR = 24`（`applyIntrinsicSize` 里那个
+ * `Math.max(24, …)` 的**第二份副本**）。2026-09-18 地板去掉之后，"真正写进 style 的数"
+ * 收成了一个住址：`appliedIntrinsicPx`（`src/height-estimate.ts`），本文件**调它**而不再抄它
+ * —— 抄的那份改源码不会跟着变，探针会安静地在量一个不再出货的配置（`99 条 75` 第 3 处）。
+ */
+const CSS_FALLBACK_PX = 120;
 
 interface Row {
   id: string;
@@ -59,10 +72,10 @@ interface Row {
   htmlHash: string;
   /** `estimateStreamNodeHeight` 的原始返回（null = 认不出，落 CSS 兜底 120px） */
   estRaw: number | null;
-  /** `applyIntrinsicSize` 真正写进 style 的那个数（含 `Math.max(24,…)` 地板）；认不出时 = CSS 的 120 */
+  /** `applyIntrinsicSize` 真正写进 style 的那个数（= `appliedIntrinsicPx`）；认不出时 = CSS 的 120 */
   estApplied: number;
-  /** 地板有没有把 estRaw 顶上去 */
-  flooredBy: number;
+  /** 估值与落地值的差（地板去掉之后恒等于 `round` 的舍入量，留着当哨兵：再出现地板这一列就不是舍入了） */
+  appliedDelta: number;
   /** 真高（border-box） */
   trueBorderBox: number;
   /** 真高（content-box）= border-box − padding − border */
@@ -124,7 +137,7 @@ async function main(): Promise<void> {
     const html = el.outerHTML;
     const estRaw = estimateStreamNodeHeight(el);
     applyIntrinsicSize(el);
-    const applied = estRaw === null ? 120 : Math.max(APPLIED_FLOOR, Math.round(estRaw));
+    const applied = estRaw === null ? CSS_FALLBACK_PX : appliedIntrinsicPx(estRaw);
     const box = boxOf(el);
     rows.push({
       id: item.id,
@@ -136,7 +149,7 @@ async function main(): Promise<void> {
       htmlHash: htmlFingerprint(html),
       estRaw,
       estApplied: applied,
-      flooredBy: estRaw !== null && Math.round(estRaw) < APPLIED_FLOOR ? APPLIED_FLOOR - Math.round(estRaw) : 0,
+      appliedDelta: estRaw === null ? 0 : applied - estRaw,
       trueBorderBox: box.border,
       trueContentBox: box.content,
       padBorder: box.padBorder,
@@ -234,13 +247,31 @@ async function main(): Promise<void> {
     computedCIS: string;
     computedCV: string;
     skipped: boolean | null;
+    /**
+     * 🔴 这一格的 `declared` 是**今天 `applyIntrinsicSize` 真写进 style 的那个数**
+     * （不是写死的常数）。悬案③ 要的就是它 —— 按 `shipped` 找，不按数值找，
+     * 这样源码一改它自己就跟着动，而不是留在原地绿着量一个不再出货的配置。
+     */
+    shipped: boolean;
   }
   const intrinsic: IntrinsicProbe[] = [];
+  // 🔴 第一格的声明值**不是写死的** —— 它是 `applyIntrinsicSize` 今天真往一张真
+  // `card-api-retry` 的 style 里写的那个数（走 `appliedIntrinsicPx`，与生产同一条路）。
+  // 为什么要这样：悬案③ 那一段要的是「视口外每张 retry 实际占多少」，而它此前是去 B 段
+  // 找 `declared === 24` 那一格读的 ⇒ 常数/地板一改，那一格还在，只是**不再是出货的配置**，
+  // 于是整段安静地绿着量一个不存在的世界（`99 条 75` 落地清单第 5 处点名的就是这一形）。
+  // 现在这一格跟着源码走，改了估高它自己就跟着动。
+  const shippedRetryPx = rows.find((r) => r.cls === "card-api-retry")?.estApplied ?? null;
   const cases: [string, string, number | null][] = [
-    ["card-api-retry / inline auto 24px（今天的常数）", "card card-api-retry", 24],
+    [
+      `card-api-retry / inline auto ${shippedRetryPx}px（**今天真写进 style 的那个数**，由 appliedIntrinsicPx 现算）`,
+      "card card-api-retry",
+      shippedRetryPx,
+    ],
+    ["card-api-retry / inline auto 24px（2026-09-18 之前那个 Math.max 地板的值，留作对照）", "card card-api-retry", 24],
     ["card-api-retry / inline auto 100px（拉开差距好判读）", "card card-api-retry", 100],
     ["card-api-retry / 无 inline（落 CSS 兜底 auto 120px）", "card card-api-retry", null],
-    ["card-bash-input / inline auto 32px（今天的常数）", "card card-bash-input", 32],
+    ["card-bash-input / inline auto 32px（2026-09-18 上半场那个 border-box 手算值）", "card card-bash-input", 32],
     ["card-api-error / inline auto 40px（今天的常数）", "card card-api-error", 40],
   ];
   for (const [, cls, declared] of cases) {
@@ -255,6 +286,7 @@ async function main(): Promise<void> {
   Array.from(farContent.children).forEach((node, i) => {
     const el = node as HTMLElement;
     const [label, cls, declared] = cases[i];
+    const shipped = i === 0; // 第 0 格就是「今天真写进 style 的那个数」那一格（见上面的构造）
     const cs = getComputedStyle(el);
     const pad =
       parseFloat(cs.paddingTop || "0") +
@@ -278,6 +310,7 @@ async function main(): Promise<void> {
       computedCIS: cs.containIntrinsicSize || cs.getPropertyValue("contain-intrinsic-size"),
       computedCV: cs.contentVisibility || cs.getPropertyValue("content-visibility"),
       skipped,
+      shipped,
     });
   });
 
