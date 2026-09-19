@@ -176,7 +176,8 @@ fn read(rel: &str) -> String {
 /// 比的是**集合**不是**个数** ⇒ 「删一处、添一处」在这一半上是**红的**（头注那张表）。
 #[test]
 fn the_ledger_half_of_the_launcher_population_matches_the_registry() {
-    let raw = read("src/bridge/src/parity_ledger.rs");
+    // 〔步 7c 剖分 2026-09-19 · C 类〕那张平价账本跟着测试段搬进了 `tests/bridge/`。
+    let raw = read("tests/bridge/parity_ledger_tests.rs");
     let rows = ledger_rows(&raw);
 
     // 抽取器自检 ①：抠得到东西（否则下面是空真）。

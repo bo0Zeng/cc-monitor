@@ -291,7 +291,12 @@ fn no_quantity_form_of_a_pointer_only_fact_appears_in_prose() {
     );
 }
 
-const SELF: &str = "src/bridge/src/doc_copy_registry.rs";
+// 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕**自摘的住址跟着 `HAS_A_GUARD` 搬。**
+// 那张表这一轮从 `src/bridge/src/doc_copy_registry.rs` 搬进了本文件；
+// 自摘要摘的一直是**表住的那一份**（不摘 ⇒ 每条都能在自己的表里找到自己 ⇒ 恒绿）。
+// 没跟着改的后果现打过：`own` 读出来的是生产段那份、里面已经没有 `HAS_A_GUARD`
+// ⇒ 下面那条「摘除成了死规则」的自检当场红。红得对。
+const SELF: &str = "tests/bridge/doc_copy_registry_tests.rs";
 
 fn read(rel: &str) -> String {
     std::fs::read_to_string(repo_root().join(rel))

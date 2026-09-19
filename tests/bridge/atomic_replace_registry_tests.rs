@@ -169,7 +169,15 @@ const SCANNED: &[(&str, &str)] = &[
     ("rename", ".rename("),
 ];
 
-const SELF: &str = "atomic_replace_registry.rs";
+// 🔴 〔步 7c 剖分 2026-09-19〕**原来这里有一条 `const SELF` 自摘，已按判据自己给的出路删掉。**
+//
+// 它排掉的是 `src/bridge/src/atomic_replace_registry.rs`，理由是那份文件的
+// **示例字面量**（`MoveFileExW(` / `ReplaceFileW(`）会被下面的扫描当成真调用点。
+// 那些示例这一轮跟着测试段搬进了本文件，而 `call_sites()` 只扫 `src_root()`
+// （生产树）⇒ 生产段那份里一个示例都不剩 ⇒ **排除成了死规则**。
+// 判据自己的自检逐字报的就是这一句（「里已经没有那两个符号的示例了 —— 那条排除成了死规则，删掉它」）。
+// ⇒ 照它说的删。删掉之后那份生产文件**进了人群**，而它今天一个命中都没有 —— 这是对的：
+//   哪天有人真往那份文件里写一处原子替换，本条从此看得见（此前被那条排除永久挡着）。
 
 /// 生产段（剥注释后）里**调用形态**的命中：`Symbol(`。`use` 那行没有括号，不算。
 fn call_sites() -> Vec<(String, String, usize)> {
@@ -184,9 +192,6 @@ fn call_sites() -> Vec<(String, String, usize)> {
             .unwrap_or(&f)
             .to_string_lossy()
             .replace('\\', "/");
-        if rel == SELF {
-            continue;
-        }
         let src = guard_core::strip_comment_lines(&fs::read_to_string(&f).unwrap_or_default());
         for (name, pat) in SCANNED {
             let n = src.matches(pat).count();
@@ -214,13 +219,12 @@ fn every_atomic_replace_call_site_says_which_semantics_and_why() {
              下面的对拍会在两边都空的情况下变绿"
     );
 
-    // 排除项自检：`SELF` 排掉的必须**真的**是一个会命中的文件，否则这条排除是死规则，
-    // 而死规则会在下一次有人真往这里写调用点时悄悄放行。
-    let own = fs::read_to_string(src_root().join(SELF)).unwrap_or_default();
-    assert!(
-        own.contains("MoveFileExW(") && own.contains("ReplaceFileW("),
-        "`{SELF}` 里已经没有那两个符号的示例了 —— 那条排除成了死规则，删掉它"
-    );
+    // 🔴 〔步 7c 2026-09-19〕**这里原来有一条「排除项自检」，连同它自检的那条排除一起删了。**
+    // 理由写在上面 `SELF` 原址那段注里：示例字面量随测试段搬走 ⇒ 排除成了死规则。
+    // ⚠ 它换来的那一格保护**没有丢**：那条排除的风险是「排掉之后没人看那份文件」，
+    //   而现在那份文件**在人群里**（不再被排除），下面的对拍直接看着它。
+    // ⇒ 正控：往 `src/bridge/src/atomic_replace_registry.rs` 的生产段塞一句
+    //   `MoveFileExW(x)`，本条会以「未登记的调用点」红（步 7c 死值验跑过）。
 
     let mut missing = Vec::new();
     let mut drifted = Vec::new();

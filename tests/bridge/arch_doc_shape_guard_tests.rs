@@ -318,13 +318,36 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
     // `parity_ledger` 那张平价账本整个住在测试段里：它是**登记表**，不是运行时代码。
     // 拿「生产段」当人群 = 把本条最主要的目标全摘掉。
     //
-    // 摘除自己走 `scan_tree_excluding_self`（防判据被自己的散文喂饱）。
-    // 本文件全文无 §36 引用 ⇒ 摘掉它**一条目标都不损失**，这正是把本条安家在这里的理由。
-    let files_src = guard_core::scan_tree_excluding_self(&root, &["rs"], file!());
+    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` B 类 ＋ `§5.4b` 纪律 3、4〕
+    //    **上面那句话正是这一轮失效的那一句 —— 两件一起改。**
+    //
+    // · **B 类**：那张账本这一轮从 `src/bridge/src/parity_ledger.rs` 搬进了
+    //   `tests/bridge/parity_ledger_tests.rs` ⇒ 只给 `<bridge>/src` 一棵根时它**掉出人群**。
+    //   现打：完备性自检之后那条点名断言当场红（实得三份，`parity_ledger_tests.rs` 不在里面）。
+    //   ⇒ 补上 `<repo>/tests/bridge` 这一棵。两棵互不包含（`§5.4b` 纪律 1）。
+    // · **A 类**：摘除原来靠 `scan_tree_excluding_self(.., file!())`。本文件被 `#[path]`
+    //   引进来 ⇒ `file!()` 是折返路径 ⇒ 摘除恒空转；而语料现在**含本文件自己那棵树**
+    //   ⇒ 空转不再无害（本文件头注里 §36 出现十几次，会把自己喂饱）。
+    //   ⇒ 改成 `scan_tree_excluding` 的明写名单，摘不到就 panic。
+    //
+    // ⚠ **射程边界如实写**：`src/backend` / `tests/backend` 这一轮**没有**加进来 ——
+    //   它们在本条立条时就不在射程里，加它们是扩面（另一件事），不是这一轮的搬树补齐。
+    let repo = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .ancestors()
+        .nth(2)
+        .expect("从 src/bridge 上去两级该是仓根")
+        .to_path_buf();
+    let mut files_src = guard_core::scan_tree_excluding(&root, &["rs"], &[]);
+    files_src.extend(guard_core::scan_tree_excluding(
+        &repo.join("tests/bridge"),
+        &["rs"],
+        &["arch_doc_shape_guard_tests.rs"],
+    ));
     let mut blocks: Vec<(String, String)> = Vec::new(); // (文件, 块)
     for (path, src) in &files_src {
         let name = path
             .strip_prefix(&root)
+            .or_else(|_| path.strip_prefix(repo.join("tests/bridge")))
             .unwrap_or(path)
             .to_string_lossy()
             .replace('\\', "/");
@@ -368,7 +391,12 @@ fn every_citation_of_invariant_36_says_which_platform_it_binds() {
     );
     let files: std::collections::BTreeSet<&str> =
         citing.iter().map(|(f, _)| f.as_str()).collect();
-    for expect in ["parity_ledger.rs", "backend/control/ccm_invocation.rs"] {
+    // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕`parity_ledger.rs` → `parity_ledger_tests.rs`：
+    // 那张平价账本（上面头注逐字说它「整个住在测试段里」）这一轮搬进了 `tests/bridge/`。
+    for expect in [
+        "parity_ledger_tests.rs",
+        "backend/control/ccm_invocation.rs",
+    ] {
         assert!(
             files.contains(expect),
             "`{expect}` 里找不到 §36 引用 —— 人群跑偏了（实得：{files:?}）"

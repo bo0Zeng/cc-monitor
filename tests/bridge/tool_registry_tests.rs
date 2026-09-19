@@ -576,12 +576,33 @@ fn owned_file_implies_installable() {
 /// 这是「禁词守卫」的反面：**必需词**守卫。删掉那段话的人会被拦一次。
 #[test]
 fn cc_bus_says_why_it_is_not_installable_at_the_real_depth() {
-    let me = include_str!("../../src/bridge/src/tool_registry.rs");
-    // ⚠ **数次数，不是 `contains`** —— 本判据自己的字面量也在这个文件里
-    //（本会话已经栽过三次：`P3s-Y2` / `P4d-Y4` / `P4b-Y3`）。
+    // 🔴 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` D 类 ＋ `§4.2` 那条预言**这一格兑现了**〕
+    //
+    // 原来这里是 `me.matches(must).count() >= 2`，理由写在原注里：
+    //「本判据自己的数组里就写着这两句 ⇒ `contains` 恒真」——
+    // 那个 `>= 2` 的前提是**针与草垛同住一份文件**（一次算针、一次算草垛）。
+    // 剖分之后针住 `tests/`、草垛住 `src/` ⇒ 同一份文件里**永远凑不到 2**
+    // （现打：两份各 1 次），前提恒假。
+    //
+    // ⇒ 改成它今天该有的形状，而这个形状**比原来严**：
+    //   ① 正题直接读**那份生产文件**，要求 `>= 1` ——
+    //      针已经不在草垛里了，`contains` 不再恒真，`>= 2` 那个绕法**不需要了**。
+    //      这正是 `设计/16 §4.2` 预言的「判据和语料物理不同文件 ⇒ 自指不可能发生」，
+    //      而它在这一格上**第一次真的成立**（`§4.2` 订正说的是「全仓不成立」，不是「一处都不成立」）。
+    //   ② 反向钉一句「针在本文件里恰好一处」：哪天有人把那段头注搬回测试段，
+    //      本条当场红 —— 也就是「自指回来了」这件事从此有人看着。
+    let target = include_str!("../../src/bridge/src/tool_registry.rs");
+    let me = include_str!("tool_registry_tests.rs");
     for must in ["开第 7 条豁免", "绝不碰"] {
+        assert_eq!(
+            me.matches(must).count(),
+            1,
+            "{must:?} 在本文件里出现了 {} 次（应恰好 1 次 —— 就是上面那个数组里的针）。\n\
+                 ⇒ 多于 1 次 = 被钉的那段注释**搬进测试段**了，自指又回来了。",
+            me.matches(must).count()
+        );
         assert!(
-            me.matches(must).count() >= 2,
+            target.matches(must).count() >= 1,
             "cc-bus 那条 `installable: false` 的注释里少了 {must:?}。\n\
                  只写「部署尚未实现」是**浅一层**的理由 —— 真实的墙是只读铁律\n\
                  （`~/.claude/skills/` 不在它穷举的 6 条例外里）。\n\
@@ -963,7 +984,8 @@ const SITES: &[(&str, Why, usize)] = &[
     // 〔条 67 · 09-18〕`src/cross_half_edge_registry.rs` 那一行删了：它记的旧 id 住在
     // 「app 自带二进制那一层」那条跨半边上，而那条边随 `sidecars/` 整棵走 ⇒ 债真的还了。
     ("src/daemon_control.rs", Why::Wording, 3),
-    ("src/doc_copy_registry.rs", Why::Wording, 1),
+    // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
+    ("tests/bridge/doc_copy_registry_tests.rs", Why::Wording, 1),
     ("src/drift_ledger.rs", Why::Wording, 2),
     // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
     ("tests/bridge/fenced_block_tests.rs", Why::OldId, 1),
@@ -973,20 +995,24 @@ const SITES: &[(&str, Why, usize)] = &[
     ("src/lib.rs", Why::SymbolName, 2),
     ("src/lib.rs", Why::Wording, 2), // `设计/50` 3 → 2：`mod usage;` / `mod account_usage;` 两处注册随用量 ②③ 退役（这张账只许变小）
     ("src/local_accounts.rs", Why::Wording, 1),
-    ("src/local_read_surface_registry.rs", Why::Wording, 1),
-    ("src/parity_ledger.rs", Why::SymbolName, 2),
-    ("src/parity_ledger.rs", Why::Wording, 2),
+    // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
+    ("tests/bridge/local_read_surface_registry_tests.rs", Why::Wording, 1),
+    // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
+    ("tests/bridge/parity_ledger_tests.rs", Why::SymbolName, 2),
+    ("tests/bridge/parity_ledger_tests.rs", Why::Wording, 2),
     ("src/remote_branch.rs", Why::Wording, 1),
     ("src/remote_history.rs", Why::Wording, 2),
-    ("src/remote_write_registry.rs", Why::SymbolName, 3),
-    ("src/remote_write_registry.rs", Why::Wording, 1),
+    // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
+    ("tests/bridge/remote_write_registry_tests.rs", Why::SymbolName, 3),
+    ("tests/bridge/remote_write_registry_tests.rs", Why::Wording, 1),
     ("src/session_map.rs", Why::Wording, 1),
     ("src/sftp.rs", Why::SymbolName, 8),
     // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
     ("tests/bridge/sftp_tests.rs", Why::SymbolName, 14),
     ("src/sftp.rs", Why::Wording, 6),
-    ("src/sftp_move_ledger.rs", Why::SymbolName, 2),
-    ("src/sftp_move_ledger.rs", Why::Wording, 1),
+    // 〔步 7c 剖分 2026-09-19 · `设计/16 §6.2` C 类〕旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
+    ("tests/bridge/sftp_move_ledger_tests.rs", Why::SymbolName, 2),
+    ("tests/bridge/sftp_move_ledger_tests.rs", Why::Wording, 1),
     ("src/skill_host.rs", Why::OldId, 1),
     // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
     ("tests/bridge/skill_host_tests.rs", Why::OldId, 1),
@@ -1001,8 +1027,15 @@ const SITES: &[(&str, Why, usize)] = &[
     ("src/structural_scan.rs", Why::SymbolName, 1),
     // 〔搬树 2026-09-18〕那几处旧名字随测试段搬去 `tests/bridge/`，**总处数一格没变**。
     ("tests/bridge/structural_scan_tests.rs", Why::SymbolName, 2),
-    ("src/tool_registry.rs", Why::OldId, 6),
-    ("src/tool_registry.rs", Why::SymbolName, 8),
+    // 〔步 7c 剖分 2026-09-19 · C 类〕`tool_registry.rs` 剖成三份，按新住址分开数。
+    // **总处数守恒**：`OldId` 6 ＝ 2（生产段）＋ 3（`_tests`）＋ 1（`_environment_tests`）·
+    // `SymbolName` 8 ＝ 2（生产段）＋ 6（`_tests`）。分开数比合起来数更严 ——
+    // 合起来数时「这份少一处、那份多一处」会互相抵掉。
+    ("src/tool_registry.rs", Why::OldId, 2),
+    ("src/tool_registry.rs", Why::SymbolName, 2),
+    ("tests/bridge/tool_registry_tests.rs", Why::OldId, 3),
+    ("tests/bridge/tool_registry_tests.rs", Why::SymbolName, 6),
+    ("tests/bridge/tool_registry_environment_tests.rs", Why::OldId, 1),
     ("src/tool_registry.rs", Why::Wording, 1),
 ];
 
@@ -1775,7 +1808,10 @@ fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are()
 fn the_property_that_pins_both_declarations_is_not_named_after_any_tool() {
     const NAME: &str =
         "every_tool_declares_install_and_uninstall_as_the_implementations_really_are";
-    let me = include_str!("../../src/bridge/src/tool_registry.rs");
+    // 🔴 〔步 7c 剖分 2026-09-19 · C 类〕嵌的是**本文件** —— 被反向自检点名的那条
+    // `fn every_tool_declares_install_and_uninstall_as_the_implementations_really_are`
+    // 这一轮跟着测试段搬进了本文件。
+    let me = include_str!("tool_registry_tests.rs");
     // 反向自检：那条判据真的叫这个名字（改了名而没改这里 ⇒ 本条先红）。
     assert_eq!(
         me.matches(&format!("fn {NAME}(")).count(),

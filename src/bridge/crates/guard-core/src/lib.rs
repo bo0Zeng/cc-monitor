@@ -1184,7 +1184,13 @@ pub fn assert_tree_strips_clean(root: &std::path::Path, min_files: usize) {
             // 用 `production_code`（**连注释一起剥**）而不是 `production_source`：
             // 散文里逐字提到测试属性是**正常的**（本文件的头注就在解释它），
             // 那不是「剥法坏了」。U8a-2a 实测：两侧各有一个文件因此假红
-            // （`guard-core/src/lib.rs` 自己 + monitor `ccm_cli_contract.rs:181`）。
+            //（`guard-core/src/lib.rs` 自己 + monitor
+            //  `ccm_cli_contract_tests.rs::cc_spawn_resolves_a_real_ccm_file_not_a_directory`）。
+            // 🔴 〔步 7c 剖分 2026-09-19〕**这个地址从行号改成了符号。**
+            // 原来写的是 `ccm_cli_contract.rs` 的第 181 行。那份文件剖分之后只剩 40 行 ⇒ 行号越界，
+            // `structural_scan::line_number_addresses_stay_in_range_and_never_grow` 当场红，
+            // 而它的诊断逐字写着「改法只有一条：**点符号**，别换一个今天对的行号 ——
+            // 换一个今天对的行号就是把这一族再走一遍」。⇒ 照它说的办。
             let prod = production_code(&src);
             assert_no_test_code(&who, &prod);
             // 第二半：剥法**认不出**的测试模块（里面可能一个 `#[test]` 都没有 ⇒ 上一条看不见它）。
