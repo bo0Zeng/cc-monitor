@@ -23,6 +23,11 @@ mod accounts; // A2：多账号（cc-acct-iso）只读查询——账号=一个 
 mod acct_iso_deploy; // F5：一键部署 vendored cc-acct-iso 到远端 + 存在性检测
 mod adapter;
 mod auto_launch;
+mod backend_policy; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
+                    // 🔴 〔步 8 · 归属 2026-09-19〕**它搬不进 `backend/`** —— `backend_policy_tests.rs::
+                    //    the_supervisor_itself_never_records_a_death` 逐字：「`backend/` 的生产段里
+                    //    出现了 `record_death(` ⇒ 判与记该在**宿主层**，`backend/` 那半**只搬证据**」。
+                    //    而 `record_death` 的唯一定义就在本模块里。⇒ 这是**解耦**的活，不是改名一刀能搬的。
 mod bind;
 mod bridge;
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
@@ -39,8 +44,6 @@ mod hooks_diag; // B04：cc-bus 钩子在 settings.json 里的只读诊断 + 生
                 // U8a-2a：monitor 侧的入方向发送端（往那条长连接的写半边发命令 + 按 id 收应答）。
                 // 「hello 之前不许写」在这里是类型上的事实：ParkedWriter 身上没有任何写方法。
 mod backend; // P4a（§1.4b）：monitor 侧的后端边界 —— 读/控制两条能力线，宿主无关
-mod backend_control; // P2s（C8）：每台机一个开关的命令层——只认 origin，不认 ssh 也不认进程监护
-mod backend_policy; // P2s（C8）：每台机一份后端策略（生效值住内存，持久化归前端）
 mod creds_store; // K-H2a：第三方 API key 那份文件的**写侧**（monitor 独占）+ 读侧只回掩码
 #[cfg(test)]
 mod guard_support; // 住址唯一源（仓根/源码树/测试树）——头注写着它为什么存在
@@ -559,7 +562,7 @@ pub fn run() {
                         // ★★ `K-P1-D1` `重-2`：**「对不上就出声并拒绝」那句话，
                         //    在这条路上不许只进日志。**
                         //
-                        // 两条起法只有手动那条会让用户看见（`backend_control::backend_start`
+                        // 两条起法只有手动那条会让用户看见（`crate::backend::control::backend_control::backend_start`
                         // 回 `Err` ⇒ 前端 toast）。而这一条 —— 用户每天真正走的那条 ——
                         // 回修前是 `tracing::info!`，连 `warn` 都不是。
                         //
@@ -1015,7 +1018,7 @@ pub fn run() {
                         })
                     };
                     let first = spawn_one();
-                    backend_control::register_remote(origin, Box::new(spawn_one), first);
+                    backend::control::backend_control::register_remote(origin, Box::new(spawn_one), first);
                 }
                 // audit-fixes F03.2：tmux 存活对账**从 8s poller 改为收帧驱动**（甲-evented，零轮询）——
                 // 收割器现落在 `ssh_source::stream_loop` 的 `TmuxSessions` 帧臂（backend **事件驱动**推帧即算），
@@ -1210,10 +1213,10 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             backend_policy::set_backend_kill_on_exit,
-            backend_control::backend_machines,
-            backend_control::backend_status,
-            backend_control::backend_start,
-            backend_control::backend_stop,
+            backend::control::backend_control::backend_machines,
+            backend::control::backend_control::backend_status,
+            backend::control::backend_control::backend_start,
+            backend::control::backend_control::backend_stop,
             config::load_config,
             config::save_config,
             // K-H2a：中转那把 key。**读那条永远只回掩码**（`KS6`）；
@@ -1418,7 +1421,7 @@ pub fn run() {
                 // ⇒ 这个勾必须对**三条起法**都生效，否则用户勾了「退出时结束它」、退出、
                 // 而它没被结束 —— 一个说谎的开关。
                 // 策略**只读一次**，三条路共用同一个答案。
-                let kill = backend_policy::kill_on_exit(crate::backend::control::inbound_client::LOCAL_ORIGIN);
+                let kill = crate::backend_policy::kill_on_exit(crate::backend::control::inbound_client::LOCAL_ORIGIN);
                 // ── 起法 ①：被监护的子进程，句柄在 `LOCAL_BACKEND` 里 ──
                 // ⚠ 锁在这里取、句柄不克隆：`SuperviseHandle` 刻意不是 `Clone`
                 // （克隆出去的那份 `stop()` 谁都能调，就没有「一个句柄一条命」这回事了）。

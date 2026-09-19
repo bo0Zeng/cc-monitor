@@ -121,6 +121,14 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
     ),
     ("control/mod.rs", "control", "写/控制面的说明"),
     (
+        "control/backend_control.rs",
+        "control",
+        "🔴 〔步 8 · 归属 2026-09-19〕**从 `lib.rs` 顶层搬进来的。**\
+         `C8` 那三件（起 / 停 / 状态）的**命令层** —— 只认 origin，不认 ssh、也不碰进程监护。\
+         `daemon` 密度最高的那批文件之一（`设计/90 §1.1` 那条顺序事实），\
+         而它做的事一格都不是前端的。",
+    ),
+    (
         "control/cc_bus.rs",
         "control",
         "🔴 〔步 8 · 归属 2026-09-19〕**从 `lib.rs` 顶层搬进来的。**\

@@ -214,5 +214,5 @@ pub fn backend_stop(origin: String) -> Result<String, String> {
 }
 
 #[cfg(test)]
-#[path = "../../../tests/bridge/backend_control_tests.rs"]
+#[path = "../../../../../tests/bridge/backend/control/backend_control_tests.rs"]
 mod tests;
