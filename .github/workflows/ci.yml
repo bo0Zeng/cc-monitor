@@ -228,9 +228,20 @@ jobs:
       - name: eslint (advisory, baseline)
         run: npm run lint || true
 
-      # F08b：Stylelint（styles.css 单文件）。同上顾问式，**50 项基线**（E82 订正：
-      # 这里原写「57 项」，实测 50 —— 基线数字写下之后没人回来核，属本轮点名的那类病）。
+      # F08b：Stylelint（`src/**/*.css`）。**这一步本身仍是顾问式**（`|| true`，结构上不会红），
       # 不 --fix 避免全量 churn。
+      #
+      # 〔S25 · 2026-09-18 · 设计/40 步 9 ⑤〕**真正会红的不再是这一步**：
+      # `tests/css-ledger.vitest.ts` 把「报错总数」做成了**递减棘轮**，而它跟着
+      # 下面那步 `unit tests`（`npm test` → `npm run test:dom` → `vitest run`，**无 `|| true`**）
+      # 一起跑 ⇒ **阻断，且不需要动这一步的门禁形态**。
+      # 留着本步的理由：它把逐条报错印在 CI 日志里（棘轮只印总数与逐规则汇总）。
+      #
+      # 🔴 下面这个标记是**机读的**，`tests/css-ledger.vitest.ts` 有一条判据在读它 ——
+      # 它与判据里的 `STYLELINT_CEILING` 必须同值，漂了就红。
+      # 本行原先写着「**50 项基线**（E82 订正：这里原写「57 项」，实测 50）」——
+      # 现打是 **47**，而那句散文从写下之后再没人核过。这正是它现在必须被机检的理由。
+      # S25-STYLELINT-CEILING: 47
       - name: stylelint (advisory, baseline)
         run: npm run lint:css || true
 
