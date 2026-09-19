@@ -2841,6 +2841,12 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
         //    按第②条出路：贴 `PROSE_NAME_TOMBSTONE` ＋ 在这里记账。
         ("src/bridge/src/local_daemon.rs", "hide_console_window", 1),
         ("src/bridge/src/spawn_managed.rs", "hide_console_window", 1),
+        // 🔴 〔`99 §2.5 P9` 2026-09-18〕`strip_cfg_test` 那两份就地复制的剥法退役了 ——
+        //    收进早就存在的唯一住址 `guard_core::production_source`（`设计/16 §5.1`）。
+        //    那段散文逐字引用旧名字，说的正是「它为什么不在了、以及**退役的理由不是
+        //    『它变成恒等函数了』**」—— `设计/16 §4.1` 那条预言今天还不成立，读数在那儿。
+        //    删掉这两句＝删掉这一刀的账 ⇒ 按第②条出路：贴墓碑 ＋ 在这里记一笔。
+        ("tests/backend/readonly_guard.rs", "strip_cfg_test", 2),
     ];
 
     let corpus = dead_name_corpus();
