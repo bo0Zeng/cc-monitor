@@ -1,3 +1,12 @@
+// `include_str!` 只接**字面量 token**，喂 `const` 会报 `argument must be a string literal`
+// ⇒ 用单臂宏拿到「单一落点」。原住 `src/bridge/src/tmux.rs`，步 7b 随它唯一的消费者搬来这里；
+// 路径也跟着换成相对本文件（`16 §5.4a` 规则 1：路径不只住在字面量里，也住在宏展开里）。
+macro_rules! daemon_watcher_src {
+    () => {
+        "../../src/backend/observe/watcher.rs"
+    };
+}
+
 /// ★ P8c（`U3` 08-11 裁定）：**三种 Skip 的原因必须彼此可分**。
 ///
 /// `U3` 的读数逐字记着不可分的后果：「`Unobservable` 计数 = 0，而**那个 0 是瞎的**

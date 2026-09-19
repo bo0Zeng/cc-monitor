@@ -837,15 +837,11 @@ fn is_ccm_tmux_name(name: &str) -> bool {
 /// ⚠ **必须是 `macro_rules!` 不能是 `const`**：`include_str!` 只接受**字面量 token**，
 /// 喂给它一个 `const` 会报 `argument must be a string literal`（我第一版就这么写的）。
 /// 宏能展开成字面量，于是既拿到了单一落点、又满足 `include_str!` 的要求。
-// 只在 `#[cfg(test)]` 的两条对拍守卫里用 —— 不加这个属性会留一条
-// `unused macro definition` 告警（Phase D 审计 I6）。
-#[cfg(test)]
-macro_rules! daemon_watcher_src {
-    () => {
-        "../../backend/observe/watcher.rs"
-    };
-}
-
+// 🔴 **步 7b（16 §6 第 3 批）把这个宏搬进了测试文件本体**
+// （`tests/bridge/tmux_tests.rs` 的开头）。理由是 `16 §5.4a` 规则 1 的反面：
+// `include_str!` 按**调用点所在文件**解析相对路径，而调用点已经搬去 `tests/bridge/`——
+// 宏留在这里就意味着字面量要写成「相对另一个文件」，那是个会骗人的住址。
+// ⇒ 单一落点这条好处一点没丢，只是落点跟着它唯一的消费者走。
 #[cfg(test)]
 #[path = "../../../tests/bridge/tmux_tests.rs"]
 mod tests;
