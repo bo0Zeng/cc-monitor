@@ -717,7 +717,7 @@ fn every_remote_command_template_is_built_in_exactly_one_place() {
 }
 
 fn non_test_code() -> String {
-    let src = include_str!("../../src/bridge/src/cc_bus.rs");
+    let src = include_str!("../../../../src/bridge/src/backend/control/cc_bus.rs");
     let code = src.split(concat!("#[cfg", "(test)]")).next().unwrap_or(src);
     code.lines()
         .filter(|l| {
@@ -2596,7 +2596,9 @@ fn inbox_missing_fields_degrade_not_panic() {
 /// **`agents.tsv` 的格式契约一字未动**。⇒ 判据钉「解锁条件不是『P4b 落地』」这句话在。
 #[test]
 fn why_the_read_face_is_not_on_the_backend_yet_stays_measured() {
-    let prod = guard_core::production_source(include_str!("../../src/bridge/src/cc_bus.rs"));
+    let prod = guard_core::production_source(include_str!(
+        "../../../../src/bridge/src/backend/control/cc_bus.rs"
+    ));
     for needle in ["180ms", "格式契约稳下来", "解锁条件不是"] {
         assert!(
             prod.contains(needle),

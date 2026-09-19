@@ -279,7 +279,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     // **刻意排除**的那一种。⇒ 六处一律改成「多读一个字节 + 超了就回错」
     // （形态照抄 `src/backend/common/fs.rs` 那条既有注释）。
     (
-        "src/bridge/src/cc_bus.rs",
+        "src/bridge/src/backend/control/cc_bus.rs",
         "CC_BUS_TSV_CAP",
         32 * 1024 * 1024,
         "读远端 cc-bus 的两份登记表（`agents.tsv` + `spawned.tsv`）",
@@ -291,7 +291,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
     //    帧应答是结构化的，上限由入方向通道自己那一层管。
     //    ⇒ 常量不存在了，留着这一行就是**僵尸账**（本表自己那条反向锚点会当场逮住）。
     (
-        "src/bridge/src/cc_bus.rs",
+        "src/bridge/src/backend/control/cc_bus.rs",
         "INBOX_READ_CAP",
         4 * 1024 * 1024,
         "读某个 agent 的 inbox",
@@ -302,7 +302,7 @@ const CAPS: &[(&str, &str, u64, &str, &str)] = &[
         "截断+说清",
     ),
     (
-        "src/bridge/src/cc_bus.rs",
+        "src/bridge/src/backend/control/cc_bus.rs",
         "CONTROL_REPLY_CAP",
         64 * 1024,
         "发消息 / spawn 的回显（是一句确认，不是数据）",
@@ -979,7 +979,7 @@ fn a_cap_registered_as_hard_error_is_not_swallowed_at_its_call_site() {
 /// 只有一种正当情况：上限是**参数**，真值由调用方给（而调用方给的是具名常量）。
 const PARAMETRIC_READ_CAPS: &[(&str, &str, &str)] = &[
     (
-        "src/bridge/src/cc_bus.rs",
+        "src/bridge/src/backend/control/cc_bus.rs",
         "cap + 1",
         "`exec_read` 是三条命令共用的助手，上限是入参。三个调用点给的都是具名常量\
              （`INBOX_READ_CAP` / `CONTROL_REPLY_CAP` ×2），那三个已在 `CAPS` 里。",

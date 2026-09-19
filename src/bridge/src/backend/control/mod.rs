@@ -15,6 +15,9 @@ pub mod backend_kill;
 pub mod backend_launch;
 pub mod backend_route;
 pub mod backend_send_keys;
+// 🔴 〔步 8 · 归属 2026-09-19〕从 `lib.rs` 顶层搬进来的 —— cc-bus 的**起 / 杀 / 发**
+//    全是控制面的活（它的命令面逐条登记在 `plugin_class_registry`）。
+pub mod cc_bus;
 pub mod ccm_invocation;
 // 🔴 〔步 8 · 归属 2026-09-19〕从 `lib.rs` 顶层搬进来的。那张「表外但归这一半」的登记表（`EXTRA_BACKEND_FILES`，已随本拍整张删除）
 //    当年逐字登记着它：「backend 流通道的 wire 客户端 …… **它不在 backend/ 下是历史位置，
