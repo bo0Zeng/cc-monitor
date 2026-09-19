@@ -598,7 +598,15 @@ jobs:
           #        + tests/e2e/local-backend-container/*.sh 3 + tests/evidence/*.sh 6
           #        + tests/scripts/*.sh 3 + vendored cc-acct-iso 4 + fake-claude 1
           #        + tests/hooks/pre-commit 1**。
-          [ "$N" -ge 66 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 66）"; exit 1; }
+          # **2026-09-18 同日棘到 69**（第三次）—— 波 2 后半三路又各留了一个脚本，
+          # 全部落进 `tests/evidence/*.sh`：`S7-make-corpus.sh`（秤 7 夹具重建）·
+          # `S7-mutations.sh`（秤 7 死值验）· `S22-floor-run.sh`（地板取证一键复算）。
+          # ★ 同日第三次由那条**恒等**判据当场逮住。⇒ **`tests/evidence/` 是个会长的目录**，
+          #   每派一波并发就会多几个脚本；这一格棘得勤是正常的，**它响就是它在干活**。
+          # 今天实测构成（逐组现打，不倒推）：
+          # **69 = tests/e2e/*.sh 30 + cc-bus/scripts/* 14 + weak-net 4 + local-backend-container 3
+          #        + tests/evidence/*.sh 9 + tests/scripts/*.sh 3 + vendored 4 + fake-claude 1 + pre-commit 1**。
+          [ "$N" -ge 69 ] || { echo "覆盖面缩水：只有 $N 个文件（地板 69）"; exit 1; }
           # shellcheck disable=SC2086
           shellcheck --severity=error $FILES
 

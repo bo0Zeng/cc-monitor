@@ -38,7 +38,7 @@
 //! 只有当被钉的**就是断言自己那几行**时那句话才成立。
 //! ⇒ 口径统一为：**凡钉一条棘轮，必须钉到它的断言实参行**；常量声明行只是配套的第二针
 //! （它挡的是「不动断言、只把那个数调小」）。
-//! ⚙ 这一格 monitor 侧那半（`local_daemon.rs::this_item_loosened_none_of_the_ratchets_it_touched`）
+//! ⚙ 这一格 monitor 侧那半（`local_daemon_tests.rs::this_item_loosened_none_of_the_ratchets_it_touched`）
 //! **本来就是对的** —— 它那 4 条针钉的全是断言实参行（`PLATFORM_EXCEPTIONS.len() <= 1,` ·
 //! `missing.is_empty(),` · `found.len() >= 5,` · `found.len() >= 15,`）。
 //! 松的是 daemon 侧这一份，**两侧口径今天对齐了**。

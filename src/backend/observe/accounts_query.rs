@@ -2069,7 +2069,7 @@ mod tests {
     /// `if kind == "api-key" { true } else { … }`，本条红。
     ///
     /// ⚠ 射程如实写：它**只管本文件**（另一个生产者由
-    /// `local_accounts.rs::the_auth_dimension_has_exactly_one_computation_path` 守自己那份），
+    /// `local_accounts_tests.rs::the_auth_dimension_has_exactly_one_computation_path` 守自己那份），
     /// 而且是**字面量扫描** —— 把两个 helper 重新 `use` 成别名就绕得过去。
     /// 真正的地板不是它，是 `acct-core` 里只有一份实现。
     #[test]

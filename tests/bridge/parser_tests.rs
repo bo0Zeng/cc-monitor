@@ -1,0 +1,350 @@
+use super::*;
+
+/// ★ **接缝**：`parse_line` 真的把未知 type 记进了漂移账本。
+///
+/// 本区第 10 条纪律：`drift_ledger` 有自己的测试、`parse_line` 有自己的测试，
+/// **两者之间的接缝没有判据的话，把 `record(...)` 那一行删掉 CI 一片绿**。
+///
+/// ⚠ **写成「容忍污染」的形状**：账本是进程内全局的，任何跑过 `parse_line` 的测试
+/// 都会往里写（`history`/`search`/`lib` 的批处理测试都会）。第一版断言
+/// `entries[0].key == …`（位置敏感），实测 6 次全量跑红 4 次。
+/// 这里只断言「**我这两条键在，且计数 ≥1**」，不碰表的整体形状。
+#[test]
+fn parse_line_feeds_the_drift_ledger() {
+    use crate::drift_ledger::{snapshot, DriftFace};
+    // 本测试专属的 type 名：别的测试不会产出它，故不受污染影响。
+    let unknown = r#"{"type":"u-cc1-seam-probe","agentId":"a1"}"#;
+    let r = parse_line(unknown).expect("合法 JSON 不该 Err");
+    assert!(
+        matches!(r, Some(JsonlRecord::Unrecognized { .. })),
+        "抢救行为变了 —— 本条只该记账，不该改行为"
+    );
+    // 已知 type 但字段坏（`user` 缺 uuid/timestamp）
+    let broken = r#"{"type":"user","message":{"role":"user","content":"x"}}"#;
+    let _ = parse_line(broken);
+
+    let snap = snapshot();
+    let entry = |face: DriftFace, key: &str| {
+        snap.iter()
+            .find(|f| f.face == face)
+            .and_then(|f| f.entries.iter().find(|e| e.key == key))
+            .cloned()
+    };
+    let a = entry(DriftFace::UnknownRecordType, "u-cc1-seam-probe").expect("未知 type 没有被记账");
+    assert!(a.count >= 1);
+    assert!(
+        a.first_sample
+            .as_deref()
+            .is_some_and(|s| s.contains("u-cc1-seam-probe")),
+        "样例没留住原文"
+    );
+    assert!(
+        entry(DriftFace::KnownTypeParseFailed, "user").is_some(),
+        "已知类型解析失败没有被记账（应当按 type 分组，好回答「是哪个类型变了」）"
+    );
+}
+use crate::adapter::AgentKind;
+
+#[test]
+fn empty_line_returns_none() {
+    assert!(parse_line("").unwrap().is_none());
+    assert!(parse_line("   ").unwrap().is_none());
+    assert!(parse_line("\n").unwrap().is_none());
+}
+
+/// Phase 2 F1a：parse_for_kind 派发。Claude=parse_line（不变）；Codex=映射进 JsonlRecord
+/// （message→Assistant、event→Unrecognized 保 raw）；空行两 kind 都 Ok(None)。
+#[test]
+fn parse_for_kind_dispatches_claude_and_codex() {
+    // Claude：走 parse_line，assistant 行 → Assistant（与直调 parse_line 一致）。
+    let claude = r#"{"type":"assistant","uuid":"a","timestamp":"t","message":{"role":"assistant","content":[]}}"#;
+    assert!(matches!(
+        parse_for_kind(AgentKind::ClaudeCode, claude).unwrap(),
+        Some(JsonlRecord::Assistant { .. })
+    ));
+    // Codex：response_item.message → Assistant（经 to_jsonl_record）。
+    let codex_msg = r#"{"timestamp":"t","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hi"}]}}"#;
+    assert!(matches!(
+        parse_for_kind(AgentKind::Codex, codex_msg).unwrap(),
+        Some(JsonlRecord::Assistant { .. })
+    ));
+    // Codex：event_msg → Unrecognized（保 raw，turn-end/用量 per-kind 从中读）。
+    let codex_evt =
+        r#"{"timestamp":"t","type":"event_msg","payload":{"type":"task_complete","turn_id":"x"}}"#;
+    assert!(matches!(
+        parse_for_kind(AgentKind::Codex, codex_evt).unwrap(),
+        Some(JsonlRecord::Unrecognized { .. })
+    ));
+    // 空行：两 kind 都 Ok(None)。
+    assert!(parse_for_kind(AgentKind::Codex, "  ").unwrap().is_none());
+    assert!(parse_for_kind(AgentKind::ClaudeCode, "").unwrap().is_none());
+}
+
+#[test]
+fn bom_only_line_returns_none() {
+    // 纯 BOM 行：trim 后空
+    assert!(parse_line("\u{feff}").unwrap().is_none());
+    assert!(parse_line("\u{feff}   \n").unwrap().is_none());
+}
+
+#[test]
+fn bom_prefix_does_not_corrupt_type() {
+    // v1.7.8 教训：PS 5.1 Out-File -Encoding utf8 写 BOM，serde 不剥就解析失败 →
+    // cc 集成"装上没用"7 个版本。parse_line 必须先剥 BOM 再 from_str。
+    let bom_user =
+        "\u{feff}{\"type\":\"custom-title\",\"customTitle\":\"hi\",\"sessionId\":\"s1\"}";
+    let r = parse_line(bom_user).unwrap().expect("应该解析成功");
+    assert!(
+        matches!(r, JsonlRecord::CustomTitle { .. }),
+        "BOM 后类型识别失败：{r:?}"
+    );
+}
+
+#[test]
+fn malformed_json_returns_err() {
+    // 半截 JSON / 非法语法 → Err，不 panic（caller 决定容错策略）。
+    // F63 后仍 Err：连合法 JSON 都不是 = 没身份可救。
+    assert!(parse_line("{ not json").is_err());
+    assert!(parse_line("{\"type\":\"user\",").is_err());
+}
+
+// === F63 (issue #49)：看不懂的记录 —— 留原文 + 留链上的身份 ===
+
+/// ★ 护栏：`Unknown` **绝不出 parse_line**。走到这里说明后处理漏了。
+/// （F63 前这条测试的名字是 `unknown_type_falls_through_to_unknown_variant`，
+///  断言的正是"Unknown 不应 emit"——那就是静默丢弃 8,774 条的那扇门。）
+#[test]
+fn unknown_type_is_salvaged_never_leaves_as_unknown() {
+    let r = parse_line(r#"{"type":"some-future-record-type","foo":42}"#)
+        .unwrap()
+        .expect("合法 JSON 必须留下");
+    assert!(
+        !matches!(r, JsonlRecord::Unknown),
+        "Unknown 不得出 parse_line，应被抢救成 Unrecognized"
+    );
+    match &r {
+        JsonlRecord::Unrecognized {
+            original_type,
+            raw,
+            reason,
+            uuid,
+            ..
+        } => {
+            assert_eq!(original_type.as_deref(), Some("some-future-record-type"));
+            assert_eq!(reason, "unknown-type");
+            assert!(raw.contains("\"foo\":42"), "原文必须一字节不改地留着");
+            assert!(uuid.is_none(), "本样本无 uuid");
+        }
+        other => panic!("期望 Unrecognized，得到 {other:?}"),
+    }
+    assert!(
+        r.is_displayable(),
+        "必须 emit —— 否则链断，见 branching.ts:24"
+    );
+}
+
+/// ★ 这条是 F63 真正要防的未来：Claude 发一个**带链身份**的新类型。
+/// 今天本机 771 会话里 7 个未知 type 的 uuid/parentUuid 全为 0（实测），
+/// 但一旦出现，丢掉它 = 它的 children 全成孤儿 root → 整棵误折叠。
+#[test]
+fn unknown_type_with_chain_identity_keeps_uuid_and_parent() {
+    let r = parse_line(
+        r#"{"type":"brand-new-2027","uuid":"u9","parentUuid":"u8","timestamp":"t9","payload":{"a":1}}"#,
+    )
+    .unwrap()
+    .unwrap();
+    match &r {
+        JsonlRecord::Unrecognized {
+            uuid,
+            parent_uuid,
+            timestamp,
+            ..
+        } => {
+            assert_eq!(uuid.as_deref(), Some("u9"));
+            assert_eq!(parent_uuid.as_deref(), Some("u8"), "链上的身份必须留住");
+            assert_eq!(timestamp.as_deref(), Some("t9"));
+        }
+        other => panic!("期望 Unrecognized，得到 {other:?}"),
+    }
+}
+
+/// 已知 `type` 但字段解析失败（serde 返回 Err）且原文仍是合法 JSON → 照样抢救。
+/// 实测本机 157,385 行里此路径仅 1 条（截断的 assistant），但 aterm 侧
+/// (`JsonlParser.kt:21`) 正是栽在这——任何一条解析失败就孤儿化其后整段。
+#[test]
+fn known_type_parse_failure_is_salvaged_with_identity() {
+    // type=user 但缺必填 uuid 之外的东西：这里给 message 一个错形状
+    let r = parse_line(
+        r#"{"type":"user","uuid":"u1","parentUuid":"u0","timestamp":"t1","message":42}"#,
+    )
+    .unwrap()
+    .expect("合法 JSON 必须留下，不得静默丢");
+    match &r {
+        JsonlRecord::Unrecognized {
+            uuid,
+            parent_uuid,
+            original_type,
+            reason,
+            ..
+        } => {
+            assert_eq!(uuid.as_deref(), Some("u1"));
+            assert_eq!(parent_uuid.as_deref(), Some("u0"), "链不能断");
+            assert_eq!(original_type.as_deref(), Some("user"));
+            assert!(
+                reason.starts_with("parse-failed:"),
+                "reason 要带 serde 原文，便于诊断：{reason}"
+            );
+        }
+        other => panic!("期望 Unrecognized，得到 {other:?}"),
+    }
+}
+
+/// ★ 零信息损失断言（#49 的形态②：「输入 N 条 → 输出覆盖 N 条」）。
+/// 每一行要么 Ok(Some)（认识 or 抢救），要么 Ok(None)（空行）——
+/// **没有任何一行被静默吞掉**；只有语法坏行显式 Err（可见、可记账）。
+#[test]
+fn zero_information_loss_over_mixed_fixture() {
+    let fixture = vec![
+        (
+            r#"{"type":"user","uuid":"u1","timestamp":"t1","message":{"role":"user","content":"q"}}"#,
+            "known",
+        ),
+        (
+            r#"{"type":"mode","mode":"normal","sessionId":"s1"}"#,
+            "salvaged",
+        ), // 真实样本
+        (
+            r#"{"type":"pr-link","sessionId":"s1","prNumber":37,"timestamp":"t2"}"#,
+            "salvaged",
+        ), // 真实样本
+        (
+            r#"{"type":"agent-name","agentName":"x","sessionId":"s1"}"#,
+            "salvaged",
+        ), // 真实样本
+        (
+            r#"{"type":"user","uuid":"u2","timestamp":"t3","message":99}"#,
+            "salvaged",
+        ), // 已知类型解析失败
+        ("", "empty"),
+        ("   ", "empty"),
+        ("{ not json", "err"),
+    ];
+    let (mut kept, mut skipped, mut errored) = (0, 0, 0);
+    for (line, expect) in &fixture {
+        match parse_line(line) {
+            Ok(Some(r)) => {
+                kept += 1;
+                assert!(
+                    !matches!(r, JsonlRecord::Unknown),
+                    "Unknown 不得出 parse_line：{line}"
+                );
+                if *expect == "salvaged" {
+                    assert!(
+                        matches!(r, JsonlRecord::Unrecognized { .. }),
+                        "该行应被抢救：{line}"
+                    );
+                    assert!(r.is_displayable(), "抢救出来就必须 emit：{line}");
+                }
+            }
+            Ok(None) => {
+                skipped += 1;
+                assert_eq!(*expect, "empty", "只有空行可以无声跳过：{line}");
+            }
+            Err(_) => {
+                errored += 1;
+                assert_eq!(*expect, "err", "只有语法坏行可以 Err：{line}");
+            }
+        }
+    }
+    assert_eq!(
+        kept + skipped + errored,
+        fixture.len(),
+        "每一行都必须有交代"
+    );
+    assert_eq!(kept, 5);
+    assert_eq!(skipped, 2);
+    assert_eq!(errored, 1);
+}
+
+/// F63 长期对账工具：用真正的 `parse_line` 扫本机全部真实会话，量丢失面。
+/// 依赖本机数据故 `#[ignore]`。跑法：
+/// `cargo test f63_real_data_ledger -- --ignored --nocapture`
+///
+/// 2026-07-16 基线（771 会话 / 643MB / 157,385 行）：
+///   Ok 且 emit 132,489 · Ok 但故意不 emit 16,121 · **Unknown 丢弃 0**（F63 前 8,774）
+///   · 抢救 8,774 · Err 1（截断行）
+#[test]
+#[ignore]
+fn f63_real_data_ledger() {
+    use std::collections::BTreeMap;
+    let Ok(home) = std::env::var("HOME") else {
+        println!("无 HOME，跳过");
+        return;
+    };
+    let root = std::path::PathBuf::from(home).join(".claude/projects");
+    let (mut total, mut emitted, mut deliberate, mut leaked, mut errs) =
+        (0u64, 0u64, 0u64, 0u64, 0u64);
+    let mut salvaged: BTreeMap<String, u64> = BTreeMap::new();
+    let mut stack = vec![root];
+    while let Some(d) = stack.pop() {
+        let Ok(rd) = std::fs::read_dir(&d) else {
+            continue;
+        };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                stack.push(p);
+                continue;
+            }
+            if p.extension().and_then(|s| s.to_str()) != Some("jsonl") {
+                continue;
+            }
+            let Ok(content) = std::fs::read_to_string(&p) else {
+                continue;
+            };
+            for line in content.lines() {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                total += 1;
+                match parse_line(line) {
+                    Ok(Some(JsonlRecord::Unknown)) => leaked += 1,
+                    Ok(Some(JsonlRecord::Unrecognized { original_type, .. })) => {
+                        *salvaged
+                            .entry(original_type.unwrap_or_else(|| "<no-type>".into()))
+                            .or_default() += 1;
+                    }
+                    Ok(Some(r)) => {
+                        if r.is_displayable() {
+                            emitted += 1
+                        } else {
+                            deliberate += 1
+                        }
+                    }
+                    Ok(None) => {}
+                    Err(_) => errs += 1,
+                }
+            }
+        }
+    }
+    println!("=== F63 真实数据对账 ===");
+    println!("总行            {total:>9}");
+    println!("Ok 且 emit      {emitted:>9}");
+    println!("Ok 但故意不 emit {deliberate:>9}  (已知类型的明示决定，不算丢)");
+    println!(
+        "抢救 Unrecognized{:>9}  (F63 前这些是静默丢弃的)",
+        salvaged.values().sum::<u64>()
+    );
+    for (t, n) in &salvaged {
+        println!("                   {n:>7}  {t}");
+    }
+    println!("Err（语法坏行）  {errs:>9}  (可见、可记账)");
+    println!("★ Unknown 泄漏  {leaked:>9}  (必须为 0)");
+    // 自证扫到过东西：若 ~/.claude/projects 不存在/为空，total==0 → leaked 恒 0
+    // → 测试会假绿。先断言扫到了行，再断言零泄漏。
+    assert!(
+        total > 0,
+        "没扫到任何行——~/.claude/projects 不存在或为空，本对账工具无法自证，视为失败"
+    );
+    assert_eq!(leaked, 0, "Unknown 泄漏到 parse_line 出口 = 后处理有洞");
+}

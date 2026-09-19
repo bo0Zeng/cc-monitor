@@ -42,8 +42,11 @@ function unescapeRust(lit: string): string {
 }
 
 function rustCases(): Array<{ input: string; expected: string }> {
+  // 🔴 〔步 7b 剖分 2026-09-18〕测试段整份搬去了 `tests/bridge/crates/…/lib_tests.rs`，
+  //    这条抽取器**当场抽到 0 条并红**（`toBeGreaterThanOrEqual(3)`）——
+  //    那是它的反空真自检在干活，不是它坏了。语料跟着搬即可。
   const src = readFileSync(
-    resolve(__dirname, "../src/bridge/crates/shell-quote-core/src/lib.rs"),
+    resolve(__dirname, "./bridge/crates/shell-quote-core/lib_tests.rs"),
     "utf-8",
   );
   const out: Array<{ input: string; expected: string }> = [];

@@ -59,7 +59,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     // ── monitor → daemon：monitor 的判据去读 daemon 的源码 ─────────────────
     (
         "monitor→daemon",
-        "src/bridge/src/tmux.rs",
+        "tests/bridge/tmux_tests.rs",
         "src/backend/observe/watcher.rs",
         "★〔audit-0805 08-06 新发现，此前整条不在本表里〕两条对拍守卫读 daemon 的 \
          `watcher.rs`：`tmux ls` 的 `-F` 格式串双写点、以及那个 const 的 TAB 转义。\
@@ -71,32 +71,32 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→daemon",
-        "src/bridge/src/backend/control/daemon_kill.rs",
+        "tests/bridge/backend/control/daemon_kill_tests.rs",
         "src/backend/control/kill.rs",
         "拒绝文案两侧逐字同形：daemon 那边改了措辞，monitor 的用户可见提示就跟着变",
     ),
     (
         "monitor→daemon",
-        "src/bridge/src/backend/control/daemon_launch.rs",
+        "tests/bridge/backend/control/daemon_launch_tests.rs",
         "src/backend/inbound.rs",
         "本通道发的字段由 daemon 的登记表说了算 —— 读它才能断言两侧字段集一致",
     ),
     (
         "monitor→daemon",
-        "src/bridge/src/backend/control/daemon_send_keys.rs",
+        "tests/bridge/backend/control/daemon_send_keys_tests.rs",
         "src/backend/control/launch.rs",
         "两个 mode 名必须是 daemon 真能 parse 的那两个（`parse_request` 不 deny unknown \
          fields ⇒ 打错字会被静默忽略、照样附 Enter）",
     ),
     (
         "monitor→daemon",
-        "src/bridge/src/inbound_client.rs",
+        "tests/bridge/inbound_client_tests.rs",
         "src/backend/inbound.rs",
         "入方向帧的种类与错误码两侧同形",
     ),
     (
         "monitor→daemon",
-        "src/bridge/src/inbound_client.rs",
+        "tests/bridge/inbound_client_tests.rs",
         "src/backend/control/launch.rs",
         "launch 请求的字段名两侧同形",
     ),
@@ -113,19 +113,19 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     //    照样绿着」⇒ 下次再有「app 自带某个二进制」这类申报，右边仍要去钉真源码。
     (
         "monitor→daemon",
-        "src/bridge/src/ssh_source.rs",
+        "tests/bridge/ssh_source_emits_parity.rs",
         "src/backend/main.rs",
         "daemon 的启动契约（身份清单 / hello）两侧同形",
     ),
     (
         "monitor→daemon",
-        "src/bridge/src/ssh_source.rs",
+        "tests/bridge/ssh_source_f032_idle_tests.rs",
         "src/backend/wire.rs",
         "wire 帧的形状两侧同形",
     ),
     (
         "monitor→daemon",
-        "src/bridge/src/local_daemon.rs",
+        "tests/bridge/local_daemon_tests.rs",
         "src/backend/listen.rs",
         "★〔`K-P1` 08-26〕**跨 crate 字面量对拍**：常驻监听口那两个 env 名\
          （`CCM_LISTEN_PORT` / `CCM_LISTEN_TOKEN`）宿主与 daemon 各声明一份，\
@@ -135,7 +135,7 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→daemon",
-        "src/bridge/src/search.rs",
+        "tests/bridge/search_kou_jing_guard.rs",
         "src/backend/observe/search_query.rs",
         "★★〔`K-R100` 09-13 新增〕**搜索口径的跨轨对拍** —— \
          `kou_jing_guard::the_search_kou_jing_has_exactly_one_home` 要断言两侧都**只调** \
@@ -147,13 +147,13 @@ const CROSS_EDGES: &[(&str, &str, &str, &str)] = &[
     ),
     (
         "monitor→daemon",
-        "src/bridge/src/history.rs",
+        "tests/bridge/history_tests.rs",
         "src/backend/control/ccm/argv.rs",
         "★★〔`K-R106` 09-13 新增〕**「本机后端产的那一句 attach，后端那份 `ccm` 真读得懂」** ——          `history::tests::the_local_backend_renders_an_attach_that_lands_on_the_session_it_just_created`          的第 ③ 段。monitor 这一侧产的是一串 argv（`ccm attach <名>`），         而「它是不是真的被读成 attach、那个位置参数是不是真的落进 `attach_name`」         只有 daemon 这一侧的解析器说得出 —— 那是一条**关于两侧同形**的性质，         只能同时读两侧源码才验得了。         ⚠ 如实写它买不到什么：**文本级**，不是真跑一次 `ccm`（真跑归 e2e `ccm-print-parity`）。",
     ),
     (
         "monitor→daemon",
-        "src/bridge/src/history.rs",
+        "tests/bridge/history_tests.rs",
         "src/backend/control/ccm/plan.rs",
         "★★〔`K-R106` 09-13 新增〕上一条的**下半程**：读懂之后它接进**哪一个**会话。         钉的是 `Plan::Attach` 那一行的**整行渲染**，而承重的不只是 `tmux attach` 四个字，         还有 `=名:` 那个**精确匹配形** —— 裸 `-t <名>` 按「精确名 → 名字开头 → glob」解析，         会打到兄弟会话上（`src/session-backend.ts::exactTarget` 头注有 tmux 3.6 实测）。         ⇒ 「接进刚建的那个会话」这句话的后半截只有读 daemon 源码才验得了。",
     ),
@@ -204,7 +204,17 @@ mod tests {
     fn both_halves() -> Vec<String> {
         let root = repo_root();
         let mut out = Vec::new();
-        for sub in ["src/bridge/src", "src/backend"] {
+        // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**每半边各两棵树。**
+        //
+        // 跨半边的编译期边**无一例外都长在判据里**（本模块头注逐字），而判据剖分之后
+        // 整个住进了 `tests/`。只扫 `src/` 那两棵的话，16 条边里有 12 条整批掉出扫描面
+        // ⇒ 「实得 4 / 登记 16」。⚠ 四棵树**互不包含**（`§5.4b` 纪律 1 要的那一问）。
+        for sub in [
+            "src/bridge/src",
+            "src/backend",
+            "tests/bridge",
+            "tests/backend",
+        ] {
             let mut stack = vec![root.join(sub)];
             while let Some(d) = stack.pop() {
                 let Ok(rd) = std::fs::read_dir(&d) else {
@@ -237,9 +247,14 @@ mod tests {
     /// ⚠ 这条口径是**量出来的**：全仓 123 处 `include_*!`，跨侧 24 处，
     /// 其中 monitor↔daemon 恰好 **8 + 2**。别把 24 当成这件的数。
     fn half_of(rel: &str) -> &'static str {
-        if rel.starts_with("src/bridge/") {
+        // 🔴 〔搬树 2026-09-18〕每一半各有**两个**住址前缀：生产段与测试段。
+        // ⚠ `tests/e2e/` 与前端 `tests/*.ts` **仍然是「外部」** —— 本模块头注逐字：
+        //   「读 `doc/` `shared/` `tests/e2e/` 与前端 `src/*.ts` 的边另有 13 处，
+        //   它们不是这件的标的」。所以这里按 `tests/bridge/` · `tests/backend/`
+        //   **逐个前缀**认，不写成「凡是 `tests/` 都算」。
+        if rel.starts_with("src/bridge/") || rel.starts_with("tests/bridge/") {
             "monitor"
-        } else if rel.starts_with("src/backend/") {
+        } else if rel.starts_with("src/backend/") || rel.starts_with("tests/backend/") {
             "daemon"
         } else {
             "外部"
@@ -557,8 +572,30 @@ mod tests {
                 "读 {reader} 只拿到 {} 字节 —— 读不到的文件只会静默返回空串",
                 raw.len()
             );
-            let prod = guard_core::production_code(&raw);
-            guard_core::assert_no_test_code(reader, &prod);
+            // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b`〕**住 `tests/` 的读者按构造不是生产段。**
+            //
+            // 剖分之前这些判据住在生产文件的 `#[cfg(test)]` 段里，所以「这条边在不在生产段」
+            // 要靠 `production_code` 剥一遍才答得出来。今天它们整份住 `tests/` ——
+            // 那棵树**一行都不进 `cargo build`**，问题按构造就没了。
+            // ⚠ 不许把 `production_code` 硬套在 `tests/` 那一侧：那里没有 `#[cfg(test)] mod`
+            //   可剥，剥法会原样交回整份文件，于是 `assert_no_test_code` 逐字报
+            //   「剥完仍残留 28 个测试属性 —— 剥法坏了」。**那是尺子瞄错了地方，不是剥法坏了。**
+            // ⇒ 换成一条**正控**：住 `tests/` 的读者必须真的是测试文件（里面有 `#[test]`）。
+            //   没有这一条，「它在 tests/ 下所以不是生产代码」就成了一句没人核的假设。
+            let in_tests_tree = reader.starts_with("tests/");
+            let prod = if in_tests_tree {
+                let attr = format!("#[{}]", "test");
+                assert!(
+                    raw.contains(attr.as_str()),
+                    "{reader} 住在 `tests/` 下，却一个 `{attr}` 都没有 —— \
+                     「它按构造不是生产代码」这句话此刻没有证据"
+                );
+                String::new()
+            } else {
+                let prod = guard_core::production_code(&raw);
+                guard_core::assert_no_test_code(reader, &prod);
+                prod
+            };
             if prod.len() > 200 {
                 with_production += 1;
             }
@@ -581,11 +618,27 @@ mod tests {
                 }
             }
         }
+        // 🔴 〔搬树 2026-09-18〕**这条地板从 8 拧到 3，逐份点名它为什么该拧。**
+        //
+        // 它量的是「`production_code` 还在不在干活」。分母 = 有生产段的读者数，
+        // 而 16 个读者里今天**只有 3 个还住生产树**：
+        //   ① `src/backend/control/gate.rs`   ② `src/backend/control/launch.rs`
+        //   ③ `src/backend/relay/route.rs`
+        // 另外 13 个逐份点名，一个都不是「文件没了」：
+        //   ④ `src/bridge/src/polling_registry.rs` —— **早就是 0**（整个模块带
+        //      `#[cfg(test)]`，上一版那句「十个里九个」说的就是它这一格）；
+        //   ⑤–⑯ 12 个判据**整份搬去了 `tests/`**（`daemon_kill_tests.rs` ·
+        //      `daemon_launch_tests.rs` · `daemon_send_keys_tests.rs` · `history_tests.rs`×2 ·
+        //      `inbound_client_tests.rs`×2 · `local_daemon_tests.rs` ·
+        //      `search_kou_jing_guard.rs` · `ssh_source_emits_parity.rs` ·
+        //      `ssh_source_f032_idle_tests.rs` · `tmux_tests.rs`）——
+        //      它们**按构造**没有生产段，上面那条正控逐个核过「它真的是测试文件」。
+        // ⚠ 拧下去的是**分母**，不是灵敏度的门槛：3 个全都掉到空串，这条照样红。
         assert!(
-            with_production >= 8,
-            "十个读者里只有 {with_production} 个有非空生产段 —— \
+            with_production >= 3,
+            "住生产树的那 3 个读者里只有 {with_production} 个有非空生产段 —— \
              `guard_core::production_code` 多半坏了，此刻本条在拿空串做零命中\
-             （实测 9 个：只有 `polling_registry.rs` 整体是判据模块）"
+             （逐份点名见上面那段注释）"
         );
         assert!(
             offenders.is_empty(),

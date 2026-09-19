@@ -181,7 +181,7 @@ mod tests {
     ///    本条自己守的只剩「这棵树剥得干净 ＋ 文件数没缩水」。
     ///
     /// 🔴 **这一段在两棵树里各住一份，逐字必须相同**
-    /// （`src/backend/guard_support.rs` ＋ `src/bridge/src/structural_scan.rs`）——
+    /// （`src/backend/guard_support.rs` ＋ `tests/bridge/structural_scan_tests.rs`）——
     /// `K-R110` 交回时点名过这个形状：**两个住址、同一句话**，改一处漏一处，
     /// 下一次还是一处真一处假。钉着它的是
     /// `guard_support.rs::the_two_strip_clean_notes_stay_one_sentence`，**只改一处当场红**。
@@ -238,8 +238,11 @@ mod tests {
         //    下面那条 `count() == 1` 当场变成恒假 —— 而它正是防空真的那一条。
         let beg = format!("// ⟦KR115D3 共{}", "用段·起⟧");
         let end = format!("// ⟦KR115D3 共{}", "用段·止⟧");
+        // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕monitor 那一份住址跟着共用段搬了：
+        //    那一段是一条判据的头注，剖分把它从 `src/bridge/src/structural_scan.rs`
+        //    带去了 `tests/bridge/structural_scan_tests.rs`。**那段话一个字没改。**
         let sites = [
-            "src/bridge/src/structural_scan.rs",
+            "tests/bridge/structural_scan_tests.rs",
             "src/backend/guard_support.rs",
         ];
         let mut blocks: Vec<(&str, String)> = Vec::new();
@@ -258,7 +261,25 @@ mod tests {
             let i = src.find(beg.as_str()).unwrap() + beg.len();
             let j = src.find(end.as_str()).unwrap();
             assert!(i < j, "{rel} 里共用段的两个标记次序反了");
-            blocks.push((rel, src[i..j].to_string()));
+            // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b`〕**比之前先把每行的行首空白削掉。**
+            //
+            // 剖分把 monitor 那一份从 `mod tests {}` 里搬了出来 ⇒ 它整段**左移了一级**，
+            // 而 daemon 那一份仍在模块内、缩进 4。两份逐字节比当场不等，而**那句话
+            // 一个字都没改** —— 不等的是缩进，缩进是「位置」，正是搬树会改的那一样东西。
+            // ⚠ 削掉的**只有行首空白**：句子内容、标点、行序、行数一律照比。
+            //   这不是放宽 —— 本条买的逐字写在头注里：「不会再一处真一处假」，
+            //   而「一处比另一处多四个空格」不是「说的不是同一句话」。
+            // ⚠ 连**块尾那截空白**也要削：`j` 落在「止」标记的 `//` 上，而 daemon 那一份
+            //   那一行带 4 个缩进 ⇒ 块尾是 `\n    `，monitor 那一份是 `\n`。
+            //   `str::lines()` 会把 `"a\n"` 切成 1 行、把 `"a\n    "` 切成 2 行
+            //   —— 两边行数当场差一，而差的那一行是**空白**。
+            let block: String = src[i..j]
+                .trim_end()
+                .lines()
+                .map(str::trim_start)
+                .collect::<Vec<_>>()
+                .join("\n");
+            blocks.push((rel, block));
         }
         // 🔴 运行时拼：写成字面量会被 `needle_anchor_registry` 那条棘轮
         //    （语料变量上的裸子串匹配，只许降）数进去 —— 那条棘轮不许为了今天好过而调高。
