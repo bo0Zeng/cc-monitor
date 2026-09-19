@@ -2789,7 +2789,11 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "resolve_from_backend",
             1,
         ),
-        ("src/bridge/src/cc_bus.rs", "resolve_from_backend", 1),
+        (
+            "src/bridge/src/backend/control/cc_bus.rs",
+            "resolve_from_backend",
+            1,
+        ),
         ("src/bridge/src/ccm_cli_contract.rs", "pin_t_def", 1),
         ("src/bridge/src/ccm_cli_contract.rs", "scan_t_targets", 1),
         (
@@ -2990,17 +2994,25 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
             "the_oneshot_watchdog_script_carries_no_loop",
             1,
         ),
-        ("src/bridge/src/cc_bus.rs", "build_broadcast_cmd", 1),
         (
-            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/bridge/cc_bus_tests.rs",
+            "src/bridge/src/backend/control/cc_bus.rs",
             "build_broadcast_cmd",
             1,
         ),
-        ("src/bridge/src/cc_bus.rs", "build_kill_cmd", 2),
         (
             // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
-            "tests/bridge/cc_bus_tests.rs",
+            "tests/bridge/backend/control/cc_bus_tests.rs",
+            "build_broadcast_cmd",
+            1,
+        ),
+        (
+            "src/bridge/src/backend/control/cc_bus.rs",
+            "build_kill_cmd",
+            2,
+        ),
+        (
+            // 〔搬树 2026-09-18 · 散文随测试段搬家，该名字的**总处数一格没变**〕
+            "tests/bridge/backend/control/cc_bus_tests.rs",
             "build_kill_cmd",
             1,
         ),

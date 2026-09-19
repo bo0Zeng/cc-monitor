@@ -121,6 +121,15 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
     ),
     ("control/mod.rs", "control", "写/控制面的说明"),
     (
+        "control/cc_bus.rs",
+        "control",
+        "🔴 〔步 8 · 归属 2026-09-19〕**从 `lib.rs` 顶层搬进来的。**\
+         cc-bus 的驾驶舱：读状态（`read_cc_bus_state` / `read_cc_bus_inbox`）＋\
+         **起 / 杀 / 发**（`cc_bus_spawn` / `cc_bus_kill` / `cc_bus_send` / `cc_bus_broadcast`）。\
+         后四条是**真控制面**（起进程、杀进程、投递），归 `control`。\
+         ⚠ 本拍**只挪住址**，一个字都没动「它属于哪一类」那件事。",
+    ),
+    (
         "control/inbound_client.rs",
         "control",
         "🔴 〔步 8 · 归属 2026-09-19〕**从 `lib.rs` 顶层搬进来的。**\

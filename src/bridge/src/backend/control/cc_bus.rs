@@ -1560,5 +1560,5 @@ pub async fn cc_bus_spawn(
 }
 
 #[cfg(test)]
-#[path = "../../../tests/bridge/cc_bus_tests.rs"]
+#[path = "../../../../../tests/bridge/backend/control/cc_bus_tests.rs"]
 mod tests;

@@ -25,7 +25,6 @@ mod adapter;
 mod auto_launch;
 mod bind;
 mod bridge;
-mod cc_bus; // B03：cc-bus 状态的纯解析层（脏数据防御，见 features/B03-dirty-data-samples.md）
 mod cc_bus_deploy; // PS1：把内嵌的 cc-bus 装到 <claude_dir>/skills/（U10b 裁「开」后落地；只读铁律第 7 条例外）
 mod codex_record; // Phase 2 · F2a：Codex rollout 记录防御式分类器（keystone 第一块）
 mod config;
@@ -1230,13 +1229,13 @@ pub fn run() {
             write_account_aliases,
             // F87(#50+#51): MCP 管理——读跨 scope 展示 / 写只项目 .mcp.json（SS-14）
             // B03 批一：cc-bus 驾驶舱（只读，按需 SSH cat，无轮询）
-            cc_bus::read_cc_bus_state,
-            cc_bus::check_cc_bus_agent_online,
-            cc_bus::read_cc_bus_inbox,
-            cc_bus::cc_bus_send,
-            cc_bus::cc_bus_broadcast,
-            cc_bus::cc_bus_kill,
-            cc_bus::cc_bus_spawn,
+            backend::control::cc_bus::read_cc_bus_state,
+            backend::control::cc_bus::check_cc_bus_agent_online,
+            backend::control::cc_bus::read_cc_bus_inbox,
+            backend::control::cc_bus::cc_bus_send,
+            backend::control::cc_bus::cc_bus_broadcast,
+            backend::control::cc_bus::cc_bus_kill,
+            backend::control::cc_bus::cc_bus_spawn,
             // B04：钩子只读诊断（本机 + 远端）。**没有任何写命令**——用户定调不改 settings.json
             config_surface::config_surface_report,
             drift_ledger::drift_ledger_report,
