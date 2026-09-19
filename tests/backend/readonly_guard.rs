@@ -125,6 +125,120 @@ mod tests {
     ///
     /// ⚠ **它仍然不检查那行 `why` 说得对不对** —— 同 [`spawn_registry`] 那条登记过的边界：
     /// 它钉的是「说得出来」，不是「真的想过」。
+    /// 🔴 〔步 10 · 2026-09-19〕**`backend-core` 的模块登记 —— 本护栏人群的唯一住址。**
+    ///
+    /// # 它换的是什么（`99 §2.5 P2` 逐字：「不是收窄射程，是把判据的锚从二进制换成模块」）
+    ///
+    /// 在这之前，人群是 `guard_support::src_root()` **递归走出来的所有 `.rs`** ——
+    /// 锚是「**后端这个二进制**」。`4b`（monitor 进程内 link 后端库面）一落地，
+    /// 那个锚就名不副实了：跑在 monitor 进程里的那半，它的「不许写盘」由谁盯？
+    /// 而更要紧的是**今天就已经漏的那一半**：一个模块从 `src/backend/` 搬出去
+    /// （搬进某个共享 crate、或被 monitor 那侧接管），它**安静地离开人群**，
+    /// 而下面那条断言原先是 `default_scanned >= 5` —— **地板在「变少」这个方向上是瞎的**。
+    ///
+    /// ⇒ 换锚：人群 ＝ **本表逐条登记的模块**，并由
+    /// [`the_population_is_the_registered_module_set_and_nothing_fell_out`] 三向钉住：
+    ///   · `A` 本表 ↔ `lib.rs` 里真声明的模块，**两向集合相等**
+    ///   · `B` `src/backend/**/*.rs` 每一份归到**恰好一个**登记模块（分区恒等）
+    ///   · `C` 人群非空，且扫到的份数 == 分区算出的份数（**相等，不是地板**）
+    ///
+    /// ⚠ **判据本身一个字没放松**（规格逐字要求）：白名单不变、写盘禁令不变。
+    ///   变的只有「谁在人群里」这件事**从隐式变成登记**。
+    ///
+    /// ⚠ 第二列是「**它为什么算 backend-core**」。写得出来才登记 ——
+    ///   一个说不出理由的模块，多半是该搬走而没搬的那种。
+    const BACKEND_CORE_MODULES: &[(&str, &str)] = &[
+        (
+            "agents",
+            "每个 agent 一份适配层，装它专属的知识（codex + claudecode）",
+        ),
+        (
+            "alloc_probe",
+            "线程级内存量具（整体 cfg(test)，生产构建为空）",
+        ),
+        ("common", "两边都要、又不含平台原语的纯工具"),
+        ("control", "控制面 —— 会改变世界，或产出改变世界的计划"),
+        ("dial", "`--dial` 代理进程：那条长连接流的 SSH 握手只此一处"),
+        ("guard_support", "各条源码扫描型守卫共用的剥法与住址"),
+        ("inbound", "流连接上的入方向（信封 / 分派 / 取消）"),
+        ("listen", "常驻监听口的纯判定（接受循环在 main.rs）"),
+        ("observe", "观测面 —— 读，不改变世界"),
+        ("platform", "唯一允许平台原语与平台 cfg 的层"),
+        ("plugin", "插件通用调用口：找它 / 起它 / 问它会什么"),
+        ("relay", "HTTP 中转搬字节那半"),
+        ("wire", "线上协议的帧定义与编解码"),
+        // ── 下面这些整体是 `cfg(test)` 的守卫，生产构建为空 ──────────────────
+        // 🔴 **它们也在人群里，这是刻意的**：护栏扫的是「源码里有没有写盘的形状」，
+        //    而一条守卫自己偷偷写盘（比如把读数落到盘上）同样违反那条铁律。
+        //    ⚠ 它们**不占**白名单的名额 —— 白名单是「允许写」，这里是「在被看」。
+        (
+            "agent_boundary_guard",
+            "守卫：通用层不许知道任何 agent 的名字与文件格式",
+        ),
+        (
+            "agent_locality_guard",
+            "守卫：codex 的格式知识只许住 agents/codex/",
+        ),
+        ("build_id_guard", "守卫：加了子命令必须 bump BUILD_ID"),
+        (
+            "cc_bus_boundary_guard",
+            "守卫：backend 不许碰 cc-bus 的数据布局",
+        ),
+        ("layering_guard", "守卫：observe↔control 的方向与条数"),
+        ("no_timer_guard", "守卫：零定时器护栏"),
+        (
+            "panorama_locus_guard",
+            "守卫：全景的解析发生在哪个进程的地址空间",
+        ),
+        ("plugin_walk_fixture", "守卫 ＋ 夹具：最小假插件走通全流程"),
+        (
+            "protocol_doc_guard",
+            "守卫：IPC-PROTOCOL.md 与真实协议面的对拍",
+        ),
+        ("ratchet_guard", "守卫：那几张登记表的断言行逐字没动"),
+        (
+            "readonly_guard",
+            "守卫：**本护栏自己**（它也在人群里，见 scan() 里那条跳过）",
+        ),
+        (
+            "single_stream_guard",
+            "守卫：「多客户端的流」明确不做的三处触发器",
+        ),
+    ];
+
+    /// `backend-core` 人群**现打**的文件清单 —— 由 [`BACKEND_CORE_MODULES`] 派生。
+    ///
+    /// 🔴 **派生而不是第二次走目录**：两份账必漂（本仓反复治的那个毛病）。
+    /// 一个模块可以是 `<名>.rs`，也可以是 `<名>/` 目录（里面递归）。
+    fn core_files() -> Vec<std::path::PathBuf> {
+        let root = crate::guard_support::src_root();
+        let mut out = Vec::new();
+        for (m, _) in BACKEND_CORE_MODULES {
+            let flat = root.join(format!("{m}.rs"));
+            if flat.is_file() {
+                out.push(flat);
+                continue;
+            }
+            let dir = root.join(m);
+            if !dir.is_dir() {
+                continue; // 幽灵条目由判据 `A` 逐条点名，这里不静默补救
+            }
+            let mut stack = vec![dir];
+            while let Some(d) = stack.pop() {
+                for e in std::fs::read_dir(&d).expect("read module dir") {
+                    let p = e.expect("dir entry").path();
+                    if p.is_dir() {
+                        stack.push(p);
+                    } else if p.extension().and_then(|x| x.to_str()) == Some("rs") {
+                        out.push(p);
+                    }
+                }
+            }
+        }
+        out.sort();
+        out
+    }
+
     const WRITE_WHITELIST_MODULES: &[(&str, &str)] = &[
         (
             "control/fork_write.rs",
@@ -247,18 +361,13 @@ mod tests {
         // 所以尚未失效，但「写盘能力不可能悄悄扩散到第二个模块」这句承诺对
         // `src/<subdir>/x.rs` 是不成立的：那种文件既不进默认层也不进白名单层，
         // 而 `default_scanned >= 5` 与 `whitelisted == 1` 照样满足 ⇒ 护栏静默失效。
-        let mut stack = vec![src_dir.to_path_buf()];
-        let mut files = Vec::new();
-        while let Some(dir) = stack.pop() {
-            for entry in std::fs::read_dir(&dir).expect("read src dir") {
-                let path = entry.expect("dir entry").path();
-                if path.is_dir() {
-                    stack.push(path);
-                } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
-                    files.push(path);
-                }
-            }
-        }
+        // 🔴 〔步 10 · 2026-09-19〕**人群从「递归走这个目录」换成「由登记派生」。**
+        //    上一版在这里自己走一遍 `src_dir` —— 锚是「后端这个二进制的源码目录」。
+        //    一个模块搬出去，它**安静地离开人群**，而下面那条断言当时是地板（`>= 5`），
+        //    **地板在「变少」这个方向上是瞎的**。换锚的理由整段住 `BACKEND_CORE_MODULES` 头注。
+        //    ⚠ `src_dir` 这个参数留着不是摆设：`core_files()` 内部就以它为根，
+        //      而判据 `B` 拿它现打的全量去跟登记派生的人群做**分区恒等**。
+        let files = core_files();
         for path in files {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
             // 跳过本护栏文件自身——它的模式字面量数组含这些子串。
@@ -329,13 +438,148 @@ mod tests {
     /// ⚠ **名字里那个「一个」是 `K-W2D` 09-10 改掉的**：接线那一拍来了，
     /// 白名单从一个模块变成一张表（理由整段住 [`WRITE_WHITELIST_MODULES`] 头注）。
     /// 承重的性质**一个字没松** —— 它仍然是相等断言，只是分母改成现算的表长。
+    /// 🔴 〔步 10 · 2026-09-19〕**换锚那一拍的反空真自检 —— 三向。**
+    ///
+    /// `99 §2.5 P2` 逐字要求：「换锚时必须同拍补一条**反空真自检**（人群非空 · 模块列表…）」，
+    /// 理由引的是 `16 §5.2`：「扫描型测试拿不到人群时会扫空集 ⇒ 恒绿，
+    /// **而恒绿看起来和真绿一模一样**」。
+    ///
+    /// # 三向各治一种失效，缺一不可
+    ///
+    /// · `A` **登记 ↔ `lib.rs` 两向集合相等**。
+    ///   少一向就有一种失效逃掉：只查「登记的都在 lib.rs 里」⇒ **新加的模块没人看**；
+    ///   只查「lib.rs 的都在登记里」⇒ **登记挂空号**（指向一个搬走了的模块）。
+    /// · `B` **分区恒等**：`src/backend/**/*.rs` 每一份归到恰好一个登记模块。
+    ///   它治的是 `A` 盖不到的那种：模块名对得上，而模块**目录里**多出一棵没人管的子树。
+    ///   ⚠ `main.rs` / `lib.rs` 本身不属于任何模块，逐字排除并写明理由。
+    /// · `C` **人群非空**。兜底，不是主锚。
+    ///
+    /// ⚠ **它不判「这个模块该不该算 core」** —— 那是语义，要人读。
+    ///   它判的是「这张表与盘对得上」。
+    #[test]
+    fn the_population_is_the_registered_module_set_and_nothing_fell_out() {
+        let root = crate::guard_support::src_root();
+
+        // ── A：登记 ↔ `lib.rs` 里真声明的模块，两向 ──────────────────────
+        let lib = std::fs::read_to_string(root.join("lib.rs")).expect("读 lib.rs");
+        let declared: std::collections::BTreeSet<String> = lib
+            .lines()
+            .filter_map(|l| {
+                let t = l.trim_start();
+                let t = t.strip_prefix("pub ").unwrap_or(t);
+                let t = t.strip_prefix("mod ")?;
+                t.split(';').next().map(|x| x.trim().to_string())
+            })
+            .filter(|m| !m.is_empty())
+            .collect();
+        assert!(
+            declared.len() >= 20,
+            "从 `lib.rs` 只抠出 {} 个 `mod` 声明 —— 抽取器坏了，本条会零命中地绿",
+            declared.len()
+        );
+        // `lib.rs` 里那四个贴着 `main.rs` 的测试模块**不是 core 的模块**：
+        // 它们是 `#[path]` 挂进来的测试文件，源码住 `tests/backend/`，不在本护栏的树上。
+        const TEST_ONLY_ATTACHMENTS: &[&str] = &[
+            "fourth_face_tests",
+            "window_raise_guard",
+            "stream_flag_tests",
+            "argv_table_guard",
+        ];
+        let declared: std::collections::BTreeSet<String> = declared
+            .into_iter()
+            .filter(|m| !TEST_ONLY_ATTACHMENTS.contains(&m.as_str()))
+            .collect();
+        let registered: std::collections::BTreeSet<String> = BACKEND_CORE_MODULES
+            .iter()
+            .map(|(m, _)| m.to_string())
+            .collect();
+        assert_eq!(
+            registered,
+            declared,
+            "A `BACKEND_CORE_MODULES` 与 `lib.rs` 的 `mod` 声明对不上。\n\
+             登记有而 `lib.rs` 没有：{:?} ⇒ **登记挂空号**（那个模块搬走了或改名了，\n\
+             而本护栏的人群里还留着一个指空的条目）。\n\
+             `lib.rs` 有而登记没有：{:?} ⇒ 🔴 **新加的模块没人看** —— \n\
+             它的源码里可以随便写盘，而这条护栏一声不吭。\n\
+             ★ **两向都判**：只判一向，另一向那种失效永远逃得掉。",
+            registered.difference(&declared).collect::<Vec<_>>(),
+            declared.difference(&registered).collect::<Vec<_>>()
+        );
+
+        // ── B：分区恒等 ──────────────────────────────────────────────────
+        // `main.rs` = 分派那一半（规格 `00 §1.5.4` 逐字留在 bin）；
+        // `lib.rs`  = 模块声明与身份，它自己不属于任何模块。两份逐字排除。
+        const NOT_IN_ANY_MODULE: &[&str] = &["main.rs", "lib.rs"];
+        let mut on_tree: Vec<std::path::PathBuf> = Vec::new();
+        let mut stack = vec![root.clone()];
+        while let Some(d) = stack.pop() {
+            for e in std::fs::read_dir(&d).expect("read backend tree") {
+                let pth = e.expect("dir entry").path();
+                if pth.is_dir() {
+                    stack.push(pth);
+                } else if pth.extension().and_then(|x| x.to_str()) == Some("rs") {
+                    let rel = pth
+                        .strip_prefix(&root)
+                        .unwrap_or(&pth)
+                        .to_string_lossy()
+                        .to_string();
+                    if !NOT_IN_ANY_MODULE.contains(&rel.as_str()) {
+                        on_tree.push(pth);
+                    }
+                }
+            }
+        }
+        on_tree.sort();
+        let covered = core_files();
+        let on_tree_set: std::collections::BTreeSet<_> = on_tree.iter().collect();
+        let covered_set: std::collections::BTreeSet<_> = covered.iter().collect();
+        assert_eq!(
+            covered_set,
+            on_tree_set,
+            "B 分区对不上：登记派生的人群 {} 份，盘上现打 {} 份。\n\
+             盘上有而人群没有：{:?} ⇒ 🔴 **那几份不受任何一层管**（既不在默认层也不在白名单层）。\n\
+             人群有而盘上没有：{:?} ⇒ 登记指向了不存在的东西。\n\
+             ⚠ 写成**集合相等**而不是「份数相等」：份数相等在「搬走一份、又冒出一份」上是瞎的。",
+            covered.len(),
+            on_tree.len(),
+            on_tree_set.difference(&covered_set).collect::<Vec<_>>(),
+            covered_set.difference(&on_tree_set).collect::<Vec<_>>()
+        );
+
+        // ── C：人群非空（兜底）────────────────────────────────────────────
+        assert!(
+            !covered.is_empty() && !BACKEND_CORE_MODULES.is_empty(),
+            "C 人群或登记表是空的 —— 上面两条相等会退化成「空集 == 空集」，整条护栏恒绿"
+        );
+    }
+
     #[test]
     fn backend_write_capability_is_confined_to_the_registered_modules() {
         let src_dir = crate::guard_support::src_root();
         let (default_scanned, whitelisted) = scan(&src_dir);
+        // 🔴 〔步 10 · 2026-09-19〕**地板换成恒等。**
+        //    上一版逐字是 `default_scanned >= 5` —— 它在「变多」那个方向上有意义，
+        //    在「**变少**」这个方向上完全是瞎的：人群从 64 掉到 6，它照样绿。
+        //    而「人群悄悄少一块」正是 `4b` 这类搬家最可能的失效形状（`16 §5.2`）。
+        //    ⇒ 改成与现打人群对账：扫到的默认层 ＋ 白名单层 ＋ 跳过的本文件 == 登记派生的份数。
+        let skipped_self = core_files()
+            .iter()
+            .filter(|p| p.file_name().and_then(|n| n.to_str()) == Some("readonly_guard.rs"))
+            .count();
+        assert_eq!(
+            default_scanned + whitelisted + skipped_self,
+            core_files().len(),
+            "人群对不上：默认层 {default_scanned} ＋ 白名单层 {whitelisted} ＋ 跳过本文件 \
+             {skipped_self} != 登记派生的 {} 份。\n\
+             ⇒ 有文件既没进默认层也没进白名单层 —— 那种文件**不受任何一层管**，\n\
+             而上一版那条地板（`>= 5`）对它一声不吭。",
+            core_files().len()
+        );
         assert!(
-            default_scanned >= 5,
-            "扫描到的后端源文件过少（{default_scanned}），护栏可能没生效"
+            !core_files().is_empty(),
+            "人群是空的 —— 上面那条恒等会退化成 `0 == 0`，整条护栏恒绿。\n\
+             ⚠ 这一条是**兜底**，不是主锚：主锚是它上面那条恒等与 \
+             `the_population_is_the_registered_module_set_and_nothing_fell_out` 的三向对拍。"
         );
         assert_eq!(
             whitelisted,
