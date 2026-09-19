@@ -1249,10 +1249,10 @@ run_gate backend '单包 src/backend，只有一行 test result ⇒ 最大值 = 
 # ⇒ 本格把 `--listFiles` 真读进程序的那批文件数出来，与**盘上现打**的 `src/` ＋ `tests/e2e/` 下
 #   `.ts`/`.tsx`/`.mts` 份数对账，**两个数在同一趟里现打**，一个都不写死
 #   （写死一个数，加一份文件就红，那种格三天就会被人调宽）。
-run_gate tsc '不是「几条断言过了」：这个数是**这一趟真读进 tsc 程序**的仓内 `.ts`/`.tsx`/`.mts` 份数（`tsconfig.json` 的 include = `src` ＋ `e2e`），并与盘上现打的份数**恒等对账**。⚠ 只判类型（`npm run build` 的前一半）；`vite build` 与 `cargo tauri build` 那两段、以及仓根那几份不在 include 里的 `.ts`（`vite.config.ts` / `vitest.config.ts`），本行一概盖不到' \
+run_gate tsc '不是「几条断言过了」：这个数是**这一趟真读进 tsc 程序**的仓内 `.ts`/`.tsx`/`.mts` 份数（`tsconfig.json` 的 include 现打是 `[\"src\", \"tests\"]`），并与盘上现打的份数**恒等对账**。🔴 〔订正 09-19〕**本行原先两侧都只数 `src` ＋ `tests/e2e`（210 份），而 tsc 真读进去的是 372 份** —— 两侧同时把 `tests/` 的其余 **162** 份剔掉，于是等式照样成立、本格照样绿。⚠ **那不是少印一个数，是一个静默洞**：有人把 `include` 收窄成 `[\"src\", \"tests/e2e\"]`，那 162 份当场不再被检，而 `want` 与 `got` 会一起掉到 210 ⇒ **仍然相等、仍然全绿**。本拍把两侧都改成按 `include` 的真值数（372 == 372），这条路才堵上。⚠ 只判类型（`npm run build` 的前一半）；`vite build` 与 `cargo tauri build` 那两段、以及仓根那几份不在 include 里的 `.ts`（`vite.config.ts` / `vitest.config.ts`），本行一概盖不到' \
          bash -c 'out=$(node_modules/.bin/tsc --noEmit --listFiles 2>&1); rc=$?; \
-want=$(find src tests/e2e -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.mts" \) | wc -l | tr -d " "); \
-got=$(printf "%s\n" "$out" | grep -v "/node_modules/" | grep -cE "/(src|e2e)/.*\.(ts|tsx|mts)$"); \
+want=$(find src tests -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.mts" \) | wc -l | tr -d " "); \
+got=$(printf "%s\n" "$out" | grep -v "/node_modules/" | grep -cE "/(src|tests)/.*\.(ts|tsx|mts)$"); \
 printf "tsc: 盘上现打 %s 份仓内 .ts，这一趟真读进程序的 %s 份\n" "$want" "$got"; \
 printf "%s\n" "$out" | grep -E "error TS" | head -60; \
 if [ "$rc" -ne 0 ]; then printf "tsc: 退出码 %s —— 类型没编过。它就是 npm run build 的第一步，红着这棵树发不出产物\n" "$rc"; exit "$rc"; fi; \
