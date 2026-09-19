@@ -537,28 +537,16 @@ fn the_two_reasons_u8c3_cannot_delete_the_ts_renderer_still_hold() {
 ///   就是这两个文件真能删的那天 —— 那时回 `U8c-3`，而不是靠读注释判断。
 #[test]
 fn the_ts_fallback_renderer_now_stands_on_its_own_consumers() {
-    // ① **前提确实退役了**（不是「名字没了」，是那一档没了）。
-    //    🔴 刻意**不**用 `!contains("daemonless")` —— `remote-config.ts` 里还剩**一处**
-    //    该词的字面量（`LEGACY_NO_BACKEND_KEY`，认旧配置用的墓碑），数名字会把它读成回潮。
-    //    ⇒ 断的是**载体**：落盘字段清单里那一项 · 界面那个 input · 数据源那条分支。
-    let cfg = production_ts(&read_ts("src/remote-config.ts"));
-    assert!(
-        !cfg.contains(r#""daemonless","#),
-        "`REMOTE_HOST_FIELDS` 里又有 `daemonless` 了 —— 那一档回潮了。\n\
-             `K35`〔用 09-11〕逐字：「不要有 daemonless。没有没有后端的情况。」\n\
-             要加回来先回去改定框，并同轮重裁 `U8c-3`（本条的存续理由会跟着变）。"
-    );
-    let card = production_ts(&read_ts("src/settings/machine-card.ts"));
-    assert!(
-        !card.contains("daemonlessInput"),
-        "机器卡片的生产段里又有那个开关了 —— 用户又能造出「不装后端」的主机。同上。"
-    );
-    let src = guard_core::production_code(include_str!("../../../../src/bridge/src/ssh_source.rs"));
-    assert!(
-        !src.contains("daemonless_stream_loop"),
-        "`ssh_source.rs` 生产段里那条轮询回落又回来了 —— \n\
-             **开关没了而路还在**，那是最坏的一种：没有任何界面造得出它，却仍有一条代码路等着。"
-    );
+    // 🔴 〔步 8 · 条 80 「不要管旧配置」〕**原来的 ① 那三条 `!contains` 删了。**
+    //    它们断的是「`daemonless` 那一档不许回潮」，量的是三个载体：
+    //    `remote-config.ts` 落盘字段里那一项 · `machine-card.ts` 那个 input ·
+    //    `ssh_source.rs` 那条轮询回落。`K-R59`（09-11）删掉前两个之后，它们就只剩
+    //    「盘上没有」这一个结果；条 80 又删掉 `remote-config.ts` 里最后那块墓碑
+    //    （`LEGACY_NO_BACKEND_KEY`）⇒ **那个词在全仓生产段一处都没有了**
+    //    ⇒ 三条负向断言**永远满足**，是三条恒绿的。
+    //    ⚠ 留着比删掉更坏：一条恒绿的判据长得和一条真守着的判据一模一样。
+    //    本条余下的 ② ③ 两半（消费者逐处点名 ＋ 有没有生产调用方）**一个字没动** ——
+    //    「那条路还站不站得住」才是本条今天真正在买的东西。
     // ② **新的存续理由**：那条路今天靠自己的消费者站着，逐处点名、处数从源码派生。
     for (symbol, file, want, what, unlock) in TS_FALLBACK_KEEPERS {
         let code = production_ts(&read_ts(file));

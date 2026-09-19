@@ -2318,6 +2318,21 @@ fn every_dead_name_named_in_the_prose_is_declared_dead() {
     /// ⚠ 加行之前先问一遍：**这个名字今天真的存在吗？** 不存在就先改话，别先加行。
     /// ⚠ **不许**靠贴墓碑把存量抹平 —— 墓碑只给「本轮真的改过的那几处订正段」。
     const INVENTORY: &[(&str, &str, usize)] = &[
+        // 🔴 〔步 8 · 条 80 「不要管旧配置」2026-09-19〕**这两行是新登记的，原因是一条判据退役。**
+        //    `daemonless_stream_loop` 这个符号 `K-R59`（09-11）就从代码里删掉了，
+        //    它此后一直被一处**字符串字面量**当成「还活着」——
+        //    `doc_claim_registry_daemon_wording_registry.rs` 拿它当「非裸词」自检夹具。
+        //    条 80 把那个夹具换掉之后，它才第一次被本条看见。
+        //    ⇒ 散文里这三处（README 1 · `ssh_source.rs` 2）全是**病史与墓碑**，该留；
+        //      「代码里没有这个名字」这件事该由本表说出来，而不是靠一处夹具替它遮着。
+        //    ⚠ 这正是本条头注那句话的又一个实例：一个名字「在代码里出现过」不等于它活着。
+        ("src/bridge/README.md", "daemonless_stream_loop", 1),
+        ("src/bridge/src/ssh_source.rs", "daemonless_stream_loop", 2),
+        (
+            "tests/bridge/doc_claim_registry_tests.rs",
+            "daemonless_stream_loop",
+            1,
+        ),
         ("src/doc/ARCHITECTURE.md", "lookup_by_foreground_pid", 1),
         ("src/doc/CONTRIBUTING.md", "list_active_session_ids", 1),
         ("src/doc/INVARIANTS.md", "path_shell_safe", 1),

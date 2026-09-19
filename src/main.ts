@@ -610,14 +610,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   //
   // ⚠ 只在主窗口这条路上挂：`?viewer=` 与 `?settings=1` 两个精简 bootstrap 在上面就 return 了。
   {
-    // `origins` / `legacyNoBackend` 要读远端配置（异步），所以先拿一份快照，
+    // `origins` 要读远端配置（异步），所以先拿一份快照，
     // 由 `reload()` 刷新；`FirstRunHint` 自己不碰 IO（照 readiness.ts 的注入范式）。
     let origins: string[] = [LOCAL_MACHINE_KEY];
-    let legacyNoBackend = new Set<string>();
     const firstRunHint = new FirstRunHint(status, {
       origins: () => origins,
       statusOf: readStatus,
-      legacyNoBackend: (o) => legacyNoBackend.has(o),
       hostOs,
       // 「点得进那张清单」= 打开设置窗口（清单住在它的「远端」那一节）。
       // ⚠ 今天**只能到窗口这一格**：`open_settings_window` 不收参数，
@@ -628,8 +626,6 @@ window.addEventListener("DOMContentLoaded", async () => {
       try {
         const cfg = await readRemoteConfig();
         origins = [LOCAL_MACHINE_KEY, ...cfg.hosts.map(hostKey)];
-        // `KR59D3`：盘上那份旧 `true` —— 主窗口这条指路与设置页那张清单**同一个源**。
-        legacyNoBackend = new Set(cfg.legacyNoBackend);
       } catch (e) {
         // 读不到远端配置不该让这条提示消失 —— 本机那几格照样算得出来。
         console.warn(`[N-F3] 远端配置读失败，只按本机算「还差什么」：${String(e)}`);

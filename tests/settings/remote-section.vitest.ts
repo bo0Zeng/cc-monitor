@@ -58,7 +58,6 @@ import {
 import { __setHostOsForTests } from "../../src/settings/host-os";
 // `KR59D3`：那条**有名字**的告知 —— 名字的家只有一个（`readiness.ts`），
 // 判据与 DOM 上那个 `data-code` 断的是同一个串，不在这里另抄一份字面量。
-import { NO_BACKEND_GAP_CODE } from "../../src/settings/readiness";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { stripComments } from "../test-support/strip-comments";
@@ -219,57 +218,13 @@ describe("S4b-3 resumeCommand write→read 往返（D-B1 同源回归：新字�
   });
 });
 
-/**
- * 🔴 `KR59D3`：**旧配置里那个 `true` 不许被静默吞掉。**
- *
- * 这一组此前叫「F59 daemonless write→read 往返」，钉的是那个布尔字段**存得下、读得回**。
- * 定框 `K35`（「不要有 daemonless。没有没有后端的情况。」）之后那个字段没了 ——
- * 于是这一组要钉的性质**翻了面**：
- *   ① 那个键**不再写出去**（下次保存就把用户盘上那份旧值清掉，这是迁移本身）；
- *   ② 而**清掉之前**，读盘那一趟必须把它认出来，落在 `legacyNoBackend` 上 ——
- *      不认出来，那台主机明天开始连后端，连不上时用户看见的只是「连不上」。
- */
-describe("KR59D3 旧配置里那个 `true`：读得出来、写不回去", () => {
-  it("🔴 旧 config 里的 `daemonless: true` ⇒ `legacyNoBackend` 点得出那台机器的名字", async () => {
-    vi.mocked(loadConfig).mockResolvedValue({
-      remote: {
-        enabled: true,
-        hosts: [
-          { label: "devbox", host: "10.0.0.2", user: "u", daemonPath: "/d", daemonless: true },
-          { label: "nano", host: "10.0.0.3", user: "u", daemonPath: "/d" },
-        ],
-      },
-    });
-    const back = await readRemoteConfig();
-    expect(
-      back.legacyNoBackend,
-      "旧配置里那个 `true` 被 `coerceHost` 当未知键**静默吞掉**了 —— " +
-        "那正是 `KR59D3` 要治的那一形",
-    ).toEqual(["devbox"]);
-    // 阴性对照：没写过那个键的机器不进名单（不是恒挂）。
-    expect(back.legacyNoBackend).not.toContain("nano");
-    // 而字段本身**真的没了**：hosts 上不该再冒出这个属性。
-    expect(Object.keys(back.hosts[0]!)).not.toContain("daemonless");
-  });
-
-  it("保存一次就把盘上那个旧键写没（迁移本体）", async () => {
-    vi.mocked(loadConfig).mockResolvedValue({
-      remote: {
-        enabled: true,
-        hosts: [{ label: "devbox", host: "10.0.0.2", user: "u", daemonPath: "/d", daemonless: true }],
-      },
-    });
-    let saved: Record<string, unknown> = {};
-    vi.mocked(saveConfig).mockImplementation(async (c: unknown) => {
-      saved = c as Record<string, unknown>;
-    });
-    await patchRemoteConfig({});
-    const written = (saved.remote as { hosts: Array<Record<string, unknown>> }).hosts[0]!;
-    expect(Object.keys(written)).not.toContain("daemonless");
-    // 阴性对照：这一趟**真的写了东西**（不是「什么都没写」恒真）。
-    expect(written.label).toBe("devbox");
-  });
-});
+// 🔴 〔步 8 · 条 80 「不要管旧配置」〕**`KR59D3` 那一组两条整组退役了。**
+//    ① 「旧 config 里的 `daemonless: true` ⇒ `legacyNoBackend` 点得出那台机器」——
+//       `legacyNoBackend` 这个字段删了，断言没有对象；
+//    ② 「保存一次就把盘上那个旧键写没（迁移本体）」—— 它那条
+//       `expect(Object.keys(written)).not.toContain("daemonless")` 是**负向断言**：
+//       那个词从全仓消失之后它**永远满足** ⇒ 留着就是一条恒绿的。
+//    ⚠ 用例数 −2，逐条点名在本轮报告里。
 
 describe("F83 sftpEligibleHosts", () => {
   const mk = (over: Partial<RemoteHostConfig>): RemoteHostConfig => ({
@@ -288,7 +243,6 @@ describe("F83 sftpEligibleHosts", () => {
   const cfg = (hosts: RemoteHostConfig[]): RemoteConfig => ({
     enabled: false,
     hosts,
-    legacyNoBackend: [],
   });
 
   it("空 hosts → []", () => {
@@ -312,7 +266,7 @@ describe("F83 sftpEligibleHosts", () => {
   });
   it("不看 enabled（禁用远端也能纯浏览文件）", () => {
     const hosts = [mk({ host: "h", user: "u" })];
-    expect(sftpEligibleHosts({ enabled: false, hosts, legacyNoBackend: [] })).toHaveLength(1);
+    expect(sftpEligibleHosts({ enabled: false, hosts })).toHaveLength(1);
   });
 });
 
@@ -689,55 +643,9 @@ describe("S1 RemoteSection：保存走局部合并", () => {
     ]);
   });
 
-  /**
-   * 🔴 `KR59D3` 的**产品面**落点：「喂一份 `daemonless: true` 的旧 config ⇒
-   * 必须能从产品里**拿到一条指名的告知**」。
-   *
-   * ⚠ 纯函数那一侧由 `readiness.vitest.ts` 断（`computeGaps` 产不产得出那条 gap）；
-   * **本条断的是它有没有真的走到屏上** —— 两件事，件文件逐字禁的失效方向是
-   * 「把它做成「日志里 warn 一句」。日志不是失败面 —— 用户看不见的告知等于没有」。
-   */
-  it("🔴 KR59D3：喂一份带旧开关的 config ⇒ 清单上真有一条**带名字**的告知", async () => {
-    localStorage.clear();
-    __setHostOsForTests("windows");
-    vi.mocked(loadConfig).mockResolvedValue({
-      remote: {
-        enabled: true,
-        // ⚠ 这一台**盘上就是这么写的**（旧版本留下的），不是我们造的新字段。
-        hosts: [{ label: "devbox", host: "10.0.0.2", user: "u", daemonPath: "/d", daemonless: true }],
-      },
-    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
-    const sec = new RemoteSection({ headless: true, pages: fakePages().host });
-    await new Promise((r) => setTimeout(r, 0));
-    const box = gapsBoxOf(sec);
-    expect(box.style.display, "那一块整块没出现 ⇒ 下面几条是空真").not.toBe("none");
-    const named = [...box.querySelectorAll<HTMLElement>(".remote-gap")].filter(
-      (i) => i.dataset.code === NO_BACKEND_GAP_CODE,
-    );
-    expect(
-      named.length,
-      "旧配置里那个 `true` 被静默吞掉了 —— 用户看见的只会是「连不上」",
-    ).toBe(1);
-    expect(named[0]!.dataset.origin).toBe("devbox");
-    expect(named[0]!.dataset.facet).toBe("backend");
-    expect(named[0]!.dataset.kind).toBe("missing");
-    expect(named[0]!.classList.contains("remote-gap-blocking")).toBe(true);
-    // **一句下一步** —— 光有名字不算，用户得知道去干什么。
-    expect(named[0]!.textContent).toContain("装上后端");
-    // 阴性对照：同一屏上**别的**主机不带这个名字（不是恒挂一条）。
-    vi.mocked(loadConfig).mockResolvedValue({
-      remote: { enabled: true, hosts: [{ label: "nano", host: "10.0.0.3", user: "u", daemonPath: "/d" }] },
-    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
-    const clean = new RemoteSection({ headless: true, pages: fakePages().host });
-    await new Promise((r) => setTimeout(r, 0));
-    const box2 = gapsBoxOf(clean);
-    expect(box2.style.display, "分母塌了：干净那一屏本来就没出现").not.toBe("none");
-    expect(
-      [...box2.querySelectorAll<HTMLElement>(".remote-gap")].some(
-        (i) => i.dataset.code === NO_BACKEND_GAP_CODE,
-      ),
-    ).toBe(false);
-  });
+  // 🔴 〔步 8 · 条 80 「不要管旧配置」〕**`KR59D3` 的产品面那条也退役了。**
+  //    它断的是「喂一份带旧 `daemonless: true` 的 config ⇒ 清单上真有一条带名字的告知」，
+  //    而那条告知这一拍整块删了 ⇒ 没有被测对象。⚠ 用例数 −1，逐条点名在本轮报告里。
 
   it("★ 渲染「还差什么」不发任何后端请求（只读账本）", async () => {
     // §1-2：状态灯绝不引入轮询。这块是「新用户第一眼看到的东西」，

@@ -433,47 +433,15 @@ fn the_three_questions_in_33b_have_todays_answers() {
              真要改，回 `INVARIANTS §33b` 与 `U8c-3` 重裁，别只改头注。"
     );
 
-    // ── 量法 ③ ────────────────────────────────────────────────────────────
-    // 断的是**载体**不是名字（口径与 `launch_wire.rs` 那条同源，理由见本条头注）。
-    let carriers: [(&str, bool); 3] = [
-        (
-            "落盘字段 `REMOTE_HOST_FIELDS`",
-            prod_ts("src/remote-config.ts").contains(r#""daemonless","#),
-        ),
-        (
-            "机器卡片那个 input",
-            prod_ts("src/settings/machine-card.ts").contains("daemonlessInput"),
-        ),
-        (
-            "数据源那条轮询回落",
-            prod_rs("src/bridge/src/ssh_source.rs").contains("daemonless_stream_loop"),
-        ),
-    ];
-    // ★ 抽取器自检：三份语料都真的读到了（读不到只会静默返回空串 ⇒ 三格全 false ⇒ 假「已退役」）。
-    for rel in [
-        "src/remote-config.ts",
-        "src/settings/machine-card.ts",
-        "src/bridge/src/ssh_source.rs",
-    ] {
-        assert!(
-            read(rel).len() > 3000,
-            "量法 ③ 读的 {rel} 只有 {} 字节 —— 读不到的文件只会静默返回空串",
-            read(rel).len()
-        );
-    }
-    let back: Vec<&str> = carriers
-        .iter()
-        .filter(|(_, on)| *on)
-        .map(|(n, _)| *n)
-        .collect();
-    let a3 = if back.is_empty() {
-        "〔现打③〕已退役"
-    } else {
-        "〔现打③〕那一档还在"
-    };
-
+    // 🔴 〔步 8 · 条 80 「不要管旧配置」〕**量法 ③ 与第三问一起删了。**
+    //    原先它量那一档的三个载体：`remote-config.ts` 的落盘字段 `"daemonless",` ·
+    //    `machine-card.ts` 的 `daemonlessInput` · `ssh_source.rs` 的 `daemonless_stream_loop`。
+    //    `K-R59`（09-11）早把前两个删了，条 80 又删掉最后那块墓碑
+    //    （`LEGACY_NO_BACKEND_KEY`）⇒ **三格在盘上全部不存在，恒 false**
+    //    ⇒ 判词恒为「已退役」⇒ 与文档**永远对得上** ⇒ 那是三条恒绿的判据。
+    //    删的是判据，不是历史：`INVARIANTS.md §33b` 那一行原地留着并加了一句订正。
     // ── 逐问与文档对拍 ────────────────────────────────────────────────────
-    let derived = [a1, a2, a3];
+    let derived = [a1, a2];
     assert_eq!(
         THIRTY_THREE_B_QUESTIONS.len(),
         derived.len(),
@@ -505,7 +473,7 @@ fn the_three_questions_in_33b_have_todays_answers() {
                    ⇒ 改文档那一格，并同轮问一句：这一问挡着的那件事，今天还挡不挡得住？\n\
                  · **答案改了而事实没动** ⇒ 那是有人在文档里许了一个还没兑现的愿。\n\
                  ⚠ 现场读数：① monitor 树发 `create-or-…`={monitor_emits} · `control/ccm/` 发={ccm_emits}；\n\
-                 ② 生产 TS 里还问座要 attach 的：{askers:?}；③ 那一档还在场的载体：{back:?}。",
+                 ② 生产 TS 里还问座要 attach 的：{askers:?}。",
             present[0]
         );
     }

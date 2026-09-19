@@ -43,7 +43,7 @@ const A = mk({ label: "alpha", host: "10.0.0.1", user: "ua", jump: "gw" });
 const B = mk({ label: "beta", host: "10.0.0.2", user: "ub", jump: "gw2" });
 const C = mk({ label: "", host: "10.0.0.3", user: "uc" }); // label 空 ⇒ key = host
 
-const base: RemoteConfig = { enabled: true, hosts: [A, B, C], legacyNoBackend: [] };
+const base: RemoteConfig = { enabled: true, hosts: [A, B, C] };
 
 describe("hostKey", () => {
   it("label 非空取 label，否则取 host（与 findHostByOrigin 同口径）", () => {
@@ -121,7 +121,7 @@ describe("applyRemoteHostsPatch", () => {
     const d1 = mk({ label: "dup", host: "1.1.1.1", user: "one" });
     const d2 = mk({ label: "dup", host: "2.2.2.2", user: "two" });
     const out = applyRemoteHostsPatch(
-      { enabled: true, hosts: [d1, d2], legacyNoBackend: [] },
+      { enabled: true, hosts: [d1, d2] },
       {
         upsert: [
           { key: "dup", value: { ...d1, user: "one-edited" } },
@@ -138,7 +138,7 @@ describe("applyRemoteHostsPatch", () => {
     expect(applyRemoteHostsPatch(base, { enabled: false }).enabled).toBe(false);
     expect(
       applyRemoteHostsPatch(
-        { enabled: false, hosts: [], legacyNoBackend: [] },
+        { enabled: false, hosts: [] },
         { enabled: true },
       )
         .enabled,
