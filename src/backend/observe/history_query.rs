@@ -413,9 +413,8 @@ fn read_session_tail(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<()
             break; // torn 残尾不计（F14 口径）
         }
         complete_end = pos;
-        let text = String::from_utf8_lossy(&buf[..buf.len() - 1]);
-        if text.trim_start_matches('\u{feff}').trim().is_empty() {
-            continue; // 空行不计（与 watcher/monitor 口径一致）
+        if !line_counts(&buf[..buf.len() - 1]) {
+            continue; // 空行不计（与 watcher/monitor 口径一致 —— 判定只有 `line_counts` 一个住址）
         }
         total += 1;
         recent.push_back(line_start);
@@ -452,6 +451,46 @@ fn read_session_tail(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<()
 /// （真实 18MB 会话：meta/字节输出逐段一致，见 Batch9 feature 30 §6 留档）。
 /// **仅测**（生产走流式版、不调本函数）→ `#[cfg(test)]` 不进生产二进制。
 #[cfg(test)]
+/// 这一行**算不算一行**（＝ 口径 `watcher::read_new_lines`：BOM 与全空白跳过）。
+///
+/// 🔴 **全仓只有这一个住址** —— 扫描循环数 `total`、`split_tail` 数 `starts`，
+/// 两边判得必须**一模一样**；口径一分家，计数就对不上，而那种错**不会报错**。
+///
+/// # 为什么先看字节（秤 7，`tests/evidence/S7-rust-side.md`）
+///
+/// 原来这一跳对**每一行**做 `String::from_utf8_lossy(整行)` 再 `trim()`，
+/// **只为回答「这行是不是空的」** —— 那是一次**整文件 UTF-8 校验**。
+/// 实测（15.1 MiB 会话，gpd）：`tail` **19.52 → 3.79 ms**、其中「数行」那一趟
+/// **17.89 → 2.98 ms（↓83%）**，**出字节一字节不差**。
+/// 剩下的 ~3 ms/15.1 MiB（≈5 GiB/s ≈ `memchr`）才是 `设计/17 §3.1` 说的
+/// 那个**真·不可避免的 O(文件)**。
+///
+/// # 短路为什么是对的
+///
+/// - 任何 `< 0x80` 的字节都是**独立的 ASCII 字符** —— UTF-8 多字节序列的
+///   首字节与续字节**全部 ≥ 0x80** ⇒ 不会把半个字符误读成 ASCII。
+/// - BOM（`U+FEFF` ＝ `EF BB BF`）**三个字节全非 ASCII** ⇒ 短路条件碰不到它。
+/// - ⇒ 只要有一个 ASCII 非空白字节，这行剥 BOM、`trim` 完**必然非空**。
+/// - 短路**不成立**时退回原判定（保守），所以这不是近似，是**等价**。
+///
+/// ⚠⚠ **谓词必须是 `char::from(b).is_whitespace()`，不能写成 `b.is_ascii_whitespace()`**
+/// —— 后者**不含 `U+000B`**（垂直制表），而 `str::trim` 含它。
+/// 秤 7 的第一版变体就是这么写错的，**靠穷举才逮出来**（全部 1/2/3 字节共
+/// 16 843 008 个 ＋ 300 万随机串，分歧 0；证据 `tests/evidence/S7-blank-line-equivalence.rs`）——
+/// **单测没逮住，因为没有那个样本。**
+fn line_counts(line: &[u8]) -> bool {
+    // 快路：有 ASCII 非空白 ⇒ 必非空，不必解码
+    if line
+        .iter()
+        .any(|b| b.is_ascii() && !char::from(*b).is_whitespace())
+    {
+        return true;
+    }
+    // 慢路：可能全是空白 / 多字节 ⇒ 按原判定来
+    let text = String::from_utf8_lossy(line);
+    !text.trim_start_matches('\u{feff}').trim().is_empty()
+}
+
 fn split_tail(bytes: &[u8], n: usize) -> (String, &[u8], &[u8]) {
     let complete_end = bytes.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
     let complete = &bytes[..complete_end];
@@ -459,8 +498,7 @@ fn split_tail(bytes: &[u8], n: usize) -> (String, &[u8], &[u8]) {
     let mut starts: Vec<usize> = Vec::new();
     let mut pos = 0usize;
     for line in complete.split_inclusive(|&b| b == b'\n') {
-        let text = String::from_utf8_lossy(&line[..line.len() - 1]);
-        if !text.trim_start_matches('\u{feff}').trim().is_empty() {
+        if line_counts(&line[..line.len() - 1]) {
             starts.push(pos);
         }
         pos += line.len();
