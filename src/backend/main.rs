@@ -684,7 +684,7 @@ const SUBCOMMANDS: &[&str] = &[
     //  ② **把那份 JSON 原样喂进 stdin 第一行**、仍不设那个环境变量 ⇒ **还是退出码 2、
     //     stdout 还是 0 字节、还是同一句话**
     //  ⇒ 「stdin 第一行」那条路今天**一个字节都不被读**。
-    //  ⚠ 两趟都是 **Linux gnu debug 构建**，不是 Windows sidecar。
+    //  ⚠ 两趟都是 **Linux gnu debug 构建**，不是 Windows local_backend。
     //
     //  为什么改：`dial/mod.rs` 头注自陈 —— `ssh_source` 有一条判据逐字禁止它自己往流里写
     //  （写的能力在 `U8a-2a` 整个交给了 `ParkedWriter`），硬走 stdin 就得去放宽那条判据，

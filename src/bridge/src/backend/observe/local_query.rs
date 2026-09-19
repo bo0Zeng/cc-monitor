@@ -5,7 +5,7 @@
 //! backend 的**读面**是 14 条一次性查询子命令（`--list-projects` / `--usage` / `--search` …）。
 //! ⚠ 那批读**不在常驻通道上**：流连接的 hello 声明的 `commands` 是
 //! `["cancel","kill","launch","ping","resolve"]` —— **一条读命令都没有**。
-//! ⇒ 「把本机读面切到后端」的意思是 **exec 一次 sidecar 拿 stdout**，
+//! ⇒ 「把本机读面切到后端」的意思是 **exec 一次本机后端拿 stdout**，
 //! **不是**跟那个被监护的常驻进程说话（那个是给 observe / 控制用的）。
 //!
 //! 远端那条路早就是这个形态（`ssh host <backend> --list-projects`），
@@ -18,7 +18,7 @@
 //!
 //! # 诚实降级不是可选项（定框 §5）
 //!
-//! sidecar 可能**不在**：开发树里今天就没有（`externalBin` 只在发版 `--config` 时注入，F05b）。
+//! local_backend 可能**不在**：开发树里今天就没有（`externalBin` 只在发版 `--config` 时注入，F05b）。
 //! ⇒ 本模块的返回值是 **tagged 三态**，不是 `Result<String, String>`：
 //! 调用方必须能分开「后端不在」（该回落/该提示装）与「后端在但这条查询失败了」（该报原因）。
 //! 把两者压成一个 `Err(String)` 就是让上层猜 —— 那正是 F14 那次「静默回落」的形状。

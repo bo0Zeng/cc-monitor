@@ -670,7 +670,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 // 然后言之凿凿地报「缺失」。
                 destination: ToolDestination::UserConfiguredPath {
                     token: "$APP_DIR",
-                    what: "装机时安装向导里选的那个安装目录（sidecar 与 cc-monitor 主程序同目录）",
+                    what: "装机时安装向导里选的那个安装目录（local_backend 与 cc-monitor 主程序同目录）",
                 },
                 touches: &[TouchedFile {
                     path: "$APP_DIR",
@@ -683,7 +683,7 @@ pub const TOOLS: &[ToolSpec] = &[
                 }],
             },
             Carrier {
-                what: "这一份产物**自己带着**、旁边没有 sidecar 时自释放出来的那一份（`build.rs::embed_native_backend` ⇒ `local_backend::native_embedded_backend` 的 `include_bytes!`）",
+                what: "这一份产物**自己带着**、旁边没有本机后端时自释放出来的那一份（`build.rs::embed_native_backend` ⇒ `local_backend::native_embedded_backend` 的 `include_bytes!`）",
                 source: ToolSource::EmbeddedBinary {
                     repo_path: "src/bridge/native-backend/cc-monitor-native",
                 },

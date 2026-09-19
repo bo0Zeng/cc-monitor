@@ -80,7 +80,7 @@ fn every_terminal_window_backend_opens_carries_the_daemon_path() {
     );
     assert_eq!(
         helper, 2,
-        "解析 sidecar 路径的调用点从 2 变成了 {helper}（POSIX 一次 · Windows 一次给两个 spawn 共用）"
+        "解析本机后端路径的调用点从 2 变成了 {helper}（POSIX 一次 · Windows 一次给两个 spawn 共用）"
     );
     // 那个不带 env 的必须是探测，不是开窗：钉住它的身份，别让「探测」变成豁免借口。
     assert!(

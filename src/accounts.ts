@@ -870,7 +870,7 @@ export const PENDING_LAUNCH_TTL_MS = 120_000;
 /**
  * 🔴 **问几次**：每条待回填最多 8 次。
  *
- * 每一次「问」= 一次 `list_local_session_accounts`（一次 exec sidecar）。
+ * 每一次「问」= 一次 `list_local_session_accounts`（一次 exec local_backend）。
  * 触发它的是**会话集合变化事件**，不是表 —— 一台机上短时间内起十几条会话是可能的，
  * 没有这个上限时，一条永远回填不了的待办会跟着每一次事件白发一次 IPC。
  */
@@ -956,7 +956,7 @@ export async function resolvePendingLocalLaunches(nowMs: number = Date.now()): P
   let rows: SessionAccount[] = [];
   try {
     const r = await commands.list_local_session_accounts();
-    // `available:false`（Windows / 没有 sidecar）⇒ 空行集 ⇒ 下面一条都命不中 = 不猜。
+    // `available:false`（Windows / 没有本机后端）⇒ 空行集 ⇒ 下面一条都命不中 = 不猜。
     if (r.available) rows = r.sessions;
   } catch {
     /* 查不到就按「这一次没问出来」处理，待办留着等下一次事件 */

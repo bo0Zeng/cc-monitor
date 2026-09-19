@@ -331,7 +331,7 @@ jobs:
           }
           Write-Host "Backend identity OK: src/backend version=0.0.0 (deliberate), BUILD_ID=$did"
 
-      # F05b：**本机后端 sidecar**（C7「没有 daemonless，本机也要有后端进程」）。
+      # F05b：**本机后端**（Tauri `externalBin` 那一份）（C7「没有 daemonless，本机也要有后端进程」）。
       #
       # 与上面那批 embedded-backends 是**两件事**：那些是远端 SFTP 部署用的 musl 二进制
       # （`build.rs` 用 `include_bytes!` 内嵌进 monitor）；这一份是**装在用户自己机器上**、
@@ -339,14 +339,14 @@ jobs:
       #
       # ⚠ 必须原生编：backend 在 Windows 上真编得过（2026-08-04 真机实测 exit=0、
       # release 2.6 MB，且跑起来发完整 hello；tmux 那半诚实发 `observation:"unobservable"`）。
-      # ⚠ 名字必须带 target triple —— Tauri 的 sidecar 约定是「构建期带 triple、打包时剥掉」，
+      # ⚠ 名字必须带 target triple —— Tauri 的本机后端约定是「构建期带 triple、打包时剥掉」，
       # 而消费侧 `local_backend::resolve_with` 正是先找带 triple 的、再找裸名。
       # `--locked` 的理由与 build-backends 那步同源（同一份 `src/backend/Cargo.lock`、
       # 同一个 yanked 的 `crypto-bigint 0.7.3`），逐字见那里的头注 —— 这里不抄第二份。
-      - name: Build local backend sidecar (native)
+      - name: Build local backend (native)
         working-directory: src/backend
         run: cargo build --release --locked
-      - name: Stage sidecar for externalBin
+      - name: Stage local backend for externalBin
         shell: pwsh
         run: |
           $triple = (rustc -vV | Select-String '^host:').Line.Split(' ')[1]
@@ -359,7 +359,7 @@ jobs:
       #
       # 09-10 干净 win11 上现打：装出来那份 `cc-monitor-remote.exe` **2 个进程在跑**，
       # 裸 `monitor.exe` **0 个**。上面那一步（`binaries/` → Tauri `externalBin`）只服务
-      # **安装包**：它把 sidecar 放进 msi/nsis，装完落在 exe 同目录。裸 exe 拿不到那个文件。
+      # **安装包**：它把本机后端放进 msi/nsis，装完落在 exe 同目录。裸 exe 拿不到那个文件。
       #
       # ⚠ **这一步不动上面那一步**：安装包那条路 09-10 实测是好的（2 个进程），
       # `externalBin` 仍然只住 `tauri.sidecar.conf.json`、仍然只在下面 `tauri build` 那行
@@ -406,7 +406,7 @@ jobs:
       # tauri build 会顺序：npm run build (vite) → cargo build --release → bundle (msi + nsis)
       #
       # ⚠ `--config src/bridge/tauri.sidecar.conf.json` 是 F05b 刻意选的形态：`externalBin`
-      # **不进主配置** —— `tauri-build` 要求当前 target 的 sidecar 在**编译期**就存在，
+      # **不进主配置** —— `tauri-build` 要求当前 target 的本机后端在**编译期**就存在，
       # 进主配置会让 `cargo test` 也需要一份后端二进制（实测报错
       # `resource path binaries/cc-monitor-remote-<triple> doesn't exist`），
       # 那等于把两半在构建期绑死，正是 C2 反面禁的事。⇒ 只在发版这一步注入。
@@ -455,8 +455,8 @@ jobs:
   #
   # ⚠ **仍然成立的那一半，别跟着一起删**：本 job 只在 tag 时触发 ⇒ **本地一步都验不了**。
   # 而且**真正一次都没在 tag 上跑过的**是 v3.6.0 之后加进来的那些 —— 那之后本文件被改过两次、
-  # 期间**没有再发过版**：`ae18878`（08-02，裸二进制上传）与 `e39253e`（08-04，sidecar）。
-  # 具体是：两个 job 里的 `Build local backend sidecar (native)` + `Stage sidecar for externalBin`
+  # 期间**没有再发过版**：`ae18878`（08-02，裸二进制上传）与 `e39253e`（08-04，本机后端）。
+  # 具体是：两个 job 里的 `Build local backend (native)` + `Stage local backend for externalBin`
   # 共四步、两处 `tauri build` 上的 `--config tauri.sidecar.conf.json`、以及裸二进制那条上传。
   # ⇒ 下面每一处设计都是为了「万一它坏了，坏得可见且不伤及发版」：
   #
@@ -529,14 +529,14 @@ jobs:
       - name: npm ci
         run: npm ci
 
-      # F05b：本机后端 sidecar（理由同 build-windows 那两步，见那里的头注）。
+      # F05b：本机后端（理由同 build-windows 那两步，见那里的头注）。
       # ⚠ Linux 侧同样必须做 —— `externalBin` 一旦注入，`tauri build` 就要求**当前 target**
       # 的那份二进制存在；少了它这一步会以 `resource path ... doesn't exist` 直接失败。
       # `--locked` 同上：理由住 build-backends 那步的头注，这里不抄第二份。
-      - name: Build local backend sidecar (native)
+      - name: Build local backend (native)
         working-directory: src/backend
         run: cargo build --release --locked
-      - name: Stage sidecar for externalBin
+      - name: Stage local backend for externalBin
         run: |
           set -euo pipefail
           triple=$(rustc -vV | sed -n 's/^host: //p')

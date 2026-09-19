@@ -7,14 +7,14 @@
 //! # 🔴 `N-F1c`（2026-09-05）：读口**不再自己读磁盘**，改成问本机后端
 //!
 //! 用户拍的板逐字：「claude code 真实运行在哪台机器，他的账号就应该归哪台机器的后端管」。
-//! ⇒ [`list_local_accounts`] 现在 exec 一次本机 sidecar 的 `--list-accounts`，
+//! ⇒ [`list_local_accounts`] 现在 exec 一次本机后端的 `--list-accounts`，
 //! 把它吐的那几行交给 `accounts::parse_accounts_lines`（**与远端那条同一套解析、不同传输**），
 //! 调用形状照同文件 [`list_local_session_accounts`] 那个先例，没有另造第二种调用法。
 //!
 //! 落地要先搬开两块石头，两块都在本轮搬掉了：
 //! - backend 那份 `is_safe_config_dir` 第一条是 `p.starts_with('/')` ⇒ Windows 的账号目录
 //!   `C:\Users\…` 会被判成不安全、**列表恒空**。已按下面那一节的原话拆成两半。
-//! - 开发树里**没有** sidecar（发版时才注入）⇒ 读口必须**诚实降级**：
+//! - 开发树里**没有** local_backend（发版时才注入）⇒ 读口必须**诚实降级**：
 //!   [`LocalAccountsOutcome`] 是三档 tagged 返回，「够不着」绝不许渲染成「你没有账号」。
 //!
 //! # 为什么当年是第三份实现（历史；那一段代码今天仍在，理由见 [`list_from_dir`]）
@@ -499,14 +499,14 @@ mod tests;
 // 〔F10b 第二批·下半〕`MAX_LOCAL_SESSION_FILES` / `MAX_LOCAL_SESSION_FILE_BYTES` **已删** ——
 // 它们是后端侧同名上限的**第二份**（`accounts_query.rs::MAX_SESSION_FILES` 与
 // `accounts_query.rs::MAX_SESSION_FILE_BYTES`，值逐字相同：
-// 500 个文件 / 1 MiB）。唯一的用处随 `list_local_session_accounts` 改走 sidecar 一起消失
+// 500 个文件 / 1 MiB）。唯一的用处随 `list_local_session_accounts` 改走本机后端一起消失
 // ⇒ 留着就是「同一个数两处各写一份」（定框 §4）。上限现在只有一个家：backend 那边，
 // 且由它自己的测试与 `read_regular_capped` 钉着。
 
 // 〔F10b 第二批〕`proc_claude_config_dir` 与 `pid_alive` **已删** ——
 // 它们是后端侧 `platform/proc.rs` 那两个（`:19` / `:80`）的**第二份实现**，
 // 而本文件的头注原本就写着「判据与后端侧逐字同源」。
-// 唯一的调用方（`list_local_session_accounts`）已改走 sidecar 的 `--session-accounts`
+// 唯一的调用方（`list_local_session_accounts`）已改走本机后端的 `--session-accounts`
 // ⇒ 留着就是「同一件事两处各写一份」（定框 §4），且平台原语该住 `platform/`（C10）。
 // ⚠ 不是「暂时没人用就删」（铁律 13 禁的那种）：它们没有判据、没有测试、
 //   也不是任何东西的唯一锚点 —— 语义的家在后端那边，且由它自己的测试钉着。
@@ -517,7 +517,7 @@ mod tests;
 ///
 /// 从前这里自己 `resolve_claude_dir()` + 读 `sessions/` 的 pidfile + 从
 /// `/proc/<pid>/environ` 抠 `CLAUDE_CONFIG_DIR`。现在**问本机后端**：
-/// exec 一次 sidecar `--session-accounts`，逐行 JSON 反序列化成 [`crate::accounts::SessionAccount`]。
+/// exec 一次 local_backend `--session-accounts`，逐行 JSON 反序列化成 [`crate::accounts::SessionAccount`]。
 ///
 /// ★ 这一迁把 **C1「一份代码、两种承载」在这条查询上做实了**：
 /// 本函数与 `accounts::list_remote_session_accounts` 现在是**同一套解析、不同传输** ——
@@ -535,7 +535,7 @@ mod tests;
 ///
 /// # 边界（`available:false` + `error` 这个形状本来就是为这类事准备的）
 ///
-/// - **sidecar 不在**（开发树）⇒ `available:false` + 「本机后端不在…（找过哪些路径）」。
+/// - **local_backend 不在**（开发树）⇒ `available:false` + 「本机后端不在…（找过哪些路径）」。
 /// - **查询失败** ⇒ `available:false` + 退出码与 stderr 原样带出（定框 §5：诚实降级）。
 /// - 零行是合法的（本机没有活会话）—— 同远端那条的判断，不额外区分「旧后端」。
 /// - ⚠ 只抠**两个写死的键**（`CLAUDE_CONFIG_DIR` 与 `CCM_LAUNCH_ID`）、`configDir` 过白名单

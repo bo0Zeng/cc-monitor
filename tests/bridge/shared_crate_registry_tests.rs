@@ -293,7 +293,7 @@ fn ci_actually_runs_the_three_converged_commands() {
 ///
 /// 上面那条钉的四条 needle **全部命中 monitor job**，与 backend job 的四步**一条都不重叠**。
 /// 实测（`audit-0805` 的只读核实）：当时全仓读 `.github/workflows` 的**只有两处**
-/// （本文件 + `local_backend_tests.rs::every_bundle_job_stages_the_sidecar_before_building`
+/// （本文件 + `local_backend_tests.rs::every_bundle_job_stages_the_local_backend_before_building`
 /// 读 `release.yml`；
 /// ⚠ **08-08 起是三处** —— `sftp.rs` 新增了「发版流水线要为每个 arch 备料」那条，
 /// 这句话记的是**建本条当天**的度量面，别当成今天的事实），
@@ -379,7 +379,7 @@ fn ci_actually_runs_the_backend_four_steps() {
 /// 且交出去之后所有门禁**依旧全绿**，比删掉一步隐蔽得多。
 ///
 /// 全仓读 `.github/workflows` 的只有两处（本文件 +
-/// `local_backend_tests.rs::every_bundle_job_stages_the_sidecar_before_building` 读 `release.yml`），（08-08 起三处，见上一条的订正）
+/// `local_backend_tests.rs::every_bundle_job_stages_the_local_backend_before_building` 读 `release.yml`），（08-08 起三处，见上一条的订正）
 /// **两处都不看 `runs-on`**；`windows-latest` 这个字面量在仓里其余命中全是散文注释。
 ///
 /// ⚠ 本条**不管** backend job 在哪跑（它在 ubuntu 上跨 target check，那是刻意的、

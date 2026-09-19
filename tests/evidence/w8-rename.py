@@ -194,16 +194,30 @@ FAMILIES["local-native"] = {
 }
 
 # ── sidecar ─────────────────────────────────────────────────────────────
+#
+# `设计/90 §0.5.2b`：这个词今天套在两样东西上 ——
+#   (a) Tauri `externalBin` 打进 `monitor` 的**本机后端** ⇒ 它就是本机后端，不是挎斗；
+#   (b) 后端 `sidecars/` 那套「HTTP 按需拉外部二进制」⇒ **整棵已删**（条 67）。
+# ⇒ (b) 没了，这个词就该从我们的词表里消失；只留 Tauri 自己那份词汇。
 FAMILIES["sidecar"] = {
     "needle": "sidecar",
     "protected": [
         ("tauri.sidecar.conf.json",
-         "🔴 **Tauri 自己的词**：这份配置的名字对应 `externalBin`（Tauri 把它叫 sidecar）。"
-         "那是外部世界的事实，不是我们对自己那一半的称呼。"),
+         "🔴 **Tauri 自己的词**：这份配置对应 `externalBin`，而 Tauri 的文档把 `externalBin` "
+         "打进去的那个二进制就叫 sidecar。那是**外部世界的事实**，不是我们对自己那一半的称呼 —— "
+         "同 `DaemonTransport`（aterm 的类型名）那一档。"),
         ("externalBin", "Tauri 的字段名。"),
-        ("code-picture-sidecar", "vendored 内核自己的进程名。"),
+        ("code-picture-sidecar", "vendored 内核自己的进程名（`vendor/code-picture-core`）。"),
+        ("sidecars/", "已整棵删除的 `src/backend/sidecars/`（条 67，2 008 行）。散文里是墓碑与病史。"),
+        ("sidecars", "同上，不带斜杠的那些引用。"),
     ],
-    "subs": [],  # 逐处判，见 --rename sidecar 的说明
+    "subs": [
+        (r"(?<=[\u4e00-\u9fff])\s*sidecars?\s*(?=[\u4e00-\u9fff])", "本机后端"),
+        (r"(?<=[\u4e00-\u9fff])\s*sidecars?\s*(?=[，。、：；！？「」（）】])", "本机后端"),
+        (r"SIDECAR", "LOCAL_BACKEND"),
+        (r"Sidecar", "LocalBackend"),
+        (r"sidecar", "local_backend"),
+    ],
     "files": [],
 }
 

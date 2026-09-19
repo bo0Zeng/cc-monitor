@@ -1454,7 +1454,7 @@ fn the_local_path_does_not_hand_roll_version_comparison() {
 }
 
 #[test]
-fn missing_sidecar_is_an_honest_degrade_that_lists_every_path_it_tried() {
+fn missing_local_backend_is_an_honest_degrade_that_lists_every_path_it_tried() {
     let r = resolve_with(
         Path::new("/opt/app"),
         "x86_64-unknown-linux-gnu",
@@ -1487,7 +1487,7 @@ fn internal_item_id_in(s: &str) -> Option<String> {
 /// **不是「必须这么措辞」**：换个说法重写诊断不该把判据弄红。
 ///
 /// ⚠ 表里**刻意不放光秃秃的「安装包」三个字**：09-10 之前那版旧诊断第一句就是
-/// 「安装包里没有本机后端 sidecar」—— 放进来这条判据对**那句假话恒绿**，
+/// 「安装包里没有本机后端」—— 放进来这条判据对**那句假话恒绿**，
 /// 那就又成了一条替假话背书的判据。表里这几个都是**用户点得动 / 做得出的东西**。
 const A_STEP_THE_USER_CAN_TAKE: &[&str] = &["-setup.exe", ".msi", "装一次安装包", "装上安装包"];
 
@@ -1496,7 +1496,7 @@ const A_STEP_THE_USER_CAN_TAKE: &[&str] = &["-setup.exe", ".msi", "装一次安�
 /// # 原来钉的是什么，为什么必须换
 ///
 /// 原文逐字：`assert!(reason.contains("F05b"), "诊断要指出「谁负责补上它」：{reason}")`。
-/// 它**写的时候是对的**：那天 sidecar 确实还没做，诊断指出「谁来补」是有用的。
+/// 它**写的时候是对的**：那天本机后端确实还没做，诊断指出「谁来补」是有用的。
 /// 而 09-10 F05b 随 v3.7.0 发出去之后，**没有人需要「补上它」了** ⇒
 /// 这条判据就变成了钉住一个**目的已经过期**的字符串，
 /// 让「安装包里还没有 `externalBin`」那句已经变假的话看起来**像有 judge 守着**。
@@ -1531,7 +1531,7 @@ const A_STEP_THE_USER_CAN_TAKE: &[&str] = &["-setup.exe", ".msi", "装一次安�
 ///
 /// 本件给自释放那条路接上了「产物自己带着的那份」（[`native_embedded_backend`]），
 /// 〔那条路 `K-R42` 时住 [`start_or_extract`] 体内，`K-R43` 抽进了 [`resolve_or_extract`]〕
-/// 于是要先回答一句：**「找不到 sidecar」这一形还存不存在？**
+/// 于是要先回答一句：**「找不到本机后端」这一形还存不存在？**
 ///
 /// **存在，而且一点没少。** [`resolve_with`] 的职责一个字没改 —— 它仍然只回答
 /// 「**exe 旁边**有没有」，而裸 exe 旁边**仍然没有**（本件不往 exe 旁边放东西）。
@@ -1549,7 +1549,7 @@ const A_STEP_THE_USER_CAN_TAKE: &[&str] = &["-setup.exe", ".msi", "装一次安�
 /// [`the_extraction_refusal_is_a_different_sentence_from_having_no_backend_at_all`] 接住，
 /// 那条正好落在上面那句「本条一条都没盖」点名的三格之一。
 #[test]
-fn the_missing_sidecar_diagnosis_hands_the_user_a_next_step() {
+fn the_missing_local_backend_diagnosis_hands_the_user_a_next_step() {
     let r = resolve_with(
         Path::new("/opt/app"),
         "x86_64-unknown-linux-gnu",
@@ -1864,9 +1864,9 @@ fn the_extracted_name_carries_the_target_exe_suffix() {
 fn the_triple_suffixed_candidate_wins_over_the_bare_one() {
     // Tauri 打包出来的就是带 triple 的那个名字；裸名只是兜底。
     let triple = "aarch64-apple-darwin";
-    let want = PathBuf::from("/opt/app").join(format!("{SIDECAR_STEM}-{triple}"));
+    let want = PathBuf::from("/opt/app").join(format!("{LOCAL_BACKEND_STEM}-{triple}"));
     let w = want.clone();
-    let exists = move |p: &Path| p == w.as_path() || p.ends_with(SIDECAR_STEM);
+    let exists = move |p: &Path| p == w.as_path() || p.ends_with(LOCAL_BACKEND_STEM);
     assert_eq!(
         resolve_with(Path::new("/opt/app"), triple, "", &exists),
         Resolved::Found(want)
@@ -1875,7 +1875,7 @@ fn the_triple_suffixed_candidate_wins_over_the_bare_one() {
 
 #[test]
 fn windows_exe_suffix_is_carried_into_both_candidates() {
-    let c = sidecar_candidates(Path::new("C:/app"), "x86_64-pc-windows-msvc", ".exe");
+    let c = local_backend_candidates(Path::new("C:/app"), "x86_64-pc-windows-msvc", ".exe");
     assert!(
         c.iter().all(|p| p.to_string_lossy().ends_with(".exe")),
         "Windows 上两个候选都得带 .exe：{c:?}"
@@ -1967,7 +1967,7 @@ fn nothing_in_the_production_path_wakes_itself_up() {
 /// 摸底量到后端一启动就无条件往 tmux server 装全局 hook 且没有开关 ⇒
 /// 扫到 dev 产物就起它会去改用户真实 tmux 的状态。这条钉住那个前提：
 /// 候选路径里**只能有 exe 同目录**，出现任何 `target`/`debug`/仓库相对路径就红。
-/// ★★ **F06b-1d：给窗口的那份 env —— 名字从唯一的家来，sidecar 不在就不设。**
+/// ★★ **F06b-1d：给窗口的那份 env —— 名字从唯一的家来，local_backend 不在就不设。**
 ///
 /// 判据形态：**纯函数**（跑法：单测 · 钉的性质：wire/边界映射 —— 两维分开写，见 `ROADMAP §4`
 /// 登记的计量缺陷）。它钉两件：
@@ -1975,7 +1975,7 @@ fn nothing_in_the_production_path_wakes_itself_up() {
 /// ② `Missing` ⇒ **`None`，不是 `Some((名, ""))`** —— 导一个指向空处的路径不会让 ccm 更聪明
 ///    （它那边 `[ -x ]` 一样过不了），只会给「这台机有没有本机后端」多一个假阳性来源。
 #[test]
-fn the_window_env_uses_the_one_home_and_stays_silent_without_a_sidecar() {
+fn the_window_env_uses_the_one_home_and_stays_silent_without_a_local_backend() {
     let found = super::env_from_resolved(super::Resolved::Found("/tmp/x/ccm-remote".into()));
     let (k, v) = found.expect("Found 必须给出一对 env");
     assert_eq!(
@@ -1991,7 +1991,7 @@ fn the_window_env_uses_the_one_home_and_stays_silent_without_a_sidecar() {
     });
     assert!(
         missing.is_none(),
-        "sidecar 不在时必须**什么都不设**，而不是设一个空值 —— \n\
+        "local_backend 不在时必须**什么都不设**，而不是设一个空值 —— \n\
              空值 ≠ 未设（Z01 那条支点）：ccm 那边 `[ -x ]` 照样过不了，\n\
              却给「这台机有没有本机后端」多造了一个假阳性来源。"
     );
@@ -2027,7 +2027,7 @@ fn the_backend_bin_env_name_has_exactly_one_home() {
     );
 }
 
-/// ★★ **F05b 接线钉：每一个打包 job 都必须给 sidecar 备好料。**
+/// ★★ **F05b 接线钉：每一个打包 job 都必须给本机后端备好料。**
 ///
 /// # 为什么这条是「遍历发现」而不是「数一遍」
 ///
@@ -2040,7 +2040,7 @@ fn the_backend_bin_env_name_has_exactly_one_home() {
 ///
 /// ⚠ 中间量自检：先断言真的找到了 `tauri build` 调用（找不到 = 抽取器坏了，本条零命中地绿）。
 #[test]
-fn every_bundle_job_stages_the_sidecar_before_building() {
+fn every_bundle_job_stages_the_local_backend_before_building() {
     let root = crate::guard_support::repo_root();
     let wf = root.join(".github/workflows/release.yml");
     let src = std::fs::read_to_string(&wf).expect("读不到 release.yml");
@@ -2059,26 +2059,26 @@ fn every_bundle_job_stages_the_sidecar_before_building() {
     for c in &calls {
         assert!(
             c.contains("tauri.sidecar.conf.json"),
-            "这处打包没有注入 sidecar 补丁配置：{}\n\
+            "这处打包没有注入本机后端补丁配置：{}\n\
                  ⇒ 安装包里不会带本机后端（C7），而 `local_backend` 会恒走诚实降级。",
             c.trim()
         );
     }
     // 三件里的另外两件：原生编 + 按 triple 命名。逐个 job 数得太脆，
     // 这里钉「整份 workflow 里这两件各至少与打包调用数一样多」。
-    let native = src.matches("Build local backend sidecar").count();
-    let staged = src.matches("Stage sidecar for externalBin").count();
+    let native = src.matches("Build local backend").count();
+    let staged = src.matches("Stage local backend for externalBin").count();
     assert!(
         native >= calls.len() && staged >= calls.len(),
         "打包调用 {} 处，而「原生编后端」{native} 处、「按 triple 放好」{staged} 处 —— \n\
              有 job 会以 `resource path ... doesn't exist` 失败，而那是**发版时**才炸。",
         calls.len()
     );
-    // sidecar 的名字只有一个家：这里不抄它，从 Rust 侧读。
+    // local_backend 的名字只有一个家：这里不抄它，从 Rust 侧读。
     assert!(
-        src.contains(super::SIDECAR_STEM),
+        src.contains(super::LOCAL_BACKEND_STEM),
         "release.yml 里没有出现 `{}` —— 拷过去的名字与消费侧对不上",
-        super::SIDECAR_STEM
+        super::LOCAL_BACKEND_STEM
     );
 }
 
@@ -2125,7 +2125,7 @@ fn the_two_carriers_are_copies_of_one_build_with_nothing_rebuilt_between() {
     let src = std::fs::read_to_string(&wf).expect("读不到 release.yml");
     let lines: Vec<&str> = src.lines().collect();
     // 锚：那个**原生产物**的路径。运行时拼，免得命中本条自己的说明文字。
-    let artifact = format!(".build/backend/release/{}", super::SIDECAR_STEM);
+    let artifact = format!(".build/backend/release/{}", super::LOCAL_BACKEND_STEM);
     // job 边界：`jobs:` 下**两空格缩进**的那一层键。
     let job_at = |i: usize| -> &str {
         lines[..=i]
@@ -2213,14 +2213,14 @@ fn the_two_carriers_are_copies_of_one_build_with_nothing_rebuilt_between() {
     assert!(
         jobs_with_a_pair >= 1,
         "没有任何一个 job 把那个原生产物拷去两个载体 —— 上面那段检查此刻**一格都没跑**。\n\
-             （09-12 实测 `build-windows` 是那一个：`Stage sidecar for externalBin` → 载体③、\n\
+             （09-12 实测 `build-windows` 是那一个：`Stage local backend for externalBin` → 载体③、\n\
               `Stage native backend for self-extract` → 载体①。）"
     );
 }
 
 #[test]
 fn candidates_never_point_into_a_build_tree() {
-    let c = sidecar_candidates(Path::new("/opt/app"), "x86_64-unknown-linux-gnu", "");
+    let c = local_backend_candidates(Path::new("/opt/app"), "x86_64-unknown-linux-gnu", "");
     for p in &c {
         let s = p.to_string_lossy();
         for forbidden in ["target", "debug", "release", ".."] {
@@ -2782,10 +2782,10 @@ fn e2e_a_binary_that_always_dies_is_given_up_on_within_the_cap() {
     println!("E2E-OK 必崩二进制在 3 次内被判死，没有自旋");
 }
 
-/// ★ 真文件系统上「没有 sidecar」⇒ 诚实降级（这条不起任何进程）。
+/// ★ 真文件系统上「没有本机后端」⇒ 诚实降级（这条不起任何进程）。
 #[test]
 #[ignore]
-fn e2e_a_missing_sidecar_degrades_honestly_against_the_real_filesystem() {
+fn e2e_a_missing_local_backend_degrades_honestly_against_the_real_filesystem() {
     let dir = std::env::var("CCM_E2E_WORK").expect("要 CCM_E2E_WORK");
     let r = resolve_with(
         Path::new(&dir),
@@ -2794,10 +2794,10 @@ fn e2e_a_missing_sidecar_degrades_honestly_against_the_real_filesystem() {
         &|p: &Path| p.exists(),
     );
     let Resolved::Missing { looked_at, .. } = r else {
-        panic!("空目录里居然找到了 sidecar");
+        panic!("空目录里居然找到了 local_backend");
     };
     assert_eq!(looked_at.len(), 2);
-    println!("E2E-OK 缺 sidecar 时诚实降级，且列出了 2 条找过的路径");
+    println!("E2E-OK 缺本机后端时诚实降级，且列出了 2 条找过的路径");
 }
 
 // ── 测试侧助手。**只在测试里**，生产段没有任何轮询 ─────────────────────
@@ -2843,7 +2843,7 @@ fn kill_for_test(pid: u32) {
 /// （体里必须有 `extract_embedded_to(`）。
 ///
 /// 🔴 **它必须住在这里，不许挪到 `never()` 旁边** —— 那一块是
-/// `e2e_a_missing_sidecar_degrades_honestly_against_the_real_filesystem` 与它之前那几个
+/// `e2e_a_missing_local_backend_degrades_honestly_against_the_real_filesystem` 与它之前那几个
 /// e2e 块的地界，而 `local_backend_host_tests.rs::every_test_that_starts_the_real_backend_demands_a_private_tmux`
 /// 按 `#[te st]` 行切块、并把**含 `include_st r!(` 的块当守卫整块跳过**。
 /// 一挪过去，`the_local_backend_host_really_registers_an_inbound_client` 会**静默掉出那条判据的人群**

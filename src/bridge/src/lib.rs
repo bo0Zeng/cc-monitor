@@ -523,7 +523,7 @@ pub fn run() {
             // ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10，v3.7.0〕。
             //
             // 〔墓碑 —— 本行原话逐字：「⚠ 今天恒走「诚实降级」那一支 —— 安装包里还没有
-            //  sidecar（`externalBin` 归 F05b）。」它记的是 F05b 之前的世界，**今天不成立**。〕
+            //  local_backend（`externalBin` 归 F05b）。」它记的是 F05b 之前的世界，**今天不成立**。〕
             //
             // 证伪它的读数：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe 各一趟）——
             // **装出来那份** `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe`
@@ -541,7 +541,7 @@ pub fn run() {
             // tmux 的状态（F05 摸底 §2.5）。
             {
                 use backend::control::local_backend::Resolved;
-                // P2z（定框 C10）：exe 旁边没有 sidecar 时，把**已内嵌**的那份释放到本机再起 ——
+                // P2z（定框 C10）：exe 旁边没有本机后端时，把**已内嵌**的那份释放到本机再起 ——
                 // 「单 exe 也能起后端进程」那句话的落点。
                 //
                 // 两样宿主知识在这里给（backend 层不认识它们）：
@@ -552,7 +552,7 @@ pub fn run() {
                 use local_backend_host::StartOutcome;
                 match local_backend_host::start_local_backend() {
                     StartOutcome::Started(p) => {
-                        tracing::info!("本机后端 sidecar: {}", p.display())
+                        tracing::info!("本机后端 local_backend: {}", p.display())
                     }
                     StartOutcome::AlreadyRunning => {
                         tracing::info!("本机后端已经在跑（启动路径不重复起）")
@@ -573,11 +573,11 @@ pub fn run() {
                         //
                         // ⚠ 分两档，因为这两件事不是一回事：
                         //   · **拒绝**（口上有东西、接不上）= 一件用户能动手解决的事 ⇒ 说到眼前；
-                        //   · 别的失败（**这一份产物里没带 sidecar** —— 裸 exe / 开发树，
+                        //   · 别的失败（**这一份产物里没带 local_backend** —— 裸 exe / 开发树，
                         //     或释放内嵌那一份也失败了）= **诚实降级**，
                         //     每次启动都弹一次就成了噪音 ⇒ 仍走日志。
                         //     〔订正 2026-09-10（v3.7.0）—— 原话逐字：「别的失败（安装包里
-                        //      还没有 sidecar…）= 今天的**诚实降级**」。括号里那句今天不成立：
+                        //      还没有 local_backend…）= 今天的**诚实降级**」。括号里那句今天不成立：
                         //      09-10 干净 win11 现打（PM）装出来那份跑着 2 个
                         //      `cc-monitor-remote.exe`、裸 `monitor.exe` 那份 0 个。
                         //      ⚠ **分档标准本身一格没动**，换掉的只是它举的那个例子 ——

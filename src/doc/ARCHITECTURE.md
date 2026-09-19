@@ -192,7 +192,7 @@
 里的 `layering` 模块。两边同一个形 —— **反向（`control → observe`）零容忍**，
 **正向（`observe → control`）许有，但必须逐条列举、条数被等号钉住**。
 monitor 侧今天登记着 3 条，全部出自那一处跨线引用（本机一次性查询要先问控制面
-「那份 sidecar 在哪」）。
+「那份本机后端在哪」）。
 
 ⚠ 反面很具体：按「读/写」分的话，那次 `@ccm_sid` 探测会被判给 `observe/`，
 而它唯一的调用方在 `control/` ⇒ **凭空造出一条 `control → observe` 的边**，

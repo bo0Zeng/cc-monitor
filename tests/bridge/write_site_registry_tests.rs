@@ -34,7 +34,7 @@ pub(crate) const WRITE_SITES: &[(&str, &str, Option<&str>, &str)] = &[
     // ── P2z：单 exe 自释放内嵌后端。**不是安装动作** —— 它写的是 monitor 自己的缓存。
     ("local_backend.rs", "extract_embedded_to", None,
      "把内嵌的后端二进制释放到 `~/.cc-monitor/bin/cc-monitor-local-<build_id>`，\
-          供 exe 旁没有 sidecar 时起进程。写的是 monitor 自己的目录，\
+          供 exe 旁没有本机后端时起进程。写的是 monitor 自己的目录，\
           不碰用户既有环境、不注册到任何用户配置里；按 build_id 命名 ⇒ 幂等、不覆盖别的版本。\
           ⚠ **唯一调用点是 `local_backend::resolve_or_extract`**〔`K-R43` 改：本行原先写\
           「供 `start_or_extract` …」，那时它是唯一调用点；今天 `start_or_extract` 与\

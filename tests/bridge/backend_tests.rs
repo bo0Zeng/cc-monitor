@@ -247,7 +247,7 @@ const PLATFORM_EXCEPTIONS: &[(&str, &str, &str, &str)] = &[(
     "env::consts::",
     "`EXE_SUFFIX` 是**没有 cfg 的平台原语**（Windows `.exe` / 别处空串）。         它没被搬进 `platform/`，但**平台差异已经收敛成一个注入参数**：         `resolve_beside_this_exe` 把它读出来喂给 `resolve_with`，         而 `resolve_with`（逻辑那半）与平台无关、在任何平台上都能测。         ⇒ 出路②「建 backend/platform/」为它一个常量建一层目录不划算；走出路③，登记在此。",
     // ⚠ 锚点要**不含糊**：第一版写的是 `"exe_suffix: &str"`，而同文件的
-    // `sidecar_candidates` 也有同名参数 ⇒ 把 `resolve_with` 的参数改名，
+    // `local_backend_candidates` 也有同名参数 ⇒ 把 `resolve_with` 的参数改名，
     // 判据**照样绿**（变异实测）。改成多行签名片段。
     // ★ 与 F05「起流/起流程」、F16「src/backend/-X」同族：**匹配单位比事实小**。
     "pub fn resolve_with(\n    exe_dir: &Path,\n    target_triple: &str,\n    exe_suffix: &str,",

@@ -70,7 +70,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
     ("ssh_source.rs", "spawn_dial_proxy", "`<代理二进制> --dial`（子进程，常驻到某一头断开）",
      "`K-P6b`：**backend 那条长连接流的 SSH 握手交给这个子进程去跑**，界面只收字节。\
           起的是什么：`cc-monitor-remote`（本仓 `src/backend` 的产物）——\
-          发版包里它就在 `monitor.exe` 旁边（`externalBin` sidecar），\
+          发版包里它就在 `monitor.exe` 旁边（`externalBin` local_backend），\
           解析口 `resolve_dial_proxy` 只认两处：环境变量 `CCM_DIAL_PROXY` 与 exe 旁那份。\
           **argv 只有一个常量 flag，零插值**；主机名 / 用户名 / 私钥**路径**走环境变量 \
           `CCM_DIAL_REQUEST`（`argv` 是世界可读的，`/proc/<pid>/environ` 不是）。\
@@ -148,7 +148,7 @@ const SPAWNS: &[(&str, &str, &str, &str, &str)] = &[
     ("local_backend_host.rs", "spawn_detached", "被脱离起来的后端二进制",
      "本机后端**脱离宿主**起：`process_group(0)` + stdio 全 null + 协议改走回环监听口。\
           二进制路径来自 `resolve_backend_bin`，而**它今天只是个适配器** —— 真正的答案\
-          （exe 旁的 sidecar → 这份产物自己带的那份 → 释放出来）出自\
+          （exe 旁的 local_backend → 这份产物自己带的那份 → 释放出来）出自\
           `local_backend::resolve_or_extract` 那**一份共用的解析**，\
           `local_backend::start_or_extract` 走的也是同一份。\
           〔`K-R43` 订正：本行原先写「与 `start_or_extract` 同一个顺序，由一条对拍判据钉着」——\

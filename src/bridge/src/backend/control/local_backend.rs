@@ -52,7 +52,7 @@
 //! **而且没有关掉它的开关**。所以「顺手在 dev 环境里扫到 `target/debug/cc-monitor-remote`
 //! 就起它」会去改用户真实 tmux server 的状态。
 //!
-//! ⇒ [`resolve_with`] **只认打包进安装包的 sidecar**（exe 同目录、按 target triple 命名），
+//! ⇒ [`resolve_with`] **只认打包进安装包的那一份本机后端**（exe 同目录、按 target triple 命名），
 //! **不扫仓库里的 dev 产物**；找不到时是 [`Resolved::Missing`] 的**诚实降级**
 //! （定框 §5：tagged + `reason`，不是 `Err`），零副作用。
 //!
@@ -91,16 +91,16 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
-/// 本机 sidecar 的基名。Tauri 的 `externalBin` 会把它按 `<基名>-<target-triple>[.exe]`
+/// 本机后端的基名。Tauri 的 `externalBin` 会把它按 `<基名>-<target-triple>[.exe]`
 /// 放到 app 可执行文件旁边。
-pub const SIDECAR_STEM: &str = "cc-monitor-remote";
+pub const LOCAL_BACKEND_STEM: &str = "cc-monitor-remote";
 
 /// F06b-1：**monitor 告诉 `ccm` 「backend 二进制在哪」的那个 env 名**。
 ///
 /// # 为什么用 env（三条路里裁的第 ③ 条）
 ///
 /// `ccm` 是终端里的一次性 bash，它够不着 monitor 的 [`resolve_beside_this_exe`]。三条路：
-/// ① ccm 自己实现一份「找 sidecar」⇒ **第二份实现**（定框 §4 逐字禁）·
+/// ① ccm 自己实现一份「找本机后端」⇒ **第二份实现**（定框 §4 逐字禁）·
 /// ② 装 ccm 时写进配置 ⇒ 要新机制（ccm 有 SFTP 部署 / 手装 / 仓内相对路径三条安装路径）·
 /// ③ **monitor 拼 env 时告诉它** ⇒ 零新机制（monitor 本来就在拼 env 前缀）。
 ///
@@ -133,14 +133,18 @@ pub enum Resolved {
     },
 }
 
-/// 本机 sidecar 的候选路径。**只在 exe 同目录找**，理由见模块头注（不扫仓库 dev 产物）。
+/// 本机后端的候选路径。**只在 exe 同目录找**，理由见模块头注（不扫仓库 dev 产物）。
 ///
 /// 两个候选：Tauri `externalBin` 的 triple 后缀形态，以及 bundler 剥掉后缀后的裸名
 /// （两种形态都出现过，取决于打包器版本；**都列出来比猜一个强**）。
-pub fn sidecar_candidates(exe_dir: &Path, target_triple: &str, exe_suffix: &str) -> Vec<PathBuf> {
+pub fn local_backend_candidates(
+    exe_dir: &Path,
+    target_triple: &str,
+    exe_suffix: &str,
+) -> Vec<PathBuf> {
     vec![
-        exe_dir.join(format!("{SIDECAR_STEM}-{target_triple}{exe_suffix}")),
-        exe_dir.join(format!("{SIDECAR_STEM}{exe_suffix}")),
+        exe_dir.join(format!("{LOCAL_BACKEND_STEM}-{target_triple}{exe_suffix}")),
+        exe_dir.join(format!("{LOCAL_BACKEND_STEM}{exe_suffix}")),
     ]
 }
 
@@ -151,7 +155,7 @@ pub fn resolve_with(
     exe_suffix: &str,
     exists: &dyn Fn(&Path) -> bool,
 ) -> Resolved {
-    let cands = sidecar_candidates(exe_dir, target_triple, exe_suffix);
+    let cands = local_backend_candidates(exe_dir, target_triple, exe_suffix);
     for c in &cands {
         if exists(c) {
             return Resolved::Found(c.clone());
@@ -159,7 +163,7 @@ pub fn resolve_with(
     }
     Resolved::Missing {
         reason: format!(
-            "这一份 monitor 旁边没有本机后端 sidecar（`{SIDECAR_STEM}`）。\
+            "这一份 monitor 旁边没有本机后端（`{LOCAL_BACKEND_STEM}`）。\
              它**随安装包一起发**（`*-setup.exe` / `*.msi` 里都带，装完与 monitor 同目录）。\
              ⚠ **「旁边没有」不等于「这台机器上没有本机后端」**：产物里内嵌了本机后端时，\
              monitor 会自己释放一份再起它 —— 那一步走没走成由**它自己**报，不由本行断言。\
@@ -902,10 +906,10 @@ pub fn supervise_with_stdio(
     handle
 }
 
-/// 在**本可执行文件同目录**找 sidecar。这是 [`resolve_with`] 的真文件系统版。
+/// 在**本可执行文件同目录**找本机后端。这是 [`resolve_with`] 的真文件系统版。
 ///
 /// `current_exe()` 不是 GUI 把手（不违反宿主无关那条机检）——
-/// 它是「我这个二进制装在哪」这一条**部署事实**，正是 sidecar 该在的位置。
+/// 它是「我这个二进制装在哪」这一条**部署事实**，正是本机后端该在的位置。
 /// F06b-1d（**C9** 的逐字落地）：给 backend 亲手开的那个终端窗口，配上后端路径。
 ///
 /// # 为什么是「给窗口设 env」而不是「拼进启动串」
@@ -919,7 +923,7 @@ pub fn supervise_with_stdio(
 ///
 /// # 返回 `None` 的含义
 ///
-/// **sidecar 不在就不设** —— 导一个指向空处的路径不会让 ccm 更聪明（它那边 `[ -x ]` 一样过不了），
+/// **local_backend 不在就不设** —— 导一个指向空处的路径不会让 ccm 更聪明（它那边 `[ -x ]` 一样过不了），
 /// 只会让「这台机到底有没有本机后端」这个问题多一个假阳性来源。⇒ 空值 ≠ 未设（Z01 那条支点）。
 pub(crate) fn backend_bin_env_for_window(target_triple: &str) -> Option<(&'static str, String)> {
     env_from_resolved(resolve_beside_this_exe(target_triple))
@@ -927,7 +931,7 @@ pub(crate) fn backend_bin_env_for_window(target_triple: &str) -> Option<(&'stati
 
 /// 上面那个函数的**纯**内核 —— 抽出来是为了两个分支都测得到。
 ///
-/// ⚠ 不抽的话判据只走得到 `Missing`（测试环境旁边没有 sidecar），
+/// ⚠ 不抽的话判据只走得到 `Missing`（测试环境旁边没有本机后端），
 /// 于是「`Found` 时用的是 [`BACKEND_BIN_ENV`] 这个名字」这半**永远验不了** ——
 /// 那正是「判据的探针改变了被观察的路」的近亲：**探针到不了的分支等于没判据**。
 fn env_from_resolved(r: Resolved) -> Option<(&'static str, String)> {
@@ -945,7 +949,7 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
         Some(d) => d,
         None => {
             return Resolved::Missing {
-                reason: "拿不到自身可执行文件路径 ⇒ 无法定位本机后端 sidecar".into(),
+                reason: "拿不到自身可执行文件路径 ⇒ 无法定位本机后端 local_backend".into(),
                 looked_at: Vec::new(),
             }
         }
@@ -967,7 +971,7 @@ pub fn resolve_beside_this_exe(target_triple: &str) -> Resolved {
 ///
 /// 🔴 **`K-R42` 09-10 补一条：这笔账的分母变大了，而处置没变。**
 /// 本段写下时，这条路**只在 Linux 上真跑过**（宿主那侧压着 `cfg!(target_os = "linux")`），
-/// 而 Linux 上安装包与 dev 树旁边多半就有 sidecar ⇒ 释放这一支很少走到。
+/// 而 Linux 上安装包与 dev 树旁边多半就有 local_backend ⇒ 释放这一支很少走到。
 /// 本件把 Windows 那一格接上之后，**裸 exe 每换一个后端版本就在
 /// `%USERPROFILE%\.cc-monitor\bin\` 多留一份**（这一次是 14 MB 级，见 `K-R42` 交回的体积读数）。
 /// ⇒ **仍然不清理**，三条理由都还成立、且新添一条：
@@ -1346,10 +1350,10 @@ pub fn extraction_failure_reason(dir: &Path, err: &str) -> String {
 /// **生产入口**：找得到就起并看住；找不到就**诚实降级**（定框 §5）。
 ///
 /// ⚠ **走哪一支取决于用户手里是哪一份产物**〔订正 2026-09-10 现打，v3.7.0〕：
-/// 安装包（NSIS / MSI）里**带着** sidecar —— 干净 win11 虚拟机上装完现打，
+/// 安装包（NSIS / MSI）里**带着** local_backend —— 干净 win11 虚拟机上装完现打，
 /// `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe` **2 个进程在跑**；
 /// 而**裸 `monitor.exe`** 那份 **0 个**，走的才是降级那一支。
-/// 〔本行原话「今天恒走降级那一支 —— 安装包里还没有 sidecar（`externalBin` 是 F05b）」
+/// 〔本行原话「今天恒走降级那一支 —— 安装包里还没有本机后端（`externalBin` 是 F05b）」
 /// 已被那次读数证伪。`externalBin` 配着，只是住 `src/bridge/tauri.sidecar.conf.json`
 /// 而不是基础 `tauri.conf.json` —— 分工见模块头注。〕
 /// 降级不是「接线没做」，是**接线做了、这一份产物里没带**：两者的区别就在这个返回值上，

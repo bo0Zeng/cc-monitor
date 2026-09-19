@@ -933,14 +933,14 @@ mod stream_flag_gate_tests;
 //   ⇒ **任何地方都不许把它写成「拨号搬出去了」。**
 // - ⚠ **回落有两条，都登记在 `dial_move_judge::FALLBACKS` 里（机检），不是散文**：
 //   ① **拿不到代理二进制**。`resolve_dial_proxy` 只认两处：环境变量 `CCM_DIAL_PROXY`
-//      与 exe 旁的 sidecar。
+//      与 exe 旁的本机后端。
 //      🔴 **这一条的射程是「开发树」，不是「默认装机」——我第一版判错过。**
-//      现打四环（逐份读的原文，**点符号不点行号**）：`local_backend.rs::SIDECAR_STEM`
+//      现打四环（逐份读的原文，**点符号不点行号**）：`local_backend.rs::LOCAL_BACKEND_STEM`
 //      逐字 `"cc-monitor-remote"`
 //      · `src/bridge/tauri.sidecar.conf.json` 的 `"externalBin": ["binaries/cc-monitor-remote"]`
 //      · `.github/workflows/release.yml` 的 `build-windows` 三步（Windows 原生编 backend → 拷成
-//      `cc-monitor-remote-<triple>.exe` → `tauri build --config …sidecar.conf.json`）
-//      · Linux job 同形（`:270/:273/:283`）⇒ **发版包里 sidecar 就在 exe 旁边，命中。**
+//      `cc-monitor-remote-<triple>.exe` → `tauri build --config …local_backend.conf.json`）
+//      · Linux job 同形（`:270/:273/:283`）⇒ **发版包里本机后端就在 exe 旁边，命中。**
 //      而 `externalBin` **不住 `tauri.conf.json`**、只在发版那一步注入 ⇒ **开发树上恒空**。
 //      ⇒ 「查开发树得到一个只在开发树为真的答案」正是 `local_accounts.rs` 里那条登记
 //      （`externalBin` 在开发树现打零命中）说的同一个病。
@@ -960,12 +960,12 @@ mod stream_flag_gate_tests;
 ///
 /// 🔴 **「没有它这条路一台机器上都走不到」—— 2026-09-10 起判不了，别当它还有答案。**
 ///
-/// 〔墓碑，原话逐字：「为什么要有它：今天安装包里没有 sidecar（F05b），没有这个变量的话
+/// 〔墓碑，原话逐字：「为什么要有它：今天安装包里没有本机后端（F05b），没有这个变量的话
 ///  这条路**一台机器上都走不到**，那就成了一份「编得过但永远不跑」的代码。」〕
 ///
 /// **前提翻了（这一格有读数）**：09-10 干净 win11 虚拟机上现打（PM，真安装包 + 真裸 exe
 /// 各一趟）—— 装出来那份 `C:\Program Files\cc-monitor\` 下 `cc-monitor-remote.exe`
-/// **2 个进程在跑**、裸 `monitor.exe` 那份 **0 个** ⇒ 「安装包里没有 sidecar」不成立
+/// **2 个进程在跑**、裸 `monitor.exe` 那份 **0 个** ⇒ 「安装包里没有本机后端」不成立
 /// （`externalBin` 住 `src/bridge/tauri.sidecar.conf.json`，发版那一步 `--config` 注入，
 /// **刻意不进基础 `tauri.conf.json`** ⇒「基础配置里没有」≠「没配」）。
 /// ⇒ 在装出来那份上，`resolve_dial_proxy` 的**第二处**（exe 旁那份）本来就有东西可认，

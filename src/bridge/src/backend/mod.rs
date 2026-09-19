@@ -33,7 +33,7 @@
 //!    装出来那份 `cc-monitor-remote.exe` **2 个进程在跑**、裸 `monitor.exe` **0 个**。
 //! ② **不只是「有后端可切」，是已经切过两次**：`local_read_surface_registry` 的棘轮史逐字
 //!    记着 `11 → 10`（F10b 第一批，`usage.rs` 改走本机后端的 `--usage`）→ `9`
-//!    → `8`（F10b 第二批·下半，`local_accounts.rs` 改走 sidecar 的 `--session-accounts`）
+//!    → `8`（F10b 第二批·下半，`local_accounts.rs` 改走本机后端的 `--session-accounts`）
 //!    → `7` → `8`（`P8a` 新增）。接线点今天就在生产段上：`local_accounts.rs::list_local_session_accounts`
 //!    （一个 `#[tauri::command]`）直接调 `backend::observe::local_query::run_query(…, ["--list-accounts"])`。
 //!    〔`设计/50`：这段原先举的例子是用量那一轴（那个命令与它调的 `--usage` 今天都不存在了）——
@@ -94,9 +94,9 @@
 //! ⇒ **今天没有触发器**：仓里没有任何一条判据会在「那 8 条能退役了」的那一刻红。
 //! 🔴 **不许再在这里编一个** —— 上面墓碑第二段就是那么来的：一个不会响的闹钟比一句过期的话更贵，
 //! 因为它让人以为有人在看着。
-//! ⚠ 尤其**别**把 `local_read_surface_registry` 那条 sidecar 判据当成它的闹钟：那条 2026-08-04
+//! ⚠ 尤其**别**把 `local_read_surface_registry` 那条本机后端判据当成它的闹钟：那条 2026-08-04
 //! 就换过靶（它自陈「已经触发过一次，这是它的后继形态」），今天盯的是**配置文件的形状**
-//! （`externalBin` 不在 `tauri.conf.json` · 在 `tauri.sidecar.conf.json` · stem 与 `SIDECAR_STEM`
+//! （`externalBin` 不在 `tauri.conf.json` · 在 `tauri.sidecar.conf.json` · stem 与 `LOCAL_BACKEND_STEM`
 //! 一致），**一格都不读「本机后端起没起来」**；而且「`tauri.conf.json` 一出现 `externalBin`
 //! 就红」这句今天**语义是反的** —— 它红是「有人把它搬回主配置了」（回归），不是「那一刻到了」。
 
@@ -160,9 +160,9 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
     (
         "control/local_backend.rs",
         "control",
-        "F05a：本机后端进程的「起与看住」。决策那半（sidecar 路径解析 + 崩溃频率上限）是纯函数；\
+        "F05a：本机后端进程的「起与看住」。决策那半（local_backend 路径解析 + 崩溃频率上限）是纯函数；\
          监护器用 `std::process::Command`，等子进程死靠**读它 stdout 到 EOF**（零定时器，C12）。\
-         ⚠ 今天只认打包进安装包的 sidecar、不扫 dev 产物 —— 理由是后端一起来就无条件\
+         ⚠ 今天只认打包进安装包的本机后端、不扫 dev 产物 —— 理由是后端一起来就无条件\
          往 tmux server 装全局 hook 且没有开关（F05 摸底 §2.5）",
     ),
     (
@@ -176,7 +176,7 @@ const BACKEND_FILES: &[(&str, &str, &str)] = &[
         "observe",
         "F10a：**本机一次性查询的传输** —— 「本地 = 不走 ssh 的远端」那一跳的本地版。\
          backend 的读面是 14 条一次性子命令，**不在常驻通道上**（hello 的 `commands` 里\
-         一条读命令都没有）⇒ 切读面 = exec 一次 sidecar 拿 stdout。协议一个字不改。\
+         一条读命令都没有）⇒ 切读面 = exec 一次本机后端拿 stdout。协议一个字不改。\
          ★ **它是本条能力线上今天唯一的住户** —— 〔`K-R71` 09-12 归位；本格原话逐字：\
          「★ **它是本目录里唯一的读面文件** —— 挂在 `control` 线上只因为 `observe/` 还没建，\
          见本文件头注「下一步是什么」那一节」，`observe/` 建起来之后那句话失效〕。\

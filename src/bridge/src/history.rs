@@ -210,7 +210,7 @@ impl LivenessOracle for SessionMapLiveness {
 /// # 🔴 为什么查询要作为参数传进来 —— `KR97D3` 判的那个可数的事实
 ///
 /// 同 `KR83D3` 的口径：**别判「代码里有没有 for 循环」**（那判的是写法），
-/// 要判**「一次调用里 spawn 了几次」**。真 sidecar 在红线内跑不了 ⇒ 把 spawn 那一步做成入参，
+/// 要判**「一次调用里 spawn 了几次」**。真本机后端在红线内跑不了 ⇒ 把 spawn 那一步做成入参，
 /// 判据就能拿一个**会计数的假查询**喂进来，直接数出「N 个项目 ⇒ 查询被调了几次」。
 ///
 /// 失效方向（本函数存在的理由）：一旦有人为了拿 star/hide 而在下面那个循环里补一句
@@ -276,7 +276,7 @@ where
 /// 而远端那条路早就是「问那台机器的后端要 `--list-projects`」。⇒ 同一个问题两份实现
 /// （`K-R54` 表第 12 行），且本机那份必然与后端那份漂移。
 /// 今天两条路**吃同一条查询、同一份解释**（`remote_history::history_project_from_row`），
-/// 差别只剩传输：远端多一跳 SSH，本机 exec 一次 sidecar（`backend::observe::local_query`）。
+/// 差别只剩传输：远端多一跳 SSH，本机 exec 一次本机后端（`backend::observe::local_query`）。
 ///
 /// ⚠ **如实记诚实边界，别读成「完全等价」**：
 /// - **`project_dir` 的形状变了**：从前是**绝对路径**，现在是后端给的**编码目录名**
@@ -286,7 +286,7 @@ where
 ///   两份实现从前**故意不一致**并被一条判据钉着（`ROADMAP §5`）；本件把 monitor 那份删了，
 ///   分歧随之消失（不是「对齐」，是**只剩一处**）。
 /// - **`CLAUDE_CONFIG_DIR` 指向不存在的路径时**：monitor 从前会回落到 `~/.claude`，
-///   sidecar 不会。极少见，但不是零。
+///   local_backend 不会。极少见，但不是零。
 /// - **Codex 那半没动**：后端侧今天没有 codex 的项目枚举（`--list-projects` 只服务 claude），
 ///   本机仍自己合成（`codex_projects`）—— 那条登记还挂在 `local_read_surface_registry` 上。
 ///

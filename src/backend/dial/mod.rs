@@ -21,18 +21,18 @@
 //!   **凭据面 `K11` 挡着** · **`ConnectStage` 那 6 格过不去**（本进程不发分阶段事件）。
 //! - ⚠ **「默认装机走不走得到这条路」——两个答案，别混**（这一格我第一版判错过，订正如下）：
 //!   - **发版包里走得到。** 现打四环（我自己逐份读的原文，**点符号不点行号**）：
-//!     ① `local_backend.rs::SIDECAR_STEM` 逐字 `pub const SIDECAR_STEM: &str = "cc-monitor-remote";`；
+//!     ① `local_backend.rs::LOCAL_BACKEND_STEM` 逐字 `pub const LOCAL_BACKEND_STEM: &str = "cc-monitor-remote";`；
 //!     ② `src/bridge/tauri.sidecar.conf.json` 逐字 `"externalBin": ["binaries/cc-monitor-remote"]`
 //!        —— **同一个名字**；
 //!     ③ `.github/workflows/release.yml` 的 `build-windows` 里两步 ——
-//!        `Build local backend sidecar (native)`（`working-directory: src/backend`
-//!        · `cargo build --release`）＋ `Stage sidecar for externalBin`
+//!        `Build local backend (native)`（`working-directory: src/backend`
+//!        · `cargo build --release`）＋ `Stage local backend for externalBin`
 //!        （拷成 `cc-monitor-remote-<triple>.exe`），随后
 //!        `npx tauri build --config src/bridge/tauri.sidecar.conf.json`；
 //!        `build-linux` 那个 job 三步同形；
 //!     ④ 同一份 workflow 的那段头注逐字写着 backend **在 Windows 上真编得过**
 //!        （2026-08-04 真机实测 exit=0、release 2.6 MB、跑起来发完整 hello）。
-//!     ⇒ 装完之后 sidecar 就在 `monitor.exe` 旁边，`local_backend::resolve_beside_this_exe` 命中。
+//!     ⇒ 装完之后本机后端就在 `monitor.exe` 旁边，`local_backend::resolve_beside_this_exe` 命中。
 //!   - **开发树上走不到。** `externalBin` **不住 `tauri.conf.json`**，它住那份单独的
 //!     `tauri.sidecar.conf.json`、只在发版那一步注入 ⇒ `cargo run` / `npm run tauri dev`
 //!     两处都空 ⇒ **回落到进程内拨号**。
@@ -46,7 +46,7 @@
 //! # 为什么是 E（`audits/K-P6b-PM.md §一`，别在这里重推一遍）
 //!
 //! 第一轮正面比过 E 与 B：B **少一个进程**（Windows 上本机后端本来就是界面的子进程，
-//! sidecar 就在 `monitor.exe` 旁边），代价是**动协议面**（实打：给 `Frame::Overflow`
+//! local_backend 就在 `monitor.exe` 旁边），代价是**动协议面**（实打：给 `Frame::Overflow`
 //! 加一个字段要改 5 处才编得过）＋ **碰第 4 根针**（`observe/watcher.rs` 的那条观测通道诞生点）。
 //!
 //! ⚠ **第一轮还写过「B 会动 `inbound.rs`，那是红线」—— 那句话 PM 撤掉了**：
