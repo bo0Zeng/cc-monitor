@@ -516,7 +516,7 @@ fn target_exe_suffix(target: &str) -> &'static str {
 ///
 /// # 🔴 为什么不铺进已有的 `embedded-daemons/`
 ///
-/// 那个目录名是 `local_daemon.rs::every_test_that_starts_the_real_daemon_demands_a_private_tmux`
+/// 那个目录名是 `local_daemon_tests.rs::every_test_that_starts_the_real_daemon_demands_a_private_tmux`
 /// 认「谁会起真 daemon」的**来历串之一**。字面量路径写进 `local_backend.rs` 的生产段，
 /// 会把整段生产代码拖进那条判据的人群（实测：人群里多出一条 `local_backend.rs::default`，
 /// 而那条连测试都不是；同时 `the_local_daemon_really_registers_an_inbound_client`

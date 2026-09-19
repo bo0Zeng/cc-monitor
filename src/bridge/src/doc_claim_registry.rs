@@ -1355,7 +1355,21 @@ mod tests {
 
         // ── 收全仓声明：符号名 → 它出现在哪些文件名里
         let mut srcs: Vec<(PathBuf, String)> = Vec::new();
-        for root in ["src/bridge/src", "src/bridge/crates", "src/backend"] {
+        // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**第四棵：`tests`。**
+        //    `doc/` 点名的符号里有一整批是**判据名**（`INVARIANTS.md` 那几行逐字
+        //    「由某某 `every_…` 那条判据钉着」，写成住址形），
+        //    而判据剖分之后整个住进了 `<repo>/tests/`。
+        //    ⚠ 这段解释里**刻意不写出那个住址形**（`文件·rs` ＋ 两个冒号 ＋ 符号名）——
+        //      写了它自己就成了一处地址，而 `structural_scan` 那条判据会去核它。
+        //    少这一棵 ⇒ 那些符号被读成「全仓找不到 —— 改名或删了」，
+        //    而它们一个都没改名、也没删，只是搬了家。
+        //    ⚠ 四棵根互不包含（`§5.4b` 纪律 1）。
+        for root in [
+            "src/bridge/src",
+            "src/bridge/crates",
+            "src/backend",
+            "tests",
+        ] {
             srcs.extend(guard_core::scan_tree!(&repo_root().join(root), &["rs"]));
         }
         // 〔08-06 第二次补扫描面〕**把本文件自己也收进来**。

@@ -555,6 +555,11 @@ mod tests {
             crate::guard_support::tests_root(),
             crate::guard_support::repo_root(),
             crate::guard_support::repo_root().join("src/bridge/src"),
+            // 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**monitor 也有第二棵树。**
+            //    上一格（`src/bridge/src`）接的是「头注点名 monitor 侧的裸文件名」那一形，
+            //    而剖分之后 monitor 的判据整批住 `<repo>/tests/bridge/`
+            //    ⇒ 头注里那些 `X_tests.rs` 四个根一个都够不着，被读成「假住址」。
+            crate::guard_support::repo_root().join("tests/bridge"),
         ];
         let mut checked = 0usize;
         for word in head.split(|c: char| !(c.is_ascii_alphanumeric() || "_./-".contains(c))) {
@@ -565,7 +570,8 @@ mod tests {
             checked += 1;
             assert!(
                 roots.iter().any(|r| r.join(w).exists()),
-                "头注指着 `{w}`，而四个根下都找不到它（后端生产树 · 后端测试树 · 仓根 · monitor `src/bridge/src/`）——\n\
+                "头注指着 `{w}`，而五个根下都找不到它（后端生产树 · 后端测试树 · 仓根 · \
+                 monitor 生产树 `src/bridge/src/` · monitor 测试树 `tests/bridge/`）——\n\
                  ★ 指了住址而住址是假的：读者会以为那一格有人守着，去找的时候什么都没有。\n\
                  ⇒ 要么改成真名，要么把那句话删掉；**别留一个假住址**。"
             );

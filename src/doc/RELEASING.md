@@ -63,7 +63,7 @@
       > ② `rm -rf src/bridge/embedded-daemons/`——自动部署诚实关闭、编译立刻恢复（目录本就 gitignore，删除零代价）。
       > **⚠ 三条都以「目录里真有二进制」为前提**（Phase E 审计 R3 订正）：干净 clone / CI 里该目录不存在，
       > 走的是优雅降级、`DAEMON_BUILD_ID` 静默变 `"unknown"`；兜那一档的是 monitor 侧的
-      > `ssh_source.rs::embedded_build_id_single_source_wired`，不是 `build.rs`。
+      > `ssh_source_stream_flag_gate_tests.rs::embedded_build_id_single_source_wired`，不是 `build.rs`。
 - [ ] **需要人手跑的 e2e 套件**：权威清单是判据
       `shared_crate_registry.rs::every_test_script_is_either_run_by_ci_or_registered_as_manual`
       的 `MANUAL` 表 —— **这里不抄第二份**。那张表会因「仓里有套件没人跑」而变红，

@@ -50,6 +50,11 @@ mod tests {
     const ACCT_SRC: &str = include_str!("acct_iso_deploy.rs");
     const INVARIANTS: &str = include_str!("../../doc/INVARIANTS.md");
     const PROFILE_SRC: &str = include_str!("profile_installer.rs");
+    /// 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**校验位跟着判据搬。**
+    /// 挡路石「别名 snippet 只许有一个家」引的那句原文是一条 `#[test]` 里的断言，
+    /// 剖分把它从 `profile_installer.rs` 搬到了这里。**那句话一个字节没改。**
+    const PROFILE_TESTS_SRC: &str =
+        include_str!("../../../tests/bridge/profile_installer_tests.rs");
     const LOCAL_DAEMON_SRC: &str = include_str!("local_daemon.rs");
     const BACKEND_SRC: &str = include_str!("backend/mod.rs");
 
@@ -224,7 +229,7 @@ mod tests {
             "甲",
             "别名 snippet 只许有一个家",
             "vec![\"sftp.rs\".to_string()]",
-            "`profile_installer.rs::the_alias_snippet_has_exactly_one_home_in_the_rust_tree` \
+            "`profile_installer_tests.rs::the_alias_snippet_has_exactly_one_home_in_the_rust_tree` \
              断言 `src/shared/ccm-aliases.sh` 在 monitor `src` 树里**恰好一处**，就是 \
              `sftp.rs::CCM_WRAPPER_SNIPPET`；同文件 \
              `the_posix_arm_borrows_the_remote_implementation_instead_of_growing_a_second_one` \
@@ -472,7 +477,7 @@ mod tests {
             ("per-origin 连接池", "sftp_pool.rs"),
             ("死连接重建重试", "sftp_pool.rs"),
             ("daemon 只读铁律 I7", "src/doc/INVARIANTS.md"),
-            ("别名 snippet 只许有一个家", "profile_installer.rs"),
+            ("别名 snippet 只许有一个家", "profile_installer_tests.rs"),
             ("要部署的那份字节住在界面这一侧", "local_daemon.rs"),
             ("SFTP 写原语是三类共用的", "sftp.rs"),
         ];
@@ -491,6 +496,7 @@ mod tests {
                 "sftp_pool.rs" => production_code(POOL_SRC),
                 "sftp.rs" => production_code(SFTP_SRC),
                 "profile_installer.rs" => PROFILE_SRC.to_string(),
+                "profile_installer_tests.rs" => PROFILE_TESTS_SRC.to_string(),
                 "local_daemon.rs" => production_code(LOCAL_DAEMON_SRC),
                 "src/doc/INVARIANTS.md" => INVARIANTS.to_string(),
                 other => panic!("没有这份语料：{other}"),

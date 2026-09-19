@@ -444,13 +444,6 @@ fn read_session_tail(agent_home: &Path, jsonl_path: &str, n: usize) -> Result<()
     Ok(())
 }
 
-/// 纯函数：把文件字节按"最新 N 可计行优先"切成 (meta 行, 尾段, 头段)。
-/// 只处理到最后一个 `\n`（torn 残尾不进任何段——F14 口径）。
-/// 生产路径已流式化（read_session_tail，审计 D 内存修订）；本函数保留为
-/// 口径锚点（tail_tests 锚定语义），流式版与它的等价性由本机行为验证对账
-/// （真实 18MB 会话：meta/字节输出逐段一致，见 Batch9 feature 30 §6 留档）。
-/// **仅测**（生产走流式版、不调本函数）→ `#[cfg(test)]` 不进生产二进制。
-#[cfg(test)]
 /// 这一行**算不算一行**（＝ 口径 `watcher::read_new_lines`：BOM 与全空白跳过）。
 ///
 /// 🔴 **全仓只有这一个住址** —— 扫描循环数 `total`、`split_tail` 数 `starts`，
@@ -491,6 +484,13 @@ fn line_counts(line: &[u8]) -> bool {
     !text.trim_start_matches('\u{feff}').trim().is_empty()
 }
 
+/// 纯函数：把文件字节按"最新 N 可计行优先"切成 (meta 行, 尾段, 头段)。
+/// 只处理到最后一个 `\n`（torn 残尾不进任何段——F14 口径）。
+/// 生产路径已流式化（read_session_tail，审计 D 内存修订）；本函数保留为
+/// 口径锚点（tail_tests 锚定语义），流式版与它的等价性由本机行为验证对账
+/// （真实 18MB 会话：meta/字节输出逐段一致，见 Batch9 feature 30 §6 留档）。
+/// **仅测**（生产走流式版、不调本函数）→ `#[cfg(test)]` 不进生产二进制。
+#[cfg(test)]
 fn split_tail(bytes: &[u8], n: usize) -> (String, &[u8], &[u8]) {
     let complete_end = bytes.iter().rposition(|&b| b == b'\n').map_or(0, |i| i + 1);
     let complete = &bytes[..complete_end];

@@ -43,12 +43,21 @@ describe("stripComments", () => {
     expect(out).toContain('"~/.local/*/bin"');
   });
 
-  it("回归：`config_surface.rs` 剥完行数不变，且被吞过的那一段仍在", () => {
-    const raw = readFileSync(resolve(REPO_ROOT, "src/bridge/src/config_surface.rs"), "utf8");
+  it("回归：那份文件剥完行数不变，且被吞过的那一段仍在", () => {
+    // 🔴 〔步 7b 剖分 2026-09-18〕**这条原来按写死的行号区间取样（800–1290）**，
+    //    而剖分把 `config_surface.rs` 从 1296+ 行削到 853 行、测试段整份搬走
+    //    ⇒ 那个窗口落到空处，反空真自检当场红（「取样区间里应当有真函数」1 > 5 不成立）。
+    //    ⚠ **只把行号改对是错的修法** —— `设计/16 §5.4b` 纪律 4 逐字：
+    //    「按位置认的针」与「靠位置的排除」是同一族，下次再搬还会静默抽到零。
+    //    ⇒ 改成**按内容锚定**：从那个当年触发吞噬的字面量往后取，行号漂了也不影响。
+    const CORPUS = "tests/bridge/config_surface_tests.rs"; // 测试段今天的家
+    const ANCHOR = '"~/.local/*/bin"'; // 旧实现就是从这个串开始一路吞
+    const raw = readFileSync(resolve(REPO_ROOT, CORPUS), "utf8");
     const out = stripComments(raw, "rust");
     expect(out.split("\n"), "行结构必须逐行对齐").toHaveLength(raw.split("\n").length);
-    // 旧实现从 :775 的 "~/.local/*/bin" 一路吞到 :1296，521 行隐形
-    const swallowed = raw.split("\n").slice(800, 1290).join("\n");
+    const at = raw.indexOf(ANCHOR);
+    expect(at, `锚点 ${ANCHOR} 不在 ${CORPUS} 里 —— 语料搬家了，本条此刻测不到东西`).toBeGreaterThan(-1);
+    const swallowed = raw.slice(at);
     const fnNames = [...swallowed.matchAll(/\bfn\s+([a-z_0-9]+)/g)].map((m) => m[1]);
     expect(fnNames.length, "取样区间里应当有真函数，否则这条回归测不到东西").toBeGreaterThan(5);
     for (const name of fnNames) {

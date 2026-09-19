@@ -225,7 +225,7 @@ pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
 ///
 /// # 为什么非有这条缝不可（这是同一族病在**退出臂**上的落点）
 ///
-/// 先前守着退出臂的是 `local_daemon.rs::the_exit_path_covers_both_ways_of_starting_the_local_backend`，
+/// 先前守着退出臂的是 `local_daemon_tests.rs::the_exit_path_covers_both_ways_of_starting_the_local_backend`，
 /// 而它的形态是**「那个窗口里有没有这几段文本」**：
 /// `braced_block(prod, "RunEvent::Exit", 200, 6000)` → `kill_on_exit(` 恰好 1 处
 /// + `contains(needle)` ×4 + 两处位置序。
@@ -242,7 +242,7 @@ pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
 /// # 🔴🔴 为什么**第三个**收口点（被监护那条）不在本结构里 —— 写区拦住了，如实登记
 ///
 /// 被监护那条的收口（`LOCAL_BACKEND` 里那个句柄的 `.stop()`）**必须留在退出臂里**：
-/// 写区外的 `backend/control/local_backend.rs::the_exit_path_really_stops_the_local_backend`
+/// 写区外的 `backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend`
 /// 逐条要求那一臂**体内**恰好一处 `.stop()`、恰好一处 `kill_on_exit(`、
 /// 策略在前、且中间那个 `if` 判的就是策略绑定名。
 /// 把它抽走 ⇒ 那条判据当场红，而**那个文件不在本件登记的 27 项写区里**。
@@ -257,7 +257,7 @@ pub(crate) fn nudge_should_skip(last_nudged: u64, packed: u64) -> bool {
 /// - 本结构管的是「**收不收 · 收哪几个**」。**收口点自己收干净了没有**是它们各自的活
 ///   （`local_daemon::stop_local_backend` / `stop_local_relay` 的头注与判据）。
 /// - 🔴 `RunEvent::Exit` 那个闭包**本身驱动不了** —— 那要真跑一次 tauri app（红线内够不着）。
-///   ⇒ 臂里那几行由 `local_daemon.rs::the_exit_arm_hands_the_other_two_ways_to_the_seam`
+///   ⇒ 臂里那几行由 `local_daemon_tests.rs::the_exit_arm_hands_the_other_two_ways_to_the_seam`
 ///   的**零命中守卫**看着（谁在臂里另起一条收法就红）。
 ///   **那一行委托本身没有行为级判据，它是这条链上今天最后一跳。**
 #[derive(Clone, Copy)]
@@ -1427,7 +1427,7 @@ pub fn run() {
                 // ⚠ 这个块**必须收口**：下面那条路要取同一把锁（`stop_local_backend` 的第一件事）。
                 //
                 // 🔴🔴 **这一格为什么没跟着进缝〔`D7 阻-3`，08-29〕**：写区外的
-                // `backend/control/local_backend.rs::the_exit_path_really_stops_the_local_backend`
+                // `backend/control/local_backend_tests.rs::the_exit_path_really_stops_the_local_backend`
                 // 逐条要求这一臂**体内**恰好一处 `.stop()` + 恰好一处 `kill_on_exit(` +
                 // 策略在前 + 中间那个 `if` 判的就是策略绑定名。抽走它那条判据当场红，
                 // 而那个文件不在本件登记的 27 项写区里 ⇒ **上报，不自己动**。

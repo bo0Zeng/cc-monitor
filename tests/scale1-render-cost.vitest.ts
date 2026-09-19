@@ -196,6 +196,12 @@ let samples: RenderCostSample[] = [];
 /** 语料每条记录的**原始 jsonl 行字节**，按喂入顺序 —— 用来跟探针自报的字节对拍 */
 const lineBytes = fixtureLines.map((l) => new TextEncoder().encode(l).length);
 
+// 🔴 **超时给到 60s，理由要写清**〔2026-09-18〕：这一段真渲 `69 × (8+1) = 621` 条记录，
+// 单独跑约 4.5s，而 **vitest 全量并发时它和另外 130 个文件抢 CPU** ⇒ 实测在默认 10s 上
+// **随机超时**（S21 那一路先撞见，单独跑 14/14 全过）。
+// ⚠ **一个会随机红的判据 ＝ 一个会随机骗人的判据** —— 它红的时候没人分得清
+// 「估高真退步了」还是「今天机器忙」。⇒ 宁可给足时间，也不要留一格抖动。
+// ⚠ 这**不是**放宽判据：门槛（占比与倍率）一个字没动，动的只是"允许它跑多久"。
 beforeAll(() => {
   // 预热一遍再开探针：marked / highlight.js / katex 的首次调用要初始化语言表与
   // 正则，**第一遍的头几条会背走整份懒加载成本**（现打：不预热时 `2-8K` 桶的 max
@@ -312,7 +318,7 @@ beforeAll(() => {
   }
   lines.push("");
   console.log(lines.join("\n"));
-});
+}, 60_000);
 
 describe("秤 1 · 反空真（绿必须来自相等断言，不是「扫不到就绿」）", () => {
   it("样本总数 == **绝对**登记数（不是「登记数 × PASSES」那种恒等式）", () => {
@@ -453,10 +459,22 @@ describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导",
   // ⇒ 下面钉三件**确实成立**的事，外加一格把那条**反例**本身钉住，
   //   免得下一个人又按「字节即成本」去改口径。原文见 `tests/evidence/S1-render-cost.md`。
 
-  it("★ `render` 段在每个非空桶都是大头（O(len) 的那几条声称都住在它里面）", () => {
+  // 🔴 **人群是「建卡那条路」，不是「每个非空桶」**〔2026-09-18 订正〕
+  //
+  // 第一版写的是「每个非空桶」，在全量并发下**红过一次**：`32-128K` 桶的
+  // `render` 占比掉到 **53.0%**（阈值 55%）。
+  // ⚠ **那不是抖动，是本判据自己没吃透本秤的发现** —— 那个桶 **100% 是
+  //   `tool-group-merged`**，而对合并折叠卡来说 `merge` 段占掉一半**是对的**：
+  //   正文根本不进 DOM，`render` 本来就没什么活干。
+  // ⇒ 拿它去判「O(len) 还是不是大头」，判的是一条**它压根不走的路**。
+  //
+  // ⚠ **这不是放宽**：阈值 55% 一个点没动，人群从「所有记录」收到「真建卡的那些」——
+  //   而「字节不是成本轴，卡型才是」正是本秤最重要的那条产出。判据跟着它走。
+  //   纯 merged 那一档由下面那条**单独**钉（`merge` 占大头在那里是正确态）。
+  it("★ `render` 段在**建卡那条路**上，每个非空桶都是大头（O(len) 的那几条声称都住在它里面）", () => {
     const weak: string[] = [];
     for (const [name] of BUCKETS) {
-      const rows = samples.filter((s) => bucketOf(s.bytes) === name);
+      const rows = samples.filter((s) => bucketOf(s.bytes) === name && s.branch === "card");
       if (!rows.length) continue;
       const share = p(
         rows.map((s) => (s.total > 0 ? s.render / s.total : 0)),
@@ -470,6 +488,32 @@ describe("秤 1 · 它要验的那条声称：长尾桶被 O(len) 操作主导",
         "§2.4/§2.5/§2.6/§2.8 点名的 O(len) 操作全在 `renderMessage` 里，" +
         "它不再是大头就说明成本已经搬到别处（或者某一段计时被摘了）",
     ).toBe("");
+  });
+
+  it("★ 纯 `tool-group-merged` 的桶：`merge` 段占大头**是正确态**，不是回归", () => {
+    // ⚠ 上一条把人群收到 `card` 之后，**折叠那条路就没人看了** —— 这一格补上。
+    //    它钉的是反向的事实：那条路上 `render` 本来就该小，而 `merge` 本来就该大。
+    //    没有这一格，「merge 段某天被整个摘掉」会零命中地绿。
+    const mergedOnly = BUCKETS.map(([name]) => name).filter((name) => {
+      const rows = samples.filter((s) => bucketOf(s.bytes) === name);
+      return rows.length > 0 && rows.every((s) => s.branch === "tool-group-merged");
+    });
+    expect(
+      mergedOnly.length,
+      "一个纯 merged 的桶都没有 —— 语料变了，本格此刻在空转（现打：`32-128K` 是这样的桶）",
+    ).toBeGreaterThan(0);
+    for (const name of mergedOnly) {
+      const rows = samples.filter((s) => bucketOf(s.bytes) === name);
+      const mergeShare = p(
+        rows.map((s) => (s.total > 0 ? s.merge / s.total : 0)),
+        0.5,
+      );
+      expect(
+        mergeShare,
+        `${name} 桶全是 tool-group-merged，而 \`merge\` 段占 total 只有 ` +
+          `${(mergeShare * 100).toFixed(1)}% —— 合并那一跳的计时多半被摘了`,
+      ).toBeGreaterThan(0.1);
+    }
   });
 
   it("★ 只看 `card` 分支：total p50 **确实**随记录字节单调上升", () => {
