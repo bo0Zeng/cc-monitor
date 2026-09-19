@@ -537,19 +537,25 @@ fn the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_thr
 
     let mut files: Vec<(String, String)> = Vec::new();
     for sub in PLAINTEXT_SCAN_TREES {
-        for (path, raw) in guard_core::scan_tree!(&root.join(sub), &["rs"]) {
+        // 🔴 〔搬树 2026-09-18 · `设计/99` 条 73〕**明写「一份都不排除」，不靠 `file!()`。**
+        //
+        // 上一版靠 `scan_tree!` 的自摘摘掉调用者（当年 = `creds_store.rs` 自己），
+        // 再手工 `push` 一份补回来。剖分之后自摘那一刀落空，`creds_store.rs` 走普通
+        // 遍历**本来就进人群** ⇒ 手工补回那份成了**第二份**，同一段生产代码被数两遍。
+        // 今天两个出口的调用点都不在它里面，所以这一格**没有变红** ——
+        // 也就是说它是安静地错着的那一半（条 73 那条纪律正是为这一半立的）。
+        for (path, raw) in guard_core::scan_tree_excluding(&root.join(sub), &["rs"], &[]) {
             files.push((
                 path.display().to_string().replace('\\', "/"),
                 guard_core::production_code(&raw),
             ));
         }
     }
-    // ⚠ `scan_tree!` **按构造摘掉调用者自己那一份** —— 那正好会把本文件摘出人群，
-    //   而本文件是 monitor 侧碰 key 最多的一个。⇒ 单独补回来。
-    files.push((
-        "src/bridge/src/creds_store.rs".to_string(),
-        guard_core::production_code(include_str!("../../src/bridge/src/creds_store.rs")),
-    ));
+    // ★ 反空真：`creds_store.rs` 是 monitor 侧碰 key 最多的一份，它必须在人群里。
+    assert!(
+        files.iter().any(|(p, _)| p.ends_with("creds_store.rs")),
+        "人群里没有 `creds_store.rs` —— 分母缺了 monitor 侧碰 key 最多的那一份"
+    );
 
     // 采集面自检：三棵树都要扫到东西，且总量不能小得离谱。
     assert!(
@@ -614,10 +620,18 @@ fn the_two_plaintext_exits_are_called_from_exactly_one_place_each_across_all_thr
 /// ⚠ 它**不判**分类对不对（那要判语义）—— 它判的是**两张表有没有说同一件事**。
 #[test]
 fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
-    let core = std::fs::read_to_string(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("crates/creds-core/src/lib.rs"),
-    )
-    .expect("读不到 creds-core 的源码 —— 抽取器坏了，本条会零命中地绿");
+    // 🔴 〔搬树 2026-09-18 · `设计/16 §6.2` C 类〕**住址改对：那张表搬家了。**
+    //
+    // `INNER_FIELD_USERS` 是 `creds-core` 的**判据用表**（住在它的 `#[cfg(test)]` 段里），
+    // 剖分把它从 `crates/creds-core/src/lib.rs` 搬到了
+    // `tests/bridge/crates/creds-core/lib_tests.rs`。表本身一个字没改 ——
+    // 变的只是它住哪儿。⇒ 指对地方，不是放宽（读数逐字：「一处都找不到 ⇒ 本条按红处理」，
+    // 这条反空真**按设计响了**，别把它调松）。
+    let table_home =
+        crate::guard_support::tests_root().join("bridge/crates/creds-core/lib_tests.rs");
+    let core = std::fs::read_to_string(&table_home).unwrap_or_else(|e| {
+        panic!("读不到定义面那张表所在的 {table_home:?}：{e} —— 抽取器坏了，本条会零命中地绿")
+    });
 
     // 从 `INNER_FIELD_USERS` 里挑出标着 `HandsOut` 的行，取它的名字。
     let at = guard_core::find_pinned(&core, "const INNER_FIELD_USERS:")
@@ -625,8 +639,11 @@ fn the_definition_table_and_the_call_site_table_name_the_same_exits() {
     // ⚠ 切法**不是** `brace_block` —— 这张表是 `&[ … ]`，它的第一个 `{` 可能落在很远的地方
     //   （实测第一版就是这么切歪的，被下面那条反空真自检当场逮住：「一条 HandsOut 都没抽到」）。
     //   按它自己的收尾 `];` 切才是这张表的边界。
+    // 🔴 〔搬树 2026-09-18〕收尾针从 `"\n    ];"` 改成 `"\n];"`：搬出 `mod tests {}` 之后
+    //   这张表是**文件顶层的** item，缩进整整少了一级。缩进是位置，而按位置认边界的针
+    //   会随搬树静默失配（`设计/16 §5.4b`）—— 下面那条 `table.len() > 200` 是它的反空真。
     let table = core[at..]
-        .find("\n    ];")
+        .find("\n];")
         .map(|i| &core[at..at + i])
         .expect("切不出表体（找不到 `];` 收尾）—— 按红处理");
     assert!(table.len() > 200, "表体只有 {} 字节 —— 切歪了", table.len());

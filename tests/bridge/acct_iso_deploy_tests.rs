@@ -86,7 +86,7 @@ use super::*;
 /// 绝不把半截东西交给前端当待贴文本）。bash 那边哪天改了围栏措辞，表现是
 /// **功能整体失灵但错误文案听起来像用户的错**（「远端没能产出 rc 片段」）。
 ///
-/// 做法同 `tmux.rs::tmux_ls_fmt_double_write_point_stays_in_sync` 与
+/// 做法同 `tmux_tests.rs::tmux_ls_fmt_double_write_point_stays_in_sync` 与
 /// `accounts_query.rs` 的 Z06 守卫：`include_str!` 读 **vendored** 副本 + 锚定那一行。
 /// **`cp -a` 保 mtime ⇒ 本地 re-vendor 后要 `touch` 本文件，否则判的是上次的结果**（Z06 实测）。
 #[test]

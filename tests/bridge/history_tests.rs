@@ -100,7 +100,7 @@ fn the_config_dir_validator_rejects_every_injection_shape() {
 ///
 /// # 此前那条判据在替代码说好话
 ///
-/// `launch.rs::local_and_remote_share_the_same_payload` 用的是**手写夹具**
+/// `launch_tests.rs::local_and_remote_share_the_same_payload` 用的是**手写夹具**
 /// `"… && ccm --tmux claude --resume s1"`，而它**从不调用**真正的 payload 构造器。
 /// 那个夹具里有 `--tmux`，生产里没有 —— **判据恰好体现了生产违反的那个假设**。
 ///
@@ -1181,12 +1181,35 @@ const R61_SELF_CUT: &str = "〔K-R61 判据组自剪线〕";
 ///
 /// ⚠ **它买不到的**：自剪线**之后**的文本一律不进射程。有人把同一段话复制到本文件
 /// 更后面去，本组看不见。射程边界就写在这里，别读宽。
+///
+/// # 🔴 〔搬树 2026-09-18 · `设计/16 §5.4b` 纪律 3〕**被测面是两份文件，不是一份**
+///
+/// 那句退役条件今天**跨在剖分线两侧**：住址表 `r61_sites()` 的 ①②③ 住生产段
+/// （`src/bridge/src/history.rs`），而 ④⑤ 是**测试段里的两段话**
+/// （互斥判据的头注 · 它末尾那条 `assert!` 的诊断文案），剖分之后住本文件。
+/// ⇒ 只喂生产段那一份的话，④⑤ 两个锚点一个都找不到。
+///
+/// ⚠ **自剪线仍然非留不可**，只是它剪的对象换了半边：`r61_sites()` 里每个锚点都有
+/// 一份**字面量副本**，而那张表今天住本文件 ⇒ 不剪的话 `find_pinned` 会看到两处。
+/// 本文件里自剪线**之前**没有任何一份锚点副本（现打：①②③ 只在表里出现，
+/// ④⑤ 各只在它们真正那一处出现）。
 fn r61_hay() -> &'static str {
-    let src = include_str!("../../src/bridge/src/history.rs");
-    let cut = src
-        .find(R61_SELF_CUT)
-        .expect("自剪线不见了 —— 本组判据此刻在量它自己，读数作废");
-    &src[..cut]
+    static HAY: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    HAY.get_or_init(|| {
+        let prod = include_str!("../../src/bridge/src/history.rs");
+        // ★ 反空真：生产段那一份真读到了（空串会让 ①②③ 三个锚点一起「找不到」，
+        //   而那与「那几段话被删了」在输出上一模一样）。
+        assert!(
+            prod.len() > 10_000,
+            "只读到 {} 字节的 `history.rs` —— 本组判据在空转",
+            prod.len()
+        );
+        let mine = include_str!("history_tests.rs");
+        let cut = mine
+            .find(R61_SELF_CUT)
+            .expect("自剪线不见了 —— 本组判据此刻在量它自己，读数作废");
+        format!("{prod}\n{}", &mine[..cut])
+    })
 }
 
 /// 「退役条件那句话」在本文件里的**住址表 —— 只有这一处**。

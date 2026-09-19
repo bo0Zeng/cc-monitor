@@ -169,7 +169,7 @@ pub const FENCE_SHAPES: &[FenceShape] = &[
                      （分岔在 profile_installer.rs::plan_install / \
                      profile_installer.rs::plan_uninstall，落盘与备份回滚那一整套共用）。\
                      ⇒ 补这一格没有把三套变成四套。判据 \
-                     profile_installer.rs::the_local_posix_port_is_byte_for_byte_the_remote_one",
+                     profile_installer_tests.rs::the_local_posix_port_is_byte_for_byte_the_remote_one",
     },
 ];
 

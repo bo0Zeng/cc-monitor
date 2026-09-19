@@ -419,8 +419,18 @@ mod tests {
         out
     }
 
-    /// `ssh_source.rs` 在仓里的相对住址 —— 下面要拿它去问 git 历史。
+    /// `DIAL_SITES` 那张表**历史上**住的地方 —— 下面要拿它去问 git 历史。
+    ///
+    /// 🔴 〔搬树 2026-09-18〕**这一行刻意仍然指着 `ssh_source.rs`。**
+    /// 剖分把那张表搬去了 [`DIAL_SITES_TODAY_REL`]，但**历史面在旧住址上** ——
+    /// 那个新文件是被**剖**出来的、不是被 `mv` 出来的，`git log --follow` 追不到它的前身，
+    /// 照新住址问历史只会拿到剖分那一刻起的一两份读数，棘轮的低档当场丢光。
+    /// ⇒ 两个住址各司其职：**今天的读数**按新住址取，**历史面**按旧住址取。
+    /// ⚠ 那几格靠自己的地板守着（`HISTORY_FLOOR` ＋ 下面那条「今天读得出来」的 panic）。
     const DIAL_SITES_REL: &str = "src/bridge/src/ssh_source.rs";
+
+    /// `DIAL_SITES` **今天**住的地方（仓根相对）。见 [`DIAL_SITES_REL`] 头注。
+    const DIAL_SITES_TODAY_REL: &str = "tests/bridge/ssh_source_dial_move_judge.rs";
 
     /// 找 `DIAL_SITES` 那张表表头的针 —— 🔴 **运行时拼，别写成字面量**。
     ///
@@ -501,10 +511,12 @@ mod tests {
     /// 而这条对拍会当场说「解析器说 0，登记表说 6」。
     #[test]
     fn the_interface_side_ssh_debt_is_one_number_and_it_is_printed() {
-        let me = include_str!("ssh_source.rs");
+        // 🔴 〔搬树 2026-09-18〕语料跟着表搬：`DIAL_SITES` 今天住
+        //    `tests/bridge/ssh_source_dial_move_judge.rs`（见 `DIAL_SITES_REL` 头注）。
+        let me = include_str!("../../../tests/bridge/ssh_source_dial_move_judge.rs");
         let parsed = unmoved_dial_sites_in(me).unwrap_or_else(|| {
             panic!(
-                "在 `{DIAL_SITES_REL}` 里找不到 `DIAL_SITES` 那张表（针：{}）——\n\
+                "在 `{DIAL_SITES_TODAY_REL}` 里找不到 `DIAL_SITES` 那张表（针：{}）——\n\
                  表被改了名 / 挪了文件 / 换了列数 ⇒ 本模块三条判据同时失去被测对象。\n\
                  🔴 **不许让它默默当 0** —— 那等于宣布「已经解耦了」。",
                 dial_sites_needle()
