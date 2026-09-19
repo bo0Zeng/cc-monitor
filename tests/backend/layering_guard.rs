@@ -737,9 +737,9 @@ mod tests {
     ///
     /// | 探针 | ① | ② | ③ |
     /// |---|---|---|---|
-    /// | relay 形状的文件引 `control` | 🔴 | 绿 | 绿 |
+    /// | `relay` 形状的文件引 `control` | 🔴 | 绿 | 绿 |
     /// | control 形状的文件引 `relay` | 绿 | 🔴 | 绿 |
-    /// | relay 形状的文件引 `plugin` | 绿 | 绿 | 🔴 |
+    /// | `relay` 形状的文件引 `plugin` | 绿 | 绿 | 🔴 |
     /// | plugin 形状的文件引 `relay` | 绿 | 绿 | 🔴 |
     ///
     /// ⚠ 夹具的目录名 / 文件名一律**中性**，且下面每一条断言都只认**符号**
@@ -752,7 +752,7 @@ mod tests {
         // ② 顺带证明遍历真的走到了第二个文件，而不是撞见第一个就返回。
         let clean = "pub fn ok() -> usize { crate::common::fs::len() }\n";
 
-        // 探针一：relay 形状的文件引 control。
+        // 探针一：`relay` 形状的文件引 `control`。
         let t1 = write_probe_tree("a", "use crate::control::gate;\npub fn x() {}\n", clean);
         let f1 = layer_sources_at(&t1, "x");
         assert_collection_is_complete_at(&t1, "x", &f1);
@@ -772,7 +772,7 @@ mod tests {
             "③ 认领了本该只归 ① 的那条边 —— 两支的信号串了，探针不再是单断的"
         );
 
-        // 探针二：control 形状的文件伸手进 relay 内部。
+        // 探针二：`control` 形状的文件伸手进 `relay` 内部。
         let t2 = write_probe_tree("b", "pub fn y() { crate::relay::table::look(); }\n", clean);
         let f2 = layer_sources_at(&t2, "x");
         assert_collection_is_complete_at(&t2, "x", &f2);
@@ -790,7 +790,7 @@ mod tests {
             "③ 认领了本该只归 ② 的那条边 —— 信号串了"
         );
 
-        // 探针三：relay 形状的文件引 plugin（③ 的正向那一半）。
+        // 探针三：`relay` 形状的文件引 `plugin`（③ 的正向那一半）。
         let t3 = write_probe_tree(
             "c",
             "pub fn z() { crate::plugin::invoke::run(&b, &[], 1, &[]); }\n",
@@ -813,7 +813,7 @@ mod tests {
             "② 认领了本该只归 ③ 的那条边 —— 信号串了"
         );
 
-        // 探针四：plugin 形状的文件反过来引 relay（③ 的另一半 —— 少了这个，
+        // 探针四：`plugin` 形状的文件反过来引 `relay`（③ 的另一半 —— 少了这个，
         // ③ 就只买到了单向，而它的名字承诺的是「互不认识」）。
         let t4 = write_probe_tree("d", "use crate::relay as rl;\npub fn w() {}\n", clean);
         let f4 = layer_sources_at(&t4, "x");
