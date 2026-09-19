@@ -338,7 +338,12 @@ export class SftpPanel implements OverlayHandle {
       const total = p.total || knownTotal;
       if (total > 0) {
         const ratio = Math.min(1, p.transferred / total);
-        bar.style.width = `${(ratio * 100).toFixed(1)}%`;
+        // S24（`设计/40 §7` 步 7）：推进度用 `scaleX`，不改 `width`。
+        // 改 `width` 会让这条 flex 行**每帧重排**（全文唯一一条动非合成属性的 transition）；
+        // `transform` 只走合成。⚠ 与 `.sftp-bar-fill` 的 CSS（`width:100%` +
+        // `transform-origin:left`）**同拍**——单独改一边进度条会完全不动（死值验见
+        // `tests/evidence/S24-css-readings.md` §步7）。
+        bar.style.transform = `scaleX(${ratio.toFixed(4)})`;
         pct.textContent = `${(ratio * 100).toFixed(0)}% (${formatBytes(p.transferred)}/${formatBytes(total)})`;
       } else {
         pct.textContent = formatBytes(p.transferred);
