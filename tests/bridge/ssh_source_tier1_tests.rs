@@ -82,8 +82,7 @@ fn the_local_ssh_read_surface_is_exactly_one_site() {
     }
     found.sort();
     found.dedup();
-    let mut declared: Vec<String> =
-        SSH_SITES.iter().map(|(f, _, _, _)| f.to_string()).collect();
+    let mut declared: Vec<String> = SSH_SITES.iter().map(|(f, _, _, _)| f.to_string()).collect();
     declared.sort();
     assert_eq!(
         found, declared,
@@ -432,8 +431,7 @@ async fn check_server_key_matching_tolerates_trailing_whitespace() {
 
 #[tokio::test]
 async fn check_server_key_mismatch_rejects_but_records() {
-    let (mut h, observed) =
-        handler_with(Some("SHA256:deadbeefwrongfingerprintvalueAAAAAAAAAAAA"));
+    let (mut h, observed) = handler_with(Some("SHA256:deadbeefwrongfingerprintvalueAAAAAAAAAAAA"));
     assert!(
         !h.check_server_key(&sample_key()).await.unwrap(),
         "失配必须拒绝"
@@ -878,9 +876,8 @@ async fn race_live_server_wins_when_a_hung_peer_is_first() {
     let live_label = format!("{}:{}", live.host, live.port);
     let (ch, events) = collecting_channel();
     let order = vec![hung, live.clone()];
-    let win = race_win(
-        race_connect(test_config(), None, order, Duration::from_secs(5), Some(ch)).await,
-    );
+    let win =
+        race_win(race_connect(test_config(), None, order, Duration::from_secs(5), Some(ch)).await);
     let race_returned_at = std::time::Instant::now();
 
     // 结果那半 —— 它不随环境翻转，所以它**不是**承重的那条腿。

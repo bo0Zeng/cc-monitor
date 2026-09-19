@@ -156,8 +156,7 @@ fn scan_dir_jsons_parses_jsons_only() {
 #[test]
 fn atomic_write_json_no_stray_tmp() {
     // 写完 dst 父目录里不应该有任何 ccm-tmp-* 残留
-    let dir =
-        std::env::temp_dir().join(format!("ccm-utils-test-tmpcheck-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("ccm-utils-test-tmpcheck-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
     let dst = dir.join("a.json");
     let _ = std::fs::remove_file(&dst);

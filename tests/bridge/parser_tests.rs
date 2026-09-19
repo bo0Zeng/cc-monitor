@@ -30,8 +30,7 @@ fn parse_line_feeds_the_drift_ledger() {
             .and_then(|f| f.entries.iter().find(|e| e.key == key))
             .cloned()
     };
-    let a =
-        entry(DriftFace::UnknownRecordType, "u-cc1-seam-probe").expect("未知 type 没有被记账");
+    let a = entry(DriftFace::UnknownRecordType, "u-cc1-seam-probe").expect("未知 type 没有被记账");
     assert!(a.count >= 1);
     assert!(
         a.first_sample
@@ -70,7 +69,8 @@ fn parse_for_kind_dispatches_claude_and_codex() {
         Some(JsonlRecord::Assistant { .. })
     ));
     // Codex：event_msg → Unrecognized（保 raw，turn-end/用量 per-kind 从中读）。
-    let codex_evt = r#"{"timestamp":"t","type":"event_msg","payload":{"type":"task_complete","turn_id":"x"}}"#;
+    let codex_evt =
+        r#"{"timestamp":"t","type":"event_msg","payload":{"type":"task_complete","turn_id":"x"}}"#;
     assert!(matches!(
         parse_for_kind(AgentKind::Codex, codex_evt).unwrap(),
         Some(JsonlRecord::Unrecognized { .. })

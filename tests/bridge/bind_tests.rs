@@ -2,7 +2,8 @@ use super::*;
 
 #[test]
 fn parse_await_request() {
-    let raw = r#"{"ps_pid":9692,"marker":"ccm-bind-9692-abc12345","proc_start":"639150434950992340"}"#;
+    let raw =
+        r#"{"ps_pid":9692,"marker":"ccm-bind-9692-abc12345","proc_start":"639150434950992340"}"#;
     let req: AwaitRequest = serde_json::from_str(raw).unwrap();
     assert_eq!(req.ps_pid, 9692);
     assert_eq!(req.marker, "ccm-bind-9692-abc12345");
@@ -313,8 +314,8 @@ fn remote_bind_finds_real_ccm_rbind_window() {
     use windows::core::{w, PCWSTR};
     use windows::Win32::Foundation::{HINSTANCE, HWND};
     use windows::Win32::UI::WindowsAndMessaging::{
-        CreateWindowExW, DestroyWindow, ShowWindow, CW_USEDEFAULT, HMENU, SW_SHOW,
-        WINDOW_EX_STYLE, WS_OVERLAPPEDWINDOW, WS_VISIBLE,
+        CreateWindowExW, DestroyWindow, ShowWindow, CW_USEDEFAULT, HMENU, SW_SHOW, WINDOW_EX_STYLE,
+        WS_OVERLAPPEDWINDOW, WS_VISIBLE,
     };
 
     let pid = std::process::id();

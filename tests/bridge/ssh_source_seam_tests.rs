@@ -27,8 +27,8 @@ async fn a_hello_frame_thaws_the_write_half_and_registers_the_client() {
 
     // hello ⇒ 解冻 + 登记，且 daemon 声明的命令集透传到客户端。
     let hello = parse_frame(&hello_line(r#"["ping"]"#));
-    let client = attach_inbound_client(origin, &mut parked, hello.as_ref())
-        .expect("hello 应当换出客户端");
+    let client =
+        attach_inbound_client(origin, &mut parked, hello.as_ref()).expect("hello 应当换出客户端");
     assert!(client.accepts("ping"));
     assert!(!client.accepts("launch"));
     assert!(parked.is_none(), "写半边应当已被 take 走");
@@ -206,9 +206,7 @@ async fn the_control_probe_really_sends_a_ping_and_measures_the_round_trip() {
             serde_json::from_str(line.trim_end()).expect("请求是合法 JSON");
         let id = req["id"].as_str().expect("id").to_string();
         dae_w
-            .write_all(
-                format!("{{\"kind\":\"reply\",\"id\":\"{id}\",\"ok\":true}}\n").as_bytes(),
-            )
+            .write_all(format!("{{\"kind\":\"reply\",\"id\":\"{id}\",\"ok\":true}}\n").as_bytes())
             .await
             .expect("回应答");
         dae_w.flush().await.expect("flush");

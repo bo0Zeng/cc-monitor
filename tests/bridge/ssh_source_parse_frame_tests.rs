@@ -30,7 +30,8 @@ fn parses_hello_and_captures_build_id() {
 #[test]
 fn parses_hello_homes_and_falls_back_to_claude_dir() {
     // ① 无 `homes`（= 今天所有已部署的 daemon）⇒ 空表 ⇒ 回退 `claude_dir`。
-    let old = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/old/.claude"}"#;
+    let old =
+        r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/old/.claude"}"#;
     match parse_frame(old).expect("hello must parse") {
         InboundFrame::Hello {
             homes, claude_dir, ..
@@ -122,8 +123,7 @@ fn parses_hello_commands_across_the_three_shapes() {
         other => panic!("不是 hello：{other:?}"),
     }
     // 旧 daemon：无该字段 → 空集（保守缺省，不发任何入方向命令）。
-    let without =
-        r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d"}"#;
+    let without = r#"{"kind":"hello","v":1,"build_id":"b","host_arch":"x86_64","claude_dir":"/d"}"#;
     match parse_frame(without).expect("hello must parse") {
         InboundFrame::Hello { commands, .. } => assert!(commands.is_empty()),
         other => panic!("不是 hello：{other:?}"),
@@ -171,8 +171,7 @@ fn parses_reply_and_cancelled_field_by_field() {
         }
     );
     // daemon 对**协议级**错误回空 id（它那时还不知道 id）——空串是合法值，不是坏帧。
-    let proto_err =
-        r#"{"kind":"reply","id":"","ok":false,"code":"line_too_long","message":"x"}"#;
+    let proto_err = r#"{"kind":"reply","id":"","ok":false,"code":"line_too_long","message":"x"}"#;
     assert!(matches!(
         parse_frame(proto_err),
         Some(InboundFrame::Reply { ok: false, .. })
@@ -207,8 +206,7 @@ fn hello_missing_build_id_returns_none() {
 #[test]
 fn hello_capabilities_backward_compat_and_declared() {
     // ① 旧 daemon：无 capabilities → 空集
-    let old =
-        r#"{"kind":"hello","v":1,"build_id":"p1e","host_arch":"x86_64","claude_dir":"/c"}"#;
+    let old = r#"{"kind":"hello","v":1,"build_id":"p1e","host_arch":"x86_64","claude_dir":"/c"}"#;
     match parse_frame(old).unwrap() {
         InboundFrame::Hello { capabilities, .. } => {
             assert!(capabilities.is_empty(), "旧 daemon 无声明 → 空集");
@@ -480,10 +478,9 @@ fn parses_overflow_and_rejects_bad_dropped() {
 /// B2：tmux_sessions 帧解析出 raw（tmux ls 原文，含转义 TAB）；缺/错 raw 当坏帧跳过（None）。
 #[test]
 fn parses_tmux_sessions_and_rejects_bad_raw() {
-    let frame = parse_frame(
-        "{\"kind\":\"tmux_sessions\",\"raw\":\"s1\\t/p\\tclaude\\t1\\t2\\tsid-a\"}",
-    )
-    .expect("tmux_sessions parses");
+    let frame =
+        parse_frame("{\"kind\":\"tmux_sessions\",\"raw\":\"s1\\t/p\\tclaude\\t1\\t2\\tsid-a\"}")
+            .expect("tmux_sessions parses");
     assert_eq!(
         frame,
         InboundFrame::TmuxSessions {

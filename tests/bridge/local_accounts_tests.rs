@@ -554,8 +554,7 @@ fn the_three_endings_are_told_apart_and_say_different_things() {
     // ③ 🔴 `NcM4` 那一刀的落点：**「后端不在」与「后端说这里有 0 个账号」必须分得开。**
     //    后者是**答案**（`enabled:false` + 原因），前者是**够不着**。
     let answer = classify_local_accounts(QueryOutcome::Ok(EMPTY_ANSWER.into())).into_result();
-    let cannot_reach =
-        classify_local_accounts(QueryOutcome::NoBackend("x".into())).into_result();
+    let cannot_reach = classify_local_accounts(QueryOutcome::NoBackend("x".into())).into_result();
     assert!(
         answer.available && answer.error.is_none() && answer.meta.is_some(),
         "「后端答了、只是这台机没启用多账号」被折成了不可用"

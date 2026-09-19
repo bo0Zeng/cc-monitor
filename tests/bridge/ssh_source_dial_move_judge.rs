@@ -107,7 +107,10 @@ fn corpus() -> Vec<(&'static str, String)> {
             "ssh_source.rs",
             production_code(include_str!("../../src/bridge/src/ssh_source.rs")),
         ),
-        ("sftp.rs", production_code(include_str!("../../src/bridge/src/sftp.rs"))),
+        (
+            "sftp.rs",
+            production_code(include_str!("../../src/bridge/src/sftp.rs")),
+        ),
         (
             "port_forward.rs",
             production_code(include_str!("../../src/bridge/src/port_forward.rs")),
@@ -406,8 +409,7 @@ fn the_shape_before_this_item_is_caught_and_named() {
         !before.contains("spawn_dial_proxy("),
         "冻结的反例语料里居然有代理调用 —— 那它就不是「改动之前」了"
     );
-    let e =
-        daemon_stream_dial_verdict(&before).expect_err("旧形状（界面进程自己拨号）居然判绿了");
+    let e = daemon_stream_dial_verdict(&before).expect_err("旧形状（界面进程自己拨号）居然判绿了");
     assert!(
         e.contains("spawn_dial_proxy("),
         "判据红了，但**没点名是哪一处** —— 只说「有问题」的诊断等于没有诊断。实得：{e}"

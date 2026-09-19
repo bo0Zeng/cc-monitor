@@ -49,7 +49,9 @@ fn the_refuse_tag_is_the_same_string_on_both_sides() {
 /// ⚠ 打标是**字符串约定不是类型**：手写一个带同样前缀的普通错误串也会被 TS 当成业务拒绝（`U6`）。
 #[test]
 fn every_business_rejection_is_tagged() {
-    let src = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/payload.rs"));
+    let src = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/payload.rs"
+    ));
     // 人群自检 —— **不数定义行**〔D 阶段补审 08-11 订正〕。
     //
     // 原版是 `src.matches("refuse(").count() >= 2`，而生产段实得 **10** 处，
@@ -671,9 +673,7 @@ fn a_relay_that_is_not_running_is_refused_out_loud_at_launch_time() {
         "错误文案得说出真正的原因（不是一句通用失败）：{e}"
     );
     // 非空对照：同一条路径、只把「中转在跑」翻过来 ⇒ 不再报错。
-    assert!(
-        relay_injection_for(Some("acct-a"), &rows, true, Some("sid-1"), "claude-code").is_ok()
-    );
+    assert!(relay_injection_for(Some("acct-a"), &rows, true, Some("sid-1"), "claude-code").is_ok());
     // ⚠ 表里没有这一行的号**不受这条闸影响** —— 中转没起来也照旧起得来。
     assert_eq!(
         relay_injection_for(Some("acct-b"), &rows, false, None, "claude-code").unwrap(),
@@ -957,7 +957,9 @@ fn not_forwarded(left: &[String], right: &[String]) -> Vec<String> {
 fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
     let ccm = container_path_source();
     let hist = guard_core::production_code(include_str!("../../../../src/bridge/src/history.rs"));
-    let pay = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/payload.rs"));
+    let pay = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/payload.rs"
+    ));
     // 抽取器自检：剥完还得看得见东西（否则下面整条是空真）。
     // 门槛现打（09-02，剥完的字节数）：`history.rs` ≈ 48.7k（原文 213k）· `payload.rs` ≈ 8.2k（原文 88k）
     // —— 门槛按现打值往下留一档，不贴着写。
@@ -1108,7 +1110,9 @@ fn every_variable_exported_outside_ccm_is_forwarded_by_the_container_path() {
 fn the_outside_export_gate_really_reddens_on_a_live_breach() {
     let ccm = container_path_source();
     let hist = guard_core::production_code(include_str!("../../../../src/bridge/src/history.rs"));
-    let pay = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/payload.rs"));
+    let pay = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/payload.rs"
+    ));
     let body_relay = fn_body(&pay, "pub fn relay_env_prefix_posix(");
     let body_id = fn_body(&hist, "fn launch_identity_env_prefix(")
         .replace("{LAUNCH_ID_VAR}", crate::history::LAUNCH_ID_VAR);

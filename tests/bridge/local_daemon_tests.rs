@@ -519,9 +519,8 @@ fn the_local_daemon_can_be_stopped_and_started_again() {
 
     // ★★ **fail closed，而且排在一切之前**：拿不到 shim 就当场炸，绝不降级裸跑。
     //    降级裸跑 = 去改用户真实 tmux server 的 `[50]` 槽位（08-11 / 08-26 / 08-27 / 08-29 各一次）。
-    let shim = demand_tmux_shim(
-        "本条起真 daemon，而 daemon 一上来就往它连得到的 tmux server 装全局 hook",
-    );
+    let shim =
+        demand_tmux_shim("本条起真 daemon，而 daemon 一上来就往它连得到的 tmux server 装全局 hook");
     let _guard = crate::inbound_client::local_origin_test_lock();
     let bin = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("embedded-daemons")
@@ -564,8 +563,8 @@ fn the_local_daemon_can_be_stopped_and_started_again() {
     };
     let wait_channel = |want: bool| -> bool {
         for _ in 0..100 {
-            let on = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN)
-                .is_some();
+            let on =
+                crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN).is_some();
             if on == want {
                 return true;
             }
@@ -699,7 +698,9 @@ fn the_local_backend_only_takes_a_binary_this_platform_can_run() {
         .collect::<Vec<_>>()
         .join("\n");
     let take = guard_core::find_pinned(&body, "daemon_binary(").unwrap_or_else(|e| {
-        panic!("`start_local_backend` 里没有恰好一处 `daemon_binary(`（{e}）—— 取用点变了就来改本条")
+        panic!(
+            "`start_local_backend` 里没有恰好一处 `daemon_binary(`（{e}）—— 取用点变了就来改本条"
+        )
     });
     let head = &body[..take];
     assert!(
@@ -919,7 +920,8 @@ fn braced_block<'a>(prod: &'a str, marker: &str, lo: usize, hi: usize) -> &'a st
 #[test]
 fn the_detach_landing_is_the_host_layer_and_the_injection_is_really_used() {
     // ── ① `backend/` 那半 ──────────────────────────────────────────
-    let backend_mod = guard_core::production_code(include_str!("../../src/bridge/src/backend/mod.rs"));
+    let backend_mod =
+        guard_core::production_code(include_str!("../../src/bridge/src/backend/mod.rs"));
     guard_core::find_pinned(&backend_mod, "fn the_backend_half_stays_platform_agnostic")
         .unwrap_or_else(|_| {
             // 它住在 `#[cfg(test)]` 段里，`production_code` 会把它剥掉 ⇒ 换整份找。
@@ -1415,7 +1417,9 @@ fn the_listen_env_names_are_the_same_string_on_both_sides() {
 /// `the_self_extract_path_really_asks_the_product_whether_it_carries_one` 钉。
 #[test]
 fn the_two_resolution_paths_still_agree_on_the_order() {
-    let theirs = guard_core::production_code(include_str!("../../src/bridge/src/backend/control/local_backend.rs"));
+    let theirs = guard_core::production_code(include_str!(
+        "../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     // ① 那份共用的解析真的在，而且三问俱在 —— 它是下面三条的地板。
     let shared = body_of(&theirs, "pub fn resolve_or_extract(");
     for needle in [
@@ -1489,9 +1493,11 @@ fn the_two_resolution_paths_still_agree_on_the_order() {
 /// 本条只管其中的 **2** 处。
 #[test]
 fn both_production_spawn_paths_go_through_the_shared_etxtbsy_verdict() {
-    let daemon_side = guard_core::production_code(include_str!("../../src/bridge/src/local_daemon.rs"));
-    let backend_side =
-        guard_core::production_code(include_str!("../../src/bridge/src/backend/control/local_backend.rs"));
+    let daemon_side =
+        guard_core::production_code(include_str!("../../src/bridge/src/local_daemon.rs"));
+    let backend_side = guard_core::production_code(include_str!(
+        "../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     for (who, prod, head, anchor) in [
         (
             "local_backend.rs::supervise_with_stdio",
@@ -2330,7 +2336,10 @@ fn every_test_that_starts_the_real_daemon_demands_a_private_tmux() {
              排在 `sb.envs()` 之后的那条会把 shim 整个盖掉。委托方本体里这个形状应当**0 处**。\n      \
              ⚠ 判的是形状不是语义（同上：`\"PATH\"` 后面紧跟方法调用；纯读不算）";
     let files: [(&str, &str); 2] = [
-        ("local_daemon.rs", include_str!("../../src/bridge/src/local_daemon.rs")),
+        (
+            "local_daemon.rs",
+            include_str!("../../src/bridge/src/local_daemon.rs"),
+        ),
         (
             "backend/control/local_backend.rs",
             include_str!("../../src/bridge/src/backend/control/local_backend.rs"),
@@ -2581,9 +2590,7 @@ fn every_test_that_starts_the_real_daemon_demands_a_private_tmux() {
     let path_writes = |code: &str| -> usize {
         let norm = code.replace("String::from(\"PATH\")", "\"PATH\".to_string()");
         norm.match_indices("\"PATH\"")
-            .filter(|&(i, m)| {
-                norm[i + m.len()..].chars().find(|c| !c.is_whitespace()) == Some('.')
-            })
+            .filter(|&(i, m)| norm[i + m.len()..].chars().find(|c| !c.is_whitespace()) == Some('.'))
             .count()
     };
     // 报文只贴**证据**，不替读者下结论〔`D3` 09-01：一条判据的报文说假话，比它红错更坏〕。
@@ -3238,7 +3245,9 @@ fn the_timer_registry_names_every_caller_of_the_one_wait_here() {
     // 登记表那一行必须点到每一个。
     // 按**行**切那一条登记（不按字节偏移切 —— 中文在这份文件里到处都是，
     // 按字节切会切在字符中间，那是 CRASH 不是读数）。
-    let reg_lines: Vec<&str> = include_str!("../../src/bridge/src/rust_timer_registry.rs").lines().collect();
+    let reg_lines: Vec<&str> = include_str!("../../src/bridge/src/rust_timer_registry.rs")
+        .lines()
+        .collect();
     let at = reg_lines
         .iter()
         .position(|l| l.trim() == "\"src/local_daemon.rs\",")
@@ -3508,8 +3517,7 @@ impl E2eSandbox {
         // ★ **真宿主退出时那条 socket 会关掉** —— 只清进程内的句柄是**演砸的模型**：
         //   那条流还挂着，下一个宿主拿到的是 `stream-busy`。
         //   〔实测：第一版就是这么写的，`KPY2` 当场红在「第二个宿主没有认出已有实例」。〕
-        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN)
-        {
+        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
             crate::inbound_client::unregister(crate::inbound_client::LOCAL_ORIGIN, &c);
             // ⚠ `shutdown()` 只叫醒等着的调用方，**它不关 socket**。
             //   要让对面知道我们走了，得真的关掉写半边 —— 那才是 daemon 那边的 EOF。
@@ -3777,9 +3785,7 @@ fn e2e_a_detached_daemon_that_dies_leaves_no_zombie() {
                 "二进制路径被抹了 —— 身份核对没了对照物"
             );
         }
-        println!(
-            "E2E-OK KPY3 收尸走的是我们自己那条线（`Child` 交给了收尸线程，pid+二进制仍在）"
-        );
+        println!("E2E-OK KPY3 收尸走的是我们自己那条线（`Child` 交给了收尸线程，pid+二进制仍在）");
         *DETACHED.lock().expect("锁") = None;
         let _ = std::env::var("CCM_E2E_TMUX_SHIM_BIN");
     }
@@ -3830,15 +3836,13 @@ fn the_detached_handshake_is_derived_from_the_hello_gate() {
         prod.len()
     );
     // 那道门本身（`attach_stream` 的前两行之一）：它没了，上面那条推理就没了前提。
-    guard_core::find_pinned(&prod, "DaemonHello::from_hello_frame(&frame)").unwrap_or_else(
-        |e| {
-            panic!(
-                "`attach_stream` 那道 hello 门不是恰好一处（{e}）——\n\
+    guard_core::find_pinned(&prod, "DaemonHello::from_hello_frame(&frame)").unwrap_or_else(|e| {
+        panic!(
+            "`attach_stream` 那道 hello 门不是恰好一处（{e}）——\n\
                      ⇒ 「进得了流循环 = 一帧合法 hello 已经到手」这条推理没有前提了，\n\
                      而收尸那一拍报的仍然是「说过话」：那时它才真的变成一个编出来的值。"
-            )
-        },
-    );
+        )
+    });
     for l in [
         "let handshake = handshake_from_hello(&witness);",
         "reap_detached(handshake, reader_end);",
@@ -4041,16 +4045,15 @@ fn three_fake_daemons_land_in_three_different_cells() {
     );
 
     // ── ③ 说过话之后我们这一侧读错误 ⇒ 读坏了，且**不算它崩了一次** ────
-    let broken: local_backend::StdioSink =
-        Arc::new(|_in, _out| local_backend::ConsumerReport {
-            exit: local_backend::ConsumerExit::Early,
-            witness: local_backend::StreamWitness::Observed {
-                handshake: crate::daemon_policy::Handshake::Spoke,
-                reader: crate::daemon_policy::ReaderEnd::Broken(
-                    "读端出错（注入）：这一维说的是我们这一侧".to_string(),
-                ),
-            },
-        });
+    let broken: local_backend::StdioSink = Arc::new(|_in, _out| local_backend::ConsumerReport {
+        exit: local_backend::ConsumerExit::Early,
+        witness: local_backend::StreamWitness::Observed {
+            handshake: crate::daemon_policy::Handshake::Spoke,
+            reader: crate::daemon_policy::ReaderEnd::Broken(
+                "读端出错（注入）：这一维说的是我们这一侧".to_string(),
+            ),
+        },
+    });
     let h3 = local_backend::supervise_with_stdio(
         std::path::PathBuf::from("sh"),
         vec!["-c".into(), "sleep 30".into()],

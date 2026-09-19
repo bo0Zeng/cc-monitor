@@ -16,7 +16,9 @@ fn the_only_mode_this_channel_can_speak_is_send_into() {
     );
     assert_eq!(args["mode"], "send-into");
     // 本模块的生产段里不许出现另一个 mode 字面量。
-    let prod = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/daemon_launch.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/daemon_launch.rs"
+    ));
     assert!(
         !prod.contains(&format!("\"create{}attach\"", "-or-")),
         "生产段出现了 create-or-attach —— 这条路一旦能新建会话，就是 #76 的失管会话形态；\

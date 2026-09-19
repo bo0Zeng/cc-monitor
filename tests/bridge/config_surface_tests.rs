@@ -22,11 +22,7 @@ fn empty_probe<'a>() -> FsProbe<'a> {
 /// 建表用的一套基准。**`path_env` 默认给一个非空值** —— 给 `None` 的话
 /// `EnvProbe::OnPath` 那一族一律「查不动」，那是**另一个盘面**，
 /// 要它就显式写出来（`the_prompt_tier_really_looks_before_it_speaks` 两边都跑）。
-fn env_with<'a>(
-    home: &'a Path,
-    fs: &'a FsProbe<'a>,
-    path_env: Option<&'a str>,
-) -> SurfaceEnv<'a> {
+fn env_with<'a>(home: &'a Path, fs: &'a FsProbe<'a>, path_env: Option<&'a str>) -> SurfaceEnv<'a> {
     SurfaceEnv {
         home,
         cfg_dir_env: None,
@@ -322,8 +318,7 @@ fn prose_paths_are_rejected() {
         } else {
             ToolDestination::LocalHomeRelative("x")
         };
-        let r =
-            resolve_touched_path(declared, &dest, HostScope::Client, &home(), None, &no_dir);
+        let r = resolve_touched_path(declared, &dest, HostScope::Client, &home(), None, &no_dir);
         // **必须直接 Err。** 第一版这里写的是"Err 或者解析出带括号的假路径都算抓到"，
         // 于是 `~/.local/bin/cc-*（12 条软链）` 溜了过去——它成功解析成
         // `LocalGlob { prefix: "cc-", suffix: "（12 条软链）" }`，`dir` 干干净净，
@@ -381,8 +376,7 @@ fn either_never_absent_with(probe: &FsProbe) {
         .flat_map(|t| t.carrier_touches())
         .filter(|(_, f)| f.host == HostScope::Either)
         .map(|(c, f)| {
-            resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir)
-                .unwrap()
+            resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir).unwrap()
         })
     {
         assert!(
@@ -471,9 +465,8 @@ fn remote_host_never_resolves_to_a_local_path() {
     let mut checked = 0;
     for t in TOOLS {
         for (c, f) in t.carrier_touches() {
-            let r =
-                resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir)
-                    .unwrap();
+            let r = resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir)
+                .unwrap();
             let local = matches!(
                 r,
                 PathResolution::Local(_)
@@ -710,8 +703,7 @@ fn host_projection_preserves_the_richer_resolution() {
         .carrier_touches()
         .find(|(_, f)| f.host == HostScope::Remote)
         .expect("后端必须有一份是推给远端那台机器的");
-    let r =
-        resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir).unwrap();
+    let r = resolve_touched_path(f.path, &c.destination, f.host, &home(), None, &no_dir).unwrap();
     match r {
         PathResolution::NeedsUserConfig { what } => {
             assert!(what.contains("daemon"), "实得 {what}");
@@ -1363,8 +1355,7 @@ fn this_module_only_reads() {
     //
     // 「谁在写」不在这里各写一张清单（那是下一个漂移源），而是问唯一那张表：
     // `write_site_registry::WRITE_SITES`。它自己由默认拒绝的人群守着。
-    let delegated =
-        crate::write_site_registry::writers::called_by(&stripped, "config_surface.rs");
+    let delegated = crate::write_site_registry::writers::called_by(&stripped, "config_surface.rs");
     assert!(
         delegated.is_empty(),
         "本模块调了已登记的**写者**：{delegated:?}\n\

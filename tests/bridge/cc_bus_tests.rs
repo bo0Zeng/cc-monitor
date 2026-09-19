@@ -618,9 +618,8 @@ fn fn_body(code: &str, name: &str) -> String {
         // ⚠ 多行签名的收尾行 `) -> Result<…> {` 也顶格 —— 它是**头的一部分**，
         // 不是边界。第一版漏了这条，`build_spawn_cmd` 的体被切在签名处、抠出空串
         // （长度自检当场报出来了 —— 自检存在的意义就在这里）。
-        let top_level = !line.is_empty()
-            && !line.starts_with(char::is_whitespace)
-            && !line.starts_with(')');
+        let top_level =
+            !line.is_empty() && !line.starts_with(char::is_whitespace) && !line.starts_with(')');
         if i > 0 && top_level {
             break;
         }
@@ -2214,12 +2213,9 @@ fn the_kill_path_asks_the_backend_instead_of_composing_a_shell_line() {
 #[test]
 fn the_kill_reply_keeps_the_three_states_apart() {
     use serde_json::json;
-    let killed =
-        describe_kill_reply("a_cc", Some(&json!({"killed": true, "stale_only": false})));
-    let stale =
-        describe_kill_reply("a_cc", Some(&json!({"killed": false, "stale_only": true})));
-    let nothing =
-        describe_kill_reply("a_cc", Some(&json!({"killed": false, "stale_only": false})));
+    let killed = describe_kill_reply("a_cc", Some(&json!({"killed": true, "stale_only": false})));
+    let stale = describe_kill_reply("a_cc", Some(&json!({"killed": false, "stale_only": true})));
+    let nothing = describe_kill_reply("a_cc", Some(&json!({"killed": false, "stale_only": false})));
     let broken = describe_kill_reply("a_cc", Some(&json!({"nope": 1})));
     let none = describe_kill_reply("a_cc", None);
     let all = [&killed, &stale, &nothing];

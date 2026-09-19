@@ -52,11 +52,11 @@ fn extract_text_blocks_string_and_array() {
 
 #[test]
 fn extract_tool_text_assistant_and_user() {
-    let asst =
-        serde_json::json!([{"type":"tool_use","name":"Bash","input":{"command":"ls -la"}}]);
+    let asst = serde_json::json!([{"type":"tool_use","name":"Bash","input":{"command":"ls -la"}}]);
     let t = extract_tool_text(&asst, true);
     assert!(t.contains("Bash") && t.contains("ls -la"));
-    let user = serde_json::json!([{"type":"tool_result","content":[{"type":"text","text":"file out"}]}]);
+    let user =
+        serde_json::json!([{"type":"tool_result","content":[{"type":"text","text":"file out"}]}]);
     assert!(extract_tool_text(&user, false).contains("file out"));
 }
 

@@ -456,7 +456,9 @@ fn the_two_verdicts_hand_the_user_two_different_sentences() {
 /// 后者正是本仓那条「匹配单位比事实小」的老病。
 #[test]
 fn two_processes_do_not_share_one_partial_file() {
-    let prod = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/local_backend.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     // 人群**现算**：每一处「`.partial` 结尾的格式串 + 后面跟着实参」。
     // ⚠ 针带逗号是刻意的：`name.ends_with(".partial")`（清扫那一处**读**它）
     //   长得像但不是构造点，带上逗号就分开了。
@@ -588,7 +590,9 @@ fn a_local_tmux_frame_lands_in_the_ledger_without_any_daemon() {
 /// 是同一个形状的退化。⇒ 位置性质要单独钉（`find_pinned`：恰好一处、有边界）。
 #[test]
 fn the_read_loop_really_calls_the_absorb_point() {
-    let prod = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/local_backend.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     let at = guard_core::find_pinned(&prod, "absorb_local_frame(&frame);")
         .expect("读行循环里必须恰好有一处 `absorb_local_frame(&frame);`");
     let before = &prod[..at];
@@ -1052,8 +1056,7 @@ fn the_local_daemon_really_registers_an_inbound_client() {
     // 轮询而不是睡死：进程起来 + 发 hello 的耗时不确定，睡固定值要么慢要么飘。
     let mut client = None;
     for _ in 0..100 {
-        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN)
-        {
+        if let Some(c) = crate::inbound_client::client_for(crate::inbound_client::LOCAL_ORIGIN) {
             client = Some(c);
             break;
         }
@@ -1437,7 +1440,9 @@ fn remote_shim_carries_the_entry_name_for_the_container_path() {
 /// **不回答「装完对不对」**。本条只挡「另写一套比较逻辑」，不是完整校验。
 #[test]
 fn the_local_path_does_not_hand_roll_version_comparison() {
-    let src = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/local_backend.rs"));
+    let src = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     // 判据串运行时拼，免得命中本文件自己的头注。
     let bad = format!("{}_id !=", "build");
     assert!(
@@ -1806,7 +1811,9 @@ fn the_native_daemon_path_is_spelled_the_same_on_both_sides() {
     };
     let dir = spelled("NATIVE_DAEMON_DIR");
     let file = spelled("NATIVE_DAEMON_FILE");
-    let prod = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/local_backend.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     // 🔴 〔2026-09-18 修笔误〕原来是 `"\"../../..{dir}/{file}\""` —— **`../../..` 与
     // `{dir}` 之间少一个 `/`**，拼出来是 `"../../..native-daemon/…"`，而代码里是
     // `"../../../native-daemon/…"` ⇒ `contains` 永远不成立。
@@ -1843,7 +1850,9 @@ fn the_extracted_name_carries_the_target_exe_suffix() {
     //   `needle_anchor_registry` 那条递减棘轮数着，而这里也确实不该用子串匹配。
     //   **不用 `find_pinned`**：这个名字在本文件里还出现在头注里，本条要的是
     //   「生产段还引着它」，不是「只出现一次」。
-    let prod = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/local_backend.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     assert!(
         guard_core::contains_word(&prod, "CCM_TARGET_EXE_SUFFIX"),
         "生产段里不再引用那个编译期常量 —— 后缀要么被写死成空串（Windows 上退化），\
@@ -1940,7 +1949,9 @@ fn nothing_in_the_production_path_wakes_itself_up() {
         Decision::Restart => {}
         Decision::GiveUp { .. } => {}
     }
-    let src = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/local_backend.rs"));
+    let src = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     // 判据串运行时拼，免得命中本文件自己的头注（那里逐字讨论过这两个词）。
     for bad in [format!("thread::{}", "sleep"), format!("try_{}", "wait()")] {
         assert!(
@@ -2003,7 +2014,9 @@ fn the_window_env_uses_the_one_home_and_stays_silent_without_a_sidecar() {
 /// 这条判据**不会**替你盯着它。
 #[test]
 fn the_daemon_bin_env_name_has_exactly_one_home() {
-    let me = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/local_backend.rs"));
+    let me = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     let lit = format!("\"{}\"", super::DAEMON_BIN_ENV);
     let n_lit = me.matches(lit.as_str()).count();
     assert_eq!(
@@ -2153,8 +2166,7 @@ fn the_two_carriers_are_copies_of_one_build_with_nothing_rebuilt_between() {
     //    `Stage native daemon for self-extract` 头一行是 `rustc -vV | …` 取 target triple，
     //    那是一次**查询**，一个字节都没编。把它读成构建就是一条自信的假报警
     //    （`C17`：诊断不许比它证得出的说得更死）。
-    const RUSTC_QUERIES: [&str; 4] =
-        ["rustc -vV", "rustc -V", "rustc --version", "rustc --print"];
+    const RUSTC_QUERIES: [&str; 4] = ["rustc -vV", "rustc -V", "rustc --version", "rustc --print"];
     let is_build_action = |t: &str| -> bool {
         if t.starts_with('#') {
             return false;
@@ -2248,7 +2260,9 @@ fn the_startup_path_really_calls_this_module() {
         guard_core::production_code(include_str!("../../../../src/bridge/src/local_daemon.rs")),
     );
     let prod = prod.as_str();
-    let me = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/local_backend.rs"));
+    let me = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     // 本模块今天对外的生产入口清单。加入口 = 往这里加一条（**不许**留空清单）。
     assert!(
         !ENTRIES.is_empty(),
@@ -2825,7 +2839,9 @@ fn kill_for_test(pid: u32) {
 /// 一挪过去，`the_local_daemon_really_registers_an_inbound_client` 会**静默掉出那条判据的人群**
 /// （实测：那条判据的地板当场红，报文逐字「它起真 daemon 的来历不见了」）。
 fn shared_resolution_body() -> String {
-    let prod = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/local_backend.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     let at = prod
         .find("pub fn resolve_or_extract(")
         .expect("找不到 `resolve_or_extract` —— 改名了就把引它的判据一起改");
@@ -2843,7 +2859,9 @@ fn shared_resolution_body() -> String {
 
 /// 监护线程「等它死 + 收尸」那一段的生产源码。
 fn wait_section() -> String {
-    let prod = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/local_backend.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     let at = prod
         .find("pub fn supervise(")
         .expect("找不到 `supervise` —— 改名了就把下面三条一起改");
@@ -3120,7 +3138,9 @@ fn stop_returns_promptly_even_if_the_child_closed_stdout_but_lives_on() {
 /// ③ 那一格喂的是注入的消费者 —— 各自的射程写在那条判据自己的头注里。
 #[test]
 fn the_consumer_reports_what_it_observed_not_a_default() {
-    let prod = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/local_backend.rs"));
+    let prod = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/local_backend.rs"
+    ));
     assert!(
         prod.len() > 10_000,
         "剥完只剩 {} 字节 —— 本条在空转",

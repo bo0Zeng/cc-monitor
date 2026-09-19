@@ -1214,9 +1214,7 @@ fn every_position_comparison_over_source_pins_and_bounds_its_anchors() {
                     .any(|l| l.trim().starts_with("assert!(") && l.contains(" < "))
                 || body.lines().any(|l| {
                     let t = l.trim();
-                    t.ends_with(" < types,")
-                        || t.ends_with(" < scan_at,")
-                        || t.ends_with(" < act,")
+                    t.ends_with(" < types,") || t.ends_with(" < scan_at,") || t.ends_with(" < act,")
                 });
             if !compares {
                 continue;
@@ -1691,8 +1689,7 @@ fn the_address_extractors_really_see_each_shape() {
     );
 
     // ② 形 B：带墓碑标记的那一行整行不进人群。
-    let t =
-        format!("这里先前点着 relay/server.rs{colon}97，今天不对了 {LINE_ADDRESS_TOMBSTONE}");
+    let t = format!("这里先前点着 relay/server.rs{colon}97，今天不对了 {LINE_ADDRESS_TOMBSTONE}");
     assert!(
         line_addresses(&t).is_empty(),
         "带 {LINE_ADDRESS_TOMBSTONE} 的行不该进人群 —— 否则判据会去红「记录了这个病的那段话」本身"

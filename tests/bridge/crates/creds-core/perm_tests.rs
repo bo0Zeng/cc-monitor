@@ -1,7 +1,9 @@
 use super::*;
 
 fn production() -> String {
-    guard_core::production_code(include_str!("../../../../src/bridge/crates/creds-core/src/perm.rs"))
+    guard_core::production_code(include_str!(
+        "../../../../src/bridge/crates/creds-core/src/perm.rs"
+    ))
 }
 
 /// ★★ **`KS5` 的机检那一半：Windows 那半不许是「无操作」。**

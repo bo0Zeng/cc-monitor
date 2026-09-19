@@ -177,11 +177,7 @@ fn each_type_has_exactly_one_door_and_the_exit_needs_the_witness() {
             //   抽出空清单 —— 「我以为的对象 ≠ 切片圈住的对象」这一族，本会话第三次。
             let header_cont =
                 line.starts_with("where") || line.starts_with(')') || line.trim() == "{";
-            if i > 0
-                && !line.is_empty()
-                && !line.starts_with(char::is_whitespace)
-                && !header_cont
-            {
+            if i > 0 && !line.is_empty() && !line.starts_with(char::is_whitespace) && !header_cont {
                 break;
             }
             if let Some(rest) = line.trim().strip_prefix("pub fn ") {
@@ -481,9 +477,9 @@ fn the_tmux_primitive_arg_builder_matches_the_daemon_parser() {
     /// 从 daemon 的 `REGISTRY` 里抠出某条命令那一格 `fields: &[…]` 的成员。
     fn fields_of(prod: &str, cmd: &str) -> Vec<String> {
         let head = format!("name: \"{cmd}\",");
-        let at = prod.find(&head).unwrap_or_else(|| {
-            panic!("daemon 的 `REGISTRY` 里找不到 `{cmd}` —— 尺子的作用域没了")
-        });
+        let at = prod
+            .find(&head)
+            .unwrap_or_else(|| panic!("daemon 的 `REGISTRY` 里找不到 `{cmd}` —— 尺子的作用域没了"));
         let rest = &prod[at..];
         let f = rest
             .find("fields: &[")
@@ -709,9 +705,7 @@ async fn a_timeout_fires_a_cancel_for_the_abandoned_id() {
     let (client, mut peer) = client_on_duplex(&["ping", "cancel"]);
     let c = client.clone();
     let caller =
-        tokio::spawn(
-            async move { c.call("ping", Value::Null, Duration::from_millis(60)).await },
-        );
+        tokio::spawn(async move { c.call("ping", Value::Null, Duration::from_millis(60)).await });
 
     let first = next_line(&mut peer).await;
     let ping_id = serde_json::from_str::<Value>(first.trim_end()).expect("JSON")["id"]
@@ -747,17 +741,14 @@ async fn no_cancel_is_fired_when_the_daemon_does_not_declare_it() {
     let (client, mut peer) = client_on_duplex(&["ping"]);
     let c = client.clone();
     let caller =
-        tokio::spawn(
-            async move { c.call("ping", Value::Null, Duration::from_millis(60)).await },
-        );
+        tokio::spawn(async move { c.call("ping", Value::Null, Duration::from_millis(60)).await });
     let _first = next_line(&mut peer).await;
     assert!(matches!(
         caller.await.expect("task").unwrap_err(),
         CallError::Timeout { .. }
     ));
     let mut second = String::new();
-    let read =
-        tokio::time::timeout(Duration::from_millis(200), peer.read_line(&mut second)).await;
+    let read = tokio::time::timeout(Duration::from_millis(200), peer.read_line(&mut second)).await;
     assert!(read.is_err(), "不该补发 cancel，却发了：{second:?}");
 }
 
@@ -767,9 +758,7 @@ async fn a_late_reply_after_timeout_still_finds_its_registration() {
     let (client, mut peer) = client_on_duplex(&["ping"]);
     let c = client.clone();
     let caller =
-        tokio::spawn(
-            async move { c.call("ping", Value::Null, Duration::from_millis(60)).await },
-        );
+        tokio::spawn(async move { c.call("ping", Value::Null, Duration::from_millis(60)).await });
     let line = next_line(&mut peer).await;
     let id = serde_json::from_str::<Value>(line.trim_end()).expect("JSON")["id"]
         .as_str()
@@ -860,8 +849,7 @@ async fn shutdown_wakes_every_waiter_with_disconnected() {
 fn ids_from_two_connections_never_collide() {
     let mk = || {
         let (mine, _theirs) = tokio::io::duplex(1024);
-        let hello =
-            DaemonHello::from_hello_frame(&hello_frame(&["ping"])).expect("是 Hello 帧");
+        let hello = DaemonHello::from_hello_frame(&hello_frame(&["ping"])).expect("是 Hello 帧");
         park(mine).into_client(hello)
     };
     let rt = tokio::runtime::Builder::new_current_thread()
@@ -884,8 +872,7 @@ fn unregister_never_removes_someone_elses_client() {
         .expect("rt");
     let mk = || {
         let (mine, _theirs) = tokio::io::duplex(1024);
-        let hello =
-            DaemonHello::from_hello_frame(&hello_frame(&["ping"])).expect("是 Hello 帧");
+        let hello = DaemonHello::from_hello_frame(&hello_frame(&["ping"])).expect("是 Hello 帧");
         park(mine).into_client(hello)
     };
     let (old, new) = rt.block_on(async { (mk(), mk()) });

@@ -178,8 +178,7 @@ fn the_rc_source_line_is_added_once_and_keeps_user_content() {
     let lines = vec!["zcc() { ccm --account 'z' \"$@\"; }".to_string()];
     let line = source_line(&alias_file_in(&h.0));
 
-    let added =
-        ensure_rc_source_line(&h.0, &rc.display().to_string(), &line).expect("第一次装");
+    let added = ensure_rc_source_line(&h.0, &rc.display().to_string(), &line).expect("第一次装");
     assert!(added, "第一次该真写");
     let after = std::fs::read_to_string(&rc).expect("读回");
     assert!(
@@ -223,8 +222,7 @@ fn an_rc_that_already_sources_it_via_home_var_is_recognized() {
     let before = std::fs::read(&rc).expect("读原文");
 
     let line = source_line(&alias_file_in(&h.0));
-    let added =
-        ensure_rc_source_line(&h.0, &rc.display().to_string(), &line).expect("不该报错");
+    let added = ensure_rc_source_line(&h.0, &rc.display().to_string(), &line).expect("不该报错");
     assert!(
         !added,
         "★ 已经 source 过了还要再加一行 —— 那正是「重复追加」那条病"
@@ -265,8 +263,8 @@ fn a_damaged_fence_leaves_the_rc_byte_identical() {
     std::fs::write(&rc, &original).expect("写 rc");
     let before = std::fs::read(&rc).expect("读原文");
     let line = source_line(&alias_file_in(&h.0));
-    let e = ensure_rc_source_line(&h.0, &rc.display().to_string(), &line)
-        .expect_err("围栏损坏该中止");
+    let e =
+        ensure_rc_source_line(&h.0, &rc.display().to_string(), &line).expect_err("围栏损坏该中止");
     assert!(e.contains("找不到配对的 END"), "理由要说得清：{e}");
     assert_eq!(
         std::fs::read(&rc).expect("读回"),

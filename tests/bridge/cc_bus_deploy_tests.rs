@@ -104,17 +104,16 @@ fn an_empty_dir_counts_as_not_installed() {
 #[test]
 fn every_script_in_the_repo_is_embedded_for_deployment() {
     let dir = crate::guard_support::repo_root().join("src/shared/cc-bus/scripts");
-    let mut on_disk: Vec<String> =
-        guard_core::shell_scripts(&crate::guard_support::repo_root())
-            .into_iter()
-            .filter(|p| p.replace('\\', "/").contains("src/shared/cc-bus/scripts/"))
-            .filter_map(|p| {
-                std::path::Path::new(&p)
-                    .file_name()
-                    .and_then(|s| s.to_str())
-                    .map(|s| s.to_string())
-            })
-            .collect();
+    let mut on_disk: Vec<String> = guard_core::shell_scripts(&crate::guard_support::repo_root())
+        .into_iter()
+        .filter(|p| p.replace('\\', "/").contains("src/shared/cc-bus/scripts/"))
+        .filter_map(|p| {
+            std::path::Path::new(&p)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(|s| s.to_string())
+        })
+        .collect();
     on_disk.sort();
     assert!(
         on_disk.len() >= 10,

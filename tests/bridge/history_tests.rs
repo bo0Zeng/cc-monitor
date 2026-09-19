@@ -1,4 +1,3 @@
-
 /// 〔audit-0805 08-06〕**防命令注入的那道校验，此前一条判据都没有。**
 ///
 /// # 怎么找到的
@@ -490,9 +489,8 @@ fn the_local_renderer_refuses_every_shape_the_front_end_can_send_today() {
         &caps_of_a_current_ccm(),
         true,
     );
-    let reason = r.expect_err(
-        "具名账号今天渲染不出来 —— 若它成功了，请先确认 `--account` 的名字是从哪来的",
-    );
+    let reason =
+        r.expect_err("具名账号今天渲染不出来 —— 若它成功了，请先确认 `--account` 的名字是从哪来的");
     assert!(
         reason.contains("account"),
         "具名账号的降级理由该指向 account 维度（§35 短路），实得：{reason}"
@@ -1464,9 +1462,8 @@ fn every_address_the_retirement_condition_names_is_still_on_disk() {
 fn the_local_launch_tries_the_renderer_before_the_old_path() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/history.rs"));
     // 锚点唯一性：`fn launch_local(` 全树恰好一处（`find_pinned` 自带边界检查）。
-    let at = guard_core::find_pinned(&prod, "fn launch_local(").unwrap_or_else(|e| {
-        panic!("`fn launch_local(` 不是恰好一处 —— 形状变了，先修锚点：{e}")
-    });
+    let at = guard_core::find_pinned(&prod, "fn launch_local(")
+        .unwrap_or_else(|e| panic!("`fn launch_local(` 不是恰好一处 —— 形状变了，先修锚点：{e}"));
     let body = {
         let b = prod.as_bytes();
         let open = (at..b.len())
@@ -1492,12 +1489,12 @@ fn the_local_launch_tries_the_renderer_before_the_old_path() {
         body.len()
     );
 
-    let r = body.find("render_local_ccm(").expect(
-        "`launch_local` 体里找不到 `render_local_ccm(` —— 渲染器没接上，本机还是走旧路",
+    let r = body
+        .find("render_local_ccm(")
+        .expect("`launch_local` 体里找不到 `render_local_ccm(` —— 渲染器没接上，本机还是走旧路");
+    let old = body.find("build_local_posix_command(").expect(
+        "`launch_local` 体里找不到 `build_local_posix_command(` —— 回落没了，渲染器拒了就无路可走",
     );
-    let old = body
-        .find("build_local_posix_command(")
-        .expect("`launch_local` 体里找不到 `build_local_posix_command(` —— 回落没了，渲染器拒了就无路可走");
     assert!(
         r < old,
         "★ 顺序反了：`build_local_posix_command` 出现在 `render_local_ccm` **之前**。\n\
@@ -1928,8 +1925,8 @@ fn account_zero_injects_nothing_byte_for_byte() {
     // ② ★★ 显式账号 0 = **unset**，不是「什么都不加」。Phase G 审计抓出的静默串号：
     //    本地拉起故意加载 rc，而 rc 里很可能有 `export CLAUDE_CONFIG_DIR=<默认账号>`
     //    ⇒ 「什么都不加」会落到别的号上，而弹窗上写着「不注入」。
-    let base = build_local_posix_command(&LocalPsAction::New, None, Some(&LaunchAccount::Base))
-        .unwrap();
+    let base =
+        build_local_posix_command(&LocalPsAction::New, None, Some(&LaunchAccount::Base)).unwrap();
     assert!(
         base.starts_with("unset CLAUDE_CONFIG_DIR; "),
         "账号 0 必须显式 unset：{base}"
@@ -1989,8 +1986,7 @@ fn windows_account_dirs_are_accepted_by_the_ps_side() {
     }
     // POSIX 那条**仍然**只收 POSIX 路径（各自平台各自判据，别互相放宽）
     assert!(
-        build_local_posix_command(&LocalPsAction::New, None, Some(&named("C:\\Users\\z")))
-            .is_err(),
+        build_local_posix_command(&LocalPsAction::New, None, Some(&named("C:\\Users\\z"))).is_err(),
         "POSIX 侧不该接受 Windows 路径"
     );
     // 反斜杠形态的 `..` 也要挡住
@@ -2002,8 +1998,7 @@ fn windows_account_dirs_are_accepted_by_the_ps_side() {
     }
     // 引号仍然禁（单引号能提前闭合 PS 的字面量串）
     assert!(
-        build_local_ps_command(&LocalPsAction::New, None, Some(&named("C:\\a'; rm x; '")))
-            .is_err()
+        build_local_ps_command(&LocalPsAction::New, None, Some(&named("C:\\a'; rm x; '"))).is_err()
     );
 }
 
@@ -2636,7 +2631,9 @@ fn finding_a_session_file_by_sid_now_lives_in_exactly_one_place() {
     const CALL: &str = "branch_core::find_session_file(";
 
     // ① 唯一那份：声明只有一处，且住在共享 crate 里。
-    let core = guard_core::production_code(include_str!("../../src/bridge/crates/branch-core/src/lib.rs"));
+    let core = guard_core::production_code(include_str!(
+        "../../src/bridge/crates/branch-core/src/lib.rs"
+    ));
     let decls = core.matches("pub fn find_session_file").count();
     assert_eq!(
         decls, 1,
@@ -3246,8 +3243,7 @@ fn the_windows_local_path_never_grows_a_session_container() {
         config_dir: "C:\\Users\\z\\.claude-accts\\z".into(),
         name: None,
     };
-    let accounts: [Option<&LaunchAccount>; 3] =
-        [None, Some(&LaunchAccount::Base), Some(&named)];
+    let accounts: [Option<&LaunchAccount>; 3] = [None, Some(&LaunchAccount::Base), Some(&named)];
     let mut checked = 0usize;
     for action in [LocalPsAction::New, LocalPsAction::Resume(sid.to_string())] {
         for acct in accounts {
@@ -3277,9 +3273,7 @@ fn the_windows_local_path_never_grows_a_session_container() {
     //   锚点不唯一时下面切出来的臂可能是别人的。⇒ 按 `F19` 那条纪律
     //   「把 needle 扩到能唯一确定那个事实的大小」，而**不是**把断言放宽。
     let at = guard_core::find_pinned(&prod, "#[cfg(windows)]\n    let base = {")
-        .unwrap_or_else(|e| {
-            panic!("`launch_local` 的 Windows 臂锚点不是恰好一处，先修锚点：{e}")
-        });
+        .unwrap_or_else(|e| panic!("`launch_local` 的 Windows 臂锚点不是恰好一处，先修锚点：{e}"));
     let arm = {
         let b = prod.as_bytes();
         let open = (at..b.len()).find(|&i| b[i] == b'{').expect("找不到块起点");
@@ -3353,8 +3347,7 @@ fn emit_local_launch_command_for_e2e() {
 fn posix_renderer_keeps_sid_and_launcher_defenses() {
     for bad in ["", "../etc", "a b", "x;id", "sid$(id)"] {
         assert!(
-            build_local_posix_command(&LocalPsAction::Resume(bad.to_string()), None, None)
-                .is_err(),
+            build_local_posix_command(&LocalPsAction::Resume(bad.to_string()), None, None).is_err(),
             "POSIX 渲染器应拒绝非法 sid: {bad:?}"
         );
     }
@@ -3881,8 +3874,7 @@ fn the_local_launch_really_asks_the_production_ccm_probe() {
         ),
         "这把尺子对任何同型函数都说「是」—— 它恒真，本条按红处理"
     );
-    let production =
-        crate::ccm_probe::probe_local_ccm as fn() -> crate::ccm_probe::CcmProbeResult;
+    let production = crate::ccm_probe::probe_local_ccm as fn() -> crate::ccm_probe::CcmProbeResult;
     // ⚠ **刻意不装替身**（替身住 thread-local ⇒ 别的判据装的那份影响不到这里）。
     assert!(
         std::ptr::fn_addr_eq(ccm_probe_source().0, production),
@@ -4090,8 +4082,7 @@ fn the_relay_prefix_is_really_prepended_to_the_command_that_gets_launched() {
         };
         // ① 表里没有这个号 ⇒ 逐字节旧路。这一趟同时是下面那条相等断言的**基准串**。
         answer(&[], true);
-        launch_local(&action, None, None, Some(&account), None)
-            .expect("不走中转这一趟不该失败");
+        launch_local(&action, None, None, Some(&account), None).expect("不走中转这一趟不该失败");
         let bare = last_sent();
         assert!(
             !bare.is_empty() && bare.contains(dir),

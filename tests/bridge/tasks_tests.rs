@@ -10,8 +10,8 @@ impl TestDir {
     fn new(tag: &str) -> Self {
         static N: AtomicU64 = AtomicU64::new(0);
         let n = N.fetch_add(1, Ordering::Relaxed);
-        let p = std::env::temp_dir()
-            .join(format!("ccm-tasks-test-{}-{tag}-{n}", std::process::id(),));
+        let p =
+            std::env::temp_dir().join(format!("ccm-tasks-test-{}-{tag}-{n}", std::process::id(),));
         let _ = fs::remove_dir_all(&p);
         fs::create_dir_all(&p).unwrap();
         TestDir(p)
@@ -130,8 +130,7 @@ fn read_parses_optional_fields() {
 #[test]
 fn session_id_from_change_strips_root() {
     let root = PathBuf::from("/x/tasks");
-    let got =
-        session_id_from_change(&PathBuf::from("/x/tasks/sid-xyz/15.json"), &root).unwrap();
+    let got = session_id_from_change(&PathBuf::from("/x/tasks/sid-xyz/15.json"), &root).unwrap();
     assert_eq!(got, "sid-xyz");
 }
 

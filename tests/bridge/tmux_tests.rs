@@ -833,8 +833,8 @@ fn the_local_capture_is_no_longer_a_dead_end() {
 #[test]
 fn the_local_kill_never_falls_back_to_ssh() {
     let prod = guard_core::production_code(include_str!("../../src/bridge/src/tmux.rs"));
-    let at = guard_core::find_pinned(&prod, "pub async fn kill_remote_tmux(")
-        .expect("kill 入口不在了");
+    let at =
+        guard_core::find_pinned(&prod, "pub async fn kill_remote_tmux(").expect("kill 入口不在了");
     let body: String = prod[at..]
         .lines()
         .skip(1)
@@ -1032,9 +1032,8 @@ fn tmux_targets_use_exact_match() {
     let mut checked = 0usize;
     for (file, why) in [("capture_pane.rs", "抓屏"), ("kill.rs", "杀会话")] {
         let p = daemon.join(file);
-        let raw = std::fs::read_to_string(&p).unwrap_or_else(|e| {
-            panic!("读不到 {p:?}：{e} —— 本条的被测对象没了，它此刻在空转")
-        });
+        let raw = std::fs::read_to_string(&p)
+            .unwrap_or_else(|e| panic!("读不到 {p:?}：{e} —— 本条的被测对象没了，它此刻在空转"));
         let prod = guard_core::production_code(&raw);
         assert!(
             prod.contains("exact_target("),

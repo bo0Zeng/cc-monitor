@@ -385,8 +385,8 @@ fn the_streamed_remote_entry_does_not_hardcode_its_liveness() {
     })
     .to_string();
 
-    let unknown = remote_session_entry(&line, "p", &md, "pi", &NoLivenessOracleYet)
-        .expect("这一行是好的");
+    let unknown =
+        remote_session_entry(&line, "p", &md, "pi", &NoLivenessOracleYet).expect("这一行是好的");
     assert_eq!(
         unknown.is_live, None,
         "🔴 09-12 之前这一格是字面量 `false`（住 `remote_history.rs::stream_remote_history_sessions` \
@@ -395,8 +395,7 @@ fn the_streamed_remote_entry_does_not_hardcode_its_liveness() {
              ⚠ 本条判的是**性质**（这条路上有没有写死的活状态），不钉那一行的行号。"
     );
 
-    let live =
-        remote_session_entry(&line, "p", &md, "pi", &Oracle(&["s1"])).expect("这一行是好的");
+    let live = remote_session_entry(&line, "p", &md, "pi", &Oracle(&["s1"])).expect("这一行是好的");
     assert_eq!(live.is_live, Some(true), "★ 第 ② 刀：真值要端得动");
     let dead = remote_session_entry(&line, "p", &md, "pi", &Oracle(&[])).expect("这一行是好的");
     assert_eq!(
@@ -586,19 +585,18 @@ async fn the_number_of_remote_execs_equals_the_number_of_hosts() {
 #[tokio::test]
 async fn a_failing_host_is_still_skipped_and_reported_not_fatal() {
     let md = metadata_with(&[], &[]);
-    let out =
-        fanout_list_projects(&[cfg("good"), cfg("bad")], &md, &NoLivenessOracleYet, |c| {
-            let bad = c.origin_label() == "bad";
-            async move {
-                if bad {
-                    Err("连不上".to_string())
-                } else {
-                    Ok(vec![row("p", &["s1"]).to_string()])
-                }
+    let out = fanout_list_projects(&[cfg("good"), cfg("bad")], &md, &NoLivenessOracleYet, |c| {
+        let bad = c.origin_label() == "bad";
+        async move {
+            if bad {
+                Err("连不上".to_string())
+            } else {
+                Ok(vec![row("p", &["s1"]).to_string()])
             }
-        })
-        .await
-        .expect("有一台成功 ⇒ 整体 Ok");
+        }
+    })
+    .await
+    .expect("有一台成功 ⇒ 整体 Ok");
     assert_eq!(out.failed_hosts, vec!["bad".to_string()]);
     assert_eq!(out.rows.len(), 1);
 }

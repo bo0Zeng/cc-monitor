@@ -44,7 +44,9 @@ fn both_mode_names_are_ones_the_daemon_actually_parses() {
 /// 理由与对照关系的全文住 `daemon_kill.rs::the_refusal_wording_matches_the_sibling_command`。
 #[test]
 fn the_refusal_wording_matches_the_sibling_command() {
-    let sibling = guard_core::production_code(include_str!("../../../../src/bridge/src/backend/control/daemon_kill.rs"));
+    let sibling = guard_core::production_code(include_str!(
+        "../../../../src/bridge/src/backend/control/daemon_kill.rs"
+    ));
     for (code, needle) in [
         ("no_tmux", "远端未安装 tmux"),
         ("no_such_session", "远端会话已不存在（可能已被终止）"),
