@@ -1,7 +1,10 @@
 {
   "extends": "stylelint-config-standard",
-  "comment": "F08b：CSS lint 基线/顾问式。extends standard；下面 rules 只关掉对既有手写 styles.css 噪音大、非缺陷的项（不追一次清零）。CI advisory 不阻断。",
+  "comment": "F08b：CSS lint 基线。extends standard；下面 rules 只关掉对既有手写 styles.css 噪音大、非缺陷的项（不追一次清零）。〔S25 · 设计/40 步 9 ④〕新增 declaration-property-value-allowed-list：z-index 只许写 var(--z-*)。CI 里 `npm run lint:css` 仍是 advisory（`|| true`），真正会红的是 tests/css-ledger.vitest.ts 那两格（z-index 恒等 + 报错总数递减棘轮）——住址在判据里，理由写在那份文件的头注。",
   "rules": {
+    "declaration-property-value-allowed-list": {
+      "z-index": ["/^var\\(--z-[a-z0-9-]+\\)$/"]
+    },
     "no-descending-specificity": null,
     "custom-property-empty-line-before": null,
     "declaration-empty-line-before": null,
