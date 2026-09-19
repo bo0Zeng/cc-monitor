@@ -952,7 +952,7 @@ describe("K-H2b KH2B7：api-key 号那一格的三态，与「实现的三态」
     acct({ name: "acct-a", loggedIn: false, authKind: "api-key", authReady: true });
 
   // ★★ 本 describe 存在的理由，逐字：**本件落地那一刻，那句 hover 就对一部分号成了假话**
-  //（本机、中转表里有它那一行、中转在跑的那些号，cc-monitor **真的**会替它配 base URL）。
+  //（本机、apikey 表里有它那一行、中转在跑的那些号，cc-monitor **真的**会替它配 base URL）。
   // 而「改了事实没改说它的那句话」是本区花过六轮的那一族（ROADMAP 风险 6v / 裁定 K20）。
   // ⇒ 这里把**实现的三态**与**徽章的三态**钉成一一对应：少一格、串一格，都红。
 

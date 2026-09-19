@@ -555,7 +555,7 @@ function accountColorSlotFor(name: string): number {
 // K-H2a：中转那把第三方 API key 的**前端那一半**（`KS6` 永不回显 / `KS9` 路径 /
 // `KS11` 界面出声 / `KS7` 不进前端整份读写的那份配置）。
 // ─────────────────────────────────────────────────────────────────────────────
-describe("K-H2a：中转 API key 的前端一半", () => {
+describe("K-H2a：第三方 API key 的前端一半", () => {
   // ⚠ 用 `process.cwd()` 相对路径而不是 `import.meta.url`：本仓 vitest 跑在仓根，
   //   而 `import.meta.url` 在这套 transform 下不是 file: scheme（实测 `The URL must be of scheme file`）。
   const src = () => readFileSync("src/settings/accounts-section.ts", "utf8");
@@ -571,7 +571,7 @@ describe("K-H2a：中转 API key 的前端一半", () => {
     };
   }
 
-  // `K-H2c`：那一块今天要**配给某一个账号**。默认给两个号，第一个已经在中转表里。
+  // `K-H2c`：那一块今天要**配给某一个账号**。默认给两个号，第一个已经在apikey 表里。
   // ⚠ 名字与 configDir 末段**刻意不同名**（`n1` vs `dir-one`）：断言里凡是用到 id 的地方，
   //   同名会让「前端拿名字当 id」与「后端从 configDir 推 id」两种实现**都绿**。
   const ACCTS = [

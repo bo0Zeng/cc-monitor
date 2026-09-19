@@ -22,7 +22,7 @@ import {
   accountStatusBadge,
   accountLoginActionLabel,
   setDefaultName,
-  // K-H2c：「这几个号在不在中转表里」问后端要 —— 前端不推账号 id、也不读那份凭据文件。
+  // K-H2c：「这几个号在不在apikey 表里」问后端要 —— 前端不推账号 id、也不读那份凭据文件。
   fetchLocalRelayRouting,
   getModelForAccount,
   setModelForAccount,
@@ -70,7 +70,7 @@ export interface RelayKeyAccount {
   name: string;
   /** 递给后端那条命令的不透明串。 */
   configDir: string;
-  /** 中转表里今天有没有它那一行 —— `KH2B7` 的答案，**后端算的**。 */
+  /** apikey 表里今天有没有它那一行 —— `KH2B7` 的答案，**后端算的**。 */
   routed: boolean;
 }
 
@@ -120,7 +120,7 @@ export function renderRelayKeyBlock(
 
   const title = document.createElement("div");
   title.className = "relay-key-title";
-  title.textContent = "中转 API key";
+  title.textContent = "第三方 API key";
   box.appendChild(title);
 
   // ★ `K-H2c`：配给**哪个账号**。选项的 value 是那个不透明的 configDir。
@@ -141,8 +141,8 @@ export function renderRelayKeyBlock(
     state.textContent = !a
       ? "这台机器上没有能配的账号：账号 0 在 manifest 里没有目录名，说不出 id ⇒ 配了也不会被注入。先加一个隔离账号，或者直接编辑下面那份 JSON。"
       : a.routed
-        ? `${a.name}：中转表里已经有它那一行。再存一次会**替换**它那一把 key。`
-        : `${a.name}：中转表里还没有它那一行 —— 它的会话今天走官方直连。`;
+        ? `${a.name}：apikey 表里已经有它那一行。再存一次会**替换**它那一把 key。`
+        : `${a.name}：apikey 表里还没有它那一行 —— 它的会话今天走官方直连。`;
   };
   if (accounts.length) box.appendChild(picker);
   syncState();
@@ -540,7 +540,7 @@ export class AccountsSection {
    * 本机清单里的一行。**只读** —— 这一件不做切号，也不做加号。
    *
    * ⚠ 徽章走 `accountStatusBadge(a)` 而**不传** `relay`：那个参数说的是
-   * 「这个号在中转表里有没有一行、本机中转在不在跑」，本件没有去问后端要这两格
+   * 「这个号在apikey 表里有没有一行、本机中转在不在跑」，本件没有去问后端要这两格
    *（那要多一条 IPC，属下一件）⇒ **不传就是如实说「这一处没被告知」**，
    * 它自己的那一支逐字写着「所以不替它下判断」。
    * 🔴 **千万别顺手传 `{ scope: "remote" }`** —— 那会让一台本机的号被解释成远端那一半，
@@ -916,7 +916,7 @@ export class AccountsSection {
    *
    * # ⚠ `K-H2c` 三条口径，一条都别省
    *
-   * ① **「这个号在不在中转表里」是问后端要的**（`KH2B7` 那条既有命令），
+   * ① **「这个号在不在apikey 表里」是问后端要的**（`KH2B7` 那条既有命令），
    *    前端不推账号 id、也不读那份凭据文件。它失败**不挡配 key** ——
    *    那只影响状态那一行的措辞，而配 key 本身是这一块存在的理由。
    * ② **没有 `configDir` 的账号（账号 0）被滤掉**：起会话那一侧对它逐字回 `None`
@@ -949,14 +949,14 @@ export class AccountsSection {
             await commands.write_relay_credentials_key({ key, configDir });
             void this.reload(true);
           } catch (e) {
-            showActionFailureToast("保存中转 API key", String(e));
+            showActionFailureToast("保存第三方 API key", String(e));
           }
         }),
       );
     } catch (e) {
       const box = document.createElement("div");
       box.className = "relay-key-problem";
-      box.textContent = `读不到中转 API key 的状态：${String(e)}`;
+      box.textContent = `读不到第三方 API key 的状态：${String(e)}`;
       this.body.appendChild(box);
     }
   }

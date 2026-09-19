@@ -1006,14 +1006,14 @@ fn observe_one_cell(name: &str) -> CellToday {
 /// # 今天的成因（本条逐格量出来，不是推的）
 ///
 /// 分母 = [`LaunchAccount`] 的**全部形状**加上「参数缺席」，并且**具名那一格喂两个号**
-/// （一个在中转表里、一个不在 —— 只喂一个的话「中转在不在场」这一维的取值域是 1，
+/// （一个在apikey 表里、一个不在 —— 只喂一个的话「中转在不在场」这一维的取值域是 1，
 /// 那正是 `D6 阻-2` 逮到过的形状）：
 ///
 /// | 形状 | 送出去那一串带不带中转前缀 | 带不带 `--tmux=`（= [`launch_local`] 的判据） |
 /// |---|---|---|
 /// | 缺席（`None`） | 不带（不走中转） | **是**〔🔴 `K-R89` 09-13 翻的：`R28` 之后省略有确定语义，渲染器说得出「继承」了〕 |
 /// | `Base`（账号 0） | 不带（不走中转） | **是** |
-/// | `Named{acct-a}`（**在中转表里**） | 带 | 否 —— `relay.is_empty()` 那一行挡住 |
+/// | `Named{acct-a}`（**在apikey 表里**） | 带 | 否 —— `relay.is_empty()` 那一行挡住 |
 /// | `Named{acct-b}`（不在表里） | 不带 | **是**（`K-R53` 开的就是这一格） |
 ///
 /// # ⚠ 它连带说明了一件别处的事（别让那条判据被读宽）
@@ -1045,12 +1045,12 @@ fn observe_one_cell(name: &str) -> CellToday {
 fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
     let act = LocalPsAction::Resume("s1".into());
     let base = LaunchAccount::Base;
-    // 在中转表里的那个号 —— 名字说得出（本件之后前端就是这么传的）。
+    // 在apikey 表里的那个号 —— 名字说得出（本件之后前端就是这么传的）。
     let acct_a = LaunchAccount::Named {
         config_dir: "/home/u/.claude-accts/acct-a".into(),
         name: Some("acct-a".into()),
     };
-    // 不在中转表里的那个号 —— 「哪个号」这一维的取值域因此是 2，不是 1（`D6 阻-2`）。
+    // 不在apikey 表里的那个号 —— 「哪个号」这一维的取值域因此是 2，不是 1（`D6 阻-2`）。
     let acct_b = LaunchAccount::Named {
         config_dir: "/home/u/.claude-accts/acct-b".into(),
         name: Some("acct-b".into()),
@@ -1100,7 +1100,7 @@ fn a_launch_that_goes_through_the_relay_still_cannot_get_a_tmux_container() {
     const TMUX: &str = "s1abcdef-cc";
 
     // ⓪ **重新裁定的那一格**：渲染器**单独看**已经不再互斥了 ——
-    //    在中转表里的那个号，渲染器今天渲得出来。互斥不再由它保。
+    //    在apikey 表里的那个号，渲染器今天渲得出来。互斥不再由它保。
     //    （这一格红 = `K-R53` 那一刀被退掉了，那时下面几格的理由也就不成立。）
     //    ⚠ 走的是**生产那个渲染器** [`render_local_ccm`]（探测经缝喂），
     //    不是它的纯函数半 —— 后者会把「生产上探测这一跳还在不在」漏在射程外。
@@ -3413,7 +3413,7 @@ fn unified_builder_byte_identical_to_pre_f06_new_session_output() {
 // ═════════════════════════════════════════════════════════════════════
 
 /// ★★★ `KH2B5`（`§0e` 裁一）**在这一层的对照** —— 同一条起会话路径、同一个函数，
-/// 只有「这个号在不在中转表里」不同：
+/// 只有「这个号在不在apikey 表里」不同：
 /// api-key 号（表里有行）的命令**带**那个 env，官方号的命令里**一个字节都没有**。
 #[test]
 fn only_an_account_that_has_a_row_in_the_relay_table_gets_the_base_url_prefix() {
@@ -3569,7 +3569,7 @@ fn the_launch_side_really_asks_those_two_take_points_and_uses_their_answers() {
     let got = relay_prefix_for_launch(&action, Some(&acct_a)).expect("这一档不该报错");
     assert!(
         ROWS_CALLS.with(Cell::get) >= 1,
-        "这次拉起**没问**「这个号在不在中转表里」—— 那一格成了常量"
+        "这次拉起**没问**「这个号在不在apikey 表里」—— 那一格成了常量"
     );
     assert!(
         RUNNING_CALLS.with(Cell::get) >= 1,
@@ -3826,7 +3826,7 @@ fn the_production_relay_facts_are_those_two_take_points() {
             PRODUCTION_RELAY_FACTS.rows,
             relay_rows as fn() -> Vec<String>
         ),
-        "生产上「这个号在不在中转表里」不再由 `relay_rows` 答 ——\n\
+        "生产上「这个号在不在apikey 表里」不再由 `relay_rows` 答 ——\n\
              换成一个恒空的东西，谁都不走中转，而行为判据（喂替身的那条）照绿"
     );
     assert!(
@@ -3915,7 +3915,7 @@ fn the_local_launch_really_asks_the_production_ccm_probe() {
 /// ★★★ `D1 阻-6` 刀 C 的反面：**`relay_rows` 真的去读那份文件、真的解析出行。**
 ///
 /// `D1` 实测过：把它整个换成 `Vec::new()`，**1221 passed / 0 failed** ——
-/// 也就是说「这个号在不在中转表里」这个**取值口**当时一条判据都没有，
+/// 也就是说「这个号在不在apikey 表里」这个**取值口**当时一条判据都没有，
 /// 而它一旦恒空，整件事的表现就是「谁都不走中转」，**而且全绿**。
 #[test]
 fn the_rows_really_come_from_that_file_not_from_a_constant() {
@@ -4658,7 +4658,7 @@ thread_local! {
     /// **线程局部** ⇒ 三条判据并行跑互不干扰（`cargo test` 一测一线程）。
     static ENTRY_SENT: std::cell::RefCell<Vec<(String, Option<String>)>> =
         const { std::cell::RefCell::new(Vec::new()) };
-    /// 这一拍中转表里有哪几行（探针自己写）。
+    /// 这一拍apikey 表里有哪几行（探针自己写）。
     static ENTRY_ROWS: std::cell::RefCell<Vec<String>> =
         const { std::cell::RefCell::new(Vec::new()) };
 }

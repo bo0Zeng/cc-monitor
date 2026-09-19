@@ -643,7 +643,7 @@ fn only_one_place_in_this_file_exports_the_relay_base_url() {
 fn an_account_with_no_row_in_the_relay_table_is_not_routed_through_the_relay() {
     let rows = vec!["acct-a".to_string()];
     // ① 表里有这一行 ⇒ 注入（非空对照：证明这把尺子不是恒 `None`）。
-    let got = relay_injection_for(Some("acct-a"), &rows, true, Some("sid-1"), "claude-code")
+    let got = apikey_endpoint_for(Some("acct-a"), &rows, true, Some("sid-1"), "claude-code")
         .expect("表里有行、中转在跑 ⇒ 该拼得出来");
     assert_eq!(
         got.as_deref(),
@@ -652,21 +652,21 @@ fn an_account_with_no_row_in_the_relay_table_is_not_routed_through_the_relay() {
     );
     // ② 表里**没有**这一行 ⇒ 一个字节都不注入。
     assert_eq!(
-        relay_injection_for(Some("acct-b"), &rows, true, Some("sid-1"), "claude-code").unwrap(),
+        apikey_endpoint_for(Some("acct-b"), &rows, true, Some("sid-1"), "claude-code").unwrap(),
         None,
-        "订阅号（中转表里没有它这一行）被接进了中转 —— 那是纯风险零收益，\
+        "订阅号（apikey 表里没有它这一行）被接进了中转 —— 那是纯风险零收益，\
              而且它在中转那边只会拿到一个 404"
     );
     // ③ 调用方没说是哪个号 ⇒ 同样不注入（空值 ≠ 「用默认那一行」）。
     assert_eq!(
-        relay_injection_for(None, &rows, true, Some("sid-1"), "claude-code").unwrap(),
+        apikey_endpoint_for(None, &rows, true, Some("sid-1"), "claude-code").unwrap(),
         None
     );
     // ④ 一条空账号的行**也算有行**（`KL7` 第 3 条：keyless 透传是显式的一条路）。
     //    这里靠的是「行在不在」，与那一行有没有 key 无关 —— 本函数收的就是 id 表。
     let rows2 = vec!["acct-keyless".to_string()];
     assert!(
-        relay_injection_for(Some("acct-keyless"), &rows2, true, None, "claude-code")
+        apikey_endpoint_for(Some("acct-keyless"), &rows2, true, None, "claude-code")
             .unwrap()
             .is_some()
     );
@@ -676,7 +676,7 @@ fn an_account_with_no_row_in_the_relay_table_is_not_routed_through_the_relay() {
 #[test]
 fn a_relay_that_is_not_running_is_refused_out_loud_at_launch_time() {
     let rows = vec!["acct-a".to_string()];
-    let e = relay_injection_for(Some("acct-a"), &rows, false, Some("sid-1"), "claude-code")
+    let e = apikey_endpoint_for(Some("acct-a"), &rows, false, Some("sid-1"), "claude-code")
         .expect_err("中转没在跑却照样渲染出去 —— 那会长成「claude 连不上 API」");
     assert!(e.starts_with(REFUSE_TAG), "业务拒绝要带标记：{e}");
     assert!(
@@ -684,10 +684,10 @@ fn a_relay_that_is_not_running_is_refused_out_loud_at_launch_time() {
         "错误文案得说出真正的原因（不是一句通用失败）：{e}"
     );
     // 非空对照：同一条路径、只把「中转在跑」翻过来 ⇒ 不再报错。
-    assert!(relay_injection_for(Some("acct-a"), &rows, true, Some("sid-1"), "claude-code").is_ok());
+    assert!(apikey_endpoint_for(Some("acct-a"), &rows, true, Some("sid-1"), "claude-code").is_ok());
     // ⚠ 表里没有这一行的号**不受这条闸影响** —— 中转没起来也照旧起得来。
     assert_eq!(
-        relay_injection_for(Some("acct-b"), &rows, false, None, "claude-code").unwrap(),
+        apikey_endpoint_for(Some("acct-b"), &rows, false, None, "claude-code").unwrap(),
         None,
         "中转没起来把订阅号也挡了 —— 那正是「所有号都接」那条被否决的路的症状"
     );

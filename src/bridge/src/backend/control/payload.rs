@@ -548,7 +548,7 @@ pub fn relay_env_prefix_ps(base_url: &str) -> String {
 /// `history.rs` 那道人群闸数的是**标识符 `relay_running` 在生产段里出现几次**
 /// （定义 1 + 缝里那一处 1 = 2），一个同名的形参会让那个数恒多两处、闸就只能靠一个
 /// 「今天数出来的 N」活着。⇒ 形参改名，闸的分母回到「这个函数被谁提到」本身。
-pub fn relay_injection_for(
+pub fn apikey_endpoint_for(
     account_id: Option<&str>,
     rows: &[String],
     running: bool,
@@ -566,7 +566,7 @@ pub fn relay_injection_for(
         //   把它渲染成一条指向没人听的口的 URL，症状会长成「claude 连不上 API」——
         //   与网络故障同形，而这一条是我们自己的责任。⇒ 在**起会话那一侧**当场说出来。
         return Err(refuse(format!(
-            "账号 {id:?} 配了第三方端点（中转表里有它这一行），但**本机中转没在跑** ——\n\
+            "账号 {id:?} 配了第三方端点（apikey 表里有它这一行），但**本机中转没在跑** ——\n\
              这一发要是照旧起出去，claude 那边会报一个与网络故障同形的连接失败，\
              而真正的原因在我们这一侧。\n\
              ⇒ 先起本机后端（设置 → 本机后端），或把该账号那一行从凭据文件里去掉。"
